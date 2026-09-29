@@ -1,0 +1,17 @@
+# Dépendances et constructions
+node_modules/
+dist/
+target/
+src-tauri/target/
+src-tauri/gen/
+
+# Secrets : clé de signature des mises à jour, jetons — jamais dans le dépôt
+*.key
+*.key.pub.bak
+.env
+.env.*
+
+# Divers
+*.log
+.DS_Store
+Thumbs.db
