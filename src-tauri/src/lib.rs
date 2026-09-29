@@ -7,10 +7,12 @@ pub mod coffre;
 pub mod commandes;
 pub mod erreurs;
 pub mod firehouse;
+pub mod jeux_pc;
 pub mod ludotheque;
 pub mod noyau;
 pub mod profils;
 pub mod source;
+pub mod telechargements;
 
 use serde::Serialize;
 use tauri::Manager;

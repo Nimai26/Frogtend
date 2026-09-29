@@ -76,6 +76,15 @@ pub struct Client {
     /// `None` : client sans jeton, pour les seules routes publiques (`/themes`, vidéo des skins).
     jeton: Option<String>,
     http: reqwest::Client,
+    /// Pour les gros fichiers : pas de délai TOTAL (150 Go prennent des heures), seulement un délai de lecture.
+    http_flux: reqwest::Client,
+}
+
+/// Le début d'un téléchargement en flux.
+pub struct Flux {
+    pub reponse: reqwest::Response,
+    /// Vrai si le serveur reprend là où on s'était arrêté (206) ; faux s'il renvoie tout le fichier (200).
+    pub reprise: bool,
 }
 
 /// Le motif envoyé par Firehouse (`{"detail": "..."}`), s'il y en a un lisible.
@@ -129,7 +138,13 @@ impl Client {
             .user_agent(concat!("Frogtend/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(|_| Erreur::Reseau("Impossible de préparer la connexion.".into()))?;
-        Ok(Client { base, jeton, http })
+        let http_flux = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(15))
+            .read_timeout(Duration::from_secs(90))
+            .user_agent(concat!("Frogtend/", env!("CARGO_PKG_VERSION")))
+            .build()
+            .map_err(|_| Erreur::Reseau("Impossible de préparer la connexion.".into()))?;
+        Ok(Client { base, jeton, http, http_flux })
     }
 
     fn url(&self, route: &str) -> String {
@@ -190,6 +205,34 @@ impl Client {
             return Err(erreur_du_statut(statut, &octets));
         }
         Ok(octets)
+    }
+
+    /// `GET` d'une route en FLUX, à partir de l'octet `debut` (reprise `Range`). 416 : rien à reprendre.
+    pub async fn flux(&self, route: &str, debut: u64) -> Resultat<Flux> {
+        let mut req = self.http_flux.get(self.url(route));
+        if debut > 0 {
+            req = req.header(reqwest::header::RANGE, format!("bytes={debut}-"));
+        }
+        let rep = self.envoyer(req).await?;
+        match rep.status().as_u16() {
+            206 => Ok(Flux { reponse: rep, reprise: true }),
+            200..=299 => Ok(Flux { reponse: rep, reprise: false }),
+            code => {
+                let octets = rep.bytes().await.unwrap_or_default();
+                Err(erreur_du_statut(code, &octets))
+            }
+        }
+    }
+
+    /// Lit le morceau suivant d'un flux (`None` à la fin).
+    pub async fn morceau(flux: &mut Flux) -> Resultat<Option<bytes::Bytes>> {
+        flux.reponse.chunk().await.map_err(|e| {
+            if e.is_timeout() {
+                Erreur::Reseau("Le téléchargement ne reçoit plus rien depuis 90 s. Il reprendra où il en était.".into())
+            } else {
+                Erreur::Reseau("La connexion a été coupée pendant le téléchargement. Il reprendra où il en était.".into())
+            }
+        })
     }
 
     /// `GET` d'une route JSON.
