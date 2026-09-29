@@ -1,0 +1,276 @@
+/* Styles de base de Frogtend, d'après la charte de Firehouse (§ 4 et § 5).
+   AUCUNE couleur ici : uniquement des jetons (var(--…)) et des mélanges de jetons (color-mix). */
+
+:root {
+  /* Échelle globale (réglage « taille du texte » ; Taodbox la double). Toutes les tailles en dépendent. */
+  --echelle: 1;
+  --u: calc(1px * var(--echelle));
+  --corps: calc(15 * var(--u));
+  --cible-min: calc(40 * var(--u));
+  --duree: 0.15s;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: var(--corps);
+  color: var(--ink);
+}
+
+:root[data-animations="reduites"] {
+  --duree: 0s;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--bg);
+  background-attachment: fixed;
+  color: var(--ink);
+  line-height: 1.45;
+}
+
+/* Focus clavier et manette : partout, toujours visible. */
+:focus-visible {
+  outline: calc(2 * var(--u)) solid var(--accent);
+  outline-offset: calc(3 * var(--u));
+}
+
+a {
+  color: var(--accent2-texte);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Barre de défilement */
+* {
+  scrollbar-color: var(--line) transparent;
+}
+
+/* ---- Boutons ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(7 * var(--u));
+  min-height: var(--cible-min);
+  padding: calc(9 * var(--u)) calc(15 * var(--u));
+  border-radius: calc(10 * var(--u));
+  border: 1px solid var(--line);
+  background: var(--bg2);
+  color: var(--ink);
+  font: inherit;
+  font-size: calc(13 * var(--u));
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color var(--duree),
+    transform var(--duree),
+    filter var(--duree);
+}
+.btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.btn.primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+/* Le danger se dit par un liseré, jamais par un fond plein. */
+.btn.danger {
+  border-color: var(--err);
+  color: var(--ink);
+  box-shadow: inset calc(3 * var(--u)) 0 0 var(--err);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* ---- Étiquettes et pastilles ---- */
+.tag {
+  display: inline-block;
+  font-size: calc(11 * var(--u));
+  padding: calc(2 * var(--u)) calc(7 * var(--u));
+  border-radius: calc(6 * var(--u));
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  color: var(--dim);
+}
+.tag.ok {
+  color: var(--ok-texte);
+  border-color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 15%, transparent);
+}
+.tag.warn {
+  color: var(--warn-texte);
+  border-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 15%, transparent);
+}
+.tag.err {
+  color: var(--err-texte);
+  border-color: var(--err);
+  background: color-mix(in srgb, var(--err) 15%, transparent);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(6 * var(--u));
+  font-size: calc(12 * var(--u));
+  padding: calc(4 * var(--u)) calc(10 * var(--u));
+  border-radius: 999px;
+  background: var(--bg2);
+  color: var(--dim);
+}
+.pill .point {
+  width: calc(7 * var(--u));
+  height: calc(7 * var(--u));
+  border-radius: 50%;
+  background: var(--dim);
+}
+.pill .point.ok { background: var(--ok); }
+.pill .point.warn { background: var(--warn); }
+.pill .point.err { background: var(--err); }
+
+/* ---- Fenêtres, blocs, cartes ---- */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  backdrop-filter: blur(16px);
+}
+.panel > header {
+  background: color-mix(in srgb, var(--panel) 88%, var(--accent) 12%);
+  padding: calc(11 * var(--u)) calc(13 * var(--u));
+  border-radius: var(--radius) var(--radius) 0 0;
+  font-size: calc(14 * var(--u));
+  font-weight: 600;
+}
+
+.cx-block {
+  border-radius: calc(14 * var(--u));
+  padding: calc(15 * var(--u)) calc(17 * var(--u));
+  background: var(--bg2);
+}
+.cx-block > h3,
+.titre-bloc {
+  margin: 0 0 calc(10 * var(--u));
+  font-size: calc(11.5 * var(--u));
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--dim);
+  font-weight: 700;
+}
+
+.cx-card {
+  border-radius: calc(14 * var(--u));
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  transition:
+    transform var(--duree),
+    border-color var(--duree),
+    box-shadow var(--duree);
+}
+.cx-card:hover,
+.cx-card:focus-within {
+  transform: translateY(-4px);
+  border-color: var(--accent);
+  box-shadow: 0 calc(8 * var(--u)) calc(24 * var(--u)) var(--ombre-noire);
+}
+
+/* Liste clé / valeur */
+.cx-kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: calc(12 * var(--u));
+  font-size: calc(13 * var(--u));
+  margin: 0;
+}
+.cx-kv > dt,
+.cx-kv > dd {
+  margin: 0;
+  padding: calc(7 * var(--u)) 0;
+  border-bottom: 1px solid var(--line);
+}
+.cx-kv > dt { color: var(--dim); }
+.cx-kv > dd { text-align: right; overflow: hidden; text-overflow: ellipsis; }
+.cx-kv > dt:nth-last-of-type(1),
+.cx-kv > dd:last-of-type { border-bottom: none; }
+
+/* ---- Formulaires ---- */
+.cx-form-section {
+  background: var(--bg2);
+  border-radius: calc(14 * var(--u));
+  padding: calc(15 * var(--u)) calc(17 * var(--u));
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(calc(240 * var(--u)), 1fr));
+  gap: calc(12 * var(--u));
+}
+.champ > span {
+  display: block;
+  font-size: calc(12.5 * var(--u));
+  color: var(--dim);
+  margin-bottom: calc(5 * var(--u));
+}
+input,
+select,
+textarea {
+  font: inherit;
+  background: var(--bg2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: calc(8 * var(--u));
+  padding: calc(6 * var(--u)) calc(9 * var(--u));
+  min-height: var(--cible-min);
+  width: 100%;
+}
+option {
+  background: var(--bg2);
+  color: var(--ink);
+}
+
+details > summary {
+  min-height: calc(44 * var(--u));
+  display: flex;
+  align-items: center;
+  gap: calc(8 * var(--u));
+  cursor: pointer;
+  list-style: none;
+}
+details > summary::-webkit-details-marker { display: none; }
+details > summary::before { content: "▸"; color: var(--dim); }
+details[open] > summary::before { content: "▾"; }
+
+.muted {
+  color: var(--dim);
+  font-size: calc(12 * var(--u));
+}
+
+.bar {
+  height: calc(6 * var(--u));
+  border-radius: calc(4 * var(--u));
+  background: var(--bg2);
+  overflow: hidden;
+}
+.bar > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(to right, var(--accent2), var(--accent));
+}
+
+/* ---- Écrans étroits ---- */
+@media (max-width: 720px) {
+  .cx-form-section { grid-template-columns: 1fr; }
+}
