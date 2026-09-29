@@ -66,7 +66,8 @@ git 2.51, Node 24.11, pnpm 10.32, Rust 1.94 (stable, MSVC), Visual Studio Build 
 
 ### Lot 2 — Télécharger
 Une file de téléchargements avec reprise (`Range`) et un contrôle des octets reçus. Pour chaque version, la place
-nécessaire est annoncée avant de commencer. Le dossier de destination, les plafonds et le débit maximal se règlent.
+nécessaire est annoncée avant de commencer. La destination suit les emplacements du système (voir « Les
+emplacements de jeux »). Les plafonds et le débit maximal se règlent.
 Rien ne démarre sans accord.
 
 ### Lot 3 — Installer et lancer
@@ -113,8 +114,23 @@ dans l'interface, par profil, avec un bouton « Revenir au réglage d'origine »
 - **Fiche jeu** : les blocs affichés et leur ordre (résumé, versions, annexes, informations…).
 - **Commandes** : les raccourcis clavier et les boutons de la manette, réaffectables.
 - **Taodbox** : l'échelle (×2 proposé en 1080p), la marge de sécurité de la télé, l'écran d'accueil.
-- **Chemins et réseau** : l'adresse de Firehouse, les dossiers de jeux, les plafonds de téléchargement.
+- **Chemins et réseau** : l'adresse de Firehouse, les dossiers de jeux (voir ci-dessous), les plafonds de
+  téléchargement.
+
+### Les emplacements de jeux, par système (Seb, 29/09)
+
+Une collection peut être énorme et répartie sur plusieurs disques :
+- chaque système (SNES, PC, MS-DOS…) a **un ou plusieurs emplacements**, dans l'ordre de préférence ;
+- un emplacement **par défaut** sert aux systèmes qui n'en ont pas ;
+- à l'installation, Frogtend **propose** le premier emplacement du système qui a assez de place. La taille nécessaire
+  et la place libre sont affichées, on peut en choisir un autre, et rien ne s'écrit sans accord ;
+- chaque jeu installé retient son emplacement. Un disque débranché ou un partage réseau absent est **signalé** (« Disque
+  introuvable : E:\Jeux »), jamais interprété comme une désinstallation ;
+- ajouter un emplacement ne lance pas de parcours du disque. Un parcours à la recherche de jeux déjà présents serait
+  une opération de masse : il est annoncé et chiffré avant d'être lancé.
+
+Les emplacements sont **propres au PC**, pas au profil, puisque les disques appartiennent à la machine.
 
 ## Questions ouvertes pour Seb
 
-1. La liste « Personnalisation » ci-dessus : que faut-il ajouter, et qu'est-ce qui est superflu ?
+- (aucune pour l'instant ; la liste « Personnalisation » est validée le 29/09)
