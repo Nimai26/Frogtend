@@ -159,6 +159,13 @@ personne**, mis en place avec l'agent Firehouse (transmis le 30/09). En attente 
 Frogtend de le connaître (proposé : champ `sauvegarde` dans `/moi`), droits d'accès, conduite hors de la maison
 (sauvegarde locale en attente, envoyée au retour), nombre de versions gardées.
 
+**Proposition de Firehouse (30/09, soumise à Seb)** : espace ZFS dédié `Egon/frogtend`, partagé en SMB
+`\10.10.0.1Frogtend<username>` ; chemin donné par `/moi` (`sauvegarde: {partage, disponible}`, contrat 1.4) ;
+un compte SMB PAR PERSONNE (`frogtend-<username>`, droits 700), mot de passe demandé une fois par Frogtend et rangé
+dans le coffre Windows ; hors de la maison, file locale envoyée au retour ; versions gardées côté serveur par
+instantanés ZFS nocturnes (30 derniers) : Frogtend écrit seulement la version courante sous
+`<personne>/<nom du PC>/` (configuration.json, bibliotheque.json, parties/ + manifeste sha256).
+
 *(Proposition écartée par Seb : Nextcloud via Firehouse.)* ranger la sauvegarde chez la personne, dans son
 **Nextcloud** (stockage maître de la maison, déjà couvert par les sauvegardes 3-2-1 chiffrées hors site), en passant
 par Firehouse avec le jeton du profil : `PUT /api/jeux/v1/sauvegarde` (archive + manifeste : PC, date, jeux, taille,
@@ -169,8 +176,18 @@ quelques Mo (jeux rétro) à quelques centaines de Mo par profil (parties de jeu
 parfois plus de 1 Go : envoi par morceaux avec reprise.
 
 ### Lot 4 — Les émulateurs
-Détection, chemins, BIOS, profils de manettes (XInput d'abord), profils par jeu, et une copie de sauvegarde de toute
-configuration modifiée. Il restera à décider si Frogtend installe les émulateurs lui-même (question ouverte).
+**Décisions de Seb (30/09)** :
+- **Frogtend installe et met à jour les émulateurs, sur accord** : quand un système n'en a pas, il propose le
+  recommandé (téléchargé depuis sa source OFFICIELLE, taille annoncée), l'installe dans un dossier « Émulateurs »
+  réglable, et propose ses mises à jour. Les cœurs RetroArch manquants aussi.
+- **Manettes : profils XInput standard** (manette Xbox, ce que Moonlight recrée en streaming) ; un profil par jeu
+  possible ensuite. Pas de profil par modèle physique pour l'instant.
+- **Priorités : RetroArch** (consoles rétro), **DOSBox** (MS-DOS), **consoles récentes** (Dolphin, PCSX2,
+  DuckStation, PPSSPP… selon les recommandations de Firehouse).
+
+Découpage : **4a** (installer, détecter, mettre à jour les émulateurs et les cœurs ; vérifier les BIOS ; régler
+chaque système tout seul d'après Firehouse) puis **4b** (profils de manette XInput, profils par jeu, copie de
+sauvegarde de toute configuration modifiée).
 
 ### Lot 5 — Taodbox
 Démarrage avec `--taodbox`, plein écran, entièrement à la manette. Déclaration comme application Sunshine/Apollo.
