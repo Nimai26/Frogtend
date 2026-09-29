@@ -3,6 +3,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
+  import { adresseFond } from '$lib/api';
   import Dialogues from '$lib/dialogues/Dialogues.svelte';
   import { choisir } from '$lib/dialogues/fenetres.svelte';
   import { demarrer, etat, sortirDuProfil } from '$lib/etat.svelte';
@@ -11,6 +12,13 @@
   import ChoixProfil from '$lib/profils/ChoixProfil.svelte';
 
   let { children } = $props();
+
+  // Vidéo de fond du skin (Firehouse) : masquée si elle ne peut pas être lue (hors ligne, mode simulé).
+  let videoEnPanne = $state(false);
+  $effect(() => {
+    void etat.fondVideo;
+    videoEnPanne = false;
+  });
 
   onMount(async () => {
     await demarrer();
@@ -37,6 +45,20 @@
     }
   }
 </script>
+
+{#if etat.fondVideo && !videoEnPanne}
+  <video
+    class="fond-video"
+    src={adresseFond(etat.fondVideo)}
+    autoplay
+    muted
+    loop
+    playsinline
+    aria-hidden="true"
+    onerror={() => (videoEnPanne = true)}
+  ></video>
+  <div class="voile-video" aria-hidden="true"></div>
+{/if}
 
 {#if etat.pret}
   {#if !etat.profilOuvert}
@@ -82,6 +104,22 @@
 <Dialogues />
 
 <style>
+  /* Derrière toute l'interface : la vidéo du skin, puis son voile de lisibilité (charte § 3). */
+  .fond-video,
+  .voile-video {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    pointer-events: none;
+  }
+  .fond-video {
+    object-fit: cover;
+  }
+  .voile-video {
+    background: var(--voile-video);
+  }
   .application {
     height: 100vh;
     display: grid;

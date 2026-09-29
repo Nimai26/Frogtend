@@ -54,6 +54,8 @@ export const etat = $state<{
   /** Le skin choisi par la personne dans Firehouse, s'il est connu. */
   skinFirehouse: string | null;
   skinApplique: string | null;
+  /** Le skin appliqué a-t-il un fond vidéo à montrer ? */
+  fondVideo: string | null;
 }>({
   pret: false,
   pc: structuredClone(DEFAUTS_PC),
@@ -62,6 +64,7 @@ export const etat = $state<{
   catalogue: null,
   skinFirehouse: null,
   skinApplique: null,
+  fondVideo: null,
 });
 
 let magasinPc: Magasin | null = null;
@@ -75,6 +78,8 @@ export function appliquerApparence() {
   if (!etat.catalogue) return;
   const a = etat.profil.apparence;
   etat.skinApplique = appliquerSkin(etat.catalogue, a.skin ?? etat.skinFirehouse ?? SKIN_DE_REPLI);
+  const skin = etat.catalogue.themes[etat.skinApplique];
+  etat.fondVideo = a.fondVideo && skin?.video_api ? etat.skinApplique : null;
   const racine = document.documentElement;
   racine.style.setProperty('--echelle', String(a.echelle));
   racine.dataset.densite = a.densite;
@@ -90,6 +95,21 @@ export async function demarrer() {
   etat.catalogue = catalogueInstantane();
   appliquerApparence();
   etat.pret = true;
+  // Les vrais skins de Firehouse, sans jeton : dès l'écran « Qui joue ? ».
+  await chargerSkinsFirehouse();
+}
+
+/** Les skins servis par Firehouse (publics). Hors ligne ou en mode simulé : ceux déjà là. */
+export async function chargerSkinsFirehouse() {
+  try {
+    const catalogue = (await api.skins()) as CatalogueSkins | null;
+    if (catalogue?.themes && Object.keys(catalogue.themes).length > 0) {
+      etat.catalogue = catalogue;
+      appliquerApparence();
+    }
+  } catch {
+    // Firehouse injoignable : l'instantané reste.
+  }
 }
 
 /** Après l'ouverture d'un profil : ses réglages, puis les skins de Firehouse et le sien. */
@@ -99,9 +119,8 @@ export async function entrerDansProfil(profil: Profil) {
   etat.profilOuvert = profil;
   appliquerApparence();
 
+  await chargerSkinsFirehouse();
   try {
-    const catalogue = (await api.skins()) as CatalogueSkins | null;
-    if (catalogue?.themes && Object.keys(catalogue.themes).length > 0) etat.catalogue = catalogue;
     const perso = await api.skinPersonnel();
     if (perso?.theme) etat.skinFirehouse = perso.theme;
     if (perso?.remplace) toast('⚠ Ton skin enregistré dans Firehouse n’existe plus : le skin Firehouse est appliqué.');
@@ -118,7 +137,6 @@ export async function sortirDuProfil() {
   etat.skinFirehouse = null;
   magasinProfil = null;
   etat.profil = structuredClone(DEFAUTS_PROFIL);
-  etat.catalogue = catalogueInstantane();
   appliquerApparence();
 }
 

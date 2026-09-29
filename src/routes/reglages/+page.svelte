@@ -60,6 +60,19 @@
     if (!etat.pc.firehouse.simule) await appliquerConnexion();
   }
 
+  /** Le skin choisi ici devient celui du compte Firehouse (utilisé aussi dans le cockpit). */
+  async function enregistrerSkin() {
+    const nom = a.skin;
+    if (!nom) return;
+    try {
+      await api.enregistrerSkin(nom);
+      etat.skinFirehouse = nom;
+      toast(`✅ Skin « ${libelleSkin(nom)} » enregistré dans ton compte Firehouse.`);
+    } catch (e) {
+      toast(`Refusé : ${motifDuRefus(e)}`, 'erreur');
+    }
+  }
+
   async function toutReinitialiser() {
     const oui = await confirmer('↺ Revenir aux réglages d’origine ?', {
       message: 'L’apparence de ton profil revient à celle d’origine. Les réglages de ce PC (Firehouse) ne changent pas.',
@@ -105,9 +118,14 @@
             </button>
           {/each}
         </div>
-        <p class="muted">
-          Enregistrer ce skin dans ton compte Firehouse : bientôt (la route manque encore côté Firehouse).
-        </p>
+        <div class="actions gauche">
+          <button class="btn" onclick={enregistrerSkin} disabled={!a.skin || a.skin === etat.skinFirehouse}>
+            💾 Enregistrer ce skin dans mon compte Firehouse
+          </button>
+          <span class="muted">
+            {etat.skinFirehouse ? `Ton skin Firehouse : ${libelleSkin(etat.skinFirehouse)}` : ''}
+          </span>
+        </div>
       </div>
 
       <div class="cx-form-section">
@@ -129,7 +147,14 @@
             <option value="reduites">Réduites</option>
           </select>
         </label>
-        <!-- Fond vidéo du skin firehouse : affiché quand l'API servira la vidéo (voir docs/BESOINS-API.md). -->
+        <label class="champ case">
+          <input
+            type="checkbox"
+            checked={a.fondVideo}
+            onchange={(e) => reglerProfil('apparence.fondVideo', e.currentTarget.checked)}
+          />
+          <span>Fond vidéo (pour les skins qui en ont un, comme Firehouse)</span>
+        </label>
       </div>
 
       <div class="actions">
@@ -340,6 +365,10 @@
   .case span {
     margin: 0;
     color: var(--ink);
+  }
+  .actions.gauche {
+    justify-content: flex-start;
+    align-items: center;
   }
   .plateformes {
     display: grid;

@@ -1,6 +1,6 @@
 <script lang="ts">
   // Créer un profil : un nom, un code PIN facultatif, et le jeton Firehouse de la personne.
-  import { api } from '$lib/api';
+  import { api, libelleCompte } from '$lib/api';
   import { toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { etat } from '$lib/etat.svelte';
@@ -34,7 +34,11 @@
     envoi = true;
     try {
       const p = await api.creerProfil(nom.trim(), proteger ? pin : null, jeton.trim() || null);
-      toast(`✅ Profil « ${p.nom} » créé.`);
+      toast(
+        p.compte
+          ? `✅ Profil « ${p.nom} » créé. Jeton vérifié : ${libelleCompte(p.compte)}.`
+          : `✅ Profil « ${p.nom} » créé.`,
+      );
       oncree();
     } catch (err) {
       toast(`Refusé : ${motifDuRefus(err)}`, 'erreur');

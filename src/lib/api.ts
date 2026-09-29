@@ -25,6 +25,8 @@ export interface JeuResume {
   statut: string | null;
   /** Firehouse a-t-il une jaquette pour ce jeu ? */
   jaquette?: boolean | null;
+  /** Change quand la jaquette change. */
+  jaquette_empreinte?: string | null;
   /** Nombre de versions rangées dans Firehouse. */
   versions?: number | null;
 }
@@ -93,7 +95,25 @@ export interface BilanSynchro {
   plateformes: number;
   pages: number;
   simule: boolean;
+  /** `complete` (tout relu) ou `increment` (seulement ce qui a changé). */
+  mode: 'complete' | 'increment';
+  recus: number;
+  retires: number;
 }
+
+/** Qui porte un jeton, d'après Firehouse (`/moi`). */
+export interface Compte {
+  ok?: boolean;
+  username?: string;
+  nom?: string;
+  grade?: string;
+  via?: string;
+  api?: { version?: string; firehouse?: string };
+}
+
+/** « Seb (admin) ». */
+export const libelleCompte = (c: Compte | null | undefined) =>
+  c ? `${c.nom || c.username || '?'}${c.grade ? ` (${c.grade})` : ''}` : '';
 
 /** Une erreur renvoyée par le cœur : une sorte, et un motif déjà rédigé pour une personne non experte. */
 export interface ErreurCoeur {
@@ -108,6 +128,7 @@ export interface ErreurCoeur {
     | 'pin'
     | 'profil'
     | 'reglage'
+    | 'version'
     | 'disque';
   motif: string;
 }
@@ -126,11 +147,12 @@ function appeler<T>(commande: string, args?: Record<string, unknown>): Promise<T
 export const api = {
   profils: () => appeler<Profil[]>('profils_lister'),
   creerProfil: (nom: string, pin: string | null, jeton: string | null) =>
-    appeler<Profil>('profil_creer', { nom, pin, jeton }),
+    appeler<Profil & { compte: Compte | null }>('profil_creer', { nom, pin, jeton }),
+  compte: () => appeler<Compte>('profil_compte'),
   ouvrirProfil: (id: string, pin: string | null) => appeler<Profil>('profil_ouvrir', { id, pin }),
   fermerProfil: () => appeler<void>('profil_fermer'),
   profilActif: () => appeler<Profil | null>('profil_actif'),
-  changerJeton: (jeton: string) => appeler<void>('profil_changer_jeton', { jeton }),
+  changerJeton: (jeton: string) => appeler<Compte | null>('profil_changer_jeton', { jeton }),
   reconnecter: () => appeler<void>('profil_reconnecter'),
   changerPin: (ancien: string | null, nouveau: string | null) => appeler<void>('profil_changer_pin', { ancien, nouveau }),
   renommerProfil: (nom: string) => appeler<Profil>('profil_renommer', { nom }),
@@ -148,13 +170,22 @@ export const api = {
 
   skins: () => appeler<unknown | null>('skins_obtenir'),
   skinPersonnel: () => appeler<{ theme?: string; remplace?: boolean } | null>('skin_personnel'),
+  enregistrerSkin: (nom: string) => appeler<void>('skin_enregistrer', { nom }),
 };
 
-/** L'adresse d'une jaquette du profil ouvert (servie par le cœur, jamais par Internet directement). */
-export function adresseJaquette(id: number): string {
+/**
+ * L'adresse d'une jaquette du profil ouvert (servie par le cœur, jamais par Internet directement).
+ * `largeur` (en pixels affichés) : une miniature suffit, arrondie à la centaine supérieure (100 à 1000).
+ */
+export function adresseJaquette(id: number, largeur?: number): string {
   // Sous Windows, les protocoles propres à l'application s'écrivent http://<nom>.localhost/.
-  return `http://jaquette.localhost/${id}`;
+  if (!largeur) return `http://jaquette.localhost/${id}`;
+  const l = Math.min(1000, Math.max(100, Math.ceil(largeur / 100) * 100));
+  return `http://jaquette.localhost/${id}?largeur=${l}`;
 }
+
+/** L'adresse de la vidéo de fond d'un skin (servie par le cœur, gardée pour ce PC). */
+export const adresseFond = (skin: string) => `http://fond.localhost/${encodeURIComponent(skin)}`;
 
 /** « 237 887 038 » octets → « 226,9 Mo ». */
 export function taille(octets: number): string {

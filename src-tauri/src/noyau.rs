@@ -780,13 +780,39 @@ mod tests {
         assert!(matches!(Noyau::verifier_jeton(&c, "mauvais").await, Err(Erreur::JetonRefuse(_))));
     }
 
+    /// Essai des routes PUBLIQUES du vrai Firehouse (sans jeton), jamais lancé par la suite (`#[ignore]`).
+    /// `cargo test essai_public -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_public_sur_firehouse() {
+        let adresse =
+            std::env::var("FROGTEND_ADRESSE_ESSAI").unwrap_or_else(|_| "https://jeux.hikari-no-sekai.fr".into());
+        let (_d, n) = noyau();
+        let c = Connexion { adresse, simule: false };
+        let s = n.skins(&c).await.unwrap().expect("skins absents");
+        let themes = s["themes"].as_object().unwrap();
+        println!("SKINS sans jeton : {} (version {})", themes.len(), s["version"]);
+        let avec_video: Vec<_> = themes.iter().filter(|(_, t)| t["video_api"].is_string()).map(|(k, t)| (k, &t["video_api"])).collect();
+        println!("SKINS avec vidéo : {avec_video:?}");
+        let v = n.video_skin(&c, "firehouse").await.unwrap().expect("vidéo absente");
+        println!("VIDÉO firehouse : {} octets, début {:02X?}", v.len(), &v[..4]);
+        assert_eq!(&v[..4], &[0x1A, 0x45, 0xDF, 0xA3], "un webm commence par l'en-tête EBML");
+        let s2 = n.skins(&c).await.unwrap().unwrap();
+        assert_eq!(s["version"], s2["version"]);
+    }
+
     /// Essai sur le VRAI Firehouse, jamais lancé par la suite de tests (`#[ignore]`).
     /// Lecture seule. Jeton lu dans FROGTEND_JETON_ESSAI (jamais affiché), dossier temporaire effacé à la fin.
     /// `cargo test essai_reel -- --ignored --nocapture`
     #[tokio::test]
     #[ignore]
     async fn essai_reel_sur_firehouse() {
-        let jeton = std::env::var("FROGTEND_JETON_ESSAI").expect("FROGTEND_JETON_ESSAI absent");
+        // Le jeton : FROGTEND_JETON_ESSAI, sinon celui du profil FROGTEND_PROFIL_ESSAI de l'application installée,
+        // lu dans le coffre de Windows (ainsi, aucun jeton ne passe par une commande ni par un journal).
+        let jeton = std::env::var("FROGTEND_JETON_ESSAI").unwrap_or_else(|_| {
+            let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_JETON_ESSAI ou FROGTEND_PROFIL_ESSAI");
+            crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton pour ce profil")
+        });
         let adresse =
             std::env::var("FROGTEND_ADRESSE_ESSAI").unwrap_or_else(|_| "https://jeux.hikari-no-sekai.fr".into());
         let (_d, n) = noyau();

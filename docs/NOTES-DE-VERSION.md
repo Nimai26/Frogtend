@@ -1,5 +1,21 @@
 # Notes de version de Frogtend
 
+## 0.3.0 — plus léger, plus rapide, à jour avec Firehouse
+
+- **Jaquettes allégées** : Frogtend demande des miniatures à la taille affichée (par exemple 200 pixels de large au
+  lieu de l'image complète de 3 Mo), et ne retélécharge une jaquette que si elle a changé dans Firehouse.
+- **Synchronisation rapide** : après la première, seuls les jeux modifiés sont relus ; un jeu qui n'est plus
+  visible pour ton profil disparaît de ta ludothèque.
+- **Le développeur sous chaque jaquette** (réglable : éditeur, année, plateforme ou rien), et dans les détails.
+- **Tes skins dès l'accueil** : l'écran « Qui joue ? » prend les vrais skins de Firehouse, avec le **fond vidéo**
+  du skin Firehouse (désactivable dans « Réglages »).
+- **Enregistrer ton skin** dans ton compte Firehouse, depuis « Réglages » : il te suit aussi dans le cockpit.
+- **Le jeton est vérifié** auprès de Firehouse avant d'être rangé (« Jeton vérifié : Seb (admin) ») ; « Mon profil »
+  affiche le compte Firehouse du profil.
+- **Versions incompatibles** : si Firehouse et Frogtend ne parlent plus la même version, Frogtend le dit clairement
+  (« mets Frogtend à jour » ou « Firehouse doit être mis à jour »).
+- Les cases à cocher et curseurs prennent la couleur du skin.
+
 ## 0.2.0 — la ludothèque (lot 1)
 
 Première version utilisable : Frogtend affiche la ludothèque de Firehouse.

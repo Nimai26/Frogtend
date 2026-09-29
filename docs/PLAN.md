@@ -89,6 +89,10 @@ copier : elle doit être **plaisante et facile**, car des personnes qui ne sont 
 - La barre de navigation actuelle du lot 0 (Ludothèque / Réglages / À propos) sera remplacée par cette mise en page,
   avec les réglages dans le menu du haut.
 
+### Version 0.3.0 — le contrat 1.3 de Firehouse (✅ livrée le 29/09/2026, décision de Seb : avant le lot 2)
+`/moi`, `X-Api-Jeux-Version`, `PUT /theme`, skins et vidéo sans jeton, miniatures, empreintes de jaquette,
+synchronisation incrémentale (`depuis` + `ids_visibles`), développeur et éditeur.
+
 ### Lot 2 — Télécharger
 Une file de téléchargements avec reprise (`Range`) et un contrôle des octets reçus. Pour chaque version, la place
 nécessaire est annoncée avant de commencer. La destination suit les emplacements du système (voir « Les

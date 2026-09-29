@@ -1,13 +1,27 @@
 <script lang="ts">
   // « Mon profil » : renommer, changer ou retirer le code PIN, remplacer le jeton, supprimer le profil.
   import { goto } from '$app/navigation';
-  import { api } from '$lib/api';
+  import { onMount } from 'svelte';
+  import { api, libelleCompte, type Compte } from '$lib/api';
   import { confirmer, demander, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { etat, sortirDuProfil } from '$lib/etat.svelte';
   import { synchroniser, viderLudotheque } from '$lib/ludotheque/ludotheque.svelte';
 
   const p = $derived(etat.profilOuvert!);
+
+  let compte = $state<Compte | null>(null);
+  let compteErreur = $state('');
+  async function lireCompte() {
+    compteErreur = '';
+    try {
+      compte = await api.compte();
+    } catch (e) {
+      compte = null;
+      compteErreur = motifDuRefus(e);
+    }
+  }
+  onMount(lireCompte);
 
   async function renommer() {
     const nom = await demander('✏ Nouveau nom du profil', { valeur: p.nom });
@@ -52,8 +66,9 @@
     });
     if (!jeton) return;
     try {
-      await api.changerJeton(jeton);
-      toast('✅ Jeton enregistré. Synchronisation…');
+      const c = await api.changerJeton(jeton);
+      toast(c ? `✅ Jeton vérifié (${libelleCompte(c)}) et enregistré. Synchronisation…` : '✅ Jeton enregistré. Synchronisation…');
+      await lireCompte();
       await synchroniser();
     } catch (e) {
       toast(`Refusé : ${motifDuRefus(e)}`, 'erreur');
@@ -90,6 +105,8 @@
         <dd>{p.nom}</dd>
         <dt>Code PIN</dt>
         <dd>{p.protege ? '🔒 oui' : 'non'}</dd>
+        <dt>Compte Firehouse</dt>
+        <dd>{compte ? libelleCompte(compte) : compteErreur ? `⚠ ${compteErreur}` : 'vérification…'}</dd>
       </dl>
       <div class="actions">
         <button class="btn" onclick={renommer}>✏ Renommer</button>

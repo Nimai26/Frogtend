@@ -17,6 +17,8 @@ export interface Skin {
   resolus: Jetons;
   /** Adresse du fond vidéo (seulement le skin `firehouse`), ou `null`. */
   video: string | null;
+  /** Chemin de la vidéo depuis la RACINE du serveur (contrat 1.3), ou `null`. */
+  video_api?: string | null;
 }
 
 /** La forme servie par `GET /api/jeux/v1/themes`. */

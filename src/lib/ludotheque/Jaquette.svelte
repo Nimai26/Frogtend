@@ -8,7 +8,22 @@
     titre,
     plateforme = '',
     disponible = true,
-  }: { id: number; titre: string; plateforme?: string; disponible?: boolean | null } = $props();
+    largeur,
+  }: {
+    id: number;
+    titre: string;
+    plateforme?: string;
+    disponible?: boolean | null;
+    /** Largeur affichée, en pixels CSS : Frogtend demande une miniature juste assez grande. */
+    largeur?: number;
+  } = $props();
+
+  /** Pixels réels à l'écran (écran haute densité, échelle du texte). */
+  function pixels(l: number | undefined): number | undefined {
+    if (!l) return undefined;
+    const echelle = Number(getComputedStyle(document.documentElement).getPropertyValue('--echelle')) || 1;
+    return l * echelle * (window.devicePixelRatio || 1);
+  }
   let absente = $state(false);
   let chargee = $state(false);
 
@@ -23,7 +38,7 @@
 <div class="jaquette" class:chargee>
   {#if !absente}
     <img
-      src={adresseJaquette(id)}
+      src={adresseJaquette(id, pixels(largeur))}
       alt=""
       loading="lazy"
       decoding="async"

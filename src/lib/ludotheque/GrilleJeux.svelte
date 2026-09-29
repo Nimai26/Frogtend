@@ -89,7 +89,13 @@
             onfocus={() => (ludo.selection = j)}
             onkeydown={(e) => surTouche(e, i)}
           >
-            <Jaquette id={j.id} titre={j.titre} plateforme={j.plateforme} disponible={j.jaquette} />
+            <Jaquette
+              id={j.id}
+              titre={j.titre}
+              plateforme={j.plateforme}
+              disponible={j.jaquette}
+              largeur={r.tailleJaquette}
+            />
             <span class="titre">{j.titre}</span>
             {#if sousTitre(j)}<span class="sous-titre">{sousTitre(j)}</span>{/if}
           </button>

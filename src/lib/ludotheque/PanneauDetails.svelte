@@ -12,7 +12,7 @@
 
 <aside class="colonne" aria-label="Détails">
   {#if j}
-    <div class="jaquette"><Jaquette id={j.id} titre={j.titre} plateforme={j.plateforme} disponible={j.jaquette} /></div>
+    <div class="jaquette"><Jaquette id={j.id} titre={j.titre} plateforme={j.plateforme} disponible={j.jaquette} largeur={260} /></div>
     <h2>{j.titre}</h2>
     <div class="actions">
       <button class="btn primary grand" onclick={() => goto(`/jeu/${j.id}`)}>📄 Voir la fiche</button>
@@ -24,6 +24,7 @@
       {#if j.annee}<dt>Année</dt><dd>{j.annee}</dd>{/if}
       {#if j.developpeur}<dt>Développeur</dt><dd>{j.developpeur}</dd>{/if}
       {#if j.editeur}<dt>Éditeur</dt><dd>{j.editeur}</dd>{/if}
+      {#if j.versions != null}<dt>Versions</dt><dd>{j.versions || 'aucune pour l’instant'}</dd>{/if}
     </dl>
     {#if j.genres.length}
       <div class="genres">

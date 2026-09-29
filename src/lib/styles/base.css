@@ -240,6 +240,12 @@ option {
   background: var(--bg2);
   color: var(--ink);
 }
+/* Cases, boutons radio et curseurs : la couleur du skin, jamais celle de Windows. */
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"] {
+  accent-color: var(--accent);
+}
 
 details > summary {
   min-height: calc(44 * var(--u));

@@ -135,10 +135,16 @@ export async function synchroniser(discrete = false) {
     await rechargerPlateformes();
     await rechargerListe();
     if (!discrete) {
-      toast(`✅ Ludothèque à jour : ${b.jeux.toLocaleString('fr-FR')} jeux sur ${b.plateformes} plateformes.`);
+      const detail =
+        b.mode === 'increment'
+          ? `${b.recus} changement(s)${b.retires ? `, ${b.retires} retiré(s)` : ''}`
+          : `relue en entier`;
+      toast(`✅ Ludothèque à jour (${detail}) : ${b.jeux.toLocaleString('fr-FR')} jeux sur ${b.plateformes} plateformes.`);
     }
   } catch (e) {
-    if (estErreurCoeur(e) && e.sorte === 'jeton_refuse') {
+    if (estErreurCoeur(e) && e.sorte === 'version') {
+      await informer('⚠ Versions incompatibles', e.motif);
+    } else if (estErreurCoeur(e) && e.sorte === 'jeton_refuse') {
       await informer('⛔ Jeton refusé', `${e.motif}\n\nTa ludothèque déjà téléchargée reste consultable.`);
     } else if (estErreurCoeur(e) && e.sorte === 'reseau') {
       toast(`⚠ Hors ligne : ${e.motif} La ludothèque affichée est celle de la dernière synchronisation.`, 'alerte');

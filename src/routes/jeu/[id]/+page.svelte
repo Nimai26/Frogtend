@@ -94,7 +94,7 @@
     {/if}
 
     <section class="jeu">
-      <div class="jaquette"><Jaquette id={fiche.id} titre={fiche.titre} plateforme={fiche.plateforme} /></div>
+      <div class="jaquette"><Jaquette id={fiche.id} titre={fiche.titre} plateforme={fiche.plateforme} largeur={260} /></div>
       <div class="infos">
         <h1>{fiche.titre}</h1>
         {#if fiche.titre_en && fiche.titre_en !== fiche.titre}<p class="muted">{fiche.titre_en}</p>{/if}
