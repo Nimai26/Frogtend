@@ -216,7 +216,7 @@ n'existe encore dans Firehouse, tout est à valider sur le vrai téléviseur ave
 - Un instantané des 44 skins au 29/09 est fourni dans `docs/charte/themes.instantane.json` : **une fixture pour coder hors
   ligne, jamais la source**.
 
-**L'API de Frogtend** (construite par Firehouse, lot 5 du chantier jeux ; voir `CLAUDE.md` § 3) :
+**L'API de Frogtend** (EN SERVICE depuis Firehouse 2.10.0 ; voir `CLAUDE.md` § 3) :
 - `GET /api/jeux/v1/themes` →
   `{version, credit, communs: {jetons communs}, themes: {nom: {base: {11}, resolus: {--on-*, --*-texte, --dim}, video: url|null}}}`,
   avec une empreinte (ETag) : Frogtend la met en cache et ne la retélécharge que si elle change.
