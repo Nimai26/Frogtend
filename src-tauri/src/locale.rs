@@ -163,7 +163,14 @@ impl Noyau {
             Some(a) => format!("{titre} ({a})"),
             None => titre.clone(),
         };
-        let base = Path::new(emplacement).join(nom_de_dossier(&plateforme));
+        // Un emplacement PROPRE à ce système (ex. E:JeuxMS-DOS) reçoit les jeux directement ; un emplacement par
+        // défaut, partagé par tous les systèmes, les range dans un sous-dossier au nom du système.
+        let propre_au_systeme = emplacements.systemes.get(&plateforme).is_some_and(|l| l.iter().any(|e| e == emplacement));
+        let base = if propre_au_systeme {
+            Path::new(emplacement).to_path_buf()
+        } else {
+            Path::new(emplacement).join(nom_de_dossier(&plateforme))
+        };
         let mut dossier = base.join(nom_de_dossier(&nom));
         let occupe = |d: &Path| std::fs::read_dir(d).is_ok_and(|mut l| l.next().is_some());
         if occupe(&dossier) {
@@ -483,6 +490,25 @@ mod tests {
         assert_eq!(n.annexe_texte(110, 1, "af:lancement:DOSBox").await.unwrap()["texte"], "Lance DUNE.BAT");
         // Ce qui demande Firehouse (un jeu hors de la ludothèque) le dit clairement.
         assert!(matches!(n.fiche(111).await, Err(Erreur::Reseau(_))));
+    }
+
+    #[tokio::test]
+    async fn un_emplacement_propre_au_systeme_ne_recoit_pas_de_sous_dossier_en_double() {
+        let s = serveur_dune();
+        let (d, n, mut e) = noyau_ouvert(&s).await;
+        let dos = d.path().join("Jeux-DOS");
+        std::fs::create_dir_all(&dos).unwrap();
+        e.systemes.insert("MS-DOS".into(), vec![dos.to_string_lossy().into()]);
+        let j = n.ajouter(110, 200, &dos.to_string_lossy(), &e).await.unwrap();
+        assert_eq!(PathBuf::from(&j.dossier), dos.join("Dune (1992)"), "pas de « MS-DOS » en double");
+    }
+
+    #[tokio::test]
+    async fn un_emplacement_par_defaut_range_par_systeme() {
+        let s = serveur_dune();
+        let (_d, n, e) = noyau_ouvert(&s).await;
+        let j = n.ajouter(110, 200, &e.defaut[0], &e).await.unwrap();
+        assert_eq!(PathBuf::from(&j.dossier), PathBuf::from(&e.defaut[0]).join("MS-DOS").join("Dune (1992)"));
     }
 
     #[tokio::test]
