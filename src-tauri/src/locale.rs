@@ -38,12 +38,35 @@ pub struct JeuPcVu {
     pub recus: u64,
 }
 
-/// L'extension d'un document d'après son type.
-fn extension(type_contenu: Option<&str>) -> &'static str {
+/// L'extension d'un document : d'après son CONTENU d'abord (Firehouse peut l'envoyer sans type précis), sinon
+/// d'après son type.
+fn extension(octets: &[u8], type_contenu: Option<&str>) -> &'static str {
+    if octets.starts_with(b"%PDF") {
+        return "pdf";
+    }
+    if octets.starts_with(b"PK") {
+        return "zip";
+    }
+    if octets.starts_with(b"Rar!") {
+        return "rar";
+    }
+    if octets.starts_with(&[0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C]) {
+        return "7z";
+    }
+    if let Some(t) = crate::noyau::type_image(octets) {
+        return match t.as_str() {
+            "image/png" => "png",
+            "image/jpeg" => "jpg",
+            "image/webp" => "webp",
+            _ => "gif",
+        };
+    }
     let t = type_contenu.unwrap_or("").split(';').next().unwrap_or("").trim().to_ascii_lowercase();
     match t.as_str() {
         "application/pdf" => "pdf",
         "application/zip" | "application/x-zip-compressed" => "zip",
+        "application/x-7z-compressed" => "7z",
+        "application/vnd.rar" | "application/x-rar-compressed" => "rar",
         "text/plain" => "txt",
         "text/html" => "html",
         "image/jpeg" => "jpg",
@@ -191,7 +214,7 @@ impl Noyau {
                 std::fs::write(dossier.join("annexes").join(format!("{i}.json")), serde_json::to_vec_pretty(&v).unwrap())?;
             } else if let Reponse::Corps { octets, type_contenu, .. } = c.obtenir(&route, None).await? {
                 let titre = nom_de_dossier(a["titre"].as_str().unwrap_or("Document"));
-                let nom = format!("{i} - {titre}.{}", extension(type_contenu.as_deref()));
+                let nom = format!("{i} - {titre}.{}", extension(&octets, type_contenu.as_deref()));
                 std::fs::write(dossier.join("annexes").join(nom), &octets)?;
             }
         }
@@ -602,10 +625,31 @@ mod tests {
         drop(d); // tout est effacé
     }
 
+    /// Essai RÉEL (lecture seule) : la nature d'un document de Firehouse, d'après ses premiers octets.
+    /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_document_reel -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_document_reel() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        let route = format!("/annexe/110/0?cle={}", encoder("abandonware_france:manuel:Manuel de Dune"));
+        if let Reponse::Corps { octets, type_contenu, .. } = c.obtenir(&route, None).await.unwrap() {
+            println!("MANUEL : {} octets, type {:?}, début {:02X?} → .{}", octets.len(), type_contenu, &octets[..8], extension(&octets, type_contenu.as_deref()));
+        }
+    }
+
     #[test]
     fn l_extension_d_un_document_vient_de_son_type() {
-        assert_eq!(extension(Some("application/pdf")), "pdf");
-        assert_eq!(extension(Some("text/plain; charset=utf-8")), "txt");
-        assert_eq!(extension(None), "bin");
+        assert_eq!(extension(b"", Some("application/pdf")), "pdf");
+        assert_eq!(extension(b"", Some("text/plain; charset=utf-8")), "txt");
+        assert_eq!(extension(b"", None), "bin");
+        assert_eq!(extension(b"", Some("application/x-7z-compressed")), "7z");
+        assert_eq!(extension(&[0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C], None), "7z");
+        // Le contenu l'emporte sur un type trop vague.
+        assert_eq!(extension(b"%PDF-1.4 ...", Some("application/octet-stream")), "pdf");
+        assert_eq!(extension(b"PK...", None), "zip");
+        assert_eq!(extension(&[0xFF, 0xD8, 0xFF, 0], None), "jpg");
     }
 }

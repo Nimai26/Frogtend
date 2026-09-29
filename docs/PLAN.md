@@ -118,7 +118,7 @@ synchronisation incrémentale (`depuis` + `ids_visibles`), développeur et édit
 dans sa ludothèque que les jeux du PC que Firehouse lui montre (son propre catalogue). Un jeu réservé aux admins,
 téléchargé par un admin, reste invisible aux autres profils, même hors ligne.
 
-### Lot 2 — Mettre un jeu dans sa ludothèque (télécharger)
+### Lot 2 — Mettre un jeu dans sa ludothèque (✅ livré en 0.4.0 le 30/09/2026 ; vérifié : Dune, 237 887 038 octets, à l’octet près, puis hors ligne)
 - **Deux espaces** : « Ma ludothèque » (les jeux du PC, visibles pour ce profil) et « 🛒 Catalogue Firehouse »
   (tout ce que Firehouse montre à ce profil, d'où l'on ajoute).
 - **Emplacements par système** (réglages du PC, voir plus haut).

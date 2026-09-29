@@ -1,5 +1,23 @@
 # Notes de version de Frogtend
 
+## 0.4.0 — ta ludothèque, sur ton PC
+
+- **« 🎮 Ma ludothèque » ne montre que les jeux de ce PC.** Les autres se parcourent dans le **« 🛒 Catalogue
+  Firehouse »**, d'où l'on choisit ce qu'on met dans sa ludothèque.
+- **Mettre un jeu dans sa ludothèque** : choisis la version, l'emplacement (seuls ceux qui ont la place sont
+  proposés), lis le récapitulatif (taille, place restante, durée estimée) et accepte : le téléchargement commence.
+  Il reprend où il en était s'il est coupé, et chaque fichier est vérifié à l'octet près.
+- **Page « ⬇ Téléchargements »** : progression, débit, temps restant, pause, reprise, annulation (qui n'efface que
+  les fichiers du jeu).
+- **Sans Internet**, ta ludothèque reste utilisable : la fiche, la jaquette et les documents (solution, astuces,
+  manuel…) de chaque jeu sont gardés sur le PC. Sans connexion, on perd seulement l'ajout de nouveaux jeux.
+- **Réglages ▸ Emplacements des jeux** : un ou plusieurs dossiers par défaut, et des dossiers propres à un système
+  (SNES, MS-DOS…), dans l'ordre de préférence. **À régler avant le premier ajout.**
+- Chaque profil ne voit que les jeux du PC que Firehouse lui montre.
+- Jaquettes plus fiables (un échec est retenté ; plus d'icône d'image cassée) ; journal des échecs pour comprendre
+  un problème.
+- Pas encore : installer et lancer un jeu (lot 3).
+
 ## 0.3.0 — plus léger, plus rapide, à jour avec Firehouse
 
 - **Jaquettes allégées** : Frogtend demande des miniatures à la taille affichée (par exemple 200 pixels de large au
