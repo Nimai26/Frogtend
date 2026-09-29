@@ -190,6 +190,9 @@ impl Noyau {
             message: None,
             ajoute_le: maintenant(),
             ajoute_par: s.profil.id.clone(),
+            installation: None,
+            temps_jeu: 0,
+            derniere_partie: None,
         };
         self.registre().ajouter(&jeu)?;
         Ok(jeu)
@@ -637,6 +640,57 @@ mod tests {
         let route = format!("/annexe/110/0?cle={}", encoder("abandonware_france:manuel:Manuel de Dune"));
         if let Reponse::Corps { octets, type_contenu, .. } = c.obtenir(&route, None).await.unwrap() {
             println!("MANUEL : {} octets, type {:?}, début {:02X?} → .{}", octets.len(), type_contenu, &octets[..8], extension(&octets, type_contenu.as_deref()));
+        }
+    }
+
+    /// Reconnaissance RÉELLE en lecture seule, pour le lot 3 : notice de lancement, début du fichier d'une version
+    /// (type d'installeur), émulateurs recommandés. Ne télécharge que 1 Mo du fichier.
+    /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_reconnaissance -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_reconnaissance_lot3() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let base = "https://jeux.hikari-no-sekai.fr";
+        let c = Client::nouveau(base, &jeton).unwrap();
+        let route = format!("/annexe/110/1?cle={}", encoder("abandonware_france:lancement:Lancement sous DOSBox"));
+        let v: Value = c.obtenir_json(&route).await.unwrap();
+        println!("NOTICE DE LANCEMENT :\n{}\n", v["texte"].as_str().unwrap_or("?"));
+
+        let http = reqwest::Client::new();
+        let rep = http
+            .get(format!("{base}/api/jeux/v1/fichier/110/200/0"))
+            .bearer_auth(&jeton)
+            .header("Range", "bytes=0-1048575")
+            .send()
+            .await
+            .unwrap();
+        println!("FICHIER : statut {}, {:?}", rep.status(), rep.headers().get("content-range"));
+        let o = rep.bytes().await.unwrap();
+        println!("  {} octets lus, début {:02X?}", o.len(), &o[..4]);
+        for marque in ["Inno Setup", "Nullsoft", "7z\u{BC}\u{AF}", "WinRAR", "Setup Factory", "InstallShield", "7-Zip", "DOSBox", "rDlPtS", "zlb"] {
+            if let Some(p) = o.windows(marque.len()).position(|w| w == marque.as_bytes()) {
+                println!("  « {marque} » trouvé à l'octet {p}");
+            }
+        }
+        if let Some(p) = o.windows(6).position(|w| w == [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C]) {
+            println!("  signature 7z trouvée à l'octet {p}");
+        }
+        // Les chaînes lisibles les plus longues (version, nom du produit…).
+        let mut lisibles: Vec<String> = o
+            .split(|b| !(0x20..0x7F).contains(b))
+            .filter(|s| s.len() >= 18)
+            .map(|s| String::from_utf8_lossy(s).to_string())
+            .collect();
+        lisibles.dedup();
+        println!("  chaînes : {:?}", lisibles.iter().take(40).collect::<Vec<_>>());
+
+        for p in ["MS-DOS", "Super Nintendo", "Nintendo 64", "Sony Playstation", "Windows"] {
+            match c.obtenir_json::<Value>(&format!("/emulateurs?plateforme={}", encoder(p))).await {
+                Ok(v) => println!("\nÉMULATEURS {p} : {}", serde_json::to_string(&v["emulateurs"]).unwrap_or_default().chars().take(900).collect::<String>()),
+                Err(e) => println!("\nÉMULATEURS {p} : {e:?}"),
+            }
         }
     }
 

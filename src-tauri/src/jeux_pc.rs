@@ -140,6 +140,21 @@ pub struct FichierJeu {
     pub taille: u64,
 }
 
+/// Ce qui a été fait pour installer un jeu, et ce qu'on lance pour y jouer.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Installation {
+    /// Le dossier où le jeu est installé (ou celui des fichiers reçus, s'il n'y avait rien à installer).
+    pub dossier: String,
+    /// Comment il a été installé (installeur, archive, rien…).
+    pub methode: crate::installation::Methode,
+    /// Ce qu'on lance pour jouer ; `None` tant que la personne ne l'a pas choisi.
+    pub lanceur: Option<crate::installation::Lanceur>,
+    /// Pour une ROM ou une image disque : le fichier donné à l'émulateur (jamais renommé).
+    #[serde(default)]
+    pub fichier_du_jeu: Option<String>,
+    pub installe_le: String,
+}
+
 /// Un jeu présent (ou en cours d'arrivée) sur ce PC.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct JeuPc {
@@ -157,6 +172,11 @@ pub struct JeuPc {
     pub message: Option<String>,
     pub ajoute_le: String,
     pub ajoute_par: String,
+    /// `None` tant que le jeu n'est pas installé.
+    pub installation: Option<Installation>,
+    /// Temps de jeu cumulé, en secondes.
+    pub temps_jeu: u64,
+    pub derniere_partie: Option<String>,
 }
 
 impl JeuPc {
@@ -193,6 +213,16 @@ impl Registre {
                dossier TEXT NOT NULL, etat TEXT NOT NULL, total INTEGER NOT NULL, fichiers TEXT NOT NULL,
                message TEXT, ajoute_le TEXT NOT NULL, ajoute_par TEXT NOT NULL);",
         )?;
+        // Colonnes ajoutées par le lot 3 (un registre de la 0.4.0 est complété, rien n'est perdu).
+        for colonne in ["installation TEXT", "temps_jeu INTEGER NOT NULL DEFAULT 0", "derniere_partie TEXT"] {
+            let nom = colonne.split(' ').next().unwrap();
+            let existe: bool = db
+                .prepare("SELECT 1 FROM pragma_table_info('jeux_pc') WHERE name = ?1")?
+                .exists([nom])?;
+            if !existe {
+                db.execute(&format!("ALTER TABLE jeux_pc ADD COLUMN {colonne}"), [])?;
+            }
+        }
         Ok(Registre { db, fichier: fichier.into() })
     }
 
@@ -236,11 +266,14 @@ impl Registre {
             message: r.get(8)?,
             ajoute_le: r.get(9)?,
             ajoute_par: r.get(10)?,
+            installation: r.get::<_, Option<String>>(11)?.and_then(|t| serde_json::from_str(&t).ok()),
+            temps_jeu: r.get::<_, i64>(12)? as u64,
+            derniere_partie: r.get(13)?,
         })
     }
 
-    const COLONNES: &'static str =
-        "id, version, titre, plateforme, dossier, etat, total, fichiers, message, ajoute_le, ajoute_par";
+    const COLONNES: &'static str = "id, version, titre, plateforme, dossier, etat, total, fichiers, message, ajoute_le, \
+         ajoute_par, installation, temps_jeu, derniere_partie";
 
     pub fn jeu(&self, id: i64) -> Resultat<Option<JeuPc>> {
         Ok(self
@@ -282,6 +315,22 @@ impl Registre {
         )?)
     }
 
+    /// Retient (ou oublie, avec `None`) l'installation d'un jeu.
+    pub fn changer_installation(&self, id: i64, i: Option<&Installation>) -> Resultat<()> {
+        let texte = i.map(|i| serde_json::to_string(i).unwrap());
+        self.db.execute("UPDATE jeux_pc SET installation = ?2 WHERE id = ?1", params![id, texte])?;
+        Ok(())
+    }
+
+    /// Ajoute une partie au temps de jeu.
+    pub fn compter_partie(&self, id: i64, secondes: u64, quand: &str) -> Resultat<()> {
+        self.db.execute(
+            "UPDATE jeux_pc SET temps_jeu = temps_jeu + ?2, derniere_partie = ?3 WHERE id = ?1",
+            params![id, secondes as i64, quand],
+        )?;
+        Ok(())
+    }
+
     /// Retire un jeu du registre (ses fichiers, eux, ne sont effacés que par l'appelant, après vérification).
     pub fn retirer(&self, id: i64) -> Resultat<()> {
         self.db.execute("DELETE FROM jeux_pc WHERE id = ?1", [id])?;
@@ -313,6 +362,9 @@ mod tests {
             message: None,
             ajoute_le: "1".into(),
             ajoute_par: "seb".into(),
+            installation: None,
+            temps_jeu: 0,
+            derniere_partie: None,
         }
     }
 
@@ -370,6 +422,46 @@ mod tests {
         assert_eq!(r.interrompus_en_pause().unwrap(), 1);
         assert_eq!(r.jeu(110).unwrap().unwrap().etat, Etat::Pause);
         assert_eq!(r.ids().unwrap(), vec![110]);
+    }
+
+    #[test]
+    fn l_installation_et_le_temps_de_jeu_sont_retenus() {
+        let d = tempfile::tempdir().unwrap();
+        let r = Registre::ouvrir(&d.path().join("jeux.db")).unwrap();
+        r.ajouter(&jeu(110, d.path())).unwrap();
+        let i = Installation {
+            dossier: "E:\\Jeux\\Dune\\Jeu".into(),
+            methode: crate::installation::Methode::Aucune,
+            lanceur: None,
+            fichier_du_jeu: None,
+            installe_le: "1".into(),
+        };
+        r.changer_installation(110, Some(&i)).unwrap();
+        r.compter_partie(110, 600, "2").unwrap();
+        r.compter_partie(110, 30, "3").unwrap();
+        let j = r.jeu(110).unwrap().unwrap();
+        assert_eq!(j.installation, Some(i));
+        assert_eq!((j.temps_jeu, j.derniere_partie.as_deref()), (630, Some("3")));
+    }
+
+    #[test]
+    fn un_registre_de_la_0_4_0_est_complete_sans_rien_perdre() {
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("jeux.db");
+        {
+            let db = Connection::open(&f).unwrap();
+            db.execute_batch(
+                "CREATE TABLE jeux_pc (id INTEGER PRIMARY KEY, version INTEGER NOT NULL, titre TEXT NOT NULL,
+                 plateforme TEXT NOT NULL, dossier TEXT NOT NULL, etat TEXT NOT NULL, total INTEGER NOT NULL,
+                 fichiers TEXT NOT NULL, message TEXT, ajoute_le TEXT NOT NULL, ajoute_par TEXT NOT NULL);
+                 INSERT INTO jeux_pc VALUES (110, 200, 'Dune', 'MS-DOS', 'E:', 'telecharge', 9, '[]', NULL, '1', 'seb');",
+            )
+            .unwrap();
+        }
+        let r = Registre::ouvrir(&f).unwrap();
+        let j = r.jeu(110).unwrap().unwrap();
+        assert_eq!((j.titre.as_str(), j.etat, j.temps_jeu), ("Dune", Etat::Telecharge, 0));
+        assert_eq!(j.installation, None);
     }
 
     #[test]

@@ -7,6 +7,7 @@ pub mod coffre;
 pub mod commandes;
 pub mod erreurs;
 pub mod firehouse;
+pub mod installation;
 pub mod jeux_pc;
 pub mod locale;
 pub mod ludotheque;

@@ -137,6 +137,23 @@ sans jamais renommer une ROM ni une image. Le lancement se fait en natif ou par 
 parties sont localisées et sauvegardées avant toute réinstallation. Le début et la fin de chaque session sont
 annoncés à Firehouse (`/session`).
 
+### Lot 3 bis — Sauvegarder « tout ce qui ne se retélécharge pas » (Seb, 30/09)
+**But : pouvoir reformater son PC, réinstaller Frogtend, et TOUT retrouver.** Par profil, une sauvegarde
+**automatique ou manuelle** (au choix de la personne) de :
+- la **configuration de Frogtend** (réglages du profil et du PC, emplacements, émulateurs réglés) ;
+- la **bibliothèque** : la LISTE des jeux, avec la version choisie et l'emplacement. PAS les jeux ni les médias, ni
+  les émulateurs : tout cela se retélécharge ;
+- les **parties sauvegardées et les codes de triche de TOUS les jeux**, quel que soit l'émulateur : jeux PC natifs
+  (dossier du jeu, Documents, AppData…), DOSBox, RetroArch (`saves`, `states`, `cheats`), etc.
+
+À la restauration, Frogtend remet la configuration et les parties, puis propose de retélécharger les jeux de la
+liste (annoncé et chiffré d'abord : combien de jeux, combien de Go).
+
+Le lot 3 en pose la base : relevé des fichiers à l'installation, mise à l'abri de ce qui a changé (les parties)
+avant tout retrait ou réinstallation. **Questions pour Seb** (avant de coder ce lot) : où ranger la sauvegarde
+(dossier au choix, disque externe, NAS, ou Firehouse lui-même ?) ; fréquence de l'automatique ; combien de
+versions garder.
+
 ### Lot 4 — Les émulateurs
 Détection, chemins, BIOS, profils de manettes (XInput d'abord), profils par jeu, et une copie de sauvegarde de toute
 configuration modifiée. Il restera à décider si Frogtend installe les émulateurs lui-même (question ouverte).

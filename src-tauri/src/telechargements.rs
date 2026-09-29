@@ -193,6 +193,9 @@ mod tests {
             message: None,
             ajoute_le: "1".into(),
             ajoute_par: "seb".into(),
+            installation: None,
+            temps_jeu: 0,
+            derniere_partie: None,
         }
     }
 
