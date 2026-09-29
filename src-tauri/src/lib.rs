@@ -4,6 +4,7 @@
 //! L'interface ne les reçoit jamais.
 
 pub mod coffre;
+pub mod commandes;
 pub mod erreurs;
 pub mod firehouse;
 pub mod ludotheque;
@@ -12,6 +13,7 @@ pub mod profils;
 pub mod source;
 
 use serde::Serialize;
+use tauri::Manager;
 
 /// Ce que l'écran « À propos » affiche sur l'application.
 #[derive(Debug, Serialize, PartialEq)]
@@ -35,6 +37,24 @@ fn infos_application(app: tauri::AppHandle) -> InfosApplication {
     infos_depuis(app.config())
 }
 
+/// Répond aux adresses `jaquette://localhost/<id>` (sous Windows : `http://jaquette.localhost/<id>`) avec la
+/// jaquette du profil OUVERT. Un autre profil, ou aucun, n'obtient rien.
+fn repondre_jaquette(app: &tauri::AppHandle, chemin: &str) -> tauri::http::Response<Vec<u8>> {
+    use tauri::http::Response;
+    let vide = |code: u16| Response::builder().status(code).body(Vec::new()).unwrap();
+    let Ok(id) = chemin.trim_matches('/').parse::<i64>() else { return vide(400) };
+    let noyau = app.state::<noyau::Noyau>();
+    match tauri::async_runtime::block_on(noyau.jaquette(id)) {
+        Ok(Some(img)) => Response::builder()
+            .status(200)
+            .header("Content-Type", img.type_contenu.unwrap_or_else(|| "application/octet-stream".into()))
+            .header("Cache-Control", "no-store")
+            .body(img.octets)
+            .unwrap(),
+        _ => vide(404),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -42,7 +62,42 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![infos_application])
+        .setup(|app| {
+            let dossier = app.path().app_data_dir()?;
+            let n = noyau::Noyau::nouveau(&dossier, Box::new(coffre::CoffreWindows))
+                .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?;
+            app.manage(n);
+            Ok(())
+        })
+        .register_asynchronous_uri_scheme_protocol("jaquette", |ctx, requete, repondeur| {
+            let app = ctx.app_handle().clone();
+            let chemin = requete.uri().path().to_string();
+            // Hors du fil de l'interface : la jaquette peut venir du réseau.
+            std::thread::spawn(move || repondeur.respond(repondre_jaquette(&app, &chemin)));
+        })
+        .invoke_handler(tauri::generate_handler![
+            infos_application,
+            commandes::profils_lister,
+            commandes::profil_creer,
+            commandes::profil_ouvrir,
+            commandes::profil_fermer,
+            commandes::profil_actif,
+            commandes::profil_changer_jeton,
+            commandes::profil_reconnecter,
+            commandes::profil_changer_pin,
+            commandes::profil_renommer,
+            commandes::profil_supprimer,
+            commandes::ludotheque_synchroniser,
+            commandes::ludotheque_synchronisee_le,
+            commandes::ludotheque_plateformes,
+            commandes::ludotheque_genres,
+            commandes::ludotheque_lister,
+            commandes::ludotheque_au_hasard,
+            commandes::ludotheque_fiche,
+            commandes::ludotheque_annexe_texte,
+            commandes::skins_obtenir,
+            commandes::skin_personnel,
+        ])
         .run(tauri::generate_context!())
         .expect("impossible de démarrer Frogtend");
 }

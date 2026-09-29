@@ -141,6 +141,20 @@ impl Noyau {
         Ok(())
     }
 
+    /// Refait la connexion du profil ouvert avec les réglages actuels (adresse, mode simulé), sans redemander son PIN.
+    pub async fn reconnecter(&self, connexion: &Connexion) -> Resultat<()> {
+        let s = self.session().await?;
+        let source = self.source_pour(&s.profil.id, connexion)?;
+        let cache = Cache::ouvrir(&s.dossier.join("ludotheque.db"))?;
+        *self.session.lock().await = Some(Arc::new(Session {
+            profil: s.profil.clone(),
+            dossier: s.dossier.clone(),
+            source,
+            cache: std::sync::Mutex::new(cache),
+        }));
+        Ok(())
+    }
+
     /// Supprime un profil de ce PC : son jeton, son cache, ses jaquettes. Demande son PIN.
     pub async fn supprimer_profil(&self, id: &str, pin: Option<&str>) -> Resultat<()> {
         self.profils.verifier_pin(id, pin)?;
@@ -460,6 +474,18 @@ mod tests {
         assert!(d.path().join("profils").join(&lea).join("ludotheque.db").exists());
         assert!(!n.a_un_jeton(&seb).unwrap());
         assert!(n.a_un_jeton(&lea).unwrap());
+    }
+
+    #[tokio::test]
+    async fn reconnecter_change_de_source_sans_redemander_le_pin() {
+        let (_d, n) = noyau();
+        let id = n.creer_profil("Seb", Some("1234"), None).unwrap().id;
+        n.ouvrir(&id, Some("1234"), &SIMULE).await.unwrap();
+        let vrai = Connexion { adresse: "https://jeux.hikari-no-sekai.fr".into(), simule: false };
+        // Sans jeton, le passage au vrai serveur est refusé, et le dit.
+        assert!(matches!(n.reconnecter(&vrai).await, Err(Erreur::JetonRefuse(_))));
+        n.reconnecter(&SIMULE).await.unwrap();
+        assert!(n.session().await.unwrap().source.est_simulee());
     }
 
     #[test]

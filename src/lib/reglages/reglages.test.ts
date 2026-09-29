@@ -11,9 +11,9 @@ import {
 } from './reglages';
 
 describe('les défauts', () => {
-  it('pointent Firehouse sur jeux.hikari-no-sekai.fr, en mode simulé tant que l’API n’existe pas', () => {
+  it('pointent Firehouse sur jeux.hikari-no-sekai.fr, en vrai (l’API est en service)', () => {
     expect(DEFAUTS_PC.firehouse.adresse).toBe('https://jeux.hikari-no-sekai.fr');
-    expect(DEFAUTS_PC.firehouse.simule).toBe(true);
+    expect(DEFAUTS_PC.firehouse.simule).toBe(false);
   });
   it('suivent le skin choisi dans Firehouse', () => {
     expect(DEFAUTS_PROFIL.apparence.skin).toBeNull();
@@ -30,6 +30,10 @@ describe('completer', () => {
     expect(r.apparence.skin).toBe('aquamarine');
     expect(r.apparence.echelle).toBe(1.5);
     expect(r.apparence.densite).toBe('aeree');
+  });
+  it('garde un tableau lu, et refuse un objet à la place d’un tableau', () => {
+    expect(completer(DEFAUTS_PROFIL, { ludotheque: { plateformesMasquees: ['Arcade'] } }).ludotheque.plateformesMasquees).toEqual(['Arcade']);
+    expect(completer(DEFAUTS_PROFIL, { ludotheque: { plateformesMasquees: { a: 1 } } }).ludotheque.plateformesMasquees).toEqual([]);
   });
   it('remplace une valeur du mauvais type et ignore les clés inconnues', () => {
     const r = completer(DEFAUTS_PROFIL, { apparence: { echelle: 'grand', inconnue: 1 } });

@@ -48,7 +48,13 @@
         {#if d.multiligne}
           <textarea rows="5" value={d.valeur} oninput={(e) => (saisies[d.id] = e.currentTarget.value)}></textarea>
         {:else}
-          <input type="text" value={d.valeur} oninput={(e) => (saisies[d.id] = e.currentTarget.value)} />
+          <input
+            type={d.masque ? 'password' : 'text'}
+            autocomplete="off"
+            spellcheck="false"
+            value={d.valeur}
+            oninput={(e) => (saisies[d.id] = e.currentTarget.value)}
+          />
         {/if}
       {/if}
 

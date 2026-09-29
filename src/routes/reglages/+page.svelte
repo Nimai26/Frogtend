@@ -1,10 +1,40 @@
 <script lang="ts">
+  import { api } from '$lib/api';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
+  import { motifDuRefus } from '$lib/dialogues/messages';
   import { etat, reglerPc, reglerProfil, reinitialiserPc, reinitialiserProfil } from '$lib/etat.svelte';
-  import { DEFAUTS_PC, ECHELLE_MAX, ECHELLE_MIN, verifierAdresse } from '$lib/reglages/reglages';
+  import { ludo, rechargerPlateformes, synchroniser } from '$lib/ludotheque/ludotheque.svelte';
+  import {
+    DEFAUTS_PC,
+    ECHELLE_MAX,
+    ECHELLE_MIN,
+    TAILLE_JAQUETTE_MAX,
+    TAILLE_JAQUETTE_MIN,
+    verifierAdresse,
+  } from '$lib/reglages/reglages';
   import { jetonsDuSkin, libelleSkin, nomsDesSkins } from '$lib/skins/skins';
 
   const a = $derived(etat.profil.apparence);
+  const l = $derived(etat.profil.ludotheque);
+
+  $effect(() => {
+    if (ludo.plateformes.length === 0) rechargerPlateformes().catch(() => {});
+  });
+
+  function basculerPlateforme(nom: string, visible: boolean) {
+    const masquees = l.plateformesMasquees.filter((p) => p !== nom);
+    reglerProfil('ludotheque.plateformesMasquees', visible ? masquees : [...masquees, nom]);
+  }
+
+  /** Après un changement d'adresse ou de mode : reconnexion du profil, puis synchronisation. */
+  async function appliquerConnexion() {
+    try {
+      await api.reconnecter();
+      await synchroniser();
+    } catch (e) {
+      toast(`Impossible de se connecter avec ces réglages : ${motifDuRefus(e)}`, 'erreur');
+    }
+  }
   const noms = $derived(etat.catalogue ? nomsDesSkins(etat.catalogue) : []);
 
   let adresse = $state(etat.pc.firehouse.adresse);
@@ -27,6 +57,7 @@
     adresse = r.adresse;
     await reglerPc('firehouse.adresse', r.adresse);
     toast('Enregistré.');
+    if (!etat.pc.firehouse.simule) await appliquerConnexion();
   }
 
   async function toutReinitialiser() {
@@ -98,13 +129,96 @@
             <option value="reduites">Réduites</option>
           </select>
         </label>
-        <!-- Densité (grille de la ludothèque) et fond vidéo (servi par la vraie API) : affichés quand ils
-             auront un effet, au lot 1. -->
+        <!-- Fond vidéo du skin firehouse : affiché quand l'API servira la vidéo (voir docs/BESOINS-API.md). -->
       </div>
 
       <div class="actions">
         <button class="btn" onclick={() => reinitialiserProfil('apparence.echelle')}>↺ Taille d’origine</button>
         <button class="btn" onclick={toutReinitialiser}>↺ Toute l’apparence d’origine</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <header>🎮 Ludothèque <span class="muted">— ton profil</span></header>
+    <div class="corps">
+      <div class="cx-form-section">
+        <label class="champ">
+          <span>Taille des jaquettes : {l.tailleJaquette} px</span>
+          <input
+            type="range"
+            min={TAILLE_JAQUETTE_MIN}
+            max={TAILLE_JAQUETTE_MAX}
+            step="10"
+            value={l.tailleJaquette}
+            onchange={(e) => reglerProfil('ludotheque.tailleJaquette', Number(e.currentTarget.value))}
+          />
+        </label>
+        <label class="champ">
+          <span>Sous le titre d’un jeu, afficher</span>
+          <select value={l.sousTitre} onchange={(e) => reglerProfil('ludotheque.sousTitre', e.currentTarget.value)}>
+            <option value="developpeur">Le développeur</option>
+            <option value="editeur">L’éditeur</option>
+            <option value="annee">L’année</option>
+            <option value="plateforme">La plateforme</option>
+            <option value="rien">Rien</option>
+          </select>
+        </label>
+        <label class="champ">
+          <span>Tri par défaut</span>
+          <select value={l.tri} onchange={(e) => reglerProfil('ludotheque.tri', e.currentTarget.value)}>
+            <option value="titre">Titre</option>
+            <option value="annee">Année (ancien d’abord)</option>
+            <option value="annee_desc">Année (récent d’abord)</option>
+          </select>
+        </label>
+        <label class="champ">
+          <span>Espacement de la grille</span>
+          <select value={a.densite} onchange={(e) => reglerProfil('apparence.densite', e.currentTarget.value)}>
+            <option value="aeree">Aéré</option>
+            <option value="compacte">Serré</option>
+          </select>
+        </label>
+        <label class="champ case">
+          <input
+            type="checkbox"
+            checked={l.panneauPlateformes}
+            onchange={(e) => reglerProfil('ludotheque.panneauPlateformes', e.currentTarget.checked)}
+          />
+          <span>Colonne des plateformes (à gauche)</span>
+        </label>
+        <label class="champ case">
+          <input
+            type="checkbox"
+            checked={l.panneauDetails}
+            onchange={(e) => reglerProfil('ludotheque.panneauDetails', e.currentTarget.checked)}
+          />
+          <span>Colonne des détails (à droite)</span>
+        </label>
+      </div>
+
+      <details class="cx-block">
+        <summary>Plateformes affichées dans la colonne de gauche</summary>
+        {#if ludo.plateformes.length === 0}
+          <p class="muted">Aucune plateforme pour l’instant : synchronise la ludothèque d’abord.</p>
+        {:else}
+          <div class="plateformes">
+            {#each ludo.plateformes as p (p.nom)}
+              <label class="case">
+                <input
+                  type="checkbox"
+                  checked={!l.plateformesMasquees.includes(p.nom)}
+                  onchange={(e) => basculerPlateforme(p.nom, e.currentTarget.checked)}
+                />
+                <span>{p.nom} <span class="muted">({p.jeux})</span></span>
+              </label>
+            {/each}
+          </div>
+        {/if}
+      </details>
+
+      <div class="actions">
+        <button class="btn" onclick={() => reinitialiserProfil('ludotheque')}>↺ Ludothèque d’origine</button>
       </div>
     </div>
   </section>
@@ -121,9 +235,12 @@
           <input
             type="checkbox"
             checked={etat.pc.firehouse.simule}
-            onchange={(e) => reglerPc('firehouse.simule', e.currentTarget.checked)}
+            onchange={async (e) => {
+              await reglerPc('firehouse.simule', e.currentTarget.checked);
+              await appliquerConnexion();
+            }}
           />
-          <span>Mode simulé (l’API de Firehouse pour Frogtend est en construction)</span>
+          <span>Mode simulé : des exemples, sans connexion à Firehouse (pour essayer ou travailler hors ligne)</span>
         </label>
       </div>
       <div class="actions">
@@ -223,6 +340,12 @@
   .case span {
     margin: 0;
     color: var(--ink);
+  }
+  .plateformes {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(calc(240 * var(--u)), 1fr));
+    gap: calc(6 * var(--u));
+    margin-top: calc(10 * var(--u));
   }
   .actions {
     display: flex;

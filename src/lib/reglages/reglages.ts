@@ -10,7 +10,7 @@ export const ADRESSE_FIREHOUSE_PAR_DEFAUT = 'https://jeux.hikari-no-sekai.fr';
 export interface ReglagesPc {
   firehouse: {
     adresse: string;
-    /** Tant que l'API `/api/jeux/v1/` n'existe pas, Frogtend travaille sur des réponses simulées. */
+    /** Mode simulé : des exemples, sans connexion à Firehouse (essais, démonstration, travail hors ligne). */
     simule: boolean;
   };
 }
@@ -26,15 +26,37 @@ export interface ReglagesProfil {
     /** Le fond vidéo du skin `firehouse`. */
     fondVideo: boolean;
   };
+  ludotheque: {
+    /** Largeur d'une jaquette dans la grille, en pixels (à l'échelle 1). */
+    tailleJaquette: number;
+    /** La ligne sous le titre d'une carte. */
+    sousTitre: 'developpeur' | 'editeur' | 'annee' | 'plateforme' | 'rien';
+    tri: 'titre' | 'annee' | 'annee_desc';
+    panneauPlateformes: boolean;
+    panneauDetails: boolean;
+    /** Plateformes masquées dans la liste de gauche. */
+    plateformesMasquees: string[];
+  };
 }
 
 export const DEFAUTS_PC: ReglagesPc = {
-  firehouse: { adresse: ADRESSE_FIREHOUSE_PAR_DEFAUT, simule: true },
+  firehouse: { adresse: ADRESSE_FIREHOUSE_PAR_DEFAUT, simule: false },
 };
 
 export const DEFAUTS_PROFIL: ReglagesProfil = {
   apparence: { skin: null, echelle: 1, densite: 'aeree', animations: 'normales', fondVideo: true },
+  ludotheque: {
+    tailleJaquette: 170,
+    sousTitre: 'developpeur',
+    tri: 'titre',
+    panneauPlateformes: true,
+    panneauDetails: true,
+    plateformesMasquees: [],
+  },
 };
+
+export const TAILLE_JAQUETTE_MIN = 110;
+export const TAILLE_JAQUETTE_MAX = 320;
 
 export const ECHELLE_MIN = 0.75;
 export const ECHELLE_MAX = 2.5;
@@ -47,6 +69,7 @@ const estObjet = (x: unknown): x is Objet => typeof x === 'object' && x !== null
  * prend la valeur par défaut. Les clés inconnues sont ignorées. (Un fichier d'une ancienne version reste lisible.)
  */
 export function completer<T>(defauts: T, lus: unknown): T {
+  if (Array.isArray(defauts)) return (Array.isArray(lus) ? lus : defauts) as T;
   if (!estObjet(defauts)) {
     // Un défaut `null` est un texte facultatif (le skin, par exemple).
     if (defauts === null) return (typeof lus === 'string' ? lus : null) as T;

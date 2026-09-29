@@ -21,6 +21,8 @@ export type Dialogue =
       sorte: 'demander';
       valeur: string;
       multiligne: boolean;
+      /** Saisie masquée (code PIN, jeton) : rien ne s'affiche en clair. */
+      masque: boolean;
       libelleValider: string;
       fermer: (r: string | null) => void;
     })
@@ -69,7 +71,7 @@ export function confirmer(
 /** Saisir un texte. Rend le texte, ou `null` si la personne annule. */
 export function demander(
   titre: string,
-  options: { message?: string; valeur?: string; multiligne?: boolean; libelleValider?: string } = {},
+  options: { message?: string; valeur?: string; multiligne?: boolean; masque?: boolean; libelleValider?: string } = {},
 ): Promise<string | null> {
   return ouvrir<string | null>((id, fermer) => ({
     id,
@@ -78,6 +80,7 @@ export function demander(
     message: options.message,
     valeur: options.valeur ?? '',
     multiligne: options.multiligne ?? false,
+    masque: options.masque ?? false,
     libelleValider: options.libelleValider ?? 'Valider',
     fermer,
   }));

@@ -18,6 +18,9 @@
   défaut est celui que la personne a choisi dans Firehouse. Les cinq outils maison (Confirmer, Demander, Choisir,
   Informer, Toast), les composants et le ton suivent la charte.
 - **Beaucoup d'éléments modifiables dans l'interface** (exigence de Seb). Voir « Personnalisation » plus bas.
+- **Deux façons de piloter** (Seb, 29/09) : **Frogtend** (le mode bureau) se pilote **au clavier et à la souris**,
+  comme une application normale ; **Taodbox** (le mode canapé) se pilote **à la manette** de préférence. Le bureau
+  n'a pas à être pensé pour la manette, seulement à rester utilisable au clavier (focus visible, Tab, Entrée, Échap).
 - **Frogtend n'est pas lié à Venkman.** Il s'installe sur n'importe quel PC Windows 10/11 par un **installateur**
   (NSIS, par utilisateur, sans droits administrateur ; WebView2 installé s'il manque). Il **se met à jour** lui-même
   par des mises à jour **signées**. Rien ne suppose une machine, un disque ou un réseau précis.
@@ -52,7 +55,7 @@ git 2.51, Node 24.11, pnpm 10.32, Rust 1.94 (stable, MSVC), Visual Studio Build 
 - Les composants de base de la charte (§ 5) et un focus visible partout.
 - Le magasin de réglages, par profil, qui sert à la personnalisation.
 
-### Lot 1 — Voir la ludothèque (sur le contrat simulé)
+### Lot 1 — Voir la ludothèque (en cours : tout est codé et testé en simulé ; reste l’essai sur le vrai Firehouse)
 - Client de l'API `/api/jeux/v1/` avec un **mode simulé** (fixtures tirées du brief) et un mode réel, qu'on change
   dans les options.
 - Premier lancement : création d'un profil, adresse de Firehouse, collage du jeton (qui va dans le coffre, n'est
@@ -81,7 +84,8 @@ copier : elle doit être **plaisante et facile**, car des personnes qui ne sont 
   écran, un état vide qui explique quoi faire (« Aucun jeu ici : choisis une autre plateforme »). Aucune fonction
   ne se cache derrière un clic droit ou un survol : il y a toujours un bouton visible.
 - Les colonnes peuvent être repliées ou élargies, et la taille des jaquettes se règle (voir « Personnalisation »).
-- Le tout reste **dans la charte** : les couleurs viennent des skins, et le focus et la manette fonctionnent partout.
+- Le tout reste **dans la charte** : les couleurs viennent des skins. Pilotage au clavier et à la souris (la manette,
+  c'est pour Taodbox).
 - La barre de navigation actuelle du lot 0 (Ludothèque / Réglages / À propos) sera remplacée par cette mise en page,
   avec les réglages dans le menu du haut.
 
