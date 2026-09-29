@@ -37,11 +37,44 @@ export interface Liste {
   total_ludotheque: number;
 }
 
+/** Où en est un jeu du PC. */
+export type EtatJeuPc = 'attente' | 'en_cours' | 'pause' | 'telecharge' | 'erreur';
+
+export interface JeuPc {
+  id: number;
+  version: number;
+  titre: string;
+  plateforme: string;
+  dossier: string;
+  etat: EtatJeuPc;
+  total: number;
+  fichiers: { n: number; nom: string; taille: number }[];
+  message: string | null;
+  ajoute_le: string;
+  ajoute_par: string;
+  /** Octets déjà sur le disque. */
+  recus: number;
+}
+
+export interface EmplacementPropose {
+  chemin: string;
+  /** `null` : dossier introuvable. */
+  libre: number | null;
+  assez: boolean;
+}
+
+/** Ce que la file de téléchargements envoie à l'interface. */
+export type EvenementTelechargement =
+  | { sorte: 'progres'; jeu: number; recus: number; total: number; debit: number; fichier: string }
+  | { sorte: 'etat'; jeu: number; etat: EtatJeuPc; message: string | null };
+
 export interface Filtre {
   plateforme?: string | null;
   texte?: string | null;
   genre?: string | null;
   tri?: 'titre' | 'annee' | 'annee_desc';
+  /** Vrai : seulement les jeux du PC (« Ma ludothèque ») ; faux : tout le catalogue Firehouse. */
+  ludotheque?: boolean;
   limite?: number;
   decalage?: number;
 }
@@ -160,17 +193,29 @@ export const api = {
 
   synchroniser: () => appeler<BilanSynchro>('ludotheque_synchroniser'),
   synchroniseeLe: () => appeler<string | null>('ludotheque_synchronisee_le'),
-  plateformes: () => appeler<Plateforme[]>('ludotheque_plateformes'),
-  genres: (plateforme: string | null) => appeler<string[]>('ludotheque_genres', { plateforme }),
+  plateformes: (locale: boolean) => appeler<Plateforme[]>('ludotheque_plateformes', { locale }),
+  genres: (plateforme: string | null, locale: boolean) => appeler<string[]>('ludotheque_genres', { plateforme, locale }),
   lister: (filtre: Filtre) => appeler<Liste>('ludotheque_lister', { filtre }),
-  auHasard: (plateforme: string | null) => appeler<JeuResume | null>('ludotheque_au_hasard', { plateforme }),
-  fiche: (id: number) => appeler<{ fiche: Fiche; hors_ligne: boolean }>('ludotheque_fiche', { id }),
+  auHasard: (plateforme: string | null, locale: boolean) =>
+    appeler<JeuResume | null>('ludotheque_au_hasard', { plateforme, locale }),
+  fiche: (id: number) => appeler<{ fiche: Fiche; hors_ligne: boolean; locale: boolean }>('ludotheque_fiche', { id }),
   annexeTexte: (id: number, i: number, cle: string) =>
     appeler<{ ok?: boolean; titre?: string; texte?: string }>('ludotheque_annexe_texte', { id, i, cle }),
 
   skins: () => appeler<unknown | null>('skins_obtenir'),
   skinPersonnel: () => appeler<{ theme?: string; remplace?: boolean } | null>('skin_personnel'),
   enregistrerSkin: (nom: string) => appeler<void>('skin_enregistrer', { nom }),
+
+  jeuxDuPc: () => appeler<JeuPc[]>('jeux_du_pc'),
+  proposerEmplacements: (plateforme: string, taille: number) =>
+    appeler<EmplacementPropose[]>('emplacements_proposer', { plateforme, taille }),
+  ajouterJeu: (id: number, version: number, emplacement: string) =>
+    appeler<Omit<JeuPc, 'recus'>>('jeu_ajouter', { id, version, emplacement }),
+  pause: (id: number) => appeler<void>('telechargement_pause', { id }),
+  reprendre: (id: number) => appeler<void>('telechargement_reprendre', { id }),
+  annuler: (id: number) => appeler<void>('telechargement_annuler', { id }),
+  ouvrirAnnexe: (id: number, i: number) => appeler<void>('annexe_ouvrir', { id, i }),
+  espaceLibre: (chemin: string) => appeler<number | null>('espace_libre', { chemin }),
 };
 
 /**
@@ -186,6 +231,16 @@ export function adresseJaquette(id: number, largeur?: number): string {
 
 /** L'adresse de la vidéo de fond d'un skin (servie par le cœur, gardée pour ce PC). */
 export const adresseFond = (skin: string) => `http://fond.localhost/${encodeURIComponent(skin)}`;
+
+/** Une durée lisible : « 3 min », « 1 h 20 ». */
+export function duree(secondes: number): string {
+  if (!Number.isFinite(secondes) || secondes < 0) return '—';
+  if (secondes < 60) return 'moins d’une minute';
+  const min = Math.round(secondes / 60);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  return `${h} h ${String(min % 60).padStart(2, '0')}`;
+}
 
 /** « 237 887 038 » octets → « 226,9 Mo ». */
 export function taille(octets: number): string {

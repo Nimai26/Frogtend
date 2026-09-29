@@ -90,6 +90,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
@@ -151,6 +152,7 @@ pub fn run() {
             commandes::telechargement_reprendre,
             commandes::telechargement_annuler,
             commandes::annexe_ouvrir,
+            commandes::espace_libre,
             commandes::skin_personnel,
         ])
         .run(tauri::generate_context!())

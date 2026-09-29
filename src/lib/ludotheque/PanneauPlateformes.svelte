@@ -99,7 +99,11 @@
         {/each}
       {/if}
     {:else}
-      <p class="muted vide">Aucune plateforme pour l’instant. Lance une synchronisation avec « 🔄 Synchroniser ».</p>
+      <p class="muted vide">
+        {ludo.espace === 'ludotheque'
+          ? 'Aucun jeu sur ce PC pour l’instant.'
+          : 'Aucune plateforme pour l’instant. Lance une synchronisation avec « 🔄 Synchroniser ».'}
+      </p>
     {/each}
   </nav>
 </aside>

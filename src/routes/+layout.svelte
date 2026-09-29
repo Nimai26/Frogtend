@@ -9,6 +9,7 @@
   import { demarrer, etat, sortirDuProfil } from '$lib/etat.svelte';
   import { depuis, ludo, synchroniser, viderLudotheque } from '$lib/ludotheque/ludotheque.svelte';
   import { verifierMiseAJour } from '$lib/mises-a-jour';
+  import { arreterSuivi, nombreEnCours, suivreTelechargements } from '$lib/ludotheque/telechargements.svelte';
   import ChoixProfil from '$lib/profils/ChoixProfil.svelte';
 
   let { children } = $props();
@@ -27,10 +28,19 @@
   });
 
   const liens = [
-    { href: '/', libelle: '🎮 Ludothèque' },
+    { href: '/', libelle: '🎮 Ma ludothèque' },
+    { href: '/catalogue', libelle: '🛒 Catalogue Firehouse' },
+    { href: '/telechargements', libelle: '⬇ Téléchargements' },
     { href: '/reglages', libelle: '⚙ Réglages' },
     { href: '/a-propos', libelle: 'ℹ À propos' },
   ];
+
+  // Les téléchargements du profil ouvert : suivis tant qu'il est ouvert, oubliés quand il se ferme.
+  $effect(() => {
+    if (etat.profilOuvert) suivreTelechargements();
+    else arreterSuivi();
+  });
+  const enCours = $derived(nombreEnCours());
 
   async function menuProfil() {
     const c = await choisir(`👤 ${etat.profilOuvert?.nom}`, [
@@ -69,7 +79,10 @@
         <a class="marque" href="/" aria-label="Frogtend — ludothèque"><img src="/grenouille.png" alt="" />Frogtend</a>
         <nav aria-label="Navigation principale">
           {#each liens as l (l.href)}
-            <a class="lien" class:actif={page.url.pathname === l.href} href={l.href}>{l.libelle}</a>
+            <a class="lien" class:actif={page.url.pathname === l.href} href={l.href}>
+              {l.libelle}
+              {#if l.href === '/telechargements' && enCours > 0}<span class="pastille-nombre">{enCours}</span>{/if}
+            </a>
           {/each}
           <button
             class="lien"
@@ -85,7 +98,7 @@
           </button>
         </nav>
         <span class="compte muted">
-          {#if page.url.pathname === '/' && ludo.totalLudotheque > 0}
+          {#if (page.url.pathname === '/' || page.url.pathname === '/catalogue') && ludo.totalLudotheque > 0}
             Affichage de {ludo.total.toLocaleString('fr-FR')} jeu(x) sur {ludo.totalLudotheque.toLocaleString('fr-FR')}
           {/if}
         </span>
@@ -193,6 +206,15 @@
   }
   .profil {
     text-transform: none;
+  }
+  .pastille-nombre {
+    min-width: calc(18 * var(--u));
+    padding: 0 calc(5 * var(--u));
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--on-accent);
+    font-size: calc(11 * var(--u));
+    text-align: center;
   }
   main {
     min-height: 0;

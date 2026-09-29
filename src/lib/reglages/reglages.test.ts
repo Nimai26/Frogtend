@@ -35,6 +35,12 @@ describe('completer', () => {
     expect(completer(DEFAUTS_PROFIL, { ludotheque: { plateformesMasquees: ['Arcade'] } }).ludotheque.plateformesMasquees).toEqual(['Arcade']);
     expect(completer(DEFAUTS_PROFIL, { ludotheque: { plateformesMasquees: { a: 1 } } }).ludotheque.plateformesMasquees).toEqual([]);
   });
+  it('garde les emplacements par système (dictionnaire libre)', () => {
+    const r = completer(DEFAUTS_PC, { emplacements: { defaut: ['D:\\Jeux'], systemes: { 'MS-DOS': ['E:\\DOS'] } } });
+    expect(r.emplacements.systemes['MS-DOS']).toEqual(['E:\\DOS']);
+    expect(r.emplacements.defaut).toEqual(['D:\\Jeux']);
+    expect(completer(DEFAUTS_PC, {}).emplacements).toEqual({ defaut: [], systemes: {} });
+  });
   it('remplace une valeur du mauvais type et ignore les clés inconnues', () => {
     const r = completer(DEFAUTS_PROFIL, { apparence: { echelle: 'grand', inconnue: 1 } });
     expect(r.apparence.echelle).toBe(1);

@@ -7,9 +7,11 @@
   import { informer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import Jaquette from '$lib/ludotheque/Jaquette.svelte';
+  import { mettreDansLaLudotheque } from '$lib/ludotheque/telechargements.svelte';
 
   let fiche = $state<Fiche | null>(null);
   let horsLigne = $state(false);
+  let locale = $state(false);
   let erreur = $state('');
   let annexe = $state<{ titre: string; texte: string } | null>(null);
 
@@ -23,6 +25,7 @@
       const r = await api.fiche(n);
       fiche = r.fiche;
       horsLigne = r.hors_ligne;
+      locale = r.locale;
     } catch (e) {
       erreur = estErreurCoeur(e) ? e.motif : motifDuRefus(e);
     }
@@ -45,7 +48,18 @@
   async function ouvrirAnnexe(a: Annexe) {
     if (!fiche) return;
     if (!a.texte) {
-      await informer(`📎 ${a.titre}`, `Ce document (${taille(a.taille)}) se téléchargera avec le jeu : c’est le lot 2.`);
+      if (!locale) {
+        await informer(
+          `📎 ${a.titre}`,
+          `Ce document (${taille(a.taille)}) arrive sur le PC quand tu mets le jeu dans ta ludothèque.`,
+        );
+        return;
+      }
+      try {
+        await api.ouvrirAnnexe(fiche.id, a.i);
+      } catch (e) {
+        toast(`Impossible d’ouvrir « ${a.titre} » : ${motifDuRefus(e)}`, 'erreur');
+      }
       return;
     }
     try {
@@ -80,7 +94,7 @@
 </script>
 
 <div class="page">
-  <a class="btn retour" href="/">← Revenir à la ludothèque</a>
+  <button class="btn retour" onclick={() => history.back()}>← Revenir</button>
 
   {#if erreur}
     <div class="panel message">
@@ -91,6 +105,8 @@
   {:else}
     {#if horsLigne}
       <p class="tag warn">Hors ligne : fiche de la dernière consultation</p>
+    {:else if locale}
+      <p class="tag ok">✅ Dans ta ludothèque : fiche et documents gardés sur ce PC</p>
     {/if}
 
     <section class="jeu">
@@ -120,7 +136,7 @@
           {#each fiche.annexes as a (a.i)}
             <button class="btn" onclick={() => ouvrirAnnexe(a)}>
               {ICONES_ANNEXES[a.type] ?? '📎'} {a.titre}
-              <span class="muted">{a.texte ? 'à lire' : taille(a.taille)}</span>
+              <span class="muted">{a.texte ? 'à lire' : locale ? 'ouvrir' : taille(a.taille)}</span>
             </button>
           {/each}
         </div>
@@ -167,7 +183,9 @@
                   {#if v.notes_a_traduire}<p class="muted">Ces notes ne sont pas encore traduites.</p>{/if}
                 </details>
               {/if}
-              <button class="btn" disabled title="Le téléchargement arrive au lot 2">⬇ Télécharger (bientôt)</button>
+              {#if !locale}
+                <button class="btn" onclick={() => fiche && mettreDansLaLudotheque(fiche.id)}>➕ Mettre dans ma ludothèque</button>
+              {/if}
             </article>
           {/each}
         </div>

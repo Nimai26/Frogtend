@@ -6,6 +6,17 @@
   import { etat } from '$lib/etat.svelte';
   import Jaquette from './Jaquette.svelte';
   import { chargerSuite, ludo } from './ludotheque.svelte';
+  import { tele } from './telechargements.svelte';
+
+  const pourcent = (recus: number, total: number) => (total > 0 ? Math.floor((recus / total) * 100) : 0);
+
+  /** Ce qu'on écrit sous la jaquette d'un jeu pas encore complet. */
+  function libelleEtat(etat: string, p: number): string {
+    if (etat === 'en_cours') return '⬇ ' + p + ' %';
+    if (etat === 'pause') return '⏸ En pause';
+    if (etat === 'attente') return '⏳ En attente';
+    return '⛔ Échec';
+  }
 
   let grille = $state<HTMLElement>();
   let sentinelle = $state<HTMLElement>();
@@ -59,12 +70,16 @@
 <section class="zone" aria-label="Jeux">
   {#if ludo.jeux.length === 0 && !ludo.chargement}
     <div class="vide">
-      {#if ludo.totalLudotheque === 0}
+      {#if ludo.totalLudotheque === 0 && ludo.espace === 'ludotheque'}
         <p class="grand">📭 Ta ludothèque est vide pour l’instant.</p>
+        <p class="muted">Ouvre le « 🛒 Catalogue Firehouse », choisis un jeu et « ➕ Mets-le dans ta ludothèque ».</p>
+        <a class="btn primary" href="/catalogue">🛒 Ouvrir le catalogue Firehouse</a>
+      {:else if ludo.totalLudotheque === 0}
+        <p class="grand">📭 Le catalogue n’a pas encore été lu.</p>
         <p class="muted">
           {ludo.synchro.enCours
-            ? 'Synchronisation avec Firehouse en cours…'
-            : 'Clique sur « 🔄 Synchroniser », en haut, pour la remplir depuis Firehouse.'}
+            ? 'Lecture du catalogue de Firehouse en cours…'
+            : 'Clique sur « 🔄 Synchroniser », en haut (il faut une connexion à Internet).'}
         </p>
       {:else}
         <p class="grand">🔍 Aucun jeu ne correspond.</p>
@@ -96,6 +111,15 @@
               disponible={j.jaquette}
               largeur={r.tailleJaquette}
             />
+            {#if tele.jeux[j.id] && tele.jeux[j.id].etat !== 'telecharge'}
+              {@const t = tele.jeux[j.id]}
+              <span class="progres" title="{pourcent(t.recus, t.total)} %">
+                <span class="bar"><span style="width: {pourcent(t.recus, t.total)}%"></span></span>
+                <span class="muted">{libelleEtat(t.etat, pourcent(t.recus, t.total))}</span>
+              </span>
+            {:else if ludo.espace === 'catalogue' && tele.jeux[j.id]}
+              <span class="tag ok badge">✅ Dans ta ludothèque</span>
+            {/if}
             <span class="titre">{j.titre}</span>
             {#if sousTitre(j)}<span class="sous-titre">{sousTitre(j)}</span>{/if}
           </button>
@@ -153,6 +177,16 @@
   .carte.selectionnee {
     background: color-mix(in srgb, var(--accent) 20%, transparent);
     border-color: var(--accent);
+  }
+  .progres {
+    display: grid;
+    gap: calc(3 * var(--u));
+    margin-top: calc(4 * var(--u));
+    font-size: calc(11 * var(--u));
+  }
+  .badge {
+    justify-self: start;
+    margin-top: calc(4 * var(--u));
   }
   .titre {
     margin-top: calc(6 * var(--u));

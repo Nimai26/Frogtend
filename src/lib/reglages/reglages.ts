@@ -8,6 +8,13 @@
 export const ADRESSE_FIREHOUSE_PAR_DEFAUT = 'https://jeux.hikari-no-sekai.fr';
 
 export interface ReglagesPc {
+  /** Où ranger les jeux sur CE PC : un ou plusieurs dossiers par système, dans l'ordre de préférence. */
+  emplacements: {
+    /** Pour les systèmes qui n'ont pas les leurs. */
+    defaut: string[];
+    /** Par système (nom LaunchBox). */
+    systemes: Record<string, string[]>;
+  };
   firehouse: {
     adresse: string;
     /** Mode simulé : des exemples, sans connexion à Firehouse (essais, démonstration, travail hors ligne). */
@@ -40,6 +47,7 @@ export interface ReglagesProfil {
 }
 
 export const DEFAUTS_PC: ReglagesPc = {
+  emplacements: { defaut: [], systemes: {} },
   firehouse: { adresse: ADRESSE_FIREHOUSE_PAR_DEFAUT, simule: false },
 };
 
@@ -70,6 +78,8 @@ const estObjet = (x: unknown): x is Objet => typeof x === 'object' && x !== null
  */
 export function completer<T>(defauts: T, lus: unknown): T {
   if (Array.isArray(defauts)) return (Array.isArray(lus) ? lus : defauts) as T;
+  // Un objet VIDE par défaut est un dictionnaire libre (ex. emplacements par système) : on garde ce qui est lu.
+  if (estObjet(defauts) && Object.keys(defauts).length === 0) return (estObjet(lus) ? lus : defauts) as T;
   if (!estObjet(defauts)) {
     // Un défaut `null` est un texte facultatif (le skin, par exemple).
     if (defauts === null) return (typeof lus === 'string' ? lus : null) as T;

@@ -296,3 +296,9 @@ pub async fn annexe_ouvrir(app: AppHandle, noyau: State<'_, Noyau>, id: i64, i: 
         .open_path(chemin.to_string_lossy(), None::<&str>)
         .map_err(|_| Erreur::Disque("Windows n'a pas pu ouvrir ce document.".into()))
 }
+
+/// La place libre dans un dossier (`None` : introuvable), pour l'écran des emplacements.
+#[tauri::command]
+pub fn espace_libre(chemin: String) -> Option<u64> {
+    crate::jeux_pc::place_libre(std::path::Path::new(&chemin))
+}

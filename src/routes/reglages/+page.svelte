@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api } from '$lib/api';
+  import Emplacements from '$lib/reglages/Emplacements.svelte';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { etat, reglerPc, reglerProfil, reinitialiserPc, reinitialiserProfil } from '$lib/etat.svelte';
@@ -246,6 +247,11 @@
         <button class="btn" onclick={() => reinitialiserProfil('ludotheque')}>↺ Ludothèque d’origine</button>
       </div>
     </div>
+  </section>
+
+  <section class="panel">
+    <header>📁 Emplacements des jeux <span class="muted">— ce PC</span></header>
+    <div class="corps"><Emplacements /></div>
   </section>
 
   <section class="panel">
