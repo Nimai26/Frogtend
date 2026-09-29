@@ -154,7 +154,12 @@ avant tout retrait ou réinstallation. **Questions pour Seb** (avant de coder ce
 (dossier au choix, disque externe, NAS, ou Firehouse lui-même ?) ; fréquence de l'automatique ; combien de
 versions garder.
 
-**Proposition de Firehouse (30/09, à trancher par Seb)** : ranger la sauvegarde chez la personne, dans son
+**Décision de Seb (30/09)** : un **dossier réseau créé spécialement pour Frogtend**, avec un **sous-dossier par
+personne**, mis en place avec l'agent Firehouse (transmis le 30/09). En attente : chemin du partage et moyen pour
+Frogtend de le connaître (proposé : champ `sauvegarde` dans `/moi`), droits d'accès, conduite hors de la maison
+(sauvegarde locale en attente, envoyée au retour), nombre de versions gardées.
+
+*(Proposition écartée par Seb : Nextcloud via Firehouse.)* ranger la sauvegarde chez la personne, dans son
 **Nextcloud** (stockage maître de la maison, déjà couvert par les sauvegardes 3-2-1 chiffrées hors site), en passant
 par Firehouse avec le jeton du profil : `PUT /api/jeux/v1/sauvegarde` (archive + manifeste : PC, date, jeux, taille,
 empreinte) et `GET /api/jeux/v1/sauvegarde` (liste, téléchargement). Déposée dans « Frogtend/<nom du PC>/ » chez le
