@@ -68,6 +68,7 @@ a {
   font: inherit;
   font-size: calc(13 * var(--u));
   font-weight: 600;
+  text-decoration: none;
   cursor: pointer;
   transition:
     border-color var(--duree),

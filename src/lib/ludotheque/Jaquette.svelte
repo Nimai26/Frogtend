@@ -69,7 +69,9 @@
     border-radius: calc(10 * var(--u));
     overflow: hidden;
   }
+  /* L'image n'apparaît qu'une fois chargée : jamais d'icône « image cassée » par-dessus la carte. */
   img {
+    opacity: 0;
     position: absolute;
     inset: 0;
     z-index: 1;
@@ -93,7 +95,11 @@
     border: 1px solid var(--line);
     border-radius: inherit;
   }
-  /* Image chargée : la carte de remplacement s'efface (une jaquette en largeur laisse des bandes vides). */
+  /* Image chargée : elle apparaît, et la carte de remplacement s'efface (une jaquette en largeur laisse des
+     bandes vides). */
+  .chargee img {
+    opacity: 1;
+  }
   .chargee .remplacement {
     visibility: hidden;
   }
