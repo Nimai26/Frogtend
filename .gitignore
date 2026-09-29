@@ -24,3 +24,6 @@ vite.config.ts.timestamp-*
 
 # Schémas générés par Tauri
 src-tauri/gen/schemas
+
+# Brief de l'agent : propre à ce PC, jamais publié (décision de Seb, 29/09/2026)
+CLAUDE.md
