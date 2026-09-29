@@ -128,6 +128,9 @@ pub struct Filtre {
     pub limite: Option<u32>,
     #[serde(default)]
     pub decalage: Option<u32>,
+    /// Vrai : seulement les jeux du PC (« Ma ludothèque ») ; faux : tout le catalogue Firehouse du profil.
+    #[serde(default)]
+    pub ludotheque: bool,
 }
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -280,39 +283,50 @@ impl Cache {
         Ok(())
     }
 
+    /// `seulement` : restreint aux jeux dont l'id est dans cette liste (la ludothèque LOCALE : les jeux du PC).
+    /// `None` : tout le catalogue du profil.
+    fn liste_json(seulement: Option<&[i64]>) -> Option<String> {
+        seulement.map(|ids| serde_json::to_string(ids).unwrap())
+    }
+
     /// Les plateformes, avec le nombre de jeux présents dans le cache (plus fiable que celui annoncé).
-    pub fn plateformes(&self) -> Resultat<Vec<Plateforme>> {
+    pub fn plateformes(&self, seulement: Option<&[i64]>) -> Resultat<Vec<Plateforme>> {
         let mut st = self.db.prepare(
-            "SELECT nom, jeux FROM (
-               SELECT p.nom AS nom, COALESCE(n.c, 0) AS jeux FROM plateformes p
-               LEFT JOIN (SELECT plateforme AS pf, COUNT(*) AS c FROM jeux GROUP BY pf) n ON n.pf = p.nom
-               UNION
-               SELECT plateforme AS nom, COUNT(*) AS jeux FROM jeux
-               WHERE plateforme NOT IN (SELECT nom FROM plateformes) GROUP BY plateforme)
-             WHERE jeux > 0
-             ORDER BY nom COLLATE NOCASE",
+            "SELECT plateforme, COUNT(*) FROM jeux
+             WHERE (?1 IS NULL OR id IN (SELECT value FROM json_each(?1)))
+             GROUP BY plateforme ORDER BY plateforme COLLATE NOCASE",
         )?;
         let liste = st
-            .query_map([], |r| Ok(Plateforme { nom: r.get(0)?, jeux: r.get::<_, i64>(1)? as u64 }))?
+            .query_map([Self::liste_json(seulement)], |r| {
+                Ok(Plateforme { nom: r.get(0)?, jeux: r.get::<_, i64>(1)? as u64 })
+            })?
             .collect::<Result<_, _>>()?;
         Ok(liste)
     }
 
     /// Les genres présents (pour le filtre), triés.
-    pub fn genres(&self, plateforme: Option<&str>) -> Resultat<Vec<String>> {
+    pub fn genres(&self, plateforme: Option<&str>, seulement: Option<&[i64]>) -> Resultat<Vec<String>> {
         let mut st = self.db.prepare(
             "SELECT DISTINCT g.value FROM jeux, json_each(jeux.genres) g
-             WHERE (?1 IS NULL OR plateforme = ?1) ORDER BY 1 COLLATE NOCASE",
+             WHERE (?1 IS NULL OR plateforme = ?1)
+               AND (?2 IS NULL OR jeux.id IN (SELECT value FROM json_each(?2)))
+             ORDER BY 1 COLLATE NOCASE",
         )?;
-        let liste = st.query_map([plateforme], |r| r.get(0))?.collect::<Result<_, _>>()?;
+        let liste = st
+            .query_map(params![plateforme, Self::liste_json(seulement)], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
         Ok(liste)
     }
 
-    pub fn lister(&self, f: &Filtre) -> Resultat<Liste> {
+    pub fn lister(&self, f: &Filtre, seulement: Option<&[i64]>) -> Resultat<Liste> {
         let texte = f.texte.as_deref().map(str::trim).filter(|t| !t.is_empty()).map(|t| format!("%{}%", normaliser(t)));
         let genre = f.genre.as_deref().filter(|g| !g.is_empty()).map(|g| serde_json::to_string(g).unwrap());
-        let condition = "(?1 IS NULL OR plateforme = ?1) AND (?2 IS NULL OR titre_tri LIKE ?2)
-                         AND (?3 IS NULL OR instr(genres, ?3) > 0)";
+        let ids = Self::liste_json(seulement);
+        let restriction = "(?4 IS NULL OR id IN (SELECT value FROM json_each(?4)))";
+        let condition = format!(
+            "(?1 IS NULL OR plateforme = ?1) AND (?2 IS NULL OR titre_tri LIKE ?2)
+             AND (?3 IS NULL OR instr(genres, ?3) > 0) AND {restriction}"
+        );
         let ordre = match f.tri.as_deref() {
             Some("annee") => "annee IS NULL, annee, titre_tri",
             Some("annee_desc") => "annee IS NULL, annee DESC, titre_tri",
@@ -320,27 +334,36 @@ impl Cache {
         };
         let limite = f.limite.unwrap_or(200).min(1000);
         let decalage = f.decalage.unwrap_or(0);
-        let p = params![f.plateforme, texte, genre];
 
-        let total: i64 = self.db.query_row(&format!("SELECT COUNT(*) FROM jeux WHERE {condition}"), p, |r| r.get(0))?;
-        let total_ludotheque: i64 = self.db.query_row("SELECT COUNT(*) FROM jeux", [], |r| r.get(0))?;
+        let total: i64 = self.db.query_row(
+            &format!("SELECT COUNT(*) FROM jeux WHERE {condition}"),
+            params![f.plateforme, texte, genre, ids],
+            |r| r.get(0),
+        )?;
+        let total_ludotheque: i64 = self.db.query_row(
+            &format!("SELECT COUNT(*) FROM jeux WHERE {}", restriction.replace("?4", "?1")),
+            params![ids],
+            |r| r.get(0),
+        )?;
         let mut st = self.db.prepare(&format!(
             "SELECT brut FROM jeux WHERE {condition} ORDER BY {ordre} LIMIT {limite} OFFSET {decalage}"
         ))?;
         let jeux = st
-            .query_map(params![f.plateforme, texte, genre], |r| r.get::<_, String>(0))?
+            .query_map(params![f.plateforme, texte, genre, ids], |r| r.get::<_, String>(0))?
             .filter_map(|b| b.ok().and_then(|b| serde_json::from_str(&b).ok()))
             .collect();
         Ok(Liste { jeux, total: total as u64, total_ludotheque: total_ludotheque as u64 })
     }
 
     /// Un jeu tiré au hasard (dans la plateforme, si elle est donnée).
-    pub fn au_hasard(&self, plateforme: Option<&str>) -> Resultat<Option<JeuResume>> {
+    pub fn au_hasard(&self, plateforme: Option<&str>, seulement: Option<&[i64]>) -> Resultat<Option<JeuResume>> {
         let brut: Option<String> = self
             .db
             .query_row(
-                "SELECT brut FROM jeux WHERE (?1 IS NULL OR plateforme = ?1) ORDER BY random() LIMIT 1",
-                [plateforme],
+                "SELECT brut FROM jeux WHERE (?1 IS NULL OR plateforme = ?1)
+                   AND (?2 IS NULL OR id IN (SELECT value FROM json_each(?2)))
+                 ORDER BY random() LIMIT 1",
+                params![plateforme, Self::liste_json(seulement)],
                 |r| r.get(0),
             )
             .optional()?;
@@ -489,12 +512,12 @@ pub(crate) mod tests {
     #[test]
     fn filtre_par_plateforme_texte_sans_accents_et_genre() {
         let c = cache_exemple();
-        let tous = c.lister(&Filtre::default()).unwrap();
+        let tous = c.lister(&Filtre::default(), None).unwrap();
         assert_eq!((tous.total, tous.total_ludotheque), (3, 3));
-        assert_eq!(c.lister(&Filtre { plateforme: Some("MS-DOS".into()), ..Default::default() }).unwrap().total, 2);
-        let echo = c.lister(&Filtre { texte: Some("echo".into()), ..Default::default() }).unwrap();
+        assert_eq!(c.lister(&Filtre { plateforme: Some("MS-DOS".into()), ..Default::default() }, None).unwrap().total, 2);
+        let echo = c.lister(&Filtre { texte: Some("echo".into()), ..Default::default() }, None).unwrap();
         assert_eq!(echo.jeux[0].titre, "Écho du passé");
-        let strat = c.lister(&Filtre { genre: Some("Stratégie".into()), ..Default::default() }).unwrap();
+        let strat = c.lister(&Filtre { genre: Some("Stratégie".into()), ..Default::default() }, None).unwrap();
         assert_eq!(strat.jeux.iter().map(|j| j.id).collect::<Vec<_>>(), vec![110]);
     }
 
@@ -502,7 +525,7 @@ pub(crate) mod tests {
     fn trie_par_titre_ou_par_annee() {
         let c = cache_exemple();
         let titres = |tri: Option<&str>| {
-            c.lister(&Filtre { tri: tri.map(String::from), ..Default::default() })
+            c.lister(&Filtre { tri: tri.map(String::from), ..Default::default() }, None)
                 .unwrap()
                 .jeux
                 .into_iter()
@@ -527,16 +550,29 @@ pub(crate) mod tests {
     #[test]
     fn les_plateformes_comptent_les_jeux_du_cache() {
         let c = cache_exemple();
-        let p = c.plateformes().unwrap();
+        let p = c.plateformes(None).unwrap();
         assert_eq!(p.iter().map(|p| (p.nom.as_str(), p.jeux)).collect::<Vec<_>>(), vec![("MS-DOS", 2), ("Super Nintendo", 1)]);
-        assert_eq!(c.genres(Some("MS-DOS")).unwrap(), vec!["Aventure", "Stratégie"]);
+        assert_eq!(c.genres(Some("MS-DOS"), None).unwrap(), vec!["Aventure", "Stratégie"]);
+    }
+
+    #[test]
+    fn la_ludotheque_locale_ne_montre_que_les_jeux_du_pc() {
+        let c = cache_exemple(); // 110, 111 (MS-DOS), 200 (Super Nintendo)
+        let locale = Some(&[110i64, 999][..]); // 999 : sur le PC mais invisible pour ce profil
+        let l = c.lister(&Filtre::default(), locale).unwrap();
+        assert_eq!(l.jeux.iter().map(|j| j.id).collect::<Vec<_>>(), vec![110]);
+        assert_eq!((l.total, l.total_ludotheque), (1, 1));
+        assert_eq!(c.plateformes(locale).unwrap(), vec![Plateforme { nom: "MS-DOS".into(), jeux: 1 }]);
+        assert_eq!(c.genres(None, locale).unwrap(), vec!["Aventure", "Stratégie"]);
+        assert_eq!(c.au_hasard(None, locale).unwrap().unwrap().id, 110);
+        assert!(c.lister(&Filtre::default(), Some(&[])).unwrap().jeux.is_empty(), "PC vide : ludothèque vide");
     }
 
     #[test]
     fn un_jeu_au_hasard_reste_dans_la_plateforme() {
         let c = cache_exemple();
         for _ in 0..10 {
-            assert_eq!(c.au_hasard(Some("Super Nintendo")).unwrap().unwrap().id, 200);
+            assert_eq!(c.au_hasard(Some("Super Nintendo"), None).unwrap().unwrap().id, 200);
         }
     }
 
@@ -548,6 +584,6 @@ pub(crate) mod tests {
             let mut c = Cache::ouvrir(&f).unwrap();
             c.remplacer(&[], &[jeu(1, "A", "PC", None, &[])], "t").unwrap();
         }
-        assert_eq!(Cache::ouvrir(&f).unwrap().lister(&Filtre::default()).unwrap().total, 1);
+        assert_eq!(Cache::ouvrir(&f).unwrap().lister(&Filtre::default(), None).unwrap().total, 1);
     }
 }

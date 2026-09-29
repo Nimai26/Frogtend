@@ -9,7 +9,9 @@ use crate::noyau::{BilanSynchro, Connexion, FicheLue, Noyau};
 use crate::profils::ProfilVisible;
 use serde::Serialize;
 use serde_json::Value;
-use tauri::{AppHandle, Emitter, State};
+use crate::jeux_pc::{EmplacementPropose, Emplacements, JeuPc};
+use crate::locale::JeuPcVu;
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_store::StoreExt;
 
 const ADRESSE_PAR_DEFAUT: &str = "https://jeux.hikari-no-sekai.fr";
@@ -153,13 +155,17 @@ pub async fn ludotheque_synchronisee_le(noyau: State<'_, Noyau>) -> Resultat<Opt
 }
 
 #[tauri::command]
-pub async fn ludotheque_plateformes(noyau: State<'_, Noyau>) -> Resultat<Vec<Plateforme>> {
-    noyau.plateformes().await
+pub async fn ludotheque_plateformes(noyau: State<'_, Noyau>, locale: Option<bool>) -> Resultat<Vec<Plateforme>> {
+    noyau.plateformes(locale.unwrap_or(false)).await
 }
 
 #[tauri::command]
-pub async fn ludotheque_genres(noyau: State<'_, Noyau>, plateforme: Option<String>) -> Resultat<Vec<String>> {
-    noyau.genres(plateforme.as_deref()).await
+pub async fn ludotheque_genres(
+    noyau: State<'_, Noyau>,
+    plateforme: Option<String>,
+    locale: Option<bool>,
+) -> Resultat<Vec<String>> {
+    noyau.genres(plateforme.as_deref(), locale.unwrap_or(false)).await
 }
 
 #[tauri::command]
@@ -168,8 +174,12 @@ pub async fn ludotheque_lister(noyau: State<'_, Noyau>, filtre: Filtre) -> Resul
 }
 
 #[tauri::command]
-pub async fn ludotheque_au_hasard(noyau: State<'_, Noyau>, plateforme: Option<String>) -> Resultat<Option<JeuResume>> {
-    noyau.au_hasard(plateforme.as_deref()).await
+pub async fn ludotheque_au_hasard(
+    noyau: State<'_, Noyau>,
+    plateforme: Option<String>,
+    locale: Option<bool>,
+) -> Resultat<Option<JeuResume>> {
+    noyau.au_hasard(plateforme.as_deref(), locale.unwrap_or(false)).await
 }
 
 #[tauri::command]
@@ -197,4 +207,92 @@ pub async fn skin_enregistrer(noyau: State<'_, Noyau>, nom: String) -> Resultat<
 #[tauri::command]
 pub async fn skin_personnel(noyau: State<'_, Noyau>) -> Resultat<Option<Value>> {
     noyau.skin_personnel().await
+}
+
+/// Les emplacements de jeux de ce PC, tels que l'interface les a enregistrés.
+fn emplacements(app: &AppHandle) -> Emplacements {
+    app.store("pc.json")
+        .ok()
+        .and_then(|s| s.get("reglages"))
+        .and_then(|r| serde_json::from_value(r["emplacements"].clone()).ok())
+        .unwrap_or_default()
+}
+
+/// Lance la file de téléchargements (si elle ne tourne pas déjà), avec le jeton du profil ouvert.
+pub(crate) fn lancer_file(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let noyau = app.state::<Noyau>();
+        let Ok(session) = noyau.session().await else { return };
+        let emettre = |ev: crate::locale::Evenement| {
+            let _ = app.emit("telechargement", ev);
+        };
+        if let Err(e) = noyau.executer_file(session, &emettre).await {
+            noyau.journaliser(&format!("file de téléchargements : {e:?}"));
+        }
+    });
+}
+
+/// Les jeux du PC que le profil ouvert a le droit de voir, avec leur progression.
+#[tauri::command]
+pub async fn jeux_du_pc(noyau: State<'_, Noyau>) -> Resultat<Vec<JeuPcVu>> {
+    noyau.jeux_du_pc().await
+}
+
+/// Les emplacements réglés pour un système, avec leur place libre, pour un jeu de cette taille.
+#[tauri::command]
+pub fn emplacements_proposer(
+    app: AppHandle,
+    noyau: State<'_, Noyau>,
+    plateforme: String,
+    taille: u64,
+) -> Vec<EmplacementPropose> {
+    noyau.proposer_emplacements(&emplacements(&app), &plateforme, taille)
+}
+
+/// Met un jeu dans la ludothèque de ce PC (médias gardés, fichiers en file), puis lance la file.
+#[tauri::command]
+pub async fn jeu_ajouter(
+    app: AppHandle,
+    noyau: State<'_, Noyau>,
+    id: i64,
+    version: i64,
+    emplacement: String,
+) -> Resultat<JeuPc> {
+    let j = noyau.ajouter(id, version, &emplacement, &emplacements(&app)).await?;
+    lancer_file(&app);
+    Ok(j)
+}
+
+#[tauri::command]
+pub fn telechargement_pause(noyau: State<'_, Noyau>, id: i64) -> Resultat<()> {
+    noyau.mettre_en_pause(id)
+}
+
+#[tauri::command]
+pub fn telechargement_reprendre(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<()> {
+    noyau.reprendre(id)?;
+    lancer_file(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn telechargement_annuler(noyau: State<'_, Noyau>, id: i64) -> Resultat<()> {
+    noyau.annuler(id).await
+}
+
+/// Ouvre un document gardé sur le PC (manuel…) avec le programme choisi dans Windows.
+#[tauri::command]
+pub async fn annexe_ouvrir(app: AppHandle, noyau: State<'_, Noyau>, id: i64, i: u32) -> Resultat<()> {
+    let s = noyau.session().await?;
+    if !s.verrou().contient(id)? {
+        return Err(Erreur::Introuvable("Ce jeu ne t'est pas visible.".into()));
+    }
+    let chemin = noyau.annexe_fichier_locale(id, i).ok_or_else(|| {
+        Erreur::Introuvable("Ce document n'est pas sur le PC : mets d'abord le jeu dans ta ludothèque.".into())
+    })?;
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_path(chemin.to_string_lossy(), None::<&str>)
+        .map_err(|_| Erreur::Disque("Windows n'a pas pu ouvrir ce document.".into()))
 }

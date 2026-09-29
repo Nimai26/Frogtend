@@ -59,13 +59,19 @@ pub struct BilanSynchro {
 }
 
 pub struct Noyau {
-    dossier: PathBuf,
+    pub(crate) dossier: PathBuf,
     pub profils: Profils,
-    coffre: Box<dyn Coffre>,
-    session: Mutex<Option<Arc<Session>>>,
+    pub(crate) coffre: Box<dyn Coffre>,
+    pub(crate) session: Mutex<Option<Arc<Session>>>,
+    /// Les jeux présents sur CE PC (tous profils confondus).
+    pub(crate) registre: std::sync::Mutex<crate::jeux_pc::Registre>,
+    /// Le téléchargement en cours : (jeu, drapeau d'arrêt).
+    pub(crate) en_cours: std::sync::Mutex<Option<(i64, Arc<std::sync::atomic::AtomicBool>)>>,
+    /// Vrai tant que la file de téléchargements tourne.
+    pub(crate) file_active: std::sync::atomic::AtomicBool,
 }
 
-fn maintenant() -> String {
+pub(crate) fn maintenant() -> String {
     // Date ISO sans dépendance : secondes depuis 1970, lisibles par l'interface.
     let s = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
     s.to_string()
@@ -73,11 +79,17 @@ fn maintenant() -> String {
 
 impl Noyau {
     pub fn nouveau(dossier: &Path, coffre: Box<dyn Coffre>) -> Resultat<Self> {
+        let registre = crate::jeux_pc::Registre::ouvrir(&dossier.join("jeux.db"))?;
+        // Un téléchargement interrompu par la fermeture de Frogtend ne reprend qu'à la demande.
+        registre.interrompus_en_pause()?;
         Ok(Noyau {
             dossier: dossier.into(),
             profils: Profils::charger(&dossier.join("profils.json"))?,
             coffre,
             session: Mutex::new(None),
+            registre: std::sync::Mutex::new(registre),
+            en_cours: std::sync::Mutex::new(None),
+            file_active: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -306,28 +318,42 @@ impl Noyau {
         self.session().await?.source.enregistrer_theme(nom).await
     }
 
-    pub async fn plateformes(&self) -> Resultat<Vec<Plateforme>> {
-        let s = self.session().await?;
-        let c = s.verrou();
-        c.plateformes()
+    /// Le registre des jeux du PC (utilisable même après une erreur en plein travail).
+    pub(crate) fn registre(&self) -> std::sync::MutexGuard<'_, crate::jeux_pc::Registre> {
+        self.registre.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    pub async fn genres(&self, plateforme: Option<&str>) -> Resultat<Vec<String>> {
+    /// `locale` : seulement les jeux du PC (« Ma ludothèque ») ; sinon tout le catalogue du profil.
+    fn restriction(&self, locale: bool) -> Resultat<Option<Vec<i64>>> {
+        Ok(if locale { Some(self.registre().ids()?) } else { None })
+    }
+
+    pub async fn plateformes(&self, locale: bool) -> Resultat<Vec<Plateforme>> {
         let s = self.session().await?;
+        let seulement = self.restriction(locale)?;
         let c = s.verrou();
-        c.genres(plateforme)
+        c.plateformes(seulement.as_deref())
+    }
+
+    pub async fn genres(&self, plateforme: Option<&str>, locale: bool) -> Resultat<Vec<String>> {
+        let s = self.session().await?;
+        let seulement = self.restriction(locale)?;
+        let c = s.verrou();
+        c.genres(plateforme, seulement.as_deref())
     }
 
     pub async fn lister(&self, filtre: &Filtre) -> Resultat<Liste> {
         let s = self.session().await?;
+        let seulement = self.restriction(filtre.ludotheque)?;
         let c = s.verrou();
-        c.lister(filtre)
+        c.lister(filtre, seulement.as_deref())
     }
 
-    pub async fn au_hasard(&self, plateforme: Option<&str>) -> Resultat<Option<JeuResume>> {
+    pub async fn au_hasard(&self, plateforme: Option<&str>, locale: bool) -> Resultat<Option<JeuResume>> {
         let s = self.session().await?;
+        let seulement = self.restriction(locale)?;
         let c = s.verrou();
-        c.au_hasard(plateforme)
+        c.au_hasard(plateforme, seulement.as_deref())
     }
 
     pub async fn synchronise_le(&self) -> Resultat<Option<String>> {
@@ -339,13 +365,19 @@ impl Noyau {
     /// La fiche complète d'un jeu : de Firehouse si possible (et gardée), sinon celle du cache (hors ligne).
     pub async fn fiche(&self, id: i64) -> Resultat<FicheLue> {
         let s = self.session().await?;
+        // Un jeu de la ludothèque du PC : sa fiche est sur le disque (hors ligne), si ce profil a le droit de le voir.
+        if s.verrou().contient(id)? && self.registre().jeu(id)?.is_some() {
+            if let Some(f) = self.fiche_locale(id) {
+                return Ok(FicheLue { fiche: f, hors_ligne: false, locale: true });
+            }
+        }
         match s.source.fiche(id).await {
             Ok(f) => {
                 s.verrou().garder_fiche(id, &f, &maintenant())?;
-                Ok(FicheLue { fiche: f, hors_ligne: false })
+                Ok(FicheLue { fiche: f, hors_ligne: false, locale: false })
             }
             Err(Erreur::Reseau(motif)) => match s.verrou().fiche(id)? {
-                Some(f) => Ok(FicheLue { fiche: f, hors_ligne: true }),
+                Some(f) => Ok(FicheLue { fiche: f, hors_ligne: true, locale: false }),
                 None => Err(Erreur::Reseau(motif)),
             },
             Err(e) => Err(e),
@@ -354,6 +386,11 @@ impl Noyau {
 
     pub async fn annexe_texte(&self, id: i64, i: u32, cle: &str) -> Resultat<Value> {
         let s = self.session().await?;
+        if s.verrou().contient(id)? {
+            if let Some(v) = self.annexe_texte_locale(id, i) {
+                return Ok(v);
+            }
+        }
         s.source.annexe_texte(id, i, cle).await
     }
 
@@ -364,6 +401,10 @@ impl Noyau {
         let Some(jeu) = s.verrou().jeu(id)? else {
             return Ok(None); // un jeu qui n'est pas dans SA ludothèque : rien.
         };
+        // Un jeu de la ludothèque du PC : sa jaquette est sur le disque (hors ligne).
+        if let Some(octets) = self.jaquette_locale(id, largeur) {
+            return Ok(Some(Image { type_contenu: type_image(&octets), octets }));
+        }
         if jeu.jaquette == Some(false) {
             return Ok(None); // Firehouse dit ne pas en avoir : inutile de demander.
         }
@@ -489,6 +530,8 @@ pub struct FicheLue {
     pub fiche: Value,
     /// Vrai si Firehouse était injoignable et que la fiche vient du cache.
     pub hors_ligne: bool,
+    /// Vrai si la fiche vient des médias gardés sur le PC (jeu de la ludothèque).
+    pub locale: bool,
 }
 
 /// Le type d'une image d'après ses premiers octets.
@@ -538,7 +581,7 @@ mod tests {
         assert!(b.jeux > 30 && b.simule);
         assert_eq!(*pages.lock().unwrap(), b.pages);
         assert_eq!(n.lister(&Filtre::default()).await.unwrap().total as usize, b.jeux);
-        assert!(n.plateformes().await.unwrap().iter().any(|p| p.nom == "MS-DOS"));
+        assert!(n.plateformes(false).await.unwrap().iter().any(|p| p.nom == "MS-DOS"));
     }
 
     #[tokio::test]
@@ -871,7 +914,7 @@ mod tests {
 
         let b = n.synchroniser(|p, j| println!("  page {p} : {j} jeux")).await.unwrap();
         println!("SYNCHRO : {} jeux, {} plateformes, {} page(s)", b.jeux, b.plateformes, b.pages);
-        for p in n.plateformes().await.unwrap() {
+        for p in n.plateformes(false).await.unwrap() {
             println!("  plateforme « {} » : {} jeu(x)", p.nom, p.jeux);
         }
         let liste = n.lister(&Filtre::default()).await.unwrap();

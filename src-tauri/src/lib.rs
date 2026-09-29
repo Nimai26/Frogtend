@@ -8,6 +8,7 @@ pub mod commandes;
 pub mod erreurs;
 pub mod firehouse;
 pub mod jeux_pc;
+pub mod locale;
 pub mod ludotheque;
 pub mod noyau;
 pub mod profils;
@@ -143,6 +144,13 @@ pub fn run() {
             commandes::ludotheque_annexe_texte,
             commandes::skins_obtenir,
             commandes::skin_enregistrer,
+            commandes::jeux_du_pc,
+            commandes::emplacements_proposer,
+            commandes::jeu_ajouter,
+            commandes::telechargement_pause,
+            commandes::telechargement_reprendre,
+            commandes::telechargement_annuler,
+            commandes::annexe_ouvrir,
             commandes::skin_personnel,
         ])
         .run(tauri::generate_context!())
