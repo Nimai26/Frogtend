@@ -5,9 +5,19 @@
 
 ## Décisions déjà prises (Seb, 29/09/2026)
 
-- **Pile : Tauri 2.** Cœur en Rust (processus, fichiers, téléchargements, coffre Windows) et interface en TypeScript.
-  Pour l'interface, je propose **Svelte 5 + Vite** : c'est léger, et pour Taodbox une navigation à la manette ne
-  demande rien de spécial.
+- **Pile : Tauri 2.** Cœur en Rust (processus, fichiers, téléchargements, coffre Windows) et interface en
+  **Svelte 5 + Vite + TypeScript**.
+- **Identifiant de l'application** : `fr.hikari-no-sekai.frogtend` (définitif).
+- **Dépôt** : https://github.com/Nimai26/Frogtend (public, licence Apache 2.0). Les **mises à jour** sont publiées
+  dans les « releases » GitHub de ce dépôt : un installateur et un `latest.json` signés.
+- **Pas de certificat de signature de code** : à la première installation, Windows affichera « éditeur inconnu ».
+  C'est accepté. Les mises à jour, elles, restent signées par la clé propre à Tauri.
+- **Profils protégés par un code PIN** (stocké sous forme d'empreinte, jamais en clair).
+- **Charte graphique de Firehouse et ses skins** (`docs/CHARTE-GRAPHIQUE.md`) : tous les skins de Firehouse sont
+  proposés (44 aujourd'hui). Ils sont téléchargés depuis Firehouse et gardés en cache, jamais recopiés. Le skin par
+  défaut est celui que la personne a choisi dans Firehouse. Les cinq outils maison (Confirmer, Demander, Choisir,
+  Informer, Toast), les composants et le ton suivent la charte.
+- **Beaucoup d'éléments modifiables dans l'interface** (exigence de Seb). Voir « Personnalisation » plus bas.
 - **Frogtend n'est pas lié à Venkman.** Il s'installe sur n'importe quel PC Windows 10/11 par un **installateur**
   (NSIS, par utilisateur, sans droits administrateur ; WebView2 installé s'il manque). Il **se met à jour** lui-même
   par des mises à jour **signées**. Rien ne suppose une machine, un disque ou un réseau précis.
@@ -34,8 +44,13 @@ git 2.51, Node 24.11, pnpm 10.32, Rust 1.94 (stable, MSVC), Visual Studio Build 
 - **Installateur Windows et mises à jour dès le départ** : l'installateur NSIS et le module de mise à jour de Tauri,
   avec une clé de signature des mises à jour rangée hors du dépôt. Il est plus simple de le faire au début que d'y
   revenir.
-- La base de l'interface : jetons de thème (clair/sombre, aucune couleur en dur), fenêtres de dialogue propres à
-  l'application, déplacement du focus au clavier.
+- Le moteur de skins : il applique les 11 jetons de base, les jetons communs et les encres résolues. Pour coder hors
+  ligne, il lit l'instantané `docs/charte/themes.instantane.json`, qui n'est qu'une fixture. Un nom inconnu retombe
+  sur `firehouse`. Le fond vidéo est réservé au skin `firehouse`. Le crédit Theme.Park figure dans « À propos ».
+- Les cinq outils maison (Confirmer, Demander, Choisir, Informer, Toast) : ils retiennent le focus à l'intérieur de la
+  fenêtre et le rendent à l'élément d'origine en fermant.
+- Les composants de base de la charte (§ 5) et un focus visible partout.
+- Le magasin de réglages, par profil, qui sert à la personnalisation.
 
 ### Lot 1 — Voir la ludothèque (sur le contrat simulé)
 - Client de l'API `/api/jeux/v1/` avec un **mode simulé** (fixtures tirées du brief) et un mode réel, qu'on change
@@ -84,13 +99,22 @@ Cheat Engine et les tables FearLess, Nexus Mods (par son API), les trainers, les
 Epic, Amazon Prime Gaming, Xbox Game Pass, PlayStation Plus. Ils restent dans le Frogtend de l'utilisateur et ne
 remontent pas dans Firehouse.
 
+## Personnalisation (« beaucoup d'éléments modifiables »)
+
+Les couleurs appartiennent aux skins : on ne crée jamais de couleur hors de ceux de Firehouse. Tout le reste se règle
+dans l'interface, par profil, avec un bouton « Revenir au réglage d'origine » :
+
+- **Apparence** : le skin (parmi ceux de Firehouse, avec l'option de l'enregistrer dans Firehouse), la taille du
+  texte (échelle globale), la densité (compacte ou aérée), les animations (activées ou réduites), le fond vidéo du
+  skin `firehouse` (oui ou non).
+- **Ludothèque** : l'affichage (grille de jaquettes ou liste), la taille des jaquettes, les informations montrées sur
+  une carte (titre, année, plateforme, genres…), le tri par défaut, les filtres mémorisés, l'ordre et la visibilité
+  des plateformes dans la barre latérale.
+- **Fiche jeu** : les blocs affichés et leur ordre (résumé, versions, annexes, informations…).
+- **Commandes** : les raccourcis clavier et les boutons de la manette, réaffectables.
+- **Taodbox** : l'échelle (×2 proposé en 1080p), la marge de sécurité de la télé, l'écran d'accueil.
+- **Chemins et réseau** : l'adresse de Firehouse, les dossiers de jeux, les plafonds de téléchargement.
+
 ## Questions ouvertes pour Seb
 
-1. **Où publier les mises à jour ?** Il faut une adresse qui serve l'installateur et un petit fichier `latest.json`.
-   Firehouse (`https://core.hikari-no-sekai.fr/...`), un dépôt GitHub privé avec ses « releases », autre chose ?
-2. **Signature de code Windows.** Sans certificat, Windows SmartScreen affiche « éditeur inconnu » à la première
-   installation. On l'accepte pour l'instant (usage familial) ou on achète un certificat ?
-3. **Protéger les profils.** Un code PIN par profil ? Sans code, un enfant peut ouvrir le profil admin sur un PC
-   partagé.
-4. **Identifiant de l'application** (il ne pourra plus changer) : `fr.hikari-no-sekai.frogtend` ?
-5. **Svelte 5** pour l'interface : d'accord ?
+1. La liste « Personnalisation » ci-dessus : que faut-il ajouter, et qu'est-ce qui est superflu ?
