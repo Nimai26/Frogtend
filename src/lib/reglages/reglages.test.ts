@@ -4,6 +4,7 @@ import {
   DEFAUTS_PC,
   DEFAUTS_PROFIL,
   ecrire,
+  estAdresseLocale,
   lire,
   reinitialiser,
   verifierAdresse,
@@ -61,5 +62,23 @@ describe('verifierAdresse', () => {
   it('refuse le reste, avec un motif', () => {
     expect(verifierAdresse('core.hikari')).toHaveProperty('refus');
     expect(verifierAdresse('ftp://x.fr')).toHaveProperty('refus');
+  });
+  it('refuse le HTTP clair vers une adresse publique (Frogtend est aussi installé hors de la maison)', () => {
+    expect(verifierAdresse('http://core.hikari-no-sekai.fr')).toHaveProperty('refus');
+    expect(verifierAdresse('http://8.8.8.8:8100')).toHaveProperty('refus');
+    expect(verifierAdresse('http://172.32.0.1')).toHaveProperty('refus');
+  });
+});
+
+describe('estAdresseLocale', () => {
+  it('reconnaît les réseaux privés et la machine elle-même', () => {
+    for (const h of ['10.10.0.2', '192.168.1.20', '172.16.0.1', '172.31.255.1', '127.0.0.1', 'localhost', 'shyrka.local']) {
+      expect(estAdresseLocale(h), h).toBe(true);
+    }
+  });
+  it('considère tout le reste comme public', () => {
+    for (const h of ['core.hikari-no-sekai.fr', '8.8.8.8', '172.32.0.1', '11.0.0.1']) {
+      expect(estAdresseLocale(h), h).toBe(false);
+    }
   });
 });

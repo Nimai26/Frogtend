@@ -36,7 +36,7 @@ git 2.51, Node 24.11, pnpm 10.32, Rust 1.94 (stable, MSVC), Visual Studio Build 
 
 ## Les lots
 
-### Lot 0 — Le socle
+### Lot 0 — Le socle (0.1.0 construite le 29/09/2026, à publier)
 - Squelette Tauri 2 + Svelte 5 + TypeScript. Tests : Vitest (interface) et `cargo test` (cœur), lancés ensemble par
   une seule commande.
 - `VERSION`, `docs/NOTES-DE-VERSION.md`, script de livraison (vérifie les tests, monte la version, construit
@@ -63,6 +63,27 @@ git 2.51, Node 24.11, pnpm 10.32, Rust 1.94 (stable, MSVC), Visual Studio Build 
   à **deux niveaux** : le jeu d'un côté, ses versions avec leurs fichiers et leurs notes de l'autre. Les annexes se
   lisent sur la fiche.
 - Changer de profil vide l'affichage et n'utilise jamais les données d'un autre profil.
+
+**L'interface de la ludothèque (Seb, 29/09).** On s'inspire de **LaunchBox** (le mode bureau, pas Big Box) sans le
+copier : elle doit être **plaisante et facile**, car des personnes qui ne sont pas expertes doivent s'y retrouver.
+- **Trois colonnes** :
+  - **à gauche**, la recherche (avec un bouton de filtres), puis l'arbre des plateformes regroupées par catégorie
+    (Tout, Arcade, Consoles, Ordinateurs, Portables…), chacune avec son icône et son nombre de jeux ;
+  - **au centre**, la grille des jaquettes, avec sous chacune le titre et le développeur (ou un autre champ, au
+    choix) ;
+  - **à droite**, un panneau de détails. Quand rien n'est sélectionné, il présente la plateforme (logo, image,
+    année, fabricant) et propose un bouton « 🎲 Jeu au hasard ». Quand un jeu est sélectionné, il montre sa jaquette,
+    ses informations et ses boutons « ▶ Jouer » / « ⬇ Installer ».
+- **Une barre du haut** discrète : les menus et « Affichage de 794 jeux sur 20 682 », pour savoir où l'on en est
+  d'un coup d'œil.
+- Les jaquettes occupent l'essentiel de l'écran, et le reste de l'interface reste sobre.
+- **Pour les non-experts** : des mots simples plutôt que des termes techniques, une action principale évidente par
+  écran, un état vide qui explique quoi faire (« Aucun jeu ici : choisis une autre plateforme »). Aucune fonction
+  ne se cache derrière un clic droit ou un survol : il y a toujours un bouton visible.
+- Les colonnes peuvent être repliées ou élargies, et la taille des jaquettes se règle (voir « Personnalisation »).
+- Le tout reste **dans la charte** : les couleurs viennent des skins, et le focus et la manette fonctionnent partout.
+- La barre de navigation actuelle du lot 0 (Ludothèque / Réglages / À propos) sera remplacée par cette mise en page,
+  avec les réglages dans le menu du haut.
 
 ### Lot 2 — Télécharger
 Une file de téléchargements avec reprise (`Range`) et un contrôle des octets reçus. Pour chaque version, la place

@@ -78,17 +78,37 @@ export function reinitialiser<T>(reglages: T, defauts: T, chemin?: string): T {
   return ecrire(reglages, chemin, structuredClone(lire(defauts, chemin)));
 }
 
-/** Une adresse de Firehouse acceptable : http(s), sans chemin superflu. Rend l'adresse nettoyée, ou un motif de refus. */
+/**
+ * Vrai pour une machine du réseau local : 10/8, 172.16/12, 192.168/16, 127/8, `localhost`, un nom en `.local`.
+ * Frogtend est aussi installé hors de la maison : tout le reste passe par Internet.
+ */
+export function estAdresseLocale(hote: string): boolean {
+  const h = hote.toLowerCase().replace(/^\[|\]$/g, '');
+  if (h === 'localhost' || h === '::1' || h.endsWith('.local')) return true;
+  const ip = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (!ip) return false;
+  const [a, b] = [Number(ip[1]), Number(ip[2])];
+  return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+}
+
+/**
+ * Une adresse de Firehouse acceptable. HTTPS obligatoire hors du réseau local : le HTTP clair n'est permis que
+ * vers une machine de la maison (le jeton circulerait sinon en clair sur Internet).
+ * Rend l'adresse nettoyée, ou un motif de refus.
+ */
 export function verifierAdresse(texte: string): { adresse: string } | { refus: string } {
   const t = texte.trim().replace(/\/+$/, '');
   let url: URL;
   try {
     url = new URL(t);
   } catch {
-    return { refus: 'ce n’est pas une adresse web (exemple : https://core.hikari-no-sekai.fr)' };
+    return { refus: `ce n’est pas une adresse web (exemple : ${ADRESSE_FIREHOUSE_PAR_DEFAUT})` };
   }
   if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-    return { refus: 'l’adresse doit commencer par https:// ou http://' };
+    return { refus: 'l’adresse doit commencer par https:// (ou http:// pour une machine de la maison)' };
+  }
+  if (url.protocol === 'http:' && !estAdresseLocale(url.hostname)) {
+    return { refus: 'hors du réseau de la maison, l’adresse doit être en https:// (sinon ton jeton passerait en clair)' };
   }
   return { adresse: t };
 }
