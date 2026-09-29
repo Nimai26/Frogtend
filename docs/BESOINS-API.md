@@ -2,6 +2,9 @@
 
 > Les points que le contrat (brief § 3) ne couvre pas encore. Seb les transmet à Firehouse ; Frogtend n'invente
 > jamais une route de son côté.
+>
+> ✅ **29/09/2026** : les besoins 1 à 12 sont livrés par Firehouse (2.14.0 → 2.16.1, contrat 1.3), voir
+> `CONTRAT-API-JEUX-V1.md`. Les questions se posent désormais directement à la session Firehouse ; ce fichier garde la trace.
 
 | # | Date | Besoin | Pourquoi |
 |---|---|---|---|
