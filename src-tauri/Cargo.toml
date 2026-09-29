@@ -1,0 +1,34 @@
+[package]
+name = "frogtend"
+version = "0.0.0"
+description = "Frogtend — la ludothèque de la maison, servie par Firehouse"
+authors = ["Nimai"]
+license = "Apache-2.0"
+repository = "https://github.com/Nimai26/Frogtend"
+edition = "2021"
+
+[lib]
+# Le suffixe `_lib` évite un conflit de nom entre la bibliothèque et l'exécutable sous Windows
+# (https://github.com/rust-lang/cargo/issues/8519).
+name = "frogtend_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-process = "2"
+tauri-plugin-store = "2"
+tauri-plugin-updater = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Taille et vitesse de l'exécutable livré : https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

@@ -1,0 +1,23 @@
+{
+  "_avertissement": "FIXTURE PROVISOIRE, mode simulé uniquement. Les vraies valeurs sont servies par Firehouse (GET /api/jeux/v1/themes, champ communs) ; celles-ci en tiennent lieu en attendant et devront être remplacées par celles du code de Firehouse.",
+  "communs": {
+    "--encre-sombre": "#000000",
+    "--encre-claire": "#ffffff",
+    "--fond-media": "#000000",
+    "--fond-page": "#ffffff",
+    "--encre-voile": "#ffffff",
+    "--encre-voile-dim": "rgba(255, 255, 255, 0.72)",
+    "--encre-voile-note": "rgba(255, 255, 255, 0.56)",
+    "--encre-voile-ok": "#7fe0b0",
+    "--voile-video": "rgba(0, 0, 0, 0.55)",
+    "--voile-leger": "rgba(0, 0, 0, 0.4)",
+    "--voile": "rgba(0, 0, 0, 0.6)",
+    "--voile-fort": "rgba(0, 0, 0, 0.8)",
+    "--voile-opaque": "rgba(0, 0, 0, 0.94)",
+    "--ombre-noire": "rgba(0, 0, 0, 0.5)",
+    "--damier-clair": "#cccccc",
+    "--damier-fonce": "#999999",
+    "--radius": "12px",
+    "--mono": "ui-monospace, \"SF Mono\", Menlo, Consolas, monospace"
+  }
+}

@@ -15,3 +15,12 @@ src-tauri/gen/
 *.log
 .DS_Store
 Thumbs.db
+
+# SvelteKit / Vite
+/build
+/.svelte-kit
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Schémas générés par Tauri
+src-tauri/gen/schemas
