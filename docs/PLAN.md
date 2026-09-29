@@ -104,13 +104,32 @@ synchronisation incrémentale (`depuis` + `ids_visibles`), développeur et édit
 3. Conséquence : le lot 2 (télécharger) devient « **mettre un jeu dans sa ludothèque** » (choisir la version et
    l'emplacement, télécharger le jeu ET tous ses médias).
 
-Questions posées à Seb : voir la conversation du 29/09.
+**Réponses de Seb (30/09)** :
+- **Ajouter = télécharger tout de suite** : choix de la version et de l'emplacement, taille annoncée, puis
+  téléchargement du jeu ET de ses médias. Pendant le téléchargement, le jeu apparaît dans la ludothèque avec sa
+  progression ; jamais avant d'avoir été choisi.
+- **Le catalogue est un écran dans la fenêtre** (« 🛒 Catalogue Firehouse » dans la barre du haut), même présentation
+  en trois colonnes, « ← Ma ludothèque » pour revenir.
+- **Tous les documents sont gardés** avec le jeu (textes et fichiers comme les manuels) : tout est consultable hors
+  ligne.
+- **La version se choisit à chaque fois** (nature, taille, notes ; la plus récente présélectionnée).
 
-### Lot 2 — Télécharger
-Une file de téléchargements avec reprise (`Range`) et un contrôle des octets reçus. Pour chaque version, la place
-nécessaire est annoncée avant de commencer. La destination suit les emplacements du système (voir « Les
-emplacements de jeux »). Les plafonds et le débit maximal se règlent.
-Rien ne démarre sans accord.
+**Décidé par l'agent, d'après les règles** : un jeu téléchargé est rangé UNE fois sur le PC ; chaque profil ne voit
+dans sa ludothèque que les jeux du PC que Firehouse lui montre (son propre catalogue). Un jeu réservé aux admins,
+téléchargé par un admin, reste invisible aux autres profils, même hors ligne.
+
+### Lot 2 — Mettre un jeu dans sa ludothèque (télécharger)
+- **Deux espaces** : « Ma ludothèque » (les jeux du PC, visibles pour ce profil) et « 🛒 Catalogue Firehouse »
+  (tout ce que Firehouse montre à ce profil, d'où l'on ajoute).
+- **Emplacements par système** (réglages du PC, voir plus haut).
+- **Ajouter** : choix de la version, de l'emplacement (le premier qui a la place), récapitulatif chiffré (taille,
+  place libre, durée estimée au débit mesuré) et accord.
+- **File de téléchargements** dans le cœur : reprise `Range`, fichiers `.part`, taille vérifiée, pause / reprise /
+  annulation, progression et débit affichés, 409 dit clairement sans boucler. Aucun nom de fichier modifié (ROM,
+  images disque).
+- **Médias gardés sur le PC** pour chaque jeu : fiche complète, jaquette en grand, documents (textes et fichiers).
+  La ludothèque, les fiches et les documents marchent hors ligne.
+- L'installation (décompresser, lancer un `setup.exe`…) et le lancement : lot 3.
 
 ### Lot 3 — Installer et lancer
 L'installation suit la **qualité** de la version (prêt à jouer, repack, installeur d'origine, ROM, image disque),
