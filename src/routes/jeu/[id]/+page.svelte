@@ -7,7 +7,8 @@
   import { informer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import Jaquette from '$lib/ludotheque/Jaquette.svelte';
-  import { mettreDansLaLudotheque } from '$lib/ludotheque/telechargements.svelte';
+  import { mettreDansLaLudotheque, tele } from '$lib/ludotheque/telechargements.svelte';
+  import { gererJeu, installer, jouer, partie } from '$lib/ludotheque/jeu.svelte';
 
   let fiche = $state<Fiche | null>(null);
   let horsLigne = $state(false);
@@ -108,6 +109,17 @@
     {:else if locale}
       <p class="tag ok">✅ Dans ta ludothèque : fiche et documents gardés sur ce PC</p>
     {/if}
+    {#if tele.jeux[fiche.id]?.etat === 'telecharge'}
+      {@const surPc = tele.jeux[fiche.id]}
+      <div class="actions-jeu">
+        {#if !surPc.installation}
+          <button class="btn primary" onclick={() => installer(surPc.id)} disabled={partie.installation === surPc.id}>📦 Installer</button>
+        {:else}
+          <button class="btn primary" onclick={() => jouer(surPc.id)} disabled={partie.enJeu !== null}>▶ Jouer</button>
+        {/if}
+        <button class="btn" onclick={() => gererJeu(surPc.id)} disabled={partie.enJeu === surPc.id}>⚙ Gérer le jeu</button>
+      </div>
+    {/if}
 
     <section class="jeu">
       <div class="jaquette"><Jaquette id={fiche.id} titre={fiche.titre} plateforme={fiche.plateforme} largeur={260} /></div>
@@ -201,6 +213,11 @@
     gap: calc(16 * var(--u));
     max-width: calc(1200 * var(--u));
     margin: 0 auto;
+  }
+  .actions-jeu {
+    display: flex;
+    gap: calc(8 * var(--u));
+    flex-wrap: wrap;
   }
   .retour {
     justify-self: start;

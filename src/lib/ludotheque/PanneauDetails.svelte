@@ -8,7 +8,7 @@
   import Jaquette from './Jaquette.svelte';
   import { jeuAuHasard, ludo } from './ludotheque.svelte';
   import { annuler, mettreDansLaLudotheque, mettreEnPause, reprendre, tele } from './telechargements.svelte';
-  import { choisirLanceur, installer, jouer, mettreALAbri, partie, retirer } from './jeu.svelte';
+  import { gererJeu, installer, jouer, partie } from './jeu.svelte';
 
   const j = $derived(ludo.selection);
   const surPc = $derived(j ? tele.jeux[j.id] : undefined);
@@ -82,6 +82,11 @@
           <button class="btn primary grand" onclick={() => jouer(j.id)} disabled={partie.enJeu !== null}>▶ Jouer</button>
         {/if}
       {/if}
+      {#if !catalogue && surPc?.etat === 'telecharge'}
+        <button class="btn grand" onclick={() => gererJeu(j.id)} disabled={partie.enJeu === j.id}>
+          ⚙ Gérer le jeu <span class="muted">(installer, désinstaller, parties…)</span>
+        </button>
+      {/if}
       <button class="btn grand" onclick={() => goto(`/jeu/${j.id}`)}>📄 Voir la fiche</button>
     </div>
 
@@ -95,20 +100,6 @@
       {#if surPc}<dt>Sur ce PC</dt><dd title={surPc.dossier}>{surPc.dossier}</dd>{/if}
       {#if surPc?.temps_jeu}<dt>Temps de jeu</dt><dd>{duree(surPc.temps_jeu)}</dd>{/if}
     </dl>
-    {#if !catalogue && surPc?.etat === 'telecharge'}
-      <details class="plus">
-        <summary>Autres actions</summary>
-        <div class="boutons-plus">
-          {#if surPc.installation && !surPc.installation.fichier_du_jeu}
-            <button class="btn" onclick={() => choisirLanceur(j.id)}>🎯 Changer ce qui lance le jeu</button>
-          {/if}
-          {#if surPc.installation}
-            <button class="btn" onclick={() => mettreALAbri(j.id)}>💾 Mettre mes parties à l’abri</button>
-          {/if}
-          <button class="btn danger" onclick={() => retirer(surPc)} disabled={partie.enJeu === j.id}>🗑 Retirer du PC</button>
-        </div>
-      </details>
-    {/if}
     {#if j.genres.length}
       <div class="genres">
         {#each j.genres as g (g)}<span class="tag">{g}</span>{/each}
@@ -182,11 +173,6 @@
   }
   .cx-kv dd {
     white-space: nowrap;
-  }
-  .boutons-plus {
-    display: grid;
-    gap: calc(6 * var(--u));
-    margin-top: calc(6 * var(--u));
   }
   .genres {
     display: flex;

@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.5.1 — plus facile à trouver
+
+- **« ⚙ Gérer le jeu »**, bien visible sous « ▶ Jouer » (et sur la fiche du jeu) : installer, changer ce qui lance
+  le jeu, mettre tes parties à l'abri, **retirer du PC (désinstaller)**. Ces actions étaient cachées dans une ligne
+  repliée « Autres actions ».
+- **Fiche d'un jeu de ta ludothèque** : « 📦 Installer » ou « ▶ Jouer » directement en haut.
+- **Emplacement propre à un système** (ex. `E:JeuxMS-DOS`) : les jeux y vont directement, sans sous-dossier
+  « MS-DOS » en double.
+- Au lancement d'un jeu sur Venkman : « 🎮 Session de jeu annoncée à Firehouse ».
+
 ## 0.5.0 — installer et jouer (lot 3)
 
 - **📦 Installer** un jeu téléchargé, selon sa nature :

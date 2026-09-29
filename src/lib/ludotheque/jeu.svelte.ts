@@ -267,3 +267,23 @@ export async function retirer(j: JeuPc) {
     toast(`Refusé : ${motifDuRefus(e)}`, 'erreur');
   }
 }
+
+/** Le menu « ⚙ Gérer le jeu » : toutes les actions possibles sur un jeu du PC, au même endroit, bien visibles. */
+export async function gererJeu(id: number) {
+  const j = tele.jeux[id];
+  if (!j) return;
+  type Action = 'installer' | 'lanceur' | 'abri' | 'retirer';
+  const options: { valeur: Action; libelle: string; detail?: string }[] = [];
+  if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
+  if (j.installation && !j.installation.fichier_du_jeu)
+    options.push({ valeur: 'lanceur', libelle: '🎯 Changer ce qui lance le jeu' });
+  if (j.installation)
+    options.push({ valeur: 'abri', libelle: '💾 Mettre mes parties à l’abri', detail: 'une copie de ce qui a changé depuis l’installation' });
+  if (j.etat === 'telecharge')
+    options.push({ valeur: 'retirer', libelle: '🗑 Retirer du PC (désinstaller)', detail: 'tes parties sont copiées à l’abri d’abord' });
+  const c = await choisir<Action>(`⚙ Gérer « ${j.titre} »`, options, `Rangé dans ${j.installation?.dossier ?? j.dossier}`);
+  if (c === 'installer') await installer(id);
+  else if (c === 'lanceur') await choisirLanceur(id);
+  else if (c === 'abri') await mettreALAbri(id);
+  else if (c === 'retirer') await retirer(j);
+}
