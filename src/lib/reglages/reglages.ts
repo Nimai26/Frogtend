@@ -5,7 +5,7 @@
 // - le PC (adresse de Firehouse, emplacements de jeux…) : les disques et le réseau appartiennent à la machine ;
 // - le profil (apparence, ludothèque, commandes…) : chaque personne a les siens.
 
-export const ADRESSE_FIREHOUSE_PAR_DEFAUT = 'https://core.hikari-no-sekai.fr';
+export const ADRESSE_FIREHOUSE_PAR_DEFAUT = 'https://jeux.hikari-no-sekai.fr';
 
 export interface ReglagesPc {
   firehouse: {

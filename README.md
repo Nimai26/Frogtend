@@ -1,4 +1,6 @@
-# 🐸 Frogtend
+<p align="center"><img src="docs/logo/logo.png" alt="Frogtend" width="260"></p>
+
+# Frogtend
 
 La ludothèque de la maison, pour Windows : afficher, installer et lancer les jeux servis par **Firehouse**, en natif
 ou par émulateur. Taodbox, son mode canapé, se pilote entièrement à la manette.

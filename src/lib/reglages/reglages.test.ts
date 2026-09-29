@@ -11,8 +11,8 @@ import {
 } from './reglages';
 
 describe('les défauts', () => {
-  it('pointent Firehouse sur core.hikari-no-sekai.fr, en mode simulé tant que l’API n’existe pas', () => {
-    expect(DEFAUTS_PC.firehouse.adresse).toBe('https://core.hikari-no-sekai.fr');
+  it('pointent Firehouse sur jeux.hikari-no-sekai.fr, en mode simulé tant que l’API n’existe pas', () => {
+    expect(DEFAUTS_PC.firehouse.adresse).toBe('https://jeux.hikari-no-sekai.fr');
     expect(DEFAUTS_PC.firehouse.simule).toBe(true);
   });
   it('suivent le skin choisi dans Firehouse', () => {
@@ -56,7 +56,7 @@ describe('lire, écrire, réinitialiser', () => {
 
 describe('verifierAdresse', () => {
   it('accepte une adresse http(s) et retire la barre finale', () => {
-    expect(verifierAdresse(' https://core.hikari-no-sekai.fr/ ')).toEqual({ adresse: 'https://core.hikari-no-sekai.fr' });
+    expect(verifierAdresse(' https://jeux.hikari-no-sekai.fr/ ')).toEqual({ adresse: 'https://jeux.hikari-no-sekai.fr' });
     expect(verifierAdresse('http://10.10.0.2:8100')).toEqual({ adresse: 'http://10.10.0.2:8100' });
   });
   it('refuse le reste, avec un motif', () => {
@@ -64,7 +64,7 @@ describe('verifierAdresse', () => {
     expect(verifierAdresse('ftp://x.fr')).toHaveProperty('refus');
   });
   it('refuse le HTTP clair vers une adresse publique (Frogtend est aussi installé hors de la maison)', () => {
-    expect(verifierAdresse('http://core.hikari-no-sekai.fr')).toHaveProperty('refus');
+    expect(verifierAdresse('http://jeux.hikari-no-sekai.fr')).toHaveProperty('refus');
     expect(verifierAdresse('http://8.8.8.8:8100')).toHaveProperty('refus');
     expect(verifierAdresse('http://172.32.0.1')).toHaveProperty('refus');
   });
@@ -77,7 +77,7 @@ describe('estAdresseLocale', () => {
     }
   });
   it('considère tout le reste comme public', () => {
-    for (const h of ['core.hikari-no-sekai.fr', '8.8.8.8', '172.32.0.1', '11.0.0.1']) {
+    for (const h of ['jeux.hikari-no-sekai.fr', '8.8.8.8', '172.32.0.1', '11.0.0.1']) {
       expect(estAdresseLocale(h), h).toBe(false);
     }
   });

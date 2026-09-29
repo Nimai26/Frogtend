@@ -24,7 +24,7 @@
 {#if etat.pret}
   <div class="application">
     <nav class="panel" aria-label="Navigation principale">
-      <div class="marque">🐸 Frogtend</div>
+      <div class="marque"><img src="/grenouille.png" alt="" />Frogtend</div>
       {#each liens as l (l.href)}
         <a class="btn lien" class:actif={page.url.pathname === l.href} href={l.href}>{l.libelle}</a>
       {/each}
@@ -59,7 +59,14 @@
     position: sticky;
     top: calc(16 * var(--u));
   }
+  .marque img {
+    width: calc(34 * var(--u));
+    height: calc(34 * var(--u));
+  }
   .marque {
+    display: flex;
+    align-items: center;
+    gap: calc(8 * var(--u));
     font-size: calc(20 * var(--u));
     font-weight: 700;
     margin-bottom: calc(8 * var(--u));

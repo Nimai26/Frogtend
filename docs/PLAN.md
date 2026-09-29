@@ -21,7 +21,7 @@
 - **Frogtend n'est pas lié à Venkman.** Il s'installe sur n'importe quel PC Windows 10/11 par un **installateur**
   (NSIS, par utilisateur, sans droits administrateur ; WebView2 installé s'il manque). Il **se met à jour** lui-même
   par des mises à jour **signées**. Rien ne suppose une machine, un disque ou un réseau précis.
-- **Adresse de Firehouse** réglable dans les options. Par défaut : `https://core.hikari-no-sekai.fr`.
+- **Adresse de Firehouse** réglable dans les options. Par défaut : `https://jeux.hikari-no-sekai.fr` (publique, HTTPS, ne publie que l'API jeux ; décision de Seb le 29/09, qui remplace `core.`). HTTPS obligatoire hors du réseau local.
 - **Plusieurs profils** sur un même PC : chacun a son jeton (dans le coffre Windows), son cache, ses sauvegardes et
   ses réglages. Rien n'est partagé entre profils de ce qui vient de Firehouse.
 - **On part de zéro** : pas d'import de LaunchBox.
