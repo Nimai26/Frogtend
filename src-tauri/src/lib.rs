@@ -3,6 +3,11 @@
 //! Règle : les secrets (jeton Firehouse, identifiants des boutiques) restent de ce côté-ci.
 //! L'interface ne les reçoit jamais.
 
+pub mod coffre;
+pub mod erreurs;
+pub mod firehouse;
+pub mod profils;
+
 use serde::Serialize;
 
 /// Ce que l'écran « À propos » affiche sur l'application.

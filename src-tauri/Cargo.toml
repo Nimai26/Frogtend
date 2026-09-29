@@ -24,6 +24,13 @@ tauri-plugin-store = "2"
 tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+keyring = { version = "3", features = ["windows-native"] }
+argon2 = "0.5"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+thiserror = "2"
+rand = "0.8"
+tokio = { version = "1", features = ["rt", "macros", "fs", "io-util"] }
 
 # Taille et vitesse de l'exécutable livré : https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
@@ -32,3 +39,7 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+[dev-dependencies]
+httpmock = "0.7"
+tempfile = "3"
