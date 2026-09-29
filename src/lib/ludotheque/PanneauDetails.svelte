@@ -8,6 +8,7 @@
   import Jaquette from './Jaquette.svelte';
   import { jeuAuHasard, ludo } from './ludotheque.svelte';
   import { annuler, mettreDansLaLudotheque, mettreEnPause, reprendre, tele } from './telechargements.svelte';
+  import { choisirLanceur, installer, jouer, mettreALAbri, partie, retirer } from './jeu.svelte';
 
   const j = $derived(ludo.selection);
   const surPc = $derived(j ? tele.jeux[j.id] : undefined);
@@ -71,7 +72,15 @@
         <p class="tag ok sur-pc">✅ Dans ta ludothèque</p>
       {/if}
       {#if !catalogue && surPc?.etat === 'telecharge'}
-        <button class="btn primary grand" disabled title="Installer et lancer : lot 3">▶ Jouer (bientôt)</button>
+        {#if partie.enJeu === j.id}
+          <p class="tag ok sur-pc">🎮 Partie en cours…</p>
+        {:else if partie.installation === j.id}
+          <button class="btn primary grand" disabled>📦 Installation…</button>
+        {:else if !surPc.installation}
+          <button class="btn primary grand" onclick={() => installer(j.id)}>📦 Installer</button>
+        {:else}
+          <button class="btn primary grand" onclick={() => jouer(j.id)} disabled={partie.enJeu !== null}>▶ Jouer</button>
+        {/if}
       {/if}
       <button class="btn grand" onclick={() => goto(`/jeu/${j.id}`)}>📄 Voir la fiche</button>
     </div>
@@ -84,7 +93,22 @@
       {#if j.editeur}<dt>Éditeur</dt><dd>{j.editeur}</dd>{/if}
       {#if catalogue && j.versions != null}<dt>Versions</dt><dd>{j.versions || 'aucune pour l’instant'}</dd>{/if}
       {#if surPc}<dt>Sur ce PC</dt><dd title={surPc.dossier}>{surPc.dossier}</dd>{/if}
+      {#if surPc?.temps_jeu}<dt>Temps de jeu</dt><dd>{duree(surPc.temps_jeu)}</dd>{/if}
     </dl>
+    {#if !catalogue && surPc?.etat === 'telecharge'}
+      <details class="plus">
+        <summary>Autres actions</summary>
+        <div class="boutons-plus">
+          {#if surPc.installation && !surPc.installation.fichier_du_jeu}
+            <button class="btn" onclick={() => choisirLanceur(j.id)}>🎯 Changer ce qui lance le jeu</button>
+          {/if}
+          {#if surPc.installation}
+            <button class="btn" onclick={() => mettreALAbri(j.id)}>💾 Mettre mes parties à l’abri</button>
+          {/if}
+          <button class="btn danger" onclick={() => retirer(surPc)} disabled={partie.enJeu === j.id}>🗑 Retirer du PC</button>
+        </div>
+      </details>
+    {/if}
     {#if j.genres.length}
       <div class="genres">
         {#each j.genres as g (g)}<span class="tag">{g}</span>{/each}
@@ -158,6 +182,11 @@
   }
   .cx-kv dd {
     white-space: nowrap;
+  }
+  .boutons-plus {
+    display: grid;
+    gap: calc(6 * var(--u));
+    margin-top: calc(6 * var(--u));
   }
   .genres {
     display: flex;

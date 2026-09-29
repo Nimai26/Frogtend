@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api } from '$lib/api';
   import Emplacements from '$lib/reglages/Emplacements.svelte';
+  import Emulateurs from '$lib/reglages/Emulateurs.svelte';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { etat, reglerPc, reglerProfil, reinitialiserPc, reinitialiserProfil } from '$lib/etat.svelte';
@@ -252,6 +253,11 @@
   <section class="panel">
     <header>📁 Emplacements des jeux <span class="muted">— ce PC</span></header>
     <div class="corps"><Emplacements /></div>
+  </section>
+
+  <section class="panel">
+    <header>🕹 Émulateurs <span class="muted">— ce PC</span></header>
+    <div class="corps"><Emulateurs /></div>
   </section>
 
   <section class="panel">

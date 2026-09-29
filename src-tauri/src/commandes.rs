@@ -302,3 +302,87 @@ pub async fn annexe_ouvrir(app: AppHandle, noyau: State<'_, Noyau>, id: i64, i: 
 pub fn espace_libre(chemin: String) -> Option<u64> {
     crate::jeux_pc::place_libre(std::path::Path::new(&chemin))
 }
+
+/// L'émulateur réglé pour un système (`pc.json` ▸ `emulateurs`) : (programme, ligne de commande).
+fn emulateur_regle(app: &AppHandle, plateforme: &str) -> Option<(String, String)> {
+    let r = app.store("pc.json").ok()?.get("reglages")?;
+    let e = &r["emulateurs"][plateforme];
+    let programme = e["programme"].as_str().filter(|p| !p.is_empty())?.to_string();
+    Some((programme, e["ligne"].as_str().unwrap_or("").to_string()))
+}
+
+#[tauri::command]
+pub async fn installation_preparer(noyau: State<'_, Noyau>, id: i64) -> Resultat<crate::partie::Preparation> {
+    noyau.preparer_installation(id).await
+}
+
+/// Installe le jeu (la personne a donné son accord dans l'interface).
+#[tauri::command]
+pub async fn installation_lancer(
+    noyau: State<'_, Noyau>,
+    id: i64,
+    automatique: bool,
+) -> Resultat<crate::jeux_pc::Installation> {
+    noyau.installer(id, automatique).await
+}
+
+#[tauri::command]
+pub async fn installation_ailleurs(
+    noyau: State<'_, Noyau>,
+    id: i64,
+    dossier: String,
+) -> Resultat<crate::jeux_pc::Installation> {
+    noyau.installe_ailleurs(id, &dossier).await
+}
+
+#[tauri::command]
+pub async fn lancement_candidats(noyau: State<'_, Noyau>, id: i64) -> Resultat<Vec<crate::installation::Candidat>> {
+    noyau.candidats_lancement(id).await
+}
+
+#[tauri::command]
+pub async fn lanceur_choisir(noyau: State<'_, Noyau>, id: i64, lanceur: crate::installation::Lanceur) -> Resultat<()> {
+    noyau.choisir_lanceur(id, lanceur).await
+}
+
+#[derive(Clone, Serialize)]
+#[serde(tag = "sorte", rename_all = "snake_case")]
+enum EvenementPartie {
+    Debut { jeu: i64 },
+    Fin { jeu: i64, secondes: u64 },
+}
+
+/// Lance le jeu, puis le suit jusqu'à sa fermeture (événements « partie »).
+#[tauri::command]
+pub async fn jeu_jouer(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<()> {
+    let plateforme = noyau.registre().jeu(id)?.map(|j| j.plateforme).unwrap_or_default();
+    let (pid, dossiers) = noyau.jouer(id, emulateur_regle(&app, &plateforme)).await?;
+    let _ = app.emit("partie", EvenementPartie::Debut { jeu: id });
+    let app2 = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let noyau = app2.state::<Noyau>();
+        match noyau.suivre_partie(id, pid, dossiers).await {
+            Ok(fin) => {
+                let _ = app2.emit("partie", EvenementPartie::Fin { jeu: id, secondes: fin.secondes });
+            }
+            Err(e) => noyau.journaliser(&format!("suivi de la partie du jeu {id} : {e:?}")),
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn parties_abri(noyau: State<'_, Noyau>, id: i64) -> Resultat<crate::partie::Abri> {
+    noyau.mettre_a_l_abri(id).await
+}
+
+#[tauri::command]
+pub async fn jeu_retirer(noyau: State<'_, Noyau>, id: i64) -> Resultat<crate::partie::Abri> {
+    noyau.retirer_du_pc(id).await
+}
+
+/// Les émulateurs recommandés par Firehouse pour un système.
+#[tauri::command]
+pub async fn emulateurs_recommandes(noyau: State<'_, Noyau>, plateforme: String) -> Resultat<Value> {
+    noyau.session().await?.source.emulateurs(&plateforme).await
+}

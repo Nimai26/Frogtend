@@ -152,6 +152,14 @@ impl Source {
         }
     }
 
+    /// Les émulateurs recommandés par Firehouse pour un système (le recommandé d'abord).
+    pub async fn emulateurs(&self, plateforme: &str) -> Resultat<Value> {
+        match self {
+            Source::Firehouse(c) => c.obtenir_json(&format!("/emulateurs?plateforme={}", encoder(plateforme))).await,
+            Source::Simulee => Ok(json!({ "ok": true, "plateforme": plateforme, "emulateurs": [] })),
+        }
+    }
+
     /// Qui porte ce jeton (`/moi`) : `{ok, username, nom, grade, via, api}`.
     pub async fn moi(&self) -> Resultat<Value> {
         match self {

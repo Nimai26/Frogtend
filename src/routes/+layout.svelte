@@ -10,6 +10,7 @@
   import { depuis, ludo, synchroniser, viderLudotheque } from '$lib/ludotheque/ludotheque.svelte';
   import { verifierMiseAJour } from '$lib/mises-a-jour';
   import { arreterSuivi, nombreEnCours, suivreTelechargements } from '$lib/ludotheque/telechargements.svelte';
+  import { suivreParties } from '$lib/ludotheque/jeu.svelte';
   import ChoixProfil from '$lib/profils/ChoixProfil.svelte';
 
   let { children } = $props();
@@ -37,7 +38,10 @@
 
   // Les téléchargements du profil ouvert : suivis tant qu'il est ouvert, oubliés quand il se ferme.
   $effect(() => {
-    if (etat.profilOuvert) suivreTelechargements();
+    if (etat.profilOuvert) {
+      suivreTelechargements();
+      suivreParties();
+    }
     else arreterSuivi();
   });
   const enCours = $derived(nombreEnCours());

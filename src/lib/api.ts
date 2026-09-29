@@ -52,8 +52,64 @@ export interface JeuPc {
   message: string | null;
   ajoute_le: string;
   ajoute_par: string;
+  /** `null` tant que le jeu n'est pas installé. */
+  installation: Installation | null;
+  /** Temps de jeu cumulé, en secondes. */
+  temps_jeu: number;
+  derniere_partie: string | null;
   /** Octets déjà sur le disque. */
   recus: number;
+}
+
+export interface Lanceur {
+  programme: string;
+  arguments: string[];
+  dossier: string;
+}
+
+export type Methode =
+  | { sorte: 'installeur'; fichier: string; format: string }
+  | { sorte: 'installeur_guide'; fichier: string }
+  | { sorte: 'archive'; fichier: string; format: string }
+  | { sorte: 'aucune' };
+
+export type NatureVersion = 'pret_a_jouer' | 'rom' | 'image_disque' | 'repack' | 'installeur_origine' | 'non_dite';
+
+export interface Installation {
+  dossier: string;
+  methode: Methode;
+  lanceur: Lanceur | null;
+  fichier_du_jeu: string | null;
+  installe_le: string;
+}
+
+export interface Preparation {
+  nature: NatureVersion;
+  methode: Methode;
+  destination: string;
+  notes: string | null;
+  titre: string;
+}
+
+export interface Candidat {
+  lanceur: Lanceur;
+  relatif: string;
+  note: number;
+}
+
+export interface Abri {
+  dossier: string;
+  fichiers: number;
+  octets: number;
+}
+
+export interface EmulateurRecommande {
+  nom: string;
+  site: string;
+  recommande: boolean;
+  ligne_de_commande: string;
+  extensions: string[];
+  bios: string;
 }
 
 export interface EmplacementPropose {
@@ -216,6 +272,17 @@ export const api = {
   annuler: (id: number) => appeler<void>('telechargement_annuler', { id }),
   ouvrirAnnexe: (id: number, i: number) => appeler<void>('annexe_ouvrir', { id, i }),
   espaceLibre: (chemin: string) => appeler<number | null>('espace_libre', { chemin }),
+
+  preparerInstallation: (id: number) => appeler<Preparation>('installation_preparer', { id }),
+  installer: (id: number, automatique: boolean) => appeler<Installation>('installation_lancer', { id, automatique }),
+  installeAilleurs: (id: number, dossier: string) => appeler<Installation>('installation_ailleurs', { id, dossier }),
+  candidatsLancement: (id: number) => appeler<Candidat[]>('lancement_candidats', { id }),
+  choisirLanceur: (id: number, lanceur: Lanceur) => appeler<void>('lanceur_choisir', { id, lanceur }),
+  jouer: (id: number) => appeler<void>('jeu_jouer', { id }),
+  mettreALAbri: (id: number) => appeler<Abri>('parties_abri', { id }),
+  retirer: (id: number) => appeler<Abri>('jeu_retirer', { id }),
+  emulateursRecommandes: (plateforme: string) =>
+    appeler<{ emulateurs?: EmulateurRecommande[] }>('emulateurs_recommandes', { plateforme }),
 };
 
 /**

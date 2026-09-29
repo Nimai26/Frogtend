@@ -156,6 +156,15 @@ pub fn run() {
             commandes::telechargement_annuler,
             commandes::annexe_ouvrir,
             commandes::espace_libre,
+            commandes::installation_preparer,
+            commandes::installation_lancer,
+            commandes::installation_ailleurs,
+            commandes::lancement_candidats,
+            commandes::lanceur_choisir,
+            commandes::jeu_jouer,
+            commandes::parties_abri,
+            commandes::jeu_retirer,
+            commandes::emulateurs_recommandes,
             commandes::skin_personnel,
         ])
         .run(tauri::generate_context!())
