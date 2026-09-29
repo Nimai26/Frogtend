@@ -6,7 +6,10 @@
 pub mod coffre;
 pub mod erreurs;
 pub mod firehouse;
+pub mod ludotheque;
+pub mod noyau;
 pub mod profils;
+pub mod source;
 
 use serde::Serialize;
 

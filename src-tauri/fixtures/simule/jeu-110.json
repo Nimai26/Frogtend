@@ -1,0 +1,21 @@
+{
+  "id": 110, "titre": "Dune", "titre_en": "Dune", "annee": 1992, "statut": "possede",
+  "resume": "En l'an de grâce 10191, la planète Arrakis…",
+  "genres": ["Aventure", "Stratégie"],
+  "plateforme": "MS-DOS", "developpeur": "Cryo Interactive Entertainment", "editeur": "Virgin Games",
+  "joueurs": "1", "cooperatif": false, "launchbox_id": 14133,
+  "versions": [{
+    "telechargement_id": 200,
+    "nom": "Version automatique - Jeu CD-ROM avec voix françaises [Abandonware France]",
+    "qualite": "Jeu — prêt à jouer", "type_source": "ddl", "range_le": "2026-09-29T00:40:00",
+    "fichiers": [{"nom": "Dune (1992) [MS-DOS].exe", "taille": 237887038}],
+    "notes": "Le jeu en version CD-ROM, préinstallé et préconfiguré dans Dosbox…",
+    "notes_origine": "", "notes_a_traduire": false
+  }],
+  "annexes": [
+    {"i": 0, "cle": "abandonware_france:manuel:Manuel de Dune", "type": "manuel", "titre": "Manuel de Dune",
+     "taille": 10200711, "texte": false},
+    {"i": 1, "cle": "abandonware_france:lancement:Lancement sous DOSBox", "type": "lancement",
+     "titre": "Lancement sous DOSBox", "taille": 324, "texte": true}
+  ]
+}
