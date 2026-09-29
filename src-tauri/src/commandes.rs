@@ -386,3 +386,149 @@ pub async fn jeu_retirer(noyau: State<'_, Noyau>, id: i64) -> Resultat<crate::pa
 pub async fn emulateurs_recommandes(noyau: State<'_, Noyau>, plateforme: String) -> Resultat<Value> {
     noyau.session().await?.source.emulateurs(&plateforme).await
 }
+
+fn registre_emulateurs(noyau: &Noyau) -> crate::emulateurs::Registre {
+    crate::emulateurs::Registre::nouveau(&noyau.dossier.join("emulateurs.json"))
+}
+
+/// Les émulateurs de ce PC : ceux installés par Frogtend, et ceux trouvés dans leurs dossiers habituels.
+#[tauri::command]
+pub fn emulateurs_installes(noyau: State<'_, Noyau>) -> Vec<crate::emulateurs::EmulateurInstalle> {
+    let mut l = registre_emulateurs(&noyau).tous();
+    for e in crate::emulateurs::detecter() {
+        if !l.iter().any(|x| x.id == e.id) {
+            l.push(e);
+        }
+    }
+    l
+}
+
+#[derive(Serialize)]
+pub struct InfoEmulateur {
+    pub id: String,
+    pub nom: String,
+    pub ligne: String,
+    /// Frogtend sait l'installer depuis sa source officielle.
+    pub installable: bool,
+}
+
+/// Ce que Frogtend sait d'un émulateur recommandé par Firehouse (son nom), ou `None`.
+#[tauri::command]
+pub fn emulateur_fiche(nom: String) -> Option<InfoEmulateur> {
+    crate::emulateurs::fiche_pour(&nom).map(|f| InfoEmulateur {
+        id: f.id.into(),
+        nom: f.nom.into(),
+        ligne: f.ligne.into(),
+        installable: true,
+    })
+}
+
+/// La dernière version officielle d'un émulateur (version, adresse, taille).
+#[tauri::command]
+pub async fn emulateur_derniere_version(id: String) -> Resultat<crate::emulateurs::Paquet> {
+    let f = crate::emulateurs::fiche(&id).ok_or_else(|| Erreur::Introuvable("Émulateur inconnu.".into()))?;
+    crate::emulateurs::derniere_version(f).await
+}
+
+#[derive(Clone, Serialize)]
+struct ProgresEmulateur {
+    id: String,
+    recus: u64,
+    total: Option<u64>,
+}
+
+/// Installe (ou met à jour) un émulateur dans `dossier` (le dossier des émulateurs réglé par la personne), depuis
+/// sa source officielle. La personne a donné son accord dans l'interface (taille annoncée).
+#[tauri::command]
+pub async fn emulateur_installer(
+    app: AppHandle,
+    noyau: State<'_, Noyau>,
+    id: String,
+    dossier: String,
+) -> Resultat<crate::emulateurs::EmulateurInstalle> {
+    let f = crate::emulateurs::fiche(&id).ok_or_else(|| Erreur::Introuvable("Émulateur inconnu.".into()))?;
+    let base = std::path::PathBuf::from(&dossier);
+    if !base.is_dir() {
+        return Err(Erreur::Disque(format!("Dossier introuvable : {dossier}.")));
+    }
+    let paquet_info = crate::emulateurs::derniere_version(f).await?;
+    let cible = base.join(f.nom);
+    let paquet = base.join(".telechargements").join(format!("{}.paquet", f.id));
+    let (app2, id2) = (app.clone(), id.clone());
+    crate::emulateurs::telecharger(&paquet_info.url, &paquet, &move |recus, total| {
+        let _ = app2.emit("emulateur", ProgresEmulateur { id: id2.clone(), recus, total });
+    })
+    .await?;
+    let (p, c) = (paquet.clone(), cible.clone());
+    let programme = tauri::async_runtime::spawn_blocking(move || crate::emulateurs::installer_paquet(f, &p, &c))
+        .await
+        .map_err(|_| Erreur::Disque("L'installation s'est arrêtée brutalement.".into()))??;
+    let _ = std::fs::remove_file(&paquet);
+    let _ = std::fs::remove_dir(base.join(".telechargements"));
+    let e = crate::emulateurs::EmulateurInstalle {
+        id: f.id.into(),
+        nom: f.nom.into(),
+        version: Some(paquet_info.version),
+        dossier: cible.to_string_lossy().into(),
+        programme: programme.to_string_lossy().into(),
+        par_frogtend: true,
+        installe_le: crate::noyau::maintenant(),
+    };
+    registre_emulateurs(&noyau).retenir(e.clone())?;
+    Ok(e)
+}
+
+/// Retient un émulateur installé à la main (trouvé, ou montré par la personne).
+#[tauri::command]
+pub fn emulateur_adopter(noyau: State<'_, Noyau>, id: String, programme: String) -> Resultat<crate::emulateurs::EmulateurInstalle> {
+    let f = crate::emulateurs::fiche(&id).ok_or_else(|| Erreur::Introuvable("Émulateur inconnu.".into()))?;
+    let p = std::path::PathBuf::from(&programme);
+    if !p.is_file() {
+        return Err(Erreur::Disque(format!("Programme introuvable : {programme}.")));
+    }
+    let e = crate::emulateurs::EmulateurInstalle {
+        id: f.id.into(),
+        nom: f.nom.into(),
+        version: None,
+        dossier: p.parent().unwrap_or(&p).to_string_lossy().into(),
+        programme,
+        par_frogtend: false,
+        installe_le: crate::noyau::maintenant(),
+    };
+    registre_emulateurs(&noyau).retenir(e.clone())?;
+    Ok(e)
+}
+
+#[derive(Serialize)]
+pub struct EtatRetroArch {
+    pub coeur: Option<String>,
+    pub coeur_present: bool,
+    pub dossier_bios: String,
+    /// Les BIOS demandés qui manquent.
+    pub bios_manquants: Vec<String>,
+}
+
+/// Ce qui manque à RetroArch pour un système : son cœur, ses BIOS.
+#[tauri::command]
+pub fn retroarch_etat(programme: String, ligne: String, bios: Vec<String>) -> EtatRetroArch {
+    let dossier = std::path::Path::new(&programme).parent().map(std::path::PathBuf::from).unwrap_or_default();
+    let coeur = crate::emulateurs::coeur_de(&ligne);
+    let coeur_present = coeur.as_ref().is_some_and(|c| dossier.join("cores").join(c).is_file());
+    let bios_dir = crate::emulateurs::dossier_bios_retroarch(&dossier);
+    let bios_manquants = bios.into_iter().filter(|b| !b.is_empty() && !bios_dir.join(b).is_file()).collect();
+    EtatRetroArch { coeur, coeur_present, dossier_bios: bios_dir.to_string_lossy().into(), bios_manquants }
+}
+
+/// Installe un cœur RetroArch depuis le buildbot officiel de libretro.
+#[tauri::command]
+pub async fn retroarch_installer_coeur(programme: String, coeur: String) -> Resultat<String> {
+    if coeur.contains(['/', '\\']) || !coeur.ends_with("_libretro.dll") {
+        return Err(Erreur::Refus("Nom de cœur invalide.".into()));
+    }
+    let dossier = std::path::Path::new(&programme).parent().map(std::path::PathBuf::from).unwrap_or_default();
+    let paquet = dossier.join(format!("{coeur}.zip.telechargement"));
+    crate::emulateurs::telecharger(&crate::emulateurs::url_coeur(&coeur), &paquet, &|_, _| {}).await?;
+    let r = crate::emulateurs::installer_coeur(&paquet, &dossier, &coeur);
+    let _ = std::fs::remove_file(&paquet);
+    Ok(r?.to_string_lossy().into())
+}

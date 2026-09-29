@@ -4,6 +4,7 @@
 //! L'interface ne les reçoit jamais.
 
 pub mod coffre;
+pub mod emulateurs;
 pub mod commandes;
 pub mod erreurs;
 pub mod firehouse;
@@ -165,6 +166,13 @@ pub fn run() {
             commandes::parties_abri,
             commandes::jeu_retirer,
             commandes::emulateurs_recommandes,
+            commandes::emulateurs_installes,
+            commandes::emulateur_fiche,
+            commandes::emulateur_derniere_version,
+            commandes::emulateur_installer,
+            commandes::emulateur_adopter,
+            commandes::retroarch_etat,
+            commandes::retroarch_installer_coeur,
             commandes::skin_personnel,
         ])
         .run(tauri::generate_context!())
