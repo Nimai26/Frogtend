@@ -35,6 +35,15 @@ pub struct JeuResume {
     pub editeur: Option<String>,
     #[serde(default)]
     pub statut: Option<String>,
+    /// Firehouse a-t-il une jaquette pour ce jeu ? (`None` : inconnu, on essaie.)
+    #[serde(default)]
+    pub jaquette: Option<bool>,
+    /// Nombre de versions rangées dans Firehouse.
+    #[serde(default)]
+    pub versions: Option<u32>,
+    /// Dernière modification de la fiche dans Firehouse.
+    #[serde(default)]
+    pub maj_le: Option<String>,
 }
 
 /// Une page de catalogue lue, et s'il en reste après.
@@ -265,6 +274,12 @@ impl Cache {
         Ok(brut.and_then(|b| serde_json::from_str(&b).ok()))
     }
 
+    pub fn jeu(&self, id: i64) -> Resultat<Option<JeuResume>> {
+        let brut: Option<String> =
+            self.db.query_row("SELECT brut FROM jeux WHERE id = ?1", [id], |r| r.get(0)).optional()?;
+        Ok(brut.and_then(|b| serde_json::from_str(&b).ok()))
+    }
+
     pub fn contient(&self, id: i64) -> Resultat<bool> {
         Ok(self.db.query_row("SELECT 1 FROM jeux WHERE id = ?1", [id], |_| Ok(())).optional()?.is_some())
     }
@@ -285,7 +300,7 @@ impl Cache {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use serde_json::json;
 
@@ -334,6 +349,35 @@ mod tests {
         assert_eq!(lire_page(&v, 3).encore, Some(false));
         assert_eq!(lire_page(&json!([{"id": 1, "titre": "X"}]), 1).encore, None);
         assert_eq!(lire_page(&json!({"jeux": [], "suivante": null}), 1).encore, Some(false));
+    }
+
+    /// Le bloc JSON qui suit un titre de docs/EXEMPLES-API-JEUX-V1.md (réponses RÉELLES de Firehouse).
+    pub(crate) fn exemple_reel(titre: &str) -> Value {
+        let doc = include_str!("../../docs/EXEMPLES-API-JEUX-V1.md");
+        let apres = &doc[doc.find(titre).unwrap_or_else(|| panic!("exemple « {titre} » absent"))..];
+        let debut = apres.find("```json").unwrap() + 7;
+        let fin = debut + apres[debut..].find("```").unwrap();
+        serde_json::from_str(&apres[debut..fin]).unwrap()
+    }
+
+    #[test]
+    fn lit_les_vraies_reponses_de_firehouse() {
+        let p = lire_plateformes(&exemple_reel("## `GET /plateformes`"));
+        assert_eq!(p, vec![Plateforme { nom: "MS-DOS".into(), jeux: 1 }, Plateforme { nom: "Nintendo 64".into(), jeux: 1 }]);
+
+        let page = lire_page(&exemple_reel("## `GET /catalogue"), 1);
+        assert_eq!(page.encore, Some(false)); // "suivante": null
+        assert_eq!(page.jeux.len(), 2);
+        let dune = &page.jeux[0];
+        assert_eq!((dune.id, dune.titre.as_str(), dune.annee), (110, "Dune", Some(1992)));
+        assert_eq!(dune.genres, vec!["Aventure", "Stratégie"]);
+        assert_eq!((dune.jaquette, dune.versions), (Some(true), Some(1)));
+        assert_eq!(page.jeux[1].statut.as_deref(), Some("recherche"));
+    }
+
+    #[test]
+    fn une_page_suivante_numerotee_veut_dire_qu_il_en_reste() {
+        assert_eq!(lire_page(&json!({"suivante": 2, "jeux": [{"id": 1, "titre": "A"}]}), 1).encore, Some(true));
     }
 
     #[test]

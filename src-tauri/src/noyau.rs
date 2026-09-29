@@ -255,8 +255,11 @@ impl Noyau {
     /// Une absence est retenue une semaine pour ne pas redemander sans cesse.
     pub async fn jaquette(&self, id: i64) -> Resultat<Option<Image>> {
         let s = self.session().await?;
-        if !s.cache.lock().unwrap().contient(id)? {
+        let Some(jeu) = s.cache.lock().unwrap().jeu(id)? else {
             return Ok(None); // un jeu qui n'est pas dans SA ludothèque : rien.
+        };
+        if jeu.jaquette == Some(false) {
+            return Ok(None); // Firehouse dit ne pas en avoir : inutile de demander.
         }
         let dossier = s.dossier.join("jaquettes");
         let fichier = dossier.join(format!("{id}.img"));
@@ -416,11 +419,11 @@ mod tests {
         });
         serveur.mock(|w, t| {
             w.method(GET).path("/api/jeux/v1/catalogue").query_param("page", "1");
-            t.status(200).json_body(json!({"pages": 2, "jeux": [{"id": 1, "titre": "A", "plateforme": "MS-DOS"}]}));
+            t.status(200).json_body(json!({"ok": true, "suivante": 2, "jeux": [{"id": 1, "titre": "A", "plateforme": "MS-DOS", "jaquette": true}]}));
         });
         serveur.mock(|w, t| {
             w.method(GET).path("/api/jeux/v1/catalogue").query_param("page", "2");
-            t.status(200).json_body(json!({"pages": 2, "jeux": [{"id": 2, "titre": "B", "plateforme": "MS-DOS"}]}));
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [{"id": 2, "titre": "B", "plateforme": "MS-DOS", "jaquette": false}]}));
         });
         let png = [0x89u8, b'P', b'N', b'G', 1, 2, 3];
         let media = serveur.mock(|w, t| {
@@ -439,6 +442,8 @@ mod tests {
         assert_eq!(img.type_contenu.as_deref(), Some("image/png"));
         n.jaquette(1).await.unwrap().unwrap();
         media.assert_hits(1); // la seconde fois vient du disque
+        // Le jeu 2 n'a pas de jaquette selon Firehouse : aucune requête.
+        assert!(n.jaquette(2).await.unwrap().is_none());
         assert!(d.path().join("profils").join(&id).join("jaquettes").join("1.img").is_file());
     }
 
@@ -486,6 +491,54 @@ mod tests {
         assert!(matches!(n.reconnecter(&vrai).await, Err(Erreur::JetonRefuse(_))));
         n.reconnecter(&SIMULE).await.unwrap();
         assert!(n.session().await.unwrap().source.est_simulee());
+    }
+
+    /// Essai sur le VRAI Firehouse, jamais lancé par la suite de tests (`#[ignore]`).
+    /// Lecture seule. Jeton lu dans FROGTEND_JETON_ESSAI (jamais affiché), dossier temporaire effacé à la fin.
+    /// `cargo test essai_reel -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_reel_sur_firehouse() {
+        let jeton = std::env::var("FROGTEND_JETON_ESSAI").expect("FROGTEND_JETON_ESSAI absent");
+        let adresse =
+            std::env::var("FROGTEND_ADRESSE_ESSAI").unwrap_or_else(|_| "https://jeux.hikari-no-sekai.fr".into());
+        let (_d, n) = noyau();
+        let id = n.creer_profil("Essai", None, Some(&jeton)).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse, simule: false }).await.unwrap();
+
+        let b = n.synchroniser(|p, j| println!("  page {p} : {j} jeux")).await.unwrap();
+        println!("SYNCHRO : {} jeux, {} plateformes, {} page(s)", b.jeux, b.plateformes, b.pages);
+        for p in n.plateformes().await.unwrap() {
+            println!("  plateforme « {} » : {} jeu(x)", p.nom, p.jeux);
+        }
+        let liste = n.lister(&Filtre::default()).await.unwrap();
+        for j in &liste.jeux {
+            println!("  jeu {} « {} » ({:?}) jaquette={:?} versions={:?}", j.id, j.titre, j.annee, j.jaquette, j.versions);
+        }
+        if let Some(j) = liste.jeux.first() {
+            let f = n.fiche(j.id).await.unwrap();
+            println!(
+                "FICHE {} : « {} », {} version(s), {} annexe(s), résumé de {} caractères",
+                j.id,
+                f.fiche["titre"].as_str().unwrap_or("?"),
+                f.fiche["versions"].as_array().map_or(0, Vec::len),
+                f.fiche["annexes"].as_array().map_or(0, Vec::len),
+                f.fiche["resume"].as_str().map_or(0, |r| r.chars().count())
+            );
+            if let Some(a) = f.fiche["annexes"].as_array().and_then(|l| l.iter().find(|a| a["texte"] == true)) {
+                let t = n.annexe_texte(j.id, a["i"].as_u64().unwrap() as u32, a["cle"].as_str().unwrap()).await.unwrap();
+                println!("ANNEXE « {} » : {} caractères", a["titre"], t["texte"].as_str().map_or(0, |x| x.len()));
+            }
+            match n.jaquette(j.id).await.unwrap() {
+                Some(img) => println!("JAQUETTE {} : {:?}, {} octets", j.id, img.type_contenu, img.octets.len()),
+                None => println!("JAQUETTE {} : aucune", j.id),
+            }
+        }
+        let skins = n.skins().await.unwrap().expect("skins absents");
+        println!("SKINS : {} (version {})", skins["themes"].as_object().map_or(0, |t| t.len()), skins["version"]);
+        let deuxieme = n.skins().await.unwrap().expect("skins absents au second appel");
+        assert_eq!(skins, deuxieme, "le cache ETag doit rendre les mêmes skins");
+        println!("SKIN PERSONNEL : {:?}", n.skin_personnel().await.unwrap());
     }
 
     #[test]

@@ -3,14 +3,19 @@
   // lisible (titre et plateforme), peinte avec les jetons du skin.
   import { adresseJaquette } from '$lib/api';
 
-  let { id, titre, plateforme = '' }: { id: number; titre: string; plateforme?: string } = $props();
+  let {
+    id,
+    titre,
+    plateforme = '',
+    disponible = true,
+  }: { id: number; titre: string; plateforme?: string; disponible?: boolean | null } = $props();
   let absente = $state(false);
   let chargee = $state(false);
 
   $effect(() => {
     // Un autre jeu : on retente l'image.
     void id;
-    absente = false;
+    absente = disponible === false; // Firehouse dit ne pas en avoir : on ne la demande pas.
     chargee = false;
   });
 </script>

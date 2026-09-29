@@ -5,6 +5,16 @@ use crate::firehouse::{Client, Reponse};
 use serde_json::{json, Value};
 
 const TAILLE_PAGE_SIMULEE: usize = 25;
+/// Jeux demandés par page au vrai Firehouse.
+const PAR_PAGE: u32 = 100;
+
+/// `/jeu/{id}` répond `{ok, jeu: {...}}` : on rend la fiche elle-même.
+pub fn deballer_fiche(v: Value) -> Value {
+    match v.get("jeu") {
+        Some(j) if j.is_object() => j.clone(),
+        _ => v,
+    }
+}
 const CATALOGUE_SIMULE: &str = include_str!("../fixtures/simule/catalogue.json");
 const FICHE_110: &str = include_str!("../fixtures/simule/jeu-110.json");
 
@@ -63,20 +73,23 @@ impl Source {
 
     pub async fn catalogue(&self, page: u32) -> Resultat<Value> {
         match self {
-            Source::Firehouse(c) => c.obtenir_json(&format!("/catalogue?page={page}")).await,
+            Source::Firehouse(c) => c.obtenir_json(&format!("/catalogue?page={page}&par_page={PAR_PAGE}")).await,
             Source::Simulee => {
                 let tous = catalogue_simule();
-                let pages = tous.len().div_ceil(TAILLE_PAGE_SIMULEE).max(1);
+                // Même forme que le vrai Firehouse (docs/EXEMPLES-API-JEUX-V1.md).
+                let total = tous.len();
                 let debut = (page.saturating_sub(1) as usize) * TAILLE_PAGE_SIMULEE;
                 let jeux: Vec<Value> = tous.into_iter().skip(debut).take(TAILLE_PAGE_SIMULEE).collect();
-                Ok(json!({"page": page, "pages": pages, "jeux": jeux}))
+                let suivante = if debut + TAILLE_PAGE_SIMULEE < total { json!(page + 1) } else { Value::Null };
+                Ok(json!({"ok": true, "total": total, "page": page, "par_page": TAILLE_PAGE_SIMULEE,
+                          "suivante": suivante, "jeux": jeux}))
             }
         }
     }
 
     pub async fn fiche(&self, id: i64) -> Resultat<Value> {
         match self {
-            Source::Firehouse(c) => c.obtenir_json(&format!("/jeu/{id}")).await,
+            Source::Firehouse(c) => Ok(deballer_fiche(c.obtenir_json(&format!("/jeu/{id}")).await?)),
             Source::Simulee => fiche_simulee(id),
         }
     }
@@ -160,6 +173,16 @@ mod tests {
     async fn les_plateformes_simulees_comptent_leurs_jeux() {
         let p = lire_plateformes(&Source::Simulee.plateformes().await.unwrap());
         assert_eq!(p.iter().map(|p| p.jeux).sum::<u64>() as usize, catalogue_simule().len());
+    }
+
+    #[test]
+    fn la_vraie_fiche_enveloppee_est_deballee() {
+        let f = deballer_fiche(crate::ludotheque::tests::exemple_reel("## `GET /jeu/110`"));
+        assert_eq!(f["titre"], "Dune");
+        assert_eq!(f["versions"][0]["fichiers"][0]["taille"], 237887038);
+        assert_eq!(f["annexes"].as_array().unwrap().len(), 5);
+        // Une fiche déjà nue reste telle quelle.
+        assert_eq!(deballer_fiche(json!({"id": 1, "titre": "X"}))["titre"], "X");
     }
 
     #[tokio::test]

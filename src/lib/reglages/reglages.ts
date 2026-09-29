@@ -47,7 +47,8 @@ export const DEFAUTS_PROFIL: ReglagesProfil = {
   apparence: { skin: null, echelle: 1, densite: 'aeree', animations: 'normales', fondVideo: true },
   ludotheque: {
     tailleJaquette: 170,
-    sousTitre: 'developpeur',
+    // Le catalogue de Firehouse ne donne pas (encore) le développeur : l'année par défaut.
+    sousTitre: 'annee',
     tri: 'titre',
     panneauPlateformes: true,
     panneauDetails: true,

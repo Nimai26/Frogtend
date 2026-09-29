@@ -23,6 +23,10 @@ export interface JeuResume {
   developpeur: string | null;
   editeur: string | null;
   statut: string | null;
+  /** Firehouse a-t-il une jaquette pour ce jeu ? */
+  jaquette?: boolean | null;
+  /** Nombre de versions rangées dans Firehouse. */
+  versions?: number | null;
 }
 
 export interface Liste {

@@ -39,7 +39,7 @@ git 2.51, Node 24.11, pnpm 10.32, Rust 1.94 (stable, MSVC), Visual Studio Build 
 
 ## Les lots
 
-### Lot 0 — Le socle (0.1.0 construite le 29/09/2026, à publier)
+### Lot 0 — Le socle (✅ construit en 0.1.0, jamais publié : remplacé par la 0.2.0)
 - Squelette Tauri 2 + Svelte 5 + TypeScript. Tests : Vitest (interface) et `cargo test` (cœur), lancés ensemble par
   une seule commande.
 - `VERSION`, `docs/NOTES-DE-VERSION.md`, script de livraison (vérifie les tests, monte la version, construit
@@ -55,7 +55,7 @@ git 2.51, Node 24.11, pnpm 10.32, Rust 1.94 (stable, MSVC), Visual Studio Build 
 - Les composants de base de la charte (§ 5) et un focus visible partout.
 - Le magasin de réglages, par profil, qui sert à la personnalisation.
 
-### Lot 1 — Voir la ludothèque (en cours : tout est codé et testé en simulé ; reste l’essai sur le vrai Firehouse)
+### Lot 1 — Voir la ludothèque (✅ livré en 0.2.0 le 29/09/2026, vérifié sur le vrai Firehouse)
 - Client de l'API `/api/jeux/v1/` avec un **mode simulé** (fixtures tirées du brief) et un mode réel, qu'on change
   dans les options.
 - Premier lancement : création d'un profil, adresse de Firehouse, collage du jeton (qui va dans le coffre, n'est
