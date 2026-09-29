@@ -143,6 +143,15 @@ impl Source {
         }
     }
 
+    /// Annonce une session de jeu à Firehouse (`debut`, `vivant`, `fin`) : il met en pause ses travaux sur la carte
+    /// graphique si ce PC calcule pour lui. En mode simulé : rien.
+    pub async fn session(&self, etat: &str, media_id: i64) -> Resultat<Value> {
+        match self {
+            Source::Firehouse(c) => c.envoyer_json("/session", &json!({ "etat": etat, "media_id": media_id })).await,
+            Source::Simulee => Ok(json!({ "ok": true, "session": null, "machine": "simulé" })),
+        }
+    }
+
     /// Qui porte ce jeton (`/moi`) : `{ok, username, nom, grade, via, api}`.
     pub async fn moi(&self) -> Resultat<Value> {
         match self {
