@@ -131,7 +131,7 @@ téléchargé par un admin, reste invisible aux autres profils, même hors ligne
   La ludothèque, les fiches et les documents marchent hors ligne.
 - L'installation (décompresser, lancer un `setup.exe`…) et le lancement : lot 3.
 
-### Lot 3 — Installer et lancer
+### Lot 3 — Installer et lancer (✅ livré en 0.5.0 le 30/09/2026 ; à essayer par Seb sur ses jeux)
 L'installation suit la **qualité** de la version (prêt à jouer, repack, installeur d'origine, ROM, image disque),
 sans jamais renommer une ROM ni une image. Le lancement se fait en natif ou par émulateur. Les sauvegardes de
 parties sont localisées et sauvegardées avant toute réinstallation. Le début et la fin de chaque session sont

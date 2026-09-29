@@ -1,5 +1,26 @@
 # Notes de version de Frogtend
 
+## 0.5.0 — installer et jouer (lot 3)
+
+- **📦 Installer** un jeu téléchargé, selon sa nature :
+  - installeur Inno Setup ou NSIS (comme les jeux « prêts à jouer » d'Abandonware France) : **installation
+    automatique** dans le dossier du jeu, ou guidée si tu préfères ;
+  - archive zip ou 7z : décompressée ;
+  - ROM ou image disque : rien à installer, le fichier n'est jamais renommé ;
+  - repack ou installeur d'origine : l'installeur s'ouvre, Frogtend te dit quel dossier choisir.
+  Les notes de LA version sont montrées avant, et Frogtend prévient si Windows va demander son accord.
+- **🎯 Ce qui lance le jeu** : Frogtend propose ce qu'il a trouvé (le plus probable en premier), tu confirmes une fois.
+- **▶ Jouer** : en natif, ou par l'émulateur du système. Le premier lancement d'une ROM propose l'émulateur
+  recommandé par Firehouse (RetroArch et sa ligne de commande), il suffit de montrer où il est installé. Le temps de
+  jeu est compté.
+- **Firehouse est prévenu** du début et de la fin de chaque partie (et toutes les 10 minutes pendant) : sur Venkman,
+  il libère la carte graphique pendant que tu joues.
+- **💾 Tes parties sont protégées** : à l'installation, Frogtend relève les fichiers du jeu ; avant de retirer un jeu
+  (ou à la demande), tout ce qui a changé depuis — tes parties — est copié à l'abri. Les abris ne s'effacent jamais.
+- **🗑 Retirer du PC** : parties à l'abri d'abord (sinon rien n'est retiré), puis le désinstalleur du jeu, puis
+  seulement ce que Frogtend a mis sur le disque.
+- **Réglages ▸ Émulateurs** : l'émulateur de chaque système.
+
 ## 0.4.0 — ta ludothèque, sur ton PC
 
 - **« 🎮 Ma ludothèque » ne montre que les jeux de ce PC.** Les autres se parcourent dans le **« 🛒 Catalogue
