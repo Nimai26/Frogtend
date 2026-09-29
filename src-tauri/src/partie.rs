@@ -221,8 +221,10 @@ impl Noyau {
     }
 
     /// Lance le jeu. `emulateur` : (programme, ligne de commande) pour une ROM ou une image disque.
-    /// Annonce le début de la session à Firehouse. Rend le processus et les dossiers à surveiller.
-    pub async fn jouer(&self, id: i64, emulateur: Option<(String, String)>) -> Resultat<(u32, Vec<PathBuf>)> {
+    /// Annonce le début de la session à Firehouse. Rend le processus, les dossiers à surveiller, et si Firehouse a
+    /// ouvert une session pour ce PC (`session` non nulle : PC qui calcule pour lui). Au 30/09, cela ne met en pause
+    /// qu'une partie de ses travaux sur la carte graphique : on dit « session annoncée », pas « carte libérée ».
+    pub async fn jouer(&self, id: i64, emulateur: Option<(String, String)>) -> Resultat<(u32, Vec<PathBuf>, bool)> {
         let j = self.jeu_visible(id).await?;
         let i = j.installation.clone().ok_or_else(|| Erreur::Refus("Installe d'abord le jeu.".into()))?;
         let (lanceur, dossiers) = match (&i.lanceur, &i.fichier_du_jeu) {
@@ -241,15 +243,20 @@ impl Noyau {
             (None, None) => return Err(Erreur::Refus("Choisis d'abord ce qui lance le jeu.".into())),
         };
         let pid = demarrer(&lanceur)?;
-        self.annoncer(id, "debut").await;
-        Ok((pid, dossiers))
+        let reponse = self.annoncer(id, "debut").await;
+        let carte_cedee = reponse.is_some_and(|r| r["session"].is_object());
+        Ok((pid, dossiers, carte_cedee))
     }
 
-    /// Annonce une étape de session à Firehouse. Un échec (hors ligne…) n'empêche jamais de jouer : il est noté.
-    async fn annoncer(&self, id: i64, etat: &str) {
-        if let Ok(s) = self.session().await {
-            if let Err(e) = s.source.session(etat, id).await {
+    /// Annonce une étape de session à Firehouse. Un échec (hors ligne, 403…) n'empêche jamais de jouer : il est noté,
+    /// et on ne réessaie pas.
+    async fn annoncer(&self, id: i64, etat: &str) -> Option<Value> {
+        let s = self.session().await.ok()?;
+        match s.source.session(etat, id).await {
+            Ok(v) => Some(v),
+            Err(e) => {
                 self.journaliser(&format!("session « {etat} » du jeu {id} : {e:?}"));
+                None
             }
         }
     }
@@ -452,7 +459,8 @@ mod tests {
         n.installer(110, true).await.unwrap();
         let c = n.candidats_lancement(110).await.unwrap();
         n.choisir_lanceur(110, c[0].lanceur.clone()).await.unwrap();
-        let (pid, dossiers) = n.jouer(110, None).await.unwrap();
+        let (pid, dossiers, carte) = n.jouer(110, None).await.unwrap();
+        assert!(!carte, "en simulé, aucune carte n'est cédée");
         let fin = n.suivre_partie(110, pid, dossiers).await.unwrap();
         assert!(fin.secondes <= 30);
         let j = n.registre().jeu(110).unwrap().unwrap();

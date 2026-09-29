@@ -154,6 +154,15 @@ avant tout retrait ou réinstallation. **Questions pour Seb** (avant de coder ce
 (dossier au choix, disque externe, NAS, ou Firehouse lui-même ?) ; fréquence de l'automatique ; combien de
 versions garder.
 
+**Proposition de Firehouse (30/09, à trancher par Seb)** : ranger la sauvegarde chez la personne, dans son
+**Nextcloud** (stockage maître de la maison, déjà couvert par les sauvegardes 3-2-1 chiffrées hors site), en passant
+par Firehouse avec le jeton du profil : `PUT /api/jeux/v1/sauvegarde` (archive + manifeste : PC, date, jeux, taille,
+empreinte) et `GET /api/jeux/v1/sauvegarde` (liste, téléchargement). Déposée dans « Frogtend/<nom du PC>/ » chez le
+propriétaire du jeton, invisible des autres ; les N dernières gardées. Avantages : un seul chemin authentifié, aucun
+identifiant Nextcloud dans Frogtend, restauration après reformatage avec le seul jeton. Taille attendue : de
+quelques Mo (jeux rétro) à quelques centaines de Mo par profil (parties de jeux PC récents, états d'émulateurs),
+parfois plus de 1 Go : envoi par morceaux avec reprise.
+
 ### Lot 4 — Les émulateurs
 Détection, chemins, BIOS, profils de manettes (XInput d'abord), profils par jeu, et une copie de sauvegarde de toute
 configuration modifiée. Il restera à décider si Frogtend installe les émulateurs lui-même (question ouverte).

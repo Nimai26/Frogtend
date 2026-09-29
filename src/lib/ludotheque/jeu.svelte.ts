@@ -17,9 +17,10 @@ let ecoute: (() => void) | null = null;
 /** Écoute les débuts et fins de partie (une seule fois). */
 export async function suivreParties() {
   if (ecoute || !isTauri()) return;
-  ecoute = await listen<{ sorte: 'debut' | 'fin'; jeu: number; secondes?: number }>('partie', async (e) => {
+  ecoute = await listen<{ sorte: 'debut' | 'fin'; jeu: number; secondes?: number; carte_cedee?: boolean }>('partie', async (e) => {
     if (e.payload.sorte === 'debut') {
       partie.enJeu = e.payload.jeu;
+      if (e.payload.carte_cedee) toast('🎮 Session de jeu annoncée à Firehouse.', 'ok');
     } else {
       partie.enJeu = null;
       const titre = tele.jeux[e.payload.jeu]?.titre ?? 'le jeu';

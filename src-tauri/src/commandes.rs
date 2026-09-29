@@ -348,7 +348,7 @@ pub async fn lanceur_choisir(noyau: State<'_, Noyau>, id: i64, lanceur: crate::i
 #[derive(Clone, Serialize)]
 #[serde(tag = "sorte", rename_all = "snake_case")]
 enum EvenementPartie {
-    Debut { jeu: i64 },
+    Debut { jeu: i64, carte_cedee: bool },
     Fin { jeu: i64, secondes: u64 },
 }
 
@@ -356,8 +356,8 @@ enum EvenementPartie {
 #[tauri::command]
 pub async fn jeu_jouer(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<()> {
     let plateforme = noyau.registre().jeu(id)?.map(|j| j.plateforme).unwrap_or_default();
-    let (pid, dossiers) = noyau.jouer(id, emulateur_regle(&app, &plateforme)).await?;
-    let _ = app.emit("partie", EvenementPartie::Debut { jeu: id });
+    let (pid, dossiers, carte_cedee) = noyau.jouer(id, emulateur_regle(&app, &plateforme)).await?;
+    let _ = app.emit("partie", EvenementPartie::Debut { jeu: id, carte_cedee });
     let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
         let noyau = app2.state::<Noyau>();

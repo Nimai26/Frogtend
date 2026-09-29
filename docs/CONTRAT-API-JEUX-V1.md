@@ -69,3 +69,13 @@ recensement). `launchbox_id` reste le contrat ; un `jeu_id` s'ajoutera à côté
   d'`ids_visibles` (page 1) avec le cache : un id visible inconnu déclenche une synchronisation complète, un id absent
   sort du cache.
 - Un changement d'heure (été/hiver) peut renvoyer une heure de jeux en double, jamais en faire perdre.
+
+## Précisions sur `POST /session` (Firehouse, 30/09/2026)
+
+- PC qui calcule pour Firehouse (Venkman), `debut` ou `vivant` → `{ok, session: {par, machine: "venkman",
+  media_id, streaming, debut, vu_le, expire_le}}`. **`session` non nulle = la carte graphique est cédée** (les
+  travaux GPU de Firehouse se retirent tant que la session vit). Frogtend l'affiche.
+- Autre PC → `{ok, session: null, machine: "autre" (ou son nom), note: "…rien à céder"}`.
+- `fin` → `{ok, session: null}`.
+- 403 : grade non permis (`jeux.session_grades`) ou session de quelqu'un d'autre. Ne pas réessayer (Frogtend note
+  l'échec dans son journal et ne bloque jamais le jeu).
