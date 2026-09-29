@@ -37,21 +37,44 @@ fn infos_application(app: tauri::AppHandle) -> InfosApplication {
     infos_depuis(app.config())
 }
 
-/// Répond aux adresses `jaquette://localhost/<id>` (sous Windows : `http://jaquette.localhost/<id>`) avec la
-/// jaquette du profil OUVERT. Un autre profil, ou aucun, n'obtient rien.
-fn repondre_jaquette(app: &tauri::AppHandle, chemin: &str) -> tauri::http::Response<Vec<u8>> {
+fn reponse_vide(code: u16) -> tauri::http::Response<Vec<u8>> {
+    tauri::http::Response::builder().status(code).body(Vec::new()).unwrap()
+}
+
+/// La valeur d'un paramètre d'une adresse (`largeur=400`).
+fn parametre(requete: Option<&str>, nom: &str) -> Option<String> {
+    requete?.split('&').find_map(|p| p.strip_prefix(&format!("{nom}=")).map(String::from))
+}
+
+/// Répond aux adresses `jaquette://localhost/<id>?largeur=N` (sous Windows : `http://jaquette.localhost/…`) avec
+/// la jaquette du profil OUVERT, en miniature si `largeur` est donnée. Un autre profil, ou aucun, n'obtient rien.
+fn repondre_jaquette(app: &tauri::AppHandle, chemin: &str, requete: Option<&str>) -> tauri::http::Response<Vec<u8>> {
     use tauri::http::Response;
-    let vide = |code: u16| Response::builder().status(code).body(Vec::new()).unwrap();
-    let Ok(id) = chemin.trim_matches('/').parse::<i64>() else { return vide(400) };
+    let Ok(id) = chemin.trim_matches('/').parse::<i64>() else { return reponse_vide(400) };
+    let largeur = parametre(requete, "largeur").and_then(|l| l.parse::<u32>().ok());
     let noyau = app.state::<noyau::Noyau>();
-    match tauri::async_runtime::block_on(noyau.jaquette(id)) {
+    match tauri::async_runtime::block_on(noyau.jaquette(id, largeur)) {
         Ok(Some(img)) => Response::builder()
             .status(200)
             .header("Content-Type", img.type_contenu.unwrap_or_else(|| "application/octet-stream".into()))
             .header("Cache-Control", "no-store")
             .body(img.octets)
             .unwrap(),
-        _ => vide(404),
+        _ => reponse_vide(404),
+    }
+}
+
+/// Répond aux adresses `fond://localhost/<skin>` avec la vidéo de fond de ce skin (gardée pour ce PC).
+fn repondre_fond(app: &tauri::AppHandle, chemin: &str) -> tauri::http::Response<Vec<u8>> {
+    let nom = chemin.trim_matches('/');
+    let noyau = app.state::<noyau::Noyau>();
+    match tauri::async_runtime::block_on(noyau.video_skin(&commandes::connexion(app), nom)) {
+        Ok(Some(octets)) => tauri::http::Response::builder()
+            .status(200)
+            .header("Content-Type", "video/webm")
+            .body(octets)
+            .unwrap(),
+        _ => reponse_vide(404),
     }
 }
 
@@ -72,8 +95,14 @@ pub fn run() {
         .register_asynchronous_uri_scheme_protocol("jaquette", |ctx, requete, repondeur| {
             let app = ctx.app_handle().clone();
             let chemin = requete.uri().path().to_string();
+            let parametres = requete.uri().query().map(String::from);
             // Hors du fil de l'interface : la jaquette peut venir du réseau.
-            std::thread::spawn(move || repondeur.respond(repondre_jaquette(&app, &chemin)));
+            std::thread::spawn(move || repondeur.respond(repondre_jaquette(&app, &chemin, parametres.as_deref())));
+        })
+        .register_asynchronous_uri_scheme_protocol("fond", |ctx, requete, repondeur| {
+            let app = ctx.app_handle().clone();
+            let chemin = requete.uri().path().to_string();
+            std::thread::spawn(move || repondeur.respond(repondre_fond(&app, &chemin)));
         })
         .invoke_handler(tauri::generate_handler![
             infos_application,
@@ -83,6 +112,7 @@ pub fn run() {
             commandes::profil_fermer,
             commandes::profil_actif,
             commandes::profil_changer_jeton,
+            commandes::profil_compte,
             commandes::profil_reconnecter,
             commandes::profil_changer_pin,
             commandes::profil_renommer,
@@ -96,6 +126,7 @@ pub fn run() {
             commandes::ludotheque_fiche,
             commandes::ludotheque_annexe_texte,
             commandes::skins_obtenir,
+            commandes::skin_enregistrer,
             commandes::skin_personnel,
         ])
         .run(tauri::generate_context!())

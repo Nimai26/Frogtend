@@ -38,6 +38,9 @@ pub struct JeuResume {
     /// Firehouse a-t-il une jaquette pour ce jeu ? (`None` : inconnu, on essaie.)
     #[serde(default)]
     pub jaquette: Option<bool>,
+    /// Change quand la jaquette change : la jaquette gardée n'est retéléchargée que dans ce cas.
+    #[serde(default)]
+    pub jaquette_empreinte: Option<String>,
     /// Nombre de versions rangées dans Firehouse.
     #[serde(default)]
     pub versions: Option<u32>,
@@ -51,6 +54,8 @@ pub struct JeuResume {
 pub struct Page {
     pub jeux: Vec<JeuResume>,
     pub encore: Option<bool>,
+    /// Page 1 d'une synchronisation `depuis` : TOUS les ids encore visibles pour ce jeton.
+    pub ids_visibles: Option<Vec<i64>>,
 }
 
 /// Le premier tableau trouvé : la valeur elle-même, ou l'un des champs usuels d'un objet.
@@ -84,7 +89,11 @@ pub fn lire_page(v: &Value, page: u32) -> Page {
     } else {
         None // inconnu : on s'arrête à la première page vide
     };
-    Page { jeux, encore }
+    let ids_visibles = v
+        .get("ids_visibles")
+        .and_then(Value::as_array)
+        .map(|l| l.iter().filter_map(Value::as_i64).collect());
+    Page { jeux, encore, ids_visibles }
 }
 
 /// Texte de tri et de recherche : minuscules, sans accents.
@@ -192,6 +201,70 @@ impl Cache {
         tx.execute("INSERT OR REPLACE INTO meta (cle, valeur) VALUES ('synchronise_le', ?1)", [quand])?;
         tx.commit()?;
         Ok(())
+    }
+
+    /// Applique une synchronisation INCRÉMENTALE : les jeux changés sont mis à jour, et tout jeu absent de
+    /// `ids_visibles` sort du cache (il n'est plus visible pour ce profil). Rend (mis à jour, retirés).
+    pub fn appliquer_increment(
+        &mut self,
+        plateformes: &[Plateforme],
+        changes: &[JeuResume],
+        ids_visibles: &[i64],
+        quand: &str,
+    ) -> Resultat<(usize, usize)> {
+        let tx = self.db.transaction()?;
+        tx.execute_batch("CREATE TEMP TABLE IF NOT EXISTS visibles (id INTEGER PRIMARY KEY); DELETE FROM visibles;")?;
+        {
+            let mut ins = tx.prepare("INSERT OR IGNORE INTO visibles (id) VALUES (?1)")?;
+            for id in ids_visibles {
+                ins.execute([id])?;
+            }
+        }
+        let retires = tx.execute("DELETE FROM jeux WHERE id NOT IN (SELECT id FROM visibles)", [])?;
+        {
+            let mut ins = tx.prepare(
+                "INSERT OR REPLACE INTO jeux (id, titre, titre_tri, annee, plateforme, genres, brut)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            )?;
+            let mut fiche = tx.prepare("DELETE FROM fiches WHERE id = ?1")?;
+            for j in changes {
+                ins.execute(params![
+                    j.id,
+                    j.titre,
+                    normaliser(&j.titre),
+                    j.annee,
+                    j.plateforme,
+                    serde_json::to_string(&j.genres).unwrap(),
+                    serde_json::to_string(j).unwrap(),
+                ])?;
+                // La fiche gardée de ce jeu est périmée.
+                fiche.execute([j.id])?;
+            }
+        }
+        tx.execute("DELETE FROM plateformes", [])?;
+        {
+            let mut ins = tx.prepare("INSERT OR REPLACE INTO plateformes (nom, jeux) VALUES (?1, ?2)")?;
+            for p in plateformes {
+                ins.execute(params![p.nom, p.jeux as i64])?;
+            }
+        }
+        tx.execute("DELETE FROM fiches WHERE id NOT IN (SELECT id FROM jeux)", [])?;
+        tx.execute("DROP TABLE visibles", [])?;
+        tx.execute("INSERT OR REPLACE INTO meta (cle, valeur) VALUES ('synchronise_le', ?1)", [quand])?;
+        tx.commit()?;
+        Ok((changes.len(), retires))
+    }
+
+    /// La date de modification la plus récente connue (`maj_le` de Firehouse) : le point de départ d'une
+    /// synchronisation incrémentale, écrit par l'horloge de Firehouse elle-même.
+    pub fn derniere_modification(&self) -> Resultat<Option<String>> {
+        Ok(self
+            .db
+            .query_row("SELECT MAX(json_extract(brut, '$.maj_le')) FROM jeux", [], |r| r.get::<_, Option<String>>(0))?)
+    }
+
+    pub fn nombre_de_jeux(&self) -> Resultat<u64> {
+        Ok(self.db.query_row("SELECT COUNT(*) FROM jeux", [], |r| r.get::<_, i64>(0))? as u64)
     }
 
     pub fn synchronise_le(&self) -> Resultat<Option<String>> {
@@ -378,6 +451,33 @@ pub(crate) mod tests {
     #[test]
     fn une_page_suivante_numerotee_veut_dire_qu_il_en_reste() {
         assert_eq!(lire_page(&json!({"suivante": 2, "jeux": [{"id": 1, "titre": "A"}]}), 1).encore, Some(true));
+    }
+
+    #[test]
+    fn la_page_1_d_une_synchro_depuis_donne_les_ids_visibles() {
+        let v = json!({"suivante": null, "ids_visibles": [110, 111], "jeux": [{"id": 110, "titre": "Dune",
+                       "jaquette_empreinte": "abc", "developpeur": "Cryo"}]});
+        let p = lire_page(&v, 1);
+        assert_eq!(p.ids_visibles, Some(vec![110, 111]));
+        assert_eq!(p.jeux[0].jaquette_empreinte.as_deref(), Some("abc"));
+        assert_eq!(p.jeux[0].developpeur.as_deref(), Some("Cryo"));
+        assert_eq!(lire_page(&json!({"jeux": []}), 1).ids_visibles, None);
+    }
+
+    #[test]
+    fn l_increment_met_a_jour_et_retire_ce_qui_n_est_plus_visible() {
+        let mut c = cache_exemple(); // 110, 111, 200
+        c.garder_fiche(110, &json!({"id": 110}), "t").unwrap();
+        c.garder_fiche(111, &json!({"id": 111}), "t").unwrap();
+        let dune2 = JeuResume { maj_le: Some("2026-09-30T10:00:00".into()), ..jeu(110, "Dune (CD)", "MS-DOS", Some(1992), &[]) };
+        let (maj, retires) = c.appliquer_increment(&[], &[dune2], &[110, 111], "t2").unwrap();
+        assert_eq!((maj, retires), (1, 1)); // 200 n'est plus visible
+        assert!(!c.contient(200).unwrap());
+        assert_eq!(c.jeu(110).unwrap().unwrap().titre, "Dune (CD)");
+        assert_eq!(c.fiche(110).unwrap(), None, "la fiche d'un jeu changé est périmée");
+        assert!(c.fiche(111).unwrap().is_some(), "la fiche d'un jeu inchangé reste");
+        assert_eq!(c.derniere_modification().unwrap().as_deref(), Some("2026-09-30T10:00:00"));
+        assert_eq!(c.nombre_de_jeux().unwrap(), 2);
     }
 
     #[test]

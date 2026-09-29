@@ -15,7 +15,7 @@ use tauri_plugin_store::StoreExt;
 const ADRESSE_PAR_DEFAUT: &str = "https://jeux.hikari-no-sekai.fr";
 
 /// Les réglages de connexion de ce PC, tels que l'interface les a enregistrés.
-fn connexion(app: &AppHandle) -> Connexion {
+pub(crate) fn connexion(app: &AppHandle) -> Connexion {
     let reglages = app.store("pc.json").ok().and_then(|s| s.get("reglages")).unwrap_or(Value::Null);
     let f = &reglages["firehouse"];
     Connexion {
@@ -41,14 +41,38 @@ pub fn profils_lister(noyau: State<'_, Noyau>) -> Resultat<Vec<ProfilDetaille>> 
         .collect()
 }
 
+#[derive(Serialize)]
+pub struct ProfilCree {
+    #[serde(flatten)]
+    pub profil: ProfilVisible,
+    /// Qui porte le jeton, d'après Firehouse (`/moi`) ; absent en mode simulé ou sans jeton.
+    pub compte: Option<Value>,
+}
+
+/// Crée un profil. Hors mode simulé, le jeton est d'abord vérifié auprès de Firehouse (`/moi`) : un jeton refusé
+/// n'est jamais rangé.
 #[tauri::command]
-pub fn profil_creer(
+pub async fn profil_creer(
+    app: AppHandle,
     noyau: State<'_, Noyau>,
     nom: String,
     pin: Option<String>,
     jeton: Option<String>,
-) -> Resultat<ProfilVisible> {
-    noyau.creer_profil(&nom, pin.as_deref(), jeton.as_deref())
+) -> Resultat<ProfilCree> {
+    let c = connexion(&app);
+    let jeton = jeton.map(|j| j.trim().to_string()).filter(|j| !j.is_empty());
+    let compte = match (&jeton, c.simule) {
+        (Some(j), false) => Some(Noyau::verifier_jeton(&c, j).await?),
+        _ => None,
+    };
+    let profil = noyau.creer_profil(&nom, pin.as_deref(), jeton.as_deref())?;
+    Ok(ProfilCree { profil, compte })
+}
+
+/// Qui porte le jeton du profil ouvert, d'après Firehouse.
+#[tauri::command]
+pub async fn profil_compte(noyau: State<'_, Noyau>) -> Resultat<Value> {
+    noyau.compte().await
 }
 
 #[tauri::command]
@@ -72,9 +96,13 @@ pub async fn profil_actif(noyau: State<'_, Noyau>) -> Resultat<Option<ProfilVisi
     Ok(noyau.actif().await)
 }
 
+/// Remplace le jeton du profil ouvert, après l'avoir vérifié auprès de Firehouse (hors mode simulé).
 #[tauri::command]
-pub async fn profil_changer_jeton(app: AppHandle, noyau: State<'_, Noyau>, jeton: String) -> Resultat<()> {
-    noyau.changer_jeton(&jeton, &connexion(&app)).await
+pub async fn profil_changer_jeton(app: AppHandle, noyau: State<'_, Noyau>, jeton: String) -> Resultat<Option<Value>> {
+    let c = connexion(&app);
+    let compte = if c.simule { None } else { Some(Noyau::verifier_jeton(&c, &jeton).await?) };
+    noyau.changer_jeton(&jeton, &c).await?;
+    Ok(compte)
 }
 
 #[tauri::command]
@@ -154,9 +182,16 @@ pub async fn ludotheque_annexe_texte(noyau: State<'_, Noyau>, id: i64, i: u32, c
     noyau.annexe_texte(id, i, &cle).await
 }
 
+/// Les skins de Firehouse (sans jeton : aussi sur l'écran « Qui joue ? »).
 #[tauri::command]
-pub async fn skins_obtenir(noyau: State<'_, Noyau>) -> Resultat<Option<Value>> {
-    noyau.skins().await
+pub async fn skins_obtenir(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<Option<Value>> {
+    noyau.skins(&connexion(&app)).await
+}
+
+/// Enregistre le skin choisi dans le compte Firehouse de la personne du profil ouvert.
+#[tauri::command]
+pub async fn skin_enregistrer(noyau: State<'_, Noyau>, nom: String) -> Resultat<()> {
+    noyau.enregistrer_skin(&nom).await
 }
 
 #[tauri::command]

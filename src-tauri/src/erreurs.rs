@@ -38,6 +38,9 @@ pub enum Erreur {
     /// Réglage invalide (adresse…).
     #[error("{0}")]
     Reglage(String),
+    /// Firehouse parle une autre version MAJEURE du contrat (`X-Api-Jeux-Version`).
+    #[error("{0}")]
+    Version(String),
     /// Lecture ou écriture sur le disque de ce PC.
     #[error("{0}")]
     Disque(String),

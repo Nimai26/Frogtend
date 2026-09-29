@@ -5,7 +5,7 @@
 
 use crate::coffre::Coffre;
 use crate::erreurs::{Erreur, Resultat};
-use crate::firehouse::{Client, Reponse};
+use crate::firehouse::{origine, Client, Reponse};
 use crate::ludotheque::{lire_page, lire_plateformes, Cache, Filtre, JeuResume, Liste, Plateforme};
 use crate::profils::{Profils, ProfilVisible};
 use crate::source::{Image, Source};
@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-/// Garde-fou : jamais plus de pages que ça pour une synchronisation (20 000 jeux à 100 par page = 200).
+/// Garde-fou : jamais plus de pages que ça pour une synchronisation (200 000 jeux à 500 par page = 400).
 const PAGES_MAX: u32 = 5_000;
 
 /// Les réglages du PC dont le noyau a besoin (lus dans `pc.json`).
@@ -34,10 +34,17 @@ pub struct Session {
 
 #[derive(Debug, Serialize, PartialEq)]
 pub struct BilanSynchro {
+    /// Jeux dans la ludothèque après la synchronisation.
     pub jeux: usize,
     pub plateformes: usize,
     pub pages: u32,
     pub simule: bool,
+    /// `complete` (tout relu) ou `increment` (seulement ce qui a changé).
+    pub mode: &'static str,
+    /// Jeux reçus (tous en complète, les changés en incrément).
+    pub recus: usize,
+    /// Jeux sortis de la ludothèque (plus visibles pour ce profil).
+    pub retires: usize,
 }
 
 pub struct Noyau {
@@ -78,6 +85,11 @@ impl Noyau {
             }
         }
         Ok(p)
+    }
+
+    /// Vérifie un jeton auprès de Firehouse (`/moi`) AVANT de le ranger : rend qui le porte.
+    pub async fn verifier_jeton(connexion: &Connexion, jeton: &str) -> Resultat<Value> {
+        Client::nouveau(&connexion.adresse, jeton.trim())?.obtenir_json("/moi").await
     }
 
     pub fn a_un_jeton(&self, id: &str) -> Resultat<bool> {
@@ -170,34 +182,103 @@ impl Noyau {
         self.profils.supprimer(id)
     }
 
-    /// Synchronise TOUT le catalogue visible par ce profil, puis remplace le cache d'un coup.
-    /// `progres(page)` est appelé après chaque page reçue.
+    /// Synchronise la ludothèque du profil ouvert avec Firehouse.
+    ///
+    /// Première fois (cache vide) : TOUT le catalogue, qui remplace le cache d'un coup. Ensuite : seulement ce qui
+    /// a changé depuis la dernière modification connue (`depuis`), et la page 1 donne `ids_visibles` : tout ce qui
+    /// n'y est plus sort du cache. Si un jeu visible est inconnu du cache (il vient de redevenir visible), on
+    /// refait une synchronisation complète. `progres(page, jeux)` est appelé après chaque page reçue.
     pub async fn synchroniser(&self, progres: impl Fn(u32, usize)) -> Resultat<BilanSynchro> {
         let s = self.session().await?;
+        let mut depuis = {
+            let c = s.cache.lock().unwrap();
+            if c.nombre_de_jeux()? > 0 { c.derniere_modification()? } else { None }
+        };
         let plateformes = lire_plateformes(&s.source.plateformes().await?);
-        let mut jeux: Vec<JeuResume> = Vec::new();
-        let mut page = 1;
         loop {
-            let p = lire_page(&s.source.catalogue(page).await?, page);
-            let vide = p.jeux.is_empty();
-            jeux.extend(p.jeux);
-            progres(page, jeux.len());
-            match p.encore {
-                Some(true) => {}
-                Some(false) => break,
-                None if vide => break,
-                None => {}
+            let mut jeux: Vec<JeuResume> = Vec::new();
+            let mut ids_visibles: Option<Vec<i64>> = None;
+            let mut page = 1;
+            loop {
+                let p = lire_page(&s.source.catalogue(page, depuis.as_deref()).await?, page);
+                if page == 1 {
+                    ids_visibles = p.ids_visibles;
+                }
+                let vide = p.jeux.is_empty();
+                jeux.extend(p.jeux);
+                progres(page, jeux.len());
+                match p.encore {
+                    Some(true) => {}
+                    Some(false) => break,
+                    None if vide => break,
+                    None => {}
+                }
+                if page >= PAGES_MAX {
+                    break;
+                }
+                page += 1;
             }
-            if page >= PAGES_MAX {
-                break;
+            // Un même jeu reçu deux fois (pages qui bougent pendant la lecture) n'est gardé qu'une fois.
+            jeux.sort_by_key(|j| j.id);
+            jeux.dedup_by_key(|j| j.id);
+            let simule = s.source.est_simulee();
+
+            if let (Some(_), Some(ids)) = (&depuis, ids_visibles) {
+                let mut c = s.cache.lock().unwrap();
+                let recus: std::collections::HashSet<i64> = jeux.iter().map(|j| j.id).collect();
+                let mut inconnu = false;
+                for id in &ids {
+                    if !recus.contains(id) && !c.contient(*id)? {
+                        inconnu = true;
+                        break;
+                    }
+                }
+                if !inconnu {
+                    let (recus, retires) = c.appliquer_increment(&plateformes, &jeux, &ids, &maintenant())?;
+                    return Ok(BilanSynchro {
+                        jeux: c.nombre_de_jeux()? as usize,
+                        plateformes: plateformes.len(),
+                        pages: page,
+                        simule,
+                        mode: "increment",
+                        recus,
+                        retires,
+                    });
+                }
+                // Un jeu visible nous est inconnu : on relit tout.
+                drop(c);
+                depuis = None;
+                continue;
             }
-            page += 1;
+            // Synchronisation complète (première fois, ou serveur sans `ids_visibles`).
+            if depuis.is_some() {
+                depuis = None;
+                continue;
+            }
+            let mut c = s.cache.lock().unwrap();
+            let avant = c.nombre_de_jeux()? as usize;
+            c.remplacer(&plateformes, &jeux, &maintenant())?;
+            let apres = jeux.len();
+            return Ok(BilanSynchro {
+                jeux: apres,
+                plateformes: plateformes.len(),
+                pages: page,
+                simule,
+                mode: "complete",
+                recus: apres,
+                retires: avant.saturating_sub(apres),
+            });
         }
-        // Un même jeu reçu deux fois (pages qui bougent pendant la lecture) n'est gardé qu'une fois.
-        jeux.sort_by_key(|j| j.id);
-        jeux.dedup_by_key(|j| j.id);
-        s.cache.lock().unwrap().remplacer(&plateformes, &jeux, &maintenant())?;
-        Ok(BilanSynchro { jeux: jeux.len(), plateformes: plateformes.len(), pages: page, simule: s.source.est_simulee() })
+    }
+
+    /// Qui porte le jeton du profil ouvert (`/moi`).
+    pub async fn compte(&self) -> Resultat<Value> {
+        self.session().await?.source.moi().await
+    }
+
+    /// Enregistre le skin dans le compte Firehouse de la personne du profil ouvert.
+    pub async fn enregistrer_skin(&self, nom: &str) -> Resultat<()> {
+        self.session().await?.source.enregistrer_theme(nom).await
     }
 
     pub async fn plateformes(&self) -> Resultat<Vec<Plateforme>> {
@@ -251,9 +332,9 @@ impl Noyau {
         s.source.annexe_texte(id, i, cle).await
     }
 
-    /// Une jaquette du profil ouvert : depuis son dossier si elle y est, sinon depuis Firehouse (et gardée).
-    /// Une absence est retenue une semaine pour ne pas redemander sans cesse.
-    pub async fn jaquette(&self, id: i64) -> Resultat<Option<Image>> {
+    /// Une jaquette du profil ouvert, en miniature si `largeur` est donnée : depuis son dossier si elle y est (et que
+    /// son empreinte n'a pas changé), sinon depuis Firehouse (et gardée). Une absence est retenue une semaine.
+    pub async fn jaquette(&self, id: i64, largeur: Option<u32>) -> Resultat<Option<Image>> {
         let s = self.session().await?;
         let Some(jeu) = s.cache.lock().unwrap().jeu(id)? else {
             return Ok(None); // un jeu qui n'est pas dans SA ludothèque : rien.
@@ -261,9 +342,20 @@ impl Noyau {
         if jeu.jaquette == Some(false) {
             return Ok(None); // Firehouse dit ne pas en avoir : inutile de demander.
         }
+        let largeur = largeur.map(|l| l.clamp(100, 1000).div_ceil(100) * 100);
+        let taille = largeur.map_or("orig".to_string(), |l| l.to_string());
+        let empreinte: String = jeu
+            .jaquette_empreinte
+            .as_deref()
+            .unwrap_or("x")
+            .chars()
+            .filter(char::is_ascii_alphanumeric)
+            .take(32)
+            .collect();
+        let prefixe = format!("{id}-{taille}-");
         let dossier = s.dossier.join("jaquettes");
-        let fichier = dossier.join(format!("{id}.img"));
-        let absent = dossier.join(format!("{id}.absent"));
+        let fichier = dossier.join(format!("{prefixe}{empreinte}.img"));
+        let absent = dossier.join(format!("{prefixe}{empreinte}.absent"));
         if let Ok(octets) = std::fs::read(&fichier) {
             return Ok(Some(Image { type_contenu: type_image(&octets), octets }));
         }
@@ -273,7 +365,17 @@ impl Noyau {
             }
         }
         std::fs::create_dir_all(&dossier)?;
-        match s.source.media(id, "jaquette").await? {
+        let recue = s.source.media(id, "jaquette", largeur).await?;
+        // L'ancienne jaquette de ce jeu (autre empreinte) n'a plus lieu d'être.
+        if let Ok(liste) = std::fs::read_dir(&dossier) {
+            for e in liste.flatten() {
+                let n = e.file_name().to_string_lossy().to_string();
+                if n.starts_with(&prefixe) && e.path() != fichier {
+                    let _ = std::fs::remove_file(e.path());
+                }
+            }
+        }
+        match recue {
             Some(img) => {
                 std::fs::write(&fichier, &img.octets)?;
                 Ok(Some(Image { type_contenu: img.type_contenu.or_else(|| type_image(&img.octets)), octets: img.octets }))
@@ -287,31 +389,65 @@ impl Noyau {
         }
     }
 
-    /// Les skins servis par Firehouse, gardés en cache avec leur `ETag`. `None` en mode simulé.
-    pub async fn skins(&self) -> Resultat<Option<Value>> {
-        let s = self.session().await?;
-        let fichier = s.dossier.join("skins.json");
-        let (etag, garde): (Option<String>, Option<Value>) = match std::fs::read_to_string(&fichier) {
-            Ok(t) => match serde_json::from_str::<Value>(&t) {
-                Ok(v) => (v["etag"].as_str().map(String::from), Some(v["catalogue"].clone())),
-                Err(_) => (None, None),
-            },
-            Err(_) => (None, None),
-        };
-        match s.source.themes(etag.as_deref()).await {
-            Ok(None) => Ok(None),
-            Ok(Some(Reponse::NonModifie)) => Ok(garde),
-            Ok(Some(Reponse::Corps { octets, etag, .. })) => {
+    /// Les skins servis par Firehouse (`/themes`, SANS jeton : utilisable dès l'écran « Qui joue ? »), gardés en
+    /// cache pour ce PC avec leur `ETag`. `None` en mode simulé. Hors ligne : ceux gardés.
+    pub async fn skins(&self, connexion: &Connexion) -> Resultat<Option<Value>> {
+        if connexion.simule {
+            return Ok(None);
+        }
+        let fichier = self.dossier.join("skins.json");
+        let garde = self.skins_gardes();
+        let etag = garde.as_ref().and_then(|v| v["etag"].as_str().map(String::from));
+        let catalogue_garde = garde.map(|v| v["catalogue"].clone());
+        match Client::public(&connexion.adresse)?.obtenir("/themes", etag.as_deref()).await {
+            Ok(Reponse::NonModifie) => Ok(catalogue_garde),
+            Ok(Reponse::Corps { octets, etag, .. }) => {
                 let catalogue: Value = serde_json::from_slice(&octets)
                     .map_err(|_| Erreur::Serveur("Firehouse a envoyé des skins illisibles.".into()))?;
-                let a_garder = serde_json::json!({"etag": etag, "catalogue": catalogue});
-                std::fs::write(&fichier, a_garder.to_string())?;
+                std::fs::create_dir_all(&self.dossier)?;
+                std::fs::write(&fichier, serde_json::json!({"etag": etag, "catalogue": catalogue}).to_string())?;
                 Ok(Some(catalogue))
             }
-            // Hors ligne : les skins gardés.
-            Err(Erreur::Reseau(_)) if garde.is_some() => Ok(garde),
+            Err(Erreur::Reseau(_)) if catalogue_garde.is_some() => Ok(catalogue_garde),
             Err(e) => Err(e),
         }
+    }
+
+    fn skins_gardes(&self) -> Option<Value> {
+        let t = std::fs::read_to_string(self.dossier.join("skins.json")).ok()?;
+        serde_json::from_str(&t).ok()
+    }
+
+    /// La vidéo de fond d'un skin (webm), gardée pour ce PC. Son adresse est `video_api`, un chemin depuis la
+    /// RACINE du serveur (contrat 1.3) : on la joint à l'origine de l'adresse, jamais à la base de l'API.
+    pub async fn video_skin(&self, connexion: &Connexion, nom: &str) -> Resultat<Option<Vec<u8>>> {
+        if connexion.simule {
+            return Ok(None);
+        }
+        let Some(catalogue) = self.skins_gardes().map(|v| v["catalogue"].clone()) else { return Ok(None) };
+        let Some(chemin) = catalogue["themes"][nom]["video_api"].as_str().map(String::from) else { return Ok(None) };
+        if !chemin.starts_with('/') {
+            return Ok(None);
+        }
+        let version: String = catalogue["version"].as_str().unwrap_or("x").chars().filter(char::is_ascii_alphanumeric).take(32).collect();
+        let nom_sur: String = nom.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+        let dossier = self.dossier.join("videos");
+        let fichier = dossier.join(format!("{nom_sur}-{version}.webm"));
+        if let Ok(o) = std::fs::read(&fichier) {
+            return Ok(Some(o));
+        }
+        let octets = Client::public(&connexion.adresse)?.obtenir_absolu(&format!("{}{chemin}", origine(&connexion.adresse)?)).await?;
+        std::fs::create_dir_all(&dossier)?;
+        // Les vidéos d'une ancienne version des skins partent.
+        if let Ok(liste) = std::fs::read_dir(&dossier) {
+            for e in liste.flatten() {
+                if e.file_name().to_string_lossy().starts_with(&format!("{nom_sur}-")) {
+                    let _ = std::fs::remove_file(e.path());
+                }
+            }
+        }
+        std::fs::write(&fichier, &octets)?;
+        Ok(Some(octets))
     }
 
     pub async fn skin_personnel(&self) -> Resultat<Option<Value>> {
@@ -399,7 +535,7 @@ mod tests {
 
         n.ouvrir(&lea, None, &SIMULE).await.unwrap();
         assert_eq!(n.lister(&Filtre::default()).await.unwrap().total, 0);
-        assert!(n.jaquette(110).await.unwrap().is_none());
+        assert!(n.jaquette(110, None).await.unwrap().is_none());
     }
 
     #[tokio::test]
@@ -438,13 +574,13 @@ mod tests {
         let b = n.synchroniser(|_, _| {}).await.unwrap();
         assert_eq!((b.jeux, b.pages), (2, 2));
 
-        let img = n.jaquette(1).await.unwrap().unwrap();
+        let img = n.jaquette(1, None).await.unwrap().unwrap();
         assert_eq!(img.type_contenu.as_deref(), Some("image/png"));
-        n.jaquette(1).await.unwrap().unwrap();
+        n.jaquette(1, None).await.unwrap().unwrap();
         media.assert_hits(1); // la seconde fois vient du disque
         // Le jeu 2 n'a pas de jaquette selon Firehouse : aucune requête.
-        assert!(n.jaquette(2).await.unwrap().is_none());
-        assert!(d.path().join("profils").join(&id).join("jaquettes").join("1.img").is_file());
+        assert!(n.jaquette(2, None).await.unwrap().is_none());
+        assert!(d.path().join("profils").join(&id).join("jaquettes").join("1-orig-x.img").is_file());
     }
 
     #[tokio::test]
@@ -493,6 +629,157 @@ mod tests {
         assert!(n.session().await.unwrap().source.est_simulee());
     }
 
+    #[tokio::test]
+    async fn la_seconde_synchronisation_est_incrementale_et_retire_les_invisibles() {
+        let serveur = MockServer::start();
+        serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "MS-DOS", "jeux": 2}]}));
+        });
+        // Synchronisation incrémentale : seulement le jeu 1 a changé ; le jeu 2 n'est plus visible.
+        let increment = serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue").query_param("depuis", "2026-09-29T10:00:00");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "ids_visibles": [1],
+                "jeux": [{"id": 1, "titre": "A (nouvelle version)", "plateforme": "MS-DOS", "maj_le": "2026-09-30T08:00:00"}]}));
+        });
+        let complete = serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [
+                {"id": 1, "titre": "A", "plateforme": "MS-DOS", "maj_le": "2026-09-29T10:00:00"},
+                {"id": 2, "titre": "B", "plateforme": "MS-DOS", "maj_le": "2026-09-28T10:00:00"}]}));
+        });
+        let (_d, n) = noyau();
+        let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: serveur.base_url(), simule: false }).await.unwrap();
+
+        let b1 = n.synchroniser(|_, _| {}).await.unwrap();
+        assert_eq!((b1.mode, b1.jeux), ("complete", 2));
+        let b2 = n.synchroniser(|_, _| {}).await.unwrap();
+        assert_eq!((b2.mode, b2.recus, b2.retires, b2.jeux), ("increment", 1, 1, 1));
+        assert_eq!(n.lister(&Filtre::default()).await.unwrap().jeux[0].titre, "A (nouvelle version)");
+        increment.assert_hits(1);
+        complete.assert_hits(1);
+    }
+
+    #[tokio::test]
+    async fn un_jeu_redevenu_visible_declenche_une_synchronisation_complete() {
+        let serveur = MockServer::start();
+        serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": []}));
+        });
+        // L'incrément annonce l'id 3, visible mais ni changé ni connu : il faut tout relire.
+        serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue").query_param_exists("depuis");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "ids_visibles": [1, 3], "jeux": []}));
+        });
+        // Première synchronisation : seul le jeu 1 est visible.
+        let mut premiere = serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [
+                {"id": 1, "titre": "A", "plateforme": "PC", "maj_le": "2026-09-29T10:00:00"}]}));
+        });
+        let (_d, n) = noyau();
+        let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: serveur.base_url(), simule: false }).await.unwrap();
+        assert_eq!(n.synchroniser(|_, _| {}).await.unwrap().jeux, 1);
+        premiere.delete();
+        // Puis le jeu 3 redevient visible (changement de grade), avec un maj_le ancien.
+        let complete = serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue").matches(|r| {
+                !r.query_params.as_ref().is_some_and(|q| q.iter().any(|(k, _)| k == "depuis"))
+            });
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [
+                {"id": 1, "titre": "A", "plateforme": "PC", "maj_le": "2026-09-29T10:00:00"},
+                {"id": 3, "titre": "C", "plateforme": "PC", "maj_le": "2020-01-01T00:00:00"}]}));
+        });
+        let b = n.synchroniser(|_, _| {}).await.unwrap();
+        assert_eq!((b.mode, b.jeux), ("complete", 2));
+        complete.assert_hits(1);
+    }
+
+    #[tokio::test]
+    async fn une_jaquette_changee_est_retelechargee_et_l_ancienne_effacee() {
+        let serveur = MockServer::start();
+        serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": []}));
+        });
+        let mut cat = serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [
+                {"id": 1, "titre": "A", "plateforme": "PC", "jaquette": true, "jaquette_empreinte": "v1", "maj_le": "t1"}]}));
+        });
+        let media = serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/media/1/jaquette").query_param("largeur", "400");
+            t.status(200).body([0xFFu8, 0xD8, 0xFF, 1]);
+        });
+        let (d, n) = noyau();
+        let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: serveur.base_url(), simule: false }).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        // 350 est arrondi à la centaine supérieure : 400.
+        n.jaquette(1, Some(350)).await.unwrap().unwrap();
+        n.jaquette(1, Some(400)).await.unwrap().unwrap();
+        media.assert_hits(1);
+
+        // La jaquette change dans Firehouse : nouvelle empreinte (reçue par une synchronisation complète ici).
+        cat.delete();
+        serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "ids_visibles": [1], "jeux": [
+                {"id": 1, "titre": "A", "plateforme": "PC", "jaquette": true, "jaquette_empreinte": "v2", "maj_le": "t2"}]}));
+        });
+        n.synchroniser(|_, _| {}).await.unwrap();
+        n.jaquette(1, Some(400)).await.unwrap().unwrap();
+        media.assert_hits(2);
+        let fichiers: Vec<String> = std::fs::read_dir(d.path().join("profils").join(&id).join("jaquettes"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(fichiers, vec!["1-400-v2.img".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn les_skins_se_lisent_sans_jeton_et_la_video_se_joint_a_l_origine() {
+        let serveur = MockServer::start();
+        serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/themes");
+            t.status(200).header("etag", "W/\"s1\"").json_body(json!({"ok": true, "version": "s1", "themes": {
+                "firehouse": {"base": {}, "resolus": {}, "video_api": "/api/jeux/v1/skin/firehouse/video"}}}));
+        });
+        let video = serveur.mock(|w, t| {
+            // Le chemin est joint à l'ORIGINE : jamais /api/jeux/v1/api/jeux/v1/...
+            w.method(GET).path("/api/jeux/v1/skin/firehouse/video");
+            t.status(200).body(b"webm");
+        });
+        let (_d, n) = noyau();
+        let c = Connexion { adresse: serveur.base_url(), simule: false };
+        // Aucun profil ouvert : l'écran « Qui joue ? » a déjà ses skins.
+        let s = n.skins(&c).await.unwrap().unwrap();
+        assert_eq!(s["version"], "s1");
+        assert_eq!(n.video_skin(&c, "firehouse").await.unwrap().unwrap(), b"webm");
+        n.video_skin(&c, "firehouse").await.unwrap().unwrap();
+        video.assert_hits(1); // gardée sur le disque
+        assert_eq!(n.skins(&SIMULE).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn un_jeton_se_verifie_par_moi_avant_d_etre_range() {
+        let serveur = MockServer::start();
+        serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/moi").header("authorization", "Bearer bon");
+            t.status(200).json_body(json!({"ok": true, "nom": "Seb", "grade": "admin"}));
+        });
+        serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/moi");
+            t.status(401).json_body(json!({"detail": "connexion requise"}));
+        });
+        let c = Connexion { adresse: serveur.base_url(), simule: false };
+        assert_eq!(Noyau::verifier_jeton(&c, " bon ").await.unwrap()["grade"], "admin");
+        assert!(matches!(Noyau::verifier_jeton(&c, "mauvais").await, Err(Erreur::JetonRefuse(_))));
+    }
+
     /// Essai sur le VRAI Firehouse, jamais lancé par la suite de tests (`#[ignore]`).
     /// Lecture seule. Jeton lu dans FROGTEND_JETON_ESSAI (jamais affiché), dossier temporaire effacé à la fin.
     /// `cargo test essai_reel -- --ignored --nocapture`
@@ -529,14 +816,28 @@ mod tests {
                 let t = n.annexe_texte(j.id, a["i"].as_u64().unwrap() as u32, a["cle"].as_str().unwrap()).await.unwrap();
                 println!("ANNEXE « {} » : {} caractères", a["titre"], t["texte"].as_str().map_or(0, |x| x.len()));
             }
-            match n.jaquette(j.id).await.unwrap() {
+            match n.jaquette(j.id, None).await.unwrap() {
                 Some(img) => println!("JAQUETTE {} : {:?}, {} octets", j.id, img.type_contenu, img.octets.len()),
                 None => println!("JAQUETTE {} : aucune", j.id),
             }
         }
-        let skins = n.skins().await.unwrap().expect("skins absents");
+        let c = Connexion { adresse: std::env::var("FROGTEND_ADRESSE_ESSAI").unwrap_or_else(|_| "https://jeux.hikari-no-sekai.fr".into()), simule: false };
+        let skins = n.skins(&c).await.unwrap().expect("skins absents");
         println!("SKINS : {} (version {})", skins["themes"].as_object().map_or(0, |t| t.len()), skins["version"]);
-        let deuxieme = n.skins().await.unwrap().expect("skins absents au second appel");
+        let deuxieme = n.skins(&c).await.unwrap().expect("skins absents au second appel");
+        println!("COMPTE : {}", n.compte().await.unwrap());
+        match n.video_skin(&c, "firehouse").await.unwrap() {
+            Some(v) => println!("VIDÉO firehouse : {} octets", v.len()),
+            None => println!("VIDÉO firehouse : aucune"),
+        }
+        if let Some(j) = liste.jeux.first() {
+            match n.jaquette(j.id, Some(400)).await.unwrap() {
+                Some(img) => println!("MINIATURE 400 : {:?}, {} octets", img.type_contenu, img.octets.len()),
+                None => println!("MINIATURE 400 : aucune"),
+            }
+        }
+        let b2 = n.synchroniser(|_, _| {}).await.unwrap();
+        println!("2e SYNCHRO : mode {}, {} reçu(s), {} retiré(s), {} jeux", b2.mode, b2.recus, b2.retires, b2.jeux);
         assert_eq!(skins, deuxieme, "le cache ETag doit rendre les mêmes skins");
         println!("SKIN PERSONNEL : {:?}", n.skin_personnel().await.unwrap());
     }

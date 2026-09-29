@@ -46,9 +46,35 @@ pub enum Reponse {
     NonModifie,
 }
 
+/// La version MAJEURE du contrat que cette version de Frogtend sait lire (`X-Api-Jeux-Version`).
+pub const VERSION_API_MAJEURE: u32 = 1;
+
+/// Compare la version annoncée par Firehouse à celle que Frogtend sait lire. Sans en-tête : on accepte.
+pub fn verifier_version(entete: Option<&str>) -> Resultat<()> {
+    let Some(v) = entete else { return Ok(()) };
+    let Some(majeure) = v.trim().split('.').next().and_then(|m| m.parse::<u32>().ok()) else { return Ok(()) };
+    match majeure.cmp(&VERSION_API_MAJEURE) {
+        std::cmp::Ordering::Equal => Ok(()),
+        std::cmp::Ordering::Greater => Err(Erreur::Version(format!(
+            "Firehouse est plus récent que ce Frogtend (contrat {v}). Mets Frogtend à jour depuis « À propos »."
+        ))),
+        std::cmp::Ordering::Less => Err(Erreur::Version(format!(
+            "Firehouse est trop ancien pour ce Frogtend (contrat {v}). Il doit être mis à jour par un admin."
+        ))),
+    }
+}
+
+/// L'origine d'une adresse (`https://hote[:port]`) : c'est à elle que se joignent les chemins `video_api`.
+pub fn origine(adresse: &str) -> Resultat<String> {
+    let url = reqwest::Url::parse(adresse)
+        .map_err(|_| Erreur::Reglage("L'adresse de Firehouse n'est pas une adresse web valable.".into()))?;
+    Ok(url.origin().ascii_serialization())
+}
+
 pub struct Client {
     base: String,
-    jeton: String,
+    /// `None` : client sans jeton, pour les seules routes publiques (`/themes`, vidéo des skins).
+    jeton: Option<String>,
     http: reqwest::Client,
 }
 
@@ -87,6 +113,15 @@ pub fn erreur_du_statut(code: u16, corps: &[u8]) -> Erreur {
 
 impl Client {
     pub fn nouveau(adresse: &str, jeton: &str) -> Resultat<Self> {
+        Self::construire(adresse, Some(jeton.into()))
+    }
+
+    /// Un client sans jeton, pour les routes publiques.
+    pub fn public(adresse: &str) -> Resultat<Self> {
+        Self::construire(adresse, None)
+    }
+
+    fn construire(adresse: &str, jeton: Option<String>) -> Resultat<Self> {
         let base = verifier_adresse(adresse)?;
         let http = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(10))
@@ -94,7 +129,7 @@ impl Client {
             .user_agent(concat!("Frogtend/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(|_| Erreur::Reseau("Impossible de préparer la connexion.".into()))?;
-        Ok(Client { base, jeton: jeton.into(), http })
+        Ok(Client { base, jeton, http })
     }
 
     fn url(&self, route: &str) -> String {
@@ -109,13 +144,27 @@ impl Client {
         }
     }
 
+    fn avec_jeton(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        match &self.jeton {
+            Some(j) => req.bearer_auth(j),
+            None => req,
+        }
+    }
+
+    /// Envoie une requête et contrôle la version du contrat annoncée par Firehouse.
+    async fn envoyer(&self, req: reqwest::RequestBuilder) -> Resultat<reqwest::Response> {
+        let rep = self.avec_jeton(req).send().await.map_err(Self::erreur_reseau)?;
+        verifier_version(rep.headers().get("x-api-jeux-version").and_then(|v| v.to_str().ok()))?;
+        Ok(rep)
+    }
+
     /// `GET` d'une route (`/plateformes`…), avec un `ETag` éventuel.
     pub async fn obtenir(&self, route: &str, etag: Option<&str>) -> Resultat<Reponse> {
-        let mut req = self.http.get(self.url(route)).bearer_auth(&self.jeton);
+        let mut req = self.http.get(self.url(route));
         if let Some(e) = etag {
             req = req.header(reqwest::header::IF_NONE_MATCH, e);
         }
-        let rep = req.send().await.map_err(Self::erreur_reseau)?;
+        let rep = self.envoyer(req).await?;
         let statut = rep.status().as_u16();
         if statut == 304 {
             return Ok(Reponse::NonModifie);
@@ -132,6 +181,17 @@ impl Client {
         Ok(Reponse::Corps { octets, etag, type_contenu })
     }
 
+    /// `GET` d'une adresse complète hors de la base de l'API (la vidéo d'un skin : `origine + video_api`).
+    pub async fn obtenir_absolu(&self, url: &str) -> Resultat<Vec<u8>> {
+        let rep = self.envoyer(self.http.get(url)).await?;
+        let statut = rep.status().as_u16();
+        let octets = rep.bytes().await.map_err(Self::erreur_reseau)?.to_vec();
+        if !(200..300).contains(&statut) {
+            return Err(erreur_du_statut(statut, &octets));
+        }
+        Ok(octets)
+    }
+
     /// `GET` d'une route JSON.
     pub async fn obtenir_json<T: DeserializeOwned>(&self, route: &str) -> Resultat<T> {
         match self.obtenir(route, None).await? {
@@ -141,22 +201,28 @@ impl Client {
         }
     }
 
-    /// `POST` d'un objet JSON.
-    pub async fn envoyer_json<T: DeserializeOwned>(&self, route: &str, corps: &serde_json::Value) -> Resultat<T> {
-        let rep = self
-            .http
-            .post(self.url(route))
-            .bearer_auth(&self.jeton)
-            .json(corps)
-            .send()
-            .await
-            .map_err(Self::erreur_reseau)?;
+    async fn ecrire_json<T: DeserializeOwned>(
+        &self,
+        req: reqwest::RequestBuilder,
+        corps: &serde_json::Value,
+    ) -> Resultat<T> {
+        let rep = self.envoyer(req.json(corps)).await?;
         let statut = rep.status().as_u16();
         let octets = rep.bytes().await.map_err(Self::erreur_reseau)?;
         if !(200..300).contains(&statut) {
             return Err(erreur_du_statut(statut, &octets));
         }
         serde_json::from_slice(&octets).map_err(|_| Erreur::Serveur("Firehouse a envoyé une réponse illisible.".into()))
+    }
+
+    /// `POST` d'un objet JSON.
+    pub async fn envoyer_json<T: DeserializeOwned>(&self, route: &str, corps: &serde_json::Value) -> Resultat<T> {
+        self.ecrire_json(self.http.post(self.url(route)), corps).await
+    }
+
+    /// `PUT` d'un objet JSON.
+    pub async fn remplacer_json<T: DeserializeOwned>(&self, route: &str, corps: &serde_json::Value) -> Resultat<T> {
+        self.ecrire_json(self.http.put(self.url(route)), corps).await
     }
 }
 
@@ -239,6 +305,61 @@ mod tests {
             r => panic!("{r:?}"),
         }
         assert!(matches!(c.obtenir("/themes", Some("\"v1\"")).await.unwrap(), Reponse::NonModifie));
+    }
+
+    #[test]
+    fn la_version_majeure_decide_de_la_compatibilite() {
+        assert!(verifier_version(Some("1.3")).is_ok());
+        assert!(verifier_version(Some("1.0")).is_ok());
+        assert!(verifier_version(None).is_ok());
+        assert!(matches!(verifier_version(Some("2.0")), Err(Erreur::Version(m)) if m.contains("plus récent")));
+        assert!(matches!(verifier_version(Some("0.9")), Err(Erreur::Version(m)) if m.contains("trop ancien")));
+    }
+
+    #[test]
+    fn l_origine_ignore_le_chemin() {
+        assert_eq!(origine("https://jeux.hikari-no-sekai.fr").unwrap(), "https://jeux.hikari-no-sekai.fr");
+        assert_eq!(origine("http://10.10.0.2:8100/sous/chemin").unwrap(), "http://10.10.0.2:8100");
+    }
+
+    #[tokio::test]
+    async fn un_serveur_d_une_autre_majeure_est_refuse() {
+        let serveur = MockServer::start();
+        serveur.mock(|when, then| {
+            when.method(GET).path("/api/jeux/v1/plateformes");
+            then.status(200).header("X-Api-Jeux-Version", "2.0").json_body(serde_json::json!({"ok": true}));
+        });
+        let c = Client::nouveau(&serveur.base_url(), "j").unwrap();
+        let e = c.obtenir_json::<serde_json::Value>("/plateformes").await.unwrap_err();
+        assert!(matches!(e, Erreur::Version(_)), "{e:?}");
+    }
+
+    #[tokio::test]
+    async fn le_client_public_n_envoie_aucun_jeton() {
+        let serveur = MockServer::start();
+        let avec = serveur.mock(|when, then| {
+            when.method(GET).path("/api/jeux/v1/themes").header_exists("authorization");
+            then.status(500);
+        });
+        let sans = serveur.mock(|when, then| {
+            when.method(GET).path("/api/jeux/v1/themes");
+            then.status(200).body("{}");
+        });
+        Client::public(&serveur.base_url()).unwrap().obtenir("/themes", None).await.unwrap();
+        avec.assert_hits(0);
+        sans.assert_hits(1);
+    }
+
+    #[tokio::test]
+    async fn put_envoie_le_corps_json() {
+        let serveur = MockServer::start();
+        let m = serveur.mock(|when, then| {
+            when.method(PUT).path("/api/jeux/v1/theme").json_body(serde_json::json!({"theme": "dracula"}));
+            then.status(200).json_body(serde_json::json!({"ok": true}));
+        });
+        let c = Client::nouveau(&serveur.base_url(), "j").unwrap();
+        let _: serde_json::Value = c.remplacer_json("/theme", &serde_json::json!({"theme": "dracula"})).await.unwrap();
+        m.assert();
     }
 
     #[tokio::test]

@@ -5,8 +5,19 @@ use crate::firehouse::{Client, Reponse};
 use serde_json::{json, Value};
 
 const TAILLE_PAGE_SIMULEE: usize = 25;
-/// Jeux demandés par page au vrai Firehouse.
-const PAR_PAGE: u32 = 100;
+/// Jeux demandés par page au vrai Firehouse (500 au plus, contrat 1.3).
+const PAR_PAGE: u32 = 500;
+
+/// Encode une valeur pour une adresse (`?cle=`, `?depuis=`).
+pub fn encoder(valeur: &str) -> String {
+    valeur
+        .bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
 
 /// `/jeu/{id}` répond `{ok, jeu: {...}}` : on rend la fiche elle-même.
 pub fn deballer_fiche(v: Value) -> Value {
@@ -71,9 +82,13 @@ impl Source {
         }
     }
 
-    pub async fn catalogue(&self, page: u32) -> Resultat<Value> {
+    /// Une page du catalogue ; avec `depuis`, seulement ce qui a changé (et `ids_visibles` en page 1).
+    pub async fn catalogue(&self, page: u32, depuis: Option<&str>) -> Resultat<Value> {
         match self {
-            Source::Firehouse(c) => c.obtenir_json(&format!("/catalogue?page={page}&par_page={PAR_PAGE}")).await,
+            Source::Firehouse(c) => {
+                let depuis = depuis.map(|d| format!("&depuis={}", encoder(d))).unwrap_or_default();
+                c.obtenir_json(&format!("/catalogue?page={page}&par_page={PAR_PAGE}{depuis}")).await
+            }
             Source::Simulee => {
                 let tous = catalogue_simule();
                 // Même forme que le vrai Firehouse (docs/EXEMPLES-API-JEUX-V1.md).
@@ -81,8 +96,13 @@ impl Source {
                 let debut = (page.saturating_sub(1) as usize) * TAILLE_PAGE_SIMULEE;
                 let jeux: Vec<Value> = tous.into_iter().skip(debut).take(TAILLE_PAGE_SIMULEE).collect();
                 let suivante = if debut + TAILLE_PAGE_SIMULEE < total { json!(page + 1) } else { Value::Null };
-                Ok(json!({"ok": true, "total": total, "page": page, "par_page": TAILLE_PAGE_SIMULEE,
-                          "suivante": suivante, "jeux": jeux}))
+                let mut r = json!({"ok": true, "total": total, "page": page, "par_page": TAILLE_PAGE_SIMULEE,
+                                   "suivante": suivante, "jeux": jeux});
+                // Le mode simulé ne suit pas les changements : tout est « changé », et tout reste visible.
+                if depuis.is_some() && page == 1 {
+                    r["ids_visibles"] = catalogue_simule().iter().map(|j| j["id"].clone()).collect();
+                }
+                Ok(r)
             }
         }
     }
@@ -97,16 +117,7 @@ impl Source {
     /// Une annexe TEXTE (`{ok, titre, texte}`). `cle` protège d'une fiche périmée (409 : relire la fiche).
     pub async fn annexe_texte(&self, id: i64, i: u32, cle: &str) -> Resultat<Value> {
         match self {
-            Source::Firehouse(c) => {
-                let cle_url: String = cle
-                    .bytes()
-                    .map(|b| match b {
-                        b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
-                        _ => format!("%{b:02X}"),
-                    })
-                    .collect();
-                c.obtenir_json(&format!("/annexe/{id}/{i}?cle={cle_url}")).await
-            }
+            Source::Firehouse(c) => c.obtenir_json(&format!("/annexe/{id}/{i}?cle={}", encoder(cle))).await,
             Source::Simulee => Ok(json!({
                 "ok": true,
                 "titre": "Lancement sous DOSBox",
@@ -115,26 +126,39 @@ impl Source {
         }
     }
 
-    /// Une image (`jaquette`…). `None` si Firehouse n'en a pas.
-    pub async fn media(&self, id: i64, sorte: &str) -> Resultat<Option<Image>> {
+    /// Une image (`jaquette`…), en miniature si `largeur` est donnée. `None` si Firehouse n'en a pas.
+    pub async fn media(&self, id: i64, sorte: &str, largeur: Option<u32>) -> Resultat<Option<Image>> {
         match self {
-            Source::Firehouse(c) => match c.obtenir(&format!("/media/{id}/{sorte}"), None).await {
-                Ok(Reponse::Corps { octets, type_contenu, .. }) => Ok(Some(Image { octets, type_contenu })),
-                Ok(Reponse::NonModifie) => Ok(None),
-                Err(Erreur::Introuvable(_)) => Ok(None),
-                Err(e) => Err(e),
-            },
+            Source::Firehouse(c) => {
+                let l = largeur.map(|l| format!("?largeur={l}")).unwrap_or_default();
+                match c.obtenir(&format!("/media/{id}/{sorte}{l}"), None).await {
+                    Ok(Reponse::Corps { octets, type_contenu, .. }) => Ok(Some(Image { octets, type_contenu })),
+                    Ok(Reponse::NonModifie) => Ok(None),
+                    Err(Erreur::Introuvable(_)) => Ok(None),
+                    Err(e) => Err(e),
+                }
+            }
             // Pas d'images dans le mode simulé : l'interface montre une jaquette de remplacement.
             Source::Simulee => Ok(None),
         }
     }
 
-    /// Le catalogue des skins (`/themes`), avec l'`ETag` du cache. `None` en mode simulé (l'interface prend
-    /// alors l'instantané fourni avec Frogtend).
-    pub async fn themes(&self, etag: Option<&str>) -> Resultat<Option<Reponse>> {
+    /// Qui porte ce jeton (`/moi`) : `{ok, username, nom, grade, via, api}`.
+    pub async fn moi(&self) -> Resultat<Value> {
         match self {
-            Source::Firehouse(c) => Ok(Some(c.obtenir("/themes", etag).await?)),
-            Source::Simulee => Ok(None),
+            Source::Firehouse(c) => c.obtenir_json("/moi").await,
+            Source::Simulee => Ok(json!({"ok": true, "nom": "Mode simulé", "grade": "simulé", "via": "simulé"})),
+        }
+    }
+
+    /// Enregistre le skin choisi dans le compte Firehouse de la personne (`PUT /theme`).
+    pub async fn enregistrer_theme(&self, nom: &str) -> Resultat<()> {
+        match self {
+            Source::Firehouse(c) => {
+                let _: Value = c.remplacer_json("/theme", &json!({ "theme": nom })).await?;
+                Ok(())
+            }
+            Source::Simulee => Err(Erreur::Refus("En mode simulé, rien n'est enregistré dans Firehouse.".into())),
         }
     }
 
@@ -158,7 +182,7 @@ mod tests {
         let mut total = 0;
         let mut page = 1;
         loop {
-            let p = lire_page(&s.catalogue(page).await.unwrap(), page);
+            let p = lire_page(&s.catalogue(page, None).await.unwrap(), page);
             total += p.jeux.len();
             if p.encore != Some(true) {
                 break;
