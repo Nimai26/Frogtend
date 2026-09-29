@@ -543,6 +543,65 @@ mod tests {
         assert!(matches!(n.ajouter(110, 200, &e.defaut[0], &e).await, Err(Erreur::Refus(_))));
     }
 
+    /// Essai RÉEL (jamais lancé par la suite) : met un jeu dans une ludothèque de TEST, dans un dossier temporaire
+    /// effacé à la fin, avec le jeton d'un profil lu dans le coffre. Télécharge vraiment : seulement avec l'accord
+    /// de Seb. `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_JEU_ESSAI=110 cargo test essai_ajout_reel -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_ajout_reel() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeu: i64 = std::env::var("FROGTEND_JEU_ESSAI").expect("FROGTEND_JEU_ESSAI").parse().unwrap();
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton pour ce profil");
+
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Essai", None, Some(&jeton)).unwrap().id;
+        let c = Connexion { adresse: "https://jeux.hikari-no-sekai.fr".into(), simule: false };
+        n.ouvrir(&id, None, &c).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        let jeux = d.path().join("Jeux");
+        std::fs::create_dir_all(&jeux).unwrap();
+        let e = Emplacements { defaut: vec![jeux.to_string_lossy().into()], ..Default::default() };
+
+        let fiche = n.fiche(jeu).await.unwrap().fiche;
+        let version = fiche["versions"][0]["telechargement_id"].as_i64().expect("aucune version");
+        let debut = std::time::Instant::now();
+        let j = n.ajouter(jeu, version, &e.defaut[0], &e).await.unwrap();
+        println!("AJOUT « {} » : {} octets, {} fichier(s), dossier {}", j.titre, j.total, j.fichiers.len(), j.dossier);
+        println!("MÉDIAS : {:?}", std::fs::read_dir(n.dossier_medias(jeu)).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>());
+        println!("DOCUMENTS : {:?}", std::fs::read_dir(n.dossier_medias(jeu).join("annexes")).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>());
+
+        let dernier = Mutex::new(std::time::Instant::now());
+        n.executer_file(n.session().await.unwrap(), &|ev| {
+            if let Evenement::Progres(p) = &ev {
+                let mut t = dernier.lock().unwrap();
+                if t.elapsed().as_secs() >= 5 {
+                    println!("  {} / {} octets, {} Ko/s", p.recus, p.total, p.debit / 1024);
+                    *t = std::time::Instant::now();
+                }
+            } else {
+                println!("  {ev:?}");
+            }
+        })
+        .await
+        .unwrap();
+        let vu = &n.jeux_du_pc().await.unwrap()[0];
+        println!("FIN : état {:?}, {} octets sur le disque sur {}, en {} s", vu.jeu.etat, vu.recus, vu.jeu.total, debut.elapsed().as_secs());
+        for f in &vu.jeu.fichiers {
+            let sur_disque = std::fs::metadata(Path::new(&vu.jeu.dossier).join(&f.nom)).unwrap().len();
+            println!("  « {} » : {} octets (attendu {})", f.nom, sur_disque, f.taille);
+            assert_eq!(sur_disque, f.taille);
+        }
+        assert_eq!(vu.jeu.etat, Etat::Telecharge);
+        // Hors ligne ensuite :
+        n.reconnecter(&Connexion { adresse: "http://127.0.0.1:9".into(), simule: false }).await.unwrap();
+        assert!(n.fiche(jeu).await.unwrap().locale);
+        assert!(n.jaquette(jeu, Some(200)).await.unwrap().is_some());
+        println!("HORS LIGNE : fiche et jaquette lues sur le disque.");
+        drop(d); // tout est effacé
+    }
+
     #[test]
     fn l_extension_d_un_document_vient_de_son_type() {
         assert_eq!(extension(Some("application/pdf")), "pdf");
