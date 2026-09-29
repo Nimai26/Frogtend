@@ -93,6 +93,19 @@ copier : elle doit être **plaisante et facile**, car des personnes qui ne sont 
 `/moi`, `X-Api-Jeux-Version`, `PUT /theme`, skins et vidéo sans jeton, miniatures, empreintes de jaquette,
 synchronisation incrémentale (`depuis` + `ids_visibles`), développeur et éditeur.
 
+### Changement de fonctionnement demandé par Seb (29/09, 23 h) — à valider avant le lot 2
+
+1. **La ludothèque ne montre QUE les jeux présents sur ce PC** (ceux que la personne a choisi d'y mettre). Le
+   catalogue de Firehouse se parcourt dans un espace À PART (« 🛒 Catalogue Firehouse »), d'où l'on choisit ce qu'on
+   met dans sa ludothèque.
+2. **Frogtend est utilisable sans Internet.** Tout ce qui sert à un jeu de la ludothèque est sur le PC : fiche,
+   jaquette (en grand), documents à lire, et plus tard les autres médias. Sans connexion, on perd seulement l'ajout
+   de nouveaux jeux et l'assistant.
+3. Conséquence : le lot 2 (télécharger) devient « **mettre un jeu dans sa ludothèque** » (choisir la version et
+   l'emplacement, télécharger le jeu ET tous ses médias).
+
+Questions posées à Seb : voir la conversation du 29/09.
+
 ### Lot 2 — Télécharger
 Une file de téléchargements avec reprise (`Range`) et un contrôle des octets reçus. Pour chaque version, la place
 nécessaire est annoncée avant de commencer. La destination suit les emplacements du système (voir « Les

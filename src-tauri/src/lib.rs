@@ -53,7 +53,11 @@ fn repondre_jaquette(app: &tauri::AppHandle, chemin: &str, requete: Option<&str>
     let Ok(id) = chemin.trim_matches('/').parse::<i64>() else { return reponse_vide(400) };
     let largeur = parametre(requete, "largeur").and_then(|l| l.parse::<u32>().ok());
     let noyau = app.state::<noyau::Noyau>();
-    match tauri::async_runtime::block_on(noyau.jaquette(id, largeur)) {
+    let resultat = tauri::async_runtime::block_on(noyau.jaquette(id, largeur));
+    if let Err(e) = &resultat {
+        noyau.journaliser(&format!("jaquette {id} (largeur {largeur:?}) : {e:?}"));
+    }
+    match resultat {
         Ok(Some(img)) => Response::builder()
             .status(200)
             .header("Content-Type", img.type_contenu.unwrap_or_else(|| "application/octet-stream".into()))
@@ -97,7 +101,17 @@ pub fn run() {
             let chemin = requete.uri().path().to_string();
             let parametres = requete.uri().query().map(String::from);
             // Hors du fil de l'interface : la jaquette peut venir du réseau.
-            std::thread::spawn(move || repondeur.respond(repondre_jaquette(&app, &chemin, parametres.as_deref())));
+            std::thread::spawn(move || {
+                // Quoi qu'il arrive, l'interface reçoit une réponse (sinon l'image attendrait pour rien).
+                let reponse = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    repondre_jaquette(&app, &chemin, parametres.as_deref())
+                }))
+                .unwrap_or_else(|_| {
+                    app.state::<noyau::Noyau>().journaliser(&format!("jaquette {chemin} : échec imprévu"));
+                    reponse_vide(500)
+                });
+                repondeur.respond(reponse)
+            });
         })
         .register_asynchronous_uri_scheme_protocol("fond", |ctx, requete, repondeur| {
             let app = ctx.app_handle().clone();

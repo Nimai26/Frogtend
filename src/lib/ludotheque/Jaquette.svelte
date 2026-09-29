@@ -1,6 +1,7 @@
 <script lang="ts">
-  // La jaquette d'un jeu, servie par le cœur pour le profil ouvert. Sans image : une carte de remplacement
-  // lisible (titre et plateforme), peinte avec les jetons du skin.
+  // La jaquette d'un jeu, servie par le cœur pour le profil ouvert.
+  // La carte de remplacement (titre, plateforme) est DERRIÈRE l'image : dès que l'image est là, elle la couvre,
+  // quoi qu'il arrive à l'état du composant. Un échec est retenté une fois avant d'abandonner.
   import { adresseJaquette } from '$lib/api';
 
   let {
@@ -24,33 +25,39 @@
     const echelle = Number(getComputedStyle(document.documentElement).getPropertyValue('--echelle')) || 1;
     return l * echelle * (window.devicePixelRatio || 1);
   }
-  let absente = $state(false);
+
+  const DELAI_NOUVEL_ESSAI_MS = 1500;
+  let essai = $state(0);
+  let abandon = $state(false);
   let chargee = $state(false);
 
-  $effect(() => {
-    // Un autre jeu : on retente l'image.
-    void id;
-    absente = disponible === false; // Firehouse dit ne pas en avoir : on ne la demande pas.
-    chargee = false;
+  const src = $derived.by(() => {
+    const base = adresseJaquette(id, pixels(largeur));
+    return essai === 0 ? base : `${base}${base.includes('?') ? '&' : '?'}essai=${essai}`;
   });
+
+  // Un autre jeu, ou une autre taille : on repart de zéro.
+  $effect(() => {
+    void id;
+    void largeur;
+    essai = 0;
+    abandon = false;
+  });
+
+  function echec() {
+    chargee = false;
+    if (essai === 0) setTimeout(() => (essai = 1), DELAI_NOUVEL_ESSAI_MS);
+    else abandon = true;
+  }
 </script>
 
 <div class="jaquette" class:chargee>
-  {#if !absente}
-    <img
-      src={adresseJaquette(id, pixels(largeur))}
-      alt=""
-      loading="lazy"
-      decoding="async"
-      onload={() => (chargee = true)}
-      onerror={() => (absente = true)}
-    />
-  {/if}
-  {#if absente || !chargee}
-    <div class="remplacement" aria-hidden="true">
-      <span class="titre">{titre}</span>
-      {#if plateforme}<span class="plateforme">{plateforme}</span>{/if}
-    </div>
+  <div class="remplacement" aria-hidden="true">
+    <span class="titre">{titre}</span>
+    {#if plateforme}<span class="plateforme">{plateforme}</span>{/if}
+  </div>
+  {#if disponible !== false && !abandon}
+    <img {src} alt="" loading="lazy" decoding="async" onload={() => (chargee = true)} onerror={echec} />
   {/if}
 </div>
 
@@ -65,6 +72,7 @@
   img {
     position: absolute;
     inset: 0;
+    z-index: 1;
     width: 100%;
     height: 100%;
     object-fit: contain;
@@ -77,13 +85,17 @@
     justify-content: flex-end;
     gap: calc(4 * var(--u));
     padding: calc(12 * var(--u));
-    background:
-      linear-gradient(160deg, color-mix(in srgb, var(--accent2) 45%, var(--panel)), color-mix(in srgb, var(--accent) 35%, var(--panel)));
+    background: linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--accent2) 45%, var(--panel)),
+      color-mix(in srgb, var(--accent) 35%, var(--panel))
+    );
     border: 1px solid var(--line);
     border-radius: inherit;
   }
+  /* Image chargée : la carte de remplacement s'efface (une jaquette en largeur laisse des bandes vides). */
   .chargee .remplacement {
-    display: none;
+    visibility: hidden;
   }
   .titre {
     font-weight: 700;

@@ -32,6 +32,17 @@ pub struct Session {
     pub cache: std::sync::Mutex<Cache>,
 }
 
+impl Session {
+    /// Le cache du profil. Si une opération précédente a échoué en plein travail, le verrou reste utilisable :
+    /// le cache SQLite, lui, est protégé par ses transactions.
+    pub fn verrou(&self) -> std::sync::MutexGuard<'_, Cache> {
+        self.cache.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
+/// Taille au-delà de laquelle le journal est mis de côté (`journal.1.txt`) et recommencé.
+const TAILLE_MAX_JOURNAL: u64 = 512 * 1024;
+
 #[derive(Debug, Serialize, PartialEq)]
 pub struct BilanSynchro {
     /// Jeux dans la ludothèque après la synchronisation.
@@ -68,6 +79,20 @@ impl Noyau {
             coffre,
             session: Mutex::new(None),
         })
+    }
+
+    /// Écrit une ligne dans le journal de ce PC (`journal.txt`). Jamais de jeton ni de secret : seulement ce qui
+    /// aide à comprendre un échec (quelle jaquette, quel motif).
+    pub fn journaliser(&self, message: &str) {
+        use std::io::Write;
+        let fichier = self.dossier.join("journal.txt");
+        if std::fs::metadata(&fichier).is_ok_and(|m| m.len() > TAILLE_MAX_JOURNAL) {
+            let _ = std::fs::rename(&fichier, self.dossier.join("journal.1.txt"));
+        }
+        let _ = std::fs::create_dir_all(&self.dossier);
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&fichier) {
+            let _ = writeln!(f, "{} {message}", maintenant());
+        }
     }
 
     fn dossier_profil(&self, id: &str) -> PathBuf {
@@ -191,7 +216,7 @@ impl Noyau {
     pub async fn synchroniser(&self, progres: impl Fn(u32, usize)) -> Resultat<BilanSynchro> {
         let s = self.session().await?;
         let mut depuis = {
-            let c = s.cache.lock().unwrap();
+            let c = s.verrou();
             if c.nombre_de_jeux()? > 0 { c.derniere_modification()? } else { None }
         };
         let plateformes = lire_plateformes(&s.source.plateformes().await?);
@@ -224,7 +249,7 @@ impl Noyau {
             let simule = s.source.est_simulee();
 
             if let (Some(_), Some(ids)) = (&depuis, ids_visibles) {
-                let mut c = s.cache.lock().unwrap();
+                let mut c = s.verrou();
                 let recus: std::collections::HashSet<i64> = jeux.iter().map(|j| j.id).collect();
                 let mut inconnu = false;
                 for id in &ids {
@@ -255,7 +280,7 @@ impl Noyau {
                 depuis = None;
                 continue;
             }
-            let mut c = s.cache.lock().unwrap();
+            let mut c = s.verrou();
             let avant = c.nombre_de_jeux()? as usize;
             c.remplacer(&plateformes, &jeux, &maintenant())?;
             let apres = jeux.len();
@@ -283,31 +308,31 @@ impl Noyau {
 
     pub async fn plateformes(&self) -> Resultat<Vec<Plateforme>> {
         let s = self.session().await?;
-        let c = s.cache.lock().unwrap();
+        let c = s.verrou();
         c.plateformes()
     }
 
     pub async fn genres(&self, plateforme: Option<&str>) -> Resultat<Vec<String>> {
         let s = self.session().await?;
-        let c = s.cache.lock().unwrap();
+        let c = s.verrou();
         c.genres(plateforme)
     }
 
     pub async fn lister(&self, filtre: &Filtre) -> Resultat<Liste> {
         let s = self.session().await?;
-        let c = s.cache.lock().unwrap();
+        let c = s.verrou();
         c.lister(filtre)
     }
 
     pub async fn au_hasard(&self, plateforme: Option<&str>) -> Resultat<Option<JeuResume>> {
         let s = self.session().await?;
-        let c = s.cache.lock().unwrap();
+        let c = s.verrou();
         c.au_hasard(plateforme)
     }
 
     pub async fn synchronise_le(&self) -> Resultat<Option<String>> {
         let s = self.session().await?;
-        let c = s.cache.lock().unwrap();
+        let c = s.verrou();
         c.synchronise_le()
     }
 
@@ -316,10 +341,10 @@ impl Noyau {
         let s = self.session().await?;
         match s.source.fiche(id).await {
             Ok(f) => {
-                s.cache.lock().unwrap().garder_fiche(id, &f, &maintenant())?;
+                s.verrou().garder_fiche(id, &f, &maintenant())?;
                 Ok(FicheLue { fiche: f, hors_ligne: false })
             }
-            Err(Erreur::Reseau(motif)) => match s.cache.lock().unwrap().fiche(id)? {
+            Err(Erreur::Reseau(motif)) => match s.verrou().fiche(id)? {
                 Some(f) => Ok(FicheLue { fiche: f, hors_ligne: true }),
                 None => Err(Erreur::Reseau(motif)),
             },
@@ -336,7 +361,7 @@ impl Noyau {
     /// son empreinte n'a pas changé), sinon depuis Firehouse (et gardée). Une absence est retenue une semaine.
     pub async fn jaquette(&self, id: i64, largeur: Option<u32>) -> Resultat<Option<Image>> {
         let s = self.session().await?;
-        let Some(jeu) = s.cache.lock().unwrap().jeu(id)? else {
+        let Some(jeu) = s.verrou().jeu(id)? else {
             return Ok(None); // un jeu qui n'est pas dans SA ludothèque : rien.
         };
         if jeu.jaquette == Some(false) {
@@ -780,6 +805,31 @@ mod tests {
         assert!(matches!(Noyau::verifier_jeton(&c, "mauvais").await, Err(Erreur::JetonRefuse(_))));
     }
 
+    /// Essai des MINIATURES sur le vrai Firehouse (lecture seule, jeton du profil lu dans le coffre).
+    /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_miniatures -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_miniatures_sur_firehouse() {
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton pour ce profil");
+        let c = Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        for id in [110, 111] {
+            for largeur in ["", "?largeur=100", "?largeur=200", "?largeur=300", "?largeur=400", "?largeur=500", "?largeur=1000"] {
+                let debut = std::time::Instant::now();
+                match c.obtenir(&format!("/media/{id}/jaquette{largeur}"), None).await {
+                    Ok(Reponse::Corps { octets, type_contenu, .. }) => println!(
+                        "jeu {id} {largeur:<14} → {} octets, {:?}, {} ms",
+                        octets.len(),
+                        type_contenu,
+                        debut.elapsed().as_millis()
+                    ),
+                    Ok(Reponse::NonModifie) => println!("jeu {id} {largeur:<14} → 304"),
+                    Err(e) => println!("jeu {id} {largeur:<14} → ERREUR {e:?} ({} ms)", debut.elapsed().as_millis()),
+                }
+            }
+        }
+    }
+
     /// Essai des routes PUBLIQUES du vrai Firehouse (sans jeton), jamais lancé par la suite (`#[ignore]`).
     /// `cargo test essai_public -- --ignored --nocapture`
     #[tokio::test]
@@ -866,6 +916,38 @@ mod tests {
         println!("2e SYNCHRO : mode {}, {} reçu(s), {} retiré(s), {} jeux", b2.mode, b2.recus, b2.retires, b2.jeux);
         assert_eq!(skins, deuxieme, "le cache ETag doit rendre les mêmes skins");
         println!("SKIN PERSONNEL : {:?}", n.skin_personnel().await.unwrap());
+    }
+
+    #[test]
+    fn le_journal_ecrit_une_ligne_et_se_met_de_cote_quand_il_est_gros() {
+        let (d, n) = noyau();
+        n.journaliser("jaquette 110 : essai");
+        let texte = std::fs::read_to_string(d.path().join("journal.txt")).unwrap();
+        assert!(texte.trim_end().ends_with("jaquette 110 : essai"));
+        std::fs::write(d.path().join("journal.txt"), vec![b'x'; (TAILLE_MAX_JOURNAL + 1) as usize]).unwrap();
+        n.journaliser("suite");
+        assert!(d.path().join("journal.1.txt").is_file());
+        assert!(std::fs::read_to_string(d.path().join("journal.txt")).unwrap().contains("suite"));
+    }
+
+    #[test]
+    fn le_cache_reste_utilisable_apres_une_erreur_en_plein_travail() {
+        let s = Session {
+            profil: ProfilVisible { id: "x".into(), nom: "X".into(), protege: false },
+            dossier: std::env::temp_dir(),
+            source: Source::Simulee,
+            cache: std::sync::Mutex::new(Cache::en_memoire().unwrap()),
+        };
+        let s = std::sync::Arc::new(s);
+        let s2 = s.clone();
+        // Un travail qui échoue brutalement en tenant le verrou…
+        let _ = std::thread::spawn(move || {
+            let _garde = s2.verrou();
+            panic!("échec simulé");
+        })
+        .join();
+        // … n'empêche pas la suite de lire le cache.
+        assert_eq!(s.verrou().nombre_de_jeux().unwrap(), 0);
     }
 
     #[test]
