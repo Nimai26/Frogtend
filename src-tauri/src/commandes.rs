@@ -356,7 +356,11 @@ enum EvenementPartie {
 #[tauri::command]
 pub async fn jeu_jouer(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<()> {
     let plateforme = noyau.registre().jeu(id)?.map(|j| j.plateforme).unwrap_or_default();
-    let (pid, dossiers, carte_cedee) = noyau.jouer(id, emulateur_regle(&app, &plateforme)).await?;
+    let emulateur = match emulateur_regle(&app, &plateforme) {
+        Some((programme, ligne)) => Some(preparer_emulateur(&app, &noyau, &plateforme, &programme, &ligne).await?),
+        None => None,
+    };
+    let (pid, dossiers, carte_cedee) = noyau.jouer(id, emulateur).await?;
     let _ = app.emit("partie", EvenementPartie::Debut { jeu: id, carte_cedee });
     let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -531,4 +535,64 @@ pub async fn retroarch_installer_coeur(programme: String, coeur: String) -> Resu
     let r = crate::emulateurs::installer_coeur(&paquet, &dossier, &coeur);
     let _ = std::fs::remove_file(&paquet);
     Ok(r?.to_string_lossy().into())
+}
+
+/// Prépare l'émulateur pour le profil ouvert (ses parties à lui, les dossiers de jeux de Frogtend) et rend
+/// (programme, ligne de commande complétée).
+async fn preparer_emulateur(
+    app: &AppHandle,
+    noyau: &Noyau,
+    plateforme: &str,
+    programme: &str,
+    ligne: &str,
+) -> Resultat<(String, String)> {
+    let chemin = std::path::Path::new(programme);
+    let nom = chemin.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
+    let Some(f) = crate::emulateurs::CATALOGUE.iter().find(|f| nom.starts_with(f.programme)) else {
+        return Ok((programme.into(), ligne.into())); // émulateur inconnu : rien à préparer
+    };
+    let profil = noyau.actif().await.ok_or_else(|| Erreur::Profil("Aucun profil n'est ouvert.".into()))?;
+    // Où sont les jeux de ce système : ses emplacements propres, sinon « <défaut><système> ».
+    let e = emplacements(app);
+    let jeux: Vec<String> = match e.systemes.get(plateforme) {
+        Some(l) if !l.is_empty() => l.clone(),
+        _ => e
+            .defaut
+            .iter()
+            .map(|d| std::path::Path::new(d).join(crate::jeux_pc::nom_de_dossier(plateforme)).to_string_lossy().into())
+            .collect(),
+    };
+    let dossier = chemin.parent().map(std::path::PathBuf::from).unwrap_or_default();
+    let (id, n, d, j) = (f.id.to_string(), profil.nom.clone(), dossier.clone(), jeux.clone());
+    let avant = tauri::async_runtime::spawn_blocking(move || crate::emulateurs_profils::preparer(&id, &d, &n, &j))
+        .await
+        .map_err(|_| Erreur::Disque("La préparation de l'émulateur s'est arrêtée brutalement.".into()))??;
+    let mut complete: Vec<String> = avant.iter().map(|a| format!("\"{a}\"")).collect();
+    if !ligne.trim().is_empty() {
+        complete.push(ligne.to_string());
+    }
+    Ok((programme.into(), complete.join(" ")))
+}
+
+#[derive(Serialize)]
+pub struct Traces {
+    pub id: String,
+    pub nom: String,
+    pub dossiers: Vec<String>,
+}
+
+/// L'« effet pieuvre » : les dossiers que des émulateurs ont laissés dans le dossier utilisateur de Windows.
+#[tauri::command]
+pub fn emulateurs_traces() -> Vec<Traces> {
+    crate::emulateurs::CATALOGUE
+        .iter()
+        .filter_map(|f| {
+            let d = crate::emulateurs_profils::traces_hors_du_dossier(f.id);
+            (!d.is_empty()).then(|| Traces {
+                id: f.id.into(),
+                nom: f.nom.into(),
+                dossiers: d.iter().map(|p| p.to_string_lossy().to_string()).collect(),
+            })
+        })
+        .collect()
 }

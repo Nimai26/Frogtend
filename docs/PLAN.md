@@ -185,7 +185,7 @@ parfois plus de 1 Go : envoi par morceaux avec reprise.
 - **Priorités : RetroArch** (consoles rétro), **DOSBox** (MS-DOS), **consoles récentes** (Dolphin, PCSX2,
   DuckStation, PPSSPP… selon les recommandations de Firehouse).
 
-**Exigence de Seb (30/09) : pas d'« effet pieuvre ».** Pour simplifier l'entretien :
+**Exigence de Seb (30/09) : pas d'« effet pieuvre ».** (✅ en 0.7.0, avec les parties séparées par profil — décision de Seb) Pour simplifier l'entretien :
 - TOUS les émulateurs (et outils du même genre) sont installés dans le **dossier « Émulateurs »** réglable dans
   l'interface (fait en 0.6.0) ;
 - chacun est en **mode portable** : rien dans le dossier utilisateur de Windows (AppData, Documents). Relevé dans les

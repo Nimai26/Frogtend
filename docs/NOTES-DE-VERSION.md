@@ -1,5 +1,19 @@
 # Notes de version de Frogtend
 
+## 0.7.0 — chacun ses parties, rien qui déborde (lot 4, suite)
+
+- **Chaque profil a ses propres parties** dans les émulateurs : parties, états, codes de triche et cartes mémoire
+  sont rangés dans `<émulateur>\Profils\<ton profil>\`, à côté de l'émulateur. Personne n'écrase la partie d'un
+  autre (RetroArch, DuckStation, PCSX2, Dolphin, PPSSPP). Pour PPSSPP, un dossier `memstick` déjà rempli est mis
+  de côté sous `memstick (avant Frogtend)` : rien n'est effacé.
+- **Les dossiers de jeux des émulateurs** pointent vers tes emplacements Frogtend.
+- **Pas d'« effet pieuvre »** : DOSBox Staging s'installe maintenant vraiment en mode portable, PPSSPP ne part plus
+  dans Documents. **Réglages ▸ Émulateurs** signale les dossiers qu'un émulateur aurait laissés dans ton dossier
+  utilisateur Windows (sans les toucher).
+- Toute configuration d'émulateur modifiée par Frogtend est d'abord copiée dans `.frogtend-sauvegardes`.
+- Les jeux PC et DOS natifs (comme Dune) gardent leurs parties dans leur propre dossier, commun au PC : la
+  sauvegarde du profil (lot 3 bis) les couvrira.
+
 ## 0.6.0 — les émulateurs (lot 4, 1re partie)
 
 - **Frogtend installe les émulateurs pour toi**, sur accord : au premier lancement d'un jeu qui en a besoin, il

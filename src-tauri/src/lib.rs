@@ -5,6 +5,7 @@
 
 pub mod coffre;
 pub mod emulateurs;
+pub mod emulateurs_profils;
 pub mod commandes;
 pub mod erreurs;
 pub mod firehouse;
@@ -173,6 +174,7 @@ pub fn run() {
             commandes::emulateur_adopter,
             commandes::retroarch_etat,
             commandes::retroarch_installer_coeur,
+            commandes::emulateurs_traces,
             commandes::skin_personnel,
         ])
         .run(tauri::generate_context!())

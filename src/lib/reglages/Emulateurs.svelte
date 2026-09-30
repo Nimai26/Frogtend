@@ -12,9 +12,11 @@
   /** Dernière version connue, par émulateur (après « Chercher des mises à jour »). */
   let dernieres = $state<Record<string, string>>({});
   let recherche = $state(false);
+  let traces = $state<{ id: string; nom: string; dossiers: string[] }[]>([]);
 
   async function recharger() {
     installes = await api.emulateursInstalles().catch(() => []);
+    traces = await api.emulateursTraces().catch(() => []);
   }
   onMount(async () => {
     plateformes = await api.plateformes(false).catch(() => []);
@@ -77,6 +79,22 @@
     </dd>
   </dl>
 
+  {#if traces.length}
+    <div class="cx-block alerte">
+      <h3>⚠ Hors du dossier des émulateurs</h3>
+      <p class="muted">
+        Ces dossiers ont été créés dans ton dossier utilisateur de Windows par un émulateur qui n’était pas en mode
+        portable (installation ancienne ou faite à la main). Frogtend ne les touche pas : vérifie ce qu’ils
+        contiennent (des parties ?) avant de les ranger ou de les effacer toi-même.
+      </p>
+      <ul>
+        {#each traces as t (t.id)}
+          {#each t.dossiers as d (d)}<li><strong>{t.nom}</strong> : <span class="chemin">{d}</span></li>{/each}
+        {/each}
+      </ul>
+    </div>
+  {/if}
+
   {#if installes.length}
     <div class="cx-block">
       <h3>Sur ce PC</h3>
@@ -128,6 +146,13 @@
   }
   .muted {
     margin: 0;
+  }
+  .alerte {
+    box-shadow: inset calc(3 * var(--u)) 0 0 var(--warn);
+  }
+  .alerte ul {
+    margin: calc(6 * var(--u)) 0 0;
+    padding-left: calc(18 * var(--u));
   }
   dd {
     display: flex;

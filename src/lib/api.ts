@@ -314,6 +314,7 @@ export const api = {
     appeler<EtatRetroArch>('retroarch_etat', { programme, ligne, bios }),
   retroarchInstallerCoeur: (programme: string, coeur: string) =>
     appeler<string>('retroarch_installer_coeur', { programme, coeur }),
+  emulateursTraces: () => appeler<{ id: string; nom: string; dossiers: string[] }[]>('emulateurs_traces'),
   emulateursRecommandes: (plateforme: string) =>
     appeler<{ emulateurs?: EmulateurRecommande[] }>('emulateurs_recommandes', { plateforme }),
 };
