@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.9.1 — les parties à l'abri partent aussi dans la sauvegarde
+
+- Correction importante : les parties **mises à l'abri** (avant de retirer ou réinstaller un jeu) n'entraient pas dans
+  la sauvegarde du profil. Un jeu retiré du PC, ou téléchargé mais pas encore réinstallé (comme Dune), pouvait donc
+  perdre ses parties après un reformatage. Maintenant, la copie la plus récente de chaque jeu part avec la
+  sauvegarde, et elle est reposée quand le jeu est réinstallé.
+
 ## 0.9.0 — tes réglages de manette, jeu par jeu (lot 4c)
 
 - **🎮 Commandes, jeu par jeu** (⚙ Gérer le jeu ▸ 🎮 Commandes) : **Automatique**, **Clavier et souris** (Frogtend ne

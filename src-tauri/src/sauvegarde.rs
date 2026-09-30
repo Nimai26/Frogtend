@@ -389,6 +389,35 @@ impl Noyau {
             }
         }
 
+        // Les parties MISES À L'ABRI (avant un retrait ou une réinstallation) : la copie la plus récente de chaque jeu,
+        // même s'il n'est plus sur le PC — c'est parfois la seule copie qui reste. Elle va au même endroit que les
+        // parties d'un jeu installé (`jeux/<id>/…`), et sera reposée à la réinstallation. Un fichier déjà pris dans
+        // le jeu installé (plus récent) passe avant.
+        if let Ok(entrees) = std::fs::read_dir(self.dossier.join("sauvegardes")) {
+            let mut ids: Vec<PathBuf> = entrees.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+            ids.sort();
+            for d in ids {
+                let Some(id) = d.file_name().and_then(|n| n.to_str()).and_then(|n| n.parse::<i64>().ok()) else { continue };
+                let Some(recente) = std::fs::read_dir(&d)
+                    .ok()
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .map(|e| e.path())
+                    .filter(|p| p.is_dir())
+                    .max_by_key(|p| p.file_name().and_then(|n| n.to_str()).and_then(|n| n.parse::<u64>().ok()).unwrap_or(0))
+                else {
+                    continue;
+                };
+                for r in fichiers_de(&recente)? {
+                    let relatif = format!("jeux/{id}/{r}");
+                    if !parties.iter().any(|e| e.relatif == relatif) {
+                        parties.push(Element { source: recente.join(&r), relatif });
+                    }
+                }
+            }
+        }
+
         // Les parties du profil dans chaque émulateur.
         let mut vus = std::collections::BTreeSet::new();
         for programme in programmes_emulateurs {
@@ -637,5 +666,29 @@ mod tests {
         assert_eq!(c.configuration["profil"]["nom"], "Seb");
         let rel: Vec<_> = c.parties.iter().map(|e| e.relatif.as_str()).collect();
         assert_eq!(rel, vec!["emulateurs/RetroArch/saves/Super Metroid (USA).srm"]);
+    }
+
+    #[tokio::test]
+    async fn les_parties_mises_a_l_abri_d_un_jeu_retire_sont_sauvegardees() {
+        use crate::coffre::CoffreMemoire;
+        use crate::noyau::Connexion;
+        let d = tempfile::tempdir().unwrap();
+        let app = d.path().join("app");
+        let n = Noyau::nouveau(&app, Box::new(CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, None).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: String::new(), simule: true }).await.unwrap();
+
+        // Dune retiré du PC : deux mises à l'abri, la plus récente l'emporte.
+        let ancienne = app.join("sauvegardes").join("110").join("1790000000").join("C").join("DUNECD");
+        let recente = app.join("sauvegardes").join("110").join("1790724553").join("C").join("DUNECD");
+        std::fs::create_dir_all(&ancienne).unwrap();
+        std::fs::create_dir_all(&recente).unwrap();
+        std::fs::write(ancienne.join("DUNE37S0.SAV"), b"vieille").unwrap();
+        std::fs::write(recente.join("DUNE37S0.SAV"), b"recente").unwrap();
+
+        let c = n.contenu_sauvegarde(&[]).await.unwrap();
+        assert_eq!(c.parties.len(), 1);
+        assert_eq!(c.parties[0].relatif, "jeux/110/C/DUNECD/DUNE37S0.SAV");
+        assert_eq!(std::fs::read(&c.parties[0].source).unwrap(), b"recente");
     }
 }

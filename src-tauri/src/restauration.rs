@@ -302,6 +302,32 @@ mod tests {
         assert!(matches!(n.preparer_restauration("Seb", "PC", &|_, _| {}).await, Err(Erreur::Conflit(_))));
     }
 
+    /// Relit (LECTURE SEULE) les sauvegardes du compte sur le vrai Firehouse : liste, puis les documents d'un couple.
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_COUPLE=Profil/PC cargo test essai_lire_sauvegarde -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_lire_sauvegarde() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton pour ce profil");
+        let c = Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        for s in lister(&c).await.unwrap() {
+            println!("sauvegarde : {} / {} — {} octets — {}", s.profil, s.pc, s.octets, s.derniere);
+        }
+        let couple = std::env::var("FROGTEND_COUPLE").expect("FROGTEND_COUPLE");
+        let (p, m) = couple.split_once('/').unwrap();
+        let base = format!("/sauvegarde/{}/{}", crate::source::encoder(p), crate::source::encoder(m));
+        let conf: Value = c.obtenir_json(&format!("{base}/document/configuration.json")).await.unwrap();
+        let cles: Vec<&String> = conf.as_object().map(|o| o.keys().collect()).unwrap_or_default();
+        println!("configuration.json : {cles:?}, profil {}", conf["profil"]);
+        let biblio: Value = c.obtenir_json(&format!("{base}/document/bibliotheque.json")).await.unwrap();
+        for j in biblio["jeux"].as_array().cloned().unwrap_or_default() {
+            println!("jeu : {} — {} ({})", j["id"], j["titre"], j["etat"]);
+        }
+        let man: ManifesteParties = serde_json::from_value(c.obtenir_json(&format!("{base}/document/manifeste.json")).await.unwrap()).unwrap();
+        println!("manifeste : {} fichier(s)", man.fichiers.len());
+    }
+
     /// Essai sur le VRAI Firehouse (contrat 1.5), jamais lancé par la suite de tests (`#[ignore]`), avec l'accord de
     /// Seb. Il écrit UNIQUEMENT dans un dossier d'essai (« Essai-Frogtend / Venkman-essai »), avec des fichiers
     /// fabriqués ici : aucune vraie partie, aucun vrai profil. Il retire ensuite tout ce qu'il a créé (fichiers, puis le couple entier).
