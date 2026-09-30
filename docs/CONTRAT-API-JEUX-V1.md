@@ -79,3 +79,18 @@ recensement). `launchbox_id` reste le contrat ; un `jeu_id` s'ajoutera à côté
 - `fin` → `{ok, session: null}`.
 - 403 : grade non permis (`jeux.session_grades`) ou session de quelqu'un d'autre. Ne pas réessayer (Frogtend note
   l'échec dans son journal et ne bloque jamais le jeu).
+
+## Sauvegarde des profils (Firehouse 2.19.0, contrat 1.4, 30/09/2026)
+
+- **Partage** : `\10.10.0.2\Frogtend` (ZFS de Shyrka, décision de Seb). Ouvrir DIRECTEMENT
+  `\10.10.0.2\Frogtend\<username>` : la racine est illisible par conception.
+- `GET /moi` → `sauvegarde: {partage, compte: "frogtend-<username>", disponible}`.
+- `GET /sauvegarde/identifiants` → `{ok, compte, mot_de_passe, partage}` : réservé au JETON d'appareil (403 depuis
+  le cockpit), 503 si le serveur ne gère pas les comptes. Compte créé à la demande. Mot de passe généré par
+  Firehouse, jamais affiché : rangé dans le coffre Windows ; en cas d'échec d'authentification, le redemander UNE fois.
+- **SMB 3.1.1 minimum, chiffrement et signature obligatoires** ; réseau de la maison seulement (hors de la maison :
+  file locale envoyée au retour).
+- **Arborescence** (plusieurs profils par compte) : `<username>/<profil>/<nom du PC>/` → `configuration.json`,
+  `bibliotheque.json`, `parties/` + manifeste sha256. Frogtend écrit la version courante ; l'historique est gardé par
+  les instantanés ZFS (horaires 24 h, quotidiens 14 j, hebdomadaires 8 sem.), copie hors site chiffrée chaque nuit.
+- Premier essai réel : lecture/écriture d'un petit fichier dans `sebastien/<profil>/<PC>/`, avec l'accord de Seb.
