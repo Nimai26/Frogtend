@@ -304,7 +304,7 @@ mod tests {
 
     /// Essai sur le VRAI Firehouse (contrat 1.5), jamais lancé par la suite de tests (`#[ignore]`), avec l'accord de
     /// Seb. Il écrit UNIQUEMENT dans un dossier d'essai (« Essai-Frogtend / Venkman-essai »), avec des fichiers
-    /// fabriqués ici : aucune vraie partie, aucun vrai profil. Il retire ensuite ce qu'il a envoyé.
+    /// fabriqués ici : aucune vraie partie, aucun vrai profil. Il retire ensuite tout ce qu'il a créé (fichiers, puis le couple entier).
     /// `FROGTEND_PROFIL_ESSAI=<id du profil> cargo test essai_sauvegarde_reelle -- --ignored --nocapture`
     #[tokio::test]
     #[ignore]
@@ -388,9 +388,15 @@ mod tests {
         }
         let apres = c.brute(reqwest::Method::GET, &format!("{base}/fichier?chemin={}", crate::source::encoder(fichiers[0].0)), None, &[]).await.unwrap();
         println!("après le ménage : GET d'un fichier → code {}", apres.statut);
-        for doc in ["configuration.json", "bibliotheque.json", "manifeste.json", "derniere-sauvegarde.json"] {
-            let r = c.brute(reqwest::Method::DELETE, &format!("{base}/document/{doc}"), None, &[]).await.unwrap();
-            println!("DELETE document {doc} → code {}", r.statut);
-        }
+        assert_eq!(apres.statut, 404);
+        // Puis tout le couple d'essai, documents compris (DELETE /sauvegarde/{profil}/{pc}, Firehouse 30/09).
+        // Garde-fou : jamais un autre couple que celui de l'essai.
+        assert_eq!((p, m), ("Essai-Frogtend", "Venkman-essai"));
+        let r = c.brute(reqwest::Method::DELETE, &base, None, &[]).await.unwrap();
+        println!("DELETE {base} → code {} {}", r.statut, String::from_utf8_lossy(&r.octets));
+        assert!((200..300).contains(&r.statut));
+        let liste = lister(&c).await.unwrap();
+        assert!(!liste.iter().any(|s| s.profil == p && s.pc == m), "plus rien de l'essai chez Firehouse");
+        println!("vérifié : l'essai n'apparaît plus dans GET /sauvegarde");
     }
 }

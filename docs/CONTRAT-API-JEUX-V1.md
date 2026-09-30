@@ -116,7 +116,7 @@ Remplace le partage SMB (supprimé en 2.20.0). Relu par l'expert infra de Fireho
   `X-Contenu-Sha256` (empreinte du fichier entier). Le `total` et l'empreinte sont **figés au 1er morceau** : un
   morceau qui annonce autre chose reçoit **409 `{recu: 0}`** → reprendre à zéro. Morceau mal placé : 409 `{recu}`.
   Dernier morceau renvoyé après une coupure sur un fichier déjà complet et identique : `{complet: true}`.
-  `HEAD` → `X-Recu` (ce qui est déjà reçu). `GET` avec `Range`. `DELETE` retire le fichier.
+  `HEAD` → `X-Recu` (ce qui est déjà reçu). `GET` avec `Range`. `DELETE` retire le fichier. `DELETE /sauvegarde/{profil}/{pc}` retire tout le couple, documents compris (pas de DELETE pour un document seul : un PUT le remplace).
 - **Noms** : `profil` et `pc` en ASCII `[A-Za-z0-9 ._-]`, 64 au plus (« Zoé » est refusé : Frogtend translittère en
   « Zoe »). `chemin` : normalisé en NFC, 240 octets au plus par segment, sensible à la casse (éviter deux noms qui ne
   diffèrent que par la casse : Windows les confondrait).
