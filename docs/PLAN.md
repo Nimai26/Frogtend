@@ -281,6 +281,10 @@ Pistes techniques, **à vérifier dans la documentation officielle avant de code
 
 Ordre proposé : **avant Taodbox** (lot 5), qui s'en sert. À valider avec Seb.
 
+**Recherche faite le 30/09** : voir [RECHERCHE-MENU-EN-JEU.md](RECHERCHE-MENU-EN-JEU.md) (possible / impossible,
+émulateur par émulateur, avec les preuves). Point bloquant à mesurer en premier : **Frogtend lit-il la manette quand
+le jeu a le focus ?** (XInput, et SDL pour les manettes PlayStation/Switch).
+
 ### Lot 5 — Taodbox
 Démarrage avec `--taodbox`, plein écran, entièrement à la manette. Déclaration comme application Sunshine/Apollo.
 La sortie est propre : le jeu est fermé, le bureau rendu et la fin de session signalée. Premier essai mesuré avec
