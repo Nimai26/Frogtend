@@ -70,56 +70,221 @@ pub fn empreinte(chemin: &Path) -> Resultat<String> {
     Ok(h.finalize().iter().map(|o| format!("{o:02x}")).collect())
 }
 
-/// Écrit un fichier sûrement : `.part` puis renommage (jamais un fichier à moitié écrit à la place du bon).
-fn ecrire_sur(cible: &Path, octets: &[u8]) -> Resultat<()> {
-    if let Some(p) = cible.parent() {
-        std::fs::create_dir_all(p)?;
-    }
-    let part = cible.with_extension("part-frogtend");
-    std::fs::write(&part, octets)?;
-    std::fs::rename(&part, cible)?;
-    Ok(())
+/// Taille maximale d'un morceau envoyé à Firehouse (contrat 1.5 : 8 Mo au plus).
+pub const MORCEAU: usize = 8 * 1024 * 1024;
+
+/// Où va la sauvegarde : l'API de Firehouse (partout), ou un dossier local (tests).
+#[allow(async_fn_in_trait)]
+pub trait Destination {
+    /// Un document JSON (`configuration.json`, `bibliotheque.json`, `manifeste.json`, `derniere-sauvegarde.json`).
+    async fn lire_document(&self, nom: &str) -> Resultat<Option<Value>>;
+    async fn ecrire_document(&self, nom: &str, v: &Value) -> Resultat<()>;
+    /// Envoie un fichier de `parties/` ; rend les octets envoyés.
+    async fn envoyer_fichier(&self, relatif: &str, source: &Path, sha: &str, taille: u64) -> Resultat<u64>;
+    async fn supprimer_fichier(&self, relatif: &str) -> Resultat<()>;
+    /// `Some(vrai)` si la destination sait que ce fichier est bien là à cette taille ; `None` si elle ne peut pas le
+    /// dire à peu de frais (on fait alors confiance au manifeste).
+    fn present(&self, relatif: &str, taille: u64) -> Option<bool>;
 }
 
-fn copier_sur(source: &Path, cible: &Path) -> Resultat<u64> {
-    if let Some(p) = cible.parent() {
-        std::fs::create_dir_all(p)?;
+/// Un dossier local (tests, ou copie de secours).
+pub struct DossierLocal(pub PathBuf);
+
+impl DossierLocal {
+    fn ecrire_sur(cible: &Path, octets: &[u8]) -> Resultat<()> {
+        if let Some(p) = cible.parent() {
+            std::fs::create_dir_all(p)?;
+        }
+        let part = cible.with_extension("part-frogtend");
+        std::fs::write(&part, octets)?;
+        std::fs::rename(&part, cible)?;
+        Ok(())
     }
-    let part = cible.with_extension("part-frogtend");
-    let n = std::fs::copy(source, &part)?;
-    // Vérifier le résultat : la copie a la taille de l'original.
-    if std::fs::metadata(&part)?.len() != std::fs::metadata(source)?.len() {
-        let _ = std::fs::remove_file(&part);
-        return Err(Erreur::Disque(format!("La copie de {} est incomplète.", source.display())));
-    }
-    std::fs::rename(&part, cible)?;
-    Ok(n)
 }
 
-/// Envoie la sauvegarde dans `dossier` (celui du profil pour ce PC, sur le partage — ou un dossier local en test).
-pub fn envoyer(dossier: &Path, contenu: &Contenu, pc: &str) -> Resultat<Bilan> {
-    std::fs::create_dir_all(dossier.join("parties"))?;
-    let chemin_manifeste = dossier.join("parties").join("manifeste.json");
-    let ancien: ManifesteParties = std::fs::read(&chemin_manifeste)
-        .ok()
-        .and_then(|o| serde_json::from_slice(&o).ok())
+impl Destination for DossierLocal {
+    async fn lire_document(&self, nom: &str) -> Resultat<Option<Value>> {
+        Ok(std::fs::read(self.0.join(nom)).ok().and_then(|o| serde_json::from_slice(&o).ok()))
+    }
+    async fn ecrire_document(&self, nom: &str, v: &Value) -> Resultat<()> {
+        Self::ecrire_sur(&self.0.join(nom), &serde_json::to_vec_pretty(v).unwrap())
+    }
+    async fn envoyer_fichier(&self, relatif: &str, source: &Path, _sha: &str, taille: u64) -> Resultat<u64> {
+        let cible = self.0.join("parties").join(relatif);
+        if let Some(p) = cible.parent() {
+            std::fs::create_dir_all(p)?;
+        }
+        let part = cible.with_extension("part-frogtend");
+        let n = std::fs::copy(source, &part)?;
+        if std::fs::metadata(&part)?.len() != taille {
+            let _ = std::fs::remove_file(&part);
+            return Err(Erreur::Disque(format!("La copie de {} est incomplète.", source.display())));
+        }
+        std::fs::rename(&part, cible)?;
+        Ok(n)
+    }
+    async fn supprimer_fichier(&self, relatif: &str) -> Resultat<()> {
+        let p = self.0.join("parties").join(relatif);
+        if p.is_file() {
+            std::fs::remove_file(p)?;
+        }
+        Ok(())
+    }
+    fn present(&self, relatif: &str, taille: u64) -> Option<bool> {
+        Some(std::fs::metadata(self.0.join("parties").join(relatif)).is_ok_and(|m| m.len() == taille))
+    }
+}
+
+/// Un nom accepté par l'API pour un profil ou un PC : lettres et chiffres sans accents, espace, « . », « _ », « - »,
+/// 64 caractères au plus (contrat 1.5).
+pub fn nom_pour_api(s: &str) -> String {
+    // Les accents s'enlèvent, la casse reste (« Sébastien » → « Sebastien »).
+    let sans_accent = |c: char| -> char {
+        let bas = c.to_lowercase().next().unwrap_or(c);
+        let base = match bas {
+            'à' | 'á' | 'â' | 'ä' | 'ã' | 'å' => 'a',
+            'é' | 'è' | 'ê' | 'ë' => 'e',
+            'î' | 'ï' | 'í' | 'ì' => 'i',
+            'ô' | 'ö' | 'ó' | 'ò' | 'õ' => 'o',
+            'ù' | 'û' | 'ü' | 'ú' => 'u',
+            'ç' => 'c',
+            'ñ' => 'n',
+            'ÿ' => 'y',
+            _ => return c,
+        };
+        if c.is_uppercase() { base.to_ascii_uppercase() } else { base }
+    };
+    let n: String = s
+        .chars()
+        .map(sans_accent)
+        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, ' ' | '.' | '_' | '-') { c } else { '_' })
+        .take(64)
+        .collect();
+    let n = n.trim_matches(|c| c == ' ' || c == '.').to_string();
+    if n.is_empty() || n.contains("..") { "profil".into() } else { n }
+}
+
+/// L'API de sauvegarde de Firehouse (contrat 1.5), pour `<username du jeton>/<profil>/<pc>/`.
+pub struct Api<'a> {
+    pub client: &'a crate::firehouse::Client,
+    pub profil: String,
+    pub pc: String,
+    /// Taille des morceaux (8 Mo ; plus petit dans les tests).
+    pub morceau: usize,
+}
+
+impl Api<'_> {
+    fn base(&self) -> String {
+        format!("/sauvegarde/{}/{}", crate::source::encoder(&self.profil), crate::source::encoder(&self.pc))
+    }
+    fn route_fichier(&self, relatif: &str) -> String {
+        format!("{}/fichier?chemin={}", self.base(), crate::source::encoder(relatif))
+    }
+    fn refus(b: &crate::firehouse::Brute) -> Erreur {
+        crate::firehouse::erreur_du_statut(b.statut, &b.octets)
+    }
+}
+
+impl Destination for Api<'_> {
+    async fn lire_document(&self, nom: &str) -> Resultat<Option<Value>> {
+        let b = self.client.brute(reqwest::Method::GET, &format!("{}/document/{nom}", self.base()), None, &[]).await?;
+        match b.statut {
+            200 => Ok(serde_json::from_slice(&b.octets).ok()),
+            404 => Ok(None),
+            _ => Err(Self::refus(&b)),
+        }
+    }
+    async fn ecrire_document(&self, nom: &str, v: &Value) -> Resultat<()> {
+        let corps = serde_json::to_vec(v).unwrap();
+        let b = self
+            .client
+            .brute(reqwest::Method::PUT, &format!("{}/document/{nom}", self.base()), Some(corps), &[("Content-Type", "application/json".into())])
+            .await?;
+        if (200..300).contains(&b.statut) { Ok(()) } else { Err(Self::refus(&b)) }
+    }
+    async fn envoyer_fichier(&self, relatif: &str, source: &Path, sha: &str, taille: u64) -> Resultat<u64> {
+        use std::io::{Read, Seek, SeekFrom};
+        let route = self.route_fichier(relatif);
+        if taille == 0 {
+            let b = self.client.brute(reqwest::Method::PUT, &route, Some(vec![]), &[("X-Contenu-Sha256", sha.into())]).await?;
+            return if (200..300).contains(&b.statut) { Ok(0) } else { Err(Self::refus(&b)) };
+        }
+        // Reprise : ce que Firehouse a déjà reçu de ce fichier (`.part`).
+        let deja = self.client.brute(reqwest::Method::HEAD, &route, None, &[]).await?;
+        let mut position = deja.recu.unwrap_or(0).min(taille);
+        let mut fichier = std::fs::File::open(source)?;
+        let mut envoyes = 0u64;
+        let mut conflits = 0;
+        loop {
+            let fin = (position + self.morceau as u64).min(taille);
+            let mut morceau = vec![0u8; (fin - position) as usize];
+            fichier.seek(SeekFrom::Start(position))?;
+            fichier.read_exact(&mut morceau)?;
+            let entetes = [
+                ("Content-Range", format!("bytes {position}-{}/{taille}", fin - 1)),
+                ("X-Contenu-Sha256", sha.to_string()),
+                ("Content-Type", "application/octet-stream".into()),
+            ];
+            let b = self.client.brute(reqwest::Method::PUT, &route, Some(morceau), &entetes).await?;
+            let v: Value = serde_json::from_slice(&b.octets).unwrap_or(Value::Null);
+            match b.statut {
+                200..=299 => {
+                    envoyes += fin - position;
+                    if v["complet"] == true || fin == taille {
+                        if v["complet"] != true {
+                            return Err(Erreur::Serveur(format!("Firehouse n'a pas confirmé « {relatif} ».")));
+                        }
+                        return Ok(envoyes);
+                    }
+                    position = v["recu"].as_u64().unwrap_or(fin);
+                }
+                409 => {
+                    conflits += 1;
+                    match v["recu"].as_u64() {
+                        // Le morceau ne commençait pas là où Firehouse en est : on reprend là.
+                        Some(r) if conflits <= 3 => position = r.min(taille),
+                        Some(_) => return Err(Erreur::Serveur(format!("L'envoi de « {relatif} » ne se cale pas."))),
+                        // Empreinte différente au dernier morceau (le .part est effacé) : le fichier a changé pendant
+                        // l'envoi, ou il est arrivé abîmé. Un seul nouvel essai complet.
+                        None if conflits <= 1 => position = 0,
+                        None => return Err(Erreur::Conflit(format!("« {relatif} » arrive abîmé chez Firehouse."))),
+                    }
+                }
+                _ => return Err(Self::refus(&b)),
+            }
+        }
+    }
+    async fn supprimer_fichier(&self, relatif: &str) -> Resultat<()> {
+        let b = self.client.brute(reqwest::Method::DELETE, &self.route_fichier(relatif), None, &[]).await?;
+        if (200..300).contains(&b.statut) || b.statut == 404 { Ok(()) } else { Err(Self::refus(&b)) }
+    }
+    fn present(&self, _relatif: &str, _taille: u64) -> Option<bool> {
+        None
+    }
+}
+
+/// Envoie la sauvegarde à la destination : seul ce qui a changé (d'après le manifeste), et ce qui a disparu sort de
+/// la version courante.
+pub async fn envoyer(d: &impl Destination, contenu: &Contenu, pc: &str, emplacement: &str) -> Resultat<Bilan> {
+    let ancien: ManifesteParties = d
+        .lire_document("manifeste.json")
+        .await?
+        .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_default();
-
     let mut nouveau = ManifesteParties::default();
-    let mut bilan = Bilan { pc: pc.into(), dossier: dossier.to_string_lossy().into(), date: maintenant(), ..Default::default() };
+    let mut bilan = Bilan { pc: pc.into(), dossier: emplacement.into(), date: maintenant(), ..Default::default() };
     for e in &contenu.parties {
         if !e.source.is_file() {
             continue;
         }
         let taille = std::fs::metadata(&e.source)?.len();
         let sha = empreinte(&e.source)?;
-        let cible = dossier.join("parties").join(&e.relatif);
         let deja = ancien.fichiers.get(&e.relatif) == Some(&(sha.clone(), taille))
-            && std::fs::metadata(&cible).is_ok_and(|m| m.len() == taille);
+            && d.present(&e.relatif, taille).unwrap_or(true);
         if deja {
             bilan.inchanges += 1;
         } else {
-            bilan.octets += copier_sur(&e.source, &cible)?;
+            bilan.octets += d.envoyer_fichier(&e.relatif, &e.source, &sha, taille).await?;
             bilan.envoyes += 1;
         }
         bilan.taille += taille;
@@ -128,19 +293,16 @@ pub fn envoyer(dossier: &Path, contenu: &Contenu, pc: &str) -> Resultat<Bilan> {
     // Ce qui n'existe plus sur le PC sort de la version courante (l'historique du serveur le garde).
     for r in ancien.fichiers.keys() {
         if !nouveau.fichiers.contains_key(r) {
-            let p = dossier.join("parties").join(r);
-            if p.is_file() {
-                std::fs::remove_file(p)?;
-                bilan.retires += 1;
-            }
+            d.supprimer_fichier(r).await?;
+            bilan.retires += 1;
         }
     }
     bilan.fichiers = nouveau.fichiers.len();
-
-    ecrire_sur(&dossier.join("configuration.json"), &serde_json::to_vec_pretty(&contenu.configuration).unwrap())?;
-    ecrire_sur(&dossier.join("bibliotheque.json"), &serde_json::to_vec_pretty(&contenu.bibliotheque).unwrap())?;
-    ecrire_sur(&chemin_manifeste, &serde_json::to_vec_pretty(&nouveau).unwrap())?;
-    ecrire_sur(&dossier.join("derniere-sauvegarde.json"), &serde_json::to_vec_pretty(&bilan).unwrap())?;
+    d.ecrire_document("configuration.json", &contenu.configuration).await?;
+    d.ecrire_document("bibliotheque.json", &contenu.bibliotheque).await?;
+    // Le manifeste en dernier : tant qu'il n'est pas écrit, la sauvegarde précédente reste la référence.
+    d.ecrire_document("manifeste.json", &serde_json::to_value(&nouveau).unwrap()).await?;
+    d.ecrire_document("derniere-sauvegarde.json", &serde_json::to_value(&bilan).unwrap()).await?;
     Ok(bilan)
 }
 
@@ -218,8 +380,8 @@ mod tests {
         Contenu { configuration: json!({"a": 1}), bibliotheque: json!({"jeux": []}), parties }
     }
 
-    #[test]
-    fn seul_ce_qui_a_change_est_renvoye_et_ce_qui_a_disparu_sort_de_la_version_courante() {
+    #[tokio::test]
+    async fn seul_ce_qui_a_change_est_renvoye_et_ce_qui_a_disparu_sort_de_la_version_courante() {
         let pc = tempfile::tempdir().unwrap();
         let partage = tempfile::tempdir().unwrap();
         let a = pc.path().join("PARTIE1.SAV");
@@ -228,38 +390,180 @@ mod tests {
         std::fs::write(&b, b"deux").unwrap();
         let el = |p: &Path, r: &str| Element { source: p.into(), relatif: r.into() };
 
-        let b1 = envoyer(partage.path(), &contenu(vec![el(&a, "jeux/110/PARTIE1.SAV"), el(&b, "jeux/110/PARTIE2.SAV")]), "VENKMAN").unwrap();
+        let b1 = envoyer(&DossierLocal(partage.path().into()), &contenu(vec![el(&a, "jeux/110/PARTIE1.SAV"), el(&b, "jeux/110/PARTIE2.SAV")]), "VENKMAN", "test").await.unwrap();
         assert_eq!((b1.envoyes, b1.inchanges, b1.fichiers, b1.taille), (2, 0, 2, 6)); // « un » + « deux » = 6 octets
         assert_eq!(std::fs::read(partage.path().join("parties/jeux/110/PARTIE1.SAV")).unwrap(), b"un");
 
         // Rien n'a changé : rien n'est renvoyé.
-        let b2 = envoyer(partage.path(), &contenu(vec![el(&a, "jeux/110/PARTIE1.SAV"), el(&b, "jeux/110/PARTIE2.SAV")]), "VENKMAN").unwrap();
+        let b2 = envoyer(&DossierLocal(partage.path().into()), &contenu(vec![el(&a, "jeux/110/PARTIE1.SAV"), el(&b, "jeux/110/PARTIE2.SAV")]), "VENKMAN", "test").await.unwrap();
         assert_eq!((b2.envoyes, b2.inchanges, b2.octets), (0, 2, 0));
 
         // Une partie change, une autre disparaît.
         std::fs::write(&a, b"un, plus loin").unwrap();
-        let b3 = envoyer(partage.path(), &contenu(vec![el(&a, "jeux/110/PARTIE1.SAV")]), "VENKMAN").unwrap();
+        let b3 = envoyer(&DossierLocal(partage.path().into()), &contenu(vec![el(&a, "jeux/110/PARTIE1.SAV")]), "VENKMAN", "test").await.unwrap();
         assert_eq!((b3.envoyes, b3.inchanges, b3.retires), (1, 0, 1));
         assert_eq!(std::fs::read(partage.path().join("parties/jeux/110/PARTIE1.SAV")).unwrap(), b"un, plus loin");
         assert!(!partage.path().join("parties/jeux/110/PARTIE2.SAV").exists());
 
         // Les documents sont là, sans fichier à moitié écrit.
-        for f in ["configuration.json", "bibliotheque.json", "parties/manifeste.json", "derniere-sauvegarde.json"] {
+        for f in ["configuration.json", "bibliotheque.json", "manifeste.json", "derniere-sauvegarde.json"] {
             assert!(partage.path().join(f).is_file(), "{f}");
         }
         assert!(fichiers_de(partage.path()).unwrap().iter().all(|f| !f.ends_with("part-frogtend")));
     }
 
-    #[test]
-    fn un_fichier_efface_sur_le_serveur_est_renvoye() {
+    #[tokio::test]
+    async fn un_fichier_efface_sur_le_serveur_est_renvoye() {
         let pc = tempfile::tempdir().unwrap();
         let partage = tempfile::tempdir().unwrap();
         let a = pc.path().join("x.sav");
         std::fs::write(&a, b"x").unwrap();
         let c = contenu(vec![Element { source: a.clone(), relatif: "jeux/1/x.sav".into() }]);
-        envoyer(partage.path(), &c, "PC").unwrap();
+        envoyer(&DossierLocal(partage.path().into()), &c, "PC", "test").await.unwrap();
         std::fs::remove_file(partage.path().join("parties/jeux/1/x.sav")).unwrap();
-        assert_eq!(envoyer(partage.path(), &c, "PC").unwrap().envoyes, 1);
+        assert_eq!(envoyer(&DossierLocal(partage.path().into()), &c, "PC", "test").await.unwrap().envoyes, 1);
+    }
+
+    mod api {
+        use super::*;
+        use httpmock::prelude::*;
+        use httpmock::Method::HEAD;
+
+        fn client(s: &MockServer) -> crate::firehouse::Client {
+            crate::firehouse::Client::nouveau(&s.base_url(), "j").unwrap()
+        }
+        const ROUTE: &str = "/api/jeux/v1/sauvegarde/Sebastien/VENKMAN/fichier";
+
+        #[test]
+        fn les_noms_respectent_le_contrat() {
+            assert_eq!(nom_pour_api("Sébastien"), "Sebastien");
+            assert_eq!(nom_pour_api("Léa & Zoé"), "Lea _ Zoe");
+            assert_eq!(nom_pour_api(".."), "profil");
+            assert_eq!(nom_pour_api("VENKMAN"), "VENKMAN");
+        }
+
+        #[tokio::test]
+        async fn un_fichier_part_en_morceaux_avec_son_empreinte() {
+            let s = MockServer::start();
+            let d = tempfile::tempdir().unwrap();
+            let f = d.path().join("PARTIE1.SAV");
+            std::fs::write(&f, b"0123456789").unwrap(); // 10 octets, morceaux de 4
+            let sha = empreinte(&f).unwrap();
+            s.mock(|w, t| {
+                w.method(HEAD).path(ROUTE);
+                t.status(200).header("X-Recu", "0");
+            });
+            let m1 = s.mock(|w, t| {
+                w.method(PUT).path(ROUTE).query_param("chemin", "jeux/110/PARTIE1.SAV")
+                    .header("content-range", "bytes 0-3/10").header("x-contenu-sha256", sha.as_str()).body("0123");
+                t.status(200).json_body(serde_json::json!({"recu": 4, "total": 10}));
+            });
+            let m2 = s.mock(|w, t| {
+                w.method(PUT).path(ROUTE).header("content-range", "bytes 4-7/10").body("4567");
+                t.status(200).json_body(serde_json::json!({"recu": 8, "total": 10}));
+            });
+            let m3 = s.mock(|w, t| {
+                w.method(PUT).path(ROUTE).header("content-range", "bytes 8-9/10").body("89");
+                t.status(200).json_body(serde_json::json!({"ok": true, "complet": true}));
+            });
+            let c = client(&s);
+            let api = Api { client: &c, profil: "Sebastien".into(), pc: "VENKMAN".into(), morceau: 4 };
+            assert_eq!(api.envoyer_fichier("jeux/110/PARTIE1.SAV", &f, &sha, 10).await.unwrap(), 10);
+            m1.assert();
+            m2.assert();
+            m3.assert();
+        }
+
+        #[tokio::test]
+        async fn un_envoi_coupe_reprend_la_ou_firehouse_en_est() {
+            let s = MockServer::start();
+            let d = tempfile::tempdir().unwrap();
+            let f = d.path().join("etat.state");
+            std::fs::write(&f, b"0123456789").unwrap();
+            let sha = empreinte(&f).unwrap();
+            // Firehouse a déjà 4 octets du .part : on reprend à 4.
+            s.mock(|w, t| {
+                w.method(HEAD).path(ROUTE);
+                t.status(200).header("X-Recu", "4");
+            });
+            // Le morceau 4-7 est refusé : en fait Firehouse en est à 8 (409 {recu}).
+            let decale = s.mock(|w, t| {
+                w.method(PUT).path(ROUTE).header("content-range", "bytes 4-7/10");
+                t.status(409).json_body(serde_json::json!({"recu": 8}));
+            });
+            let fin = s.mock(|w, t| {
+                w.method(PUT).path(ROUTE).header("content-range", "bytes 8-9/10").body("89");
+                t.status(200).json_body(serde_json::json!({"ok": true, "complet": true}));
+            });
+            let c = client(&s);
+            let api = Api { client: &c, profil: "Sebastien".into(), pc: "VENKMAN".into(), morceau: 4 };
+            assert_eq!(api.envoyer_fichier("x", &f, &sha, 10).await.unwrap(), 2);
+            decale.assert();
+            fin.assert();
+        }
+
+        #[tokio::test]
+        async fn une_empreinte_refusee_deux_fois_est_dite() {
+            let s = MockServer::start();
+            let d = tempfile::tempdir().unwrap();
+            let f = d.path().join("x");
+            std::fs::write(&f, b"abc").unwrap();
+            s.mock(|w, t| {
+                w.method(HEAD).path(ROUTE);
+                t.status(404);
+            });
+            let m = s.mock(|w, t| {
+                w.method(PUT).path(ROUTE);
+                t.status(409).json_body(serde_json::json!({"detail": "empreinte différente"}));
+            });
+            let c = client(&s);
+            let api = Api { client: &c, profil: "Sebastien".into(), pc: "VENKMAN".into(), morceau: 4 };
+            assert!(matches!(api.envoyer_fichier("x", &f, "faux", 3).await, Err(Erreur::Conflit(_))));
+            m.assert_hits(2); // un seul nouvel essai complet
+        }
+
+        #[tokio::test]
+        async fn une_sauvegarde_complete_par_l_api() {
+            let s = MockServer::start();
+            let base = "/api/jeux/v1/sauvegarde/Sebastien/VENKMAN";
+            s.mock(|w, t| {
+                w.method(GET).path(format!("{base}/document/manifeste.json"));
+                t.status(404);
+            });
+            let docs: Vec<_> = ["configuration.json", "bibliotheque.json", "manifeste.json", "derniere-sauvegarde.json"]
+                .iter()
+                .map(|nom| {
+                    s.mock(|w, t| {
+                        w.method(PUT).path(format!("{base}/document/{nom}"));
+                        t.status(200).json_body(serde_json::json!({"ok": true}));
+                    })
+                })
+                .collect();
+            s.mock(|w, t| {
+                w.method(HEAD).path(format!("{base}/fichier"));
+                t.status(404);
+            });
+            let fichier = s.mock(|w, t| {
+                w.method(PUT).path(format!("{base}/fichier")).query_param("chemin", "jeux/110/C/DUNECD/DUNE37S0.SAV");
+                t.status(200).json_body(serde_json::json!({"ok": true, "complet": true}));
+            });
+            let d = tempfile::tempdir().unwrap();
+            let f = d.path().join("DUNE37S0.SAV");
+            std::fs::write(&f, b"partie").unwrap();
+            let c = client(&s);
+            let api = Api { client: &c, profil: "Sebastien".into(), pc: "VENKMAN".into(), morceau: MORCEAU };
+            let contenu = Contenu {
+                configuration: serde_json::json!({}),
+                bibliotheque: serde_json::json!({"jeux": []}),
+                parties: vec![Element { source: f, relatif: "jeux/110/C/DUNECD/DUNE37S0.SAV".into() }],
+            };
+            let b = envoyer(&api, &contenu, "VENKMAN", "Firehouse").await.unwrap();
+            assert_eq!((b.envoyes, b.fichiers, b.taille), (1, 1, 6));
+            fichier.assert();
+            for d in &docs {
+                d.assert(); // configuration, bibliothèque, manifeste, dernière sauvegarde : chacun une fois
+            }
+        }
     }
 
     #[test]

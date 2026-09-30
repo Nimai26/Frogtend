@@ -80,6 +80,15 @@ pub struct Client {
     http_flux: reqwest::Client,
 }
 
+/// Une réponse brute.
+#[derive(Debug)]
+pub struct Brute {
+    pub statut: u16,
+    /// L'en-tête `X-Recu` (octets déjà reçus d'un envoi par morceaux), s'il y est.
+    pub recu: Option<u64>,
+    pub octets: Vec<u8>,
+}
+
 /// Le début d'un téléchargement en flux.
 pub struct Flux {
     pub reponse: reqwest::Response,
@@ -233,6 +242,28 @@ impl Client {
                 Erreur::Reseau("La connexion a été coupée pendant le téléchargement. Il reprendra où il en était.".into())
             }
         })
+    }
+
+/// Une réponse brute (code, en-têtes utiles, corps), pour les échanges qui ont besoin du code (reprise d'un envoi).
+    pub async fn brute(
+        &self,
+        methode: reqwest::Method,
+        route: &str,
+        corps: Option<Vec<u8>>,
+        entetes: &[(&str, String)],
+    ) -> Resultat<Brute> {
+        let mut req = self.http_flux.request(methode, self.url(route));
+        for (n, v) in entetes {
+            req = req.header(*n, v);
+        }
+        if let Some(c) = corps {
+            req = req.body(c);
+        }
+        let rep = self.envoyer(req).await?;
+        let statut = rep.status().as_u16();
+        let recu = rep.headers().get("x-recu").and_then(|v| v.to_str().ok()).and_then(|v| v.parse().ok());
+        let octets = rep.bytes().await.map_err(Self::erreur_reseau)?.to_vec();
+        Ok(Brute { statut, recu, octets })
     }
 
     /// `GET` d'une route JSON.
