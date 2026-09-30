@@ -143,6 +143,13 @@ fn regler_manette(id: &str, emulateur: &Path, utilisateur: Option<&Path>, manett
 /// `jeux` : les emplacements de Frogtend pour ce système.
 pub fn preparer(id: &str, emulateur: &Path, profil: &str, jeux: &[String], manette: &Manette) -> Resultat<Vec<String>> {
     let p = dossier_du_profil(emulateur, profil);
+    let args = preparer_dossiers(id, emulateur, &p, jeux, manette)?;
+    // Le menu universel en jeu : pause à la perte du premier plan, touches F13–F16, commandes de RetroArch.
+    crate::pilotage::preparer(id, emulateur, Some(&p.join("User")))?;
+    Ok(args)
+}
+
+fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], manette: &Manette) -> Resultat<Vec<String>> {
     match id {
         "retroarch" => {
             let (saves, states, triches) = (p.join("saves"), p.join("states"), p.join("cheats"));
@@ -156,6 +163,7 @@ pub fn preparer(id: &str, emulateur: &Path, profil: &str, jeux: &[String], manet
             if let Some(j) = jeux.first() {
                 cfg.push_str(&format!("rgui_browser_directory = \"{j}\"\n"));
             }
+            cfg.push_str(&crate::pilotage::lignes_retroarch());
             if !matches!(manette, Manette::Clavier) {
                 cfg.push_str(&crate::manettes::lignes_retroarch(emulateur));
             }

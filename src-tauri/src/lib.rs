@@ -17,6 +17,7 @@ pub mod locale;
 pub mod ludotheque;
 pub mod noyau;
 pub mod partie;
+pub mod pilotage;
 pub mod profils;
 pub mod references;
 pub mod restauration;
