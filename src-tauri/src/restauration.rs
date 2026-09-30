@@ -326,6 +326,9 @@ mod tests {
         }
         let man: ManifesteParties = serde_json::from_value(c.obtenir_json(&format!("{base}/document/manifeste.json")).await.unwrap()).unwrap();
         println!("manifeste : {} fichier(s)", man.fichiers.len());
+        for (r, (sha, t)) in &man.fichiers {
+            println!("  {r} — {t} octets — {sha}");
+        }
     }
 
     /// Essai sur le VRAI Firehouse (contrat 1.5), jamais lancé par la suite de tests (`#[ignore]`), avec l'accord de
