@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.7.1 — une seule barre, des Options rangées
+
+- **Une seule barre fine en haut**, comme LaunchBox : Frogtend dessine sa propre barre de titre (logo, menus en
+  petites capitales, compte des jeux, profil, Options) avec les boutons réduire / agrandir / fermer. On la saisit
+  pour déplacer la fenêtre ; un double-clic l'agrandit. Plus de double barre.
+- **⚙ Options** remplace « Réglages » et « À propos » : une arborescence à gauche (Général ▸ Apparence, Mon profil ;
+  Ludothèque ▸ Affichage ; Jeux ▸ Emplacements, Émulateurs ; Connexion ▸ Firehouse ; Frogtend ▸ À propos et mises
+  à jour), une seule rubrique à droite. Prêt pour tout ce qui va s'ajouter.
+
 ## 0.7.0 — chacun ses parties, rien qui déborde (lot 4, suite)
 
 - **Chaque profil a ses propres parties** dans les émulateurs : parties, états, codes de triche et cartes mémoire

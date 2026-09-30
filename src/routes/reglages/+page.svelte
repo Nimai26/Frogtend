@@ -1,6 +1,10 @@
 <script lang="ts">
   import { api } from '$lib/api';
   import Emplacements from '$lib/reglages/Emplacements.svelte';
+  import { page } from '$app/state';
+  import { goto } from '$app/navigation';
+  import Profil from '$lib/options/Profil.svelte';
+  import APropos from '$lib/options/APropos.svelte';
   import Emulateurs from '$lib/reglages/Emulateurs.svelte';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
@@ -84,9 +88,43 @@
     await reinitialiserProfil();
     toast('✅ Apparence remise à l’origine.');
   }
+
+  /** L'arborescence des Options (inspirée de LaunchBox) : un groupe, ses rubriques. */
+  const ARBRE = [
+    { groupe: 'Général', rubriques: [
+      { id: 'apparence', libelle: '🎨 Apparence' },
+      { id: 'profil', libelle: '👤 Mon profil' },
+    ] },
+    { groupe: 'Ludothèque', rubriques: [{ id: 'ludotheque', libelle: '🎮 Affichage' }] },
+    { groupe: 'Jeux', rubriques: [
+      { id: 'emplacements', libelle: '📁 Emplacements' },
+      { id: 'emulateurs', libelle: '🕹 Émulateurs' },
+    ] },
+    { groupe: 'Connexion', rubriques: [{ id: 'firehouse', libelle: '🔌 Firehouse' }] },
+    { groupe: 'Frogtend', rubriques: [{ id: 'a-propos', libelle: 'ℹ À propos et mises à jour' }] },
+  ];
+  const TOUTES = ARBRE.flatMap((g) => g.rubriques);
+  const rubrique = $derived(TOUTES.find((r) => r.id === page.url.searchParams.get('rubrique'))?.id ?? 'apparence');
+  const titre = $derived(TOUTES.find((r) => r.id === rubrique)?.libelle ?? '');
+  const choisirRubrique = (id: string) => goto(`/reglages?rubrique=${id}`, { replaceState: true, noScroll: true, keepFocus: true });
 </script>
 
-<div class="page">
+
+<div class="options">
+  <nav class="arbre panel" aria-label="Rubriques des options">
+    {#each ARBRE as g (g.groupe)}
+      <p class="groupe">▾ {g.groupe}</p>
+      {#each g.rubriques as r (r.id)}
+        <button class="rubrique" class:actif={rubrique === r.id} aria-current={rubrique === r.id} onclick={() => choisirRubrique(r.id)}>
+          {r.libelle}
+        </button>
+      {/each}
+    {/each}
+  </nav>
+
+  <div class="contenu">
+    <h1 class="titre-rubrique">{titre}</h1>
+    {#if rubrique === 'apparence'}
   <section class="panel">
     <header>🎨 Apparence <span class="muted">— ton profil</span></header>
     <div class="corps">
@@ -165,7 +203,9 @@
       </div>
     </div>
   </section>
-
+    {:else if rubrique === 'profil'}
+      <Profil />
+    {:else if rubrique === 'ludotheque'}
   <section class="panel">
     <header>🎮 Ludothèque <span class="muted">— ton profil</span></header>
     <div class="corps">
@@ -249,17 +289,17 @@
       </div>
     </div>
   </section>
-
+    {:else if rubrique === 'emplacements'}
   <section class="panel">
     <header>📁 Emplacements des jeux <span class="muted">— ce PC</span></header>
     <div class="corps"><Emplacements /></div>
   </section>
-
+    {:else if rubrique === 'emulateurs'}
   <section class="panel">
     <header>🕹 Émulateurs <span class="muted">— ce PC</span></header>
     <div class="corps"><Emulateurs /></div>
   </section>
-
+    {:else if rubrique === 'firehouse'}
   <section class="panel">
     <header>🔌 Firehouse <span class="muted">— ce PC</span></header>
     <div class="corps">
@@ -295,12 +335,79 @@
       </div>
     </div>
   </section>
+    {:else if rubrique === 'a-propos'}
+      <APropos />
+    {/if}
+  </div>
 </div>
 
+
 <style>
-  .page {
+  .options {
     display: grid;
-    gap: calc(16 * var(--u));
+    grid-template-columns: calc(230 * var(--u)) 1fr;
+    height: 100%;
+    min-height: 0;
+  }
+  .arbre {
+    border-radius: 0;
+    border-width: 0 1px 0 0;
+    padding: calc(10 * var(--u)) calc(8 * var(--u));
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: calc(2 * var(--u));
+  }
+  .groupe {
+    margin: calc(10 * var(--u)) 0 calc(2 * var(--u));
+    padding: 0 calc(8 * var(--u));
+    font-size: calc(12 * var(--u));
+    font-weight: 700;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .groupe:first-child {
+    margin-top: 0;
+  }
+  .rubrique {
+    font: inherit;
+    font-size: calc(13 * var(--u));
+    color: var(--ink);
+    text-align: left;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: calc(6 * var(--u));
+    padding: calc(6 * var(--u)) calc(10 * var(--u)) calc(6 * var(--u)) calc(20 * var(--u));
+    min-height: calc(32 * var(--u));
+    cursor: pointer;
+  }
+  .rubrique:hover {
+    background: color-mix(in srgb, var(--ink) 6%, transparent);
+  }
+  .rubrique.actif {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+    border-color: var(--accent);
+  }
+  .contenu {
+    overflow-y: auto;
+    padding: calc(16 * var(--u)) calc(22 * var(--u)) calc(28 * var(--u));
+    display: grid;
+    gap: calc(14 * var(--u));
+    align-content: start;
+  }
+  .titre-rubrique {
+    margin: 0;
+    font-size: calc(18 * var(--u));
+  }
+  /* Dans les Options, une rubrique n'a plus besoin de son propre en-tête : le titre est au-dessus. */
+  .contenu :global(section.panel > header) {
+    display: none;
+  }
+  @media (max-width: 720px) {
+    .options {
+      grid-template-columns: 1fr;
+    }
   }
   .corps {
     padding: calc(16 * var(--u));

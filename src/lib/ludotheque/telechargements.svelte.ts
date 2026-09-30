@@ -141,7 +141,7 @@ export async function mettreDansLaLudotheque(id: number): Promise<boolean> {
   if (proposes.length === 0) {
     await informer(
       '📁 Aucun emplacement réglé',
-      `Frogtend ne sait pas encore où ranger les jeux ${plateforme}.\n\nRègle-le dans « Réglages » ▸ « Emplacements des jeux » (un dossier par défaut suffit).`,
+      `Frogtend ne sait pas encore où ranger les jeux ${plateforme}.\n\nRègle-le dans « ⚙ Options » ▸ « Emplacements » (un dossier par défaut suffit).`,
     );
     return false;
   }
@@ -152,7 +152,7 @@ export async function mettreDansLaLudotheque(id: number): Promise<boolean> {
       .join('\n');
     await informer(
       '💾 Pas assez de place',
-      `« ${fiche.titre} » demande ${taille(total)} (plus 1 Go de marge).\n\n${details}\n\nAjoute un autre emplacement dans « Réglages », ou libère de la place.`,
+      `« ${fiche.titre} » demande ${taille(total)} (plus 1 Go de marge).\n\n${details}\n\nAjoute un autre emplacement dans « ⚙ Options », ou libère de la place.`,
     );
     return false;
   }

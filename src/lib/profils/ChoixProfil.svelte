@@ -134,7 +134,7 @@
 
 <style>
   .accueil {
-    min-height: 100vh;
+    min-height: 100%;
     display: grid;
     place-items: center;
     padding: calc(24 * var(--u));
