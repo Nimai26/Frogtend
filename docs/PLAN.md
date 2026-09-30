@@ -258,6 +258,25 @@ Les **profils par jeu** viendront avec Taodbox (lot 5), quand on jouera vraiment
   (le stylet suit la souris OU un stick, selon ce qu'on a touché en dernier). Rien à régler : au bureau la souris, à
   la télé le stick. **3DS** : à étudier plus tard (émulateur à choisir avec Seb).
 
+**4d — les consoles récentes (Seb, 30/09 : « tu ne me parles jamais de Xbox, Xbox 360, Switch, PS3… »)**. Frogtend
+sait aujourd'hui INSTALLER six émulateurs (RetroArch, DOSBox Staging, DuckStation, PCSX2, Dolphin, PPSSPP) ; pour les
+autres, il demande déjà où est le programme (installé à la main). Relevé le 30/09 sur le vrai Firehouse
+(`/emulateurs`, base LaunchBox), l'émulateur recommandé :
+
+| Console | Recommandé par Firehouse | Ce qu'il faut en plus (jamais téléchargé par Frogtend) |
+|---|---|---|
+| Xbox | **xemu** (autre : Cxbx-Reloaded) | fichiers de la console (BIOS, EEPROM, disque dur) — tirés de sa propre Xbox |
+| Xbox 360 | **Xenia** | rien |
+| PS3 | **RPCS3** | le micrologiciel PS3, téléchargeable sur le site officiel de Sony |
+| Wii U | **Cemu** | les clés de la console (tirées de sa propre Wii U) |
+| 3DS | **Azahar** | selon les jeux, fichiers système de sa propre console |
+| PS Vita | **Vita3K** | le micrologiciel, site officiel de Sony |
+| Switch | **aucun** (Firehouse n'en propose pas) | les clés de sa propre Switch ; les émulateurs principaux ont été arrêtés après des actions de Nintendo — **décision de Seb** avant tout travail |
+
+À faire (après le menu en jeu, ordre à confirmer par Seb) : les ajouter au catalogue d'installation (source
+officielle, mode portable, parties par profil, manette standard), en lisant la documentation de chacun d'abord.
+Collection actuelle de Seb (30/09) : MS-DOS et Nintendo 64 seulement ; elle guidera les priorités.
+
 ### Lot 4 ter — Le menu universel en jeu (OSD) (demandé par Seb le 30/09)
 **Une combinaison de touches universelle** (à la manette, et au clavier), la même dans **tous les jeux et tous les
 émulateurs**, en **Frogtend comme en Taodbox**, ouvre un menu simple de Frogtend par-dessus le jeu. On n'a plus

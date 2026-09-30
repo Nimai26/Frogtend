@@ -852,6 +852,39 @@ mod tests {
     /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_miniatures -- --ignored --nocapture`
     #[tokio::test]
     #[ignore]
+    async fn essai_plateformes_et_emulateurs_sur_firehouse() {
+        // LECTURE SEULE : les plateformes du compte, et l'émulateur recommandé par Firehouse pour chacune.
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton pour ce profil");
+        let c = Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        let s = crate::source::Source::Firehouse(c);
+        for nom in std::env::var("FROGTEND_PLATEFORMES_ESSAI").unwrap_or_default().split(';').filter(|n| !n.is_empty()) {
+            match s.emulateurs(nom).await {
+                Ok(v) => {
+                    let l: Vec<String> = v["emulateurs"]
+                        .as_array()
+                        .cloned()
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|e| format!("{}{}", e["nom"].as_str().unwrap_or("?"), if e["recommande"] == true { " (recommandé)" } else { "" }))
+                        .collect();
+                    println!("{nom:<30} → {}", l.join(", "));
+                }
+                Err(e) => println!("{nom:<30} → {e:?}"),
+            }
+        }
+        let p = s.plateformes().await.unwrap();
+        for pl in p["plateformes"].as_array().or(p.as_array()).cloned().unwrap_or_default() {
+            let nom = pl["nom"].as_str().unwrap_or("?").to_string();
+            let e = s.emulateurs(&nom).await.map(|v| {
+                v["emulateurs"].as_array().cloned().unwrap_or_default().iter().take(3).map(|e| e["nom"].as_str().unwrap_or("?").to_string()).collect::<Vec<_>>().join(", ")
+            });
+            println!("{nom:<35} {:>5} jeu(x) — {}", pl["jeux"], e.unwrap_or_else(|e| format!("{e:?}")));
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
     async fn essai_miniatures_sur_firehouse() {
         let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
         let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton pour ce profil");
