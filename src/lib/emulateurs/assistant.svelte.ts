@@ -3,6 +3,7 @@
 // manque, vérifier les BIOS, puis retenir le réglage du système.
 
 import { listen } from '@tauri-apps/api/event';
+import { ajouter } from './choix';
 import { isTauri } from '@tauri-apps/api/core';
 import { api, taille, type EmulateurInstalle, type EmulateurRecommande } from '$lib/api';
 import { choisir, confirmer, demander, informer, toast } from '$lib/dialogues/fenetres.svelte';
@@ -96,8 +97,9 @@ function recommandationsParDefaut(plateforme: string): EmulateurRecommande[] {
   return [];
 }
 
-/** Régler l'émulateur d'un système. Rend vrai si un réglage a été retenu. */
-export async function reglerEmulateur(plateforme: string): Promise<boolean> {
+/** Ajouter un émulateur (ou un cœur RetroArch) à un système. Le premier devient celui par défaut. Rend la clé de
+ * l'émulateur retenu, ou `null`. */
+export async function reglerEmulateur(plateforme: string): Promise<string | null> {
   let recs = (await api.emulateursRecommandes(plateforme).catch(() => ({ emulateurs: [] }))).emulateurs ?? [];
   if (recs.length === 0) recs = recommandationsParDefaut(plateforme);
   const installes = await api.emulateursInstalles().catch(() => []);
@@ -124,7 +126,7 @@ export async function reglerEmulateur(plateforme: string): Promise<boolean> {
     options,
     recs.length ? 'Recommandations de Firehouse.' : undefined,
   );
-  if (!c) return false;
+  if (!c) return null;
 
   let programme: string | null = null;
   let nom = 'l’émulateur';
@@ -134,11 +136,14 @@ export async function reglerEmulateur(plateforme: string): Promise<boolean> {
 
   if (c === 'autre') {
     programme = await parcourir({ titre: 'Programme de l’émulateur', extensions: ['exe'] });
-    if (!programme) return false;
+    if (!programme) return null;
+    const nomDonne = await demander('🏷 Nom de cet émulateur', { message: 'Le nom montré dans Frogtend (par exemple « mGBA »).' });
+    if (!nomDonne) return null;
+    nom = nomDonne;
     const l = await demander('⌨ Ligne de commande', {
       message: 'Le fichier du jeu est ajouté à la fin. Laisse vide si l’émulateur n’a besoin de rien d’autre.',
     });
-    if (l === null) return false;
+    if (l === null) return null;
     ligne = l;
   } else {
     nom = c.nom;
@@ -151,16 +156,16 @@ export async function reglerEmulateur(plateforme: string): Promise<boolean> {
       if (!c.installe.installe_le && c.id) await api.emulateurAdopter(c.id, programme).catch(() => {});
     } else if (c.id) {
       const e = await installerEmulateur(c.id, c.nom);
-      if (!e) return false;
+      if (!e) return null;
       programme = e.programme;
     } else {
       const ok = await confirmer(`📂 Où est ${nom} ?`, {
         message: `Frogtend ne sait pas encore installer ${nom}.${c.rec.site ? ` Site officiel : ${c.rec.site}` : ''}\nMontre son programme une fois qu’il est installé.`,
         libelleValider: '📂 Choisir le programme',
       });
-      if (!ok) return false;
+      if (!ok) return null;
       programme = await parcourir({ titre: `Programme de ${nom}`, extensions: ['exe'] });
-      if (!programme) return false;
+      if (!programme) return null;
     }
   }
 
@@ -172,13 +177,13 @@ export async function reglerEmulateur(plateforme: string): Promise<boolean> {
         message: `RetroArch a besoin de ce cœur pour ${plateforme}. Il vient du site officiel de libretro (quelques Mo).`,
         libelleValider: '⬇ Installer le cœur',
       });
-      if (!oui) return false;
+      if (!oui) return null;
       try {
         await api.retroarchInstallerCoeur(programme, e.coeur);
         toast(`✅ Cœur ${e.coeur} installé.`);
       } catch (err) {
         toast(`Échec de l’installation du cœur : ${motifDuRefus(err)}`, 'erreur');
-        return false;
+        return null;
       }
     }
     if (e && e.bios_manquants.length) {
@@ -189,7 +194,14 @@ export async function reglerEmulateur(plateforme: string): Promise<boolean> {
     }
   }
 
-  await reglerPc('emulateurs', { ...etat.pc.emulateurs, [plateforme]: { programme, ligne, nom } });
-  toast(`✅ ${nom} réglé pour ${plateforme}.`);
-  return true;
+  // RetroArch : un cœur = un émulateur (« RetroArch — snes9x »).
+  if (estRetroArch && programme) {
+    const coeur = (await api.retroarchEtat(programme, ligne, []).catch(() => null))?.coeur;
+    if (coeur) nom = `${nom} — ${coeur.replace(/_libretro.dll$/i, '')}`;
+  }
+  if (!programme) return null;
+  const { sys, cle } = ajouter(etat.pc.emulateurs[plateforme], { nom, programme, ligne });
+  await reglerPc('emulateurs', { ...etat.pc.emulateurs, [plateforme]: sys });
+  toast(sys.liste.length > 1 ? `✅ ${nom} ajouté pour ${plateforme}.` : `✅ ${nom} réglé pour ${plateforme}.`);
+  return cle;
 }

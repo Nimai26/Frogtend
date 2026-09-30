@@ -5,6 +5,8 @@
 // - le PC (adresse de Firehouse, emplacements de jeux…) : les disques et le réseau appartiennent à la machine ;
 // - le profil (apparence, ludothèque, commandes…) : chaque personne a les siens.
 
+import type { EmulateursSysteme } from '$lib/emulateurs/choix';
+
 export const ADRESSE_FIREHOUSE_PAR_DEFAUT = 'https://jeux.hikari-no-sekai.fr';
 
 export interface ReglagesPc {
@@ -15,8 +17,10 @@ export interface ReglagesPc {
     /** Par système (nom LaunchBox). */
     systemes: Record<string, string[]>;
   };
-  /** L'émulateur de chaque système (nom LaunchBox) : programme et ligne de commande (le jeu est ajouté à la fin). */
-  emulateurs: Record<string, { programme: string; ligne: string; nom?: string }>;
+  /** Les émulateurs de chaque système (nom LaunchBox) : plusieurs possibles, un par défaut. */
+  emulateurs: Record<string, EmulateursSysteme>;
+  /** L'émulateur par défaut d'un jeu (identifiant du jeu → clé), s'il diffère de celui du système. */
+  emulateursJeux: Record<string, string>;
   /** Où Frogtend installe les émulateurs (vide : demandé à la première installation). */
   dossierEmulateurs: string;
   firehouse: {
@@ -66,6 +70,7 @@ export interface ReglagesProfil {
 export const DEFAUTS_PC: ReglagesPc = {
   emplacements: { defaut: [], systemes: {} },
   emulateurs: {},
+  emulateursJeux: {},
   dossierEmulateurs: '',
   firehouse: { adresse: ADRESSE_FIREHOUSE_PAR_DEFAUT, simule: false },
 };

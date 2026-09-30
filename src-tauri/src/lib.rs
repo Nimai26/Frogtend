@@ -3,6 +3,7 @@
 //! Règle : les secrets (jeton Firehouse, identifiants des boutiques) restent de ce côté-ci.
 //! L'interface ne les reçoit jamais.
 
+pub mod choix_emulateur;
 pub mod coffre;
 pub mod emulateurs;
 pub mod emulateurs_profils;

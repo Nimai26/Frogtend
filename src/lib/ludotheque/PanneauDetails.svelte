@@ -8,7 +8,7 @@
   import Jaquette from './Jaquette.svelte';
   import { jeuAuHasard, ludo } from './ludotheque.svelte';
   import { annuler, mettreDansLaLudotheque, mettreEnPause, reprendre, tele } from './telechargements.svelte';
-  import { gererJeu, installer, jouer, partie } from './jeu.svelte';
+  import { emulateursDuJeu, gererJeu, installer, jouer, jouerAvec, partie } from './jeu.svelte';
 
   const j = $derived(ludo.selection);
   const surPc = $derived(j ? tele.jeux[j.id] : undefined);
@@ -80,6 +80,9 @@
           <button class="btn primary grand" onclick={() => installer(j.id)}>📦 Installer</button>
         {:else}
           <button class="btn primary grand" onclick={() => jouer(j.id)} disabled={partie.enJeu !== null}>▶ Jouer</button>
+          {#if emulateursDuJeu(j.plateforme).liste.length > 1}
+            <button class="btn grand" onclick={() => jouerAvec(j.id)} disabled={partie.enJeu !== null}>▶ Jouer avec…</button>
+          {/if}
         {/if}
       {/if}
       {#if !catalogue && surPc?.etat === 'telecharge'}

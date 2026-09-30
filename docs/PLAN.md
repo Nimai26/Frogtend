@@ -34,6 +34,10 @@
 - **« On complexifie le code pour simplifier l'utilisation »** (Seb, 30/09). Le but : que tout le monde, **même un
   enfant**, profite de tout sans jamais passer par les menus compliqués des émulateurs. Frogtend fait le travail
   (réglages, manettes, disques, triches…), la personne n'a qu'un menu simple, le même partout (voir le lot 4 ter).
+- **Souplesse des émulateurs** (Seb, 30/09) : jamais un seul émulateur ou cœur imposé. Chaque système peut en avoir
+  **plusieurs** (dont plusieurs cœurs RetroArch), avec **un par défaut pour le système**, **un par défaut par jeu**
+  (différent de celui de la console), et un **choix au lancement** (« ▶ Jouer avec… »). Réglable facilement depuis
+  l'interface du système (⚙ Options ▸ Émulateurs) et du jeu (⚙ Gérer le jeu ▸ 🕹 Émulateur). ✅ fait en 0.10.0.
 - **Les réglages de référence de Seb** (30/09) : au fil du temps, Seb peaufinera lui-même des réglages dans les
   émulateurs (profils de manette, options…) pour qu'ils deviennent ceux **par défaut** de Frogtend. Frogtend doit
   donc savoir **reprendre un réglage fait par Seb** et le livrer à tous, sans que personne ait à le refaire.

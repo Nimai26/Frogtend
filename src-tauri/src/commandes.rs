@@ -304,11 +304,11 @@ pub fn espace_libre(chemin: String) -> Option<u64> {
 }
 
 /// L'émulateur réglé pour un système (`pc.json` ▸ `emulateurs`) : (programme, ligne de commande).
-fn emulateur_regle(app: &AppHandle, plateforme: &str) -> Option<(String, String)> {
+/// Parmi ceux réglés pour le système : celui demandé pour ce lancement, sinon le défaut du jeu, sinon celui du système.
+fn emulateur_regle(app: &AppHandle, plateforme: &str, jeu: i64, demande: Option<&str>) -> Option<(String, String)> {
     let r = app.store("pc.json").ok()?.get("reglages")?;
-    let e = &r["emulateurs"][plateforme];
-    let programme = e["programme"].as_str().filter(|p| !p.is_empty())?.to_string();
-    Some((programme, e["ligne"].as_str().unwrap_or("").to_string()))
+    let e = crate::choix_emulateur::pour_le_jeu(&r, plateforme, jeu, demande)?;
+    Some((e.programme, e.ligne))
 }
 
 #[tauri::command]
@@ -364,9 +364,15 @@ pub struct Commandes {
 
 /// Lance le jeu, puis le suit jusqu'à sa fermeture (événements « partie »).
 #[tauri::command]
-pub async fn jeu_jouer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, commandes: Option<Commandes>) -> Resultat<()> {
+pub async fn jeu_jouer(
+    app: AppHandle,
+    noyau: State<'_, Noyau>,
+    id: i64,
+    commandes: Option<Commandes>,
+    emulateur: Option<String>,
+) -> Resultat<()> {
     let plateforme = noyau.registre().jeu(id)?.map(|j| j.plateforme).unwrap_or_default();
-    let emulateur = match emulateur_regle(&app, &plateforme) {
+    let emulateur = match emulateur_regle(&app, &plateforme, id, emulateur.as_deref()) {
         Some((programme, ligne)) => {
             Some(preparer_emulateur(&app, &noyau, &plateforme, &programme, &ligne, &commandes.unwrap_or_default()).await?)
         }
@@ -725,8 +731,7 @@ fn programmes_emulateurs(app: &AppHandle) -> Vec<String> {
     app.store("pc.json")
         .ok()
         .and_then(|s| s.get("reglages"))
-        .and_then(|r| r["emulateurs"].as_object().cloned())
-        .map(|o| o.values().filter_map(|e| e["programme"].as_str().map(String::from)).collect())
+        .map(|r| crate::choix_emulateur::tous_les_programmes(&r))
         .unwrap_or_default()
 }
 

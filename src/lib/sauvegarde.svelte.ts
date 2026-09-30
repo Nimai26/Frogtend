@@ -8,6 +8,7 @@ import { api, taille } from '$lib/api';
 import { choisir, confirmer, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat, reglerPc, remplacerReglagesProfil } from '$lib/etat.svelte';
+import { ajouter, normaliserTous } from '$lib/emulateurs/choix';
 import { depuis } from '$lib/ludotheque/ludotheque.svelte';
 import { rechargerJeuxDuPc, tele } from '$lib/ludotheque/telechargements.svelte';
 
@@ -170,10 +171,16 @@ export async function restaurer(profilChoisi?: string, pcChoisi?: string) {
   if (!etat.pc.dossierEmulateurs && pcLu.dossierEmulateurs && (await existe(pcLu.dossierEmulateurs))) {
     await reglerPc('dossierEmulateurs', pcLu.dossierEmulateurs);
   }
+  // Les émulateurs de chaque système : ceux de la sauvegarde dont le dossier existe sur ce PC, ajoutés à ceux déjà là.
   const emus = { ...etat.pc.emulateurs };
-  for (const [s, e] of Object.entries(pcLu.emulateurs ?? {}) as [string, any][]) {
-    const dossier = String(e.programme ?? '').replace(/[\\/][^\\/]+$/, '');
-    if (!emus[s] && dossier && (await existe(dossier))) emus[s] = e;
+  for (const [s, sys] of Object.entries(normaliserTous(pcLu.emulateurs))) {
+    const deja = !!emus[s];
+    for (const e of sys.liste) {
+      const dossier = e.programme.replace(/[\\/][^\\/]+$/, '');
+      if (!dossier || !(await existe(dossier))) continue;
+      const { sys: apres, cle } = ajouter(emus[s], e);
+      emus[s] = !deja && e.cle === sys.defaut ? { ...apres, defaut: cle } : apres;
+    }
   }
   await reglerPc('emulateurs', emus);
 

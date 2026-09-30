@@ -1,6 +1,7 @@
 // L'état partagé de l'application : réglages (PC et profil ouvert), catalogue des skins, skin appliqué.
 
 import { isTauri } from '@tauri-apps/api/core';
+import { normaliserTous } from '$lib/emulateurs/choix';
 import instantane from '../../docs/charte/themes.instantane.json';
 import { api, type Profil } from './api';
 import { toast } from './dialogues/fenetres.svelte';
@@ -90,6 +91,8 @@ export function appliquerApparence() {
 export async function demarrer() {
   magasinPc = await magasin('pc.json');
   etat.pc = completer(DEFAUTS_PC, await magasinPc.lire());
+  // Avant 0.10, un seul émulateur par système : converti en liste.
+  etat.pc.emulateurs = normaliserTous(etat.pc.emulateurs);
   // Premier lancement : on écrit les réglages pour que le cœur les lise.
   await magasinPc.ecrire($state.snapshot(etat.pc));
   etat.catalogue = catalogueInstantane();

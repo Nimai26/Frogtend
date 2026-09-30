@@ -322,7 +322,8 @@ export const api = {
   installeAilleurs: (id: number, dossier: string) => appeler<Installation>('installation_ailleurs', { id, dossier }),
   candidatsLancement: (id: number) => appeler<Candidat[]>('lancement_candidats', { id }),
   choisirLanceur: (id: number, lanceur: Lanceur) => appeler<void>('lanceur_choisir', { id, lanceur }),
-  jouer: (id: number, commandes?: CommandesJeu) => appeler<void>('jeu_jouer', { id, commandes: commandes ?? null }),
+  jouer: (id: number, commandes?: CommandesJeu, emulateur?: string) =>
+    appeler<void>('jeu_jouer', { id, commandes: commandes ?? null, emulateur: emulateur ?? null }),
   referencesManette: (id: string) => appeler<ReferenceManette[]>('references_manette', { id }),
   profilsManetteEmulateur: (id: string, programme: string) =>
     appeler<{ genre: string; nom: string; chemin: string }[]>('profils_manette_emulateur', { id, programme }),

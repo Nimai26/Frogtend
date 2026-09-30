@@ -7,6 +7,8 @@
   import { etat, reglerPc } from '$lib/etat.svelte';
   import { dossierEmulateurs, installerEmulateur, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
   import { plusRecente } from '$lib/emulateurs/versions';
+  import { retirer as retirerEmulateur } from '$lib/emulateurs/choix';
+  import { tele } from '$lib/ludotheque/telechargements.svelte';
   import { GENRES_MANETTE } from '$lib/ludotheque/commandes';
 
   const e = $derived(Object.entries(etat.pc.emulateurs));
@@ -117,11 +119,27 @@
     }
   }
 
-  async function retirer(systeme: string) {
+  /** Combien de jeux de ce système ont choisi cet émulateur pour eux (une clé n'est unique que dans son système). */
+  function jeuxAvec(systeme: string, cle: string) {
+    const n = Object.entries(etat.pc.emulateursJeux).filter(([id, c]) => c === cle && tele.jeux[Number(id)]?.plateforme === systeme).length;
+    return n ? `${n} jeu(x) l’ont choisi` : '';
+  }
+
+  async function parDefaut(systeme: string, cle: string) {
+    const s = etat.pc.emulateurs[systeme];
+    await reglerPc('emulateurs', { ...etat.pc.emulateurs, [systeme]: { ...s, defaut: cle } });
+    toast(`⭐ ${s.liste.find((x) => x.cle === cle)?.nom} : par défaut pour ${systeme}.`);
+  }
+
+  async function retirer(systeme: string, cle: string) {
+    const s = etat.pc.emulateurs[systeme];
+    const nom = s.liste.find((x) => x.cle === cle)?.nom;
     const reste = { ...etat.pc.emulateurs };
-    delete reste[systeme];
+    const apres = retirerEmulateur(s, cle);
+    if (apres.liste.length) reste[systeme] = apres;
+    else delete reste[systeme];
     await reglerPc('emulateurs', reste);
-    toast(`Réglage retiré pour ${systeme} (l’émulateur n’est pas désinstallé).`);
+    toast(`${nom} retiré de ${systeme} (il n’est pas désinstallé).`);
   }
 
   async function ajouter() {
@@ -187,24 +205,39 @@
   {/if}
 
   <p class="muted">
-    L’émulateur de chaque système, sur ce PC. Frogtend le propose tout seul la première fois que tu lances un jeu qui
-    en a besoin, d’après les recommandations de Firehouse. Les jeux PC et MS-DOS n’en ont pas besoin.
+    Les émulateurs de chaque système, sur ce PC : autant que tu veux (par exemple plusieurs cœurs RetroArch), ⭐ celui
+    par défaut. Un jeu peut en avoir un autre (⚙ Gérer le jeu ▸ 🕹 Émulateur), et « Jouer avec… » en choisit un pour une
+    seule partie. Frogtend propose tout seul le recommandé par Firehouse la première fois. Les jeux PC et MS-DOS n’en
+    ont pas besoin.
   </p>
   {#if e.length === 0}
     <p class="muted">Aucun émulateur réglé pour l’instant.</p>
   {:else}
-    <dl class="cx-kv">
-      {#each e as [systeme, reglage] (systeme)}
-        <dt>{systeme}</dt>
-        <dd>
-          <span class="chemin" title={`${reglage.programme} ${reglage.ligne}`}>{reglage.nom ?? reglage.programme}</span>
-          <button class="btn petit" onclick={() => reglerEmulateur(systeme)}>Changer</button>
-          <button class="btn petit" onclick={() => retirer(systeme)}>✕</button>
-        </dd>
-      {/each}
-    </dl>
+    {#each e as [systeme, reglage] (systeme)}
+      <div class="cx-block systeme">
+        <h3>{systeme}</h3>
+        <ul>
+          {#each reglage.liste as emu (emu.cle)}
+            <li>
+              <button
+                class="etoile"
+                class:actif={emu.cle === reglage.defaut}
+                title={emu.cle === reglage.defaut ? 'Par défaut pour ce système' : 'En faire celui par défaut'}
+                onclick={() => parDefaut(systeme, emu.cle)}
+              >
+                {emu.cle === reglage.defaut ? '⭐' : '☆'}
+              </button>
+              <span class="chemin" title={`${emu.programme} ${emu.ligne}`}>{emu.nom || emu.programme}</span>
+              <span class="muted">{jeuxAvec(systeme, emu.cle)}</span>
+              <button class="btn petit" title="Retirer de ce système (rien n’est désinstallé)" onclick={() => retirer(systeme, emu.cle)}>✕</button>
+            </li>
+          {/each}
+        </ul>
+        <button class="btn petit" onclick={() => reglerEmulateur(systeme)}>➕ Ajouter un émulateur</button>
+      </div>
+    {/each}
   {/if}
-  <button class="btn" onclick={ajouter} disabled={plateformes.length === 0}>🕹 Régler un émulateur…</button>
+  <button class="btn" onclick={ajouter} disabled={plateformes.length === 0}>🕹 Régler un autre système…</button>
 </div>
 
 <style>
@@ -234,6 +267,36 @@
   .chemin {
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .systeme h3 {
+    margin: 0 0 calc(6 * var(--u));
+  }
+  .systeme ul {
+    list-style: none;
+    margin: 0 0 calc(8 * var(--u));
+    padding: 0;
+    display: grid;
+    gap: calc(4 * var(--u));
+  }
+  .systeme li {
+    display: flex;
+    align-items: center;
+    gap: calc(8 * var(--u));
+  }
+  .systeme li .chemin {
+    flex: 1;
+    white-space: nowrap;
+  }
+  .etoile {
+    background: none;
+    border: 0;
+    padding: 0 calc(2 * var(--u));
+    font-size: 1.1em;
+    cursor: pointer;
+    color: var(--dim);
+  }
+  .etoile.actif {
+    color: var(--warn);
   }
   .petit {
     min-height: calc(30 * var(--u));

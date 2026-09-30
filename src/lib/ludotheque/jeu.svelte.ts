@@ -7,7 +7,8 @@ import { api, duree, estErreurCoeur, taille, type Candidat, type JeuPc } from '$
 import { choisir, confirmer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
-import { etat, reglerProfil } from '$lib/etat.svelte';
+import { normaliser, pourLeJeu } from '$lib/emulateurs/choix';
+import { etat, reglerPc, reglerProfil } from '$lib/etat.svelte';
 import type { CommandesJeu } from '$lib/reglages/reglages';
 import { GENRES_MANETTE, libelleCommandes } from './commandes';
 import { apresUnePartie } from '$lib/sauvegarde.svelte';
@@ -176,12 +177,13 @@ export async function choisirLanceur(id: number): Promise<boolean> {
   }
 }
 
-/** Jouer. Si un réglage manque (émulateur, lanceur), on le demande puis on relance. */
-export async function jouer(id: number) {
+/** Jouer. `emulateur` : la clé d'un émulateur du système, pour ce lancement seulement. Si un réglage manque
+ * (émulateur, lanceur), on le demande puis on relance. */
+export async function jouer(id: number, emulateur?: string) {
   const j = tele.jeux[id];
   for (let essai = 0; essai < 2; essai++) {
     try {
-      await api.jouer(id, etat.profil.commandes[String(id)]);
+      await api.jouer(id, etat.profil.commandes[String(id)], emulateur);
       toast(`▶ « ${j?.titre ?? 'Le jeu'} » se lance…`);
       return;
     } catch (e) {
@@ -236,9 +238,64 @@ export async function retirer(j: JeuPc) {
   }
 }
 
-/** L'émulateur réglé pour un système sur ce PC (son identifiant), s'il est connu de Frogtend. */
-async function emulateurDuSysteme(plateforme: string): Promise<{ id: string; nom: string } | null> {
-  const programme = etat.pc.emulateurs[plateforme]?.programme;
+/** Les émulateurs réglés pour le système d'un jeu. */
+export function emulateursDuJeu(plateforme: string) {
+  return normaliser(etat.pc.emulateurs[plateforme]);
+}
+
+/** « ▶ Jouer avec… » : choisir, pour ce lancement seulement, parmi les émulateurs du système (ou en ajouter un). */
+export async function jouerAvec(id: number) {
+  const j = tele.jeux[id];
+  if (!j) return;
+  const s = emulateursDuJeu(j.plateforme);
+  const actuel = pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, j.plateforme, id);
+  const c = await choisir<string>(
+    `▶ Jouer à « ${j.titre} » avec…`,
+    [
+      ...s.liste.map((e) => ({
+        valeur: e.cle,
+        libelle: `${e.cle === actuel?.cle ? '⭐ ' : ''}${e.nom || e.programme}`,
+        detail: e.cle === actuel?.cle ? 'celui d’habitude pour ce jeu' : undefined,
+      })),
+      { valeur: '+', libelle: '➕ Un autre émulateur…', detail: `l’ajouter à ${j.plateforme}` },
+    ],
+    'Pour cette partie seulement. Le choix d’habitude se règle dans ⚙ Gérer le jeu ▸ 🕹 Émulateur.',
+  );
+  if (!c) return;
+  const cle = c === '+' ? await reglerEmulateur(j.plateforme) : c;
+  if (cle) await jouer(id, cle);
+}
+
+/** « 🕹 Émulateur » d'un jeu : comme la console, ou un autre émulateur du système, par défaut pour ce jeu. */
+export async function choisirEmulateurDuJeu(id: number) {
+  const j = tele.jeux[id];
+  if (!j) return;
+  const s = emulateursDuJeu(j.plateforme);
+  const duSysteme = s.liste.find((e) => e.cle === s.defaut);
+  const propre = etat.pc.emulateursJeux[String(id)];
+  const c = await choisir<string>(
+    `🕹 Émulateur de « ${j.titre} »`,
+    [
+      { valeur: '', libelle: `${!propre ? '⭐ ' : ''}Comme la console`, detail: duSysteme ? duSysteme.nom || duSysteme.programme : 'aucun réglé' },
+      ...s.liste.map((e) => ({ valeur: e.cle, libelle: `${propre === e.cle ? '⭐ ' : ''}${e.nom || e.programme}` })),
+      { valeur: '+', libelle: '➕ Un autre émulateur…', detail: `l’ajouter à ${j.plateforme}` },
+    ],
+    `Le choix de la console se règle dans ⚙ Options ▸ Émulateurs.`,
+  );
+  if (c === null) return;
+  const cle = c === '+' ? await reglerEmulateur(j.plateforme) : c;
+  if (cle === null) return;
+  const jeux = { ...etat.pc.emulateursJeux };
+  if (cle) jeux[String(id)] = cle;
+  else delete jeux[String(id)];
+  await reglerPc('emulateursJeux', jeux);
+  const e = emulateursDuJeu(j.plateforme).liste.find((x) => x.cle === cle);
+  toast(cle ? `🕹 « ${j.titre} » se lancera avec ${e?.nom || 'cet émulateur'}.` : `🕹 « ${j.titre} » suit la console.`);
+}
+
+/** L'émulateur d'un jeu sur ce PC (son identifiant Frogtend), s'il est connu de Frogtend. */
+async function emulateurDuSysteme(plateforme: string, jeu: number): Promise<{ id: string; nom: string } | null> {
+  const programme = pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, plateforme, jeu)?.programme;
   if (!programme) return null;
   const installes = await api.emulateursInstalles().catch(() => []);
   const e = installes.find((i) => i.programme.toLowerCase() === programme.toLowerCase());
@@ -249,7 +306,7 @@ async function emulateurDuSysteme(plateforme: string): Promise<{ id: string; nom
 export async function choisirCommandes(id: number) {
   const j = tele.jeux[id];
   if (!j) return;
-  const emu = await emulateurDuSysteme(j.plateforme);
+  const emu = await emulateurDuSysteme(j.plateforme, id);
   const refs = emu ? await api.referencesManette(emu.id).catch(() => []) : [];
   const actuel = etat.profil.commandes[String(id)];
   const options: { valeur: CommandesJeu; libelle: string; detail?: string }[] = [
@@ -278,11 +335,20 @@ export async function choisirCommandes(id: number) {
 export async function gererJeu(id: number) {
   const j = tele.jeux[id];
   if (!j) return;
-  type Action = 'installer' | 'lanceur' | 'commandes' | 'abri' | 'retirer';
+  type Action = 'installer' | 'lanceur' | 'emulateur' | 'commandes' | 'abri' | 'retirer';
   const options: { valeur: Action; libelle: string; detail?: string }[] = [];
   if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
   if (j.installation && !j.installation.fichier_du_jeu)
     options.push({ valeur: 'lanceur', libelle: '🎯 Changer ce qui lance le jeu' });
+  const s = emulateursDuJeu(j.plateforme);
+  if (s.liste.length) {
+    const e = pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, j.plateforme, id);
+    options.push({
+      valeur: 'emulateur',
+      libelle: '🕹 Émulateur',
+      detail: `${e?.nom || e?.programme || ''}${etat.pc.emulateursJeux[String(id)] ? ' (propre à ce jeu)' : ' (comme la console)'}`,
+    });
+  }
   options.push({ valeur: 'commandes', libelle: '🎮 Commandes', detail: libelleCommandes(etat.profil.commandes[String(id)]) });
   if (j.installation)
     options.push({ valeur: 'abri', libelle: '💾 Mettre mes parties à l’abri', detail: 'une copie de ce qui a changé depuis l’installation' });
@@ -291,6 +357,7 @@ export async function gererJeu(id: number) {
   const c = await choisir<Action>(`⚙ Gérer « ${j.titre} »`, options, `Rangé dans ${j.installation?.dossier ?? j.dossier}`);
   if (c === 'installer') await installer(id);
   else if (c === 'lanceur') await choisirLanceur(id);
+  else if (c === 'emulateur') await choisirEmulateurDuJeu(id);
   else if (c === 'commandes') await choisirCommandes(id);
   else if (c === 'abri') await mettreALAbri(id);
   else if (c === 'retirer') await retirer(j);

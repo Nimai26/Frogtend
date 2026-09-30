@@ -8,7 +8,7 @@
   import { motifDuRefus } from '$lib/dialogues/messages';
   import Jaquette from '$lib/ludotheque/Jaquette.svelte';
   import { mettreDansLaLudotheque, tele } from '$lib/ludotheque/telechargements.svelte';
-  import { gererJeu, installer, jouer, partie } from '$lib/ludotheque/jeu.svelte';
+  import { emulateursDuJeu, gererJeu, installer, jouer, jouerAvec, partie } from '$lib/ludotheque/jeu.svelte';
 
   let fiche = $state<Fiche | null>(null);
   let horsLigne = $state(false);
@@ -116,6 +116,9 @@
           <button class="btn primary" onclick={() => installer(surPc.id)} disabled={partie.installation === surPc.id}>📦 Installer</button>
         {:else}
           <button class="btn primary" onclick={() => jouer(surPc.id)} disabled={partie.enJeu !== null}>▶ Jouer</button>
+          {#if emulateursDuJeu(surPc.plateforme).liste.length > 1}
+            <button class="btn" onclick={() => jouerAvec(surPc.id)} disabled={partie.enJeu !== null}>▶ Jouer avec…</button>
+          {/if}
         {/if}
         <button class="btn" onclick={() => gererJeu(surPc.id)} disabled={partie.enJeu === surPc.id}>⚙ Gérer le jeu</button>
       </div>

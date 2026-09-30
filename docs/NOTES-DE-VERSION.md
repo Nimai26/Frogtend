@@ -1,5 +1,19 @@
 # Notes de version de Frogtend
 
+## 0.10.0 — plusieurs émulateurs par console, au choix
+
+- **Autant d'émulateurs que tu veux par console** (par exemple plusieurs cœurs RetroArch pour la Super Nintendo) :
+  **⚙ Options ▸ Émulateurs** les liste par console, ⭐ celui par défaut (un clic sur l'étoile pour changer),
+  ➕ pour en ajouter, ✕ pour en retirer (rien n'est désinstallé).
+- **Un émulateur propre à un jeu** : **⚙ Gérer le jeu ▸ 🕹 Émulateur** (« Comme la console », ou un autre).
+- **▶ Jouer avec…** à côté de ▶ Jouer (quand la console en a plusieurs) : un autre émulateur pour cette partie
+  seulement.
+- Tes réglages d'avant sont repris tels quels (un émulateur par console devient une liste d'un seul).
+- **Préparation du menu en jeu** (à venir) : les émulateurs lancés par Frogtend se mettent maintenant **en pause
+  quand tu passes à une autre fenêtre** (Alt+Tab), et Dolphin se met en plein écran sans bordure. Frogtend leur
+  règle aussi des touches F13 à F16, que ton clavier n'a pas, pour les piloter bientôt depuis son menu. Tes propres
+  raccourcis sont gardés.
+
 ## 0.9.1 — les parties à l'abri partent aussi dans la sauvegarde
 
 - Correction importante : les parties **mises à l'abri** (avant de retirer ou réinstaller un jeu) n'entraient pas dans
