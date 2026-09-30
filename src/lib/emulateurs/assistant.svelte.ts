@@ -62,6 +62,7 @@ export async function installerEmulateur(id: string, nom: string, miseAJour = fa
       miseAJour
         ? 'Ta configuration est gardée ; un fichier de réglages remplacé par la nouvelle version est d’abord copié à part.'
         : 'Il sera installé en mode portable : sa configuration reste dans son dossier.',
+      ...(id === 'retroarch' ? ['Ses profils de manette officiels (libretro, moins de 1 Mo) seront ajoutés s’ils manquent.'] : []),
     ].join('\n'),
     libelleValider: miseAJour ? '⬆ Mettre à jour' : '⬇ Installer',
   });

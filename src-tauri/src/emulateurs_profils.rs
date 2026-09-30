@@ -10,6 +10,8 @@
 //! - Dolphin : un dossier utilisateur par profil (`-u`), `[General] ISOPaths / ISOPath0…` (Config\Dolphin.ini) ;
 //! - PPSSPP : son dossier `memstick` (à côté du programme) devient un lien vers celui du profil.
 //!
+//! La manette du joueur 1 est réglée au passage si elle ne l'est pas encore (module `manettes`).
+//!
 //! Toute configuration modifiée est d'abord copiée dans `.frogtend-sauvegardes\` (une fois par jour et par fichier).
 
 use crate::erreurs::{Erreur, Resultat};
@@ -81,7 +83,7 @@ fn mettre_a_l_abri(emulateur: &Path, fichier: &Path) -> Resultat<()> {
     Ok(())
 }
 
-fn modifier_ini(emulateur: &Path, fichier: &Path, section: &str, valeurs: &[(&str, Vec<String>)]) -> Resultat<()> {
+pub(crate) fn modifier_ini(emulateur: &Path, fichier: &Path, section: &str, valeurs: &[(&str, Vec<String>)]) -> Resultat<()> {
     let avant = std::fs::read_to_string(fichier).unwrap_or_default();
     let apres = ecrire_ini(&avant, section, valeurs);
     if apres != avant {
@@ -122,6 +124,7 @@ pub fn preparer(id: &str, emulateur: &Path, profil: &str, jeux: &[String]) -> Re
             if let Some(j) = jeux.first() {
                 cfg.push_str(&format!("rgui_browser_directory = \"{j}\"\n"));
             }
+            cfg.push_str(&crate::manettes::lignes_retroarch(emulateur));
             let fichier = p.join("frogtend.cfg");
             std::fs::write(&fichier, cfg)?;
             Ok(vec![format!("--appendconfig={}", texte(&fichier))])
@@ -133,6 +136,7 @@ pub fn preparer(id: &str, emulateur: &Path, profil: &str, jeux: &[String]) -> Re
             modifier_ini(emulateur, &ini, "MemoryCards", &[("Directory", vec![texte(&cartes)])])?;
             modifier_ini(emulateur, &ini, "Folders", &[("SaveStates", vec![texte(&etats)]), ("Cheats", vec![texte(&triches)])])?;
             modifier_ini(emulateur, &ini, "GameList", &[("RecursivePaths", jeux.to_vec())])?;
+            crate::manettes::regler(id, emulateur, None, false)?;
             Ok(vec![])
         }
         "pcsx2" => {
@@ -150,6 +154,7 @@ pub fn preparer(id: &str, emulateur: &Path, profil: &str, jeux: &[String]) -> Re
                 ],
             )?;
             modifier_ini(emulateur, &ini, "GameList", &[("RecursivePaths", jeux.to_vec())])?;
+            crate::manettes::regler(id, emulateur, None, false)?;
             Ok(vec![])
         }
         "dolphin" => {
@@ -161,6 +166,7 @@ pub fn preparer(id: &str, emulateur: &Path, profil: &str, jeux: &[String]) -> Re
             }
             let refs: Vec<(&str, Vec<String>)> = v.iter().map(|(c, vs)| (c.as_str(), vs.clone())).collect();
             modifier_ini(emulateur, &ini, "General", &refs)?;
+            crate::manettes::regler(id, emulateur, Some(&utilisateur), false)?;
             Ok(vec!["-u".into(), texte(&utilisateur)])
         }
         "ppsspp" => {

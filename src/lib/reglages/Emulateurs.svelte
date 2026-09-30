@@ -2,9 +2,11 @@
   // Les émulateurs réglés sur CE PC, par système. Retirer un réglage ne désinstalle rien.
   import { onMount } from 'svelte';
   import { api, type EmulateurInstalle, type Plateforme } from '$lib/api';
-  import { choisir, toast } from '$lib/dialogues/fenetres.svelte';
+  import { choisir, confirmer, toast } from '$lib/dialogues/fenetres.svelte';
+  import { motifDuRefus } from '$lib/dialogues/messages';
   import { etat, reglerPc } from '$lib/etat.svelte';
   import { dossierEmulateurs, installerEmulateur, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
+  import { plusRecente } from '$lib/emulateurs/versions';
 
   const e = $derived(Object.entries(etat.pc.emulateurs));
   let plateformes = $state<Plateforme[]>([]);
@@ -22,17 +24,6 @@
     plateformes = await api.plateformes(false).catch(() => []);
     await recharger();
   });
-
-  /** « 1.22.10 » est plus récent que « 1.22.2 » : on compare les nombres, dans l'ordre. */
-  function plusRecente(a: string, b: string) {
-    const n = (v: string) => (v.match(/d+/g) ?? []).map(Number);
-    const x = n(a);
-    const y = n(b);
-    for (let i = 0; i < Math.max(x.length, y.length); i++) {
-      if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
-    }
-    return false;
-  }
 
   async function chercherMisesAJour() {
     recherche = true;
@@ -52,6 +43,32 @@
 
   async function mettreAJour(e: EmulateurInstalle) {
     if (await installerEmulateur(e.id, e.nom, true)) await recharger();
+  }
+
+  /** Ce que la manette par défaut règle, par émulateur (les autres reconnaissent déjà les manettes seuls). */
+  const MANETTE: Record<string, string> = {
+    retroarch: 'Profils de manette officiels (téléchargés depuis libretro s’ils manquent) ; menu à la manette : L3 + R3.',
+    duckstation: 'Manette du joueur 1 (Xbox, PlayStation, Switch Pro, 8BitDo…) ; menu de pause : Select + Start.',
+    pcsx2: 'Manette du joueur 1 (Xbox, PlayStation, Switch Pro, 8BitDo…) ; menu de pause : Select + Start.',
+    dolphin: 'Manette GameCube du joueur 1 sur une manette Xbox (XInput), pour ton profil.',
+  };
+
+  async function manetteParDefaut(i: EmulateurInstalle) {
+    const oui = await confirmer(`🎮 Remettre la manette par défaut dans ${i.nom} ?`, {
+      message: [
+        MANETTE[i.id],
+        'Ce que tu avais réglé pour la manette du joueur 1 est remplacé ; les touches du clavier sont gardées.',
+        'La configuration d’avant est d’abord copiée à part, dans le dossier de l’émulateur.',
+      ].join('\n'),
+      libelleValider: '🎮 Remettre par défaut',
+    });
+    if (!oui) return;
+    try {
+      const r = await api.emulateurReglerManette(i.id, i.programme);
+      toast(`✅ Manette réglée dans ${i.nom}.` + (r.profils_ajoutes ? ` ${r.profils_ajoutes} profil(s) de manette ajouté(s).` : ''));
+    } catch (e) {
+      toast(`Impossible de régler la manette : ${motifDuRefus(e)}`, 'erreur');
+    }
   }
 
   async function retirer(systeme: string) {
@@ -105,6 +122,9 @@
             <span class="muted">{i.version ?? 'installé à la main'}</span>
             {#if i.par_frogtend && dernieres[i.id] && i.version && plusRecente(dernieres[i.id], i.version)}
               <button class="btn petit primary" onclick={() => mettreAJour(i)}>⬆ {dernieres[i.id]}</button>
+            {/if}
+            {#if MANETTE[i.id]}
+              <button class="btn petit" title={MANETTE[i.id]} onclick={() => manetteParDefaut(i)}>🎮 Manette par défaut</button>
             {/if}
           </dd>
         {/each}

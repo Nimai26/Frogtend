@@ -413,6 +413,31 @@ pub fn installer_coeur(paquet: &Path, retroarch: &Path, coeur: &str) -> Resultat
     }
 }
 
+/// Ajoute les profils de manette officiels de RetroArch (paquet zip déjà téléchargé) dans `autoconfig\`. Un profil
+/// déjà présent n'est jamais remplacé. Rend le nombre de profils ajoutés.
+pub fn installer_profils_manette(paquet: &Path, retroarch: &Path) -> Resultat<usize> {
+    let provisoire = retroarch.join("autoconfig.nouveau");
+    if provisoire.exists() {
+        std::fs::remove_dir_all(&provisoire)?;
+    }
+    decompresser(paquet, Format::Zip, &provisoire)?;
+    let cible = retroarch.join("autoconfig");
+    let mut ajoutes = 0;
+    for r in fichiers_de(&provisoire)? {
+        let c = cible.join(&r);
+        if c.exists() {
+            continue;
+        }
+        if let Some(p) = c.parent() {
+            std::fs::create_dir_all(p)?;
+        }
+        std::fs::copy(provisoire.join(&r), &c)?;
+        ajoutes += 1;
+    }
+    std::fs::remove_dir_all(&provisoire)?;
+    Ok(ajoutes)
+}
+
 /// Le dossier des BIOS de RetroArch : `system_directory` de retroarch.cfg s'il est réglé, sinon `system`.
 pub fn dossier_bios_retroarch(dossier: &Path) -> PathBuf {
     let defaut = dossier.join("system");
@@ -593,6 +618,29 @@ mod tests {
         let dossier = d.path().join("RetroArch");
         let p = installer_paquet(f, &paquet, &dossier).unwrap();
         assert_eq!(p, dossier.join("retroarch.exe"));
+    }
+
+    #[test]
+    fn les_profils_de_manette_de_retroarch_s_ajoutent_sans_remplacer_ceux_deja_la() {
+        let d = tempfile::tempdir().unwrap();
+        let paquet = d.path().join("autoconfig.zip");
+        {
+            let mut z = zip::ZipWriter::new(std::fs::File::create(&paquet).unwrap());
+            let o = zip::write::SimpleFileOptions::default();
+            z.start_file("xinput/XInput Controller.cfg", o).unwrap();
+            z.write_all(b"officiel").unwrap();
+            z.start_file("dinput/Wireless Controller.cfg", o).unwrap();
+            z.write_all(b"officiel").unwrap();
+            z.finish().unwrap();
+        }
+        let ra = d.path().join("RetroArch");
+        let perso = ra.join("autoconfig").join("dinput").join("Wireless Controller.cfg");
+        std::fs::create_dir_all(perso.parent().unwrap()).unwrap();
+        std::fs::write(&perso, b"perso").unwrap();
+        assert_eq!(installer_profils_manette(&paquet, &ra).unwrap(), 1);
+        assert_eq!(std::fs::read(&perso).unwrap(), b"perso");
+        assert!(crate::manettes::retroarch_a_ses_profils(&ra));
+        assert!(!ra.join("autoconfig.nouveau").exists());
     }
 
     #[test]

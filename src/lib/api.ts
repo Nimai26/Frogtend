@@ -323,6 +323,8 @@ export const api = {
   emulateurAdopter: (id: string, programme: string) => appeler<EmulateurInstalle>('emulateur_adopter', { id, programme }),
   retroarchEtat: (programme: string, ligne: string, bios: string[]) =>
     appeler<EtatRetroArch>('retroarch_etat', { programme, ligne, bios }),
+  emulateurReglerManette: (id: string, programme: string) =>
+    appeler<{ reglee: boolean; profils_ajoutes: number }>('emulateur_regler_manette', { id, programme }),
   retroarchInstallerCoeur: (programme: string, coeur: string) =>
     appeler<string>('retroarch_installer_coeur', { programme, coeur }),
   emulateursTraces: () => appeler<{ id: string; nom: string; dossiers: string[] }[]>('emulateurs_traces'),

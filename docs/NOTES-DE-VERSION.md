@@ -1,5 +1,20 @@
 # Notes de version de Frogtend
 
+## 0.8.0 — la manette marche d'emblée (fin du lot 4)
+
+- **Branche ta manette, joue** : au premier lancement d'un jeu, Frogtend règle la manette du joueur 1 dans
+  l'émulateur si elle ne l'est pas encore. DuckStation et PCSX2 : manettes Xbox, PlayStation, Switch Pro, 8BitDo et
+  génériques ; **Select + Start** ouvre leur menu de pause. Dolphin : manette GameCube sur une manette Xbox.
+  RetroArch : ses profils de manette officiels (ajoutés s'ils manquent) ; **L3 + R3** ouvre son menu. PPSSPP et
+  DOSBox Staging reconnaissent déjà les manettes tout seuls.
+- **Rien n'est défait** : une manette que tu as réglée toi-même dans un émulateur n'est jamais touchée, et les
+  touches du clavier sont gardées. **Options ▸ Émulateurs ▸ 🎮 Manette par défaut** remet le réglage de Frogtend, sur
+  ton accord ; la configuration d'avant est copiée à part.
+- Correction : « Chercher des mises à jour » des émulateurs ne voyait jamais de nouvelle version.
+- **Sauvegarde et restauration du profil** (Options ▸ Sauvegarde) : prêtes, elles fonctionneront dès que Firehouse
+  ouvrira ses routes de sauvegarde. D'ici là, la sauvegarde automatique se tait et le bouton explique que Firehouse
+  ne la propose pas encore.
+
 ## 0.7.1 — une seule barre, des Options rangées
 
 - **Une seule barre fine en haut**, comme LaunchBox : Frogtend dessine sa propre barre de titre (logo, menus en

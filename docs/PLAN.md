@@ -209,6 +209,14 @@ Découpage : **4a** (✅ livré en 0.6.0 le 30/09/2026 ; installer, détecter, m
 chaque système tout seul d'après Firehouse) puis **4b** (profils de manette XInput, profils par jeu, copie de
 sauvegarde de toute configuration modifiée).
 
+**4b, profils standard : ✅ livré en 0.8.0.** Relevé dans les sources officielles : DuckStation et PCSX2 lisent les
+manettes par SDL (Xbox, PlayStation, Switch Pro, 8BitDo, génériques) → Frogtend écrit le joueur 1 en `SDL-0/…` en
+gardant le clavier, plus Select + Start pour le menu de pause ; Dolphin → manette GameCube sur `XInput/0/Gamepad`
+(dans le dossier utilisateur du profil) ; RetroArch → ses profils officiels `autoconfig` (ajoutés s'ils manquent)
+et L3 + R3 pour son menu ; PPSSPP et DOSBox Staging reconnaissent déjà les manettes. Règle : une manette déjà
+réglée par la personne n'est jamais touchée, sauf « 🎮 Manette par défaut » (Options ▸ Émulateurs), sur accord.
+Les **profils par jeu** viendront avec Taodbox (lot 5), quand on jouera vraiment à la manette.
+
 ### Lot 5 — Taodbox
 Démarrage avec `--taodbox`, plein écran, entièrement à la manette. Déclaration comme application Sunshine/Apollo.
 La sortie est propre : le jeu est fermé, le bureau rendu et la fin de session signalée. Premier essai mesuré avec

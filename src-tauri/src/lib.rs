@@ -12,6 +12,7 @@ pub mod firehouse;
 pub mod installation;
 pub mod jeux_pc;
 pub mod lancement;
+pub mod manettes;
 pub mod locale;
 pub mod ludotheque;
 pub mod noyau;
@@ -176,6 +177,7 @@ pub fn run() {
             commandes::emulateur_adopter,
             commandes::retroarch_etat,
             commandes::retroarch_installer_coeur,
+            commandes::emulateur_regler_manette,
             commandes::emulateurs_traces,
             commandes::sauvegarde_lancer,
             commandes::sauvegarde_derniere,

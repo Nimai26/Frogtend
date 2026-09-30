@@ -469,6 +469,10 @@ pub async fn emulateur_installer(
         .map_err(|_| Erreur::Disque("L'installation s'est arrêtée brutalement.".into()))??;
     let _ = std::fs::remove_file(&paquet);
     let _ = std::fs::remove_dir(base.join(".telechargements"));
+    // RetroArch : ses profils de manette officiels, s'ils ne sont pas dans le paquet (annoncés avec l'installation).
+    if f.id == "retroarch" && !crate::manettes::retroarch_a_ses_profils(&cible) {
+        installer_profils_retroarch(&cible).await?;
+    }
     let e = crate::emulateurs::EmulateurInstalle {
         id: f.id.into(),
         nom: f.nom.into(),
@@ -535,6 +539,50 @@ pub async fn retroarch_installer_coeur(programme: String, coeur: String) -> Resu
     let r = crate::emulateurs::installer_coeur(&paquet, &dossier, &coeur);
     let _ = std::fs::remove_file(&paquet);
     Ok(r?.to_string_lossy().into())
+}
+
+/// Télécharge et ajoute les profils de manette officiels de RetroArch. Rend le nombre de profils ajoutés.
+async fn installer_profils_retroarch(retroarch: &std::path::Path) -> Resultat<usize> {
+    let paquet = retroarch.join("autoconfig.zip.telechargement");
+    crate::emulateurs::telecharger(crate::manettes::URL_PROFILS_RETROARCH, &paquet, &|_, _| {}).await?;
+    let (p, d) = (paquet.clone(), retroarch.to_path_buf());
+    let r = tauri::async_runtime::spawn_blocking(move || crate::emulateurs::installer_profils_manette(&p, &d))
+        .await
+        .map_err(|_| Erreur::Disque("L'installation des profils de manette s'est arrêtée brutalement.".into()))?;
+    let _ = std::fs::remove_file(&paquet);
+    r
+}
+
+#[derive(Serialize)]
+pub struct ManetteReglee {
+    /// Une configuration a été écrite.
+    pub reglee: bool,
+    /// Profils de manette ajoutés (RetroArch).
+    pub profils_ajoutes: usize,
+}
+
+/// « Remettre la manette par défaut » pour un émulateur (joueur 1, profil ouvert). La personne a donné son accord
+/// dans l'interface ; la configuration d'avant est copiée à l'abri, les touches du clavier sont gardées.
+#[tauri::command]
+pub async fn emulateur_regler_manette(noyau: State<'_, Noyau>, id: String, programme: String) -> Resultat<ManetteReglee> {
+    crate::emulateurs::fiche(&id).ok_or_else(|| Erreur::Introuvable("Émulateur inconnu.".into()))?;
+    let dossier = std::path::Path::new(&programme).parent().map(std::path::PathBuf::from).unwrap_or_default();
+    if !dossier.is_dir() {
+        return Err(Erreur::Disque(format!("Dossier introuvable : {}.", dossier.display())));
+    }
+    let profil = noyau.actif().await.ok_or_else(|| Erreur::Profil("Aucun profil n'est ouvert.".into()))?;
+    let mut profils_ajoutes = 0;
+    if id == "retroarch" && !crate::manettes::retroarch_a_ses_profils(&dossier) {
+        profils_ajoutes = installer_profils_retroarch(&dossier).await?;
+    }
+    let d = dossier.clone();
+    let reglee = tauri::async_runtime::spawn_blocking(move || {
+        let utilisateur = crate::emulateurs_profils::dossier_du_profil(&d, &profil.nom).join("User");
+        crate::manettes::regler(&id, &d, Some(&utilisateur), true)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("Le réglage de la manette s'est arrêté brutalement.".into()))??;
+    Ok(ManetteReglee { reglee, profils_ajoutes })
 }
 
 /// Prépare l'émulateur pour le profil ouvert (ses parties à lui, les dossiers de jeux de Frogtend) et rend
