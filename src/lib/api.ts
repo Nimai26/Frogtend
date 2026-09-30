@@ -1,6 +1,7 @@
 // Les appels au cœur de Frogtend (Rust). Le jeton ne passe jamais par ici : seul le cœur le connaît.
 
 import { invoke, isTauri } from '@tauri-apps/api/core';
+import type { CommandesJeu } from '$lib/reglages/reglages';
 
 export interface Profil {
   id: string;
@@ -256,6 +257,15 @@ function appeler<T>(commande: string, args?: Record<string, unknown>): Promise<T
   return invoke<T>(commande, args);
 }
 
+/** Un réglage de manette de référence (livré avec Frogtend, ou repris sur ce PC). */
+export interface ReferenceManette {
+  emulateur: string;
+  /** `Wiimote`, `GCPad` (Dolphin) ou `Pad` (DuckStation, PCSX2). */
+  genre: string;
+  nom: string;
+  livree: boolean;
+}
+
 export const api = {
   profils: () => appeler<Profil[]>('profils_lister'),
   creerProfil: (nom: string, pin: string | null, jeton: string | null) =>
@@ -312,7 +322,12 @@ export const api = {
   installeAilleurs: (id: number, dossier: string) => appeler<Installation>('installation_ailleurs', { id, dossier }),
   candidatsLancement: (id: number) => appeler<Candidat[]>('lancement_candidats', { id }),
   choisirLanceur: (id: number, lanceur: Lanceur) => appeler<void>('lanceur_choisir', { id, lanceur }),
-  jouer: (id: number) => appeler<void>('jeu_jouer', { id }),
+  jouer: (id: number, commandes?: CommandesJeu) => appeler<void>('jeu_jouer', { id, commandes: commandes ?? null }),
+  referencesManette: (id: string) => appeler<ReferenceManette[]>('references_manette', { id }),
+  profilsManetteEmulateur: (id: string, programme: string) =>
+    appeler<{ genre: string; nom: string; chemin: string }[]>('profils_manette_emulateur', { id, programme }),
+  referenceReprendre: (id: string, programme: string, genre: string, chemin: string, nom: string) =>
+    appeler<ReferenceManette>('reference_reprendre', { id, programme, genre, chemin, nom }),
   mettreALAbri: (id: number) => appeler<Abri>('parties_abri', { id }),
   retirer: (id: number) => appeler<Abri>('jeu_retirer', { id }),
   emulateursInstalles: () => appeler<EmulateurInstalle[]>('emulateurs_installes'),

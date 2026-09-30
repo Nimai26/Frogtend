@@ -119,8 +119,14 @@ pub fn erreur_du_statut(code: u16, corps: &[u8]) -> Erreur {
     let motif = motif_du_serveur(corps);
     match code {
         401 => Erreur::JetonRefuse(
-            "Firehouse refuse le jeton de ce profil : il a été révoqué ou il a expiré. Demande un nouveau jeton à un admin."
+            "Firehouse refuse le jeton de ce profil : il a été révoqué ou il a expiré. Crée-en un nouveau dans Firehouse \
+             (👤 Mon compte ▸ 🔌 Mes jetons, usage « 🎮 Frogtend »), puis remplace-le dans ⚙ Options ▸ Mon profil."
                 .into(),
+        ),
+        413 => Erreur::Refus("Firehouse refuse un envoi trop gros d'un coup.".into()),
+        503 => Erreur::Serveur("Firehouse est occupé (maintenance en cours). Réessaie dans une minute.".into()),
+        507 => Erreur::Refus(
+            "Ton espace de sauvegarde chez Firehouse est plein. Libère de la place ou demande plus d'espace à Seb.".into(),
         ),
         404 => Erreur::Introuvable("Firehouse ne connaît pas ce jeu (ou il ne t'est pas visible).".into()),
         409 => Erreur::Conflit(motif.unwrap_or_else(|| "Firehouse signale un conflit : réessaie plus tard.".into())),
@@ -328,6 +334,9 @@ mod tests {
             Erreur::Refus("grade insuffisant".into())
         );
         assert!(matches!(erreur_du_statut(502, b"<html>"), Erreur::Serveur(_)));
+        assert!(matches!(erreur_du_statut(507, b""), Erreur::Refus(m) if m.contains("plein")));
+        assert!(matches!(erreur_du_statut(503, b""), Erreur::Serveur(m) if m.contains("minute")));
+        assert!(matches!(erreur_du_statut(413, b""), Erreur::Refus(_)));
     }
 
     #[test]

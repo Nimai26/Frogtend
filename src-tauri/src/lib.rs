@@ -18,6 +18,7 @@ pub mod ludotheque;
 pub mod noyau;
 pub mod partie;
 pub mod profils;
+pub mod references;
 pub mod restauration;
 pub mod sauvegarde;
 pub mod source;
@@ -178,6 +179,9 @@ pub fn run() {
             commandes::retroarch_etat,
             commandes::retroarch_installer_coeur,
             commandes::emulateur_regler_manette,
+            commandes::references_manette,
+            commandes::profils_manette_emulateur,
+            commandes::reference_reprendre,
             commandes::emulateurs_traces,
             commandes::sauvegarde_lancer,
             commandes::sauvegarde_derniere,

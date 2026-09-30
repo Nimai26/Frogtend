@@ -107,9 +107,41 @@ fn texte(p: &Path) -> String {
     p.to_string_lossy().to_string()
 }
 
+/// La manette voulue pour une partie (réglage « Commandes » du jeu).
+#[derive(Clone, Debug)]
+pub enum Manette {
+    /// Le réglage d'office : manette standard, et la référence du système (si la manette n'a pas été retouchée).
+    Auto(Option<crate::references::Reference>),
+    /// Clavier et souris : Frogtend ne règle pas de manette.
+    Clavier,
+    /// La référence choisie pour ce jeu.
+    Imposee(crate::references::Reference),
+}
+
+/// Règle la manette du joueur 1 (voir [`Manette`]).
+fn regler_manette(id: &str, emulateur: &Path, utilisateur: Option<&Path>, manette: &Manette) -> Resultat<()> {
+    let u = utilisateur.unwrap_or(emulateur);
+    match manette {
+        Manette::Clavier => {}
+        Manette::Auto(r) => {
+            crate::manettes::regler(id, emulateur, utilisateur, false)?;
+            if let Some(r) = r.as_ref().filter(|r| r.emulateur == id) {
+                crate::references::appliquer(r, emulateur, u, false)?;
+            }
+        }
+        Manette::Imposee(r) => {
+            crate::manettes::regler(id, emulateur, utilisateur, false)?;
+            if r.emulateur == id {
+                crate::references::appliquer(r, emulateur, u, true)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Prépare l'émulateur pour ce profil avant une partie. Rend les arguments à mettre AVANT sa ligne de commande.
 /// `jeux` : les emplacements de Frogtend pour ce système.
-pub fn preparer(id: &str, emulateur: &Path, profil: &str, jeux: &[String]) -> Resultat<Vec<String>> {
+pub fn preparer(id: &str, emulateur: &Path, profil: &str, jeux: &[String], manette: &Manette) -> Resultat<Vec<String>> {
     let p = dossier_du_profil(emulateur, profil);
     match id {
         "retroarch" => {
@@ -124,7 +156,9 @@ pub fn preparer(id: &str, emulateur: &Path, profil: &str, jeux: &[String]) -> Re
             if let Some(j) = jeux.first() {
                 cfg.push_str(&format!("rgui_browser_directory = \"{j}\"\n"));
             }
-            cfg.push_str(&crate::manettes::lignes_retroarch(emulateur));
+            if !matches!(manette, Manette::Clavier) {
+                cfg.push_str(&crate::manettes::lignes_retroarch(emulateur));
+            }
             let fichier = p.join("frogtend.cfg");
             std::fs::write(&fichier, cfg)?;
             Ok(vec![format!("--appendconfig={}", texte(&fichier))])
@@ -136,7 +170,7 @@ pub fn preparer(id: &str, emulateur: &Path, profil: &str, jeux: &[String]) -> Re
             modifier_ini(emulateur, &ini, "MemoryCards", &[("Directory", vec![texte(&cartes)])])?;
             modifier_ini(emulateur, &ini, "Folders", &[("SaveStates", vec![texte(&etats)]), ("Cheats", vec![texte(&triches)])])?;
             modifier_ini(emulateur, &ini, "GameList", &[("RecursivePaths", jeux.to_vec())])?;
-            crate::manettes::regler(id, emulateur, None, false)?;
+            regler_manette(id, emulateur, None, manette)?;
             Ok(vec![])
         }
         "pcsx2" => {
@@ -154,7 +188,7 @@ pub fn preparer(id: &str, emulateur: &Path, profil: &str, jeux: &[String]) -> Re
                 ],
             )?;
             modifier_ini(emulateur, &ini, "GameList", &[("RecursivePaths", jeux.to_vec())])?;
-            crate::manettes::regler(id, emulateur, None, false)?;
+            regler_manette(id, emulateur, None, manette)?;
             Ok(vec![])
         }
         "dolphin" => {
@@ -166,7 +200,7 @@ pub fn preparer(id: &str, emulateur: &Path, profil: &str, jeux: &[String]) -> Re
             }
             let refs: Vec<(&str, Vec<String>)> = v.iter().map(|(c, vs)| (c.as_str(), vs.clone())).collect();
             modifier_ini(emulateur, &ini, "General", &refs)?;
-            crate::manettes::regler(id, emulateur, Some(&utilisateur), false)?;
+            regler_manette(id, emulateur, Some(&utilisateur), manette)?;
             Ok(vec!["-u".into(), texte(&utilisateur)])
         }
         "ppsspp" => {
@@ -248,7 +282,7 @@ mod tests {
     #[test]
     fn retroarch_recoit_un_fichier_de_reglages_par_profil() {
         let d = tempfile::tempdir().unwrap();
-        let args = preparer("retroarch", d.path(), "Sebastien", &["E:\\Jeux\\SNES".into()]).unwrap();
+        let args = preparer("retroarch", d.path(), "Sebastien", &["E:\\Jeux\\SNES".into()], &Manette::Auto(None)).unwrap();
         let fichier = d.path().join("Profils").join("Sebastien").join("frogtend.cfg");
         assert_eq!(args, vec![format!("--appendconfig={}", fichier.display())]);
         let cfg = std::fs::read_to_string(&fichier).unwrap();
@@ -261,12 +295,12 @@ mod tests {
     fn deux_profils_ont_des_parties_separees_dans_duckstation_et_la_configuration_est_mise_a_l_abri() {
         let d = tempfile::tempdir().unwrap();
         std::fs::write(d.path().join("settings.ini"), "[Main]\r\nSettingsVersion = 3\r\n").unwrap();
-        preparer("duckstation", d.path(), "Seb", &["E:\\Jeux\\PS1".into()]).unwrap();
+        preparer("duckstation", d.path(), "Seb", &["E:\\Jeux\\PS1".into()], &Manette::Auto(None)).unwrap();
         let ini = std::fs::read_to_string(d.path().join("settings.ini")).unwrap();
         assert!(ini.contains("SettingsVersion = 3"), "le reste est gardé");
         assert!(ini.contains(&format!("Directory = {}", d.path().join("Profils").join("Seb").join("memcards").display())));
         assert!(ini.contains("RecursivePaths = E:\\Jeux\\PS1"));
-        preparer("duckstation", d.path(), "Léa", &["E:\\Jeux\\PS1".into()]).unwrap();
+        preparer("duckstation", d.path(), "Léa", &["E:\\Jeux\\PS1".into()], &Manette::Auto(None)).unwrap();
         let ini = std::fs::read_to_string(d.path().join("settings.ini")).unwrap();
         assert!(ini.contains("Léa") && !ini.contains("\\Seb\\"));
         // La configuration d'origine a été copiée à l'abri.
@@ -277,14 +311,38 @@ mod tests {
     #[test]
     fn pcsx2_et_dolphin() {
         let d = tempfile::tempdir().unwrap();
-        preparer("pcsx2", d.path(), "Seb", &["E:\\Jeux\\PS2".into()]).unwrap();
+        preparer("pcsx2", d.path(), "Seb", &["E:\\Jeux\\PS2".into()], &Manette::Auto(None)).unwrap();
         let ini = std::fs::read_to_string(d.path().join("inis").join("PCSX2.ini")).unwrap();
         assert!(ini.contains("[Folders]") && ini.contains("MemoryCards = ") && ini.contains("RecursivePaths = E:\\Jeux\\PS2"));
 
-        let args = preparer("dolphin", d.path(), "Seb", &["E:\\Jeux\\GC".into(), "F:\\GC".into()]).unwrap();
+        let args = preparer("dolphin", d.path(), "Seb", &["E:\\Jeux\\GC".into(), "F:\\GC".into()], &Manette::Auto(None)).unwrap();
         assert_eq!(args[0], "-u");
         let ini = std::fs::read_to_string(PathBuf::from(&args[1]).join("Config").join("Dolphin.ini")).unwrap();
         assert!(ini.contains("ISOPaths = 2") && ini.contains("ISOPath1 = F:\\GC"));
+    }
+
+    #[test]
+    fn le_choix_des_commandes_du_jeu_est_suivi() {
+        // Clavier et souris : aucune manette réglée, ni combinaison de menu RetroArch.
+        let d = tempfile::tempdir().unwrap();
+        preparer("duckstation", d.path(), "Seb", &[], &Manette::Clavier).unwrap();
+        let ini = std::fs::read_to_string(d.path().join("settings.ini")).unwrap();
+        assert!(!ini.contains("SDL-0"));
+        preparer("retroarch", d.path(), "Seb", &[], &Manette::Clavier).unwrap();
+        let cfg = std::fs::read_to_string(d.path().join("Profils").join("Seb").join("frogtend.cfg")).unwrap();
+        assert!(!cfg.contains("gamepad_combo"));
+
+        // Une Wii : la référence par défaut, puis celle choisie pour le jeu.
+        let magasin = d.path().join("magasin");
+        let (e, g, n) = crate::references::par_defaut("Nintendo Wii").unwrap();
+        let defaut = crate::references::trouver(&magasin, e, g, n).unwrap();
+        let args = preparer("dolphin", d.path(), "Seb", &[], &Manette::Auto(Some(defaut))).unwrap();
+        let wiimote = PathBuf::from(&args[1]).join("Config").join("WiimoteNew.ini");
+        assert!(std::fs::read_to_string(&wiimote).unwrap().contains("Extension = Nunchuk"));
+        let h = crate::references::trouver(&magasin, "dolphin", "Wiimote", "Wiimote horizontale").unwrap();
+        preparer("dolphin", d.path(), "Seb", &[], &Manette::Imposee(h)).unwrap();
+        let t = std::fs::read_to_string(&wiimote).unwrap();
+        assert!(t.contains("Options/Sideways Wiimote = True") && !t.contains("Nunchuk/"));
     }
 
     #[test]
@@ -294,12 +352,12 @@ mod tests {
         std::fs::create_dir_all(&ancien).unwrap();
         std::fs::write(ancien.join("partie.bin"), b"avant").unwrap();
 
-        preparer("ppsspp", d.path(), "Seb", &[]).unwrap();
+        preparer("ppsspp", d.path(), "Seb", &[], &Manette::Auto(None)).unwrap();
         assert!(d.path().join("memstick (avant Frogtend)").join("PSP").join("SAVEDATA").join("partie.bin").is_file());
         std::fs::write(d.path().join("memstick").join("x.txt"), b"seb").unwrap();
         assert!(d.path().join("Profils").join("Seb").join("memstick").join("x.txt").is_file(), "le lien mène au profil");
 
-        preparer("ppsspp", d.path(), "Léa", &[]).unwrap();
+        preparer("ppsspp", d.path(), "Léa", &[], &Manette::Auto(None)).unwrap();
         assert!(!d.path().join("memstick").join("x.txt").exists(), "Léa ne voit pas les fichiers de Seb");
         assert!(d.path().join("Profils").join("Seb").join("memstick").join("x.txt").is_file(), "ceux de Seb restent");
     }

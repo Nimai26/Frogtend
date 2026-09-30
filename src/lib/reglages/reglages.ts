@@ -26,6 +26,13 @@ export interface ReglagesPc {
   };
 }
 
+/** Comment on joue à un jeu : réglage d'office, clavier et souris, ou un réglage de manette de référence. */
+export interface CommandesJeu {
+  mode: 'auto' | 'clavier' | 'reference';
+  genre?: string;
+  reference?: string;
+}
+
 export interface ReglagesProfil {
   apparence: {
     /** `null` = le skin choisi dans Firehouse. */
@@ -52,6 +59,8 @@ export interface ReglagesProfil {
     /** Plateformes masquées dans la liste de gauche. */
     plateformesMasquees: string[];
   };
+  /** Les commandes choisies jeu par jeu (identifiant du jeu → choix). Absent : automatique. */
+  commandes: Record<string, CommandesJeu>;
 }
 
 export const DEFAUTS_PC: ReglagesPc = {
@@ -72,6 +81,7 @@ export const DEFAUTS_PROFIL: ReglagesProfil = {
     panneauDetails: true,
     plateformesMasquees: [],
   },
+  commandes: {},
 };
 
 export const TAILLE_JAQUETTE_MIN = 110;

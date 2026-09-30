@@ -2,11 +2,12 @@
   // Les émulateurs réglés sur CE PC, par système. Retirer un réglage ne désinstalle rien.
   import { onMount } from 'svelte';
   import { api, type EmulateurInstalle, type Plateforme } from '$lib/api';
-  import { choisir, confirmer, toast } from '$lib/dialogues/fenetres.svelte';
+  import { choisir, confirmer, demander, informer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { etat, reglerPc } from '$lib/etat.svelte';
   import { dossierEmulateurs, installerEmulateur, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
   import { plusRecente } from '$lib/emulateurs/versions';
+  import { GENRES_MANETTE } from '$lib/ludotheque/commandes';
 
   const e = $derived(Object.entries(etat.pc.emulateurs));
   let plateformes = $state<Plateforme[]>([]);
@@ -71,6 +72,51 @@
     }
   }
 
+  /** Les émulateurs dont Frogtend sait reprendre les profils de manette. */
+  const AVEC_PROFILS = ['dolphin', 'duckstation', 'pcsx2'];
+
+  /** Faire d'un profil enregistré dans l'émulateur un réglage de référence de Frogtend. */
+  async function reprendreReference(i: EmulateurInstalle) {
+    let natifs;
+    try {
+      natifs = await api.profilsManetteEmulateur(i.id, i.programme);
+    } catch (e) {
+      toast(`Impossible de lire les profils de ${i.nom} : ${motifDuRefus(e)}`, 'erreur');
+      return;
+    }
+    if (natifs.length === 0) {
+      await informer(
+        `📌 Aucun profil de manette dans ${i.nom}`,
+        `Ouvre ${i.nom} (depuis son dossier : ${i.dossier}), règle la manette dans ses options, puis enregistre-la comme profil avec son bouton « Enregistrer » (ou « Save »). Elle apparaîtra ici.`,
+      );
+      return;
+    }
+    const refs = await api.referencesManette(i.id).catch(() => []);
+    const p = await choisir(
+      `📌 Quel profil de ${i.nom} devient une référence ?`,
+      natifs.map((n) => ({
+        valeur: n,
+        libelle: `${GENRES_MANETTE[n.genre] ?? n.genre} : ${n.nom}`,
+        detail: refs.some((r) => r.genre === n.genre && r.nom === n.nom) ? 'remplacera la référence de même nom' : 'nouvelle référence',
+      })),
+      'Une référence est proposée pour chaque jeu (⚙ Gérer le jeu ▸ 🎮 Commandes), et déposée dans les profils de tous.',
+    );
+    if (!p) return;
+    const nom = await demander('📌 Nom de la référence', {
+      message:
+        'Garde le même nom qu’une référence existante pour la remplacer (par exemple « Wiimote + Nunchuk », utilisée d’office pour la Wii).',
+      valeur: p.nom,
+      libelleValider: '📌 En faire une référence',
+    });
+    if (!nom) return;
+    try {
+      const r = await api.referenceReprendre(i.id, i.programme, p.genre, p.chemin, nom);
+      toast(`✅ « ${r.nom} » est un réglage de référence de ${i.nom} sur ce PC.`);
+    } catch (e) {
+      toast(`Impossible d’en faire une référence : ${motifDuRefus(e)}`, 'erreur');
+    }
+  }
+
   async function retirer(systeme: string) {
     const reste = { ...etat.pc.emulateurs };
     delete reste[systeme];
@@ -125,6 +171,11 @@
             {/if}
             {#if MANETTE[i.id]}
               <button class="btn petit" title={MANETTE[i.id]} onclick={() => manetteParDefaut(i)}>🎮 Manette par défaut</button>
+            {/if}
+            {#if AVEC_PROFILS.includes(i.id)}
+              <button class="btn petit" title="Faire d’un profil de manette de l’émulateur un réglage de référence" onclick={() => reprendreReference(i)}>
+                📌 Réglages de référence
+              </button>
             {/if}
           </dd>
         {/each}

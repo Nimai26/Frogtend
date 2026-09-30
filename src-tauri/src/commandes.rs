@@ -7,7 +7,7 @@ use crate::erreurs::{Erreur, Resultat};
 use crate::ludotheque::{Filtre, JeuResume, Liste, Plateforme};
 use crate::noyau::{BilanSynchro, Connexion, FicheLue, Noyau};
 use crate::profils::ProfilVisible;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use crate::jeux_pc::{EmplacementPropose, Emplacements, JeuPc};
 use crate::locale::JeuPcVu;
@@ -352,12 +352,24 @@ enum EvenementPartie {
     Fin { jeu: i64, secondes: u64 },
 }
 
+/// Le réglage « Commandes » d'un jeu, choisi par la personne (réglages de son profil).
+#[derive(Debug, Default, Deserialize)]
+pub struct Commandes {
+    /// `auto`, `clavier` (clavier et souris) ou `reference`.
+    #[serde(default)]
+    pub mode: String,
+    pub genre: Option<String>,
+    pub reference: Option<String>,
+}
+
 /// Lance le jeu, puis le suit jusqu'à sa fermeture (événements « partie »).
 #[tauri::command]
-pub async fn jeu_jouer(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<()> {
+pub async fn jeu_jouer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, commandes: Option<Commandes>) -> Resultat<()> {
     let plateforme = noyau.registre().jeu(id)?.map(|j| j.plateforme).unwrap_or_default();
     let emulateur = match emulateur_regle(&app, &plateforme) {
-        Some((programme, ligne)) => Some(preparer_emulateur(&app, &noyau, &plateforme, &programme, &ligne).await?),
+        Some((programme, ligne)) => {
+            Some(preparer_emulateur(&app, &noyau, &plateforme, &programme, &ligne, &commandes.unwrap_or_default()).await?)
+        }
         None => None,
     };
     let (pid, dossiers, carte_cedee) = noyau.jouer(id, emulateur).await?;
@@ -585,6 +597,47 @@ pub async fn emulateur_regler_manette(noyau: State<'_, Noyau>, id: String, progr
     Ok(ManetteReglee { reglee, profils_ajoutes })
 }
 
+/// Les réglages de manette de référence d'un émulateur.
+#[tauri::command]
+pub fn references_manette(noyau: State<'_, Noyau>, id: String) -> Vec<crate::references::Reference> {
+    crate::references::toutes(&noyau.dossier.join("references"), &id)
+}
+
+/// Les profils de manette enregistrés dans l'émulateur par le profil ouvert (à reprendre comme référence).
+#[tauri::command]
+pub async fn profils_manette_emulateur(
+    noyau: State<'_, Noyau>,
+    id: String,
+    programme: String,
+) -> Resultat<Vec<crate::references::ProfilNatif>> {
+    let dossier = std::path::Path::new(&programme).parent().map(std::path::PathBuf::from).unwrap_or_default();
+    let profil = noyau.actif().await.ok_or_else(|| Erreur::Profil("Aucun profil n'est ouvert.".into()))?;
+    let utilisateur = crate::emulateurs_profils::dossier_du_profil(&dossier, &profil.nom).join("User");
+    Ok(crate::references::profils_natifs(&id, &dossier, &utilisateur))
+}
+
+/// Fait d'un profil de l'émulateur une référence de ce PC (la personne l'a choisi dans l'interface).
+#[tauri::command]
+pub async fn reference_reprendre(
+    noyau: State<'_, Noyau>,
+    id: String,
+    programme: String,
+    genre: String,
+    chemin: String,
+    nom: String,
+) -> Resultat<crate::references::Reference> {
+    let dossier = std::path::Path::new(&programme).parent().map(std::path::PathBuf::from).unwrap_or_default();
+    let profil = noyau.actif().await.ok_or_else(|| Erreur::Profil("Aucun profil n'est ouvert.".into()))?;
+    let utilisateur = crate::emulateurs_profils::dossier_du_profil(&dossier, &profil.nom).join("User");
+    // Seulement un profil de l'émulateur, jamais un fichier pris ailleurs.
+    let natifs = crate::references::profils_natifs(&id, &dossier, &utilisateur);
+    let p = natifs
+        .iter()
+        .find(|p| p.chemin == chemin && p.genre == genre)
+        .ok_or_else(|| Erreur::Refus("Ce fichier n'est pas un profil de manette de l'émulateur.".into()))?;
+    crate::references::reprendre(&noyau.dossier.join("references"), &id, &genre, std::path::Path::new(&p.chemin), &nom)
+}
+
 /// Prépare l'émulateur pour le profil ouvert (ses parties à lui, les dossiers de jeux de Frogtend) et rend
 /// (programme, ligne de commande complétée).
 async fn preparer_emulateur(
@@ -593,6 +646,7 @@ async fn preparer_emulateur(
     plateforme: &str,
     programme: &str,
     ligne: &str,
+    commandes: &Commandes,
 ) -> Resultat<(String, String)> {
     let chemin = std::path::Path::new(programme);
     let nom = chemin.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
@@ -611,8 +665,29 @@ async fn preparer_emulateur(
             .collect(),
     };
     let dossier = chemin.parent().map(std::path::PathBuf::from).unwrap_or_default();
+    // La manette : le choix fait pour ce jeu, sinon la référence du système.
+    let magasin = noyau.dossier.join("references");
+    let manette = match commandes.mode.as_str() {
+        "clavier" => crate::emulateurs_profils::Manette::Clavier,
+        "reference" => {
+            let (g, n) = (commandes.genre.as_deref().unwrap_or(""), commandes.reference.as_deref().unwrap_or(""));
+            let r = crate::references::trouver(&magasin, f.id, g, n)
+                .ok_or_else(|| Erreur::Introuvable(format!("Le réglage de manette « {n} » n'existe plus pour {}.", f.nom)))?;
+            crate::emulateurs_profils::Manette::Imposee(r)
+        }
+        _ => crate::emulateurs_profils::Manette::Auto(
+            crate::references::par_defaut(plateforme)
+                .filter(|(e, ..)| *e == f.id)
+                .and_then(|(e, g, n)| crate::references::trouver(&magasin, e, g, n)),
+        ),
+    };
     let (id, n, d, j) = (f.id.to_string(), profil.nom.clone(), dossier.clone(), jeux.clone());
-    let avant = tauri::async_runtime::spawn_blocking(move || crate::emulateurs_profils::preparer(&id, &d, &n, &j))
+    let avant = tauri::async_runtime::spawn_blocking(move || {
+        // Les références sont déposées dans les profils de l'émulateur (on les y retrouve).
+        let utilisateur = crate::emulateurs_profils::dossier_du_profil(&d, &n).join("User");
+        crate::references::deposer(&crate::references::toutes(&magasin, &id), &d, &utilisateur)?;
+        crate::emulateurs_profils::preparer(&id, &d, &n, &j, &manette)
+    })
         .await
         .map_err(|_| Erreur::Disque("La préparation de l'émulateur s'est arrêtée brutalement.".into()))??;
     let mut complete: Vec<String> = avant.iter().map(|a| format!("\"{a}\"")).collect();

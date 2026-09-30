@@ -230,9 +230,29 @@ Les **profils par jeu** viendront avec Taodbox (lot 5), quand on jouera vraiment
 - **Consoles tactiles** (DS, 3DS…) : il faut penser l'écran tactile. Au bureau, la souris joue le stylet. À la
   manette et à la télé, il faut une solution (un stick qui déplace un pointeur, la disposition des deux écrans…).
   Pistes à relever dans la documentation officielle des émulateurs concernés avant de choisir.
+- **Clavier et souris en jeu, au choix par jeu** (Seb, 30/09) : la manette n'est pas imposée. Pour certains jeux, on
+  doit pouvoir choisir de jouer au **clavier et à la souris** (jeux PC et DOS, jeux à pointer, stylet de la DS à la
+  souris, pointeur de la Wiimote…). Réglage « Commandes » par jeu : automatique, manette, ou clavier et souris. Les
+  touches du clavier déjà réglées dans les émulateurs sont toujours gardées (fait en 0.8.0).
 - **Les réglages de référence** : un moyen simple pour Seb de dire « ce réglage devient celui par défaut » ;
   Frogtend le range (avec le numéro de version de l'émulateur) et l'applique ensuite partout, profil par profil,
   sans écraser ce que chacun a réglé lui-même.
+
+**4c : ✅ livré en 0.9.0** (sauf les profils Wiimote définitifs, que Seb réglera) :
+- **Réglages de référence** : on s'appuie sur les profils propres aux émulateurs (relevé dans les sources : Dolphin
+  `Config\Profiles\<Wiimote|GCPad>\*.ini` section `[Profile]` ; DuckStation et PCSX2 `inputprofiles\*.ini`). Seb
+  règle et enregistre un profil dans l'émulateur, puis **Options ▸ Émulateurs ▸ 📌 Réglages de référence** le reprend
+  (rangé dans `<données>\references\`). Les références sont déposées dans les profils de chacun et proposées jeu par
+  jeu. Pour qu'une référence reprise sur Venkman parte avec Frogtend sur les autres PC, l'agent l'intègre au dépôt
+  (`src-tauri/references/`) dans la version suivante. *Le numéro de version de l'émulateur n'est pas encore retenu.*
+- **Wii** : deux références de départ, sur manette Xbox, à remplacer par celles de Seb (même nom) : « Wiimote +
+  Nunchuk » (d'office pour la Wii) et « Wiimote horizontale ». La référence d'office ne défait jamais une Wiimote
+  retouchée à la main (Frogtend retient une empreinte de ce qu'il a écrit).
+- **Commandes par jeu** (⚙ Gérer le jeu ▸ 🎮 Commandes) : Automatique, Clavier et souris (aucune manette réglée par
+  Frogtend), ou une référence. Rangé dans les réglages du profil (`commandes`), donc dans sa sauvegarde.
+- **DS** : relevé dans les sources du cœur RetroArch **melonDS DS** : `melonds_touch_mode` vaut `auto` par défaut
+  (le stylet suit la souris OU un stick, selon ce qu'on a touché en dernier). Rien à régler : au bureau la souris, à
+  la télé le stick. **3DS** : à étudier plus tard (émulateur à choisir avec Seb).
 
 ### Lot 4 ter — Le menu universel en jeu (OSD) (demandé par Seb le 30/09)
 **Une combinaison de touches universelle** (à la manette, et au clavier), la même dans **tous les jeux et tous les

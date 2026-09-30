@@ -193,6 +193,14 @@ mod tests {
     use super::*;
     use crate::ludotheque::{lire_page, lire_plateformes};
 
+    #[test]
+    fn un_chemin_est_entierement_encode_pour_passer_le_proxy_de_firehouse() {
+        // Firehouse 2.21 : le proxy filtre la chaîne de requête BRUTE (« ( », « / », espace…).
+        assert_eq!(encoder("Dune/concat (1).sav"), "Dune%2Fconcat%20%281%29.sav");
+        assert_eq!(encoder("Zoé"), "Zo%C3%A9");
+        assert_eq!(encoder("a-b_c.d~e"), "a-b_c.d~e");
+    }
+
     #[tokio::test]
     async fn le_catalogue_simule_se_lit_comme_le_vrai_page_par_page() {
         let s = Source::Simulee;

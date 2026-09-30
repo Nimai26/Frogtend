@@ -7,6 +7,9 @@ import { api, duree, estErreurCoeur, taille, type Candidat, type JeuPc } from '$
 import { choisir, confirmer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
+import { etat, reglerProfil } from '$lib/etat.svelte';
+import type { CommandesJeu } from '$lib/reglages/reglages';
+import { GENRES_MANETTE, libelleCommandes } from './commandes';
 import { apresUnePartie } from '$lib/sauvegarde.svelte';
 import { ludo, rechargerListe, rechargerPlateformes } from './ludotheque.svelte';
 import { rechargerJeuxDuPc, tele } from './telechargements.svelte';
@@ -178,7 +181,7 @@ export async function jouer(id: number) {
   const j = tele.jeux[id];
   for (let essai = 0; essai < 2; essai++) {
     try {
-      await api.jouer(id);
+      await api.jouer(id, etat.profil.commandes[String(id)]);
       toast(`▶ « ${j?.titre ?? 'Le jeu'} » se lance…`);
       return;
     } catch (e) {
@@ -233,15 +236,54 @@ export async function retirer(j: JeuPc) {
   }
 }
 
+/** L'émulateur réglé pour un système sur ce PC (son identifiant), s'il est connu de Frogtend. */
+async function emulateurDuSysteme(plateforme: string): Promise<{ id: string; nom: string } | null> {
+  const programme = etat.pc.emulateurs[plateforme]?.programme;
+  if (!programme) return null;
+  const installes = await api.emulateursInstalles().catch(() => []);
+  const e = installes.find((i) => i.programme.toLowerCase() === programme.toLowerCase());
+  return e ? { id: e.id, nom: e.nom } : null;
+}
+
+/** « 🎮 Commandes » d'un jeu : automatique, clavier et souris, ou un réglage de manette de référence. */
+export async function choisirCommandes(id: number) {
+  const j = tele.jeux[id];
+  if (!j) return;
+  const emu = await emulateurDuSysteme(j.plateforme);
+  const refs = emu ? await api.referencesManette(emu.id).catch(() => []) : [];
+  const actuel = etat.profil.commandes[String(id)];
+  const options: { valeur: CommandesJeu; libelle: string; detail?: string }[] = [
+    { valeur: { mode: 'auto' }, libelle: '✨ Automatique', detail: 'la manette réglée par Frogtend (ou la tienne)' },
+    { valeur: { mode: 'clavier' }, libelle: '⌨ Clavier et souris', detail: 'Frogtend ne règle pas de manette pour ce jeu' },
+    ...refs.map((r) => ({
+      valeur: { mode: 'reference' as const, genre: r.genre, reference: r.nom },
+      libelle: `🎮 ${GENRES_MANETTE[r.genre] ?? r.genre} : ${r.nom}`,
+      detail: r.livree ? 'réglage de départ de Frogtend' : 'réglage de référence de ce PC',
+    })),
+  ];
+  const c = await choisir<CommandesJeu>(
+    `🎮 Commandes de « ${j.titre} »`,
+    options,
+    `Actuellement : ${libelleCommandes(actuel)}.${emu ? '' : ' (Pas d’émulateur réglé pour ce système : seuls « Automatique » et « Clavier et souris » ont un sens.)'}`,
+  );
+  if (!c) return;
+  const tous = { ...etat.profil.commandes };
+  if (c.mode === 'auto') delete tous[String(id)];
+  else tous[String(id)] = c;
+  await reglerProfil('commandes', tous);
+  toast(`🎮 « ${j.titre} » : ${libelleCommandes(c)}.`);
+}
+
 /** Le menu « ⚙ Gérer le jeu » : toutes les actions possibles sur un jeu du PC, au même endroit, bien visibles. */
 export async function gererJeu(id: number) {
   const j = tele.jeux[id];
   if (!j) return;
-  type Action = 'installer' | 'lanceur' | 'abri' | 'retirer';
+  type Action = 'installer' | 'lanceur' | 'commandes' | 'abri' | 'retirer';
   const options: { valeur: Action; libelle: string; detail?: string }[] = [];
   if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
   if (j.installation && !j.installation.fichier_du_jeu)
     options.push({ valeur: 'lanceur', libelle: '🎯 Changer ce qui lance le jeu' });
+  options.push({ valeur: 'commandes', libelle: '🎮 Commandes', detail: libelleCommandes(etat.profil.commandes[String(id)]) });
   if (j.installation)
     options.push({ valeur: 'abri', libelle: '💾 Mettre mes parties à l’abri', detail: 'une copie de ce qui a changé depuis l’installation' });
   if (j.etat === 'telecharge')
@@ -249,6 +291,7 @@ export async function gererJeu(id: number) {
   const c = await choisir<Action>(`⚙ Gérer « ${j.titre} »`, options, `Rangé dans ${j.installation?.dossier ?? j.dossier}`);
   if (c === 'installer') await installer(id);
   else if (c === 'lanceur') await choisirLanceur(id);
+  else if (c === 'commandes') await choisirCommandes(id);
   else if (c === 'abri') await mettreALAbri(id);
   else if (c === 'retirer') await retirer(j);
 }

@@ -1,5 +1,23 @@
 # Notes de version de Frogtend
 
+## 0.9.0 — tes réglages de manette, jeu par jeu (lot 4c)
+
+- **🎮 Commandes, jeu par jeu** (⚙ Gérer le jeu ▸ 🎮 Commandes) : **Automatique**, **Clavier et souris** (Frogtend ne
+  règle alors aucune manette pour ce jeu), ou un **réglage de manette de référence** (par exemple « Wiimote
+  horizontale » pour un jeu Wii qui se joue la Wiimote couchée).
+- **📌 Réglages de référence** (Options ▸ Émulateurs, pour Dolphin, DuckStation et PCSX2) : règle une manette dans
+  l'émulateur, enregistre-la comme profil avec son bouton « Enregistrer », puis fais-en une référence. Elle est
+  proposée pour chaque jeu, et on la retrouve dans les profils de l'émulateur de chacun. Garde le nom d'une
+  référence existante pour la remplacer.
+- **Wii** : deux réglages de départ sur manette Xbox, **« Wiimote + Nunchuk »** (utilisé d'office : stick gauche =
+  Nunchuk, stick droit = pointeur, RB = secouer) et **« Wiimote horizontale »** (croix ou stick gauche, A = 2,
+  X = 1, gâchettes = pencher). Ce sont des départs : tu les remplaceras par les tiens. Une Wiimote que tu as retouchée
+  à la main dans Dolphin n'est jamais défaite.
+- **DS** (par RetroArch et son cœur melonDS DS) : l'écran tactile suit la souris au bureau, ou un stick à la
+  manette, tout seul.
+- Messages plus clairs quand Firehouse est plein (sauvegarde), en maintenance, ou quand le jeton est refusé (il se
+  crée maintenant dans 👤 Mon compte ▸ 🔌 Mes jetons).
+
 ## 0.8.0 — la manette marche d'emblée (fin du lot 4)
 
 - **Branche ta manette, joue** : au premier lancement d'un jeu, Frogtend règle la manette du joueur 1 dans
