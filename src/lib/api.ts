@@ -296,6 +296,15 @@ export const api = {
   ouvrirAnnexe: (id: number, i: number) => appeler<void>('annexe_ouvrir', { id, i }),
   sauvegarder: () => appeler<import('./sauvegarde.svelte').BilanSauvegarde>('sauvegarde_lancer'),
   derniereSauvegarde: () => appeler<import('./sauvegarde.svelte').BilanSauvegarde | null>('sauvegarde_derniere'),
+  restaurationListe: () =>
+    appeler<{ profil: string; pc: string; derniere: { date?: string; fichiers?: number; taille?: number } | null; octets: number }[]>(
+      'restauration_liste',
+    ),
+  restaurationPreparer: (profil: string, pc: string) =>
+    appeler<[{ configuration: Record<string, any>; bibliotheque: { jeux?: any[] }; fichiers: number; taille: number }, { reposes: number; deja_la: number; conflits: string[] }]>(
+      'restauration_preparer',
+      { profil, pc },
+    ),
   espaceLibre: (chemin: string) => appeler<number | null>('espace_libre', { chemin }),
 
   preparerInstallation: (id: number) => appeler<Preparation>('installation_preparer', { id }),

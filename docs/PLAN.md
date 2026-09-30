@@ -143,8 +143,10 @@ annoncés à Firehouse (`/session`).
 sauvegarde passe PAR L'API FIREHOUSE, PARTOUT** (HTTPS, jeton du profil), pour que les autres foyers (la sœur de Seb…)
 puissent aussi sauvegarder. Firehouse l'écrit dans le même dossier sur Shyrka (`<username>/<profil>/<PC>/`, historique
 par instantanés ZFS). Frogtend n'utilise plus le partage SMB. Routes demandées à Firehouse le 30/09 (liste,
-documents, fichiers par morceaux avec reprise et sha256, suppression). Le contenu et l'envoi incrémental sont codés
-(`sauvegarde.rs`) ; le transport attend ces routes.
+documents, fichiers par morceaux avec reprise et sha256, suppression). Codé sur réponses simulées (contrat 1.5, 30/09) : contenu, envoi incrémental par morceaux avec reprise, sauvegarde
+automatique (après chaque partie / chaque jour / jamais), restauration (réglages, parties d'émulateurs, parties des jeux
+reposées à leur réinstallation, jeux remis sur accord chiffré). **En attente : routes en service chez Firehouse, puis
+essai réel, puis publication.**
 **But : pouvoir reformater son PC, réinstaller Frogtend, et TOUT retrouver.** Par profil, une sauvegarde
 **automatique ou manuelle** (au choix de la personne) de :
 - la **configuration de Frogtend** (réglages du profil et du PC, emplacements, émulateurs réglés) ;

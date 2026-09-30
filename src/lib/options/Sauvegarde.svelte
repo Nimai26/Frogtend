@@ -4,7 +4,7 @@
   import { taille } from '$lib/api';
   import { etat, reglerProfil } from '$lib/etat.svelte';
   import { depuis } from '$lib/ludotheque/ludotheque.svelte';
-  import { lireDerniereSauvegarde, sauvegarde, sauvegarder } from '$lib/sauvegarde.svelte';
+  import { lireDerniereSauvegarde, restaurer, sauvegarde, sauvegarder } from '$lib/sauvegarde.svelte';
 
   onMount(lireDerniereSauvegarde);
   const d = $derived(sauvegarde.derniere);
@@ -42,6 +42,11 @@
   <div class="actions">
     <button class="btn primary" onclick={() => sauvegarder()} disabled={sauvegarde.enCours || etat.pc.firehouse.simule}>
       {sauvegarde.enCours ? 'Sauvegarde en cours…' : '💾 Sauvegarder maintenant'}
+    </button>
+    <button class="btn" onclick={() => restaurer()} disabled={sauvegarde.restauration !== null || etat.pc.firehouse.simule}>
+      {sauvegarde.restauration
+        ? `Restauration… ${sauvegarde.restauration.faits}/${sauvegarde.restauration.total}`
+        : '📥 Restaurer une sauvegarde…'}
     </button>
   </div>
   {#if etat.pc.firehouse.simule}<p class="muted">En mode simulé, rien n’est sauvegardé.</p>{/if}

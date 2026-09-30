@@ -140,6 +140,13 @@ export async function sortirDuProfil() {
   appliquerApparence();
 }
 
+/** Remplace TOUS les réglages du profil (restauration d'une sauvegarde), complétés par les défauts. */
+export async function remplacerReglagesProfil(lus: unknown) {
+  etat.profil = completer(DEFAUTS_PROFIL, lus);
+  appliquerApparence();
+  await magasinProfil?.ecrire($state.snapshot(etat.profil));
+}
+
 /** Change un réglage du profil (`'apparence.skin'`…) et l'enregistre. */
 export async function reglerProfil(chemin: string, valeur: unknown) {
   etat.profil = ecrire($state.snapshot(etat.profil), chemin, valeur);

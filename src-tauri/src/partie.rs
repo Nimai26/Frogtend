@@ -162,7 +162,21 @@ impl Noyau {
                 dest.display()
             )));
         }
-        self.retenir_installation(&j, &dest, p.methode, fichier_du_jeu, p.nature)
+        let i = self.retenir_installation(&j, &dest, p.methode, fichier_du_jeu, p.nature)?;
+        self.reposer_parties_restaurees(id, &i).await;
+        Ok(i)
+    }
+
+    /// Des parties restaurées attendent ce jeu : elles sont reposées dans son dossier tout neuf (APRÈS le relevé des
+    /// fichiers, pour être reconnues comme des parties et resauvegardées). Un échec est noté, sans défaire
+    /// l'installation.
+    async fn reposer_parties_restaurees(&self, id: i64, i: &Installation) {
+        let Ok(s) = self.session().await else { return };
+        match self.reposer_parties_du_jeu(&s.profil.id, id, Path::new(&i.dossier)) {
+            Ok(r) if r.reposes > 0 => self.journaliser(&format!("jeu {id} : {} partie(s) restaurée(s) reposée(s)", r.reposes)),
+            Ok(_) => {}
+            Err(e) => self.journaliser(&format!("jeu {id} : parties restaurées non reposées : {e:?}")),
+        }
     }
 
     /// Le jeu a été installé ailleurs que prévu (installeur guidé) : la personne indique où.
@@ -173,7 +187,9 @@ impl Noyau {
         if !d.is_dir() {
             return Err(Erreur::Disque(format!("Dossier introuvable : {dossier}.")));
         }
-        self.retenir_installation(&j, &d, p.methode, None, p.nature)
+        let i = self.retenir_installation(&j, &d, p.methode, None, p.nature)?;
+        self.reposer_parties_restaurees(id, &i).await;
+        Ok(i)
     }
 
     fn retenir_installation(

@@ -17,6 +17,7 @@ pub mod ludotheque;
 pub mod noyau;
 pub mod partie;
 pub mod profils;
+pub mod restauration;
 pub mod sauvegarde;
 pub mod source;
 pub mod telechargements;
@@ -178,6 +179,9 @@ pub fn run() {
             commandes::emulateurs_traces,
             commandes::sauvegarde_lancer,
             commandes::sauvegarde_derniere,
+            commandes::restauration_liste,
+            commandes::restauration_preparer,
+            commandes::restauration_reposer_emulateurs,
             commandes::skin_personnel,
         ])
         .run(tauri::generate_context!())

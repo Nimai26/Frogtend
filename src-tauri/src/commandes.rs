@@ -618,3 +618,40 @@ pub async fn sauvegarde_lancer(app: AppHandle, noyau: State<'_, Noyau>) -> Resul
 pub async fn sauvegarde_derniere(noyau: State<'_, Noyau>) -> Resultat<Option<crate::sauvegarde::Bilan>> {
     noyau.derniere_sauvegarde().await
 }
+
+/// Les sauvegardes du compte de ce jeton, chez Firehouse (pour restaurer).
+#[tauri::command]
+pub async fn restauration_liste(noyau: State<'_, Noyau>) -> Resultat<Vec<crate::restauration::SauvegardeDisponible>> {
+    noyau.sauvegardes_disponibles().await
+}
+
+#[derive(Clone, Serialize)]
+struct ProgresRestauration {
+    faits: usize,
+    total: usize,
+}
+
+/// Télécharge une sauvegarde dans la zone d'attente du profil ouvert, puis repose les parties des émulateurs
+/// présents. Rend la configuration et la bibliothèque, que l'interface applique (avec l'accord de la personne).
+#[tauri::command]
+pub async fn restauration_preparer(
+    app: AppHandle,
+    noyau: State<'_, Noyau>,
+    profil: String,
+    pc: String,
+) -> Resultat<(crate::restauration::RestaurationPrete, crate::restauration::Reposes)> {
+    let app2 = app.clone();
+    let prete = noyau
+        .preparer_restauration(&profil, &pc, &move |faits, total| {
+            let _ = app2.emit("restauration", ProgresRestauration { faits, total });
+        })
+        .await?;
+    let reposes = noyau.reposer_parties_emulateurs(&programmes_emulateurs(&app)).await?;
+    Ok((prete, reposes))
+}
+
+/// Repose les parties d'émulateurs restaurées (après avoir installé un émulateur qui manquait).
+#[tauri::command]
+pub async fn restauration_reposer_emulateurs(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<crate::restauration::Reposes> {
+    noyau.reposer_parties_emulateurs(&programmes_emulateurs(&app)).await
+}
