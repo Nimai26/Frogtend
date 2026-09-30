@@ -176,6 +176,8 @@ pub fn run() {
             commandes::retroarch_etat,
             commandes::retroarch_installer_coeur,
             commandes::emulateurs_traces,
+            commandes::sauvegarde_lancer,
+            commandes::sauvegarde_derniere,
             commandes::skin_personnel,
         ])
         .run(tauri::generate_context!())

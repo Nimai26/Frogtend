@@ -5,6 +5,7 @@
   import { goto } from '$app/navigation';
   import Profil from '$lib/options/Profil.svelte';
   import APropos from '$lib/options/APropos.svelte';
+  import Sauvegarde from '$lib/options/Sauvegarde.svelte';
   import Emulateurs from '$lib/reglages/Emulateurs.svelte';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
@@ -94,6 +95,7 @@
     { groupe: 'Général', rubriques: [
       { id: 'apparence', libelle: '🎨 Apparence' },
       { id: 'profil', libelle: '👤 Mon profil' },
+      { id: 'sauvegarde', libelle: '💾 Sauvegarde' },
     ] },
     { groupe: 'Ludothèque', rubriques: [{ id: 'ludotheque', libelle: '🎮 Affichage' }] },
     { groupe: 'Jeux', rubriques: [
@@ -205,6 +207,8 @@
   </section>
     {:else if rubrique === 'profil'}
       <Profil />
+    {:else if rubrique === 'sauvegarde'}
+      <Sauvegarde />
     {:else if rubrique === 'ludotheque'}
   <section class="panel">
     <header>🎮 Ludothèque <span class="muted">— ton profil</span></header>

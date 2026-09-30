@@ -37,6 +37,10 @@ export interface ReglagesProfil {
     /** Le fond vidéo du skin `firehouse`. */
     fondVideo: boolean;
   };
+  /** La sauvegarde du profil chez Firehouse. */
+  sauvegarde: {
+    auto: 'apres_partie' | 'quotidienne' | 'manuelle';
+  };
   ludotheque: {
     /** Largeur d'une jaquette dans la grille, en pixels (à l'échelle 1). */
     tailleJaquette: number;
@@ -59,6 +63,7 @@ export const DEFAUTS_PC: ReglagesPc = {
 
 export const DEFAUTS_PROFIL: ReglagesProfil = {
   apparence: { skin: null, echelle: 1, densite: 'aeree', animations: 'normales', fondVideo: true },
+  sauvegarde: { auto: 'apres_partie' },
   ludotheque: {
     tailleJaquette: 170,
     sousTitre: 'developpeur',

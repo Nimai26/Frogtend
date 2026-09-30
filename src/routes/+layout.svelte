@@ -1,6 +1,6 @@
 <script lang="ts">
   import '$lib/styles/base.css';
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { adresseFond } from '$lib/api';
   import BarreTitre from '$lib/BarreTitre.svelte';
   import Dialogues from '$lib/dialogues/Dialogues.svelte';
@@ -9,6 +9,7 @@
   import { arreterSuivi, suivreTelechargements } from '$lib/ludotheque/telechargements.svelte';
   import { suivreParties } from '$lib/ludotheque/jeu.svelte';
   import ChoixProfil from '$lib/profils/ChoixProfil.svelte';
+  import { auDemarrage } from '$lib/sauvegarde.svelte';
 
   let { children } = $props();
 
@@ -30,6 +31,7 @@
     if (etat.profilOuvert) {
       suivreTelechargements();
       suivreParties();
+      untrack(() => auDemarrage());
     } else {
       arreterSuivi();
     }

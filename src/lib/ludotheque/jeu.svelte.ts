@@ -7,6 +7,7 @@ import { api, duree, estErreurCoeur, taille, type Candidat, type JeuPc } from '$
 import { choisir, confirmer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
+import { apresUnePartie } from '$lib/sauvegarde.svelte';
 import { ludo, rechargerListe, rechargerPlateformes } from './ludotheque.svelte';
 import { rechargerJeuxDuPc, tele } from './telechargements.svelte';
 
@@ -26,6 +27,7 @@ export async function suivreParties() {
       const titre = tele.jeux[e.payload.jeu]?.titre ?? 'le jeu';
       toast(`🏁 Partie de « ${titre} » terminée (${duree(e.payload.secondes ?? 0)}).`);
       await rechargerJeuxDuPc();
+      await apresUnePartie();
     }
   });
 }

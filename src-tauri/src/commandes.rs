@@ -596,3 +596,25 @@ pub fn emulateurs_traces() -> Vec<Traces> {
         })
         .collect()
 }
+
+/// Les programmes des émulateurs réglés sur ce PC (`pc.json` ▸ `emulateurs`).
+fn programmes_emulateurs(app: &AppHandle) -> Vec<String> {
+    app.store("pc.json")
+        .ok()
+        .and_then(|s| s.get("reglages"))
+        .and_then(|r| r["emulateurs"].as_object().cloned())
+        .map(|o| o.values().filter_map(|e| e["programme"].as_str().map(String::from)).collect())
+        .unwrap_or_default()
+}
+
+/// Sauvegarde le profil ouvert chez Firehouse : configuration, liste des jeux, parties et codes de triche.
+#[tauri::command]
+pub async fn sauvegarde_lancer(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<crate::sauvegarde::Bilan> {
+    let pc = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PC".into());
+    noyau.sauvegarder(&programmes_emulateurs(&app), &pc).await
+}
+
+#[tauri::command]
+pub async fn sauvegarde_derniere(noyau: State<'_, Noyau>) -> Resultat<Option<crate::sauvegarde::Bilan>> {
+    noyau.derniere_sauvegarde().await
+}

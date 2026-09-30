@@ -294,6 +294,8 @@ export const api = {
   reprendre: (id: number) => appeler<void>('telechargement_reprendre', { id }),
   annuler: (id: number) => appeler<void>('telechargement_annuler', { id }),
   ouvrirAnnexe: (id: number, i: number) => appeler<void>('annexe_ouvrir', { id, i }),
+  sauvegarder: () => appeler<import('./sauvegarde.svelte').BilanSauvegarde>('sauvegarde_lancer'),
+  derniereSauvegarde: () => appeler<import('./sauvegarde.svelte').BilanSauvegarde | null>('sauvegarde_derniere'),
   espaceLibre: (chemin: string) => appeler<number | null>('espace_libre', { chemin }),
 
   preparerInstallation: (id: number) => appeler<Preparation>('installation_preparer', { id }),

@@ -311,6 +311,48 @@ fn lire_json(p: &Path) -> Value {
 }
 
 impl Noyau {
+    fn fichier_derniere_sauvegarde(&self, profil: &str) -> PathBuf {
+        self.dossier.join("profils").join(profil).join("derniere-sauvegarde.json")
+    }
+
+    /// La dernière sauvegarde réussie du profil ouvert, depuis ce PC.
+    pub async fn derniere_sauvegarde(&self) -> Resultat<Option<Bilan>> {
+        let s = self.session().await?;
+        Ok(std::fs::read(self.fichier_derniere_sauvegarde(&s.profil.id)).ok().and_then(|o| serde_json::from_slice(&o).ok()))
+    }
+
+    /// Sauvegarde le profil ouvert chez Firehouse (`<username du jeton>/<profil>/<pc>/`).
+    pub async fn sauvegarder(&self, programmes_emulateurs: &[String], pc: &str) -> Resultat<Bilan> {
+        let s = self.session().await?;
+        let client = match &s.source {
+            crate::source::Source::Firehouse(c) => c,
+            crate::source::Source::Simulee => {
+                return Err(Erreur::Refus("En mode simulé, rien n'est sauvegardé chez Firehouse.".into()))
+            }
+        };
+        let contenu = self.contenu_sauvegarde(programmes_emulateurs).await?;
+        let api = Api { client, profil: nom_pour_api(&s.profil.nom), pc: nom_pour_api(pc), morceau: MORCEAU };
+        let bilan = match envoyer(&api, &contenu, pc, "Firehouse").await {
+            Ok(b) => b,
+            // Firehouse sans les routes de sauvegarde (avant le contrat 1.5).
+            Err(Erreur::Introuvable(_)) => {
+                return Err(Erreur::Refus(
+                    "Firehouse ne propose pas encore la sauvegarde (il faut une version plus récente).".into(),
+                ))
+            }
+            Err(e) => {
+                self.journaliser(&format!("sauvegarde du profil {} : {e:?}", s.profil.id));
+                return Err(e);
+            }
+        };
+        let f = self.fichier_derniere_sauvegarde(&s.profil.id);
+        if let Some(p) = f.parent() {
+            std::fs::create_dir_all(p)?;
+        }
+        std::fs::write(f, serde_json::to_vec_pretty(&bilan).unwrap())?;
+        Ok(bilan)
+    }
+
     /// Rassemble ce qu'il faut sauvegarder pour le profil ouvert. `programmes_emulateurs` : les programmes des
     /// émulateurs réglés sur ce PC (leurs dossiers portent les dossiers des profils).
     pub async fn contenu_sauvegarde(&self, programmes_emulateurs: &[String]) -> Resultat<Contenu> {
