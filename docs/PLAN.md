@@ -277,6 +277,14 @@ autres, il demande déjà où est le programme (installé à la main). Relevé l
 officielle, mode portable, parties par profil, manette standard), en lisant la documentation de chacun d'abord.
 Collection actuelle de Seb (30/09) : MS-DOS et Nintendo 64 seulement ; elle guidera les priorités.
 
+**Switch — Seb est d'accord (30/09)** et donne les candidats actuels, à départager en lisant leurs sources officielles
+(dépôts, dernières versions, mode portable, clés) avant de choisir :
+- **Eden** : issu de l'écosystème de yuzu, réputé le plus stable et le plus compatible (PC et Android) ;
+- **Ryubing / Kenji-NX** : les forks qui reprennent Ryujinx (réputé pour la précision de son émulation) ;
+- **Citron** : autre fork de yuzu, avec gestionnaire de mods et de sauvegardes ; ses versions changent vite.
+
+Frogtend ne fournit jamais les clés ni le micrologiciel : ils viennent de la Switch de la personne.
+
 ### Lot 4 ter — Le menu universel en jeu (OSD) (demandé par Seb le 30/09)
 **Une combinaison de touches universelle** (à la manette, et au clavier), la même dans **tous les jeux et tous les
 émulateurs**, en **Frogtend comme en Taodbox**, ouvre un menu simple de Frogtend par-dessus le jeu. On n'a plus
@@ -303,6 +311,16 @@ Ordre proposé : **avant Taodbox** (lot 5), qui s'en sert. À valider avec Seb.
 **Recherche faite le 30/09** : voir [RECHERCHE-MENU-EN-JEU.md](RECHERCHE-MENU-EN-JEU.md) (possible / impossible,
 émulateur par émulateur, avec les preuves). Point bloquant à mesurer en premier : **Frogtend lit-il la manette quand
 le jeu a le focus ?** (XInput, et SDL pour les manettes PlayStation/Switch).
+
+**Décisions de Seb (30/09)** : combinaison **Select + Start tenus 1 s** à la manette, touche **Pause/Attn** au
+clavier (réglables dans les Options) ; SDL3 embarqué (compilé dans le programme, aucune DLL).
+
+**⏳ En attente de Seb : l'essai de la sonde avec les vraies manettes** (il ne peut pas tout de suite).
+`outils/sonde-manette` (construite le 30/09) : la lancer, appuyer sur chaque manette, puis dans un jeu au premier
+plan, et laisser finir les 3 minutes ; le journal `sonde-manette.txt` dit quelles manettes restent lisibles en
+arrière-plan. En attendant, on avance sur tout ce qui n'en dépend pas : déclenchement au CLAVIER, fenêtre du menu
+par-dessus le jeu, réglages de pilotage des émulateurs (pause à la perte du focus, plein écran sans bordure,
+raccourcis F13–F24, commandes réseau de RetroArch).
 
 ### Lot 5 — Taodbox
 Démarrage avec `--taodbox`, plein écran, entièrement à la manette. Déclaration comme application Sunshine/Apollo.
