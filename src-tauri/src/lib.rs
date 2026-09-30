@@ -18,6 +18,7 @@ pub mod noyau;
 pub mod partage;
 pub mod partie;
 pub mod profils;
+pub mod sauvegarde;
 pub mod source;
 pub mod telechargements;
 
