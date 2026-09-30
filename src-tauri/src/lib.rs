@@ -15,7 +15,6 @@ pub mod lancement;
 pub mod locale;
 pub mod ludotheque;
 pub mod noyau;
-pub mod partage;
 pub mod partie;
 pub mod profils;
 pub mod sauvegarde;

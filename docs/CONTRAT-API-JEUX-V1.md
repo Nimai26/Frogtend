@@ -82,6 +82,10 @@ recensement). `launchbox_id` reste le contrat ; un `jeu_id` s'ajoutera à côté
 
 ## Sauvegarde des profils (Firehouse 2.19.0, contrat 1.4, 30/09/2026)
 
+> ⚠ **Remplacé par décision de Seb (30/09)** : Frogtend ne passe plus par le partage SMB (joignable seulement à la
+> maison) mais par l'API (routes `/sauvegarde…` demandées à Firehouse). Ce qui suit reste pour mémoire : l'essai réel
+> du partage a réussi (SMB 3.1.1 chiffré AES-128-GCM, signé, dossier en 0700).
+
 - **Partage** : `\10.10.0.2\Frogtend` (ZFS de Shyrka, décision de Seb). Ouvrir DIRECTEMENT
   `\10.10.0.2\Frogtend\<username>` : la racine est illisible par conception.
 - `GET /moi` → `sauvegarde: {partage, compte: "frogtend-<username>", disponible}`.
