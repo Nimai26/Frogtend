@@ -185,6 +185,17 @@ parfois plus de 1 Go : envoi par morceaux avec reprise.
 - **Priorités : RetroArch** (consoles rétro), **DOSBox** (MS-DOS), **consoles récentes** (Dolphin, PCSX2,
   DuckStation, PPSSPP… selon les recommandations de Firehouse).
 
+**Exigence de Seb (30/09) : pas d'« effet pieuvre ».** Pour simplifier l'entretien :
+- TOUS les émulateurs (et outils du même genre) sont installés dans le **dossier « Émulateurs »** réglable dans
+  l'interface (fait en 0.6.0) ;
+- chacun est en **mode portable** : rien dans le dossier utilisateur de Windows (AppData, Documents). Relevé dans les
+  sources officielles : `portable.txt` (DuckStation, Dolphin), `portable.ini` (PCSX2), `dosbox-staging.conf` à côté
+  du programme (DOSBox Staging), pas d'`installed.txt` (PPSSPP), paquet .7z (RetroArch). Après un premier
+  lancement, Frogtend VÉRIFIE que rien n'est parti dans les dossiers utilisateur habituels, et le signale sinon ;
+- leurs **dossiers de jeux** (ROM, images) sont réglés sur les **emplacements de Frogtend** ;
+- **parties, états, codes de triche, mods… restent à côté de l'émulateur**, et entrent dans la **sauvegarde du
+  profil** (lot 3 bis).
+
 Découpage : **4a** (✅ livré en 0.6.0 le 30/09/2026 ; installer, détecter, mettre à jour les émulateurs et les cœurs ; vérifier les BIOS ; régler
 chaque système tout seul d'après Firehouse) puis **4b** (profils de manette XInput, profils par jeu, copie de
 sauvegarde de toute configuration modifiée).

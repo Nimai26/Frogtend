@@ -62,7 +62,8 @@ pub const CATALOGUE: &[Fiche] = &[
         origine: Origine::GitHub { depot: "dosbox-staging/dosbox-staging", morceaux: &["windows-x64", ".zip"] },
         programme: "dosbox.exe",
         ligne: "--fullscreen --exit",
-        portable: None,
+        // Un « dosbox-staging.conf » à côté du programme = configuration portable (src/misc/cross.cpp).
+        portable: Some("dosbox-staging.conf"),
         dossiers_habituels: &["%PROGRAMFILES%\\DOSBox Staging", "%LOCALAPPDATA%\\Programs\\DOSBox Staging"],
     },
     Fiche {
@@ -328,6 +329,13 @@ pub fn installer_paquet(f: &Fiche, paquet: &Path, dossier: &Path) -> Resultat<Pa
             std::fs::write(fichier, b"")?;
         }
     }
+    // PPSSPP : un « installed.txt » l'enverrait dans Documents (Windows/main.cpp) ; sans lui, tout reste à côté.
+    if f.id == "ppsspp" {
+        let installe = dossier.join("installed.txt");
+        if installe.is_file() {
+            std::fs::remove_file(installe)?;
+        }
+    }
     trouver_programme(dossier, f)
         .ok_or_else(|| Erreur::Disque(format!("Après l'installation, le programme de {} est introuvable.", f.nom)))
 }
@@ -553,6 +561,22 @@ mod tests {
         installer_paquet(f, &paquet, &dossier).unwrap();
         let abris: Vec<_> = std::fs::read_dir(dossier.join(".frogtend-sauvegardes")).unwrap().flatten().collect();
         assert_eq!(std::fs::read(abris[0].path().join("dosbox-staging.conf")).unwrap(), b"ma conf");
+    }
+
+    #[test]
+    fn chaque_emulateur_reste_dans_son_dossier() {
+        // Relevé dans les sources officielles le 30/09/2026.
+        let attendu = [
+            ("duckstation", Some("portable.txt")),
+            ("pcsx2", Some("portable.ini")),
+            ("dolphin", Some("portable.txt")),
+            ("dosbox-staging", Some("dosbox-staging.conf")),
+            ("retroarch", None), // le paquet .7z est portable de lui-même
+            ("ppsspp", None),    // portable tant qu'il n'y a pas d'installed.txt
+        ];
+        for (id, portable) in attendu {
+            assert_eq!(fiche(id).unwrap().portable, portable, "{id}");
+        }
     }
 
     #[test]
