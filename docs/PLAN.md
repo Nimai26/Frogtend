@@ -151,8 +151,12 @@ puissent aussi sauvegarder. Firehouse l'écrit dans le même dossier sur Shyrka 
 par instantanés ZFS). Frogtend n'utilise plus le partage SMB. Routes demandées à Firehouse le 30/09 (liste,
 documents, fichiers par morceaux avec reprise et sha256, suppression). Codé sur réponses simulées (contrat 1.5, 30/09) : contenu, envoi incrémental par morceaux avec reprise, sauvegarde
 automatique (après chaque partie / chaque jour / jamais), restauration (réglages, parties d'émulateurs, parties des jeux
-reposées à leur réinstallation, jeux remis sur accord chiffré). **En attente : routes en service chez Firehouse, puis
-essai réel, puis publication.**
+reposées à leur réinstallation, jeux remis sur accord chiffré). Publié dans 0.8.0/0.9.0. **✅ Essai réel réussi le
+30/09/2026** sur Firehouse 2.21.0, avec l'accord de Seb, dans un dossier d'essai (« Essai-Frogtend / Venkman-essai »,
+fichiers fabriqués) : 3 fichiers envoyés (20 979 726 octets, dont 20 Mo en 3 morceaux), 2e envoi sans rien renvoyer,
+reprise après coupure (`HEAD` → `X-Recu` 8 388 608, seule la fin renvoyée), nom à parenthèses et chemin accentué
+relus identiques (sha256), puis tout retiré (`DELETE` du couple → 200, absent de la liste). **Reste : la première
+vraie sauvegarde, faite par Seb** (Options ▸ Sauvegarde ▸ 💾 Sauvegarder maintenant).
 **But : pouvoir reformater son PC, réinstaller Frogtend, et TOUT retrouver.** Par profil, une sauvegarde
 **automatique ou manuelle** (au choix de la personne) de :
 - la **configuration de Frogtend** (réglages du profil et du PC, emplacements, émulateurs réglés) ;
