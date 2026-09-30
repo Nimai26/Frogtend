@@ -31,6 +31,12 @@
 - **Manettes** de la famille : Xbox (360 et suivantes), PS4, PS5, Switch Pro, 8BitDo, génériques. Les profils des
   émulateurs visent la manette XInput standard (§ 4 bis du brief), avec un profil « physique » possible à côté.
 - Les essais en streaming (Sunshine + Moonlight) auront lieu plus tard, quand on pourra lancer des jeux.
+- **« On complexifie le code pour simplifier l'utilisation »** (Seb, 30/09). Le but : que tout le monde, **même un
+  enfant**, profite de tout sans jamais passer par les menus compliqués des émulateurs. Frogtend fait le travail
+  (réglages, manettes, disques, triches…), la personne n'a qu'un menu simple, le même partout (voir le lot 4 ter).
+- **Les réglages de référence de Seb** (30/09) : au fil du temps, Seb peaufinera lui-même des réglages dans les
+  émulateurs (profils de manette, options…) pour qu'ils deviennent ceux **par défaut** de Frogtend. Frogtend doit
+  donc savoir **reprendre un réglage fait par Seb** et le livrer à tous, sans que personne ait à le refaire.
 
 ## Outils présents sur Venkman (vérifié le 29/09)
 
@@ -216,6 +222,40 @@ gardant le clavier, plus Select + Start pour le menu de pause ; Dolphin → mane
 et L3 + R3 pour son menu ; PPSSPP et DOSBox Staging reconnaissent déjà les manettes. Règle : une manette déjà
 réglée par la personne n'est jamais touchée, sauf « 🎮 Manette par défaut » (Options ▸ Émulateurs), sur accord.
 Les **profils par jeu** viendront avec Taodbox (lot 5), quand on jouera vraiment à la manette.
+
+**4c — reste à faire (Seb, 30/09)** :
+- **Wiimote (Dolphin, Wii)** : Seb réglera lui-même un ou deux profils à mettre par défaut : Wiimote **à la
+  verticale** ou **à l'horizontale**, **avec ou sans Nunchuk**. Frogtend doit pouvoir les reprendre (réglages de
+  référence, voir « Décisions ») et choisir le bon selon le jeu.
+- **Consoles tactiles** (DS, 3DS…) : il faut penser l'écran tactile. Au bureau, la souris joue le stylet. À la
+  manette et à la télé, il faut une solution (un stick qui déplace un pointeur, la disposition des deux écrans…).
+  Pistes à relever dans la documentation officielle des émulateurs concernés avant de choisir.
+- **Les réglages de référence** : un moyen simple pour Seb de dire « ce réglage devient celui par défaut » ;
+  Frogtend le range (avec le numéro de version de l'émulateur) et l'applique ensuite partout, profil par profil,
+  sans écraser ce que chacun a réglé lui-même.
+
+### Lot 4 ter — Le menu universel en jeu (OSD) (demandé par Seb le 30/09)
+**Une combinaison de touches universelle** (à la manette, et au clavier), la même dans **tous les jeux et tous les
+émulateurs**, en **Frogtend comme en Taodbox**, ouvre un menu simple de Frogtend par-dessus le jeu. On n'a plus
+besoin des menus des émulateurs. Actions voulues :
+- **reprendre** / **réinitialiser** (reset) / **arrêter** le jeu (retour à la ludothèque, parties mises à l'abri) ;
+- **lire les livrets et informations** du jeu : manuel, solution, astuces, fiche — déjà gardés en local (lot 2) ;
+- **activer ou couper des codes de triche** (lien avec le lot 8) ;
+- **changer de CD / de disque** (jeux sur plusieurs disques) ;
+- plus tard, selon les besoins : sauvegarde et chargement rapides, choix du profil de manette (Wiimote verticale ou
+  horizontale…), etc.
+
+Pistes techniques, **à vérifier dans la documentation officielle avant de coder** :
+- Frogtend lit lui-même la manette en fond pendant la partie (pour reconnaître la combinaison quel que soit
+  l'émulateur) et affiche une fenêtre par-dessus le jeu. Il faudra sans doute un plein écran « fenêtré sans
+  bordure » dans les émulateurs, pour qu'une fenêtre puisse passer au-dessus.
+- Pour agir dans l'émulateur : RetroArch accepte des commandes par le réseau local (réinitialiser, quitter,
+  changer de disque, triches…) ; pour les autres, les raccourcis que Frogtend leur aura réglés ; sinon, fermer
+  proprement le processus.
+- La combinaison doit éviter les conflits avec celles déjà posées en 0.8.0 (Select + Start, L3 + R3) : elle les
+  remplacera sans doute.
+
+Ordre proposé : **avant Taodbox** (lot 5), qui s'en sert. À valider avec Seb.
 
 ### Lot 5 — Taodbox
 Démarrage avec `--taodbox`, plein écran, entièrement à la manette. Déclaration comme application Sunshine/Apollo.
