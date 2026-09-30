@@ -301,4 +301,96 @@ mod tests {
         n.ouvrir(&id, None, &crate::noyau::Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
         assert!(matches!(n.preparer_restauration("Seb", "PC", &|_, _| {}).await, Err(Erreur::Conflit(_))));
     }
+
+    /// Essai sur le VRAI Firehouse (contrat 1.5), jamais lancé par la suite de tests (`#[ignore]`), avec l'accord de
+    /// Seb. Il écrit UNIQUEMENT dans un dossier d'essai (« Essai-Frogtend / Venkman-essai »), avec des fichiers
+    /// fabriqués ici : aucune vraie partie, aucun vrai profil. Il retire ensuite ce qu'il a envoyé.
+    /// `FROGTEND_PROFIL_ESSAI=<id du profil> cargo test essai_sauvegarde_reelle -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_sauvegarde_reelle() {
+        use crate::coffre::Coffre as _;
+        use crate::sauvegarde::{envoyer, Api, Contenu, Destination as _, Element, MORCEAU};
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton pour ce profil");
+        let adresse = std::env::var("FROGTEND_ADRESSE_ESSAI").unwrap_or_else(|_| "https://jeux.hikari-no-sekai.fr".into());
+        let c = Client::nouveau(&adresse, &jeton).unwrap();
+        let (p, m) = ("Essai-Frogtend", "Venkman-essai");
+
+        // Des fichiers fabriqués : un nom à parenthèses, un chemin accentué, un gros fichier (3 morceaux).
+        let d = tempfile::tempdir().unwrap();
+        let fichiers: Vec<(&str, Vec<u8>)> = vec![
+            ("jeux/110/concat (1).sav", b"partie de Dune".to_vec()),
+            ("emulateurs/RetroArch/saves/Zoé et l'été.srm", vec![7u8; 8192]),
+            ("emulateurs/PCSX2/memcards/gros.ps2", (0..20 * 1024 * 1024u32).map(|i| (i.wrapping_mul(2654435761) >> 13) as u8).collect()),
+        ];
+        let mut parties = Vec::new();
+        for (r, o) in &fichiers {
+            let f = d.path().join("source").join(r.replace('/', "\\"));
+            std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+            std::fs::write(&f, o).unwrap();
+            parties.push(Element { source: f, relatif: r.to_string() });
+        }
+        let contenu = Contenu { configuration: json!({"essai": true}), bibliotheque: json!({"jeux": []}), parties };
+        let api = Api { client: &c, profil: p.into(), pc: m.into(), morceau: MORCEAU };
+
+        // 1. Envoi complet.
+        let b = envoyer(&api, &contenu, m, "Firehouse").await.expect("1er envoi");
+        println!("1er envoi : {} envoyé(s), {} octets", b.envoyes, b.octets);
+        assert_eq!((b.envoyes, b.fichiers), (3, 3));
+        // 2. Rien n'a changé : rien n'est renvoyé.
+        let b = envoyer(&api, &contenu, m, "Firehouse").await.expect("2e envoi");
+        println!("2e envoi : {} envoyé(s), {} inchangé(s)", b.envoyes, b.inchanges);
+        assert_eq!((b.envoyes, b.inchanges), (0, 3));
+
+        // 3. Reprise après coupure : un premier morceau envoyé « à la main », puis l'envoi reprend là.
+        let reprise = d.path().join("reprise.bin");
+        let octets: Vec<u8> = (0..10 * 1024 * 1024u32).map(|i| (i % 251) as u8).collect();
+        std::fs::write(&reprise, &octets).unwrap();
+        let sha = empreinte(&reprise).unwrap();
+        let route = format!("/sauvegarde/{p}/{m}/fichier?chemin={}", crate::source::encoder("essai/reprise.bin"));
+        let premier = c
+            .brute(
+                reqwest::Method::PUT,
+                &route,
+                Some(octets[..MORCEAU].to_vec()),
+                &[("Content-Range", format!("bytes 0-{}/{}", MORCEAU - 1, octets.len())), ("X-Contenu-Sha256", sha.clone())],
+            )
+            .await
+            .unwrap();
+        println!("1er morceau à la main : code {}", premier.statut);
+        let tete = c.brute(reqwest::Method::HEAD, &route, None, &[]).await.unwrap();
+        println!("HEAD : code {}, X-Recu {:?}", tete.statut, tete.recu);
+        assert_eq!(tete.recu, Some(MORCEAU as u64), "Firehouse dit ce qu'il a déjà reçu");
+        let n = api.envoyer_fichier("essai/reprise.bin", &reprise, &sha, octets.len() as u64).await.expect("reprise");
+        assert_eq!(n, (octets.len() - MORCEAU) as u64, "seule la fin est renvoyée");
+
+        // 4. Tout relire, chaque fichier vérifié par son empreinte.
+        let liste = lister(&c).await.unwrap();
+        assert!(liste.iter().any(|s| s.profil == p && s.pc == m), "la sauvegarde d'essai est listée");
+        let base = format!("/sauvegarde/{p}/{m}");
+        let lu: Value = c.obtenir_json(&format!("{base}/document/configuration.json")).await.unwrap();
+        assert_eq!(lu["essai"], true);
+        let manifeste: ManifesteParties =
+            serde_json::from_value(c.obtenir_json(&format!("{base}/document/manifeste.json")).await.unwrap()).unwrap();
+        assert_eq!(manifeste.fichiers.len(), 3);
+        for (r, o) in &fichiers {
+            let (sha, taille) = manifeste.fichiers.get(*r).expect(r).clone();
+            let cible = d.path().join("relu").join(format!("{}", sha));
+            telecharger(&c, &format!("{base}/fichier?chemin={}", crate::source::encoder(r)), &cible, &sha, taille).await.expect(r);
+            assert_eq!(&std::fs::read(&cible).unwrap(), o, "{r} relu identique");
+            println!("relu et vérifié : {r} ({taille} octets)");
+        }
+
+        // 5. Ménage : on retire les fichiers de l'essai (et seulement eux).
+        for r in fichiers.iter().map(|(r, _)| *r).chain(["essai/reprise.bin"]) {
+            api.supprimer_fichier(r).await.expect(r);
+        }
+        let apres = c.brute(reqwest::Method::GET, &format!("{base}/fichier?chemin={}", crate::source::encoder(fichiers[0].0)), None, &[]).await.unwrap();
+        println!("après le ménage : GET d'un fichier → code {}", apres.statut);
+        for doc in ["configuration.json", "bibliotheque.json", "manifeste.json", "derniere-sauvegarde.json"] {
+            let r = c.brute(reqwest::Method::DELETE, &format!("{base}/document/{doc}"), None, &[]).await.unwrap();
+            println!("DELETE document {doc} → code {}", r.statut);
+        }
+    }
 }

@@ -101,3 +101,28 @@ recensement). `launchbox_id` reste le contrat ; un `jeu_id` s'ajoutera à côté
   `bibliotheque.json`, `parties/` + manifeste sha256. Frogtend écrit la version courante ; l'historique est gardé par
   les instantanés ZFS (horaires 24 h, quotidiens 14 j, hebdomadaires 8 sem.), copie hors site chiffrée chaque nuit.
 - Premier essai réel : lecture/écriture d'un petit fichier dans `sebastien/<profil>/<PC>/`, avec l'accord de Seb.
+
+## Sauvegarde par l'API (Firehouse 2.21.0, contrat 1.5, 30/09/2026) — EN SERVICE
+
+Remplace le partage SMB (supprimé en 2.20.0). Relu par l'expert infra de Firehouse.
+
+- **Jeton** : se crée dans 👤 Mon compte ▸ 🔌 Mes jetons, usage « 🎮 Frogtend » (valable sur `/api/jeux/v1/*`
+  seulement, 401 ailleurs). Les jetons créés avant le 30/09 gardent leurs deux usages.
+- `GET /moi` → `sauvegarde: {api: "/api/jeux/v1/sauvegarde", quota_octets, morceau_max: 8388608, documents: [...]}`
+  et `avatar` (adresse, ou `""`). `GET /avatar` → PNG carré 512 px, 404 sans image.
+- `GET /sauvegarde` → `{profils: [{profil, pc, derniere, octets}]}`.
+- `GET|PUT /sauvegarde/{profil}/{pc}/document/{nom}` : JSON, 5 Mo au plus.
+- `PUT /sauvegarde/{profil}/{pc}/fichier?chemin=` : par morceaux de **8 Mo au plus** (`Content-Range`), avec
+  `X-Contenu-Sha256` (empreinte du fichier entier). Le `total` et l'empreinte sont **figés au 1er morceau** : un
+  morceau qui annonce autre chose reçoit **409 `{recu: 0}`** → reprendre à zéro. Morceau mal placé : 409 `{recu}`.
+  Dernier morceau renvoyé après une coupure sur un fichier déjà complet et identique : `{complet: true}`.
+  `HEAD` → `X-Recu` (ce qui est déjà reçu). `GET` avec `Range`. `DELETE` retire le fichier.
+- **Noms** : `profil` et `pc` en ASCII `[A-Za-z0-9 ._-]`, 64 au plus (« Zoé » est refusé : Frogtend translittère en
+  « Zoe »). `chemin` : normalisé en NFC, 240 octets au plus par segment, sensible à la casse (éviter deux noms qui ne
+  diffèrent que par la casse : Windows les confondrait).
+- ⚠️ **Encoder ENTIÈREMENT `chemin`** (« ( » → `%28`, « / » → `%2F`, espace → `%20`) : le proxy public filtre la
+  chaîne de requête brute, un nom comme « concat (1).sav » non encodé serait bloqué (403 du proxy). Frogtend le fait
+  (`source::encoder`, testé).
+- **Plafond** : 100 Go par personne par défaut, vérifié à chaque morceau, documents compris ; 1 To pour tout l'espace.
+- **Codes** : 400 refus (nom, en-tête), 404 absent, 409 `{recu}`, 413 morceau > 8 Mo ou document > 5 Mo, 503 migration
+  en cours (réessayer dans une minute), 507 plein.
