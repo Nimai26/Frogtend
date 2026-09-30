@@ -319,6 +319,12 @@ le jeu a le focus ?** (XInput, et SDL pour les manettes PlayStation/Switch).
 **Décisions de Seb (30/09)** : combinaison **Select + Start tenus 1 s** à la manette, touche **Pause/Attn** au
 clavier (réglables dans les Options) ; SDL3 embarqué (compilé dans le programme, aucune DLL).
 
+**Avancement** : ✅ réglages de pilotage des émulateurs (0.10.0) ; ✅ **menu au clavier** (0.11.0) : touche
+Pause/Attn (réglable : Arrêt défil, Ctrl+Maj+M), armée pendant la partie seulement ; fenêtre « menu-jeu » toujours
+au-dessus : reprendre, sauvegarde et chargement rapides, disque suivant, manuel et documents, recommencer, quitter
+(confirmés). À vérifier en vrai avec Seb (aucun jeu lancé par l'agent). Reste : la **manette** (après la sonde),
+les triches (lot 8), et le choix de la manette (Wiimote…) depuis le menu.
+
 **⏳ En attente de Seb : l'essai de la sonde avec les vraies manettes** (il ne peut pas tout de suite).
 `outils/sonde-manette` (construite le 30/09) : la lancer, appuyer sur chaque manette, puis dans un jeu au premier
 plan, et laisser finir les 3 minutes ; le journal `sonde-manette.txt` dit quelles manettes restent lisibles en

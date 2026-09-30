@@ -153,6 +153,18 @@
 
 <div class="emulateurs">
   <dl class="cx-kv">
+    <dt>Touche du menu en jeu</dt>
+    <dd>
+      <select
+        value={etat.pc.menuJeu.touche}
+        title="Pendant une partie, cette touche ouvre le menu de Frogtend par-dessus le jeu (reprendre, sauvegarde rapide, manuel, quitter…)."
+        onchange={(e) => reglerPc('menuJeu.touche', e.currentTarget.value)}
+      >
+        <option value="Pause">Pause/Attn</option>
+        <option value="ScrollLock">Arrêt défil</option>
+        <option value="Ctrl+Shift+M">Ctrl + Maj + M</option>
+      </select>
+    </dd>
     <dt>Dossier des émulateurs</dt>
     <dd>
       <span class="chemin">{etat.pc.dossierEmulateurs || 'pas encore choisi'}</span>

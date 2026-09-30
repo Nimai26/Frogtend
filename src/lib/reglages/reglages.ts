@@ -23,6 +23,11 @@ export interface ReglagesPc {
   emulateursJeux: Record<string, string>;
   /** Où Frogtend installe les émulateurs (vide : demandé à la première installation). */
   dossierEmulateurs: string;
+  /** Le menu universel en jeu. */
+  menuJeu: {
+    /** La touche du clavier qui l'ouvre pendant une partie (nom compris par Tauri : « Pause », « ScrollLock »…). */
+    touche: string;
+  };
   firehouse: {
     adresse: string;
     /** Mode simulé : des exemples, sans connexion à Firehouse (essais, démonstration, travail hors ligne). */
@@ -72,6 +77,7 @@ export const DEFAUTS_PC: ReglagesPc = {
   emulateurs: {},
   emulateursJeux: {},
   dossierEmulateurs: '',
+  menuJeu: { touche: 'Pause' },
   firehouse: { adresse: ADRESSE_FIREHOUSE_PAR_DEFAUT, simule: false },
 };
 

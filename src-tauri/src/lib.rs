@@ -16,6 +16,7 @@ pub mod lancement;
 pub mod manettes;
 pub mod locale;
 pub mod ludotheque;
+pub mod menu_jeu;
 pub mod noyau;
 pub mod partie;
 pub mod pilotage;
@@ -109,6 +110,17 @@ pub fn run() {
             let n = noyau::Noyau::nouveau(&dossier, Box::new(coffre::CoffreWindows))
                 .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?;
             app.manage(n);
+            app.manage(menu_jeu::MenuJeu::default());
+            // La touche du menu en jeu (armée seulement pendant une partie) ouvre le menu par-dessus le jeu.
+            app.handle().plugin(
+                tauri_plugin_global_shortcut::Builder::new()
+                    .with_handler(|app, _raccourci, evenement| {
+                        if evenement.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                            commandes::ouvrir_menu(app);
+                        }
+                    })
+                    .build(),
+            )?;
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol("jaquette", |ctx, requete, repondeur| {
@@ -181,6 +193,10 @@ pub fn run() {
             commandes::retroarch_etat,
             commandes::retroarch_installer_coeur,
             commandes::emulateur_regler_manette,
+            commandes::menu_jeu_etat,
+            commandes::menu_jeu_reprendre,
+            commandes::menu_jeu_action,
+            commandes::menu_jeu_quitter,
             commandes::references_manette,
             commandes::profils_manette_emulateur,
             commandes::reference_reprendre,

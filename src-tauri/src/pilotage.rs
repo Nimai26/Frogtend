@@ -26,28 +26,50 @@ pub enum Action {
     ChargerEtat,
 }
 
-/// La touche que Frogtend envoie pour une action (DuckStation, PCSX2, Dolphin). `(touche, avec Maj)`.
-pub fn touche(emulateur: &str, a: Action) -> Option<(&'static str, bool)> {
+/// Une touche envoyée par Frogtend, avec ses modificateurs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Touche {
+    pub touche: &'static str,
+    pub maj: bool,
+    pub ctrl: bool,
+    pub alt: bool,
+}
+
+const fn t(touche: &'static str) -> Touche {
+    Touche { touche, maj: false, ctrl: false, alt: false }
+}
+
+/// La touche que Frogtend envoie pour une action (DuckStation, PCSX2, Dolphin : réglées par Frogtend ; DOSBox
+/// Staging : ses raccourcis d'origine).
+pub fn touche(emulateur: &str, a: Action) -> Option<Touche> {
     match (emulateur, a) {
-        ("duckstation" | "dolphin", Action::Reset) | ("pcsx2", Action::Reset) => Some(("F13", false)),
-        ("duckstation" | "dolphin", Action::DisqueSuivant) => Some(("F14", false)),
-        ("duckstation" | "pcsx2" | "dolphin", Action::SauverEtat) => Some(("F15", false)),
-        ("duckstation" | "pcsx2", Action::ChargerEtat) => Some(("F16", false)),
+        ("duckstation" | "pcsx2" | "dolphin", Action::Reset) => Some(t("F13")),
+        ("duckstation" | "dolphin", Action::DisqueSuivant) => Some(t("F14")),
+        ("duckstation" | "pcsx2" | "dolphin", Action::SauverEtat) => Some(t("F15")),
+        ("duckstation" | "pcsx2", Action::ChargerEtat) => Some(t("F16")),
         // Dolphin ne connaît que F13 à F15 (DInput) : Maj+F15.
-        ("dolphin", Action::ChargerEtat) => Some(("F15", true)),
+        ("dolphin", Action::ChargerEtat) => Some(Touche { maj: true, ..t("F15") }),
+        // DOSBox Staging (sdl_gui.cpp, bios_disk.cpp) : Ctrl+Alt+Début redémarre, Ctrl+F4 change de disque.
+        ("dosbox-staging", Action::Reset) => Some(Touche { ctrl: true, alt: true, ..t("Home") }),
+        ("dosbox-staging", Action::DisqueSuivant) => Some(Touche { ctrl: true, ..t("F4") }),
         _ => None,
     }
 }
 
-/// Ce que le menu peut faire dans cet émulateur (en plus de la pause et de quitter, toujours possibles).
+/// Ce que le menu peut faire dans cet émulateur (en plus de reprendre et de quitter, toujours possibles).
 pub fn actions(emulateur: &str) -> Vec<Action> {
     use Action::*;
     match emulateur {
-        "retroarch" => vec![Reset, DisqueSuivant, SauverEtat, ChargerEtat],
-        "duckstation" | "dolphin" => vec![Reset, DisqueSuivant, SauverEtat, ChargerEtat],
+        "retroarch" | "duckstation" | "dolphin" => vec![Reset, DisqueSuivant, SauverEtat, ChargerEtat],
         "pcsx2" => vec![Reset, SauverEtat, ChargerEtat],
+        "dosbox-staging" => vec![Reset, DisqueSuivant],
         _ => vec![],
     }
+}
+
+/// L'émulateur se met-il en pause quand il perd le premier plan (réglé par `preparer`) ?
+pub fn se_met_en_pause(emulateur: &str) -> bool {
+    matches!(emulateur, "retroarch" | "duckstation" | "pcsx2" | "dolphin" | "ppsspp" | "dosbox-staging")
 }
 
 /// La commande réseau de RetroArch pour une action.
@@ -204,7 +226,7 @@ mod tests {
 
     #[test]
     fn chaque_action_a_son_moyen() {
-        for e in ["retroarch", "duckstation", "pcsx2", "dolphin"] {
+        for e in ["retroarch", "duckstation", "pcsx2", "dolphin", "dosbox-staging"] {
             for a in actions(e) {
                 if e == "retroarch" {
                     assert!(!commande_retroarch(a).is_empty());

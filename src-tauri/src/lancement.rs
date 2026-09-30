@@ -36,6 +36,25 @@ pub fn demarrer(l: &Lanceur) -> Resultat<u32> {
     Ok(enfant.id())
 }
 
+/// Le processus lancé et tous ses descendants encore vivants (un lanceur .bat, puis l'émulateur qu'il ouvre…).
+pub fn processus_de_la_partie(racine: u32) -> Vec<u32> {
+    let mut s = System::new();
+    s.refresh_processes(ProcessesToUpdate::All, true);
+    let mut vus: HashSet<Pid> = HashSet::from([Pid::from_u32(racine)]);
+    loop {
+        let avant = vus.len();
+        for (pid, p) in s.processes() {
+            if p.parent().is_some_and(|parent| vus.contains(&parent)) {
+                vus.insert(*pid);
+            }
+        }
+        if vus.len() == avant {
+            break;
+        }
+    }
+    vus.into_iter().filter(|p| s.process(*p).is_some()).map(|p| p.as_u32()).collect()
+}
+
 /// Suit les processus d'une partie.
 pub struct Suivi {
     systeme: System,
@@ -114,6 +133,22 @@ mod tests {
         let duree = attendre_fin(&mut s, Duration::from_secs(20));
         assert!(duree >= Duration::from_millis(1500), "suivi jusqu'à la fin du programme lancé ({duree:?})");
         assert!(duree < Duration::from_secs(20), "la fin est bien vue");
+    }
+
+    #[test]
+    fn les_processus_de_la_partie_comprennent_ceux_lances_par_le_lanceur() {
+        // cmd lance ping : le menu en jeu doit trouver ping (c'est lui qui a la fenêtre, pour un vrai jeu).
+        let l = Lanceur {
+            programme: "cmd.exe".into(),
+            arguments: vec!["/C".into(), "ping -n 4 127.0.0.1 >nul".into()],
+            dossier: String::new(),
+        };
+        let pid = demarrer(&l).unwrap();
+        std::thread::sleep(Duration::from_millis(500));
+        let p = processus_de_la_partie(pid);
+        assert!(p.contains(&pid));
+        assert!(p.len() >= 2, "le lanceur et le programme qu'il a ouvert ({p:?})");
+        assert!(processus_de_la_partie(u32::MAX - 7).is_empty(), "un processus disparu ne donne rien");
     }
 
     #[test]

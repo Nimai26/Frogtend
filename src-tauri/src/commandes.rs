@@ -371,19 +371,36 @@ pub async fn jeu_jouer(
     commandes: Option<Commandes>,
     emulateur: Option<String>,
 ) -> Resultat<()> {
-    let plateforme = noyau.registre().jeu(id)?.map(|j| j.plateforme).unwrap_or_default();
+    let jeu = noyau.registre().jeu(id)?;
+    let (plateforme, titre) = jeu.map(|j| (j.plateforme, j.titre)).unwrap_or_default();
+    let mut id_emulateur = None;
     let emulateur = match emulateur_regle(&app, &plateforme, id, emulateur.as_deref()) {
         Some((programme, ligne)) => {
+            let nom = std::path::Path::new(&programme).file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
+            id_emulateur = crate::emulateurs::CATALOGUE.iter().find(|f| nom.starts_with(f.programme)).map(|f| f.id.to_string());
             Some(preparer_emulateur(&app, &noyau, &plateforme, &programme, &ligne, &commandes.unwrap_or_default()).await?)
         }
         None => None,
     };
     let (pid, dossiers, carte_cedee) = noyau.jouer(id, emulateur).await?;
     let _ = app.emit("partie", EvenementPartie::Debut { jeu: id, carte_cedee });
+    // Le menu en jeu : sa touche est active pendant la partie seulement.
+    app.state::<crate::menu_jeu::MenuJeu>().commencer(crate::menu_jeu::PartieEnCours {
+        jeu: id,
+        titre,
+        plateforme,
+        pid,
+        emulateur: id_emulateur,
+    });
+    armer_touche_menu(&app, true);
     let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
         let noyau = app2.state::<Noyau>();
-        match noyau.suivre_partie(id, pid, dossiers).await {
+        let fin = noyau.suivre_partie(id, pid, dossiers).await;
+        app2.state::<crate::menu_jeu::MenuJeu>().finir();
+        armer_touche_menu(&app2, false);
+        cacher_menu(&app2);
+        match fin {
             Ok(fin) => {
                 let _ = app2.emit("partie", EvenementPartie::Fin { jeu: id, secondes: fin.secondes });
             }
@@ -391,6 +408,121 @@ pub async fn jeu_jouer(
         }
     });
     Ok(())
+}
+
+/// Le nom de la fenêtre du menu en jeu.
+pub const FENETRE_MENU: &str = "menu-jeu";
+
+/// La touche du menu en jeu (`pc.json` ▸ `menuJeu.touche`, « Pause » par défaut).
+fn touche_menu(app: &AppHandle) -> String {
+    app.store("pc.json")
+        .ok()
+        .and_then(|s| s.get("reglages"))
+        .and_then(|r| r["menuJeu"]["touche"].as_str().map(String::from))
+        .filter(|t| !t.trim().is_empty())
+        .unwrap_or_else(|| "Pause".into())
+}
+
+/// Active (début de partie) ou retire (fin) la touche du menu en jeu. Hors partie, la touche reste aux autres.
+fn armer_touche_menu(app: &AppHandle, actif: bool) {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+    let t = touche_menu(app);
+    let gs = app.global_shortcut();
+    let r = if actif {
+        if gs.is_registered(t.as_str()) {
+            Ok(())
+        } else {
+            gs.register(t.as_str())
+        }
+    } else {
+        gs.unregister(t.as_str())
+    };
+    if let Err(e) = r {
+        app.state::<Noyau>().journaliser(&format!("touche du menu en jeu « {t} » : {e}"));
+    }
+}
+
+/// Ouvre (ou montre) la fenêtre du menu en jeu par-dessus le jeu, et lui donne le premier plan.
+pub fn ouvrir_menu(app: &AppHandle) {
+    if app.state::<crate::menu_jeu::MenuJeu>().partie().is_none() {
+        return;
+    }
+    let w = match app.get_webview_window(FENETRE_MENU) {
+        Some(w) => w,
+        None => match tauri::WebviewWindowBuilder::new(app, FENETRE_MENU, tauri::WebviewUrl::App("menu-jeu".into()))
+            .title("Frogtend — menu")
+            .inner_size(560.0, 640.0)
+            .center()
+            .resizable(false)
+            .decorations(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .build()
+        {
+            Ok(w) => w,
+            Err(e) => {
+                app.state::<Noyau>().journaliser(&format!("menu en jeu : {e}"));
+                return;
+            }
+        },
+    };
+    let _ = w.show();
+    let _ = w.unminimize();
+    let _ = w.set_focus();
+    let _ = app.emit_to(FENETRE_MENU, "menu-jeu", ());
+}
+
+fn cacher_menu(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(FENETRE_MENU) {
+        let _ = w.hide();
+    }
+}
+
+/// Ce que le menu en jeu montre (`null` hors partie).
+#[tauri::command]
+pub fn menu_jeu_etat(menu: State<'_, crate::menu_jeu::MenuJeu>) -> Option<crate::menu_jeu::EtatMenu> {
+    menu.partie().map(|p| crate::menu_jeu::etat(&p))
+}
+
+/// Reprendre : le menu se cache, le jeu reprend le premier plan (et sort seul de sa pause).
+#[tauri::command]
+pub async fn menu_jeu_reprendre(app: AppHandle) -> Resultat<()> {
+    cacher_menu(&app);
+    let Some(p) = app.state::<crate::menu_jeu::MenuJeu>().partie() else { return Ok(()) };
+    tauri::async_runtime::spawn_blocking(move || crate::menu_jeu::reprendre(&crate::lancement::processus_de_la_partie(p.pid)))
+        .await
+        .map_err(|_| Erreur::Disque("La reprise s'est arrêtée brutalement.".into()))?;
+    Ok(())
+}
+
+/// Une action du menu (`reset`, `disque`, `sauver`, `charger`) : le jeu reprend la main et reçoit l'ordre.
+#[tauri::command]
+pub async fn menu_jeu_action(app: AppHandle, action: String) -> Resultat<()> {
+    let a = crate::menu_jeu::action_de(&action).ok_or_else(|| Erreur::Refus(format!("Action inconnue : {action}.")))?;
+    let p = app
+        .state::<crate::menu_jeu::MenuJeu>()
+        .partie()
+        .ok_or_else(|| Erreur::Introuvable("Aucune partie en cours.".into()))?;
+    let e = p.emulateur.clone().ok_or_else(|| Erreur::Refus("Ce jeu ne se pilote pas depuis le menu.".into()))?;
+    cacher_menu(&app);
+    tauri::async_runtime::spawn_blocking(move || crate::menu_jeu::agir(&e, &crate::lancement::processus_de_la_partie(p.pid), a))
+        .await
+        .map_err(|_| Erreur::Disque("L'action s'est arrêtée brutalement.".into()))?
+}
+
+/// Quitter le jeu proprement (la personne a confirmé dans le menu). Rend le nombre de fenêtres fermées.
+#[tauri::command]
+pub async fn menu_jeu_quitter(app: AppHandle) -> Resultat<usize> {
+    let p = app
+        .state::<crate::menu_jeu::MenuJeu>()
+        .partie()
+        .ok_or_else(|| Erreur::Introuvable("Aucune partie en cours.".into()))?;
+    cacher_menu(&app);
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::menu_jeu::quitter(p.emulateur.as_deref(), &crate::lancement::processus_de_la_partie(p.pid))
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La fermeture s'est arrêtée brutalement.".into()))?
 }
 
 #[tauri::command]

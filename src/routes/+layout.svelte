@@ -1,10 +1,12 @@
 <script lang="ts">
   import '$lib/styles/base.css';
   import { onMount, untrack } from 'svelte';
+  import { isTauri } from '@tauri-apps/api/core';
+  import { getCurrentWindow } from '@tauri-apps/api/window';
   import { adresseFond } from '$lib/api';
   import BarreTitre from '$lib/BarreTitre.svelte';
   import Dialogues from '$lib/dialogues/Dialogues.svelte';
-  import { demarrer, etat } from '$lib/etat.svelte';
+  import { demarrer, demarrerMenuJeu, etat } from '$lib/etat.svelte';
   import { verifierMiseAJour } from '$lib/mises-a-jour';
   import { arreterSuivi, suivreTelechargements } from '$lib/ludotheque/telechargements.svelte';
   import { suivreParties } from '$lib/ludotheque/jeu.svelte';
@@ -20,7 +22,14 @@
     videoEnPanne = false;
   });
 
+  /** La fenêtre du menu en jeu : seulement son contenu (ni barre, ni profils, ni suivis). */
+  const estMenuJeu = isTauri() && getCurrentWindow().label === 'menu-jeu';
+
   onMount(async () => {
+    if (estMenuJeu) {
+      await demarrerMenuJeu();
+      return;
+    }
     await demarrer();
     // Vérification discrète : on ne propose que s'il y a une nouvelle version, jamais d'installation sans accord.
     verifierMiseAJour(true);
@@ -28,6 +37,7 @@
 
   // Les téléchargements et les parties du profil ouvert : suivis tant qu'il est ouvert, oubliés quand il se ferme.
   $effect(() => {
+    if (estMenuJeu) return;
     if (etat.profilOuvert) {
       suivreTelechargements();
       suivreParties();
@@ -38,6 +48,9 @@
   });
 </script>
 
+{#if estMenuJeu}
+  {#if etat.pret}{@render children()}{/if}
+{:else}
 {#if etat.fondVideo && !videoEnPanne}
   <video
     class="fond-video"
@@ -64,6 +77,8 @@
     {/if}
   </main>
 </div>
+
+{/if}
 
 <Dialogues />
 

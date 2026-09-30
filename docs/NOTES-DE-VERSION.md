@@ -1,5 +1,21 @@
 # Notes de version de Frogtend
 
+## 0.11.0 — le menu en jeu, au clavier
+
+- **Pendant une partie, la touche Pause/Attn ouvre le menu de Frogtend par-dessus le jeu** (réglable dans ⚙ Options
+  ▸ Émulateurs : Arrêt défil, ou Ctrl+Maj+M). Le jeu se met en pause pendant que le menu est ouvert (émulateurs), et
+  le menu propose, selon ce que l'émulateur sait faire :
+  - ▶ **Reprendre** (ou Échap) ;
+  - 💾 **Sauvegarde rapide** et 📂 **Charger la sauvegarde rapide** ;
+  - 💿 **Disque suivant** (jeux sur plusieurs CD) ;
+  - 📖 **Manuel et documents** du jeu (lus sans quitter le jeu pour les textes) ;
+  - 🔄 **Recommencer** et ⏹ **Quitter le jeu** (toujours après une confirmation).
+- Les flèches ↑ ↓ et Entrée suffisent : pas besoin de souris. La touche n'est prise qu'**pendant une partie** : le
+  reste du temps, elle reste aux autres programmes.
+- Pour un jeu PC, le menu propose Reprendre, les documents et Quitter (le jeu, lui, continue : il n'existe pas de
+  pause sûre pour tous les jeux PC).
+- La manette (Select + Start tenus) viendra après l'essai de la sonde.
+
 ## 0.10.0 — plusieurs émulateurs par console, au choix
 
 - **Autant d'émulateurs que tu veux par console** (par exemple plusieurs cœurs RetroArch pour la Super Nintendo) :

@@ -1,8 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Droits de la fenêtre principale",
-  "windows": ["main"],
+  "description": "Droits de la fenêtre principale et du menu en jeu",
+  "windows": [
+    "main",
+    "menu-jeu"
+  ],
   "permissions": [
     "core:default",
     "opener:default",

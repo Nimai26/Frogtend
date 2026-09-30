@@ -102,6 +102,21 @@ export async function demarrer() {
   await chargerSkinsFirehouse();
 }
 
+/** La fenêtre du menu en jeu : réglages du PC et apparence du profil ouvert, en LECTURE seule (elle n'écrit
+ * rien : c'est la fenêtre principale qui tient les réglages). */
+export async function demarrerMenuJeu() {
+  etat.pc = completer(DEFAUTS_PC, await (await magasin('pc.json')).lire());
+  etat.catalogue = catalogueInstantane();
+  const p = await api.profilActif().catch(() => null);
+  if (p) {
+    etat.profil = completer(DEFAUTS_PROFIL, await (await magasin(`profils/${p.id}.json`)).lire());
+    etat.profilOuvert = p;
+  }
+  appliquerApparence();
+  etat.pret = true;
+  await chargerSkinsFirehouse();
+}
+
 /** Les skins servis par Firehouse (publics). Hors ligne ou en mode simulé : ceux déjà là. */
 export async function chargerSkinsFirehouse() {
   try {
