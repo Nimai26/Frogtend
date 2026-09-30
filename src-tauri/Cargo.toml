@@ -37,6 +37,7 @@ tauri-plugin-dialog = "2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 sevenz-rust = "0.6"
 sysinfo = { version = "0.32", default-features = false, features = ["system"] }
+windows-sys = { version = "0.59", features = ["Win32_NetworkManagement_WNet", "Win32_Foundation"] }
 
 # Taille et vitesse de l'exécutable livré : https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
