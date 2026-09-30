@@ -86,6 +86,9 @@ recensement). `launchbox_id` reste le contrat ; un `jeu_id` s'ajoutera à côté
 > maison) mais par l'API (routes `/sauvegarde…` demandées à Firehouse). Ce qui suit reste pour mémoire : l'essai réel
 > du partage a réussi (SMB 3.1.1 chiffré AES-128-GCM, signé, dossier en 0700).
 
+> **Firehouse 2.20.0 (30/09/2026)** : le partage `[Frogtend]` et les comptes `frogtend-*` sont SUPPRIMÉS ;
+> `GET /sauvegarde/identifiants` répond 503. Frogtend ne s'en sert plus.
+
 - **Partage** : `\10.10.0.2\Frogtend` (ZFS de Shyrka, décision de Seb). Ouvrir DIRECTEMENT
   `\10.10.0.2\Frogtend\<username>` : la racine est illisible par conception.
 - `GET /moi` → `sauvegarde: {partage, compte: "frogtend-<username>", disponible}`.

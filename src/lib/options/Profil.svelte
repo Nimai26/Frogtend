@@ -61,7 +61,7 @@
 
   async function changerJeton() {
     const jeton = await demander('🔑 Nouveau jeton Firehouse', {
-      message: 'Colle le jeton créé par un admin dans le cockpit de Firehouse. Il ira dans le coffre de Windows.',
+      message: 'Colle le jeton créé dans Firehouse (👤 Mon compte ▸ 🔌 Mes jetons, usage « 🎮 Frogtend »). Il ira dans le coffre de Windows.',
       masque: true,
     });
     if (!jeton) return;

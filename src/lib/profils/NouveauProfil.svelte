@@ -83,8 +83,8 @@
     <input type="password" bind:value={jeton} autocomplete="off" spellcheck="false" />
   </label>
   <p class="muted">
-    Le jeton est créé par un admin dans le cockpit de Firehouse, un par PC. Il est rangé dans le coffre de Windows :
-    Frogtend ne l'affiche jamais.
+    Crée ce jeton dans Firehouse : 👤 Mon compte ▸ 🔌 Mes jetons, avec l’usage « 🎮 Frogtend ». Il est rangé dans le
+    coffre de Windows : Frogtend ne l’affiche jamais.
   </p>
 
   {#if probleme}<p class="muted">ℹ {probleme}</p>{/if}
