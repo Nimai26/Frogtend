@@ -185,7 +185,7 @@ parfois plus de 1 Go : envoi par morceaux avec reprise.
 - **Priorités : RetroArch** (consoles rétro), **DOSBox** (MS-DOS), **consoles récentes** (Dolphin, PCSX2,
   DuckStation, PPSSPP… selon les recommandations de Firehouse).
 
-Découpage : **4a** (installer, détecter, mettre à jour les émulateurs et les cœurs ; vérifier les BIOS ; régler
+Découpage : **4a** (✅ livré en 0.6.0 le 30/09/2026 ; installer, détecter, mettre à jour les émulateurs et les cœurs ; vérifier les BIOS ; régler
 chaque système tout seul d'après Firehouse) puis **4b** (profils de manette XInput, profils par jeu, copie de
 sauvegarde de toute configuration modifiée).
 

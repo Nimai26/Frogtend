@@ -3,10 +3,10 @@
 
 import { listen } from '@tauri-apps/api/event';
 import { isTauri } from '@tauri-apps/api/core';
-import { api, duree, estErreurCoeur, taille, type Candidat, type EmulateurRecommande, type JeuPc } from '$lib/api';
-import { choisir, confirmer, demander, informer, toast } from '$lib/dialogues/fenetres.svelte';
+import { api, duree, estErreurCoeur, taille, type Candidat, type JeuPc } from '$lib/api';
+import { choisir, confirmer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
-import { etat, reglerPc } from '$lib/etat.svelte';
+import { reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
 import { ludo, rechargerListe, rechargerPlateformes } from './ludotheque.svelte';
 import { rechargerJeuxDuPc, tele } from './telechargements.svelte';
 
@@ -169,43 +169,6 @@ export async function choisirLanceur(id: number): Promise<boolean> {
     toast(`Refusé : ${motifDuRefus(e)}`, 'erreur');
     return false;
   }
-}
-
-/** Régler l'émulateur d'un système, d'après les recommandations de Firehouse. */
-export async function reglerEmulateur(plateforme: string): Promise<boolean> {
-  const recs = (await api.emulateursRecommandes(plateforme).catch(() => ({ emulateurs: [] }))).emulateurs ?? [];
-  const reponse = await choisir<EmulateurRecommande | 'autre'>(
-    `🕹 Quel émulateur pour ${plateforme} ?`,
-    [
-      ...recs.map((r) => ({
-        valeur: r as EmulateurRecommande | 'autre',
-        libelle: `${r.recommande ? '⭐ ' : ''}${r.nom}${r.recommande ? ' (recommandé)' : ''}`,
-        detail: r.ligne_de_commande || undefined,
-      })),
-      { valeur: 'autre', libelle: '📂 Un autre émulateur…', detail: 'ligne de commande à écrire' },
-    ],
-    recs.length ? 'Recommandations de Firehouse. L’émulateur doit déjà être installé sur ce PC.' : 'Firehouse n’a pas de recommandation pour ce système.',
-  );
-  if (reponse === null) return false;
-  const choix = reponse === 'autre' ? null : reponse;
-  const nom = choix?.nom ?? 'l’émulateur';
-  const ok = await confirmer(`📂 Où est ${nom} ?`, {
-    message: `Choisis le programme de ${nom} sur ce PC${nom === 'Retroarch' ? ' (retroarch.exe)' : ''}.${
-      choix?.bios ? `\n\n⚠ Ce système a besoin du BIOS « ${choix.bios} », à placer dans le dossier « system » de l’émulateur.` : ''
-    }${choix?.site ? `\n\nPas encore installé ? Site officiel : ${choix.site}` : ''}`,
-    libelleValider: '📂 Choisir le programme',
-  });
-  if (!ok) return false;
-  const programme = await parcourir({ titre: `Programme de ${nom}`, extensions: ['exe'] });
-  if (!programme) return false;
-  const ligne = await demander(`⌨ Ligne de commande de ${nom}`, {
-    message: 'Le fichier du jeu est ajouté à la fin. Laisse vide si l’émulateur n’a besoin de rien d’autre.',
-    valeur: choix?.ligne_de_commande ?? '',
-  });
-  if (ligne === null) return false;
-  await reglerPc('emulateurs', { ...etat.pc.emulateurs, [plateforme]: { programme, ligne, nom } });
-  toast(`✅ ${nom} réglé pour ${plateforme}.`);
-  return true;
 }
 
 /** Jouer. Si un réglage manque (émulateur, lanceur), on le demande puis on relance. */

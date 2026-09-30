@@ -1,5 +1,22 @@
 # Notes de version de Frogtend
 
+## 0.6.0 — les émulateurs (lot 4, 1re partie)
+
+- **Frogtend installe les émulateurs pour toi**, sur accord : au premier lancement d'un jeu qui en a besoin, il
+  propose l'émulateur recommandé par Firehouse, annonce sa taille et sa source officielle, puis l'installe dans ton
+  dossier « Émulateurs » (choisi la première fois). Émulateurs connus : **RetroArch**, **DOSBox Staging**,
+  **DuckStation**, **PCSX2**, **Dolphin**, **PPSSPP**. Chacun est installé en **mode portable** : sa configuration
+  reste dans son dossier.
+- **Déjà installé à la main ?** Frogtend le retrouve dans ses dossiers habituels (sans fouiller tout le disque) et
+  s'en sert.
+- **RetroArch** : le cœur qui manque pour une console s'installe sur accord ; un **BIOS** manquant est signalé avec
+  le dossier où le mettre (Frogtend ne télécharge pas les BIOS).
+- **Réglages ▸ Émulateurs** : le dossier des émulateurs, ceux installés et leur version, **« Chercher des mises à
+  jour »** puis « ⬆ » pour mettre à jour. Une mise à jour garde ta configuration ; un fichier de réglages remplacé
+  est d'abord copié à part.
+- Lignes de commande (plein écran, fermeture avec le jeu) relevées dans les sources officielles de chaque émulateur.
+- Pas encore : les profils de manette (2e partie du lot 4).
+
 ## 0.5.1 — plus facile à trouver
 
 - **« ⚙ Gérer le jeu »**, bien visible sous « ▶ Jouer » (et sur la fiche du jeu) : installer, changer ce qui lance

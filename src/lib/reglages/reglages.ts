@@ -17,6 +17,8 @@ export interface ReglagesPc {
   };
   /** L'émulateur de chaque système (nom LaunchBox) : programme et ligne de commande (le jeu est ajouté à la fin). */
   emulateurs: Record<string, { programme: string; ligne: string; nom?: string }>;
+  /** Où Frogtend installe les émulateurs (vide : demandé à la première installation). */
+  dossierEmulateurs: string;
   firehouse: {
     adresse: string;
     /** Mode simulé : des exemples, sans connexion à Firehouse (essais, démonstration, travail hors ligne). */
@@ -51,6 +53,7 @@ export interface ReglagesProfil {
 export const DEFAUTS_PC: ReglagesPc = {
   emplacements: { defaut: [], systemes: {} },
   emulateurs: {},
+  dossierEmulateurs: '',
   firehouse: { adresse: ADRESSE_FIREHOUSE_PAR_DEFAUT, simule: false },
 };
 

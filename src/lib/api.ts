@@ -103,6 +103,29 @@ export interface Abri {
   octets: number;
 }
 
+export interface EmulateurInstalle {
+  id: string;
+  nom: string;
+  version: string | null;
+  dossier: string;
+  programme: string;
+  par_frogtend: boolean;
+  installe_le: string;
+}
+
+export interface Paquet {
+  version: string;
+  url: string;
+  taille: number | null;
+}
+
+export interface EtatRetroArch {
+  coeur: string | null;
+  coeur_present: boolean;
+  dossier_bios: string;
+  bios_manquants: string[];
+}
+
 export interface EmulateurRecommande {
   nom: string;
   site: string;
@@ -281,6 +304,16 @@ export const api = {
   jouer: (id: number) => appeler<void>('jeu_jouer', { id }),
   mettreALAbri: (id: number) => appeler<Abri>('parties_abri', { id }),
   retirer: (id: number) => appeler<Abri>('jeu_retirer', { id }),
+  emulateursInstalles: () => appeler<EmulateurInstalle[]>('emulateurs_installes'),
+  emulateurFiche: (nom: string) =>
+    appeler<{ id: string; nom: string; ligne: string; installable: boolean } | null>('emulateur_fiche', { nom }),
+  emulateurDerniereVersion: (id: string) => appeler<Paquet>('emulateur_derniere_version', { id }),
+  emulateurInstaller: (id: string, dossier: string) => appeler<EmulateurInstalle>('emulateur_installer', { id, dossier }),
+  emulateurAdopter: (id: string, programme: string) => appeler<EmulateurInstalle>('emulateur_adopter', { id, programme }),
+  retroarchEtat: (programme: string, ligne: string, bios: string[]) =>
+    appeler<EtatRetroArch>('retroarch_etat', { programme, ligne, bios }),
+  retroarchInstallerCoeur: (programme: string, coeur: string) =>
+    appeler<string>('retroarch_installer_coeur', { programme, coeur }),
   emulateursRecommandes: (plateforme: string) =>
     appeler<{ emulateurs?: EmulateurRecommande[] }>('emulateurs_recommandes', { plateforme }),
 };
