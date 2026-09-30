@@ -1,0 +1,18 @@
+[package]
+name = "sonde-manette"
+version = "0.1.0"
+edition = "2021"
+description = "Sonde jetable (lot 4 ter) : Frogtend voit-il la manette quand un jeu a le premier plan ?"
+publish = false
+
+[dependencies]
+# SDL3 compilé dans le programme (aucune DLL) : manettes PlayStation, Switch Pro, 8BitDo, génériques.
+sdl3-sys = { version = "0.7", features = ["build-from-source-static"] }
+# XInput (manettes Xbox, manette virtuelle de Sunshine) et la fenêtre au premier plan.
+windows = { version = "0.61", features = [
+    "Win32_UI_Input_XboxController",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Foundation",
+] }
+
+[workspace]
