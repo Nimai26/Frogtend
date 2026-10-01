@@ -852,6 +852,20 @@ mod tests {
     /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_miniatures -- --ignored --nocapture`
     #[tokio::test]
     #[ignore]
+    async fn essai_recherche_sur_firehouse() {
+        // LECTURE SEULE : la forme de GET /recherche (lot 6). Aucune demande n'est envoyée.
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton pour ce profil");
+        let c = Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        for texte in ["dune", "zelda ocarina", "xyzzyqq"] {
+            let b = c.brute(reqwest::Method::GET, &format!("/recherche?texte={}", crate::source::encoder(texte)), None, &[]).await.unwrap();
+            let t = String::from_utf8_lossy(&b.octets);
+            println!("« {texte} » → {} : {}", b.statut, &t[..t.len().min(1500)]);
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
     async fn essai_plateformes_et_emulateurs_sur_firehouse() {
         // LECTURE SEULE : les plateformes du compte, et l'émulateur recommandé par Firehouse pour chacune.
         let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");

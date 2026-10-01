@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.12.0 — demander un jeu (lot 6)
+
+- **Demander un jeu**, dans la barre du haut : cherche un jeu dans toute la base LaunchBox de Firehouse (titre,
+  console, année, studio). S'il n'est pas encore dans le Catalogue Firehouse, **📨 Demander** l'envoie à Firehouse,
+  qui le fait valider, le cherche et le télécharge ; il apparaîtra ensuite dans le catalogue.
+- Un jeu déjà dans le catalogue, ou déjà demandé, est signalé et ne se redemande pas.
+
 ## 0.11.0 — le menu en jeu, au clavier
 
 - **Pendant une partie, la touche Pause/Attn ouvre le menu de Frogtend par-dessus le jeu** (réglable dans ⚙ Options

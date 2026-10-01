@@ -341,6 +341,13 @@ Seb.
 Recherche dans la base LaunchBox (`/recherche`) et envoi de la demande (`/demandes`). La réponse est neutre si la
 demande est refusée.
 
+**✅ Livré en 0.12.0** : menu « Demander un jeu » ; recherche dans toute la base LaunchBox (forme de `/recherche` relevée
+sur le vrai Firehouse le 30/09 : `{ok, resultats: [{launchbox_id, titre, titre_fr, plateforme, annee, genres,
+developpeur, jaquette, deja}]}`) ; un jeu déjà possédé ou déjà cherché ne se redemande pas ; demande confirmée,
+puis `POST /demandes {launchbox_id}`. Les jaquettes LaunchBox (site extérieur) ne s'affichent pas : la politique de
+sécurité de l'application n'autorise que les images de Frogtend. **Pas encore essayé en vrai** (une vraie demande
+crée une entrée chez Firehouse : à faire par Seb).
+
 ### Lot 7 — L'assistant jeux
 Une conversation avec l'assistant de Firehouse. Il **propose** des actions locales, que l'utilisateur voit et
 accepte avant qu'elles s'exécutent ; chaque action est journalisée et, si possible, réversible.

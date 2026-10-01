@@ -257,6 +257,20 @@ function appeler<T>(commande: string, args?: Record<string, unknown>): Promise<T
   return invoke<T>(commande, args);
 }
 
+/** Un jeu de la base LaunchBox de Firehouse (`/recherche`, relevé le 30/09). */
+export interface ResultatRecherche {
+  launchbox_id: number;
+  titre: string;
+  titre_fr: string;
+  plateforme: string;
+  annee: number | null;
+  genres: string[];
+  developpeur: string;
+  jaquette: string;
+  /** Déjà connu de Firehouse : possédé, ou en cours de recherche. */
+  deja: { id: number; statut: string } | null;
+}
+
 /** Ce que montre le menu en jeu. */
 export interface EtatMenuJeu {
   jeu: number;
@@ -334,6 +348,8 @@ export const api = {
   installeAilleurs: (id: number, dossier: string) => appeler<Installation>('installation_ailleurs', { id, dossier }),
   candidatsLancement: (id: number) => appeler<Candidat[]>('lancement_candidats', { id }),
   choisirLanceur: (id: number, lanceur: Lanceur) => appeler<void>('lanceur_choisir', { id, lanceur }),
+  rechercherJeu: (texte: string) => appeler<{ ok?: boolean; resultats?: ResultatRecherche[] }>('jeu_rechercher', { texte }),
+  demanderJeu: (launchboxId: number) => appeler<void>('jeu_demander', { launchboxId }),
   menuJeuEtat: () => appeler<EtatMenuJeu | null>('menu_jeu_etat'),
   menuJeuReprendre: () => appeler<void>('menu_jeu_reprendre'),
   menuJeuAction: (action: string) => appeler<void>('menu_jeu_action', { action }),

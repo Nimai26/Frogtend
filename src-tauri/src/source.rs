@@ -160,6 +160,44 @@ impl Source {
         }
     }
 
+    /// Chercher un jeu dans toute la base LaunchBox de Firehouse (lot 6) : `{ok, resultats: [{launchbox_id, titre,
+    /// titre_fr, plateforme, annee, genres, developpeur, jaquette, deja: {id, statut} | null}]}` (relevé le 30/09).
+    pub async fn rechercher(&self, texte: &str) -> Resultat<Value> {
+        match self {
+            Source::Firehouse(c) => c.obtenir_json(&format!("/recherche?texte={}", encoder(texte))).await,
+            Source::Simulee => {
+                let t = texte.to_lowercase();
+                let mut resultats: Vec<Value> = catalogue_simule()
+                    .into_iter()
+                    .filter(|j| j["titre"].as_str().unwrap_or("").to_lowercase().contains(&t))
+                    .map(|j| {
+                        json!({"launchbox_id": j["launchbox_id"], "titre": j["titre"], "titre_fr": "", "plateforme": j["plateforme"],
+                            "annee": j["annee"], "genres": j["genres"], "developpeur": j["developpeur"], "jaquette": "",
+                            "deja": {"id": j["id"], "statut": "possede"}})
+                    })
+                    .collect();
+                if "jeu absent".contains(&t) || t.contains("absent") {
+                    resultats.push(json!({"launchbox_id": 999001, "titre": "Jeu absent (exemple)", "titre_fr": "",
+                        "plateforme": "Super Nintendo", "annee": 1994, "genres": ["Aventure"], "developpeur": "Exemple",
+                        "jaquette": "", "deja": null}));
+                }
+                Ok(json!({"ok": true, "resultats": resultats}))
+            }
+        }
+    }
+
+    /// Demander un jeu absent (`POST /demandes {launchbox_id}`). Réservé aux grades admin et avancé ; un refus répond
+    /// comme un succès (réponse neutre, contrat) : Frogtend dit seulement que la demande est partie.
+    pub async fn demander(&self, launchbox_id: i64) -> Resultat<()> {
+        match self {
+            Source::Firehouse(c) => {
+                c.envoyer_json::<Value>("/demandes", &json!({ "launchbox_id": launchbox_id })).await?;
+                Ok(())
+            }
+            Source::Simulee => Ok(()),
+        }
+    }
+
     /// Qui porte ce jeton (`/moi`) : `{ok, username, nom, grade, via, api}`.
     pub async fn moi(&self) -> Resultat<Value> {
         match self {
@@ -199,6 +237,35 @@ mod tests {
         assert_eq!(encoder("Dune/concat (1).sav"), "Dune%2Fconcat%20%281%29.sav");
         assert_eq!(encoder("Zoé"), "Zo%C3%A9");
         assert_eq!(encoder("a-b_c.d~e"), "a-b_c.d~e");
+    }
+
+    #[tokio::test]
+    async fn la_recherche_et_la_demande_suivent_le_contrat() {
+        // Mode simulé : un jeu du catalogue est « déjà là », l'exemple absent ne l'est pas.
+        let s = Source::Simulee;
+        let r = s.rechercher("absent").await.unwrap();
+        let l = r["resultats"].as_array().unwrap();
+        assert!(l.iter().any(|j| j["deja"].is_null() && j["launchbox_id"] == 999001));
+        let dune = s.rechercher("dune").await.unwrap();
+        assert!(dune["resultats"].as_array().unwrap().iter().all(|j| j["deja"]["statut"] == "possede"));
+
+        // Le vrai : la route, le texte encodé, le corps exact de la demande.
+        use httpmock::prelude::*;
+        let m = MockServer::start();
+        let rech = m.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/recherche").query_param("texte", "zelda ocarina");
+            t.status(200).json_body(json!({"ok": true, "resultats": []}));
+        });
+        let dem = m.mock(|w, t| {
+            w.method(POST).path("/api/jeux/v1/demandes").json_body(json!({"launchbox_id": 161}));
+            t.status(200).json_body(json!({"ok": true}));
+        });
+        let c = crate::firehouse::Client::nouveau(&m.base_url(), "jeton").unwrap();
+        let s = Source::Firehouse(c);
+        s.rechercher("zelda ocarina").await.unwrap();
+        s.demander(161).await.unwrap();
+        rech.assert();
+        dem.assert();
     }
 
     #[tokio::test]

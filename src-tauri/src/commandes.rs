@@ -535,6 +535,25 @@ pub async fn jeu_retirer(noyau: State<'_, Noyau>, id: i64) -> Resultat<crate::pa
     noyau.retirer_du_pc(id).await
 }
 
+/// Chercher un jeu dans toute la base LaunchBox de Firehouse, pour le demander (lot 6).
+#[tauri::command]
+pub async fn jeu_rechercher(noyau: State<'_, Noyau>, texte: String) -> Resultat<Value> {
+    let t = texte.trim();
+    if t.chars().count() < 2 {
+        return Err(Erreur::Refus("Tape au moins deux lettres.".into()));
+    }
+    noyau.session().await?.source.rechercher(t).await
+}
+
+/// Demander un jeu absent à Firehouse (la personne a confirmé dans l'interface). Réponse neutre si refusé.
+#[tauri::command]
+pub async fn jeu_demander(noyau: State<'_, Noyau>, launchbox_id: i64) -> Resultat<()> {
+    let s = noyau.session().await?;
+    s.source.demander(launchbox_id).await?;
+    noyau.journaliser(&format!("demande d'un jeu absent : LaunchBox {launchbox_id}"));
+    Ok(())
+}
+
 /// Les émulateurs recommandés par Firehouse pour un système.
 #[tauri::command]
 pub async fn emulateurs_recommandes(noyau: State<'_, Noyau>, plateforme: String) -> Resultat<Value> {

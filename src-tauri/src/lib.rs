@@ -193,6 +193,8 @@ pub fn run() {
             commandes::retroarch_etat,
             commandes::retroarch_installer_coeur,
             commandes::emulateur_regler_manette,
+            commandes::jeu_rechercher,
+            commandes::jeu_demander,
             commandes::menu_jeu_etat,
             commandes::menu_jeu_reprendre,
             commandes::menu_jeu_action,

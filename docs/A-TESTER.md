@@ -7,6 +7,12 @@
 - [ ] Frogtend propose la mise à jour au démarrage (ou ⚙ Options ▸ À propos ▸ Chercher une mise à jour).
       **Attendu :** la version la plus récente de [NOTES-DE-VERSION.md](NOTES-DE-VERSION.md).
 
+## Demander un jeu (0.12.0)
+- [ ] Barre du haut ▸ **Demander un jeu** ▸ chercher « zelda ocarina ».
+      **Attendu :** une liste (titre, console, année, studio) ; Ocarina of Time N64 marqué « ⏳ Déjà demandé ».
+- [ ] Demander un jeu qui n'y est pas encore (confirmer). **Attendu :** « 📨 Demande envoyée », et la demande
+      apparaît dans Firehouse (à vérifier côté cockpit).
+
 ## Menu en jeu (0.11.0)
 - [ ] Installer Dune si besoin, le lancer, appuyer sur **Pause/Attn**.
       **Attendu :** le menu Frogtend apparaît PAR-DESSUS le jeu ; le jeu est figé.
