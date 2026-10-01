@@ -126,3 +126,28 @@ Remplace le partage SMB (supprimé en 2.20.0). Relu par l'expert infra de Fireho
 - **Plafond** : 100 Go par personne par défaut, vérifié à chaque morceau, documents compris ; 1 To pour tout l'espace.
 - **Codes** : 400 refus (nom, en-tête), 404 absent, 409 `{recu}`, 413 morceau > 8 Mo ou document > 5 Mo, 503 migration
   en cours (réessayer dans une minute), 507 plein.
+
+## Sources des émulateurs, triches et mods (Firehouse, contrat FIGÉ le 02/10/2026, routes à venir)
+
+Besoins n° 13 et 14 (BESOINS-API.md). Implémentation côté Firehouse après l'accord de Seb ; **un champ absent =
+« pas encore »**.
+
+**14 — émulateurs** :
+- `GET /emulateurs?plateforme=` : chaque émulateur gagne `id` (clé stable), `site_officiel`, `telechargement:
+  {type: github|forgejo|gitlab|direct|page, depot, hote, url, motif_paquet (glob du paquet Windows), format:
+  zip|7z|exe|msi}`, `forks: [même forme + actif, note]`, `source_info: emu-france|manuel`, `verifie_le`.
+- `GET /emulateurs/catalogue` → `{maj_le, plateformes: [{plateforme, emulateurs: [...]}]}` (à garder en cache ;
+  `maj_le` change seulement quand la base change).
+- `GET /emulateurs/{id}/paquet` → Firehouse résout la dernière version : `{id, version, nom_fichier, url, taille,
+  sha256|null, format, publie_le, page_release}` (cache 6 h). **409** (raison dite) si `type = page` : installation
+  à la main ; **502** si la forge ne répond pas. Frogtend ne parle alors à aucune forge.
+- Base modifiable dans Firehouse, amorcée depuis emu-france.com ; les forks Switch (Eden, Ryubing, Citron) y sont.
+
+**13 — triches et mods, par jeu** :
+- `GET /jeu/{media_id}/triche` → `{codes: [{cle, emulateur, format: cht|pnach|ini|gecko…, titre, nb_codes, source,
+  correspondance: serial|crc|titre, confiance: 0–1, fichier}], cheat_engine: [{titre, version_jeu, source, page,
+  fichier|null}], mods: [{nom, description, auteur, version, source, page, maj_le}], maj_le}`. Jeu caché → 404.
+- `GET /jeu/{media_id}/triche/{cle}/fichier` → le fichier brut, prêt à poser dans le dossier de l'émulateur.
+- Sources chez Firehouse : libretro-database (cheats), bases PCSX2, DuckStation, Dolphin (GeckoCodes) ; Cheat Engine :
+  liens (fichier seulement s'il est librement téléchargeable) ; mods : PCGamingWiki (API gratuite), liens ModDB/GitHub ;
+  Nexus : liens seulement.
