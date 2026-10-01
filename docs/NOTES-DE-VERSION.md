@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.17.0 — triches et mods, émulateurs décrits par Firehouse (lot 8, 1re partie)
+
+- **🎯 Triches et mods**, sur la fiche d'un jeu : les codes de triche de l'émulateur du jeu, les tables Cheat Engine
+  et les mods connus, **fournis par Firehouse** jeu par jeu (ils arriveront quand Firehouse les servira). Un code
+  s'ajoute dans le dossier de TON profil, sur ta demande.
+- Avant d'aller chercher un mod, Frogtend **propose de copier le jeu** (taille annoncée) ; si tu refuses, il te
+  prévient.
+- Frogtend peut installer **n'importe quel émulateur que Firehouse décrit**, forks compris (Switch : Ryubing,
+  Citron…), depuis sa source officielle, vérifié avant installation.
+
 ## 0.16.0 — Taodbox, le mode canapé (lot 5)
 
 - **🛋 Taodbox** (barre du haut) : plein écran, tout en grand pour être lu de loin, tes jeux en grandes jaquettes

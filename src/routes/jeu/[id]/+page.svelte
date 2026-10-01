@@ -122,6 +122,7 @@
         {/if}
         <button class="btn" onclick={() => gererJeu(surPc.id)} disabled={partie.enJeu === surPc.id}>⚙ Gérer le jeu</button>
         <a class="btn" href={`/assistant?jeu=${surPc.id}`}>💬 Demander à l’assistant</a>
+        <a class="btn" href={`/triches?jeu=${surPc.id}`}>🎯 Triches et mods</a>
       </div>
     {/if}
 

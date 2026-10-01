@@ -277,6 +277,33 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
     }
 }
 
+/// Le dossier « données » d'un émulateur pour un profil (contrat 13 : `base = donnees`), là où Frogtend range ses
+/// parties et ses triches pour ce profil.
+pub fn dossier_donnees(id: &str, emulateur: &Path, profil: &str) -> PathBuf {
+    let p = dossier_du_profil(emulateur, profil);
+    match id {
+        "retroarch" | "duckstation" | "pcsx2" => p,
+        "dolphin" => p.join("User"),
+        "ppsspp" => emulateur.join("memstick"),
+        _ => emulateur.to_path_buf(),
+    }
+}
+
+/// Où poser un fichier de triche : `base` (`donnees` | `programme`), `dossier` relatif (« / »), `nom_fichier`.
+/// Refuse tout chemin qui sortirait du dossier de l'émulateur.
+pub fn place_triche(id: &str, emulateur: &Path, profil: &str, base: &str, dossier: &str, nom_fichier: &str) -> Resultat<PathBuf> {
+    let sur = |s: &str| !s.split(['/', '\\']).any(|x| x == ".." || x.contains(':'));
+    if nom_fichier.is_empty() || nom_fichier.contains(['/', '\\', ':']) || nom_fichier.starts_with('.') || !sur(dossier) {
+        return Err(Erreur::Refus("Emplacement de triche douteux : refusé.".into()));
+    }
+    let racine = if base == "programme" { emulateur.to_path_buf() } else { dossier_donnees(id, emulateur, profil) };
+    let mut c = racine;
+    for morceau in dossier.split('/').filter(|m| !m.is_empty()) {
+        c = c.join(morceau);
+    }
+    Ok(c.join(nom_fichier))
+}
+
 /// Le nom du profil d'après son dossier (`…\Profils\<nom>`).
 fn profil_de(p: &Path) -> &str {
     p.file_name().and_then(|n| n.to_str()).unwrap_or("Frogtend")
@@ -469,6 +496,19 @@ mod tests {
         let ini = std::fs::read_to_string(racine.join("user/config/qt-config.ini")).unwrap();
         assert!(ini.contains("[Data%20Storage]") && ini.contains("use_custom_storage = true"));
         assert!(ini.contains("Profils/Seb/sdmc/"));
+    }
+
+    #[test]
+    fn un_fichier_de_triche_va_dans_le_dossier_du_profil_et_jamais_ailleurs() {
+        let e = Path::new("E:\\Emu\\RetroArch");
+        let p = place_triche("retroarch", e, "Seb", "donnees", "cheats/Beetle PSX HW", "Crash Bandicoot (USA).cht").unwrap();
+        assert_eq!(p, e.join("Profils").join("Seb").join("cheats").join("Beetle PSX HW").join("Crash Bandicoot (USA).cht"));
+        let d = Path::new("E:\\Emu\\Dolphin");
+        assert_eq!(place_triche("dolphin", d, "Seb", "donnees", "GameSettings", "GALE01.ini").unwrap(), d.join("Profils/Seb/User/GameSettings/GALE01.ini"));
+        assert_eq!(place_triche("xemu", d, "Seb", "programme", "", "a.txt").unwrap(), d.join("a.txt"));
+        assert!(place_triche("pcsx2", e, "Seb", "donnees", "../../Windows", "x.pnach").is_err());
+        assert!(place_triche("pcsx2", e, "Seb", "donnees", "cheats", "..\\x.pnach").is_err());
+        assert!(place_triche("pcsx2", e, "Seb", "donnees", "C:/Windows", "x.pnach").is_err());
     }
 
     #[test]

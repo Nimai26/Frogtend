@@ -388,9 +388,92 @@ pub fn trouver_programme(dossier: &Path, f: &Fiche) -> Option<PathBuf> {
 /// copie par-dessus le dossier de l'émulateur. Ce qui n'est pas dans le paquet (sa configuration, les BIOS, les
 /// parties) n'est jamais touché. Le mode portable est activé.
 pub fn installer_paquet(f: &Fiche, paquet: &Path, dossier: &Path) -> Resultat<PathBuf> {
+    deposer_archive(f.nom, paquet, dossier)?;
+    if let Some(p) = f.portable {
+        activer_portable(dossier, p)?;
+    }
+    // PPSSPP : un « installed.txt » l'enverrait dans Documents (Windows/main.cpp) ; sans lui, tout reste à côté.
+    if f.id == "ppsspp" {
+        let installe = dossier.join("installed.txt");
+        if installe.is_file() {
+            std::fs::remove_file(installe)?;
+        }
+    }
+    trouver_programme(dossier, f)
+        .ok_or_else(|| Erreur::Disque(format!("Après l'installation, le programme de {} est introuvable.", f.nom)))
+}
+
+/// Le marqueur du mode portable : un fichier, ou un DOSSIER s'il finit par « / » (Azahar, Cemu, Vita3K, Eden).
+fn activer_portable(dossier: &Path, p: &str) -> Resultat<()> {
+    let chemin = dossier.join(p.trim_end_matches('/'));
+    if p.ends_with('/') {
+        std::fs::create_dir_all(&chemin)?;
+    } else if !chemin.exists() {
+        std::fs::write(chemin, b"")?;
+    }
+    Ok(())
+}
+
+/// Le programme d'un émulateur installé depuis la description de Firehouse.
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(tag = "sorte", rename_all = "snake_case")]
+pub enum ProgrammeTrouve {
+    Trouve { programme: String },
+    /// Plusieurs .exe et rien pour choisir : la personne choisit (chemins relatifs).
+    AChoisir { candidats: Vec<String> },
+}
+
+/// Installe un émulateur décrit par Firehouse (contrat 14) : `programme` relatif (« / »), `portable` (`fichier` ou
+/// `dossier`, et son nom). Sans `programme`, cherche l'exe ; s'il y en a plusieurs, la personne choisira.
+pub fn installer_paquet_decrit(
+    nom: &str,
+    paquet: &Path,
+    dossier: &Path,
+    programme: Option<&str>,
+    portable: Option<(&str, &str)>,
+) -> Resultat<ProgrammeTrouve> {
+    deposer_archive(nom, paquet, dossier)?;
+    if let Some((genre, n)) = portable {
+        if !n.is_empty() && !n.contains("..") {
+            match genre {
+                "fichier" => activer_portable(dossier, n.trim_end_matches('/'))?,
+                "dossier" => activer_portable(dossier, &format!("{}/", n.trim_end_matches('/')))?,
+                _ => {}
+            }
+        }
+    }
+    if let Some(p) = programme.filter(|p| !p.is_empty() && !p.contains("..")) {
+        let chemin = dossier.join(p.replace('/', "\\"));
+        return if chemin.is_file() {
+            Ok(ProgrammeTrouve::Trouve { programme: chemin.to_string_lossy().into() })
+        } else {
+            Err(Erreur::Disque(format!("Après l'installation, {p} est introuvable dans le paquet de {nom}.")))
+        };
+    }
+    // Les petits programmes annexes ne sont pas l'émulateur.
+    let annexes = ["unins", "vc_redist", "crash", "updater", "update", "dxsetup", "elevate"];
+    let mut l: Vec<String> = fichiers_de(dossier)?
+        .into_iter()
+        .filter(|r| r.to_lowercase().ends_with(".exe"))
+        .filter(|r| {
+            let n = r.rsplit('/').next().unwrap_or(r).to_lowercase();
+            !annexes.iter().any(|a| n.starts_with(a))
+        })
+        .collect();
+    l.sort_by_key(|r| r.matches('/').count());
+    match l.len() {
+        0 => Err(Erreur::Disque(format!("Aucun programme dans le paquet de {nom}."))),
+        1 => Ok(ProgrammeTrouve::Trouve { programme: dossier.join(&l[0]).to_string_lossy().into() }),
+        _ => Ok(ProgrammeTrouve::AChoisir { candidats: l }),
+    }
+}
+
+/// Décompresse un paquet (zip/7z) et le copie par-dessus le dossier de l'émulateur ; une configuration qui serait
+/// remplacée est d'abord copiée à part.
+fn deposer_archive(nom: &str, paquet: &Path, dossier: &Path) -> Resultat<()> {
     let format = crate::installation::format_de(paquet)?;
     if !matches!(format, Format::Zip | Format::SeptZip) {
-        return Err(Erreur::Refus(format!("Le paquet de {} n'est pas une archive attendue.", f.nom)));
+        return Err(Erreur::Refus(format!("Le paquet de {nom} n'est pas une archive attendue.")));
     }
     let provisoire = dossier.with_extension("nouveau");
     if provisoire.exists() {
@@ -421,23 +504,7 @@ pub fn installer_paquet(f: &Fiche, paquet: &Path, dossier: &Path) -> Resultat<Pa
         std::fs::copy(racine.join(&r), &cible)?;
     }
     std::fs::remove_dir_all(&provisoire)?;
-    if let Some(p) = f.portable {
-        let chemin = dossier.join(p.trim_end_matches('/'));
-        if p.ends_with('/') {
-            std::fs::create_dir_all(&chemin)?; // un DOSSIER à côté du programme (Azahar, Cemu, Vita3K)
-        } else if !chemin.exists() {
-            std::fs::write(chemin, b"")?;
-        }
-    }
-    // PPSSPP : un « installed.txt » l'enverrait dans Documents (Windows/main.cpp) ; sans lui, tout reste à côté.
-    if f.id == "ppsspp" {
-        let installe = dossier.join("installed.txt");
-        if installe.is_file() {
-            std::fs::remove_file(installe)?;
-        }
-    }
-    trouver_programme(dossier, f)
-        .ok_or_else(|| Erreur::Disque(format!("Après l'installation, le programme de {} est introuvable.", f.nom)))
+    Ok(())
 }
 
 /// Un fichier de configuration (réglages, manettes…) : on le met à l'abri avant de l'écraser.
@@ -660,6 +727,39 @@ mod tests {
             {"name": "Eden-Windows-v0.2.1-amd64-msvc-standard.zip", "browser_download_url": "c", "size": 0},
             {"name": "Eden-Windows-v0.2.1-rog-ally-gcc-standard.zip", "browser_download_url": "d", "size": 0}]});
         assert_eq!(paquet_github(&r, morceaux).unwrap().url, "c");
+    }
+
+    #[test]
+    fn un_emulateur_decrit_par_firehouse_s_installe_et_son_programme_se_trouve() {
+        let d = tempfile::tempdir().unwrap();
+        let zip = |nom: &str, fichiers: &[&str]| {
+            let p = d.path().join(nom);
+            let mut z = zip::ZipWriter::new(std::fs::File::create(&p).unwrap());
+            for f in fichiers {
+                z.start_file(*f, zip::write::SimpleFileOptions::default()).unwrap();
+                z.write_all(b"MZ").unwrap();
+            }
+            z.finish().unwrap();
+            p
+        };
+        // Programme et mode portable donnés par Firehouse (Ryubing : un dossier « portable »).
+        let p = zip("r.zip", &["publish/Ryujinx.exe", "publish/libs/x.dll"]);
+        let ou = d.path().join("Ryubing");
+        let r = installer_paquet_decrit("Ryubing", &p, &ou, Some("Ryujinx.exe"), Some(("dossier", "portable"))).unwrap();
+        assert_eq!(r, ProgrammeTrouve::Trouve { programme: ou.join("Ryujinx.exe").to_string_lossy().into() });
+        assert!(ou.join("portable").is_dir());
+        // Sans programme : un seul exe utile (le désinstalleur ne compte pas).
+        let p = zip("c.zip", &["citron.exe", "unins000.exe"]);
+        let r = installer_paquet_decrit("Citron", &p, &d.path().join("Citron"), None, Some(("fichier", "portable.txt"))).unwrap();
+        assert!(matches!(r, ProgrammeTrouve::Trouve { ref programme } if programme.ends_with("citron.exe")));
+        assert!(d.path().join("Citron").join("portable.txt").is_file());
+        // Plusieurs : la personne choisit.
+        let p = zip("m.zip", &["a.exe", "outils/b.exe"]);
+        let r = installer_paquet_decrit("Multi", &p, &d.path().join("Multi"), None, None).unwrap();
+        assert_eq!(r, ProgrammeTrouve::AChoisir { candidats: vec!["a.exe".into(), "outils/b.exe".into()] });
+        // Un chemin douteux est refusé, rien hors du dossier.
+        assert!(installer_paquet_decrit("X", &p, &d.path().join("X"), Some("../evasion.exe"), Some(("dossier", "../hors"))).is_ok());
+        assert!(!d.path().join("hors").exists());
     }
 
     #[test]

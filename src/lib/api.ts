@@ -135,6 +135,25 @@ export interface EmulateurRecommande {
   ligne_de_commande: string;
   extensions: string[];
   bios: string;
+  // Contrat 14 (Firehouse, 02/10) : absents tant que Firehouse ne les sert pas.
+  id?: string;
+  site_officiel?: string;
+  telechargement?: { type: 'github' | 'forgejo' | 'gitlab' | 'direct' | 'page'; url?: string | null; format?: string };
+  programme?: string;
+  forks?: (EmulateurRecommande & { actif?: boolean; note?: string })[];
+}
+
+/** Ce que devient l'installation d'un émulateur décrit par Firehouse. */
+export type InstallationFirehouse =
+  | { sorte: 'installe'; emulateur: EmulateurInstalle }
+  | { sorte: 'a_choisir'; dossier: string; version: string; candidats: string[] };
+
+/** Les triches et mods d'un jeu (contrat 13). */
+export interface TrichesJeu {
+  codes: { cle: string; emulateur: string; format: string; titre: string; nb_codes?: number; source?: string; correspondance?: string; confiance?: number; nom_fichier?: string }[];
+  cheat_engine: { titre: string; version_jeu?: string; source?: string; page?: string; fichier?: string | null }[];
+  mods: { nom: string; description?: string; auteur?: string; version?: string; source?: string; page?: string; maj_le?: string }[];
+  maj_le: string | null;
 }
 
 export interface EmplacementPropose {
@@ -374,7 +393,14 @@ export const api = {
     appeler<{ id: string; nom: string; ligne: string; installable: boolean } | null>('emulateur_fiche', { nom }),
   emulateurDerniereVersion: (id: string) => appeler<Paquet>('emulateur_derniere_version', { id }),
   emulateurInstaller: (id: string, dossier: string) => appeler<EmulateurInstalle>('emulateur_installer', { id, dossier }),
-  emulateurAdopter: (id: string, programme: string) => appeler<EmulateurInstalle>('emulateur_adopter', { id, programme }),
+  emulateurAdopter: (id: string, programme: string, nom?: string, version?: string) =>
+    appeler<EmulateurInstalle>('emulateur_adopter', { id, programme, nom: nom ?? null, version: version ?? null }),
+  emulateurInstallerFirehouse: (id: string, nom: string, dossier: string) =>
+    appeler<InstallationFirehouse>('emulateur_installer_firehouse', { id, nom, dossier }),
+  jeuTriches: (id: number) => appeler<TrichesJeu>('jeu_triches', { id }),
+  tricheInstaller: (id: number, cle: string, programme: string) => appeler<string>('triche_installer', { id, cle, programme }),
+  jeuTailleInstallation: (id: number) => appeler<number>('jeu_taille_installation', { id }),
+  jeuCopieAvantMod: (id: number) => appeler<string>('jeu_copie_avant_mod', { id }),
   retroarchEtat: (programme: string, ligne: string, bios: string[]) =>
     appeler<EtatRetroArch>('retroarch_etat', { programme, ligne, bios }),
   emulateurReglerManette: (id: string, programme: string) =>

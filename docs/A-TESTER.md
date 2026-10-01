@@ -7,6 +7,14 @@
 - [ ] Frogtend propose la mise à jour au démarrage (ou ⚙ Options ▸ À propos ▸ Chercher une mise à jour).
       **Attendu :** la version la plus récente de [NOTES-DE-VERSION.md](NOTES-DE-VERSION.md).
 
+## Triches, mods et émulateurs via Firehouse (0.17.0) — quand Firehouse servira ses nouvelles routes
+- [ ] Fiche d'un jeu ▸ **🎯 Triches et mods**. **Attendu aujourd'hui :** « Firehouse ne connaît encore ni codes ni
+      mods ». Plus tard : la liste ; « 🎯 Ajouter » pose le fichier dans le dossier de ton profil.
+- [ ] « 🌐 Voir le mod » sur un jeu installé : Frogtend propose d'abord une **copie du jeu** (taille annoncée) ; si
+      tu refuses, un avertissement.
+- [ ] Switch ▸ ➕ Ajouter un émulateur : **Ryubing** et **Citron** apparaissent (quand Firehouse les décrit),
+      « Frogtend peut l'installer ».
+
 ## Taodbox, le mode canapé (0.16.0)
 - [ ] Barre du haut ▸ **🛋 Taodbox**. **Attendu :** plein écran, tout en grand, tes jeux en grandes jaquettes.
 - [ ] Une manette branchée : la **croix** (ou le stick) déplace le cadre de sélection, **A** lance le jeu, **B**

@@ -101,6 +101,49 @@ function recommandationsParDefaut(plateforme: string): EmulateurRecommande[] {
   return [];
 }
 
+/** Installer un émulateur que Frogtend ne connaît pas en dur, d'après Firehouse (contrat 14), sur accord. */
+export async function installerParFirehouse(id: string, nom: string): Promise<EmulateurInstalle | null> {
+  const dossier = await dossierEmulateurs();
+  if (!dossier) return null;
+  const oui = await confirmer(`⬇ Installer ${nom} ?`, {
+    message: [
+      `Firehouse donne sa source officielle et sa dernière version ; Frogtend la télécharge et vérifie qu’elle est intacte.`,
+      `Dossier : ${dossier}\\${nom}`,
+      'Il sera installé en mode portable quand il en a un : sa configuration reste dans son dossier.',
+    ].join('\n'),
+    libelleValider: '⬇ Installer',
+  });
+  if (!oui) return null;
+  Object.assign(installationEmulateur, { id, recus: 0, total: null });
+  const arreter = isTauri()
+    ? await listen<{ id: string; recus: number; total: number | null }>('emulateur', (e) => {
+        if (e.payload.id === id) Object.assign(installationEmulateur, { recus: e.payload.recus, total: e.payload.total });
+      })
+    : () => {};
+  try {
+    const r = await api.emulateurInstallerFirehouse(id, nom, dossier);
+    if (r.sorte === 'installe') {
+      toast(`✅ ${nom} installé.`);
+      return r.emulateur;
+    }
+    const choix = await choisir(
+      `🎯 Quel est le programme de ${nom} ?`,
+      r.candidats.map((c) => ({ valeur: c, libelle: c })),
+      'Le paquet en contient plusieurs.',
+    );
+    if (!choix) return null;
+    const e = await api.emulateurAdopter(id, `${r.dossier}\\${choix.replace(/\//g, '\\')}`, nom, r.version);
+    toast(`✅ ${nom} installé.`);
+    return e;
+  } catch (e) {
+    toast(`Impossible d’installer ${nom} : ${motifDuRefus(e)}`, 'erreur');
+    return null;
+  } finally {
+    arreter();
+    installationEmulateur.id = null;
+  }
+}
+
 /** Ajouter un émulateur (ou un cœur RetroArch) à un système. Le premier devient celui par défaut. Rend la clé de
  * l'émulateur retenu, ou `null`. */
 export async function reglerEmulateur(plateforme: string): Promise<string | null> {
@@ -110,17 +153,20 @@ export async function reglerEmulateur(plateforme: string): Promise<string | null
 
   type Option = { rec: EmulateurRecommande; id: string | null; nom: string; installe?: EmulateurInstalle } | 'autre';
   const options: { valeur: Option; libelle: string; detail?: string }[] = [];
-  for (const rec of recs) {
+  // Les forks actifs décrits par Firehouse (contrat 14) s'ajoutent après leur émulateur d'origine.
+  const avecForks: EmulateurRecommande[] = recs.flatMap((r) => [r, ...(r.forks ?? []).filter((f) => f.actif !== false).map((f) => ({ ...f, recommande: false }))]);
+  for (const rec of avecForks) {
     const f = await api.emulateurFiche(rec.nom).catch(() => null);
-    const installe = f ? installes.find((i) => i.id === f.id) : undefined;
+    const installe = f ? installes.find((i) => i.id === f.id) : rec.id ? installes.find((i) => i.id === rec.id) : undefined;
+    const parFirehouse = !f && !!rec.id && !!rec.telechargement && rec.telechargement.type !== 'page';
     options.push({
       valeur: { rec, id: f?.id ?? null, nom: f?.nom ?? rec.nom, installe },
       libelle: `${rec.recommande ? '⭐ ' : ''}${f?.nom ?? rec.nom}${rec.recommande ? ' (recommandé)' : ''}`,
       detail: installe
         ? `✅ déjà sur ce PC${installe.version ? ` (${installe.version})` : ''}`
-        : f
-          ? '⬇ Frogtend peut l’installer'
-          : `à installer toi-même${rec.site ? ` : ${rec.site}` : ''}`,
+        : f || parFirehouse
+          ? `⬇ Frogtend peut l’installer${parFirehouse ? ' (source donnée par Firehouse)' : ''}`
+          : `à installer toi-même${rec.site_officiel || rec.site ? ` : ${rec.site_officiel || rec.site}` : ''}`,
     });
   }
   options.push({ valeur: 'autre', libelle: '📂 Un autre émulateur…', detail: 'montrer son programme et écrire sa ligne de commande' });
@@ -160,6 +206,10 @@ export async function reglerEmulateur(plateforme: string): Promise<string | null
       if (!c.installe.installe_le && c.id) await api.emulateurAdopter(c.id, programme).catch(() => {});
     } else if (c.id) {
       const e = await installerEmulateur(c.id, c.nom);
+      if (!e) return null;
+      programme = e.programme;
+    } else if (c.rec.id && c.rec.telechargement && c.rec.telechargement.type !== 'page') {
+      const e = await installerParFirehouse(c.rec.id, c.nom);
       if (!e) return null;
       programme = e.programme;
     } else {

@@ -402,6 +402,19 @@ Cheat Engine et les tables FearLess, Nexus Mods (par son API), les trainers, les
   ces informations seront **fournies par Firehouse, jeu par jeu** (besoin n° 13 de BESOINS-API.md).
 - **Copie de sauvegarde du jeu avant un mod : proposée** (pas obligatoire), avec un **avertissement** si on la refuse.
 
+**Cheat Engine, relevé le 02/10** : le dépôt GitHub officiel ne publie que les sources (aucun paquet) ; le site
+officiel dit lui-même que **l'installeur sans logiciels en plus est réservé aux membres de son Patreon**. Pistes (à
+choisir avec Seb) : (a) Seb récupère l'installeur propre (Patreon) et le confie à Firehouse, qui le sert à Frogtend ;
+(b) installation silencieuse de l'installeur public en refusant les offres : impossible à garantir sans essai.
+
+**✅ 0.17.0 (partie 1, contre le contrat 13/14, routes Firehouse à venir)** :
+- écran **🎯 Triches et mods** sur la fiche d'un jeu : codes de l'émulateur du jeu (correspondance incertaine
+  signalée), posés sur demande dans le dossier du **profil** (`nom_fichier`/`dossier`/`base` de Firehouse, chemin
+  vérifié, fichier différent gardé à côté) ; tables Cheat Engine et mods ouverts dans le navigateur ; **copie du jeu
+  proposée avant un mod** (taille annoncée), avertissement si refusée ;
+- **émulateurs décrits par Firehouse** (forks compris : Ryubing, Citron…) installables : Firehouse résout le paquet,
+  Frogtend vérifie l'empreinte, crée le marqueur portable, trouve le programme (ou le fait choisir).
+
 ### Lot 9 — Jeux gratuits des boutiques
 Epic, Amazon Prime Gaming, Xbox Game Pass, PlayStation Plus. Ils restent dans le Frogtend de l'utilisateur et ne
 remontent pas dans Firehouse.

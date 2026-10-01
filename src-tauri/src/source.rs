@@ -220,6 +220,43 @@ impl Source {
         }
     }
 
+    /// Le paquet d'un émulateur, résolu par Firehouse (contrat 14) : `{id, version, nom_fichier, url, taille, sha256,
+    /// format, programme, portable, page_release}`. 409 = installation à la main (raison dite).
+    pub async fn paquet_emulateur(&self, id: &str) -> Resultat<Value> {
+        match self {
+            Source::Firehouse(c) => c.obtenir_json(&format!("/emulateurs/{}/paquet", encoder(id))).await,
+            Source::Simulee => Err(Erreur::Refus("Mode simulé : aucun émulateur n'est installé.".into())),
+        }
+    }
+
+    /// Les triches et mods connus d'un jeu (contrat 13). Route pas encore servie (404) : listes vides.
+    pub async fn triches(&self, media_id: i64) -> Resultat<Value> {
+        let vide = json!({"codes": [], "cheat_engine": [], "mods": [], "maj_le": null});
+        match self {
+            Source::Firehouse(c) => match c.obtenir_json::<Value>(&format!("/jeu/{media_id}/triche")).await {
+                Ok(v) => Ok(v),
+                Err(Erreur::Introuvable(_)) => Ok(vide),
+                Err(e) => Err(e),
+            },
+            Source::Simulee => Ok(vide),
+        }
+    }
+
+    /// Le fichier brut d'un code de triche (contrat 13).
+    pub async fn fichier_triche(&self, media_id: i64, cle: &str) -> Resultat<Vec<u8>> {
+        match self {
+            Source::Firehouse(c) => {
+                let b = c.brute(reqwest::Method::GET, &format!("/jeu/{media_id}/triche/{}/fichier", encoder(cle)), None, &[]).await?;
+                if (200..300).contains(&b.statut) {
+                    Ok(b.octets.to_vec())
+                } else {
+                    Err(crate::firehouse::erreur_du_statut(b.statut, &b.octets))
+                }
+            }
+            Source::Simulee => Err(Erreur::Refus("Mode simulé : pas de codes.".into())),
+        }
+    }
+
     /// Qui porte ce jeton (`/moi`) : `{ok, username, nom, grade, via, api}`.
     pub async fn moi(&self) -> Resultat<Value> {
         match self {
@@ -278,6 +315,34 @@ mod tests {
         // Simulé : une réponse d'exemple, et l'action « lancer » quand on parle d'un jeu.
         let r = Source::Simulee.assistant("Bonjour", Some(110), &[]).await.unwrap();
         assert_eq!(r["actions_proposees"][0]["type"], "lancer");
+    }
+
+    #[tokio::test]
+    async fn triches_et_paquets_d_emulateurs_suivent_le_contrat() {
+        use httpmock::prelude::*;
+        let m = MockServer::start();
+        let s = Source::Firehouse(crate::firehouse::Client::nouveau(&m.base_url(), "jeton").unwrap());
+        // Route pas encore servie : listes vides, pas d'erreur.
+        let v = s.triches(110).await.unwrap();
+        assert_eq!(v["codes"].as_array().unwrap().len(), 0);
+        let t = m.mock(|w, r| {
+            w.method(GET).path("/api/jeux/v1/jeu/111/triche");
+            r.status(200).json_body(json!({"codes": [{"cle": "c1", "emulateur": "retroarch", "nom_fichier": "Zelda.cht", "dossier": "cheats/Mupen64Plus-Next", "base": "donnees"}], "cheat_engine": [], "mods": [], "maj_le": "2026-10-02"}));
+        });
+        let f = m.mock(|w, r| {
+            w.method(GET).path("/api/jeux/v1/jeu/111/triche/c1/fichier");
+            r.status(200).body("cheats = 1\n");
+        });
+        assert_eq!(s.triches(111).await.unwrap()["codes"][0]["nom_fichier"], "Zelda.cht");
+        assert_eq!(s.fichier_triche(111, "c1").await.unwrap(), b"cheats = 1\n");
+        t.assert();
+        f.assert();
+        let p = m.mock(|w, r| {
+            w.method(GET).path("/api/jeux/v1/emulateurs/ryubing/paquet");
+            r.status(200).json_body(json!({"id": "ryubing", "version": "1.3.3", "url": "https://exemple/r.zip", "programme": "Ryujinx.exe", "portable": {"type": "dossier", "nom": "portable"}}));
+        });
+        assert_eq!(s.paquet_emulateur("ryubing").await.unwrap()["programme"], "Ryujinx.exe");
+        p.assert();
     }
 
     #[tokio::test]

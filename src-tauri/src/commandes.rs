@@ -552,6 +552,155 @@ pub async fn jeu_retirer(noyau: State<'_, Noyau>, id: i64) -> Resultat<crate::pa
     noyau.retirer_du_pc(id).await
 }
 
+/// Ce que devient l'installation d'un émulateur décrit par Firehouse.
+#[derive(Serialize)]
+#[serde(tag = "sorte", rename_all = "snake_case")]
+pub enum InstallationFirehouse {
+    Installe { emulateur: crate::emulateurs::EmulateurInstalle },
+    /// Plusieurs programmes dans le paquet : la personne choisit (puis `emulateur_adopter`).
+    AChoisir { dossier: String, version: String, candidats: Vec<String> },
+}
+
+/// Installe un émulateur que Frogtend ne connaît pas en dur, d'après Firehouse (`/emulateurs/{id}/paquet`, contrat
+/// 14) : Firehouse résout la dernière version, Frogtend télécharge, vérifie l'empreinte si elle est donnée, installe.
+/// La personne a donné son accord dans l'interface (taille annoncée).
+#[tauri::command]
+pub async fn emulateur_installer_firehouse(
+    app: AppHandle,
+    noyau: State<'_, Noyau>,
+    id: String,
+    nom: String,
+    dossier: String,
+) -> Resultat<InstallationFirehouse> {
+    let base = std::path::PathBuf::from(&dossier);
+    if !base.is_dir() {
+        return Err(Erreur::Disque(format!("Dossier introuvable : {dossier}.")));
+    }
+    let p = noyau.session().await?.source.paquet_emulateur(&id).await?;
+    let url = p["url"].as_str().filter(|u| u.starts_with("https://")).ok_or_else(|| Erreur::Serveur("Firehouse n'a pas donné d'adresse sûre (https) pour ce paquet.".into()))?;
+    let version = p["version"].as_str().unwrap_or("").to_string();
+    let nom_sur = crate::jeux_pc::nom_de_dossier(&nom);
+    let cible = base.join(&nom_sur);
+    let paquet = base.join(".telechargements").join(format!("{}.paquet", crate::jeux_pc::nom_de_dossier(&id)));
+    let (app2, id2) = (app.clone(), id.clone());
+    crate::emulateurs::telecharger(url, &paquet, &move |recus, total| {
+        let _ = app2.emit("emulateur", ProgresEmulateur { id: id2.clone(), recus, total });
+    })
+    .await?;
+    if let Some(attendue) = p["sha256"].as_str().filter(|s| !s.is_empty()) {
+        if crate::sauvegarde::empreinte(&paquet)?.to_lowercase() != attendue.to_lowercase() {
+            let _ = std::fs::remove_file(&paquet);
+            return Err(Erreur::Conflit(format!("Le paquet de {nom} est arrivé abîmé (empreinte différente) : rien n'est installé.")));
+        }
+    }
+    let programme = p["programme"].as_str().map(String::from);
+    let portable = (p["portable"]["type"].as_str().map(String::from), p["portable"]["nom"].as_str().map(String::from));
+    let (pq, c, n) = (paquet.clone(), cible.clone(), nom.clone());
+    let r = tauri::async_runtime::spawn_blocking(move || {
+        let port = match (&portable.0, &portable.1) {
+            (Some(t), Some(n)) => Some((t.as_str(), n.as_str())),
+            _ => None,
+        };
+        crate::emulateurs::installer_paquet_decrit(&n, &pq, &c, programme.as_deref(), port)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("L'installation s'est arrêtée brutalement.".into()))??;
+    let _ = std::fs::remove_file(&paquet);
+    let _ = std::fs::remove_dir(base.join(".telechargements"));
+    match r {
+        crate::emulateurs::ProgrammeTrouve::Trouve { programme } => {
+            let e = crate::emulateurs::EmulateurInstalle {
+                id: id.clone(),
+                nom,
+                version: Some(version),
+                dossier: cible.to_string_lossy().into(),
+                programme,
+                par_frogtend: true,
+                installe_le: crate::noyau::maintenant(),
+            };
+            registre_emulateurs(&noyau).retenir(e.clone())?;
+            Ok(InstallationFirehouse::Installe { emulateur: e })
+        }
+        crate::emulateurs::ProgrammeTrouve::AChoisir { candidats } => {
+            Ok(InstallationFirehouse::AChoisir { dossier: cible.to_string_lossy().into(), version, candidats })
+        }
+    }
+}
+
+/// Les triches et mods connus d'un jeu (contrat 13).
+#[tauri::command]
+pub async fn jeu_triches(noyau: State<'_, Noyau>, id: i64) -> Resultat<Value> {
+    noyau.session().await?.source.triches(id).await
+}
+
+/// Pose un fichier de triche de Firehouse dans le dossier du profil de l'émulateur (la personne l'a demandé). Un
+/// fichier différent déjà là est d'abord copié à côté (`.avant-frogtend`). Rend le chemin écrit.
+#[tauri::command]
+pub async fn triche_installer(noyau: State<'_, Noyau>, id: i64, cle: String, programme: String) -> Resultat<String> {
+    let s = noyau.session().await?;
+    let liste = s.source.triches(id).await?;
+    let code = liste["codes"]
+        .as_array()
+        .and_then(|l| l.iter().find(|c| c["cle"].as_str() == Some(cle.as_str())).cloned())
+        .ok_or_else(|| Erreur::Introuvable("Ce code n'est plus proposé par Firehouse.".into()))?;
+    let chemin = std::path::Path::new(&programme);
+    let nom_exe = chemin.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
+    let emu = crate::emulateurs::CATALOGUE.iter().find(|f| nom_exe.starts_with(f.programme)).map(|f| f.id).unwrap_or("");
+    let dossier_emu = chemin.parent().ok_or_else(|| Erreur::Disque("Programme de l'émulateur introuvable.".into()))?;
+    let place = crate::emulateurs_profils::place_triche(
+        emu,
+        dossier_emu,
+        &s.profil.nom,
+        code["base"].as_str().unwrap_or("donnees"),
+        code["dossier"].as_str().unwrap_or(""),
+        code["nom_fichier"].as_str().ok_or_else(|| Erreur::Serveur("Firehouse n'a pas donné le nom du fichier.".into()))?,
+    )?;
+    let octets = s.source.fichier_triche(id, &cle).await?;
+    if let Some(p) = place.parent() {
+        std::fs::create_dir_all(p)?;
+    }
+    if place.is_file() && std::fs::read(&place).ok().as_deref() != Some(octets.as_slice()) {
+        std::fs::copy(&place, place.with_extension(format!("{}.avant-frogtend", place.extension().and_then(|e| e.to_str()).unwrap_or(""))))?;
+    }
+    std::fs::write(&place, &octets)?;
+    noyau.journaliser(&format!("triche posée pour le jeu {id} : {}", place.display()));
+    Ok(place.to_string_lossy().into())
+}
+
+/// La taille du dossier d'installation d'un jeu (pour annoncer une copie avant un mod).
+#[tauri::command]
+pub fn jeu_taille_installation(noyau: State<'_, Noyau>, id: i64) -> Resultat<u64> {
+    let j = noyau.registre().jeu(id)?.ok_or_else(|| Erreur::Introuvable("Jeu introuvable sur ce PC.".into()))?;
+    let i = j.installation.ok_or_else(|| Erreur::Refus("Le jeu n'est pas installé.".into()))?;
+    let racine = std::path::PathBuf::from(&i.dossier);
+    Ok(crate::installation::fichiers_de(&racine)?.iter().filter_map(|r| std::fs::metadata(racine.join(r)).ok()).map(|m| m.len()).sum())
+}
+
+/// Copie le jeu avant un mod (décision de Seb : proposée, pas obligatoire) : `<dossier>.avant-mod-<date>`.
+#[tauri::command]
+pub async fn jeu_copie_avant_mod(noyau: State<'_, Noyau>, id: i64) -> Resultat<String> {
+    let j = noyau.registre().jeu(id)?.ok_or_else(|| Erreur::Introuvable("Jeu introuvable sur ce PC.".into()))?;
+    let i = j.installation.ok_or_else(|| Erreur::Refus("Le jeu n'est pas installé.".into()))?;
+    let source = std::path::PathBuf::from(&i.dossier);
+    let nom = source.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "jeu".into());
+    let copie = source.with_file_name(format!("{nom}.avant-mod-{}", crate::noyau::maintenant()));
+    let (s, c) = (source.clone(), copie.clone());
+    tauri::async_runtime::spawn_blocking(move || -> Resultat<()> {
+        for r in crate::installation::fichiers_de(&s)? {
+            let cible = c.join(&r);
+            if let Some(p) = cible.parent() {
+                std::fs::create_dir_all(p)?;
+            }
+            std::fs::copy(s.join(&r), cible)?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La copie s'est arrêtée brutalement.".into()))??;
+    noyau.journaliser(&format!("copie avant mod du jeu {id} : {}", copie.display()));
+    Ok(copie.to_string_lossy().into())
+}
+
 /// Installe le micrologiciel PS3 dans RPCS3 (`--installfw`, rpcs3.cpp) depuis le fichier PS3UPDAT.PUP que la
 /// personne a téléchargé sur le site de Sony et choisi. RPCS3 montre sa propre progression.
 #[tauri::command]
@@ -717,19 +866,29 @@ pub async fn emulateur_installer(
 
 /// Retient un émulateur installé à la main (trouvé, ou montré par la personne).
 #[tauri::command]
-pub fn emulateur_adopter(noyau: State<'_, Noyau>, id: String, programme: String) -> Resultat<crate::emulateurs::EmulateurInstalle> {
-    let f = crate::emulateurs::fiche(&id).ok_or_else(|| Erreur::Introuvable("Émulateur inconnu.".into()))?;
+pub fn emulateur_adopter(
+    noyau: State<'_, Noyau>,
+    id: String,
+    programme: String,
+    nom: Option<String>,
+    version: Option<String>,
+) -> Resultat<crate::emulateurs::EmulateurInstalle> {
+    // Un émulateur connu de Frogtend, ou décrit par Firehouse (son nom est alors donné).
+    let nom = match crate::emulateurs::fiche(&id) {
+        Some(f) => f.nom.to_string(),
+        None => nom.filter(|n| !n.trim().is_empty()).ok_or_else(|| Erreur::Introuvable("Émulateur inconnu.".into()))?,
+    };
     let p = std::path::PathBuf::from(&programme);
     if !p.is_file() {
         return Err(Erreur::Disque(format!("Programme introuvable : {programme}.")));
     }
     let e = crate::emulateurs::EmulateurInstalle {
-        id: f.id.into(),
-        nom: f.nom.into(),
-        version: None,
+        id,
+        nom,
+        par_frogtend: version.is_some(),
+        version,
         dossier: p.parent().unwrap_or(&p).to_string_lossy().into(),
         programme,
-        par_frogtend: false,
         installe_le: crate::noyau::maintenant(),
     };
     registre_emulateurs(&noyau).retenir(e.clone())?;
