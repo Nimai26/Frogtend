@@ -348,6 +348,7 @@ export const api = {
   installeAilleurs: (id: number, dossier: string) => appeler<Installation>('installation_ailleurs', { id, dossier }),
   candidatsLancement: (id: number) => appeler<Candidat[]>('lancement_candidats', { id }),
   choisirLanceur: (id: number, lanceur: Lanceur) => appeler<void>('lanceur_choisir', { id, lanceur }),
+  rpcs3InstallerMicrologiciel: (programme: string, pup: string) => appeler<void>('rpcs3_installer_micrologiciel', { programme, pup }),
   rechercherJeu: (texte: string) => appeler<{ ok?: boolean; resultats?: ResultatRecherche[] }>('jeu_rechercher', { texte }),
   demanderJeu: (launchboxId: number) => appeler<void>('jeu_demander', { launchboxId }),
   menuJeuEtat: () => appeler<EtatMenuJeu | null>('menu_jeu_etat'),

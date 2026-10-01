@@ -1,5 +1,17 @@
 # Notes de version de Frogtend
 
+## 0.13.0 — les consoles récentes (lot 4d)
+
+- Frogtend sait maintenant **installer et lancer** (sur ton accord, depuis leur source officielle, en mode portable) :
+  **Xenia Canary** (Xbox 360), **xemu** (Xbox), **RPCS3** (PS3), **Cemu** (Wii U), **Azahar** (3DS), **Vita3K**
+  (PS Vita). Comme pour les autres, il propose celui que Firehouse recommande, au premier jeu de la console.
+- **Chacun ses parties** sur Xbox 360, Xbox (un disque dur virtuel par profil), PS3 (un compte RPCS3 par profil) et
+  3DS. Sur Wii U et PS Vita, les parties sont encore communes à tous les profils du PC.
+- **💿 Micrologiciel PS3…** (⚙ Options ▸ Émulateurs, sur RPCS3) : montre le fichier PS3UPDAT.PUP téléchargé sur le
+  site de PlayStation, RPCS3 l'installe. Frogtend ne télécharge jamais les fichiers de console (BIOS, clés,
+  micrologiciels).
+- La Switch arrive plus tard (choix de l'émulateur à finir).
+
 ## 0.12.0 — demander un jeu (lot 6)
 
 - **Demander un jeu**, dans la barre du haut : cherche un jeu dans toute la base LaunchBox de Firehouse (titre,

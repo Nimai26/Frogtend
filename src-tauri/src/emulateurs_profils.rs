@@ -215,8 +215,100 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             relier_memstick(emulateur, &p.join("memstick"))?;
             Ok(vec![])
         }
+        // Xenia : les parties dans le dossier du profil (\`--content_root\`, xenia_main.cc).
+        "xenia" => {
+            let contenu = p.join("content");
+            creer(&[&contenu])?;
+            Ok(vec![format!("--content_root={}", texte(&contenu))])
+        }
+        // xemu : les parties sont DANS le disque dur virtuel de la Xbox → un disque et un fichier de réglages par
+        // profil (\`-config_path\`), copiés au premier lancement depuis ceux réglés dans xemu.
+        "xemu" => {
+            creer(&[p])?;
+            let cfg = p.join("xemu.toml");
+            let principal = std::fs::read_to_string(emulateur.join("xemu.toml")).unwrap_or_default();
+            if !cfg.is_file() {
+                std::fs::write(&cfg, &principal)?;
+            }
+            let disque = p.join("xbox_hdd.qcow2");
+            if !disque.is_file() {
+                if let Some(source) = valeur_toml(&principal, "sys.files", "hdd_path").map(std::path::PathBuf::from) {
+                    if source.is_file() {
+                        std::fs::copy(&source, &disque)?;
+                    }
+                }
+            }
+            let mut v = vec![];
+            if disque.is_file() {
+                v.push(("hdd_path", vec![format!("'{}'", texte(&disque))]));
+            }
+            if !v.is_empty() {
+                modifier_ini(emulateur, &cfg, "sys.files", &v)?;
+            }
+            modifier_ini(emulateur, &cfg, "display.window", &[("fullscreen_on_startup", vec!["true".into()])])?;
+            Ok(vec!["-config_path".into(), texte(&cfg)])
+        }
+        // RPCS3 : un compte RPCS3 par profil (\`--user-id\`, rpcs3.cpp), donc ses propres parties.
+        "rpcs3" => Ok(vec!["--user-id".into(), compte_rpcs3(emulateur, profil_de(p))?]),
+        // Azahar : NAND et carte SD du profil (\`[Data Storage]\` de qt-config.ini, configuration/config.cpp).
+        "azahar" => {
+            let (nand, sdmc) = (p.join("nand"), p.join("sdmc"));
+            creer(&[&nand, &sdmc])?;
+            let ini = emulateur.join("user").join("config").join("qt-config.ini");
+            // QSettings : « \\ » est un échappement, on écrit des « / ».
+            let barre = |c: &Path| format!("{}/", texte(c).replace('\\', "/"));
+            modifier_ini(
+                emulateur,
+                &ini,
+                "Data%20Storage",
+                &[
+                    ("use_custom_storage\\default", vec!["false".into()]),
+                    ("use_custom_storage", vec!["true".into()]),
+                    ("nand_directory", vec![barre(&nand)]),
+                    ("sdmc_directory", vec![barre(&sdmc)]),
+                ],
+            )?;
+            Ok(vec![])
+        }
         _ => Ok(vec![]),
     }
+}
+
+/// Le nom du profil d'après son dossier (`…\Profils\<nom>`).
+fn profil_de(p: &Path) -> &str {
+    p.file_name().and_then(|n| n.to_str()).unwrap_or("Frogtend")
+}
+
+/// Une valeur d'un fichier TOML simple (`[section]` puis `cle = 'valeur'` ou `"valeur"`).
+pub fn valeur_toml(texte: &str, section: &str, cle: &str) -> Option<String> {
+    let v = crate::manettes::lire_ini(texte, section, cle).into_iter().next()?;
+    let v = v.trim();
+    let v = v.strip_prefix('\'').and_then(|x| x.strip_suffix('\'')).or_else(|| v.strip_prefix('"').and_then(|x| x.strip_suffix('"'))).unwrap_or(v);
+    Some(v.replace("\\\\", "\\")).filter(|s| !s.is_empty())
+}
+
+/// Le compte RPCS3 d'un profil (`dev_hdd0\home\<8 chiffres>\localusername` = nom du profil) : retrouvé, ou créé
+/// au premier numéro libre à partir de 00000002 (le 00000001 reste celui de RPCS3).
+pub fn compte_rpcs3(emulateur: &Path, profil: &str) -> Resultat<String> {
+    let maison = emulateur.join("dev_hdd0").join("home");
+    std::fs::create_dir_all(&maison)?;
+    let mut pris = std::collections::BTreeSet::new();
+    for e in std::fs::read_dir(&maison)?.flatten() {
+        let id = e.file_name().to_string_lossy().to_string();
+        if id.len() != 8 || !id.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        if std::fs::read_to_string(e.path().join("localusername")).is_ok_and(|n| n.trim() == profil) {
+            return Ok(id);
+        }
+        pris.insert(id.parse::<u32>().unwrap_or(0));
+    }
+    let n = (2..99_999_999u32).find(|n| !pris.contains(n)).unwrap_or(2);
+    let id = format!("{n:08}");
+    let d = maison.join(&id);
+    std::fs::create_dir_all(&d)?;
+    std::fs::write(d.join("localusername"), profil)?;
+    Ok(id)
 }
 
 /// PPSSPP garde tout dans `memstick\` à côté du programme : ce dossier devient un lien (jonction Windows, sans droits
@@ -263,7 +355,12 @@ pub fn traces_hors_du_dossier(id: &str) -> Vec<PathBuf> {
         "duckstation" => vec![documents.clone().map(|d| d.join("DuckStation")), env("LOCALAPPDATA").map(|a| a.join("DuckStation"))],
         "pcsx2" => vec![documents.clone().map(|d| d.join("PCSX2"))],
         "dolphin" => vec![documents.clone().map(|d| d.join("Dolphin Emulator")), env("APPDATA").map(|a| a.join("Dolphin Emulator"))],
-        "ppsspp" => vec![documents.map(|d| d.join("PPSSPP"))],
+        "ppsspp" => vec![documents.clone().map(|d| d.join("PPSSPP"))],
+        "xenia" => vec![documents.clone().map(|d| d.join("Xenia"))],
+        "xemu" => vec![env("APPDATA").map(|a| a.join("xemu"))],
+        "cemu" => vec![env("APPDATA").map(|a| a.join("Cemu"))],
+        "azahar" => vec![env("APPDATA").map(|a| a.join("Azahar"))],
+        "vita3k" => vec![env("APPDATA").map(|a| a.join("Vita3K"))],
         "dosbox-staging" => vec![env("LOCALAPPDATA").map(|a| a.join("DOSBox"))],
         _ => vec![],
     };
@@ -327,6 +424,44 @@ mod tests {
         assert_eq!(args[0], "-u");
         let ini = std::fs::read_to_string(PathBuf::from(&args[1]).join("Config").join("Dolphin.ini")).unwrap();
         assert!(ini.contains("ISOPaths = 2") && ini.contains("ISOPath1 = F:\\GC"));
+    }
+
+    #[test]
+    fn les_consoles_recentes_ont_des_parties_par_profil() {
+        let d = tempfile::tempdir().unwrap();
+        let racine = d.path();
+        // Xenia : dossier des parties du profil.
+        let a = preparer("xenia", racine, "Seb", &[], &Manette::Auto(None)).unwrap();
+        assert_eq!(a, vec![format!("--content_root={}", racine.join("Profils").join("Seb").join("content").display())]);
+
+        // RPCS3 : un compte par profil, retrouvé ensuite ; le 00000001 n'est jamais pris.
+        std::fs::create_dir_all(racine.join("dev_hdd0/home/00000001")).unwrap();
+        let s = preparer("rpcs3", racine, "Seb", &[], &Manette::Auto(None)).unwrap();
+        let l = preparer("rpcs3", racine, "Léa", &[], &Manette::Auto(None)).unwrap();
+        assert_eq!(s, vec!["--user-id", "00000002"]);
+        assert_eq!(l, vec!["--user-id", "00000003"]);
+        assert_eq!(preparer("rpcs3", racine, "Seb", &[], &Manette::Auto(None)).unwrap(), s);
+        assert_eq!(std::fs::read_to_string(racine.join("dev_hdd0/home/00000003/localusername")).unwrap(), "Léa");
+
+        // xemu : réglages et disque dur copiés pour le profil.
+        let disque = racine.join("system").join("xbox_hdd.qcow2");
+        std::fs::create_dir_all(disque.parent().unwrap()).unwrap();
+        std::fs::write(&disque, b"disque").unwrap();
+        std::fs::write(racine.join("xemu.toml"), format!("[sys.files]\nbootrom_path = '{}'\nhdd_path = '{}'\n", racine.join("system/mcpx.bin").display(), disque.display())).unwrap();
+        let x = preparer("xemu", racine, "Seb", &[], &Manette::Auto(None)).unwrap();
+        let cfg = racine.join("Profils").join("Seb").join("xemu.toml");
+        assert_eq!(x, vec!["-config_path".to_string(), cfg.display().to_string()]);
+        let t = std::fs::read_to_string(&cfg).unwrap();
+        assert_eq!(valeur_toml(&t, "sys.files", "hdd_path").unwrap(), racine.join("Profils").join("Seb").join("xbox_hdd.qcow2").display().to_string());
+        assert!(t.contains("bootrom_path"), "les fichiers de la console restent ceux réglés");
+        assert_eq!(std::fs::read(racine.join("Profils").join("Seb").join("xbox_hdd.qcow2")).unwrap(), b"disque");
+        assert_eq!(std::fs::read(&disque).unwrap(), b"disque", "le disque d'origine n'est pas touché");
+
+        // Azahar : NAND et carte SD du profil.
+        preparer("azahar", racine, "Seb", &[], &Manette::Auto(None)).unwrap();
+        let ini = std::fs::read_to_string(racine.join("user/config/qt-config.ini")).unwrap();
+        assert!(ini.contains("[Data%20Storage]") && ini.contains("use_custom_storage = true"));
+        assert!(ini.contains("Profils/Seb/sdmc/"));
     }
 
     #[test]

@@ -277,8 +277,14 @@ autres, il demande déjà où est le programme (installé à la main). Relevé l
 | PS Vita | **Vita3K** | le micrologiciel, site officiel de Sony |
 | Switch | **aucun** (Firehouse n'en propose pas) | les clés de sa propre Switch ; les émulateurs principaux ont été arrêtés après des actions de Nintendo — **décision de Seb** avant tout travail |
 
-À faire (après le menu en jeu, ordre à confirmer par Seb) : les ajouter au catalogue d'installation (source
-officielle, mode portable, parties par profil, manette standard), en lisant la documentation de chacun d'abord.
+**✅ 0.13.0 (01/10)** : Frogtend sait installer **Xenia Canary, xemu, RPCS3, Cemu, Azahar et Vita3K** (relevé dans
+leurs sources : paquet officiel GitHub, mode portable, ligne de commande plein écran). Parties **par profil** :
+Xenia (`--content_root`), xemu (un fichier de réglages et un disque dur virtuel par profil, `-config_path`), RPCS3
+(un compte RPCS3 par profil, `--user-id`), Azahar (NAND et carte SD du profil). **Limites** : Cemu et Vita3K gardent
+des parties communes au PC (leurs comptes demandent d'écrire des fichiers internes : à faire après un essai réel) ;
+pas encore de pause automatique ni de raccourcis pour le menu en jeu sur ces six ; manettes non réglées par
+Frogtend (leurs défauts). Bouton **💿 Micrologiciel PS3…** (RPCS3 `--installfw`, fichier choisi par la personne).
+**Switch : pas encore** (comparaison des candidats à refaire, la recherche a été interrompue).
 Collection actuelle de Seb (30/09) : MS-DOS et Nintendo 64 seulement ; elle guidera les priorités.
 
 **Switch — Seb est d'accord (30/09)** et donne les candidats actuels, à départager en lisant leurs sources officielles

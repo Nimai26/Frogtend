@@ -535,6 +535,27 @@ pub async fn jeu_retirer(noyau: State<'_, Noyau>, id: i64) -> Resultat<crate::pa
     noyau.retirer_du_pc(id).await
 }
 
+/// Installe le micrologiciel PS3 dans RPCS3 (`--installfw`, rpcs3.cpp) depuis le fichier PS3UPDAT.PUP que la
+/// personne a téléchargé sur le site de Sony et choisi. RPCS3 montre sa propre progression.
+#[tauri::command]
+pub fn rpcs3_installer_micrologiciel(programme: String, pup: String) -> Resultat<()> {
+    let p = std::path::Path::new(&programme);
+    let nom = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
+    if nom != "rpcs3.exe" || !p.is_file() {
+        return Err(Erreur::Refus("Ce n'est pas le programme de RPCS3.".into()));
+    }
+    if !pup.to_lowercase().ends_with(".pup") || !std::path::Path::new(&pup).is_file() {
+        return Err(Erreur::Refus("Choisis le fichier PS3UPDAT.PUP.".into()));
+    }
+    std::process::Command::new(p)
+        .arg("--installfw")
+        .arg(&pup)
+        .current_dir(p.parent().unwrap_or(p))
+        .spawn()
+        .map_err(|e| Erreur::Disque(format!("RPCS3 ne démarre pas ({e}).")))?;
+    Ok(())
+}
+
 /// Chercher un jeu dans toute la base LaunchBox de Firehouse, pour le demander (lot 6).
 #[tauri::command]
 pub async fn jeu_rechercher(noyau: State<'_, Noyau>, texte: String) -> Resultat<Value> {

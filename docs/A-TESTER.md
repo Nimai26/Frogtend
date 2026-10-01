@@ -7,6 +7,21 @@
 - [ ] Frogtend propose la mise à jour au démarrage (ou ⚙ Options ▸ À propos ▸ Chercher une mise à jour).
       **Attendu :** la version la plus récente de [NOTES-DE-VERSION.md](NOTES-DE-VERSION.md).
 
+## Consoles récentes (0.13.0)
+Aucun de ces émulateurs n'a été installé ni lancé par l'agent. Pour chacun (si tu as un jeu de la console) :
+- [ ] Lancer un jeu : Frogtend propose l'émulateur recommandé, annonce la taille, l'installe, le lance en plein
+      écran. **Attendu :** le jeu démarre ; rien de nouveau dans Documents ni AppData (Options ▸ Émulateurs le dit).
+- [ ] **Xbox 360 (Xenia)** : rien d'autre à fournir. Parties dans `Xenia Canary\Profils\<toi>\content`.
+- [ ] **Xbox (xemu)** : au 1er lancement, xemu demande ses fichiers (MCPX, BIOS, disque dur, EEPROM) : les régler
+      dans xemu. *Point à vérifier :* les réglages vont dans `xemu\Profils\<toi>\xemu.toml` ; un 2e profil devra
+      peut-être les refaire (dis-moi).
+- [ ] **PS3 (RPCS3)** : ⚙ Options ▸ Émulateurs ▸ 💿 Micrologiciel PS3… avec le PS3UPDAT.PUP du site de Sony.
+      **Attendu :** RPCS3 l'installe. Puis un jeu : chaque profil a son compte RPCS3 (00000002, 00000003…).
+- [ ] **Wii U (Cemu)** : clés de ta Wii U à mettre dans Cemu (keys.txt). Parties communes aux profils pour l'instant.
+- [ ] **3DS (Azahar)** : un jeu .3ds/.cci ; écran tactile à la souris. Parties dans `Azahar\Profils\<toi>`.
+- [ ] **PS Vita (Vita3K)** : micrologiciel de Sony à installer dans Vita3K ; un .vpk s'installe puis se lance.
+- [ ] La manette marche-t-elle d'emblée dans chacun ? (sinon : lesquels)
+
 ## Demander un jeu (0.12.0)
 - [ ] Barre du haut ▸ **Demander un jeu** ▸ chercher « zelda ocarina ».
       **Attendu :** une liste (titre, console, année, studio) ; Ocarina of Time N64 marqué « ⏳ Déjà demandé ».

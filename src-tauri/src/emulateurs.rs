@@ -106,6 +106,70 @@ pub const CATALOGUE: &[Fiche] = &[
         portable: None, // portable tant qu'il n'y a pas de « installed.txt »
         dossiers_habituels: &["%PROGRAMFILES%\\PPSSPP"],
     },
+    // Consoles récentes (lot 4d), relevé dans les sources le 01/10/2026.
+    Fiche {
+        id: "xenia",
+        nom: "Xenia Canary",
+        alias: &["xenia", "xenia canary"],
+        // Étiquette = un numéro de commit : la date sert de version.
+        origine: Origine::GitHub { depot: "xenia-canary/xenia-canary", morceaux: &["xenia_canary_windows.7z"] },
+        programme: "xenia_canary.exe",
+        ligne: "--fullscreen",
+        portable: None, // portable d'office sous Windows (xenia_main.cc : `portable` vrai sous WIN32)
+        dossiers_habituels: &[],
+    },
+    Fiche {
+        id: "xemu",
+        nom: "xemu",
+        alias: &["xemu"],
+        origine: Origine::GitHub { depot: "xemu-project/xemu", morceaux: &["windows-x86_64.zip", "!dbg", "!pdb"] },
+        programme: "xemu.exe",
+        ligne: "-dvd_path",
+        // Un « xemu.toml » à côté du programme = mode portable (ui/xemu-settings.cc).
+        portable: Some("xemu.toml"),
+        dossiers_habituels: &[],
+    },
+    Fiche {
+        id: "rpcs3",
+        nom: "RPCS3",
+        alias: &["rpcs3"],
+        origine: Origine::GitHub { depot: "RPCS3/rpcs3-binaries-win", morceaux: &["win64_msvc.7z", "!sha256"] },
+        programme: "rpcs3.exe",
+        ligne: "--no-gui --fullscreen",
+        portable: None, // sous Windows, tout est à côté du programme (Utilities/File.cpp, get_config_dir)
+        dossiers_habituels: &[],
+    },
+    Fiche {
+        id: "cemu",
+        nom: "Cemu",
+        alias: &["cemu"],
+        origine: Origine::GitHub { depot: "cemu-project/Cemu", morceaux: &["windows-x64.zip"] },
+        programme: "cemu.exe",
+        ligne: "-f -g",
+        portable: Some("portable/"),
+        dossiers_habituels: &[],
+    },
+    Fiche {
+        id: "azahar",
+        nom: "Azahar",
+        alias: &["azahar"],
+        origine: Origine::GitHub { depot: "azahar-emu/azahar", morceaux: &["windows-msvc", ".zip", "!installer", "!libretro"] },
+        programme: "azahar.exe",
+        ligne: "-f",
+        // Un dossier « user » à côté du programme = mode portable (common/file_util.cpp).
+        portable: Some("user/"),
+        dossiers_habituels: &[],
+    },
+    Fiche {
+        id: "vita3k",
+        nom: "Vita3K",
+        alias: &["vita3k"],
+        origine: Origine::GitHub { depot: "Vita3K/Vita3K", morceaux: &["windows-latest.zip"] },
+        programme: "vita3k.exe",
+        ligne: "-F",
+        portable: Some("portable/"), // vita3k/app/src/app_init.cpp
+        dossiers_habituels: &[],
+    },
 ];
 
 /// La fiche d'un émulateur recommandé par Firehouse (d'après son nom).
@@ -179,14 +243,21 @@ pub fn version_retroarch_depuis_index(html: &str) -> Option<String> {
 pub fn paquet_github(release: &Value, morceaux: &[&str]) -> Option<Paquet> {
     // Une « release » toujours étiquetée « latest » (DuckStation) : sa date de publication sert de version.
     let etiquette = release["tag_name"].as_str()?;
-    let version = if etiquette == "latest" {
+    let pas_un_numero = etiquette == "latest"
+        || etiquette == "continuous"
+        || etiquette.starts_with("build-")
+        || (etiquette.len() >= 7 && etiquette.len() <= 40 && etiquette.chars().all(|c| c.is_ascii_hexdigit()));
+    let version = if pas_un_numero {
         release["published_at"].as_str().map(|d| d.chars().take(10).collect()).unwrap_or_else(|| etiquette.into())
     } else {
         etiquette.to_string()
     };
     let a = release["assets"].as_array()?.iter().find(|a| {
         let n = a["name"].as_str().unwrap_or("");
-        morceaux.iter().all(|m| n.contains(m)) && !n.contains("symbols")
+        morceaux.iter().all(|m| match m.strip_prefix('!') {
+            Some(exclu) => !n.contains(exclu),
+            None => n.contains(m),
+        }) && !n.contains("symbols")
     })?;
     Some(Paquet { version, url: a["browser_download_url"].as_str()?.into(), taille: a["size"].as_u64() })
 }
@@ -324,9 +395,11 @@ pub fn installer_paquet(f: &Fiche, paquet: &Path, dossier: &Path) -> Resultat<Pa
     }
     std::fs::remove_dir_all(&provisoire)?;
     if let Some(p) = f.portable {
-        let fichier = dossier.join(p);
-        if !fichier.exists() {
-            std::fs::write(fichier, b"")?;
+        let chemin = dossier.join(p.trim_end_matches('/'));
+        if p.ends_with('/') {
+            std::fs::create_dir_all(&chemin)?; // un DOSSIER à côté du programme (Azahar, Cemu, Vita3K)
+        } else if !chemin.exists() {
+            std::fs::write(chemin, b"")?;
         }
     }
     // PPSSPP : un « installed.txt » l'enverrait dans Documents (Windows/main.cpp) ; sans lui, tout reste à côté.
@@ -522,6 +595,53 @@ mod tests {
             {"name": "pcsx2-v2.8.2-windows-x64-Qt.7z", "browser_download_url": "https://github.com/x.7z", "size": 25670075}]});
         let p = paquet_github(&r, &["windows-x64-Qt.7z"]).unwrap();
         assert_eq!((p.version.as_str(), p.url.as_str(), p.taille), ("v2.8.2", "https://github.com/x.7z", Some(25670075)));
+    }
+
+    /// Les vrais noms relevés le 01/10/2026 (API GitHub) pour les consoles récentes.
+    #[test]
+    fn les_consoles_recentes_trouvent_leur_paquet_windows() {
+        let paquet = |id: &str, tag: &str, noms: &[&str]| {
+            let assets: Vec<Value> = noms.iter().map(|n| json!({"name": n, "browser_download_url": n, "size": 1})).collect();
+            let r = json!({"tag_name": tag, "published_at": "2026-10-01T05:40:32Z", "assets": assets});
+            match fiche(id).unwrap().origine {
+                Origine::GitHub { morceaux, .. } => paquet_github(&r, morceaux).unwrap(),
+                _ => unreachable!(),
+            }
+        };
+        let x = paquet("xemu", "v0.8.136", &[
+            "xemu-0.8.136-dbg-windows-x86_64.zip", "xemu-0.8.136-windows-x86_64-pdb.zip",
+            "xemu-0.8.136-dbg-windows-x86_64-pdb.zip", "xemu-0.8.136-windows-arm64.zip", "xemu-0.8.136-windows-x86_64.zip"]);
+        assert_eq!((x.url.as_str(), x.version.as_str()), ("xemu-0.8.136-windows-x86_64.zip", "v0.8.136"));
+        let r = paquet("rpcs3", "build-4d88114c92aece3ebe6b613a516db29882b06dc9", &[
+            "rpcs3-v0.0.43-20146-4d88114c_win64_msvc.7z.sha256", "rpcs3-v0.0.43-20146-4d88114c_win64_msvc.7z"]);
+        assert_eq!((r.url.as_str(), r.version.as_str()), ("rpcs3-v0.0.43-20146-4d88114c_win64_msvc.7z", "2026-10-01"));
+        let a = paquet("azahar", "2126.1.2", &[
+            "azahar-libretro-windows-x86_64-2126.1.2.zip", "azahar-windows-msvc-2126.1.2-installer.exe",
+            "azahar-windows-msvc-2126.1.2.zip", "azahar-windows-msys2-2126.1.2.zip"]);
+        assert_eq!(a.url, "azahar-windows-msvc-2126.1.2.zip");
+        let xe = paquet("xenia", "44f5b4a", &["xenia_canary_linux.AppImage", "xenia_canary_windows.7z"]);
+        assert_eq!((xe.url.as_str(), xe.version.as_str()), ("xenia_canary_windows.7z", "2026-10-01"), "commit → date");
+        let v = paquet("vita3k", "continuous", &["windows-arm64-latest.zip", "windows-latest.zip"]);
+        assert_eq!((v.url.as_str(), v.version.as_str()), ("windows-latest.zip", "2026-10-01"));
+        assert_eq!(paquet("cemu", "v2.6", &["cemu-2.6-ubuntu-22.04-x64.zip", "cemu-2.6-windows-x64.zip"]).url, "cemu-2.6-windows-x64.zip");
+    }
+
+    #[test]
+    fn un_marqueur_portable_peut_etre_un_dossier() {
+        let d = tempfile::tempdir().unwrap();
+        let paquet = d.path().join("a.zip");
+        {
+            let mut z = zip::ZipWriter::new(std::fs::File::create(&paquet).unwrap());
+            z.start_file("azahar.exe", zip::write::SimpleFileOptions::default()).unwrap();
+            z.write_all(b"MZ").unwrap();
+            z.start_file("azahar-room.exe", zip::write::SimpleFileOptions::default()).unwrap();
+            z.write_all(b"MZ").unwrap();
+            z.finish().unwrap();
+        }
+        let dossier = d.path().join("Azahar");
+        let p = installer_paquet(fiche("azahar").unwrap(), &paquet, &dossier).unwrap();
+        assert_eq!(p, dossier.join("azahar.exe"), "pas azahar-room.exe");
+        assert!(dossier.join("user").is_dir(), "le dossier « user » rend Azahar portable");
     }
 
     #[test]

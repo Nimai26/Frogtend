@@ -5,7 +5,7 @@
   import { choisir, confirmer, demander, informer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { etat, reglerPc } from '$lib/etat.svelte';
-  import { dossierEmulateurs, installerEmulateur, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
+  import { dossierEmulateurs, installerEmulateur, parcourir, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
   import { plusRecente } from '$lib/emulateurs/versions';
   import { retirer as retirerEmulateur } from '$lib/emulateurs/choix';
   import { tele } from '$lib/ludotheque/telechargements.svelte';
@@ -76,6 +76,24 @@
 
   /** Les émulateurs dont Frogtend sait reprendre les profils de manette. */
   const AVEC_PROFILS = ['dolphin', 'duckstation', 'pcsx2'];
+
+  /** Le micrologiciel PS3 (fichier officiel de Sony, jamais téléchargé par Frogtend) installé par RPCS3. */
+  async function micrologicielPs3(i: EmulateurInstalle) {
+    const ok = await confirmer('💿 Micrologiciel PS3', {
+      message:
+        'Les jeux PS3 du commerce en ont besoin. Télécharge le fichier PS3UPDAT.PUP sur le site officiel de PlayStation (page « Mise à jour du logiciel système PS3 »), puis montre-le ici : RPCS3 l’installera et montrera sa progression.',
+      libelleValider: '📂 Choisir PS3UPDAT.PUP',
+    });
+    if (!ok) return;
+    const pup = await parcourir({ titre: 'Fichier PS3UPDAT.PUP', extensions: ['pup', 'PUP'] });
+    if (!pup) return;
+    try {
+      await api.rpcs3InstallerMicrologiciel(i.programme, pup);
+      toast('💿 RPCS3 installe le micrologiciel : suis sa fenêtre.');
+    } catch (e) {
+      toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
+    }
+  }
 
   /** Faire d'un profil enregistré dans l'émulateur un réglage de référence de Frogtend. */
   async function reprendreReference(i: EmulateurInstalle) {
@@ -201,6 +219,11 @@
             {/if}
             {#if MANETTE[i.id]}
               <button class="btn petit" title={MANETTE[i.id]} onclick={() => manetteParDefaut(i)}>🎮 Manette par défaut</button>
+            {/if}
+            {#if i.id === 'rpcs3'}
+              <button class="btn petit" title="Les jeux PS3 du commerce en ont besoin" onclick={() => micrologicielPs3(i)}>
+                💿 Micrologiciel PS3…
+              </button>
             {/if}
             {#if AVEC_PROFILS.includes(i.id)}
               <button class="btn petit" title="Faire d’un profil de manette de l’émulateur un réglage de référence" onclick={() => reprendreReference(i)}>
