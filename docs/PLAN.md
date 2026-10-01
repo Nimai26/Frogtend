@@ -407,6 +407,13 @@ officiel dit lui-même que **l'installeur sans logiciels en plus est réservé a
 choisir avec Seb) : (a) Seb récupère l'installeur propre (Patreon) et le confie à Firehouse, qui le sert à Frogtend ;
 (b) installation silencieuse de l'installeur public en refusant les offres : impossible à garantir sans essai.
 
+**Proposition de Seb (02/10)** : Firehouse fournit à Frogtend un Cheat Engine **portable et propre**, de deux façons
+possibles : (1) chaque semaine, vérifier la version ; si nouvelle, l'**installer dans un bac à sable**, puis zipper
+SEULEMENT son dossier d'installation ; (2) le **construire depuis le dépôt git** officiel. (Pas de version portable
+officielle gratuite : copier le dossier installé en donne une.) Côté Frogtend : il le reçoit comme un émulateur
+décrit (contrat 14 : \`type: direct\`, \`programme\`, \`sha256\`), sans rien de plus à coder. Avis de l'agent : voir la
+réponse du 02/10 (bac à sable d'abord ; points à vérifier : réglages dans le registre, pilote noyau).
+
 **✅ 0.17.0 (partie 1, contre le contrat 13/14, routes Firehouse à venir)** :
 - écran **🎯 Triches et mods** sur la fiche d'un jeu : codes de l'émulateur du jeu (correspondance incertaine
   signalée), posés sur demande dans le dossier du **profil** (`nom_fichier`/`dossier`/`base` de Firehouse, chemin
