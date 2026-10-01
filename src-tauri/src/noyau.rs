@@ -852,6 +852,25 @@ mod tests {
     /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_miniatures -- --ignored --nocapture`
     #[tokio::test]
     #[ignore]
+    async fn essai_assistant_sur_firehouse() {
+        // UNE question, sur Dune : la forme réelle de la réponse (lot 7). Rien n'est exécuté.
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton pour ce profil");
+        let s = crate::source::Source::Firehouse(Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap());
+        let debut = std::time::Instant::now();
+        match s.assistant("Comment je lance ce jeu ?", Some(110), &[]).await {
+            Ok(v) => {
+                println!("en {} s", debut.elapsed().as_secs());
+                println!("texte : {}", v["texte"].as_str().unwrap_or("").chars().take(600).collect::<String>());
+                println!("actions : {}", v["actions_proposees"]);
+                println!("clés : {:?}", v.as_object().map(|o| o.keys().collect::<Vec<_>>()));
+            }
+            Err(e) => println!("ERREUR {e:?} en {} s", debut.elapsed().as_secs()),
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
     async fn essai_recherche_sur_firehouse() {
         // LECTURE SEULE : la forme de GET /recherche (lot 6). Aucune demande n'est envoyée.
         let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");

@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.14.0 — l'assistant jeux (lot 7)
+
+- **💬 Demander à l'assistant**, sur la fiche d'un jeu, ou **Assistant** dans la barre du haut : pose une question
+  (lancement, réglages, astuces, solution…), l'assistant de Firehouse répond en quelques secondes, sources à l'appui.
+- Quand il **propose une action** (lancer le jeu, l'installer, ouvrir une page…), Frogtend te la montre avec son
+  risque et ne la fait qu'après ton **oui**. Ce qu'il ne sait pas encore faire sans risque (régler un émulateur,
+  triches, mods) est montré mais refusé, avec la raison.
+- La conversation reste en mémoire le temps de la session, n'est jamais écrite sur le disque, et s'efface quand on
+  change de profil.
+
 ## 0.13.0 — les consoles récentes (lot 4d)
 
 - Frogtend sait maintenant **installer et lancer** (sur ton accord, depuis leur source officielle, en mode portable) :

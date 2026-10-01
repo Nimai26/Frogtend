@@ -124,6 +124,7 @@ pub fn erreur_du_statut(code: u16, corps: &[u8]) -> Erreur {
                 .into(),
         ),
         413 => Erreur::Refus("Firehouse refuse un envoi trop gros d'un coup.".into()),
+        429 => Erreur::Refus("Firehouse traite déjà une question pour toi : attends sa réponse, puis réessaie.".into()),
         503 => Erreur::Serveur("Firehouse est occupé (maintenance en cours). Réessaie dans une minute.".into()),
         507 => Erreur::Refus(
             "Ton espace de sauvegarde chez Firehouse est plein. Libère de la place ou demande plus d'espace à Seb.".into(),

@@ -198,6 +198,28 @@ impl Source {
         }
     }
 
+    /// Poser une question à l'assistant jeux de Firehouse (lot 7, contrat § 4) : `{ok, texte, actions_proposees:
+    /// [{type, titre, details, risque}], outils, confidentialite}`. `historique` : les échanges précédents, gardés
+    /// par Frogtend (Firehouse n'en lit que les 20 derniers).
+    pub async fn assistant(&self, question: &str, media_id: Option<i64>, historique: &[Value]) -> Resultat<Value> {
+        let debut = historique.len().saturating_sub(40);
+        match self {
+            Source::Firehouse(c) => {
+                let mut corps = json!({ "question": question, "historique": &historique[debut..] });
+                if let Some(id) = media_id {
+                    corps["media_id"] = json!(id);
+                }
+                c.envoyer_json("/assistant", &corps).await
+            }
+            Source::Simulee => Ok(json!({
+                "ok": true,
+                "texte": format!("(Mode simulé) Tu demandes : « {question} ». Le vrai assistant de Firehouse répond en 10 à 40 secondes, sources à l'appui."),
+                "actions_proposees": media_id.map(|id| vec![json!({"type": "lancer", "titre": "Lancer le jeu", "details": {"media_id": id}, "risque": "aucun"})]).unwrap_or_default(),
+                "outils": [], "confidentialite": []
+            })),
+        }
+    }
+
     /// Qui porte ce jeton (`/moi`) : `{ok, username, nom, grade, via, api}`.
     pub async fn moi(&self) -> Resultat<Value> {
         match self {
@@ -237,6 +259,25 @@ mod tests {
         assert_eq!(encoder("Dune/concat (1).sav"), "Dune%2Fconcat%20%281%29.sav");
         assert_eq!(encoder("Zoé"), "Zo%C3%A9");
         assert_eq!(encoder("a-b_c.d~e"), "a-b_c.d~e");
+    }
+
+    #[tokio::test]
+    async fn l_assistant_recoit_la_question_le_jeu_et_l_historique_recent() {
+        use httpmock::prelude::*;
+        let m = MockServer::start();
+        let historique: Vec<Value> = (0..50).map(|i| json!({"role": if i % 2 == 0 { "user" } else { "assistant" }, "content": format!("m{i}")})).collect();
+        let attendu: Vec<Value> = historique[10..].to_vec();
+        let mock = m.mock(|w, t| {
+            w.method(POST).path("/api/jeux/v1/assistant").json_body(json!({"question": "Comment je lance ce jeu ?", "media_id": 110, "historique": attendu}));
+            t.status(200).json_body(json!({"ok": true, "texte": "Avec DOSBox.", "actions_proposees": [], "outils": [], "confidentialite": []}));
+        });
+        let s = Source::Firehouse(crate::firehouse::Client::nouveau(&m.base_url(), "jeton").unwrap());
+        let r = s.assistant("Comment je lance ce jeu ?", Some(110), &historique).await.unwrap();
+        assert_eq!(r["texte"], "Avec DOSBox.");
+        mock.assert();
+        // Simulé : une réponse d'exemple, et l'action « lancer » quand on parle d'un jeu.
+        let r = Source::Simulee.assistant("Bonjour", Some(110), &[]).await.unwrap();
+        assert_eq!(r["actions_proposees"][0]["type"], "lancer");
     }
 
     #[tokio::test]

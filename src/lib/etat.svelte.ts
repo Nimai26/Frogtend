@@ -1,6 +1,7 @@
 // L'état partagé de l'application : réglages (PC et profil ouvert), catalogue des skins, skin appliqué.
 
 import { isTauri } from '@tauri-apps/api/core';
+import { oublierToutes } from '$lib/assistant/conversations.svelte';
 import { normaliserTous } from '$lib/emulateurs/choix';
 import instantane from '../../docs/charte/themes.instantane.json';
 import { api, type Profil } from './api';
@@ -151,6 +152,7 @@ export async function entrerDansProfil(profil: Profil) {
 /** Ferme le profil : plus rien de lui n'est affiché ni gardé en mémoire ici. */
 export async function sortirDuProfil() {
   await api.fermerProfil().catch(() => {});
+  oublierToutes();
   etat.profilOuvert = null;
   etat.skinFirehouse = null;
   magasinProfil = null;

@@ -7,6 +7,13 @@
 - [ ] Frogtend propose la mise à jour au démarrage (ou ⚙ Options ▸ À propos ▸ Chercher une mise à jour).
       **Attendu :** la version la plus récente de [NOTES-DE-VERSION.md](NOTES-DE-VERSION.md).
 
+## Assistant jeux (0.14.0)
+- [ ] Fiche de Dune ▸ **💬 Demander à l'assistant** ▸ « Comment je lance ce jeu ? ».
+      **Attendu :** « L'assistant réfléchit… », puis une réponse mise en forme (titres, listes), et un bouton
+      **▶ Lancer — …** (ou « 📦 Installer puis jouer »). Il demande confirmation avant de lancer.
+- [ ] Barre du haut ▸ **Assistant** : une question générale. **Attendu :** une réponse, sans jeu précis.
+- [ ] Changer de profil puis revenir : les conversations ont été oubliées (rien ne reste d'une personne).
+
 ## Consoles récentes (0.13.0)
 Aucun de ces émulateurs n'a été installé ni lancé par l'agent. Pour chacun (si tu as un jeu de la console) :
 - [ ] Lancer un jeu : Frogtend propose l'émulateur recommandé, annonce la taille, l'installe, le lance en plein

@@ -1,6 +1,7 @@
 // Les appels au cœur de Frogtend (Rust). Le jeton ne passe jamais par ici : seul le cœur le connaît.
 
 import { invoke, isTauri } from '@tauri-apps/api/core';
+import type { ActionProposee } from '$lib/assistant/actions';
 import type { CommandesJeu } from '$lib/reglages/reglages';
 
 export interface Profil {
@@ -349,6 +350,9 @@ export const api = {
   candidatsLancement: (id: number) => appeler<Candidat[]>('lancement_candidats', { id }),
   choisirLanceur: (id: number, lanceur: Lanceur) => appeler<void>('lanceur_choisir', { id, lanceur }),
   rpcs3InstallerMicrologiciel: (programme: string, pup: string) => appeler<void>('rpcs3_installer_micrologiciel', { programme, pup }),
+  assistant: (question: string, mediaId: number | null, historique: { role: string; content: string }[]) =>
+    appeler<{ ok?: boolean; texte?: string; actions_proposees?: ActionProposee[] }>('assistant_demander', { question, mediaId, historique }),
+  assistantJournal: (action: string, decision: string) => appeler<void>('assistant_journal', { action, decision }),
   rechercherJeu: (texte: string) => appeler<{ ok?: boolean; resultats?: ResultatRecherche[] }>('jeu_rechercher', { texte }),
   demanderJeu: (launchboxId: number) => appeler<void>('jeu_demander', { launchboxId }),
   menuJeuEtat: () => appeler<EtatMenuJeu | null>('menu_jeu_etat'),

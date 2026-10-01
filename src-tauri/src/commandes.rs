@@ -556,6 +556,28 @@ pub fn rpcs3_installer_micrologiciel(programme: String, pup: String) -> Resultat
     Ok(())
 }
 
+/// Poser une question à l'assistant jeux de Firehouse (lot 7). La conversation est gardée par l'interface.
+#[tauri::command]
+pub async fn assistant_demander(
+    noyau: State<'_, Noyau>,
+    question: String,
+    media_id: Option<i64>,
+    historique: Vec<Value>,
+) -> Resultat<Value> {
+    let q = question.trim();
+    if q.is_empty() {
+        return Err(Erreur::Refus("Écris d'abord ta question.".into()));
+    }
+    noyau.session().await?.source.assistant(q, media_id, &historique).await
+}
+
+/// Note au journal une action proposée par l'assistant, acceptée ou refusée par la personne (jamais d'effet
+/// silencieux : brief § 4).
+#[tauri::command]
+pub fn assistant_journal(noyau: State<'_, Noyau>, action: String, decision: String) {
+    noyau.journaliser(&format!("assistant : action « {action} » → {decision}"));
+}
+
 /// Chercher un jeu dans toute la base LaunchBox de Firehouse, pour le demander (lot 6).
 #[tauri::command]
 pub async fn jeu_rechercher(noyau: State<'_, Noyau>, texte: String) -> Resultat<Value> {

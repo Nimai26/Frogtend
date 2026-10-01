@@ -194,6 +194,8 @@ pub fn run() {
             commandes::retroarch_installer_coeur,
             commandes::emulateur_regler_manette,
             commandes::rpcs3_installer_micrologiciel,
+            commandes::assistant_demander,
+            commandes::assistant_journal,
             commandes::jeu_rechercher,
             commandes::jeu_demander,
             commandes::menu_jeu_etat,

@@ -358,6 +358,14 @@ crée une entrée chez Firehouse : à faire par Seb).
 Une conversation avec l'assistant de Firehouse. Il **propose** des actions locales, que l'utilisateur voit et
 accepte avant qu'elles s'exécutent ; chaque action est journalisée et, si possible, réversible.
 
+**✅ Livré en 0.14.0** : menu « Assistant » (conversation générale) et « 💬 Demander à l'assistant » sur la fiche d'un jeu
+(conversation de ce jeu). Essai réel le 01/10 : « Comment je lance ce jeu ? » sur Dune → réponse en 5 s, Markdown,
+action `lancer` avec `{emulateur, fichier, media_id}`. Conversations gardées en mémoire seulement (jamais sur le
+disque), oubliées à la fermeture du profil ; 40 derniers messages envoyés, 4 000 caractères chacun. Actions
+**exécutées après un oui** : lancer (installer d'abord si besoin), installer, voir la fiche pour l'ajouter, demander
+un jeu, ouvrir une page (http/https seulement). **Refusées pour l'instant** : configurer, cheat, mod (lot 8). Chaque
+décision (acceptée/refusée) est notée au journal. Réponse rendue par un Markdown simple et sûr (aucun HTML exécuté).
+
 ### Lot 8 — Mods et outils
 Cheat Engine et les tables FearLess, Nexus Mods (par son API), les trainers, les autres sources du brief § 1.5.
 
