@@ -151,3 +151,13 @@ Besoins n° 13 et 14 (BESOINS-API.md). Implémentation côté Firehouse après l
 - Sources chez Firehouse : libretro-database (cheats), bases PCSX2, DuckStation, Dolphin (GeckoCodes) ; Cheat Engine :
   liens (fichier seulement s'il est librement téléchargeable) ; mods : PCGamingWiki (API gratuite), liens ModDB/GitHub ;
   Nexus : liens seulement.
+
+**Précisions acceptées par Firehouse (02/10)** :
+- `codes[]` : + `nom_fichier` (nom exact attendu par l'émulateur, ex. `SLUS-20946_1A2B3C4D.pnach`,
+  `Crash Bandicoot (USA).cht`), `dossier` (relatif, séparateur « / », ex. `cheats/Beetle PSX HW`), `base`
+  (`donnees` = dossier de données/portable de l'émulateur, cas courant ; `programme` = à côté de l'exe). La route
+  fichier envoie aussi `Content-Disposition: attachment; filename="…"`. RetroArch : cœur = nom de son dossier, jeu =
+  nom du fichier de jeu sans extension.
+- émulateurs et forks (`/emulateurs`, `/emulateurs/catalogue`, `/emulateurs/{id}/paquet`) : + `programme` (exe à
+  lancer, relatif à la racine décompressée, « / ») et `portable: {type: fichier|dossier|aucun, nom}`. Repli de
+  Frogtend : chercher l'exe dans l'archive, demander s'il y en a plusieurs.
