@@ -94,6 +94,10 @@ function recommandationsParDefaut(plateforme: string): EmulateurRecommande[] {
   if (plateforme === 'MS-DOS') {
     return [{ nom: 'DOSBox Staging', site: 'https://www.dosbox-staging.org/', recommande: true, ligne_de_commande: '', extensions: [], bios: '' }];
   }
+  // Firehouse ne recommande rien pour la Switch : Eden, choisi avec Seb (01/10) parmi les émulateurs actuels.
+  if (plateforme === 'Nintendo Switch') {
+    return [{ nom: 'Eden', site: 'https://eden-emu.dev/', recommande: true, ligne_de_commande: '', extensions: [], bios: '' }];
+  }
   return [];
 }
 

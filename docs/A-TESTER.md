@@ -27,6 +27,9 @@ Aucun de ces émulateurs n'a été installé ni lancé par l'agent. Pour chacun 
 - [ ] **Wii U (Cemu)** : clés de ta Wii U à mettre dans Cemu (keys.txt). Parties communes aux profils pour l'instant.
 - [ ] **3DS (Azahar)** : un jeu .3ds/.cci ; écran tactile à la souris. Parties dans `Azahar\Profils\<toi>`.
 - [ ] **PS Vita (Vita3K)** : micrologiciel de Sony à installer dans Vita3K ; un .vpk s'installe puis se lance.
+- [ ] **Switch (Eden, 0.15.0)** : clés (prod.keys) et micrologiciel de TA Switch à mettre dans Eden (son menu).
+      Puis, dans Eden, **créer un utilisateur au nom exact de ton profil Frogtend** (« Sebastien ») : Frogtend lance
+      Eden avec cet utilisateur, donc tes parties à toi. *Point à vérifier :* le programme s'appelle bien `eden.exe`.
 - [ ] La manette marche-t-elle d'emblée dans chacun ? (sinon : lesquels)
 
 ## Demander un jeu (0.12.0)

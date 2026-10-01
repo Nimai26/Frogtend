@@ -248,6 +248,9 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             modifier_ini(emulateur, &cfg, "display.window", &[("fullscreen_on_startup", vec!["true".into()])])?;
             Ok(vec!["-config_path".into(), texte(&cfg)])
         }
+        // Eden (Switch) : l'utilisateur Switch qui porte le nom du profil (`-u <nom>`, core/launch_params.cpp) ; à
+        // créer une fois dans Eden. Absent : Eden garde son utilisateur courant.
+        "eden" => Ok(vec!["-u".into(), profil_de(p).to_string()]),
         // RPCS3 : un compte RPCS3 par profil (\`--user-id\`, rpcs3.cpp), donc ses propres parties.
         "rpcs3" => Ok(vec!["--user-id".into(), compte_rpcs3(emulateur, profil_de(p))?]),
         // Azahar : NAND et carte SD du profil (\`[Data Storage]\` de qt-config.ini, configuration/config.cpp).
@@ -361,6 +364,7 @@ pub fn traces_hors_du_dossier(id: &str) -> Vec<PathBuf> {
         "cemu" => vec![env("APPDATA").map(|a| a.join("Cemu"))],
         "azahar" => vec![env("APPDATA").map(|a| a.join("Azahar"))],
         "vita3k" => vec![env("APPDATA").map(|a| a.join("Vita3K"))],
+        "eden" => vec![env("APPDATA").map(|a| a.join("eden"))],
         "dosbox-staging" => vec![env("LOCALAPPDATA").map(|a| a.join("DOSBox"))],
         _ => vec![],
     };
@@ -456,6 +460,9 @@ mod tests {
         assert!(t.contains("bootrom_path"), "les fichiers de la console restent ceux réglés");
         assert_eq!(std::fs::read(racine.join("Profils").join("Seb").join("xbox_hdd.qcow2")).unwrap(), b"disque");
         assert_eq!(std::fs::read(&disque).unwrap(), b"disque", "le disque d'origine n'est pas touché");
+
+        // Eden : l'utilisateur Switch du nom du profil.
+        assert_eq!(preparer("eden", racine, "Léa", &[], &Manette::Auto(None)).unwrap(), vec!["-u", "Léa"]);
 
         // Azahar : NAND et carte SD du profil.
         preparer("azahar", racine, "Seb", &[], &Manette::Auto(None)).unwrap();

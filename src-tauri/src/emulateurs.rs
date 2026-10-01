@@ -23,6 +23,9 @@ pub enum Origine {
     GitHub { depot: &'static str, morceaux: &'static [&'static str] },
     /// Le serveur de mise à jour officiel de Dolphin.
     Dolphin,
+    /// Les « releases » d'un Forgejo/Gitea officiel (même forme de réponse que GitHub) : `api` = l'adresse du dépôt
+    /// dans son API (`https://…/api/v1/repos/<proprio>/<depot>`).
+    Forgejo { api: &'static str, morceaux: &'static [&'static str] },
 }
 
 /// Ce que Frogtend sait d'un émulateur.
@@ -157,6 +160,21 @@ pub const CATALOGUE: &[Fiche] = &[
         programme: "azahar.exe",
         ligne: "-f",
         // Un dossier « user » à côté du programme = mode portable (common/file_util.cpp).
+        portable: Some("user/"),
+        dossiers_habituels: &[],
+    },
+    Fiche {
+        id: "eden",
+        nom: "Eden",
+        alias: &["eden"],
+        // Dépôt officiel git.eden-emu.dev (Forgejo), relevé le 01/10/2026 (v0.2.1).
+        origine: Origine::Forgejo {
+            api: "https://git.eden-emu.dev/api/v1/repos/eden-emu/eden",
+            morceaux: &["Windows", "amd64-msvc-standard.zip"],
+        },
+        programme: "eden.exe",
+        ligne: "-f -g",
+        // Un dossier « user » à côté du programme = mode portable (common/fs/path_util.cpp).
         portable: Some("user/"),
         dossiers_habituels: &[],
     },
@@ -299,6 +317,15 @@ pub async fn derniere_version(f: &Fiche) -> Resultat<Paquet> {
                 .await
                 .map_err(reseau)?;
             paquet_github(&r, morceaux).ok_or_else(introuvable)
+        }
+        Origine::Forgejo { api, morceaux } => {
+            let r: Value = c.get(format!("{api}/releases/latest")).send().await.map_err(reseau)?.json().await.map_err(reseau)?;
+            let mut p = paquet_github(&r, morceaux).ok_or_else(introuvable)?;
+            // Le serveur annonce une taille 0 pour les paquets hébergés ailleurs : on la demande au fichier.
+            if p.taille.unwrap_or(0) == 0 {
+                p.taille = taille_annoncee(&c, &p.url).await;
+            }
+            Ok(p)
         }
         Origine::Dolphin => {
             let v: Value = c
@@ -624,6 +651,15 @@ mod tests {
         let v = paquet("vita3k", "continuous", &["windows-arm64-latest.zip", "windows-latest.zip"]);
         assert_eq!((v.url.as_str(), v.version.as_str()), ("windows-latest.zip", "2026-10-01"));
         assert_eq!(paquet("cemu", "v2.6", &["cemu-2.6-ubuntu-22.04-x64.zip", "cemu-2.6-windows-x64.zip"]).url, "cemu-2.6-windows-x64.zip");
+
+        // Eden : Forgejo officiel, même forme de réponse (noms relevés le 01/10/2026).
+        let Origine::Forgejo { morceaux, .. } = fiche("eden").unwrap().origine else { unreachable!() };
+        let r = json!({"tag_name": "v0.2.1", "assets": [
+            {"name": "Eden-Windows-v0.2.1-amd64-clang-pgo.zip", "browser_download_url": "a", "size": 0},
+            {"name": "Eden-Windows-v0.2.1-arm64-clang-standard.zip", "browser_download_url": "b", "size": 0},
+            {"name": "Eden-Windows-v0.2.1-amd64-msvc-standard.zip", "browser_download_url": "c", "size": 0},
+            {"name": "Eden-Windows-v0.2.1-rog-ally-gcc-standard.zip", "browser_download_url": "d", "size": 0}]});
+        assert_eq!(paquet_github(&r, morceaux).unwrap().url, "c");
     }
 
     #[test]

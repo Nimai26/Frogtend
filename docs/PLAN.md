@@ -284,7 +284,13 @@ Xenia (`--content_root`), xemu (un fichier de réglages et un disque dur virtuel
 des parties communes au PC (leurs comptes demandent d'écrire des fichiers internes : à faire après un essai réel) ;
 pas encore de pause automatique ni de raccourcis pour le menu en jeu sur ces six ; manettes non réglées par
 Frogtend (leurs défauts). Bouton **💿 Micrologiciel PS3…** (RPCS3 `--installfw`, fichier choisi par la personne).
-**Switch : pas encore** (comparaison des candidats à refaire, la recherche a été interrompue).
+**Switch ✅ 0.15.0 : Eden.** Relevé le 01/10 : seul des trois candidats dont le dépôt officiel répond d'ici
+(git.eden-emu.dev, Forgejo, v0.2.1 du 01/06/2026, paquet `Eden-Windows-…-amd64-msvc-standard.zip` hébergé sur
+stable.eden-emu.dev) ; mode portable par un dossier `user` à côté du programme ; `-f -g <jeu>` ; **`-u <nom>`**
+choisit l'utilisateur Switch par son nom → un utilisateur Eden par profil Frogtend (à créer une fois dans Eden, du
+même nom), donc des parties par profil. Ryubing/Kenji-NX (git.ryujinx.app) et Citron (git.citron-emu.org) : leurs
+serveurs n'ont pas répondu le 01/10 ; à réexaminer si Eden déçoit. Firehouse ne recommandant rien pour la Switch,
+Frogtend propose Eden d'office.
 Collection actuelle de Seb (30/09) : MS-DOS et Nintendo 64 seulement ; elle guidera les priorités.
 
 **Switch — Seb est d'accord (30/09)** et donne les candidats actuels, à départager en lisant leurs sources officielles

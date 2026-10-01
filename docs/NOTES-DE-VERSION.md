@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.15.0 — la Switch (Eden)
+
+- **Nintendo Switch** : Frogtend sait installer **Eden** (depuis son site officiel, en mode portable) et lancer les
+  jeux en plein écran. Firehouse ne recommandant aucun émulateur Switch, Frogtend propose Eden.
+- **Chacun ses parties** : Frogtend démarre Eden avec l'utilisateur Switch qui porte le nom de ton profil. Crée-le
+  une fois dans Eden (même nom que ton profil Frogtend).
+- Frogtend ne fournit jamais les clés ni le micrologiciel de la console : ils viennent de ta Switch.
+
 ## 0.14.0 — l'assistant jeux (lot 7)
 
 - **💬 Demander à l'assistant**, sur la fiche d'un jeu, ou **Assistant** dans la barre du haut : pose une question
