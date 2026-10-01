@@ -349,6 +349,19 @@ Démarrage avec `--taodbox`, plein écran, entièrement à la manette. Déclarat
 La sortie est propre : le jeu est fermé, le bureau rendu et la fin de session signalée. Premier essai mesuré avec
 Seb.
 
+**✅ Première version en 0.16.0** (à essayer sur la télé avec Seb) :
+- **🛋 Taodbox** dans la barre du haut, ou **`Frogtend.exe --taodbox`** (pour Sunshine/Apollo) : plein écran,
+  barre de titre cachée, **échelle ×2** (charte § 7), marge de 5 % pour la télé.
+- **La manette pilote TOUS les écrans** (choix du joueur et pavé du PIN, fenêtres de confirmation, Taodbox) : croix
+  ou stick gauche = déplacement selon la géométrie (jamais piégé), A = valider, B = Échap. Lu par l'API Gamepad de
+  WebView2 (Taodbox est au premier plan) ; les flèches du clavier font pareil.
+- Les jeux de CE PC en grandes jaquettes, les plus récemment joués d'abord, filtre par console ; A lance (installe
+  d'abord si besoin) ; à la fin du jeu, Taodbox revient au premier plan tout seul.
+- Lancé par `--taodbox` : bouton **⏻ Quitter** (ferme Frogtend, donc la session Sunshine se termine) ; sinon
+  **🖥 Bureau**. **👥 Changer de joueur**.
+- **Pas encore** : la combinaison manette du menu en jeu (attend la sonde), la déclaration automatique dans Sunshine
+  (Frogtend n'écrit pas dans sa configuration : à faire par Seb, mode d'emploi dans A-TESTER), la mesure de latence.
+
 ### Lot 6 — Demander un jeu absent
 Recherche dans la base LaunchBox (`/recherche`) et envoi de la demande (`/demandes`). La réponse est neutre si la
 demande est refusée.

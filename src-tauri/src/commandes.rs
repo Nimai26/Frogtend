@@ -400,6 +400,13 @@ pub async fn jeu_jouer(
         app2.state::<crate::menu_jeu::MenuJeu>().finir();
         armer_touche_menu(&app2, false);
         cacher_menu(&app2);
+        // En Taodbox (fenêtre en plein écran), on revient au canapé dès la fin du jeu.
+        if let Some(w) = app2.get_webview_window("main") {
+            if w.is_fullscreen().unwrap_or(false) {
+                let _ = w.unminimize();
+                let _ = w.set_focus();
+            }
+        }
         match fin {
             Ok(fin) => {
                 let _ = app2.emit("partie", EvenementPartie::Fin { jeu: id, secondes: fin.secondes });
@@ -408,6 +415,16 @@ pub async fn jeu_jouer(
         }
     });
     Ok(())
+}
+
+/// Frogtend a-t-il été lancé en Taodbox (`--taodbox`, par exemple comme application de Sunshine) ?
+#[tauri::command]
+pub fn taodbox_lance() -> bool {
+    lance_en_taodbox(std::env::args())
+}
+
+pub fn lance_en_taodbox(mut args: impl Iterator<Item = String>) -> bool {
+    args.any(|a| a.eq_ignore_ascii_case("--taodbox"))
 }
 
 /// Le nom de la fenêtre du menu en jeu.
@@ -976,4 +993,16 @@ pub async fn restauration_preparer(
 #[tauri::command]
 pub async fn restauration_reposer_emulateurs(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<crate::restauration::Reposes> {
     noyau.reposer_parties_emulateurs(&programmes_emulateurs(&app)).await
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn taodbox_se_reconnait_dans_la_ligne_de_commande() {
+        let a = |l: &[&str]| super::lance_en_taodbox(l.iter().map(|s| s.to_string()));
+        assert!(a(&["frogtend.exe", "--taodbox"]));
+        assert!(a(&["frogtend.exe", "--TAODBOX"]));
+        assert!(!a(&["frogtend.exe"]));
+        assert!(!a(&["frogtend.exe", "--taodboxx"]));
+    }
 }

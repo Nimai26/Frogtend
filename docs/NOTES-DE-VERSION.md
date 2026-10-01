@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.16.0 — Taodbox, le mode canapé (lot 5)
+
+- **🛋 Taodbox** (barre du haut) : plein écran, tout en grand pour être lu de loin, tes jeux en grandes jaquettes
+  (les derniers joués d'abord), filtre par console.
+- **Tout se fait à la manette** : la croix ou le stick pour choisir, A pour valider, B pour revenir. Ça marche aussi
+  pour choisir son profil (pavé du PIN à l'écran) et pour toutes les fenêtres de confirmation. Les flèches du
+  clavier font pareil.
+- A sur un jeu le lance (et l'installe d'abord s'il le faut) ; à la fin de la partie, Taodbox revient tout seul.
+- Pour Sunshine/Apollo : `Frogtend.exe --taodbox` ouvre directement Taodbox, et « ⏻ Quitter » ferme tout.
+
 ## 0.15.0 — la Switch (Eden)
 
 - **Nintendo Switch** : Frogtend sait installer **Eden** (depuis son site officiel, en mode portable) et lancer les

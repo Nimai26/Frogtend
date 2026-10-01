@@ -1,6 +1,10 @@
 <script lang="ts">
   import '$lib/styles/base.css';
   import { onMount, untrack } from 'svelte';
+  import { goto } from '$app/navigation';
+  import { page } from '$app/state';
+  import { api } from '$lib/api';
+  import { arreterManette, demarrerManette } from '$lib/taodbox/manette.svelte';
   import { isTauri } from '@tauri-apps/api/core';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { adresseFond } from '$lib/api';
@@ -31,8 +35,21 @@
       return;
     }
     await demarrer();
+    // Lancé en Taodbox (`--taodbox`, par exemple depuis Sunshine) : directement le mode canapé.
+    if (isTauri() && (await api.taodboxLance().catch(() => false))) await goto('/taodbox');
     // Vérification discrète : on ne propose que s'il y a une nouvelle version, jamais d'installation sans accord.
     verifierMiseAJour(true);
+  });
+
+  // Taodbox : plein écran, échelle ×2, la manette pilote tout (y compris le choix du profil et les fenêtres maison).
+  const enTaodbox = $derived(!estMenuJeu && page.url.pathname.startsWith('/taodbox'));
+  $effect(() => {
+    if (estMenuJeu) return;
+    const actif = enTaodbox;
+    document.documentElement.toggleAttribute('data-taodbox', actif);
+    if (actif) demarrerManette();
+    else arreterManette();
+    if (isTauri()) getCurrentWindow().setFullscreen(actif).catch(() => {});
   });
 
   // Les téléchargements et les parties du profil ouvert : suivis tant qu'il est ouvert, oubliés quand il se ferme.
@@ -66,7 +83,7 @@
 {/if}
 
 <div class="application">
-  <BarreTitre />
+  {#if !enTaodbox}<BarreTitre />{/if}
   <main>
     {#if etat.pret}
       {#if !etat.profilOuvert}

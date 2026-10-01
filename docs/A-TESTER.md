@@ -7,6 +7,17 @@
 - [ ] Frogtend propose la mise à jour au démarrage (ou ⚙ Options ▸ À propos ▸ Chercher une mise à jour).
       **Attendu :** la version la plus récente de [NOTES-DE-VERSION.md](NOTES-DE-VERSION.md).
 
+## Taodbox, le mode canapé (0.16.0)
+- [ ] Barre du haut ▸ **🛋 Taodbox**. **Attendu :** plein écran, tout en grand, tes jeux en grandes jaquettes.
+- [ ] Une manette branchée : la **croix** (ou le stick) déplace le cadre de sélection, **A** lance le jeu, **B**
+      revient. **Attendu :** jamais bloqué dans un coin ; les fenêtres de confirmation se pilotent aussi.
+- [ ] **👥 Changer de joueur**, puis ton profil et ton PIN **avec la manette** (pavé à l'écran).
+- [ ] Lancer un jeu puis le quitter. **Attendu :** Taodbox revient tout seul au premier plan.
+- [ ] **Sunshine/Apollo** (quand tu voudras) : dans Sunshine ▸ Applications ▸ Ajouter : nom « Taodbox », commande
+      `"%LOCALAPPDATA%\Frogtend\Frogtend.exe" --taodbox` (vérifie le chemin de Frogtend.exe sur ton PC).
+      **Attendu :** depuis Moonlight, « Taodbox » ouvre directement le mode canapé ; ⏻ Quitter ferme la session.
+- [ ] Me dire quelles manettes marchent dans Taodbox (Xbox, PS4/PS5, Switch Pro, 8BitDo).
+
 ## Assistant jeux (0.14.0)
 - [ ] Fiche de Dune ▸ **💬 Demander à l'assistant** ▸ « Comment je lance ce jeu ? ».
       **Attendu :** « L'assistant réfléchit… », puis une réponse mise en forme (titres, listes), et un bouton

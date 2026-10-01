@@ -19,6 +19,7 @@
     { href: '/catalogue', libelle: 'Catalogue Firehouse' },
     { href: '/demander', libelle: 'Demander un jeu' },
     { href: '/assistant', libelle: 'Assistant' },
+    { href: '/taodbox', libelle: '🛋 Taodbox' },
     { href: '/telechargements', libelle: 'Téléchargements' },
   ];
 

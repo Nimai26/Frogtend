@@ -350,6 +350,7 @@ export const api = {
   candidatsLancement: (id: number) => appeler<Candidat[]>('lancement_candidats', { id }),
   choisirLanceur: (id: number, lanceur: Lanceur) => appeler<void>('lanceur_choisir', { id, lanceur }),
   rpcs3InstallerMicrologiciel: (programme: string, pup: string) => appeler<void>('rpcs3_installer_micrologiciel', { programme, pup }),
+  taodboxLance: () => appeler<boolean>('taodbox_lance'),
   assistant: (question: string, mediaId: number | null, historique: { role: string; content: string }[]) =>
     appeler<{ ok?: boolean; texte?: string; actions_proposees?: ActionProposee[] }>('assistant_demander', { question, mediaId, historique }),
   assistantJournal: (action: string, decision: string) => appeler<void>('assistant_journal', { action, decision }),

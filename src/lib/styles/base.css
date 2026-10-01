@@ -281,3 +281,8 @@ details[open] > summary::before { content: "▾"; }
 @media (max-width: 720px) {
   .cx-form-section { grid-template-columns: 1fr; }
 }
+
+/* Taodbox (charte § 7) : toutes les tailles ×2 pour être lues à 3 m, focus fort partout. */
+:root[data-taodbox] {
+  --u: calc(2px * var(--echelle));
+}
