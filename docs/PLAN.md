@@ -284,6 +284,11 @@ Xenia (`--content_root`), xemu (un fichier de réglages et un disque dur virtuel
 des parties communes au PC (leurs comptes demandent d'écrire des fichiers internes : à faire après un essai réel) ;
 pas encore de pause automatique ni de raccourcis pour le menu en jeu sur ces six ; manettes non réglées par
 Frogtend (leurs défauts). Bouton **💿 Micrologiciel PS3…** (RPCS3 `--installfw`, fichier choisi par la personne).
+**Seb (02/10)** : les sites de **Ryubing** et **Citron** fonctionnent → à proposer aussi (plusieurs émulateurs par
+console). **Référence émulateurs** : [emu-france.com](https://www.emu-france.com/emulateurs/) (toutes les consoles,
+souvent à jour) ; demandé à l'agent Firehouse de fournir, par plateforme, les sites officiels et sources de
+téléchargement des émulateurs (besoin n° 14).
+
 **Switch ✅ 0.15.0 : Eden.** Relevé le 01/10 : seul des trois candidats dont le dépôt officiel répond d'ici
 (git.eden-emu.dev, Forgejo, v0.2.1 du 01/06/2026, paquet `Eden-Windows-…-amd64-msvc-standard.zip` hébergé sur
 stable.eden-emu.dev) ; mode portable par un dossier `user` à côté du programme ; `-f -g <jeu>` ; **`-u <nom>`**
@@ -388,9 +393,23 @@ décision (acceptée/refusée) est notée au journal. Réponse rendue par un Mar
 ### Lot 8 — Mods et outils
 Cheat Engine et les tables FearLess, Nexus Mods (par son API), les trainers, les autres sources du brief § 1.5.
 
+**Décisions de Seb (02/10)** :
+- **Pas d'API Nexus Mods** (trop chère).
+- **Cheat Engine : Frogtend peut l'installer**, mais **une version propre** (sans les logiciels en plus que propose
+  son installeur officiel) : trouver la source ou la méthode (installation silencieuse qui refuse les offres, paquet
+  sans offres…) en lisant la doc et les sources officielles.
+- **Frogtend ne télécharge PAS lui-même** les bases de triche (libretro, autres émulateurs) ni les listes de mods :
+  ces informations seront **fournies par Firehouse, jeu par jeu** (besoin n° 13 de BESOINS-API.md).
+- **Copie de sauvegarde du jeu avant un mod : proposée** (pas obligatoire), avec un **avertissement** si on la refuse.
+
 ### Lot 9 — Jeux gratuits des boutiques
 Epic, Amazon Prime Gaming, Xbox Game Pass, PlayStation Plus. Ils restent dans le Frogtend de l'utilisateur et ne
 remontent pas dans Firehouse.
+
+**Décision de Seb (02/10)** : les jeux gratuits vont **avec la détection des jeux déjà possédés** sur les comptes de
+la personne : **Amazon, Epic, GOG, Steam, EA Play** (et les autres boutiques du brief). Chacun devra entrer les clés
+d'API ou secrets de ses comptes (dans le coffre de Windows, jamais affichés ni journalisés). **S'inspirer des
+méthodes de LaunchBox** pour l'import de ces boutiques (à étudier dans sa documentation avant de coder).
 
 ## Personnalisation (« beaucoup d'éléments modifiables »)
 
@@ -426,6 +445,7 @@ Les emplacements sont **propres au PC**, pas au profil, puisque les disques appa
 ## Questions ouvertes pour Seb
 
 - (la liste « Personnalisation » est validée le 29/09)
+- ✅ Répondu le 02/10 (voir les lots 8 et 9). *Questions d'origine :*
 - **Lot 8 (mods, triches, outils), avant de commencer (01/10)** :
   1. Nexus Mods : as-tu une **clé d'API** Nexus (compte Nexus ▸ API) ? Elle irait dans le coffre de Windows.
   2. **Cheat Engine** : Frogtend peut-il l'installer (programme tiers, avec installeur) dans le dossier des
