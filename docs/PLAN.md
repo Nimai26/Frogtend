@@ -425,4 +425,15 @@ Les emplacements sont **propres au PC**, pas au profil, puisque les disques appa
 
 ## Questions ouvertes pour Seb
 
-- (aucune pour l'instant ; la liste « Personnalisation » est validée le 29/09)
+- (la liste « Personnalisation » est validée le 29/09)
+- **Lot 8 (mods, triches, outils), avant de commencer (01/10)** :
+  1. Nexus Mods : as-tu une **clé d'API** Nexus (compte Nexus ▸ API) ? Elle irait dans le coffre de Windows.
+  2. **Cheat Engine** : Frogtend peut-il l'installer (programme tiers, avec installeur) dans le dossier des
+     émulateurs, sur ton accord à chaque fois ? (Attention : son installeur officiel propose des logiciels en plus.)
+  3. **Triches des consoles** : télécharger la base officielle de libretro (codes pour RetroArch, sur accord, une
+     fois) et proposer les codes dans le menu en jeu ?
+  4. **Mods qui modifient le jeu** : toujours une copie de sauvegarde du jeu avant ? (proposé : oui, des fichiers
+     touchés seulement).
+- **Lot 9 (jeux gratuits des boutiques)** : il touche à tes **comptes** Epic, Amazon, Xbox, PlayStation (brief :
+  à annoncer avant). Lesquels veux-tu en premier ? Accepte-tu que Frogtend t'ouvre la page de connexion officielle
+  de chaque boutique (jamais de mot de passe saisi dans Frogtend) ?
