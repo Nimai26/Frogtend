@@ -463,7 +463,7 @@ clé d'API personnelle, **vérifiée auprès de Steam avant d'être enregistrée
 `jeton:<profil>#steam`, jamais réaffichée ; erreurs rendues sans l'adresse qui contient la clé). **🛒 Boutiques** :
 import (réglage demandé d'abord s'il manque), liste filtrable, installés sur CE PC (`libraryfolders.vdf` +
 `appmanifest_<id>.acf`, registre lu seulement), ▶ Jouer / ⬇ Installer par `steam://`. Profil Steam privé : Frogtend dit
-quoi changer. Supprimer un profil retire aussi sa clé Steam. **0.21.0** : jaquettes officielles de Steam (protocole , cache sur ce PC), grille, et section Steam dans
+quoi changer. Supprimer un profil retire aussi sa clé Steam. **0.21.0** : jaquettes officielles de Steam (protocole `boutique://`, cache sur ce PC), grille, et section Steam dans
 Taodbox. **Reste** : mêler ces jeux à la ludothèque principale, puis Epic, GOG, Amazon, EA, Ubisoft, Xbox (étude de LaunchBox d'abord), et les jeux gratuits.
 
 ## Personnalisation (« beaucoup d'éléments modifiables »)
