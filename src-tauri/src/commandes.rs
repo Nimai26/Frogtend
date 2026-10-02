@@ -833,7 +833,7 @@ pub async fn succes_retro(noyau: State<'_, Noyau>, id: i64) -> Resultat<SuccesRe
     let liste = crate::succes::liste_en_cache(&noyau.dossier.join("cache").join("retroachievements"), crate::succes::API_RA, &cle, console).await?;
     let c2 = chemins.clone();
     let empreintes = tauri::async_runtime::spawn_blocking(move || {
-        c2.iter().map(|c| crate::succes::empreinte_fichier(console, std::path::Path::new(c)).ok().flatten()).collect::<Vec<_>>()
+        c2.iter().map(|c| crate::succes::empreinte_gardee(console, std::path::Path::new(c)).ok().flatten()).collect::<Vec<_>>()
     })
     .await
     .map_err(|_| Erreur::Disque("Le calcul des empreintes s'est arrêté brutalement.".into()))?;

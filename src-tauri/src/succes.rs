@@ -88,9 +88,9 @@ pub fn empreinte_possible(console: u32) -> bool {
         || est_un_cd(console)
 }
 
-/// Les consoles sur CD que Frogtend sait lire (module `disque` : .cue/.bin, .ccd/.img, .iso ; pas encore .chd).
+/// Les consoles sur CD que Frogtend sait lire (module `disque` : .cue/.bin, .ccd/.img, .iso, .chd).
 pub fn est_un_cd(console: u32) -> bool {
-    matches!(console, 9 | 12 | 39)
+    matches!(console, 9 | 12 | 39 | 40)
 }
 
 fn md5_hex(o: &[u8]) -> String {
@@ -140,6 +140,9 @@ pub fn empreinte_fichier(console: u32, chemin: &Path) -> Resultat<Option<String>
                 None => Ok(None),
             };
         }
+        if console == 40 {
+            return if chemin.extension().is_some_and(|e| e.eq_ignore_ascii_case("chd")) { crate::disque::empreinte_dreamcast(chemin) } else { Ok(None) };
+        }
         let Some(piste) = crate::disque::ouvrir(chemin)? else { return Ok(None) };
         return match console {
             12 => crate::disque::empreinte_psx(&piste),
@@ -164,6 +167,23 @@ pub fn empreinte_fichier(console: u32, chemin: &Path) -> Resultat<Option<String>
         return Ok(Some(empreinte_octets(console, &contenu)));
     }
     Ok(Some(empreinte_octets(console, &o)))
+}
+
+/// Les empreintes déjà calculées (fichier, taille, date) : un disque de 1 Go ne se relit pas à chaque clic.
+static CACHE: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<(String, u64, u64), Option<String>>>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// `empreinte_fichier`, gardée en mémoire tant que le fichier ne change pas (taille et date).
+pub fn empreinte_gardee(console: u32, chemin: &Path) -> Resultat<Option<String>> {
+    let m = std::fs::metadata(chemin)?;
+    let date = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+    let cle = (format!("{console}|{}", chemin.to_string_lossy()), m.len(), date);
+    if let Some(e) = CACHE.lock().unwrap_or_else(|e| e.into_inner()).get(&cle) {
+        return Ok(e.clone());
+    }
+    let e = empreinte_fichier(console, chemin)?;
+    CACHE.lock().unwrap_or_else(|e| e.into_inner()).insert(cle, e.clone());
+    Ok(e)
 }
 
 /// Un jeu de la liste d'une console (avec ses empreintes connues).
@@ -392,7 +412,8 @@ mod tests {
         assert_eq!(console_de("Arcade"), Some(27));
         assert_eq!(console_de("Windows"), None);
         assert!(empreinte_possible(7) && empreinte_possible(12) && empreinte_possible(9), "PlayStation et Sega CD : lus par le module disque");
-        assert!(!empreinte_possible(40), "Dreamcast (GD-ROM, .chd) : pas encore");
+        assert!(empreinte_possible(40), "Dreamcast : .chd lu par le module disque");
+        assert!(!empreinte_possible(21), "PS2 : pas encore");
     }
 
     #[test]

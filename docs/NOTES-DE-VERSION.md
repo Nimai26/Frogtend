@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.35.0 — les .chd et la Dreamcast
+
+- Frogtend lit les images **.chd** : tes **135 jeux Dreamcast** sont reconnus par RetroAchievements (chez toi : 135
+  sur 135), et les CD Sega CD, Saturn et PlayStation en .chd aussi.
+- Une empreinte calculée n'est pas recalculée tant que le fichier ne change pas.
+
 ## 0.34.0 — les succès des jeux sur CD
 
 - RetroAchievements reconnaît maintenant tes jeux **Sega CD, Saturn et PlayStation** (images .cue/.bin, .ccd/.img,

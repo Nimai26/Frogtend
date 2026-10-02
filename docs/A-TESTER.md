@@ -37,7 +37,8 @@
 ## Succès des jeux sur CD (0.34.0)
 - [ ] Importe tes jeux Sega CD (`E:\Games\Sega CD`, extension « cue », sous-dossiers cochés) ; sélectionne Sonic CD :
       **🏆 RetroAchievements** dit si ta version est compatible. (Les 56 empreintes se calculent déjà chez toi.)
-- [ ] Un jeu Dreamcast (.chd) : « Frogtend ne sait pas encore lire ce format », et rien de faux.
+- [ ] (0.35.0) Un jeu Dreamcast (.chd) : **🏆 RetroAchievements** dit si ta version est compatible (les 135 empreintes
+      se calculent chez toi ; la 1re fois ~1 s, ensuite c'est immédiat).
 
 ## Une fiche par jeu, plusieurs versions (0.31.0)
 - [ ] 📥 Importer ▸ Fichiers ROM sur `E:\Games\Nintendo Entertainement System` : **attendu ~828 fiches** au lieu de

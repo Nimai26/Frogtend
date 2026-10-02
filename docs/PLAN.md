@@ -643,8 +643,12 @@ une saga entière). Conséquences pour Frogtend :
   disque), taille de secteur devinée (synchro + « CD001 »), fichiers ISO 9660 ; Sega CD et Saturn (512 octets du
   secteur 0), PlayStation (nom du programme de SYSTEM.CNF + son contenu). Essai réel (lecture seule) : E:\Games\Sega CD
   → **56 empreintes sur 56**. Une version illisible (.chd) est dite « pas vérifiable », jamais « pas reconnue ».
-  **Reste** : .chd (Dreamcast de Seb : 135 .chd ; il faut un décodeur CHD) et Dreamcast (GD-ROM, IP.BIN), PS2, PC
-  Engine CD, 3DO ;
+  **✅ 0.35.0** : .chd lus (bibliothèque `chd` = chd-rs, Rust pur, BSD-3 : pistes des métadonnées CHT2/CHGD, 2448
+  octets par secteur, pistes alignées sur 4, adresse absolue lue dans l'en-tête du secteur) ; Dreamcast (IP.BIN de la
+  piste 3 + programme de démarrage, MIL-CD par la 1re piste de données) ; les CD Sega CD/Saturn/PlayStation en .chd
+  passent aussi ; empreintes gardées en mémoire (fichier, taille, date). Essai réel (lecture seule) :
+  E:\Games\Sega Dreamcast → **135 empreintes sur 135**, 0 erreur, ~0,7 s par jeu. **Reste** : PS2, PC Engine CD, 3DO,
+  GameCube/Wii ;
   ~~brancher le compte dans les émulateurs~~ **✅ 0.33.0** : « 🎮 Connecter mes émulateurs » (mot de passe UNE fois →
   jeton `login2` comme rcheevos, au coffre ; mot de passe jamais gardé) ; à chaque partie, le compte DU PROFIL QUI JOUE :
   RetroArch (`cheevos_*` dans le fichier `--appendconfig` du profil), PCSX2 (`[Achievements]` + jeton dans

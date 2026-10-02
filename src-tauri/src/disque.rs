@@ -2,7 +2,10 @@
 //! RetroAchievements des jeux sur CD. LECTURE SEULE. Reprend la logique officielle de `rcheevos`
 //! (`src/rhash/cdreader.c` : taille de secteur devinée par la synchro et « CD001 » au secteur 16 ;
 //! `src/rhash/hash_disc.c` : recherche d'un fichier ISO 9660, méthodes Sega CD / Saturn et PlayStation).
-//! Les `.chd` (compressés) ne sont pas encore lus.
+//! Les `.chd` (compressés, MAME) sont lus par la bibliothèque `chd` (chd-rs, Rust pur, BSD-3) : pistes d'après les
+//! métadonnées `CHT2`/`CHGD` (blocs de 2448 octets par secteur : 2352 de données + 96 de sous-code, pistes alignées
+//! sur 4 secteurs), adresse absolue d'un secteur lue dans son en-tête (comme `cdreader.c`) ; Dreamcast
+//! (rc_hash_dreamcast) : `IP.BIN` de la piste 3 puis le programme de démarrage.
 
 use crate::erreurs::{Erreur, Resultat};
 use md5::{Digest, Md5};
@@ -19,8 +22,12 @@ pub struct Piste {
     pub taille_secteur: u64,
     /// Octets avant les données utiles d'un secteur (16 en MODE1 brut, 24 en MODE2).
     pub entete: u64,
-    /// Le numéro (absolu) du 1er secteur de la piste.
+    /// Le numéro (absolu) du secteur stocké en 1er pour cette piste (le début de ce qu'on lit).
     pub premier: i64,
+    /// Le numéro (absolu) du début de la piste (INDEX 01) : là où sont le secteur 0 et le volume ISO 9660.
+    pub index01: i64,
+    /// Un CHD : (1er bloc de la piste dans le CHD, nombre de secteurs de la piste) ; `None` : image en clair.
+    pub chd: Option<(u64, u64)>,
     /// Octets utiles par secteur.
     pub utiles: u64,
 }
@@ -72,6 +79,7 @@ pub fn ouvrir(chemin: &Path) -> Resultat<Option<Piste>> {
         },
         "ccd" => (chemin.with_extension("img"), 0),
         "img" | "bin" | "iso" => (chemin.to_path_buf(), 0),
+        "chd" => return ouvrir_chd(chemin, Voulue::Numero(1)),
         _ => return Ok(None),
     };
     let mut f = std::fs::File::open(&fichier).map_err(|_| Erreur::Disque(format!("Image introuvable : {}.", fichier.display())))?;
@@ -81,24 +89,149 @@ pub fn ouvrir(chemin: &Path) -> Resultat<Option<Piste>> {
         f.seek(SeekFrom::Start(16 * taille + decalage))?;
         if f.read_exact(&mut h).is_ok() && h[..12] == SYNCHRO {
             let entete = if &h[25..30] == b"CD001" { 24 } else { 16 };
-            return Ok(Some(Piste { fichier, decalage, taille_secteur: taille, entete, premier: secteur_de_l_entete(&h) - 16, utiles: 2048 }));
+            return Ok(Some(Piste { fichier, decalage, taille_secteur: taille, entete, premier: secteur_de_l_entete(&h) - 16, index01: secteur_de_l_entete(&h) - 16, chd: None, utiles: 2048 }));
         }
     }
     f.seek(SeekFrom::Start(16 * 2048 + decalage))?;
     if f.read_exact(&mut h).is_ok() && &h[1..6] == b"CD001" {
-        return Ok(Some(Piste { fichier, decalage, taille_secteur: 2048, entete: 0, premier: 0, utiles: 2048 }));
+        return Ok(Some(Piste { fichier, decalage, taille_secteur: 2048, entete: 0, premier: 0, index01: 0, chd: None, utiles: 2048 }));
     }
     // Pas de « CD001 » (Sega CD sans ISO 9660 en clair, par exemple) : brut 2352 MODE1 si la synchro est au début.
     f.seek(SeekFrom::Start(decalage))?;
     if f.read_exact(&mut h).is_ok() && h[..12] == SYNCHRO {
-        return Ok(Some(Piste { fichier, decalage, taille_secteur: 2352, entete: 16, premier: secteur_de_l_entete(&h), utiles: 2048 }));
+        return Ok(Some(Piste { fichier, decalage, taille_secteur: 2352, entete: 16, premier: secteur_de_l_entete(&h), index01: secteur_de_l_entete(&h), chd: None, utiles: 2048 }));
     }
-    Ok(Some(Piste { fichier, decalage, taille_secteur: 2048, entete: 0, premier: 0, utiles: 2048 }))
+    Ok(Some(Piste { fichier, decalage, taille_secteur: 2048, entete: 0, premier: 0, index01: 0, chd: None, utiles: 2048 }))
+}
+
+/// Une piste décrite par les métadonnées d'un CHD.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PisteChd {
+    pub numero: u32,
+    pub genre: String,
+    pub secteurs: u64,
+    pub pregap: u64,
+    pub pregap_stocke: bool,
+    /// Le 1er bloc (secteur) de la piste dans le CHD.
+    pub bloc: u64,
+}
+
+/// Lit une valeur « CLE:valeur » d'une ligne de métadonnées CHD.
+fn champ<'a>(texte: &'a str, cle: &str) -> Option<&'a str> {
+    texte.split_whitespace().find_map(|m| m.strip_prefix(cle).and_then(|r| r.strip_prefix(':')))
+}
+
+/// Les pistes d'après les métadonnées (`TRACK:1 TYPE:MODE1_RAW SUBTYPE:NONE FRAMES:1234 PREGAP:0 PGTYPE:MODE1 …`).
+/// Chaque piste occupe un nombre de secteurs arrondi au multiple de 4 supérieur (rembourrage de chdman).
+pub fn lire_pistes_chd(entrees: &[String]) -> Vec<PisteChd> {
+    let mut l = Vec::new();
+    let mut bloc = 0u64;
+    for e in entrees {
+        let Some(numero) = champ(e, "TRACK").and_then(|n| n.parse().ok()) else { continue };
+        let secteurs: u64 = champ(e, "FRAMES").and_then(|n| n.parse().ok()).unwrap_or(0);
+        let pregap = champ(e, "PREGAP").and_then(|n| n.parse().ok()).unwrap_or(0);
+        let pregap_stocke = champ(e, "PGTYPE").is_some_and(|t| t.starts_with('V'));
+        l.push(PisteChd { numero, genre: champ(e, "TYPE").unwrap_or("").to_string(), secteurs, pregap, pregap_stocke, bloc });
+        bloc += secteurs.div_ceil(4) * 4;
+    }
+    l
+}
+
+/// Quelle piste ouvrir dans un CHD.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Voulue {
+    Numero(u32),
+    PremiereDeDonnees,
+    Derniere,
+}
+
+/// Ouvre une piste d'un CHD (LECTURE SEULE).
+pub fn ouvrir_chd(chemin: &Path, voulue: Voulue) -> Resultat<Option<Piste>> {
+    let mut f = std::io::BufReader::new(std::fs::File::open(chemin).map_err(|_| Erreur::Disque(format!("Image introuvable : {}.", chemin.display())))?);
+    let mut c = chd::Chd::open(&mut f, None).map_err(|e| Erreur::Disque(format!("CHD illisible ({e:?}).")))?;
+    let refs: Vec<_> = c.metadata_refs().collect();
+    let mut f2 = std::fs::File::open(chemin)?;
+    let entrees: Vec<String> = refs
+        .iter()
+        .filter_map(|r| r.read(&mut f2).ok())
+        .map(|m| String::from_utf8_lossy(&m.value).trim_end_matches('\0').to_string())
+        .collect();
+    let pistes = lire_pistes_chd(&entrees);
+    let p = match voulue {
+        Voulue::Numero(n) => pistes.iter().find(|p| p.numero == n),
+        Voulue::PremiereDeDonnees => pistes.iter().find(|p| p.genre != "AUDIO"),
+        Voulue::Derniere => pistes.last(),
+    };
+    let Some(p) = p.cloned() else { return Ok(None) };
+    if p.genre == "AUDIO" {
+        return Ok(None);
+    }
+    drop(c);
+    let brut = p.genre.ends_with("_RAW");
+    let mut piste = Piste {
+        fichier: chemin.to_path_buf(),
+        decalage: 0,
+        taille_secteur: 2448,
+        entete: 0,
+        premier: 0,
+        index01: 0,
+        chd: Some((p.bloc, p.secteurs)),
+        utiles: 2048,
+    };
+    if brut {
+        // L'adresse absolue de la piste : celle écrite dans l'en-tête de son 1er secteur stocké.
+        let mut tete = piste.clone();
+        tete.utiles = 2352;
+        let s0 = tete.lire_bloc(0, 32)?;
+        if s0.len() >= 32 && s0[..12] == [0, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0] {
+            piste.premier = secteur_de_l_entete(&s0);
+            // MODE2 (PlayStation…) : 24 octets d'en-tête ; MODE1 : 16.
+            piste.entete = if s0[15] == 2 { 24 } else { 16 };
+        } else {
+            piste.entete = 16;
+        }
+    }
+    piste.index01 = piste.premier + if p.pregap_stocke { p.pregap as i64 } else { 0 };
+    Ok(Some(piste))
 }
 
 impl Piste {
+    /// CHD : lit `n` octets à partir du `k`-ième secteur STOCKÉ de la piste (en-tête compris si `entete` vaut 0).
+    fn lire_bloc(&self, k: u64, n: usize) -> Resultat<Vec<u8>> {
+        let Some((bloc, secteurs)) = self.chd else { return Ok(vec![]) };
+        let mut f = std::io::BufReader::new(std::fs::File::open(&self.fichier)?);
+        let mut c = chd::Chd::open(&mut f, None).map_err(|e| Erreur::Disque(format!("CHD illisible ({e:?}).")))?;
+        let taille_bloc = c.header().hunk_size() as u64;
+        let unite = c.header().unit_bytes() as u64;
+        let par_bloc = taille_bloc / unite.max(1);
+        let mut tampon = c.get_hunksized_buffer();
+        let mut compresse = Vec::new();
+        let mut charge: Option<u64> = None;
+        let mut sortie = Vec::with_capacity(n);
+        let mut k = k;
+        while sortie.len() < n && k < secteurs {
+            let secteur_chd = bloc + k;
+            let h = secteur_chd / par_bloc;
+            if charge != Some(h) {
+                c.hunk(h as u32)
+                    .and_then(|mut x| x.read_hunk_in(&mut compresse, &mut tampon))
+                    .map_err(|e| Erreur::Disque(format!("CHD illisible ({e:?}).")))?;
+                charge = Some(h);
+            }
+            let debut = ((secteur_chd % par_bloc) * unite + self.entete) as usize;
+            let voulu = (n - sortie.len()).min(self.utiles as usize);
+            sortie.extend_from_slice(&tampon[debut..(debut + voulu).min(tampon.len())]);
+            k += 1;
+        }
+        Ok(sortie)
+    }
+
     /// Lit `n` octets utiles à partir du secteur (absolu) donné, secteur après secteur.
     pub fn lire(&self, secteur: u32, n: usize) -> Resultat<Vec<u8>> {
+        if self.chd.is_some() {
+            let k = secteur as i64 - self.premier;
+            return if k < 0 { Ok(vec![]) } else { self.lire_bloc(k as u64, n) };
+        }
         let mut f = std::fs::File::open(&self.fichier)?;
         let mut sortie = Vec::with_capacity(n);
         let mut s = secteur as i64 - self.premier;
@@ -129,7 +262,7 @@ impl Piste {
                 None => return Ok(None),
             },
             None => {
-                let pvd = self.lire(self.premier.max(0) as u32 + 16, 256)?;
+                let pvd = self.lire(self.index01.max(0) as u32 + 16, 256)?;
                 if pvd.len() < 170 {
                     return Ok(None);
                 }
@@ -172,9 +305,50 @@ fn md5_hex(o: &[u8]) -> String {
     Md5::digest(o).iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// Dreamcast (rc_hash_dreamcast) : les 256 octets d'`IP.BIN` (1er secteur de la piste 3, « SEGA SEGAKATANA »), puis
+/// le contenu du programme de démarrage (son nom est à l'octet 96), lu dans la piste 3 ou, à défaut, la dernière piste.
+/// Un MIL-CD a son `IP.BIN` sur la 1re piste de données.
+pub fn empreinte_dreamcast(chemin: &Path) -> Resultat<Option<String>> {
+    let est_ip = |p: &Piste| -> Resultat<Option<Vec<u8>>> {
+        let b = p.lire(p.index01.max(0) as u32, 256)?;
+        Ok((b.len() == 256 && b.starts_with(b"SEGA SEGAKATANA ")).then_some(b))
+    };
+    let mut piste = ouvrir_chd(chemin, Voulue::Numero(3))?;
+    let mut ip = match &piste {
+        Some(p) => est_ip(p)?,
+        None => None,
+    };
+    if ip.is_none() {
+        piste = ouvrir_chd(chemin, Voulue::PremiereDeDonnees)?;
+        ip = match &piste {
+            Some(p) => est_ip(p)?,
+            None => None,
+        };
+    }
+    let (Some(piste), Some(ip)) = (piste, ip) else { return Ok(None) };
+    let nom: String = ip[96..112].iter().take_while(|b| !b.is_ascii_whitespace()).map(|b| *b as char).collect();
+    if nom.is_empty() {
+        return Ok(None);
+    }
+    let Some((secteur, taille)) = piste.trouver(&nom)? else { return Ok(None) };
+    let lu = piste.lire(secteur, 1)?;
+    let contenu = if !lu.is_empty() {
+        piste.lire(secteur, taille.min(MAX_FICHIER) as usize)?
+    } else {
+        match ouvrir_chd(chemin, Voulue::Derniere)? {
+            Some(derniere) => derniere.lire(secteur, taille.min(MAX_FICHIER) as usize)?,
+            None => return Ok(None),
+        }
+    };
+    let mut m = Md5::new();
+    m.update(&ip);
+    m.update(&contenu);
+    Ok(Some(m.finalize().iter().map(|b| format!("{b:02x}")).collect()))
+}
+
 /// Sega CD et Saturn (rc_hash_sega_cd) : les 512 premiers octets du secteur 0 (en-têtes du volume et de la ROM).
 pub fn empreinte_sega_cd(p: &Piste) -> Resultat<Option<String>> {
-    let b = p.lire(0, 512)?;
+    let b = p.lire(p.index01.max(0) as u32, 512)?;
     if b.len() < 512 || !(b.starts_with(b"SEGADISCSYSTEM  ") || b.starts_with(b"SEGA SEGASATURN ")) {
         return Ok(None);
     }
@@ -300,6 +474,19 @@ mod tests {
     }
 
     #[test]
+    fn les_pistes_d_un_chd_se_lisent_dans_ses_metadonnees() {
+        let l = lire_pistes_chd(&[
+            "TRACK:1 TYPE:MODE1_RAW SUBTYPE:NONE FRAMES:1143 PAD:0 PREGAP:0 PGTYPE:MODE1 PGSUB:RW POSTGAP:0".into(),
+            "TRACK:2 TYPE:AUDIO SUBTYPE:NONE FRAMES:1500 PAD:0 PREGAP:150 PGTYPE:VAUDIO PGSUB:RW POSTGAP:0".into(),
+            "TRACK:3 TYPE:MODE1_RAW SUBTYPE:NONE FRAMES:504300 PAD:0 PREGAP:0 PGTYPE:MODE1 PGSUB:RW POSTGAP:0".into(),
+        ]);
+        assert_eq!(l.len(), 3);
+        assert_eq!((l[0].bloc, l[1].bloc, l[2].bloc), (0, 1144, 2644), "chaque piste arrondie à 4 secteurs");
+        assert!(l[1].pregap_stocke && !l[0].pregap_stocke);
+        assert_eq!(l[2].genre, "MODE1_RAW");
+    }
+
+    #[test]
     fn sega_cd_les_512_premiers_octets() {
         let d = tempfile::tempdir().unwrap();
         let mut s0 = vec![0u8; 2048];
@@ -314,7 +501,7 @@ mod tests {
         // Pas un disque Sega : pas d'empreinte.
         std::fs::write(&iso, vec![0u8; 2048 * 20]).unwrap();
         assert_eq!(empreinte_sega_cd(&ouvrir(&iso).unwrap().unwrap()).unwrap(), None);
-        assert!(ouvrir(&d.path().join("jeu.chd")).unwrap().is_none(), ".chd : pas encore");
+        assert!(ouvrir(&d.path().join("jeu.cso")).unwrap().is_none(), "format inconnu : rien");
     }
 }
 
@@ -343,5 +530,44 @@ mod essais {
             }
         }
         println!("{n} empreinte(s) Sega CD calculée(s)");
+    }
+}
+
+#[cfg(test)]
+mod essais_chd {
+    /// Sur les vrais disques Dreamcast de Seb (.chd), en LECTURE SEULE : leurs empreintes.
+    #[test]
+    #[ignore]
+    fn essai_dreamcast_reel() {
+        let d = std::env::var("FROGTEND_ESSAI_DOSSIER").unwrap_or_else(|_| "E:/Games/Sega Dreamcast".into());
+        let mut l: Vec<std::path::PathBuf> = std::fs::read_dir(&d)
+            .unwrap()
+            .flatten()
+            .flat_map(|e| if e.path().is_dir() { std::fs::read_dir(e.path()).unwrap().flatten().map(|x| x.path()).collect() } else { vec![e.path()] })
+            .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("chd")))
+            .collect();
+        l.sort();
+        let max: usize = std::env::var("FROGTEND_ESSAI_MAX").ok().and_then(|n| n.parse().ok()).unwrap_or(5);
+        let (mut ok, mut rien, mut erreurs) = (0, 0, 0);
+        let debut = std::time::Instant::now();
+        for p in l.iter().take(max) {
+            match super::empreinte_dreamcast(p) {
+                Ok(Some(e)) => {
+                    ok += 1;
+                    if ok <= 5 {
+                        println!("{} → {e}", p.file_name().unwrap().to_string_lossy());
+                    }
+                }
+                Ok(None) => {
+                    rien += 1;
+                    println!("RIEN : {}", p.file_name().unwrap().to_string_lossy());
+                }
+                Err(e) => {
+                    erreurs += 1;
+                    println!("ERREUR : {} : {e:?}", p.file_name().unwrap().to_string_lossy());
+                }
+            }
+        }
+        println!("{ok} empreinte(s), {rien} sans, {erreurs} erreur(s) sur {} ({} fichiers) en {:?}", max.min(l.len()), l.len(), debut.elapsed());
     }
 }

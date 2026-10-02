@@ -1,6 +1,6 @@
 [package]
 name = "frogtend"
-version = "0.34.0"
+version = "0.35.0"
 description = "Frogtend — la ludothèque de la maison, servie par Firehouse"
 authors = ["Nimai"]
 license = "Apache-2.0"
@@ -39,6 +39,7 @@ sevenz-rust = "0.6"
 sysinfo = { version = "0.32", default-features = false, features = ["system"] }
 sha2 = "0.10"
 md-5 = "0.10"
+chd = "0.3"
 tauri-plugin-global-shortcut = "2"
 
 [target.'cfg(windows)'.dependencies]
