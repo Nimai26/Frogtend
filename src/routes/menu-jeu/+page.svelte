@@ -12,9 +12,12 @@
   let documents = $state<Annexe[] | null>(null);
   let lecture = $state<{ titre: string; texte: string } | null>(null);
   let liste = $state<HTMLElement | null>(null);
+  /** Cheat Engine sur ce PC (fourni par Firehouse) : le menu propose de le brancher sur le jeu. */
+  let cheatEngine = $state<string | null>(null);
 
   async function charger() {
     menu = await api.menuJeuEtat().catch(() => null);
+    cheatEngine = (await api.emulateursInstalles().catch(() => [])).find((e) => e.id === 'cheatengine')?.programme ?? null;
     documents = null;
     lecture = null;
     await tick();
@@ -38,6 +41,16 @@
     if (question && !(await confirmer(question, { libelleValider: 'Oui' }))) return;
     try {
       await api.menuJeuAction(nom);
+    } catch (e) {
+      toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
+    }
+  }
+
+  async function brancherCheatEngine() {
+    if (!cheatEngine) return;
+    try {
+      await api.cheatengineLancer(cheatEngine, undefined, true);
+      toast('🧰 Cheat Engine se branche sur le jeu.');
     } catch (e) {
       toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
     }
@@ -145,6 +158,7 @@
       {/if}
       {#if a('disque')}<button class="btn" onclick={() => action('disque')}>💿 Disque suivant</button>{/if}
       <button class="btn" onclick={voirDocuments}>📖 Manuel et documents</button>
+      {#if cheatEngine}<button class="btn" onclick={brancherCheatEngine}>🧰 Cheat Engine</button>{/if}
       {#if a('reset')}
         <button class="btn" onclick={() => action('reset', '🔄 Recommencer le jeu depuis le début ? La partie non sauvegardée sera perdue.')}>
           🔄 Recommencer

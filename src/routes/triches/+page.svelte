@@ -11,6 +11,7 @@
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { etat } from '$lib/etat.svelte';
   import { tele } from '$lib/ludotheque/telechargements.svelte';
+  import { partie } from '$lib/ludotheque/jeu.svelte';
 
   const id = $derived(Number(page.url.searchParams.get('jeu')));
   const jeu = $derived(tele.jeux[id]);
@@ -42,15 +43,15 @@
     chercherCheatEngine();
   });
 
-  async function lancerCheatEngine() {
+  async function lancerCheatEngine(brancher = false) {
     if (!cheatEngine) {
       const e = await installerParFirehouse('cheatengine', 'Cheat Engine');
       if (!e) return;
       cheatEngine = e.programme;
     }
     try {
-      await api.cheatengineLancer(cheatEngine);
-      toast('🧰 Cheat Engine démarre, avec tes réglages à toi. Ils seront rangés dans ton profil à sa fermeture.');
+      await api.cheatengineLancer(cheatEngine, undefined, brancher);
+      toast(brancher ? '🧰 Cheat Engine démarre et se branche sur le jeu.' : '🧰 Cheat Engine démarre, avec tes réglages à toi. Ils seront rangés dans ton profil à sa fermeture.');
     } catch (e) {
       toast(`Impossible de lancer Cheat Engine : ${motifDuRefus(e)}`, 'erreur');
     }
@@ -135,7 +136,10 @@
   {:else if !t.codes.length && !t.cheat_engine.length && !t.mods.length && !t.page_mods}
     <p class="muted">Firehouse ne connaît encore ni codes ni mods pour ce jeu.</p>
     {#if t.note}<p class="muted">ℹ {t.note}</p>{/if}
-    <button class="btn petit" onclick={lancerCheatEngine}>{cheatEngine ? '🧰 Lancer Cheat Engine' : '⬇ Installer Cheat Engine'}</button>
+    <button class="btn petit" onclick={() => lancerCheatEngine()}>{cheatEngine ? '🧰 Lancer Cheat Engine' : '⬇ Installer Cheat Engine'}</button>
+    {#if cheatEngine && partie.enJeu === id}
+      <button class="btn petit primary" onclick={() => lancerCheatEngine(true)}>🧰 Brancher Cheat Engine sur le jeu</button>
+    {/if}
   {:else}
     {#if t.note}<p class="muted">ℹ {t.note}</p>{/if}
     <section class="cx-block">
@@ -159,7 +163,10 @@
     <section class="cx-block">
       <h2>Cheat Engine</h2>
       <p class="muted">Pour les jeux PC : modifier des valeurs en mémoire. Fourni par Firehouse, sans logiciels en plus ; chaque profil garde ses réglages.</p>
-      <button class="btn petit" onclick={lancerCheatEngine}>{cheatEngine ? '🧰 Lancer Cheat Engine' : '⬇ Installer Cheat Engine'}</button>
+      <button class="btn petit" onclick={() => lancerCheatEngine()}>{cheatEngine ? '🧰 Lancer Cheat Engine' : '⬇ Installer Cheat Engine'}</button>
+      {#if cheatEngine && partie.enJeu === id}
+        <button class="btn petit primary" onclick={() => lancerCheatEngine(true)}>🧰 Brancher Cheat Engine sur le jeu</button>
+      {/if}
     </section>
 
     {#if t.cheat_engine.length}

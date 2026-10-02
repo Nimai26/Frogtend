@@ -401,7 +401,8 @@ export const api = {
     appeler<EmulateurInstalle>('emulateur_adopter', { id, programme, nom: nom ?? null, version: version ?? null }),
   emulateurInstallerFirehouse: (id: string, nom: string, dossier: string) =>
     appeler<InstallationFirehouse>('emulateur_installer_firehouse', { id, nom, dossier }),
-  cheatengineLancer: (programme: string, table?: string) => appeler<void>('cheatengine_lancer', { programme, table: table ?? null }),
+  cheatengineLancer: (programme: string, table?: string, brancher = false) =>
+    appeler<void>('cheatengine_lancer', { programme, table: table ?? null, brancher }),
   jeuTriches: (id: number) => appeler<TrichesJeu>('jeu_triches', { id }),
   tricheInstaller: (id: number, cle: string, programme: string, ligne: string) =>
     appeler<string>('triche_installer', { id, cle, programme, ligne }),

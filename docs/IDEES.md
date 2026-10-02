@@ -11,7 +11,7 @@ Source : https://forum.cheatengine.org/viewforum.php?f=130 (≈ 230 sujets, scri
 beaucoup écrits avec l'aide d'une IA : qualité variable). Mécanisme commun : un script `.lua` posé dans le dossier
 `autorun\` de Cheat Engine s'exécute à son démarrage. **Règle** : rien n'est téléchargé du forum par Frogtend ; les
 extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), après relecture.
-- **« Lancer avec Cheat Engine » en un clic** (inspiré de *automatic game launcher* et *Auto-Load Corresponding Cheat
+- ✅ *Fait en 0.19.0.* **« Lancer avec Cheat Engine » en un clic** (inspiré de *automatic game launcher* et *Auto-Load Corresponding Cheat
   Table On Attach*) : Frogtend poserait SON propre petit script `autorun\frogtend.lua` qui lit un fichier écrit par
   Frogtend (processus du jeu, table à charger) et s'attache tout seul au jeu. Idéal pour les enfants : pas de menu
   « Ouvrir un processus ».

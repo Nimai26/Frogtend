@@ -127,6 +127,16 @@ mod fenetres {
         ctx.trouvees
     }
 
+    /// Le processus qui porte la fenêtre principale du jeu (celui sur lequel brancher Cheat Engine).
+    pub fn pid_de_la_fenetre(pids: &[u32]) -> Option<u32> {
+        let h = du_processus(pids).into_iter().next()?;
+        let mut pid = 0u32;
+        unsafe {
+            GetWindowThreadProcessId(h, Some(&mut pid));
+        }
+        (pid != 0).then_some(pid)
+    }
+
     /// Rend le premier plan au jeu. Rend `false` si aucune fenêtre n'a été trouvée.
     pub fn au_premier_plan(pids: &[u32]) -> bool {
         let Some(h) = du_processus(pids).into_iter().next() else { return false };
@@ -196,6 +206,17 @@ fn code(nom: &str) -> Option<(u16, bool)> {
 const MAJ: u16 = 0x2A;
 const CTRL: u16 = 0x1D;
 const ALT: u16 = 0x38;
+
+/// Le processus du jeu en cours qui a la fenêtre (sinon le premier lancé).
+pub fn processus_du_jeu(racine: u32) -> u32 {
+    let pids = crate::lancement::processus_de_la_partie(racine);
+    #[cfg(windows)]
+    if let Some(p) = fenetres::pid_de_la_fenetre(&pids) {
+        return p;
+    }
+    let _ = pids;
+    racine
+}
 
 /// Rend le premier plan au jeu (reprise : l'émulateur sort seul de la pause).
 pub fn reprendre(pids: &[u32]) -> bool {

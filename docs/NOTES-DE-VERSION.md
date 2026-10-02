@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.19.0 — Cheat Engine se branche tout seul sur le jeu
+
+- Pendant une partie, **🧰 Cheat Engine** dans le menu en jeu (touche Pause/Attn), ou **🧰 Brancher Cheat Engine sur
+  le jeu** dans 🎯 Triches et mods : Cheat Engine s'ouvre déjà branché sur le jeu, sans chercher le jeu dans une
+  liste. Pratique pour tous, enfants compris.
+- Firehouse ajoutera à Cheat Engine des extensions choisies (mémoire des émulateurs, jeux MS-DOS, texte plus grand).
+
 ## 0.18.0 — Cheat Engine, chacun ses réglages
 
 - **🧰 Cheat Engine** (🎯 Triches et mods, sur la fiche d'un jeu) : Frogtend l'installe depuis Firehouse (la version

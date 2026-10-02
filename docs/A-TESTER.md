@@ -24,6 +24,9 @@
       `<dossier Cheat Engine>Profils<toi>cheatengine.reg` ; la clé d'avant Frogtend est dans
       `.frogtend-sauvegardesegistre-avant-frogtend.reg`.
 - [ ] Relance-le : **tes réglages reviennent**. Un autre profil : les siens (vierges au début).
+- [ ] **Jeu lancé** (Dune par exemple) ▸ Pause/Attn ▸ **🧰 Cheat Engine** (ou 🎯 Triches et mods ▸ **🧰 Brancher
+      Cheat Engine sur le jeu**). **Attendu :** Cheat Engine s'ouvre DÉJÀ branché sur le jeu (son nom en haut), sans
+      passer par « Ouvrir un processus ». Avec les extensions de Firehouse : la zone de mémoire de l'émulateur réglée seule.
 
 ## Taodbox, le mode canapé (0.16.0)
 - [ ] Barre du haut ▸ **🛋 Taodbox**. **Attendu :** plein écran, tout en grand, tes jeux en grandes jaquettes.

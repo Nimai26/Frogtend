@@ -630,7 +630,13 @@ pub async fn emulateur_installer_firehouse(
 /// Lance Cheat Engine pour le profil ouvert (accord de Seb pour le registre, 02/10) : ses réglages du profil sont remis
 /// avant, et rangés dans le dossier du profil quand il se ferme (tous ses processus, lanceur compris).
 #[tauri::command]
-pub async fn cheatengine_lancer(noyau: State<'_, Noyau>, programme: String, table: Option<String>) -> Resultat<()> {
+pub async fn cheatengine_lancer(
+    app: AppHandle,
+    noyau: State<'_, Noyau>,
+    programme: String,
+    table: Option<String>,
+    brancher: Option<bool>,
+) -> Resultat<()> {
     let p = std::path::PathBuf::from(&programme);
     let nom = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
     if !p.is_file() || !nom.starts_with("cheatengine") && !nom.starts_with("cheat engine") {
@@ -642,9 +648,20 @@ pub async fn cheatengine_lancer(noyau: State<'_, Noyau>, programme: String, tabl
     tauri::async_runtime::spawn_blocking(move || crate::cheatengine::preparer(crate::cheatengine::CLE, &d, &pr))
         .await
         .map_err(|_| Erreur::Disque("La préparation s'est arrêtée brutalement.".into()))??;
+    let table = table.filter(|t| t.to_lowercase().ends_with(".ct") && std::path::Path::new(t).is_file());
     let mut c = std::process::Command::new(&p);
     c.current_dir(&dossier);
-    if let Some(t) = table.filter(|t| t.to_lowercase().ends_with(".ct") && std::path::Path::new(t).is_file()) {
+    if brancher.unwrap_or(false) {
+        // « Lancer avec Cheat Engine » : notre script autorun se branche seul sur le jeu en cours et charge la table.
+        let partie = app
+            .state::<crate::menu_jeu::MenuJeu>()
+            .partie()
+            .ok_or_else(|| Erreur::Refus("Lance d'abord le jeu : Cheat Engine se branchera dessus.".into()))?;
+        let pid = tauri::async_runtime::spawn_blocking(move || crate::menu_jeu::processus_du_jeu(partie.pid))
+            .await
+            .map_err(|_| Erreur::Disque("La recherche du jeu s'est arrêtée brutalement.".into()))?;
+        crate::cheatengine::preparer_branchement(&dossier, pid, table.as_deref().map(std::path::Path::new))?;
+    } else if let Some(t) = table {
         c.arg(t);
     }
     let pid = c.spawn().map_err(|e| Erreur::Disque(format!("Cheat Engine ne démarre pas ({e}).")))?.id();

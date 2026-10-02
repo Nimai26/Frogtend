@@ -49,6 +49,26 @@ fn retirer(cle: &str, preuve: &Path) -> Resultat<()> {
     if o.status.success() { Ok(()) } else { Err(Erreur::Disque(format!("Windows refuse de retirer {cle}."))) }
 }
 
+/// Le script de Frogtend pour Cheat Engine (`autorun\frogtend.lua`).
+pub const SCRIPT_AUTORUN: &str = include_str!("../ressources/cheatengine/frogtend.lua");
+
+/// Prépare le branchement automatique : pose (ou met à jour) `autorun\frogtend.lua`, et écrit le fichier qu'il lira
+/// (processus du jeu, table éventuelle).
+pub fn preparer_branchement(dossier_ce: &Path, pid: u32, table: Option<&Path>) -> Resultat<()> {
+    let autorun = dossier_ce.join("autorun");
+    std::fs::create_dir_all(&autorun)?;
+    let script = autorun.join("frogtend.lua");
+    if std::fs::read_to_string(&script).ok().as_deref() != Some(SCRIPT_AUTORUN) {
+        std::fs::write(&script, SCRIPT_AUTORUN)?;
+    }
+    let mut contenu = format!("pid={pid}\n");
+    if let Some(t) = table {
+        contenu.push_str(&format!("table={}\n", t.to_string_lossy()));
+    }
+    std::fs::write(dossier_ce.join("frogtend-lancement.txt"), contenu)?;
+    Ok(())
+}
+
 /// Le fichier des réglages Cheat Engine d'un profil.
 pub fn fichier_du_profil(dossier_ce: &Path, profil: &str) -> PathBuf {
     crate::emulateurs_profils::dossier_du_profil(dossier_ce, profil).join("cheatengine.reg")
@@ -84,6 +104,17 @@ pub fn ranger(cle: &str, dossier_ce: &Path, profil: &str) -> Resultat<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn le_branchement_pose_le_script_et_le_fichier_du_jeu() {
+        let d = tempfile::tempdir().unwrap();
+        preparer_branchement(d.path(), 4242, Some(Path::new("E:\\Tables\\Dune.CT"))).unwrap();
+        assert_eq!(std::fs::read_to_string(d.path().join("autorun/frogtend.lua")).unwrap(), SCRIPT_AUTORUN);
+        assert_eq!(std::fs::read_to_string(d.path().join("frogtend-lancement.txt")).unwrap(), "pid=4242\ntable=E:\\Tables\\Dune.CT\n");
+        assert!(SCRIPT_AUTORUN.contains("openProcess(pid)") && SCRIPT_AUTORUN.contains("os.remove(fichier)"));
+        preparer_branchement(d.path(), 7, None).unwrap();
+        assert_eq!(std::fs::read_to_string(d.path().join("frogtend-lancement.txt")).unwrap(), "pid=7\n");
+    }
 
     /// Sur une clé d'ESSAI (jamais celle de Cheat Engine), retirée à la fin.
     #[test]

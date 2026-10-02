@@ -416,7 +416,11 @@ qui le transmet à tous les Frogtend. (Ce qui suit est la réflexion qui a mené
 **registre** (\`HKCU\Software\Cheat Engine\`), sans option portable. La copie zippée marche, mais laisse des réglages
 dans le registre (« effet pieuvre »). Piste, **à annoncer à Seb avant tout (registre)** : Frogtend exporterait cette
 clé par profil après usage et la remettrait avant (\`reg export\` / \`reg import\`), ce qui donnerait aussi des réglages
-Cheat Engine par profil. **✅ Accord de Seb (02/10) pour le registre** : Frogtend sauvegarde d'abord la clé existante
+Cheat Engine par profil. **✅ 0.18.0–0.19.0** : réglages par profil (registre), et **🧰 Brancher Cheat Engine sur le
+jeu** (fiche du jeu et menu en jeu) par un script `autorun\frogtend.lua` posé par Frogtend (fonctions relevées dans
+celua.txt : getCheatEngineDir, fileExists, openProcess, loadTable, createTimer). Extensions du forum
+(*Set Memory Region for Emulator*, *Dosbox base finder*, taille du texte) : à ajouter au zip par l'agent Firehouse,
+à la demande de Seb (02/10). **✅ Accord de Seb (02/10) pour le registre** : Frogtend sauvegarde d'abord la clé existante
 (jamais rien effacé sans copie vérifiée), puis la remet par profil avant de lancer Cheat Engine et la range à sa
 fermeture.
 
