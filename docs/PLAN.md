@@ -458,6 +458,14 @@ méthodes de LaunchBox** pour l'import de ces boutiques (à étudier dans sa doc
 - **Ordre retenu** : Steam d'abord (API officielle : ResolveVanityURL, GetOwnedGames), puis les autres après étude.
 - ⚠ La clé Steam de Seb est apparue en clair dans une capture (02/10) : à régénérer ; jamais recopiée par l'agent.
 
+**✅ Steam en 0.20.0** : ⚙ Options ▸ **Comptes ▸ Steam** (compte = URL personnalisée ou identifiant à 17 chiffres ;
+clé d'API personnelle, **vérifiée auprès de Steam avant d'être enregistrée**, rangée dans le coffre de Windows sous
+`jeton:<profil>#steam`, jamais réaffichée ; erreurs rendues sans l'adresse qui contient la clé). **🛒 Boutiques** :
+import (réglage demandé d'abord s'il manque), liste filtrable, installés sur CE PC (`libraryfolders.vdf` +
+`appmanifest_<id>.acf`, registre lu seulement), ▶ Jouer / ⬇ Installer par `steam://`. Profil Steam privé : Frogtend dit
+quoi changer. Supprimer un profil retire aussi sa clé Steam. **Reste** : mêler ces jeux à la ludothèque (jaquettes
+Steam), puis Epic, GOG, Amazon, EA, Ubisoft, Xbox (étude de LaunchBox d'abord), et les jeux gratuits.
+
 ## Personnalisation (« beaucoup d'éléments modifiables »)
 
 Les couleurs appartiennent aux skins : on ne crée jamais de couleur hors de ceux de Firehouse. Tout le reste se règle

@@ -295,6 +295,24 @@ export interface ResultatRecherche {
   deja: { id: number; statut: string } | null;
 }
 
+/** Un jeu possédé dans une boutique (lot 9). */
+export interface JeuBoutique {
+  id: string;
+  nom: string;
+  minutes: number;
+  derniere: number;
+  installe: boolean;
+}
+
+/** Le compte Steam du profil (jamais la clé : seulement si elle est enregistrée). */
+export interface EtatSteam {
+  compte: string | null;
+  cle_enregistree: boolean;
+  nb_jeux: number;
+  maj_le: string | null;
+  steam_installe: boolean;
+}
+
 /** Ce que montre le menu en jeu. */
 export interface EtatMenuJeu {
   jeu: number;
@@ -401,6 +419,12 @@ export const api = {
     appeler<EmulateurInstalle>('emulateur_adopter', { id, programme, nom: nom ?? null, version: version ?? null }),
   emulateurInstallerFirehouse: (id: string, nom: string, dossier: string) =>
     appeler<InstallationFirehouse>('emulateur_installer_firehouse', { id, nom, dossier }),
+  steamEtat: () => appeler<EtatSteam>('boutique_steam_etat'),
+  steamRegler: (compte: string, cle?: string) => appeler<EtatSteam>('boutique_steam_regler', { compte, cle: cle ?? null }),
+  steamOublier: () => appeler<void>('boutique_steam_oublier'),
+  steamJeux: () => appeler<JeuBoutique[]>('boutique_steam_jeux'),
+  steamImporter: () => appeler<JeuBoutique[]>('boutique_steam_importer'),
+  steamOuvrir: (appid: string, action: 'jouer' | 'installer') => appeler<void>('boutique_steam_ouvrir', { appid, action }),
   cheatengineLancer: (programme: string, table?: string, brancher = false) =>
     appeler<void>('cheatengine_lancer', { programme, table: table ?? null, brancher }),
   jeuTriches: (id: number) => appeler<TrichesJeu>('jeu_triches', { id }),

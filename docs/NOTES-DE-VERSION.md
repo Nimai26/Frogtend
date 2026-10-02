@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.20.0 — tes jeux Steam (lot 9, début)
+
+- **⚙ Options ▸ Comptes ▸ Steam** : l'URL de ton profil Steam et ta propre clé d'API Steam (comme dans LaunchBox).
+  Frogtend vérifie le compte auprès de Steam avant de l'enregistrer ; la clé va dans le coffre de Windows et ne
+  s'affiche plus jamais. Chaque profil a son compte.
+- **🛒 Boutiques** (barre du haut) : importe la liste de tes jeux Steam (si ton compte n'est pas encore réglé,
+  Frogtend te le demande d'abord), cherche, filtre les jeux installés sur ce PC, **▶ Jouer** ou **⬇ Installer** :
+  Steam fait le reste.
+- Ces jeux restent dans ton Frogtend, jamais dans Firehouse.
+
 ## 0.19.1 — Cheat Engine s'installe depuis Firehouse
 
 - **Cheat Engine 7.7** (la version propre préparée par Seb, avec ses extensions) est maintenant servi par Firehouse :

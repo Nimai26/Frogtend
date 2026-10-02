@@ -17,6 +17,14 @@
       **Citron Neo** s'installe tout seul (vérifié par son empreinte). **Ryubing** : sa source ne répond pas, Frogtend
       propose d'ouvrir sa page officielle.
 
+## Steam (0.20.0)
+- [ ] **Régénère d'abord ta clé d'API Steam** (elle est apparue dans une capture) : steamcommunity.com/dev/apikey.
+- [ ] ⚙ Options ▸ **Comptes ▸ Steam** ▸ ✏ Régler mon compte Steam : ton URL personnalisée (NimaiTakahashi), puis
+      ta NOUVELLE clé. **Attendu :** « Compte Steam vérifié et enregistré » ; la clé n'apparaît plus jamais.
+- [ ] Barre du haut ▸ **Boutiques** ▸ ⬇ Importer mes jeux Steam. **Attendu :** ta liste de jeux Steam (tous ?),
+      les installés marqués ✅. **▶ Jouer** lance le jeu par Steam ; **⬇ Installer** ouvre l'installation Steam.
+- [ ] Un autre profil : Boutiques ▸ Importer **sans réglage** → Frogtend demande d'abord le compte et la clé.
+
 ## Cheat Engine (0.18.0 – 0.19.1) — ton zip est sur Firehouse (Cheat Engine 7.7, 41,8 Mo)
 - [ ] Fiche d'un jeu PC ▸ 🎯 Triches et mods ▸ **⬇ Installer Cheat Engine**. **Attendu :** installé depuis Firehouse.
 - [ ] **🧰 Lancer Cheat Engine**, change un réglage (thème, raccourci), ferme-le. **Attendu :** la clé

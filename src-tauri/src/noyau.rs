@@ -211,6 +211,8 @@ impl Noyau {
             self.fermer().await;
         }
         self.coffre.oublier(id)?;
+        // Les secrets des boutiques du profil (lot 9) partent avec lui.
+        self.coffre.oublier(&crate::boutiques::nom_secret(id, "steam"))?;
         let dossier = self.dossier_profil(id);
         // Vérifier ce qu'on supprime : uniquement le dossier de CE profil, sous le dossier de l'application.
         if dossier.starts_with(self.dossier.join("profils")) && dossier.is_dir() {

@@ -6,6 +6,7 @@
   import Profil from '$lib/options/Profil.svelte';
   import APropos from '$lib/options/APropos.svelte';
   import Sauvegarde from '$lib/options/Sauvegarde.svelte';
+  import Steam from '$lib/options/Steam.svelte';
   import Emulateurs from '$lib/reglages/Emulateurs.svelte';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
@@ -102,6 +103,7 @@
       { id: 'emplacements', libelle: '📁 Emplacements' },
       { id: 'emulateurs', libelle: '🕹 Émulateurs' },
     ] },
+    { groupe: 'Comptes', rubriques: [{ id: 'steam', libelle: '🎮 Steam' }] },
     { groupe: 'Connexion', rubriques: [{ id: 'firehouse', libelle: '🔌 Firehouse' }] },
     { groupe: 'Frogtend', rubriques: [{ id: 'a-propos', libelle: 'ℹ À propos et mises à jour' }] },
   ];
@@ -339,6 +341,8 @@
       </div>
     </div>
   </section>
+    {:else if rubrique === 'steam'}
+      <Steam />
     {:else if rubrique === 'a-propos'}
       <APropos />
     {/if}

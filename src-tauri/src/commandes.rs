@@ -635,6 +635,116 @@ pub async fn emulateur_installer_firehouse(
     }
 }
 
+/// L'état du compte Steam du profil ouvert (jamais la clé : seulement si elle est enregistrée).
+#[derive(Serialize)]
+pub struct EtatSteam {
+    pub compte: Option<String>,
+    pub cle_enregistree: bool,
+    pub nb_jeux: usize,
+    pub maj_le: Option<String>,
+    /// Steam est-il installé sur ce PC (pour jouer et installer) ?
+    pub steam_installe: bool,
+}
+
+async fn profil_ouvert(noyau: &Noyau) -> Resultat<ProfilVisible> {
+    noyau.actif().await.ok_or_else(|| Erreur::Profil("Aucun profil n'est ouvert.".into()))
+}
+
+fn dossier_profil_de(noyau: &Noyau, id: &str) -> std::path::PathBuf {
+    noyau.dossier.join("profils").join(id)
+}
+
+#[tauri::command]
+pub async fn boutique_steam_etat(noyau: State<'_, Noyau>) -> Resultat<EtatSteam> {
+    let p = profil_ouvert(&noyau).await?;
+    let c = crate::boutiques::lire(&dossier_profil_de(&noyau, &p.id));
+    let cle = noyau.coffre.lire(&crate::boutiques::nom_secret(&p.id, "steam"))?.is_some();
+    Ok(EtatSteam {
+        compte: c.as_ref().map(|c| c.compte.clone()),
+        cle_enregistree: cle,
+        nb_jeux: c.as_ref().map_or(0, |c| c.jeux.len()),
+        maj_le: c.as_ref().map(|c| c.maj_le.clone()).filter(|m| !m.is_empty()),
+        steam_installe: crate::boutiques::dossier_steam().is_some(),
+    })
+}
+
+/// Règle le compte Steam du profil : `cle` absente = garder celle déjà enregistrée. Le compte est VÉRIFIÉ auprès de
+/// Steam avant que quoi que ce soit soit enregistré ; la clé va dans le coffre de Windows seulement.
+#[tauri::command]
+pub async fn boutique_steam_regler(noyau: State<'_, Noyau>, compte: String, cle: Option<String>) -> Resultat<EtatSteam> {
+    let p = profil_ouvert(&noyau).await?;
+    let secret = crate::boutiques::nom_secret(&p.id, "steam");
+    let cle = match cle.map(|c| c.trim().to_string()).filter(|c| !c.is_empty()) {
+        Some(c) if c.len() == 32 && c.chars().all(|x| x.is_ascii_hexdigit()) => c,
+        Some(_) => return Err(Erreur::Refus("Une clé d'API Steam fait 32 caractères (chiffres et lettres A à F).".into())),
+        None => noyau.coffre.lire(&secret)?.ok_or_else(|| Erreur::Refus("Donne ta clé d'API Steam.".into()))?,
+    };
+    let steamid = crate::boutiques::steamid(crate::boutiques::API_STEAM, &cle, &compte).await?;
+    noyau.coffre.ranger(&secret, &cle)?;
+    let dossier = dossier_profil_de(&noyau, &p.id);
+    let mut c = crate::boutiques::lire(&dossier).unwrap_or_default();
+    if c.steamid != steamid {
+        c.jeux.clear(); // un autre compte : l'ancienne liste ne vaut plus
+    }
+    c.compte = compte.trim().to_string();
+    c.steamid = steamid;
+    crate::boutiques::ecrire(&dossier, Some(&c))?;
+    noyau.journaliser(&format!("compte Steam réglé pour le profil {}", p.id));
+    boutique_steam_etat(noyau).await
+}
+
+/// Oublie le compte Steam du profil : la clé quitte le coffre, la liste importée est retirée.
+#[tauri::command]
+pub async fn boutique_steam_oublier(noyau: State<'_, Noyau>) -> Resultat<()> {
+    let p = profil_ouvert(&noyau).await?;
+    noyau.coffre.oublier(&crate::boutiques::nom_secret(&p.id, "steam"))?;
+    crate::boutiques::ecrire(&dossier_profil_de(&noyau, &p.id), None)
+}
+
+/// Les jeux Steam du profil, avec ce qui est installé sur CE PC (relu à chaque fois).
+#[tauri::command]
+pub async fn boutique_steam_jeux(noyau: State<'_, Noyau>) -> Resultat<Vec<crate::boutiques::JeuBoutique>> {
+    let p = profil_ouvert(&noyau).await?;
+    let mut l = crate::boutiques::lire(&dossier_profil_de(&noyau, &p.id)).map(|c| c.jeux).unwrap_or_default();
+    if let Some(d) = crate::boutiques::dossier_steam() {
+        let installes = crate::boutiques::installes_steam(&d);
+        for j in &mut l {
+            j.installe = installes.contains(&j.id);
+        }
+    }
+    Ok(l)
+}
+
+/// Importe (ou met à jour) la liste des jeux Steam possédés. Le compte doit être réglé (sinon : `Refus`, et
+/// l'interface ouvre le réglage d'abord, règle de Seb).
+#[tauri::command]
+pub async fn boutique_steam_importer(noyau: State<'_, Noyau>) -> Resultat<Vec<crate::boutiques::JeuBoutique>> {
+    let p = profil_ouvert(&noyau).await?;
+    let dossier = dossier_profil_de(&noyau, &p.id);
+    let mut c = crate::boutiques::lire(&dossier).filter(|c| !c.steamid.is_empty()).ok_or_else(|| Erreur::Refus("Compte Steam pas encore réglé.".into()))?;
+    let cle = noyau.coffre.lire(&crate::boutiques::nom_secret(&p.id, "steam"))?.ok_or_else(|| Erreur::Refus("Compte Steam pas encore réglé.".into()))?;
+    c.jeux = crate::boutiques::jeux_possedes(crate::boutiques::API_STEAM, &cle, &c.steamid).await?;
+    c.maj_le = crate::noyau::maintenant();
+    crate::boutiques::ecrire(&dossier, Some(&c))?;
+    noyau.journaliser(&format!("import Steam : {} jeu(x) pour le profil {}", c.jeux.len(), p.id));
+    boutique_steam_jeux(noyau).await
+}
+
+/// Jouer à un jeu Steam, ou l'installer : Steam fait le travail (`steam://`).
+#[tauri::command]
+pub fn boutique_steam_ouvrir(app: AppHandle, appid: String, action: String) -> Resultat<()> {
+    use tauri_plugin_opener::OpenerExt;
+    if appid.is_empty() || !appid.chars().all(|c| c.is_ascii_digit()) {
+        return Err(Erreur::Refus("Jeu Steam invalide.".into()));
+    }
+    let url = match action.as_str() {
+        "jouer" => format!("steam://rungameid/{appid}"),
+        "installer" => format!("steam://install/{appid}"),
+        _ => return Err(Erreur::Refus("Action inconnue.".into())),
+    };
+    app.opener().open_url(url, None::<&str>).map_err(|_| Erreur::Disque("Steam ne s'ouvre pas : est-il installé ?".into()))
+}
+
 /// Lance Cheat Engine pour le profil ouvert (accord de Seb pour le registre, 02/10) : ses réglages du profil sont remis
 /// avant, et rangés dans le dossier du profil quand il se ferme (tous ses processus, lanceur compris).
 #[tauri::command]

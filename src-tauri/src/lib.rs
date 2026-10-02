@@ -3,6 +3,7 @@
 //! Règle : les secrets (jeton Firehouse, identifiants des boutiques) restent de ce côté-ci.
 //! L'interface ne les reçoit jamais.
 
+pub mod boutiques;
 pub mod cheatengine;
 pub mod choix_emulateur;
 pub mod coffre;
@@ -199,6 +200,12 @@ pub fn run() {
             commandes::emulateur_installer_firehouse,
             commandes::jeu_triches,
             commandes::cheatengine_lancer,
+            commandes::boutique_steam_etat,
+            commandes::boutique_steam_regler,
+            commandes::boutique_steam_oublier,
+            commandes::boutique_steam_jeux,
+            commandes::boutique_steam_importer,
+            commandes::boutique_steam_ouvrir,
             commandes::triche_installer,
             commandes::jeu_taille_installation,
             commandes::jeu_copie_avant_mod,

@@ -17,6 +17,7 @@
   const liens = [
     { href: '/', libelle: 'Ma ludothèque' },
     { href: '/catalogue', libelle: 'Catalogue Firehouse' },
+    { href: '/boutiques', libelle: 'Boutiques' },
     { href: '/demander', libelle: 'Demander un jeu' },
     { href: '/assistant', libelle: 'Assistant' },
     { href: '/taodbox', libelle: '🛋 Taodbox' },
