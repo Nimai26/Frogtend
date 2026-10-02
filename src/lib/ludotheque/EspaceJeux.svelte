@@ -1,10 +1,11 @@
 <script lang="ts">
   // Un espace de jeux en trois colonnes (inspiré de LaunchBox) : plateformes, jaquettes, détails.
   // « ludotheque » : les jeux du PC ; « catalogue » : tout ce que Firehouse montre, d'où l'on ajoute.
+  import { BOUTIQUES } from '$lib/boutiques/jeu-boutique';
   import { untrack } from 'svelte';
   import { etat, reglerProfil } from '$lib/etat.svelte';
   import GrilleJeux from '$lib/ludotheque/GrilleJeux.svelte';
-  import { ouvrirEspace, rechargerListe, type Espace } from '$lib/ludotheque/ludotheque.svelte';
+  import { ludo, ouvrirEspace, rechargerListe, type Espace } from '$lib/ludotheque/ludotheque.svelte';
   import PanneauDetails from '$lib/ludotheque/PanneauDetails.svelte';
   import PanneauPlateformes from '$lib/ludotheque/PanneauPlateformes.svelte';
   import { TAILLE_JAQUETTE_MAX, TAILLE_JAQUETTE_MIN } from '$lib/reglages/reglages';
@@ -48,6 +49,36 @@
           <option value="annee_desc">Année (récent d’abord)</option>
         </select>
       </label>
+      {#if ludo.espace === 'ludotheque'}
+        <label class="tri">
+          <span class="muted">Boutique</span>
+          <select
+            value={ludo.boutique ?? ''}
+            onchange={(e) => {
+              ludo.boutique = e.currentTarget.value || null;
+              rechargerListe();
+            }}
+          >
+            <option value="">Toutes</option>
+            {#each BOUTIQUES as b (b.valeur)}<option value={b.valeur}>{b.libelle}</option>{/each}
+          </select>
+        </label>
+        <label class="tri">
+          <select
+            aria-label="Installés ou non"
+            value={ludo.installe === null ? '' : ludo.installe ? 'oui' : 'non'}
+            onchange={(e) => {
+              const v = e.currentTarget.value;
+              ludo.installe = v === '' ? null : v === 'oui';
+              rechargerListe();
+            }}
+          >
+            <option value="">Installés ou non</option>
+            <option value="oui">Installés</option>
+            <option value="non">Pas installés</option>
+          </select>
+        </label>
+      {/if}
       <label class="taille">
         <span class="muted" aria-hidden="true">🖼</span>
         <input

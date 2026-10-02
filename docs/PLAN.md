@@ -444,6 +444,12 @@ réponse du 02/10 (bac à sable d'abord ; points à vérifier : réglages dans l
 **Décision de Seb (02/10)** : les jeux possédés des boutiques (installés ou non) vont **dans la ludothèque principale,
 avec les autres** (probablement sous la plateforme PC), **filtrables** par boutique et par « installé ou non ». Pas
 d'écran à part au final (« 🛒 Boutiques » sert à régler et importer).
+**✅ 0.23.0** : les jeux de Steam et de GOG Galaxy entrent dans la ludothèque (cache local du profil) sous la plateforme
+**Windows**, avec un **id négatif** stable (`boutique:clé`, le même jeu vu par Steam et par Galaxy n'apparaît qu'une
+fois) ; le catalogue de Firehouse ne les montre jamais ; une synchronisation de Firehouse ne les retire jamais.
+Filtres de « Ma ludothèque » : **Boutique** (Firehouse, Steam, GOG, Epic, Xbox, Ubisoft, EA) et **Installés / Pas
+installés** (jeux de Firehouse : installés sur ce PC). Panneau : ▶ Jouer / ⬇ Installer par Steam ou GOG Galaxy ;
+double-clic pareil ; jaquettes de boutique par le protocole des jaquettes.
 
 **Récupération automatique des jeux offerts — recherche GitHub (02/10, demande de Seb)** : la référence est
 **vogler/free-games-claimer** (4 238 ★, actif au 01/10/2026, AGPL-3.0, JavaScript + Playwright) : Epic, Prime Gaming,

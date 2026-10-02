@@ -9,6 +9,8 @@
   import { jeuAuHasard, ludo } from './ludotheque.svelte';
   import { annuler, mettreDansLaLudotheque, mettreEnPause, reprendre, tele } from './telechargements.svelte';
   import { emulateursDuJeu, gererJeu, installer, jouer, jouerAvec, partie } from './jeu.svelte';
+  import { estJeuDeBoutique, ouvrirJeuDeBoutique } from '$lib/boutiques/jeu-boutique';
+  import { nomPlateforme } from '$lib/boutiques/galaxy.svelte';
 
   const j = $derived(ludo.selection);
   const surPc = $derived(j ? tele.jeux[j.id] : undefined);
@@ -64,7 +66,12 @@
     {/if}
 
     <div class="actions">
-      {#if catalogue && !surPc}
+      {#if estJeuDeBoutique(j)}
+        <!-- Un jeu de tes boutiques : Steam ou GOG Galaxy s'en chargent. -->
+        <button class="btn primary grand" onclick={() => j && ouvrirJeuDeBoutique(j)}>
+          {j.installe ? '▶ Jouer' : '⬇ Installer'} <span class="muted">({j.source === 'steam' ? 'Steam' : 'GOG Galaxy'})</span>
+        </button>
+      {:else if catalogue && !surPc}
         <button class="btn primary grand" onclick={ajouter} disabled={ajout}>
           {ajout ? 'Préparation…' : '➕ Mettre dans ma ludothèque'}
         </button>
@@ -90,7 +97,7 @@
           ⚙ Gérer le jeu <span class="muted">(installer, désinstaller, parties…)</span>
         </button>
       {/if}
-      <button class="btn grand" onclick={() => goto(`/jeu/${j.id}`)}>📄 Voir la fiche</button>
+      {#if !estJeuDeBoutique(j)}<button class="btn grand" onclick={() => goto(`/jeu/${j.id}`)}>📄 Voir la fiche</button>{/if}
     </div>
 
     <dl class="cx-kv">
@@ -102,6 +109,11 @@
       {#if catalogue && j.versions != null}<dt>Versions</dt><dd>{j.versions || 'aucune pour l’instant'}</dd>{/if}
       {#if surPc}<dt>Sur ce PC</dt><dd title={surPc.dossier}>{surPc.dossier}</dd>{/if}
       {#if surPc?.temps_jeu}<dt>Temps de jeu</dt><dd>{duree(surPc.temps_jeu)}</dd>{/if}
+      {#if estJeuDeBoutique(j)}
+        <dt>Boutique</dt><dd>{nomPlateforme(j.boutique ?? '')}</dd>
+        <dt>Sur ce PC</dt><dd>{j.installe ? '✅ installé' : 'pas installé'}</dd>
+        {#if j.minutes}<dt>Temps de jeu</dt><dd>{duree(j.minutes * 60)}</dd>{/if}
+      {/if}
     </dl>
     {#if j.genres.length}
       <div class="genres">

@@ -21,6 +21,14 @@
       **Citron Neo** s'installe tout seul (vérifié par son empreinte). **Ryubing** : sa source ne répond pas, Frogtend
       propose d'ouvrir sa page officielle.
 
+## Tes boutiques dans la ludothèque (0.23.0)
+- [ ] Après « Lire mes jeux GOG Galaxy » (et/ou l'import Steam), **Ma ludothèque ▸ Windows**. **Attendu :** tes jeux
+      de boutiques, en jaquettes, avec les autres.
+- [ ] Filtres en haut : **Boutique** (Epic Games par exemple) et **Installés / Pas installés**.
+- [ ] Un jeu de boutique : le panneau de droite propose ▶ Jouer (installé) ou ⬇ Installer, par Steam ou GOG Galaxy ;
+      un double-clic fait pareil.
+- [ ] Le **Catalogue Firehouse** ne montre PAS ces jeux.
+
 ## GOG Galaxy (0.22.0) — Epic, Xbox, Ubisoft, EA compris
 - [ ] 🛒 Boutiques ▸ **⬇ Lire mes jeux GOG Galaxy**. **Attendu :** environ 324 jeux en jaquettes ; le menu « Toutes
       les boutiques » filtre GOG, Epic Games, Xbox, Ubisoft Connect, EA ; Cyberpunk 2077 et Horizon Zero Dawn

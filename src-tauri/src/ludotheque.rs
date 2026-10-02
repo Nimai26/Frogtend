@@ -47,6 +47,39 @@ pub struct JeuResume {
     /// Dernière modification de la fiche dans Firehouse.
     #[serde(default)]
     pub maj_le: Option<String>,
+    // --- Jeux des boutiques de la personne (lot 9, id NÉGATIF ; jamais dans le catalogue de Firehouse) ---
+    /// D'où vient la ligne : `steam` (API Steam) ou `galaxy` (GOG Galaxy) ; absent pour Firehouse.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// La boutique (`steam`, `gog`, `epic`, `xboxone`, `uplay`, `origin`…).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub boutique: Option<String>,
+    /// L'identifiant du jeu dans sa source (appid Steam, `releaseKey` de Galaxy).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cle_boutique: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installe: Option<bool>,
+    /// La jaquette (adresse publique) d'un jeu de boutique.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minutes: Option<u64>,
+}
+
+/// L'id (négatif, stable) d'un jeu de boutique : le même jeu vu par Steam ET par GOG Galaxy a le même id.
+pub fn id_boutique(boutique: &str, cle: &str) -> i64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in format!("{boutique}:{cle}").bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x0100_0000_01b3);
+    }
+    -(((h & 0x000F_FFFF_FFFF_FFFF) as i64) + 1)
+}
+
+/// La partie « quels jeux » d'une requête : le catalogue (`ids` absent) = les jeux de Firehouse seulement ; la
+/// ludothèque du PC (`ids` = les jeux du PC) = ces jeux-là ET ceux des boutiques de la personne.
+fn restreindre(p: &str) -> String {
+    format!("(({p} IS NULL AND id > 0) OR ({p} IS NOT NULL AND (id < 0 OR id IN (SELECT value FROM json_each({p})))))")
 }
 
 /// Une page de catalogue lue, et s'il en reste après.
@@ -131,6 +164,12 @@ pub struct Filtre {
     /// Vrai : seulement les jeux du PC (« Ma ludothèque ») ; faux : tout le catalogue Firehouse du profil.
     #[serde(default)]
     pub ludotheque: bool,
+    /// Une boutique (`steam`, `gog`, `epic`…, ou `firehouse` pour les jeux de Firehouse).
+    #[serde(default)]
+    pub boutique: Option<String>,
+    /// Installé sur ce PC (vrai) ou pas (faux).
+    #[serde(default)]
+    pub installe: Option<bool>,
 }
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -176,7 +215,7 @@ impl Cache {
     /// Remplace TOUT le catalogue d'un coup (transaction) : un jeu devenu invisible pour ce profil disparaît.
     pub fn remplacer(&mut self, plateformes: &[Plateforme], jeux: &[JeuResume], quand: &str) -> Resultat<()> {
         let tx = self.db.transaction()?;
-        tx.execute("DELETE FROM jeux", [])?;
+        tx.execute("DELETE FROM jeux WHERE id > 0", [])?;
         tx.execute("DELETE FROM plateformes", [])?;
         // Les fiches gardées pour des jeux qui ne sont plus visibles partent aussi.
         {
@@ -223,7 +262,7 @@ impl Cache {
                 ins.execute([id])?;
             }
         }
-        let retires = tx.execute("DELETE FROM jeux WHERE id NOT IN (SELECT id FROM visibles)", [])?;
+        let retires = tx.execute("DELETE FROM jeux WHERE id > 0 AND id NOT IN (SELECT id FROM visibles)", [])?;
         {
             let mut ins = tx.prepare(
                 "INSERT OR REPLACE INTO jeux (id, titre, titre_tri, annee, plateforme, genres, brut)
@@ -263,11 +302,11 @@ impl Cache {
     pub fn derniere_modification(&self) -> Resultat<Option<String>> {
         Ok(self
             .db
-            .query_row("SELECT MAX(json_extract(brut, '$.maj_le')) FROM jeux", [], |r| r.get::<_, Option<String>>(0))?)
+            .query_row("SELECT MAX(json_extract(brut, '$.maj_le')) FROM jeux WHERE id > 0", [], |r| r.get::<_, Option<String>>(0))?)
     }
 
     pub fn nombre_de_jeux(&self) -> Resultat<u64> {
-        Ok(self.db.query_row("SELECT COUNT(*) FROM jeux", [], |r| r.get::<_, i64>(0))? as u64)
+        Ok(self.db.query_row("SELECT COUNT(*) FROM jeux WHERE id > 0", [], |r| r.get::<_, i64>(0))? as u64)
     }
 
     pub fn synchronise_le(&self) -> Resultat<Option<String>> {
@@ -292,9 +331,7 @@ impl Cache {
     /// Les plateformes, avec le nombre de jeux présents dans le cache (plus fiable que celui annoncé).
     pub fn plateformes(&self, seulement: Option<&[i64]>) -> Resultat<Vec<Plateforme>> {
         let mut st = self.db.prepare(
-            "SELECT plateforme, COUNT(*) FROM jeux
-             WHERE (?1 IS NULL OR id IN (SELECT value FROM json_each(?1)))
-             GROUP BY plateforme ORDER BY plateforme COLLATE NOCASE",
+            &format!("SELECT plateforme, COUNT(*) FROM jeux WHERE {} GROUP BY plateforme ORDER BY plateforme COLLATE NOCASE", restreindre("?1")),
         )?;
         let liste = st
             .query_map([Self::liste_json(seulement)], |r| {
@@ -307,10 +344,10 @@ impl Cache {
     /// Les genres présents (pour le filtre), triés.
     pub fn genres(&self, plateforme: Option<&str>, seulement: Option<&[i64]>) -> Resultat<Vec<String>> {
         let mut st = self.db.prepare(
-            "SELECT DISTINCT g.value FROM jeux, json_each(jeux.genres) g
-             WHERE (?1 IS NULL OR plateforme = ?1)
-               AND (?2 IS NULL OR jeux.id IN (SELECT value FROM json_each(?2)))
-             ORDER BY 1 COLLATE NOCASE",
+            &format!(
+                "SELECT DISTINCT g.value FROM jeux, json_each(jeux.genres) g WHERE (?1 IS NULL OR plateforme = ?1) AND {} ORDER BY 1 COLLATE NOCASE",
+                restreindre("?2").replace("(id", "(jeux.id").replace(" id ", " jeux.id ")
+            ),
         )?;
         let liste = st
             .query_map(params![plateforme, Self::liste_json(seulement)], |r| r.get(0))?
@@ -318,14 +355,22 @@ impl Cache {
         Ok(liste)
     }
 
-    pub fn lister(&self, f: &Filtre, seulement: Option<&[i64]>) -> Resultat<Liste> {
+/// `installes` : les jeux de Firehouse installés sur ce PC (pour le filtre « installé ou non »).
+    pub fn lister(&self, f: &Filtre, seulement: Option<&[i64]>, installes: &[i64]) -> Resultat<Liste> {
         let texte = f.texte.as_deref().map(str::trim).filter(|t| !t.is_empty()).map(|t| format!("%{}%", normaliser(t)));
         let genre = f.genre.as_deref().filter(|g| !g.is_empty()).map(|g| serde_json::to_string(g).unwrap());
         let ids = Self::liste_json(seulement);
-        let restriction = "(?4 IS NULL OR id IN (SELECT value FROM json_each(?4)))";
+        let restriction = restreindre("?4");
+        let boutique = f.boutique.as_deref().filter(|b| !b.is_empty());
+        let installe = f.installe.map(i64::from);
+        let ids_installes = serde_json::to_string(installes).unwrap();
+        // ?5 : la boutique (« firehouse » = les jeux de Firehouse) ; ?6 : installé (1) ou non (0) ; ?7 : les installés.
         let condition = format!(
             "(?1 IS NULL OR plateforme = ?1) AND (?2 IS NULL OR titre_tri LIKE ?2)
-             AND (?3 IS NULL OR instr(genres, ?3) > 0) AND {restriction}"
+             AND (?3 IS NULL OR instr(genres, ?3) > 0) AND {restriction}
+             AND (?5 IS NULL OR COALESCE(json_extract(brut, '$.boutique'), 'firehouse') = ?5)
+             AND (?6 IS NULL OR (CASE WHEN id < 0 THEN COALESCE(json_extract(brut, '$.installe'), 0)
+                                     ELSE id IN (SELECT value FROM json_each(?7)) END) = ?6)"
         );
         let ordre = match f.tri.as_deref() {
             Some("annee") => "annee IS NULL, annee, titre_tri",
@@ -337,7 +382,7 @@ impl Cache {
 
         let total: i64 = self.db.query_row(
             &format!("SELECT COUNT(*) FROM jeux WHERE {condition}"),
-            params![f.plateforme, texte, genre, ids],
+            params![f.plateforme, texte, genre, ids, boutique, installe, ids_installes],
             |r| r.get(0),
         )?;
         let total_ludotheque: i64 = self.db.query_row(
@@ -349,7 +394,7 @@ impl Cache {
             "SELECT brut FROM jeux WHERE {condition} ORDER BY {ordre} LIMIT {limite} OFFSET {decalage}"
         ))?;
         let jeux = st
-            .query_map(params![f.plateforme, texte, genre, ids], |r| r.get::<_, String>(0))?
+            .query_map(params![f.plateforme, texte, genre, ids, boutique, installe, ids_installes], |r| r.get::<_, String>(0))?
             .filter_map(|b| b.ok().and_then(|b| serde_json::from_str(&b).ok()))
             .collect();
         Ok(Liste { jeux, total: total as u64, total_ludotheque: total_ludotheque as u64 })
@@ -360,14 +405,44 @@ impl Cache {
         let brut: Option<String> = self
             .db
             .query_row(
-                "SELECT brut FROM jeux WHERE (?1 IS NULL OR plateforme = ?1)
-                   AND (?2 IS NULL OR id IN (SELECT value FROM json_each(?2)))
-                 ORDER BY random() LIMIT 1",
+                &format!("SELECT brut FROM jeux WHERE (?1 IS NULL OR plateforme = ?1) AND {} ORDER BY random() LIMIT 1", restreindre("?2")),
                 params![plateforme, Self::liste_json(seulement)],
                 |r| r.get(0),
             )
             .optional()?;
         Ok(brut.and_then(|b| serde_json::from_str(&b).ok()))
+    }
+
+    /// Remplace les jeux d'une source de boutique (`steam`, `galaxy`) dans la ludothèque.
+    pub fn remplacer_boutique(&mut self, source: &str, jeux: &[JeuResume]) -> Resultat<usize> {
+        let tx = self.db.transaction()?;
+        tx.execute("DELETE FROM jeux WHERE id < 0 AND json_extract(brut, '$.source') = ?1", [source])?;
+        {
+            let mut ins = tx.prepare(
+                "INSERT OR REPLACE INTO jeux (id, titre, titre_tri, annee, plateforme, genres, brut)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            )?;
+            for j in jeux.iter().filter(|j| j.id < 0) {
+                ins.execute(params![
+                    j.id,
+                    j.titre,
+                    normaliser(&j.titre),
+                    j.annee,
+                    j.plateforme,
+                    serde_json::to_string(&j.genres).unwrap(),
+                    serde_json::to_string(j).unwrap(),
+                ])?;
+            }
+        }
+        tx.commit()?;
+        Ok(jeux.len())
+    }
+
+    /// Les sources de boutique présentes (`steam`, `galaxy`).
+    pub fn sources_boutiques(&self) -> Resultat<Vec<String>> {
+        let mut st = self.db.prepare("SELECT DISTINCT json_extract(brut, '$.source') FROM jeux WHERE id < 0")?;
+        let l = st.query_map([], |r| r.get::<_, Option<String>>(0))?.flatten().flatten().collect();
+        Ok(l)
     }
 
     pub fn jeu(&self, id: i64) -> Resultat<Option<JeuResume>> {
@@ -424,6 +499,54 @@ pub(crate) mod tests {
         )
         .unwrap();
         c
+    }
+
+    fn jeu_de_boutique(source: &str, boutique: &str, cle: &str, titre: &str, installe: bool) -> JeuResume {
+        JeuResume {
+            id: id_boutique(boutique, cle),
+            titre: titre.into(),
+            plateforme: "Windows".into(),
+            source: Some(source.into()),
+            boutique: Some(boutique.into()),
+            cle_boutique: Some(cle.into()),
+            installe: Some(installe),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn les_jeux_des_boutiques_vont_dans_la_ludotheque_jamais_dans_le_catalogue() {
+        let mut c = cache_exemple();
+        assert!(id_boutique("steam", "620") < 0);
+        assert_eq!(id_boutique("steam", "620"), id_boutique("steam", "620"), "stable");
+        assert_ne!(id_boutique("steam", "620"), id_boutique("gog", "620"));
+        c.remplacer_boutique("steam", &[jeu_de_boutique("steam", "steam", "620", "Portal 2", true)]).unwrap();
+        c.remplacer_boutique("galaxy", &[jeu_de_boutique("galaxy", "gog", "1423049311", "Cyberpunk 2077", false), jeu_de_boutique("galaxy", "epic", "Fortnite", "Fortnite", false)])
+            .unwrap();
+        // Ma ludothèque (le PC a Dune, installé) : Dune + les 3 jeux des boutiques.
+        let pc: &[i64] = &[110];
+        let l = c.lister(&Filtre { ludotheque: true, ..Default::default() }, Some(pc), &[110]).unwrap();
+        assert_eq!(l.total, 4);
+        // Le catalogue de Firehouse : jamais les jeux des boutiques.
+        assert_eq!(c.lister(&Filtre::default(), None, &[]).unwrap().total, 3);
+        // Filtres : boutique, installé.
+        let par = |b: &str| c.lister(&Filtre { boutique: Some(b.into()), ..Default::default() }, Some(pc), &[110]).unwrap().total;
+        assert_eq!((par("steam"), par("epic"), par("firehouse")), (1, 1, 1));
+        let inst = |i: bool| c.lister(&Filtre { installe: Some(i), ..Default::default() }, Some(pc), &[110]).unwrap().jeux.iter().map(|j| j.titre.clone()).collect::<Vec<_>>();
+        assert_eq!(inst(true), ["Dune", "Portal 2"]);
+        assert_eq!(inst(false), ["Cyberpunk 2077", "Fortnite"]);
+        // Plateformes de la ludothèque : Windows compte les jeux des boutiques.
+        let p = c.plateformes(Some(pc)).unwrap();
+        assert!(p.iter().any(|x| x.nom == "Windows" && x.jeux == 3));
+        // Une synchronisation de Firehouse (complète ou incrémentale) ne retire pas les jeux des boutiques.
+        c.remplacer(&[], &[jeu(110, "Dune", "MS-DOS", Some(1992), &[])], "x").unwrap();
+        c.appliquer_increment(&[], &[], &[110], "y").unwrap();
+        assert_eq!(c.lister(&Filtre::default(), Some(pc), &[]).unwrap().total, 4);
+        assert_eq!(c.nombre_de_jeux().unwrap(), 1, "le compte de Firehouse ne mêle pas les boutiques");
+        // Réimporter une source remplace seulement la sienne.
+        c.remplacer_boutique("galaxy", &[]).unwrap();
+        assert_eq!(c.lister(&Filtre::default(), Some(pc), &[]).unwrap().total, 2);
+        assert_eq!(c.sources_boutiques().unwrap(), ["steam"]);
     }
 
     #[test]
@@ -512,12 +635,12 @@ pub(crate) mod tests {
     #[test]
     fn filtre_par_plateforme_texte_sans_accents_et_genre() {
         let c = cache_exemple();
-        let tous = c.lister(&Filtre::default(), None).unwrap();
+        let tous = c.lister(&Filtre::default(), None, &[]).unwrap();
         assert_eq!((tous.total, tous.total_ludotheque), (3, 3));
-        assert_eq!(c.lister(&Filtre { plateforme: Some("MS-DOS".into()), ..Default::default() }, None).unwrap().total, 2);
-        let echo = c.lister(&Filtre { texte: Some("echo".into()), ..Default::default() }, None).unwrap();
+        assert_eq!(c.lister(&Filtre { plateforme: Some("MS-DOS".into()), ..Default::default() }, None, &[]).unwrap().total, 2);
+        let echo = c.lister(&Filtre { texte: Some("echo".into()), ..Default::default() }, None, &[]).unwrap();
         assert_eq!(echo.jeux[0].titre, "Écho du passé");
-        let strat = c.lister(&Filtre { genre: Some("Stratégie".into()), ..Default::default() }, None).unwrap();
+        let strat = c.lister(&Filtre { genre: Some("Stratégie".into()), ..Default::default() }, None, &[]).unwrap();
         assert_eq!(strat.jeux.iter().map(|j| j.id).collect::<Vec<_>>(), vec![110]);
     }
 
@@ -525,7 +648,7 @@ pub(crate) mod tests {
     fn trie_par_titre_ou_par_annee() {
         let c = cache_exemple();
         let titres = |tri: Option<&str>| {
-            c.lister(&Filtre { tri: tri.map(String::from), ..Default::default() }, None)
+            c.lister(&Filtre { tri: tri.map(String::from), ..Default::default() }, None, &[])
                 .unwrap()
                 .jeux
                 .into_iter()
@@ -559,13 +682,13 @@ pub(crate) mod tests {
     fn la_ludotheque_locale_ne_montre_que_les_jeux_du_pc() {
         let c = cache_exemple(); // 110, 111 (MS-DOS), 200 (Super Nintendo)
         let locale = Some(&[110i64, 999][..]); // 999 : sur le PC mais invisible pour ce profil
-        let l = c.lister(&Filtre::default(), locale).unwrap();
+        let l = c.lister(&Filtre::default(), locale, &[]).unwrap();
         assert_eq!(l.jeux.iter().map(|j| j.id).collect::<Vec<_>>(), vec![110]);
         assert_eq!((l.total, l.total_ludotheque), (1, 1));
         assert_eq!(c.plateformes(locale).unwrap(), vec![Plateforme { nom: "MS-DOS".into(), jeux: 1 }]);
         assert_eq!(c.genres(None, locale).unwrap(), vec!["Aventure", "Stratégie"]);
         assert_eq!(c.au_hasard(None, locale).unwrap().unwrap().id, 110);
-        assert!(c.lister(&Filtre::default(), Some(&[])).unwrap().jeux.is_empty(), "PC vide : ludothèque vide");
+        assert!(c.lister(&Filtre::default(), Some(&[]), &[]).unwrap().jeux.is_empty(), "PC vide : ludothèque vide");
     }
 
     #[test]
@@ -584,6 +707,6 @@ pub(crate) mod tests {
             let mut c = Cache::ouvrir(&f).unwrap();
             c.remplacer(&[], &[jeu(1, "A", "PC", None, &[])], "t").unwrap();
         }
-        assert_eq!(Cache::ouvrir(&f).unwrap().lister(&Filtre::default(), None).unwrap().total, 1);
+        assert_eq!(Cache::ouvrir(&f).unwrap().lister(&Filtre::default(), None, &[]).unwrap().total, 1);
     }
 }

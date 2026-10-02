@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.23.0 — tes jeux de boutiques dans la ludothèque
+
+- Les jeux de tes boutiques (Steam, et par GOG Galaxy : GOG, Epic, Xbox, Ubisoft, EA), **installés ou non**, sont
+  maintenant **dans « Ma ludothèque », avec les autres**, sous **Windows**.
+- Deux nouveaux filtres : **Boutique** et **Installés / Pas installés**.
+- Un jeu de boutique se lance (▶ Jouer) ou s'installe (⬇ Installer) par Steam ou GOG Galaxy, depuis le panneau de
+  droite ou d'un double-clic.
+- Le Catalogue Firehouse reste celui de Firehouse : les jeux de tes boutiques n'y apparaissent pas.
+
 ## 0.22.0 — GOG Galaxy : GOG, Epic, Xbox, Ubisoft et EA
 
 - **🛒 Boutiques ▸ GOG Galaxy** : Frogtend lit (sans rien y changer) la bibliothèque de GOG Galaxy, qui regroupe tes

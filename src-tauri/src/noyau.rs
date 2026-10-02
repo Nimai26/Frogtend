@@ -348,7 +348,9 @@ impl Noyau {
         let s = self.session().await?;
         let seulement = self.restriction(filtre.ludotheque)?;
         let c = s.verrou();
-        c.lister(filtre, seulement.as_deref())
+        // Les jeux de Firehouse installés sur ce PC (filtre « installé ou non »).
+        let installes: Vec<i64> = self.registre().tous()?.into_iter().filter(|j| j.installation.is_some()).map(|j| j.id).collect();
+        c.lister(filtre, seulement.as_deref(), &installes)
     }
 
     pub async fn au_hasard(&self, plateforme: Option<&str>, locale: bool) -> Resultat<Option<JeuResume>> {
@@ -398,11 +400,60 @@ impl Noyau {
 
     /// Une jaquette du profil ouvert, en miniature si `largeur` est donnée : depuis son dossier si elle y est (et que
     /// son empreinte n'a pas changé), sinon depuis Firehouse (et gardée). Une absence est retenue une semaine.
+    /// Range les jeux d'une source de boutique (\`steam\`, \`galaxy\`) dans la ludothèque du profil, sous la plateforme
+    /// « Windows » (décision de Seb, 02/10 : avec les autres jeux, filtrables). Un jeu Steam vu aussi par GOG Galaxy
+    /// garde le même id : il n'apparaît qu'une fois (Steam prime s'il est importé à part).
+    pub async fn ranger_boutique(&self, source: &str, jeux: &[crate::boutiques::JeuBoutique]) -> Resultat<usize> {
+        let s = self.session().await?;
+        let mut c = s.verrou();
+        let steam_a_part = source == "galaxy" && c.sources_boutiques()?.iter().any(|x| x == "steam");
+        let resumes: Vec<JeuResume> = jeux
+            .iter()
+            .filter_map(|j| {
+                // Steam : l'appid ; Galaxy : « gog_123 », « steam_620 »… → (boutique, id dans la boutique).
+                let (boutique, cle) = if source == "steam" {
+                    ("steam".to_string(), j.id.clone())
+                } else {
+                    let (b, c) = j.id.split_once('_').unwrap_or(("autre", &j.id));
+                    (b.to_string(), c.to_string())
+                };
+                if steam_a_part && boutique == "steam" {
+                    return None;
+                }
+                Some(JeuResume {
+                    id: crate::ludotheque::id_boutique(&boutique, &cle),
+                    titre: j.nom.clone(),
+                    plateforme: "Windows".into(),
+                    statut: Some("boutique".into()),
+                    jaquette: Some(true),
+                    source: Some(source.into()),
+                    boutique: Some(boutique),
+                    cle_boutique: Some(j.id.clone()),
+                    installe: Some(j.installe),
+                    image: j.image.clone(),
+                    minutes: Some(j.minutes),
+                    ..Default::default()
+                })
+            })
+            .collect();
+        c.remplacer_boutique(source, &resumes)
+    }
+
     pub async fn jaquette(&self, id: i64, largeur: Option<u32>) -> Resultat<Option<Image>> {
         let s = self.session().await?;
         let Some(jeu) = s.verrou().jeu(id)? else {
             return Ok(None); // un jeu qui n'est pas dans SA ludothèque : rien.
         };
+        // Un jeu de boutique : son image publique (GOG, Steam), gardée en cache sur ce PC.
+        if id < 0 {
+            let cache = self.dossier.join("images-boutiques");
+            let octets = match (&jeu.image, jeu.boutique.as_deref(), jeu.cle_boutique.as_deref()) {
+                (Some(url), _, _) => crate::boutiques::image_par_adresse(&cache, url).await,
+                (None, Some("steam"), Some(cle)) => crate::boutiques::image_steam(&cache, cle.trim_start_matches("steam_")).await,
+                _ => None,
+            };
+            return Ok(octets.map(|o| Image { type_contenu: type_image(&o), octets: o }));
+        }
         // Un jeu de la ludothèque du PC : sa jaquette est sur le disque (hors ligne).
         if let Some(octets) = self.jaquette_locale(id, largeur) {
             return Ok(Some(Image { type_contenu: type_image(&octets), octets }));

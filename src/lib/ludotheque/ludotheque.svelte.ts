@@ -22,6 +22,9 @@ export const ludo = $state<{
   plateforme: string | null;
   texte: string;
   genre: string | null;
+  /** Filtre de la ludothèque : une boutique (lot 9), installé ou non. */
+  boutique: string | null;
+  installe: boolean | null;
   jeux: JeuResume[];
   total: number;
   /** Nombre de jeux de l'espace, sans filtre. */
@@ -37,6 +40,8 @@ export const ludo = $state<{
   plateforme: null,
   texte: '',
   genre: null,
+  boutique: null,
+  installe: null,
   jeux: [],
   total: 0,
   totalLudotheque: 0,
@@ -56,6 +61,8 @@ export function viderLudotheque() {
     plateforme: null,
     texte: '',
     genre: null,
+    boutique: null,
+    installe: null,
     jeux: [],
     total: 0,
     totalLudotheque: 0,
@@ -75,6 +82,8 @@ function filtre(decalage: number) {
     limite: TAILLE_LOT,
     decalage,
     ludotheque: locale(),
+    boutique: locale() ? ludo.boutique : null,
+    installe: locale() ? ludo.installe : null,
   };
 }
 

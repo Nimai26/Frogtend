@@ -2,6 +2,7 @@
   // La grille des jaquettes. Un clic (ou Entrée) sélectionne un jeu ; les flèches se déplacent dans la grille ;
   // le reste de la liste se charge en arrivant en bas.
   import { goto } from '$app/navigation';
+  import { estJeuDeBoutique, ouvrirJeuDeBoutique } from '$lib/boutiques/jeu-boutique';
   import type { JeuResume } from '$lib/api';
   import { etat } from '$lib/etat.svelte';
   import Jaquette from './Jaquette.svelte';
@@ -100,7 +101,7 @@
             class:selectionnee={ludo.selection?.id === j.id}
             aria-pressed={ludo.selection?.id === j.id}
             onclick={() => (ludo.selection = j)}
-            ondblclick={() => goto(`/jeu/${j.id}`)}
+            ondblclick={() => (estJeuDeBoutique(j) ? ouvrirJeuDeBoutique(j) : goto(`/jeu/${j.id}`))}
             onfocus={() => (ludo.selection = j)}
             onkeydown={(e) => surTouche(e, i)}
           >

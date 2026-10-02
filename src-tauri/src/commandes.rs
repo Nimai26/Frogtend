@@ -698,6 +698,7 @@ pub async fn boutique_steam_regler(noyau: State<'_, Noyau>, compte: String, cle:
 pub async fn boutique_steam_oublier(noyau: State<'_, Noyau>) -> Resultat<()> {
     let p = profil_ouvert(&noyau).await?;
     noyau.coffre.oublier(&crate::boutiques::nom_secret(&p.id, "steam"))?;
+    noyau.ranger_boutique("steam", &[]).await?;
     crate::boutiques::ecrire(&dossier_profil_de(&noyau, &p.id), None)
 }
 
@@ -727,7 +728,10 @@ pub async fn boutique_steam_importer(noyau: State<'_, Noyau>) -> Resultat<Vec<cr
     c.maj_le = crate::noyau::maintenant();
     crate::boutiques::ecrire(&dossier, Some(&c))?;
     noyau.journaliser(&format!("import Steam : {} jeu(x) pour le profil {}", c.jeux.len(), p.id));
-    boutique_steam_jeux(noyau).await
+    let jeux = boutique_steam_jeux(noyau.clone()).await?;
+    // Dans la ludothèque, avec les autres jeux (plateforme Windows).
+    noyau.ranger_boutique("steam", &jeux).await?;
+    Ok(jeux)
 }
 
 /// GOG Galaxy sur ce PC, et ce qui en a été importé pour le profil.
@@ -772,6 +776,7 @@ pub async fn boutique_galaxy_importer(noyau: State<'_, Noyau>) -> Resultat<Vec<c
     let c = crate::boutiques::CompteBoutique { compte: "GOG Galaxy".into(), steamid: String::new(), maj_le: crate::noyau::maintenant(), jeux };
     crate::boutiques::ecrire_source(&dossier_profil_de(&noyau, &p.id), "galaxy", Some(&c))?;
     noyau.journaliser(&format!("import GOG Galaxy : {} jeu(x) pour le profil {}", c.jeux.len(), p.id));
+    noyau.ranger_boutique("galaxy", &c.jeux).await?;
     Ok(c.jeux)
 }
 

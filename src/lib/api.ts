@@ -31,6 +31,13 @@ export interface JeuResume {
   jaquette_empreinte?: string | null;
   /** Nombre de versions rangées dans Firehouse. */
   versions?: number | null;
+  // Jeux des boutiques de la personne (lot 9 : id négatif, plateforme « Windows »).
+  source?: 'steam' | 'galaxy';
+  boutique?: string;
+  cle_boutique?: string;
+  installe?: boolean;
+  image?: string | null;
+  minutes?: number;
 }
 
 export interface Liste {
@@ -181,6 +188,10 @@ export interface Filtre {
   ludotheque?: boolean;
   limite?: number;
   decalage?: number;
+  /** Une boutique (`steam`, `gog`, `epic`…, ou `firehouse`). */
+  boutique?: string | null;
+  /** Installé sur ce PC (vrai) ou pas (faux). */
+  installe?: boolean | null;
 }
 
 export interface FichierVersion {
