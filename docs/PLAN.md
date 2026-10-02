@@ -557,6 +557,29 @@ import (réglage demandé d'abord s'il manque), liste filtrable, installés sur 
 quoi changer. Supprimer un profil retire aussi sa clé Steam. **0.21.0** : jaquettes officielles de Steam (protocole `boutique://`, cache sur ce PC), grille, et section Steam dans
 Taodbox. **Reste** : mêler ces jeux à la ludothèque principale, puis Epic, GOG, Amazon, EA, Ubisoft, Xbox (étude de LaunchBox d'abord), et les jeux gratuits.
 
+### Prochains lots (décisions de Seb, 02/10)
+
+**A. Les fichiers du disque rejoindront Firehouse.** Les jeux trouvés par les imports locaux (ROM, MAME, DOS…) vont
+probablement entrer dans le stock TÉLÉCHARGEABLE de Firehouse, avec même des **packs téléchargeables** (par exemple
+une saga entière). Conséquences pour Frogtend :
+- un jeu importé du disque et le même jeu chez Firehouse doivent pouvoir se **rapprocher** (même jeu, même version :
+  plateforme + nom de fichier officiel / empreinte), sans doublon dans la ludothèque ;
+- prévoir l'affichage et le téléchargement d'un **pack** (plusieurs jeux d'un coup : annoncer le nombre, les Go et la
+  durée avant, comme toute opération de masse) — contrat à demander à Firehouse quand il sera prêt.
+
+**B. Les succès, partout où c'est possible** : Steam, Epic, et **RetroAchievements** pour l'émulation.
+- Dans la fiche d'un jeu : dire si la **version choisie** (la ROM, son empreinte) est **compatible RetroAchievements** ;
+  sinon, quelle version l'est et **la demander** à Firehouse si elle y est disponible, ou **indiquer la version
+  compatible comme manquante** si Firehouse ne l'a pas.
+- À étudier d'abord (documentation officielle) : l'API de RetroAchievements (compte et clé de la personne, dans le
+  coffre ; liste des empreintes reconnues par jeu), les succès Steam (API Web, clé déjà réglée par profil), Epic.
+
+**C. Une fiche par jeu et par système, plusieurs versions de ROM.** Sur un même système, un jeu = UNE fiche ; ses
+ROM (régions, révisions) en sont les **versions**, présentées dans cet **ordre de préférence : fr, puis eu, puis us
+ou en, puis les autres**. Conséquence : l'import local (0.27.0) crée aujourd'hui une ligne par fichier ; il faudra
+**regrouper** les versions d'un même jeu (titre nettoyé + système) sous une seule fiche, la version préférée étant
+lancée par défaut, les autres au choix (« Jouer avec… »).
+
 ## Personnalisation (« beaucoup d'éléments modifiables »)
 
 Les couleurs appartiennent aux skins : on ne crée jamais de couleur hors de ceux de Firehouse. Tout le reste se règle
