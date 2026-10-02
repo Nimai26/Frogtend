@@ -17,6 +17,21 @@
 > - « C: » dans DOSBox = le lecteur VIRTUEL de DOSBox, monté sur le dossier du jeu ; jamais le C:\ de Windows.
 > Avant d'écrire où que ce soit : est-ce dans le dossier du jeu, ou dans un dossier défini dans les réglages ? Sinon,
 > on ne l'écrit pas.
+>
+> **Décisions de Seb (02/10) pour l'appliquer :**
+> 1. Jeu Firehouse installé : tout ce que Frogtend ajoute va dans **`<dossier du jeu>\Frogtend\`** (`medias\`,
+>    `mods\`, `triches\`), séparé des fichiers du jeu. Les médias de jeux déjà installés sont migrés (copie
+>    vérifiée, puis l'ancienne copie de `%APPDATA%` retirée).
+> 2. Import de ROM : **la personne choisit** — les **laisser où elles sont** (le dossier est alors **ajouté
+>    automatiquement aux sources (emplacements) du système** dans les réglages) ou les **copier** dans l'emplacement
+>    du système (taille et place annoncées ; jamais déplacées : rien ne s'efface). Leurs médias vont dans
+>    `<source>\Frogtend\<titre>\`.
+> 3. Les **abris de parties** (copie avant retrait d'un jeu) vont dans un **nouveau réglage « dossier des abris »**
+>    (⚙ Options ▸ Emplacements) ; ceux déjà dans `%APPDATA%\Frogtend\sauvegardes` sont migrés (copie vérifiée).
+> 4. **Cheat Engine et les outils** (trainers, gestionnaires de mods…) vont dans un **nouveau réglage « dossier des
+>    outils »**, séparé du dossier des émulateurs.
+> Restent dans `%APPDATA%\Frogtend` : les données de Frogtend LUI-MÊME (profils, réglages, caches du catalogue et
+> des skins, connexions des boutiques par profil, références de manettes) — rien qui appartienne à un jeu.
 
 - **Pile : Tauri 2.** Cœur en Rust (processus, fichiers, téléchargements, coffre Windows) et interface en
   **Svelte 5 + Vite + TypeScript**.
