@@ -39,8 +39,8 @@
 > et CHD MAME compris, place vérifiée, jamais par-dessus, originaux gardés). Les triches des émulateurs restent dans le
 > dossier de l'émulateur (dossier des émulateurs : c'est là qu'ils les lisent).
 > ⚠ Trouvé chez Seb (lecture seule, 02/10) : `%APPDATA%\com.frogtend.app` (8 Mo) et `com.frogtend.appmedia` (**3,1 Go**
-> de packs de médias NES EmuMovies), datés de **mars 2026** : un ancien essai, pas le Frogtend actuel. **Rien n'est
-> effacé** : à Seb de dire.
+> de packs de médias NES EmuMovies), datés de **mars 2026** : un ancien essai, pas le Frogtend actuel. **Supprimés à la
+> demande de Seb (02/10)**, après vérification (aucun programme ouvert dessus ; 15 fichiers, 3,3 Go).
 > Restent dans `%APPDATA%\Frogtend` : les données de Frogtend LUI-MÊME (profils, réglages, caches du catalogue et
 > des skins, connexions des boutiques par profil, références de manettes) — rien qui appartienne à un jeu.
 

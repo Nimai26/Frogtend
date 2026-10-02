@@ -30,8 +30,8 @@
 - [ ] 📥 Importer ▸ Fichiers ROM, sur un petit dossier : **« Les laisser où ils sont »** → le dossier apparaît dans
       Emplacements, sous le système ; refais avec **« Les copier »** → copie dans l'emplacement du système, originaux
       intacts.
-- [ ] Dis-moi ce qu'on fait de `%APPDATA%\com.frogtend.app` et `com.frogtend.appmedia` (3,1 Go, ancien essai de
-      mars 2026) : je n'y ai pas touché.
+- [x] `%APPDATA%\com.frogtend.app` et `com.frogtend.appmedia` (ancien essai de mars 2026, 3,3 Go) : supprimés à ta
+      demande le 02/10.
 
 ## Installer un jeu DOS (0.29.0)
 - [ ] Il faut un DOSBox réglé pour MS-DOS (⚙ Options ▸ Émulateurs).
@@ -108,7 +108,8 @@
 - [ ] **🧰 Lancer Cheat Engine**, change un réglage (thème, raccourci), ferme-le. **Attendu :** la clé
       `HKCUSoftwareCheat Engine` n'est plus dans le registre ; tes réglages sont dans
       `<dossier Cheat Engine>Profils<toi>cheatengine.reg` ; la clé d'avant Frogtend est dans
-      `.frogtend-sauvegardesegistre-avant-frogtend.reg`.
+      `.frogtend-sauvegardes
+egistre-avant-frogtend.reg`.
 - [ ] Relance-le : **tes réglages reviennent**. Un autre profil : les siens (vierges au début).
 - [ ] **Jeu lancé** (Dune par exemple) ▸ Pause/Attn ▸ **🧰 Cheat Engine** (ou 🎯 Triches et mods ▸ **🧰 Brancher
       Cheat Engine sur le jeu**). **Attendu :** Cheat Engine s'ouvre DÉJÀ branché sur le jeu (son nom en haut), sans
