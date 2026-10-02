@@ -74,6 +74,10 @@ export interface ReglagesProfil {
     auto: boolean;
     /** Dernière vérification automatique (secondes depuis 1970). */
     derniere: number;
+    /** PS Plus (optionnel, demande de Seb) : ajouter tout seul les jeux du mois à mon compte PlayStation. */
+    psplus: boolean;
+    /** Dernier passage automatique sur PS Plus (secondes depuis 1970). */
+    psplusDernier: number;
   };
   /** Les commandes choisies jeu par jeu (identifiant du jeu → choix). Absent : automatique. */
   commandes: Record<string, CommandesJeu>;
@@ -99,7 +103,7 @@ export const DEFAUTS_PROFIL: ReglagesProfil = {
     panneauDetails: true,
     plateformesMasquees: [],
   },
-  gratuits: { auto: false, derniere: 0 },
+  gratuits: { auto: false, derniere: 0, psplus: false, psplusDernier: 0 },
   commandes: {},
 };
 

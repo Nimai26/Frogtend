@@ -319,6 +319,12 @@ export interface JeuBoutique {
   image?: string | null;
 }
 
+/** Le bilan d'un passage sur les jeux PS Plus du mois. */
+export type RecoltePsPlus =
+  | { etat: 'faite'; ajoutes: number; deja: number; vus: number }
+  | { etat: 'connexion' }
+  | { etat: 'erreur'; motif: string };
+
 /** Un jeu offert en ce moment (lot 9). */
 export interface JeuOffert {
   boutique: string;
@@ -446,6 +452,8 @@ export const api = {
     appeler<InstallationFirehouse>('emulateur_installer_firehouse', { id, nom, dossier }),
   gratuitsListe: () => appeler<JeuOffert[]>('gratuits_liste'),
   gratuitsConnexionEpic: () => appeler<void>('gratuits_connexion_epic'),
+  gratuitsConnexionPlaystation: () => appeler<void>('gratuits_connexion_playstation'),
+  gratuitsPsPlus: () => appeler<RecoltePsPlus>('gratuits_psplus'),
   gratuitsObtenirEpic: (slug: string) => appeler<{ etat: string; motif?: string }>('gratuits_obtenir_epic', { slug }),
   galaxyEtat: () => appeler<{ galaxy_installe: boolean; nb_jeux: number; maj_le: string | null }>('boutique_galaxy_etat'),
   galaxyJeux: () => appeler<JeuBoutique[]>('boutique_galaxy_jeux'),

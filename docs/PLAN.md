@@ -483,6 +483,13 @@ n'est pas publique en clair (pages du Store construites dans le navigateur ; la 
 whats-new/ ne donne qu'une partie des liens). Donc : connexion Sony par profil (page officielle, navigateur propre au
 profil), fenêtre cachée sur le Store connecté qui lit les jeux du mois et clique « Ajouter à la bibliothèque » ;
 repli : la page s'affiche. Les sélecteurs se règlent AVEC Seb connecté (un compte membre est indispensable).
+**✅ 0.26.0 (à essayer avec Seb)** : 🛒 Boutiques ▸ 🎁 Jeux offerts ▸ 🎮 PlayStation Plus : « 🔑 Se connecter à
+PlayStation » (Store officiel, navigateur du profil), « 🎮 Ajouter les jeux du mois » (fenêtre cachée sur la catégorie
+PS Plus, 30 jeux au plus, script `ressources/gratuits/psplus.js` : UN SEUL clic possible, sur « Ajouter à la
+bibliothèque », vérifié par un test), case « J'ai PS Plus » par profil (désactivée par défaut, une fois par semaine).
+Rien dans la ludothèque. Incertain tant que pas essayé : que la catégorie relevée soit bien celle des jeux du mois (elle
+peut contenir aussi des jeux du catalogue Extra/Premium : les ajouter est sans risque) et les libellés exacts des
+boutons pour un membre connecté.
 
 **Menu « Importer » comme LaunchBox (Seb, 02/10, capture)** : la MÊME liste : Fichiers ROM (sous-menu), Jeux MS-DOS,
 MAME Arcade Full Set, Amazon Games, EA, Jeux Epic Games, Jeux GOG, Jeux Steam, Uplay/Ubisoft Connect, Jeux Windows,

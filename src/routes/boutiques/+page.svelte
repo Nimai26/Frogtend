@@ -4,7 +4,7 @@
   import { onMount } from 'svelte';
   import { adresseImageBoutique, adresseImageParUrl, duree, type JeuBoutique } from '$lib/api';
   import { galaxy, importerGalaxy, lireGalaxy, nomPlateforme, ouvrirDansGalaxy } from '$lib/boutiques/galaxy.svelte';
-  import { connexionEpic, gratuits, lireGratuits, obtenir, obtenirTout } from '$lib/boutiques/gratuits.svelte';
+  import { connexionEpic, connexionPlaystation, gratuits, lireGratuits, obtenir, obtenirTout, recolterPsPlus } from '$lib/boutiques/gratuits.svelte';
   import { etat, reglerProfil } from '$lib/etat.svelte';
   import { importerSteam, lireSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
 
@@ -78,6 +78,24 @@
     {:else}
       <p class="muted">Aucun jeu offert lu pour l’instant (connexion à Internet ?).</p>
     {/if}
+
+    <div class="tete psplus">
+      <h3>🎮 PlayStation Plus</h3>
+      <span class="muted">les jeux du mois, ajoutés à ton compte PlayStation (pas à la ludothèque)</span>
+      <span class="espace"></span>
+      <button class="btn" onclick={connexionPlaystation}>🔑 Se connecter à PlayStation</button>
+      <button class="btn primary" onclick={() => recolterPsPlus()} disabled={gratuits.psplusEnCours}>
+        {gratuits.psplusEnCours ? 'En cours… (quelques minutes)' : '🎮 Ajouter les jeux du mois'}
+      </button>
+    </div>
+    <label class="auto">
+      <input
+        type="checkbox"
+        checked={etat.profil.gratuits.psplus}
+        onchange={(e) => reglerProfil('gratuits.psplus', e.currentTarget.checked)}
+      />
+      J’ai PS Plus : les ajouter tout seul (une fois par semaine, à l’ouverture de mon profil). Frogtend ne clique que sur « Ajouter à la bibliothèque » : il ne peut rien acheter.
+    </label>
   </section>
 
   <section class="cx-block">
@@ -200,6 +218,12 @@
   }
   .offerts .carte {
     cursor: default;
+  }
+  .psplus {
+    margin-top: calc(14 * var(--u));
+  }
+  .psplus h3 {
+    margin: 0;
   }
   .grille {
     display: grid;

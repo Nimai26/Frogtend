@@ -21,6 +21,14 @@
       **Citron Neo** s'installe tout seul (vérifié par son empreinte). **Ryubing** : sa source ne répond pas, Frogtend
       propose d'ouvrir sa page officielle.
 
+## PlayStation Plus : les jeux du mois (0.26.0)
+- [ ] 🛒 Boutiques ▸ 🎁 ▸ **🔑 Se connecter à PlayStation** : clique « Se connecter » en haut du Store, connecte-toi,
+      ferme la fenêtre.
+- [ ] **🎮 Ajouter les jeux du mois** (quelques minutes, sans fenêtre). **Attendu :** « N jeu(x) ajouté(s) » ou « déjà
+      dans ta bibliothèque ». Vérifie sur ta PS5 / l'appli PlayStation que les jeux du mois y sont. Si la fenêtre du
+      Store s'ouvre à la place, dis-moi ce qu'elle montre (c'est là qu'on règle le script ensemble).
+- [ ] Coche « J'ai PS Plus » si tu veux que ça se fasse tout seul chaque semaine.
+
 ## Menu « Importer » (0.25.0)
 - [ ] Barre du haut ▸ **📥 Importer ▾** : la même liste que LaunchBox. Les jeux locaux sont marqués « prochain lot ».
 - [ ] **Jeux Epic Games** (puis Amazon, EA, Ubisoft, Xbox) : l'explication GOG Galaxy, et le nombre de jeux lus pour

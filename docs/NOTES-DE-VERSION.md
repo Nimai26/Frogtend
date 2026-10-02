@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.26.0 — les jeux PS Plus du mois, sans les oublier
+
+- **🛒 Boutiques ▸ 🎁 Jeux offerts ▸ 🎮 PlayStation Plus** : connecte-toi une fois au PlayStation Store (chaque
+  profil a sa connexion ; Frogtend ne voit jamais ton mot de passe), puis « Ajouter les jeux du mois ».
+- Frogtend parcourt les jeux PS Plus sans fenêtre et ne clique que sur « Ajouter à la bibliothèque » : il ne peut rien
+  acheter. Les jeux vont dans ta bibliothèque PlayStation, pas dans la ludothèque de Frogtend.
+- Case **« J'ai PS Plus »** (désactivée par défaut) : une fois par semaine, à l'ouverture de ton profil.
+- Première version : à régler avec toi au premier essai.
+
 ## 0.25.0 — le menu « Importer », comme LaunchBox
 
 - **📥 Importer ▾** dans la barre du haut : la même liste que LaunchBox (Fichiers ROM, MS-DOS, MAME, Amazon, EA,

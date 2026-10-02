@@ -9,6 +9,11 @@
 //! - obtention : la page officielle `store.epicgames.com/en-US/p/<slug>` dans une fenêtre de Frogtend (stockage du
 //!   navigateur PROPRE AU PROFIL : chacun son compte Epic), et le script `ressources/gratuits/epic.js`, qui rend son
 //!   résultat par le titre de la page. Méthode inspirée de vogler/free-games-claimer (AGPL : rien n'est copié).
+//!
+//! **PlayStation Plus** (demande de Seb, 02/10 : optionnel par profil, jamais dans la ludothèque) : la liste des jeux
+//! du mois n'est lisible que sur le Store connecté. La page de la catégorie PS Plus s'ouvre CACHÉE (connexion Sony
+//! propre au profil), le script `ressources/gratuits/psplus.js` visite chaque jeu et ne clique QUE sur « Ajouter à la
+//! bibliothèque » (il ne peut rien acheter).
 
 use crate::erreurs::{Erreur, Resultat};
 use serde::{Deserialize, Serialize};
@@ -16,6 +21,11 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 pub const SCRIPT_EPIC: &str = include_str!("../ressources/gratuits/epic.js");
+pub const SCRIPT_PSPLUS: &str = include_str!("../ressources/gratuits/psplus.js");
+/// La catégorie « nouveautés PS Plus » du Store (lien de la page officielle playstation.com/fr-fr/ps-plus/whats-new/,
+/// relevé le 02/10).
+pub const PAGE_PSPLUS: &str = "https://store.playstation.com/fr-fr/category/b3915b25-f581-43dd-95dd-a4ec50dbabe6/1";
+pub const CONNEXION_PLAYSTATION: &str = "https://store.playstation.com/fr-fr/pages/latest";
 pub const LISTE_EPIC: &str = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions?locale=en-US&country=FR&allowCountries=FR";
 
 /// Un jeu offert en ce moment.
@@ -123,6 +133,29 @@ pub fn lire_titre(titre: &str) -> Option<Obtention> {
     })
 }
 
+/// Le bilan d'un passage sur les jeux PS Plus.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(tag = "etat", rename_all = "snake_case")]
+pub enum RecoltePsPlus {
+    Faite { ajoutes: u32, deja: u32, vus: u32 },
+    Connexion,
+    Erreur { motif: String },
+}
+
+pub fn lire_titre_psplus(titre: &str) -> Option<RecoltePsPlus> {
+    let r = titre.strip_prefix("FROGTEND:")?;
+    if r == "CONNEXION" {
+        return Some(RecoltePsPlus::Connexion);
+    }
+    if let Some(n) = r.strip_prefix("PSPLUS:") {
+        let v: Vec<u32> = n.split(':').filter_map(|x| x.parse().ok()).collect();
+        if let [ajoutes, deja, vus] = v[..] {
+            return Some(RecoltePsPlus::Faite { ajoutes, deja, vus });
+        }
+    }
+    Some(RecoltePsPlus::Erreur { motif: r.strip_prefix("ERREUR:").unwrap_or(r).to_string() })
+}
+
 /// Le dossier du navigateur d'un profil pour les boutiques (sa connexion Epic y reste).
 pub fn dossier_navigateur(dossier_profil: &Path) -> PathBuf {
     dossier_profil.join("navigateur")
@@ -179,6 +212,24 @@ mod tests {
         assert_eq!(lire_titre("FROGTEND:ERREUR:délai dépassé"), Some(Obtention::Erreur("délai dépassé".into())));
         assert_eq!(lire_titre("Epic Games Store"), None);
         assert!(SCRIPT_EPIC.contains("purchase-cta-button") && SCRIPT_EPIC.contains("FROGTEND:"));
+    }
+
+    #[test]
+    fn le_bilan_ps_plus_se_lit_dans_le_titre() {
+        assert_eq!(lire_titre_psplus("FROGTEND:PSPLUS:2:3:7"), Some(RecoltePsPlus::Faite { ajoutes: 2, deja: 3, vus: 7 }));
+        assert_eq!(lire_titre_psplus("FROGTEND:CONNEXION"), Some(RecoltePsPlus::Connexion));
+        assert_eq!(lire_titre_psplus("FROGTEND:ERREUR:délai dépassé"), Some(RecoltePsPlus::Erreur { motif: "délai dépassé".into() }));
+        assert_eq!(lire_titre_psplus("FROGTEND:PSPLUS:x"), Some(RecoltePsPlus::Erreur { motif: "PSPLUS:x".into() }));
+        assert_eq!(lire_titre_psplus("PlayStation Store"), None);
+    }
+
+    #[test]
+    fn le_script_ps_plus_ne_peut_rien_acheter() {
+        // Un seul clic dans tout le script, sur « Ajouter à la bibliothèque », et seulement sur le Store officiel.
+        assert!(SCRIPT_PSPLUS.contains("location.hostname !== 'store.playstation.com'"));
+        assert_eq!(SCRIPT_PSPLUS.matches(".click()").count(), 1);
+        assert!(SCRIPT_PSPLUS.replace("\r\n", "\n").contains("if (bouton && estAjout(bouton)) {\n        bouton.click();"));
+        assert!(PAGE_PSPLUS.starts_with("https://store.playstation.com/"));
     }
 
     #[test]

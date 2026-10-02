@@ -843,6 +843,77 @@ pub async fn gratuits_obtenir_epic(app: AppHandle, noyau: State<'_, Noyau>, slug
     Ok(r)
 }
 
+const FENETRE_PLAYSTATION: &str = "boutique-playstation";
+
+/// Se connecter à PlayStation, une fois : le Store officiel s'ouvre (« Se connecter » en haut) ; la connexion reste
+/// dans le navigateur PROPRE AU PROFIL ; Frogtend ne voit jamais le mot de passe.
+#[tauri::command]
+pub async fn gratuits_connexion_playstation(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<()> {
+    let p = profil_ouvert(&noyau).await?;
+    if let Some(w) = app.get_webview_window(FENETRE_PLAYSTATION) {
+        let _ = w.close();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+    let url = tauri::Url::parse(crate::gratuits::CONNEXION_PLAYSTATION).map_err(|_| Erreur::Refus("Adresse PlayStation invalide.".into()))?;
+    let w = tauri::WebviewWindowBuilder::new(&app, FENETRE_PLAYSTATION, tauri::WebviewUrl::External(url))
+        .title("PlayStation Store — Frogtend")
+        .inner_size(1100.0, 800.0)
+        .center()
+        .data_directory(crate::gratuits::dossier_navigateur(&dossier_profil_de(&noyau, &p.id)))
+        .build()
+        .map_err(|e| Erreur::Disque(format!("La fenêtre de PlayStation ne s'ouvre pas ({e}).")))?;
+    let _ = w.set_focus();
+    Ok(())
+}
+
+/// Ajouter les jeux PS Plus du mois à la bibliothèque PlayStation du profil : le Store s'ouvre CACHÉ, le script ne
+/// clique que sur « Ajouter à la bibliothèque ». S'il faut se connecter ou si ça bloque, la fenêtre s'affiche.
+/// Rien n'entre dans la ludothèque de Frogtend (décision de Seb).
+#[tauri::command]
+pub async fn gratuits_psplus(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<crate::gratuits::RecoltePsPlus> {
+    use crate::gratuits::RecoltePsPlus;
+    let p = profil_ouvert(&noyau).await?;
+    let dossier = dossier_profil_de(&noyau, &p.id);
+    let (envoi, reception) = std::sync::mpsc::channel::<RecoltePsPlus>();
+    let envoi = std::sync::Mutex::new(envoi);
+    if let Some(w) = app.get_webview_window(FENETRE_PLAYSTATION) {
+        let _ = w.close();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+    let url = tauri::Url::parse(crate::gratuits::PAGE_PSPLUS).map_err(|_| Erreur::Refus("Adresse PlayStation invalide.".into()))?;
+    let w = tauri::WebviewWindowBuilder::new(&app, FENETRE_PLAYSTATION, tauri::WebviewUrl::External(url))
+        .title("PlayStation Store — Frogtend")
+        .inner_size(1100.0, 800.0)
+        .center()
+        .visible(false)
+        .data_directory(crate::gratuits::dossier_navigateur(&dossier))
+        .on_page_load(|w, charge| {
+            if matches!(charge.event(), tauri::webview::PageLoadEvent::Finished) {
+                let _ = w.eval(crate::gratuits::SCRIPT_PSPLUS);
+            }
+        })
+        .on_document_title_changed(move |_, titre| {
+            if let Some(r) = crate::gratuits::lire_titre_psplus(&titre) {
+                let _ = envoi.lock().map(|e| e.send(r));
+            }
+        })
+        .build()
+        .map_err(|e| Erreur::Disque(format!("La fenêtre de PlayStation ne s'ouvre pas ({e}).")))?;
+    // Jusqu'à 30 jeux visités, quelques secondes chacun.
+    let r = tauri::async_runtime::spawn_blocking(move || reception.recv_timeout(std::time::Duration::from_secs(600)))
+        .await
+        .map_err(|_| Erreur::Disque("L'attente s'est arrêtée brutalement.".into()))?
+        .unwrap_or(RecoltePsPlus::Erreur { motif: "aucune réponse du Store (délai dépassé)".into() });
+    if matches!(r, RecoltePsPlus::Faite { .. }) {
+        let _ = w.close();
+    } else {
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+    noyau.journaliser(&format!("jeux PS Plus : {r:?}"));
+    Ok(r)
+}
+
 /// GOG Galaxy sur ce PC, et ce qui en a été importé pour le profil.
 #[derive(Serialize)]
 pub struct EtatGalaxy {

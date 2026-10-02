@@ -263,6 +263,8 @@ pub fn run() {
             commandes::gratuits_liste,
             commandes::gratuits_connexion_epic,
             commandes::gratuits_obtenir_epic,
+            commandes::gratuits_connexion_playstation,
+            commandes::gratuits_psplus,
             commandes::boutique_galaxy_etat,
             commandes::boutique_galaxy_jeux,
             commandes::boutique_galaxy_importer,
