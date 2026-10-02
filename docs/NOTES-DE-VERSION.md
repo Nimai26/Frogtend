@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.18.0 — Cheat Engine, chacun ses réglages
+
+- **🧰 Cheat Engine** (🎯 Triches et mods, sur la fiche d'un jeu) : Frogtend l'installe depuis Firehouse (la version
+  propre préparée par Seb, sans logiciels en plus) et le lance.
+- **Chacun ses réglages** : Cheat Engine range les siens dans le registre de Windows. Frogtend remet ceux de TON profil
+  avant de le lancer et les range dans ton profil quand il se ferme : le registre reste propre, et rien n'est jamais
+  retiré sans copie (la clé d'avant Frogtend est gardée à part).
+
 ## 0.17.1 — avec les vraies données de Firehouse
 
 - Les **triches, mods** et **émulateurs décrits par Firehouse** fonctionnent avec ses routes, en service depuis

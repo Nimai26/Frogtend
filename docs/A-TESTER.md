@@ -17,6 +17,14 @@
       **Citron Neo** s'installe tout seul (vérifié par son empreinte). **Ryubing** : sa source ne répond pas, Frogtend
       propose d'ouvrir sa page officielle.
 
+## Cheat Engine (0.18.0) — quand ton zip sera sur Firehouse
+- [ ] Fiche d'un jeu PC ▸ 🎯 Triches et mods ▸ **⬇ Installer Cheat Engine**. **Attendu :** installé depuis Firehouse.
+- [ ] **🧰 Lancer Cheat Engine**, change un réglage (thème, raccourci), ferme-le. **Attendu :** la clé
+      `HKCUSoftwareCheat Engine` n'est plus dans le registre ; tes réglages sont dans
+      `<dossier Cheat Engine>Profils<toi>cheatengine.reg` ; la clé d'avant Frogtend est dans
+      `.frogtend-sauvegardesegistre-avant-frogtend.reg`.
+- [ ] Relance-le : **tes réglages reviennent**. Un autre profil : les siens (vierges au début).
+
 ## Taodbox, le mode canapé (0.16.0)
 - [ ] Barre du haut ▸ **🛋 Taodbox**. **Attendu :** plein écran, tout en grand, tes jeux en grandes jaquettes.
 - [ ] Une manette branchée : la **croix** (ou le stick) déplace le cadre de sélection, **A** lance le jeu, **B**

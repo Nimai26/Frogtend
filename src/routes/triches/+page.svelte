@@ -6,6 +6,7 @@
   import { page } from '$app/state';
   import { api, taille, type TrichesJeu } from '$lib/api';
   import { pourLeJeu } from '$lib/emulateurs/choix';
+  import { installerParFirehouse } from '$lib/emulateurs/assistant.svelte';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { etat } from '$lib/etat.svelte';
@@ -31,6 +32,30 @@
     idEmulateur = null;
     if (prog) api.emulateursInstalles().then((l) => (idEmulateur = l.find((e) => e.programme.toLowerCase() === prog)?.id ?? null)).catch(() => {});
   });
+  /** Cheat Engine sur ce PC (fourni par Firehouse, id « cheatengine »). */
+  let cheatEngine = $state<string | null>(null);
+  async function chercherCheatEngine() {
+    const l = await api.emulateursInstalles().catch(() => []);
+    cheatEngine = l.find((e) => e.id === 'cheatengine')?.programme ?? null;
+  }
+  $effect(() => {
+    chercherCheatEngine();
+  });
+
+  async function lancerCheatEngine() {
+    if (!cheatEngine) {
+      const e = await installerParFirehouse('cheatengine', 'Cheat Engine');
+      if (!e) return;
+      cheatEngine = e.programme;
+    }
+    try {
+      await api.cheatengineLancer(cheatEngine);
+      toast('🧰 Cheat Engine démarre, avec tes réglages à toi. Ils seront rangés dans ton profil à sa fermeture.');
+    } catch (e) {
+      toast(`Impossible de lancer Cheat Engine : ${motifDuRefus(e)}`, 'erreur');
+    }
+  }
+
   const codes = $derived((t?.codes ?? []).filter((c) => !idEmulateur || c.emulateur === idEmulateur));
 
   async function poser(c: TrichesJeu['codes'][number]) {
@@ -110,6 +135,7 @@
   {:else if !t.codes.length && !t.cheat_engine.length && !t.mods.length && !t.page_mods}
     <p class="muted">Firehouse ne connaît encore ni codes ni mods pour ce jeu.</p>
     {#if t.note}<p class="muted">ℹ {t.note}</p>{/if}
+    <button class="btn petit" onclick={lancerCheatEngine}>{cheatEngine ? '🧰 Lancer Cheat Engine' : '⬇ Installer Cheat Engine'}</button>
   {:else}
     {#if t.note}<p class="muted">ℹ {t.note}</p>{/if}
     <section class="cx-block">
@@ -128,6 +154,12 @@
           {/each}
         </ul>
       {/if}
+    </section>
+
+    <section class="cx-block">
+      <h2>Cheat Engine</h2>
+      <p class="muted">Pour les jeux PC : modifier des valeurs en mémoire. Fourni par Firehouse, sans logiciels en plus ; chaque profil garde ses réglages.</p>
+      <button class="btn petit" onclick={lancerCheatEngine}>{cheatEngine ? '🧰 Lancer Cheat Engine' : '⬇ Installer Cheat Engine'}</button>
     </section>
 
     {#if t.cheat_engine.length}

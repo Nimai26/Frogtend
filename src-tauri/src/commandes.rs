@@ -627,6 +627,39 @@ pub async fn emulateur_installer_firehouse(
     }
 }
 
+/// Lance Cheat Engine pour le profil ouvert (accord de Seb pour le registre, 02/10) : ses réglages du profil sont remis
+/// avant, et rangés dans le dossier du profil quand il se ferme (tous ses processus, lanceur compris).
+#[tauri::command]
+pub async fn cheatengine_lancer(noyau: State<'_, Noyau>, programme: String, table: Option<String>) -> Resultat<()> {
+    let p = std::path::PathBuf::from(&programme);
+    let nom = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
+    if !p.is_file() || !nom.starts_with("cheatengine") && !nom.starts_with("cheat engine") {
+        return Err(Erreur::Refus("Ce n'est pas le programme de Cheat Engine.".into()));
+    }
+    let dossier = p.parent().map(std::path::PathBuf::from).unwrap_or_default();
+    let profil = noyau.actif().await.ok_or_else(|| Erreur::Profil("Aucun profil n'est ouvert.".into()))?.nom;
+    let (d, pr) = (dossier.clone(), profil.clone());
+    tauri::async_runtime::spawn_blocking(move || crate::cheatengine::preparer(crate::cheatengine::CLE, &d, &pr))
+        .await
+        .map_err(|_| Erreur::Disque("La préparation s'est arrêtée brutalement.".into()))??;
+    let mut c = std::process::Command::new(&p);
+    c.current_dir(&dossier);
+    if let Some(t) = table.filter(|t| t.to_lowercase().ends_with(".ct") && std::path::Path::new(t).is_file()) {
+        c.arg(t);
+    }
+    let pid = c.spawn().map_err(|e| Erreur::Disque(format!("Cheat Engine ne démarre pas ({e}).")))?.id();
+    noyau.journaliser(&format!("Cheat Engine lancé pour {profil}"));
+    // À sa fermeture (Cheat Engine peut relancer sa version 64 bits : on suit tout ce qui vient de son dossier).
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut s = crate::lancement::Suivi::nouveau(pid, vec![dossier.clone()]);
+        while s.en_cours() {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        }
+        let _ = crate::cheatengine::ranger(crate::cheatengine::CLE, &dossier, &profil);
+    });
+    Ok(())
+}
+
 /// Les triches et mods connus d'un jeu (contrat 13).
 #[tauri::command]
 pub async fn jeu_triches(noyau: State<'_, Noyau>, id: i64) -> Resultat<Value> {

@@ -3,6 +3,7 @@
 //! Règle : les secrets (jeton Firehouse, identifiants des boutiques) restent de ce côté-ci.
 //! L'interface ne les reçoit jamais.
 
+pub mod cheatengine;
 pub mod choix_emulateur;
 pub mod coffre;
 pub mod emulateurs;
@@ -197,6 +198,7 @@ pub fn run() {
             commandes::taodbox_lance,
             commandes::emulateur_installer_firehouse,
             commandes::jeu_triches,
+            commandes::cheatengine_lancer,
             commandes::triche_installer,
             commandes::jeu_taille_installation,
             commandes::jeu_copie_avant_mod,
