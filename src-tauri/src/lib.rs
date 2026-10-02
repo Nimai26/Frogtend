@@ -101,18 +101,56 @@ fn repondre_fond(app: &tauri::AppHandle, chemin: &str) -> tauri::http::Response<
 
 /// `boutique://steam/<appid>` : la jaquette officielle d'un jeu Steam, en cache (images publiques de Steam).
 fn repondre_boutique(app: &tauri::AppHandle, chemin: &str) -> tauri::http::Response<Vec<u8>> {
-    let mut morceaux = chemin.trim_matches('/').split('/');
-    let (Some("steam"), Some(appid)) = (morceaux.next(), morceaux.next()) else { return reponse_vide(404) };
     let cache = app.state::<noyau::Noyau>().dossier.join("images-boutiques");
-    match tauri::async_runtime::block_on(boutiques::image_steam(&cache, appid)) {
+    let mut morceaux = chemin.trim_matches('/').splitn(2, '/');
+    let image = match (morceaux.next(), morceaux.next()) {
+        (Some("steam"), Some(appid)) => tauri::async_runtime::block_on(boutiques::image_steam(&cache, appid)),
+        // « image/<adresse encodée> » : une image publique d'un hôte autorisé (GOG, Steam).
+        (Some("image"), Some(adresse)) => {
+            let url = percent_decode(adresse);
+            tauri::async_runtime::block_on(boutiques::image_par_adresse(&cache, &url))
+        }
+        _ => None,
+    };
+    match image {
         Some(octets) => tauri::http::Response::builder()
             .status(200)
-            .header("Content-Type", "image/jpeg")
+            .header("Content-Type", type_d_image(&octets))
             .header("Cache-Control", "max-age=604800")
             .body(octets)
             .unwrap(),
         None => reponse_vide(404),
     }
+}
+
+/// Le type d'une image d'après ses premiers octets (les boutiques servent du JPEG, du PNG ou du WebP).
+fn type_d_image(o: &[u8]) -> &'static str {
+    if o.starts_with(b"\x89PNG") {
+        "image/png"
+    } else if o.len() > 12 && &o[..4] == b"RIFF" && &o[8..12] == b"WEBP" {
+        "image/webp"
+    } else {
+        "image/jpeg"
+    }
+}
+
+/// Décode « %2F » et compagnie (adresse passée dans le chemin du protocole).
+fn percent_decode(s: &str) -> String {
+    let o = s.as_bytes();
+    let mut v = Vec::with_capacity(o.len());
+    let mut i = 0;
+    while i < o.len() {
+        if o[i] == b'%' && i + 2 < o.len() {
+            if let Ok(b) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                v.push(b);
+                i += 3;
+                continue;
+            }
+        }
+        v.push(o[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&v).into_owned()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -221,6 +259,10 @@ pub fn run() {
             commandes::emulateur_installer_firehouse,
             commandes::jeu_triches,
             commandes::cheatengine_lancer,
+            commandes::boutique_galaxy_etat,
+            commandes::boutique_galaxy_jeux,
+            commandes::boutique_galaxy_importer,
+            commandes::boutique_galaxy_ouvrir,
             commandes::boutique_steam_etat,
             commandes::boutique_steam_regler,
             commandes::boutique_steam_oublier,
@@ -256,6 +298,20 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn le_type_d_image_se_reconnait() {
+        assert_eq!(type_d_image(b"RIFF\x00\x00\x00\x00WEBPVP8 "), "image/webp");
+        assert_eq!(type_d_image(b"\x89PNG\r\n"), "image/png");
+        assert_eq!(type_d_image(b"\xff\xd8\xff"), "image/jpeg");
+    }
+
+    #[test]
+    fn une_adresse_d_image_se_decode() {
+        assert_eq!(percent_decode("https%3A%2F%2Fimages.gog.com%2Fa.webp%3Fnamespace%3Dgamesdb"), "https://images.gog.com/a.webp?namespace=gamesdb");
+        assert_eq!(percent_decode("sans%"), "sans%");
+        assert_eq!(percent_decode("%e9t%C3%A9"), "\u{FFFD}té");
+    }
 
     /// La configuration réelle de l'application, lue comme Tauri la lit.
     fn config_reelle() -> tauri::Config {

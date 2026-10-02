@@ -13,6 +13,8 @@
   import { taodbox } from '$lib/taodbox/manette.svelte';
   import { adresseImageBoutique } from '$lib/api';
   import { lireSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
+  import { galaxy, lireGalaxy, ouvrirDansGalaxy } from '$lib/boutiques/galaxy.svelte';
+  import { adresseImageParUrl } from '$lib/api';
 
   let lanceParSunshine = $state(false);
   let console_ = $state<string | null>(null);
@@ -28,8 +30,12 @@
   /** Les jeux Steam installés sur ce PC, jouables depuis le canapé (Steam les lance). */
   const steamInstalles = $derived(steam.jeux.filter((j) => j.installe));
 
+  /** Les jeux installés lus dans GOG Galaxy (hors Steam, déjà montré à part). */
+  const galaxyInstalles = $derived(galaxy.jeux.filter((j) => j.installe && j.plateforme !== 'steam'));
+
   onMount(async () => {
     lireSteam();
+    lireGalaxy();
     lanceParSunshine = isTauri() ? await api.taodboxLance().catch(() => false) : false;
     await tick();
     document.querySelector<HTMLElement>('.taodbox .carte')?.focus();
@@ -99,6 +105,19 @@
           <span class="image-steam"><img src={adresseImageBoutique('steam', j.id)} alt="" loading="lazy" /></span>
           <span class="titre">{j.nom}</span>
           <span class="etat">Steam</span>
+        </button>
+      {/each}
+    </div>
+  {/if}
+
+  {#if galaxyInstalles.length && console_ === null}
+    <h2 class="section">GOG Galaxy</h2>
+    <div class="grille">
+      {#each galaxyInstalles as j (j.id)}
+        <button class="carte" onclick={() => ouvrirDansGalaxy(j)} title={j.nom}>
+          <span class="image-steam">{#if j.image}<img src={adresseImageParUrl(j.image)} alt="" loading="lazy" />{/if}</span>
+          <span class="titre">{j.nom}</span>
+          <span class="etat">GOG Galaxy</span>
         </button>
       {/each}
     </div>

@@ -440,6 +440,18 @@ réponse du 02/10 (bac à sable d'abord ; points à vérifier : réglages dans l
   Frogtend vérifie l'empreinte, crée le marqueur portable, trouve le programme (ou le fait choisir).
 
 ### Lot 9 — Jeux gratuits des boutiques
+
+**✅ Accord de Seb (02/10)** : Frogtend peut LIRE (lecture seule) les fichiers des lanceurs installés (GOG Galaxy, Epic,
+EA app). Ses installations sont personnalisées (GOG Galaxy dans `D:\LaunchBox\Games\GOG Galaxy`) : chercher les
+lanceurs par le registre, pas les dossiers par défaut.
+
+**✅ GOG Galaxy en 0.22.0** : relevé dans sa base (02/10) — Galaxy 2.0 regroupe GOG ET les boutiques reliées : sur Venkman
+324 jeux hors DLC (GOG 197, Steam 70, Epic 43, Xbox 6, Ubisoft 4, EA 4), 323 avec jaquette (`verticalCover` sur
+images.gog.com). Lu sur une COPIE de `C:\ProgramData\GOG.com\Galaxy\storage\galaxy-2.0.db` (+ wal/shm), copie effacée
+après lecture ; DLC et jeux cachés écartés ; installés : `InstalledBaseProducts` (GOG) et `InstalledExternalProducts`.
+Jouer / installer : `goggalaxy://openGameView/<releaseKey>`. **Epic, Xbox, Ubisoft et EA viennent donc de Galaxy, sans
+connexion dans Frogtend** (y compris les jeux non installés). La connexion directe à Epic (comme LaunchBox, peu fiable
+selon Seb) n'est plus nécessaire tant que Galaxy est relié.
 Epic, Amazon Prime Gaming, Xbox Game Pass, PlayStation Plus. Ils restent dans le Frogtend de l'utilisateur et ne
 remontent pas dans Firehouse.
 

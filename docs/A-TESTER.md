@@ -21,6 +21,13 @@
       **Citron Neo** s'installe tout seul (vérifié par son empreinte). **Ryubing** : sa source ne répond pas, Frogtend
       propose d'ouvrir sa page officielle.
 
+## GOG Galaxy (0.22.0) — Epic, Xbox, Ubisoft, EA compris
+- [ ] 🛒 Boutiques ▸ **⬇ Lire mes jeux GOG Galaxy**. **Attendu :** environ 324 jeux en jaquettes ; le menu « Toutes
+      les boutiques » filtre GOG, Epic Games, Xbox, Ubisoft Connect, EA ; Cyberpunk 2077 et Horizon Zero Dawn
+      marqués ✅ installés.
+- [ ] Un clic sur un jeu : **GOG Galaxy s'ouvre sur sa page** (jouer ou installer).
+- [ ] Taodbox : une section « GOG Galaxy » avec tes jeux installés.
+
 ## Steam (0.20.0)
 - [ ] **Régénère d'abord ta clé d'API Steam** (elle est apparue dans une capture) : steamcommunity.com/dev/apikey.
 - [ ] ⚙ Options ▸ **Comptes ▸ Steam** ▸ ✏ Régler mon compte Steam : ton URL personnalisée (NimaiTakahashi), puis

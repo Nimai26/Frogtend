@@ -302,6 +302,10 @@ export interface JeuBoutique {
   minutes: number;
   derniere: number;
   installe: boolean;
+  /** La boutique d'origine pour les jeux venus de GOG Galaxy (« gog », « epic »…). */
+  plateforme?: string;
+  /** La jaquette (adresse publique), quand la source la donne. */
+  image?: string | null;
 }
 
 /** Le compte Steam du profil (jamais la clé : seulement si elle est enregistrée). */
@@ -419,6 +423,10 @@ export const api = {
     appeler<EmulateurInstalle>('emulateur_adopter', { id, programme, nom: nom ?? null, version: version ?? null }),
   emulateurInstallerFirehouse: (id: string, nom: string, dossier: string) =>
     appeler<InstallationFirehouse>('emulateur_installer_firehouse', { id, nom, dossier }),
+  galaxyEtat: () => appeler<{ galaxy_installe: boolean; nb_jeux: number; maj_le: string | null }>('boutique_galaxy_etat'),
+  galaxyJeux: () => appeler<JeuBoutique[]>('boutique_galaxy_jeux'),
+  galaxyImporter: () => appeler<JeuBoutique[]>('boutique_galaxy_importer'),
+  galaxyOuvrir: (cle: string) => appeler<void>('boutique_galaxy_ouvrir', { cle }),
   steamEtat: () => appeler<EtatSteam>('boutique_steam_etat'),
   steamRegler: (compte: string, cle?: string) => appeler<EtatSteam>('boutique_steam_regler', { compte, cle: cle ?? null }),
   steamOublier: () => appeler<void>('boutique_steam_oublier'),
@@ -456,6 +464,9 @@ export function adresseJaquette(id: number, largeur?: number): string {
 
 /** La jaquette officielle d'un jeu de boutique (servie et gardée en cache par le cœur). */
 export const adresseImageBoutique = (boutique: string, id: string) => `http://boutique.localhost/${boutique}/${encodeURIComponent(id)}`;
+
+/** Une image publique de boutique (GOG, Steam), servie et gardée en cache par le cœur. */
+export const adresseImageParUrl = (url: string) => `http://boutique.localhost/image/${encodeURIComponent(url)}`;
 
 /** L'adresse de la vidéo de fond d'un skin (servie par le cœur, gardée pour ce PC). */
 export const adresseFond = (skin: string) => `http://fond.localhost/${encodeURIComponent(skin)}`;

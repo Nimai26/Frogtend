@@ -2,12 +2,28 @@
   // « Mes boutiques » (lot 9) : les jeux possédés sur les comptes de la personne (Steam d'abord). Ils restent dans son
   // Frogtend et ne remontent jamais dans Firehouse. Jouer et installer passent par la boutique elle-même.
   import { onMount } from 'svelte';
-  import { adresseImageBoutique, duree } from '$lib/api';
+  import { adresseImageBoutique, adresseImageParUrl, duree, type JeuBoutique } from '$lib/api';
+  import { galaxy, importerGalaxy, lireGalaxy, nomPlateforme, ouvrirDansGalaxy } from '$lib/boutiques/galaxy.svelte';
   import { importerSteam, lireSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
 
   let filtre = $state('');
   let seulementInstalles = $state(false);
-  onMount(lireSteam);
+  onMount(() => {
+    lireSteam();
+    lireGalaxy();
+  });
+
+  // GOG Galaxy : filtre par boutique d'origine. Les jeux Steam y sont masqués par défaut si Steam est importé à part.
+  let boutiqueGalaxy = $state<string>('tout');
+  const plateformesGalaxy = $derived([...new Set(galaxy.jeux.map((j) => j.plateforme ?? ''))].sort());
+  const affichesGalaxy = $derived(
+    galaxy.jeux.filter(
+      (j: JeuBoutique) =>
+        (boutiqueGalaxy === 'tout' ? !(steam.jeux.length && j.plateforme === 'steam') : j.plateforme === boutiqueGalaxy) &&
+        (!seulementInstalles || j.installe) &&
+        j.nom.toLowerCase().includes(filtre.trim().toLowerCase()),
+    ),
+  );
 
   const affiches = $derived(
     steam.jeux.filter((j) => (!seulementInstalles || j.installe) && j.nom.toLowerCase().includes(filtre.trim().toLowerCase())),
@@ -17,7 +33,7 @@
 <div class="boutiques">
   <header>
     <h1>🛒 Mes boutiques</h1>
-    <p class="muted">Les jeux de tes comptes. Steam pour commencer ; Epic, GOG, Amazon et EA viendront ensuite.</p>
+    <p class="muted">Les jeux de tes comptes : Steam (par son API), et GOG Galaxy qui regroupe GOG, Epic, Xbox, Ubisoft, EA… Ils restent dans ton Frogtend.</p>
   </header>
 
   <section class="cx-block">
@@ -54,6 +70,40 @@
       </div>
     {:else if !steam.enCours}
       <p class="muted">Aucun jeu Steam importé pour l’instant.</p>
+    {/if}
+  </section>
+
+  <section class="cx-block">
+    <div class="tete">
+      <h2>GOG Galaxy</h2>
+      <span class="muted">{galaxy.installe ? 'GOG et les boutiques que tu y as reliées' : '⚠ GOG Galaxy n’est pas trouvé sur ce PC'}</span>
+      <span class="espace"></span>
+      <button class="btn primary" onclick={importerGalaxy} disabled={galaxy.enCours || !galaxy.installe}>
+        {galaxy.enCours ? 'Lecture…' : galaxy.jeux.length ? '🔄 Mettre à jour' : '⬇ Lire mes jeux GOG Galaxy'}
+      </button>
+    </div>
+    {#if galaxy.jeux.length}
+      <div class="outils">
+        <input type="search" bind:value={filtre} placeholder="Chercher un jeu" aria-label="Chercher un jeu" />
+        <select bind:value={boutiqueGalaxy} aria-label="Boutique">
+          <option value="tout">Toutes les boutiques</option>
+          {#each plateformesGalaxy as p (p)}<option value={p}>{nomPlateforme(p)}</option>{/each}
+        </select>
+        <label><input type="checkbox" bind:checked={seulementInstalles} /> installés sur ce PC</label>
+        <span class="muted">{affichesGalaxy.length} / {galaxy.jeux.length}</span>
+      </div>
+      <div class="grille">
+        {#each affichesGalaxy as j (j.id)}
+          <button class="carte" title={`Ouvrir « ${j.nom} » dans GOG Galaxy`} onclick={() => ouvrirDansGalaxy(j)}>
+            <span class="image">
+              <span class="remplacement">{j.nom}</span>
+              {#if j.image}<img src={adresseImageParUrl(j.image)} alt="" loading="lazy" onerror={(e) => ((e.currentTarget as HTMLElement).hidden = true)} />{/if}
+            </span>
+            <span class="nom">{j.nom}</span>
+            <span class="muted">{nomPlateforme(j.plateforme ?? '')}{j.installe ? ' · ✅ installé' : ''}{j.minutes ? ` · ${duree(j.minutes * 60)}` : ''}</span>
+          </button>
+        {/each}
+      </div>
     {/if}
   </section>
 </div>

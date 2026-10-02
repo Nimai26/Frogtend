@@ -730,6 +730,63 @@ pub async fn boutique_steam_importer(noyau: State<'_, Noyau>) -> Resultat<Vec<cr
     boutique_steam_jeux(noyau).await
 }
 
+/// GOG Galaxy sur ce PC, et ce qui en a été importé pour le profil.
+#[derive(Serialize)]
+pub struct EtatGalaxy {
+    pub galaxy_installe: bool,
+    pub nb_jeux: usize,
+    pub maj_le: Option<String>,
+}
+
+#[tauri::command]
+pub async fn boutique_galaxy_etat(noyau: State<'_, Noyau>) -> Resultat<EtatGalaxy> {
+    let p = profil_ouvert(&noyau).await?;
+    let c = crate::boutiques::lire_source(&dossier_profil_de(&noyau, &p.id), "galaxy");
+    Ok(EtatGalaxy {
+        galaxy_installe: crate::boutiques::dossier_galaxy().is_some(),
+        nb_jeux: c.as_ref().map_or(0, |c| c.jeux.len()),
+        maj_le: c.map(|c| c.maj_le).filter(|m| !m.is_empty()),
+    })
+}
+
+/// Les jeux importés de GOG Galaxy pour le profil.
+#[tauri::command]
+pub async fn boutique_galaxy_jeux(noyau: State<'_, Noyau>) -> Resultat<Vec<crate::boutiques::JeuBoutique>> {
+    let p = profil_ouvert(&noyau).await?;
+    Ok(crate::boutiques::lire_source(&dossier_profil_de(&noyau, &p.id), "galaxy").map(|c| c.jeux).unwrap_or_default())
+}
+
+/// Importe les jeux de GOG Galaxy (GOG et boutiques reliées), en LECTURE SEULE, sur une copie de sa base (accord de
+/// Seb, 02/10). Aucun secret : Galaxy est déjà connecté sur ce PC.
+#[tauri::command]
+pub async fn boutique_galaxy_importer(noyau: State<'_, Noyau>) -> Resultat<Vec<crate::boutiques::JeuBoutique>> {
+    let p = profil_ouvert(&noyau).await?;
+    let storage = crate::boutiques::dossier_galaxy().ok_or_else(|| Erreur::Introuvable("GOG Galaxy n'est pas installé sur ce PC (ou n'a jamais été ouvert).".into()))?;
+    let travail = noyau.dossier.join("travail").join("galaxy");
+    let t2 = travail.clone();
+    let jeux = tauri::async_runtime::spawn_blocking(move || crate::boutiques::lire_galaxy(&storage, &t2))
+        .await
+        .map_err(|_| Erreur::Disque("La lecture de GOG Galaxy s'est arrêtée brutalement.".into()))??;
+    // La copie de la base ne reste pas : elle contient les données du compte.
+    let _ = std::fs::remove_dir_all(&travail);
+    let c = crate::boutiques::CompteBoutique { compte: "GOG Galaxy".into(), steamid: String::new(), maj_le: crate::noyau::maintenant(), jeux };
+    crate::boutiques::ecrire_source(&dossier_profil_de(&noyau, &p.id), "galaxy", Some(&c))?;
+    noyau.journaliser(&format!("import GOG Galaxy : {} jeu(x) pour le profil {}", c.jeux.len(), p.id));
+    Ok(c.jeux)
+}
+
+/// Ouvre un jeu dans GOG Galaxy (sa page : jouer, installer), pour toutes ses boutiques reliées.
+#[tauri::command]
+pub fn boutique_galaxy_ouvrir(app: AppHandle, cle: String) -> Resultat<()> {
+    use tauri_plugin_opener::OpenerExt;
+    if cle.is_empty() || cle.len() > 120 || !cle.chars().all(|c| c.is_ascii_alphanumeric() || "_-:.".contains(c)) {
+        return Err(Erreur::Refus("Jeu GOG Galaxy invalide.".into()));
+    }
+    app.opener()
+        .open_url(format!("goggalaxy://openGameView/{cle}"), None::<&str>)
+        .map_err(|_| Erreur::Disque("GOG Galaxy ne s'ouvre pas : est-il installé ?".into()))
+}
+
 /// Jouer à un jeu Steam, ou l'installer : Steam fait le travail (`steam://`).
 #[tauri::command]
 pub fn boutique_steam_ouvrir(app: AppHandle, appid: String, action: String) -> Resultat<()> {

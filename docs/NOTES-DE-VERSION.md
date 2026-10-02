@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.22.0 — GOG Galaxy : GOG, Epic, Xbox, Ubisoft et EA
+
+- **🛒 Boutiques ▸ GOG Galaxy** : Frogtend lit (sans rien y changer) la bibliothèque de GOG Galaxy, qui regroupe tes
+  jeux GOG et ceux des boutiques que tu y as reliées : **Epic, Xbox, Ubisoft, EA**… Sur ton PC : 324 jeux, avec leurs
+  jaquettes. Aucune connexion à donner : Galaxy est déjà connecté.
+- Filtre par boutique, recherche, « installés sur ce PC » ; un clic ouvre le jeu dans GOG Galaxy pour y jouer ou
+  l'installer.
+- **Taodbox** montre aussi tes jeux installés via GOG Galaxy.
+
 ## 0.21.0 — tes jeux Steam en jaquettes, et dans Taodbox
 
 - **🛒 Boutiques** montre tes jeux Steam en **grandes jaquettes** (les images officielles de Steam, gardées sur ce PC).
