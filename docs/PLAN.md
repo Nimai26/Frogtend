@@ -441,6 +441,20 @@ réponse du 02/10 (bac à sable d'abord ; points à vérifier : réglages dans l
 
 ### Lot 9 — Jeux gratuits des boutiques
 
+**Décision de Seb (02/10)** : les jeux possédés des boutiques (installés ou non) vont **dans la ludothèque principale,
+avec les autres** (probablement sous la plateforme PC), **filtrables** par boutique et par « installé ou non ». Pas
+d'écran à part au final (« 🛒 Boutiques » sert à régler et importer).
+
+**Récupération automatique des jeux offerts — recherche GitHub (02/10, demande de Seb)** : la référence est
+**vogler/free-games-claimer** (4 238 ★, actif au 01/10/2026, AGPL-3.0, JavaScript + Playwright) : Epic, Prime Gaming,
+GOG. Méthode : un navigateur automatisé connecté UNE fois à chaque compte (session gardée dans son profil), qui passe
+sur les pages des jeux offerts et clique « Obtenir ». Limites qu'il dit lui-même : captcha d'Epic (problème #183
+ouvert), double authentification à saisir. Variante Python : P-Adamiec/Free-Games-Claimer-Remaster (374 ★).
+**Licence AGPL : s'inspirer de la méthode, ne pas copier son code** (Frogtend est en Apache 2.0). Risque : les conditions
+d'utilisation des boutiques (automatisation) — à dire à Seb. Piste Frogtend : une fenêtre WebView2 où la personne se
+connecte elle-même (pages officielles, Frogtend ne voit pas le mot de passe), puis des clics automatisés ; si un
+captcha apparaît, la fenêtre se montre. La liste des jeux offerts d'Epic est publique (sans compte).
+
 **✅ Accord de Seb (02/10)** : Frogtend peut LIRE (lecture seule) les fichiers des lanceurs installés (GOG Galaxy, Epic,
 EA app). Ses installations sont personnalisées (GOG Galaxy dans `D:\LaunchBox\Games\GOG Galaxy`) : chercher les
 lanceurs par le registre, pas les dossiers par défaut.
