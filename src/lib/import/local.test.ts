@@ -61,6 +61,7 @@ describe('import local', () => {
   });
 
   it('résume un import', () => {
+    expect(messageBilan({ ajoutes: 2, versions: 3, deja: 0, refuses: [] })).toBe('✅ 2 jeu(x) ajouté(s) à ta ludothèque · 3 version(s) ajoutée(s) à des jeux déjà là');
     expect(messageBilan({ ajoutes: 3, deja: 1, refuses: [['X', 'introuvable']] })).toBe('✅ 3 jeu(x) ajouté(s) à ta ludothèque · 1 déjà dedans · 1 refusé(s) : X (introuvable)');
   });
 });

@@ -90,6 +90,8 @@ export function depuisMame(jeux: JeuMameRetenu[]): JeuAImporter[] {
 
 export interface BilanImport {
   ajoutes: number;
+  /** Versions (autres régions) ajoutées à des jeux déjà dans la ludothèque. */
+  versions?: number;
   deja: number;
   refuses: [string, string][];
 }
@@ -194,6 +196,7 @@ export function apresCopie(jeux: JeuAImporter[], nouveaux: string[]): JeuAImport
 
 export function messageBilan(b: BilanImport): string {
   const morceaux = [`✅ ${b.ajoutes} jeu(x) ajouté(s) à ta ludothèque`];
+  if (b.versions) morceaux.push(`${b.versions} version(s) ajoutée(s) à des jeux déjà là`);
   if (b.deja) morceaux.push(`${b.deja} déjà dedans`);
   if (b.refuses.length) morceaux.push(`${b.refuses.length} refusé(s) : ${b.refuses.slice(0, 3).map(([t, m]) => `${t} (${m})`).join(', ')}`);
   return morceaux.join(' · ');

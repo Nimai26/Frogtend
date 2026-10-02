@@ -90,6 +90,8 @@ export interface Installation {
   lanceur: Lanceur | null;
   fichier_du_jeu: string | null;
   installe_le: string;
+  /** Les versions d'un jeu importé (fr, eu, us/en, autres), absentes s'il n'y en a qu'une. */
+  versions?: import('$lib/ludotheque/versions').VersionLocale[];
 }
 
 export interface Preparation {
@@ -432,8 +434,9 @@ export const api = {
   menuJeuReprendre: () => appeler<void>('menu_jeu_reprendre'),
   menuJeuAction: (action: string) => appeler<void>('menu_jeu_action', { action }),
   menuJeuQuitter: () => appeler<number>('menu_jeu_quitter'),
-  jouer: (id: number, commandes?: CommandesJeu, emulateur?: string) =>
-    appeler<void>('jeu_jouer', { id, commandes: commandes ?? null, emulateur: emulateur ?? null }),
+  jouer: (id: number, commandes?: CommandesJeu, emulateur?: string, version?: string) =>
+    appeler<void>('jeu_jouer', { id, commandes: commandes ?? null, emulateur: emulateur ?? null, version: version ?? null }),
+  choisirVersion: (id: number, chemin: string) => appeler<void>('jeu_choisir_version', { id, chemin }),
   referencesManette: (id: string) => appeler<ReferenceManette[]>('references_manette', { id }),
   profilsManetteEmulateur: (id: string, programme: string) =>
     appeler<{ genre: string; nom: string; chemin: string }[]>('profils_manette_emulateur', { id, programme }),

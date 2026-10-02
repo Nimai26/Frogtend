@@ -38,6 +38,125 @@ pub fn titre_depuis_nom(nom: &str) -> String {
     if t.is_empty() { base } else { t }
 }
 
+/// Ce que disent les étiquettes d'un nom de ROM (No-Intro, Redump, TOSEC, GoodTools) : (rang de région, qualité,
+/// libellé lisible, numéro de disque). Rang : 0 fr, 1 eu, 2 us/en, 3 autres (préférences de Seb, 02/10).
+pub fn etiquettes(nom: &str) -> (u8, i32, String, Option<u32>) {
+    let base = Path::new(nom).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| nom.to_string());
+    let mut rang = 3u8;
+    let mut qualite = 0i32;
+    let mut libelles: Vec<String> = Vec::new();
+    let mut disque = None;
+    let mut reste = base.as_str();
+    while let Some(i) = reste.find(['(', '[']) {
+        let fermant = if reste.as_bytes()[i] == b'(' { ')' } else { ']' };
+        let Some(j) = reste[i + 1..].find(fermant) else { break };
+        let contenu = &reste[i + 1..i + 1 + j];
+        let crochet = fermant == ']';
+        reste = &reste[i + 2 + j..];
+        let bas = contenu.trim().to_lowercase();
+        if crochet {
+            match bas.chars().next() {
+                Some('!') => qualite -= 1,
+                Some('b') => qualite += 5,
+                Some('h') | Some('t') | Some('f') => qualite += 3,
+                Some('o') => qualite += 2,
+                Some('a') => qualite += 1,
+                _ => {}
+            }
+            continue;
+        }
+        // Disque : « Disc 2 », « Disk 1 of 3 », « CD2 ».
+        let mots: Vec<&str> = bas.split_whitespace().collect();
+        if let Some(n) = match mots.as_slice() {
+            ["disc" | "disk" | "cd", n, ..] => n.parse().ok(),
+            [m] if m.starts_with("cd") => m[2..].parse().ok(),
+            _ => None,
+        } {
+            disque = Some(n);
+            continue;
+        }
+        if ["beta", "proto", "prototype", "demo", "sample", "hack", "unl", "pirate"].iter().any(|m| bas.starts_with(m)) {
+            qualite += 4;
+        }
+        let mut vu = false;
+        for jeton in contenu.split(',').map(str::trim) {
+            let b = jeton.to_lowercase();
+            let r = match b.as_str() {
+                "france" | "fr" | "french" | "fre" | "f" => Some(0),
+                "europe" | "eu" | "eur" | "e" | "uk" | "germany" | "spain" | "italy" | "netherlands" | "sweden"
+                | "scandinavia" | "australia" | "de" | "es" | "it" | "nl" | "sv" | "g" | "s" | "i" => Some(1),
+                "usa" | "us" | "u" | "world" | "w" | "en" | "english" | "canada" => Some(2),
+                "japan" | "ja" | "j" | "korea" | "k" | "china" | "asia" | "brazil" | "taiwan" => Some(3),
+                // GoodTools : plusieurs lettres collées (« JUE », « UE »).
+                _ if jeton.len() <= 4 && jeton.chars().all(|c| "JUEFGSIAKW".contains(c)) => jeton
+                    .chars()
+                    .map(|c| match c {
+                        'F' => 0,
+                        'E' | 'G' | 'S' | 'I' | 'A' => 1,
+                        'U' | 'W' => 2,
+                        _ => 3,
+                    })
+                    .min(),
+                _ => None,
+            };
+            if let Some(r) = r {
+                rang = rang.min(r);
+                vu = true;
+            }
+        }
+        if vu || !bas.is_empty() {
+            libelles.push(contenu.trim().to_string());
+        }
+    }
+    (rang, qualite, libelles.join(", "), disque)
+}
+
+/// La clé qui réunit les versions d'un même jeu sur un même système : titre nettoyé, sans casse ni ponctuation.
+pub fn cle_de_jeu(plateforme: &str, titre: &str) -> String {
+    let t: String = titre.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect();
+    format!("{}|{t}", plateforme.to_lowercase())
+}
+
+/// Range des fichiers d'un même jeu en versions : les disques d'une même version restent ensemble (le 1er est
+/// lancé), puis les versions sont classées fr, eu, us/en, autres ; à région égale, la meilleure qualité d'abord.
+pub fn en_versions(chemins: &[String]) -> Vec<crate::jeux_pc::VersionLocale> {
+    use crate::jeux_pc::VersionLocale;
+    let mut par_version: std::collections::BTreeMap<String, (u8, i32, String, Vec<(u32, String)>)> = Default::default();
+    for c in chemins {
+        let nom = Path::new(c).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let (rang, qualite, libelle, disque) = etiquettes(&nom);
+        // La version : le nom sans son numéro de disque.
+        let sans_disque: String = {
+            let bas = nom.to_lowercase();
+            let mut s = bas.clone();
+            if disque.is_some() {
+                for motif in ["(disc ", "(disk ", "(cd"] {
+                    if let Some(i) = bas.find(motif) {
+                        if let Some(j) = bas[i..].find(')') {
+                            s = format!("{}{}", &bas[..i], &bas[i + j + 1..]);
+                        }
+                    }
+                }
+            }
+            let d = Path::new(c).parent().map(|p| p.to_string_lossy().to_lowercase()).unwrap_or_default();
+            format!("{d}|{}", s.split_whitespace().collect::<Vec<_>>().join(" "))
+        };
+        let e = par_version.entry(sans_disque).or_insert((rang, qualite, libelle, Vec::new()));
+        e.3.push((disque.unwrap_or(1), c.clone()));
+    }
+    let mut l: Vec<VersionLocale> = par_version
+        .into_values()
+        .map(|(rang, qualite, libelle, mut disques)| {
+            disques.sort();
+            let chemin = disques[0].1.clone();
+            let disques = if disques.len() > 1 { disques.into_iter().map(|(_, c)| c).collect() } else { vec![] };
+            VersionLocale { chemin, libelle, rang, qualite, disques }
+        })
+        .collect();
+    l.sort_by(|a, b| (a.rang, a.qualite, &a.libelle, &a.chemin).cmp(&(b.rang, b.qualite, &b.libelle, &b.chemin)));
+    l
+}
+
 /// Une ROM (ou image disque) trouvée.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RomTrouvee {
@@ -365,6 +484,9 @@ pub fn verifier(j: &JeuAImporter) -> Resultat<()> {
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
 pub struct BilanImport {
     pub ajoutes: usize,
+    /// Versions ajoutées à des jeux déjà dans la ludothèque (une autre région du même jeu).
+    #[serde(default)]
+    pub versions: usize,
     /// Déjà dans la ludothèque (même fichier) : laissés tels quels.
     pub deja: usize,
     /// (titre, motif) de ceux qui n'ont pas pu être ajoutés.
@@ -380,11 +502,104 @@ impl crate::noyau::Noyau {
         let s = self.session().await?;
         let mut bilan = BilanImport::default();
         let mut lignes = Vec::new();
+
+        // Les fichiers déjà connus (jeux importés avant, y compris un par fichier avant 0.31.0) : jamais en double.
+        let mut connus: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for j in self.registre().tous()?.into_iter().filter(|j| j.version == VERSION_IMPORTEE) {
+            if let Some(i) = &j.installation {
+                if let Some(f) = &i.fichier_du_jeu {
+                    connus.insert(normaliser_chemin(&Path::new(&i.dossier).join(f)).to_string_lossy().to_string());
+                }
+                for v in &i.versions {
+                    for c in std::iter::once(&v.chemin).chain(v.disques.iter()) {
+                        connus.insert(normaliser_chemin(Path::new(c)).to_string_lossy().to_string());
+                    }
+                }
+            }
+            connus.insert(cle_import_de_jeu(&j));
+        }
+
+        // Les jeux qu'on lance par un fichier (ROM, image, programme DOS) se regroupent par jeu ; les autres (un
+        // programme Windows, DOSBox avec ses commandes) restent un par un.
+        let mut groupes: std::collections::BTreeMap<String, Vec<&JeuAImporter>> = Default::default();
+        let mut seuls = Vec::new();
         for j in jeux {
             if let Err(e) = verifier(j) {
                 bilan.refuses.push((j.titre.clone(), format!("{e:?}")));
                 continue;
             }
+            if connus.contains(&cle_import(j)) {
+                bilan.deja += 1;
+                continue;
+            }
+            if j.programme.is_none() && j.fichier.is_some() {
+                groupes.entry(cle_de_jeu(&j.plateforme, &j.titre)).or_default().push(j);
+            } else {
+                seuls.push(j);
+            }
+        }
+        let quand = crate::noyau::maintenant();
+
+        for (cle, membres) in groupes {
+            let chemins: Vec<String> = membres.iter().map(|j| Path::new(&j.dossier).join(j.fichier.as_deref().unwrap_or("")).to_string_lossy().to_string()).collect();
+            let nouvelles = en_versions(&chemins);
+            let id = crate::ludotheque::id_boutique("local", &cle);
+            // Lu à part : un `if let` garderait le verrou du registre pendant tout le bloc (qui le redemande).
+            let existant = self.registre().jeu(id)?;
+            if let Some(existant) = existant {
+                // Une autre région d'un jeu déjà là : ses versions s'ajoutent, la version par défaut ne change pas.
+                let mut i = existant.installation.clone().ok_or_else(|| Erreur::Disque("Jeu importé sans installation.".into()))?;
+                let avant = i.versions.len();
+                for v in nouvelles {
+                    if !i.versions.iter().any(|x| x.chemin.eq_ignore_ascii_case(&v.chemin)) {
+                        i.versions.push(v);
+                    }
+                }
+                i.versions.sort_by(|a, b| (a.rang, a.qualite, &a.libelle, &a.chemin).cmp(&(b.rang, b.qualite, &b.libelle, &b.chemin)));
+                bilan.versions += i.versions.len() - avant;
+                self.registre().changer_installation(id, Some(&i))?;
+                continue;
+            }
+            let meilleure = &nouvelles[0];
+            let modele = membres
+                .iter()
+                .find(|j| Path::new(&j.dossier).join(j.fichier.as_deref().unwrap_or("")).to_string_lossy() == meilleure.chemin)
+                .copied()
+                .unwrap_or(membres[0]);
+            let dossier = Path::new(&meilleure.chemin).parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+            let fichier = Path::new(&meilleure.chemin).file_name().map(|n| n.to_string_lossy().to_string());
+            // Un programme DOS dans un sous-dossier garde son chemin relatif au dossier du jeu.
+            let (dossier, fichier) = if modele.fichier.as_deref().is_some_and(|f| f.contains(['/', '\\'])) {
+                (modele.dossier.clone(), modele.fichier.clone())
+            } else {
+                (dossier, fichier)
+            };
+            self.registre().ajouter(&JeuPc {
+                id,
+                version: VERSION_IMPORTEE,
+                titre: modele.titre.trim().to_string(),
+                plateforme: modele.plateforme.clone(),
+                dossier: dossier.clone(),
+                etat: Etat::Telecharge,
+                total: 0,
+                fichiers: vec![],
+                message: None,
+                ajoute_le: quand.clone(),
+                ajoute_par: s.profil.id.clone(),
+                installation: None,
+                temps_jeu: 0,
+                derniere_partie: None,
+            })?;
+            let versions = if nouvelles.len() > 1 || !nouvelles[0].disques.is_empty() { nouvelles.clone() } else { vec![] };
+            self.registre().changer_installation(
+                id,
+                Some(&Installation { dossier, methode: Methode::Aucune, lanceur: None, fichier_du_jeu: fichier, installe_le: quand.clone(), versions }),
+            )?;
+            lignes.push(ligne_de_ludotheque(id, modele, cle, membres.iter().find_map(|j| j.annee), membres.iter().find_map(|j| j.editeur.clone())));
+            bilan.ajoutes += 1;
+        }
+
+        for j in seuls {
             let cle = cle_import(j);
             let id = crate::ludotheque::id_boutique("local", &cle);
             if self.registre().jeu(id)?.is_some() {
@@ -400,7 +615,6 @@ impl crate::noyau::Noyau {
                     j.dossier.clone()
                 },
             });
-            let quand = crate::noyau::maintenant();
             self.registre().ajouter(&JeuPc {
                 id,
                 version: VERSION_IMPORTEE,
@@ -422,29 +636,52 @@ impl crate::noyau::Noyau {
                 methode: Methode::Aucune,
                 lanceur: lanceur.clone(),
                 fichier_du_jeu: if lanceur.is_some() { None } else { j.fichier.clone() },
-                installe_le: quand,
+                installe_le: quand.clone(),
+                versions: vec![],
             };
             self.registre().changer_installation(id, Some(&installation))?;
-            lignes.push(crate::ludotheque::JeuResume {
-                id,
-                titre: j.titre.trim().to_string(),
-                plateforme: j.plateforme.clone(),
-                annee: j.annee,
-                editeur: j.editeur.clone(),
-                genres: j.genres.clone(),
-                statut: Some("importe".into()),
-                jaquette: Some(false),
-                source: Some("local".into()),
-                boutique: Some("local".into()),
-                cle_boutique: Some(cle),
-                installe: Some(true),
-                ..Default::default()
-            });
+            lignes.push(ligne_de_ludotheque(id, j, cle, j.annee, j.editeur.clone()));
             bilan.ajoutes += 1;
         }
         s.verrou().ajouter_locaux(&lignes)?;
-        self.journaliser(&format!("import local : {} ajouté(s), {} déjà là, {} refusé(s)", bilan.ajoutes, bilan.deja, bilan.refuses.len()));
+        self.journaliser(&format!(
+            "import local : {} jeu(x) ajouté(s), {} version(s) ajoutée(s), {} déjà là, {} refusé(s)",
+            bilan.ajoutes,
+            bilan.versions,
+            bilan.deja,
+            bilan.refuses.len()
+        ));
         Ok(bilan)
+    }
+}
+
+/// La clé d'import d'un jeu déjà dans le registre (programme, ou fichier) : pour ne pas l'ajouter deux fois.
+fn cle_import_de_jeu(j: &crate::jeux_pc::JeuPc) -> String {
+    let i = j.installation.as_ref();
+    let cible = match (i.and_then(|i| i.lanceur.as_ref()), i.and_then(|i| i.fichier_du_jeu.as_ref())) {
+        (Some(l), _) if l.arguments.is_empty() => PathBuf::from(&l.programme),
+        (_, Some(f)) => Path::new(&j.dossier).join(f),
+        _ => PathBuf::from(&j.dossier),
+    };
+    normaliser_chemin(&cible).to_string_lossy().to_string()
+}
+
+/// La ligne d'un jeu importé dans la ludothèque du profil.
+fn ligne_de_ludotheque(id: i64, j: &JeuAImporter, cle: String, annee: Option<i64>, editeur: Option<String>) -> crate::ludotheque::JeuResume {
+    crate::ludotheque::JeuResume {
+        id,
+        titre: j.titre.trim().to_string(),
+        plateforme: j.plateforme.clone(),
+        annee,
+        editeur,
+        genres: j.genres.clone(),
+        statut: Some("importe".into()),
+        jaquette: Some(false),
+        source: Some("local".into()),
+        boutique: Some("local".into()),
+        cle_boutique: Some(cle),
+        installe: Some(true),
+        ..Default::default()
     }
 }
 
@@ -491,6 +728,106 @@ mod tests {
         assert!(n.registre().jeu(doom).unwrap().is_none());
         let l = n.lister(&crate::ludotheque::Filtre { boutique: Some("local".into()), ludotheque: true, ..Default::default() }).await.unwrap();
         assert_eq!(l.total, 0);
+    }
+
+    #[test]
+    fn les_etiquettes_donnent_la_region_et_la_qualite() {
+        assert_eq!(etiquettes("Mario (France).nes").0, 0);
+        assert_eq!(etiquettes("Mario (En,Fr,De).nes").0, 0, "le français suffit");
+        assert_eq!(etiquettes("Mario (Europe) (Rev 1).nes").0, 1);
+        assert_eq!(etiquettes("Mario (E) [!].nes").0, 1);
+        assert_eq!(etiquettes("Mario (USA).nes").0, 2);
+        assert_eq!(etiquettes("Mario (JU).nes").0, 2, "GoodTools : Japon + USA");
+        assert_eq!(etiquettes("Mario (UE).nes").0, 1);
+        assert_eq!(etiquettes("Mario (World).nes").0, 2);
+        assert_eq!(etiquettes("Mario (Japan).nes").0, 3);
+        assert_eq!(etiquettes("Mario.nes").0, 3);
+        assert!(etiquettes("Mario (U) [!].nes").1 < etiquettes("Mario (U).nes").1);
+        assert!(etiquettes("Mario (U) [b1].nes").1 > etiquettes("Mario (U) [a1].nes").1);
+        assert!(etiquettes("Mario (USA) (Beta).nes").1 > 0);
+        let (_, _, libelle, disque) = etiquettes("FF7 (France) (Disc 2).cue");
+        assert_eq!((libelle.as_str(), disque), ("France", Some(2)));
+        assert_eq!(etiquettes("Jeu (Disk 1 of 3).adf").3, Some(1));
+        assert_eq!(etiquettes("Mario (Europe) (Rev 1).nes").2, "Europe, Rev 1");
+    }
+
+    #[test]
+    fn les_versions_suivent_l_ordre_fr_eu_us_puis_les_autres() {
+        let c = |n: &str| format!("E:\\ROM\\{n}");
+        let l = en_versions(&[
+            c("Mario (Japan).nes"),
+            c("Mario (USA).nes"),
+            c("Mario (Europe).nes"),
+            c("Mario (France).nes"),
+            c("Mario (USA) [!].nes"),
+        ]);
+        let ordre: Vec<&str> = l.iter().map(|v| v.chemin.rsplit('\\').next().unwrap()).collect();
+        assert_eq!(ordre, ["Mario (France).nes", "Mario (Europe).nes", "Mario (USA) [!].nes", "Mario (USA).nes", "Mario (Japan).nes"]);
+
+        // Les disques d'une même version restent ensemble ; le 1er est lancé.
+        let l = en_versions(&[c("FF7 (France) (Disc 2).cue"), c("FF7 (France) (Disc 1).cue"), c("FF7 (USA) (Disc 1).cue")]);
+        assert_eq!(l.len(), 2);
+        assert!(l[0].chemin.ends_with("FF7 (France) (Disc 1).cue"));
+        assert_eq!(l[0].disques.len(), 2);
+        assert!(l[1].disques.is_empty(), "un seul disque : pas de liste");
+    }
+
+    #[tokio::test]
+    async fn une_fiche_par_jeu_et_ses_versions() {
+        use crate::coffre::CoffreMemoire;
+        use crate::noyau::{Connexion, Noyau};
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let profil = n.creer_profil("Seb", None, None).unwrap().id;
+        n.ouvrir(&profil, None, &Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        let roms = d.path().join("NES");
+        for f in ["USA/Mario (U).nes", "Europe/Mario (E).nes", "France/Mario (F).nes", "Zelda (U).nes"] {
+            ecrire(&roms, f, "rom");
+        }
+        let a_importer = |chemins: &[&str]| -> Vec<JeuAImporter> {
+            chemins
+                .iter()
+                .map(|c| {
+                    let p = roms.join(c);
+                    JeuAImporter {
+                        titre: titre_depuis_nom(&p.file_name().unwrap().to_string_lossy()),
+                        plateforme: "Nintendo Entertainment System".into(),
+                        dossier: p.parent().unwrap().to_string_lossy().into(),
+                        fichier: Some(p.file_name().unwrap().to_string_lossy().into()),
+                        programme: None,
+                        arguments: vec![],
+                        annee: None,
+                        editeur: None,
+                        genres: vec![],
+                    }
+                })
+                .collect()
+        };
+        let b = n.importer_locaux(&a_importer(&["USA/Mario (U).nes", "Europe/Mario (E).nes", "Zelda (U).nes"])).await.unwrap();
+        assert_eq!((b.ajoutes, b.versions), (2, 0), "Mario (2 versions) et Zelda : 2 fiches");
+        let filtre = crate::ludotheque::Filtre { boutique: Some("local".into()), ludotheque: true, ..Default::default() };
+        let l = n.lister(&filtre).await.unwrap();
+        assert_eq!(l.total, 2);
+        let mario = l.jeux.iter().find(|j| j.titre == "Mario").unwrap().id;
+        let i = n.registre().jeu(mario).unwrap().unwrap().installation.unwrap();
+        assert_eq!(i.versions.len(), 2);
+        assert_eq!(i.fichier_du_jeu.as_deref(), Some("Mario (E).nes"), "l'Europe passe avant les USA");
+
+        // La version française arrive ensuite : elle rejoint la fiche (en tête), la version lancée ne change pas.
+        let b = n.importer_locaux(&a_importer(&["France/Mario (F).nes", "USA/Mario (U).nes"])).await.unwrap();
+        assert_eq!((b.ajoutes, b.versions, b.deja), (0, 1, 1));
+        let i = n.registre().jeu(mario).unwrap().unwrap().installation.unwrap();
+        assert_eq!(i.versions.len(), 3);
+        assert!(i.versions[0].chemin.ends_with("Mario (F).nes"));
+        assert_eq!(i.fichier_du_jeu.as_deref(), Some("Mario (E).nes"));
+        assert_eq!(n.lister(&filtre).await.unwrap().total, 2, "toujours une seule fiche Mario");
+
+        // La version par défaut : la française, choisie par la personne. Une version qui n'est pas du jeu : refusée.
+        let fr = i.versions[0].chemin.clone();
+        n.choisir_version(mario, &fr).await.unwrap();
+        assert_eq!(n.registre().jeu(mario).unwrap().unwrap().installation.unwrap().fichier_du_jeu.as_deref(), Some("Mario (F).nes"));
+        assert!(n.choisir_version(mario, "C:\\ailleurs.nes").await.is_err());
+        assert!(n.jouer(mario, None, Some("C:\\ailleurs.nes")).await.is_err());
     }
 
     #[test]
@@ -644,6 +981,18 @@ mod essais {
         println!("{} jeu(x) en {:?}", l.len(), debut.elapsed());
         for r in l.iter().take(6) {
             println!("{} <- {}", r.titre, r.chemin);
+        }
+        // Le regroupement en fiches (une par jeu), avec leurs versions.
+        let mut groupes: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+        for r in &l {
+            groupes.entry(super::cle_de_jeu("x", &r.titre)).or_default().push(r.chemin.clone());
+        }
+        println!("{} fiche(s) pour {} fichier(s)", groupes.len(), l.len());
+        for (cle, chemins) in groupes.iter().filter(|(_, c)| c.len() > 2).take(4) {
+            println!("{cle} :");
+            for v in super::en_versions(chemins) {
+                println!("   [{}] {} — {}", v.rang, v.libelle, v.chemin.rsplit(['\\', '/']).next().unwrap_or(""));
+            }
         }
     }
 }

@@ -87,7 +87,7 @@
           <button class="btn primary grand" onclick={() => installer(j.id)}>📦 Installer</button>
         {:else}
           <button class="btn primary grand" onclick={() => jouer(j.id)} disabled={partie.enJeu !== null}>▶ Jouer</button>
-          {#if emulateursDuJeu(j.plateforme).liste.length > 1}
+          {#if emulateursDuJeu(j.plateforme).liste.length > 1 || (surPc.installation.versions?.length ?? 0) > 1}
             <button class="btn grand" onclick={() => jouerAvec(j.id)} disabled={partie.enJeu !== null}>▶ Jouer avec…</button>
           {/if}
         {/if}
@@ -109,6 +109,10 @@
       {#if catalogue && j.versions != null}<dt>Versions</dt><dd>{j.versions || 'aucune pour l’instant'}</dd>{/if}
       {#if surPc}<dt>Sur ce PC</dt><dd title={surPc.dossier}>{surPc.dossier}</dd>{/if}
       {#if surPc?.temps_jeu}<dt>Temps de jeu</dt><dd>{duree(surPc.temps_jeu)}</dd>{/if}
+      {#if (surPc?.installation?.versions?.length ?? 0) > 1}
+        <dt>Versions</dt>
+        <dd>{surPc?.installation?.versions?.length} ({surPc?.installation?.versions?.map((v) => ['FR', 'EU', 'US/EN', 'autre'][v.rang] ?? 'autre').join(', ')})</dd>
+      {/if}
       {#if j.source === 'local'}
         <dt>Origine</dt><dd>importé de ton disque (Frogtend n’efface jamais ses fichiers)</dd>
       {/if}

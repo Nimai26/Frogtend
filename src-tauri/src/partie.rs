@@ -212,6 +212,7 @@ impl Noyau {
             lanceur: None,
             fichier_du_jeu,
             installe_le: maintenant(),
+            versions: vec![],
         };
         self.registre().changer_installation(j.id, Some(&i))?;
         Ok(i)
@@ -222,6 +223,20 @@ impl Noyau {
         let j = self.jeu_visible(id).await?;
         let i = j.installation.ok_or_else(|| Erreur::Refus("Le jeu n'est pas encore installé.".into()))?;
         candidats(Path::new(&i.dossier), &j.titre)
+    }
+
+    /// La version lancée par défaut d'un jeu importé (une de ses versions).
+    pub async fn choisir_version(&self, id: i64, chemin: &str) -> Resultat<()> {
+        let j = self.jeu_visible(id).await?;
+        let mut i = j.installation.ok_or_else(|| Erreur::Refus("Le jeu n'est pas installé.".into()))?;
+        let v = i.versions.iter().find(|x| x.chemin.eq_ignore_ascii_case(chemin)).ok_or_else(|| Erreur::Refus("Cette version n'est pas celle de ce jeu.".into()))?;
+        if !Path::new(&v.chemin).is_file() {
+            return Err(Erreur::Disque(format!("Fichier introuvable : {} (disque débranché ?).", v.chemin)));
+        }
+        let p = Path::new(&v.chemin);
+        i.dossier = p.parent().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
+        i.fichier_du_jeu = p.file_name().map(|n| n.to_string_lossy().to_string());
+        self.registre().changer_installation(id, Some(&i))
     }
 
     /// Retient ce qu'on lance pour jouer (choisi par la personne).
@@ -240,9 +255,16 @@ impl Noyau {
     /// Annonce le début de la session à Firehouse. Rend le processus, les dossiers à surveiller, et si Firehouse a
     /// ouvert une session pour ce PC (`session` non nulle : PC qui calcule pour lui). Au 30/09, cela ne met en pause
     /// qu'une partie de ses travaux sur la carte graphique : on dit « session annoncée », pas « carte libérée ».
-    pub async fn jouer(&self, id: i64, emulateur: Option<(String, String)>) -> Resultat<(u32, Vec<PathBuf>, bool)> {
+    pub async fn jouer(&self, id: i64, emulateur: Option<(String, String)>, version: Option<&str>) -> Resultat<(u32, Vec<PathBuf>, bool)> {
         let j = self.jeu_visible(id).await?;
-        let i = j.installation.clone().ok_or_else(|| Erreur::Refus("Installe d'abord le jeu.".into()))?;
+        let mut i = j.installation.clone().ok_or_else(|| Erreur::Refus("Installe d'abord le jeu.".into()))?;
+        // Une autre version (région) pour CETTE partie seulement.
+        if let Some(v) = version {
+            let v = i.versions.iter().find(|x| x.chemin.eq_ignore_ascii_case(v)).ok_or_else(|| Erreur::Refus("Cette version n'est pas celle de ce jeu.".into()))?;
+            let p = Path::new(&v.chemin);
+            i.dossier = p.parent().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
+            i.fichier_du_jeu = p.file_name().map(|n| n.to_string_lossy().to_string());
+        }
         let (lanceur, dossiers) = match (&i.lanceur, &i.fichier_du_jeu) {
             (Some(l), _) => (l.clone(), vec![PathBuf::from(&i.dossier)]),
             (None, Some(f)) => {
@@ -467,7 +489,7 @@ mod tests {
         let (_d, n) = noyau_avec(&[("Dune (Europe).cue", b"FILE"), ("Dune (Europe).bin", b"\0\0")], "Image disque").await;
         let i = n.installer(110, true).await.unwrap();
         assert_eq!(i.fichier_du_jeu.as_deref(), Some("Dune (Europe).cue"), "le .cue décrit les pistes");
-        assert!(matches!(n.jouer(110, None).await, Err(Erreur::Reglage(_))));
+        assert!(matches!(n.jouer(110, None, None).await, Err(Erreur::Reglage(_))));
         assert!(Path::new(&i.dossier).join("Dune (Europe).bin").is_file(), "rien n'est renommé ni déplacé");
     }
 
@@ -478,7 +500,7 @@ mod tests {
         n.installer(110, true).await.unwrap();
         let c = n.candidats_lancement(110).await.unwrap();
         n.choisir_lanceur(110, c[0].lanceur.clone()).await.unwrap();
-        let (pid, dossiers, carte) = n.jouer(110, None).await.unwrap();
+        let (pid, dossiers, carte) = n.jouer(110, None, None).await.unwrap();
         assert!(!carte, "en simulé, aucune carte n'est cédée");
         let fin = n.suivre_partie(110, pid, dossiers).await.unwrap();
         assert!(fin.secondes <= 30);

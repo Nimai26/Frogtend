@@ -21,6 +21,13 @@
       **Citron Neo** s'installe tout seul (vérifié par son empreinte). **Ryubing** : sa source ne répond pas, Frogtend
       propose d'ouvrir sa page officielle.
 
+## Une fiche par jeu, plusieurs versions (0.31.0)
+- [ ] 📥 Importer ▸ Fichiers ROM sur `E:\Games\Nintendo Entertainement System` : **attendu ~828 fiches** au lieu de
+      1 086 lignes (les versions d'un même jeu réunies).
+- [ ] Une fiche avec plusieurs versions (par exemple « Batman ») : le panneau montre « Versions : 3 (EU, US/EN, US/EN) » ;
+      ▶ Jouer lance l'européenne ; **▶ Jouer avec…** propose les autres ; ⚙ Gérer le jeu ▸ **📀 Version** la change.
+- [ ] Un jeu sur plusieurs disques (PS1) : une seule version, pas une par disque.
+
 ## Pas de pieuvre (0.30.0)
 - [ ] Au démarrage, les médias de Dune passent de `%APPDATA%` à `<dossier de Dune>\Frogtend\medias` (copie vérifiée).
       **Attendu :** la jaquette et la fiche de Dune s'affichent toujours, hors ligne aussi.

@@ -153,6 +153,26 @@ pub struct Installation {
     #[serde(default)]
     pub fichier_du_jeu: Option<String>,
     pub installe_le: String,
+    /// Les versions d'un jeu importé (régions, révisions), la préférée d'abord (fr, eu, us/en, autres — Seb, 02/10).
+    /// Celle qu'on lance par défaut est `dossier` + `fichier_du_jeu`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub versions: Vec<VersionLocale>,
+}
+
+/// Une version d'un jeu importé : un fichier (ou le 1er disque d'un jeu sur plusieurs disques).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct VersionLocale {
+    /// Chemin complet du fichier lancé (tel quel, jamais renommé).
+    pub chemin: String,
+    /// Ses étiquettes, lisibles (« France », « USA, Rev 1 »…).
+    pub libelle: String,
+    /// 0 fr, 1 eu, 2 us/en, 3 autres.
+    pub rang: u8,
+    /// Plus petit = meilleur ([!] vérifié, puis normal, puis alternatif, hack, bêta, mauvais dump).
+    pub qualite: i32,
+    /// Tous ses disques, dans l'ordre (vide : un seul fichier).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub disques: Vec<String>,
 }
 
 /// Un jeu présent (ou en cours d'arrivée) sur ce PC.
@@ -435,6 +455,7 @@ mod tests {
             lanceur: None,
             fichier_du_jeu: None,
             installe_le: "1".into(),
+            versions: vec![],
         };
         r.changer_installation(110, Some(&i)).unwrap();
         r.compter_partie(110, 600, "2").unwrap();

@@ -388,6 +388,7 @@ pub async fn jeu_jouer(
     id: i64,
     commandes: Option<Commandes>,
     emulateur: Option<String>,
+    version: Option<String>,
 ) -> Resultat<()> {
     let jeu = noyau.registre().jeu(id)?;
     let (plateforme, titre) = jeu.map(|j| (j.plateforme, j.titre)).unwrap_or_default();
@@ -400,7 +401,7 @@ pub async fn jeu_jouer(
         }
         None => None,
     };
-    let (pid, dossiers, carte_cedee) = noyau.jouer(id, emulateur).await?;
+    let (pid, dossiers, carte_cedee) = noyau.jouer(id, emulateur, version.as_deref()).await?;
     let _ = app.emit("partie", EvenementPartie::Debut { jeu: id, carte_cedee });
     // Le menu en jeu : sa touche est active pendant la partie seulement.
     app.state::<crate::menu_jeu::MenuJeu>().commencer(crate::menu_jeu::PartieEnCours {
@@ -558,6 +559,12 @@ pub async fn menu_jeu_quitter(app: AppHandle) -> Resultat<usize> {
     })
     .await
     .map_err(|_| Erreur::Disque("La fermeture s'est arrêtée brutalement.".into()))?
+}
+
+/// La version lancée par défaut d'un jeu importé.
+#[tauri::command]
+pub async fn jeu_choisir_version(noyau: State<'_, Noyau>, id: i64, chemin: String) -> Resultat<()> {
+    noyau.choisir_version(id, &chemin).await
 }
 
 #[tauri::command]

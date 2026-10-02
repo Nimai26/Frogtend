@@ -635,6 +635,13 @@ ROM (régions, révisions) en sont les **versions**, présentées dans cet **ord
 ou en, puis les autres**. Conséquence : l'import local (0.27.0) crée aujourd'hui une ligne par fichier ; il faudra
 **regrouper** les versions d'un même jeu (titre nettoyé + système) sous une seule fiche, la version préférée étant
 lancée par défaut, les autres au choix (« Jouer avec… »).
+**✅ 0.31.0** : les étiquettes (No-Intro, Redump, TOSEC, GoodTools) donnent la région (fr : France/Fr/F ; eu : Europe/E/
+langues européennes/pays d'Europe ; us/en : USA/U/World/En ; autres) et la qualité ([!] d'abord, [a] [o] [h] [t] [b],
+bêta/proto en dernier) ; les disques d'une même version restent ensemble ; import regroupé par (système, titre
+nettoyé), une version d'une autre région s'ajoute à la fiche existante sans changer celle lancée ; fichiers déjà
+importés jamais en double (y compris ceux importés un par un en 0.27–0.30). ▶ Jouer lance la version préférée, « Jouer
+avec… » propose les versions (pour cette partie), ⚙ Gérer le jeu ▸ 📀 Version la change d'habitude. Essai réel
+(lecture seule) : E:\Games\NES, 1 086 fichiers → 828 fiches.
 
 ## Personnalisation (« beaucoup d'éléments modifiables »)
 

@@ -211,7 +211,8 @@
     if (!jeuxChoisis.length) return;
     if (jeuxChoisis.length > 1) {
       const oui = await confirmer(`➕ Ajouter ${jeuxChoisis.length} jeux à ta ludothèque ?`, {
-        message: `Plateforme : ${jeuxChoisis[0].plateforme}.${tailleChoisie ? ` ${taille(tailleChoisie)} sur le disque.` : ''}\nRien n’est déplacé ni renommé. Les retirer plus tard de ta ludothèque ne les efface pas.`,
+        message: `Plateforme : ${jeuxChoisis[0].plateforme}.${tailleChoisie ? ` ${taille(tailleChoisie)} sur le disque.` : ''}\nLes versions d’un même jeu (France, Europe, USA…) sont réunies sous une seule fiche, la française d’abord.
+Rien n’est déplacé ni renommé. Les retirer plus tard de ta ludothèque ne les efface pas.`,
         libelleValider: `Ajouter ${jeuxChoisis.length} jeux`,
       });
       if (!oui) return;

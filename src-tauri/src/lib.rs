@@ -278,6 +278,7 @@ pub fn run() {
             commandes::gratuits_connexion_playstation,
             commandes::gratuits_psplus,
             commandes::abris_regler,
+            commandes::jeu_choisir_version,
             commandes::import_chercher_roms,
             commandes::import_mesurer,
             commandes::import_copier,

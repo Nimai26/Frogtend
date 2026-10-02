@@ -14,6 +14,7 @@ import { GENRES_MANETTE, libelleCommandes } from './commandes';
 import { apresUnePartie } from '$lib/sauvegarde.svelte';
 import { ludo, rechargerListe, rechargerPlateformes } from './ludotheque.svelte';
 import { rechargerJeuxDuPc, tele } from './telechargements.svelte';
+import { estCourante, libelleVersion, nomDuFichier } from './versions';
 
 export const partie = $state<{ enJeu: number | null; installation: number | null }>({ enJeu: null, installation: null });
 
@@ -179,11 +180,11 @@ export async function choisirLanceur(id: number): Promise<boolean> {
 
 /** Jouer. `emulateur` : la clé d'un émulateur du système, pour ce lancement seulement. Si un réglage manque
  * (émulateur, lanceur), on le demande puis on relance. */
-export async function jouer(id: number, emulateur?: string) {
+export async function jouer(id: number, emulateur?: string, version?: string) {
   const j = tele.jeux[id];
   for (let essai = 0; essai < 2; essai++) {
     try {
-      await api.jouer(id, etat.profil.commandes[String(id)], emulateur);
+      await api.jouer(id, etat.profil.commandes[String(id)], emulateur, version);
       toast(`▶ « ${j?.titre ?? 'Le jeu'} » se lance…`);
       return;
     } catch (e) {
@@ -263,10 +264,34 @@ export function emulateursDuJeu(plateforme: string) {
 }
 
 /** « ▶ Jouer avec… » : choisir, pour ce lancement seulement, parmi les émulateurs du système (ou en ajouter un). */
+/** Choisir une version (région) d'un jeu importé ; rend son chemin, `undefined` s'il n'y a pas le choix, `null` si
+ * la personne renonce. */
+async function choisirUneVersion(j: JeuPc, titre: string, aide: string): Promise<string | null | undefined> {
+  const versions = j.installation?.versions ?? [];
+  if (versions.length < 2 || !j.installation) return undefined;
+  const i = j.installation;
+  return choisir<string>(
+    titre,
+    versions.map((v) => ({
+      valeur: v.chemin,
+      libelle: `${estCourante(v, i) ? '⭐ ' : ''}${libelleVersion(v)}`,
+      detail: nomDuFichier(v),
+    })),
+    aide,
+  );
+}
+
 export async function jouerAvec(id: number) {
   const j = tele.jeux[id];
   if (!j) return;
+  // D'abord la version (région), s'il y en a plusieurs.
+  const version = await choisirUneVersion(j, `▶ Quelle version de « ${j.titre} » ?`, 'Pour cette partie seulement. ⭐ : celle d’habitude (⚙ Gérer le jeu ▸ 📀 Version).');
+  if (version === null) return;
   const s = emulateursDuJeu(j.plateforme);
+  if (version !== undefined && s.liste.length < 2) {
+    await jouer(id, undefined, version);
+    return;
+  }
   const actuel = pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, j.plateforme, id);
   const c = await choisir<string>(
     `▶ Jouer à « ${j.titre} » avec…`,
@@ -282,7 +307,22 @@ export async function jouerAvec(id: number) {
   );
   if (!c) return;
   const cle = c === '+' ? await reglerEmulateur(j.plateforme) : c;
-  if (cle) await jouer(id, cle);
+  if (cle) await jouer(id, cle, version ?? undefined);
+}
+
+/** « 📀 Version » d'un jeu importé : celle qu'on lance d'habitude. */
+export async function choisirVersionParDefaut(id: number) {
+  const j = tele.jeux[id];
+  if (!j) return;
+  const v = await choisirUneVersion(j, `📀 Version de « ${j.titre} »`, 'Celle que ▶ Jouer lance. Ordre de préférence : FR, EU, US/EN, puis les autres.');
+  if (!v) return;
+  try {
+    await api.choisirVersion(id, v);
+    await rechargerJeuxDuPc();
+    toast('✅ Version retenue pour ce jeu.');
+  } catch (e) {
+    toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
+  }
 }
 
 /** « 🕹 Émulateur » d'un jeu : comme la console, ou un autre émulateur du système, par défaut pour ce jeu. */
@@ -354,11 +394,16 @@ export async function choisirCommandes(id: number) {
 export async function gererJeu(id: number) {
   const j = tele.jeux[id];
   if (!j) return;
-  type Action = 'installer' | 'lanceur' | 'emulateur' | 'commandes' | 'abri' | 'retirer';
+  type Action = 'installer' | 'lanceur' | 'version' | 'emulateur' | 'commandes' | 'abri' | 'retirer';
   const options: { valeur: Action; libelle: string; detail?: string }[] = [];
   if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
   if (j.installation && !j.installation.fichier_du_jeu)
     options.push({ valeur: 'lanceur', libelle: '🎯 Changer ce qui lance le jeu' });
+  const versions = j.installation?.versions ?? [];
+  if (versions.length > 1 && j.installation) {
+    const courante = versions.find((v) => estCourante(v, j.installation!));
+    options.push({ valeur: 'version', libelle: '📀 Version', detail: `${courante ? libelleVersion(courante) : '?'} (${versions.length} versions)` });
+  }
   const s = emulateursDuJeu(j.plateforme);
   if (s.liste.length) {
     const e = pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, j.plateforme, id);
@@ -380,6 +425,7 @@ export async function gererJeu(id: number) {
   const c = await choisir<Action>(`⚙ Gérer « ${j.titre} »`, options, `Rangé dans ${j.installation?.dossier ?? j.dossier}`);
   if (c === 'installer') await installer(id);
   else if (c === 'lanceur') await choisirLanceur(id);
+  else if (c === 'version') await choisirVersionParDefaut(id);
   else if (c === 'emulateur') await choisirEmulateurDuJeu(id);
   else if (c === 'commandes') await choisirCommandes(id);
   else if (c === 'abri') await mettreALAbri(id);

@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.31.0 — une fiche par jeu, toutes ses versions
+
+- À l'import, les ROM d'un même jeu (France, Europe, USA, Japon, révisions…) sont réunies sous **une seule fiche**.
+- Ses versions sont rangées dans ton ordre : **français, européen, américain/anglais, puis les autres** ; à région
+  égale, la meilleure copie d'abord ([!]). Les disques d'un même jeu restent ensemble.
+- **▶ Jouer** lance la version préférée ; **▶ Jouer avec…** en propose une autre pour la partie ; ⚙ Gérer le jeu ▸
+  **📀 Version** change celle d'habitude.
+- Une nouvelle région importée plus tard rejoint la fiche existante. Chez toi : 1 086 ROM NES → 828 fiches.
+
 ## 0.30.0 — pas de pieuvre : rien d'éparpillé sur le disque
 
 - Ce que Frogtend ajoute à un jeu (jaquette, fiche, documents, copie avant un mod) va **dans le dossier du jeu**, sous
