@@ -454,6 +454,9 @@ export function adresseJaquette(id: number, largeur?: number): string {
   return `http://jaquette.localhost/${id}?largeur=${l}`;
 }
 
+/** La jaquette officielle d'un jeu de boutique (servie et gardée en cache par le cœur). */
+export const adresseImageBoutique = (boutique: string, id: string) => `http://boutique.localhost/${boutique}/${encodeURIComponent(id)}`;
+
 /** L'adresse de la vidéo de fond d'un skin (servie par le cœur, gardée pour ce PC). */
 export const adresseFond = (skin: string) => `http://fond.localhost/${encodeURIComponent(skin)}`;
 

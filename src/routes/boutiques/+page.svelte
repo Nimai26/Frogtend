@@ -2,7 +2,7 @@
   // « Mes boutiques » (lot 9) : les jeux possédés sur les comptes de la personne (Steam d'abord). Ils restent dans son
   // Frogtend et ne remontent jamais dans Firehouse. Jouer et installer passent par la boutique elle-même.
   import { onMount } from 'svelte';
-  import { duree } from '$lib/api';
+  import { adresseImageBoutique, duree } from '$lib/api';
   import { importerSteam, lireSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
 
   let filtre = $state('');
@@ -36,21 +36,22 @@
         <label><input type="checkbox" bind:checked={seulementInstalles} /> installés sur ce PC</label>
         <span class="muted">{affiches.length} / {steam.jeux.length}</span>
       </div>
-      <ul class="liste">
+      <div class="grille">
         {#each affiches as j (j.id)}
-          <li>
-            <span class="nom">
-              <strong>{j.nom}</strong>
-              <span class="muted">{j.minutes ? duree(j.minutes * 60) : 'jamais joué'}{j.installe ? ' · ✅ installé' : ''}</span>
+          <button
+            class="carte"
+            title={j.installe ? `▶ Jouer à « ${j.nom} » (Steam)` : `⬇ Installer « ${j.nom} » (Steam)`}
+            onclick={() => ouvrirDansSteam(j, j.installe ? 'jouer' : 'installer')}
+          >
+            <span class="image">
+              <span class="remplacement">{j.nom}</span>
+              <img src={adresseImageBoutique('steam', j.id)} alt="" loading="lazy" onerror={(e) => ((e.currentTarget as HTMLElement).hidden = true)} />
             </span>
-            {#if j.installe}
-              <button class="btn petit primary" onclick={() => ouvrirDansSteam(j, 'jouer')}>▶ Jouer</button>
-            {:else}
-              <button class="btn petit" onclick={() => ouvrirDansSteam(j, 'installer')}>⬇ Installer (Steam)</button>
-            {/if}
-          </li>
+            <span class="nom">{j.nom}</span>
+            <span class="muted">{j.installe ? '✅ installé · ▶ Jouer' : '⬇ Installer'}{j.minutes ? ` · ${duree(j.minutes * 60)}` : ''}</span>
+          </button>
         {/each}
-      </ul>
+      </div>
     {:else if !steam.enCours}
       <p class="muted">Aucun jeu Steam importé pour l’instant.</p>
     {/if}
@@ -94,20 +95,57 @@
     flex: 1;
     min-width: calc(180 * var(--u));
   }
-  .liste {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: calc(6 * var(--u));
+  .boutiques {
+    max-width: none;
   }
-  .liste li {
-    display: flex;
-    align-items: center;
-    gap: calc(10 * var(--u));
+  .grille {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(calc(150 * var(--u)), 1fr));
+    gap: calc(14 * var(--u));
+  }
+  .carte {
+    display: grid;
+    gap: calc(4 * var(--u));
+    padding: calc(4 * var(--u));
+    background: none;
+    border: calc(2 * var(--u)) solid transparent;
+    border-radius: calc(8 * var(--u));
+    color: var(--ink);
+    text-align: left;
+    cursor: pointer;
+  }
+  .carte:hover,
+  .carte:focus-visible {
+    border-color: var(--accent);
+  }
+  /* Le titre est DERRIÈRE l'image : visible tant qu'elle n'est pas là (ou si Steam n'en a pas). */
+  .image {
+    position: relative;
+    aspect-ratio: 2 / 3;
+    border-radius: calc(6 * var(--u));
+    overflow: hidden;
+    background: color-mix(in srgb, var(--ink) 8%, transparent);
+  }
+  .image img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .remplacement {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: calc(8 * var(--u));
+    text-align: center;
+    color: var(--dim);
   }
   .nom {
-    flex: 1;
-    display: grid;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>

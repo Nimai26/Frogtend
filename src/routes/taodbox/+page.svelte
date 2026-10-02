@@ -11,6 +11,8 @@
   import Jaquette from '$lib/ludotheque/Jaquette.svelte';
   import { tele } from '$lib/ludotheque/telechargements.svelte';
   import { taodbox } from '$lib/taodbox/manette.svelte';
+  import { adresseImageBoutique } from '$lib/api';
+  import { lireSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
 
   let lanceParSunshine = $state(false);
   let console_ = $state<string | null>(null);
@@ -23,7 +25,11 @@
   const consoles = $derived([...new Set(jeux.map((j) => j.plateforme))].sort());
   const affiches = $derived(console_ ? jeux.filter((j) => j.plateforme === console_) : jeux);
 
+  /** Les jeux Steam installés sur ce PC, jouables depuis le canapé (Steam les lance). */
+  const steamInstalles = $derived(steam.jeux.filter((j) => j.installe));
+
   onMount(async () => {
+    lireSteam();
     lanceParSunshine = isTauri() ? await api.taodboxLance().catch(() => false) : false;
     await tick();
     document.querySelector<HTMLElement>('.taodbox .carte')?.focus();
@@ -80,6 +86,19 @@
           <Jaquette id={j.id} titre={j.titre} plateforme={j.plateforme} largeur={180} />
           <span class="titre">{j.titre}</span>
           <span class="etat">{partie.enJeu === j.id ? '▶ En cours' : j.installation ? '' : '📦 À installer'}</span>
+        </button>
+      {/each}
+    </div>
+  {/if}
+
+  {#if steamInstalles.length && (console_ === null || console_ === 'Steam')}
+    <h2 class="section">Steam</h2>
+    <div class="grille">
+      {#each steamInstalles as j (j.id)}
+        <button class="carte" onclick={() => ouvrirDansSteam(j, 'jouer')} title={j.nom}>
+          <span class="image-steam"><img src={adresseImageBoutique('steam', j.id)} alt="" loading="lazy" /></span>
+          <span class="titre">{j.nom}</span>
+          <span class="etat">Steam</span>
         </button>
       {/each}
     </div>
@@ -167,6 +186,21 @@
   .etat {
     color: var(--dim);
     min-height: 1.2em;
+  }
+  .section {
+    margin: 0;
+    font-size: calc(18 * var(--u));
+  }
+  .image-steam {
+    aspect-ratio: 2 / 3;
+    border-radius: calc(6 * var(--u));
+    overflow: hidden;
+    background: color-mix(in srgb, var(--ink) 8%, transparent);
+  }
+  .image-steam img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
   .vide {
     color: var(--dim);

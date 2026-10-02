@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.21.0 — tes jeux Steam en jaquettes, et dans Taodbox
+
+- **🛒 Boutiques** montre tes jeux Steam en **grandes jaquettes** (les images officielles de Steam, gardées sur ce PC).
+  Un clic : ▶ Jouer s'il est installé, sinon ⬇ Installer (par Steam).
+- **Taodbox** : tes jeux Steam installés apparaissent dans une section « Steam », jouables à la manette.
+
 ## 0.20.0 — tes jeux Steam (lot 9, début)
 
 - **⚙ Options ▸ Comptes ▸ Steam** : l'URL de ton profil Steam et ta propre clé d'API Steam (comme dans LaunchBox).

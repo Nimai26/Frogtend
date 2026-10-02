@@ -99,6 +99,22 @@ fn repondre_fond(app: &tauri::AppHandle, chemin: &str) -> tauri::http::Response<
     }
 }
 
+/// `boutique://steam/<appid>` : la jaquette officielle d'un jeu Steam, en cache (images publiques de Steam).
+fn repondre_boutique(app: &tauri::AppHandle, chemin: &str) -> tauri::http::Response<Vec<u8>> {
+    let mut morceaux = chemin.trim_matches('/').split('/');
+    let (Some("steam"), Some(appid)) = (morceaux.next(), morceaux.next()) else { return reponse_vide(404) };
+    let cache = app.state::<noyau::Noyau>().dossier.join("images-boutiques");
+    match tauri::async_runtime::block_on(boutiques::image_steam(&cache, appid)) {
+        Some(octets) => tauri::http::Response::builder()
+            .status(200)
+            .header("Content-Type", "image/jpeg")
+            .header("Cache-Control", "max-age=604800")
+            .body(octets)
+            .unwrap(),
+        None => reponse_vide(404),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -146,6 +162,11 @@ pub fn run() {
             let app = ctx.app_handle().clone();
             let chemin = requete.uri().path().to_string();
             std::thread::spawn(move || repondeur.respond(repondre_fond(&app, &chemin)));
+        })
+        .register_asynchronous_uri_scheme_protocol("boutique", |ctx, requete, repondeur| {
+            let app = ctx.app_handle().clone();
+            let chemin = requete.uri().path().to_string();
+            std::thread::spawn(move || repondeur.respond(repondre_boutique(&app, &chemin)));
         })
         .invoke_handler(tauri::generate_handler![
             infos_application,

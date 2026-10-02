@@ -199,6 +199,38 @@ pub fn ecrire(dossier_profil: &Path, c: Option<&CompteBoutique>) -> Resultat<()>
 
 pub const API_STEAM: &str = API;
 
+/// Les images officielles d'un jeu Steam (CDN public de Steam, sans clé) : la jaquette en hauteur, sinon la bannière.
+pub fn adresses_image_steam(appid: &str) -> [String; 2] {
+    [
+        format!("https://cdn.akamai.steamstatic.com/steam/apps/{appid}/library_600x900.jpg"),
+        format!("https://cdn.akamai.steamstatic.com/steam/apps/{appid}/header.jpg"),
+    ]
+}
+
+/// La jaquette d'un jeu Steam, gardée en cache sur ce PC (`<cache>\steam\<appid>.jpg`) ; `None` si Steam n'en a pas.
+pub async fn image_steam(cache: &Path, appid: &str) -> Option<Vec<u8>> {
+    if appid.is_empty() || !appid.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let f = cache.join("steam").join(format!("{appid}.jpg"));
+    if let Ok(o) = std::fs::read(&f) {
+        return Some(o);
+    }
+    let c = client().ok()?;
+    for u in adresses_image_steam(appid) {
+        let Ok(r) = c.get(&u).send().await else { continue };
+        if r.status().is_success() {
+            let o = r.bytes().await.ok()?.to_vec();
+            if o.len() > 1000 {
+                let _ = std::fs::create_dir_all(f.parent()?);
+                let _ = std::fs::write(&f, &o);
+                return Some(o);
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -267,6 +299,16 @@ mod tests {
         std::fs::write(autre.join("steamapps/appmanifest_400.acf"), "x").unwrap();
         let s = installes_steam(&steam);
         assert!(s.contains("620") && s.contains("400") && s.len() == 2);
+    }
+
+    #[tokio::test]
+    async fn la_jaquette_steam_vient_du_cache_et_un_identifiant_douteux_est_refuse() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join("steam")).unwrap();
+        std::fs::write(d.path().join("steam").join("620.jpg"), b"image-en-cache").unwrap();
+        assert_eq!(image_steam(d.path(), "620").await.unwrap(), b"image-en-cache");
+        assert!(image_steam(d.path(), "../../secret").await.is_none());
+        assert!(adresses_image_steam("620")[0].ends_with("/620/library_600x900.jpg"));
     }
 
     #[test]

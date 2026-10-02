@@ -27,6 +27,8 @@
       ta NOUVELLE clé. **Attendu :** « Compte Steam vérifié et enregistré » ; la clé n'apparaît plus jamais.
 - [ ] Barre du haut ▸ **Boutiques** ▸ ⬇ Importer mes jeux Steam. **Attendu :** ta liste de jeux Steam (tous ?),
       les installés marqués ✅. **▶ Jouer** lance le jeu par Steam ; **⬇ Installer** ouvre l'installation Steam.
+- [ ] (0.21.0) Les jeux s'affichent en **jaquettes** Steam ; dans **Taodbox**, une section « Steam » avec tes jeux
+      installés, lancés par A.
 - [ ] Un autre profil : Boutiques ▸ Importer **sans réglage** → Frogtend demande d'abord le compte et la clé.
 
 ## Cheat Engine (0.18.0 – 0.19.1) — ton zip est sur Firehouse (Cheat Engine 7.7, 41,8 Mo)
