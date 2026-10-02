@@ -5,6 +5,19 @@
 
 ## Décisions déjà prises (Seb, 29/09/2026)
 
+> ⚠ **Règle « pas de pieuvre » (Seb, 02/10, non négociable).** Frogtend ne s'éparpille JAMAIS sur le disque :
+> - **les jeux** vont dans les dossiers de jeux définis dans les réglages (⚙ Options ▸ Emplacements), et nulle part
+>   ailleurs — sauf les jeux PC des boutiques officielles, qui restent dans les dossiers de Steam, Epic, GOG… ;
+> - **les émulateurs** vont dans le dossier des émulateurs défini dans les réglages ;
+> - **tout ce qui sert à UN jeu installé reste avec lui** : ses médias (jaquette, fiche, manuel, documents) **copiés
+>   en local** pour l'affichage hors ligne, ses dossiers mods, triches (cheats), etc. — dans son dossier
+>   d'installation ;
+> - **les outils et ajouts** (Cheat Engine et tout autre) s'installent dans un dossier défini dans les réglages, jamais
+>   ailleurs ;
+> - « C: » dans DOSBox = le lecteur VIRTUEL de DOSBox, monté sur le dossier du jeu ; jamais le C:\ de Windows.
+> Avant d'écrire où que ce soit : est-ce dans le dossier du jeu, ou dans un dossier défini dans les réglages ? Sinon,
+> on ne l'écrit pas.
+
 - **Pile : Tauri 2.** Cœur en Rust (processus, fichiers, téléchargements, coffre Windows) et interface en
   **Svelte 5 + Vite + TypeScript**.
 - **Identifiant de l'application** : `fr.hikari-no-sekai.frogtend` (définitif).
