@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { messageObtention, messagePsPlus } from './gratuits.svelte';
+import { messageObtention, messagePsPlus, messageRecolte } from './gratuits.svelte';
 
 describe('messageObtention', () => {
   it('dit clairement ce qui s’est passé', () => {
@@ -8,6 +8,15 @@ describe('messageObtention', () => {
     expect(messageObtention('Jeu', { etat: 'connexion' }).texte).toContain('Connecte-toi');
     expect(messageObtention('Jeu', { etat: 'captcha' }).texte).toContain('vérification');
     expect(messageObtention('Jeu', { etat: 'erreur', motif: 'délai dépassé' }).texte).toContain('délai dépassé');
+  });
+
+  it('résume un passage sur GOG ou Prime Gaming', () => {
+    const base = { obtenus: [], deja: 0, a_finir: 0 };
+    expect(messageRecolte('gog', { ...base, etat: 'faite', obtenus: ['Beyond Good & Evil'] }).texte).toContain('Beyond Good & Evil');
+    expect(messageRecolte('gog', { ...base, etat: 'aucun' }).texte).toContain('pas de jeu offert');
+    expect(messageRecolte('prime', { ...base, etat: 'faite', a_finir: 2 }).ton).toBe('alerte');
+    expect(messageRecolte('prime', { ...base, etat: 'pas_abonne' }).texte).toContain('pas abonné');
+    expect(messageRecolte('gog', { ...base, etat: 'connexion' }).texte).toContain('Connecte-toi à GOG');
   });
 
   it('résume un passage sur PS Plus', () => {

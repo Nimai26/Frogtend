@@ -84,6 +84,12 @@ export interface ReglagesProfil {
     psplus: boolean;
     /** Dernier passage automatique sur PS Plus (secondes depuis 1970). */
     psplusDernier: number;
+    /** GOG (jeu offert du moment) : le récupérer tout seul, une fois par jour. */
+    gog: boolean;
+    gogDernier: number;
+    /** Prime Gaming : récupérer tout seul les jeux offerts aux membres Prime, une fois par semaine. */
+    prime: boolean;
+    primeDernier: number;
   };
   /** Les commandes choisies jeu par jeu (identifiant du jeu → choix). Absent : automatique. */
   commandes: Record<string, CommandesJeu>;
@@ -112,7 +118,7 @@ export const DEFAUTS_PROFIL: ReglagesProfil = {
     panneauDetails: true,
     plateformesMasquees: [],
   },
-  gratuits: { auto: false, derniere: 0, psplus: false, psplusDernier: 0 },
+  gratuits: { auto: false, derniere: 0, psplus: false, psplusDernier: 0, gog: false, gogDernier: 0, prime: false, primeDernier: 0 },
   commandes: {},
 };
 

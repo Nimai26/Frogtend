@@ -156,6 +156,41 @@ pub fn lire_titre_psplus(titre: &str) -> Option<RecoltePsPlus> {
     Some(RecoltePsPlus::Erreur { motif: r.strip_prefix("ERREUR:").unwrap_or(r).to_string() })
 }
 
+/// GOG et Prime Gaming (Seb, 02/10 : « Prime Gaming, GOG — mêmes principes » qu'Epic) : la page officielle, cachée,
+/// avec la connexion propre au profil ; le script rend un bilan JSON par le titre.
+pub const SCRIPT_GOG: &str = include_str!("../ressources/gratuits/gog.js");
+pub const SCRIPT_PRIME: &str = include_str!("../ressources/gratuits/prime.js");
+
+/// (page de connexion, page de récupération, script) d'une boutique.
+pub fn boutique_offerte(b: &str) -> Option<(&'static str, &'static str, &'static str)> {
+    match b {
+        "gog" => Some(("https://www.gog.com/en", "https://www.gog.com/en", SCRIPT_GOG)),
+        "prime" => Some(("https://gaming.amazon.com/home", "https://gaming.amazon.com/home", SCRIPT_PRIME)),
+        _ => None,
+    }
+}
+
+/// Le bilan d'un passage sur GOG ou Prime Gaming.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct Recolte {
+    /// `faite`, `connexion`, `aucun` (pas de jeu offert en ce moment), `pas_abonne` (Prime), `erreur`.
+    pub etat: String,
+    #[serde(default)]
+    pub obtenus: Vec<String>,
+    #[serde(default)]
+    pub deja: u32,
+    /// Prime : les offres d'autres boutiques (code à activer, compte à relier) à finir sur la page.
+    #[serde(default)]
+    pub a_finir: u32,
+    #[serde(default)]
+    pub motif: Option<String>,
+}
+
+pub fn lire_titre_recolte(titre: &str) -> Option<Recolte> {
+    let j = titre.strip_prefix("FROGTEND:")?;
+    Some(serde_json::from_str::<Recolte>(j).unwrap_or(Recolte { etat: "erreur".into(), motif: Some(j.chars().take(120).collect()), ..Default::default() }))
+}
+
 /// Le dossier du navigateur d'un profil pour les boutiques (sa connexion Epic y reste).
 pub fn dossier_navigateur(dossier_profil: &Path) -> PathBuf {
     dossier_profil.join("navigateur")
@@ -230,6 +265,19 @@ mod tests {
         assert_eq!(SCRIPT_PSPLUS.matches(".click()").count(), 1);
         assert!(SCRIPT_PSPLUS.replace("\r\n", "\n").contains("if (bouton && estAjout(bouton)) {\n        bouton.click();"));
         assert!(PAGE_PSPLUS.starts_with("https://store.playstation.com/"));
+    }
+
+    #[test]
+    fn le_bilan_gog_ou_prime_se_lit_dans_le_titre() {
+        let r = lire_titre_recolte(r#"FROGTEND:{"etat":"faite","obtenus":["Beyond Good & Evil"],"deja":0}"#).unwrap();
+        assert_eq!((r.etat.as_str(), r.obtenus.len(), r.a_finir), ("faite", 1, 0));
+        assert_eq!(lire_titre_recolte(r#"FROGTEND:{"etat":"connexion"}"#).unwrap().etat, "connexion");
+        assert_eq!(lire_titre_recolte("FROGTEND:pas du json").unwrap().etat, "erreur");
+        assert_eq!(lire_titre_recolte("GOG.com"), None);
+        // Les scripts n'agissent que sur la page officielle, et GOG passe par l'adresse officielle de récupération.
+        assert!(SCRIPT_GOG.contains("location.hostname !== 'www.gog.com'") && SCRIPT_GOG.contains("'/giveaway/claim'"));
+        assert!(SCRIPT_PRIME.contains("location.hostname !== 'gaming.amazon.com'"));
+        assert!(boutique_offerte("prime").is_some() && boutique_offerte("epic").is_none());
     }
 
     #[test]

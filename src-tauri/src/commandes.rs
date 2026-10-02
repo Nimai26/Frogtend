@@ -1120,6 +1120,76 @@ pub async fn import_ajouter(noyau: State<'_, Noyau>, jeux: Vec<crate::import_loc
     noyau.importer_locaux(&jeux).await
 }
 
+/// Se connecter à GOG ou à Prime Gaming, une fois : la page officielle s'ouvre (navigateur PROPRE AU PROFIL) ;
+/// Frogtend ne voit jamais le mot de passe.
+#[tauri::command]
+pub async fn gratuits_connexion(app: AppHandle, noyau: State<'_, Noyau>, boutique: String) -> Resultat<()> {
+    let (page, _, _) = crate::gratuits::boutique_offerte(&boutique).ok_or_else(|| Erreur::Refus("Boutique inconnue.".into()))?;
+    let p = profil_ouvert(&noyau).await?;
+    let etiquette = format!("boutique-{boutique}");
+    if let Some(w) = app.get_webview_window(&etiquette) {
+        let _ = w.close();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+    let url = tauri::Url::parse(page).map_err(|_| Erreur::Refus("Adresse invalide.".into()))?;
+    let w = tauri::WebviewWindowBuilder::new(&app, &etiquette, tauri::WebviewUrl::External(url))
+        .title("Connexion — Frogtend")
+        .inner_size(1280.0, 860.0)
+        .center()
+        .data_directory(crate::gratuits::dossier_navigateur(&dossier_profil_de(&noyau, &p.id)))
+        .build()
+        .map_err(|e| Erreur::Disque(format!("La fenêtre ne s'ouvre pas ({e}).")))?;
+    let _ = w.set_focus();
+    Ok(())
+}
+
+/// Récupère les jeux offerts de GOG ou de Prime Gaming : la page officielle s'ouvre CACHÉE ; si ça bloque (connexion,
+/// offres à finir ailleurs, erreur), elle s'affiche et la personne finit (décision de Seb : B, sinon A).
+#[tauri::command]
+pub async fn gratuits_recuperer(app: AppHandle, noyau: State<'_, Noyau>, boutique: String) -> Resultat<crate::gratuits::Recolte> {
+    let (_, page, script) = crate::gratuits::boutique_offerte(&boutique).ok_or_else(|| Erreur::Refus("Boutique inconnue.".into()))?;
+    let p = profil_ouvert(&noyau).await?;
+    let dossier = dossier_profil_de(&noyau, &p.id);
+    let etiquette = format!("boutique-{boutique}");
+    let (envoi, reception) = std::sync::mpsc::channel::<crate::gratuits::Recolte>();
+    let envoi = std::sync::Mutex::new(envoi);
+    if let Some(w) = app.get_webview_window(&etiquette) {
+        let _ = w.close();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+    let url = tauri::Url::parse(page).map_err(|_| Erreur::Refus("Adresse invalide.".into()))?;
+    let w = tauri::WebviewWindowBuilder::new(&app, &etiquette, tauri::WebviewUrl::External(url))
+        .title("Jeux offerts — Frogtend")
+        .inner_size(1280.0, 860.0)
+        .center()
+        .visible(false)
+        .data_directory(crate::gratuits::dossier_navigateur(&dossier))
+        .on_page_load(move |w, charge| {
+            if matches!(charge.event(), tauri::webview::PageLoadEvent::Finished) {
+                let _ = w.eval(script);
+            }
+        })
+        .on_document_title_changed(move |_, titre| {
+            if let Some(r) = crate::gratuits::lire_titre_recolte(&titre) {
+                let _ = envoi.lock().map(|e| e.send(r));
+            }
+        })
+        .build()
+        .map_err(|e| Erreur::Disque(format!("La fenêtre ne s'ouvre pas ({e}).")))?;
+    let r = tauri::async_runtime::spawn_blocking(move || reception.recv_timeout(std::time::Duration::from_secs(300)))
+        .await
+        .map_err(|_| Erreur::Disque("L'attente s'est arrêtée brutalement.".into()))?
+        .unwrap_or(crate::gratuits::Recolte { etat: "erreur".into(), motif: Some("aucune réponse de la page (délai dépassé)".into()), ..Default::default() });
+    if (r.etat == "faite" && r.a_finir == 0) || r.etat == "aucun" || r.etat == "pas_abonne" {
+        let _ = w.close();
+    } else {
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+    noyau.journaliser(&format!("jeux offerts {boutique} : {} obtenu(s), {} déjà, {} à finir, état {}", r.obtenus.len(), r.deja, r.a_finir, r.etat));
+    Ok(r)
+}
+
 const FENETRE_PLAYSTATION: &str = "boutique-playstation";
 
 /// Se connecter à PlayStation, une fois : le Store officiel s'ouvre (« Se connecter » en haut) ; la connexion reste

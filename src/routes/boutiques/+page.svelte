@@ -4,7 +4,7 @@
   import { onMount } from 'svelte';
   import { adresseImageBoutique, adresseImageParUrl, duree, type JeuBoutique } from '$lib/api';
   import { galaxy, importerGalaxy, lireGalaxy, nomPlateforme, ouvrirDansGalaxy } from '$lib/boutiques/galaxy.svelte';
-  import { connexionEpic, connexionPlaystation, gratuits, lireGratuits, obtenir, obtenirTout, recolterPsPlus } from '$lib/boutiques/gratuits.svelte';
+  import { connexion, connexionEpic, connexionPlaystation, gratuits, lireGratuits, obtenir, obtenirTout, recolterPsPlus, recuperer } from '$lib/boutiques/gratuits.svelte';
   import { etat, reglerProfil } from '$lib/etat.svelte';
   import { importerSteam, lireSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
 
@@ -96,6 +96,22 @@
       />
       J’ai PS Plus : les ajouter tout seul (une fois par semaine, à l’ouverture de mon profil). Frogtend ne clique que sur « Ajouter à la bibliothèque » : il ne peut rien acheter.
     </label>
+
+    {#each [{ b: 'gog' as const, nom: '🟣 GOG', detail: 'le jeu offert du moment, ajouté à ton compte GOG', auto: 'Les récupérer tout seul (une fois par jour). Note : GOG t’inscrit à sa lettre d’information quand tu prends un jeu offert ; Frogtend ne change pas tes réglages de compte.' }, { b: 'prime' as const, nom: '📦 Prime Gaming', detail: 'les jeux offerts aux membres Amazon Prime', auto: 'Les récupérer tout seul (une fois par semaine). Les offres d’autres boutiques (code GOG, compte Epic à relier) s’ouvrent pour que tu finisses.' }] as o (o.b)}
+      <div class="tete psplus">
+        <h3>{o.nom}</h3>
+        <span class="muted">{o.detail}</span>
+        <span class="espace"></span>
+        <button class="btn" onclick={() => connexion(o.b)}>🔑 Se connecter</button>
+        <button class="btn primary" onclick={() => recuperer(o.b)} disabled={gratuits.boutique !== null}>
+          {gratuits.boutique === o.b ? 'En cours…' : '🎁 Récupérer'}
+        </button>
+      </div>
+      <label class="auto">
+        <input type="checkbox" checked={etat.profil.gratuits[o.b]} onchange={(e) => reglerProfil(`gratuits.${o.b}`, e.currentTarget.checked)} />
+        {o.auto}
+      </label>
+    {/each}
   </section>
 
   <section class="cx-block">

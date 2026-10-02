@@ -33,6 +33,8 @@ export interface JeuResume {
   versions?: number | null;
   // Jeux des boutiques de la personne (lot 9 : id négatif, plateforme « Windows »).
   source?: 'steam' | 'galaxy' | 'local';
+  /** Succès (obtenus, total) d'un jeu de boutique, quand la source les donne (GOG Galaxy). */
+  succes?: [number, number] | null;
   boutique?: string;
   cle_boutique?: string;
   installe?: boolean;
@@ -321,6 +323,15 @@ export interface JeuBoutique {
   image?: string | null;
 }
 
+/** Le bilan d'un passage sur GOG ou Prime Gaming. */
+export interface Recolte {
+  etat: 'faite' | 'connexion' | 'aucun' | 'pas_abonne' | 'erreur';
+  obtenus: string[];
+  deja: number;
+  a_finir: number;
+  motif?: string | null;
+}
+
 /** Le bilan d'un passage sur les jeux PS Plus du mois. */
 export type RecoltePsPlus =
   | { etat: 'faite'; ajoutes: number; deja: number; vus: number }
@@ -455,6 +466,8 @@ export const api = {
     appeler<InstallationFirehouse>('emulateur_installer_firehouse', { id, nom, dossier }),
   gratuitsListe: () => appeler<JeuOffert[]>('gratuits_liste'),
   gratuitsConnexionEpic: () => appeler<void>('gratuits_connexion_epic'),
+  gratuitsConnexion: (boutique: 'gog' | 'prime') => appeler<void>('gratuits_connexion', { boutique }),
+  gratuitsRecuperer: (boutique: 'gog' | 'prime') => appeler<Recolte>('gratuits_recuperer', { boutique }),
   gratuitsConnexionPlaystation: () => appeler<void>('gratuits_connexion_playstation'),
   gratuitsPsPlus: () => appeler<RecoltePsPlus>('gratuits_psplus'),
   gratuitsObtenirEpic: (slug: string) => appeler<{ etat: string; motif?: string }>('gratuits_obtenir_epic', { slug }),

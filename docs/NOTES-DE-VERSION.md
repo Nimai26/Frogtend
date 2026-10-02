@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.36.0 — GOG, Prime Gaming et les succès par GOG Galaxy
+
+- **🛒 Boutiques ▸ 🎁 Jeux offerts** : **GOG** (le jeu offert du moment) et **Prime Gaming** (les jeux offerts aux
+  membres Prime) se récupèrent tout seuls, sur leurs pages officielles, avec ta connexion à toi. Ce qui demande un code
+  ou un compte à relier s'ouvre pour que tu finisses.
+- Cases « les récupérer tout seul » : GOG une fois par jour, Prime une fois par semaine.
+- Les jeux GOG, Xbox et EA importés par GOG Galaxy montrent leurs **succès** (Galaxy ne connaît pas ceux d'Epic).
+
 ## 0.35.0 — les .chd et la Dreamcast
 
 - Frogtend lit les images **.chd** : tes **135 jeux Dreamcast** sont reconnus par RetroAchievements (chez toi : 135

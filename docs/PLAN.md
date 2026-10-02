@@ -506,7 +506,13 @@ Remaster et BURIED STARS jusqu'au 08/10) ; « 🔑 Se connecter à Epic » (page
 `profils\<id>\navigateur`) ; « 🎁 Obtenir » ouvre la page `/en-US/p/<slug>` CACHÉE, le script `ressources/gratuits/
 epic.js` clique Get → licence → Place Order → I Agree et rend le résultat par le titre ; connexion requise, captcha ou
 échec → la fenêtre s'affiche (repli A) ; case « les obtenir tout seul » (par profil, 1 fois par jour, désactivée par
-défaut). **Pas encore essayé en vrai** (compte Epic de Seb). Reste : Prime Gaming, GOG (mêmes principes).
+défaut). **Pas encore essayé en vrai** (compte Epic de Seb). ~~Reste : Prime Gaming, GOG~~ **✅ 0.36.0** : GOG (bannière
+du jeu offert, puis l'adresse officielle `/giveaway/claim` : « {} » = ajouté, « Already claimed » = déjà) et Prime
+Gaming (offres « Claim » prises sur Amazon ; offres d'autres boutiques — code GOG/Legacy, compte Epic/EA à relier —
+COMPTÉES et laissées à finir sur la page affichée) ; méthode relevée dans vogler/free-games-claimer (rien n'est copié) ;
+connexion propre au profil ; cases « tout seul » (GOG chaque jour, Prime chaque semaine). GOG inscrit à sa lettre
+d'information quand on prend un jeu offert : Frogtend NE change PAS les réglages du compte (à décider avec Seb). Pas de
+jeu offert GOG le 02/10 : la bannière n'a pas pu être vue en vrai (script tolérant aux noms de classes).
 
 **PS Plus (Seb, 02/10)** : ajouter aux récupérations automatiques les **jeux mensuels réservés aux membres PS Plus**
 (Seb est abonné Premium et oublie souvent de les ajouter). **Optionnel** pour chaque profil (case à cocher, avec le
@@ -656,7 +662,9 @@ une saga entière). Conséquences pour Frogtend :
   faite une fois DANS DuckStation, gardée par profil dans `<émulateur>\Profils\<profil>\cheevos-duckstation.json` et
   remise à chaque partie) ; un profil sans compte : succès coupés (jamais le compte d'un autre). Mode hardcore : laissé
   au réglage de l'émulateur ;
-  **Epic** : pas d'API publique de succès (à revoir via GOG Galaxy, qui les synchronise peut-être) ; demander à
+  **Epic** : pas d'API publique de succès, et **GOG Galaxy ne les synchronise pas** (vérifié le 02/10 sur une copie de
+  sa base : succès GOG 557 jeux, Steam 47, Xbox 5, EA 1, Epic 0) → **✅ 0.36.0** : succès des jeux importés par Galaxy
+  (GOG, Xbox, EA, Steam) lus dans `UserAchievements`, affichés « x / y (GOG Galaxy) » ; Epic reste sans succès ; demander à
   Firehouse une version manquante par son nom/empreinte (besoin API à écrire quand le cas se présente).
 
 **C. Une fiche par jeu et par système, plusieurs versions de ROM.** Sur un même système, un jeu = UNE fiche ; ses

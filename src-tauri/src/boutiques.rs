@@ -38,6 +38,10 @@ pub struct JeuBoutique {
     /// La jaquette (adresse publique), quand la source la donne.
     #[serde(default)]
     pub image: Option<String>,
+    /// Succès (obtenus, total) connus de GOG Galaxy (`UserAchievements`) : GOG, Steam, Xbox, EA — pas Epic, que
+    /// Galaxy ne synchronise pas (relevé le 02/10).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub succes: Option<(u32, u32)>,
 }
 
 /// Ce que Frogtend garde d'une boutique pour un profil (`profils\<id>\boutiques.json`), sans aucun secret.
@@ -129,6 +133,7 @@ pub async fn jeux_possedes(base: &str, cle: &str, steamid: &str) -> Resultat<Vec
                 installe: false,
                 plateforme: String::new(),
                 image: None,
+                succes: None,
             })
         })
         .collect();
@@ -270,6 +275,17 @@ pub fn lire_galaxy(storage: &Path, travail: &Path) -> Resultat<Vec<JeuBoutique>>
             c.prepare("SELECT productId FROM InstalledBaseProducts")?.query_map([], |r| r.get::<_, i64>(0))?.flatten().map(|id| format!("gog_{id}")).collect();
         let installes_autres: BTreeSet<String> =
             c.prepare("SELECT productId FROM InstalledExternalProducts")?.query_map([], |r| r.get::<_, String>(0))?.flatten().collect();
+        // Les succès (table présente seulement si Galaxy en a synchronisé).
+        let a_des_succes: bool = c
+            .query_row("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'UserAchievements'", [], |r| r.get::<_, i64>(0))
+            .map(|n| n > 0)?;
+        let mut succes: std::collections::HashMap<String, (u32, u32)> = std::collections::HashMap::new();
+        if a_des_succes {
+            let mut q = c.prepare("SELECT gameReleaseKey, SUM(COALESCE(isUnlocked, 0)), COUNT(*) FROM UserAchievements GROUP BY gameReleaseKey")?;
+            for r in q.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?)))?.flatten() {
+                succes.insert(r.0, (r.1.max(0) as u32, r.2.max(0) as u32));
+            }
+        }
         let mut s = c.prepare(&sql)?;
         let l = s
             .query_map([], |r| {
@@ -281,7 +297,8 @@ pub fn lire_galaxy(storage: &Path, travail: &Path) -> Resultat<Vec<JeuBoutique>>
                 let derniere = r.get::<_, Option<String>>(5)?.and_then(|d| date_en_secondes(&d)).unwrap_or(0);
                 let (prefixe, id) = cle.split_once('_').unwrap_or(("", &cle));
                 let installe = installes_gog.contains(&cle) || (prefixe != "gog" && installes_autres.contains(id));
-                Ok(JeuBoutique { id: cle.clone(), nom, minutes, derniere, installe, plateforme: prefixe.to_string(), image })
+                let succes = succes.get(&cle).copied().filter(|(_, total)| *total > 0);
+                Ok(JeuBoutique { id: cle.clone(), nom, minutes, derniere, installe, plateforme: prefixe.to_string(), image, succes })
             })?
             .flatten()
             .collect::<Vec<_>>();
@@ -544,7 +561,9 @@ mod tests {
              INSERT INTO GameTimes VALUES (1, 'gog_10', 92);
              INSERT INTO LastPlayedDates VALUES (1, 'gog_10', '2022-04-29 20:23:22');
              INSERT INTO InstalledBaseProducts VALUES (10, 'D:\\Jeux\\Cyberpunk');
-             INSERT INTO InstalledExternalProducts VALUES (5, 3, 'Fortnite');",
+             INSERT INTO InstalledExternalProducts VALUES (5, 3, 'Fortnite');
+             CREATE TABLE UserAchievements(gameReleaseKey TEXT, userId INTEGER, apikey TEXT, unlockTime INTEGER, isUnlocked INTEGER);
+             INSERT INTO UserAchievements VALUES ('gog_10', 1, 'a', 1, 1), ('gog_10', 1, 'b', 0, 0), ('gog_10', 1, 'c', 0, 0);",
         )
         .unwrap();
         drop(c);
@@ -553,6 +572,8 @@ mod tests {
         assert!(l[0].installe && l[0].minutes == 92 && l[0].derniere == 1_651_263_802);
         assert_eq!(l[0].image.as_deref(), Some("https://images.gog.com/a.webp"));
         assert!(l[1].installe && l[1].plateforme == "epic");
+        assert_eq!(l[0].succes, Some((1, 3)), "succès lus dans Galaxy");
+        assert_eq!(l[1].succes, None, "Epic : Galaxy ne les a pas");
         assert!(stock.join("galaxy-2.0.db").is_file(), "l'original n'est pas touché");
     }
 

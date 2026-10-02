@@ -64,6 +64,9 @@ pub struct JeuResume {
     pub image: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub minutes: Option<u64>,
+    /// Succès (obtenus, total) d'un jeu de boutique, quand la source les donne (GOG Galaxy).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub succes: Option<(u32, u32)>,
 }
 
 /// L'id (négatif, stable) d'un jeu de boutique : le même jeu vu par Steam ET par GOG Galaxy a le même id.

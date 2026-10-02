@@ -279,6 +279,8 @@ pub fn run() {
             commandes::gratuits_obtenir_epic,
             commandes::gratuits_connexion_playstation,
             commandes::gratuits_psplus,
+            commandes::gratuits_connexion,
+            commandes::gratuits_recuperer,
             commandes::abris_regler,
             commandes::ra_etat,
             commandes::ra_regler,

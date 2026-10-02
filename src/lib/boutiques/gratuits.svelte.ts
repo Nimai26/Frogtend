@@ -1,15 +1,62 @@
 // Les jeux offerts (lot 9). Décision de Seb (02/10) : Frogtend essaie de les obtenir TOUT SEUL ; si ça bloque
 // (connexion, captcha, page changée), la page de la boutique s'affiche et on finit soi-même. Epic pour commencer.
-import { api, type JeuOffert, type RecoltePsPlus } from '$lib/api';
+import { api, type JeuOffert, type Recolte, type RecoltePsPlus } from '$lib/api';
 import { toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat, reglerProfil } from '$lib/etat.svelte';
 
-export const gratuits = $state<{ liste: JeuOffert[]; enCours: string | null; psplusEnCours: boolean }>({
+export const gratuits = $state<{ liste: JeuOffert[]; enCours: string | null; psplusEnCours: boolean; boutique: 'gog' | 'prime' | null }>({
   liste: [],
   enCours: null,
   psplusEnCours: false,
+  boutique: null,
 });
+
+const NOMS = { gog: 'GOG', prime: 'Prime Gaming' } as const;
+
+/** Le message d'un passage sur GOG ou Prime Gaming (pur, testé). */
+export function messageRecolte(b: 'gog' | 'prime', r: Recolte): { texte: string; ton: 'ok' | 'alerte' | 'erreur' } {
+  const n = NOMS[b];
+  switch (r.etat) {
+    case 'connexion':
+      return { texte: `🔑 Connecte-toi à ${n} dans la fenêtre ouverte, puis réessaie.`, ton: 'alerte' };
+    case 'aucun':
+      return { texte: `${n} : pas de jeu offert en ce moment.`, ton: 'ok' };
+    case 'pas_abonne':
+      return { texte: 'Prime Gaming : ce compte Amazon n’est pas abonné à Prime, rien à récupérer.', ton: 'alerte' };
+    case 'erreur':
+      return { texte: `⚠ ${n} : pas pu le faire tout seul (${r.motif ?? 'raison inconnue'}) : finis dans la fenêtre ouverte.`, ton: 'alerte' };
+  }
+  const morceaux: string[] = [];
+  if (r.obtenus.length) morceaux.push(`🎁 ${r.obtenus.length} jeu(x) récupéré(s) : ${r.obtenus.slice(0, 3).join(', ')}`);
+  if (r.deja) morceaux.push(`${r.deja} déjà dans ta bibliothèque`);
+  if (r.a_finir) morceaux.push(`${r.a_finir} offre(s) d’autres boutiques à finir dans la fenêtre ouverte (code à activer ou compte à relier)`);
+  if (!morceaux.length) morceaux.push('rien de nouveau');
+  return { texte: `${n} : ${morceaux.join(' · ')}.`, ton: r.a_finir ? 'alerte' : 'ok' };
+}
+
+export async function connexion(b: 'gog' | 'prime') {
+  try {
+    await api.gratuitsConnexion(b);
+    toast(`🔑 Connecte-toi à ${NOMS[b]} dans la fenêtre qui s’ouvre, puis ferme-la. Frogtend ne voit jamais ton mot de passe.`);
+  } catch (e) {
+    toast(`Impossible d’ouvrir ${NOMS[b]} : ${motifDuRefus(e)}`, 'erreur');
+  }
+}
+
+/** Récupérer les jeux offerts de GOG ou de Prime Gaming. */
+export async function recuperer(b: 'gog' | 'prime', discret = false) {
+  if (gratuits.boutique) return;
+  gratuits.boutique = b;
+  try {
+    const m = messageRecolte(b, await api.gratuitsRecuperer(b));
+    if (!discret || m.ton !== 'ok' || m.texte.includes('récupéré')) toast(m.texte, m.ton);
+  } catch (e) {
+    toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
+  } finally {
+    gratuits.boutique = null;
+  }
+}
 
 /** Un jour, en secondes : la vérification automatique ne se refait pas plus souvent. */
 const JOUR_S = 24 * 3600;
@@ -126,5 +173,13 @@ export async function gratuitsAuDemarrage() {
   if (g.psplus && maintenant - (g.psplusDernier ?? 0) >= SEMAINE_S) {
     await reglerProfil('gratuits.psplusDernier', maintenant);
     await recolterPsPlus(true);
+  }
+  if (g.gog && maintenant - (g.gogDernier ?? 0) >= JOUR_S) {
+    await reglerProfil('gratuits.gogDernier', maintenant);
+    await recuperer('gog', true);
+  }
+  if (g.prime && maintenant - (g.primeDernier ?? 0) >= SEMAINE_S) {
+    await reglerProfil('gratuits.primeDernier', maintenant);
+    await recuperer('prime', true);
   }
 }

@@ -38,7 +38,13 @@
   const resume = $derived(ra ? resumeRetro(ra) : null);
 </script>
 
-{#if steam}
+{#if jeu.source === 'galaxy' && jeu.succes}
+  <div class="succes cx-block">
+    <strong>🏆 Succès <span class="muted">(GOG Galaxy)</span></strong>
+    <span>{jeu.succes[0]} / {jeu.succes[1]} obtenus</span>
+    <div class="bar"><span style="width: {Math.round((jeu.succes[0] / jeu.succes[1]) * 100)}%"></span></div>
+  </div>
+{:else if steam}
   <div class="succes cx-block">
     <strong>🏆 Succès Steam</strong>
     <span>{steam[0]} / {steam[1]} obtenus</span>

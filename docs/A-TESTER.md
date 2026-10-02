@@ -34,6 +34,15 @@
 - [ ] Un jeu PlayStation par DuckStation : il demande de te connecter la 1re fois ; connecte-toi. Ensuite, joue avec un
       autre profil (sans compte), puis reviens au tien : **tu es toujours connecté**, l'autre profil ne l'était pas.
 
+## GOG, Prime Gaming et succès Galaxy (0.36.0)
+- [ ] 🛒 Boutiques ▸ 🎁 ▸ **🟣 GOG ▸ 🔑 Se connecter**, puis **🎁 Récupérer**. **Attendu :** « pas de jeu offert en ce
+      moment » ou « 1 jeu récupéré » (vérifie dans ta bibliothèque GOG). Dis-moi si GOG t'a inscrit à sa lettre
+      d'information et si tu veux que Frogtend t'en désinscrive tout seul.
+- [ ] **📦 Prime Gaming ▸ 🔑 Se connecter** (compte Amazon), puis **🎁 Récupérer** : les offres « sur Amazon » sont
+      prises ; pour les autres (codes, comptes à relier), la page s'ouvre avec le nombre à finir.
+- [ ] Un jeu GOG importé par Galaxy : le panneau montre **🏆 Succès x / y (GOG Galaxy)** (pas pour Epic : Galaxy ne les
+      a pas).
+
 ## Succès des jeux sur CD (0.34.0)
 - [ ] Importe tes jeux Sega CD (`E:\Games\Sega CD`, extension « cue », sous-dossiers cochés) ; sélectionne Sonic CD :
       **🏆 RetroAchievements** dit si ta version est compatible. (Les 56 empreintes se calculent déjà chez toi.)

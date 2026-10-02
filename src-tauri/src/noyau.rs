@@ -486,6 +486,7 @@ impl Noyau {
                     installe: Some(j.installe),
                     image: j.image.clone(),
                     minutes: Some(j.minutes),
+                    succes: j.succes,
                     ..Default::default()
                 })
             })
