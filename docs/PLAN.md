@@ -416,7 +416,9 @@ qui le transmet à tous les Frogtend. (Ce qui suit est la réflexion qui a mené
 **registre** (\`HKCU\Software\Cheat Engine\`), sans option portable. La copie zippée marche, mais laisse des réglages
 dans le registre (« effet pieuvre »). Piste, **à annoncer à Seb avant tout (registre)** : Frogtend exporterait cette
 clé par profil après usage et la remettrait avant (\`reg export\` / \`reg import\`), ce qui donnerait aussi des réglages
-Cheat Engine par profil.
+Cheat Engine par profil. **✅ Accord de Seb (02/10) pour le registre** : Frogtend sauvegarde d'abord la clé existante
+(jamais rien effacé sans copie vérifiée), puis la remet par profil avant de lancer Cheat Engine et la range à sa
+fermeture.
 
 **Proposition de Seb (02/10)** : Firehouse fournit à Frogtend un Cheat Engine **portable et propre**, de deux façons
 possibles : (1) chaque semaine, vérifier la version ; si nouvelle, l'**installer dans un bac à sable**, puis zipper
