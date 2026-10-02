@@ -457,6 +457,11 @@ méthodes de LaunchBox** pour l'import de ces boutiques (à étudier dans sa doc
   réglé (Frogtend ouvre alors le réglage avant d'importer).
 - **Ordre retenu** : Steam d'abord (API officielle : ResolveVanityURL, GetOwnedGames), puis les autres après étude.
 - ⚠ La clé Steam de Seb est apparue en clair dans une capture (02/10) : à régénérer ; jamais recopiée par l'agent.
+- **Epic dans LaunchBox (captures de Seb, 02/10)** : « Assistant d'importation de jeux Epic » ; s'il n'est pas connecté,
+  il ouvre une **fenêtre avec la page de connexion OFFICIELLE d'Epic** (e-mail, ou Google, Steam, PlayStation, Xbox,
+  Nintendo…), puis analyse la bibliothèque. **Seb : « ça ne fonctionne pas très bien »**. En revanche LaunchBox
+  **propose d'installer les jeux Steam (et normalement Epic) depuis son interface** → à reproduire (Steam : fait en
+  0.20.0 par \`steam://install\`).
 
 **✅ Steam en 0.20.0** : ⚙ Options ▸ **Comptes ▸ Steam** (compte = URL personnalisée ou identifiant à 17 chiffres ;
 clé d'API personnelle, **vérifiée auprès de Steam avant d'être enregistrée**, rangée dans le coffre de Windows sous
