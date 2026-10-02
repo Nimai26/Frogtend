@@ -9,6 +9,8 @@ export const PAGE_CLE_RA = 'https://retroachievements.org/settings';
 export interface EtatRetro {
   compte: string | null;
   cle_enregistree: boolean;
+  /** Le jeton des émulateurs (RetroArch, PCSX2) est-il au coffre ? */
+  emulateurs_connectes?: boolean;
 }
 
 export interface Progression {
@@ -62,6 +64,33 @@ export async function reglerRetro(): Promise<boolean> {
     return true;
   } catch (err) {
     toast(`Compte non enregistré : ${motifDuRefus(err)}`, 'erreur');
+    return false;
+  }
+}
+
+/** Connecter les émulateurs : le mot de passe sert une fois à obtenir leur jeton (au coffre), puis il est oublié. */
+export async function connecterEmulateurs(): Promise<boolean> {
+  const e = await api.raEtat().catch(() => null);
+  if (!e?.compte) {
+    await informer('🏆 Ton compte d’abord', 'Règle d’abord ton compte RetroAchievements (nom et clé), juste au-dessus.');
+    return false;
+  }
+  const mdp = await demander(`🎮 Connecter les émulateurs au compte « ${e.compte} »`, {
+    message: [
+      'Ton mot de passe RetroAchievements, UNE fois : Frogtend obtient le jeton de connexion des émulateurs (comme ils le font eux-mêmes), le range dans le coffre de Windows, et oublie le mot de passe.',
+      'RetroArch et PCSX2 seront ensuite connectés avec TON compte à chaque partie de ton profil.',
+      'DuckStation chiffre lui-même sa connexion : connecte-toi une fois dans DuckStation (il le demandera à ta première partie) ; Frogtend la garde ensuite pour ton profil.',
+    ].join('\n'),
+    masque: true,
+    libelleValider: 'Connecter',
+  });
+  if (!mdp) return false;
+  try {
+    retro.etat = await api.raConnecterEmulateurs(mdp);
+    toast('✅ Émulateurs connectés à RetroAchievements pour ton profil.');
+    return true;
+  } catch (err) {
+    toast(`Connexion refusée : ${motifDuRefus(err)}`, 'erreur');
     return false;
   }
 }

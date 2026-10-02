@@ -261,6 +261,35 @@ async fn appeler(base: &str, route: &str, cle: &str, params: &[(&str, String)]) 
     }
 }
 
+/// Le jeton de connexion des émulateurs, obtenu comme ils le font (rcheevos, `rc_api_user.c` : `dorequest.php`,
+/// `r=login2`, `u`, `p`, en POST). Le mot de passe sert à cette seule demande : il n'est jamais gardé.
+pub async fn jeton_connexion(hote: &str, utilisateur: &str, mot_de_passe: &str) -> Resultat<(String, String)> {
+    let r = reqwest::Client::builder()
+        .user_agent("Frogtend")
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|_| Erreur::Reseau("Connexion impossible.".into()))?
+        .post(format!("{hote}/dorequest.php"))
+        .form(&[("r", "login2"), ("u", utilisateur.trim()), ("p", mot_de_passe)])
+        .send()
+        .await
+        .map_err(|_| Erreur::Reseau("RetroAchievements ne répond pas.".into()))?;
+    let v: Value = r.json().await.map_err(|_| Erreur::Serveur("Réponse de RetroAchievements illisible.".into()))?;
+    lire_connexion(&v)
+}
+
+pub fn lire_connexion(v: &Value) -> Resultat<(String, String)> {
+    match (v["Success"].as_bool(), v["User"].as_str(), v["Token"].as_str()) {
+        (Some(true), Some(u), Some(t)) if !t.is_empty() => Ok((u.to_string(), t.to_string())),
+        _ => Err(Erreur::Refus(format!(
+            "RetroAchievements refuse la connexion{}.",
+            v["Error"].as_str().map(|e| format!(" : {e}")).unwrap_or_default()
+        ))),
+    }
+}
+
+pub const HOTE_RA: &str = "https://retroachievements.org";
+
 /// Vérifie le compte (nom + clé) : rend le nom tel que RetroAchievements l'écrit.
 pub async fn verifier_compte(base: &str, cle: &str, utilisateur: &str) -> Resultat<String> {
     let v = appeler(base, "API_GetUserProfile.php", cle, &[("u", utilisateur.trim().to_string())]).await?;
@@ -414,6 +443,23 @@ mod tests {
         assert_eq!(l, l2);
         liste.assert_hits(1);
         assert!(!std::fs::read_to_string(d.path().join("7.json")).unwrap().contains("CLESECRETE"), "pas de clé dans le cache");
+    }
+
+    #[tokio::test]
+    async fn le_jeton_des_emulateurs_s_obtient_sans_garder_le_mot_de_passe() {
+        use httpmock::prelude::*;
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(POST).path("/dorequest.php").body_contains("r=login2").body_contains("u=Seb").body_contains("p=secret");
+            t.status(200).json_body(json!({"Success": true, "User": "Seb", "Token": "JETON", "Score": 10}));
+        });
+        s.mock(|w, t| {
+            w.method(POST).path("/dorequest.php").body_contains("p=faux");
+            t.status(200).json_body(json!({"Success": false, "Error": "Invalid User/Password combination. Please try again"}));
+        });
+        assert_eq!(jeton_connexion(&s.base_url(), "Seb", "secret").await.unwrap(), ("Seb".into(), "JETON".into()));
+        let e = jeton_connexion(&s.base_url(), "Seb", "faux").await.unwrap_err();
+        assert!(format!("{e:?}").contains("Invalid User/Password") && !format!("{e:?}").contains("faux"));
     }
 
     #[test]

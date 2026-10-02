@@ -28,7 +28,11 @@
       « ✅ Ta version est compatible » et tes succès. Sur un jeu dont ta version n'est pas reconnue : Frogtend dit
       laquelle l'est (ou qu'elle manque).
 - [ ] Un jeu Steam : **🏆 Succès Steam x / y**.
-- [ ] (Plus tard) gagner des succès en jouant demandera que Frogtend règle ton compte dans RetroArch : prochain lot.
+- [ ] (0.33.0) ⚙ Options ▸ Comptes ▸ 🏆 RetroAchievements ▸ **🎮 Connecter mes émulateurs** (ton mot de passe, une
+      fois). **Attendu :** « Émulateurs : ✅ ». Lance un jeu NES par RetroArch : la notification RetroAchievements de
+      RetroArch te salue par ton nom, et un succès débloqué apparaît sur le site.
+- [ ] Un jeu PlayStation par DuckStation : il demande de te connecter la 1re fois ; connecte-toi. Ensuite, joue avec un
+      autre profil (sans compte), puis reviens au tien : **tu es toujours connecté**, l'autre profil ne l'était pas.
 
 ## Une fiche par jeu, plusieurs versions (0.31.0)
 - [ ] 📥 Importer ▸ Fichiers ROM sur `E:\Games\Nintendo Entertainement System` : **attendu ~828 fiches** au lieu de

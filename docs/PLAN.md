@@ -639,7 +639,13 @@ une saga entière). Conséquences pour Frogtend :
   (`API_GetGameInfoAndUserProgress`). Steam : x / y succès (`GetPlayerAchievements`). Essai réel (lecture seule) :
   Super Mario Bros (JU) (PRG 0) → `8e3630186e35d477231bf8fd50e54cdd`, l'empreinte sans en-tête connue de
   « Super Mario Bros. (Japan, USA) ». **Reste** : jeux sur CD (méthodes PlayStation, Saturn, Dreamcast… par disque) ;
-  brancher le compte dans les émulateurs (RetroArch `cheevos_*`, DuckStation, PCSX2) pour GAGNER les succès ;
+  ~~brancher le compte dans les émulateurs~~ **✅ 0.33.0** : « 🎮 Connecter mes émulateurs » (mot de passe UNE fois →
+  jeton `login2` comme rcheevos, au coffre ; mot de passe jamais gardé) ; à chaque partie, le compte DU PROFIL QUI JOUE :
+  RetroArch (`cheevos_*` dans le fichier `--appendconfig` du profil), PCSX2 (`[Achievements]` + jeton dans
+  `inis\secrets.ini`, jamais copié dans les sauvegardes de config), DuckStation (jeton chiffré par lui → connexion
+  faite une fois DANS DuckStation, gardée par profil dans `<émulateur>\Profils\<profil>\cheevos-duckstation.json` et
+  remise à chaque partie) ; un profil sans compte : succès coupés (jamais le compte d'un autre). Mode hardcore : laissé
+  au réglage de l'émulateur ;
   **Epic** : pas d'API publique de succès (à revoir via GOG Galaxy, qui les synchronise peut-être) ; demander à
   Firehouse une version manquante par son nom/empreinte (besoin API à écrire quand le cas se présente).
 

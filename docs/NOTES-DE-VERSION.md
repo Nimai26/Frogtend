@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.33.0 — gagner les succès en jouant
+
+- ⚙ Options ▸ Comptes ▸ 🏆 RetroAchievements ▸ **🎮 Connecter mes émulateurs** : ton mot de passe une seule fois ;
+  Frogtend garde le jeton de connexion dans le coffre de Windows et oublie le mot de passe.
+- À chaque partie, **RetroArch et PCSX2 jouent avec le compte du profil qui joue**. DuckStation demande la connexion
+  une fois ; Frogtend la garde ensuite pour ton profil.
+- Un profil sans compte a les succès coupés : personne ne joue avec le compte d'un autre.
+
 ## 0.32.0 — les succès
 
 - **⚙ Options ▸ Comptes ▸ 🏆 RetroAchievements** : ton compte et ta clé (vérifiés, puis rangés dans le coffre de

@@ -139,6 +139,88 @@ fn regler_manette(id: &str, emulateur: &Path, utilisateur: Option<&Path>, manett
     Ok(())
 }
 
+/// Le compte RetroAchievements DU PROFIL QUI JOUE dans l'émulateur (Seb, 02/10 : gagner les succès en jouant).
+/// `compte` : (nom, jeton de connexion) ; `None` : ce profil n'a pas de compte → succès coupés (on ne joue jamais avec
+/// le compte d'un autre). Relevé dans les sources officielles (02/10/2026) :
+/// - RetroArch (configuration.c) : `cheevos_enable`, `cheevos_username`, `cheevos_token`, `cheevos_password` — dans
+///   le fichier ajouté par `--appendconfig` (celui du profil) ;
+/// - PCSX2 (Achievements.cpp, QtHost.cpp) : `[Achievements] Enabled/Username` dans `inis\PCSX2.ini`, le jeton dans
+///   `inis\secrets.ini` ;
+/// - DuckStation (achievements.cpp) : `[Cheevos] Enabled/Username/Token/LoginTimestamp`, jeton CHIFFRÉ par DuckStation
+///   (refusé en clair) → la personne se connecte UNE fois dans DuckStation ; Frogtend garde ensuite sa connexion par
+///   profil (`<émulateur>\Profils\<profil>\cheevos-duckstation.json`) et la remet à chaque partie.
+pub fn regler_succes(id: &str, emulateur: &Path, profil: &str, compte: Option<(&str, &str)>) -> Resultat<()> {
+    let p = dossier_du_profil(emulateur, profil);
+    match id {
+        "retroarch" => {
+            let fichier = p.join("frogtend.cfg");
+            let mut cfg = std::fs::read_to_string(&fichier).unwrap_or_default();
+            let (actif, nom, jeton) = match compte {
+                Some((n, j)) => ("true", n, j),
+                None => ("false", "", ""),
+            };
+            cfg.push_str(&format!(
+                "cheevos_enable = \"{actif}\"\ncheevos_username = \"{nom}\"\ncheevos_token = \"{jeton}\"\ncheevos_password = \"\"\n"
+            ));
+            creer(&[&p])?;
+            std::fs::write(&fichier, cfg)?;
+        }
+        "pcsx2" => {
+            let ini = emulateur.join("inis").join("PCSX2.ini");
+            let (actif, nom, jeton) = match compte {
+                Some((n, j)) => ("true", n, j),
+                None => ("false", "", ""),
+            };
+            modifier_ini(emulateur, &ini, "Achievements", &[("Enabled", vec![actif.into()]), ("Username", vec![nom.into()])])?;
+            // Le jeton va dans le fichier de secrets de PCSX2 (jamais copié dans les sauvegardes de configuration).
+            let secrets = emulateur.join("inis").join("secrets.ini");
+            let avant = std::fs::read_to_string(&secrets).unwrap_or_default();
+            let apres = ecrire_ini(&avant, "Achievements", &[("Token", vec![jeton.into()])]);
+            if apres != avant {
+                std::fs::create_dir_all(emulateur.join("inis"))?;
+                std::fs::write(&secrets, apres)?;
+            }
+        }
+        "duckstation" => {
+            let ini = emulateur.join("settings.ini");
+            let texte = std::fs::read_to_string(&ini).unwrap_or_default();
+            let lire = |cle: &str| crate::manettes::lire_ini(&texte, "Cheevos", cle).into_iter().next().unwrap_or_default();
+            let (nom_actuel, jeton_actuel, quand) = (lire("Username"), lire("Token"), lire("LoginTimestamp"));
+            // 1. La connexion en place appartient au dernier profil qui a joué : on la lui garde.
+            let dernier = emulateur.join("Profils").join(".cheevos-dernier");
+            if let Ok(d) = std::fs::read_to_string(&dernier) {
+                let gardee = emulateur.join("Profils").join(d.trim()).join("cheevos-duckstation.json");
+                let a_lui = std::fs::read(&gardee).ok().and_then(|o| serde_json::from_slice::<serde_json::Value>(&o).ok());
+                let meme_nom = a_lui.as_ref().is_none_or(|v| v["Username"].as_str() == Some(nom_actuel.as_str()));
+                if !d.trim().is_empty() && !nom_actuel.is_empty() && !jeton_actuel.is_empty() && meme_nom {
+                    std::fs::create_dir_all(gardee.parent().unwrap_or(emulateur))?;
+                    std::fs::write(&gardee, serde_json::json!({"Username": nom_actuel, "Token": jeton_actuel, "LoginTimestamp": quand}).to_string())?;
+                }
+            }
+            // 2. Celle de ce profil.
+            let a_moi = std::fs::read(p.join("cheevos-duckstation.json")).ok().and_then(|o| serde_json::from_slice::<serde_json::Value>(&o).ok());
+            let valeurs: Vec<(&str, Vec<String>)> = match compte {
+                None => vec![("Enabled", vec!["false".into()]), ("Username", vec![String::new()]), ("Token", vec![String::new()]), ("LoginTimestamp", vec![String::new()])],
+                Some((n, _)) => match a_moi.filter(|v| v["Username"].as_str() == Some(n)) {
+                    Some(v) => vec![
+                        ("Enabled", vec!["true".into()]),
+                        ("Username", vec![n.into()]),
+                        ("Token", vec![v["Token"].as_str().unwrap_or("").into()]),
+                        ("LoginTimestamp", vec![v["LoginTimestamp"].as_str().unwrap_or("").into()]),
+                    ],
+                    // Pas encore connecté dans DuckStation : il demandera la connexion à la première partie.
+                    None => vec![("Enabled", vec!["true".into()]), ("Username", vec![n.into()]), ("Token", vec![String::new()]), ("LoginTimestamp", vec![String::new()])],
+                },
+            };
+            modifier_ini(emulateur, &ini, "Cheevos", &valeurs)?;
+            creer(&[&p])?;
+            std::fs::write(&dernier, profil)?;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 /// Prépare l'émulateur pour ce profil avant une partie. Rend les arguments à mettre AVANT sa ligne de commande.
 /// `jeux` : les emplacements de Frogtend pour ce système.
 pub fn preparer(id: &str, emulateur: &Path, profil: &str, jeux: &[String], manette: &Manette) -> Resultat<Vec<String>> {
@@ -413,6 +495,42 @@ mod tests {
         assert!(b.contains("RecursivePaths = E:\\Jeux"));
         let c = ecrire_ini("", "MemoryCards", &[("Directory", vec!["E:\\m".into()])]);
         assert_eq!(c, "[MemoryCards]\r\nDirectory = E:\\m\r\n");
+    }
+
+    #[test]
+    fn chaque_profil_joue_avec_son_compte_retroachievements() {
+        let d = tempfile::tempdir().unwrap();
+        let e = d.path();
+        // RetroArch : le compte dans le fichier du profil ; sans compte, succès coupés et rien de l'autre profil.
+        preparer("retroarch", e, "Seb", &[], &Manette::Clavier).unwrap();
+        regler_succes("retroarch", e, "Seb", Some(("SebRA", "JETON1"))).unwrap();
+        let cfg = std::fs::read_to_string(dossier_du_profil(e, "Seb").join("frogtend.cfg")).unwrap();
+        assert!(cfg.contains("cheevos_enable = \"true\"") && cfg.contains("cheevos_token = \"JETON1\""));
+        preparer("retroarch", e, "Lea", &[], &Manette::Clavier).unwrap();
+        regler_succes("retroarch", e, "Lea", None).unwrap();
+        let cfg = std::fs::read_to_string(dossier_du_profil(e, "Lea").join("frogtend.cfg")).unwrap();
+        assert!(cfg.contains("cheevos_enable = \"false\"") && cfg.contains("cheevos_token = \"\"") && !cfg.contains("JETON1"));
+
+        // PCSX2 : nom dans PCSX2.ini, jeton dans secrets.ini.
+        regler_succes("pcsx2", e, "Seb", Some(("SebRA", "JETON1"))).unwrap();
+        let ini = std::fs::read_to_string(e.join("inis").join("PCSX2.ini")).unwrap();
+        assert!(ini.contains("Username = SebRA") || ini.contains("Username=SebRA"));
+        assert!(!ini.contains("JETON1"), "le jeton n'est pas dans PCSX2.ini");
+        assert!(std::fs::read_to_string(e.join("inis").join("secrets.ini")).unwrap().contains("JETON1"));
+        regler_succes("pcsx2", e, "Lea", None).unwrap();
+        assert!(!std::fs::read_to_string(e.join("inis").join("secrets.ini")).unwrap().contains("JETON1"));
+
+        // DuckStation : Seb s'est connecté dans DuckStation (jeton chiffré par lui) ; Léa joue ; Seb retrouve SA connexion.
+        regler_succes("duckstation", e, "Seb", Some(("SebRA", ""))).unwrap();
+        let ini = e.join("settings.ini");
+        let t = std::fs::read_to_string(&ini).unwrap();
+        std::fs::write(&ini, ecrire_ini(&t, "Cheevos", &[("Token", vec!["CHIFFRE-PAR-DUCKSTATION".into()]), ("LoginTimestamp", vec!["1790000000".into()])])).unwrap();
+        regler_succes("duckstation", e, "Lea", None).unwrap();
+        let t = std::fs::read_to_string(&ini).unwrap();
+        assert!(!t.contains("CHIFFRE-PAR-DUCKSTATION"), "Léa ne joue pas avec le compte de Seb");
+        regler_succes("duckstation", e, "Seb", Some(("SebRA", ""))).unwrap();
+        let t = std::fs::read_to_string(&ini).unwrap();
+        assert!(t.contains("CHIFFRE-PAR-DUCKSTATION") && t.contains("1790000000"), "Seb retrouve sa connexion");
     }
 
     #[test]

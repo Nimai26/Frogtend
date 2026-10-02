@@ -723,6 +723,8 @@ pub async fn boutique_steam_regler(noyau: State<'_, Noyau>, compte: String, cle:
 pub struct EtatRetro {
     pub compte: Option<String>,
     pub cle_enregistree: bool,
+    /// Le jeton de connexion des émulateurs (RetroArch, PCSX2) est-il au coffre ?
+    pub emulateurs_connectes: bool,
 }
 
 #[tauri::command]
@@ -732,7 +734,27 @@ pub async fn ra_etat(noyau: State<'_, Noyau>) -> Resultat<EtatRetro> {
     Ok(EtatRetro {
         compte: c.map(|c| c.compte).filter(|c| !c.is_empty()),
         cle_enregistree: noyau.coffre.lire(&crate::boutiques::nom_secret(&p.id, "retroachievements"))?.is_some(),
+        emulateurs_connectes: noyau.coffre.lire(&crate::boutiques::nom_secret(&p.id, "retroachievements-jeton"))?.is_some(),
     })
+}
+
+/// Connecte les émulateurs au compte RetroAchievements du profil : le mot de passe sert UNE fois à obtenir leur jeton
+/// de connexion (comme ils le font eux-mêmes), puis il est oublié ; seul le jeton va au coffre de Windows.
+#[tauri::command]
+pub async fn ra_connecter_emulateurs(noyau: State<'_, Noyau>, mot_de_passe: String) -> Resultat<EtatRetro> {
+    let p = profil_ouvert(&noyau).await?;
+    let compte = crate::boutiques::lire_source(&dossier_profil_de(&noyau, &p.id), "retroachievements")
+        .map(|c| c.compte)
+        .filter(|c| !c.is_empty())
+        .ok_or_else(|| Erreur::Refus("Règle d'abord ton compte RetroAchievements.".into()))?;
+    let (nom, jeton) = crate::succes::jeton_connexion(crate::succes::HOTE_RA, &compte, &mot_de_passe).await?;
+    drop(mot_de_passe);
+    if !nom.eq_ignore_ascii_case(&compte) {
+        return Err(Erreur::Refus(format!("Ce mot de passe est celui de « {nom} », pas de « {compte} ».")));
+    }
+    noyau.coffre.ranger(&crate::boutiques::nom_secret(&p.id, "retroachievements-jeton"), &jeton)?;
+    noyau.journaliser(&format!("émulateurs connectés à RetroAchievements pour le profil {}", p.id));
+    ra_etat(noyau).await
 }
 
 /// Règle le compte RetroAchievements : VÉRIFIÉ auprès de RetroAchievements avant d'être enregistré ; la clé d'API Web
@@ -758,6 +780,7 @@ pub async fn ra_regler(noyau: State<'_, Noyau>, compte: String, cle: Option<Stri
 pub async fn ra_oublier(noyau: State<'_, Noyau>) -> Resultat<()> {
     let p = profil_ouvert(&noyau).await?;
     noyau.coffre.oublier(&crate::boutiques::nom_secret(&p.id, "retroachievements"))?;
+    noyau.coffre.oublier(&crate::boutiques::nom_secret(&p.id, "retroachievements-jeton"))?;
     crate::boutiques::ecrire_source(&dossier_profil_de(&noyau, &p.id), "retroachievements", None)
 }
 
@@ -1726,12 +1749,23 @@ async fn preparer_emulateur(
                 .and_then(|(e, g, n)| crate::references::trouver(&magasin, e, g, n)),
         ),
     };
+    // Le compte RetroAchievements DE CE PROFIL (nom ; jeton des émulateurs, au coffre). DuckStation n'en a pas
+    // besoin : la personne s'y connecte elle-même, une fois.
+    let nom_ra = crate::boutiques::lire_source(&dossier_profil_de(noyau, &profil.id), "retroachievements").map(|c| c.compte).filter(|c| !c.is_empty());
+    let jeton_ra = noyau.coffre.lire(&crate::boutiques::nom_secret(&profil.id, "retroachievements-jeton"))?;
+    let compte_ra: Option<(String, String)> = match (nom_ra, jeton_ra) {
+        (Some(n), Some(j)) => Some((n, j)),
+        (Some(n), None) if f.id == "duckstation" => Some((n, String::new())),
+        _ => None,
+    };
     let (id, n, d, j) = (f.id.to_string(), profil.nom.clone(), dossier.clone(), jeux.clone());
     let avant = tauri::async_runtime::spawn_blocking(move || {
         // Les références sont déposées dans les profils de l'émulateur (on les y retrouve).
         let utilisateur = crate::emulateurs_profils::dossier_du_profil(&d, &n).join("User");
         crate::references::deposer(&crate::references::toutes(&magasin, &id), &d, &utilisateur)?;
-        crate::emulateurs_profils::preparer(&id, &d, &n, &j, &manette)
+        let args = crate::emulateurs_profils::preparer(&id, &d, &n, &j, &manette)?;
+        crate::emulateurs_profils::regler_succes(&id, &d, &n, compte_ra.as_ref().map(|(a, b)| (a.as_str(), b.as_str())))?;
+        Ok::<_, Erreur>(args)
     })
         .await
         .map_err(|_| Erreur::Disque("La préparation de l'émulateur s'est arrêtée brutalement.".into()))??;

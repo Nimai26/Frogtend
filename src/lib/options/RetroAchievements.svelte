@@ -2,7 +2,7 @@
   // ⚙ Options ▸ Comptes ▸ RetroAchievements : le compte et la clé d'API Web de CE profil (la clé va dans le coffre de
   // Windows et ne s'affiche plus jamais).
   import { onMount } from 'svelte';
-  import { lireRetro, oublierRetro, ouvrirPageCleRetro, reglerRetro, retro } from '$lib/succes/succes.svelte';
+  import { connecterEmulateurs, lireRetro, oublierRetro, ouvrirPageCleRetro, reglerRetro, retro } from '$lib/succes/succes.svelte';
 
   onMount(lireRetro);
   const e = $derived(retro.etat);
@@ -19,9 +19,13 @@
     <dd>{e?.compte || 'pas encore réglé'}</dd>
     <dt>Clé d’API Web</dt>
     <dd>{e?.cle_enregistree ? '✅ enregistrée dans le coffre de Windows' : 'aucune'}</dd>
+    <dt>Émulateurs</dt>
+    <dd>{e?.emulateurs_connectes ? '✅ RetroArch et PCSX2 jouent avec ton compte (DuckStation : connexion faite dans DuckStation)' : 'pas encore connectés : tu ne gagnes pas de succès en jouant'}</dd>
   </dl>
+  <p class="muted">Chaque profil joue avec SON compte ; un profil sans compte a les succès coupés.</p>
   <div class="actions">
     <button class="btn primary" onclick={reglerRetro}>✏ Régler mon compte RetroAchievements</button>
+    <button class="btn" onclick={connecterEmulateurs} disabled={!e?.compte}>🎮 Connecter mes émulateurs</button>
     <button class="btn" onclick={ouvrirPageCleRetro}>🌐 Trouver ma clé (site de RetroAchievements)</button>
     {#if e?.compte || e?.cle_enregistree}<button class="btn danger" onclick={oublierRetro}>Oublier ce compte</button>{/if}
   </div>

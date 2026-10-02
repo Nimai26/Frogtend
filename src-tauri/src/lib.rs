@@ -282,6 +282,7 @@ pub fn run() {
             commandes::ra_etat,
             commandes::ra_regler,
             commandes::ra_oublier,
+            commandes::ra_connecter_emulateurs,
             commandes::succes_retro,
             commandes::succes_steam,
             commandes::jeu_choisir_version,

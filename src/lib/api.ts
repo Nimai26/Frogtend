@@ -488,6 +488,8 @@ export const api = {
   raRegler: (compte: string, cle?: string) =>
     appeler<import('$lib/succes/succes.svelte').EtatRetro>('ra_regler', { compte, cle: cle ?? null }),
   raOublier: () => appeler<void>('ra_oublier'),
+  raConnecterEmulateurs: (motDePasse: string) =>
+    appeler<import('$lib/succes/succes.svelte').EtatRetro>('ra_connecter_emulateurs', { motDePasse }),
   succesRetro: (id: number) => appeler<import('$lib/succes/succes.svelte').SuccesRetro>('succes_retro', { id }),
   succesSteam: (appid: string) => appeler<[number, number] | null>('succes_steam', { appid }),
   abrisRegler: (dossier: string) => appeler<number>('abris_regler', { dossier }),
