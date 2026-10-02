@@ -229,6 +229,42 @@ impl Source {
         }
     }
 
+    /// Télécharge un fichier SERVI PAR FIREHOUSE (route de l'API, avec le jeton) : reprise par `Range` depuis le
+    /// `.part`, progression. Rend le nombre d'octets du fichier.
+    pub async fn telecharger_route(
+        &self,
+        route: &str,
+        cible: &std::path::Path,
+        progres: &(dyn Fn(u64, Option<u64>) + Send + Sync),
+    ) -> Resultat<u64> {
+        use std::io::Write;
+        let Source::Firehouse(c) = self else {
+            return Err(Erreur::Refus("Mode simulé : rien à télécharger.".into()));
+        };
+        if let Some(p) = cible.parent() {
+            std::fs::create_dir_all(p)?;
+        }
+        let part = cible.with_extension("part");
+        let debut = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
+        let mut flux = c.flux(route, debut).await?;
+        let total = flux.reponse.content_length().map(|n| if flux.reprise { n + debut } else { n });
+        let reprise = flux.reprise && debut > 0;
+        let mut sortie = std::fs::OpenOptions::new().create(true).write(true).append(reprise).truncate(!reprise).open(&part)?;
+        let mut recus = if reprise { debut } else { 0 };
+        while let Some(m) = Client::morceau(&mut flux).await? {
+            sortie.write_all(&m)?;
+            recus += m.len() as u64;
+            progres(recus, total);
+        }
+        sortie.flush()?;
+        drop(sortie);
+        if total.is_some_and(|t| t != recus) {
+            return Err(Erreur::Reseau("Le téléchargement s'est arrêté avant la fin : il reprendra où il en était.".into()));
+        }
+        std::fs::rename(&part, cible)?;
+        Ok(recus)
+    }
+
     /// Les triches et mods connus d'un jeu (contrat 13). Route pas encore servie (404) : listes vides.
     pub async fn triches(&self, media_id: i64) -> Resultat<Value> {
         let vide = json!({"codes": [], "cheat_engine": [], "mods": [], "maj_le": null});
@@ -315,6 +351,26 @@ mod tests {
         // Simulé : une réponse d'exemple, et l'action « lancer » quand on parle d'un jeu.
         let r = Source::Simulee.assistant("Bonjour", Some(110), &[]).await.unwrap();
         assert_eq!(r["actions_proposees"][0]["type"], "lancer");
+    }
+
+    #[tokio::test]
+    async fn un_paquet_servi_par_firehouse_se_telecharge_avec_le_jeton_et_reprend() {
+        use httpmock::prelude::*;
+        let m = MockServer::start();
+        let d = tempfile::tempdir().unwrap();
+        let cible = d.path().join("ce.paquet");
+        // Une moitié déjà reçue (coupure) : la suite est demandée par Range.
+        std::fs::write(cible.with_extension("part"), b"01234").unwrap();
+        let suite = m.mock(|w, r| {
+            w.method(GET).path("/api/jeux/v1/emulateurs/cheatengine/fichier").header("range", "bytes=5-").header("authorization", "Bearer jeton");
+            r.status(206).body("56789");
+        });
+        let s = Source::Firehouse(crate::firehouse::Client::nouveau(&m.base_url(), "jeton").unwrap());
+        let n = s.telecharger_route("/emulateurs/cheatengine/fichier", &cible, &|_, _| {}).await.unwrap();
+        assert_eq!(n, 10);
+        assert_eq!(std::fs::read(&cible).unwrap(), b"0123456789");
+        assert!(!cible.with_extension("part").exists());
+        suite.assert();
     }
 
     #[tokio::test]

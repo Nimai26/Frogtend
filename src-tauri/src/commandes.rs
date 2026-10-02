@@ -577,16 +577,24 @@ pub async fn emulateur_installer_firehouse(
         return Err(Erreur::Disque(format!("Dossier introuvable : {dossier}.")));
     }
     let p = noyau.session().await?.source.paquet_emulateur(&id).await?;
-    let url = p["url"].as_str().filter(|u| u.starts_with("https://")).ok_or_else(|| Erreur::Serveur("Firehouse n'a pas donné d'adresse sûre (https) pour ce paquet.".into()))?;
+    let url = p["url"].as_str().unwrap_or("").to_string();
     let version = p["version"].as_str().unwrap_or("").to_string();
     let nom_sur = crate::jeux_pc::nom_de_dossier(&nom);
     let cible = base.join(&nom_sur);
     let paquet = base.join(".telechargements").join(format!("{}.paquet", crate::jeux_pc::nom_de_dossier(&id)));
     let (app2, id2) = (app.clone(), id.clone());
-    crate::emulateurs::telecharger(url, &paquet, &move |recus, total| {
+    let progres = move |recus, total| {
         let _ = app2.emit("emulateur", ProgresEmulateur { id: id2.clone(), recus, total });
-    })
-    .await?;
+    };
+    // Servi par Firehouse lui-même (Cheat Engine préparé par Seb) : par l'API, avec le jeton ; sinon la source
+    // officielle, en https seulement.
+    if let Some(route) = url.strip_prefix(crate::firehouse::PREFIXE) {
+        noyau.session().await?.source.telecharger_route(route, &paquet, &progres).await?;
+    } else if url.starts_with("https://") {
+        crate::emulateurs::telecharger(&url, &paquet, &progres).await?;
+    } else {
+        return Err(Erreur::Serveur("Firehouse n'a pas donné d'adresse sûre (https) pour ce paquet.".into()));
+    }
     if let Some(attendue) = p["sha256"].as_str().filter(|s| !s.is_empty()) {
         if crate::sauvegarde::empreinte(&paquet)?.to_lowercase() != attendue.to_lowercase() {
             let _ = std::fs::remove_file(&paquet);

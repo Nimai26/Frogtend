@@ -868,7 +868,7 @@ mod tests {
                 println!("brut {id} : {} {}", b.statut, String::from_utf8_lossy(&b.octets).chars().take(400).collect::<String>());
             }
         }
-        for id in ["eden", "citron_neo", "ryubing", "xenia", "cemu"] {
+        for id in ["eden", "citron_neo", "ryubing", "xenia", "cemu", "cheatengine"] {
             match s.paquet_emulateur(id).await {
                 Ok(p) => println!("paquet {id} : {} {} {} octets programme={} sha={}", p["version"], p["nom_fichier"], p["taille"], p["programme"], p["sha256"]),
                 Err(err) => println!("paquet {id} : {err:?}"),

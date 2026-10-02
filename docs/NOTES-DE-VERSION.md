@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.19.1 — Cheat Engine s'installe depuis Firehouse
+
+- **Cheat Engine 7.7** (la version propre préparée par Seb, avec ses extensions) est maintenant servi par Firehouse :
+  **⬇ Installer Cheat Engine** le télécharge depuis Firehouse (avec reprise si la connexion coupe), vérifie qu'il
+  est intact, puis l'installe.
+
 ## 0.19.0 — Cheat Engine se branche tout seul sur le jeu
 
 - Pendant une partie, **🧰 Cheat Engine** dans le menu en jeu (touche Pause/Attn), ou **🧰 Brancher Cheat Engine sur
