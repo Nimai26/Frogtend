@@ -24,8 +24,8 @@
 ## MAME Arcade Full Set (0.28.0)
 - [ ] 📥 Importer ▸ **MAME Arcade Full Set** : dossier `E:\Games\MAME`, liste `D:\LaunchBox\Metadata\MAME.xml`,
       🔍 Trier. **Attendu :** ~4 526 jeux retenus, et le détail des écartés (mécaniques, hors arcade, non jouables…).
-- [ ] Ajoute-en quelques-uns, puis ▶ Jouer : à vérifier avec ton émulateur Arcade (MAME ou le cœur MAME de RetroArch)
-      — Frogtend lui donne le zip avec son chemin complet. Dis-moi si ton MAME préfère « -rompath » + nom court.
+- [ ] (Plus tard) Le lancement des jeux MAME se réglera avec le MAME et les packs **fournis par Firehouse** (versions
+      assorties, avec ou sans CHD) : rien à essayer de ce côté-là pour l'instant.
 
 ## Importer tes jeux du disque (0.27.0)
 - [ ] 📥 Importer ▸ **Fichiers ROM** : dossier `E:\Games\Nintendo Entertainement System`, plateforme « Nintendo

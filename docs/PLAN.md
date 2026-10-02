@@ -563,6 +563,15 @@ Taodbox. **Reste** : mêler ces jeux à la ludothèque principale, puis Epic, GO
 
 ### Prochains lots (décisions de Seb, 02/10)
 
+**MAME vient de Firehouse (Seb, 02/10)** : ni l'émulateur MAME ni les ROM ne sont « ceux de Seb ». **Firehouse
+fournira MAME à jour (avec ses mises à jour) et les packs de ROM**, au choix **avec ou sans CHD** (les images de
+disques durs / CD de certains jeux, rangées dans un sous-dossier au nom du jeu). Conséquences :
+- la version du romset doit correspondre à la version de MAME : Frogtend installe les deux ENSEMBLE depuis Firehouse
+  et les met à jour ensemble (annoncer la taille avant ; un pack MAME fait des dizaines, avec CHD des centaines de Go) ;
+- la liste MAME (clones, BIOS, statut) doit venir de Firehouse, pour la MÊME version (besoin API n° 15) ; la lecture du
+  `MAME.xml` d'un LaunchBox (0.28.0) n'est qu'un dépannage en attendant ;
+- le lancement passe par le MAME fourni, avec son `rompath` réglé sur le dossier du pack (et des CHD).
+
 **A. Les fichiers du disque rejoindront Firehouse.** Les jeux trouvés par les imports locaux (ROM, MAME, DOS…) vont
 probablement entrer dans le stock TÉLÉCHARGEABLE de Firehouse, avec même des **packs téléchargeables** (par exemple
 une saga entière). Conséquences pour Frogtend :
