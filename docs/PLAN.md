@@ -469,6 +469,13 @@ epic.js` clique Get → licence → Place Order → I Agree et rend le résultat
 échec → la fenêtre s'affiche (repli A) ; case « les obtenir tout seul » (par profil, 1 fois par jour, désactivée par
 défaut). **Pas encore essayé en vrai** (compte Epic de Seb). Reste : Prime Gaming, GOG (mêmes principes).
 
+**PS Plus (Seb, 02/10)** : ajouter aux récupérations automatiques les **jeux mensuels réservés aux membres PS Plus**
+(Seb est abonné Premium et oublie souvent de les ajouter). **Optionnel** pour chaque profil (case à cocher, avec le
+compte PlayStation de la personne) ; ces jeux **ne vont PAS dans la ludothèque** de Frogtend (ce sont des jeux de
+console) : on les ajoute seulement à la bibliothèque du compte PlayStation. À étudier (page officielle des jeux du
+mois, PlayStation Store, connexion au compte PSN) avant de coder ; même principe que pour Epic (automatique, sinon la
+page s'affiche).
+
 **Menu « Importer » comme LaunchBox (Seb, 02/10, capture)** : la MÊME liste : Fichiers ROM (sous-menu), Jeux MS-DOS,
 MAME Arcade Full Set, Amazon Games, EA, Jeux Epic Games, Jeux GOG, Jeux Steam, Uplay/Ubisoft Connect, Jeux Windows,
 Jeux Xbox/Microsoft Store, Ajouter un jeu manuellement, Installer un jeu DOS. **Le regroupement par GOG Galaxy** (une
