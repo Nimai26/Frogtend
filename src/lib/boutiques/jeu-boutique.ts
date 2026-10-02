@@ -11,9 +11,11 @@ export const BOUTIQUES: { valeur: string; libelle: string }[] = [
   { valeur: 'xboxone', libelle: 'Xbox' },
   { valeur: 'uplay', libelle: 'Ubisoft Connect' },
   { valeur: 'origin', libelle: 'EA' },
+  { valeur: 'local', libelle: 'Importés de mon disque' },
 ];
 
-export const estJeuDeBoutique = (j: Pick<JeuResume, 'id'>) => j.id < 0;
+/** Un jeu de boutique (Steam, Galaxy) ; un jeu IMPORTÉ du disque (id négatif aussi) se joue comme un jeu du PC. */
+export const estJeuDeBoutique = (j: Pick<JeuResume, 'id' | 'source'>) => j.id < 0 && j.source !== 'local';
 
 /** Comment ouvrir ce jeu : par Steam (appid) ou par GOG Galaxy (sa clé). */
 export function moyenDOuverture(j: JeuResume): { par: 'steam'; appid: string } | { par: 'galaxy'; cle: string } | null {

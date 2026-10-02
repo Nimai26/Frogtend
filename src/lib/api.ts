@@ -32,7 +32,7 @@ export interface JeuResume {
   /** Nombre de versions rangées dans Firehouse. */
   versions?: number | null;
   // Jeux des boutiques de la personne (lot 9 : id négatif, plateforme « Windows »).
-  source?: 'steam' | 'galaxy';
+  source?: 'steam' | 'galaxy' | 'local';
   boutique?: string;
   cle_boutique?: string;
   installe?: boolean;
@@ -479,6 +479,11 @@ export const api = {
   retroarchInstallerCoeur: (programme: string, coeur: string) =>
     appeler<string>('retroarch_installer_coeur', { programme, coeur }),
   emulateursTraces: () => appeler<{ id: string; nom: string; dossiers: string[] }[]>('emulateurs_traces'),
+  importChercherRoms: (dossier: string, extensions: string[], recursif: boolean) =>
+    appeler<import('$lib/import/local').RomTrouvee[]>('import_chercher_roms', { dossier, extensions, recursif }),
+  importChercherDos: (dossier: string) => appeler<import('$lib/import/local').JeuDosTrouve[]>('import_chercher_dos', { dossier }),
+  importAjouter: (jeux: import('$lib/import/local').JeuAImporter[]) =>
+    appeler<import('$lib/import/local').BilanImport>('import_ajouter', { jeux }),
   emulateursRecommandes: (plateforme: string) =>
     appeler<{ emulateurs?: EmulateurRecommande[] }>('emulateurs_recommandes', { plateforme }),
 };

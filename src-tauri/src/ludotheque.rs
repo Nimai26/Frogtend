@@ -438,6 +438,36 @@ impl Cache {
         Ok(jeux.len())
     }
 
+    /// Ajoute (ou met à jour) des jeux importés du disque (`source` = « local », id négatif), sans toucher aux autres.
+    pub fn ajouter_locaux(&mut self, jeux: &[JeuResume]) -> Resultat<usize> {
+        let tx = self.db.transaction()?;
+        {
+            let mut ins = tx.prepare(
+                "INSERT OR REPLACE INTO jeux (id, titre, titre_tri, annee, plateforme, genres, brut)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            )?;
+            for j in jeux.iter().filter(|j| j.id < 0) {
+                ins.execute(params![
+                    j.id,
+                    j.titre,
+                    normaliser(&j.titre),
+                    j.annee,
+                    j.plateforme,
+                    serde_json::to_string(&j.genres).unwrap(),
+                    serde_json::to_string(j).unwrap(),
+                ])?;
+            }
+        }
+        tx.commit()?;
+        Ok(jeux.len())
+    }
+
+    /// Retire une ligne de jeu importé (id négatif) : la ludothèque seulement, jamais le disque.
+    pub fn retirer_local(&self, id: i64) -> Resultat<()> {
+        self.db.execute("DELETE FROM jeux WHERE id = ?1 AND id < 0 AND json_extract(brut, '$.source') = 'local'", [id])?;
+        Ok(())
+    }
+
     /// Les sources de boutique présentes (`steam`, `galaxy`).
     pub fn sources_boutiques(&self) -> Resultat<Vec<String>> {
         let mut st = self.db.prepare("SELECT DISTINCT json_extract(brut, '$.source') FROM jeux WHERE id < 0")?;

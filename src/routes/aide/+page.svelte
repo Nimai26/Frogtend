@@ -12,7 +12,7 @@
     <p>Le menu « 📥 Importer » reprend la liste de LaunchBox. Chaque boutique a sa voie :</p>
     <ul>
       {#each SOURCES as s (s.id)}
-        <li><a href="/importer?source={s.id}">{s.icone} {s.libelle}</a> — {s.resume}{s.voie === 'local' ? ' (prochain lot)' : ''}</li>
+        <li><a href="/importer?source={s.id}">{s.icone} {s.libelle}</a> — {s.resume}{s.voie === 'bientot' ? ' (prochain lot)' : ''}</li>
       {/each}
     </ul>
     <p>Les jeux importés des boutiques rejoignent ta ludothèque, rubrique Windows ; les filtres « Boutique » et « Installés » les retrouvent. Ils restent dans ton Frogtend et ne remontent jamais dans Firehouse.</p>

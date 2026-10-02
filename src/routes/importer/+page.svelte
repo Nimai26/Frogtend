@@ -7,6 +7,7 @@
   import { galaxy, importerGalaxy, lireGalaxy } from '$lib/boutiques/galaxy.svelte';
   import { importerSteam, lireSteam, steam } from '$lib/boutiques/steam.svelte';
   import { compterParGalaxy, explicationGalaxy, source, SOURCES } from '$lib/import/sources';
+  import ImportLocal from '$lib/import/ImportLocal.svelte';
 
   onMount(() => {
     lireSteam();
@@ -26,7 +27,7 @@
       <button class="rubrique" class:actif={s.id === x.id} aria-current={s.id === x.id} onclick={() => choisir(x.id)}>
         <span aria-hidden="true">{x.icone}</span>
         {x.libelle}
-        {#if x.voie === 'local'}<span class="tag">bientôt</span>{/if}
+        {#if x.voie === 'bientot'}<span class="tag">bientôt</span>{/if}
       </button>
     {/each}
   </nav>
@@ -79,6 +80,8 @@
         </div>
         <p class="muted">La lecture prend TOUTES les boutiques reliées dans Galaxy d’un coup ; dans la ludothèque, le filtre « Boutique » les sépare.</p>
       </section>
+    {:else if s.voie === 'local'}
+      {#key s.id}<ImportLocal sorte={s.id as 'rom' | 'dos' | 'windows' | 'manuel'} />{/key}
     {:else}
       <section class="cx-block">
         <h2>Pas encore livré</h2>

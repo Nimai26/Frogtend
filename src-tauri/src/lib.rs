@@ -18,6 +18,7 @@ pub mod lancement;
 pub mod manettes;
 pub mod locale;
 pub mod gratuits;
+pub mod import_local;
 pub mod ludotheque;
 pub mod menu_jeu;
 pub mod noyau;
@@ -265,6 +266,9 @@ pub fn run() {
             commandes::gratuits_obtenir_epic,
             commandes::gratuits_connexion_playstation,
             commandes::gratuits_psplus,
+            commandes::import_chercher_roms,
+            commandes::import_chercher_dos,
+            commandes::import_ajouter,
             commandes::boutique_galaxy_etat,
             commandes::boutique_galaxy_jeux,
             commandes::boutique_galaxy_importer,

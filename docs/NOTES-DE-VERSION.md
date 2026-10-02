@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.27.0 — importer les jeux déjà sur ton disque
+
+- **📥 Importer ▸ Fichiers ROM** : choisis un dossier et une plateforme ; Frogtend propose les extensions de ses
+  émulateurs, liste les jeux trouvés (un jeu par disque, pas par piste), tu coches, il les ajoute.
+- **Jeux MS-DOS** (un sous-dossier par jeu, avec le programme qui le lance), **Jeux Windows** (le .exe) et
+  **Ajouter un jeu manuellement**.
+- Rien n'est copié, déplacé ni renommé. Retirer un jeu importé l'enlève de Frogtend, **jamais de ton disque**.
+- Filtre « Boutique ▸ Importés de mon disque » dans la ludothèque.
+- Encore à venir : MAME Arcade Full Set, Installer un jeu DOS, et les jaquettes des jeux importés.
+
 ## 0.26.0 — les jeux PS Plus du mois, sans les oublier
 
 - **🛒 Boutiques ▸ 🎁 Jeux offerts ▸ 🎮 PlayStation Plus** : connecte-toi une fois au PlayStation Store (chaque

@@ -97,7 +97,7 @@
           ⚙ Gérer le jeu <span class="muted">(installer, désinstaller, parties…)</span>
         </button>
       {/if}
-      {#if !estJeuDeBoutique(j)}<button class="btn grand" onclick={() => goto(`/jeu/${j.id}`)}>📄 Voir la fiche</button>{/if}
+      {#if j.id > 0}<button class="btn grand" onclick={() => goto(`/jeu/${j.id}`)}>📄 Voir la fiche</button>{/if}
     </div>
 
     <dl class="cx-kv">
@@ -109,6 +109,9 @@
       {#if catalogue && j.versions != null}<dt>Versions</dt><dd>{j.versions || 'aucune pour l’instant'}</dd>{/if}
       {#if surPc}<dt>Sur ce PC</dt><dd title={surPc.dossier}>{surPc.dossier}</dd>{/if}
       {#if surPc?.temps_jeu}<dt>Temps de jeu</dt><dd>{duree(surPc.temps_jeu)}</dd>{/if}
+      {#if j.source === 'local'}
+        <dt>Origine</dt><dd>importé de ton disque (Frogtend n’efface jamais ses fichiers)</dd>
+      {/if}
       {#if estJeuDeBoutique(j)}
         <dt>Boutique</dt><dd>{nomPlateforme(j.boutique ?? '')}</dd>
         <dt>Sur ce PC</dt><dd>{j.installe ? '✅ installé' : 'pas installé'}</dd>

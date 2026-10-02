@@ -503,6 +503,17 @@ nombre de jeux de CETTE boutique lus dans Galaxy et « compte sans doute pas rel
 explication (`src/lib/import/sources.ts`) reprise aux trois endroits. **Reste (prochain lot, « jeux locaux »)** :
 Fichiers ROM, Jeux MS-DOS, MAME Arcade Full Set, Jeux Windows, Ajouter un jeu manuellement, Installer un jeu DOS —
 marqués « bientôt » dans le menu.
+**✅ 0.27.0 — jeux locaux** (`src-tauri/src/import_local.rs`, `src/lib/import/`) : Fichiers ROM (dossier + plateforme +
+extensions proposées d'après les émulateurs de Firehouse, sous-dossiers ; les pistes désignées par un .cue/.m3u/.gdi ne
+comptent pas à part ; titres sans étiquettes No-Intro/Redump, FICHIER jamais renommé ; liste à cocher, titres
+modifiables, confirmation chiffrée avant l'ajout), Jeux MS-DOS (un sous-dossier = un jeu, programme probable
+proposé, lancé par l'émulateur MS-DOS), Jeux Windows (le .exe), Ajouter un jeu manuellement (titre, plateforme,
+fichier). Un jeu importé : id négatif « local », dans la ludothèque du profil (filtre Boutique ▸ « Importés de mon
+disque ») ET dans le registre du PC (`VERSION_IMPORTEE` = -1) pour « Jouer ». **Le retirer ne touche à AUCUN fichier**
+(ni désinstalleur, ni suppression : vérifié par un test). Essayé en lecture seule sur le disque de Seb : E:\Games\NES
+→ 1 086 jeux en 0,16 s ; E:\Games\3DO → 200 .chd. **Reste** : MAME Arcade Full Set (il faut la liste de MAME pour
+écarter clones, BIOS et jeux non jouables) et Installer un jeu DOS ; jaquettes et fiches des jeux importés (chercher
+le jeu dans la base LaunchBox de Firehouse, `/recherche`).
 
 **✅ Accord de Seb (02/10)** : Frogtend peut LIRE (lecture seule) les fichiers des lanceurs installés (GOG Galaxy, Epic,
 EA app). Ses installations sont personnalisées (GOG Galaxy dans `D:\LaunchBox\Games\GOG Galaxy`) : chercher les

@@ -21,6 +21,17 @@
       **Citron Neo** s'installe tout seul (vérifié par son empreinte). **Ryubing** : sa source ne répond pas, Frogtend
       propose d'ouvrir sa page officielle.
 
+## Importer tes jeux du disque (0.27.0)
+- [ ] 📥 Importer ▸ **Fichiers ROM** : dossier `E:\Games\Nintendo Entertainement System`, plateforme « Nintendo
+      Entertainment System », extensions « nes ». **Attendu :** ~1 086 jeux listés (titres sans « (U) », « [!] »).
+      Décoche-en quelques-uns, ajoute : ils apparaissent dans la ludothèque (filtre Boutique ▸ « Importés de mon
+      disque »), et ▶ Jouer les lance par ton émulateur NES.
+- [ ] Un système sur CD (`E:\Games\3DO`, extensions « chd, cue ») : un jeu par disque, pas un par piste.
+- [ ] **Jeux MS-DOS** : un dossier avec un sous-dossier par jeu ; vérifie le programme proposé pour chacun.
+- [ ] **Jeux Windows** : choisis un .exe ; le jeu se lance par ▶ Jouer.
+- [ ] ⚙ Gérer le jeu ▸ **Retirer de la ludothèque** : le jeu disparaît de Frogtend, **ses fichiers restent** (vérifie
+      dans l'explorateur).
+
 ## PlayStation Plus : les jeux du mois (0.26.0)
 - [ ] 🛒 Boutiques ▸ 🎁 ▸ **🔑 Se connecter à PlayStation** : clique « Se connecter » en haut du Store, connecte-toi,
       ferme la fenêtre.

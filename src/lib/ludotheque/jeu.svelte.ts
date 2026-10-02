@@ -210,7 +210,26 @@ export async function mettreALAbri(id: number) {
 }
 
 /** Retirer un jeu du PC, après avoir dit exactement ce qui part et ce qui reste. */
+/** Un jeu importé de ton disque (menu Importer) : Frogtend n'a rien installé, il n'efface rien. */
+export const VERSION_IMPORTEE = -1;
+
 export async function retirer(j: JeuPc) {
+  if (j.version === VERSION_IMPORTEE) {
+    const oui = await confirmer(`Retirer « ${j.titre} » de ta ludothèque ?`, {
+      message: `Ce jeu a été importé de ton disque : Frogtend l’oublie, mais ne touche à AUCUN fichier (${j.installation?.dossier ?? j.dossier}). Tu pourras le réimporter.`,
+      libelleValider: 'Retirer de la ludothèque',
+    });
+    if (!oui) return;
+    try {
+      await api.retirer(j.id);
+      toast(`✅ « ${j.titre} » retiré de ta ludothèque ; ses fichiers sont toujours sur le disque.`);
+      if (ludo.selection?.id === j.id) ludo.selection = null;
+      await apresChangement();
+    } catch (e) {
+      toast(`Refusé : ${motifDuRefus(e)}`, 'erreur');
+    }
+    return;
+  }
   const oui = await confirmer(`🗑 Retirer « ${j.titre} » de ce PC ?`, {
     message: [
       `Tes parties seront d’abord mises à l’abri (copie gardée par Frogtend). Si la copie échoue, rien n’est retiré.`,
@@ -353,7 +372,11 @@ export async function gererJeu(id: number) {
   if (j.installation)
     options.push({ valeur: 'abri', libelle: '💾 Mettre mes parties à l’abri', detail: 'une copie de ce qui a changé depuis l’installation' });
   if (j.etat === 'telecharge')
-    options.push({ valeur: 'retirer', libelle: '🗑 Retirer du PC (désinstaller)', detail: 'tes parties sont copiées à l’abri d’abord' });
+    options.push(
+      j.version === VERSION_IMPORTEE
+        ? { valeur: 'retirer', libelle: '🗑 Retirer de la ludothèque', detail: 'ses fichiers restent sur ton disque' }
+        : { valeur: 'retirer', libelle: '🗑 Retirer du PC (désinstaller)', detail: 'tes parties sont copiées à l’abri d’abord' },
+    );
   const c = await choisir<Action>(`⚙ Gérer « ${j.titre} »`, options, `Rangé dans ${j.installation?.dossier ?? j.dossier}`);
   if (c === 'installer') await installer(id);
   else if (c === 'lanceur') await choisirLanceur(id);

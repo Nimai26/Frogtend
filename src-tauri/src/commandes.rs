@@ -843,6 +843,28 @@ pub async fn gratuits_obtenir_epic(app: AppHandle, noyau: State<'_, Noyau>, slug
     Ok(r)
 }
 
+/// 📥 Importer ▸ Fichiers ROM : les ROM d'un dossier (rien n'est encore ajouté : la personne voit la liste d'abord).
+#[tauri::command]
+pub async fn import_chercher_roms(dossier: String, extensions: Vec<String>, recursif: bool) -> Resultat<Vec<crate::import_local::RomTrouvee>> {
+    tauri::async_runtime::spawn_blocking(move || crate::import_local::chercher_roms(std::path::Path::new(&dossier), &extensions, recursif))
+        .await
+        .map_err(|_| Erreur::Disque("La recherche s'est arrêtée brutalement.".into()))?
+}
+
+/// 📥 Importer ▸ Jeux MS-DOS : un jeu par sous-dossier (rien n'est encore ajouté).
+#[tauri::command]
+pub async fn import_chercher_dos(dossier: String) -> Resultat<Vec<crate::import_local::JeuDosTrouve>> {
+    tauri::async_runtime::spawn_blocking(move || crate::import_local::chercher_jeux_dos(std::path::Path::new(&dossier)))
+        .await
+        .map_err(|_| Erreur::Disque("La recherche s'est arrêtée brutalement.".into()))?
+}
+
+/// Ajoute à la ludothèque les jeux validés par la personne (rien n'est copié, déplacé ni renommé).
+#[tauri::command]
+pub async fn import_ajouter(noyau: State<'_, Noyau>, jeux: Vec<crate::import_local::JeuAImporter>) -> Resultat<crate::import_local::BilanImport> {
+    noyau.importer_locaux(&jeux).await
+}
+
 const FENETRE_PLAYSTATION: &str = "boutique-playstation";
 
 /// Se connecter à PlayStation, une fois : le Store officiel s'ouvre (« Se connecter » en haut) ; la connexion reste

@@ -40,7 +40,7 @@
       ...SOURCES.map((s) => ({
         valeur: s.id,
         libelle: `${s.icone} ${s.libelle}`,
-        detail: s.voie === 'galaxy' ? 'par GOG Galaxy' : s.voie === 'steam' ? 'compte Steam ou GOG Galaxy' : 'prochain lot',
+        detail: s.voie === 'galaxy' ? 'par GOG Galaxy' : s.voie === 'steam' ? 'compte Steam ou GOG Galaxy' : s.voie === 'local' ? 'depuis ton disque' : 'prochain lot',
       })),
     ]);
     if (c) goto(`/importer?source=${c}`);

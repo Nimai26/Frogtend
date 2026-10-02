@@ -101,7 +101,7 @@
             class:selectionnee={ludo.selection?.id === j.id}
             aria-pressed={ludo.selection?.id === j.id}
             onclick={() => (ludo.selection = j)}
-            ondblclick={() => (estJeuDeBoutique(j) ? ouvrirJeuDeBoutique(j) : goto(`/jeu/${j.id}`))}
+            ondblclick={() => (estJeuDeBoutique(j) ? ouvrirJeuDeBoutique(j) : j.id > 0 && goto(`/jeu/${j.id}`))}
             onfocus={() => (ludo.selection = j)}
             onkeydown={(e) => surTouche(e, i)}
           >

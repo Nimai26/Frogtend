@@ -31,6 +31,18 @@ const ORDINATEURS = [
 
 const ARCADE = ['Arcade', 'MAME', 'SNK Neo Geo AES', 'SNK Neo Geo MVS', 'Sega Naomi', 'Sega Model 2', 'Sega Model 3', 'Namco System 22', 'Daphne', 'American Laser Games'];
 
+/** Des noms LaunchBox connus, proposés quand on choisit une plateforme à la main (on peut en taper un autre). */
+export const PLATEFORMES_CONNUES: string[] = [
+  ...ARCADE,
+  ...ORDINATEURS,
+  ...PORTABLES,
+  'Nintendo Entertainment System', 'Super Nintendo Entertainment System', 'Nintendo 64', 'Nintendo GameCube',
+  'Nintendo Wii', 'Nintendo Wii U', 'Nintendo Switch', 'Sega Master System', 'Sega Genesis', 'Sega CD', 'Sega 32X',
+  'Sega Saturn', 'Sega Dreamcast', 'Sony Playstation', 'Sony Playstation 2', 'Sony Playstation 3',
+  'Microsoft Xbox', 'Microsoft Xbox 360', 'NEC TurboGrafx-16', 'NEC TurboGrafx-CD', 'Atari 2600', 'Atari 7800',
+  'Atari Jaguar', '3DO Interactive Multiplayer', 'Philips CD-i', 'ColecoVision', 'Mattel Intellivision',
+].filter((v, i, l) => l.indexOf(v) === i);
+
 /** La catégorie d'une plateforme, d'après son nom LaunchBox. */
 export function categorieDe(nom: string): Categorie {
   if (ARCADE.includes(nom)) return 'Arcade';
