@@ -21,6 +21,13 @@
       **Citron Neo** s'installe tout seul (vérifié par son empreinte). **Ryubing** : sa source ne répond pas, Frogtend
       propose d'ouvrir sa page officielle.
 
+## Menu « Importer » (0.25.0)
+- [ ] Barre du haut ▸ **📥 Importer ▾** : la même liste que LaunchBox. Les jeux locaux sont marqués « prochain lot ».
+- [ ] **Jeux Epic Games** (puis Amazon, EA, Ubisoft, Xbox) : l'explication GOG Galaxy, et le nombre de jeux lus pour
+      CETTE boutique. **Attendu chez toi :** Epic 43, Xbox 6, Ubisoft 4, EA 4 ; Amazon 0 → le message « compte sans
+      doute pas relié » (relie-le dans Galaxy ▸ Paramètres ▸ Intégrations si tu veux tes jeux Prime Gaming).
+- [ ] **❓ Aide** (barre du haut) et **⚙ Options ▸ Comptes ▸ GOG Galaxy** : l'explication est claire pour la famille ?
+
 ## Jeux offerts Epic (0.24.0)
 - [ ] 🛒 Boutiques ▸ **🎁 Jeux offerts** : la liste de la semaine (System Shock 2, BURIED STARS jusqu'au 8 octobre).
 - [ ] **🔑 Se connecter à Epic** : connecte-toi dans la fenêtre (page officielle), puis ferme-la.

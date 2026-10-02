@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.25.0 — le menu « Importer », comme LaunchBox
+
+- **📥 Importer ▾** dans la barre du haut : la même liste que LaunchBox (Fichiers ROM, MS-DOS, MAME, Amazon, EA,
+  Epic, GOG, Steam, Ubisoft, Windows, Xbox, ajout manuel, installation DOS).
+- Chaque boutique a sa fenêtre : Steam par ton compte (ou GOG Galaxy) ; Amazon, EA, Epic, GOG, Ubisoft et Xbox par
+  **GOG Galaxy**, qui regroupe les comptes que tu y as reliés. Frogtend dit combien de jeux il a trouvés pour chacune.
+- **❓ Aide** et **⚙ Options ▸ Comptes ▸ GOG Galaxy** expliquent comment relier tes comptes dans Galaxy.
+- Les imports de jeux locaux (ROM, MS-DOS, MAME, Windows…) arrivent au prochain lot : ils sont déjà dans le menu,
+  marqués « prochain lot ».
+
 ## 0.24.0 — les jeux offerts d'Epic, obtenus tout seuls
 
 - **🛒 Boutiques ▸ 🎁 Jeux offerts** : les jeux gratuits d'Epic de la semaine, avec leur date de fin.

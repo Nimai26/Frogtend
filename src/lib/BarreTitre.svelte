@@ -9,6 +9,7 @@
   import { etat, sortirDuProfil } from '$lib/etat.svelte';
   import { depuis, ludo, synchroniser, viderLudotheque } from '$lib/ludotheque/ludotheque.svelte';
   import { nombreEnCours } from '$lib/ludotheque/telechargements.svelte';
+  import { SOURCES } from '$lib/import/sources';
 
   const enCours = $derived(nombreEnCours());
   const profil = $derived(etat.profilOuvert);
@@ -31,6 +32,18 @@
     if (action === 'reduire') await w.minimize();
     else if (action === 'agrandir') await w.toggleMaximize();
     else await w.close();
+  }
+
+  /** 📥 Importer : la même liste que LaunchBox ; chaque choix ouvre sa fenêtre d'import. */
+  async function menuImporter() {
+    const c = await choisir('📥 Importer', [
+      ...SOURCES.map((s) => ({
+        valeur: s.id,
+        libelle: `${s.icone} ${s.libelle}`,
+        detail: s.voie === 'galaxy' ? 'par GOG Galaxy' : s.voie === 'steam' ? 'compte Steam ou GOG Galaxy' : 'prochain lot',
+      })),
+    ]);
+    if (c) goto(`/importer?source=${c}`);
   }
 
   async function menuProfil() {
@@ -60,6 +73,7 @@
           {#if l.href === '/telechargements' && enCours > 0}<span class="nombre">{enCours}</span>{/if}
         </a>
       {/each}
+      <button class="lien" class:actif={chemin === '/importer'} onclick={menuImporter}>📥 Importer ▾</button>
       <button
         class="lien"
         onclick={() => synchroniser()}
@@ -81,6 +95,7 @@
     <span class="tag warn" title="Des exemples, sans connexion à Firehouse">Mode simulé</span>
   {/if}
   {#if profil}
+    <a class="lien" class:actif={chemin === '/aide'} href="/aide" title="Aide">❓ Aide</a>
     <a class="lien" class:actif={chemin === '/reglages'} href="/reglages" title="Options">⚙ Options</a>
     <button class="lien profil" onclick={menuProfil}>👤 {profil.nom} ▾</button>
   {/if}

@@ -481,6 +481,13 @@ MAME Arcade Full Set, Amazon Games, EA, Jeux Epic Games, Jeux GOG, Jeux Steam, U
 Jeux Xbox/Microsoft Store, Ajouter un jeu manuellement, Installer un jeu DOS. **Le regroupement par GOG Galaxy** (une
 boutique reliée dans Galaxy arrive par Galaxy) doit être **expliqué** : dans l'aide, dans la fenêtre d'import de chaque
 boutique, et dans les Options (partie « lier les comptes »).
+**✅ 0.25.0** : bouton « 📥 Importer ▾ » dans la barre (les 13 entrées de LaunchBox, même ordre) ; page `/importer`
+(une fenêtre par source : Steam par son compte OU Galaxy ; Amazon, EA, Epic, GOG, Ubisoft, Xbox par Galaxy, avec le
+nombre de jeux de CETTE boutique lus dans Galaxy et « compte sans doute pas relié » s'il n'y en a aucun) ; page
+« ❓ Aide » ; ⚙ Options ▸ Comptes ▸ GOG Galaxy (lier les comptes : Galaxy ▸ Paramètres ▸ Intégrations). Une seule
+explication (`src/lib/import/sources.ts`) reprise aux trois endroits. **Reste (prochain lot, « jeux locaux »)** :
+Fichiers ROM, Jeux MS-DOS, MAME Arcade Full Set, Jeux Windows, Ajouter un jeu manuellement, Installer un jeu DOS —
+marqués « bientôt » dans le menu.
 
 **✅ Accord de Seb (02/10)** : Frogtend peut LIRE (lecture seule) les fichiers des lanceurs installés (GOG Galaxy, Epic,
 EA app). Ses installations sont personnalisées (GOG Galaxy dans `D:\LaunchBox\Games\GOG Galaxy`) : chercher les
