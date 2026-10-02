@@ -21,6 +21,15 @@
       **Citron Neo** s'installe tout seul (vérifié par son empreinte). **Ryubing** : sa source ne répond pas, Frogtend
       propose d'ouvrir sa page officielle.
 
+## Les succès (0.32.0)
+- [ ] ⚙ Options ▸ Comptes ▸ **🏆 RetroAchievements** : ton nom et ta clé d'API Web (site ▸ Settings ▸ Keys).
+      **Attendu :** « compte vérifié et enregistré » ; la clé n'apparaît plus jamais.
+- [ ] Sélectionne un jeu NES importé (par exemple Super Mario Bros) : le panneau montre **🏆 RetroAchievements**,
+      « ✅ Ta version est compatible » et tes succès. Sur un jeu dont ta version n'est pas reconnue : Frogtend dit
+      laquelle l'est (ou qu'elle manque).
+- [ ] Un jeu Steam : **🏆 Succès Steam x / y**.
+- [ ] (Plus tard) gagner des succès en jouant demandera que Frogtend règle ton compte dans RetroArch : prochain lot.
+
 ## Une fiche par jeu, plusieurs versions (0.31.0)
 - [ ] 📥 Importer ▸ Fichiers ROM sur `E:\Games\Nintendo Entertainement System` : **attendu ~828 fiches** au lieu de
       1 086 lignes (les versions d'un même jeu réunies).

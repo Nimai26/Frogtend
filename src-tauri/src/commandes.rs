@@ -718,6 +718,140 @@ pub async fn boutique_steam_regler(noyau: State<'_, Noyau>, compte: String, cle:
     boutique_steam_etat(noyau).await
 }
 
+/// Le compte RetroAchievements du profil (sans la clé, qui ne quitte jamais le coffre).
+#[derive(Serialize)]
+pub struct EtatRetro {
+    pub compte: Option<String>,
+    pub cle_enregistree: bool,
+}
+
+#[tauri::command]
+pub async fn ra_etat(noyau: State<'_, Noyau>) -> Resultat<EtatRetro> {
+    let p = profil_ouvert(&noyau).await?;
+    let c = crate::boutiques::lire_source(&dossier_profil_de(&noyau, &p.id), "retroachievements");
+    Ok(EtatRetro {
+        compte: c.map(|c| c.compte).filter(|c| !c.is_empty()),
+        cle_enregistree: noyau.coffre.lire(&crate::boutiques::nom_secret(&p.id, "retroachievements"))?.is_some(),
+    })
+}
+
+/// Règle le compte RetroAchievements : VÉRIFIÉ auprès de RetroAchievements avant d'être enregistré ; la clé d'API Web
+/// va dans le coffre de Windows seulement (`cle` absente : garder celle déjà enregistrée).
+#[tauri::command]
+pub async fn ra_regler(noyau: State<'_, Noyau>, compte: String, cle: Option<String>) -> Resultat<EtatRetro> {
+    let p = profil_ouvert(&noyau).await?;
+    let secret = crate::boutiques::nom_secret(&p.id, "retroachievements");
+    let cle = match cle.map(|c| c.trim().to_string()).filter(|c| !c.is_empty()) {
+        Some(c) if c.len() >= 16 && c.chars().all(|x| x.is_ascii_alphanumeric()) => c,
+        Some(_) => return Err(Erreur::Refus("Ce n'est pas une clé d'API Web de RetroAchievements (lettres et chiffres).".into())),
+        None => noyau.coffre.lire(&secret)?.ok_or_else(|| Erreur::Refus("Donne ta clé d'API Web de RetroAchievements.".into()))?,
+    };
+    let nom = crate::succes::verifier_compte(crate::succes::API_RA, &cle, &compte).await?;
+    noyau.coffre.ranger(&secret, &cle)?;
+    let c = crate::boutiques::CompteBoutique { compte: nom, maj_le: crate::noyau::maintenant(), ..Default::default() };
+    crate::boutiques::ecrire_source(&dossier_profil_de(&noyau, &p.id), "retroachievements", Some(&c))?;
+    noyau.journaliser(&format!("compte RetroAchievements réglé pour le profil {}", p.id));
+    ra_etat(noyau).await
+}
+
+#[tauri::command]
+pub async fn ra_oublier(noyau: State<'_, Noyau>) -> Resultat<()> {
+    let p = profil_ouvert(&noyau).await?;
+    noyau.coffre.oublier(&crate::boutiques::nom_secret(&p.id, "retroachievements"))?;
+    crate::boutiques::ecrire_source(&dossier_profil_de(&noyau, &p.id), "retroachievements", None)
+}
+
+/// Une version d'un jeu du PC, vue par RetroAchievements.
+#[derive(Serialize)]
+pub struct VersionRetro {
+    pub chemin: String,
+    pub compatible: bool,
+    pub courante: bool,
+}
+
+/// Les succès RetroAchievements d'un jeu du PC : ses versions compatibles ou non, celles qui le seraient (noms
+/// officiels), et la progression de la personne.
+#[derive(Serialize, Default)]
+pub struct SuccesRetro {
+    /// `aucun` (pas d'une console RetroAchievements), `compte` (compte pas réglé), `pas_verifiable` (jeux sur CD,
+    /// pas encore), `ok`.
+    pub etat: String,
+    pub versions: Vec<VersionRetro>,
+    pub jeu: Option<crate::succes::Progression>,
+    /// Si aucune de ses versions n'est reconnue : les versions compatibles connues de RetroAchievements.
+    pub compatibles: Vec<crate::succes::VersionCompatible>,
+}
+
+#[tauri::command]
+pub async fn succes_retro(noyau: State<'_, Noyau>, id: i64) -> Resultat<SuccesRetro> {
+    let p = profil_ouvert(&noyau).await?;
+    let j = noyau.registre().jeu(id)?.ok_or_else(|| Erreur::Introuvable("Ce jeu n'est pas sur ce PC.".into()))?;
+    let Some(console) = crate::succes::console_de(&j.plateforme) else {
+        return Ok(SuccesRetro { etat: "aucun".into(), ..Default::default() });
+    };
+    let compte = crate::boutiques::lire_source(&dossier_profil_de(&noyau, &p.id), "retroachievements").map(|c| c.compte);
+    let cle = noyau.coffre.lire(&crate::boutiques::nom_secret(&p.id, "retroachievements"))?;
+    let (Some(compte), Some(cle)) = (compte, cle) else {
+        return Ok(SuccesRetro { etat: "compte".into(), ..Default::default() });
+    };
+    if !crate::succes::empreinte_possible(console) {
+        return Ok(SuccesRetro { etat: "pas_verifiable".into(), ..Default::default() });
+    }
+    let Some(i) = j.installation.clone() else {
+        return Ok(SuccesRetro { etat: "pas_verifiable".into(), ..Default::default() });
+    };
+    let courant = i.fichier_du_jeu.as_ref().map(|f| std::path::Path::new(&i.dossier).join(f).to_string_lossy().to_string());
+    let mut chemins: Vec<String> = i.versions.iter().map(|v| v.chemin.clone()).collect();
+    if chemins.is_empty() {
+        chemins.extend(courant.clone());
+    }
+    let liste = crate::succes::liste_en_cache(&noyau.dossier.join("cache").join("retroachievements"), crate::succes::API_RA, &cle, console).await?;
+    let c2 = chemins.clone();
+    let empreintes = tauri::async_runtime::spawn_blocking(move || {
+        c2.iter().map(|c| crate::succes::empreinte_fichier(console, std::path::Path::new(c)).ok().flatten()).collect::<Vec<_>>()
+    })
+    .await
+    .map_err(|_| Erreur::Disque("Le calcul des empreintes s'est arrêté brutalement.".into()))?;
+    let mut jeu_ra = None;
+    let mut versions = Vec::new();
+    for (c, e) in chemins.iter().zip(empreintes) {
+        let trouve = e.and_then(|e| liste.iter().find(|g| g.empreintes.contains(&e)));
+        if jeu_ra.is_none() {
+            jeu_ra = trouve.map(|g| g.id);
+        }
+        versions.push(VersionRetro {
+            chemin: c.clone(),
+            compatible: trouve.is_some(),
+            courante: courant.as_ref().is_some_and(|x| x.eq_ignore_ascii_case(c)),
+        });
+    }
+    let mut r = SuccesRetro { etat: "ok".into(), versions, ..Default::default() };
+    // Aucune version reconnue : le jeu par son titre, et les versions qui seraient compatibles.
+    let id_ra = jeu_ra.or_else(|| {
+        let t = crate::succes::titre_comparable(&j.titre);
+        liste.iter().find(|g| crate::succes::titre_comparable(&g.titre) == t).map(|g| g.id)
+    });
+    if let Some(id_ra) = id_ra {
+        if jeu_ra.is_none() {
+            r.compatibles = crate::succes::empreintes_du_jeu(crate::succes::API_RA, &cle, id_ra).await.unwrap_or_default();
+        }
+        r.jeu = crate::succes::progression(crate::succes::API_RA, &cle, &compte, id_ra).await.ok();
+    }
+    Ok(r)
+}
+
+/// Les succès Steam d'un jeu (obtenus, total), ou `None` s'il n'en a pas ou si le compte Steam n'est pas réglé.
+#[tauri::command]
+pub async fn succes_steam(noyau: State<'_, Noyau>, appid: String) -> Resultat<Option<(u32, u32)>> {
+    let p = profil_ouvert(&noyau).await?;
+    if !appid.chars().all(|c| c.is_ascii_digit()) {
+        return Err(Erreur::Refus("Jeu Steam invalide.".into()));
+    }
+    let Some(c) = crate::boutiques::lire(&dossier_profil_de(&noyau, &p.id)).filter(|c| !c.steamid.is_empty()) else { return Ok(None) };
+    let Some(cle) = noyau.coffre.lire(&crate::boutiques::nom_secret(&p.id, "steam"))? else { return Ok(None) };
+    crate::succes::succes_steam(crate::boutiques::API_STEAM, &cle, &c.steamid, &appid).await
+}
+
 /// Oublie le compte Steam du profil : la clé quitte le coffre, la liste importée est retirée.
 #[tauri::command]
 pub async fn boutique_steam_oublier(noyau: State<'_, Noyau>) -> Resultat<()> {

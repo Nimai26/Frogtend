@@ -484,6 +484,12 @@ export const api = {
   emulateursTraces: () => appeler<{ id: string; nom: string; dossiers: string[] }[]>('emulateurs_traces'),
   importMesurer: (elements: string[], destination: string) => appeler<[number, number | null]>('import_mesurer', { elements, destination }),
   importCopier: (elements: string[], destination: string) => appeler<string[]>('import_copier', { elements, destination }),
+  raEtat: () => appeler<import('$lib/succes/succes.svelte').EtatRetro>('ra_etat'),
+  raRegler: (compte: string, cle?: string) =>
+    appeler<import('$lib/succes/succes.svelte').EtatRetro>('ra_regler', { compte, cle: cle ?? null }),
+  raOublier: () => appeler<void>('ra_oublier'),
+  succesRetro: (id: number) => appeler<import('$lib/succes/succes.svelte').SuccesRetro>('succes_retro', { id }),
+  succesSteam: (appid: string) => appeler<[number, number] | null>('succes_steam', { appid }),
   abrisRegler: (dossier: string) => appeler<number>('abris_regler', { dossier }),
   importChercherRoms: (dossier: string, extensions: string[], recursif: boolean) =>
     appeler<import('$lib/import/local').RomTrouvee[]>('import_chercher_roms', { dossier, extensions, recursif }),

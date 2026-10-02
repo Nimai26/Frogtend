@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.32.0 — les succès
+
+- **⚙ Options ▸ Comptes ▸ 🏆 RetroAchievements** : ton compte et ta clé (vérifiés, puis rangés dans le coffre de
+  Windows ; chaque profil a le sien).
+- Dans le panneau d'un jeu émulé : **ta version est-elle compatible RetroAchievements ?** Sinon, Frogtend te dit
+  quelle version l'est — une de tes autres versions, ou celle qui manque (à demander à Firehouse). Et tes succès
+  obtenus.
+- Les jeux Steam montrent leurs **succès Steam** (obtenus / total).
+- Pas encore : les jeux sur CD (PlayStation…), et gagner les succès en jouant (le compte à régler dans RetroArch).
+
 ## 0.31.0 — une fiche par jeu, toutes ses versions
 
 - À l'import, les ROM d'un même jeu (France, Europe, USA, Japon, révisions…) sont réunies sous **une seule fiche**.

@@ -264,7 +264,9 @@ impl Noyau {
         }
         self.coffre.oublier(id)?;
         // Les secrets des boutiques du profil (lot 9) partent avec lui.
-        self.coffre.oublier(&crate::boutiques::nom_secret(id, "steam"))?;
+        for boutique in ["steam", "retroachievements"] {
+            self.coffre.oublier(&crate::boutiques::nom_secret(id, boutique))?;
+        }
         let dossier = self.dossier_profil(id);
         // Vérifier ce qu'on supprime : uniquement le dossier de CE profil, sous le dossier de l'application.
         if dossier.starts_with(self.dossier.join("profils")) && dossier.is_dir() {
@@ -782,8 +784,17 @@ mod tests {
             n.ouvrir(id, if id == &seb { Some("1234") } else { None }, &SIMULE).await.unwrap();
             n.synchroniser(|_, _| {}).await.unwrap();
         }
+        // Les clés de ses comptes (Steam, RetroAchievements) partent avec lui ; celles de Léa restent.
+        for b in ["steam", "retroachievements"] {
+            n.coffre.ranger(&crate::boutiques::nom_secret(&seb, b), "cle").unwrap();
+            n.coffre.ranger(&crate::boutiques::nom_secret(&lea, b), "cle").unwrap();
+        }
         assert!(n.supprimer_profil(&seb, Some("0000")).await.is_err());
         n.supprimer_profil(&seb, Some("1234")).await.unwrap();
+        for b in ["steam", "retroachievements"] {
+            assert!(n.coffre.lire(&crate::boutiques::nom_secret(&seb, b)).unwrap().is_none());
+            assert!(n.coffre.lire(&crate::boutiques::nom_secret(&lea, b)).unwrap().is_some());
+        }
         assert!(!d.path().join("profils").join(&seb).exists());
         assert!(d.path().join("profils").join(&lea).join("ludotheque.db").exists());
         assert!(!n.a_un_jeton(&seb).unwrap());

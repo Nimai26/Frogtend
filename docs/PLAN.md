@@ -629,6 +629,19 @@ une saga entière). Conséquences pour Frogtend :
   compatible comme manquante** si Firehouse ne l'a pas.
 - À étudier d'abord (documentation officielle) : l'API de RetroAchievements (compte et clé de la personne, dans le
   coffre ; liste des empreintes reconnues par jeu), les succès Steam (API Web, clé déjà réglée par profil), Epic.
+- **✅ 0.32.0** (`src-tauri/src/succes.rs`, `src/lib/succes/`) : ⚙ Options ▸ Comptes ▸ 🏆 RetroAchievements (nom +
+  clé d'API Web, VÉRIFIÉS par `API_GetUserProfile` avant d'être gardés ; clé dans le coffre, jamais dans un message ni
+  le cache ; partie avec le profil). Empreintes selon « Game Identification » / rcheevos (en-têtes NES/FDS/Lynx/7800/
+  SNES/PC Engine, ordre des octets N64, arcade = nom du fichier, ROM dans un .zip) ; numéros de console de
+  `rc_consoles.h` ; liste d'une console (`API_GetGameList`, `h=1`) en cache une semaine (`cache\retroachievements`
+  dans les données de Frogtend) ; panneau du jeu : « ✅ compatible », « ⚠ pas reconnue, mais <autre version> l'est »,
+  ou « version compatible manquante : <nom officiel> → Demander à Firehouse » (`API_GetGameHashes`) ; progression
+  (`API_GetGameInfoAndUserProgress`). Steam : x / y succès (`GetPlayerAchievements`). Essai réel (lecture seule) :
+  Super Mario Bros (JU) (PRG 0) → `8e3630186e35d477231bf8fd50e54cdd`, l'empreinte sans en-tête connue de
+  « Super Mario Bros. (Japan, USA) ». **Reste** : jeux sur CD (méthodes PlayStation, Saturn, Dreamcast… par disque) ;
+  brancher le compte dans les émulateurs (RetroArch `cheevos_*`, DuckStation, PCSX2) pour GAGNER les succès ;
+  **Epic** : pas d'API publique de succès (à revoir via GOG Galaxy, qui les synchronise peut-être) ; demander à
+  Firehouse une version manquante par son nom/empreinte (besoin API à écrire quand le cas se présente).
 
 **C. Une fiche par jeu et par système, plusieurs versions de ROM.** Sur un même système, un jeu = UNE fiche ; ses
 ROM (régions, révisions) en sont les **versions**, présentées dans cet **ordre de préférence : fr, puis eu, puis us

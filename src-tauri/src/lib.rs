@@ -20,6 +20,7 @@ pub mod locale;
 pub mod gratuits;
 pub mod import_local;
 pub mod mame;
+pub mod succes;
 pub mod ludotheque;
 pub mod menu_jeu;
 pub mod noyau;
@@ -278,6 +279,11 @@ pub fn run() {
             commandes::gratuits_connexion_playstation,
             commandes::gratuits_psplus,
             commandes::abris_regler,
+            commandes::ra_etat,
+            commandes::ra_regler,
+            commandes::ra_oublier,
+            commandes::succes_retro,
+            commandes::succes_steam,
             commandes::jeu_choisir_version,
             commandes::import_chercher_roms,
             commandes::import_mesurer,
