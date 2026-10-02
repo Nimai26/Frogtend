@@ -448,6 +448,16 @@ la personne : **Amazon, Epic, GOG, Steam, EA Play** (et les autres boutiques du 
 d'API ou secrets de ses comptes (dans le coffre de Windows, jamais affichés ni journalisés). **S'inspirer des
 méthodes de LaunchBox** pour l'import de ces boutiques (à étudier dans sa documentation avant de coder).
 
+**Seb (02/10), captures de LaunchBox à l'appui** :
+- LaunchBox : **Outils ▸ Importer ▸** Amazon Games, EA, Epic Games, GOG, Steam, Uplay/Ubisoft Connect, Jeux Windows,
+  Xbox/Microsoft Store. **Options ▸ Intégrations ▸** GOG, Steam… Pour Steam : l'**URL personnalisée** du profil
+  (\`steamcommunity.com/id/<nom>\`) et une **clé d'API personnelle** (Steam révoque celles de LaunchBox : chacun crée
+  la sienne sur \`steamcommunity.com/dev/apikey\`).
+- **Règle de Seb** : les comptes se règlent **dans les Options**, OU **au moment d'un import** si rien n'est encore
+  réglé (Frogtend ouvre alors le réglage avant d'importer).
+- **Ordre retenu** : Steam d'abord (API officielle : ResolveVanityURL, GetOwnedGames), puis les autres après étude.
+- ⚠ La clé Steam de Seb est apparue en clair dans une capture (02/10) : à régénérer ; jamais recopiée par l'agent.
+
 ## Personnalisation (« beaucoup d'éléments modifiables »)
 
 Les couleurs appartiennent aux skins : on ne crée jamais de couleur hors de ceux de Firehouse. Tout le reste se règle
