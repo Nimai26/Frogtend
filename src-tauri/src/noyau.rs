@@ -852,6 +852,32 @@ mod tests {
     /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_miniatures -- --ignored --nocapture`
     #[tokio::test]
     #[ignore]
+    async fn essai_installation_cheatengine() {
+        // Accord de Seb (02/10). Télécharge le paquet Cheat Engine servi par Firehouse dans un dossier TEMPORAIRE,
+        // vérifie son empreinte, l'installe comme Frogtend le ferait, trouve le programme, puis tout est effacé.
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton pour ce profil");
+        let s = crate::source::Source::Firehouse(Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap());
+        let p = s.paquet_emulateur("cheatengine").await.unwrap();
+        let d = tempfile::tempdir().unwrap();
+        let paquet = d.path().join("ce.paquet");
+        let route = p["url"].as_str().unwrap().strip_prefix(crate::firehouse::PREFIXE).unwrap().to_string();
+        let debut = std::time::Instant::now();
+        let n = s.telecharger_route(&route, &paquet, &|_, _| {}).await.unwrap();
+        println!("reçu {n} octets en {} s (annoncé {})", debut.elapsed().as_secs(), p["taille"]);
+        let sha = crate::sauvegarde::empreinte(&paquet).unwrap();
+        println!("empreinte {} (attendue {})", sha, p["sha256"]);
+        assert_eq!(Some(sha.as_str()), p["sha256"].as_str());
+        let r = crate::emulateurs::installer_paquet_decrit("Cheat Engine", &paquet, &d.path().join("Cheat Engine"), p["programme"].as_str(), None).unwrap();
+        println!("programme : {r:?}");
+        let ce = d.path().join("Cheat Engine");
+        for f in ["autorun/SetMemoryRegion.lua", "autorun/FontSizeAllForms.lua", "LISEZMOI-FIREHOUSE.txt"] {
+            println!("{f} : {}", if ce.join(f).is_file() { "présent" } else { "ABSENT" });
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
     async fn essai_contrat_13_14_sur_firehouse() {
         // LECTURE SEULE : les routes des besoins 13 et 14 (Firehouse 2.26.0). Rien n'est téléchargé ni installé.
         let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
