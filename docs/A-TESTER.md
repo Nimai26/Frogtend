@@ -3,6 +3,10 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Machine
+- [x] Disque D: plein (670 Mo libres le 02/10) : **Seb a fait de la place** (02/10). Le cache de construction de
+      Frogtend est maintenant allégé (il avait atteint 61 Go).
+
 ## Tout de suite : installer la dernière version
 - [ ] Frogtend propose la mise à jour au démarrage (ou ⚙ Options ▸ À propos ▸ Chercher une mise à jour).
       **Attendu :** la version la plus récente de [NOTES-DE-VERSION.md](NOTES-DE-VERSION.md).
