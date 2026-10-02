@@ -407,6 +407,11 @@ officiel dit lui-même que **l'installeur sans logiciels en plus est réservé a
 choisir avec Seb) : (a) Seb récupère l'installeur propre (Patreon) et le confie à Firehouse, qui le sert à Frogtend ;
 (b) installation silencieuse de l'installeur public en refusant les offres : impossible à garantir sans essai.
 
+**✅ Décision de Seb (02/10, finale)** : les mises à jour de Cheat Engine sont rares → **Seb l'installe lui-même sans
+les logiciels en plus, en fait un zip et le confie à Firehouse**, qui le **distribue** à tous (contrat 14, \`type:
+direct\`, \`sha256\`). Firehouse **prévient Seb** quand une nouvelle version sort ; Seb met à jour le zip sur Firehouse,
+qui le transmet à tous les Frogtend. (Ce qui suit est la réflexion qui a mené là.)
+
 **Proposition de Seb (02/10)** : Firehouse fournit à Frogtend un Cheat Engine **portable et propre**, de deux façons
 possibles : (1) chaque semaine, vérifier la version ; si nouvelle, l'**installer dans un bac à sable**, puis zipper
 SEULEMENT son dossier d'installation ; (2) le **construire depuis le dépôt git** officiel. (Pas de version portable
