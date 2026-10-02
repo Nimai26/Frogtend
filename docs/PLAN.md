@@ -475,6 +475,14 @@ compte PlayStation de la personne) ; ces jeux **ne vont PAS dans la ludothèque*
 console) : on les ajoute seulement à la bibliothèque du compte PlayStation. À étudier (page officielle des jeux du
 mois, PlayStation Store, connexion au compte PSN) avant de coder ; même principe que pour Epic (automatique, sinon la
 page s'affiche).
+**Recherche (02/10)** : un seul projet GitHub (bnowakow/ps-plus-claimer, essai inachevé, Selenium sur la page du
+Store). Ce qui est vérifié sur les pages publiques : la page produit d'un jeu du mois a un identifiant dédié (ex.
+`UP9000-PPSA30630_00-MLBTHESHOW26PLUS`), une offre `PS_PLUS_FREE` et un bouton d'action principal
+`data-qa="mfeCtaMain#cta#action"` (hors connexion : « UPSELL_PS_PLUS_FREE », s'abonner). La LISTE des jeux du mois
+n'est pas publique en clair (pages du Store construites dans le navigateur ; la page playstation.com/fr-fr/ps-plus/
+whats-new/ ne donne qu'une partie des liens). Donc : connexion Sony par profil (page officielle, navigateur propre au
+profil), fenêtre cachée sur le Store connecté qui lit les jeux du mois et clique « Ajouter à la bibliothèque » ;
+repli : la page s'affiche. Les sélecteurs se règlent AVEC Seb connecté (un compte membre est indispensable).
 
 **Menu « Importer » comme LaunchBox (Seb, 02/10, capture)** : la MÊME liste : Fichiers ROM (sous-menu), Jeux MS-DOS,
 MAME Arcade Full Set, Amazon Games, EA, Jeux Epic Games, Jeux GOG, Jeux Steam, Uplay/Ubisoft Connect, Jeux Windows,
