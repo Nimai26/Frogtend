@@ -101,9 +101,25 @@ function recommandationsParDefaut(plateforme: string): EmulateurRecommande[] {
   return [];
 }
 
-/** Installer un émulateur que Frogtend ne connaît pas en dur, d'après Firehouse (contrat 14), sur accord. */
-export async function installerParFirehouse(id: string, nom: string): Promise<EmulateurInstalle | null> {
-  const dossier = await dossierEmulateurs();
+/** Le dossier où Frogtend installe Cheat Engine et les autres outils (pas avec les émulateurs) ; demandé la 1re fois. */
+export async function dossierOutils(changer = false): Promise<string | null> {
+  if (etat.pc.dossierOutils && !changer) return etat.pc.dossierOutils;
+  const suggestion = etat.pc.dossierEmulateurs ? `${etat.pc.dossierEmulateurs.replace(/[\\/][^\\/]*$/, '')}\\Outils` : 'E:\\Outils';
+  const ok = await confirmer('📁 Où installer les outils ?', {
+    message: `Choisis (ou crée) un dossier pour Cheat Engine et les autres outils, par exemple ${suggestion}.\nChaque outil y aura son sous-dossier ; rien n’est installé ailleurs.`,
+    libelleValider: '📂 Choisir le dossier',
+  });
+  if (!ok) return null;
+  const d = await parcourir({ dossier: true, titre: 'Dossier des outils' });
+  if (!d) return null;
+  await reglerPc('dossierOutils', d);
+  return d;
+}
+
+/** Installer un émulateur (ou un OUTIL, comme Cheat Engine : il va alors dans le dossier des outils) que Frogtend ne
+ * connaît pas en dur, d'après Firehouse (contrat 14), sur accord. */
+export async function installerParFirehouse(id: string, nom: string, outil = false): Promise<EmulateurInstalle | null> {
+  const dossier = outil ? await dossierOutils() : await dossierEmulateurs();
   if (!dossier) return null;
   const oui = await confirmer(`⬇ Installer ${nom} ?`, {
     message: [

@@ -6,7 +6,7 @@
 
 use crate::erreurs::{Erreur, Resultat};
 use crate::installation::{
-    arguments_silencieux, candidats, changes_depuis, copier, decompresser, executer_et_attendre, lanceur_emulateur,
+    arguments_silencieux, candidats, copier, decompresser, executer_et_attendre, lanceur_emulateur,
     methode, nature, relever, Candidat, Lanceur, Manifeste, Methode, Nature,
 };
 use crate::jeux_pc::{Etat, Installation, JeuPc};
@@ -309,7 +309,7 @@ impl Noyau {
     /// une copie dans `sauvegardes/<jeu>/<date>/`. Les abris ne s'effacent jamais tout seuls.
     pub async fn mettre_a_l_abri(&self, id: i64) -> Resultat<Abri> {
         let j = self.jeu_visible(id).await?;
-        let i = j.installation.ok_or_else(|| Erreur::Refus("Le jeu n'est pas installé : rien à mettre à l'abri.".into()))?;
+        let i = j.installation.clone().ok_or_else(|| Erreur::Refus("Le jeu n'est pas installé : rien à mettre à l'abri.".into()))?;
         let m: Manifeste = match std::fs::read(self.fichier_manifeste(id)) {
             Ok(o) => serde_json::from_slice(&o).unwrap_or_default(),
             Err(_) => return Ok(Abri { dossier: String::new(), fichiers: 0, octets: 0 }),
@@ -318,11 +318,11 @@ impl Noyau {
         if !racine.is_dir() {
             return Err(Erreur::Disque(format!("Le dossier du jeu est introuvable : {}.", racine.display())));
         }
-        let changes = changes_depuis(&racine, &m)?;
+        let changes = crate::locale::parties_changees(&j, &racine, &m)?;
         if changes.is_empty() {
             return Ok(Abri { dossier: String::new(), fichiers: 0, octets: 0 });
         }
-        let abri = self.dossier.join("sauvegardes").join(id.to_string()).join(maintenant());
+        let abri = self.dossier_abris()?.join(id.to_string()).join(maintenant());
         let octets = copier(&racine, &changes, &abri)?;
         // Vérifier le résultat : chaque fichier est bien dans l'abri, à la même taille.
         for r in &changes {
@@ -375,11 +375,8 @@ impl Noyau {
                 std::fs::remove_file(&p)?;
             }
         }
+        self.retirer_medias(&j)?;
         let _ = std::fs::remove_dir(&recus); // seulement s'il est vide
-        let medias = self.dossier_medias(id);
-        if medias.starts_with(self.dossier.join("medias")) && medias.is_dir() {
-            std::fs::remove_dir_all(&medias)?;
-        }
         self.registre().retirer(id)?;
         Ok(abri)
     }
@@ -500,11 +497,17 @@ mod tests {
         std::fs::write(installe.join("SAVES").join("PARTIE1.SAV"), b"partie").unwrap();
         std::fs::write(installe.join("DUNE.CFG"), b"v2 !").unwrap();
 
+        // Sans dossier des abris réglé : refusé, et le jeu reste (ses parties ne sont pas perdues).
+        assert!(matches!(n.retirer_du_pc(110).await, Err(Erreur::Reglage(_))));
+        assert!(installe.join("SAVES").join("PARTIE1.SAV").is_file() && n.registre().jeu(110).unwrap().is_some());
+
+        n.regler_abris(Some(d.path().join("Abris")));
         let abri = n.retirer_du_pc(110).await.unwrap();
         assert_eq!(abri.fichiers, 2);
         let a = PathBuf::from(&abri.dossier);
         assert_eq!(std::fs::read(a.join("SAVES").join("PARTIE1.SAV")).unwrap(), b"partie");
-        assert!(a.starts_with(d.path().join("app").join("sauvegardes").join("110")));
+        assert!(a.starts_with(d.path().join("Abris").join("110")), "dans le dossier des abris réglé");
+        assert!(!d.path().join("app").join("sauvegardes").exists(), "rien dans %APPDATA%");
         // Le jeu est parti ; l'abri reste.
         assert!(!installe.exists());
         assert!(!d.path().join("Jeux").join("MS-DOS").join("Dune (1992)").join("dune.zip").exists());

@@ -26,6 +26,24 @@ pub(crate) fn connexion(app: &AppHandle) -> Connexion {
     }
 }
 
+/// Le dossier des abris de parties réglé dans `pc.json` (`dossierAbris`), s'il l'est.
+pub(crate) fn dossier_abris_regle(app: &AppHandle) -> Option<std::path::PathBuf> {
+    let r = app.store("pc.json").ok()?.get("reglages")?;
+    r["dossierAbris"].as_str().filter(|s| !s.trim().is_empty()).map(std::path::PathBuf::from)
+}
+
+/// Le dossier des abris de parties vient d'être réglé : le noyau l'utilise, et y range les abris de l'ancien
+/// emplacement (copie vérifiée). Rend le nombre d'abris rangés.
+#[tauri::command]
+pub fn abris_regler(noyau: State<'_, Noyau>, dossier: String) -> Resultat<usize> {
+    let d = std::path::PathBuf::from(dossier.trim());
+    if !dossier.trim().is_empty() {
+        std::fs::create_dir_all(&d)?;
+    }
+    noyau.regler_abris(Some(d));
+    noyau.migrer_abris()
+}
+
 #[derive(Serialize)]
 pub struct ProfilDetaille {
     #[serde(flatten)]
@@ -892,6 +910,31 @@ pub fn import_arguments_jeu_dos(destination: String, programme: String) -> Resul
     crate::import_local::arguments_jeu_dos(std::path::Path::new(&destination), &programme)
 }
 
+/// Avant de copier des jeux dans un emplacement : combien d'octets (pistes et CHD compris) et la place libre.
+#[tauri::command]
+pub async fn import_mesurer(elements: Vec<String>, destination: String) -> Resultat<(u64, Option<u64>)> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let e: Vec<std::path::PathBuf> = elements.iter().map(std::path::PathBuf::from).collect();
+        let d = std::path::Path::new(&destination);
+        let libre = crate::jeux_pc::place_libre(d).or_else(|| d.ancestors().find_map(crate::jeux_pc::place_libre));
+        (crate::import_local::taille_a_copier(&e), libre)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La mesure s'est arrêtée brutalement.".into()))
+}
+
+/// Copie des jeux dans un emplacement (jamais déplacés, jamais par-dessus) ; rend leurs nouveaux chemins.
+#[tauri::command]
+pub async fn import_copier(noyau: State<'_, Noyau>, elements: Vec<String>, destination: String) -> Resultat<Vec<String>> {
+    noyau.journaliser(&format!("import : copie de {} jeu(x) dans {destination}", elements.len()));
+    tauri::async_runtime::spawn_blocking(move || {
+        let e: Vec<std::path::PathBuf> = elements.iter().map(std::path::PathBuf::from).collect();
+        crate::import_local::copier_jeux(&e, std::path::Path::new(&destination)).map(|l| l.iter().map(|p| p.to_string_lossy().to_string()).collect())
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La copie s'est arrêtée brutalement.".into()))?
+}
+
 /// 📥 Importer ▸ Jeux MS-DOS : un jeu par sous-dossier (rien n'est encore ajouté).
 #[tauri::command]
 pub async fn import_chercher_dos(dossier: String) -> Resultat<Vec<crate::import_local::JeuDosTrouve>> {
@@ -1157,17 +1200,21 @@ pub fn jeu_taille_installation(noyau: State<'_, Noyau>, id: i64) -> Resultat<u64
     Ok(crate::installation::fichiers_de(&racine)?.iter().filter_map(|r| std::fs::metadata(racine.join(r)).ok()).map(|m| m.len()).sum())
 }
 
-/// Copie le jeu avant un mod (décision de Seb : proposée, pas obligatoire) : `<dossier>.avant-mod-<date>`.
+/// Copie le jeu avant un mod (décision de Seb : proposée, pas obligatoire), DANS le dossier du jeu (règle « pas de
+/// pieuvre ») : `<jeu>\Frogtend\copies\avant-mod-<date>\`. Ce que Frogtend a déjà mis sous `Frogtend` n'est pas copié.
 #[tauri::command]
 pub async fn jeu_copie_avant_mod(noyau: State<'_, Noyau>, id: i64) -> Resultat<String> {
     let j = noyau.registre().jeu(id)?.ok_or_else(|| Erreur::Introuvable("Jeu introuvable sur ce PC.".into()))?;
-    let i = j.installation.ok_or_else(|| Erreur::Refus("Le jeu n'est pas installé.".into()))?;
+    let i = j.installation.clone().ok_or_else(|| Erreur::Refus("Le jeu n'est pas installé.".into()))?;
     let source = std::path::PathBuf::from(&i.dossier);
-    let nom = source.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "jeu".into());
-    let copie = source.with_file_name(format!("{nom}.avant-mod-{}", crate::noyau::maintenant()));
+    let copie = crate::locale::dossier_frogtend(&j).join("copies").join(format!("avant-mod-{}", crate::noyau::maintenant()));
     let (s, c) = (source.clone(), copie.clone());
+    let frogtend = crate::locale::dossier_frogtend(&j);
     tauri::async_runtime::spawn_blocking(move || -> Resultat<()> {
-        for r in crate::installation::fichiers_de(&s)? {
+        // La liste est faite AVANT de copier, et laisse de côté le dossier Frogtend (médias, copies précédentes).
+        let fichiers: Vec<String> =
+            crate::installation::fichiers_de(&s)?.into_iter().filter(|r| !s.join(r).starts_with(&frogtend)).collect();
+        for r in fichiers {
             let cible = c.join(&r);
             if let Some(p) = cible.parent() {
                 std::fs::create_dir_all(p)?;

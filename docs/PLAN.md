@@ -30,6 +30,17 @@
 >    (⚙ Options ▸ Emplacements) ; ceux déjà dans `%APPDATA%\Frogtend\sauvegardes` sont migrés (copie vérifiée).
 > 4. **Cheat Engine et les outils** (trainers, gestionnaires de mods…) vont dans un **nouveau réglage « dossier des
 >    outils »**, séparé du dossier des émulateurs.
+> **✅ 0.30.0** : médias des jeux du PC dans `<jeu>\Frogtend\medias` (importés : `<dossier>\Frogtend\<titre>\medias`),
+> migrés au démarrage (copie vérifiée, puis l'ancienne retirée ; un disque absent attend) ; abris dans le réglage
+> « dossier des abris » (sans lui, retirer un jeu qui a des parties est REFUSÉ ; anciens abris rangés à son réglage,
+> lecture des deux endroits en attendant, la plus récente l'emporte) ; Cheat Engine et outils dans « dossier des
+> outils » ; copie avant mod dans `<jeu>\Frogtend\copies\` ; le dossier `Frogtend` d'un jeu n'est jamais pris pour
+> des parties ; import : « laisser » (source ajoutée aux emplacements du système) ou « copier » (pistes .cue/.m3u/.gdi
+> et CHD MAME compris, place vérifiée, jamais par-dessus, originaux gardés). Les triches des émulateurs restent dans le
+> dossier de l'émulateur (dossier des émulateurs : c'est là qu'ils les lisent).
+> ⚠ Trouvé chez Seb (lecture seule, 02/10) : `%APPDATA%\com.frogtend.app` (8 Mo) et `com.frogtend.appmedia` (**3,1 Go**
+> de packs de médias NES EmuMovies), datés de **mars 2026** : un ancien essai, pas le Frogtend actuel. **Rien n'est
+> effacé** : à Seb de dire.
 > Restent dans `%APPDATA%\Frogtend` : les données de Frogtend LUI-MÊME (profils, réglages, caches du catalogue et
 > des skins, connexions des boutiques par profil, références de manettes) — rien qui appartienne à un jeu.
 

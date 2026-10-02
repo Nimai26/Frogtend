@@ -86,9 +86,78 @@ fn client(s: &Session) -> Resultat<&Client> {
     }
 }
 
+/// Où Frogtend range ce qu'il AJOUTE à un jeu (règle « pas de pieuvre » de Seb, 02/10) : `<dossier du jeu>\Frogtend\`.
+/// Un jeu importé partage son dossier avec d'autres (1 000 ROM dans un dossier) : `<dossier>\Frogtend\<titre>\`.
+pub fn dossier_frogtend(j: &JeuPc) -> PathBuf {
+    let base = Path::new(&j.dossier).join("Frogtend");
+    if j.version == crate::import_local::VERSION_IMPORTEE {
+        base.join(nom_de_dossier(&j.titre))
+    } else {
+        base
+    }
+}
+
+/// Les parties (et réglages) d'un jeu installé : ce qui a changé dans `racine` depuis son installation, SAUF ce que
+/// Frogtend range lui-même sous `<jeu>\Frogtend` (médias, copies avant mod) — ce ne sont pas des parties.
+pub fn parties_changees(j: &JeuPc, racine: &Path, m: &crate::installation::Manifeste) -> Resultat<Vec<String>> {
+    let frogtend = dossier_frogtend(j);
+    Ok(crate::installation::changes_depuis(racine, m)?.into_iter().filter(|r| !racine.join(r).starts_with(&frogtend)).collect())
+}
+
+/// Les médias d'un jeu du PC (fiche, jaquette, documents, manifeste), copiés en local pour le hors-ligne.
+pub fn medias_du_jeu(j: &JeuPc) -> PathBuf {
+    dossier_frogtend(j).join("medias")
+}
+
+/// Copie un dossier entier, vérifie chaque fichier (même taille), puis seulement retire l'original. Rend le nombre de
+/// fichiers. Si une copie diffère, rien n'est retiré.
+pub fn deplacer_verifie(depuis: &Path, vers: &Path) -> Resultat<usize> {
+    let fichiers = crate::installation::fichiers_de(depuis)?;
+    crate::installation::copier(depuis, &fichiers, vers)?;
+    for r in &fichiers {
+        let a = std::fs::metadata(depuis.join(r)).map(|m| m.len()).ok();
+        let b = std::fs::metadata(vers.join(r)).map(|m| m.len()).ok();
+        if a.is_none() || a != b {
+            return Err(Erreur::Disque(format!("La copie de « {r} » a échoué : l'original est gardé ({}).", depuis.display())));
+        }
+    }
+    std::fs::remove_dir_all(depuis)?;
+    Ok(fichiers.len())
+}
+
 impl Noyau {
+    /// Les médias d'un jeu : dans son dossier s'il est sur le PC ; sinon l'ancien emplacement (avant 0.30.0).
     pub fn dossier_medias(&self, id: i64) -> PathBuf {
+        match self.registre().jeu(id).ok().flatten() {
+            Some(j) => medias_du_jeu(&j),
+            None => self.ancien_dossier_medias(id),
+        }
+    }
+
+    /// Où étaient les médias avant la règle « pas de pieuvre » : `%APPDATA%\…\medias\<id>`.
+    pub fn ancien_dossier_medias(&self, id: i64) -> PathBuf {
         self.dossier.join("medias").join(id.to_string())
+    }
+
+    /// Range dans le dossier de chaque jeu les médias gardés à l'ancien emplacement (copie vérifiée, puis l'ancienne
+    /// copie est retirée). Un jeu dont le disque est absent est laissé pour plus tard. Rend le nombre de jeux migrés.
+    pub fn migrer_medias(&self) -> Resultat<usize> {
+        let mut n = 0;
+        for j in self.registre().tous()? {
+            let ancien = self.ancien_dossier_medias(j.id);
+            let nouveau = medias_du_jeu(&j);
+            if !ancien.is_dir() || nouveau.exists() || !Path::new(&j.dossier).is_dir() {
+                continue;
+            }
+            match deplacer_verifie(&ancien, &nouveau) {
+                Ok(f) => {
+                    self.journaliser(&format!("médias du jeu {} rangés dans son dossier ({f} fichier(s))", j.id));
+                    n += 1;
+                }
+                Err(e) => self.journaliser(&format!("médias du jeu {} : migration remise à plus tard ({e:?})", j.id)),
+            }
+        }
+        Ok(n)
     }
 
     /// Les jeux du PC que le profil ouvert a le droit de voir (ceux de son catalogue), avec leur progression.
@@ -183,8 +252,6 @@ impl Noyau {
             }
         }
 
-        self.garder_medias(&s, c, id, &fiche).await?;
-
         let jeu = JeuPc {
             id,
             version,
@@ -201,13 +268,14 @@ impl Noyau {
             temps_jeu: 0,
             derniere_partie: None,
         };
+        self.garder_medias(&s, c, id, &fiche, &medias_du_jeu(&jeu)).await?;
         self.registre().ajouter(&jeu)?;
         Ok(jeu)
     }
 
     /// Garde sur le PC tout ce qui sert au jeu hors ligne : fiche, jaquette (en grand et en miniature), documents.
-    async fn garder_medias(&self, s: &Session, c: &Client, id: i64, fiche: &Value) -> Resultat<()> {
-        let dossier = self.dossier_medias(id);
+    async fn garder_medias(&self, s: &Session, c: &Client, id: i64, fiche: &Value, dossier: &Path) -> Resultat<()> {
+        let dossier = dossier.to_path_buf();
         std::fs::create_dir_all(dossier.join("annexes"))?;
         std::fs::write(dossier.join("fiche.json"), serde_json::to_vec_pretty(fiche).unwrap())?;
         if let Some(img) = s.source.media(id, "jaquette", None).await? {
@@ -318,13 +386,32 @@ impl Noyau {
                 }
             }
         }
-        // Le dossier du jeu n'est retiré que s'il est vide (rien d'autre n'y est effacé).
+        // Les médias gardés par Frogtend (dans `<jeu>\Frogtend\medias`, ou l'ancien emplacement), puis le dossier du jeu
+        // s'il est vide (rien d'autre n'y est effacé).
+        self.retirer_medias(&j)?;
         let _ = std::fs::remove_dir(dossier);
-        let medias = self.dossier_medias(id);
-        if medias.starts_with(self.dossier.join("medias")) && medias.is_dir() {
+        self.registre().retirer(id)
+    }
+
+    /// Retire les médias que Frogtend a gardés pour ce jeu, et SEULEMENT eux : `<jeu>\Frogtend\medias` (puis
+    /// `Frogtend` s'il est vide), et l'ancien emplacement s'il existe encore.
+    pub(crate) fn retirer_medias(&self, j: &JeuPc) -> Resultat<()> {
+        let medias = medias_du_jeu(j);
+        if medias.starts_with(Path::new(&j.dossier).join("Frogtend")) && medias.is_dir() {
             std::fs::remove_dir_all(&medias)?;
         }
-        self.registre().retirer(id)
+        let mut d = medias.parent().map(Path::to_path_buf);
+        while let Some(p) = d {
+            if !p.starts_with(Path::new(&j.dossier).join("Frogtend")) || std::fs::remove_dir(&p).is_err() {
+                break;
+            }
+            d = p.parent().map(Path::to_path_buf);
+        }
+        let ancien = self.ancien_dossier_medias(j.id);
+        if ancien.starts_with(self.dossier.join("medias")) && ancien.is_dir() {
+            std::fs::remove_dir_all(&ancien)?;
+        }
+        Ok(())
     }
 
     /// La fiche gardée sur le PC d'un jeu de la ludothèque (hors ligne), si elle y est.
@@ -445,8 +532,11 @@ mod tests {
         // Le jeu apparaît tout de suite dans la ludothèque (en attente de téléchargement).
         assert_eq!(n.lister(&filtre(true)).await.unwrap().jeux[0].id, 110);
 
-        // Médias gardés : fiche, jaquettes, documents.
+        // Médias gardés : fiche, jaquettes, documents — DANS le dossier du jeu (règle « pas de pieuvre »), pas dans
+        // les données de Frogtend.
         let m = n.dossier_medias(110);
+        assert_eq!(m, Path::new(&j.dossier).join("Frogtend").join("medias"));
+        assert!(!n.dossier.join("medias").exists(), "rien dans %APPDATA%");
         assert_eq!(n.fiche_locale(110).unwrap()["titre"], "Dune");
         assert_eq!(n.jaquette_locale(110, Some(200)).unwrap(), vec![0xFF, 0xD8, 0xFF, 4]);
         assert_eq!(n.jaquette_locale(110, Some(800)).unwrap().len(), 6);
@@ -542,11 +632,43 @@ mod tests {
         // Un fichier qui n'est pas à Frogtend, dans le même dossier : il ne doit pas être touché.
         std::fs::write(dossier.join("SAUVEGARDE.SAV"), b"partie").unwrap();
 
+        assert!(dossier.join("Frogtend").join("medias").join("fiche.json").is_file());
         n.annuler(110).await.unwrap();
         assert!(!dossier.join("Dune (1992) [MS-DOS].exe.part").exists());
         assert!(dossier.join("SAUVEGARDE.SAV").is_file(), "rien d'autre n'est effacé");
-        assert!(!n.dossier_medias(110).exists());
+        assert!(!dossier.join("Frogtend").exists(), "les médias gardés par Frogtend partent avec le jeu");
         assert!(n.registre().jeu(110).unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn les_medias_de_l_ancien_emplacement_rejoignent_le_dossier_du_jeu() {
+        let s = serveur_dune();
+        let (_d, n, e) = noyau_ouvert(&s).await;
+        let j = n.ajouter(110, 200, &e.defaut[0], &e).await.unwrap();
+        // Comme avant la 0.30.0 : les médias dans %APPDATA%, rien dans le dossier du jeu.
+        let nouveau = Path::new(&j.dossier).join("Frogtend").join("medias");
+        let ancien = n.ancien_dossier_medias(110);
+        std::fs::create_dir_all(ancien.parent().unwrap()).unwrap();
+        std::fs::rename(&nouveau, &ancien).unwrap();
+        assert_eq!(n.migrer_medias().unwrap(), 1);
+        assert!(nouveau.join("fiche.json").is_file() && nouveau.join("annexes").join("0 - Manuel de Dune.pdf").is_file());
+        assert!(!ancien.exists(), "l'ancienne copie est retirée APRÈS vérification");
+        assert_eq!(n.fiche_locale(110).unwrap()["titre"], "Dune");
+        assert_eq!(n.migrer_medias().unwrap(), 0, "rien à refaire");
+    }
+
+    #[test]
+    fn un_deplacement_qui_echoue_garde_l_original() {
+        let d = tempfile::tempdir().unwrap();
+        let a = d.path().join("a");
+        std::fs::create_dir_all(a.join("sous")).unwrap();
+        std::fs::write(a.join("sous").join("x.txt"), b"123").unwrap();
+        // La destination est un FICHIER : la copie ne peut pas se faire.
+        std::fs::write(d.path().join("b"), b"").unwrap();
+        assert!(deplacer_verifie(&a, &d.path().join("b")).is_err());
+        assert!(a.join("sous").join("x.txt").is_file(), "l'original est gardé");
+        assert_eq!(deplacer_verifie(&a, &d.path().join("c")).unwrap(), 1);
+        assert!(!a.exists() && d.path().join("c").join("sous").join("x.txt").is_file());
     }
 
     #[tokio::test]

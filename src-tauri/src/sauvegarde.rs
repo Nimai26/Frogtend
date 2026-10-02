@@ -11,7 +11,7 @@
 //! Frogtend écrit la version COURANTE ; l'historique est gardé par le serveur (instantanés ZFS).
 
 use crate::erreurs::{Erreur, Resultat};
-use crate::installation::{changes_depuis, fichiers_de, Manifeste};
+use crate::installation::{fichiers_de, Manifeste};
 use crate::noyau::{maintenant, Noyau};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -384,7 +384,7 @@ impl Noyau {
             if !racine.is_dir() {
                 continue;
             }
-            for r in changes_depuis(&racine, &m)? {
+            for r in crate::locale::parties_changees(j, &racine, &m)? {
                 parties.push(Element { source: racine.join(&r), relatif: format!("jeux/{}/{r}", j.id) });
             }
         }
@@ -393,27 +393,26 @@ impl Noyau {
         // même s'il n'est plus sur le PC — c'est parfois la seule copie qui reste. Elle va au même endroit que les
         // parties d'un jeu installé (`jeux/<id>/…`), et sera reposée à la réinstallation. Un fichier déjà pris dans
         // le jeu installé (plus récent) passe avant.
-        if let Ok(entrees) = std::fs::read_dir(self.dossier.join("sauvegardes")) {
-            let mut ids: Vec<PathBuf> = entrees.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
-            ids.sort();
-            for d in ids {
+        // Les abris peuvent être à deux endroits (le dossier réglé, l'ancien emplacement) : pour chaque jeu, la copie la
+        // plus récente de TOUS les endroits.
+        let mut plus_recente: std::collections::BTreeMap<i64, (u64, PathBuf)> = std::collections::BTreeMap::new();
+        for racine in self.dossiers_abris_a_lire() {
+            let Ok(jeux) = std::fs::read_dir(&racine) else { continue };
+            for d in jeux.flatten().map(|e| e.path()).filter(|p| p.is_dir()) {
                 let Some(id) = d.file_name().and_then(|n| n.to_str()).and_then(|n| n.parse::<i64>().ok()) else { continue };
-                let Some(recente) = std::fs::read_dir(&d)
-                    .ok()
-                    .into_iter()
-                    .flatten()
-                    .flatten()
-                    .map(|e| e.path())
-                    .filter(|p| p.is_dir())
-                    .max_by_key(|p| p.file_name().and_then(|n| n.to_str()).and_then(|n| n.parse::<u64>().ok()).unwrap_or(0))
-                else {
-                    continue;
-                };
-                for r in fichiers_de(&recente)? {
-                    let relatif = format!("jeux/{id}/{r}");
-                    if !parties.iter().any(|e| e.relatif == relatif) {
-                        parties.push(Element { source: recente.join(&r), relatif });
+                for date in std::fs::read_dir(&d).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_dir()) {
+                    let quand = date.file_name().and_then(|n| n.to_str()).and_then(|n| n.parse::<u64>().ok()).unwrap_or(0);
+                    if plus_recente.get(&id).is_none_or(|(q, _)| quand > *q) {
+                        plus_recente.insert(id, (quand, date));
                     }
+                }
+            }
+        }
+        for (id, (_, recente)) in plus_recente {
+            for r in fichiers_de(&recente)? {
+                let relatif = format!("jeux/{id}/{r}");
+                if !parties.iter().any(|e| e.relatif == relatif) {
+                    parties.push(Element { source: recente.join(&r), relatif });
                 }
             }
         }
@@ -690,5 +689,18 @@ mod tests {
         assert_eq!(c.parties.len(), 1);
         assert_eq!(c.parties[0].relatif, "jeux/110/C/DUNECD/DUNE37S0.SAV");
         assert_eq!(std::fs::read(&c.parties[0].source).unwrap(), b"recente");
+
+        // Le dossier des abris est réglé : l'ancien emplacement y est rangé (copie vérifiée), puis un abri encore plus
+        // récent y arrive ; c'est lui qui part.
+        n.regler_abris(Some(d.path().join("Abris")));
+        assert_eq!(n.migrer_abris().unwrap(), 2);
+        assert!(!app.join("sauvegardes").exists(), "l'ancien emplacement est vidé");
+        assert_eq!(std::fs::read(d.path().join("Abris").join("110").join("1790724553").join("C").join("DUNECD").join("DUNE37S0.SAV")).unwrap(), b"recente");
+        let plus = d.path().join("Abris").join("110").join("1790800000");
+        std::fs::create_dir_all(&plus).unwrap();
+        std::fs::write(plus.join("DUNE37S0.SAV"), b"encore").unwrap();
+        let c = n.contenu_sauvegarde(&[]).await.unwrap();
+        assert_eq!(c.parties.len(), 1);
+        assert_eq!(std::fs::read(&c.parties[0].source).unwrap(), b"encore");
     }
 }

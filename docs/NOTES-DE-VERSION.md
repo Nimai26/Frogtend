@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.30.0 — pas de pieuvre : rien d'éparpillé sur le disque
+
+- Ce que Frogtend ajoute à un jeu (jaquette, fiche, documents, copie avant un mod) va **dans le dossier du jeu**, sous
+  « Frogtend ». Les jeux déjà sur le PC sont rangés tout seuls au démarrage (copie vérifiée).
+- ⚙ Options ▸ Emplacements ▸ **Les autres dossiers de Frogtend** : émulateurs, **outils** (Cheat Engine…) et **abris
+  de parties**. Sans dossier des abris, Frogtend refuse de retirer un jeu qui a des parties : elles ne se perdent pas.
+- 📥 Importer : **laisser** les jeux où ils sont (le dossier devient une source du système) ou **les copier** dans
+  l'emplacement du système (pistes de CD et CHD compris ; les originaux restent).
+
 ## 0.29.0 — installer un jeu DOS
 
 - **📥 Importer ▸ Installer un jeu DOS** : depuis le dossier d'un CD, une image (.iso, .cue) ou une disquette (.img).

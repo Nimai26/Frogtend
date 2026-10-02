@@ -134,6 +134,81 @@ fn normaliser_chemin(p: &Path) -> PathBuf {
     PathBuf::from(p.to_string_lossy().replace('/', "\\").to_lowercase())
 }
 
+/// Ce qu'il faut copier pour un jeu : le fichier (ou le dossier), les pistes qu'il désigne (`.cue`, `.m3u`, `.gdi`)
+/// et, pour un zip MAME, le dossier de ses CHD (même nom, à côté). Chemins complets.
+pub fn a_copier(element: &Path) -> Vec<PathBuf> {
+    let mut l = vec![element.to_path_buf()];
+    if element.is_file() {
+        l.extend(pistes_designees(element).into_iter().filter(|p| p.is_file()));
+        if let (Some(dossier), Some(nom)) = (element.parent(), element.file_stem()) {
+            let chd = dossier.join(nom);
+            let zip = element.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip") || e.eq_ignore_ascii_case("7z"));
+            if zip && chd.is_dir() {
+                l.push(chd);
+            }
+        }
+    }
+    l
+}
+
+/// La taille totale de ce qu'il faut copier pour ces jeux.
+pub fn taille_a_copier(elements: &[PathBuf]) -> u64 {
+    elements
+        .iter()
+        .flat_map(|e| a_copier(e))
+        .map(|p| {
+            if p.is_dir() {
+                crate::installation::fichiers_de(&p).unwrap_or_default().iter().map(|r| std::fs::metadata(p.join(r)).map(|m| m.len()).unwrap_or(0)).sum()
+            } else {
+                std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0)
+            }
+        })
+        .sum()
+}
+
+/// Copie un fichier, vérifie sa taille ; un fichier déjà présent À LA MÊME TAILLE est gardé, un fichier différent n'est
+/// JAMAIS écrasé.
+fn copier_un(source: &Path, cible: &Path) -> Resultat<()> {
+    let taille = std::fs::metadata(source)?.len();
+    if let Ok(m) = std::fs::metadata(cible) {
+        if m.len() == taille {
+            return Ok(());
+        }
+        return Err(Erreur::Refus(format!("{} existe déjà (différent) : Frogtend n'écrit pas par-dessus.", cible.display())));
+    }
+    if let Some(p) = cible.parent() {
+        std::fs::create_dir_all(p)?;
+    }
+    std::fs::copy(source, cible)?;
+    if std::fs::metadata(cible).map(|m| m.len()).ok() != Some(taille) {
+        return Err(Erreur::Disque(format!("La copie de {} a échoué.", source.display())));
+    }
+    Ok(())
+}
+
+/// Copie des jeux (fichiers ou dossiers, avec leurs pistes et CHD) dans `destination` — jamais déplacés : les
+/// originaux restent. Rend, pour chaque élément, son nouveau chemin.
+pub fn copier_jeux(elements: &[PathBuf], destination: &Path) -> Resultat<Vec<PathBuf>> {
+    let mut nouveaux = Vec::new();
+    for e in elements {
+        for (i, p) in a_copier(e).into_iter().enumerate() {
+            let nom = p.file_name().ok_or_else(|| Erreur::Refus("Chemin invalide.".into()))?;
+            let cible = destination.join(nom);
+            if p.is_dir() {
+                for r in crate::installation::fichiers_de(&p)? {
+                    copier_un(&p.join(&r), &cible.join(&r))?;
+                }
+            } else {
+                copier_un(&p, &cible)?;
+            }
+            if i == 0 {
+                nouveaux.push(cible);
+            }
+        }
+    }
+    Ok(nouveaux)
+}
+
 /// Un jeu MS-DOS trouvé : un sous-dossier, et le programme qui le lance le plus probablement.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct JeuDosTrouve {
@@ -475,6 +550,33 @@ mod tests {
         assert_eq!(l[0].titre, "Dune");
         assert_eq!(l[0].programmes[0], "DUNE.EXE");
         assert_eq!(l[1].programmes[0], "PRINCE.EXE");
+    }
+
+    #[test]
+    fn copier_emporte_les_pistes_et_n_ecrase_jamais() {
+        let d = tempfile::tempdir().unwrap();
+        ecrire(d.path(), "src/Crash (Europe).cue", "FILE \"Crash (Europe) (Track 1).bin\" BINARY\n");
+        ecrire(d.path(), "src/Crash (Europe) (Track 1).bin", "piste");
+        ecrire(d.path(), "src/kinst.zip", "zip");
+        ecrire(d.path(), "src/kinst/kinst.chd", "disque");
+        ecrire(d.path(), "src/Dune/DUNE.EXE", "exe");
+        let src = d.path().join("src");
+        let elements = vec![src.join("Crash (Europe).cue"), src.join("kinst.zip"), src.join("Dune")];
+        // Le .cue, sa piste (5), le zip (3), son CHD (6), le jeu DOS (3).
+        let cue = std::fs::metadata(src.join("Crash (Europe).cue")).unwrap().len();
+        assert_eq!(taille_a_copier(&elements), cue + 5 + 3 + 6 + 3);
+        let dest = d.path().join("dest");
+        let n = copier_jeux(&elements, &dest).unwrap();
+        assert_eq!(n, [dest.join("Crash (Europe).cue"), dest.join("kinst.zip"), dest.join("Dune")]);
+        assert!(dest.join("Crash (Europe) (Track 1).bin").is_file(), "la piste suit le .cue");
+        assert!(dest.join("kinst").join("kinst.chd").is_file(), "le CHD suit le zip MAME");
+        assert!(dest.join("Dune").join("DUNE.EXE").is_file());
+        assert!(src.join("Crash (Europe).cue").is_file(), "les originaux restent");
+        // Recommencer : rien ne change (mêmes tailles). Un fichier différent : refus, rien d'écrasé.
+        assert!(copier_jeux(&elements, &dest).is_ok());
+        std::fs::write(dest.join("kinst.zip"), "autre contenu").unwrap();
+        assert!(copier_jeux(&elements[1..2], &dest).is_err());
+        assert_eq!(std::fs::read(dest.join("kinst.zip")).unwrap(), b"autre contenu");
     }
 
     #[test]

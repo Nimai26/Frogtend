@@ -21,6 +21,18 @@
       **Citron Neo** s'installe tout seul (vérifié par son empreinte). **Ryubing** : sa source ne répond pas, Frogtend
       propose d'ouvrir sa page officielle.
 
+## Pas de pieuvre (0.30.0)
+- [ ] Au démarrage, les médias de Dune passent de `%APPDATA%` à `<dossier de Dune>\Frogtend\medias` (copie vérifiée).
+      **Attendu :** la jaquette et la fiche de Dune s'affichent toujours, hors ligne aussi.
+- [ ] ⚙ Options ▸ Emplacements ▸ **Les autres dossiers de Frogtend** : choisis le **dossier des abris** de parties.
+      **Attendu :** « 1 abri(s) rangé(s) » (celui de Dune, 21 Ko) et plus rien dans `%APPDATA%\…\sauvegardes`.
+- [ ] Choisis aussi le **dossier des outils** ; ⬇ Installer Cheat Engine doit y aller (plus dans les émulateurs).
+- [ ] 📥 Importer ▸ Fichiers ROM, sur un petit dossier : **« Les laisser où ils sont »** → le dossier apparaît dans
+      Emplacements, sous le système ; refais avec **« Les copier »** → copie dans l'emplacement du système, originaux
+      intacts.
+- [ ] Dis-moi ce qu'on fait de `%APPDATA%\com.frogtend.app` et `com.frogtend.appmedia` (3,1 Go, ancien essai de
+      mars 2026) : je n'y ai pas touché.
+
 ## Installer un jeu DOS (0.29.0)
 - [ ] Il faut un DOSBox réglé pour MS-DOS (⚙ Options ▸ Émulateurs).
 - [ ] 📥 Importer ▸ **Installer un jeu DOS** : choisis le dossier d'un CD (ou une image .iso/.cue, ou une disquette

@@ -23,6 +23,10 @@ export interface ReglagesPc {
   emulateursJeux: Record<string, string>;
   /** Où Frogtend installe les émulateurs (vide : demandé à la première installation). */
   dossierEmulateurs: string;
+  /** Où Frogtend installe Cheat Engine et les autres outils (règle « pas de pieuvre ») ; vide : demandé la 1re fois. */
+  dossierOutils: string;
+  /** Où Frogtend copie les parties avant de retirer un jeu (abris) ; vide : demandé quand il le faut. */
+  dossierAbris: string;
   /** La liste MAME (le MAME.xml des métadonnées de LaunchBox) pour l'import « MAME Arcade Full Set » ; vide : demandée. */
   listeMame: string;
   /** Le menu universel en jeu. */
@@ -90,6 +94,8 @@ export const DEFAUTS_PC: ReglagesPc = {
   emulateurs: {},
   emulateursJeux: {},
   dossierEmulateurs: '',
+  dossierOutils: '',
+  dossierAbris: '',
   listeMame: '',
   menuJeu: { touche: 'Pause' },
   firehouse: { adresse: ADRESSE_FIREHOUSE_PAR_DEFAUT, simule: false },

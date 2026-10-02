@@ -145,6 +145,53 @@ export function depuisInstallationDos(titre: string, destination: string, dosbox
   return { titre: titre.trim(), plateforme: 'MS-DOS', dossier: destination, programme: dosbox, arguments: argumentsDosbox };
 }
 
+// --- Où garder les jeux importés (règle « pas de pieuvre », Seb 02/10) : les laisser où ils sont (leur dossier devient
+// une source du système dans les réglages) ou les copier dans l'emplacement du système. Jamais déplacés. ---
+
+export interface Emplacements {
+  defaut: string[];
+  systemes: Record<string, string[]>;
+}
+
+const bas = (c: string) => c.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+
+/** Ce qui représente le jeu sur le disque : son dossier (jeu Windows ou DOS), sinon son fichier. */
+export function elementDe(j: JeuAImporter): string {
+  if (j.programme || !j.fichier || /[\\/]/.test(j.fichier)) return j.dossier;
+  return `${j.dossier.replace(/[\\/]+$/, '')}\\${j.fichier}`;
+}
+
+/** Le dossier où COPIER les jeux d'un système : son premier emplacement propre, sinon `<défaut>\<système>`. */
+export function emplacementDuSysteme(e: Emplacements, plateforme: string, nomDossier: (t: string) => string): string | null {
+  const propre = e.systemes[plateforme]?.[0];
+  if (propre) return propre;
+  return e.defaut[0] ? `${e.defaut[0].replace(/[\\/]+$/, '')}\\${nomDossier(plateforme)}` : null;
+}
+
+/** Vrai si ce chemin est déjà dans un emplacement réglé (du système, ou par défaut). */
+export function dansUnEmplacement(chemin: string, e: Emplacements, plateforme: string): boolean {
+  const c = bas(chemin);
+  return [...(e.systemes[plateforme] ?? []), ...e.defaut].some((d) => c === bas(d) || c.startsWith(`${bas(d)}\\`));
+}
+
+/** Les emplacements avec ce dossier ajouté aux sources du système (`null` s'il y est déjà couvert). */
+export function avecSource(e: Emplacements, plateforme: string, dossier: string): Record<string, string[]> | null {
+  if (dansUnEmplacement(dossier, e, plateforme)) return null;
+  return { ...e.systemes, [plateforme]: [...(e.systemes[plateforme] ?? []), dossier] };
+}
+
+/** Les jeux après copie : chacun pointe vers SA copie (même nom de fichier, autre dossier). */
+export function apresCopie(jeux: JeuAImporter[], nouveaux: string[]): JeuAImporter[] {
+  return jeux.map((j, i) => {
+    const n = nouveaux[i];
+    if (elementDe(j) === j.dossier) {
+      const programme = j.programme ? `${n}${j.programme.slice(j.dossier.replace(/[\\/]+$/, '').length)}` : j.programme;
+      return { ...j, dossier: n, programme };
+    }
+    return { ...j, dossier: couper(n).dossier };
+  });
+}
+
 export function messageBilan(b: BilanImport): string {
   const morceaux = [`✅ ${b.ajoutes} jeu(x) ajouté(s) à ta ludothèque`];
   if (b.deja) morceaux.push(`${b.deja} déjà dedans`);

@@ -69,6 +69,8 @@ pub struct Noyau {
     pub(crate) en_cours: std::sync::Mutex<Option<(i64, Arc<std::sync::atomic::AtomicBool>)>>,
     /// Vrai tant que la file de téléchargements tourne.
     pub(crate) file_active: std::sync::atomic::AtomicBool,
+    /// Le dossier des abris de parties (réglage du PC « dossierAbris », règle « pas de pieuvre »). `None` : pas réglé.
+    pub(crate) abris: std::sync::Mutex<Option<PathBuf>>,
 }
 
 pub(crate) fn maintenant() -> String {
@@ -90,7 +92,57 @@ impl Noyau {
             registre: std::sync::Mutex::new(registre),
             en_cours: std::sync::Mutex::new(None),
             file_active: std::sync::atomic::AtomicBool::new(false),
+            abris: std::sync::Mutex::new(None),
         })
+    }
+
+    /// Règle le dossier des abris de parties (vide : aucun).
+    pub fn regler_abris(&self, dossier: Option<PathBuf>) {
+        *self.abris.lock().unwrap_or_else(|e| e.into_inner()) = dossier.filter(|d| !d.as_os_str().is_empty());
+    }
+
+    /// Le dossier des abris de parties ; refusé s'il n'est pas réglé (Frogtend n'écrit pas ailleurs).
+    pub fn dossier_abris(&self) -> Resultat<PathBuf> {
+        self.abris.lock().unwrap_or_else(|e| e.into_inner()).clone().ok_or_else(|| {
+            crate::erreurs::Erreur::Reglage(
+                "Choisis d'abord le dossier des abris de parties (⚙ Options ▸ Emplacements) : Frogtend y copie tes parties avant de retirer un jeu.".into(),
+            )
+        })
+    }
+
+    /// Où lire les abris : le dossier réglé, et l'ancien emplacement (`%APPDATA%\…\sauvegardes`, avant 0.30.0) tant
+    /// qu'il en reste.
+    pub fn dossiers_abris_a_lire(&self) -> Vec<PathBuf> {
+        let mut l: Vec<PathBuf> = self.abris.lock().unwrap_or_else(|e| e.into_inner()).iter().cloned().collect();
+        l.push(self.dossier.join("sauvegardes"));
+        l
+    }
+
+    /// Range dans le dossier des abris réglé ceux de l'ancien emplacement (copie vérifiée, puis l'ancienne copie est
+    /// retirée ; un abri déjà présent à la même date n'est pas écrasé). Rend le nombre d'abris rangés.
+    pub fn migrer_abris(&self) -> Resultat<usize> {
+        let Ok(cible) = self.dossier_abris() else { return Ok(0) };
+        let ancien = self.dossier.join("sauvegardes");
+        let Ok(jeux) = std::fs::read_dir(&ancien) else { return Ok(0) };
+        let mut n = 0;
+        for jeu in jeux.flatten().map(|e| e.path()).filter(|p| p.is_dir()) {
+            let Some(id) = jeu.file_name().map(|x| x.to_os_string()) else { continue };
+            for date in std::fs::read_dir(&jeu)?.flatten().map(|e| e.path()).filter(|p| p.is_dir()) {
+                let Some(nom) = date.file_name() else { continue };
+                let vers = cible.join(&id).join(nom);
+                if vers.exists() {
+                    continue;
+                }
+                crate::locale::deplacer_verifie(&date, &vers)?;
+                n += 1;
+            }
+            let _ = std::fs::remove_dir(&jeu); // seulement s'il est vide
+        }
+        let _ = std::fs::remove_dir(&ancien);
+        if n > 0 {
+            self.journaliser(&format!("{n} abri(s) de parties rangé(s) dans {}", cible.display()));
+        }
+        Ok(n)
     }
 
     /// Écrit une ligne dans le journal de ce PC (`journal.txt`). Jamais de jeton ni de secret : seulement ce qui

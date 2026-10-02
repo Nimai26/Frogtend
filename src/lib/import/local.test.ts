@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nomDeDossier, depuisInstallationDos, couper, depuisDos, depuisMame, depuisManuel, depuisProgramme, depuisRoms, extensionsDe, lireExtensions, messageBilan } from './local';
+import { elementDe, emplacementDuSysteme, dansUnEmplacement, avecSource, apresCopie, nomDeDossier, depuisInstallationDos, couper, depuisDos, depuisMame, depuisManuel, depuisProgramme, depuisRoms, extensionsDe, lireExtensions, messageBilan } from './local';
 
 describe('import local', () => {
   it('coupe un chemin Windows', () => {
@@ -35,6 +35,29 @@ describe('import local', () => {
     expect(nomDeDossier('A/B\\C.')).toBe('ABC');
     const j = depuisInstallationDos(' KQ5 ', 'D:\\DOS\\KQ5', 'C:\\DOSBox\\dosbox.exe', ['-c', 'exit']);
     expect(j).toEqual({ titre: 'KQ5', plateforme: 'MS-DOS', dossier: 'D:\\DOS\\KQ5', programme: 'C:\\DOSBox\\dosbox.exe', arguments: ['-c', 'exit'] });
+  });
+
+  it('sait où garder les jeux importés', () => {
+    const e = { defaut: ['D:\\Jeux'], systemes: { 'MS-DOS': ['E:\\DOS'] } };
+    const rom = { titre: 'Mario', plateforme: 'Nintendo Entertainment System', dossier: 'E:\\Games\\NES\\USA', fichier: 'Mario (U).nes' };
+    expect(elementDe(rom)).toBe('E:\\Games\\NES\\USA\\Mario (U).nes');
+    expect(elementDe({ ...rom, dossier: 'D:\\DOS\\Dune', fichier: 'BIN/DUNE.EXE' })).toBe('D:\\DOS\\Dune');
+    expect(elementDe({ titre: 'Doom', plateforme: 'Windows', dossier: 'F:\\Doom', programme: 'F:\\Doom\\doom.exe' })).toBe('F:\\Doom');
+    expect(emplacementDuSysteme(e, 'MS-DOS', (t) => t)).toBe('E:\\DOS');
+    expect(emplacementDuSysteme(e, 'Nintendo 64', (t) => t)).toBe('D:\\Jeux\\Nintendo 64');
+    expect(emplacementDuSysteme({ defaut: [], systemes: {} }, 'X', (t) => t)).toBeNull();
+    expect(dansUnEmplacement('d:/jeux/NES/a.nes', e, 'NES')).toBe(true);
+    expect(dansUnEmplacement('D:\\Jeux2\\a.nes', e, 'NES')).toBe(false);
+    expect(avecSource(e, 'Nintendo Entertainment System', 'E:\\Games\\NES')).toEqual({ 'MS-DOS': ['E:\\DOS'], 'Nintendo Entertainment System': ['E:\\Games\\NES'] });
+    expect(avecSource(e, 'MS-DOS', 'E:\\DOS\\Sous')).toBeNull();
+  });
+
+  it('fait pointer chaque jeu vers sa copie', () => {
+    const rom = { titre: 'Mario', plateforme: 'NES', dossier: 'E:\\Games\\NES\\USA', fichier: 'Mario (U).nes' };
+    const doom = { titre: 'Doom', plateforme: 'Windows', dossier: 'F:\\Doom', programme: 'F:\\Doom\\bin\\doom.exe' };
+    const [a, b] = apresCopie([rom, doom], ['D:\\Jeux\\NES\\Mario (U).nes', 'D:\\Jeux\\Windows\\Doom']);
+    expect(a).toEqual({ ...rom, dossier: 'D:\\Jeux\\NES' });
+    expect(b).toEqual({ ...doom, dossier: 'D:\\Jeux\\Windows\\Doom', programme: 'D:\\Jeux\\Windows\\Doom\\bin\\doom.exe' });
   });
 
   it('résume un import', () => {

@@ -6,6 +6,7 @@
   import { api, taille, type Plateforme } from '$lib/api';
   import { choisir, demander, toast } from '$lib/dialogues/fenetres.svelte';
   import { etat, reglerPc } from '$lib/etat.svelte';
+  import { motifDuRefus } from '$lib/dialogues/messages';
 
   const e = $derived(etat.pc.emplacements);
   let libres = $state<Record<string, number | null>>({});
@@ -72,6 +73,29 @@
   const monter = (l: string[], i: number) => (i > 0 ? [...l.slice(0, i - 1), l[i], l[i - 1], ...l.slice(i + 1)] : l);
   const retirer = (l: string[], i: number) => l.filter((_, k) => k !== i);
 
+  /** Les autres dossiers de Frogtend (règle « pas de pieuvre ») : rien ne s'écrit ailleurs. */
+  const AUTRES = [
+    { cle: 'dossierEmulateurs', titre: '🕹 Émulateurs', aide: 'chaque émulateur dans son sous-dossier, avec sa configuration' },
+    { cle: 'dossierOutils', titre: '🧰 Outils', aide: 'Cheat Engine, trainers, gestionnaires de mods' },
+    { cle: 'dossierAbris', titre: '💾 Abris de parties', aide: 'la copie de tes parties avant de retirer un jeu' },
+  ] as const;
+
+  async function choisirAutre(cle: (typeof AUTRES)[number]['cle']) {
+    const c = await demanderDossier();
+    if (!c) return;
+    await reglerPc(cle, c);
+    if (cle === 'dossierAbris') {
+      try {
+        const n = await api.abrisRegler(c);
+        toast(n ? `✅ Dossier des abris réglé ; ${n} abri(s) de parties y ont été rangés (copie vérifiée).` : '✅ Dossier des abris réglé.');
+      } catch (err) {
+        toast(`Dossier réglé, mais les anciens abris n’ont pas pu y être rangés : ${motifDuRefus(err)}`, 'erreur');
+      }
+    } else {
+      toast(`✅ Dossier réglé : ${c}. Les prochaines installations iront là.`);
+    }
+  }
+
   async function ajouterSysteme() {
     const deja = new Set(Object.keys(e.systemes));
     const s = await choisir(
@@ -129,6 +153,21 @@
   <button class="btn" onclick={ajouterSysteme} disabled={plateformes.length === 0}>
     🎮 Des dossiers propres à un système…
   </button>
+
+  <div class="cx-block">
+    <h3>Les autres dossiers de Frogtend</h3>
+    <p class="muted">Frogtend n’écrit rien en dehors de ces dossiers et de ceux des jeux. Ce qu’il ajoute à un jeu (jaquette, fiche, documents, mods, triches) va dans le dossier du jeu, sous « Frogtend ».</p>
+    <dl class="cx-kv">
+      {#each AUTRES as a (a.cle)}
+        <dt>{a.titre}</dt>
+        <dd>
+          <span class="chemin">{etat.pc[a.cle] || 'pas encore choisi (demandé quand il le faut)'}</span>
+          <button class="btn petit" onclick={() => choisirAutre(a.cle)}>📂 Choisir</button>
+          <span class="muted">{a.aide}</span>
+        </dd>
+      {/each}
+    </dl>
+  </div>
 </div>
 
 <style>

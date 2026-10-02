@@ -45,7 +45,7 @@
 
   async function lancerCheatEngine(brancher = false) {
     if (!cheatEngine) {
-      const e = await installerParFirehouse('cheatengine', 'Cheat Engine');
+      const e = await installerParFirehouse('cheatengine', 'Cheat Engine', true);
       if (!e) return;
       cheatEngine = e.programme;
     }
@@ -89,7 +89,7 @@
     if (jeu?.installation) {
       const octets = await api.jeuTailleInstallation(id).catch(() => null);
       const copier = await confirmer('💾 Copier le jeu avant de le modifier ?', {
-        message: `Conseillé : un mod peut abîmer le jeu. La copie prend ${octets !== null ? taille(octets) : 'la taille du jeu'} à côté de son dossier.`,
+        message: `Conseillé : un mod peut abîmer le jeu. La copie prend ${octets !== null ? taille(octets) : 'la taille du jeu'}, dans le dossier du jeu (sous « Frogtend\\copies »).`,
         libelleValider: '💾 Copier d’abord',
       });
       if (copier) {

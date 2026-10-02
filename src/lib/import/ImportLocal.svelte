@@ -4,7 +4,7 @@
   // copié, déplacé ni renommé.
   import { untrack } from 'svelte';
   import { api, taille } from '$lib/api';
-  import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
+  import { choisir, confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { parcourir } from '$lib/emulateurs/assistant.svelte';
   import { PLATEFORMES_CONNUES } from '$lib/ludotheque/categories';
@@ -14,6 +14,11 @@
   import { informer } from '$lib/dialogues/fenetres.svelte';
   import { pourLeJeu } from '$lib/emulateurs/choix';
   import {
+    elementDe,
+    emplacementDuSysteme,
+    dansUnEmplacement,
+    avecSource,
+    apresCopie,
     couper,
     depuisInstallationDos,
     nomDeDossier,
@@ -159,18 +164,71 @@
   );
   const ecartes = $derived(tri ? Object.entries(tri.ecartes).sort((a, b) => b[1] - a[1]) : []);
 
-  async function ajouter(jeux: JeuAImporter[]) {
-    if (!jeux.length) return;
-    if (jeux.length > 1) {
-      const oui = await confirmer(`➕ Ajouter ${jeux.length} jeux à ta ludothèque ?`, {
-        message: `Plateforme : ${jeux[0].plateforme}.${tailleChoisie ? ` ${taille(tailleChoisie)} sur le disque.` : ''}\nRien n’est copié, déplacé ni renommé : Frogtend note seulement où sont les jeux. Les retirer plus tard ne les efface pas.`,
-        libelleValider: `Ajouter ${jeux.length} jeux`,
+  /** 1 Go de marge gardée libre sur un disque (comme pour les téléchargements). */
+  const MARGE = 1024 ** 3;
+
+  /** Où garder ces jeux (règle « pas de pieuvre ») : rend les jeux à ajouter (copiés ou non), et la source à
+   * ajouter aux emplacements du système, ou `null` si la personne renonce. */
+  async function ouGarder(jeux: JeuAImporter[]): Promise<{ jeux: JeuAImporter[]; source: string | null } | null> {
+    const p = jeux[0].plateforme;
+    const e = etat.pc.emplacements;
+    const elements = jeux.map(elementDe);
+    if (elements.every((x) => dansUnEmplacement(x, e, p))) return { jeux, source: null };
+    // La source à ajouter : le dossier choisi pour la recherche, sinon le dossier qui contient le jeu.
+    const source = sorte === 'rom' || sorte === 'dos' || sorte === 'mame' ? dossier.trim() : couper(elements[0]).dossier;
+    const cible = emplacementDuSysteme(e, p, nomDeDossier);
+    let detailCopie = 'aucun emplacement de jeux réglé (⚙ Options ▸ Emplacements)';
+    let copiable = false;
+    if (cible) {
+      const [octets, libre] = await api.importMesurer(elements, cible).catch(() => [0, null] as [number, number | null]);
+      copiable = libre !== null && libre >= octets + MARGE;
+      detailCopie = `dans ${cible} — ${taille(octets)} à copier, ${libre === null ? 'place inconnue' : `${taille(libre)} libres`}${copiable ? '' : ' : pas assez de place'}`;
+    }
+    const c = await choisir<'laisser' | 'copier'>(
+      `📁 Où garder ${jeux.length > 1 ? `ces ${jeux.length} jeux` : 'ce jeu'} ?`,
+      [
+        { valeur: 'laisser', libelle: '📌 Les laisser où ils sont', detail: `${source} devient une source de ${p} (⚙ Options ▸ Emplacements)` },
+        ...(copiable ? [{ valeur: 'copier' as const, libelle: '📥 Les copier dans l’emplacement du système', detail: detailCopie }] : []),
+      ],
+      copiable ? 'Les fichiers ne sont jamais déplacés ni renommés : les originaux restent.' : `Copie impossible : ${detailCopie}.`,
+    );
+    if (!c) return null;
+    if (c === 'laisser') return { jeux, source };
+    enCours = true;
+    try {
+      const nouveaux = await api.importCopier(elements, cible!);
+      toast(`✅ ${nouveaux.length} jeu(x) copiés dans ${cible}.`);
+      return { jeux: apresCopie(jeux, nouveaux), source: null };
+    } catch (err) {
+      toast(`Copie impossible : ${motifDuRefus(err)}`, 'erreur');
+      return null;
+    } finally {
+      enCours = false;
+    }
+  }
+
+  async function ajouter(jeuxChoisis: JeuAImporter[]) {
+    if (!jeuxChoisis.length) return;
+    if (jeuxChoisis.length > 1) {
+      const oui = await confirmer(`➕ Ajouter ${jeuxChoisis.length} jeux à ta ludothèque ?`, {
+        message: `Plateforme : ${jeuxChoisis[0].plateforme}.${tailleChoisie ? ` ${taille(tailleChoisie)} sur le disque.` : ''}\nRien n’est déplacé ni renommé. Les retirer plus tard de ta ludothèque ne les efface pas.`,
+        libelleValider: `Ajouter ${jeuxChoisis.length} jeux`,
       });
       if (!oui) return;
     }
+    const ou = sorte === 'installer-dos' ? { jeux: jeuxChoisis, source: null } : await ouGarder(jeuxChoisis);
+    if (!ou) return;
+    const jeux = ou.jeux;
     enCours = true;
     try {
       const b = await api.importAjouter(jeux);
+      if (ou.source && b.ajoutes) {
+        const s = avecSource(etat.pc.emplacements, jeux[0].plateforme, ou.source);
+        if (s) {
+          await reglerPc('emplacements.systemes', s);
+          toast(`📁 ${ou.source} est maintenant une source de ${jeux[0].plateforme} (⚙ Options ▸ Emplacements).`);
+        }
+      }
       toast(messageBilan(b), b.refuses.length ? 'alerte' : 'ok');
       await rechargerJeuxDuPc();
       if (ludo.espace === 'ludotheque') {

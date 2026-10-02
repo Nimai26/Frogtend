@@ -479,6 +479,9 @@ export const api = {
   retroarchInstallerCoeur: (programme: string, coeur: string) =>
     appeler<string>('retroarch_installer_coeur', { programme, coeur }),
   emulateursTraces: () => appeler<{ id: string; nom: string; dossiers: string[] }[]>('emulateurs_traces'),
+  importMesurer: (elements: string[], destination: string) => appeler<[number, number | null]>('import_mesurer', { elements, destination }),
+  importCopier: (elements: string[], destination: string) => appeler<string[]>('import_copier', { elements, destination }),
+  abrisRegler: (dossier: string) => appeler<number>('abris_regler', { dossier }),
   importChercherRoms: (dossier: string, extensions: string[], recursif: boolean) =>
     appeler<import('$lib/import/local').RomTrouvee[]>('import_chercher_roms', { dossier, extensions, recursif }),
   importChercherMame: (dossier: string, liste: string, options: import('$lib/import/local').OptionsMame) =>

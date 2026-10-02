@@ -168,6 +168,16 @@ pub fn run() {
             let dossier = app.path().app_data_dir()?;
             let n = noyau::Noyau::nouveau(&dossier, Box::new(coffre::CoffreWindows))
                 .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?;
+            // Règle « pas de pieuvre » (0.30.0) : les médias gardés dans les données de Frogtend rejoignent le dossier
+            // de leur jeu (copie vérifiée). Un disque absent : ce sera pour un prochain démarrage.
+            if let Err(e) = n.migrer_medias() {
+                n.journaliser(&format!("migration des médias : {e:?}"));
+            }
+            // Le dossier des abris de parties (réglage du PC) ; les abris de l'ancien emplacement y sont rangés.
+            n.regler_abris(commandes::dossier_abris_regle(app.handle()));
+            if let Err(e) = n.migrer_abris() {
+                n.journaliser(&format!("migration des abris : {e:?}"));
+            }
             app.manage(n);
             app.manage(menu_jeu::MenuJeu::default());
             // La touche du menu en jeu (armée seulement pendant une partie) ouvre le menu par-dessus le jeu.
@@ -267,7 +277,10 @@ pub fn run() {
             commandes::gratuits_obtenir_epic,
             commandes::gratuits_connexion_playstation,
             commandes::gratuits_psplus,
+            commandes::abris_regler,
             commandes::import_chercher_roms,
+            commandes::import_mesurer,
+            commandes::import_copier,
             commandes::import_chercher_dos,
             commandes::import_chercher_mame,
             commandes::import_installer_dos,
