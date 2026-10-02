@@ -346,6 +346,173 @@ pub fn empreinte_dreamcast(chemin: &Path) -> Resultat<Option<String>> {
     Ok(Some(m.finalize().iter().map(|b| format!("{b:02x}")).collect()))
 }
 
+// --- GameCube et Wii (rc_hash_gamecube, rc_hash_wii) : lus comme un .iso BRUT (les .rvz/.wia/.gcz/.wbfs/.ciso par la
+// bibliothèque `nod` 1.4, qui rechiffre les données Wii comme sur le disque d'origine, ce que lit Dolphin). ---
+
+/// Lit `n` octets à une position (des zéros si le disque est plus court, comme rcheevos).
+fn lire_a<R: Read + Seek>(r: &mut R, pos: u64, n: usize) -> Vec<u8> {
+    let mut b = vec![0u8; n];
+    if r.seek(SeekFrom::Start(pos)).is_ok() {
+        let mut lu = 0;
+        while lu < n {
+            match r.read(&mut b[lu..]) {
+                Ok(0) | Err(_) => break,
+                Ok(k) => lu += k,
+            }
+        }
+    }
+    b
+}
+
+fn be32(b: &[u8], i: usize) -> u64 {
+    u32::from_be_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]) as u64
+}
+
+/// Une partition Nintendo (rc_hash_nintendo_disc_partition) : en-têtes jusqu'à la fin de l'apploader (au plus 1 Mio),
+/// puis les 18 segments de main.dol. `decalage` : décalage de la partition ; `wii` : adresses ×4.
+fn partition_nintendo<R: Read + Seek>(r: &mut R, m: &mut Md5, partition: u64, wii: bool) {
+    const BASE: u64 = 0x2440;
+    let decale = |v: u64| if wii { v << 2 } else { v };
+    let tailles = lire_a(r, partition + BASE + 0x14, 8);
+    let entete = (BASE + 0x20 + be32(&tailles, 0) + be32(&tailles, 4)).min(1024 * 1024);
+    let tete = lire_a(r, partition, entete as usize);
+    m.update(&tete);
+    let dol = decale(be32(&tete, 0x420));
+    let adresses = lire_a(r, partition + dol, 0xD8);
+    for i in 0..18 {
+        let (pos, taille) = (decale(be32(&adresses, i * 4)), decale(be32(&adresses, 0x90 + i * 4)));
+        if taille == 0 {
+            continue;
+        }
+        let mut reste = taille;
+        let mut p = partition + pos;
+        while reste > 0 {
+            let n = reste.min(1024 * 1024);
+            m.update(lire_a(r, p, n as usize));
+            p += n;
+            reste -= n;
+        }
+    }
+}
+
+/// GameCube : la partition unique, si le disque porte la signature GameCube (0xC2339F3D à 0x1C).
+pub fn empreinte_gamecube_flux<R: Read + Seek>(r: &mut R) -> Option<String> {
+    if lire_a(r, 0x1C, 4) != [0xC2, 0x33, 0x9F, 0x3D] {
+        return None;
+    }
+    let mut m = Md5::new();
+    partition_nintendo(r, &mut m, 0, false);
+    Some(m.finalize().iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// Wii (rc_hash_wii_disc) : en-tête principal (0x80), code de région, puis pour chaque partition (sauf « mise à
+/// jour ») son TMD et ses 1 024 premiers groupes chiffrés (0x7C00 octets après 0x400 de chaque bloc de 0x8000) ; un
+/// disque non chiffré : la partition comme un GameCube (adresses ×4).
+pub fn empreinte_wii_flux<R: Read + Seek>(r: &mut R) -> Option<String> {
+    if lire_a(r, 0x18, 4) != [0x5D, 0x1C, 0x9E, 0xA3] {
+        return None;
+    }
+    let chiffre = lire_a(r, 0x61, 1)[0] == 0;
+    let mut m = Md5::new();
+    m.update(lire_a(r, 0, 0x80));
+    m.update(lire_a(r, 0x4E000, 4));
+    let table = lire_a(r, 0x40000, 32);
+    let mut partitions = Vec::new();
+    for g in 0..4 {
+        let (nombre, ou) = (be32(&table, g * 8), be32(&table, g * 8 + 4) << 2);
+        let l = lire_a(r, ou, (nombre.min(64) * 8) as usize);
+        for i in 0..nombre.min(64) as usize {
+            partitions.push((be32(&l, i * 8) << 2, be32(&l, i * 8 + 4)));
+        }
+    }
+    if partitions.is_empty() {
+        return None;
+    }
+    for (debut, genre) in partitions {
+        if genre == 1 {
+            continue; // partition de mise à jour
+        }
+        let t = lire_a(r, debut + 0x2A4, 8);
+        let (taille_tmd, ou_tmd) = (be32(&t, 0).min(0x7C00), be32(&t, 4) << 2);
+        m.update(lire_a(r, debut + ou_tmd, taille_tmd as usize));
+        let p = lire_a(r, debut + 0x2B8, 8);
+        let (donnees, taille) = (be32(&p, 0) << 2, be32(&p, 4) << 2);
+        if chiffre {
+            for i in 0..(taille / 0x8000).min(1024) {
+                m.update(lire_a(r, debut + donnees + i * 0x8000 + 0x400, 0x7C00));
+            }
+        } else {
+            partition_nintendo(r, &mut m, debut + donnees, true);
+        }
+    }
+    Some(m.finalize().iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// Ouvre une image GameCube/Wii (iso, rvz, wia, gcz, wbfs, ciso…) par `nod`, comme un .iso brut.
+fn ouvrir_nintendo(chemin: &Path) -> Resultat<nod::Disc> {
+    nod::Disc::new_with_options(chemin, &nod::OpenOptions { rebuild_encryption: true, validate_hashes: false })
+        .map_err(|e| Erreur::Disque(format!("Image GameCube/Wii illisible ({e}).")))
+}
+
+pub fn empreinte_gamecube(chemin: &Path) -> Resultat<Option<String>> {
+    Ok(empreinte_gamecube_flux(&mut ouvrir_nintendo(chemin)?))
+}
+
+pub fn empreinte_wii(chemin: &Path) -> Resultat<Option<String>> {
+    Ok(empreinte_wii_flux(&mut ouvrir_nintendo(chemin)?))
+}
+
+/// 3DO (rc_hash_3do) : les 132 octets du volume « Opera » (secteur 0), puis le contenu du programme `LaunchMe` trouvé
+/// dans le dossier racine (fiches de 0x48 octets + copies, suite éventuelle dans d'autres blocs).
+pub fn empreinte_3do(p: &Piste) -> Resultat<Option<String>> {
+    let base = p.index01.max(0) as u32;
+    let lire = |s: u32, n: usize| p.lire(base + s, n);
+    let v = lire(0, 132)?;
+    if v.len() < 132 || v[..7] != [0x01, 0x5A, 0x5A, 0x5A, 0x5A, 0x5A, 0x01] {
+        return Ok(None);
+    }
+    let octets3 = |b: &[u8], i: usize| (b[i] as u32) << 16 | (b[i + 1] as u32) << 8 | b[i + 2] as u32;
+    let taille_bloc_volume = octets3(&v, 0x4D);
+    let racine = octets3(&v, 0x65) * taille_bloc_volume;
+    let mut secteur = racine / 2048;
+    let mut trouve: Option<(u32, u32)> = None;
+    for _ in 0..256 {
+        let b = lire(secteur, 2048)?;
+        if b.len() < 2048 {
+            break;
+        }
+        let mut o = ((b[0x12] as usize) << 8) | b[0x13] as usize;
+        let fin = octets3(&b, 0x0D) as usize;
+        while o < fin && o + 0x48 <= b.len() {
+            if b[o + 0x03] == 0x02 {
+                let nom: Vec<u8> = b[o + 0x20..(o + 0x40).min(b.len())].iter().take_while(|c| **c != 0).copied().collect();
+                if String::from_utf8_lossy(&nom).eq_ignore_ascii_case("LaunchMe") {
+                    let taille_bloc = octets3(&b, o + 0x0D);
+                    let emplacement = octets3(&b, o + 0x45) * taille_bloc;
+                    let taille = octets3(&b, o + 0x11);
+                    trouve = Some((emplacement, taille));
+                    break;
+                }
+            }
+            o += 0x48 + b[o + 0x43] as usize * 4;
+        }
+        if trouve.is_some() {
+            break;
+        }
+        let suite = ((b[0x02] as u32) << 8) | b[0x03] as u32;
+        if suite == 0xFFFF {
+            break;
+        }
+        secteur = (racine + suite * taille_bloc_volume) / 2048;
+    }
+    let Some((emplacement, taille)) = trouve else { return Ok(None) };
+    let contenu = lire(emplacement / 2048, taille.min(MAX_FICHIER) as usize)?;
+    let mut m = Md5::new();
+    m.update(&v);
+    m.update(&contenu);
+    Ok(Some(m.finalize().iter().map(|b| format!("{b:02x}")).collect()))
+}
+
 /// Sega CD et Saturn (rc_hash_sega_cd) : les 512 premiers octets du secteur 0 (en-têtes du volume et de la ROM).
 pub fn empreinte_sega_cd(p: &Piste) -> Resultat<Option<String>> {
     let b = p.lire(p.index01.max(0) as u32, 512)?;
@@ -484,6 +651,55 @@ mod tests {
         assert_eq!((l[0].bloc, l[1].bloc, l[2].bloc), (0, 1144, 2644), "chaque piste arrondie à 4 secteurs");
         assert!(l[1].pregap_stocke && !l[0].pregap_stocke);
         assert_eq!(l[2].genre, "MODE1_RAW");
+    }
+
+    #[test]
+    fn gamecube_les_en_tetes_puis_les_segments_de_main_dol() {
+        let mut d = vec![0u8; 0x8000];
+        d[0x1C..0x20].copy_from_slice(&[0xC2, 0x33, 0x9F, 0x3D]);
+        // Apploader : corps 0x10, fin 0 → en-têtes jusqu'à 0x2440 + 0x20 + 0x10.
+        d[0x2440 + 0x14..0x2440 + 0x18].copy_from_slice(&0x10u32.to_be_bytes());
+        // main.dol à 0x3000 : un seul segment de code, à 0x4000, 0x100 octets.
+        d[0x420..0x424].copy_from_slice(&0x3000u32.to_be_bytes());
+        d[0x3000..0x3004].copy_from_slice(&0x4000u32.to_be_bytes());
+        d[0x3090..0x3094].copy_from_slice(&0x100u32.to_be_bytes());
+        d[0x4000..0x4100].iter_mut().enumerate().for_each(|(i, b)| *b = i as u8);
+        let mut attendu = d[..0x2440 + 0x20 + 0x10].to_vec();
+        attendu.extend(&d[0x4000..0x4100]);
+        assert_eq!(empreinte_gamecube_flux(&mut std::io::Cursor::new(d.clone())), Some(md5_hex(&attendu)));
+        assert_eq!(empreinte_wii_flux(&mut std::io::Cursor::new(d)), None, "pas un disque Wii");
+    }
+
+    #[test]
+    fn trois_do_le_volume_opera_puis_launchme() {
+        let d = tempfile::tempdir().unwrap();
+        let mut s = vec![vec![0u8; 2048]; 6];
+        // Volume : identifiant Opera, bloc de 2048, dossier racine au bloc 2.
+        s[0][..7].copy_from_slice(&[0x01, 0x5A, 0x5A, 0x5A, 0x5A, 0x5A, 0x01]);
+        s[0][0x4D..0x50].copy_from_slice(&[0, 0x08, 0x00]);
+        s[0][0x65..0x68].copy_from_slice(&[0, 0, 2]);
+        // Dossier : entrées de 0x14 à 0x14 + 2*0x48 ; un fichier « Autre », puis « LaunchMe » au bloc 4, 2100 octets.
+        let dossier = &mut s[2];
+        dossier[0x02..0x04].copy_from_slice(&[0xFF, 0xFF]);
+        dossier[0x0D..0x10].copy_from_slice(&[0, 0, 0x14 + 2 * 0x48]);
+        dossier[0x12..0x14].copy_from_slice(&[0, 0x14]);
+        for (i, (nom, bloc)) in [("Autre", 3u8), ("LaunchMe", 4u8)].iter().enumerate() {
+            let o = 0x14 + i * 0x48;
+            dossier[o + 0x03] = 0x02;
+            dossier[o + 0x0D..o + 0x10].copy_from_slice(&[0, 0x08, 0x00]);
+            dossier[o + 0x11..o + 0x14].copy_from_slice(&[0, 0x08, 0x34]);
+            dossier[o + 0x20..o + 0x20 + nom.len()].copy_from_slice(nom.as_bytes());
+            dossier[o + 0x45..o + 0x48].copy_from_slice(&[0, 0, *bloc]);
+        }
+        s[4].iter_mut().for_each(|b| *b = 7);
+        s[5].iter_mut().for_each(|b| *b = 9);
+        let mut attendu = s[0][..132].to_vec();
+        attendu.extend(&s[4]);
+        attendu.extend(&s[5][..2100 - 2048]);
+        let iso = d.path().join("jeu.iso");
+        std::fs::write(&iso, s.concat()).unwrap();
+        let p = ouvrir(&iso).unwrap().unwrap();
+        assert_eq!(empreinte_3do(&p).unwrap(), Some(md5_hex(&attendu)));
     }
 
     #[test]

@@ -3,6 +3,21 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Par où commencer (parcours conseillé, 03/10)
+Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est plus bas, dans sa section.
+1. **Installer la dernière version** (⚙ Options ▸ À propos ▸ Chercher une mise à jour).
+2. **⚙ Options ▸ Emplacements ▸ Les autres dossiers de Frogtend** : choisir le dossier des **abris** (ton abri de
+   Dune y est rangé) et celui des **outils** — section « Pas de pieuvre ».
+3. **📥 Importer ▸ Fichiers ROM** sur ton dossier NES (laisser les fichiers où ils sont) — sections « Importer » et
+   « Une fiche par jeu ».
+4. **⚙ Options ▸ Comptes ▸ 🏆 RetroAchievements**, puis **🎮 Connecter mes émulateurs** ; regarder le panneau d'un jeu
+   NES, Sega CD, Dreamcast, 3DO, PC Engine, GameCube ou Wii — sections « Les succès ».
+5. **Jouer** à un jeu NES par RetroArch : il doit te saluer par ton nom (succès) ; essayer **Pause/Attn** (menu en
+   jeu).
+6. **Comptes des boutiques** : régénérer la clé Steam puis l'importer ; lire GOG Galaxy ; se connecter à Epic, GOG,
+   Prime Gaming, PlayStation et récupérer les jeux offerts.
+7. Le reste à ton rythme : Taodbox et manettes (sonde), MAME, DOS, Cheat Engine, assistant, consoles récentes.
+
 ## Machine
 - [x] Disque D: plein (670 Mo libres le 02/10) : **Seb a fait de la place** (02/10). Le cache de construction de
       Frogtend est maintenant allégé (il avait atteint 61 Go).
@@ -34,6 +49,13 @@
 - [ ] Un jeu PlayStation par DuckStation : il demande de te connecter la 1re fois ; connecte-toi. Ensuite, joue avec un
       autre profil (sans compte), puis reviens au tien : **tu es toujours connecté**, l'autre profil ne l'était pas.
 
+## Succès : 3DO, PC Engine, GameCube et Wii (0.37.0)
+- [ ] Importe (📥 Importer ▸ Fichiers ROM) et sélectionne un jeu de chaque : **3DO** (`E:\Games\3DO`, « chd »),
+      **PC Engine** (`E:\Games\NEC PC Engine TurboGrafx 16`, plateforme « NEC TurboGrafx-16 », « 7z »),
+      **GameCube** et **Wii** (« rvz »). **Attendu :** **🏆 RetroAchievements** dit si ta version est compatible.
+- [ ] Un jeu Wii : la 1re fois, « ~30 s » s'affiche puis le résultat ; **ferme et rouvre Frogtend**, re-sélectionne le
+      jeu : le résultat est immédiat (empreinte gardée).
+
 ## GOG, Prime Gaming et succès Galaxy (0.36.0)
 - [ ] 🛒 Boutiques ▸ 🎁 ▸ **🟣 GOG ▸ 🔑 Se connecter**, puis **🎁 Récupérer**. **Attendu :** « pas de jeu offert en ce
       moment » ou « 1 jeu récupéré » (vérifie dans ta bibliothèque GOG). Dis-moi si GOG t'a inscrit à sa lettre
@@ -62,6 +84,8 @@
 - [ ] ⚙ Options ▸ Emplacements ▸ **Les autres dossiers de Frogtend** : choisis le **dossier des abris** de parties.
       **Attendu :** « 1 abri(s) rangé(s) » (celui de Dune, 21 Ko) et plus rien dans `%APPDATA%\…\sauvegardes`.
 - [ ] Choisis aussi le **dossier des outils** ; ⬇ Installer Cheat Engine doit y aller (plus dans les émulateurs).
+- [ ] Un jeu installé ▸ 🎯 Triches et mods ▸ accepte la **copie avant mod** : elle va dans
+      `<dossier du jeu>\Frogtend\copies\avant-mod-<date>\` (plus à côté du dossier du jeu).
 - [ ] 📥 Importer ▸ Fichiers ROM, sur un petit dossier : **« Les laisser où ils sont »** → le dossier apparaît dans
       Emplacements, sous le système ; refais avec **« Les copier »** → copie dans l'emplacement du système, originaux
       intacts.
@@ -100,7 +124,7 @@
 - [ ] Coche « J'ai PS Plus » si tu veux que ça se fasse tout seul chaque semaine.
 
 ## Menu « Importer » (0.25.0)
-- [ ] Barre du haut ▸ **📥 Importer ▾** : la même liste que LaunchBox. Les jeux locaux sont marqués « prochain lot ».
+- [ ] Barre du haut ▸ **📥 Importer ▾** : la même liste que LaunchBox (13 entrées), toutes utilisables depuis la 0.29.0.
 - [ ] **Jeux Epic Games** (puis Amazon, EA, Ubisoft, Xbox) : l'explication GOG Galaxy, et le nombre de jeux lus pour
       CETTE boutique. **Attendu chez toi :** Epic 43, Xbox 6, Ubisoft 4, EA 4 ; Amazon 0 → le message « compte sans
       doute pas relié » (relie-le dans Galaxy ▸ Paramètres ▸ Intégrations si tu veux tes jeux Prime Gaming).
@@ -141,10 +165,9 @@
 ## Cheat Engine (0.18.0 – 0.19.1) — ton zip est sur Firehouse (Cheat Engine 7.7, 41,8 Mo)
 - [ ] Fiche d'un jeu PC ▸ 🎯 Triches et mods ▸ **⬇ Installer Cheat Engine**. **Attendu :** installé depuis Firehouse.
 - [ ] **🧰 Lancer Cheat Engine**, change un réglage (thème, raccourci), ferme-le. **Attendu :** la clé
-      `HKCUSoftwareCheat Engine` n'est plus dans le registre ; tes réglages sont dans
-      `<dossier Cheat Engine>Profils<toi>cheatengine.reg` ; la clé d'avant Frogtend est dans
-      `.frogtend-sauvegardes
-egistre-avant-frogtend.reg`.
+      `HKCU\Software\Cheat Engine` n'est plus dans le registre ; tes réglages sont dans
+      `<dossier Cheat Engine>\Profils\<toi>\cheatengine.reg` ; la clé d'avant Frogtend est dans
+      `<dossier Cheat Engine>\.frogtend-sauvegardes\registre-avant-frogtend.reg`.
 - [ ] Relance-le : **tes réglages reviennent**. Un autre profil : les siens (vierges au début).
 - [ ] **Jeu lancé** (Dune par exemple) ▸ Pause/Attn ▸ **🧰 Cheat Engine** (ou 🎯 Triches et mods ▸ **🧰 Brancher
       Cheat Engine sur le jeu**). **Attendu :** Cheat Engine s'ouvre DÉJÀ branché sur le jeu (son nom en haut), sans

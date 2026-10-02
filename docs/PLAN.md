@@ -653,8 +653,13 @@ une saga entière). Conséquences pour Frogtend :
   octets par secteur, pistes alignées sur 4, adresse absolue lue dans l'en-tête du secteur) ; Dreamcast (IP.BIN de la
   piste 3 + programme de démarrage, MIL-CD par la 1re piste de données) ; les CD Sega CD/Saturn/PlayStation en .chd
   passent aussi ; empreintes gardées en mémoire (fichier, taille, date). Essai réel (lecture seule) :
-  E:\Games\Sega Dreamcast → **135 empreintes sur 135**, 0 erreur, ~0,7 s par jeu. **Reste** : PS2, PC Engine CD, 3DO,
-  GameCube/Wii ;
+  E:\Games\Sega Dreamcast → **135 empreintes sur 135**, 0 erreur, ~0,7 s par jeu. **✅ 0.37.0** : 3DO (volume Opera +
+  LaunchMe), ROM dans un .7z (un seul fichier), PC Engine SuperGrafx, GameCube et Wii par la bibliothèque `nod` 1.4
+  (MIT/Apache : .iso, .rvz, .wia, .gcz, .wbfs, .ciso, lus comme un .iso brut, données Wii RECHIFFRÉES comme le disque
+  d'origine) ; empreintes gardées sur le disque (`cache\retroachievements\empreintes.json`, par fichier/taille/date).
+  Essais réels (lecture seule) : 3DO 200/200 (31 s), PC Engine .7z 455/455 (26 s), GameCube .rvz 81/81 (6 s), Wii .rvz
+  99/99 (~30 s par jeu, une seule fois grâce au cache). **Reste** : PS2, PSP, PC Engine CD, PC-FX, Neo Geo CD, Jaguar
+  CD, Nintendo DS, PS3 (RetroAchievements ne connaît pas la Wii U) ;
   ~~brancher le compte dans les émulateurs~~ **✅ 0.33.0** : « 🎮 Connecter mes émulateurs » (mot de passe UNE fois →
   jeton `login2` comme rcheevos, au coffre ; mot de passe jamais gardé) ; à chaque partie, le compte DU PROFIL QUI JOUE :
   RetroArch (`cheevos_*` dans le fichier `--appendconfig` du profil), PCSX2 (`[Achievements]` + jeton dans

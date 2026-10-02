@@ -32,6 +32,8 @@ pub const CONSOLES: &[(&str, u32)] = &[
     ("Nintendo Entertainment System", 7),
     ("NEC TurboGrafx-16", 8),
     ("PC Engine", 8),
+    ("PC Engine SuperGrafx", 8),
+    ("NEC PC Engine", 8),
     ("Sega CD", 9),
     ("Sega 32X", 10),
     ("Sega Master System", 11),
@@ -90,7 +92,7 @@ pub fn empreinte_possible(console: u32) -> bool {
 
 /// Les consoles sur CD que Frogtend sait lire (module `disque` : .cue/.bin, .ccd/.img, .iso, .chd).
 pub fn est_un_cd(console: u32) -> bool {
-    matches!(console, 9 | 12 | 39 | 40)
+    matches!(console, 9 | 12 | 16 | 19 | 39 | 40 | 43)
 }
 
 fn md5_hex(o: &[u8]) -> String {
@@ -140,12 +142,19 @@ pub fn empreinte_fichier(console: u32, chemin: &Path) -> Resultat<Option<String>
                 None => Ok(None),
             };
         }
+        if console == 16 {
+            return crate::disque::empreinte_gamecube(chemin);
+        }
+        if console == 19 {
+            return crate::disque::empreinte_wii(chemin);
+        }
         if console == 40 {
             return if chemin.extension().is_some_and(|e| e.eq_ignore_ascii_case("chd")) { crate::disque::empreinte_dreamcast(chemin) } else { Ok(None) };
         }
         let Some(piste) = crate::disque::ouvrir(chemin)? else { return Ok(None) };
         return match console {
             12 => crate::disque::empreinte_psx(&piste),
+            43 => crate::disque::empreinte_3do(&piste),
             _ => crate::disque::empreinte_sega_cd(&piste),
         };
     }
@@ -154,6 +163,26 @@ pub fn empreinte_fichier(console: u32, chemin: &Path) -> Resultat<Option<String>
         return Ok(None); // pas une ROM de cartouche
     }
     let o = std::fs::read(chemin)?;
+    // Un .7z d'un seul fichier (les jeux PC Engine de Seb, par exemple) : la ROM qu'il contient.
+    if chemin.extension().is_some_and(|e| e.eq_ignore_ascii_case("7z")) {
+        let mut a = sevenz_rust::SevenZReader::open(chemin, sevenz_rust::Password::empty()).map_err(|_| Erreur::Disque("Archive 7z illisible.".into()))?;
+        let mut contenus: Vec<Vec<u8>> = Vec::new();
+        a.for_each_entries(|e, r| {
+            if e.is_directory() {
+                return Ok(true);
+            }
+            if !contenus.is_empty() || e.size() > 256 * 1024 * 1024 {
+                contenus.push(vec![]);
+                return Ok(false); // plusieurs fichiers (ou trop gros) : pas une ROM seule
+            }
+            let mut o = Vec::new();
+            r.read_to_end(&mut o)?;
+            contenus.push(o);
+            Ok(true)
+        })
+        .map_err(|_| Erreur::Disque("Archive 7z illisible.".into()))?;
+        return Ok(if contenus.len() == 1 { Some(empreinte_octets(console, &contenus[0])) } else { None });
+    }
     let est_zip = chemin.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip"));
     if est_zip {
         let mut z = zip::ZipArchive::new(std::io::Cursor::new(&o)).map_err(|_| Erreur::Disque("Archive zip illisible.".into()))?;
@@ -169,20 +198,31 @@ pub fn empreinte_fichier(console: u32, chemin: &Path) -> Resultat<Option<String>
     Ok(Some(empreinte_octets(console, &o)))
 }
 
-/// Les empreintes déjà calculées (fichier, taille, date) : un disque de 1 Go ne se relit pas à chaque clic.
-static CACHE: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<(String, u64, u64), Option<String>>>> =
+/// Les empreintes déjà calculées, par « console|fichier|taille|date » : un jeu Wii (~30 s) ou un disque de 1 Go ne se
+/// recalcule pas. Gardées en mémoire ET dans le cache de Frogtend (`empreintes.json`), qui survit aux redémarrages.
+static CACHE: std::sync::LazyLock<std::sync::Mutex<Option<std::collections::HashMap<String, Option<String>>>>> =
     std::sync::LazyLock::new(Default::default);
 
-/// `empreinte_fichier`, gardée en mémoire tant que le fichier ne change pas (taille et date).
-pub fn empreinte_gardee(console: u32, chemin: &Path) -> Resultat<Option<String>> {
+/// `empreinte_fichier`, gardée tant que le fichier ne change pas (taille et date). `dossier_cache` : le cache de
+/// Frogtend pour RetroAchievements.
+pub fn empreinte_gardee(dossier_cache: &Path, console: u32, chemin: &Path) -> Resultat<Option<String>> {
     let m = std::fs::metadata(chemin)?;
     let date = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
-    let cle = (format!("{console}|{}", chemin.to_string_lossy()), m.len(), date);
-    if let Some(e) = CACHE.lock().unwrap_or_else(|e| e.into_inner()).get(&cle) {
-        return Ok(e.clone());
+    let cle = format!("{console}|{}|{}|{date}", chemin.to_string_lossy(), m.len());
+    let fichier = dossier_cache.join("empreintes.json");
+    {
+        let mut c = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        let carte = c.get_or_insert_with(|| std::fs::read(&fichier).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default());
+        if let Some(e) = carte.get(&cle) {
+            return Ok(e.clone());
+        }
     }
     let e = empreinte_fichier(console, chemin)?;
-    CACHE.lock().unwrap_or_else(|e| e.into_inner()).insert(cle, e.clone());
+    let mut c = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    let carte = c.get_or_insert_with(Default::default);
+    carte.insert(cle, e.clone());
+    std::fs::create_dir_all(dossier_cache)?;
+    std::fs::write(&fichier, serde_json::to_vec(&*carte).unwrap_or_default())?;
     Ok(e)
 }
 
@@ -414,6 +454,8 @@ mod tests {
         assert!(empreinte_possible(7) && empreinte_possible(12) && empreinte_possible(9), "PlayStation et Sega CD : lus par le module disque");
         assert!(empreinte_possible(40), "Dreamcast : .chd lu par le module disque");
         assert!(!empreinte_possible(21), "PS2 : pas encore");
+        assert!(empreinte_possible(43) && console_de("PC Engine SuperGrafx") == Some(8));
+        assert!(empreinte_possible(16) && empreinte_possible(19), "GameCube et Wii : lus par nod");
     }
 
     #[test]
@@ -444,6 +486,27 @@ mod tests {
         assert_eq!(empreinte_octets(13, &lynx), md5_hex(rom));
         // Le MD5 lui-même : la valeur connue de « abc ».
         assert_eq!(md5_hex(b"abc"), "900150983cd24fb0d6963f7d28e17f72");
+    }
+
+    #[test]
+    fn une_empreinte_calculee_est_gardee_meme_apres_un_redemarrage() {
+        let d = tempfile::tempdir().unwrap();
+        let rom = d.path().join("jeu.nes");
+        std::fs::write(&rom, b"ROM!").unwrap();
+        let cache = d.path().join("cache");
+        let e = empreinte_gardee(&cache, 7, &rom).unwrap();
+        assert_eq!(e, Some(md5_hex(b"ROM!")));
+        let garde = std::fs::read_to_string(cache.join("empreintes.json")).unwrap();
+        assert!(garde.contains(&md5_hex(b"ROM!")));
+        // « Redémarrage » : la mémoire est vidée, l'empreinte revient du fichier (même si on falsifie le fichier pour le prouver).
+        let falsifie = garde.replace(&md5_hex(b"ROM!"), "deja-calculee");
+        std::fs::write(cache.join("empreintes.json"), falsifie).unwrap();
+        *CACHE.lock().unwrap() = None;
+        assert_eq!(empreinte_gardee(&cache, 7, &rom).unwrap().as_deref(), Some("deja-calculee"));
+        // Le fichier change : on recalcule.
+        std::fs::write(&rom, b"AUTRE ROM").unwrap();
+        assert_eq!(empreinte_gardee(&cache, 7, &rom).unwrap(), Some(md5_hex(b"AUTRE ROM")));
+        *CACHE.lock().unwrap() = None;
     }
 
     #[test]
@@ -536,5 +599,45 @@ mod essais {
         let o = std::fs::read(&f).unwrap();
         println!("taille {} ; en-tête iNES : {}", o.len(), o.starts_with(b"NES\x1a"));
         println!("empreinte RA : {:?}", super::empreinte_fichier(7, std::path::Path::new(&f)).unwrap());
+    }
+}
+
+#[cfg(test)]
+mod essais_dossier {
+    /// Sur les vrais jeux de Seb, en LECTURE SEULE : combien de fichiers d'un dossier ont une empreinte.
+    /// FROGTEND_ESSAI_DOSSIER, FROGTEND_ESSAI_CONSOLE (numéro RA), FROGTEND_ESSAI_EXT, FROGTEND_ESSAI_MAX.
+    #[test]
+    #[ignore]
+    fn essai_empreintes_d_un_dossier() {
+        let d = std::env::var("FROGTEND_ESSAI_DOSSIER").unwrap();
+        let console: u32 = std::env::var("FROGTEND_ESSAI_CONSOLE").unwrap().parse().unwrap();
+        let ext = std::env::var("FROGTEND_ESSAI_EXT").unwrap();
+        let max: usize = std::env::var("FROGTEND_ESSAI_MAX").ok().and_then(|n| n.parse().ok()).unwrap_or(10_000);
+        let roms = crate::import_local::chercher_roms(std::path::Path::new(&d), &[ext], true).unwrap();
+        let debut = std::time::Instant::now();
+        let (mut ok, mut rien, mut erreurs) = (0, 0, 0);
+        for r in roms.iter().take(max) {
+            match super::empreinte_fichier(console, std::path::Path::new(&r.chemin)) {
+                Ok(Some(e)) => {
+                    ok += 1;
+                    if ok <= 3 {
+                        println!("{} → {e}", r.titre);
+                    }
+                }
+                Ok(None) => {
+                    rien += 1;
+                    if rien <= 5 {
+                        println!("RIEN : {}", r.chemin);
+                    }
+                }
+                Err(e) => {
+                    erreurs += 1;
+                    if erreurs <= 5 {
+                        println!("ERREUR : {} : {e:?}", r.chemin);
+                    }
+                }
+            }
+        }
+        println!("{ok} empreinte(s), {rien} sans, {erreurs} erreur(s) sur {} en {:?}", roms.len().min(max), debut.elapsed());
     }
 }

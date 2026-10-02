@@ -60,7 +60,7 @@
     <p class={resume.ton === 'ok' ? 'ok' : resume.ton === 'alerte' ? 'alerte' : 'muted'}>{resume.texte}</p>
   </div>
 {:else if chargement && (surPc || jeu.source === 'steam')}
-  <p class="muted">🏆 Succès…</p>
+  <p class="muted">🏆 Succès… {surPc && /wii/i.test(jeu.plateforme) ? '(un jeu Wii se vérifie en ~30 s la première fois, ensuite c’est immédiat)' : ''}</p>
 {/if}
 
 <style>

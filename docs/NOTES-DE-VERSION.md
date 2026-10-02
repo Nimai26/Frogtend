@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.37.0 — succès : 3DO, PC Engine, GameCube et Wii
+
+- RetroAchievements reconnaît maintenant tes jeux **3DO**, **PC Engine** (même en .7z), **GameCube** et **Wii** (même
+  en .rvz). Chez toi : 3DO 200/200, PC Engine 455/455, GameCube 81/81, Wii 99/99.
+- Une version vérifiée l'est une fois pour toutes : Frogtend s'en souvient même après un redémarrage (un jeu Wii
+  demande ~30 s la première fois).
+- La liste des tests (docs/A-TESTER.md) commence par un parcours conseillé.
+
 ## 0.36.0 — GOG, Prime Gaming et les succès par GOG Galaxy
 
 - **🛒 Boutiques ▸ 🎁 Jeux offerts** : **GOG** (le jeu offert du moment) et **Prime Gaming** (les jeux offerts aux
