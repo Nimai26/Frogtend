@@ -21,6 +21,12 @@
       **Citron Neo** s'installe tout seul (vérifié par son empreinte). **Ryubing** : sa source ne répond pas, Frogtend
       propose d'ouvrir sa page officielle.
 
+## Installer un jeu DOS (0.29.0)
+- [ ] Il faut un DOSBox réglé pour MS-DOS (⚙ Options ▸ Émulateurs).
+- [ ] 📥 Importer ▸ **Installer un jeu DOS** : choisis le dossier d'un CD (ou une image .iso/.cue, ou une disquette
+      .img), un titre, l'endroit. **Attendu :** DOSBox s'ouvre sur D: (ou A:) ; tape INSTALL, installe sur C:, puis EXIT.
+      Frogtend propose alors le programme du jeu ; ajoute-le et ▶ Jouer : le jeu démarre directement dans DOSBox.
+
 ## MAME Arcade Full Set (0.28.0)
 - [ ] 📥 Importer ▸ **MAME Arcade Full Set** : dossier `E:\Games\MAME`, liste `D:\LaunchBox\Metadata\MAME.xml`,
       🔍 Trier. **Attendu :** ~4 526 jeux retenus, et le détail des écartés (mécaniques, hors arcade, non jouables…).

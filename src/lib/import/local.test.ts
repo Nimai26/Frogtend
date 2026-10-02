@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { couper, depuisDos, depuisMame, depuisManuel, depuisProgramme, depuisRoms, extensionsDe, lireExtensions, messageBilan } from './local';
+import { nomDeDossier, depuisInstallationDos, couper, depuisDos, depuisMame, depuisManuel, depuisProgramme, depuisRoms, extensionsDe, lireExtensions, messageBilan } from './local';
 
 describe('import local', () => {
   it('coupe un chemin Windows', () => {
@@ -28,6 +28,13 @@ describe('import local', () => {
   it('prépare les jeux MAME retenus', () => {
     const l = depuisMame([{ chemin: 'E:\\Games\\MAME\\pacman.zip', titre: 'Pac-Man (Midway)', taille: 1, annee: 1980, editeur: 'Namco', genre: 'Maze' }]);
     expect(l[0]).toEqual({ titre: 'Pac-Man (Midway)', plateforme: 'Arcade', dossier: 'E:\\Games\\MAME', fichier: 'pacman.zip', annee: 1980, editeur: 'Namco', genres: ['Maze'] });
+  });
+
+  it('prépare un jeu DOS installé', () => {
+    expect(nomDeDossier("King's Quest V: Absence?  ")).toBe("King's Quest V - Absence");
+    expect(nomDeDossier('A/B\\C.')).toBe('ABC');
+    const j = depuisInstallationDos(' KQ5 ', 'D:\\DOS\\KQ5', 'C:\\DOSBox\\dosbox.exe', ['-c', 'exit']);
+    expect(j).toEqual({ titre: 'KQ5', plateforme: 'MS-DOS', dossier: 'D:\\DOS\\KQ5', programme: 'C:\\DOSBox\\dosbox.exe', arguments: ['-c', 'exit'] });
   });
 
   it('résume un import', () => {

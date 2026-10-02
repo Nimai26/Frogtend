@@ -34,7 +34,7 @@ export const SOURCES: SourceImport[] = [
   { id: 'windows', libelle: 'Jeux Windows', icone: '🪟', voie: 'local', resume: 'Ajouter un jeu Windows installé à la main, en choisissant son programme (.exe).' },
   { id: 'xbox', libelle: 'Jeux Xbox / Microsoft Store', icone: '🟢', voie: 'galaxy', galaxy: ['xboxone', 'xbox'], resume: 'Les jeux de ton compte Xbox / Microsoft Store (et du Game Pass PC), par GOG Galaxy.' },
   { id: 'manuel', libelle: 'Ajouter un jeu manuellement', icone: '✏', voie: 'local', resume: 'Créer une fiche à la main : titre, plateforme, programme ou fichier à lancer.' },
-  { id: 'installer-dos', libelle: 'Installer un jeu DOS', icone: '📀', voie: 'bientot', resume: 'Installer un jeu DOS depuis son disque ou son archive, dans DOSBox, puis l’ajouter.' },
+  { id: 'installer-dos', libelle: 'Installer un jeu DOS', icone: '📀', voie: 'local', resume: 'Installer un jeu DOS depuis son disque ou son archive, dans DOSBox, puis l’ajouter.' },
 ];
 
 export function source(id: string | null | undefined): SourceImport | undefined {

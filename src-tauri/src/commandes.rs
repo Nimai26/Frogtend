@@ -861,6 +861,37 @@ pub async fn import_chercher_mame(dossier: String, liste: String, options: crate
     .map_err(|_| Erreur::Disque("Le tri s'est arrêté brutalement.".into()))?
 }
 
+/// 📥 Importer ▸ Installer un jeu DOS : DOSBox s'ouvre avec la SOURCE (dossier, image de CD ou de disquette) et la
+/// DESTINATION (vide ou nouvelle : Frogtend n'écrit jamais par-dessus) ; la personne installe ; à la fermeture de
+/// DOSBox, Frogtend rend les programmes trouvés dans la destination (le plus probable d'abord).
+#[tauri::command]
+pub async fn import_installer_dos(noyau: State<'_, Noyau>, dosbox: String, source: String, destination: String, titre: String) -> Resultat<Vec<String>> {
+    let (dosbox, source, destination) = (std::path::PathBuf::from(dosbox), std::path::PathBuf::from(source), std::path::PathBuf::from(destination));
+    if !dosbox.is_file() {
+        return Err(Erreur::Reglage("DOSBox introuvable : règle l'émulateur de MS-DOS dans ⚙ Options ▸ Émulateurs.".into()));
+    }
+    if std::fs::read_dir(&destination).is_ok_and(|mut l| l.next().is_some()) {
+        return Err(Erreur::Refus(format!("Le dossier {} n'est pas vide : Frogtend n'installe pas par-dessus.", destination.display())));
+    }
+    std::fs::create_dir_all(&destination)?;
+    let arguments = crate::import_local::arguments_installation_dos(&source, &destination)?;
+    noyau.journaliser(&format!("installation DOS : DOSBox {arguments:?}"));
+    let d = destination.clone();
+    let programmes = tauri::async_runtime::spawn_blocking(move || -> Resultat<Vec<String>> {
+        crate::installation::executer_et_attendre(&dosbox, &arguments, &d)?;
+        crate::import_local::programmes_dos(&d, &titre)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("L'installation s'est arrêtée brutalement.".into()))??;
+    Ok(programmes)
+}
+
+/// Les arguments de DOSBox pour jouer à un jeu DOS installé par Frogtend.
+#[tauri::command]
+pub fn import_arguments_jeu_dos(destination: String, programme: String) -> Resultat<Vec<String>> {
+    crate::import_local::arguments_jeu_dos(std::path::Path::new(&destination), &programme)
+}
+
 /// 📥 Importer ▸ Jeux MS-DOS : un jeu par sous-dossier (rien n'est encore ajouté).
 #[tauri::command]
 pub async fn import_chercher_dos(dossier: String) -> Resultat<Vec<crate::import_local::JeuDosTrouve>> {

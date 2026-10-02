@@ -19,6 +19,8 @@ export interface JeuAImporter {
   dossier: string;
   fichier?: string | null;
   programme?: string | null;
+  /** Les arguments du programme (un jeu DOS installé : les commandes de DOSBox). */
+  arguments?: string[];
   annee?: number | null;
   editeur?: string | null;
   genres?: string[];
@@ -131,6 +133,16 @@ export function depuisManuel(titre: string, plateforme: string, fichier: string)
   if (plateforme === 'Windows' || plateforme === 'Windows 3.X') return { ...depuisProgramme(fichier, titre), plateforme };
   const { dossier, nom } = couper(fichier);
   return { titre: titre.trim(), plateforme, dossier, fichier: nom };
+}
+
+/** Un nom de dossier sûr pour Windows, d'après un titre (« Kings Quest V: Absence » → « Kings Quest V - Absence »). */
+export function nomDeDossier(titre: string): string {
+  return titre.replace(/:/g, ' -').replace(/[<>"/\\|?*]/g, '').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '');
+}
+
+/** Un jeu DOS installé par Frogtend : DOSBox, lancé avec ses commandes (C: monté sur le dossier d'installation). */
+export function depuisInstallationDos(titre: string, destination: string, dosbox: string, argumentsDosbox: string[]): JeuAImporter {
+  return { titre: titre.trim(), plateforme: 'MS-DOS', dossier: destination, programme: dosbox, arguments: argumentsDosbox };
 }
 
 export function messageBilan(b: BilanImport): string {

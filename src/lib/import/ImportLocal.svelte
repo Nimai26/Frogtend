@@ -11,7 +11,12 @@
   import { ludo, rechargerListe, rechargerPlateformes } from '$lib/ludotheque/ludotheque.svelte';
   import { rechargerJeuxDuPc } from '$lib/ludotheque/telechargements.svelte';
   import { etat, reglerPc } from '$lib/etat.svelte';
+  import { informer } from '$lib/dialogues/fenetres.svelte';
+  import { pourLeJeu } from '$lib/emulateurs/choix';
   import {
+    couper,
+    depuisInstallationDos,
+    nomDeDossier,
     LIBELLES_MAME,
     OPTIONS_MAME_DEFAUT,
     depuisMame,
@@ -29,7 +34,7 @@
     type RomTrouvee,
   } from './local';
 
-  let { sorte }: { sorte: 'rom' | 'dos' | 'mame' | 'windows' | 'manuel' } = $props();
+  let { sorte }: { sorte: 'rom' | 'dos' | 'mame' | 'windows' | 'manuel' | 'installer-dos' } = $props();
 
   let dossier = $state('');
   // Valeur de départ seulement : le composant est recréé quand la source change ({#key}).
@@ -46,6 +51,56 @@
   let optionsMame = $state<OptionsMame>({ ...OPTIONS_MAME_DEFAUT });
   let tri = $state<TriMame | null>(null);
   let mamePris = $state<boolean[]>([]);
+
+  // --- Installer un jeu DOS ---
+  const dosbox = $derived(pourLeJeu(etat.pc.emulateurs, {}, 'MS-DOS', 0)?.programme ?? '');
+  let source = $state('');
+  let parent = $state(untrack(() => etat.pc.emplacements.systemes['MS-DOS']?.[0] ?? etat.pc.emplacements.defaut[0] ?? ''));
+  const destination = $derived(parent.trim() && titre.trim() ? `${parent.trim().replace(/[\\/]+$/, '')}\\${nomDeDossier(titre)}` : '');
+  let installes = $state<string[] | null>(null);
+  let programmeDos = $state('');
+
+  async function choisirSource(image: boolean) {
+    const s = image
+      ? await parcourir({ titre: 'Image du disque du jeu', extensions: ['iso', 'cue', 'img', 'ima'] })
+      : await parcourir({ dossier: true, titre: 'Dossier du CD ou des disquettes du jeu' });
+    if (s) {
+      source = s;
+      if (!titre.trim()) titre = couper(s).nom.replace(/\.(iso|cue|img|ima)$/i, '');
+    }
+  }
+
+  async function choisirParent() {
+    const d = await parcourir({ dossier: true, titre: 'Où installer le jeu (un sous-dossier à son nom y sera créé)' });
+    if (d) parent = d;
+  }
+
+  async function lancerInstallation() {
+    await informer('📀 L’installation va s’ouvrir dans DOSBox', [
+      `Le disque du jeu est en D: (A: pour une disquette), et le dossier d’installation en C: (${destination}).`,
+      'Dans DOSBox : tape INSTALL (ou SETUP) puis Entrée, et installe le jeu sur C:.',
+      'Quand c’est fini, tape EXIT pour fermer DOSBox : Frogtend cherchera alors le programme du jeu.',
+    ].join('\n'));
+    enCours = true;
+    try {
+      installes = await api.importInstallerDos(dosbox, source, destination, titre);
+      programmeDos = installes[0] ?? '';
+      if (!installes.length) toast('Aucun programme trouvé dans le dossier d’installation : l’installation a-t-elle abouti ?', 'alerte');
+    } catch (e) {
+      toast(`Installation impossible : ${motifDuRefus(e)}`, 'erreur');
+    } finally {
+      enCours = false;
+    }
+  }
+
+  async function ajouterJeuDosInstalle() {
+    try {
+      const args = await api.importArgumentsJeuDos(destination, programmeDos);
+      await ajouter([depuisInstallationDos(titre, destination, dosbox, args)]);
+    } catch (e) {
+      toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
+    }
+  }
 
   async function choisirListeMame() {
     const f = await parcourir({ titre: 'La liste MAME de LaunchBox (Metadata\\MAME.xml)', extensions: ['xml'] });
@@ -143,7 +198,39 @@
 <section class="cx-block local">
   <p class="muted">Rien n’est copié, déplacé ni renommé : Frogtend note où est le jeu. Le retirer plus tard de ta ludothèque ne l’efface jamais du disque.</p>
 
-  {#if sorte === 'mame'}
+  {#if sorte === 'installer-dos'}
+    {#if !dosbox}
+      <p class="tag warn">⚠ Aucun DOSBox réglé pour MS-DOS : règle-le d’abord dans <a href="/reglages?rubrique=emulateurs">⚙ Options ▸ Émulateurs</a>.</p>
+    {/if}
+    <div class="ligne">
+      <button class="btn" onclick={() => choisirSource(false)}>📂 Dossier du CD</button>
+      <button class="btn" onclick={() => choisirSource(true)}>💿 Image (.iso, .cue, .img)</button>
+      <input class="large" bind:value={source} placeholder="E:\Disques\Kings Quest V.iso" aria-label="Source" />
+    </div>
+    <label class="ligne">Titre <input class="large" bind:value={titre} placeholder="King's Quest V" /></label>
+    <div class="ligne">
+      <button class="btn" onclick={choisirParent}>📁 Où installer</button>
+      <input class="large" bind:value={parent} placeholder="D:\Jeux\MS-DOS" aria-label="Dossier parent" />
+    </div>
+    {#if destination}<p class="muted">Le jeu sera installé dans <strong>{destination}</strong> (un dossier vide ou nouveau : Frogtend n’écrit jamais par-dessus).</p>{/if}
+    <div class="ligne">
+      <button class="btn primary" onclick={lancerInstallation} disabled={enCours || !dosbox || !source.trim() || !destination}>
+        {enCours ? 'DOSBox est ouvert…' : '▶ Lancer l’installation dans DOSBox'}
+      </button>
+    </div>
+    {#if installes?.length}
+      <label class="ligne">
+        Programme qui lance le jeu
+        <select bind:value={programmeDos}>
+          {#each installes as p (p)}<option value={p}>{p}</option>{/each}
+        </select>
+      </label>
+      <div class="ligne">
+        <button class="btn primary" onclick={ajouterJeuDosInstalle} disabled={enCours || !programmeDos}>➕ Ajouter à ma ludothèque</button>
+      </div>
+      <p class="muted">Il se lancera par DOSBox, avec C: sur son dossier d’installation, comme pendant l’installation.</p>
+    {/if}
+  {:else if sorte === 'mame'}
     <div class="ligne">
       <button class="btn" onclick={choisirDossier}>📂 Choisir le dossier des ROM MAME</button>
       <input class="large" bind:value={dossier} placeholder="E:\Games\MAME" aria-label="Dossier" />

@@ -516,7 +516,11 @@ d'après la liste MAME de LaunchBox (`Metadata\MAME.xml`, lue en lecture seule, 
 `listeMame`) ; mêmes cases que LaunchBox (imparfaits et quiz gardés par défaut ; clones, non jouables, contrefaçons,
 prototypes, hacks, casino/mahjong, mécaniques, hors arcade, adultes écartés) ; un zip absent de la liste (BIOS,
 appareil) est écarté ; année, éditeur et genre repris. Essai réel en lecture seule : E:\Games\MAME, 14 191 zips →
-**4 526 jeux** en 3 s. **Reste** : Installer un jeu DOS ; jaquettes et fiches des jeux importés (chercher
+**4 526 jeux** en 3 s. **✅ 0.29.0 — Installer un jeu DOS** (comme LaunchBox) : source = dossier du CD, image .iso/.cue
+(lecteur D:) ou disquette .img/.ima (A:) ; destination = un sous-dossier NEUF au nom du jeu dans l'emplacement MS-DOS
+(jamais par-dessus un dossier non vide) monté en C: ; DOSBox (celui réglé pour MS-DOS) s'ouvre, la personne installe,
+puis Frogtend propose le programme du jeu ; le jeu se relance par DOSBox avec C: au même endroit et `cd` dans son
+dossier (il retrouve ses chemins). **Le menu « Importer » est complet** (13 entrées de LaunchBox). **Reste** : jaquettes et fiches des jeux importés (chercher
 le jeu dans la base LaunchBox de Firehouse, `/recherche`).
 
 **✅ Accord de Seb (02/10)** : Frogtend peut LIRE (lecture seule) les fichiers des lanceurs installés (GOG Galaxy, Epic,

@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.29.0 — installer un jeu DOS
+
+- **📥 Importer ▸ Installer un jeu DOS** : depuis le dossier d'un CD, une image (.iso, .cue) ou une disquette (.img).
+  DOSBox s'ouvre avec le disque en D: et le dossier du jeu en C: ; tu installes, tu tapes EXIT, et Frogtend te propose
+  le programme qui lance le jeu.
+- Le jeu se relance ensuite directement, avec ses chemins d'installation.
+- Le menu « Importer » contient maintenant toutes les entrées de LaunchBox.
+
 ## 0.28.0 — MAME Arcade Full Set
 
 - **📥 Importer ▸ MAME Arcade Full Set** : Frogtend trie ton dossier MAME avec la liste MAME de ton LaunchBox

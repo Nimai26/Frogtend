@@ -270,6 +270,8 @@ pub fn run() {
             commandes::import_chercher_roms,
             commandes::import_chercher_dos,
             commandes::import_chercher_mame,
+            commandes::import_installer_dos,
+            commandes::import_arguments_jeu_dos,
             commandes::import_ajouter,
             commandes::boutique_galaxy_etat,
             commandes::boutique_galaxy_jeux,

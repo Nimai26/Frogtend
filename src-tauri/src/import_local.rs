@@ -143,50 +143,93 @@ pub struct JeuDosTrouve {
     pub programmes: Vec<String>,
 }
 
+/// Les programmes DOS (`.exe`, `.com`, `.bat`) d'un dossier, chemins RELATIFS, le plus probable d'abord (d'après le
+/// titre ; installeurs, réglages du son et extenseurs DOS en dernier).
+pub fn programmes_dos(dossier: &Path, titre: &str) -> Resultat<Vec<String>> {
+    const A_ECARTER: &[&str] = &["install", "setup", "setsound", "sound", "config", "unins", "dos4gw", "cwsdpmi", "readme", "patch"];
+    let mots: Vec<String> = titre.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|m| m.len() >= 3).map(String::from).collect();
+    let mut programmes: Vec<(i32, String)> = crate::installation::fichiers_de(dossier)?
+        .into_iter()
+        .filter_map(|r| {
+            let bas = r.to_lowercase();
+            let nom = bas.rsplit('/').next().unwrap_or(&bas).to_string();
+            let ext = nom.rsplit('.').next().unwrap_or("");
+            if !matches!(ext, "exe" | "com" | "bat") {
+                return None;
+            }
+            let racine_nom = nom.trim_end_matches(&format!(".{ext}")).to_string();
+            let mut note = 10 - 4 * r.matches('/').count() as i32;
+            if A_ECARTER.iter().any(|m| racine_nom.contains(m)) {
+                note -= 20;
+            }
+            note += 8 * mots.iter().filter(|m| racine_nom.contains(&m[..m.len().min(8)])).count() as i32;
+            if ["play", "start", "go", "run", "jeu", "game"].contains(&racine_nom.as_str()) {
+                note += 6;
+            }
+            Some((note, r))
+        })
+        .collect();
+    programmes.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+    Ok(programmes.into_iter().map(|(_, r)| r).collect())
+}
+
 /// Les jeux MS-DOS d'un dossier : chaque sous-dossier qui contient un `.exe`, `.com` ou `.bat`.
 pub fn chercher_jeux_dos(dossier: &Path) -> Resultat<Vec<JeuDosTrouve>> {
     if !dossier.is_dir() {
         return Err(Erreur::Disque(format!("Dossier introuvable : {}.", dossier.display())));
     }
-    const A_ECARTER: &[&str] = &["install", "setup", "setsound", "sound", "config", "unins", "dos4gw", "cwsdpmi", "readme", "patch"];
     let mut l = Vec::new();
     let mut sous: Vec<PathBuf> = std::fs::read_dir(dossier)?.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
     sous.sort();
     for d in sous {
         let titre = titre_depuis_nom(&d.file_name().unwrap_or_default().to_string_lossy());
-        let mots: Vec<String> = titre.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|m| m.len() >= 3).map(String::from).collect();
-        let mut programmes: Vec<(i32, String)> = crate::installation::fichiers_de(&d)?
-            .into_iter()
-            .filter_map(|r| {
-                let bas = r.to_lowercase();
-                let nom = bas.rsplit('/').next().unwrap_or(&bas).to_string();
-                let ext = nom.rsplit('.').next().unwrap_or("");
-                if !matches!(ext, "exe" | "com" | "bat") {
-                    return None;
-                }
-                let racine_nom = nom.trim_end_matches(&format!(".{ext}")).to_string();
-                let mut note = 10 - 4 * r.matches('/').count() as i32;
-                if A_ECARTER.iter().any(|m| racine_nom.contains(m)) {
-                    note -= 20;
-                }
-                note += 8 * mots.iter().filter(|m| racine_nom.contains(&m[..m.len().min(8)])).count() as i32;
-                if ["play", "start", "go", "run", "jeu", "game"].contains(&racine_nom.as_str()) {
-                    note += 6;
-                }
-                Some((note, r))
-            })
-            .collect();
+        let programmes = programmes_dos(&d, &titre)?;
         if programmes.is_empty() {
             continue;
         }
-        programmes.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
-        l.push(JeuDosTrouve {
-            dossier: d.to_string_lossy().to_string(),
-            titre,
-            programmes: programmes.into_iter().map(|(_, r)| r).collect(),
-        });
+        l.push(JeuDosTrouve { dossier: d.to_string_lossy().to_string(), titre, programmes });
     }
     Ok(l)
+}
+
+/// Un chemin Windows pour une commande DOSBox entre guillemets (sans « \ » final, qui échapperait le guillemet).
+fn pour_dosbox(p: &Path) -> String {
+    let s = p.to_string_lossy().replace('/', "\\");
+    let s = s.trim_end_matches('\\');
+    if s.ends_with(':') { format!("{s}\\") } else { s.to_string() }
+}
+
+/// 📥 Installer un jeu DOS (comme LaunchBox) : les arguments de DOSBox qui montent la DESTINATION en C: et la SOURCE
+/// en D: (un dossier ou une image ISO/CUE comme lecteur de CD, une image de disquette en A:), puis se placent sur le
+/// lecteur source. La personne lance l'installeur et installe dans C:.
+pub fn arguments_installation_dos(source: &Path, destination: &Path) -> Resultat<Vec<String>> {
+    let c = format!("mount c \"{}\"", pour_dosbox(destination));
+    let ext = source.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let (montage, lecteur) = if source.is_dir() {
+        (format!("mount d \"{}\" -t cdrom", pour_dosbox(source)), "d:")
+    } else if source.is_file() && matches!(ext.as_str(), "iso" | "cue") {
+        (format!("imgmount d \"{}\" -t iso", pour_dosbox(source)), "d:")
+    } else if source.is_file() && matches!(ext.as_str(), "img" | "ima" | "vfd") {
+        (format!("imgmount a \"{}\" -t floppy", pour_dosbox(source)), "a:")
+    } else {
+        return Err(Erreur::Refus("La source doit être un dossier, une image de CD (.iso, .cue) ou de disquette (.img, .ima).".into()));
+    };
+    Ok(["-c", &c, "-c", &montage, "-c", lecteur].iter().map(|s| s.to_string()).collect())
+}
+
+/// Les arguments de DOSBox pour JOUER à un jeu installé : C: monté au même endroit que pendant l'installation (le jeu
+/// retrouve ses chemins), puis le programme lancé depuis son dossier, et DOSBox se ferme à la sortie du jeu.
+pub fn arguments_jeu_dos(destination: &Path, relatif: &str) -> Resultat<Vec<String>> {
+    if relatif.contains("..") || relatif.trim().is_empty() {
+        return Err(Erreur::Refus("Programme du jeu invalide.".into()));
+    }
+    let relatif = relatif.replace('/', "\\");
+    let (dossier, programme) = match relatif.rsplit_once('\\') {
+        Some((d, p)) => (format!("\\{d}"), p.to_string()),
+        None => ("\\".to_string(), relatif.clone()),
+    };
+    let c = format!("mount c \"{}\"", pour_dosbox(destination));
+    Ok(["-c", &c, "-c", "c:", "-c", &format!("cd {dossier}"), "-c", &programme, "-c", "exit"].iter().map(|s| s.to_string()).collect())
 }
 
 /// Un jeu à ajouter à la ludothèque, tel que la personne l'a validé.
@@ -203,6 +246,9 @@ pub struct JeuAImporter {
     /// Pour un jeu Windows : le programme à lancer (chemin complet).
     #[serde(default)]
     pub programme: Option<String>,
+    /// Les arguments du programme (un jeu DOS installé : DOSBox et ses commandes).
+    #[serde(default)]
+    pub arguments: Vec<String>,
     /// Ce qu'on sait déjà du jeu (la liste MAME le donne).
     #[serde(default)]
     pub annee: Option<i64>,
@@ -272,8 +318,12 @@ impl crate::noyau::Noyau {
             }
             let lanceur = j.programme.as_ref().map(|p| Lanceur {
                 programme: p.clone(),
-                arguments: vec![],
-                dossier: Path::new(p).parent().map(|d| d.to_string_lossy().to_string()).unwrap_or_else(|| j.dossier.clone()),
+                arguments: j.arguments.clone(),
+                dossier: if j.arguments.is_empty() {
+                    Path::new(p).parent().map(|d| d.to_string_lossy().to_string()).unwrap_or_else(|| j.dossier.clone())
+                } else {
+                    j.dossier.clone()
+                },
             });
             let quand = crate::noyau::maintenant();
             self.registre().ajouter(&JeuPc {
@@ -342,9 +392,9 @@ mod tests {
         ecrire(&jeux, "Doom/unins000.exe", "x");
         let racine = jeux.to_string_lossy().to_string();
         let a = vec![
-            JeuAImporter { titre: "Mario".into(), plateforme: "Super Nintendo Entertainment System".into(), dossier: racine.clone(), fichier: Some("Mario (USA).sfc".into()), programme: None, annee: None, editeur: None, genres: vec![] },
-            JeuAImporter { titre: "Doom".into(), plateforme: "Windows".into(), dossier: jeux.join("Doom").to_string_lossy().into(), fichier: None, programme: Some(jeux.join("Doom/DOOM.EXE").to_string_lossy().into()), annee: None, editeur: None, genres: vec![] },
-            JeuAImporter { titre: "Absent".into(), plateforme: "Windows".into(), dossier: racine.clone(), fichier: None, programme: Some(jeux.join("rien.exe").to_string_lossy().into()), annee: None, editeur: None, genres: vec![] },
+            JeuAImporter { titre: "Mario".into(), plateforme: "Super Nintendo Entertainment System".into(), dossier: racine.clone(), fichier: Some("Mario (USA).sfc".into()), programme: None, arguments: vec![], annee: None, editeur: None, genres: vec![] },
+            JeuAImporter { titre: "Doom".into(), plateforme: "Windows".into(), dossier: jeux.join("Doom").to_string_lossy().into(), fichier: None, programme: Some(jeux.join("Doom/DOOM.EXE").to_string_lossy().into()), arguments: vec![], annee: None, editeur: None, genres: vec![] },
+            JeuAImporter { titre: "Absent".into(), plateforme: "Windows".into(), dossier: racine.clone(), fichier: None, programme: Some(jeux.join("rien.exe").to_string_lossy().into()), arguments: vec![], annee: None, editeur: None, genres: vec![] },
         ];
         let b = n.importer_locaux(&a).await.unwrap();
         assert_eq!((b.ajoutes, b.deja, b.refuses.len()), (2, 0, 1));
@@ -428,11 +478,42 @@ mod tests {
     }
 
     #[test]
+    fn dosbox_monte_la_source_et_la_destination() {
+        let d = tempfile::tempdir().unwrap();
+        ecrire(d.path(), "cd/INSTALL.EXE", "x");
+        ecrire(d.path(), "Kings Quest.iso", "x");
+        ecrire(d.path(), "disk1.img", "x");
+        ecrire(d.path(), "notes.txt", "x");
+        let dest = Path::new("D:/Jeux DOS/Kings Quest/");
+        let a = arguments_installation_dos(&d.path().join("cd"), dest).unwrap();
+        assert_eq!(a[0], "-c");
+        assert_eq!(a[1], r#"mount c "D:\Jeux DOS\Kings Quest""#, "pas de \\ final avant le guillemet");
+        assert!(a[3].starts_with("mount d \"") && a[3].ends_with("\" -t cdrom"));
+        assert_eq!(a[5], "d:");
+        let iso = arguments_installation_dos(&d.path().join("Kings Quest.iso"), dest).unwrap();
+        assert!(iso[3].starts_with("imgmount d ") && iso[3].ends_with(" -t iso"));
+        let disquette = arguments_installation_dos(&d.path().join("disk1.img"), dest).unwrap();
+        assert!(disquette[3].ends_with(" -t floppy"));
+        assert_eq!(disquette[5], "a:");
+        assert!(arguments_installation_dos(&d.path().join("notes.txt"), dest).is_err());
+        assert_eq!(arguments_installation_dos(d.path(), Path::new("E:/")).unwrap()[1], r#"mount c "E:\""#);
+    }
+
+    #[test]
+    fn un_jeu_dos_installe_se_relance_depuis_son_dossier() {
+        let a = arguments_jeu_dos(Path::new("D:/Jeux DOS/KQ5"), "SIERRA/KQ5/SIERRA.EXE").unwrap();
+        assert_eq!(a, ["-c", r#"mount c "D:\Jeux DOS\KQ5""#, "-c", "c:", "-c", r"cd \SIERRA\KQ5", "-c", "SIERRA.EXE", "-c", "exit"]);
+        let b = arguments_jeu_dos(Path::new("D:/Jeux DOS/Dune"), "DUNE.EXE").unwrap();
+        assert_eq!(b[5], r"cd \");
+        assert!(arguments_jeu_dos(Path::new("D:/x"), "../evil.exe").is_err());
+    }
+
+    #[test]
     fn un_jeu_a_importer_est_verifie_sur_le_disque() {
         let d = tempfile::tempdir().unwrap();
         ecrire(d.path(), "jeu.sfc", "x");
         let racine = d.path().to_string_lossy().to_string();
-        let mut j = JeuAImporter { titre: "Jeu".into(), plateforme: "SNES".into(), dossier: racine.clone(), fichier: Some("jeu.sfc".into()), programme: None, annee: None, editeur: None, genres: vec![] };
+        let mut j = JeuAImporter { titre: "Jeu".into(), plateforme: "SNES".into(), dossier: racine.clone(), fichier: Some("jeu.sfc".into()), programme: None, arguments: vec![], annee: None, editeur: None, genres: vec![] };
         assert!(verifier(&j).is_ok());
         j.fichier = Some("../ailleurs.sfc".into());
         assert!(verifier(&j).is_err());
@@ -442,8 +523,8 @@ mod tests {
         assert!(verifier(&j).is_err());
         j.programme = Some(d.path().join("jeu.sfc").to_string_lossy().to_string());
         assert!(verifier(&j).is_ok());
-        let a = JeuAImporter { titre: "A".into(), plateforme: "X".into(), dossier: "D:/Jeux".into(), fichier: Some("Jeu.SFC".into()), programme: None, annee: None, editeur: None, genres: vec![] };
-        let b = JeuAImporter { titre: "B".into(), plateforme: "X".into(), dossier: "d:\\jeux".into(), fichier: Some("jeu.sfc".into()), programme: None, annee: None, editeur: None, genres: vec![] };
+        let a = JeuAImporter { titre: "A".into(), plateforme: "X".into(), dossier: "D:/Jeux".into(), fichier: Some("Jeu.SFC".into()), programme: None, arguments: vec![], annee: None, editeur: None, genres: vec![] };
+        let b = JeuAImporter { titre: "B".into(), plateforme: "X".into(), dossier: "d:\\jeux".into(), fichier: Some("jeu.sfc".into()), programme: None, arguments: vec![], annee: None, editeur: None, genres: vec![] };
         assert_eq!(cle_import(&a), cle_import(&b), "même fichier, même jeu");
     }
 }
