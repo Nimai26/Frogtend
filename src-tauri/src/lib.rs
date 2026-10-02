@@ -21,6 +21,7 @@ pub mod gratuits;
 pub mod import_local;
 pub mod mame;
 pub mod succes;
+pub mod disque;
 pub mod ludotheque;
 pub mod menu_jeu;
 pub mod noyau;

@@ -26,7 +26,7 @@ export interface Progression {
 
 export interface SuccesRetro {
   etat: 'aucun' | 'compte' | 'pas_verifiable' | 'ok';
-  versions: { chemin: string; compatible: boolean; courante: boolean }[];
+  versions: { chemin: string; compatible: boolean; courante: boolean; verifiable?: boolean }[];
   jeu: Progression | null;
   compatibles: { md5: string; nom: string; etiquettes: string[] }[];
 }
@@ -110,6 +110,8 @@ export async function ouvrirPageCleRetro() {
   await openUrl(PAGE_CLE_RA).catch(() => {});
 }
 
+const autre_compatible = (r: SuccesRetro) => r.versions.some((v) => v.compatible && !v.courante);
+
 /** Ce qu'on dit d'un jeu, d'après ses versions (pur, testé). */
 export function resumeRetro(r: SuccesRetro): { ton: 'ok' | 'alerte' | 'neutre'; texte: string } | null {
   switch (r.etat) {
@@ -118,11 +120,13 @@ export function resumeRetro(r: SuccesRetro): { ton: 'ok' | 'alerte' | 'neutre'; 
     case 'compte':
       return { ton: 'neutre', texte: 'Règle ton compte RetroAchievements (⚙ Options ▸ Comptes) pour voir les succès de ce jeu.' };
     case 'pas_verifiable':
-      return { ton: 'neutre', texte: 'Jeu sur CD : Frogtend ne sait pas encore vérifier sa version pour RetroAchievements.' };
+      return { ton: 'neutre', texte: 'Frogtend ne sait pas encore vérifier cette version pour RetroAchievements (format .chd, ou console pas encore prise en charge).' };
   }
   const courante = r.versions.find((v) => v.courante) ?? r.versions[0];
   const autre = r.versions.find((v) => v.compatible && !v.courante);
   if (courante?.compatible) return { ton: 'ok', texte: '✅ Ta version est compatible RetroAchievements.' };
+  if (courante && courante.verifiable === false && !autre_compatible(r))
+    return { ton: 'neutre', texte: 'Frogtend ne sait pas encore lire le format de ta version (.chd) pour la vérifier.' };
   if (autre) {
     const nom = autre.chemin.split(/[\\/]/).pop();
     return { ton: 'alerte', texte: `⚠ Ta version n’est pas reconnue, mais « ${nom} » l’est : choisis-la (⚙ Gérer le jeu ▸ 📀 Version).` };

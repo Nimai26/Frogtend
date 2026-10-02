@@ -7,8 +7,9 @@ describe('le résumé RetroAchievements d’un jeu', () => {
   it('dit ce qu’il faut faire', () => {
     expect(resumeRetro({ ...base, etat: 'aucun' })).toBeNull();
     expect(resumeRetro({ ...base, etat: 'compte' })?.texte).toContain('Règle ton compte');
-    expect(resumeRetro({ ...base, etat: 'pas_verifiable' })?.texte).toContain('CD');
+    expect(resumeRetro({ ...base, etat: 'pas_verifiable' })?.texte).toContain('.chd');
     expect(resumeRetro({ ...base, versions: [{ chemin: 'E:\\Mario (E).nes', compatible: true, courante: true }] })?.ton).toBe('ok');
+    expect(resumeRetro({ ...base, versions: [{ chemin: 'E:\\Jeu.chd', compatible: false, courante: true, verifiable: false }] })?.texte).toContain('.chd');
   });
 
   it('propose une autre version compatible, ou dit laquelle manque', () => {

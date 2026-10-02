@@ -790,6 +790,8 @@ pub struct VersionRetro {
     pub chemin: String,
     pub compatible: bool,
     pub courante: bool,
+    /// Faux : Frogtend ne sait pas encore lire ce format (`.chd`…), on ne peut rien dire de cette version.
+    pub verifiable: bool,
 }
 
 /// Les succès RetroAchievements d'un jeu du PC : ses versions compatibles ou non, celles qui le seraient (noms
@@ -837,7 +839,11 @@ pub async fn succes_retro(noyau: State<'_, Noyau>, id: i64) -> Resultat<SuccesRe
     .map_err(|_| Erreur::Disque("Le calcul des empreintes s'est arrêté brutalement.".into()))?;
     let mut jeu_ra = None;
     let mut versions = Vec::new();
+    if empreintes.iter().all(Option::is_none) {
+        return Ok(SuccesRetro { etat: "pas_verifiable".into(), ..Default::default() });
+    }
     for (c, e) in chemins.iter().zip(empreintes) {
+        let verifiable = e.is_some();
         let trouve = e.and_then(|e| liste.iter().find(|g| g.empreintes.contains(&e)));
         if jeu_ra.is_none() {
             jeu_ra = trouve.map(|g| g.id);
@@ -846,6 +852,7 @@ pub async fn succes_retro(noyau: State<'_, Noyau>, id: i64) -> Resultat<SuccesRe
             chemin: c.clone(),
             compatible: trouve.is_some(),
             courante: courant.as_ref().is_some_and(|x| x.eq_ignore_ascii_case(c)),
+            verifiable,
         });
     }
     let mut r = SuccesRetro { etat: "ok".into(), versions, ..Default::default() };

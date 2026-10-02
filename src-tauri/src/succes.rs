@@ -85,6 +85,12 @@ pub fn console_de(plateforme: &str) -> Option<u32> {
 /// Dreamcast…) ont des méthodes à part : pas encore vérifiables.
 pub fn empreinte_possible(console: u32) -> bool {
     matches!(console, 1..=8 | 10 | 11 | 13..=15 | 17 | 23..=25 | 27 | 28 | 33 | 44 | 45 | 46 | 50 | 51 | 53 | 57 | 63 | 73 | 81)
+        || est_un_cd(console)
+}
+
+/// Les consoles sur CD que Frogtend sait lire (module `disque` : .cue/.bin, .ccd/.img, .iso ; pas encore .chd).
+pub fn est_un_cd(console: u32) -> bool {
+    matches!(console, 9 | 12 | 39)
 }
 
 fn md5_hex(o: &[u8]) -> String {
@@ -120,6 +126,25 @@ pub fn empreinte_fichier(console: u32, chemin: &Path) -> Resultat<Option<String>
     if console == 27 {
         let nom = chemin.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         return Ok(Some(md5_hex(nom.as_bytes())));
+    }
+    if est_un_cd(console) {
+        // Une liste de disques (.m3u) : l'empreinte est celle du 1er disque.
+        if chemin.extension().is_some_and(|e| e.eq_ignore_ascii_case("m3u")) {
+            let premier = std::fs::read_to_string(chemin)?
+                .lines()
+                .map(str::trim)
+                .find(|l| !l.is_empty() && !l.starts_with('#'))
+                .map(|l| chemin.parent().unwrap_or(Path::new(".")).join(l));
+            return match premier {
+                Some(p) => empreinte_fichier(console, &p),
+                None => Ok(None),
+            };
+        }
+        let Some(piste) = crate::disque::ouvrir(chemin)? else { return Ok(None) };
+        return match console {
+            12 => crate::disque::empreinte_psx(&piste),
+            _ => crate::disque::empreinte_sega_cd(&piste),
+        };
     }
     let taille = std::fs::metadata(chemin)?.len();
     if taille > 256 * 1024 * 1024 {
@@ -366,7 +391,8 @@ mod tests {
         assert_eq!(console_de("super nintendo entertainment system"), Some(3));
         assert_eq!(console_de("Arcade"), Some(27));
         assert_eq!(console_de("Windows"), None);
-        assert!(empreinte_possible(7) && !empreinte_possible(12), "PlayStation : méthode CD, pas encore");
+        assert!(empreinte_possible(7) && empreinte_possible(12) && empreinte_possible(9), "PlayStation et Sega CD : lus par le module disque");
+        assert!(!empreinte_possible(40), "Dreamcast (GD-ROM, .chd) : pas encore");
     }
 
     #[test]

@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.34.0 — les succès des jeux sur CD
+
+- RetroAchievements reconnaît maintenant tes jeux **Sega CD, Saturn et PlayStation** (images .cue/.bin, .ccd/.img,
+  .iso, listes .m3u) : Frogtend lit le disque comme RetroAchievements le fait.
+- Chez toi : les 56 jeux Sega CD sont lus.
+- Pas encore : les .chd (tes jeux Dreamcast) ; Frogtend le dit au lieu de prétendre que ta version n'est pas reconnue.
+
 ## 0.33.0 — gagner les succès en jouant
 
 - ⚙ Options ▸ Comptes ▸ 🏆 RetroAchievements ▸ **🎮 Connecter mes émulateurs** : ton mot de passe une seule fois ;

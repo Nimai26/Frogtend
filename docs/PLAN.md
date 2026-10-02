@@ -638,7 +638,13 @@ une saga entière). Conséquences pour Frogtend :
   ou « version compatible manquante : <nom officiel> → Demander à Firehouse » (`API_GetGameHashes`) ; progression
   (`API_GetGameInfoAndUserProgress`). Steam : x / y succès (`GetPlayerAchievements`). Essai réel (lecture seule) :
   Super Mario Bros (JU) (PRG 0) → `8e3630186e35d477231bf8fd50e54cdd`, l'empreinte sans en-tête connue de
-  « Super Mario Bros. (Japan, USA) ». **Reste** : jeux sur CD (méthodes PlayStation, Saturn, Dreamcast… par disque) ;
+  « Super Mario Bros. (Japan, USA) ». ~~jeux sur CD~~ **✅ 0.34.0** (`src-tauri/src/disque.rs`, logique de
+  rcheevos `cdreader.c`/`hash_disc.c`) : lecture de la 1re piste (.cue/.bin, .ccd/.img, .iso, liste .m3u → 1er
+  disque), taille de secteur devinée (synchro + « CD001 »), fichiers ISO 9660 ; Sega CD et Saturn (512 octets du
+  secteur 0), PlayStation (nom du programme de SYSTEM.CNF + son contenu). Essai réel (lecture seule) : E:\Games\Sega CD
+  → **56 empreintes sur 56**. Une version illisible (.chd) est dite « pas vérifiable », jamais « pas reconnue ».
+  **Reste** : .chd (Dreamcast de Seb : 135 .chd ; il faut un décodeur CHD) et Dreamcast (GD-ROM, IP.BIN), PS2, PC
+  Engine CD, 3DO ;
   ~~brancher le compte dans les émulateurs~~ **✅ 0.33.0** : « 🎮 Connecter mes émulateurs » (mot de passe UNE fois →
   jeton `login2` comme rcheevos, au coffre ; mot de passe jamais gardé) ; à chaque partie, le compte DU PROFIL QUI JOUE :
   RetroArch (`cheevos_*` dans le fichier `--appendconfig` du profil), PCSX2 (`[Achievements]` + jeton dans
