@@ -10,7 +10,13 @@
   import { PLATEFORMES_CONNUES } from '$lib/ludotheque/categories';
   import { ludo, rechargerListe, rechargerPlateformes } from '$lib/ludotheque/ludotheque.svelte';
   import { rechargerJeuxDuPc } from '$lib/ludotheque/telechargements.svelte';
+  import { etat, reglerPc } from '$lib/etat.svelte';
   import {
+    LIBELLES_MAME,
+    OPTIONS_MAME_DEFAUT,
+    depuisMame,
+    type OptionsMame,
+    type TriMame,
     depuisDos,
     depuisManuel,
     depuisProgramme,
@@ -23,7 +29,7 @@
     type RomTrouvee,
   } from './local';
 
-  let { sorte }: { sorte: 'rom' | 'dos' | 'windows' | 'manuel' } = $props();
+  let { sorte }: { sorte: 'rom' | 'dos' | 'mame' | 'windows' | 'manuel' } = $props();
 
   let dossier = $state('');
   // Valeur de départ seulement : le composant est recréé quand la source change ({#key}).
@@ -37,6 +43,14 @@
   let roms = $state<(RomTrouvee & { pris: boolean })[]>([]);
   let dos = $state<(JeuDosTrouve & { pris: boolean; programme: string })[]>([]);
   let cherche = $state(false);
+  let optionsMame = $state<OptionsMame>({ ...OPTIONS_MAME_DEFAUT });
+  let tri = $state<TriMame | null>(null);
+  let mamePris = $state<boolean[]>([]);
+
+  async function choisirListeMame() {
+    const f = await parcourir({ titre: 'La liste MAME de LaunchBox (Metadata\\MAME.xml)', extensions: ['xml'] });
+    if (f) await reglerPc('listeMame', f);
+  }
 
   const plateformes = $derived([...new Set([...ludo.plateformes.map((p) => p.nom), ...PLATEFORMES_CONNUES])].sort((a, b) => a.localeCompare(b, 'fr')));
 
@@ -66,6 +80,9 @@
       if (sorte === 'rom') {
         const l = await api.importChercherRoms(dossier, lireExtensions(extensions), recursif);
         roms = l.map((r) => ({ ...r, pris: true }));
+      } else if (sorte === 'mame') {
+        tri = await api.importChercherMame(dossier, etat.pc.listeMame, $state.snapshot(optionsMame));
+        mamePris = tri.retenus.map(() => true);
       } else {
         const l = await api.importChercherDos(dossier);
         dos = l.map((j) => ({ ...j, pris: true, programme: j.programmes[0] }));
@@ -78,8 +95,14 @@
     }
   }
 
-  const choisis = $derived(sorte === 'rom' ? roms.filter((r) => r.pris).length : dos.filter((j) => j.pris).length);
-  const tailleChoisie = $derived(roms.filter((r) => r.pris).reduce((n, r) => n + r.taille, 0));
+  const mameChoisis = $derived(tri ? tri.retenus.filter((_, i) => mamePris[i]) : []);
+  const choisis = $derived(
+    sorte === 'rom' ? roms.filter((r) => r.pris).length : sorte === 'mame' ? mameChoisis.length : dos.filter((j) => j.pris).length,
+  );
+  const tailleChoisie = $derived(
+    (sorte === 'mame' ? mameChoisis : roms.filter((r) => r.pris)).reduce((n, r) => n + r.taille, 0),
+  );
+  const ecartes = $derived(tri ? Object.entries(tri.ecartes).sort((a, b) => b[1] - a[1]) : []);
 
   async function ajouter(jeux: JeuAImporter[]) {
     if (!jeux.length) return;
@@ -106,7 +129,11 @@
     }
   }
 
-  const tout = (v: boolean) => (sorte === 'rom' ? roms.forEach((r) => (r.pris = v)) : dos.forEach((j) => (j.pris = v)));
+  const tout = (v: boolean) => {
+    if (sorte === 'rom') roms.forEach((r) => (r.pris = v));
+    else if (sorte === 'mame') mamePris = mamePris.map(() => v);
+    else dos.forEach((j) => (j.pris = v));
+  };
 </script>
 
 <datalist id="plateformes-connues">
@@ -116,7 +143,55 @@
 <section class="cx-block local">
   <p class="muted">Rien n’est copié, déplacé ni renommé : Frogtend note où est le jeu. Le retirer plus tard de ta ludothèque ne l’efface jamais du disque.</p>
 
-  {#if sorte === 'rom' || sorte === 'dos'}
+  {#if sorte === 'mame'}
+    <div class="ligne">
+      <button class="btn" onclick={choisirDossier}>📂 Choisir le dossier des ROM MAME</button>
+      <input class="large" bind:value={dossier} placeholder="E:\Games\MAME" aria-label="Dossier" />
+    </div>
+    <div class="ligne">
+      <button class="btn" onclick={choisirListeMame}>📄 Choisir la liste MAME</button>
+      <span class="muted large">{etat.pc.listeMame || 'pas encore choisie : le fichier Metadata\\MAME.xml de ton LaunchBox'}</span>
+    </div>
+    <p class="muted">La liste MAME de LaunchBox dit, pour chaque zip, si c’est un jeu, un clone, un BIOS, s’il marche… Frogtend la lit sans la modifier. (Firehouse la servira plus tard.)</p>
+    <fieldset class="cases">
+      <legend>Garder aussi :</legend>
+      {#each LIBELLES_MAME as [cle, libelle] (cle)}
+        <label><input type="checkbox" bind:checked={optionsMame[cle]} /> {libelle}</label>
+      {/each}
+    </fieldset>
+    <div class="ligne">
+      <button class="btn primary" onclick={chercher} disabled={enCours || !dossier.trim() || !etat.pc.listeMame}>
+        {enCours ? 'Tri en cours… (quelques secondes)' : '🔍 Trier le dossier'}
+      </button>
+    </div>
+    {#if tri}
+      <p>
+        <strong>{tri.retenus.length} jeu(x) retenu(s)</strong>
+        {#if ecartes.length}
+          · écartés : {ecartes.map(([m, n]) => `${n} ${m}`).join(', ')}
+        {/if}
+      </p>
+      {#if tri.retenus.length}
+        <div class="ligne">
+          <strong>{choisis} coché(s)</strong>
+          <span class="muted">{taille(tailleChoisie)}</span>
+          <button class="btn petit" onclick={() => tout(true)}>Tout cocher</button>
+          <button class="btn petit" onclick={() => tout(false)}>Tout décocher</button>
+          <span class="espace"></span>
+          <button class="btn primary" disabled={enCours || !choisis} onclick={() => ajouter(depuisMame(mameChoisis))}>➕ Ajouter {choisis} jeu(x)</button>
+        </div>
+        <ul class="liste">
+          {#each tri.retenus as j, i (j.chemin)}
+            <li>
+              <label><input type="checkbox" bind:checked={mamePris[i]} /> {j.titre}</label>
+              <span class="muted">{j.annee ?? ''} {j.editeur ?? ''} · {j.chemin.split(/[\\/]/).pop()}</span>
+            </li>
+          {/each}
+        </ul>
+        <p class="muted">Plateforme « Arcade » ; ces jeux se lancent par l’émulateur réglé pour Arcade (MAME), avec le zip tel quel.</p>
+      {/if}
+    {/if}
+  {:else if sorte === 'rom' || sorte === 'dos'}
     <div class="ligne">
       <button class="btn" onclick={choisirDossier}>📂 Choisir le dossier</button>
       <input class="large" bind:value={dossier} placeholder="E:\Jeux\ROM\SNES" aria-label="Dossier" />
@@ -247,5 +322,19 @@
   }
   .titre {
     min-width: calc(260 * var(--u));
+  }
+  .cases {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(calc(300 * var(--u)), 1fr));
+    gap: calc(4 * var(--u)) calc(12 * var(--u));
+    border: 1px solid var(--line);
+    border-radius: var(--radius, 6px);
+    padding: calc(8 * var(--u)) calc(12 * var(--u));
+    margin: 0;
+  }
+  .cases label {
+    display: flex;
+    gap: calc(6 * var(--u));
+    align-items: center;
   }
 </style>

@@ -23,6 +23,8 @@ export interface ReglagesPc {
   emulateursJeux: Record<string, string>;
   /** Où Frogtend installe les émulateurs (vide : demandé à la première installation). */
   dossierEmulateurs: string;
+  /** La liste MAME (le MAME.xml des métadonnées de LaunchBox) pour l'import « MAME Arcade Full Set » ; vide : demandée. */
+  listeMame: string;
   /** Le menu universel en jeu. */
   menuJeu: {
     /** La touche du clavier qui l'ouvre pendant une partie (nom compris par Tauri : « Pause », « ScrollLock »…). */
@@ -88,6 +90,7 @@ export const DEFAUTS_PC: ReglagesPc = {
   emulateurs: {},
   emulateursJeux: {},
   dossierEmulateurs: '',
+  listeMame: '',
   menuJeu: { touche: 'Pause' },
   firehouse: { adresse: ADRESSE_FIREHOUSE_PAR_DEFAUT, simule: false },
 };

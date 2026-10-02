@@ -481,6 +481,8 @@ export const api = {
   emulateursTraces: () => appeler<{ id: string; nom: string; dossiers: string[] }[]>('emulateurs_traces'),
   importChercherRoms: (dossier: string, extensions: string[], recursif: boolean) =>
     appeler<import('$lib/import/local').RomTrouvee[]>('import_chercher_roms', { dossier, extensions, recursif }),
+  importChercherMame: (dossier: string, liste: string, options: import('$lib/import/local').OptionsMame) =>
+    appeler<import('$lib/import/local').TriMame>('import_chercher_mame', { dossier, liste, options }),
   importChercherDos: (dossier: string) => appeler<import('$lib/import/local').JeuDosTrouve[]>('import_chercher_dos', { dossier }),
   importAjouter: (jeux: import('$lib/import/local').JeuAImporter[]) =>
     appeler<import('$lib/import/local').BilanImport>('import_ajouter', { jeux }),

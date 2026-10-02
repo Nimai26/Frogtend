@@ -21,6 +21,12 @@
       **Citron Neo** s'installe tout seul (vérifié par son empreinte). **Ryubing** : sa source ne répond pas, Frogtend
       propose d'ouvrir sa page officielle.
 
+## MAME Arcade Full Set (0.28.0)
+- [ ] 📥 Importer ▸ **MAME Arcade Full Set** : dossier `E:\Games\MAME`, liste `D:\LaunchBox\Metadata\MAME.xml`,
+      🔍 Trier. **Attendu :** ~4 526 jeux retenus, et le détail des écartés (mécaniques, hors arcade, non jouables…).
+- [ ] Ajoute-en quelques-uns, puis ▶ Jouer : à vérifier avec ton émulateur Arcade (MAME ou le cœur MAME de RetroArch)
+      — Frogtend lui donne le zip avec son chemin complet. Dis-moi si ton MAME préfère « -rompath » + nom court.
+
 ## Importer tes jeux du disque (0.27.0)
 - [ ] 📥 Importer ▸ **Fichiers ROM** : dossier `E:\Games\Nintendo Entertainement System`, plateforme « Nintendo
       Entertainment System », extensions « nes ». **Attendu :** ~1 086 jeux listés (titres sans « (U) », « [!] »).

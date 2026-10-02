@@ -851,6 +851,16 @@ pub async fn import_chercher_roms(dossier: String, extensions: Vec<String>, recu
         .map_err(|_| Erreur::Disque("La recherche s'est arrêtée brutalement.".into()))?
 }
 
+/// 📥 Importer ▸ MAME Arcade Full Set : le tri du dossier d'après la liste MAME de LaunchBox (rien n'est encore ajouté).
+#[tauri::command]
+pub async fn import_chercher_mame(dossier: String, liste: String, options: crate::mame::OptionsMame) -> Resultat<crate::mame::TriMame> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::mame::trier_avec_fichier(std::path::Path::new(&dossier), std::path::Path::new(&liste), &options)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("Le tri s'est arrêté brutalement.".into()))?
+}
+
 /// 📥 Importer ▸ Jeux MS-DOS : un jeu par sous-dossier (rien n'est encore ajouté).
 #[tauri::command]
 pub async fn import_chercher_dos(dossier: String) -> Resultat<Vec<crate::import_local::JeuDosTrouve>> {

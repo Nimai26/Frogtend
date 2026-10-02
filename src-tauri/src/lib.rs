@@ -19,6 +19,7 @@ pub mod manettes;
 pub mod locale;
 pub mod gratuits;
 pub mod import_local;
+pub mod mame;
 pub mod ludotheque;
 pub mod menu_jeu;
 pub mod noyau;
@@ -268,6 +269,7 @@ pub fn run() {
             commandes::gratuits_psplus,
             commandes::import_chercher_roms,
             commandes::import_chercher_dos,
+            commandes::import_chercher_mame,
             commandes::import_ajouter,
             commandes::boutique_galaxy_etat,
             commandes::boutique_galaxy_jeux,

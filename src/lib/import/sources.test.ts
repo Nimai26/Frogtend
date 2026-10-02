@@ -24,8 +24,8 @@ describe('le menu Importer', () => {
   it('passe par GOG Galaxy pour les boutiques sans API ouverte', () => {
     for (const id of ['amazon', 'ea', 'epic', 'gog', 'ubisoft', 'xbox']) expect(source(id)?.voie).toBe('galaxy');
     expect(source('steam')?.voie).toBe('steam');
-    for (const id of ['rom', 'dos', 'windows', 'manuel']) expect(source(id)?.voie).toBe('local');
-    for (const id of ['mame', 'installer-dos']) expect(source(id)?.voie).toBe('bientot');
+    for (const id of ['rom', 'dos', 'mame', 'windows', 'manuel']) expect(source(id)?.voie).toBe('local');
+    expect(source('installer-dos')?.voie).toBe('bientot');
     expect(source('inconnue')).toBeUndefined();
   });
 

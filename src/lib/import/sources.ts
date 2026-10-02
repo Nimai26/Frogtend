@@ -24,7 +24,7 @@ export const SOURCES: SourceImport[] = [
     resume: 'Ajouter des ROM et des images disque d’un dossier, par système, sans jamais les renommer.',
   },
   { id: 'dos', libelle: 'Jeux MS-DOS', icone: '🖥', voie: 'local', resume: 'Ajouter des jeux MS-DOS déjà présents sur le disque, lancés par DOSBox.' },
-  { id: 'mame', libelle: 'MAME Arcade Full Set', icone: '🕹', voie: 'bientot', resume: 'Ajouter un ensemble complet de ROM MAME, en écartant les clones et les jeux non jouables.' },
+  { id: 'mame', libelle: 'MAME Arcade Full Set', icone: '🕹', voie: 'local', resume: 'Ajouter un ensemble complet de ROM MAME, en écartant les clones et les jeux non jouables.' },
   { id: 'amazon', libelle: 'Amazon Games', icone: '📦', voie: 'galaxy', galaxy: ['amazon'], resume: 'Les jeux de ton compte Amazon (Prime Gaming), par GOG Galaxy.' },
   { id: 'ea', libelle: 'EA', icone: '🅴', voie: 'galaxy', galaxy: ['origin', 'ea'], resume: 'Les jeux de ton compte EA (EA app, ex-Origin), par GOG Galaxy.' },
   { id: 'epic', libelle: 'Jeux Epic Games', icone: '⚫', voie: 'galaxy', galaxy: ['epic'], resume: 'Les jeux de ton compte Epic Games, par GOG Galaxy.' },

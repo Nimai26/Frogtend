@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.28.0 — MAME Arcade Full Set
+
+- **📥 Importer ▸ MAME Arcade Full Set** : Frogtend trie ton dossier MAME avec la liste MAME de ton LaunchBox
+  (choisie une fois) et garde les vrais jeux d'arcade jouables, comme LaunchBox : sans clones, BIOS, machines à sous,
+  mahjong, machines mécaniques, jeux qui ne marchent pas… Chaque catégorie se coche si tu la veux quand même.
+- L'année, l'éditeur et le genre de chaque jeu viennent avec.
+- Chez toi : 14 191 zips → 4 526 jeux, en 3 secondes.
+
 ## 0.27.0 — importer les jeux déjà sur ton disque
 
 - **📥 Importer ▸ Fichiers ROM** : choisis un dossier et une plateforme ; Frogtend propose les extensions de ses

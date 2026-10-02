@@ -203,6 +203,13 @@ pub struct JeuAImporter {
     /// Pour un jeu Windows : le programme à lancer (chemin complet).
     #[serde(default)]
     pub programme: Option<String>,
+    /// Ce qu'on sait déjà du jeu (la liste MAME le donne).
+    #[serde(default)]
+    pub annee: Option<i64>,
+    #[serde(default)]
+    pub editeur: Option<String>,
+    #[serde(default)]
+    pub genres: Vec<String>,
 }
 
 /// La clé stable d'un jeu importé (le même fichier importé deux fois = le même jeu).
@@ -297,6 +304,9 @@ impl crate::noyau::Noyau {
                 id,
                 titre: j.titre.trim().to_string(),
                 plateforme: j.plateforme.clone(),
+                annee: j.annee,
+                editeur: j.editeur.clone(),
+                genres: j.genres.clone(),
                 statut: Some("importe".into()),
                 jaquette: Some(false),
                 source: Some("local".into()),
@@ -332,9 +342,9 @@ mod tests {
         ecrire(&jeux, "Doom/unins000.exe", "x");
         let racine = jeux.to_string_lossy().to_string();
         let a = vec![
-            JeuAImporter { titre: "Mario".into(), plateforme: "Super Nintendo Entertainment System".into(), dossier: racine.clone(), fichier: Some("Mario (USA).sfc".into()), programme: None },
-            JeuAImporter { titre: "Doom".into(), plateforme: "Windows".into(), dossier: jeux.join("Doom").to_string_lossy().into(), fichier: None, programme: Some(jeux.join("Doom/DOOM.EXE").to_string_lossy().into()) },
-            JeuAImporter { titre: "Absent".into(), plateforme: "Windows".into(), dossier: racine.clone(), fichier: None, programme: Some(jeux.join("rien.exe").to_string_lossy().into()) },
+            JeuAImporter { titre: "Mario".into(), plateforme: "Super Nintendo Entertainment System".into(), dossier: racine.clone(), fichier: Some("Mario (USA).sfc".into()), programme: None, annee: None, editeur: None, genres: vec![] },
+            JeuAImporter { titre: "Doom".into(), plateforme: "Windows".into(), dossier: jeux.join("Doom").to_string_lossy().into(), fichier: None, programme: Some(jeux.join("Doom/DOOM.EXE").to_string_lossy().into()), annee: None, editeur: None, genres: vec![] },
+            JeuAImporter { titre: "Absent".into(), plateforme: "Windows".into(), dossier: racine.clone(), fichier: None, programme: Some(jeux.join("rien.exe").to_string_lossy().into()), annee: None, editeur: None, genres: vec![] },
         ];
         let b = n.importer_locaux(&a).await.unwrap();
         assert_eq!((b.ajoutes, b.deja, b.refuses.len()), (2, 0, 1));
@@ -422,7 +432,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         ecrire(d.path(), "jeu.sfc", "x");
         let racine = d.path().to_string_lossy().to_string();
-        let mut j = JeuAImporter { titre: "Jeu".into(), plateforme: "SNES".into(), dossier: racine.clone(), fichier: Some("jeu.sfc".into()), programme: None };
+        let mut j = JeuAImporter { titre: "Jeu".into(), plateforme: "SNES".into(), dossier: racine.clone(), fichier: Some("jeu.sfc".into()), programme: None, annee: None, editeur: None, genres: vec![] };
         assert!(verifier(&j).is_ok());
         j.fichier = Some("../ailleurs.sfc".into());
         assert!(verifier(&j).is_err());
@@ -432,8 +442,8 @@ mod tests {
         assert!(verifier(&j).is_err());
         j.programme = Some(d.path().join("jeu.sfc").to_string_lossy().to_string());
         assert!(verifier(&j).is_ok());
-        let a = JeuAImporter { titre: "A".into(), plateforme: "X".into(), dossier: "D:/Jeux".into(), fichier: Some("Jeu.SFC".into()), programme: None };
-        let b = JeuAImporter { titre: "B".into(), plateforme: "X".into(), dossier: "d:\\jeux".into(), fichier: Some("jeu.sfc".into()), programme: None };
+        let a = JeuAImporter { titre: "A".into(), plateforme: "X".into(), dossier: "D:/Jeux".into(), fichier: Some("Jeu.SFC".into()), programme: None, annee: None, editeur: None, genres: vec![] };
+        let b = JeuAImporter { titre: "B".into(), plateforme: "X".into(), dossier: "d:\\jeux".into(), fichier: Some("jeu.sfc".into()), programme: None, annee: None, editeur: None, genres: vec![] };
         assert_eq!(cle_import(&a), cle_import(&b), "même fichier, même jeu");
     }
 }

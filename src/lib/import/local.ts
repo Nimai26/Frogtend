@@ -19,6 +19,71 @@ export interface JeuAImporter {
   dossier: string;
   fichier?: string | null;
   programme?: string | null;
+  annee?: number | null;
+  editeur?: string | null;
+  genres?: string[];
+}
+
+/** Ce qu'on GARDE d'un dossier MAME (mêmes cases que LaunchBox). */
+export interface OptionsMame {
+  clones: boolean;
+  non_jouables: boolean;
+  imparfaits: boolean;
+  contrefacons: boolean;
+  prototypes: boolean;
+  hacks: boolean;
+  adultes: boolean;
+  jeux_d_argent: boolean;
+  mecaniques: boolean;
+  quiz: boolean;
+  hors_arcade: boolean;
+}
+
+export const OPTIONS_MAME_DEFAUT: OptionsMame = {
+  clones: false,
+  non_jouables: false,
+  imparfaits: true,
+  contrefacons: false,
+  prototypes: false,
+  hacks: false,
+  adultes: false,
+  jeux_d_argent: false,
+  mecaniques: false,
+  quiz: true,
+  hors_arcade: false,
+};
+
+export const LIBELLES_MAME: [keyof OptionsMame, string][] = [
+  ['imparfaits', 'les jeux imparfaits (son ou image pas tout à fait justes)'],
+  ['non_jouables', 'les jeux qui ne marchent pas encore dans MAME'],
+  ['clones', 'les clones (autres versions d’un même jeu)'],
+  ['contrefacons', 'les contrefaçons (bootlegs)'],
+  ['prototypes', 'les prototypes'],
+  ['hacks', 'les hacks'],
+  ['quiz', 'les jeux de quiz'],
+  ['jeux_d_argent', 'casino, machines à sous et mahjong'],
+  ['mecaniques', 'les machines mécaniques'],
+  ['hors_arcade', 'ce qui n’est pas une borne d’arcade (ordinateurs, consoles)'],
+  ['adultes', 'les jeux pour adultes'],
+];
+
+export interface JeuMameRetenu extends RomTrouvee {
+  annee: number | null;
+  editeur: string | null;
+  genre: string | null;
+}
+
+export interface TriMame {
+  retenus: JeuMameRetenu[];
+  ecartes: Record<string, number>;
+}
+
+/** Les jeux MAME retenus, prêts à ajouter (plateforme « Arcade », le zip garde son nom). */
+export function depuisMame(jeux: JeuMameRetenu[]): JeuAImporter[] {
+  return jeux.map((j) => {
+    const { dossier, nom } = couper(j.chemin);
+    return { titre: j.titre, plateforme: 'Arcade', dossier, fichier: nom, annee: j.annee, editeur: j.editeur, genres: j.genre ? [j.genre] : [] };
+  });
 }
 
 export interface BilanImport {

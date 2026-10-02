@@ -511,8 +511,12 @@ proposé, lancé par l'émulateur MS-DOS), Jeux Windows (le .exe), Ajouter un je
 fichier). Un jeu importé : id négatif « local », dans la ludothèque du profil (filtre Boutique ▸ « Importés de mon
 disque ») ET dans le registre du PC (`VERSION_IMPORTEE` = -1) pour « Jouer ». **Le retirer ne touche à AUCUN fichier**
 (ni désinstalleur, ni suppression : vérifié par un test). Essayé en lecture seule sur le disque de Seb : E:\Games\NES
-→ 1 086 jeux en 0,16 s ; E:\Games\3DO → 200 .chd. **Reste** : MAME Arcade Full Set (il faut la liste de MAME pour
-écarter clones, BIOS et jeux non jouables) et Installer un jeu DOS ; jaquettes et fiches des jeux importés (chercher
+→ 1 086 jeux en 0,16 s ; E:\Games\3DO → 200 .chd. **✅ 0.28.0 — MAME Arcade Full Set** (`src-tauri/src/mame.rs`) : tri
+d'après la liste MAME de LaunchBox (`Metadata\MAME.xml`, lue en lecture seule, choisie une fois, réglage PC
+`listeMame`) ; mêmes cases que LaunchBox (imparfaits et quiz gardés par défaut ; clones, non jouables, contrefaçons,
+prototypes, hacks, casino/mahjong, mécaniques, hors arcade, adultes écartés) ; un zip absent de la liste (BIOS,
+appareil) est écarté ; année, éditeur et genre repris. Essai réel en lecture seule : E:\Games\MAME, 14 191 zips →
+**4 526 jeux** en 3 s. **Reste** : Installer un jeu DOS ; jaquettes et fiches des jeux importés (chercher
 le jeu dans la base LaunchBox de Firehouse, `/recherche`).
 
 **✅ Accord de Seb (02/10)** : Frogtend peut LIRE (lecture seule) les fichiers des lanceurs installés (GOG Galaxy, Epic,

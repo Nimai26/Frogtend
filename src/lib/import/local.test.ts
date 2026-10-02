@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { couper, depuisDos, depuisManuel, depuisProgramme, depuisRoms, extensionsDe, lireExtensions, messageBilan } from './local';
+import { couper, depuisDos, depuisMame, depuisManuel, depuisProgramme, depuisRoms, extensionsDe, lireExtensions, messageBilan } from './local';
 
 describe('import local', () => {
   it('coupe un chemin Windows', () => {
@@ -23,6 +23,11 @@ describe('import local', () => {
     expect(depuisProgramme('D:\\Jeux\\Doom\\doom.exe', ' Mon Doom ').titre).toBe('Mon Doom');
     expect(depuisManuel('Zelda', 'Nintendo 64', 'E:\\N64\\zelda.z64')).toEqual({ titre: 'Zelda', plateforme: 'Nintendo 64', dossier: 'E:\\N64', fichier: 'zelda.z64' });
     expect(depuisManuel('Doom', 'Windows', 'D:\\Doom\\doom.exe').programme).toBe('D:\\Doom\\doom.exe');
+  });
+
+  it('prépare les jeux MAME retenus', () => {
+    const l = depuisMame([{ chemin: 'E:\\Games\\MAME\\pacman.zip', titre: 'Pac-Man (Midway)', taille: 1, annee: 1980, editeur: 'Namco', genre: 'Maze' }]);
+    expect(l[0]).toEqual({ titre: 'Pac-Man (Midway)', plateforme: 'Arcade', dossier: 'E:\\Games\\MAME', fichier: 'pacman.zip', annee: 1980, editeur: 'Namco', genres: ['Maze'] });
   });
 
   it('résume un import', () => {
