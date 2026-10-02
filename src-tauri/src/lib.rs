@@ -17,6 +17,7 @@ pub mod jeux_pc;
 pub mod lancement;
 pub mod manettes;
 pub mod locale;
+pub mod gratuits;
 pub mod ludotheque;
 pub mod menu_jeu;
 pub mod noyau;
@@ -259,6 +260,9 @@ pub fn run() {
             commandes::emulateur_installer_firehouse,
             commandes::jeu_triches,
             commandes::cheatengine_lancer,
+            commandes::gratuits_liste,
+            commandes::gratuits_connexion_epic,
+            commandes::gratuits_obtenir_epic,
             commandes::boutique_galaxy_etat,
             commandes::boutique_galaxy_jeux,
             commandes::boutique_galaxy_importer,

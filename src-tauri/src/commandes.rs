@@ -734,6 +734,115 @@ pub async fn boutique_steam_importer(noyau: State<'_, Noyau>) -> Resultat<Vec<cr
     Ok(jeux)
 }
 
+/// Un jeu offert en ce moment, et s'il est déjà obtenu par ce profil.
+#[derive(Serialize)]
+pub struct Offert {
+    #[serde(flatten)]
+    pub jeu: crate::gratuits::JeuOffert,
+    pub obtenu: bool,
+}
+
+/// Les jeux offerts en ce moment (Epic : liste publique, sans compte).
+#[tauri::command]
+pub async fn gratuits_liste(noyau: State<'_, Noyau>) -> Resultat<Vec<Offert>> {
+    let p = profil_ouvert(&noyau).await?;
+    let obtenus = crate::gratuits::lire_obtenus(&dossier_profil_de(&noyau, &p.id));
+    let l = crate::gratuits::offerts_epic().await?;
+    Ok(l
+        .into_iter()
+        .map(|j| {
+            let obtenu = obtenus.jeux.iter().any(|(b, s, _)| *b == j.boutique && *s == j.slug);
+            Offert { jeu: j, obtenu }
+        })
+        .collect())
+}
+
+const FENETRE_EPIC: &str = "boutique-epic";
+
+/// La fenêtre de la boutique Epic, avec le navigateur PROPRE AU PROFIL (sa connexion Epic y reste).
+fn fenetre_epic(app: &AppHandle, dossier_profil: &std::path::Path, adresse: &str, visible: bool) -> Resultat<tauri::WebviewWindow> {
+    if let Some(w) = app.get_webview_window(FENETRE_EPIC) {
+        let _ = w.close();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+    let url = tauri::Url::parse(adresse).map_err(|_| Erreur::Refus("Adresse Epic invalide.".into()))?;
+    tauri::WebviewWindowBuilder::new(app, FENETRE_EPIC, tauri::WebviewUrl::External(url))
+        .title("Epic Games — Frogtend")
+        .inner_size(1100.0, 800.0)
+        .center()
+        .visible(visible)
+        .data_directory(crate::gratuits::dossier_navigateur(dossier_profil))
+        .build()
+        .map_err(|e| Erreur::Disque(format!("La fenêtre d'Epic ne s'ouvre pas ({e}).")))
+}
+
+/// Se connecter à Epic, une fois : la page officielle s'ouvre ; Frogtend ne voit jamais le mot de passe.
+#[tauri::command]
+pub async fn gratuits_connexion_epic(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<()> {
+    let p = profil_ouvert(&noyau).await?;
+    let w = fenetre_epic(&app, &dossier_profil_de(&noyau, &p.id), "https://www.epicgames.com/id/login?redirectUrl=https%3A%2F%2Fstore.epicgames.com%2Fen-US%2F", true)?;
+    let _ = w.set_focus();
+    Ok(())
+}
+
+/// Obtenir un jeu offert d'Epic, automatiquement : la page officielle s'ouvre CACHÉE, le script de Frogtend clique
+/// « Get » puis « Place Order ». Si ça bloque (connexion, captcha, page changée), la fenêtre s'affiche : la personne
+/// finit elle-même (décision de Seb : B, sinon A).
+#[tauri::command]
+pub async fn gratuits_obtenir_epic(app: AppHandle, noyau: State<'_, Noyau>, slug: String) -> Resultat<crate::gratuits::Obtention> {
+    if slug.is_empty() || !slug.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err(Erreur::Refus("Jeu Epic invalide.".into()));
+    }
+    let p = profil_ouvert(&noyau).await?;
+    let dossier = dossier_profil_de(&noyau, &p.id);
+    let (envoi, reception) = std::sync::mpsc::channel::<crate::gratuits::Obtention>();
+    let envoi = std::sync::Mutex::new(envoi);
+    if let Some(w) = app.get_webview_window(FENETRE_EPIC) {
+        let _ = w.close();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+    let url = tauri::Url::parse(&format!("https://store.epicgames.com/en-US/p/{slug}")).map_err(|_| Erreur::Refus("Adresse Epic invalide.".into()))?;
+    let w = tauri::WebviewWindowBuilder::new(&app, FENETRE_EPIC, tauri::WebviewUrl::External(url))
+        .title("Epic Games — Frogtend")
+        .inner_size(1100.0, 800.0)
+        .center()
+        .visible(false)
+        .data_directory(crate::gratuits::dossier_navigateur(&dossier))
+        .on_page_load(|w, charge| {
+            if matches!(charge.event(), tauri::webview::PageLoadEvent::Finished) {
+                let _ = w.eval(crate::gratuits::SCRIPT_EPIC);
+            }
+        })
+        .on_document_title_changed(move |_, titre| {
+            if let Some(r) = crate::gratuits::lire_titre(&titre) {
+                let _ = envoi.lock().map(|e| e.send(r));
+            }
+        })
+        .build()
+        .map_err(|e| Erreur::Disque(format!("La fenêtre d'Epic ne s'ouvre pas ({e}).")))?;
+    let r = tauri::async_runtime::spawn_blocking(move || reception.recv_timeout(std::time::Duration::from_secs(150)))
+        .await
+        .map_err(|_| Erreur::Disque("L'attente s'est arrêtée brutalement.".into()))?
+        .unwrap_or(crate::gratuits::Obtention::Erreur("aucune réponse de la page (délai dépassé)".into()));
+    match &r {
+        crate::gratuits::Obtention::Obtenu | crate::gratuits::Obtention::Deja => {
+            let _ = w.close();
+            let mut o = crate::gratuits::lire_obtenus(&dossier);
+            if !o.jeux.iter().any(|(b, s, _)| b == "epic" && *s == slug) {
+                o.jeux.push(("epic".into(), slug.clone(), crate::noyau::maintenant()));
+            }
+            crate::gratuits::ecrire_obtenus(&dossier, &o)?;
+        }
+        _ => {
+            // On montre la page : la personne se connecte, résout le captcha, ou clique elle-même.
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
+    }
+    noyau.journaliser(&format!("jeu offert Epic « {slug} » : {r:?}"));
+    Ok(r)
+}
+
 /// GOG Galaxy sur ce PC, et ce qui en a été importé pour le profil.
 #[derive(Serialize)]
 pub struct EtatGalaxy {

@@ -68,6 +68,13 @@ export interface ReglagesProfil {
     /** Plateformes masquées dans la liste de gauche. */
     plateformesMasquees: string[];
   };
+  /** Les jeux offerts des boutiques (lot 9). */
+  gratuits: {
+    /** Les obtenir tout seul (vérification une fois par jour, à l'ouverture du profil). */
+    auto: boolean;
+    /** Dernière vérification automatique (secondes depuis 1970). */
+    derniere: number;
+  };
   /** Les commandes choisies jeu par jeu (identifiant du jeu → choix). Absent : automatique. */
   commandes: Record<string, CommandesJeu>;
 }
@@ -92,6 +99,7 @@ export const DEFAUTS_PROFIL: ReglagesProfil = {
     panneauDetails: true,
     plateformesMasquees: [],
   },
+  gratuits: { auto: false, derniere: 0 },
   commandes: {},
 };
 

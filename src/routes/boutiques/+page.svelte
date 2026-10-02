@@ -4,6 +4,8 @@
   import { onMount } from 'svelte';
   import { adresseImageBoutique, adresseImageParUrl, duree, type JeuBoutique } from '$lib/api';
   import { galaxy, importerGalaxy, lireGalaxy, nomPlateforme, ouvrirDansGalaxy } from '$lib/boutiques/galaxy.svelte';
+  import { connexionEpic, gratuits, lireGratuits, obtenir, obtenirTout } from '$lib/boutiques/gratuits.svelte';
+  import { etat, reglerProfil } from '$lib/etat.svelte';
   import { importerSteam, lireSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
 
   let filtre = $state('');
@@ -11,6 +13,7 @@
   onMount(() => {
     lireSteam();
     lireGalaxy();
+    lireGratuits();
   });
 
   // GOG Galaxy : filtre par boutique d'origine. Les jeux Steam y sont masqués par défaut si Steam est importé à part.
@@ -35,6 +38,47 @@
     <h1>🛒 Mes boutiques</h1>
     <p class="muted">Les jeux de tes comptes : Steam (par son API), et GOG Galaxy qui regroupe GOG, Epic, Xbox, Ubisoft, EA… Ils restent dans ton Frogtend.</p>
   </header>
+
+  <section class="cx-block">
+    <div class="tete">
+      <h2>🎁 Jeux offerts</h2>
+      <span class="muted">Epic Games, cette semaine</span>
+      <span class="espace"></span>
+      <button class="btn" onclick={connexionEpic}>🔑 Se connecter à Epic</button>
+      <button class="btn primary" onclick={() => obtenirTout()} disabled={gratuits.enCours !== null}>🎁 Tout obtenir</button>
+    </div>
+    <label class="auto">
+      <input
+        type="checkbox"
+        checked={etat.profil.gratuits.auto}
+        onchange={(e) => reglerProfil('gratuits.auto', e.currentTarget.checked)}
+      />
+      Les obtenir tout seul (une fois par jour, à l’ouverture de mon profil). Si Epic demande une vérification, sa page s’ouvre.
+    </label>
+    {#if gratuits.liste.length}
+      <div class="grille offerts">
+        {#each gratuits.liste as j (j.slug)}
+          <div class="carte">
+            <span class="image">
+              <span class="remplacement">{j.titre}</span>
+              {#if j.image}<img src={adresseImageParUrl(j.image)} alt="" loading="lazy" onerror={(e) => ((e.currentTarget as HTMLElement).hidden = true)} />{/if}
+            </span>
+            <span class="nom">{j.titre}</span>
+            <span class="muted">jusqu’au {new Date(j.fin).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}</span>
+            {#if j.obtenu}
+              <span class="tag ok">✅ Obtenu</span>
+            {:else}
+              <button class="btn petit primary" onclick={() => obtenir(j)} disabled={gratuits.enCours !== null}>
+                {gratuits.enCours === j.slug ? 'En cours…' : '🎁 Obtenir'}
+              </button>
+            {/if}
+          </div>
+        {/each}
+      </div>
+    {:else}
+      <p class="muted">Aucun jeu offert lu pour l’instant (connexion à Internet ?).</p>
+    {/if}
+  </section>
 
   <section class="cx-block">
     <div class="tete">
@@ -147,6 +191,15 @@
   }
   .boutiques {
     max-width: none;
+  }
+  .auto {
+    display: flex;
+    gap: calc(8 * var(--u));
+    align-items: center;
+    margin: calc(8 * var(--u)) 0;
+  }
+  .offerts .carte {
+    cursor: default;
   }
   .grille {
     display: grid;

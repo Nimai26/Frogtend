@@ -21,6 +21,13 @@
       **Citron Neo** s'installe tout seul (vérifié par son empreinte). **Ryubing** : sa source ne répond pas, Frogtend
       propose d'ouvrir sa page officielle.
 
+## Jeux offerts Epic (0.24.0)
+- [ ] 🛒 Boutiques ▸ **🎁 Jeux offerts** : la liste de la semaine (System Shock 2, BURIED STARS jusqu'au 8 octobre).
+- [ ] **🔑 Se connecter à Epic** : connecte-toi dans la fenêtre (page officielle), puis ferme-la.
+- [ ] **🎁 Obtenir** sur un jeu. **Attendu :** « 🎁 … est à toi ! » sans rien faire ; sinon la page Epic s'ouvre
+      (captcha, connexion) et tu finis toi-même. Me dire ce qui s'est passé (c'est l'essai du « B »).
+- [ ] Case « Les obtenir tout seul » : au prochain démarrage (après 24 h), Frogtend le fait discrètement.
+
 ## Tes boutiques dans la ludothèque (0.23.0)
 - [ ] Après « Lire mes jeux GOG Galaxy » (et/ou l'import Steam), **Ma ludothèque ▸ Windows**. **Attendu :** tes jeux
       de boutiques, en jaquettes, avec les autres.

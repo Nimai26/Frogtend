@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.24.0 — les jeux offerts d'Epic, obtenus tout seuls
+
+- **🛒 Boutiques ▸ 🎁 Jeux offerts** : les jeux gratuits d'Epic de la semaine, avec leur date de fin.
+- **🎁 Obtenir** : Frogtend ouvre la page officielle d'Epic sans la montrer et clique pour toi (« Get », puis la
+  commande à 0 €). Si Epic demande une connexion ou une vérification, sa page s'affiche et tu finis toi-même.
+- **🔑 Se connecter à Epic** une fois : chaque profil a sa propre connexion ; Frogtend ne voit jamais ton mot de passe.
+- Case **« Les obtenir tout seul »** : une fois par jour, à l'ouverture de ton profil.
+
 ## 0.23.0 — tes jeux de boutiques dans la ludothèque
 
 - Les jeux de tes boutiques (Steam, et par GOG Galaxy : GOG, Epic, Xbox, Ubisoft, EA), **installés ou non**, sont

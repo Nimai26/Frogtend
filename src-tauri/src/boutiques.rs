@@ -317,7 +317,7 @@ fn date_en_secondes(d: &str) -> Option<u64> {
 
 /// Les hôtes d'images de boutiques autorisés (images publiques).
 pub fn image_autorisee(url: &str) -> bool {
-    url.starts_with("https://images.gog.com/") || url.starts_with("https://cdn.akamai.steamstatic.com/")
+    url.starts_with("https://images.gog.com/") || url.starts_with("https://cdn.akamai.steamstatic.com/") || url.starts_with("https://cdn1.epicgames.com/")
 }
 
 /// Une image publique de boutique (hôte autorisé), gardée en cache sous son empreinte.

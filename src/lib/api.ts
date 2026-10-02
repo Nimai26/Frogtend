@@ -319,6 +319,16 @@ export interface JeuBoutique {
   image?: string | null;
 }
 
+/** Un jeu offert en ce moment (lot 9). */
+export interface JeuOffert {
+  boutique: string;
+  titre: string;
+  slug: string;
+  fin: string;
+  image: string | null;
+  obtenu: boolean;
+}
+
 /** Le compte Steam du profil (jamais la clé : seulement si elle est enregistrée). */
 export interface EtatSteam {
   compte: string | null;
@@ -434,6 +444,9 @@ export const api = {
     appeler<EmulateurInstalle>('emulateur_adopter', { id, programme, nom: nom ?? null, version: version ?? null }),
   emulateurInstallerFirehouse: (id: string, nom: string, dossier: string) =>
     appeler<InstallationFirehouse>('emulateur_installer_firehouse', { id, nom, dossier }),
+  gratuitsListe: () => appeler<JeuOffert[]>('gratuits_liste'),
+  gratuitsConnexionEpic: () => appeler<void>('gratuits_connexion_epic'),
+  gratuitsObtenirEpic: (slug: string) => appeler<{ etat: string; motif?: string }>('gratuits_obtenir_epic', { slug }),
   galaxyEtat: () => appeler<{ galaxy_installe: boolean; nb_jeux: number; maj_le: string | null }>('boutique_galaxy_etat'),
   galaxyJeux: () => appeler<JeuBoutique[]>('boutique_galaxy_jeux'),
   galaxyImporter: () => appeler<JeuBoutique[]>('boutique_galaxy_importer'),

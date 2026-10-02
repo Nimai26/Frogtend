@@ -16,6 +16,7 @@
   import { suivreParties } from '$lib/ludotheque/jeu.svelte';
   import ChoixProfil from '$lib/profils/ChoixProfil.svelte';
   import { auDemarrage } from '$lib/sauvegarde.svelte';
+  import { gratuitsAuDemarrage } from '$lib/boutiques/gratuits.svelte';
 
   let { children } = $props();
 
@@ -59,6 +60,7 @@
       suivreTelechargements();
       suivreParties();
       untrack(() => auDemarrage());
+      untrack(() => gratuitsAuDemarrage());
     } else {
       arreterSuivi();
     }

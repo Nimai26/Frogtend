@@ -462,6 +462,18 @@ connecte elle-même (pages officielles, Frogtend ne voit pas le mot de passe), p
 captcha apparaît, la fenêtre se montre. La liste des jeux offerts d'Epic est publique (sans compte).
 **Décision de Seb (02/10)** : on essaie **B (récupération automatique)** ; en cas d'échec, **A** (Frogtend montre les jeux
 offerts de la semaine et ouvre la page officielle ; la personne clique « Obtenir »).
+**✅ 0.24.0 (Epic)** : liste publique (`freeGamesPromotions`, vérifiée le 02/10 : System Shock 2 25th Anniversary
+Remaster et BURIED STARS jusqu'au 08/10) ; « 🔑 Se connecter à Epic » (page officielle, navigateur PROPRE AU PROFIL dans
+`profils\<id>\navigateur`) ; « 🎁 Obtenir » ouvre la page `/en-US/p/<slug>` CACHÉE, le script `ressources/gratuits/
+epic.js` clique Get → licence → Place Order → I Agree et rend le résultat par le titre ; connexion requise, captcha ou
+échec → la fenêtre s'affiche (repli A) ; case « les obtenir tout seul » (par profil, 1 fois par jour, désactivée par
+défaut). **Pas encore essayé en vrai** (compte Epic de Seb). Reste : Prime Gaming, GOG (mêmes principes).
+
+**Menu « Importer » comme LaunchBox (Seb, 02/10, capture)** : la MÊME liste : Fichiers ROM (sous-menu), Jeux MS-DOS,
+MAME Arcade Full Set, Amazon Games, EA, Jeux Epic Games, Jeux GOG, Jeux Steam, Uplay/Ubisoft Connect, Jeux Windows,
+Jeux Xbox/Microsoft Store, Ajouter un jeu manuellement, Installer un jeu DOS. **Le regroupement par GOG Galaxy** (une
+boutique reliée dans Galaxy arrive par Galaxy) doit être **expliqué** : dans l'aide, dans la fenêtre d'import de chaque
+boutique, et dans les Options (partie « lier les comptes »).
 
 **✅ Accord de Seb (02/10)** : Frogtend peut LIRE (lecture seule) les fichiers des lanceurs installés (GOG Galaxy, Epic,
 EA app). Ses installations sont personnalisées (GOG Galaxy dans `D:\LaunchBox\Games\GOG Galaxy`) : chercher les
