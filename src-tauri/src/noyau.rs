@@ -852,6 +852,39 @@ mod tests {
     /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_miniatures -- --ignored --nocapture`
     #[tokio::test]
     #[ignore]
+    async fn essai_contrat_13_14_sur_firehouse() {
+        // LECTURE SEULE : les routes des besoins 13 et 14 (Firehouse 2.26.0). Rien n'est téléchargé ni installé.
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton pour ce profil");
+        let s = crate::source::Source::Firehouse(Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap());
+        let e = s.emulateurs("Nintendo Switch").await.unwrap();
+        for x in e["emulateurs"].as_array().cloned().unwrap_or_default() {
+            println!("Switch : {} id={} programme={} portable={} telechargement={}", x["nom"], x["id"], x["programme"], x["portable"], x["telechargement"]);
+        }
+        println!("Switch autres : {}", e["autres"].to_string().chars().take(300).collect::<String>());
+        if let crate::source::Source::Firehouse(c) = &s {
+            for id in ["ryubing", "ef_ryu", "citron_neo"] {
+                let b = c.brute(reqwest::Method::GET, &format!("/emulateurs/{id}/paquet"), None, &[]).await.unwrap();
+                println!("brut {id} : {} {}", b.statut, String::from_utf8_lossy(&b.octets).chars().take(400).collect::<String>());
+            }
+        }
+        for id in ["eden", "citron_neo", "ryubing", "xenia", "cemu"] {
+            match s.paquet_emulateur(id).await {
+                Ok(p) => println!("paquet {id} : {} {} {} octets programme={} sha={}", p["version"], p["nom_fichier"], p["taille"], p["programme"], p["sha256"]),
+                Err(err) => println!("paquet {id} : {err:?}"),
+            }
+        }
+        for jeu in [110, 111] {
+            let t = s.triches(jeu).await.unwrap();
+            println!("triches {jeu} : {} code(s), {} mod(s), note={}, page_mods={}", t["codes"].as_array().map_or(0, |l| l.len()), t["mods"].as_array().map_or(0, |l| l.len()), t["note"], t["page_mods"]);
+            for c in t["codes"].as_array().cloned().unwrap_or_default().iter().take(4) {
+                println!("   {} | {} | {} | {} | dossier={} base={} confiance={} corresp={}", c["cle"], c["emulateur"], c["titre"], c["nom_fichier"], c["dossier"], c["base"], c["confiance"], c["correspondance"]);
+            }
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
     async fn essai_assistant_sur_firehouse() {
         // UNE question, sur Dune : la forme réelle de la réponse (lot 7). Rien n'est exécuté.
         let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");

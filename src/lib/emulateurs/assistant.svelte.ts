@@ -136,7 +136,21 @@ export async function installerParFirehouse(id: string, nom: string): Promise<Em
     toast(`✅ ${nom} installé.`);
     return e;
   } catch (e) {
-    toast(`Impossible d’installer ${nom} : ${motifDuRefus(e)}`, 'erreur');
+    const motif = motifDuRefus(e);
+    // Firehouse dit parfois quelle page ouvrir (source muette, installation à la main) : on la propose.
+    const page = /https?:\/\/[^\s)»"]+/.exec(motif)?.[0];
+    if (page) {
+      const ouvrir = await confirmer(`⚠ ${nom} ne s’installe pas tout seul`, {
+        message: `${motif}\n\nOuvrir sa page officielle pour l’installer toi-même ? Ensuite, ➕ Ajouter un émulateur ▸ « Un autre émulateur… » pour montrer son programme.`,
+        libelleValider: '🌐 Ouvrir la page',
+      });
+      if (ouvrir) {
+        const { openUrl } = await import('@tauri-apps/plugin-opener');
+        await openUrl(page).catch(() => {});
+      }
+    } else {
+      toast(`Impossible d’installer ${nom} : ${motif}`, 'erreur');
+    }
     return null;
   } finally {
     arreter();

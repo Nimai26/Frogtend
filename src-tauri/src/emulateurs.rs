@@ -442,12 +442,18 @@ pub fn installer_paquet_decrit(
             }
         }
     }
+    // `programme` est un NOM d'exe (Firehouse, 02/10), parfois dans un sous-dossier versionné (« Cemu_2.6/Cemu.exe ») :
+    // on le cherche partout, le moins profond d'abord.
     if let Some(p) = programme.filter(|p| !p.is_empty() && !p.contains("..")) {
-        let chemin = dossier.join(p.replace('/', "\\"));
-        return if chemin.is_file() {
-            Ok(ProgrammeTrouve::Trouve { programme: chemin.to_string_lossy().into() })
-        } else {
-            Err(Erreur::Disque(format!("Après l'installation, {p} est introuvable dans le paquet de {nom}.")))
+        let voulu = p.rsplit(['/', '\\']).next().unwrap_or(p).to_lowercase();
+        let mut l: Vec<String> = fichiers_de(dossier)?
+            .into_iter()
+            .filter(|r| r.rsplit('/').next().unwrap_or(r).to_lowercase() == voulu)
+            .collect();
+        l.sort_by_key(|r| r.matches('/').count());
+        return match l.first() {
+            Some(r) => Ok(ProgrammeTrouve::Trouve { programme: dossier.join(r.replace('/', "\\")).to_string_lossy().into() }),
+            None => Err(Erreur::Disque(format!("Après l'installation, {p} est introuvable dans le paquet de {nom}."))),
         };
     }
     // Les petits programmes annexes ne sont pas l'émulateur.
@@ -561,6 +567,16 @@ pub fn coeur_de(ligne: &str) -> Option<String> {
     let i = args.iter().position(|a| a == "-L" || a == "--libretro")?;
     let chemin = args.get(i + 1)?;
     Some(chemin.rsplit(['\\', '/']).next()?.to_string())
+}
+
+/// Le nom d'un cœur RetroArch tel qu'il l'utilise pour ses dossiers (`corename` de `info/<cœur>.info`) : « Snes9x ».
+pub fn nom_du_coeur(retroarch: &Path, coeur: &str) -> Option<String> {
+    let base = coeur.trim_end_matches(".dll");
+    let info = std::fs::read_to_string(retroarch.join("info").join(format!("{base}.info"))).ok()?;
+    info.lines().find_map(|l| {
+        let (c, v) = l.split_once('=')?;
+        (c.trim() == "corename").then(|| v.trim().trim_matches('"').to_string()).filter(|v| !v.is_empty())
+    })
 }
 
 /// L'adresse officielle d'un cœur RetroArch (dernière version compilée pour Windows x64).
@@ -753,6 +769,10 @@ mod tests {
         let r = installer_paquet_decrit("Citron", &p, &d.path().join("Citron"), None, Some(("fichier", "portable.txt"))).unwrap();
         assert!(matches!(r, ProgrammeTrouve::Trouve { ref programme } if programme.ends_with("citron.exe")));
         assert!(d.path().join("Citron").join("portable.txt").is_file());
+        // Le programme est un NOM, cherché aussi dans un sous-dossier versionné (Cemu).
+        let p = zip("cemu.zip", &["Cemu_2.6/Cemu.exe", "Cemu_2.6/resources/x.dat", "LISEZMOI.txt"]);
+        let r = installer_paquet_decrit("Cemu", &p, &d.path().join("Cemu"), Some("Cemu.exe"), None).unwrap();
+        assert!(matches!(r, ProgrammeTrouve::Trouve { ref programme } if programme.ends_with("Cemu.exe")));
         // Plusieurs : la personne choisit.
         let p = zip("m.zip", &["a.exe", "outils/b.exe"]);
         let r = installer_paquet_decrit("Multi", &p, &d.path().join("Multi"), None, None).unwrap();
@@ -897,6 +917,15 @@ mod tests {
         assert_eq!(std::fs::read(&perso).unwrap(), b"perso");
         assert!(crate::manettes::retroarch_a_ses_profils(&ra));
         assert!(!ra.join("autoconfig.nouveau").exists());
+    }
+
+    #[test]
+    fn le_nom_d_un_coeur_se_lit_dans_son_fichier_info() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join("info")).unwrap();
+        std::fs::write(d.path().join("info").join("snes9x_libretro.info"), "display_name = \"Nintendo - SNES / SFC (Snes9x - Current)\"\ncorename = \"Snes9x\"\n").unwrap();
+        assert_eq!(nom_du_coeur(d.path(), "snes9x_libretro.dll").as_deref(), Some("Snes9x"));
+        assert_eq!(nom_du_coeur(d.path(), "absent_libretro.dll"), None);
     }
 
     #[test]

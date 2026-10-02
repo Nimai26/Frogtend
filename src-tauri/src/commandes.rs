@@ -636,7 +636,7 @@ pub async fn jeu_triches(noyau: State<'_, Noyau>, id: i64) -> Resultat<Value> {
 /// Pose un fichier de triche de Firehouse dans le dossier du profil de l'émulateur (la personne l'a demandé). Un
 /// fichier différent déjà là est d'abord copié à côté (`.avant-frogtend`). Rend le chemin écrit.
 #[tauri::command]
-pub async fn triche_installer(noyau: State<'_, Noyau>, id: i64, cle: String, programme: String) -> Resultat<String> {
+pub async fn triche_installer(noyau: State<'_, Noyau>, id: i64, cle: String, programme: String, ligne: String) -> Resultat<String> {
     let s = noyau.session().await?;
     let liste = s.source.triches(id).await?;
     let code = liste["codes"]
@@ -647,12 +647,20 @@ pub async fn triche_installer(noyau: State<'_, Noyau>, id: i64, cle: String, pro
     let nom_exe = chemin.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
     let emu = crate::emulateurs::CATALOGUE.iter().find(|f| nom_exe.starts_with(f.programme)).map(|f| f.id).unwrap_or("");
     let dossier_emu = chemin.parent().ok_or_else(|| Erreur::Disque("Programme de l'émulateur introuvable.".into()))?;
+    // RetroArch : « cheats/{coeur} » → le nom du cœur choisi pour ce jeu (corename de son fichier info).
+    let mut dossier_rel = code["dossier"].as_str().unwrap_or("").to_string();
+    if dossier_rel.contains("{coeur}") {
+        let coeur = crate::emulateurs::coeur_de(&ligne)
+            .and_then(|c| crate::emulateurs::nom_du_coeur(dossier_emu, &c))
+            .ok_or_else(|| Erreur::Refus("Le nom du cœur RetroArch de ce jeu est introuvable (fichier info du cœur absent).".into()))?;
+        dossier_rel = dossier_rel.replace("{coeur}", &coeur);
+    }
     let place = crate::emulateurs_profils::place_triche(
         emu,
         dossier_emu,
         &s.profil.nom,
         code["base"].as_str().unwrap_or("donnees"),
-        code["dossier"].as_str().unwrap_or(""),
+        &dossier_rel,
         code["nom_fichier"].as_str().ok_or_else(|| Erreur::Serveur("Firehouse n'a pas donné le nom du fichier.".into()))?,
     )?;
     let octets = s.source.fichier_triche(id, &cle).await?;

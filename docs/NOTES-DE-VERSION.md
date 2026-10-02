@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.17.1 — avec les vraies données de Firehouse
+
+- Les **triches, mods** et **émulateurs décrits par Firehouse** fonctionnent avec ses routes, en service depuis
+  Firehouse 2.26.0 : 36 000 codes (RetroArch, DuckStation, PPSSPP, PCSX2, Dolphin), 23 émulateurs, dont pour la
+  Switch **Eden**, **Citron Neo** et **Ryujinx (Ryubing)**.
+- Le programme d'un émulateur est trouvé même dans un sous-dossier de son paquet (Cemu).
+- RetroArch : les codes vont dans le dossier du cœur choisi pour le jeu.
+- Quand une source ne répond pas (Ryubing aujourd'hui), Frogtend propose d'ouvrir la page officielle pour l'installer
+  soi-même.
+- Si des codes ont été trouvés par le titre (autre région possible), Frogtend le dit et garde le nom de la base.
+
 ## 0.17.0 — triches et mods, émulateurs décrits par Firehouse (lot 8, 1re partie)
 
 - **🎯 Triches et mods**, sur la fiche d'un jeu : les codes de triche de l'émulateur du jeu, les tables Cheat Engine

@@ -38,8 +38,8 @@
     const oui = await confirmer(`🎯 Ajouter « ${c.titre} » ?`, {
       message: [
         `${c.nb_codes ?? '?'} code(s), format ${c.format}${c.source ? `, source : ${c.source}` : ''}.`,
-        c.confiance !== undefined && c.confiance < 0.8
-          ? `⚠ Correspondance incertaine avec ton jeu (${Math.round(c.confiance * 100)} %, par ${c.correspondance}).`
+        c.confiance !== undefined && c.confiance < 1
+          ? `⚠ Trouvé par ${c.correspondance === 'titre' ? 'le titre' : c.correspondance} (${Math.round(c.confiance * 100)} %) : les codes peuvent viser une autre région du jeu. Le fichier garde le nom de la base : charge-le toi-même dans le menu de l’émulateur.`
           : '',
         `Le fichier ira dans le dossier de TON profil pour ${emulateur.nom || 'l’émulateur'} ; un fichier différent déjà là est gardé à côté.`,
         'Les codes s’activent ensuite dans le menu de l’émulateur.',
@@ -50,7 +50,7 @@
     });
     if (!oui) return;
     try {
-      const ou = await api.tricheInstaller(id, c.cle, emulateur.programme);
+      const ou = await api.tricheInstaller(id, c.cle, emulateur.programme, emulateur.ligne);
       toast(`✅ Codes ajoutés : ${ou}`);
     } catch (e) {
       toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
@@ -107,9 +107,11 @@
     <p class="muted">⚠ {erreur}</p>
   {:else if !t}
     <p class="muted">Chargement…</p>
-  {:else if !t.codes.length && !t.cheat_engine.length && !t.mods.length}
+  {:else if !t.codes.length && !t.cheat_engine.length && !t.mods.length && !t.page_mods}
     <p class="muted">Firehouse ne connaît encore ni codes ni mods pour ce jeu.</p>
+    {#if t.note}<p class="muted">ℹ {t.note}</p>{/if}
   {:else}
+    {#if t.note}<p class="muted">ℹ {t.note}</p>{/if}
     <section class="cx-block">
       <h2>Codes de triche{emulateur ? ` (${emulateur.nom || 'émulateur'})` : ''}</h2>
       {#if !emulateur}
@@ -142,9 +144,12 @@
       </section>
     {/if}
 
-    {#if t.mods.length}
+    {#if t.mods.length || t.page_mods}
       <section class="cx-block">
         <h2>Mods</h2>
+        {#if t.page_mods}
+          <p><button class="btn petit" onclick={() => avantDeModder(t?.page_mods ?? undefined)}>🌐 Page des mods et correctifs (PCGamingWiki…)</button></p>
+        {/if}
         <ul>
           {#each t.mods as m, i (i)}
             <li>

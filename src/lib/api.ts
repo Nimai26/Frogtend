@@ -154,6 +154,10 @@ export interface TrichesJeu {
   cheat_engine: { titre: string; version_jeu?: string; source?: string; page?: string; fichier?: string | null }[];
   mods: { nom: string; description?: string; auteur?: string; version?: string; source?: string; page?: string; maj_le?: string }[];
   maj_le: string | null;
+  /** Ce que Firehouse ne sait pas encore fournir (par exemple les tables Cheat Engine). */
+  note?: string | null;
+  /** La page des mods du jeu (PCGamingWiki…). */
+  page_mods?: string | null;
 }
 
 export interface EmplacementPropose {
@@ -398,7 +402,8 @@ export const api = {
   emulateurInstallerFirehouse: (id: string, nom: string, dossier: string) =>
     appeler<InstallationFirehouse>('emulateur_installer_firehouse', { id, nom, dossier }),
   jeuTriches: (id: number) => appeler<TrichesJeu>('jeu_triches', { id }),
-  tricheInstaller: (id: number, cle: string, programme: string) => appeler<string>('triche_installer', { id, cle, programme }),
+  tricheInstaller: (id: number, cle: string, programme: string, ligne: string) =>
+    appeler<string>('triche_installer', { id, cle, programme, ligne }),
   jeuTailleInstallation: (id: number) => appeler<number>('jeu_taille_installation', { id }),
   jeuCopieAvantMod: (id: number) => appeler<string>('jeu_copie_avant_mod', { id }),
   retroarchEtat: (programme: string, ligne: string, bios: string[]) =>

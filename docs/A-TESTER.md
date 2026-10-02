@@ -7,13 +7,15 @@
 - [ ] Frogtend propose la mise à jour au démarrage (ou ⚙ Options ▸ À propos ▸ Chercher une mise à jour).
       **Attendu :** la version la plus récente de [NOTES-DE-VERSION.md](NOTES-DE-VERSION.md).
 
-## Triches, mods et émulateurs via Firehouse (0.17.0) — quand Firehouse servira ses nouvelles routes
-- [ ] Fiche d'un jeu ▸ **🎯 Triches et mods**. **Attendu aujourd'hui :** « Firehouse ne connaît encore ni codes ni
-      mods ». Plus tard : la liste ; « 🎯 Ajouter » pose le fichier dans le dossier de ton profil.
-- [ ] « 🌐 Voir le mod » sur un jeu installé : Frogtend propose d'abord une **copie du jeu** (taille annoncée) ; si
-      tu refuses, un avertissement.
-- [ ] Switch ▸ ➕ Ajouter un émulateur : **Ryubing** et **Citron** apparaissent (quand Firehouse les décrit),
-      « Frogtend peut l'installer ».
+## Triches, mods et émulateurs via Firehouse (0.17.1) — routes EN SERVICE (Firehouse 2.26.0)
+- [ ] Fiche de **Dune** ▸ **🎯 Triches et mods**. **Attendu :** une note (pas encore de tables Cheat Engine), et
+      **🌐 Page des mods et correctifs** (PCGamingWiki). Sur Dune installé, Frogtend propose d'abord une **copie du
+      jeu** (taille annoncée) ; si tu refuses, un avertissement.
+- [ ] Un jeu d'émulateur avec des codes (PS1, PS2, SNES…) : « 🎯 Ajouter » pose le fichier dans le dossier de ton
+      profil. Si la correspondance n'est pas sûre, Frogtend le dit (charger le fichier soi-même dans l'émulateur).
+- [ ] Switch ▸ ➕ Ajouter un émulateur : **Eden**, **Citron Neo** et **Ryujinx (Ryubing)** apparaissent.
+      **Citron Neo** s'installe tout seul (vérifié par son empreinte). **Ryubing** : sa source ne répond pas, Frogtend
+      propose d'ouvrir sa page officielle.
 
 ## Taodbox, le mode canapé (0.16.0)
 - [ ] Barre du haut ▸ **🛋 Taodbox**. **Attendu :** plein écran, tout en grand, tes jeux en grandes jaquettes.

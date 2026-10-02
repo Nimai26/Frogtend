@@ -126,6 +126,8 @@ pub fn erreur_du_statut(code: u16, corps: &[u8]) -> Erreur {
         413 => Erreur::Refus("Firehouse refuse un envoi trop gros d'un coup.".into()),
         429 => Erreur::Refus("Firehouse traite déjà une question pour toi : attends sa réponse, puis réessaie.".into()),
         503 => Erreur::Serveur("Firehouse est occupé (maintenance en cours). Réessaie dans une minute.".into()),
+        // 502 : une source extérieure ne répond pas ; Firehouse dit laquelle et, si possible, quelle page ouvrir.
+        502 => Erreur::Serveur(motif.unwrap_or_else(|| "Une source extérieure ne répond pas. Réessaie plus tard.".into())),
         507 => Erreur::Refus(
             "Ton espace de sauvegarde chez Firehouse est plein. Libère de la place ou demande plus d'espace à Seb.".into(),
         ),
@@ -335,6 +337,10 @@ mod tests {
             Erreur::Refus("grade insuffisant".into())
         );
         assert!(matches!(erreur_du_statut(502, b"<html>"), Erreur::Serveur(_)));
+        assert!(matches!(
+            erreur_du_statut(502, r#"{"detail":"la forge ne répond pas — installation manuelle : ouvrir https://ryujinx.app/download"}"#.as_bytes()),
+            Erreur::Serveur(m) if m.contains("https://ryujinx.app/download")
+        ));
         assert!(matches!(erreur_du_statut(507, b""), Erreur::Refus(m) if m.contains("plein")));
         assert!(matches!(erreur_du_statut(503, b""), Erreur::Serveur(m) if m.contains("minute")));
         assert!(matches!(erreur_du_statut(413, b""), Erreur::Refus(_)));
