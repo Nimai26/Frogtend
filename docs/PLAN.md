@@ -454,6 +454,8 @@ ouvert), double authentification à saisir. Variante Python : P-Adamiec/Free-Gam
 d'utilisation des boutiques (automatisation) — à dire à Seb. Piste Frogtend : une fenêtre WebView2 où la personne se
 connecte elle-même (pages officielles, Frogtend ne voit pas le mot de passe), puis des clics automatisés ; si un
 captcha apparaît, la fenêtre se montre. La liste des jeux offerts d'Epic est publique (sans compte).
+**Décision de Seb (02/10)** : on essaie **B (récupération automatique)** ; en cas d'échec, **A** (Frogtend montre les jeux
+offerts de la semaine et ouvre la page officielle ; la personne clique « Obtenir »).
 
 **✅ Accord de Seb (02/10)** : Frogtend peut LIRE (lecture seule) les fichiers des lanceurs installés (GOG Galaxy, Epic,
 EA app). Ses installations sont personnalisées (GOG Galaxy dans `D:\LaunchBox\Games\GOG Galaxy`) : chercher les
