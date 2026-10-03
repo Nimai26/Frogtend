@@ -653,6 +653,13 @@ content ID se lit dans les zips (ex. EP0102-**BLES01227**_00-DLCS12… = Asura's
   existant ; l'archive est GARDÉE (rien ne s'efface sans preuve). Le jeu se lance ensuite par l'image (nom gardé).
   RPCS3 lit les .iso PS3 DÉCHIFFRÉS (ajout récent de RPCS3, d'après la presse : à vérifier au premier essai) ; ceux de
   Seb le sont. Chez Seb (lecture seule) : 7 jeux PS3 reconnus (6,7 à 47 Go), aucun DLC ni avatar pris pour un jeu.
+- **✅ 0.43.1 (contrôle de sécurité et relecture, 03/10)** : 9 constats de sécurité et 17 de relecture, vérifiés
+  dans le code puis corrigés avec leurs tests (7z sans contrôle de chemin, jetons RetroAchievements dans la
+  sauvegarde et après « Oublier », chemin de triche enraciné, MAME pris pour un disque, versions perdues, .cso/.nsp
+  abîmés qui fermaient Frogtend — `panic = "abort"` en version livrée —, Eden en « / », compte RPCS3…). **Pas
+  corrigé, noté** : le cœur ne recompare pas aux réglages les dossiers que l'interface lui donne (emplacements,
+  émulateurs, outils) — défense en plus, à faire dans un lot « durcissement » ; la recherche ISO 9660 n'exige pas
+  « CD001 » (plafonnée à la place, pour ne pas risquer les empreintes déjà vérifiées chez Seb).
 - **⛔ EN PAUSE jusqu'à l'essai de Seb (décision du 03/10)** : décompresser Asura's Wrath et le lancer dans RPCS3
   (docs/A-TESTER.md, « Décompresser pour jouer »). S'il démarre : approche validée, on reprend. Si RPCS3 refuse l'.iso
   (même à jour) : extraire le contenu de l'.iso (dossier PS3_GAME) au lieu de l'.iso, une livraison de plus. En

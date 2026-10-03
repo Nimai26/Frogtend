@@ -13,6 +13,11 @@ export interface ArchiveDeJeu {
   deja: boolean;
 }
 
+/** Le dossier d'un fichier (Windows : « \ », ou « / »), pour lire la place libre. */
+export function dossierDe(chemin: string): string {
+  return chemin.replace(/[\\/][^\\/]*$/, '');
+}
+
 /** Débit prudent d'une décompression sur un disque dur (octets par seconde) : sert à annoncer une durée, pas plus. */
 const DEBIT = 100 * 1024 * 1024;
 

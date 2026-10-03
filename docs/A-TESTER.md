@@ -49,6 +49,14 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Corrections de la 0.43.1 (à voir au passage, pas d'essai spécial)
+- [ ] **⚙ Options ▸ Comptes ▸ 🏆 RetroAchievements ▸ Oublier** (sur un profil d'essai) : ensuite, dans le dossier de
+      RetroArch, `Profils\<profil>\frogtend.cfg` ne contient plus de ligne `cheevos_token`. Puis reconnecte-toi.
+- [ ] Un jeu **MAME** zippé ne propose PAS « 🗜 Décompresser pour jouer ».
+- [ ] La fenêtre de « 🗜 Décompresser pour jouer » affiche bien la **place libre** du disque.
+- [ ] Switch : après « Rendre disponible », Eden voit les contenus (les dossiers sont maintenant écrits avec des « / »
+      dans ses réglages). Le panneau les montre ✅ ensuite.
+
 ## L'aide (0.43.0)
 - [ ] **❓ Aide** : le sommaire en haut mène aux rubriques (versions, succès, DLC, jeux offerts, en jeu, Taodbox,
       rangement). Dis-moi ce qui n'est pas clair pour quelqu'un qui découvre Frogtend.

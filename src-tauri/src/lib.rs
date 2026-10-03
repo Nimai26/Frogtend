@@ -174,15 +174,21 @@ pub fn run() {
                 .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?;
             // Règle « pas de pieuvre » (0.30.0) : les médias gardés dans les données de Frogtend rejoignent le dossier
             // de leur jeu (copie vérifiée). Un disque absent : ce sera pour un prochain démarrage.
-            if let Err(e) = n.migrer_medias() {
-                n.journaliser(&format!("migration des médias : {e:?}"));
-            }
             // Le dossier des abris de parties (réglage du PC) ; les abris de l'ancien emplacement y sont rangés.
             n.regler_abris(commandes::dossier_abris_regle(app.handle()));
-            if let Err(e) = n.migrer_abris() {
-                n.journaliser(&format!("migration des abris : {e:?}"));
-            }
             app.manage(n);
+            // Les rangements (copies vérifiées, disques parfois lents ou absents) se font à part : la fenêtre s'ouvre
+            // tout de suite.
+            let h = app.handle().clone();
+            std::thread::spawn(move || {
+                let n = h.state::<noyau::Noyau>();
+                if let Err(e) = n.migrer_medias() {
+                    n.journaliser(&format!("migration des médias : {e:?}"));
+                }
+                if let Err(e) = n.migrer_abris() {
+                    n.journaliser(&format!("migration des abris : {e:?}"));
+                }
+            });
             app.manage(menu_jeu::MenuJeu::default());
             // La touche du menu en jeu (armée seulement pendant une partie) ouvre le menu par-dessus le jeu.
             app.handle().plugin(

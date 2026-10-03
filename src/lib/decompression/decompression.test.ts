@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { dureeEstimee, messageConfirmation } from './decompression';
+import { dossierDe, dureeEstimee, messageConfirmation } from './decompression';
 
 const Go = 1024 ** 3;
 
 describe('décompresser pour jouer', () => {
+  it('trouve le dossier d’une archive, chemin Windows compris', () => {
+    expect(dossierDe('E:\\Games\\Playstation 3\\Jeu.zip')).toBe('E:\\Games\\Playstation 3');
+    expect(dossierDe('E:/Games/Jeu.zip')).toBe('E:/Games');
+  });
+
   it('annonce une durée lisible', () => {
     expect(dureeEstimee(10 * 1024 ** 2)).toBe('moins d’une minute');
     expect(dureeEstimee(6.7 * Go)).toBe('environ 1 minute');
@@ -14,10 +19,10 @@ describe('décompresser pour jouer', () => {
 
   it('dit la taille, le dossier, la place et que l’archive est gardée', () => {
     const m = messageConfirmation(
-      { archive: 'E:\PS3\Jeu.zip', fichiers: 2, taille: 47 * Go, principal: 'Jeu.iso', destination: 'E:\PS3\Jeu', deja: false },
+      { archive: 'E:\\PS3\\Jeu.zip', fichiers: 2, taille: 47 * Go, principal: 'Jeu.iso', destination: 'E:\\PS3\\Jeu', deja: false },
       200 * Go,
     );
-    expect(m).toContain('E:\PS3\Jeu');
+    expect(m).toContain('Dossier : E:\\PS3\\Jeu');
     expect(m).toContain('2 fichiers');
     expect(m).toContain('L’archive est gardée');
     expect(m).toContain('Place libre');

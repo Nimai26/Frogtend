@@ -72,7 +72,10 @@ fn mettre_a_l_abri(emulateur: &Path, fichier: &Path) -> Resultat<()> {
         return Ok(());
     }
     let jour = crate::noyau::maintenant().parse::<u64>().unwrap_or(0) / 86_400;
-    let relatif = fichier.strip_prefix(emulateur).unwrap_or(fichier);
+    // Hors du dossier de l'émulateur, la « copie » serait le fichier lui-même : on refuse plutôt que d'écrire sans abri.
+    let relatif = fichier
+        .strip_prefix(emulateur)
+        .map_err(|_| Erreur::Refus(format!("{} n'est pas dans le dossier de l'émulateur : pas touché.", fichier.display())))?;
     let copie = emulateur.join(".frogtend-sauvegardes").join(format!("jour-{jour}")).join(relatif);
     if !copie.exists() {
         if let Some(p) = copie.parent() {
@@ -190,9 +193,18 @@ pub fn regler_succes(id: &str, emulateur: &Path, profil: &str, compte: Option<(&
             let avant = std::fs::read_to_string(&secrets).unwrap_or_default();
             let apres = ecrire_ini(&avant, "Achievements", &[("Token", vec![jeton.into()])]);
             if apres != avant {
+                // La connexion faite dans PCSX2 AVANT Frogtend (pas de marque « .cheevos-pcsx2 ») est copiée à l'abri,
+                // dans le dossier de l'émulateur (jamais sauvegardé chez Firehouse), avant d'être remplacée. Celles
+                // posées ensuite par Frogtend ne sont pas copiées : un profil qui oublie son compte ne doit rien laisser.
+                if !emulateur.join("Profils").join(".cheevos-pcsx2").exists() {
+                    mettre_a_l_abri(emulateur, &secrets)?;
+                }
                 std::fs::create_dir_all(emulateur.join("inis"))?;
                 std::fs::write(&secrets, apres)?;
             }
+            // Le profil dont la connexion est en place (pour l'oublier si ce profil oublie son compte).
+            creer(&[&emulateur.join("Profils")])?;
+            std::fs::write(emulateur.join("Profils").join(".cheevos-pcsx2"), profil)?;
         }
         "duckstation" => {
             let ini = emulateur.join("settings.ini");
@@ -230,6 +242,52 @@ pub fn regler_succes(id: &str, emulateur: &Path, profil: &str, compte: Option<(&
             std::fs::write(&dernier, profil)?;
         }
         _ => {}
+    }
+    Ok(())
+}
+
+/// Les fichiers d'un profil d'émulateur qui portent une connexion RetroAchievements (jeton) : ils restent sur ce PC et
+/// ne partent JAMAIS dans la sauvegarde chez Firehouse. `relatif` : chemin sous `<émulateur>\Profils\<profil>`.
+pub fn porte_un_secret(relatif: &str) -> bool {
+    let r = relatif.replace('\\', "/").to_lowercase();
+    r == "frogtend.cfg" || r == "cheevos-duckstation.json" || r.ends_with("config/retroachievements.ini")
+}
+
+/// Un profil oublie son compte RetroAchievements (ou est supprimé) : sa connexion est retirée de cet émulateur.
+/// Ne touche que ce que Frogtend a écrit pour CE profil (fichiers de son dossier, ou connexion posée pour lui).
+pub fn oublier_succes(emulateur: &Path, profil: &str) -> Resultat<()> {
+    let p = dossier_du_profil(emulateur, profil);
+    // RetroArch : le fichier du profil, régénéré à chaque partie ; on y retire les lignes « cheevos_ ».
+    let cfg = p.join("frogtend.cfg");
+    if let Ok(texte) = std::fs::read_to_string(&cfg) {
+        let garde: String = texte.lines().filter(|l| !l.trim_start().starts_with("cheevos_")).map(|l| format!("{l}\n")).collect();
+        std::fs::write(&cfg, garde)?;
+    }
+    // DuckStation : la connexion gardée pour ce profil (fichier écrit par Frogtend).
+    let gardee = p.join("cheevos-duckstation.json");
+    if gardee.is_file() {
+        std::fs::remove_file(&gardee)?;
+    }
+    let dernier = |nom: &str| std::fs::read_to_string(emulateur.join("Profils").join(nom)).is_ok_and(|d| d.trim() == profil);
+    let vide = |cles: &[&'static str]| cles.iter().map(|c| (*c, vec![String::new()])).collect::<Vec<_>>();
+    // DuckStation : la connexion en place, si c'est celle de ce profil (dernier à avoir joué).
+    // Écrit directement (sans copie à l'abri, qui garderait le jeton) : seule la section [Cheevos] change.
+    let ini = emulateur.join("settings.ini");
+    if dernier(".cheevos-dernier") && ini.is_file() {
+        let mut v = vide(&["Username", "Token", "LoginTimestamp"]);
+        v.push(("Enabled", vec!["false".into()]));
+        let avant = std::fs::read_to_string(&ini)?;
+        std::fs::write(&ini, ecrire_ini(&avant, "Cheevos", &v))?;
+    }
+    // PCSX2 : la connexion en place, si Frogtend l'a posée pour ce profil.
+    let secrets = emulateur.join("inis").join("secrets.ini");
+    if dernier(".cheevos-pcsx2") && secrets.is_file() {
+        let avant = std::fs::read_to_string(&secrets)?;
+        std::fs::write(&secrets, ecrire_ini(&avant, "Achievements", &vide(&["Token"])))?;
+        let ini = emulateur.join("inis").join("PCSX2.ini");
+        if ini.is_file() {
+            modifier_ini(emulateur, &ini, "Achievements", &[("Enabled", vec!["false".into()]), ("Username", vec![String::new()])])?;
+        }
     }
     Ok(())
 }
@@ -387,16 +445,21 @@ pub fn dossier_donnees(id: &str, emulateur: &Path, profil: &str) -> PathBuf {
 /// Où poser un fichier de triche : `base` (`donnees` | `programme`), `dossier` relatif (« / »), `nom_fichier`.
 /// Refuse tout chemin qui sortirait du dossier de l'émulateur.
 pub fn place_triche(id: &str, emulateur: &Path, profil: &str, base: &str, dossier: &str, nom_fichier: &str) -> Resultat<PathBuf> {
-    let sur = |s: &str| !s.split(['/', '\\']).any(|x| x == ".." || x.contains(':'));
+    // Un chemin enraciné (« \Windows ») remplacerait tout le chemin au `join` : refusé comme « .. » et « C: ».
+    let sur = |s: &str| !s.starts_with(['/', '\\']) && !s.split(['/', '\\']).any(|x| x == ".." || x.contains(':'));
     if nom_fichier.is_empty() || nom_fichier.contains(['/', '\\', ':']) || nom_fichier.starts_with('.') || !sur(dossier) {
         return Err(Erreur::Refus("Emplacement de triche douteux : refusé.".into()));
     }
     let racine = if base == "programme" { emulateur.to_path_buf() } else { dossier_donnees(id, emulateur, profil) };
-    let mut c = racine;
-    for morceau in dossier.split('/').filter(|m| !m.is_empty()) {
+    let mut c = racine.clone();
+    for morceau in dossier.split(['/', '\\']).filter(|m| !m.is_empty()) {
         c = c.join(morceau);
     }
-    Ok(c.join(nom_fichier))
+    let c = c.join(nom_fichier);
+    if !c.starts_with(&racine) {
+        return Err(Erreur::Refus("Emplacement de triche douteux : refusé.".into()));
+    }
+    Ok(c)
 }
 
 /// Le nom du profil d'après son dossier (`…\Profils\<nom>`).
@@ -410,6 +473,15 @@ pub fn valeur_toml(texte: &str, section: &str, cle: &str) -> Option<String> {
     let v = v.trim();
     let v = v.strip_prefix('\'').and_then(|x| x.strip_suffix('\'')).or_else(|| v.strip_prefix('"').and_then(|x| x.strip_suffix('"'))).unwrap_or(v);
     Some(v.replace("\\\\", "\\")).filter(|s| !s.is_empty())
+}
+
+/// Le compte RPCS3 d'un profil s'il existe déjà, sans rien créer.
+pub fn compte_rpcs3_existant(emulateur: &Path, profil: &str) -> Option<String> {
+    std::fs::read_dir(emulateur.join("dev_hdd0").join("home")).ok()?.flatten().find_map(|e| {
+        let id = e.file_name().to_string_lossy().to_string();
+        let ok = id.len() == 8 && id.chars().all(|c| c.is_ascii_digit());
+        (ok && std::fs::read_to_string(e.path().join("localusername")).is_ok_and(|n| n.trim() == profil)).then_some(id)
+    })
 }
 
 /// Le compte RPCS3 d'un profil (`dev_hdd0\home\<8 chiffres>\localusername` = nom du profil) : retrouvé, ou créé
@@ -547,6 +619,52 @@ mod tests {
     }
 
     #[test]
+    fn la_connexion_faite_avant_frogtend_est_gardee_et_un_compte_oublie_ne_laisse_rien() {
+        let d = tempfile::tempdir().unwrap();
+        let e = d.path();
+        // Seb s'était connecté dans PCSX2 avant Frogtend : sa connexion est copiée à l'abri avant d'être remplacée.
+        std::fs::create_dir_all(e.join("inis")).unwrap();
+        std::fs::write(e.join("inis").join("secrets.ini"), "[Achievements]\r\nToken = AVANT-FROGTEND\r\n").unwrap();
+        regler_succes("pcsx2", e, "Lea", Some(("LeaRA", "JETON-LEA"))).unwrap();
+        let abri = std::fs::read_dir(e.join(".frogtend-sauvegardes")).unwrap().next().unwrap().unwrap().path();
+        assert!(std::fs::read_to_string(abri.join("inis").join("secrets.ini")).unwrap().contains("AVANT-FROGTEND"));
+        // Le jeton posé par Frogtend n'est jamais copié à l'abri.
+        regler_succes("pcsx2", e, "Seb", Some(("SebRA", "JETON-SEB"))).unwrap();
+        assert!(!std::fs::read_to_string(abri.join("inis").join("secrets.ini")).unwrap().contains("JETON-LEA"));
+
+        // Seb oublie son compte : sa connexion part de PCSX2, de RetroArch et de DuckStation.
+        preparer("retroarch", e, "Seb", &[], &Manette::Clavier).unwrap();
+        regler_succes("retroarch", e, "Seb", Some(("SebRA", "JETON-SEB"))).unwrap();
+        regler_succes("duckstation", e, "Seb", Some(("SebRA", ""))).unwrap();
+        let ini = e.join("settings.ini");
+        let t = std::fs::read_to_string(&ini).unwrap();
+        std::fs::write(&ini, ecrire_ini(&t, "Cheevos", &[("Token", vec!["CHIFFRE-SEB".into()])])).unwrap();
+        regler_succes("duckstation", e, "Lea", None).unwrap(); // garde la connexion de Seb dans son dossier
+        let p = dossier_du_profil(e, "Seb");
+        assert!(p.join("cheevos-duckstation.json").is_file());
+        regler_succes("duckstation", e, "Seb", Some(("SebRA", ""))).unwrap();
+        oublier_succes(e, "Seb").unwrap();
+        assert!(!std::fs::read_to_string(e.join("inis").join("secrets.ini")).unwrap().contains("JETON-SEB"));
+        assert!(!std::fs::read_to_string(p.join("frogtend.cfg")).unwrap().contains("JETON-SEB"));
+        assert!(!p.join("cheevos-duckstation.json").exists());
+        assert!(!std::fs::read_to_string(&ini).unwrap().contains("CHIFFRE-SEB"));
+
+        // La connexion d'un autre profil n'est pas touchée quand Léa oublie le sien.
+        regler_succes("pcsx2", e, "Seb", Some(("SebRA", "JETON-SEB"))).unwrap();
+        oublier_succes(e, "Lea").unwrap();
+        assert!(std::fs::read_to_string(e.join("inis").join("secrets.ini")).unwrap().contains("JETON-SEB"));
+    }
+
+    #[test]
+    fn la_sauvegarde_n_emporte_pas_les_connexions() {
+        assert!(porte_un_secret("frogtend.cfg"));
+        assert!(porte_un_secret("cheevos-duckstation.json"));
+        assert!(porte_un_secret("User\\Config\\RetroAchievements.ini"));
+        assert!(!porte_un_secret("saves/Mario.srm"));
+        assert!(!porte_un_secret("memcards/Mcd001.ps2"));
+    }
+
+    #[test]
     fn retroarch_recoit_un_fichier_de_reglages_par_profil() {
         let d = tempfile::tempdir().unwrap();
         let args = preparer("retroarch", d.path(), "Sebastien", &["E:\\Jeux\\SNES".into()], &Manette::Auto(None)).unwrap();
@@ -604,6 +722,14 @@ mod tests {
         assert_eq!(l, vec!["--user-id", "00000003"]);
         assert_eq!(preparer("rpcs3", racine, "Seb", &[], &Manette::Auto(None)).unwrap(), s);
         assert_eq!(std::fs::read_to_string(racine.join("dev_hdd0/home/00000003/localusername")).unwrap(), "Léa");
+        // Regarder n'écrit rien : un compte qui n'existe pas n'est pas créé.
+        assert_eq!(compte_rpcs3_existant(racine, "Léa").as_deref(), Some("00000003"));
+        assert_eq!(compte_rpcs3_existant(racine, "Papa"), None);
+        assert!(!racine.join("dev_hdd0/home/00000004").exists());
+        // Le même compte que celui du lancement, même pour un nom qui n'est pas un nom de dossier valable.
+        let nom = "Papa ?";
+        let lance = preparer("rpcs3", racine, nom, &[], &Manette::Auto(None)).unwrap();
+        assert_eq!(compte_rpcs3_existant(racine, &crate::jeux_pc::nom_de_dossier(nom)).as_deref(), Some(lance[1].as_str()));
 
         // xemu : réglages et disque dur copiés pour le profil.
         let disque = racine.join("system").join("xbox_hdd.qcow2");
@@ -640,6 +766,9 @@ mod tests {
         assert!(place_triche("pcsx2", e, "Seb", "donnees", "../../Windows", "x.pnach").is_err());
         assert!(place_triche("pcsx2", e, "Seb", "donnees", "cheats", "..\\x.pnach").is_err());
         assert!(place_triche("pcsx2", e, "Seb", "donnees", "C:/Windows", "x.pnach").is_err());
+        assert!(place_triche("pcsx2", e, "Seb", "donnees", "\\Windows\\System32", "x.pnach").is_err(), "chemin enraciné");
+        assert!(place_triche("pcsx2", e, "Seb", "donnees", "/Windows", "x.pnach").is_err());
+        assert!(place_triche("pcsx2", e, "Seb", "donnees", "cheats\\sous", "x.pnach").unwrap().ends_with("cheats/sous/x.pnach"));
     }
 
     #[test]

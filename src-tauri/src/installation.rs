@@ -212,9 +212,32 @@ pub fn decompresser(archive: &Path, format: Format, destination: &Path) -> Resul
             Ok(n)
         }
         Format::SeptZip => {
-            sevenz_rust::decompress_file(archive, destination)
+            // Pas `sevenz_rust::decompress_file` : il écrit chaque entrée là où son nom le dit, même « .. » ou « C:… ».
+            // Chaque chemin est contrôlé ; un chemin dangereux fait refuser TOUTE l'archive (sauter une entrée d'un
+            // bloc 7z compact abîmerait les suivantes).
+            let mut r = sevenz_rust::SevenZReader::open(archive, sevenz_rust::Password::empty())
                 .map_err(|e| Erreur::Disque(format!("Archive 7z illisible ({e}).")))?;
-            Ok(fichiers_de(destination)?.len())
+            if let Some(e) = r.archive().files.iter().find(|e| crate::decompression::chemin_sur(e.name()).is_none()) {
+                return Err(Erreur::Refus(format!("L'archive contient un chemin dangereux ({}) : refusée.", e.name())));
+            }
+            let mut n = 0;
+            r.for_each_entries(|e, flux| {
+                let Some(nom) = crate::decompression::chemin_sur(e.name()) else { return Ok(true) };
+                let cible = destination.join(nom);
+                if e.is_directory() {
+                    std::fs::create_dir_all(&cible).map_err(sevenz_rust::Error::io)?;
+                } else {
+                    if let Some(p) = cible.parent() {
+                        std::fs::create_dir_all(p).map_err(sevenz_rust::Error::io)?;
+                    }
+                    let mut sortie = std::fs::File::create(&cible).map_err(sevenz_rust::Error::io)?;
+                    std::io::copy(flux, &mut sortie).map_err(sevenz_rust::Error::io)?;
+                    n += 1;
+                }
+                Ok(true)
+            })
+            .map_err(|e| Erreur::Disque(format!("Archive 7z illisible ({e}).")))?;
+            Ok(n)
         }
         Format::Rar => Err(Erreur::Refus(
             "Frogtend ne sait pas encore ouvrir les archives RAR : ouvre-la avec 7-Zip dans le dossier du jeu.".into(),
@@ -470,6 +493,33 @@ mod tests {
         assert_eq!(decompresser(&archive, Format::Zip, &dest).unwrap(), 1);
         assert_eq!(std::fs::read(dest.join("JEU").join("DUNE.BAT")).unwrap(), b"dune.exe");
         assert!(!d.path().join("dehors.txt").exists(), "un chemin « ../ » est ignoré");
+    }
+
+    #[test]
+    fn un_7z_se_decompresse_et_refuse_les_chemins_dangereux() {
+        let d = tempfile::tempdir().unwrap();
+        let archive = d.path().join("jeu.7z");
+        let ecrire_7z = |noms: &[&str]| {
+            let mut w = sevenz_rust::SevenZWriter::create(&archive).unwrap();
+            for nom in noms {
+                let mut e = sevenz_rust::SevenZArchiveEntry::new();
+                e.name = nom.to_string();
+                e.has_stream = true;
+                w.push_archive_entry(e, Some(&b"contenu"[..])).unwrap();
+            }
+            w.finish().unwrap();
+        };
+        ecrire_7z(&["JEU/DUNE.BAT", "JEU/DUNE.EXE"]);
+        let dest = d.path().join("Jeu");
+        assert_eq!(decompresser(&archive, Format::SeptZip, &dest).unwrap(), 2);
+        assert_eq!(std::fs::read(dest.join("JEU").join("DUNE.BAT")).unwrap(), b"contenu");
+        for piege in ["../dehors.txt", "C:/dehors.txt", "/dehors.txt"] {
+            ecrire_7z(&["JEU/DUNE.BAT", piege]);
+            let dest = d.path().join("Piege");
+            assert!(matches!(decompresser(&archive, Format::SeptZip, &dest), Err(Erreur::Refus(_))), "{piege}");
+            assert!(!d.path().join("dehors.txt").exists());
+            assert!(!dest.join("JEU").exists(), "rien n'est écrit d'une archive refusée");
+        }
     }
 
     #[test]

@@ -35,13 +35,16 @@ pub(crate) fn dossier_abris_regle(app: &AppHandle) -> Option<std::path::PathBuf>
 /// Le dossier des abris de parties vient d'être réglé : le noyau l'utilise, et y range les abris de l'ancien
 /// emplacement (copie vérifiée). Rend le nombre d'abris rangés.
 #[tauri::command]
-pub fn abris_regler(noyau: State<'_, Noyau>, dossier: String) -> Resultat<usize> {
+pub async fn abris_regler(app: AppHandle, noyau: State<'_, Noyau>, dossier: String) -> Resultat<usize> {
     let d = std::path::PathBuf::from(dossier.trim());
     if !dossier.trim().is_empty() {
         std::fs::create_dir_all(&d)?;
     }
     noyau.regler_abris(Some(d));
-    noyau.migrer_abris()
+    // La copie (parfois des Go) se fait à part : la fenêtre ne se fige pas.
+    tauri::async_runtime::spawn_blocking(move || app.state::<Noyau>().migrer_abris())
+        .await
+        .map_err(|_| Erreur::Disque("Le rangement des abris s'est arrêté brutalement.".into()))?
 }
 
 #[derive(Serialize)]
@@ -148,8 +151,12 @@ pub async fn profil_renommer(noyau: State<'_, Noyau>, nom: String) -> Resultat<P
 }
 
 #[tauri::command]
-pub async fn profil_supprimer(noyau: State<'_, Noyau>, id: String, pin: Option<String>) -> Resultat<()> {
-    noyau.supprimer_profil(&id, pin.as_deref()).await
+pub async fn profil_supprimer(app: AppHandle, noyau: State<'_, Noyau>, id: String, pin: Option<String>) -> Resultat<()> {
+    let nom = noyau.profils.trouver(&id)?.nom;
+    noyau.supprimer_profil(&id, pin.as_deref()).await?;
+    // Sa connexion RetroAchievements ne reste pas dans les émulateurs.
+    oublier_succes_partout(&app, &noyau, &nom);
+    Ok(())
 }
 
 #[derive(Clone, Serialize)]
@@ -359,15 +366,18 @@ async fn contexte_contenus(
     app: &AppHandle,
     noyau: &Noyau,
     id: i64,
-) -> Resultat<Option<(std::path::PathBuf, String, Option<String>, Vec<crate::contenus::Contenu>)>> {
+) -> Resultat<Option<(std::path::PathBuf, Option<String>, Option<String>, Vec<crate::contenus::Contenu>)>> {
     let p = profil_ouvert(noyau).await?;
-    let j = noyau.registre().jeu(id)?.ok_or_else(|| Erreur::Introuvable("Ce jeu n'est pas sur ce PC.".into()))?;
+    // Seulement un jeu que ce profil voit (comme partout ailleurs).
+    let j = noyau.jeu_visible(id).await?;
     if crate::succes::console_de(&j.plateforme) != Some(82) {
         return Ok(None);
     }
     let Some((programme, _)) = emulateur_regle(app, &j.plateforme, id, None) else { return Err(Erreur::Reglage("Aucun RPCS3 réglé pour la PS3.".into())) };
     let rpcs3 = std::path::Path::new(&programme).parent().map(std::path::PathBuf::from).unwrap_or_default();
-    let compte = crate::emulateurs_profils::compte_rpcs3(&rpcs3, &p.nom)?;
+    // Le compte RPCS3 de ce profil, s'il existe déjà (créé seulement quand on installe : regarder n'écrit rien). Même
+    // nom que celui du lancement (nom de dossier du profil).
+    let compte = crate::emulateurs_profils::compte_rpcs3_existant(&rpcs3, &crate::jeux_pc::nom_de_dossier(&p.nom));
     // Où chercher : le dossier du jeu, son installation, et les emplacements de la PS3.
     let mut dossiers: Vec<std::path::PathBuf> = vec![std::path::PathBuf::from(&j.dossier)];
     let mut fichier_du_jeu = None;
@@ -398,7 +408,7 @@ async fn contexte_contenus(
 
 /// Switch : les mises à jour et DLC d'un jeu trouvés sur ce PC, et l'Eden qui les lira.
 async fn contexte_switch(app: &AppHandle, noyau: &Noyau, id: i64) -> Resultat<Option<(std::path::PathBuf, Vec<crate::contenus::ContenuSwitch>)>> {
-    let j = noyau.registre().jeu(id)?.ok_or_else(|| Erreur::Introuvable("Ce jeu n'est pas sur ce PC.".into()))?;
+    let j = noyau.jeu_visible(id).await?;
     if !j.plateforme.eq_ignore_ascii_case("Nintendo Switch") {
         return Ok(None);
     }
@@ -433,7 +443,7 @@ async fn contexte_switch(app: &AppHandle, noyau: &Noyau, id: i64) -> Resultat<Op
 pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<ContenusDuJeu> {
     // Wii U : un .wua contient déjà ses mises à jour et DLC (Cemu les lit) : on les montre, rien à installer.
     // Lu à part : un `if let` garderait le verrou du registre pendant les attentes qui suivent.
-    let jeu = noyau.registre().jeu(id)?;
+    let jeu = Some(noyau.jeu_visible(id).await?);
     if let Some(j) = jeu.filter(|j| j.plateforme.eq_ignore_ascii_case("Nintendo Wii U")) {
         let wua = j.installation.as_ref().and_then(|i| i.fichier_du_jeu.as_ref().map(|f| std::path::Path::new(&i.dossier).join(f)));
         let Some(wua) = wua.filter(|w| w.extension().is_some_and(|e| e.eq_ignore_ascii_case("wua"))) else {
@@ -473,7 +483,7 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
                     .into_iter()
                     .map(|c| {
                         let d = parent(&c.chemin);
-                        ContenuVu { installe: lus.iter().any(|x| x.eq_ignore_ascii_case(&d)), licence: false, id: c.id, nom: c.nom, genre: c.genre, taille: c.taille, dossier: Some(d) }
+                        ContenuVu { installe: lus.iter().any(|x| crate::contenus::meme_dossier(x, &d)), licence: false, id: c.id, nom: c.nom, genre: c.genre, taille: c.taille, dossier: Some(d) }
                     })
                     .collect(),
             });
@@ -496,7 +506,7 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
         contenus: contenus
             .into_iter()
             .map(|c| ContenuVu {
-                installe: faits.contains(&c.id) && (c.rap.is_none() || crate::contenus::licence_posee(&rpcs3, &compte, &c.id)),
+                installe: faits.contains(&c.id) && (c.rap.is_none() || compte.as_deref().is_some_and(|k| crate::contenus::licence_posee(&rpcs3, k, &c.id))),
                 licence: c.rap.is_some(),
                 id: c.id,
                 nom: c.nom,
@@ -580,12 +590,15 @@ pub async fn contenus_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64
         // Vérifier le résultat : les dossiers sont bien dans la liste relue.
         let relus = crate::contenus::dossiers_externes_eden(&std::fs::read_to_string(&ini).unwrap_or_default());
         let manquants: Vec<(String, String)> =
-            dossiers.iter().filter(|d| !relus.iter().any(|r| r.eq_ignore_ascii_case(d))).map(|d| (d.clone(), "pas enregistré dans Eden".to_string())).collect();
+            dossiers.iter().filter(|d| !relus.iter().any(|r| crate::contenus::meme_dossier(r, d))).map(|d| (d.clone(), "pas enregistré dans Eden".to_string())).collect();
         noyau.journaliser(&format!("contenus Switch : {} dossier(s) ajouté(s) à Eden", dossiers.len() - manquants.len()));
         return Ok(BilanContenus { installes: l.iter().filter(|c| choisis.contains(&c.id)).count() - manquants.len().min(choisis.len()), refuses: manquants });
     }
-    let (rpcs3, compte, _, contenus) =
+    let (rpcs3, _, _, contenus) =
         contexte_contenus(&app, &noyau, id).await?.ok_or_else(|| Erreur::Refus("Ce jeu n'a pas de contenus gérés par Frogtend.".into()))?;
+    // La personne a dit oui : le compte RPCS3 de son profil est créé s'il manque (même nom qu'au lancement).
+    let p = profil_ouvert(&noyau).await?;
+    let compte = crate::emulateurs_profils::compte_rpcs3(&rpcs3, &crate::jeux_pc::nom_de_dossier(&p.nom))?;
     let programme = emulateur_regle(&app, &noyau.registre().jeu(id)?.map(|j| j.plateforme).unwrap_or_default(), id, None)
         .map(|(p, _)| std::path::PathBuf::from(p))
         .ok_or_else(|| Erreur::Reglage("Aucun RPCS3 réglé pour la PS3.".into()))?;
@@ -1064,11 +1077,23 @@ pub async fn ra_regler(noyau: State<'_, Noyau>, compte: String, cle: Option<Stri
     ra_etat(noyau).await
 }
 
+/// La connexion RetroAchievements d'un profil est retirée de tous les émulateurs réglés sur ce PC.
+fn oublier_succes_partout(app: &AppHandle, noyau: &Noyau, nom_profil: &str) {
+    for programme in programmes_emulateurs(app) {
+        let Some(dossier) = std::path::Path::new(&programme).parent() else { continue };
+        if let Err(e) = crate::emulateurs_profils::oublier_succes(dossier, nom_profil) {
+            noyau.journaliser(&format!("connexion RetroAchievements pas retirée de {} : {e:?}", dossier.display()));
+        }
+    }
+}
+
 #[tauri::command]
-pub async fn ra_oublier(noyau: State<'_, Noyau>) -> Resultat<()> {
+pub async fn ra_oublier(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<()> {
     let p = profil_ouvert(&noyau).await?;
     noyau.coffre.oublier(&crate::boutiques::nom_secret(&p.id, "retroachievements"))?;
     noyau.coffre.oublier(&crate::boutiques::nom_secret(&p.id, "retroachievements-jeton"))?;
+    // Le jeton ne reste pas non plus dans les fichiers des émulateurs.
+    oublier_succes_partout(&app, &noyau, &p.nom);
     crate::boutiques::ecrire_source(&dossier_profil_de(&noyau, &p.id), "retroachievements", None)
 }
 
@@ -1098,7 +1123,7 @@ pub struct SuccesRetro {
 #[tauri::command]
 pub async fn succes_retro(noyau: State<'_, Noyau>, id: i64) -> Resultat<SuccesRetro> {
     let p = profil_ouvert(&noyau).await?;
-    let j = noyau.registre().jeu(id)?.ok_or_else(|| Erreur::Introuvable("Ce jeu n'est pas sur ce PC.".into()))?;
+    let j = noyau.jeu_visible(id).await?;
     let Some(console) = crate::succes::console_de(&j.plateforme) else {
         return Ok(SuccesRetro { etat: "aucun".into(), ..Default::default() });
     };
@@ -1604,9 +1629,10 @@ pub async fn boutique_galaxy_importer(noyau: State<'_, Noyau>) -> Resultat<Vec<c
     let t2 = travail.clone();
     let jeux = tauri::async_runtime::spawn_blocking(move || crate::boutiques::lire_galaxy(&storage, &t2))
         .await
-        .map_err(|_| Erreur::Disque("La lecture de GOG Galaxy s'est arrêtée brutalement.".into()))??;
-    // La copie de la base ne reste pas : elle contient les données du compte.
+        .map_err(|_| Erreur::Disque("La lecture de GOG Galaxy s'est arrêtée brutalement.".into()));
+    // La copie de la base ne reste pas, même si la lecture a échoué : elle contient les données du compte.
     let _ = std::fs::remove_dir_all(&travail);
+    let jeux = jeux??;
     let c = crate::boutiques::CompteBoutique { compte: "GOG Galaxy".into(), steamid: String::new(), maj_le: crate::noyau::maintenant(), jeux };
     crate::boutiques::ecrire_source(&dossier_profil_de(&noyau, &p.id), "galaxy", Some(&c))?;
     noyau.journaliser(&format!("import GOG Galaxy : {} jeu(x) pour le profil {}", c.jeux.len(), p.id));

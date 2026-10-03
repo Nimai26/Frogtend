@@ -166,9 +166,23 @@ pub struct RomTrouvee {
     pub taille: u64,
 }
 
+/// Le texte d'une feuille (.cue, .m3u, .gdi) : UTF-8 ou ANSI (Windows-1252, accents), sans marque d'ordre d'octets.
+pub fn lire_feuille(fichier: &Path) -> Option<String> {
+    let o = std::fs::read(fichier).ok()?;
+    if o.len() > 1 << 20 {
+        return None; // une feuille fait quelques Ko : un gros fichier n'en est pas une
+    }
+    let o = o.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(&o);
+    Some(match std::str::from_utf8(o) {
+        Ok(t) => t.to_string(),
+        // ANSI : chaque octet est un caractère (assez pour retrouver les noms de fichiers).
+        Err(_) => o.iter().map(|&b| b as char).collect(),
+    })
+}
+
 /// Les fichiers qu'une liste de pistes (`.cue`, `.m3u`, `.gdi`) désigne : ils ne sont pas des jeux à part.
 fn pistes_designees(fichier: &Path) -> Vec<PathBuf> {
-    let Ok(texte) = std::fs::read_to_string(fichier) else { return vec![] };
+    let Some(texte) = lire_feuille(fichier) else { return vec![] };
     let dossier = fichier.parent().unwrap_or(Path::new("."));
     let ext = fichier.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     texte
@@ -177,7 +191,8 @@ fn pistes_designees(fichier: &Path) -> Vec<PathBuf> {
             let l = l.trim();
             match ext.as_str() {
                 // FILE "Jeu (Track 1).bin" BINARY
-                "cue" => l.strip_prefix("FILE ").or_else(|| l.strip_prefix("file ")).and_then(|r| {
+                "cue" => (l.len() > 5 && l[..5].eq_ignore_ascii_case("FILE ")).then(|| &l[5..]).and_then(|r| {
+                    let r = r.trim_start();
                     if let Some(r) = r.strip_prefix('"') { r.split('"').next() } else { r.split_whitespace().next() }
                 }),
                 // Une ligne par disque ; « # » = commentaire.
@@ -258,7 +273,14 @@ fn normaliser_chemin(p: &Path) -> PathBuf {
 pub fn a_copier(element: &Path) -> Vec<PathBuf> {
     let mut l = vec![element.to_path_buf()];
     if element.is_file() {
-        l.extend(pistes_designees(element).into_iter().filter(|p| p.is_file()));
+        // Un .m3u désigne des .cue/.gdi, qui désignent à leur tour leurs pistes : on suit les deux niveaux.
+        for p in pistes_designees(element).into_iter().filter(|p| p.is_file()) {
+            let sous = pistes_designees(&p).into_iter().filter(|q| q.is_file() && !l.contains(q)).collect::<Vec<_>>();
+            if !l.contains(&p) {
+                l.push(p);
+            }
+            l.extend(sous);
+        }
         if let (Some(dossier), Some(nom)) = (element.parent(), element.file_stem()) {
             let chd = dossier.join(nom);
             let zip = element.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip") || e.eq_ignore_ascii_case("7z"));
@@ -285,12 +307,33 @@ pub fn taille_a_copier(elements: &[PathBuf]) -> u64 {
         .sum()
 }
 
-/// Copie un fichier, vérifie sa taille ; un fichier déjà présent À LA MÊME TAILLE est gardé, un fichier différent n'est
-/// JAMAIS écrasé.
+/// Deux fichiers de même taille sont-ils les mêmes ? Comparés au début, au milieu et à la fin (64 Ko chacun) : assez pour
+/// distinguer deux ROM différentes de même taille, sans relire une image disque de 50 Go.
+fn memes_octets(a: &Path, b: &Path) -> bool {
+    use std::io::{Read, Seek, SeekFrom};
+    let (Ok(mut fa), Ok(mut fb)) = (std::fs::File::open(a), std::fs::File::open(b)) else { return false };
+    let taille = fa.metadata().map(|m| m.len()).unwrap_or(0);
+    const MORCEAU: u64 = 64 * 1024;
+    for pos in [0, (taille / 2).saturating_sub(MORCEAU / 2), taille.saturating_sub(MORCEAU)] {
+        let (mut x, mut y) = (Vec::new(), Vec::new());
+        let ok = fa.seek(SeekFrom::Start(pos)).is_ok()
+            && fb.seek(SeekFrom::Start(pos)).is_ok()
+            && (&mut fa).take(MORCEAU).read_to_end(&mut x).is_ok()
+            && (&mut fb).take(MORCEAU).read_to_end(&mut y).is_ok();
+        if !ok || x != y {
+            return false;
+        }
+    }
+    true
+}
+
+/// Copie un fichier, vérifie sa taille ; un fichier déjà présent IDENTIQUE est gardé, un fichier différent n'est
+/// JAMAIS écrasé. La copie passe par un fichier provisoire (« .frogtend-copie ») renommé à la fin : une copie
+/// interrompue ne laisse jamais un faux « déjà là ».
 fn copier_un(source: &Path, cible: &Path) -> Resultat<()> {
     let taille = std::fs::metadata(source)?.len();
     if let Ok(m) = std::fs::metadata(cible) {
-        if m.len() == taille {
+        if m.len() == taille && memes_octets(source, cible) {
             return Ok(());
         }
         return Err(Erreur::Refus(format!("{} existe déjà (différent) : Frogtend n'écrit pas par-dessus.", cible.display())));
@@ -298,10 +341,15 @@ fn copier_un(source: &Path, cible: &Path) -> Resultat<()> {
     if let Some(p) = cible.parent() {
         std::fs::create_dir_all(p)?;
     }
-    std::fs::copy(source, cible)?;
-    if std::fs::metadata(cible).map(|m| m.len()).ok() != Some(taille) {
+    let mut nom = cible.file_name().unwrap_or_default().to_os_string();
+    nom.push(".frogtend-copie");
+    let provisoire = cible.with_file_name(nom);
+    std::fs::copy(source, &provisoire)?;
+    if std::fs::metadata(&provisoire).map(|m| m.len()).ok() != Some(taille) {
+        let _ = std::fs::remove_file(&provisoire); // le nôtre, incomplet
         return Err(Erreur::Disque(format!("La copie de {} a échoué.", source.display())));
     }
+    std::fs::rename(&provisoire, cible)?;
     Ok(())
 }
 
@@ -549,6 +597,13 @@ impl crate::noyau::Noyau {
             if let Some(existant) = existant {
                 // Une autre région d'un jeu déjà là : ses versions s'ajoutent, la version par défaut ne change pas.
                 let mut i = existant.installation.clone().ok_or_else(|| Erreur::Disque("Jeu importé sans installation.".into()))?;
+                // Un jeu importé seul n'a pas de liste de versions : sa version d'origine y entre d'abord, sinon elle
+                // disparaîtrait de la liste.
+                if i.versions.is_empty() {
+                    if let Some(f) = &i.fichier_du_jeu {
+                        i.versions = en_versions(&[Path::new(&i.dossier).join(f).to_string_lossy().to_string()]);
+                    }
+                }
                 let avant = i.versions.len();
                 for v in nouvelles {
                     if !i.versions.iter().any(|x| x.chemin.eq_ignore_ascii_case(&v.chemin)) {
@@ -828,6 +883,15 @@ mod tests {
         assert_eq!(n.registre().jeu(mario).unwrap().unwrap().installation.unwrap().fichier_du_jeu.as_deref(), Some("Mario (F).nes"));
         assert!(n.choisir_version(mario, "C:\\ailleurs.nes").await.is_err());
         assert!(n.jouer(mario, None, Some("C:\\ailleurs.nes")).await.is_err());
+
+        // Zelda a été importé seul ; sa version européenne arrive : l'américaine reste dans la liste.
+        ecrire(&roms, "Zelda (E).nes", "rom");
+        let b = n.importer_locaux(&a_importer(&["Zelda (E).nes"])).await.unwrap();
+        assert_eq!(b.versions, 1);
+        let zelda = n.lister(&filtre).await.unwrap().jeux.iter().find(|j| j.titre == "Zelda").unwrap().id;
+        let i = n.registre().jeu(zelda).unwrap().unwrap().installation.unwrap();
+        assert_eq!(i.versions.len(), 2, "la version d'origine n'est pas perdue");
+        assert!(i.versions.iter().any(|v| v.chemin.ends_with("Zelda (U).nes")));
     }
 
     #[tokio::test]
@@ -869,6 +933,44 @@ mod tests {
         assert!(i.versions.iter().all(|v| !v.chemin.ends_with(".zip")), "plus de version qui pointe l'archive");
         assert!(archive.is_file(), "l'archive est gardée");
         assert!(n.remplacer_fichier(id, &archive, &iso).await.is_err(), "l'archive n'est plus celle du jeu");
+    }
+
+    #[test]
+    fn une_feuille_ansi_avec_marque_se_lit() {
+        let d = tempfile::tempdir().unwrap();
+        // ANSI (é = 0xE9), marque UTF-8 en tête, « File » en casse mêlée.
+        let mut o = vec![0xEF, 0xBB, 0xBF];
+        o.extend(b"File \"Jeu \xE9t\xE9 (Track 1).bin\" BINARY\r\n  TRACK 01 MODE1/2352\r\n");
+        std::fs::write(d.path().join("Jeu.cue"), &o).unwrap();
+        assert_eq!(pistes_designees(&d.path().join("Jeu.cue")), vec![d.path().join("Jeu été (Track 1).bin")]);
+    }
+
+    #[test]
+    fn la_copie_d_un_jeu_m3u_emporte_les_pistes_de_ses_disques() {
+        let d = tempfile::tempdir().unwrap();
+        ecrire(d.path(), "FF7.m3u", "FF7 (Disc 1).cue\nFF7 (Disc 2).cue\n");
+        ecrire(d.path(), "FF7 (Disc 1).cue", "FILE \"FF7 (Disc 1).bin\" BINARY\n");
+        ecrire(d.path(), "FF7 (Disc 2).cue", "FILE \"FF7 (Disc 2).bin\" BINARY\n");
+        ecrire(d.path(), "FF7 (Disc 1).bin", "1");
+        ecrire(d.path(), "FF7 (Disc 2).bin", "2");
+        let l = a_copier(&d.path().join("FF7.m3u"));
+        for n in ["FF7.m3u", "FF7 (Disc 1).cue", "FF7 (Disc 1).bin", "FF7 (Disc 2).cue", "FF7 (Disc 2).bin"] {
+            assert!(l.contains(&d.path().join(n)), "{n}");
+        }
+        assert_eq!(l.len(), 5);
+    }
+
+    #[test]
+    fn une_rom_de_meme_taille_mais_differente_n_est_pas_prise_pour_la_meme() {
+        let d = tempfile::tempdir().unwrap();
+        ecrire(d.path(), "USA/Tetris.gb", "AAAA");
+        ecrire(d.path(), "Europe/Tetris.gb", "BBBB");
+        let dest = d.path().join("dest");
+        copier_un(&d.path().join("USA/Tetris.gb"), &dest.join("Tetris.gb")).unwrap();
+        assert!(matches!(copier_un(&d.path().join("Europe/Tetris.gb"), &dest.join("Tetris.gb")), Err(Erreur::Refus(_))));
+        assert_eq!(std::fs::read(dest.join("Tetris.gb")).unwrap(), b"AAAA", "rien d'écrasé");
+        copier_un(&d.path().join("USA/Tetris.gb"), &dest.join("Tetris.gb")).unwrap(); // la même : gardée
+        assert!(!dest.join("Tetris.gb.frogtend-copie").exists(), "pas de fichier provisoire qui traîne");
     }
 
     #[test]

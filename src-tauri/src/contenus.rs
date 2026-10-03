@@ -251,7 +251,7 @@ pub fn id_switch(chemin: &Path) -> Option<u64> {
     let n = f.read(&mut b).ok()?;
     noms_pfs0(&b[..n]).iter().find_map(|x| {
         let r = x.strip_suffix(".tik")?;
-        (r.len() == 32).then(|| u64::from_str_radix(&r[..16], 16).ok()).flatten()
+        (r.len() == 32 && r.is_ascii()).then(|| r.get(..16).and_then(|x| u64::from_str_radix(x, 16).ok())).flatten()
     })
 }
 
@@ -325,12 +325,20 @@ pub fn dossiers_externes_eden(texte: &str) -> Vec<String> {
     (1..=n.min(256)).filter_map(|i| lire(&format!("external_content_dirs\\{i}\\path"))).filter(|v| !v.is_empty()).collect()
 }
 
-/// Ajoute des dossiers à la liste d'Eden (sans doublon), en gardant tout le reste du fichier.
+/// Deux dossiers sont-ils le même ? (Windows : sans casse ; « / » et « \ » se valent.)
+pub fn meme_dossier(a: &str, b: &str) -> bool {
+    let n = |s: &str| s.replace('\\', "/").trim_end_matches('/').to_lowercase();
+    n(a) == n(b)
+}
+
+/// Ajoute des dossiers à la liste d'Eden (sans doublon), en gardant tout le reste du fichier. Les chemins sont écrits
+/// avec des « / » : dans un fichier de réglages Qt (QSettings), « \ » est un caractère d'échappement (un dossier
+/// « D:\temp » serait relu avec une tabulation).
 pub fn ajouter_dossiers_eden(texte: &str, dossiers: &[String]) -> String {
     let mut l = dossiers_externes_eden(texte);
     for d in dossiers {
-        if !l.iter().any(|x| x.eq_ignore_ascii_case(d)) {
-            l.push(d.clone());
+        if !l.iter().any(|x| meme_dossier(x, d)) {
+            l.push(d.replace('\\', "/"));
         }
     }
     let mut valeurs: Vec<(String, Vec<String>)> = vec![("external_content_dirs\\size".into(), vec![l.len().to_string()])];
@@ -540,6 +548,27 @@ mod tests {
     }
 
     #[test]
+    fn un_nsp_au_ticket_bizarre_ne_fait_pas_fermer_frogtend() {
+        // Un nom de ticket de 32 octets dont un n'est pas ASCII, à cheval sur la coupe à 16 caractères.
+        let mut nom = vec![b'a'; 15];
+        nom.push(0xE9);
+        nom.extend([b'b'; 16]);
+        nom.extend(b".tik\0");
+        let mut o = b"PFS0".to_vec();
+        o.extend(1u32.to_le_bytes());
+        o.extend((nom.len() as u32).to_le_bytes());
+        o.extend([0u8; 4]);
+        o.extend([0u8; 16]); // position et taille du fichier
+        o.extend(0u32.to_le_bytes()); // position du nom
+        o.extend([0u8; 4]);
+        o.extend(&nom);
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("contenu.nsp");
+        std::fs::write(&f, &o).unwrap();
+        assert_eq!(id_switch(&f), None);
+    }
+
+    #[test]
     fn switch_identifiants_genres_et_jeu_de_base() {
         assert_eq!(id_switch_du_nom("Fire Emblem Three Houses [Additional Quests][010055D009F79004][US][v196608].nsp"), Some(0x010055D009F79004));
         assert_eq!(id_switch_du_nom("Dragon_Quest_Builders_2 v65536.nsp"), None);
@@ -577,7 +606,9 @@ mod tests {
         let avant = "[Paths]\r\ngamedirs\\size=1\r\nexternal_content_dirs\\size=1\r\nexternal_content_dirs\\1\\path=E:\\DLC\r\n[UI]\r\ntheme=dark\r\n";
         assert_eq!(dossiers_externes_eden(avant), ["E:\\DLC"]);
         let apres = ajouter_dossiers_eden(avant, &["D:\\Switch Maj & DLC".into(), "e:\\dlc".into()]);
-        assert_eq!(dossiers_externes_eden(&apres), ["E:\\DLC", "D:\\Switch Maj & DLC"], "sans doublon");
+        assert_eq!(dossiers_externes_eden(&apres), ["E:\\DLC", "D:/Switch Maj & DLC"], "sans doublon ; le nouveau en « / »");
+        assert!(meme_dossier("D:/Switch Maj & DLC/", "d:\\switch maj & dlc"));
+        assert!(!meme_dossier("D:/Switch", "D:/Switch2"));
         assert!(apres.contains("gamedirs\\size") && apres.contains("theme=dark"), "le reste est gardé");
     }
 

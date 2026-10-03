@@ -56,7 +56,13 @@ impl Cso {
         if taille_bloc == 0 || total == 0 {
             return Ok(None);
         }
+        // Un en-tête abîmé ne doit pas faire réserver des centaines de Go : l'index tient dans le fichier.
+        let taille_fichier = f.metadata().map(|m| m.len()).unwrap_or(0);
         let blocs = total.div_ceil(taille_bloc) + 1;
+        match blocs.checked_mul(4) {
+            Some(n) if n <= taille_fichier && taille_bloc <= 1 << 24 => {}
+            _ => return Ok(None),
+        }
         let brut = lire_a(&mut f, 24, (blocs * 4) as usize);
         let index = brut.chunks(4).map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect();
         Ok(Some(Cso { taille_bloc, align: e[21] as u32, total, index }))
@@ -72,7 +78,8 @@ impl Cso {
             let (Some(e), Some(e2)) = (self.index.get(b), self.index.get(b + 1)) else { break };
             let debut = ((e & 0x7FFF_FFFF) as u64) << self.align;
             let fin = ((e2 & 0x7FFF_FFFF) as u64) << self.align;
-            let brut = lire_a(&mut f, debut, fin.saturating_sub(debut) as usize);
+            // Un bloc compressé ne dépasse pas la taille d'un bloc (plus une marge) : un index abîmé ne réserve pas 2 Go.
+            let brut = lire_a(&mut f, debut, fin.saturating_sub(debut).min(self.taille_bloc + 1024) as usize);
             let bloc = if e & 0x8000_0000 != 0 {
                 brut
             } else {
@@ -114,7 +121,7 @@ pub struct PisteCue {
 
 /// Toutes les pistes d'une feuille .cue.
 pub fn pistes_du_cue(cue: &Path) -> Vec<PisteCue> {
-    let Ok(texte) = std::fs::read_to_string(cue) else { return vec![] };
+    let Some(texte) = crate::import_local::lire_feuille(cue) else { return vec![] };
     let dossier = cue.parent().unwrap_or(Path::new("."));
     let mut l: Vec<PisteCue> = Vec::new();
     let mut fichier: Option<PathBuf> = None;
@@ -396,8 +403,13 @@ impl Piste {
         };
         let nom = chemin.rsplit('\\').next().unwrap_or(chemin).to_uppercase();
         let mut s = secteur_dossier;
+        // Un dossier de plus de 4 096 secteurs (8 Mo) n'existe pas : un en-tête abîmé ne fait pas tourner des heures.
+        nb = nb.min(4096);
         loop {
             let b = self.lire(s, 2048)?;
+            if b.is_empty() {
+                return Ok(None); // fin du fichier
+            }
             let mut i = 0usize;
             while i < b.len() && b[i] != 0 {
                 let l = b[i] as usize;
@@ -1122,6 +1134,38 @@ mod tests {
         let p = ouvrir(&f).unwrap().unwrap();
         assert_eq!(p.lire(0, 3 * 2048).unwrap(), image, "tout, à cheval sur les blocs");
         assert_eq!(p.lire(1, 100).unwrap(), image[2048..2148].to_vec());
+    }
+
+    #[test]
+    fn un_cso_abime_ne_fait_pas_fermer_frogtend() {
+        // Un en-tête qui annonce une image de 1 Po : refusé au lieu de réserver un index de centaines de Go.
+        let d = tempfile::tempdir().unwrap();
+        let mut o = b"CISO".to_vec();
+        o.extend(24u32.to_le_bytes());
+        o.extend((1u64 << 50).to_le_bytes());
+        o.extend(2048u32.to_le_bytes());
+        o.extend([1u8, 0, 0, 0]);
+        o.extend([0u8; 64]);
+        let f = d.path().join("abime.cso");
+        std::fs::write(&f, &o).unwrap();
+        assert!(ouvrir(&f).unwrap().is_none());
+    }
+
+    #[test]
+    fn une_image_sans_iso9660_ne_fait_pas_chercher_des_heures() {
+        // Pas de « CD001 » : le secteur 16 contient n'importe quoi (dossier racine loin après la fin, longueur énorme).
+        let d = tempfile::tempdir().unwrap();
+        let mut o = vec![0u8; 17 * 2048];
+        let pvd = &mut o[16 * 2048..];
+        pvd[158..161].copy_from_slice(&[0x00, 0x01, 0x00]); // secteur 256 : après la fin du fichier
+        pvd[128..130].copy_from_slice(&1u16.to_le_bytes());
+        pvd[166..170].copy_from_slice(&u32::MAX.to_le_bytes());
+        let f = d.path().join("bizarre.iso");
+        std::fs::write(&f, &o).unwrap();
+        let p = ouvrir(&f).unwrap().unwrap();
+        let debut = std::time::Instant::now();
+        assert_eq!(p.trouver("SYSTEM.CNF").unwrap(), None);
+        assert!(debut.elapsed().as_secs() < 5, "s'arrête à la fin du fichier");
     }
 
     #[test]

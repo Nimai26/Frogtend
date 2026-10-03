@@ -481,7 +481,11 @@ fn deposer_archive(nom: &str, paquet: &Path, dossier: &Path) -> Resultat<()> {
     if !matches!(format, Format::Zip | Format::SeptZip) {
         return Err(Erreur::Refus(format!("Le paquet de {nom} n'est pas une archive attendue.")));
     }
-    let provisoire = dossier.with_extension("nouveau");
+    // Un nom sans ambiguïté (`with_extension` ferait de « Cemu_2.6 » un « Cemu_2.nouveau » qui pourrait exister) : seul
+    // un dossier à ce nom, laissé par une installation interrompue, est effacé.
+    let mut nom = dossier.file_name().unwrap_or_default().to_os_string();
+    nom.push(".frogtend-nouveau");
+    let provisoire = dossier.with_file_name(nom);
     if provisoire.exists() {
         std::fs::remove_dir_all(&provisoire)?;
     }
@@ -839,7 +843,7 @@ mod tests {
         assert!(programme.ends_with("duckstation-qt-x64-ReleaseLTCG.exe"));
         assert!(dossier.join("portable.txt").is_file(), "mode portable activé");
         assert_eq!(std::fs::read(dossier.join("settings.ini")).unwrap(), b"ma configuration", "configuration gardée");
-        assert!(!dossier.with_extension("nouveau").exists());
+        assert!(!dossier.with_file_name(format!("{}.frogtend-nouveau", dossier.file_name().unwrap().to_string_lossy())).exists());
     }
 
     #[test]

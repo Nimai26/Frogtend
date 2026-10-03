@@ -429,7 +429,8 @@ impl Noyau {
             if !du_profil.is_dir() {
                 continue;
             }
-            for r in fichiers_de(&du_profil)? {
+            // Sans les fichiers qui portent une connexion RetroAchievements (jeton) : ils restent sur ce PC.
+            for r in fichiers_de(&du_profil)?.into_iter().filter(|r| !crate::emulateurs_profils::porte_un_secret(r)) {
                 parties.push(Element { source: du_profil.join(&r), relatif: format!("emulateurs/{nom_emulateur}/{r}") });
             }
         }

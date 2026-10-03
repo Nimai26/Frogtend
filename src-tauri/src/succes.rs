@@ -128,6 +128,10 @@ pub fn empreinte_fichier(console: u32, chemin: &Path) -> Resultat<Option<String>
         return Ok(None);
     }
     if console == 18 {
+        // Un .nds zippé : l'empreinte de l'archive ne voudrait rien dire (pas vérifiable tant qu'il est zippé).
+        if chemin.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip") || e.eq_ignore_ascii_case("7z")) {
+            return Ok(None);
+        }
         return crate::disque::empreinte_nds(chemin);
     }
     if console == 27 {
@@ -466,6 +470,14 @@ pub fn lire_succes_steam(v: &Value) -> Option<(u32, u32)> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn un_jeu_ds_zippe_n_est_pas_verifiable() {
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("Mario Kart DS (Europe).zip");
+        std::fs::write(&f, b"PK\x03\x04 pas un .nds").unwrap();
+        assert_eq!(empreinte_fichier(18, &f).unwrap(), None);
+    }
 
     #[test]
     fn les_consoles_suivent_rcheevos() {

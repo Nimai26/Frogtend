@@ -1,5 +1,32 @@
 # Notes de version de Frogtend
 
+## 0.43.1 — contrôle de sécurité et corrections
+
+Une relecture complète du code (sécurité, puis les lots 0.36 à 0.43) a trouvé des défauts avant tes essais. Corrigés :
+
+- **Sécurité**
+  - Une archive .7z piégée ne peut plus écrire hors du dossier du jeu (elle est refusée entière).
+  - Ta connexion RetroAchievements ne part plus dans la sauvegarde chez Firehouse ; « Oublier ce compte » et la
+    suppression d'un profil la retirent aussi des émulateurs (RetroArch, PCSX2, DuckStation).
+  - Une connexion faite dans PCSX2 avant Frogtend est copiée à l'abri avant d'être remplacée.
+  - Une fiche de triche ne peut plus faire écrire ailleurs que dans le dossier de l'émulateur.
+  - Un profil ne peut plus lire les contenus ou succès d'un jeu qu'il ne voit pas.
+- **Décompresser pour jouer**
+  - Plus jamais proposé pour l'arcade (MAME) ni pour une cartouche zippée en .bin.
+  - La place libre s'affiche bien avant de décompresser ; les fichiers vides d'un .7z sont recréés ; les autres
+    disques d'un jeu multi-disques sont gardés.
+- **Import**
+  - Ajouter une autre région à un jeu importé seul ne fait plus disparaître sa version d'origine.
+  - Une ROM différente de même taille n'est plus prise pour la même ; une copie interrompue ne laisse plus de faux
+    « déjà là ».
+  - La copie d'un jeu multi-disques (.m3u) emporte bien toutes les pistes.
+  - Les feuilles .cue en ANSI (accents) ou avec marque UTF-8 sont lues.
+- **Stabilité** : un fichier .cso ou .nsp abîmé, ou une image disque bizarre, ne peut plus fermer Frogtend ni le
+  faire chercher des heures ; un jeu DS zippé est dit « pas vérifiable » au lieu de « pas compatible ».
+- **DLC** : les dossiers ajoutés à Eden sont écrits avec des « / » (format des réglages Qt) ; les licences PS3 vont
+  dans le même compte RPCS3 que celui du jeu, et regarder la liste ne crée plus de compte.
+- **Confort** : régler le dossier des abris et le démarrage de Frogtend ne figent plus la fenêtre pendant les copies.
+
 ## 0.43.0 — décompresser pour jouer, et une vraie page d'aide
 
 - Un jeu à disque rangé dans un **.zip** ou un **.7z** (tes jeux PS3, par exemple) : le panneau du jeu propose

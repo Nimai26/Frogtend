@@ -7,7 +7,7 @@
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { rechargerJeuxDuPc } from '$lib/ludotheque/telechargements.svelte';
-  import { messageConfirmation, type ArchiveDeJeu } from './decompression';
+  import { dossierDe, messageConfirmation, type ArchiveDeJeu } from './decompression';
 
   let { id, titre }: { id: number; titre: string } = $props();
 
@@ -24,7 +24,7 @@
     const a = archive;
     if (!a) return;
     if (!a.deja) {
-      const libre = await api.espaceLibre(a.archive.replace(/[\/][^\/]*$/, '')).catch(() => null);
+      const libre = await api.espaceLibre(dossierDe(a.archive)).catch(() => null);
       const oui = await confirmer(`🗜 Décompresser « ${titre} » pour pouvoir y jouer ?`, {
         message: messageConfirmation(a, libre),
         libelleValider: 'Décompresser',

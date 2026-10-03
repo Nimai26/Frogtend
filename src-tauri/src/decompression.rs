@@ -13,14 +13,23 @@ use serde::Serialize;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-/// Les images disque (et formats de consoles à disques) qu'un émulateur ne lit pas dans une archive.
+/// Les images disque (et formats de consoles à disques) qu'un émulateur ne lit pas dans une archive. Pas « .bin » ni
+/// « .img » seuls : ce sont aussi des ROM de cartouches (Atari 2600, Odyssey², Mega Drive…) et d'arcade, que les
+/// émulateurs lisent zippées ; ils ne comptent qu'avec la feuille qui les décrit (.cue, .ccd, .gdi).
 const EXTENSIONS_DISQUE: &[&str] = &[
-    "iso", "cue", "bin", "img", "ccd", "chd", "gdi", "cdi", "m3u", "mds", "mdf", "nrg", "rvz", "wbfs", "gcm", "gcz",
-    "ciso", "cso", "pbp", "wua", "wud", "wux", "xci", "nsp",
+    "iso", "cue", "ccd", "chd", "gdi", "cdi", "m3u", "mds", "nrg", "rvz", "wbfs", "gcm", "gcz", "ciso", "cso", "pbp",
+    "wua", "wud", "wux", "xci", "nsp",
 ];
 
 /// Ce qu'on lance, par ordre de préférence : la liste des disques, puis la description des pistes, puis l'image.
-const PRIORITE: &[&str] = &["m3u", "cue", "gdi", "ccd", "mds", "chd", "iso", "rvz", "wbfs", "gcm", "gcz", "ciso", "cso", "pbp", "wua", "wud", "wux", "xci", "nsp", "cdi", "nrg", "img", "bin"];
+const PRIORITE: &[&str] = &["m3u", "cue", "gdi", "ccd", "mds", "chd", "iso", "rvz", "wbfs", "gcm", "gcz", "ciso", "cso", "pbp", "wua", "wud", "wux", "xci", "nsp", "cdi", "nrg"];
+
+/// « Décompresser pour jouer » concerne-t-il cette plateforme ? Jamais l'arcade : MAME lit ses jeux zippés, et un
+/// dossier du nom du jeu à côté du zip serait pris pour ses CHD.
+pub fn concerne(plateforme: &str) -> bool {
+    let p = plateforme.to_lowercase();
+    crate::succes::console_de(plateforme) != Some(27) && !p.contains("arcade") && !p.contains("mame")
+}
 
 /// Une archive qui contient un jeu à décompresser.
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -50,7 +59,7 @@ fn extension(nom: &str) -> String {
 }
 
 /// Un chemin relatif sûr : pas absolu, pas de « .. », séparateur `/`.
-fn chemin_sur(nom: &str) -> Option<String> {
+pub(crate) fn chemin_sur(nom: &str) -> Option<String> {
     let n = nom.replace('\\', "/");
     let parties: Vec<&str> = n.split('/').filter(|p| !p.is_empty() && *p != ".").collect();
     if parties.is_empty() || n.starts_with('/') || parties.iter().any(|p| *p == ".." || p.contains(':')) {
@@ -85,8 +94,9 @@ fn lister(archive: &Path) -> Resultat<Vec<Entree>> {
         Some(_) => {
             let r = sevenz_rust::SevenZReader::open(archive, sevenz_rust::Password::empty())
                 .map_err(|e| Erreur::Disque(format!("Archive 7z illisible ({e}).")))?;
+            // Un fichier vide n'a pas de flux (`has_stream` faux) : il compte quand même (taille 0).
             for e in &r.archive().files {
-                if !e.is_directory() && e.has_stream() {
+                if !e.is_directory() && !e.is_anti_item() {
                     let nom = chemin_sur(e.name()).ok_or_else(|| Erreur::Refus(format!("L'archive contient un chemin dangereux : {}.", e.name())))?;
                     l.push(Entree { nom, taille: e.size() });
                 }
@@ -138,7 +148,7 @@ pub fn examiner(archive: &Path) -> Resultat<Option<ArchiveDeJeu>> {
         return Ok(None);
     }
     let entrees = lister(archive)?;
-    if !entrees.iter().any(|e| EXTENSIONS_DISQUE.contains(&extension(&e.nom).as_str()) || e.nom.to_lowercase().ends_with("eboot.bin")) {
+    if !entrees.iter().any(|e| EXTENSIONS_DISQUE.contains(&extension(&e.nom).as_str()) || e.nom.to_lowercase().ends_with("ps3_game/usrdir/eboot.bin")) {
         return Ok(None);
     }
     let Some(principal) = principal(&entrees) else { return Ok(None) };
@@ -193,7 +203,7 @@ fn extraire(archive: &Path, dossier: &Path, entrees: &[Entree], progres: &mut dy
             let mut r = sevenz_rust::SevenZReader::open(archive, sevenz_rust::Password::empty())
                 .map_err(|e| Erreur::Disque(format!("Archive 7z illisible ({e}).")))?;
             r.for_each_entries(|e, flux| {
-                if e.is_directory() || !e.has_stream() {
+                if e.is_directory() || e.is_anti_item() {
                     return Ok(true);
                 }
                 if let Some(nom) = chemin_sur(e.name()) {
@@ -211,9 +221,26 @@ fn extraire(archive: &Path, dossier: &Path, entrees: &[Entree], progres: &mut dy
     Ok(())
 }
 
+/// Les archives en cours de décompression : une deuxième demande pour la même est refusée (elle effacerait le dossier
+/// provisoire de la première).
+static EN_COURS: std::sync::LazyLock<std::sync::Mutex<std::collections::BTreeSet<PathBuf>>> = std::sync::LazyLock::new(Default::default);
+
+/// Libère l'archive à la fin, même en cas d'erreur.
+struct Jeton(PathBuf);
+impl Drop for Jeton {
+    fn drop(&mut self) {
+        EN_COURS.lock().unwrap_or_else(|e| e.into_inner()).remove(&self.0);
+    }
+}
+
 /// Décompresse l'archive à côté d'elle (voir `examiner`) et rend le chemin complet de ce qu'on lancera. `libre` : la
 /// place libre sur le disque de destination (`None` : inconnue). L'archive n'est jamais touchée.
 pub fn decompresser(archive: &Path, libre: Option<u64>, progres: &mut dyn FnMut(u64)) -> Resultat<PathBuf> {
+    let cle = PathBuf::from(archive.to_string_lossy().to_lowercase());
+    if !EN_COURS.lock().unwrap_or_else(|e| e.into_inner()).insert(cle.clone()) {
+        return Err(Erreur::Refus("Ce jeu est déjà en train d'être décompressé.".into()));
+    }
+    let _jeton = Jeton(cle);
     let a = examiner(archive)?.ok_or_else(|| Erreur::Refus("Cette archive ne contient pas de jeu à décompresser.".into()))?;
     let dest = PathBuf::from(&a.destination);
     if a.deja {
@@ -274,6 +301,16 @@ mod tests {
         let a = d.path().join("Mario (Europe).zip");
         zip(&a, &[("Mario (Europe).nes", b"NES")]);
         assert_eq!(examiner(&a).unwrap(), None);
+        // Des .bin seuls : une ROM d'arcade (MAME) ou de cartouche, pas un disque.
+        let a = d.path().join("dkong.zip");
+        zip(&a, &[("c_5et_g.bin", b"1"), ("v_5h_b.bin", b"2")]);
+        assert_eq!(examiner(&a).unwrap(), None);
+        let a = d.path().join("Pitfall (USA).7z");
+        let src = d.path().join("src");
+        std::fs::create_dir(&src).unwrap();
+        std::fs::write(src.join("Pitfall (USA).bin"), b"2600").unwrap();
+        sevenz_rust::compress_to_path(&src, &a).unwrap();
+        assert_eq!(examiner(&a).unwrap(), None);
         assert_eq!(examiner(&d.path().join("rien.iso")).unwrap(), None, "pas une archive");
     }
 
@@ -328,15 +365,38 @@ mod tests {
     }
 
     #[test]
-    fn un_7z_se_decompresse_aussi() {
+    fn un_7z_se_decompresse_aussi_avec_ses_fichiers_vides() {
         let d = tempfile::tempdir().unwrap();
         let src = d.path().join("src");
         std::fs::create_dir(&src).unwrap();
         std::fs::write(src.join("Jeu.chd"), [3u8; 300]).unwrap();
+        std::fs::write(src.join("vide.dat"), b"").unwrap();
         let a = d.path().join("Jeu.7z");
         sevenz_rust::compress_to_path(&src, &a).unwrap();
+        assert_eq!(examiner(&a).unwrap().unwrap().fichiers, 2, "le fichier vide compte");
         let p = decompresser(&a, None, &mut |_| {}).unwrap();
-        assert_eq!(std::fs::read(p).unwrap(), vec![3u8; 300]);
+        assert_eq!(std::fs::read(&p).unwrap(), vec![3u8; 300]);
+        assert!(p.with_file_name("vide.dat").is_file(), "le fichier vide est recréé");
+    }
+
+    #[test]
+    fn deux_decompressions_du_meme_jeu_ne_se_genent_pas() {
+        let d = tempfile::tempdir().unwrap();
+        let a = d.path().join("Jeu.zip");
+        zip(&a, &[("Jeu.iso", &[1u8; 10])]);
+        let cle = PathBuf::from(a.to_string_lossy().to_lowercase());
+        EN_COURS.lock().unwrap().insert(cle.clone());
+        assert!(matches!(decompresser(&a, None, &mut |_| {}), Err(Erreur::Refus(_))));
+        assert!(EN_COURS.lock().unwrap().contains(&cle), "la première garde sa place");
+        EN_COURS.lock().unwrap().remove(&cle);
+        decompresser(&a, None, &mut |_| {}).unwrap();
+        assert!(!EN_COURS.lock().unwrap().contains(&cle), "libérée à la fin");
+    }
+
+    #[test]
+    fn jamais_pour_l_arcade() {
+        assert!(!concerne("Arcade") && !concerne("MAME") && !concerne("Sega Naomi Arcade"));
+        assert!(concerne("Sony Playstation 3") && concerne("Nintendo GameCube"));
     }
 
     #[test]

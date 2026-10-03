@@ -63,7 +63,7 @@ fn fichier_principal(fichiers: &[String]) -> Option<String> {
 
 impl Noyau {
     /// Un jeu du PC, visible par le profil ouvert.
-    async fn jeu_visible(&self, id: i64) -> Resultat<JeuPc> {
+    pub(crate) async fn jeu_visible(&self, id: i64) -> Resultat<JeuPc> {
         let s = self.session().await?;
         let j = self.registre().jeu(id)?.ok_or_else(|| Erreur::Introuvable("Ce jeu n'est pas sur ce PC.".into()))?;
         if !s.verrou().contient(id)? {
@@ -239,9 +239,13 @@ impl Noyau {
         self.registre().changer_installation(id, Some(&i))
     }
 
-    /// Le fichier que l'émulateur reçoit pour ce jeu (version par défaut), s'il y en a un.
+    /// Le fichier que l'émulateur reçoit pour ce jeu (version par défaut), s'il y en a un et si « décompresser pour
+    /// jouer » concerne sa plateforme (jamais l'arcade).
     pub async fn fichier_lance(&self, id: i64) -> Resultat<Option<PathBuf>> {
         let j = self.jeu_visible(id).await?;
+        if !crate::decompression::concerne(&j.plateforme) {
+            return Ok(None);
+        }
         Ok(j.installation.filter(|i| i.lanceur.is_none()).and_then(|i| i.fichier_du_jeu.map(|f| Path::new(&i.dossier).join(f))))
     }
 
@@ -260,10 +264,17 @@ impl Noyau {
             i.fichier_du_jeu = nouveau.file_name().map(|n| n.to_string_lossy().to_string());
             change = true;
         }
-        for v in i.versions.iter_mut().filter(|v| pareil(Path::new(&v.chemin))) {
-            v.chemin = nouveau.to_string_lossy().to_string();
-            v.disques.clear();
-            change = true;
+        // Seule l'archive est remplacée : les autres disques d'un jeu multi-disques restent.
+        let n = nouveau.to_string_lossy().to_string();
+        for v in i.versions.iter_mut() {
+            if pareil(Path::new(&v.chemin)) {
+                v.chemin = n.clone();
+                change = true;
+            }
+            for d in v.disques.iter_mut().filter(|d| pareil(Path::new(d.as_str()))) {
+                *d = n.clone();
+                change = true;
+            }
         }
         if !change {
             return Err(Erreur::Refus("Cette archive n'est pas celle de ce jeu.".into()));
