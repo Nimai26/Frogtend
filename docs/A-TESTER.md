@@ -5,6 +5,8 @@
 
 ## Par où commencer (parcours conseillé, 03/10)
 Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est plus bas, dans sa section.
+0. ⛔ **L'essai qui BLOQUE la suite du travail** : décompresser **Asura's Wrath** et le lancer dans RPCS3 — section
+   « Décompresser pour jouer ». Tant qu'il n'est pas fait, le développement est en pause (décision de Seb, 03/10).
 1. **Installer la dernière version** (⚙ Options ▸ À propos ▸ Chercher une mise à jour).
 2. **⚙ Options ▸ Emplacements ▸ Les autres dossiers de Frogtend** : choisir le dossier des **abris** (ton abri de
    Dune y est rangé) et celui des **outils** — section « Pas de pieuvre ».
@@ -18,14 +20,32 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
    Prime Gaming, PlayStation et récupérer les jeux offerts.
 7. Le reste à ton rythme : Taodbox et manettes (sonde), MAME, DOS, Cheat Engine, assistant, consoles récentes.
 
-## Décompresser pour jouer (0.43.0)
+## Décompresser pour jouer (0.43.0) — ⛔ ESSAI BLOQUANT
+> **Pourquoi c'est bloquant (décision de Seb, 03/10) :** tout le travail sur la PS3 (jeux, DLC déjà livrés, succès)
+> repose sur une hypothèse : **RPCS3 démarre directement un .iso PS3 déchiffré**. La presse le dit, mais personne ne
+> l'a vu marcher chez toi. On n'avance sur rien d'autre (DLC Xbox 360 et Vita, profils de manette par jeu, manettes
+> PlayStation dans Dolphin) avant ce résultat.
+>
+> **Ce que la réponse implique :**
+> - ✅ **Le jeu démarre** : l'approche est validée. Les 6 autres jeux PS3 peuvent être décompressés (≈ 208 Go en
+>   tout : vérifier la place sur E: avant), et on reprend les lots en attente.
+> - ⚠️ **RPCS3 refuse l'.iso** : d'abord, mettre RPCS3 à jour (⚙ Options ▸ Émulateurs) — la lecture des .iso est un
+>   ajout récent. S'il refuse encore, Frogtend changera d'approche : extraire le CONTENU de l'.iso (le dossier
+>   `PS3_GAME`, format que RPCS3 lit depuis toujours) au lieu de l'.iso seul. Frogtend sait déjà lire l'intérieur d'un
+>   .iso. Ce changement prendra une livraison, et le même essai sera à refaire.
+> - ❌ **Le jeu démarre puis plante ou affiche un écran noir** : c'est un souci de RPCS3 ou de ce jeu, pas de
+>   Frogtend. Note ce que dit RPCS3 (ou envoie une capture) ; on regardera sa liste de compatibilité.
+>
+> Dans tous les cas, l'archive .zip reste intacte : rien n'est perdu, et le dossier décompressé peut être supprimé
+> par toi si l'essai échoue.
+
 - [ ] Importe tes jeux PS3 (`E:\Games\Playstation 3`, « zip ») et sélectionne **Asura's Wrath** (le plus petit :
       6,7 Go). **Attendu :** « 🗜 Ce jeu est rangé dans une archive » et le bouton **🗜 Décompresser pour jouer**.
 - [ ] Clique : la fenêtre annonce la taille, le dossier (`E:\Games\Playstation 3\Asuras Wrath (Europe)
       (EnJaFrDeEsIt)`), la place libre et la durée. Dis oui : la barre avance. **Attendu à la fin :** le message
       « est prêt », le zip toujours là, l'.iso dans le nouveau dossier.
-- [ ] **▶ Jouer** : RPCS3 démarre le jeu depuis l'.iso. Dis-moi s'il refuse (sa version est peut-être trop ancienne
-      pour les .iso : ⚙ Options ▸ Émulateurs ▸ mettre RPCS3 à jour).
+- [ ] ⛔ **▶ Jouer** : RPCS3 démarre le jeu depuis l'.iso. **Dis-moi lequel des trois cas ci-dessus tu as obtenu**
+      (démarre / refuse l'.iso / plante), avec la version de RPCS3 (affichée dans sa fenêtre).
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 

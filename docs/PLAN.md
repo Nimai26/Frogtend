@@ -653,6 +653,11 @@ content ID se lit dans les zips (ex. EP0102-**BLES01227**_00-DLCS12… = Asura's
   existant ; l'archive est GARDÉE (rien ne s'efface sans preuve). Le jeu se lance ensuite par l'image (nom gardé).
   RPCS3 lit les .iso PS3 DÉCHIFFRÉS (ajout récent de RPCS3, d'après la presse : à vérifier au premier essai) ; ceux de
   Seb le sont. Chez Seb (lecture seule) : 7 jeux PS3 reconnus (6,7 à 47 Go), aucun DLC ni avatar pris pour un jeu.
+- **⛔ EN PAUSE jusqu'à l'essai de Seb (décision du 03/10)** : décompresser Asura's Wrath et le lancer dans RPCS3
+  (docs/A-TESTER.md, « Décompresser pour jouer »). S'il démarre : approche validée, on reprend. Si RPCS3 refuse l'.iso
+  (même à jour) : extraire le contenu de l'.iso (dossier PS3_GAME) au lieu de l'.iso, une livraison de plus. En
+  attente derrière cet essai : DLC Xbox 360 (Xenia) et PS Vita (Vita3K), profils de manette par jeu, manettes
+  PlayStation dans Dolphin.
 
 **MAME vient de Firehouse (Seb, 02/10)** : ni l'émulateur MAME ni les ROM ne sont « ceux de Seb ». **Firehouse
 fournira MAME à jour (avec ses mises à jour) et les packs de ROM**, au choix **avec ou sans CHD** (les images de
