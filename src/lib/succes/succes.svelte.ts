@@ -25,7 +25,7 @@ export interface Progression {
 }
 
 export interface SuccesRetro {
-  etat: 'aucun' | 'compte' | 'pas_verifiable' | 'ok';
+  etat: 'aucun' | 'compte' | 'pas_verifiable' | 'zip' | 'ok';
   versions: { chemin: string; compatible: boolean; courante: boolean; verifiable?: boolean }[];
   jeu: Progression | null;
   compatibles: { md5: string; nom: string; etiquettes: string[] }[];
@@ -119,6 +119,8 @@ export function resumeRetro(r: SuccesRetro): { ton: 'ok' | 'alerte' | 'neutre'; 
       return null;
     case 'compte':
       return { ton: 'neutre', texte: 'Règle ton compte RetroAchievements (⚙ Options ▸ Comptes) pour voir les succès de ce jeu.' };
+    case 'zip':
+      return { ton: 'neutre', texte: 'Ta version est zippée : décompresse-la (l’émulateur en a besoin aussi) pour que Frogtend la vérifie.' };
     case 'pas_verifiable':
       return { ton: 'neutre', texte: 'Frogtend ne sait pas encore vérifier cette version pour RetroAchievements (console ou format pas encore pris en charge, comme la PS2).' };
   }

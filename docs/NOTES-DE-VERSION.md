@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.39.0 — succès : PS3, Jaguar CD et PSP compressé
+
+- RetroAchievements sait maintenant vérifier les jeux **PS3** (.iso, .chd, ou jeu en dossier), **Jaguar CD** et les
+  **PSP compressés (.cso)**.
+- Un jeu zippé trop gros pour être lu tel quel (tes .iso PS3) : Frogtend te dit de le décompresser d'abord.
+- Avec ça, toutes les consoles de RetroAchievements que tu peux avoir sont couvertes.
+
 ## 0.38.0 — succès : PS2, PSP, DS, PC Engine CD, PC-FX, Neo Geo CD
 
 - RetroAchievements sait maintenant vérifier les jeux **PlayStation 2**, **PSP**, **Nintendo DS**, **PC Engine CD**,

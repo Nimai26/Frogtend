@@ -49,6 +49,12 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Un jeu PlayStation par DuckStation : il demande de te connecter la 1re fois ; connecte-toi. Ensuite, joue avec un
       autre profil (sans compte), puis reviens au tien : **tu es toujours connecté**, l'autre profil ne l'était pas.
 
+## Succès : PS3, Jaguar CD, PSP compressé (0.39.0)
+- [ ] Un jeu PS3 de `E:\Games\Playstation 3` importé tel quel (.zip) : le panneau dit **« Ta version est zippée :
+      décompresse-la »**. Décompresse-en un (l'.iso), importe l'.iso : **🏆 RetroAchievements** dit s'il est compatible.
+      (Pour jouer, RPCS3 a besoin d'un .iso DÉCHIFFRÉ ou du dossier du jeu : dis-moi ce que contiennent tes .iso.)
+- [ ] Un PSP en .cso, ou une Jaguar CD en .cue (si tu en as) : le panneau ne montre jamais d'erreur.
+
 ## Succès : PS2, PSP, DS, PC Engine CD, PC-FX, Neo Geo CD (0.38.0)
 - [ ] Tu n'as pas de jeux de ces consoles sur E: : je n'ai pu les vérifier qu'avec des images fabriquées. **Dès que tu
       en as un** (Firehouse, ou ailleurs : .iso/.chd pour PS2, .iso/.pbp pour PSP, .nds pour la DS, .cue/.chd pour

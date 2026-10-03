@@ -44,6 +44,8 @@ pub const CONSOLES: &[(&str, u32)] = &[
     ("Sega Game Gear", 15),
     ("Nintendo GameCube", 16),
     ("Atari Jaguar", 17),
+    ("Atari Jaguar CD", 77),
+    ("Sony Playstation 3", 82),
     ("Nintendo DS", 18),
     ("Nintendo Wii", 19),
     ("Sony Playstation 2", 21),
@@ -92,7 +94,7 @@ pub fn empreinte_possible(console: u32) -> bool {
 
 /// Les consoles sur CD que Frogtend sait lire (module `disque` : .cue/.bin, .ccd/.img, .iso, .chd).
 pub fn est_un_cd(console: u32) -> bool {
-    matches!(console, 9 | 12 | 16 | 19 | 21 | 39 | 40 | 41 | 43 | 49 | 56 | 76)
+    matches!(console, 9 | 12 | 16 | 19 | 21 | 39 | 40 | 41 | 43 | 49 | 56 | 76 | 77 | 82)
 }
 
 fn md5_hex(o: &[u8]) -> String {
@@ -147,6 +149,12 @@ pub fn empreinte_fichier(console: u32, chemin: &Path) -> Resultat<Option<String>
         }
         if console == 16 {
             return crate::disque::empreinte_gamecube(chemin);
+        }
+        if console == 82 {
+            return crate::disque::empreinte_ps3(chemin);
+        }
+        if console == 77 {
+            return crate::disque::empreinte_jaguar_cd(chemin);
         }
         if console == 41 {
             return crate::disque::empreinte_psp(chemin);
@@ -468,7 +476,8 @@ mod tests {
         assert!(empreinte_possible(7) && empreinte_possible(12) && empreinte_possible(9), "PlayStation et Sega CD : lus par le module disque");
         assert!(empreinte_possible(40), "Dreamcast : .chd lu par le module disque");
         assert!(empreinte_possible(21) && empreinte_possible(41) && empreinte_possible(18), "PS2, PSP, DS");
-        assert!(!empreinte_possible(77) && !empreinte_possible(82), "Jaguar CD et PS3 : pas encore");
+        assert!(empreinte_possible(77) && empreinte_possible(82), "Jaguar CD et PS3");
+        assert_eq!(console_de("Sony Playstation 3"), Some(82));
         assert!(empreinte_possible(43) && console_de("PC Engine SuperGrafx") == Some(8));
         assert!(empreinte_possible(16) && empreinte_possible(19), "GameCube et Wii : lus par nod");
     }

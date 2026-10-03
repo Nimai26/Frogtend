@@ -663,7 +663,13 @@ une saga entière). Conséquences pour Frogtend :
   données : en-tête du secteur 1 + programme, ou BOOT.BIN), PC-FX (plus grande piste de données ou piste 2), Neo Geo CD
   (les .PRG d'IPL.TXT) ; feuilles .cue à plusieurs pistes (toutes lues, piste choisie : n°, 1re de données, plus grande
   de données, dernière). **Aucun jeu de ces consoles sur le disque de Seb** : vérifié seulement par les tests (images
-  fabriquées) — à confirmer avec de vrais jeux (Firehouse). **Reste** : Jaguar CD, PS3, .cso (PSP compressé) ;
+  fabriquées) — à confirmer avec de vrais jeux (Firehouse). **✅ 0.39.0** : PS3 (.iso/.chd : PS3_GAME\PARAM.SFO +
+  USRDIR\EBOOT.BIN ; jeu en dossier : son EBOOT.BIN + le PARAM.SFO de son dossier), Jaguar CD (.cue à deux sessions,
+  « REM SESSION 02 » : en-tête Atari dans la 1re piste de la 2e session, octets échangés ou non, cas « homebrew » par
+  la piste 2), .cso (PSP compressé, lu bloc par bloc, `flate2`). Les .iso PS3 de Seb sont ZIPPÉS (78 zips de 1,5 Go
+  et plus, un .iso chacun) : pas lisibles sans tout décompresser → le panneau dit « décompresse-la » (RPCS3 en a
+  besoin aussi). **Toutes les consoles de RetroAchievements que Frogtend peut rencontrer sont couvertes** (sauf
+  Wii U : pas de succès RetroAchievements) ;
   ~~brancher le compte dans les émulateurs~~ **✅ 0.33.0** : « 🎮 Connecter mes émulateurs » (mot de passe UNE fois →
   jeton `login2` comme rcheevos, au coffre ; mot de passe jamais gardé) ; à chaque partie, le compte DU PROFIL QUI JOUE :
   RetroArch (`cheevos_*` dans le fichier `--appendconfig` du profil), PCSX2 (`[Achievements]` + jeton dans

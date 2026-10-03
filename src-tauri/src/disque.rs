@@ -28,8 +28,68 @@ pub struct Piste {
     pub index01: i64,
     /// Un CHD : (1er bloc de la piste dans le CHD, nombre de secteurs de la piste) ; `None` : image en clair.
     pub chd: Option<(u64, u64)>,
+    /// Un .cso (PSP compressé) : son index de blocs ; `None` : image en clair.
+    pub cso: Option<std::sync::Arc<Cso>>,
     /// Octets utiles par secteur.
     pub utiles: u64,
+}
+
+/// Un .cso (CISO) : un en-tête de 24 octets, un index de blocs (u32 ; bit 31 = bloc stocké tel quel ; position
+/// décalée de `align`), puis des blocs compressés en « deflate » brut. Seul ce qui est lu est décompressé.
+#[derive(Debug)]
+pub struct Cso {
+    pub taille_bloc: u64,
+    pub align: u32,
+    pub total: u64,
+    pub index: Vec<u32>,
+}
+
+impl Cso {
+    pub fn ouvrir(chemin: &Path) -> Resultat<Option<Cso>> {
+        let mut f = std::fs::File::open(chemin)?;
+        let e = lire_a(&mut f, 0, 24);
+        if &e[..4] != b"CISO" {
+            return Ok(None);
+        }
+        let total = u64::from_le_bytes(e[8..16].try_into().unwrap_or_default());
+        let taille_bloc = u32::from_le_bytes(e[16..20].try_into().unwrap_or_default()) as u64;
+        if taille_bloc == 0 || total == 0 {
+            return Ok(None);
+        }
+        let blocs = total.div_ceil(taille_bloc) + 1;
+        let brut = lire_a(&mut f, 24, (blocs * 4) as usize);
+        let index = brut.chunks(4).map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect();
+        Ok(Some(Cso { taille_bloc, align: e[21] as u32, total, index }))
+    }
+
+    /// `n` octets à la position logique `pos` (dans l'image décompressée).
+    pub fn lire(&self, chemin: &Path, pos: u64, n: usize) -> Resultat<Vec<u8>> {
+        let mut f = std::fs::File::open(chemin)?;
+        let mut sortie = Vec::with_capacity(n);
+        let mut pos = pos;
+        while sortie.len() < n && pos < self.total {
+            let b = (pos / self.taille_bloc) as usize;
+            let (Some(e), Some(e2)) = (self.index.get(b), self.index.get(b + 1)) else { break };
+            let debut = ((e & 0x7FFF_FFFF) as u64) << self.align;
+            let fin = ((e2 & 0x7FFF_FFFF) as u64) << self.align;
+            let brut = lire_a(&mut f, debut, fin.saturating_sub(debut) as usize);
+            let bloc = if e & 0x8000_0000 != 0 {
+                brut
+            } else {
+                let mut d = Vec::new();
+                let _ = flate2::read::DeflateDecoder::new(&brut[..]).take(self.taille_bloc).read_to_end(&mut d);
+                d
+            };
+            let dans = (pos % self.taille_bloc) as usize;
+            if dans >= bloc.len() {
+                break;
+            }
+            let k = (n - sortie.len()).min(bloc.len() - dans);
+            sortie.extend_from_slice(&bloc[dans..dans + k]);
+            pos += k as u64;
+        }
+        Ok(sortie)
+    }
 }
 
 /// Un « mm:ss:ff » de feuille .cue → secteurs.
@@ -46,6 +106,8 @@ pub struct PisteCue {
     /// Où commence la piste (INDEX 01) dans son fichier, en octets.
     pub decalage: u64,
     pub audio: bool,
+    /// La session (« REM SESSION 02 ») ; 1 par défaut.
+    pub session: u32,
     /// Sa longueur en octets (jusqu'à la piste suivante du même fichier, ou la fin du fichier).
     pub longueur: u64,
 }
@@ -56,10 +118,12 @@ pub fn pistes_du_cue(cue: &Path) -> Vec<PisteCue> {
     let dossier = cue.parent().unwrap_or(Path::new("."));
     let mut l: Vec<PisteCue> = Vec::new();
     let mut fichier: Option<PathBuf> = None;
-    let (mut numero, mut audio, mut taille) = (0u32, false, 2352u64);
+    let (mut numero, mut audio, mut taille, mut session) = (0u32, false, 2352u64, 1u32);
     for ligne in texte.lines().map(str::trim) {
         let haut = ligne.to_uppercase();
-        if haut.starts_with("FILE ") {
+        if let Some(s) = haut.strip_prefix("REM SESSION ") {
+            session = s.trim().parse().unwrap_or(session);
+        } else if haut.starts_with("FILE ") {
             let r = ligne[5..].trim();
             let nom = if let Some(r) = r.strip_prefix('"') { r.split('"').next() } else { r.split_whitespace().next() };
             fichier = nom.map(|n| dossier.join(n));
@@ -70,7 +134,7 @@ pub fn pistes_du_cue(cue: &Path) -> Vec<PisteCue> {
             taille = if mots.get(2).is_some_and(|m| m.ends_with("/2048")) { 2048 } else { 2352 };
         } else if haut.starts_with("INDEX 01") {
             if let (Some(f), Some(debut)) = (fichier.clone(), haut.split_whitespace().nth(2).and_then(msf)) {
-                l.push(PisteCue { numero, fichier: f, decalage: debut * taille, audio, longueur: 0 });
+                l.push(PisteCue { numero, fichier: f, decalage: debut * taille, audio, session, longueur: 0 });
             }
         }
     }
@@ -118,6 +182,19 @@ pub fn ouvrir_piste(chemin: &Path, voulue: Voulue) -> Resultat<Option<Piste>> {
         "ccd" => (chemin.with_extension("img"), 0),
         "img" | "bin" | "iso" => (chemin.to_path_buf(), 0),
         "chd" => return ouvrir_chd(chemin, voulue),
+        "cso" => {
+            return Ok(Cso::ouvrir(chemin)?.map(|c| Piste {
+                fichier: chemin.to_path_buf(),
+                decalage: 0,
+                taille_secteur: 2048,
+                entete: 0,
+                premier: 0,
+                index01: 0,
+                chd: None,
+                cso: Some(std::sync::Arc::new(c)),
+                utiles: 2048,
+            }))
+        }
         _ => return Ok(None),
     };
     let mut f = std::fs::File::open(&fichier).map_err(|_| Erreur::Disque(format!("Image introuvable : {}.", fichier.display())))?;
@@ -127,19 +204,19 @@ pub fn ouvrir_piste(chemin: &Path, voulue: Voulue) -> Resultat<Option<Piste>> {
         f.seek(SeekFrom::Start(16 * taille + decalage))?;
         if f.read_exact(&mut h).is_ok() && h[..12] == SYNCHRO {
             let entete = if &h[25..30] == b"CD001" { 24 } else { 16 };
-            return Ok(Some(Piste { fichier, decalage, taille_secteur: taille, entete, premier: secteur_de_l_entete(&h) - 16, index01: secteur_de_l_entete(&h) - 16, chd: None, utiles: 2048 }));
+            return Ok(Some(Piste { fichier, decalage, taille_secteur: taille, entete, premier: secteur_de_l_entete(&h) - 16, index01: secteur_de_l_entete(&h) - 16, chd: None, cso: None, utiles: 2048 }));
         }
     }
     f.seek(SeekFrom::Start(16 * 2048 + decalage))?;
     if f.read_exact(&mut h).is_ok() && &h[1..6] == b"CD001" {
-        return Ok(Some(Piste { fichier, decalage, taille_secteur: 2048, entete: 0, premier: 0, index01: 0, chd: None, utiles: 2048 }));
+        return Ok(Some(Piste { fichier, decalage, taille_secteur: 2048, entete: 0, premier: 0, index01: 0, chd: None, cso: None, utiles: 2048 }));
     }
     // Pas de « CD001 » (Sega CD sans ISO 9660 en clair, par exemple) : brut 2352 MODE1 si la synchro est au début.
     f.seek(SeekFrom::Start(decalage))?;
     if f.read_exact(&mut h).is_ok() && h[..12] == SYNCHRO {
-        return Ok(Some(Piste { fichier, decalage, taille_secteur: 2352, entete: 16, premier: secteur_de_l_entete(&h), index01: secteur_de_l_entete(&h), chd: None, utiles: 2048 }));
+        return Ok(Some(Piste { fichier, decalage, taille_secteur: 2352, entete: 16, premier: secteur_de_l_entete(&h), index01: secteur_de_l_entete(&h), chd: None, cso: None, utiles: 2048 }));
     }
-    Ok(Some(Piste { fichier, decalage, taille_secteur: 2048, entete: 0, premier: 0, index01: 0, chd: None, utiles: 2048 }))
+    Ok(Some(Piste { fichier, decalage, taille_secteur: 2048, entete: 0, premier: 0, index01: 0, chd: None, cso: None, utiles: 2048 }))
 }
 
 /// Une piste décrite par les métadonnées d'un CHD.
@@ -216,6 +293,7 @@ pub fn ouvrir_chd(chemin: &Path, voulue: Voulue) -> Resultat<Option<Piste>> {
         premier: 0,
         index01: 0,
         chd: Some((p.bloc, p.secteurs)),
+        cso: None,
         utiles: 2048,
     };
     if brut {
@@ -271,6 +349,10 @@ impl Piste {
         if self.chd.is_some() {
             let k = secteur as i64 - self.premier;
             return if k < 0 { Ok(vec![]) } else { self.lire_bloc(k as u64, n) };
+        }
+        if let Some(c) = &self.cso {
+            let k = secteur as i64 - self.premier;
+            return if k < 0 { Ok(vec![]) } else { c.lire(&self.fichier, k as u64 * 2048, n) };
         }
         let mut f = std::fs::File::open(&self.fichier)?;
         let mut sortie = Vec::with_capacity(n);
@@ -568,6 +650,111 @@ pub fn empreinte_psp(chemin: &Path) -> Resultat<Option<String>> {
         m.update(p.lire(s, taille.min(MAX_FICHIER) as usize)?);
     }
     Ok(Some(m.finalize().iter().map(|b| format!("{b:02x}")).collect()))
+}
+
+/// PS3 (rc_hash_ps3) : un disque (.iso, .chd) → PS3_GAME\PARAM.SFO puis PS3_GAME\USRDIR\EBOOT.BIN ; un jeu en
+/// dossier (on désigne son EBOOT.BIN) → le PARAM.SFO de son dossier (PS3_GAME\, TITRE\ ou à côté) puis l'EBOOT.BIN.
+/// Un .iso ZIPPÉ n'est pas lisible sans le décompresser en entier : `None` (« à décompresser d'abord »).
+pub fn empreinte_ps3(chemin: &Path) -> Resultat<Option<String>> {
+    let ext = chemin.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let mut m = Md5::new();
+    if ext == "iso" || ext == "chd" {
+        let Some(p) = ouvrir(chemin)? else { return Ok(None) };
+        for f in ["PS3_GAME\\PARAM.SFO", "PS3_GAME\\USRDIR\\EBOOT.BIN"] {
+            let Some((s, taille)) = p.trouver(f)? else { return Ok(None) };
+            m.update(p.lire(s, taille.min(MAX_FICHIER) as usize)?);
+        }
+    } else if chemin.file_name().is_some_and(|n| n.eq_ignore_ascii_case("EBOOT.BIN")) {
+        let texte = chemin.to_string_lossy().replace('/', "\\");
+        let dossier: PathBuf = if let Some(i) = texte.to_uppercase().find("PS3_GAME\\USRDIR\\") {
+            PathBuf::from(&texte[..i + 9])
+        } else if let Some(i) = texte.to_uppercase().find("USRDIR\\") {
+            PathBuf::from(&texte[..i])
+        } else {
+            chemin.parent().unwrap_or(Path::new(".")).to_path_buf()
+        };
+        let Ok(sfo) = std::fs::read(dossier.join("PARAM.SFO")) else { return Ok(None) };
+        m.update(&sfo);
+        m.update(std::fs::read(chemin)?);
+    } else {
+        return Ok(None);
+    }
+    Ok(Some(m.finalize().iter().map(|b| format!("{b:02x}")).collect()))
+}
+
+/// Jaguar CD (rc_hash_jaguar_cd) : la 1re piste de la DEUXIÈME session (feuille .cue avec « REM SESSION 02 ») porte,
+/// dans son 1er secteur brut, « ATARI APPROVED DATA HEADER ATRI » (ou sa version aux octets échangés) suivi de
+/// l'adresse et de la taille du programme de démarrage ; on hache le programme. Les jeux « homebrew » (empreinte
+/// connue 254487b5…) ont leur vrai code dans la piste 2 (« KART »).
+pub fn empreinte_jaguar_cd(chemin: &Path) -> Resultat<Option<String>> {
+    if !chemin.extension().is_some_and(|e| e.eq_ignore_ascii_case("cue")) {
+        return Ok(None);
+    }
+    let pistes = pistes_du_cue(chemin);
+    let brute = |p: &PisteCue| Piste {
+        fichier: p.fichier.clone(),
+        decalage: p.decalage,
+        taille_secteur: 2352,
+        entete: 0,
+        premier: 0,
+        index01: 0,
+        chd: None,
+        cso: None,
+        utiles: 2352,
+    };
+    let Some(seconde) = pistes.iter().find(|p| p.session >= 2) else { return Ok(None) };
+    let hacher = |p: &Piste, secteur: u32, decalage: usize, taille: usize, echange: bool| -> Resultat<Option<String>> {
+        let mut m = Md5::new();
+        let (mut s, mut o, mut reste) = (secteur, decalage, taille.min(MAX_FICHIER as usize));
+        while reste > 0 {
+            let mut b = p.lire(s, 2352)?;
+            if b.len() < 2352 {
+                return Ok(None); // pas assez de données
+            }
+            if echange {
+                b.chunks_mut(2).for_each(|c| c.swap(0, 1));
+            }
+            let k = (2352 - o).min(reste);
+            m.update(&b[o..o + k]);
+            reste -= k;
+            o = 0;
+            s += 1;
+        }
+        Ok(Some(m.finalize().iter().map(|b| format!("{b:02x}")).collect()))
+    };
+    let p = brute(seconde);
+    let b = p.lire(0, 2352)?;
+    if b.len() < 2352 {
+        return Ok(None);
+    }
+    let mut trouve = None;
+    for i in 64..(2352 - 32 - 12) {
+        if &b[i..i + 32] == b"TARA IPARPVODED TA AEHDAREA RT I" {
+            let o = i + 36;
+            let taille = ((b[o] as usize) << 16) | ((b[o + 1] as usize) << 24) | b[o + 2] as usize | ((b[o + 3] as usize) << 8);
+            trouve = Some((o + 4, taille, true));
+            break;
+        }
+        if &b[i..i + 32] == b"ATARI APPROVED DATA HEADER ATRI " {
+            let o = i + 36;
+            let taille = ((b[o] as usize) << 24) | ((b[o + 1] as usize) << 16) | ((b[o + 2] as usize) << 8) | b[o + 3] as usize;
+            trouve = Some((o + 4, taille, false));
+            break;
+        }
+    }
+    let Some((o, taille, echange)) = trouve.filter(|(_, t, _)| *t > 0) else { return Ok(None) };
+    let e = hacher(&p, 0, o, taille, echange)?;
+    if e.as_deref() != Some("254487b59ab21bc005338e85cbf9fd2f") || !echange {
+        return Ok(e);
+    }
+    // Homebrew : le code est dans la piste 2 (« KART »).
+    let Some(p2) = pistes.iter().find(|p| p.numero == 2).map(brute) else { return Ok(e) };
+    let b = p2.lire(0, 2352)?;
+    if b.len() < 0xAA || &b[0x5E..0x66] != b"RT!IRTKA" {
+        return Ok(None);
+    }
+    let taille = ((b[0xA6] as usize) << 16) | ((b[0xA7] as usize) << 24) | b[0xA8] as usize | ((b[0xA9] as usize) << 8);
+    hacher(&p2, 0, 0xAA + 4, taille, true)
 }
 
 /// Neo Geo CD (rc_hash_neogeo_cd) : chaque programme « .PRG » cité par IPL.TXT, dans l'ordre.
@@ -900,6 +1087,77 @@ mod tests {
     }
 
     #[test]
+    fn un_cso_se_lit_bloc_par_bloc() {
+        use std::io::Write;
+        let d = tempfile::tempdir().unwrap();
+        // Une image de 3 blocs de 2048 : bloc 0 compressé, bloc 1 stocké tel quel, bloc 2 compressé.
+        let image: Vec<u8> = (0..3 * 2048).map(|i| (i % 253) as u8).collect();
+        let mut blocs = Vec::new();
+        for (i, morceau) in image.chunks(2048).enumerate() {
+            if i == 1 {
+                blocs.push((morceau.to_vec(), true));
+            } else {
+                let mut z = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+                z.write_all(morceau).unwrap();
+                blocs.push((z.finish().unwrap(), false));
+            }
+        }
+        let entete = 24 + 4 * 4;
+        let mut index = Vec::new();
+        let mut pos = entete as u32;
+        for (b, tel_quel) in &blocs {
+            index.push(pos | if *tel_quel { 0x8000_0000 } else { 0 });
+            pos += b.len() as u32;
+        }
+        index.push(pos);
+        let mut o = b"CISO".to_vec();
+        o.extend(24u32.to_le_bytes());
+        o.extend((image.len() as u64).to_le_bytes());
+        o.extend(2048u32.to_le_bytes());
+        o.extend([1u8, 0, 0, 0]);
+        index.iter().for_each(|x| o.extend(x.to_le_bytes()));
+        blocs.iter().for_each(|(b, _)| o.extend(b));
+        let f = d.path().join("jeu.cso");
+        std::fs::write(&f, &o).unwrap();
+        let p = ouvrir(&f).unwrap().unwrap();
+        assert_eq!(p.lire(0, 3 * 2048).unwrap(), image, "tout, à cheval sur les blocs");
+        assert_eq!(p.lire(1, 100).unwrap(), image[2048..2148].to_vec());
+    }
+
+    #[test]
+    fn ps3_un_jeu_en_dossier() {
+        let d = tempfile::tempdir().unwrap();
+        let jeu = d.path().join("BLES01234").join("PS3_GAME");
+        std::fs::create_dir_all(jeu.join("USRDIR")).unwrap();
+        std::fs::write(jeu.join("PARAM.SFO"), b"SFO").unwrap();
+        std::fs::write(jeu.join("USRDIR").join("EBOOT.BIN"), b"ELF").unwrap();
+        assert_eq!(empreinte_ps3(&jeu.join("USRDIR").join("EBOOT.BIN")).unwrap(), Some(md5_hex(b"SFOELF")));
+        assert_eq!(empreinte_ps3(&d.path().join("jeu.zip")).unwrap(), None, "zip : à décompresser d'abord");
+    }
+
+    #[test]
+    fn jaguar_cd_la_deuxieme_session() {
+        let d = tempfile::tempdir().unwrap();
+        // Session 1 : une piste audio ; session 2 : la piste de données (brute) avec l'en-tête Atari.
+        std::fs::write(d.path().join("a.bin"), vec![0u8; 2352 * 4]).unwrap();
+        let mut s = vec![0u8; 2352 * 2];
+        s[64..64 + 32].copy_from_slice(b"ATARI APPROVED DATA HEADER ATRI ");
+        // Adresse de chargement à i+32 = 96, taille (big-endian) à i+36 = 100 ; le programme commence à 104.
+        s[96..100].copy_from_slice(&0x0080_4000u32.to_be_bytes());
+        s[100..104].copy_from_slice(&3000u32.to_be_bytes());
+        s[104..104 + 3000].iter_mut().enumerate().for_each(|(i, b)| *b = (i % 7) as u8);
+        std::fs::write(d.path().join("b.bin"), &s).unwrap();
+        let cue = d.path().join("jeu.cue");
+        std::fs::write(
+            &cue,
+            "REM SESSION 01\nFILE \"a.bin\" BINARY\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00\nREM SESSION 02\nFILE \"b.bin\" BINARY\n  TRACK 02 AUDIO\n    INDEX 01 00:00:00\n",
+        )
+        .unwrap();
+        assert_eq!(pistes_du_cue(&cue)[1].session, 2);
+        assert_eq!(empreinte_jaguar_cd(&cue).unwrap(), Some(md5_hex(&s[104..104 + 3000])));
+    }
+
+    #[test]
     fn nintendo_ds_en_tete_arm9_arm7_et_icone() {
         let d = tempfile::tempdir().unwrap();
         let mut rom = vec![0u8; 0x4000];
@@ -936,7 +1194,7 @@ mod tests {
         // Pas un disque Sega : pas d'empreinte.
         std::fs::write(&iso, vec![0u8; 2048 * 20]).unwrap();
         assert_eq!(empreinte_sega_cd(&ouvrir(&iso).unwrap().unwrap()).unwrap(), None);
-        assert!(ouvrir(&d.path().join("jeu.cso")).unwrap().is_none(), "format inconnu : rien");
+        assert!(ouvrir(&d.path().join("jeu.xyz")).unwrap().is_none(), "format inconnu : rien");
     }
 }
 

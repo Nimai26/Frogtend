@@ -798,8 +798,8 @@ pub struct VersionRetro {
 /// officiels), et la progression de la personne.
 #[derive(Serialize, Default)]
 pub struct SuccesRetro {
-    /// `aucun` (pas d'une console RetroAchievements), `compte` (compte pas réglé), `pas_verifiable` (jeux sur CD,
-    /// pas encore), `ok`.
+    /// `aucun` (pas d'une console RetroAchievements), `compte` (compte pas réglé), `pas_verifiable` (format pas
+    /// encore lu), `zip` (une image zippée à décompresser d'abord, comme les .iso PS3), `ok`.
     pub etat: String,
     pub versions: Vec<VersionRetro>,
     pub jeu: Option<crate::succes::Progression>,
@@ -841,7 +841,8 @@ pub async fn succes_retro(noyau: State<'_, Noyau>, id: i64) -> Resultat<SuccesRe
     let mut jeu_ra = None;
     let mut versions = Vec::new();
     if empreintes.iter().all(Option::is_none) {
-        return Ok(SuccesRetro { etat: "pas_verifiable".into(), ..Default::default() });
+        let zip = chemins.iter().any(|c| c.to_lowercase().ends_with(".zip") || c.to_lowercase().ends_with(".7z")) && est_disque_lourd(console);
+        return Ok(SuccesRetro { etat: if zip { "zip" } else { "pas_verifiable" }.into(), ..Default::default() });
     }
     for (c, e) in chemins.iter().zip(empreintes) {
         let verifiable = e.is_some();
@@ -869,6 +870,11 @@ pub async fn succes_retro(noyau: State<'_, Noyau>, id: i64) -> Resultat<SuccesRe
         r.jeu = crate::succes::progression(crate::succes::API_RA, &cle, &compte, id_ra).await.ok();
     }
     Ok(r)
+}
+
+/// Les consoles dont une image zippée ne se vérifie pas sans la décompresser en entier (disques de plusieurs Go).
+fn est_disque_lourd(console: u32) -> bool {
+    matches!(console, 12 | 16 | 19 | 21 | 41 | 82)
 }
 
 /// Les succès Steam d'un jeu (obtenus, total), ou `None` s'il n'en a pas ou si le compte Steam n'est pas réglé.
