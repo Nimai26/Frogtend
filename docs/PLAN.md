@@ -710,6 +710,15 @@ content ID se lit dans les zips (ex. EP0102-**BLES01227**_00-DLCS12… = Asura's
   Seb (03/10, après l'essai) : « ça fonctionne nickel ; il manque encore la gestion des mods, shaders, cheats, l'OSD »
   → pour RPCS3 (et les émulateurs récents) : cache de shaders, codes de triche (patches RPCS3), mods, affichage à
   l'écran (OSD : performances, menu) — à intégrer aux lots « Prêt à jouer » et « Triches et mods ».
+- **✅ 0.44.0 « Prêt à jouer » (03/10, en autonomie)** : `preparerPourJouer` (src/lib/emulateurs/pret*.ts) appelé
+  après un import, après l'installation d'un jeu de console et quand ▶ Jouer manque d'émulateur : choix seul de
+  l'émulateur (déjà là > installable par Frogtend > par Firehouse ; recommandé d'abord ; sinon l'assistant), UN accord
+  qui dit tout, installation sans autre question, cœur RetroArch sans question, manette réglée, retenue pour la
+  console. RPCS3 (relevé dans son code) : `config\input_configs\global\Default.yml`, joueur 1 = manette XInput
+  branchée (XInputGetState) sinon clavier, à chaque partie, seulement si le fichier porte la marque de Frogtend ;
+  micrologiciel par `--headless --installfw` (essayé en vrai sur une copie neuve : 3,4 s, aucune fenêtre, version
+  relue dans `dev_flash\vsh\etc\version.txt` + `liblv2.sprx`). Reste (besoin 19) : fichiers système fournis par
+  Firehouse et installés d'office ; première compilation PPU annoncée mais pas précompilable (aucune option de RPCS3).
 - **(levée le 03/10) PAUSE jusqu'à l'essai de Seb (décision du 03/10)** : décompresser Asura's Wrath et le lancer dans RPCS3
   (docs/A-TESTER.md, « Décompresser pour jouer »). S'il démarre : approche validée, on reprend. Si RPCS3 refuse l'.iso
   (même à jour) : extraire le contenu de l'.iso (dossier PS3_GAME) au lieu de l'.iso, une livraison de plus. En

@@ -67,7 +67,7 @@ pub fn ecrire_ini(texte: &str, section: &str, valeurs: &[(&str, Vec<String>)]) -
 
 /// Copie un fichier de configuration à l'abri avant de le modifier (une fois par jour), dans le dossier de
 /// l'émulateur.
-fn mettre_a_l_abri(emulateur: &Path, fichier: &Path) -> Resultat<()> {
+pub(crate) fn mettre_a_l_abri(emulateur: &Path, fichier: &Path) -> Resultat<()> {
     if !fichier.is_file() {
         return Ok(());
     }
@@ -475,6 +475,22 @@ pub fn valeur_toml(texte: &str, section: &str, cle: &str) -> Option<String> {
     Some(v.replace("\\\\", "\\")).filter(|s| !s.is_empty())
 }
 
+/// La version du micrologiciel PS3 installé dans un RPCS3 (« 4.93 »), ou `None` s'il n'y en a pas. Relevé dans le code
+/// de RPCS3 (03/10) : il est « manquant » sans `dev_flash\sys\external\liblv2.sprx` ; la version est dans
+/// `dev_flash\vsh\etc\version.txt`, entre le 1er et le 2e « : » (« release:04.9300: » → 4.93).
+pub fn micrologiciel_rpcs3(emulateur: &Path) -> Option<String> {
+    let flash = emulateur.join("dev_flash");
+    if !flash.join("sys").join("external").join("liblv2.sprx").is_file() {
+        return None;
+    }
+    let texte = std::fs::read_to_string(flash.join("vsh").join("etc").join("version.txt")).unwrap_or_default();
+    let brut = texte.split(':').nth(1).unwrap_or("").trim();
+    let Some((majeur, mineur)) = brut.split_once('.') else { return Some("inconnue".into()) };
+    let majeur = majeur.trim_start_matches('0');
+    let mineur: String = mineur.chars().take(2).collect();
+    Some(format!("{}.{mineur}", if majeur.is_empty() { "0" } else { majeur }))
+}
+
 /// Le compte RPCS3 d'un profil s'il existe déjà, sans rien créer.
 pub fn compte_rpcs3_existant(emulateur: &Path, profil: &str) -> Option<String> {
     std::fs::read_dir(emulateur.join("dev_hdd0").join("home")).ok()?.flatten().find_map(|e| {
@@ -580,6 +596,21 @@ mod tests {
         assert!(b.contains("RecursivePaths = E:\\Jeux"));
         let c = ecrire_ini("", "MemoryCards", &[("Directory", vec!["E:\\m".into()])]);
         assert_eq!(c, "[MemoryCards]\r\nDirectory = E:\\m\r\n");
+    }
+
+    #[test]
+    fn le_micrologiciel_de_rpcs3_se_lit() {
+        let d = tempfile::tempdir().unwrap();
+        let e = d.path();
+        assert_eq!(micrologiciel_rpcs3(e), None, "rien d'installé");
+        std::fs::create_dir_all(e.join("dev_flash/vsh/etc")).unwrap();
+        std::fs::write(e.join("dev_flash/vsh/etc/version.txt"), "release:04.9100:\nbuild:68392,20231207:tetsu@tetsu-linux17\n").unwrap();
+        assert_eq!(micrologiciel_rpcs3(e), None, "sans liblv2.sprx, RPCS3 le dit manquant");
+        std::fs::create_dir_all(e.join("dev_flash/sys/external")).unwrap();
+        std::fs::write(e.join("dev_flash/sys/external/liblv2.sprx"), b"x").unwrap();
+        assert_eq!(micrologiciel_rpcs3(e).as_deref(), Some("4.91"));
+        std::fs::write(e.join("dev_flash/vsh/etc/version.txt"), "release:04.9300:\n").unwrap();
+        assert_eq!(micrologiciel_rpcs3(e).as_deref(), Some("4.93"));
     }
 
     #[test]
@@ -810,5 +841,15 @@ mod tests {
         preparer("ppsspp", d.path(), "Léa", &[], &Manette::Auto(None)).unwrap();
         assert!(!d.path().join("memstick").join("x.txt").exists(), "Léa ne voit pas les fichiers de Seb");
         assert!(d.path().join("Profils").join("Seb").join("memstick").join("x.txt").is_file(), "ceux de Seb restent");
+    }
+}
+
+#[cfg(test)]
+mod essai_reel_micrologiciel {
+    #[test]
+    #[ignore]
+    fn lire_le_vrai_micrologiciel() {
+        let d = std::path::PathBuf::from(std::env::var("FROGTEND_RPCS3").unwrap());
+        println!("MICROLOGICIEL {:?}", super::micrologiciel_rpcs3(&d));
     }
 }

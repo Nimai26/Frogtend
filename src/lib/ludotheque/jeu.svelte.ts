@@ -7,6 +7,7 @@ import { api, duree, estErreurCoeur, taille, type Candidat, type JeuPc } from '$
 import { choisir, confirmer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
+import { preparerPourJouer } from '$lib/emulateurs/pret.svelte';
 import { normaliser, pourLeJeu } from '$lib/emulateurs/choix';
 import { etat, reglerPc, reglerProfil } from '$lib/etat.svelte';
 import type { CommandesJeu } from '$lib/reglages/reglages';
@@ -126,6 +127,9 @@ export async function installer(id: number): Promise<boolean> {
   await apresChangement();
   if (p.nature === 'rom' || p.nature === 'image_disque') {
     toast(`✅ « ${p.titre} » est prêt : il se lance par l’émulateur de son système.`);
+    // Sa console n'a pas encore d'émulateur : le proposer tout de suite (un seul accord).
+    const plateforme = tele.jeux[id]?.plateforme;
+    if (plateforme) await preparerPourJouer(plateforme, 1);
     return true;
   }
   toast(`✅ « ${p.titre} » est installé. Reste à choisir ce qui le lance.`);
@@ -189,7 +193,8 @@ export async function jouer(id: number, emulateur?: string, version?: string) {
       return;
     } catch (e) {
       if (estErreurCoeur(e) && e.sorte === 'reglage' && j) {
-        if (!(await reglerEmulateur(j.plateforme))) return;
+        // Pas d'émulateur pour cette console : « Prêt à jouer » le prépare (un seul accord), puis on relance.
+        if (!(await preparerPourJouer(j.plateforme, 1))) return;
       } else if (estErreurCoeur(e) && e.motif.startsWith('Choisis d')) {
         if (!(await choisirLanceur(id))) return;
       } else {

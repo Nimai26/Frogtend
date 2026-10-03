@@ -82,17 +82,21 @@
 
   /** Le micrologiciel PS3 (fichier officiel de Sony, jamais téléchargé par Frogtend) installé par RPCS3. */
   async function micrologicielPs3(i: EmulateurInstalle) {
+    const actuel = await api.rpcs3Micrologiciel(i.programme).catch(() => null);
     const ok = await confirmer('💿 Micrologiciel PS3', {
-      message:
-        'Les jeux PS3 du commerce en ont besoin. Télécharge le fichier PS3UPDAT.PUP sur le site officiel de PlayStation (page « Mise à jour du logiciel système PS3 »), puis montre-le ici : RPCS3 l’installera et montrera sa progression.',
+      message: [
+        actuel ? `Installé : version ${actuel}.` : 'Pas encore installé : les jeux PS3 du commerce en ont besoin.',
+        'Bientôt, Firehouse le fournira à jour et Frogtend l’installera tout seul. En attendant : télécharge le fichier PS3UPDAT.PUP sur le site officiel de PlayStation (page « Mise à jour du logiciel système PS3 »), puis montre-le ici. L’installation se fait sans aucune fenêtre (quelques secondes).',
+      ].join('\n'),
       libelleValider: '📂 Choisir PS3UPDAT.PUP',
     });
     if (!ok) return;
     const pup = await parcourir({ titre: 'Fichier PS3UPDAT.PUP', extensions: ['pup', 'PUP'] });
     if (!pup) return;
+    toast('💿 Installation du micrologiciel…');
     try {
-      await api.rpcs3InstallerMicrologiciel(i.programme, pup);
-      toast('💿 RPCS3 installe le micrologiciel : suis sa fenêtre.');
+      const v = await api.rpcs3InstallerMicrologiciel(i.programme, pup);
+      toast(`✅ Micrologiciel PS3 ${v} installé. La première partie de chaque jeu prépare RPCS3 quelques minutes, une seule fois.`);
     } catch (e) {
       toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
     }
@@ -168,7 +172,11 @@
       '🕹 Pour quel système ?',
       plateformes.map((p) => ({ valeur: p.nom, libelle: p.nom, detail: p.jeux ? `${p.jeux} jeu(x)` : undefined })),
     );
-    if (s) await reglerEmulateur(s);
+    if (s) {
+      await reglerEmulateur(s);
+      // Un émulateur vient peut-être d’être installé : « Sur ce PC » le montre aussitôt (vu par Seb le 03/10).
+      await recharger();
+    }
   }
 </script>
 
@@ -271,7 +279,7 @@
             </li>
           {/each}
         </ul>
-        <button class="btn petit" onclick={() => reglerEmulateur(systeme)}>➕ Ajouter un émulateur</button>
+        <button class="btn petit" onclick={async () => { await reglerEmulateur(systeme); await recharger(); }}>➕ Ajouter un émulateur</button>
       </div>
     {/each}
   {/if}

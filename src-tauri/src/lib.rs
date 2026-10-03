@@ -278,6 +278,7 @@ pub fn run() {
             commandes::retroarch_installer_coeur,
             commandes::emulateur_regler_manette,
             commandes::rpcs3_installer_micrologiciel,
+            commandes::rpcs3_micrologiciel,
             commandes::taodbox_lance,
             commandes::emulateur_installer_firehouse,
             commandes::jeu_triches,

@@ -1,5 +1,17 @@
 # Notes de version de Frogtend
 
+## 0.44.0 — Prêt à jouer
+
+- **Une console sans émulateur se prépare toute seule, après un seul « oui »** : quand tu importes des jeux,
+  télécharges un jeu de console, ou cliques ▶ Jouer, Frogtend propose l'émulateur recommandé par Firehouse et dit
+  tout dans une seule fenêtre (taille, dossier, manette, première partie plus longue). Puis il installe, règle la
+  manette et retient l'émulateur. Le dossier des émulateurs est proposé d'office, à côté de tes jeux.
+- **RPCS3 (PS3) : la manette est réglée à chaque partie** : ta manette Xbox si elle est branchée, sinon le clavier
+  (✕ = X, Start = Entrée). Un réglage que tu fais toi-même dans RPCS3 n'est jamais défait.
+- **Micrologiciel PS3 installé en quelques secondes, sans aucune fenêtre ni question** ; Frogtend vérifie la version
+  vraiment installée et te la dit (le bouton 💿 montre aussi la version actuelle).
+- **« Sur ce PC »** (⚙ Options ▸ Émulateurs) montre l'émulateur dès qu'il vient d'être installé.
+
 ## 0.43.4 — régler un émulateur sans attendre d'avoir les jeux
 
 - **⚙ Options ▸ Émulateurs ▸ Régler un autre système** propose maintenant TOUTES les plateformes connues : d'abord

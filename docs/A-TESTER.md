@@ -48,6 +48,18 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Prêt à jouer (0.44.0)
+- [ ] **Une console sans émulateur** (par exemple la **Sega CD** : importe `E:\Games\Sega CD`) : après l'import,
+      UNE fenêtre « 🎮 Préparer Sega CD pour jouer ? » dit l'émulateur, sa taille, le dossier, la manette. **Tout
+      préparer** : il s'installe sans autre question ; un jeu se lance ensuite par ▶ Jouer.
+- [ ] Dis **non** une fois : rien n'est installé ; ▶ Jouer sur un jeu de cette console repose la question.
+- [ ] **RPCS3 et une manette Xbox** : branche-la AVANT de lancer Asura's Wrath : elle marche (✕ = A, ◯ = B). Débranche-la
+      et relance : le clavier marche (✕ = X). *(Le cas « manette branchée » n'a pas pu être essayé ici : aucune
+      manette n'était branchée.)*
+- [ ] **💿 Micrologiciel** : sur la ligne de RPCS3, la fenêtre dit « Installé : version 4.91 ». Avec un PS3UPDAT.PUP
+      plus récent (4.93), l'installation se fait en quelques secondes, sans aucune fenêtre de RPCS3, puis « ✅
+      Micrologiciel PS3 4.93 installé ».
+
 ## Régler un émulateur pour n'importe quel système (0.43.4)
 - [ ] **⚙ Options ▸ 🕹 Émulateurs ▸ Régler un autre système…** : en tête, **Sony Playstation 3 — 7 jeu(x)** ; plus
       bas, toutes les autres consoles (même sans jeux).

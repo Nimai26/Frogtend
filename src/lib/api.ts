@@ -434,7 +434,8 @@ export const api = {
   installeAilleurs: (id: number, dossier: string) => appeler<Installation>('installation_ailleurs', { id, dossier }),
   candidatsLancement: (id: number) => appeler<Candidat[]>('lancement_candidats', { id }),
   choisirLanceur: (id: number, lanceur: Lanceur) => appeler<void>('lanceur_choisir', { id, lanceur }),
-  rpcs3InstallerMicrologiciel: (programme: string, pup: string) => appeler<void>('rpcs3_installer_micrologiciel', { programme, pup }),
+  rpcs3InstallerMicrologiciel: (programme: string, pup: string) => appeler<string>('rpcs3_installer_micrologiciel', { programme, pup }),
+  rpcs3Micrologiciel: (programme: string) => appeler<string | null>('rpcs3_micrologiciel', { programme }),
   taodboxLance: () => appeler<boolean>('taodbox_lance'),
   assistant: (question: string, mediaId: number | null, historique: { role: string; content: string }[]) =>
     appeler<{ ok?: boolean; texte?: string; actions_proposees?: ActionProposee[] }>('assistant_demander', { question, mediaId, historique }),

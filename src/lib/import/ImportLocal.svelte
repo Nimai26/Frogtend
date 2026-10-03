@@ -13,6 +13,7 @@
   import { etat, reglerPc } from '$lib/etat.svelte';
   import { informer } from '$lib/dialogues/fenetres.svelte';
   import { pourLeJeu } from '$lib/emulateurs/choix';
+  import { preparerPourJouer } from '$lib/emulateurs/pret.svelte';
   import {
     elementDe,
     emplacementDuSysteme,
@@ -267,6 +268,8 @@ Rien n’est déplacé ni renommé. Les retirer plus tard de ta ludothèque ne l
         await rechargerPlateformes();
         await rechargerListe();
       }
+      // Une console sans émulateur : « Prêt à jouer » le propose aussitôt (Seb, 03/10).
+      if (b.ajoutes || b.versions) await preparerPourJouer(jeux[0].plateforme, jeux.length);
     } catch (e) {
       toast(`Import impossible : ${motifDuRefus(e)}`, 'erreur');
     } finally {

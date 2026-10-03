@@ -12,6 +12,12 @@
 //! - RetroArch : profils officiels `autoconfig\` (xinput, dinput, sdl2), détection automatique active par défaut ;
 //!   sans combinaison de menu à la manette sous Windows : Frogtend met L3 + R3 (`input_menu_toggle_gamepad_combo = 2`).
 //! - PPSSPP (XInput et DInput par défaut sous Windows) et DOSBox Staging (`joysticktype = auto`) : rien à régler.
+//! - RPCS3 (relevé dans son code, 03/10/2026 : Emu/Io/pad_config.h, Input/pad_thread.cpp, Input/xinput_pad_handler.cpp,
+//!   Emu/system_utils.cpp) : `config\input_configs\global\Default.yml`, clé `Player 1 Input` avec `Handler` et
+//!   `Device` ; les touches absentes reçoivent celles par défaut du handler (XInput : Cross = A, Circle = B…). UN seul
+//!   handler par joueur, et une manette XInput absente laisse le joueur SANS commandes : Frogtend choisit donc à
+//!   chaque partie la manette Xbox branchée (`XInput Pad #n`), sinon le clavier (Cross = X, Start = Entrée…). Il ne
+//!   gère que le fichier qu'il a écrit (sa marque en 1re ligne) : un réglage fait dans RPCS3 n'est jamais défait.
 
 use crate::emulateurs_profils::modifier_ini;
 use crate::erreurs::Resultat;
@@ -218,13 +224,88 @@ pub fn regler(id: &str, emulateur: &Path, utilisateur_dolphin: Option<&Path>, fo
             Some(u) => regler_dolphin(emulateur, u, forcer),
             None => Ok(false),
         },
+        "rpcs3" => regler_rpcs3(emulateur, forcer, premiere_manette_xinput()),
         _ => Ok(false),
     }
+}
+
+/// La première manette XInput branchée (0 à 3 ; la manette virtuelle de Sunshine en est une), par l'API de Windows.
+pub fn premiere_manette_xinput() -> Option<u32> {
+    #[cfg(windows)]
+    {
+        use windows::Win32::UI::Input::XboxController::{XInputGetState, XINPUT_STATE};
+        for i in 0..4u32 {
+            let mut s = XINPUT_STATE::default();
+            // 0 (ERROR_SUCCESS) : une manette est branchée à cet emplacement.
+            if unsafe { XInputGetState(i, &mut s) } == 0 {
+                return Some(i);
+            }
+        }
+    }
+    None
+}
+
+/// La marque des réglages de manette écrits par Frogtend pour RPCS3 (1re ligne du fichier).
+const MARQUE_RPCS3: &str = "# Frogtend : manette du joueur 1 réglée à chaque partie (manette Xbox branchée, sinon clavier).";
+
+/// Le profil de manette RPCS3 voulu : la manette XInput n° `i` (0 à 3), sinon le clavier.
+pub fn profil_rpcs3(manette: Option<u32>) -> String {
+    let (handler, device) = match manette {
+        Some(i) => ("XInput".to_string(), format!("XInput Pad #{}", i + 1)),
+        None => ("Keyboard".to_string(), "Keyboard".to_string()),
+    };
+    format!("{MARQUE_RPCS3}\nPlayer 1 Input:\n  Handler: {handler}\n  Device: {device}\n")
+}
+
+/// Le joueur 1 de RPCS3 sur la manette branchée (sinon le clavier). Un fichier sans la marque de Frogtend est celui de
+/// la personne : il n'est remplacé qu'à sa demande (`forcer`), après une copie à l'abri.
+fn regler_rpcs3(emulateur: &Path, forcer: bool, manette: Option<u32>) -> Resultat<bool> {
+    let fichier = emulateur.join("config").join("input_configs").join("global").join("Default.yml");
+    let actuel = std::fs::read_to_string(&fichier).ok();
+    let a_nous = actuel.as_deref().is_none_or(|t| t.starts_with(MARQUE_RPCS3));
+    if !a_nous && !forcer {
+        return Ok(false);
+    }
+    let voulu = profil_rpcs3(manette);
+    if actuel.as_deref() == Some(voulu.as_str()) {
+        return Ok(true);
+    }
+    if !a_nous {
+        crate::emulateurs_profils::mettre_a_l_abri(emulateur, &fichier)?;
+    }
+    if let Some(p) = fichier.parent() {
+        std::fs::create_dir_all(p)?;
+    }
+    std::fs::write(&fichier, voulu)?;
+    Ok(true)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rpcs3_prend_la_manette_branchee_sinon_le_clavier_sans_defaire_un_reglage() {
+        let d = tempfile::tempdir().unwrap();
+        let e = d.path();
+        let f = e.join("config").join("input_configs").join("global").join("Default.yml");
+        // Une manette Xbox branchée (emplacement 0) : « XInput Pad #1 ».
+        assert!(regler_rpcs3(e, false, Some(0)).unwrap());
+        let t = std::fs::read_to_string(&f).unwrap();
+        assert!(t.starts_with(MARQUE_RPCS3) && t.contains("Handler: XInput") && t.contains("Device: XInput Pad #1"));
+        // Débranchée à la partie suivante : le clavier (sinon le joueur n'aurait aucune commande).
+        assert!(regler_rpcs3(e, false, None).unwrap());
+        assert!(std::fs::read_to_string(&f).unwrap().contains("Handler: Keyboard"));
+        // Réglé par la personne dans RPCS3 (sans notre marque) : jamais touché…
+        std::fs::write(&f, "Player 1 Input:\n  Handler: DualSense\n").unwrap();
+        assert!(!regler_rpcs3(e, false, Some(1)).unwrap());
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "Player 1 Input:\n  Handler: DualSense\n");
+        // … sauf à sa demande (« manette par défaut ») : copie à l'abri d'abord.
+        assert!(regler_rpcs3(e, true, Some(1)).unwrap());
+        assert!(std::fs::read_to_string(&f).unwrap().contains("Device: XInput Pad #2"));
+        let abri = std::fs::read_dir(e.join(".frogtend-sauvegardes")).unwrap().next().unwrap().unwrap().path();
+        assert!(std::fs::read_to_string(abri.join("config/input_configs/global/Default.yml")).unwrap().contains("DualSense"));
+    }
 
     #[test]
     fn duckstation_recoit_la_manette_sdl_en_gardant_le_clavier() {
@@ -311,5 +392,14 @@ mod tests {
             assert!(!regler(id, d.path(), None, true).unwrap());
         }
         assert_eq!(std::fs::read_dir(d.path()).unwrap().count(), 0);
+    }
+}
+
+#[cfg(test)]
+mod essai_reel_manette {
+    #[test]
+    #[ignore]
+    fn quelle_manette_xinput_est_branchee() {
+        println!("MANETTE XINPUT : {:?}", super::premiere_manette_xinput());
     }
 }

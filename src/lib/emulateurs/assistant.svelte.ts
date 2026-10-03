@@ -45,7 +45,12 @@ export async function dossierEmulateurs(changer = false): Promise<string | null>
 }
 
 /** Installe (ou met à jour) un émulateur depuis sa source officielle, après avoir annoncé la taille. */
-export async function installerEmulateur(id: string, nom: string, miseAJour = false): Promise<EmulateurInstalle | null> {
+export async function installerEmulateur(
+  id: string,
+  nom: string,
+  miseAJour = false,
+  options: { sansQuestion?: boolean } = {},
+): Promise<EmulateurInstalle | null> {
   const dossier = await dossierEmulateurs();
   if (!dossier) return null;
   let paquet;
@@ -56,7 +61,8 @@ export async function installerEmulateur(id: string, nom: string, miseAJour = fa
     return null;
   }
   const site = new URL(paquet.url).host;
-  const oui = await confirmer(`⬇ ${miseAJour ? 'Mettre à jour' : 'Installer'} ${nom} ${paquet.version} ?`, {
+  // « Prêt à jouer » : la personne a déjà dit oui à une question qui disait tout.
+  const oui = options.sansQuestion || await confirmer(`⬇ ${miseAJour ? 'Mettre à jour' : 'Installer'} ${nom} ${paquet.version} ?`, {
     message: [
       `Téléchargement depuis son site officiel (${site}) : ${paquet.taille ? taille(paquet.taille) : 'taille non annoncée'}.`,
       `Dossier : ${dossier}\\${nom}`,
@@ -90,7 +96,7 @@ export async function installerEmulateur(id: string, nom: string, miseAJour = fa
 }
 
 /** Quand Firehouse ne recommande rien pour MS-DOS : DOSBox Staging (les jeux « prêts à jouer » ont souvent le leur). */
-function recommandationsParDefaut(plateforme: string): EmulateurRecommande[] {
+export function recommandationsParDefaut(plateforme: string): EmulateurRecommande[] {
   if (plateforme === 'MS-DOS') {
     return [{ nom: 'DOSBox Staging', site: 'https://www.dosbox-staging.org/', recommande: true, ligne_de_commande: '', extensions: [], bios: '' }];
   }
@@ -118,10 +124,15 @@ export async function dossierOutils(changer = false): Promise<string | null> {
 
 /** Installer un émulateur (ou un OUTIL, comme Cheat Engine : il va alors dans le dossier des outils) que Frogtend ne
  * connaît pas en dur, d'après Firehouse (contrat 14), sur accord. */
-export async function installerParFirehouse(id: string, nom: string, outil = false): Promise<EmulateurInstalle | null> {
+export async function installerParFirehouse(
+  id: string,
+  nom: string,
+  outil = false,
+  options: { sansQuestion?: boolean } = {},
+): Promise<EmulateurInstalle | null> {
   const dossier = outil ? await dossierOutils() : await dossierEmulateurs();
   if (!dossier) return null;
-  const oui = await confirmer(`⬇ Installer ${nom} ?`, {
+  const oui = options.sansQuestion || await confirmer(`⬇ Installer ${nom} ?`, {
     message: [
       `Firehouse donne sa source officielle et sa dernière version ; Frogtend la télécharge et vérifie qu’elle est intacte.`,
       `Dossier : ${dossier}\\${nom}`,
@@ -172,6 +183,45 @@ export async function installerParFirehouse(id: string, nom: string, outil = fal
     arreter();
     installationEmulateur.id = null;
   }
+}
+
+/**
+ * RetroArch : installe le cœur qui manque (sur accord, sauf `sansQuestion`), signale les fichiers système manquants, et
+ * rend son nom complet (« RetroArch — snes9x » : un cœur = un émulateur), ou `null` si le cœur n'a pas pu être installé.
+ */
+export async function completerRetroArch(
+  programme: string,
+  ligne: string,
+  bios: string[],
+  plateforme: string,
+  nom: string,
+  sansQuestion = false,
+): Promise<string | null> {
+  const e = await api.retroarchEtat(programme, ligne, bios).catch(() => null);
+  if (e?.coeur && !e.coeur_present) {
+    const oui =
+      sansQuestion ||
+      (await confirmer(`🧩 Installer le cœur « ${e.coeur} » ?`, {
+        message: `RetroArch a besoin de ce cœur pour ${plateforme}. Il vient du site officiel de libretro (quelques Mo).`,
+        libelleValider: '⬇ Installer le cœur',
+      }));
+    if (!oui) return null;
+    try {
+      await api.retroarchInstallerCoeur(programme, e.coeur);
+      toast(`✅ Cœur ${e.coeur} installé.`);
+    } catch (err) {
+      toast(`Échec de l’installation du cœur : ${motifDuRefus(err)}`, 'erreur');
+      return null;
+    }
+  }
+  if (e && e.bios_manquants.length) {
+    await informer(
+      '⚠ Fichier système manquant',
+      `${plateforme} a besoin de : ${e.bios_manquants.join(', ')}.\n\nPlace ce fichier (tel quel, sans le renommer) dans :\n${e.dossier_bios}\n\nBientôt, Firehouse le fournira et Frogtend l’installera tout seul.`,
+    );
+  }
+  const coeur = e?.coeur ?? (await api.retroarchEtat(programme, ligne, []).catch(() => null))?.coeur;
+  return coeur ? `${nom} — ${coeur.replace(/_libretro.dll$/i, '')}` : nom;
 }
 
 /** Ajouter un émulateur (ou un cœur RetroArch) à un système. Le premier devient celui par défaut. Rend la clé de
@@ -253,35 +303,10 @@ export async function reglerEmulateur(plateforme: string): Promise<string | null
     }
   }
 
-  // RetroArch : son cœur, ses BIOS.
   if (estRetroArch && programme) {
-    const e = await api.retroarchEtat(programme, ligne, bios).catch(() => null);
-    if (e?.coeur && !e.coeur_present) {
-      const oui = await confirmer(`🧩 Installer le cœur « ${e.coeur} » ?`, {
-        message: `RetroArch a besoin de ce cœur pour ${plateforme}. Il vient du site officiel de libretro (quelques Mo).`,
-        libelleValider: '⬇ Installer le cœur',
-      });
-      if (!oui) return null;
-      try {
-        await api.retroarchInstallerCoeur(programme, e.coeur);
-        toast(`✅ Cœur ${e.coeur} installé.`);
-      } catch (err) {
-        toast(`Échec de l’installation du cœur : ${motifDuRefus(err)}`, 'erreur');
-        return null;
-      }
-    }
-    if (e && e.bios_manquants.length) {
-      await informer(
-        '⚠ BIOS manquant',
-        `${plateforme} a besoin de : ${e.bios_manquants.join(', ')}.\n\nPlace ce fichier (tel quel, sans le renommer) dans :\n${e.dossier_bios}\n\nFrogtend ne télécharge pas les BIOS : ils viennent de ta console.`,
-      );
-    }
-  }
-
-  // RetroArch : un cœur = un émulateur (« RetroArch — snes9x »).
-  if (estRetroArch && programme) {
-    const coeur = (await api.retroarchEtat(programme, ligne, []).catch(() => null))?.coeur;
-    if (coeur) nom = `${nom} — ${coeur.replace(/_libretro.dll$/i, '')}`;
+    const n = await completerRetroArch(programme, ligne, bios, plateforme, nom);
+    if (!n) return null;
+    nom = n;
   }
   if (!programme) return null;
   const { sys, cle } = ajouter(etat.pc.emulateurs[plateforme], { nom, programme, ligne });

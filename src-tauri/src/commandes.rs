@@ -1812,11 +1812,12 @@ pub async fn jeu_copie_avant_mod(noyau: State<'_, Noyau>, id: i64) -> Resultat<S
     Ok(copie.to_string_lossy().into())
 }
 
-/// Installe le micrologiciel PS3 dans RPCS3 (`--installfw`, rpcs3.cpp) depuis le fichier PS3UPDAT.PUP que la
-/// personne a téléchargé sur le site de Sony et choisi. RPCS3 montre sa propre progression.
+/// Installe le micrologiciel PS3 dans RPCS3 depuis un fichier PS3UPDAT.PUP, SANS fenêtre ni question
+/// (`--headless --installfw`, relevé dans rpcs3.cpp le 03/10 : aucune boîte de dialogue sans interface). RPCS3 rend 0
+/// même en cas d'échec : le résultat se vérifie en relisant la version installée. Rend cette version (« 4.93 »).
 #[tauri::command]
-pub fn rpcs3_installer_micrologiciel(programme: String, pup: String) -> Resultat<()> {
-    let p = std::path::Path::new(&programme);
+pub async fn rpcs3_installer_micrologiciel(programme: String, pup: String) -> Resultat<String> {
+    let p = std::path::PathBuf::from(&programme);
     let nom = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
     if nom != "rpcs3.exe" || !p.is_file() {
         return Err(Erreur::Refus("Ce n'est pas le programme de RPCS3.".into()));
@@ -1824,13 +1825,25 @@ pub fn rpcs3_installer_micrologiciel(programme: String, pup: String) -> Resultat
     if !pup.to_lowercase().ends_with(".pup") || !std::path::Path::new(&pup).is_file() {
         return Err(Erreur::Refus("Choisis le fichier PS3UPDAT.PUP.".into()));
     }
-    std::process::Command::new(p)
-        .arg("--installfw")
-        .arg(&pup)
-        .current_dir(p.parent().unwrap_or(p))
-        .spawn()
-        .map_err(|e| Erreur::Disque(format!("RPCS3 ne démarre pas ({e}).")))?;
-    Ok(())
+    let dossier = p.parent().map(std::path::PathBuf::from).unwrap_or_default();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::lancement::outil_sans_fenetre(&p.to_string_lossy())
+            .args(["--headless", "--installfw"])
+            .arg(&pup)
+            .current_dir(&dossier)
+            .status()
+            .map_err(|e| Erreur::Disque(format!("RPCS3 ne démarre pas ({e}).")))?;
+        crate::emulateurs_profils::micrologiciel_rpcs3(&dossier)
+            .ok_or_else(|| Erreur::Disque("RPCS3 n'a pas installé le micrologiciel (fichier abîmé ?).".into()))
+    })
+    .await
+    .map_err(|_| Erreur::Disque("L'installation du micrologiciel s'est arrêtée brutalement.".into()))?
+}
+
+/// La version du micrologiciel PS3 installé dans ce RPCS3, s'il y en a un.
+#[tauri::command]
+pub fn rpcs3_micrologiciel(programme: String) -> Option<String> {
+    std::path::Path::new(&programme).parent().and_then(crate::emulateurs_profils::micrologiciel_rpcs3)
 }
 
 /// Poser une question à l'assistant jeux de Firehouse (lot 7). La conversation est gardée par l'interface.
