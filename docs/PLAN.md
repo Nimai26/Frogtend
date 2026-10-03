@@ -699,7 +699,15 @@ content ID se lit dans les zips (ex. EP0102-**BLES01227**_00-DLCS12… = Asura's
      Annoncé aussi : un contrat 1.6 pour les médias des jeux (visuels par type, empreintes, synchronisation).
   3. Revoir chaque écran avec la question « un novice saurait-il quoi faire ? » (déjà fait : extensions → types
      cochés d'office, plateforme devinée, toutes les plateformes proposées pour un émulateur).
-- **⛔ EN PAUSE jusqu'à l'essai de Seb (décision du 03/10)** : décompresser Asura's Wrath et le lancer dans RPCS3
+- **✅ ESSAI RPCS3 RÉUSSI (03/10, Seb)** : Asura's Wrath décompressé par Frogtend (0.43.4) démarre dans RPCS3
+  0.0.43-20192 directement depuis l'.iso déchiffré, à 60 i/s (écran d'installation des données du jeu). L'approche
+  PS3 est VALIDÉE : .iso déchiffré non zippé. → Format PS3 du stock de Firehouse : .iso déchiffré. La pause est levée.
+  Vu pendant l'essai, à mettre dans le lot « Prêt à jouer » : RPCS3 n'a AUCUNE manette réglée par Frogtend (pas de
+  `config/input_configs/…`) → régler une manette XInput standard à l'installation ; l'installation du micrologiciel
+  pose des questions (à rendre silencieuse si RPCS3 le permet : vérifier sa documentation) ; le PUP de Seb est ancien
+  (Firehouse le fournira à jour, besoin 19) ; la 1re compilation PPU est longue (une seule fois : le dire avant).
+  Corrigé localement, à livrer : « Sur ce PC » relu après l'installation d'un émulateur.
+- **(levée le 03/10) PAUSE jusqu'à l'essai de Seb (décision du 03/10)** : décompresser Asura's Wrath et le lancer dans RPCS3
   (docs/A-TESTER.md, « Décompresser pour jouer »). S'il démarre : approche validée, on reprend. Si RPCS3 refuse l'.iso
   (même à jour) : extraire le contenu de l'.iso (dossier PS3_GAME) au lieu de l'.iso, une livraison de plus. En
   attente derrière cet essai : DLC Xbox 360 (Xenia) et PS Vita (Vita3K), profils de manette par jeu, manettes
