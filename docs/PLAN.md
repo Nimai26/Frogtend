@@ -660,6 +660,14 @@ content ID se lit dans les zips (ex. EP0102-**BLES01227**_00-DLCS12… = Asura's
   corrigé, noté** : le cœur ne recompare pas aux réglages les dossiers que l'interface lui donne (emplacements,
   émulateurs, outils) — défense en plus, à faire dans un lot « durcissement » ; la recherche ISO 9660 n'exige pas
   « CD001 » (plafonnée à la place, pour ne pas risquer les empreintes déjà vérifiées chez Seb).
+- **Stock de départ de Firehouse (cadrage du 03/10, demandé par Firehouse)** : ~1,9 To de Venkman (E:\Games) va
+  entrer dans le stock de Firehouse. Réponses de Frogtend transmises : cartouches zippées OK, disques JAMAIS zippés
+  (CHD, RVZ, .wua, PS3 selon l'essai RPCS3), noms No-Intro/Redump gardés tels quels (titre clair dans l'API), MAME
+  non-merged + CHD dans le dossier du jeu + mises à jour par différence, DLC séparés annoncés par version (besoin 18
+  à écrire après accord), MUGEN = nouveau lot, réconciliation des fichiers déjà sur Venkman (ne pas retélécharger).
+  **À faire côté Frogtend une fois l'étiquette décidée** : une fantrad « [T-Fr…] » doit compter comme une version
+  FRANÇAISE (rang 0, choix de Seb « fantrad FR sinon EN ») ; aujourd'hui toute étiquette « [T…] » est pénalisée
+  comme un hack.
 - **⛔ EN PAUSE jusqu'à l'essai de Seb (décision du 03/10)** : décompresser Asura's Wrath et le lancer dans RPCS3
   (docs/A-TESTER.md, « Décompresser pour jouer »). S'il démarre : approche validée, on reprend. Si RPCS3 refuse l'.iso
   (même à jour) : extraire le contenu de l'.iso (dossier PS3_GAME) au lieu de l'.iso, une livraison de plus. En
