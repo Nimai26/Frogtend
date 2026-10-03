@@ -646,6 +646,13 @@ content ID se lit dans les zips (ex. EP0102-**BLES01227**_00-DLCS12… = Asura's
   « <id>_v<version> » (00050000 jeu, 0005000E mise à jour, 0005000C DLC) : le panneau les MONTRE, rien à installer
   (Cemu lit le .wua entier). Chez Seb (lecture seule) : 58 .wua lus, 35 avec mise à jour, 12 avec DLC. **Reste** :
   Xbox 360 (Xenia), PS Vita (Vita3K) — pas de jeux chez Seb pour l'instant.
+- **✅ 0.43.0 (décompresser pour jouer)** : un jeu importé rangé dans un .zip/.7z qui contient une image disque (ou un
+  jeu PS3 en dossier) : le panneau propose « 🗜 Décompresser pour jouer » (taille, dossier, place libre et durée
+  annoncés ; oui de la personne). Décompression À CÔTÉ de l'archive (dossier de la console, choisi par la personne),
+  dans un dossier provisoire, chaque fichier vérifié à sa taille, puis renommé ; jamais par-dessus un fichier
+  existant ; l'archive est GARDÉE (rien ne s'efface sans preuve). Le jeu se lance ensuite par l'image (nom gardé).
+  RPCS3 lit les .iso PS3 DÉCHIFFRÉS (ajout récent de RPCS3, d'après la presse : à vérifier au premier essai) ; ceux de
+  Seb le sont. Chez Seb (lecture seule) : 7 jeux PS3 reconnus (6,7 à 47 Go), aucun DLC ni avatar pris pour un jeu.
 
 **MAME vient de Firehouse (Seb, 02/10)** : ni l'émulateur MAME ni les ROM ne sont « ceux de Seb ». **Firehouse
 fournira MAME à jour (avec ses mises à jour) et les packs de ROM**, au choix **avec ou sans CHD** (les images de

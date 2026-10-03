@@ -497,6 +497,8 @@ export const api = {
   emulateursTraces: () => appeler<{ id: string; nom: string; dossiers: string[] }[]>('emulateurs_traces'),
   importMesurer: (elements: string[], destination: string) => appeler<[number, number | null]>('import_mesurer', { elements, destination }),
   importCopier: (elements: string[], destination: string) => appeler<string[]>('import_copier', { elements, destination }),
+  archiveDuJeu: (id: number) => appeler<import('$lib/decompression/decompression').ArchiveDeJeu | null>('archive_du_jeu', { id }),
+  decompresserJeu: (id: number) => appeler<string>('decompresser_jeu', { id }),
   contenusDuJeu: (id: number) => appeler<import('$lib/contenus/contenus').ContenusDuJeu>('contenus_du_jeu', { id }),
   contenusInstaller: (id: number, choisis: string[]) =>
     appeler<{ installes: number; refuses: [string, string][] }>('contenus_installer', { id, choisis }),

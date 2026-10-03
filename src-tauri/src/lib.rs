@@ -23,6 +23,7 @@ pub mod mame;
 pub mod succes;
 pub mod disque;
 pub mod contenus;
+pub mod decompression;
 pub mod ludotheque;
 pub mod menu_jeu;
 pub mod noyau;
@@ -285,6 +286,8 @@ pub fn run() {
             commandes::abris_regler,
             commandes::contenus_du_jeu,
             commandes::contenus_installer,
+            commandes::archive_du_jeu,
+            commandes::decompresser_jeu,
             commandes::ra_etat,
             commandes::ra_regler,
             commandes::ra_oublier,

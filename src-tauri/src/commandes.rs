@@ -515,6 +515,49 @@ pub struct BilanContenus {
     pub refuses: Vec<(String, String)>,
 }
 
+/// Progression de « décompresser pour jouer ».
+#[derive(Clone, Serialize)]
+struct ProgresDecompression {
+    jeu: i64,
+    ecrits: u64,
+    total: u64,
+}
+
+/// Le jeu est-il une archive qui contient une image disque (que l'émulateur ne lira pas telle quelle) ?
+#[tauri::command]
+pub async fn archive_du_jeu(noyau: State<'_, Noyau>, id: i64) -> Resultat<Option<crate::decompression::ArchiveDeJeu>> {
+    let Some(f) = noyau.fichier_lance(id).await? else { return Ok(None) };
+    tauri::async_runtime::spawn_blocking(move || crate::decompression::examiner(&f))
+        .await
+        .map_err(|_| Erreur::Disque("La lecture s'est arrêtée brutalement.".into()))?
+}
+
+/// Décompresse le jeu à côté de son archive (la personne a vu la taille et dit oui), puis le lance par le fichier
+/// décompressé. L'archive est gardée. Rend le chemin de ce qu'on lancera.
+#[tauri::command]
+pub async fn decompresser_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<String> {
+    let archive = noyau.fichier_lance(id).await?.ok_or_else(|| Erreur::Refus("Ce jeu n'a pas de fichier à décompresser.".into()))?;
+    let total = crate::decompression::examiner(&archive)?.map(|a| a.taille).unwrap_or(0);
+    let libre = archive.parent().and_then(crate::jeux_pc::place_libre);
+    noyau.journaliser(&format!("décompression du jeu {id} : {}", archive.display()));
+    let (a, app2) = (archive.clone(), app.clone());
+    let nouveau = tauri::async_runtime::spawn_blocking(move || {
+        let (mut ecrits, mut dernier) = (0u64, std::time::Instant::now());
+        crate::decompression::decompresser(&a, libre, &mut |n| {
+            ecrits += n;
+            if dernier.elapsed().as_millis() >= 250 || ecrits == total {
+                dernier = std::time::Instant::now();
+                let _ = app2.emit("decompression", ProgresDecompression { jeu: id, ecrits, total });
+            }
+        })
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La décompression s'est arrêtée brutalement.".into()))??;
+    noyau.remplacer_fichier(id, &archive, &nouveau).await?;
+    noyau.journaliser(&format!("décompression du jeu {id} terminée : {}", nouveau.display()));
+    Ok(nouveau.to_string_lossy().to_string())
+}
+
 /// Installe les contenus COCHÉS par la personne (elle a vu la liste, la taille, et dit oui) : chaque .pkg par RPCS3
 /// (`--headless --installpkg`, qui se ferme seul), sa licence dans le compte RPCS3 de CE profil.
 #[tauri::command]

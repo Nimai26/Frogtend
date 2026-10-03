@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.43.0 — décompresser pour jouer, et une vraie page d'aide
+
+- Un jeu à disque rangé dans un **.zip** ou un **.7z** (tes jeux PS3, par exemple) : le panneau du jeu propose
+  **🗜 Décompresser pour jouer**. Taille, dossier et durée annoncés ; rien ne se fait sans ton oui ; l'archive est
+  gardée ; ▶ Jouer lance ensuite le jeu décompressé.
+- **❓ Aide** explique maintenant tout Frogtend : versions d'un jeu, succès, mises à jour et DLC, jeux offerts, le
+  menu en jeu, Taodbox, et où Frogtend range les choses.
+
 ## 0.42.0 — Wii U : les mises à jour et DLC d'un .wua
 
 - Le panneau d'un jeu Wii U montre les **mises à jour et DLC** contenus dans son fichier .wua (Cemu les charge tout

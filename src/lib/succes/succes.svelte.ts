@@ -120,7 +120,7 @@ export function resumeRetro(r: SuccesRetro): { ton: 'ok' | 'alerte' | 'neutre'; 
     case 'compte':
       return { ton: 'neutre', texte: 'Règle ton compte RetroAchievements (⚙ Options ▸ Comptes) pour voir les succès de ce jeu.' };
     case 'zip':
-      return { ton: 'neutre', texte: 'Ta version est zippée : décompresse-la (l’émulateur en a besoin aussi) pour que Frogtend la vérifie.' };
+      return { ton: 'neutre', texte: 'Ta version est zippée : « 🗜 Décompresser pour jouer » (juste au-dessus) ; l’émulateur en a besoin aussi, et Frogtend pourra la vérifier.' };
     case 'pas_verifiable':
       return { ton: 'neutre', texte: 'Frogtend ne sait pas encore vérifier cette version pour RetroAchievements (console ou format pas encore pris en charge, comme la PS2).' };
   }

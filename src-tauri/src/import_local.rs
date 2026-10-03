@@ -830,6 +830,47 @@ mod tests {
         assert!(n.jouer(mario, None, Some("C:\\ailleurs.nes")).await.is_err());
     }
 
+    #[tokio::test]
+    async fn un_jeu_zippe_se_decompresse_pour_jouer() {
+        use crate::coffre::CoffreMemoire;
+        use crate::noyau::{Connexion, Noyau};
+        use std::io::Write;
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let profil = n.creer_profil("Seb", None, None).unwrap().id;
+        n.ouvrir(&profil, None, &Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        let ps3 = d.path().join("PS3");
+        std::fs::create_dir_all(&ps3).unwrap();
+        let archive = ps3.join("Jeu (Europe).zip");
+        let mut z = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
+        z.start_file("Jeu (Europe).iso", zip::write::SimpleFileOptions::default()).unwrap();
+        z.write_all(&[9u8; 2048]).unwrap();
+        z.finish().unwrap();
+        let jeu = JeuAImporter {
+            titre: "Jeu".into(),
+            plateforme: "Sony Playstation 3".into(),
+            dossier: ps3.to_string_lossy().into(),
+            fichier: Some("Jeu (Europe).zip".into()),
+            programme: None,
+            arguments: vec![],
+            annee: None,
+            editeur: None,
+            genres: vec![],
+        };
+        n.importer_locaux(&[jeu]).await.unwrap();
+        let filtre = crate::ludotheque::Filtre { boutique: Some("local".into()), ludotheque: true, ..Default::default() };
+        let id = n.lister(&filtre).await.unwrap().jeux[0].id;
+        assert_eq!(n.fichier_lance(id).await.unwrap(), Some(archive.clone()));
+        let iso = crate::decompression::decompresser(&archive, None, &mut |_| {}).unwrap();
+        n.remplacer_fichier(id, &archive, &iso).await.unwrap();
+        let i = n.registre().jeu(id).unwrap().unwrap().installation.unwrap();
+        assert_eq!(i.fichier_du_jeu.as_deref(), Some("Jeu (Europe).iso"), "le nom de l'image est gardé");
+        assert_eq!(std::path::PathBuf::from(&i.dossier), ps3.join("Jeu (Europe)"));
+        assert!(i.versions.iter().all(|v| !v.chemin.ends_with(".zip")), "plus de version qui pointe l'archive");
+        assert!(archive.is_file(), "l'archive est gardée");
+        assert!(n.remplacer_fichier(id, &archive, &iso).await.is_err(), "l'archive n'est plus celle du jeu");
+    }
+
     #[test]
     fn le_titre_perd_ses_etiquettes_mais_pas_le_fichier() {
         assert_eq!(titre_depuis_nom("Super Mario World (USA) [!].sfc"), "Super Mario World");

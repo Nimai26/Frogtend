@@ -239,6 +239,38 @@ impl Noyau {
         self.registre().changer_installation(id, Some(&i))
     }
 
+    /// Le fichier que l'émulateur reçoit pour ce jeu (version par défaut), s'il y en a un.
+    pub async fn fichier_lance(&self, id: i64) -> Resultat<Option<PathBuf>> {
+        let j = self.jeu_visible(id).await?;
+        Ok(j.installation.filter(|i| i.lanceur.is_none()).and_then(|i| i.fichier_du_jeu.map(|f| Path::new(&i.dossier).join(f))))
+    }
+
+    /// Après « décompresser pour jouer » : le jeu se lance désormais par `nouveau` au lieu de l'archive `ancien`
+    /// (version par défaut et liste des versions). L'archive reste sur le disque.
+    pub async fn remplacer_fichier(&self, id: i64, ancien: &Path, nouveau: &Path) -> Resultat<()> {
+        let j = self.jeu_visible(id).await?;
+        let mut i = j.installation.ok_or_else(|| Erreur::Refus("Le jeu n'est pas installé.".into()))?;
+        if !nouveau.is_file() {
+            return Err(Erreur::Disque(format!("Fichier introuvable : {}.", nouveau.display())));
+        }
+        let pareil = |c: &Path| c.to_string_lossy().eq_ignore_ascii_case(&ancien.to_string_lossy());
+        let mut change = false;
+        if i.fichier_du_jeu.as_ref().is_some_and(|f| pareil(&Path::new(&i.dossier).join(f))) {
+            i.dossier = nouveau.parent().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
+            i.fichier_du_jeu = nouveau.file_name().map(|n| n.to_string_lossy().to_string());
+            change = true;
+        }
+        for v in i.versions.iter_mut().filter(|v| pareil(Path::new(&v.chemin))) {
+            v.chemin = nouveau.to_string_lossy().to_string();
+            v.disques.clear();
+            change = true;
+        }
+        if !change {
+            return Err(Erreur::Refus("Cette archive n'est pas celle de ce jeu.".into()));
+        }
+        self.registre().changer_installation(id, Some(&i))
+    }
+
     /// Retient ce qu'on lance pour jouer (choisi par la personne).
     pub async fn choisir_lanceur(&self, id: i64, lanceur: Lanceur) -> Resultat<()> {
         let j = self.jeu_visible(id).await?;

@@ -18,6 +18,21 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
    Prime Gaming, PlayStation et récupérer les jeux offerts.
 7. Le reste à ton rythme : Taodbox et manettes (sonde), MAME, DOS, Cheat Engine, assistant, consoles récentes.
 
+## Décompresser pour jouer (0.43.0)
+- [ ] Importe tes jeux PS3 (`E:\Games\Playstation 3`, « zip ») et sélectionne **Asura's Wrath** (le plus petit :
+      6,7 Go). **Attendu :** « 🗜 Ce jeu est rangé dans une archive » et le bouton **🗜 Décompresser pour jouer**.
+- [ ] Clique : la fenêtre annonce la taille, le dossier (`E:\Games\Playstation 3\Asuras Wrath (Europe)
+      (EnJaFrDeEsIt)`), la place libre et la durée. Dis oui : la barre avance. **Attendu à la fin :** le message
+      « est prêt », le zip toujours là, l'.iso dans le nouveau dossier.
+- [ ] **▶ Jouer** : RPCS3 démarre le jeu depuis l'.iso. Dis-moi s'il refuse (sa version est peut-être trop ancienne
+      pour les .iso : ⚙ Options ▸ Émulateurs ▸ mettre RPCS3 à jour).
+- [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
+- [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
+
+## L'aide (0.43.0)
+- [ ] **❓ Aide** : le sommaire en haut mène aux rubriques (versions, succès, DLC, jeux offerts, en jeu, Taodbox,
+      rangement). Dis-moi ce qui n'est pas clair pour quelqu'un qui découvre Frogtend.
+
 ## Machine
 - [x] Disque D: plein (670 Mo libres le 02/10) : **Seb a fait de la place** (02/10). Le cache de construction de
       Frogtend est maintenant allégé (il avait atteint 61 Go).

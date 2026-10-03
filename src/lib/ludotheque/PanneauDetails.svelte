@@ -13,6 +13,7 @@
   import { nomPlateforme } from '$lib/boutiques/galaxy.svelte';
   import BlocSucces from '$lib/succes/BlocSucces.svelte';
   import BlocContenus from '$lib/contenus/BlocContenus.svelte';
+  import BlocDecompression from '$lib/decompression/BlocDecompression.svelte';
 
   const j = $derived(ludo.selection);
   const surPc = $derived(j ? tele.jeux[j.id] : undefined);
@@ -124,6 +125,7 @@
         {#if j.minutes}<dt>Temps de jeu</dt><dd>{duree(j.minutes * 60)}</dd>{/if}
       {/if}
     </dl>
+    {#if !catalogue && surPc?.installation}<BlocDecompression id={j.id} titre={j.titre} />{/if}
     {#if !catalogue}<BlocSucces jeu={j} surPc={!!surPc?.installation} />{/if}
     {#if !catalogue && surPc?.installation}<BlocContenus id={j.id} titre={j.titre} />{/if}
     {#if j.genres.length}
