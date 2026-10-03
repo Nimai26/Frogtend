@@ -693,7 +693,10 @@ content ID se lit dans les zips (ex. EP0102-**BLES01227**_00-DLCS12… = Asura's
      durée annoncées).
   2. **BIOS et micrologiciels fournis par Firehouse, toujours à jour** (ex. PS3UPDAT.PUP pour RPCS3, BIOS PS1/PS2,
      Saturn…) : installés automatiquement dans l'émulateur avec son installation (besoin API n° 19). Plus jamais de
-     fichier à chercher soi-même ; le bouton 💿 actuel reste en secours.
+     fichier à chercher soi-même ; le bouton 💿 actuel reste en secours. Firehouse (03/10) : besoin reçu, À CADRER
+     (source et mise à jour de chaque fichier, stockage sur Egon, accord chiffré de Seb pour chaque rapatriement) ;
+     contrat publié plus tard dans EXEMPLES-API-JEUX-V1.md → d'ici là, ne PAS coder contre la route : la SIMULER.
+     Annoncé aussi : un contrat 1.6 pour les médias des jeux (visuels par type, empreintes, synchronisation).
   3. Revoir chaque écran avec la question « un novice saurait-il quoi faire ? » (déjà fait : extensions → types
      cochés d'office, plateforme devinée, toutes les plateformes proposées pour un émulateur).
 - **⛔ EN PAUSE jusqu'à l'essai de Seb (décision du 03/10)** : décompresser Asura's Wrath et le lancer dans RPCS3
