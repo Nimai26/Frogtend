@@ -497,6 +497,9 @@ export const api = {
   emulateursTraces: () => appeler<{ id: string; nom: string; dossiers: string[] }[]>('emulateurs_traces'),
   importMesurer: (elements: string[], destination: string) => appeler<[number, number | null]>('import_mesurer', { elements, destination }),
   importCopier: (elements: string[], destination: string) => appeler<string[]>('import_copier', { elements, destination }),
+  contenusDuJeu: (id: number) => appeler<import('$lib/contenus/contenus').ContenusDuJeu>('contenus_du_jeu', { id }),
+  contenusInstaller: (id: number, choisis: string[]) =>
+    appeler<{ installes: number; refuses: [string, string][] }>('contenus_installer', { id, choisis }),
   raEtat: () => appeler<import('$lib/succes/succes.svelte').EtatRetro>('ra_etat'),
   raRegler: (compte: string, cle?: string) =>
     appeler<import('$lib/succes/succes.svelte').EtatRetro>('ra_regler', { compte, cle: cle ?? null }),
@@ -507,7 +510,7 @@ export const api = {
   succesSteam: (appid: string) => appeler<[number, number] | null>('succes_steam', { appid }),
   abrisRegler: (dossier: string) => appeler<number>('abris_regler', { dossier }),
   importChercherRoms: (dossier: string, extensions: string[], recursif: boolean) =>
-    appeler<import('$lib/import/local').RomTrouvee[]>('import_chercher_roms', { dossier, extensions, recursif }),
+    appeler<{ roms: import('$lib/import/local').RomTrouvee[]; contenus: number }>('import_chercher_roms', { dossier, extensions, recursif }),
   importChercherMame: (dossier: string, liste: string, options: import('$lib/import/local').OptionsMame) =>
     appeler<import('$lib/import/local').TriMame>('import_chercher_mame', { dossier, liste, options }),
   importInstallerDos: (dosbox: string, source: string, destination: string, titre: string) =>

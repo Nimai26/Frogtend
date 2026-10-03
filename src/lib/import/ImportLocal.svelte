@@ -53,6 +53,8 @@
   let roms = $state<(RomTrouvee & { pris: boolean })[]>([]);
   let dos = $state<(JeuDosTrouve & { pris: boolean; programme: string })[]>([]);
   let cherche = $state(false);
+  /** Les zips de contenus additionnels (DLC, avatars…) trouvés et écartés : ils ne sont pas des jeux. */
+  let contenusEcartes = $state(0);
   let optionsMame = $state<OptionsMame>({ ...OPTIONS_MAME_DEFAUT });
   let tri = $state<TriMame | null>(null);
   let mamePris = $state<boolean[]>([]);
@@ -139,7 +141,8 @@
     try {
       if (sorte === 'rom') {
         const l = await api.importChercherRoms(dossier, lireExtensions(extensions), recursif);
-        roms = l.map((r) => ({ ...r, pris: true }));
+        roms = l.roms.map((r) => ({ ...r, pris: true }));
+        contenusEcartes = l.contenus;
       } else if (sorte === 'mame') {
         tri = await api.importChercherMame(dossier, etat.pc.listeMame, $state.snapshot(optionsMame));
         mamePris = tri.retenus.map(() => true);
@@ -361,6 +364,9 @@ Rien n’est déplacé ni renommé. Les retirer plus tard de ta ludothèque ne l
     </div>
 
     {#if cherche}
+      {#if sorte === 'rom' && contenusEcartes}
+        <p class="muted">📦 {contenusEcartes} contenu(s) additionnel(s) trouvé(s) (DLC, avatars…) : ce ne sont pas des jeux. Ils apparaîtront dans le panneau de leur jeu, prêts à être installés si tu le souhaites.</p>
+      {/if}
       {#if (sorte === 'rom' ? roms.length : dos.length) === 0}
         <p>Aucun jeu trouvé dans ce dossier{sorte === 'rom' ? ' avec ces extensions' : ' (un jeu = un sous-dossier avec un programme .exe, .com ou .bat)'}.</p>
       {:else}

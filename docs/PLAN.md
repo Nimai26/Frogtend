@@ -626,6 +626,15 @@ content ID se lit dans les zips (ex. EP0102-**BLES01227**_00-DLCS12… = Asura's
 - PS3 (relevé dans les sources de RPCS3, 03/10) : `rpcs3 --installpkg <fichier>` installe un .pkg (contenu commun à
   tous) ; une licence .rap se copie dans `dev_hdd0\home\<compte>\exdata\<content id>.rap` = **par compte
   RPCS3**, donc dans le compte DU PROFIL qui installe. Chez Seb : 70 zips de DLC/avatars (.pkg, 50 avec .rap).
+- **✅ 0.40.0 (PS3)** (`src-tauri/src/contenus.rs`, `src/lib/contenus/`) : détection des .pkg/.rap isolés ou dans des
+  zips (en-tête et sommaire seulement : 70 contenus chez Seb en 0,3 s, les 50 licences rattachées) dans le dossier du
+  jeu, son installation et les emplacements de la PS3 ; rattachement par TITLE_ID (PARAM.SFO de l'.iso/du dossier) ou
+  par le titre ; panneau du jeu « 📦 Contenus additionnels » (disponibles/installés pour CE profil, cases, taille,
+  confirmation) ; installation : extraction temporaire dans `<données de Frogtend>\travail\contenus` (retirée
+  ensuite), `rpcs3 --headless --installpkg` une seule fois par PC (registre `<rpcs3>\.frogtend-contenus.json`), licence
+  copiée dans le compte RPCS3 du profil ; à l'import, un zip qui ne contient que des .pkg/.rap n'est PAS un jeu
+  (dossier PS3 de Seb : 7 jeux, 70 contenus écartés et annoncés). **Reste** : les autres consoles (Switch : mises à
+  jour et DLC en .nsp ; Wii U ; Xbox 360…), mêmes principes.
 
 **MAME vient de Firehouse (Seb, 02/10)** : ni l'émulateur MAME ni les ROM ne sont « ceux de Seb ». **Firehouse
 fournira MAME à jour (avec ses mises à jour) et les packs de ROM**, au choix **avec ou sans CHD** (les images de

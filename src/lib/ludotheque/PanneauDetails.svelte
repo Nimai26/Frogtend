@@ -12,6 +12,7 @@
   import { estJeuDeBoutique, ouvrirJeuDeBoutique } from '$lib/boutiques/jeu-boutique';
   import { nomPlateforme } from '$lib/boutiques/galaxy.svelte';
   import BlocSucces from '$lib/succes/BlocSucces.svelte';
+  import BlocContenus from '$lib/contenus/BlocContenus.svelte';
 
   const j = $derived(ludo.selection);
   const surPc = $derived(j ? tele.jeux[j.id] : undefined);
@@ -124,6 +125,7 @@
       {/if}
     </dl>
     {#if !catalogue}<BlocSucces jeu={j} surPc={!!surPc?.installation} />{/if}
+    {#if !catalogue && surPc?.installation}<BlocContenus id={j.id} titre={j.titre} />{/if}
     {#if j.genres.length}
       <div class="genres">
         {#each j.genres as g (g)}<span class="tag">{g}</span>{/each}

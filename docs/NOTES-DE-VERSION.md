@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.40.0 — les DLC et contenus additionnels (PS3)
+
+- Frogtend **trouve** les DLC, avatars et thèmes PS3 (.pkg et licences .rap, même zippés) et les **rattache** à leur
+  jeu.
+- Dans le panneau du jeu, **📦 Contenus additionnels** : ce qui est disponible et ce qui est installé pour toi ; tu
+  coches, Frogtend annonce la taille, et **installe seulement si tu dis oui** (par RPCS3, licence dans TON compte).
+- À l'import, un zip de DLC n'est plus pris pour un jeu : il est annoncé comme contenu additionnel.
+
 ## 0.39.0 — succès : PS3, Jaguar CD et PSP compressé
 
 - RetroAchievements sait maintenant vérifier les jeux **PS3** (.iso, .chd, ou jeu en dossier), **Jaguar CD** et les

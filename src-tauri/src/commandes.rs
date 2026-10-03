@@ -329,6 +329,140 @@ fn emulateur_regle(app: &AppHandle, plateforme: &str, jeu: i64, demande: Option<
     Some((e.programme, e.ligne))
 }
 
+/// Un contenu additionnel vu depuis le panneau d'un jeu.
+#[derive(Serialize)]
+pub struct ContenuVu {
+    pub id: String,
+    pub nom: String,
+    pub genre: String,
+    pub taille: u64,
+    pub licence: bool,
+    /// Installé (et sa licence posée dans le compte de CE profil s'il en a une).
+    pub installe: bool,
+}
+
+/// Les contenus additionnels d'un jeu du PC.
+#[derive(Serialize, Default)]
+pub struct ContenusDuJeu {
+    /// `aucun` (console pas encore gérée), `emulateur` (pas de RPCS3 réglé), `ok`.
+    pub etat: String,
+    pub titre_id: Option<String>,
+    pub contenus: Vec<ContenuVu>,
+}
+
+/// Ce qu'il faut pour les contenus PS3 d'un jeu : le jeu, son RPCS3, le compte RPCS3 du profil, les contenus trouvés.
+async fn contexte_contenus(
+    app: &AppHandle,
+    noyau: &Noyau,
+    id: i64,
+) -> Resultat<Option<(std::path::PathBuf, String, Option<String>, Vec<crate::contenus::Contenu>)>> {
+    let p = profil_ouvert(noyau).await?;
+    let j = noyau.registre().jeu(id)?.ok_or_else(|| Erreur::Introuvable("Ce jeu n'est pas sur ce PC.".into()))?;
+    if crate::succes::console_de(&j.plateforme) != Some(82) {
+        return Ok(None);
+    }
+    let Some((programme, _)) = emulateur_regle(app, &j.plateforme, id, None) else { return Err(Erreur::Reglage("Aucun RPCS3 réglé pour la PS3.".into())) };
+    let rpcs3 = std::path::Path::new(&programme).parent().map(std::path::PathBuf::from).unwrap_or_default();
+    let compte = crate::emulateurs_profils::compte_rpcs3(&rpcs3, &p.nom)?;
+    // Où chercher : le dossier du jeu, son installation, et les emplacements de la PS3.
+    let mut dossiers: Vec<std::path::PathBuf> = vec![std::path::PathBuf::from(&j.dossier)];
+    let mut fichier_du_jeu = None;
+    if let Some(i) = &j.installation {
+        dossiers.push(std::path::PathBuf::from(&i.dossier));
+        fichier_du_jeu = Some(match &i.fichier_du_jeu {
+            Some(f) => std::path::Path::new(&i.dossier).join(f),
+            None => std::path::PathBuf::from(&i.dossier),
+        });
+    }
+    let e = emplacements(app);
+    dossiers.extend(e.systemes.get(&j.plateforme).cloned().unwrap_or_default().into_iter().map(std::path::PathBuf::from));
+    dossiers.sort();
+    dossiers.dedup();
+    let titre = j.titre.clone();
+    let (contenus, titre_id) = tauri::async_runtime::spawn_blocking(move || {
+        let mut l: Vec<crate::contenus::Contenu> = dossiers.iter().filter(|d| d.is_dir()).flat_map(|d| crate::contenus::chercher_ps3(d)).collect();
+        l.sort_by(|a, b| a.id.cmp(&b.id));
+        l.dedup_by(|a, b| a.id == b.id);
+        let titre_id = fichier_du_jeu.as_deref().and_then(crate::contenus::titre_id_ps3);
+        let du_jeu: Vec<crate::contenus::Contenu> = crate::contenus::du_jeu(&l, titre_id.as_deref(), &titre).into_iter().cloned().collect();
+        (du_jeu, titre_id)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La recherche s'est arrêtée brutalement.".into()))?;
+    Ok(Some((rpcs3, compte, titre_id, contenus)))
+}
+
+/// Les contenus additionnels (DLC, avatars…) d'un jeu, disponibles sur ce PC, et ce qui est déjà installé pour ce profil.
+#[tauri::command]
+pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<ContenusDuJeu> {
+    let (rpcs3, compte, titre_id, contenus) = match contexte_contenus(&app, &noyau, id).await {
+        Ok(Some(x)) => x,
+        Ok(None) => return Ok(ContenusDuJeu { etat: "aucun".into(), ..Default::default() }),
+        Err(Erreur::Reglage(_)) => return Ok(ContenusDuJeu { etat: "emulateur".into(), ..Default::default() }),
+        Err(e) => return Err(e),
+    };
+    let faits = crate::contenus::installes(&rpcs3);
+    Ok(ContenusDuJeu {
+        etat: "ok".into(),
+        titre_id,
+        contenus: contenus
+            .into_iter()
+            .map(|c| ContenuVu {
+                installe: faits.contains(&c.id) && (c.rap.is_none() || crate::contenus::licence_posee(&rpcs3, &compte, &c.id)),
+                licence: c.rap.is_some(),
+                id: c.id,
+                nom: c.nom,
+                genre: c.genre,
+                taille: c.taille,
+            })
+            .collect(),
+    })
+}
+
+/// Le bilan d'une installation de contenus.
+#[derive(Serialize, Default)]
+pub struct BilanContenus {
+    pub installes: usize,
+    pub refuses: Vec<(String, String)>,
+}
+
+/// Installe les contenus COCHÉS par la personne (elle a vu la liste, la taille, et dit oui) : chaque .pkg par RPCS3
+/// (`--headless --installpkg`, qui se ferme seul), sa licence dans le compte RPCS3 de CE profil.
+#[tauri::command]
+pub async fn contenus_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, choisis: Vec<String>) -> Resultat<BilanContenus> {
+    let (rpcs3, compte, _, contenus) =
+        contexte_contenus(&app, &noyau, id).await?.ok_or_else(|| Erreur::Refus("Ce jeu n'a pas de contenus gérés par Frogtend.".into()))?;
+    let programme = emulateur_regle(&app, &noyau.registre().jeu(id)?.map(|j| j.plateforme).unwrap_or_default(), id, None)
+        .map(|(p, _)| std::path::PathBuf::from(p))
+        .ok_or_else(|| Erreur::Reglage("Aucun RPCS3 réglé pour la PS3.".into()))?;
+    let travail = noyau.dossier.join("travail").join("contenus");
+    let a_faire: Vec<crate::contenus::Contenu> = contenus.into_iter().filter(|c| choisis.contains(&c.id)).collect();
+    noyau.journaliser(&format!("contenus PS3 : installation de {} contenu(s) pour le compte {compte}", a_faire.len()));
+    let bilan = tauri::async_runtime::spawn_blocking(move || {
+        let mut b = BilanContenus::default();
+        for c in &a_faire {
+            let r = crate::contenus::installer_ps3(c, &rpcs3, &compte, &travail, &|pkg| {
+                let args = vec!["--headless".to_string(), "--installpkg".to_string(), pkg.to_string_lossy().to_string()];
+                let code = crate::installation::executer_et_attendre(&programme, &args, &rpcs3)?;
+                if code != 0 {
+                    return Err(Erreur::Disque(format!("RPCS3 a répondu {code} en installant le paquet.")));
+                }
+                Ok(())
+            });
+            match r {
+                Ok(()) => b.installes += 1,
+                Err(e) => b.refuses.push((c.nom.clone(), format!("{e:?}"))),
+            }
+        }
+        let _ = std::fs::remove_dir(&travail); // seulement s'il est vide
+        b
+    })
+    .await
+    .map_err(|_| Erreur::Disque("L'installation s'est arrêtée brutalement.".into()))?;
+    noyau.journaliser(&format!("contenus PS3 : {} installé(s), {} refusé(s)", bilan.installes, bilan.refuses.len()));
+    Ok(bilan)
+}
+
 #[tauri::command]
 pub async fn installation_preparer(noyau: State<'_, Noyau>, id: i64) -> Resultat<crate::partie::Preparation> {
     noyau.preparer_installation(id).await
@@ -1041,10 +1175,22 @@ pub async fn gratuits_obtenir_epic(app: AppHandle, noyau: State<'_, Noyau>, slug
 
 /// 📥 Importer ▸ Fichiers ROM : les ROM d'un dossier (rien n'est encore ajouté : la personne voit la liste d'abord).
 #[tauri::command]
-pub async fn import_chercher_roms(dossier: String, extensions: Vec<String>, recursif: bool) -> Resultat<Vec<crate::import_local::RomTrouvee>> {
-    tauri::async_runtime::spawn_blocking(move || crate::import_local::chercher_roms(std::path::Path::new(&dossier), &extensions, recursif))
-        .await
-        .map_err(|_| Erreur::Disque("La recherche s'est arrêtée brutalement.".into()))?
+pub async fn import_chercher_roms(dossier: String, extensions: Vec<String>, recursif: bool) -> Resultat<RomsTrouvees> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let l = crate::import_local::chercher_roms(std::path::Path::new(&dossier), &extensions, recursif)?;
+        // Les zips de contenus additionnels (DLC, avatars…) ne sont pas des jeux : écartés, et comptés.
+        let (contenus, roms): (Vec<_>, Vec<_>) = l.into_iter().partition(|r| crate::contenus::zip_de_contenus(std::path::Path::new(&r.chemin)));
+        Ok(RomsTrouvees { roms, contenus: contenus.len() })
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La recherche s'est arrêtée brutalement.".into()))?
+}
+
+/// Les ROM trouvées, et combien de contenus additionnels ont été écartés (ils apparaissent dans le panneau du jeu).
+#[derive(Serialize)]
+pub struct RomsTrouvees {
+    pub roms: Vec<crate::import_local::RomTrouvee>,
+    pub contenus: usize,
 }
 
 /// 📥 Importer ▸ MAME Arcade Full Set : le tri du dossier d'après la liste MAME de LaunchBox (rien n'est encore ajouté).

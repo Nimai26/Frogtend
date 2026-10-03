@@ -22,6 +22,7 @@ pub mod import_local;
 pub mod mame;
 pub mod succes;
 pub mod disque;
+pub mod contenus;
 pub mod ludotheque;
 pub mod menu_jeu;
 pub mod noyau;
@@ -282,6 +283,8 @@ pub fn run() {
             commandes::gratuits_connexion,
             commandes::gratuits_recuperer,
             commandes::abris_regler,
+            commandes::contenus_du_jeu,
+            commandes::contenus_installer,
             commandes::ra_etat,
             commandes::ra_regler,
             commandes::ra_oublier,

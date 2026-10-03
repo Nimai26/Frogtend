@@ -49,6 +49,17 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Un jeu PlayStation par DuckStation : il demande de te connecter la 1re fois ; connecte-toi. Ensuite, joue avec un
       autre profil (sans compte), puis reviens au tien : **tu es toujours connecté**, l'autre profil ne l'était pas.
 
+## DLC et contenus additionnels PS3 (0.40.0)
+- [ ] Il faut RPCS3 réglé pour la PS3 (⚙ Options ▸ Émulateurs).
+- [ ] 📥 Importer ▸ Fichiers ROM sur `E:\Games\Playstation 3`, plateforme « Sony Playstation 3 », extension « zip ».
+      **Attendu :** 7 jeux, et le message « 📦 70 contenu(s) additionnel(s) trouvé(s)… ce ne sont pas des jeux ».
+- [ ] Sélectionne **God of War - Ascension** : le panneau montre **📦 Contenus additionnels : 13 disponible(s)**.
+      Ouvre, coche-en 1 ou 2, **📦 Installer** : la confirmation annonce la taille ; dis oui. **Attendu :** « ✅ …
+      installé(s) » ; ils passent en ✅. Dans RPCS3, le contenu est là (avatar/DLC visible dans le jeu).
+- [ ] Change de profil, même jeu : les contenus avec **licence** ne sont pas ✅ pour lui ; s'il les installe, le paquet
+      n'est pas réinstallé, seule SA licence est posée (rapide).
+- [ ] Rien d'extrait ne reste : `<données de Frogtend>\travail\contenus` est vide ou absent après.
+
 ## Succès : PS3, Jaguar CD, PSP compressé (0.39.0)
 - [ ] Un jeu PS3 de `E:\Games\Playstation 3` importé tel quel (.zip) : le panneau dit **« Ta version est zippée :
       décompresse-la »**. Décompresse-en un (l'.iso), importe l'.iso : **🏆 RetroAchievements** dit s'il est compatible.
