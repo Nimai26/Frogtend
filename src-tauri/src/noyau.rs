@@ -516,7 +516,8 @@ impl Noyau {
         if jeu.jaquette == Some(false) {
             return Ok(None); // Firehouse dit ne pas en avoir : inutile de demander.
         }
-        let largeur = largeur.map(|l| l.clamp(100, 1000).div_ceil(100) * 100);
+        // Jamais l'original (contrat 1.6 : 1 à 13 Mo) : au plus la grande miniature de 1 000 pixels.
+        let largeur = Some(largeur.unwrap_or(crate::locale::LARGEUR_GRANDE).clamp(100, 1000).div_ceil(100) * 100);
         let taille = largeur.map_or("orig".to_string(), |l| l.to_string());
         let empreinte: String = jeu
             .jaquette_empreinte
@@ -739,7 +740,8 @@ mod tests {
         });
         let png = [0x89u8, b'P', b'N', b'G', 1, 2, 3];
         let media = serveur.mock(|w, t| {
-            w.method(GET).path("/api/jeux/v1/media/1/jaquette");
+            // Jamais l'original (contrat 1.6) : sans largeur demandée, la grande miniature de 1 000 pixels.
+            w.method(GET).path("/api/jeux/v1/media/1/jaquette").query_param("largeur", "1000");
             t.status(200).body(png);
         });
 
@@ -756,7 +758,7 @@ mod tests {
         media.assert_hits(1); // la seconde fois vient du disque
         // Le jeu 2 n'a pas de jaquette selon Firehouse : aucune requête.
         assert!(n.jaquette(2, None).await.unwrap().is_none());
-        assert!(d.path().join("profils").join(&id).join("jaquettes").join("1-orig-x.img").is_file());
+        assert!(d.path().join("profils").join(&id).join("jaquettes").join("1-1000-x.img").is_file());
     }
 
     #[tokio::test]

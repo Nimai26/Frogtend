@@ -21,6 +21,9 @@ use std::sync::Arc;
 
 /// Largeur de la miniature gardée pour la grille (hors ligne).
 pub const LARGEUR_MINIATURE: u32 = 400;
+/// La « grande » jaquette gardée pour le hors ligne : 1 000 pixels (la plus grande miniature de Firehouse). Depuis le
+/// contrat 1.6 (Firehouse 2.41.0), sans largeur, Firehouse sert l'ORIGINAL (1 à 13 Mo) : jamais pour un affichage.
+pub const LARGEUR_GRANDE: u32 = 1000;
 
 /// Ce que l'interface reçoit de la file de téléchargements.
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -278,7 +281,7 @@ impl Noyau {
         let dossier = dossier.to_path_buf();
         std::fs::create_dir_all(dossier.join("annexes"))?;
         std::fs::write(dossier.join("fiche.json"), serde_json::to_vec_pretty(fiche).unwrap())?;
-        if let Some(img) = s.source.media(id, "jaquette", None).await? {
+        if let Some(img) = s.source.media(id, "jaquette", Some(LARGEUR_GRANDE)).await? {
             std::fs::write(dossier.join("jaquette.img"), &img.octets)?;
         }
         if let Some(img) = s.source.media(id, "jaquette", Some(LARGEUR_MINIATURE)).await? {
@@ -481,7 +484,7 @@ mod tests {
             t.status(200).body([0xFFu8, 0xD8, 0xFF, 4]);
         });
         s.mock(|w, t| {
-            w.method(GET).path("/api/jeux/v1/media/110/jaquette");
+            w.method(GET).path("/api/jeux/v1/media/110/jaquette").query_param("largeur", "1000");
             t.status(200).body([0xFFu8, 0xD8, 0xFF, 1, 2, 3]);
         });
         s.mock(|w, t| {
@@ -789,6 +792,30 @@ mod tests {
         if let Reponse::Corps { octets, type_contenu, .. } = c.obtenir(&route, None).await.unwrap() {
             println!("MANUEL : {} octets, type {:?}, début {:02X?} → .{}", octets.len(), type_contenu, &octets[..8], extension(&octets, type_contenu.as_deref()));
         }
+    }
+
+    /// Contrat 1.6 (Firehouse 2.41.0) en RÉEL, lecture seule : un jeu SNES du catalogue, sa jaquette en miniature
+    /// (WebP attendu), et le poids de l'original annoncé par `/jeu/{id}/medias` (jamais téléchargé).
+    /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_medias_reels -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_medias_reels() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        let cat: Value = c.obtenir_json("/catalogue?plateforme=Super%20Nintendo%20Entertainment%20System&page=1").await.unwrap();
+        let j = cat["jeux"].as_array().unwrap().iter().find(|j| !j["jaquette_empreinte"].is_null()).expect("aucun jeu avec jaquette sur la page 1");
+        let id = j["id"].as_i64().unwrap();
+        println!("JEU {} « {} » jaquette_empreinte={} images={}", id, j["titre"], j["jaquette_empreinte"], j["images"]);
+        for l in [200, 400, 1000] {
+            if let Reponse::Corps { octets, type_contenu, .. } = c.obtenir(&format!("/media/{id}/jaquette?largeur={l}"), None).await.unwrap() {
+                println!("MINIATURE {l} : {} octets, type {:?}, reconnu {:?}", octets.len(), type_contenu, crate::noyau::type_image(&octets));
+            }
+        }
+        let m: Value = c.obtenir_json(&format!("/jeu/{id}/medias")).await.unwrap();
+        let tailles: Vec<String> = m["medias"].as_array().map(|l| l.iter().take(6).map(|x| format!("{}:{}", x["type"], x["taille"])).collect()).unwrap_or_default();
+        println!("MEDIAS {} : {:?}", m["medias"].as_array().map_or(0, |l| l.len()), tailles);
     }
 
     /// Reconnaissance RÉELLE en lecture seule, pour le lot 3 : notice de lancement, début du fichier d'une version

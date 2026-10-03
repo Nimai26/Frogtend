@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.44.1 — les nouvelles images de Firehouse, légères
+
+- Firehouse sert maintenant de nombreuses images par jeu (boîtes, cartouches, logos, captures…), et la jaquette
+  d'origine peut peser jusqu'à 13 Mo. Frogtend ne demande plus jamais l'original : au plus une version de
+  1 000 pixels (environ 56 Ko au lieu de 605 Ko pour un jeu Super Nintendo essayé), y compris pour la copie gardée
+  avec un jeu installé (hors ligne).
+- Ta prochaine synchronisation relira une fois les jeux Super Nintendo (Firehouse vient de mettre à jour leurs fiches).
+
 ## 0.44.0 — Prêt à jouer
 
 - **Une console sans émulateur se prépare toute seule, après un seul « oui »** : quand tu importes des jeux,
