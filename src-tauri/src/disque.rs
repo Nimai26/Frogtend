@@ -38,29 +38,50 @@ fn msf(t: &str) -> Option<u64> {
     (p.len() == 3).then(|| (p[0] * 60 + p[1]) * 75 + p[2])
 }
 
-/// Le fichier et la position de la 1re piste d'après une feuille .cue.
-fn piste_du_cue(cue: &Path) -> Option<(PathBuf, u64)> {
-    let texte = std::fs::read_to_string(cue).ok()?;
-    let dossier = cue.parent()?;
+/// Une piste d'une feuille .cue.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PisteCue {
+    pub numero: u32,
+    pub fichier: PathBuf,
+    /// Où commence la piste (INDEX 01) dans son fichier, en octets.
+    pub decalage: u64,
+    pub audio: bool,
+    /// Sa longueur en octets (jusqu'à la piste suivante du même fichier, ou la fin du fichier).
+    pub longueur: u64,
+}
+
+/// Toutes les pistes d'une feuille .cue.
+pub fn pistes_du_cue(cue: &Path) -> Vec<PisteCue> {
+    let Ok(texte) = std::fs::read_to_string(cue) else { return vec![] };
+    let dossier = cue.parent().unwrap_or(Path::new("."));
+    let mut l: Vec<PisteCue> = Vec::new();
     let mut fichier: Option<PathBuf> = None;
-    let mut taille = 2352u64;
-    let mut dans_piste_1 = false;
-    for l in texte.lines().map(str::trim) {
-        let haut = l.to_uppercase();
+    let (mut numero, mut audio, mut taille) = (0u32, false, 2352u64);
+    for ligne in texte.lines().map(str::trim) {
+        let haut = ligne.to_uppercase();
         if haut.starts_with("FILE ") {
-            let r = l[5..].trim();
-            let nom = if let Some(r) = r.strip_prefix('"') { r.split('"').next()? } else { r.split_whitespace().next()? };
-            fichier = Some(dossier.join(nom));
+            let r = ligne[5..].trim();
+            let nom = if let Some(r) = r.strip_prefix('"') { r.split('"').next() } else { r.split_whitespace().next() };
+            fichier = nom.map(|n| dossier.join(n));
         } else if haut.starts_with("TRACK ") {
             let mots: Vec<&str> = haut.split_whitespace().collect();
-            dans_piste_1 = mots.get(1).and_then(|n| n.parse::<u32>().ok()) == Some(1);
+            numero = mots.get(1).and_then(|n| n.parse().ok()).unwrap_or(0);
+            audio = mots.get(2).is_some_and(|m| *m == "AUDIO");
             taille = if mots.get(2).is_some_and(|m| m.ends_with("/2048")) { 2048 } else { 2352 };
-        } else if dans_piste_1 && haut.starts_with("INDEX 01") {
-            let debut = msf(haut.split_whitespace().nth(2)?)?;
-            return Some((fichier?, debut * taille));
+        } else if haut.starts_with("INDEX 01") {
+            if let (Some(f), Some(debut)) = (fichier.clone(), haut.split_whitespace().nth(2).and_then(msf)) {
+                l.push(PisteCue { numero, fichier: f, decalage: debut * taille, audio, longueur: 0 });
+            }
         }
     }
-    None
+    for i in 0..l.len() {
+        let fin = match l.get(i + 1) {
+            Some(s) if s.fichier == l[i].fichier => s.decalage,
+            _ => std::fs::metadata(&l[i].fichier).map(|m| m.len()).unwrap_or(l[i].decalage),
+        };
+        l[i].longueur = fin.saturating_sub(l[i].decalage);
+    }
+    l
 }
 
 /// Le secteur (absolu) écrit dans l'en-tête d'un secteur brut (MSF en BCD, moins les 150 secteurs de prégap).
@@ -69,17 +90,34 @@ fn secteur_de_l_entete(h: &[u8]) -> i64 {
     (bcd(h[12]) * 60 + bcd(h[13])) * 75 + bcd(h[14]) - 150
 }
 
-/// Ouvre la 1re piste d'une image (`None` : format pas encore lu, comme .chd).
+/// Ouvre la 1re piste d'une image (`None` : format pas lu).
 pub fn ouvrir(chemin: &Path) -> Resultat<Option<Piste>> {
+    ouvrir_piste(chemin, Voulue::Numero(1))
+}
+
+/// Ouvre la piste voulue d'une image (.cue : toutes ses pistes ; .chd ; une image d'une seule piste sinon).
+pub fn ouvrir_piste(chemin: &Path, voulue: Voulue) -> Resultat<Option<Piste>> {
     let ext = chemin.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     let (fichier, decalage) = match ext.as_str() {
-        "cue" => match piste_du_cue(chemin) {
-            Some(x) => x,
-            None => return Err(Erreur::Disque(format!("Feuille .cue illisible : {}.", chemin.display()))),
-        },
+        "cue" => {
+            let pistes = pistes_du_cue(chemin);
+            if pistes.is_empty() {
+                return Err(Erreur::Disque(format!("Feuille .cue illisible : {}.", chemin.display())));
+            }
+            let p = match voulue {
+                Voulue::Numero(n) => pistes.iter().find(|p| p.numero == n),
+                Voulue::PremiereDeDonnees => pistes.iter().find(|p| !p.audio),
+                Voulue::PlusGrandeDeDonnees => pistes.iter().filter(|p| !p.audio).max_by_key(|p| p.longueur),
+                Voulue::Derniere => pistes.last(),
+            };
+            match p {
+                Some(p) if !p.audio => (p.fichier.clone(), p.decalage),
+                _ => return Ok(None),
+            }
+        }
         "ccd" => (chemin.with_extension("img"), 0),
         "img" | "bin" | "iso" => (chemin.to_path_buf(), 0),
-        "chd" => return ouvrir_chd(chemin, Voulue::Numero(1)),
+        "chd" => return ouvrir_chd(chemin, voulue),
         _ => return Ok(None),
     };
     let mut f = std::fs::File::open(&fichier).map_err(|_| Erreur::Disque(format!("Image introuvable : {}.", fichier.display())))?;
@@ -142,6 +180,7 @@ pub fn lire_pistes_chd(entrees: &[String]) -> Vec<PisteChd> {
 pub enum Voulue {
     Numero(u32),
     PremiereDeDonnees,
+    PlusGrandeDeDonnees,
     Derniere,
 }
 
@@ -160,6 +199,7 @@ pub fn ouvrir_chd(chemin: &Path, voulue: Voulue) -> Resultat<Option<Piste>> {
     let p = match voulue {
         Voulue::Numero(n) => pistes.iter().find(|p| p.numero == n),
         Voulue::PremiereDeDonnees => pistes.iter().find(|p| p.genre != "AUDIO"),
+        Voulue::PlusGrandeDeDonnees => pistes.iter().filter(|p| p.genre != "AUDIO").max_by_key(|p| p.secteurs),
         Voulue::Derniere => pistes.last(),
     };
     let Some(p) = p.cloned() else { return Ok(None) };
@@ -513,6 +553,131 @@ pub fn empreinte_3do(p: &Piste) -> Resultat<Option<String>> {
     Ok(Some(m.finalize().iter().map(|b| format!("{b:02x}")).collect()))
 }
 
+/// PSP (rc_hash_psp) : un .pbp entier ; un disque : PSP_GAME\PARAM.SFO puis PSP_GAME\SYSDIR\EBOOT.BIN.
+pub fn empreinte_psp(chemin: &Path) -> Resultat<Option<String>> {
+    if chemin.extension().is_some_and(|e| e.eq_ignore_ascii_case("pbp")) {
+        let mut m = Md5::new();
+        let mut f = std::fs::File::open(chemin)?;
+        std::io::copy(&mut f, &mut m)?;
+        return Ok(Some(m.finalize().iter().map(|b| format!("{b:02x}")).collect()));
+    }
+    let Some(p) = ouvrir(chemin)? else { return Ok(None) };
+    let mut m = Md5::new();
+    for f in ["PSP_GAME\\PARAM.SFO", "PSP_GAME\\SYSDIR\\EBOOT.BIN"] {
+        let Some((s, taille)) = p.trouver(f)? else { return Ok(None) };
+        m.update(p.lire(s, taille.min(MAX_FICHIER) as usize)?);
+    }
+    Ok(Some(m.finalize().iter().map(|b| format!("{b:02x}")).collect()))
+}
+
+/// Neo Geo CD (rc_hash_neogeo_cd) : chaque programme « .PRG » cité par IPL.TXT, dans l'ordre.
+pub fn empreinte_neogeo_cd(p: &Piste) -> Resultat<Option<String>> {
+    let Some((s, _)) = p.trouver("IPL.TXT")? else { return Ok(None) };
+    let ipl = p.lire(s, 1023)?;
+    let texte = String::from_utf8_lossy(&ipl);
+    let mut m = Md5::new();
+    for ligne in texte.split('\n') {
+        if ligne.starts_with('\x1a') || ligne.starts_with('\0') {
+            break;
+        }
+        let Some(point) = ligne.find('.') else { continue };
+        if !ligne[point..].to_uppercase().starts_with(".PRG") {
+            continue;
+        }
+        let nom = &ligne[..point + 4];
+        let Some((s, taille)) = p.trouver(nom)? else { return Ok(None) };
+        m.update(p.lire(s, taille.min(MAX_FICHIER) as usize)?);
+    }
+    Ok(Some(m.finalize().iter().map(|b| format!("{b:02x}")).collect()))
+}
+
+/// PC Engine CD (rc_hash_pce_track) sur une piste de données : l'en-tête du secteur 1 (« PC Engine CD-ROM SYSTEM ») →
+/// le titre (22 octets) puis le programme (secteur et nombre de secteurs) ; sinon un BOOT.BIN (GameExpress).
+fn piste_pce(p: &Piste) -> Resultat<Option<String>> {
+    let base = p.index01.max(0) as u32;
+    let b = p.lire(base + 1, 128)?;
+    if b.len() < 128 {
+        return Ok(None);
+    }
+    let mut m = Md5::new();
+    if &b[32..55] == b"PC Engine CD-ROM SYSTEM" {
+        m.update(&b[106..128]);
+        let secteur = ((b[0] as u32) << 16) | ((b[1] as u32) << 8) | b[2] as u32;
+        for i in 0..b[3] as u32 {
+            let mut s = p.lire(base + secteur + i, 2048)?;
+            s.resize(2048, 0);
+            m.update(&s);
+        }
+    } else if let Some((s, taille)) = p.trouver("BOOT.BIN")?.filter(|(_, t)| *t < MAX_FICHIER) {
+        m.update(p.lire(s, taille as usize)?);
+    } else {
+        return Ok(None);
+    }
+    Ok(Some(m.finalize().iter().map(|b| format!("{b:02x}")).collect()))
+}
+
+/// PC Engine CD (rc_hash_pce_cd) : la 1re piste de données.
+pub fn empreinte_pce_cd(chemin: &Path) -> Resultat<Option<String>> {
+    match ouvrir_piste(chemin, Voulue::PremiereDeDonnees)? {
+        Some(p) => piste_pce(&p),
+        None => Ok(None),
+    }
+}
+
+/// PC-FX (rc_hash_pcfx_cd) : la plus grande piste de données (sinon la piste 2) porte « PC-FX:Hu_CD-ROM » au secteur 0 ;
+/// les 128 premiers octets du secteur 1, puis le programme (secteur et nombre en petit-boutiste). Certains disques
+/// PC-FX se présentent comme des PC Engine CD.
+pub fn empreinte_pcfx(chemin: &Path) -> Resultat<Option<String>> {
+    let marque = |p: &Piste| -> Resultat<bool> { Ok(p.lire(p.index01.max(0) as u32, 32)?.starts_with(b"PC-FX:Hu_CD-ROM")) };
+    let mut piste = ouvrir_piste(chemin, Voulue::PlusGrandeDeDonnees)?;
+    if !matches!(&piste, Some(p) if marque(p)?) {
+        piste = ouvrir_piste(chemin, Voulue::Numero(2))?;
+    }
+    let Some(p) = piste else { return Ok(None) };
+    let base = p.index01.max(0) as u32;
+    if !marque(&p)? {
+        let b = p.lire(base + 1, 128)?;
+        return if b.len() >= 55 && &b[32..55] == b"PC Engine CD-ROM SYSTEM" { piste_pce(&p) } else { Ok(None) };
+    }
+    let b = p.lire(base + 1, 128)?;
+    if b.len() < 128 {
+        return Ok(None);
+    }
+    let mut m = Md5::new();
+    m.update(&b);
+    let secteur = ((b[34] as u32) << 16) | ((b[33] as u32) << 8) | b[32] as u32;
+    let nombre = ((b[38] as u32) << 16) | ((b[37] as u32) << 8) | b[36] as u32;
+    for i in 0..nombre.min(32 * 1024) {
+        let mut s = p.lire(base + secteur + i, 2048)?;
+        s.resize(2048, 0);
+        m.update(&s);
+    }
+    Ok(Some(m.finalize().iter().map(|b| format!("{b:02x}")).collect()))
+}
+
+/// Nintendo DS (rc_hash_nintendo_ds) : l'en-tête (0x160), le code arm9, le code arm7, puis l'icône et les titres
+/// (0xA00, complétés de zéros) ; un en-tête SuperCard de 512 octets est ignoré.
+pub fn empreinte_nds(chemin: &Path) -> Resultat<Option<String>> {
+    let mut f = std::fs::File::open(chemin)?;
+    let mut entete = lire_a(&mut f, 0, 512);
+    let mut decalage = 0u64;
+    if entete[..4] == [0x2E, 0, 0, 0xEA] && entete[0xB0..0xB4] == [0x44, 0x46, 0x96, 0] {
+        decalage = 512;
+        entete = lire_a(&mut f, 512, 512);
+    }
+    let le32 = |i: usize| u32::from_le_bytes([entete[i], entete[i + 1], entete[i + 2], entete[i + 3]]) as u64;
+    let (arm9, t9, arm7, t7, icone) = (le32(0x20), le32(0x2C), le32(0x30), le32(0x3C), le32(0x68));
+    if t9 + t7 > 16 * 1024 * 1024 {
+        return Ok(None); // pas une ROM DS
+    }
+    let mut m = Md5::new();
+    m.update(&entete[..0x160]);
+    m.update(lire_a(&mut f, arm9 + decalage, t9 as usize));
+    m.update(lire_a(&mut f, arm7 + decalage, t7 as usize));
+    m.update(lire_a(&mut f, icone + decalage, 0xA00));
+    Ok(Some(m.finalize().iter().map(|b| format!("{b:02x}")).collect()))
+}
+
 /// Sega CD et Saturn (rc_hash_sega_cd) : les 512 premiers octets du secteur 0 (en-têtes du volume et de la ROM).
 pub fn empreinte_sega_cd(p: &Piste) -> Resultat<Option<String>> {
     let b = p.lire(p.index01.max(0) as u32, 512)?;
@@ -525,20 +690,29 @@ pub fn empreinte_sega_cd(p: &Piste) -> Resultat<Option<String>> {
 /// La limite de `rcheevos` (MAX_BUFFER_SIZE) sur ce qui est lu d'un fichier.
 const MAX_FICHIER: u32 = 64 * 1024 * 1024;
 
-/// PlayStation (rc_hash_psx) : le nom du programme de démarrage (`BOOT = cdrom:\\SLUS_005.94;1` dans SYSTEM.CNF, sinon
+/// PlayStation (rc_hash_psx) : le nom du programme de démarrage (`BOOT = cdrom:\SLUS_005.94;1` dans SYSTEM.CNF, sinon
 /// PSX.EXE), puis son contenu (taille lue dans l'en-tête « PS-X EXE », + 2048).
 pub fn empreinte_psx(p: &Piste) -> Resultat<Option<String>> {
+    empreinte_playstation(p, "BOOT", "cdrom:", true)
+}
+
+/// PlayStation 2 (rc_hash_ps2) : pareil avec `BOOT2 = cdrom0:\…` ; la taille est celle du fichier.
+pub fn empreinte_ps2(p: &Piste) -> Resultat<Option<String>> {
+    empreinte_playstation(p, "BOOT2", "cdrom0:", false)
+}
+
+fn empreinte_playstation(p: &Piste, cle: &str, prefixe: &str, ps1: bool) -> Resultat<Option<String>> {
     let mut exe = String::new();
     let mut trouve = None;
     if let Some((s, _)) = p.trouver("SYSTEM.CNF")? {
         let cnf = String::from_utf8_lossy(&p.lire(s, 2047)?).to_string();
         for ligne in cnf.lines() {
             let l = ligne.trim_start();
-            if let Some(r) = l.strip_prefix("BOOT") {
+            if let Some(r) = l.strip_prefix(cle) {
                 let r = r.trim_start();
                 if let Some(r) = r.strip_prefix('=') {
                     let r = r.trim_start();
-                    let r = r.strip_prefix("cdrom:").unwrap_or(r).trim_start_matches('\\');
+                    let r = r.strip_prefix(prefixe).unwrap_or(r).trim_start_matches('\\');
                     exe = r.split(|c: char| c.is_whitespace() || c == ';').next().unwrap_or("").to_string();
                     trouve = p.trouver(&exe)?;
                     break;
@@ -546,7 +720,7 @@ pub fn empreinte_psx(p: &Piste) -> Resultat<Option<String>> {
             }
         }
     }
-    if trouve.is_none() {
+    if trouve.is_none() && ps1 {
         if let Some(t) = p.trouver("PSX.EXE")? {
             exe = "PSX.EXE".into();
             trouve = Some(t);
@@ -557,7 +731,7 @@ pub fn empreinte_psx(p: &Piste) -> Resultat<Option<String>> {
     if entete.len() < 32 {
         return Ok(None);
     }
-    if entete.starts_with(b"PS-X EX") {
+    if ps1 && entete.starts_with(b"PS-X EX") {
         taille = u32::from_le_bytes([entete[28], entete[29], entete[30], entete[31]]) + 2048;
     }
     let contenu = p.lire(secteur, taille.min(MAX_FICHIER) as usize)?;
@@ -593,7 +767,7 @@ mod tests {
             racine.extend(r);
         }
         secteurs[20][..racine.len()].copy_from_slice(&racine);
-        let cnf = b"BOOT = cdrom:\\SLUS_005.94;1\r\nTCB = 4\r\n";
+        let cnf = b"BOOT = cdrom:\SLUS_005.94;1\r\nTCB = 4\r\n";
         secteurs[21][..cnf.len()].copy_from_slice(cnf);
         // Le programme : en-tête « PS-X EXE », taille 2048 (+ 2048 d'en-tête = 4096 hachés).
         secteurs[22][..8].copy_from_slice(b"PS-X EXE");
@@ -637,6 +811,7 @@ mod tests {
             assert_eq!((p.taille_secteur, p.entete), if brut { (2352, 24) } else { (2048, 0) });
             assert_eq!(p.trouver("system.cnf").unwrap(), Some((21, 40)), "sans casse");
             assert_eq!(empreinte_psx(&p).unwrap(), Some(md5_hex(&attendu)));
+            assert_eq!(empreinte_ps2(&p).unwrap(), None, "pas de BOOT2 : pas un disque PS2");
         }
     }
 
@@ -700,6 +875,50 @@ mod tests {
         std::fs::write(&iso, s.concat()).unwrap();
         let p = ouvrir(&iso).unwrap().unwrap();
         assert_eq!(empreinte_3do(&p).unwrap(), Some(md5_hex(&attendu)));
+    }
+
+    #[test]
+    fn une_feuille_cue_donne_toutes_ses_pistes() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("jeu.bin"), vec![0u8; 2352 * 300]).unwrap();
+        std::fs::write(d.path().join("piste3.bin"), vec![0u8; 2352 * 50]).unwrap();
+        let cue = d.path().join("jeu.cue");
+        std::fs::write(
+            &cue,
+            "FILE \"jeu.bin\" BINARY\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n  TRACK 02 MODE1/2352\n    INDEX 00 00:01:00\n    INDEX 01 00:02:00\nFILE \"piste3.bin\" BINARY\n  TRACK 03 MODE1/2352\n    INDEX 01 00:00:00\n",
+        )
+        .unwrap();
+        let l = pistes_du_cue(&cue);
+        assert_eq!(l.len(), 3);
+        assert!(l[0].audio && !l[1].audio);
+        assert_eq!((l[1].decalage, l[1].longueur), (150 * 2352, 150 * 2352), "INDEX 01 à 00:02:00, jusqu'à la fin du fichier");
+        assert_eq!(l[2].longueur, 50 * 2352);
+        // La 1re de données : la piste 2 ; la plus grande de données : la piste 2 aussi.
+        let p = ouvrir_piste(&cue, Voulue::PremiereDeDonnees).unwrap().unwrap();
+        assert_eq!(p.decalage, 150 * 2352);
+        assert!(ouvrir_piste(&cue, Voulue::Numero(1)).unwrap().is_none(), "piste audio : rien à lire");
+    }
+
+    #[test]
+    fn nintendo_ds_en_tete_arm9_arm7_et_icone() {
+        let d = tempfile::tempdir().unwrap();
+        let mut rom = vec![0u8; 0x4000];
+        rom[0x20..0x24].copy_from_slice(&0x1000u32.to_le_bytes());
+        rom[0x2C..0x30].copy_from_slice(&0x100u32.to_le_bytes());
+        rom[0x30..0x34].copy_from_slice(&0x2000u32.to_le_bytes());
+        rom[0x3C..0x40].copy_from_slice(&0x80u32.to_le_bytes());
+        rom[0x68..0x6C].copy_from_slice(&0x3800u32.to_le_bytes());
+        rom[0x1000..0x1100].fill(9);
+        rom[0x2000..0x2080].fill(7);
+        rom[0x3800..0x4000].fill(5);
+        let mut attendu = rom[..0x160].to_vec();
+        attendu.extend(&rom[0x1000..0x1100]);
+        attendu.extend(&rom[0x2000..0x2080]);
+        attendu.extend(&rom[0x3800..0x4000]);
+        attendu.extend(vec![0u8; 0xA00 - 0x800]);
+        let f = d.path().join("jeu.nds");
+        std::fs::write(&f, &rom).unwrap();
+        assert_eq!(empreinte_nds(&f).unwrap(), Some(md5_hex(&attendu)), "icône incomplète : complétée de zéros");
     }
 
     #[test]

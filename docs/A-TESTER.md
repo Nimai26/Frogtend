@@ -49,6 +49,12 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Un jeu PlayStation par DuckStation : il demande de te connecter la 1re fois ; connecte-toi. Ensuite, joue avec un
       autre profil (sans compte), puis reviens au tien : **tu es toujours connecté**, l'autre profil ne l'était pas.
 
+## Succès : PS2, PSP, DS, PC Engine CD, PC-FX, Neo Geo CD (0.38.0)
+- [ ] Tu n'as pas de jeux de ces consoles sur E: : je n'ai pu les vérifier qu'avec des images fabriquées. **Dès que tu
+      en as un** (Firehouse, ou ailleurs : .iso/.chd pour PS2, .iso/.pbp pour PSP, .nds pour la DS, .cue/.chd pour
+      PC Engine CD, PC-FX et Neo Geo CD), importe-le et regarde **🏆 RetroAchievements** dans son panneau.
+      **Attendu :** « compatible », « pas reconnue, mais … l'est » ou « version manquante » — jamais une erreur.
+
 ## Succès : 3DO, PC Engine, GameCube et Wii (0.37.0)
 - [ ] Importe (📥 Importer ▸ Fichiers ROM) et sélectionne un jeu de chaque : **3DO** (`E:\Games\3DO`, « chd »),
       **PC Engine** (`E:\Games\NEC PC Engine TurboGrafx 16`, plateforme « NEC TurboGrafx-16 », « 7z »),

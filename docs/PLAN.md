@@ -658,8 +658,12 @@ une saga entière). Conséquences pour Frogtend :
   (MIT/Apache : .iso, .rvz, .wia, .gcz, .wbfs, .ciso, lus comme un .iso brut, données Wii RECHIFFRÉES comme le disque
   d'origine) ; empreintes gardées sur le disque (`cache\retroachievements\empreintes.json`, par fichier/taille/date).
   Essais réels (lecture seule) : 3DO 200/200 (31 s), PC Engine .7z 455/455 (26 s), GameCube .rvz 81/81 (6 s), Wii .rvz
-  99/99 (~30 s par jeu, une seule fois grâce au cache). **Reste** : PS2, PSP, PC Engine CD, PC-FX, Neo Geo CD, Jaguar
-  CD, Nintendo DS, PS3 (RetroAchievements ne connaît pas la Wii U) ;
+  99/99 (~30 s par jeu, une seule fois grâce au cache). **✅ 0.38.0** : PS2 (BOOT2/cdrom0:), PSP (.pbp entier, ou
+  PARAM.SFO + EBOOT.BIN), Nintendo DS (en-tête, arm9, arm7, icône ; en-tête SuperCard ignoré), PC Engine CD (1re piste de
+  données : en-tête du secteur 1 + programme, ou BOOT.BIN), PC-FX (plus grande piste de données ou piste 2), Neo Geo CD
+  (les .PRG d'IPL.TXT) ; feuilles .cue à plusieurs pistes (toutes lues, piste choisie : n°, 1re de données, plus grande
+  de données, dernière). **Aucun jeu de ces consoles sur le disque de Seb** : vérifié seulement par les tests (images
+  fabriquées) — à confirmer avec de vrais jeux (Firehouse). **Reste** : Jaguar CD, PS3, .cso (PSP compressé) ;
   ~~brancher le compte dans les émulateurs~~ **✅ 0.33.0** : « 🎮 Connecter mes émulateurs » (mot de passe UNE fois →
   jeton `login2` comme rcheevos, au coffre ; mot de passe jamais gardé) ; à chaque partie, le compte DU PROFIL QUI JOUE :
   RetroArch (`cheevos_*` dans le fichier `--appendconfig` du profil), PCSX2 (`[Achievements]` + jeton dans

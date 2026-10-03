@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.38.0 — succès : PS2, PSP, DS, PC Engine CD, PC-FX, Neo Geo CD
+
+- RetroAchievements sait maintenant vérifier les jeux **PlayStation 2**, **PSP**, **Nintendo DS**, **PC Engine CD**,
+  **PC-FX** et **Neo Geo CD**.
+- Les images de CD à plusieurs pistes (.cue) sont lues piste par piste.
+- Pas de jeux de ces consoles sur ton disque : vérifié par les tests seulement, à confirmer avec de vrais jeux.
+
 ## 0.37.0 — succès : 3DO, PC Engine, GameCube et Wii
 
 - RetroAchievements reconnaît maintenant tes jeux **3DO**, **PC Engine** (même en .7z), **GameCube** et **Wii** (même

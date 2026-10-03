@@ -86,13 +86,13 @@ pub fn console_de(plateforme: &str) -> Option<u32> {
 /// Les consoles dont Frogtend sait calculer l'empreinte (une ROM = un fichier). Les jeux sur CD (PlayStation, Saturn,
 /// Dreamcast…) ont des méthodes à part : pas encore vérifiables.
 pub fn empreinte_possible(console: u32) -> bool {
-    matches!(console, 1..=8 | 10 | 11 | 13..=15 | 17 | 23..=25 | 27 | 28 | 33 | 44 | 45 | 46 | 50 | 51 | 53 | 57 | 63 | 73 | 81)
+    matches!(console, 1..=8 | 10 | 11 | 13..=15 | 17 | 18 | 23..=25 | 27 | 28 | 33 | 44 | 45 | 46 | 50 | 51 | 53 | 57 | 63 | 73 | 81)
         || est_un_cd(console)
 }
 
 /// Les consoles sur CD que Frogtend sait lire (module `disque` : .cue/.bin, .ccd/.img, .iso, .chd).
 pub fn est_un_cd(console: u32) -> bool {
-    matches!(console, 9 | 12 | 16 | 19 | 39 | 40 | 43)
+    matches!(console, 9 | 12 | 16 | 19 | 21 | 39 | 40 | 41 | 43 | 49 | 56 | 76)
 }
 
 fn md5_hex(o: &[u8]) -> String {
@@ -125,6 +125,9 @@ pub fn empreinte_fichier(console: u32, chemin: &Path) -> Resultat<Option<String>
     if !empreinte_possible(console) {
         return Ok(None);
     }
+    if console == 18 {
+        return crate::disque::empreinte_nds(chemin);
+    }
     if console == 27 {
         let nom = chemin.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         return Ok(Some(md5_hex(nom.as_bytes())));
@@ -145,6 +148,15 @@ pub fn empreinte_fichier(console: u32, chemin: &Path) -> Resultat<Option<String>
         if console == 16 {
             return crate::disque::empreinte_gamecube(chemin);
         }
+        if console == 41 {
+            return crate::disque::empreinte_psp(chemin);
+        }
+        if console == 76 {
+            return crate::disque::empreinte_pce_cd(chemin);
+        }
+        if console == 49 {
+            return crate::disque::empreinte_pcfx(chemin);
+        }
         if console == 19 {
             return crate::disque::empreinte_wii(chemin);
         }
@@ -155,6 +167,8 @@ pub fn empreinte_fichier(console: u32, chemin: &Path) -> Resultat<Option<String>
         return match console {
             12 => crate::disque::empreinte_psx(&piste),
             43 => crate::disque::empreinte_3do(&piste),
+            21 => crate::disque::empreinte_ps2(&piste),
+            56 => crate::disque::empreinte_neogeo_cd(&piste),
             _ => crate::disque::empreinte_sega_cd(&piste),
         };
     }
@@ -453,7 +467,8 @@ mod tests {
         assert_eq!(console_de("Windows"), None);
         assert!(empreinte_possible(7) && empreinte_possible(12) && empreinte_possible(9), "PlayStation et Sega CD : lus par le module disque");
         assert!(empreinte_possible(40), "Dreamcast : .chd lu par le module disque");
-        assert!(!empreinte_possible(21), "PS2 : pas encore");
+        assert!(empreinte_possible(21) && empreinte_possible(41) && empreinte_possible(18), "PS2, PSP, DS");
+        assert!(!empreinte_possible(77) && !empreinte_possible(82), "Jaguar CD et PS3 : pas encore");
         assert!(empreinte_possible(43) && console_de("PC Engine SuperGrafx") == Some(8));
         assert!(empreinte_possible(16) && empreinte_possible(19), "GameCube et Wii : lus par nod");
     }
