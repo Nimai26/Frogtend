@@ -6,13 +6,12 @@
 
 use crate::erreurs::{Erreur, Resultat};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 /// La clé de Cheat Engine.
 pub const CLE: &str = r"HKCU\Software\Cheat Engine";
 
 fn reg(args: &[&str]) -> Resultat<std::process::Output> {
-    Command::new("reg").args(args).output().map_err(|e| Erreur::Disque(format!("reg.exe ne répond pas ({e}).")))
+    crate::lancement::outil_sans_fenetre("reg").args(args).output().map_err(|e| Erreur::Disque(format!("reg.exe ne répond pas ({e}).")))
 }
 
 pub fn cle_existe(cle: &str) -> bool {

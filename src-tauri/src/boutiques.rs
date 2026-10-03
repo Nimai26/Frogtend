@@ -175,7 +175,7 @@ pub fn installes_steam(dossier_steam: &Path) -> BTreeSet<String> {
 /// Le dossier de Steam sur ce PC (registre `HKCU\Software\Valve\Steam`, valeur `SteamPath`, en LECTURE), sinon son
 /// dossier habituel.
 pub fn dossier_steam() -> Option<PathBuf> {
-    let o = std::process::Command::new("reg").args(["query", r"HKCU\Software\Valve\Steam", "/v", "SteamPath"]).output().ok()?;
+    let o = crate::lancement::outil_sans_fenetre("reg").args(["query", r"HKCU\Software\Valve\Steam", "/v", "SteamPath"]).output().ok()?;
     let texte = String::from_utf8_lossy(&o.stdout);
     let lu = texte.lines().find(|l| l.contains("SteamPath")).and_then(|l| l.split("REG_SZ").nth(1)).map(|v| PathBuf::from(v.trim().replace('/', "\\")));
     lu.filter(|p| p.is_dir()).or_else(|| {

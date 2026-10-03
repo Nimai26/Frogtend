@@ -10,6 +10,20 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use sysinfo::{Pid, ProcessesToUpdate, System};
 
+/// Un petit outil en ligne de commande de Windows (reg, cmd, powershell) lancé SANS fenêtre de console : sans cela,
+/// une fenêtre noire s'ouvre et se ferme à chaque appel (vu par Seb le 03/10 en ouvrant « Importer »).
+pub fn outil_sans_fenetre(programme: &str) -> std::process::Command {
+    #[allow(unused_mut)]
+    let mut c = std::process::Command::new(programme);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        c.creation_flags(CREATE_NO_WINDOW);
+    }
+    c
+}
+
 /// Démarre le jeu sans l'attendre. Rend le numéro du processus.
 pub fn demarrer(l: &Lanceur) -> Resultat<u32> {
     let mut c = std::process::Command::new(&l.programme);

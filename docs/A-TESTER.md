@@ -49,6 +49,15 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Import sans rien taper (0.43.3)
+- [ ] **📥 Importer ▸ Fichiers ROM** : aucune fenêtre noire ne s'ouvre.
+- [ ] **📂 Choisir le dossier** `E:\Games\Playstation 3`. **Attendu :** plateforme « Sony Playstation 3 » déjà
+      choisie ; « Types de fichiers trouvés » : .zip (77) coché, .mkv (1) pas coché.
+- [ ] **🔍 Chercher** : 7 jeux, et « 70 contenus additionnels » écartés. **➕ Ajouter 7 jeux** : la question
+      « Où garder ces 7 jeux ? » arrive en moins d'une seconde ; **📌 Les laisser où ils sont** ; les 7 fiches
+      apparaissent dans la ludothèque, rubrique Sony Playstation 3.
+- [ ] Un autre dossier (ex. `E:\Games\Sega CD`) : la plateforme est devinée, .cue coché, .bin pas coché.
+
 ## Corrections de la 0.43.2
 - [ ] Un jeton refusé (ou une autre erreur) affiche son vrai motif, plus jamais « motif inconnu ».
 - [ ] Fenêtre étroite : pas de barre de défilement autour de la fenêtre ; les onglets du haut défilent à la molette ;

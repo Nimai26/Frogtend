@@ -511,6 +511,7 @@ export const api = {
   succesRetro: (id: number) => appeler<import('$lib/succes/succes.svelte').SuccesRetro>('succes_retro', { id }),
   succesSteam: (appid: string) => appeler<[number, number] | null>('succes_steam', { appid }),
   abrisRegler: (dossier: string) => appeler<number>('abris_regler', { dossier }),
+  importTypesFichiers: (dossier: string, recursif: boolean) => appeler<[string, number][]>('import_types_fichiers', { dossier, recursif }),
   importChercherRoms: (dossier: string, extensions: string[], recursif: boolean) =>
     appeler<{ roms: import('$lib/import/local').RomTrouvee[]; contenus: number }>('import_chercher_roms', { dossier, extensions, recursif }),
   importChercherMame: (dossier: string, liste: string, options: import('$lib/import/local').OptionsMame) =>

@@ -1352,7 +1352,16 @@ pub async fn gratuits_obtenir_epic(app: AppHandle, noyau: State<'_, Noyau>, slug
     Ok(r)
 }
 
-/// 📥 Importer ▸ Fichiers ROM : les ROM d'un dossier (rien n'est encore ajouté : la personne voit la liste d'abord).
+/// 📥 Importer ▸ Fichiers ROM : les types de fichiers d'un dossier et leur nombre (rien à taper : la personne coche).
+#[tauri::command]
+pub async fn import_types_fichiers(dossier: String, recursif: bool) -> Resultat<Vec<(String, usize)>> {
+    tauri::async_runtime::spawn_blocking(move || crate::import_local::types_de_fichiers(std::path::Path::new(&dossier), recursif))
+        .await
+        .map_err(|_| Erreur::Disque("La lecture du dossier s'est arrêtée brutalement.".into()))?
+}
+
+/// 📥 Importer ▸ Fichiers ROM : les ROM d'un dossier, parmi les types de fichiers cochés (rien n'est encore ajouté :
+/// la personne voit la liste d'abord).
 #[tauri::command]
 pub async fn import_chercher_roms(dossier: String, extensions: Vec<String>, recursif: bool) -> Resultat<RomsTrouvees> {
     tauri::async_runtime::spawn_blocking(move || {

@@ -301,6 +301,7 @@ pub fn run() {
             commandes::succes_retro,
             commandes::succes_steam,
             commandes::jeu_choisir_version,
+            commandes::import_types_fichiers,
             commandes::import_chercher_roms,
             commandes::import_mesurer,
             commandes::import_copier,

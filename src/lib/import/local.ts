@@ -108,6 +108,66 @@ export function extensionsDe(emulateurs: { extensions?: string[] }[]): string[] 
   return [...new Set(l)];
 }
 
+/** Les types de fichiers qui ne sont jamais des jeux (textes, images, vidéos, sauvegardes, empreintes…). */
+export const PAS_DES_JEUX = new Set([
+  'txt', 'nfo', 'diz', 'md', 'pdf', 'doc', 'docx', 'rtf', 'htm', 'html', 'xml', 'json', 'ini', 'cfg', 'log', 'dat',
+  'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'ico', 'mkv', 'mp4', 'avi', 'mov', 'wmv', 'mp3', 'ogg', 'flac',
+  'srm', 'sav', 'state', 'db', 'lnk', 'url', 'sfv', 'md5', 'sha1', 'par2', 'torrent', 'part', 'tmp', 'bak',
+]);
+
+/** Les pistes que décrit une feuille (.cue, .ccd, .gdi) : ce ne sont pas des jeux quand la feuille est là. */
+const PISTES = ['bin', 'img', 'sub', 'raw', 'wav'];
+
+/**
+ * Les types de fichiers à cocher d'office parmi ceux trouvés dans le dossier : ceux que lisent les émulateurs de la
+ * plateforme (plus .zip et .7z), sinon tout ce qui peut être un jeu. Jamais les textes, images, vidéos… ni les pistes
+ * .bin d'un jeu sur CD décrit par sa feuille.
+ */
+export function typesACocher(trouves: [string, number][], recommandes: string[]): string[] {
+  const exts = trouves.map(([e]) => e.toLowerCase());
+  const feuille = exts.some((e) => ['cue', 'ccd', 'gdi'].includes(e));
+  const possibles = exts.filter((e) => !PAS_DES_JEUX.has(e) && !(feuille && PISTES.includes(e)));
+  const lus = new Set([...recommandes.map((e) => e.toLowerCase().replace(/^\./, '')), 'zip', '7z']);
+  const pris = recommandes.length ? possibles.filter((e) => lus.has(e)) : [];
+  return pris.length ? pris : possibles;
+}
+
+const mots = (t: string) =>
+  t
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/entertainement/g, 'entertainment')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean);
+
+/**
+ * La plateforme que le nom d'un dossier désigne (« Playstation 3 » → « Sony Playstation 3 »), parmi celles connues ;
+ * `null` si rien ne ressemble assez. Une proposition : la personne peut toujours en choisir une autre.
+ */
+export function devinerPlateforme(dossier: string, plateformes: string[]): string | null {
+  const nom = couper(dossier.replace(/[\\/]+$/, '')).nom;
+  const m = new Set(mots(nom));
+  if (!m.size) return null;
+  let meilleure: string | null = null;
+  let score = 0;
+  for (const p of plateformes) {
+    const mp = new Set(mots(p));
+    const communs = [...m].filter((x) => mp.has(x)).length;
+    // Tous les mots de l'un dans l'autre (« Playstation 3 » ⊂ « Sony Playstation 3 »), puis le plus proche.
+    const inclus = communs === m.size || communs === mp.size;
+    const s = communs / (m.size + mp.size - communs);
+    if (inclus && communs > 0 && s > score) {
+      score = s;
+      meilleure = p;
+    }
+  }
+  // 0,3 : « 3DO » trouve « 3DO Interactive Multiplayer » (1 mot sur 3).
+  return score >= 0.3 ? meilleure : null;
+}
+
 /** « sfc, smc .zip » → ['sfc', 'smc', 'zip']. */
 export function lireExtensions(texte: string): string[] {
   return [...new Set(texte.split(/[\s,;]+/).map((x) => x.replace(/^\*?\./, '').toLowerCase()).filter(Boolean))];

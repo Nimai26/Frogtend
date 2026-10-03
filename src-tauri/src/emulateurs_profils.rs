@@ -530,7 +530,7 @@ pub fn relier_memstick(emulateur: &Path, cible: &Path) -> Resultat<()> {
             std::fs::rename(&lien, &de_cote)?;
         }
     }
-    let s = std::process::Command::new("cmd")
+    let s = crate::lancement::outil_sans_fenetre("cmd")
         .args(["/C", "mklink", "/J"])
         .arg(&lien)
         .arg(cible)

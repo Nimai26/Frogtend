@@ -32,7 +32,8 @@
     depuisProgramme,
     depuisRoms,
     extensionsDe,
-    lireExtensions,
+    devinerPlateforme,
+    typesACocher,
     messageBilan,
     type JeuAImporter,
     type JeuDosTrouve,
@@ -44,7 +45,10 @@
   let dossier = $state('');
   // Valeur de départ seulement : le composant est recréé quand la source change ({#key}).
   let plateforme = $state(untrack(() => (sorte === 'windows' ? 'Windows' : sorte === 'dos' ? 'MS-DOS' : '')));
-  let extensions = $state('');
+  /** Les types de fichiers du dossier (extension, nombre) et ceux que la personne garde cochés. */
+  let types = $state<[string, number][]>([]);
+  let coches = $state<string[]>([]);
+  let lecture = $state(false);
   let recursif = $state(true);
   let titre = $state('');
   let fichier = $state('');
@@ -116,17 +120,41 @@
 
   const plateformes = $derived([...new Set([...ludo.plateformes.map((p) => p.nom), ...PLATEFORMES_CONNUES])].sort((a, b) => a.localeCompare(b, 'fr')));
 
-  /** Les extensions lues par les émulateurs recommandés de la plateforme (modifiables). */
-  async function proposerExtensions() {
-    if (sorte !== 'rom' || !plateforme.trim()) return;
-    const r = await api.emulateursRecommandes(plateforme.trim()).catch(() => null);
-    const l = extensionsDe(r?.emulateurs ?? []);
-    if (l.length) extensions = l.join(', ');
+  /**
+   * Rien à taper (Seb, 03/10 : « entrer l'extension à la main n'est pas user friendly ») : le dossier choisi, Frogtend
+   * propose la plateforme d'après son nom et montre les types de fichiers qu'il contient, ceux des jeux déjà cochés.
+   */
+  async function analyser() {
+    if (sorte !== 'rom' || !dossier.trim()) return;
+    cherche = false;
+    roms = [];
+    if (!plateforme.trim()) plateforme = devinerPlateforme(dossier, plateformes) ?? '';
+    lecture = true;
+    try {
+      types = await api.importTypesFichiers(dossier.trim(), recursif);
+    } catch (e) {
+      types = [];
+      toast(`Dossier illisible : ${motifDuRefus(e)}`, 'erreur');
+    } finally {
+      lecture = false;
+    }
+    await recocher();
+  }
+
+  /** Les types cochés d'office : ceux que lisent les émulateurs de la plateforme (d'après Firehouse), plus les archives. */
+  async function recocher() {
+    cherche = false;
+    const r = plateforme.trim() ? await api.emulateursRecommandes(plateforme.trim()).catch(() => null) : null;
+    coches = typesACocher(types, extensionsDe(r?.emulateurs ?? []));
   }
 
   async function choisirDossier() {
     const d = await parcourir({ dossier: true, titre: sorte === 'dos' ? 'Dossier de tes jeux MS-DOS' : 'Dossier de tes ROM' });
-    if (d) dossier = d;
+    if (d) {
+      dossier = d;
+      if (sorte === 'rom') plateforme = '';
+      await analyser();
+    }
   }
 
   async function choisirFichier() {
@@ -140,7 +168,7 @@
     enCours = true;
     try {
       if (sorte === 'rom') {
-        const l = await api.importChercherRoms(dossier, lireExtensions(extensions), recursif);
+        const l = await api.importChercherRoms(dossier, coches, recursif);
         roms = l.roms.map((r) => ({ ...r, pris: true }));
         contenusEcartes = l.contenus;
       } else if (sorte === 'mame') {
@@ -343,22 +371,37 @@ Rien n’est déplacé ni renommé. Les retirer plus tard de ta ludothèque ne l
   {:else if sorte === 'rom' || sorte === 'dos'}
     <div class="ligne">
       <button class="btn" onclick={choisirDossier}>📂 Choisir le dossier</button>
-      <input class="large" bind:value={dossier} placeholder="E:\Jeux\ROM\SNES" aria-label="Dossier" />
+      <input class="large" bind:value={dossier} onchange={() => sorte === 'rom' && analyser()} placeholder="E:\Jeux\ROM\SNES" aria-label="Dossier" />
     </div>
     {#if sorte === 'rom'}
       <label class="ligne">
         Plateforme
-        <input class="large" list="plateformes-connues" bind:value={plateforme} onchange={proposerExtensions} placeholder="Super Nintendo Entertainment System" />
+        <select class="large" bind:value={plateforme} onchange={recocher}>
+          <option value="">— choisis la plateforme —</option>
+          {#if plateforme && !plateformes.includes(plateforme)}<option value={plateforme}>{plateforme}</option>{/if}
+          {#each plateformes as p (p)}<option value={p}>{p}</option>{/each}
+        </select>
       </label>
-      <label class="ligne">
-        Extensions
-        <input class="large" bind:value={extensions} placeholder="sfc, smc, zip" />
-      </label>
-      <p class="muted">Proposées d’après les émulateurs de la plateforme. Pour les jeux sur CD, mets « cue » ou « m3u » : leurs pistes (.bin) ne comptent pas comme des jeux à part.</p>
-      <label class="ligne"><input type="checkbox" bind:checked={recursif} /> chercher aussi dans les sous-dossiers</label>
+      {#if dossier.trim() && !plateforme}
+        <p class="muted">Frogtend n’a pas reconnu la plateforme d’après le nom du dossier : choisis-la dans la liste.</p>
+      {/if}
+      <label class="ligne"><input type="checkbox" bind:checked={recursif} onchange={analyser} /> chercher aussi dans les sous-dossiers</label>
+      {#if lecture}
+        <p class="muted">Lecture du dossier…</p>
+      {:else if types.length}
+        <fieldset class="types">
+          <legend>Types de fichiers trouvés — ceux des jeux sont cochés</legend>
+          {#each types as [ext, n] (ext)}
+            <label><input type="checkbox" bind:group={coches} value={ext} /> .{ext} <span class="muted">({n.toLocaleString('fr-FR')})</span></label>
+          {/each}
+        </fieldset>
+        <p class="muted">Pour un jeu sur CD, c’est sa feuille (.cue, .gdi, .m3u) qui compte : ses pistes .bin ne sont pas des jeux à part.</p>
+      {:else if dossier.trim()}
+        <p class="muted">Aucun fichier dans ce dossier.</p>
+      {/if}
     {/if}
     <div class="ligne">
-      <button class="btn primary" onclick={chercher} disabled={enCours || !dossier.trim() || (sorte === 'rom' && (!plateforme.trim() || !extensions.trim()))}>
+      <button class="btn primary" onclick={chercher} disabled={enCours || lecture || !dossier.trim() || (sorte === 'rom' && (!plateforme.trim() || !coches.length))}>
         {enCours ? 'Recherche…' : '🔍 Chercher'}
       </button>
     </div>
@@ -368,7 +411,7 @@ Rien n’est déplacé ni renommé. Les retirer plus tard de ta ludothèque ne l
         <p class="muted">📦 {contenusEcartes} contenu(s) additionnel(s) trouvé(s) (DLC, avatars…) : ce ne sont pas des jeux. Ils apparaîtront dans le panneau de leur jeu, prêts à être installés si tu le souhaites.</p>
       {/if}
       {#if (sorte === 'rom' ? roms.length : dos.length) === 0}
-        <p>Aucun jeu trouvé dans ce dossier{sorte === 'rom' ? ' avec ces extensions' : ' (un jeu = un sous-dossier avec un programme .exe, .com ou .bat)'}.</p>
+        <p>Aucun jeu trouvé dans ce dossier{sorte === 'rom' ? ' parmi les types cochés' : ' (un jeu = un sous-dossier avec un programme .exe, .com ou .bat)'}.</p>
       {:else}
         <div class="ligne">
           <strong>{choisis} jeu(x) coché(s)</strong>
@@ -448,6 +491,19 @@ Rien n’est déplacé ni renommé. Les retirer plus tard de ta ludothèque ne l
   }
   .espace {
     flex: 1;
+  }
+  .types {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(6 * var(--u)) calc(16 * var(--u));
+    margin: 0;
+    padding: calc(8 * var(--u)) calc(10 * var(--u));
+    border: 1px solid var(--line);
+    border-radius: calc(6 * var(--u));
+  }
+  .types legend {
+    padding: 0 calc(4 * var(--u));
+    color: var(--dim);
   }
   .liste {
     list-style: none;

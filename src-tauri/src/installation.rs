@@ -177,7 +177,7 @@ fn executer_eleve(programme: &Path, arguments: &[String], dossier_travail: &Path
         echapper(&programme.to_string_lossy()),
         echapper(&dossier_travail.to_string_lossy())
     );
-    let s = std::process::Command::new("powershell")
+    let s = crate::lancement::outil_sans_fenetre("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", &script])
         .status()
         .map_err(|e| Erreur::Disque(format!("Impossible de demander les droits administrateur ({e}).")))?;

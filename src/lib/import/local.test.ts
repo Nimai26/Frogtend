@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { elementDe, emplacementDuSysteme, dansUnEmplacement, avecSource, apresCopie, nomDeDossier, depuisInstallationDos, couper, depuisDos, depuisMame, depuisManuel, depuisProgramme, depuisRoms, extensionsDe, lireExtensions, messageBilan } from './local';
+import { elementDe, emplacementDuSysteme, dansUnEmplacement, avecSource, apresCopie, nomDeDossier, depuisInstallationDos, couper, depuisDos, depuisMame, depuisManuel, depuisProgramme, depuisRoms, extensionsDe, lireExtensions, messageBilan, devinerPlateforme, typesACocher } from './local';
+import { PLATEFORMES_CONNUES } from '$lib/ludotheque/categories';
 
 describe('import local', () => {
   it('coupe un chemin Windows', () => {
@@ -63,5 +64,42 @@ describe('import local', () => {
   it('résume un import', () => {
     expect(messageBilan({ ajoutes: 2, versions: 3, deja: 0, refuses: [] })).toBe('✅ 2 jeu(x) ajouté(s) à ta ludothèque · 3 version(s) ajoutée(s) à des jeux déjà là');
     expect(messageBilan({ ajoutes: 3, deja: 1, refuses: [['X', 'introuvable']] })).toBe('✅ 3 jeu(x) ajouté(s) à ta ludothèque · 1 déjà dedans · 1 refusé(s) : X (introuvable)');
+  });
+
+  it('devine la plateforme d’après le nom du dossier (les vrais dossiers de Seb, 03/10)', () => {
+    const attendu: Record<string, string | null> = {
+      '3DO': '3DO Interactive Multiplayer',
+      'Playstation 3': 'Sony Playstation 3',
+      'Playstation 2': 'Sony Playstation 2',
+      'Nintendo Entertainement System': 'Nintendo Entertainment System',
+      'Super Nintendo Entertainement System': 'Super Nintendo Entertainment System',
+      'Nintendo - Game Boy Advance': 'Nintendo Game Boy Advance',
+      'Coleco - ColecoVision': 'ColecoVision',
+      'NEC PC Engine TurboGrafx 16': 'NEC TurboGrafx-16',
+      'Nintendo Wii': 'Nintendo Wii',
+      'Nintendo Wii U': 'Nintendo Wii U',
+      'Nintendo 64': 'Nintendo 64',
+      'Sega PICO': 'Sega Pico',
+      Vectrex: 'GCE Vectrex',
+      WonderSwan: 'Bandai WonderSwan',
+      'Apple I': null,
+      MUGEN: null,
+      DataXL: null,
+    };
+    for (const [dossier, p] of Object.entries(attendu)) {
+      expect(devinerPlateforme(`E:\\Games\\${dossier}`, PLATEFORMES_CONNUES), dossier).toBe(p);
+    }
+    expect(devinerPlateforme('E:\\Games\\Playstation 3\\', PLATEFORMES_CONNUES)).toBe('Sony Playstation 3');
+  });
+
+  it('coche d’office les types de fichiers qui sont des jeux', () => {
+    // Le dossier PS3 de Seb : 77 .zip et un film.
+    expect(typesACocher([['zip', 77], ['mkv', 1]], [])).toEqual(['zip']);
+    // Des jeux sur CD : la feuille, pas ses pistes ; ni les textes.
+    expect(typesACocher([['bin', 300], ['cue', 120], ['txt', 3]], [])).toEqual(['cue']);
+    // Avec les émulateurs de la plateforme : ce qu'ils lisent, plus les archives.
+    expect(typesACocher([['sfc', 10], ['smc', 5], ['zip', 900], ['nfo', 2], ['ips', 4]], ['.sfc', 'smc'])).toEqual(['sfc', 'smc', 'zip']);
+    // Rien de ce qu'ils lisent dans le dossier : tout ce qui peut être un jeu.
+    expect(typesACocher([['chd', 50], ['jpg', 50]], ['iso'])).toEqual(['chd']);
   });
 });

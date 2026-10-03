@@ -41,6 +41,11 @@ export const PLATEFORMES_CONNUES: string[] = [
   'Sega Saturn', 'Sega Dreamcast', 'Sony Playstation', 'Sony Playstation 2', 'Sony Playstation 3',
   'Microsoft Xbox', 'Microsoft Xbox 360', 'NEC TurboGrafx-16', 'NEC TurboGrafx-CD', 'Atari 2600', 'Atari 7800',
   'Atari Jaguar', '3DO Interactive Multiplayer', 'Philips CD-i', 'ColecoVision', 'Mattel Intellivision',
+  // Ceux de la table RetroAchievements (noms LaunchBox) et d'autres consoles courantes, pour l'import (03/10).
+  'Atari 5200', 'Atari Jaguar CD', 'Sega SG-1000', 'Sega Pico', 'GCE Vectrex', 'NEC PC-FX', 'PC Engine SuperGrafx',
+  'Magnavox Odyssey 2', 'Emerson Arcadia 2001', 'Fairchild Channel F', 'Watara Supervision', 'SNK Neo Geo CD',
+  'Nintendo Famicom Disk System', 'Nintendo Pokemon Mini', 'Nintendo 64DD', 'Nintendo Satellaview', 'Casio PV-1000',
+  'Epoch Super Cassette Vision', 'Commodore Plus 4',
 ].filter((v, i, l) => l.indexOf(v) === i);
 
 /** La catégorie d'une plateforme, d'après son nom LaunchBox. */

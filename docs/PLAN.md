@@ -679,6 +679,12 @@ content ID se lit dans les zips (ex. EP0102-**BLES01227**_00-DLCS12… = Asura's
   l'installeur Tauri). Restaurées depuis la sauvegarde faite juste avant (`E:\Frogtend-sauvegarde-avant-0.43.1`,
   empreintes vérifiées). 0.43.2 : copie de côté avant tout effacement par la désinstallation (crochet NSIS
   `src-tauri/windows/crochets.nsh`). **Règle** : avant toute installation chez Seb, sauvegarder ses données.
+- **Essais du 03/10 avec Seb (0.43.3)** : le bouton « Ajouter » de l'import lisait chaque fichier en entier
+  (`pistes_designees` lisait avant de regarder l'extension : 196 Go pour le dossier PS3) → corrigé, test avec un
+  fichier creux de 4 Go, et **répétition du parcours complet sur le vrai dossier** (1,2 s : 7 jeux, 70 contenus
+  écartés, 7 fiches, décompression proposée). Extensions à taper → types trouvés cochés d'office + plateforme devinée
+  (53 des 60 dossiers de Seb reconnus). Fenêtres de console (reg.exe) masquées. **Méthode désormais** : répéter
+  chaque parcours sur les vrais fichiers avant de livrer.
 - **⛔ EN PAUSE jusqu'à l'essai de Seb (décision du 03/10)** : décompresser Asura's Wrath et le lancer dans RPCS3
   (docs/A-TESTER.md, « Décompresser pour jouer »). S'il démarre : approche validée, on reprend. Si RPCS3 refuse l'.iso
   (même à jour) : extraire le contenu de l'.iso (dossier PS3_GAME) au lieu de l'.iso, une livraison de plus. En

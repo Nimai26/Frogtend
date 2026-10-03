@@ -168,10 +168,11 @@ pub struct RomTrouvee {
 
 /// Le texte d'une feuille (.cue, .m3u, .gdi) : UTF-8 ou ANSI (Windows-1252, accents), sans marque d'ordre d'octets.
 pub fn lire_feuille(fichier: &Path) -> Option<String> {
-    let o = std::fs::read(fichier).ok()?;
-    if o.len() > 1 << 20 {
-        return None; // une feuille fait quelques Ko : un gros fichier n'en est pas une
+    // La taille d'abord : une feuille fait quelques Ko ; une image disque de 47 Go ne doit JAMAIS être lue en mémoire.
+    if std::fs::metadata(fichier).ok()?.len() > 1 << 20 {
+        return None;
     }
+    let o = std::fs::read(fichier).ok()?;
     let o = o.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(&o);
     Some(match std::str::from_utf8(o) {
         Ok(t) => t.to_string(),
@@ -182,9 +183,13 @@ pub fn lire_feuille(fichier: &Path) -> Option<String> {
 
 /// Les fichiers qu'une liste de pistes (`.cue`, `.m3u`, `.gdi`) désigne : ils ne sont pas des jeux à part.
 fn pistes_designees(fichier: &Path) -> Vec<PathBuf> {
+    // Seules les listes de pistes sont lues (un .zip ou une image disque ne l'est jamais).
+    let ext = fichier.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    if !matches!(ext.as_str(), "cue" | "m3u" | "gdi") {
+        return vec![];
+    }
     let Some(texte) = lire_feuille(fichier) else { return vec![] };
     let dossier = fichier.parent().unwrap_or(Path::new("."));
-    let ext = fichier.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     texte
         .lines()
         .filter_map(|l| {
@@ -221,7 +226,33 @@ pub fn chercher_roms(dossier: &Path, extensions: &[String], recursif: bool) -> R
     }
     let voulues: BTreeSet<String> = extensions.iter().map(|e| e.trim().trim_start_matches('.').to_lowercase()).filter(|e| !e.is_empty()).collect();
     if voulues.is_empty() {
-        return Err(Erreur::Refus("Indique au moins une extension de fichier (par exemple « sfc » ou « cue »).".into()));
+        return Err(Erreur::Refus("Coche au moins un type de fichier.".into()));
+    }
+    let fichiers = fichiers_du_dossier(dossier, recursif)?;
+    let ext_de = |p: &Path| p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let designees: BTreeSet<PathBuf> = fichiers
+        .iter()
+        .filter(|p| matches!(ext_de(p).as_str(), "cue" | "m3u" | "gdi") && voulues.contains(&ext_de(p)))
+        .flat_map(|p| pistes_designees(p))
+        .map(|p| normaliser_chemin(&p))
+        .collect();
+    let mut l: Vec<RomTrouvee> = fichiers
+        .into_iter()
+        .filter(|p| voulues.contains(&ext_de(p)) && !designees.contains(&normaliser_chemin(p)))
+        .map(|p| RomTrouvee {
+            titre: titre_depuis_nom(&p.file_name().unwrap_or_default().to_string_lossy()),
+            taille: std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0),
+            chemin: p.to_string_lossy().to_string(),
+        })
+        .collect();
+    l.sort_by(|a, b| a.titre.to_lowercase().cmp(&b.titre.to_lowercase()).then(a.chemin.cmp(&b.chemin)));
+    Ok(l)
+}
+
+/// Les fichiers d'un dossier (et de ses sous-dossiers si `recursif`). Seuls les noms sont lus, jamais le contenu.
+fn fichiers_du_dossier(dossier: &Path, recursif: bool) -> Resultat<Vec<PathBuf>> {
+    if !dossier.is_dir() {
+        return Err(Erreur::Disque(format!("Dossier introuvable : {}.", dossier.display())));
     }
     let mut fichiers = Vec::new();
     let mut a_voir = vec![dossier.to_path_buf()];
@@ -243,23 +274,21 @@ pub fn chercher_roms(dossier: &Path, extensions: &[String], recursif: bool) -> R
             }
         }
     }
-    let ext_de = |p: &Path| p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-    let designees: BTreeSet<PathBuf> = fichiers
-        .iter()
-        .filter(|p| matches!(ext_de(p).as_str(), "cue" | "m3u" | "gdi") && voulues.contains(&ext_de(p)))
-        .flat_map(|p| pistes_designees(p))
-        .map(|p| normaliser_chemin(&p))
-        .collect();
-    let mut l: Vec<RomTrouvee> = fichiers
-        .into_iter()
-        .filter(|p| voulues.contains(&ext_de(p)) && !designees.contains(&normaliser_chemin(p)))
-        .map(|p| RomTrouvee {
-            titre: titre_depuis_nom(&p.file_name().unwrap_or_default().to_string_lossy()),
-            taille: std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0),
-            chemin: p.to_string_lossy().to_string(),
-        })
-        .collect();
-    l.sort_by(|a, b| a.titre.to_lowercase().cmp(&b.titre.to_lowercase()).then(a.chemin.cmp(&b.chemin)));
+    Ok(fichiers)
+}
+
+/// Les types de fichiers d'un dossier : (extension en minuscules, nombre), du plus fréquent au moins fréquent. Sert à
+/// proposer quoi importer sans rien demander de taper.
+pub fn types_de_fichiers(dossier: &Path, recursif: bool) -> Resultat<Vec<(String, usize)>> {
+    let mut n: std::collections::BTreeMap<String, usize> = Default::default();
+    for p in fichiers_du_dossier(dossier, recursif)? {
+        let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+        if !ext.is_empty() {
+            *n.entry(ext).or_default() += 1;
+        }
+    }
+    let mut l: Vec<(String, usize)> = n.into_iter().collect();
+    l.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
     Ok(l)
 }
 
@@ -946,6 +975,21 @@ mod tests {
     }
 
     #[test]
+    fn un_gros_fichier_n_est_jamais_lu_pour_chercher_des_pistes() {
+        // Le bug du 03/10 : mesurer 7 zips PS3 (218 Go) les lisait en entier. Un fichier de 4 Go (creux) doit être
+        // écarté sans être lu, qu'il ait l'extension d'une archive ou d'une liste de pistes.
+        let d = tempfile::tempdir().unwrap();
+        for nom in ["Jeu.zip", "Enorme.cue"] {
+            let f = d.path().join(nom);
+            std::fs::File::create(&f).unwrap().set_len(4 << 30).unwrap();
+            let t = std::time::Instant::now();
+            assert!(pistes_designees(&f).is_empty());
+            assert_eq!(a_copier(&f), vec![f.clone()]);
+            assert!(t.elapsed().as_millis() < 1000, "{nom} lu en entier ?");
+        }
+    }
+
+    #[test]
     fn la_copie_d_un_jeu_m3u_emporte_les_pistes_de_ses_disques() {
         let d = tempfile::tempdir().unwrap();
         ecrire(d.path(), "FF7.m3u", "FF7 (Disc 1).cue\nFF7 (Disc 2).cue\n");
@@ -987,6 +1031,17 @@ mod tests {
             std::fs::create_dir_all(p).unwrap();
         }
         std::fs::write(d.join(nom), contenu).unwrap();
+    }
+
+    #[test]
+    fn les_types_de_fichiers_d_un_dossier_sont_comptes() {
+        let d = tempfile::tempdir().unwrap();
+        for f in ["a.zip", "b.ZIP", "c.zip", "film.mkv", "lisez-moi", "sous/d.zip", "sous/e.7z"] {
+            ecrire(d.path(), f, "x");
+        }
+        assert_eq!(types_de_fichiers(d.path(), false).unwrap(), [("zip".to_string(), 3), ("mkv".to_string(), 1)]);
+        assert_eq!(types_de_fichiers(d.path(), true).unwrap(), [("zip".to_string(), 4), ("7z".to_string(), 1), ("mkv".to_string(), 1)]);
+        assert!(types_de_fichiers(&d.path().join("absent"), true).is_err());
     }
 
     #[test]
@@ -1136,6 +1191,66 @@ mod essais {
             for v in super::en_versions(chemins) {
                 println!("   [{}] {} — {}", v.rang, v.libelle, v.chemin.rsplit(['\\', '/']).next().unwrap_or(""));
             }
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod repetition_reelle {
+    use super::*;
+    #[tokio::test]
+    #[ignore]
+    async fn parcours_complet_sur_un_vrai_dossier() {
+        use crate::coffre::CoffreMemoire;
+        use crate::noyau::{Connexion, Noyau};
+        let dossier = std::path::PathBuf::from(std::env::var("FROGTEND_DOSSIER").unwrap());
+        let plateforme = std::env::var("FROGTEND_PLATEFORME").unwrap();
+        let t = std::time::Instant::now();
+        let types = types_de_fichiers(&dossier, true).unwrap();
+        println!("ETAPE types {:?} en {} ms", types, t.elapsed().as_millis());
+        let t = std::time::Instant::now();
+        let l = chercher_roms(&dossier, &["zip".to_string()], true).unwrap();
+        let (contenus, roms): (Vec<_>, Vec<_>) = l.into_iter().partition(|r| crate::contenus::est_un_contenu(Path::new(&r.chemin)));
+        println!("ETAPE recherche {} jeux, {} contenus écartés, en {} ms", roms.len(), contenus.len(), t.elapsed().as_millis());
+        for r in &roms {
+            println!("  JEU {}", r.titre);
+        }
+        let elements: Vec<PathBuf> = roms.iter().map(|r| PathBuf::from(&r.chemin)).collect();
+        let t = std::time::Instant::now();
+        println!("ETAPE mesure {} Go en {} ms", taille_a_copier(&elements) >> 30, t.elapsed().as_millis());
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let profil = n.creer_profil("Essai", None, None).unwrap().id;
+        n.ouvrir(&profil, None, &Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        let jeux: Vec<JeuAImporter> = roms
+            .iter()
+            .map(|r| {
+                let p = Path::new(&r.chemin);
+                JeuAImporter {
+                    titre: r.titre.clone(),
+                    plateforme: plateforme.clone(),
+                    dossier: p.parent().unwrap().to_string_lossy().into(),
+                    fichier: Some(p.file_name().unwrap().to_string_lossy().into()),
+                    programme: None,
+                    arguments: vec![],
+                    annee: None,
+                    editeur: None,
+                    genres: vec![],
+                }
+            })
+            .collect();
+        let t = std::time::Instant::now();
+        let b = n.importer_locaux(&jeux).await.unwrap();
+        println!("ETAPE ajout {} fiches, {} refus, en {} ms", b.ajoutes, b.refuses.len(), t.elapsed().as_millis());
+        let filtre = crate::ludotheque::Filtre { boutique: Some("local".into()), ludotheque: true, ..Default::default() };
+        for j in n.lister(&filtre).await.unwrap().jeux {
+            let t = std::time::Instant::now();
+            let a = match n.fichier_lance(j.id).await.unwrap() {
+                Some(f) => crate::decompression::examiner(&f).unwrap().map(|a| format!("décompresser {} Go -> {}", a.taille >> 30, a.principal)),
+                None => None,
+            };
+            println!("  FICHE {} : {:?} ({} ms)", j.titre, a, t.elapsed().as_millis());
         }
     }
 }

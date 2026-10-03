@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.43.3 — l'import qui marche, sans rien taper
+
+- **Le bouton « Ajouter » de l'import ne bloque plus** : il lisait en entier chaque fichier du dossier (196 Go pour
+  tes jeux PS3) avant de proposer où les garder. Il ne lit plus que leur taille : moins d'une seconde.
+- **Plus d'extension à taper** : choisis le dossier, Frogtend propose la plateforme d'après son nom
+  (« Playstation 3 » → « Sony Playstation 3 ») et montre les types de fichiers trouvés, avec leur nombre ; ceux des
+  jeux sont déjà cochés (les vidéos, images, textes et pistes .bin d'un .cue ne le sont pas). La plateforme se choisit
+  dans une liste.
+- **Plus de fenêtres noires** qui s'ouvrent et se ferment (en ouvrant « Importer », par exemple).
+
 ## 0.43.2 — les vrais messages d'erreur, une barre du haut qui tient dans la fenêtre
 
 - **Les erreurs disent enfin leur motif** : depuis le début, toute erreur venue du cœur de Frogtend s'affichait
