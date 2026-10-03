@@ -54,8 +54,9 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
       décompresse-la »**. Décompresse-en un (l'.iso), importe l'.iso : **🏆 RetroAchievements** dit s'il est compatible.
       (Vérifié le 03/10, en lecture seule dans les zips : tes **7 jeux PS3 sont DÉCHIFFRÉS** — EBOOT.BIN lisible
       (« SCE ») là où un disque d'origine serait chiffré — donc lisibles par RPCS3 une fois décompressés.)
-- [ ] ⚠ **« Animaniacs - The Great Edgar Hunt »** est rangé dans \`E:\Games\Playstation 3\` mais c'est un jeu
-      **PlayStation 2** (son disque contient IOPRP270.IMG et des modules .IRX). Je ne l'ai pas déplacé : à toi de voir.
+- [x] **« Animaniacs - The Great Edgar Hunt »** (jeu **PlayStation 2**, rangé par erreur dans `E:\Games\Playstation 3`) :
+      **déplacé dans `E:\Games\Playstation 2`** (dossier créé) à ta demande le 03/10 ; empreinte SHA-256 identique
+      avant/après ; aucune entrée LaunchBox ne pointait vers l'ancien emplacement.
 - [ ] Les 70 autres zips sont des **DLC et avatars** (.pkg, avec leur licence .rap pour 50 d'entre eux) : ils
       s'installent dans RPCS3 (Fichier ▸ Installer des paquets/raps). Dis-moi si tu veux que Frogtend le fasse.
 - [ ] Un PSP en .cso, ou une Jaguar CD en .cue (si tu en as) : le panneau ne montre jamais d'erreur.

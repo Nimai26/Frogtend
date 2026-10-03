@@ -447,14 +447,14 @@ choisir avec Seb) : (a) Seb récupère l'installeur propre (Patreon) et le confi
 (b) installation silencieuse de l'installeur public en refusant les offres : impossible à garantir sans essai.
 
 **✅ Décision de Seb (02/10, finale)** : les mises à jour de Cheat Engine sont rares → **Seb l'installe lui-même sans
-les logiciels en plus, en fait un zip et le confie à Firehouse**, qui le **distribue** à tous (contrat 14, \`type:
-direct\`, \`sha256\`). Firehouse **prévient Seb** quand une nouvelle version sort ; Seb met à jour le zip sur Firehouse,
+les logiciels en plus, en fait un zip et le confie à Firehouse**, qui le **distribue** à tous (contrat 14, `type:
+direct`, `sha256`). Firehouse **prévient Seb** quand une nouvelle version sort ; Seb met à jour le zip sur Firehouse,
 qui le transmet à tous les Frogtend. (Ce qui suit est la réflexion qui a mené là.)
 
-**Relevé dans les sources de Cheat Engine (02/10, \`Cheat Engine/ceregistry.pas\`)** : ses réglages vont dans le
-**registre** (\`HKCU\Software\Cheat Engine\`), sans option portable. La copie zippée marche, mais laisse des réglages
+**Relevé dans les sources de Cheat Engine (02/10, `Cheat Engine/ceregistry.pas`)** : ses réglages vont dans le
+**registre** (`HKCU\Software\Cheat Engine`), sans option portable. La copie zippée marche, mais laisse des réglages
 dans le registre (« effet pieuvre »). Piste, **à annoncer à Seb avant tout (registre)** : Frogtend exporterait cette
-clé par profil après usage et la remettrait avant (\`reg export\` / \`reg import\`), ce qui donnerait aussi des réglages
+clé par profil après usage et la remettrait avant (`reg export` / `reg import`), ce qui donnerait aussi des réglages
 Cheat Engine par profil. **✅ 0.18.0–0.19.0** : réglages par profil (registre), et **🧰 Brancher Cheat Engine sur le
 jeu** (fiche du jeu et menu en jeu) par un script `autorun\frogtend.lua` posé par Frogtend (fonctions relevées dans
 celua.txt : getCheatEngineDir, fileExists, openProcess, loadTable, createTimer). Extensions du forum
@@ -467,7 +467,7 @@ fermeture.
 possibles : (1) chaque semaine, vérifier la version ; si nouvelle, l'**installer dans un bac à sable**, puis zipper
 SEULEMENT son dossier d'installation ; (2) le **construire depuis le dépôt git** officiel. (Pas de version portable
 officielle gratuite : copier le dossier installé en donne une.) Côté Frogtend : il le reçoit comme un émulateur
-décrit (contrat 14 : \`type: direct\`, \`programme\`, \`sha256\`), sans rien de plus à coder. Avis de l'agent : voir la
+décrit (contrat 14 : `type: direct`, `programme`, `sha256`), sans rien de plus à coder. Avis de l'agent : voir la
 réponse du 02/10 (bac à sable d'abord ; points à vérifier : réglages dans le registre, pilote noyau).
 
 **✅ 0.17.0 (partie 1, contre le contrat 13/14, routes Firehouse à venir)** :
@@ -590,8 +590,8 @@ méthodes de LaunchBox** pour l'import de ces boutiques (à étudier dans sa doc
 **Seb (02/10), captures de LaunchBox à l'appui** :
 - LaunchBox : **Outils ▸ Importer ▸** Amazon Games, EA, Epic Games, GOG, Steam, Uplay/Ubisoft Connect, Jeux Windows,
   Xbox/Microsoft Store. **Options ▸ Intégrations ▸** GOG, Steam… Pour Steam : l'**URL personnalisée** du profil
-  (\`steamcommunity.com/id/<nom>\`) et une **clé d'API personnelle** (Steam révoque celles de LaunchBox : chacun crée
-  la sienne sur \`steamcommunity.com/dev/apikey\`).
+  (`steamcommunity.com/id/<nom>`) et une **clé d'API personnelle** (Steam révoque celles de LaunchBox : chacun crée
+  la sienne sur `steamcommunity.com/dev/apikey`).
 - **Règle de Seb** : les comptes se règlent **dans les Options**, OU **au moment d'un import** si rien n'est encore
   réglé (Frogtend ouvre alors le réglage avant d'importer).
 - **Ordre retenu** : Steam d'abord (API officielle : ResolveVanityURL, GetOwnedGames), puis les autres après étude.
@@ -600,7 +600,7 @@ méthodes de LaunchBox** pour l'import de ces boutiques (à étudier dans sa doc
   il ouvre une **fenêtre avec la page de connexion OFFICIELLE d'Epic** (e-mail, ou Google, Steam, PlayStation, Xbox,
   Nintendo…), puis analyse la bibliothèque. **Seb : « ça ne fonctionne pas très bien »**. En revanche LaunchBox
   **propose d'installer les jeux Steam (et normalement Epic) depuis son interface** → à reproduire (Steam : fait en
-  0.20.0 par \`steam://install\`).
+  0.20.0 par `steam://install`).
 
 **✅ Steam en 0.20.0** : ⚙ Options ▸ **Comptes ▸ Steam** (compte = URL personnalisée ou identifiant à 17 chiffres ;
 clé d'API personnelle, **vérifiée auprès de Steam avant d'être enregistrée**, rangée dans le coffre de Windows sous
