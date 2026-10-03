@@ -48,7 +48,8 @@ function extraire(e: unknown, profondeur: number): string {
   if (Array.isArray(e)) return e.map((x) => extraire(x, profondeur + 1)).filter(Boolean).join(' ; ');
   if (typeof e === 'object') {
     const o = e as Record<string, unknown>;
-    for (const cle of ['message', 'erreur', 'error', 'detail', 'msg']) {
+    // `motif` : la forme des erreurs du cœur de Frogtend ({sorte, motif}).
+    for (const cle of ['motif', 'message', 'erreur', 'error', 'detail', 'msg']) {
       const m = extraire(o[cle], profondeur + 1);
       if (m) return m;
     }

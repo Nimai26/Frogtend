@@ -674,6 +674,11 @@ content ID se lit dans les zips (ex. EP0102-**BLES01227**_00-DLCS12… = Asura's
   romset NON-MERGED + CHD dans le dossier du jeu, même version que le paquet MAME servi. Le stock va sur Egon
   (« Jeux vidéo »). La liste « contenus » devient le besoin API n° 18 (écrit). Restent à cadrer : réconciliation des
   jeux déjà sur Venkman (nom ou empreinte), format PS3 après l'essai RPCS3, MUGEN.
+- **Incident du 03/10 (mise à jour 0.9.1 → 0.43.1)** : les données de Seb (profil « Sebastien », ludothèque) ont été
+  effacées par la désinstallation de l'ancienne version (case « Supprimer les données de l'application » de
+  l'installeur Tauri). Restaurées depuis la sauvegarde faite juste avant (`E:\Frogtend-sauvegarde-avant-0.43.1`,
+  empreintes vérifiées). 0.43.2 : copie de côté avant tout effacement par la désinstallation (crochet NSIS
+  `src-tauri/windows/crochets.nsh`). **Règle** : avant toute installation chez Seb, sauvegarder ses données.
 - **⛔ EN PAUSE jusqu'à l'essai de Seb (décision du 03/10)** : décompresser Asura's Wrath et le lancer dans RPCS3
   (docs/A-TESTER.md, « Décompresser pour jouer »). S'il démarre : approche validée, on reprend. Si RPCS3 refuse l'.iso
   (même à jour) : extraire le contenu de l'.iso (dossier PS3_GAME) au lieu de l'.iso, une livraison de plus. En

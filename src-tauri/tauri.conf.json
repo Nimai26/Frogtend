@@ -42,6 +42,7 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
+        "installerHooks": "./windows/crochets.nsh",
         "languages": ["French"],
         "displayLanguageSelector": false
       }

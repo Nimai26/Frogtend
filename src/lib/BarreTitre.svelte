@@ -122,6 +122,12 @@
     border-bottom: 1px solid var(--line);
     user-select: none;
     min-width: 0;
+    /* Jamais plus large que la fenêtre : sinon toute la page défile et les boutons de la fenêtre disparaissent. */
+    overflow: hidden;
+  }
+  /* La marque, les liens de droite et les boutons de la fenêtre gardent leur place ; seule la navigation cède. */
+  .barre > :not(nav):not(.espace) {
+    flex-shrink: 0;
   }
   .marque {
     display: flex;
@@ -137,9 +143,14 @@
     width: calc(20 * var(--u));
     height: calc(20 * var(--u));
   }
+  /* Trop d'onglets pour la largeur : ils défilent dans la barre (molette, clavier, manette), sans barre visible. */
   nav {
     display: flex;
     align-items: stretch;
+    min-width: 0;
+    flex: 0 1 auto;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
   .lien {
     font: inherit;

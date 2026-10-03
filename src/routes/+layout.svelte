@@ -118,8 +118,15 @@
   .voile-video {
     background: var(--voile-video);
   }
+  /* La fenêtre elle-même ne défile jamais : seul le contenu (main) le fait. */
+  :global(html:has(.application)),
+  :global(body:has(.application)) {
+    overflow: hidden;
+  }
   .application {
     height: 100vh;
+    width: 100%;
+    min-width: 0;
     display: grid;
     grid-template-rows: auto 1fr;
   }

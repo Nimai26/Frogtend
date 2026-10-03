@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.43.2 — les vrais messages d'erreur, une barre du haut qui tient dans la fenêtre
+
+- **Les erreurs disent enfin leur motif** : depuis le début, toute erreur venue du cœur de Frogtend s'affichait
+  « motif inconnu » (jeton refusé, création de compte, installation…). Elles disent maintenant ce qui se passe.
+- **Plus de barres de défilement autour de la fenêtre** : la barre du haut ne dépasse plus ; s'il y a trop
+  d'onglets pour la largeur, ils défilent dans la barre, et les boutons Réduire / Agrandir / Fermer restent visibles.
+- **Désinstallation** : si la case « Supprimer les données de l'application » est cochée, une copie de tes données
+  est d'abord mise de côté (`%APPDATA%\fr.hikari-no-sekai.frogtend.avant-desinstallation`).
+
 ## 0.43.1 — contrôle de sécurité et corrections
 
 Une relecture complète du code (sécurité, puis les lots 0.36 à 0.43) a trouvé des défauts avant tes essais. Corrigés :

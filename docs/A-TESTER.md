@@ -49,6 +49,11 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Corrections de la 0.43.2
+- [ ] Un jeton refusé (ou une autre erreur) affiche son vrai motif, plus jamais « motif inconnu ».
+- [ ] Fenêtre étroite : pas de barre de défilement autour de la fenêtre ; les onglets du haut défilent à la molette ;
+      Réduire / Agrandir / Fermer toujours visibles.
+
 ## Corrections de la 0.43.1 (à voir au passage, pas d'essai spécial)
 - [ ] **⚙ Options ▸ Comptes ▸ 🏆 RetroAchievements ▸ Oublier** (sur un profil d'essai) : ensuite, dans le dossier de
       RetroArch, `Profils\<profil>\frogtend.cfg` ne contient plus de ligne `cheevos_token`. Puis reconnecte-toi.

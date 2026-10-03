@@ -41,6 +41,8 @@ describe('motifDuRefus', () => {
     expect(motifDuRefus('jeton expiré')).toBe('jeton expiré');
     expect(motifDuRefus(new Error('disque plein'))).toBe('disque plein');
     expect(motifDuRefus({ erreur: 'grade insuffisant' })).toBe('grade insuffisant');
+    // Les erreurs du cœur de Frogtend : {sorte, motif}.
+    expect(motifDuRefus({ sorte: 'jeton_refuse', motif: 'Firehouse refuse le jeton.' })).toBe('Firehouse refuse le jeton.');
     expect(motifDuRefus({ detail: [{ msg: 'champ requis' }, { msg: 'trop long' }] })).toBe('champ requis ; trop long');
   });
 
