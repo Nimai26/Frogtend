@@ -49,6 +49,10 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Régler un émulateur pour n'importe quel système (0.43.4)
+- [ ] **⚙ Options ▸ 🕹 Émulateurs ▸ Régler un autre système…** : en tête, **Sony Playstation 3 — 7 jeu(x)** ; plus
+      bas, toutes les autres consoles (même sans jeux).
+
 ## Import sans rien taper (0.43.3)
 - [ ] **📥 Importer ▸ Fichiers ROM** : aucune fenêtre noire ne s'ouvre.
 - [ ] **📂 Choisir le dossier** `E:\Games\Playstation 3`. **Attendu :** plateforme « Sony Playstation 3 » déjà

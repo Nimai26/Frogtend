@@ -564,3 +564,19 @@ mod tests {
         assert_eq!(l.dossier, r"E:\RetroArch", "les cœurs se trouvent depuis le dossier de RetroArch");
     }
 }
+
+#[cfg(test)]
+mod essai_reel_paquet {
+    #[test]
+    #[ignore]
+    fn decompresser_un_vrai_paquet() {
+        let a = std::path::PathBuf::from(std::env::var("FROGTEND_PAQUET").unwrap());
+        let d = tempfile::tempdir().unwrap();
+        let f = super::format_de(&a).unwrap();
+        let t = std::time::Instant::now();
+        let n = super::decompresser(&a, f, d.path()).unwrap();
+        let exe = d.path().join("rpcs3.exe");
+        println!("PAQUET format {:?}, {} fichiers en {} ms, rpcs3.exe {:?} octets", f, n, t.elapsed().as_millis(), std::fs::metadata(&exe).map(|m| m.len()).ok());
+        println!("PAQUET total fichiers relus : {}", super::fichiers_de(d.path()).unwrap().len());
+    }
+}

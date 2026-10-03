@@ -74,3 +74,20 @@ export function pourLeJeu(
   }
   return s.liste[0] ?? null;
 }
+
+/**
+ * Les systèmes proposés pour régler un émulateur : TOUS ceux qu'on connaît (Seb, 03/10 : « idiot d'attendre d'avoir
+ * les jeux pour installer un émulateur »). D'abord ceux qui ont des jeux (sur ce PC ou dans le catalogue), avec leur
+ * nombre ; puis les autres, par ordre alphabétique. Une plateforme ne paraît qu'une fois.
+ */
+export function systemesProposes(
+  avecJeux: { nom: string; jeux: number }[],
+  connues: string[],
+): { nom: string; jeux: number }[] {
+  const n = new Map<string, number>();
+  for (const p of avecJeux) n.set(p.nom, Math.max(n.get(p.nom) ?? 0, p.jeux));
+  for (const p of connues) if (!n.has(p)) n.set(p, 0);
+  return [...n.entries()]
+    .map(([nom, jeux]) => ({ nom, jeux }))
+    .sort((a, b) => Number(b.jeux > 0) - Number(a.jeux > 0) || a.nom.localeCompare(b.nom, 'fr'));
+}

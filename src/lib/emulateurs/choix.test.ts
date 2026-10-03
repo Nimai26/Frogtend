@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ajouter, normaliser, normaliserTous, pourLeJeu, retirer } from './choix';
+import { ajouter, normaliser, normaliserTous, pourLeJeu, retirer, systemesProposes } from './choix';
 
 const snes9x = { nom: 'RetroArch — snes9x', programme: 'E:\\RetroArch\\retroarch.exe', ligne: '-L cores\\snes9x_libretro.dll' };
 const bsnes = { nom: 'RetroArch — bsnes', programme: 'E:\\RetroArch\\retroarch.exe', ligne: '-L cores\\bsnes_libretro.dll' };
@@ -40,5 +40,20 @@ describe('plusieurs émulateurs par système', () => {
     expect(pourLeJeu(emus, { '42': b.cle }, 'Super Nintendo', 42)?.nom).toBe('RetroArch — bsnes');
     expect(pourLeJeu(emus, { '42': 'disparu' }, 'Super Nintendo', 42)?.nom).toBe('RetroArch — snes9x');
     expect(pourLeJeu(emus, {}, 'Nintendo 64', 1)).toBeNull();
+  });
+
+  it('propose tous les systèmes, ceux qui ont des jeux d’abord', () => {
+    const l = systemesProposes(
+      [{ nom: 'Super Nintendo Entertainment System', jeux: 1 }, { nom: 'Sony Playstation 3', jeux: 7 }, { nom: 'Sony Playstation 3', jeux: 2 }],
+      ['Sega Saturn', 'Sony Playstation 3', 'Atari 2600'],
+    );
+    expect(l).toEqual([
+      { nom: 'Sony Playstation 3', jeux: 7 },
+      { nom: 'Super Nintendo Entertainment System', jeux: 1 },
+      { nom: 'Atari 2600', jeux: 0 },
+      { nom: 'Sega Saturn', jeux: 0 },
+    ]);
+    // Aucun jeu nulle part : toutes les plateformes connues restent proposées.
+    expect(systemesProposes([], ['Sony Playstation 3']).map((p) => p.nom)).toEqual(['Sony Playstation 3']);
   });
 });

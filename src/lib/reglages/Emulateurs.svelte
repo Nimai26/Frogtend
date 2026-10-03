@@ -7,7 +7,8 @@
   import { etat, reglerPc } from '$lib/etat.svelte';
   import { dossierEmulateurs, installerEmulateur, parcourir, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
   import { plusRecente } from '$lib/emulateurs/versions';
-  import { retirer as retirerEmulateur } from '$lib/emulateurs/choix';
+  import { retirer as retirerEmulateur, systemesProposes } from '$lib/emulateurs/choix';
+  import { PLATEFORMES_CONNUES } from '$lib/ludotheque/categories';
   import { tele } from '$lib/ludotheque/telechargements.svelte';
   import { GENRES_MANETTE } from '$lib/ludotheque/commandes';
 
@@ -24,7 +25,9 @@
     traces = await api.emulateursTraces().catch(() => []);
   }
   onMount(async () => {
-    plateformes = await api.plateformes(false).catch(() => []);
+    // Les jeux de ce PC (importés compris) et ceux du catalogue ; puis toutes les plateformes connues.
+    const [pc, catalogue] = await Promise.all([api.plateformes(true).catch(() => []), api.plateformes(false).catch(() => [])]);
+    plateformes = systemesProposes([...pc, ...catalogue], [...PLATEFORMES_CONNUES, ...Object.keys(etat.pc.emulateurs)]) as Plateforme[];
     await recharger();
   });
 
@@ -163,7 +166,7 @@
   async function ajouter() {
     const s = await choisir(
       '🕹 Pour quel système ?',
-      plateformes.map((p) => ({ valeur: p.nom, libelle: p.nom, detail: `${p.jeux} jeu(x)` })),
+      plateformes.map((p) => ({ valeur: p.nom, libelle: p.nom, detail: p.jeux ? `${p.jeux} jeu(x)` : undefined })),
     );
     if (s) await reglerEmulateur(s);
   }

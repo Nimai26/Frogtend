@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.43.4 — régler un émulateur sans attendre d'avoir les jeux
+
+- **⚙ Options ▸ Émulateurs ▸ Régler un autre système** propose maintenant TOUTES les plateformes connues : d'abord
+  celles qui ont des jeux (sur ce PC, importés compris, ou dans le catalogue), avec leur nombre, puis les autres. Avant,
+  seules celles du catalogue de Firehouse apparaissaient : impossible de régler RPCS3 pour tes jeux PS3 importés.
+
 ## 0.43.3 — l'import qui marche, sans rien taper
 
 - **Le bouton « Ajouter » de l'import ne bloque plus** : il lisait en entier chaque fichier du dossier (196 Go pour
