@@ -767,7 +767,7 @@ mod tests {
             racine.extend(r);
         }
         secteurs[20][..racine.len()].copy_from_slice(&racine);
-        let cnf = b"BOOT = cdrom:\SLUS_005.94;1\r\nTCB = 4\r\n";
+        let cnf = b"BOOT = cdrom:\\SLUS_005.94;1\r\nTCB = 4\r\n";
         secteurs[21][..cnf.len()].copy_from_slice(cnf);
         // Le programme : en-tête « PS-X EXE », taille 2048 (+ 2048 d'en-tête = 4096 hachés).
         secteurs[22][..8].copy_from_slice(b"PS-X EXE");
