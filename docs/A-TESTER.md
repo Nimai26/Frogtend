@@ -49,6 +49,18 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Un jeu PlayStation par DuckStation : il demande de te connecter la 1re fois ; connecte-toi. Ensuite, joue avec un
       autre profil (sans compte), puis reviens au tien : **tu es toujours connecté**, l'autre profil ne l'était pas.
 
+## Mises à jour et DLC Switch dans Eden (0.41.0)
+- [ ] Il faut Eden réglé pour la Switch. **Ferme Eden** avant d'activer des contenus (il réécrit ses réglages en se
+      fermant).
+- [ ] Importe tes jeux Switch (`D:\LaunchBox\Games\Nintendo Switch`, « xci, nsp ») : les .nsp de mises à jour et DLC
+      ne sont pas pris pour des jeux.
+- [ ] Ajoute `D:\LaunchBox\Games\Nintendo Switch Maj & DLC` comme source de la Switch (⚙ Options ▸ Emplacements),
+      puis sélectionne **Fire Emblem Three Houses** : **📦 Contenus additionnels : 7 disponible(s)** (6 DLC + la mise à
+      jour). Coche, **Rendre disponible** : le dossier est ajouté à Eden. **Attendu dans Eden :** la colonne
+      « Add-Ons » du jeu montre la mise à jour et les DLC ; le jeu démarre en v1.2.0.
+- [ ] Un jeu au nom bizarre (« v-luigi3 », c'est Luigi's Mansion 3) : ses contenus ne se rattachent que si le jeu
+      porte son identifiant [0100…] dans son nom (un .xci ne le dit pas) — dis-moi si c'est gênant.
+
 ## DLC et contenus additionnels PS3 (0.40.0)
 - [ ] Il faut RPCS3 réglé pour la PS3 (⚙ Options ▸ Émulateurs).
 - [ ] 📥 Importer ▸ Fichiers ROM sur `E:\Games\Playstation 3`, plateforme « Sony Playstation 3 », extension « zip ».

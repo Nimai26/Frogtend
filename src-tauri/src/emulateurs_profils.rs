@@ -83,6 +83,19 @@ fn mettre_a_l_abri(emulateur: &Path, fichier: &Path) -> Resultat<()> {
     Ok(())
 }
 
+/// Remplace le texte d'un fichier de configuration (copié à l'abri d'abord).
+pub(crate) fn remplacer_config(emulateur: &Path, fichier: &Path, apres: &str) -> Resultat<()> {
+    let avant = std::fs::read_to_string(fichier).unwrap_or_default();
+    if apres != avant {
+        mettre_a_l_abri(emulateur, fichier)?;
+        if let Some(p) = fichier.parent() {
+            std::fs::create_dir_all(p)?;
+        }
+        std::fs::write(fichier, apres)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn modifier_ini(emulateur: &Path, fichier: &Path, section: &str, valeurs: &[(&str, Vec<String>)]) -> Resultat<()> {
     let avant = std::fs::read_to_string(fichier).unwrap_or_default();
     let apres = ecrire_ini(&avant, section, valeurs);

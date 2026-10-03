@@ -633,8 +633,14 @@ content ID se lit dans les zips (ex. EP0102-**BLES01227**_00-DLCS12… = Asura's
   confirmation) ; installation : extraction temporaire dans `<données de Frogtend>\travail\contenus` (retirée
   ensuite), `rpcs3 --headless --installpkg` une seule fois par PC (registre `<rpcs3>\.frogtend-contenus.json`), licence
   copiée dans le compte RPCS3 du profil ; à l'import, un zip qui ne contient que des .pkg/.rap n'est PAS un jeu
-  (dossier PS3 de Seb : 7 jeux, 70 contenus écartés et annoncés). **Reste** : les autres consoles (Switch : mises à
-  jour et DLC en .nsp ; Wii U ; Xbox 360…), mêmes principes.
+  (dossier PS3 de Seb : 7 jeux, 70 contenus écartés et annoncés).
+- **✅ 0.41.0 (Switch / Eden)** : mises à jour et DLC .nsp détectés (identifiant dans le nom « [0100…] », sinon dans
+  le ticket « <rights id>.tik » de l'en-tête PFS0, sans rien déchiffrer) et classés (…800 = mise à jour ; DLC = jeu +
+  0x1000 + n) ; « installer » = AJOUTER LE DOSSIER à `[Paths] external_content_dirs` de `<eden>\user\config\qt-config.ini`
+  (relevé dans les sources d'Eden ; config copiée à l'abri avant ; rien n'est copié ; résultat relu) ; un .nsp de mise
+  à jour ou de DLC n'est pas pris pour un jeu à l'import. Chez Seb (lecture seule) : 24 contenus sur 25 en 0,2 s
+  (Luigi's Mansion 3 et les DLC de Zelda BOTW reconnus par leur ticket). Limite : les jeux .xci ne disent pas leur
+  identifiant sans les clés de la console → rattachement par le titre pour eux. **Reste** : Wii U, Xbox 360…
 
 **MAME vient de Firehouse (Seb, 02/10)** : ni l'émulateur MAME ni les ROM ne sont « ceux de Seb ». **Firehouse
 fournira MAME à jour (avec ses mises à jour) et les packs de ROM**, au choix **avec ou sans CHD** (les images de

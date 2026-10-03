@@ -337,15 +337,19 @@ pub struct ContenuVu {
     pub genre: String,
     pub taille: u64,
     pub licence: bool,
-    /// Installé (et sa licence posée dans le compte de CE profil s'il en a une).
+    /// Installé (et sa licence posée dans le compte de CE profil s'il en a une) ; Switch : son dossier est lu par Eden.
     pub installe: bool,
+    /// Switch : le dossier qui sera ajouté à Eden (tout son contenu devient visible).
+    pub dossier: Option<String>,
 }
 
 /// Les contenus additionnels d'un jeu du PC.
 #[derive(Serialize, Default)]
 pub struct ContenusDuJeu {
-    /// `aucun` (console pas encore gérée), `emulateur` (pas de RPCS3 réglé), `ok`.
+    /// `aucun` (console pas encore gérée), `emulateur` (pas d'émulateur réglé), `ok`.
     pub etat: String,
+    /// `ps3` (RPCS3 installe chaque paquet) ou `switch` (Eden lit un dossier).
+    pub systeme: String,
     pub titre_id: Option<String>,
     pub contenus: Vec<ContenuVu>,
 }
@@ -392,18 +396,72 @@ async fn contexte_contenus(
     Ok(Some((rpcs3, compte, titre_id, contenus)))
 }
 
+/// Switch : les mises à jour et DLC d'un jeu trouvés sur ce PC, et l'Eden qui les lira.
+async fn contexte_switch(app: &AppHandle, noyau: &Noyau, id: i64) -> Resultat<Option<(std::path::PathBuf, Vec<crate::contenus::ContenuSwitch>)>> {
+    let j = noyau.registre().jeu(id)?.ok_or_else(|| Erreur::Introuvable("Ce jeu n'est pas sur ce PC.".into()))?;
+    if !j.plateforme.eq_ignore_ascii_case("Nintendo Switch") {
+        return Ok(None);
+    }
+    let Some((programme, _)) = emulateur_regle(app, &j.plateforme, id, None) else { return Err(Erreur::Reglage("Aucun Eden réglé pour la Switch.".into())) };
+    let eden = std::path::Path::new(&programme).parent().map(std::path::PathBuf::from).unwrap_or_default();
+    let mut dossiers: Vec<std::path::PathBuf> = vec![std::path::PathBuf::from(&j.dossier)];
+    let mut fichier = None;
+    if let Some(i) = &j.installation {
+        dossiers.push(std::path::PathBuf::from(&i.dossier));
+        fichier = i.fichier_du_jeu.as_ref().map(|f| std::path::Path::new(&i.dossier).join(f));
+    }
+    let e = emplacements(app);
+    dossiers.extend(e.systemes.get(&j.plateforme).cloned().unwrap_or_default().into_iter().map(std::path::PathBuf::from));
+    dossiers.sort();
+    dossiers.dedup();
+    let titre = j.titre.clone();
+    let l = tauri::async_runtime::spawn_blocking(move || {
+        let mut l: Vec<crate::contenus::ContenuSwitch> = dossiers.iter().filter(|d| d.is_dir()).flat_map(|d| crate::contenus::chercher_switch(d)).collect();
+        l.sort_by(|a, b| a.chemin.cmp(&b.chemin));
+        l.dedup_by(|a, b| a.chemin == b.chemin);
+        // L'identifiant du jeu : celui de son fichier s'il le porte (un .xci ne le dit pas sans les clés de la console).
+        let id_jeu = fichier.as_deref().and_then(crate::contenus::id_switch).map(|i| crate::contenus::classer_switch(i).1);
+        crate::contenus::switch_du_jeu(&l, id_jeu, &titre).into_iter().cloned().collect::<Vec<_>>()
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La recherche s'est arrêtée brutalement.".into()))?;
+    Ok(Some((eden, l)))
+}
+
 /// Les contenus additionnels (DLC, avatars…) d'un jeu, disponibles sur ce PC, et ce qui est déjà installé pour ce profil.
 #[tauri::command]
 pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<ContenusDuJeu> {
+    match contexte_switch(&app, &noyau, id).await {
+        Ok(Some((eden, l))) => {
+            let lus = crate::contenus::dossiers_externes_eden(&std::fs::read_to_string(crate::contenus::ini_eden(&eden)).unwrap_or_default());
+            let parent = |c: &str| std::path::Path::new(c).parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+            return Ok(ContenusDuJeu {
+                etat: "ok".into(),
+                systeme: "switch".into(),
+                titre_id: None,
+                contenus: l
+                    .into_iter()
+                    .map(|c| {
+                        let d = parent(&c.chemin);
+                        ContenuVu { installe: lus.iter().any(|x| x.eq_ignore_ascii_case(&d)), licence: false, id: c.id, nom: c.nom, genre: c.genre, taille: c.taille, dossier: Some(d) }
+                    })
+                    .collect(),
+            });
+        }
+        Ok(None) => {}
+        Err(Erreur::Reglage(_)) => return Ok(ContenusDuJeu { etat: "emulateur".into(), systeme: "switch".into(), ..Default::default() }),
+        Err(e) => return Err(e),
+    }
     let (rpcs3, compte, titre_id, contenus) = match contexte_contenus(&app, &noyau, id).await {
         Ok(Some(x)) => x,
         Ok(None) => return Ok(ContenusDuJeu { etat: "aucun".into(), ..Default::default() }),
-        Err(Erreur::Reglage(_)) => return Ok(ContenusDuJeu { etat: "emulateur".into(), ..Default::default() }),
+        Err(Erreur::Reglage(_)) => return Ok(ContenusDuJeu { etat: "emulateur".into(), systeme: "ps3".into(), ..Default::default() }),
         Err(e) => return Err(e),
     };
     let faits = crate::contenus::installes(&rpcs3);
     Ok(ContenusDuJeu {
         etat: "ok".into(),
+        systeme: "ps3".into(),
         titre_id,
         contenus: contenus
             .into_iter()
@@ -414,6 +472,7 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
                 nom: c.nom,
                 genre: c.genre,
                 taille: c.taille,
+                dossier: None,
             })
             .collect(),
     })
@@ -430,6 +489,28 @@ pub struct BilanContenus {
 /// (`--headless --installpkg`, qui se ferme seul), sa licence dans le compte RPCS3 de CE profil.
 #[tauri::command]
 pub async fn contenus_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, choisis: Vec<String>) -> Resultat<BilanContenus> {
+    // Switch : Eden lit les dossiers des contenus choisis (ajoutés à sa liste ; rien n'est copié).
+    if let Some((eden, l)) = contexte_switch(&app, &noyau, id).await? {
+        let dossiers: Vec<String> = {
+            let mut d: Vec<String> = l
+                .iter()
+                .filter(|c| choisis.contains(&c.id))
+                .filter_map(|c| std::path::Path::new(&c.chemin).parent().map(|p| p.to_string_lossy().to_string()))
+                .collect();
+            d.sort();
+            d.dedup();
+            d
+        };
+        let ini = crate::contenus::ini_eden(&eden);
+        let apres = crate::contenus::ajouter_dossiers_eden(&std::fs::read_to_string(&ini).unwrap_or_default(), &dossiers);
+        crate::emulateurs_profils::remplacer_config(&eden, &ini, &apres)?;
+        // Vérifier le résultat : les dossiers sont bien dans la liste relue.
+        let relus = crate::contenus::dossiers_externes_eden(&std::fs::read_to_string(&ini).unwrap_or_default());
+        let manquants: Vec<(String, String)> =
+            dossiers.iter().filter(|d| !relus.iter().any(|r| r.eq_ignore_ascii_case(d))).map(|d| (d.clone(), "pas enregistré dans Eden".to_string())).collect();
+        noyau.journaliser(&format!("contenus Switch : {} dossier(s) ajouté(s) à Eden", dossiers.len() - manquants.len()));
+        return Ok(BilanContenus { installes: l.iter().filter(|c| choisis.contains(&c.id)).count() - manquants.len().min(choisis.len()), refuses: manquants });
+    }
     let (rpcs3, compte, _, contenus) =
         contexte_contenus(&app, &noyau, id).await?.ok_or_else(|| Erreur::Refus("Ce jeu n'a pas de contenus gérés par Frogtend.".into()))?;
     let programme = emulateur_regle(&app, &noyau.registre().jeu(id)?.map(|j| j.plateforme).unwrap_or_default(), id, None)
@@ -1179,7 +1260,7 @@ pub async fn import_chercher_roms(dossier: String, extensions: Vec<String>, recu
     tauri::async_runtime::spawn_blocking(move || {
         let l = crate::import_local::chercher_roms(std::path::Path::new(&dossier), &extensions, recursif)?;
         // Les zips de contenus additionnels (DLC, avatars…) ne sont pas des jeux : écartés, et comptés.
-        let (contenus, roms): (Vec<_>, Vec<_>) = l.into_iter().partition(|r| crate::contenus::zip_de_contenus(std::path::Path::new(&r.chemin)));
+        let (contenus, roms): (Vec<_>, Vec<_>) = l.into_iter().partition(|r| crate::contenus::est_un_contenu(std::path::Path::new(&r.chemin)));
         Ok(RomsTrouvees { roms, contenus: contenus.len() })
     })
     .await

@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.41.0 — mises à jour et DLC Switch dans Eden
+
+- Frogtend trouve les **mises à jour et DLC Switch** (.nsp) et les rattache à leur jeu.
+- Dans le panneau du jeu, **📦 Contenus additionnels** ▸ **Rendre disponible** : Eden lit directement le dossier
+  (rien n'est copié), seulement si tu dis oui.
+- À l'import, une mise à jour ou un DLC n'est plus pris pour un jeu.
+
 ## 0.40.0 — les DLC et contenus additionnels (PS3)
 
 - Frogtend **trouve** les DLC, avatars et thèmes PS3 (.pkg et licences .rap, même zippés) et les **rattache** à leur

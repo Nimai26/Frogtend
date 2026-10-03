@@ -30,6 +30,19 @@
 
   async function installer() {
     if (!choisis.length) return;
+    if (donnees?.systeme === 'switch') {
+      const dossiers = [...new Set(choisis.map((c) => c.dossier).filter(Boolean))];
+      const ok = await confirmer(`📦 Rendre ces contenus disponibles dans Eden ?`, {
+        message: [
+          'Eden lira directement le(s) dossier(s) suivant(s) — rien n’est copié ni installé :',
+          ...dossiers.map((d) => `• ${d}`),
+          'Tout ce que contient ce dossier (mises à jour et DLC d’autres jeux aussi) devient visible dans Eden.',
+          'Ferme Eden avant : il réécrit ses réglages en se fermant.',
+        ].join('\n'),
+        libelleValider: 'Rendre disponible',
+      });
+      if (!ok) return;
+    } else {
     const oui = await confirmer(`📦 Installer ${choisis.length} contenu(s) pour « ${titre} » ?`, {
       message: [
         `${taille(total)} à installer par RPCS3 (il travaille sans fenêtre, puis se ferme).`,
@@ -42,6 +55,7 @@
       libelleValider: 'Installer',
     });
     if (!oui) return;
+    }
     enCours = true;
     try {
       const b = await api.contenusInstaller(id, choisis.map((c) => c.id));
@@ -61,7 +75,7 @@
 </script>
 
 {#if donnees?.etat === 'emulateur'}
-  <p class="muted">📦 Règle RPCS3 (⚙ Options ▸ Émulateurs) pour gérer les DLC de ce jeu.</p>
+  <p class="muted">📦 Règle {donnees.systeme === 'switch' ? 'Eden' : 'RPCS3'} (⚙ Options ▸ Émulateurs) pour gérer les mises à jour et DLC de ce jeu.</p>
 {:else if donnees?.etat === 'ok' && donnees.contenus.length}
   <div class="contenus cx-block">
     <button class="btn" onclick={() => (ouvert = !ouvert)}>📦 Contenus additionnels : {resume(donnees.contenus)} {ouvert ? '▴' : '▾'}</button>

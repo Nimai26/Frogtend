@@ -196,6 +196,151 @@ pub fn chercher_ps3(dossier: &Path) -> Vec<Contenu> {
     l
 }
 
+// --- Switch (Eden) : mises à jour et DLC en .nsp. Relevé dans les sources d'Eden (03/10) : `[Paths]` de
+// `user\config\qt-config.ini` a une liste `external_content_dirs` (`external_content_dirs\size`,
+// `external_content_dirs\N\path`) de dossiers où Eden LIT les mises à jour et DLC, sans rien installer. « Installer »
+// = ajouter le dossier à cette liste (avec l'accord de la personne) ; rien n'est copié. ---
+
+/// Un contenu Switch (mise à jour ou DLC) trouvé.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ContenuSwitch {
+    pub chemin: String,
+    pub nom: String,
+    /// `maj` ou `dlc`.
+    pub genre: String,
+    /// Son identifiant Nintendo (16 chiffres hexadécimaux).
+    pub id: String,
+    /// L'identifiant du jeu de base.
+    pub jeu: String,
+    pub taille: u64,
+}
+
+/// Un identifiant Switch écrit dans un nom : « [010055D009F79004] ».
+pub fn id_switch_du_nom(nom: &str) -> Option<u64> {
+    nom.split('[').skip(1).filter_map(|m| m.split(']').next()).find_map(|m| {
+        (m.len() == 16 && m.chars().all(|c| c.is_ascii_hexdigit()) && m.starts_with("01")).then(|| u64::from_str_radix(m, 16).ok()).flatten()
+    })
+}
+
+/// Les noms des fichiers d'un .nsp (en-tête PFS0, sans rien déchiffrer).
+pub fn noms_pfs0(entete: &[u8]) -> Vec<String> {
+    if entete.len() < 16 || &entete[..4] != b"PFS0" {
+        return vec![];
+    }
+    let n = u32::from_le_bytes([entete[4], entete[5], entete[6], entete[7]]) as usize;
+    let taille_noms = u32::from_le_bytes([entete[8], entete[9], entete[10], entete[11]]) as usize;
+    let table = 16 + n * 24;
+    let Some(noms) = entete.get(table..table + taille_noms) else { return vec![] };
+    (0..n.min(256))
+        .filter_map(|i| {
+            let e = 16 + i * 24 + 16;
+            let o = u32::from_le_bytes(entete.get(e..e + 4)?.try_into().ok()?) as usize;
+            Some(noms.get(o..)?.iter().take_while(|b| **b != 0).map(|b| *b as char).collect())
+        })
+        .collect()
+}
+
+/// L'identifiant d'un .nsp : celui de son nom, sinon celui de son ticket (« <rights id>.tik » : 16 premiers chiffres).
+pub fn id_switch(chemin: &Path) -> Option<u64> {
+    let nom = chemin.file_name()?.to_string_lossy().to_string();
+    if let Some(id) = id_switch_du_nom(&nom) {
+        return Some(id);
+    }
+    let mut f = std::fs::File::open(chemin).ok()?;
+    let mut b = vec![0u8; 0x4000];
+    let n = f.read(&mut b).ok()?;
+    noms_pfs0(&b[..n]).iter().find_map(|x| {
+        let r = x.strip_suffix(".tik")?;
+        (r.len() == 32).then(|| u64::from_str_radix(&r[..16], 16).ok()).flatten()
+    })
+}
+
+/// Le genre et le jeu de base d'un identifiant : jeu (…000), mise à jour (…800), DLC (le jeu + 0x1000 + n).
+pub fn classer_switch(id: u64) -> (&'static str, u64) {
+    match id & 0xFFF {
+        0 => ("jeu", id),
+        0x800 => ("maj", id - 0x800),
+        _ => ("dlc", (id & !0xFFF).wrapping_sub(0x1000)),
+    }
+}
+
+/// Les mises à jour et DLC Switch (.nsp) d'un dossier (sous-dossiers compris).
+pub fn chercher_switch(dossier: &Path) -> Vec<ContenuSwitch> {
+    let mut l = Vec::new();
+    let mut a_voir = vec![dossier.to_path_buf()];
+    while let Some(d) = a_voir.pop() {
+        let Ok(entrees) = std::fs::read_dir(&d) else { continue };
+        for e in entrees.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                a_voir.push(p);
+                continue;
+            }
+            if !p.extension().is_some_and(|x| x.eq_ignore_ascii_case("nsp")) {
+                continue;
+            }
+            let Some(id) = id_switch(&p) else { continue };
+            let (genre, jeu) = classer_switch(id);
+            if genre == "jeu" {
+                continue; // un jeu de base, pas un contenu additionnel
+            }
+            l.push(ContenuSwitch {
+                nom: p.file_stem().map(|n| n.to_string_lossy().replace('_', " ")).unwrap_or_default(),
+                chemin: p.to_string_lossy().to_string(),
+                genre: genre.into(),
+                id: format!("{id:016X}"),
+                jeu: format!("{jeu:016X}"),
+                taille: e.metadata().map(|m| m.len()).unwrap_or(0),
+            });
+        }
+    }
+    l.sort_by(|a, b| a.nom.to_lowercase().cmp(&b.nom.to_lowercase()));
+    l
+}
+
+/// Les contenus Switch d'un jeu : par l'identifiant du jeu ; sinon par son titre (le nom du contenu commence par lui).
+pub fn switch_du_jeu<'a>(l: &'a [ContenuSwitch], id_jeu: Option<u64>, titre: &str) -> Vec<&'a ContenuSwitch> {
+    let simple = |t: &str| -> String { t.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect() };
+    let t = simple(&crate::import_local::titre_depuis_nom(&format!("{titre}.x")));
+    l.iter()
+        .filter(|c| match id_jeu {
+            Some(id) => c.jeu == format!("{id:016X}"),
+            None => {
+                let n = simple(c.nom.split(['[', '(']).next().unwrap_or(&c.nom).split(" v").next().unwrap_or(&c.nom));
+                !t.is_empty() && (n == t || n.starts_with(&t))
+            }
+        })
+        .collect()
+}
+
+/// La configuration d'Eden (mode portable : `<eden>\user\config\qt-config.ini`).
+pub fn ini_eden(eden: &Path) -> PathBuf {
+    eden.join("user").join("config").join("qt-config.ini")
+}
+
+/// Les dossiers de contenus externes réglés dans Eden.
+pub fn dossiers_externes_eden(texte: &str) -> Vec<String> {
+    let lire = |cle: &str| crate::manettes::lire_ini(texte, "Paths", cle).into_iter().next();
+    let n: usize = lire("external_content_dirs\\size").and_then(|v| v.trim().parse().ok()).unwrap_or(0);
+    (1..=n.min(256)).filter_map(|i| lire(&format!("external_content_dirs\\{i}\\path"))).filter(|v| !v.is_empty()).collect()
+}
+
+/// Ajoute des dossiers à la liste d'Eden (sans doublon), en gardant tout le reste du fichier.
+pub fn ajouter_dossiers_eden(texte: &str, dossiers: &[String]) -> String {
+    let mut l = dossiers_externes_eden(texte);
+    for d in dossiers {
+        if !l.iter().any(|x| x.eq_ignore_ascii_case(d)) {
+            l.push(d.clone());
+        }
+    }
+    let mut valeurs: Vec<(String, Vec<String>)> = vec![("external_content_dirs\\size".into(), vec![l.len().to_string()])];
+    for (i, d) in l.iter().enumerate() {
+        valeurs.push((format!("external_content_dirs\\{}\\path", i + 1), vec![d.clone()]));
+    }
+    let refs: Vec<(&str, Vec<String>)> = valeurs.iter().map(|(c, v)| (c.as_str(), v.clone())).collect();
+    crate::emulateurs_profils::ecrire_ini(texte, "Paths", &refs)
+}
+
 /// Un .zip qui ne contient QUE des contenus additionnels (.pkg, .rap, .edat) : ce n'est pas un jeu (à l'import, il est
 /// écarté et annoncé comme contenu). Seul le sommaire du zip est lu.
 pub fn zip_de_contenus(chemin: &Path) -> bool {
@@ -206,6 +351,15 @@ pub fn zip_de_contenus(chemin: &Path) -> bool {
     let Ok(mut z) = zip::ZipArchive::new(f) else { return false };
     let noms: Vec<String> = (0..z.len()).filter_map(|i| z.by_index(i).ok().filter(|f| f.is_file()).map(|f| f.name().to_lowercase())).collect();
     !noms.is_empty() && noms.iter().any(|n| n.ends_with(".pkg")) && noms.iter().all(|n| n.ends_with(".pkg") || n.ends_with(".rap") || n.ends_with(".edat"))
+}
+
+/// Un fichier qui est un contenu additionnel et non un jeu : un zip de .pkg/.rap (PS3), ou un .nsp de mise à jour ou de
+/// DLC (Switch : identifiant qui ne finit pas par 000).
+pub fn est_un_contenu(chemin: &Path) -> bool {
+    if zip_de_contenus(chemin) {
+        return true;
+    }
+    chemin.extension().is_some_and(|e| e.eq_ignore_ascii_case("nsp")) && id_switch(chemin).is_some_and(|id| classer_switch(id).0 != "jeu")
 }
 
 /// Les contenus d'un jeu : par son identifiant (sûr) ; sinon par son titre (le nom du contenu commence par le titre du
@@ -301,6 +455,48 @@ mod tests {
         b[..4].copy_from_slice(b"\x7FPKG");
         b[0x30..0x30 + id.len()].copy_from_slice(id.as_bytes());
         b
+    }
+
+    #[test]
+    fn switch_identifiants_genres_et_jeu_de_base() {
+        assert_eq!(id_switch_du_nom("Fire Emblem Three Houses [Additional Quests][010055D009F79004][US][v196608].nsp"), Some(0x010055D009F79004));
+        assert_eq!(id_switch_du_nom("Dragon_Quest_Builders_2 v65536.nsp"), None);
+        assert_eq!(classer_switch(0x010055D009F79004), ("dlc", 0x010055D009F78000));
+        assert_eq!(classer_switch(0x010055D009F78800), ("maj", 0x010055D009F78000));
+        assert_eq!(classer_switch(0x010055D009F78000).0, "jeu");
+        // Un .nsp sans identifiant dans son nom : celui de son ticket.
+        let mut e = b"PFS0".to_vec();
+        let noms = b"0123456789abcdef0123456789abcdef.nca\0010055D009F788000000000000000000.tik\0";
+        e.extend(2u32.to_le_bytes());
+        e.extend((noms.len() as u32).to_le_bytes());
+        e.extend(0u32.to_le_bytes());
+        for o in [0u32, 37] {
+            e.extend(0u64.to_le_bytes());
+            e.extend(0u64.to_le_bytes());
+            e.extend(o.to_le_bytes());
+            e.extend(0u32.to_le_bytes());
+        }
+        e.extend(noms);
+        assert_eq!(noms_pfs0(&e)[1], "010055D009F788000000000000000000.tik");
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("Dragon_Quest_Builders_2 v65536.nsp"), &e).unwrap();
+        assert_eq!(id_switch(&d.path().join("Dragon_Quest_Builders_2 v65536.nsp")), Some(0x010055D009F78800));
+        let l = chercher_switch(d.path());
+        assert_eq!((l.len(), l[0].genre.as_str()), (1, "maj"));
+        assert_eq!(switch_du_jeu(&l, None, "Dragon Quest Builders 2").len(), 1, "par le titre");
+        assert_eq!(switch_du_jeu(&l, Some(0x010055D009F78000), "autre").len(), 1, "par l'identifiant");
+        assert!(est_un_contenu(&d.path().join("Dragon_Quest_Builders_2 v65536.nsp")), "une mise à jour n'est pas un jeu");
+        std::fs::write(d.path().join("Jeu [0100AAAA00001000].nsp"), b"x").unwrap();
+        assert!(!est_un_contenu(&d.path().join("Jeu [0100AAAA00001000].nsp")), "un jeu de base reste un jeu");
+    }
+
+    #[test]
+    fn eden_recoit_un_dossier_de_contenus_sans_perdre_le_reste() {
+        let avant = "[Paths]\r\ngamedirs\\size=1\r\nexternal_content_dirs\\size=1\r\nexternal_content_dirs\\1\\path=E:\\DLC\r\n[UI]\r\ntheme=dark\r\n";
+        assert_eq!(dossiers_externes_eden(avant), ["E:\\DLC"]);
+        let apres = ajouter_dossiers_eden(avant, &["D:\\Switch Maj & DLC".into(), "e:\\dlc".into()]);
+        assert_eq!(dossiers_externes_eden(&apres), ["E:\\DLC", "D:\\Switch Maj & DLC"], "sans doublon");
+        assert!(apres.contains("gamedirs\\size") && apres.contains("theme=dark"), "le reste est gardé");
     }
 
     #[test]
@@ -429,5 +625,22 @@ mod essais_import {
         for j in &jeux {
             println!("  jeu : {}", j.titre);
         }
+    }
+}
+
+#[cfg(test)]
+mod essais_switch {
+    /// Sur le vrai dossier Switch de Seb, en LECTURE SEULE : les mises à jour et DLC trouvés.
+    #[test]
+    #[ignore]
+    fn essai_contenus_switch_reels() {
+        let debut = std::time::Instant::now();
+        let l = super::chercher_switch(std::path::Path::new("D:/LaunchBox/Games/Nintendo Switch Maj & DLC"));
+        println!("{} contenu(s) en {:?}", l.len(), debut.elapsed());
+        for c in &l {
+            println!("  {} | {} | jeu {} | {}", c.genre, c.id, c.jeu, c.nom);
+        }
+        println!("Dragon Quest Builders 2 : {}", super::switch_du_jeu(&l, None, "Dragon Quest Builders 2").len());
+        println!("Fire Emblem Three Houses : {}", super::switch_du_jeu(&l, None, "Fire Emblem Three Houses").len());
     }
 }

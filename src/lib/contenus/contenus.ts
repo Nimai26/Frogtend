@@ -8,10 +8,13 @@ export interface ContenuVu {
   taille: number;
   licence: boolean;
   installe: boolean;
+  /** Switch : le dossier qu'Eden lira (tout son contenu devient visible). */
+  dossier?: string | null;
 }
 
 export interface ContenusDuJeu {
   etat: 'aucun' | 'emulateur' | 'ok';
+  systeme?: 'ps3' | 'switch';
   titre_id: string | null;
   contenus: ContenuVu[];
 }
