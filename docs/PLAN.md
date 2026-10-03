@@ -668,6 +668,12 @@ content ID se lit dans les zips (ex. EP0102-**BLES01227**_00-DLCS12… = Asura's
   **À faire côté Frogtend une fois l'étiquette décidée** : une fantrad « [T-Fr…] » doit compter comme une version
   FRANÇAISE (rang 0, choix de Seb « fantrad FR sinon EN ») ; aujourd'hui toute étiquette « [T…] » est pénalisée
   comme un hack.
+  **Décisions de Seb du 03/10, transmises par Firehouse (à confirmer par Seb avant de coder)** : noms No-Intro /
+  Redump EXACTS, jamais renommés ; une fantrad reçoit seulement « [T-Fr by <groupe>] » (ou « [T-En by <groupe>] »),
+  à compter comme version française (resp. anglaise) et plus comme un hack ; le titre clair vient de l'API. MAME :
+  romset NON-MERGED + CHD dans le dossier du jeu, même version que le paquet MAME servi. Le stock va sur Egon
+  (« Jeux vidéo »). La liste « contenus » devient le besoin API n° 18 (écrit). Restent à cadrer : réconciliation des
+  jeux déjà sur Venkman (nom ou empreinte), format PS3 après l'essai RPCS3, MUGEN.
 - **⛔ EN PAUSE jusqu'à l'essai de Seb (décision du 03/10)** : décompresser Asura's Wrath et le lancer dans RPCS3
   (docs/A-TESTER.md, « Décompresser pour jouer »). S'il démarre : approche validée, on reprend. Si RPCS3 refuse l'.iso
   (même à jour) : extraire le contenu de l'.iso (dossier PS3_GAME) au lieu de l'.iso, une livraison de plus. En
