@@ -668,7 +668,10 @@ une saga entière). Conséquences pour Frogtend :
   « REM SESSION 02 » : en-tête Atari dans la 1re piste de la 2e session, octets échangés ou non, cas « homebrew » par
   la piste 2), .cso (PSP compressé, lu bloc par bloc, `flate2`). Les .iso PS3 de Seb sont ZIPPÉS (78 zips de 1,5 Go
   et plus, un .iso chacun) : pas lisibles sans tout décompresser → le panneau dit « décompresse-la » (RPCS3 en a
-  besoin aussi). **Toutes les consoles de RetroAchievements que Frogtend peut rencontrer sont couvertes** (sauf
+  besoin aussi). Vérifié le 03/10 (lecture seule, dans les zips) : les **7 .iso PS3 sont DÉCHIFFRÉS** (EBOOT.BIN
+  « SCE » et PARAM.SFO « PSF » lisibles dans la zone chiffrée d'origine ; README « decrypted ISO ») ; « Animaniacs »
+  est un jeu **PS2** mal rangé ; 70 zips de DLC/avatars (.pkg + .rap) — idée : les installer dans RPCS3 (à décider avec
+  Seb). **Toutes les consoles de RetroAchievements que Frogtend peut rencontrer sont couvertes** (sauf
   Wii U : pas de succès RetroAchievements) ;
   ~~brancher le compte dans les émulateurs~~ **✅ 0.33.0** : « 🎮 Connecter mes émulateurs » (mot de passe UNE fois →
   jeton `login2` comme rcheevos, au coffre ; mot de passe jamais gardé) ; à chaque partie, le compte DU PROFIL QUI JOUE :
