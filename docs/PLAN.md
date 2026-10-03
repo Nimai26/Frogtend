@@ -614,7 +614,10 @@ Taodbox. **Reste** : mêler ces jeux à la ludothèque principale, puis Epic, GO
 
 **D. Les DLC et contenus additionnels (Seb, 03/10)** : « la gestion de ce genre de chose, DLC et autres, doit pouvoir
 être **détectée, gérée, proposée et installée si l'utilisateur est d'accord** ». Règle générale, pour toutes les
-consoles (DLC, mises à jour, avatars, thèmes…), jamais d'installation sans un oui :
+consoles (DLC, mises à jour, avatars, thèmes…), jamais d'installation sans un oui. ⚠ Précision de Seb : l'accord est
+celui de **la personne qui utilise Frogtend sur SON PC** (Frogtend sera installé par d'autres, ailleurs) — jamais un
+réglage décidé pour tous par Seb. Vérifié le 03/10 : les 70 .pkg de Seb ont un en-tête valide (0x7F « PKG ») et leur
+content ID se lit dans les zips (ex. EP0102-**BLES01227**_00-DLCS12… = Asura's Wrath) → rattachement sûr au jeu :
 - **détecter** : à l'import et dans les dossiers des systèmes, repérer les contenus additionnels et les RATTACHER à
   leur jeu (par l'identifiant du jeu quand le fichier le porte — PS3 : « content ID » EP9000-BCES01741_00-… dans
   l'en-tête du .pkg et le nom du .rap ; sinon par le titre) ;
