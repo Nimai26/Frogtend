@@ -14,7 +14,7 @@ export interface ContenuVu {
 
 export interface ContenusDuJeu {
   etat: 'aucun' | 'emulateur' | 'ok';
-  systeme?: 'ps3' | 'switch';
+  systeme?: 'ps3' | 'switch' | 'wiiu';
   titre_id: string | null;
   contenus: ContenuVu[];
 }

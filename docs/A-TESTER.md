@@ -49,6 +49,11 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Un jeu PlayStation par DuckStation : il demande de te connecter la 1re fois ; connecte-toi. Ensuite, joue avec un
       autre profil (sans compte), puis reviens au tien : **tu es toujours connecté**, l'autre profil ne l'était pas.
 
+## Wii U : ce que contient un .wua (0.42.0)
+- [ ] Importe tes jeux Wii U (`E:\Games\Nintendo Wii U`, « wua ») et sélectionne **Adventure Time Explore the
+      Dungeon** : **📦 Contenus additionnels** montre « Mise à jour v16 » ✅, « inclus dans le fichier .wua ». Un jeu avec
+      DLC en montre aussi (12 de tes jeux en ont).
+
 ## Mises à jour et DLC Switch dans Eden (0.41.0)
 - [ ] Il faut Eden réglé pour la Switch. **Ferme Eden** avant d'activer des contenus (il réécrit ses réglages en se
       fermant).

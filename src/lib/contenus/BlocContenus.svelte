@@ -79,7 +79,12 @@
 {:else if donnees?.etat === 'ok' && donnees.contenus.length}
   <div class="contenus cx-block">
     <button class="btn" onclick={() => (ouvert = !ouvert)}>📦 Contenus additionnels : {resume(donnees.contenus)} {ouvert ? '▴' : '▾'}</button>
-    {#if ouvert}
+    {#if ouvert && donnees.systeme === 'wiiu'}
+      <p class="muted">Inclus dans le fichier .wua du jeu : Cemu les charge tout seul, rien à installer.</p>
+      <ul>
+        {#each donnees.contenus as c (c.id)}<li><span>✅</span><span class="nom">{c.nom}</span></li>{/each}
+      </ul>
+    {:else if ouvert}
       <ul>
         {#each donnees.contenus as c (c.id)}
           <li>

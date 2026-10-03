@@ -341,6 +341,88 @@ pub fn ajouter_dossiers_eden(texte: &str, dossiers: &[String]) -> String {
     crate::emulateurs_profils::ecrire_ini(texte, "Paths", &refs)
 }
 
+// --- Wii U : un .wua (ZArchive de l'équipe de Cemu, licence MIT-0) peut contenir le jeu, ses mises à jour et ses DLC,
+// chacun dans un dossier racine « <identifiant 16 chiffres>_v<version> » ; Cemu les lit directement (rien à installer).
+// Relevé dans ZArchive (include/zarchive/zarchivecommon.h, src/zarchivereader.cpp), 03/10 : fin de fichier de 144
+// octets gros-boutistes (6 sections {position, taille}, empreinte, taille, version 0x61bf3a01, magie 0x169f52d6) ;
+// arbre = entrées de 16 octets (bit 31 du 1er mot : fichier ; dossier : 1er enfant, nombre, réservé) ; table des noms non
+// compressée (longueur sur 1 octet, ou 2 si le bit 7 est mis). ---
+
+/// Un titre contenu dans un .wua.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct TitreWiiU {
+    pub id: String,
+    /// `jeu` (00050000), `maj` (0005000E), `dlc` (0005000C), `autre`.
+    pub genre: String,
+    pub version: u32,
+}
+
+pub fn genre_wiiu(id: u64) -> &'static str {
+    match id >> 32 {
+        0x0005_0000 => "jeu",
+        0x0005_000E => "maj",
+        0x0005_000C => "dlc",
+        _ => "autre",
+    }
+}
+
+/// Les titres d'un .wua (dossiers racine), sans rien décompresser.
+pub fn titres_wua(chemin: &Path) -> Resultat<Vec<TitreWiiU>> {
+    use std::io::{Seek, SeekFrom};
+    let mut f = std::fs::File::open(chemin)?;
+    let taille = f.metadata()?.len();
+    if taille < 144 {
+        return Ok(vec![]);
+    }
+    let mut pied = [0u8; 144];
+    f.seek(SeekFrom::Start(taille - 144))?;
+    f.read_exact(&mut pied)?;
+    let be64 = |b: &[u8], i: usize| u64::from_be_bytes(b[i..i + 8].try_into().unwrap_or_default());
+    let be32 = |b: &[u8], i: usize| u32::from_be_bytes(b[i..i + 4].try_into().unwrap_or_default());
+    if be32(&pied, 140) != 0x169f_52d6 || be32(&pied, 136) != 0x61bf_3a01 {
+        return Ok(vec![]); // pas une ZArchive
+    }
+    let section = |n: usize| (be64(&pied, n * 16), be64(&pied, n * 16 + 8));
+    let (noms_o, noms_t) = section(2);
+    let (arbre_o, arbre_t) = section(3);
+    if noms_o + noms_t > taille || arbre_o + arbre_t > taille || noms_t > 64 << 20 || arbre_t > 256 << 20 {
+        return Ok(vec![]);
+    }
+    let lire = |f: &mut std::fs::File, o: u64, t: u64| -> Resultat<Vec<u8>> {
+        let mut b = vec![0u8; t as usize];
+        f.seek(SeekFrom::Start(o))?;
+        f.read_exact(&mut b)?;
+        Ok(b)
+    };
+    let noms = lire(&mut f, noms_o, noms_t)?;
+    let arbre = lire(&mut f, arbre_o, arbre_t)?;
+    let nom = |o: usize| -> String {
+        let Some(&b0) = noms.get(o) else { return String::new() };
+        let (longueur, debut) = if b0 & 0x80 != 0 { (((b0 & 0x7F) as usize) | ((*noms.get(o + 1).unwrap_or(&0) as usize) << 7), o + 2) } else { (b0 as usize, o + 1) };
+        noms.get(debut..debut + longueur).map(|n| n.iter().map(|c| *c as char).collect()).unwrap_or_default()
+    };
+    let entree = |i: usize| -> Option<(u32, u32, u32)> {
+        let e = arbre.get(i * 16..i * 16 + 16)?;
+        Some((be32(e, 0), be32(e, 4), be32(e, 8)))
+    };
+    let Some((racine, debut, nombre)) = entree(0) else { return Ok(vec![]) };
+    if racine & 0x8000_0000 != 0 {
+        return Ok(vec![]);
+    }
+    let mut l = Vec::new();
+    for i in debut as usize..(debut as usize + nombre.min(64) as usize) {
+        let Some((n, _, _)) = entree(i) else { break };
+        if n & 0x8000_0000 != 0 {
+            continue; // un fichier à la racine
+        }
+        let dossier = nom((n & 0x7FFF_FFFF) as usize);
+        let Some((id, v)) = dossier.split_once("_v") else { continue };
+        let (Ok(idn), Ok(version)) = (u64::from_str_radix(id, 16), v.parse::<u32>()) else { continue };
+        l.push(TitreWiiU { id: id.to_uppercase(), genre: genre_wiiu(idn).into(), version });
+    }
+    Ok(l)
+}
+
 /// Un .zip qui ne contient QUE des contenus additionnels (.pkg, .rap, .edat) : ce n'est pas un jeu (à l'import, il est
 /// écarté et annoncé comme contenu). Seul le sommaire du zip est lu.
 pub fn zip_de_contenus(chemin: &Path) -> bool {
@@ -500,6 +582,48 @@ mod tests {
     }
 
     #[test]
+    fn un_wua_dit_ses_titres() {
+        // Une petite ZArchive : noms, arbre (racine + 3 dossiers), puis la fin de fichier.
+        let mut noms = vec![0u8]; // nom vide de la racine
+        let mut decalages = Vec::new();
+        for n in ["0005000010102000_v0", "0005000E10102000_v48", "0005000C10102000_v16"] {
+            decalages.push(noms.len() as u32);
+            noms.push(n.len() as u8);
+            noms.extend(n.as_bytes());
+        }
+        let mut arbre = Vec::new();
+        arbre.extend(0u32.to_be_bytes());
+        arbre.extend(1u32.to_be_bytes());
+        arbre.extend(3u32.to_be_bytes());
+        arbre.extend(0u32.to_be_bytes());
+        for d in &decalages {
+            arbre.extend(d.to_be_bytes());
+            arbre.extend([0u8; 12]);
+        }
+        let mut o = vec![0u8; 16];
+        let (pos_noms, pos_arbre) = (o.len() as u64, (o.len() + noms.len()) as u64);
+        o.extend(&noms);
+        o.extend(&arbre);
+        let mut pied = Vec::new();
+        for (p, t) in [(0u64, 0u64), (0, 0), (pos_noms, noms.len() as u64), (pos_arbre, arbre.len() as u64), (0, 0), (0, 0)] {
+            pied.extend(p.to_be_bytes());
+            pied.extend(t.to_be_bytes());
+        }
+        pied.extend([0u8; 32]);
+        pied.extend(0u64.to_be_bytes());
+        pied.extend(0x61bf_3a01u32.to_be_bytes());
+        pied.extend(0x169f_52d6u32.to_be_bytes());
+        o.extend(&pied);
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("jeu.wua");
+        std::fs::write(&f, &o).unwrap();
+        let l = titres_wua(&f).unwrap();
+        assert_eq!(l.iter().map(|t| (t.genre.as_str(), t.version)).collect::<Vec<_>>(), [("jeu", 0), ("maj", 48), ("dlc", 16)]);
+        std::fs::write(&f, b"pas une archive").unwrap();
+        assert!(titres_wua(&f).unwrap().is_empty());
+    }
+
+    #[test]
     fn un_zip_de_dlc_n_est_pas_un_jeu() {
         use std::io::Write;
         let d = tempfile::tempdir().unwrap();
@@ -642,5 +766,34 @@ mod essais_switch {
         }
         println!("Dragon Quest Builders 2 : {}", super::switch_du_jeu(&l, None, "Dragon Quest Builders 2").len());
         println!("Fire Emblem Three Houses : {}", super::switch_du_jeu(&l, None, "Fire Emblem Three Houses").len());
+    }
+}
+
+#[cfg(test)]
+mod essais_wua {
+    /// Sur les vrais .wua de Seb, en LECTURE SEULE : leurs titres (jeu, mises à jour, DLC).
+    #[test]
+    #[ignore]
+    fn essai_wua_reels() {
+        let mut l: Vec<_> = std::fs::read_dir("E:/Games/Nintendo Wii U").unwrap().flatten().map(|e| e.path()).collect();
+        l.sort();
+        let (mut avec_maj, mut avec_dlc, mut vides) = (0, 0, 0);
+        let debut = std::time::Instant::now();
+        for (i, p) in l.iter().filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("wua"))).enumerate() {
+            let t = super::titres_wua(p).unwrap();
+            if t.is_empty() {
+                vides += 1;
+            }
+            if t.iter().any(|x| x.genre == "maj") {
+                avec_maj += 1;
+            }
+            if t.iter().any(|x| x.genre == "dlc") {
+                avec_dlc += 1;
+            }
+            if i < 5 {
+                println!("{} : {:?}", p.file_name().unwrap().to_string_lossy(), t.iter().map(|x| format!("{} v{}", x.genre, x.version)).collect::<Vec<_>>());
+            }
+        }
+        println!("{avec_maj} avec mise à jour, {avec_dlc} avec DLC, {vides} illisible(s), en {:?}", debut.elapsed());
     }
 }

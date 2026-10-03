@@ -1,5 +1,10 @@
 # Notes de version de Frogtend
 
+## 0.42.0 — Wii U : les mises à jour et DLC d'un .wua
+
+- Le panneau d'un jeu Wii U montre les **mises à jour et DLC** contenus dans son fichier .wua (Cemu les charge tout
+  seul : rien à installer). Chez toi : 35 jeux avec mise à jour, 12 avec DLC.
+
 ## 0.41.0 — mises à jour et DLC Switch dans Eden
 
 - Frogtend trouve les **mises à jour et DLC Switch** (.nsp) et les rattache à leur jeu.

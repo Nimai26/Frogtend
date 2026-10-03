@@ -431,6 +431,36 @@ async fn contexte_switch(app: &AppHandle, noyau: &Noyau, id: i64) -> Resultat<Op
 /// Les contenus additionnels (DLC, avatars…) d'un jeu, disponibles sur ce PC, et ce qui est déjà installé pour ce profil.
 #[tauri::command]
 pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<ContenusDuJeu> {
+    // Wii U : un .wua contient déjà ses mises à jour et DLC (Cemu les lit) : on les montre, rien à installer.
+    // Lu à part : un `if let` garderait le verrou du registre pendant les attentes qui suivent.
+    let jeu = noyau.registre().jeu(id)?;
+    if let Some(j) = jeu.filter(|j| j.plateforme.eq_ignore_ascii_case("Nintendo Wii U")) {
+        let wua = j.installation.as_ref().and_then(|i| i.fichier_du_jeu.as_ref().map(|f| std::path::Path::new(&i.dossier).join(f)));
+        let Some(wua) = wua.filter(|w| w.extension().is_some_and(|e| e.eq_ignore_ascii_case("wua"))) else {
+            return Ok(ContenusDuJeu { etat: "aucun".into(), ..Default::default() });
+        };
+        let titres = tauri::async_runtime::spawn_blocking(move || crate::contenus::titres_wua(&wua))
+            .await
+            .map_err(|_| Erreur::Disque("La lecture s'est arrêtée brutalement.".into()))??;
+        return Ok(ContenusDuJeu {
+            etat: "ok".into(),
+            systeme: "wiiu".into(),
+            titre_id: None,
+            contenus: titres
+                .into_iter()
+                .filter(|t| t.genre != "jeu")
+                .map(|t| ContenuVu {
+                    nom: format!("{} v{}", if t.genre == "maj" { "Mise à jour" } else { "DLC" }, t.version),
+                    id: format!("{}_v{}", t.id, t.version),
+                    genre: t.genre,
+                    taille: 0,
+                    licence: false,
+                    installe: true,
+                    dossier: None,
+                })
+                .collect(),
+        });
+    }
     match contexte_switch(&app, &noyau, id).await {
         Ok(Some((eden, l))) => {
             let lus = crate::contenus::dossiers_externes_eden(&std::fs::read_to_string(crate::contenus::ini_eden(&eden)).unwrap_or_default());

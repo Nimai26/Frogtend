@@ -640,7 +640,12 @@ content ID se lit dans les zips (ex. EP0102-**BLES01227**_00-DLCS12… = Asura's
   (relevé dans les sources d'Eden ; config copiée à l'abri avant ; rien n'est copié ; résultat relu) ; un .nsp de mise
   à jour ou de DLC n'est pas pris pour un jeu à l'import. Chez Seb (lecture seule) : 24 contenus sur 25 en 0,2 s
   (Luigi's Mansion 3 et les DLC de Zelda BOTW reconnus par leur ticket). Limite : les jeux .xci ne disent pas leur
-  identifiant sans les clés de la console → rattachement par le titre pour eux. **Reste** : Wii U, Xbox 360…
+  identifiant sans les clés de la console → rattachement par le titre pour eux.
+- **✅ 0.42.0 (Wii U / Cemu)** : un .wua (ZArchive, relevé dans les sources officielles : fin de fichier de 144 octets,
+  arbre d'entrées de 16 octets, table des noms non compressée) contient ses mises à jour et DLC dans des dossiers
+  « <id>_v<version> » (00050000 jeu, 0005000E mise à jour, 0005000C DLC) : le panneau les MONTRE, rien à installer
+  (Cemu lit le .wua entier). Chez Seb (lecture seule) : 58 .wua lus, 35 avec mise à jour, 12 avec DLC. **Reste** :
+  Xbox 360 (Xenia), PS Vita (Vita3K) — pas de jeux chez Seb pour l'instant.
 
 **MAME vient de Firehouse (Seb, 02/10)** : ni l'émulateur MAME ni les ROM ne sont « ceux de Seb ». **Firehouse
 fournira MAME à jour (avec ses mises à jour) et les packs de ROM**, au choix **avec ou sans CHD** (les images de
