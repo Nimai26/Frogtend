@@ -612,6 +612,18 @@ Taodbox. **Reste** : mêler ces jeux à la ludothèque principale, puis Epic, GO
 
 ### Prochains lots (décisions de Seb, 02/10)
 
+**D. Les DLC et contenus additionnels (Seb, 03/10)** : « la gestion de ce genre de chose, DLC et autres, doit pouvoir
+être **détectée, gérée, proposée et installée si l'utilisateur est d'accord** ». Règle générale, pour toutes les
+consoles (DLC, mises à jour, avatars, thèmes…), jamais d'installation sans un oui :
+- **détecter** : à l'import et dans les dossiers des systèmes, repérer les contenus additionnels et les RATTACHER à
+  leur jeu (par l'identifiant du jeu quand le fichier le porte — PS3 : « content ID » EP9000-BCES01741_00-… dans
+  l'en-tête du .pkg et le nom du .rap ; sinon par le titre) ;
+- **gérer** : dans le panneau du jeu, la liste de ses contenus (disponibles / installés) ;
+- **proposer / installer** : cases à cocher, taille annoncée, confirmation, puis installation par l'émulateur lui-même ;
+- PS3 (relevé dans les sources de RPCS3, 03/10) : `rpcs3 --installpkg <fichier>` installe un .pkg (contenu commun à
+  tous) ; une licence .rap se copie dans `dev_hdd0\home\<compte>\exdata\<content id>.rap` = **par compte
+  RPCS3**, donc dans le compte DU PROFIL qui installe. Chez Seb : 70 zips de DLC/avatars (.pkg, 50 avec .rap).
+
 **MAME vient de Firehouse (Seb, 02/10)** : ni l'émulateur MAME ni les ROM ne sont « ceux de Seb ». **Firehouse
 fournira MAME à jour (avec ses mises à jour) et les packs de ROM**, au choix **avec ou sans CHD** (les images de
 disques durs / CD de certains jeux, rangées dans un sous-dossier au nom du jeu). Conséquences :
