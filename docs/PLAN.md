@@ -707,6 +707,9 @@ content ID se lit dans les zips (ex. EP0102-**BLES01227**_00-DLCS12… = Asura's
   pose des questions (à rendre silencieuse si RPCS3 le permet : vérifier sa documentation) ; le PUP de Seb est ancien
   (Firehouse le fournira à jour, besoin 19) ; la 1re compilation PPU est longue (une seule fois : le dire avant).
   Corrigé localement, à livrer : « Sur ce PC » relu après l'installation d'un émulateur.
+  Seb (03/10, après l'essai) : « ça fonctionne nickel ; il manque encore la gestion des mods, shaders, cheats, l'OSD »
+  → pour RPCS3 (et les émulateurs récents) : cache de shaders, codes de triche (patches RPCS3), mods, affichage à
+  l'écran (OSD : performances, menu) — à intégrer aux lots « Prêt à jouer » et « Triches et mods ».
 - **(levée le 03/10) PAUSE jusqu'à l'essai de Seb (décision du 03/10)** : décompresser Asura's Wrath et le lancer dans RPCS3
   (docs/A-TESTER.md, « Décompresser pour jouer »). S'il démarre : approche validée, on reprend. Si RPCS3 refuse l'.iso
   (même à jour) : extraire le contenu de l'.iso (dossier PS3_GAME) au lieu de l'.iso, une livraison de plus. En
