@@ -685,6 +685,17 @@ content ID se lit dans les zips (ex. EP0102-**BLES01227**_00-DLCS12… = Asura's
   écartés, 7 fiches, décompression proposée). Extensions à taper → types trouvés cochés d'office + plateforme devinée
   (53 des 60 dossiers de Seb reconnus). Fenêtres de console (reg.exe) masquées. **Méthode désormais** : répéter
   chaque parcours sur les vrais fichiers avant de livrer.
+- **DÉCISION DE SEB (03/10) — Frogtend pour des novices** : « destiné à des gens qui veulent juste jouer et ne
+  connaissent vraiment pas l'émulation ». Toute étape technique se fait seule, après UN accord simple. Lot à venir
+  (« Prêt à jouer »), juste après l'essai RPCS3 :
+  1. **À l'ajout de jeux d'une plateforme sans émulateur** (import, téléchargement depuis Firehouse) : proposer
+     d'installer automatiquement l'émulateur recommandé ET ses fichiers système, en une seule confirmation (taille,
+     durée annoncées).
+  2. **BIOS et micrologiciels fournis par Firehouse, toujours à jour** (ex. PS3UPDAT.PUP pour RPCS3, BIOS PS1/PS2,
+     Saturn…) : installés automatiquement dans l'émulateur avec son installation (besoin API n° 19). Plus jamais de
+     fichier à chercher soi-même ; le bouton 💿 actuel reste en secours.
+  3. Revoir chaque écran avec la question « un novice saurait-il quoi faire ? » (déjà fait : extensions → types
+     cochés d'office, plateforme devinée, toutes les plateformes proposées pour un émulateur).
 - **⛔ EN PAUSE jusqu'à l'essai de Seb (décision du 03/10)** : décompresser Asura's Wrath et le lancer dans RPCS3
   (docs/A-TESTER.md, « Décompresser pour jouer »). S'il démarre : approche validée, on reprend. Si RPCS3 refuse l'.iso
   (même à jour) : extraire le contenu de l'.iso (dossier PS3_GAME) au lieu de l'.iso, une livraison de plus. En
