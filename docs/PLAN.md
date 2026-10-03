@@ -725,7 +725,10 @@ content ID se lit dans les zips (ex. EP0102-**BLES01227**_00-DLCS12… = Asura's
   demande jamais l'original (affichage et copie hors ligne en 1 000 px ; essai réel : 56 Ko au lieu de 605 Ko).
   **Lot à venir « Médias »** : réserver la place au vrai ratio de la boîte (plus de saut à l'affichage), choisir le
   visuel (jaquette, boîte 3D, cartouche…) dans l'affichage de la ludothèque, logos et fonds pour Taodbox, galerie
-  (captures, dos, disque) dans la fiche, garder hors ligne les visuels choisis.
+  (captures, dos, disque) dans la fiche, garder hors ligne les visuels choisis. Firehouse (03/10) : un admin pourra
+  mettre en avant, retirer ou ajouter des images ; chaque geste change `medias_empreinte` et `maj_le` (la synchro par
+  `depuis` le voit) ; une image retirée disparaît de `/jeu/{id}/medias` → le lot « Médias » doit aussi RETIRER du
+  cache (et de la copie hors ligne) une image qui n'est plus servie.
 - **(levée le 03/10) PAUSE jusqu'à l'essai de Seb (décision du 03/10)** : décompresser Asura's Wrath et le lancer dans RPCS3
   (docs/A-TESTER.md, « Décompresser pour jouer »). S'il démarre : approche validée, on reprend. Si RPCS3 refuse l'.iso
   (même à jour) : extraire le contenu de l'.iso (dossier PS3_GAME) au lieu de l'.iso, une livraison de plus. En
