@@ -10,8 +10,10 @@
 - **Lot OSD — le menu en jeu universel** (Seb, 30/09 puis 04/10). Mots de Seb (04/10) : « servira pour Frogtend et
   Taodbox » ; « manette ET clavier souris » ; « il doit être le MÊME pour tous, seul le fond peut être différent en
   fonction des jeux ou systèmes, et certaines options bien sûr ». Exigences atomiques :
-  - [ ] a. Le menu s'ouvre à la manette par **Select + Start tenus 1 s** (✅ décidé par Seb le 30/09), pendant toute
-        partie, quel que soit l'émulateur ; la combinaison est réglable dans les Options.
+  - [ ] a. Le menu s'ouvre à la manette par **Select + R1 tenus 1 s** (Back + RB sur une manette Xbox), pendant toute
+        partie, quel que soit l'émulateur ; réglable dans les Options. ✅ Seb 04/10 : « Select + Start, certains jeux
+        peuvent avoir cette combinaison ; il en faut une bien moins courante, par exemple Select + R1 » (remplace la
+        décision du 30/09) ; le maintien d'1 s est gardé contre les ouvertures par erreur.
   - [ ] b. Il s'ouvre toujours au clavier (Pause/Attn, réglable) — ✅ existe depuis 0.11.0.
   - [ ] c. Lecture de la manette pendant la partie : XInput (manettes Xbox, manette virtuelle de Sunshine) ; SDL3
         compilé dans le programme pour les manettes PlayStation/Switch/8BitDo (✅ décidé par Seb le 30/09 : « SDL3
@@ -40,9 +42,8 @@
 
 - [ ] Questions encore ouvertes du 02–04/10 : aucune bloquante. (La combinaison du menu à la manette était DÉJÀ
       décidée le 30/09 : ne pas la redemander — voir LECONS.md, 04/10.)
-- [ ] Méthode de travail (04/10) : ajouter la ligne « Lis `docs/METHODE-DE-TRAVAIL.md`… » en tête de `CLAUDE.md` et
-      créer les trois experts dans `.claude\agents\` — demandé par la session Firehouse au nom de Seb ; l'agent
-      attend la confirmation de Seb lui-même avant de toucher à sa propre configuration.
+- [x] Méthode de travail : ✅ Seb 04/10 « tu as mon accord » → ligne en tête de `CLAUDE.md` et trois experts dans
+      `.claude\agents\` (contrat, ui, lancement).
 - [ ] Option : désinscrire de la lettre d'information de GOG après un jeu offert (Frogtend ne touche pas aux réglages
       de compte sans décision).
 
