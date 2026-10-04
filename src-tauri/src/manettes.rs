@@ -259,7 +259,7 @@ pub fn profil_rpcs3(manette: Option<u32>) -> String {
 
 /// Le joueur 1 de RPCS3 sur la manette branchée (sinon le clavier). Un fichier sans la marque de Frogtend est celui de
 /// la personne : il n'est remplacé qu'à sa demande (`forcer`), après une copie à l'abri.
-fn regler_rpcs3(emulateur: &Path, forcer: bool, manette: Option<u32>) -> Resultat<bool> {
+pub(crate) fn regler_rpcs3(emulateur: &Path, forcer: bool, manette: Option<u32>) -> Resultat<bool> {
     let fichier = emulateur.join("config").join("input_configs").join("global").join("Default.yml");
     let actuel = std::fs::read_to_string(&fichier).ok();
     let a_nous = actuel.as_deref().is_none_or(|t| t.starts_with(MARQUE_RPCS3));

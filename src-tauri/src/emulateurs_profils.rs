@@ -138,6 +138,10 @@ pub enum Manette {
 fn regler_manette(id: &str, emulateur: &Path, utilisateur: Option<&Path>, manette: &Manette) -> Resultat<()> {
     let u = utilisateur.unwrap_or(emulateur);
     match manette {
+        // RPCS3 n'a qu'une entrée par joueur : « clavier » doit l'y remettre (si le fichier est celui de Frogtend).
+        Manette::Clavier if id == "rpcs3" => {
+            crate::manettes::regler_rpcs3(emulateur, false, None)?;
+        }
         Manette::Clavier => {}
         Manette::Auto(r) => {
             crate::manettes::regler(id, emulateur, utilisateur, false)?;
@@ -405,7 +409,13 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
         // créer une fois dans Eden. Absent : Eden garde son utilisateur courant.
         "eden" => Ok(vec!["-u".into(), profil_de(p).to_string()]),
         // RPCS3 : un compte RPCS3 par profil (\`--user-id\`, rpcs3.cpp), donc ses propres parties.
-        "rpcs3" => Ok(vec!["--user-id".into(), compte_rpcs3(emulateur, profil_de(p))?]),
+        "rpcs3" => {
+            // La manette du joueur 1, à CHAQUE partie (oubli de la 0.44.0, vu par Seb le 04/10 : rien n'était branché).
+            // Un fichier qui ne peut pas être écrit (disque en lecture seule…) n'empêche jamais de jouer : RPCS3 garde
+            // alors son réglage d'avant.
+            let _ = regler_manette(id, emulateur, None, manette);
+            Ok(vec!["--user-id".into(), compte_rpcs3(emulateur, profil_de(p))?])
+        }
         // Azahar : NAND et carte SD du profil (\`[Data Storage]\` de qt-config.ini, configuration/config.cpp).
         "azahar" => {
             let (nand, sdmc) = (p.join("nand"), p.join("sdmc"));
@@ -745,6 +755,15 @@ mod tests {
         let a = preparer("xenia", racine, "Seb", &[], &Manette::Auto(None)).unwrap();
         assert_eq!(a, vec![format!("--content_root={}", racine.join("Profils").join("Seb").join("content").display())]);
 
+        // RPCS3 : la manette est réglée à CHAQUE partie (manette branchée, sinon clavier), « clavier » y remet le
+        // clavier (bug de la 0.44.0 : ce réglage n'était appelé qu'à l'installation de RPCS3).
+        let pad = racine.join("config/input_configs/global/Default.yml");
+        preparer("rpcs3", racine, "Seb", &[], &Manette::Auto(None)).unwrap();
+        assert!(std::fs::read_to_string(&pad).unwrap().contains("Player 1 Input"), "réglée dès la 1re partie");
+        preparer("rpcs3", racine, "Seb", &[], &Manette::Clavier).unwrap();
+        assert!(std::fs::read_to_string(&pad).unwrap().contains("Handler: Keyboard"));
+        std::fs::remove_file(&pad).unwrap();
+        std::fs::remove_dir_all(racine.join("dev_hdd0")).ok();
         // RPCS3 : un compte par profil, retrouvé ensuite ; le 00000001 n'est jamais pris.
         std::fs::create_dir_all(racine.join("dev_hdd0/home/00000001")).unwrap();
         let s = preparer("rpcs3", racine, "Seb", &[], &Manette::Auto(None)).unwrap();

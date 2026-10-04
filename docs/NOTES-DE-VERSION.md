@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.44.2 — la manette dans RPCS3, et les traductions de fan
+
+- **RPCS3 : ta manette marche enfin.** La 0.44.0 annonçait la manette réglée à chaque partie, mais ce réglage n'était
+  en fait jamais appelé au lancement (mon oubli). Maintenant, à chaque partie : ta manette Xbox si elle est branchée,
+  sinon le clavier. Un réglage que tu fais toi-même dans RPCS3 n'est jamais défait ; et si le réglage ne peut pas être
+  écrit, le jeu se lance quand même.
+- **Traductions de fan** : un fichier « [T-Fr by groupe] » compte comme une version française (juste après la
+  française officielle, avant l'Europe), « [T-En by groupe] » comme anglaise ; c'est dit en clair : « FR (trad.) »,
+  « Traduction française par … ». (Un jeu déjà importé avant cette version garde son ancien classement : retire-le
+  et réimporte-le si besoin — aucun chez toi pour l'instant.)
+
 ## 0.44.1 — les nouvelles images de Firehouse, légères
 
 - Firehouse sert maintenant de nombreuses images par jeu (boîtes, cartouches, logos, captures…), et la jaquette

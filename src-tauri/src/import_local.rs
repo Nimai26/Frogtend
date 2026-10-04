@@ -46,6 +46,7 @@ pub fn etiquettes(nom: &str) -> (u8, i32, String, Option<u32>) {
     let mut qualite = 0i32;
     let mut libelles: Vec<String> = Vec::new();
     let mut disque = None;
+    let mut rang_traduction: Option<u8> = None;
     let mut reste = base.as_str();
     while let Some(i) = reste.find(['(', '[']) {
         let fermant = if reste.as_bytes()[i] == b'(' { ')' } else { ']' };
@@ -59,7 +60,9 @@ pub fn etiquettes(nom: &str) -> (u8, i32, String, Option<u32>) {
             // « [T-En by <groupe>] » comme une version anglaise — plus comme un hack. Juste après la version
             // officielle de la même langue (qualité +1), et c'est dit en clair dans le libellé.
             if let Some((langue, groupe)) = traduction(contenu.trim()) {
-                rang = rang.min(if langue == "fr" { 0 } else { 2 });
+                // La langue de la traduction l'emporte sur la région du jeu d'origine (« (France) [T-En by …] » se
+                // joue en anglais).
+                rang_traduction = Some(if langue == "fr" { 0 } else { 2 });
                 qualite += 1;
                 let quoi = if langue == "fr" { "Traduction française" } else { "Traduction anglaise" };
                 libelles.push(match groupe {
@@ -121,7 +124,7 @@ pub fn etiquettes(nom: &str) -> (u8, i32, String, Option<u32>) {
             libelles.push(contenu.trim().to_string());
         }
     }
-    (rang, qualite, libelles.join(", "), disque)
+    (rang_traduction.unwrap_or(rang), qualite, libelles.join(", "), disque)
 }
 
 /// Une étiquette de traduction de fan : (« fr » ou « en », groupe). Forme retenue avec Firehouse : « T-Fr by
@@ -135,10 +138,11 @@ fn traduction(etiquette: &str) -> Option<(&'static str, Option<String>)> {
         "en" | "eng" | "english" => "en",
         _ => return None,
     };
-    let groupe = e
-        .to_lowercase()
-        .find(" by ")
-        .map(|i| e[i + 4..].trim().to_string())
+    // Découpe sur le texte d'origine (jamais sur sa version en minuscules, dont les positions peuvent différer).
+    let groupe = [" by ", " By ", " BY "]
+        .iter()
+        .find_map(|s| e.split_once(s))
+        .map(|(_, g)| g.trim().to_string())
         .filter(|g| !g.is_empty());
     Some((langue, groupe))
 }
@@ -911,6 +915,10 @@ mod tests {
         assert_eq!(traduction("T-Fr v1.1 by Terminus"), Some(("fr", Some("Terminus".into()))));
         assert_eq!(traduction("T-Eng"), Some(("en", None)));
         assert_eq!(traduction("T-Ger by X"), None, "une autre langue reste une étiquette ordinaire");
+        // Une lettre qui change de longueur en minuscule (« İ ») avant « by » ne doit rien casser.
+        assert_eq!(traduction("T-Fr İİ by Groupe"), Some(("fr", Some("Groupe".into()))));
+        // La langue de la traduction l'emporte sur la région d'origine.
+        assert_eq!(etiquettes("Jeu (France) [T-En by X].sfc").0, 2);
         assert_eq!(traduction("!"), None);
         // Même fiche que le jeu d'origine : l'étiquette ne fait pas partie du titre.
         assert_eq!(titre_depuis_nom("Chrono Trigger (USA) [T-Fr by Génération IX].sfc"), "Chrono Trigger");

@@ -48,6 +48,10 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## La manette dans RPCS3 (0.44.2)
+- [ ] Manette Xbox branchée AVANT ▶ Jouer sur Asura's Wrath : elle marche dans le jeu (✕ = A, ◯ = B, Start = Start).
+- [ ] Débranche-la et relance : le clavier marche (✕ = X, Start = Entrée).
+
 ## Prêt à jouer (0.44.0)
 - [ ] **Une console sans émulateur** (par exemple la **Sega CD** : importe `E:\Games\Sega CD`) : après l'import,
       UNE fenêtre « 🎮 Préparer Sega CD pour jouer ? » dit l'émulateur, sa taille, le dossier, la manette. **Tout

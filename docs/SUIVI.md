@@ -40,8 +40,6 @@
   - Découpe : (1) sonde avec Seb ; (2) navigation commune clavier/souris/manette + échelle Taodbox ; (3) le cœur lit
     XInput, Select + R1 tenus 1 s, premier plan vérifié, migration des anciennes combinaisons ; (4) SDL3 ; (5) le
     fond ; (6) options, puis adaptateurs un par un (RPCS3, Cemu, Eden, Xenia, xemu, Azahar, Vita3K, PPSSPP).
-- [ ] **Livrer la 0.44.2** : traductions de fan (« [T-Fr by …] » = version française, « [T-En by …] » = anglaise,
-      affichées « FR (trad.) ») — codé et testé, commité (aed196d), PAS encore livré.
 - [ ] **Lot « Médias »** (contrat 1.6, Firehouse 2.41.0) : ratio réel de la boîte réservé, choix du visuel de la
       ludothèque (jaquette, boîte 3D, cartouche…), logos et fonds pour Taodbox, galerie dans la fiche, copie hors ligne
       des visuels choisis, retrait du cache d'une image que Firehouse ne sert plus (édition par un admin).
@@ -68,10 +66,12 @@ d'abord :
 - [ ] **Prêt à jouer (0.44.0)** : une console sans émulateur (ex. Sega CD) se prépare après UN accord.
 - [ ] **RPCS3 + manette Xbox** : branchée avant la partie → elle marche ; débranchée → le clavier.
 - [ ] **💿 Micrologiciel** : affiche « Installé : version 4.91 » ; un PUP 4.93 s'installe sans fenêtre.
-- [ ] ⛔ **Sonde manette — BLOQUE l'OSD à la manette** (en attente depuis le 30/09) :
-      `D:\Frogtend\outils\sonde-manette\target\release\sonde-manette.exe`, appuyer sur chaque manette (Xbox, et
-      PlayStation si possible) d'abord dans la fenêtre de la sonde, puis DANS un jeu au premier plan (DuckStation, et
-      un jeu PC), laisser finir les 3 minutes ; le journal `sonde-manette.txt` (à côté) dit ce qui reste lisible.
+- [x] ✅ **Sonde manette faite par Seb le 04/10** (Asura's Wrath au premier plan dans RPCS3) : la manette Xbox Series X
+      est lue EN ARRIÈRE-PLAN par XInput ET par SDL — tous les boutons, gâchettes, croix, Select, R1, L3/R3. Le
+      blocage de l'OSD à la manette est levé. Reste à mesurer : le premier plan pris par le menu ouvert depuis la
+      manette (vérifié par le code avec GetForegroundWindow), une manette PlayStation.
+- [ ] **RPCS3 + manette Xbox (0.44.2)** : Seb 04/10 « les boutons ne fonctionnaient pas » → bug (réglage jamais
+      appelé au lancement), corrigé ; à revérifier : manette branchée avant ▶ Jouer → ✕ = A.
 - [ ] Menu en jeu au clavier (0.11.0) dans un vrai jeu : Pause/Attn, reprendre, sauvegarde rapide, quitter.
 - [ ] Succès RetroAchievements (compte, puis « Connecter mes émulateurs ») ; un jeu NES par RetroArch.
 - [ ] Comptes des boutiques : régénérer la clé Steam (l'ancienne a été vue en clair dans une capture), GOG Galaxy,
@@ -99,6 +99,11 @@ d'abord :
 - Jellyfin → Taodbox : projet côté Firehouse, pas le travail de Frogtend.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.44.2** (04/10) — manette RPCS3 branchée sur chaque partie (bug de la 0.44.0) ; traductions de fan.
+  Vérifié : relecture par l'expert lancement (chemin `jeu_jouer` → `preparer` → `regler_rpcs3`, fichier de la personne
+  jamais défait) ; tests (259 cœur, 117 interface) ; manette de Seb détectée en vrai (XInput n° 0). PAS vérifié : que
+  RPCS3 accepte le fichier écrit (à essayer par Seb) ; aucun fichier « [T-Fr …] » chez Seb pour un essai réel.
 
 - **0.44.1** (03/10) — contrat 1.6 : jamais la jaquette d'origine (1 à 13 Mo), au plus 1 000 px ; essai RÉEL sur
   Firehouse (jeu 115 : WebP 56 Ko au lieu de 605 Ko, 19 médias listés).

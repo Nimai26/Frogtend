@@ -3,6 +3,14 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 04/10 — Écrit mais pas branché : la manette RPCS3 de la 0.44.0
+Ce qui s'est passé : `manettes::regler_rpcs3` était écrit et testé, mais `emulateurs_profils::preparer` (le lancement
+d'une partie) ne l'appelait pas pour RPCS3 ; seul « Prêt à jouer » l'appelait, à l'installation. Les notes de version
+disaient « réglée à chaque partie ». Seb : manette Xbox sans effet dans Asura's Wrath. · Pourquoi c'est grave : une
+promesse fausse dans les notes, et Seb bloqué. · Comment l'appliquer : pour toute nouvelle fonction, suivre le chemin
+RÉEL depuis l'action de la personne (commande Tauri → … → la fonction) et le tester PAR CE CHEMIN (ici :
+`preparer("rpcs3", …)` écrit `Default.yml`) ; faire relire « écrit / branché » par l'expert avant de livrer.
+
 ## 04/10 — Une décision de Seb redemandée
 Ce qui s'est passé : pour l'OSD, l'agent a demandé à Seb quelle combinaison de la manette ouvre le menu ; Seb l'avait
 DÉJÀ décidée le 30/09 (Select + Start tenus 1 s, Pause/Attn au clavier, SDL3 embarqué), écrit dans `PLAN.md` § lot 4 ter.
