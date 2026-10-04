@@ -372,7 +372,7 @@ Ordre proposé : **avant Taodbox** (lot 5), qui s'en sert. À valider avec Seb.
 émulateur par émulateur, avec les preuves). Point bloquant à mesurer en premier : **Frogtend lit-il la manette quand
 le jeu a le focus ?** (XInput, et SDL pour les manettes PlayStation/Switch).
 
-**Décisions de Seb (30/09)** : combinaison **Select + Start tenus 1 s** à la manette, touche **Pause/Attn** au
+**Décisions de Seb (30/09)** : combinaison ~~Select + Start~~ → **Select + R1 tenus 1 s** (changée par Seb le 04/10 : Select + Start sert dans certains jeux) à la manette, touche **Pause/Attn** au
 clavier (réglables dans les Options) ; SDL3 embarqué (compilé dans le programme, aucune DLL).
 
 **Avancement** : ✅ réglages de pilotage des émulateurs (0.10.0) ; ✅ **menu au clavier** (0.11.0) : touche

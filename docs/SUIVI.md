@@ -26,6 +26,20 @@
   - [ ] g. Le fond : visuel du jeu (médias du contrat 1.6 : fond, capture, logo), sinon du système, sinon du skin.
   - [ ] h. Adaptateurs manquants : RPCS3, Cemu, Eden, Xenia (documentation officielle de chacun d'abord).
   - [ ] i. Options propres à certains émulateurs (affichage des performances…), dans le même menu.
+  - Relecture par les experts interface et lancement (04/10), qui ont relu le code (fichier:ligne) :
+    - ⛔ BLOQUANT : la lecture de la manette pendant qu'un jeu a le premier plan n'a JAMAIS été mesurée (journal de
+      la sonde vide) ; et le menu ouvert depuis la manette peut ne pas obtenir le premier plan (sans lui, pas de pause
+      et la manette pilote encore le jeu). → la SONDE avec Seb d'abord (voir 🧪).
+    - Le cœur sera la seule source de la manette (XInput, puis SDL3) : il repère Select + R1 et envoie au menu
+      haut/bas/valider/retour ; la Gamepad API du WebView2 n'est pas fiable dans une fenêtre sans focus.
+    - Retirer Select + Start de DuckStation/PCSX2 demande une MIGRATION (valeur exacte écrite par Frogtend, le reste
+      gardé, fichier mis à l'abri) ; RetroArch : retirer la ligne du fichier régénéré à chaque partie.
+    - Pièges : boutons encore tenus à l'ouverture ; un seul gestionnaire des flèches ; menu à l'échelle de la télé en
+      Taodbox (aujourd'hui 560×640 fixe) ; jeux PC sans pause (la manette agit aussi sur le jeu) ; plein écran
+      exclusif (DOSBox, jeux PC) cache le menu ; deux parties en même temps.
+  - Découpe : (1) sonde avec Seb ; (2) navigation commune clavier/souris/manette + échelle Taodbox ; (3) le cœur lit
+    XInput, Select + R1 tenus 1 s, premier plan vérifié, migration des anciennes combinaisons ; (4) SDL3 ; (5) le
+    fond ; (6) options, puis adaptateurs un par un (RPCS3, Cemu, Eden, Xenia, xemu, Azahar, Vita3K, PPSSPP).
 - [ ] **Livrer la 0.44.2** : traductions de fan (« [T-Fr by …] » = version française, « [T-En by …] » = anglaise,
       affichées « FR (trad.) ») — codé et testé, commité (aed196d), PAS encore livré.
 - [ ] **Lot « Médias »** (contrat 1.6, Firehouse 2.41.0) : ratio réel de la boîte réservé, choix du visuel de la
@@ -54,8 +68,10 @@ d'abord :
 - [ ] **Prêt à jouer (0.44.0)** : une console sans émulateur (ex. Sega CD) se prépare après UN accord.
 - [ ] **RPCS3 + manette Xbox** : branchée avant la partie → elle marche ; débranchée → le clavier.
 - [ ] **💿 Micrologiciel** : affiche « Installé : version 4.91 » ; un PUP 4.93 s'installe sans fenêtre.
-- [ ] **Sonde manette** (en attente depuis le 30/09) : lire les manettes quand un jeu a le premier plan — condition de
-      l'OSD à la manette (exigence c).
+- [ ] ⛔ **Sonde manette — BLOQUE l'OSD à la manette** (en attente depuis le 30/09) :
+      `D:\Frogtend\outils\sonde-manette\target\release\sonde-manette.exe`, appuyer sur chaque manette (Xbox, et
+      PlayStation si possible) d'abord dans la fenêtre de la sonde, puis DANS un jeu au premier plan (DuckStation, et
+      un jeu PC), laisser finir les 3 minutes ; le journal `sonde-manette.txt` (à côté) dit ce qui reste lisible.
 - [ ] Menu en jeu au clavier (0.11.0) dans un vrai jeu : Pause/Attn, reprendre, sauvegarde rapide, quitter.
 - [ ] Succès RetroAchievements (compte, puis « Connecter mes émulateurs ») ; un jeu NES par RetroArch.
 - [ ] Comptes des boutiques : régénérer la clé Steam (l'ancienne a été vue en clair dans une capture), GOG Galaxy,
