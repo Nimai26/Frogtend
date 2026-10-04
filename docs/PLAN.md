@@ -729,6 +729,23 @@ content ID se lit dans les zips (ex. EP0102-**BLES01227**_00-DLCS12… = Asura's
   mettre en avant, retirer ou ajouter des images ; chaque geste change `medias_empreinte` et `maj_le` (la synchro par
   `depuis` le voit) ; une image retirée disparaît de `/jeu/{id}/medias` → le lot « Médias » doit aussi RETIRER du
   cache (et de la copie hors ligne) une image qui n'est plus servie.
+- **Traductions de fan (Seb, 04/10 : « oui, mais il faudra le préciser »)** : « [T-Fr by <groupe>] » = version
+  française (juste après le français officiel, avant l'Europe), « [T-En by …] » = anglaise ; affiché « FR (trad.) »
+  et « FR (traduction de fan) — …, Traduction française par <groupe> ». Fait (0.44.2).
+- **LOT OSD — le menu en jeu universel (Seb, 04/10)** : « servira pour Frogtend et Taodbox » ; « manette ET clavier
+  souris » ; « il doit être le MÊME pour tous [les émulateurs], seul le fond peut être différent en fonction des jeux ou
+  systèmes, et certaines options bien sûr ». Principe (déjà celui du menu en jeu, lot 4 ter) : UNE fenêtre de
+  Frogtend par-dessus le jeu, identique pour tous ; derrière, un « adaptateur » par émulateur traduit l'ordre choisi
+  (pause, sauvegarde rapide, disque…). Une action qu'un émulateur ne sait pas faire n'apparaît pas.
+  Étapes :
+  1. Ouvrir le menu à la manette (combinaison réglable) en plus du clavier ; lire la manette pendant la partie
+     (XInput, déjà utilisé pour RPCS3) ; retirer les menus propres aux émulateurs (combinaisons Select + Start de
+     DuckStation/PCSX2, L3 + R3 de RetroArch) pour qu'il n'y ait qu'UN menu.
+  2. Se déplacer dans le menu à la manette (croix/stick, A valider, B retour), au clavier et à la souris ; même menu
+     en Taodbox (échelle ×2).
+  3. Le fond : visuel du jeu (médias du contrat 1.6 : fond, capture, logo), sinon du système, sinon du skin.
+  4. Adaptateurs manquants : RPCS3, Cemu, Eden, Xenia… (documentation de chacun d'abord).
+  5. Options propres à certains émulateurs (affichage des performances, résolution…), dans le même menu.
 - **(levée le 03/10) PAUSE jusqu'à l'essai de Seb (décision du 03/10)** : décompresser Asura's Wrath et le lancer dans RPCS3
   (docs/A-TESTER.md, « Décompresser pour jouer »). S'il démarre : approche validée, on reprend. Si RPCS3 refuse l'.iso
   (même à jour) : extraire le contenu de l'.iso (dossier PS3_GAME) au lieu de l'.iso, une livraison de plus. En

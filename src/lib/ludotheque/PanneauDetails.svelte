@@ -5,6 +5,7 @@
   import { goto } from '$app/navigation';
   import { duree, taille } from '$lib/api';
   import { categorieDe, ICONES_CATEGORIES } from './categories';
+  import { rangCourt } from './versions';
   import Jaquette from './Jaquette.svelte';
   import { jeuAuHasard, ludo } from './ludotheque.svelte';
   import { annuler, mettreDansLaLudotheque, mettreEnPause, reprendre, tele } from './telechargements.svelte';
@@ -114,7 +115,7 @@
       {#if surPc?.temps_jeu}<dt>Temps de jeu</dt><dd>{duree(surPc.temps_jeu)}</dd>{/if}
       {#if (surPc?.installation?.versions?.length ?? 0) > 1}
         <dt>Versions</dt>
-        <dd>{surPc?.installation?.versions?.length} ({surPc?.installation?.versions?.map((v) => ['FR', 'EU', 'US/EN', 'autre'][v.rang] ?? 'autre').join(', ')})</dd>
+        <dd>{surPc?.installation?.versions?.length} ({surPc?.installation?.versions?.map((v) => rangCourt(v)).join(', ')})</dd>
       {/if}
       {#if j.source === 'local'}
         <dt>Origine</dt><dd>importé de ton disque (Frogtend n’efface jamais ses fichiers)</dd>

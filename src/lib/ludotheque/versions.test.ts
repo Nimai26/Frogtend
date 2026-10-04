@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cheminCourant, estCourante, libelleVersion, nomDuFichier } from './versions';
+import { cheminCourant, estCourante, libelleVersion, nomDuFichier, rangCourt } from './versions';
 
 describe('les versions d’un jeu importé', () => {
   const i = { dossier: 'E:\\NES\\Europe', fichier_du_jeu: 'Mario (E).nes' };
@@ -11,6 +11,11 @@ describe('les versions d’un jeu importé', () => {
   it('se lit facilement', () => {
     expect(libelleVersion({ chemin: 'x', libelle: 'France', rang: 0, qualite: 0 })).toBe('FR — France');
     expect(libelleVersion({ chemin: 'x', libelle: '', rang: 3, qualite: 0, disques: ['a', 'b'] })).toBe('autre — sans étiquette · 2 disques');
+    // Une traduction de fan est dite comme telle (Seb, 04/10).
+    const trad = { chemin: 'x', libelle: 'USA, Traduction française par Génération IX', rang: 0, qualite: 1 };
+    expect(libelleVersion(trad)).toBe('FR (traduction de fan) — USA, Traduction française par Génération IX');
+    expect(rangCourt(trad)).toBe('FR (trad.)');
+    expect(rangCourt({ libelle: 'France', rang: 0 })).toBe('FR');
     expect(nomDuFichier({ chemin: 'E:\\NES\\Mario (F).nes', libelle: '', rang: 0, qualite: 0 })).toBe('Mario (F).nes');
   });
 });

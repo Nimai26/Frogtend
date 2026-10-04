@@ -22,10 +22,21 @@ export function estCourante(v: VersionLocale, i: Pick<Installation, 'dossier' | 
   return v.chemin.replace(/\//g, '\\').toLowerCase() === cheminCourant(i).replace(/\//g, '\\').toLowerCase();
 }
 
-/** « EU — Europe, Rev 1 · 2 disques ». */
+/** Une traduction de fan (« [T-Fr by …] ») : le cœur l'écrit en clair dans le libellé. */
+export function estTraduction(v: Pick<VersionLocale, 'libelle'>): boolean {
+  return /Traduction (française|anglaise)/.test(v.libelle);
+}
+
+/** « FR », ou « FR (trad.) » pour une traduction de fan (Seb, 04/10 : « il faudra le préciser »). */
+export function rangCourt(v: Pick<VersionLocale, 'libelle' | 'rang'>): string {
+  return `${RANGS[v.rang] ?? 'autre'}${estTraduction(v) ? ' (trad.)' : ''}`;
+}
+
+/** « EU — Europe, Rev 1 · 2 disques » ; « FR (traduction de fan) — USA, Traduction française par … ». */
 export function libelleVersion(v: VersionLocale): string {
   const disques = v.disques?.length ? ` · ${v.disques.length} disques` : '';
-  return `${RANGS[v.rang] ?? 'autre'} — ${v.libelle || 'sans étiquette'}${disques}`;
+  const rang = `${RANGS[v.rang] ?? 'autre'}${estTraduction(v) ? ' (traduction de fan)' : ''}`;
+  return `${rang} — ${v.libelle || 'sans étiquette'}${disques}`;
 }
 
 /** Le nom du fichier d'une version (affiché en détail). */

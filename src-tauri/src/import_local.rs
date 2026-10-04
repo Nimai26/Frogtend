@@ -55,6 +55,19 @@ pub fn etiquettes(nom: &str) -> (u8, i32, String, Option<u32>) {
         reste = &reste[i + 2 + j..];
         let bas = contenu.trim().to_lowercase();
         if crochet {
+            // Traduction de fan (règle de Seb, 03/10) : « [T-Fr by <groupe>] » compte comme une version FRANÇAISE,
+            // « [T-En by <groupe>] » comme une version anglaise — plus comme un hack. Juste après la version
+            // officielle de la même langue (qualité +1), et c'est dit en clair dans le libellé.
+            if let Some((langue, groupe)) = traduction(contenu.trim()) {
+                rang = rang.min(if langue == "fr" { 0 } else { 2 });
+                qualite += 1;
+                let quoi = if langue == "fr" { "Traduction française" } else { "Traduction anglaise" };
+                libelles.push(match groupe {
+                    Some(g) => format!("{quoi} par {g}"),
+                    None => quoi.to_string(),
+                });
+                continue;
+            }
             match bas.chars().next() {
                 Some('!') => qualite -= 1,
                 Some('b') => qualite += 5,
@@ -109,6 +122,25 @@ pub fn etiquettes(nom: &str) -> (u8, i32, String, Option<u32>) {
         }
     }
     (rang, qualite, libelles.join(", "), disque)
+}
+
+/// Une étiquette de traduction de fan : (« fr » ou « en », groupe). Forme retenue avec Firehouse : « T-Fr by
+/// <groupe> » ; les variantes GoodTools / No-Intro sont reconnues aussi (« T+Fre », « T-Fr v1.1 by … », « T-Eng »).
+fn traduction(etiquette: &str) -> Option<(&'static str, Option<String>)> {
+    let e = etiquette.trim();
+    let reste = e.strip_prefix(['T', 't'])?.strip_prefix(['-', '+'])?;
+    let mot: String = reste.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+    let langue = match mot.to_lowercase().as_str() {
+        "fr" | "fre" | "french" => "fr",
+        "en" | "eng" | "english" => "en",
+        _ => return None,
+    };
+    let groupe = e
+        .to_lowercase()
+        .find(" by ")
+        .map(|i| e[i + 4..].trim().to_string())
+        .filter(|g| !g.is_empty());
+    Some((langue, groupe))
 }
 
 /// La clé qui réunit les versions d'un même jeu sur un même système : titre nettoyé, sans casse ni ponctuation.
@@ -847,6 +879,41 @@ mod tests {
         ]);
         let ordre: Vec<&str> = l.iter().map(|v| v.chemin.rsplit('\\').next().unwrap()).collect();
         assert_eq!(ordre, ["Mario (France).nes", "Mario (Europe).nes", "Mario (USA) [!].nes", "Mario (USA).nes", "Mario (Japan).nes"]);
+
+        // Traductions de fan (Seb, 03/10) : « [T-Fr by …] » compte comme français (juste après le français officiel,
+        // avant l'Europe) ; « [T-En by …] » comme anglais ; plus jamais rangées avec les hacks.
+        let l = en_versions(&[
+            c("Chrono Trigger (Japan).sfc"),
+            c("Chrono Trigger (USA).sfc"),
+            c("Chrono Trigger (Europe).sfc"),
+            c("Chrono Trigger (USA) [T-Fr by Génération IX].sfc"),
+            c("Chrono Trigger (France).sfc"),
+            c("Chrono Trigger (Japan) [T-En by Aeon Genesis].sfc"),
+            c("Chrono Trigger (USA) [h1C].sfc"),
+        ]);
+        let ordre: Vec<&str> = l.iter().map(|v| v.chemin.rsplit('\\').next().unwrap()).collect();
+        assert_eq!(
+            ordre,
+            [
+                "Chrono Trigger (France).sfc",
+                "Chrono Trigger (USA) [T-Fr by Génération IX].sfc",
+                "Chrono Trigger (Europe).sfc",
+                "Chrono Trigger (USA).sfc",
+                "Chrono Trigger (Japan) [T-En by Aeon Genesis].sfc",
+                "Chrono Trigger (USA) [h1C].sfc",
+                "Chrono Trigger (Japan).sfc",
+            ]
+        );
+        let trad = l.iter().find(|v| v.chemin.contains("T-Fr")).unwrap();
+        assert_eq!(trad.rang, 0);
+        assert!(trad.libelle.contains("Traduction française par Génération IX"), "{}", trad.libelle);
+        assert_eq!(traduction("T+Fre"), Some(("fr", None)));
+        assert_eq!(traduction("T-Fr v1.1 by Terminus"), Some(("fr", Some("Terminus".into()))));
+        assert_eq!(traduction("T-Eng"), Some(("en", None)));
+        assert_eq!(traduction("T-Ger by X"), None, "une autre langue reste une étiquette ordinaire");
+        assert_eq!(traduction("!"), None);
+        // Même fiche que le jeu d'origine : l'étiquette ne fait pas partie du titre.
+        assert_eq!(titre_depuis_nom("Chrono Trigger (USA) [T-Fr by Génération IX].sfc"), "Chrono Trigger");
 
         // Les disques d'une même version restent ensemble ; le 1er est lancé.
         let l = en_versions(&[c("FF7 (France) (Disc 2).cue"), c("FF7 (France) (Disc 1).cue"), c("FF7 (USA) (Disc 1).cue")]);
