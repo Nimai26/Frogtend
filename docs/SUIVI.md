@@ -45,6 +45,12 @@
       des visuels choisis, retrait du cache d'une image que Firehouse ne sert plus (édition par un admin).
 - [ ] **RPCS3 : mods, shaders, triches** (Seb, 03/10 : « il manque encore la gestion des mods, shaders, cheats, l'OSD »)
       — l'OSD passe d'abord (Seb, 04/10).
+- [ ] **Formats des fichiers d'émulateurs** (expert, 04/10, après le bug YAML de RPCS3) : xemu `xemu.toml`
+      (emulateurs_profils.rs:402) — une apostrophe dans le chemin (« Jeux d'émulation », profil « D'Aquin ») rend le
+      TOML illisible → chaîne "…" échappée + test qui relit en TOML ; Qt/QSettings (Eden `external_content_dirs`
+      contenus.rs:346, Azahar emulateurs_profils.rs:425) — une virgule ou un point-virgule dans un chemin en fait une
+      liste → `valeur_qt` (guillemets) + relecture qui retire les guillemets + test « Zelda, TOTK ». Chez Seb
+      aujourd'hui : aucun des deux cas (pas de xemu ; dossier DLC sans virgule).
 - [ ] **Durcissement** (relevé à l'audit du 03/10) : le cœur ne recompare pas aux réglages les dossiers que
       l'interface lui donne (emplacements, émulateurs, outils).
 - [ ] DLC Xbox 360 (Xenia) et PS Vita (Vita3K) — aucun jeu chez Seb pour l'instant, priorité basse.
@@ -72,8 +78,9 @@ d'abord :
       manette (vérifié par le code avec GetForegroundWindow), une manette PlayStation.
 - [ ] **RPCS3 + manette (0.44.3)** : Seb 04/10, deux fois « la manette ne fonctionne pas » : (1) réglage jamais appelé
       au lancement (0.44.2) ; (2) manette sans fil en veille au clic → Frogtend donnait le clavier. Corrigé : manette
-      branchée, sinon la dernière vue, sinon Xbox ; RPCS3 se reconnecte seul. À revérifier : manette ÉTEINTE au clic,
-      allumée ensuite → elle marche.
+      branchée, sinon la dernière vue, sinon Xbox ; RPCS3 se reconnecte seul. (3) 0.44.3 : « même le clavier ne
+      fonctionnait pas » → « #1 » lu comme un commentaire YAML (journal RPCS3 : device='XInput Pad', NullPad) ;
+      corrigé en 0.44.4 (guillemets). À revérifier : manette ÉTEINTE au clic, allumée ensuite → elle marche.
 - [ ] Menu en jeu au clavier (0.11.0) dans un vrai jeu : Pause/Attn, reprendre, sauvegarde rapide, quitter.
 - [ ] Succès RetroAchievements (compte, puis « Connecter mes émulateurs ») ; un jeu NES par RetroArch.
 - [ ] Comptes des boutiques : régénérer la clé Steam (l'ancienne a été vue en clair dans une capture), GOG Galaxy,
@@ -101,6 +108,12 @@ d'abord :
 - Jellyfin → Taodbox : projet côté Firehouse, pas le travail de Frogtend.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.44.4** (04/10) — RPCS3 : valeurs du fichier de manette entre guillemets (« #1 » était lu comme un commentaire).
+  Vérifié : le journal de RPCS3 chez Seb montrait la cause exacte ; un test relit le fichier avec les règles YAML (il
+  aurait attrapé le bug) ; le code de RPCS3 confirme la reconnexion d'une manette éteinte au lancement. PAS vérifié :
+  l'essai en jeu (Seb).
+- **0.44.3** — ⚠ CASSAIT la manette ET le clavier dans RPCS3 (voir 0.44.4).
 
 - **0.44.3** (04/10) — RPCS3 : n'importe quelle manette (Xbox/compatibles, PS4, PS5), même réveillée après le
   lancement ; clavier seulement sur choix. Principe rappelé par Seb (04/10) : « n'importe quelle manette doit être

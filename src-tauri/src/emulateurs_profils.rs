@@ -761,7 +761,7 @@ mod tests {
         preparer("rpcs3", racine, "Seb", &[], &Manette::Auto(None)).unwrap();
         assert!(std::fs::read_to_string(&pad).unwrap().contains("Player 1 Input"), "réglée dès la 1re partie");
         preparer("rpcs3", racine, "Seb", &[], &Manette::Clavier).unwrap();
-        assert!(std::fs::read_to_string(&pad).unwrap().contains("Handler: Keyboard"));
+        assert!(std::fs::read_to_string(&pad).unwrap().contains("Handler: \"Keyboard\""));
         std::fs::remove_file(&pad).unwrap();
         std::fs::remove_dir_all(racine.join("dev_hdd0")).ok();
         // RPCS3 : un compte par profil, retrouvé ensuite ; le 00000001 n'est jamais pris.

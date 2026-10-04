@@ -3,6 +3,15 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 04/10 — Un fichier de configuration écrit « à la main » sans en respecter le format
+Ce qui s'est passé : Frogtend écrivait `Device: XInput Pad #1` dans un fichier YAML de RPCS3 ; en YAML, « #1 » après une
+espace est un COMMENTAIRE : RPCS3 a lu « XInput Pad », n'a rien trouvé et a mis le joueur 1 sur « aucune entrée »
+(manette ET clavier morts). Troisième échec de suite sur la manette RPCS3. Les tests vérifiaient le TEXTE écrit
+(`contains`), jamais ce que l'émulateur en LIT. · Pourquoi c'est grave : Seb a perdu trois essais ; une livraison a
+rendu le jeu injouable. · Comment l'appliquer : toute valeur écrite dans un format (YAML, INI, JSON, TOML) passe par les
+règles de ce format (guillemets, échappements) ; les tests relisent le fichier COMME l'émulateur (`valeur_yaml`) ;
+après un échec chez Seb, LIRE LE JOURNAL de l'émulateur avant toute hypothèse (il donnait la cause exacte).
+
 ## 04/10 — Détecter une manette une seule fois, au lancement
 Ce qui s'est passé : la 0.44.2 regardait la manette au clic sur ▶ Jouer ; la manette sans fil de Seb était en veille,
 Frogtend a donné le clavier à RPCS3. · Pourquoi c'est grave : deuxième échec de suite chez Seb ; contraire au principe

@@ -350,7 +350,9 @@ pub fn profil_rpcs3(pad: PadRpcs3) -> String {
         PadRpcs3::DualSense => ("DualSense".to_string(), "DualSense Pad #1".to_string()),
         PadRpcs3::Clavier => ("Keyboard".to_string(), "Keyboard".to_string()),
     };
-    format!("{MARQUE_RPCS3}\nPlayer 1 Input:\n  Handler: {handler}\n  Device: {device}\n")
+    // Valeurs ENTRE GUILLEMETS : en YAML, « #1 » après une espace est un commentaire (bug de la 0.44.3 : RPCS3 lisait
+    // « XInput Pad », ne trouvait rien et mettait le joueur 1 sur « aucune entrée », clavier compris).
+    format!("{MARQUE_RPCS3}\nPlayer 1 Input:\n  Handler: \"{handler}\"\n  Device: \"{device}\"\n")
 }
 
 /// Le joueur 1 de RPCS3 sur `pad`. Un fichier sans la marque de Frogtend est celui de la personne : il n'est remplacé
@@ -409,36 +411,57 @@ mod tests {
         let e = d.path();
         let f = e.join("config").join("input_configs").join("global").join("Default.yml");
         let lire = || std::fs::read_to_string(&f).unwrap();
+        // Ce que RPCS3 LIT (règles YAML : guillemets, et « # » après une espace = commentaire).
+        let vu = |cle: &str| valeur_yaml(&lire(), cle);
         // Rien de branché, rien de connu : une manette Xbox (RPCS3 la prendra quand elle se réveille) — PAS le clavier.
         assert!(regler_rpcs3_pour_partie(e, false, None).unwrap());
-        assert!(lire().starts_with(MARQUE_RPCS3) && lire().contains("Handler: XInput") && lire().contains("Device: XInput Pad #1"));
+        assert!(lire().starts_with(MARQUE_RPCS3));
+        assert_eq!((vu("Handler"), vu("Device")), ("XInput".into(), "XInput Pad #1".into()));
         // Une DualSense branchée : elle, et elle est retenue.
         regler_rpcs3_pour_partie(e, false, Some(PadRpcs3::DualSense)).unwrap();
-        assert!(lire().contains("Handler: DualSense") && lire().contains("Device: DualSense Pad #1"));
+        assert_eq!((vu("Handler"), vu("Device")), ("DualSense".into(), "DualSense Pad #1".into()));
         // En veille à la partie suivante : la dernière vue (la DualSense), pas la Xbox.
         regler_rpcs3_pour_partie(e, false, None).unwrap();
-        assert!(lire().contains("Device: DualSense Pad #1"));
+        assert_eq!(vu("Device"), "DualSense Pad #1");
         // Une manette PS4, puis une Xbox sur l'emplacement 2.
         regler_rpcs3_pour_partie(e, false, Some(PadRpcs3::Ds4)).unwrap();
-        assert!(lire().contains("Handler: DualShock 4") && lire().contains("Device: DS4 Pad #1"));
+        assert_eq!((vu("Handler"), vu("Device")), ("DualShock 4".into(), "DS4 Pad #1".into()));
         regler_rpcs3_pour_partie(e, false, Some(PadRpcs3::XInput(1))).unwrap();
-        assert!(lire().contains("Device: XInput Pad #2"));
+        assert_eq!(vu("Device"), "XInput Pad #2");
         // Le clavier, choisi pour le jeu.
         regler_rpcs3(e, false, PadRpcs3::Clavier).unwrap();
-        assert!(lire().contains("Handler: Keyboard"));
+        assert_eq!((vu("Handler"), vu("Device")), ("Keyboard".into(), "Keyboard".into()));
         // Un fichier écrit par la 0.44.0–0.44.2 (ancienne marque) est bien reconnu comme celui de Frogtend.
         std::fs::write(&f, "# Frogtend : manette du joueur 1 réglée à chaque partie (manette Xbox branchée, sinon clavier).\nPlayer 1 Input:\n  Handler: Keyboard\n").unwrap();
         regler_rpcs3_pour_partie(e, false, Some(PadRpcs3::XInput(0))).unwrap();
-        assert!(lire().contains("Handler: XInput"));
+        assert_eq!(vu("Handler"), "XInput");
         // Réglé par la personne dans RPCS3 (sans notre marque) : jamais touché…
         std::fs::write(&f, "Player 1 Input:\n  Handler: DualSense\n").unwrap();
         assert!(!regler_rpcs3_pour_partie(e, false, Some(PadRpcs3::XInput(1))).unwrap());
         assert_eq!(lire(), "Player 1 Input:\n  Handler: DualSense\n");
         // … sauf à sa demande (« manette par défaut ») : copie à l'abri d'abord.
         assert!(regler_rpcs3(e, true, PadRpcs3::XInput(1)).unwrap());
-        assert!(lire().contains("Device: XInput Pad #2"));
+        assert_eq!(vu("Device"), "XInput Pad #2");
         let abri = std::fs::read_dir(e.join(".frogtend-sauvegardes")).unwrap().next().unwrap().unwrap().path();
         assert!(std::fs::read_to_string(abri.join("config/input_configs/global/Default.yml")).unwrap().contains("DualSense"));
+    }
+
+    /// Une valeur d'un fichier YAML simple, lue comme le fait RPCS3 (yaml-cpp) : entre guillemets, ou jusqu'à un
+    /// « # » précédé d'une espace (commentaire).
+    fn valeur_yaml(texte: &str, cle: &str) -> String {
+        let l = texte.lines().find(|l| l.trim_start().starts_with(&format!("{cle}:"))).unwrap_or("");
+        let v = l.trim_start()[cle.len() + 1..].trim();
+        if let Some(r) = v.strip_prefix('"') {
+            return r.split('"').next().unwrap_or("").to_string();
+        }
+        v.split(" #").next().unwrap_or("").trim().to_string()
+    }
+
+    #[test]
+    fn la_lecture_yaml_du_test_suit_la_regle_du_diese() {
+        // Le bug de la 0.44.3 : sans guillemets, « #1 » disparaît.
+        assert_eq!(valeur_yaml("  Device: XInput Pad #1\n", "Device"), "XInput Pad");
+        assert_eq!(valeur_yaml("  Device: \"XInput Pad #1\"\n", "Device"), "XInput Pad #1");
     }
 
     #[test]

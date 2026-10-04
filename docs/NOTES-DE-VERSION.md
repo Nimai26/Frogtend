@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.44.4 — RPCS3 : la manette (et le clavier) remarchent
+
+- **Le problème de la 0.44.3** : le nom de la manette écrit pour RPCS3 (« XInput Pad #1 ») était mal lu par RPCS3, qui
+  ne voyait que « XInput Pad » (dans ce format de fichier, « #1 » après une espace est un commentaire). Ne trouvant
+  rien, RPCS3 mettait le joueur 1 sur « aucune entrée » : ni manette, ni clavier. Le nom est maintenant écrit entre
+  guillemets.
+- Vérifié dans le code de RPCS3 : avec ce nom, il accepte la manette même éteinte au lancement et la prend dès qu'elle
+  s'allume.
+
 ## 0.44.3 — RPCS3 : n'importe quelle manette, même réveillée après le lancement
 
 - **Le problème** : au clic sur ▶ Jouer, ta manette sans fil était en veille ; Frogtend ne la voyait pas et donnait le
