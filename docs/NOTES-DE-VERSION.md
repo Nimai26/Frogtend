@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.44.3 — RPCS3 : n'importe quelle manette, même réveillée après le lancement
+
+- **Le problème** : au clic sur ▶ Jouer, ta manette sans fil était en veille ; Frogtend ne la voyait pas et donnait le
+  CLAVIER à RPCS3. Ta manette ne pouvait donc pas marcher.
+- **Maintenant** : Frogtend donne à RPCS3 la manette branchée (Xbox et compatibles, PS4, PS5) ; si aucune ne répond, la
+  dernière vue sur ce PC (sinon une manette Xbox). RPCS3 la prend dès qu'elle se réveille, sans relancer le jeu. Le
+  clavier seulement si tu le choisis pour un jeu (⚙ Gérer le jeu ▸ 🎮 Commandes).
+- Les autres modèles (manette Switch Pro, 8BitDo hors mode Xbox…) viendront avec le module SDL (lot OSD).
+
 ## 0.44.2 — la manette dans RPCS3, et les traductions de fan
 
 - **RPCS3 : ta manette marche enfin.** La 0.44.0 annonçait la manette réglée à chaque partie, mais ce réglage n'était

@@ -70,8 +70,10 @@ d'abord :
       est lue EN ARRIÈRE-PLAN par XInput ET par SDL — tous les boutons, gâchettes, croix, Select, R1, L3/R3. Le
       blocage de l'OSD à la manette est levé. Reste à mesurer : le premier plan pris par le menu ouvert depuis la
       manette (vérifié par le code avec GetForegroundWindow), une manette PlayStation.
-- [ ] **RPCS3 + manette Xbox (0.44.2)** : Seb 04/10 « les boutons ne fonctionnaient pas » → bug (réglage jamais
-      appelé au lancement), corrigé ; à revérifier : manette branchée avant ▶ Jouer → ✕ = A.
+- [ ] **RPCS3 + manette (0.44.3)** : Seb 04/10, deux fois « la manette ne fonctionne pas » : (1) réglage jamais appelé
+      au lancement (0.44.2) ; (2) manette sans fil en veille au clic → Frogtend donnait le clavier. Corrigé : manette
+      branchée, sinon la dernière vue, sinon Xbox ; RPCS3 se reconnecte seul. À revérifier : manette ÉTEINTE au clic,
+      allumée ensuite → elle marche.
 - [ ] Menu en jeu au clavier (0.11.0) dans un vrai jeu : Pause/Attn, reprendre, sauvegarde rapide, quitter.
 - [ ] Succès RetroAchievements (compte, puis « Connecter mes émulateurs ») ; un jeu NES par RetroArch.
 - [ ] Comptes des boutiques : régénérer la clé Steam (l'ancienne a été vue en clair dans une capture), GOG Galaxy,
@@ -99,6 +101,12 @@ d'abord :
 - Jellyfin → Taodbox : projet côté Firehouse, pas le travail de Frogtend.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.44.3** (04/10) — RPCS3 : n'importe quelle manette (Xbox/compatibles, PS4, PS5), même réveillée après le
+  lancement ; clavier seulement sur choix. Principe rappelé par Seb (04/10) : « n'importe quelle manette doit être
+  automatiquement configurée et reconnue par Frogtend et ses émulateurs ». Vérifié : noms et reconnexion relevés dans le
+  code de RPCS3 ; tests ; détection réelle chez Seb (XInput n° 0, 31 périphériques HID lus). PAS vérifié : le jeu avec
+  la manette réveillée après le lancement (essai de Seb) ; une manette PlayStation (aucune branchée).
 
 - **0.44.2** (04/10) — manette RPCS3 branchée sur chaque partie (bug de la 0.44.0) ; traductions de fan.
   Vérifié : relecture par l'expert lancement (chemin `jeu_jouer` → `preparer` → `regler_rpcs3`, fichier de la personne

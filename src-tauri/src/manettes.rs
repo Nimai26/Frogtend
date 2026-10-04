@@ -224,7 +224,7 @@ pub fn regler(id: &str, emulateur: &Path, utilisateur_dolphin: Option<&Path>, fo
             Some(u) => regler_dolphin(emulateur, u, forcer),
             None => Ok(false),
         },
-        "rpcs3" => regler_rpcs3(emulateur, forcer, premiere_manette_xinput()),
+        "rpcs3" => regler_rpcs3_pour_partie(emulateur, forcer, manette_branchee()),
         _ => Ok(false),
     }
 }
@@ -245,39 +245,158 @@ pub fn premiere_manette_xinput() -> Option<u32> {
     None
 }
 
-/// La marque des réglages de manette écrits par Frogtend pour RPCS3 (1re ligne du fichier).
-const MARQUE_RPCS3: &str = "# Frogtend : manette du joueur 1 réglée à chaque partie (manette Xbox branchée, sinon clavier).";
+/// La manette du joueur 1 de RPCS3. RPCS3 n'a qu'UNE entrée par joueur, mais chacune a un nom générique et se
+/// reconnecte seule quand la manette est branchée ou réveillée après le lancement (relevé dans son code, 04/10 :
+/// xinput_pad_handler « XInput Pad # », ds4_pad_handler « DS4 Pad # », dualsense_pad_handler « DualSense Pad # »,
+/// énumération toutes les 2 s dans hid_pad_handler.cpp).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PadRpcs3 {
+    /// Manette Xbox ou compatible (et la manette virtuelle de Sunshine) : emplacement XInput 0 à 3.
+    XInput(u32),
+    /// DualShock 4 (PS4).
+    Ds4,
+    /// DualSense (PS5).
+    DualSense,
+    /// Le clavier : seulement quand la personne l'a choisi pour le jeu.
+    Clavier,
+}
 
-/// Le profil de manette RPCS3 voulu : la manette XInput n° `i` (0 à 3), sinon le clavier.
-pub fn profil_rpcs3(manette: Option<u32>) -> String {
-    let (handler, device) = match manette {
-        Some(i) => ("XInput".to_string(), format!("XInput Pad #{}", i + 1)),
-        None => ("Keyboard".to_string(), "Keyboard".to_string()),
+impl PadRpcs3 {
+    fn famille(self) -> &'static str {
+        match self {
+            PadRpcs3::XInput(_) => "xinput",
+            PadRpcs3::Ds4 => "ds4",
+            PadRpcs3::DualSense => "dualsense",
+            PadRpcs3::Clavier => "clavier",
+        }
+    }
+    fn depuis_famille(f: &str) -> Option<Self> {
+        match f.trim() {
+            "xinput" => Some(PadRpcs3::XInput(0)),
+            "ds4" => Some(PadRpcs3::Ds4),
+            "dualsense" => Some(PadRpcs3::DualSense),
+            _ => None,
+        }
+    }
+}
+
+/// La famille d'une manette PlayStation d'après l'identifiant Windows d'un périphérique HID (USB « VID_054C&PID_09CC »
+/// ou Bluetooth « VID&0002054C_PID&09CC »), avec les identifiants que RPCS3 reconnaît lui-même.
+pub fn famille_hid(instance: &str) -> Option<PadRpcs3> {
+    let i = instance.to_lowercase();
+    let pid = |p: &str| i.contains(&format!("pid_{p}")) || i.contains(&format!("pid&{p}"));
+    let sony = i.contains("054c");
+    if sony && (pid("05c4") || pid("09cc") || pid("0ba0")) || i.contains("0c12") && pid("0e20") {
+        return Some(PadRpcs3::Ds4);
+    }
+    if sony && (pid("0ce6") || pid("0df2")) {
+        return Some(PadRpcs3::DualSense);
+    }
+    None
+}
+
+/// Les identifiants des périphériques HID présents (lecture seule, SetupAPI de Windows).
+fn peripheriques_hid() -> Vec<String> {
+    #[allow(unused_mut)]
+    let mut l = Vec::new();
+    #[cfg(windows)]
+    unsafe {
+        use windows::core::w;
+        use windows::Win32::Devices::DeviceAndDriverInstallation::{
+            SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInfo, SetupDiGetClassDevsW, SetupDiGetDeviceInstanceIdW,
+            DIGCF_ALLCLASSES, DIGCF_PRESENT, SP_DEVINFO_DATA,
+        };
+        let Ok(ensemble) = SetupDiGetClassDevsW(None, w!("HID"), None, DIGCF_PRESENT | DIGCF_ALLCLASSES) else { return l };
+        for i in 0..4096u32 {
+            let mut d = SP_DEVINFO_DATA { cbSize: std::mem::size_of::<SP_DEVINFO_DATA>() as u32, ..Default::default() };
+            if SetupDiEnumDeviceInfo(ensemble, i, &mut d).is_err() {
+                break;
+            }
+            let mut tampon = [0u16; 512];
+            if SetupDiGetDeviceInstanceIdW(ensemble, &d, Some(&mut tampon), None).is_ok() {
+                let n = tampon.iter().position(|c| *c == 0).unwrap_or(tampon.len());
+                l.push(String::from_utf16_lossy(&tampon[..n]));
+            }
+        }
+        let _ = SetupDiDestroyDeviceInfoList(ensemble);
+    }
+    l
+}
+
+/// La manette branchée à l'instant, s'il y en a une : Xbox (XInput) d'abord, sinon PlayStation (HID).
+pub fn manette_branchee() -> Option<PadRpcs3> {
+    if let Some(i) = premiere_manette_xinput() {
+        return Some(PadRpcs3::XInput(i));
+    }
+    peripheriques_hid().iter().find_map(|p| famille_hid(p))
+}
+
+/// Ce que reçoit le joueur 1 : la manette branchée ; sinon la dernière vue sur ce PC (une manette sans fil en veille au
+/// lancement : RPCS3 la prendra à son réveil) ; sinon une manette Xbox (la plus courante, et celle du streaming).
+pub fn choisir_pad(branchee: Option<PadRpcs3>, derniere: Option<PadRpcs3>) -> PadRpcs3 {
+    branchee.or(derniere).unwrap_or(PadRpcs3::XInput(0))
+}
+
+/// La marque des réglages de manette écrits par Frogtend pour RPCS3 (1re ligne du fichier). Tout fichier qui commence
+/// par `PREFIXE_MARQUE` a été écrit par Frogtend (y compris par les versions 0.44.0 à 0.44.2).
+const PREFIXE_MARQUE: &str = "# Frogtend : manette du joueur 1";
+const MARQUE_RPCS3: &str = "# Frogtend : manette du joueur 1 réglée à chaque partie (manette branchée, sinon la dernière vue ; clavier sur demande).";
+
+/// Le profil de manette RPCS3 voulu.
+pub fn profil_rpcs3(pad: PadRpcs3) -> String {
+    let (handler, device) = match pad {
+        PadRpcs3::XInput(i) => ("XInput".to_string(), format!("XInput Pad #{}", i + 1)),
+        PadRpcs3::Ds4 => ("DualShock 4".to_string(), "DS4 Pad #1".to_string()),
+        PadRpcs3::DualSense => ("DualSense".to_string(), "DualSense Pad #1".to_string()),
+        PadRpcs3::Clavier => ("Keyboard".to_string(), "Keyboard".to_string()),
     };
     format!("{MARQUE_RPCS3}\nPlayer 1 Input:\n  Handler: {handler}\n  Device: {device}\n")
 }
 
-/// Le joueur 1 de RPCS3 sur la manette branchée (sinon le clavier). Un fichier sans la marque de Frogtend est celui de
-/// la personne : il n'est remplacé qu'à sa demande (`forcer`), après une copie à l'abri.
-pub(crate) fn regler_rpcs3(emulateur: &Path, forcer: bool, manette: Option<u32>) -> Resultat<bool> {
+/// Le joueur 1 de RPCS3 sur `pad`. Un fichier sans la marque de Frogtend est celui de la personne : il n'est remplacé
+/// qu'à sa demande (`forcer`), après une copie à l'abri. Une manette (pas le clavier) est retenue comme « dernière vue ».
+pub(crate) fn regler_rpcs3(emulateur: &Path, forcer: bool, pad: PadRpcs3) -> Resultat<bool> {
     let fichier = emulateur.join("config").join("input_configs").join("global").join("Default.yml");
     let actuel = std::fs::read_to_string(&fichier).ok();
-    let a_nous = actuel.as_deref().is_none_or(|t| t.starts_with(MARQUE_RPCS3));
+    let a_nous = actuel.as_deref().is_none_or(|t| t.starts_with(PREFIXE_MARQUE));
     if !a_nous && !forcer {
         return Ok(false);
     }
-    let voulu = profil_rpcs3(manette);
-    if actuel.as_deref() == Some(voulu.as_str()) {
-        return Ok(true);
+    let voulu = profil_rpcs3(pad);
+    if actuel.as_deref() != Some(voulu.as_str()) {
+        if !a_nous {
+            crate::emulateurs_profils::mettre_a_l_abri(emulateur, &fichier)?;
+        }
+        if let Some(p) = fichier.parent() {
+            std::fs::create_dir_all(p)?;
+        }
+        std::fs::write(&fichier, voulu)?;
     }
-    if !a_nous {
-        crate::emulateurs_profils::mettre_a_l_abri(emulateur, &fichier)?;
-    }
-    if let Some(p) = fichier.parent() {
-        std::fs::create_dir_all(p)?;
-    }
-    std::fs::write(&fichier, voulu)?;
     Ok(true)
+}
+
+/// Le fichier où Frogtend retient la dernière famille de manette vue pour cet émulateur.
+fn fichier_derniere(emulateur: &Path) -> std::path::PathBuf {
+    emulateur.join("Profils").join(".frogtend-manette")
+}
+
+/// La dernière manette vue sur ce PC pour cet émulateur.
+pub fn derniere_manette(emulateur: &Path) -> Option<PadRpcs3> {
+    std::fs::read_to_string(fichier_derniere(emulateur)).ok().and_then(|f| PadRpcs3::depuis_famille(&f))
+}
+
+/// Règle RPCS3 pour une partie : la manette branchée, sinon la dernière vue, sinon Xbox ; retient celle qui est branchée.
+pub fn regler_rpcs3_pour_partie(emulateur: &Path, forcer: bool, branchee: Option<PadRpcs3>) -> Resultat<bool> {
+    let regle = regler_rpcs3(emulateur, forcer, choisir_pad(branchee, derniere_manette(emulateur)))?;
+    // Retenir la manette vue : au mieux (jamais bloquant), et seulement si le réglage est celui de Frogtend.
+    if let (true, Some(b)) = (regle, branchee) {
+        let f = fichier_derniere(emulateur);
+        if let Some(p) = f.parent() {
+            let _ = std::fs::create_dir_all(p);
+        }
+        let _ = std::fs::write(&f, b.famille());
+    }
+    Ok(regle)
 }
 
 #[cfg(test)]
@@ -285,26 +404,54 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rpcs3_prend_la_manette_branchee_sinon_le_clavier_sans_defaire_un_reglage() {
+    fn rpcs3_prend_la_manette_branchee_sinon_la_derniere_vue_sans_defaire_un_reglage() {
         let d = tempfile::tempdir().unwrap();
         let e = d.path();
         let f = e.join("config").join("input_configs").join("global").join("Default.yml");
-        // Une manette Xbox branchée (emplacement 0) : « XInput Pad #1 ».
-        assert!(regler_rpcs3(e, false, Some(0)).unwrap());
-        let t = std::fs::read_to_string(&f).unwrap();
-        assert!(t.starts_with(MARQUE_RPCS3) && t.contains("Handler: XInput") && t.contains("Device: XInput Pad #1"));
-        // Débranchée à la partie suivante : le clavier (sinon le joueur n'aurait aucune commande).
-        assert!(regler_rpcs3(e, false, None).unwrap());
-        assert!(std::fs::read_to_string(&f).unwrap().contains("Handler: Keyboard"));
+        let lire = || std::fs::read_to_string(&f).unwrap();
+        // Rien de branché, rien de connu : une manette Xbox (RPCS3 la prendra quand elle se réveille) — PAS le clavier.
+        assert!(regler_rpcs3_pour_partie(e, false, None).unwrap());
+        assert!(lire().starts_with(MARQUE_RPCS3) && lire().contains("Handler: XInput") && lire().contains("Device: XInput Pad #1"));
+        // Une DualSense branchée : elle, et elle est retenue.
+        regler_rpcs3_pour_partie(e, false, Some(PadRpcs3::DualSense)).unwrap();
+        assert!(lire().contains("Handler: DualSense") && lire().contains("Device: DualSense Pad #1"));
+        // En veille à la partie suivante : la dernière vue (la DualSense), pas la Xbox.
+        regler_rpcs3_pour_partie(e, false, None).unwrap();
+        assert!(lire().contains("Device: DualSense Pad #1"));
+        // Une manette PS4, puis une Xbox sur l'emplacement 2.
+        regler_rpcs3_pour_partie(e, false, Some(PadRpcs3::Ds4)).unwrap();
+        assert!(lire().contains("Handler: DualShock 4") && lire().contains("Device: DS4 Pad #1"));
+        regler_rpcs3_pour_partie(e, false, Some(PadRpcs3::XInput(1))).unwrap();
+        assert!(lire().contains("Device: XInput Pad #2"));
+        // Le clavier, choisi pour le jeu.
+        regler_rpcs3(e, false, PadRpcs3::Clavier).unwrap();
+        assert!(lire().contains("Handler: Keyboard"));
+        // Un fichier écrit par la 0.44.0–0.44.2 (ancienne marque) est bien reconnu comme celui de Frogtend.
+        std::fs::write(&f, "# Frogtend : manette du joueur 1 réglée à chaque partie (manette Xbox branchée, sinon clavier).\nPlayer 1 Input:\n  Handler: Keyboard\n").unwrap();
+        regler_rpcs3_pour_partie(e, false, Some(PadRpcs3::XInput(0))).unwrap();
+        assert!(lire().contains("Handler: XInput"));
         // Réglé par la personne dans RPCS3 (sans notre marque) : jamais touché…
         std::fs::write(&f, "Player 1 Input:\n  Handler: DualSense\n").unwrap();
-        assert!(!regler_rpcs3(e, false, Some(1)).unwrap());
-        assert_eq!(std::fs::read_to_string(&f).unwrap(), "Player 1 Input:\n  Handler: DualSense\n");
+        assert!(!regler_rpcs3_pour_partie(e, false, Some(PadRpcs3::XInput(1))).unwrap());
+        assert_eq!(lire(), "Player 1 Input:\n  Handler: DualSense\n");
         // … sauf à sa demande (« manette par défaut ») : copie à l'abri d'abord.
-        assert!(regler_rpcs3(e, true, Some(1)).unwrap());
-        assert!(std::fs::read_to_string(&f).unwrap().contains("Device: XInput Pad #2"));
+        assert!(regler_rpcs3(e, true, PadRpcs3::XInput(1)).unwrap());
+        assert!(lire().contains("Device: XInput Pad #2"));
         let abri = std::fs::read_dir(e.join(".frogtend-sauvegardes")).unwrap().next().unwrap().unwrap().path();
         assert!(std::fs::read_to_string(abri.join("config/input_configs/global/Default.yml")).unwrap().contains("DualSense"));
+    }
+
+    #[test]
+    fn les_manettes_playstation_sont_reconnues_par_leur_identifiant() {
+        // USB et Bluetooth (forme des identifiants de périphérique de Windows).
+        assert_eq!(famille_hid(r"HID\VID_054C&PID_09CC&MI_03\8&1A2B3C&0&0000"), Some(PadRpcs3::Ds4));
+        assert_eq!(famille_hid(r"HID\{00001124-0000-1000-8000-00805F9B34FB}_VID&0002054C_PID&05C4\9&ABC&0&0000"), Some(PadRpcs3::Ds4));
+        assert_eq!(famille_hid(r"HID\VID_054C&PID_0CE6&MI_03\8&2B&0&0000"), Some(PadRpcs3::DualSense));
+        assert_eq!(famille_hid(r"HID\VID_054C&PID_0DF2\8&2B&0&0000"), Some(PadRpcs3::DualSense), "DualSense Edge");
+        // Une autre manette Sony (pas lue par RPCS3 en natif) ou un clavier : rien.
+        assert_eq!(famille_hid(r"HID\VID_054C&PID_0268\1"), None);
+        assert_eq!(famille_hid(r"HID\VID_046D&PID_C52B&MI_00\7&1"), None);
+        assert_eq!(choisir_pad(None, None), PadRpcs3::XInput(0));
     }
 
     #[test]
@@ -401,5 +548,8 @@ mod essai_reel_manette {
     #[ignore]
     fn quelle_manette_xinput_est_branchee() {
         println!("MANETTE XINPUT : {:?}", super::premiere_manette_xinput());
+        println!("MANETTE BRANCHEE : {:?}", super::manette_branchee());
+        let hid = super::peripheriques_hid();
+        println!("HID : {} périphériques ; Sony : {:?}", hid.len(), hid.iter().filter(|h| h.to_lowercase().contains("054c")).collect::<Vec<_>>());
     }
 }

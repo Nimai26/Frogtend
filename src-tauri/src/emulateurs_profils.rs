@@ -140,7 +140,7 @@ fn regler_manette(id: &str, emulateur: &Path, utilisateur: Option<&Path>, manett
     match manette {
         // RPCS3 n'a qu'une entrée par joueur : « clavier » doit l'y remettre (si le fichier est celui de Frogtend).
         Manette::Clavier if id == "rpcs3" => {
-            crate::manettes::regler_rpcs3(emulateur, false, None)?;
+            crate::manettes::regler_rpcs3(emulateur, false, crate::manettes::PadRpcs3::Clavier)?;
         }
         Manette::Clavier => {}
         Manette::Auto(r) => {
@@ -755,7 +755,7 @@ mod tests {
         let a = preparer("xenia", racine, "Seb", &[], &Manette::Auto(None)).unwrap();
         assert_eq!(a, vec![format!("--content_root={}", racine.join("Profils").join("Seb").join("content").display())]);
 
-        // RPCS3 : la manette est réglée à CHAQUE partie (manette branchée, sinon clavier), « clavier » y remet le
+        // RPCS3 : la manette est réglée à CHAQUE partie (manette branchée, sinon la dernière vue, sinon Xbox), « clavier » y remet le
         // clavier (bug de la 0.44.0 : ce réglage n'était appelé qu'à l'installation de RPCS3).
         let pad = racine.join("config/input_configs/global/Default.yml");
         preparer("rpcs3", racine, "Seb", &[], &Manette::Auto(None)).unwrap();

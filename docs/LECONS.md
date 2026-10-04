@@ -3,6 +3,14 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 04/10 — Détecter une manette une seule fois, au lancement
+Ce qui s'est passé : la 0.44.2 regardait la manette au clic sur ▶ Jouer ; la manette sans fil de Seb était en veille,
+Frogtend a donné le clavier à RPCS3. · Pourquoi c'est grave : deuxième échec de suite chez Seb ; contraire au principe
+« n'importe quelle manette doit être automatiquement configurée et reconnue ». · Comment l'appliquer : une manette peut
+arriver ou se réveiller APRÈS le lancement : régler l'émulateur sur un nom générique qui se reconnecte seul (lu dans
+sa documentation), retenir la dernière manette vue, ne retomber sur le clavier que si la personne le choisit ; penser
+aussi aux manettes PlayStation, Switch, génériques.
+
 ## 04/10 — Écrit mais pas branché : la manette RPCS3 de la 0.44.0
 Ce qui s'est passé : `manettes::regler_rpcs3` était écrit et testé, mais `emulateurs_profils::preparer` (le lancement
 d'une partie) ne l'appelait pas pour RPCS3 ; seul « Prêt à jouer » l'appelait, à l'installation. Les notes de version
