@@ -74,6 +74,14 @@
 
 ## ❓ Attend une décision de Seb
 
+- [ ] **Jeux PC sans manette ni plein écran** (Seb, 05/10, Mega Man Rock Force : « il s'ouvre en tout petit fenêtré et
+      ne reconnaît pas la manette »). Relevé : jeu Game Maker 8, clavier seulement (ReadMe : Z saut, X tir, C glisse,
+      Entrée pause, A/S armes ; F4 plein écran) ; la manette est vue par Windows (joystick 1, XInput 0). Proposé :
+      (1) « manette → clavier » par jeu (le cœur lit déjà XInput : traduction en touches, correspondance d'office
+      modifiable) ; (2) « plein écran au lancement » par jeu (touche du jeu, ou fenêtre agrandie sans bordure).
+      Question posée : ce lot d'abord, ou finir le lot OSD (SDL3, fond, adaptateurs) ? Le gel (0.47.0) : ✅ « cela
+      semble fonctionner » (Seb, 05/10).
+
 - [ ] Questions encore ouvertes du 02–04/10 : aucune bloquante. (La combinaison du menu à la manette était DÉJÀ
       décidée le 30/09 : ne pas la redemander — voir LECONS.md, 04/10.)
 - [x] Méthode de travail : ✅ Seb 04/10 « tu as mon accord » → ligne en tête de `CLAUDE.md` et trois experts dans
