@@ -27,10 +27,10 @@
         0.46.3 (ses propres réglages : pause à la perte du premier plan, manette ignorée en arrière-plan). Reste : les
         autres émulateurs à l'essai, et les jeux PC (aucune pause possible sans eux : à étudier). Réglages RPCS3 par
         jeu (`custom_configs`) traités aussi.
-  - [ ] d ter. RetroArch : le bouton Xbox (Guide) ouvre encore SON menu — imposé par ses profils de manette officiels
+  - [x] d ter. ✅ Seb 05/10 : « d'accord » → accepté tel quel, on ne touche pas aux profils. RetroArch : le bouton Xbox (Guide) ouvre encore SON menu — imposé par ses profils de manette officiels
         (`input_menu_toggle_btn = "10"`), impossible à couper proprement par la configuration (input_driver.c : la
         liaison du profil passe quand celle du fichier est vide). Expert, 05/10 : accepter (pas de conflit avec
-        View + RB) plutôt que bricoler les profils. **À dire à Seb** ; à observer à l'essai (la Game Bar de Windows
+        View + RB) plutôt que bricoler les profils. À observer à l'essai (la Game Bar de Windows
         le capte peut-être avant).
   - [x] e. Navigation dans le menu à la manette (croix/stick, A valider, B retour), au clavier (flèches, Entrée,
         Échap) et à la souris (survol, clic). ✅ 0.45.0 (à essayer par Seb).
