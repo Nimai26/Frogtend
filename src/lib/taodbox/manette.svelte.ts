@@ -1,16 +1,25 @@
-// Taodbox (lot 5) : la manette pilote TOUS les écrans de Frogtend (choix du profil, fenêtres maison, ludothèque…).
-// La croix et le stick gauche déplacent le focus selon la géométrie, A valide, B fait Échap (charte § 7). Lu par
-// l'API Gamepad du navigateur : Taodbox est au premier plan, la lecture y est permise (manette Xbox, PlayStation,
-// Switch Pro… selon ce que Windows et WebView2 reconnaissent).
-import { directionDuStick, voisin, type Direction } from './navigation';
+// Taodbox (lot 5) et menu en jeu (lot OSD) : la manette pilote les écrans de Frogtend (choix du profil, fenêtres
+// maison, ludothèque, menu en jeu…). La croix et le stick gauche déplacent le focus selon la géométrie, A valide,
+// B fait Échap (charte § 7). Une seule façon d'agir pour toutes les sources : `appliquer(commande)` — la manette lue
+// par l'API Gamepad (fenêtre au premier plan), les flèches du clavier, et le cœur de Frogtend (manette lue pendant
+// une partie, étape 3 de l'OSD).
+import { directionDuStick, nouveauxAppuis, voisin, type Commande, type Direction } from './navigation';
 
 export const taodbox = $state({ actif: false, manettes: 0 });
 
 const FOCALISABLES = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+/** Les fenêtres maison (`confirmer` a le rôle `alertdialog`, les autres `dialog`). */
+const FENETRES_MAISON = '[role="dialog"], [role="alertdialog"]';
+
+/** Une fenêtre maison est-elle ouverte ? (Elle a alors la main : Échap/B la ferment, la croix reste dedans.) */
+export function fenetreOuverte(): boolean {
+  return !!document.querySelector(FENETRES_MAISON);
+}
+
 /** La zone où le focus peut aller : la fenêtre maison du dessus s'il y en a une, sinon la page. */
 function zone(): ParentNode {
-  const d = document.querySelectorAll('[role="dialog"]');
+  const d = document.querySelectorAll(FENETRES_MAISON);
   return d.length ? d[d.length - 1] : document;
 }
 
@@ -57,6 +66,13 @@ function valider() {
   else e.click();
 }
 
+/** Une commande, quelle que soit sa source (manette, clavier, cœur de Frogtend). */
+export function appliquer(c: Commande) {
+  if (c === 'valider') valider();
+  else if (c === 'retour') touche('Escape');
+  else deplacer(c);
+}
+
 // Boutons de la disposition standard (W3C) : 0 = A, 1 = B, 12–15 = croix.
 const A = 0;
 const B = 1;
@@ -72,29 +88,47 @@ let avant = new Set<number>();
 let direction: Direction | null = null;
 let prochaine = 0;
 
+function manettes(): Gamepad[] {
+  return navigator.getGamepads ? [...navigator.getGamepads()].filter((p): p is Gamepad => !!p) : [];
+}
+
+function appuyes(pads: Gamepad[]): Set<number> {
+  const l = new Set<number>();
+  for (const p of pads) p.buttons.forEach((b, i) => b.pressed && l.add(i));
+  return l;
+}
+
 function lire() {
-  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter((p): p is Gamepad => !!p) : [];
+  const pads = manettes();
   taodbox.manettes = pads.length;
-  const appuyes = new Set<number>();
+  const maintenant = appuyes(pads);
+  // Une fenêtre qui n'a pas le premier plan ignore la manette (le menu en jeu caché, la fenêtre principale pendant
+  // que le menu est ouvert) : un même A n'agit jamais dans deux fenêtres.
+  if (!document.hasFocus()) {
+    avant = maintenant;
+    direction = null;
+    boucle = requestAnimationFrame(lire);
+    return;
+  }
   let d: Direction | null = null;
   for (const p of pads) {
-    p.buttons.forEach((b, i) => b.pressed && appuyes.add(i));
     for (const [i, dir] of CROIX) if (p.buttons[i]?.pressed) d = dir;
     d ??= directionDuStick(p.axes[0] ?? 0, p.axes[1] ?? 0);
   }
-  if (appuyes.has(A) && !avant.has(A)) valider();
-  if (appuyes.has(B) && !avant.has(B)) touche('Escape');
+  const nouveaux = nouveauxAppuis(avant, maintenant);
+  if (nouveaux.has(A)) appliquer('valider');
+  if (nouveaux.has(B)) appliquer('retour');
   // Direction : un premier pas, puis la répétition après une pause (comme une touche tenue).
   const t = performance.now();
   if (d && d !== direction) {
-    deplacer(d);
+    appliquer(d);
     prochaine = t + 380;
   } else if (d && t >= prochaine) {
-    deplacer(d);
+    appliquer(d);
     prochaine = t + 130;
   }
   direction = d;
-  avant = appuyes;
+  avant = maintenant;
   boucle = requestAnimationFrame(lire);
 }
 
@@ -105,12 +139,15 @@ function fleches(e: KeyboardEvent) {
   const cible = e.target as HTMLElement;
   if (!d || cible.tagName === 'INPUT' || cible.tagName === 'TEXTAREA' || cible.tagName === 'SELECT') return;
   e.preventDefault();
-  deplacer(d);
+  appliquer(d);
 }
 
 export function demarrerManette() {
   if (taodbox.actif) return;
   taodbox.actif = true;
+  // Les boutons déjà tenus au démarrage (la combinaison qui vient d'ouvrir le menu…) ne comptent pas.
+  avant = appuyes(manettes());
+  direction = null;
   window.addEventListener('keydown', fleches);
   boucle = requestAnimationFrame(lire);
 }

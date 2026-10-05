@@ -367,6 +367,8 @@ export interface EtatMenuJeu {
   actions: string[];
   /** Le jeu se met-il en pause quand le menu s'ouvre ? */
   en_pause: boolean;
+  /** Ouvert en Taodbox (télé) : le menu est à l'échelle ×2. */
+  taodbox: boolean;
 }
 
 /** Un réglage de manette de référence (livré avec Frogtend, ou repris sur ce PC). */

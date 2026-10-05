@@ -50,6 +50,8 @@ pub struct EtatMenu {
     pub actions: Vec<&'static str>,
     /// L'émulateur se met-il en pause quand le menu s'ouvre ? (Non pour un jeu PC.)
     pub en_pause: bool,
+    /// Ouvert en Taodbox (fenêtre principale en plein écran) : le menu est à l'échelle ×2. Rempli par la commande.
+    pub taodbox: bool,
 }
 
 pub fn nom_action(a: Action) -> &'static str {
@@ -80,6 +82,7 @@ pub fn etat(p: &PartieEnCours) -> EtatMenu {
         emulateur: p.emulateur.clone(),
         actions: crate::pilotage::actions(e).into_iter().map(nom_action).collect(),
         en_pause: crate::pilotage::se_met_en_pause(e),
+        taodbox: false,
     }
 }
 

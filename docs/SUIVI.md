@@ -20,9 +20,9 @@
         embarqué, aucune DLL »). Lisibilité en arrière-plan à MESURER (sonde, voir 🧪).
   - [ ] d. Un seul menu : retirer les combinaisons propres aux émulateurs posées en 0.8.0 (Select + Start de
         DuckStation/PCSX2, L3 + R3 de RetroArch).
-  - [ ] e. Navigation dans le menu à la manette (croix/stick, A valider, B retour), au clavier (flèches, Entrée,
-        Échap) et à la souris (survol, clic).
-  - [ ] f. Le même menu en Taodbox (échelle ×2, focus fort).
+  - [x] e. Navigation dans le menu à la manette (croix/stick, A valider, B retour), au clavier (flèches, Entrée,
+        Échap) et à la souris (survol, clic). ✅ 0.45.0 (à essayer par Seb).
+  - [x] f. Le même menu en Taodbox (échelle ×2, plein écran, contour de sélection fort). ✅ 0.45.0 (à essayer).
   - [ ] g. Le fond : visuel du jeu (médias du contrat 1.6 : fond, capture, logo), sinon du système, sinon du skin.
   - [ ] h. Adaptateurs manquants : RPCS3, Cemu, Eden, Xenia (documentation officielle de chacun d'abord).
   - [ ] i. Options propres à certains émulateurs (affichage des performances…), dans le même menu.
@@ -107,6 +107,11 @@ d'abord :
 - Jellyfin → Taodbox : projet côté Firehouse, pas le travail de Frogtend.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.45.0** (05/10) — OSD étape 2 : menu en jeu à la manette, au clavier et à la souris ; Taodbox en plein écran ×2.
+  Vérifié : relecture de l'expert interface (1 bloquant corrigé : B dans « Quitter ? » reprenait le jeu — rôle
+  `alertdialog` ignoré, aussi en Taodbox ; 3 importants corrigés) ; test qui reconnaît la confirmation ; 261 + 119
+  tests. PAS vérifié : l'essai réel du menu (Seb) ; la manette n'agit que dans la fenêtre au premier plan (à essayer).
 
 - **0.44.4** (04/10) — RPCS3 : valeurs du fichier de manette entre guillemets (« #1 » était lu comme un commentaire).
   Vérifié : le journal de RPCS3 chez Seb montrait la cause exacte ; un test relit le fichier avec les règles YAML (il

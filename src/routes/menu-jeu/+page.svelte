@@ -1,12 +1,15 @@
 <script lang="ts">
-  // Le menu universel en jeu (lot 4 ter) : ouvert par-dessus le jeu par la touche du menu (Pause/Attn par défaut).
-  // Pensé pour tous, enfants compris : de gros boutons, peu de mots, les flèches et Entrée, Échap pour reprendre.
+  // Le menu universel en jeu (lot 4 ter, lot OSD) : ouvert par-dessus le jeu par la touche du menu (Pause/Attn par
+  // défaut) ou la manette. LE MÊME pour tous les émulateurs (Seb, 04/10) ; à la manette (croix, A, B), au clavier
+  // (flèches, Entrée, Échap) et à la souris. Pensé pour tous, enfants compris : de gros boutons, peu de mots.
   import { onMount, tick } from 'svelte';
   import { isTauri } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
   import { api, type Annexe, type EtatMenuJeu } from '$lib/api';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
+  import { appliquer, arreterManette, demarrerManette, fenetreOuverte, taodbox } from '$lib/taodbox/manette.svelte';
+  import type { Commande } from '$lib/taodbox/navigation';
 
   let menu = $state<EtatMenuJeu | null>(null);
   let documents = $state<Annexe[] | null>(null);
@@ -17,6 +20,8 @@
 
   async function charger() {
     menu = await api.menuJeuEtat().catch(() => null);
+    // À la toute première ouverture, l'événement du cœur peut arriver avant la page : l'état dit aussi le mode.
+    if (menu) modeTaodbox(menu.taodbox);
     cheatEngine = (await api.emulateursInstalles().catch(() => [])).find((e) => e.id === 'cheatengine')?.programme ?? null;
     documents = null;
     lecture = null;
@@ -24,12 +29,34 @@
     liste?.querySelector<HTMLButtonElement>('button')?.focus();
   }
 
+  /** En Taodbox, le menu est à l'échelle de la télé (×2, plein écran). */
+  function modeTaodbox(actif: boolean) {
+    document.documentElement.toggleAttribute('data-taodbox', actif);
+  }
+
+  /** La manette (lue ici quand le menu a le premier plan) et les flèches : repartent de zéro à chaque ouverture, pour
+   * que la combinaison encore tenue qui vient d'ouvrir le menu ne compte pas. */
+  function relancerManette() {
+    arreterManette();
+    demarrerManette();
+  }
+
   onMount(() => {
     charger();
-    if (!isTauri()) return;
-    const arret = listen('menu-jeu', () => charger());
+    demarrerManette();
+    if (!isTauri()) return arreterManette;
+    const arrets = [
+      listen<{ taodbox?: boolean } | null>('menu-jeu', (e) => {
+        modeTaodbox(!!e.payload?.taodbox);
+        relancerManette();
+        charger();
+      }),
+      // La manette lue par le cœur pendant la partie (étape 3 de l'OSD) : les mêmes commandes.
+      listen<Commande>('menu-manette', (e) => appliquer(e.payload)),
+    ];
     return () => {
-      arret.then((f) => f());
+      arreterManette();
+      arrets.forEach((a) => a.then((f) => f()));
     };
   });
 
@@ -93,23 +120,22 @@
     }
   }
 
-  /** Flèches haut/bas entre les boutons ; Échap : revenir en arrière, ou reprendre le jeu. */
+  /** Échap (ou B) : revenir en arrière, ou reprendre le jeu. Les flèches sont gérées par le module de la manette
+   * (une seule navigation, la même qu'en Taodbox). */
   function touche(e: KeyboardEvent) {
-    if (document.querySelector('[role="dialog"]')) return; // une fenêtre de confirmation a la main
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      if (lecture) lecture = null;
-      else if (documents) documents = null;
-      else reprendre();
-      return;
-    }
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    const boutons = [...(liste?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? [])];
-    if (!boutons.length) return;
+    if (fenetreOuverte()) return; // une fenêtre de confirmation a la main (Échap/B la ferme, sans reprendre le jeu)
+    if (e.key !== 'Escape') return;
     e.preventDefault();
-    const i = boutons.indexOf(document.activeElement as HTMLButtonElement);
-    const n = e.key === 'ArrowDown' ? (i + 1) % boutons.length : (i - 1 + boutons.length) % boutons.length;
-    boutons[n].focus();
+    if (lecture) lecture = null;
+    else if (documents) documents = null;
+    else reprendre();
+  }
+
+  /** La souris : un VRAI mouvement déplace la sélection (pas le contenu qui bouge sous un curseur immobile). */
+  function survol(e: PointerEvent) {
+    if (!e.movementX && !e.movementY) return;
+    const b = (e.target as HTMLElement).closest<HTMLElement>('.liste .btn');
+    if (b && b !== document.activeElement) b.focus({ preventScroll: true });
   }
 
   const a = (nom: string) => menu?.actions.includes(nom);
@@ -117,7 +143,9 @@
 
 <svelte:window onkeydown={touche} />
 
-<div class="menu cx-card">
+<!-- Le survol ne fait que déplacer la sélection : le clavier et la manette ont déjà leur propre navigation. -->
+<!-- svelte-ignore a11y_no_static_element_interactions, a11y_mouse_events_have_key_events -->
+<div class="menu cx-card" onpointermove={survol}>
   {#if !menu}
     <p class="muted">Aucune partie en cours.</p>
   {:else if lecture}
@@ -166,7 +194,9 @@
       {/if}
       <button class="btn danger" onclick={quitter}>⏹ Quitter le jeu</button>
     </div>
-    <p class="aide muted">↑ ↓ pour choisir · Entrée pour valider · Échap pour reprendre</p>
+    <p class="aide muted">
+      {taodbox.manettes ? 'Choisir : croix ou ↑ ↓ · Valider : A ou Entrée · Reprendre : B ou Échap' : '↑ ↓ pour choisir · Entrée pour valider · Échap pour reprendre'}
+    </p>
   {/if}
 </div>
 
@@ -192,6 +222,11 @@
     display: grid;
     gap: calc(8 * var(--u));
     overflow: auto;
+  }
+  /* La sélection se voit toujours (manette, clavier ou souris), pas seulement au clavier. */
+  .liste .btn:focus {
+    outline: calc(3 * var(--u)) solid var(--accent);
+    outline-offset: calc(2 * var(--u));
   }
   .liste .btn {
     min-height: calc(48 * var(--u));

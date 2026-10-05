@@ -40,3 +40,14 @@ export function directionDuStick(x: number, y: number, zoneMorte = 0.5): Directi
   if (Math.abs(x) > Math.abs(y)) return x > 0 ? 'droite' : 'gauche';
   return y > 0 ? 'bas' : 'haut';
 }
+
+/** Ce qu'une manette (ou le cœur, qui lit la manette pendant une partie) demande à l'interface. */
+export type Commande = Direction | 'valider' | 'retour';
+
+/**
+ * Les boutons qui viennent d'être enfoncés : pas tenus au tour précédent. Un bouton déjà tenu quand la lecture
+ * commence (par exemple la combinaison qui vient d'ouvrir le menu) ne compte qu'une fois relâché puis ré-enfoncé.
+ */
+export function nouveauxAppuis(avant: ReadonlySet<number>, maintenant: ReadonlySet<number>): Set<number> {
+  return new Set([...maintenant].filter((b) => !avant.has(b)));
+}

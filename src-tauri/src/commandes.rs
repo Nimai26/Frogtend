@@ -803,10 +803,18 @@ pub fn ouvrir_menu(app: &AppHandle) {
             }
         },
     };
+    // En Taodbox (la fenêtre principale est en plein écran, sur la télé) : le menu aussi, à l'échelle ×2 ; sinon, une
+    // petite fenêtre centrée par-dessus le jeu.
+    let taodbox = app.get_webview_window("main").and_then(|m| m.is_fullscreen().ok()).unwrap_or(false);
+    let _ = w.set_fullscreen(taodbox);
+    if !taodbox {
+        let _ = w.set_size(tauri::LogicalSize::new(560.0, 640.0));
+        let _ = w.center();
+    }
     let _ = w.show();
     let _ = w.unminimize();
     let _ = w.set_focus();
-    let _ = app.emit_to(FENETRE_MENU, "menu-jeu", ());
+    let _ = app.emit_to(FENETRE_MENU, "menu-jeu", serde_json::json!({ "taodbox": taodbox }));
 }
 
 fn cacher_menu(app: &AppHandle) {
@@ -817,8 +825,9 @@ fn cacher_menu(app: &AppHandle) {
 
 /// Ce que le menu en jeu montre (`null` hors partie).
 #[tauri::command]
-pub fn menu_jeu_etat(menu: State<'_, crate::menu_jeu::MenuJeu>) -> Option<crate::menu_jeu::EtatMenu> {
-    menu.partie().map(|p| crate::menu_jeu::etat(&p))
+pub fn menu_jeu_etat(app: AppHandle, menu: State<'_, crate::menu_jeu::MenuJeu>) -> Option<crate::menu_jeu::EtatMenu> {
+    let taodbox = app.get_webview_window("main").and_then(|m| m.is_fullscreen().ok()).unwrap_or(false);
+    menu.partie().map(|p| crate::menu_jeu::EtatMenu { taodbox, ..crate::menu_jeu::etat(&p) })
 }
 
 /// Reprendre : le menu se cache, le jeu reprend le premier plan (et sort seul de sa pause).

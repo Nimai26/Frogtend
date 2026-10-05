@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { directionDuStick, voisin, type Boite } from './navigation';
+import { directionDuStick, nouveauxAppuis, voisin, type Boite } from './navigation';
 
 // Une grille 3 × 2 de cartes, et un bouton « Quitter » seul en haut à droite.
 const b = (x: number, y: number): Boite => ({ x, y, l: 100, h: 140 });
@@ -30,5 +30,14 @@ describe('directionDuStick', () => {
     expect(directionDuStick(0.9, 0.2)).toBe('droite');
     expect(directionDuStick(-0.1, -0.8)).toBe('haut');
     expect(directionDuStick(0.1, 0.95)).toBe('bas');
+  });
+});
+
+describe('nouveauxAppuis', () => {
+  it('ne compte qu’un bouton nouvellement enfoncé, jamais un bouton déjà tenu', () => {
+    expect([...nouveauxAppuis(new Set(), new Set([0]))]).toEqual([0]);
+    expect([...nouveauxAppuis(new Set([0]), new Set([0]))]).toEqual([]);
+    // Select + R1 tenus à l'ouverture du menu, puis A : seul A compte.
+    expect([...nouveauxAppuis(new Set([8, 5]), new Set([8, 5, 0]))]).toEqual([0]);
   });
 });

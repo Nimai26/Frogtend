@@ -48,6 +48,14 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Le menu en jeu à la manette, au clavier et à la souris (0.45.0)
+- [ ] Dans une partie, **Pause/Attn** ouvre le menu. À la **manette** : la croix (ou le stick) change la sélection, **A**
+      valide, **B** reprend le jeu. Au **clavier** : flèches, Entrée, Échap. À la **souris** : le survol déplace la
+      sélection, le clic valide. La sélection est toujours entourée.
+- [ ] **📖 Manuel et documents** puis **B** : on revient au menu (pas au jeu). **⏹ Quitter le jeu** puis **B** dans la
+      question : la question se ferme, le jeu continue.
+- [ ] **En Taodbox** (manette, télé) : le menu s'ouvre en plein écran, en grand.
+
 ## La manette dans RPCS3 (0.44.4 — la 0.44.3 cassait tout : nom mal lu par RPCS3)
 - [x] ✅ (Seb 05/10, 0.44.4) Manette Xbox **éteinte**, clique ▶ Jouer sur Asura's Wrath, PUIS allume la manette : en 2 secondes elle marche
       dans le jeu (✕ = A, ◯ = B, Start = Start), sans relancer.

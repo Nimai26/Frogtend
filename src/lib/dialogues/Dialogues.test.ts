@@ -121,3 +121,14 @@ describe('Choisir, Informer, Toast', () => {
     expect(pile.toasts).toHaveLength(0);
   });
 });
+
+describe('Une fenêtre maison garde la main (menu en jeu, Taodbox)', () => {
+  it('« confirmer » (rôle alertdialog) est reconnue : Échap/B la ferme sans reprendre le jeu', async () => {
+    const { fenetreOuverte } = await import('$lib/taodbox/manette.svelte');
+    render(Dialogues);
+    expect(fenetreOuverte()).toBe(false);
+    void confirmer('⏹ Quitter le jeu ?');
+    await tick();
+    expect(fenetreOuverte()).toBe(true);
+  });
+});

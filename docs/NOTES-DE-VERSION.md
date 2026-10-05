@@ -1,5 +1,17 @@
 # Notes de version de Frogtend
 
+## 0.45.0 — le menu en jeu à la manette, au clavier et à la souris (OSD, étape 2)
+
+- Le menu en jeu (touche Pause/Attn pendant une partie) se pilote maintenant **à la manette** (croix ou stick pour
+  choisir, A pour valider, B pour revenir ou reprendre le jeu), **au clavier** (flèches, Entrée, Échap) et **à la
+  souris** (le survol déplace la sélection). La sélection se voit toujours.
+- **En Taodbox**, le menu s'ouvre en plein écran, à la taille de la télé.
+- Corrigé au passage (relecture de l'expert) : dans une question comme « Quitter le jeu ? », B ou Échap ferment la
+  question SANS reprendre le jeu, et la croix reste dans la question (le même défaut existait en Taodbox) ; une
+  fenêtre qui n'est pas au premier plan ignore la manette (un appui ne compte jamais dans deux fenêtres).
+- Une seule façon de naviguer pour Taodbox et le menu en jeu. Prochaine étape : ouvrir le menu à la manette
+  (Select + R1 tenus 1 seconde) et retirer les anciens menus des émulateurs.
+
 ## 0.44.4 — RPCS3 : la manette (et le clavier) remarchent
 
 - **Le problème de la 0.44.3** : le nom de la manette écrit pour RPCS3 (« XInput Pad #1 ») était mal lu par RPCS3, qui
