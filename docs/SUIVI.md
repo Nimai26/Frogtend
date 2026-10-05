@@ -27,9 +27,9 @@
   - [ ] h. Adaptateurs manquants : RPCS3, Cemu, Eden, Xenia (documentation officielle de chacun d'abord).
   - [ ] i. Options propres à certains émulateurs (affichage des performances…), dans le même menu.
   - Relecture par les experts interface et lancement (04/10), qui ont relu le code (fichier:ligne) :
-    - ⛔ BLOQUANT : la lecture de la manette pendant qu'un jeu a le premier plan n'a JAMAIS été mesurée (journal de
-      la sonde vide) ; et le menu ouvert depuis la manette peut ne pas obtenir le premier plan (sans lui, pas de pause
-      et la manette pilote encore le jeu). → la SONDE avec Seb d'abord (voir 🧪).
+    - ✅ LEVÉ le 04/10 (sonde de Seb) : la manette est lue pendant qu'un jeu a le premier plan (XInput et SDL).
+      Reste : le menu ouvert depuis la manette doit obtenir le premier plan (sans lui, pas de pause et la manette
+      pilote encore le jeu) → vérifié par le code (GetForegroundWindow) et essayé avec Seb à l'étape 3.
     - Le cœur sera la seule source de la manette (XInput, puis SDL3) : il repère Select + R1 et envoie au menu
       haut/bas/valider/retour ; la Gamepad API du WebView2 n'est pas fiable dans une fenêtre sans focus.
     - Retirer Select + Start de DuckStation/PCSX2 demande une MIGRATION (valeur exacte écrite par Frogtend, le reste
@@ -70,7 +70,6 @@
 Le détail (quoi faire, ce qu'on doit voir) est dans [A-TESTER.md](A-TESTER.md) (128 cases à cocher). Les plus utiles
 d'abord :
 - [ ] **Prêt à jouer (0.44.0)** : une console sans émulateur (ex. Sega CD) se prépare après UN accord.
-- [ ] **RPCS3 + manette Xbox** : branchée avant la partie → elle marche ; débranchée → le clavier.
 - [ ] **💿 Micrologiciel** : affiche « Installé : version 4.91 » ; un PUP 4.93 s'installe sans fenêtre.
 - [x] ✅ **Sonde manette faite par Seb le 04/10** (Asura's Wrath au premier plan dans RPCS3) : la manette Xbox Series X
       est lue EN ARRIÈRE-PLAN par XInput ET par SDL — tous les boutons, gâchettes, croix, Select, R1, L3/R3. Le
