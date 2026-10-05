@@ -79,7 +79,7 @@
         {#if d.sorte === 'informer'}
           <button class="btn primary" data-valider onclick={() => d.fermer()}>OK</button>
         {:else}
-          <button class="btn" onclick={annulerDessus}>Annuler</button>
+          <button class="btn" data-premier={d.sorte === 'confirmer' && d.danger ? '' : undefined} onclick={annulerDessus}>Annuler</button>
           {#if d.sorte === 'confirmer'}
             <button class="btn {d.danger ? 'danger' : 'primary'}" data-valider onclick={() => d.fermer(true)}>
               {d.libelleValider}

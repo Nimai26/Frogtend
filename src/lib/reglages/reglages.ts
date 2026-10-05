@@ -33,6 +33,9 @@ export interface ReglagesPc {
   menuJeu: {
     /** La touche du clavier qui l'ouvre pendant une partie (nom compris par Tauri : « Pause », « ScrollLock »…). */
     touche: string;
+    /** La combinaison de la manette qui l'ouvre, tenue 1 s (Seb, 04/10 : « Select + R1 », bien moins courante en jeu
+     * que Select + Start). Lue par le cœur au début de chaque partie. */
+    manette: string;
   };
   firehouse: {
     adresse: string;
@@ -103,7 +106,7 @@ export const DEFAUTS_PC: ReglagesPc = {
   dossierOutils: '',
   dossierAbris: '',
   listeMame: '',
-  menuJeu: { touche: 'Pause' },
+  menuJeu: { touche: 'Pause', manette: 'Select + R1' },
   firehouse: { adresse: ADRESSE_FIREHOUSE_PAR_DEFAUT, simule: false },
 };
 

@@ -108,6 +108,15 @@ d'abord :
 
 ## ✅ Livré (version — ce qui a été vérifié)
 
+- **0.46.0** (05/10) — OSD étape 3 : le cœur lit la manette (XInput) pendant la partie ; Select + R1 tenus 1 s ouvrent
+  le menu (réglable) ; croix/stick, A, B pilotent le menu (A/B au relâchement) ; « Annuler » d'abord pour une action
+  dangereuse ; sélection rendue après un retour et visible sans premier plan. Vérifié : tests (267 cœur, 120
+  interface), lecture réelle de la manette de Seb, relecture des experts lancement et interface (aucun bloquant).
+  PAS vérifié : l'essai en jeu (Seb), la prise du premier plan depuis la manette (notée au journal si elle échoue),
+  les manettes non XInput (étape 4, SDL).
+- **0.45.0** (05/10) — OSD étape 2 : ✅ clavier et souris dans le menu (Seb 05/10) ; manette dans le menu : NON (Gamepad
+  API muette) → 0.46.0.
+
 - **0.45.0** (05/10) — OSD étape 2 : menu en jeu à la manette, au clavier et à la souris ; Taodbox en plein écran ×2.
   Vérifié : relecture de l'expert interface (1 bloquant corrigé : B dans « Quitter ? » reprenait le jeu — rôle
   `alertdialog` ignoré, aussi en Taodbox ; 3 importants corrigés) ; test qui reconnaît la confirmation ; 261 + 119

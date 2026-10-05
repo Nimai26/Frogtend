@@ -194,6 +194,19 @@
         <option value="Ctrl+Shift+M">Ctrl + Maj + M</option>
       </select>
     </dd>
+    <dt>Combinaison de la manette</dt>
+    <dd>
+      <select
+        value={etat.pc.menuJeu.manette ?? 'Select + R1'}
+        title="Pendant une partie, ces deux boutons tenus 1 seconde ouvrent le menu de Frogtend par-dessus le jeu. Choisis une combinaison que tes jeux n’utilisent pas. Prend effet à la prochaine partie."
+        onchange={(e) => reglerPc('menuJeu.manette', e.currentTarget.value)}
+      >
+        <option value="Select + R1">Select + R1 (View + RB), tenus 1 s</option>
+        <option value="Select + L1">Select + L1 (View + LB), tenus 1 s</option>
+        <option value="L3 + R3">L3 + R3 (clic des deux sticks), tenus 1 s</option>
+        <option value="Select + Start">Select + Start, tenus 1 s</option>
+      </select>
+    </dd>
     <dt>Dossier des émulateurs</dt>
     <dd>
       <span class="chemin">{etat.pc.dossierEmulateurs || 'pas encore choisi'}</span>

@@ -24,6 +24,7 @@ pub mod succes;
 pub mod disque;
 pub mod contenus;
 pub mod decompression;
+pub mod osd_manette;
 pub mod ludotheque;
 pub mod menu_jeu;
 pub mod noyau;

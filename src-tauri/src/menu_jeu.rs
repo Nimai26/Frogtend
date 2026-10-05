@@ -25,17 +25,31 @@ pub struct PartieEnCours {
 #[derive(Default)]
 pub struct MenuJeu {
     pub partie: Mutex<Option<PartieEnCours>>,
+    /// Le numéro de la partie en cours : la lecture de la manette d'une partie s'arrête quand il change.
+    pub numero: std::sync::atomic::AtomicU64,
+    /// La fenêtre du menu est-elle ouverte ? Tenu par `ouvrir_menu` et `cacher_menu` (la lecture de la manette le
+    /// consulte 60 fois par seconde sans interroger la fenêtre).
+    pub ouvert: std::sync::atomic::AtomicBool,
 }
 
 impl MenuJeu {
     pub fn partie(&self) -> Option<PartieEnCours> {
         self.partie.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
-    pub fn commencer(&self, p: PartieEnCours) {
+    /// Retient la partie et rend son numéro.
+    pub fn commencer(&self, p: PartieEnCours) -> u64 {
         *self.partie.lock().unwrap_or_else(|e| e.into_inner()) = Some(p);
+        self.numero.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1
     }
-    pub fn finir(&self) {
-        *self.partie.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    /// Oublie la partie `numero` (une partie plus récente n'est jamais effacée par la fin d'une ancienne).
+    pub fn finir(&self, numero: u64) {
+        if self.numero.load(std::sync::atomic::Ordering::SeqCst) == numero {
+            *self.partie.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        }
+    }
+    /// La partie `numero` est-elle toujours celle en cours ?
+    pub fn en_cours(&self, numero: u64) -> bool {
+        self.numero.load(std::sync::atomic::Ordering::SeqCst) == numero && self.partie().is_some()
     }
 }
 
@@ -99,13 +113,35 @@ mod fenetres {
     use windows::core::BOOL;
     use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP,
-        KEYEVENTF_SCANCODE, VIRTUAL_KEY,
+        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_EXTENDEDKEY,
+        KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, MOUSEEVENTF_MOVE, MOUSEINPUT, VIRTUAL_KEY,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindow, GetWindowThreadProcessId, IsIconic, IsWindowVisible, PostMessageW, SetForegroundWindow,
-        ShowWindow, GW_OWNER, SW_RESTORE, WM_CLOSE,
+        EnumWindows, GetForegroundWindow, GetWindow, GetWindowThreadProcessId, IsIconic, IsWindowVisible, PostMessageW,
+        SetForegroundWindow, ShowWindow, GW_OWNER, SW_RESTORE, WM_CLOSE,
     };
+
+    /// Une entrée neutre (la souris « bouge » de 0) : Windows laisse alors notre processus prendre le premier plan
+    /// (SetForegroundWindow l'accepte quand « le processus a reçu le dernier événement d'entrée »). Sans elle, un menu
+    /// ouvert depuis la manette resterait derrière le jeu (pas de pause, la manette pilote encore le jeu).
+    pub fn entree_neutre() {
+        let i = INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 { mi: MOUSEINPUT { dx: 0, dy: 0, mouseData: 0, dwFlags: MOUSEEVENTF_MOVE, time: 0, dwExtraInfo: 0 } },
+        };
+        unsafe {
+            SendInput(&[i], std::mem::size_of::<INPUT>() as i32);
+        }
+    }
+
+    /// La fenêtre au premier plan appartient-elle à Frogtend ?
+    pub fn premier_plan_a_frogtend() -> bool {
+        let mut pid = 0u32;
+        unsafe {
+            GetWindowThreadProcessId(GetForegroundWindow(), Some(&mut pid));
+        }
+        pid == std::process::id()
+    }
 
     /// Les fenêtres principales (visibles, sans propriétaire) de ces processus.
     pub fn du_processus(pids: &[u32]) -> Vec<HWND> {
@@ -221,6 +257,24 @@ pub fn processus_du_jeu(racine: u32) -> u32 {
     racine
 }
 
+/// Prépare la prise du premier plan par Frogtend (menu ouvert depuis la manette) : une entrée neutre.
+pub fn autoriser_premier_plan() {
+    #[cfg(windows)]
+    fenetres::entree_neutre();
+}
+
+/// La fenêtre au premier plan est-elle à Frogtend ? (`true` hors Windows.)
+pub fn frogtend_au_premier_plan() -> bool {
+    #[cfg(windows)]
+    {
+        fenetres::premier_plan_a_frogtend()
+    }
+    #[cfg(not(windows))]
+    {
+        true
+    }
+}
+
 /// Rend le premier plan au jeu (reprise : l'émulateur sort seul de la pause).
 pub fn reprendre(pids: &[u32]) -> bool {
     #[cfg(windows)]
@@ -328,9 +382,15 @@ mod tests {
     fn la_partie_en_cours_se_retient_et_s_oublie() {
         let m = MenuJeu::default();
         assert!(m.partie().is_none());
-        m.commencer(partie(Some("dolphin")));
+        let n = m.commencer(partie(Some("dolphin")));
         assert_eq!(m.partie().unwrap().emulateur.as_deref(), Some("dolphin"));
-        m.finir();
+        assert!(m.en_cours(n));
+        // Une deuxième partie commence avant la fin de la première : la fin de la première ne l'efface pas.
+        let n2 = m.commencer(partie(Some("rpcs3")));
+        assert!(!m.en_cours(n), "la lecture de la manette de la 1re partie s'arrête");
+        m.finir(n);
+        assert_eq!(m.partie().unwrap().emulateur.as_deref(), Some("rpcs3"));
+        m.finir(n2);
         assert!(m.partie().is_none());
     }
 }

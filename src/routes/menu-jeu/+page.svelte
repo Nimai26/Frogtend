@@ -8,7 +8,7 @@
   import { api, type Annexe, type EtatMenuJeu } from '$lib/api';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
-  import { appliquer, arreterManette, demarrerManette, fenetreOuverte, taodbox } from '$lib/taodbox/manette.svelte';
+  import { appliquer, arreterManette, demarrerManette, fenetreOuverte, selectionner } from '$lib/taodbox/manette.svelte';
   import type { Commande } from '$lib/taodbox/navigation';
 
   let menu = $state<EtatMenuJeu | null>(null);
@@ -26,7 +26,7 @@
     documents = null;
     lecture = null;
     await tick();
-    liste?.querySelector<HTMLButtonElement>('button')?.focus();
+    selectionner(liste?.querySelector<HTMLButtonElement>('button'));
   }
 
   /** En Taodbox, le menu est à l'échelle de la télé (×2, plein écran). */
@@ -34,16 +34,16 @@
     document.documentElement.toggleAttribute('data-taodbox', actif);
   }
 
-  /** La manette (lue ici quand le menu a le premier plan) et les flèches : repartent de zéro à chaque ouverture, pour
-   * que la combinaison encore tenue qui vient d'ouvrir le menu ne compte pas. */
+  /** Les flèches du clavier ; la MANETTE vient du cœur (événement `menu-manette`) : la Gamepad API ne répond pas dans
+   * une fenêtre qui vient d'apparaître par-dessus un jeu (essai de Seb, 0.45.0). */
   function relancerManette() {
     arreterManette();
-    demarrerManette();
+    demarrerManette({ manette: false });
   }
 
   onMount(() => {
     charger();
-    demarrerManette();
+    demarrerManette({ manette: false });
     if (!isTauri()) return arreterManette;
     const arrets = [
       listen<{ taodbox?: boolean } | null>('menu-jeu', (e) => {
@@ -100,7 +100,7 @@
       const r = await api.fiche(menu.jeu);
       documents = r.fiche.annexes ?? [];
       await tick();
-      liste?.querySelector<HTMLButtonElement>('button')?.focus();
+      selectionner(liste?.querySelector<HTMLButtonElement>('button'));
     } catch (e) {
       toast(`Impossible de lire les documents : ${motifDuRefus(e)}`, 'erreur');
     }
@@ -112,6 +112,7 @@
       if (a.texte) {
         const r = await api.annexeTexte(menu.jeu, a.i, a.cle);
         lecture = { titre: r.titre ?? a.titre, texte: r.texte ?? '' };
+        await premierBouton();
       } else {
         await api.ouvrirAnnexe(menu.jeu, a.i);
       }
@@ -126,16 +127,28 @@
     if (fenetreOuverte()) return; // une fenêtre de confirmation a la main (Échap/B la ferme, sans reprendre le jeu)
     if (e.key !== 'Escape') return;
     e.preventDefault();
-    if (lecture) lecture = null;
-    else if (documents) documents = null;
+    if (lecture) revenir(() => (lecture = null));
+    else if (documents) revenir(() => (documents = null));
     else reprendre();
+  }
+
+  /** Le premier bouton de la liste affichée devient la sélection (après un changement d'écran). */
+  async function premierBouton() {
+    await tick();
+    selectionner(liste?.querySelector<HTMLButtonElement>('button'));
+  }
+
+  /** Revenir à l'écran précédent, avec une sélection (sinon plus rien n'est choisi et le 1er A ne fait rien). */
+  function revenir(retour: () => void) {
+    retour();
+    premierBouton();
   }
 
   /** La souris : un VRAI mouvement déplace la sélection (pas le contenu qui bouge sous un curseur immobile). */
   function survol(e: PointerEvent) {
     if (!e.movementX && !e.movementY) return;
     const b = (e.target as HTMLElement).closest<HTMLElement>('.liste .btn');
-    if (b && b !== document.activeElement) b.focus({ preventScroll: true });
+    if (b && b !== document.activeElement) selectionner(b);
   }
 
   const a = (nom: string) => menu?.actions.includes(nom);
@@ -154,7 +167,7 @@
     </header>
     <div class="lecture">{lecture.texte}</div>
     <div class="liste" bind:this={liste}>
-      <button class="btn" onclick={() => (lecture = null)}>← Retour</button>
+      <button class="btn" onclick={() => revenir(() => (lecture = null))}>← Retour</button>
     </div>
   {:else if documents}
     <header>
@@ -167,7 +180,7 @@
       {:else}
         <p class="muted">Aucun document pour ce jeu.</p>
       {/each}
-      <button class="btn" onclick={() => (documents = null)}>← Retour</button>
+      <button class="btn" onclick={() => revenir(() => (documents = null))}>← Retour</button>
     </div>
   {:else}
     <header>
@@ -195,7 +208,7 @@
       <button class="btn danger" onclick={quitter}>⏹ Quitter le jeu</button>
     </div>
     <p class="aide muted">
-      {taodbox.manettes ? 'Choisir : croix ou ↑ ↓ · Valider : A ou Entrée · Reprendre : B ou Échap' : '↑ ↓ pour choisir · Entrée pour valider · Échap pour reprendre'}
+      Choisir : croix ou ↑ ↓ · Valider : A ou Entrée · Reprendre : B ou Échap
     </p>
   {/if}
 </div>
@@ -224,7 +237,8 @@
     overflow: auto;
   }
   /* La sélection se voit toujours (manette, clavier ou souris), pas seulement au clavier. */
-  .liste .btn:focus {
+  .liste .btn:focus,
+  .liste :global(.btn[data-choisi]) {
     outline: calc(3 * var(--u)) solid var(--accent);
     outline-offset: calc(2 * var(--u));
   }

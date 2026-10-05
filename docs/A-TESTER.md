@@ -48,7 +48,19 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
-## Le menu en jeu à la manette, au clavier et à la souris (0.45.0)
+## Le menu en jeu à la manette (0.46.0)
+- [ ] Dans une partie (Asura's Wrath, par exemple), tiens **Select + R1** (View + RB) **1 seconde** : le menu s'ouvre
+      par-dessus le jeu, et le jeu se met en pause.
+- [ ] À la manette : la croix (ou le stick) change la sélection, **A** valide, **B** reprend le jeu.
+- [ ] Un appui bref sur Select + R1, ou Select seul, ou Select + Start : le menu ne s'ouvre PAS.
+- [ ] ⚙ Options ▸ Émulateurs ▸ **Combinaison de la manette** : choisis L3 + R3, relance une partie : c'est elle qui
+      ouvre le menu.
+- [ ] Dans « ⏹ Quitter le jeu ? », c'est **Annuler** qui est sélectionné d'abord ; B referme la question, le jeu continue.
+- [ ] 📖 Manuel et documents, puis B : on revient au menu, et un bouton est sélectionné (A agit tout de suite).
+- [ ] Si le menu s'ouvre mais que la manette pilote encore le jeu derrière, dis-le-moi (c'est noté dans le journal de
+      Frogtend : « sans le premier plan »).
+
+## Le menu en jeu à la manette, au clavier et à la souris (0.45.0) — ✅ clavier et souris (Seb 05/10) ; manette : 0.46.0
 - [ ] Dans une partie, **Pause/Attn** ouvre le menu. À la **manette** : la croix (ou le stick) change la sélection, **A**
       valide, **B** reprend le jeu. Au **clavier** : flèches, Entrée, Échap. À la **souris** : le survol déplace la
       sélection, le clic valide. La sélection est toujours entourée.

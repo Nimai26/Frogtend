@@ -3,6 +3,14 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 05/10 — Livrer en comptant sur ce qu'un expert a signalé « non vérifié »
+Ce qui s'est passé : les deux experts avaient prévenu (04/10) que la Gamepad API d'une fenêtre qui apparaît par-dessus
+un jeu n'est pas fiable et recommandé que le cœur soit la seule source de la manette ; la 0.45.0 a quand même été
+livrée avec la manette lue par la page du menu. Seb : « la manette ne fonctionne pas pour naviguer dans le menu ».
+· Pourquoi c'est grave : une livraison et un essai de Seb pour rien. · Comment l'appliquer : un point « non vérifié »
+d'un expert sur le cœur de la fonction se TRANCHE avant de livrer (essai réel, ou la voie qu'il recommande) ; sinon la
+livraison annonce clairement que ce point n'est pas couvert.
+
 ## 04/10 — Un fichier de configuration écrit « à la main » sans en respecter le format
 Ce qui s'est passé : Frogtend écrivait `Device: XInput Pad #1` dans un fichier YAML de RPCS3 ; en YAML, « #1 » après une
 espace est un COMMENTAIRE : RPCS3 a lu « XInput Pad », n'a rien trouvé et a mis le joueur 1 sur « aucune entrée »

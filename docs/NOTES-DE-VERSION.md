@@ -1,5 +1,19 @@
 # Notes de version de Frogtend
 
+## 0.46.0 — le menu en jeu s'ouvre et se pilote à la manette (OSD, étape 3)
+
+- **Select + R1 tenus 1 seconde** (View + RB sur une manette Xbox) ouvrent le menu en jeu, quel que soit l'émulateur.
+  La combinaison se change dans ⚙ Options ▸ Émulateurs (Select + L1, L3 + R3, Select + Start).
+- **La manette navigue enfin dans le menu** : croix ou stick pour choisir, A pour valider, B pour revenir ou reprendre.
+  C'est maintenant Frogtend lui-même qui lit la manette pendant la partie (la fenêtre du menu n'y arrivait pas : ton
+  essai de la 0.45.0).
+- Les boutons encore tenus quand le menu s'ouvre ne font rien (pas de validation par erreur) ; A et B agissent quand
+  tu les relâches, pour que le bouton qui ferme le menu n'arrive pas au jeu.
+- Dans « Quitter le jeu ? », c'est **Annuler** qui est sélectionné d'abord : deux appuis sur A ne ferment pas le jeu par
+  erreur. Après un retour (B), la sélection revient sur le premier bouton.
+- Limite connue : une manette PS4/PS5 branchée telle quelle (sans mode Xbox, Steam ou DS4Windows) n'ouvre pas encore le
+  menu ; elle viendra avec le module SDL (prochaine étape).
+
 ## 0.45.0 — le menu en jeu à la manette, au clavier et à la souris (OSD, étape 2)
 
 - Le menu en jeu (touche Pause/Attn pendant une partie) se pilote maintenant **à la manette** (croix ou stick pour

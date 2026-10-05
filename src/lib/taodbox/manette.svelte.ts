@@ -30,13 +30,25 @@ function visibles(): HTMLElement[] {
   });
 }
 
+/**
+ * Sélectionne un élément : le focus, et la marque `data-choisi` (visible même quand la fenêtre n'a pas le premier
+ * plan, où le navigateur n'affiche pas `:focus` — le menu en jeu reçoit alors la manette du cœur quand même).
+ */
+export function selectionner(e: HTMLElement | null | undefined) {
+  if (!e) return;
+  document.querySelectorAll('[data-choisi]').forEach((x) => x.removeAttribute('data-choisi'));
+  e.setAttribute('data-choisi', '');
+  e.focus({ preventScroll: true });
+  e.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
 /** Déplace le focus dans une direction (ou sur le premier élément s'il n'y en a pas). */
 export function deplacer(d: Direction) {
   const l = visibles();
   if (!l.length) return;
   const i = l.indexOf(document.activeElement as HTMLElement);
   if (i < 0) {
-    l[0].focus();
+    selectionner(l[0]);
     return;
   }
   const boites = l.map((e) => {
@@ -44,10 +56,7 @@ export function deplacer(d: Direction) {
     return { x: r.left, y: r.top, l: r.width, h: r.height };
   });
   const n = voisin(boites, i, d);
-  if (n !== null) {
-    l[n].focus();
-    l[n].scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
-  }
+  if (n !== null) selectionner(l[n]);
 }
 
 function touche(cle: string) {
@@ -59,7 +68,7 @@ function touche(cle: string) {
 function valider() {
   const e = document.activeElement as HTMLElement | null;
   if (!e || e === document.body) {
-    visibles()[0]?.focus();
+    selectionner(visibles()[0]);
     return;
   }
   if (e.tagName === 'INPUT' || e.tagName === 'SELECT') touche('Enter');
@@ -142,14 +151,15 @@ function fleches(e: KeyboardEvent) {
   appliquer(d);
 }
 
-export function demarrerManette() {
+/** `manette: false` : seulement les flèches du clavier (le menu en jeu reçoit la manette du cœur de Frogtend). */
+export function demarrerManette(options: { manette?: boolean } = {}) {
   if (taodbox.actif) return;
   taodbox.actif = true;
   // Les boutons déjà tenus au démarrage (la combinaison qui vient d'ouvrir le menu…) ne comptent pas.
   avant = appuyes(manettes());
   direction = null;
   window.addEventListener('keydown', fleches);
-  boucle = requestAnimationFrame(lire);
+  if (options.manette !== false) boucle = requestAnimationFrame(lire);
 }
 
 export function arreterManette() {

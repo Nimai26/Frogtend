@@ -8,9 +8,11 @@ export function focalisables(conteneur: HTMLElement): HTMLElement[] {
   return Array.from(conteneur.querySelectorAll<HTMLElement>(FOCALISABLES));
 }
 
-/** Le premier champ de saisie, sinon le bouton de validation, sinon le premier élément focalisable. */
+/** L'élément marqué `data-premier` (« Annuler » d'une action dangereuse : deux appuis sur A ne doivent pas quitter un
+ * jeu par erreur), sinon le premier champ de saisie, sinon le bouton de validation, sinon le premier focalisable. */
 export function premierFocus(conteneur: HTMLElement): HTMLElement | null {
   return (
+    conteneur.querySelector<HTMLElement>('[data-premier]') ??
     conteneur.querySelector<HTMLElement>('input:not([disabled]), textarea:not([disabled]), select:not([disabled])') ??
     conteneur.querySelector<HTMLElement>('[data-valider]') ??
     focalisables(conteneur)[0] ??

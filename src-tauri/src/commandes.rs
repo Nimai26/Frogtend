@@ -705,7 +705,7 @@ pub async fn jeu_jouer(
     let (pid, dossiers, carte_cedee) = noyau.jouer(id, emulateur, version.as_deref()).await?;
     let _ = app.emit("partie", EvenementPartie::Debut { jeu: id, carte_cedee });
     // Le menu en jeu : sa touche est active pendant la partie seulement.
-    app.state::<crate::menu_jeu::MenuJeu>().commencer(crate::menu_jeu::PartieEnCours {
+    let numero = app.state::<crate::menu_jeu::MenuJeu>().commencer(crate::menu_jeu::PartieEnCours {
         jeu: id,
         titre,
         plateforme,
@@ -713,13 +713,18 @@ pub async fn jeu_jouer(
         emulateur: id_emulateur,
     });
     armer_touche_menu(&app, true);
+    suivre_manette_menu(&app, numero);
     let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
         let noyau = app2.state::<Noyau>();
         let fin = noyau.suivre_partie(id, pid, dossiers).await;
-        app2.state::<crate::menu_jeu::MenuJeu>().finir();
-        armer_touche_menu(&app2, false);
-        cacher_menu(&app2);
+        // Seulement si c'est bien la partie en cours qui finit (une partie plus récente garde sa touche et son menu).
+        let menu = app2.state::<crate::menu_jeu::MenuJeu>();
+        if menu.en_cours(numero) {
+            menu.finir(numero);
+            armer_touche_menu(&app2, false);
+            cacher_menu(&app2);
+        }
         // En Taodbox (fenêtre en plein écran), on revient au canapé dès la fin du jeu.
         if let Some(w) = app2.get_webview_window("main") {
             if w.is_fullscreen().unwrap_or(false) {
@@ -779,6 +784,53 @@ fn armer_touche_menu(app: &AppHandle, actif: bool) {
     }
 }
 
+/// La combinaison de la manette qui ouvre le menu en jeu (`pc.json` ▸ `menuJeu.manette`, Select + R1 par défaut).
+fn combinaison_menu(app: &AppHandle) -> u16 {
+    let nom = app
+        .store("pc.json")
+        .ok()
+        .and_then(|s| s.get("reglages"))
+        .and_then(|r| r["menuJeu"]["manette"].as_str().map(String::from))
+        .unwrap_or_default();
+    crate::osd_manette::combinaison(&nom)
+}
+
+/// Pendant la partie `numero`, le cœur lit les manettes (60 fois par seconde) : la combinaison tenue 1 s ouvre le
+/// menu ; menu ouvert, la croix, A et B deviennent des commandes pour sa page (`menu-manette`). S'arrête avec la partie.
+fn suivre_manette_menu(app: &AppHandle, numero: u64) {
+    let app = app.clone();
+    let mut osd = crate::osd_manette::Osd::nouveau(combinaison_menu(&app));
+    let mut lecteur = crate::osd_manette::Lecteur::default();
+    std::thread::spawn(move || loop {
+        let menu = app.state::<crate::menu_jeu::MenuJeu>();
+        if !menu.en_cours(numero) {
+            break;
+        }
+        let ouvert = menu.ouvert.load(std::sync::atomic::Ordering::SeqCst);
+        let t = std::time::Instant::now();
+        for ev in osd.pas(lecteur.lire(t), t, ouvert) {
+            match ev {
+                crate::osd_manette::Evenement::Ouvrir => {
+                    // Une entrée neutre d'abord : Windows nous laisse alors prendre le premier plan.
+                    crate::menu_jeu::autoriser_premier_plan();
+                    let a = app.clone();
+                    let _ = app.run_on_main_thread(move || ouvrir_menu(&a));
+                    // Vérifier le résultat : le menu a-t-il bien la main ? (Sinon : pas de pause, la manette pilote
+                    // encore le jeu.) Noté pour comprendre un échec chez la personne.
+                    std::thread::sleep(std::time::Duration::from_millis(300));
+                    if !crate::menu_jeu::frogtend_au_premier_plan() {
+                        app.state::<Noyau>().journaliser("menu en jeu ouvert à la manette, mais sans le premier plan");
+                    }
+                }
+                crate::osd_manette::Evenement::Commande(c) => {
+                    let _ = app.emit_to(FENETRE_MENU, "menu-manette", c);
+                }
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(16));
+    });
+}
+
 /// Ouvre (ou montre) la fenêtre du menu en jeu par-dessus le jeu, et lui donne le premier plan.
 pub fn ouvrir_menu(app: &AppHandle) {
     if app.state::<crate::menu_jeu::MenuJeu>().partie().is_none() {
@@ -814,10 +866,12 @@ pub fn ouvrir_menu(app: &AppHandle) {
     let _ = w.show();
     let _ = w.unminimize();
     let _ = w.set_focus();
+    app.state::<crate::menu_jeu::MenuJeu>().ouvert.store(true, std::sync::atomic::Ordering::SeqCst);
     let _ = app.emit_to(FENETRE_MENU, "menu-jeu", serde_json::json!({ "taodbox": taodbox }));
 }
 
 fn cacher_menu(app: &AppHandle) {
+    app.state::<crate::menu_jeu::MenuJeu>().ouvert.store(false, std::sync::atomic::Ordering::SeqCst);
     if let Some(w) = app.get_webview_window(FENETRE_MENU) {
         let _ = w.hide();
     }

@@ -132,3 +132,15 @@ describe('Une fenêtre maison garde la main (menu en jeu, Taodbox)', () => {
     expect(fenetreOuverte()).toBe(true);
   });
 });
+
+describe('Une action dangereuse sélectionne « Annuler » d’abord', () => {
+  it('« Quitter le jeu ? » : deux appuis sur A ne quittent pas par erreur', async () => {
+    render(Dialogues);
+    void confirmer('⏹ Quitter le jeu ?', { libelleValider: 'Quitter', danger: true });
+    await tick();
+    expect(document.activeElement?.textContent?.trim()).toBe('Annuler');
+    void confirmer('🗑 Autre chose ?');
+    await tick();
+    expect(document.activeElement?.textContent?.trim()).toBe('Confirmer'); // sans danger : la validation, comme avant
+  });
+});
