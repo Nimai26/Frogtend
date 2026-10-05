@@ -3,6 +3,14 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 05/10 — Suspendre un programme : penser à TOUTES les sorties
+Ce qui s'est passé : la première version du gel des jeux PC (0.47.0) ne dégelait qu'en passant par « Reprendre »,
+« Quitter » ou la fin de partie. L'expert a trouvé les autres sorties : menu fermé par Alt+F4, Frogtend fermé pendant
+le gel, Frogtend tué ; et un jeu lancé par raccourci n'était jamais figé alors que le menu disait « en pause ». ·
+Comment l'appliquer : tout état « suspendu » (jeu figé, manette prise, fichier verrouillé) a un dégel sur CHAQUE
+sortie (fermeture de fenêtre, sortie de l'application, plantage, arrêt brutal → note relue au démarrage) ; et
+l'interface n'annonce un état que s'il est VÉRIFIÉ, pas seulement demandé.
+
 ## 05/10 — Le menu affichait « en pause » sans que rien ne le garantisse
 Ce qui s'est passé : RPCS3 a été branché au menu (0.46.0) sans son adaptateur de pause (étape h encore à faire) ;
 le jeu continuait et recevait la manette pendant que le menu était ouvert. Seb l'a vu. · Comment l'appliquer : avant

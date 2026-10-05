@@ -18,8 +18,12 @@
   /** Cheat Engine sur ce PC (fourni par Firehouse) : le menu propose de le brancher sur le jeu. */
   let cheatEngine = $state<string | null>(null);
 
+  /** « Le jeu est figé » reçu du cœur pendant ce chargement : appliqué même si l'état lu est arrivé après. */
+  let pauseRecue = false;
+
   async function charger() {
     menu = await api.menuJeuEtat().catch(() => null);
+    if (menu && pauseRecue) menu.en_pause = true;
     // À la toute première ouverture, l'événement du cœur peut arriver avant la page : l'état dit aussi le mode.
     if (menu) modeTaodbox(menu.taodbox);
     cheatEngine = (await api.emulateursInstalles().catch(() => [])).find((e) => e.id === 'cheatengine')?.programme ?? null;
@@ -47,12 +51,18 @@
     if (!isTauri()) return arreterManette;
     const arrets = [
       listen<{ taodbox?: boolean } | null>('menu-jeu', (e) => {
+        pauseRecue = false;
         modeTaodbox(!!e.payload?.taodbox);
         relancerManette();
         charger();
       }),
       // La manette lue par le cœur pendant la partie (étape 3 de l'OSD) : les mêmes commandes.
       listen<Commande>('menu-manette', (e) => appliquer(e.payload)),
+      // Un jeu PC figé par le cœur (option du jeu) : il est vraiment en pause.
+      listen<boolean>('menu-jeu-pause', (e) => {
+        pauseRecue = e.payload;
+        if (menu) menu.en_pause = e.payload;
+      }),
     ];
     return () => {
       arreterManette();

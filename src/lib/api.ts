@@ -380,6 +380,9 @@ export interface ReferenceManette {
   livree: boolean;
 }
 
+/** Peut-on figer un jeu pendant le menu ? (`aucun` : oui ; un anti-triche, ou `inconnu` — trop de fichiers pour le savoir — : non.) */
+export type VerificationFiger = { sorte: 'aucun' } | { sorte: 'anti_triche'; nom: string } | { sorte: 'inconnu' };
+
 export const api = {
   profils: () => appeler<Profil[]>('profils_lister'),
   creerProfil: (nom: string, pin: string | null, jeton: string | null) =>
@@ -448,8 +451,9 @@ export const api = {
   menuJeuReprendre: () => appeler<void>('menu_jeu_reprendre'),
   menuJeuAction: (action: string) => appeler<void>('menu_jeu_action', { action }),
   menuJeuQuitter: () => appeler<number>('menu_jeu_quitter'),
-  jouer: (id: number, commandes?: CommandesJeu, emulateur?: string, version?: string) =>
-    appeler<void>('jeu_jouer', { id, commandes: commandes ?? null, emulateur: emulateur ?? null, version: version ?? null }),
+  jouer: (id: number, commandes?: CommandesJeu, emulateur?: string, version?: string, figer?: boolean) =>
+    appeler<void>('jeu_jouer', { id, commandes: commandes ?? null, emulateur: emulateur ?? null, version: version ?? null, figer: figer ?? false }),
+  jeuAntiTriche: (id: number) => appeler<VerificationFiger>('jeu_anti_triche', { id }),
   choisirVersion: (id: number, chemin: string) => appeler<void>('jeu_choisir_version', { id, chemin }),
   referencesManette: (id: string) => appeler<ReferenceManette[]>('references_manette', { id }),
   profilsManetteEmulateur: (id: string, programme: string) =>

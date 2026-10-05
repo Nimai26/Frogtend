@@ -27,6 +27,10 @@
         0.46.3 (ses propres réglages : pause à la perte du premier plan, manette ignorée en arrière-plan). Reste : les
         autres émulateurs à l'essai, et les jeux PC (aucune pause possible sans eux : à étudier). Réglages RPCS3 par
         jeu (`custom_configs`) traités aussi.
+  - [ ] d quater. **Jeux PC : « ❄ Figer le jeu pendant le menu »** — ✅ Seb 05/10 (« oui » à la proposition) : option
+        PAR JEU, désactivée d'office ; refusée pour un jeu où Frogtend trouve un anti-triche (fichiers dans le dossier
+        du jeu) ; risques dits avant d'activer (son qui grésille, jeu en ligne déconnecté). Par défaut, le menu s'ouvre
+        par-dessus le jeu PC sans le figer. ✅ 0.47.0 (à essayer par Seb).
   - [x] d ter. ✅ Seb 05/10 : « d'accord » → accepté tel quel, on ne touche pas aux profils. RetroArch : le bouton Xbox (Guide) ouvre encore SON menu — imposé par ses profils de manette officiels
         (`input_menu_toggle_btn = "10"`), impossible à couper proprement par la configuration (input_driver.c : la
         liaison du profil passe quand celle du fichier est vide). Expert, 05/10 : accepter (pas de conflit avec
@@ -119,6 +123,13 @@ d'abord :
 - Jellyfin → Taodbox : projet côté Firehouse, pas le travail de Frogtend.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.47.0** (05/10) — « ❄ Figer le jeu pendant le menu » (jeux PC, par jeu, désactivé d'office, refusé avec un
+  anti-triche ou un dossier trop grand pour le savoir). Vérifié : gel réel d'un vrai programme (64 et 32 bits),
+  programme déjà suspendu par son créateur qui le reste, relance après un « arrêt brutal » simulé par la note ;
+  recherche d'anti-triche sur les 10 jeux Windows de Seb (aucun, 3 s au plus pour Minecraft) ; relectures des
+  experts lancement (2) et interface ; tests (279 cœur, 121 interface). PAS vérifié : un vrai jeu figé (son, fenêtre
+  « ne répond pas »), à l'essai avec Seb.
 
 - **0.46.3** (05/10) — Le menu met RPCS3 en pause et lui coupe la manette (ses réglages « Pause emulation on RPCS3
   focus loss » et « Background input enabled », aussi dans ses réglages par jeu) ; un seul menu : les menus manette de

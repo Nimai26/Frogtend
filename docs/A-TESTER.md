@@ -48,6 +48,14 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Figer un jeu PC pendant le menu (0.47.0)
+- [ ] Un jeu PC solo (par exemple un Mega Man de E:\Games\Windows) : ⚙ Gérer le jeu ▸ ❄ Figer le jeu pendant le menu
+      de Frogtend ▸ lis la fenêtre, puis « Figer pendant le menu ». Lance le jeu, ouvre le menu (View + RB 1 s) :
+      l'image s'arrête, le menu dit « ⏸ Le jeu est en pause », et la manette ne bouge plus rien dans le jeu.
+      « Reprendre » : le jeu repart là où il était. Dis-moi si le son grésille ou boucle pendant le menu.
+- [ ] Même jeu, menu ouvert, puis ⏹ Quitter le jeu : il se ferme normalement.
+- [ ] Sans l'option (d'office) : le menu s'ouvre par-dessus le jeu, qui continue derrière.
+
 ## Le menu met en pause (0.46.3)
 - [ ] Dans Asura's Wrath, ouvre le menu (View + RB 1 s) : la croix et A ne font plus rien DANS le jeu (seulement
       dans le menu) ; l'image et le son s'arrêtent **au bout d'environ une seconde** (délai de RPCS3 lui-même).

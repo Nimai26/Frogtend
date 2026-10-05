@@ -4,6 +4,8 @@
   réglages par jeu (`gamesettings\`), Dolphin ses profils (`Config\Profiles\GCPad\`).
 - **Dolphin et les manettes PlayStation** : Frogtend règle Dolphin sur XInput ; une manette PS4/PS5 n'y marche que
   par Steam ou DS4Windows. Piste : la source SDL de Dolphin (le nom de l'appareil y dépend du modèle).
+- **« ⚙ Gérer le jeu » à la manette en Taodbox** (expert interface, 05/10) : Commandes, Émulateur, Figer pendant le
+  menu… ne se règlent aujourd'hui qu'au bureau (le réglage s'applique ensuite en Taodbox).
 - ~~Wii dans Dolphin~~ → passé dans le plan (lot 4c, profils Wiimote réglés par Seb).
 
 ## Cheat Engine : ce que propose le forum « Extensions » (analysé le 02/10, demande de Seb)

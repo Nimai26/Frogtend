@@ -99,6 +99,8 @@ export interface ReglagesProfil {
   };
   /** Les commandes choisies jeu par jeu (identifiant du jeu → choix). Absent : automatique. */
   commandes: Record<string, CommandesJeu>;
+  /** Les jeux PC figés pendant le menu en jeu (identifiants ; Seb, 05/10 : option par jeu, désactivée d'office). */
+  figer: string[];
 }
 
 export const DEFAUTS_PC: ReglagesPc = {
@@ -126,6 +128,7 @@ export const DEFAUTS_PROFIL: ReglagesProfil = {
   },
   gratuits: { auto: false, derniere: 0, psplus: false, psplusDernier: 0, gog: false, gogDernier: 0, prime: false, primeDernier: 0 },
   commandes: {},
+  figer: [],
 };
 
 export const TAILLE_JAQUETTE_MIN = 110;

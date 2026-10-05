@@ -35,6 +35,11 @@ describe('completer', () => {
     expect(completer(DEFAUTS_PROFIL, { ludotheque: { plateformesMasquees: ['Arcade'] } }).ludotheque.plateformesMasquees).toEqual(['Arcade']);
     expect(completer(DEFAUTS_PROFIL, { ludotheque: { plateformesMasquees: { a: 1 } } }).ludotheque.plateformesMasquees).toEqual([]);
   });
+  it('les jeux figés pendant le menu : aucun d’office, la liste lue est gardée', () => {
+    expect(DEFAUTS_PROFIL.figer).toEqual([]);
+    expect(completer(DEFAUTS_PROFIL, {}).figer).toEqual([]);
+    expect(completer(DEFAUTS_PROFIL, { figer: ['42'] }).figer).toEqual(['42']);
+  });
   it('garde les emplacements par système (dictionnaire libre)', () => {
     const r = completer(DEFAUTS_PC, { emplacements: { defaut: ['D:\\Jeux'], systemes: { 'MS-DOS': ['E:\\DOS'] } } });
     expect(r.emplacements.systemes['MS-DOS']).toEqual(['E:\\DOS']);

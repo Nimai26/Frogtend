@@ -690,6 +690,7 @@ pub async fn jeu_jouer(
     commandes: Option<Commandes>,
     emulateur: Option<String>,
     version: Option<String>,
+    figer: Option<bool>,
 ) -> Resultat<()> {
     let jeu = noyau.registre().jeu(id)?;
     let (plateforme, titre) = jeu.map(|j| (j.plateforme, j.titre)).unwrap_or_default();
@@ -704,7 +705,23 @@ pub async fn jeu_jouer(
         }
         None => None,
     };
+    let par_emulateur = emulateur.is_some();
+    // Un jeu resté figé d'une partie précédente repart d'abord.
+    crate::figer::degeler();
     let (pid, dossiers, carte_cedee) = noyau.jouer(id, emulateur, version.as_deref()).await?;
+    // Figer pendant le menu : un jeu lancé sans émulateur seulement, et jamais avec un anti-triche (revérifié ici, hors
+    // du fil des commandes : un gros dossier prend quelques secondes).
+    let dossier_jeu = (!par_emulateur).then(|| dossiers.first().map(|d| d.to_string_lossy().to_string())).flatten();
+    let mut figer = figer.unwrap_or(false) && dossier_jeu.is_some();
+    if let (true, Some(d)) = (figer, dossier_jeu.clone()) {
+        let v = tauri::async_runtime::spawn_blocking(move || crate::figer::anti_triche(std::path::Path::new(&d)))
+            .await
+            .unwrap_or(crate::figer::Verification::Inconnu);
+        if v != crate::figer::Verification::Aucun {
+            noyau.journaliser(&format!("Menu en jeu : jeu {id} pas figé ({v:?})"));
+            figer = false;
+        }
+    }
     let _ = app.emit("partie", EvenementPartie::Debut { jeu: id, carte_cedee });
     // Le menu en jeu : sa touche est active pendant la partie seulement.
     let numero = app.state::<crate::menu_jeu::MenuJeu>().commencer(crate::menu_jeu::PartieEnCours {
@@ -714,6 +731,8 @@ pub async fn jeu_jouer(
         pid,
         emulateur: id_emulateur,
         dossier_emulateur,
+        figer,
+        dossier_jeu,
     });
     armer_touche_menu(&app, true);
     suivre_manette_menu(&app, numero);
@@ -851,7 +870,18 @@ pub fn ouvrir_menu(app: &AppHandle) {
             .skip_taskbar(true)
             .build()
         {
-            Ok(w) => w,
+            Ok(w) => {
+                // Fermé par Alt+F4 (ou autrement) : on le cache comme « Reprendre » — le jeu repart, et la manette peut
+                // rouvrir le menu (sinon il resterait « ouvert » et le jeu figé).
+                let a = app.clone();
+                w.on_window_event(move |e| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = e {
+                        api.prevent_close();
+                        cacher_menu(&a);
+                    }
+                });
+                w
+            }
             Err(e) => {
                 app.state::<Noyau>().journaliser(&format!("menu en jeu : {e}"));
                 return;
@@ -871,20 +901,71 @@ pub fn ouvrir_menu(app: &AppHandle) {
     let _ = w.set_focus();
     app.state::<crate::menu_jeu::MenuJeu>().ouvert.store(true, std::sync::atomic::Ordering::SeqCst);
     let _ = app.emit_to(FENETRE_MENU, "menu-jeu", serde_json::json!({ "taodbox": taodbox }));
+    geler_la_partie(app);
 }
 
 fn cacher_menu(app: &AppHandle) {
     app.state::<crate::menu_jeu::MenuJeu>().ouvert.store(false, std::sync::atomic::Ordering::SeqCst);
+    // Le jeu repart AVANT tout le reste (reprendre, action, quitter : un jeu figé ne se ferme pas).
+    crate::figer::degeler();
     if let Some(w) = app.get_webview_window(FENETRE_MENU) {
         let _ = w.hide();
     }
+}
+
+/// Fige le jeu PC de la partie si son option le demande (hors du fil principal : la liste des processus prend un
+/// instant). `figer::geler_si` revérifie sous son verrou que le menu est encore ouvert : refermé avant, rien n'est
+/// figé. Le menu apprend ensuite que le jeu est vraiment figé (`menu-jeu-pause`).
+fn geler_la_partie(app: &AppHandle) {
+    let menu = app.state::<crate::menu_jeu::MenuJeu>();
+    let Some(p) = menu.partie().filter(|p| p.figer) else { return };
+    let Some(dossier) = p.dossier_jeu.clone() else { return };
+    let app = app.clone();
+    std::thread::spawn(move || {
+        // Les programmes du jeu : ceux lancés par Frogtend ET ceux de son dossier lancés autrement (raccourci ouvert par
+        // l'explorateur, jeu relancé par sa boutique) — toujours limités au dossier du jeu.
+        let pids = crate::lancement::processus_du_dossier(std::path::Path::new(&dossier));
+        let menu = app.state::<crate::menu_jeu::MenuJeu>();
+        let n = crate::figer::geler_si(&pids, || menu.ouvert.load(std::sync::atomic::Ordering::SeqCst));
+        if n > 0 && crate::figer::est_fige() {
+            let _ = app.emit_to(FENETRE_MENU, "menu-jeu-pause", true);
+        } else if menu.ouvert.load(std::sync::atomic::Ordering::SeqCst) && !crate::figer::est_fige() {
+            let raison = if pids.is_empty() { "aucun programme trouvé dans son dossier" } else { "ses programmes refusent (droits administrateur ?)" };
+            app.state::<Noyau>().journaliser(&format!("Menu en jeu : le jeu n'a pas pu être figé ({raison})"));
+        }
+    });
+}
+
+/// Frogtend se ferme : le menu est tenu pour fermé, puis le jeu repart (jamais un jeu laissé figé).
+pub fn degeler_la_partie(app: &AppHandle) {
+    app.state::<crate::menu_jeu::MenuJeu>().ouvert.store(false, std::sync::atomic::Ordering::SeqCst);
+    crate::figer::degeler();
+}
+
+/// Peut-on figer ce jeu pendant le menu ? Refusé s'il a un anti-triche, ou si son dossier est trop grand pour le savoir.
+#[tauri::command]
+pub async fn jeu_anti_triche(noyau: State<'_, Noyau>, id: i64) -> Resultat<crate::figer::Verification> {
+    let dossier = noyau
+        .registre()
+        .jeu(id)?
+        .and_then(|j| j.installation)
+        .map(|i| i.dossier)
+        .ok_or_else(|| Erreur::Refus("Installe d'abord le jeu.".into()))?;
+    tauri::async_runtime::spawn_blocking(move || crate::figer::anti_triche(std::path::Path::new(&dossier)))
+        .await
+        .map_err(|_| Erreur::Disque("La recherche d'un anti-triche s'est arrêtée brutalement.".into()))
 }
 
 /// Ce que le menu en jeu montre (`null` hors partie).
 #[tauri::command]
 pub fn menu_jeu_etat(app: AppHandle, menu: State<'_, crate::menu_jeu::MenuJeu>) -> Option<crate::menu_jeu::EtatMenu> {
     let taodbox = app.get_webview_window("main").and_then(|m| m.is_fullscreen().ok()).unwrap_or(false);
-    menu.partie().map(|p| crate::menu_jeu::EtatMenu { taodbox, ..crate::menu_jeu::etat(&p) })
+    menu.partie().map(|p| {
+        let e = crate::menu_jeu::etat(&p);
+        // Un jeu PC n'est « en pause » que s'il est VRAIMENT figé (pas seulement parce que l'option est cochée).
+        let en_pause = e.en_pause || (p.figer && crate::figer::est_fige());
+        crate::menu_jeu::EtatMenu { taodbox, en_pause, ..e }
+    })
 }
 
 /// Reprendre : le menu se cache, le jeu reprend le premier plan (et sort seul de sa pause).

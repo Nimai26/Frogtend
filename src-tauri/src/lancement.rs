@@ -69,6 +69,26 @@ pub fn processus_de_la_partie(racine: u32) -> Vec<u32> {
     vus.into_iter().filter(|p| s.process(*p).is_some()).map(|p| p.as_u32()).collect()
 }
 
+/// Les programmes d'un jeu PC à figer : TOUS les processus dont le programme est dans `dossier`, qu'ils descendent ou
+/// non de ce que Frogtend a lancé (un raccourci ouvert par l'explorateur, un jeu relancé par sa boutique) — jamais
+/// l'explorateur ni la boutique, hors du dossier. Un seul relevé des processus.
+pub fn processus_du_dossier(dossier: &Path) -> Vec<u32> {
+    if dossier.parent().is_none() || dossier.as_os_str().is_empty() {
+        return vec![];
+    }
+    let mut s = System::new();
+    s.refresh_processes(ProcessesToUpdate::All, true);
+    let d = format!("{}\\", dossier.to_string_lossy().trim_end_matches(['\\', '/']).to_lowercase());
+    let mut v: Vec<u32> = s
+        .processes()
+        .iter()
+        .filter(|(_, p)| p.exe().is_some_and(|e| e.to_string_lossy().to_lowercase().replace('/', "\\").starts_with(&d)))
+        .map(|(pid, _)| pid.as_u32())
+        .collect();
+    v.sort_unstable();
+    v
+}
+
 /// Termine ces processus (ceux d'UNE partie, que la personne a demandé de quitter et qui ne se sont pas fermés
 /// poliment). Rend le nombre de processus terminés.
 pub fn terminer(pids: &[u32]) -> usize {
@@ -234,6 +254,12 @@ mod tests {
         assert!(processus_dans(&[pid2], &voisin).is_empty());
         assert!(processus_dans(&[pid2], std::path::Path::new("C:\\")).is_empty());
         assert_eq!(processus_dans(&[pid2], &dossier), [pid2]);
+        // Les programmes d'un jeu à figer : trouvés par leur dossier, même sans lien avec ce que Frogtend a lancé
+        // (un raccourci ouvert par l'explorateur) ; jamais pour la racine d'un disque ni un dossier voisin.
+        assert!(processus_du_dossier(&dossier).contains(&pid2));
+        assert!(!processus_du_dossier(&dossier).contains(&std::process::id()), "jamais Frogtend (hors du dossier)");
+        assert!(processus_du_dossier(std::path::Path::new("C:\\")).is_empty());
+        assert!(processus_du_dossier(&voisin).is_empty());
         let _ = enfant.kill();
         let _ = enfant2.kill();
         let _ = (enfant.wait(), enfant2.wait());

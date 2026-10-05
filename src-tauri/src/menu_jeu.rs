@@ -23,6 +23,10 @@ pub struct PartieEnCours {
     /// Le dossier du programme de l'émulateur (aucun pour un jeu PC) : seul ce qui s'y trouve peut être arrêté de force
     /// après « Quitter ».
     pub dossier_emulateur: Option<String>,
+    /// Jeu PC : figé pendant le menu (option du jeu, jamais avec un anti-triche) ; seuls les programmes de
+    /// `dossier_jeu` le sont.
+    pub figer: bool,
+    pub dossier_jeu: Option<String>,
 }
 
 #[derive(Default)]
@@ -364,7 +368,16 @@ mod tests {
     use super::*;
 
     fn partie(emulateur: Option<&str>) -> PartieEnCours {
-        PartieEnCours { jeu: 1, titre: "Jeu".into(), plateforme: "X".into(), pid: 1, emulateur: emulateur.map(String::from), dossier_emulateur: None }
+        PartieEnCours {
+            jeu: 1,
+            titre: "Jeu".into(),
+            plateforme: "X".into(),
+            pid: 1,
+            emulateur: emulateur.map(String::from),
+            dossier_emulateur: None,
+            figer: false,
+            dossier_jeu: None,
+        }
     }
 
     #[test]
@@ -377,6 +390,7 @@ mod tests {
         assert!(etat(&partie(Some("rpcs3"))).en_pause, "RPCS3 : pause à la perte du premier plan (0.46.3)");
         let e = etat(&partie(None));
         assert!(e.actions.is_empty() && !e.en_pause, "jeu PC : reprendre et quitter seulement");
+        assert!(!etat(&PartieEnCours { figer: true, ..partie(None) }).en_pause, "l'option seule ne dit pas « en pause » : le gel réel le dit");
         for n in ["reset", "disque", "sauver", "charger"] {
             assert_eq!(nom_action(action_de(n).unwrap()), n);
         }

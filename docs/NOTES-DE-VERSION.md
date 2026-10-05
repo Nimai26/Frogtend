@@ -1,5 +1,17 @@
 # Notes de version de Frogtend
 
+## 0.47.0 — Figer un jeu PC pendant le menu (au choix, jeu par jeu)
+
+- **Nouveau dans « ⚙ Gérer le jeu »** (jeux PC) : « ❄ Figer le jeu pendant le menu de Frogtend ». Activé, le jeu
+  s'arrête comme une pause quand tu ouvres le menu, ne reçoit plus la manette, et repart là où il était quand tu
+  reprends. **Désactivé d'office** : le menu s'ouvre par-dessus le jeu sans le figer, comme avant.
+- Avant d'activer, Frogtend vérifie le dossier du jeu : s'il y trouve un anti-triche (Easy Anti-Cheat, BattlEye…), il
+  refuse — le figer pourrait te faire déconnecter, voire signaler ton compte. Les risques (son qui grésille, jeu en
+  ligne déconnecté) sont dits avant d'activer.
+- Sûreté : seuls les programmes du dossier du jeu sont figés ; le jeu repart toujours quand le menu se ferme, même
+  par Alt+F4, et quand Frogtend se ferme. Si Frogtend s'arrêtait brutalement, le jeu repart au démarrage suivant de
+  Frogtend.
+
 ## 0.46.3 — Le menu met le jeu en pause, et c'est le seul menu
 
 - **RPCS3** : quand le menu de Frogtend s'ouvre, le jeu se met en PAUSE et ne reçoit plus les boutons de la manette ;

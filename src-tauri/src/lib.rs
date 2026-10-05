@@ -11,6 +11,7 @@ pub mod emulateurs;
 pub mod emulateurs_profils;
 pub mod commandes;
 pub mod erreurs;
+pub mod figer;
 pub mod firehouse;
 pub mod installation;
 pub mod jeux_pc;
@@ -177,6 +178,11 @@ pub fn run() {
             // de leur jeu (copie vérifiée). Un disque absent : ce sera pour un prochain démarrage.
             // Le dossier des abris de parties (réglage du PC) ; les abris de l'ancien emplacement y sont rangés.
             n.regler_abris(commandes::dossier_abris_regle(app.handle()));
+            // Un jeu laissé figé par un Frogtend arrêté brutalement repart (d'après la note du menu en jeu).
+            let relances = figer::initialiser(dossier.join("menu-fige.txt"));
+            if relances > 0 {
+                n.journaliser(&format!("Menu en jeu : {relances} fils d'un jeu resté figé relancés au démarrage"));
+            }
             app.manage(n);
             // Les rangements (copies vérifiées, disques parfois lents ou absents) se font à part : la fenêtre s'ouvre
             // tout de suite.
@@ -333,6 +339,7 @@ pub fn run() {
             commandes::menu_jeu_reprendre,
             commandes::menu_jeu_action,
             commandes::menu_jeu_quitter,
+            commandes::jeu_anti_triche,
             commandes::references_manette,
             commandes::profils_manette_emulateur,
             commandes::reference_reprendre,
@@ -344,8 +351,14 @@ pub fn run() {
             commandes::restauration_reposer_emulateurs,
             commandes::skin_personnel,
         ])
-        .run(tauri::generate_context!())
-        .expect("impossible de démarrer Frogtend");
+        .build(tauri::generate_context!())
+        .expect("impossible de démarrer Frogtend")
+        .run(|app, evenement| {
+            // Frogtend se ferme pendant que le menu fige un jeu : le jeu repart d'abord (jamais un jeu laissé figé).
+            if let tauri::RunEvent::Exit = evenement {
+                commandes::degeler_la_partie(app);
+            }
+        });
 }
 
 #[cfg(test)]

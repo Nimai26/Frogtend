@@ -3,8 +3,8 @@
 
 import { listen } from '@tauri-apps/api/event';
 import { isTauri } from '@tauri-apps/api/core';
-import { api, duree, estErreurCoeur, taille, type Candidat, type JeuPc } from '$lib/api';
-import { choisir, confirmer, toast } from '$lib/dialogues/fenetres.svelte';
+import { api, duree, estErreurCoeur, taille, type Candidat, type JeuPc, type VerificationFiger } from '$lib/api';
+import { choisir, confirmer, fermerToast, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
 import { preparerPourJouer } from '$lib/emulateurs/pret.svelte';
@@ -188,7 +188,7 @@ export async function jouer(id: number, emulateur?: string, version?: string) {
   const j = tele.jeux[id];
   for (let essai = 0; essai < 2; essai++) {
     try {
-      await api.jouer(id, etat.profil.commandes[String(id)], emulateur, version);
+      await api.jouer(id, etat.profil.commandes[String(id)], emulateur, version, etat.profil.figer.includes(String(id)));
       toast(`▶ « ${j?.titre ?? 'Le jeu'} » se lance…`);
       return;
     } catch (e) {
@@ -395,11 +395,58 @@ export async function choisirCommandes(id: number) {
   toast(`🎮 « ${j.titre} » : ${libelleCommandes(c)}.`);
 }
 
+/** « ❄ Figer le jeu pendant le menu » (jeu PC lancé sans émulateur) : désactivé d'office ; refusé si un anti-triche
+ * est trouvé ; les risques sont dits avant d'activer (Seb, 05/10). */
+let verificationFiger = false;
+
+export async function choisirFiger(id: number) {
+  const j = tele.jeux[id];
+  if (!j || verificationFiger) return;
+  const cle = String(id);
+  const actif = etat.profil.figer.includes(cle);
+  if (actif) {
+    await reglerProfil('figer', etat.profil.figer.filter((x) => x !== cle));
+    toast(`❄ « ${j.titre} » : le menu de Frogtend ne fige plus le jeu.`);
+    return;
+  }
+  // La recherche d'un anti-triche peut prendre quelques secondes (un gros dossier) : on le dit, et un second clic
+  // n'ouvre pas une seconde fenêtre.
+  verificationFiger = true;
+  const attente = toast(`❄ Frogtend vérifie « ${j.titre} »…`, 'neutre');
+  let v: VerificationFiger;
+  try {
+    v = await api.jeuAntiTriche(id);
+  } catch (e) {
+    toast(`❄ ${motifDuRefus(e)}`, 'erreur');
+    return;
+  } finally {
+    fermerToast(attente);
+    verificationFiger = false;
+  }
+  if (v.sorte !== 'aucun') {
+    await informer(
+      `❄ « ${j.titre} » ne peut pas être figé`,
+      v.sorte === 'anti_triche'
+        ? `Ce jeu est protégé par un anti-triche (${v.nom}). Le figer pourrait te faire déconnecter, voire signaler ton compte : Frogtend ne le figera donc pas. Le menu s’ouvre quand même par-dessus le jeu.`
+        : 'Ce jeu a trop de fichiers pour que Frogtend vérifie qu’il n’a pas d’anti-triche : par prudence, il ne le figera pas. Le menu s’ouvre quand même par-dessus le jeu.',
+    );
+    return;
+  }
+  const ok = await confirmer(`❄ Figer « ${j.titre} » pendant le menu de Frogtend ?`, {
+    message:
+      'Quand tu ouvres le menu de Frogtend, le jeu se fige, comme une pause, et ne reçoit plus la manette ; il repart là où il était quand tu reprends. À utiliser pour un jeu solo qui ne se met pas en pause tout seul. Selon le jeu, le son peut grésiller pendant le menu ; un jeu en ligne perdrait sa connexion. Si Windows dit que le jeu « ne répond pas », attends : il repart quand tu reprends. (Frogtend n’a pas trouvé d’anti-triche dans ce jeu.)',
+    libelleValider: 'Figer pendant le menu',
+  });
+  if (!ok) return;
+  if (!etat.profil.figer.includes(cle)) await reglerProfil('figer', [...etat.profil.figer, cle]);
+  toast(`❄ « ${j.titre} » sera figé pendant le menu de Frogtend.`, 'ok');
+}
+
 /** Le menu « ⚙ Gérer le jeu » : toutes les actions possibles sur un jeu du PC, au même endroit, bien visibles. */
 export async function gererJeu(id: number) {
   const j = tele.jeux[id];
   if (!j) return;
-  type Action = 'installer' | 'lanceur' | 'version' | 'emulateur' | 'commandes' | 'abri' | 'retirer';
+  type Action = 'installer' | 'lanceur' | 'version' | 'emulateur' | 'commandes' | 'figer' | 'abri' | 'retirer';
   const options: { valeur: Action; libelle: string; detail?: string }[] = [];
   if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
   if (j.installation && !j.installation.fichier_du_jeu)
@@ -419,6 +466,13 @@ export async function gererJeu(id: number) {
     });
   }
   options.push({ valeur: 'commandes', libelle: '🎮 Commandes', detail: libelleCommandes(etat.profil.commandes[String(id)]) });
+  // Un jeu lancé sans émulateur (jeu PC) : le figer pendant le menu, au choix.
+  if (j.installation && !j.installation.fichier_du_jeu && !pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, j.plateforme, id))
+    options.push({
+      valeur: 'figer',
+      libelle: '❄ Figer le jeu pendant le menu de Frogtend',
+      detail: etat.profil.figer.includes(String(id)) ? 'oui (le jeu s’arrête pendant le menu)' : 'non (le jeu continue derrière le menu)',
+    });
   if (j.installation)
     options.push({ valeur: 'abri', libelle: '💾 Mettre mes parties à l’abri', detail: 'une copie de ce qui a changé depuis l’installation' });
   if (j.etat === 'telecharge')
@@ -433,6 +487,7 @@ export async function gererJeu(id: number) {
   else if (c === 'version') await choisirVersionParDefaut(id);
   else if (c === 'emulateur') await choisirEmulateurDuJeu(id);
   else if (c === 'commandes') await choisirCommandes(id);
+  else if (c === 'figer') await choisirFiger(id);
   else if (c === 'abri') await mettreALAbri(id);
   else if (c === 'retirer') await retirer(j);
 }
