@@ -76,7 +76,7 @@ d'abord :
       est lue EN ARRIÈRE-PLAN par XInput ET par SDL — tous les boutons, gâchettes, croix, Select, R1, L3/R3. Le
       blocage de l'OSD à la manette est levé. Reste à mesurer : le premier plan pris par le menu ouvert depuis la
       manette (vérifié par le code avec GetForegroundWindow), une manette PlayStation.
-- [ ] **RPCS3 + manette (0.44.3)** : Seb 04/10, deux fois « la manette ne fonctionne pas » : (1) réglage jamais appelé
+- [x] ✅ **Seb 05/10 : « ça a fonctionné » (0.44.4)** — **RPCS3 + manette** : Seb 04/10, deux fois « la manette ne fonctionne pas » : (1) réglage jamais appelé
       au lancement (0.44.2) ; (2) manette sans fil en veille au clic → Frogtend donnait le clavier. Corrigé : manette
       branchée, sinon la dernière vue, sinon Xbox ; RPCS3 se reconnecte seul. (3) 0.44.3 : « même le clavier ne
       fonctionnait pas » → « #1 » lu comme un commentaire YAML (journal RPCS3 : device='XInput Pad', NullPad) ;

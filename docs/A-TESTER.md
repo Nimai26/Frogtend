@@ -49,7 +49,7 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
 ## La manette dans RPCS3 (0.44.4 — la 0.44.3 cassait tout : nom mal lu par RPCS3)
-- [ ] Manette Xbox **éteinte**, clique ▶ Jouer sur Asura's Wrath, PUIS allume la manette : en 2 secondes elle marche
+- [x] ✅ (Seb 05/10, 0.44.4) Manette Xbox **éteinte**, clique ▶ Jouer sur Asura's Wrath, PUIS allume la manette : en 2 secondes elle marche
       dans le jeu (✕ = A, ◯ = B, Start = Start), sans relancer.
 - [ ] Une manette PS4 ou PS5 (si tu en as une, branchée en USB ou Bluetooth) : elle marche aussi.
 - [ ] ⚙ Gérer le jeu ▸ 🎮 Commandes ▸ Clavier : à la partie suivante, le clavier marche (✕ = X, Start = Entrée).
