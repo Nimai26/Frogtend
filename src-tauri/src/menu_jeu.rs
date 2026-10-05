@@ -20,6 +20,9 @@ pub struct PartieEnCours {
     pub pid: u32,
     /// L'émulateur, s'il est connu de Frogtend (`retroarch`, `duckstation`…).
     pub emulateur: Option<String>,
+    /// Le dossier du programme de l'émulateur (aucun pour un jeu PC) : seul ce qui s'y trouve peut être arrêté de force
+    /// après « Quitter ».
+    pub dossier_emulateur: Option<String>,
 }
 
 #[derive(Default)]
@@ -132,6 +135,12 @@ mod fenetres {
         unsafe {
             SendInput(&[i], std::mem::size_of::<INPUT>() as i32);
         }
+    }
+
+    /// Ce processus a-t-il abandonné : plus AUCUNE fenêtre visible ? (Une fenêtre qui ne répond plus peut être un
+    /// émulateur en pleine écriture d'une sauvegarde : on n'y touche pas — expert, 05/10.)
+    pub fn abandonne(pid: u32) -> bool {
+        du_processus(&[pid]).is_empty()
     }
 
     /// La fenêtre au premier plan appartient-elle à Frogtend ?
@@ -263,6 +272,19 @@ pub fn autoriser_premier_plan() {
     fenetres::entree_neutre();
 }
 
+/// Ce processus de l'émulateur a-t-il abandonné (plus aucune fenêtre visible) ? (`false` hors Windows.)
+pub fn abandonne(pid: u32) -> bool {
+    #[cfg(windows)]
+    {
+        fenetres::abandonne(pid)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = pid;
+        false
+    }
+}
+
 /// La fenêtre au premier plan est-elle à Frogtend ? (`true` hors Windows.)
 pub fn frogtend_au_premier_plan() -> bool {
     #[cfg(windows)]
@@ -342,7 +364,7 @@ mod tests {
     use super::*;
 
     fn partie(emulateur: Option<&str>) -> PartieEnCours {
-        PartieEnCours { jeu: 1, titre: "Jeu".into(), plateforme: "X".into(), pid: 1, emulateur: emulateur.map(String::from) }
+        PartieEnCours { jeu: 1, titre: "Jeu".into(), plateforme: "X".into(), pid: 1, emulateur: emulateur.map(String::from), dossier_emulateur: None }
     }
 
     #[test]

@@ -108,6 +108,12 @@ d'abord :
 
 ## ✅ Livré (version — ce qui a été vérifié)
 
+- **0.46.1** (05/10) — « Quitter » : un émulateur resté en vie sans fenêtre (RPCS3) est arrêté après 10 s, seulement
+  dans le dossier de l'émulateur de la partie, jamais un jeu PC ni un émulateur qui a encore sa fenêtre. Vérifié :
+  RPCS3 bloqué chez Seb (PID 64208, « ne répond pas », titre « Welcome to RPCS3 ») arrêté à la main par l'agent
+  (Seb avait choisi Quitter) ; 2 tests avec de vrais programmes ; deux relectures de l'expert lancement (la 1re a
+  bloqué une version dangereuse). PAS vérifié : l'essai en jeu (Seb).
+
 - **0.46.0** (05/10) — OSD étape 3 : le cœur lit la manette (XInput) pendant la partie ; Select + R1 tenus 1 s ouvrent
   le menu (réglable) ; croix/stick, A, B pilotent le menu (A/B au relâchement) ; « Annuler » d'abord pour une action
   dangereuse ; sélection rendue après un retour et visible sans premier plan. Vérifié : tests (267 cœur, 120

@@ -694,8 +694,10 @@ pub async fn jeu_jouer(
     let jeu = noyau.registre().jeu(id)?;
     let (plateforme, titre) = jeu.map(|j| (j.plateforme, j.titre)).unwrap_or_default();
     let mut id_emulateur = None;
+    let mut dossier_emulateur = None;
     let emulateur = match emulateur_regle(&app, &plateforme, id, emulateur.as_deref()) {
         Some((programme, ligne)) => {
+            dossier_emulateur = std::path::Path::new(&programme).parent().map(|d| d.to_string_lossy().to_string());
             let nom = std::path::Path::new(&programme).file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
             id_emulateur = crate::emulateurs::CATALOGUE.iter().find(|f| nom.starts_with(f.programme)).map(|f| f.id.to_string());
             Some(preparer_emulateur(&app, &noyau, &plateforme, &programme, &ligne, &commandes.unwrap_or_default()).await?)
@@ -711,6 +713,7 @@ pub async fn jeu_jouer(
         plateforme,
         pid,
         emulateur: id_emulateur,
+        dossier_emulateur,
     });
     armer_touche_menu(&app, true);
     suivre_manette_menu(&app, numero);
@@ -918,11 +921,39 @@ pub async fn menu_jeu_quitter(app: AppHandle) -> Resultat<usize> {
         .partie()
         .ok_or_else(|| Erreur::Introuvable("Aucune partie en cours.".into()))?;
     cacher_menu(&app);
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::menu_jeu::quitter(p.emulateur.as_deref(), &crate::lancement::processus_de_la_partie(p.pid))
+    let racine = p.pid;
+    let dossier_emulateur = p.dossier_emulateur.clone();
+    let n = tauri::async_runtime::spawn_blocking(move || {
+        crate::menu_jeu::quitter(p.emulateur.as_deref(), &crate::lancement::processus_de_la_partie(racine))
     })
     .await
-    .map_err(|_| Erreur::Disque("La fermeture s'est arrêtée brutalement.".into()))?
+    .map_err(|_| Erreur::Disque("La fermeture s'est arrêtée brutalement.".into()))??;
+    // La personne a demandé de quitter et la demande polie est partie : si l'ÉMULATEUR tourne encore 10 s après, sans
+    // fenêtre ou sans répondre (RPCS3 garde son programme en vie, caché), Frogtend termine ses processus — seulement
+    // ceux du dossier de l'émulateur de cette partie. Un jeu PC n'est jamais arrêté de force.
+    if let (true, Some(dossier)) = (n > 0, dossier_emulateur) {
+        // Le délai laissé à l'émulateur pour se fermer seul (`pc.json` ▸ `menuJeu.delaiQuitter`, 10 s par défaut).
+        let delai = app
+            .store("pc.json")
+            .ok()
+            .and_then(|s| s.get("reglages"))
+            .and_then(|r| r["menuJeu"]["delaiQuitter"].as_u64())
+            .unwrap_or(10)
+            .clamp(3, 120);
+        let app2 = app.clone();
+        std::thread::spawn(move || {
+            let termines = crate::lancement::finir_la_partie(
+                racine,
+                std::path::Path::new(&dossier),
+                std::time::Duration::from_secs(delai),
+                crate::menu_jeu::abandonne,
+            );
+            if termines > 0 {
+                app2.state::<Noyau>().journaliser(&format!("quitter : l'émulateur restait en vie sans fenêtre, {termines} processus terminé(s)"));
+            }
+        });
+    }
+    Ok(n)
 }
 
 /// La version lancée par défaut d'un jeu importé.

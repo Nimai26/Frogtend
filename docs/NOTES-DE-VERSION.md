@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.46.1 — « Quitter le jeu » ferme vraiment l'émulateur
+
+- **Le problème** : après « ⏹ Quitter le jeu », RPCS3 fermait l'écran du jeu mais son programme restait en vie, caché
+  (« ne répond pas ») ; Frogtend restait sur « partie en cours » et RPCS3 refusait de se relancer.
+- **Maintenant** : si, 10 secondes après « Quitter », l’émulateur tourne encore SANS aucune fenêtre visible,
+  Frogtend l'arrête. Garde-fous : seulement les programmes du dossier de l'émulateur de la partie (jamais un jeu PC, ni
+  Steam, ni un autre programme), et jamais un émulateur qui a encore sa fenêtre (il enregistre peut-être ta partie).
+
 ## 0.46.0 — le menu en jeu s'ouvre et se pilote à la manette (OSD, étape 3)
 
 - **Select + R1 tenus 1 seconde** (View + RB sur une manette Xbox) ouvrent le menu en jeu, quel que soit l'émulateur.

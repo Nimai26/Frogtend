@@ -3,6 +3,15 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 05/10 — « Quitter » ne vérifiait pas que le jeu était vraiment fermé
+Ce qui s'est passé : « Quitter le jeu » envoyait la demande polie (comme la croix) et s'arrêtait là ; RPCS3 a fermé son
+écran mais gardé son programme en vie, caché : Frogtend bloqué sur « partie en cours », RPCS3 impossible à relancer. Le
+premier correctif (tout arrêter après 10 s) a été BLOQUÉ par l'expert : il pouvait tuer un programme étranger (numéro
+de processus réutilisé, Steam relancé par un jeu) et couper une sauvegarde. · Comment l'appliquer : après toute
+demande d'arrêt, VÉRIFIER que le processus est parti ; un arrêt forcé ne vise que ce qui est sûrement à nous (dossier de
+l'émulateur) et seulement s'il a abandonné (plus de fenêtre, ou bloqué) ; faire relire tout ce qui termine des
+processus.
+
 ## 05/10 — Livrer en comptant sur ce qu'un expert a signalé « non vérifié »
 Ce qui s'est passé : les deux experts avaient prévenu (04/10) que la Gamepad API d'une fenêtre qui apparaît par-dessus
 un jeu n'est pas fiable et recommandé que le cœur soit la seule source de la manette ; la 0.45.0 a quand même été

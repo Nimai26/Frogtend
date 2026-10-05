@@ -48,6 +48,10 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## « Quitter le jeu » (0.46.1)
+- [ ] Dans Asura's Wrath : menu ▸ **⏹ Quitter le jeu** ▸ Quitter. **Attendu :** au plus ~10 secondes après, Frogtend
+      n'affiche plus « partie en cours » et ▶ Jouer relance le jeu sans message « une instance est en cours ».
+
 ## Le menu en jeu à la manette (0.46.0)
 - [ ] Dans une partie (Asura's Wrath, par exemple), tiens **Select + R1** (View + RB) **1 seconde** : le menu s'ouvre
       par-dessus le jeu, et le jeu se met en pause.

@@ -69,6 +69,56 @@ pub fn processus_de_la_partie(racine: u32) -> Vec<u32> {
     vus.into_iter().filter(|p| s.process(*p).is_some()).map(|p| p.as_u32()).collect()
 }
 
+/// Termine ces processus (ceux d'UNE partie, que la personne a demandé de quitter et qui ne se sont pas fermés
+/// poliment). Rend le nombre de processus terminés.
+pub fn terminer(pids: &[u32]) -> usize {
+    let mut s = System::new();
+    s.refresh_processes(ProcessesToUpdate::All, true);
+    pids.iter().filter_map(|p| s.process(Pid::from_u32(*p))).filter(|p| p.kill()).count()
+}
+
+/// Les processus de cette liste dont le programme est dans `dossier` (sans tenir compte des majuscules).
+pub fn processus_dans(pids: &[u32], dossier: &Path) -> Vec<u32> {
+    let mut s = System::new();
+    s.refresh_processes(ProcessesToUpdate::All, true);
+    // Un dossier sans parent (la racine d'un disque) engloberait tout le disque : refusé. Le séparateur final évite que
+    // « D:\Emu\RPCS3 » englobe « D:\Emu\RPCS3-ancien ».
+    if dossier.parent().is_none() || dossier.as_os_str().is_empty() {
+        return vec![];
+    }
+    let d = format!("{}\\", dossier.to_string_lossy().trim_end_matches(['\\', '/']).to_lowercase());
+    pids.iter()
+        .copied()
+        .filter(|p| {
+            s.process(Pid::from_u32(*p))
+                .and_then(|x| x.exe())
+                .is_some_and(|e| e.to_string_lossy().to_lowercase().replace('/', "\\").starts_with(&d))
+        })
+        .collect()
+}
+
+/// Après « Quitter » (demande polie déjà envoyée) : attend jusqu'à `delai` que l'ÉMULATEUR se ferme de lui-même ;
+/// sinon termine ceux de ses processus qui n'ont plus de fenêtre ou ne répondent plus (`abandonne`). Rend le nombre de
+/// processus terminés (0 : fermé seul, ou encore occupé avec sa fenêtre — il enregistre peut-être : on n'y touche pas).
+/// Vu le 05/10 chez Seb : RPCS3 ferme la fenêtre du jeu mais son programme reste en vie, caché, « ne répond pas ».
+/// Garde-fous (expert lancement, 05/10) : seuls les programmes situés dans le dossier de l'émulateur de la partie
+/// (jamais un jeu PC, une boutique relancée par le jeu, ni un programme qui aurait repris un numéro de processus).
+pub fn finir_la_partie(racine: u32, dossier_emulateur: &Path, delai: std::time::Duration, abandonne: impl Fn(u32) -> bool) -> usize {
+    let fin = std::time::Instant::now() + delai;
+    loop {
+        let restants = processus_dans(&processus_de_la_partie(racine), dossier_emulateur);
+        if restants.is_empty() {
+            return 0;
+        }
+        if std::time::Instant::now() >= fin {
+            // Seulement si TOUS ont abandonné : un programme d'aide sans fenêtre n'est pas arrêté pendant que
+            // l'émulateur principal, qui a encore sa fenêtre, enregistre peut-être (expert, 05/10).
+            return if restants.iter().all(|p| abandonne(*p)) { terminer(&restants) } else { 0 };
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+}
+
 /// Suit les processus d'une partie.
 pub struct Suivi {
     systeme: System,
@@ -128,6 +178,65 @@ mod tests {
             std::thread::sleep(Duration::from_millis(200));
         }
         debut.elapsed()
+    }
+
+    /// Un programme qui resterait 30 s (comme RPCS3 après la fermeture de sa fenêtre de jeu) : ping, dans System32.
+    fn programme_qui_reste() -> (std::process::Child, u32, PathBuf) {
+        let enfant = std::process::Command::new("ping").args(["-n", "30", "127.0.0.1"]).stdout(std::process::Stdio::null()).spawn().unwrap();
+        let pid = enfant.id();
+        let mut s = System::new();
+        s.refresh_processes(ProcessesToUpdate::All, true);
+        let dossier = s.process(Pid::from_u32(pid)).and_then(|p| p.exe()).and_then(|e| e.parent()).map(PathBuf::from).unwrap();
+        (enfant, pid, dossier)
+    }
+
+    #[test]
+    fn quitter_termine_un_emulateur_reste_en_vie_sans_fenetre() {
+        let (mut enfant, pid, dossier) = programme_qui_reste();
+        let debut = Instant::now();
+        assert_eq!(finir_la_partie(pid, &dossier, Duration::from_millis(1500), |_| true), 1, "terminé après le délai");
+        assert!(debut.elapsed() >= Duration::from_millis(1500), "on lui laisse d'abord le temps de se fermer seul");
+        let _ = enfant.wait();
+        assert!(processus_de_la_partie(pid).is_empty(), "plus rien de la partie");
+        // Déjà fermé : rien à terminer, aucune attente.
+        let debut = Instant::now();
+        assert_eq!(finir_la_partie(pid, &dossier, Duration::from_secs(10), |_| true), 0);
+        assert!(debut.elapsed() < Duration::from_secs(2));
+    }
+
+    #[test]
+    fn quitter_ne_termine_jamais_ce_qui_est_hors_du_dossier_ni_un_emulateur_qui_a_encore_sa_fenetre() {
+        // Hors du dossier de l'émulateur (un jeu PC, une boutique, un numéro de processus repris) : jamais.
+        let (mut enfant, pid, _) = programme_qui_reste();
+        let ailleurs = tempfile::tempdir().unwrap();
+        assert_eq!(finir_la_partie(pid, ailleurs.path(), Duration::from_millis(300), |_| true), 0);
+        assert!(processus_de_la_partie(pid).contains(&pid), "toujours en vie");
+        // Dans le dossier, mais il a encore sa fenêtre et répond (il enregistre peut-être) : on n'y touche pas.
+        let (mut enfant2, pid2, dossier) = programme_qui_reste();
+        assert_eq!(finir_la_partie(pid2, &dossier, Duration::from_millis(300), |_| false), 0);
+        assert!(processus_de_la_partie(pid2).contains(&pid2));
+        // Deux programmes de l'émulateur, un seul abandonné (un programme d'aide sans fenêtre, l'émulateur qui
+        // enregistre encore) : rien n'est arrêté.
+        let mut groupe = std::process::Command::new("cmd")
+            .args(["/c", "start", "/b", "ping", "-n", "30", "127.0.0.1", "&", "ping", "-n", "30", "127.0.0.1"])
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let racine = groupe.id();
+        std::thread::sleep(Duration::from_millis(500));
+        assert!(processus_dans(&processus_de_la_partie(racine), &dossier).len() >= 2);
+        assert_eq!(finir_la_partie(racine, &dossier, Duration::from_millis(300), |p| p != racine), 0, "pas tous abandonnés");
+        assert!(!processus_de_la_partie(racine).is_empty());
+        terminer(&processus_de_la_partie(racine));
+        let _ = groupe.wait();
+        // Un dossier voisin au nom qui commence pareil (« System32-ancien ») ou la racine d'un disque : jamais.
+        let voisin = PathBuf::from(format!("{}-ancien", dossier.display()));
+        assert!(processus_dans(&[pid2], &voisin).is_empty());
+        assert!(processus_dans(&[pid2], std::path::Path::new("C:\\")).is_empty());
+        assert_eq!(processus_dans(&[pid2], &dossier), [pid2]);
+        let _ = enfant.kill();
+        let _ = enfant2.kill();
+        let _ = (enfant.wait(), enfant2.wait());
     }
 
     #[test]

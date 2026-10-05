@@ -207,6 +207,18 @@
         <option value="Select + Start">Select + Start, tenus 1 s</option>
       </select>
     </dd>
+    <dt>Après « Quitter le jeu »</dt>
+    <dd>
+      <select
+        value={String(etat.pc.menuJeu.delaiQuitter ?? 10)}
+        title="Si l'émulateur reste en vie sans fenêtre après « Quitter le jeu », Frogtend l'arrête au bout de ce délai. Un émulateur qui a encore sa fenêtre n'est jamais arrêté (il enregistre peut-être ta partie)."
+        onchange={(e) => reglerPc('menuJeu.delaiQuitter', Number(e.currentTarget.value))}
+      >
+        <option value="5">l'arrêter après 5 secondes s'il reste caché</option>
+        <option value="10">l'arrêter après 10 secondes s'il reste caché</option>
+        <option value="30">l'arrêter après 30 secondes s'il reste caché</option>
+      </select>
+    </dd>
     <dt>Dossier des émulateurs</dt>
     <dd>
       <span class="chemin">{etat.pc.dossierEmulateurs || 'pas encore choisi'}</span>
