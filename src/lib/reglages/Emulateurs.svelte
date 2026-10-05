@@ -53,9 +53,9 @@
 
   /** Ce que la manette par défaut règle, par émulateur (les autres reconnaissent déjà les manettes seuls). */
   const MANETTE: Record<string, string> = {
-    retroarch: 'Profils de manette officiels (téléchargés depuis libretro s’ils manquent) ; menu à la manette : L3 + R3.',
-    duckstation: 'Manette du joueur 1 (Xbox, PlayStation, Switch Pro, 8BitDo…) ; menu de pause : Select + Start.',
-    pcsx2: 'Manette du joueur 1 (Xbox, PlayStation, Switch Pro, 8BitDo…) ; menu de pause : Select + Start.',
+    retroarch: 'Profils de manette officiels (téléchargés depuis libretro s’ils manquent) ; un seul menu, celui de Frogtend.',
+    duckstation: 'Manette du joueur 1 (Xbox, PlayStation, Switch Pro, 8BitDo…) ; un seul menu, celui de Frogtend.',
+    pcsx2: 'Manette du joueur 1 (Xbox, PlayStation, Switch Pro, 8BitDo…) ; un seul menu, celui de Frogtend.',
     dolphin: 'Manette GameCube du joueur 1 sur une manette Xbox (XInput), pour ton profil.',
   };
 

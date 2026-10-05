@@ -10,7 +10,7 @@
 //! - Dolphin : `Config\GCPadNew.ini [GCPad1]`, `Device = XInput/0/Gamepad`, entrées `` `Button A` ``, `` `Left Y+` ``…
 //!   (manettes XInput seulement : une manette PlayStation y passe par Steam ou DS4Windows).
 //! - RetroArch : profils officiels `autoconfig\` (xinput, dinput, sdl2), détection automatique active par défaut ;
-//!   sans combinaison de menu à la manette sous Windows : Frogtend met L3 + R3 (`input_menu_toggle_gamepad_combo = 2`).
+//!   AUCUNE combinaison de menu à la manette : le seul menu est celui de Frogtend (voir `retirer_menu_manette`).
 //! - PPSSPP (XInput et DInput par défaut sous Windows) et DOSBox Staging (`joysticktype = auto`) : rien à régler.
 //! - RPCS3 (relevé dans son code, 03/10/2026 : Emu/Io/pad_config.h, Input/pad_thread.cpp, Input/xinput_pad_handler.cpp,
 //!   Emu/system_utils.cpp) : `config\input_configs\global\Default.yml`, clé `Player 1 Input` avec `Handler` et
@@ -83,9 +83,6 @@ const PAD_GAMECUBE: &[(&str, &str)] = &[
     ("Rumble/Motor", "`Motor L` | `Motor R`"),
 ];
 
-/// La combinaison de RetroArch pour ouvrir son menu à la manette : L3 + R3.
-pub const RETROARCH_COMBO_MENU: &str = "2";
-
 /// Les valeurs d'une clé (répétée ou non) dans une section d'un INI.
 pub fn lire_ini(texte: &str, section: &str, cle: &str) -> Vec<String> {
     let entete = format!("[{section}]").to_lowercase();
@@ -155,10 +152,36 @@ fn regler_pad_sdl(emulateur: &Path, ini: &Path, type_defaut: &str, forcer: bool)
     }
     let refs: Vec<(&str, Vec<String>)> = valeurs.iter().map(|(c, v)| (c.as_str(), v.clone())).collect();
     modifier_ini(emulateur, ini, "Pad1", &refs)?;
-    // Le menu de pause à la manette : Select + Start (les touches du clavier déjà réglées restent).
-    let mut menu: Vec<String> = lire_ini(&texte, "Hotkeys", "OpenPauseMenu").into_iter().filter(|l| !est_manette(l)).collect();
-    menu.push("SDL-0/Back & SDL-0/Start".into());
-    modifier_ini(emulateur, ini, "Hotkeys", &[("OpenPauseMenu", menu)])?;
+    Ok(true)
+}
+
+/// Les raccourcis qui ouvrent le menu propre de DuckStation / PCSX2 (DuckStation core/hotkeys.cpp : OpenPauseMenu,
+/// TogglePauseMenu ; PCSX2 : OpenPauseMenu).
+const MENUS_EMULATEUR: &[&str] = &["OpenPauseMenu", "TogglePauseMenu"];
+
+/// Un seul menu en jeu, celui de Frogtend, ouvert partout par la même combinaison (Seb, 05/10 : « le but est
+/// d'uniformiser : il faut pouvoir avoir le menu Frogtend PARTOUT avec View + RB »). Avant chaque partie, le menu de
+/// DuckStation / PCSX2 perd TOUTES ses liaisons à la manette (Frogtend y mettait Select + Start jusqu'en 0.46.2 ; une
+/// liaison faite à la main part aussi) ; celles du clavier restent. Copié à l'abri avant d'être modifié ; un fichier
+/// illisible n'est jamais touché.
+pub fn retirer_menu_manette(emulateur: &Path, ini: &Path) -> Resultat<bool> {
+    let texte = match std::fs::read_to_string(ini) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e.into()),
+    };
+    let mut valeurs: Vec<(&str, Vec<String>)> = Vec::new();
+    for cle in MENUS_EMULATEUR {
+        let avant = lire_ini(&texte, "Hotkeys", cle);
+        let garde: Vec<String> = avant.iter().filter(|l| !est_manette(l)).cloned().collect();
+        if garde.len() != avant.len() {
+            valeurs.push((cle, garde));
+        }
+    }
+    if valeurs.is_empty() {
+        return Ok(false);
+    }
+    modifier_ini(emulateur, ini, "Hotkeys", &valeurs)?;
     Ok(true)
 }
 
@@ -177,19 +200,9 @@ fn regler_dolphin(emulateur: &Path, utilisateur: &Path, forcer: bool) -> Resulta
     Ok(true)
 }
 
-/// Les lignes à ajouter au fichier de réglages de RetroArch (`--appendconfig`) : la combinaison du menu, sauf si
-/// la personne en a déjà choisi une dans retroarch.cfg.
-pub fn lignes_retroarch(emulateur: &Path) -> String {
-    let cfg = std::fs::read_to_string(emulateur.join("retroarch.cfg")).unwrap_or_default();
-    let choisie = cfg.lines().find_map(|l| {
-        let (c, v) = l.split_once('=')?;
-        (c.trim() == "input_menu_toggle_gamepad_combo").then(|| v.trim().trim_matches('"').to_string())
-    });
-    let mut s = String::from("input_autodetect_enable = \"true\"\n");
-    if choisie.as_deref().unwrap_or("0") == "0" {
-        s.push_str(&format!("input_menu_toggle_gamepad_combo = \"{RETROARCH_COMBO_MENU}\"\n"));
-    }
-    s
+/// Les lignes à ajouter au fichier de réglages de RetroArch (`--appendconfig`) pour la manette.
+pub fn lignes_retroarch() -> String {
+    String::from("input_autodetect_enable = \"true\"\n")
 }
 
 /// RetroArch a-t-il ses profils de manette officiels ? (`autoconfig\xinput`, ou `joypad_autoconfig_dir` réglé.)
@@ -478,6 +491,28 @@ mod tests {
     }
 
     #[test]
+    fn le_menu_des_emulateurs_n_a_plus_aucune_liaison_a_la_manette() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("settings.ini");
+        // Ce que Frogtend écrivait jusqu'en 0.46.2, plus une liaison faite à la main : les deux partent, le clavier reste.
+        std::fs::write(&ini, "[Hotkeys]\r\nOpenPauseMenu = Keyboard/Escape\r\nOpenPauseMenu = SDL-0/Back & SDL-0/Start\r\nOpenPauseMenu = SDL-1/Guide\r\nTogglePauseMenu = SDL-0/Guide\r\nFastForward = Keyboard/Tab\r\n").unwrap();
+        assert!(retirer_menu_manette(d.path(), &ini).unwrap());
+        let t = std::fs::read_to_string(&ini).unwrap();
+        assert_eq!(lire_ini(&t, "Hotkeys", "OpenPauseMenu"), vec!["Keyboard/Escape"]);
+        assert!(lire_ini(&t, "Hotkeys", "TogglePauseMenu").is_empty());
+        assert_eq!(lire_ini(&t, "Hotkeys", "FastForward"), vec!["Keyboard/Tab"]);
+        assert!(!retirer_menu_manette(d.path(), &ini).unwrap(), "la 2e fois : rien à faire");
+        assert!(d.path().join(".frogtend-sauvegardes").is_dir(), "l'original est à l'abri");
+        // Absent : rien n'est créé ; illisible : jamais touché.
+        assert!(!retirer_menu_manette(d.path(), &d.path().join("absent.ini")).unwrap());
+        assert!(!d.path().join("absent.ini").exists());
+        let illisible = [b'[', b'H', b']', b'\n', 0xFF, 0xFE, b'\n'];
+        std::fs::write(&ini, illisible).unwrap();
+        assert!(retirer_menu_manette(d.path(), &ini).is_err());
+        assert_eq!(std::fs::read(&ini).unwrap(), illisible);
+    }
+
+    #[test]
     fn duckstation_recoit_la_manette_sdl_en_gardant_le_clavier() {
         let d = tempfile::tempdir().unwrap();
         let ini = d.path().join("settings.ini");
@@ -493,7 +528,7 @@ mod tests {
         assert_eq!(lire_ini(&t, "Pad1", "Cross"), vec!["Keyboard/X", "SDL-0/A"]);
         assert_eq!(lire_ini(&t, "Pad1", "L2"), vec!["SDL-0/+LeftTrigger"]);
         assert_eq!(lire_ini(&t, "Pad1", "LUp"), vec!["SDL-0/-LeftY"]);
-        assert_eq!(lire_ini(&t, "Hotkeys", "OpenPauseMenu"), vec!["Keyboard/Escape", "SDL-0/Back & SDL-0/Start"]);
+        assert_eq!(lire_ini(&t, "Hotkeys", "OpenPauseMenu"), vec!["Keyboard/Escape"], "aucun menu de l'émulateur à la manette");
         assert!(t.contains("SettingsVersion = 3"));
         assert!(d.path().join(".frogtend-sauvegardes").is_dir(), "la configuration d'origine est à l'abri");
     }
@@ -545,11 +580,9 @@ mod tests {
     }
 
     #[test]
-    fn retroarch_combinaison_du_menu_sauf_choix_de_la_personne() {
+    fn retroarch_reconnait_ses_profils_de_manette() {
         let d = tempfile::tempdir().unwrap();
-        assert!(lignes_retroarch(d.path()).contains("input_menu_toggle_gamepad_combo = \"2\""));
-        std::fs::write(d.path().join("retroarch.cfg"), "input_menu_toggle_gamepad_combo = \"4\"\n").unwrap();
-        assert!(!lignes_retroarch(d.path()).contains("input_menu_toggle_gamepad_combo"));
+        assert!(!lignes_retroarch().contains("input_menu_toggle_gamepad_combo"));
         assert!(!retroarch_a_ses_profils(d.path()));
         std::fs::create_dir_all(d.path().join("autoconfig").join("xinput")).unwrap();
         assert!(retroarch_a_ses_profils(d.path()));

@@ -892,9 +892,13 @@ pub fn menu_jeu_etat(app: AppHandle, menu: State<'_, crate::menu_jeu::MenuJeu>) 
 pub async fn menu_jeu_reprendre(app: AppHandle) -> Resultat<()> {
     cacher_menu(&app);
     let Some(p) = app.state::<crate::menu_jeu::MenuJeu>().partie() else { return Ok(()) };
-    tauri::async_runtime::spawn_blocking(move || crate::menu_jeu::reprendre(&crate::lancement::processus_de_la_partie(p.pid)))
+    let rendu = tauri::async_runtime::spawn_blocking(move || crate::menu_jeu::reprendre(&crate::lancement::processus_de_la_partie(p.pid)))
         .await
         .map_err(|_| Erreur::Disque("La reprise s'est arrêtée brutalement.".into()))?;
+    // Sans le premier plan, un émulateur qui se met en pause en le perdant (RPCS3) resterait en pause : on le note.
+    if !rendu {
+        app.state::<Noyau>().journaliser("Menu en jeu : le premier plan n'a pas pu être rendu au jeu");
+    }
     Ok(())
 }
 
@@ -2292,7 +2296,15 @@ async fn preparer_emulateur(
         let args = crate::emulateurs_profils::preparer(&id, &d, &n, &j, &manette)?;
         // RPCS3 en plein écran sans interface : aucune boîte (invisible, elle le bloquerait). Un échec n'empêche pas de
         // jouer, mais il est noté (sinon le blocage reviendrait sans indice).
-        let alerte = if id == "rpcs3" { crate::emulateurs_profils::rpcs3_sans_boites(&d).err().map(|e| format!("{e:?}")) } else { None };
+        // Et il se met en pause quand le menu de Frogtend passe devant, sans lire la manette derrière lui.
+        let alerte = if id == "rpcs3" {
+            let a = crate::emulateurs_profils::rpcs3_sans_boites(&d).err().map(|e| format!("boîtes d'accueil non désactivées ({e:?})"));
+            let b = crate::emulateurs_profils::rpcs3_pause_au_menu(&d).err().map(|e| format!("pause au menu non réglée ({e:?})"));
+            let v: Vec<String> = a.into_iter().chain(b).collect();
+            (!v.is_empty()).then(|| v.join(" ; "))
+        } else {
+            None
+        };
         crate::emulateurs_profils::regler_succes(&id, &d, &n, compte_ra.as_ref().map(|(a, b)| (a.as_str(), b.as_str())))?;
         Ok::<_, Erreur>((args, alerte))
     })
@@ -2300,7 +2312,7 @@ async fn preparer_emulateur(
         .map_err(|_| Erreur::Disque("La préparation de l'émulateur s'est arrêtée brutalement.".into()))??;
     let (avant, alerte) = avant;
     if let Some(a) = alerte {
-        noyau.journaliser(&format!("RPCS3 : boîtes d'accueil non désactivées ({a})"));
+        noyau.journaliser(&format!("RPCS3 : {a}"));
     }
     let mut complete: Vec<String> = avant.iter().map(|a| format!("\"{a}\"")).collect();
     if !ligne.trim().is_empty() {

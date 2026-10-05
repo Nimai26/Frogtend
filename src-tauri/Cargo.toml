@@ -1,6 +1,6 @@
 [package]
 name = "frogtend"
-version = "0.46.2"
+version = "0.46.3"
 description = "Frogtend — la ludothèque de la maison, servie par Firehouse"
 authors = ["Nimai"]
 license = "Apache-2.0"

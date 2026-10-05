@@ -3,6 +3,12 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 05/10 — Le menu affichait « en pause » sans que rien ne le garantisse
+Ce qui s'est passé : RPCS3 a été branché au menu (0.46.0) sans son adaptateur de pause (étape h encore à faire) ;
+le jeu continuait et recevait la manette pendant que le menu était ouvert. Seb l'a vu. · Comment l'appliquer : avant
+de brancher le menu sur un émulateur, vérifier dans son code les DEUX points de base — il se met en pause quand le
+menu passe devant, et il ignore la manette en arrière-plan — et les régler par ses propres réglages.
+
 ## 05/10 — Chercher la cause dans le code de l'émulateur avant de forcer
 Ce qui s'est passé : RPCS3 restait caché après « Quitter », puis plantait à l'arrêt. La 0.46.1 a ajouté un arrêt forcé
 (un pansement). La lecture du code de RPCS3 a donné la VRAIE cause : son écran d'accueil, ouvert à chaque lancement,

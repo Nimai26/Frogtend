@@ -67,9 +67,10 @@ pub fn actions(emulateur: &str) -> Vec<Action> {
     }
 }
 
-/// L'émulateur se met-il en pause quand il perd le premier plan (réglé par `preparer`) ?
+/// L'émulateur se met-il en pause quand il perd le premier plan (réglé par `preparer` ; RPCS3 par
+/// `commandes::preparer_emulateur`) ?
 pub fn se_met_en_pause(emulateur: &str) -> bool {
-    matches!(emulateur, "retroarch" | "duckstation" | "pcsx2" | "dolphin" | "ppsspp" | "dosbox-staging")
+    matches!(emulateur, "retroarch" | "duckstation" | "pcsx2" | "dolphin" | "ppsspp" | "dosbox-staging" | "rpcs3")
 }
 
 /// La commande réseau de RetroArch pour une action.
@@ -85,7 +86,7 @@ pub fn commande_retroarch(a: Action) -> &'static str {
 /// Les lignes à ajouter au fichier de réglages de RetroArch (`--appendconfig`).
 pub fn lignes_retroarch() -> String {
     format!(
-        "network_cmd_enable = \"true\"\nnetwork_cmd_port = \"{PORT_RETROARCH}\"\nnetwork_cmd_bind_address = \"127.0.0.1\"\npause_nonactive = \"true\"\n"
+        "network_cmd_enable = \"true\"\nnetwork_cmd_port = \"{PORT_RETROARCH}\"\nnetwork_cmd_bind_address = \"127.0.0.1\"\npause_nonactive = \"true\"\ninput_menu_toggle_gamepad_combo = \"0\"\n"
     )
 }
 

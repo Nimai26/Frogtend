@@ -18,8 +18,20 @@
   - [ ] c. Lecture de la manette pendant la partie : XInput (manettes Xbox, manette virtuelle de Sunshine) ; SDL3
         compilé dans le programme pour les manettes PlayStation/Switch/8BitDo (✅ décidé par Seb le 30/09 : « SDL3
         embarqué, aucune DLL »). Lisibilité en arrière-plan à MESURER (sonde, voir 🧪).
-  - [ ] d. Un seul menu : retirer les combinaisons propres aux émulateurs posées en 0.8.0 (Select + Start de
-        DuckStation/PCSX2, L3 + R3 de RetroArch).
+  - [x] d. Un seul menu : retirer les combinaisons propres aux émulateurs posées en 0.8.0 (Select + Start de
+        DuckStation/PCSX2, L3 + R3 de RetroArch). ✅ Seb 05/10 : « je ne sais pas d'où ils viennent mais le but est
+        d'uniformiser : il faut pouvoir avoir le menu Frogtend PARTOUT avec View + RB » → TOUTE liaison manette du
+        menu d'un émulateur part, même faite à la main (le clavier reste). ✅ 0.46.3.
+  - [ ] d bis. Le menu MET LE JEU EN PAUSE et le jeu ne reçoit plus la manette tant qu'il est ouvert. Seb 05/10 :
+        « le menu ne met pas en pause le jeu et les boutons sont encore saisis dans le jeu » (RPCS3). ✅ RPCS3 en
+        0.46.3 (ses propres réglages : pause à la perte du premier plan, manette ignorée en arrière-plan). Reste : les
+        autres émulateurs à l'essai, et les jeux PC (aucune pause possible sans eux : à étudier). Réglages RPCS3 par
+        jeu (`custom_configs`) traités aussi.
+  - [ ] d ter. RetroArch : le bouton Xbox (Guide) ouvre encore SON menu — imposé par ses profils de manette officiels
+        (`input_menu_toggle_btn = "10"`), impossible à couper proprement par la configuration (input_driver.c : la
+        liaison du profil passe quand celle du fichier est vide). Expert, 05/10 : accepter (pas de conflit avec
+        View + RB) plutôt que bricoler les profils. **À dire à Seb** ; à observer à l'essai (la Game Bar de Windows
+        le capte peut-être avant).
   - [x] e. Navigation dans le menu à la manette (croix/stick, A valider, B retour), au clavier (flèches, Entrée,
         Échap) et à la souris (survol, clic). ✅ 0.45.0 (à essayer par Seb).
   - [x] f. Le même menu en Taodbox (échelle ×2, plein écran, contour de sélection fort). ✅ 0.45.0 (à essayer).
@@ -107,6 +119,13 @@ d'abord :
 - Jellyfin → Taodbox : projet côté Firehouse, pas le travail de Frogtend.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.46.3** (05/10) — Le menu met RPCS3 en pause et lui coupe la manette (ses réglages « Pause emulation on RPCS3
+  focus loss » et « Background input enabled », aussi dans ses réglages par jeu) ; un seul menu : les menus manette de
+  DuckStation/PCSX2/RetroArch retirés ; un INI illisible n'est plus jamais remplacé. Vérifié : clés et comportement
+  relevés dans le code de RPCS3 (relu par l'expert lancement, pas de bloquant) ; essai sur une COPIE du vrai
+  config.yml de Seb (2 lignes changées sur 282, même taille) ; tests (274 cœur, 120 interface). PAS vérifié : l'essai
+  en jeu (Seb) ; DuckStation/PCSX2/RetroArch pas installés chez Seb.
 
 - **0.46.2** (05/10) — RPCS3 sans boîtes invisibles (accueil, « Exit Game? ») ; menu : seul le bouton choisi est
   coloré. Retours de Seb (05/10) : « le surlignage des boutons reste derrière les boutons et Reprendre reste en orange »

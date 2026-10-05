@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.46.3 — Le menu met le jeu en pause, et c'est le seul menu
+
+- **RPCS3** : quand le menu de Frogtend s'ouvre, le jeu se met en PAUSE et ne reçoit plus les boutons de la manette ;
+  il reprend tout seul quand tu refermes le menu. Ce sont deux réglages de RPCS3 lui-même (« pause quand il n'est pas
+  au premier plan », « manette ignorée en arrière-plan »), mis par Frogtend avant chaque partie ; l'original est copié
+  à l'abri.
+- **Un seul menu, partout** : View + RB tenus 1 seconde ouvre le menu de Frogtend dans tous les émulateurs. Les
+  raccourcis manette qui ouvraient le menu propre d'un émulateur (Select + Start dans DuckStation et PCSX2, L3 + R3
+  dans RetroArch) sont retirés ; ceux du clavier restent. Seule exception connue : dans RetroArch, le bouton Xbox
+  (Guide) ouvre encore son propre menu (ses profils de manette officiels l'imposent).
+
 ## 0.46.2 — RPCS3 s'arrête proprement, et le menu montre clairement le bouton choisi
 
 - **RPCS3** : la vraie cause des soucis à la fermeture était son écran d'accueil « Welcome to RPCS3 », ouvert à

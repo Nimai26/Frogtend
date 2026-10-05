@@ -106,7 +106,12 @@ pub(crate) fn remplacer_config(emulateur: &Path, fichier: &Path, apres: &str) ->
 }
 
 pub(crate) fn modifier_ini(emulateur: &Path, fichier: &Path, section: &str, valeurs: &[(&str, Vec<String>)]) -> Resultat<()> {
-    let avant = std::fs::read_to_string(fichier).unwrap_or_default();
+    // Un fichier qui existe mais ne se lit pas n'est JAMAIS remplacé (il le serait par une seule section ; expert, 05/10).
+    let avant = match std::fs::read_to_string(fichier) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e.into()),
+    };
     let apres = ecrire_ini(&avant, section, valeurs);
     if apres != avant {
         mettre_a_l_abri(emulateur, fichier)?;
@@ -328,7 +333,7 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             }
             cfg.push_str(&crate::pilotage::lignes_retroarch());
             if !matches!(manette, Manette::Clavier) {
-                cfg.push_str(&crate::manettes::lignes_retroarch(emulateur));
+                cfg.push_str(&crate::manettes::lignes_retroarch());
             }
             let fichier = p.join("frogtend.cfg");
             std::fs::write(&fichier, cfg)?;
@@ -342,6 +347,7 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             modifier_ini(emulateur, &ini, "Folders", &[("SaveStates", vec![texte(&etats)]), ("Cheats", vec![texte(&triches)])])?;
             modifier_ini(emulateur, &ini, "GameList", &[("RecursivePaths", jeux.to_vec())])?;
             regler_manette(id, emulateur, None, manette)?;
+            crate::manettes::retirer_menu_manette(emulateur, &ini)?;
             Ok(vec![])
         }
         "pcsx2" => {
@@ -360,6 +366,7 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             )?;
             modifier_ini(emulateur, &ini, "GameList", &[("RecursivePaths", jeux.to_vec())])?;
             regler_manette(id, emulateur, None, manette)?;
+            crate::manettes::retirer_menu_manette(emulateur, &ini)?;
             Ok(vec![])
         }
         "dolphin" => {
@@ -548,6 +555,126 @@ pub fn regler_cles_qt(texte: &str, section: &str, valeurs: &[(&str, &str)]) -> O
         change = true;
     }
     change.then_some(sortie)
+}
+
+/// Règle des clés de premier niveau d'une section du `config.yml` de RPCS3 (« Section: » puis « ␣␣Cle: valeur »), en ne
+/// touchant QUE ces lignes : le reste est recopié tel quel, fins de ligne comprises. Une clé absente est ajoutée en
+/// tête de sa section ; une section absente, à la fin. `None` : rien à changer.
+pub fn regler_cles_yaml(texte: &str, section: &str, valeurs: &[(&str, &str)]) -> Option<String> {
+    let fin_ligne = if texte.contains("\r\n") { "\r\n" } else { "\n" };
+    let entete = format!("{section}:");
+    // La clé d'une ligne de la section (exactement deux espaces d'indentation : jamais une sous-clé).
+    let cle_de = |nue: &str| -> Option<String> {
+        let reste = nue.strip_prefix("  ")?;
+        if reste.starts_with(' ') {
+            return None;
+        }
+        reste.split_once(':').map(|(k, _)| k.to_string())
+    };
+    // Les clés déjà présentes dans la section.
+    let mut presentes: Vec<String> = Vec::new();
+    let mut dans = false;
+    for l in texte.lines() {
+        if !l.is_empty() && !l.starts_with(' ') {
+            dans = l.trim_end() == entete;
+        } else if dans {
+            presentes.extend(cle_de(l));
+        }
+    }
+    let mut sortie = String::with_capacity(texte.len() + 64);
+    let mut change = false;
+    let mut section_vue = false;
+    dans = false;
+    for ligne in texte.split_inclusive('\n') {
+        let nue = ligne.trim_end_matches(['\r', '\n']);
+        if !nue.is_empty() && !nue.starts_with(' ') {
+            dans = nue.trim_end() == entete;
+            if dans {
+                section_vue = true;
+                sortie.push_str(ligne);
+                if !ligne.ends_with('\n') {
+                    sortie.push_str(fin_ligne);
+                }
+                for (c, v) in valeurs {
+                    if !presentes.iter().any(|p| p == c) {
+                        sortie.push_str(&format!("  {c}: {v}{fin_ligne}"));
+                        change = true;
+                    }
+                }
+                continue;
+            }
+        } else if dans {
+            if let Some((c, v)) = cle_de(nue).and_then(|k| valeurs.iter().find(|(c, _)| *c == k)) {
+                let voulue = format!("  {c}: {v}");
+                if nue != voulue {
+                    change = true;
+                    sortie.push_str(&voulue);
+                    sortie.push_str(&ligne[nue.len()..]);
+                    continue;
+                }
+            }
+        }
+        sortie.push_str(ligne);
+    }
+    if !section_vue {
+        if !sortie.is_empty() && !sortie.ends_with('\n') {
+            sortie.push_str(fin_ligne);
+        }
+        sortie.push_str(&entete);
+        sortie.push_str(fin_ligne);
+        for (c, v) in valeurs {
+            sortie.push_str(&format!("  {c}: {v}{fin_ligne}"));
+        }
+        change = true;
+    }
+    change.then_some(sortie)
+}
+
+/// RPCS3 et le menu de Frogtend (05/10, Seb : « le menu ne met pas en pause le jeu et les boutons sont encore saisis
+/// dans le jeu »). Relevé dans son code (05/10) : `Miscellaneous ▸ Pause emulation on RPCS3 focus loss` (faux par
+/// défaut ; gui_application.cpp OnAppStateChanged : pause quand RPCS3 perd le premier plan, reprise quand il le
+/// retrouve) et `Input/Output ▸ Background input enabled` (vrai par défaut ; GSFrameBase.cpp : la manette n'est lue
+/// sans le premier plan que si vrai). Le menu prenant le premier plan, ces deux réglages font la pause et coupent la
+/// manette du jeu. Fichier `config\config.yml`, copié à l'abri ; seules ces deux lignes changent. Les réglages PAR JEU
+/// (`config\custom_configs\*.yml`, appliqués par-dessus à chaque démarrage : System.cpp Emulator::Load) reçoivent les
+/// mêmes deux lignes, sinon ils les écraseraient.
+pub fn rpcs3_pause_au_menu(emulateur: &Path) -> Resultat<bool> {
+    let config = emulateur.join("config");
+    let fichier = config.join("config.yml");
+    // Absent : créé (RPCS3 complète le reste), sauf s'il reste un ancien `config.yml` à la racine que RPCS3 déplacera
+    // lui-même (il ne le fait plus si le nouveau existe : System.cpp). Illisible : JAMAIS touché.
+    let creer = !emulateur.join("config.yml").exists();
+    let mut change = rpcs3_pause_dans(emulateur, &fichier, creer)?;
+    if let Ok(par_jeu) = std::fs::read_dir(config.join("custom_configs")) {
+        for f in par_jeu.flatten().map(|e| e.path()) {
+            if f.is_file() && f.extension().is_some_and(|x| x.eq_ignore_ascii_case("yml")) {
+                change |= rpcs3_pause_dans(emulateur, &f, false)?;
+            }
+        }
+    }
+    Ok(change)
+}
+
+/// Les deux lignes de [`rpcs3_pause_au_menu`] dans un fichier de réglages de RPCS3.
+fn rpcs3_pause_dans(emulateur: &Path, fichier: &Path, creer: bool) -> Resultat<bool> {
+    let texte = match std::fs::read_to_string(fichier) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound && creer => String::new(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e.into()),
+    };
+    let apres_misc = regler_cles_yaml(&texte, "Miscellaneous", &[("Pause emulation on RPCS3 focus loss", "true")]);
+    let base = apres_misc.as_deref().unwrap_or(&texte);
+    let apres_io = regler_cles_yaml(base, "Input/Output", &[("Background input enabled", "false")]);
+    let Some(nouveau) = apres_io.or(apres_misc) else {
+        return Ok(false);
+    };
+    mettre_a_l_abri(emulateur, fichier)?;
+    if let Some(p) = fichier.parent() {
+        std::fs::create_dir_all(p)?;
+    }
+    std::fs::write(fichier, nouveau)?;
+    Ok(true)
 }
 
 /// La section `entete` de ce texte contient-elle la clé `cle` ?
@@ -739,6 +866,60 @@ mod tests {
         std::fs::write(d.path().join("GuiConfigs/CurrentSettings.ini"), illisible).unwrap();
         assert!(rpcs3_sans_boites(d.path()).is_err());
         assert_eq!(std::fs::read(d.path().join("GuiConfigs/CurrentSettings.ini")).unwrap(), illisible);
+    }
+
+    #[test]
+    fn rpcs3_se_met_en_pause_au_menu_et_ignore_la_manette_derriere_lui() {
+        let avant = "Core:\n  PPU Threads: 2\nInput/Output:\n  Keyboard: \"Null\"\n  Background input enabled: true\n  Show move cursor: false\nSystem:\n  Background input enabled: true\nMiscellaneous:\n  Automatically start games after boot: true\n  Pause emulation on RPCS3 focus loss: false\n  Start games in fullscreen mode: true\n";
+        let io = regler_cles_yaml(avant, "Input/Output", &[("Background input enabled", "false")]).unwrap();
+        // Seule la ligne de la bonne section change (une clé du même nom ailleurs reste).
+        assert_eq!(io, avant.replacen("Background input enabled: true", "Background input enabled: false", 1));
+        assert!(regler_cles_yaml(&io, "Input/Output", &[("Background input enabled", "false")]).is_none());
+        // Une sous-clé (4 espaces) n'est jamais prise pour une clé de la section.
+        let sous = "Video:\n  Vulkan:\n    Adapter: x\n  Adapter: y\n";
+        assert_eq!(regler_cles_yaml(sous, "Video", &[("Adapter", "z")]).unwrap(), "Video:\n  Vulkan:\n    Adapter: x\n  Adapter: z\n");
+        // Clé absente : en tête de sa section ; section absente : à la fin ; fins de ligne Windows gardées.
+        assert_eq!(regler_cles_yaml("A:\r\n  b: 1\r\n", "A", &[("c", "2")]).unwrap(), "A:\r\n  c: 2\r\n  b: 1\r\n");
+        assert_eq!(regler_cles_yaml("A:\n  b: 1\n", "M", &[("c", "2")]).unwrap(), "A:\n  b: 1\nM:\n  c: 2\n");
+        // Sur le disque : les deux lignes, l'original à l'abri, un fichier illisible jamais remplacé.
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("config/config.yml");
+        std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+        std::fs::write(&f, avant).unwrap();
+        assert!(rpcs3_pause_au_menu(d.path()).unwrap());
+        let apres = std::fs::read_to_string(&f).unwrap();
+        assert_eq!(
+            apres,
+            avant
+                .replacen("Background input enabled: true", "Background input enabled: false", 1)
+                .replace("Pause emulation on RPCS3 focus loss: false", "Pause emulation on RPCS3 focus loss: true")
+        );
+        assert!(!rpcs3_pause_au_menu(d.path()).unwrap(), "la 2e fois : rien à faire");
+        assert!(d.path().join(".frogtend-sauvegardes").is_dir());
+        let illisible = [b'A', b':', b'\n', 0xFF, 0xFE, b'\n'];
+        std::fs::write(&f, illisible).unwrap();
+        assert!(rpcs3_pause_au_menu(d.path()).is_err());
+        assert_eq!(std::fs::read(&f).unwrap(), illisible);
+
+        // Absent : créé avec les deux lignes ; mais pas s'il reste l'ancien config.yml à la racine.
+        let neuf = tempfile::tempdir().unwrap();
+        assert!(rpcs3_pause_au_menu(neuf.path()).unwrap());
+        let t = std::fs::read_to_string(neuf.path().join("config/config.yml")).unwrap();
+        assert!(t.contains("  Pause emulation on RPCS3 focus loss: true\n") && t.contains("  Background input enabled: false\n"));
+        let ancien = tempfile::tempdir().unwrap();
+        std::fs::write(ancien.path().join("config.yml"), "Core:\n").unwrap();
+        assert!(!rpcs3_pause_au_menu(ancien.path()).unwrap());
+        assert!(!ancien.path().join("config/config.yml").exists());
+
+        // Un réglage par jeu reçoit les mêmes lignes (sinon il écraserait la pause) ; un autre fichier n'est pas touché.
+        let par_jeu = neuf.path().join("config/custom_configs");
+        std::fs::create_dir_all(&par_jeu).unwrap();
+        std::fs::write(par_jeu.join("config_BLUS30508.yml"), avant).unwrap();
+        std::fs::write(par_jeu.join("notes.txt"), "Background input enabled: true\n").unwrap();
+        assert!(rpcs3_pause_au_menu(neuf.path()).unwrap());
+        let j = std::fs::read_to_string(par_jeu.join("config_BLUS30508.yml")).unwrap();
+        assert!(j.contains("  Pause emulation on RPCS3 focus loss: true\n") && j.contains("Input/Output:\n  Keyboard: \"Null\"\n  Background input enabled: false\n"));
+        assert_eq!(std::fs::read_to_string(par_jeu.join("notes.txt")).unwrap(), "Background input enabled: true\n");
     }
 
     #[test]
@@ -955,15 +1136,41 @@ mod tests {
     }
 
     #[test]
+    fn une_partie_pcsx2_retire_l_ancien_menu_a_la_manette() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("inis").join("PCSX2.ini");
+        std::fs::create_dir_all(ini.parent().unwrap()).unwrap();
+        std::fs::write(&ini, "[Pad1]\r\nType = DualShock2\r\nCross = SDL-0/A\r\n\r\n[Hotkeys]\r\nOpenPauseMenu = Keyboard/Escape\r\nOpenPauseMenu = SDL-0/Back & SDL-0/Start\r\n").unwrap();
+        preparer("pcsx2", d.path(), "Seb", &[], &Manette::Auto(None)).unwrap();
+        let t = std::fs::read_to_string(&ini).unwrap();
+        assert_eq!(crate::manettes::lire_ini(&t, "Hotkeys", "OpenPauseMenu"), vec!["Keyboard/Escape"]);
+        assert_eq!(crate::manettes::lire_ini(&t, "Pad1", "Cross"), vec!["SDL-0/A"], "la manette de la personne reste");
+    }
+
+    #[test]
+    fn un_ini_illisible_n_est_jamais_remplace() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("settings.ini");
+        let illisible = [b'[', b'M', b']', b'\n', 0xFF, 0xFE, b'\n'];
+        std::fs::write(&ini, illisible).unwrap();
+        assert!(modifier_ini(d.path(), &ini, "Main", &[("A", vec!["1".into()])]).is_err());
+        assert_eq!(std::fs::read(&ini).unwrap(), illisible);
+    }
+
+    #[test]
     fn le_choix_des_commandes_du_jeu_est_suivi() {
-        // Clavier et souris : aucune manette réglée, ni combinaison de menu RetroArch.
+        // Clavier et souris : aucune manette réglée ; RetroArch n'a jamais de menu à la manette (un seul menu : Frogtend).
         let d = tempfile::tempdir().unwrap();
         preparer("duckstation", d.path(), "Seb", &[], &Manette::Clavier).unwrap();
         let ini = std::fs::read_to_string(d.path().join("settings.ini")).unwrap();
         assert!(!ini.contains("SDL-0"));
         preparer("retroarch", d.path(), "Seb", &[], &Manette::Clavier).unwrap();
         let cfg = std::fs::read_to_string(d.path().join("Profils").join("Seb").join("frogtend.cfg")).unwrap();
-        assert!(!cfg.contains("gamepad_combo"));
+        assert!(cfg.contains("input_menu_toggle_gamepad_combo = \"0\""));
+        preparer("retroarch", d.path(), "Seb", &[], &Manette::Auto(None)).unwrap();
+        let cfg = std::fs::read_to_string(d.path().join("Profils").join("Seb").join("frogtend.cfg")).unwrap();
+        assert_eq!(cfg.matches("input_menu_toggle_gamepad_combo").count(), 1);
+        assert!(cfg.contains("input_menu_toggle_gamepad_combo = \"0\""));
 
         // Une Wii : la référence par défaut, puis celle choisie pour le jeu.
         let magasin = d.path().join("magasin");
@@ -1022,6 +1229,23 @@ mod essai_reel_rpcs3 {
         let (a, b) = (String::from_utf8_lossy(&avant), String::from_utf8_lossy(&apres));
         let differences: Vec<(&str, &str)> = a.lines().zip(b.lines()).filter(|(x, y)| x != y).collect();
         println!("RPCS3 lignes : {} avant, {} après ; différences : {:?}", a.lines().count(), b.lines().count(), differences);
+        assert_eq!(std::fs::read(&vrai).unwrap(), avant, "le vrai fichier n'est pas touché");
+    }
+
+    /// Même essai pour `config\config.yml` (pause au menu).
+    #[test]
+    #[ignore]
+    fn copie_du_vrai_config_yml_de_rpcs3() {
+        let vrai = std::path::PathBuf::from(std::env::var("FROGTEND_RPCS3").unwrap()).join("config/config.yml");
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join("config")).unwrap();
+        std::fs::copy(&vrai, d.path().join("config/config.yml")).unwrap();
+        let avant = std::fs::read(&vrai).unwrap();
+        println!("RPCS3 réglé : {}", super::rpcs3_pause_au_menu(d.path()).unwrap());
+        let apres = std::fs::read(d.path().join("config/config.yml")).unwrap();
+        let (a, b) = (String::from_utf8_lossy(&avant), String::from_utf8_lossy(&apres));
+        let differences: Vec<(&str, &str)> = a.lines().zip(b.lines()).filter(|(x, y)| x != y).collect();
+        println!("RPCS3 lignes : {} avant, {} après ; octets {} / {} ; différences : {:?}", a.lines().count(), b.lines().count(), avant.len(), apres.len(), differences);
         assert_eq!(std::fs::read(&vrai).unwrap(), avant, "le vrai fichier n'est pas touché");
     }
 }

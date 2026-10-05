@@ -48,6 +48,17 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Le menu met en pause (0.46.3)
+- [ ] Dans Asura's Wrath, ouvre le menu (View + RB 1 s) : la croix et A ne font plus rien DANS le jeu (seulement
+      dans le menu) ; l'image et le son s'arrêtent **au bout d'environ une seconde** (délai de RPCS3 lui-même).
+      « Reprendre » : le jeu repart là où il était.
+- [ ] Menu ▸ ⏹ Quitter le jeu pendant cette pause : RPCS3 se ferme quand même.
+- [ ] Pendant une partie normale (menu fermé), la manette pilote bien le jeu (RPCS3 ignore maintenant la manette quand
+      il n'est pas au premier plan : si le jeu ne répond plus, le dire).
+- [ ] Plus tard, avec DuckStation / PCSX2 / RetroArch installés : Select + Start et L3 + R3 n'ouvrent plus leur menu,
+      View + RB ouvre celui de Frogtend. ⚠️ Dans RetroArch, le bouton Xbox (Guide) ouvre encore SON menu (voir
+      SUIVI) : regarder si Windows (Game Bar) le capte avant.
+
 ## RPCS3 et le menu (0.46.2)
 - [ ] Lance Asura's Wrath, ouvre le menu (View + RB 1 s) : un seul bouton est coloré, celui qui est choisi ; la croix
       déplace la couleur.

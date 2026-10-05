@@ -374,6 +374,7 @@ mod tests {
         assert!(e.en_pause);
         let e = etat(&partie(Some("pcsx2")));
         assert!(!e.actions.contains(&"disque"));
+        assert!(etat(&partie(Some("rpcs3"))).en_pause, "RPCS3 : pause à la perte du premier plan (0.46.3)");
         let e = etat(&partie(None));
         assert!(e.actions.is_empty() && !e.en_pause, "jeu PC : reprendre et quitter seulement");
         for n in ["reset", "disque", "sauver", "charger"] {
