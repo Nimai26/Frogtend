@@ -108,6 +108,12 @@ d'abord :
 
 ## ✅ Livré (version — ce qui a été vérifié)
 
+- **0.46.2** (05/10) — RPCS3 sans boîtes invisibles (accueil, « Exit Game? ») ; menu : seul le bouton choisi est
+  coloré. Retours de Seb (05/10) : « le surlignage des boutons reste derrière les boutons et Reprendre reste en orange »
+  ; erreur fatale de RPCS3 au 2e Quitter. Vérifié : cause relevée dans le code de RPCS3 et dans le réglage de Seb
+  (`infoBoxEnabledWelcome=true`) ; essai sur une COPIE du vrai fichier (1 ligne changée sur 55) ; tests (270 cœur,
+  120 interface). PAS vérifié : l'essai en jeu (Seb).
+
 - **0.46.1** (05/10) — « Quitter » : un émulateur resté en vie sans fenêtre (RPCS3) est arrêté après 10 s, seulement
   dans le dossier de l'émulateur de la partie, jamais un jeu PC ni un émulateur qui a encore sa fenêtre. Vérifié :
   RPCS3 bloqué chez Seb (PID 64208, « ne répond pas », titre « Welcome to RPCS3 ») arrêté à la main par l'agent

@@ -48,6 +48,12 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## RPCS3 et le menu (0.46.2)
+- [ ] Lance Asura's Wrath, ouvre le menu (View + RB 1 s) : un seul bouton est coloré, celui qui est choisi ; la croix
+      déplace la couleur.
+- [ ] ⏹ Quitter le jeu ▸ Quitter, **deux fois de suite** (relance entre les deux) : RPCS3 se ferme, aucune boîte
+      d'erreur, ▶ Jouer relance sans « une instance est en cours ».
+
 ## « Quitter le jeu » (0.46.1)
 - [ ] Dans Asura's Wrath : menu ▸ **⏹ Quitter le jeu** ▸ Quitter. **Attendu :** au plus ~10 secondes après, Frogtend
       n'affiche plus « partie en cours » et ▶ Jouer relance le jeu sans message « une instance est en cours ».

@@ -3,6 +3,13 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 05/10 — Chercher la cause dans le code de l'émulateur avant de forcer
+Ce qui s'est passé : RPCS3 restait caché après « Quitter », puis plantait à l'arrêt. La 0.46.1 a ajouté un arrêt forcé
+(un pansement). La lecture du code de RPCS3 a donné la VRAIE cause : son écran d'accueil, ouvert à chaque lancement,
+invisible derrière le jeu en plein écran (`infoBoxEnabledWelcome`). · Comment l'appliquer : un émulateur qui se
+comporte mal en plein écran sans interface → chercher dans son code les boîtes qu'il ouvre (accueil, confirmations,
+mises à jour) et les désactiver par ses propres réglages ; l'arrêt forcé reste un dernier recours.
+
 ## 05/10 — « Quitter » ne vérifiait pas que le jeu était vraiment fermé
 Ce qui s'est passé : « Quitter le jeu » envoyait la demande polie (comme la croix) et s'arrêtait là ; RPCS3 a fermé son
 écran mais gardé son programme en vie, caché : Frogtend bloqué sur « partie en cours », RPCS3 impossible à relancer. Le

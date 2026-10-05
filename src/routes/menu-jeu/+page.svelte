@@ -190,7 +190,7 @@
       </p>
     </header>
     <div class="liste" bind:this={liste}>
-      <button class="btn primary" onclick={reprendre}>▶ Reprendre</button>
+      <button class="btn" onclick={reprendre}>▶ Reprendre</button>
       {#if a('sauver')}<button class="btn" onclick={() => action('sauver')}>💾 Sauvegarde rapide</button>{/if}
       {#if a('charger')}
         <button class="btn" onclick={() => action('charger', '📂 Revenir à la sauvegarde rapide ? Ce qui s’est passé depuis sera perdu.')}>
@@ -205,7 +205,7 @@
           🔄 Recommencer
         </button>
       {/if}
-      <button class="btn danger" onclick={quitter}>⏹ Quitter le jeu</button>
+      <button class="btn" onclick={quitter}>⏹ Quitter le jeu</button>
     </div>
     <p class="aide muted">
       Choisir : croix ou ↑ ↓ · Valider : A ou Entrée · Reprendre : B ou Échap
@@ -236,11 +236,19 @@
     gap: calc(8 * var(--u));
     overflow: auto;
   }
-  /* La sélection se voit toujours (manette, clavier ou souris), pas seulement au clavier. */
+  /* Tous les boutons ont le même style au repos ; SEUL le bouton choisi se remplit de la couleur d'accent (Seb, 05/10 :
+   * le contour passait derrière les boutons voisins, et « Reprendre », orange par son style, semblait toujours choisi).
+   * Le remplissage est à l'intérieur du bouton : la liste qui défile ne peut pas le cacher. */
+  .liste .btn:focus,
+  .liste .btn:focus-visible {
+    outline: none;
+  }
   .liste .btn:focus,
   .liste :global(.btn[data-choisi]) {
-    outline: calc(3 * var(--u)) solid var(--accent);
-    outline-offset: calc(2 * var(--u));
+    background: var(--accent);
+    color: var(--on-accent);
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 calc(2 * var(--u)) var(--on-accent);
   }
   .liste .btn {
     min-height: calc(48 * var(--u));

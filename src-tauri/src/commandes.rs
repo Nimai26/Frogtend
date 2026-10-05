@@ -2290,11 +2290,18 @@ async fn preparer_emulateur(
         let utilisateur = crate::emulateurs_profils::dossier_du_profil(&d, &n).join("User");
         crate::references::deposer(&crate::references::toutes(&magasin, &id), &d, &utilisateur)?;
         let args = crate::emulateurs_profils::preparer(&id, &d, &n, &j, &manette)?;
+        // RPCS3 en plein écran sans interface : aucune boîte (invisible, elle le bloquerait). Un échec n'empêche pas de
+        // jouer, mais il est noté (sinon le blocage reviendrait sans indice).
+        let alerte = if id == "rpcs3" { crate::emulateurs_profils::rpcs3_sans_boites(&d).err().map(|e| format!("{e:?}")) } else { None };
         crate::emulateurs_profils::regler_succes(&id, &d, &n, compte_ra.as_ref().map(|(a, b)| (a.as_str(), b.as_str())))?;
-        Ok::<_, Erreur>(args)
+        Ok::<_, Erreur>((args, alerte))
     })
         .await
         .map_err(|_| Erreur::Disque("La préparation de l'émulateur s'est arrêtée brutalement.".into()))??;
+    let (avant, alerte) = avant;
+    if let Some(a) = alerte {
+        noyau.journaliser(&format!("RPCS3 : boîtes d'accueil non désactivées ({a})"));
+    }
     let mut complete: Vec<String> = avant.iter().map(|a| format!("\"{a}\"")).collect();
     if !ligne.trim().is_empty() {
         complete.push(ligne.to_string());

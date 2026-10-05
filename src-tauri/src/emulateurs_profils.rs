@@ -88,7 +88,13 @@ pub(crate) fn mettre_a_l_abri(emulateur: &Path, fichier: &Path) -> Resultat<()> 
 
 /// Remplace le texte d'un fichier de configuration (copié à l'abri d'abord).
 pub(crate) fn remplacer_config(emulateur: &Path, fichier: &Path, apres: &str) -> Resultat<()> {
-    let avant = std::fs::read_to_string(fichier).unwrap_or_default();
+    // Un fichier qui existe mais ne se lit pas (encodage, droits, verrou) n'est JAMAIS remplacé : l'appelant a pu
+    // construire `apres` à partir d'un texte vide (expert, 05/10).
+    let avant = match std::fs::read_to_string(fichier) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e.into()),
+    };
     if apres != avant {
         mettre_a_l_abri(emulateur, fichier)?;
         if let Some(p) = fichier.parent() {
@@ -414,6 +420,8 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             // Un fichier qui ne peut pas être écrit (disque en lecture seule…) n'empêche jamais de jouer : RPCS3 garde
             // alors son réglage d'avant.
             let _ = regler_manette(id, emulateur, None, manette);
+            // Les boîtes de RPCS3 (invisibles en plein écran) sont désactivées par `commandes::preparer_emulateur`,
+            // qui note un échec au journal : `rpcs3_sans_boites`.
             Ok(vec!["--user-id".into(), compte_rpcs3(emulateur, profil_de(p))?])
         }
         // Azahar : NAND et carte SD du profil (\`[Data Storage]\` de qt-config.ini, configuration/config.cpp).
@@ -483,6 +491,101 @@ pub fn valeur_toml(texte: &str, section: &str, cle: &str) -> Option<String> {
     let v = v.trim();
     let v = v.strip_prefix('\'').and_then(|x| x.strip_suffix('\'')).or_else(|| v.strip_prefix('"').and_then(|x| x.strip_suffix('"'))).unwrap_or(v);
     Some(v.replace("\\\\", "\\")).filter(|s| !s.is_empty())
+}
+
+/// Règle des clés d'un fichier de réglages Qt (QSettings : « cle=valeur », sans espace) dans une section, en ne
+/// touchant QUE ces lignes : le reste (dont les lignes binaires « @ByteArray(\x1\xd9…) ») est recopié tel quel, fins de
+/// ligne comprises. Une clé absente est ajoutée en tête de sa section ; une section absente, à la fin. `None` : rien à
+/// changer.
+pub fn regler_cles_qt(texte: &str, section: &str, valeurs: &[(&str, &str)]) -> Option<String> {
+    let fin_ligne = if texte.contains("\r\n") { "\r\n" } else { "\n" };
+    let entete = format!("[{section}]");
+    let mut sortie = String::with_capacity(texte.len() + 64);
+    let mut dans = false;
+    let mut change = false;
+    let mut section_vue = false;
+    for ligne in texte.split_inclusive('\n') {
+        let nue = ligne.trim_end_matches(['\r', '\n']);
+        if nue.starts_with('[') {
+            dans = nue == entete;
+            if dans {
+                section_vue = true;
+                sortie.push_str(ligne);
+                if !ligne.ends_with('\n') {
+                    sortie.push_str(fin_ligne);
+                }
+                // Les clés absentes de la section, ajoutées juste après son en-tête.
+                for (c, v) in valeurs {
+                    if !texte_section_contient(texte, &entete, c) {
+                        sortie.push_str(&format!("{c}={v}{fin_ligne}"));
+                        change = true;
+                    }
+                }
+                continue;
+            }
+        } else if dans {
+            if let Some((c, v)) = valeurs.iter().find(|(c, _)| nue.split_once('=').is_some_and(|(k, _)| k == *c)) {
+                let voulue = format!("{c}={v}");
+                if nue != voulue {
+                    change = true;
+                    sortie.push_str(&voulue);
+                    sortie.push_str(&ligne[nue.len()..]);
+                    continue;
+                }
+            }
+        }
+        sortie.push_str(ligne);
+    }
+    if !section_vue {
+        if !sortie.is_empty() && !sortie.ends_with('\n') {
+            sortie.push_str(fin_ligne);
+        }
+        sortie.push_str(&entete);
+        sortie.push_str(fin_ligne);
+        for (c, v) in valeurs {
+            sortie.push_str(&format!("{c}={v}{fin_ligne}"));
+        }
+        change = true;
+    }
+    change.then_some(sortie)
+}
+
+/// La section `entete` de ce texte contient-elle la clé `cle` ?
+fn texte_section_contient(texte: &str, entete: &str, cle: &str) -> bool {
+    let mut dans = false;
+    for l in texte.lines() {
+        let l = l.trim_end_matches('\r');
+        if l.starts_with('[') {
+            dans = l == entete;
+        } else if dans && l.split_once('=').is_some_and(|(k, _)| k == cle) {
+            return true;
+        }
+    }
+    false
+}
+
+/// RPCS3 en plein écran sans interface (`--no-gui`) ne doit ouvrir AUCUNE boîte : invisible derrière le jeu, elle le
+/// bloque. Relevé dans son code (05/10) : l'écran d'accueil « Welcome to RPCS3 » (`infoBoxEnabledWelcome`, vrai par
+/// défaut, ouvert à chaque lancement) et la question « Exit Game? » à la fermeture (`confirmationBoxExitGame`) — vu
+/// chez Seb : processus caché « ne répond pas » après « Quitter », puis plantage « fenêtres encore ouvertes » à
+/// l'arrêt. Fichier `GuiConfigs\CurrentSettings.ini`, section `[main_window]` ; copié à l'abri avant d'être modifié.
+pub fn rpcs3_sans_boites(emulateur: &Path) -> Resultat<bool> {
+    let fichier = emulateur.join("GuiConfigs").join("CurrentSettings.ini");
+    // Absent : il est créé. Illisible (encodage inattendu…) : JAMAIS touché (il serait remplacé par un fichier vide).
+    let texte = match std::fs::read_to_string(&fichier) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e.into()),
+    };
+    let Some(nouveau) = regler_cles_qt(&texte, "main_window", &[("infoBoxEnabledWelcome", "false"), ("confirmationBoxExitGame", "false")]) else {
+        return Ok(false);
+    };
+    mettre_a_l_abri(emulateur, &fichier)?;
+    if let Some(p) = fichier.parent() {
+        std::fs::create_dir_all(p)?;
+    }
+    std::fs::write(&fichier, nouveau)?;
+    Ok(true)
 }
 
 /// La version du micrologiciel PS3 installé dans un RPCS3 (« 4.93 »), ou `None` s'il n'y en a pas. Relevé dans le code
@@ -606,6 +709,36 @@ mod tests {
         assert!(b.contains("RecursivePaths = E:\\Jeux"));
         let c = ecrire_ini("", "MemoryCards", &[("Directory", vec!["E:\\m".into()])]);
         assert_eq!(c, "[MemoryCards]\r\nDirectory = E:\\m\r\n");
+    }
+
+    #[test]
+    fn rpcs3_n_ouvre_aucune_boite_et_le_reste_du_fichier_est_intact() {
+        let avant = "[Logger]\r\nlevel=4\r\n\r\n[main_window]\r\ngeometry=@ByteArray(\\x1\\xd9\\xd0\\xcb\\0\\x3)\r\nconfirmationBoxExitGame=false\r\ninfoBoxEnabledWelcome=true\r\n\r\n[GSFrame]\r\nvisibility=FullScreen\r\n";
+        let apres = regler_cles_qt(avant, "main_window", &[("infoBoxEnabledWelcome", "false"), ("confirmationBoxExitGame", "false")]).unwrap();
+        // Une seule ligne a changé, tout le reste à l'identique (ligne binaire, fins de ligne Windows, autres sections).
+        assert_eq!(apres, avant.replace("infoBoxEnabledWelcome=true", "infoBoxEnabledWelcome=false"));
+        assert!(regler_cles_qt(&apres, "main_window", &[("infoBoxEnabledWelcome", "false")]).is_none(), "déjà réglé : rien");
+        // Clé absente : ajoutée en tête de sa section ; section absente : ajoutée à la fin.
+        let sans = "[main_window]\nvisibility=Windowed\n";
+        assert_eq!(regler_cles_qt(sans, "main_window", &[("infoBoxEnabledWelcome", "false")]).unwrap(), "[main_window]\ninfoBoxEnabledWelcome=false\nvisibility=Windowed\n");
+        assert_eq!(regler_cles_qt("[Logger]\nlevel=4\n", "main_window", &[("a", "1")]).unwrap(), "[Logger]\nlevel=4\n[main_window]\na=1\n");
+        assert_eq!(regler_cles_qt("", "main_window", &[("a", "1")]).unwrap(), "[main_window]\na=1\n");
+        // Une clé d'une AUTRE section du même nom n'est pas touchée.
+        let autre = "[GSFrame]\ninfoBoxEnabledWelcome=true\n[main_window]\ninfoBoxEnabledWelcome=true\n";
+        assert_eq!(regler_cles_qt(autre, "main_window", &[("infoBoxEnabledWelcome", "false")]).unwrap(), "[GSFrame]\ninfoBoxEnabledWelcome=true\n[main_window]\ninfoBoxEnabledWelcome=false\n");
+        // Sur le disque : copie à l'abri, puis le fichier relu.
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join("GuiConfigs")).unwrap();
+        std::fs::write(d.path().join("GuiConfigs/CurrentSettings.ini"), avant).unwrap();
+        assert!(rpcs3_sans_boites(d.path()).unwrap());
+        assert!(std::fs::read_to_string(d.path().join("GuiConfigs/CurrentSettings.ini")).unwrap().contains("infoBoxEnabledWelcome=false\r\n"));
+        assert!(!rpcs3_sans_boites(d.path()).unwrap(), "la 2e fois : rien à faire");
+        assert!(d.path().join(".frogtend-sauvegardes").is_dir(), "l'original est à l'abri");
+        // Un fichier illisible (octets non UTF-8) n'est jamais remplacé.
+        let illisible = [b'[', b'm', b']', b'\n', 0xFF, 0xFE, b'\n'];
+        std::fs::write(d.path().join("GuiConfigs/CurrentSettings.ini"), illisible).unwrap();
+        assert!(rpcs3_sans_boites(d.path()).is_err());
+        assert_eq!(std::fs::read(d.path().join("GuiConfigs/CurrentSettings.ini")).unwrap(), illisible);
     }
 
     #[test]
@@ -870,5 +1003,25 @@ mod essai_reel_micrologiciel {
     fn lire_le_vrai_micrologiciel() {
         let d = std::path::PathBuf::from(std::env::var("FROGTEND_RPCS3").unwrap());
         println!("MICROLOGICIEL {:?}", super::micrologiciel_rpcs3(&d));
+    }
+}
+
+#[cfg(test)]
+mod essai_reel_rpcs3 {
+    /// Sur une COPIE du vrai fichier de RPCS3 : `FROGTEND_RPCS3=<dossier> cargo test --lib copie_du_vrai -- --ignored`.
+    #[test]
+    #[ignore]
+    fn copie_du_vrai_fichier_de_rpcs3() {
+        let vrai = std::path::PathBuf::from(std::env::var("FROGTEND_RPCS3").unwrap()).join("GuiConfigs/CurrentSettings.ini");
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join("GuiConfigs")).unwrap();
+        std::fs::copy(&vrai, d.path().join("GuiConfigs/CurrentSettings.ini")).unwrap();
+        let avant = std::fs::read(&vrai).unwrap();
+        println!("RPCS3 réglé : {}", super::rpcs3_sans_boites(d.path()).unwrap());
+        let apres = std::fs::read(d.path().join("GuiConfigs/CurrentSettings.ini")).unwrap();
+        let (a, b) = (String::from_utf8_lossy(&avant), String::from_utf8_lossy(&apres));
+        let differences: Vec<(&str, &str)> = a.lines().zip(b.lines()).filter(|(x, y)| x != y).collect();
+        println!("RPCS3 lignes : {} avant, {} après ; différences : {:?}", a.lines().count(), b.lines().count(), differences);
+        assert_eq!(std::fs::read(&vrai).unwrap(), avant, "le vrai fichier n'est pas touché");
     }
 }

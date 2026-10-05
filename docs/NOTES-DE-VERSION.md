@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.46.2 — RPCS3 s'arrête proprement, et le menu montre clairement le bouton choisi
+
+- **RPCS3** : la vraie cause des soucis à la fermeture était son écran d'accueil « Welcome to RPCS3 », ouvert à
+  chaque lancement mais INVISIBLE derrière le jeu en plein écran : il bloquait RPCS3 (programme caché qui ne répond
+  plus, puis plantage « fenêtres encore ouvertes » à l'arrêt). Frogtend le désactive maintenant avant chaque partie
+  (ainsi que la question « Exit Game? ») ; seules ces lignes du réglage de RPCS3 changent, l'original est copié à
+  l'abri.
+- **Le menu en jeu** : tous les boutons ont le même aspect, et SEUL le bouton choisi se remplit de couleur (avant,
+  « Reprendre » restait orange et le contour de sélection passait derrière les boutons voisins).
+
 ## 0.46.1 — « Quitter le jeu » ferme vraiment l'émulateur
 
 - **Le problème** : après « ⏹ Quitter le jeu », RPCS3 fermait l'écran du jeu mais son programme restait en vie, caché
