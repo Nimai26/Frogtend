@@ -121,23 +121,26 @@ d'abord :
 ## ⏳ Attend un événement extérieur
 
 - [ ] **Firehouse — contrat 1.7 → 1.13** (16/10, message de la session Firehouse « FIREHOUSE 2 ») : Frogtend ne lit que
-      la 1.3 (+ notes 1.6). Demandé : le texte complet de la 1.13 et ce qu'apporte chaque version, avec des exemples
-      réels → à intégrer dans CONTRAT-API-JEUX-V1.md puis relecture par l'expert contrat. Nouvelles transmises par
+      la 1.3 (+ notes 1.6). ✅ Texte 1.7 → 1.13 reçu le 16/10 et intégré à CONTRAT-API-JEUX-V1.md ; exemples réels
+      annoncés. → relecture par l'expert contrat : ce que Frogtend doit changer (documents 1.7, conseil 1.8, BIOS 1.9,
+      cœurs 1.12, MAME 1.13, fiches réunies 2.58.0). Nouvelles transmises par
       Firehouse : 2.67.5 (BIOS du stock de départ reconnus, 7 BIOS ajoutés dont SCV `upd7801g.s01`, 6 « à décider ») ;
       2.67.8 (paquet RPCS3 servi de nouveau, RPCS3 a renommé ses fichiers `_win64_msvc.7z`) ; firmware Switch servi
       18.1.0, Nintendo publie 23.0.0 (rien téléchargé, avis à Seb) ; Ryubing (git.ryujinx.app) injoignable depuis la
       maison : source de son paquet peut-être périmée.
 - [ ] **Firehouse — besoin 20** (15/10) : les visuels des plateformes (fond du menu « du système », rangées de
       Taodbox).
-- [ ] **Firehouse — Dune (id 110)** (relevé réel 15/10) : `/jeu/110/medias` répond une liste VIDE (Dune avait une
-      jaquette de 3 Mo le 29/09) ; ses visuels ont disparu côté Firehouse. À signaler.
+- [ ] **Firehouse — images de Dune et de tout MS-DOS** (cause donnée par Firehouse le 16/10) : depuis la 1.6, seules les
+      images RAPATRIÉES sont servies ; le rapatriement MS-DOS n'a jamais été lancé (25 images de Dune « à
+      télécharger »). Firehouse le présente à Seb, chiffré (PC, MS-DOS, PS3…). Rien à changer dans Frogtend.
 - [ ] **Firehouse — besoin 15** : la liste MAME (MAME.xml de LaunchBox) servie par l'API.
 - [ ] **Firehouse — besoin 16** : fiche et jaquette d'un jeu importé, par `launchbox_id` (les 7 jeux PS3 importés
       n'ont pas d'informations).
 - [ ] **Firehouse — besoin 17** : MAME et ses packs (non-merged + CHD, même version — ✅ décidé par Seb le 03/10).
 - [ ] **Firehouse — besoin 18** : la liste « contenus » (DLC, mises à jour) par version — accepté le 03/10.
-- [ ] **Firehouse — besoin 19** : BIOS et micrologiciels fournis à jour — reçu, À CADRER chez Firehouse ; ne pas coder
-      contre la route, la simuler.
+- [ ] **Firehouse — besoin 19** : BIOS et micrologiciels — ✅ FIGÉ côté Firehouse (contrat 1.9, précisé 1.10–1.11 ;
+      texte dans CONTRAT-API-JEUX-V1.md, reçu le 16/10). Exemples réels frais annoncés par Firehouse ; coder contre
+      eux seulement quand ils sont là.
 - [ ] **Firehouse — stock de départ** (~1,9 To de Venkman) : réconciliation des jeux déjà présents (nom ou empreinte,
       ne rien retélécharger), MUGEN, lot PS3 en dernier (simulation montrée à Seb d'abord).
 

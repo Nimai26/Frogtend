@@ -1,4 +1,4 @@
-# Contrat de l'API jeux v1 (Firehouse 2.16.1, `X-Api-Jeux-Version` 1.3)
+# Contrat de l'API jeux v1 (Firehouse 2.16.1, `X-Api-Jeux-Version` 1.3 ; ajouts jusqu'à la 1.13 en fin de fichier)
 
 > Reçu le 29/09/2026 de la session Firehouse (Shyrka), copié de son `docs/frogtend/BRIEF-AGENT-FROGTEND.md` § 3–4.
 > C'est la référence de Frogtend pour l'API. Les réponses réelles relevées sont dans `EXEMPLES-API-JEUX-V1.md`.
@@ -161,3 +161,103 @@ Besoins n° 13 et 14 (BESOINS-API.md). Implémentation côté Firehouse après l
 - émulateurs et forks (`/emulateurs`, `/emulateurs/catalogue`, `/emulateurs/{id}/paquet`) : + `programme` (exe à
   lancer, relatif à la racine décompressée, « / ») et `portable: {type: fichier|dossier|aucun, nom}`. Repli de
   Frogtend : chercher l'exe dans l'archive, demander s'il y en a plusieurs.
+
+## Contrat 1.7 → 1.13 (reçu le 16/10/2026 de la session Firehouse, texte de son brief § 3)
+
+> Reçu par message de la session Firehouse « FIREHOUSE 2 » (nuit du 15 au 16/10). Les exemples réels suivront ;
+> d'ici là, un champ absent de ce texte n'existe pas.
+
+### 1.6 (03/10) — les visuels des jeux
+Voir l'exemple réel consigné dans `EXEMPLES-API-JEUX-V1.md` (15/10). Depuis la 1.6, Firehouse ne sert plus que les
+images RAPATRIÉES sur son disque (avant : à la volée depuis LaunchBox). Un jeu dont les images ne sont pas encore
+rapatriées a `/jeu/{id}/medias` → `[]` et `/media/{id}/…` → 404 : c'est le cas de Dune (110) et de tout MS-DOS au
+16/10 (rapatriement = téléchargement, soumis à l'accord chiffré de Seb).
+
+### 1.7 (04/10) — les documents
+- `/catalogue` : chaque jeu porte `documents` (comptes par type, ex. `{"livret": 1, "musique": 1, "video": 2}`) et
+  `documents_empreinte` (change dès qu'un document est ajouté, retiré ou remplacé → relire `/jeu/{id}/documents` ;
+  À PART de `medias_empreinte`, qui ne concerne que les images).
+- `GET /jeu/{id}/documents` → `[{id, type, langue, format, taille, pages, duree_s, empreinte (sha256), source}]` +
+  `documents_empreinte` — jamais un chemin. Types : `livret` (PDF, pages), `musique` (MP3, duree_s), `video` (MP4,
+  duree_s), `video_theme` (MP4 : la vidéo plein écran de LaunchBox/Big Box). `langue` vide = inconnue. Un document
+  retiré de la source reste listé et servi. (2.57.0, sans changement de contrat) `source` peut valoir `emumovies` à
+  côté de `launchbox_local` ; jamais deux documents du même type pour un jeu : celui de LaunchBox prime.
+- `GET /jeu/{id}/document/{doc}` → un document DE CE jeu (sinon 404), reprise `Range` ; `Content-Type` du format
+  VÉRIFIÉ (`application/pdf`, `audio/mpeg`, `video/mp4`), `ETag` = empreinte, `Cache-Control: immutable` (un contenu
+  nouveau = un nouvel id).
+
+### 1.8 (04/10) — le conseil par système
+- `GET /emulateurs?plateforme=` : `conseil` = le choix PAR DÉFAUT de la maison — `{plateforme, emulateur (id des
+  sources), coeur ("xxx_libretro" si RetroArch, sinon null), ligne_de_commande (la SIENNE), alternatives [{nom,
+  emulateur, coeur, quand, site}], bios [{fichier, racine, chemin, facultatif, coffre, note}], version_attendue, note,
+  origine, maj_le}` ou `null` (plateforme sans conseil : jamais deviné). Le `conseil` PRIME ; ensuite la liste
+  LaunchBox (`recommande` = avis LaunchBox, informatif). Ne JAMAIS reprendre la ligne de commande d'une ligne
+  LaunchBox pour appliquer le conseil.
+- `GET /emulateurs/catalogue` : chaque plateforme porte aussi son `conseil` ; `maj_le` change aussi quand un conseil
+  est corrigé.
+- `type` d'un BIOS (sens fixé) : `fichier` = nom EXACT ; `dossier` = dossier à poser tel quel (aucun servi ainsi) ;
+  `motif` (`scph*.bin`) ; `installation` = firmware à installer par le MENU de l'émulateur (jamais déposé, chemin
+  vide) ; `archive` (1.11) = ZIP à extraire dans racine/chemin (blueMSX.zip → `Machines/` et `Databases/` dans
+  `system/`).
+- `ligne_de_commande` vide (autonomes : Dolphin, PCSX2, RPCS3, Eden, BigPEmu, MAME…) : lancer le programme de la
+  source avec le fichier du jeu en argument.
+- `racine` : `system_retroarch` (`system/` de RetroArch, chemin relatif ex. `dc/naomi.zip`) | `dossier_emulateur`
+  (PCSX2 : `bios/`) | `installation_par_l_emulateur` (PS3UPDAT.PUP dans RPCS3, firmware Switch dans Eden « Install
+  Firmware »).
+- `coffre: true` (Wii U `keys.txt`, Switch `prod.keys`) : un SIGNAL ; les clés ne sont JAMAIS servies ; Frogtend dit
+  qu'elles manquent.
+- `facultatif` = ce que demande la plateforme, pas ce que déclare le cœur.
+- `version_attendue` (MAME = celle du romset, 0.289) : `/emulateurs/mame/paquet` sert CETTE version, jamais « la
+  dernière ». `/emulateurs/{id}/paquet` : toujours la version STABLE.
+
+### 1.9 (04/10) — les BIOS (besoin 19, FIGÉ ; précisé en 1.10–1.11)
+- `GET /bios` → les BIOS SERVIS : `[{sha1, md5, taille, noms [{nom (chemin libretro, ex. "dc/naomi.zip"), systeme}],
+  verification}]` — jamais un chemin.
+- `GET`, `HEAD /bios/{sha1}?nom=` → UN BIOS servi, reprise `Range` (le firmware PS3 pèse 206 Mo) ; `nom` = l'un de SES
+  noms (sinon son premier) en `Content-Disposition` ; `Cache-Control: private, immutable`. 404 = inconnu OU pas
+  (encore) servi.
+- Dans le conseil (`GET /emulateurs?plateforme=`), chaque BIOS dit s'il est `disponible` (calculé à chaque lecture) :
+  type `fichier`, `installation` ou `archive` → disponible, et s'il l'est `sha1`, `taille`, `url`
+  (`/api/jeux/v1/bios/{sha1}?nom=…`) à télécharger puis déposer sous racine/chemin (une archive : à EXTRAIRE dans
+  racine/chemin, chemin vide = la racine même) ; type `motif` → disponible + `fichiers [{nom, sha1, taille, url}]` =
+  tous les BIOS servis du système ; type `dossier` → `disponible: false` ; une CLÉ (`coffre: true`) → toujours
+  `disponible: false`, sans url. Rapprochement par le CHEMIN puis par le nom DANS le système de la plateforme — jamais
+  par un nom d'origine.
+- `verification` (1.10) : `system_dat` | `source_officielle` (firmware PS3 Sony) | `nca_contentid` (firmware Switch) |
+  `aucune` (gardé à la main).
+
+### 1.10 (04/10) — le firmware Switch
+`firmware-switch.zip` (type `installation`) = zip REPRODUCTIBLE des NCA, chacun vérifié par son ContentId ;
+« Install Firmware » d'Eden ; version « 18.1.0 » d'après le nom du dossier (non vérifiable sans clés) ; ⚠️ Eden
+REFUSE l'installation sans `prod.keys` : le dire avant de proposer. `verification: nca_contentid`.
+
+### 1.11 (04/10) — archives et PS2
+Type `archive` (blueMSX). PS2 = 3 BIOS (Europe par défaut, USA et Japon facultatifs) dans `bios/` de PCSX2 ; un seul
+suffit (PCSX2 reconnaît le contenu) ; modifier `PCSX2.ini` clé par clé (`[Filenames] BIOS =
+ps2-0250e-20100415.bin`, `[Folders] Bios = bios`, `[EmuCore] EnableFastBoot = true` ; à la création ajouter `[UI]
+SettingsVersion = 1`) ; ne jamais toucher aux `.nvm`. BIOS « admin » (gardés à la main avec nom + système)
+rapprochables.
+
+### 1.12 (05/10) — les cœurs RetroArch servis
+- `GET /emulateurs/retroarch/coeurs` → `{coeurs: [{coeur, source, version, version_retroarch, build_le, sha256_zip,
+  sha256_dll, taille, recupere_le, url}]}`.
+- `GET|HEAD …/retroarch/coeurs/{coeur}/fichier` = un zip avec `<coeur>.dll` à la racine : DÉZIPPER dans `cores\` de
+  RetroArch, vérifier `sha256_zip` (et `sha256_dll` après extraction). Reprise `Range` ; `ETag` = `sha256_zip` ; PAS
+  immuable (revérifier l'empreinte publiée).
+- `source` `stable` = paquet stable RetroArch (`version` = `version_retroarch` = « 1.22.2 ») ; `source` `nightly` = pris
+  une fois et FIGÉ (« nightly 2026-10-04 », `version_retroarch` null : applewin, emuscv, hatarib).
+- Le conseil porte `paquet {url, sha256, taille, version, source}` sur son cœur principal ET sur chaque alternative qui
+  a un cœur (null si non servi : RetroArch l'installe lui-même). Aucun `.info` servi.
+
+### 1.13 (05/10) — le romset MAME
+Plateforme « Arcade », MAME 0.289 (`version_attendue`). Chaque version d'une fiche Arcade porte `mame {nom (NOM
+COURT, ex. « mslug »), version, parent, complet}` et ses fichiers : le zip AUTONOME du jeu (BIOS et devices DEDANS)
+et, s'il en a, ses CHD. Chaque fichier porte `dossier` : vide = à plat dans le rompath ; non vide = dans
+`<rompath>/<dossier>/` (une CHD vit dans le dossier de son PARENT). Lancer `mame <nom> -rompath "<rompath>"` (pas le
+chemin du zip). `complet: false` = une CHD manque encore : dire « incomplet ». Les clones sont des VERSIONS de la
+fiche du parent.
+
+### Note 2.58.0 (contrat inchangé)
+Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a été RÉUNIE à celle du même jeu
+(« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
+sont pas redirigées (une indication « fusionné dans N » serait un ajout 1.14 — à demander à Seb si gênant).
