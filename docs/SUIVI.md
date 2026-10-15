@@ -120,6 +120,13 @@ d'abord :
 
 ## ⏳ Attend un événement extérieur
 
+- [ ] **Firehouse — contrat 1.7 → 1.13** (16/10, message de la session Firehouse « FIREHOUSE 2 ») : Frogtend ne lit que
+      la 1.3 (+ notes 1.6). Demandé : le texte complet de la 1.13 et ce qu'apporte chaque version, avec des exemples
+      réels → à intégrer dans CONTRAT-API-JEUX-V1.md puis relecture par l'expert contrat. Nouvelles transmises par
+      Firehouse : 2.67.5 (BIOS du stock de départ reconnus, 7 BIOS ajoutés dont SCV `upd7801g.s01`, 6 « à décider ») ;
+      2.67.8 (paquet RPCS3 servi de nouveau, RPCS3 a renommé ses fichiers `_win64_msvc.7z`) ; firmware Switch servi
+      18.1.0, Nintendo publie 23.0.0 (rien téléchargé, avis à Seb) ; Ryubing (git.ryujinx.app) injoignable depuis la
+      maison : source de son paquet peut-être périmée.
 - [ ] **Firehouse — besoin 20** (15/10) : les visuels des plateformes (fond du menu « du système », rangées de
       Taodbox).
 - [ ] **Firehouse — Dune (id 110)** (relevé réel 15/10) : `/jeu/110/medias` répond une liste VIDE (Dune avait une
