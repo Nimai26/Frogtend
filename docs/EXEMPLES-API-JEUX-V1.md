@@ -1397,3 +1397,66 @@ logo ×2, boite_3d, cartouche, cartouche_3d, dos, ecran_titre, fond, jaquette, t
 ```
 
 `GET /media/116/{type}?largeur=1000` → WebP : `fond` 118 776 octets, `capture` 20 774, `ecran_titre` 10 694.
+
+## Contrat 1.9 → 1.13 — relevés RÉELS du 16/10/2026 01 h 10 (Firehouse 2.67.11)
+
+> Envoyés par la session Firehouse « FIREHOUSE 2 », sortis des fonctions qui construisent les réponses (lecture
+> seule). Chemins relatifs à `/api/jeux/v1`.
+
+### `GET /bios` → `{"ok": true, "bios": [...]}` — 338 BIOS servis (4 premiers)
+
+```json
+{"sha1":"000ac11b702a4c42e40f135df12fa5f2f13e20a1","md5":"85b38e4128bbc300e675f55b278683a8","taille":2048,"noms":[{"nom":"CYRILLIC.FNT","systeme":"Microsoft - MSX"}],"verification":"system_dat"}
+{"sha1":"003628c137dae577ff3b04b93ca1787b0c944702","md5":"72da56fccb8fcd77bba16d1b6f479914","taille":4194304,"noms":[{"nom":"pcsx2/bios/ps2-0160j-20020426.bin","systeme":"Sony - PlayStation 2"}],"verification":"system_dat"}
+{"sha1":"014881a959e045e00f4db8f52955200865d40280","md5":"6d2cb14fc3e1f65ceb135633d1694122","taille":32768,"noms":[{"nom":"gecard.pce","systeme":"NEC - PC Engine - TurboGrafx 16 - SuperGrafx"},{"nom":"gexpress.pce","systeme":"NEC - PC Engine - TurboGrafx 16 - SuperGrafx"}],"verification":"system_dat"}
+{"sha1":"015eb96dafb273d4f4512c467e9b43c305fd1bc4","md5":"d5869034604dbfd2c1d54170e874fd0a","taille":16384,"noms":[{"nom":"fuse/gluck.rom","systeme":"Sinclair - ZX Spectrum"}],"verification":"system_dat"}
+```
+Un même fichier peut porter plusieurs noms.
+
+### Le champ `bios` du conseil (`GET /emulateurs?plateforme=…`), un exemple par type
+
+- `fichier` (Sega Naomi, retroarch, `flycast_libretro`) :
+  `{"fichier":"naomi.zip","type":"fichier","racine":"system_retroarch","chemin":"dc/naomi.zip","disponible":true,"sha1":"c96711c01c0158f161791d6fbe75d88329e8ac0a","url":"/api/jeux/v1/bios/c96711c01c0158f161791d6fbe75d88329e8ac0a?nom=naomi.zip","coffre":false}`
+- `fichier` dans le dossier de l'émulateur (Sony Playstation 2, pcsx2, cœur null — 3 BIOS, le 1er est le défaut) :
+  `{"fichier":"ps2-0250e-20100415.bin","type":"fichier","racine":"dossier_emulateur","chemin":"bios/ps2-0250e-20100415.bin","disponible":true,"sha1":"b9cb5775af29cd4d1ec5521e8231f8b6636e2e44","url":"/api/jeux/v1/bios/b9cb5775af29cd4d1ec5521e8231f8b6636e2e44?nom=ps2-0250e-20100415.bin","coffre":false}`
+  — puis `ps2-0230a-20080220.bin` (sha1 f9229fe1…) et `ps2-0250j-20100415.bin` (4b5ef16b…).
+- `installation` (Sony Playstation 3, rpcs3 ; chemin vide) :
+  `{"fichier":"PS3UPDAT.PUP","type":"installation","racine":"installation_par_l_emulateur","disponible":true,"sha1":"ae2a4f49ec6c09d124fed20f84231ce27d10c7b7","url":"/api/jeux/v1/bios/ae2a4f49ec6c09d124fed20f84231ce27d10c7b7?nom=PS3UPDAT.PUP","coffre":false}`
+- `archive` (Microsoft MSX, retroarch, `bluemsx_libretro`) → à EXTRAIRE dans `system/` (chemin vide = la racine) :
+  `{"fichier":"blueMSX.zip","type":"archive","racine":"system_retroarch","disponible":true,"sha1":"bda0dec1a075f06d36427c1c24397d5a1793fba5","url":"/api/jeux/v1/bios/bda0dec1a075f06d36427c1c24397d5a1793fba5?nom=blueMSX.zip","coffre":false}`
+- clé au coffre puis firmware (Nintendo Switch, eden) :
+  `{"fichier":"prod.keys","type":"fichier","racine":"dossier_emulateur","chemin":"prod.keys","disponible":false,"coffre":true}`
+  puis `{"fichier":"firmware-switch.zip","type":"installation","racine":"installation_par_l_emulateur","disponible":true,"sha1":"f85244d668ae8cd20a9b140fe4a53b16d8f93900","url":"/api/jeux/v1/bios/f85244d668ae8cd20a9b140fe4a53b16d8f93900?nom=firmware-switch.zip","coffre":false}`
+- `motif` (2 plateformes, aucune servie au 16/10) :
+  NEC PC-8801 `{"fichier":"*.rom","type":"motif","racine":"system_retroarch","chemin":"quasi88/","disponible":false,"fichiers":[],"note":"N88.ROM, N88_0.ROM à N88_3.ROM, DISK.ROM… dans system/quasi88/"}` ;
+  Microsoft Xbox `{"fichier":"*.bin","type":"motif","racine":"dossier_emulateur","chemin":"*.bin","disponible":false,"fichiers":null,"note":"BIOS flash (Complex 4627)"}`.
+  ⚠️ `fichiers: null` est un écart que Firehouse corrige (toujours une liste) : **traiter `null` comme `[]`**.
+- Sony Playstation (`mednafen_psx_hw_libretro`) : 3 BIOS de type `fichier`, `scph5500.bin` / `scph5501.bin` /
+  `scph5502.bin`, à la racine de `system/`.
+
+### `GET /emulateurs/retroarch/coeurs` → `{"ok": true, "coeurs": [...]}` — 55 cœurs (extrait)
+
+```json
+{"coeur":"81_libretro","source":"stable","version":"1.22.2","version_retroarch":"1.22.2","build_le":null,"sha256_zip":"59f6a12ecf9c75cf700c80eab5d395f3da44933bc0b7f18a77d74788edda5d03","sha256_dll":"c96243e3735c853a30d9cf23ad2a1d13506b65661392ca567060590543d0b112","taille":177139,"recupere_le":"2026-10-05T03:38:18","url":"/api/jeux/v1/emulateurs/retroarch/coeurs/81_libretro/fichier"}
+{"coeur":"a5200_libretro","source":"stable","version":"1.22.2","version_retroarch":"1.22.2","build_le":null,"sha256_zip":"9dbb11787f151db2230ad14caa4d4029d97c3e6614e0b995c386039b9b711142","sha256_dll":"90f3440bfe4b0b0368dabe66448c53e74daa985c67773d60c2f2df46e1c31db4","taille":135325,"recupere_le":"2026-10-05T03:38:18","url":"/api/jeux/v1/emulateurs/retroarch/coeurs/a5200_libretro/fichier"}
+```
+applewin / emuscv / hatarib : `source` « nightly », `version` « nightly 2026-10-04 », `version_retroarch` null.
+
+### Fiche Arcade avec CHD — `GET /jeu/12258` (Street Fighter III: New Generation, launchbox_id 12697) ; versions (extrait)
+
+```json
+{"nom":"Street Fighter III: New Generation (Europe 970204) [sfiii]","qualite":"Jeu — MAME 0.289","mame":{"nom":"sfiii","version":"0.289","parent":"","complet":true},"fichiers":[{"nom":"sfiii.zip","taille":132444,"dossier":""},{"nom":"cap-sf3-3.chd","taille":35173219,"dossier":"sfiii"}]}
+{"nom":"Street Fighter III: New Generation (Asia 970204) [sfiiia]","qualite":"Jeu — MAME 0.289","mame":{"nom":"sfiiia","version":"0.289","parent":"sfiii","complet":true},"fichiers":[{"nom":"sfiiia.zip","taille":132464,"dossier":""},{"nom":"cap-sf3-3.chd","taille":35173219,"dossier":"sfiii"}]}
+```
+Le clone `sfiiia` partage la CHD de son parent, rangée dans `<rompath>/sfiii/` ; lancer `mame sfiiia -rompath "<rompath>"`.
+
+### `GET /jeu/111/documents` (The Legend of Zelda: Ocarina of Time)
+
+```json
+{"ok":true,"id":111,"documents_empreinte":"…","documents":[
+ {"id":6142,"type":"livret","langue":"","format":"pdf","taille":8583117,"pages":23,"duree_s":null,"empreinte":"4adbac82181b87dc29e054452203e186a55cc557088e6b844ce90944d56fdd82","source":"launchbox_local"},
+ {"id":6482,"type":"musique","langue":"","format":"mp3","taille":6110240,"pages":null,"duree_s":152.6,"empreinte":"5861563a33320b58d944cd74c846900ccc298149b3873c317ffe8c0a7ca1e365","source":"launchbox_local"},
+ {"id":6842,"type":"video","langue":"","format":"mp4","taille":5873996,"pages":null,"duree_s":36.6,"empreinte":"f366d1de6944508be98ad1643306bed2bc37f03071c6cb881e8e0ddda9f99762","source":"launchbox_local"},
+ {"id":6973,"type":"video_theme","langue":"","format":"mp4","taille":25198576,"pages":null,"duree_s":37.3,"empreinte":"95a21c8634c398916f20f0bb75d8f9b17265e956599b74777fa32f174bba1d93","source":"launchbox_local"}]}
+```
+Chaque document se lit par `/jeu/111/document/{id}`.
