@@ -73,7 +73,9 @@
       Découpe : (1) conseil en lecture ; (2) conseil : ligne et cœur, origine retenue ; (3) cœurs servis + sha256 ;
       (4) BIOS servis (fichier/motif/archive, sha1, un seul accord) puis PS2 ; (5) firmwares PS3 et Switch (prod.keys
       au coffre : le dire) ; (6) MAME (dossier, nom court, -rompath, « incomplet », paquet 0.289) ; (7) documents ;
-      (8) fiches réunies. `fichiers: null` d'un motif = `[]`.
+      (8) fiches réunies. `fichiers: null` d'un motif = `[]`. Règles Firehouse (16/10) : seul `conseil.bios[]` fait foi ;
+      ignorer `actif`/`statut_emu_france` pour l'émulateur du conseil ; `conseil.paquet: null` → « cœur non servi par
+      Firehouse », rien chez libretro (question posée à Seb par Firehouse : laisser RetroArch l'installer ?).
 - [ ] **Lot « Médias »** (contrat 1.6, Firehouse 2.41.0) : ratio réel de la boîte réservé, choix du visuel de la
       ludothèque (jaquette, boîte 3D, cartouche…), logos et fonds pour Taodbox, galerie dans la fiche, copie hors ligne
       des visuels choisis, retrait du cache d'une image que Firehouse ne sert plus (édition par un admin).

@@ -1460,3 +1460,28 @@ Le clone `sfiiia` partage la CHD de son parent, rangée dans `<rompath>/sfiii/` 
  {"id":6973,"type":"video_theme","langue":"","format":"mp4","taille":25198576,"pages":null,"duree_s":37.3,"empreinte":"95a21c8634c398916f20f0bb75d8f9b17265e956599b74777fa32f174bba1d93","source":"launchbox_local"}]}
 ```
 Chaque document se lit par `/jeu/111/document/{id}`.
+
+### `GET /emulateurs?plateforme=Sony Playstation 2` — réponse COMPLÈTE réelle (16/10/2026 01 h 35, Firehouse)
+
+```json
+{"ok": true, "plateforme": "Sony Playstation 2",
+ "conseil": {"plateforme": "Sony Playstation 2", "emulateur": "pcsx2", "coeur": null, "ligne_de_commande": "", "alternatives": [],
+  "bios": [
+   {"fichier": "ps2-0250e-20100415.bin", "type": "fichier", "racine": "dossier_emulateur", "chemin": "bios/ps2-0250e-20100415.bin", "facultatif": false, "coffre": false, "note": "PAR DÉFAUT (Europe, v2.50) : PCSX2.ini [Filenames] BIOS = ps2-0250e-20100415.bin ; [EmuCore] EnableFastBoot = true", "disponible": true, "sha1": "b9cb5775af29cd4d1ec5521e8231f8b6636e2e44", "taille": 4194304, "url": "/api/jeux/v1/bios/b9cb5775af29cd4d1ec5521e8231f8b6636e2e44?nom=ps2-0250e-20100415.bin"},
+   {"fichier": "ps2-0230a-20080220.bin", "type": "fichier", "racine": "dossier_emulateur", "chemin": "bios/ps2-0230a-20080220.bin", "facultatif": true, "coffre": false, "note": "USA (v2.30), facultatif", "disponible": true, "sha1": "f9229fe159d0353b9f0632f3fdc66819c9030458", "taille": 4194304, "url": "/api/jeux/v1/bios/f9229fe159d0353b9f0632f3fdc66819c9030458?nom=ps2-0230a-20080220.bin"},
+   {"fichier": "ps2-0250j-20100415.bin", "type": "fichier", "racine": "dossier_emulateur", "chemin": "bios/ps2-0250j-20100415.bin", "facultatif": true, "coffre": false, "note": "Japon (v2.50), facultatif", "disponible": true, "sha1": "4b5ef16b67e3b523d28ed2406106cb80470a06d0", "taille": 4194304, "url": "/api/jeux/v1/bios/4b5ef16b67e3b523d28ed2406106cb80470a06d0?nom=ps2-0250j-20100415.bin"}],
+  "version_attendue": null, "note": "", "origine": "amorce", "maj_le": "2026-10-04T17:23:15"},
+ "emulateurs": [{"nom": "PCSX2", "site": "https://pcsx2.net/", "recommande": true, "ligne_de_commande": "", "extensions": [], "bios": "", "id": "pcsx2", "site_officiel": "https://pcsx2.net",
+   "telechargement": {"type": "github", "depot": "PCSX2/pcsx2", "hote": null, "url": null, "motif_paquet": "pcsx2-*-windows-x64-Qt.7z", "format": "7z"},
+   "programme": "pcsx2-qt.exe", "portable": {"type": "fichier", "nom": "portable.txt"}, "actif": false, "statut_emu_france": "mort", "version_emu_france": "(01/04/2024)", "source_info": "emu-france", "verifie_le": "2026-10-04", "forks": []}],
+ "autres": [{"id": "ef_hpsx64", "nom": "Hpsx64", "site_officiel": "http://sourceforge.net/projects/hpsx64/", "telechargement": {"type": "page", "depot": null, "hote": null, "url": "http://sourceforge.net/projects/hpsx64/", "motif_paquet": null, "format": null}, "programme": null, "portable": null, "actif": true, "statut_emu_france": "actif", "version_emu_france": "v0500", "source_info": "emu-france", "verifie_le": "2026-10-04", "forks": []},
+   {"id": "ef_play_x86_git", "nom": "Play! (x86) GIT", "…": "même forme"}, {"id": "ef_play_x64_git", "nom": "Play! (x64) GIT", "…": "même forme"}]}
+```
+Règles données par Firehouse avec ce relevé :
+- chaque ligne de `emulateurs[]` garde sa chaîne `bios` LaunchBox (texte libre, souvent vide) : **seul
+  `conseil.bios[]` fait foi** ;
+- ⚠️ ne se fier ni à `actif` ni à `statut_emu_france` pour l'émulateur du conseil (PCSX2 sort « mort » à cause d'une page
+  emu-france figée au 01/04/2024 ; Firehouse corrige) : le conseil prime, `/emulateurs/pcsx2/paquet` résout la dernière
+  stable GitHub ;
+- `conseil.paquet: null` (cœur non servi) : 0 cas au 16/10 ; d'ici la décision de Seb, **afficher « cœur non servi par
+  Firehouse » et ne rien télécharger chez libretro**.
