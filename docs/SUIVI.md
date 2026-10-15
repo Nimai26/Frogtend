@@ -39,7 +39,10 @@
   - [x] e. Navigation dans le menu à la manette (croix/stick, A valider, B retour), au clavier (flèches, Entrée,
         Échap) et à la souris (survol, clic). ✅ 0.45.0 (à essayer par Seb).
   - [x] f. Le même menu en Taodbox (échelle ×2, plein écran, contour de sélection fort). ✅ 0.45.0 (à essayer).
-  - [ ] g. Le fond : visuel du jeu (médias du contrat 1.6 : fond, capture, logo), sinon du système, sinon du skin.
+  - [x] g. Le fond : visuel du jeu (médias du contrat 1.6 : fond, capture, logo), sinon du système, sinon du skin.
+        ✅ 0.48.0 : fond, sinon capture, sinon écran titre du jeu, sinon le skin. Le niveau « système » attend
+        Firehouse (besoin 20). Question à garder pour l'essai : la fenêtre bureau (560×640) ne montre le visuel que
+        sur une bande de 16 px ; l'agrandir (~760×640) si Seb veut le voir au bureau.
   - [ ] h. Adaptateurs manquants : RPCS3, Cemu, Eden, Xenia (documentation officielle de chacun d'abord).
   - [ ] i. Options propres à certains émulateurs (affichage des performances…), dans le même menu.
   - Relecture par les experts interface et lancement (04/10), qui ont relu le code (fichier:ligne) :
@@ -67,6 +70,10 @@
       contenus.rs:346, Azahar emulateurs_profils.rs:425) — une virgule ou un point-virgule dans un chemin en fait une
       liste → `valeur_qt` (guillemets) + relecture qui retire les guillemets + test « Zelda, TOTK ». Chez Seb
       aujourd'hui : aucun des deux cas (pas de xemu ; dossier DLC sans virgule).
+- [ ] **Changer le jeton d'un profil** (expert contrat, 15/10, déjà vrai avant) : `changer_jeton` garde la
+      ludothèque, les jaquettes et les visuels du profil ; si le nouveau jeton appartient à un AUTRE compte Firehouse
+      (ex. un admin remplacé par un mineur), ce qui a été reçu pour l'ancien reste visible jusqu'à la synchronisation.
+      → vider ces caches (ou forcer une synchronisation complète) quand le compte change. Règle du brief § 2.
 - [ ] **Durcissement** (relevé à l'audit du 03/10) : le cœur ne recompare pas aux réglages les dossiers que
       l'interface lui donne (emplacements, émulateurs, outils).
 - [ ] DLC Xbox 360 (Xenia) et PS Vita (Vita3K) — aucun jeu chez Seb pour l'instant, priorité basse.
@@ -113,6 +120,10 @@ d'abord :
 
 ## ⏳ Attend un événement extérieur
 
+- [ ] **Firehouse — besoin 20** (15/10) : les visuels des plateformes (fond du menu « du système », rangées de
+      Taodbox).
+- [ ] **Firehouse — Dune (id 110)** (relevé réel 15/10) : `/jeu/110/medias` répond une liste VIDE (Dune avait une
+      jaquette de 3 Mo le 29/09) ; ses visuels ont disparu côté Firehouse. À signaler.
 - [ ] **Firehouse — besoin 15** : la liste MAME (MAME.xml de LaunchBox) servie par l'API.
 - [ ] **Firehouse — besoin 16** : fiche et jaquette d'un jeu importé, par `launchbox_id` (les 7 jeux PS3 importés
       n'ont pas d'informations).
@@ -131,6 +142,12 @@ d'abord :
 - Jellyfin → Taodbox : projet côté Firehouse, pas le travail de Frogtend.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.48.0** (15/10) — Fond du menu en jeu : visuel du jeu (fond, capture, écran titre), sinon le skin ; même carte
+  pour tous. Vérifié : forme réelle des visuels relevée chez Firehouse (jeu 116 : 11 types ; fond 118 776 octets en
+  WebP 1 000 px) ; tests du cœur (premier visuel trouvé, cache par profil, 503 qui passe au suivant, hors ligne,
+  autre profil, chemin piégé jamais demandé) ; relectures des experts contrat et interface (aucun bloquant, points
+  corrigés). PAS vérifié : le rendu à l'écran (aucun jeu de Seb n'a de visuel aujourd'hui).
 
 - **0.47.0** (05/10) — « ❄ Figer le jeu pendant le menu » (jeux PC, par jeu, désactivé d'office, refusé avec un
   anti-triche ou un dossier trop grand pour le savoir). Vérifié : gel réel d'un vrai programme (64 et 32 bits),

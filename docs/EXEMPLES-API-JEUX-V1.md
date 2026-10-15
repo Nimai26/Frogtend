@@ -1371,3 +1371,29 @@ il n'est JAMAIS écrit dans le dépôt). Relevé avec un jeton temporaire, révo
 ```json
 {"detail":"connexion requise"}
 ```
+
+## Contrat 1.6 — les visuels d'un jeu (relevé RÉEL le 15/10/2026, jeu 116 « 3x3 Eyes: Juuma Houkan », SNES)
+
+`/catalogue` porte, pour chaque jeu, `medias_nb` (21), `medias_empreinte` (`"9301a836222a4b31"`) et `images` : le
+visuel mis en avant pour chaque type.
+
+```json
+"images": {
+  "fond":        {"empreinte": "b16a6287…", "largeur": 1920, "hauteur": 1080, "region": "Japan"},
+  "logo":        {"empreinte": "1ad40c9c…", "largeur": 4500, "hauteur": 2106, "region": "Japan"},
+  "capture":     {"empreinte": "449e182b…", "largeur": 256,  "hauteur": 224,  "region": "Japan"},
+  "ecran_titre": {"empreinte": "a4655599…", "largeur": 256,  "hauteur": 224,  "region": "Japan"},
+  "jaquette":    {"empreinte": "aec7e68e…", "largeur": 1281, "hauteur": 2311, "region": "Japan"},
+  "boite_3d": {…}, "cartouche": {…}, "cartouche_3d": {…}, "dos": {…}, "tranche": {…}, "autre_image": {…}
+}
+```
+
+`GET /jeu/116/medias` → `{ok, id, medias_empreinte, medias: [...]}`, 21 visuels (types : autre_image ×7, capture ×4,
+logo ×2, boite_3d, cartouche, cartouche_3d, dos, ecran_titre, fond, jaquette, tranche). Un élément :
+
+```json
+{"id": 509030, "type": "jaquette", "principal": true, "region": "Japan", "source": "launchbox",
+ "largeur": 1281, "hauteur": 2311, "taille": 3248009, "empreinte": "aec7e68e…"}
+```
+
+`GET /media/116/{type}?largeur=1000` → WebP : `fond` 118 776 octets, `capture` 20 774, `ecran_titre` 10 694.

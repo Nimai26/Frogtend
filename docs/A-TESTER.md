@@ -48,6 +48,12 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Le fond du menu en jeu (0.48.0)
+- [ ] Un jeu venu de Firehouse (pas un jeu importé) : ouvre le menu en jeu. Derrière la carte du menu, l'image du jeu,
+      floutée et assombrie ; la carte est la même qu'avant, au centre. ⚠️ Tes jeux actuels sont des jeux importés (PS3,
+      Mega Man) ou Dune, que Firehouse n'illustre plus : ils gardent le fond du skin — c'est normal.
+- [ ] En Taodbox : le menu laisse un bord libre autour de lui (environ 5 % de l'écran).
+
 ## Figer un jeu PC pendant le menu (0.47.0)
 - [ ] D'abord l'importer (il n'est pas encore dans Frogtend) : 📥 Importer ▸ 🪟 Jeux Windows ▸ « Choisir le programme
       (.exe) » ▸ `E:\Games\Windows\Mega Man Rock Force\Mega Man Rock Force.exe` ▸ Ajouter.

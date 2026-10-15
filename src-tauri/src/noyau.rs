@@ -15,6 +15,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+/// Les visuels d'un jeu que Frogtend demande en plus de la jaquette (types du contrat 1.6).
+pub const SORTES_VISUELS: &[&str] = &["fond", "capture", "ecran_titre", "logo"];
+
 /// Garde-fou : jamais plus de pages que ça pour une synchronisation (200 000 jeux à 500 par page = 400).
 const PAGES_MAX: u32 = 5_000;
 
@@ -564,6 +567,61 @@ impl Noyau {
         }
     }
 
+    /// Un visuel d'un jeu autre que la jaquette (contrat 1.6, relevé en réel le 15/10 : `fond` 1920×1080, `capture`,
+    /// `ecran_titre`, `logo`…), pour le fond du menu en jeu : le premier des `sortes` que Firehouse a, en 1 000 px au
+    /// plus (jamais l'original). Gardé pour ce PC et CE profil (`<profil>\visuels`), redemandé après 7 jours (le
+    /// `Cache-Control` du contrat) ; une absence aussi est retenue 7 jours. Hors ligne : ce qui est gardé.
+    pub async fn visuel(&self, id: i64, sortes: &[&str], largeur: u32) -> Resultat<Option<Image>> {
+        let s = self.session().await?;
+        if id <= 0 || s.verrou().jeu(id)?.is_none() {
+            return Ok(None); // un jeu de boutique, ou qui n'est pas dans SA ludothèque : rien.
+        }
+        let largeur = largeur.clamp(100, 1000).div_ceil(100) * 100;
+        let dossier = s.dossier.join("visuels");
+        let recent = |p: &Path| {
+            std::fs::metadata(p).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|d| d.as_secs() < 7 * 24 * 3600)
+        };
+        for sorte in sortes {
+            if !SORTES_VISUELS.contains(sorte) {
+                continue;
+            }
+            let fichier = dossier.join(format!("{id}-{sorte}-{largeur}.img"));
+            let absent = dossier.join(format!("{id}-{sorte}-{largeur}.absent"));
+            if recent(&fichier) {
+                if let Ok(octets) = std::fs::read(&fichier) {
+                    return Ok(Some(Image { type_contenu: type_image(&octets), octets }));
+                }
+            }
+            if recent(&absent) {
+                continue;
+            }
+            match s.source.media(id, sorte, Some(largeur)).await {
+                Ok(Some(img)) => {
+                    // Le garder est un plus : un disque plein n'empêche pas de montrer l'image reçue.
+                    let _ = std::fs::create_dir_all(&dossier).and_then(|_| std::fs::write(&fichier, &img.octets));
+                    let _ = std::fs::remove_file(&absent);
+                    return Ok(Some(Image { type_contenu: img.type_contenu.or_else(|| type_image(&img.octets)), octets: img.octets }));
+                }
+                Ok(None) => {
+                    if !s.source.est_simulee() {
+                        let _ = std::fs::create_dir_all(&dossier).and_then(|_| std::fs::write(&absent, b""));
+                    }
+                }
+                // Hors ligne ou serveur en panne : l'ancien visuel gardé, même vieux de plus de 7 jours ; sinon le type
+                // suivant (un 503 sur le fond n'empêche pas d'essayer la capture).
+                Err(e) => {
+                    if let Ok(octets) = std::fs::read(&fichier) {
+                        return Ok(Some(Image { type_contenu: type_image(&octets), octets }));
+                    }
+                    if !matches!(e, Erreur::Reseau(_) | Erreur::Serveur(_)) {
+                        return Err(e);
+                    }
+                }
+            }
+        }
+        Ok(None)
+    }
+
     /// Les skins servis par Firehouse (`/themes`, SANS jeton : utilisable dès l'écran « Qui joue ? »), gardés en
     /// cache pour ce PC avec leur `ETag`. `None` en mode simulé. Hors ligne : ceux gardés.
     pub async fn skins(&self, connexion: &Connexion) -> Resultat<Option<Value>> {
@@ -846,6 +904,99 @@ mod tests {
         assert_eq!(n.lister(&Filtre::default()).await.unwrap().jeux[0].titre, "A (nouvelle version)");
         increment.assert_hits(1);
         complete.assert_hits(1);
+    }
+
+    #[tokio::test]
+    async fn le_fond_du_menu_prend_le_premier_visuel_que_firehouse_a_et_le_garde() {
+        let serveur = MockServer::start();
+        serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "SNES", "jeux": 1}]}));
+        });
+        serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [{"id": 1, "titre": "A", "plateforme": "SNES"}]}));
+        });
+        // Pas de fond pour ce jeu, mais une capture (en 1 000 px au plus, jamais l'original).
+        let fond = serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/media/1/fond").query_param("largeur", "1000");
+            t.status(404).json_body(json!({"ok": false}));
+        });
+        let capture = serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/media/1/capture").query_param("largeur", "1000");
+            t.status(200).header("Content-Type", "image/webp").body(b"RIFF\0\0\0\0WEBPVP8 ".to_vec());
+        });
+        let (_d, n) = noyau();
+        let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: serveur.base_url(), simule: false }).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+
+        let img = n.visuel(1, &["fond", "capture"], 4000).await.unwrap().expect("la capture");
+        assert!(img.octets.starts_with(b"RIFF"));
+        // Une deuxième fois : tout vient du disque (absence du fond et capture retenues).
+        assert!(n.visuel(1, &["fond", "capture"], 1000).await.unwrap().is_some());
+        fond.assert_hits(1);
+        capture.assert_hits(1);
+        // Un type inconnu ou un chemin piégé n'est JAMAIS demandé à Firehouse ; un jeu hors de SA ludothèque : rien.
+        let autre = serveur.mock(|w, t| {
+            w.method(GET).path_contains("/api/jeux/v1/media/");
+            t.status(200).body(b"x".to_vec());
+        });
+        assert!(n.visuel(1, &["../../moi", "jaquette"], 1000).await.unwrap().is_none());
+        assert!(n.visuel(99, &["capture"], 1000).await.unwrap().is_none());
+        assert!(n.visuel(-3, &["capture"], 1000).await.unwrap().is_none());
+        autre.assert_hits(0);
+        capture.assert_hits(1);
+        // Sur le disque : seulement ces deux fichiers, dans le dossier du profil.
+        let mut fichiers: Vec<String> = std::fs::read_dir(_d.path().join("profils").join(&id).join("visuels"))
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        fichiers.sort();
+        assert_eq!(fichiers, ["1-capture-1000.img", "1-fond-1000.absent"]);
+    }
+
+    #[tokio::test]
+    async fn hors_ligne_le_fond_garde_est_rendu_et_un_autre_profil_ne_le_voit_jamais() {
+        let serveur = MockServer::start();
+        serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "SNES", "jeux": 1}]}));
+        });
+        serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [{"id": 1, "titre": "A", "plateforme": "SNES"}]}));
+        });
+        // Le fond : en panne (503) ; la capture : servie.
+        serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/media/1/fond");
+            t.status(503).json_body(json!({"ok": false}));
+        });
+        serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/media/1/capture");
+            t.status(200).header("Content-Type", "image/webp").body(b"RIFF\0\0\0\0WEBPVP8 ".to_vec());
+        });
+        let (d, n) = noyau();
+        let seb = n.creer_profil("Seb", None, Some("j")).unwrap().id;
+        let lea = n.creer_profil("Léa", None, Some("k")).unwrap().id;
+        let co = Connexion { adresse: serveur.base_url(), simule: false };
+        n.ouvrir(&seb, None, &co).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        // Un 503 sur le fond n'arrête pas la recherche : la capture vient.
+        assert!(n.visuel(1, &["fond", "capture"], 1000).await.unwrap().is_some());
+        // Vieillie de 8 jours, puis plus de serveur : la capture gardée est rendue quand même.
+        let f = d.path().join("profils").join(&seb).join("visuels").join("1-capture-1000.img");
+        let vieux = std::time::SystemTime::now() - std::time::Duration::from_secs(8 * 24 * 3600);
+        std::fs::File::options().write(true).open(&f).unwrap().set_modified(vieux).unwrap();
+        let hors_ligne = Connexion { adresse: "http://127.0.0.1:9".into(), simule: false };
+        n.ouvrir(&seb, None, &hors_ligne).await.unwrap();
+        assert!(n.visuel(1, &["capture"], 1000).await.unwrap().is_some(), "hors ligne : le visuel gardé");
+        // Léa a le même jeu dans SA ludothèque : elle ne lit jamais le fichier de Seb (hors ligne, rien pour elle).
+        n.ouvrir(&lea, None, &co).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        n.ouvrir(&lea, None, &hors_ligne).await.unwrap();
+        assert!(n.visuel(1, &["capture"], 1000).await.unwrap().is_none());
     }
 
     #[tokio::test]

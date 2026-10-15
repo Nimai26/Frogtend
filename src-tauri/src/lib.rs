@@ -73,15 +73,24 @@ fn parametre(requete: Option<&str>, nom: &str) -> Option<String> {
 }
 
 /// Répond aux adresses `jaquette://localhost/<id>?largeur=N` (sous Windows : `http://jaquette.localhost/…`) avec
-/// la jaquette du profil OUVERT, en miniature si `largeur` est donnée. Un autre profil, ou aucun, n'obtient rien.
+/// la jaquette du profil OUVERT, en miniature si `largeur` est donnée ; avec `&visuel=fond,capture…`, le premier de
+/// ces visuels du jeu (le fond du menu en jeu). Un autre profil, ou aucun, n'obtient rien.
 fn repondre_jaquette(app: &tauri::AppHandle, chemin: &str, requete: Option<&str>) -> tauri::http::Response<Vec<u8>> {
     use tauri::http::Response;
     let Ok(id) = chemin.trim_matches('/').parse::<i64>() else { return reponse_vide(400) };
     let largeur = parametre(requete, "largeur").and_then(|l| l.parse::<u32>().ok());
     let noyau = app.state::<noyau::Noyau>();
-    let resultat = tauri::async_runtime::block_on(noyau.jaquette(id, largeur));
+    // `?visuel=fond,capture` : le premier de ces visuels du jeu (le fond du menu en jeu), au lieu de la jaquette.
+    let visuel = parametre(requete, "visuel").map(|v| v.replace("%2C", ",").replace("%2c", ","));
+    let resultat = match &visuel {
+        Some(v) => {
+            let sortes: Vec<&str> = v.split(',').collect();
+            tauri::async_runtime::block_on(noyau.visuel(id, &sortes, largeur.unwrap_or(crate::locale::LARGEUR_GRANDE)))
+        }
+        None => tauri::async_runtime::block_on(noyau.jaquette(id, largeur)),
+    };
     if let Err(e) = &resultat {
-        noyau.journaliser(&format!("jaquette {id} (largeur {largeur:?}) : {e:?}"));
+        noyau.journaliser(&format!("jaquette {id} (largeur {largeur:?}, visuel {visuel:?}) : {e:?}"));
     }
     match resultat {
         Ok(Some(img)) => Response::builder()

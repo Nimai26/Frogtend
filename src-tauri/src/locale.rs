@@ -818,6 +818,54 @@ mod tests {
         println!("MEDIAS {} : {:?}", m["medias"].as_array().map_or(0, |l| l.len()), tailles);
     }
 
+    /// Contrat 1.6 en RÉEL, lecture seule : la forme exacte de `images` (catalogue) et de `/jeu/{id}/medias` (types,
+    /// champs), pour le fond du menu en jeu (OSD, étape g). Télécharge trois visuels en 1 000 px (~150 Ko).
+    /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_types_medias -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_types_medias() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        // `FROGTEND_JEU=<id>` : ce jeu seulement (sinon le plus fourni de quelques plateformes).
+        let impose = std::env::var("FROGTEND_JEU").ok().and_then(|v| v.parse::<i64>().ok());
+        let plateformes: &[&str] = if impose.is_some() { &["-"] } else { &["Super%20Nintendo%20Entertainment%20System", "Sony%20Playstation%203", "Windows"] };
+        for plateforme in plateformes {
+            let id = match impose {
+                Some(id) => id,
+                None => {
+                    let cat: Value = c.obtenir_json(&format!("/catalogue?plateforme={plateforme}&page=1&par_page=50")).await.unwrap();
+                    let Some(j) = cat["jeux"].as_array().and_then(|l| l.iter().max_by_key(|j| j["medias_nb"].as_i64().unwrap_or(0))) else { continue };
+                    println!("JEU « {} » ({plateforme}) medias_nb={} medias_empreinte={}", j["titre"], j["medias_nb"], j["medias_empreinte"]);
+                    println!("IMAGES {}", j["images"]);
+                    j["id"].as_i64().unwrap()
+                }
+            };
+            println!("JEU {id}");
+            let m: Value = c.obtenir_json(&format!("/jeu/{id}/medias")).await.unwrap();
+            let cles: Vec<String> = m.as_object().map(|o| o.keys().cloned().collect()).unwrap_or_default();
+            println!("MEDIAS clés={cles:?}");
+            let mut types: std::collections::BTreeMap<String, usize> = Default::default();
+            for x in m["medias"].as_array().into_iter().flatten() {
+                *types.entry(x["type"].to_string()).or_default() += 1;
+            }
+            println!("TYPES {types:?}");
+            if let Some(x) = m["medias"].as_array().and_then(|l| l.first()) {
+                println!("PREMIER {x}");
+            }
+            // Le fond du menu en jeu, comme le demande Frogtend (1 000 px au plus).
+            for sorte in ["fond", "capture", "ecran_titre"] {
+                match c.obtenir(&format!("/media/{id}/{sorte}?largeur=1000"), None).await {
+                    Ok(Reponse::Corps { octets, type_contenu, .. }) => {
+                        println!("VISUEL {sorte} : {} octets, type {:?}, reconnu {:?}", octets.len(), type_contenu, crate::noyau::type_image(&octets))
+                    }
+                    autre => println!("VISUEL {sorte} : {:?}", autre.map(|_| ())),
+                }
+            }
+        }
+    }
+
     /// Reconnaissance RÉELLE en lecture seule, pour le lot 3 : notice de lancement, début du fichier d'une version
     /// (type d'installeur), émulateurs recommandés. Ne télécharge que 1 Mo du fichier.
     /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_reconnaissance -- --ignored --nocapture`

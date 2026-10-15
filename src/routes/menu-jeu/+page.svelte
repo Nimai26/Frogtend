@@ -5,13 +5,19 @@
   import { onMount, tick } from 'svelte';
   import { isTauri } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
-  import { api, type Annexe, type EtatMenuJeu } from '$lib/api';
+  import { adresseFondDuJeu, api, type Annexe, type EtatMenuJeu } from '$lib/api';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { appliquer, arreterManette, demarrerManette, fenetreOuverte, selectionner } from '$lib/taodbox/manette.svelte';
   import type { Commande } from '$lib/taodbox/navigation';
 
   let menu = $state<EtatMenuJeu | null>(null);
+  /** Le fond du menu : un visuel du jeu (Seb, 04/10 : « seul le fond peut être différent en fonction des jeux ») ;
+   * sans visuel (jeu importé, hors ligne sans copie), celui du skin. */
+  let fondJeu = $state<string | null>(null);
+  /** Le visuel n'apparaît (en fondu, avec son voile) qu'une fois chargé : jamais celui du jeu précédent, ni un voile
+   * noir sur le skin le temps d'apprendre qu'il n'y en a pas. */
+  let fondCharge = $state(false);
   let documents = $state<Annexe[] | null>(null);
   let lecture = $state<{ titre: string; texte: string } | null>(null);
   let liste = $state<HTMLElement | null>(null);
@@ -24,6 +30,9 @@
   async function charger() {
     menu = await api.menuJeuEtat().catch(() => null);
     if (menu && pauseRecue) menu.en_pause = true;
+    const adresse = menu && menu.jeu > 0 ? adresseFondDuJeu(menu.jeu) : null;
+    if (adresse !== fondJeu) fondCharge = false;
+    fondJeu = adresse;
     // À la toute première ouverture, l'événement du cœur peut arriver avant la page : l'état dit aussi le mode.
     if (menu) modeTaodbox(menu.taodbox);
     cheatEngine = (await api.emulateursInstalles().catch(() => [])).find((e) => e.id === 'cheatengine')?.programme ?? null;
@@ -52,6 +61,8 @@
     const arrets = [
       listen<{ taodbox?: boolean } | null>('menu-jeu', (e) => {
         pauseRecue = false;
+        fondJeu = null;
+        fondCharge = false;
         modeTaodbox(!!e.payload?.taodbox);
         relancerManette();
         charger();
@@ -166,6 +177,19 @@
 
 <svelte:window onkeydown={touche} />
 
+{#if fondJeu}
+  <!-- Le visuel du jeu derrière le menu, sous le voile de lisibilité de la charte ; absent, l'image s'efface et le
+       fond du skin reste. Le menu, lui, garde toujours la même forme. -->
+  <img
+    class="fond-jeu"
+    class:visible={fondCharge}
+    src={fondJeu}
+    alt=""
+    onload={() => (fondCharge = true)}
+    onerror={() => ((fondJeu = null), (fondCharge = false))}
+  />
+  {#if fondCharge}<div class="voile-jeu" aria-hidden="true"></div>{/if}
+{/if}
 <!-- Le survol ne fait que déplacer la sélection : le clavier et la manette ont déjà leur propre navigation. -->
 <!-- svelte-ignore a11y_no_static_element_interactions, a11y_mouse_events_have_key_events -->
 <div class="menu cx-card" onpointermove={survol}>
@@ -224,15 +248,45 @@
 </div>
 
 <style>
+  .fond-jeu {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: var(--fond-media);
+    /* 1 000 px au plus, étirés sur la télé : un léger flou le fait paraître voulu. */
+    filter: blur(calc(4 * var(--u)));
+    opacity: 0;
+    transition: opacity 0.25s;
+    pointer-events: none;
+  }
+  .fond-jeu.visible {
+    opacity: 1;
+  }
+  .voile-jeu {
+    position: fixed;
+    inset: 0;
+    background: var(--voile);
+    pointer-events: none;
+  }
+  /* Le menu est TOUJOURS la même carte du thème, au centre, avec la même marge des quatre côtés (Seb, 04/10 : « le
+   * MÊME pour tous ») ; autour, le visuel du jeu ou, à défaut, le fond du skin. */
   .menu {
+    --marge: calc(16 * var(--u));
+    position: relative;
     box-sizing: border-box;
-    height: 100vh;
-    margin: 0;
+    width: min(calc(640 * var(--u)), calc(100% - 2 * var(--marge)));
+    height: calc(100vh - 2 * var(--marge));
+    margin: var(--marge) auto;
     padding: calc(24 * var(--u));
     display: flex;
     flex-direction: column;
     gap: calc(16 * var(--u));
     overflow: hidden;
+  }
+  :global([data-taodbox]) .menu {
+    --marge: max(calc(16 * var(--u)), 5vh);
   }
   header h1 {
     margin: 0;

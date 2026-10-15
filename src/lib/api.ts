@@ -545,6 +545,12 @@ export function adresseJaquette(id: number, largeur?: number): string {
   return `http://jaquette.localhost/${id}?largeur=${l}`;
 }
 
+/** Le fond du menu en jeu : le premier visuel que Firehouse a pour ce jeu (fond, sinon capture, sinon écran titre),
+ * servi et gardé par le cœur pour le profil ouvert, en 1 000 px au plus. */
+export function adresseFondDuJeu(id: number): string {
+  return `http://jaquette.localhost/${id}?visuel=fond,capture,ecran_titre&largeur=1000`;
+}
+
 /** La jaquette officielle d'un jeu de boutique (servie et gardée en cache par le cœur). */
 export const adresseImageBoutique = (boutique: string, id: string) => `http://boutique.localhost/${boutique}/${encodeURIComponent(id)}`;
 

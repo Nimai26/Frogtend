@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { adresseFond, adresseJaquette, libelleCompte, taille } from './api';
+import { adresseFond, adresseFondDuJeu, adresseJaquette, libelleCompte, taille } from './api';
 
 describe('adresseJaquette', () => {
   it('demande une miniature arrondie à la centaine supérieure, entre 100 et 1000', () => {
@@ -8,6 +8,12 @@ describe('adresseJaquette', () => {
     expect(adresseJaquette(110, 340)).toBe('http://jaquette.localhost/110?largeur=400');
     expect(adresseJaquette(110, 40)).toBe('http://jaquette.localhost/110?largeur=100');
     expect(adresseJaquette(110, 2400)).toBe('http://jaquette.localhost/110?largeur=1000');
+  });
+});
+
+describe('adresseFondDuJeu', () => {
+  it('demande le fond, sinon une capture, sinon l’écran titre, en 1 000 px au plus', () => {
+    expect(adresseFondDuJeu(116)).toBe('http://jaquette.localhost/116?visuel=fond,capture,ecran_titre&largeur=1000');
   });
 });
 

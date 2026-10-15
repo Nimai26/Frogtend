@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.48.0 — Le menu en jeu prend le visuel du jeu en fond
+
+- **Le fond du menu** : derrière le menu (View + RB, ou Pause), le visuel du jeu fourni par Firehouse — son image de
+  fond, sinon une capture, sinon son écran titre — légèrement flouté et assombri. Le menu lui-même ne change pas :
+  la même carte, au centre, pour tous les jeux. Sans visuel (jeu importé, ou que Firehouse n'a pas illustré), le
+  fond du skin reste.
+- Les visuels sont gardés sur le PC pour ton profil (environ 100 Ko par jeu) : hors ligne, le dernier reçu s'affiche.
+
 ## 0.47.0 — Figer un jeu PC pendant le menu (au choix, jeu par jeu)
 
 - **Nouveau dans « ⚙ Gérer le jeu »** (jeux PC) : « ❄ Figer le jeu pendant le menu de Frogtend ». Activé, le jeu
