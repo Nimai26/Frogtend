@@ -59,6 +59,21 @@
   - Découpe : (1) sonde avec Seb ; (2) navigation commune clavier/souris/manette + échelle Taodbox ; (3) le cœur lit
     XInput, Select + R1 tenus 1 s, premier plan vérifié, migration des anciennes combinaisons ; (4) SDL3 ; (5) le
     fond ; (6) options, puis adaptateurs un par un (RPCS3, Cemu, Eden, Xenia, xemu, Azahar, Vita3K, PPSSPP).
+- [ ] **Lot « Contrat 1.13 »** (analyse d'écart de l'expert contrat, 16/10 ; texte et exemples réels reçus de Firehouse
+      le 16/10, dans CONTRAT-API-JEUX-V1.md et EXEMPLES-API-JEUX-V1.md). Frogtend n'utilise rien de la 1.7 à la 1.13.
+      Écarts : (1.8) l'émulateur est choisi par `recommande` LaunchBox et sa LIGNE DE COMMANDE LaunchBox est reprise
+      (pret.ts:25, pret.svelte.ts:42, assistant.svelte.ts:283) — la 1.8 l'interdit, le `conseil` doit primer ; choix
+      forcés en dur DOSBox/Eden (assistant.svelte.ts:98-105) ; lignes figées dans pc.json sans suivre `maj_le`.
+      (1.12) cœurs RetroArch pris chez libretro en nightly, sans empreinte (emulateurs.rs:587) au lieu des cœurs
+      stables vérifiés de Firehouse. (1.13) Arcade : CHD posée à plat et lancée comme fichier du jeu (partie.rs:56),
+      MAME lancé avec le chemin du zip au lieu de `mame <nom> -rompath` — CASSE un jeu Arcade à CHD (aucun chez Seb
+      aujourd'hui). (2.58.0) un jeu installé dont la fiche a été réunie à une autre ne se lance plus (« pas sur ce
+      PC ») ; besoin 1.14 « fusionné dans N » proposé à Firehouse. (1.7, 1.9–1.11) documents (livret PDF, musique,
+      vidéo) et BIOS/firmwares servis : rien n'est cassé, mais c'est ce qui rend « Prêt à jouer » sans étape manuelle.
+      Découpe : (1) conseil en lecture ; (2) conseil : ligne et cœur, origine retenue ; (3) cœurs servis + sha256 ;
+      (4) BIOS servis (fichier/motif/archive, sha1, un seul accord) puis PS2 ; (5) firmwares PS3 et Switch (prod.keys
+      au coffre : le dire) ; (6) MAME (dossier, nom court, -rompath, « incomplet », paquet 0.289) ; (7) documents ;
+      (8) fiches réunies. `fichiers: null` d'un motif = `[]`.
 - [ ] **Lot « Médias »** (contrat 1.6, Firehouse 2.41.0) : ratio réel de la boîte réservé, choix du visuel de la
       ludothèque (jaquette, boîte 3D, cartouche…), logos et fonds pour Taodbox, galerie dans la fiche, copie hors ligne
       des visuels choisis, retrait du cache d'une image que Firehouse ne sert plus (édition par un admin).
@@ -86,7 +101,7 @@
       Entrée pause, A/S armes ; F4 plein écran) ; la manette est vue par Windows (joystick 1, XInput 0). Proposé :
       (1) « manette → clavier » par jeu (le cœur lit déjà XInput : traduction en touches, correspondance d'office
       modifiable) ; (2) « plein écran au lancement » par jeu (touche du jeu, ou fenêtre agrandie sans bordure).
-      Question posée : ce lot d'abord, ou finir le lot OSD (SDL3, fond, adaptateurs) ? Le gel (0.47.0) : ✅ « cela
+      Question posée (05/10, reposée le 16/10 avec une 3e option : le lot « Contrat 1.13 ») : quel lot d'abord ? Le gel (0.47.0) : ✅ « cela
       semble fonctionner » (Seb, 05/10).
 
 - [ ] Questions encore ouvertes du 02–04/10 : aucune bloquante. (La combinaison du menu à la manette était DÉJÀ
