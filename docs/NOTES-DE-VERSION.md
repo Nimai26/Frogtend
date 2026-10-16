@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.58.0 — MAME se met en pause au menu
+
+- Pendant un jeu d'arcade (MAME), ouvrir le menu de Frogtend (View+RB1) met le jeu **en pause** ; le refermer le fait
+  repartir. Une pause que tu as faite toi-même (touche P) n'est jamais défaite.
+- Si ton MAME a déjà son propre script de démarrage, Frogtend n'y touche pas (et le menu ne promet alors pas de pause).
+
 ## 0.57.1 — Pas de musique par-dessus le jeu
 
 - Dans le menu en jeu, la musique et la vidéo du jeu ne sont proposées que si le jeu est en pause (le livret, lui,

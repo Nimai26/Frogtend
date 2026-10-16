@@ -238,6 +238,15 @@ d'abord :
 
 ## ✅ Livré (version — ce qui a été vérifié)
 
+- **0.58.0** (16/10) — MAME en pause au menu en jeu (fin du lot OSD : MAME). MAME 0.289 n'a pas de pause à la perte du
+  premier plan (mametesters 7339) : script Lua officiel (`-autoboot_script frogtend\menu-en-jeu.lua`, dans le dossier
+  de MAME) qui se met en pause tant qu'un témoin existe (créé à l'ouverture du menu, retiré à la fermeture et à la
+  sortie de Frogtend) ; ne défait jamais une pause de la personne ; jamais à la place de son propre script ; sinon le
+  menu ne promet aucune pause. Vérifié dans les SOURCES de MAME 0.289 (machine.cpp:414-420, video.cpp:253,
+  luaengine.cpp:917-928) et en RÉEL : Pong dans MAME 0.289 extrait par Frogtend → « pause » puis « reprise », sortie 0.
+  Tests : 318 cœur ; relecture de l'expert lancement (3 importants corrigés). NON vérifié : MAME en plein écran avec
+  le menu par-dessus. Incident : disque D: plein (cache de compilation 65,8 Go) → vidé, 59,7 Go libres (leçon).
+
 - **0.57.1** (16/10) — Décision de Seb : musique et vidéo coupées pendant le jeu (menu en jeu : seulement jeu en
   pause ; livret toujours). Tests : 151 interface ; relecture de l'expert interface (message « Aucun document » faux
   corrigé). NON vérifié : dans la vraie fenêtre.

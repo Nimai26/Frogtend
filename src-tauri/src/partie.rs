@@ -325,6 +325,7 @@ impl Noyau {
             i.dossier = p.parent().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
             i.fichier_du_jeu = p.file_name().map(|n| n.to_string_lossy().to_string());
         }
+        self.pause_mame.store(false, std::sync::atomic::Ordering::SeqCst);
         let (lanceur, dossiers) = match (&i.lanceur, &i.fichier_du_jeu) {
             (Some(l), _) => (l.clone(), vec![PathBuf::from(&i.dossier)]),
             (None, Some(f)) => {
@@ -336,7 +337,25 @@ impl Noyau {
                 })?;
                 let l = match crate::installation::nom_court_mame(&programme, f) {
                     // MAME : « mame <nom court> -rompath <dossier du jeu> » (contrat 1.13), jamais le chemin du zip.
-                    Some(nom) => crate::installation::lanceur_mame(&programme, &ligne, &nom, Path::new(&i.dossier)),
+                    Some(nom) => {
+                        // Le menu en jeu met MAME en pause par son script — jamais à la place d'un script de démarrage
+                        // réglé par la personne. S'il ne peut être posé, MAME se lance quand même, et le menu ne promet
+                        // aucune pause.
+                        let dossier_mame = Path::new(&programme).parent().map(Path::to_path_buf).unwrap_or_default();
+                        let script = if !crate::installation::autoboot_libre(&dossier_mame, &ligne) {
+                            None
+                        } else {
+                            match crate::pilotage::preparer_mame(&dossier_mame) {
+                                Ok(()) => Some(crate::pilotage::SCRIPT_MAME),
+                                Err(e) => {
+                                    self.journaliser(&format!("MAME : script du menu en jeu non posé ({e:?})"));
+                                    None
+                                }
+                            }
+                        };
+                        self.pause_mame.store(script.is_some(), std::sync::atomic::Ordering::SeqCst);
+                        crate::installation::lanceur_mame(&programme, &ligne, &nom, Path::new(&i.dossier), script)
+                    }
                     None => lanceur_emulateur(&programme, &ligne, &Path::new(&i.dossier).join(f)),
                 };
                 let d = PathBuf::from(&l.dossier);

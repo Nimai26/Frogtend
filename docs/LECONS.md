@@ -3,6 +3,16 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 16/10 — Le disque D: de Venkman était plein, par MA faute
+Ce qui s'est passé : une compilation a échoué faute de place (96 Mo libres). Le cache de compilation de Frogtend
+(`src-tauri\target\debug`) pesait 65,8 Go : il regrossit à chaque session, malgré `debug = "line-tables-only"` (même
+cas le 02/10). Venkman sert aussi à Firehouse : un disque plein peut gêner ses travaux. Vidé par `cargo clean
+--profile dev` (notre cache seulement, reconstructible) → 59,7 Go libres. Autre leçon du même essai : un abonnement Lua
+de MAME (`emu.add_machine_*_notifier`) non gardé dans une variable est retiré par le ramasse-miettes. · Comment
+l'appliquer : regarder la place libre de D: au début de chaque session et avant une grosse compilation ; vider
+`target\debug` dès qu'il dépasse 30 Go ; dans un script Lua de MAME, garder chaque abonnement (ou utiliser
+`register_periodic`, permanent).
+
 ## 16/10 — J'avais imaginé la forme du document au lieu de la regarder
 Ce qui s'est passé : j'ai écrit le lecteur du livret pour des pages en hauteur (largeur = hauteur × 0,75). La
 première page réelle rendue (Zelda) était une DOUBLE page à l'italienne : le lecteur l'aurait demandée trop petite,

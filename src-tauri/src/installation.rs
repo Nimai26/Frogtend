@@ -474,8 +474,27 @@ pub fn rompath_de_mame_ini(texte: Option<&str>) -> String {
 /// Le lanceur d'un jeu MAME (contrat 1.13) : `mame <options> <nom court> -rompath "<dossier du jeu>;<ses dossiers>"`
 /// — MAME trouve le zip du jeu et ses CHD (`<rompath>/<parent>/`) par le nom court, jamais par le chemin du zip. Le
 /// dossier du jeu s'AJOUTE aux dossiers réglés dans MAME (un jeu importé peut avoir ses CHD ou BIOS ailleurs).
-pub fn lanceur_mame(programme: &str, ligne: &str, nom_court: &str, rompath: &Path) -> Lanceur {
+/// La personne a-t-elle déjà son propre script de démarrage MAME (`autoboot_script` / `autoboot_command`, dans la
+/// ligne de commande ou dans `mame.ini`) ? MAME n'en charge qu'un : on ne remplace jamais le sien.
+pub fn autoboot_libre(dossier_mame: &Path, ligne: &str) -> bool {
+    if ligne.to_ascii_lowercase().contains("autoboot") {
+        return false;
+    }
+    let ini = std::fs::read_to_string(dossier_mame.join("mame.ini")).unwrap_or_default();
+    !ini.lines().any(|l| {
+        let mut m = l.split_whitespace();
+        matches!(m.next(), Some(c) if c.eq_ignore_ascii_case("autoboot_script") || c.eq_ignore_ascii_case("autoboot_command"))
+            && m.next().is_some()
+    })
+}
+
+/// `script` : le script du menu en jeu (`pilotage::SCRIPT_MAME`, relatif au dossier de MAME), s'il est préparé.
+pub fn lanceur_mame(programme: &str, ligne: &str, nom_court: &str, rompath: &Path, script: Option<&str>) -> Lanceur {
     let mut arguments: Vec<String> = decouper(ligne).into_iter().filter(|a| !a.to_ascii_lowercase().contains("%rom%")).collect();
+    if let Some(s) = script {
+        arguments.push("-autoboot_script".into());
+        arguments.push(s.into());
+    }
     let ini = Path::new(programme).parent().and_then(|d| std::fs::read_to_string(d.join("mame.ini")).ok());
     arguments.push(nom_court.to_string());
     arguments.push("-rompath".into());
@@ -707,7 +726,17 @@ mod tests {
         assert_eq!(nom_court_mame(r"E:\Emulateurs\MAME\mame.exe", "sfiiia.zip").as_deref(), Some("sfiiia"));
         assert_eq!(nom_court_mame(r"E:\Emulateurs\MAME\mame.exe", "sfiii/cap-sf3-3.chd"), None, "jamais la CHD");
         assert_eq!(nom_court_mame(r"E:\Emulateurs\RetroArch\retroarch.exe", "sfiiia.zip"), None, "FBNeo prend le chemin");
-        let l = lanceur_mame(r"E:\Emulateurs\MAME\mame.exe", "", "sfiiia", Path::new(r"E:\Jeux\Arcade\Street Fighter III"));
+        let avec = lanceur_mame(r"E:\Emulateurs\MAME\mame.exe", "-skip_gameinfo", "sfiiia", Path::new(r"E:\Jeux"), Some(r"frogtend\menu-en-jeu.lua"));
+        assert_eq!(avec.arguments[..4], ["-skip_gameinfo", "-autoboot_script", r"frogtend\menu-en-jeu.lua", "sfiiia"]);
+        // Le script de démarrage de la personne : jamais remplacé.
+        let d = tempfile::tempdir().unwrap();
+        assert!(autoboot_libre(d.path(), "-skip_gameinfo"));
+        assert!(!autoboot_libre(d.path(), "-autoboot_script mon.lua"));
+        std::fs::write(d.path().join("mame.ini"), "autoboot_command          \n").unwrap();
+        assert!(autoboot_libre(d.path(), ""), "réglage vide : libre");
+        std::fs::write(d.path().join("mame.ini"), "autoboot_script           C:\\mes\\scripts\\boot.lua\n").unwrap();
+        assert!(!autoboot_libre(d.path(), ""));
+        let l = lanceur_mame(r"E:\Emulateurs\MAME\mame.exe", "", "sfiiia", Path::new(r"E:\Jeux\Arcade\Street Fighter III"), None);
         assert_eq!(l.arguments, ["sfiiia", "-rompath", r"E:\Jeux\Arcade\Street Fighter III;roms"]);
         // Les dossiers déjà réglés dans MAME sont gardés (un jeu importé peut y avoir ses CHD).
         let ini = "#\n# CORE SEARCH PATH OPTIONS\n#\nhomepath                  .\nrompath                   \"roms;E:\\CHD\"\n";

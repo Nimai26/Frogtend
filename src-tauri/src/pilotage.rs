@@ -70,7 +70,68 @@ pub fn actions(emulateur: &str) -> Vec<Action> {
 /// L'émulateur se met-il en pause quand il perd le premier plan (réglé par `preparer` ; RPCS3 par
 /// `commandes::preparer_emulateur`) ?
 pub fn se_met_en_pause(emulateur: &str) -> bool {
-    matches!(emulateur, "retroarch" | "duckstation" | "pcsx2" | "dolphin" | "ppsspp" | "dosbox-staging" | "rpcs3")
+    matches!(emulateur, "retroarch" | "duckstation" | "pcsx2" | "dolphin" | "ppsspp" | "dosbox-staging" | "rpcs3" | "mame")
+}
+
+/// MAME n'a pas de pause à la perte du premier plan (demande ouverte depuis 2019, mametesters 7339). Frogtend le
+/// lance avec un petit script Lua (`-autoboot_script`, officiel) qui se met en pause tant qu'un fichier témoin
+/// existe : Frogtend le crée à l'ouverture du menu, le retire à sa fermeture. Le script tourne aussi pendant la pause
+/// (MAME 0.289 : `machine.cpp` appelle `frame_update` en pause, qui appelle les rappels périodiques, `video.cpp:253`).
+/// Il ne relance QUE ce qu'il a mis en pause : une pause faite par la personne (touche P) reste.
+/// Chemins RELATIFS au dossier de MAME (son dossier de travail au lancement) : aucun souci d'accents dans un chemin.
+pub const DOSSIER_MAME: &str = "frogtend";
+pub const SCRIPT_MAME: &str = "frogtend\\menu-en-jeu.lua";
+pub const TEMOIN_MAME: &str = "frogtend\\menu-ouvert";
+
+const LUA_MAME: &str = r#"-- Frogtend : la pause du menu en jeu. Écrit par Frogtend à chaque partie (ne pas modifier : il serait refait).
+-- Tant que le fichier témoin existe (menu de Frogtend ouvert), MAME est en pause ; ensuite il repart, seulement si
+-- c'est ce script qui l'avait mis en pause.
+-- Une seule fois, même si MAME relance le script à chaque remise à zéro (F3).
+if frogtend_menu_en_jeu then return end
+frogtend_menu_en_jeu = true
+local temoin = "frogtend\\menu-ouvert"
+local par_frogtend = false
+local tours = 0
+emu.register_periodic(function()
+  tours = tours + 1
+  if tours < 10 then return end
+  tours = 0
+  local f = io.open(temoin, "r")
+  local ouvert = f ~= nil
+  if f then f:close() end
+  local m = manager.machine
+  if ouvert and not par_frogtend and not m.paused then
+    emu.pause()
+    par_frogtend = true
+  elseif not ouvert and par_frogtend then
+    if m.paused then emu.unpause() end
+    par_frogtend = false
+  end
+end)
+"#;
+
+/// Prépare MAME pour le menu en jeu, dans SON dossier : le script (réécrit seulement s'il a changé) et aucun témoin
+/// resté d'une partie précédente (sinon le jeu démarrerait en pause).
+pub fn preparer_mame(dossier_mame: &Path) -> Resultat<()> {
+    std::fs::create_dir_all(dossier_mame.join(DOSSIER_MAME))?;
+    let script = dossier_mame.join(SCRIPT_MAME);
+    if std::fs::read_to_string(&script).ok().as_deref() != Some(LUA_MAME) {
+        std::fs::write(&script, LUA_MAME)?;
+    }
+    let _ = std::fs::remove_file(dossier_mame.join(TEMOIN_MAME));
+    Ok(())
+}
+
+/// Le menu s'ouvre (`true`) ou se ferme : le témoin que le script de MAME surveille.
+pub fn menu_mame(dossier_mame: &Path, ouvert: bool) {
+    let t = dossier_mame.join(TEMOIN_MAME);
+    if ouvert {
+        if t.parent().is_some_and(|d| d.is_dir()) {
+            let _ = std::fs::write(&t, b"");
+        }
+    } else {
+        let _ = std::fs::remove_file(&t);
+    }
 }
 
 /// La commande réseau de RetroArch pour une action.
@@ -172,6 +233,67 @@ pub fn preparer(id: &str, emulateur: &Path, utilisateur: Option<&Path>) -> Resul
 
 #[cfg(test)]
 mod tests {
+    /// RÉEL : le vrai MAME (`FROGTEND_MAME` = son dossier, pas dans Temp) lance Pong (sans ROM) avec le script de
+    /// Frogtend, plus un journal des pauses ; Frogtend crée puis retire le témoin. Attendu : « pause » puis « reprise ».
+    /// `FROGTEND_MAME=<dossier> cargo test essai_pause_mame -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn essai_pause_mame() {
+        let d = std::path::PathBuf::from(std::env::var("FROGTEND_MAME").unwrap());
+        super::preparer_mame(&d).unwrap();
+        let journal = d.join("frogtend").join("journal.txt");
+        let _ = std::fs::remove_file(&journal);
+        let essai = format!(
+            "{}\nlocal function noter(t) local f = io.open(\"frogtend\\\\journal.txt\", \"a\") f:write(t .. \"\\n\") f:close() end\nfrogtend_essai = {{ emu.add_machine_pause_notifier(function() noter(\"pause\") end), emu.add_machine_resume_notifier(function() noter(\"reprise\") manager.machine:exit() end) }}\n",
+            super::LUA_MAME
+        );
+        std::fs::write(d.join("frogtend").join("essai.lua"), essai).unwrap();
+        let mut p = std::process::Command::new(d.join("mame.exe"))
+            .args(["pong", "-window", "-nomax", "-skip_gameinfo", "-sound", "none", "-autoboot_script", "frogtend\\essai.lua"])
+            .current_dir(&d)
+            .spawn()
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_secs(6));
+        super::menu_mame(&d, true);
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        println!("JOURNAL APRÈS OUVERTURE : {:?}", std::fs::read_to_string(&journal).unwrap_or_default());
+        super::menu_mame(&d, false);
+        let debut = std::time::Instant::now();
+        let fin = loop {
+            if let Some(s) = p.try_wait().unwrap() {
+                break Some(s);
+            }
+            if debut.elapsed().as_secs() > 20 {
+                let _ = p.kill();
+                break None;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        };
+        println!("SORTIE {fin:?} ; JOURNAL FINAL : {:?}", std::fs::read_to_string(&journal).unwrap_or_default());
+    }
+
+    #[test]
+    fn mame_se_met_en_pause_par_son_script_et_son_temoin() {
+        let d = tempfile::tempdir().unwrap();
+        // Un témoin resté d'une partie précédente (Frogtend fermé de force) : retiré à la préparation.
+        std::fs::create_dir_all(d.path().join(super::DOSSIER_MAME)).unwrap();
+        std::fs::write(d.path().join(super::TEMOIN_MAME), b"").unwrap();
+        super::preparer_mame(d.path()).unwrap();
+        let script = std::fs::read_to_string(d.path().join(super::SCRIPT_MAME)).unwrap();
+        assert!(script.contains("emu.pause()") && script.contains("emu.unpause()") && script.contains("par_frogtend"));
+        assert!(script.contains(r#""frogtend\\menu-ouvert""#), "le même témoin que Frogtend, en chemin relatif");
+        assert!(!d.path().join(super::TEMOIN_MAME).exists());
+        super::menu_mame(d.path(), true);
+        assert!(d.path().join(super::TEMOIN_MAME).exists());
+        super::menu_mame(d.path(), false);
+        assert!(!d.path().join(super::TEMOIN_MAME).exists());
+        assert!(super::se_met_en_pause("mame"));
+        // Sans dossier préparé (un MAME lancé autrement) : rien n'est créé.
+        let vide = tempfile::tempdir().unwrap();
+        super::menu_mame(vide.path(), true);
+        assert!(!vide.path().join(super::TEMOIN_MAME).exists());
+    }
+
     use super::*;
     use crate::manettes::lire_ini;
 

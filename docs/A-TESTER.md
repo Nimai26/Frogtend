@@ -48,6 +48,12 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## MAME en pause au menu (0.58.0)
+- [ ] Un jeu d'arcade de Firehouse (Street Fighter III…) ▸ ▶ Jouer, en PLEIN ÉCRAN (le réglage normal de MAME) ▸
+      View+RB1 : le menu s'affiche-t-il par-dessus ? Le jeu est-il en pause (le menu dit « ⏸ Le jeu est en pause ») ?
+- [ ] ▶ Reprendre : le jeu repart, l'image revient en plein écran ?
+- [ ] Mets le jeu en pause toi-même (P), ouvre puis ferme le menu : le jeu doit rester en pause.
+
 ## La musique et les vidéos du jeu (0.57.0)
 - [ ] Fiche de Zelda : Ocarina of Time ▸ 🎵 Musique (2 min 33) : elle se télécharge puis joue toute seule ? (Sinon le
       lecteur dit « Appuie sur ▶ Lecture » : dis-le-moi.) La jaquette s'affiche au milieu.

@@ -72,6 +72,8 @@ pub struct Noyau {
     pub(crate) en_cours: std::sync::Mutex<Option<(i64, Arc<std::sync::atomic::AtomicBool>)>>,
     /// Vrai tant que la file de téléchargements tourne.
     pub(crate) file_active: std::sync::atomic::AtomicBool,
+    /// La dernière partie MAME lancée a reçu le script de pause du menu en jeu (sinon, le menu ne promet aucune pause).
+    pub(crate) pause_mame: std::sync::atomic::AtomicBool,
     /// Le dossier des abris de parties (réglage du PC « dossierAbris », règle « pas de pieuvre »). `None` : pas réglé.
     pub(crate) abris: std::sync::Mutex<Option<PathBuf>>,
 }
@@ -95,6 +97,7 @@ impl Noyau {
             registre: std::sync::Mutex::new(registre),
             en_cours: std::sync::Mutex::new(None),
             file_active: std::sync::atomic::AtomicBool::new(false),
+            pause_mame: std::sync::atomic::AtomicBool::new(false),
             abris: std::sync::Mutex::new(None),
         })
     }

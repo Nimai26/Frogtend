@@ -725,6 +725,10 @@ pub async fn jeu_jouer(
             dossier_emulateur = std::path::Path::new(&programme).parent().map(|d| d.to_string_lossy().to_string());
             let nom = std::path::Path::new(&programme).file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
             id_emulateur = crate::emulateurs::CATALOGUE.iter().find(|f| nom.starts_with(f.programme)).map(|f| f.id.to_string());
+            // MAME vient du paquet de Firehouse, pas du catalogue : reconnu par son programme.
+            if id_emulateur.is_none() && nom.starts_with("mame") && nom.ends_with(".exe") {
+                id_emulateur = Some("mame".into());
+            }
             Some(preparer_emulateur(&app, &noyau, &plateforme, &programme, &ligne, &commandes.unwrap_or_default()).await?)
         }
         None => None,
@@ -733,6 +737,10 @@ pub async fn jeu_jouer(
     // Un jeu resté figé d'une partie précédente repart d'abord.
     crate::figer::degeler();
     let (pid, dossiers, carte_cedee) = noyau.jouer(id, emulateur, version.as_deref()).await?;
+    // MAME sans le script de pause (lanceur choisi, ROM non zip, script de la personne…) : le menu ne promet rien.
+    if id_emulateur.as_deref() == Some("mame") && !noyau.pause_mame.load(std::sync::atomic::Ordering::SeqCst) {
+        id_emulateur = None;
+    }
     // Figer pendant le menu : un jeu lancé sans émulateur seulement, et jamais avec un anti-triche (revérifié ici, hors
     // du fil des commandes : un gros dossier prend quelques secondes).
     let dossier_jeu = (!par_emulateur).then(|| dossiers.first().map(|d| d.to_string_lossy().to_string())).flatten();
@@ -997,12 +1005,23 @@ pub fn ouvrir_menu(app: &AppHandle) {
     app.state::<crate::menu_jeu::MenuJeu>().ouvert.store(true, std::sync::atomic::Ordering::SeqCst);
     let _ = app.emit_to(FENETRE_MENU, "menu-jeu", serde_json::json!({ "taodbox": taodbox }));
     geler_la_partie(app);
+    temoin_mame(app, true);
+}
+
+/// MAME : le témoin que son script surveille (voir `pilotage::preparer_mame`).
+fn temoin_mame(app: &AppHandle, ouvert: bool) {
+    if let Some(p) = app.state::<crate::menu_jeu::MenuJeu>().partie() {
+        if let (Some("mame"), Some(d)) = (p.emulateur.as_deref(), p.dossier_emulateur.as_deref()) {
+            crate::pilotage::menu_mame(std::path::Path::new(d), ouvert);
+        }
+    }
 }
 
 fn cacher_menu(app: &AppHandle) {
     app.state::<crate::menu_jeu::MenuJeu>().ouvert.store(false, std::sync::atomic::Ordering::SeqCst);
     // Le jeu repart AVANT tout le reste (reprendre, action, quitter : un jeu figé ne se ferme pas).
     crate::figer::degeler();
+    temoin_mame(app, false);
     if let Some(w) = app.get_webview_window(FENETRE_MENU) {
         let _ = w.hide();
     }
@@ -1037,6 +1056,7 @@ fn geler_la_partie(app: &AppHandle) {
 pub fn degeler_la_partie(app: &AppHandle) {
     app.state::<crate::menu_jeu::MenuJeu>().ouvert.store(false, std::sync::atomic::Ordering::SeqCst);
     crate::figer::degeler();
+    temoin_mame(app, false);
 }
 
 /// La touche plein écran que les textes du jeu installé annoncent (ReadMe, options), s'il y en a une.
