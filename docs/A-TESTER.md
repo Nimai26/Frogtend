@@ -48,6 +48,13 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Les consoles récentes en pause au menu (0.59.0)
+- [ ] Un jeu Switch (Eden) ou 3DS (Azahar) ▸ View+RB1 : le jeu se met en pause ? « ▶ Reprendre » le relance ?
+- [ ] Un jeu Wii U (Cemu), Xbox 360 (Xenia), Xbox (xemu) ou PS Vita (Vita3K), en plein écran ▸ View+RB1 : le menu
+      s'affiche par-dessus ? Le jeu est figé (image arrêtée, la manette ne fait plus rien dans le jeu) ? Après
+      « ▶ Reprendre » : le jeu repart, le son revient (un petit grésillement possible) ?
+- [ ] Menu ouvert plus de 5 secondes sur un émulateur figé : Windows affiche-t-il « Ne répond pas » ?
+
 ## MAME en pause au menu (0.58.0)
 - [ ] Un jeu d'arcade de Firehouse (Street Fighter III…) ▸ ▶ Jouer, en PLEIN ÉCRAN (le réglage normal de MAME) ▸
       View+RB1 : le menu s'affiche-t-il par-dessus ? Le jeu est-il en pause (le menu dit « ⏸ Le jeu est en pause ») ?

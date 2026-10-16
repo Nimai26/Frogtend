@@ -70,7 +70,25 @@ pub fn actions(emulateur: &str) -> Vec<Action> {
 /// L'émulateur se met-il en pause quand il perd le premier plan (réglé par `preparer` ; RPCS3 par
 /// `commandes::preparer_emulateur`) ?
 pub fn se_met_en_pause(emulateur: &str) -> bool {
-    matches!(emulateur, "retroarch" | "duckstation" | "pcsx2" | "dolphin" | "ppsspp" | "dosbox-staging" | "rpcs3" | "mame")
+    matches!(emulateur, "retroarch" | "duckstation" | "pcsx2" | "dolphin" | "ppsspp" | "dosbox-staging" | "rpcs3" | "mame" | "eden" | "azahar")
+}
+
+/// Les émulateurs SANS pause réglable (code source relu le 16/10 : Cemu, Xenia Canary, xemu, Vita3K — au mieux une
+/// touche qui BASCULE la pause, et la manette lue en arrière-plan pour Cemu, Xenia et Vita3K) : FIGÉS d'office pendant
+/// le menu (décision de Seb, 16/10 : « Oui, toujours »), comme un jeu PC dont l'option est cochée. Le menu ne dit « en
+/// pause » qu'une fois le gel réussi (`menu-jeu-pause`).
+pub fn fige_au_menu(emulateur: &str) -> bool {
+    matches!(emulateur, "cemu" | "xenia" | "xemu" | "vita3k")
+}
+
+/// Eden et Azahar : leur pause en arrière-plan est-elle VRAIMENT réglée (après `preparer`) ? Sinon (pas portable, ou
+/// « pas de pause » choisi par la personne), ils sont figés pendant le menu comme ceux de `fige_au_menu`.
+pub fn pause_reglee(id: &str, emulateur: &Path) -> bool {
+    match id {
+        "eden" | "azahar" => std::fs::read_to_string(emulateur.join("user").join("config").join("qt-config.ini"))
+            .is_ok_and(|t| t.lines().any(|l| l.replace(' ', "") == "pauseWhenInBackground=true")),
+        _ => true,
+    }
 }
 
 /// MAME n'a pas de pause à la perte du premier plan (demande ouverte depuis 2019, mametesters 7339). Frogtend le
@@ -226,6 +244,28 @@ pub fn preparer(id: &str, emulateur: &Path, utilisateur: Option<&Path>) -> Resul
             let conf = emulateur.join("dosbox-staging.conf");
             modifier_ini(emulateur, &conf, "sdl", &[("pause_when_inactive", un("true"))])?;
         }
+        // Eden et Azahar (Qt) : `[UI] pauseWhenInBackground` (Eden uisettings.h:113-119, main_window.cpp:1404-1420 ;
+        // Azahar uisettings.h:92, citra_qt.cpp:1035-1051) — ils ne reprennent que s'ils avaient eux-mêmes mis en pause.
+        // QSettings ignore la valeur tant que `\default` vaut true : les deux lignes. Seulement en mode portable
+        // (dossier `user` déjà là) : le créer ferait basculer l'émulateur en portable, loin des réglages de la personne.
+        "eden" | "azahar" => {
+            let user = emulateur.join("user");
+            let ini = user.join("config").join("qt-config.ini");
+            // « Pas de pause » réglé par la personne elle-même (les deux lignes à false) : jamais défait (l'émulateur
+            // sera figé à la place, voir `pause_reglee`).
+            let choix_de_la_personne = std::fs::read_to_string(&ini).is_ok_and(|t| {
+                let l: Vec<String> = t.lines().map(|l| l.replace(' ', "")).collect();
+                l.iter().any(|x| x == "pauseWhenInBackground\\default=false") && l.iter().any(|x| x == "pauseWhenInBackground=false")
+            });
+            if user.is_dir() && !choix_de_la_personne {
+                modifier_ini(
+                    emulateur,
+                    &ini,
+                    "UI",
+                    &[("pauseWhenInBackground\\default", un("false")), ("pauseWhenInBackground", un("true"))],
+                )?;
+            }
+        }
         _ => {}
     }
     Ok(())
@@ -270,6 +310,55 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(200));
         };
         println!("SORTIE {fin:?} ; JOURNAL FINAL : {:?}", std::fs::read_to_string(&journal).unwrap_or_default());
+    }
+
+    /// RÉEL : la préparation du menu en jeu sur un vrai Eden ou Azahar portable (`FROGTEND_EMU` = id,
+    /// `FROGTEND_DOSSIER` = son dossier). Vérifier ensuite que l'émulateur relit et réécrit la valeur. ⚠️ Il ÉCRIT dans
+    /// ce dossier : jamais sur l'émulateur de la personne, seulement sur une COPIE d'essai.
+    /// `FROGTEND_EMU=azahar FROGTEND_DOSSIER=<dossier> cargo test essai_pause_qt -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn essai_pause_qt() {
+        let id = std::env::var("FROGTEND_EMU").unwrap();
+        let d = std::path::PathBuf::from(std::env::var("FROGTEND_DOSSIER").unwrap());
+        super::preparer(&id, &d, None).unwrap();
+        let t = std::fs::read_to_string(d.join("user").join("config").join("qt-config.ini")).unwrap();
+        println!("APRÈS FROGTEND : {:?}", t.lines().filter(|l| l.contains("pauseWhenInBackground")).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn eden_et_azahar_se_mettent_en_pause_en_arriere_plan_seulement_en_portable() {
+        for id in ["eden", "azahar"] {
+            let d = tempfile::tempdir().unwrap();
+            // Pas de dossier « user » : rien n'est créé (l'émulateur resterait près des réglages de la personne).
+            super::preparer(id, d.path(), None).unwrap();
+            assert!(!d.path().join("user").exists(), "{id}");
+            // Portable : la pause est réglée, le reste du fichier gardé.
+            let ini = d.path().join("user").join("config").join("qt-config.ini");
+            std::fs::create_dir_all(ini.parent().unwrap()).unwrap();
+            std::fs::write(&ini, "[UI]\nfullscreen\\default=false\nfullscreen=true\n").unwrap();
+            super::preparer(id, d.path(), None).unwrap();
+            let t = std::fs::read_to_string(&ini).unwrap();
+            assert!(t.contains("pauseWhenInBackground\\default=false") || t.contains("pauseWhenInBackground\\default = false"), "{id} : {t}");
+            assert!(t.contains("fullscreen=true") || t.contains("fullscreen = true"), "{id} : {t}");
+            assert!(super::se_met_en_pause(id));
+        }
+        for id in ["cemu", "xenia", "xemu", "vita3k"] {
+            assert!(super::fige_au_menu(id) && !super::se_met_en_pause(id), "{id}");
+        }
+        // Réglée seulement si le fichier le dit ; « pas de pause » choisi par la personne : jamais défait.
+        let d = tempfile::tempdir().unwrap();
+        assert!(!super::pause_reglee("eden", d.path()), "pas portable");
+        let ini = d.path().join("user").join("config").join("qt-config.ini");
+        std::fs::create_dir_all(ini.parent().unwrap()).unwrap();
+        std::fs::write(&ini, "[UI]\npauseWhenInBackground\\default=false\npauseWhenInBackground=false\n").unwrap();
+        super::preparer("eden", d.path(), None).unwrap();
+        assert!(!super::pause_reglee("eden", d.path()), "le choix de la personne est gardé");
+        std::fs::write(&ini, "[UI]\npauseWhenInBackground\\default=true\npauseWhenInBackground=false\n").unwrap();
+        super::preparer("eden", d.path(), None).unwrap();
+        assert!(super::pause_reglee("eden", d.path()), "la valeur d'origine de l'émulateur est remplacée");
+        assert!(super::pause_reglee("retroarch", d.path()));
+        assert!(!super::fige_au_menu("retroarch"));
     }
 
     #[test]

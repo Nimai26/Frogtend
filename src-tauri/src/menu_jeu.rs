@@ -29,6 +29,9 @@ pub struct PartieEnCours {
     pub dossier_jeu: Option<String>,
     /// Jeu PC : sa correspondance manette → clavier (bouton → touche), s'il en a une.
     pub clavier: Option<std::collections::BTreeMap<String, String>>,
+    /// Émulateur figé pendant le menu (aucune pause réglable : Cemu, Xenia, xemu, Vita3K ; ou Eden/Azahar dont la
+    /// pause n'a pas pu être réglée) : il n'est « en pause » qu'une fois VRAIMENT figé.
+    pub figer_emulateur: bool,
 }
 
 #[derive(Default)]
@@ -104,7 +107,7 @@ pub fn etat(p: &PartieEnCours) -> EtatMenu {
         plateforme: p.plateforme.clone(),
         emulateur: p.emulateur.clone(),
         actions: crate::pilotage::actions(e).into_iter().map(nom_action).collect(),
-        en_pause: crate::pilotage::se_met_en_pause(e),
+        en_pause: crate::pilotage::se_met_en_pause(e) && !p.figer_emulateur,
         taodbox: false,
     }
 }
@@ -394,7 +397,15 @@ mod tests {
             figer: false,
             dossier_jeu: None,
             clavier: None,
+            figer_emulateur: false,
         }
+    }
+
+    #[test]
+    fn un_emulateur_fige_n_est_en_pause_qu_une_fois_fige() {
+        assert!(etat(&partie(Some("eden"))).en_pause);
+        assert!(!etat(&PartieEnCours { figer_emulateur: true, ..partie(Some("eden")) }).en_pause, "Eden non réglé : figé, pas promis");
+        assert!(!etat(&partie(Some("cemu"))).en_pause);
     }
 
     #[test]

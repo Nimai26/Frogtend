@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.59.0 — Le menu en jeu met en pause les consoles récentes
+
+- **Switch (Eden) et 3DS (Azahar)** : ouvrir le menu de Frogtend met le jeu en pause (leur propre réglage, activé par
+  Frogtend), le refermer le fait repartir.
+- **Wii U (Cemu), Xbox 360 (Xenia), Xbox (xemu) et PS Vita (Vita3K)** n'ont aucune pause : Frogtend les **fige**
+  pendant le menu (comme l'option ❄ des jeux PC) — vraie pause, la manette n'agit plus sur le jeu. Le son peut
+  grésiller un instant à la reprise.
+- Azahar ne bascule plus en « mode portable » sans le dire ; un « pas de pause » que tu aurais réglé dans Eden ou
+  Azahar est respecté (l'émulateur est alors figé à la place).
+
 ## 0.58.0 — MAME se met en pause au menu
 
 - Pendant un jeu d'arcade (MAME), ouvrir le menu de Frogtend (View+RB1) met le jeu **en pause** ; le refermer le fait

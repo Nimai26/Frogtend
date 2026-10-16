@@ -43,7 +43,12 @@
         ✅ 0.48.0 : fond, sinon capture, sinon écran titre du jeu, sinon le skin. Le niveau « système » attend
         Firehouse (besoin 20). Question à garder pour l'essai : la fenêtre bureau (560×640) ne montre le visuel que
         sur une bande de 16 px ; l'agrandir (~760×640) si Seb veut le voir au bureau.
-  - [ ] h. Adaptateurs manquants : RPCS3, Cemu, Eden, Xenia (documentation officielle de chacun d'abord).
+  - [x] h. Adaptateurs : ✅ RPCS3 (0.46.3), ✅ MAME (0.58.0), ✅ Eden, Azahar, Cemu, Xenia, xemu, Vita3K (0.59.0) — à essayer
+        (documentation officielle de chacun d'abord : recherche lancée le 16/10).
+        Recherche faite (code source de chacun, 16/10) : Eden et Azahar ont `pauseWhenInBackground` ([UI], deux lignes
+        `\default=false` + valeur) ; Cemu, Xenia, xemu, Vita3K n'ont AUCUNE pause réglable. ✅ DÉCIDÉ par Seb le 16/10 :
+        ces quatre-là sont FIGÉS d'office pendant le menu (« Oui, toujours » : vraie pause, manette sans effet ; ni
+        anti-triche ni jeu en ligne ; risque dit : son qui grésille à la reprise).
   - [ ] i. Options propres à certains émulateurs (affichage des performances…), dans le même menu.
   - Relecture par les experts interface et lancement (04/10), qui ont relu le code (fichier:ligne) :
     - ✅ LEVÉ le 04/10 (sonde de Seb) : la manette est lue pendant qu'un jeu a le premier plan (XInput et SDL).
@@ -80,7 +85,7 @@
 - [x] **Lot MAME (contrat 1.13)** ✅ 0.55.0 : fichiers dans leur sous-dossier (CHD chez le parent), version MAME =
       ROM (jamais décompressée), zip lancé (jamais la CHD), `mame <nom court> -rompath <dossier>`, « incomplet » dit,
       paquet officiel auto-extractible ouvert sans être exécuté. Reste : plusieurs versions (clones) d'un même jeu sur
-      le PC (Frogtend n'en garde qu'une par fiche) ; MAME ne se met pas en pause au menu en jeu (adaptateur à faire).
+      le PC (Frogtend n'en garde qu'une par fiche) ; ✅ MAME se met en pause au menu en jeu (0.58.0).
 - [ ] **Lot « Jeux PC : plein écran et manette → clavier »** (ordre du 16/10). ✅ Seb 16/10 : « pour le plein écran
       Mega Man, attention, ce n'est qu'un jeu parmi d'autres, il faut que notre création soit le plus généraliste
       possible ». Exigences : (a) plein écran au lancement, PAR JEU, désactivé d'office, trois modes : rien / touche
@@ -237,6 +242,15 @@ d'abord :
 - Jellyfin → Taodbox : projet côté Firehouse, pas le travail de Frogtend.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.59.0** (16/10) — Adaptateurs du menu en jeu (h) : Eden et Azahar en pause par leur `pauseWhenInBackground`
+  (seulement portables ; un « non » de la personne est gardé) ; Cemu, Xenia, xemu, Vita3K FIGÉS d'office (décision de
+  Seb), ainsi qu'Eden/Azahar dont la pause n'est pas réglée ; le gel ne vise que les programmes de LA partie dans le
+  dossier de l'émulateur ; « en pause » dit seulement une fois vraiment figé. Vérifié : code source des six émulateurs
+  (recherche du 16/10) ; en RÉEL, Azahar 2126.2 et Eden v0.2.1 portables relisent et gardent le réglage posé par
+  Frogtend. Tests : 320 cœur ; relecture de l'expert lancement (2 importants + mineurs corrigés). NON vérifié : le gel
+  réel de Cemu/Xenia/xemu/Vita3K (aucun installé chez Seb), le son et l'affichage du menu par-dessus leur plein
+  écran. Azahar non portable : plus de NAND/carte SD par profil (il n'est plus basculé en portable sans le dire).
 
 - **0.58.0** (16/10) — MAME en pause au menu en jeu (fin du lot OSD : MAME). MAME 0.289 n'a pas de pause à la perte du
   premier plan (mametesters 7339) : script Lua officiel (`-autoboot_script frogtend\menu-en-jeu.lua`, dans le dossier

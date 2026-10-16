@@ -433,6 +433,11 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
         }
         // Azahar : NAND et carte SD du profil (\`[Data Storage]\` de qt-config.ini, configuration/config.cpp).
         "azahar" => {
+            // Seulement en mode portable (dossier `user` déjà là) : l'écrire ferait basculer Azahar en portable, loin des
+            // réglages de la personne dans %APPDATA% (relecture du 16/10). Sinon, ses données restent communes.
+            if !emulateur.join("user").is_dir() {
+                return Ok(vec![]);
+            }
             let (nand, sdmc) = (p.join("nand"), p.join("sdmc"));
             creer(&[&nand, &sdmc])?;
             let ini = emulateur.join("user").join("config").join("qt-config.ini");
@@ -1112,7 +1117,11 @@ mod tests {
         // Eden : l'utilisateur Switch du nom du profil.
         assert_eq!(preparer("eden", racine, "Léa", &[], &Manette::Auto(None)).unwrap(), vec!["-u", "Léa"]);
 
-        // Azahar : NAND et carte SD du profil.
+        // Azahar : rien tant qu'il n'est pas portable (il ne bascule jamais dans le dos de la personne) ; portable :
+        // NAND et carte SD du profil.
+        preparer("azahar", racine, "Seb", &[], &Manette::Auto(None)).unwrap();
+        assert!(!racine.join("user").exists());
+        std::fs::create_dir_all(racine.join("user")).unwrap();
         preparer("azahar", racine, "Seb", &[], &Manette::Auto(None)).unwrap();
         let ini = std::fs::read_to_string(racine.join("user/config/qt-config.ini")).unwrap();
         assert!(ini.contains("[Data%20Storage]") && ini.contains("use_custom_storage = true"));

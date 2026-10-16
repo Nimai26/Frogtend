@@ -757,6 +757,11 @@ pub async fn jeu_jouer(
     let _ = app.emit("partie", EvenementPartie::Debut { jeu: id, carte_cedee });
     // Le menu en jeu : sa touche est active pendant la partie seulement.
     let dossier_jeu_pe = dossier_jeu.clone();
+    // Figé pendant le menu : un émulateur sans pause réglable, ou Eden/Azahar dont la pause n'a pas pu être réglée.
+    let figer_emulateur = match (id_emulateur.as_deref(), dossier_emulateur.as_deref()) {
+        (Some(e), Some(d)) => crate::pilotage::fige_au_menu(e) || !crate::pilotage::pause_reglee(e, std::path::Path::new(d)),
+        _ => false,
+    };
     let numero = app.state::<crate::menu_jeu::MenuJeu>().commencer(crate::menu_jeu::PartieEnCours {
         jeu: id,
         titre,
@@ -768,6 +773,7 @@ pub async fn jeu_jouer(
         // Manette → clavier : un jeu PC lancé sans émulateur seulement (un émulateur a ses propres manettes).
         clavier: clavier.filter(|c| !c.is_empty() && dossier_jeu.is_some()),
         dossier_jeu,
+        figer_emulateur,
     });
     armer_touche_menu(&app, true);
     suivre_manette_menu(&app, numero);
@@ -1034,20 +1040,33 @@ fn cacher_menu(app: &AppHandle) {
 /// figé. Le menu apprend ensuite que le jeu est vraiment figé (`menu-jeu-pause`).
 fn geler_la_partie(app: &AppHandle) {
     let menu = app.state::<crate::menu_jeu::MenuJeu>();
-    let Some(p) = menu.partie().filter(|p| p.figer) else { return };
-    let Some(dossier) = p.dossier_jeu.clone() else { return };
+    let Some(p) = menu.partie() else { return };
+    // Un jeu PC dont l'option est cochée (son dossier), ou un émulateur sans pause réglable (SA partie seulement :
+    // les programmes lancés par Frogtend pour cette partie, dans son dossier — jamais un autre outil rangé là).
+    let quoi = if p.figer { "le jeu" } else { "l'émulateur" };
+    let (dossier, partie) = if p.figer {
+        (p.dossier_jeu.clone(), None)
+    } else if p.figer_emulateur {
+        (p.dossier_emulateur.clone(), Some(p.pid))
+    } else {
+        (None, None)
+    };
+    let Some(dossier) = dossier else { return };
     let app = app.clone();
     std::thread::spawn(move || {
         // Les programmes du jeu : ceux lancés par Frogtend ET ceux de son dossier lancés autrement (raccourci ouvert par
         // l'explorateur, jeu relancé par sa boutique) — toujours limités au dossier du jeu.
-        let pids = crate::lancement::processus_du_dossier(std::path::Path::new(&dossier));
+        let pids = match partie {
+            Some(racine) => crate::lancement::processus_dans(&crate::lancement::processus_de_la_partie(racine), std::path::Path::new(&dossier)),
+            None => crate::lancement::processus_du_dossier(std::path::Path::new(&dossier)),
+        };
         let menu = app.state::<crate::menu_jeu::MenuJeu>();
         let n = crate::figer::geler_si(&pids, || menu.ouvert.load(std::sync::atomic::Ordering::SeqCst));
         if n > 0 && crate::figer::est_fige() {
             let _ = app.emit_to(FENETRE_MENU, "menu-jeu-pause", true);
         } else if menu.ouvert.load(std::sync::atomic::Ordering::SeqCst) && !crate::figer::est_fige() {
             let raison = if pids.is_empty() { "aucun programme trouvé dans son dossier" } else { "ses programmes refusent (droits administrateur ?)" };
-            app.state::<Noyau>().journaliser(&format!("Menu en jeu : le jeu n'a pas pu être figé ({raison})"));
+            app.state::<Noyau>().journaliser(&format!("Menu en jeu : {quoi} n'a pas pu être figé ({raison})"));
         }
     });
 }
@@ -1089,7 +1108,7 @@ pub fn menu_jeu_etat(app: AppHandle, menu: State<'_, crate::menu_jeu::MenuJeu>) 
     menu.partie().map(|p| {
         let e = crate::menu_jeu::etat(&p);
         // Un jeu PC n'est « en pause » que s'il est VRAIMENT figé (pas seulement parce que l'option est cochée).
-        let en_pause = e.en_pause || (p.figer && crate::figer::est_fige());
+        let en_pause = e.en_pause || ((p.figer || p.figer_emulateur) && crate::figer::est_fige());
         crate::menu_jeu::EtatMenu { taodbox, en_pause, ..e }
     })
 }
