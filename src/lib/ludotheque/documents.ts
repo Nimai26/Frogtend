@@ -26,6 +26,12 @@ export function documentsMontres(l: DocumentJeu[]): DocumentJeu[] {
   return l.filter((d) => ordre.includes(d.type)).sort((a, b) => ordre.indexOf(a.type) - ordre.indexOf(b.type));
 }
 
+/** Les documents du menu en jeu (décision de Seb, 16/10 : « mieux de couper musique et vidéo pendant le jeu ») : la
+ * musique et la vidéo seulement si le jeu est vraiment en pause ; le livret toujours. */
+export function documentsDuMenu(l: DocumentJeu[], enPause: boolean): DocumentJeu[] {
+  return enPause ? l : l.filter((d) => d.type === 'livret');
+}
+
 /** Le libellé d'un document : sa sorte, puis ce qui aide à choisir (pages, durée), puis son poids s'il faut encore
  * le télécharger (le clic vaut alors accord : la taille est dite AVANT). */
 export function libelleDocument(d: DocumentJeu): { titre: string; detail: string } {

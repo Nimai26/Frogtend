@@ -54,8 +54,8 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] 🎬 Vidéo (37 s) : elle joue ; ◀ ▶ (ou ← →) avancent et reculent de 10 s, même vers la fin de la vidéo.
 - [ ] À la manette SEULE, dans le menu en jeu (View+RB1 ▸ 📖 Manuel et documents ▸ 🎵) : A lance-t-il la musique ?
 - [ ] Ferme le jeu pendant que la musique joue dans le menu : la musique doit s'arrêter.
-- [ ] Le jeu non mis en pause : son son se mêle à la musique (le menu le dit). Préfères-tu cacher musique et vidéo
-      quand le jeu n'est pas en pause ?
+- [ ] (0.57.1) Menu en jeu d'un jeu NON en pause : seul le livret est proposé ; jeu en pause (RetroArch, ou jeu PC
+      figé) : musique et vidéo sont là.
 
 ## Le livret du jeu (0.56.0)
 - [ ] Ouvre la fiche de Zelda : Ocarina of Time ▸ 📚 Documents du jeu ▸ « 📖 Livret (scan) · 23 pages · 8,2 Mo » :

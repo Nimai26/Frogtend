@@ -1,5 +1,10 @@
 # Notes de version de Frogtend
 
+## 0.57.1 — Pas de musique par-dessus le jeu
+
+- Dans le menu en jeu, la musique et la vidéo du jeu ne sont proposées que si le jeu est en pause (le livret, lui,
+  est toujours là). Si le jeu repart, elles s'arrêtent. Le menu dit pourquoi elles manquent.
+
 ## 0.57.0 — La musique et les vidéos du jeu
 
 - À côté du livret, sur la fiche d'un jeu et dans le menu en jeu : **🎵 Musique** et **🎬 Vidéo**, avec leur durée et

@@ -8,7 +8,7 @@
   import { adresseFondDuJeu, api, type Annexe, type DocumentJeu, type EtatMenuJeu } from '$lib/api';
   import LecteurLivret from '$lib/ludotheque/LecteurLivret.svelte';
   import LecteurMedia from '$lib/ludotheque/LecteurMedia.svelte';
-  import { documentsMontres, libelleDocument, ouvrirDocument, type DocumentOuvert } from '$lib/ludotheque/documents';
+  import { documentsDuMenu, documentsMontres, libelleDocument, ouvrirDocument, type DocumentOuvert } from '$lib/ludotheque/documents';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { appliquer, arreterManette, demarrerManette, fenetreOuverte, selectionner } from '$lib/taodbox/manette.svelte';
@@ -172,6 +172,13 @@
     selectionner(liste?.querySelector<HTMLButtonElement>(`[data-doc="${doc}"]`) ?? liste?.querySelector<HTMLButtonElement>('button'));
   }
 
+  const docsMenu = $derived(documentsDuMenu(docs, !!menu?.en_pause));
+
+  // Le jeu repart (plus en pause) pendant une musique ou une vidéo : elle s'arrête (décision de Seb, 16/10).
+  $effect(() => {
+    if (ouvert && !ouvert.livret && !menu?.en_pause) ouvert = null;
+  });
+
   async function ouvrir(a: Annexe) {
     if (!menu) return;
     try {
@@ -252,12 +259,12 @@
     <header>
       <h1>📖 Documents</h1>
       <p class="muted">{menu.titre}</p>
-      {#if !menu.en_pause && docs.some((d) => d.type !== 'livret')}
-        <p class="muted">Le jeu continue pendant ce menu : son son se mêlera à la musique ou à la vidéo.</p>
+      {#if docsMenu.length < docs.length}
+        <p class="muted">🎵 La musique et la vidéo du jeu : seulement quand le jeu est en pause.</p>
       {/if}
     </header>
     <div class="liste" bind:this={liste}>
-      {#each docs as d (d.id)}
+      {#each docsMenu as d (d.id)}
         {@const l = libelleDocument(d)}
         <button class="btn" data-doc={d.id} disabled={ouverture !== null} onclick={() => ouvrirDoc(d)}>
           {l.titre} <span class="muted">{ouverture === d.id ? '⏳ chargement…' : l.detail}</span>

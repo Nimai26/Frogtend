@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DocumentJeu } from '$lib/api';
-import { documentsMontres, duree, libelleDocument } from './documents';
+import { documentsDuMenu, documentsMontres, duree, libelleDocument } from './documents';
 
 // L'exemple réel du 16/10 (Zelda, /jeu/111/documents).
 const livret: DocumentJeu = { id: 6142, type: 'livret', langue: '', format: 'pdf', taille: 8583117, pages: 23, duree_s: null };
@@ -19,6 +19,11 @@ describe('les documents d’un jeu', () => {
     const video: DocumentJeu = { ...musique, id: 6842, type: 'video', format: 'mp4', duree_s: 36.6 };
     expect(documentsMontres([video, musique, theme, livret])).toEqual([livret, musique, video]);
     expect(libelleDocument(video).detail).toMatch(/^37 s · 5[,.]8 Mo$/);
+  });
+
+  it('dans le menu en jeu : musique et vidéo seulement si le jeu est en pause, le livret toujours', () => {
+    expect(documentsDuMenu([livret, musique, { ...musique, id: 6842, type: 'video' }], false)).toEqual([livret]);
+    expect(documentsDuMenu([livret, musique], true)).toEqual([livret, musique]);
   });
 
   it('dit la taille tant que le livret n’est pas sur le PC (le clic vaut accord)', () => {

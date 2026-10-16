@@ -60,8 +60,8 @@
     XInput, Select + R1 tenus 1 s, premier plan vérifié, migration des anciennes combinaisons ; (4) SDL3 ; (5) le
     fond ; (6) options, puis adaptateurs un par un (RPCS3, Cemu, Eden, Xenia, xemu, Azahar, Vita3K, PPSSPP).
 - [ ] **Lot « Documents » (contrat 1.7)** — ✅ (D1) livret en 0.56.0 ; ✅ (D2) musique et vidéo en 0.57.0 (question
-      pour Seb : dans le menu en jeu, un jeu NON en pause mêle son son à la musique — cacher musique et vidéo dans ce
-      cas ? aujourd'hui c'est dit ; lecture automatique à la manette seule dans le menu en jeu : non vérifiée). Reste : (D3) ; la liste des
+      DÉCIDÉ par Seb le 16/10 : « mieux de couper musique et vidéo pendant le jeu » → dans le menu en jeu, musique et
+      vidéo seulement si le jeu est en pause (le livret toujours) ; arrêtées si le jeu repart ; lecture automatique à la manette seule dans le menu en jeu : non vérifiée). Reste : (D3) ; la liste des
       documents est gardée PAR PROFIL, mais le PDF d'un jeu du PC est dans son dossier (commun) : à revoir si Firehouse
       répond au besoin 21 que les documents dépendent du grade ; pas d'avancement ni d'annulation pendant le
       téléchargement du livret (assez pour 8 Mo, pas pour un gros scan chez la sœur) ; pas de cache des pages rendues
@@ -237,6 +237,10 @@ d'abord :
 - Jellyfin → Taodbox : projet côté Firehouse, pas le travail de Frogtend.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.57.1** (16/10) — Décision de Seb : musique et vidéo coupées pendant le jeu (menu en jeu : seulement jeu en
+  pause ; livret toujours). Tests : 151 interface ; relecture de l'expert interface (message « Aucun document » faux
+  corrigé). NON vérifié : dans la vraie fenêtre.
 
 - **0.57.0** (16/10) — La musique et les vidéos du jeu (contrat 1.7, D2). Vérifié en RÉEL : musique 6482 (MP3 ID3,
   6 110 240 o) et vidéo 6842 (MP4 H.264 + AAC, index au début, 5 873 996 o) de Zelda téléchargées par le code de
