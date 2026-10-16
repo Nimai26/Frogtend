@@ -66,6 +66,9 @@
       l'écran du jeu ; (b) manette → clavier PAR JEU : préréglages courants + bouton par bouton ; touches envoyées
       seulement quand le jeu a le premier plan, toutes relâchées au menu et à la fin ; la combinaison du menu reste
       au menu. Livraisons : (a) puis (b).
+      ✅ (a) en 0.53.0. Expert lancement : 1re version BLOQUÉE (fenêtres hors du jeu visées ; touche qui rebascule un
+      jeu déjà en plein écran) — refaite ; 2e relecture : 2 importants corrigés (état relu juste avant d'agir ; le
+      choix de la personne jamais défait). Reste (b) manette → clavier.
 - [ ] **Lot « Contrat 1.13 »** (analyse d'écart de l'expert contrat, 16/10 ; texte et exemples réels reçus de Firehouse
       le 16/10, dans CONTRAT-API-JEUX-V1.md et EXEMPLES-API-JEUX-V1.md). Frogtend n'utilise rien de la 1.7 à la 1.13.
       Écarts : (1.8) l'émulateur est choisi par `recommande` LaunchBox et sa LIGNE DE COMMANDE LaunchBox est reprise
@@ -204,6 +207,13 @@ d'abord :
 - Jellyfin → Taodbox : projet côté Firehouse, pas le travail de Frogtend.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.53.0** (16/10) — Plein écran au lancement des jeux PC (par jeu : touche du jeu suggérée par son mode d'emploi,
+  ou fenêtre agrandie sans cadre). Vérifié : suggestion RÉELLE sur les 10 jeux Windows de Seb (Rock Force → F4,
+  Minecraft → F11, 8 autres → rien, jamais deviné) ; essai RÉEL sur des fenêtres de test (640×480 agrandie à
+  1920×1080 ; fenêtre déjà plein écran + touche F11 → « rien ») — il a attrapé un défaut (fenêtre maximisée
+  restaurée avant la vérification), corrigé ; 3 relectures d'experts (lancement ×2, interface). Tests : 300 cœur,
+  134 interface. PAS vérifié : un vrai jeu (Rock Force F4, un jeu Unity), écran à 125/150 %.
 
 - **0.52.0** (16/10) — Micrologiciel PS3 servi par Firehouse. Vérifié : essai RÉEL complet sur une COPIE de RPCS3
   (hors dossier temporaire : RPCS3 refuse de tourner depuis Temp) — PUP servi 206 197 916 o téléchargé et vérifié,

@@ -289,6 +289,20 @@ pub fn abandonne(pid: u32) -> bool {
     }
 }
 
+/// Appuie sur une touche (code de balayage) avec ses modificateurs, au premier plan actuel.
+pub fn envoyer_touche(scan: u16, etendue: bool, modificateurs: &[u16]) {
+    #[cfg(windows)]
+    fenetres::touche(scan, etendue, modificateurs);
+    #[cfg(not(windows))]
+    let _ = (scan, etendue, modificateurs);
+}
+
+/// Les fenêtres principales visibles de ces processus (pour le plein écran au lancement).
+#[cfg(windows)]
+pub fn fenetres_du_processus(pids: &[u32]) -> Vec<windows::Win32::Foundation::HWND> {
+    fenetres::du_processus(pids)
+}
+
 /// La fenêtre au premier plan est-elle à Frogtend ? (`true` hors Windows.)
 pub fn frogtend_au_premier_plan() -> bool {
     #[cfg(windows)]

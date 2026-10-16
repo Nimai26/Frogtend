@@ -48,6 +48,12 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Le plein écran au lancement (0.53.0)
+- [ ] Mega Man Rock Force : ⚙ Gérer le jeu ▸ 🖥 Plein écran au lancement ▸ « Frogtend appuie sur F4 pour toi ». ▶ Jouer :
+      quelques secondes après l'ouverture, le jeu passe en plein écran. Relance-le : toujours en plein écran.
+- [ ] Un autre jeu Windows : « Agrandir sa fenêtre à tout l'écran » ; dis-moi si l'image suit ou reste petite.
+- [ ] Pendant ces quelques secondes, ouvre le menu (View + RB) : le menu reste devant.
+
 ## Le micrologiciel PS3 de Firehouse (0.52.0)
 - [ ] RPCS3 FERMÉ : ⚙ Options ▸ 🕹 Émulateurs ▸ 💿 Micrologiciel PS3 → « Installé : version 4.91 », proposition de la
       4.93 (≈ 197 Mo) → ⬇ Installer : l'avancement s'affiche, puis « ✅ Micrologiciel PS3 4.93 installé ». Recliquer

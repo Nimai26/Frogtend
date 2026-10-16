@@ -16,6 +16,7 @@ import { apresUnePartie } from '$lib/sauvegarde.svelte';
 import { ludo, rechargerListe, rechargerPlateformes } from './ludotheque.svelte';
 import { rechargerJeuxDuPc, tele } from './telechargements.svelte';
 import { estCourante, libelleVersion, nomDuFichier } from './versions';
+import { libellePleinEcran, TOUCHES_PLEIN_ECRAN } from './plein-ecran';
 
 export const partie = $state<{ enJeu: number | null; installation: number | null }>({ enJeu: null, installation: null });
 
@@ -24,6 +25,11 @@ let ecoute: (() => void) | null = null;
 /** Écoute les débuts et fins de partie (une seule fois). */
 export async function suivreParties() {
   if (ecoute || !isTauri()) return;
+  // Le plein écran au lancement n'a pas pu être appliqué : le dire, avec la piste (l'autre façon).
+  await listen<{ jeu: number; message: string }>('plein-ecran', (e) => {
+    const titre = tele.jeux[e.payload.jeu]?.titre ?? 'le jeu';
+    toast(`🖥 Frogtend n’a pas pu mettre « ${titre} » en plein écran (${e.payload.message}). Essaie l’autre façon dans ⚙ Gérer le jeu ▸ Plein écran.`, 'alerte');
+  });
   ecoute = await listen<{ sorte: 'debut' | 'fin'; jeu: number; secondes?: number; carte_cedee?: boolean }>('partie', async (e) => {
     if (e.payload.sorte === 'debut') {
       partie.enJeu = e.payload.jeu;
@@ -188,7 +194,8 @@ export async function jouer(id: number, emulateur?: string, version?: string) {
   const j = tele.jeux[id];
   for (let essai = 0; essai < 2; essai++) {
     try {
-      await api.jouer(id, etat.profil.commandes[String(id)], emulateur, version, etat.profil.figer.includes(String(id)));
+      const pe = etat.profil.pleinEcran[String(id)];
+      await api.jouer(id, etat.profil.commandes[String(id)], emulateur, version, etat.profil.figer.includes(String(id)), typeof pe === 'string' ? pe : undefined);
       toast(`▶ « ${j?.titre ?? 'Le jeu'} » se lance…`);
       return;
     } catch (e) {
@@ -395,9 +402,66 @@ export async function choisirCommandes(id: number) {
   toast(`🎮 « ${j.titre} » : ${libelleCommandes(c)}.`);
 }
 
+let recherchePleinEcran = false;
+
+/** « 🖥 Plein écran au lancement » (jeu PC lancé sans émulateur) : rien, la touche du jeu (suggérée par ses textes),
+ * ou sa fenêtre agrandie sans bordure. Généraliste (Seb, 16/10) : aucun jeu n'est traité à part. */
+export async function choisirPleinEcran(id: number) {
+  const j = tele.jeux[id];
+  if (!j || recherchePleinEcran) return;
+  // La lecture des textes du jeu peut prendre quelques secondes (un gros jeu) : on le dit, et un second clic n'ouvre
+  // pas une seconde fenêtre.
+  recherchePleinEcran = true;
+  const attente = toast(`🖥 Frogtend lit le mode d’emploi de « ${j.titre} »…`, 'neutre');
+  let suggeree: string | null;
+  try {
+    suggeree = await api.pleinEcranSuggestion(id).catch(() => null);
+  } finally {
+    fermerToast(attente);
+    recherchePleinEcran = false;
+  }
+  const actuel = etat.profil.pleinEcran[String(id)];
+  type Choix = 'aucun' | 'fenetre' | 'touche' | `touche:${string}`;
+  const options: { valeur: Choix; libelle: string; detail?: string }[] = [
+    { valeur: 'aucun', libelle: '⬜ Ne rien faire', detail: 'le jeu s’ouvre comme il veut' },
+  ];
+  if (suggeree) {
+    options.push({
+      valeur: `touche:${suggeree}`,
+      libelle: `⌨ Frogtend appuie sur ${suggeree} pour toi`,
+      detail: 'la touche plein écran que le jeu indique dans son mode d’emploi (Lisez-moi)',
+    });
+  }
+  options.push(
+    { valeur: 'touche', libelle: '⌨ Frogtend appuie sur une autre touche…', detail: 'choisis la touche qui met ce jeu en plein écran (F11, Alt+Entrée…)' },
+    { valeur: 'fenetre', libelle: '🖥 Agrandir sa fenêtre à tout l’écran', detail: 'sans cadre ni barre de titre ; selon le jeu, l’image peut rester petite au milieu' },
+  );
+  let c = await choisir<Choix>(
+    `🖥 Plein écran au lancement de « ${j.titre} »`,
+    options,
+    `Actuellement : ${libellePleinEcran(actuel)}. Si le jeu s’ouvre déjà en plein écran, choisis « Ne rien faire ».`,
+  );
+  if (!c) return;
+  if (c === 'touche') {
+    const t = await choisir<string>(
+      '⌨ Quelle touche met ce jeu en plein écran ?',
+      TOUCHES_PLEIN_ECRAN.map((k) => ({ valeur: k, libelle: k })),
+      'Souvent écrite dans le fichier « Lisez-moi » du jeu ou dans ses options.',
+    );
+    if (!t) return;
+    c = `touche:${t}`;
+  }
+  const tous = { ...etat.profil.pleinEcran };
+  if (c === 'aucun') delete tous[String(id)];
+  else tous[String(id)] = c;
+  await reglerProfil('pleinEcran', tous);
+  toast(`🖥 « ${j.titre} » : plein écran ${c === 'aucun' ? 'désactivé' : `— ${libellePleinEcran(c)}`}.`);
+}
+
+let verificationFiger = false;
+
 /** « ❄ Figer le jeu pendant le menu » (jeu PC lancé sans émulateur) : désactivé d'office ; refusé si un anti-triche
  * est trouvé ; les risques sont dits avant d'activer (Seb, 05/10). */
-let verificationFiger = false;
 
 export async function choisirFiger(id: number) {
   const j = tele.jeux[id];
@@ -446,7 +510,7 @@ export async function choisirFiger(id: number) {
 export async function gererJeu(id: number) {
   const j = tele.jeux[id];
   if (!j) return;
-  type Action = 'installer' | 'lanceur' | 'version' | 'emulateur' | 'commandes' | 'figer' | 'abri' | 'retirer';
+  type Action = 'installer' | 'lanceur' | 'version' | 'emulateur' | 'commandes' | 'figer' | 'pleinEcran' | 'abri' | 'retirer';
   const options: { valeur: Action; libelle: string; detail?: string }[] = [];
   if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
   if (j.installation && !j.installation.fichier_du_jeu)
@@ -466,13 +530,16 @@ export async function gererJeu(id: number) {
     });
   }
   options.push({ valeur: 'commandes', libelle: '🎮 Commandes', detail: libelleCommandes(etat.profil.commandes[String(id)]) });
-  // Un jeu lancé sans émulateur (jeu PC) : le figer pendant le menu, au choix.
-  if (j.installation && !j.installation.fichier_du_jeu && !pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, j.plateforme, id))
+  // Un jeu lancé sans émulateur (jeu PC) : son plein écran au lancement, et le figer pendant le menu, au choix.
+  const pcSansEmulateur = !!j.installation && !j.installation.fichier_du_jeu && !pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, j.plateforme, id);
+  if (pcSansEmulateur) {
+    options.push({ valeur: 'pleinEcran', libelle: '🖥 Plein écran au lancement', detail: libellePleinEcran(etat.profil.pleinEcran[String(id)]) });
     options.push({
       valeur: 'figer',
       libelle: '❄ Figer le jeu pendant le menu de Frogtend',
       detail: etat.profil.figer.includes(String(id)) ? 'oui (le jeu s’arrête pendant le menu)' : 'non (le jeu continue derrière le menu)',
     });
+  }
   if (j.installation)
     options.push({ valeur: 'abri', libelle: '💾 Mettre mes parties à l’abri', detail: 'une copie de ce qui a changé depuis l’installation' });
   if (j.etat === 'telecharge')
@@ -488,6 +555,7 @@ export async function gererJeu(id: number) {
   else if (c === 'emulateur') await choisirEmulateurDuJeu(id);
   else if (c === 'commandes') await choisirCommandes(id);
   else if (c === 'figer') await choisirFiger(id);
+  else if (c === 'pleinEcran') await choisirPleinEcran(id);
   else if (c === 'abri') await mettreALAbri(id);
   else if (c === 'retirer') await retirer(j);
 }

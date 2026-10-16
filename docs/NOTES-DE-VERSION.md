@@ -1,5 +1,19 @@
 # Notes de version de Frogtend
 
+## 0.53.0 — Le plein écran au lancement des jeux PC
+
+- Nouveau dans **⚙ Gérer le jeu** (jeux PC) : **🖥 Plein écran au lancement**, au choix pour chaque jeu :
+  - **Frogtend appuie sur la touche plein écran du jeu** (F4, F11, Alt+Entrée…) dès que sa fenêtre est prête. Frogtend
+    la cherche dans le mode d'emploi du jeu et te la propose (par exemple F4 pour Mega Man Rock Force, F11 pour
+    Minecraft) ;
+  - **ou il agrandit la fenêtre du jeu à tout l'écran**, sans cadre (selon le jeu, l'image peut rester petite au
+    milieu : essaie alors l'autre façon).
+- Désactivé d'office. Garde-fous : seulement les fenêtres du jeu lui-même ; jamais si le jeu est déjà en plein écran
+  (une touche qui bascule ne le remet jamais en fenêtre) ; jamais pendant le menu en jeu ; si tu remets le jeu en
+  fenêtre toi-même, Frogtend ne défait pas ton choix. Si ça n'a pas marché, Frogtend te le dit.
+- Note : certains jeux retiennent la taille de leur fenêtre à la fermeture ; en mode « agrandir », ils peuvent ensuite
+  s'ouvrir en grand d'eux-mêmes.
+
 ## 0.52.0 — Le micrologiciel PS3 vient de Firehouse
 
 - **⚙ Options ▸ 🕹 Émulateurs ▸ 💿 Micrologiciel PS3** propose maintenant le micrologiciel fourni par Firehouse

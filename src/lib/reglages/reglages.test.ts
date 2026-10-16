@@ -35,6 +35,10 @@ describe('completer', () => {
     expect(completer(DEFAUTS_PROFIL, { ludotheque: { plateformesMasquees: ['Arcade'] } }).ludotheque.plateformesMasquees).toEqual(['Arcade']);
     expect(completer(DEFAUTS_PROFIL, { ludotheque: { plateformesMasquees: { a: 1 } } }).ludotheque.plateformesMasquees).toEqual([]);
   });
+  it('le plein écran au lancement : rien d’office, les réglages lus sont gardés', () => {
+    expect(DEFAUTS_PROFIL.pleinEcran).toEqual({});
+    expect(completer(DEFAUTS_PROFIL, { pleinEcran: { '42': 'touche:F4' } }).pleinEcran).toEqual({ '42': 'touche:F4' });
+  });
   it('les jeux figés pendant le menu : aucun d’office, la liste lue est gardée', () => {
     expect(DEFAUTS_PROFIL.figer).toEqual([]);
     expect(completer(DEFAUTS_PROFIL, {}).figer).toEqual([]);

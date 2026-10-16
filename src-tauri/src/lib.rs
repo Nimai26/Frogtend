@@ -32,6 +32,7 @@ pub mod menu_jeu;
 pub mod noyau;
 pub mod partie;
 pub mod pilotage;
+pub mod plein_ecran;
 pub mod profils;
 pub mod references;
 pub mod restauration;
@@ -353,6 +354,7 @@ pub fn run() {
             commandes::menu_jeu_action,
             commandes::menu_jeu_quitter,
             commandes::jeu_anti_triche,
+            commandes::jeu_plein_ecran_suggestion,
             commandes::references_manette,
             commandes::profils_manette_emulateur,
             commandes::reference_reprendre,

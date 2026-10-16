@@ -507,8 +507,16 @@ export const api = {
   menuJeuReprendre: () => appeler<void>('menu_jeu_reprendre'),
   menuJeuAction: (action: string) => appeler<void>('menu_jeu_action', { action }),
   menuJeuQuitter: () => appeler<number>('menu_jeu_quitter'),
-  jouer: (id: number, commandes?: CommandesJeu, emulateur?: string, version?: string, figer?: boolean) =>
-    appeler<void>('jeu_jouer', { id, commandes: commandes ?? null, emulateur: emulateur ?? null, version: version ?? null, figer: figer ?? false }),
+  jouer: (id: number, commandes?: CommandesJeu, emulateur?: string, version?: string, figer?: boolean, pleinEcran?: string) =>
+    appeler<void>('jeu_jouer', {
+      id,
+      commandes: commandes ?? null,
+      emulateur: emulateur ?? null,
+      version: version ?? null,
+      figer: figer ?? false,
+      pleinEcran: pleinEcran ?? null,
+    }),
+  pleinEcranSuggestion: (id: number) => appeler<string | null>('jeu_plein_ecran_suggestion', { id }),
   jeuAntiTriche: (id: number) => appeler<VerificationFiger>('jeu_anti_triche', { id }),
   biosPoser: (plateforme: string, programme: string) => appeler<BilanBios>('bios_poser', { plateforme, programme }),
   firmwareServi: (plateforme: string) => appeler<BiosConseil | null>('firmware_servi', { plateforme }),

@@ -683,6 +683,8 @@ pub struct Commandes {
 
 /// Lance le jeu, puis le suit jusqu'à sa fermeture (événements « partie »).
 #[tauri::command]
+// Une commande de l'interface : chaque réglage du lancement est un argument nommé (Tauri).
+#[allow(clippy::too_many_arguments)]
 pub async fn jeu_jouer(
     app: AppHandle,
     noyau: State<'_, Noyau>,
@@ -691,6 +693,7 @@ pub async fn jeu_jouer(
     emulateur: Option<String>,
     version: Option<String>,
     figer: Option<bool>,
+    plein_ecran: Option<String>,
 ) -> Resultat<()> {
     let jeu = noyau.registre().jeu(id)?;
     let (plateforme, titre) = jeu.map(|j| (j.plateforme, j.titre)).unwrap_or_default();
@@ -724,6 +727,7 @@ pub async fn jeu_jouer(
     }
     let _ = app.emit("partie", EvenementPartie::Debut { jeu: id, carte_cedee });
     // Le menu en jeu : sa touche est active pendant la partie seulement.
+    let dossier_jeu_pe = dossier_jeu.clone();
     let numero = app.state::<crate::menu_jeu::MenuJeu>().commencer(crate::menu_jeu::PartieEnCours {
         jeu: id,
         titre,
@@ -736,6 +740,30 @@ pub async fn jeu_jouer(
     });
     armer_touche_menu(&app, true);
     suivre_manette_menu(&app, numero);
+    // Plein écran au lancement (jeu PC sans émulateur, réglage du jeu) : dès que sa fenêtre est prête, jamais pendant
+    // le menu en jeu ni un jeu figé ; un échec est dit à la personne.
+    if let (Some(d), m) = (dossier_jeu_pe, crate::plein_ecran::mode(plein_ecran.as_deref().unwrap_or(""))) {
+        if m != crate::plein_ecran::Mode::Aucun {
+            let app3 = app.clone();
+            std::thread::spawn(move || {
+                let menu = app3.state::<crate::menu_jeu::MenuJeu>();
+                let etat = || {
+                    if !menu.en_cours(numero) {
+                        crate::plein_ecran::Etat::Finie
+                    } else if menu.ouvert.load(std::sync::atomic::Ordering::SeqCst) || crate::figer::est_fige() {
+                        crate::plein_ecran::Etat::Attendre
+                    } else {
+                        crate::plein_ecran::Etat::Libre
+                    }
+                };
+                let r = crate::plein_ecran::appliquer(std::path::Path::new(&d), &m, &etat);
+                app3.state::<Noyau>().journaliser(&format!("plein écran du jeu {id} : {r:?}"));
+                if let Err(e) = r {
+                    let _ = app3.emit("plein-ecran", serde_json::json!({ "jeu": id, "message": e }));
+                }
+            });
+        }
+    }
     let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
         let noyau = app2.state::<Noyau>();
@@ -940,6 +968,15 @@ fn geler_la_partie(app: &AppHandle) {
 pub fn degeler_la_partie(app: &AppHandle) {
     app.state::<crate::menu_jeu::MenuJeu>().ouvert.store(false, std::sync::atomic::Ordering::SeqCst);
     crate::figer::degeler();
+}
+
+/// La touche plein écran que les textes du jeu installé annoncent (ReadMe, options), s'il y en a une.
+#[tauri::command]
+pub async fn jeu_plein_ecran_suggestion(noyau: State<'_, Noyau>, id: i64) -> Resultat<Option<String>> {
+    let Some(dossier) = noyau.registre().jeu(id)?.and_then(|j| j.installation).map(|i| i.dossier) else { return Ok(None) };
+    tauri::async_runtime::spawn_blocking(move || crate::plein_ecran::suggestion(std::path::Path::new(&dossier)).map(String::from))
+        .await
+        .map_err(|_| Erreur::Disque("La lecture des textes du jeu s'est arrêtée brutalement.".into()))
 }
 
 /// Peut-on figer ce jeu pendant le menu ? Refusé s'il a un anti-triche, ou si son dossier est trop grand pour le savoir.
