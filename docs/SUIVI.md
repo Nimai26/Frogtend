@@ -59,6 +59,13 @@
   - Découpe : (1) sonde avec Seb ; (2) navigation commune clavier/souris/manette + échelle Taodbox ; (3) le cœur lit
     XInput, Select + R1 tenus 1 s, premier plan vérifié, migration des anciennes combinaisons ; (4) SDL3 ; (5) le
     fond ; (6) options, puis adaptateurs un par un (RPCS3, Cemu, Eden, Xenia, xemu, Azahar, Vita3K, PPSSPP).
+- [ ] **Lot « Jeux PC : plein écran et manette → clavier »** (ordre du 16/10). ✅ Seb 16/10 : « pour le plein écran
+      Mega Man, attention, ce n'est qu'un jeu parmi d'autres, il faut que notre création soit le plus généraliste
+      possible ». Exigences : (a) plein écran au lancement, PAR JEU, désactivé d'office, trois modes : rien / touche
+      du jeu (F4, Alt+Entrée, F11… ; suggestion trouvée dans le ReadMe du jeu) / fenêtre agrandie sans bordure sur
+      l'écran du jeu ; (b) manette → clavier PAR JEU : préréglages courants + bouton par bouton ; touches envoyées
+      seulement quand le jeu a le premier plan, toutes relâchées au menu et à la fin ; la combinaison du menu reste
+      au menu. Livraisons : (a) puis (b).
 - [ ] **Lot « Contrat 1.13 »** (analyse d'écart de l'expert contrat, 16/10 ; texte et exemples réels reçus de Firehouse
       le 16/10, dans CONTRAT-API-JEUX-V1.md et EXEMPLES-API-JEUX-V1.md). Frogtend n'utilise rien de la 1.7 à la 1.13.
       Écarts : (1.8) l'émulateur est choisi par `recommande` LaunchBox et sa LIGNE DE COMMANDE LaunchBox est reprise
