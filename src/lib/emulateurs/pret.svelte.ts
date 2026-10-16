@@ -9,7 +9,7 @@ import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat, reglerPc } from '$lib/etat.svelte';
 import { completerRetroArch, installerEmulateur, installerMicrologicielPs3, installerParFirehouse, poserBios, recommandationsParDefaut, reglerEmulateur } from './assistant.svelte';
 import { ajouter } from './choix';
-import { avecConseil, biosADireOuPoser, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, MANETTE_REGLEE, messagePret, micrologicielServi, poidsBios, type Possible } from './pret';
+import { avecConseil, biosADireOuPoser, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, MANETTE_REGLEE, messagePret, micrologicielServi, phraseVersionAutre, poidsBios, versionAutre, type Possible } from './pret';
 
 /** Les plateformes qui se jouent sans émulateur. */
 const SANS_EMULATEUR = ['Windows'];
@@ -41,7 +41,8 @@ export async function preparerPourJouer(plateforme: string, jeux: number): Promi
       id,
       nom: f?.nom ?? rec.nom,
       programme: installe?.programme,
-      parFirehouse: !f && !!rec.id && !!rec.telechargement && rec.telechargement.type !== 'page',
+      // Firehouse sert le paquet de l'émulateur de SON conseil (contrat 1.8 : `/emulateurs/{id}/paquet`), même sans source dans la liste.
+      parFirehouse: !f && !!rec.id && ((!!rec.telechargement && rec.telechargement.type !== 'page') || estConseille(rec, conseil)),
     };
     lignes.set(rec, ligneDe(rec, f?.ligne ?? '', conseil));
     possibles.push(p);
@@ -53,8 +54,11 @@ export async function preparerPourJouer(plateforme: string, jeux: number): Promi
   const dossierNouveau = !etat.pc.dossierEmulateurs;
   const dossier = etat.pc.dossierEmulateurs || dossierParDefaut(etat.pc.emplacements.defaut);
   const paquet = choix.comment === 'frogtend' && choix.id ? await api.emulateurDerniereVersion(choix.id).catch(() => null) : null;
+  // Celui du conseil, déjà sur le PC, mais pas dans la version attendue par les jeux de Firehouse (MAME) : on le dit.
+  const installee = choix.programme ? installes.find((i) => i.programme === choix.programme)?.version : null;
+  const autre = estConseille(choix.rec, conseil) ? versionAutre(installee, conseil) : null;
   const oui = await confirmer(`🎮 Préparer ${plateforme} pour jouer ?`, {
-    message: messagePret({
+    message: (autre && installee ? `${phraseVersionAutre(choix.nom, installee, autre)}\n\n` : '') + messagePret({
       plateforme,
       jeux,
       choix,

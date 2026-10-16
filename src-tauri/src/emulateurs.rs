@@ -479,6 +479,17 @@ pub fn installer_paquet_decrit(
 /// remplacée est d'abord copiée à part.
 fn deposer_archive(nom: &str, paquet: &Path, dossier: &Path) -> Resultat<()> {
     let format = crate::installation::format_de(paquet)?;
+    // Un paquet « .exe » qui porte une archive 7z (MAME) : l'archive est sortie sans exécuter le programme.
+    if format == Format::Exe {
+        let mut n = paquet.as_os_str().to_os_string();
+        n.push(".7z");
+        let archive = PathBuf::from(n);
+        if crate::installation::archive_7z_dans_exe(paquet, &archive)? {
+            let r = deposer_archive(nom, &archive, dossier);
+            let _ = std::fs::remove_file(&archive);
+            return r;
+        }
+    }
     if !matches!(format, Format::Zip | Format::SeptZip) {
         return Err(Erreur::Refus(format!("Le paquet de {nom} n'est pas une archive attendue.")));
     }

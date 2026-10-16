@@ -3,6 +3,14 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 16/10 — J'ai remplacé un réglage de l'émulateur au lieu de m'y ajouter
+Ce qui s'est passé : pour lancer les jeux MAME, j'ai passé `-rompath <dossier du jeu>`, qui REMPLACE les dossiers
+réglés dans `mame.ini` ; les jeux importés du disque, dont les CHD ou BIOS sont ailleurs, ne les auraient plus
+trouvés. J'avais aussi toléré une entrée 7z sans nom sans lire son flux, au risque de décaler tout le bloc. L'expert
+lancement l'a vu. · Comment l'appliquer : une option de ligne de commande qui a aussi un réglage dans l'émulateur
+s'AJOUTE à ce réglage (relu dans son fichier), sauf raison écrite ; une entrée d'archive qu'on saute se lit quand même
+jusqu'au bout, ou l'archive se refuse.
+
 ## 16/10 — Un essai réel dans un dossier temporaire a menti
 Ce qui s'est passé : l'installation du micrologiciel sur une copie de RPCS3 plantait (0xC0000409). Ce n'était pas
 Frogtend : RPCS3 refuse de tourner depuis un dossier temporaire, et mon brouillon était dans Temp. L'essai, refait

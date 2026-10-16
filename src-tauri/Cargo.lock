@@ -1536,11 +1536,12 @@ dependencies = [
 
 [[package]]
 name = "frogtend"
-version = "0.54.0"
+version = "0.55.0"
 dependencies = [
  "argon2",
  "bytes",
  "chd",
+ "crc32fast",
  "flate2",
  "fs2",
  "httpmock",

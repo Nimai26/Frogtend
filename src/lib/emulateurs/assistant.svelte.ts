@@ -4,7 +4,7 @@
 
 import { listen } from '@tauri-apps/api/event';
 import { ajouter } from './choix';
-import { avecConseil, biosADireOuPoser, biosATelecharger, biosRetroArch, estConseille, ligneDe, palier, poidsBios } from './pret';
+import { avecConseil, biosADireOuPoser, biosATelecharger, biosRetroArch, estConseille, ligneDe, palier, poidsBios, versionAutre } from './pret';
 import { isTauri } from '@tauri-apps/api/core';
 import { api, taille, type BilanBios, type EmulateurInstalle, type EmulateurRecommande } from '$lib/api';
 import { choisir, confirmer, demander, fermerToast, informer, toast } from '$lib/dialogues/fenetres.svelte';
@@ -305,14 +305,14 @@ export async function reglerEmulateur(plateforme: string): Promise<string | null
   for (const rec of avecForks) {
     const f = await api.emulateurFiche(rec.nom).catch(() => null);
     const installe = f ? installes.find((i) => i.id === f.id) : rec.id ? installes.find((i) => i.id === rec.id) : undefined;
-    const parFirehouse = !f && !!rec.id && !!rec.telechargement && rec.telechargement.type !== 'page';
+    const parFirehouse = !f && !!rec.id && ((!!rec.telechargement && rec.telechargement.type !== 'page') || estConseille(rec, conseil));
     options.push({
       valeur: { rec, id: f?.id ?? null, nom: f?.nom ?? rec.nom, installe },
       libelle: conseil
         ? `${estConseille(rec, conseil) ? '⭐ ' : ''}${f?.nom ?? rec.nom}${estConseille(rec, conseil) ? ' (conseillé par la maison)' : ''}`
         : `${rec.recommande ? '⭐ ' : ''}${f?.nom ?? rec.nom}${rec.recommande ? ' (recommandé)' : ''}`,
       detail: installe
-        ? `✅ déjà sur ce PC${installe.version ? ` (${installe.version})` : ''}`
+        ? `✅ déjà sur ce PC${installe.version ? ` (${installe.version})` : ''}${estConseille(rec, conseil) && versionAutre(installe.version, conseil) ? ` ⚠️ les jeux de Firehouse attendent la ${versionAutre(installe.version, conseil)}` : ''}`
         : f || parFirehouse
           ? `⬇ Frogtend peut l’installer${parFirehouse ? ' (source donnée par Firehouse)' : ''}`
           : `à installer toi-même${rec.site_officiel || rec.site ? ` : ${rec.site_officiel || rec.site}` : ''}`,
@@ -359,7 +359,7 @@ export async function reglerEmulateur(plateforme: string): Promise<string | null
       const e = await installerEmulateur(c.id, c.nom);
       if (!e) return null;
       programme = e.programme;
-    } else if (c.rec.id && c.rec.telechargement && c.rec.telechargement.type !== 'page') {
+    } else if (c.rec.id && ((c.rec.telechargement && c.rec.telechargement.type !== 'page') || estConseille(c.rec, conseil))) {
       const e = await installerParFirehouse(c.rec.id, c.nom);
       if (!e) return null;
       programme = e.programme;

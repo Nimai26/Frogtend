@@ -48,6 +48,13 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## L'arcade MAME (0.55.0)
+- [ ] Catalogue ▸ Arcade ▸ un jeu (par exemple Street Fighter III) ▸ télécharger, installer ; ▶ Jouer : l'accord unique
+      propose MAME (environ 84 Mo) ; après, le jeu démarre dans MAME.
+- [ ] Un jeu marqué incomplet : l'avertissement apparaît avant l'installation.
+- [ ] Le menu Frogtend (View+RB1) par-dessus MAME en plein écran : il s'affiche ? (MAME ne se met PAS en pause.)
+- [ ] Un jeu MAME importé du disque (MAME Arcade Full Set) se lance toujours.
+
 ## Jouer à la manette aux jeux clavier (0.54.0)
 - [ ] Mega Man Rock Force : ⚙ Gérer le jeu ▸ 🕹 Jouer à la manette ▸ « Flèches + Z X C ». ▶ Jouer : la croix déplace,
       A saute, X tire, B glisse, Start met en pause, LB/RB changent d'arme.

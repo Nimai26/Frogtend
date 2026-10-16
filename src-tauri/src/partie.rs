@@ -88,20 +88,23 @@ impl Noyau {
             .and_then(|l| l.iter().find(|v| v["telechargement_id"].as_i64() == Some(j.version)))
             .cloned()
             .unwrap_or(Value::Null);
-        let n = nature(version["qualite"].as_str().unwrap_or(""));
+        // Une version MAME (contrat 1.13) se donne telle quelle à MAME : une ROM (jamais décompressée).
+        let n = if version["mame"].is_object() { Nature::Rom } else { nature(version["qualite"].as_str().unwrap_or("")) };
         let noms: Vec<String> = j.fichiers.iter().map(|f| f.nom.clone()).collect();
         let m = methode(n, Path::new(&j.dossier), &noms)?;
         let destination = match m {
             Methode::Aucune => j.dossier.clone(),
             _ => Path::new(&j.dossier).join(DOSSIER_INSTALLATION).to_string_lossy().into(),
         };
-        Ok(Preparation {
-            nature: n,
-            methode: m,
-            destination,
-            notes: version["notes"].as_str().filter(|t| !t.trim().is_empty()).map(String::from),
-            titre: j.titre,
-        })
+        let mut notes = version["notes"].as_str().filter(|t| !t.trim().is_empty()).map(String::from);
+        if version["mame"]["complet"] == Value::Bool(false) {
+            let a = "⚠️ Version incomplète chez Firehouse (une partie du jeu, son disque CHD, manque encore) : il peut ne pas démarrer.";
+            notes = Some(match notes {
+                Some(n) => format!("{a}\n\n{n}"),
+                None => a.into(),
+            });
+        }
+        Ok(Preparation { nature: n, methode: m, destination, notes, titre: j.titre })
     }
 
     /// Installe le jeu (après l'accord de la personne). `automatique` : installeur silencieux si possible.
@@ -149,7 +152,14 @@ impl Noyau {
             }
             Methode::Aucune => {
                 if matches!(p.nature, Nature::Rom | Nature::ImageDisque) {
-                    fichier_du_jeu = fichier_principal(&j.fichiers.iter().map(|f| f.nom.clone()).collect::<Vec<_>>());
+                    let noms: Vec<String> = j.fichiers.iter().map(|f| f.nom.clone()).collect();
+                    // MAME : le zip du jeu (son nom court), jamais la CHD rangée à côté.
+                    fichier_du_jeu = match self.mame_de(&j) {
+                        Some(nom) => Some(noms.iter().find(|f| f.eq_ignore_ascii_case(&format!("{nom}.zip"))).cloned().ok_or_else(|| {
+                            Erreur::Refus(format!("Le fichier {nom}.zip de ce jeu d'arcade manque dans ce que Firehouse a envoyé : il ne pourrait pas démarrer."))
+                        })?),
+                        None => fichier_principal(&noms),
+                    };
                 }
             }
         }
@@ -190,6 +200,13 @@ impl Noyau {
         let i = self.retenir_installation(&j, &d, p.methode, None, p.nature)?;
         self.reposer_parties_restaurees(id, &i).await;
         Ok(i)
+    }
+
+    /// Le nom court MAME de la version installée (contrat 1.13), d'après la fiche gardée sur le PC.
+    fn mame_de(&self, j: &JeuPc) -> Option<String> {
+        let fiche = self.fiche_locale(j.id)?;
+        let v = fiche["versions"].as_array()?.iter().find(|v| v["telechargement_id"].as_i64() == Some(j.version))?.clone();
+        v["mame"]["nom"].as_str().filter(|n| crate::jeux_pc::nom_de_fichier_sur(n).is_ok()).map(String::from)
     }
 
     fn retenir_installation(
@@ -317,7 +334,11 @@ impl Noyau {
                         j.plateforme
                     ))
                 })?;
-                let l = lanceur_emulateur(&programme, &ligne, &Path::new(&i.dossier).join(f));
+                let l = match crate::installation::nom_court_mame(&programme, f) {
+                    // MAME : « mame <nom court> -rompath <dossier du jeu> » (contrat 1.13), jamais le chemin du zip.
+                    Some(nom) => crate::installation::lanceur_mame(&programme, &ligne, &nom, Path::new(&i.dossier)),
+                    None => lanceur_emulateur(&programme, &ligne, &Path::new(&i.dossier).join(f)),
+                };
                 let d = PathBuf::from(&l.dossier);
                 (l, vec![d])
             }
@@ -435,9 +456,16 @@ impl Noyau {
             }
         }
         for f in &j.fichiers {
-            let p = recus.join(crate::jeux_pc::nom_de_fichier_sur(&f.nom)?);
+            let rel = crate::jeux_pc::chemin_de_fichier_sur(&f.nom)?;
+            let p = recus.join(&rel);
             if p.is_file() {
                 std::fs::remove_file(&p)?;
+            }
+            // Un sous-dossier reçu (CHD MAME), seulement s'il est vide.
+            if rel.components().count() > 1 {
+                if let Some(d) = p.parent() {
+                    let _ = std::fs::remove_dir(d);
+                }
             }
         }
         self.retirer_medias(&j)?;
@@ -466,6 +494,7 @@ mod tests {
         std::fs::create_dir_all(&dossier).unwrap();
         let mut fj = Vec::new();
         for (i, (nom, o)) in fichiers.iter().enumerate() {
+            std::fs::create_dir_all(dossier.join(nom).parent().unwrap()).unwrap();
             std::fs::write(dossier.join(nom), o).unwrap();
             fj.push(FichierJeu { n: i as u32, nom: nom.to_string(), taille: o.len() as u64 });
         }
@@ -508,6 +537,25 @@ mod tests {
             z.finish().unwrap();
         }
         o.into_inner()
+    }
+
+    #[tokio::test]
+    async fn un_jeu_mame_est_une_rom_son_zip_est_lance_jamais_sa_chd() {
+        // Relevé réel du 16/10 : « Jeu — MAME 0.289 » (une nature non dite) ; sfiiia.zip + sfiii/cap-sf3-3.chd.
+        let (_d, n) = noyau_avec(&[("sfiiia.zip", b"PK\x03\x04zip"), ("sfiii/cap-sf3-3.chd", b"MComprHD")], "Jeu — MAME 0.289").await;
+        let fiche = serde_json::json!({"id": 110, "titre": "Street Fighter III", "versions": [
+            {"telechargement_id": 200, "qualite": "Jeu — MAME 0.289", "notes": "", "fichiers": [],
+             "mame": {"nom": "sfiiia", "version": "0.289", "parent": "sfiii", "complet": false}}]});
+        std::fs::write(n.dossier_medias(110).join("fiche.json"), fiche.to_string()).unwrap();
+        let p = n.preparer_installation(110).await.unwrap();
+        assert_eq!(p.nature, Nature::Rom, "jamais décompressé");
+        assert_eq!(p.methode, Methode::Aucune);
+        assert!(p.notes.unwrap().contains("incomplète"), "une CHD manque : c'est dit avant d'installer");
+        let i = n.installer(110, true).await.unwrap();
+        assert_eq!(i.fichier_du_jeu.as_deref(), Some("sfiiia.zip"), "le zip, jamais la CHD");
+        // Retirer le jeu retire aussi le sous-dossier reçu (vide).
+        n.retirer_du_pc(110).await.unwrap();
+        assert!(!std::path::Path::new(&i.dossier).join("sfiii").exists());
     }
 
     #[tokio::test]

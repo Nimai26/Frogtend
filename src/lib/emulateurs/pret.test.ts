@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Conseil } from '$lib/api';
-import { avecConseil, biosADire, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, messagePret, micrologicielServi, palier, poidsBios, versionDansNote, type Possible } from './pret';
+import { avecConseil, biosADire, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, messagePret, micrologicielServi, palier, poidsBios, versionAutre, versionDansNote, type Possible } from './pret';
 
 const rec = (nom: string, recommande: boolean, bios = '') => ({ nom, site: '', recommande, ligne_de_commande: '', extensions: [], bios });
 
@@ -131,6 +131,20 @@ describe('le conseil de la maison (contrat 1.8)', () => {
     expect(messagePret({ plateforme: 'Sony Playstation', jeux: 2, choix: psx, taille: null, dossier: 'E:\\Emulateurs', dossierNouveau: false, conseil: conseilPsx })).toContain(
       'des fichiers système (scph5500.bin, scph5501.bin) : Firehouse les fournit, Frogtend les pose pour toi (vérifié)',
     );
+  });
+});
+
+describe('la version attendue par le conseil (contrat 1.13)', () => {
+  const c = { version_attendue: '0.289' } as Conseil;
+  it('ne dit rien quand c’est la bonne, ou quand on ne sait pas', () => {
+    expect(versionAutre('0.289', c)).toBeNull();
+    expect(versionAutre('0.289 (mame0289)', c)).toBeNull();
+    expect(versionAutre(null, c)).toBeNull();
+    expect(versionAutre('0.250', { version_attendue: null } as Conseil)).toBeNull();
+  });
+  it('dit la version attendue quand c’en est une autre', () => {
+    expect(versionAutre('0.250', c)).toBe('0.289');
+    expect(versionAutre('0.2891', c)).toBe('0.289');
   });
 });
 

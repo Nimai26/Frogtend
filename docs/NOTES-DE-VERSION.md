@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.55.0 — L'arcade (MAME) depuis Firehouse
+
+- Les **jeux d'arcade** de Firehouse (3 082 aujourd'hui) se téléchargent et se lancent : chaque jeu arrive avec ses
+  fichiers à la bonne place (les disques CHD dans le dossier de leur jeu), et Frogtend lance MAME comme il le faut
+  (par le nom court du jeu), avec **MAME 0.289, la même version que le romset** — préparé tout seul par
+  « Prêt à jouer » (MAME est sorti de son paquet officiel sans être exécuté).
+- Une version que Firehouse a incomplète (un disque CHD manque) est signalée avant l'installation.
+- Un MAME déjà sur le PC dans une autre version que celle des jeux de Firehouse : c'est dit avant de jouer. Les
+  dossiers de ROM déjà réglés dans MAME restent utilisés (les jeux importés du disque y retrouvent leurs disques).
+
 ## 0.54.0 — Jouer à la manette aux jeux faits pour le clavier
 
 - Nouveau dans **⚙ Gérer le jeu** (jeux PC) : **🕹 Jouer à la manette (jeu fait pour le clavier)**. Pour un jeu qui ne

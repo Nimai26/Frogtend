@@ -59,6 +59,10 @@
   - Découpe : (1) sonde avec Seb ; (2) navigation commune clavier/souris/manette + échelle Taodbox ; (3) le cœur lit
     XInput, Select + R1 tenus 1 s, premier plan vérifié, migration des anciennes combinaisons ; (4) SDL3 ; (5) le
     fond ; (6) options, puis adaptateurs un par un (RPCS3, Cemu, Eden, Xenia, xemu, Azahar, Vita3K, PPSSPP).
+- [x] **Lot MAME (contrat 1.13)** ✅ 0.55.0 : fichiers dans leur sous-dossier (CHD chez le parent), version MAME =
+      ROM (jamais décompressée), zip lancé (jamais la CHD), `mame <nom court> -rompath <dossier>`, « incomplet » dit,
+      paquet officiel auto-extractible ouvert sans être exécuté. Reste : plusieurs versions (clones) d'un même jeu sur
+      le PC (Frogtend n'en garde qu'une par fiche) ; MAME ne se met pas en pause au menu en jeu (adaptateur à faire).
 - [ ] **Lot « Jeux PC : plein écran et manette → clavier »** (ordre du 16/10). ✅ Seb 16/10 : « pour le plein écran
       Mega Man, attention, ce n'est qu'un jeu parmi d'autres, il faut que notre création soit le plus généraliste
       possible ». Exigences : (a) plein écran au lancement, PAR JEU, désactivé d'office, trois modes : rien / touche
@@ -210,6 +214,14 @@ d'abord :
 - Jellyfin → Taodbox : projet côté Firehouse, pas le travail de Frogtend.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.55.0** (16/10) — L'arcade MAME depuis Firehouse. Vérifié en RÉEL : paquet officiel MAME 0.289 (sha256 conforme à
+  Firehouse) décompressé sans exécution (2 332 fichiers, `mame -version` → 0.289) ; fichiers de Street Fighter III
+  (sfiii.zip + sfiii/cap-sf3-3.chd) téléchargés de Firehouse par le code de Frogtend ; `mame -verifyroms sfiii` →
+  « romset sfiii is good » ; `-rompath "<dossier avec espace>;roms"` relu par `mame -showconfig`. Tests : 310 cœur,
+  142 interface ; relecture de l'expert lancement (3 points importants corrigés : rompath de mame.ini gardé, entrée
+  7z sans nom acceptée seulement vide, version attendue dite). Non vérifié : lancer un clone (sfiiia) en vrai, et le
+  menu en jeu par-dessus MAME.
 
 - **0.54.0** (16/10) — Manette → clavier pour les jeux PC (préréglages + bouton par bouton). Vérifié : essai RÉEL sur
   une fenêtre de test avec l'AZERTY de Seb — lettres Z Q S D et positions « Déplacement » → « zqsdzqsd » ; tests du

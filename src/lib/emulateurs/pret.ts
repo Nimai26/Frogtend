@@ -115,6 +115,23 @@ export function poidsBios(bios: BiosConseil[]): number {
 }
 
 /** Le conseil a-t-il quelque chose à dire ou à poser (fichiers servis, à poser soi-même, clés) ? */
+/**
+ * La version que le conseil attend (contrat 1.13 : MAME 0.289, celle du romset) quand l'émulateur déjà sur le PC en a
+ * une autre, sinon `null`. Une version inconnue (installé à la main) ne dit rien : on ne suppose pas.
+ */
+export function versionAutre(installee: string | null | undefined, conseil: Conseil | null | undefined): string | null {
+  const attendue = conseil?.version_attendue?.trim().replace(/^v/i, '');
+  const v = installee?.trim().replace(/^v/i, '');
+  if (!attendue || !v) return null;
+  // « 0.289 (mame0289) » est bien la 0.289 ; « 0.2891 » non.
+  return v === attendue || (v.startsWith(attendue) && !/[0-9.]/.test(v[attendue.length])) ? null : attendue;
+}
+
+/** La phrase qui le dit, simplement. */
+export function phraseVersionAutre(nom: string, installee: string, attendue: string): string {
+  return `⚠️ ${nom} ${installee} est sur ce PC, mais les jeux de Firehouse sont faits pour la version ${attendue} : certains peuvent ne pas démarrer.`;
+}
+
 export function biosADireOuPoser(bios: BiosConseil[]): boolean {
   return bios.some((b) => !b.facultatif && b.type !== 'installation');
 }

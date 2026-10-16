@@ -6,7 +6,7 @@
 
 use crate::erreurs::{Erreur, Resultat};
 use crate::firehouse::Client;
-use crate::jeux_pc::{nom_de_fichier_sur, JeuPc};
+use crate::jeux_pc::JeuPc;
 use serde::Serialize;
 use std::io::Write;
 use std::path::Path;
@@ -52,10 +52,13 @@ pub async fn telecharger_fichier(
     jeu: i64,
     progres: &(impl Fn(Progres) + ?Sized),
 ) -> Resultat<Issue> {
-    let nom = nom_de_fichier_sur(nom)?;
-    std::fs::create_dir_all(dossier)?;
-    let final_ = dossier.join(nom);
-    let part = dossier.join(format!("{nom}.part"));
+    // Un nom, ou « sous-dossier/nom » (CHD MAME) : chaque partie contrôlée, jamais hors du dossier du jeu.
+    let rel = crate::jeux_pc::chemin_de_fichier_sur(nom)?;
+    let final_ = dossier.join(&rel);
+    let mut p = final_.clone().into_os_string();
+    p.push(".part");
+    let part = std::path::PathBuf::from(p);
+    std::fs::create_dir_all(final_.parent().unwrap_or(dossier))?;
 
     // Déjà là, à la bonne taille : rien à faire.
     if std::fs::metadata(&final_).is_ok_and(|m| m.len() == taille) {

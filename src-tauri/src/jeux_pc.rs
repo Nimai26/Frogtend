@@ -98,6 +98,30 @@ pub fn nom_de_fichier_sur(nom: &str) -> Resultat<&str> {
     }
 }
 
+/// Le chemin d'un fichier d'une version, RELATIF au dossier du jeu : un nom, ou « sous-dossier/nom » (contrat 1.13 :
+/// une CHD MAME vit dans le dossier de son parent, `<rompath>/<dossier>/`). Chaque partie est contrôlée comme un nom.
+pub fn chemin_de_fichier_sur(chemin: &str) -> Resultat<std::path::PathBuf> {
+    let parties: Vec<&str> = chemin.split('/').collect();
+    if parties.is_empty() || parties.len() > 2 {
+        return Err(Erreur::Refus(format!("Firehouse a envoyé un chemin de fichier inutilisable : « {chemin} ».")));
+    }
+    let mut p = std::path::PathBuf::new();
+    for x in parties {
+        p.push(nom_de_fichier_sur(x)?);
+    }
+    Ok(p)
+}
+
+#[cfg(test)]
+#[test]
+fn un_chemin_de_fichier_reste_dans_le_dossier_du_jeu() {
+    assert_eq!(chemin_de_fichier_sur("sfiii.zip").unwrap(), std::path::PathBuf::from("sfiii.zip"));
+    assert_eq!(chemin_de_fichier_sur("sfiii/cap-sf3-3.chd").unwrap(), std::path::Path::new("sfiii").join("cap-sf3-3.chd"));
+    for piege in ["../x", "a/../b", "a/b/c", "C:/x", "a\\b", "/x", "a/"] {
+        assert!(chemin_de_fichier_sur(piege).is_err(), "{piege}");
+    }
+}
+
 /// Où en est un jeu du PC.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]

@@ -89,6 +89,48 @@ pub fn format_des_octets(o: &[u8]) -> Format {
     }
 }
 
+/// La signature d'une archive 7z.
+const SIGNATURE_7Z: [u8; 6] = [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C];
+
+/// Une archive 7z AUTO-EXTRACTIBLE (un `.exe` qui porte une archive 7z, comme le paquet officiel de MAME,
+/// « mame0289b_x64.exe ») : l'archive est recopiée dans `sortie`, SANS JAMAIS exécuter le programme ; elle se décompresse
+/// ensuite avec les contrôles habituels. Rend `false` si ce n'en est pas une.
+pub fn archive_7z_dans_exe(exe: &Path, sortie: &Path) -> Resultat<bool> {
+    use std::io::{Seek, SeekFrom};
+    let mut f = std::fs::File::open(exe)?;
+    // Le programme d'extraction fait quelques centaines de Ko : l'archive commence dans les 8 premiers Mo.
+    let mut debut = Vec::new();
+    (&mut f).take(8 * 1024 * 1024).read_to_end(&mut debut)?;
+    if !debut.starts_with(b"MZ") {
+        return Ok(false);
+    }
+    let mut depuis = 2;
+    while let Some(i) = debut[depuis..].windows(SIGNATURE_7Z.len()).position(|w| w == SIGNATURE_7Z) {
+        let pos = depuis + i;
+        depuis = pos + 1;
+        // L'en-tête de départ d'une vraie archive : un CRC non nul, qui correspond aux 20 octets qui le suivent.
+        let Some(entete) = debut.get(pos..pos + 32) else { continue };
+        let crc = u32::from_le_bytes([entete[8], entete[9], entete[10], entete[11]]);
+        if crc == 0 || crc != crc32fast::hash(&entete[12..32]) {
+            continue;
+        }
+        f.seek(SeekFrom::Start(pos as u64))?;
+        let mut copie = std::fs::File::create(sortie)?;
+        let copiee = std::io::copy(&mut f, &mut copie);
+        drop(copie);
+        if let Err(e) = copiee {
+            let _ = std::fs::remove_file(sortie);
+            return Err(e.into());
+        }
+        // Une vraie archive (pas une simple suite d'octets qui ressemble à la signature) : elle doit s'ouvrir.
+        if sevenz_rust::SevenZReader::open(sortie, sevenz_rust::Password::empty()).is_ok() {
+            return Ok(true);
+        }
+        let _ = std::fs::remove_file(sortie);
+    }
+    Ok(false)
+}
+
 /// Comment installer une version téléchargée.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "sorte", rename_all = "snake_case")]
@@ -217,12 +259,20 @@ pub fn decompresser(archive: &Path, format: Format, destination: &Path) -> Resul
             // bloc 7z compact abîmerait les suivantes).
             let mut r = sevenz_rust::SevenZReader::open(archive, sevenz_rust::Password::empty())
                 .map_err(|e| Erreur::Disque(format!("Archive 7z illisible ({e}).")))?;
-            if let Some(e) = r.archive().files.iter().find(|e| crate::decompression::chemin_sur(e.name()).is_none()) {
+            // Une entrée au nom vide (le dossier racine que certains outils ajoutent) est ignorée ; tout autre chemin
+            // dangereux fait refuser l'archive.
+            // Une entrée sans nom n'est tolérée que si elle ne porte AUCUNE donnée (sinon, la sauter décalerait le bloc).
+            let vide_sans_donnees = |e: &sevenz_rust::SevenZArchiveEntry| e.name().is_empty() && (e.is_directory() || !e.has_stream || e.size == 0);
+            if let Some(e) = r.archive().files.iter().find(|e| !vide_sans_donnees(e) && crate::decompression::chemin_sur(e.name()).is_none()) {
                 return Err(Erreur::Refus(format!("L'archive contient un chemin dangereux ({}) : refusée.", e.name())));
             }
             let mut n = 0;
             r.for_each_entries(|e, flux| {
-                let Some(nom) = crate::decompression::chemin_sur(e.name()) else { return Ok(true) };
+                let Some(nom) = crate::decompression::chemin_sur(e.name()) else {
+                    // Lue jusqu'au bout quand même : les entrées suivantes du bloc restent à leur place.
+                    std::io::copy(flux, &mut std::io::sink()).map_err(sevenz_rust::Error::io)?;
+                    return Ok(true);
+                };
                 let cible = destination.join(nom);
                 if e.is_directory() {
                     std::fs::create_dir_all(&cible).map_err(sevenz_rust::Error::io)?;
@@ -395,6 +445,43 @@ pub fn decouper(ligne: &str) -> Vec<String> {
         l.push(courant);
     }
     l
+}
+
+/// Le nom court MAME d'un jeu lancé par MAME (`mame*.exe`) avec son zip (« sfiii.zip » → « sfiii »), sinon `None`.
+pub fn nom_court_mame(programme: &str, fichier_du_jeu: &str) -> Option<String> {
+    let exe = Path::new(programme).file_name()?.to_string_lossy().to_lowercase();
+    let f = Path::new(fichier_du_jeu);
+    let est_zip = f.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip"));
+    (exe.starts_with("mame") && est_zip && f.parent().is_none_or(|p| p.as_os_str().is_empty()))
+        .then(|| f.file_stem().map(|s| s.to_string_lossy().to_string()))
+        .flatten()
+}
+
+/// Les dossiers de ROM déjà réglés dans MAME (`rompath` de son `mame.ini`), sinon « roms », son réglage d'origine.
+pub fn rompath_de_mame_ini(texte: Option<&str>) -> String {
+    texte
+        .and_then(|t| {
+            t.lines().find_map(|l| {
+                let l = l.trim();
+                let (cle, valeur) = l.split_once(char::is_whitespace)?;
+                cle.eq_ignore_ascii_case("rompath").then(|| valeur.trim().trim_matches('"').to_string())
+            })
+        })
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "roms".into())
+}
+
+/// Le lanceur d'un jeu MAME (contrat 1.13) : `mame <options> <nom court> -rompath "<dossier du jeu>;<ses dossiers>"`
+/// — MAME trouve le zip du jeu et ses CHD (`<rompath>/<parent>/`) par le nom court, jamais par le chemin du zip. Le
+/// dossier du jeu s'AJOUTE aux dossiers réglés dans MAME (un jeu importé peut avoir ses CHD ou BIOS ailleurs).
+pub fn lanceur_mame(programme: &str, ligne: &str, nom_court: &str, rompath: &Path) -> Lanceur {
+    let mut arguments: Vec<String> = decouper(ligne).into_iter().filter(|a| !a.to_ascii_lowercase().contains("%rom%")).collect();
+    let ini = Path::new(programme).parent().and_then(|d| std::fs::read_to_string(d.join("mame.ini")).ok());
+    arguments.push(nom_court.to_string());
+    arguments.push("-rompath".into());
+    arguments.push(format!("{};{}", rompath.to_string_lossy(), rompath_de_mame_ini(ini.as_deref())));
+    let dossier = Path::new(programme).parent().map(PathBuf::from).unwrap_or_default().to_string_lossy().to_string();
+    Lanceur { programme: programme.into(), arguments, dossier }
 }
 
 /// Le lanceur d'une ROM ou d'une image disque par un émulateur : ses arguments, puis le fichier du jeu (tel quel).
@@ -580,6 +667,57 @@ mod tests {
     }
 
     #[test]
+    fn une_archive_7z_auto_extractible_se_lit_sans_lancer_le_programme() {
+        let d = tempfile::tempdir().unwrap();
+        let src = d.path().join("mame");
+        std::fs::create_dir_all(src.join("hash")).unwrap();
+        std::fs::write(src.join("mame.exe"), b"MZ le vrai mame").unwrap();
+        std::fs::write(src.join("hash").join("x.xml"), b"<x/>").unwrap();
+        let a7 = d.path().join("a.7z");
+        sevenz_rust::compress_to_path(&src, &a7).unwrap();
+        // Un faux programme d'extraction : « MZ », du remplissage qui contient un faux début de signature, puis l'archive.
+        let mut exe = b"MZ".to_vec();
+        exe.extend(vec![0u8; 5000]);
+        exe.extend(&SIGNATURE_7Z[..4]);
+        exe.extend(vec![1u8; 300]);
+        // Une signature complète suivie de déchets (CRC nul, puis CRC faux) : écartée sans être analysée.
+        exe.extend(&SIGNATURE_7Z);
+        exe.extend(vec![0u8; 40]);
+        exe.extend(&SIGNATURE_7Z);
+        exe.extend([0, 4, 1, 2, 3, 4]);
+        exe.extend(vec![7u8; 40]);
+        exe.extend(std::fs::read(&a7).unwrap());
+        let sfx = d.path().join("mame0289b_x64.exe");
+        std::fs::write(&sfx, &exe).unwrap();
+        assert_eq!(format_de(&sfx).unwrap(), Format::Exe);
+        let sortie = d.path().join("sorti.7z");
+        assert!(archive_7z_dans_exe(&sfx, &sortie).unwrap());
+        let dest = d.path().join("dest");
+        decompresser(&sortie, Format::SeptZip, &dest).unwrap();
+        assert_eq!(std::fs::read(dest.join("mame.exe")).unwrap(), b"MZ le vrai mame");
+        // Un programme ordinaire (pas d'archive dedans) : non.
+        let simple = d.path().join("simple.exe");
+        std::fs::write(&simple, b"MZ rien du tout").unwrap();
+        assert!(!archive_7z_dans_exe(&simple, &d.path().join("rien.7z")).unwrap());
+    }
+
+    #[test]
+    fn mame_se_lance_par_le_nom_court_et_le_dossier_des_zips() {
+        // Relevé réel du 16/10 : sfiiia (clone de sfiii), sa CHD dans <rompath>/sfiii/.
+        assert_eq!(nom_court_mame(r"E:\Emulateurs\MAME\mame.exe", "sfiiia.zip").as_deref(), Some("sfiiia"));
+        assert_eq!(nom_court_mame(r"E:\Emulateurs\MAME\mame.exe", "sfiii/cap-sf3-3.chd"), None, "jamais la CHD");
+        assert_eq!(nom_court_mame(r"E:\Emulateurs\RetroArch\retroarch.exe", "sfiiia.zip"), None, "FBNeo prend le chemin");
+        let l = lanceur_mame(r"E:\Emulateurs\MAME\mame.exe", "", "sfiiia", Path::new(r"E:\Jeux\Arcade\Street Fighter III"));
+        assert_eq!(l.arguments, ["sfiiia", "-rompath", r"E:\Jeux\Arcade\Street Fighter III;roms"]);
+        // Les dossiers déjà réglés dans MAME sont gardés (un jeu importé peut y avoir ses CHD).
+        let ini = "#\n# CORE SEARCH PATH OPTIONS\n#\nhomepath                  .\nrompath                   \"roms;E:\\CHD\"\n";
+        assert_eq!(rompath_de_mame_ini(Some(ini)), r"roms;E:\CHD");
+        assert_eq!(rompath_de_mame_ini(Some("hashpath hash\n")), "roms");
+        assert_eq!(rompath_de_mame_ini(None), "roms");
+        assert_eq!(l.dossier, r"E:\Emulateurs\MAME");
+    }
+
+    #[test]
     fn la_ligne_du_conseil_de_firehouse_recoit_le_jeu_a_la_place_de_rom() {
         // Relevé réel du 16/10 (SNES) : le jeu remplace « %rom% », il n'est pas ajouté une deuxième fois.
         let jeu = Path::new(r"E:\Jeux\SNES\Super Mario World (USA).sfc");
@@ -606,5 +744,22 @@ mod essai_reel_paquet {
         let exe = d.path().join("rpcs3.exe");
         println!("PAQUET format {:?}, {} fichiers en {} ms, rpcs3.exe {:?} octets", f, n, t.elapsed().as_millis(), std::fs::metadata(&exe).map(|m| m.len()).ok());
         println!("PAQUET total fichiers relus : {}", super::fichiers_de(d.path()).unwrap().len());
+    }
+}
+
+#[cfg(test)]
+mod essai_reel_sfx {
+    /// RÉEL : le paquet officiel de MAME (archive 7z auto-extractible) se décompresse SANS être exécuté.
+    /// `FROGTEND_SFX=<chemin du .exe> cargo test essai_paquet_mame -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn essai_paquet_mame() {
+        let exe = std::path::PathBuf::from(std::env::var("FROGTEND_SFX").unwrap());
+        let d = exe.parent().unwrap().to_path_buf();
+        let archive = d.join("extrait.7z");
+        let debut = std::time::Instant::now();
+        println!("ARCHIVE TROUVEE {}", super::archive_7z_dans_exe(&exe, &archive).unwrap());
+        let n = super::decompresser(&archive, super::Format::SeptZip, &d.join("MAME")).unwrap();
+        println!("FICHIERS {n} en {:?} ; mame.exe présent : {}", debut.elapsed(), d.join("MAME").join("mame.exe").is_file());
     }
 }

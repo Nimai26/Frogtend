@@ -213,6 +213,11 @@ impl Noyau {
         let mut fichiers = Vec::new();
         for (n, f) in v["fichiers"].as_array().cloned().unwrap_or_default().iter().enumerate() {
             let nom = nom_de_fichier_sur(f["nom"].as_str().unwrap_or(""))?.to_string();
+            // Un fichier dans un sous-dossier (contrat 1.13 : la CHD d'un jeu MAME, dans le dossier de son parent).
+            let nom = match f["dossier"].as_str().filter(|d| !d.is_empty()) {
+                Some(d) => format!("{}/{nom}", nom_de_fichier_sur(d)?),
+                None => nom,
+            };
             fichiers.push(FichierJeu { n: n as u32, nom, taille: f["taille"].as_u64().unwrap_or(0) });
         }
         if fichiers.is_empty() {
@@ -382,10 +387,18 @@ impl Noyau {
         }
         let dossier = Path::new(&j.dossier);
         for f in &j.fichiers {
-            let nom = nom_de_fichier_sur(&f.nom)?;
-            for chemin in [dossier.join(nom), dossier.join(format!("{nom}.part"))] {
+            let rel = crate::jeux_pc::chemin_de_fichier_sur(&f.nom)?;
+            let mut part = rel.clone().into_os_string();
+            part.push(".part");
+            for chemin in [dossier.join(&rel), dossier.join(part)] {
                 if chemin.is_file() {
                     std::fs::remove_file(&chemin)?;
+                }
+            }
+            // Un sous-dossier reçu (CHD MAME), seulement s'il est vide.
+            if rel.components().count() > 1 {
+                if let Some(d) = dossier.join(&rel).parent() {
+                    let _ = std::fs::remove_dir(d);
                 }
             }
         }
@@ -878,6 +891,57 @@ mod tests {
         let p = crate::commandes::installer_coeur_servi(&s, &brouillon.join("RetroArch"), "snes9x_libretro.dll").await.unwrap();
         let m = std::fs::metadata(&p).unwrap();
         println!("COEUR POSE : {} ({} octets, empreinte {})", p, m.len(), crate::sauvegarde::empreinte(std::path::Path::new(&p)).unwrap());
+    }
+
+    /// Contrat 1.13 en RÉEL : télécharge les fichiers de « Street Fighter III » (Europe, sfiii : zip 132 Ko + CHD 35 Mo
+    /// dans `sfiii/`) dans un dossier de BROUILLON, par le vrai code de téléchargement (sous-dossier compris).
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_BROUILLON=<dossier> cargo test essai_romset_sfiii -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_romset_sfiii() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let brouillon = std::path::PathBuf::from(std::env::var("FROGTEND_BROUILLON").expect("FROGTEND_BROUILLON"));
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        let j: Value = c.obtenir_json("/jeu/12258").await.unwrap();
+        let v = j["jeu"]["versions"].as_array().unwrap().iter().find(|v| v["mame"]["nom"] == "sfiii").unwrap().clone();
+        let version = v["telechargement_id"].as_i64().unwrap();
+        let arret = std::sync::atomic::AtomicBool::new(false);
+        for (n, f) in v["fichiers"].as_array().unwrap().iter().enumerate() {
+            let nom = match f["dossier"].as_str().filter(|d| !d.is_empty()) {
+                Some(d) => format!("{d}/{}", f["nom"].as_str().unwrap()),
+                None => f["nom"].as_str().unwrap().to_string(),
+            };
+            let route = format!("/fichier/12258/{version}/{n}");
+            let r = crate::telechargements::telecharger_fichier(&c, &route, &brouillon, &nom, f["taille"].as_u64().unwrap(), &arret, 0, 0, 12258, &|_| {}).await;
+            println!("FICHIER {nom} : {:?}", r.map(|_| "ok"));
+        }
+    }
+
+    /// Contrat 1.13 en RÉEL, lecture seule : le conseil Arcade, une fiche Arcade (mame{}, fichiers avec `dossier`) et le
+    /// paquet MAME annoncé. Rien n'est téléchargé.
+    /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_mame -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_mame() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        let v: Value = c.obtenir_json("/emulateurs?plateforme=Arcade").await.unwrap();
+        println!("CONSEIL {}", v["conseil"]);
+        println!("LISTE {:?}", v["emulateurs"].as_array().into_iter().flatten().map(|e| e["id"].to_string()).collect::<Vec<_>>());
+        let p: Value = c.obtenir_json("/emulateurs/mame/paquet").await.unwrap_or(Value::Null);
+        println!("PAQUET {p}");
+        let j: Value = c.obtenir_json("/jeu/12258").await.unwrap();
+        let jeu = &j["jeu"];
+        println!("FICHE {} « {} » plateforme {} versions {}", jeu["id"], jeu["titre"], jeu["plateforme"], jeu["versions"].as_array().map_or(0, |l| l.len()));
+        for x in jeu["versions"].as_array().into_iter().flatten().take(3) {
+            println!("VERSION {}", serde_json::json!({"telechargement_id": x["telechargement_id"], "nom": x["nom"], "qualite": x["qualite"], "mame": x["mame"], "fichiers": x["fichiers"], "type_source": x["type_source"]}));
+        }
+        let cat: Value = c.obtenir_json("/catalogue?plateforme=Arcade&page=1&par_page=3").await.unwrap();
+        println!("CATALOGUE total={} premiers {:?}", cat["total"], cat["jeux"].as_array().into_iter().flatten().map(|j| j["titre"].to_string()).collect::<Vec<_>>());
     }
 
     /// Contrat 1.8 en RÉEL, lecture seule : le `conseil` de quelques plateformes (RetroArch, autonome, sans conseil),
