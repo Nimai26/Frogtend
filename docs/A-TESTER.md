@@ -48,6 +48,16 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Les options du jeu (0.61.0)
+- [ ] Un jeu RetroArch ▸ View+RB1 ▸ ⚙ Options du jeu ▸ 📊 : le compteur s'affiche en haut à droite ; refais-le : il
+      disparaît.
+- [ ] ⏩ Avance rapide : le jeu va plus vite ; rouvre le menu : il le rappelle ; « Couper l'avance rapide » le remet.
+- [ ] 📷 Photo de l'écran : une image arrive dans le dossier « screenshots » de RetroArch.
+- [ ] 🔇 Son : coupé, puis remis.
+- [ ] ⚠️ Une fenêtre « Sécurité Windows — autoriser les réseaux… » pour retroarch.exe t'est-elle déjà apparue ? (Vue
+      le 16/10 avec un RetroArch d'essai : les commandes de Frogtend restent sur la machine et marchent sans
+      l'autoriser — tu peux répondre « Annuler ».)
+
 ## Les manettes PlayStation et Switch (0.60.0)
 - [ ] Une manette PlayStation (USB, puis Bluetooth) pendant un jeu (RetroArch, RPCS3, DuckStation…) : Share/Create + R1
       tenus 1 s ouvrent le menu ? La croix et Croix/Rond le pilotent ? Le jeu garde la manette (et sa vibration)

@@ -778,6 +778,17 @@ mod essai_reel_paquet {
 
 #[cfg(test)]
 mod essai_reel_sfx {
+    /// RÉEL : une archive 7z officielle (RetroArch…) décompressée par le code de Frogtend dans `FROGTEND_DEST`.
+    /// `FROGTEND_7Z=<archive> FROGTEND_DEST=<dossier> cargo test essai_decompresser_7z -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn essai_decompresser_7z() {
+        let a = std::path::PathBuf::from(std::env::var("FROGTEND_7Z").unwrap());
+        let d = std::path::PathBuf::from(std::env::var("FROGTEND_DEST").unwrap());
+        let n = super::decompresser(&a, super::Format::SeptZip, &d).unwrap();
+        println!("FICHIERS {n}");
+    }
+
     /// RÉEL : le paquet officiel de MAME (archive 7z auto-extractible) se décompresse SANS être exécuté.
     /// `FROGTEND_SFX=<chemin du .exe> cargo test essai_paquet_mame -- --ignored --nocapture`
     #[test]

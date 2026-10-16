@@ -22,6 +22,12 @@
    * noir sur le skin le temps d'apprendre qu'il n'y en a pas. */
   let fondCharge = $state(false);
   let documents = $state<Annexe[] | null>(null);
+  // L'écran des options propres à l'émulateur (lot OSD, i : images par seconde, avance rapide…).
+  let options = $state(false);
+  // L'avance rapide demandée depuis ce menu, pour CE jeu (une bascule : Frogtend ne connaît pas l'état réel de
+  // l'émulateur ; il rappelle seulement ce qui a été demandé ici, pour qu'elle ne soit pas oubliée).
+  let rapidePour = $state<number | null>(null);
+  const rapide = $derived(!!menu && rapidePour === menu.jeu);
   let lecture = $state<{ titre: string; texte: string } | null>(null);
   // Les documents du jeu (contrat 1.7 : livret, musique, vidéo), lus dans les lecteurs maison (pilotables à la manette).
   let docs = $state<DocumentJeu[]>([]);
@@ -50,6 +56,7 @@
     documents = null;
     lecture = null;
     ouvert = null;
+    options = false;
     await tick();
     selectionner(liste?.querySelector<HTMLButtonElement>('button'));
   }
@@ -92,6 +99,7 @@
         ouvert = null;
         documents = null;
         lecture = null;
+        options = false;
       }),
     ];
     return () => {
@@ -201,20 +209,22 @@
     if (e.key !== 'Escape') return;
     e.preventDefault();
     if (lecture) revenir(() => (lecture = null));
-    else if (documents) revenir(() => (documents = null));
+    else if (documents) revenir(() => (documents = null), '[data-ecran="documents"]');
+    else if (options) revenir(() => (options = false), '[data-ecran="options"]');
     else reprendre();
   }
 
-  /** Le premier bouton de la liste affichée devient la sélection (après un changement d'écran). */
-  async function premierBouton() {
+  /** Le premier bouton de la liste affichée (ou celui que désigne `cible`) devient la sélection. */
+  async function premierBouton(cible?: string) {
     await tick();
-    selectionner(liste?.querySelector<HTMLButtonElement>('button'));
+    selectionner((cible ? liste?.querySelector<HTMLButtonElement>(cible) : null) ?? liste?.querySelector<HTMLButtonElement>('button'));
   }
 
-  /** Revenir à l'écran précédent, avec une sélection (sinon plus rien n'est choisi et le 1er A ne fait rien). */
-  function revenir(retour: () => void) {
+  /** Revenir à l'écran précédent, avec une sélection (sinon plus rien n'est choisi et le 1er A ne fait rien) : le
+   * bouton d'où l'on venait s'il est donné (sinon « Reprendre », et un A réflexe relancerait le jeu). */
+  function revenir(retour: () => void, cible?: string) {
     retour();
-    premierBouton();
+    premierBouton(cible);
   }
 
   /** La souris : un VRAI mouvement déplace la sélection (pas le contenu qui bouge sous un curseur immobile). */
@@ -255,6 +265,22 @@
     <div class="liste" bind:this={liste}>
       <button class="btn" onclick={() => revenir(() => (lecture = null))}>← Retour</button>
     </div>
+  {:else if options}
+    <header>
+      <h1>⚙ Options du jeu</h1>
+      <p class="muted">Chaque option se fait dans le jeu : le menu se ferme et le jeu reprend.</p>
+    </header>
+    <div class="liste" bind:this={liste}>
+      {#if a('fps')}<button class="btn" onclick={() => action('fps')}>📊 Compteur de fluidité (images par seconde) : afficher ou masquer</button>{/if}
+      {#if a('rapide')}
+        <button class="btn" onclick={async () => { const jeu = menu?.jeu ?? null; await action('rapide'); rapidePour = rapide ? null : jeu; }}>
+          {rapide ? '⏩ Couper l’avance rapide' : '⏩ Avance rapide (le jeu va plus vite)'}
+        </button>
+      {/if}
+      {#if a('capture')}<button class="btn" onclick={() => action('capture')}>📷 Photo de l’écran (rangée dans le dossier de l’émulateur)</button>{/if}
+      {#if a('muet')}<button class="btn" onclick={() => action('muet')}>🔇 Son : couper ou remettre</button>{/if}
+      <button class="btn" onclick={() => revenir(() => (options = false))}>← Retour</button>
+    </div>
   {:else if documents}
     <header>
       <h1>📖 Documents</h1>
@@ -282,6 +308,7 @@
       <h1>{menu.titre}</h1>
       <p class="muted">
         {menu.en_pause ? '⏸ Le jeu est en pause.' : 'Le jeu continue pendant que ce menu est ouvert.'}
+        {#if rapide}<br />⏩ L’avance rapide est activée (Options du jeu pour la couper).{/if}
       </p>
     </header>
     <div class="liste" bind:this={liste}>
@@ -293,7 +320,10 @@
         </button>
       {/if}
       {#if a('disque')}<button class="btn" onclick={() => action('disque')}>💿 Disque suivant</button>{/if}
-      <button class="btn" onclick={voirDocuments}>📖 Manuel et documents</button>
+      <button class="btn" data-ecran="documents" onclick={voirDocuments}>📖 Manuel et documents</button>
+      {#if ['fps', 'rapide', 'capture', 'muet'].some((o) => a(o))}
+        <button class="btn" data-ecran="options" onclick={() => revenir(() => (options = true))}>⚙ Options du jeu</button>
+      {/if}
       {#if cheatEngine}<button class="btn" onclick={brancherCheatEngine}>🧰 Cheat Engine</button>{/if}
       {#if a('reset')}
         <button class="btn" onclick={() => action('reset', '🔄 Recommencer le jeu depuis le début ? La partie non sauvegardée sera perdue.')}>

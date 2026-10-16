@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.61.0 — Les options du jeu dans le menu en jeu
+
+- Avec RetroArch, le menu en jeu (View+RB1) a un écran **⚙ Options du jeu** : compteur de fluidité (images par
+  seconde), avance rapide, photo de l'écran, couper ou remettre le son. Le menu se ferme et le jeu reprend avec
+  l'option. Si l'avance rapide est activée, le menu le rappelle.
+- La fenêtre du menu est un peu plus haute : toutes les entrées tiennent sans défiler.
+
 ## 0.60.0 — Les manettes PlayStation et Switch ouvrent le menu en jeu
 
 - Pendant une partie, une manette **PlayStation** (DualShock 4, DualSense) ou **Switch** (Pro, Joy-Con), et d'autres

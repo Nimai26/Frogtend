@@ -24,6 +24,15 @@ pub enum Action {
     DisqueSuivant,
     SauverEtat,
     ChargerEtat,
+    // Les options du jeu (lot OSD, i) : des bascules, sans état connu de Frogtend (l'émulateur le tient).
+    /// Afficher ou masquer les images par seconde.
+    ImagesParSeconde,
+    /// Avance rapide (activer ou couper).
+    AvanceRapide,
+    /// Une capture d'écran (rangée par l'émulateur, dans SON dossier de captures).
+    Capture,
+    /// Couper ou remettre le son.
+    Muet,
 }
 
 /// Une touche envoyée par Frogtend, avec ses modificateurs.
@@ -60,7 +69,9 @@ pub fn touche(emulateur: &str, a: Action) -> Option<Touche> {
 pub fn actions(emulateur: &str) -> Vec<Action> {
     use Action::*;
     match emulateur {
-        "retroarch" | "duckstation" | "dolphin" => vec![Reset, DisqueSuivant, SauverEtat, ChargerEtat],
+        // RetroArch : ses commandes réseau (command.h de la 1.22.2 : FPS_TOGGLE, FAST_FORWARD, SCREENSHOT, MUTE).
+        "retroarch" => vec![Reset, DisqueSuivant, SauverEtat, ChargerEtat, ImagesParSeconde, AvanceRapide, Capture, Muet],
+        "duckstation" | "dolphin" => vec![Reset, DisqueSuivant, SauverEtat, ChargerEtat],
         "pcsx2" => vec![Reset, SauverEtat, ChargerEtat],
         "dosbox-staging" => vec![Reset, DisqueSuivant],
         _ => vec![],
@@ -159,6 +170,10 @@ pub fn commande_retroarch(a: Action) -> &'static str {
         Action::DisqueSuivant => "DISK_NEXT",
         Action::SauverEtat => "SAVE_STATE",
         Action::ChargerEtat => "LOAD_STATE",
+        Action::ImagesParSeconde => "FPS_TOGGLE",
+        Action::AvanceRapide => "FAST_FORWARD",
+        Action::Capture => "SCREENSHOT",
+        Action::Muet => "MUTE",
     }
 }
 

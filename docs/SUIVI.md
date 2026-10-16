@@ -49,7 +49,9 @@
         `\default=false` + valeur) ; Cemu, Xenia, xemu, Vita3K n'ont AUCUNE pause réglable. ✅ DÉCIDÉ par Seb le 16/10 :
         ces quatre-là sont FIGÉS d'office pendant le menu (« Oui, toujours » : vraie pause, manette sans effet ; ni
         anti-triche ni jeu en ligne ; risque dit : son qui grésille à la reprise).
-  - [ ] i. Options propres à certains émulateurs (affichage des performances…), dans le même menu.
+  - [x] i. Options propres à certains émulateurs (affichage des performances…), dans le même menu. ✅ 0.61.0 pour
+        RetroArch (FPS_TOGGLE, FAST_FORWARD, SCREENSHOT, MUTE — command.h de la 1.22.2). Reste : les autres émulateurs
+        (raccourcis F13–F16 déjà pris ; d'autres touches à étudier dans leur documentation).
   - Relecture par les experts interface et lancement (04/10), qui ont relu le code (fichier:ligne) :
     - ✅ LEVÉ le 04/10 (sonde de Seb) : la manette est lue pendant qu'un jeu a le premier plan (XInput et SDL).
       Reste : le menu ouvert depuis la manette doit obtenir le premier plan (sans lui, pas de pause et la manette
@@ -241,7 +243,21 @@ d'abord :
 - MUGEN : un « build » = un jeu Windows prêt à jouer, personnages et décors = ses contenus (réponse à Firehouse, 03/10).
 - Jellyfin → Taodbox : projet côté Firehouse, pas le travail de Frogtend.
 
+- [ ] **Pare-feu Windows et RetroArch** (vu le 16/10 à l'essai) : au premier lancement d'un RetroArch avec les
+      commandes réseau de Frogtend (`network_cmd_enable`, port 55355, lié à 127.0.0.1), Windows demande « autoriser
+      les réseaux publics et privés ? ». Les commandes marchent SANS l'autoriser (elles restent sur la machine). Chez
+      un novice (la sœur de Seb), cette question fait peur : chercher pourquoi RetroArch déclenche la question malgré
+      127.0.0.1 (autre fonction réseau ?) et comment l'éviter, ou au moins le dire avant. Ne jamais répondre à la place
+      de la personne (décision de sécurité).
+
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.61.0** (16/10) — Lot OSD (i) : « ⚙ Options du jeu » pour RetroArch (compteur de fluidité, avance rapide rappelée
+  tant qu'elle a été demandée ici, photo de l'écran, son) ; fenêtre du menu 560×700 ; le retour sélectionne l'entrée
+  d'où l'on vient. Vérifié en RÉEL : RetroArch 1.22.2 officiel (décompressé par Frogtend, dossier d'essai supprimé)
+  affiche le compteur (« FPS: 143.97 ») puis l'icône muet après les commandes, photos de sa fenêtre regardées ; le
+  pare-feu Windows a demandé une autorisation (non donnée), noté ci-dessus. Tests : 322 cœur, 151 interface ;
+  relecture de l'expert interface (2 importants + mineurs corrigés). NON vérifié : avance rapide et photo en vrai.
 
 - **0.60.0** (16/10) — Lot OSD étape 4 : SDL3 3.4.18 compilé dans Frogtend (sdl3-sys, aucune DLL ; CMake des outils
   Visual Studio indiqué dans `src-tauri/.cargo/config.toml`, rien installé). Un fil SDL unique, endormi hors partie

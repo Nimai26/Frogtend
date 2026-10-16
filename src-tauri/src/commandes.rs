@@ -982,7 +982,8 @@ pub fn ouvrir_menu(app: &AppHandle) {
         Some(w) => w,
         None => match tauri::WebviewWindowBuilder::new(app, FENETRE_MENU, tauri::WebviewUrl::App("menu-jeu".into()))
             .title("Frogtend — menu")
-            .inner_size(560.0, 640.0)
+            // 700 de haut : le menu principal et ses 9 entrées (Options, Cheat Engine) tiennent sans défiler.
+            .inner_size(560.0, 700.0)
             .center()
             .resizable(false)
             .decorations(false)
@@ -1013,7 +1014,7 @@ pub fn ouvrir_menu(app: &AppHandle) {
     let taodbox = app.get_webview_window("main").and_then(|m| m.is_fullscreen().ok()).unwrap_or(false);
     let _ = w.set_fullscreen(taodbox);
     if !taodbox {
-        let _ = w.set_size(tauri::LogicalSize::new(560.0, 640.0));
+        let _ = w.set_size(tauri::LogicalSize::new(560.0, 700.0));
         let _ = w.center();
     }
     let _ = w.show();
@@ -1139,7 +1140,8 @@ pub async fn menu_jeu_reprendre(app: AppHandle) -> Resultat<()> {
     Ok(())
 }
 
-/// Une action du menu (`reset`, `disque`, `sauver`, `charger`) : le jeu reprend la main et reçoit l'ordre.
+/// Une action du menu (`reset`, `disque`, `sauver`, `charger` ; options : `fps`, `rapide`, `capture`, `muet`) : le jeu
+/// reprend la main et reçoit l'ordre.
 #[tauri::command]
 pub async fn menu_jeu_action(app: AppHandle, action: String) -> Resultat<()> {
     let a = crate::menu_jeu::action_de(&action).ok_or_else(|| Erreur::Refus(format!("Action inconnue : {action}.")))?;

@@ -72,7 +72,8 @@ pub struct EtatMenu {
     pub titre: String,
     pub plateforme: String,
     pub emulateur: Option<String>,
-    /// Actions possibles en plus de reprendre et quitter : `reset`, `disque`, `sauver`, `charger`.
+    /// Actions possibles en plus de reprendre et quitter : `reset`, `disque`, `sauver`, `charger` ; options du jeu :
+    /// `fps`, `rapide`, `capture`, `muet` (`pilotage::actions`).
     pub actions: Vec<&'static str>,
     /// L'émulateur se met-il en pause quand le menu s'ouvre ? (Non pour un jeu PC.)
     pub en_pause: bool,
@@ -86,6 +87,10 @@ pub fn nom_action(a: Action) -> &'static str {
         Action::DisqueSuivant => "disque",
         Action::SauverEtat => "sauver",
         Action::ChargerEtat => "charger",
+        Action::ImagesParSeconde => "fps",
+        Action::AvanceRapide => "rapide",
+        Action::Capture => "capture",
+        Action::Muet => "muet",
     }
 }
 
@@ -95,6 +100,10 @@ pub fn action_de(nom: &str) -> Option<Action> {
         "disque" => Some(Action::DisqueSuivant),
         "sauver" => Some(Action::SauverEtat),
         "charger" => Some(Action::ChargerEtat),
+        "fps" => Some(Action::ImagesParSeconde),
+        "rapide" => Some(Action::AvanceRapide),
+        "capture" => Some(Action::Capture),
+        "muet" => Some(Action::Muet),
         _ => None,
     }
 }
@@ -411,7 +420,7 @@ mod tests {
     #[test]
     fn le_menu_propose_ce_que_l_emulateur_sait_faire() {
         let e = etat(&partie(Some("retroarch")));
-        assert_eq!(e.actions, vec!["reset", "disque", "sauver", "charger"]);
+        assert_eq!(e.actions, vec!["reset", "disque", "sauver", "charger", "fps", "rapide", "capture", "muet"]);
         assert!(e.en_pause);
         let e = etat(&partie(Some("pcsx2")));
         assert!(!e.actions.contains(&"disque"));
@@ -419,9 +428,15 @@ mod tests {
         let e = etat(&partie(None));
         assert!(e.actions.is_empty() && !e.en_pause, "jeu PC : reprendre et quitter seulement");
         assert!(!etat(&PartieEnCours { figer: true, ..partie(None) }).en_pause, "l'option seule ne dit pas « en pause » : le gel réel le dit");
-        for n in ["reset", "disque", "sauver", "charger"] {
+        for n in ["reset", "disque", "sauver", "charger", "fps", "rapide", "capture", "muet"] {
             assert_eq!(nom_action(action_de(n).unwrap()), n);
         }
+        // Les options du jeu : RetroArch seulement (ses commandes réseau), jamais promises ailleurs.
+        let ra = etat(&partie(Some("retroarch")));
+        assert!(["fps", "rapide", "capture", "muet"].iter().all(|o| ra.actions.contains(o)));
+        assert!(!etat(&partie(Some("duckstation"))).actions.contains(&"fps"));
+        assert_eq!(crate::pilotage::commande_retroarch(crate::pilotage::Action::ImagesParSeconde), "FPS_TOGGLE");
+        assert_eq!(crate::pilotage::commande_retroarch(crate::pilotage::Action::Muet), "MUTE");
         assert!(action_de("formater").is_none());
     }
 
