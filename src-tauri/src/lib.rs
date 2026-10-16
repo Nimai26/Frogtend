@@ -3,6 +3,7 @@
 //! Règle : les secrets (jeton Firehouse, identifiants des boutiques) restent de ce côté-ci.
 //! L'interface ne les reçoit jamais.
 
+pub mod bios;
 pub mod boutiques;
 pub mod cheatengine;
 pub mod choix_emulateur;
@@ -292,6 +293,7 @@ pub fn run() {
             commandes::emulateur_adopter,
             commandes::retroarch_etat,
             commandes::retroarch_installer_coeur,
+            commandes::bios_poser,
             commandes::emulateur_regler_manette,
             commandes::rpcs3_installer_micrologiciel,
             commandes::rpcs3_micrologiciel,

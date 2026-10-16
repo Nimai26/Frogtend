@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Conseil } from '$lib/api';
-import { avecConseil, biosADire, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, messagePret, type Possible } from './pret';
+import { avecConseil, biosADire, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, messagePret, poidsBios, type Possible } from './pret';
 
 const rec = (nom: string, recommande: boolean, bios = '') => ({ nom, site: '', recommande, ligne_de_commande: '', extensions: [], bios });
 
@@ -23,8 +23,8 @@ const conseilPsx: Conseil = {
   coeur: 'mednafen_psx_hw_libretro',
   ligne_de_commande: '-L "cores\\mednafen_psx_hw_libretro.dll" "%rom%"',
   bios: [
-    { chemin: 'scph5500.bin', coffre: false, disponible: true, facultatif: false, fichier: 'scph5500.bin', racine: 'system_retroarch', type: 'fichier' },
-    { chemin: 'scph5501.bin', coffre: false, disponible: true, facultatif: false, fichier: 'scph5501.bin', racine: 'system_retroarch', type: 'fichier' },
+    { chemin: 'scph5500.bin', coffre: false, disponible: true, facultatif: false, fichier: 'scph5500.bin', racine: 'system_retroarch', type: 'fichier', sha1: 'b05def971d8ec59f346f2d9ac21fb742e3eb6917', url: '/api/jeux/v1/bios/b05def971d8ec59f346f2d9ac21fb742e3eb6917?nom=scph5500.bin' },
+    { chemin: 'scph5501.bin', coffre: false, disponible: true, facultatif: false, fichier: 'scph5501.bin', racine: 'system_retroarch', type: 'fichier', sha1: '0555c6fae8906f3f09baf5988f00e55f88e9f30b', url: '/api/jeux/v1/bios/0555c6fae8906f3f09baf5988f00e55f88e9f30b?nom=scph5501.bin' },
   ],
 };
 const conseilSwitch: Conseil = {
@@ -83,9 +83,14 @@ describe('le conseil de la maison (contrat 1.8)', () => {
     expect(biosRetroArch(ra, { ...conseilPsx, bios: [{ ...conseilPsx.bios[0], facultatif: true }] })).toEqual([]);
     expect(biosADire(conseilSwitch.bios)).toEqual({ fournis: [], aPoser: [], cles: ['prod.keys'] });
     expect(biosADire(conseilPsx.bios).fournis).toEqual(['scph5500.bin', 'scph5501.bin']);
+    // Le poids annoncé : les obligatoires servis seulement (ni clé, ni firmware, ni facultatif).
+    expect(poidsBios(conseilPsx.bios.map((b) => ({ ...b, taille: 524288 })))).toBe(1048576);
+    expect(poidsBios(conseilSwitch.bios.map((b) => ({ ...b, taille: 336375526 })))).toBe(0);
     // Ce que Firehouse ne sert pas (disponible: false) n'est jamais promis ; un motif se dit par sa note.
     const xbox = [{ fichier: '*.bin', type: 'motif' as const, racine: 'dossier_emulateur', chemin: '*.bin', disponible: false, fichiers: null, note: 'BIOS flash (Complex 4627)' }];
     expect(biosADire(xbox)).toEqual({ fournis: [], aPoser: ['BIOS flash (Complex 4627)'], cles: [] });
+    // Un motif servi n'est pas encore posé par Frogtend : jamais promis comme « fourni ».
+    expect(biosADire([{ ...xbox[0], disponible: true }]).fournis).toEqual([]);
     // Avec un conseil, la chaîne LaunchBox n'a plus cours, même pour un autre émulateur.
     expect(biosRetroArch(ligneLb('Autre', 'autre', false, '', 'x.bin'), conseilPsx)).toEqual([]);
   });
@@ -97,7 +102,7 @@ describe('le conseil de la maison (contrat 1.8)', () => {
     expect(m).not.toContain('ignoré');
     const psx = { ...choix, rec: ligneLb('RetroArch', 'retroarch', true), id: 'retroarch', nom: 'RetroArch' };
     expect(messagePret({ plateforme: 'Sony Playstation', jeux: 2, choix: psx, taille: null, dossier: 'E:\\Emulateurs', dossierNouveau: false, conseil: conseilPsx })).toContain(
-      'des fichiers système (scph5500.bin, scph5501.bin) : Firehouse les a, et Frogtend les posera bientôt tout seul',
+      'des fichiers système (scph5500.bin, scph5501.bin) : Firehouse les fournit, Frogtend les pose pour toi (vérifié)',
     );
   });
 });

@@ -818,6 +818,30 @@ mod tests {
         println!("MEDIAS {} : {:?}", m["medias"].as_array().map_or(0, |l| l.len()), tailles);
     }
 
+    /// Contrat 1.9–1.11 en RÉEL : pose les BIOS obligatoires du conseil PS2 (4 Mo) dans un PCSX2 de BROUILLON
+    /// (`FROGTEND_BROUILLON=<dossier vide>`), vérifiés, puis règle son PCSX2.ini. Aucun vrai émulateur touché.
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_BROUILLON=<dossier> cargo test essai_bios_reels -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_bios_reels() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let brouillon = std::path::PathBuf::from(std::env::var("FROGTEND_BROUILLON").expect("FROGTEND_BROUILLON"));
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let s = crate::source::Source::Firehouse(Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap());
+        let v = s.emulateurs("Sony Playstation 2").await.unwrap();
+        let bios: Vec<crate::bios::BiosConseil> = serde_json::from_value(v["conseil"]["bios"].clone()).unwrap();
+        let emu = brouillon.join("PCSX2");
+        std::fs::create_dir_all(&emu).unwrap();
+        let bilan = crate::bios::poser(&s, &bios, &emu, false).await;
+        println!("BILAN {bilan:?}");
+        println!("PCSX2.ini réglé : {}", crate::bios::regler_pcsx2(&emu, &bios).unwrap());
+        for f in crate::installation::fichiers_de(&brouillon).unwrap() {
+            let p = brouillon.join(&f);
+            println!("FICHIER {f} : {} octets, sha1 {}", std::fs::metadata(&p).unwrap().len(), crate::bios::sha1_fichier(&p).unwrap());
+        }
+    }
+
     /// Contrat 1.12 en RÉEL : installe le cœur Snes9x servi par Firehouse dans un RetroArch de BROUILLON
     /// (`FROGTEND_BROUILLON=<dossier vide>`), vérifié zip puis dll. ~1 Mo téléchargé, aucun vrai RetroArch touché.
     /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_BROUILLON=<dossier> cargo test essai_coeur_servi -- --ignored --nocapture`

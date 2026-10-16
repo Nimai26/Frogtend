@@ -200,6 +200,16 @@ export interface Conseil {
   maj_le: string;
 }
 
+/** Ce que Frogtend a fait des fichiers système (BIOS) d'une console (`bios_poser`). */
+export interface BilanBios {
+  poses: string[];
+  deja: string[];
+  a_poser: string[];
+  cles: string[];
+  firmwares: string[];
+  echecs: string[];
+}
+
 /** Ce que devient l'installation d'un émulateur décrit par Firehouse. */
 export type InstallationFirehouse =
   | { sorte: 'installe'; emulateur: EmulateurInstalle }
@@ -500,6 +510,7 @@ export const api = {
   jouer: (id: number, commandes?: CommandesJeu, emulateur?: string, version?: string, figer?: boolean) =>
     appeler<void>('jeu_jouer', { id, commandes: commandes ?? null, emulateur: emulateur ?? null, version: version ?? null, figer: figer ?? false }),
   jeuAntiTriche: (id: number) => appeler<VerificationFiger>('jeu_anti_triche', { id }),
+  biosPoser: (plateforme: string, programme: string) => appeler<BilanBios>('bios_poser', { plateforme, programme }),
   choisirVersion: (id: number, chemin: string) => appeler<void>('jeu_choisir_version', { id, chemin }),
   referencesManette: (id: string) => appeler<ReferenceManette[]>('references_manette', { id }),
   profilsManetteEmulateur: (id: string, programme: string) =>

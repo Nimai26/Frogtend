@@ -685,7 +685,10 @@ pub fn dossier_bios_retroarch(dossier: &Path) -> PathBuf {
             if let Some(relatif) = v.strip_prefix(":\\").or_else(|| v.strip_prefix(":/")) {
                 return dossier.join(relatif);
             }
-            return PathBuf::from(v);
+            // Un chemin relatif l'est au dossier de RetroArch (jamais au dossier courant de Frogtend, où des BIOS
+            // seraient alors écrits).
+            let p = PathBuf::from(v);
+            return if p.is_absolute() { p } else { dossier.join(p) };
         }
     }
     defaut
@@ -1042,6 +1045,8 @@ mod tests {
         assert_eq!(dossier_bios_retroarch(d.path()), d.path().join("bios"));
         std::fs::write(d.path().join("retroarch.cfg"), "system_directory = \"E:\\BIOS\"\n").unwrap();
         assert_eq!(dossier_bios_retroarch(d.path()), PathBuf::from("E:\\BIOS"));
+        std::fs::write(d.path().join("retroarch.cfg"), "system_directory = \"bios\\\\ps\"\n").unwrap();
+        assert_eq!(dossier_bios_retroarch(d.path()), d.path().join("bios").join("ps"), "relatif : au dossier de RetroArch");
     }
 
     #[test]

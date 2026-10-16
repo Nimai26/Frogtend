@@ -2224,6 +2224,44 @@ pub fn retroarch_etat(programme: String, ligne: String, bios: Vec<String>) -> Et
     EtatRetroArch { coeur, coeur_present, dossier_bios: bios_dir.to_string_lossy().into(), bios_manquants }
 }
 
+/// Pose les fichiers système (BIOS) obligatoires que Firehouse fournit pour une console, d'après SON conseil relu ici
+/// (jamais d'après l'interface), pour l'émulateur `programme` — seulement s'il est bien celui du conseil. Un seul accord
+/// a été donné avant (« Prêt à jouer »). PCSX2 : son BIOS par défaut réglé (contrat 1.11).
+#[tauri::command]
+pub async fn bios_poser(noyau: State<'_, Noyau>, plateforme: String, programme: String) -> Resultat<crate::bios::Bilan> {
+    let s = noyau.session().await?;
+    let reponse = s.source.emulateurs(&plateforme).await?;
+    let conseil = &reponse["conseil"];
+    let Some(id) = conseil["emulateur"].as_str() else { return Ok(Default::default()) };
+    let dossier = std::path::Path::new(&programme).parent().map(std::path::PathBuf::from).unwrap_or_default();
+    if !programme_du_conseil(id, &programme) || !dossier.is_dir() {
+        return Ok(Default::default());
+    }
+    let mut illisibles = crate::bios::Bilan::default();
+    let bios = crate::bios::lire_bios(&conseil["bios"], &mut illisibles);
+    let mut bilan = crate::bios::poser(&s.source, &bios, &dossier, id == "retroarch").await;
+    bilan.echecs.extend(illisibles.echecs);
+    if id == "pcsx2" {
+        if let Err(e) = crate::bios::regler_pcsx2(&dossier, &bios) {
+            noyau.journaliser(&format!("PCSX2 : BIOS par défaut non réglé ({e})"));
+        }
+    }
+    if !bilan.echecs.is_empty() {
+        noyau.journaliser(&format!("fichiers système de {plateforme} : {:?}", bilan.echecs));
+    }
+    Ok(bilan)
+}
+
+/// Le programme est-il celui de l'émulateur du conseil (id des sources de Firehouse : « retroarch », « pcsx2 »,
+/// « dosbox_staging »…) ? Par la fiche de Frogtend quand il la connaît, sinon par le nom du programme.
+pub fn programme_du_conseil(id: &str, programme: &str) -> bool {
+    let nom = std::path::Path::new(programme).file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+    match crate::emulateurs::fiche(&id.replace('_', "-")) {
+        Some(f) => nom.starts_with(f.programme),
+        None => !id.is_empty() && nom.replace(['-', '_'], "").contains(&id.to_lowercase().replace(['-', '_'], "")),
+    }
+}
+
 /// Installe un cœur RetroArch SERVI PAR FIREHOUSE (vérifié ; jamais pris ailleurs).
 #[tauri::command]
 pub async fn retroarch_installer_coeur(noyau: State<'_, Noyau>, programme: String, coeur: String) -> Resultat<String> {
@@ -2582,6 +2620,17 @@ mod tests {
         assert!(!ra.join("cores").join("bsnes_libretro.dll").exists());
         liste.assert_hits(2);
         fichier.assert_hits(1);
+    }
+
+    #[test]
+    fn les_bios_ne_vont_qu_a_l_emulateur_du_conseil() {
+        assert!(super::programme_du_conseil("retroarch", r"E:\Emulateurs\RetroArch\retroarch.exe"));
+        assert!(super::programme_du_conseil("pcsx2", r"E:\Emulateurs\PCSX2\pcsx2-qt.exe"));
+        assert!(super::programme_du_conseil("rpcs3", r"E:\Emulateurs\RPCS3\rpcs3.exe"));
+        assert!(!super::programme_du_conseil("pcsx2", r"E:\Emulateurs\DuckStation\duckstation-qt-x64-ReleaseLTCG.exe"));
+        assert!(!super::programme_du_conseil("retroarch", r"E:\Emulateurs\PCSX2\pcsx2-qt.exe"));
+        assert!(!super::programme_du_conseil("retroarch", r"E:\Emulateurs\DuckStation\duckstation-qt-x64-ReleaseLTCG.exe"));
+        assert!(!super::programme_du_conseil("", r"E:\x.exe"));
     }
 
     #[tokio::test]

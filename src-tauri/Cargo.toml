@@ -1,6 +1,6 @@
 [package]
 name = "frogtend"
-version = "0.50.0"
+version = "0.51.0"
 description = "Frogtend — la ludothèque de la maison, servie par Firehouse"
 authors = ["Nimai"]
 license = "Apache-2.0"
@@ -38,6 +38,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 sevenz-rust = "0.6"
 sysinfo = { version = "0.32", default-features = false, features = ["system"] }
 sha2 = "0.10"
+sha1 = "0.10"
 md-5 = "0.10"
 chd = "0.3"
 nod = "1.4"

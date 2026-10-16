@@ -82,7 +82,11 @@
       zip puis de la dll, pose seulement après ; un cœur non servi est refusé (rien chez libretro). Reste chez libretro
       (expert, 16/10) : RetroArch LUI-MÊME (buildbot stable, emulateurs.rs) → passer par `/emulateurs/retroarch/paquet`
       de Firehouse ; les profils de manette `autoconfig.zip` (buildbot, sans empreinte) → demander à Firehouse de les
-      servir (besoin à écrire). Règles Firehouse (16/10) : seul `conseil.bios[]` fait foi ;
+      servir (besoin à écrire).
+      ✅ (4) en 0.51.0 : BIOS servis posés (fichier/archive obligatoires, SHA-1 vérifié, jamais un fichier remplacé,
+      copie sûre entre disques), clés et « à poser soi-même » dits, PCSX2.ini réglé sans défaire un choix. Reste :
+      les motifs servis (`fichiers[]`, aucun au 16/10) ; une archive déjà en place est retéléchargée (mineur) ; PCSX2
+      non portable (ini dans Documents) : écart commun à tous les modules PCSX2. Règles Firehouse (16/10) : seul `conseil.bios[]` fait foi ;
       ignorer `actif`/`statut_emu_france` pour l'émulateur du conseil ; `conseil.paquet: null` → « cœur non servi par
       Firehouse », rien chez libretro (question posée à Seb par Firehouse : laisser RetroArch l'installer ?).
 - [ ] **Lot « Médias »** (contrat 1.6, Firehouse 2.41.0) : ratio réel de la boîte réservé, choix du visuel de la
@@ -188,6 +192,12 @@ d'abord :
 - Jellyfin → Taodbox : projet côté Firehouse, pas le travail de Frogtend.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.51.0** (16/10) — BIOS servis par Firehouse posés tout seuls (contrat 1.9–1.11). Vérifié : essai RÉEL (BIOS PS2
+  conseillé 4 194 304 o, SHA-1 conforme, posé dans un PCSX2 de brouillon, PCSX2.ini réglé en une écriture,
+  facultatifs ignorés) ; tests (réponse PS2 réelle, élément illisible, 404 = à poser soi-même, empreinte fausse,
+  archive sans rien remplacer, chemins piégés, PCSX2 sans défaire un choix) ; relectures des experts lancement et
+  contrat (aucun bloquant ; 8 points corrigés). Tests : 293 cœur, 129 interface.
 
 - **0.50.0** (16/10) — Cœurs RetroArch servis par Firehouse, vérifiés (contrat 1.12). Vérifié : essai RÉEL (55 cœurs
   servis ; Snes9x posé dans un RetroArch de brouillon, 2 948 608 octets, en-tête MZ, aucun reste) ; tests (zip ou dll

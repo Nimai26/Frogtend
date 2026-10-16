@@ -48,6 +48,10 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Les fichiers système (0.51.0)
+- [ ] Préparer une console qui en a besoin (PS2 avec PCSX2, ou PlayStation avec RetroArch) : l'accord annonce les
+      fichiers système et leur poids ; après, « 📀 Fichier système posé » ; un jeu démarre sans demander de BIOS.
+
 ## Les cœurs RetroArch de Firehouse (0.50.0)
 - [ ] En préparant une console jouée par RetroArch (Super Nintendo…), le cœur s'installe sans erreur ; le jeu se lance.
 

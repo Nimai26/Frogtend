@@ -7,9 +7,9 @@ import { taille } from '$lib/api';
 import { confirmer, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat, reglerPc } from '$lib/etat.svelte';
-import { completerRetroArch, installerEmulateur, installerParFirehouse, recommandationsParDefaut, reglerEmulateur } from './assistant.svelte';
+import { completerRetroArch, installerEmulateur, installerParFirehouse, poserBios, recommandationsParDefaut, reglerEmulateur } from './assistant.svelte';
 import { ajouter } from './choix';
-import { avecConseil, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, MANETTE_REGLEE, messagePret, type Possible } from './pret';
+import { avecConseil, biosADireOuPoser, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, MANETTE_REGLEE, messagePret, poidsBios, type Possible } from './pret';
 
 /** Les plateformes qui se jouent sans émulateur. */
 const SANS_EMULATEUR = ['Windows'];
@@ -54,7 +54,16 @@ export async function preparerPourJouer(plateforme: string, jeux: number): Promi
   const dossier = etat.pc.dossierEmulateurs || dossierParDefaut(etat.pc.emplacements.defaut);
   const paquet = choix.comment === 'frogtend' && choix.id ? await api.emulateurDerniereVersion(choix.id).catch(() => null) : null;
   const oui = await confirmer(`🎮 Préparer ${plateforme} pour jouer ?`, {
-    message: messagePret({ plateforme, jeux, choix, taille: paquet?.taille ? taille(paquet.taille) : null, dossier, dossierNouveau, conseil }),
+    message: messagePret({
+      plateforme,
+      jeux,
+      choix,
+      taille: paquet?.taille ? taille(paquet.taille) : null,
+      dossier,
+      dossierNouveau,
+      conseil,
+      tailleBios: conseil && estConseille(choix.rec, conseil) && poidsBios(conseil.bios) ? taille(poidsBios(conseil.bios)) : null,
+    }),
     libelleValider: choix.comment === 'deja' ? '🎮 C’est parti' : '🎮 Tout préparer',
   });
   if (!oui) return null;
@@ -67,6 +76,9 @@ export async function preparerPourJouer(plateforme: string, jeux: number): Promi
 
   const ligne = lignes.get(choix.rec) ?? '';
   let nom = choix.nom;
+  // Les fichiers système du conseil, posés et vérifiés par le cœur (compris dans l'accord) AVANT que RetroArch ne
+  // vérifie ce qui lui manque.
+  if (conseil && estConseille(choix.rec, conseil) && biosADireOuPoser(conseil.bios)) await poserBios(plateforme, programme);
   if (choix.id === 'retroarch') {
     const n = await completerRetroArch(programme, ligne, biosRetroArch(choix.rec, conseil), plateforme, nom, true);
     if (!n) return null;

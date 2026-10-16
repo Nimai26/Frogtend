@@ -4,9 +4,9 @@
 
 import { listen } from '@tauri-apps/api/event';
 import { ajouter } from './choix';
-import { avecConseil, biosRetroArch, estConseille, ligneDe } from './pret';
+import { avecConseil, biosADireOuPoser, biosATelecharger, biosRetroArch, estConseille, ligneDe, poidsBios } from './pret';
 import { isTauri } from '@tauri-apps/api/core';
-import { api, taille, type EmulateurInstalle, type EmulateurRecommande } from '$lib/api';
+import { api, taille, type BilanBios, type EmulateurInstalle, type EmulateurRecommande } from '$lib/api';
 import { choisir, confirmer, demander, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat, reglerPc } from '$lib/etat.svelte';
@@ -218,11 +218,36 @@ export async function completerRetroArch(
   if (e && e.bios_manquants.length) {
     await informer(
       '⚠ Fichier système manquant',
-      `${plateforme} a besoin de : ${e.bios_manquants.join(', ')}.\n\nPlace ce fichier (tel quel, sans le renommer) dans :\n${e.dossier_bios}\n\nBientôt, Firehouse le fournira et Frogtend l’installera tout seul.`,
+      `${plateforme} a besoin de : ${e.bios_manquants.join(', ')}.\n\nPlace ce fichier (tel quel, sans le renommer) dans :\n${e.dossier_bios}\n\nFirehouse ne le fournit pas (encore) pour cet émulateur.`,
     );
   }
   const coeur = e?.coeur ?? (await api.retroarchEtat(programme, ligne, []).catch(() => null))?.coeur;
   return coeur ? `${nom} — ${coeur.replace(/_libretro.dll$/i, '')}` : nom;
+}
+
+/** Pose les fichiers système d'une console (cœur : vérifiés, jamais un fichier remplacé) et dit ce qui reste à faire. */
+export async function poserBios(plateforme: string, programme: string): Promise<void> {
+  let b: BilanBios;
+  try {
+    b = await api.biosPoser(plateforme, programme);
+  } catch (e) {
+    toast(`Fichiers système de ${plateforme} non posés : ${motifDuRefus(e)}`, 'alerte');
+    return;
+  }
+  if (b.poses.length) toast(`📀 ${b.poses.length > 1 ? `${b.poses.length} fichiers système posés` : 'Fichier système posé'} (${b.poses.join(', ')}).`, 'ok');
+  if (b.echecs.length) toast(`Fichiers système non posés : ${b.echecs.join(' ; ')}`, 'alerte');
+  if (b.a_poser.length) {
+    await informer(
+      `📀 ${plateforme} : ${b.a_poser.length > 1 ? 'des fichiers système manquent' : 'un fichier système manque'}`,
+      `Firehouse ne les fournit pas (encore) : ${b.a_poser.join(', ')}.\n\nSans eux, certains jeux ne démarrent pas. Frogtend te le redira au besoin.`,
+    );
+  }
+  if (b.cles.length) {
+    await informer(
+      `🔑 Il manque tes clés pour ${plateforme}`,
+      `${b.cles.join(', ')} : ce sont TES clés, tirées de ta propre console. Personne ne peut les fournir, ni Firehouse ni Frogtend. Sans elles, les jeux ne démarrent pas.`,
+    );
+  }
 }
 
 /** Ajouter un émulateur (ou un cœur RetroArch) à un système. Le premier devient celui par défaut. Rend la clé de
@@ -314,6 +339,19 @@ export async function reglerEmulateur(plateforme: string): Promise<string | null
     }
   }
 
+  // L'émulateur du conseil : ses fichiers système, posés par le cœur après UN accord chiffré (jamais sans le dire).
+  if (programme && depuisConseil && conseil && biosADireOuPoser(conseil.bios)) {
+    const servis = biosATelecharger(conseil.bios);
+    const poids = poidsBios(conseil.bios);
+    // Rien à télécharger (seulement des clés ou des fichiers à poser soi-même) : on le dit sans rien demander.
+    const oui =
+      !servis.length ||
+      (await confirmer(`📀 Poser les fichiers système de ${plateforme} ?`, {
+        message: `Firehouse les fournit (${servis.map((b) => b.fichier).join(', ')}${poids ? `, ${taille(poids)}` : ''}) ; Frogtend les vérifie et les pose là où ${nom} les cherche. Un fichier déjà là n’est jamais remplacé.`,
+        libelleValider: '📀 Les poser',
+      }));
+    if (oui) await poserBios(plateforme, programme);
+  }
   if (estRetroArch && programme) {
     const n = await completerRetroArch(programme, ligne, bios, plateforme, nom);
     if (!n) return null;

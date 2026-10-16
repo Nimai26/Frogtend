@@ -1536,7 +1536,7 @@ dependencies = [
 
 [[package]]
 name = "frogtend"
-version = "0.50.0"
+version = "0.51.0"
 dependencies = [
  "argon2",
  "bytes",
@@ -1553,6 +1553,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sevenz-rust",
+ "sha1",
  "sha2",
  "sysinfo",
  "tauri",

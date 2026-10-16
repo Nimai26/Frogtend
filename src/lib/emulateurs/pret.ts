@@ -103,6 +103,22 @@ export const MANETTE_REGLEE = ['retroarch', 'duckstation', 'pcsx2', 'dolphin', '
 /** Ceux qui préparent longuement la première partie de chaque jeu (compilation, une seule fois). */
 const PREMIERE_PARTIE_LONGUE = ['rpcs3', 'cemu', 'eden', 'xenia', 'yuzu', 'suyu', 'ryujinx'];
 
+/** Les fichiers système que Frogtend téléchargera (obligatoires, servis, ni clé ni firmware). */
+export function biosATelecharger(bios: BiosConseil[]): BiosConseil[] {
+  // Même critère que le cœur (`bios::posable`).
+  return bios.filter((b) => !b.facultatif && !b.coffre && b.disponible && (b.type === 'fichier' || b.type === 'archive') && !!b.sha1 && !!b.url);
+}
+
+/** Leur poids (0 si Firehouse ne dit pas la taille : il ne sert qu'au texte). */
+export function poidsBios(bios: BiosConseil[]): number {
+  return biosATelecharger(bios).reduce((s, b) => s + (b.taille ?? 0), 0);
+}
+
+/** Le conseil a-t-il quelque chose à dire ou à poser (fichiers servis, à poser soi-même, clés) ? */
+export function biosADireOuPoser(bios: BiosConseil[]): boolean {
+  return bios.some((b) => !b.facultatif && b.type !== 'installation');
+}
+
 /** Les fichiers système obligatoires d'un conseil, pour le dire dans l'accord : ceux que Firehouse fournit, et les
  * clés que personne ne peut fournir (jamais servies). Les firmwares à installer par l'émulateur sont dits à part. */
 export function biosADire(bios: BiosConseil[]): { fournis: string[]; aPoser: string[]; cles: string[] } {
@@ -110,8 +126,9 @@ export function biosADire(bios: BiosConseil[]): { fournis: string[]; aPoser: str
   // Un motif (« *.bin ») n'est pas un nom de fichier : on dit sa note, sinon « fichiers système ».
   const nom = (b: BiosConseil) => (b.type === 'motif' ? b.note || 'fichiers système' : b.fichier);
   return {
-    fournis: obligatoires.filter((b) => !b.coffre && b.disponible).map(nom),
-    aPoser: obligatoires.filter((b) => !b.coffre && !b.disponible).map(nom),
+    // Un motif n'est pas encore posé par Frogtend (aucun servi au 16/10) : jamais promis.
+    fournis: biosATelecharger(obligatoires).map(nom),
+    aPoser: obligatoires.filter((b) => !b.coffre && !biosATelecharger([b]).length).map(nom),
     cles: obligatoires.filter((b) => b.coffre).map((b) => b.fichier),
   };
 }
@@ -126,6 +143,8 @@ export function messagePret(o: {
   dossierNouveau: boolean;
   /** Le conseil de la maison, s'il y en a un : ses fichiers système remplacent la chaîne LaunchBox. */
   conseil?: Conseil | null;
+  /** La taille des fichiers système à télécharger (déjà mise en forme). */
+  tailleBios?: string | null;
 }): string {
   const { choix } = o;
   const pour = o.jeux > 1 ? `tes ${o.jeux} jeux ${o.plateforme}` : `ce jeu ${o.plateforme}`;
@@ -139,9 +158,8 @@ export function messagePret(o: {
   if (estConseille(choix.rec, o.conseil)) {
     const { fournis, aPoser, cles } = biosADire(o.conseil!.bios);
     if (fournis.length) {
-      // Firehouse les sert ; Frogtend ne les pose pas encore lui-même (étape « BIOS servis » du lot à venir).
       lignes.push(
-        `Il lui faut aussi ${fournis.length > 1 ? 'des fichiers système' : 'un fichier système'} (${fournis.join(', ')}) : Firehouse ${fournis.length > 1 ? 'les a' : 'l’a'}, et Frogtend ${fournis.length > 1 ? 'les posera' : 'le posera'} bientôt tout seul ; en attendant, il te dira où ${fournis.length > 1 ? 'les' : 'le'} mettre.`,
+        `Il lui faut aussi ${fournis.length > 1 ? 'des fichiers système' : 'un fichier système'} (${fournis.join(', ')}) : Firehouse ${fournis.length > 1 ? 'les fournit' : 'le fournit'}, Frogtend ${fournis.length > 1 ? 'les pose' : 'le pose'} pour toi (vérifié${o.tailleBios ? `, ${o.tailleBios}` : ''}).`,
       );
     }
     if (aPoser.length) lignes.push(`Il lui faut aussi : ${aPoser.join(', ')} — Firehouse ne les a pas ; Frogtend te dira où les mettre.`);

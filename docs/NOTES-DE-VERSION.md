@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.51.0 — Les fichiers système (BIOS) se posent tout seuls
+
+- Quand une console est préparée, Frogtend pose maintenant **les fichiers système obligatoires que Firehouse
+  fournit** (le BIOS de la PS2, ceux de la PlayStation pour RetroArch, de la Naomi…), là où l'émulateur les cherche.
+  Chacun est **vérifié** (son empreinte) avant d'être posé ; un fichier déjà là n'est **jamais remplacé**. Le poids
+  est annoncé dans l'accord unique.
+- PCSX2 : son BIOS par défaut est réglé pour toi (seulement si tu n'en avais pas choisi un).
+- Ce que Firehouse ne fournit pas encore est dit clairement ; pour la Switch, Frogtend dit que tes clés manquent
+  (personne ne peut les fournir).
+
 ## 0.50.0 — Les cœurs RetroArch viennent de Firehouse, vérifiés
 
 - Quand RetroArch a besoin d'un cœur (Snes9x pour la Super Nintendo, par exemple), Frogtend le prend maintenant chez

@@ -45,6 +45,9 @@ const completerRetroArch = vi.fn(async (..._a: unknown[]) => 'RetroArch — snes
 vi.mock('./assistant.svelte', () => ({
   installerEmulateur: (...a: unknown[]) => installer(...(a as [string, string, boolean, { sansQuestion?: boolean }])),
   installerParFirehouse: vi.fn(),
+  poserBios: vi.fn(async (plateforme: string) => {
+    appels.push(`bios ${plateforme}`);
+  }),
   completerRetroArch: (...a: unknown[]) => completerRetroArch(...a),
   recommandationsParDefaut: () => [],
   reglerEmulateur: () => assistant(),
@@ -121,6 +124,8 @@ describe('prêt à jouer, de bout en bout', () => {
     expect(cle).toBe('1');
     expect(installer.mock.calls.at(-1)?.[0]).toBe('retroarch');
     expect(appels).toContain('manette retroarch');
+    // La Super Nintendo n'a aucun fichier système : rien n'est demandé au cœur.
+    expect(appels).not.toContain('bios Super Nintendo Entertainment System');
     expect(completerRetroArch.mock.calls[0][1]).toBe('-L "cores\\snes9x_libretro.dll" -f "%rom%"');
     const sys = etat.pc.emulateurs['Super Nintendo Entertainment System'] as { liste: { ligne: string; conseil?: string }[] };
     expect(sys.liste[0].ligne).toBe('-L "cores\\snes9x_libretro.dll" -f "%rom%"');
