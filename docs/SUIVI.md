@@ -96,6 +96,10 @@
 - [ ] DLC Xbox 360 (Xenia) et PS Vita (Vita3K) — aucun jeu chez Seb pour l'instant, priorité basse.
 - [ ] Succès Epic (pas d'API publique, pas synchronisés par Galaxy) — à étudier.
 
+> **Ordre des lots — ✅ Seb 16/10 : « je te propose de choisir toi-même l'ordre, je te suis ».** Ordre retenu :
+> (1) Contrat 1.13 : conseil → cœurs servis → BIOS servis → firmwares PS3/Switch ; (2) Jeux PC : manette → clavier,
+> plein écran au lancement ; (3) MAME, documents, fin du lot OSD (SDL3, options, adaptateurs).
+
 ## ❓ Attend une décision de Seb
 
 - [ ] **Jeux PC sans manette ni plein écran** (Seb, 05/10, Mega Man Rock Force : « il s'ouvre en tout petit fenêtré et
@@ -103,7 +107,7 @@
       Entrée pause, A/S armes ; F4 plein écran) ; la manette est vue par Windows (joystick 1, XInput 0). Proposé :
       (1) « manette → clavier » par jeu (le cœur lit déjà XInput : traduction en touches, correspondance d'office
       modifiable) ; (2) « plein écran au lancement » par jeu (touche du jeu, ou fenêtre agrandie sans bordure).
-      Question posée (05/10, reposée le 16/10 avec une 3e option : le lot « Contrat 1.13 ») : quel lot d'abord ? Le gel (0.47.0) : ✅ « cela
+      ✅ Ordre décidé le 16/10 (voir en tête de cette section) : ce lot vient après le contrat 1.13. Le gel (0.47.0) : ✅ « cela
       semble fonctionner » (Seb, 05/10).
 
 - [ ] Questions encore ouvertes du 02–04/10 : aucune bloquante. (La combinaison du menu à la manette était DÉJÀ
