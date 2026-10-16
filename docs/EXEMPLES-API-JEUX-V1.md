@@ -1480,8 +1480,10 @@ Chaque document se lit par `/jeu/111/document/{id}`.
 Règles données par Firehouse avec ce relevé :
 - chaque ligne de `emulateurs[]` garde sa chaîne `bios` LaunchBox (texte libre, souvent vide) : **seul
   `conseil.bios[]` fait foi** ;
-- ⚠️ ne se fier ni à `actif` ni à `statut_emu_france` pour l'émulateur du conseil (PCSX2 sort « mort » à cause d'une page
-  emu-france figée au 01/04/2024 ; Firehouse corrige) : le conseil prime, `/emulateurs/pcsx2/paquet` résout la dernière
+- ⚠️ ce relevé date d'AVANT la 2.67.12/2.67.13 (PCSX2 `actif: false`). Depuis la 2.67.13 (16/10 02 h 03) : `actif` = source
+  non coupée par l'administration ET (emu-france ne la dit pas « morte » OU sa forge a publié depuis moins de 24 mois) ;
+  PCSX2 → `actif: true`. Indicatif : pour l'émulateur du conseil, le conseil prime toujours ; un `motif` porte toujours
+  une liste `fichiers` (2.67.12). `maj_le` de `/emulateurs/catalogue` suit aussi la veille. Avant : le conseil prime, `/emulateurs/pcsx2/paquet` résout la dernière
   stable GitHub ;
 - `conseil.paquet: null` (cœur non servi) : 0 cas au 16/10 ; d'ici la décision de Seb, **afficher « cœur non servi par
   Firehouse » et ne rien télécharger chez libretro**.
