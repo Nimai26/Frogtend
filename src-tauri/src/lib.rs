@@ -111,8 +111,11 @@ fn repondre_jaquette(app: &tauri::AppHandle, chemin: &str, requete: Option<&str>
 /// Répond aux adresses `document://localhost/<jeu>/<document>/<page>?largeur=N` (sous Windows :
 /// `http://document.localhost/…`) avec la page d'un livret DÉJÀ sur le PC, rendue en image pour le profil OUVERT (le
 /// jeu doit lui être visible, et le document être dans la liste de CE jeu). Rien n'est téléchargé ici.
-fn repondre_document(app: &tauri::AppHandle, chemin: &str, requete: Option<&str>) -> tauri::http::Response<Vec<u8>> {
+fn repondre_document(app: &tauri::AppHandle, chemin: &str, requete: Option<&str>, range: Option<&str>) -> tauri::http::Response<Vec<u8>> {
     let morceaux: Vec<&str> = chemin.trim_matches('/').split('/').collect();
+    if let [jeu, doc, "fichier"] = morceaux[..] {
+        return repondre_fichier_document(app, jeu, doc, range);
+    }
     let [jeu, doc, page] = morceaux[..] else { return reponse_vide(400) };
     let (Ok(jeu), Ok(doc), Ok(page)) = (jeu.parse::<i64>(), doc.parse::<i64>(), page.parse::<u32>()) else { return reponse_vide(400) };
     let largeur = parametre(requete, "largeur").and_then(|l| l.parse::<u32>().ok()).unwrap_or(1000);
@@ -130,6 +133,53 @@ fn repondre_document(app: &tauri::AppHandle, chemin: &str, requete: Option<&str>
             reponse_vide(404)
         }
     }
+}
+
+/// `document.localhost/<jeu>/<document>/fichier` : une musique ou une vidéo DÉJÀ sur le PC, servie par morceaux
+/// (`Range` → 206, ce qui permet d'avancer dans la lecture), pour le profil OUVERT seulement.
+fn repondre_fichier_document(app: &tauri::AppHandle, jeu: &str, doc: &str, range: Option<&str>) -> tauri::http::Response<Vec<u8>> {
+    let (Ok(jeu), Ok(doc)) = (jeu.parse::<i64>(), doc.parse::<i64>()) else { return reponse_vide(400) };
+    let noyau = app.state::<noyau::Noyau>();
+    let (fichier, sorte) = match tauri::async_runtime::block_on(noyau.fichier_document(jeu, doc)) {
+        Ok(Some(f)) => f,
+        Ok(None) => return reponse_vide(404),
+        Err(e) => {
+            noyau.journaliser(&format!("document {jeu}/{doc} : {e:?}"));
+            return reponse_vide(404);
+        }
+    };
+    reponse_morceau(&fichier, sorte, range)
+}
+
+/// La réponse à une demande de morceau d'un fichier (sans garde : `repondre_fichier_document` l'a faite).
+fn reponse_morceau(fichier: &std::path::Path, sorte: &str, range: Option<&str>) -> tauri::http::Response<Vec<u8>> {
+    let Ok(total) = std::fs::metadata(fichier).map(|m| m.len()) else { return reponse_vide(404) };
+    let (debut, fin, partiel) = match documents::plage(range, total) {
+        Ok(Some((d, f))) => (d, f, true),
+        // Sans plage (rare : les lecteurs audio et vidéo en envoient toujours une) : le fichier entier, d'un bloc
+        // (quelques dizaines de Mo au plus pour un document).
+        Ok(None) if total == 0 => return reponse_vide(404),
+        Ok(None) => (0, total - 1, false),
+        Err(()) => {
+            return tauri::http::Response::builder()
+                .status(416)
+                .header("Content-Range", format!("bytes */{total}"))
+                .body(Vec::new())
+                .unwrap()
+        }
+    };
+    let Ok(octets) = documents::lire_morceau(fichier, debut, fin) else { return reponse_vide(500) };
+    let mut r = tauri::http::Response::builder()
+        .status(if partiel { 206 } else { 200 })
+        .header("Content-Type", sorte)
+        .header("Accept-Ranges", "bytes")
+        // Tauri (wry) ne le pose pas lui-même : sans lui, le lecteur ne sait pas ce qu'il reçoit.
+        .header("Content-Length", octets.len())
+        .header("Cache-Control", "no-store");
+    if partiel {
+        r = r.header("Content-Range", format!("bytes {debut}-{fin}/{total}"));
+    }
+    r.body(octets).unwrap()
 }
 
 /// Répond aux adresses `fond://localhost/<skin>` avec la vidéo de fond de ce skin (gardée pour ce PC).
@@ -270,10 +320,11 @@ pub fn run() {
             let app = ctx.app_handle().clone();
             let chemin = requete.uri().path().to_string();
             let parametres = requete.uri().query().map(String::from);
+            let range = requete.headers().get("range").and_then(|v| v.to_str().ok()).map(String::from);
             // Hors du fil de l'interface : le rendu d'une page prend un moment.
             std::thread::spawn(move || {
                 let reponse = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    repondre_document(&app, &chemin, parametres.as_deref())
+                    repondre_document(&app, &chemin, parametres.as_deref(), range.as_deref())
                 }))
                 .unwrap_or_else(|_| reponse_vide(500));
                 repondeur.respond(reponse)
@@ -321,6 +372,7 @@ pub fn run() {
             commandes::annexe_ouvrir,
             commandes::documents_jeu,
             commandes::livret_ouvrir,
+            commandes::document_preparer,
             commandes::espace_libre,
             commandes::installation_preparer,
             commandes::installation_lancer,
@@ -423,6 +475,36 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn un_morceau_de_document_se_sert_avec_ses_en_tetes() {
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("6842.mp4");
+        std::fs::write(&f, b"0123456789").unwrap();
+        let entete = |r: &tauri::http::Response<Vec<u8>>, n: &str| r.headers().get(n).map(|v| v.to_str().unwrap().to_string());
+        // Une plage : 206, taille du morceau, place dans le fichier.
+        let r = reponse_morceau(&f, "video/mp4", Some("bytes=2-5"));
+        assert_eq!(r.status(), 206);
+        assert_eq!(r.body(), b"2345");
+        assert_eq!(entete(&r, "Content-Length").as_deref(), Some("4"));
+        assert_eq!(entete(&r, "Content-Range").as_deref(), Some("bytes 2-5/10"));
+        assert_eq!(entete(&r, "Content-Type").as_deref(), Some("video/mp4"));
+        assert_eq!(entete(&r, "Accept-Ranges").as_deref(), Some("bytes"));
+        // Sans plage (ou une plage mal formée) : 200, tout le fichier, sans Content-Range.
+        for range in [None, Some("bytes=a-b")] {
+            let r = reponse_morceau(&f, "video/mp4", range);
+            assert_eq!(r.status(), 200);
+            assert_eq!(r.body(), b"0123456789");
+            assert_eq!(entete(&r, "Content-Length").as_deref(), Some("10"));
+            assert!(entete(&r, "Content-Range").is_none());
+        }
+        // Hors du fichier : 416 avec la taille.
+        let r = reponse_morceau(&f, "video/mp4", Some("bytes=10-"));
+        assert_eq!(r.status(), 416);
+        assert_eq!(entete(&r, "Content-Range").as_deref(), Some("bytes */10"));
+        // Fichier absent : 404.
+        assert_eq!(reponse_morceau(&d.path().join("absent.mp4"), "video/mp4", None).status(), 404);
+    }
 
     #[test]
     fn le_type_d_image_se_reconnait() {

@@ -9,7 +9,8 @@
   import { motifDuRefus } from '$lib/dialogues/messages';
   import Jaquette from '$lib/ludotheque/Jaquette.svelte';
   import LecteurLivret from '$lib/ludotheque/LecteurLivret.svelte';
-  import { documentsMontres, libelleDocument } from '$lib/ludotheque/documents';
+  import LecteurMedia from '$lib/ludotheque/LecteurMedia.svelte';
+  import { documentsMontres, libelleDocument, ouvrirDocument, type DocumentOuvert } from '$lib/ludotheque/documents';
   import { mettreDansLaLudotheque, tele } from '$lib/ludotheque/telechargements.svelte';
   import { emulateursDuJeu, gererJeu, installer, jouer, jouerAvec, partie } from '$lib/ludotheque/jeu.svelte';
 
@@ -21,7 +22,7 @@
   // Les documents du jeu (contrat 1.7 : livret…), relus à chaque ouverture de la fiche ; le livret ouvert.
   let documents = $state<DocumentJeu[]>([]);
   let ouverture = $state<number | null>(null);
-  let livret = $state<{ doc: number; pages: number } | null>(null);
+  let ouvert = $state<DocumentOuvert | null>(null);
   // Les boutons des documents, pour y rendre la sélection quand le lecteur se ferme.
   const boutonsDocuments: Record<number, HTMLButtonElement> = {};
 
@@ -32,7 +33,7 @@
     erreur = '';
     annexe = null;
     documents = [];
-    livret = null;
+    ouvert = null;
     try {
       const r = await api.fiche(n);
       fiche = r.fiche;
@@ -48,18 +49,18 @@
     if (n === id) documents = l;
   }
 
-  /** Ouvre le livret : téléchargé d'abord s'il n'est pas sur le PC (sa taille est sur le bouton : le clic vaut accord). */
-  async function ouvrirLivret(d: DocumentJeu) {
+  /** Ouvre un document : téléchargé d'abord s'il n'est pas sur le PC (sa taille est sur le bouton : le clic vaut accord). */
+  async function ouvrir(d: DocumentJeu) {
     if (!fiche || ouverture !== null) return;
     const jeu = fiche.id;
     ouverture = d.id;
     try {
-      const pages = await api.ouvrirLivret(jeu, d.id);
+      const o = await ouvrirDocument(jeu, d);
       if (fiche?.id !== jeu) return; // une autre fiche ouverte pendant le téléchargement
-      livret = { doc: d.id, pages };
+      ouvert = o;
       documents = documents.map((x) => (x.id === d.id ? { ...x, garde: true } : x));
     } catch (e) {
-      toast(`Impossible d’ouvrir le livret : ${motifDuRefus(e)}`, 'erreur');
+      toast(`Impossible d’ouvrir ce document : ${motifDuRefus(e)}`, 'erreur');
     } finally {
       ouverture = null;
     }
@@ -67,6 +68,14 @@
   $effect(() => {
     charger(id);
   });
+
+  /** Le lecteur se ferme : la sélection revient sur le bouton du document. */
+  async function fermer() {
+    const doc = ouvert?.doc;
+    ouvert = null;
+    await tick();
+    if (doc) boutonsDocuments[doc]?.focus();
+  }
 
   /** Libellé lisible de la qualité (la nature d'une version, qui décide de l'installation). */
   function nature(q: string): { libelle: string; ton: string } {
@@ -185,7 +194,7 @@
         <div class="annexes">
           {#each documents as d (d.id)}
             {@const l = libelleDocument(d)}
-            <button class="btn" bind:this={boutonsDocuments[d.id]} disabled={ouverture !== null} onclick={() => ouvrirLivret(d)}>
+            <button class="btn" bind:this={boutonsDocuments[d.id]} disabled={ouverture !== null} onclick={() => ouvrir(d)}>
               {l.titre}
               <span class="muted">{ouverture === d.id ? '⏳ chargement…' : l.detail}</span>
             </button>
@@ -251,20 +260,10 @@
   {/if}
 </div>
 
-{#if livret && fiche}
-  <LecteurLivret
-    jeu={fiche.id}
-    doc={livret.doc}
-    pages={livret.pages}
-    titre={fiche.titre}
-    sousLaBarre
-    onfermer={async () => {
-      const doc = livret?.doc;
-      livret = null;
-      await tick();
-      if (doc) boutonsDocuments[doc]?.focus();
-    }}
-  />
+{#if ouvert?.livret && fiche}
+  <LecteurLivret jeu={fiche.id} doc={ouvert.doc} pages={ouvert.pages} titre={fiche.titre} sousLaBarre onfermer={fermer} />
+{:else if ouvert && !ouvert.livret && fiche}
+  <LecteurMedia jeu={fiche.id} doc={ouvert.doc} video={ouvert.video} titre={fiche.titre} sousLaBarre onfermer={fermer} />
 {/if}
 
 <style>

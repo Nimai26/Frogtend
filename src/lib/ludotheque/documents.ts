@@ -1,5 +1,15 @@
 // Les documents d'un jeu (contrat 1.7) : ce qui se montre sur la fiche et dans le menu en jeu, et comment on le dit.
-import { taille, type DocumentJeu } from '$lib/api';
+import { api, taille, type DocumentJeu } from '$lib/api';
+
+/** Un document ouvert : le livret (ses pages), ou une musique ou une vidéo. */
+export type DocumentOuvert = { doc: number; livret: true; pages: number } | { doc: number; livret: false; video: boolean };
+
+/** Ouvre un document (téléchargé d'abord s'il n'est pas sur le PC : sa taille est sur le bouton, le clic vaut accord). */
+export async function ouvrirDocument(jeu: number, d: DocumentJeu): Promise<DocumentOuvert> {
+  if (d.type === 'livret') return { doc: d.id, livret: true, pages: await api.ouvrirLivret(jeu, d.id) };
+  await api.preparerDocument(jeu, d.id);
+  return { doc: d.id, livret: false, video: d.type !== 'musique' };
+}
 
 /** Une durée lisible par tout le monde : « 2 min 32 », « 45 s ». */
 export function duree(secondes: number): string {
@@ -10,10 +20,10 @@ export function duree(secondes: number): string {
   return r ? `${m} min ${String(r).padStart(2, '0')}` : `${m} min`;
 }
 
-/** Les documents montrés aujourd'hui : le livret (la musique et les vidéos viendront avec leur lecteur ; la vidéo
- * de thème est pour Taodbox). */
+/** Les documents montrés : livret, musique, vidéo, dans cet ordre (la vidéo de thème est pour Taodbox, plus tard). */
 export function documentsMontres(l: DocumentJeu[]): DocumentJeu[] {
-  return l.filter((d) => d.type === 'livret');
+  const ordre = ['livret', 'musique', 'video'];
+  return l.filter((d) => ordre.includes(d.type)).sort((a, b) => ordre.indexOf(a.type) - ordre.indexOf(b.type));
 }
 
 /** Le libellé d'un document : sa sorte, puis ce qui aide à choisir (pages, durée), puis son poids s'il faut encore

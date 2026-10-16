@@ -15,8 +15,10 @@ describe('les documents d’un jeu', () => {
     expect(duree(65)).toBe('1 min 05');
   });
 
-  it('montre le livret seulement pour l’instant', () => {
-    expect(documentsMontres([musique, livret, theme])).toEqual([livret]);
+  it('montre livret, musique et vidéo dans cet ordre, jamais la vidéo de thème', () => {
+    const video: DocumentJeu = { ...musique, id: 6842, type: 'video', format: 'mp4', duree_s: 36.6 };
+    expect(documentsMontres([video, musique, theme, livret])).toEqual([livret, musique, video]);
+    expect(libelleDocument(video).detail).toMatch(/^37 s · 5[,.]8 Mo$/);
   });
 
   it('dit la taille tant que le livret n’est pas sur le PC (le clic vaut accord)', () => {

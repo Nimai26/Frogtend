@@ -7,7 +7,8 @@
   import { listen } from '@tauri-apps/api/event';
   import { adresseFondDuJeu, api, type Annexe, type DocumentJeu, type EtatMenuJeu } from '$lib/api';
   import LecteurLivret from '$lib/ludotheque/LecteurLivret.svelte';
-  import { documentsMontres, libelleDocument } from '$lib/ludotheque/documents';
+  import LecteurMedia from '$lib/ludotheque/LecteurMedia.svelte';
+  import { documentsMontres, libelleDocument, ouvrirDocument, type DocumentOuvert } from '$lib/ludotheque/documents';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { appliquer, arreterManette, demarrerManette, fenetreOuverte, selectionner } from '$lib/taodbox/manette.svelte';
@@ -22,9 +23,9 @@
   let fondCharge = $state(false);
   let documents = $state<Annexe[] | null>(null);
   let lecture = $state<{ titre: string; texte: string } | null>(null);
-  // Le livret du jeu (contrat 1.7), lu dans le lecteur maison (pilotable à la manette par-dessus le jeu).
-  let livrets = $state<DocumentJeu[]>([]);
-  let livret = $state<{ doc: number; pages: number } | null>(null);
+  // Les documents du jeu (contrat 1.7 : livret, musique, vidéo), lus dans les lecteurs maison (pilotables à la manette).
+  let docs = $state<DocumentJeu[]>([]);
+  let ouvert = $state<DocumentOuvert | null>(null);
   let ouverture = $state<number | null>(null);
   let liste = $state<HTMLElement | null>(null);
   /** Cheat Engine sur ce PC (fourni par Firehouse) : le menu propose de le brancher sur le jeu. */
@@ -33,7 +34,11 @@
   /** « Le jeu est figé » reçu du cœur pendant ce chargement : appliqué même si l'état lu est arrivé après. */
   let pauseRecue = false;
 
+  // Le menu est-il montré ? (Un document qui arrive après sa fermeture ne s'ouvre pas dans une fenêtre cachée.)
+  let visible = true;
+
   async function charger() {
+    visible = true;
     menu = await api.menuJeuEtat().catch(() => null);
     if (menu && pauseRecue) menu.en_pause = true;
     const adresse = menu && menu.jeu > 0 ? adresseFondDuJeu(menu.jeu) : null;
@@ -44,7 +49,7 @@
     cheatEngine = (await api.emulateursInstalles().catch(() => [])).find((e) => e.id === 'cheatengine')?.programme ?? null;
     documents = null;
     lecture = null;
-    livret = null;
+    ouvert = null;
     await tick();
     selectionner(liste?.querySelector<HTMLButtonElement>('button'));
   }
@@ -80,6 +85,13 @@
       listen<boolean>('menu-jeu-pause', (e) => {
         pauseRecue = e.payload;
         if (menu) menu.en_pause = e.payload;
+      }),
+      // Le menu est caché par le cœur (le jeu s'est fermé, Alt+F4…) : rien ne doit continuer de jouer derrière.
+      listen('menu-jeu-cache', () => {
+        visible = false;
+        ouvert = null;
+        documents = null;
+        lecture = null;
       }),
     ];
     return () => {
@@ -126,7 +138,7 @@
     if (!menu) return;
     try {
       const r = await api.fiche(menu.jeu);
-      livrets = documentsMontres(await api.documents(menu.jeu).catch(() => []));
+      docs = documentsMontres(await api.documents(menu.jeu).catch(() => []));
       documents = r.fiche.annexes ?? [];
       await tick();
       selectionner(liste?.querySelector<HTMLButtonElement>('button'));
@@ -135,21 +147,29 @@
     }
   }
 
-  async function ouvrirLivret(d: DocumentJeu) {
+  async function ouvrirDoc(d: DocumentJeu) {
     if (!menu || ouverture !== null) return;
     const jeu = menu.jeu;
     ouverture = d.id;
     try {
-      const pages = await api.ouvrirLivret(jeu, d.id);
+      const o = await ouvrirDocument(jeu, d);
       // Revenu au menu (ou une autre partie) pendant le téléchargement : on n'ouvre rien par-dessus.
-      if (!documents || menu?.jeu !== jeu) return;
-      livret = { doc: d.id, pages };
-      livrets = livrets.map((x) => (x.id === d.id ? { ...x, garde: true } : x));
+      if (!visible || !documents || menu?.jeu !== jeu) return;
+      ouvert = o;
+      docs = docs.map((x) => (x.id === d.id ? { ...x, garde: true } : x));
     } catch (e) {
-      toast(`Impossible d’ouvrir le livret : ${motifDuRefus(e)}`, 'erreur');
+      toast(`Impossible d’ouvrir ce document : ${motifDuRefus(e)}`, 'erreur');
     } finally {
       ouverture = null;
     }
+  }
+
+  /** Le lecteur se ferme : la sélection revient sur le bouton du document. */
+  async function fermerDocument() {
+    const doc = ouvert?.doc;
+    ouvert = null;
+    await tick();
+    selectionner(liste?.querySelector<HTMLButtonElement>(`[data-doc="${doc}"]`) ?? liste?.querySelector<HTMLButtonElement>('button'));
   }
 
   async function ouvrir(a: Annexe) {
@@ -232,18 +252,21 @@
     <header>
       <h1>📖 Documents</h1>
       <p class="muted">{menu.titre}</p>
+      {#if !menu.en_pause && docs.some((d) => d.type !== 'livret')}
+        <p class="muted">Le jeu continue pendant ce menu : son son se mêlera à la musique ou à la vidéo.</p>
+      {/if}
     </header>
     <div class="liste" bind:this={liste}>
-      {#each livrets as d (d.id)}
+      {#each docs as d (d.id)}
         {@const l = libelleDocument(d)}
-        <button class="btn" disabled={ouverture !== null} onclick={() => ouvrirLivret(d)}>
+        <button class="btn" data-doc={d.id} disabled={ouverture !== null} onclick={() => ouvrirDoc(d)}>
           {l.titre} <span class="muted">{ouverture === d.id ? '⏳ chargement…' : l.detail}</span>
         </button>
       {/each}
       {#each documents as d (d.i)}
         <button class="btn" onclick={() => ouvrir(d)}>{d.titre}</button>
       {:else}
-        {#if !livrets.length}<p class="muted">Aucun document pour ce jeu.</p>{/if}
+        {#if !docs.length}<p class="muted">Aucun document pour ce jeu.</p>{/if}
       {/each}
       <button class="btn" onclick={() => revenir(() => (documents = null))}>← Retour</button>
     </div>
@@ -278,8 +301,10 @@
   {/if}
 </div>
 
-{#if livret && menu}
-  <LecteurLivret jeu={menu.jeu} doc={livret.doc} pages={livret.pages} titre={menu.titre} onfermer={() => revenir(() => (livret = null))} />
+{#if ouvert?.livret && menu}
+  <LecteurLivret jeu={menu.jeu} doc={ouvert.doc} pages={ouvert.pages} titre={menu.titre} onfermer={fermerDocument} />
+{:else if ouvert && !ouvert.livret && menu}
+  <LecteurMedia jeu={menu.jeu} doc={ouvert.doc} video={ouvert.video} titre={menu.titre} onfermer={fermerDocument} />
 {/if}
 
 <style>

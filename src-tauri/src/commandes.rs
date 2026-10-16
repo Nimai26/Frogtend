@@ -335,6 +335,13 @@ pub async fn livret_ouvrir(noyau: State<'_, Noyau>, id: i64, doc: i64) -> Result
     noyau.livret(id, doc).await
 }
 
+/// Prépare une musique ou une vidéo du jeu (la télécharge d'abord si besoin : le clic de la personne, taille
+/// montrée, vaut son accord) ; elle se lit ensuite par `document.localhost/<jeu>/<document>/fichier`.
+#[tauri::command]
+pub async fn document_preparer(noyau: State<'_, Noyau>, id: i64, doc: i64) -> Resultat<crate::documents::Document> {
+    noyau.preparer_document(id, doc).await
+}
+
 /// La place libre dans un dossier (`None` : introuvable), pour l'écran des emplacements.
 #[tauri::command]
 pub fn espace_libre(chemin: String) -> Option<u64> {
@@ -999,6 +1006,8 @@ fn cacher_menu(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(FENETRE_MENU) {
         let _ = w.hide();
     }
+    // La page du menu le sait aussi : une musique ou une vidéo ouverte s'arrête (sinon elle jouerait, fenêtre cachée).
+    let _ = app.emit_to(FENETRE_MENU, "menu-jeu-cache", ());
 }
 
 /// Fige le jeu PC de la partie si son option le demande (hors du fil principal : la liste des processus prend un

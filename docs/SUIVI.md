@@ -59,7 +59,9 @@
   - Découpe : (1) sonde avec Seb ; (2) navigation commune clavier/souris/manette + échelle Taodbox ; (3) le cœur lit
     XInput, Select + R1 tenus 1 s, premier plan vérifié, migration des anciennes combinaisons ; (4) SDL3 ; (5) le
     fond ; (6) options, puis adaptateurs un par un (RPCS3, Cemu, Eden, Xenia, xemu, Azahar, Vita3K, PPSSPP).
-- [ ] **Lot « Documents » (contrat 1.7)** — ✅ (D1) livret en 0.56.0. Reste après D1 : (D2), (D3) ; la liste des
+- [ ] **Lot « Documents » (contrat 1.7)** — ✅ (D1) livret en 0.56.0 ; ✅ (D2) musique et vidéo en 0.57.0 (question
+      pour Seb : dans le menu en jeu, un jeu NON en pause mêle son son à la musique — cacher musique et vidéo dans ce
+      cas ? aujourd'hui c'est dit ; lecture automatique à la manette seule dans le menu en jeu : non vérifiée). Reste : (D3) ; la liste des
       documents est gardée PAR PROFIL, mais le PDF d'un jeu du PC est dans son dossier (commun) : à revoir si Firehouse
       répond au besoin 21 que les documents dépendent du grade ; pas d'avancement ni d'annulation pendant le
       téléchargement du livret (assez pour 8 Mo, pas pour un gros scan chez la sœur) ; pas de cache des pages rendues
@@ -235,6 +237,13 @@ d'abord :
 - Jellyfin → Taodbox : projet côté Firehouse, pas le travail de Frogtend.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.57.0** (16/10) — La musique et les vidéos du jeu (contrat 1.7, D2). Vérifié en RÉEL : musique 6482 (MP3 ID3,
+  6 110 240 o) et vidéo 6842 (MP4 H.264 + AAC, index au début, 5 873 996 o) de Zelda téléchargées par le code de
+  Frogtend, sha256 et types vérifiés, lues par morceaux jusqu'au dernier octet. Réponses du protocole testées (206 +
+  Content-Length + Content-Range, 200, 416, 404). Tests : 317 cœur, 150 interface ; relectures des experts (bloquant
+  corrigé : la lecture continuait quand le cœur cachait le menu en jeu). NON vérifié : le son et l'image dans la vraie
+  fenêtre (WebView2), la lecture automatique, la manette.
 
 - **0.56.0** (16/10) — Le livret du jeu (contrat 1.7, D1). Vérifié en RÉEL : `/jeu/111/documents` → 4 documents ;
   livret de Zelda téléchargé par le code de Frogtend (8 583 117 o en 1,9 s, application/pdf et sha256 vérifiés),

@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.57.0 — La musique et les vidéos du jeu
+
+- À côté du livret, sur la fiche d'un jeu et dans le menu en jeu : **🎵 Musique** et **🎬 Vidéo**, avec leur durée et
+  leur taille. Un clic les télécharge (vérifiées), puis elles se lisent dans Frogtend, aux couleurs de ton thème.
+- Le lecteur se pilote à la manette : ◀ ▶ reculer ou avancer de 10 s, A lecture/pause, ▲ ▼ volume, B revenir. On
+  peut avancer où on veut dans une vidéo.
+- Une seule lecture à la fois ; elle s'arrête en fermant, en changeant de fiche, ou quand le menu en jeu se ferme.
+
 ## 0.56.0 — Le livret du jeu, à lire dans Frogtend
 
 - Sur la fiche d'un jeu, et dans le menu en jeu (« 📖 Manuel et documents ») : **📖 Livret (scan)**, avec son nombre

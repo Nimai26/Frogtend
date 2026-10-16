@@ -131,7 +131,8 @@
     <button class="btn" bind:this={suivant} disabled={page >= pages - 1} onclick={() => aller(page + 1)}>Suivante ▶</button>
     <button class="btn" onclick={() => (agrandi = !agrandi)}>{agrandi ? '🔍 Page entière' : '🔍 Agrandir'}</button>
     <button class="btn" onclick={onfermer}>✕ Fermer</button>
-    {#if taodbox.actif}<span class="aide">◀ ▶ pages · ▲ ▼ défiler · A agrandir · B revenir</span>{/if}
+    {#if taodbox.actif}<span class="aide">◀ ▶ pages · ▲ ▼ défiler · A agrandir · B revenir</span>
+    {:else}<span class="aide">← → pages · ↑ ↓ défiler · Échap fermer</span>{/if}
   </footer>
 </section>
 

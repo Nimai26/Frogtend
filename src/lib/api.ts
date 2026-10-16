@@ -493,6 +493,8 @@ export const api = {
   documents: (id: number) => appeler<DocumentJeu[]>('documents_jeu', { id }),
   /** Télécharge le livret s'il n'est pas sur le PC (le clic vaut accord, taille montrée), rend son nombre de pages. */
   ouvrirLivret: (id: number, doc: number) => appeler<number>('livret_ouvrir', { id, doc }),
+  /** Télécharge une musique ou une vidéo si elle n'est pas sur le PC (le clic vaut accord, taille montrée). */
+  preparerDocument: (id: number, doc: number) => appeler<DocumentJeu>('document_preparer', { id, doc }),
   sauvegarder: () => appeler<import('./sauvegarde.svelte').BilanSauvegarde>('sauvegarde_lancer'),
   derniereSauvegarde: () => appeler<import('./sauvegarde.svelte').BilanSauvegarde | null>('sauvegarde_derniere'),
   restaurationListe: () =>
@@ -642,6 +644,11 @@ export function adresseJaquette(id: number, largeur?: number): string {
 export function adressePageLivret(jeu: number, doc: number, page: number, largeur: number): string {
   const l = Math.min(2400, Math.max(200, Math.ceil(largeur / 200) * 200));
   return `http://document.localhost/${jeu}/${doc}/${page}?largeur=${l}`;
+}
+
+/** Une musique ou une vidéo d'un jeu déjà sur le PC, servie par morceaux par le cœur. */
+export function adresseDocument(jeu: number, doc: number): string {
+  return `http://document.localhost/${jeu}/${doc}/fichier`;
 }
 
 /** Le fond du menu en jeu : le premier visuel que Firehouse a pour ce jeu (fond, sinon capture, sinon écran titre),

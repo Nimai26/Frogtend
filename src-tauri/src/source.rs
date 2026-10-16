@@ -311,7 +311,12 @@ impl Source {
             return Err(Erreur::Reseau("Le téléchargement s'est arrêté avant la fin : il reprendra où il en était.".into()));
         }
         if let Some(attendue) = sha256 {
-            if !crate::sauvegarde::empreinte(&part)?.eq_ignore_ascii_case(attendue) {
+            // Hors des fils du réseau : une vidéo de 25 Mo se lit en entier pour son empreinte.
+            let p = part.clone();
+            let calculee = tokio::task::spawn_blocking(move || crate::sauvegarde::empreinte(&p))
+                .await
+                .map_err(|_| Erreur::Disque("Le contrôle du fichier reçu s'est arrêté.".into()))??;
+            if !calculee.eq_ignore_ascii_case(attendue) {
                 std::fs::remove_file(&part)?;
                 return Err(Erreur::Serveur("Le fichier reçu est abîmé (son empreinte ne correspond pas) : il n'est pas gardé.".into()));
             }

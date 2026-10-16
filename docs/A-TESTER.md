@@ -48,6 +48,15 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## La musique et les vidéos du jeu (0.57.0)
+- [ ] Fiche de Zelda : Ocarina of Time ▸ 🎵 Musique (2 min 33) : elle se télécharge puis joue toute seule ? (Sinon le
+      lecteur dit « Appuie sur ▶ Lecture » : dis-le-moi.) La jaquette s'affiche au milieu.
+- [ ] 🎬 Vidéo (37 s) : elle joue ; ◀ ▶ (ou ← →) avancent et reculent de 10 s, même vers la fin de la vidéo.
+- [ ] À la manette SEULE, dans le menu en jeu (View+RB1 ▸ 📖 Manuel et documents ▸ 🎵) : A lance-t-il la musique ?
+- [ ] Ferme le jeu pendant que la musique joue dans le menu : la musique doit s'arrêter.
+- [ ] Le jeu non mis en pause : son son se mêle à la musique (le menu le dit). Préfères-tu cacher musique et vidéo
+      quand le jeu n'est pas en pause ?
+
 ## Le livret du jeu (0.56.0)
 - [ ] Ouvre la fiche de Zelda : Ocarina of Time ▸ 📚 Documents du jeu ▸ « 📖 Livret (scan) · 23 pages · 8,2 Mo » :
       il se télécharge (quelques secondes), puis la première page s'affiche.

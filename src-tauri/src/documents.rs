@@ -63,8 +63,14 @@ fn empreinte_valable(e: &str) -> Option<&str> {
     (e.len() == 64 && e.chars().all(|c| c.is_ascii_hexdigit())).then_some(e)
 }
 
-/// Un seul téléchargement de document à la fois : deux demandes du même livret n'écrivent jamais le même fichier.
-static TELECHARGEMENT: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+/// Un téléchargement à la fois PAR FICHIER : deux demandes du même document n'écrivent jamais le même fichier, et une
+/// vidéo lente à venir ne bloque pas le livret d'un autre jeu.
+type Verrous = std::collections::HashMap<PathBuf, std::sync::Arc<tokio::sync::Mutex<()>>>;
+fn verrou_du_fichier(f: &std::path::Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    static VERROUS: std::sync::Mutex<Option<Verrous>> = std::sync::Mutex::new(None);
+    let mut v = VERROUS.lock().unwrap_or_else(|e| e.into_inner());
+    v.get_or_insert_with(Default::default).entry(f.to_path_buf()).or_default().clone()
+}
 
 impl Noyau {
     /// La liste des documents gardée pour CE profil (jamais partagée : Firehouse pourrait la filtrer selon le grade).
@@ -148,24 +154,30 @@ impl Noyau {
         }))
     }
 
-    /// Le livret d'un jeu, téléchargé s'il ne l'est pas encore (vérifié), puis ouvert : rend son nombre de pages.
-    pub async fn livret(&self, id: i64, doc: i64) -> Resultat<u32> {
-        let s = self.session_du_jeu(id).await?;
+    /// Un document du jeu sur le PC : téléchargé s'il ne l'est pas encore (au clic de la personne, taille montrée),
+    /// type, empreinte et taille vérifiés avant de le garder. `livret` : la sorte attendue (un livret, ou une musique
+    /// ou une vidéo), vérifiée AVANT tout téléchargement.
+    async fn garder(&self, s: &Session, id: i64, doc: i64, livret: bool) -> Resultat<(Document, PathBuf)> {
         let (d, fichier) = self
-            .document(&s, id, doc, true)
+            .document(s, id, doc, true)
             .await?
             .ok_or_else(|| Erreur::Introuvable("Ce document a changé chez Firehouse : ferme et rouvre la fiche du jeu.".into()))?;
-        if d.sorte != "livret" {
+        if livret && d.sorte != "livret" {
             return Err(Erreur::Refus("Ce document n'est pas un livret.".into()));
         }
+        if !livret && d.sorte == "livret" {
+            return Err(Erreur::Refus("Un livret s'ouvre dans le lecteur de livret.".into()));
+        }
         if !fichier.is_file() {
-            let _un_seul = TELECHARGEMENT.lock().await;
+            let verrou = verrou_du_fichier(&fichier);
+            let _un_seul = verrou.lock().await;
             if !fichier.is_file() {
                 let types = [type_attendu(&d).unwrap_or("application/pdf")];
                 match s.source.telecharger_document(id, doc, &fichier, empreinte_valable(&d.empreinte), &types).await {
                     Ok(n) if d.taille > 0 && n != d.taille => {
                         let _ = std::fs::remove_file(&fichier);
-                        return Err(Erreur::Serveur("Le livret reçu n'a pas la taille annoncée : il n'est pas gardé.".into()));
+                        let quoi = if d.sorte == "livret" { "Le livret reçu" } else { "Le fichier reçu" };
+                        return Err(Erreur::Serveur(format!("{quoi} n'a pas la taille annoncée : il n'est pas gardé.")));
                     }
                     Ok(_) => {}
                     // Un 404 : le document a été remplacé chez Firehouse (un contenu nouveau a un nouvel id).
@@ -177,6 +189,33 @@ impl Noyau {
                 }
             }
         }
+        Ok((d, fichier))
+    }
+
+    /// Prépare une musique ou une vidéo du jeu (téléchargée et vérifiée si besoin) : elle se lit ensuite par
+    /// `document.localhost/<jeu>/<document>/fichier`.
+    pub async fn preparer_document(&self, id: i64, doc: i64) -> Resultat<Document> {
+        let s = self.session_du_jeu(id).await?;
+        let (mut d, _) = self.garder(&s, id, doc, false).await?;
+        d.garde = true;
+        Ok(d)
+    }
+
+    /// Le fichier d'une musique ou d'une vidéo DÉJÀ sur le PC, et son type (jamais de téléchargement ni d'appel à
+    /// Firehouse ici) : pour le protocole `document`, qui le sert par morceaux.
+    pub async fn fichier_document(&self, id: i64, doc: i64) -> Resultat<Option<(PathBuf, &'static str)>> {
+        let s = self.session_du_jeu(id).await?;
+        let Some((d, fichier)) = self.document(&s, id, doc, false).await? else { return Ok(None) };
+        if d.sorte == "livret" || !fichier.is_file() {
+            return Ok(None);
+        }
+        Ok(type_attendu(&d).map(|t| (fichier, t)))
+    }
+
+    /// Le livret d'un jeu, téléchargé s'il ne l'est pas encore (vérifié), puis ouvert : rend son nombre de pages.
+    pub async fn livret(&self, id: i64, doc: i64) -> Resultat<u32> {
+        let s = self.session_du_jeu(id).await?;
+        let (d, fichier) = self.garder(&s, id, doc, true).await?;
         let f = fichier.clone();
         let pages = tauri::async_runtime::spawn_blocking(move || crate::livret::pages(&f))
             .await
@@ -222,6 +261,58 @@ impl Noyau {
     }
 }
 
+/// Le plus gros morceau servi d'un coup (plage ouverte `bytes=N-` ou plage fermée plus grande) : le lecteur redemande
+/// la suite lui-même (HTTP le permet). Une vidéo n'est jamais lue d'un bloc en mémoire quand une plage est demandée.
+pub const MORCEAU_MAX: u64 = 2 * 1024 * 1024;
+
+/// La plage demandée par l'en-tête `Range` (`bytes=debut-fin`, `bytes=debut-`, `bytes=-n`), bornée au fichier et à
+/// `MORCEAU_MAX` : `Ok(Some((debut, fin)))` (fin comprise) ; `Ok(None)` sans en-tête, ou avec un en-tête mal formé ou
+/// non géré (plages multiples, autre unité), qui s'ignore (RFC 9110 § 14.2 : tout le fichier) ; `Err(())` pour une
+/// plage bien formée mais hors du fichier (416).
+pub fn plage(entete: Option<&str>, total: u64) -> Result<Option<(u64, u64)>, ()> {
+    let Some(e) = entete else { return Ok(None) };
+    let e = e.trim();
+    let Some(spec) = e.get(..6).filter(|u| u.eq_ignore_ascii_case("bytes=")).map(|_| &e[6..]) else { return Ok(None) };
+    if spec.contains(',') {
+        return Ok(None);
+    }
+    let Some((a, b)) = spec.split_once('-') else { return Ok(None) };
+    let lire = |x: &str| x.parse::<u64>().ok();
+    let (debut, fin) = match (a.trim(), b.trim()) {
+        ("", n) => match lire(n) {
+            Some(0) => return Err(()),
+            Some(n) if total > 0 => (total.saturating_sub(n), total - 1),
+            Some(_) => return Err(()),
+            None => return Ok(None),
+        },
+        (d, "") => match lire(d) {
+            Some(d) => (d, total.saturating_sub(1)),
+            None => return Ok(None),
+        },
+        (d, f) => match (lire(d), lire(f)) {
+            (Some(d), Some(f)) if f >= d => (d, f.min(total.saturating_sub(1))),
+            _ => return Ok(None),
+        },
+    };
+    if total == 0 {
+        return Err(());
+    }
+    if debut >= total || fin < debut {
+        return Err(());
+    }
+    Ok(Some((debut, fin.min(debut + MORCEAU_MAX - 1))))
+}
+
+/// Lit `debut..=fin` d'un fichier (sans le charger en entier).
+pub fn lire_morceau(fichier: &std::path::Path, debut: u64, fin: u64) -> std::io::Result<Vec<u8>> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = std::fs::File::open(fichier)?;
+    f.seek(SeekFrom::Start(debut))?;
+    let mut o = Vec::with_capacity((fin - debut + 1) as usize);
+    f.take(fin - debut + 1).read_to_end(&mut o)?;
+    Ok(o)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -265,6 +356,32 @@ mod tests {
             let png = crate::livret::page_png(&pdf, p, 1000).unwrap();
             std::fs::write(sortie.join(format!("page-{p}.png")), &png).unwrap();
             println!("PAGE {p} : {} octets en {:?}", png.len(), debut.elapsed());
+        }
+    }
+
+    /// RÉEL, lecture seule chez Firehouse : la musique et la vidéo d'un jeu téléchargées par le code de Frogtend (type
+    /// et empreinte vérifiés) dans `FROGTEND_SORTIE`, puis lues par morceaux comme le protocole `document` les sert.
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_JEU=111 FROGTEND_SORTIE=<dossier> cargo test essai_musique_video -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_musique_video() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeu: i64 = std::env::var("FROGTEND_JEU").unwrap().parse().unwrap();
+        let sortie = PathBuf::from(std::env::var("FROGTEND_SORTIE").unwrap());
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let source = crate::source::Source::Firehouse(crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap());
+        for d in lire_liste(&source.documents(jeu).await.unwrap()).iter().filter(|d| d.sorte == "musique" || d.sorte == "video") {
+            let f = sortie.join(format!("{}.{}", d.id, d.format));
+            let debut = std::time::Instant::now();
+            let n = source.telecharger_document(jeu, d.id, &f, empreinte_valable(&d.empreinte), &[type_attendu(d).unwrap()]).await.unwrap();
+            let tete = lire_morceau(&f, 0, 11).unwrap();
+            let (a, b) = plage(Some("bytes=0-"), n).unwrap().unwrap();
+            let fin = plage(Some(&format!("bytes={}-", n - 100)), n).unwrap().unwrap();
+            println!(
+                "{} {} : {n} o (annoncé {}) en {:?} ; tête {:02x?} ; 1er morceau {a}-{b} ; dernier {:?} ({} o)",
+                d.sorte, d.id, d.taille, debut.elapsed(), tete, fin, lire_morceau(&f, fin.0, fin.1).unwrap().len()
+            );
         }
     }
 
@@ -326,6 +443,53 @@ mod tests {
         s
     }
 
+    #[tokio::test]
+    async fn une_musique_se_prepare_verifiee_puis_se_sert_depuis_le_pc() {
+        const MP3: &[u8] = b"ID3\x04\x00 une musique de test";
+        let serveur_musique = |type_contenu: &'static str| {
+            let s = MockServer::start();
+            s.mock(|w, t| {
+                w.method(GET).path("/api/jeux/v1/plateformes");
+                t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "Nintendo 64", "jeux": 1}]}));
+            });
+            s.mock(|w, t| {
+                w.method(GET).path("/api/jeux/v1/catalogue");
+                t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [{"id": 111, "titre": "Zelda", "plateforme": "Nintendo 64"}]}));
+            });
+            s.mock(|w, t| {
+                w.method(GET).path("/api/jeux/v1/jeu/111/documents");
+                t.status(200).json_body(json!({"ok": true, "id": 111, "documents": [
+                    {"id": 6482, "type": "musique", "format": "mp3", "taille": MP3.len(), "duree_s": 152.6, "empreinte": sha(MP3)},
+                    {"id": 6142, "type": "livret", "format": "pdf", "taille": 10, "empreinte": ""}]}));
+            });
+            s.mock(|w, t| {
+                w.method(GET).path("/api/jeux/v1/jeu/111/document/6482");
+                t.status(200).header("content-type", type_contenu).body(MP3);
+            });
+            s
+        };
+        let s = serveur_musique("audio/mpeg");
+        let (_d, n) = noyau(s.base_url(), false).await;
+        n.documents(111).await.unwrap();
+        // Avant le clic : rien à servir.
+        assert!(n.fichier_document(111, 6482).await.unwrap().is_none());
+        let d = n.preparer_document(111, 6482).await.unwrap();
+        assert!(d.garde);
+        let (f, sorte) = n.fichier_document(111, 6482).await.unwrap().unwrap();
+        assert_eq!(sorte, "audio/mpeg");
+        assert_eq!(std::fs::read(f).unwrap(), MP3);
+        // Le livret passe par son propre lecteur, jamais par ici.
+        assert!(matches!(n.preparer_document(111, 6142).await, Err(Erreur::Refus(_))));
+        assert!(n.fichier_document(111, 6142).await.unwrap().is_none());
+
+        // Une vidéo envoyée à la place de la musique : refusée, rien de gardé.
+        let s = serveur_musique("video/mp4");
+        let (_d, n) = noyau(s.base_url(), false).await;
+        n.documents(111).await.unwrap();
+        assert!(n.preparer_document(111, 6482).await.is_err());
+        assert!(n.fichier_document(111, 6482).await.unwrap().is_none());
+    }
+
     fn sha(o: &[u8]) -> String {
         use sha2::{Digest, Sha256};
         format!("{:x}", Sha256::digest(o))
@@ -358,6 +522,32 @@ mod tests {
         n.documents(111).await.unwrap();
         assert!(n.livret(111, 6142).await.is_err());
         assert!(!walkdir(d.path()).iter().any(|p| p.extension().is_some_and(|x| x == "pdf" || x == "part")));
+    }
+
+    #[test]
+    fn une_plage_demandee_est_bornee_au_fichier_et_au_morceau_maximal() {
+        let m = MORCEAU_MAX;
+        assert_eq!(plage(None, 100), Ok(None));
+        assert_eq!(plage(Some("bytes=0-"), 100), Ok(Some((0, 99))));
+        assert_eq!(plage(Some("bytes=10-19"), 100), Ok(Some((10, 19))));
+        assert_eq!(plage(Some("bytes=90-500"), 100), Ok(Some((90, 99))));
+        assert_eq!(plage(Some("bytes=-30"), 100), Ok(Some((70, 99))));
+        // Une vidéo de 25 Mo : jamais plus de MORCEAU_MAX d'un coup.
+        assert_eq!(plage(Some("bytes=0-"), 25_000_000), Ok(Some((0, m - 1))));
+        assert_eq!(plage(Some("bytes=24999990-"), 25_000_000), Ok(Some((24_999_990, 24_999_999))));
+        assert_eq!(plage(Some("Bytes=10-19"), 100), Ok(Some((10, 19))));
+        // Hors du fichier : 416.
+        for hors in ["bytes=100-", "bytes=-0", "bytes=150-200"] {
+            assert_eq!(plage(Some(hors), 100), Err(()), "{hors}");
+        }
+        // Mal formé ou non géré : ignoré (tout le fichier).
+        for ignore in ["octets=0-", "bytes=a-b", "bytes=0-1,5-6", "bytes=50-10", "bytes"] {
+            assert_eq!(plage(Some(ignore), 100), Ok(None), "{ignore}");
+        }
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("x.mp3");
+        std::fs::write(&f, b"0123456789").unwrap();
+        assert_eq!(lire_morceau(&f, 3, 6).unwrap(), b"3456");
     }
 
     #[test]
