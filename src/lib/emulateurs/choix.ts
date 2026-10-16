@@ -1,12 +1,15 @@
 // Plusieurs émulateurs (ou cœurs RetroArch) par système, un par défaut pour le système, un par défaut possible par
 // jeu, et un choix ponctuel au lancement (Seb, 30/09). Même règle que le cœur (src-tauri/src/choix_emulateur.rs).
 
-/** Un émulateur réglé pour un système. Le fichier du jeu est ajouté à la fin de `ligne`. */
+/** Un émulateur réglé pour un système. Le fichier du jeu prend la place de `%rom%` dans `ligne`, sinon il est ajouté à
+ * la fin. */
 export interface EmulateurRegle {
   cle: string;
   nom: string;
   programme: string;
   ligne: string;
+  /** Réglé d'après le conseil de Firehouse : son `maj_le` (pour proposer la mise à jour s'il change). */
+  conseil?: string;
 }
 
 export interface EmulateursSysteme {
@@ -21,7 +24,14 @@ export function normaliser(v: unknown): EmulateursSysteme {
   if (Array.isArray(o.liste)) {
     const liste = (o.liste as Partial<EmulateurRegle>[])
       .filter((e) => e && typeof e.programme === 'string' && e.programme !== '')
-      .map((e, i) => ({ cle: e.cle || String(i + 1), nom: e.nom ?? '', programme: e.programme!, ligne: e.ligne ?? '' }));
+      .map((e, i) => ({
+        cle: e.cle || String(i + 1),
+        nom: e.nom ?? '',
+        programme: e.programme!,
+        ligne: e.ligne ?? '',
+        // L'origine (conseil de Firehouse) survit à la relecture des réglages.
+        ...(typeof e.conseil === 'string' && e.conseil ? { conseil: e.conseil } : {}),
+      }));
     const defaut = liste.some((e) => e.cle === o.defaut) ? String(o.defaut) : (liste[0]?.cle ?? '');
     return { liste, defaut };
   }

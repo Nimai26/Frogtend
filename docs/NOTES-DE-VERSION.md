@@ -1,5 +1,18 @@
 # Notes de version de Frogtend
 
+## 0.49.0 — « Prêt à jouer » suit le conseil de la maison
+
+- Quand une console est préparée pour la première fois, Frogtend choisit l'émulateur **conseillé par Firehouse**
+  (le « conseil de la maison »), avec SA façon de lancer les jeux (le bon cœur RetroArch, par exemple), et non plus
+  l'avis de LaunchBox. Exemples : Super Nintendo → RetroArch avec Snes9x ; PlayStation → RetroArch avec Mednafen ;
+  MS-DOS → RetroArch avec DOSBox Pure ; PS3 → RPCS3 ; Switch → Eden.
+- L'accord unique dit aussi quels fichiers système il faudra, et, pour la Switch, que tes clés (prod.keys) sont à toi
+  seul : personne ne peut les fournir.
+- **Rien ne change pour une console déjà réglée** : tes émulateurs actuels restent tels quels.
+- Installer un jeu DOS se fait toujours avec DOSBox, même si la console MS-DOS joue avec RetroArch.
+- Encore à venir dans ce lot : les cœurs RetroArch et les fichiers système posés par Frogtend depuis Firehouse (le cœur
+  vient encore du site officiel de libretro).
+
 ## 0.48.0 — Le menu en jeu prend le visuel du jeu en fond
 
 - **Le fond du menu** : derrière le menu (View + RB, ou Pause), le visuel du jeu fourni par Firehouse — son image de

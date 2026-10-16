@@ -4,6 +4,15 @@ import { ajouter, normaliser, normaliserTous, pourLeJeu, retirer, systemesPropos
 const snes9x = { nom: 'RetroArch — snes9x', programme: 'E:\\RetroArch\\retroarch.exe', ligne: '-L cores\\snes9x_libretro.dll' };
 const bsnes = { nom: 'RetroArch — bsnes', programme: 'E:\\RetroArch\\retroarch.exe', ligne: '-L cores\\bsnes_libretro.dll' };
 
+describe('l’origine d’un réglage (conseil de Firehouse)', () => {
+  it('survit à la relecture des réglages et à un ajout', () => {
+    const sys = { defaut: '1', liste: [{ cle: '1', nom: 'RetroArch', programme: 'r.exe', ligne: '-f', conseil: '2026-10-04T13:27:38' }] };
+    expect(normaliser(JSON.parse(JSON.stringify(sys))).liste[0].conseil).toBe('2026-10-04T13:27:38');
+    expect(ajouter(sys, { nom: 'X', programme: 'x.exe', ligne: '' }).sys.liste[0].conseil).toBe('2026-10-04T13:27:38');
+    expect('conseil' in normaliser({ liste: [{ programme: 'a.exe' }] }).liste[0]).toBe(false);
+  });
+});
+
 describe('plusieurs émulateurs par système', () => {
   it('lit l’ancienne forme comme une liste d’un seul', () => {
     const n = normaliser({ programme: 'E:\\DOSBox\\dosbox.exe', ligne: '', nom: 'DOSBox Staging' });

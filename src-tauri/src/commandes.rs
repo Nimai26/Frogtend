@@ -1579,6 +1579,12 @@ pub async fn import_installer_dos(noyau: State<'_, Noyau>, dosbox: String, sourc
     if !dosbox.is_file() {
         return Err(Erreur::Reglage("DOSBox introuvable : règle l'émulateur de MS-DOS dans ⚙ Options ▸ Émulateurs.".into()));
     }
+    // Les arguments sont des commandes DOSBox (« mount ») : jamais un autre programme (RetroArch…).
+    if !dosbox.file_name().is_some_and(|n| n.to_string_lossy().to_lowercase().starts_with("dosbox")) {
+        return Err(Erreur::Reglage(
+            "Pour installer un jeu DOS, il faut DOSBox : ajoute-le à MS-DOS dans ⚙ Options ▸ Émulateurs.".into(),
+        ));
+    }
     if std::fs::read_dir(&destination).is_ok_and(|mut l| l.next().is_some()) {
         return Err(Erreur::Refus(format!("Le dossier {} n'est pas vide : Frogtend n'installe pas par-dessus.", destination.display())));
     }

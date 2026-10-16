@@ -9,7 +9,7 @@ import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat, reglerPc } from '$lib/etat.svelte';
 import { completerRetroArch, installerEmulateur, installerParFirehouse, recommandationsParDefaut, reglerEmulateur } from './assistant.svelte';
 import { ajouter } from './choix';
-import { choisirSeul, dossierParDefaut, MANETTE_REGLEE, messagePret, type Possible } from './pret';
+import { avecConseil, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, MANETTE_REGLEE, messagePret, type Possible } from './pret';
 
 /** Les plateformes qui se jouent sans émulateur. */
 const SANS_EMULATEUR = ['Windows'];
@@ -23,7 +23,11 @@ export async function preparerPourJouer(plateforme: string, jeux: number): Promi
   if (deja?.liste?.length) return deja.defaut || deja.liste[0].cle;
   if (SANS_EMULATEUR.includes(plateforme)) return null;
 
-  let recs = (await api.emulateursRecommandes(plateforme).catch(() => ({ emulateurs: [] }))).emulateurs ?? [];
+  const reponse = await api.emulateursRecommandes(plateforme).catch(() => ({ emulateurs: [], conseil: null }));
+  // Le conseil de la maison PRIME (contrat 1.8) ; la liste LaunchBox vient ensuite. Le choix d'office de Frogtend ne
+  // sert que si Firehouse ne dit rien du tout (hors ligne, ou ni conseil ni liste).
+  const conseil = reponse.conseil ?? null;
+  let recs = avecConseil(reponse.emulateurs ?? [], conseil);
   if (!recs.length) recs = recommandationsParDefaut(plateforme);
   const installes = await api.emulateursInstalles().catch(() => []);
   const lignes = new Map<unknown, string>();
@@ -39,10 +43,10 @@ export async function preparerPourJouer(plateforme: string, jeux: number): Promi
       programme: installe?.programme,
       parFirehouse: !f && !!rec.id && !!rec.telechargement && rec.telechargement.type !== 'page',
     };
-    lignes.set(rec, rec.ligne_de_commande || f?.ligne || '');
+    lignes.set(rec, ligneDe(rec, f?.ligne ?? '', conseil));
     possibles.push(p);
   }
-  const choix = choisirSeul(possibles);
+  const choix = choisirSeul(possibles, conseil);
   // Rien que Frogtend sache préparer seul : l'assistant, qui montre les possibilités.
   if (!choix) return reglerEmulateur(plateforme);
 
@@ -50,7 +54,7 @@ export async function preparerPourJouer(plateforme: string, jeux: number): Promi
   const dossier = etat.pc.dossierEmulateurs || dossierParDefaut(etat.pc.emplacements.defaut);
   const paquet = choix.comment === 'frogtend' && choix.id ? await api.emulateurDerniereVersion(choix.id).catch(() => null) : null;
   const oui = await confirmer(`🎮 Préparer ${plateforme} pour jouer ?`, {
-    message: messagePret({ plateforme, jeux, choix, taille: paquet?.taille ? taille(paquet.taille) : null, dossier, dossierNouveau }),
+    message: messagePret({ plateforme, jeux, choix, taille: paquet?.taille ? taille(paquet.taille) : null, dossier, dossierNouveau, conseil }),
     libelleValider: choix.comment === 'deja' ? '🎮 C’est parti' : '🎮 Tout préparer',
   });
   if (!oui) return null;
@@ -64,11 +68,16 @@ export async function preparerPourJouer(plateforme: string, jeux: number): Promi
   const ligne = lignes.get(choix.rec) ?? '';
   let nom = choix.nom;
   if (choix.id === 'retroarch') {
-    const n = await completerRetroArch(programme, ligne, choix.rec.bios ? [choix.rec.bios] : [], plateforme, nom, true);
+    const n = await completerRetroArch(programme, ligne, biosRetroArch(choix.rec, conseil), plateforme, nom, true);
     if (!n) return null;
     nom = n;
   }
-  const { sys, cle } = ajouter(etat.pc.emulateurs[plateforme], { nom, programme, ligne });
+  const { sys, cle } = ajouter(etat.pc.emulateurs[plateforme], {
+    nom,
+    programme,
+    ligne,
+    ...(estConseille(choix.rec, conseil) ? { conseil: conseil!.maj_le } : {}),
+  });
   await reglerPc('emulateurs', { ...etat.pc.emulateurs, [plateforme]: sys });
 
   let manette = '';

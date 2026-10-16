@@ -73,7 +73,11 @@
       Découpe : (1) conseil en lecture ; (2) conseil : ligne et cœur, origine retenue ; (3) cœurs servis + sha256 ;
       (4) BIOS servis (fichier/motif/archive, sha1, un seul accord) puis PS2 ; (5) firmwares PS3 et Switch (prod.keys
       au coffre : le dire) ; (6) MAME (dossier, nom court, -rompath, « incomplet », paquet 0.289) ; (7) documents ;
-      (8) fiches réunies. `fichiers: null` d'un motif = `[]`. Règles Firehouse (16/10) : seul `conseil.bios[]` fait foi ;
+      (8) fiches réunies. `fichiers: null` d'un motif = `[]`.
+      ✅ (1)+(2) en 0.49.0 : le conseil prime (même absent de la liste : MS-DOS → RetroArch, liste = DOSBox Staging
+      seul), ligne = options de Frogtend juste avant `%rom%`, `%rom%` remplacé au lancement, `maj_le` retenu dans
+      pc.json (reste : PROPOSER la mise à jour quand `maj_le` change). Installer un jeu DOS exige DOSBox (refus clair
+      sinon) — si MS-DOS a été préparé avec RetroArch, Frogtend devra proposer d'ajouter DOSBox Staging (à faire). Règles Firehouse (16/10) : seul `conseil.bios[]` fait foi ;
       ignorer `actif`/`statut_emu_france` pour l'émulateur du conseil ; `conseil.paquet: null` → « cœur non servi par
       Firehouse », rien chez libretro (question posée à Seb par Firehouse : laisser RetroArch l'installer ?).
 - [ ] **Lot « Médias »** (contrat 1.6, Firehouse 2.41.0) : ratio réel de la boîte réservé, choix du visuel de la
@@ -179,6 +183,12 @@ d'abord :
 - Jellyfin → Taodbox : projet côté Firehouse, pas le travail de Frogtend.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.49.0** (16/10) — « Prêt à jouer » suit le conseil de la maison (contrat 1.8) ; `%rom%` placé au lancement.
+  Vérifié : conseils RÉELS relevés chez Firehouse pour 7 plateformes (EXEMPLES) et repris dans les tests (SNES, PS1,
+  MS-DOS absent de la liste, Switch, PS2) ; relectures des experts contrat et lancement (1 bloquant : le conseil perdu
+  quand son émulateur manque à la liste — corrigé) ; tests (282 cœur, 129 interface). PAS vérifié : une vraie
+  préparation de console de bout en bout (à essayer par Seb).
 
 - **0.48.0** (15/10) — Fond du menu en jeu : visuel du jeu (fond, capture, écran titre), sinon le skin ; même carte
   pour tous. Vérifié : forme réelle des visuels relevée chez Firehouse (jeu 116 : 11 types ; fond 118 776 octets en

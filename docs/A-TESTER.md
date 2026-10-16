@@ -48,6 +48,11 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Le conseil de la maison (0.49.0)
+- [ ] Une console que tu n'as PAS encore réglée (par exemple Super Nintendo, avec un jeu importé) : ▶ Jouer → l'accord
+      unique propose RetroArch (le conseil de Firehouse) ; après « Tout préparer », le jeu se lance en plein écran.
+- [ ] Tes consoles déjà réglées (PS3) : rien n'a changé.
+
 ## Le fond du menu en jeu (0.48.0)
 - [ ] Un jeu venu de Firehouse (pas un jeu importé) : ouvre le menu en jeu. Derrière la carte du menu, l'image du jeu,
       floutée et assombrie ; la carte est la même qu'avant, au centre. ⚠️ Tes jeux actuels sont des jeux importés (PS3,

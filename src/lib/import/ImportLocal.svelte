@@ -12,7 +12,7 @@
   import { rechargerJeuxDuPc } from '$lib/ludotheque/telechargements.svelte';
   import { etat, reglerPc } from '$lib/etat.svelte';
   import { informer } from '$lib/dialogues/fenetres.svelte';
-  import { pourLeJeu } from '$lib/emulateurs/choix';
+  import { normaliser } from '$lib/emulateurs/choix';
   import { preparerPourJouer } from '$lib/emulateurs/pret.svelte';
   import {
     elementDe,
@@ -65,7 +65,11 @@
   let mamePris = $state<boolean[]>([]);
 
   // --- Installer un jeu DOS ---
-  const dosbox = $derived(pourLeJeu(etat.pc.emulateurs, {}, 'MS-DOS', 0)?.programme ?? '');
+  // Installer un jeu DOS se fait DANS DOSBox (ses commandes « mount ») : le DOSBox réglé pour MS-DOS, même si
+  // l'émulateur par défaut de la console est un autre (le conseil de Firehouse peut être RetroArch + DOSBox Pure).
+  const dosbox = $derived(
+    normaliser(etat.pc.emulateurs['MS-DOS']).liste.find((e) => /^dosbox/i.test(e.programme.split(/[\\/]/).pop() ?? ''))?.programme ?? '',
+  );
   let source = $state('');
   let parent = $state(untrack(() => etat.pc.emplacements.systemes['MS-DOS']?.[0] ?? etat.pc.emplacements.defaut[0] ?? ''));
   const destination = $derived(parent.trim() && titre.trim() ? `${parent.trim().replace(/[\\/]+$/, '')}\\${nomDeDossier(titre)}` : '');

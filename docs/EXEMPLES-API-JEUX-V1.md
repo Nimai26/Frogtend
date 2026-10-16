@@ -1487,3 +1487,18 @@ Règles données par Firehouse avec ce relevé :
   stable GitHub ;
 - `conseil.paquet: null` (cœur non servi) : 0 cas au 16/10 ; d'ici la décision de Seb, **afficher « cœur non servi par
   Firehouse » et ne rien télécharger chez libretro**.
+
+### Conseils relevés par Frogtend (essai `essai_conseils`, 16/10/2026, lecture seule)
+
+| Plateforme | `conseil.emulateur` | `coeur` | `ligne_de_commande` | BIOS du conseil | `emulateurs[].id` (recommande) |
+|---|---|---|---|---|---|
+| Super Nintendo Entertainment System | retroarch | snes9x_libretro | `-L "cores\snes9x_libretro.dll" "%rom%"` | aucun | retroarch (oui), mesen, snes9x, ares, ares |
+| Sony Playstation | retroarch | mednafen_psx_hw_libretro | `-L "cores\mednafen_psx_hw_libretro.dll" "%rom%"` | scph5500/5501/5502.bin, `system_retroarch`, obligatoires | retroarch (oui), duckstation, pcsx_reloaded, epsxe |
+| MS-DOS | retroarch | dosbox_pure_libretro | `-L "cores\dosbox_pure_libretro.dll" "%rom%"` | aucun | **dosbox_staging seul** (le conseillé n'est PAS dans la liste) |
+| Sony Playstation 3 | rpcs3 | null | vide | PS3UPDAT.PUP (`installation`, 206 197 916 o) | rpcs3 (oui) |
+| Nintendo Switch | eden | null | vide | prod.keys (`coffre`), firmware-switch.zip (`installation`, 336 375 526 o) | eden (oui), citron_neo, ryubing |
+| Sega Naomi | retroarch | flycast_libretro | `-L "cores\flycast_libretro.dll" "%rom%"` | dc/naomi.zip | retroarch (oui) |
+| Windows | `conseil: null` | — | — | — | cheatengine |
+
+Les alternatives portent `emulateur: null` quand ce sont des cœurs RetroArch (bsnes, SwanStation) ; chaque cœur
+nommé a son `paquet` (url, sha256, taille, version « 1.22.2 », source « stable »).

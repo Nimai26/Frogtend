@@ -818,6 +818,24 @@ mod tests {
         println!("MEDIAS {} : {:?}", m["medias"].as_array().map_or(0, |l| l.len()), tailles);
     }
 
+    /// Contrat 1.8 en RÉEL, lecture seule : le `conseil` de quelques plateformes (RetroArch, autonome, sans conseil),
+    /// pour le lot « Contrat 1.13 ». Rien n'est téléchargé.
+    /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_conseils -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_conseils() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        for p in ["Super Nintendo Entertainment System", "Sony Playstation", "MS-DOS", "Sony Playstation 3", "Nintendo Switch", "Sega Naomi", "Windows"] {
+            let v: Value = c.obtenir_json(&format!("/emulateurs?plateforme={}", crate::source::encoder(p))).await.unwrap();
+            println!("CONSEIL {p} : {}", v["conseil"]);
+            let ids: Vec<String> = v["emulateurs"].as_array().into_iter().flatten().map(|e| format!("{}({})", e["id"], e["recommande"])).collect();
+            println!("LISTE {p} : {ids:?}");
+        }
+    }
+
     /// Contrat 1.6 en RÉEL, lecture seule : la forme exacte de `images` (catalogue) et de `/jeu/{id}/medias` (types,
     /// champs), pour le fond du menu en jeu (OSD, étape g). Télécharge trois visuels en 1 000 px (~150 Ko).
     /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_types_medias -- --ignored --nocapture`

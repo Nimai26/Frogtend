@@ -38,7 +38,8 @@ pub struct Fiche {
     pub origine: Origine,
     /// Le programme à lancer (son nom commence ainsi, sans tenir compte des majuscules).
     pub programme: &'static str,
-    /// La ligne de commande par défaut (le jeu est ajouté à la fin).
+    /// Les options de lancement de Frogtend pour cet émulateur (le jeu est ajouté à la fin, ou prend la place de
+    /// `%rom%`) ; avec un conseil de Firehouse, elles se placent juste avant le jeu.
     pub ligne: &'static str,
     /// Le fichier qui met l'émulateur en mode portable, s'il en faut un.
     pub portable: Option<&'static str>,

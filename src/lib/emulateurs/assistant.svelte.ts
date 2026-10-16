@@ -4,6 +4,7 @@
 
 import { listen } from '@tauri-apps/api/event';
 import { ajouter } from './choix';
+import { avecConseil, biosRetroArch, estConseille, ligneDe } from './pret';
 import { isTauri } from '@tauri-apps/api/core';
 import { api, taille, type EmulateurInstalle, type EmulateurRecommande } from '$lib/api';
 import { choisir, confirmer, demander, informer, toast } from '$lib/dialogues/fenetres.svelte';
@@ -227,21 +228,29 @@ export async function completerRetroArch(
 /** Ajouter un émulateur (ou un cœur RetroArch) à un système. Le premier devient celui par défaut. Rend la clé de
  * l'émulateur retenu, ou `null`. */
 export async function reglerEmulateur(plateforme: string): Promise<string | null> {
-  let recs = (await api.emulateursRecommandes(plateforme).catch(() => ({ emulateurs: [] }))).emulateurs ?? [];
+  const reponse = await api.emulateursRecommandes(plateforme).catch(() => ({ emulateurs: [], conseil: null }));
+  const conseil = reponse.conseil ?? null;
+  // L'émulateur du conseil de la maison en tête (contrat 1.8 : il prime sur l'avis LaunchBox), même absent de la liste.
+  let recs = avecConseil(reponse.emulateurs ?? [], conseil);
   if (recs.length === 0) recs = recommandationsParDefaut(plateforme);
   const installes = await api.emulateursInstalles().catch(() => []);
 
   type Option = { rec: EmulateurRecommande; id: string | null; nom: string; installe?: EmulateurInstalle } | 'autre';
   const options: { valeur: Option; libelle: string; detail?: string }[] = [];
   // Les forks actifs décrits par Firehouse (contrat 14) s'ajoutent après leur émulateur d'origine.
-  const avecForks: EmulateurRecommande[] = recs.flatMap((r) => [r, ...(r.forks ?? []).filter((f) => f.actif !== false).map((f) => ({ ...f, recommande: false }))]);
+  const avecForks: EmulateurRecommande[] = recs.flatMap((r) => [
+    r,
+    ...(r.forks ?? []).filter((f) => f.actif !== false && !estConseille(f, conseil)).map((f) => ({ ...f, recommande: false })),
+  ]);
   for (const rec of avecForks) {
     const f = await api.emulateurFiche(rec.nom).catch(() => null);
     const installe = f ? installes.find((i) => i.id === f.id) : rec.id ? installes.find((i) => i.id === rec.id) : undefined;
     const parFirehouse = !f && !!rec.id && !!rec.telechargement && rec.telechargement.type !== 'page';
     options.push({
       valeur: { rec, id: f?.id ?? null, nom: f?.nom ?? rec.nom, installe },
-      libelle: `${rec.recommande ? '⭐ ' : ''}${f?.nom ?? rec.nom}${rec.recommande ? ' (recommandé)' : ''}`,
+      libelle: conseil
+        ? `${estConseille(rec, conseil) ? '⭐ ' : ''}${f?.nom ?? rec.nom}${estConseille(rec, conseil) ? ' (conseillé par la maison)' : ''}`
+        : `${rec.recommande ? '⭐ ' : ''}${f?.nom ?? rec.nom}${rec.recommande ? ' (recommandé)' : ''}`,
       detail: installe
         ? `✅ déjà sur ce PC${installe.version ? ` (${installe.version})` : ''}`
         : f || parFirehouse
@@ -263,6 +272,7 @@ export async function reglerEmulateur(plateforme: string): Promise<string | null
   let ligne = '';
   let bios: string[] = [];
   let estRetroArch = false;
+  let depuisConseil: string | undefined;
 
   if (c === 'autre') {
     programme = await parcourir({ titre: 'Programme de l’émulateur', extensions: ['exe'] });
@@ -271,16 +281,17 @@ export async function reglerEmulateur(plateforme: string): Promise<string | null
     if (!nomDonne) return null;
     nom = nomDonne;
     const l = await demander('⌨ Ligne de commande', {
-      message: 'Le fichier du jeu est ajouté à la fin. Laisse vide si l’émulateur n’a besoin de rien d’autre.',
+      message: 'Le fichier du jeu est ajouté à la fin (ou à la place de %rom%). Laisse vide si l’émulateur n’a besoin de rien d’autre.',
     });
     if (l === null) return null;
     ligne = l;
   } else {
     nom = c.nom;
-    bios = c.rec.bios ? [c.rec.bios] : [];
+    bios = biosRetroArch(c.rec, conseil);
     estRetroArch = c.id === 'retroarch';
     const fiche = c.id ? await api.emulateurFiche(c.rec.nom).catch(() => null) : null;
-    ligne = c.rec.ligne_de_commande || fiche?.ligne || '';
+    ligne = ligneDe(c.rec, fiche?.ligne ?? '', conseil);
+    if (estConseille(c.rec, conseil)) depuisConseil = conseil!.maj_le;
     if (c.installe) {
       programme = c.installe.programme;
       if (!c.installe.installe_le && c.id) await api.emulateurAdopter(c.id, programme).catch(() => {});
@@ -309,7 +320,7 @@ export async function reglerEmulateur(plateforme: string): Promise<string | null
     nom = n;
   }
   if (!programme) return null;
-  const { sys, cle } = ajouter(etat.pc.emulateurs[plateforme], { nom, programme, ligne });
+  const { sys, cle } = ajouter(etat.pc.emulateurs[plateforme], { nom, programme, ligne, ...(depuisConseil ? { conseil: depuisConseil } : {}) });
   await reglerPc('emulateurs', { ...etat.pc.emulateurs, [plateforme]: sys });
   toast(sys.liste.length > 1 ? `✅ ${nom} ajouté pour ${plateforme}.` : `✅ ${nom} réglé pour ${plateforme}.`);
   return cle;

@@ -154,6 +154,52 @@ export interface EmulateurRecommande {
   forks?: (EmulateurRecommande & { actif?: boolean; note?: string })[];
 }
 
+/** Un BIOS ou firmware du conseil (contrat 1.8–1.11, relevés réels du 16/10). Seul `conseil.bios` fait foi (jamais la
+ * chaîne `bios` d'une ligne LaunchBox). */
+export interface BiosConseil {
+  fichier: string;
+  type: 'fichier' | 'dossier' | 'motif' | 'installation' | 'archive';
+  racine: 'system_retroarch' | 'dossier_emulateur' | 'installation_par_l_emulateur' | string;
+  chemin?: string;
+  facultatif?: boolean;
+  /** Une clé (prod.keys, keys.txt) : jamais servie, Frogtend dit qu'elle manque. */
+  coffre?: boolean;
+  note?: string;
+  disponible?: boolean;
+  sha1?: string;
+  taille?: number;
+  url?: string;
+  /** Type `motif` : les fichiers servis (`null` est lu comme une liste vide). */
+  fichiers?: { nom: string; sha1: string; taille: number; url: string }[] | null;
+}
+
+/** Un cœur RetroArch servi par Firehouse (contrat 1.12). */
+export interface PaquetCoeur {
+  url: string;
+  sha256: string;
+  taille: number;
+  version: string;
+  source: string;
+}
+
+/** Le conseil de la maison pour un système (contrat 1.8) : il PRIME sur la liste LaunchBox ; `null` = aucun conseil
+ * (jamais deviné). */
+export interface Conseil {
+  plateforme: string;
+  /** L'id de l'émulateur dans les sources de Firehouse (« retroarch », « pcsx2 », « dosbox_staging »…). */
+  emulateur: string;
+  coeur: string | null;
+  /** SA ligne de commande (« -L "cores\snes9x_libretro.dll" "%rom%" ») ; vide pour un émulateur autonome. */
+  ligne_de_commande: string;
+  alternatives: { nom: string; emulateur: string | null; coeur: string | null; quand: string; site: string; paquet?: PaquetCoeur | null }[];
+  bios: BiosConseil[];
+  paquet?: PaquetCoeur | null;
+  version_attendue: string | null;
+  note: string;
+  origine: string;
+  maj_le: string;
+}
+
 /** Ce que devient l'installation d'un émulateur décrit par Firehouse. */
 export type InstallationFirehouse =
   | { sorte: 'installe'; emulateur: EmulateurInstalle }
@@ -531,7 +577,7 @@ export const api = {
   importAjouter: (jeux: import('$lib/import/local').JeuAImporter[]) =>
     appeler<import('$lib/import/local').BilanImport>('import_ajouter', { jeux }),
   emulateursRecommandes: (plateforme: string) =>
-    appeler<{ emulateurs?: EmulateurRecommande[] }>('emulateurs_recommandes', { plateforme }),
+    appeler<{ emulateurs?: EmulateurRecommande[]; conseil?: Conseil | null }>('emulateurs_recommandes', { plateforme }),
 };
 
 /**

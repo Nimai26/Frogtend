@@ -3,6 +3,12 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 16/10 — J'avais le relevé réel qui montrait le cas, et je ne l'ai pas croisé avec le code
+Ce qui s'est passé : pour le conseil de Firehouse, j'avais relevé en réel que MS-DOS conseille RetroArch alors que la
+liste ne donne que DOSBox Staging. Mon code ne cherchait le conseillé QUE dans la liste : il aurait été ignoré sans un
+mot. Les deux experts l'ont vu. · Comment l'appliquer : après un relevé réel, passer CHAQUE cas relevé dans le code (ou
+mieux, en faire un test) avant de demander la relecture — un relevé qui n'est pas devenu un test ne protège de rien.
+
 ## 05/10 — Suspendre un programme : penser à TOUTES les sorties
 Ce qui s'est passé : la première version du gel des jeux PC (0.47.0) ne dégelait qu'en passant par « Reprendre »,
 « Quitter » ou la fin de partie. L'expert a trouvé les autres sorties : menu fermé par Alt+F4, Frogtend fermé pendant

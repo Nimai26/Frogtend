@@ -156,7 +156,7 @@ impl Source {
     pub async fn emulateurs(&self, plateforme: &str) -> Resultat<Value> {
         match self {
             Source::Firehouse(c) => c.obtenir_json(&format!("/emulateurs?plateforme={}", encoder(plateforme))).await,
-            Source::Simulee => Ok(json!({ "ok": true, "plateforme": plateforme, "emulateurs": [] })),
+            Source::Simulee => Ok(json!({ "ok": true, "plateforme": plateforme, "conseil": null, "emulateurs": [] })),
         }
     }
 

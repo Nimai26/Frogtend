@@ -398,9 +398,24 @@ pub fn decouper(ligne: &str) -> Vec<String> {
 }
 
 /// Le lanceur d'une ROM ou d'une image disque par un émulateur : ses arguments, puis le fichier du jeu (tel quel).
+/// Une ligne qui dit OÙ mettre le jeu (`%rom%`, la forme du conseil de Firehouse, contrat 1.8 : `-L
+/// "cores\snes9x_libretro.dll" "%rom%"`) le reçoit à cet endroit, et une seule fois ; sinon il va à la fin.
 pub fn lanceur_emulateur(programme: &str, ligne: &str, fichier_du_jeu: &Path) -> Lanceur {
-    let mut arguments = decouper(ligne);
-    arguments.push(fichier_du_jeu.to_string_lossy().to_string());
+    let jeu = fichier_du_jeu.to_string_lossy().to_string();
+    let mut place = false;
+    let mut arguments: Vec<String> = decouper(ligne)
+        .into_iter()
+        .map(|a| match a.to_ascii_lowercase().find("%rom%") {
+            Some(i) => {
+                place = true;
+                format!("{}{}{}", &a[..i], jeu, &a[i + 5..])
+            }
+            None => a,
+        })
+        .collect();
+    if !place {
+        arguments.push(jeu);
+    }
     let dossier = Path::new(programme).parent().map(PathBuf::from).unwrap_or_default().to_string_lossy().to_string();
     Lanceur { programme: programme.into(), arguments, dossier }
 }
@@ -562,6 +577,19 @@ mod tests {
         let l = lanceur_emulateur(r"E:\RetroArch\retroarch.exe", r#"-L "cores\snes9x_libretro.dll" -f"#, Path::new(r"E:\Jeux\SNES\Super Mario World (USA).sfc"));
         assert_eq!(l.arguments.last().unwrap(), r"E:\Jeux\SNES\Super Mario World (USA).sfc");
         assert_eq!(l.dossier, r"E:\RetroArch", "les cœurs se trouvent depuis le dossier de RetroArch");
+    }
+
+    #[test]
+    fn la_ligne_du_conseil_de_firehouse_recoit_le_jeu_a_la_place_de_rom() {
+        // Relevé réel du 16/10 (SNES) : le jeu remplace « %rom% », il n'est pas ajouté une deuxième fois.
+        let jeu = Path::new(r"E:\Jeux\SNES\Super Mario World (USA).sfc");
+        let l = lanceur_emulateur(r"E:\RetroArch\retroarch.exe", r#"-L "cores\snes9x_libretro.dll" "%rom%""#, jeu);
+        assert_eq!(l.arguments, vec!["-L", r"cores\snes9x_libretro.dll", r"E:\Jeux\SNES\Super Mario World (USA).sfc"]);
+        // Au milieu de la ligne, collé à une option, en majuscules : à sa place aussi.
+        let l = lanceur_emulateur("emu.exe", r#"--jeu=%ROM% -f"#, jeu);
+        assert_eq!(l.arguments, vec![r"--jeu=E:\Jeux\SNES\Super Mario World (USA).sfc", "-f"]);
+        // Un conseil d'émulateur autonome (ligne vide) : le jeu seul.
+        assert_eq!(lanceur_emulateur("pcsx2-qt.exe", "", jeu).arguments, vec![r"E:\Jeux\SNES\Super Mario World (USA).sfc"]);
     }
 }
 

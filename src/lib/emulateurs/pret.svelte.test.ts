@@ -41,10 +41,11 @@ const installer = vi.fn(async (id: string, _nom: string, _maj: boolean, o: { san
   return { id, nom: 'RPCS3', programme: 'E:\\Emulateurs\\RPCS3\\rpcs3.exe', dossier: 'E:\\Emulateurs\\RPCS3' };
 });
 const assistant = vi.fn(async () => 'assistant');
+const completerRetroArch = vi.fn(async (..._a: unknown[]) => 'RetroArch — snes9x');
 vi.mock('./assistant.svelte', () => ({
   installerEmulateur: (...a: unknown[]) => installer(...(a as [string, string, boolean, { sansQuestion?: boolean }])),
   installerParFirehouse: vi.fn(),
-  completerRetroArch: vi.fn(),
+  completerRetroArch: (...a: unknown[]) => completerRetroArch(...a),
   recommandationsParDefaut: () => [],
   reglerEmulateur: () => assistant(),
 }));
@@ -52,7 +53,9 @@ vi.mock('./assistant.svelte', () => ({
 const { preparerPourJouer } = await import('./pret.svelte');
 
 describe('prêt à jouer, de bout en bout', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    const { api } = await import('$lib/api');
+    vi.mocked(api.emulateurFiche).mockImplementation(async () => ({ id: 'rpcs3', nom: 'RPCS3', ligne: '', installable: true }));
     appels.length = 0;
     confirmer.mockClear();
     etat.pc.emulateurs = {};
@@ -87,6 +90,41 @@ describe('prêt à jouer, de bout en bout', () => {
     expect(await preparerPourJouer('Sony Playstation 3', 1)).toBeNull();
     expect(appels).toEqual([]);
     expect(etat.pc.dossierEmulateurs).toBe('');
+  });
+
+  it('suit le conseil de la maison : son émulateur, sa ligne (avec les options de Frogtend), jamais celle de LaunchBox', async () => {
+    const { api } = await import('$lib/api');
+    // Relevé réel du 16/10 (SNES) : la liste LaunchBox recommande autre chose ; le conseil dit RetroArch + snes9x.
+    vi.mocked(api.emulateursRecommandes).mockResolvedValueOnce({
+      conseil: {
+        plateforme: 'Super Nintendo Entertainment System',
+        emulateur: 'retroarch',
+        coeur: 'snes9x_libretro',
+        ligne_de_commande: '-L "cores\\snes9x_libretro.dll" "%rom%"',
+        alternatives: [],
+        bios: [],
+        version_attendue: null,
+        note: '',
+        origine: 'amorce',
+        maj_le: '2026-10-04T13:27:38',
+      },
+      emulateurs: [
+        { nom: 'Snes9x', site: '', recommande: true, ligne_de_commande: '', extensions: [], bios: '', id: 'snes9x' },
+        { nom: 'RetroArch', site: '', recommande: false, ligne_de_commande: '-L "cores\\bsnes_libretro.dll"', extensions: [], bios: '', id: 'retroarch' },
+      ],
+    } as never);
+    vi.mocked(api.emulateurFiche).mockImplementation(async (nom: string) =>
+      nom === 'RetroArch' ? { id: 'retroarch', nom: 'RetroArch', ligne: '-f', installable: true } : null,
+    );
+    installer.mockResolvedValueOnce({ id: 'retroarch', nom: 'RetroArch', programme: 'E:\\Emulateurs\\RetroArch\\retroarch.exe', dossier: 'E:\\Emulateurs\\RetroArch' });
+    const cle = await preparerPourJouer('Super Nintendo Entertainment System', 2);
+    expect(cle).toBe('1');
+    expect(installer.mock.calls.at(-1)?.[0]).toBe('retroarch');
+    expect(appels).toContain('manette retroarch');
+    expect(completerRetroArch.mock.calls[0][1]).toBe('-L "cores\\snes9x_libretro.dll" -f "%rom%"');
+    const sys = etat.pc.emulateurs['Super Nintendo Entertainment System'] as { liste: { ligne: string; conseil?: string }[] };
+    expect(sys.liste[0].ligne).toBe('-L "cores\\snes9x_libretro.dll" -f "%rom%"');
+    expect(sys.liste[0].conseil).toBe('2026-10-04T13:27:38');
   });
 
   it('les jeux Windows n’ont pas besoin d’émulateur', async () => {
