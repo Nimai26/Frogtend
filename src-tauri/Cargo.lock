@@ -795,6 +795,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4bfbf56724aa9eca8afa4fcfadeb479e722935bb2a0900c2d37e0cc477af0688"
 
 [[package]]
+name = "cmake"
+version = "0.1.58"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0f78a02292a74a88ac736019ab962ece0bc380e3f977bf72e376c5d78ff0678"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "combine"
 version = "4.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1536,7 +1545,7 @@ dependencies = [
 
 [[package]]
 name = "frogtend"
-version = "0.59.0"
+version = "0.60.0"
 dependencies = [
  "argon2",
  "bytes",
@@ -1551,6 +1560,7 @@ dependencies = [
  "rand 0.8.8",
  "reqwest 0.12.28",
  "rusqlite",
+ "sdl3-sys",
  "serde",
  "serde_json",
  "sevenz-rust",
@@ -4113,6 +4123,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rpkg-config"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a2d2f3481209a6b42eec2fbb49063fb4e8d35b57023401495d4fe0f85c817f0"
+
+[[package]]
 name = "rusqlite"
 version = "0.32.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4323,6 +4339,26 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
+
+[[package]]
+name = "sdl3-src"
+version = "3.4.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "400d0fb006a4485fde477cfc56a250c99d7bfb183fefd145c15fe7607db7fc49"
+
+[[package]]
+name = "sdl3-sys"
+version = "0.7.2+SDL-3.4.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82b6a7f3cad40c5b318b3539bb4624389f4a03504cd5f4c65030787b962505ac"
+dependencies = [
+ "cc",
+ "cmake",
+ "pkg-config",
+ "rpkg-config",
+ "sdl3-src",
+ "vcpkg",
+]
 
 [[package]]
 name = "security-framework"

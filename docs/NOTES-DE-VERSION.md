@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.60.0 — Les manettes PlayStation et Switch ouvrent le menu en jeu
+
+- Pendant une partie, une manette **PlayStation** (DualShock 4, DualSense) ou **Switch** (Pro, Joy-Con), et d'autres
+  comme certaines 8BitDo, ouvrent maintenant le menu de Frogtend (Select + R1, soit Share/Create + R1 ou − + R) et le
+  pilotent, comme une manette Xbox. Le bouton du BAS valide (Croix, ou B sur une manette Nintendo).
+- Elles servent aussi à « manette → clavier » des jeux PC.
+- Lu par SDL3, compilé dans Frogtend (aucun fichier à part). À savoir : en USB, une manette PlayStation peut changer de
+  couleur de barre lumineuse, et une manette Switch éteindre ses voyants de joueur, pendant la partie.
+
 ## 0.59.0 — Le menu en jeu met en pause les consoles récentes
 
 - **Switch (Eden) et 3DS (Azahar)** : ouvrir le menu de Frogtend met le jeu en pause (leur propre réglage, activé par

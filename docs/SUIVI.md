@@ -15,7 +15,7 @@
         peuvent avoir cette combinaison ; il en faut une bien moins courante, par exemple Select + R1 » (remplace la
         décision du 30/09) ; le maintien d'1 s est gardé contre les ouvertures par erreur.
   - [ ] b. Il s'ouvre toujours au clavier (Pause/Attn, réglable) — ✅ existe depuis 0.11.0.
-  - [ ] c. Lecture de la manette pendant la partie : XInput (manettes Xbox, manette virtuelle de Sunshine) ; SDL3
+  - [x] c. ✅ 0.60.0 (à essayer avec une manette PlayStation/Switch). Lecture de la manette pendant la partie : XInput (manettes Xbox, manette virtuelle de Sunshine) ; SDL3
         compilé dans le programme pour les manettes PlayStation/Switch/8BitDo (✅ décidé par Seb le 30/09 : « SDL3
         embarqué, aucune DLL »). Lisibilité en arrière-plan à MESURER (sonde, voir 🧪).
   - [x] d. Un seul menu : retirer les combinaisons propres aux émulateurs posées en 0.8.0 (Select + Start de
@@ -242,6 +242,15 @@ d'abord :
 - Jellyfin → Taodbox : projet côté Firehouse, pas le travail de Frogtend.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.60.0** (16/10) — Lot OSD étape 4 : SDL3 3.4.18 compilé dans Frogtend (sdl3-sys, aucune DLL ; CMake des outils
+  Visual Studio indiqué dans `src-tauri/.cargo/config.toml`, rien installé). Un fil SDL unique, endormi hors partie
+  (manettes alors refermées) ; évènements coupés et file vidée ; manettes `XInput#` (Xbox, Sunshine, Steam) laissées à
+  XInput ; boutons par position ; voyants PS5/Switch éteints plutôt que numérotés ; DirectInput COUPÉ (SDL y prend la
+  manette en exclusif : une manette purement DirectInput n'ouvre pas le menu — dit à Seb). Vérifié : SDL démarre sans
+  erreur sur Venkman (aucune manette allumée à l'essai). Tests : 322 cœur ; avis AVANT de l'expert lancement, puis
+  relecture (1 bloquant : file d'évènements qui se remplissait ; 3 importants ; corrigés). NON vérifié : une vraie
+  manette PlayStation/Switch, dans l'application lancée, avec un émulateur qui lit aussi la manette.
 
 - **0.59.0** (16/10) — Adaptateurs du menu en jeu (h) : Eden et Azahar en pause par leur `pauseWhenInBackground`
   (seulement portables ; un « non » de la personne est gardé) ; Cemu, Xenia, xemu, Vita3K FIGÉS d'office (décision de

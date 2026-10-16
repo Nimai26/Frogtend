@@ -48,6 +48,16 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Les manettes PlayStation et Switch (0.60.0)
+- [ ] Une manette PlayStation (USB, puis Bluetooth) pendant un jeu (RetroArch, RPCS3, DuckStation…) : Share/Create + R1
+      tenus 1 s ouvrent le menu ? La croix et Croix/Rond le pilotent ? Le jeu garde la manette (et sa vibration)
+      après « ▶ Reprendre » ? La barre lumineuse change-t-elle de couleur ?
+- [ ] Une manette Switch Pro (ou Joy-Con) avec Eden : − + R ouvrent le menu ? Eden garde la manette ? Les voyants ?
+- [ ] Une 8BitDo : en mode X (Xbox), et en mode D si tu l'utilises (en mode D, elle n'ouvre PAS le menu : voulu, pour
+      ne jamais la retirer à l'émulateur).
+- [ ] Un jeu PC réglé « manette → clavier » avec une manette PlayStation.
+- [ ] Après la partie, dans le journal de Frogtend : les lignes « manette : … lue par SDL / laissée à XInput ».
+
 ## Les consoles récentes en pause au menu (0.59.0)
 - [ ] Un jeu Switch (Eden) ou 3DS (Azahar) ▸ View+RB1 : le jeu se met en pause ? « ▶ Reprendre » le relance ?
 - [ ] Un jeu Wii U (Cemu), Xbox 360 (Xenia), Xbox (xemu) ou PS Vita (Vita3K), en plein écran ▸ View+RB1 : le menu

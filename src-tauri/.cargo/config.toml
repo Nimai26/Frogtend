@@ -1,0 +1,5 @@
+# Outils de COMPILATION de Frogtend sur Venkman (rien pour l'application elle-même).
+# SDL3 (manettes, compilé dans le programme) se construit avec CMake : celui fourni avec les outils de compilation de
+# Visual Studio 2022, sans rien installer ni toucher au PATH de Windows. Sur une autre machine : adapter ce chemin.
+[env]
+CMAKE = "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"

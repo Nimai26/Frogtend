@@ -201,7 +201,8 @@ impl Lecteur {
             }
         }
         let _ = t;
-        e
+        // Les autres manettes (PlayStation, Switch, 8BitDo…), lues par SDL3 dans son propre fil.
+        crate::manettes_sdl::reunir(e, crate::manettes_sdl::etat())
     }
 }
 

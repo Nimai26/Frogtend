@@ -1,6 +1,6 @@
 [package]
 name = "frogtend"
-version = "0.59.0"
+version = "0.60.0"
 description = "Frogtend — la ludothèque de la maison, servie par Firehouse"
 authors = ["Nimai"]
 license = "Apache-2.0"
@@ -47,6 +47,10 @@ flate2 = "1"
 tauri-plugin-global-shortcut = "2"
 
 [target.'cfg(windows)'.dependencies]
+# SDL3 compilé DANS le programme (décision de Seb, 30/09 : « SDL3 embarqué, aucune DLL ») : manettes PlayStation,
+# Switch, et celles qui ont un pilote HIDAPI dans SDL (une partie des 8BitDo…), lues pendant la partie pour le menu en
+# jeu (XInput lit déjà les manettes Xbox ; DirectInput coupé, voir manettes_sdl.rs).
+sdl3-sys = { version = "0.7", features = ["build-from-source-static"] }
 # Menu en jeu : fenêtres du jeu, touches envoyées (Win32).
 windows = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Input_XboxController", "Win32_Devices_DeviceAndDriverInstallation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_Graphics_Gdi", "Win32_Security", "Win32_System_Com", "Data_Pdf", "Storage", "Storage_Streams", "Foundation"] }
 

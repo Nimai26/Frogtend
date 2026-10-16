@@ -20,6 +20,7 @@ pub mod jeux_pc;
 pub mod lancement;
 pub mod livret;
 pub mod manettes;
+pub mod manettes_sdl;
 pub mod locale;
 pub mod gratuits;
 pub mod import_local;

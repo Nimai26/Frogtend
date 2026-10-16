@@ -38,3 +38,5 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
 - (16/10, expert lancement) MAME : témoin « vivant » (réécrit par Frogtend toutes les quelques secondes ; le script
   relance le jeu s'il cesse de changer) pour qu'un plantage de Frogtend menu ouvert ne laisse pas le jeu en pause.
 - (16/10) Vider tout seul `target\debug` quand il dépasse 30 Go (outil de développement, pas Frogtend lui-même).
+- (16/10, expert lancement) Manettes Nintendo : une « disposition Nintendo » (A à droite valide) par
+  `SDL_GetGamepadButtonLabel`, si Seb la veut ; aujourd'hui le bouton du BAS valide partout (comme Taodbox).

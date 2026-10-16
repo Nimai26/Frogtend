@@ -901,6 +901,7 @@ fn suivre_manette_menu(app: &AppHandle, numero: u64) {
         let mut premier_plan = crate::clavier::PremierPlan::default();
         let mut eleve_dit = false;
         let mut refus_dit = false;
+        let mut refus_sdl_dit = false;
         loop {
             let menu = app.state::<crate::menu_jeu::MenuJeu>();
             if !menu.en_cours(numero) {
@@ -913,6 +914,16 @@ fn suivre_manette_menu(app: &AppHandle, numero: u64) {
             let ouvert = menu.ouvert.load(std::sync::atomic::Ordering::SeqCst);
             let t = std::time::Instant::now();
             let etat = lecteur.lire(t);
+            // Les manettes vues par SDL (PlayStation, Switch…) et un échec de SDL : au journal, pour les essais.
+            for v in crate::manettes_sdl::nouvelles_vues() {
+                app.state::<Noyau>().journaliser(&format!("manette : {v}"));
+            }
+            if !refus_sdl_dit {
+                if let Some(e) = crate::manettes_sdl::erreur() {
+                    refus_sdl_dit = true;
+                    app.state::<Noyau>().journaliser(&format!("manettes SDL indisponibles ({e}) : seules les manettes Xbox sont lues"));
+                }
+            }
             let evenements = osd.pas(etat, t, ouvert);
             let va_ouvrir = evenements.contains(&crate::osd_manette::Evenement::Ouvrir);
             if let (Some(m), Some(d)) = (clavier.as_mut(), dossier_jeu.as_deref()) {
