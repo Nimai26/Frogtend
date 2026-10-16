@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Conseil } from '$lib/api';
-import { avecConseil, biosADire, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, messagePret, poidsBios, type Possible } from './pret';
+import { avecConseil, biosADire, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, messagePret, micrologicielServi, palier, poidsBios, versionDansNote, type Possible } from './pret';
 
 const rec = (nom: string, recommande: boolean, bios = '') => ({ nom, site: '', recommande, ligne_de_commande: '', extensions: [], bios });
 
@@ -93,6 +93,33 @@ describe('le conseil de la maison (contrat 1.8)', () => {
     expect(biosADire([{ ...xbox[0], disponible: true }]).fournis).toEqual([]);
     // Avec un conseil, la chaîne LaunchBox n'a plus cours, même pour un autre émulateur.
     expect(biosRetroArch(ligneLb('Autre', 'autre', false, '', 'x.bin'), conseilPsx)).toEqual([]);
+  });
+
+  it('l’avancement se montre par pas de 10 %', () => {
+    expect(palier(0, 206197916)).toBe(0);
+    expect(palier(103098958, 206197916)).toBe(50);
+    expect(palier(206197916, 206197916)).toBe(100);
+    expect(palier(5, null)).toBeNull();
+  });
+
+  it('l’accord dit le micrologiciel PS3 fourni (et seulement pour RPCS3)', () => {
+    const conseilPs3: Conseil = {
+      ...conseilSnes,
+      plateforme: 'Sony Playstation 3',
+      emulateur: 'rpcs3',
+      coeur: null,
+      ligne_de_commande: '',
+      // Relevé réel du 16/10.
+      bios: [{ chemin: '', coffre: false, disponible: true, facultatif: false, fichier: 'PS3UPDAT.PUP', note: 'firmware 4.93', racine: 'installation_par_l_emulateur', sha1: 'ae2a4f49ec6c09d124fed20f84231ce27d10c7b7', taille: 206197916, type: 'installation', url: '/api/jeux/v1/bios/ae2a4f49ec6c09d124fed20f84231ce27d10c7b7?nom=PS3UPDAT.PUP' }],
+    };
+    expect(micrologicielServi(conseilPs3.bios)?.fichier).toBe('PS3UPDAT.PUP');
+    expect(versionDansNote('firmware 4.93 récupéré chez Sony (04/10) — installé par le menu de RPCS3')).toBe('4.93');
+    expect(versionDansNote('clés : dans le coffre')).toBeNull();
+    expect(micrologicielServi(conseilSwitch.bios)).toBeUndefined();
+    const choix = { rec: ligneLb('RPCS3', 'rpcs3', true), id: 'rpcs3', nom: 'RPCS3', comment: 'frogtend' as const };
+    const m = messagePret({ plateforme: 'Sony Playstation 3', jeux: 7, choix, taille: null, dossier: 'E:\\Emulateurs', dossierNouveau: false, conseil: conseilPs3 });
+    expect(m).toContain('le micrologiciel PS3 (197 Mo), fourni par Firehouse');
+    expect(m).not.toContain('fichier système');
   });
 
   it('l’accord unique parle des fichiers du conseil et des clés manquantes', () => {

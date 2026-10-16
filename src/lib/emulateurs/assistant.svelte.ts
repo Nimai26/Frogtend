@@ -4,10 +4,10 @@
 
 import { listen } from '@tauri-apps/api/event';
 import { ajouter } from './choix';
-import { avecConseil, biosADireOuPoser, biosATelecharger, biosRetroArch, estConseille, ligneDe, poidsBios } from './pret';
+import { avecConseil, biosADireOuPoser, biosATelecharger, biosRetroArch, estConseille, ligneDe, palier, poidsBios } from './pret';
 import { isTauri } from '@tauri-apps/api/core';
 import { api, taille, type BilanBios, type EmulateurInstalle, type EmulateurRecommande } from '$lib/api';
-import { choisir, confirmer, demander, informer, toast } from '$lib/dialogues/fenetres.svelte';
+import { choisir, confirmer, demander, fermerToast, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat, reglerPc } from '$lib/etat.svelte';
 
@@ -93,6 +93,41 @@ export async function installerEmulateur(
   } finally {
     arreter();
     installationEmulateur.id = null;
+  }
+}
+
+/**
+ * Le micrologiciel PS3 SERVI PAR FIREHOUSE : téléchargé (avancement montré tous les 10 %), vérifié, installé sans
+ * fenêtre par RPCS3. L'accord (avec sa taille) est demandé AVANT par l'appelant. Rend la version installée, ou `null`.
+ */
+export async function installerMicrologicielPs3(programme: string): Promise<string | null> {
+  let message = toast('💿 Micrologiciel PS3 : téléchargement…', 'neutre');
+  let dernier: number | null = -1;
+  const arreter = isTauri()
+    ? await listen<{ id: string; recus: number; total: number | null }>('emulateur', (e) => {
+        if (e.payload.id !== 'rpcs3-micrologiciel') return;
+        const p = palier(e.payload.recus, e.payload.total);
+        if (p === dernier || p === null) return;
+        dernier = p;
+        fermerToast(message);
+        message = toast(
+          p >= 100
+            ? '💿 Micrologiciel PS3 : vérifié, installation dans RPCS3 (sans fenêtre)…'
+            : `💿 Micrologiciel PS3 : ${p} % (${taille(e.payload.recus)}${e.payload.total ? ` sur ${taille(e.payload.total)}` : ''})…`,
+          'neutre',
+        );
+      })
+    : () => {};
+  try {
+    const v = await api.rpcs3MicrologicielServi(programme);
+    toast(`✅ Micrologiciel PS3 ${v} installé. La première partie de chaque jeu prépare RPCS3 quelques minutes, une seule fois.`, 'ok');
+    return v;
+  } catch (e) {
+    toast(`Micrologiciel PS3 non installé : ${motifDuRefus(e)}. En cas de coupure, il reprendra où il en était.`, 'erreur');
+    return null;
+  } finally {
+    arreter();
+    fermerToast(message);
   }
 }
 

@@ -294,6 +294,8 @@ pub fn run() {
             commandes::retroarch_etat,
             commandes::retroarch_installer_coeur,
             commandes::bios_poser,
+            commandes::firmware_servi,
+            commandes::rpcs3_micrologiciel_servi,
             commandes::emulateur_regler_manette,
             commandes::rpcs3_installer_micrologiciel,
             commandes::rpcs3_micrologiciel,

@@ -86,7 +86,12 @@
       ✅ (4) en 0.51.0 : BIOS servis posés (fichier/archive obligatoires, SHA-1 vérifié, jamais un fichier remplacé,
       copie sûre entre disques), clés et « à poser soi-même » dits, PCSX2.ini réglé sans défaire un choix. Reste :
       les motifs servis (`fichiers[]`, aucun au 16/10) ; une archive déjà en place est retéléchargée (mineur) ; PCSX2
-      non portable (ini dans Documents) : écart commun à tous les modules PCSX2. Règles Firehouse (16/10) : seul `conseil.bios[]` fait foi ;
+      non portable (ini dans Documents) : écart commun à tous les modules PCSX2.
+      ✅ (5) PS3 en 0.52.0 : micrologiciel servi (PUP 4.93) téléchargé, vérifié, installé sans fenêtre ; RPCS3 doit
+      être fermé ; place vérifiée ; réussite = version annoncée dans la note relue après (RPCS3 rend 0 et plante en se
+      fermant, ticket 16421). Reste : la Switch — firmware servi (1.10) NON branché : Eden refuse sans prod.keys ;
+      à faire quand les clés seront posables (lire d'abord la doc d'Eden sur l'installation hors menu). Firehouse :
+      demander un champ `version` dans le BIOS du conseil (aujourd'hui lue dans la `note`). Règles Firehouse (16/10) : seul `conseil.bios[]` fait foi ;
       ignorer `actif`/`statut_emu_france` pour l'émulateur du conseil ; `conseil.paquet: null` → « cœur non servi par
       Firehouse », rien chez libretro (question posée à Seb par Firehouse : laisser RetroArch l'installer ?).
 - [ ] **Lot « Médias »** (contrat 1.6, Firehouse 2.41.0) : ratio réel de la boîte réservé, choix du visuel de la
@@ -192,6 +197,12 @@ d'abord :
 - Jellyfin → Taodbox : projet côté Firehouse, pas le travail de Frogtend.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.52.0** (16/10) — Micrologiciel PS3 servi par Firehouse. Vérifié : essai RÉEL complet sur une COPIE de RPCS3
+  (hors dossier temporaire : RPCS3 refuse de tourner depuis Temp) — PUP servi 206 197 916 o téléchargé et vérifié,
+  4.91 → 4.93 en 2,8 s, réinstallation par-dessus reconnue, rien ne traîne ; tests (firmware servi, empreinte fausse,
+  version dans la note, pourcentage) ; relecture de l'expert lancement (aucun bloquant ; échec silencieux, RPCS3
+  ouvert, attente sans fin corrigés). Tests : 295 cœur, 131 interface.
 
 - **0.51.0** (16/10) — BIOS servis par Firehouse posés tout seuls (contrat 1.9–1.11). Vérifié : essai RÉEL (BIOS PS2
   conseillé 4 194 304 o, SHA-1 conforme, posé dans un PCSX2 de brouillon, PCSX2.ini réglé en une écriture,

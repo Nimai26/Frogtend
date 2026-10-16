@@ -7,9 +7,9 @@ import { taille } from '$lib/api';
 import { confirmer, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat, reglerPc } from '$lib/etat.svelte';
-import { completerRetroArch, installerEmulateur, installerParFirehouse, poserBios, recommandationsParDefaut, reglerEmulateur } from './assistant.svelte';
+import { completerRetroArch, installerEmulateur, installerMicrologicielPs3, installerParFirehouse, poserBios, recommandationsParDefaut, reglerEmulateur } from './assistant.svelte';
 import { ajouter } from './choix';
-import { avecConseil, biosADireOuPoser, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, MANETTE_REGLEE, messagePret, poidsBios, type Possible } from './pret';
+import { avecConseil, biosADireOuPoser, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, MANETTE_REGLEE, messagePret, micrologicielServi, poidsBios, type Possible } from './pret';
 
 /** Les plateformes qui se jouent sans émulateur. */
 const SANS_EMULATEUR = ['Windows'];
@@ -102,12 +102,18 @@ export async function preparerPourJouer(plateforme: string, jeux: number): Promi
     }
   }
   toast(`✅ ${plateforme} est prêt : ${nom}${manette}.`);
-  // RPCS3 sans micrologiciel ne lance aucun jeu du commerce : le dire tout de suite, simplement.
+  // RPCS3 sans micrologiciel ne lance aucun jeu du commerce : celui de Firehouse est installé (compris dans l'accord) ;
+  // s'il n'est pas servi, on le dit tout de suite, simplement.
   if (choix.id === 'rpcs3' && !(await api.rpcs3Micrologiciel(programme).catch(() => null))) {
-    await informer(
-      '💿 Il manque encore le micrologiciel PS3',
-      'Les jeux PS3 en ont besoin. Bientôt, Firehouse le fournira et Frogtend l’installera tout seul.\n\nEn attendant : ⚙ Options ▸ 🕹 Émulateurs ▸ 💿 sur la ligne de RPCS3, avec le fichier PS3UPDAT.PUP du site officiel de PlayStation (quelques secondes, sans fenêtre).',
-    );
+    const servi = conseil && estConseille(choix.rec, conseil) ? micrologicielServi(conseil.bios) : undefined;
+    if (servi) {
+      await installerMicrologicielPs3(programme);
+    } else {
+      await informer(
+        '💿 Il manque encore le micrologiciel PS3',
+        'Les jeux PS3 en ont besoin, et Firehouse ne le fournit pas en ce moment.\n\nTu peux l’installer toi-même : ⚙ Options ▸ 🕹 Émulateurs ▸ 💿 sur la ligne de RPCS3, avec le fichier PS3UPDAT.PUP du site officiel de PlayStation (quelques secondes, sans fenêtre).',
+      );
+    }
   }
   return cle;
 }

@@ -45,6 +45,10 @@ const completerRetroArch = vi.fn(async (..._a: unknown[]) => 'RetroArch — snes
 vi.mock('./assistant.svelte', () => ({
   installerEmulateur: (...a: unknown[]) => installer(...(a as [string, string, boolean, { sansQuestion?: boolean }])),
   installerParFirehouse: vi.fn(),
+  installerMicrologicielPs3: vi.fn(async (programme: string) => {
+    appels.push(`micrologiciel ${programme}`);
+    return '4.93';
+  }),
   poserBios: vi.fn(async (plateforme: string) => {
     appels.push(`bios ${plateforme}`);
   }),

@@ -3,6 +3,14 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 16/10 — Un essai réel dans un dossier temporaire a menti
+Ce qui s'est passé : l'installation du micrologiciel sur une copie de RPCS3 plantait (0xC0000409). Ce n'était pas
+Frogtend : RPCS3 refuse de tourner depuis un dossier temporaire, et mon brouillon était dans Temp. L'essai, refait
+dans un dossier ordinaire, a montré deux vérités utiles : RPCS3 plante en se fermant APRÈS avoir installé (son code
+de sortie ne vaut rien), et il garde la date d'origine des fichiers (une comparaison de dates aurait menti). ·
+Comment l'appliquer : un essai réel d'émulateur se fait dans un dossier ordinaire (pas Temp), et sa sortie console
+se lit avant de conclure ; on vérifie le RÉSULTAT par le contenu, pas par une date ni un code de sortie.
+
 ## 16/10 — J'avais le relevé réel qui montrait le cas, et je ne l'ai pas croisé avec le code
 Ce qui s'est passé : pour le conseil de Firehouse, j'avais relevé en réel que MS-DOS conseille RetroArch alors que la
 liste ne donne que DOSBox Staging. Mon code ne cherchait le conseillé QUE dans la liste : il aurait été ignoré sans un

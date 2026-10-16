@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.52.0 — Le micrologiciel PS3 vient de Firehouse
+
+- **⚙ Options ▸ 🕹 Émulateurs ▸ 💿 Micrologiciel PS3** propose maintenant le micrologiciel fourni par Firehouse
+  (version 4.93, environ 197 Mo) : téléchargé avec reprise, son avancement affiché, **vérifié**, puis installé par
+  RPCS3 sans aucune fenêtre. S'il est déjà à jour, rien n'est téléchargé.
+- **« Prêt à jouer » pour la PS3** l'installe aussi s'il manque (c'est dit dans l'accord unique).
+- Garde-fous : RPCS3 doit être fermé (pas pendant une partie) ; la place sur le disque est vérifiée avant ; Frogtend
+  vérifie que la bonne version est bien installée (RPCS3 seul ne le dit pas) ; tes jeux et tes parties ne sont pas
+  touchés.
+
 ## 0.51.0 — Les fichiers système (BIOS) se posent tout seuls
 
 - Quand une console est préparée, Frogtend pose maintenant **les fichiers système obligatoires que Firehouse

@@ -119,6 +119,24 @@ export function biosADireOuPoser(bios: BiosConseil[]): boolean {
   return bios.some((b) => !b.facultatif && b.type !== 'installation');
 }
 
+
+/** Le pourcentage à montrer pour une progression (par pas de 10 %, pour ne pas inonder l'écran). `null` : taille
+ * inconnue. */
+export function palier(recus: number, total: number | null | undefined): number | null {
+  if (!total || total <= 0) return null;
+  return Math.min(100, Math.floor((recus / total) * 10) * 10);
+}
+
+/** La version annoncée dans la note d'un firmware servi (« firmware 4.93 récupéré chez Sony… » → « 4.93 »). */
+export function versionDansNote(note: string | undefined): string | null {
+  return /(?:firmware|micrologiciel)\s+(\d+\.\d+)/i.exec(note ?? '')?.[1] ?? null;
+}
+
+/** Le micrologiciel PS3 que Firehouse sert dans ce conseil (installé par RPCS3 lui-même), s'il y en a un. */
+export function micrologicielServi(bios: BiosConseil[]): BiosConseil | undefined {
+  return bios.find((b) => b.type === 'installation' && b.disponible && !!b.sha1 && !!b.url && b.fichier.toLowerCase().endsWith('.pup'));
+}
+
 /** Les fichiers système obligatoires d'un conseil, pour le dire dans l'accord : ceux que Firehouse fournit, et les
  * clés que personne ne peut fournir (jamais servies). Les firmwares à installer par l'émulateur sont dits à part. */
 export function biosADire(bios: BiosConseil[]): { fournis: string[]; aPoser: string[]; cles: string[] } {
@@ -163,6 +181,10 @@ export function messagePret(o: {
       );
     }
     if (aPoser.length) lignes.push(`Il lui faut aussi : ${aPoser.join(', ')} — Firehouse ne les a pas ; Frogtend te dira où les mettre.`);
+    const pup = micrologicielServi(o.conseil!.bios);
+    if (pup && choix.id === 'rpcs3') {
+      lignes.push(`S’il manque, le micrologiciel PS3 (${pup.taille ? `${Math.round(pup.taille / 1048576)} Mo` : 'quelques centaines de Mo'}), fourni par Firehouse, est installé aussi, sans aucune fenêtre.`);
+    }
     if (cles.length) lignes.push(`Il te faudra aussi tes clés (${cles.join(', ')}) : personne ne peut les fournir, et sans elles les jeux ne démarrent pas.`);
   } else if (choix.rec.bios) {
     lignes.push(`Il lui faut aussi un fichier système (${choix.rec.bios}) : Firehouse le fournira ; en attendant, Frogtend te dira où le mettre.`);

@@ -48,6 +48,12 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Le micrologiciel PS3 de Firehouse (0.52.0)
+- [ ] RPCS3 FERMÉ : ⚙ Options ▸ 🕹 Émulateurs ▸ 💿 Micrologiciel PS3 → « Installé : version 4.91 », proposition de la
+      4.93 (≈ 197 Mo) → ⬇ Installer : l'avancement s'affiche, puis « ✅ Micrologiciel PS3 4.93 installé ». Recliquer
+      sur 💿 : « déjà à jour ». Un jeu PS3 se lance (la première partie de chaque jeu prépare RPCS3 un moment).
+- [ ] RPCS3 OUVERT (un jeu PS3 en cours) : 💿 → message « RPCS3 est ouvert : ferme-le ».
+
 ## Les fichiers système (0.51.0)
 - [ ] Préparer une console qui en a besoin (PS2 avec PCSX2, ou PlayStation avec RetroArch) : l'accord annonce les
       fichiers système et leur poids ; après, « 📀 Fichier système posé » ; un jeu démarre sans demander de BIOS.

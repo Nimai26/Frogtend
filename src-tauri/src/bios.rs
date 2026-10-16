@@ -16,7 +16,7 @@ use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
 /// Un fichier système du conseil (forme réelle relevée le 16/10).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BiosConseil {
     pub fichier: String,
     #[serde(rename = "type")]
@@ -247,6 +247,49 @@ pub async fn poser(source: &Source, bios: &[BiosConseil], dossier_emulateur: &Pa
     bilan
 }
 
+/// Le firmware à installer par l'émulateur (`type: installation`) que Firehouse sert pour ce conseil, s'il y en a un
+/// (PS3UPDAT.PUP pour RPCS3 ; firmware-switch.zip pour Eden).
+pub fn firmware_servi(bios: &[BiosConseil]) -> Option<&BiosConseil> {
+    bios.iter().find(|b| b.sorte == "installation" && b.disponible && b.sha1.as_deref().is_some_and(|s| s.len() == 40) && b.url.is_some())
+}
+
+/// La version annoncée par la note d'un firmware servi (« firmware 4.93 récupéré chez Sony… » → « 4.93 »).
+pub fn version_dans_note(note: &str) -> Option<String> {
+    let bas = note.to_lowercase();
+    let i = ["firmware ", "micrologiciel "].iter().find_map(|m| bas.find(m).map(|i| i + m.len()))?;
+    let v: String = bas[i..].chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+    let v = v.trim_end_matches('.');
+    (v.contains('.') && v.split('.').all(|p| !p.is_empty())).then(|| v.to_string())
+}
+
+/// Télécharge un firmware servi dans `<dossier>\.telechargements\firmware-<sha1>.<ext>` (reprise, progression) et
+/// vérifie son SHA-1. Rend le chemin du fichier vérifié (à retirer après l'installation).
+pub async fn telecharger_firmware(
+    source: &Source,
+    f: &BiosConseil,
+    dossier: &Path,
+    progres: &(dyn Fn(u64, Option<u64>) + Send + Sync),
+) -> Resultat<PathBuf> {
+    let sha1 = f.sha1.clone().unwrap_or_default().to_lowercase();
+    if sha1.len() != 40 || !sha1.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(Erreur::Serveur("Empreinte du firmware invalide.".into()));
+    }
+    let ext = Path::new(&f.fichier).extension().and_then(|e| e.to_str()).filter(|e| e.chars().all(|c| c.is_ascii_alphanumeric())).unwrap_or("bin");
+    let route = f
+        .url
+        .as_deref()
+        .and_then(|u| u.strip_prefix(crate::firehouse::PREFIXE))
+        .ok_or_else(|| Erreur::Serveur("Firehouse n'a pas donné de route pour ce firmware.".into()))?
+        .to_string();
+    let fichier = dossier.join(".telechargements").join(format!("firmware-{sha1}.{ext}"));
+    source.telecharger_route(&route, &fichier, progres).await?;
+    if sha1_fichier(&fichier)? != sha1 {
+        let _ = std::fs::remove_file(&fichier);
+        return Err(Erreur::Conflit(format!("{} est arrivé abîmé (empreinte différente) : rien n'est installé.", f.fichier)));
+    }
+    Ok(fichier)
+}
+
 /// PCSX2 (contrat 1.11) : son BIOS par défaut réglé dans `inis\PCSX2.ini` (clé par clé, le reste gardé), seulement
 /// si la personne n'en a pas déjà choisi un. Jamais les `.nvm`.
 pub fn regler_pcsx2(emulateur: &Path, bios: &[BiosConseil]) -> Resultat<bool> {
@@ -448,6 +491,48 @@ mod tests {
         assert!(bilan.echecs.is_empty());
         assert_eq!(bilan.a_poser, ["naomi.zip (pas encore servi par Firehouse)"]);
         assert!(!d.path().join("dc").exists());
+    }
+
+    #[tokio::test]
+    async fn le_firmware_servi_est_verifie_avant_d_etre_rendu() {
+        use httpmock::prelude::*;
+        let contenu = b"PUP de test".to_vec();
+        let sha = {
+            let mut h = Sha1::new();
+            h.update(&contenu);
+            h.finalize().iter().map(|o| format!("{o:02x}")).collect::<String>()
+        };
+        let serveur = MockServer::start();
+        serveur.mock(|w, r| {
+            w.method(GET).path(format!("/api/jeux/v1/bios/{sha}"));
+            r.status(200).body(contenu.clone());
+        });
+        let source = Source::Firehouse(crate::firehouse::Client::nouveau(&serveur.base_url(), "j").unwrap());
+        // Relevé réel du 16/10 (PS3) : type installation, chemin vide.
+        let bios = vec![
+            b(json!({"fichier": "prod.keys", "type": "fichier", "racine": "dossier_emulateur", "coffre": true, "disponible": false})),
+            b(json!({"fichier": "PS3UPDAT.PUP", "type": "installation", "racine": "installation_par_l_emulateur", "chemin": "", "disponible": true, "sha1": sha, "taille": 11, "url": format!("/api/jeux/v1/bios/{sha}?nom=PS3UPDAT.PUP"), "note": "firmware 4.93"})),
+        ];
+        let f = firmware_servi(&bios).unwrap();
+        assert_eq!(f.fichier, "PS3UPDAT.PUP");
+        let d = tempfile::tempdir().unwrap();
+        let p = telecharger_firmware(&source, f, d.path(), &|_, _| {}).await.unwrap();
+        assert_eq!(std::fs::read(&p).unwrap(), contenu);
+        assert!(p.to_string_lossy().ends_with(".PUP"));
+        // Empreinte annoncée fausse : refusé, rien ne reste.
+        let faux = BiosConseil { sha1: Some("0".repeat(40)), url: Some(format!("/api/jeux/v1/bios/{sha}?nom=x")), ..f.clone() };
+        assert!(matches!(telecharger_firmware(&source, &faux, d.path(), &|_, _| {}).await, Err(Erreur::Conflit(_))));
+        assert!(!d.path().join(".telechargements").join(format!("firmware-{}.PUP", "0".repeat(40))).exists());
+        assert!(firmware_servi(&bios[..1]).is_none());
+    }
+
+    #[test]
+    fn la_version_d_un_firmware_se_lit_dans_sa_note() {
+        // Note réelle du 16/10.
+        assert_eq!(version_dans_note("firmware 4.93 récupéré chez Sony (04/10) — installé par le menu de RPCS3").as_deref(), Some("4.93"));
+        assert_eq!(version_dans_note("Micrologiciel 18.1.0 (zip des NCA)").as_deref(), Some("18.1.0"));
+        assert_eq!(version_dans_note("clés : dans le coffre de Seb").as_deref(), None);
+        assert_eq!(version_dans_note("firmware récent").as_deref(), None);
     }
 
     #[test]

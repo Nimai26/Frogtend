@@ -511,6 +511,8 @@ export const api = {
     appeler<void>('jeu_jouer', { id, commandes: commandes ?? null, emulateur: emulateur ?? null, version: version ?? null, figer: figer ?? false }),
   jeuAntiTriche: (id: number) => appeler<VerificationFiger>('jeu_anti_triche', { id }),
   biosPoser: (plateforme: string, programme: string) => appeler<BilanBios>('bios_poser', { plateforme, programme }),
+  firmwareServi: (plateforme: string) => appeler<BiosConseil | null>('firmware_servi', { plateforme }),
+  rpcs3MicrologicielServi: (programme: string) => appeler<string>('rpcs3_micrologiciel_servi', { programme }),
   choisirVersion: (id: number, chemin: string) => appeler<void>('jeu_choisir_version', { id, chemin }),
   referencesManette: (id: string) => appeler<ReferenceManette[]>('references_manette', { id }),
   profilsManetteEmulateur: (id: string, programme: string) =>

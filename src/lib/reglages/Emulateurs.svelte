@@ -1,11 +1,12 @@
 <script lang="ts">
   // Les émulateurs réglés sur CE PC, par système. Retirer un réglage ne désinstalle rien.
   import { onMount } from 'svelte';
-  import { api, type EmulateurInstalle, type Plateforme } from '$lib/api';
+  import { api, taille, type EmulateurInstalle, type Plateforme } from '$lib/api';
+  import { versionDansNote } from '$lib/emulateurs/pret';
   import { choisir, confirmer, demander, informer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { etat, reglerPc } from '$lib/etat.svelte';
-  import { dossierEmulateurs, installerEmulateur, parcourir, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
+  import { dossierEmulateurs, installerEmulateur, installerMicrologicielPs3, parcourir, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
   import { plusRecente } from '$lib/emulateurs/versions';
   import { retirer as retirerEmulateur, systemesProposes } from '$lib/emulateurs/choix';
   import { PLATEFORMES_CONNUES } from '$lib/ludotheque/categories';
@@ -80,9 +81,27 @@
   /** Les émulateurs dont Frogtend sait reprendre les profils de manette. */
   const AVEC_PROFILS = ['dolphin', 'duckstation', 'pcsx2'];
 
-  /** Le micrologiciel PS3 (fichier officiel de Sony, jamais téléchargé par Frogtend) installé par RPCS3. */
+  /** Le micrologiciel PS3 installé par RPCS3 : celui que Firehouse fournit (vérifié), sinon un fichier choisi. */
   async function micrologicielPs3(i: EmulateurInstalle) {
     const actuel = await api.rpcs3Micrologiciel(i.programme).catch(() => null);
+    const servi = await api.firmwareServi('Sony Playstation 3').catch(() => null);
+    if (servi && servi.taille) {
+      // Déjà à la version fournie : rien à télécharger.
+      const fournie = versionDansNote(servi.note);
+      if (actuel && fournie && actuel === fournie) {
+        toast(`💿 Le micrologiciel PS3 est déjà à jour (version ${actuel}).`, 'ok');
+        return;
+      }
+      const oui = await confirmer('💿 Micrologiciel PS3', {
+        message: [
+          actuel ? `Installé : version ${actuel}.` : 'Pas encore installé : les jeux PS3 du commerce en ont besoin.',
+          `Firehouse fournit le micrologiciel${servi.note ? ` (${servi.note})` : ''} : ${taille(servi.taille)} à télécharger. Frogtend le vérifie puis RPCS3 l’installe sans aucune fenêtre. Tes jeux et tes parties ne sont pas touchés.`,
+        ].join('\n'),
+        libelleValider: `⬇ Installer (${taille(servi.taille)})`,
+      });
+      if (oui) await installerMicrologicielPs3(i.programme);
+      return;
+    }
     const ok = await confirmer('💿 Micrologiciel PS3', {
       message: [
         actuel ? `Installé : version ${actuel}.` : 'Pas encore installé : les jeux PS3 du commerce en ont besoin.',

@@ -818,6 +818,26 @@ mod tests {
         println!("MEDIAS {} : {:?}", m["medias"].as_array().map_or(0, |l| l.len()), tailles);
     }
 
+    /// Contrat 1.9 en RÉEL : télécharge le micrologiciel PS3 servi (≈ 206 Mo) dans un dossier de BROUILLON et vérifie
+    /// son SHA-1 (RPCS3 n'est pas lancé : son installation sans fenêtre est déjà vérifiée).
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_BROUILLON=<dossier> cargo test essai_micrologiciel_servi -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_micrologiciel_servi() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let brouillon = std::path::PathBuf::from(std::env::var("FROGTEND_BROUILLON").expect("FROGTEND_BROUILLON"));
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let s = crate::source::Source::Firehouse(Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap());
+        let v = s.emulateurs("Sony Playstation 3").await.unwrap();
+        let bios = crate::bios::lire_bios(&v["conseil"]["bios"], &mut Default::default());
+        let f = crate::bios::firmware_servi(&bios).unwrap();
+        println!("SERVI {} {:?} octets, note {:?}", f.fichier, f.taille, f.note);
+        let debut = std::time::Instant::now();
+        let p = crate::bios::telecharger_firmware(&s, f, &brouillon, &|_, _| {}).await.unwrap();
+        println!("RECU {} : {} octets en {:?}, SHA-1 vérifié", p.display(), std::fs::metadata(&p).unwrap().len(), debut.elapsed());
+    }
+
     /// Contrat 1.9–1.11 en RÉEL : pose les BIOS obligatoires du conseil PS2 (4 Mo) dans un PCSX2 de BROUILLON
     /// (`FROGTEND_BROUILLON=<dossier vide>`), vérifiés, puis règle son PCSX2.ini. Aucun vrai émulateur touché.
     /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_BROUILLON=<dossier> cargo test essai_bios_reels -- --ignored --nocapture`

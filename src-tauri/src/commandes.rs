@@ -2002,6 +2002,68 @@ pub async fn jeu_copie_avant_mod(noyau: State<'_, Noyau>, id: i64) -> Resultat<S
 /// même en cas d'échec : le résultat se vérifie en relisant la version installée. Rend cette version (« 4.93 »).
 #[tauri::command]
 pub async fn rpcs3_installer_micrologiciel(programme: String, pup: String) -> Resultat<String> {
+    installer_pup(programme, pup, None).await
+}
+
+/// La plateforme de la PS3 chez Firehouse (nom LaunchBox).
+const PLATEFORME_PS3: &str = "Sony Playstation 3";
+
+/// Le firmware que Firehouse sert pour une console (conseil, `type: installation`), s'il y en a un : pour l'annoncer
+/// (nom, taille, note) avant de le proposer.
+#[tauri::command]
+pub async fn firmware_servi(noyau: State<'_, Noyau>, plateforme: String) -> Resultat<Option<crate::bios::BiosConseil>> {
+    let v = noyau.session().await?.source.emulateurs(&plateforme).await?;
+    let mut ignore = crate::bios::Bilan::default();
+    let bios = crate::bios::lire_bios(&v["conseil"]["bios"], &mut ignore);
+    Ok(crate::bios::firmware_servi(&bios).cloned())
+}
+
+/// Le micrologiciel PS3 SERVI PAR FIREHOUSE (conseil de la PS3, contrat 1.9) : téléchargé avec reprise et progression
+/// (événement « emulateur », id « rpcs3-micrologiciel »), SHA-1 vérifié, puis installé sans fenêtre par RPCS3. Un seul
+/// accord a été donné avant (sa taille annoncée).
+#[tauri::command]
+pub async fn rpcs3_micrologiciel_servi(app: AppHandle, noyau: State<'_, Noyau>, programme: String) -> Resultat<String> {
+    let p = std::path::PathBuf::from(&programme);
+    if p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase() != "rpcs3.exe" || !p.is_file() {
+        return Err(Erreur::Refus("Ce n'est pas le programme de RPCS3.".into()));
+    }
+    let dossier = p.parent().map(std::path::PathBuf::from).unwrap_or_default();
+    // AVANT de télécharger 200 Mo : RPCS3 fermé, et la place sur le disque.
+    rpcs3_ferme(&dossier)?;
+    let s = noyau.session().await?;
+    let v = s.source.emulateurs(PLATEFORME_PS3).await?;
+    let mut ignore = crate::bios::Bilan::default();
+    let bios = crate::bios::lire_bios(&v["conseil"]["bios"], &mut ignore);
+    let f = crate::bios::firmware_servi(&bios)
+        .filter(|f| f.fichier.to_lowercase().ends_with(".pup"))
+        .cloned()
+        .ok_or_else(|| Erreur::Introuvable("Firehouse ne fournit pas (encore) le micrologiciel PS3.".into()))?;
+    // Le PUP, puis RPCS3 qui l'extrait dans dev_flash : environ trois fois sa taille, par prudence.
+    if let (Some(t), Some(libre)) = (f.taille, crate::jeux_pc::place_libre(&dossier)) {
+        if libre < t.saturating_mul(3) {
+            return Err(Erreur::Disque(format!(
+                "Pas assez de place sur le disque de RPCS3 : il faut environ {} Mo libres.",
+                t.saturating_mul(3) / 1_048_576
+            )));
+        }
+    }
+    let app2 = app.clone();
+    let progres = move |recus, total| {
+        let _ = app2.emit("emulateur", ProgresEmulateur { id: "rpcs3-micrologiciel".into(), recus, total });
+    };
+    let pup = crate::bios::telecharger_firmware(&s.source, &f, &dossier, &progres).await?;
+    let r = installer_pup(programme, pup.to_string_lossy().into(), crate::bios::version_dans_note(&f.note)).await;
+    let _ = std::fs::remove_file(&pup);
+    let _ = std::fs::remove_dir(dossier.join(".telechargements"));
+    r
+}
+
+/// Installe un PS3UPDAT.PUP dans RPCS3, sans fenêtre (`--headless --installfw`), et rend la version installée.
+/// `attendue` (la version annoncée par Firehouse) : l'installation n'est réussie que si RPCS3 la montre ensuite.
+/// Relevé en réel le 16/10 : RPCS3 installe bien (4.91 → 4.93 par-dessus), puis plante en se fermant (bogue connu,
+/// ticket RPCS3 16421) ; il refuse aussi de tourner depuis un dossier temporaire. Son code de sortie ne dit donc rien :
+/// seul le résultat sur le disque compte. Les fichiers gardent la date de l'archive : on compare leur CONTENU.
+async fn installer_pup(programme: String, pup: String, attendue: Option<String>) -> Resultat<String> {
     let p = std::path::PathBuf::from(&programme);
     let nom = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
     if nom != "rpcs3.exe" || !p.is_file() {
@@ -2011,18 +2073,57 @@ pub async fn rpcs3_installer_micrologiciel(programme: String, pup: String) -> Re
         return Err(Erreur::Refus("Choisis le fichier PS3UPDAT.PUP.".into()));
     }
     let dossier = p.parent().map(std::path::PathBuf::from).unwrap_or_default();
+    rpcs3_ferme(&dossier)?;
     tauri::async_runtime::spawn_blocking(move || {
-        crate::lancement::outil_sans_fenetre(&p.to_string_lossy())
+        // RPCS3 rend 0 même quand il échoue : on compare la trace du micrologiciel AVANT et APRÈS.
+        let avant = trace_micrologiciel(&dossier);
+        let mut enfant = crate::lancement::outil_sans_fenetre(&p.to_string_lossy())
             .args(["--headless", "--installfw"])
             .arg(&pup)
             .current_dir(&dossier)
-            .status()
+            .spawn()
             .map_err(|e| Erreur::Disque(format!("RPCS3 ne démarre pas ({e}).")))?;
-        crate::emulateurs_profils::micrologiciel_rpcs3(&dossier)
-            .ok_or_else(|| Erreur::Disque("RPCS3 n'a pas installé le micrologiciel (fichier abîmé ?).".into()))
+        // Jamais d'attente sans fin : 10 minutes au plus, puis RPCS3 (lancé par Frogtend pour ça) est arrêté.
+        let debut = std::time::Instant::now();
+        loop {
+            if enfant.try_wait().map_err(|e| Erreur::Disque(format!("RPCS3 : {e}.")))?.is_some() {
+                break;
+            }
+            if debut.elapsed() > std::time::Duration::from_secs(600) {
+                let _ = enfant.kill();
+                let _ = enfant.wait();
+                return Err(Erreur::Disque("RPCS3 n'a pas fini d'installer le micrologiciel en 10 minutes : arrêté.".into()));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        }
+        let version = crate::emulateurs_profils::micrologiciel_rpcs3(&dossier)
+            .ok_or_else(|| Erreur::Disque("RPCS3 n'a pas installé le micrologiciel (fichier abîmé ?).".into()))?;
+        match attendue {
+            Some(a) if version != a => Err(Erreur::Disque(format!("RPCS3 n'a pas installé la version {a} : le micrologiciel est en version {version}."))),
+            Some(_) => Ok(version),
+            None if avant.is_some() && trace_micrologiciel(&dossier) == avant => {
+                Err(Erreur::Disque(format!("RPCS3 n'a rien changé : le micrologiciel reste en version {version}.")))
+            }
+            None => Ok(version),
+        }
     })
     .await
     .map_err(|_| Erreur::Disque("L'installation du micrologiciel s'est arrêtée brutalement.".into()))?
+}
+
+/// RPCS3 ne doit pas tourner pendant qu'on change son micrologiciel (une partie en cours lit dev_flash).
+fn rpcs3_ferme(dossier: &std::path::Path) -> Resultat<()> {
+    if crate::lancement::processus_du_dossier(dossier).is_empty() {
+        Ok(())
+    } else {
+        Err(Erreur::Refus("RPCS3 est ouvert : ferme-le (ou quitte ta partie), puis recommence.".into()))
+    }
+}
+
+/// La trace du micrologiciel installé : le contenu de `dev_flash\vsh\etc\version.txt` (RPCS3 garde la date de
+/// l'archive : seule la version change).
+fn trace_micrologiciel(dossier: &std::path::Path) -> Option<Vec<u8>> {
+    std::fs::read(dossier.join("dev_flash").join("vsh").join("etc").join("version.txt")).ok()
 }
 
 /// La version du micrologiciel PS3 installé dans ce RPCS3, s'il y en a un.
@@ -2631,6 +2732,30 @@ mod tests {
         assert!(!super::programme_du_conseil("retroarch", r"E:\Emulateurs\PCSX2\pcsx2-qt.exe"));
         assert!(!super::programme_du_conseil("retroarch", r"E:\Emulateurs\DuckStation\duckstation-qt-x64-ReleaseLTCG.exe"));
         assert!(!super::programme_du_conseil("", r"E:\x.exe"));
+    }
+
+    /// RÉEL, sur une COPIE de brouillon de RPCS3 (`FROGTEND_RPCS3_BROUILLON=<dossier avec rpcs3.exe>`) : le micrologiciel
+    /// servi est téléchargé (≈ 206 Mo), vérifié, installé une première fois, puis une deuxième PAR-DESSUS.
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_RPCS3_BROUILLON=<dossier> cargo test essai_micrologiciel_installe -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_micrologiciel_installe() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").unwrap();
+        let rpcs3 = std::path::PathBuf::from(std::env::var("FROGTEND_RPCS3_BROUILLON").unwrap());
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().unwrap();
+        let s = crate::source::Source::Firehouse(crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap());
+        let v = s.emulateurs(super::PLATEFORME_PS3).await.unwrap();
+        let bios = crate::bios::lire_bios(&v["conseil"]["bios"], &mut Default::default());
+        let f = crate::bios::firmware_servi(&bios).unwrap().clone();
+        let pup = crate::bios::telecharger_firmware(&s, &f, &rpcs3, &|_, _| {}).await.unwrap();
+        let exe = rpcs3.join("rpcs3.exe").to_string_lossy().to_string();
+        let debut = std::time::Instant::now();
+        let attendue = crate::bios::version_dans_note(&f.note);
+        println!("1RE INSTALLATION : {:?} en {:?}", super::installer_pup(exe.clone(), pup.to_string_lossy().into(), attendue.clone()).await, debut.elapsed());
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        println!("2E INSTALLATION (par-dessus) : {:?}", super::installer_pup(exe, pup.to_string_lossy().into(), attendue).await);
+        let _ = std::fs::remove_file(&pup);
     }
 
     #[tokio::test]
