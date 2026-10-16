@@ -229,6 +229,21 @@ impl Source {
         }
     }
 
+    /// Les cœurs RetroArch servis par Firehouse (contrat 1.12) : `{ok, coeurs: [...]}`.
+    pub async fn coeurs_retroarch(&self) -> Resultat<Vec<crate::emulateurs::CoeurServi>> {
+        match self {
+            Source::Firehouse(c) => {
+                let v: Value = c.obtenir_json("/emulateurs/retroarch/coeurs").await.map_err(|e| match e {
+                    // Un Firehouse d'avant le contrat 1.12 n'a pas cette route.
+                    Erreur::Introuvable(_) => Erreur::Introuvable("Firehouse ne fournit pas encore de cœurs RetroArch.".into()),
+                    e => e,
+                })?;
+                serde_json::from_value(v["coeurs"].clone()).map_err(|_| Erreur::Serveur("Firehouse a envoyé une liste de cœurs illisible.".into()))
+            }
+            Source::Simulee => Err(Erreur::Refus("Mode simulé : aucun cœur n'est installé.".into())),
+        }
+    }
+
     /// Télécharge un fichier SERVI PAR FIREHOUSE (route de l'API, avec le jeton) : reprise par `Range` depuis le
     /// `.part`, progression. Rend le nombre d'octets du fichier.
     pub async fn telecharger_route(
@@ -245,8 +260,19 @@ impl Source {
             std::fs::create_dir_all(p)?;
         }
         let part = cible.with_extension("part");
-        let debut = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
-        let mut flux = c.flux(route, debut).await?;
+        let mut debut = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
+        let mut flux = match c.flux(route, debut).await {
+            Ok(f) => f,
+            // Une reprise refusée (416 : le `.part` vient d'une AUTRE version du fichier, ou il est déjà complet) : le
+            // `.part` — un fichier de Frogtend, incomplet par nature — est retiré et on repart de zéro, une seule fois.
+            // Sinon le même refus reviendrait à chaque essai. Une coupure réseau, elle, garde le `.part` (reprise).
+            Err(e) if debut > 0 && !matches!(e, Erreur::Reseau(_) | Erreur::JetonRefuse(_)) => {
+                std::fs::remove_file(&part)?;
+                debut = 0;
+                c.flux(route, 0).await?
+            }
+            Err(e) => return Err(e),
+        };
         let total = flux.reponse.content_length().map(|n| if flux.reprise { n + debut } else { n });
         let reprise = flux.reprise && debut > 0;
         let mut sortie = std::fs::OpenOptions::new().create(true).write(true).append(reprise).truncate(!reprise).open(&part)?;

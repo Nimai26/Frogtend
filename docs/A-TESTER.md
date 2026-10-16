@@ -48,6 +48,9 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Les cœurs RetroArch de Firehouse (0.50.0)
+- [ ] En préparant une console jouée par RetroArch (Super Nintendo…), le cœur s'installe sans erreur ; le jeu se lance.
+
 ## Le conseil de la maison (0.49.0)
 - [ ] Une console que tu n'as PAS encore réglée (par exemple Super Nintendo, avec un jeu importé) : ▶ Jouer → l'accord
       unique propose RetroArch (le conseil de Firehouse) ; après « Tout préparer », le jeu se lance en plein écran.

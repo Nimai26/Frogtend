@@ -2224,17 +2224,60 @@ pub fn retroarch_etat(programme: String, ligne: String, bios: Vec<String>) -> Et
     EtatRetroArch { coeur, coeur_present, dossier_bios: bios_dir.to_string_lossy().into(), bios_manquants }
 }
 
-/// Installe un cœur RetroArch depuis le buildbot officiel de libretro.
+/// Installe un cœur RetroArch SERVI PAR FIREHOUSE (vérifié ; jamais pris ailleurs).
 #[tauri::command]
-pub async fn retroarch_installer_coeur(programme: String, coeur: String) -> Resultat<String> {
-    if coeur.contains(['/', '\\']) || !coeur.ends_with("_libretro.dll") {
+pub async fn retroarch_installer_coeur(noyau: State<'_, Noyau>, programme: String, coeur: String) -> Resultat<String> {
+    if !coeur.ends_with("_libretro.dll") || !crate::emulateurs::nom_de_coeur_sur(&coeur) {
         return Err(Erreur::Refus("Nom de cœur invalide.".into()));
     }
     let dossier = std::path::Path::new(&programme).parent().map(std::path::PathBuf::from).unwrap_or_default();
-    let paquet = dossier.join(format!("{coeur}.zip.telechargement"));
-    crate::emulateurs::telecharger(&crate::emulateurs::url_coeur(&coeur), &paquet, &|_, _| {}).await?;
-    let r = crate::emulateurs::installer_coeur(&paquet, &dossier, &coeur);
+    installer_coeur_servi(&noyau.session().await?.source, &dossier, &coeur).await
+}
+
+/// Le cœur RetroArch SERVI PAR FIREHOUSE (contrat 1.12) : téléchargé par l'API (reprise), vérifié (zip puis `.dll`),
+/// posé dans `cores\`. Un cœur que Firehouse ne sert pas n'est pris nulle part ailleurs.
+pub async fn installer_coeur_servi(source: &crate::source::Source, retroarch: &std::path::Path, coeur: &str) -> Resultat<String> {
+    if !crate::emulateurs::nom_de_coeur_sur(coeur) {
+        return Err(Erreur::Refus("Nom de cœur invalide.".into()));
+    }
+    let base = coeur.trim_end_matches(".dll");
+    // Déjà là : rien à télécharger (jamais remplacé).
+    let deja = retroarch.join("cores").join(format!("{base}.dll"));
+    if deja.is_file() {
+        return Ok(deja.to_string_lossy().into());
+    }
+    let liste = source.coeurs_retroarch().await?;
+    let servi = crate::emulateurs::coeur_servi(&liste, coeur)
+        .cloned()
+        .ok_or_else(|| Erreur::Introuvable(format!("Le cœur {base} n'est pas fourni par Firehouse : Frogtend ne le prend pas ailleurs.")))?;
+    let route = servi
+        .url
+        .strip_prefix(crate::firehouse::PREFIXE)
+        .ok_or_else(|| Erreur::Serveur("Firehouse n'a pas donné de route pour ce cœur.".into()))?
+        .to_string();
+    if !crate::emulateurs::nom_de_coeur_sur(&servi.coeur) {
+        return Err(Erreur::Serveur("Firehouse a donné un nom de cœur invalide.".into()));
+    }
+    let attente = retroarch.join(".telechargements");
+    // Le zip n'est pas immuable (contrat 1.12) : son empreinte dans le nom fait qu'un nouveau zip ne reprend jamais
+    // le `.part` d'un ancien ; les restes d'une version précédente de CE cœur (fichiers de Frogtend) sont retirés.
+    let nom = format!("{}-{}.zip", servi.coeur, servi.sha256_zip.chars().filter(char::is_ascii_hexdigit).take(16).collect::<String>());
+    if let Ok(l) = std::fs::read_dir(&attente) {
+        for e in l.flatten() {
+            let n = e.file_name().to_string_lossy().to_string();
+            if n.starts_with(&format!("{}-", servi.coeur)) && !n.starts_with(&nom) && e.path().is_file() {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+    let paquet = attente.join(&nom);
+    source.telecharger_route(&route, &paquet, &|_, _| {}).await?;
+    let (p, ra) = (paquet.clone(), retroarch.to_path_buf());
+    let r = tauri::async_runtime::spawn_blocking(move || crate::emulateurs::installer_coeur(&p, &ra, &servi))
+        .await
+        .map_err(|_| Erreur::Disque("L'installation du cœur s'est arrêtée brutalement.".into()))?;
     let _ = std::fs::remove_file(&paquet);
+    let _ = std::fs::remove_dir(&attente);
     Ok(r?.to_string_lossy().into())
 }
 
@@ -2498,5 +2541,71 @@ mod tests {
         assert!(a(&["frogtend.exe", "--TAODBOX"]));
         assert!(!a(&["frogtend.exe"]));
         assert!(!a(&["frogtend.exe", "--taodboxx"]));
+    }
+
+    #[tokio::test]
+    async fn le_coeur_vient_de_firehouse_verifie_et_jamais_d_ailleurs() {
+        use httpmock::prelude::*;
+        use std::io::Write;
+        // Le zip servi : snes9x_libretro.dll à la racine (contrat 1.12).
+        let d = tempfile::tempdir().unwrap();
+        let mut octets = Vec::new();
+        {
+            let mut z = zip::ZipWriter::new(std::io::Cursor::new(&mut octets));
+            z.start_file("snes9x_libretro.dll", zip::write::SimpleFileOptions::default()).unwrap();
+            z.write_all(b"MZ snes9x").unwrap();
+            z.finish().unwrap();
+        }
+        let sha = |o: &[u8]| {
+            use sha2::Digest;
+            format!("{:x}", sha2::Sha256::digest(o))
+        };
+        let serveur = MockServer::start();
+        let liste = serveur.mock(|w, r| {
+            w.method(GET).path("/api/jeux/v1/emulateurs/retroarch/coeurs");
+            r.status(200).json_body(serde_json::json!({"ok": true, "coeurs": [{
+                "coeur": "snes9x_libretro", "source": "stable", "version": "1.22.2", "version_retroarch": "1.22.2",
+                "build_le": null, "sha256_zip": sha(&octets), "sha256_dll": sha(b"MZ snes9x"), "taille": octets.len(),
+                "recupere_le": "2026-10-05T03:38:18", "url": "/api/jeux/v1/emulateurs/retroarch/coeurs/snes9x_libretro/fichier"}]}));
+        });
+        let fichier = serveur.mock(|w, r| {
+            w.method(GET).path("/api/jeux/v1/emulateurs/retroarch/coeurs/snes9x_libretro/fichier");
+            r.status(200).body(octets.clone());
+        });
+        let source = crate::source::Source::Firehouse(crate::firehouse::Client::nouveau(&serveur.base_url(), "jeton").unwrap());
+        let ra = d.path().join("RetroArch");
+        let p = super::installer_coeur_servi(&source, &ra, "snes9x_libretro.dll").await.unwrap();
+        assert_eq!(std::fs::read(&p).unwrap(), b"MZ snes9x");
+        assert!(!ra.join(".telechargements").exists(), "le paquet est retiré après l'installation");
+        // Un cœur que Firehouse ne sert pas : refusé, rien téléchargé ailleurs.
+        assert!(matches!(super::installer_coeur_servi(&source, &ra, "bsnes_libretro.dll").await, Err(crate::erreurs::Erreur::Introuvable(_))));
+        assert!(!ra.join("cores").join("bsnes_libretro.dll").exists());
+        liste.assert_hits(2);
+        fichier.assert_hits(1);
+    }
+
+    #[tokio::test]
+    async fn un_part_d_une_autre_version_ne_bloque_jamais_le_telechargement() {
+        use httpmock::prelude::*;
+        let serveur = MockServer::start();
+        // La reprise est refusée (416 : le `.part` est plus long que le nouveau fichier) ; sans reprise : le fichier.
+        let refus = serveur.mock(|w, r| {
+            w.method(GET).path("/api/jeux/v1/f").header_exists("range");
+            r.status(416);
+        });
+        let entier = serveur.mock(|w, r| {
+            w.method(GET)
+                .path("/api/jeux/v1/f")
+                .matches(|r| !r.headers.as_ref().is_some_and(|h| h.iter().any(|(k, _)| k.eq_ignore_ascii_case("range"))));
+            r.status(200).body(b"nouveau".to_vec());
+        });
+        let d = tempfile::tempdir().unwrap();
+        let cible = d.path().join("x.zip");
+        std::fs::write(cible.with_extension("part"), b"ancienne version plus longue").unwrap();
+        let source = crate::source::Source::Firehouse(crate::firehouse::Client::nouveau(&serveur.base_url(), "jeton").unwrap());
+        assert_eq!(source.telecharger_route("/f", &cible, &|_, _| {}).await.unwrap(), 7);
+        assert_eq!(std::fs::read(&cible).unwrap(), b"nouveau");
+        refus.assert_hits(1);
+        entier.assert_hits(1);
     }
 }

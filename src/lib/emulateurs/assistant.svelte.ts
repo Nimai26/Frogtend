@@ -203,7 +203,7 @@ export async function completerRetroArch(
     const oui =
       sansQuestion ||
       (await confirmer(`🧩 Installer le cœur « ${e.coeur} » ?`, {
-        message: `RetroArch a besoin de ce cœur pour ${plateforme}. Il vient du site officiel de libretro (quelques Mo).`,
+        message: `RetroArch a besoin de ce cœur pour ${plateforme}. Firehouse le fournit, vérifié (quelques Mo).`,
         libelleValider: '⬇ Installer le cœur',
       }));
     if (!oui) return null;

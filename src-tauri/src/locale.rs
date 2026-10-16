@@ -818,6 +818,24 @@ mod tests {
         println!("MEDIAS {} : {:?}", m["medias"].as_array().map_or(0, |l| l.len()), tailles);
     }
 
+    /// Contrat 1.12 en RÉEL : installe le cœur Snes9x servi par Firehouse dans un RetroArch de BROUILLON
+    /// (`FROGTEND_BROUILLON=<dossier vide>`), vérifié zip puis dll. ~1 Mo téléchargé, aucun vrai RetroArch touché.
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_BROUILLON=<dossier> cargo test essai_coeur_servi -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_coeur_servi() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let brouillon = std::path::PathBuf::from(std::env::var("FROGTEND_BROUILLON").expect("FROGTEND_BROUILLON"));
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let s = crate::source::Source::Firehouse(Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap());
+        let liste = s.coeurs_retroarch().await.unwrap();
+        println!("COEURS SERVIS : {}", liste.len());
+        let p = crate::commandes::installer_coeur_servi(&s, &brouillon.join("RetroArch"), "snes9x_libretro.dll").await.unwrap();
+        let m = std::fs::metadata(&p).unwrap();
+        println!("COEUR POSE : {} ({} octets, empreinte {})", p, m.len(), crate::sauvegarde::empreinte(std::path::Path::new(&p)).unwrap());
+    }
+
     /// Contrat 1.8 en RÉEL, lecture seule : le `conseil` de quelques plateformes (RetroArch, autonome, sans conseil),
     /// pour le lot « Contrat 1.13 ». Rien n'est téléchargé.
     /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_conseils -- --ignored --nocapture`

@@ -584,21 +584,66 @@ pub fn nom_du_coeur(retroarch: &Path, coeur: &str) -> Option<String> {
     })
 }
 
-/// L'adresse officielle d'un cœur RetroArch (dernière version compilée pour Windows x64).
-pub fn url_coeur(coeur: &str) -> String {
-    format!("https://buildbot.libretro.com/nightly/windows/x86_64/latest/{coeur}.zip")
+/// Un cœur RetroArch servi par Firehouse (contrat 1.12, relevé réel du 16/10 : 55 cœurs stables 1.22.2, quelques-uns
+/// « nightly » figés). Frogtend ne prend AUCUN cœur ailleurs (plus de buildbot de libretro : décision du 16/10, en
+/// attendant celle de Seb pour un cœur non servi).
+#[derive(Debug, Clone, Deserialize)]
+pub struct CoeurServi {
+    /// `snes9x_libretro` (sans `.dll`).
+    pub coeur: String,
+    /// La route de Firehouse (`/api/jeux/v1/emulateurs/retroarch/coeurs/<coeur>/fichier`).
+    pub url: String,
+    pub sha256_zip: String,
+    pub sha256_dll: String,
+    #[serde(default)]
+    pub version: String,
 }
 
-/// Installe un cœur RetroArch (paquet zip officiel déjà téléchargé) dans `cores/`.
-pub fn installer_coeur(paquet: &Path, retroarch: &Path, coeur: &str) -> Resultat<PathBuf> {
-    let cores = retroarch.join("cores");
-    decompresser(paquet, Format::Zip, &cores)?;
-    let chemin = cores.join(coeur);
-    if chemin.is_file() {
-        Ok(chemin)
-    } else {
-        Err(Erreur::Disque(format!("Après l'installation, le cœur {coeur} est introuvable.")))
+/// Un nom de cœur sûr dans un chemin : lettres, chiffres et « _ » seulement, finissant par `_libretro` (jamais « : »,
+/// « .. » ni séparateur — le nom vient du serveur et entre dans des chemins, dont un dossier supprimé ensuite).
+pub fn nom_de_coeur_sur(coeur: &str) -> bool {
+    let base = coeur.strip_suffix(".dll").unwrap_or(coeur);
+    base.len() > "_libretro".len() && base.ends_with("_libretro") && base.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// Le cœur `snes9x_libretro.dll` (ou sans `.dll`) dans la liste servie.
+pub fn coeur_servi<'a>(liste: &'a [CoeurServi], coeur: &str) -> Option<&'a CoeurServi> {
+    let base = coeur.trim_end_matches(".dll");
+    liste.iter().find(|c| c.coeur.eq_ignore_ascii_case(base))
+}
+
+/// Installe un cœur RetroArch depuis son zip servi par Firehouse : l'empreinte du zip d'abord, puis extraction À PART
+/// (`.telechargements\<cœur>`), l'empreinte de la `.dll`, et SEULEMENT alors la pose dans `cores\`. Un cœur déjà
+/// présent n'est jamais remplacé. Rien de vérifié à moitié n'arrive dans RetroArch.
+pub fn installer_coeur(paquet: &Path, retroarch: &Path, servi: &CoeurServi) -> Resultat<PathBuf> {
+    let dll = format!("{}.dll", servi.coeur);
+    if !nom_de_coeur_sur(&servi.coeur) {
+        return Err(Erreur::Refus("Nom de cœur invalide.".into()));
     }
+    let cible = retroarch.join("cores").join(&dll);
+    if cible.is_file() {
+        return Ok(cible);
+    }
+    if crate::sauvegarde::empreinte(paquet)?.to_lowercase() != servi.sha256_zip.to_lowercase() {
+        return Err(Erreur::Conflit(format!("Le cœur {} est arrivé abîmé (empreinte différente) : rien n'est installé.", servi.coeur)));
+    }
+    let a_part = retroarch.join(".telechargements").join(&servi.coeur);
+    let r = (|| {
+        decompresser(paquet, Format::Zip, &a_part)?;
+        let extrait = a_part.join(&dll);
+        if !extrait.is_file() {
+            return Err(Erreur::Disque(format!("Le paquet du cœur {} ne contient pas {dll}.", servi.coeur)));
+        }
+        if crate::sauvegarde::empreinte(&extrait)?.to_lowercase() != servi.sha256_dll.to_lowercase() {
+            return Err(Erreur::Conflit(format!("Le cœur {} ne correspond pas à son empreinte : rien n'est installé.", servi.coeur)));
+        }
+        std::fs::create_dir_all(cible.parent().unwrap_or(retroarch))?;
+        std::fs::rename(&extrait, &cible)?;
+        Ok(cible.clone())
+    })();
+    // Le dossier d'extraction est celui que Frogtend vient de créer pour ce cœur : il ne contient que le paquet ouvert.
+    let _ = std::fs::remove_dir_all(&a_part);
+    r
 }
 
 /// Ajoute les profils de manette officiels de RetroArch (paquet zip déjà téléchargé) dans `autoconfig\`. Un profil
@@ -937,7 +982,56 @@ mod tests {
     fn le_coeur_se_lit_dans_la_ligne_de_firehouse() {
         assert_eq!(coeur_de(r#"-L "cores\snes9x_libretro.dll" -f"#).as_deref(), Some("snes9x_libretro.dll"));
         assert_eq!(coeur_de("-f"), None);
-        assert_eq!(url_coeur("snes9x_libretro.dll"), "https://buildbot.libretro.com/nightly/windows/x86_64/latest/snes9x_libretro.dll.zip");
+    }
+
+    /// Un zip de cœur comme Firehouse le sert (la `.dll` à la racine) et ses empreintes.
+    fn zip_de_coeur(dossier: &Path, coeur: &str, contenu: &[u8]) -> (PathBuf, CoeurServi) {
+        let chemin = dossier.join(format!("{coeur}.zip"));
+        let mut z = zip::ZipWriter::new(std::fs::File::create(&chemin).unwrap());
+        z.start_file(format!("{coeur}.dll"), zip::write::SimpleFileOptions::default()).unwrap();
+        z.write_all(contenu).unwrap();
+        z.finish().unwrap();
+        let dll = dossier.join("dll-attendue");
+        std::fs::write(&dll, contenu).unwrap();
+        let servi = CoeurServi {
+            coeur: coeur.into(),
+            url: format!("/api/jeux/v1/emulateurs/retroarch/coeurs/{coeur}/fichier"),
+            sha256_zip: crate::sauvegarde::empreinte(&chemin).unwrap(),
+            sha256_dll: crate::sauvegarde::empreinte(&dll).unwrap(),
+            version: "1.22.2".into(),
+        };
+        (chemin, servi)
+    }
+
+    #[test]
+    fn un_coeur_servi_n_arrive_dans_retroarch_que_verifie() {
+        let d = tempfile::tempdir().unwrap();
+        let ra = d.path().join("RetroArch");
+        std::fs::create_dir_all(&ra).unwrap();
+        let (zip, servi) = zip_de_coeur(d.path(), "snes9x_libretro", b"MZ coeur snes9x");
+        assert_eq!(coeur_servi(std::slice::from_ref(&servi), "snes9x_libretro.dll").map(|c| c.version.as_str()), Some("1.22.2"));
+        assert!(coeur_servi(std::slice::from_ref(&servi), "bsnes_libretro.dll").is_none());
+        // Un nom piégé venu du serveur n'entre jamais dans un chemin.
+        for n in ["C:x_libretro", "..\\x_libretro", "a/b_libretro", "snes9x", "_libretro", "x_libretro.exe"] {
+            assert!(!nom_de_coeur_sur(n), "{n}");
+            assert!(installer_coeur(&zip, &ra, &CoeurServi { coeur: n.into(), ..servi.clone() }).is_err());
+        }
+        assert!(nom_de_coeur_sur("snes9x_libretro.dll") && nom_de_coeur_sur("mednafen_psx_hw_libretro"));
+        // Zip abîmé : rien dans cores\.
+        let mauvais = CoeurServi { sha256_zip: "00".into(), ..servi.clone() };
+        assert!(matches!(installer_coeur(&zip, &ra, &mauvais), Err(Erreur::Conflit(_))));
+        // Zip juste mais .dll différente de son empreinte : rien dans cores\, et le dossier d'extraction est parti.
+        let dll_fausse = CoeurServi { sha256_dll: "00".into(), ..servi.clone() };
+        assert!(matches!(installer_coeur(&zip, &ra, &dll_fausse), Err(Erreur::Conflit(_))));
+        assert!(!ra.join("cores").join("snes9x_libretro.dll").exists());
+        assert!(!ra.join(".telechargements").join("snes9x_libretro").exists());
+        // Tout est juste : le cœur est posé, octet pour octet.
+        let p = installer_coeur(&zip, &ra, &servi).unwrap();
+        assert_eq!(std::fs::read(&p).unwrap(), b"MZ coeur snes9x");
+        // Déjà là : jamais remplacé.
+        std::fs::write(&p, b"le mien").unwrap();
+        installer_coeur(&zip, &ra, &servi).unwrap();
+        assert_eq!(std::fs::read(&p).unwrap(), b"le mien");
     }
 
     #[test]

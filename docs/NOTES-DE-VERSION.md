@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.50.0 — Les cœurs RetroArch viennent de Firehouse, vérifiés
+
+- Quand RetroArch a besoin d'un cœur (Snes9x pour la Super Nintendo, par exemple), Frogtend le prend maintenant chez
+  **Firehouse** : la version stable assortie à RetroArch, téléchargée avec reprise si la connexion coupe, et
+  **vérifiée deux fois** (le paquet, puis le cœur lui-même) avant d'être posé. Rien de vérifié à moitié n'arrive dans
+  RetroArch, et un cœur déjà présent n'est jamais remplacé.
+- Avant, il venait du site de libretro, en version de développement et sans vérification. Un cœur que Firehouse ne
+  fournit pas est maintenant refusé avec un message clair (rien n'est pris ailleurs).
+
 ## 0.49.0 — « Prêt à jouer » suit le conseil de la maison
 
 - Quand une console est préparée pour la première fois, Frogtend choisit l'émulateur **conseillé par Firehouse**

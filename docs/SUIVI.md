@@ -77,7 +77,12 @@
       ✅ (1)+(2) en 0.49.0 : le conseil prime (même absent de la liste : MS-DOS → RetroArch, liste = DOSBox Staging
       seul), ligne = options de Frogtend juste avant `%rom%`, `%rom%` remplacé au lancement, `maj_le` retenu dans
       pc.json (reste : PROPOSER la mise à jour quand `maj_le` change). Installer un jeu DOS exige DOSBox (refus clair
-      sinon) — si MS-DOS a été préparé avec RetroArch, Frogtend devra proposer d'ajouter DOSBox Staging (à faire). Règles Firehouse (16/10) : seul `conseil.bios[]` fait foi ;
+      sinon) — si MS-DOS a été préparé avec RetroArch, Frogtend devra proposer d'ajouter DOSBox Staging (à faire).
+      ✅ (3) en 0.50.0 : cœurs RetroArch pris chez Firehouse (`/emulateurs/retroarch/coeurs`), reprise, empreintes du
+      zip puis de la dll, pose seulement après ; un cœur non servi est refusé (rien chez libretro). Reste chez libretro
+      (expert, 16/10) : RetroArch LUI-MÊME (buildbot stable, emulateurs.rs) → passer par `/emulateurs/retroarch/paquet`
+      de Firehouse ; les profils de manette `autoconfig.zip` (buildbot, sans empreinte) → demander à Firehouse de les
+      servir (besoin à écrire). Règles Firehouse (16/10) : seul `conseil.bios[]` fait foi ;
       ignorer `actif`/`statut_emu_france` pour l'émulateur du conseil ; `conseil.paquet: null` → « cœur non servi par
       Firehouse », rien chez libretro (question posée à Seb par Firehouse : laisser RetroArch l'installer ?).
 - [ ] **Lot « Médias »** (contrat 1.6, Firehouse 2.41.0) : ratio réel de la boîte réservé, choix du visuel de la
@@ -183,6 +188,12 @@ d'abord :
 - Jellyfin → Taodbox : projet côté Firehouse, pas le travail de Frogtend.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.50.0** (16/10) — Cœurs RetroArch servis par Firehouse, vérifiés (contrat 1.12). Vérifié : essai RÉEL (55 cœurs
+  servis ; Snes9x posé dans un RetroArch de brouillon, 2 948 608 octets, en-tête MZ, aucun reste) ; tests (zip ou dll
+  abîmés refusés sans rien poser, cœur présent jamais remplacé, cœur non servi refusé, nom piégé refusé, reprise 416
+  sur un `.part` d'une autre version) ; relecture de l'expert lancement (aucun bloquant, 2 importants corrigés).
+  Tests : 285 cœur, 129 interface.
 
 - **0.49.0** (16/10) — « Prêt à jouer » suit le conseil de la maison (contrat 1.8) ; `%rom%` placé au lancement.
   Vérifié : conseils RÉELS relevés chez Firehouse pour 7 plateformes (EXEMPLES) et repris dans les tests (SNES, PS1,
