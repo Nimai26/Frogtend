@@ -145,8 +145,14 @@ d'abord :
       2.67.8 (paquet RPCS3 servi de nouveau, RPCS3 a renommé ses fichiers `_win64_msvc.7z`) ; firmware Switch servi
       18.1.0, Nintendo publie 23.0.0 (rien téléchargé, avis à Seb) ; Ryubing (git.ryujinx.app) injoignable depuis la
       maison : source de son paquet peut-être périmée.
-- [ ] **Firehouse — besoin 20** (15/10) : les visuels des plateformes (fond du menu « du système », rangées de
-      Taodbox).
+- [ ] **Firehouse — besoins 16 et 20 : proposition de Firehouse** (16/10, `docs/media/28-FROGTEND-BESOINS-16-20.md`
+      côté Firehouse, soumise à Seb, RIEN codé) : 16 = `POST /identifier` (empreinte du stock → nom exact → titre
+      unique, sinon candidats ; jamais deviné) + `GET /base/{launchbox_id}` ; PS3 : Frogtend extrairait
+      `PS3_GAME/PARAM.SFO` de l'ISO et enverrait TITLE_ID + TITLE (forme proposée, PAS retenue). 20 = deux types par
+      plateforme : logo/bannière transparent ≤ 500 px + fond 16:9 ≤ 1000 px. Images copiées depuis D:\LaunchBox\Images
+      de Venkman d'abord. Ne rien coder avant la décision de Seb, transmise par Firehouse.
+      Écart signalé par Firehouse : `/recherche` → `jaquette` est une URL Internet (images.launchbox-app.com) ;
+      Frogtend ne l'affiche pas (vérifié 16/10) : ne jamais l'afficher sans décision de Seb.
 - [ ] **Firehouse — images de Dune et de tout MS-DOS** (cause donnée par Firehouse le 16/10) : depuis la 1.6, seules les
       images RAPATRIÉES sont servies ; le rapatriement MS-DOS n'a jamais été lancé (25 images de Dune « à
       télécharger »). Firehouse le présente à Seb, chiffré (PC, MS-DOS, PS3…). Rien à changer dans Frogtend.
