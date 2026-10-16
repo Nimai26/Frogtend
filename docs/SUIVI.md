@@ -68,7 +68,10 @@
       au menu. Livraisons : (a) puis (b).
       ✅ (a) en 0.53.0. Expert lancement : 1re version BLOQUÉE (fenêtres hors du jeu visées ; touche qui rebascule un
       jeu déjà en plein écran) — refaite ; 2e relecture : 2 importants corrigés (état relu juste avant d'agir ; le
-      choix de la personne jamais défait). Reste (b) manette → clavier.
+      choix de la personne jamais défait). ✅ (b) en 0.54.0 : « Jouer à la manette (jeu fait pour le clavier) ».
+      Expert lancement : 1 BLOQUANT (premier plan vérifié toutes les 250 ms seulement → frappes possibles vers une
+      autre fenêtre) corrigé (vérifié à chaque envoi) + 4 importants corrigés ; expert interface : ZQSD faux en QWERTY
+      → touches « Déplacement » par POSITION. Idées notées : choisir une touche en l'appuyant, répétition auto.
 - [ ] **Lot « Contrat 1.13 »** (analyse d'écart de l'expert contrat, 16/10 ; texte et exemples réels reçus de Firehouse
       le 16/10, dans CONTRAT-API-JEUX-V1.md et EXEMPLES-API-JEUX-V1.md). Frogtend n'utilise rien de la 1.7 à la 1.13.
       Écarts : (1.8) l'émulateur est choisi par `recommande` LaunchBox et sa LIGNE DE COMMANDE LaunchBox est reprise
@@ -207,6 +210,12 @@ d'abord :
 - Jellyfin → Taodbox : projet côté Firehouse, pas le travail de Frogtend.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.54.0** (16/10) — Manette → clavier pour les jeux PC (préréglages + bouton par bouton). Vérifié : essai RÉEL sur
+  une fenêtre de test avec l'AZERTY de Seb — lettres Z Q S D et positions « Déplacement » → « zqsdzqsd » ; tests du
+  moteur (appui/relâche, deux boutons une touche, gâchettes, combinaison du menu en deux temps et relâchée dans le
+  désordre, chaque touche a un code) ; relectures des experts lancement et interface (1 bloquant + 7 importants
+  corrigés). Tests : 305 cœur, 140 interface. PAS vérifié : un vrai jeu (Rock Force), un jeu DirectInput/SDL.
 
 - **0.53.0** (16/10) — Plein écran au lancement des jeux PC (par jeu : touche du jeu suggérée par son mode d'emploi,
   ou fenêtre agrandie sans cadre). Vérifié : suggestion RÉELLE sur les 10 jeux Windows de Seb (Rock Force → F4,

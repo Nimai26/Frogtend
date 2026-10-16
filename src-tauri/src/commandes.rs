@@ -694,6 +694,7 @@ pub async fn jeu_jouer(
     version: Option<String>,
     figer: Option<bool>,
     plein_ecran: Option<String>,
+    clavier: Option<std::collections::BTreeMap<String, String>>,
 ) -> Resultat<()> {
     let jeu = noyau.registre().jeu(id)?;
     let (plateforme, titre) = jeu.map(|j| (j.plateforme, j.titre)).unwrap_or_default();
@@ -736,6 +737,8 @@ pub async fn jeu_jouer(
         emulateur: id_emulateur,
         dossier_emulateur,
         figer,
+        // Manette → clavier : un jeu PC lancé sans émulateur seulement (un émulateur a ses propres manettes).
+        clavier: clavier.filter(|c| !c.is_empty() && dossier_jeu.is_some()),
         dossier_jeu,
     });
     armer_touche_menu(&app, true);
@@ -849,35 +852,79 @@ fn combinaison_menu(app: &AppHandle) -> u16 {
 /// menu ; menu ouvert, la croix, A et B deviennent des commandes pour sa page (`menu-manette`). S'arrête avec la partie.
 fn suivre_manette_menu(app: &AppHandle, numero: u64) {
     let app = app.clone();
-    let mut osd = crate::osd_manette::Osd::nouveau(combinaison_menu(&app));
+    let combo = combinaison_menu(&app);
+    let mut osd = crate::osd_manette::Osd::nouveau(combo);
     let mut lecteur = crate::osd_manette::Lecteur::default();
-    std::thread::spawn(move || loop {
-        let menu = app.state::<crate::menu_jeu::MenuJeu>();
-        if !menu.en_cours(numero) {
-            break;
-        }
-        let ouvert = menu.ouvert.load(std::sync::atomic::Ordering::SeqCst);
-        let t = std::time::Instant::now();
-        for ev in osd.pas(lecteur.lire(t), t, ouvert) {
-            match ev {
-                crate::osd_manette::Evenement::Ouvrir => {
-                    // Une entrée neutre d'abord : Windows nous laisse alors prendre le premier plan.
-                    crate::menu_jeu::autoriser_premier_plan();
-                    let a = app.clone();
-                    let _ = app.run_on_main_thread(move || ouvrir_menu(&a));
-                    // Vérifier le résultat : le menu a-t-il bien la main ? (Sinon : pas de pause, la manette pilote
-                    // encore le jeu.) Noté pour comprendre un échec chez la personne.
-                    std::thread::sleep(std::time::Duration::from_millis(300));
-                    if !crate::menu_jeu::frogtend_au_premier_plan() {
-                        app.state::<Noyau>().journaliser("menu en jeu ouvert à la manette, mais sans le premier plan");
-                    }
+    // Manette → clavier (jeu PC, réglage du jeu) : le même fil traduit les boutons en touches.
+    let partie = app.state::<crate::menu_jeu::MenuJeu>().partie();
+    let dossier_jeu = partie.as_ref().and_then(|p| p.dossier_jeu.clone()).map(std::path::PathBuf::from);
+    let mut clavier = partie
+        .and_then(|p| p.clavier)
+        .map(|c| crate::clavier::Moteur::nouveau(&c, combo))
+        .filter(|m| !m.est_vide());
+    std::thread::spawn(move || {
+        // Le premier plan est vérifié à CHAQUE envoi (le chemin du programme, seulement quand il change).
+        let mut premier_plan = crate::clavier::PremierPlan::default();
+        let mut eleve_dit = false;
+        let mut refus_dit = false;
+        loop {
+            let menu = app.state::<crate::menu_jeu::MenuJeu>();
+            if !menu.en_cours(numero) {
+                // Fin de partie : rien ne reste appuyé.
+                if let Some(m) = clavier.as_mut() {
+                    crate::clavier::envoyer(&m.relacher_tout());
                 }
-                crate::osd_manette::Evenement::Commande(c) => {
-                    let _ = app.emit_to(FENETRE_MENU, "menu-manette", c);
+                break;
+            }
+            let ouvert = menu.ouvert.load(std::sync::atomic::Ordering::SeqCst);
+            let t = std::time::Instant::now();
+            let etat = lecteur.lire(t);
+            let evenements = osd.pas(etat, t, ouvert);
+            let va_ouvrir = evenements.contains(&crate::osd_manette::Evenement::Ouvrir);
+            if let (Some(m), Some(d)) = (clavier.as_mut(), dossier_jeu.as_deref()) {
+                let (au_jeu, eleve) = premier_plan.au_jeu(d);
+                // Seulement vers le jeu au premier plan, jamais pendant le menu ni un jeu figé, ni quand le menu va
+                // s'ouvrir : alors tout est relâché TANT QUE le jeu a encore la main.
+                if !ouvert && !va_ouvrir && !crate::figer::est_fige() && au_jeu {
+                    let (a_envoyer, acceptes) = crate::clavier::envoyer(&m.pas(&etat, t));
+                    if acceptes < a_envoyer && !refus_dit {
+                        refus_dit = true;
+                        app.state::<Noyau>().journaliser("manette → clavier : Windows a refusé des frappes");
+                    }
+                } else {
+                    crate::clavier::envoyer(&m.relacher_tout());
+                }
+                // Un jeu en administrateur ne reçoit RIEN de Frogtend (Windows bloque sans le dire) : dit une fois.
+                if au_jeu && eleve && !eleve_dit {
+                    eleve_dit = true;
+                    app.state::<Noyau>().journaliser("manette → clavier : le jeu tourne en administrateur, les touches sont bloquées par Windows");
+                    let _ = app.emit(
+                        "clavier",
+                        serde_json::json!({ "message": "ce jeu tourne en administrateur : Windows empêche Frogtend de lui envoyer les touches de la manette" }),
+                    );
                 }
             }
+            for ev in evenements {
+                match ev {
+                    crate::osd_manette::Evenement::Ouvrir => {
+                        // Une entrée neutre d'abord : Windows nous laisse alors prendre le premier plan.
+                        crate::menu_jeu::autoriser_premier_plan();
+                        let a = app.clone();
+                        let _ = app.run_on_main_thread(move || ouvrir_menu(&a));
+                        // Vérifier le résultat : le menu a-t-il bien la main ? (Sinon : pas de pause, la manette pilote
+                        // encore le jeu.) Noté pour comprendre un échec chez la personne.
+                        std::thread::sleep(std::time::Duration::from_millis(300));
+                        if !crate::menu_jeu::frogtend_au_premier_plan() {
+                            app.state::<Noyau>().journaliser("menu en jeu ouvert à la manette, mais sans le premier plan");
+                        }
+                    }
+                    crate::osd_manette::Evenement::Commande(c) => {
+                        let _ = app.emit_to(FENETRE_MENU, "menu-manette", c);
+                    }
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(16));
         }
-        std::thread::sleep(std::time::Duration::from_millis(16));
     });
 }
 

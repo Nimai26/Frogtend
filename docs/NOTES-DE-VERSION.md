@@ -1,5 +1,18 @@
 # Notes de version de Frogtend
 
+## 0.54.0 — Jouer à la manette aux jeux faits pour le clavier
+
+- Nouveau dans **⚙ Gérer le jeu** (jeux PC) : **🕹 Jouer à la manette (jeu fait pour le clavier)**. Pour un jeu qui ne
+  voit pas ta manette, Frogtend appuie sur les touches pour toi pendant la partie. Trois préréglages prêts à l'emploi :
+  - **Flèches + Z X C** (jeux rétro, jeux de fans comme Mega Man Rock Force) ;
+  - **Touches de déplacement + Espace** (jeux PC) : marche avec un clavier français (ZQSD) comme anglais (WASD) ;
+  - **Flèches + Entrée** (jeux simples, aventures) ;
+  - ou **bouton par bouton**, à ta façon.
+- Garde-fous : les touches ne partent que vers le jeu quand il est devant (jamais vers une autre fenêtre) ; jamais
+  pendant le menu de Frogtend ; la combinaison du menu (View + RB) n'envoie rien au jeu ; tout est relâché quand le
+  menu s'ouvre, quand tu quittes, et même si Frogtend plantait. Désactivé d'office.
+- Dans « Gérer le jeu », « 🎮 Commandes » (qui ne sert qu'aux émulateurs) n'apparaît plus pour les jeux PC.
+
 ## 0.53.0 — Le plein écran au lancement des jeux PC
 
 - Nouveau dans **⚙ Gérer le jeu** (jeux PC) : **🖥 Plein écran au lancement**, au choix pour chaque jeu :

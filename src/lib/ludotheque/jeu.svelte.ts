@@ -17,6 +17,7 @@ import { ludo, rechargerListe, rechargerPlateformes } from './ludotheque.svelte'
 import { rechargerJeuxDuPc, tele } from './telechargements.svelte';
 import { estCourante, libelleVersion, nomDuFichier } from './versions';
 import { libellePleinEcran, TOUCHES_PLEIN_ECRAN } from './plein-ecran';
+import { BOUTONS, detailTouche, libelleClavier, memes, nettoyer, PREREGLAGES, TOUCHES, type Correspondance } from './clavier';
 
 export const partie = $state<{ enJeu: number | null; installation: number | null }>({ enJeu: null, installation: null });
 
@@ -25,6 +26,8 @@ let ecoute: (() => void) | null = null;
 /** Écoute les débuts et fins de partie (une seule fois). */
 export async function suivreParties() {
   if (ecoute || !isTauri()) return;
+  // Un jeu en administrateur ne reçoit pas les touches de la manette : le dire (une fois par partie).
+  await listen<{ message: string }>('clavier', (e) => toast(`🕹 ${e.payload.message}.`, 'alerte'));
   // Le plein écran au lancement n'a pas pu être appliqué : le dire, avec la piste (l'autre façon).
   await listen<{ jeu: number; message: string }>('plein-ecran', (e) => {
     const titre = tele.jeux[e.payload.jeu]?.titre ?? 'le jeu';
@@ -195,7 +198,15 @@ export async function jouer(id: number, emulateur?: string, version?: string) {
   for (let essai = 0; essai < 2; essai++) {
     try {
       const pe = etat.profil.pleinEcran[String(id)];
-      await api.jouer(id, etat.profil.commandes[String(id)], emulateur, version, etat.profil.figer.includes(String(id)), typeof pe === 'string' ? pe : undefined);
+      await api.jouer(
+        id,
+        etat.profil.commandes[String(id)],
+        emulateur,
+        version,
+        etat.profil.figer.includes(String(id)),
+        typeof pe === 'string' ? pe : undefined,
+        nettoyer(etat.profil.clavier[String(id)]),
+      );
       toast(`▶ « ${j?.titre ?? 'Le jeu'} » se lance…`);
       return;
     } catch (e) {
@@ -402,6 +413,74 @@ export async function choisirCommandes(id: number) {
   toast(`🎮 « ${j.titre} » : ${libelleCommandes(c)}.`);
 }
 
+/** Le nom montré de la combinaison de la manette qui ouvre le menu (réglage du PC ; « Select + R1 » = View + RB). */
+function nomCombinaison(): string {
+  const c = etat.pc.menuJeu?.manette || 'Select + R1';
+  return c.replace('Select', 'View').replace('R1', 'RB').replace('L1', 'LB');
+}
+
+/**
+ * « 🕹 Jouer à la manette » (jeu PC lancé sans émulateur, fait pour le clavier) : Frogtend traduit les boutons en
+ * touches pendant la partie. Un préréglage courant, ou bouton par bouton ; désactivé d'office.
+ */
+export async function choisirClavier(id: number) {
+  const j = tele.jeux[id];
+  if (!j) return;
+  const actuel = nettoyer(etat.profil.clavier[String(id)]);
+  type Choix = 'non' | 'perso' | `pre:${string}`;
+  const c = await choisir<Choix>(
+    `🕹 Jouer à « ${j.titre} » à la manette`,
+    [
+      { valeur: 'non', libelle: '⬜ Non', detail: 'le jeu voit ta manette lui-même (ou tu joues au clavier)' },
+      ...PREREGLAGES.map((p) => ({ valeur: `pre:${p.id}` as Choix, libelle: p.nom, detail: p.detail })),
+      {
+        valeur: 'perso',
+        libelle: '✏ Bouton par bouton…',
+        detail: Object.keys(actuel).length ? 'en partant du réglage actuel' : 'en partant de « Flèches + Z X C »',
+      },
+    ],
+    `Seulement pour un jeu fait pour le clavier, qui ne voit pas ta manette : Frogtend appuie sur les touches pour toi. Actuellement : ${libelleClavier(actuel)}. Le menu de Frogtend (${nomCombinaison()}) reste à sa place.`,
+  );
+  if (!c) return;
+  let nouvelle: Correspondance = {};
+  if (c.startsWith('pre:')) nouvelle = { ...(PREREGLAGES.find((p) => `pre:${p.id}` === c)?.correspondance ?? {}) };
+  if (c === 'perso') {
+    const depart: Correspondance = { ...(Object.keys(actuel).length ? actuel : PREREGLAGES[0].correspondance) };
+    nouvelle = { ...depart };
+    for (;;) {
+      const b = await choisir<string>(
+        '✏ Quel bouton régler ?',
+        [
+          { valeur: 'fin', libelle: '✅ Terminé', detail: 'garder ce réglage' },
+          ...BOUTONS.map((x) => ({ valeur: x.id, libelle: `🎮 ${x.nom}`, detail: nouvelle[x.id] ? `→ ${nouvelle[x.id]}` : '→ rien' })),
+        ],
+        'Choisis un bouton, puis sa touche. « Terminé » quand tout te va.',
+      );
+      if (b === 'fin') break;
+      if (!b) {
+        // Annulé : rien n'est changé — mais le dire, et ne jamais perdre des changements sans demander.
+        if (!memes(nouvelle, depart) && !(await confirmer('Abandonner tes changements ?', { message: 'Les touches choisies ne seront pas gardées.', libelleValider: 'Abandonner', danger: true }))) continue;
+        toast('Rien n’a changé.');
+        return;
+      }
+      const nomBouton = BOUTONS.find((x) => x.id === b)?.nom ?? b;
+      const t = await choisir<string>(`⌨ Quelle touche pour ${nomBouton} ?`, [
+        { valeur: '', libelle: '⬜ Rien', detail: 'ce bouton n’envoie aucune touche' },
+        ...TOUCHES.map((k) => ({ valeur: k, libelle: k, detail: detailTouche(k) })),
+      ]);
+      if (t === null || t === undefined) continue;
+      if (t === '') delete nouvelle[b];
+      else nouvelle[b] = t;
+    }
+  }
+  const tous = { ...etat.profil.clavier };
+  const desactive = c === 'non' || !Object.keys(nouvelle).length;
+  if (desactive) delete tous[String(id)];
+  else tous[String(id)] = nouvelle;
+  await reglerProfil('clavier', tous);
+  toast(`🕹 « ${j.titre} » : ${desactive ? 'la manette n’envoie plus de touches' : `manette — ${libelleClavier(nouvelle)}`}.`);
+}
+
 let recherchePleinEcran = false;
 
 /** « 🖥 Plein écran au lancement » (jeu PC lancé sans émulateur) : rien, la touche du jeu (suggérée par ses textes),
@@ -510,7 +589,7 @@ export async function choisirFiger(id: number) {
 export async function gererJeu(id: number) {
   const j = tele.jeux[id];
   if (!j) return;
-  type Action = 'installer' | 'lanceur' | 'version' | 'emulateur' | 'commandes' | 'figer' | 'pleinEcran' | 'abri' | 'retirer';
+  type Action = 'installer' | 'lanceur' | 'version' | 'emulateur' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'retirer';
   const options: { valeur: Action; libelle: string; detail?: string }[] = [];
   if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
   if (j.installation && !j.installation.fichier_du_jeu)
@@ -529,10 +608,16 @@ export async function gererJeu(id: number) {
       detail: `${e?.nom || e?.programme || ''}${etat.pc.emulateursJeux[String(id)] ? ' (propre à ce jeu)' : ' (comme la console)'}`,
     });
   }
-  options.push({ valeur: 'commandes', libelle: '🎮 Commandes', detail: libelleCommandes(etat.profil.commandes[String(id)]) });
-  // Un jeu lancé sans émulateur (jeu PC) : son plein écran au lancement, et le figer pendant le menu, au choix.
+  // Un jeu lancé sans émulateur (jeu PC) : jouer à la manette, son plein écran au lancement, le figer pendant le menu.
+  // « Commandes » ne concerne que les émulateurs : pas pour lui (deux entrées « manette » se confondraient).
   const pcSansEmulateur = !!j.installation && !j.installation.fichier_du_jeu && !pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, j.plateforme, id);
+  if (!pcSansEmulateur) options.push({ valeur: 'commandes', libelle: '🎮 Commandes', detail: libelleCommandes(etat.profil.commandes[String(id)]) });
   if (pcSansEmulateur) {
+    options.push({
+      valeur: 'clavier',
+      libelle: '🕹 Jouer à la manette (jeu fait pour le clavier)',
+      detail: libelleClavier(nettoyer(etat.profil.clavier[String(id)])),
+    });
     options.push({ valeur: 'pleinEcran', libelle: '🖥 Plein écran au lancement', detail: libellePleinEcran(etat.profil.pleinEcran[String(id)]) });
     options.push({
       valeur: 'figer',
@@ -556,6 +641,7 @@ export async function gererJeu(id: number) {
   else if (c === 'commandes') await choisirCommandes(id);
   else if (c === 'figer') await choisirFiger(id);
   else if (c === 'pleinEcran') await choisirPleinEcran(id);
+  else if (c === 'clavier') await choisirClavier(id);
   else if (c === 'abri') await mettreALAbri(id);
   else if (c === 'retirer') await retirer(j);
 }

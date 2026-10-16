@@ -48,6 +48,14 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Jouer à la manette aux jeux clavier (0.54.0)
+- [ ] Mega Man Rock Force : ⚙ Gérer le jeu ▸ 🕹 Jouer à la manette ▸ « Flèches + Z X C ». ▶ Jouer : la croix déplace,
+      A saute, X tire, B glisse, Start met en pause, LB/RB changent d'arme.
+- [ ] Pendant la partie, View + RB 1 s : le menu s'ouvre, Mega Man ne continue PAS à marcher tout seul ; « Reprendre » :
+      la manette repilote le jeu.
+- [ ] Alt+Tab vers une autre fenêtre en tenant la croix : rien ne s'écrit dans l'autre fenêtre.
+- [ ] Note : si le jeu voit aussi ta manette lui-même, choisis « Non » (sinon il reçoit tout en double).
+
 ## Le plein écran au lancement (0.53.0)
 - [ ] Mega Man Rock Force : ⚙ Gérer le jeu ▸ 🖥 Plein écran au lancement ▸ « Frogtend appuie sur F4 pour toi ». ▶ Jouer :
       quelques secondes après l'ouverture, le jeu passe en plein écran. Relance-le : toujours en plein écran.

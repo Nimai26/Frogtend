@@ -41,6 +41,9 @@ pub struct EtatManette {
     pub boutons: u16,
     pub lx: i16,
     pub ly: i16,
+    /// Les gâchettes gauche et droite (0 à 255, la plus enfoncée des manettes) : pour « manette → clavier ».
+    pub gt: u8,
+    pub dt: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -188,6 +191,8 @@ impl Lecteur {
                 self.vide_jusqu_a[i] = None;
                 let g = s.Gamepad;
                 e.boutons |= g.wButtons.0;
+                e.gt = e.gt.max(g.bLeftTrigger);
+                e.dt = e.dt.max(g.bRightTrigger);
                 let force = |x: i16, y: i16| (x as i32).abs() + (y as i32).abs();
                 if force(g.sThumbLX, g.sThumbLY) > force(e.lx, e.ly) {
                     e.lx = g.sThumbLX;
@@ -255,7 +260,7 @@ mod tests {
         o.pas(e(B), t0 + Duration::from_millis(800), true);
         assert_eq!(o.pas(e(0), t0 + Duration::from_millis(850), true), [Evenement::Commande("retour")]);
         // Le stick gauche.
-        let haut = EtatManette { boutons: 0, lx: 0, ly: 30_000 };
+        let haut = EtatManette { ly: 30_000, ..Default::default() };
         assert_eq!(o.pas(haut, t0 + Duration::from_millis(900), true), [Evenement::Commande("haut")]);
     }
 
@@ -297,7 +302,7 @@ mod essai_reel {
     #[ignore]
     fn lire_la_vraie_manette() {
         let fin = std::time::Instant::now() + std::time::Duration::from_secs(3);
-        let mut avant = super::EtatManette { boutons: 0xFFFF, lx: 0, ly: 0 };
+        let mut avant = super::EtatManette { boutons: 0xFFFF, ..Default::default() };
         let mut l = super::Lecteur::default();
         while std::time::Instant::now() < fin {
             let e = l.lire(std::time::Instant::now());

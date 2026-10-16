@@ -27,6 +27,8 @@ pub struct PartieEnCours {
     /// `dossier_jeu` le sont.
     pub figer: bool,
     pub dossier_jeu: Option<String>,
+    /// Jeu PC : sa correspondance manette → clavier (bouton → touche), s'il en a une.
+    pub clavier: Option<std::collections::BTreeMap<String, String>>,
 }
 
 #[derive(Default)]
@@ -391,6 +393,7 @@ mod tests {
             dossier_emulateur: None,
             figer: false,
             dossier_jeu: None,
+            clavier: None,
         }
     }
 

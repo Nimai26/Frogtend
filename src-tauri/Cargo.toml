@@ -1,6 +1,6 @@
 [package]
 name = "frogtend"
-version = "0.53.0"
+version = "0.54.0"
 description = "Frogtend — la ludothèque de la maison, servie par Firehouse"
 authors = ["Nimai"]
 license = "Apache-2.0"
@@ -47,7 +47,7 @@ tauri-plugin-global-shortcut = "2"
 
 [target.'cfg(windows)'.dependencies]
 # Menu en jeu : fenêtres du jeu, touches envoyées (Win32).
-windows = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Input_XboxController", "Win32_Devices_DeviceAndDriverInstallation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_Graphics_Gdi"] }
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Input_XboxController", "Win32_Devices_DeviceAndDriverInstallation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_Graphics_Gdi", "Win32_Security"] }
 
 # Constructions de développement et tests : informations de débogage réduites (le cache restait énorme : 61 Go le
 # 02/10, disque plein). Sans effet sur l'exécutable livré.

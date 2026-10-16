@@ -103,6 +103,8 @@ export interface ReglagesProfil {
   figer: string[];
   /** Le plein écran au lancement, jeu par jeu (identifiant → `fenetre` ou `touche:F4`) ; absent : rien. */
   pleinEcran: Record<string, string>;
+  /** Manette → clavier, jeu par jeu (identifiant → bouton → touche) ; absent : le jeu lit la manette lui-même. */
+  clavier: Record<string, Record<string, string>>;
 }
 
 export const DEFAUTS_PC: ReglagesPc = {
@@ -132,6 +134,7 @@ export const DEFAUTS_PROFIL: ReglagesProfil = {
   commandes: {},
   figer: [],
   pleinEcran: {},
+  clavier: {},
 };
 
 export const TAILLE_JAQUETTE_MIN = 110;

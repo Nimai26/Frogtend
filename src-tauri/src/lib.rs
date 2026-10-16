@@ -7,6 +7,7 @@ pub mod bios;
 pub mod boutiques;
 pub mod cheatengine;
 pub mod choix_emulateur;
+pub mod clavier;
 pub mod coffre;
 pub mod emulateurs;
 pub mod emulateurs_profils;
@@ -191,6 +192,8 @@ pub fn run() {
             n.regler_abris(commandes::dossier_abris_regle(app.handle()));
             // Un jeu laissé figé par un Frogtend arrêté brutalement repart (d'après la note du menu en jeu).
             let relances = figer::initialiser(dossier.join("menu-fige.txt"));
+            // Si Frogtend plante pendant « manette → clavier », aucune touche ne reste enfoncée dans Windows.
+            clavier::initialiser();
             if relances > 0 {
                 n.journaliser(&format!("Menu en jeu : {relances} fils d'un jeu resté figé relancés au démarrage"));
             }

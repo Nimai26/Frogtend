@@ -35,6 +35,10 @@ describe('completer', () => {
     expect(completer(DEFAUTS_PROFIL, { ludotheque: { plateformesMasquees: ['Arcade'] } }).ludotheque.plateformesMasquees).toEqual(['Arcade']);
     expect(completer(DEFAUTS_PROFIL, { ludotheque: { plateformesMasquees: { a: 1 } } }).ludotheque.plateformesMasquees).toEqual([]);
   });
+  it('manette → clavier : rien d’office, les correspondances lues sont gardées', () => {
+    expect(DEFAUTS_PROFIL.clavier).toEqual({});
+    expect(completer(DEFAUTS_PROFIL, { clavier: { '42': { a: 'Z' } } }).clavier).toEqual({ '42': { a: 'Z' } });
+  });
   it('le plein écran au lancement : rien d’office, les réglages lus sont gardés', () => {
     expect(DEFAUTS_PROFIL.pleinEcran).toEqual({});
     expect(completer(DEFAUTS_PROFIL, { pleinEcran: { '42': 'touche:F4' } }).pleinEcran).toEqual({ '42': 'touche:F4' });

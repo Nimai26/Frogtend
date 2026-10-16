@@ -507,7 +507,15 @@ export const api = {
   menuJeuReprendre: () => appeler<void>('menu_jeu_reprendre'),
   menuJeuAction: (action: string) => appeler<void>('menu_jeu_action', { action }),
   menuJeuQuitter: () => appeler<number>('menu_jeu_quitter'),
-  jouer: (id: number, commandes?: CommandesJeu, emulateur?: string, version?: string, figer?: boolean, pleinEcran?: string) =>
+  jouer: (
+    id: number,
+    commandes?: CommandesJeu,
+    emulateur?: string,
+    version?: string,
+    figer?: boolean,
+    pleinEcran?: string,
+    clavier?: Record<string, string>,
+  ) =>
     appeler<void>('jeu_jouer', {
       id,
       commandes: commandes ?? null,
@@ -515,6 +523,7 @@ export const api = {
       version: version ?? null,
       figer: figer ?? false,
       pleinEcran: pleinEcran ?? null,
+      clavier: clavier && Object.keys(clavier).length ? clavier : null,
     }),
   pleinEcranSuggestion: (id: number) => appeler<string | null>('jeu_plein_ecran_suggestion', { id }),
   jeuAntiTriche: (id: number) => appeler<VerificationFiger>('jeu_anti_triche', { id }),
