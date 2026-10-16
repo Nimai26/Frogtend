@@ -1,5 +1,10 @@
 # Notes de version de Frogtend
 
+## 0.61.1 — Prévenu avant la question du pare-feu
+
+- Avant le premier jeu lancé avec RetroArch sur un PC, Frogtend prévient (une seule fois) que Windows va peut-être
+  demander d'autoriser l'accès réseau de RetroArch : répondre « Annuler » ne gêne rien, tout marche quand même.
+
 ## 0.61.0 — Les options du jeu dans le menu en jeu
 
 - Avec RetroArch, le menu en jeu (View+RB1) a un écran **⚙ Options du jeu** : compteur de fluidité (images par

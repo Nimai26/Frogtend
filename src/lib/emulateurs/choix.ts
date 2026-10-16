@@ -70,6 +70,11 @@ export function retirer(sys: EmulateursSysteme, cle: string): EmulateursSysteme 
   return { liste, defaut: liste.some((e) => e.cle === sys.defaut) ? sys.defaut : (liste[0]?.cle ?? '') };
 }
 
+/** Le programme est-il RetroArch ? */
+export function estRetroArch(programme: string | undefined | null): boolean {
+  return /(^|[\\/])retroarch\.exe$/i.test(programme ?? '');
+}
+
 /** L'émulateur d'un jeu : son défaut à lui, sinon celui du système. */
 export function pourLeJeu(
   emulateurs: Record<string, unknown>,

@@ -8,7 +8,7 @@ import { choisir, confirmer, fermerToast, informer, toast } from '$lib/dialogues
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
 import { preparerPourJouer } from '$lib/emulateurs/pret.svelte';
-import { normaliser, pourLeJeu } from '$lib/emulateurs/choix';
+import { estRetroArch, normaliser, pourLeJeu } from '$lib/emulateurs/choix';
 import { etat, reglerPc, reglerProfil } from '$lib/etat.svelte';
 import type { CommandesJeu } from '$lib/reglages/reglages';
 import { GENRES_MANETTE, libelleCommandes } from './commandes';
@@ -191,12 +191,30 @@ export async function choisirLanceur(id: number): Promise<boolean> {
   }
 }
 
+/**
+ * RetroArch ouvre son port de commandes à tout le réseau (RetroArch 1.22.2 : aucun réglage « sur la machine
+ * seulement ») : Windows peut demander d'autoriser l'accès réseau. Décision de Seb (16/10) : garder le comportement
+ * de RetroArch et PRÉVENIR, une fois par PC, avant le premier jeu RetroArch. Frogtend ne répond jamais à la place.
+ */
+async function prevenirPareFeu(id: number, plateforme: string | undefined, emulateur?: string) {
+  if (etat.pc.avertiPareFeuRetroArch || !plateforme) return;
+  const s = normaliser(etat.pc.emulateurs[plateforme]);
+  const e = (emulateur && s.liste.find((x) => x.cle === emulateur)) || pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, plateforme, id);
+  if (!e || !estRetroArch(e.programme)) return;
+  await informer(
+    '🛡 Une question de Windows va peut-être s’afficher',
+    'Au premier jeu, Windows peut demander : « Voulez-vous autoriser les réseaux publics et privés à accéder à cette application ? » pour RetroArch.\n\nRéponds « Annuler » : Frogtend n’en a pas besoin, tout fonctionne quand même (le menu en jeu compris), et rien n’est ouvert aux autres appareils du réseau.\n\nSi tu joues sur la télé à la manette et ne peux pas y répondre, ce n’est pas grave : le jeu marche quand même, la question attendra sur l’écran du PC.',
+  );
+  await reglerPc('avertiPareFeuRetroArch', true);
+}
+
 /** Jouer. `emulateur` : la clé d'un émulateur du système, pour ce lancement seulement. Si un réglage manque
  * (émulateur, lanceur), on le demande puis on relance. */
 export async function jouer(id: number, emulateur?: string, version?: string) {
   const j = tele.jeux[id];
   for (let essai = 0; essai < 2; essai++) {
     try {
+      await prevenirPareFeu(id, j?.plateforme, emulateur);
       const pe = etat.profil.pleinEcran[String(id)];
       await api.jouer(
         id,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ajouter, normaliser, normaliserTous, pourLeJeu, retirer, systemesProposes } from './choix';
+import { ajouter, estRetroArch, normaliser, normaliserTous, pourLeJeu, retirer, systemesProposes } from './choix';
 
 const snes9x = { nom: 'RetroArch — snes9x', programme: 'E:\\RetroArch\\retroarch.exe', ligne: '-L cores\\snes9x_libretro.dll' };
 const bsnes = { nom: 'RetroArch — bsnes', programme: 'E:\\RetroArch\\retroarch.exe', ligne: '-L cores\\bsnes_libretro.dll' };
@@ -64,5 +64,15 @@ describe('plusieurs émulateurs par système', () => {
     ]);
     // Aucun jeu nulle part : toutes les plateformes connues restent proposées.
     expect(systemesProposes([], ['Sony Playstation 3']).map((p) => p.nom)).toEqual(['Sony Playstation 3']);
+  });
+});
+
+describe('RetroArch reconnu par son programme', () => {
+  it('pour prévenir de la question du pare-feu', () => {
+    expect(estRetroArch(String.raw`E:\Emulateurs\RetroArch\retroarch.exe`)).toBe(true);
+    expect(estRetroArch('D:/RA/RetroArch.EXE')).toBe(true);
+    expect(estRetroArch(String.raw`E:\Emulateurs\DuckStation\duckstation-qt.exe`)).toBe(false);
+    expect(estRetroArch(String.raw`E:\x\notretroarch.exe`)).toBe(false);
+    expect(estRetroArch(undefined)).toBe(false);
   });
 });

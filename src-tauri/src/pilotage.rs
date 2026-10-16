@@ -4,7 +4,11 @@
 //! - il se mette **en pause quand il perd le premier plan** : ouvrir le menu de Frogtend = la pause, le refermer = la
 //!   reprise, et la manette ne pilote plus le jeu pendant ce temps ;
 //! - il obéisse à des **touches que Frogtend lui envoie** : F13 à F16, qu'aucun clavier n'a (donc sans conflit) ;
-//! - RetroArch écoute ses **commandes réseau**, sur la machine seulement (127.0.0.1) ;
+//! - RetroArch écoute ses **commandes réseau** (port 55355). ⚠️ Relu le 16/10 dans RetroArch 1.22.2 : il n'a AUCUN
+//!   réglage pour n'écouter que la machine (`network_cmd_bind_address` n'existe pas), le port s'ouvre sur tout le
+//!   réseau et Windows peut demander d'autoriser l'accès. Décision de Seb (16/10) : garder ce comportement et prévenir
+//!   la personne une fois (interface, `prevenirPareFeu`) — répondre « Annuler » ne gêne rien, Frogtend parle depuis
+//!   la machine ;
 //! - Dolphin ne soit pas en plein écran EXCLUSIF (sinon rien ne peut s'afficher par-dessus) ;
 //! - quitter ne demande pas de confirmation (c'est le menu de Frogtend qui la demande).
 //!
@@ -180,7 +184,7 @@ pub fn commande_retroarch(a: Action) -> &'static str {
 /// Les lignes à ajouter au fichier de réglages de RetroArch (`--appendconfig`).
 pub fn lignes_retroarch() -> String {
     format!(
-        "network_cmd_enable = \"true\"\nnetwork_cmd_port = \"{PORT_RETROARCH}\"\nnetwork_cmd_bind_address = \"127.0.0.1\"\npause_nonactive = \"true\"\ninput_menu_toggle_gamepad_combo = \"0\"\n"
+        "network_cmd_enable = \"true\"\nnetwork_cmd_port = \"{PORT_RETROARCH}\"\npause_nonactive = \"true\"\ninput_menu_toggle_gamepad_combo = \"0\"\n"
     )
 }
 
@@ -463,6 +467,7 @@ mod tests {
             }
         }
         assert!(!actions("pcsx2").contains(&Action::DisqueSuivant), "PCSX2 ne sait pas changer de disque de l'extérieur");
-        assert!(lignes_retroarch().contains("network_cmd_bind_address = \"127.0.0.1\""));
+        // Aucun réglage que RetroArch ignorerait (il n'a pas de `network_cmd_bind_address`, relu dans la 1.22.2).
+        assert!(!lignes_retroarch().contains("network_cmd_bind_address"));
     }
 }

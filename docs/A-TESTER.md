@@ -54,9 +54,9 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] ⏩ Avance rapide : le jeu va plus vite ; rouvre le menu : il le rappelle ; « Couper l'avance rapide » le remet.
 - [ ] 📷 Photo de l'écran : une image arrive dans le dossier « screenshots » de RetroArch.
 - [ ] 🔇 Son : coupé, puis remis.
-- [ ] ⚠️ Une fenêtre « Sécurité Windows — autoriser les réseaux… » pour retroarch.exe t'est-elle déjà apparue ? (Vue
-      le 16/10 avec un RetroArch d'essai : les commandes de Frogtend restent sur la machine et marchent sans
-      l'autoriser — tu peux répondre « Annuler ».)
+- [ ] (0.61.1) Sur un PC qui n'a jamais lancé de jeu RetroArch par Frogtend (chez ta sœur, par exemple) : avant le
+      premier jeu, Frogtend prévient de la question du pare-feu ; « Annuler » à la question de Windows, puis le menu en
+      jeu (Options du jeu) marche toujours ? Le message ne revient plus ensuite.
 
 ## Les manettes PlayStation et Switch (0.60.0)
 - [ ] Une manette PlayStation (USB, puis Bluetooth) pendant un jeu (RetroArch, RPCS3, DuckStation…) : Share/Create + R1

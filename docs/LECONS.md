@@ -3,6 +3,14 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 16/10 — Un réglage « sur la machine seulement » que RetroArch n'a jamais eu
+Ce qui s'est passé : depuis la 0.8, Frogtend écrivait `network_cmd_bind_address = "127.0.0.1"` et le code affirmait
+que les commandes de RetroArch restaient sur la machine. Le réglage n'existe pas : RetroArch 1.22.2 ouvre son port sur
+tout le réseau, d'où la question du pare-feu que Seb avait déjà vue. Je l'ai découvert seulement grâce à un essai
+réel (la fenêtre de Windows) puis en lisant `command.c`. · Comment l'appliquer : toute clé de réglage écrite dans un
+émulateur se vérifie dans SON code (le nom exact, et qu'elle est bien lue) avant d'être écrite ; un commentaire qui
+promet une garantie de sécurité cite la ligne de code qui la prouve.
+
 ## 16/10 — Le disque D: de Venkman était plein, par MA faute
 Ce qui s'est passé : une compilation a échoué faute de place (96 Mo libres). Le cache de compilation de Frogtend
 (`src-tauri\target\debug`) pesait 65,8 Go : il regrossit à chaque session, malgré `debug = "line-tables-only"` (même

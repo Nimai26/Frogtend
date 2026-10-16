@@ -249,8 +249,21 @@ d'abord :
       un novice (la sœur de Seb), cette question fait peur : chercher pourquoi RetroArch déclenche la question malgré
       127.0.0.1 (autre fonction réseau ?) et comment l'éviter, ou au moins le dire avant. Ne jamais répondre à la place
       de la personne (décision de sécurité).
+      Enquête (16/10, code de RetroArch 1.22.2) : `network_cmd_bind_address` N'EXISTE PAS ; le port des commandes est
+      ouvert sur TOUT le réseau (`command_network_new` → `socket_init(..., NULL, AI_PASSIVE)`). Commandes par l'entrée
+      standard (`stdin_cmd_enable`) : présentes dans le code mais ABSENTES du RetroArch Windows officiel (essai réel :
+      rien). Touches rares acceptées : F13, F14, F15, Aide seulement (4 pour 8 actions).
+      ✅ DÉCIDÉ par Seb le 16/10 : « laisser le comportement par défaut de RetroArch et juste prévenir pour la
+      fenêtre » → Frogtend prévient UNE fois par PC, avant le premier jeu RetroArch, de répondre « Annuler ».
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.61.1** (16/10) — Décision de Seb (garder RetroArch tel quel, prévenir) : avertissement UNE fois par PC avant le
+  premier jeu RetroArch (fenêtre maison, réglage `avertiPareFeuRetroArch`), y compris pour la télé (Taodbox) ; le
+  réglage inexistant `network_cmd_bind_address` retiré et le commentaire du moteur corrigé (leçon). Vérifié : code de
+  RetroArch 1.22.2 (command.c:236-261) ; essais réels du 16/10 (réseau : question de Windows et commandes qui marchent
+  sans y répondre ; entrée standard : absente du RetroArch Windows). Tests : 322 cœur, 152 interface ; relecture de
+  l'expert interface. NON vérifié : un PC neuf, et « Annuler » cliqué pour de vrai.
 
 - **0.61.0** (16/10) — Lot OSD (i) : « ⚙ Options du jeu » pour RetroArch (compteur de fluidité, avance rapide rappelée
   tant qu'elle a été demandée ici, photo de l'écran, son) ; fenêtre du menu 560×700 ; le retour sélectionne l'entrée

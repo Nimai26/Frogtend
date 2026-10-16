@@ -23,6 +23,9 @@ export interface ReglagesPc {
   emulateursJeux: Record<string, string>;
   /** Où Frogtend installe les émulateurs (vide : demandé à la première installation). */
   dossierEmulateurs: string;
+  /** La personne a été prévenue de la question du pare-feu Windows pour RetroArch (une fois par PC, décision de Seb
+   * du 16/10). */
+  avertiPareFeuRetroArch: boolean;
   /** Où Frogtend installe Cheat Engine et les autres outils (règle « pas de pieuvre ») ; vide : demandé la 1re fois. */
   dossierOutils: string;
   /** Où Frogtend copie les parties avant de retirer un jeu (abris) ; vide : demandé quand il le faut. */
@@ -112,6 +115,7 @@ export const DEFAUTS_PC: ReglagesPc = {
   emulateurs: {},
   emulateursJeux: {},
   dossierEmulateurs: '',
+  avertiPareFeuRetroArch: false,
   dossierOutils: '',
   dossierAbris: '',
   listeMame: '',
