@@ -18,6 +18,7 @@ pub mod firehouse;
 pub mod installation;
 pub mod jeux_pc;
 pub mod lancement;
+pub mod livret;
 pub mod manettes;
 pub mod locale;
 pub mod gratuits;
@@ -25,6 +26,7 @@ pub mod import_local;
 pub mod mame;
 pub mod succes;
 pub mod disque;
+pub mod documents;
 pub mod contenus;
 pub mod decompression;
 pub mod osd_manette;
@@ -103,6 +105,30 @@ fn repondre_jaquette(app: &tauri::AppHandle, chemin: &str, requete: Option<&str>
             .body(img.octets)
             .unwrap(),
         _ => reponse_vide(404),
+    }
+}
+
+/// Répond aux adresses `document://localhost/<jeu>/<document>/<page>?largeur=N` (sous Windows :
+/// `http://document.localhost/…`) avec la page d'un livret DÉJÀ sur le PC, rendue en image pour le profil OUVERT (le
+/// jeu doit lui être visible, et le document être dans la liste de CE jeu). Rien n'est téléchargé ici.
+fn repondre_document(app: &tauri::AppHandle, chemin: &str, requete: Option<&str>) -> tauri::http::Response<Vec<u8>> {
+    let morceaux: Vec<&str> = chemin.trim_matches('/').split('/').collect();
+    let [jeu, doc, page] = morceaux[..] else { return reponse_vide(400) };
+    let (Ok(jeu), Ok(doc), Ok(page)) = (jeu.parse::<i64>(), doc.parse::<i64>(), page.parse::<u32>()) else { return reponse_vide(400) };
+    let largeur = parametre(requete, "largeur").and_then(|l| l.parse::<u32>().ok()).unwrap_or(1000);
+    let noyau = app.state::<noyau::Noyau>();
+    match tauri::async_runtime::block_on(noyau.page_livret(jeu, doc, page, largeur)) {
+        Ok(Some(img)) => tauri::http::Response::builder()
+            .status(200)
+            .header("Content-Type", "image/png")
+            .header("Cache-Control", "no-store")
+            .body(img.octets)
+            .unwrap(),
+        Ok(None) => reponse_vide(404),
+        Err(e) => {
+            noyau.journaliser(&format!("livret {jeu}/{doc} page {page} : {e:?}"));
+            reponse_vide(404)
+        }
     }
 }
 
@@ -240,6 +266,19 @@ pub fn run() {
                 repondeur.respond(reponse)
             });
         })
+        .register_asynchronous_uri_scheme_protocol("document", |ctx, requete, repondeur| {
+            let app = ctx.app_handle().clone();
+            let chemin = requete.uri().path().to_string();
+            let parametres = requete.uri().query().map(String::from);
+            // Hors du fil de l'interface : le rendu d'une page prend un moment.
+            std::thread::spawn(move || {
+                let reponse = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    repondre_document(&app, &chemin, parametres.as_deref())
+                }))
+                .unwrap_or_else(|_| reponse_vide(500));
+                repondeur.respond(reponse)
+            });
+        })
         .register_asynchronous_uri_scheme_protocol("fond", |ctx, requete, repondeur| {
             let app = ctx.app_handle().clone();
             let chemin = requete.uri().path().to_string();
@@ -280,6 +319,8 @@ pub fn run() {
             commandes::telechargement_reprendre,
             commandes::telechargement_annuler,
             commandes::annexe_ouvrir,
+            commandes::documents_jeu,
+            commandes::livret_ouvrir,
             commandes::espace_libre,
             commandes::installation_preparer,
             commandes::installation_lancer,

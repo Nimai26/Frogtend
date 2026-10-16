@@ -5,7 +5,9 @@
   import { onMount, tick } from 'svelte';
   import { isTauri } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
-  import { adresseFondDuJeu, api, type Annexe, type EtatMenuJeu } from '$lib/api';
+  import { adresseFondDuJeu, api, type Annexe, type DocumentJeu, type EtatMenuJeu } from '$lib/api';
+  import LecteurLivret from '$lib/ludotheque/LecteurLivret.svelte';
+  import { documentsMontres, libelleDocument } from '$lib/ludotheque/documents';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { appliquer, arreterManette, demarrerManette, fenetreOuverte, selectionner } from '$lib/taodbox/manette.svelte';
@@ -20,6 +22,10 @@
   let fondCharge = $state(false);
   let documents = $state<Annexe[] | null>(null);
   let lecture = $state<{ titre: string; texte: string } | null>(null);
+  // Le livret du jeu (contrat 1.7), lu dans le lecteur maison (pilotable à la manette par-dessus le jeu).
+  let livrets = $state<DocumentJeu[]>([]);
+  let livret = $state<{ doc: number; pages: number } | null>(null);
+  let ouverture = $state<number | null>(null);
   let liste = $state<HTMLElement | null>(null);
   /** Cheat Engine sur ce PC (fourni par Firehouse) : le menu propose de le brancher sur le jeu. */
   let cheatEngine = $state<string | null>(null);
@@ -38,6 +44,7 @@
     cheatEngine = (await api.emulateursInstalles().catch(() => [])).find((e) => e.id === 'cheatengine')?.programme ?? null;
     documents = null;
     lecture = null;
+    livret = null;
     await tick();
     selectionner(liste?.querySelector<HTMLButtonElement>('button'));
   }
@@ -119,11 +126,29 @@
     if (!menu) return;
     try {
       const r = await api.fiche(menu.jeu);
+      livrets = documentsMontres(await api.documents(menu.jeu).catch(() => []));
       documents = r.fiche.annexes ?? [];
       await tick();
       selectionner(liste?.querySelector<HTMLButtonElement>('button'));
     } catch (e) {
       toast(`Impossible de lire les documents : ${motifDuRefus(e)}`, 'erreur');
+    }
+  }
+
+  async function ouvrirLivret(d: DocumentJeu) {
+    if (!menu || ouverture !== null) return;
+    const jeu = menu.jeu;
+    ouverture = d.id;
+    try {
+      const pages = await api.ouvrirLivret(jeu, d.id);
+      // Revenu au menu (ou une autre partie) pendant le téléchargement : on n'ouvre rien par-dessus.
+      if (!documents || menu?.jeu !== jeu) return;
+      livret = { doc: d.id, pages };
+      livrets = livrets.map((x) => (x.id === d.id ? { ...x, garde: true } : x));
+    } catch (e) {
+      toast(`Impossible d’ouvrir le livret : ${motifDuRefus(e)}`, 'erreur');
+    } finally {
+      ouverture = null;
     }
   }
 
@@ -209,10 +234,16 @@
       <p class="muted">{menu.titre}</p>
     </header>
     <div class="liste" bind:this={liste}>
+      {#each livrets as d (d.id)}
+        {@const l = libelleDocument(d)}
+        <button class="btn" disabled={ouverture !== null} onclick={() => ouvrirLivret(d)}>
+          {l.titre} <span class="muted">{ouverture === d.id ? '⏳ chargement…' : l.detail}</span>
+        </button>
+      {/each}
       {#each documents as d (d.i)}
         <button class="btn" onclick={() => ouvrir(d)}>{d.titre}</button>
       {:else}
-        <p class="muted">Aucun document pour ce jeu.</p>
+        {#if !livrets.length}<p class="muted">Aucun document pour ce jeu.</p>{/if}
       {/each}
       <button class="btn" onclick={() => revenir(() => (documents = null))}>← Retour</button>
     </div>
@@ -246,6 +277,10 @@
     </p>
   {/if}
 </div>
+
+{#if livret && menu}
+  <LecteurLivret jeu={menu.jeu} doc={livret.doc} pages={livret.pages} titre={menu.titre} onfermer={() => revenir(() => (livret = null))} />
+{/if}
 
 <style>
   .fond-jeu {

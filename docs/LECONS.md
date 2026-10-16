@@ -3,6 +3,13 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 16/10 — J'avais imaginé la forme du document au lieu de la regarder
+Ce qui s'est passé : j'ai écrit le lecteur du livret pour des pages en hauteur (largeur = hauteur × 0,75). La
+première page réelle rendue (Zelda) était une DOUBLE page à l'italienne : le lecteur l'aurait demandée trop petite,
+et « Agrandir » n'aurait rien agrandi. Je ne l'ai vu qu'en ouvrant l'image. · Comment l'appliquer : avant de coder un
+affichage, regarder au moins un vrai exemple du contenu (une page, une image, une vidéo), pas seulement sa
+description dans le contrat.
+
 ## 16/10 — J'ai remplacé un réglage de l'émulateur au lieu de m'y ajouter
 Ce qui s'est passé : pour lancer les jeux MAME, j'ai passé `-rompath <dossier du jeu>`, qui REMPLACE les dossiers
 réglés dans `mame.ini` ; les jeux importés du disque, dont les CHD ou BIOS sont ailleurs, ne les auraient plus

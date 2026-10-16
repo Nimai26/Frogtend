@@ -280,6 +280,19 @@ export interface Annexe {
   texte: boolean;
 }
 
+/** Un document d'un jeu (contrat 1.7) : livret (PDF), musique (MP3), vidéos (MP4). */
+export interface DocumentJeu {
+  id: number;
+  type: 'livret' | 'musique' | 'video' | 'video_theme';
+  langue: string;
+  format: string;
+  taille: number;
+  pages: number | null;
+  duree_s: number | null;
+  /** Déjà sur le PC : rien à télécharger au clic. */
+  garde?: boolean;
+}
+
 export interface Fiche {
   id: number;
   titre: string;
@@ -477,6 +490,9 @@ export const api = {
   reprendre: (id: number) => appeler<void>('telechargement_reprendre', { id }),
   annuler: (id: number) => appeler<void>('telechargement_annuler', { id }),
   ouvrirAnnexe: (id: number, i: number) => appeler<void>('annexe_ouvrir', { id, i }),
+  documents: (id: number) => appeler<DocumentJeu[]>('documents_jeu', { id }),
+  /** Télécharge le livret s'il n'est pas sur le PC (le clic vaut accord, taille montrée), rend son nombre de pages. */
+  ouvrirLivret: (id: number, doc: number) => appeler<number>('livret_ouvrir', { id, doc }),
   sauvegarder: () => appeler<import('./sauvegarde.svelte').BilanSauvegarde>('sauvegarde_lancer'),
   derniereSauvegarde: () => appeler<import('./sauvegarde.svelte').BilanSauvegarde | null>('sauvegarde_derniere'),
   restaurationListe: () =>
@@ -619,6 +635,13 @@ export function adresseJaquette(id: number, largeur?: number): string {
   if (!largeur) return `http://jaquette.localhost/${id}`;
   const l = Math.min(1000, Math.max(100, Math.ceil(largeur / 100) * 100));
   return `http://jaquette.localhost/${id}?largeur=${l}`;
+}
+
+/** Une page d'un livret déjà sur le PC (page 0 = la première), rendue en image par Windows à une largeur arrondie
+ * aux 200 px supérieurs (entre 200 et 2 400) : quelques tailles seulement, l'image se redimensionne ensuite. */
+export function adressePageLivret(jeu: number, doc: number, page: number, largeur: number): string {
+  const l = Math.min(2400, Math.max(200, Math.ceil(largeur / 200) * 200));
+  return `http://document.localhost/${jeu}/${doc}/${page}?largeur=${l}`;
 }
 
 /** Le fond du menu en jeu : le premier visuel que Firehouse a pour ce jeu (fond, sinon capture, sinon écran titre),

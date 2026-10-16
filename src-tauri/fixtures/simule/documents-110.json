@@ -1,0 +1,40 @@
+{
+ "ok": true,
+ "id": 110,
+ "documents_empreinte": "simule-1",
+ "documents": [
+  {
+   "id": 9001,
+   "type": "livret",
+   "langue": "fr",
+   "format": "pdf",
+   "taille": 872,
+   "pages": 2,
+   "duree_s": null,
+   "empreinte": "f8d464bf165a18ef0c0ecff80b43352d4473d2114dc03e8e16be57e0685d0e2f",
+   "source": "launchbox_local"
+  },
+  {
+   "id": 9002,
+   "type": "musique",
+   "langue": "",
+   "format": "mp3",
+   "taille": 6110240,
+   "pages": null,
+   "duree_s": 152.6,
+   "empreinte": "0000000000000000000000000000000000000000000000000000000000000000",
+   "source": "launchbox_local"
+  },
+  {
+   "id": 9003,
+   "type": "video_theme",
+   "langue": "",
+   "format": "mp4",
+   "taille": 25198576,
+   "pages": null,
+   "duree_s": 37.3,
+   "empreinte": "0000000000000000000000000000000000000000000000000000000000000000",
+   "source": "launchbox_local"
+  }
+ ]
+}

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { adresseFond, adresseFondDuJeu, adresseJaquette, libelleCompte, taille } from './api';
+import { adresseFond, adresseFondDuJeu, adresseJaquette, adressePageLivret, libelleCompte, taille } from './api';
+
+describe('adressePageLivret', () => {
+  it('demande une page à une largeur arrondie aux 200 px supérieurs, entre 200 et 2 400', () => {
+    expect(adressePageLivret(111, 6142, 0, 700)).toBe('http://document.localhost/111/6142/0?largeur=800');
+    expect(adressePageLivret(111, 6142, 22, 50)).toBe('http://document.localhost/111/6142/22?largeur=200');
+    expect(adressePageLivret(111, 6142, 3, 9000)).toBe('http://document.localhost/111/6142/3?largeur=2400');
+  });
+});
 
 describe('adresseJaquette', () => {
   it('demande une miniature arrondie à la centaine supérieure, entre 100 et 1000', () => {

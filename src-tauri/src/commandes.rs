@@ -322,6 +322,19 @@ pub async fn annexe_ouvrir(app: AppHandle, noyau: State<'_, Noyau>, id: i64, i: 
         .map_err(|_| Erreur::Disque("Windows n'a pas pu ouvrir ce document.".into()))
 }
 
+/// Les documents d'un jeu (contrat 1.7) : livret, musique, vidéos.
+#[tauri::command]
+pub async fn documents_jeu(noyau: State<'_, Noyau>, id: i64) -> Resultat<Vec<crate::documents::Document>> {
+    noyau.documents(id).await
+}
+
+/// Ouvre le livret d'un jeu (le télécharge d'abord s'il n'est pas sur le PC : le clic de la personne, taille montrée,
+/// vaut son accord) ; rend son nombre de pages. Les pages se lisent ensuite par `document.localhost`.
+#[tauri::command]
+pub async fn livret_ouvrir(noyau: State<'_, Noyau>, id: i64, doc: i64) -> Resultat<u32> {
+    noyau.livret(id, doc).await
+}
+
 /// La place libre dans un dossier (`None` : introuvable), pour l'écran des emplacements.
 #[tauri::command]
 pub fn espace_libre(chemin: String) -> Option<u64> {

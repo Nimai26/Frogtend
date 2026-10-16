@@ -2,11 +2,14 @@
   // La fiche d'un jeu, en deux niveaux (décision de Seb) :
   //  - le JEU : résumé, genres, informations, annexes — vrai quelle que soit la version ;
   //  - les VERSIONS : chacune avec SES fichiers et SES notes, qui ne valent pas pour une autre.
+  import { tick } from 'svelte';
   import { page } from '$app/state';
-  import { api, estErreurCoeur, taille, type Annexe, type Fiche } from '$lib/api';
+  import { api, estErreurCoeur, taille, type Annexe, type DocumentJeu, type Fiche } from '$lib/api';
   import { informer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import Jaquette from '$lib/ludotheque/Jaquette.svelte';
+  import LecteurLivret from '$lib/ludotheque/LecteurLivret.svelte';
+  import { documentsMontres, libelleDocument } from '$lib/ludotheque/documents';
   import { mettreDansLaLudotheque, tele } from '$lib/ludotheque/telechargements.svelte';
   import { emulateursDuJeu, gererJeu, installer, jouer, jouerAvec, partie } from '$lib/ludotheque/jeu.svelte';
 
@@ -15,6 +18,12 @@
   let locale = $state(false);
   let erreur = $state('');
   let annexe = $state<{ titre: string; texte: string } | null>(null);
+  // Les documents du jeu (contrat 1.7 : livret…), relus à chaque ouverture de la fiche ; le livret ouvert.
+  let documents = $state<DocumentJeu[]>([]);
+  let ouverture = $state<number | null>(null);
+  let livret = $state<{ doc: number; pages: number } | null>(null);
+  // Les boutons des documents, pour y rendre la sélection quand le lecteur se ferme.
+  const boutonsDocuments: Record<number, HTMLButtonElement> = {};
 
   const id = $derived(Number(page.params.id));
 
@@ -22,6 +31,8 @@
     fiche = null;
     erreur = '';
     annexe = null;
+    documents = [];
+    livret = null;
     try {
       const r = await api.fiche(n);
       fiche = r.fiche;
@@ -29,6 +40,28 @@
       locale = r.locale;
     } catch (e) {
       erreur = estErreurCoeur(e) ? e.motif : motifDuRefus(e);
+      return;
+    }
+    // Les documents sont un plus : s'ils ne viennent pas, la fiche reste complète sans eux. Une autre fiche ouverte
+    // entre-temps ne reçoit jamais ceux-ci.
+    const l = documentsMontres(await api.documents(n).catch(() => []));
+    if (n === id) documents = l;
+  }
+
+  /** Ouvre le livret : téléchargé d'abord s'il n'est pas sur le PC (sa taille est sur le bouton : le clic vaut accord). */
+  async function ouvrirLivret(d: DocumentJeu) {
+    if (!fiche || ouverture !== null) return;
+    const jeu = fiche.id;
+    ouverture = d.id;
+    try {
+      const pages = await api.ouvrirLivret(jeu, d.id);
+      if (fiche?.id !== jeu) return; // une autre fiche ouverte pendant le téléchargement
+      livret = { doc: d.id, pages };
+      documents = documents.map((x) => (x.id === d.id ? { ...x, garde: true } : x));
+    } catch (e) {
+      toast(`Impossible d’ouvrir le livret : ${motifDuRefus(e)}`, 'erreur');
+    } finally {
+      ouverture = null;
     }
   }
   $effect(() => {
@@ -146,11 +179,18 @@
       </div>
     </section>
 
-    {#if fiche.annexes?.length}
+    {#if fiche.annexes?.length || documents.length}
       <section class="cx-block">
         <h3>📚 Documents du jeu</h3>
         <div class="annexes">
-          {#each fiche.annexes as a (a.i)}
+          {#each documents as d (d.id)}
+            {@const l = libelleDocument(d)}
+            <button class="btn" bind:this={boutonsDocuments[d.id]} disabled={ouverture !== null} onclick={() => ouvrirLivret(d)}>
+              {l.titre}
+              <span class="muted">{ouverture === d.id ? '⏳ chargement…' : l.detail}</span>
+            </button>
+          {/each}
+          {#each fiche.annexes ?? [] as a (a.i)}
             <button class="btn" onclick={() => ouvrirAnnexe(a)}>
               {ICONES_ANNEXES[a.type] ?? '📎'} {a.titre}
               <span class="muted">{a.texte ? 'à lire' : locale ? 'ouvrir' : taille(a.taille)}</span>
@@ -210,6 +250,22 @@
     </section>
   {/if}
 </div>
+
+{#if livret && fiche}
+  <LecteurLivret
+    jeu={fiche.id}
+    doc={livret.doc}
+    pages={livret.pages}
+    titre={fiche.titre}
+    sousLaBarre
+    onfermer={async () => {
+      const doc = livret?.doc;
+      livret = null;
+      await tick();
+      if (doc) boutonsDocuments[doc]?.focus();
+    }}
+  />
+{/if}
 
 <style>
   .page {

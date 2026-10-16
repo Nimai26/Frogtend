@@ -28,6 +28,8 @@ pub fn deballer_fiche(v: Value) -> Value {
 }
 const CATALOGUE_SIMULE: &str = include_str!("../fixtures/simule/catalogue.json");
 const FICHE_110: &str = include_str!("../fixtures/simule/jeu-110.json");
+const DOCUMENTS_110: &str = include_str!("../fixtures/simule/documents-110.json");
+const LIVRET_9001: &[u8] = include_bytes!("../fixtures/simule/livret-9001.pdf");
 
 pub enum Source {
     Firehouse(Client),
@@ -252,6 +254,20 @@ impl Source {
         cible: &std::path::Path,
         progres: &(dyn Fn(u64, Option<u64>) + Send + Sync),
     ) -> Resultat<u64> {
+        self.telecharger_controle(route, cible, None, &[], progres).await
+    }
+
+    /// Comme `telecharger_route`, avec des contrôles AVANT de garder le fichier : le type annoncé par Firehouse doit
+    /// être l'un de `types` (s'il y en a), et l'empreinte sha256 du fichier entier doit valoir `sha256` (s'il est
+    /// donné) — sinon le `.part` est retiré et l'erreur le dit (aucun nouvel essai : le même fichier reviendrait).
+    pub async fn telecharger_controle(
+        &self,
+        route: &str,
+        cible: &std::path::Path,
+        sha256: Option<&str>,
+        types: &[&str],
+        progres: &(dyn Fn(u64, Option<u64>) + Send + Sync),
+    ) -> Resultat<u64> {
         use std::io::Write;
         let Source::Firehouse(c) = self else {
             return Err(Erreur::Refus("Mode simulé : rien à télécharger.".into()));
@@ -273,6 +289,13 @@ impl Source {
             }
             Err(e) => return Err(e),
         };
+        if !types.is_empty() {
+            let annonce = flux.reponse.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("");
+            let annonce = annonce.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+            if !types.contains(&annonce.as_str()) {
+                return Err(Erreur::Serveur(format!("Firehouse a envoyé un fichier d'une autre sorte que prévu ({annonce}) : il n'est pas gardé.")));
+            }
+        }
         let total = flux.reponse.content_length().map(|n| if flux.reprise { n + debut } else { n });
         let reprise = flux.reprise && debut > 0;
         let mut sortie = std::fs::OpenOptions::new().create(true).write(true).append(reprise).truncate(!reprise).open(&part)?;
@@ -287,8 +310,39 @@ impl Source {
         if total.is_some_and(|t| t != recus) {
             return Err(Erreur::Reseau("Le téléchargement s'est arrêté avant la fin : il reprendra où il en était.".into()));
         }
+        if let Some(attendue) = sha256 {
+            if !crate::sauvegarde::empreinte(&part)?.eq_ignore_ascii_case(attendue) {
+                std::fs::remove_file(&part)?;
+                return Err(Erreur::Serveur("Le fichier reçu est abîmé (son empreinte ne correspond pas) : il n'est pas gardé.".into()));
+            }
+        }
         std::fs::rename(&part, cible)?;
         Ok(recus)
+    }
+
+    /// Les documents d'un jeu (contrat 1.7) : `{documents_empreinte, documents: [...]}`.
+    pub async fn documents(&self, id: i64) -> Resultat<Value> {
+        match self {
+            Source::Firehouse(c) => c.obtenir_json(&format!("/jeu/{id}/documents")).await,
+            Source::Simulee if id == 110 => Ok(serde_json::from_str(DOCUMENTS_110).unwrap()),
+            Source::Simulee => Ok(json!({"documents": [], "documents_empreinte": null})),
+        }
+    }
+
+    /// Télécharge un document d'un jeu (contrat 1.7, `/jeu/{id}/document/{doc}`), type et empreinte vérifiés avant de
+    /// le garder. En mode simulé : le petit livret des fixtures (Dune).
+    pub async fn telecharger_document(&self, id: i64, doc: i64, cible: &std::path::Path, sha256: Option<&str>, types: &[&str]) -> Resultat<u64> {
+        if let Source::Simulee = self {
+            if (id, doc) != (110, 9001) {
+                return Err(Erreur::Refus("Mode simulé : ce document n'existe pas.".into()));
+            }
+            if let Some(p) = cible.parent() {
+                std::fs::create_dir_all(p)?;
+            }
+            std::fs::write(cible, LIVRET_9001)?;
+            return Ok(LIVRET_9001.len() as u64);
+        }
+        self.telecharger_controle(&format!("/jeu/{id}/document/{doc}"), cible, sha256, types, &|_, _| {}).await
     }
 
     /// Les triches et mods connus d'un jeu (contrat 13). Route pas encore servie (404) : listes vides.

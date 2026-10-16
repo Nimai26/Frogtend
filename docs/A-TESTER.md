@@ -48,6 +48,14 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Le livret du jeu (0.56.0)
+- [ ] Ouvre la fiche de Zelda : Ocarina of Time ▸ 📚 Documents du jeu ▸ « 📖 Livret (scan) · 23 pages · 8,2 Mo » :
+      il se télécharge (quelques secondes), puis la première page s'affiche.
+- [ ] À la manette (Taodbox ou menu en jeu) : ◀ ▶ changent de page, A agrandit (◀ ▶ défilent alors sur le côté),
+      ▲ ▼ défilent, B referme. Au clavier sur la fiche : flèches, Page préc./suiv., Échap.
+- [ ] En jeu : View+RB1 ▸ 📖 Manuel et documents ▸ le livret : lisible dans la petite fenêtre ? (sinon A pour agrandir)
+- [ ] Rouvre le même livret : plus de taille sur le bouton, il s'ouvre aussitôt (déjà sur le PC).
+
 ## L'arcade MAME (0.55.0)
 - [ ] Catalogue ▸ Arcade ▸ un jeu (par exemple Street Fighter III) ▸ télécharger, installer ; ▶ Jouer : l'accord unique
       propose MAME (environ 84 Mo) ; après, le jeu démarre dans MAME.

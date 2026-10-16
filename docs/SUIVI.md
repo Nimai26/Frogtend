@@ -59,6 +59,22 @@
   - Découpe : (1) sonde avec Seb ; (2) navigation commune clavier/souris/manette + échelle Taodbox ; (3) le cœur lit
     XInput, Select + R1 tenus 1 s, premier plan vérifié, migration des anciennes combinaisons ; (4) SDL3 ; (5) le
     fond ; (6) options, puis adaptateurs un par un (RPCS3, Cemu, Eden, Xenia, xemu, Azahar, Vita3K, PPSSPP).
+- [ ] **Lot « Documents » (contrat 1.7)** — ✅ (D1) livret en 0.56.0. Reste après D1 : (D2), (D3) ; la liste des
+      documents est gardée PAR PROFIL, mais le PDF d'un jeu du PC est dans son dossier (commun) : à revoir si Firehouse
+      répond au besoin 21 que les documents dépendent du grade ; pas d'avancement ni d'annulation pendant le
+      téléchargement du livret (assez pour 8 Mo, pas pour un gros scan chez la sœur) ; pas de cache des pages rendues
+      (0,3 s par page, pas de préchargement) ; ouvrir d'emblée agrandi une double page dans la petite fenêtre du menu
+      en jeu ? (à voir avec Seb au premier essai). Relu AVANT de coder par les experts contrat et interface (16/10). Découpe :
+      (D1) le LIVRET : `/jeu/{id}/documents` lu à l'ouverture de la fiche (en ligne), liste gardée avec le jeu du PC ;
+      PDF téléchargé au clic (la taille est sur le bouton : le clic vaut accord pour CE document), sha256 et type
+      vérifiés avant de le garder (dossier du jeu s'il est sur le PC, sinon cache DU PROFIL) ; pages rendues en images
+      par Windows (Windows.Data.Pdf, intégré) et montrées par un lecteur maison (←/→ page, ↑/↓ défiler, A zoom, B
+      retour) sur la fiche et dans le menu en jeu — ni iframe PDF ni lecteur de Windows (pas pilotables à la manette,
+      lecteur caché derrière le menu) ; protocole gardé par le profil et la liste du jeu. (D2) musique et vidéo :
+      lecteur maison (⏯, ±10 s, barre, heure), protocole avec `Range` (206), verrou par document. (D3) catalogue :
+      `documents` et `documents_empreinte` conservés (JeuResume) + relecture complète unique ; besoin 21 (est-ce que
+      `maj_le` bouge avec les documents ?). `video_theme` : pour Taodbox, plus tard. Purge et plafond du cache du
+      profil (visuels aussi) : à faire. Mots distincts à l'écran : « annexes » (Abandonware France) ≠ « livret ».
 - [x] **Lot MAME (contrat 1.13)** ✅ 0.55.0 : fichiers dans leur sous-dossier (CHD chez le parent), version MAME =
       ROM (jamais décompressée), zip lancé (jamais la CHD), `mame <nom court> -rompath <dossier>`, « incomplet » dit,
       paquet officiel auto-extractible ouvert sans être exécuté. Reste : plusieurs versions (clones) d'un même jeu sur
@@ -195,6 +211,11 @@ d'abord :
 - [ ] **Firehouse — images de Dune et de tout MS-DOS** (cause donnée par Firehouse le 16/10) : depuis la 1.6, seules les
       images RAPATRIÉES sont servies ; le rapatriement MS-DOS n'a jamais été lancé (25 images de Dune « à
       télécharger »). Firehouse le présente à Seb, chiffré (PC, MS-DOS, PS3…). Rien à changer dans Frogtend.
+      16/10 ~15 h : rapatriement des images des jeux POSSÉDÉS en cours (accord de Seb, plafond 5 Go) ; les jaquettes
+      de Dune, etc. reviennent dans les médias 1.6. À revérifier dans Frogtend ensuite. (Même jour : stockages
+      renommés côté Firehouse, Stay-Puft / Proton / PKE ; rien ne change pour Frogtend.)
+      Demandes en attente du choix de Seb (Firehouse les a notées) : `version` d'une « installation » de BIOS,
+      `autoconfig.zip` servi, `/emulateurs/retroarch/paquet`.
 - [ ] **Firehouse — besoin 15** : la liste MAME (MAME.xml de LaunchBox) servie par l'API.
 - [ ] **Firehouse — besoin 16** : fiche et jaquette d'un jeu importé, par `launchbox_id` (les 7 jeux PS3 importés
       n'ont pas d'informations).
@@ -214,6 +235,12 @@ d'abord :
 - Jellyfin → Taodbox : projet côté Firehouse, pas le travail de Frogtend.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.56.0** (16/10) — Le livret du jeu (contrat 1.7, D1). Vérifié en RÉEL : `/jeu/111/documents` → 4 documents ;
+  livret de Zelda téléchargé par le code de Frogtend (8 583 117 o en 1,9 s, application/pdf et sha256 vérifiés),
+  23 pages ; pages rendues par Windows.Data.Pdf en 0,3 s, image regardée (nette ; doubles pages à l'italienne →
+  lecteur adapté). Tests : 314 cœur, 149 interface ; relectures des experts contrat et interface (points importants
+  corrigés). NON vérifié : le lecteur dans la vraie fenêtre, à la manette, et dans le menu en jeu.
 
 - **0.55.0** (16/10) — L'arcade MAME depuis Firehouse. Vérifié en RÉEL : paquet officiel MAME 0.289 (sha256 conforme à
   Firehouse) décompressé sans exécution (2 332 fichiers, `mame -version` → 0.289) ; fichiers de Street Fighter III

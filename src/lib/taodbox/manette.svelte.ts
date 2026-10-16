@@ -75,8 +75,24 @@ function valider() {
   else e.click();
 }
 
+/** Ce qui a pris la main (le lecteur du livret…) : il reçoit les commandes avant la navigation, et rend `true`
+ * s'il s'en est servi. Le dernier arrivé passe en premier ; une fenêtre maison ouverte par-dessus reste prioritaire. */
+type Preneur = (c: Commande) => boolean;
+const preneurs: Preneur[] = [];
+
+/** Prend la main ; rend la fonction qui la rend. */
+export function prendreLaMain(p: Preneur): () => void {
+  preneurs.push(p);
+  return () => {
+    const i = preneurs.lastIndexOf(p);
+    if (i >= 0) preneurs.splice(i, 1);
+  };
+}
+
 /** Une commande, quelle que soit sa source (manette, clavier, cœur de Frogtend). */
 export function appliquer(c: Commande) {
+  const p = preneurs[preneurs.length - 1];
+  if (p && !fenetreOuverte() && p(c)) return;
   if (c === 'valider') valider();
   else if (c === 'retour') touche('Escape');
   else deplacer(c);

@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.56.0 — Le livret du jeu, à lire dans Frogtend
+
+- Sur la fiche d'un jeu, et dans le menu en jeu (« 📖 Manuel et documents ») : **📖 Livret (scan)**, avec son nombre
+  de pages et sa taille. Un clic le télécharge (vérifié : rien d'abîmé n'est gardé), puis il s'ouvre dans Frogtend.
+- Le lecteur se pilote à la **manette** comme au clavier : ◀ ▶ pages, ▲ ▼ défiler, A agrandir (les livrets en
+  doubles pages se lisent mieux agrandis), B revenir.
+- Le livret est gardé avec le jeu s'il est sur le PC, sinon dans le profil de la personne seulement.
+
 ## 0.55.0 — L'arcade (MAME) depuis Firehouse
 
 - Les **jeux d'arcade** de Firehouse (3 082 aujourd'hui) se téléchargent et se lancent : chaque jeu arrive avec ses
