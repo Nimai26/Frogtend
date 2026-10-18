@@ -322,6 +322,8 @@ export interface BilanSynchro {
   mode: 'complete' | 'increment';
   recus: number;
   retires: number;
+  /** Jeux du PC rattachés à leur nouvelle fiche pendant cette synchronisation (contrat 1.14) : [ancien, nouveau]. */
+  rattaches?: [number, number][];
 }
 
 /** Qui porte un jeton, d'après Firehouse (`/moi`). */
@@ -353,8 +355,11 @@ export interface ErreurCoeur {
     | 'profil'
     | 'reglage'
     | 'version'
-    | 'disque';
+    | 'disque'
+    | 'fusionne';
   motif: string;
+  /** Pour `fusionne` (contrat 1.14) : la fiche où celle-ci a été réunie. */
+  nouveau?: number;
 }
 
 export function estErreurCoeur(e: unknown): e is ErreurCoeur {
@@ -470,13 +475,16 @@ export const api = {
   supprimerProfil: (id: string, pin: string | null) => appeler<void>('profil_supprimer', { id, pin }),
 
   synchroniser: () => appeler<BilanSynchro>('ludotheque_synchroniser'),
+  /** Les jeux du PC rattachés à une fiche réunie (contrat 1.14) : [ancien, nouveau]. */
+  reunions: () => appeler<[number, number][]>('jeux_reunions'),
   synchroniseeLe: () => appeler<string | null>('ludotheque_synchronisee_le'),
   plateformes: (locale: boolean) => appeler<Plateforme[]>('ludotheque_plateformes', { locale }),
   genres: (plateforme: string | null, locale: boolean) => appeler<string[]>('ludotheque_genres', { plateforme, locale }),
   lister: (filtre: Filtre) => appeler<Liste>('ludotheque_lister', { filtre }),
   auHasard: (plateforme: string | null, locale: boolean) =>
     appeler<JeuResume | null>('ludotheque_au_hasard', { plateforme, locale }),
-  fiche: (id: number) => appeler<{ fiche: Fiche; hors_ligne: boolean; locale: boolean }>('ludotheque_fiche', { id }),
+  /** `reunie_dans` : la fiche demandée a été réunie à celle-ci chez Firehouse (contrat 1.14). */
+  fiche: (id: number) => appeler<{ fiche: Fiche; hors_ligne: boolean; locale: boolean; reunie_dans?: number }>('ludotheque_fiche', { id }),
   annexeTexte: (id: number, i: number, cle: string) =>
     appeler<{ ok?: boolean; titre?: string; texte?: string }>('ludotheque_annexe_texte', { id, i, cle }),
 

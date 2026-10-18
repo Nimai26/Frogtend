@@ -136,7 +136,7 @@ impl Source {
                 match c.obtenir(&format!("/media/{id}/{sorte}{l}"), None).await {
                     Ok(Reponse::Corps { octets, type_contenu, .. }) => Ok(Some(Image { octets, type_contenu })),
                     Ok(Reponse::NonModifie) => Ok(None),
-                    Err(Erreur::Introuvable(_)) => Ok(None),
+                    Err(Erreur::Introuvable(_) | Erreur::Fusionne { .. }) => Ok(None),
                     Err(e) => Err(e),
                 }
             }
@@ -344,7 +344,7 @@ impl Source {
                 match c.obtenir(&format!("/media/{id}/{sorte}?id={media}&largeur={l}"), None).await {
                     Ok(Reponse::Corps { octets, type_contenu, .. }) => Ok(Some(Image { octets, type_contenu })),
                     Ok(Reponse::NonModifie) => Ok(None),
-                    Err(Erreur::Introuvable(_)) => Ok(None),
+                    Err(Erreur::Introuvable(_) | Erreur::Fusionne { .. }) => Ok(None),
                     Err(e) => Err(e),
                 }
             }
@@ -383,7 +383,7 @@ impl Source {
         match self {
             Source::Firehouse(c) => match c.obtenir_json::<Value>(&format!("/jeu/{media_id}/triche")).await {
                 Ok(v) => Ok(v),
-                Err(Erreur::Introuvable(_)) => Ok(vide),
+                Err(Erreur::Introuvable(_) | Erreur::Fusionne { .. }) => Ok(vide),
                 Err(e) => Err(e),
             },
             Source::Simulee => Ok(vide),

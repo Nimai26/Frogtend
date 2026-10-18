@@ -134,7 +134,14 @@ pub fn erreur_du_statut(code: u16, corps: &[u8]) -> Erreur {
         404 => Erreur::Introuvable("Firehouse ne connaît pas ce jeu (ou il ne t'est pas visible).".into()),
         // 410 (contrat 1.14) : la fiche a été RÉUNIE à une autre. En attendant le rattachement, comme un 404 (le contrat
         // le permet), avec le texte de Firehouse — et surtout JAMAIS un `.part` effacé.
-        410 => Erreur::Introuvable(motif.unwrap_or_else(|| "Ce jeu a été réuni à une autre fiche dans Firehouse.".into())),
+        410 => {
+            let texte = motif.unwrap_or_else(|| "Ce jeu a été réuni à une autre fiche dans Firehouse.".into());
+            // Le nouveau numéro, s'il est lisible ; sinon comme un 404 (le contrat le permet).
+            match serde_json::from_slice::<serde_json::Value>(corps).ok().and_then(|v| v["fusionne_dans"].as_i64()).filter(|n| *n > 0) {
+                Some(nouveau) => Erreur::Fusionne { motif: texte, nouveau },
+                None => Erreur::Introuvable(texte),
+            }
+        }
         416 => Erreur::Plage("La reprise du téléchargement n'est plus possible : il recommence depuis le début.".into()),
         409 => Erreur::Conflit(motif.unwrap_or_else(|| "Firehouse signale un conflit : réessaie plus tard.".into())),
         400..=499 => Erreur::Refus(motif.unwrap_or_else(|| format!("Firehouse a refusé la demande (code {code})."))),
@@ -335,7 +342,8 @@ mod tests {
         // Contrat 1.14 (relevé réel du 18/10) : une fiche réunie, comme un 404 avec le texte de Firehouse ; 416 : la
         // seule erreur qui autorise à effacer un `.part`.
         let e = erreur_du_statut(410, br#"{"ok":false,"fusionne_dans":324,"le":"2026-10-05T14:02:37","detail":"ce jeu a ete reuni a la fiche 324"}"#);
-        assert!(matches!(&e, Erreur::Introuvable(m) if m.contains("324")), "{e:?}");
+        assert!(matches!(&e, Erreur::Fusionne { motif, nouveau: 324 } if motif.contains("324")), "{e:?}");
+        assert!(matches!(erreur_du_statut(410, b"pas du json"), Erreur::Introuvable(_)));
         assert!(matches!(erreur_du_statut(416, b""), Erreur::Plage(_)));
         assert_eq!(
             erreur_du_statut(409, br#"{"detail":"fichier abime"}"#),

@@ -48,6 +48,13 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Les fiches réunies (0.65.0)
+Aucun de tes 9 jeux installés n'a de fiche réunie (vérifié le 18/10) : rien ne doit changer chez toi.
+- [ ] Synchronise la ludothèque : aucun message « rattaché », tes jeux installés sont tous là et se lancent.
+- [ ] Le temps de jeu de tes jeux est le même qu'avant la mise à jour.
+- [ ] Si un jour un message « 🔗 jeu(x) de ton PC rattaché(s) » apparaît : le jeu est toujours là, il se lance, son
+      temps de jeu est gardé. Dis-le-moi.
+
 ## La galerie d'images (0.64.0)
 - [ ] Fiche de 3x3 Eyes (ou un autre jeu SNES) ▸ 🖼 Images du jeu : des vignettes de même taille (boîte, dos,
       tranche, cartouche, images du jeu…), libellées en français.

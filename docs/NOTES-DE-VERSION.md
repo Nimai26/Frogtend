@@ -1,5 +1,17 @@
 # Notes de version de Frogtend
 
+## 0.65.0 — Tes jeux suivent leur fiche quand Firehouse en réunit deux
+
+- Quand Firehouse réunit deux fiches d'un même jeu, un jeu de ton PC rangé sous l'ancienne est **rattaché tout seul à
+  la nouvelle** à la synchronisation : rien n'est retéléchargé, rien n'est effacé. Ton installation, ton temps de jeu,
+  tes sauvegardes de parties et tes réglages (émulateur, commandes, plein écran, manette → clavier) suivent.
+- Frogtend ne rattache que si tout concorde : même version, mêmes fichiers. Sinon il ne touche à rien, et le jeu reste
+  jouable depuis sa fiche comme avant.
+- Jamais pendant une partie, une installation ou un téléchargement : ce sera fait à la synchronisation suivante.
+- Un téléchargement en attente dont la fiche vient d'être réunie reprend sous la nouvelle fiche, sans perdre ce qui
+  était déjà reçu.
+- Un vieux lien vers l'ancienne fiche ouvre la nouvelle.
+
 ## 0.64.1 — Un téléchargement à moitié reçu n'est plus jamais perdu
 
 - Correctif important : quand Firehouse refusait la reprise d'un téléchargement (jeu introuvable, fiche réunie à une

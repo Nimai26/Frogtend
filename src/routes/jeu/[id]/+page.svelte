@@ -4,6 +4,7 @@
   //  - les VERSIONS : chacune avec SES fichiers et SES notes, qui ne valent pas pour une autre.
   import { tick } from 'svelte';
   import { page } from '$app/state';
+  import { goto } from '$app/navigation';
   import { api, estErreurCoeur, taille, type Annexe, type DocumentJeu, type Fiche } from '$lib/api';
   import { informer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
@@ -52,6 +53,12 @@
     imageOuverte = null;
     try {
       const r = await api.fiche(n);
+      // Une fiche réunie à une autre chez Firehouse (contrat 1.14) : la nouvelle, à SON adresse.
+      if (r.reunie_dans && r.reunie_dans !== n) {
+        toast('Ce jeu a été réuni à une autre fiche chez Firehouse : voici la nouvelle.');
+        await goto(`/jeu/${r.reunie_dans}`, { replaceState: true });
+        return;
+      }
       fiche = r.fiche;
       horsLigne = r.hors_ligne;
       locale = r.locale;

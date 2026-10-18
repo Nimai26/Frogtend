@@ -257,6 +257,9 @@ impl Registre {
                dossier TEXT NOT NULL, etat TEXT NOT NULL, total INTEGER NOT NULL, fichiers TEXT NOT NULL,
                message TEXT, ajoute_le TEXT NOT NULL, ajoute_par TEXT NOT NULL);",
         )?;
+        // Contrat 1.14 : les jeux du PC rattachés à une fiche réunie (ancien → nouveau), pour ne rien perdre de vue
+        // (abris de parties rangés sous l'ancien numéro, réglages de l'interface à faire suivre).
+        db.execute_batch("CREATE TABLE IF NOT EXISTS reunions (ancien INTEGER PRIMARY KEY, nouveau INTEGER NOT NULL, le TEXT, applique_le TEXT NOT NULL);")?;
         // Colonnes ajoutées par le lot 3 (un registre de la 0.4.0 est complété, rien n'est perdu).
         for colonne in ["installation TEXT", "temps_jeu INTEGER NOT NULL DEFAULT 0", "derniere_partie TEXT"] {
             let nom = colonne.split(' ').next().unwrap();
@@ -268,6 +271,46 @@ impl Registre {
             }
         }
         Ok(Registre { db, fichier: fichier.into() })
+    }
+
+    /// Rattache un jeu du PC à sa nouvelle fiche (contrat 1.14) : SEUL changement du registre, en une transaction —
+    /// sa ligne garde tout (version, dossier, installation, temps de jeu), seul son numéro change. Refusé (faux) si
+    /// le nouveau numéro est déjà sur le PC (deux installations du même jeu : la personne décide).
+    pub fn rattacher(&mut self, ancien: i64, nouveau: i64, le: Option<&str>, quand: &str) -> Resultat<bool> {
+        let tx = self.db.transaction()?;
+        let n = tx.execute(
+            "UPDATE jeux_pc SET id = ?2 WHERE id = ?1 AND NOT EXISTS (SELECT 1 FROM jeux_pc WHERE id = ?2)",
+            params![ancien, nouveau],
+        )?;
+        if n == 1 {
+            tx.execute(
+                "INSERT OR REPLACE INTO reunions (ancien, nouveau, le, applique_le) VALUES (?1, ?2, ?3, ?4)",
+                params![ancien, nouveau, le, quand],
+            )?;
+        }
+        tx.commit()?;
+        Ok(n == 1)
+    }
+
+    /// Les rattachements faits sur ce PC : (ancien, nouveau).
+    /// (ancien, numéro ACTUEL) : une chaîne A→B puis B→C donne A→C et B→C (gardée contre les boucles).
+    pub fn reunions(&self) -> Resultat<Vec<(i64, i64)>> {
+        // Le rattachement le plus récent d'abord : ses réglages priment sur une chaîne (copie « le premier gagne »).
+        let mut st = self.db.prepare("SELECT ancien, nouveau FROM reunions ORDER BY applique_le DESC, ancien")?;
+        let l: Vec<(i64, i64)> = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?;
+        let carte: std::collections::HashMap<i64, i64> = l.iter().copied().collect();
+        Ok(l
+            .into_iter()
+            .map(|(a, mut n)| {
+                for _ in 0..16 {
+                    match carte.get(&n) {
+                        Some(&s) if s != a => n = s,
+                        _ => break,
+                    }
+                }
+                (a, n)
+            })
+            .collect())
     }
 
     pub fn ajouter(&self, j: &JeuPc) -> Resultat<()> {
@@ -368,10 +411,19 @@ impl Registre {
 
     /// Ajoute une partie au temps de jeu.
     pub fn compter_partie(&self, id: i64, secondes: u64, quand: &str) -> Resultat<()> {
-        self.db.execute(
+        let n = self.db.execute(
             "UPDATE jeux_pc SET temps_jeu = temps_jeu + ?2, derniere_partie = ?3 WHERE id = ?1",
             params![id, secondes as i64, quand],
         )?;
+        // Une partie lancée sous l'ancien numéro d'un jeu rattaché entre-temps (contrat 1.14) : comptée au nouveau.
+        if n == 0 {
+            if let Some((_, nouveau)) = self.reunions()?.into_iter().find(|(a, _)| *a == id) {
+                self.db.execute(
+                    "UPDATE jeux_pc SET temps_jeu = temps_jeu + ?2, derniere_partie = ?3 WHERE id = ?1",
+                    params![nouveau, secondes as i64, quand],
+                )?;
+            }
+        }
         Ok(())
     }
 
@@ -452,6 +504,21 @@ mod tests {
         for mauvais in ["..", "a/b.rom", "..\\x", "C:truc", ""] {
             assert!(nom_de_fichier_sur(mauvais).is_err(), "{mauvais}");
         }
+    }
+
+    #[test]
+    fn un_jeu_rattache_deux_fois_suit_la_chaine_et_garde_son_temps_de_jeu() {
+        let d = tempfile::tempdir().unwrap();
+        let mut r = Registre::ouvrir(&d.path().join("jeux.db")).unwrap();
+        r.ajouter(&jeu(1, d.path())).unwrap();
+        assert!(r.rattacher(1, 2, None, "a").unwrap());
+        assert!(r.rattacher(2, 3, None, "b").unwrap());
+        // A→B puis B→C : les deux anciens mènent au numéro actuel.
+        assert_eq!(r.reunions().unwrap(), vec![(2, 3), (1, 3)], "le plus récent d'abord");
+        // Une partie lancée sous l'ancien numéro, finie après le rattachement : comptée au nouveau.
+        let avant = r.jeu(3).unwrap().unwrap().temps_jeu;
+        r.compter_partie(1, 60, "c").unwrap();
+        assert_eq!(r.jeu(3).unwrap().unwrap().temps_jeu, avant + 60);
     }
 
     #[test]

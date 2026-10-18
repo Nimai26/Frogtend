@@ -1,6 +1,7 @@
 // L'état partagé de l'application : réglages (PC et profil ouvert), catalogue des skins, skin appliqué.
 
 import { isTauri } from '@tauri-apps/api/core';
+import { migrerPc, migrerProfil } from './reglages/reunions';
 import { oublierToutes } from '$lib/assistant/conversations.svelte';
 import { normaliserTous } from '$lib/emulateurs/choix';
 import instantane from '../../docs/charte/themes.instantane.json';
@@ -131,6 +132,28 @@ export async function chargerSkinsFirehouse() {
   }
 }
 
+/**
+ * Contrat 1.14 : les réglages faits pour un jeu sous son ANCIEN numéro (fiche réunie chez Firehouse, jeu rattaché)
+ * sont copiés sous le nouveau, pour le PC et pour le profil ouvert (jamais effacés). Appelé à l'ouverture d'un profil
+ * et après chaque synchronisation.
+ */
+export async function suivreReunions() {
+  const r = await api.reunions().catch(() => [] as [number, number][]);
+  if (!r.length) return;
+  const pc = migrerPc($state.snapshot(etat.pc), r);
+  if (pc) {
+    etat.pc = pc;
+    await magasinPc?.ecrire($state.snapshot(etat.pc));
+  }
+  if (etat.profilOuvert) {
+    const p = migrerProfil($state.snapshot(etat.profil), r);
+    if (p) {
+      etat.profil = p;
+      await magasinProfil?.ecrire($state.snapshot(etat.profil));
+    }
+  }
+}
+
 /** Après l'ouverture d'un profil : ses réglages, puis les skins de Firehouse et le sien. */
 export async function entrerDansProfil(profil: Profil) {
   magasinProfil = await magasin(`profils/${profil.id}.json`);
@@ -147,6 +170,7 @@ export async function entrerDansProfil(profil: Profil) {
     // Hors ligne ou mode simulé : on garde les skins déjà là.
   }
   appliquerApparence();
+  await suivreReunions();
 }
 
 /** Ferme le profil : plus rien de lui n'est affiché ni gardé en mémoire ici. */

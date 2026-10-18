@@ -170,7 +170,8 @@ impl Noyau {
         let c = s.verrou();
         let mut vus = Vec::new();
         for j in tous {
-            if c.contient(j.id)? {
+            // Visible par lui-même, ou par la fiche où il a été réuni (contrat 1.14, pas encore rattaché).
+            if c.visible_ou_reuni(j.id)? {
                 let recus = j.recus();
                 vus.push(JeuPcVu { jeu: j, recus });
             }
@@ -193,6 +194,10 @@ impl Noyau {
     ) -> Resultat<JeuPc> {
         let s = self.session().await?;
         let c = client(&s)?;
+        // Une fiche réunie à une autre (contrat 1.14 : une ancienne sauvegarde, un vieux lien) : la nouvelle — les
+        // numéros de version sont gardés tels quels par Firehouse.
+        // (`reuni_vers` laisse à une fiche vivante son numéro.)
+        let id = s.verrou().reuni_vers(id)?.unwrap_or(id);
         if self.registre().jeu(id)?.is_some() {
             return Err(Erreur::Refus("Ce jeu est déjà dans la ludothèque de ce PC.".into()));
         }
@@ -323,12 +328,37 @@ impl Noyau {
         loop {
             let Some(jeu) = self.registre().prochain()? else { return Ok(()) };
             let arret = Arc::new(AtomicBool::new(false));
-            *self.en_cours.lock().unwrap_or_else(|e| e.into_inner()) = Some((jeu.id, arret.clone()));
+            {
+                // Sous le verrou des jeux occupés (celui du rattachement) : un jeu rattaché entre-temps est repris au
+                // tour suivant sous son nouveau numéro.
+                let _o = self.occupes.lock().unwrap_or_else(|e| e.into_inner());
+                if self.registre().jeu(jeu.id)?.is_none() {
+                    continue;
+                }
+                *self.en_cours.lock().unwrap_or_else(|e| e.into_inner()) = Some((jeu.id, arret.clone()));
+            }
             self.registre().changer_etat(jeu.id, Etat::EnCours, None)?;
             emettre(Evenement::Etat { jeu: jeu.id, etat: Etat::EnCours, message: None });
 
             let issue = telecharger_jeu(c, &jeu, &arret, &|p| emettre(Evenement::Progres(p))).await;
             *self.en_cours.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            // Une fiche réunie pendant l'attente (contrat 1.14) : le jeu est rattaché à la nouvelle (mêmes versions,
+            // mêmes fichiers) et reprend sa place dans la file sous son nouveau numéro, le reçu gardé.
+            if let Err(Erreur::Fusionne { nouveau, .. }) = &issue {
+                let f = crate::ludotheque::Fusion { ancien: jeu.id, nouveau: *nouveau, le: None };
+                // Le 410 prouve que l'ancien numéro n'est plus une fiche vivante : il sort du catalogue gardé.
+                let garde = {
+                    let mut c = s.verrou();
+                    c.retirer_reunie(jeu.id).and_then(|_| c.garder_fusions(&[f], false))
+                };
+                // Plus « en cours » (un jeu en cours n'est jamais rattaché) : en attente, comme avant d'être pris.
+                self.registre().changer_etat(jeu.id, Etat::Attente, None)?;
+                if garde.is_ok() && self.appliquer_fusions(s).await.contains(&(jeu.id, *nouveau)) {
+                    self.registre().changer_etat(*nouveau, Etat::Attente, None)?;
+                    emettre(Evenement::Etat { jeu: *nouveau, etat: Etat::Attente, message: None });
+                    continue;
+                }
+            }
             let (etat, message) = match issue {
                 Ok(Issue::Termine) => (Etat::Telecharge, None),
                 Ok(Issue::Pause) => (Etat::Pause, None),
@@ -371,6 +401,7 @@ impl Noyau {
     /// Annule le téléchargement d'un jeu PAS ENCORE téléchargé : ses fichiers (et eux seuls), ses médias, sa place
     /// dans le registre. Un jeu complet ne s'enlève pas ici : ses sauvegardes de parties passent avant (lot 3).
     pub async fn annuler(&self, id: i64) -> Resultat<()> {
+        let _occupe = self.occuper(id);
         let j = self.registre().jeu(id)?.ok_or_else(|| Erreur::Introuvable("Ce jeu n'est pas sur ce PC.".into()))?;
         if j.etat == Etat::Telecharge {
             return Err(Erreur::Refus(

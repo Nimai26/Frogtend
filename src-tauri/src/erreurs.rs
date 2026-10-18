@@ -5,8 +5,9 @@
 
 use serde::Serialize;
 
-#[derive(Debug, thiserror::Error, Serialize, PartialEq)]
-#[serde(tag = "sorte", content = "motif", rename_all = "snake_case")]
+/// Vers l'interface : TOUJOURS `{sorte, motif}` (et `nouveau` pour une fiche réunie) — écrit à la main pour qu'une
+/// erreur qui porte une donnée ne change pas cette forme.
+#[derive(Debug, thiserror::Error, PartialEq)]
 pub enum Erreur {
     /// 401 : le jeton est révoqué ou expiré. On le dit, on ne réessaie pas en boucle.
     #[error("{0}")]
@@ -48,6 +49,53 @@ pub enum Erreur {
     /// Lecture ou écriture sur le disque de ce PC.
     #[error("{0}")]
     Disque(String),
+    /// 410 (contrat 1.14) : la fiche a été RÉUNIE à `nouveau` chez Firehouse.
+    #[error("{motif}")]
+    Fusionne { motif: String, nouveau: i64 },
+}
+
+impl Serialize for Erreur {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let sorte = match self {
+            Erreur::JetonRefuse(_) => "jeton_refuse",
+            Erreur::Introuvable(_) => "introuvable",
+            Erreur::Conflit(_) => "conflit",
+            Erreur::Refus(_) => "refus",
+            Erreur::Plage(_) => "plage",
+            Erreur::Serveur(_) => "serveur",
+            Erreur::Reseau(_) => "reseau",
+            Erreur::Coffre(_) => "coffre",
+            Erreur::Pin(_) => "pin",
+            Erreur::Profil(_) => "profil",
+            Erreur::Reglage(_) => "reglage",
+            Erreur::Version(_) => "version",
+            Erreur::Disque(_) => "disque",
+            Erreur::Fusionne { .. } => "fusionne",
+        };
+        let mut m = s.serialize_map(None)?;
+        m.serialize_entry("sorte", sorte)?;
+        m.serialize_entry("motif", &self.to_string())?;
+        if let Erreur::Fusionne { nouveau, .. } = self {
+            m.serialize_entry("nouveau", nouveau)?;
+        }
+        m.end()
+    }
+}
+
+#[cfg(test)]
+mod tests_forme {
+    use super::*;
+
+    #[test]
+    fn une_erreur_garde_la_forme_sorte_motif_pour_l_interface() {
+        let v = serde_json::to_value(Erreur::Introuvable("absent".into())).unwrap();
+        assert_eq!(v, serde_json::json!({"sorte": "introuvable", "motif": "absent"}));
+        let v = serde_json::to_value(Erreur::JetonRefuse("x".into())).unwrap();
+        assert_eq!(v["sorte"], "jeton_refuse");
+        let v = serde_json::to_value(Erreur::Fusionne { motif: "réuni à la fiche 324".into(), nouveau: 324 }).unwrap();
+        assert_eq!(v, serde_json::json!({"sorte": "fusionne", "motif": "réuni à la fiche 324", "nouveau": 324}));
+    }
 }
 
 pub type Resultat<T> = Result<T, Erreur>;

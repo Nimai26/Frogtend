@@ -40,3 +40,8 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
 - (16/10) Vider tout seul `target\debug` quand il dépasse 30 Go (outil de développement, pas Frogtend lui-même).
 - (16/10, expert lancement) Manettes Nintendo : une « disposition Nintendo » (A à droite valide) par
   `SDL_GetGamepadButtonLabel`, si Seb la veut ; aujourd'hui le bouton du BAS valide partout (comme Taodbox).
+- (18/10, experts, lot 1.14) Petits restes du rattachement : un exemple de fiche réunie dans le mode simulé ; retenir
+  un rattachement refusé (cas douteux) pour ne pas relire la nouvelle fiche ni réécrire le journal à chaque
+  synchronisation ; un jeu rattaché garde sa fiche locale d'avant (une annexe absente du PC, demandée avec l'ancienne
+  `cle`, répond 409 : relire alors la fiche) ; les documents et visuels gardés sous l'ancien numéro restent orphelins
+  (à purger avec le lot Médias M4).

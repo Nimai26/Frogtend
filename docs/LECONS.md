@@ -3,6 +3,14 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 18/10 — Un test vert parce que son serveur simulé était plus simple que la vraie vie
+Ce qui s'est passé : le rattachement depuis la file de téléchargement (fiche réunie découverte par un 410) passait son
+test, mais ne pouvait jamais marcher en vrai. Le catalogue simulé ne servait plus l'ancien numéro, alors qu'un vrai
+profil le garde jusqu'à la synchronisation suivante. L'expert contrat l'a vu en relisant les corrections. · Pourquoi
+c'est grave : un test vert faisait croire à un correctif. · Comment l'appliquer : un serveur simulé reproduit l'ÉTAT
+RÉEL au moment visé (ce que le cache contient déjà, pas seulement la réponse du jour) ; toujours faire relire les
+corrections d'un lot, pas seulement le lot.
+
 ## 18/10 — Une release publiée alors que le commit avait échoué
 Ce qui s'est passé : `git add` contenait `CLAUDE.md`, ignoré par git : la commande a échoué, le commit (enchaîné par
 `&&`) n'a pas eu lieu, mais la publication, sur une AUTRE ligne, est partie quand même — étiquette v0.63.0 posée sur

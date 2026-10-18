@@ -49,6 +49,8 @@ const TAILLE_MAX_JOURNAL: u64 = 512 * 1024;
 
 #[derive(Debug, Serialize, PartialEq)]
 pub struct BilanSynchro {
+    /// Jeux du PC rattachés à leur nouvelle fiche pendant cette synchronisation (contrat 1.14) : (ancien, nouveau).
+    pub rattaches: Vec<(i64, i64)>,
     /// Jeux dans la ludothèque après la synchronisation.
     pub jeux: usize,
     pub plateformes: usize,
@@ -77,6 +79,19 @@ pub struct Noyau {
     pub(crate) pause_mame: std::sync::atomic::AtomicBool,
     /// Le dossier des abris de parties (réglage du PC « dossierAbris », règle « pas de pieuvre »). `None` : pas réglé.
     pub(crate) abris: std::sync::Mutex<Option<PathBuf>>,
+    /// Les jeux du PC en cours d'utilisation (partie, installation) : jamais rattachés à une autre fiche pendant ce
+    /// temps (contrat 1.14 : la fin de partie compterait le temps sous un numéro qui n'existe plus).
+    /// Un compteur par jeu : plusieurs gardes peuvent se chevaucher (lancement puis suivi de la partie).
+    pub(crate) occupes: std::sync::Mutex<std::collections::HashMap<i64, u32>>,
+}
+
+/// Un jeu marqué « occupé » tant que cette garde vit.
+pub(crate) struct Occupe<'a>(&'a Noyau, i64);
+
+impl Drop for Occupe<'_> {
+    fn drop(&mut self) {
+        self.0.liberer(self.1);
+    }
 }
 
 pub(crate) fn maintenant() -> String {
@@ -99,6 +114,7 @@ impl Noyau {
             en_cours: std::sync::Mutex::new(None),
             file_active: std::sync::atomic::AtomicBool::new(false),
             pause_mame: std::sync::atomic::AtomicBool::new(false),
+            occupes: std::sync::Mutex::new(Default::default()),
             abris: std::sync::Mutex::new(None),
         })
     }
@@ -289,7 +305,183 @@ impl Noyau {
     /// n'y est plus sort du cache. Si un jeu visible est inconnu du cache (il vient de redevenir visible), on
     /// refait une synchronisation complète. `progres(page, jeux)` est appelé après chaque page reçue.
     pub async fn synchroniser(&self, progres: impl Fn(u32, usize)) -> Resultat<BilanSynchro> {
+        let mut fusions = None;
+        // UNE session pour tout : un changement de profil pendant la synchronisation n'écrit jamais les fusions d'un
+        // profil dans le cache d'un autre.
         let s = self.session().await?;
+        let mut bilan = self.synchroniser_catalogue(&s, progres, &mut fusions).await?;
+        // Les fiches réunies (contrat 1.14) : jamais une raison d'échouer la synchronisation.
+        bilan.rattaches = self.suivre_fusions(&s, fusions, bilan.mode == "complete").await;
+        Ok(bilan)
+    }
+
+    /// Marque un jeu « occupé » (partie, installation) tant que la garde vit.
+    pub(crate) fn occuper(&self, id: i64) -> Occupe<'_> {
+        self.marquer_occupe(id);
+        Occupe(self, id)
+    }
+
+    /// Marque un jeu « occupé » sans garde (à rendre par `liberer`) : du lancement d'une partie jusqu'à la fin de son
+    /// suivi, qui se passent dans deux tâches différentes.
+    pub(crate) fn marquer_occupe(&self, id: i64) {
+        *self.occupes.lock().unwrap_or_else(|e| e.into_inner()).entry(id).or_insert(0) += 1;
+    }
+
+    pub(crate) fn liberer(&self, id: i64) {
+        let mut o = self.occupes.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(n) = o.get_mut(&id) {
+            *n -= 1;
+            if *n == 0 {
+                o.remove(&id);
+            }
+        }
+    }
+
+    /// Contrat 1.14 : garde les fiches réunies de ce profil (rattrapage UNIQUE de celles d'avant, que `depuis` ne
+    /// renvoie plus : une seule page 1 sans `depuis`, jamais une relecture complète), puis rattache les jeux du PC.
+    async fn suivre_fusions(&self, s: &Session, recues: Option<Vec<crate::ludotheque::Fusion>>, complete: bool) -> Vec<(i64, i64)> {
+        let deja = s.verrou().meta("fusions_lues").ok().flatten().as_deref() == Some("1.14");
+        let mut fusions = recues;
+        let mut completes = complete && fusions.is_some();
+        // Seulement face à un Firehouse 1.14 (la page 1 porte `fusions`) : sinon, rien à rattraper.
+        if !deja && !completes && fusions.is_some() {
+            if let Ok(v) = s.source.catalogue(1, None).await {
+                if let Some(l) = lire_page(&v, 1).fusions {
+                    fusions = Some(l);
+                    completes = true;
+                }
+            }
+        }
+        if let Some(l) = &fusions {
+            let mut c = s.verrou();
+            if let Err(e) = c.garder_fusions(l, completes) {
+                // Le rattrapage sera refait à la prochaine synchronisation.
+                let _ = c.ecrire_meta("fusions_lues", "0");
+                drop(c);
+                self.journaliser(&format!("fusions non gardées : {e:?}"));
+            } else if completes {
+                let _ = c.ecrire_meta("fusions_lues", "1.14");
+            }
+        }
+        self.appliquer_fusions(s).await
+    }
+
+    /// Rattache chaque jeu du PC dont la fiche a été réunie, SEULEMENT si tout concorde : le jeu n'est pas en cours
+    /// d'utilisation (téléchargement, partie, installation), la nouvelle fiche est visible pour CE profil, elle n'est
+    /// pas déjà sur le PC, et elle porte la même version avec les mêmes fichiers (nom et taille). Sinon rien n'est
+    /// touché (le jeu reste visible et lançable par sa nouvelle fiche, `visible_ou_reuni`) et c'est noté au journal.
+    pub(crate) async fn appliquer_fusions(&self, s: &Session) -> Vec<(i64, i64)> {
+        let mut faits = Vec::new();
+        let fusions = match s.verrou().fusions() {
+            Ok(f) => f,
+            Err(_) => return faits,
+        };
+        for (ancien, nouveau, le) in fusions {
+            if ancien <= 0 {
+                continue;
+            }
+            let Ok(Some(j)) = self.registre().jeu(ancien) else { continue };
+            // Des médias (et le relevé des parties) encore à l'ancien emplacement, rangés sous l'ancien numéro : pas
+            // de rattachement avant leur migration.
+            if self.ancien_dossier_medias(ancien).is_dir() {
+                continue;
+            }
+            if self.utilise(ancien) || j.etat == crate::jeux_pc::Etat::EnCours {
+                continue; // réessayé à la prochaine synchronisation
+            }
+            // L'ancien numéro porté de nouveau par une fiche vivante : le jeu garde la sienne.
+            if s.verrou().contient(ancien).unwrap_or(true) {
+                continue;
+            }
+            if !s.verrou().contient(nouveau).unwrap_or(false) {
+                continue;
+            }
+            if self.registre().jeu(nouveau).ok().flatten().is_some() {
+                self.journaliser(&format!("jeu {ancien} réuni à {nouveau}, déjà sur ce PC : rien n'est fusionné tout seul"));
+                continue;
+            }
+            let Ok(fiche) = s.source.fiche(nouveau).await else { continue };
+            let version = fiche["versions"].as_array().and_then(|l| l.iter().find(|v| v["telechargement_id"].as_i64() == Some(j.version)).cloned());
+            // 0 = une version de recensement (jamais arrivée) ; un numéro négatif est une vraie version (relevé réel du
+            // 18/10 : la fiche 324 porte la version -602).
+            let Some(version) = version.filter(|_| j.version != 0) else {
+                self.journaliser(&format!("jeu {ancien} réuni à {nouveau} : sa version {} n'y est pas, rattachement à faire avec la personne", j.version));
+                continue;
+            };
+            let mut attendus: Vec<(String, u64)> = version["fichiers"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+                .iter()
+                .map(|f| {
+                    let nom = f["nom"].as_str().unwrap_or("").to_string();
+                    let nom = match f["dossier"].as_str().filter(|d| !d.is_empty()) {
+                        Some(d) => format!("{d}/{nom}"),
+                        None => nom,
+                    };
+                    (nom, f["taille"].as_u64().unwrap_or(0))
+                })
+                .collect();
+            let mut locaux: Vec<(String, u64)> = j.fichiers.iter().map(|f| (f.nom.clone(), f.taille)).collect();
+            attendus.sort();
+            locaux.sort();
+            if attendus != locaux {
+                self.journaliser(&format!("jeu {ancien} réuni à {nouveau} : fichiers différents, rattachement à faire avec la personne"));
+                continue;
+            }
+            // Revérifié juste avant d'écrire, sans attente entre les deux, et sous le verrou des jeux occupés : une
+            // partie ou un téléchargement lancé pendant la lecture de la nouvelle fiche l'emporte.
+            let occupes = self.occupes.lock().unwrap_or_else(|e| e.into_inner());
+            let telechargement = self.en_cours.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|(i, _)| *i) == Some(ancien);
+            let en_cours = self.registre().jeu(ancien).ok().flatten().map(|j| j.etat == crate::jeux_pc::Etat::EnCours).unwrap_or(true);
+            if occupes.contains_key(&ancien) || telechargement || en_cours {
+                continue;
+            }
+            let r = self.registre().rattacher(ancien, nouveau, le.as_deref(), &maintenant());
+            drop(occupes);
+            match r {
+                Ok(true) => {}
+                Ok(false) => continue,
+                Err(e) => {
+                    self.journaliser(&format!("rattachement {ancien} → {nouveau} impossible : {e:?}"));
+                    continue;
+                }
+            }
+            // La fiche gardée avec le jeu porte désormais le nouveau numéro ; l'ancienne est gardée à côté (rien ne
+            // s'efface), notes et annexes de la version installée inchangées.
+            if let Ok(Some(j)) = self.registre().jeu(nouveau) {
+                let medias = crate::locale::medias_du_jeu(&j);
+                let f = medias.join("fiche.json");
+                if let Ok(o) = std::fs::read(&f) {
+                    let avant = medias.join(format!("fiche-avant-reunion-{ancien}.json"));
+                    if !avant.exists() {
+                        let _ = std::fs::write(&avant, &o);
+                    }
+                    if let Ok(mut v) = serde_json::from_slice::<Value>(&o) {
+                        v["id"] = Value::from(nouveau);
+                        let _ = crate::medias::ecrire(&f, &serde_json::to_vec_pretty(&v).unwrap());
+                    }
+                }
+            }
+            self.journaliser(&format!("jeu du PC {ancien} rattaché à sa nouvelle fiche {nouveau} (fiches réunies chez Firehouse)"));
+            faits.push((ancien, nouveau));
+        }
+        faits
+    }
+
+    /// Un jeu en cours de téléchargement, de partie ou d'installation.
+    fn utilise(&self, id: i64) -> bool {
+        self.occupes.lock().unwrap_or_else(|e| e.into_inner()).contains_key(&id)
+            || self.en_cours.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|(i, _)| *i) == Some(id)
+    }
+
+    /// La synchronisation du catalogue elle-même ; `fusions` reçoit celles de la page 1 (contrat 1.14).
+    async fn synchroniser_catalogue(
+        &self,
+        s: &Session,
+        progres: impl Fn(u32, usize),
+        fusions: &mut Option<Vec<crate::ludotheque::Fusion>>,
+    ) -> Resultat<BilanSynchro> {
         let mut depuis = {
             let c = s.verrou();
             // Un cache d'un schéma plus ancien (sans `images`…) : une relecture complète, une fois.
@@ -311,6 +503,7 @@ impl Noyau {
                 let p = lire_page(&v, page);
                 if page == 1 {
                     ids_visibles = p.ids_visibles;
+                    *fusions = p.fusions;
                 }
                 let vide = p.jeux.is_empty();
                 jeux.extend(p.jeux);
@@ -351,6 +544,7 @@ impl Noyau {
                         mode: "increment",
                         recus,
                         retires,
+                        rattaches: vec![],
                     });
                 }
                 // Un jeu visible nous est inconnu : on relit tout.
@@ -375,6 +569,7 @@ impl Noyau {
                 mode: "complete",
                 recus: apres,
                 retires: avant.saturating_sub(apres),
+                rattaches: vec![],
             });
         }
     }
@@ -438,19 +633,55 @@ impl Noyau {
     /// La fiche complète d'un jeu : de Firehouse si possible (et gardée), sinon celle du cache (hors ligne).
     pub async fn fiche(&self, id: i64) -> Resultat<FicheLue> {
         let s = self.session().await?;
+        // Une fiche réunie (contrat 1.14) que ce profil connaît déjà, et qui n'est pas un jeu du PC pas encore rattaché
+        // (celui-ci garde sa fiche) : la nouvelle, une seule fois (jamais de boucle).
+        let du_pc = self.registre().jeu(id)?.is_some();
+        if !du_pc {
+            // `reuni_vers` laisse à une fiche vivante son numéro.
+            let vers = s.verrou().reuni_vers(id)?;
+            if let Some(n) = vers {
+                let mut f = self.fiche_sans_reunion(&s, n).await?;
+                f.reunie_dans = Some(n);
+                return Ok(f);
+            }
+        }
+        match self.fiche_sans_reunion(&s, id).await {
+            // Réunie depuis la dernière synchronisation : la nouvelle, une seule fois.
+            // Jamais pour un jeu du PC pas encore rattaché : il garde sa fiche (et son bouton « Jouer »).
+            Err(Erreur::Fusionne { nouveau, .. }) if nouveau != id => {
+                // Gardée pour la suite (plus d'aller-retour jusqu'à la prochaine synchronisation).
+                {
+                    let mut c = s.verrou();
+                    let f = crate::ludotheque::Fusion { ancien: id, nouveau, le: None };
+                    let _ = c.retirer_reunie(id).and_then(|_| c.garder_fusions(&[f], false));
+                }
+                if du_pc {
+                    // Un jeu du PC pas encore rattaché garde sa fiche (et son bouton « Jouer ») : relue sur le disque.
+                    return self.fiche_sans_reunion(&s, id).await;
+                }
+                let mut f = self.fiche_sans_reunion(&s, nouveau).await?;
+                f.reunie_dans = Some(nouveau);
+                Ok(f)
+            }
+            r => r,
+        }
+    }
+
+    async fn fiche_sans_reunion(&self, s: &Session, id: i64) -> Resultat<FicheLue> {
         // Un jeu de la ludothèque du PC : sa fiche est sur le disque (hors ligne), si ce profil a le droit de le voir.
-        if s.verrou().contient(id)? && self.registre().jeu(id)?.is_some() {
+        // Une fiche réunie (contrat 1.14) dont le jeu n'est pas encore rattaché compte aussi : il reste jouable.
+        if s.verrou().visible_ou_reuni(id)? && self.registre().jeu(id)?.is_some() {
             if let Some(f) = self.fiche_locale(id) {
-                return Ok(FicheLue { fiche: f, hors_ligne: false, locale: true });
+                return Ok(FicheLue { fiche: f, hors_ligne: false, locale: true, reunie_dans: None });
             }
         }
         match s.source.fiche(id).await {
             Ok(f) => {
                 s.verrou().garder_fiche(id, &f, &maintenant())?;
-                Ok(FicheLue { fiche: f, hors_ligne: false, locale: false })
+                Ok(FicheLue { fiche: f, hors_ligne: false, locale: false, reunie_dans: None })
             }
             Err(Erreur::Reseau(motif)) => match s.verrou().fiche(id)? {
-                Some(f) => Ok(FicheLue { fiche: f, hors_ligne: true, locale: false }),
+                Some(f) => Ok(FicheLue { fiche: f, hors_ligne: true, locale: false, reunie_dans: None }),
                 None => Err(Erreur::Reseau(motif)),
             },
             Err(e) => Err(e),
@@ -770,6 +1001,9 @@ pub struct FicheLue {
     pub hors_ligne: bool,
     /// Vrai si la fiche vient des médias gardés sur le PC (jeu de la ludothèque).
     pub locale: bool,
+    /// La fiche demandée a été RÉUNIE à celle-ci (contrat 1.14) : l'interface montre la nouvelle à son adresse.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reunie_dans: Option<i64>,
 }
 
 /// Le type d'une image d'après ses premiers octets.
@@ -1162,6 +1396,409 @@ mod tests {
         println!("FUSIONS {} ; premières {:?}", f.len(), f.iter().take(3).collect::<Vec<_>>());
         let anciens: Vec<String> = f.iter().filter_map(|x| x["ancien"].as_i64()).map(|x| x.to_string()).collect();
         println!("ANCIENS {}", anciens.join(","));
+    }
+
+    /// Un jeu du PC (version 200, un fichier « jeu.exe » de 6 octets), dans le dossier donné.
+    fn jeu_du_pc(id: i64, dossier: &Path) -> crate::jeux_pc::JeuPc {
+        crate::jeux_pc::JeuPc {
+            id,
+            version: 200,
+            titre: "Super C".into(),
+            plateforme: "NES".into(),
+            dossier: dossier.to_string_lossy().into(),
+            etat: crate::jeux_pc::Etat::Telecharge,
+            total: 6,
+            fichiers: vec![crate::jeux_pc::FichierJeu { n: 0, nom: "jeu.exe".into(), taille: 6 }],
+            message: None,
+            ajoute_le: "1".into(),
+            ajoute_par: "seb".into(),
+            installation: None,
+            temps_jeu: 3600,
+            derniere_partie: Some("2026-10-01".into()),
+        }
+    }
+
+    /// Un Firehouse 1.14 : 324 visible, 1927 réuni à 324 (relevé réel du 18/10) ; la fiche 324 porte `fichiers_324`.
+    fn serveur_reunion(fichiers_324: Value) -> MockServer {
+        serveur_reunion_version(fichiers_324, 200)
+    }
+
+    fn serveur_reunion_version(fichiers_324: Value, version: i64) -> MockServer {
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "NES", "jeux": 2}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null,
+                "jeux": [{"id": 324, "titre": "Super C", "plateforme": "NES"}, {"id": 500, "titre": "Autre", "plateforme": "NES"}],
+                "fusions": [{"ancien": 1927, "nouveau": 324, "le": "2026-10-05T14:02:37"}, {"ancien": 1, "nouveau": 1}, {"ancien": "x"}]}));
+        });
+        s.mock(move |w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/324");
+            t.status(200).json_body(json!({"ok": true, "jeu": {"id": 324, "titre": "Super C", "plateforme": "NES",
+                "versions": [{"telechargement_id": version, "qualite": "ROM", "fichiers": fichiers_324}]}}));
+        });
+        s
+    }
+
+    async fn ouvert(s: &MockServer) -> (tempfile::TempDir, Noyau) {
+        let (d, n) = noyau();
+        let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
+        (d, n)
+    }
+
+    #[tokio::test]
+    async fn un_jeu_du_pc_dont_la_fiche_est_reunie_est_rattache_sans_rien_perdre() {
+        let s = serveur_reunion(json!([{"nom": "jeu.exe", "taille": 6, "dossier": ""}]));
+        let (d, n) = ouvert(&s).await;
+        let dossier = d.path().join("Jeux").join("Probotector 2");
+        std::fs::create_dir_all(dossier.join("Frogtend").join("medias")).unwrap();
+        std::fs::write(dossier.join("Frogtend").join("medias").join("fiche.json"), json!({"id": 1927, "titre": "Probotector 2"}).to_string()).unwrap();
+        n.registre().ajouter(&jeu_du_pc(1927, &dossier)).unwrap();
+        n.registre().compter_partie(1927, 3600, "2026-10-01").unwrap();
+
+        let b = n.synchroniser(|_, _| {}).await.unwrap();
+        assert_eq!(b.rattaches, vec![(1927, 324)]);
+        // Tout est là sous le nouveau numéro : version, dossier, temps de jeu ; l'ancien n'existe plus.
+        let j = n.registre().jeu(324).unwrap().expect("rattaché");
+        assert_eq!((j.version, j.temps_jeu, j.dossier.clone()), (200, 3600, dossier.to_string_lossy().to_string()));
+        assert!(n.registre().jeu(1927).unwrap().is_none());
+        assert_eq!(n.registre().reunions().unwrap(), vec![(1927, 324)]);
+        // La fiche gardée porte le nouveau numéro ; l'ancienne est gardée à côté.
+        let medias = dossier.join("Frogtend").join("medias");
+        let f: Value = serde_json::from_slice(&std::fs::read(medias.join("fiche.json")).unwrap()).unwrap();
+        assert_eq!(f["id"], 324);
+        assert!(medias.join("fiche-avant-reunion-1927.json").is_file());
+        // Il reste visible (Ma ludothèque, lancement).
+        assert_eq!(n.jeux_du_pc().await.unwrap().len(), 1);
+        assert!(n.jeu_visible(324).await.is_ok());
+        // Les fusions mal formées sont laissées ; une seconde synchronisation ne refait rien.
+        assert!(n.synchroniser(|_, _| {}).await.unwrap().rattaches.is_empty());
+    }
+
+    #[tokio::test]
+    async fn un_ancien_numero_rendu_a_une_fiche_vivante_reste_le_sien() {
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "NES", "jeux": 2}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null,
+                "jeux": [{"id": 324, "titre": "Super C", "plateforme": "NES"}, {"id": 1927, "titre": "Probotector 2", "plateforme": "NES"}],
+                "fusions": [{"ancien": 1927, "nouveau": 324}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/1927");
+            t.status(200).json_body(json!({"ok": true, "jeu": {"id": 1927, "titre": "Probotector 2"}}));
+        });
+        let (d, n) = ouvert(&s).await;
+        n.registre().ajouter(&jeu_du_pc(1927, &d.path().join("A"))).unwrap();
+        assert!(n.synchroniser(|_, _| {}).await.unwrap().rattaches.is_empty());
+        assert!(n.registre().jeu(1927).unwrap().is_some());
+        assert_eq!(n.session().await.unwrap().verrou().reuni_vers(1927).unwrap(), None);
+        let f = n.fiche(1927).await.unwrap();
+        assert_eq!((f.fiche["id"].as_i64(), f.reunie_dans), (Some(1927), None));
+    }
+
+    #[tokio::test]
+    async fn les_parties_de_l_ancien_et_du_nouveau_numero_sont_reunies() {
+        let s = serveur_reunion(json!([{"nom": "jeu.exe", "taille": 6}]));
+        let (d, n) = ouvert(&s).await;
+        n.registre().ajouter(&jeu_du_pc(1927, &d.path().join("A"))).unwrap();
+        assert!(n.registre().rattacher(1927, 324, None, "x").unwrap());
+        // Un abri fait avant le rattachement (sous 1927), un autre après (sous 324).
+        let vieux = d.path().join("sauvegardes").join("1927").join("100");
+        let neuf = d.path().join("sauvegardes").join("324").join("200");
+        std::fs::create_dir_all(&vieux).unwrap();
+        std::fs::create_dir_all(&neuf).unwrap();
+        std::fs::write(vieux.join("seule.dat"), b"seule").unwrap();
+        std::fs::write(vieux.join("commun.dat"), b"vieux").unwrap();
+        std::fs::write(neuf.join("commun.dat"), b"neuf").unwrap();
+        let mut c: Vec<(String, Vec<u8>)> =
+            n.contenu_sauvegarde(&[]).await.unwrap().parties.iter().map(|e| (e.relatif.clone(), std::fs::read(&e.source).unwrap())).collect();
+        c.sort();
+        // Rien ne sort de la sauvegarde ; pour un même fichier, la copie la plus récente.
+        assert_eq!(c, vec![("jeux/324/commun.dat".into(), b"neuf".to_vec()), ("jeux/324/seule.dat".into(), b"seule".to_vec())]);
+
+        // Un autre PC : le jeu y est ajouté directement sous 324 (jamais rattaché), ses parties restaurées attendent
+        // sous 1927 — l'ancien numéro connu du profil suffit.
+        let profil = n.session().await.unwrap().profil.id.clone();
+        let zone = d.path().join("restauration").join(&profil).join("parties").join("jeux").join("1927");
+        std::fs::create_dir_all(&zone).unwrap();
+        std::fs::write(zone.join("save.dat"), b"partie").unwrap();
+        let jeu = d.path().join("B");
+        std::fs::create_dir_all(&jeu).unwrap();
+        assert_eq!(n.reposer_parties_du_jeu(&profil, 324, &[1927], &jeu).unwrap().reposes, 1);
+        assert_eq!(std::fs::read(jeu.join("save.dat")).unwrap(), b"partie");
+    }
+
+    #[tokio::test]
+    async fn une_fiche_reunie_decouverte_a_l_ouverture_est_retenue() {
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "NES", "jeux": 2}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [
+                {"id": 324, "titre": "Super C", "plateforme": "NES"}, {"id": 1927, "titre": "Probotector 2", "plateforme": "NES"}]}));
+        });
+        let ancien = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/1927");
+            t.status(410).json_body(json!({"ok": false, "fusionne_dans": 324, "detail": "réuni"}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/324");
+            t.status(200).json_body(json!({"ok": true, "jeu": {"id": 324, "titre": "Super C"}}));
+        });
+        let (_d, n) = ouvert(&s).await;
+        n.synchroniser(|_, _| {}).await.unwrap();
+        assert_eq!(n.fiche(1927).await.unwrap().reunie_dans, Some(324));
+        // Retenue : l'ancienne adresse mène à la nouvelle sans redemander l'ancienne.
+        assert_eq!(n.fiche(1927).await.unwrap().reunie_dans, Some(324));
+        ancien.assert_hits(1);
+        // Une chaîne s'arrête sur une fiche vivante : 5 → 1927 (réunie) → 324 (vivante).
+        let c = n.session().await.unwrap();
+        c.verrou().garder_fusions(&[crate::ludotheque::Fusion { ancien: 5, nouveau: 1927, le: None }], false).unwrap();
+        assert_eq!(c.verrou().reuni_vers(5).unwrap(), Some(324));
+    }
+
+    #[tokio::test]
+    async fn une_liste_complete_de_fusions_remplace_l_ancienne() {
+        let s = serveur_reunion(json!([]));
+        let (_d, n) = ouvert(&s).await;
+        let f = |a, b| crate::ludotheque::Fusion { ancien: a, nouveau: b, le: None };
+        let session = n.session().await.unwrap();
+        session.verrou().garder_fusions(&[f(7, 324)], false).unwrap();
+        session.verrou().garder_fusions(&[f(8, 324)], false).unwrap();
+        assert_eq!(session.verrou().fusions().unwrap().len(), 2, "une liste partielle s'ajoute");
+        session.verrou().garder_fusions(&[f(8, 324)], true).unwrap();
+        assert_eq!(session.verrou().fusions().unwrap(), vec![(8, 324, None)], "une liste complète remplace");
+    }
+
+    #[tokio::test]
+    async fn un_jeu_occupe_n_est_jamais_rattache() {
+        let s = serveur_reunion(json!([{"nom": "jeu.exe", "taille": 6}]));
+        let (d, n) = ouvert(&s).await;
+        n.registre().ajouter(&jeu_du_pc(1927, &d.path().join("A"))).unwrap();
+        // Deux gardes sur le même jeu (lancement puis suivi) : la première qui tombe ne libère pas l'autre.
+        n.marquer_occupe(1927);
+        {
+            let _g = n.occuper(1927);
+        }
+        assert!(n.synchroniser(|_, _| {}).await.unwrap().rattaches.is_empty());
+        n.liberer(1927);
+        assert_eq!(n.synchroniser(|_, _| {}).await.unwrap().rattaches, vec![(1927, 324)]);
+    }
+
+    #[tokio::test]
+    async fn un_telechargement_tombe_sur_une_fiche_reunie_reprend_sous_le_nouveau_numero() {
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "NES", "jeux": 1}]}));
+        });
+        // Un catalogue d'avant la réunion (1927 encore vivant, pas de `fusions`) : seule la file la découvre.
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [
+                {"id": 324, "titre": "Super C", "plateforme": "NES"}, {"id": 1927, "titre": "Probotector 2", "plateforme": "NES"}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/324");
+            t.status(200).json_body(json!({"ok": true, "jeu": {"id": 324, "titre": "Super C", "plateforme": "NES",
+                "versions": [{"telechargement_id": 200, "qualite": "ROM", "fichiers": [{"nom": "jeu.exe", "taille": 6}]}]}}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/fichier/1927/200/0");
+            t.status(410).json_body(json!({"ok": false, "fusionne_dans": 324, "detail": "ce jeu a été réuni à la fiche 324"}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/fichier/324/200/0");
+            t.status(200).body("abcdef");
+        });
+        let (d, n) = ouvert(&s).await;
+        n.synchroniser(|_, _| {}).await.unwrap();
+        let dossier = d.path().join("A");
+        std::fs::create_dir_all(&dossier).unwrap();
+        let mut j = jeu_du_pc(1927, &dossier);
+        j.etat = crate::jeux_pc::Etat::Attente;
+        n.registre().ajouter(&j).unwrap();
+        n.executer_file(n.session().await.unwrap(), &|_| {}).await.unwrap();
+        assert!(n.registre().jeu(1927).unwrap().is_none());
+        let j = n.registre().jeu(324).unwrap().expect("rattaché");
+        assert_eq!(j.etat, crate::jeux_pc::Etat::Telecharge, "{:?}", j.message);
+        assert_eq!(std::fs::read(dossier.join("jeu.exe")).unwrap(), b"abcdef");
+        // L'ancien numéro est sorti du catalogue gardé ; sa réunion est connue.
+        let c = n.session().await.unwrap();
+        assert!(!c.verrou().contient(1927).unwrap());
+        assert_eq!(c.verrou().reuni_vers(1927).unwrap(), Some(324));
+    }
+
+    #[tokio::test]
+    async fn un_rattachement_douteux_ne_touche_a_rien_mais_le_jeu_reste_jouable() {
+        // Fichiers différents sur la nouvelle fiche : pas de rattachement automatique.
+        let s = serveur_reunion(json!([{"nom": "autre.exe", "taille": 9}]));
+        let (d, n) = ouvert(&s).await;
+        n.registre().ajouter(&jeu_du_pc(1927, &d.path().join("A"))).unwrap();
+        assert!(n.synchroniser(|_, _| {}).await.unwrap().rattaches.is_empty());
+        assert!(n.registre().jeu(1927).unwrap().is_some(), "rien n'est touché");
+        // … mais il reste visible et lançable par sa nouvelle fiche (ses parties continuent d'être sauvegardées).
+        assert_eq!(n.jeux_du_pc().await.unwrap().len(), 1);
+        assert!(n.jeu_visible(1927).await.is_ok());
+        // Sa fiche reste la sienne, gardée avec lui (bouton « Jouer ») : jamais renvoyé vers la fiche 324.
+        let medias = d.path().join("A").join("Frogtend").join("medias");
+        std::fs::create_dir_all(&medias).unwrap();
+        std::fs::write(medias.join("fiche.json"), json!({"id": 1927, "titre": "Probotector 2"}).to_string()).unwrap();
+        let f = n.fiche(1927).await.unwrap();
+        assert!(f.locale && f.reunie_dans.is_none(), "fiche locale, sans renvoi");
+        assert_eq!(f.fiche["id"], 1927);
+
+        // Le nouveau numéro est DÉJÀ sur le PC : rien n'est fusionné tout seul.
+        let s = serveur_reunion(json!([{"nom": "jeu.exe", "taille": 6}]));
+        let (d, n) = ouvert(&s).await;
+        n.registre().ajouter(&jeu_du_pc(1927, &d.path().join("A"))).unwrap();
+        n.registre().ajouter(&jeu_du_pc(324, &d.path().join("B"))).unwrap();
+        assert!(n.synchroniser(|_, _| {}).await.unwrap().rattaches.is_empty());
+        assert!(n.registre().jeu(1927).unwrap().is_some() && n.registre().jeu(324).unwrap().is_some());
+
+        // Une partie en cours : réessayé plus tard.
+        let s = serveur_reunion(json!([{"nom": "jeu.exe", "taille": 6}]));
+        let (d, n) = ouvert(&s).await;
+        n.registre().ajouter(&jeu_du_pc(1927, &d.path().join("A"))).unwrap();
+        {
+            let _partie = n.occuper(1927);
+            assert!(n.synchroniser(|_, _| {}).await.unwrap().rattaches.is_empty());
+        }
+        assert_eq!(n.synchroniser(|_, _| {}).await.unwrap().rattaches, vec![(1927, 324)], "après la partie");
+    }
+
+    #[tokio::test]
+    async fn une_version_au_numero_negatif_se_rattache_et_ses_parties_suivent() {
+        // Relevé réel du 18/10 : la fiche 324 porte la version -602 (seul 0 est une version de recensement).
+        let s = serveur_reunion_version(json!([{"nom": "jeu.exe", "taille": 6}]), -602);
+        let (d, n) = ouvert(&s).await;
+        let mut j = jeu_du_pc(1927, &d.path().join("A"));
+        j.version = -602;
+        n.registre().ajouter(&j).unwrap();
+        assert_eq!(n.synchroniser(|_, _| {}).await.unwrap().rattaches, vec![(1927, 324)]);
+        // Une version 0 (recensement, jamais arrivée) : jamais rattachée toute seule.
+        let s0 = serveur_reunion_version(json!([{"nom": "jeu.exe", "taille": 6}]), 0);
+        let (d0, n0) = ouvert(&s0).await;
+        let mut j0 = jeu_du_pc(1927, &d0.path().join("A"));
+        j0.version = 0;
+        n0.registre().ajouter(&j0).unwrap();
+        assert!(n0.synchroniser(|_, _| {}).await.unwrap().rattaches.is_empty());
+
+        // La restauration retrouve les parties attendues sous l'ANCIEN numéro (sauvegarde d'avant le rattachement),
+        // et la plus récente (sous le nouveau) l'emporte.
+        let profil = n.session().await.unwrap().profil.id.clone();
+        let zone = d.path().join("restauration").join(&profil).join("parties").join("jeux");
+        std::fs::create_dir_all(zone.join("1927")).unwrap();
+        std::fs::write(zone.join("1927").join("save.dat"), b"ancienne").unwrap();
+        std::fs::write(zone.join("1927").join("seule.dat"), b"seule").unwrap();
+        std::fs::create_dir_all(zone.join("324")).unwrap();
+        std::fs::write(zone.join("324").join("save.dat"), b"recente").unwrap();
+        let jeu = d.path().join("A");
+        std::fs::create_dir_all(&jeu).unwrap();
+        let r = n.reposer_parties_du_jeu(&profil, 324, &[], &jeu).unwrap();
+        assert_eq!(std::fs::read(jeu.join("save.dat")).unwrap(), b"recente");
+        assert_eq!(std::fs::read(jeu.join("seule.dat")).unwrap(), b"seule");
+        assert!(r.reposes >= 2);
+        assert!(!zone.join("1927").exists() && !zone.join("324").exists());
+    }
+
+    #[tokio::test]
+    async fn les_fusions_d_avant_sont_rattrapees_une_seule_fois() {
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "NES", "jeux": 1}]}));
+        });
+        // L'incrément (avec `depuis`) ne renvoie plus les fusions anciennes ; la page 1 complète, oui.
+        let complet = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue").matches(|r| !r.query_params.as_ref().is_some_and(|q| q.iter().any(|(k, _)| k == "depuis")));
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [{"id": 324, "titre": "Super C", "plateforme": "NES", "maj_le": "2026-10-01T00:00:00"}],
+                "fusions": [{"ancien": 1927, "nouveau": 324, "le": "2026-10-05T14:02:37"}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue").query_param_exists("depuis");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [], "ids_visibles": [324], "fusions": []}));
+        });
+        let (_d, n) = ouvert(&s).await;
+        n.synchroniser(|_, _| {}).await.unwrap();
+        complet.assert_hits(1);
+        // Un profil d'AVANT la 1.14 (marque absente) : une seule page 1 sans `depuis`, puis plus jamais.
+        n.session().await.unwrap().verrou().ecrire_meta("fusions_lues", "0").unwrap();
+        n.session().await.unwrap().verrou().garder_fusions(&[], true).unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        complet.assert_hits(2);
+        n.synchroniser(|_, _| {}).await.unwrap();
+        complet.assert_hits(2);
+        assert_eq!(n.session().await.unwrap().verrou().reuni_vers(1927).unwrap(), Some(324));
+    }
+
+    /// RÉEL, profil d'ESSAI temporaire (rien de Seb n'est touché) : un faux jeu du PC sous l'ancien numéro 1927, avec
+    /// la vraie version et les vrais fichiers de la fiche 324 ; une vraie synchronisation doit le rattacher à 324.
+    /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_reunion -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_reunion() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").unwrap();
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(d.path(), Box::new(crate::coffre::CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Essai", None, Some(&jeton)).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: "https://jeux.hikari-no-sekai.fr".into(), simule: false }).await.unwrap();
+        let fiche = n.session().await.unwrap().source.fiche(324).await.unwrap();
+        let v = fiche["versions"][0].clone();
+        let mut j = jeu_du_pc(1927, &d.path().join("Jeu"));
+        j.version = v["telechargement_id"].as_i64().unwrap();
+        j.fichiers = v["fichiers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .enumerate()
+            .map(|(i, f)| {
+                let nom = f["nom"].as_str().unwrap().to_string();
+                let nom = match f["dossier"].as_str().filter(|d| !d.is_empty()) {
+                    Some(dd) => format!("{dd}/{nom}"),
+                    None => nom,
+                };
+                crate::jeux_pc::FichierJeu { n: i as u32, nom, taille: f["taille"].as_u64().unwrap() }
+            })
+            .collect();
+        println!("FICHE 324 « {} » : version {}, {} fichier(s)", fiche["titre"], j.version, j.fichiers.len());
+        n.registre().ajouter(&j).unwrap();
+        let debut = std::time::Instant::now();
+        println!("SYNCHRO commence");
+        let b = n.synchroniser(|p, j| if p % 10 == 0 { println!("page {p} : {j} jeux") }).await.unwrap();
+        println!("SYNCHRO {} jeux en {:?} ; rattachés {:?}", b.jeux, debut.elapsed(), b.rattaches);
+        // (Un verrou du registre à la fois : deux dans la même instruction se bloqueraient.)
+        let ancien = n.registre().jeu(1927).unwrap().is_some();
+        let nouveau = n.registre().jeu(324).unwrap().is_some();
+        println!("REGISTRE 1927 : {ancien} ; 324 : {nouveau}");
+        let fusions = n.session().await.unwrap().verrou().fusions().unwrap();
+        println!("FUSIONS gardées : {}", fusions.len());
+        // Un jeu du PC NON rattaché (version 0 : douteux) dont la fiche a été réunie : sa fiche reste la sienne.
+        let (x, vers, _) = fusions.iter().find(|(a, _, _)| *a != 1927).cloned().unwrap();
+        let mut k = jeu_du_pc(x, &d.path().join("Douteux"));
+        k.version = 0;
+        n.registre().ajouter(&k).unwrap();
+        let m = d.path().join("Douteux").join("Frogtend").join("medias");
+        std::fs::create_dir_all(&m).unwrap();
+        std::fs::write(m.join("fiche.json"), json!({"id": x, "titre": "douteux"}).to_string()).unwrap();
+        let f = n.fiche(x).await.unwrap();
+        println!("DOUTEUX {x} (réuni à {vers}) : fiche {} locale {} renvoi {:?}", f.fiche["id"], f.locale, f.reunie_dans);
+        println!("RATTACHES au second passage : {:?}", n.appliquer_fusions(&n.session().await.unwrap()).await);
+        println!("FIN");
     }
 
     #[tokio::test]

@@ -201,13 +201,28 @@ impl Noyau {
 
     /// Juste après l'installation d'un jeu : si ses parties attendent d'être restaurées, elles sont reposées dans son
     /// dossier (elles remplacent les fichiers du jeu tout neuf), puis retirées de la zone d'attente.
-    pub(crate) fn reposer_parties_du_jeu(&self, profil_id: &str, id: i64, dossier: &Path) -> Resultat<Reposes> {
-        let attente = self.zone_restauration(profil_id).join("parties").join("jeux").join(id.to_string());
-        if !attente.is_dir() {
-            return Ok(Reposes::default());
+    /// `anciens` : les anciens numéros de ce jeu connus du profil (fiches réunies), en plus de ceux du registre.
+    pub(crate) fn reposer_parties_du_jeu(&self, profil_id: &str, id: i64, anciens: &[i64], dossier: &Path) -> Resultat<Reposes> {
+        // Les parties attendues sous ce numéro, et sous les ANCIENS numéros de ce jeu (fiches réunies chez Firehouse,
+        // contrat 1.14 : une sauvegarde faite avant le rattachement).
+        // Les anciens d'abord, le nouveau en dernier : la partie la plus récente (sous le nouveau numéro) l'emporte.
+        let mut numeros: Vec<i64> = self.registre().reunions()?.into_iter().filter(|(_, n)| *n == id).map(|(a, _)| a).collect();
+        numeros.extend(anciens.iter().copied().filter(|a| *a != id));
+        numeros.sort();
+        numeros.dedup();
+        numeros.push(id);
+        let mut r = Reposes::default();
+        for n in numeros {
+            let attente = self.zone_restauration(profil_id).join("parties").join("jeux").join(n.to_string());
+            if !attente.is_dir() {
+                continue;
+            }
+            let x = reposer(&attente, dossier, true)?;
+            std::fs::remove_dir_all(&attente)?;
+            r.reposes += x.reposes;
+            r.deja_la += x.deja_la;
+            r.conflits.extend(x.conflits);
         }
-        let r = reposer(&attente, dossier, true)?;
-        std::fs::remove_dir_all(&attente)?;
         Ok(r)
     }
 }
@@ -284,10 +299,10 @@ mod tests {
         // Celles de Dune attendent sa réinstallation, puis y sont reposées.
         let jeu = d.path().join("Dune");
         std::fs::create_dir_all(jeu.join("C/DUNECD")).unwrap();
-        let rj = n.reposer_parties_du_jeu(&id, 110, &jeu).unwrap();
+        let rj = n.reposer_parties_du_jeu(&id, 110, &[], &jeu).unwrap();
         assert_eq!(rj.reposes, 1);
         assert_eq!(std::fs::read(jeu.join("C/DUNECD/DUNE37S0.SAV")).unwrap(), b"partie");
-        assert_eq!(n.reposer_parties_du_jeu(&id, 110, &jeu).unwrap().reposes, 0, "reposées une seule fois");
+        assert_eq!(n.reposer_parties_du_jeu(&id, 110, &[], &jeu).unwrap().reposes, 0, "reposées une seule fois");
     }
 
     #[tokio::test]

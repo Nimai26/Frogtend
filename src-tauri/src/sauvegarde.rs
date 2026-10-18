@@ -395,6 +395,10 @@ impl Noyau {
         // le jeu installé (plus récent) passe avant.
         // Les abris peuvent être à deux endroits (le dossier réglé, l'ancien emplacement) : pour chaque jeu, la copie la
         // plus récente de TOUS les endroits.
+        // Un abri rangé sous l'ANCIEN numéro d'un jeu rattaché à sa nouvelle fiche (contrat 1.14) compte pour le
+        // nouveau (il n'est ni déplacé ni renommé sur le disque) : les deux sont RÉUNIS, la copie la plus récente
+        // primant fichier par fichier (une partie présente seulement dans l'ancien abri ne sort jamais de la sauvegarde).
+        let reunions: std::collections::HashMap<i64, i64> = self.registre().reunions()?.into_iter().collect();
         let mut plus_recente: std::collections::BTreeMap<i64, (u64, PathBuf)> = std::collections::BTreeMap::new();
         for racine in self.dossiers_abris_a_lire() {
             let Ok(jeux) = std::fs::read_dir(&racine) else { continue };
@@ -408,11 +412,18 @@ impl Noyau {
                 }
             }
         }
-        for (id, (_, recente)) in plus_recente {
-            for r in fichiers_de(&recente)? {
-                let relatif = format!("jeux/{id}/{r}");
-                if !parties.iter().any(|e| e.relatif == relatif) {
-                    parties.push(Element { source: recente.join(&r), relatif });
+        let mut par_jeu: std::collections::BTreeMap<i64, Vec<(u64, PathBuf)>> = std::collections::BTreeMap::new();
+        for (id, abri) in plus_recente {
+            par_jeu.entry(reunions.get(&id).copied().unwrap_or(id)).or_default().push(abri);
+        }
+        for (id, mut abris) in par_jeu {
+            abris.sort_by(|a, b| b.0.cmp(&a.0));
+            for (_, recente) in abris {
+                for r in fichiers_de(&recente)? {
+                    let relatif = format!("jeux/{id}/{r}");
+                    if !parties.iter().any(|e| e.relatif == relatif) {
+                        parties.push(Element { source: recente.join(&r), relatif });
+                    }
                 }
             }
         }

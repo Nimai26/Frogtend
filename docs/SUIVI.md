@@ -122,7 +122,7 @@
       vérifier. Côté Frogtend : rattacher le jeu du PC au nouvel id quand ce sera servi.
       ✅ SERVI le 18/10 (contrat 1.14) et vérifié en réel (`/jeu/1927` → 410 `fusionne_dans: 324` ; `fusions` = 154 sur la
       page 1 du catalogue). Lot « 1.14 » commencé le 18/10 : inventaire de ce qui est rangé sous le numéro d'un jeu
-      demandé aux experts avant de coder.
+      demandé aux experts avant de coder. ✅ LIVRÉ en 0.65.0 (rattachement automatique).
       ✅ (1)+(2) en 0.49.0 : le conseil prime (même absent de la liste : MS-DOS → RetroArch, liste = DOSBox Staging
       seul), ligne = options de Frogtend juste avant `%rom%`, `%rom%` remplacé au lancement, `maj_le` retenu dans
       pc.json ; ✅ 0.62.0 : la mise à jour est PROPOSÉE quand `maj_le` change (au lancement, une fois par console et
@@ -272,6 +272,19 @@ d'abord :
       quelle (règles « Autoriser, privé » posées sur le RetroArch d'essai supprimé : sans effet, gardées).
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.65.0** (18/10) — Contrat 1.14 : un jeu du PC dont la fiche est réunie chez Firehouse est RATTACHÉ à la nouvelle,
+  seulement si tout concorde (même version, mêmes fichiers nom + taille, nouvelle fiche visible du profil et absente
+  du PC, jeu ni joué, ni installé, ni téléchargé, médias plus à l'ancien emplacement). Installation, temps de jeu,
+  abris (réunis fichier par fichier, le plus récent prime), parties à restaurer (aussi sur un autre PC), réglages
+  (copiés une fois par réunion, le plus récent prime) suivent ; `fiche-avant-reunion-N.json` gardée. Un jeu non
+  rattaché garde sa fiche et son « Jouer ». Une fiche réunie découverte par un 410 (fiche, file de téléchargement) est
+  retenue et l'ancien numéro sort du catalogue gardé ; la file reprend sous le nouveau numéro. Une liste complète de
+  fusions remplace l'ancienne ; un ancien numéro rendu à une fiche vivante reste le sien. Deux revues (contrat,
+  lancement) puis une relecture des corrections (contrat) : 2 bloquants et 9 importants corrigés. Vérifié en réel
+  (profil temporaire, jeton de Seb lu dans le coffre) : 15 507 jeux en 201 s, 1927 rattaché à 324 (version -602),
+  154 fusions gardées, un jeu douteux (1932 → 1360) garde sa fiche locale. Tests : 340 cœur, 169 interface. NON
+  vérifié en réel : la file face à un vrai 410 (aucun téléchargement lancé). Restes notés dans IDEES ; besoin 23.
 
 - **0.64.1** (18/10) — Correctif URGENT (relevé par l'expert contrat avant le lot 1.14) : un refus en pleine reprise
   (404, 409, 410, 503…) effaçait le `.part` déjà reçu ; seul un 416 (`Erreur::Plage`) l'autorise désormais

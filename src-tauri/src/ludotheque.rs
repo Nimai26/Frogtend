@@ -133,6 +133,15 @@ fn restreindre(p: &str) -> String {
     format!("(({p} IS NULL AND id > 0) OR ({p} IS NOT NULL AND (id < 0 OR id IN (SELECT value FROM json_each({p})))))")
 }
 
+/// Une fiche RÉUNIE à une autre chez Firehouse (contrat 1.14) : `ancien` → `nouveau`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Fusion {
+    pub ancien: i64,
+    pub nouveau: i64,
+    #[serde(default)]
+    pub le: Option<String>,
+}
+
 /// Une page de catalogue lue, et s'il en reste après.
 #[derive(Debug, PartialEq)]
 pub struct Page {
@@ -140,6 +149,8 @@ pub struct Page {
     pub encore: Option<bool>,
     /// Page 1 d'une synchronisation `depuis` : TOUS les ids encore visibles pour ce jeton.
     pub ids_visibles: Option<Vec<i64>>,
+    /// Page 1 (contrat 1.14) : les fiches réunies (filtrées par `le >= depuis` si donné). `None` : serveur d'avant.
+    pub fusions: Option<Vec<Fusion>>,
 }
 
 /// Le premier tableau trouvé : la valeur elle-même, ou l'un des champs usuels d'un objet.
@@ -177,7 +188,14 @@ pub fn lire_page(v: &Value, page: u32) -> Page {
         .get("ids_visibles")
         .and_then(Value::as_array)
         .map(|l| l.iter().filter_map(Value::as_i64).collect());
-    Page { jeux, encore, ids_visibles }
+    // Lecture tolérante, élément par élément : un élément illisible, ou qui se réunit à lui-même, est laissé.
+    let fusions = v.get("fusions").and_then(Value::as_array).map(|l| {
+        l.iter()
+            .filter_map(|f| serde_json::from_value::<Fusion>(f.clone()).ok())
+            .filter(|f| f.ancien > 0 && f.nouveau > 0 && f.ancien != f.nouveau)
+            .collect()
+    });
+    Page { jeux, encore, ids_visibles, fusions }
 }
 
 /// Texte de tri et de recherche : minuscules, sans accents.
@@ -258,7 +276,8 @@ impl Cache {
              CREATE INDEX IF NOT EXISTS jeux_plateforme ON jeux(plateforme, titre_tri);
              CREATE TABLE IF NOT EXISTS plateformes (nom TEXT PRIMARY KEY, jeux INTEGER NOT NULL);
              CREATE TABLE IF NOT EXISTS fiches (id INTEGER PRIMARY KEY, brut TEXT NOT NULL, lue_le TEXT NOT NULL);
-             CREATE TABLE IF NOT EXISTS meta (cle TEXT PRIMARY KEY, valeur TEXT NOT NULL);",
+             CREATE TABLE IF NOT EXISTS meta (cle TEXT PRIMARY KEY, valeur TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS fusions (ancien INTEGER PRIMARY KEY, nouveau INTEGER NOT NULL, le TEXT);",
         )?;
         Ok(Cache { db })
     }
@@ -536,6 +555,83 @@ impl Cache {
 
     pub fn contient(&self, id: i64) -> Resultat<bool> {
         Ok(self.db.query_row("SELECT 1 FROM jeux WHERE id = ?1", [id], |_| Ok(())).optional()?.is_some())
+    }
+
+    /// Garde les fiches réunies reçues (contrat 1.14) pour CE profil ; une fusion déjà connue est mise à jour.
+    /// `complete` : la liste entière (page 1 sans `depuis`) REMPLACE celle gardée — une fusion que Firehouse ne sert
+    /// plus (ancien numéro rendu à une fiche vivante) ne survit pas.
+    pub fn garder_fusions(&mut self, fusions: &[Fusion], complete: bool) -> Resultat<()> {
+        let tx = self.db.transaction()?;
+        if complete {
+            tx.execute("DELETE FROM fusions", [])?;
+        }
+        {
+            let mut ins = tx.prepare("INSERT OR REPLACE INTO fusions (ancien, nouveau, le) VALUES (?1, ?2, ?3)")?;
+            for f in fusions {
+                ins.execute(params![f.ancien, f.nouveau, f.le])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Firehouse vient de répondre 410 pour ce numéro (contrat 1.14) : ce n'est plus une fiche vivante pour ce profil,
+    /// elle sort de son catalogue gardé (sa réunion, elle, est gardée à part par `garder_fusions`).
+    pub fn retirer_reunie(&self, id: i64) -> Resultat<()> {
+        if id > 0 {
+            self.db.execute("DELETE FROM jeux WHERE id = ?1", [id])?;
+        }
+        Ok(())
+    }
+
+    /// La fiche où un ancien numéro a été réuni, en suivant une chaîne A→B→C (gardée contre les boucles ; arrêtée sur
+    /// la première fiche vivante de ce profil).
+    pub fn reuni_vers(&self, id: i64) -> Resultat<Option<i64>> {
+        // Un numéro porté par une fiche vivante de ce profil reste le sien (jamais redirigé).
+        if self.contient(id)? {
+            return Ok(None);
+        }
+        let mut courant = id;
+        let mut vus = vec![id];
+        loop {
+            let n: Option<i64> = self.db.query_row("SELECT nouveau FROM fusions WHERE ancien = ?1", [courant], |r| r.get(0)).optional()?;
+            match n {
+                Some(n) if !vus.contains(&n) && vus.len() < 16 => {
+                    vus.push(n);
+                    courant = n;
+                    if self.contient(n)? {
+                        break;
+                    }
+                }
+                _ => break,
+            }
+        }
+        Ok((courant != id).then_some(courant))
+    }
+
+    /// Visible pour ce profil : le jeu lui-même, ou la fiche où il a été réuni (un jeu du PC pas encore rattaché
+    /// reste ainsi lançable et ses parties continuent d'être sauvegardées).
+    pub fn visible_ou_reuni(&self, id: i64) -> Resultat<bool> {
+        if self.contient(id)? {
+            return Ok(true);
+        }
+        match self.reuni_vers(id)? {
+            Some(n) => self.contient(n),
+            None => Ok(false),
+        }
+    }
+
+    /// Toutes les fusions connues de ce profil : (ancien, fiche finale, date).
+    pub fn fusions(&self) -> Resultat<Vec<(i64, i64, Option<String>)>> {
+        let mut st = self.db.prepare("SELECT ancien, le FROM fusions ORDER BY ancien")?;
+        let l: Vec<(i64, Option<String>)> = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?;
+        let mut v = Vec::new();
+        for (a, le) in l {
+            if let Some(n) = self.reuni_vers(a)? {
+                v.push((a, n, le));
+            }
+        }
+        Ok(v)
     }
 
     pub fn garder_fiche(&self, id: i64, fiche: &Value, quand: &str) -> Resultat<()> {

@@ -322,6 +322,13 @@ pub async fn annexe_ouvrir(app: AppHandle, noyau: State<'_, Noyau>, id: i64, i: 
         .map_err(|_| Erreur::Disque("Windows n'a pas pu ouvrir ce document.".into()))
 }
 
+/// Les jeux du PC rattachés à une fiche réunie chez Firehouse (contrat 1.14) : (ancien, nouveau), pour que
+/// l'interface fasse suivre les réglages faits sous l'ancien numéro.
+#[tauri::command]
+pub fn jeux_reunions(noyau: State<'_, Noyau>) -> Resultat<Vec<(i64, i64)>> {
+    noyau.registre().reunions()
+}
+
 /// Les visuels d'un jeu (galerie de la fiche, contrat 1.6).
 #[tauri::command]
 pub async fn medias_jeu(noyau: State<'_, Noyau>, id: i64) -> Resultat<Vec<crate::medias::Media>> {
@@ -742,7 +749,15 @@ pub async fn jeu_jouer(
     let par_emulateur = emulateur.is_some();
     // Un jeu resté figé d'une partie précédente repart d'abord.
     crate::figer::degeler();
-    let (pid, dossiers, carte_cedee) = noyau.jouer(id, emulateur, version.as_deref()).await?;
+    // « Occupé » du lancement jusqu'à la fin du suivi de la partie (deux tâches) : jamais rattaché entre les deux.
+    noyau.marquer_occupe(id);
+    let (pid, dossiers, carte_cedee) = match noyau.jouer(id, emulateur, version.as_deref()).await {
+        Ok(r) => r,
+        Err(e) => {
+            noyau.liberer(id);
+            return Err(e);
+        }
+    };
     // MAME sans le script de pause (lanceur choisi, ROM non zip, script de la personne…) : le menu ne promet rien.
     if id_emulateur.as_deref() == Some("mame") && !noyau.pause_mame.load(std::sync::atomic::Ordering::SeqCst) {
         id_emulateur = None;
@@ -811,6 +826,7 @@ pub async fn jeu_jouer(
     tauri::async_runtime::spawn(async move {
         let noyau = app2.state::<Noyau>();
         let fin = noyau.suivre_partie(id, pid, dossiers).await;
+        noyau.liberer(id);
         // Seulement si c'est bien la partie en cours qui finit (une partie plus récente garde sa touche et son menu).
         let menu = app2.state::<crate::menu_jeu::MenuJeu>();
         if menu.en_cours(numero) {

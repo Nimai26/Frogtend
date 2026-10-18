@@ -48,6 +48,8 @@ export interface ReglagesPc {
     /** Mode simulé : des exemples, sans connexion à Firehouse (essais, démonstration, travail hors ligne). */
     simule: boolean;
   };
+  /** Les réunions de fiches (contrat 1.14, « ancien>nouveau ») dont les réglages ont déjà été copiés : jamais deux fois. */
+  reunionsSuivies: string[];
 }
 
 /** Comment on joue à un jeu : réglage d'office, clavier et souris, ou un réglage de manette de référence. */
@@ -110,6 +112,8 @@ export interface ReglagesProfil {
   pleinEcran: Record<string, string>;
   /** Manette → clavier, jeu par jeu (identifiant → bouton → touche) ; absent : le jeu lit la manette lui-même. */
   clavier: Record<string, Record<string, string>>;
+  /** Les réunions de fiches (contrat 1.14, « ancien>nouveau ») dont les réglages ont déjà été copiés : jamais deux fois. */
+  reunionsSuivies: string[];
 }
 
 export const DEFAUTS_PC: ReglagesPc = {
@@ -123,6 +127,7 @@ export const DEFAUTS_PC: ReglagesPc = {
   listeMame: '',
   menuJeu: { touche: 'Pause', manette: 'Select + R1', delaiQuitter: 10 },
   firehouse: { adresse: ADRESSE_FIREHOUSE_PAR_DEFAUT, simule: false },
+  reunionsSuivies: [],
 };
 
 export const DEFAUTS_PROFIL: ReglagesProfil = {
@@ -142,6 +147,7 @@ export const DEFAUTS_PROFIL: ReglagesProfil = {
   figer: [],
   pleinEcran: {},
   clavier: {},
+  reunionsSuivies: [],
 };
 
 export const TAILLE_JAQUETTE_MIN = 110;

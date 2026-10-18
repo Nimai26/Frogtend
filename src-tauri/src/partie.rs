@@ -66,7 +66,7 @@ impl Noyau {
     pub(crate) async fn jeu_visible(&self, id: i64) -> Resultat<JeuPc> {
         let s = self.session().await?;
         let j = self.registre().jeu(id)?.ok_or_else(|| Erreur::Introuvable("Ce jeu n'est pas sur ce PC.".into()))?;
-        if !s.verrou().contient(id)? {
+        if !s.verrou().visible_ou_reuni(id)? {
             return Err(Erreur::Introuvable("Ce jeu n'est pas sur ce PC.".into()));
         }
         Ok(j)
@@ -110,6 +110,8 @@ impl Noyau {
     /// Installe le jeu (après l'accord de la personne). `automatique` : installeur silencieux si possible.
     /// Rend l'installation ; son lanceur reste à choisir (sauf ROM et image disque : l'émulateur s'en charge).
     pub async fn installer(&self, id: i64, automatique: bool) -> Resultat<Installation> {
+        // Jamais rattaché à une autre fiche pendant l'installation (contrat 1.14).
+        let _occupe = self.occuper(id);
         let j = self.jeu_visible(id).await?;
         let p = self.preparer_installation(id).await?;
         let recus = PathBuf::from(&j.dossier);
@@ -182,7 +184,8 @@ impl Noyau {
     /// l'installation.
     async fn reposer_parties_restaurees(&self, id: i64, i: &Installation) {
         let Ok(s) = self.session().await else { return };
-        match self.reposer_parties_du_jeu(&s.profil.id, id, Path::new(&i.dossier)) {
+        let anciens: Vec<i64> = s.verrou().fusions().unwrap_or_default().into_iter().filter(|(_, n, _)| *n == id).map(|(a, _, _)| a).collect();
+        match self.reposer_parties_du_jeu(&s.profil.id, id, &anciens, Path::new(&i.dossier)) {
             Ok(r) if r.reposes > 0 => self.journaliser(&format!("jeu {id} : {} partie(s) restaurée(s) reposée(s)", r.reposes)),
             Ok(_) => {}
             Err(e) => self.journaliser(&format!("jeu {id} : parties restaurées non reposées : {e:?}")),
@@ -191,6 +194,7 @@ impl Noyau {
 
     /// Le jeu a été installé ailleurs que prévu (installeur guidé) : la personne indique où.
     pub async fn installe_ailleurs(&self, id: i64, dossier: &str) -> Resultat<Installation> {
+        let _occupe = self.occuper(id);
         let j = self.jeu_visible(id).await?;
         let p = self.preparer_installation(id).await?;
         let d = PathBuf::from(dossier);
@@ -301,6 +305,7 @@ impl Noyau {
 
     /// Retient ce qu'on lance pour jouer (choisi par la personne).
     pub async fn choisir_lanceur(&self, id: i64, lanceur: Lanceur) -> Resultat<()> {
+        let _occupe = self.occuper(id);
         let j = self.jeu_visible(id).await?;
         let mut i = j.installation.ok_or_else(|| Erreur::Refus("Le jeu n'est pas encore installé.".into()))?;
         let systeme = ["cmd.exe", "explorer.exe"].iter().any(|p| lanceur.programme.eq_ignore_ascii_case(p));
@@ -316,6 +321,7 @@ impl Noyau {
     /// ouvert une session pour ce PC (`session` non nulle : PC qui calcule pour lui). Au 30/09, cela ne met en pause
     /// qu'une partie de ses travaux sur la carte graphique : on dit « session annoncée », pas « carte libérée ».
     pub async fn jouer(&self, id: i64, emulateur: Option<(String, String)>, version: Option<&str>) -> Resultat<(u32, Vec<PathBuf>, bool)> {
+        let _occupe = self.occuper(id);
         let j = self.jeu_visible(id).await?;
         let mut i = j.installation.clone().ok_or_else(|| Erreur::Refus("Installe d'abord le jeu.".into()))?;
         // Une autre version (région) pour CETTE partie seulement.
@@ -384,6 +390,8 @@ impl Noyau {
 
     /// Suit une partie jusqu'à sa fin : « vivant » toutes les 10 min, « fin » à la sortie, temps de jeu compté.
     pub async fn suivre_partie(&self, id: i64, pid: u32, dossiers: Vec<PathBuf>) -> Resultat<FinDePartie> {
+        // Toute la partie : la fin compte le temps de jeu sous CE numéro (contrat 1.14 : jamais rattaché pendant).
+        let _occupe = self.occuper(id);
         let debut = Instant::now();
         let mut dernier_vivant = Instant::now();
         let mut suivi = Suivi::nouveau(pid, dossiers);
@@ -413,6 +421,7 @@ impl Noyau {
     /// Met à l'abri ce qui a changé dans le dossier du jeu depuis son installation (les parties, ses réglages) :
     /// une copie dans `sauvegardes/<jeu>/<date>/`. Les abris ne s'effacent jamais tout seuls.
     pub async fn mettre_a_l_abri(&self, id: i64) -> Resultat<Abri> {
+        let _occupe = self.occuper(id);
         let j = self.jeu_visible(id).await?;
         let i = j.installation.clone().ok_or_else(|| Erreur::Refus("Le jeu n'est pas installé : rien à mettre à l'abri.".into()))?;
         let m: Manifeste = match std::fs::read(self.fichier_manifeste(id)) {
@@ -444,6 +453,7 @@ impl Noyau {
     /// s'il en a un, puis ce que Frogtend a mis sur le disque (installation, fichiers reçus, médias). Les abris
     /// restent.
     pub async fn retirer_du_pc(&self, id: i64) -> Resultat<Abri> {
+        let _occupe = self.occuper(id);
         let j = self.jeu_visible(id).await?;
         if !matches!(j.etat, Etat::Telecharge) {
             return Err(Erreur::Refus("Ce jeu est en cours de téléchargement : annule plutôt le téléchargement.".into()));

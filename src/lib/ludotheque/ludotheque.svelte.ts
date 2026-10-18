@@ -6,7 +6,8 @@ import { isTauri } from '@tauri-apps/api/core';
 import { api, estErreurCoeur, type JeuResume, type Plateforme } from '$lib/api';
 import { informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
-import { etat } from '$lib/etat.svelte';
+import { rechargerJeuxDuPc } from './telechargements.svelte';
+import { etat, suivreReunions } from '$lib/etat.svelte';
 
 /** Nombre de jeux chargés à la fois dans la grille. */
 export const TAILLE_LOT = 240;
@@ -147,6 +148,12 @@ export async function synchroniser(discrete = false) {
     : () => {};
   try {
     const b = await api.synchroniser();
+    // Des jeux du PC rattachés à leur nouvelle fiche (contrat 1.14) : leurs réglages suivent, la liste est relue.
+    if (b.rattaches?.length) {
+      await suivreReunions();
+      await rechargerJeuxDuPc();
+      toast(`🔗 ${b.rattaches.length} jeu(x) de ton PC rattaché(s) à leur nouvelle fiche chez Firehouse (rien n’a été retéléchargé).`);
+    }
     await rechargerPlateformes();
     await rechargerListe();
     if (!discrete) {
