@@ -3,6 +3,14 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 18/10 — Eden ne lisait pas les dossiers que Frogtend lui donnait
+Ce qui s'est passé : depuis le lot des contenus Switch, Frogtend écrivait la liste des dossiers de mises à jour et
+DLC d'Eden dans une section `[Paths]` ; Eden la lit dans `[UI]` sous `Paths\…` (groupe imbriqué dans `qt_config.cpp`).
+Les tests vérifiaient que Frogtend relisait ce qu'il avait écrit — un contrôle circulaire —, jamais la forme qu'Eden
+attend. · Comment l'appliquer : pour un fichier de réglages d'émulateur, tester contre un VRAI fichier de l'émulateur
+(ou de sa famille) et sa source, pas contre ce que Frogtend écrit lui-même ; un « vérifié en relisant » qui relit sa
+propre écriture ne prouve rien.
+
 ## 18/10 — Des octets nuls bruts glissés dans le code par un script d'écriture
 Ce qui s'est passé : en écrivant des tests Rust par un script Python, l'échappement `\0` d'une chaîne d'octets est
 devenu un vrai octet nul dans `noyau.rs` (livré ainsi en 0.67.0). Rust l'accepte, mais les outils de recherche

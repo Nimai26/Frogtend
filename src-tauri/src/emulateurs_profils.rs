@@ -410,7 +410,7 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             }
             let mut v = vec![];
             if disque.is_file() {
-                v.push(("hdd_path", vec![format!("'{}'", texte(&disque))]));
+                v.push(("hdd_path", vec![chaine_toml(&texte(&disque))]));
             }
             if !v.is_empty() {
                 modifier_ini(emulateur, &cfg, "sys.files", &v)?;
@@ -441,8 +441,8 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             let (nand, sdmc) = (p.join("nand"), p.join("sdmc"));
             creer(&[&nand, &sdmc])?;
             let ini = emulateur.join("user").join("config").join("qt-config.ini");
-            // QSettings : « \\ » est un échappement, on écrit des « / ».
-            let barre = |c: &Path| format!("{}/", texte(c).replace('\\', "/"));
+            // QSettings : « \\ » est un échappement, on écrit des « / » ; entre guillemets (une virgule ferait une liste).
+            let barre = |c: &Path| valeur_qt(&format!("{}/", texte(c).replace('\\', "/")));
             modifier_ini(
                 emulateur,
                 &ini,
@@ -450,7 +450,10 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
                 &[
                     ("use_custom_storage\\default", vec!["false".into()]),
                     ("use_custom_storage", vec!["true".into()]),
+                    // QSettings ignore une valeur tant que son `\default` vaut true (comme pour la pause, pilotage.rs).
+                    ("nand_directory\\default", vec!["false".into()]),
                     ("nand_directory", vec![barre(&nand)]),
+                    ("sdmc_directory\\default", vec!["false".into()]),
                     ("sdmc_directory", vec![barre(&sdmc)]),
                 ],
             )?;
@@ -497,12 +500,68 @@ fn profil_de(p: &Path) -> &str {
     p.file_name().and_then(|n| n.to_str()).unwrap_or("Frogtend")
 }
 
-/// Une valeur d'un fichier TOML simple (`[section]` puis `cle = 'valeur'` ou `"valeur"`).
+/// Une valeur d'un fichier TOML simple (`[section]` puis `cle = 'valeur'` ou `"valeur"`) : une chaîne littérale
+/// `'…'` telle quelle, une chaîne basique `"…"` sans ses échappements (`\\`, `\"`, `\t`, `\n`, `\r`, `\uXXXX`).
 pub fn valeur_toml(texte: &str, section: &str, cle: &str) -> Option<String> {
     let v = crate::manettes::lire_ini(texte, section, cle).into_iter().next()?;
     let v = v.trim();
-    let v = v.strip_prefix('\'').and_then(|x| x.strip_suffix('\'')).or_else(|| v.strip_prefix('"').and_then(|x| x.strip_suffix('"'))).unwrap_or(v);
-    Some(v.replace("\\\\", "\\")).filter(|s| !s.is_empty())
+    let r = if let Some(x) = v.strip_prefix('\'') {
+        x.split('\'').next().unwrap_or("").to_string()
+    } else if let Some(x) = v.strip_prefix('"') {
+        sans_echappements(x, '"')
+    } else {
+        v.to_string()
+    };
+    Some(r).filter(|s| !s.is_empty())
+}
+
+/// Le texte d'une chaîne entre guillemets (après le guillemet ouvrant), jusqu'au guillemet fermant, sans ses
+/// échappements (communs à TOML et aux réglages Qt).
+fn sans_echappements(x: &str, fin: char) -> String {
+    let mut r = String::new();
+    let mut c = x.chars();
+    while let Some(ch) = c.next() {
+        match ch {
+            '\\' => match c.next() {
+                Some('n') => r.push('\n'),
+                Some('t') => r.push('\t'),
+                Some('r') => r.push('\r'),
+                Some('u') => {
+                    let h: String = c.by_ref().take(4).collect();
+                    if let Some(u) = u32::from_str_radix(&h, 16).ok().and_then(char::from_u32) {
+                        r.push(u);
+                    }
+                }
+                Some(o) => r.push(o),
+                None => break,
+            },
+            ch if ch == fin => break,
+            ch => r.push(ch),
+        }
+    }
+    r
+}
+
+/// Une chaîne TOML « basique » : entre guillemets, `\` et `"` échappés. Jamais une chaîne littérale `'…'` : une
+/// apostrophe dans le chemin (« Jeux d'émulation », un profil « D'Aquin ») la fermerait et rendrait le fichier
+/// illisible pour l'émulateur.
+pub fn chaine_toml(s: &str) -> String {
+    // DEL (permis dans un nom Windows, interdit tel quel en TOML) par son échappement.
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"").replace('\u{7f}', "\\u007F"))
+}
+
+/// Une valeur texte d'un fichier de réglages Qt (QSettings), toujours entre guillemets, `\` et `"` échappés : sans
+/// guillemets, une virgule (« Zelda, TOTK ») la ferait relire comme une LISTE, et `\` est un échappement.
+pub fn valeur_qt(s: &str) -> String {
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+/// Relit une valeur texte de QSettings : entre guillemets (sans ses échappements), ou telle quelle.
+pub fn lire_valeur_qt(v: &str) -> String {
+    match v.trim().strip_prefix('"') {
+        Some(x) => sans_echappements(x, '"'),
+        None => v.trim().to_string(),
+    }
 }
 
 /// Règle des clés d'un fichier de réglages Qt (QSettings : « cle=valeur », sans espace) dans une section, en ne
@@ -831,6 +890,47 @@ mod tests {
     use super::*;
 
     #[test]
+    fn une_apostrophe_ou_une_virgule_dans_le_chemin_ne_casse_aucun_fichier_de_reglages() {
+        let d = tempfile::tempdir().unwrap();
+        let racine = d.path().join("Jeux d'émulation, essai");
+        std::fs::create_dir_all(&racine).unwrap();
+        let profil = "D'Aquin";
+
+        // xemu : son disque dur d'origine dans un dossier à apostrophe ; le fichier du profil reste du TOML valide, et
+        // le chemin y est exact.
+        let disque = racine.join("system").join("xbox_hdd.qcow2");
+        std::fs::create_dir_all(disque.parent().unwrap()).unwrap();
+        std::fs::write(&disque, b"disque").unwrap();
+        std::fs::write(racine.join("xemu.toml"), format!("[sys.files]\nhdd_path = {}\n", chaine_toml(&disque.display().to_string()))).unwrap();
+        preparer("xemu", &racine, profil, &[], &Manette::Auto(None)).unwrap();
+        let cfg = dossier_du_profil(&racine, profil).join("xemu.toml");
+        let t = std::fs::read_to_string(&cfg).unwrap();
+        let v: toml::Value = toml::from_str(&t).expect("le fichier de réglages de xemu reste lisible");
+        let attendu = dossier_du_profil(&racine, profil).join("xbox_hdd.qcow2").display().to_string();
+        assert_eq!(v["sys"]["files"]["hdd_path"].as_str(), Some(attendu.as_str()));
+        assert_eq!(valeur_toml(&t, "sys.files", "hdd_path").as_deref(), Some(attendu.as_str()));
+        // Une chaîne littérale écrite par xemu lui-même reste relue telle quelle.
+        assert_eq!(valeur_toml("[a]\nb = 'E:\\x\\y'\n", "a", "b").as_deref(), Some("E:\\x\\y"));
+
+        // Azahar portable : ses dossiers NAND et carte SD, entre guillemets (une virgule ferait une liste pour Qt).
+        std::fs::create_dir_all(racine.join("user").join("config")).unwrap();
+        preparer("azahar", &racine, profil, &[], &Manette::Auto(None)).unwrap();
+        let ini = std::fs::read_to_string(racine.join("user/config/qt-config.ini")).unwrap();
+        let nand = crate::manettes::lire_ini(&ini, "Data%20Storage", "nand_directory").pop().unwrap();
+        assert!(nand.starts_with('"'), "{nand}");
+        let attendu = format!("{}/", dossier_du_profil(&racine, profil).join("nand").display().to_string().replace('\\', "/"));
+        assert_eq!(lire_valeur_qt(&nand), attendu);
+    }
+
+    #[test]
+    fn les_valeurs_qt_et_toml_sont_echappees_et_relues() {
+        assert_eq!(valeur_qt("E:/Zelda, TOTK/"), "\"E:/Zelda, TOTK/\"");
+        assert_eq!(lire_valeur_qt(&valeur_qt("E:/a \"b\" \\c")), "E:/a \"b\" \\c");
+        assert_eq!(lire_valeur_qt("E:/DLC"), "E:/DLC", "une valeur sans guillemets reste telle quelle");
+        assert_eq!(chaine_toml("E:\\Jeux d'émulation"), "\"E:\\\\Jeux d'émulation\"");
+    }
+
+    #[test]
     fn un_ini_est_modifie_sans_perdre_le_reste() {
         let avant = "[Main]\r\nLanguage = fr\r\n\r\n[Folders]\r\nSaveStates = savestates\r\nCovers = covers\r\n\r\n[GameList]\r\nRecursivePaths = C:\\vieux\r\nRecursivePaths = D:\\vieux\r\n";
         let a = ecrire_ini(avant, "Folders", &[("SaveStates", vec!["E:\\P\\etats".into()])]);
@@ -1100,7 +1200,8 @@ mod tests {
         let lance = preparer("rpcs3", racine, nom, &[], &Manette::Auto(None)).unwrap();
         assert_eq!(compte_rpcs3_existant(racine, &crate::jeux_pc::nom_de_dossier(nom)).as_deref(), Some(lance[1].as_str()));
 
-        // xemu : réglages et disque dur copiés pour le profil.
+        // xemu : réglages et disque dur copiés pour le profil. (Une apostrophe ou une virgule dans le chemin : voir
+        // `une_apostrophe_ou_une_virgule_dans_le_chemin_ne_casse_aucun_fichier_de_reglages`.)
         let disque = racine.join("system").join("xbox_hdd.qcow2");
         std::fs::create_dir_all(disque.parent().unwrap()).unwrap();
         std::fs::write(&disque, b"disque").unwrap();

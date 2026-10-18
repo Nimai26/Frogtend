@@ -48,6 +48,10 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Apostrophes et virgules dans les dossiers (0.68.2)
+- [ ] Rien à faire chez toi aujourd'hui (aucun de tes dossiers n'en a). Si un jour tu ranges des émulateurs dans un
+      dossier comme « Jeux d'émulation » : xemu, Eden et Azahar démarrent normalement depuis Frogtend.
+
 ## La sauvegarde et les jeux visibles (0.68.1)
 - [ ] 👤 Mon profil ▸ Sauvegarder maintenant : la sauvegarde se fait comme avant (le nombre de fichiers envoyés ne baisse pas : ton seul abri concerne un jeu
       que tu vois).

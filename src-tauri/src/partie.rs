@@ -344,6 +344,8 @@ impl Noyau {
                 let l = match crate::installation::nom_court_mame(&programme, f) {
                     // MAME : « mame <nom court> -rompath <dossier du jeu> » (contrat 1.13), jamais le chemin du zip.
                     Some(nom) => {
+                        // Refusé AVANT de rien écrire dans le dossier de MAME.
+                        crate::installation::verifier_rompath(&i.dossier)?;
                         // Le menu en jeu met MAME en pause par son script — jamais à la place d'un script de démarrage
                         // réglé par la personne. S'il ne peut être posé, MAME se lance quand même, et le menu ne promet
                         // aucune pause.

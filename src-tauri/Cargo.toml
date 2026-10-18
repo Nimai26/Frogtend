@@ -1,6 +1,6 @@
 [package]
 name = "frogtend"
-version = "0.68.1"
+version = "0.68.2"
 description = "Frogtend — la ludothèque de la maison, servie par Firehouse"
 authors = ["Nimai"]
 license = "Apache-2.0"
@@ -70,3 +70,5 @@ strip = true
 [dev-dependencies]
 httpmock = "0.7"
 tempfile = "3"
+# Relire en vrai TOML ce que Frogtend écrit pour xemu (déjà dans l'arbre des dépendances : rien de plus à télécharger).
+toml = "0.8"

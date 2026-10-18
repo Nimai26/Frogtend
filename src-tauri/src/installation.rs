@@ -489,6 +489,17 @@ pub fn autoboot_libre(dossier_mame: &Path, ligne: &str) -> bool {
 }
 
 /// `script` : le script du menu en jeu (`pilotage::SCRIPT_MAME`, relatif au dossier de MAME), s'il est préparé.
+/// `-rompath` de MAME sépare ses dossiers par « ; », sans échappement : un dossier de jeu qui en contient serait coupé
+/// en deux, et le jeu introuvable. La ROM n'est jamais renommée : on le dit à la personne.
+pub fn verifier_rompath(dossier: &str) -> crate::erreurs::Resultat<()> {
+    if dossier.contains(';') {
+        return Err(crate::erreurs::Erreur::Refus(format!(
+            "MAME ne sait pas lire un dossier dont le nom contient « ; » ({dossier}). Déplace le jeu dans un dossier sans « ; » (le nom de la ROM, lui, ne change pas)."
+        )));
+    }
+    Ok(())
+}
+
 pub fn lanceur_mame(programme: &str, ligne: &str, nom_court: &str, rompath: &Path, script: Option<&str>) -> Lanceur {
     let mut arguments: Vec<String> = decouper(ligne).into_iter().filter(|a| !a.to_ascii_lowercase().contains("%rom%")).collect();
     if let Some(s) = script {
@@ -718,6 +729,15 @@ mod tests {
         let simple = d.path().join("simple.exe");
         std::fs::write(&simple, b"MZ rien du tout").unwrap();
         assert!(!archive_7z_dans_exe(&simple, &d.path().join("rien.7z")).unwrap());
+    }
+
+    #[test]
+    fn un_dossier_avec_un_point_virgule_est_refuse_pour_mame_avec_une_explication() {
+        assert!(verifier_rompath(r"E:\Jeux d'arcade, MAME\Street Fighter").is_ok(), "apostrophe et virgule passent");
+        match verifier_rompath(r"E:\Arcade; Capcom\sfiii") {
+            Err(crate::erreurs::Erreur::Refus(m)) => assert!(m.contains("« ; »") && m.contains("ROM")),
+            r => panic!("{r:?}"),
+        }
     }
 
     #[test]

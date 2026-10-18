@@ -1545,7 +1545,7 @@ dependencies = [
 
 [[package]]
 name = "frogtend"
-version = "0.68.1"
+version = "0.68.2"
 dependencies = [
  "argon2",
  "bytes",
@@ -1578,6 +1578,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
+ "toml 0.8.2",
  "windows 0.61.3",
  "zip 2.4.2",
 ]

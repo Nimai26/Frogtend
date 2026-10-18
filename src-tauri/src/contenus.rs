@@ -196,10 +196,11 @@ pub fn chercher_ps3(dossier: &Path) -> Vec<Contenu> {
     l
 }
 
-// --- Switch (Eden) : mises à jour et DLC en .nsp. Relevé dans les sources d'Eden (03/10) : `[Paths]` de
-// `user\config\qt-config.ini` a une liste `external_content_dirs` (`external_content_dirs\size`,
-// `external_content_dirs\N\path`) de dossiers où Eden LIT les mises à jour et DLC, sans rien installer. « Installer »
-// = ajouter le dossier à cette liste (avec l'accord de la personne) ; rien n'est copié. ---
+// --- Switch (Eden) : mises à jour et DLC en .nsp. `user\config\qt-config.ini` a une liste `external_content_dirs` de
+// dossiers où Eden LIT les mises à jour et DLC, sans rien installer, rangée dans `[UI]` sous
+// `Paths\external_content_dirs\size` et `Paths\external_content_dirs\N\path` (relu le 18/10 dans `qt_config.cpp` :
+// le groupe `Paths` est ouvert DANS le groupe `UI` — la 0.68.1 et avant écrivaient à tort dans une section `[Paths]`).
+// « Installer » = ajouter le dossier à cette liste (avec l'accord de la personne) ; rien n'est copié. ---
 
 /// Un contenu Switch (mise à jour ou DLC) trouvé.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -318,11 +319,28 @@ pub fn ini_eden(eden: &Path) -> PathBuf {
     eden.join("user").join("config").join("qt-config.ini")
 }
 
-/// Les dossiers de contenus externes réglés dans Eden.
+/// Les dossiers de contenus externes réglés dans Eden : la section `[UI]`, clés `Paths\external_content_dirs\…`
+/// (sources d'Eden, `qt_config.cpp` relu le 18/10 : `ReadPathValues` ouvre le groupe `Paths` À L'INTÉRIEUR du groupe
+/// `UI` ; même forme que `Paths\gamedirs\…` dans le `qt-config.ini` de suyu sur Venkman).
 pub fn dossiers_externes_eden(texte: &str) -> Vec<String> {
-    let lire = |cle: &str| crate::manettes::lire_ini(texte, "Paths", cle).into_iter().next();
-    let n: usize = lire("external_content_dirs\\size").and_then(|v| v.trim().parse().ok()).unwrap_or(0);
-    (1..=n.min(256)).filter_map(|i| lire(&format!("external_content_dirs\\{i}\\path"))).filter(|v| !v.is_empty()).collect()
+    liste_eden(texte, "UI", "Paths\\external_content_dirs")
+}
+
+/// Ce que Frogtend avait écrit avant la 0.68.2 dans une section `[Paths]` qu'Eden ne lit pas : repris (avec l'accord
+/// donné alors) au prochain ajout.
+fn dossiers_eden_mal_ranges(texte: &str) -> Vec<String> {
+    liste_eden(texte, "Paths", "external_content_dirs")
+}
+
+fn liste_eden(texte: &str, section: &str, prefixe: &str) -> Vec<String> {
+    let lire = |cle: &str| crate::manettes::lire_ini(texte, section, cle).into_iter().next();
+    let n: usize = lire(&format!("{prefixe}\\size")).and_then(|v| v.trim().parse().ok()).unwrap_or(0);
+    // Une valeur entre guillemets (écrite ainsi par Eden ou par Frogtend) est relue sans eux.
+    (1..=n.min(256))
+        .filter_map(|i| lire(&format!("{prefixe}\\{i}\\path")))
+        .map(|v| crate::emulateurs_profils::lire_valeur_qt(&v))
+        .filter(|v| !v.is_empty())
+        .collect()
 }
 
 /// Deux dossiers sont-ils le même ? (Windows : sans casse ; « / » et « \ » se valent.)
@@ -335,18 +353,30 @@ pub fn meme_dossier(a: &str, b: &str) -> bool {
 /// avec des « / » : dans un fichier de réglages Qt (QSettings), « \ » est un caractère d'échappement (un dossier
 /// « D:\temp » serait relu avec une tabulation).
 pub fn ajouter_dossiers_eden(texte: &str, dossiers: &[String]) -> String {
-    let mut l = dossiers_externes_eden(texte);
-    for d in dossiers {
+    // TOUS en « / », les anciens comme les nouveaux : une valeur ne porte alors jamais de « \ », que le lecteur d'Eden
+    // traiterait comme un échappement (ou pas) selon sa version — le même chemin pour toutes.
+    let mut l: Vec<String> = dossiers_externes_eden(texte).into_iter().map(|d| d.replace('\\', "/")).collect();
+    for d in dossiers_eden_mal_ranges(texte).iter().chain(dossiers) {
         if !l.iter().any(|x| meme_dossier(x, d)) {
             l.push(d.replace('\\', "/"));
         }
     }
-    let mut valeurs: Vec<(String, Vec<String>)> = vec![("external_content_dirs\\size".into(), vec![l.len().to_string()])];
+    let mut valeurs: Vec<(String, Vec<String>)> = vec![("Paths\\external_content_dirs\\size".into(), vec![l.len().to_string()])];
     for (i, d) in l.iter().enumerate() {
-        valeurs.push((format!("external_content_dirs\\{}\\path", i + 1), vec![d.clone()]));
+        // Entre guillemets : une virgule dans le chemin (« Zelda, TOTK ») ferait relire une LISTE à Eden.
+        valeurs.push((format!("Paths\\external_content_dirs\\{}\\path", i + 1), vec![crate::emulateurs_profils::valeur_qt(d)]));
     }
     let refs: Vec<(&str, Vec<String>)> = valeurs.iter().map(|(c, v)| (c.as_str(), v.clone())).collect();
-    crate::emulateurs_profils::ecrire_ini(texte, "Paths", &refs)
+    let texte = crate::emulateurs_profils::ecrire_ini(texte, "UI", &refs);
+    // Les anciennes lignes de `[Paths]` (écrites par Frogtend lui-même) partent une fois reprises : jamais rejouées, un
+    // dossier que la personne retire ensuite dans Eden ne revient pas.
+    let lire = |cle: &str| crate::manettes::lire_ini(&texte, "Paths", cle).into_iter().next();
+    let Some(n) = lire("external_content_dirs\\size") else { return texte };
+    let n: usize = n.trim().parse().unwrap_or(0).min(256);
+    let mut cles = vec!["external_content_dirs\\size".to_string()];
+    cles.extend((1..=n).map(|i| format!("external_content_dirs\\{i}\\path")));
+    let vides: Vec<(&str, Vec<String>)> = cles.iter().map(|c| (c.as_str(), vec![])).collect();
+    crate::emulateurs_profils::ecrire_ini(&texte, "Paths", &vides)
 }
 
 // --- Wii U : un .wua (ZArchive de l'équipe de Cemu, licence MIT-0) peut contenir le jeu, ses mises à jour et ses DLC,
@@ -603,13 +633,48 @@ mod tests {
 
     #[test]
     fn eden_recoit_un_dossier_de_contenus_sans_perdre_le_reste() {
-        let avant = "[Paths]\r\ngamedirs\\size=1\r\nexternal_content_dirs\\size=1\r\nexternal_content_dirs\\1\\path=E:\\DLC\r\n[UI]\r\ntheme=dark\r\n";
+        // La forme réelle (qt_config.cpp d'Eden ; `Paths\gamedirs\…` du qt-config.ini de suyu sur Venkman) : `[UI]`.
+        let avant = "[UI]\r\nPaths\\gamedirs\\size=1\r\nPaths\\external_content_dirs\\size=1\r\nPaths\\external_content_dirs\\1\\path=E:\\DLC\r\ntheme=dark\r\n[Controls]\r\nx=1\r\n";
         assert_eq!(dossiers_externes_eden(avant), ["E:\\DLC"]);
         let apres = ajouter_dossiers_eden(avant, &["D:\\Switch Maj & DLC".into(), "e:\\dlc".into()]);
-        assert_eq!(dossiers_externes_eden(&apres), ["E:\\DLC", "D:/Switch Maj & DLC"], "sans doublon ; le nouveau en « / »");
+        assert_eq!(dossiers_externes_eden(&apres), ["E:/DLC", "D:/Switch Maj & DLC"], "sans doublon ; tous en « / »");
+        assert!(!apres.contains("E:\\\\DLC"), "jamais de « \\ » réécrit dans une valeur d'Eden");
+        assert!(!apres.contains("[Paths]"), "jamais une section qu'Eden ne lit pas");
         assert!(meme_dossier("D:/Switch Maj & DLC/", "d:\\switch maj & dlc"));
         assert!(!meme_dossier("D:/Switch", "D:/Switch2"));
-        assert!(apres.contains("gamedirs\\size") && apres.contains("theme=dark"), "le reste est gardé");
+        assert!(apres.contains("Paths\\gamedirs\\size") && apres.contains("theme=dark") && apres.contains("x=1"), "le reste est gardé");
+    }
+
+    #[test]
+    fn les_dossiers_ecrits_avant_dans_une_section_qu_eden_ne_lit_pas_sont_repris() {
+        // 0.68.1 et avant : `[Paths]` (jamais lu par Eden). Repris dans `[UI]` au prochain ajout.
+        let avant = "[Paths]\r\nexternal_content_dirs\\size=1\r\nexternal_content_dirs\\1\\path=E:/Vieux DLC\r\n[UI]\r\ntheme=dark\r\n";
+        assert!(dossiers_externes_eden(avant).is_empty(), "Eden ne les voyait pas");
+        let apres = ajouter_dossiers_eden(avant, &["D:\\Nouveau".into()]);
+        assert_eq!(dossiers_externes_eden(&apres), ["E:/Vieux DLC", "D:/Nouveau"]);
+        assert!(!apres.contains("external_content_dirs\\1\\path=E:/Vieux"), "les anciennes lignes partent une fois reprises");
+        assert!(apres.contains("theme=dark"));
+        // La personne retire ensuite « E:/Vieux DLC » dans Eden : un nouvel ajout ne le remet jamais.
+        let retire = apres
+            .replace("Paths\\external_content_dirs\\size = 2", "Paths\\external_content_dirs\\size = 1")
+            .replace("Paths\\external_content_dirs\\1\\path = \"E:/Vieux DLC\"", "Paths\\external_content_dirs\\1\\path = \"D:/Nouveau\"")
+            .replace("Paths\\external_content_dirs\\2\\path = \"D:/Nouveau\"\r\n", "");
+        assert_eq!(dossiers_externes_eden(&retire), ["D:/Nouveau"], "{retire}");
+        let encore = ajouter_dossiers_eden(&retire, &["F:\\Autre".into()]);
+        assert_eq!(dossiers_externes_eden(&encore), ["D:/Nouveau", "F:/Autre"]);
+        // Sans anciennes lignes : aucune section `[Paths]` créée.
+        assert!(!ajouter_dossiers_eden("[UI]\r\ntheme=dark\r\n", &["F:\\X".into()]).contains("[Paths]"));
+    }
+
+    #[test]
+    fn un_dossier_de_contenus_avec_une_virgule_reste_un_seul_dossier_pour_eden() {
+        // Eden (QSettings) met entre guillemets une valeur qui porte une virgule ; Frogtend aussi, et relit sans eux.
+        let avant = "[UI]\r\nPaths\\external_content_dirs\\size=1\r\nPaths\\external_content_dirs\\1\\path=\"E:/Zelda, TOTK\"\r\n";
+        assert_eq!(dossiers_externes_eden(avant), ["E:/Zelda, TOTK"]);
+        let apres = ajouter_dossiers_eden(avant, &["D:\\Jeux d'émulation, Switch".into()]);
+        assert_eq!(dossiers_externes_eden(&apres), ["E:/Zelda, TOTK", "D:/Jeux d'émulation, Switch"]);
+        assert!(apres.contains("\"D:/Jeux d'émulation, Switch\""), "entre guillemets : jamais relu comme une liste");
+        assert_eq!(apres.matches("Zelda").count(), 1, "pas de guillemets doublés au passage");
     }
 
     #[test]

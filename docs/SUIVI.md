@@ -154,7 +154,7 @@
       des visuels choisis, retrait du cache d'une image que Firehouse ne sert plus (édition par un admin).
 - [ ] **RPCS3 : mods, shaders, triches** (Seb, 03/10 : « il manque encore la gestion des mods, shaders, cheats, l'OSD »)
       — l'OSD passe d'abord (Seb, 04/10).
-- [ ] **Formats des fichiers d'émulateurs** (expert, 04/10, après le bug YAML de RPCS3) : xemu `xemu.toml`
+- [x] ✅ 0.68.2 **Formats des fichiers d'émulateurs** (expert, 04/10, après le bug YAML de RPCS3) : xemu `xemu.toml`
       (emulateurs_profils.rs:402) — une apostrophe dans le chemin (« Jeux d'émulation », profil « D'Aquin ») rend le
       TOML illisible → chaîne "…" échappée + test qui relit en TOML ; Qt/QSettings (Eden `external_content_dirs`
       contenus.rs:346, Azahar emulateurs_profils.rs:425) — une virgule ou un point-virgule dans un chemin en fait une
@@ -280,6 +280,21 @@ d'abord :
       quelle (règles « Autoriser, privé » posées sur le RetroArch d'essai supprimé : sans effet, gardées).
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.68.2** (18/10) — Formats des fichiers d'émulateurs (relevé de l'expert du 04/10) : xemu `hdd_path` en chaîne TOML
+  basique (`chaine_toml`, au lieu de `'…'` qu'une apostrophe fermait) ; `valeur_toml` relit littérale et basique ;
+  valeurs Qt (Eden `external_content_dirs`, Azahar `nand_directory`/`sdmc_directory`) toujours entre guillemets
+  (`valeur_qt`), relues sans eux (`lire_valeur_qt`). Vérifié : tests (dossier « Jeux d'émulation, essai », profil
+  « D'Aquin » : xemu.toml relu par un vrai lecteur TOML, chemin exact ; Azahar ; Eden « Zelda, TOTK » = un seul
+  dossier, sans guillemets doublés) ; 356 tests cœur. NON vérifié en réel : xemu, Eden et Azahar lancés sur ces
+  chemins (aucun chez Seb aujourd'hui).
+  Relecture de l'expert lancement : (1) chemins d'Eden tous en « / » ; (2) DÉCOUVERTE — Eden lit
+  `external_content_dirs` dans `[UI]` sous `Paths\external_content_dirs\…` (sources `qt_config.cpp` relues le 18/10 :
+  groupe Paths DANS le groupe UI ; même forme que `Paths\gamedirs\…` du qt-config.ini de suyu sur Venkman) : depuis le
+  lot contenus Switch, Frogtend écrivait dans une section `[Paths]` jamais lue — ÉCRIT mais pas BRANCHÉ. Corrigé, les
+  dossiers déjà donnés sont repris UNE fois (leurs anciennes lignes retirées ensuite : un dossier retiré dans Eden par
+  la personne ne revient jamais) ; (3) MAME (vérifié AVANT de poser le script dans son dossier) : dossier de jeu avec « ; » refusé (`verifier_rompath`) ; Azahar :
+  `\default=false` pour nand/sdmc ; DEL échappé en TOML.
 
 - **0.68.1** (18/10) — Confidentialité : `contenu_sauvegarde` n'envoie plus que les abris des jeux `visible_ou_reuni`
   du profil (les abris sont ceux du PC) ; un abri qui ne part plus reste sur le PC, et ce qui en avait été envoyé à CE

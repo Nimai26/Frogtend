@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.68.2 — Une apostrophe ou une virgule dans un dossier ne casse plus un émulateur
+
+- Correctif : un dossier comme « Jeux d'émulation » ou un profil « D'Aquin » rendait illisibles les réglages de xemu
+  (Xbox) préparés par Frogtend ; un dossier comme « Zelda, TOTK » était compris par Eden (Switch) et Azahar (3DS) comme
+  deux dossiers. Les chemins sont maintenant écrits comme ces émulateurs les attendent.
+- Correctif Eden (Switch) : les dossiers de mises à jour et de DLC que Frogtend lui donnait étaient rangés au mauvais
+  endroit de ses réglages, et Eden ne les voyait pas. Ils vont maintenant là où Eden les lit (vérifié dans ses
+  sources) ; ceux déjà donnés sont repris au prochain ajout.
+- MAME : un dossier de jeu dont le nom contient « ; » est refusé avec une explication (MAME le couperait en deux) ;
+  le nom de la ROM ne change jamais.
+
 ## 0.68.1 — La sauvegarde n'envoie que les parties des jeux que tu vois
 
 - Correctif de confidentialité : les parties mises à l'abri sur le PC (avant de retirer ou réinstaller un jeu) sont
