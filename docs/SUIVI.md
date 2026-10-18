@@ -270,6 +270,15 @@ d'abord :
 
 ## ✅ Livré (version — ce qui a été vérifié)
 
+- **0.64.0** (18/10) — Lot Médias M2 : galerie de la fiche (vignettes en cellules fixes, visionneuse à la manette et au
+  clavier, libellés et régions en français, damier, gros pixels des petites images agrandies ×2). Cœur : `medias.rs`
+  (liste gardée PAR PROFIL relue quand `medias_empreinte` change ; image précise par son id, gardée sous son empreinte,
+  écrite sous un nom provisoire unique puis renommée ; images retirées purgées ; 404 = tout ce qui est gardé du jeu
+  pour ce profil part ; réponse mal formée sans effet). Vérifié en RÉEL : `?id=` sert l'image précise (id inconnu ou
+  sous un autre type → 404, consigné dans EXEMPLES) ; profil temporaire : 21 visuels listés, 2e capture 21 696 o
+  gardée. Tests : 327 cœur, 165 interface ; avis AVANT et relectures des experts (importants corrigés). NON vérifié :
+  la galerie à l'écran.
+
 - **0.63.0** (18/10) — Lot Médias M1 : choix de l'image des jeux (grille + Taodbox, réglage du profil
   `ludotheque.visuel`), cadre du visuel choisi (grille régulière) et boîte au ratio réel (place réservée), repli sur
   la jaquette dans le cœur, gros pixels gardés. Cœur : catalogue schéma 2 (`images`, `medias_empreinte`, `documents`,

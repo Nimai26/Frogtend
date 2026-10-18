@@ -322,6 +322,12 @@ pub async fn annexe_ouvrir(app: AppHandle, noyau: State<'_, Noyau>, id: i64, i: 
         .map_err(|_| Erreur::Disque("Windows n'a pas pu ouvrir ce document.".into()))
 }
 
+/// Les visuels d'un jeu (galerie de la fiche, contrat 1.6).
+#[tauri::command]
+pub async fn medias_jeu(noyau: State<'_, Noyau>, id: i64) -> Resultat<Vec<crate::medias::Media>> {
+    noyau.medias(id).await
+}
+
 /// Les documents d'un jeu (contrat 1.7) : livret, musique, vidéos.
 #[tauri::command]
 pub async fn documents_jeu(noyau: State<'_, Noyau>, id: i64) -> Resultat<Vec<crate::documents::Document>> {

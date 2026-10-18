@@ -646,14 +646,8 @@ impl Noyau {
                     Ok(Some(img)) => {
                         // Le garder est un plus (un disque plein n'empêche pas de montrer l'image reçue) : écrit à côté
                         // puis renommé ; les anciennes versions de ce visuel partent.
-                        let part = fichier.with_extension("part");
-                        let garde = std::fs::create_dir_all(&du_jeu)
-                            .and_then(|_| std::fs::write(&part, &img.octets))
-                            .and_then(|_| std::fs::rename(&part, &fichier));
-                        if garde.is_ok() {
+                        if crate::medias::ecrire(&fichier, &img.octets).is_ok() {
                             purger(sorte, Some(&empreinte));
-                        } else {
-                            let _ = std::fs::remove_file(&part);
                         }
                         return Ok(Some(Image { type_contenu: img.type_contenu.or_else(|| type_image(&img.octets)), octets: img.octets }));
                     }
@@ -1105,6 +1099,51 @@ mod tests {
         }
         let schema = s.verrou().meta("schema_catalogue").unwrap();
         println!("SCHÉMA {schema:?}");
+        // La galerie (M2) : la liste, puis la 2e capture par son id.
+        let l = n.medias(jeu).await.unwrap();
+        println!("GALERIE {} visuels", l.len());
+        if let Some(m) = l.iter().filter(|m| m.sorte == "capture").nth(1) {
+            let i = n.media_precis(jeu, m.id, 300).await.unwrap();
+            println!("CAPTURE 2 (id {}) : {:?} octets", m.id, i.map(|i| i.octets.len()));
+        }
+        for f in std::fs::read_dir(s.dossier.join("visuels").join(jeu.to_string())).into_iter().flatten().flatten() {
+            println!("GALERIE GARDÉE {}", f.file_name().to_string_lossy());
+        }
+    }
+
+    /// RÉEL, lecture seule : la liste des visuels d'un jeu (`/jeu/{id}/medias`) et deux captures DIFFÉRENTES demandées
+    /// par leur `id` (`/media/{id}/capture?id=<media>&largeur=300`).
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_JEU=116 cargo test essai_medias -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_medias() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").unwrap();
+        let jeu: i64 = std::env::var("FROGTEND_JEU").unwrap().parse().unwrap();
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        let v: Value = c.obtenir_json(&format!("/jeu/{jeu}/medias")).await.unwrap();
+        let l = v["medias"].as_array().cloned().unwrap_or_default();
+        println!("MEDIAS {} ; empreinte {} ; premier {}", l.len(), v["medias_empreinte"], l.first().cloned().unwrap_or_default());
+        let captures: Vec<&Value> = l.iter().filter(|m| m["type"] == "capture").collect();
+        for m in captures.iter().take(2) {
+            let r = c.obtenir(&format!("/media/{jeu}/capture?id={}&largeur=300", m["id"]), None).await;
+            let o = match r {
+                Ok(Reponse::Corps { octets, .. }) => { use sha2::Digest; format!("{} o, sha {:.12x}", octets.len(), sha2::Sha256::digest(&octets)) }
+                autre => format!("{:?}", autre.map(|_| ())),
+            };
+            println!("CAPTURE id={} principal={} → {}", m["id"], m["principal"], o);
+        }
+        // Un numéro inconnu, et un numéro de capture demandé sous une autre sorte.
+        let mid = captures.first().map(|m| m["id"].to_string()).unwrap_or_default();
+        for route in [format!("/media/{jeu}/capture?id=1&largeur=300"), format!("/media/{jeu}/logo?id={mid}&largeur=300")] {
+            let r = c.obtenir(&route, None).await;
+            let o = match r {
+                Ok(Reponse::Corps { octets, type_contenu, .. }) => { use sha2::Digest; format!("{} o {:?}, sha {:.12x}", octets.len(), type_contenu, sha2::Sha256::digest(&octets)) }
+                autre => format!("{:?}", autre.map(|_| ())),
+            };
+            println!("ROUTE {route} → {o}");
+        }
     }
 
     #[tokio::test]

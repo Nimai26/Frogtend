@@ -493,6 +493,8 @@ export const api = {
   annuler: (id: number) => appeler<void>('telechargement_annuler', { id }),
   ouvrirAnnexe: (id: number, i: number) => appeler<void>('annexe_ouvrir', { id, i }),
   documents: (id: number) => appeler<DocumentJeu[]>('documents_jeu', { id }),
+  /** Tous les visuels d'un jeu (galerie de la fiche, contrat 1.6). */
+  medias: (id: number) => appeler<import('./ludotheque/galerie').MediaJeu[]>('medias_jeu', { id }),
   /** Télécharge le livret s'il n'est pas sur le PC (le clic vaut accord, taille montrée), rend son nombre de pages. */
   ouvrirLivret: (id: number, doc: number) => appeler<number>('livret_ouvrir', { id, doc }),
   /** Télécharge une musique ou une vidéo si elle n'est pas sur le PC (le clic vaut accord, taille montrée). */
@@ -639,6 +641,12 @@ export function adresseJaquette(id: number, largeur?: number): string {
   if (!largeur) return `http://jaquette.localhost/${id}`;
   const l = Math.min(1000, Math.max(100, Math.ceil(largeur / 100) * 100));
   return `http://jaquette.localhost/${id}?largeur=${l}`;
+}
+
+/** UNE image précise de la galerie d'un jeu, en miniature (100 à 1 000 px), sans repli. */
+export function adresseMedia(jeu: number, media: number, largeur: number): string {
+  const l = Math.min(1000, Math.max(100, Math.ceil(largeur / 100) * 100));
+  return `http://jaquette.localhost/${jeu}?media=${media}&largeur=${l}`;
 }
 
 /** Un visuel d'un jeu (boîte en relief, cartouche…) en miniature ; le cœur se replie sur la jaquette si le jeu ne

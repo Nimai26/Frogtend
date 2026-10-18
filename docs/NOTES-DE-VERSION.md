@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.64.0 — La galerie d'images du jeu
+
+- Dans la fiche d'un jeu : **🖼 Images du jeu** — boîte en relief, dos, tranche, cartouche, écrans titre, images du
+  jeu, logos… Un clic (ou A) ouvre la visionneuse : ◀ ▶ d'une image à l'autre, B ou Échap pour revenir.
+- Les logos transparents se lisent sur un damier ; les petites images d'époque gardent leurs gros pixels.
+- Chaque image n'est téléchargée qu'une fois (en petite taille, jamais l'original) ; une image retirée chez Firehouse
+  disparaît aussi du PC.
+
 ## 0.63.0 — Choisis l'image de tes jeux
 
 - Dans la barre de la ludothèque (🎨) et dans Réglages ▸ Ludothèque : **l'image des jeux** — jaquette, boîte en

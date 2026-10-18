@@ -48,6 +48,13 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## La galerie d'images (0.64.0)
+- [ ] Fiche de 3x3 Eyes (ou un autre jeu SNES) ▸ 🖼 Images du jeu : des vignettes de même taille (boîte, dos,
+      tranche, cartouche, images du jeu…), libellées en français.
+- [ ] Clic (ou A) sur une vignette : la visionneuse ; ◀ ▶ (ou ← →) changent d'image ; B / Échap : retour sur la
+      vignette de la dernière image vue.
+- [ ] Une fiche MS-DOS (pas d'images chez Firehouse) : pas de section Images.
+
 ## L'image des jeux (0.63.0)
 - [ ] Après la mise à jour : la première synchronisation dure ~3 minutes (une fois), Frogtend reste utilisable.
 - [ ] Ludothèque ▸ 🎨 : Boîte en relief, Cartouche, Écran titre, Image du jeu : la grille reste régulière ; un jeu

@@ -325,6 +325,32 @@ impl Source {
         Ok(recus)
     }
 
+    /// Tous les visuels d'un jeu (contrat 1.6, galerie) : `{medias_empreinte, medias: [...]}`. En mode simulé : aucun
+    /// (comme un jeu dont les images ne sont pas encore rapatriées).
+    pub async fn medias(&self, id: i64) -> Resultat<Value> {
+        match self {
+            Source::Firehouse(c) => c.obtenir_json(&format!("/jeu/{id}/medias")).await,
+            Source::Simulee => Ok(json!({"ok": true, "id": id, "medias_empreinte": null, "medias": []})),
+        }
+    }
+
+    /// UN visuel précis d'un jeu (galerie), par son `id`, en miniature (100 à 1 000 px, jamais l'original) ; 404 →
+    /// `None` (relevé réel du 18/10 : un id inconnu, ou sous un autre type, répond 404).
+    pub async fn media_precis(&self, id: i64, sorte: &str, media: i64, largeur: u32) -> Resultat<Option<Image>> {
+        match self {
+            Source::Firehouse(c) => {
+                let l = largeur.clamp(100, 1000);
+                match c.obtenir(&format!("/media/{id}/{sorte}?id={media}&largeur={l}"), None).await {
+                    Ok(Reponse::Corps { octets, type_contenu, .. }) => Ok(Some(Image { octets, type_contenu })),
+                    Ok(Reponse::NonModifie) => Ok(None),
+                    Err(Erreur::Introuvable(_)) => Ok(None),
+                    Err(e) => Err(e),
+                }
+            }
+            Source::Simulee => Ok(None),
+        }
+    }
+
     /// Les documents d'un jeu (contrat 1.7) : `{documents_empreinte, documents: [...]}`.
     pub async fn documents(&self, id: i64) -> Resultat<Value> {
         match self {

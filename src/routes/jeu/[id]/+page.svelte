@@ -10,6 +10,9 @@
   import Jaquette from '$lib/ludotheque/Jaquette.svelte';
   import LecteurLivret from '$lib/ludotheque/LecteurLivret.svelte';
   import LecteurMedia from '$lib/ludotheque/LecteurMedia.svelte';
+  import VisionneuseImages from '$lib/ludotheque/VisionneuseImages.svelte';
+  import { grosPixels, largeurUtile, libelleMedia, ordonner, type MediaJeu } from '$lib/ludotheque/galerie';
+  import { adresseMedia } from '$lib/api';
   import { documentsMontres, libelleDocument, ouvrirDocument, type DocumentOuvert } from '$lib/ludotheque/documents';
   import { mettreDansLaLudotheque, tele } from '$lib/ludotheque/telechargements.svelte';
   import { emulateursDuJeu, gererJeu, installer, jouer, jouerAvec, partie } from '$lib/ludotheque/jeu.svelte';
@@ -23,6 +26,16 @@
   let documents = $state<DocumentJeu[]>([]);
   let ouverture = $state<number | null>(null);
   let ouvert = $state<DocumentOuvert | null>(null);
+  // La galerie du jeu (lot Médias M2) : ses visuels, l'image ouverte en grand, les vignettes qui ne s'affichent pas.
+  let medias = $state<MediaJeu[]>([]);
+  let imageOuverte = $state<number | null>(null);
+  let ratees = $state<number[]>([]);
+  const boutonsMedias: Record<number, HTMLButtonElement> = {};
+  /** La largeur d'une vignette (cellule fixe) : l'image s'y loge en entier. */
+  const VIGNETTE = 160;
+  // En pixels réels : l'échelle du texte (réglage) et la densité de l'écran comptent.
+  const pixelsEcran = () =>
+    VIGNETTE * (Number(getComputedStyle(document.documentElement).getPropertyValue('--echelle')) || 1) * (window.devicePixelRatio || 1);
   // Les boutons des documents, pour y rendre la sélection quand le lecteur se ferme.
   const boutonsDocuments: Record<number, HTMLButtonElement> = {};
 
@@ -34,6 +47,9 @@
     annexe = null;
     documents = [];
     ouvert = null;
+    medias = [];
+    ratees = [];
+    imageOuverte = null;
     try {
       const r = await api.fiche(n);
       fiche = r.fiche;
@@ -45,8 +61,13 @@
     }
     // Les documents sont un plus : s'ils ne viennent pas, la fiche reste complète sans eux. Une autre fiche ouverte
     // entre-temps ne reçoit jamais ceux-ci.
-    const l = documentsMontres(await api.documents(n).catch(() => []));
-    if (n === id) documents = l;
+    // La galerie aussi est un plus : pas de section si elle ne vient pas (ou si le jeu n'a aucune image). Les deux
+    // listes arrivent ensemble.
+    const [l, g] = await Promise.all([api.documents(n).catch(() => []), api.medias(n).catch(() => [])]);
+    if (n === id) {
+      documents = documentsMontres(l);
+      medias = ordonner(g);
+    }
   }
 
   /** Ouvre un document : téléchargé d'abord s'il n'est pas sur le PC (sa taille est sur le bouton : le clic vaut accord). */
@@ -68,6 +89,13 @@
   $effect(() => {
     charger(id);
   });
+
+  /** La visionneuse se ferme : la sélection revient sur la vignette de la dernière image vue. */
+  async function fermerImage(media: number) {
+    imageOuverte = null;
+    await tick();
+    boutonsMedias[media]?.focus();
+  }
 
   /** Le lecteur se ferme : la sélection revient sur le bouton du document. */
   async function fermer() {
@@ -188,6 +216,31 @@
       </div>
     </section>
 
+    {#if medias.some((m) => !ratees.includes(m.id))}
+      <section class="cx-block">
+        <h3>🖼 Images du jeu</h3>
+        <div class="galerie">
+          {#each medias as m (m.id)}
+            {#if !ratees.includes(m.id)}
+              <button class="vignette" bind:this={boutonsMedias[m.id]} title={libelleMedia(m)} onclick={() => (imageOuverte = m.id)}>
+                <span class="cadre">
+                  <img
+                    src={adresseMedia(fiche.id, m.id, largeurUtile(m, pixelsEcran()))}
+                    alt={libelleMedia(m)}
+                    loading="lazy"
+                    decoding="async"
+                    class:pixels={grosPixels(m, pixelsEcran())}
+                    onerror={() => (ratees = [...ratees, m.id])}
+                  />
+                </span>
+                <span class="muted">{libelleMedia(m)}</span>
+              </button>
+            {/if}
+          {/each}
+        </div>
+      </section>
+    {/if}
+
     {#if fiche.annexes?.length || documents.length}
       <section class="cx-block">
         <h3>📚 Documents du jeu</h3>
@@ -260,13 +313,65 @@
   {/if}
 </div>
 
-{#if ouvert?.livret && fiche}
+{#if imageOuverte !== null && fiche}
+  <VisionneuseImages
+    jeu={fiche.id}
+    medias={medias.filter((m) => !ratees.includes(m.id))}
+    depart={imageOuverte}
+    titre={fiche.titre}
+    sousLaBarre
+    onfermer={fermerImage}
+  />
+{:else if ouvert?.livret && fiche}
   <LecteurLivret jeu={fiche.id} doc={ouvert.doc} pages={ouvert.pages} titre={fiche.titre} sousLaBarre onfermer={fermer} />
 {:else if ouvert && !ouvert.livret && fiche}
   <LecteurMedia jeu={fiche.id} doc={ouvert.doc} video={ouvert.video} titre={fiche.titre} sousLaBarre onfermer={fermer} />
 {/if}
 
 <style>
+  .galerie {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(10 * var(--u));
+  }
+  /* Une cellule fixe (grille régulière, la croix de la manette s'y déplace bien) ; l'image s'y loge en entier. Le
+     contour de sélection reste sur le bouton (l'« overflow » est sur le cadre intérieur). */
+  .vignette {
+    display: grid;
+    gap: calc(4 * var(--u));
+    width: calc(160 * var(--u));
+    padding: calc(4 * var(--u));
+    border: 1px solid var(--line);
+    border-radius: calc(10 * var(--u));
+    background: var(--bg2);
+    color: var(--ink);
+    cursor: pointer;
+    text-align: center;
+  }
+  .vignette:hover {
+    border-color: var(--accent);
+  }
+  .vignette .cadre {
+    height: calc(120 * var(--u));
+    overflow: hidden;
+    border-radius: calc(6 * var(--u));
+    display: grid;
+    place-items: center;
+    background: repeating-conic-gradient(var(--damier-clair) 0% 25%, var(--damier-fonce) 0% 50%) 50% / 12px 12px;
+  }
+  .vignette img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+  .vignette img.pixels {
+    image-rendering: pixelated;
+  }
+  .vignette .muted {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .page {
     padding: calc(16 * var(--u)) calc(24 * var(--u)) calc(32 * var(--u));
     display: grid;

@@ -1398,6 +1398,11 @@ logo ×2, boite_3d, cartouche, cartouche_3d, dos, ecran_titre, fond, jaquette, t
 
 `GET /media/116/{type}?largeur=1000` → WebP : `fond` 118 776 octets, `capture` 20 774, `ecran_titre` 10 694.
 
+Relevé RÉEL du 18/10/2026 (Frogtend, essai `essai_medias`, lecture seule) : `/jeu/116/medias` → 21 visuels,
+`medias_empreinte` `"9301a836222a4b31"` (la même que dans le catalogue) ; une image PRÉCISE se demande par son `id` :
+`/media/116/capture?id=509043&largeur=300` → 20 774 o, `?id=509044` → 21 696 o (deux captures différentes) ;
+`?id=1` (inconnu) → 404 ; `/media/116/logo?id=509043` (l'id d'une capture sous un autre type) → 404.
+
 ## Contrat 1.9 → 1.13 — relevés RÉELS du 16/10/2026 01 h 10 (Firehouse 2.67.11)
 
 > Envoyés par la session Firehouse « FIREHOUSE 2 », sortis des fonctions qui construisent les réponses (lecture

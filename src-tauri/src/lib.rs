@@ -21,6 +21,7 @@ pub mod lancement;
 pub mod livret;
 pub mod manettes;
 pub mod manettes_sdl;
+pub mod medias;
 pub mod locale;
 pub mod gratuits;
 pub mod import_local;
@@ -86,6 +87,23 @@ fn repondre_jaquette(app: &tauri::AppHandle, chemin: &str, requete: Option<&str>
     let Ok(id) = chemin.trim_matches('/').parse::<i64>() else { return reponse_vide(400) };
     let largeur = parametre(requete, "largeur").and_then(|l| l.parse::<u32>().ok());
     let noyau = app.state::<noyau::Noyau>();
+    // `?media=<id>` : UNE image précise de la galerie du jeu (lot Médias M2), sans repli.
+    if let Some(media) = parametre(requete, "media") {
+        let Ok(media) = media.parse::<i64>() else { return reponse_vide(400) };
+        return match tauri::async_runtime::block_on(noyau.media_precis(id, media, largeur.unwrap_or(1000))) {
+            Ok(Some(img)) => Response::builder()
+                .status(200)
+                .header("Content-Type", img.type_contenu.unwrap_or_else(|| "application/octet-stream".into()))
+                .header("Cache-Control", "no-store")
+                .body(img.octets)
+                .unwrap(),
+            Ok(None) => reponse_vide(404),
+            Err(e) => {
+                noyau.journaliser(&format!("galerie {id}/{media} : {e:?}"));
+                reponse_vide(404)
+            }
+        };
+    }
     // `?visuel=fond,capture` : le premier de ces visuels du jeu (le fond du menu en jeu), au lieu de la jaquette.
     let visuel = parametre(requete, "visuel").map(|v| v.replace("%2C", ",").replace("%2c", ","));
     let resultat = match &visuel {
@@ -372,6 +390,7 @@ pub fn run() {
             commandes::telechargement_annuler,
             commandes::annexe_ouvrir,
             commandes::documents_jeu,
+            commandes::medias_jeu,
             commandes::livret_ouvrir,
             commandes::document_preparer,
             commandes::espace_libre,

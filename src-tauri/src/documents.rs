@@ -101,7 +101,7 @@ impl Noyau {
     }
 
     /// La session, si ce jeu est visible du profil ouvert ; sinon « introuvable » (comme Firehouse : 404).
-    async fn session_du_jeu(&self, id: i64) -> Resultat<std::sync::Arc<Session>> {
+    pub(crate) async fn session_du_jeu(&self, id: i64) -> Resultat<std::sync::Arc<Session>> {
         let s = self.session().await?;
         if id <= 0 || !s.verrou().contient(id)? {
             return Err(Erreur::Introuvable("Ce jeu ne t'est pas visible.".into()));
