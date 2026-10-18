@@ -117,6 +117,8 @@ export interface Abri {
   dossier: string;
   fichiers: number;
   octets: number;
+  /** Un jeu installé AILLEURS qui reste installé : son dossier (son désinstalleur, seulement après un oui). */
+  reste_installe?: string | null;
 }
 
 export interface EmulateurInstalle {
@@ -583,6 +585,8 @@ export const api = {
     appeler<ReferenceManette>('reference_reprendre', { id, programme, genre, chemin, nom }),
   mettreALAbri: (id: number) => appeler<Abri>('parties_abri', { id }),
   retirer: (id: number) => appeler<Abri>('jeu_retirer', { id }),
+  /** Le désinstalleur d'un jeu retiré qui restait installé ailleurs (proposé par le retrait, une fois). */
+  desinstallerReste: (dossier: string) => appeler<number>('jeu_desinstaller_reste', { dossier }),
   emulateursInstalles: () => appeler<EmulateurInstalle[]>('emulateurs_installes'),
   emulateurFiche: (nom: string) =>
     appeler<{ id: string; nom: string; ligne: string; installable: boolean } | null>('emulateur_fiche', { nom }),

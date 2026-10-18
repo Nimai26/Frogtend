@@ -15,6 +15,7 @@ pub mod commandes;
 pub mod erreurs;
 pub mod figer;
 pub mod firehouse;
+pub mod garde;
 pub mod installation;
 pub mod jeux_pc;
 pub mod lancement;
@@ -404,6 +405,7 @@ pub fn run() {
             commandes::jeu_jouer,
             commandes::parties_abri,
             commandes::jeu_retirer,
+            commandes::jeu_desinstaller_reste,
             commandes::emulateurs_recommandes,
             commandes::emulateurs_installes,
             commandes::emulateur_fiche,

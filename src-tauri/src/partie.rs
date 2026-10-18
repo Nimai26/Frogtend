@@ -37,11 +37,15 @@ pub struct Preparation {
 }
 
 /// Un abri de parties : où, combien.
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
 pub struct Abri {
     pub dossier: String,
     pub fichiers: usize,
     pub octets: u64,
+    /// Au retrait d'un jeu installé AILLEURS que dans son dossier Frogtend (installeur guidé, « installé ailleurs ») :
+    /// son dossier, qui reste installé — son désinstalleur n'est lancé qu'après un oui de la personne
+    /// (`desinstaller_reste`). `None` : rien de tel.
+    pub reste_installe: Option<String>,
 }
 
 /// La fin d'une partie.
@@ -59,6 +63,30 @@ fn fichier_principal(fichiers: &[String]) -> Option<String> {
         }
     }
     fichiers.first().cloned()
+}
+
+/// Un lanceur par `cmd.exe` ou `explorer.exe` (`nom` : le nom du programme, en minuscules) qui n'ouvre qu'UN fichier
+/// existant : `cmd.exe /C <.bat|.cmd du jeu>`, ou `explorer.exe <.lnk>` du jeu, du Bureau ou du menu Démarrer (le
+/// raccourci qu'un installeur y pose, cas courant d'un jeu installé ailleurs).
+fn lanceur_systeme_du_jeu(l: &Lanceur, nom: &str, dossier_du_jeu: &Path) -> bool {
+    let fichier = |f: &str, exts: &[&str]| {
+        let p = Path::new(f);
+        p.is_file() && p.extension().and_then(|e| e.to_str()).is_some_and(|e| exts.iter().any(|x| e.eq_ignore_ascii_case(x)))
+    };
+    let du_jeu = |f: &str| crate::garde::sous(Path::new(f), dossier_du_jeu);
+    let raccourcis = || {
+        let env = |n: &str| std::env::var_os(n).map(PathBuf::from);
+        let menu = |b: PathBuf| b.join("Microsoft").join("Windows").join("Start Menu");
+        [env("USERPROFILE").map(|u| u.join("Desktop")), env("PUBLIC").map(|p| p.join("Desktop")), env("APPDATA").map(menu), env("ProgramData").map(menu)]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+    };
+    match nom {
+        "cmd.exe" => matches!(l.arguments.as_slice(), [c, f] if c.eq_ignore_ascii_case("/C") && fichier(f, &["bat", "cmd"]) && du_jeu(f)),
+        "explorer.exe" => matches!(l.arguments.as_slice(), [f] if fichier(f, &["lnk"]) && (du_jeu(f) || raccourcis().iter().any(|r| crate::garde::sous(Path::new(f), r)))),
+        _ => false,
+    }
 }
 
 impl Noyau {
@@ -201,6 +229,25 @@ impl Noyau {
         if !d.is_dir() {
             return Err(Erreur::Disque(format!("Dossier introuvable : {dossier}.")));
         }
+        // Durcissement : ce dossier devient celui du jeu (lancé, puis peut-être désinstallé). Jamais un chemin relatif
+        // ou détourné, ni la racine d'un disque, Windows, Program Files, le dossier de l'utilisateur ou un de ses
+        // dossiers de base.
+        if crate::garde::cle(&d).is_none() || crate::garde::dossier_systeme(&d) {
+            return Err(Erreur::Refus(format!(
+                "« {dossier} » ne peut pas être le dossier d'un jeu : choisis le dossier où le jeu est installé (par exemple « D:\\Jeux\\Mon jeu »)."
+            )));
+        }
+        // Ni un dossier qui CONTIENT d'autres jeux du PC (le dossier d'une console, `E:\Jeux\Windows`) : le relevé
+        // des parties porterait sur tous, et leur retrait pourrait les toucher.
+        let autres = self.registre().tous()?.into_iter().filter(|x| x.id != id).any(|x| {
+            crate::garde::sous(Path::new(&x.dossier), &d)
+                || x.installation.as_ref().is_some_and(|i| crate::garde::sous(Path::new(&i.dossier), &d))
+        });
+        if autres {
+            return Err(Erreur::Refus(format!(
+                "« {dossier} » contient d'autres jeux de ta ludothèque : choisis le dossier de CE jeu seulement."
+            )));
+        }
         let i = self.retenir_installation(&j, &d, p.methode, None, p.nature)?;
         self.reposer_parties_restaurees(id, &i).await;
         Ok(i)
@@ -308,9 +355,27 @@ impl Noyau {
         let _occupe = self.occuper(id);
         let j = self.jeu_visible(id).await?;
         let mut i = j.installation.ok_or_else(|| Erreur::Refus("Le jeu n'est pas encore installé.".into()))?;
-        let systeme = ["cmd.exe", "explorer.exe"].iter().any(|p| lanceur.programme.eq_ignore_ascii_case(p));
-        if !systeme && !Path::new(&lanceur.programme).is_file() {
-            return Err(Erreur::Disque(format!("Programme introuvable : {}.", lanceur.programme)));
+        // Durcissement : un programme de Windows (nommé court, ou n'importe quel chemin sous `%SystemRoot%` : cmd,
+        // powershell, rundll32…) n'est accepté que s'il s'agit de `cmd.exe` ou `explorer.exe` ouvrant UN fichier — un
+        // .bat/.cmd du jeu (`/C <fichier>`), un raccourci .lnk du jeu, du Bureau ou du menu Démarrer — exactement la
+        // forme que Frogtend propose ; jamais une commande libre. Tout autre programme : sans arguments (le jeu
+        // lui-même, comme les candidats et « Un autre programme… »).
+        let sous_windows = std::env::var_os("SystemRoot").is_some_and(|w| crate::garde::sous(Path::new(&lanceur.programme), Path::new(&w)));
+        let nom = Path::new(&lanceur.programme).file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+        let court = ["cmd.exe", "explorer.exe"].iter().any(|p| lanceur.programme.eq_ignore_ascii_case(p));
+        if court || sous_windows {
+            if !lanceur_systeme_du_jeu(&lanceur, &nom, Path::new(&i.dossier)) {
+                return Err(Erreur::Refus(
+                    "Ce lanceur n'est pas accepté : « cmd.exe » ne sert qu'à ouvrir un fichier .bat ou .cmd du jeu, « explorer.exe » un raccourci .lnk (du jeu, du Bureau ou du menu Démarrer). Sinon, choisis le .exe du jeu.".into(),
+                ));
+            }
+        } else {
+            if !Path::new(&lanceur.programme).is_file() {
+                return Err(Erreur::Disque(format!("Programme introuvable : {}.", lanceur.programme)));
+            }
+            if !lanceur.arguments.is_empty() {
+                return Err(Erreur::Refus("Ce lanceur n'est pas accepté : le programme du jeu se lance tel quel, sans arguments.".into()));
+            }
         }
         i.lanceur = Some(lanceur);
         self.registre().changer_installation(id, Some(&i))
@@ -431,7 +496,7 @@ impl Noyau {
         let i = j.installation.clone().ok_or_else(|| Erreur::Refus("Le jeu n'est pas installé : rien à mettre à l'abri.".into()))?;
         let m: Manifeste = match std::fs::read(self.fichier_manifeste(id)) {
             Ok(o) => serde_json::from_slice(&o).unwrap_or_default(),
-            Err(_) => return Ok(Abri { dossier: String::new(), fichiers: 0, octets: 0 }),
+            Err(_) => return Ok(Abri::default()),
         };
         let racine = PathBuf::from(&i.dossier);
         if !racine.is_dir() {
@@ -439,7 +504,7 @@ impl Noyau {
         }
         let changes = crate::locale::parties_changees(&j, &racine, &m)?;
         if changes.is_empty() {
-            return Ok(Abri { dossier: String::new(), fichiers: 0, octets: 0 });
+            return Ok(Abri::default());
         }
         let abri = self.dossier_abris()?.join(id.to_string()).join(maintenant());
         let octets = copier(&racine, &changes, &abri)?;
@@ -451,7 +516,7 @@ impl Noyau {
                 return Err(Erreur::Disque(format!("La copie de « {r} » a échoué : le jeu n'est pas retiré.")));
             }
         }
-        Ok(Abri { dossier: abri.to_string_lossy().into(), fichiers: changes.len(), octets })
+        Ok(Abri { dossier: abri.to_string_lossy().into(), fichiers: changes.len(), octets, reste_installe: None })
     }
 
     /// Retire un jeu complet du PC : ses parties d'abord à l'abri (sinon rien n'est fait), puis son désinstalleur
@@ -463,10 +528,10 @@ impl Noyau {
         if !matches!(j.etat, Etat::Telecharge) {
             return Err(Erreur::Refus("Ce jeu est en cours de téléchargement : annule plutôt le téléchargement.".into()));
         }
-        let abri = if j.installation.is_some() {
+        let mut abri = if j.installation.is_some() {
             self.mettre_a_l_abri(id).await?
         } else {
-            Abri { dossier: String::new(), fichiers: 0, octets: 0 }
+            Abri::default()
         };
         // Un jeu IMPORTÉ du disque appartient à la personne : on le retire de la ludothèque, jamais du disque.
         if crate::import_local::est_importe(&j) {
@@ -477,15 +542,29 @@ impl Noyau {
         let recus = PathBuf::from(&j.dossier);
         if let Some(i) = &j.installation {
             let installe = PathBuf::from(&i.dossier);
-            // Le désinstalleur d'Inno Setup, s'il y en a un (il nettoie ce que l'installeur a mis ailleurs).
+            // Le dossier d'installation est-il DANS le dossier du jeu créé par Frogtend ? Comparé sans détour (`..`
+            // refusé, sans casse, composant par composant), et sans lien ni jonction entre les deux (durcissement).
+            let de_frogtend = !crate::garde::meme(&installe, &recus)
+                && crate::garde::sous(&installe, &recus)
+                && !crate::garde::lien_entre(&recus, &installe);
+            // Le désinstalleur d'Inno Setup, s'il y en a un (il nettoie ce que l'installeur a mis ailleurs) : SEULEMENT
+            // dans un dossier installé par Frogtend — jamais celui d'un dossier « installé ailleurs », qui pourrait être
+            // le désinstalleur d'un autre logiciel.
             let desinstalleur = installe.join("unins000.exe");
-            if desinstalleur.is_file() {
+            if desinstalleur.is_file() && de_frogtend {
                 let args = vec!["/VERYSILENT".into(), "/SUPPRESSMSGBOXES".into(), "/NORESTART".into()];
                 let d = installe.clone();
                 let _ = tokio::task::spawn_blocking(move || executer_et_attendre(&desinstalleur, &args, &d)).await;
+            } else if desinstalleur.is_file() {
+                // Hors du dossier Frogtend : pas lancé tout seul. La personne le voit (`reste_installe`), et peut le
+                // lancer elle-même après un oui (`desinstaller_reste`, une fois, pendant 10 minutes).
+                self.journaliser(&format!("jeu {id} : désinstalleur d'un dossier hors de Frogtend non lancé ({})", installe.display()));
+                if let Some(k) = crate::garde::cle(&installe) {
+                    self.desinstalleurs.lock().unwrap_or_else(|e| e.into_inner()).insert(k, std::time::Instant::now());
+                }
+                abri.reste_installe = Some(installe.to_string_lossy().to_string());
             }
-            // On n'efface un dossier d'installation que s'il est DANS le dossier du jeu créé par Frogtend.
-            if installe != recus && installe.starts_with(&recus) && installe.is_dir() {
+            if de_frogtend && installe.is_dir() {
                 std::fs::remove_dir_all(&installe)?;
             }
         }
@@ -506,6 +585,26 @@ impl Noyau {
         let _ = std::fs::remove_dir(&recus); // seulement s'il est vide
         self.registre().retirer(id)?;
         Ok(abri)
+    }
+
+    /// Lance le désinstalleur d'un jeu retiré qui restait installé AILLEURS (`Abri::reste_installe`), après le oui de la
+    /// personne : seulement ce dossier-là, rendu par le retrait il y a moins de 10 minutes, une seule fois ; avec la
+    /// fenêtre du désinstalleur (elle voit ce qu'il fait). Rend son code de sortie.
+    pub async fn desinstaller_reste(&self, dossier: &str) -> Resultat<i32> {
+        let d = PathBuf::from(dossier);
+        let k = crate::garde::cle(&d).ok_or_else(|| Erreur::Refus("Dossier inconnu.".into()))?;
+        let quand = self.desinstalleurs.lock().unwrap_or_else(|e| e.into_inner()).remove(&k);
+        if !quand.is_some_and(|q| q.elapsed() < Duration::from_secs(600)) {
+            return Err(Erreur::Refus("Ce désinstalleur n'a pas été proposé par Frogtend (ou il y a trop longtemps) : retire d'abord le jeu.".into()));
+        }
+        let desinstalleur = d.join("unins000.exe");
+        if !desinstalleur.is_file() {
+            return Err(Erreur::Disque(format!("Le désinstalleur n'est plus là ({}).", desinstalleur.display())));
+        }
+        self.journaliser(&format!("désinstalleur lancé après accord : {}", desinstalleur.display()));
+        tokio::task::spawn_blocking(move || executer_et_attendre(&desinstalleur, &[], &d))
+            .await
+            .map_err(|_| Erreur::Disque("Le désinstalleur s'est arrêté brutalement.".into()))?
     }
 }
 
@@ -607,6 +706,35 @@ mod tests {
         assert_eq!(c[0].relatif, "DUNE.BAT");
         n.choisir_lanceur(110, c[0].lanceur.clone()).await.unwrap();
         assert!(n.registre().jeu(110).unwrap().unwrap().installation.unwrap().lanceur.is_some());
+
+        // Durcissement : `cmd.exe` n'ouvre qu'UN .bat/.cmd DU JEU, `explorer.exe` qu'un .lnk du jeu — jamais une
+        // commande libre ni un fichier d'ailleurs.
+        let bat = Path::new(&i.dossier).join("DUNE.BAT").to_string_lossy().to_string();
+        let dossier = i.dossier.clone();
+        let l = |programme: &str, arguments: Vec<String>| Lanceur { programme: programme.into(), arguments, dossier: dossier.clone() };
+        let ailleurs = tempfile::tempdir().unwrap();
+        let bat_ailleurs = ailleurs.path().join("x.bat");
+        std::fs::write(&bat_ailleurs, b"@echo off").unwrap();
+        for refuse in [
+            l("cmd.exe", vec!["/C".into(), "del".into(), "/S".into(), r"C:\".into()]),
+            l("cmd.exe", vec!["/C".into(), bat_ailleurs.to_string_lossy().to_string()]),
+            l("cmd.exe", vec!["/K".into(), bat.clone()]),
+            l("explorer.exe", vec![r"C:\Windows".into()]),
+            l("explorer.exe", vec![bat.clone()]),
+            // Par son chemin complet : traité comme `cmd.exe`, et toujours sous la forme stricte.
+            l(r"C:\Windows\System32\cmd.exe", vec!["/C".into(), "del".into(), r"C:\x".into()]),
+            l(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe", vec!["-c".into(), "x".into()]),
+            // Le programme du jeu : sans arguments.
+            l(&Path::new(&i.dossier).join("DUNE.EXE").to_string_lossy(), vec!["--x".into()]),
+        ] {
+            assert!(matches!(n.choisir_lanceur(110, refuse.clone()).await, Err(Erreur::Refus(_))), "{:?}", refuse.arguments);
+        }
+        n.choisir_lanceur(110, l("CMD.EXE", vec!["/c".into(), bat.clone()])).await.unwrap();
+        if let Some(w) = std::env::var_os("SystemRoot") {
+            let cmd = Path::new(&w).join("System32").join("cmd.exe").to_string_lossy().to_string();
+            n.choisir_lanceur(110, l(&cmd, vec!["/C".into(), bat])).await.unwrap();
+        }
+        n.choisir_lanceur(110, l(&Path::new(&i.dossier).join("DUNE.EXE").to_string_lossy(), vec![])).await.unwrap();
     }
 
     #[tokio::test]
@@ -688,5 +816,51 @@ mod tests {
         // Retirer ne supprime pas un dossier qui n'est pas dans celui du jeu.
         n.retirer_du_pc(110).await.unwrap();
         assert!(Path::new(&i.dossier).join("Jeu.exe").is_file());
+    }
+
+    #[tokio::test]
+    async fn une_jonction_dans_le_dossier_installe_n_est_jamais_suivie_a_l_effacement() {
+        let archive = zip(&[("DUNE.EXE", b"MZ")]);
+        let (d, n) = noyau_avec(&[("dune.zip", &archive)], "Jeu — prêt à jouer").await;
+        let i = n.installer(110, true).await.unwrap();
+        let ailleurs = d.path().join("Ailleurs");
+        std::fs::create_dir_all(&ailleurs).unwrap();
+        std::fs::write(ailleurs.join("precieux.sav"), b"partie").unwrap();
+        let lien = Path::new(&i.dossier).join("Sauvegardes");
+        let ok = std::process::Command::new("cmd").args(["/C", "mklink", "/J"]).arg(&lien).arg(&ailleurs).output().map(|o| o.status.success()).unwrap_or(false);
+        if !ok {
+            eprintln!("JONCTION impossible ici : test sans objet");
+            return;
+        }
+        n.regler_abris(Some(d.path().join("Abris")));
+        n.retirer_du_pc(110).await.unwrap();
+        assert!(!Path::new(&i.dossier).join("DUNE.EXE").exists(), "l'installation de Frogtend part");
+        assert_eq!(std::fs::read(ailleurs.join("precieux.sav")).unwrap(), b"partie", "ce que vise la jonction reste");
+    }
+
+    #[tokio::test]
+    async fn installe_ailleurs_refuse_un_dossier_systeme_et_un_effacement_ne_traverse_jamais_une_jonction() {
+        let (d, n) = noyau_avec(&[("setup.exe", b"MZ installeur inconnu")], "Repack").await;
+        // Jamais Windows ni le dossier de l'utilisateur comme dossier d'un jeu.
+        for systeme in ["SystemRoot", "USERPROFILE"] {
+            if let Some(s) = std::env::var_os(systeme) {
+                assert!(matches!(n.installe_ailleurs(110, &s.to_string_lossy()).await, Err(Erreur::Refus(_))), "{systeme}");
+            }
+        }
+        // Un dossier « installé » DANS le dossier du jeu, mais qui est une JONCTION vers ailleurs : rien d'ailleurs
+        // n'est effacé au retrait.
+        let recus = PathBuf::from(&n.registre().jeu(110).unwrap().unwrap().dossier);
+        let ailleurs = d.path().join("Ailleurs");
+        std::fs::create_dir_all(&ailleurs).unwrap();
+        std::fs::write(ailleurs.join("precieux.sav"), b"partie").unwrap();
+        let lien = recus.join("Jeu");
+        let ok = std::process::Command::new("cmd").args(["/C", "mklink", "/J"]).arg(&lien).arg(&ailleurs).output().map(|o| o.status.success()).unwrap_or(false);
+        if !ok {
+            return; // pas de jonction possible ici
+        }
+        n.installe_ailleurs(110, &lien.to_string_lossy()).await.unwrap();
+        n.retirer_du_pc(110).await.unwrap();
+        assert_eq!(std::fs::read(ailleurs.join("precieux.sav")).unwrap(), b"partie", "rien d'ailleurs n'est effacé");
+        let _ = std::fs::remove_dir(&lien);
     }
 }

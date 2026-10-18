@@ -374,6 +374,22 @@ export async function retirer(j: JeuPc) {
     );
     if (ludo.selection?.id === j.id) ludo.selection = null;
     await apresChangement();
+    // Installé ailleurs que dans son dossier Frogtend : il reste installé. Son désinstalleur n'est lancé qu'après un oui
+    // qui montre le dossier (ce pourrait être celui d'un autre logiciel).
+    if (a.reste_installe) {
+      const oui = await confirmer(`🗑 « ${j.titre} » est toujours installé`, {
+        message: `Il était installé ailleurs que dans son dossier Frogtend :\n${a.reste_installe}\n\nFrogtend n’y a rien effacé. Lancer son désinstalleur (unins000.exe) ? Sa fenêtre s’ouvrira : vérifie que c’est bien ce jeu.`,
+        libelleValider: '🗑 Lancer le désinstalleur',
+      });
+      if (oui) {
+        try {
+          await api.desinstallerReste(a.reste_installe);
+          toast('✅ Désinstalleur terminé.');
+        } catch (e) {
+          toast(`Refusé : ${motifDuRefus(e)}`, 'erreur');
+        }
+      }
+    }
   } catch (e) {
     toast(`Refusé : ${motifDuRefus(e)}`, 'erreur');
   }

@@ -172,6 +172,15 @@
       (Réglages ▸ Firehouse) range les ~30 jeux d'exemple dans le MÊME `ludotheque.db` que le vrai catalogue (une
       synchronisation simulée le remplace) ; repassé au vrai Firehouse, une relecture le corrige, mais d'ici là la
       ludothèque est fausse. → cache à part pour le mode simulé. Le ménage des images (0.67.0) ne tourne jamais en simulé.
+- [~] ✅ Seb 19/10 : « Les 3 premières étapes » (sur 7 proposées par l'expert lancement : module de garde, programmes
+      lancés, effacements) → 0.71.0. Restent (à reproposer) : 4 choix de fichier ouverts par le cœur (`parcourir`,
+      choix à usage unique, retrait de `dialog:allow-open`), `import_ajouter` et `emulateur_adopter` ; 5 écritures
+      dans les dossiers d'émulateurs (`emulateur_installer(_firehouse)`, `bios_poser`, `retroarch_installer_coeur`,
+      `emulateur_regler_manette`, `triche_installer` par clé) ; 6 écritures dans les emplacements (`import_copier`,
+      `import_installer_dos`, `abris_regler`) ; 7 droits de la fenêtre `menu-jeu`, scan réseau annoncé.
+      ⚠️ Brèches CONNUES restantes (relecture du 19/10) : `emulateur_adopter` inscrit n'importe quel fichier au
+      registre, qui le rend « de confiance » (atténué par les contrôles de nom : cheatengine*, rpcs3.exe, dosbox*) ;
+      `import_ajouter` accepte un programme et des arguments libres. → étapes 4 et 5.
 - [ ] **Durcissement** (relevé à l'audit du 03/10) : le cœur ne recompare pas aux réglages les dossiers que
       l'interface lui donne (emplacements, émulateurs, outils).
 - [ ] DLC Xbox 360 (Xenia) et PS Vita (Vita3K) — aucun jeu chez Seb pour l'instant, priorité basse.
@@ -285,6 +294,22 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.71.0** (19/10) — Durcissement, étapes 1 à 3 (✅ Seb 19/10). Module `garde.rs` (chemins comparables : absolus,
+  sans `..`, sans `\\?\`, sans casse, composant par composant ; jonctions vues par l'attribut de point de réparation ;
+  dossiers système ; réglages relus dans `pc.json` ; programme de confiance = réglé, au registre, ou détecté). Lancés :
+  Cheat Engine, RPCS3 (micrologiciel), DOSBox (installation DOS) seulement s'ils sont de confiance ; lanceur `cmd.exe`
+  = `/C <.bat|.cmd du jeu>`, `explorer.exe` = `<.lnk du jeu, du Bureau ou du menu Démarrer>`, tout programme sous
+  `%SystemRoot%` traité comme système (le chemin complet de cmd ne contourne plus rien), un autre programme SANS
+  arguments ; `cmd`/`explorer` pris dans `%SystemRoot%`. Effacements : « installé ailleurs » refuse dossiers système
+  (racine de disque ou de partage), réglés, contenant un dossier réglé ou d'autres jeux ; `unins000.exe` seulement dans
+  un dossier installé par Frogtend, sinon `reste_installe` dit à la personne et `desinstaller_reste` (une fois, 10 min,
+  après un oui, fenêtre visible) ; `remove_dir_all` sans détour ni jonction (test : jonction DANS le dossier installé
+  jamais suivie). Seules les NOUVELLES entrées sont vérifiées. Limite dite à Seb :
+  l'interface écrit `pc.json` (protection contre un bogue, pas une fenêtre compromise). Vérifié : tests (chemins,
+  dossiers système, réglages, programmes de confiance, vraie jonction créée et reconnue, lanceurs refusés, jonction
+  jamais traversée au retrait, vrai `.bat` lancé par le `cmd.exe` de Windows) ; lecture seule chez Seb : RPCS3 réglé
+  et au registre (accepté), ni Cheat Engine ni DOSBox ; relecture de l'expert lancement (3 importants corrigés avant livraison : chemin complet de cmd, raccourcis du Bureau, désinstalleur proposé) ; 369 tests cœur, 181 interface.
 
 - **0.70.1** (19/10) — Correctif (réponse de Firehouse au besoin 23 : `-1` est une VRAIE version, la ROM n° 1 de son
   stock) : un jeu importé est reconnu à son NUMÉRO négatif (`est_importe`, `estImporte` : `id < 0`), jamais à

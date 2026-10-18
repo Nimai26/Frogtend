@@ -150,6 +150,9 @@ pub struct Noyau {
     /// temps (contrat 1.14 : la fin de partie compterait le temps sous un numéro qui n'existe plus).
     /// Un compteur par jeu : plusieurs gardes peuvent se chevaucher (lancement puis suivi de la partie).
     pub(crate) occupes: std::sync::Mutex<std::collections::HashMap<i64, u32>>,
+    /// Les désinstalleurs d'un jeu retiré qui restait installé ailleurs, proposés à la personne (dossier normalisé →
+    /// quand) : lançables UNE fois, peu après, par `desinstaller_reste` (durcissement : jamais un chemin libre).
+    pub(crate) desinstalleurs: std::sync::Mutex<std::collections::HashMap<String, std::time::Instant>>,
 }
 
 /// Un jeu marqué « occupé » tant que cette garde vit.
@@ -182,6 +185,7 @@ impl Noyau {
             file_active: std::sync::atomic::AtomicBool::new(false),
             pause_mame: std::sync::atomic::AtomicBool::new(false),
             occupes: std::sync::Mutex::new(Default::default()),
+            desinstalleurs: std::sync::Mutex::new(Default::default()),
             abris: std::sync::Mutex::new(None),
         })
     }

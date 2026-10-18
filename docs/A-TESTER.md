@@ -48,6 +48,17 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Ce que Frogtend lance et efface (0.71.0)
+- [ ] Un jeu PS3 : il se lance comme avant (RPCS3 est réglé).
+- [ ] RPCS3 ▸ installer le micrologiciel (si on te le propose) : accepté comme avant.
+- [ ] Un jeu PC lancé par un .bat : il se lance comme avant.
+- [ ] (Facultatif) « Le jeu est installé ailleurs » ▸ choisis C:\ ou ton dossier « Documents » : refusé avec une
+      explication ; un vrai dossier de jeu : accepté.
+- [ ] (Facultatif) ⚙ Gérer ▸ Changer ce qui lance le jeu ▸ « Un autre programme… » ▸ un raccourci du Bureau :
+      accepté.
+- [ ] (Si un jour tu retires un jeu installé par un installeur ailleurs) : Frogtend dit qu'il reste installé et
+      propose son désinstalleur ; refuse, rien ne se passe ; accepte, la fenêtre du désinstalleur s'ouvre.
+
 ## Les infos dans la fiche du jeu (0.70.0)
 - [ ] Ouvre la fiche de Contra III (ou d'un jeu SNES) : « Sortie : 28 février 1992 » et « Avis des joueurs :
       ★ 4,3 / 5 » dans les informations.

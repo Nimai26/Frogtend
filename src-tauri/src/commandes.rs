@@ -693,10 +693,19 @@ pub async fn installation_lancer(
 
 #[tauri::command]
 pub async fn installation_ailleurs(
+    app: AppHandle,
     noyau: State<'_, Noyau>,
     id: i64,
     dossier: String,
 ) -> Resultat<crate::jeux_pc::Installation> {
+    // Durcissement : jamais un dossier réglé lui-même (un emplacement de jeux, le dossier des émulateurs, des outils,
+    // des abris) — relus dans `pc.json` par le cœur.
+    let reglages = app.store("pc.json").ok().and_then(|s| s.get("reglages")).unwrap_or(Value::Null);
+    if crate::garde::Reglages::lire(&reglages).est_un_dossier_regle(std::path::Path::new(&dossier)) {
+        return Err(Erreur::Refus(format!(
+            "« {dossier} » est un dossier réglé de Frogtend (emplacement de jeux, émulateurs, outils ou abris) : choisis le dossier du jeu lui-même."
+        )));
+    }
     noyau.installe_ailleurs(id, &dossier).await
 }
 
@@ -1257,6 +1266,12 @@ pub async fn jeu_retirer(noyau: State<'_, Noyau>, id: i64) -> Resultat<crate::pa
     noyau.retirer_du_pc(id).await
 }
 
+/// Le désinstalleur d'un jeu retiré qui restait installé ailleurs, après le oui de la personne (proposé par le retrait).
+#[tauri::command]
+pub async fn jeu_desinstaller_reste(noyau: State<'_, Noyau>, dossier: String) -> Resultat<i32> {
+    noyau.desinstaller_reste(&dossier).await
+}
+
 /// Ce que devient l'installation d'un émulateur décrit par Firehouse.
 #[derive(Serialize)]
 #[serde(tag = "sorte", rename_all = "snake_case")]
@@ -1774,11 +1789,12 @@ pub async fn import_chercher_mame(dossier: String, liste: String, options: crate
 /// DESTINATION (vide ou nouvelle : Frogtend n'écrit jamais par-dessus) ; la personne installe ; à la fermeture de
 /// DOSBox, Frogtend rend les programmes trouvés dans la destination (le plus probable d'abord).
 #[tauri::command]
-pub async fn import_installer_dos(noyau: State<'_, Noyau>, dosbox: String, source: String, destination: String, titre: String) -> Resultat<Vec<String>> {
+pub async fn import_installer_dos(app: AppHandle, noyau: State<'_, Noyau>, dosbox: String, source: String, destination: String, titre: String) -> Resultat<Vec<String>> {
     let (dosbox, source, destination) = (std::path::PathBuf::from(dosbox), std::path::PathBuf::from(source), std::path::PathBuf::from(destination));
     if !dosbox.is_file() {
         return Err(Erreur::Reglage("DOSBox introuvable : règle l'émulateur de MS-DOS dans ⚙ Options ▸ Émulateurs.".into()));
     }
+    exiger_programme_de_confiance(&app, &noyau, &dosbox)?;
     // Les arguments sont des commandes DOSBox (« mount ») : jamais un autre programme (RetroArch…).
     if !dosbox.file_name().is_some_and(|n| n.to_string_lossy().to_lowercase().starts_with("dosbox")) {
         return Err(Erreur::Reglage(
@@ -2076,6 +2092,7 @@ pub async fn cheatengine_lancer(
     if !p.is_file() || !nom.starts_with("cheatengine") && !nom.starts_with("cheat engine") {
         return Err(Erreur::Refus("Ce n'est pas le programme de Cheat Engine.".into()));
     }
+    exiger_programme_de_confiance(&app, &noyau, &p)?;
     let dossier = p.parent().map(std::path::PathBuf::from).unwrap_or_default();
     let profil = noyau.actif().await.ok_or_else(|| Erreur::Profil("Aucun profil n'est ouvert.".into()))?.nom;
     let (d, pr) = (dossier.clone(), profil.clone());
@@ -2201,7 +2218,8 @@ pub async fn jeu_copie_avant_mod(noyau: State<'_, Noyau>, id: i64) -> Resultat<S
 /// (`--headless --installfw`, relevé dans rpcs3.cpp le 03/10 : aucune boîte de dialogue sans interface). RPCS3 rend 0
 /// même en cas d'échec : le résultat se vérifie en relisant la version installée. Rend cette version (« 4.93 »).
 #[tauri::command]
-pub async fn rpcs3_installer_micrologiciel(programme: String, pup: String) -> Resultat<String> {
+pub async fn rpcs3_installer_micrologiciel(app: AppHandle, noyau: State<'_, Noyau>, programme: String, pup: String) -> Resultat<String> {
+    exiger_programme_de_confiance(&app, &noyau, std::path::Path::new(&programme))?;
     installer_pup(programme, pup, None).await
 }
 
@@ -2227,6 +2245,7 @@ pub async fn rpcs3_micrologiciel_servi(app: AppHandle, noyau: State<'_, Noyau>, 
     if p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase() != "rpcs3.exe" || !p.is_file() {
         return Err(Erreur::Refus("Ce n'est pas le programme de RPCS3.".into()));
     }
+    exiger_programme_de_confiance(&app, &noyau, &p)?;
     let dossier = p.parent().map(std::path::PathBuf::from).unwrap_or_default();
     // AVANT de télécharger 200 Mo : RPCS3 fermé, et la place sur le disque.
     rpcs3_ferme(&dossier)?;
@@ -2381,6 +2400,24 @@ pub async fn emulateurs_recommandes(noyau: State<'_, Noyau>, plateforme: String)
 
 fn registre_emulateurs(noyau: &Noyau) -> crate::emulateurs::Registre {
     crate::emulateurs::Registre::nouveau(&noyau.dossier.join("emulateurs.json"))
+}
+
+/// Durcissement : un programme que le cœur va LANCER doit être de confiance — réglé dans `pc.json` (relu ici, pas
+/// transmis par l'interface), inscrit au registre des émulateurs de Frogtend (installé ou adopté), ou trouvé dans son
+/// dossier habituel. Sinon : refusé, avec la raison.
+fn exiger_programme_de_confiance(app: &AppHandle, noyau: &Noyau, programme: &std::path::Path) -> Resultat<()> {
+    let reglages = app.store("pc.json").ok().and_then(|s| s.get("reglages")).unwrap_or(Value::Null);
+    let r = crate::garde::Reglages::lire(&reglages);
+    let mut connus: Vec<std::path::PathBuf> = registre_emulateurs(noyau).tous().into_iter().map(|e| e.programme.into()).collect();
+    connus.extend(crate::emulateurs::detecter().into_iter().map(|e| std::path::PathBuf::from(e.programme)));
+    if crate::garde::programme_de_confiance(programme, &r, &connus) {
+        return Ok(());
+    }
+    noyau.journaliser(&format!("programme refusé (ni réglé ni connu) : {}", programme.display()));
+    Err(Erreur::Refus(format!(
+        "Frogtend ne lance que les émulateurs et outils réglés sur ce PC : « {} » n'en fait pas partie. Règle-le d'abord dans Réglages ▸ Émulateurs.",
+        programme.display()
+    )))
 }
 
 /// Les émulateurs de ce PC : ceux installés par Frogtend, et ceux trouvés dans leurs dossiers habituels.

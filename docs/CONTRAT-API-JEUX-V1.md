@@ -323,8 +323,9 @@ Reçu par message de la session Firehouse (sur demande de Seb), en service le 19
 - ⚠️ Côté Frogtend (relevé du 19/10, avant adaptation) : `ligneDe` (src/lib/emulateurs/pret.ts) colle les options de
   Frogtend devant `%rom%` de la ligne du conseil → options EN DOUBLE pour un autonome (Dolphin `-b -e … -b -e`) ;
   `%rom_nom%`/`%rom_dossier%` ne sont pas remplacés ; MAME construit sa propre commande. ✅ Adapté en 0.69.0.
-- Réponses de Firehouse (19/10) : `%rom_dossier%` = `D:\` à la racine d'un disque, accepté (seule exception à « sans
-  barre finale », ajoutée à leur brief). xemu : XISO EXIGÉ (doc officielle « Disc Images » : un ISO Redump n'est pas
+- Réponses de Firehouse (19/10) : `%rom_dossier%` à la racine d'un disque — correction de Seb : PAS d'exception au
+  contrat (les jeux sont dans les dossiers de jeux choisis, la racine n'est pas un cas prévu ; si quelqu'un la choisit
+  quand même, c'est accepté sans règle). Frogtend y garde `D:\` (« D: » seul voudrait dire le dossier courant de D:). xemu : XISO EXIGÉ (doc officielle « Disc Images » : un ISO Redump n'est pas
   compatible ; conversion `xdvdfs pack jeu.iso`, sans le correctif média des .xbe) ; la `note` du conseil Xbox le dit
   (Firehouse 2.78.2) ; aucun jeu Xbox au stock au 19/10. Le `username` d'un compte ne change jamais (seul le grade).
 

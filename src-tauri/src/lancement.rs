@@ -24,9 +24,20 @@ pub fn outil_sans_fenetre(programme: &str) -> std::process::Command {
     c
 }
 
+/// `cmd.exe` et `explorer.exe` pris dans Windows lui-même (`%SystemRoot%`), jamais cherchés d'abord dans le dossier
+/// de Frogtend ou le dossier courant (durcissement) ; tout autre programme tel quel.
+pub fn programme_systeme(programme: &str) -> std::path::PathBuf {
+    let w = std::env::var_os("SystemRoot").map(std::path::PathBuf::from);
+    match (programme.to_ascii_lowercase().as_str(), w) {
+        ("cmd.exe", Some(w)) => w.join("System32").join("cmd.exe"),
+        ("explorer.exe", Some(w)) => w.join("explorer.exe"),
+        _ => std::path::PathBuf::from(programme),
+    }
+}
+
 /// Démarre le jeu sans l'attendre. Rend le numéro du processus.
 pub fn demarrer(l: &Lanceur) -> Resultat<u32> {
-    let mut c = std::process::Command::new(&l.programme);
+    let mut c = std::process::Command::new(programme_systeme(&l.programme));
     c.args(&l.arguments);
     if !l.dossier.is_empty() {
         c.current_dir(&l.dossier);
@@ -191,6 +202,16 @@ impl Suivi {
 mod tests {
     use super::*;
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn cmd_et_explorer_sont_pris_dans_windows() {
+        if let Some(w) = std::env::var_os("SystemRoot").map(std::path::PathBuf::from) {
+            assert_eq!(programme_systeme("CMD.exe"), w.join("System32").join("cmd.exe"));
+            assert_eq!(programme_systeme("explorer.exe"), w.join("explorer.exe"));
+            assert!(programme_systeme("cmd.exe").is_file());
+        }
+        assert_eq!(programme_systeme(r"E:\Jeux\Dune\DUNE.EXE"), std::path::PathBuf::from(r"E:\Jeux\Dune\DUNE.EXE"));
+    }
 
     fn attendre_fin(s: &mut Suivi, max: Duration) -> Duration {
         let debut = Instant::now();

@@ -1,5 +1,18 @@
 # Notes de version de Frogtend
 
+## 0.71.0 — Frogtend vérifie ce qu'il lance et ce qu'il efface
+
+- Frogtend ne lance plus que des émulateurs et des outils réglés sur ce PC (Cheat Engine, RPCS3, DOSBox…). Un autre
+  programme est refusé, avec la raison.
+- Un jeu lancé par un fichier .bat n'ouvre que ce fichier, dans le dossier du jeu ; un raccourci, celui du jeu, du
+  Bureau ou du menu Démarrer ; jamais une commande libre.
+- « Le jeu est installé ailleurs » refuse un dossier qui ne peut pas être celui d'un jeu (la racine d'un disque,
+  Windows, Program Files, ton dossier personnel, un dossier de jeux réglé, un dossier qui contient d'autres jeux…).
+- Quand tu retires un jeu : rien n'est effacé hors du dossier du jeu, même par un raccourci de dossier (jonction).
+  Un jeu installé ailleurs que dans son dossier Frogtend reste installé : Frogtend te le dit et te propose de lancer
+  son désinstalleur (sa fenêtre s'ouvre, tu vérifies que c'est bien ce jeu).
+- Ce qui est déjà réglé chez toi n'est pas touché : seuls les nouveaux choix sont vérifiés.
+
 ## 0.70.1 — Un jeu de Firehouse n'est jamais pris pour un jeu importé
 
 - Correctif : Frogtend reconnaissait un jeu importé de ton disque à un numéro de version que Firehouse peut aussi
