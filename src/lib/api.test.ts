@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { adresseDocument, adresseFond, adresseFondDuJeu, adresseJaquette, adressePageLivret, libelleCompte, taille } from './api';
+import { adresseDocument, adresseFond, adresseFondDuJeu, adresseJaquette, adresseLogoDuJeu, adressePageLivret, libelleCompte, taille } from './api';
 
 describe('adressePageLivret', () => {
   it('demande une page à une largeur arrondie aux 200 px supérieurs, entre 200 et 2 400', () => {
@@ -25,6 +25,12 @@ describe('adresseJaquette', () => {
 describe('adresseFondDuJeu', () => {
   it('demande le fond, sinon une capture, sinon l’écran titre, en 1 000 px au plus', () => {
     expect(adresseFondDuJeu(116)).toBe('http://jaquette.localhost/116?visuel=fond,capture,ecran_titre&largeur=1000');
+  });
+});
+
+describe('adresseLogoDuJeu', () => {
+  it('demande le logo seul, jamais la jaquette à sa place', () => {
+    expect(adresseLogoDuJeu(116)).toBe('http://jaquette.localhost/116?visuel=logo&largeur=600');
   });
 });
 

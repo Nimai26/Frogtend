@@ -148,7 +148,7 @@
   sinon leur source officielle, après accord et taille annoncée. Puis « on enchaîne » → lot Médias (choisi par moi).
 - [ ] **Lot « Médias »** (en cours depuis le 18/10 ; découpe : M1 choix du visuel de la ludothèque au bon ratio +
       `images`/`medias_empreinte` et `documents`/`documents_empreinte` gardés dans le catalogue (fin du D3 des
-      documents), relecture complète unique ; M2 galerie dans la fiche ; M3 logos et fonds Taodbox ; M4 hors ligne et
+      documents), relecture complète unique ; ✅ M2 galerie dans la fiche (0.64.0) ; ✅ M3 logos et fonds Taodbox (0.66.0) ; M4 hors ligne et
       retrait du cache d'une image plus servie) (contrat 1.6, Firehouse 2.41.0) : ratio réel de la boîte réservé, choix du visuel de la
       ludothèque (jaquette, boîte 3D, cartouche…), logos et fonds pour Taodbox, galerie dans la fiche, copie hors ligne
       des visuels choisis, retrait du cache d'une image que Firehouse ne sert plus (édition par un admin).
@@ -272,6 +272,15 @@ d'abord :
       quelle (règles « Autoriser, privé » posées sur le RetroArch d'essai supprimé : sans effet, gardées).
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.66.0** (18/10) — Lot Médias M3 : dans Taodbox, le fond du jeu focalisé (fond, sinon capture, sinon écran titre ;
+  flou léger, `--voile-fort` et encres de voile, d'après la charte § 7) et son logo dans un bandeau à hauteur fixe
+  (sinon son titre), changés après 200 ms de repos du focus ; Steam, GOG et boutons : fond du skin ; réglage du profil
+  `ludotheque.fondsTaodbox` (oui d'office). Fondu du menu en jeu soumis aux animations réduites. Avis de l'expert
+  interface avant de coder et relecture avant livraison (éclair sans voile corrigé : `{#key}` + voile qui suit
+  l'image). Vérifié en réel (`essai_taodbox`, profil temporaire) : logo de 116 en WebP (43 ko, 456 ms puis 5 ms en
+  cache), fond 118 ko ; Dune (110) a désormais logo et fond chez Firehouse. Tests : 174 interface (règle du repos
+  testée avec de fausses minuteries). NON vérifié : le rendu à l'écran et sur la télé (à voir par Seb).
 
 - **0.65.0** (18/10) — Contrat 1.14 : un jeu du PC dont la fiche est réunie chez Firehouse est RATTACHÉ à la nouvelle,
   seulement si tout concorde (même version, mêmes fichiers nom + taille, nouvelle fiche visible du profil et absente

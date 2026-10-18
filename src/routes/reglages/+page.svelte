@@ -229,6 +229,14 @@
             {#each VISUELS as v (v.valeur)}<option value={v.valeur}>{v.libelle}</option>{/each}
           </select>
         </label>
+        <label class="champ case">
+          <input
+            type="checkbox"
+            checked={l.fondsTaodbox}
+            onchange={(e) => reglerProfil('ludotheque.fondsTaodbox', e.currentTarget.checked)}
+          />
+          <span>Fonds et logos des jeux dans Taodbox</span>
+        </label>
         <label class="champ">
           <span>Taille des jaquettes : {l.tailleJaquette} px</span>
           <input

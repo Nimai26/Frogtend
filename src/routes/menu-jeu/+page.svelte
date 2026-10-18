@@ -355,7 +355,8 @@
     /* 1 000 px au plus, étirés sur la télé : un léger flou le fait paraître voulu. */
     filter: blur(calc(4 * var(--u)));
     opacity: 0;
-    transition: opacity 0.25s;
+    /* Coupé avec les animations réduites (Réglages ▸ Apparence). */
+    transition: opacity calc(var(--duree) * 2);
     pointer-events: none;
   }
   .fond-jeu.visible {

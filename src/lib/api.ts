@@ -683,6 +683,11 @@ export function adresseFondDuJeu(id: number): string {
   return `http://jaquette.localhost/${id}?visuel=fond,capture,ecran_titre&largeur=1000`;
 }
 
+/** Le logo d'un jeu (Taodbox), SANS repli sur la jaquette : rien s'il n'en a pas. 600 px suffisent au bandeau. */
+export function adresseLogoDuJeu(id: number): string {
+  return `http://jaquette.localhost/${id}?visuel=logo&largeur=600`;
+}
+
 /** La jaquette officielle d'un jeu de boutique (servie et gardée en cache par le cœur). */
 export const adresseImageBoutique = (boutique: string, id: string) => `http://boutique.localhost/${boutique}/${encodeURIComponent(id)}`;
 

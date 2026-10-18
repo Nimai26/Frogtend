@@ -1298,6 +1298,35 @@ mod tests {
         boite.assert_hits(2);
     }
 
+    /// Essai réel du lot Médias M3 (Taodbox) : le logo seul et le fond d'un jeu qui en a (116), rien pour un jeu sans
+    /// images (110, Dune), le second appel servi par le cache.
+    /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_taodbox -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_taodbox() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").unwrap();
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(d.path(), Box::new(crate::coffre::CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Essai", None, Some(&jeton)).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: "https://jeux.hikari-no-sekai.fr".into(), simule: false }).await.unwrap();
+        let b = n.synchroniser(|_, _| {}).await.unwrap();
+        println!("SYNCHRO {} jeux", b.jeux);
+        for (jeu, sortes, largeur) in [(116, vec!["logo"], 600), (116, vec!["fond", "capture", "ecran_titre"], 1000), (110, vec!["logo"], 600), (110, vec!["fond", "capture", "ecran_titre"], 1000)] {
+            for passage in 1..=2 {
+                let debut = std::time::Instant::now();
+                let img = n.visuel(jeu, &sortes, largeur).await.unwrap();
+                println!(
+                    "VISUEL {jeu} {sortes:?} passage {passage} : {:?} en {:?}",
+                    img.as_ref().map(|i| (i.octets.len(), i.type_contenu.clone(), i.octets.get(8..12).map(|m| String::from_utf8_lossy(m).to_string()))),
+                    debut.elapsed()
+                );
+            }
+        }
+        println!("FIN");
+    }
+
     /// RÉEL, lecture seule chez Firehouse, dans un profil d'ESSAI (dossier temporaire ; le catalogue de Seb n'est pas
     /// touché) : synchronisation complète, `images` gardées, puis le visuel `FROGTEND_VISUEL` du jeu `FROGTEND_JEU`.
     /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_JEU=116 FROGTEND_VISUEL=boite_3d cargo test essai_visuels -- --ignored --nocapture`

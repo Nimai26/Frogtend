@@ -86,6 +86,8 @@ export interface ReglagesProfil {
     panneauDetails: boolean;
     /** Plateformes masquées dans la liste de gauche. */
     plateformesMasquees: string[];
+    /** Taodbox : le fond du jeu choisi derrière la grille et son logo au-dessus (lot Médias, M3). */
+    fondsTaodbox: boolean;
   };
   /** Les jeux offerts des boutiques (lot 9). */
   gratuits: {
@@ -141,6 +143,7 @@ export const DEFAUTS_PROFIL: ReglagesProfil = {
     panneauPlateformes: true,
     panneauDetails: true,
     plateformesMasquees: [],
+    fondsTaodbox: true,
   },
   gratuits: { auto: false, derniere: 0, psplus: false, psplusDernier: 0, gog: false, gogDernier: 0, prime: false, primeDernier: 0 },
   commandes: {},

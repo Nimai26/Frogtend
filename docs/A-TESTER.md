@@ -48,6 +48,18 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Fonds et logos dans Taodbox (0.66.0)
+- [ ] Taodbox : arrête-toi sur un jeu (par exemple Contra III ou un jeu SNES) : son fond apparaît derrière, flouté et
+      assombri, et son logo en haut. Le texte reste lisible.
+- [ ] Fais défiler vite avec la croix : rien ne clignote ; le fond change quand tu t'arrêtes.
+- [ ] Un jeu sans logo (un jeu importé du disque, par exemple) : son titre en haut à la place.
+- [ ] Change de console en haut : l'ancien fond disparaît.
+- [ ] Passe d'un jeu à l'autre : jamais d'éclair (l'image reste toujours assombrie sous le texte).
+- [ ] Une carte Steam ou GOG : le fond habituel du skin.
+- [ ] Réglages ▸ Apparence ▸ Animations « Réduites » : le fond et le logo apparaissent d'un coup, sans fondu.
+- [ ] Réglages ▸ Ludothèque ▸ décoche « Fonds et logos des jeux dans Taodbox » : Taodbox redevient comme avant.
+- [ ] En streaming sur la télé : le flou du fond te plaît-il ? Dis-le-moi.
+
 ## Les fiches réunies (0.65.0)
 Aucun de tes 9 jeux installés n'a de fiche réunie (vérifié le 18/10) : rien ne doit changer chez toi.
 - [ ] Synchronise la ludothèque : aucun message « rattaché », tes jeux installés sont tous là et se lancent.

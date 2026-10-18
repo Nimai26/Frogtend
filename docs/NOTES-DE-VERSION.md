@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.66.0 — Taodbox montre le fond et le logo de tes jeux
+
+- Dans Taodbox, quand tu t'arrêtes sur un jeu, **son grand fond** apparaît derrière la grille et **son logo** s'affiche
+  en haut (son titre, s'il n'a pas de logo). Rien ne change pendant que tu fais défiler avec la croix.
+- Un jeu sans fond chez Firehouse montre une image du jeu, sinon le fond habituel du skin.
+- Tout se coupe dans Réglages ▸ Ludothèque : **Fonds et logos des jeux dans Taodbox**.
+- Avec les animations réduites, le fond et le logo apparaissent sans fondu (aussi dans le menu en jeu).
+
 ## 0.65.0 — Tes jeux suivent leur fiche quand Firehouse en réunit deux
 
 - Quand Firehouse réunit deux fiches d'un même jeu, un jeu de ton PC rangé sous l'ancienne est **rattaché tout seul à

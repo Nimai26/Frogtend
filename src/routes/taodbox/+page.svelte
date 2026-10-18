@@ -2,7 +2,7 @@
   // Taodbox (lot 5) : le mode canapé. Les jeux de CE PC en grandes jaquettes, par console ; tout se fait à la manette
   // (croix, A, B) ou aux flèches. L'échelle ×2, le focus fort et la marge de la télé viennent de la charte (§ 7).
   import { goto } from '$app/navigation';
-  import { onMount, tick } from 'svelte';
+  import { onDestroy, onMount, tick } from 'svelte';
   import { isTauri } from '@tauri-apps/api/core';
   import { api, type JeuPc } from '$lib/api';
   import { confirmer } from '$lib/dialogues/fenetres.svelte';
@@ -14,7 +14,8 @@
   import { adresseImageBoutique } from '$lib/api';
   import { lireSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
   import { galaxy, lireGalaxy, ouvrirDansGalaxy } from '$lib/boutiques/galaxy.svelte';
-  import { adresseImageParUrl } from '$lib/api';
+  import { adresseImageParUrl, adresseFondDuJeu, adresseLogoDuJeu } from '$lib/api';
+  import { apresRepos, idDuFocus } from '$lib/taodbox/fond';
 
   let lanceParSunshine = $state(false);
   let console_ = $state<string | null>(null);
@@ -26,6 +27,37 @@
   );
   const consoles = $derived([...new Set(jeux.map((j) => j.plateforme))].sort());
   const affiches = $derived(console_ ? jeux.filter((j) => j.plateforme === console_) : jeux);
+
+  // Le fond et le logo du jeu choisi (lot Médias, M3, règle dans `$lib/taodbox/fond`) : une seule image de chaque à la
+  // fois, recréée à chaque jeu (`{#key}`) : jamais celle du jeu précédent ; un fond n'apparaît qu'une fois chargé, son
+  // voile avec lui. Steam, GOG et les boutons : le fond du skin.
+  let fondId = $state<number | null>(null);
+  let fondCharge = $state(false);
+  let logoCharge = $state(false);
+  let logoAbsent = $state(false);
+  const repos = apresRepos<number | null>((id) => choisirFond(id));
+  const avecFonds = $derived(etat.profil.ludotheque.fondsTaodbox);
+  // Un jeu sorti de la liste (autre console, jeu retiré) ne garde jamais son fond.
+  const choisi = $derived(fondId === null ? null : (affiches.find((j) => j.id === fondId) ?? null));
+  const voile = $derived(avecFonds && choisi !== null && fondCharge);
+
+  function surFocus(e: FocusEvent) {
+    repos.pousser(idDuFocus(e.target));
+  }
+
+  function choisirFond(id: number | null) {
+    if (id === fondId) return;
+    fondCharge = false;
+    logoCharge = false;
+    logoAbsent = false;
+    fondId = id;
+  }
+
+  function choisirConsole(c: string | null) {
+    repos.annuler();
+    choisirFond(null);
+    console_ = c;
+  }
 
   /** Les jeux Steam installés sur ce PC, jouables depuis le canapé (Steam les lance). */
   const steamInstalles = $derived(steam.jeux.filter((j) => j.installe));
@@ -40,6 +72,7 @@
     await tick();
     document.querySelector<HTMLElement>('.taodbox .carte')?.focus();
   });
+  onDestroy(() => repos.annuler());
 
   async function jeu(j: JeuPc) {
     if (partie.enJeu !== null) return;
@@ -60,7 +93,21 @@
   }
 </script>
 
-<div class="taodbox">
+<div class="taodbox" class:avec-fond={voile} onfocusin={surFocus}>
+  {#if avecFonds && choisi}
+    {#key choisi.id}
+      <img
+        class="fond-jeu"
+        class:visible={fondCharge}
+        src={adresseFondDuJeu(choisi.id)}
+        alt=""
+        onload={() => (fondCharge = true)}
+        onerror={() => (fondCharge = false)}
+      />
+    {/key}
+    <!-- Le voile suit toujours l'image (même fondu) : jamais une image sans voile sous le texte. -->
+    <div class="voile-jeu" class:visible={fondCharge}></div>
+  {/if}
   <header>
     <img class="logo" src="/grenouille.png" alt="" />
     <h1>Taodbox</h1>
@@ -76,11 +123,33 @@
 
   {#if consoles.length > 1}
     <nav class="consoles" aria-label="Consoles">
-      <button class="btn" class:choisie={console_ === null} onclick={() => (console_ = null)}>Tout</button>
+      <button class="btn" class:choisie={console_ === null} onclick={() => choisirConsole(null)}>Tout</button>
       {#each consoles as c (c)}
-        <button class="btn" class:choisie={console_ === c} onclick={() => (console_ = c)}>{c}</button>
+        <button class="btn" class:choisie={console_ === c} onclick={() => choisirConsole(c)}>{c}</button>
       {/each}
     </nav>
+  {/if}
+
+  {#if avecFonds && affiches.length}
+    <!-- Hauteur FIXE : la grille ne bouge jamais quand le logo ou le titre change. -->
+    <div class="bandeau">
+      {#if choisi}
+        {#if !logoAbsent}
+          {#key choisi.id}
+            <img
+              class="logo-jeu"
+              class:visible={logoCharge}
+              src={adresseLogoDuJeu(choisi.id)}
+              alt=""
+              onload={() => (logoCharge = true)}
+              onerror={() => (logoAbsent = true)}
+            />
+          {/key}
+        {/if}
+        {#if !logoCharge}<span class="titre-jeu">{choisi.titre}</span>{/if}
+        <span class="console-jeu">{choisi.plateforme}</span>
+      {/if}
+    </div>
   {/if}
 
   {#if affiches.length === 0}
@@ -88,7 +157,7 @@
   {:else}
     <div class="grille">
       {#each affiches as j (j.id)}
-        <button class="carte" onclick={() => jeu(j)} disabled={partie.enJeu !== null && partie.enJeu !== j.id} title={j.titre}>
+        <button class="carte" data-id={j.id} onclick={() => jeu(j)} disabled={partie.enJeu !== null && partie.enJeu !== j.id} title={j.titre}>
           <Jaquette id={j.id} titre={j.titre} plateforme={j.plateforme} largeur={180} visuel={etat.profil.ludotheque.visuel} />
           <span class="titre">{j.titre}</span>
           <span class="etat">{partie.enJeu === j.id ? '▶ En cours' : j.installation ? '' : '📦 À installer'}</span>
@@ -132,6 +201,9 @@
 <style>
   /* Marge de sécurité de la télé : environ 5 % (charte § 7). */
   .taodbox {
+    /* Le fond du jeu (z-index -1) passe sous la grille, au-dessus de la vidéo du skin. */
+    position: relative;
+    isolation: isolate;
     box-sizing: border-box;
     height: 100vh;
     padding: 5vh 5vw;
@@ -139,6 +211,85 @@
     flex-direction: column;
     gap: calc(16 * var(--u));
     overflow: hidden;
+  }
+  .fond-jeu {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: var(--fond-media);
+    /* 1 000 px au plus, étirés sur la télé : un léger flou le fait paraître voulu. */
+    filter: blur(calc(4 * var(--u)));
+    opacity: 0;
+    transition: opacity calc(var(--duree) * 2);
+    pointer-events: none;
+  }
+  .fond-jeu.visible {
+    opacity: 1;
+  }
+  /* Sur une image, la charte demande le voile fort et les encres de voile (§ 7). */
+  .voile-jeu {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background: var(--voile-fort);
+    opacity: 0;
+    transition: opacity calc(var(--duree) * 2);
+    pointer-events: none;
+  }
+  .voile-jeu.visible {
+    opacity: 1;
+  }
+  .avec-fond {
+    color: var(--encre-voile);
+  }
+  .avec-fond .qui,
+  .avec-fond .etat,
+  .avec-fond .aide,
+  .avec-fond .console-jeu {
+    color: var(--encre-voile-dim);
+  }
+  .avec-fond .carte {
+    color: var(--encre-voile);
+  }
+  .bandeau {
+    flex: none;
+    height: min(18vh, calc(110 * var(--u)));
+    display: flex;
+    align-items: center;
+    gap: calc(16 * var(--u));
+    min-width: 0;
+  }
+  .logo-jeu {
+    height: 100%;
+    max-width: 60%;
+    object-fit: contain;
+    object-position: left center;
+    opacity: 0;
+    transition: opacity calc(var(--duree) * 2);
+  }
+  /* Pas encore chargé : ne prend aucune place (le titre s'affiche). */
+  .logo-jeu:not(.visible) {
+    width: 0;
+    visibility: hidden;
+  }
+  .logo-jeu.visible {
+    opacity: 1;
+  }
+  .titre-jeu {
+    font-size: calc(30 * var(--u));
+    font-weight: 700;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .console-jeu {
+    color: var(--dim);
+    font-size: calc(18 * var(--u));
+    white-space: nowrap;
   }
   header {
     display: flex;
