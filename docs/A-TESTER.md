@@ -48,6 +48,13 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## L'image des jeux (0.63.0)
+- [ ] Après la mise à jour : la première synchronisation dure ~3 minutes (une fois), Frogtend reste utilisable.
+- [ ] Ludothèque ▸ 🎨 : Boîte en relief, Cartouche, Écran titre, Image du jeu : la grille reste régulière ; un jeu
+      sans cette image montre sa jaquette ; rien ne « saute » pendant le chargement.
+- [ ] Écran titre / Image du jeu sur un jeu SNES : gros pixels nets (pas flous).
+- [ ] Taodbox : les cartes suivent le même choix.
+
 ## Conseils suivis et DOSBox d'un clic (0.62.0)
 - [ ] 📥 Importer ▸ Installer un jeu DOS, avec MS-DOS préparé par « Prêt à jouer » (RetroArch) : le bouton
       « 📀 Préparer DOSBox » ; un accord, puis l'installation du jeu se fait. Les jeux DOS se lancent toujours comme avant.

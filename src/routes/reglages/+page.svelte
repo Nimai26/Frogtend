@@ -13,6 +13,7 @@
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { etat, reglerPc, reglerProfil, reinitialiserPc, reinitialiserProfil } from '$lib/etat.svelte';
+  import { VISUELS } from '$lib/ludotheque/visuels';
   import { ludo, rechargerPlateformes, synchroniser } from '$lib/ludotheque/ludotheque.svelte';
   import {
     DEFAUTS_PC,
@@ -222,6 +223,12 @@
     <header>🎮 Ludothèque <span class="muted">— ton profil</span></header>
     <div class="corps">
       <div class="cx-form-section">
+        <label class="champ">
+          <span>Image des jeux (grille et Taodbox)</span>
+          <select value={l.visuel} onchange={(e) => reglerProfil('ludotheque.visuel', e.currentTarget.value)}>
+            {#each VISUELS as v (v.valeur)}<option value={v.valeur}>{v.libelle}</option>{/each}
+          </select>
+        </label>
         <label class="champ">
           <span>Taille des jaquettes : {l.tailleJaquette} px</span>
           <input

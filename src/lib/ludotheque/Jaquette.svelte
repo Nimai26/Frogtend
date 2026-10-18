@@ -2,7 +2,8 @@
   // La jaquette d'un jeu, servie par le cœur pour le profil ouvert.
   // La carte de remplacement (titre, plateforme) est DERRIÈRE l'image : dès que l'image est là, elle la couvre,
   // quoi qu'il arrive à l'état du composant. Un échec est retenté une fois avant d'abandonner.
-  import { adresseJaquette } from '$lib/api';
+  import { adresseJaquette, adresseVisuel } from '$lib/api';
+  import { visuelDuJeu, type Dimensions } from './visuels';
 
   let {
     id,
@@ -10,6 +11,8 @@
     plateforme = '',
     disponible = true,
     largeur,
+    visuel,
+    images,
   }: {
     id: number;
     titre: string;
@@ -17,7 +20,13 @@
     disponible?: boolean | null;
     /** Largeur affichée, en pixels CSS : Frogtend demande une miniature juste assez grande. */
     largeur?: number;
+    /** Le visuel choisi (réglage de la ludothèque) ; la jaquette sinon. */
+    visuel?: string;
+    /** Les dimensions des visuels du jeu (catalogue) : la place exacte est réservée d'emblée. */
+    images?: Dimensions | null;
   } = $props();
+
+  const v = $derived(visuelDuJeu(visuel, images, pixels(largeur) ?? 0));
 
   /** Pixels réels à l'écran (écran haute densité, échelle du texte). */
   function pixels(l: number | undefined): number | undefined {
@@ -32,7 +41,7 @@
   let chargee = $state(false);
 
   const src = $derived.by(() => {
-    const base = adresseJaquette(id, pixels(largeur));
+    const base = v.sorte === 'jaquette' ? adresseJaquette(id, pixels(largeur)) : adresseVisuel(id, v.sorte, pixels(largeur));
     return essai === 0 ? base : `${base}${base.includes('?') ? '&' : '?'}essai=${essai}`;
   });
 
@@ -40,6 +49,8 @@
   $effect(() => {
     void id;
     void largeur;
+    void v.sorte;
+    chargee = false;
     essai = 0;
     abandon = false;
   });
@@ -51,14 +62,17 @@
   }
 </script>
 
-<div class="jaquette" class:chargee>
-  <div class="remplacement" aria-hidden="true">
-    <span class="titre">{titre}</span>
-    {#if plateforme}<span class="plateforme">{plateforme}</span>{/if}
+<div class="jaquette" class:chargee style:aspect-ratio={v.cadre}>
+  <!-- La boîte au ratio RÉEL de l'image (s'il est connu) : la carte de remplacement a déjà la place de l'image. -->
+  <div class="boite" class:ajustee={v.ratio !== null} style:--r={v.ratio ?? undefined}>
+    <div class="remplacement" aria-hidden="true">
+      <span class="titre">{titre}</span>
+      {#if plateforme}<span class="plateforme">{plateforme}</span>{/if}
+    </div>
+    {#if (disponible !== false || v.sorte !== 'jaquette') && !abandon}
+      <img {src} alt="" loading="lazy" decoding="async" class:pixels={v.pixels} onload={() => (chargee = true)} onerror={echec} />
+    {/if}
   </div>
-  {#if disponible !== false && !abandon}
-    <img {src} alt="" loading="lazy" decoding="async" onload={() => (chargee = true)} onerror={echec} />
-  {/if}
 </div>
 
 <style>
@@ -66,8 +80,25 @@
     position: relative;
     aspect-ratio: 3 / 4;
     width: 100%;
+    container-type: size;
+    display: grid;
+    place-items: center;
+  }
+  .boite {
+    position: relative;
+    width: 100%;
+    height: 100%;
     border-radius: calc(10 * var(--u));
     overflow: hidden;
+  }
+  /* Ratio connu : la plus grande boîte de ce ratio qui tient dans le cadre (comme l'image en « contain »). */
+  .boite.ajustee {
+    width: min(100cqw, calc(100cqh * var(--r)));
+    height: auto;
+    aspect-ratio: var(--r);
+  }
+  img.pixels {
+    image-rendering: pixelated;
   }
   /* L'image n'apparaît qu'une fois chargée : jamais d'icône « image cassée » par-dessus la carte. */
   img {

@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.63.0 — Choisis l'image de tes jeux
+
+- Dans la barre de la ludothèque (🎨) et dans Réglages ▸ Ludothèque : **l'image des jeux** — jaquette, boîte en
+  relief, cartouche, écran titre ou image du jeu. Aussi dans Taodbox. Un jeu qui n'a pas cette image montre sa jaquette.
+- La place de chaque image est réservée d'emblée : plus rien ne bouge pendant le chargement. Les petites images
+  d'époque gardent leurs gros pixels.
+- Une image changée ou retirée chez Firehouse est relue ou effacée du cache.
+- ⏳ La PREMIÈRE synchronisation après cette mise à jour relit tout le catalogue une fois (environ 3 minutes) ;
+  Frogtend reste utilisable pendant ce temps.
+
 ## 0.62.0 — Les conseils de la maison suivis, DOSBox préparé d'un clic
 
 - Quand la maison (Firehouse) change son conseil pour une console, Frogtend le propose au lancement d'un jeu : un

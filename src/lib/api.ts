@@ -31,6 +31,8 @@ export interface JeuResume {
   jaquette_empreinte?: string | null;
   /** Nombre de versions rangées dans Firehouse. */
   versions?: number | null;
+  /** Les visuels du jeu par type, avec leurs dimensions d'origine (contrat 1.6) ; absent = pas encore relu. */
+  images?: Record<string, { largeur?: number | null; hauteur?: number | null }> | null;
   // Jeux des boutiques de la personne (lot 9 : id négatif, plateforme « Windows »).
   source?: 'steam' | 'galaxy' | 'local';
   /** Succès (obtenus, total) d'un jeu de boutique, quand la source les donne (GOG Galaxy). */
@@ -637,6 +639,13 @@ export function adresseJaquette(id: number, largeur?: number): string {
   if (!largeur) return `http://jaquette.localhost/${id}`;
   const l = Math.min(1000, Math.max(100, Math.ceil(largeur / 100) * 100));
   return `http://jaquette.localhost/${id}?largeur=${l}`;
+}
+
+/** Un visuel d'un jeu (boîte en relief, cartouche…) en miniature ; le cœur se replie sur la jaquette si le jeu ne
+ * l'a pas. */
+export function adresseVisuel(id: number, sorte: string, largeur?: number): string {
+  const l = Math.min(1000, Math.max(100, Math.ceil((largeur ?? 1000) / 100) * 100));
+  return `http://jaquette.localhost/${id}?visuel=${sorte},jaquette&largeur=${l}`;
 }
 
 /** Une page d'un livret déjà sur le PC (page 0 = la première), rendue en image par Windows à une largeur arrondie

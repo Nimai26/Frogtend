@@ -75,6 +75,8 @@ export interface ReglagesProfil {
   ludotheque: {
     /** Largeur d'une jaquette dans la grille, en pixels (à l'échelle 1). */
     tailleJaquette: number;
+    /** L'image des jeux dans la grille et dans Taodbox (lot Médias) : jaquette, boîte en relief, cartouche… */
+    visuel: 'jaquette' | 'boite_3d' | 'cartouche' | 'ecran_titre' | 'capture';
     /** La ligne sous le titre d'une carte. */
     sousTitre: 'developpeur' | 'editeur' | 'annee' | 'plateforme' | 'rien';
     tri: 'titre' | 'annee' | 'annee_desc';
@@ -128,6 +130,7 @@ export const DEFAUTS_PROFIL: ReglagesProfil = {
   sauvegarde: { auto: 'apres_partie' },
   ludotheque: {
     tailleJaquette: 170,
+    visuel: 'jaquette',
     sousTitre: 'developpeur',
     tri: 'titre',
     panneauPlateformes: true,

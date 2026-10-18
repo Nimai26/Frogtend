@@ -111,6 +111,8 @@
               plateforme={j.plateforme}
               disponible={j.jaquette}
               largeur={r.tailleJaquette}
+              visuel={r.visuel}
+              images={j.images}
             />
             {#if tele.jeux[j.id] && tele.jeux[j.id].etat !== 'telecharge'}
               {@const t = tele.jeux[j.id]}

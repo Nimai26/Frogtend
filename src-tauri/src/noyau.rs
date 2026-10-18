@@ -16,7 +16,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 /// Les visuels d'un jeu que Frogtend demande en plus de la jaquette (types du contrat 1.6).
-pub const SORTES_VISUELS: &[&str] = &["fond", "capture", "ecran_titre", "logo"];
+pub const SORTES_VISUELS: &[&str] =
+    &["fond", "capture", "ecran_titre", "logo", "boite_3d", "cartouche", "cartouche_3d", "dos", "tranche", "autre_image"];
 
 /// Garde-fou : jamais plus de pages que ça pour une synchronisation (200 000 jeux à 500 par page = 400).
 const PAGES_MAX: u32 = 5_000;
@@ -291,7 +292,9 @@ impl Noyau {
         let s = self.session().await?;
         let mut depuis = {
             let c = s.verrou();
-            if c.nombre_de_jeux()? > 0 { c.derniere_modification()? } else { None }
+            // Un cache d'un schéma plus ancien (sans `images`…) : une relecture complète, une fois.
+            let a_jour = c.meta("schema_catalogue")?.as_deref() == Some(crate::ludotheque::SCHEMA_CATALOGUE);
+            if c.nombre_de_jeux()? > 0 && a_jour { c.derniere_modification()? } else { None }
         };
         let plateformes = lire_plateformes(&s.source.plateformes().await?);
         loop {
@@ -299,7 +302,13 @@ impl Noyau {
             let mut ids_visibles: Option<Vec<i64>> = None;
             let mut page = 1;
             loop {
-                let p = lire_page(&s.source.catalogue(page, depuis.as_deref()).await?, page);
+                // Une page coupée par le réseau (la relecture complète dure quelques minutes) : un nouvel essai, pas
+                // tout à recommencer.
+                let v = match s.source.catalogue(page, depuis.as_deref()).await {
+                    Err(Erreur::Reseau(_)) => s.source.catalogue(page, depuis.as_deref()).await?,
+                    r => r?,
+                };
+                let p = lire_page(&v, page);
                 if page == 1 {
                     ids_visibles = p.ids_visibles;
                 }
@@ -570,24 +579,90 @@ impl Noyau {
         }
     }
 
-    /// Un visuel d'un jeu autre que la jaquette (contrat 1.6, relevé en réel le 15/10 : `fond` 1920×1080, `capture`,
-    /// `ecran_titre`, `logo`…), pour le fond du menu en jeu : le premier des `sortes` que Firehouse a, en 1 000 px au
-    /// plus (jamais l'original). Gardé pour ce PC et CE profil (`<profil>\visuels`), redemandé après 7 jours (le
-    /// `Cache-Control` du contrat) ; une absence aussi est retenue 7 jours. Hors ligne : ce qui est gardé.
+    /// Un visuel d'un jeu (contrat 1.6, relevé en réel le 15/10) : le premier des `sortes` que le jeu a, en 1 000 px au
+    /// plus (jamais l'original). `jaquette` dans la liste passe par `jaquette` (son cache, les jeux de boutique, la
+    /// copie hors ligne) : c'est le repli de la grille (`?visuel=boite_3d,jaquette`).
+    ///
+    /// Gardé pour ce PC et CE profil. Quand le catalogue donne le visuel et son empreinte (`images`) : rangé par jeu
+    /// (`<profil>\visuels\<id>\<type>-<largeur>-<empreinte>.img`, écrit puis renommé : jamais un fichier tronqué
+    /// gardé), sans durée — relu seulement quand l'empreinte change ; alors les anciennes versions partent, TOUTES
+    /// largeurs de l'empreinte en cours gardées (la grille et Taodbox ne s'effacent pas l'une l'autre). Un type absent
+    /// d'`images` n'est jamais demandé, et ce qui en était gardé part (image retirée par un admin). Sinon (catalogue
+    /// pas encore relu, ou empreinte absente) : l'ancien fonctionnement, redemandé après 7 jours. Hors ligne : ce qui
+    /// est gardé.
     pub async fn visuel(&self, id: i64, sortes: &[&str], largeur: u32) -> Resultat<Option<Image>> {
         let s = self.session().await?;
-        if id <= 0 || s.verrou().jeu(id)?.is_none() {
-            return Ok(None); // un jeu de boutique, ou qui n'est pas dans SA ludothèque : rien.
-        }
+        let Some(jeu) = s.verrou().jeu(id)? else {
+            return Ok(None); // un jeu qui n'est pas dans SA ludothèque : rien.
+        };
         let largeur = largeur.clamp(100, 1000).div_ceil(100) * 100;
         let dossier = s.dossier.join("visuels");
         let recent = |p: &Path| {
             std::fs::metadata(p).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|d| d.as_secs() < 7 * 24 * 3600)
         };
+        let du_jeu = dossier.join(id.to_string());
+        // Retire ce qui est gardé de ce jeu pour ce type : tout (`garder` = None), ou tout SAUF l'empreinte en cours
+        // (toutes ses largeurs). Les anciens noms (`<id>-<type>-<largeur>.img` à la racine) partent aussi.
+        let purger = |sorte: &str, garder: Option<&str>| {
+            let prefixe = format!("{sorte}-");
+            if let Ok(l) = std::fs::read_dir(&du_jeu) {
+                for e in l.flatten() {
+                    let n = e.file_name().to_string_lossy().to_string();
+                    if n.starts_with(&prefixe) && !garder.is_some_and(|g| n.ends_with(&format!("-{g}.img"))) {
+                        let _ = std::fs::remove_file(e.path());
+                    }
+                }
+            }
+            for ancien in [format!("{id}-{sorte}-{largeur}.img"), format!("{id}-{sorte}-{largeur}.absent")] {
+                let _ = std::fs::remove_file(dossier.join(ancien));
+            }
+        };
         for sorte in sortes {
-            if !SORTES_VISUELS.contains(sorte) {
+            if *sorte == "jaquette" {
+                if let Some(img) = self.jaquette(id, Some(largeur)).await? {
+                    return Ok(Some(img));
+                }
                 continue;
             }
+            if id <= 0 || !SORTES_VISUELS.contains(sorte) {
+                continue;
+            }
+            let connu = match &jeu.images {
+                Some(images) => match images.get(*sorte) {
+                    Some(i) => i.empreinte.as_deref().map(|e| e.chars().filter(char::is_ascii_alphanumeric).take(32).collect::<String>()).filter(|e| !e.is_empty()),
+                    None => {
+                        purger(sorte, None);
+                        continue; // le jeu n'a pas ce visuel : rien à demander
+                    }
+                },
+                None => None,
+            };
+            if let Some(empreinte) = connu {
+                let fichier = du_jeu.join(format!("{sorte}-{largeur}-{empreinte}.img"));
+                if let Ok(octets) = std::fs::read(&fichier) {
+                    return Ok(Some(Image { type_contenu: type_image(&octets), octets }));
+                }
+                match s.source.media(id, sorte, Some(largeur)).await {
+                    Ok(Some(img)) => {
+                        // Le garder est un plus (un disque plein n'empêche pas de montrer l'image reçue) : écrit à côté
+                        // puis renommé ; les anciennes versions de ce visuel partent.
+                        let part = fichier.with_extension("part");
+                        let garde = std::fs::create_dir_all(&du_jeu)
+                            .and_then(|_| std::fs::write(&part, &img.octets))
+                            .and_then(|_| std::fs::rename(&part, &fichier));
+                        if garde.is_ok() {
+                            purger(sorte, Some(&empreinte));
+                        } else {
+                            let _ = std::fs::remove_file(&part);
+                        }
+                        return Ok(Some(Image { type_contenu: img.type_contenu.or_else(|| type_image(&img.octets)), octets: img.octets }));
+                    }
+                    Ok(None) => continue,
+                    Err(e) if matches!(e, Erreur::Reseau(_) | Erreur::Serveur(_)) => continue,
+                    Err(e) => return Err(e),
+                }
+            }
+            // Catalogue pas encore relu : l'ancien fonctionnement (7 jours).
             let fichier = dossier.join(format!("{id}-{sorte}-{largeur}.img"));
             let absent = dossier.join(format!("{id}-{sorte}-{largeur}.absent"));
             if recent(&fichier) {
@@ -600,7 +675,6 @@ impl Noyau {
             }
             match s.source.media(id, sorte, Some(largeur)).await {
                 Ok(Some(img)) => {
-                    // Le garder est un plus : un disque plein n'empêche pas de montrer l'image reçue.
                     let _ = std::fs::create_dir_all(&dossier).and_then(|_| std::fs::write(&fichier, &img.octets));
                     let _ = std::fs::remove_file(&absent);
                     return Ok(Some(Image { type_contenu: img.type_contenu.or_else(|| type_image(&img.octets)), octets: img.octets }));
@@ -910,6 +984,167 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn le_visuel_choisi_suit_son_empreinte_et_se_replie_sur_la_jaquette() {
+        // Contrat 1.6 (relevé réel du 15/10) : le catalogue donne les visuels du jeu et leur empreinte.
+        let serveur = MockServer::start();
+        serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "SNES", "jeux": 2}]}));
+        });
+        let mut catalogue = serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [
+                {"id": 1, "titre": "A", "plateforme": "SNES", "jaquette": true, "jaquette_empreinte": "j1",
+                 "images": {"jaquette": {"empreinte": "j1", "largeur": 1281, "hauteur": 2311}, "boite_3d": {"empreinte": "b1", "largeur": 900, "hauteur": 1200}}},
+                {"id": 2, "titre": "B (MS-DOS, aucun visuel)", "plateforme": "SNES", "jaquette": false, "images": {}}]}));
+        });
+        let boite = serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/media/1/boite_3d").query_param("largeur", "400");
+            t.status(200).header("Content-Type", "image/webp").body(b"RIFF\0\0\0\0WEBPVP8 b1".to_vec());
+        });
+        let jaquette = serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/media/1/jaquette");
+            t.status(200).header("Content-Type", "image/webp").body(b"RIFF\0\0\0\0WEBPVP8 j1".to_vec());
+        });
+        let (_d, n) = noyau();
+        let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: serveur.base_url(), simule: false }).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        let visuels = n.session().await.unwrap().dossier.join("visuels");
+
+        // Le visuel choisi, gardé sous son empreinte, sans durée : redemandé jamais tant qu'elle ne change pas.
+        assert!(n.visuel(1, &["boite_3d", "jaquette"], 400).await.unwrap().unwrap().octets.ends_with(b"b1"));
+        assert!(n.visuel(1, &["boite_3d", "jaquette"], 400).await.unwrap().is_some());
+        boite.assert_hits(1);
+        assert!(visuels.join("1").join("boite_3d-400-b1.img").is_file());
+        // Une autre largeur du même visuel (Taodbox, le menu en jeu) : gardée À CÔTÉ, jamais l'une efface l'autre.
+        let mut boite_1000 = serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/media/1/boite_3d").query_param("largeur", "1000");
+            t.status(200).header("Content-Type", "image/webp").body(b"RIFF\0\0\0\0WEBPVP8 b1".to_vec());
+        });
+        assert!(n.visuel(1, &["boite_3d"], 1000).await.unwrap().is_some());
+        assert!(n.visuel(1, &["boite_3d"], 400).await.unwrap().is_some());
+        assert!(n.visuel(1, &["boite_3d"], 1000).await.unwrap().is_some());
+        boite.assert_hits(1);
+        boite_1000.assert_hits(1);
+        boite_1000.delete();
+        // Un type que le jeu n'a pas : JAMAIS demandé, repli sur la jaquette.
+        let cartouche = serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/media/1/cartouche");
+            t.status(200).body(b"x".to_vec());
+        });
+        assert!(n.visuel(1, &["cartouche", "jaquette"], 400).await.unwrap().unwrap().octets.ends_with(b"j1"));
+        cartouche.assert_hits(0);
+        jaquette.assert_hits(1);
+        // Un jeu sans aucun visuel (MS-DOS au 16/10) : aucune requête, rien à montrer.
+        assert!(n.visuel(2, &["boite_3d", "jaquette"], 400).await.unwrap().is_none());
+        cartouche.assert_hits(0);
+
+        // L'admin change la boîte 3D (nouvelle empreinte) puis retire la cartouche… : la boîte est relue, l'ancienne
+        // part ; plus tard la boîte retirée : son fichier part aussi.
+        catalogue.delete();
+        catalogue = serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [
+                {"id": 1, "titre": "A", "plateforme": "SNES", "jaquette": true, "jaquette_empreinte": "j1", "maj_le": "2026-10-18T10:00:00",
+                 "images": {"jaquette": {"empreinte": "j1"}, "boite_3d": {"empreinte": "b2", "largeur": 900, "hauteur": 1200}}},
+                {"id": 2, "titre": "B", "plateforme": "SNES", "jaquette": false, "images": {}}], "ids_visibles": [1, 2]}));
+        });
+        n.synchroniser(|_, _| {}).await.unwrap();
+        assert!(n.visuel(1, &["boite_3d"], 400).await.unwrap().is_some());
+        boite.assert_hits(2);
+        assert!(visuels.join("1").join("boite_3d-400-b2.img").is_file());
+        assert!(!visuels.join("1").join("boite_3d-400-b1.img").exists(), "l'ancienne version part");
+        assert!(!visuels.join("1").join("boite_3d-1000-b1.img").exists(), "toutes ses largeurs");
+        catalogue.delete();
+        serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [
+                {"id": 1, "titre": "A", "plateforme": "SNES", "jaquette": true, "jaquette_empreinte": "j1", "maj_le": "2026-10-18T11:00:00",
+                 "images": {"jaquette": {"empreinte": "j1"}}},
+                {"id": 2, "titre": "B", "plateforme": "SNES", "jaquette": false, "images": {}}], "ids_visibles": [1, 2]}));
+        });
+        n.synchroniser(|_, _| {}).await.unwrap();
+        assert!(n.visuel(1, &["boite_3d"], 400).await.unwrap().is_none());
+        assert!(!visuels.join("1").join("boite_3d-400-b2.img").exists(), "un visuel retiré par un admin quitte le cache");
+        boite.assert_hits(2);
+    }
+
+    /// RÉEL, lecture seule chez Firehouse, dans un profil d'ESSAI (dossier temporaire ; le catalogue de Seb n'est pas
+    /// touché) : synchronisation complète, `images` gardées, puis le visuel `FROGTEND_VISUEL` du jeu `FROGTEND_JEU`.
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_JEU=116 FROGTEND_VISUEL=boite_3d cargo test essai_visuels -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_visuels() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").unwrap();
+        let jeu: i64 = std::env::var("FROGTEND_JEU").unwrap().parse().unwrap();
+        let sorte = std::env::var("FROGTEND_VISUEL").unwrap();
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(d.path(), Box::new(crate::coffre::CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Essai", None, Some(&jeton)).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: "https://jeux.hikari-no-sekai.fr".into(), simule: false }).await.unwrap();
+        let debut = std::time::Instant::now();
+        let b = n.synchroniser(|_, _| {}).await.unwrap();
+        println!("SYNCHRO {} jeux en {:?}", b.jeux, debut.elapsed());
+        let s = n.session().await.unwrap();
+        let (avec, vides, inconnues) = {
+            let c = s.verrou();
+            let tous = c.lister(&Filtre::default(), None, &[]).unwrap();
+            let l: Vec<JeuResume> = tous.jeux;
+            (l.iter().filter(|j| j.images.as_ref().is_some_and(|m| !m.is_empty())).count(), l.iter().filter(|j| j.images.as_ref().is_some_and(|m| m.is_empty())).count(), l.iter().filter(|j| j.images.is_none()).count())
+        };
+        println!("IMAGES : avec {avec}, vides {vides}, inconnues {inconnues} (sur la première page de la liste)");
+        let j = s.verrou().jeu(jeu).unwrap().expect("jeu");
+        println!("JEU {jeu} images = {:?}", j.images.as_ref().map(|m| m.iter().map(|(k, v)| format!("{k}:{:?}x{:?}", v.largeur, v.hauteur)).collect::<Vec<_>>()));
+        let img = n.visuel(jeu, &[sorte.as_str(), "jaquette"], 400).await.unwrap();
+        println!("VISUEL {sorte} : {:?} octets", img.as_ref().map(|i| i.octets.len()));
+        for f in std::fs::read_dir(s.dossier.join("visuels")).into_iter().flatten().flatten() {
+            println!("GARDÉ {}", f.file_name().to_string_lossy());
+        }
+        let schema = s.verrou().meta("schema_catalogue").unwrap();
+        println!("SCHÉMA {schema:?}");
+    }
+
+    #[tokio::test]
+    async fn un_ancien_catalogue_est_relu_en_entier_une_fois() {
+        let serveur = MockServer::start();
+        serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "SNES", "jeux": 1}]}));
+        });
+        // La relecture complète : SANS `depuis`.
+        let complet = serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue").matches(|r| !r.query_params.as_ref().is_some_and(|q| q.iter().any(|(k, _)| k == "depuis")));
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [
+                {"id": 1, "titre": "A", "plateforme": "SNES", "maj_le": "2026-10-01T00:00:00", "images": {"jaquette": {"largeur": 10, "hauteur": 20}}}]}));
+        });
+        let increment = serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue").query_param_exists("depuis");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [], "ids_visibles": [1]}));
+        });
+        let (_d, n) = noyau();
+        let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: serveur.base_url(), simule: false }).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        complet.assert_hits(1);
+        // Ensuite : l'incrément.
+        n.synchroniser(|_, _| {}).await.unwrap();
+        increment.assert_hits(1);
+        complet.assert_hits(1);
+        // Un cache d'avant (sans marqueur de schéma) : relu en entier UNE fois, puis l'incrément reprend.
+        n.session().await.unwrap().verrou().ecrire_meta("schema_catalogue", "1").unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        complet.assert_hits(2);
+        n.synchroniser(|_, _| {}).await.unwrap();
+        complet.assert_hits(2);
+        increment.assert_hits(2);
+        let j = n.session().await.unwrap().verrou().jeu(1).unwrap().unwrap();
+        assert_eq!(j.images.unwrap()["jaquette"].hauteur, Some(20));
+    }
+
+    #[tokio::test]
     async fn le_fond_du_menu_prend_le_premier_visuel_que_firehouse_a_et_le_garde() {
         let serveur = MockServer::start();
         serveur.mock(|w, t| {
@@ -945,7 +1180,7 @@ mod tests {
             w.method(GET).path_contains("/api/jeux/v1/media/");
             t.status(200).body(b"x".to_vec());
         });
-        assert!(n.visuel(1, &["../../moi", "jaquette"], 1000).await.unwrap().is_none());
+        assert!(n.visuel(1, &["../../moi", "boite_imaginaire"], 1000).await.unwrap().is_none());
         assert!(n.visuel(99, &["capture"], 1000).await.unwrap().is_none());
         assert!(n.visuel(-3, &["capture"], 1000).await.unwrap().is_none());
         autre.assert_hits(0);

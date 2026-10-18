@@ -140,7 +140,13 @@
       demander un champ `version` dans le BIOS du conseil (aujourd'hui lue dans la `note`). Règles Firehouse (16/10) : seul `conseil.bios[]` fait foi ;
       ignorer `actif`/`statut_emu_france` pour l'émulateur du conseil ; `conseil.paquet: null` → « cœur non servi par
       Firehouse », rien chez libretro (question posée à Seb par Firehouse : laisser RetroArch l'installer ?).
-- [ ] **Lot « Médias »** (contrat 1.6, Firehouse 2.41.0) : ratio réel de la boîte réservé, choix du visuel de la
+- ✅ **Seb 18/10** : « tu peux modifier ce que tu veux » → CLAUDE.md § 1.7 précisé : Frogtend ne télécharge jamais un
+  JEU sur Internet (les jeux ne viennent que de Firehouse) ; émulateurs, cœurs et outils : Firehouse s'il les sert,
+  sinon leur source officielle, après accord et taille annoncée. Puis « on enchaîne » → lot Médias (choisi par moi).
+- [ ] **Lot « Médias »** (en cours depuis le 18/10 ; découpe : M1 choix du visuel de la ludothèque au bon ratio +
+      `images`/`medias_empreinte` et `documents`/`documents_empreinte` gardés dans le catalogue (fin du D3 des
+      documents), relecture complète unique ; M2 galerie dans la fiche ; M3 logos et fonds Taodbox ; M4 hors ligne et
+      retrait du cache d'une image plus servie) (contrat 1.6, Firehouse 2.41.0) : ratio réel de la boîte réservé, choix du visuel de la
       ludothèque (jaquette, boîte 3D, cartouche…), logos et fonds pour Taodbox, galerie dans la fiche, copie hors ligne
       des visuels choisis, retrait du cache d'une image que Firehouse ne sert plus (édition par un admin).
 - [ ] **RPCS3 : mods, shaders, triches** (Seb, 03/10 : « il manque encore la gestion des mods, shaders, cheats, l'OSD »)
@@ -263,6 +269,17 @@ d'abord :
       quelle (règles « Autoriser, privé » posées sur le RetroArch d'essai supprimé : sans effet, gardées).
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.63.0** (18/10) — Lot Médias M1 : choix de l'image des jeux (grille + Taodbox, réglage du profil
+  `ludotheque.visuel`), cadre du visuel choisi (grille régulière) et boîte au ratio réel (place réservée), repli sur
+  la jaquette dans le cœur, gros pixels gardés. Cœur : catalogue schéma 2 (`images`, `medias_empreinte`, `documents`,
+  `documents_empreinte` lus de façon TOLÉRANTE, relecture complète unique, marqueur posé seulement par une relecture
+  réussie, page coupée retentée une fois) ; visuels rangés par jeu sous l'empreinte, écrits puis renommés, toutes
+  largeurs gardées, anciennes versions et visuels retirés effacés, sans durée (sinon 7 jours). Vérifié en RÉEL (profil
+  d'essai temporaire, catalogue de Seb non touché) : 15 507 jeux relus en 190–199 s ; 3x3 Eyes : 11 types avec
+  dimensions, boîte 3D 64 Ko et cartouche 14 Ko gardées. Tests : 325 cœur, 162 interface ; avis AVANT des experts
+  contrat et interface, puis relectures (1 bloquant : une largeur effaçait l'autre ; importants corrigés). NON
+  vérifié : la grille à l'écran.
 
 - **0.62.0** (18/10) — Fin du lot Contrat 1.13 (sauf (8), attendu de Firehouse) : conseil changé → même émulateur :
   nouveau réglage proposé (BIOS posés puis cœur installé AVANT d'écrire la ligne, options de Frogtend gardées) ;

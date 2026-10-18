@@ -89,7 +89,7 @@
     <div class="grille">
       {#each affiches as j (j.id)}
         <button class="carte" onclick={() => jeu(j)} disabled={partie.enJeu !== null && partie.enJeu !== j.id} title={j.titre}>
-          <Jaquette id={j.id} titre={j.titre} plateforme={j.plateforme} largeur={180} />
+          <Jaquette id={j.id} titre={j.titre} plateforme={j.plateforme} largeur={180} visuel={etat.profil.ludotheque.visuel} />
           <span class="titre">{j.titre}</span>
           <span class="etat">{partie.enJeu === j.id ? '▶ En cours' : j.installation ? '' : '📦 À installer'}</span>
         </button>

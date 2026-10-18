@@ -10,12 +10,48 @@ use crate::erreurs::Resultat;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Plateforme {
     pub nom: String,
     pub jeux: u64,
+}
+
+/// La version du schéma des résumés gardés : quand elle change, la synchronisation suivante relit TOUT le catalogue
+/// une fois (les jeux déjà en cache n'auraient jamais les nouveaux champs : l'incrément ne relit que ce qui a changé).
+/// « 2 » (18/10) : `images`, `medias_empreinte`, `documents`, `documents_empreinte` (contrats 1.6 et 1.7).
+pub const SCHEMA_CATALOGUE: &str = "2";
+
+/// Un visuel mis en avant pour un type (contrat 1.6, `images` du catalogue) : ses dimensions d'ORIGINE et son
+/// empreinte (le visuel gardé n'est relu que quand elle change).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct ImageResume {
+    #[serde(default, deserialize_with = "tolerant", skip_serializing_if = "Option::is_none")]
+    pub largeur: Option<u32>,
+    #[serde(default, deserialize_with = "tolerant", skip_serializing_if = "Option::is_none")]
+    pub hauteur: Option<u32>,
+    #[serde(default, deserialize_with = "tolerant", skip_serializing_if = "Option::is_none")]
+    pub empreinte: Option<String>,
+}
+
+/// Lecture TOLÉRANTE d'un champ facultatif : une valeur illisible devient `None`, jamais une erreur (sinon tout le
+/// jeu serait écarté de la page, et sortirait du cache à la relecture complète).
+fn tolerant<'de, D: serde::Deserializer<'de>, T: serde::de::DeserializeOwned>(d: D) -> Result<Option<T>, D::Error> {
+    let v = Value::deserialize(d)?;
+    Ok(serde_json::from_value(v).ok())
+}
+
+/// `images` : chaque type lu à part (un type illisible est laissé, pas tous) ; `null` ou autre chose qu'un objet :
+/// `None` (inconnu).
+fn images_tolerantes<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<BTreeMap<String, ImageResume>>, D::Error> {
+    let v = Value::deserialize(d)?;
+    Ok(v.as_object().map(|m| {
+        m.iter()
+            .filter_map(|(k, x)| serde_json::from_value::<ImageResume>(x.clone()).ok().map(|i| (k.clone(), i)))
+            .collect()
+    }))
 }
 
 /// Ce qu'une carte de la grille affiche d'un jeu.
@@ -47,6 +83,18 @@ pub struct JeuResume {
     /// Dernière modification de la fiche dans Firehouse.
     #[serde(default)]
     pub maj_le: Option<String>,
+    /// Les visuels mis en avant par type (contrat 1.6) : `None` = pas encore relu (on essaie), une liste vide = aucun
+    /// visuel (rien à demander, comme tout MS-DOS au 16/10).
+    #[serde(default, deserialize_with = "images_tolerantes", skip_serializing_if = "Option::is_none")]
+    pub images: Option<BTreeMap<String, ImageResume>>,
+    /// Change dès qu'UN visuel du jeu change (pour la galerie, `/jeu/{id}/medias`).
+    #[serde(default, deserialize_with = "tolerant", skip_serializing_if = "Option::is_none")]
+    pub medias_empreinte: Option<String>,
+    /// Les documents par type (contrat 1.7 : `{"livret": 1, "musique": 1}`).
+    #[serde(default, deserialize_with = "tolerant", skip_serializing_if = "Option::is_none")]
+    pub documents: Option<BTreeMap<String, u32>>,
+    #[serde(default, deserialize_with = "tolerant", skip_serializing_if = "Option::is_none")]
+    pub documents_empreinte: Option<String>,
     // --- Jeux des boutiques de la personne (lot 9, id NÉGATIF ; jamais dans le catalogue de Firehouse) ---
     /// D'où vient la ligne : `steam` (API Steam) ou `galaxy` (GOG Galaxy) ; absent pour Firehouse.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -244,6 +292,8 @@ impl Cache {
         }
         tx.execute("DELETE FROM fiches WHERE id NOT IN (SELECT id FROM jeux)", [])?;
         tx.execute("INSERT OR REPLACE INTO meta (cle, valeur) VALUES ('synchronise_le', ?1)", [quand])?;
+        // Seulement ici (une relecture COMPLÈTE réussie) : une relecture échouée sera refaite la fois suivante.
+        tx.execute("INSERT OR REPLACE INTO meta (cle, valeur) VALUES ('schema_catalogue', ?1)", [SCHEMA_CATALOGUE])?;
         tx.commit()?;
         Ok(())
     }
@@ -507,6 +557,28 @@ impl Cache {
 pub(crate) mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn un_jeu_aux_images_abimees_reste_dans_le_catalogue() {
+        // Une donnée d'image illisible ne fait JAMAIS sortir le jeu du cache (relecture complète).
+        let v = serde_json::json!({"jeux": [
+            {"id": 1, "titre": "A", "plateforme": "SNES", "images": null, "documents": "beaucoup"},
+            {"id": 2, "titre": "B", "plateforme": "SNES", "images": {"jaquette": {"largeur": null, "hauteur": "x"}, "boite_3d": 5}},
+            {"id": 3, "titre": "C", "plateforme": "SNES", "images": {}, "medias_empreinte": 12, "documents": {"livret": 1}, "documents_empreinte": "d"}
+        ]});
+        let p = lire_page(&v, 1);
+        assert_eq!(p.jeux.iter().map(|j| j.id).collect::<Vec<_>>(), [1, 2, 3]);
+        assert_eq!(p.jeux[0].images, None, "inconnu");
+        assert_eq!(p.jeux[0].documents, None);
+        let i = p.jeux[1].images.as_ref().unwrap();
+        assert!(i.contains_key("jaquette") && !i.contains_key("boite_3d"), "le type illisible seul est laissé");
+        assert_eq!(i["jaquette"], ImageResume::default());
+        assert_eq!(p.jeux[2].images, Some(BTreeMap::new()), "aucun visuel : connu, vide");
+        assert_eq!(p.jeux[2].documents.as_ref().unwrap()["livret"], 1);
+        // Un jeu de boutique : aucun champ vide écrit pour rien.
+        let s = serde_json::to_string(&JeuResume { id: -5, titre: "Steam".into(), ..Default::default() }).unwrap();
+        assert!(!s.contains("images") && !s.contains("documents"));
+    }
 
     fn jeu(id: i64, titre: &str, plateforme: &str, annee: Option<i64>, genres: &[&str]) -> JeuResume {
         JeuResume {

@@ -9,6 +9,7 @@
   import PanneauDetails from '$lib/ludotheque/PanneauDetails.svelte';
   import PanneauPlateformes from '$lib/ludotheque/PanneauPlateformes.svelte';
   import { TAILLE_JAQUETTE_MAX, TAILLE_JAQUETTE_MIN } from '$lib/reglages/reglages';
+  import { VISUELS } from '$lib/ludotheque/visuels';
 
   let { espace }: { espace: Espace } = $props();
 
@@ -79,6 +80,12 @@
           </select>
         </label>
       {/if}
+      <label class="tri" title="Image des jeux">
+        <span class="muted" aria-hidden="true">🎨</span>
+        <select aria-label="Image des jeux" value={r.visuel} onchange={(e) => reglerProfil('ludotheque.visuel', e.currentTarget.value)}>
+          {#each VISUELS as v (v.valeur)}<option value={v.valeur}>{v.libelle}</option>{/each}
+        </select>
+      </label>
       <label class="taille">
         <span class="muted" aria-hidden="true">🖼</span>
         <input
