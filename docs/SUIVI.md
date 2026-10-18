@@ -286,6 +286,11 @@ d'abord :
 
 ## ✅ Livré (version — ce qui a été vérifié)
 
+- **0.70.1** (19/10) — Correctif (réponse de Firehouse au besoin 23 : `-1` est une VRAIE version, la ROM n° 1 de son
+  stock) : un jeu importé est reconnu à son NUMÉRO négatif (`est_importe`, `estImporte` : `id < 0`), jamais à
+  `version == -1`. Vérifié : test (jeu de Firehouse en version -1 ≠ importé ; ses médias dans le dossier du jeu) ;
+  répétition en lecture seule sur le registre de Seb (9 jeux, verdict identique) ; 360 tests cœur, 181 interface.
+
 - **0.70.0** (19/10) — Contrat 1.15 (✅ Seb 19/10, après le 1.16) : les infos du jeu dans sa fiche — date de sortie en
   français (découpée à la main, jamais `new Date`), type de sortie signalé en étiquette s'il n'est pas « Released »,
   âge conseillé (« N ans et plus (PEGI/ESRB) », rien pour « Not Rated »/« RP »/inconnu), « Avis des joueurs ★ x,y / 5 »,

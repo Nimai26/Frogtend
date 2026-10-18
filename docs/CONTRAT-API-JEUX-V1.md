@@ -272,6 +272,10 @@ Reçu par message de la session Firehouse (besoin 22 de Frogtend, demandé par S
 - Exemple réel (Firehouse) : `GET /jeu/1927` → 410 `{ok: false, fusionne_dans: 324, le: "2026-10-05T14:02:37"}` ;
   154 fusions au 18/10. Un client < 1.14 peut traiter le 410 comme un 404.
 
+Précisions de Firehouse (19/10, besoin 23) : `fusions` est filtrée par grade, fail-closed (les deux fiches visibles à
+ce jeton, jamais un ancien numéro repris par une fiche vivante). Un `telechargement_id` négatif est une vraie version :
+`-<n° de ROM du stock>` (-1 existe), `-(10¹⁵ + …)` pour une version MAME ; `0` = recensement.
+
 ### 1.15 (18/10, Firehouse 2.76.0, en-tête `X-Api-Jeux-Version: 1.15`) — les infos du jeu
 Reçu par message de la session Firehouse (sur demande de Seb), en service depuis le 18/10 à 22 h 37. Ajout compatible :
 un client < 1.15 ignore le champ.
@@ -318,8 +322,11 @@ Reçu par message de la session Firehouse (sur demande de Seb), en service le 19
   `conseil.ligne_de_commande: "-b -e \"%rom%\""`.
 - ⚠️ Côté Frogtend (relevé du 19/10, avant adaptation) : `ligneDe` (src/lib/emulateurs/pret.ts) colle les options de
   Frogtend devant `%rom%` de la ligne du conseil → options EN DOUBLE pour un autonome (Dolphin `-b -e … -b -e`) ;
-  `%rom_nom%`/`%rom_dossier%` ne sont pas remplacés ; MAME construit sa propre commande. À adapter avant qu'un
-  émulateur soit préparé ou mis à jour d'après ces lignes.
+  `%rom_nom%`/`%rom_dossier%` ne sont pas remplacés ; MAME construit sa propre commande. ✅ Adapté en 0.69.0.
+- Réponses de Firehouse (19/10) : `%rom_dossier%` = `D:\` à la racine d'un disque, accepté (seule exception à « sans
+  barre finale », ajoutée à leur brief). xemu : XISO EXIGÉ (doc officielle « Disc Images » : un ISO Redump n'est pas
+  compatible ; conversion `xdvdfs pack jeu.iso`, sans le correctif média des .xbe) ; la `note` du conseil Xbox le dit
+  (Firehouse 2.78.2) ; aucun jeu Xbox au stock au 19/10. Le `username` d'un compte ne change jamais (seul le grade).
 
 ### Note 2.58.0 (contrat inchangé)
 Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a été RÉUNIE à celle du même jeu

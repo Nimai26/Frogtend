@@ -469,7 +469,7 @@ impl Noyau {
             Abri { dossier: String::new(), fichiers: 0, octets: 0 }
         };
         // Un jeu IMPORTÉ du disque appartient à la personne : on le retire de la ludothèque, jamais du disque.
-        if j.version == crate::import_local::VERSION_IMPORTEE {
+        if crate::import_local::est_importe(&j) {
             self.registre().retirer(id)?;
             self.session().await?.verrou().retirer_local(id)?;
             return Ok(abri);

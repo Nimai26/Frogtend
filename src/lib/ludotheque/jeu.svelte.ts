@@ -327,12 +327,16 @@ export async function mettreALAbri(id: number) {
   }
 }
 
-/** Retirer un jeu du PC, après avoir dit exactement ce qui part et ce qui reste. */
-/** Un jeu importé de ton disque (menu Importer) : Frogtend n'a rien installé, il n'efface rien. */
-export const VERSION_IMPORTEE = -1;
+/** Un jeu importé de ton disque (menu Importer) : Frogtend n'a rien installé, il n'efface rien. Reconnu à son NUMÉRO,
+ * toujours négatif (un jeu de Firehouse est positif) — jamais à sa version : Firehouse sert de vraies versions
+ * négatives, -1 compris (besoin 23, 19/10). */
+export function estImporte(j: { id: number }): boolean {
+  return j.id < 0;
+}
 
+/** Retirer un jeu du PC, après avoir dit exactement ce qui part et ce qui reste. */
 export async function retirer(j: JeuPc) {
-  if (j.version === VERSION_IMPORTEE) {
+  if (estImporte(j)) {
     const oui = await confirmer(`Retirer « ${j.titre} » de ta ludothèque ?`, {
       message: `Ce jeu a été importé de ton disque : Frogtend l’oublie, mais ne touche à AUCUN fichier (${j.installation?.dossier ?? j.dossier}). Tu pourras le réimporter.`,
       libelleValider: 'Retirer de la ludothèque',
@@ -723,7 +727,7 @@ export async function gererJeu(id: number) {
     options.push({ valeur: 'abri', libelle: '💾 Mettre mes parties à l’abri', detail: 'une copie de ce qui a changé depuis l’installation' });
   if (j.etat === 'telecharge')
     options.push(
-      j.version === VERSION_IMPORTEE
+      estImporte(j)
         ? { valeur: 'retirer', libelle: '🗑 Retirer de la ludothèque', detail: 'ses fichiers restent sur ton disque' }
         : { valeur: 'retirer', libelle: '🗑 Retirer du PC (désinstaller)', detail: 'tes parties sont copiées à l’abri d’abord' },
     );

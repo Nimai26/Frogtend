@@ -5,7 +5,7 @@
 //! - **rien n'est déplacé, copié ni renommé** : Frogtend note où est le jeu, c'est tout (les émulateurs et les bases de
 //!   jaquettes reconnaissent une ROM par son nom officiel) ;
 //! - **rien ne s'efface** : retirer un jeu importé le retire de la ludothèque, jamais du disque (voir
-//!   `VERSION_IMPORTEE` dans `partie.rs`) ;
+//!   `est_importe`, qui le reconnaît à son numéro négatif) ;
 //! - une opération de masse (un dossier de ROM) est **comptée et montrée** avant d'être faite.
 
 use crate::erreurs::{Erreur, Resultat};
@@ -13,9 +13,17 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-/// La « version » d'un jeu importé dans le registre du PC : il n'a pas été téléchargé par Frogtend, ses fichiers
-/// appartiennent à la personne et ne sont JAMAIS effacés par Frogtend.
+/// La « version » inscrite pour un jeu importé dans le registre du PC (rien de Firehouse). Ce n'est PAS ce qui le
+/// reconnaît : Firehouse sert de vraies versions négatives, -1 compris (la ROM n° 1 de son stock, besoin 23 du
+/// 19/10) — voir `est_importe`.
 pub const VERSION_IMPORTEE: i64 = -1;
+
+/// Un jeu importé du disque (il n'a pas été téléchargé par Frogtend, ses fichiers appartiennent à la personne et ne
+/// sont JAMAIS effacés par Frogtend) : reconnu à son NUMÉRO, toujours négatif (`id_boutique("local", …)`), alors
+/// qu'un jeu de Firehouse a un numéro positif.
+pub fn est_importe(j: &crate::jeux_pc::JeuPc) -> bool {
+    j.id < 0
+}
 
 /// Au-delà, on refuse de parcourir (un disque entier choisi par erreur) : la personne choisit un dossier plus précis.
 pub const MAX_FICHIERS_PARCOURUS: usize = 200_000;
@@ -608,7 +616,7 @@ pub struct BilanImport {
 
 impl crate::noyau::Noyau {
     /// Ajoute des jeux du disque à la ludothèque du profil ouvert ET au registre du PC (pour « Jouer ») : rien n'est
-    /// copié ni renommé ; le jeu est noté `VERSION_IMPORTEE` (Frogtend n'effacera jamais ses fichiers).
+    /// copié ni renommé ; le jeu reçoit un numéro négatif (`est_importe` : Frogtend n'effacera jamais ses fichiers).
     pub async fn importer_locaux(&self, jeux: &[JeuAImporter]) -> Resultat<BilanImport> {
         use crate::installation::{Lanceur, Methode};
         use crate::jeux_pc::{Etat, Installation, JeuPc};
@@ -618,7 +626,7 @@ impl crate::noyau::Noyau {
 
         // Les fichiers déjà connus (jeux importés avant, y compris un par fichier avant 0.31.0) : jamais en double.
         let mut connus: std::collections::HashSet<String> = std::collections::HashSet::new();
-        for j in self.registre().tous()?.into_iter().filter(|j| j.version == VERSION_IMPORTEE) {
+        for j in self.registre().tous()?.into_iter().filter(est_importe) {
             if let Some(i) = &j.installation {
                 if let Some(f) = &i.fichier_du_jeu {
                     connus.insert(normaliser_chemin(&Path::new(&i.dossier).join(f)).to_string_lossy().to_string());
@@ -808,6 +816,31 @@ fn ligne_de_ludotheque(id: i64, j: &JeuAImporter, cle: String, annee: Option<i64
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn un_jeu_importe_se_reconnait_a_son_numero_jamais_a_sa_version() {
+        // Firehouse (besoin 23, 19/10) : -1 est une VRAIE version (la ROM n° 1 de son stock).
+        let jeu = |id: i64, version: i64| crate::jeux_pc::JeuPc {
+            id,
+            version,
+            titre: "Jeu".into(),
+            plateforme: "SNES".into(),
+            dossier: r"E:\Jeux".into(),
+            etat: crate::jeux_pc::Etat::Telecharge,
+            total: 0,
+            fichiers: vec![],
+            message: None,
+            ajoute_le: String::new(),
+            ajoute_par: String::new(),
+            installation: None,
+            temps_jeu: 0,
+            derniere_partie: None,
+        };
+        assert!(!est_importe(&jeu(1, -1)), "un jeu de Firehouse en version -1 n'est pas un jeu importé");
+        assert!(est_importe(&jeu(crate::ludotheque::id_boutique("local", "x"), VERSION_IMPORTEE)));
+        // Ses médias vont dans le dossier du jeu, pas dans un sous-dossier à son titre (cas d'un jeu importé).
+        assert_eq!(crate::locale::dossier_frogtend(&jeu(1, -1)), Path::new(r"E:\Jeux\Frogtend"));
+    }
 
     #[tokio::test]
     async fn un_jeu_importe_se_joue_et_ne_s_efface_jamais_du_disque() {

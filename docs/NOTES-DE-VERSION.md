@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.70.1 — Un jeu de Firehouse n'est jamais pris pour un jeu importé
+
+- Correctif : Frogtend reconnaissait un jeu importé de ton disque à un numéro de version que Firehouse peut aussi
+  donner à un vrai jeu. Un tel jeu aurait été traité comme importé (retiré de la ludothèque sans être désinstallé, ses
+  images rangées ailleurs). Frogtend le reconnaît maintenant autrement, sans risque de confusion. Chez toi, rien ne
+  change (vérifié sur tes 9 jeux).
+
 ## 0.70.0 — La fiche du jeu dit sa date de sortie, l'âge conseillé et l'avis des joueurs
 
 - Dans la fiche d'un jeu : la date de sortie précise (« 28 février 1992 »), l'âge conseillé (« 18 ans et plus

@@ -93,7 +93,7 @@ fn client(s: &Session) -> Resultat<&Client> {
 /// Un jeu importé partage son dossier avec d'autres (1 000 ROM dans un dossier) : `<dossier>\Frogtend\<titre>\`.
 pub fn dossier_frogtend(j: &JeuPc) -> PathBuf {
     let base = Path::new(&j.dossier).join("Frogtend");
-    if j.version == crate::import_local::VERSION_IMPORTEE {
+    if crate::import_local::est_importe(j) {
         base.join(nom_de_dossier(&j.titre))
     } else {
         base
@@ -192,6 +192,11 @@ impl Noyau {
         emplacement: &str,
         emplacements: &Emplacements,
     ) -> Resultat<JeuPc> {
+        // Un jeu de Firehouse a un numéro POSITIF : un numéro négatif est celui d'un jeu importé (`est_importe`), jamais
+        // effacé du disque — il ne doit jamais entrer ici.
+        if id <= 0 {
+            return Err(Erreur::Refus("Ce jeu ne vient pas de Firehouse : il ne peut pas être téléchargé.".into()));
+        }
         let s = self.session().await?;
         let c = client(&s)?;
         // Une fiche réunie à une autre (contrat 1.14 : une ancienne sauvegarde, un vieux lien) : la nouvelle — les
@@ -606,6 +611,17 @@ mod tests {
             .iter()
             .any(|ev| matches!(ev, Evenement::Etat { etat: Etat::Telecharge, .. })));
         drop(d);
+    }
+
+    #[tokio::test]
+    async fn un_numero_negatif_ou_nul_n_entre_jamais_comme_jeu_de_firehouse() {
+        // Négatif = jeu importé (jamais effacé du disque) : un tel numéro ne doit jamais être téléchargé.
+        let s = serveur_dune();
+        let (_d, n, e) = noyau_ouvert(&s).await;
+        for id in [-5, 0] {
+            assert!(matches!(n.ajouter(id, 200, &e.defaut[0], &e).await, Err(Erreur::Refus(_))));
+        }
+        assert!(n.registre().tous().unwrap().is_empty());
     }
 
     #[tokio::test]
