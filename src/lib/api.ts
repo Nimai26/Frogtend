@@ -345,6 +345,7 @@ export interface ErreurCoeur {
     | 'introuvable'
     | 'conflit'
     | 'refus'
+    | 'plage'
     | 'serveur'
     | 'reseau'
     | 'coffre'

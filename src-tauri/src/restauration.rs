@@ -70,8 +70,18 @@ async fn telecharger(client: &Client, route: &str, cible: &Path, sha: &str, tail
         std::fs::create_dir_all(p)?;
     }
     let part = cible.with_extension("part-frogtend");
-    let debut = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0).min(taille);
-    let mut flux = client.flux(route, debut).await?;
+    let mut debut = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0).min(taille);
+    let mut flux = match client.flux(route, debut).await {
+        Ok(f) => f,
+        // 416 : le morceau déjà reçu ne correspond plus ; ce fichier de Frogtend (refait de toute façon si son empreinte
+        // est fausse) repart de zéro, une seule fois — sinon le même refus reviendrait à chaque essai.
+        Err(Erreur::Plage(_)) if debut > 0 => {
+            std::fs::remove_file(&part)?;
+            debut = 0;
+            client.flux(route, 0).await?
+        }
+        Err(e) => return Err(e),
+    };
     let mut sortie = std::fs::OpenOptions::new()
         .create(true)
         .write(true)

@@ -78,8 +78,9 @@ pub async fn telecharger_fichier(
 
     let mut flux = match client.flux(route, debut).await {
         Ok(f) => f,
-        // 416 : le serveur n'a rien après `debut` ; si notre .part n'a pas la bonne taille, on repart de zéro.
-        Err(Erreur::Refus(_)) if debut > 0 => {
+        // 416 SEULEMENT : le serveur n'a rien après `debut` ; si notre .part n'a pas la bonne taille, on repart de zéro.
+        // Toute autre erreur (404, 409, 410, 503…) GARDE le .part déjà reçu (un jeu de 100 Go à moitié reçu).
+        Err(Erreur::Plage(_)) if debut > 0 => {
             std::fs::remove_file(&part)?;
             debut = 0;
             client.flux(route, 0).await?
@@ -278,6 +279,33 @@ mod tests {
         assert!(matches!(&e, Erreur::Reseau(m) if m.contains("12 octets sur 20")), "{e:?}");
         assert!(!d.path().join("jeu.iso").exists(), "jamais de nom final pour un fichier incomplet");
         assert_eq!(std::fs::metadata(d.path().join("jeu.iso.part")).unwrap().len(), 12);
+    }
+
+    #[tokio::test]
+    async fn un_refus_en_pleine_reprise_garde_le_part_deja_recu() {
+        // Relecture de l'expert contrat (18/10) : un 410 (fiche réunie, contrat 1.14), un 404 ou un 503 reçu en
+        // reprise effaçait le `.part` (un jeu de 100 Go à moitié reçu). Seul un 416 l'autorise.
+        for (code, corps) in [
+            (410, serde_json::json!({"ok": false, "fusionne_dans": 324, "le": "2026-10-05T14:02:37", "detail": "ce jeu a été réuni à la fiche 324"})),
+            (404, serde_json::json!({"ok": false})),
+            (503, serde_json::json!({"ok": false})),
+        ] {
+            let s = MockServer::start();
+            let m = s.mock(|w, t| {
+                w.method(GET).path("/api/jeux/v1/fichier/110/200/0");
+                t.status(code).json_body(corps.clone());
+            });
+            let d = tempfile::tempdir().unwrap();
+            std::fs::write(d.path().join("jeu.iso.part"), &CONTENU[..8]).unwrap();
+            let c = Client::nouveau(&s.base_url(), "j").unwrap();
+            let j = jeu(d.path(), vec![FichierJeu { n: 0, nom: "jeu.iso".into(), taille: 20 }]);
+            let e = telecharger_jeu(&c, &j, &AtomicBool::new(false), &|_| {}).await.unwrap_err();
+            assert_eq!(std::fs::read(d.path().join("jeu.iso.part")).unwrap(), &CONTENU[..8], "{code} : le .part est gardé");
+            m.assert_hits(1);
+            if code == 410 {
+                assert!(e.to_string().contains("324"), "le texte de Firehouse est dit : {e}");
+            }
+        }
     }
 
     #[tokio::test]

@@ -257,6 +257,21 @@ et, s'il en a, ses CHD. Chaque fichier porte `dossier` : vide = à plat dans le 
 chemin du zip). `complet: false` = une CHD manque encore : dire « incomplet ». Les clones sont des VERSIONS de la
 fiche du parent.
 
+### 1.14 (18/10, Firehouse 2.72.1, en-tête `X-Api-Jeux-Version: 1.14`) — fiche réunie : « fusionné dans N »
+Reçu par message de la session Firehouse (besoin 22 de Frogtend, demandé par Seb le 18/10).
+- `GET /jeu/{ancien}` et TOUTES les routes d'un jeu (`/medias`, `/documents`, `/media`, `/fichier`, `/annexe`,
+  `/triche`, `POST /assistant` avec un ancien `media_id`) → **410** `{ok: false, fusionne_dans: N, le, detail}` ; une
+  chaîne A→B→C donne directement C.
+- Page 1 de `/catalogue` : `fusions: [{ancien, nouveau, le}]`, TOUJOURS présente (aussi sans `depuis` ; filtrée par
+  `le >= depuis` si donné ; jamais par `plateforme`).
+- Fail-closed : jeu caché à ce jeton, ou ancienne fiche cachée/réservée sans droit → 404, identique à un numéro
+  inconnu. Un numéro repris par une fiche vivante sert cette fiche (200).
+- Les `telechargement_id` des versions sont GARDÉS tels quels sur la nouvelle fiche ; exceptions : 3 versions de stock
+  déplacées plus tard vers une troisième fiche (repli : chercher par `sha1`/`crc32`), et deux versions de recensement
+  `telechargement_id: 0`.
+- Exemple réel (Firehouse) : `GET /jeu/1927` → 410 `{ok: false, fusionne_dans: 324, le: "2026-10-05T14:02:37"}` ;
+  154 fusions au 18/10. Un client < 1.14 peut traiter le 410 comme un 404.
+
 ### Note 2.58.0 (contrat inchangé)
 Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a été RÉUNIE à celle du même jeu
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne

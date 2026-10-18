@@ -282,7 +282,8 @@ impl Source {
             // Une reprise refusée (416 : le `.part` vient d'une AUTRE version du fichier, ou il est déjà complet) : le
             // `.part` — un fichier de Frogtend, incomplet par nature — est retiré et on repart de zéro, une seule fois.
             // Sinon le même refus reviendrait à chaque essai. Une coupure réseau, elle, garde le `.part` (reprise).
-            Err(e) if debut > 0 && !matches!(e, Erreur::Reseau(_) | Erreur::JetonRefuse(_)) => {
+            // 416 SEULEMENT : tout autre refus (404, 409, 410, 503…) garde le `.part` déjà reçu.
+            Err(Erreur::Plage(_)) if debut > 0 => {
                 std::fs::remove_file(&part)?;
                 debut = 0;
                 c.flux(route, 0).await?

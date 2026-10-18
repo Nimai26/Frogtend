@@ -1146,6 +1146,24 @@ mod tests {
         }
     }
 
+    /// RÉEL, lecture seule : contrat 1.14 (« fusionné dans N ») — la réponse brute de `/jeu/1927` et la liste `fusions`
+    /// de la page 1 du catalogue. `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_fusions -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_fusions() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").unwrap();
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        let r = c.brute(reqwest::Method::GET, "/jeu/1927", None, &[]).await.unwrap();
+        println!("JEU 1927 : {}, corps {}", r.statut, String::from_utf8_lossy(&r.octets));
+        let v: Value = c.obtenir_json("/catalogue?page=1").await.unwrap();
+        let f = v["fusions"].as_array().cloned().unwrap_or_default();
+        println!("FUSIONS {} ; premières {:?}", f.len(), f.iter().take(3).collect::<Vec<_>>());
+        let anciens: Vec<String> = f.iter().filter_map(|x| x["ancien"].as_i64()).map(|x| x.to_string()).collect();
+        println!("ANCIENS {}", anciens.join(","));
+    }
+
     #[tokio::test]
     async fn un_ancien_catalogue_est_relu_en_entier_une_fois() {
         let serveur = MockServer::start();

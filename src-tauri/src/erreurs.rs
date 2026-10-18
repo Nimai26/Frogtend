@@ -20,6 +20,10 @@ pub enum Erreur {
     /// Autre refus du serveur (400, 403…), avec son motif.
     #[error("{0}")]
     Refus(String),
+    /// 416 : la reprise d'un téléchargement n'est plus possible (le morceau déjà reçu ne correspond plus au fichier).
+    /// SEULE erreur qui autorise à effacer le `.part` déjà reçu : toute autre (404, 409, 410, 503…) le garde.
+    #[error("{0}")]
+    Plage(String),
     /// Le serveur ne répond pas correctement (5xx, réponse illisible).
     #[error("{0}")]
     Serveur(String),

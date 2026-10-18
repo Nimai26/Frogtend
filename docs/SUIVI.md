@@ -120,6 +120,9 @@
       Firehouse le 18/10) ; Firehouse (18/10) : reçu, traité après sa 2.71.0 ; un jeu caché reste en 404 ;
       probablement redirection sur `/jeu/{ancien}` ET liste `fusions` dans `/catalogue` ; `telechargement_id` à
       vérifier. Côté Frogtend : rattacher le jeu du PC au nouvel id quand ce sera servi.
+      ✅ SERVI le 18/10 (contrat 1.14) et vérifié en réel (`/jeu/1927` → 410 `fusionne_dans: 324` ; `fusions` = 154 sur la
+      page 1 du catalogue). Lot « 1.14 » commencé le 18/10 : inventaire de ce qui est rangé sous le numéro d'un jeu
+      demandé aux experts avant de coder.
       ✅ (1)+(2) en 0.49.0 : le conseil prime (même absent de la liste : MS-DOS → RetroArch, liste = DOSBox Staging
       seul), ligne = options de Frogtend juste avant `%rom%`, `%rom%` remplacé au lancement, `maj_le` retenu dans
       pc.json ; ✅ 0.62.0 : la mise à jour est PROPOSÉE quand `maj_le` change (au lancement, une fois par console et
@@ -269,6 +272,13 @@ d'abord :
       quelle (règles « Autoriser, privé » posées sur le RetroArch d'essai supprimé : sans effet, gardées).
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.64.1** (18/10) — Correctif URGENT (relevé par l'expert contrat avant le lot 1.14) : un refus en pleine reprise
+  (404, 409, 410, 503…) effaçait le `.part` déjà reçu ; seul un 416 (`Erreur::Plage`) l'autorise désormais
+  (téléchargements des jeux, fichiers servis, restauration). 410 traité comme un 404 avec le texte de Firehouse en
+  attendant le rattachement. Vérifié : test de non-régression (410/404/503 : `.part` intact, une requête) ; en lecture
+  seule, aucun des 9 jeux installés de Seb n'a sa fiche réunie (ses sauvegardes ne sont pas touchées par le défaut
+  « jeu réuni = parties plus sauvegardées »). Tests : 328 cœur, 165 interface ; relecture de l'expert contrat.
 
 - **0.64.0** (18/10) — Lot Médias M2 : galerie de la fiche (vignettes en cellules fixes, visionneuse à la manette et au
   clavier, libellés et régions en français, damier, gros pixels des petites images agrandies ×2). Cœur : `medias.rs`

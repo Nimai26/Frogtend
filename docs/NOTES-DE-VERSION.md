@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.64.1 — Un téléchargement à moitié reçu n'est plus jamais perdu
+
+- Correctif important : quand Firehouse refusait la reprise d'un téléchargement (jeu introuvable, fiche réunie à une
+  autre, Firehouse en maintenance…), Frogtend effaçait ce qu'il avait déjà reçu et recommençait de zéro. Désormais, le
+  morceau reçu est TOUJOURS gardé ; il n'est recommencé que si Firehouse dit vraiment qu'il ne correspond plus.
+- Une fiche réunie à une autre chez Firehouse est dite clairement (« réuni à la fiche N ») ; son rattachement
+  automatique arrive dans une prochaine version.
+
 ## 0.64.0 — La galerie d'images du jeu
 
 - Dans la fiche d'un jeu : **🖼 Images du jeu** — boîte en relief, dos, tranche, cartouche, écrans titre, images du
