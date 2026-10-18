@@ -3,6 +3,13 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 18/10 — Une release publiée alors que le commit avait échoué
+Ce qui s'est passé : `git add` contenait `CLAUDE.md`, ignoré par git : la commande a échoué, le commit (enchaîné par
+`&&`) n'a pas eu lieu, mais la publication, sur une AUTRE ligne, est partie quand même — étiquette v0.63.0 posée sur
+le commit de la 0.62.0. Rattrapé aussitôt (commit, push, étiquette recalée). · Comment l'appliquer : n'ajouter que
+des fichiers suivis par git (`CLAUDE.md` est volontairement ignoré) ; enchaîner commit, push et release en UNE seule
+chaîne `&&`, pour qu'un échec arrête tout ; vérifier que l'étiquette pointe sur HEAD (`git ls-remote`).
+
 ## 16/10 — Un réglage « sur la machine seulement » que RetroArch n'a jamais eu
 Ce qui s'est passé : depuis la 0.8, Frogtend écrivait `network_cmd_bind_address = "127.0.0.1"` et le code affirmait
 que les commandes de RetroArch restaient sur la machine. Le réglage n'existe pas : RetroArch 1.22.2 ouvre son port sur
