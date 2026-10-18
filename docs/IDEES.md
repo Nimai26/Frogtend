@@ -51,3 +51,6 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   annonce, suivant le réglage « Fonds et logos » : à confirmer avec Seb pour une connexion limitée (chez sa sœur).
 - (18/10, expert contrat, 0.67.1) En mode simulé, les jeux Steam/GOG importés du vrai profil n'apparaissent pas, et
   un import fait en simulé reste dans le cache simulé : le dire dans l'interface du mode simulé, ou refuser l'import.
+- (19/10, expert lancement, contrat 1.16) ScummVM n'est pas branché : un jeu ScummVM se lance par son exécutable
+  (prêt à jouer) ; s'il passait un jour par un émulateur, `%rom%` doit être le DOSSIER du jeu (`-p "%rom%"`), pas le
+  fichier — à faire avec un test avant de promettre ScummVM.

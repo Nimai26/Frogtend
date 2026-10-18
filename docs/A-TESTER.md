@@ -48,6 +48,13 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Les lignes de commande de la maison (0.69.0)
+- [ ] Un jeu PS3 : il se lance comme avant (ton RPCS3 réglé à la main n'est pas touché, aucune question au lancement).
+- [ ] (Si un jour tu prépares Dolphin, PCSX2 ou un autre émulateur avec « Prêt à jouer ») : le jeu démarre en plein
+      écran, directement.
+- [ ] Une machine de salon par MAME (RCA Studio II…) : le jeu démarre ; le menu en jeu ne promet PAS de pause pour
+      elles (seulement pour l'arcade).
+
 ## Apostrophes et virgules dans les dossiers (0.68.2)
 - [ ] Rien à faire chez toi aujourd'hui (aucun de tes dossiers n'en a). Si un jour tu ranges des émulateurs dans un
       dossier comme « Jeux d'émulation » : xemu, Eden et Azahar démarrent normalement depuis Frogtend.

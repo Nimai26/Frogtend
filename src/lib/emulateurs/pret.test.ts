@@ -64,16 +64,36 @@ describe('le conseil de la maison (contrat 1.8)', () => {
   it('la ligne : les options de Frogtend puis celle du conseil, jamais celle de LaunchBox', () => {
     const ra = ligneLb('RetroArch', 'retroarch', true, '-L "cores\\bsnes_libretro.dll"');
     expect(ligneDe(ra, '-f', conseilSnes)).toBe('-L "cores\\snes9x_libretro.dll" -f "%rom%"');
-    // Une option de Frogtend qui attend le fichier du jeu (« -- », « -e ») reste collée au jeu.
+    // Contrat 1.16 : la ligne COMPLÈTE d'un autonome, seule — jamais doublée des options de Frogtend.
     const pcsx2 = ligneLb('PCSX2', 'pcsx2', true);
-    expect(ligneDe(pcsx2, '-batch -fullscreen --', { ...conseilSnes, emulateur: 'pcsx2', ligne_de_commande: '-option "%rom%"' })).toBe('-option -batch -fullscreen -- "%rom%"');
-    expect(ligneDe(ligneLb('Dolphin', 'dolphin', true), '-b -e', { ...conseilSnes, emulateur: 'dolphin', ligne_de_commande: '-x' })).toBe('-x -b -e');
+    expect(ligneDe(pcsx2, '-batch -fullscreen --', { ...conseilSnes, emulateur: 'pcsx2', ligne_de_commande: '-batch -fullscreen -- "%rom%"' })).toBe('-batch -fullscreen -- "%rom%"');
+    expect(ligneDe(ligneLb('Dolphin', 'dolphin', true), '-b -e', { ...conseilSnes, emulateur: 'dolphin', ligne_de_commande: '-b -e "%rom%"' })).toBe('-b -e "%rom%"');
     // Un autonome (ligne du conseil vide) : seulement les options de Frogtend (RPCS3 : sans interface, plein écran).
     const rpcs3 = ligneLb('RPCS3', 'rpcs3', true, '--lb');
     expect(ligneDe(rpcs3, '--no-gui --fullscreen', { ...conseilSnes, emulateur: 'rpcs3', ligne_de_commande: '' })).toBe('--no-gui --fullscreen');
     // Sans conseil, ou un autre émulateur choisi : comme avant (LaunchBox, sinon Frogtend).
     expect(ligneDe(ra, '-f', null)).toBe('-L "cores\\bsnes_libretro.dll"');
     expect(ligneDe(ligneLb('Mesen', 'mesen', false), '-x', conseilSnes)).toBe('-x');
+  });
+
+  it('contrat 1.16 : la ligne du conseil de chaque autonome porte déjà toutes les options de Frogtend', () => {
+    // Relevé du 19/10 (section 1.16 du contrat) face au catalogue de Frogtend (src-tauri/src/emulateurs.rs, champ
+    // `ligne` de CATALOGUE — à recopier ici s'il change). Si un jour une ligne du conseil oubliait une option de
+    // Frogtend, ce test le dirait (elle serait perdue sans bruit).
+    const tableau: [string, string, string][] = [
+      ['dolphin', '-b -e', '-b -e "%rom%"'],
+      ['pcsx2', '-batch -fullscreen --', '-batch -fullscreen -- "%rom%"'],
+      ['rpcs3', '--no-gui --fullscreen', '--no-gui --fullscreen "%rom%"'],
+      ['cemu', '-f -g', '-f -g "%rom%"'],
+      ['eden', '-f -g', '-f -g "%rom%"'],
+      ['xenia_canary', '--fullscreen', '--fullscreen "%rom%"'],
+      ['xemu', '-dvd_path', '-full-screen -dvd_path "%rom%"'],
+    ];
+    for (const [id, frogtend, ligne] of tableau) {
+      const conseil = { ...conseilSnes, emulateur: id, coeur: null, ligne_de_commande: ligne };
+      expect(ligneDe(ligneLb(id, id, true), frogtend, conseil)).toBe(ligne);
+      for (const o of frogtend.split(' ')) expect(ligne.split(' ')).toContain(o);
+    }
   });
 
   it('les fichiers système : ceux du conseil, jamais la chaîne LaunchBox', () => {
@@ -229,5 +249,27 @@ describe('le conseil de la maison a changé (contrat 1.8, maj_le)', () => {
   });
   it('un autre émulateur conseillé : à proposer', () => {
     expect(changementDeConseil(ra, c({ emulateur: 'mesen' }), '')).toEqual({ sorte: 'autre' });
+  });
+  it('contrat 1.16 : un autonome réglé avant (options de Frogtend seules) garde son réglage, rien à demander', () => {
+    const dolphin = { programme: String.raw`E:\Dolphin\Dolphin.exe`, ligne: '-b -e', conseil: '2026-10-04T17:23:15' };
+    const c16 = c({ emulateur: 'dolphin', coeur: null, ligne_de_commande: '-b -e "%rom%"', maj_le: '2026-10-19T00:11:00' });
+    expect(changementDeConseil(dolphin, c16, '-b -e')).toEqual({ sorte: 'date' });
+    // xemu : le conseil AJOUTE le plein écran → proposé.
+    const xemu = { programme: String.raw`E:\xemu\xemu.exe`, ligne: '-dvd_path', conseil: '2026-10-04T17:23:15' };
+    const cx = c({ emulateur: 'xemu', coeur: null, ligne_de_commande: '-full-screen -dvd_path "%rom%"', maj_le: '2026-10-19T00:11:00' });
+    expect(changementDeConseil(xemu, cx, '-dvd_path')).toEqual({ sorte: 'ligne', ligne: '-full-screen -dvd_path "%rom%"' });
+    // MAME arcade réglé avant (ligne vide) : la commande reste la même (Frogtend construit nom court et rompath).
+    const mame = { programme: String.raw`E:\MAME\mame.exe`, ligne: '', conseil: '2026-10-05T10:00:00' };
+    const cm = c({ emulateur: 'mame', coeur: null, ligne_de_commande: '%rom_nom% -rompath "%rom_dossier%"', maj_le: '2026-10-19T00:11:00' });
+    expect(changementDeConseil(mame, cm, '')).toEqual({ sorte: 'date' });
+  });
+  it('contrat 1.16 : une ligne doublée par Frogtend lui-même (préparée le 19/10 avant l’adaptation) est réparée', () => {
+    const c16 = c({ emulateur: 'dolphin', coeur: null, ligne_de_commande: '-b -e "%rom%"', maj_le: '2026-10-19T00:11:00' });
+    // Même date (préparé APRÈS le changement) : réparé quand même, sans question.
+    const doublee = { programme: String.raw`E:\Dolphin\Dolphin.exe`, ligne: '-b -e -b -e "%rom%"', conseil: '2026-10-19T00:11:00' };
+    expect(changementDeConseil(doublee, c16, '-b -e')).toEqual({ sorte: 'reparer', ligne: '-b -e "%rom%"' });
+    // Une ligne choisie par la personne n'est jamais touchée.
+    const perso = { ...doublee, ligne: '-b -e --debugger "%rom%"' };
+    expect(changementDeConseil(perso, c16, '-b -e')).toBeNull();
   });
 });

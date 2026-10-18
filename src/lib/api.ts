@@ -191,7 +191,8 @@ export interface Conseil {
   /** L'id de l'émulateur dans les sources de Firehouse (« retroarch », « pcsx2 », « dosbox_staging »…). */
   emulateur: string;
   coeur: string | null;
-  /** SA ligne de commande (« -L "cores\snes9x_libretro.dll" "%rom%" ») ; vide pour un émulateur autonome. */
+  /** SA ligne de commande (« -L "cores\snes9x_libretro.dll" "%rom%" ») ; depuis le contrat 1.16, COMPLÈTE aussi pour un
+   * émulateur autonome (« -b -e "%rom%" »), avec `%rom%`, `%rom_nom%`, `%rom_dossier%` ; vide = non fournie. */
   ligne_de_commande: string;
   alternatives: { nom: string; emulateur: string | null; coeur: string | null; quand: string; site: string; paquet?: PaquetCoeur | null }[];
   bios: BiosConseil[];

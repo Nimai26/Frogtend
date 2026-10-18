@@ -33,13 +33,33 @@ export function estConseille(rec: EmulateurRecommande, conseil: Conseil | null |
 export function ligneDe(rec: EmulateurRecommande, ligneFrogtend: string, conseil: Conseil | null | undefined): string {
   if (!estConseille(rec, conseil)) return rec.ligne_de_commande || ligneFrogtend;
   const c = conseil!.ligne_de_commande.trim();
-  const f = ligneFrogtend.trim();
-  // Les options de Frogtend vont JUSTE AVANT le jeu : certaines finissent par une option qui attend le fichier du jeu
-  // (« -- » de PCSX2/DuckStation, « -e » de Dolphin, « -g » de Cemu/Eden). Avec `%rom%` : devant lui ; sans : après la
-  // ligne du conseil (le jeu sera ajouté à la fin).
+  // Contrat 1.16 : la ligne du conseil d'un émulateur AUTONOME est COMPLÈTE (plein écran, sans interface… vérifiés
+  // dans ses sources) : elle seule, jamais doublée des options de Frogtend (`-b -e -b -e` pour Dolphin).
+  if (c && conseil!.emulateur !== 'retroarch') return c;
+  return collee(c, ligneFrogtend.trim());
+}
+
+/** Les options de Frogtend collées JUSTE AVANT le jeu dans la ligne du conseil : certaines finissent par une option qui
+ * attend le fichier du jeu (« -- » de PCSX2, « -e » de Dolphin, « -g » de Cemu/Eden). Avec `%rom%` : devant lui ;
+ * sans : après la ligne du conseil (le jeu sera ajouté à la fin). La règle de RetroArch (son cœur, puis le jeu). */
+function collee(c: string, f: string): string {
   const i = c.search(/"?%rom%/i);
   if (i < 0) return [c, f].filter(Boolean).join(' ');
   return [c.slice(0, i).trim(), f, c.slice(i).trim()].filter(Boolean).join(' ');
+}
+
+/** Une ligne sans son `"%rom%"` final, pour comparer deux réglages (sans `%rom%`, le jeu va de toute façon à la fin).
+ * MAME arcade : `%rom_nom% -rompath "%rom_dossier%"` ne compte pas non plus (Frogtend construit lui-même ces deux-là,
+ * la commande reste la même : aucune question pour rien). */
+function sansJeuFinal(l: string): string {
+  return l
+    .trim()
+    .replace(/-rompath\s+"?%rom_dossier%"?/gi, '')
+    .replace(/"?%rom_nom%"?/gi, '')
+    .replace(/\s*"?%rom%"?\s*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
 }
 
 /** Les fichiers système de `system/` que RetroArch doit trouver (vérifiés sur le disque après l'installation) : ceux
@@ -146,17 +166,26 @@ export function memeEmulateur(programme: string, id: string): boolean {
  * - `null` : réglé à la main (pas d'après le conseil), ou rien de nouveau ;
  * - `date` : nouvelle date, même réglage (rien à demander : on retient seulement la date) ;
  * - `ligne` : même émulateur, réglage changé (un autre cœur…) : la nouvelle ligne à PROPOSER ;
- * - `autre` : la maison conseille maintenant un autre émulateur (à proposer, l'actuel reste).
+ * - `autre` : la maison conseille maintenant un autre émulateur (à proposer, l'actuel reste) ;
+ * - `reparer` : la ligne réglée est EXACTEMENT celle que Frogtend avait produite en doublant ses options devant la ligne
+ *   complète d'un autonome (contrat 1.16, avant l'adaptation) : le texte de Frogtend, pas un choix de la personne —
+ *   corrigé sans rien demander, une fois.
  */
 export function changementDeConseil(
   e: { programme: string; ligne: string; conseil?: string },
   conseil: Conseil | null | undefined,
   ligneFrogtend: string,
-): { sorte: 'date' } | { sorte: 'ligne'; ligne: string } | { sorte: 'autre' } | null {
-  if (!e.conseil || !conseil?.maj_le || conseil.maj_le === e.conseil) return null;
-  if (!memeEmulateur(e.programme, conseil.emulateur)) return { sorte: 'autre' };
+): { sorte: 'date' } | { sorte: 'ligne'; ligne: string } | { sorte: 'autre' } | { sorte: 'reparer'; ligne: string } | null {
+  if (!e.conseil || !conseil?.maj_le) return null;
+  const meme = memeEmulateur(e.programme, conseil.emulateur);
   const ligne = ligneDe({ id: conseil.emulateur } as EmulateurRecommande, ligneFrogtend, conseil);
-  return ligne.trim() === e.ligne.trim() ? { sorte: 'date' } : { sorte: 'ligne', ligne };
+  if (meme && conseil.emulateur !== 'retroarch' && conseil.ligne_de_commande.trim()) {
+    const doublee = collee(conseil.ligne_de_commande.trim(), ligneFrogtend.trim());
+    if (doublee !== ligne && e.ligne.trim() === doublee) return { sorte: 'reparer', ligne };
+  }
+  if (conseil.maj_le === e.conseil) return null;
+  if (!meme) return { sorte: 'autre' };
+  return sansJeuFinal(ligne) === sansJeuFinal(e.ligne) ? { sorte: 'date' } : { sorte: 'ligne', ligne };
 }
 
 export function biosADireOuPoser(bios: BiosConseil[]): boolean {

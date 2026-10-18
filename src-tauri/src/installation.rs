@@ -500,8 +500,29 @@ pub fn verifier_rompath(dossier: &str) -> crate::erreurs::Resultat<()> {
     Ok(())
 }
 
-pub fn lanceur_mame(programme: &str, ligne: &str, nom_court: &str, rompath: &Path, script: Option<&str>) -> Lanceur {
-    let mut arguments: Vec<String> = decouper(ligne).into_iter().filter(|a| !a.to_ascii_lowercase().contains("%rom%")).collect();
+pub fn lanceur_mame(programme: &str, ligne: &str, nom_court: &str, rompath: &Path, script: Option<&str>) -> crate::erreurs::Resultat<Lanceur> {
+    if let Some(v) = variable_inconnue(ligne) {
+        return Err(refus_variable(&v));
+    }
+    // Frogtend construit lui-même le nom court et `-rompath` (avec celui de mame.ini) : les variables du conseil
+    // (`%rom_nom% -rompath "%rom_dossier%"`, contrat 1.16) et le `-rompath` qui les précède sont retirés.
+    let brut = decouper(ligne);
+    let mut arguments: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < brut.len() {
+        let a = &brut[i];
+        let variable = |x: &str| x.to_ascii_lowercase().contains("%rom");
+        if variable(a) {
+            i += 1;
+            continue;
+        }
+        if a.eq_ignore_ascii_case("-rompath") && brut.get(i + 1).is_some_and(|x| variable(x)) {
+            i += 2;
+            continue;
+        }
+        arguments.push(a.clone());
+        i += 1;
+    }
     if let Some(s) = script {
         arguments.push("-autoboot_script".into());
         arguments.push(s.into());
@@ -511,30 +532,102 @@ pub fn lanceur_mame(programme: &str, ligne: &str, nom_court: &str, rompath: &Pat
     arguments.push("-rompath".into());
     arguments.push(format!("{};{}", rompath.to_string_lossy(), rompath_de_mame_ini(ini.as_deref())));
     let dossier = Path::new(programme).parent().map(PathBuf::from).unwrap_or_default().to_string_lossy().to_string();
-    Lanceur { programme: programme.into(), arguments, dossier }
+    Ok(Lanceur { programme: programme.into(), arguments, dossier })
+}
+
+/// Les variables d'une ligne de commande d'émulateur (contrat 1.16), sans casse : le fichier du jeu, son nom sans
+/// extension, son dossier (sans barre finale).
+const VARIABLES: [&str; 3] = ["%rom_dossier%", "%rom_nom%", "%rom%"];
+
+/// La première variable (`%nom%`) de la ligne que Frogtend ne connaît pas : le contrat demande de ne PAS lancer.
+/// Cherchée sur la LIGNE, avant tout remplacement (un nom de fichier qui contiendrait `%x%` ne compte pas).
+pub fn variable_inconnue(ligne: &str) -> Option<String> {
+    let b = ligne.as_bytes();
+    let mut i = 0;
+    while let Some(d) = ligne[i..].find('%').map(|p| i + p) {
+        let fin = ligne[d + 1..].find('%').map(|p| d + 1 + p);
+        let Some(f) = fin else { break };
+        let nom = &ligne[d + 1..f];
+        if !nom.is_empty() && nom.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_') {
+            let v = format!("%{nom}%");
+            if !VARIABLES.iter().any(|k| k.eq_ignore_ascii_case(&v)) {
+                return Some(v);
+            }
+            i = f + 1;
+        } else {
+            i = d + 1;
+        }
+        if i >= b.len() {
+            break;
+        }
+    }
+    None
+}
+
+fn refus_variable(v: &str) -> crate::erreurs::Erreur {
+    crate::erreurs::Erreur::Refus(format!(
+        "La ligne de commande de l'émulateur contient « {v} », que Frogtend ne connaît pas : le jeu n'est pas lancé. Corrige-la dans Réglages ▸ Émulateurs."
+    ))
+}
+
+/// Remplace, sans casse et en UNE seule passe sur le texte d'origine, chaque variable par sa valeur (un chemin qui
+/// contiendrait lui-même « %rom% » n'est jamais remplacé une seconde fois). Rend aussi : une variable a-t-elle été vue ?
+fn remplacer_variables(texte: &str, valeurs: &[&str; 3]) -> (String, bool) {
+    let bas = texte.to_ascii_lowercase();
+    let mut r = String::new();
+    let mut i = 0;
+    let mut vu = false;
+    'texte: while i < texte.len() {
+        for (motif, valeur) in VARIABLES.iter().zip(valeurs) {
+            if bas[i..].starts_with(motif) {
+                r.push_str(valeur);
+                i += motif.len();
+                vu = true;
+                continue 'texte;
+            }
+        }
+        let c = texte[i..].chars().next().unwrap_or_default();
+        r.push(c);
+        i += c.len_utf8().max(1);
+    }
+    (r, vu)
 }
 
 /// Le lanceur d'une ROM ou d'une image disque par un émulateur : ses arguments, puis le fichier du jeu (tel quel).
-/// Une ligne qui dit OÙ mettre le jeu (`%rom%`, la forme du conseil de Firehouse, contrat 1.8 : `-L
-/// "cores\snes9x_libretro.dll" "%rom%"`) le reçoit à cet endroit, et une seule fois ; sinon il va à la fin.
-pub fn lanceur_emulateur(programme: &str, ligne: &str, fichier_du_jeu: &Path) -> Lanceur {
+/// Une ligne qui dit OÙ mettre le jeu (contrat 1.16 : `%rom%` le fichier, `%rom_nom%` son nom sans extension,
+/// `%rom_dossier%` son dossier sans barre finale ; la forme du conseil de Firehouse, ex. `-L "cores\snes9x_libretro.dll"
+/// "%rom%"`, `"%rom%" -localdata`) le reçoit à ces endroits ; sans variable, il va à la fin. Une variable inconnue :
+/// refusé (le contrat demande de ne pas lancer). Jamais de shell : le programme reçoit ses arguments un par un.
+pub fn lanceur_emulateur(programme: &str, ligne: &str, fichier_du_jeu: &Path) -> crate::erreurs::Resultat<Lanceur> {
+    if let Some(v) = variable_inconnue(ligne) {
+        return Err(refus_variable(&v));
+    }
     let jeu = fichier_du_jeu.to_string_lossy().to_string();
+    let nom = fichier_du_jeu.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    // `D:\` reste `D:\` (« D: » seul voudrait dire le dossier courant de D:) ; sinon sans barre finale.
+    let dossier_du_jeu = fichier_du_jeu.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+    let valeurs = [dossier_du_jeu.as_str(), nom.as_str(), jeu.as_str()];
     let mut place = false;
     let mut arguments: Vec<String> = decouper(ligne)
         .into_iter()
-        .map(|a| match a.to_ascii_lowercase().find("%rom%") {
-            Some(i) => {
-                place = true;
-                format!("{}{}{}", &a[..i], jeu, &a[i + 5..])
-            }
-            None => a,
+        .map(|a| {
+            let (r, vu) = remplacer_variables(&a, &valeurs);
+            place |= vu;
+            r
         })
         .collect();
     if !place {
         arguments.push(jeu);
     }
     let dossier = Path::new(programme).parent().map(PathBuf::from).unwrap_or_default().to_string_lossy().to_string();
-    Lanceur { programme: programme.into(), arguments, dossier }
+    Ok(Lanceur { programme: programme.into(), arguments, dossier })
+}
+
+/// Une ligne de MAME à la forme « machine de salon » du conseil (contrat 1.16 : `studio2 -cart "%rom%"`) : le fichier
+/// de la cartouche à sa place, même zippé — jamais le lanceur de l'arcade (nom court + `-rompath`).
+pub fn ligne_mame_de_salon(ligne: &str) -> bool {
+    let l = ligne.to_ascii_lowercase();
+    l.contains("%rom%") && !l.contains("%rom_nom%")
 }
 
 #[cfg(test)]
@@ -691,7 +784,7 @@ mod tests {
     #[test]
     fn la_ligne_de_commande_d_un_emulateur_se_decoupe_et_recoit_le_jeu_tel_quel() {
         assert_eq!(decouper(r#"-L "cores\snes9x_libretro.dll" -f"#), vec!["-L", r"cores\snes9x_libretro.dll", "-f"]);
-        let l = lanceur_emulateur(r"E:\RetroArch\retroarch.exe", r#"-L "cores\snes9x_libretro.dll" -f"#, Path::new(r"E:\Jeux\SNES\Super Mario World (USA).sfc"));
+        let l = lanceur_emulateur(r"E:\RetroArch\retroarch.exe", r#"-L "cores\snes9x_libretro.dll" -f"#, Path::new(r"E:\Jeux\SNES\Super Mario World (USA).sfc")).unwrap();
         assert_eq!(l.arguments.last().unwrap(), r"E:\Jeux\SNES\Super Mario World (USA).sfc");
         assert_eq!(l.dossier, r"E:\RetroArch", "les cœurs se trouvent depuis le dossier de RetroArch");
     }
@@ -746,7 +839,7 @@ mod tests {
         assert_eq!(nom_court_mame(r"E:\Emulateurs\MAME\mame.exe", "sfiiia.zip").as_deref(), Some("sfiiia"));
         assert_eq!(nom_court_mame(r"E:\Emulateurs\MAME\mame.exe", "sfiii/cap-sf3-3.chd"), None, "jamais la CHD");
         assert_eq!(nom_court_mame(r"E:\Emulateurs\RetroArch\retroarch.exe", "sfiiia.zip"), None, "FBNeo prend le chemin");
-        let avec = lanceur_mame(r"E:\Emulateurs\MAME\mame.exe", "-skip_gameinfo", "sfiiia", Path::new(r"E:\Jeux"), Some(r"frogtend\menu-en-jeu.lua"));
+        let avec = lanceur_mame(r"E:\Emulateurs\MAME\mame.exe", "-skip_gameinfo", "sfiiia", Path::new(r"E:\Jeux"), Some(r"frogtend\menu-en-jeu.lua")).unwrap();
         assert_eq!(avec.arguments[..4], ["-skip_gameinfo", "-autoboot_script", r"frogtend\menu-en-jeu.lua", "sfiiia"]);
         // Le script de démarrage de la personne : jamais remplacé.
         let d = tempfile::tempdir().unwrap();
@@ -756,7 +849,7 @@ mod tests {
         assert!(autoboot_libre(d.path(), ""), "réglage vide : libre");
         std::fs::write(d.path().join("mame.ini"), "autoboot_script           C:\\mes\\scripts\\boot.lua\n").unwrap();
         assert!(!autoboot_libre(d.path(), ""));
-        let l = lanceur_mame(r"E:\Emulateurs\MAME\mame.exe", "", "sfiiia", Path::new(r"E:\Jeux\Arcade\Street Fighter III"), None);
+        let l = lanceur_mame(r"E:\Emulateurs\MAME\mame.exe", "", "sfiiia", Path::new(r"E:\Jeux\Arcade\Street Fighter III"), None).unwrap();
         assert_eq!(l.arguments, ["sfiiia", "-rompath", r"E:\Jeux\Arcade\Street Fighter III;roms"]);
         // Les dossiers déjà réglés dans MAME sont gardés (un jeu importé peut y avoir ses CHD).
         let ini = "#\n# CORE SEARCH PATH OPTIONS\n#\nhomepath                  .\nrompath                   \"roms;E:\\CHD\"\n";
@@ -770,13 +863,77 @@ mod tests {
     fn la_ligne_du_conseil_de_firehouse_recoit_le_jeu_a_la_place_de_rom() {
         // Relevé réel du 16/10 (SNES) : le jeu remplace « %rom% », il n'est pas ajouté une deuxième fois.
         let jeu = Path::new(r"E:\Jeux\SNES\Super Mario World (USA).sfc");
-        let l = lanceur_emulateur(r"E:\RetroArch\retroarch.exe", r#"-L "cores\snes9x_libretro.dll" "%rom%""#, jeu);
+        let l = lanceur_emulateur(r"E:\RetroArch\retroarch.exe", r#"-L "cores\snes9x_libretro.dll" "%rom%""#, jeu).unwrap();
         assert_eq!(l.arguments, vec!["-L", r"cores\snes9x_libretro.dll", r"E:\Jeux\SNES\Super Mario World (USA).sfc"]);
         // Au milieu de la ligne, collé à une option, en majuscules : à sa place aussi.
-        let l = lanceur_emulateur("emu.exe", r#"--jeu=%ROM% -f"#, jeu);
+        let l = lanceur_emulateur("emu.exe", r#"--jeu=%ROM% -f"#, jeu).unwrap();
         assert_eq!(l.arguments, vec![r"--jeu=E:\Jeux\SNES\Super Mario World (USA).sfc", "-f"]);
         // Un conseil d'émulateur autonome (ligne vide) : le jeu seul.
-        assert_eq!(lanceur_emulateur("pcsx2-qt.exe", "", jeu).arguments, vec![r"E:\Jeux\SNES\Super Mario World (USA).sfc"]);
+        assert_eq!(lanceur_emulateur("pcsx2-qt.exe", "", jeu).unwrap().arguments, vec![r"E:\Jeux\SNES\Super Mario World (USA).sfc"]);
+    }
+
+    #[test]
+    fn contrat_1_16_les_trois_variables_sont_remplacees_et_une_inconnue_refuse_le_lancement() {
+        let jeu = Path::new(r"E:\Jeux\Arcade\sfiii.zip");
+        let l = lanceur_emulateur(r"E:\MAME\mame.exe", r#"%rom_nom% -rompath "%ROM_DOSSIER%""#, jeu).unwrap();
+        assert_eq!(l.arguments, vec!["sfiii", "-rompath", r"E:\Jeux\Arcade"], "nom sans extension, dossier sans barre finale");
+        assert_eq!(l.dossier, r"E:\MAME", "dossier de travail : celui de l'émulateur");
+        // BigPEmu : l'image EN PREMIER.
+        let l = lanceur_emulateur(r"E:\BigPEmu\BigPEmu.exe", r#""%rom%" -localdata"#, Path::new(r"E:\Jag\Doom.j64")).unwrap();
+        assert_eq!(l.arguments, vec![r"E:\Jag\Doom.j64", "-localdata"]);
+        // Un jeu à la racine d'un disque : `D:\`, jamais « D: » (le dossier courant de D:).
+        let l = lanceur_emulateur("emu.exe", r#"-d "%rom_dossier%""#, Path::new(r"D:\jeu.bin")).unwrap();
+        assert_eq!(l.arguments, vec!["-d", r"D:\"]);
+        // Une variable inconnue : pas de lancement, et la raison est dite.
+        match lanceur_emulateur("emu.exe", r#"-x "%rom_inconnue%" "%rom%""#, jeu) {
+            Err(crate::erreurs::Erreur::Refus(m)) => assert!(m.contains("%rom_inconnue%"), "{m}"),
+            r => panic!("{:?}", r.map(|l| l.arguments)),
+        }
+        assert!(lanceur_mame(r"E:\MAME\mame.exe", "%x%", "sfiii", Path::new(r"E:\Jeux"), None).is_err());
+        // Un nom de FICHIER qui contient des « % » ne bloque rien (seule la ligne est examinée), et un dossier qui
+        // contient « %rom% » n'est jamais remplacé une seconde fois (une seule passe).
+        assert!(lanceur_emulateur("emu.exe", r#""%rom%""#, Path::new(r"E:\100%fun%.bin")).is_ok());
+        let l = lanceur_emulateur("emu.exe", r#""%rom_dossier%" "%rom%""#, Path::new(r"E:\a%rom%b\jeu.bin")).unwrap();
+        assert_eq!(l.arguments, vec![r"E:\a%rom%b", r"E:\a%rom%b\jeu.bin"]);
+        assert_eq!(variable_inconnue("-f 50% de plus"), None);
+    }
+
+    /// Essai RÉEL (lecture seule, rien n'est lancé) : les lignes du conseil 1.16 de Firehouse pour quelques consoles, et
+    /// la commande que Frogtend en tirerait. `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_lignes_1_16 -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_lignes_1_16() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").unwrap();
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        for p in ["Nintendo GameCube", "Sony Playstation 2", "Sony Playstation 3", "Arcade", "RCA Studio II", "Atari Jaguar", "Microsoft Xbox"] {
+            let v: serde_json::Value = c.obtenir_json(&format!("/emulateurs?plateforme={}", p.replace(' ', "%20"))).await.unwrap();
+            let k = &v["conseil"];
+            let ligne = k["ligne_de_commande"].as_str().unwrap_or("");
+            let jeu = Path::new(r"E:\Jeux\Exemple\Jeu (Europe).zip");
+            let r = if k["emulateur"] == "mame" && !ligne_mame_de_salon(ligne) {
+                lanceur_mame(r"E:\MAME\mame.exe", ligne, "jeu", Path::new(r"E:\Jeux\Exemple"), None).map(|l| l.arguments)
+            } else {
+                lanceur_emulateur(r"E:\Emu\emu.exe", ligne, jeu).map(|l| l.arguments)
+            };
+            println!("CONSEIL {p} : {} | ligne {ligne:?} | commande {:?}", k["emulateur"], r.map_err(|e| e.to_string()));
+        }
+    }
+
+    #[test]
+    fn contrat_1_16_mame_arcade_et_machines_de_salon() {
+        // L'arcade d'après le conseil (`%rom_nom% -rompath "%rom_dossier%"`) : Frogtend garde SA commande (avec le
+        // rompath de mame.ini), les variables du conseil et leur `-rompath` sont retirés.
+        let l = lanceur_mame(r"E:\MAME\mame.exe", r#"%rom_nom% -rompath "%rom_dossier%""#, "sfiii", Path::new(r"E:\Jeux\Arcade"), None).unwrap();
+        assert_eq!(l.arguments, vec!["sfiii", "-rompath", r"E:\Jeux\Arcade;roms"]);
+        // Une machine de salon (`studio2 -cart "%rom%"`) : sa cartouche à sa place, même zippée.
+        assert!(ligne_mame_de_salon(r#"studio2 -cart "%rom%""#));
+        assert!(!ligne_mame_de_salon(r#"%rom_nom% -rompath "%rom_dossier%""#));
+        assert!(!ligne_mame_de_salon(""), "un ancien réglage sans variable reste l'arcade");
+        let l = lanceur_emulateur(r"E:\MAME\mame.exe", r#"studio2 -cart "%rom%""#, Path::new(r"E:\Jeux\Studio II\Space War.zip")).unwrap();
+        assert_eq!(l.arguments, vec!["studio2", "-cart", r"E:\Jeux\Studio II\Space War.zip"]);
+        assert_eq!(l.dossier, r"E:\MAME", "ses ROM système dans roms/ du dossier de MAME");
     }
 }
 

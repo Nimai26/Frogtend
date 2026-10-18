@@ -341,7 +341,10 @@ impl Noyau {
                         j.plateforme
                     ))
                 })?;
-                let l = match crate::installation::nom_court_mame(&programme, f) {
+                // Une machine de salon par MAME (contrat 1.16 : `studio2 -cart "%rom%"`) reçoit sa cartouche à sa place,
+                // même zippée : décidé d'après la LIGNE, jamais d'après l'extension.
+                let arcade = crate::installation::nom_court_mame(&programme, f).filter(|_| !crate::installation::ligne_mame_de_salon(&ligne));
+                let l = match arcade {
                     // MAME : « mame <nom court> -rompath <dossier du jeu> » (contrat 1.13), jamais le chemin du zip.
                     Some(nom) => {
                         // Refusé AVANT de rien écrire dans le dossier de MAME.
@@ -362,9 +365,9 @@ impl Noyau {
                             }
                         };
                         self.pause_mame.store(script.is_some(), std::sync::atomic::Ordering::SeqCst);
-                        crate::installation::lanceur_mame(&programme, &ligne, &nom, Path::new(&i.dossier), script)
+                        crate::installation::lanceur_mame(&programme, &ligne, &nom, Path::new(&i.dossier), script)?
                     }
-                    None => lanceur_emulateur(&programme, &ligne, &Path::new(&i.dossier).join(f)),
+                    None => lanceur_emulateur(&programme, &ligne, &Path::new(&i.dossier).join(f))?,
                 };
                 let d = PathBuf::from(&l.dossier);
                 (l, vec![d])

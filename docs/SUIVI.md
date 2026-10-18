@@ -281,6 +281,18 @@ d'abord :
 
 ## ✅ Livré (version — ce qui a été vérifié)
 
+- **0.69.0** (19/10) — Contrat 1.16 (✅ Seb 19/10 : « Adapter le contrat 1.16 » d'abord, puis les infos 1.15) :
+  `ligneDe` prend SEULE la ligne complète du conseil d'un autonome (RetroArch : comme avant) ; `changementDeConseil`
+  compare sans le `"%rom%"` final et RÉPARE, sans question, une ligne doublée par Frogtend lui-même (préparée entre
+  0 h 11 et cette version) ; `lanceur_emulateur`/`lanceur_mame` remplacent `%rom%`, `%rom_nom%`, `%rom_dossier%` (sans
+  casse) et refusent une variable inconnue (cherchée sur la ligne seule) ; MAME : l'arcade garde la commande de
+  Frogtend (variables du conseil retirées), une machine de salon (`studio2 -cart "%rom%"`) passe par le lanceur
+  d'émulateur même zippée (décidé d'après la LIGNE). Avis de l'expert lancement avant de coder (3 trous évités) et
+  relecture avant livraison. Vérifié : tests (tableau 1.16 figé : rien des options de Frogtend n'est perdu ; variables ;
+  `D:\` ; arcade/salon) ; essai réel en lecture seule des conseils de Firehouse (GameCube, PS2, PS3, Arcade, Studio II,
+  Jaguar, Xbox : commandes exactes) ; chez Seb, seul RPCS3 réglé à la main (jamais touché) ; 358 tests cœur, 177
+  interface. NON vérifié : un vrai lancement de ces émulateurs (aucun chez Seb, hors RPCS3). ScummVM : noté (IDEES).
+
 - **0.68.2** (18/10) — Formats des fichiers d'émulateurs (relevé de l'expert du 04/10) : xemu `hdd_path` en chaîne TOML
   basique (`chaine_toml`, au lieu de `'…'` qu'une apostrophe fermait) ; `valeur_toml` relit littérale et basique ;
   valeurs Qt (Eden `external_content_dirs`, Azahar `nand_directory`/`sdmc_directory`) toujours entre guillemets

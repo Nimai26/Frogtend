@@ -209,17 +209,24 @@ function auPlus<T>(ms: number, p: Promise<T>): Promise<T | null> {
  */
 async function suivreConseil(id: number, plateforme: string | undefined, emulateur?: string) {
   if (!plateforme || conseilsVus.has(plateforme)) return;
-  conseilsVus.add(plateforme);
   const s = normaliser(etat.pc.emulateurs[plateforme]);
   const e = (emulateur && s.liste.find((x) => x.cle === emulateur)) || pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, plateforme, id);
-  if (!e?.conseil) return;
+  if (!e?.conseil) {
+    conseilsVus.add(plateforme);
+    return;
+  }
+  // Une réponse qui n'arrive pas à temps (hors ligne, Firehouse lent) : rien n'est décidé, réessayé au lancement suivant
+  // (une ligne à réparer ne reste pas en place pour toute la séance).
   const r = await auPlus(3000, api.emulateursRecommandes(plateforme));
-  const c = r?.conseil ?? null;
+  if (!r) return;
+  const c = r.conseil ?? null;
+  // Le conseillé comme le trouve « Prêt à jouer » (même absent de la liste, ou fork) : sa fiche Frogtend (lue dans le
+  // catalogue de Frogtend, sans réseau ; `null` = émulateur que Frogtend ne connaît pas) donne les options de Frogtend
+  // (plein écran…), sans lesquelles la ligne paraîtrait toujours changée.
+  const rec = c ? avecConseil(r.emulateurs ?? [], c).find((x) => estConseille(x, c)) : undefined;
+  const fiche = rec ? await api.emulateurFiche(rec.nom).catch(() => null) : null;
+  conseilsVus.add(plateforme);
   if (!c) return;
-  // Le conseillé comme le trouve « Prêt à jouer » (même absent de la liste, ou fork) : sa fiche Frogtend donne les
-  // options de Frogtend (plein écran…) à remettre devant `%rom%`, sinon la ligne paraîtrait toujours changée.
-  const rec = avecConseil(r?.emulateurs ?? [], c).find((x) => estConseille(x, c));
-  const fiche = rec ? await auPlus(3000, api.emulateurFiche(rec.nom)) : null;
   const ch = changementDeConseil(e, c, fiche?.ligne ?? '');
   if (!ch) return;
   // La date est retenue sur l'émulateur réglé (même si la maison en conseille un autre) : la question ne revient pas.
@@ -229,6 +236,8 @@ async function suivreConseil(id: number, plateforme: string | undefined, emulate
     await reglerPc('emulateurs', { ...etat.pc.emulateurs, [plateforme]: { ...sys, liste } });
   };
   if (ch.sorte === 'date') return retenir({});
+  // Une ligne doublée par Frogtend lui-même (contrat 1.16, avant l'adaptation) : remise d'aplomb sans question.
+  if (ch.sorte === 'reparer') return retenir({ ligne: ch.ligne });
   if (ch.sorte === 'ligne') {
     const poids = poidsBios(c.bios);
     const oui = await confirmer(`🕹 Nouveau réglage conseillé pour ${plateforme}`, {

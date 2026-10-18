@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.69.0 — Les émulateurs suivent les nouveaux réglages de la maison
+
+- Firehouse donne maintenant la ligne de commande complète de chaque émulateur (Dolphin, PCSX2, RPCS3, Cemu, Eden,
+  Xenia, xemu, MAME, BigPEmu…), vérifiée dans leurs sources. Frogtend la suit telle quelle, sans jamais doubler ses
+  propres options.
+- Un émulateur préparé dans la nuit du 19/10 avec une ligne en double est remis d'aplomb tout seul, sans question.
+- Les machines de salon lancées par MAME (RCA Studio II, VTech CreatiVision, V.Smile…) reçoivent leur cartouche
+  même zippée ; l'arcade garde sa commande habituelle.
+- Une ligne de commande avec un mot inconnu (`%quelque_chose%`) n'est jamais lancée : Frogtend dit lequel et où le
+  corriger.
+
 ## 0.68.2 — Une apostrophe ou une virgule dans un dossier ne casse plus un émulateur
 
 - Correctif : un dossier comme « Jeux d'émulation » ou un profil « D'Aquin » rendait illisibles les réglages de xemu
