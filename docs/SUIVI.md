@@ -290,7 +290,7 @@ d'abord :
   jeu caché jamais envoyé et gardé sur le PC ; parties d'un jeu devenu invisible gardées dans la version courante,
   `retires` = 0 ; refus sans synchronisation, aucune requête) ; répétition en lecture seule chez Seb (1 abri, visible ;
   date de synchronisation présente) ; 351 tests cœur, 174 interface.
-- ❓ **À décider avec Seb** (expert lancement, 18/10) : les parties d'ÉMULATEURS d'un profil (`<émulateur>\Profils\
+- ✅ **Seb 18/10 : « Laisser comme ça »** (un profil ne change pas de personne chez lui) — les parties d'ÉMULATEURS d'un profil (`<émulateur>\Profils\
   <profil>\`) partent sans filtre de visibilité : si le jeton d'un même profil passe d'un admin à un mineur, les
   fichiers de parties de jeux cachés (au nom parlant) partiraient dans l'espace du mineur. Prévenir ? Exclure jusqu'à
   un choix explicite ?
