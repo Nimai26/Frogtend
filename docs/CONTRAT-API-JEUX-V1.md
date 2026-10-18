@@ -272,6 +272,26 @@ Reçu par message de la session Firehouse (besoin 22 de Frogtend, demandé par S
 - Exemple réel (Firehouse) : `GET /jeu/1927` → 410 `{ok: false, fusionne_dans: 324, le: "2026-10-05T14:02:37"}` ;
   154 fusions au 18/10. Un client < 1.14 peut traiter le 410 comme un 404.
 
+### 1.15 (18/10, Firehouse 2.76.0, en-tête `X-Api-Jeux-Version: 1.15`) — les infos du jeu
+Reçu par message de la session Firehouse (sur demande de Seb), en service depuis le 18/10 à 22 h 37. Ajout compatible :
+un client < 1.15 ignore le champ.
+- `GET /jeu/{id}` porte `infos: {date_sortie, type_sortie, esrb, pegi, note, joueurs_min, joueurs_massif}` :
+  - `date_sortie` : `AAAA`, `AAAA-MM` ou `AAAA-MM-JJ`, `""` si inconnue ;
+  - `type_sortie` : `Released`, `Unreleased`, `Early Access`, `Homebrew`, `ROM Hack`, `Unlicensed`, `DLC` ou `""` ;
+  - `esrb` : libellé LaunchBox (`E - Everyone`, `E10+ - Everyone 10+`, `T - Teen`, `M - Mature`, `AO - Adults Only`,
+    `EC - Early Childhood`, `RP - Rating Pending`, `Not Rated`) ou `""` ;
+  - `pegi` : 3, 7, 12, 16, 18 ou `null` (aucun jeu n'en a encore : seulement par une correction d'admin) ;
+  - `note` : 0 à 5 (0 est une vraie note) ou `null`, NON arrondie (ex. 3.93827160493827) ;
+  - `joueurs_min` : entier ou `null` ; `joueurs_massif` : booléen.
+- `joueurs` et `cooperatif` restent à leur place. `/catalogue` ne change pas : `infos` n'est qu'au détail.
+- Corrigeables par un admin (verrouillé contre la mise à jour LaunchBox de la semaine, appliqué aux fiches publique et
+  réservée) ; une correction fait bouger `maj_le`.
+- ⚠️ Lues EN DIRECT dans la base des jeux : la mise à jour LaunchBox de la semaine peut changer une info NON corrigée
+  sans faire bouger `maj_le` → pour un écran qui s'en sert, relire le détail à l'ouverture de la fiche.
+- Exemple réel (Dune, `launchbox_id` 14133) : `"infos": {"date_sortie": "1992", "type_sortie": "Released", "esrb":
+  "Not Rated", "pegi": null, "note": 3.93827160493827, "joueurs_min": null, "joueurs_massif": false}`.
+- Côté Frogtend : pas encore affiché (à proposer à Seb : fiche du jeu — date, classement d'âge, note).
+
 ### Note 2.58.0 (contrat inchangé)
 Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a été RÉUNIE à celle du même jeu
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
