@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Conseil } from '$lib/api';
-import { avecConseil, biosADire, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, messagePret, micrologicielServi, palier, poidsBios, versionAutre, versionDansNote, type Possible } from './pret';
+import { avecConseil, changementDeConseil, memeEmulateur, biosADire, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, messagePret, micrologicielServi, palier, poidsBios, versionAutre, versionDansNote, type Possible } from './pret';
 
 const rec = (nom: string, recommande: boolean, bios = '') => ({ nom, site: '', recommande, ligne_de_commande: '', extensions: [], bios });
 
@@ -202,5 +202,32 @@ describe('prêt à jouer', () => {
     expect(deja).not.toContain('première partie');
     const bios = messagePret({ plateforme: 'Sony Playstation', jeux: 2, choix: { ...choix, id: 'duckstation', rec: rec('DuckStation', true, 'scph5502.bin') }, taille: null, dossier: 'E:\\Emulateurs', dossierNouveau: false });
     expect(bios).toContain('fichier système (scph5502.bin)');
+  });
+});
+
+describe('le conseil de la maison a changé (contrat 1.8, maj_le)', () => {
+  const c = (o: Partial<Conseil>) =>
+    ({ emulateur: 'retroarch', coeur: 'snes9x_libretro', ligne_de_commande: '-L "cores\\snes9x_libretro.dll" "%rom%"', maj_le: '2026-10-18T10:00:00', bios: [], alternatives: [], ...o }) as Conseil;
+  const ra = { programme: String.raw`E:\Emulateurs\RetroArch\retroarch.exe`, ligne: '-L "cores\\snes9x_libretro.dll" "%rom%"', conseil: '2026-10-04T17:23:15' };
+  it('reconnaît le même émulateur sous ses deux noms', () => {
+    expect(memeEmulateur(String.raw`E:\PCSX2\pcsx2-qt.exe`, 'pcsx2')).toBe(true);
+    expect(memeEmulateur(String.raw`E:\DOSBox Staging\dosbox.exe`, 'dosbox_staging')).toBe(true);
+    expect(memeEmulateur(ra.programme, 'retroarch')).toBe(true);
+    expect(memeEmulateur(ra.programme, 'duckstation')).toBe(false);
+  });
+  it('ne dit rien pour un réglage fait à la main, ni pour un conseil inchangé', () => {
+    expect(changementDeConseil({ ...ra, conseil: undefined }, c({}), '')).toBeNull();
+    expect(changementDeConseil({ ...ra, conseil: '2026-10-18T10:00:00' }, c({}), '')).toBeNull();
+    expect(changementDeConseil(ra, null, '')).toBeNull();
+  });
+  it('nouvelle date, même réglage : seulement retenir la date', () => {
+    expect(changementDeConseil(ra, c({}), '')).toEqual({ sorte: 'date' });
+  });
+  it('un autre cœur : la nouvelle ligne est proposée', () => {
+    const r = changementDeConseil(ra, c({ coeur: 'bsnes_libretro', ligne_de_commande: '-L "cores\\bsnes_libretro.dll" "%rom%"' }), '');
+    expect(r).toEqual({ sorte: 'ligne', ligne: '-L "cores\\bsnes_libretro.dll" "%rom%"' });
+  });
+  it('un autre émulateur conseillé : à proposer', () => {
+    expect(changementDeConseil(ra, c({ emulateur: 'mesen' }), '')).toEqual({ sorte: 'autre' });
   });
 });

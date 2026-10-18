@@ -48,6 +48,12 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Conseils suivis et DOSBox d'un clic (0.62.0)
+- [ ] 📥 Importer ▸ Installer un jeu DOS, avec MS-DOS préparé par « Prêt à jouer » (RetroArch) : le bouton
+      « 📀 Préparer DOSBox » ; un accord, puis l'installation du jeu se fait. Les jeux DOS se lancent toujours comme avant.
+- [ ] Quand Firehouse changera un conseil (par exemple un autre cœur pour une console), au lancement d'un jeu de cette
+      console : la question arrive une fois ; « Appliquer » installe ce qu'il faut ; le jeu démarre ensuite.
+
 ## Les options du jeu (0.61.0)
 - [ ] Un jeu RetroArch ▸ View+RB1 ▸ ⚙ Options du jeu ▸ 📊 : le compteur s'affiche en haut à droite ; refais-le : il
       disparaît.

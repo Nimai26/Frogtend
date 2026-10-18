@@ -116,10 +116,14 @@
       (4) BIOS servis (fichier/motif/archive, sha1, un seul accord) puis PS2 ; (5) firmwares PS3 et Switch (prod.keys
       au coffre : le dire) ; (6) MAME (dossier, nom court, -rompath, « incomplet », paquet 0.289) ; (7) documents ;
       (8) fiches réunies. `fichiers: null` d'un motif = `[]`.
+      (8) ✅ Seb 18/10 : demander à Firehouse l'ajout 1.14 « fusionné dans N » (besoin 22, envoyé à la session
+      Firehouse le 18/10) ; Firehouse (18/10) : reçu, traité après sa 2.71.0 ; un jeu caché reste en 404 ;
+      probablement redirection sur `/jeu/{ancien}` ET liste `fusions` dans `/catalogue` ; `telechargement_id` à
+      vérifier. Côté Frogtend : rattacher le jeu du PC au nouvel id quand ce sera servi.
       ✅ (1)+(2) en 0.49.0 : le conseil prime (même absent de la liste : MS-DOS → RetroArch, liste = DOSBox Staging
       seul), ligne = options de Frogtend juste avant `%rom%`, `%rom%` remplacé au lancement, `maj_le` retenu dans
-      pc.json (reste : PROPOSER la mise à jour quand `maj_le` change). Installer un jeu DOS exige DOSBox (refus clair
-      sinon) — si MS-DOS a été préparé avec RetroArch, Frogtend devra proposer d'ajouter DOSBox Staging (à faire).
+      pc.json ; ✅ 0.62.0 : la mise à jour est PROPOSÉE quand `maj_le` change (au lancement, une fois par console et
+      par séance, 3 s au plus) ; « Préparer DOSBox » quand MS-DOS a été préparé avec RetroArch.
       ✅ (3) en 0.50.0 : cœurs RetroArch pris chez Firehouse (`/emulateurs/retroarch/coeurs`), reprise, empreintes du
       zip puis de la dll, pose seulement après ; un cœur non servi est refusé (rien chez libretro). Reste chez libretro
       (expert, 16/10) : RetroArch LUI-MÊME (buildbot stable, emulateurs.rs) → passer par `/emulateurs/retroarch/paquet`
@@ -255,8 +259,18 @@ d'abord :
       rien). Touches rares acceptées : F13, F14, F15, Aide seulement (4 pour 8 actions).
       ✅ DÉCIDÉ par Seb le 16/10 : « laisser le comportement par défaut de RetroArch et juste prévenir pour la
       fenêtre » → Frogtend prévient UNE fois par PC, avant le premier jeu RetroArch, de répondre « Annuler ».
+      Seb (18/10) : l'essai « Annuler cliqué pour de vrai » est inutile (refusé) ; il laisse son installation telle
+      quelle (règles « Autoriser, privé » posées sur le RetroArch d'essai supprimé : sans effet, gardées).
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.62.0** (18/10) — Fin du lot Contrat 1.13 (sauf (8), attendu de Firehouse) : conseil changé → même émulateur :
+  nouveau réglage proposé (BIOS posés puis cœur installé AVANT d'écrire la ligne, options de Frogtend gardées) ;
+  autre émulateur : proposé, l'actuel reste ; toute réponse retient la date ; jamais plus de 3 s d'attente, jamais un
+  lancement empêché. « 📀 Préparer DOSBox » dans l'import DOS (repris, adopté ou installé ; défaut inchangé s'il y en a
+  un). Besoin 22 « fusionné dans N » envoyé à Firehouse (reçu). Vérifié : pc.json de Seb en lecture seule (RPCS3 réglé
+  à la main : rien proposé). Tests : 157 interface ; relecture de l'expert lancement (4 importants corrigés). NON
+  vérifié : une vraie proposition (aucun conseil appliqué chez Seb), le bouton DOSBox à l'écran.
 
 - **0.61.1** (16/10) — Décision de Seb (garder RetroArch tel quel, prévenir) : avertissement UNE fois par PC avant le
   premier jeu RetroArch (fenêtre maison, réglage `avertiPareFeuRetroArch`), y compris pour la télé (Taodbox) ; le

@@ -6,7 +6,8 @@ import { isTauri } from '@tauri-apps/api/core';
 import { api, duree, estErreurCoeur, taille, type Candidat, type JeuPc, type VerificationFiger } from '$lib/api';
 import { choisir, confirmer, fermerToast, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
-import { reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
+import { completerRetroArch, poserBios, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
+import { avecConseil, biosADireOuPoser, biosRetroArch, changementDeConseil, estConseille, poidsBios } from '$lib/emulateurs/pret';
 import { preparerPourJouer } from '$lib/emulateurs/pret.svelte';
 import { estRetroArch, normaliser, pourLeJeu } from '$lib/emulateurs/choix';
 import { etat, reglerPc, reglerProfil } from '$lib/etat.svelte';
@@ -191,6 +192,70 @@ export async function choisirLanceur(id: number): Promise<boolean> {
   }
 }
 
+/** Les consoles dont le conseil a déjà été regardé pendant cette séance (une seule question par console ; un échec
+ * hors ligne n'est retenté qu'à la séance suivante). */
+const conseilsVus = new Set<string>();
+
+/** Une réponse attendue au plus `ms` : sinon `null` (le jeu ne doit jamais attendre le réseau pour démarrer). */
+function auPlus<T>(ms: number, p: Promise<T>): Promise<T | null> {
+  return Promise.race([p.catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), ms))]);
+}
+
+/**
+ * Le conseil de la maison pour cette console a-t-il changé depuis le réglage de son émulateur (contrat 1.8, `maj_le`) ?
+ * Même émulateur : PROPOSER le nouveau réglage (un autre cœur, installé alors) ; autre émulateur : proposer de le
+ * préparer (l'actuel reste). Une réponse, même « non », retient la date : la question ne revient pas pour ce conseil.
+ * Hors ligne ou réglé à la main : rien.
+ */
+async function suivreConseil(id: number, plateforme: string | undefined, emulateur?: string) {
+  if (!plateforme || conseilsVus.has(plateforme)) return;
+  conseilsVus.add(plateforme);
+  const s = normaliser(etat.pc.emulateurs[plateforme]);
+  const e = (emulateur && s.liste.find((x) => x.cle === emulateur)) || pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, plateforme, id);
+  if (!e?.conseil) return;
+  const r = await auPlus(3000, api.emulateursRecommandes(plateforme));
+  const c = r?.conseil ?? null;
+  if (!c) return;
+  // Le conseillé comme le trouve « Prêt à jouer » (même absent de la liste, ou fork) : sa fiche Frogtend donne les
+  // options de Frogtend (plein écran…) à remettre devant `%rom%`, sinon la ligne paraîtrait toujours changée.
+  const rec = avecConseil(r?.emulateurs ?? [], c).find((x) => estConseille(x, c));
+  const fiche = rec ? await auPlus(3000, api.emulateurFiche(rec.nom)) : null;
+  const ch = changementDeConseil(e, c, fiche?.ligne ?? '');
+  if (!ch) return;
+  // La date est retenue sur l'émulateur réglé (même si la maison en conseille un autre) : la question ne revient pas.
+  const retenir = async (patch: { ligne?: string; nom?: string }) => {
+    const sys = normaliser(etat.pc.emulateurs[plateforme]);
+    const liste = sys.liste.map((x) => (x.cle === e.cle ? { ...x, ...patch, conseil: c.maj_le } : x));
+    await reglerPc('emulateurs', { ...etat.pc.emulateurs, [plateforme]: { ...sys, liste } });
+  };
+  if (ch.sorte === 'date') return retenir({});
+  if (ch.sorte === 'ligne') {
+    const poids = poidsBios(c.bios);
+    const oui = await confirmer(`🕹 Nouveau réglage conseillé pour ${plateforme}`, {
+      message: `La maison a mis à jour son conseil pour ${e.nom}${c.coeur ? ` (cœur « ${c.coeur} », quelques Mo, vérifié)` : ''}${biosADireOuPoser(c.bios) && poids ? `, avec ses fichiers système (${taille(poids)})` : ''}.${c.note ? `\n\n${c.note}` : ''}\n\nL’appliquer maintenant ? Sinon, ${e.nom} garde son réglage actuel.`,
+      libelleValider: '✅ Appliquer',
+    });
+    let nom: string | undefined;
+    if (oui) {
+      // Les fichiers système du conseil (vérifiés), puis le nouveau cœur, AVANT de changer le réglage : sinon rien ne change.
+      if (biosADireOuPoser(c.bios)) await poserBios(plateforme, e.programme);
+      if (estRetroArch(e.programme)) {
+        const n = await completerRetroArch(e.programme, ch.ligne, rec ? biosRetroArch(rec, c) : [], plateforme, e.nom, true);
+        if (!n) return;
+        nom = n;
+      }
+    }
+    return retenir(oui ? { ligne: ch.ligne, ...(nom ? { nom } : {}) } : {});
+  }
+  const nom = rec?.nom ?? c.emulateur;
+  const oui = await confirmer(`🕹 La maison conseille maintenant ${nom} pour ${plateforme}`, {
+    message: `Ton émulateur actuel (${e.nom}) reste disponible, et ce jeu se lance avec lui maintenant.${c.note ? `\n\n${c.note}` : ''}\n\nPréparer ${nom} pour plus tard ?`,
+    libelleValider: `🕹 Préparer ${nom}`,
+  });
+  await retenir({});
+  if (oui) await reglerEmulateur(plateforme);
+}
+
 /**
  * RetroArch ouvre son port de commandes à tout le réseau (RetroArch 1.22.2 : aucun réglage « sur la machine
  * seulement ») : Windows peut demander d'autoriser l'accès réseau. Décision de Seb (16/10) : garder le comportement
@@ -214,6 +279,8 @@ export async function jouer(id: number, emulateur?: string, version?: string) {
   const j = tele.jeux[id];
   for (let essai = 0; essai < 2; essai++) {
     try {
+      // Un souci ici n'empêche JAMAIS le jeu de se lancer.
+      await suivreConseil(id, j?.plateforme, emulateur).catch(() => {});
       await prevenirPareFeu(id, j?.plateforme, emulateur);
       const pe = etat.profil.pleinEcran[String(id)];
       await api.jouer(

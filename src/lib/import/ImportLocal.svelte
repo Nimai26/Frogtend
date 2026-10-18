@@ -6,13 +6,13 @@
   import { api, taille } from '$lib/api';
   import { choisir, confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
-  import { parcourir } from '$lib/emulateurs/assistant.svelte';
+  import { installerEmulateur, parcourir } from '$lib/emulateurs/assistant.svelte';
   import { PLATEFORMES_CONNUES } from '$lib/ludotheque/categories';
   import { ludo, rechargerListe, rechargerPlateformes } from '$lib/ludotheque/ludotheque.svelte';
   import { rechargerJeuxDuPc } from '$lib/ludotheque/telechargements.svelte';
   import { etat, reglerPc } from '$lib/etat.svelte';
   import { informer } from '$lib/dialogues/fenetres.svelte';
-  import { normaliser } from '$lib/emulateurs/choix';
+  import { ajouter as ajouterEmulateur, normaliser } from '$lib/emulateurs/choix';
   import { preparerPourJouer } from '$lib/emulateurs/pret.svelte';
   import {
     elementDe,
@@ -70,6 +70,31 @@
   const dosbox = $derived(
     normaliser(etat.pc.emulateurs['MS-DOS']).liste.find((e) => /^dosbox/i.test(e.programme.split(/[\\/]/).pop() ?? ''))?.programme ?? '',
   );
+  let preparation = $state(false);
+
+  /** MS-DOS préparé avec RetroArch (le conseil de Firehouse) : DOSBox Staging, seul capable d'installer un jeu DOS,
+   * est AJOUTÉ à MS-DOS (déjà sur le PC : repris tel quel ; sinon installé après un accord, taille annoncée). Un
+   * émulateur par défaut déjà réglé le reste (les jeux se lancent comme avant) ; s'il n'y en avait aucun, DOSBox le
+   * devient. */
+  async function preparerDosbox() {
+    preparation = true;
+    try {
+      const deja = (await api.emulateursInstalles().catch(() => [])).find((e) => e.id === 'dosbox-staging');
+      const programme = deja?.programme ?? (await installerEmulateur('dosbox-staging', 'DOSBox Staging'))?.programme;
+      if (!programme) return;
+      // Trouvé sur le disque sans avoir été installé par Frogtend : il est adopté (comme dans l'assistant).
+      if (deja && !deja.installe_le) await api.emulateurAdopter('dosbox-staging', programme).catch(() => {});
+      const fiche = await api.emulateurFiche('DOSBox Staging').catch(() => null);
+      const { sys } = ajouterEmulateur(etat.pc.emulateurs['MS-DOS'], { nom: 'DOSBox Staging', programme, ligne: fiche?.ligne ?? '' });
+      await reglerPc('emulateurs', { ...etat.pc.emulateurs, 'MS-DOS': sys });
+      toast('✅ DOSBox est prêt : tu peux installer le jeu.');
+    } catch (e) {
+      toast(`DOSBox n’a pas pu être préparé : ${motifDuRefus(e)}`, 'erreur');
+    } finally {
+      preparation = false;
+    }
+  }
+
   let source = $state('');
   let parent = $state(untrack(() => etat.pc.emplacements.systemes['MS-DOS']?.[0] ?? etat.pc.emplacements.defaut[0] ?? ''));
   const destination = $derived(parent.trim() && titre.trim() ? `${parent.trim().replace(/[\\/]+$/, '')}\\${nomDeDossier(titre)}` : '');
@@ -297,7 +322,12 @@ Rien n’est déplacé ni renommé. Les retirer plus tard de ta ludothèque ne l
 
   {#if sorte === 'installer-dos'}
     {#if !dosbox}
-      <p class="tag warn">⚠ Aucun DOSBox réglé pour MS-DOS : règle-le d’abord dans <a href="/reglages?rubrique=emulateurs">⚙ Options ▸ Émulateurs</a>.</p>
+      <p class="tag warn">⚠ Un jeu DOS s’installe dans DOSBox, qui n’est pas encore prêt sur ce PC.</p>
+      <div class="ligne">
+        <button class="btn primary" onclick={preparerDosbox} disabled={preparation || enCours}>
+          {preparation ? '⏳ Préparation de DOSBox…' : '📀 Préparer DOSBox'}
+        </button>
+      </div>
     {/if}
     <div class="ligne">
       <button class="btn" onclick={() => choisirSource(false)}>📂 Dossier du CD</button>

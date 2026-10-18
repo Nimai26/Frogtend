@@ -132,6 +132,33 @@ export function phraseVersionAutre(nom: string, installee: string, attendue: str
   return `⚠️ ${nom} ${installee} est sur ce PC, mais les jeux de Firehouse sont faits pour la version ${attendue} : certains peuvent ne pas démarrer.`;
 }
 
+/** L'émulateur réglé est-il celui que désigne l'id des sources de Firehouse (« pcsx2 » ↔ pcsx2-qt.exe,
+ * « dosbox_staging » ↔ dosbox.exe) ? Comparaison des noms sans ponctuation, l'un commençant par l'autre. */
+export function memeEmulateur(programme: string, id: string): boolean {
+  const n = (s: string) => s.toLowerCase().replace(/\.exe$/, '').replace(/[^a-z0-9]/g, '');
+  const a = n(id);
+  const b = n(programme.split(/[\\/]/).pop() ?? '');
+  return !!a && !!b && (a.startsWith(b) || b.startsWith(a));
+}
+
+/**
+ * Le conseil de la maison a-t-il changé depuis le réglage de cet émulateur (contrat 1.8 : son `maj_le`) ?
+ * - `null` : réglé à la main (pas d'après le conseil), ou rien de nouveau ;
+ * - `date` : nouvelle date, même réglage (rien à demander : on retient seulement la date) ;
+ * - `ligne` : même émulateur, réglage changé (un autre cœur…) : la nouvelle ligne à PROPOSER ;
+ * - `autre` : la maison conseille maintenant un autre émulateur (à proposer, l'actuel reste).
+ */
+export function changementDeConseil(
+  e: { programme: string; ligne: string; conseil?: string },
+  conseil: Conseil | null | undefined,
+  ligneFrogtend: string,
+): { sorte: 'date' } | { sorte: 'ligne'; ligne: string } | { sorte: 'autre' } | null {
+  if (!e.conseil || !conseil?.maj_le || conseil.maj_le === e.conseil) return null;
+  if (!memeEmulateur(e.programme, conseil.emulateur)) return { sorte: 'autre' };
+  const ligne = ligneDe({ id: conseil.emulateur } as EmulateurRecommande, ligneFrogtend, conseil);
+  return ligne.trim() === e.ligne.trim() ? { sorte: 'date' } : { sorte: 'ligne', ligne };
+}
+
 export function biosADireOuPoser(bios: BiosConseil[]): boolean {
   return bios.some((b) => !b.facultatif && b.type !== 'installation');
 }

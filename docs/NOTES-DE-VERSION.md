@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.62.0 — Les conseils de la maison suivis, DOSBox préparé d'un clic
+
+- Quand la maison (Firehouse) change son conseil pour une console, Frogtend le propose au lancement d'un jeu : un
+  nouveau réglage pour le même émulateur (un autre cœur, ses fichiers système, installés vérifiés), ou un autre
+  émulateur à préparer (l'actuel reste). Une seule question par conseil ; jamais d'attente pour lancer le jeu.
+- Installer un jeu DOS alors que MS-DOS se joue avec RetroArch : un bouton « 📀 Préparer DOSBox » l'installe (un
+  accord, taille annoncée) au lieu de renvoyer vers les réglages.
+
 ## 0.61.1 — Prévenu avant la question du pare-feu
 
 - Avant le premier jeu lancé avec RetroArch sur un PC, Frogtend prévient (une seule fois) que Windows va peut-être
