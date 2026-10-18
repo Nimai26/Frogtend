@@ -156,6 +156,9 @@ export async function synchroniser(discrete = false) {
     }
     await rechargerPlateformes();
     await rechargerListe();
+    // Fonds et logos de Taodbox gardés à l'avance pour le hors ligne (lot Médias M4), en arrière-plan : jamais une
+    // raison d'échouer la synchronisation.
+    if (etat.profil.ludotheque.fondsTaodbox && !b.simule) void api.prechargerTaodbox().catch(() => {});
     if (!discrete) {
       const detail =
         b.mode === 'increment'

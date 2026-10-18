@@ -62,6 +62,10 @@ pub struct BilanSynchro {
     pub recus: usize,
     /// Jeux sortis de la ludothèque (plus visibles pour ce profil).
     pub retires: usize,
+    /// La lecture s'est arrêtée au plafond de pages (catalogue peut-être incomplet : aucun ménage).
+    pub tronque: bool,
+    /// Le ménage des caches d'images (lot Médias M4).
+    pub menage: crate::medias::Menage,
 }
 
 pub struct Noyau {
@@ -312,6 +316,19 @@ impl Noyau {
         let mut bilan = self.synchroniser_catalogue(&s, progres, &mut fusions).await?;
         // Les fiches réunies (contrat 1.14) : jamais une raison d'échouer la synchronisation.
         bilan.rattaches = self.suivre_fusions(&s, fusions, bilan.mode == "complete").await;
+        // Le ménage des caches d'images (lot Médias M4) : seulement face au VRAI Firehouse (le mode simulé range ses
+        // exemples dans le même cache), sur un catalogue lu en entier ; jamais une raison d'échouer.
+        if !bilan.simule && !bilan.tronque {
+            match self.menage_caches(&s) {
+                Ok(m) => {
+                    if m.elements > 0 {
+                        self.journaliser(&format!("ménage des images : {} élément(s), {} octets", m.elements, m.octets));
+                    }
+                    bilan.menage = m;
+                }
+                Err(e) => self.journaliser(&format!("ménage des images impossible : {e:?}")),
+            }
+        }
         Ok(bilan)
     }
 
@@ -490,6 +507,7 @@ impl Noyau {
         };
         let plateformes = lire_plateformes(&s.source.plateformes().await?);
         loop {
+            let mut tronque = false;
             let mut jeux: Vec<JeuResume> = Vec::new();
             let mut ids_visibles: Option<Vec<i64>> = None;
             let mut page = 1;
@@ -515,6 +533,7 @@ impl Noyau {
                     None => {}
                 }
                 if page >= PAGES_MAX {
+                    tronque = true;
                     break;
                 }
                 page += 1;
@@ -545,6 +564,8 @@ impl Noyau {
                         recus,
                         retires,
                         rattaches: vec![],
+                        tronque,
+                        menage: Default::default(),
                     });
                 }
                 // Un jeu visible nous est inconnu : on relit tout.
@@ -570,6 +591,8 @@ impl Noyau {
                 recus: apres,
                 retires: avant.saturating_sub(apres),
                 rattaches: vec![],
+                tronque,
+                menage: Default::default(),
             });
         }
     }
@@ -786,7 +809,16 @@ impl Noyau {
             }
         }
         std::fs::create_dir_all(&dossier)?;
-        let recue = s.source.media(id, "jaquette", largeur).await?;
+        let recue = match s.source.media(id, "jaquette", largeur).await {
+            Ok(r) => r,
+            // Hors ligne ou serveur en panne (jamais un jeton refusé, qui doit se dire) : la même jaquette gardée à une
+            // autre taille, sinon rien (une vignette par erreur au journal, hors ligne, l'inonderait).
+            Err(Erreur::Reseau(_) | Erreur::Serveur(_)) => {
+                let o = crate::medias::autre_largeur(&dossier, &format!("{id}-"), &empreinte, largeur.unwrap_or(1000));
+                return Ok(o.map(|octets| Image { type_contenu: type_image(&octets), octets }));
+            }
+            Err(e) => return Err(e),
+        };
         // L'ancienne jaquette de ce jeu (autre empreinte) n'a plus lieu d'être.
         if let Ok(liste) = std::fs::read_dir(&dossier) {
             for e in liste.flatten() {
@@ -883,7 +915,13 @@ impl Noyau {
                         return Ok(Some(Image { type_contenu: img.type_contenu.or_else(|| type_image(&img.octets)), octets: img.octets }));
                     }
                     Ok(None) => continue,
-                    Err(e) if matches!(e, Erreur::Reseau(_) | Erreur::Serveur(_)) => continue,
+                    // Hors ligne : la même image gardée à une autre largeur, sinon le type suivant.
+                    Err(e) if matches!(e, Erreur::Reseau(_) | Erreur::Serveur(_)) => {
+                        if let Some(octets) = crate::medias::autre_largeur(&du_jeu, &format!("{sorte}-"), &empreinte, largeur) {
+                            return Ok(Some(Image { type_contenu: type_image(&octets), octets }));
+                        }
+                        continue;
+                    }
                     Err(e) => return Err(e),
                 }
             }
@@ -1596,6 +1634,177 @@ mod tests {
         let c = n.session().await.unwrap();
         c.verrou().garder_fusions(&[crate::ludotheque::Fusion { ancien: 5, nouveau: 1927, le: None }], false).unwrap();
         assert_eq!(c.verrou().reuni_vers(5).unwrap(), Some(324));
+    }
+
+    /// Un Firehouse avec deux jeux visibles (1 et 2) ; le jeu 1 a fond, logo et jaquette (empreintes connues).
+    fn serveur_m4() -> MockServer {
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "SNES", "jeux": 2}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [
+                {"id": 1, "titre": "A", "plateforme": "SNES", "jaquette": true, "jaquette_empreinte": "j1",
+                 "images": {"jaquette": {"empreinte": "j1"}, "fond": {"empreinte": "f1"}, "logo": {"empreinte": "l1"}}},
+                {"id": 2, "titre": "B", "plateforme": "SNES", "images": {}}]}));
+        });
+        s
+    }
+
+    #[tokio::test]
+    async fn le_menage_retire_les_images_d_un_jeu_plus_visible_et_rien_d_autre() {
+        let s = serveur_m4();
+        let (d, n) = ouvert(&s).await;
+        n.synchroniser(|_, _| {}).await.unwrap();
+        // Un jeu du PC dont la fiche n'est plus dans le catalogue (non rattaché) : ses images restent.
+        n.registre().ajouter(&jeu_du_pc(77, &d.path().join("J"))).unwrap();
+        let p = n.session().await.unwrap().dossier.clone();
+        let ecrire = |r: &str| {
+            let f = p.join(r);
+            std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+            std::fs::write(f, b"12345").unwrap();
+        };
+        for r in [
+            "jaquettes/1-400-j1.img",
+            "jaquettes/9-400-x.img",
+            "jaquettes/9-400-x.absent",
+            "jaquettes/77-400-x.img",
+            "jaquettes/-5-400-x.img",
+            "jaquettes/notes.txt",
+            "visuels/1/fond-1000-f1.img",
+            "visuels/9/fond-1000-f9.img",
+            "visuels/9/medias.json",
+            "visuels/9-logo-600.img",
+            "documents/9/documents.json",
+            "documents/9/3.pdf",
+        ] {
+            ecrire(r);
+        }
+        let b = n.synchroniser(|_, _| {}).await.unwrap();
+        // Retirés : la jaquette, son absence, le dossier des visuels et l'ancien nom plat du jeu 9, et la liste de ses
+        // documents (5 éléments) ; jamais le fichier du document (accord de la personne), ni le reste.
+        assert_eq!(b.menage.elements, 5, "{b:?}");
+        assert!(b.menage.octets >= 5 * 5);
+        for parti in ["jaquettes/9-400-x.img", "jaquettes/9-400-x.absent", "visuels/9", "visuels/9-logo-600.img", "documents/9/documents.json"] {
+            assert!(!p.join(parti).exists(), "{parti}");
+        }
+        for reste in ["jaquettes/1-400-j1.img", "jaquettes/77-400-x.img", "jaquettes/-5-400-x.img", "jaquettes/notes.txt", "visuels/1/fond-1000-f1.img", "documents/9/3.pdf"] {
+            assert!(p.join(reste).exists(), "{reste}");
+        }
+    }
+
+    #[tokio::test]
+    async fn le_mode_simule_ne_fait_jamais_de_menage() {
+        let (_d, n) = noyau();
+        let id = n.creer_profil("Seb", None, None).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        let p = n.session().await.unwrap().dossier.clone();
+        std::fs::create_dir_all(p.join("jaquettes")).unwrap();
+        std::fs::write(p.join("jaquettes").join("987654-400-x.img"), b"vraie").unwrap();
+        let b = n.synchroniser(|_, _| {}).await.unwrap();
+        assert!(b.simule);
+        assert_eq!(b.menage, Default::default());
+        assert!(p.join("jaquettes").join("987654-400-x.img").exists(), "les images du vrai profil restent");
+    }
+
+    #[test]
+    fn hors_ligne_la_meme_image_a_une_autre_largeur() {
+        let d = tempfile::tempdir().unwrap();
+        for (n, o) in [("fond-400-f1.img", "400"), ("fond-1000-f1.img", "1000"), ("fond-600-f2.img", "autre"), ("logo-800-f1.img", "logo")] {
+            std::fs::write(d.path().join(n), o).unwrap();
+        }
+        let l = |largeur| crate::medias::autre_largeur(d.path(), "fond-", "f1", largeur).map(|o| String::from_utf8(o).unwrap());
+        assert_eq!(l(600).as_deref(), Some("1000"), "la plus proche au-dessus");
+        assert_eq!(l(300).as_deref(), Some("400"));
+        assert_eq!(l(1200).as_deref(), Some("1000"), "sinon la plus grande au-dessous");
+        assert_eq!(crate::medias::autre_largeur(d.path(), "fond-", "f3", 600), None, "jamais une autre empreinte");
+    }
+
+    #[tokio::test]
+    async fn hors_ligne_jaquette_et_fond_gardes_a_une_autre_taille_sont_montres() {
+        let s = serveur_m4();
+        let (_d, n) = ouvert(&s).await;
+        n.synchroniser(|_, _| {}).await.unwrap();
+        let p = n.session().await.unwrap().dossier.clone();
+        std::fs::create_dir_all(p.join("jaquettes")).unwrap();
+        std::fs::write(p.join("jaquettes").join("1-1000-j1.img"), b"RIFF\0\0\0\0WEBPj").unwrap();
+        std::fs::create_dir_all(p.join("visuels").join("1")).unwrap();
+        std::fs::write(p.join("visuels").join("1").join("fond-600-f1.img"), b"RIFF\0\0\0\0WEBPf").unwrap();
+        // Firehouse en panne (un serveur simulé ne sait pas disparaître : il répondrait 404) : même branche que hors
+        // ligne.
+        s.mock(|w, t| {
+            w.method(GET).path_matches(httpmock::Regex::new("^/api/jeux/v1/media/").unwrap());
+            t.status(503);
+        });
+        assert!(n.jaquette(1, Some(400)).await.unwrap().unwrap().octets.ends_with(b"j"));
+        assert!(n.visuel(1, &["fond"], 1000).await.unwrap().unwrap().octets.ends_with(b"f"));
+        // Rien de gardé : rien, sans erreur.
+        assert!(n.visuel(1, &["logo"], 600).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn taodbox_garde_a_l_avance_fond_et_logo_des_jeux_du_pc() {
+        let s = serveur_m4();
+        let fond = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/media/1/fond").query_param("largeur", "1000");
+            t.status(200).header("Content-Type", "image/webp").body(b"RIFF    WEBPf".to_vec());
+        });
+        let logo = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/media/1/logo").query_param("largeur", "600");
+            t.status(200).header("Content-Type", "image/webp").body(b"RIFF    WEBPl".to_vec());
+        });
+        let (d, n) = ouvert(&s).await;
+        n.synchroniser(|_, _| {}).await.unwrap();
+        // Le jeu 1 (prêt), le jeu 2 (sans images) et un jeu en attente : seul le premier compte.
+        n.registre().ajouter(&jeu_du_pc(1, &d.path().join("A"))).unwrap();
+        n.registre().ajouter(&jeu_du_pc(2, &d.path().join("B"))).unwrap();
+        let mut attente = jeu_du_pc(3, &d.path().join("C"));
+        attente.etat = crate::jeux_pc::Etat::Attente;
+        n.registre().ajouter(&attente).unwrap();
+        assert_eq!(n.precharger_taodbox(50).await.unwrap(), 1);
+        // Déjà gardés : rien n'est redemandé, et ils ne comptent pas.
+        assert_eq!(n.precharger_taodbox(50).await.unwrap(), 0);
+        fond.assert_hits(1);
+        logo.assert_hits(1);
+        // Rangés exactement là où Taodbox les lit (même hors ligne).
+        assert!(n.visuel(1, &["fond", "capture", "ecran_titre"], 1000).await.unwrap().unwrap().octets.ends_with(b"f"));
+        assert!(n.visuel(1, &["logo"], 600).await.unwrap().unwrap().octets.ends_with(b"l"));
+        fond.assert_hits(1);
+    }
+
+    #[tokio::test]
+    async fn le_prechargement_passe_un_jeu_sans_image_et_reprend_au_dela_du_plafond() {
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "SNES", "jeux": 3}]}));
+        });
+        let jeu = |id: i64| json!({"id": id, "titre": "J", "plateforme": "SNES", "images": {"fond": {"empreinte": format!("f{id}")}}});
+        s.mock(move |w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [jeu(1), jeu(2), jeu(3)]}));
+        });
+        // Le catalogue annonce un fond pour le jeu 1, mais Firehouse ne l'a plus (404) : on passe au suivant.
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/media/1/fond");
+            t.status(404);
+        });
+        let autres = s.mock(|w, t| {
+            w.method(GET).path_matches(httpmock::Regex::new("^/api/jeux/v1/media/[23]/fond$").unwrap());
+            t.status(200).header("Content-Type", "image/webp").body(b"RIFF    WEBPf".to_vec());
+        });
+        let (d, n) = ouvert(&s).await;
+        n.synchroniser(|_, _| {}).await.unwrap();
+        for id in [1, 2, 3] {
+            n.registre().ajouter(&jeu_du_pc(id, &d.path().join(id.to_string()))).unwrap();
+        }
+        // Plafond de 1 : le jeu 2 à ce passage, le jeu 3 au suivant (jamais toujours les mêmes).
+        assert_eq!(n.precharger_taodbox(1).await.unwrap(), 1);
+        assert_eq!(n.precharger_taodbox(1).await.unwrap(), 1);
+        assert_eq!(n.precharger_taodbox(1).await.unwrap(), 0);
+        autres.assert_hits(2);
     }
 
     #[tokio::test]

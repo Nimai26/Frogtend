@@ -163,6 +163,168 @@ impl Noyau {
     }
 }
 
+/// Hors ligne (lot Médias M4) : la même image (même empreinte) gardée à une AUTRE largeur, la plus proche au-dessus,
+/// sinon la plus grande au-dessous. Les fichiers lus : `<debut><largeur>-<empreinte>.img` dans `dossier`.
+pub(crate) fn autre_largeur(dossier: &Path, debut: &str, empreinte: &str, largeur: u32) -> Option<Vec<u8>> {
+    let fin = format!("-{empreinte}.img");
+    let mut dessus: Option<(u32, PathBuf)> = None;
+    let mut dessous: Option<(u32, PathBuf)> = None;
+    for e in std::fs::read_dir(dossier).ok()?.flatten() {
+        let n = e.file_name().to_string_lossy().to_string();
+        let Some(l) = n.strip_prefix(debut).and_then(|r| r.strip_suffix(&fin)).and_then(|l| l.parse::<u32>().ok()) else { continue };
+        if l >= largeur {
+            if dessus.as_ref().is_none_or(|(d, _)| l < *d) {
+                dessus = Some((l, e.path()));
+            }
+        } else if dessous.as_ref().is_none_or(|(d, _)| l > *d) {
+            dessous = Some((l, e.path()));
+        }
+    }
+    std::fs::read(dessus.or(dessous)?.1).ok()
+}
+
+/// Le numéro de jeu d'un nom rangé dans un cache d'images : le texte avant le premier `-` (ou le nom entier), lu comme
+/// un entier > 0. Tout autre nom n'est jamais touché.
+fn id_du_nom(nom: &str) -> Option<i64> {
+    let id = nom.split('-').next()?.parse::<i64>().ok()?;
+    (id > 0).then_some(id)
+}
+
+/// Ce qu'occupe un fichier ou un dossier (jamais en suivant un lien).
+fn taille(p: &Path) -> u64 {
+    match std::fs::symlink_metadata(p) {
+        Ok(m) if m.is_dir() => std::fs::read_dir(p).into_iter().flatten().flatten().map(|e| taille(&e.path())).sum(),
+        Ok(m) => m.len(),
+        Err(_) => 0,
+    }
+}
+
+/// Ce que le ménage a retiré.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Serialize)]
+pub struct Menage {
+    pub elements: usize,
+    pub octets: u64,
+}
+
+impl Noyau {
+    /// Le ménage des caches d'images d'UN profil (lot Médias M4), après une synchronisation complète et réussie : tout
+    /// ce qui est rangé sous un jeu que Firehouse ne montre plus à ce profil (caché, retiré, fiche réunie) part —
+    /// jaquettes, visuels et galerie, et la LISTE des documents. Jamais les fichiers des documents (un livret
+    /// téléchargé avec l'accord de la personne peut n'être que là), jamais un jeu du PC (son ancien numéro reste
+    /// jouable), jamais hors des trois dossiers du profil, jamais un nom non reconnu ni un lien.
+    pub(crate) fn menage_caches(&self, s: &crate::noyau::Session) -> Resultat<Menage> {
+        let mut gardes: std::collections::HashSet<i64> = s.verrou().ids_des_jeux()?.into_iter().collect();
+        if gardes.is_empty() {
+            return Ok(Menage::default()); // un catalogue vide ne prouve rien
+        }
+        gardes.extend(self.registre().ids()?);
+        let mut m = Menage::default();
+        let mut retirer = |p: &Path| {
+            let Ok(meta) = std::fs::symlink_metadata(p) else { return };
+            if meta.file_type().is_symlink() {
+                return;
+            }
+            let t = taille(p);
+            let r = if meta.is_dir() { std::fs::remove_dir_all(p) } else { std::fs::remove_file(p) };
+            if r.is_ok() {
+                m.elements += 1;
+                m.octets += t;
+            }
+        };
+        for sous in ["jaquettes", "visuels"] {
+            let Ok(l) = std::fs::read_dir(s.dossier.join(sous)) else { continue };
+            for e in l.flatten() {
+                let n = e.file_name().to_string_lossy().to_string();
+                if id_du_nom(&n).is_some_and(|id| !gardes.contains(&id)) {
+                    retirer(&e.path());
+                }
+            }
+        }
+        if let Ok(l) = std::fs::read_dir(s.dossier.join("documents")) {
+            for e in l.flatten() {
+                let n = e.file_name().to_string_lossy().to_string();
+                if n.parse::<i64>().ok().filter(|id| *id > 0).is_some_and(|id| !gardes.contains(&id)) {
+                    retirer(&e.path().join("documents.json"));
+                }
+            }
+        }
+        Ok(m)
+    }
+
+    /// Taodbox hors ligne (lot Médias M4) : le fond et le logo des jeux du PC prêts à jouer, visibles de ce profil,
+    /// gardés à l'avance, aux largeurs de Taodbox et rangés comme `visuel` les range. Un visuel déjà gardé ne coûte
+    /// rien et ne compte pas ; au plus `plafond` jeux TÉLÉCHARGÉS par passage (les suivants au passage d'après) ; un
+    /// visuel que Firehouse n'a pas (404) fait passer au jeu suivant ; hors ligne ou serveur en panne : arrêt. Un seul
+    /// passage à la fois. Rend le nombre de jeux dont un visuel a été reçu.
+    pub async fn precharger_taodbox(&self, plafond: usize) -> Resultat<usize> {
+        static EN_COURS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if EN_COURS.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            return Ok(0);
+        }
+        let r = self.precharger(plafond).await;
+        EN_COURS.store(false, std::sync::atomic::Ordering::SeqCst);
+        r
+    }
+
+    async fn precharger(&self, plafond: usize) -> Resultat<usize> {
+        let s = self.session().await?;
+        if s.source.est_simulee() {
+            return Ok(0);
+        }
+        let jeux: Vec<i64> = self.registre().tous()?.into_iter().filter(|j| j.etat == crate::jeux_pc::Etat::Telecharge).map(|j| j.id).collect();
+        let mut recus = 0;
+        'jeux: for id in jeux {
+            if recus >= plafond {
+                break;
+            }
+            let Some(images) = s.verrou().jeu(id)?.and_then(|j| j.images) else { continue };
+            let du_jeu = s.dossier.join("visuels").join(id.to_string());
+            let mut recu = false;
+            for (chaine, largeur) in [(&["fond", "capture", "ecran_titre"][..], 1000u32), (&["logo"][..], 600)] {
+                // Le premier type de la chaîne que le jeu a : celui que Taodbox montrera.
+                let Some((sorte, image)) = chaine.iter().find_map(|t| images.get(*t).map(|i| (*t, i))) else { continue };
+                let Some(empreinte) = image.empreinte.as_deref().map(propre).filter(|e| !e.is_empty()) else { continue };
+                let fichier = du_jeu.join(format!("{sorte}-{largeur}-{empreinte}.img"));
+                if fichier.is_file() {
+                    continue;
+                }
+                match s.source.media(id, sorte, Some(largeur)).await {
+                    Ok(Some(img)) => {
+                        if ecrire(&fichier, &img.octets).is_ok() {
+                            // Les anciennes versions de ce visuel partent (comme dans `visuel`).
+                            if let Ok(l) = std::fs::read_dir(&du_jeu) {
+                                for e in l.flatten() {
+                                    let n = e.file_name().to_string_lossy().to_string();
+                                    if n.starts_with(&format!("{sorte}-")) && n.ends_with(".img") && !n.ends_with(&format!("-{empreinte}.img")) {
+                                        let _ = std::fs::remove_file(e.path());
+                                    }
+                                }
+                            }
+                        }
+                        recu = true;
+                    }
+                    Ok(None) => {} // Firehouse ne l'a pas (ou plus) : le jeu suivant
+                    Err(Erreur::Reseau(_) | Erreur::Serveur(_)) => {
+                        self.journaliser(&format!("Taodbox : fonds et logos gardés à l'avance arrêtés au jeu {id} (hors ligne ou Firehouse indisponible)"));
+                        if recu {
+                            recus += 1;
+                        }
+                        break 'jeux;
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            if recu {
+                recus += 1;
+            }
+        }
+        if recus > 0 {
+            self.journaliser(&format!("Taodbox : fonds et logos de {recus} jeu(x) gardés à l'avance"));
+        }
+        Ok(recus)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

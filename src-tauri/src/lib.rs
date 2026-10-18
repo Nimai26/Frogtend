@@ -418,6 +418,7 @@ pub fn run() {
             commandes::rpcs3_installer_micrologiciel,
             commandes::rpcs3_micrologiciel,
             commandes::taodbox_lance,
+            commandes::taodbox_precharger,
             commandes::emulateur_installer_firehouse,
             commandes::jeu_triches,
             commandes::cheatengine_lancer,

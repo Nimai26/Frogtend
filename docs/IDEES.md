@@ -45,3 +45,7 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   synchronisation ; un jeu rattaché garde sa fiche locale d'avant (une annexe absente du PC, demandée avec l'ancienne
   `cle`, répond 409 : relire alors la fiche) ; les documents et visuels gardés sous l'ancien numéro restent orphelins
   (à purger avec le lot Médias M4).
+- (18/10, expert contrat, lot M4) Petits restes : une jaquette notée « absente » à une taille reste invisible hors ligne
+  7 jours même gardée à une autre ; le ménage lit le disque dans une tâche asynchrone (à passer en `spawn_blocking`
+  si des milliers d'images) ; le préchargement des fonds de Taodbox (au plus 50 jeux, ~100 Ko chacun) se fait sans
+  annonce, suivant le réglage « Fonds et logos » : à confirmer avec Seb pour une connexion limitée (chez sa sœur).

@@ -148,7 +148,7 @@
   sinon leur source officielle, après accord et taille annoncée. Puis « on enchaîne » → lot Médias (choisi par moi).
 - [ ] **Lot « Médias »** (en cours depuis le 18/10 ; découpe : M1 choix du visuel de la ludothèque au bon ratio +
       `images`/`medias_empreinte` et `documents`/`documents_empreinte` gardés dans le catalogue (fin du D3 des
-      documents), relecture complète unique ; ✅ M2 galerie dans la fiche (0.64.0) ; ✅ M3 logos et fonds Taodbox (0.66.0) ; M4 hors ligne et
+      documents), relecture complète unique ; ✅ M2 galerie dans la fiche (0.64.0) ; ✅ M3 logos et fonds Taodbox (0.66.0) ; ✅ M4 (0.67.0) hors ligne et
       retrait du cache d'une image plus servie) (contrat 1.6, Firehouse 2.41.0) : ratio réel de la boîte réservé, choix du visuel de la
       ludothèque (jaquette, boîte 3D, cartouche…), logos et fonds pour Taodbox, galerie dans la fiche, copie hors ligne
       des visuels choisis, retrait du cache d'une image que Firehouse ne sert plus (édition par un admin).
@@ -164,6 +164,10 @@
       ludothèque, les jaquettes et les visuels du profil ; si le nouveau jeton appartient à un AUTRE compte Firehouse
       (ex. un admin remplacé par un mineur), ce qui a été reçu pour l'ancien reste visible jusqu'à la synchronisation.
       → vider ces caches (ou forcer une synchronisation complète) quand le compte change. Règle du brief § 2.
+- [ ] **Mode simulé et vrai profil** (expert contrat, 18/10, déjà vrai avant) : un profil passé en mode simulé
+      (Réglages ▸ Firehouse) range les ~30 jeux d'exemple dans le MÊME `ludotheque.db` que le vrai catalogue (une
+      synchronisation simulée le remplace) ; repassé au vrai Firehouse, une relecture le corrige, mais d'ici là la
+      ludothèque est fausse. → cache à part pour le mode simulé. Le ménage des images (0.67.0) ne tourne jamais en simulé.
 - [ ] **Durcissement** (relevé à l'audit du 03/10) : le cœur ne recompare pas aux réglages les dossiers que
       l'interface lui donne (emplacements, émulateurs, outils).
 - [ ] DLC Xbox 360 (Xenia) et PS Vita (Vita3K) — aucun jeu chez Seb pour l'instant, priorité basse.
@@ -272,6 +276,18 @@ d'abord :
       quelle (règles « Autoriser, privé » posées sur le RetroArch d'essai supprimé : sans effet, gardées).
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.67.0** (18/10) — Lot Médias M4 (FIN du lot Médias) : ménage des caches d'images d'un profil après une
+  synchronisation lue en entier, face au vrai Firehouse seulement (`jaquettes/`, `visuels/` des ids ni au catalogue
+  ni au registre ; la LISTE des documents seulement, jamais leurs fichiers ; jamais un lien) ; repli hors ligne sur la
+  même empreinte à une autre largeur (jaquette, visuels ; un jeton refusé se dit toujours) ; fonds et logos de Taodbox
+  gardés à l'avance après la synchronisation (jeux du PC prêts et visibles ; plafond de 50 jeux TÉLÉCHARGÉS par passage,
+  le reste au passage suivant ; un 404 fait passer au jeu suivant ; arrêt hors ligne ; un seul passage à la fois —
+  deux défauts relevés à la relecture et corrigés avant livraison).
+  `BilanSynchro.tronque` (plafond de pages : pas de ménage). Avis de l'expert contrat avant de coder (bloquants évités :
+  mode simulé qui partage le cache du profil, documents parfois seule copie) et relecture avant livraison. Vérifié :
+  tests (346 cœur, 174 interface), répétition en lecture seule sur une copie des bases de Seb (catalogue 12 717 jeux,
+  9 jeux du PC, 66 jaquettes : 0 retirée). NON vérifié en réel : un vrai hors ligne (câble débranché).
 
 - **0.66.0** (18/10) — Lot Médias M3 : dans Taodbox, le fond du jeu focalisé (fond, sinon capture, sinon écran titre ;
   flou léger, `--voile-fort` et encres de voile, d'après la charte § 7) et son logo dans un bandeau à hauteur fixe

@@ -377,6 +377,13 @@ impl Cache {
             .query_row("SELECT MAX(json_extract(brut, '$.maj_le')) FROM jeux WHERE id > 0", [], |r| r.get::<_, Option<String>>(0))?)
     }
 
+    /// Les numéros des jeux de Firehouse gardés (ceux des boutiques, négatifs, à part).
+    pub fn ids_des_jeux(&self) -> Resultat<Vec<i64>> {
+        let mut st = self.db.prepare("SELECT id FROM jeux WHERE id > 0")?;
+        let l = st.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?;
+        Ok(l)
+    }
+
     pub fn nombre_de_jeux(&self) -> Resultat<u64> {
         Ok(self.db.query_row("SELECT COUNT(*) FROM jeux WHERE id > 0", [], |r| r.get::<_, i64>(0))? as u64)
     }

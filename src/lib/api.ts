@@ -324,6 +324,10 @@ export interface BilanSynchro {
   retires: number;
   /** Jeux du PC rattachés à leur nouvelle fiche pendant cette synchronisation (contrat 1.14) : [ancien, nouveau]. */
   rattaches?: [number, number][];
+  /** La lecture s'est arrêtée au plafond de pages (catalogue peut-être incomplet : aucun ménage). */
+  tronque?: boolean;
+  /** Le ménage des caches d'images (lot Médias M4). */
+  menage?: { elements: number; octets: number };
 }
 
 /** Qui porte un jeton, d'après Firehouse (`/moi`). */
@@ -529,6 +533,8 @@ export const api = {
   rpcs3InstallerMicrologiciel: (programme: string, pup: string) => appeler<string>('rpcs3_installer_micrologiciel', { programme, pup }),
   rpcs3Micrologiciel: (programme: string) => appeler<string | null>('rpcs3_micrologiciel', { programme }),
   taodboxLance: () => appeler<boolean>('taodbox_lance'),
+  /** Garde à l'avance fonds et logos des jeux du PC pour Taodbox hors ligne : le nombre de jeux prêts. */
+  prechargerTaodbox: () => appeler<number>('taodbox_precharger'),
   assistant: (question: string, mediaId: number | null, historique: { role: string; content: string }[]) =>
     appeler<{ ok?: boolean; texte?: string; actions_proposees?: ActionProposee[] }>('assistant_demander', { question, mediaId, historique }),
   assistantJournal: (action: string, decision: string) => appeler<void>('assistant_journal', { action, decision }),

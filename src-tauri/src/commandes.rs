@@ -851,6 +851,13 @@ pub async fn jeu_jouer(
     Ok(())
 }
 
+/// Garde à l'avance le fond et le logo des jeux du PC pour Taodbox hors ligne (lot Médias M4) : 50 jeux au plus par
+/// passage (quelques centaines de Ko chacun). Rend le nombre de jeux prêts.
+#[tauri::command]
+pub async fn taodbox_precharger(noyau: State<'_, Noyau>) -> Resultat<usize> {
+    noyau.precharger_taodbox(50).await
+}
+
 /// Frogtend a-t-il été lancé en Taodbox (`--taodbox`, par exemple comme application de Sunshine) ?
 #[tauri::command]
 pub fn taodbox_lance() -> bool {

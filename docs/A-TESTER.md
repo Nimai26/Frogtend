@@ -48,6 +48,13 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Images hors ligne et ménage (0.67.0)
+Chez toi le ménage ne retire rien (vérifié le 18/10 sur une copie de tes données : 66 jaquettes, toutes gardées).
+- [ ] Synchronise, attends une minute, puis coupe Internet (débranche le câble ou coupe le Wi-Fi) et ouvre Taodbox :
+      les fonds et les logos de tes jeux installés s'affichent toujours.
+- [ ] Toujours sans Internet, la ludothèque : les jaquettes déjà vues s'affichent.
+- [ ] Rebranche Internet : tout refonctionne comme avant.
+
 ## Fonds et logos dans Taodbox (0.66.0)
 - [ ] Taodbox : arrête-toi sur un jeu (par exemple Contra III ou un jeu SNES) : son fond apparaît derrière, flouté et
       assombri, et son logo en haut. Le texte reste lisible.

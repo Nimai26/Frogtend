@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.67.0 — Tes images aussi sans Internet, et un cache qui se range seul
+
+- Taodbox garde à l'avance le fond et le logo de tes jeux installés (après chaque synchronisation, quelques centaines
+  de Ko par jeu) : sans Internet, ils s'affichent quand même.
+- Sans Internet, une jaquette ou une image déjà gardée à une autre taille s'affiche, au lieu d'une case vide.
+- Après chaque synchronisation, Frogtend retire de son cache les images des jeux que Firehouse ne te montre plus.
+  Les documents que tu as téléchargés (livrets, musiques, vidéos) ne sont jamais effacés, ni rien de tes jeux
+  installés.
+
 ## 0.66.0 — Taodbox montre le fond et le logo de tes jeux
 
 - Dans Taodbox, quand tu t'arrêtes sur un jeu, **son grand fond** apparaît derrière la grille et **son logo** s'affiche
