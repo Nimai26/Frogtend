@@ -279,6 +279,11 @@ d'abord :
       Seb (18/10) : l'essai « Annuler cliqué pour de vrai » est inutile (refusé) ; il laisse son installation telle
       quelle (règles « Autoriser, privé » posées sur le RetroArch d'essai supprimé : sans effet, gardées).
 
+- 19/10 (Seb : « n'oublie pas de répondre à Firehouse ») : réponse envoyée à la session Firehouse (accusé des
+  contrats 1.15 et 1.16, ce que Frogtend en fait ; questions : `D:\` pour `%rom_dossier%` à la racine, XISO pour xemu,
+  ScummVM non branché, besoin 23 a/b, compte retenu `username#grade`). Remise acceptée par le serveur, lecture NON
+  confirmée : à retransmettre par Seb si pas de réponse.
+
 ## ✅ Livré (version — ce qui a été vérifié)
 
 - **0.70.0** (19/10) — Contrat 1.15 (✅ Seb 19/10, après le 1.16) : les infos du jeu dans sa fiche — date de sortie en
