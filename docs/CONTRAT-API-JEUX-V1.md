@@ -292,6 +292,35 @@ un client < 1.15 ignore le champ.
   "Not Rated", "pegi": null, "note": 3.93827160493827, "joueurs_min": null, "joueurs_massif": false}`.
 - Côté Frogtend : pas encore affiché (à proposer à Seb : fiche du jeu — date, classement d'âge, note).
 
+### 1.16 (19/10, Firehouse 2.78.0, en-tête `X-Api-Jeux-Version: 1.16`) — lignes de commande des autonomes, plateformes
+Reçu par message de la session Firehouse (sur demande de Seb), en service le 19/10 à 0 h 11. Ajout compatible.
+- `conseil.ligne_de_commande` d'un émulateur AUTONOME est maintenant remplie (avant : toujours vide) : les ARGUMENTS
+  après le `programme` de la source, vérifiés dans les sources ou la doc officielle de chaque émulateur :
+  Dolphin `-b -e "%rom%"` ; PCSX2 `-batch -fullscreen -- "%rom%"` ; RPCS3 `--no-gui --fullscreen "%rom%"` ; Cemu et
+  Eden `-f -g "%rom%"` ; xemu `-full-screen -dvd_path "%rom%"` (non vérifié : XISO peut-être exigé) ; Xenia Canary
+  `--fullscreen "%rom%"` ; EKA2L1 `-f --mount "%rom%"` ; BigPEmu `"%rom%" -localdata` (l'image EN PREMIER) ; MAME
+  (Arcade) `%rom_nom% -rompath "%rom_dossier%"` ; ScummVM `-f -p "%rom%" --auto-detect` (ici `%rom%` = le DOSSIER du
+  jeu) ; machines de salon par MAME `studio2 -cart "%rom%"` (crvision, apfm1000, vsmile, pv1000 : même forme ; gamecom
+  `-cart1 "%rom%"`). Vide = non fournie (Azahar, Vita3K, shadPS4, Apple I) : programme + fichier, comme avant.
+- Règles : remplacer `%rom%` (le fichier), `%rom_nom%` (son nom sans extension), `%rom_dossier%` (son dossier, SANS
+  barre finale) ; une variable inconnue = ne pas lancer ; jamais de shell ; MAME : dossier de travail = dossier de MAME
+  (une machine de salon cherche ses ROM système dans `roms/`).
+- 21 plateformes de plus au conseil : Casio PV-1000, RCA Studio II, VTech CreatiVision, Tiger Game.com, APF
+  Imagination Machine, VTech V.Smile, Apple I, Fairchild Channel F, Watara Supervision, Mega Duck, NEC PC-9801, Sharp
+  X1, Sega Dreamcast VMU, Bandai Sufami Turbo, J2ME ; d'avance : Nintendo 3DS, Sony Playstation Vita, Sony Playstation
+  4, SNK Neo Geo CD, Atari 800, Sharp X68000.
+- BIOS des machines MAME de salon : un zip système dans `roms/` de MAME (`racine: dossier_emulateur`, `chemin:
+  roms/studio2.zip`…), servis : studio2, crvision, gamecom, apfm1000, vsmile (apple1 non servi, incomplet).
+- Valeurs changées : Emerson Arcadia 2001 → cœur `amiarcadia_libretro` ; clés Wii U `chemin: portable/keys.txt`
+  (toujours `coffre: true`) ; 10 cœurs de plus servis (freechaf, potator, sameduck, np2kai, x1, vemulator, squirreljme,
+  neocd, atari800, px68k).
+- Exemple réel (19/10) : `GET /emulateurs?plateforme=Nintendo GameCube` → `conseil.emulateur: "dolphin"`,
+  `conseil.ligne_de_commande: "-b -e \"%rom%\""`.
+- ⚠️ Côté Frogtend (relevé du 19/10, avant adaptation) : `ligneDe` (src/lib/emulateurs/pret.ts) colle les options de
+  Frogtend devant `%rom%` de la ligne du conseil → options EN DOUBLE pour un autonome (Dolphin `-b -e … -b -e`) ;
+  `%rom_nom%`/`%rom_dossier%` ne sont pas remplacés ; MAME construit sa propre commande. À adapter avant qu'un
+  émulateur soit préparé ou mis à jour d'après ces lignes.
+
 ### Note 2.58.0 (contrat inchangé)
 Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a été RÉUNIE à celle du même jeu
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
