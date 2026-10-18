@@ -47,6 +47,9 @@ pub struct Bilan {
     pub date: String,
     pub pc: String,
     pub dossier: String,
+    /// Jeux dont les parties restent seulement sur ce PC (ce profil ne les voit pas chez Firehouse) — jamais nommés.
+    #[serde(default)]
+    pub non_envoyes: usize,
 }
 
 /// Ce qu'il faut sauvegarder pour un profil.
@@ -54,6 +57,10 @@ pub struct Contenu {
     pub configuration: Value,
     pub bibliotheque: Value,
     pub parties: Vec<Element>,
+    /// Des préfixes (`jeux/<id>/`) de parties qui sont encore sur le PC mais ne partent pas (jeu que ce profil ne voit
+    /// pas, ou plus) : ce qui en avait déjà été envoyé à CE compte est gardé tel quel dans la version courante, jamais
+    /// retiré — rien de caché ne part, rien ne sort de la protection de Firehouse.
+    pub gardes: Vec<String>,
 }
 
 pub fn empreinte(chemin: &Path) -> Resultat<String> {
@@ -290,13 +297,20 @@ pub async fn envoyer(d: &impl Destination, contenu: &Contenu, pc: &str, emplacem
         bilan.taille += taille;
         nouveau.fichiers.insert(e.relatif.clone(), (sha, taille));
     }
-    // Ce qui n'existe plus sur le PC sort de la version courante (l'historique du serveur le garde).
-    for r in ancien.fichiers.keys() {
-        if !nouveau.fichiers.contains_key(r) {
-            d.supprimer_fichier(r).await?;
-            bilan.retires += 1;
+    // Ce qui n'existe plus sur le PC sort de la version courante (l'historique du serveur le garde). Ce qui est encore
+    // sur le PC mais ne part plus (`gardes`) reste tel qu'il avait été envoyé.
+    for (r, e) in &ancien.fichiers {
+        if nouveau.fichiers.contains_key(r) {
+            continue;
         }
+        if contenu.gardes.iter().any(|g| r.starts_with(g.as_str())) {
+            nouveau.fichiers.insert(r.clone(), e.clone());
+            continue;
+        }
+        d.supprimer_fichier(r).await?;
+        bilan.retires += 1;
     }
+    bilan.non_envoyes = contenu.gardes.len();
     bilan.fichiers = nouveau.fichiers.len();
     d.ecrire_document("configuration.json", &contenu.configuration).await?;
     d.ecrire_document("bibliotheque.json", &contenu.bibliotheque).await?;
@@ -330,6 +344,13 @@ impl Noyau {
                 return Err(Erreur::Refus("En mode simulé, rien n'est sauvegardé chez Firehouse.".into()))
             }
         };
+        // Une ludothèque jamais synchronisée (profil neuf, ou vidée par un changement de compte) ne dit pas quels jeux
+        // ce profil voit : ses parties sortiraient toutes de la version courante. On attend la synchronisation.
+        if s.verrou().synchronise_le()?.is_none() {
+            return Err(Erreur::Refus(
+                "Synchronise d'abord ta ludothèque (🔄) : la sauvegarde a besoin de savoir quels jeux tu vois.".into(),
+            ));
+        }
         let contenu = self.contenu_sauvegarde(programmes_emulateurs).await?;
         let api = Api { client, profil: nom_pour_api(&s.profil.nom), pc: nom_pour_api(pc), morceau: MORCEAU };
         let bilan = match envoyer(&api, &contenu, pc, "Firehouse").await {
@@ -367,6 +388,10 @@ impl Noyau {
         });
 
         let jeux = self.jeux_du_pc().await?;
+        // Les jeux du PC que ce profil ne voit pas : leurs parties ne partent pas, ce qui en avait été envoyé reste.
+        let visibles: std::collections::BTreeSet<i64> = jeux.iter().map(|v| v.jeu.id).collect();
+        let mut gardes: std::collections::BTreeSet<i64> =
+            self.registre().ids()?.into_iter().filter(|id| *id > 0 && !visibles.contains(id)).collect();
         let mut parties = Vec::new();
         let mut liste = Vec::new();
         for vu in &jeux {
@@ -412,9 +437,17 @@ impl Noyau {
                 }
             }
         }
+        // Seulement les jeux que CE profil a le droit de voir (brief § 2 : les abris sont ceux du PC, pas du profil ;
+        // après un passage admin → mineur, ceux des jeux cachés ne partent jamais dans l'espace du mineur). Un abri
+        // qui ne part plus reste sur le PC, et l'historique de Firehouse garde les envois d'avant.
         let mut par_jeu: std::collections::BTreeMap<i64, Vec<(u64, PathBuf)>> = std::collections::BTreeMap::new();
         for (id, abri) in plus_recente {
-            par_jeu.entry(reunions.get(&id).copied().unwrap_or(id)).or_default().push(abri);
+            let id = reunions.get(&id).copied().unwrap_or(id);
+            if !s.verrou().visible_ou_reuni(id)? {
+                gardes.insert(id);
+                continue;
+            }
+            par_jeu.entry(id).or_default().push(abri);
         }
         for (id, mut abris) in par_jeu {
             abris.sort_by(|a, b| b.0.cmp(&a.0));
@@ -450,6 +483,7 @@ impl Noyau {
             configuration,
             bibliotheque: json!({ "profil": profil.nom, "jeux": liste }),
             parties,
+            gardes: gardes.into_iter().map(|id| format!("jeux/{id}/")).collect(),
         })
     }
 }
@@ -459,7 +493,27 @@ mod tests {
     use super::*;
 
     fn contenu(parties: Vec<Element>) -> Contenu {
-        Contenu { configuration: json!({"a": 1}), bibliotheque: json!({"jeux": []}), parties }
+        Contenu { configuration: json!({"a": 1}), bibliotheque: json!({"jeux": []}), parties, gardes: vec![] }
+    }
+
+    #[tokio::test]
+    async fn les_parties_d_un_jeu_devenu_invisible_restent_dans_la_version_courante() {
+        let pc = tempfile::tempdir().unwrap();
+        let partage = tempfile::tempdir().unwrap();
+        let a = pc.path().join("PARTIE.SAV");
+        std::fs::write(&a, b"un").unwrap();
+        let el = Element { source: a.clone(), relatif: "jeux/7/PARTIE.SAV".into() };
+        envoyer(&DossierLocal(partage.path().into()), &contenu(vec![el]), "VENKMAN", "test").await.unwrap();
+        // Le jeu 7 n'est plus visible pour ce compte (retiré de Firehouse, caché) : sa partie ne part plus, mais ce qui
+        // en avait été envoyé reste protégé (jamais retiré), et le bilan le compte sans le nommer.
+        let mut c = contenu(vec![]);
+        c.gardes = vec!["jeux/7/".into()];
+        let b = envoyer(&DossierLocal(partage.path().into()), &c, "VENKMAN", "test").await.unwrap();
+        assert_eq!((b.envoyes, b.retires, b.fichiers, b.non_envoyes), (0, 0, 1, 1));
+        assert_eq!(std::fs::read(partage.path().join("parties/jeux/7/PARTIE.SAV")).unwrap(), b"un");
+        // Gardé aussi au passage suivant (le manifeste le porte toujours).
+        let b = envoyer(&DossierLocal(partage.path().into()), &c, "VENKMAN", "test").await.unwrap();
+        assert_eq!((b.retires, b.fichiers), (0, 1));
     }
 
     #[tokio::test]
@@ -638,6 +692,7 @@ mod tests {
                 configuration: serde_json::json!({}),
                 bibliotheque: serde_json::json!({"jeux": []}),
                 parties: vec![Element { source: f, relatif: "jeux/110/C/DUNECD/DUNE37S0.SAV".into() }],
+                gardes: vec![],
             };
             let b = envoyer(&api, &contenu, "VENKMAN", "Firehouse").await.unwrap();
             assert_eq!((b.envoyes, b.fichiers, b.taille), (1, 1, 6));
@@ -680,6 +735,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn les_abris_d_un_jeu_cache_a_ce_profil_ne_partent_jamais() {
+        use crate::coffre::CoffreMemoire;
+        use crate::noyau::Connexion;
+        let d = tempfile::tempdir().unwrap();
+        let app = d.path().join("app");
+        let n = Noyau::nouveau(&app, Box::new(CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Léa", None, None).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        // Les abris sont ceux du PC : Dune (visible pour Léa) et un jeu qu'elle ne voit pas (celui d'un admin).
+        for (jeu, f) in [("110", "DUNE.SAV"), ("987654", "CACHE.SAV")] {
+            let a = app.join("sauvegardes").join(jeu).join("1790000000");
+            std::fs::create_dir_all(&a).unwrap();
+            std::fs::write(a.join(f), b"x").unwrap();
+        }
+        let c = n.contenu_sauvegarde(&[]).await.unwrap();
+        let r: Vec<&str> = c.parties.iter().map(|e| e.relatif.as_str()).collect();
+        assert_eq!(r, vec!["jeux/110/DUNE.SAV"]);
+        assert_eq!(c.gardes, vec!["jeux/987654/".to_string()], "ce qui en avait été envoyé reste protégé");
+        assert!(app.join("sauvegardes").join("987654").exists(), "l'abri reste sur le PC");
+    }
+
+    #[tokio::test]
+    async fn une_ludotheque_jamais_synchronisee_n_est_pas_sauvegardee() {
+        use crate::coffre::CoffreMemoire;
+        use crate::noyau::Connexion;
+        let s = httpmock::MockServer::start();
+        let (_d, n) = {
+            let d = tempfile::tempdir().unwrap();
+            let n = Noyau::nouveau(d.path(), Box::new(CoffreMemoire::default())).unwrap();
+            (d, n)
+        };
+        let tout = s.mock(|w, t| {
+            w.path_matches(httpmock::Regex::new(".*").unwrap());
+            t.status(200).json_body(json!({"ok": true}));
+        });
+        let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
+        // Refusé avant d'envoyer quoi que ce soit : aucune requête.
+        assert!(matches!(n.sauvegarder(&[], "Venkman").await, Err(Erreur::Refus(_))));
+        tout.assert_hits(0);
+    }
+
+    #[tokio::test]
     async fn les_parties_mises_a_l_abri_d_un_jeu_retire_sont_sauvegardees() {
         use crate::coffre::CoffreMemoire;
         use crate::noyau::Connexion;
@@ -688,6 +787,7 @@ mod tests {
         let n = Noyau::nouveau(&app, Box::new(CoffreMemoire::default())).unwrap();
         let id = n.creer_profil("Seb", None, None).unwrap().id;
         n.ouvrir(&id, None, &Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
 
         // Dune retiré du PC : deux mises à l'abri, la plus récente l'emporte.
         let ancienne = app.join("sauvegardes").join("110").join("1790000000").join("C").join("DUNECD");

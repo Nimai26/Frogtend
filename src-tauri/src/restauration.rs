@@ -385,7 +385,7 @@ mod tests {
             std::fs::write(&f, o).unwrap();
             parties.push(Element { source: f, relatif: r.to_string() });
         }
-        let contenu = Contenu { configuration: json!({"essai": true}), bibliotheque: json!({"jeux": []}), parties };
+        let contenu = Contenu { configuration: json!({"essai": true}), bibliotheque: json!({"jeux": []}), parties, gardes: vec![] };
         let api = Api { client: &c, profil: p.into(), pc: m.into(), morceau: MORCEAU };
 
         // 1. Envoi complet.

@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.68.1 — La sauvegarde n'envoie que les parties des jeux que tu vois
+
+- Correctif de confidentialité : les parties mises à l'abri sur le PC (avant de retirer ou réinstaller un jeu) sont
+  celles de TOUT le PC. La sauvegarde d'un profil n'envoie plus que celles des jeux que ce profil a le droit de voir
+  chez Firehouse. Les autres restent sur le PC, rien n'est effacé ; ce qui en avait déjà été envoyé reste aussi chez
+  Firehouse, tel quel (il n'est simplement plus mis à jour). Le message de fin de sauvegarde dit combien de jeux sont
+  dans ce cas, sans jamais les nommer.
+- Une ludothèque jamais synchronisée (profil tout neuf, ou jeton d'un autre compte) n'est pas sauvegardée : Frogtend
+  te demande de synchroniser d'abord.
+
 ## 0.68.0 — Un nouveau jeton d'une autre personne ne voit rien de l'ancienne
 
 - Quand tu remplaces le jeton Firehouse d'un profil (👤 Mon profil ▸ 🔑 Remplacer le jeton) par celui d'un AUTRE

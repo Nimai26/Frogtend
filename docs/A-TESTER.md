@@ -48,6 +48,10 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## La sauvegarde et les jeux visibles (0.68.1)
+- [ ] 👤 Mon profil ▸ Sauvegarder maintenant : la sauvegarde se fait comme avant (le nombre de fichiers envoyés ne baisse pas : ton seul abri concerne un jeu
+      que tu vois).
+
 ## Un jeton d'un autre compte (0.68.0)
 - [ ] Rien à faire au quotidien : ta ludothèque ne doit pas se vider toute seule après la mise à jour (ton compte
       est simplement retenu à la première synchronisation).

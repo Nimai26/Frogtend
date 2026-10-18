@@ -1772,6 +1772,8 @@ mod tests {
     async fn les_parties_de_l_ancien_et_du_nouveau_numero_sont_reunies() {
         let s = serveur_reunion(json!([{"nom": "jeu.exe", "taille": 6}]));
         let (d, n) = ouvert(&s).await;
+        // La ludothèque synchronisée (324 visible) : seuls les abris des jeux visibles partent.
+        n.synchroniser(|_, _| {}).await.unwrap();
         n.registre().ajouter(&jeu_du_pc(1927, &d.path().join("A"))).unwrap();
         assert!(n.registre().rattacher(1927, 324, None, "x").unwrap());
         // Un abri fait avant le rattachement (sous 1927), un autre après (sous 324).

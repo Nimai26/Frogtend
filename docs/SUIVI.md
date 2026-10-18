@@ -160,7 +160,7 @@
       contenus.rs:346, Azahar emulateurs_profils.rs:425) — une virgule ou un point-virgule dans un chemin en fait une
       liste → `valeur_qt` (guillemets) + relecture qui retire les guillemets + test « Zelda, TOTK ». Chez Seb
       aujourd'hui : aucun des deux cas (pas de xemu ; dossier DLC sans virgule).
-- [ ] **Sauvegarde : abris des seuls jeux visibles** (expert contrat, 18/10, déjà vrai avant) : `contenu_sauvegarde`
+- [x] ✅ 0.68.1 **Sauvegarde : abris des seuls jeux visibles** (expert contrat, 18/10, déjà vrai avant) : `contenu_sauvegarde`
       envoie les abris de TOUS les jeux du PC (`sauvegarde.rs` ~403-429), sans filtre de visibilité, alors que la liste
       `bibliotheque` est filtrée. Après un passage admin → mineur, des numéros et des parties de jeux cachés partiraient
       dans l'espace du mineur chez Firehouse. → ne garder que les abris des jeux `visible_ou_reuni` du profil.
@@ -280,6 +280,20 @@ d'abord :
       quelle (règles « Autoriser, privé » posées sur le RetroArch d'essai supprimé : sans effet, gardées).
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.68.1** (18/10) — Confidentialité : `contenu_sauvegarde` n'envoie plus que les abris des jeux `visible_ou_reuni`
+  du profil (les abris sont ceux du PC) ; un abri qui ne part plus reste sur le PC, et ce qui en avait été envoyé à CE
+  compte reste dans la version courante (`Contenu.gardes` : jamais retiré — relevé BLOQUANT de l'expert lancement :
+  sinon la copie de Firehouse disparaissait après 8 semaines d'instantanés) ; même règle pour les parties d'un jeu
+  installé devenu invisible. Bilan `non_envoyes` (nombre de jeux, jamais nommés). `sauvegarder` refuse une ludothèque
+  jamais synchronisée (`synchronise_le` absent) ; la sauvegarde automatique se tait alors. Vérifié : tests (abri d'un
+  jeu caché jamais envoyé et gardé sur le PC ; parties d'un jeu devenu invisible gardées dans la version courante,
+  `retires` = 0 ; refus sans synchronisation, aucune requête) ; répétition en lecture seule chez Seb (1 abri, visible ;
+  date de synchronisation présente) ; 351 tests cœur, 174 interface.
+- ❓ **À décider avec Seb** (expert lancement, 18/10) : les parties d'ÉMULATEURS d'un profil (`<émulateur>\Profils\
+  <profil>\`) partent sans filtre de visibilité : si le jeton d'un même profil passe d'un admin à un mineur, les
+  fichiers de parties de jeux cachés (au nom parlant) partiraient dans l'espace du mineur. Prévenir ? Exclure jusqu'à
+  un choix explicite ?
 
 - **0.68.0** (18/10) — Confidentialité (brief § 2) : le cache d'un profil ET le profil retiennent son compte Firehouse
   (`username#grade` de `/moi` : un grade changé compte comme un autre compte). Un jeton d'un AUTRE compte (changé dans

@@ -22,6 +22,8 @@ export interface BilanSauvegarde {
   date: string;
   pc: string;
   dossier: string;
+  /** Jeux dont les parties restent seulement sur ce PC (ce profil ne les voit pas chez Firehouse) — jamais nommés. */
+  non_envoyes?: number;
 }
 
 /** Une sauvegarde quotidienne est refaite au-delà de ce délai. */
@@ -49,10 +51,13 @@ export async function sauvegarder(discrete = false): Promise<boolean> {
     const b = await api.sauvegarder();
     sauvegarde.derniere = b;
     if (!discrete) {
+      const seulsIci = b.non_envoyes
+        ? ` Les parties de ${b.non_envoyes} jeu(x) que ce profil ne voit pas restent seulement sur ce PC.`
+        : '';
       toast(
-        b.envoyes
+        (b.envoyes
           ? `✅ Sauvegardé : ${b.envoyes} fichier(s) envoyé(s), ${b.inchanges} déjà à jour (${b.fichiers} en tout).`
-          : `✅ Sauvegarde à jour : ${b.fichiers} fichier(s) de parties, rien n’avait changé.`,
+          : `✅ Sauvegarde à jour : ${b.fichiers} fichier(s) de parties, rien n’avait changé.`) + seulsIci,
       );
     }
     return true;
@@ -60,6 +65,8 @@ export async function sauvegarder(discrete = false): Promise<boolean> {
     const motif = motifDuRefus(e);
     // Firehouse sans la sauvegarde (avant le contrat 1.5) : une sauvegarde automatique se tait.
     if (discrete && motif.includes('ne propose pas encore')) return false;
+    // Ludothèque pas encore synchronisée (profil neuf, autre compte) : la sauvegarde automatique attend la suivante.
+    if (discrete && motif.includes('Synchronise d')) return false;
     toast(`${discrete ? '⚠ Sauvegarde automatique non faite' : 'Échec de la sauvegarde'} : ${motif}`, discrete ? 'alerte' : 'erreur');
     return false;
   } finally {
