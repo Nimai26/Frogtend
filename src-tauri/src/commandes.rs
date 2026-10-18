@@ -89,6 +89,10 @@ pub async fn profil_creer(
         _ => None,
     };
     let profil = noyau.creer_profil(&nom, pin.as_deref(), jeton.as_deref())?;
+    // Le compte attendu pour ce profil (voir `Profil::compte`).
+    if let Some(cle) = compte.as_ref().and_then(crate::noyau::cle_compte) {
+        noyau.profils.retenir_compte(&profil.id, &cle)?;
+    }
     Ok(ProfilCree { profil, compte })
 }
 
@@ -124,7 +128,10 @@ pub async fn profil_actif(noyau: State<'_, Noyau>) -> Resultat<Option<ProfilVisi
 pub async fn profil_changer_jeton(app: AppHandle, noyau: State<'_, Noyau>, jeton: String) -> Resultat<Option<Value>> {
     let c = connexion(&app);
     let compte = if c.simule { None } else { Some(Noyau::verifier_jeton(&c, &jeton).await?) };
-    noyau.changer_jeton(&jeton, &c).await?;
+    // Le compte du nouveau jeton (`username#grade`) : un autre que celui du cache vide d'abord ce qui avait été reçu
+    // pour l'ancien ; inconnu (mode simulé, compte sans nom) : dans le doute, vidé aussi.
+    let cle = compte.as_ref().and_then(crate::noyau::cle_compte);
+    noyau.changer_jeton(&jeton, &c, cle.as_deref()).await?;
     Ok(compte)
 }
 

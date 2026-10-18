@@ -1,5 +1,18 @@
 # Notes de version de Frogtend
 
+## 0.68.0 — Un nouveau jeton d'une autre personne ne voit rien de l'ancienne
+
+- Quand tu remplaces le jeton Firehouse d'un profil (👤 Mon profil ▸ 🔑 Remplacer le jeton) par celui d'un AUTRE
+  compte, Frogtend oublie aussitôt tout ce qui avait été reçu pour l'ancien : catalogue, fiches, images. La nouvelle
+  personne ne voit que ce que Firehouse lui montre, après une synchronisation complète (environ 3 minutes).
+- Pareil si le compte change de grade (un admin devenu mineur), si le jeton est changé ailleurs (Frogtend le voit à
+  la synchronisation suivante), ou en mode simulé (dans le doute) ; et même sans Internet, à l'ouverture du profil.
+- Une synchronisation déjà en route avec l'ancien jeton s'arrête d'elle-même : rien de ce qu'elle reçoit n'est gardé.
+- Un jeton changé en mode simulé ne peut pas être vérifié : dans le doute, la vraie ludothèque du profil est vidée, et
+  tout est relu (images comprises) au retour sur le vrai Firehouse.
+- Un jeton renouvelé du même compte ne change rien. Tes jeux installés, tes jeux Steam/GOG et les documents déjà
+  téléchargés restent.
+
 ## 0.67.1 — Le mode simulé ne touche plus à ta vraie ludothèque
 
 - Correctif : un profil passé en mode simulé (Réglages ▸ Firehouse, pour une démonstration) rangeait ses jeux

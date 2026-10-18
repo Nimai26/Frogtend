@@ -400,6 +400,21 @@ impl Cache {
         Ok(self.meta("synchronise_le")?)
     }
 
+    /// Oublie tout ce que Firehouse a envoyé à ce profil (catalogue, plateformes, fiches, fusions, repères de
+    /// synchronisation) : le jeton appartient désormais à un AUTRE compte. Les jeux des boutiques (id < 0, importés par
+    /// la personne elle-même) restent. Le nouveau `compte` est retenu dans la MÊME transaction (tout ou rien).
+    pub fn vider_firehouse(&mut self, compte: &str) -> Resultat<()> {
+        let tx = self.db.transaction()?;
+        tx.execute("DELETE FROM jeux WHERE id > 0", [])?;
+        tx.execute("DELETE FROM plateformes", [])?;
+        tx.execute("DELETE FROM fiches", [])?;
+        tx.execute("DELETE FROM fusions", [])?;
+        tx.execute("DELETE FROM meta", [])?;
+        tx.execute("INSERT INTO meta (cle, valeur) VALUES ('compte', ?1)", [compte])?;
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn meta(&self, cle: &str) -> Resultat<Option<String>> {
         Ok(self.db.query_row("SELECT valeur FROM meta WHERE cle = ?1", [cle], |r| r.get(0)).optional()?)
     }

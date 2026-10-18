@@ -6,7 +6,8 @@
   import { confirmer, demander, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { etat, sortirDuProfil } from '$lib/etat.svelte';
-  import { synchroniser, viderLudotheque } from '$lib/ludotheque/ludotheque.svelte';
+  import { ludo, rechargerListe, rechargerPlateformes, synchroniser, viderLudotheque } from '$lib/ludotheque/ludotheque.svelte';
+  import { rechargerJeuxDuPc } from '$lib/ludotheque/telechargements.svelte';
 
   const p = $derived(etat.profilOuvert!);
 
@@ -65,13 +66,28 @@
       masque: true,
     });
     if (!jeton) return;
+    let c: Compte | null;
     try {
-      const c = await api.changerJeton(jeton);
-      toast(c ? `✅ Jeton vérifié (${libelleCompte(c)}) et enregistré. Synchronisation…` : '✅ Jeton enregistré. Synchronisation…');
-      await lireCompte();
-      await synchroniser();
+      c = await api.changerJeton(jeton);
     } catch (e) {
       toast(`Refusé : ${motifDuRefus(e)}`, 'erreur');
+      return;
+    }
+    toast(c ? `✅ Jeton vérifié (${libelleCompte(c)}) et enregistré. Synchronisation…` : '✅ Jeton enregistré. Synchronisation…');
+    try {
+      // Le jeton d'un autre compte a vidé ce qui avait été reçu : l'écran le montre tout de suite (filtres compris :
+      // jamais une plateforme de l'ancien compte), jamais l'ancien catalogue gardé en mémoire pendant la relecture.
+      viderLudotheque();
+      await rechargerPlateformes();
+      await rechargerListe();
+      await rechargerJeuxDuPc();
+      await lireCompte();
+      // Une synchronisation lancée avec l'ancien jeton s'arrête d'elle-même (rien n'est gardé) : on attend sa fin
+      // pour relancer avec le nouveau.
+      while (ludo.synchro.enCours) await new Promise((r) => setTimeout(r, 200));
+      await synchroniser();
+    } catch (e) {
+      toast(`Le jeton est changé, mais la ludothèque n’a pas pu être relue : ${motifDuRefus(e)}`, 'erreur');
     }
   }
 

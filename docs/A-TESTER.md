@@ -48,6 +48,13 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Un jeton d'un autre compte (0.68.0)
+- [ ] Rien à faire au quotidien : ta ludothèque ne doit pas se vider toute seule après la mise à jour (ton compte
+      est simplement retenu à la première synchronisation).
+- [ ] Si un jour tu renouvelles ton jeton (même compte « sebastien ») : la ludothèque reste, rien n'est relu.
+- [ ] (Facultatif) Sur un profil d'essai, colle le jeton d'un autre compte (par exemple un compte mineur) : la
+      ludothèque se vide aussitôt, puis ne montre que ce que ce compte a le droit de voir.
+
 ## Le mode simulé à part (0.67.1)
 - [ ] Réglages ▸ Firehouse ▸ coche le mode simulé, synchronise : une trentaine de jeux d'exemple.
 - [ ] Décoche-le : ta vraie ludothèque revient tout de suite (même nombre de jeux qu'avant), sans attendre.

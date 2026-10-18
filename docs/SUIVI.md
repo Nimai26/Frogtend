@@ -160,7 +160,11 @@
       contenus.rs:346, Azahar emulateurs_profils.rs:425) — une virgule ou un point-virgule dans un chemin en fait une
       liste → `valeur_qt` (guillemets) + relecture qui retire les guillemets + test « Zelda, TOTK ». Chez Seb
       aujourd'hui : aucun des deux cas (pas de xemu ; dossier DLC sans virgule).
-- [ ] **Changer le jeton d'un profil** (expert contrat, 15/10, déjà vrai avant) : `changer_jeton` garde la
+- [ ] **Sauvegarde : abris des seuls jeux visibles** (expert contrat, 18/10, déjà vrai avant) : `contenu_sauvegarde`
+      envoie les abris de TOUS les jeux du PC (`sauvegarde.rs` ~403-429), sans filtre de visibilité, alors que la liste
+      `bibliotheque` est filtrée. Après un passage admin → mineur, des numéros et des parties de jeux cachés partiraient
+      dans l'espace du mineur chez Firehouse. → ne garder que les abris des jeux `visible_ou_reuni` du profil.
+- [x] ✅ 0.68.0 **Changer le jeton d'un profil** (expert contrat, 15/10, déjà vrai avant) : `changer_jeton` garde la
       ludothèque, les jaquettes et les visuels du profil ; si le nouveau jeton appartient à un AUTRE compte Firehouse
       (ex. un admin remplacé par un mineur), ce qui a été reçu pour l'ancien reste visible jusqu'à la synchronisation.
       → vider ces caches (ou forcer une synchronisation complète) quand le compte change. Règle du brief § 2.
@@ -276,6 +280,20 @@ d'abord :
       quelle (règles « Autoriser, privé » posées sur le RetroArch d'essai supprimé : sans effet, gardées).
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.68.0** (18/10) — Confidentialité (brief § 2) : le cache d'un profil ET le profil retiennent son compte Firehouse
+  (`username#grade` de `/moi` : un grade changé compte comme un autre compte). Un jeton d'un AUTRE compte (changé dans
+  « Mon profil », en mode simulé — compte inconnu, dans le doute —, ou ailleurs : vu par `/moi` au début de chaque
+  synchronisation, ou à l'ouverture même hors ligne) fait oublier tout ce qui avait été reçu AVANT d'être montré :
+  catalogue, fiches, fusions, jaquettes, visuels, listes de documents, résumé de la dernière sauvegarde (les fichiers
+  de documents téléchargés restent, jamais montrés). Une session remplacée est « périmée » : plus aucune écriture
+  (synchronisation ou image en route avec l'ancien jeton : arrêtée, rien gardé). Le jeton n'est rangé qu'une fois le
+  cache vidé ; un échec ne change rien. Les jeux des boutiques restent. Un jeton renouvelé du même compte ne change
+  rien ; un profil existant retient son compte au premier passage sans rien vider. Relecture de l'expert contrat (1
+  bloquant — synchronisation en cours qui réécrivait l'ancien catalogue — et 4 importants, corrigés). Vérifié : test
+  complet (même compte, autre compte, session périmée, grade changé, ouverture hors ligne, jeton changé en simulé) ;
+  essai réel `/moi` → `username: "sebastien"`, grade admin (jeton lu dans le coffre, jamais affiché) ; 348 tests
+  cœur, 174 interface.
 
 - **0.67.1** (18/10) — Correctif : le mode simulé a son propre dossier de cache (`profils/<id>/simule` : catalogue,
   jaquettes, visuels, documents) ; il ne remplace plus le vrai catalogue du profil ni ses images (les numéros se

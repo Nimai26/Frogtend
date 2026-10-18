@@ -52,6 +52,10 @@ pub enum Erreur {
     /// 410 (contrat 1.14) : la fiche a été RÉUNIE à `nouveau` chez Firehouse.
     #[error("{motif}")]
     Fusionne { motif: String, nouveau: i64 },
+    /// L'opération venait d'une session remplacée (profil, jeton ou connexion changés pendant qu'elle tournait) : rien
+    /// n'a été gardé ni rendu. Pas un échec à montrer : l'interface l'ignore.
+    #[error("{0}")]
+    Perimee(String),
 }
 
 impl Serialize for Erreur {
@@ -72,6 +76,7 @@ impl Serialize for Erreur {
             Erreur::Version(_) => "version",
             Erreur::Disque(_) => "disque",
             Erreur::Fusionne { .. } => "fusionne",
+            Erreur::Perimee(_) => "perimee",
         };
         let mut m = s.serialize_map(None)?;
         m.serialize_entry("sorte", sorte)?;

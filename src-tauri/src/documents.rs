@@ -124,9 +124,10 @@ impl Noyau {
                 let liste = lire_liste(&v);
                 // Garder est un plus (le hors-ligne) ; une liste vide ne crée aucun dossier.
                 if !liste.is_empty() || gardee.exists() {
-                    if let Err(e) = std::fs::create_dir_all(gardee.parent().unwrap())
-                        .and_then(|_| std::fs::write(&gardee, serde_json::to_vec_pretty(&v).unwrap()))
-                    {
+                    if let Err(e) = s.garder_fichier(&gardee, &serde_json::to_vec_pretty(&v).unwrap()) {
+                        if matches!(e, Erreur::Perimee(_)) {
+                            return Err(e);
+                        }
                         self.journaliser(&format!("documents du jeu {id} : liste non gardée ({e})"));
                     }
                 }

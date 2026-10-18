@@ -167,7 +167,9 @@ export async function synchroniser(discrete = false) {
       toast(`✅ Catalogue Firehouse à jour (${detail}) : ${b.jeux.toLocaleString('fr-FR')} jeux.`);
     }
   } catch (e) {
-    if (estErreurCoeur(e) && e.sorte === 'version') {
+    if (estErreurCoeur(e) && e.sorte === 'perimee') {
+      // Lancée avec l'ancien jeton ou un autre profil : arrêtée exprès, rien n'a été gardé ; pas un échec.
+    } else if (estErreurCoeur(e) && e.sorte === 'version') {
       await informer('⚠ Versions incompatibles', e.motif);
     } else if (estErreurCoeur(e) && e.sorte === 'jeton_refuse') {
       await informer('⛔ Jeton refusé', `${e.motif}\n\nTa ludothèque reste utilisable.`);

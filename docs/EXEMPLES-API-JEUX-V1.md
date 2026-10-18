@@ -1366,6 +1366,12 @@ il n'est JAMAIS écrit dans le dépôt). Relevé avec un jeton temporaire, révo
 }
 ```
 
+## `GET /moi` → 200 (relevé RÉEL du 18/10/2026, jeton de Seb lu dans le coffre, jamais affiché)
+
+Clés présentes : `api`, `avatar`, `grade`, `nom`, `ok`, `sauvegarde`, `username`, `via`. Valeurs relevées :
+`username: "sebastien"`, `grade: "admin"`. Frogtend (0.68.0) retient `username#grade` comme compte d'un profil et de
+son cache : un autre compte, ou un autre grade, fait oublier ce qui avait été reçu.
+
 ## Sans jeton valide → 401
 
 ```json

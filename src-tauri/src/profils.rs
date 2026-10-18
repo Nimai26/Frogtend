@@ -21,6 +21,11 @@ pub struct Profil {
     /// Empreinte argon2 du PIN, ou `None` si le profil n'est pas protégé.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub empreinte_pin: Option<String>,
+    /// Le compte Firehouse attendu pour ce profil (`username#grade` de `/moi`), retenu quand un jeton est vérifié ou à
+    /// la synchronisation ; `?` = inconnu (jeton changé sans vérification). Un cache d'un autre compte est vidé avant
+    /// d'être montré, même hors ligne. `None` : pas encore connu (profil d'avant la 0.68.0).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compte: Option<String>,
 }
 
 /// Ce que l'interface voit d'un profil : jamais l'empreinte.
@@ -142,7 +147,7 @@ impl Profils {
             }
             None => None,
         };
-        let profil = Profil { id: nouvel_id(nom), nom: nom.into(), empreinte_pin };
+        let profil = Profil { id: nouvel_id(nom), nom: nom.into(), empreinte_pin, compte: None };
         liste.push(profil.clone());
         self.enregistrer(&liste)?;
         Ok(ProfilVisible::from(&profil))
@@ -201,6 +206,17 @@ impl Profils {
         }
         let p = liste.iter_mut().find(|p| p.id == id).ok_or_else(|| Erreur::Profil("Profil introuvable.".into()))?;
         p.nom = nom.into();
+        self.enregistrer(&liste)
+    }
+
+    /// Retient le compte Firehouse attendu pour ce profil (voir `Profil::compte`).
+    pub fn retenir_compte(&self, id: &str, compte: &str) -> Resultat<()> {
+        let mut liste = self.liste.lock().unwrap();
+        let p = liste.iter_mut().find(|p| p.id == id).ok_or_else(|| Erreur::Profil("Profil introuvable.".into()))?;
+        if p.compte.as_deref() == Some(compte) {
+            return Ok(());
+        }
+        p.compte = Some(compte.into());
         self.enregistrer(&liste)
     }
 

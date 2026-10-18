@@ -119,7 +119,10 @@ impl Noyau {
                 // Garder est un plus. Une liste vide n'est gardée que si le catalogue donne l'empreinte (sinon elle
                 // serait relue de toute façon) ; les images retirées de la liste partent.
                 if !l.is_empty() || attendue.is_some() || dossier.join("medias.json").exists() {
-                    if let Err(e) = ecrire(&dossier.join("medias.json"), &serde_json::to_vec_pretty(&v).unwrap()) {
+                    if let Err(e) = s.garder_fichier(&dossier.join("medias.json"), &serde_json::to_vec_pretty(&v).unwrap()) {
+                        if matches!(e, Erreur::Perimee(_)) {
+                            return Err(e);
+                        }
                         self.journaliser(&format!("galerie du jeu {id} : liste non gardée ({e})"));
                     }
                 }
@@ -153,7 +156,7 @@ impl Noyau {
         }
         match s.source.media_precis(id, &m.sorte, media, largeur).await? {
             Some(img) => {
-                if ecrire(&fichier, &img.octets).is_ok() {
+                if s.garder_fichier(&fichier, &img.octets).or_else(crate::noyau::perimee_seulement)? {
                     purger(&dossier, None, Some((media, &m.empreinte)));
                 }
                 Ok(Some(Image { type_contenu: img.type_contenu.or_else(|| crate::noyau::type_image(&img.octets)), octets: img.octets }))
@@ -274,7 +277,8 @@ impl Noyau {
         let jeux: Vec<i64> = self.registre().tous()?.into_iter().filter(|j| j.etat == crate::jeux_pc::Etat::Telecharge).map(|j| j.id).collect();
         let mut recus = 0;
         'jeux: for id in jeux {
-            if recus >= plafond {
+            // Profil ou jeton changé entre-temps : plus rien à faire pour cette session.
+            if recus >= plafond || s.est_perimee() {
                 break;
             }
             let Some(images) = s.verrou().jeu(id)?.and_then(|j| j.images) else { continue };
@@ -290,7 +294,7 @@ impl Noyau {
                 }
                 match s.source.media(id, sorte, Some(largeur)).await {
                     Ok(Some(img)) => {
-                        if ecrire(&fichier, &img.octets).is_ok() {
+                        if s.garder_fichier(&fichier, &img.octets).or_else(crate::noyau::perimee_seulement)? {
                             // Les anciennes versions de ce visuel partent (comme dans `visuel`).
                             if let Ok(l) = std::fs::read_dir(&du_jeu) {
                                 for e in l.flatten() {

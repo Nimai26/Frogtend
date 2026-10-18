@@ -34,14 +34,77 @@ pub struct Session {
     pub dossier: PathBuf,
     pub source: Source,
     pub cache: std::sync::Mutex<Cache>,
+    /// Levé quand la session est remplacée (autre profil, autre jeton, autre connexion) : une opération encore en cours
+    /// avec elle (synchronisation, image en route) n'écrit alors PLUS RIEN — jamais ce qu'un compte a reçu dans le
+    /// cache d'un autre.
+    pub(crate) perimee: std::sync::atomic::AtomicBool,
 }
 
 impl Session {
+    pub(crate) fn nouvelle(profil: ProfilVisible, dossier: PathBuf, source: Source, cache: Cache) -> Arc<Self> {
+        Arc::new(Session { profil, dossier, source, cache: std::sync::Mutex::new(cache), perimee: Default::default() })
+    }
+
     /// Le cache du profil. Si une opération précédente a échoué en plein travail, le verrou reste utilisable :
     /// le cache SQLite, lui, est protégé par ses transactions.
     pub fn verrou(&self) -> std::sync::MutexGuard<'_, Cache> {
         self.cache.lock().unwrap_or_else(|e| e.into_inner())
     }
+
+    /// Le cache pour y ÉCRIRE : refusé si la session a été remplacée (vérifié sous le verrou, que `perimer` prend aussi :
+    /// une écriture est soit faite avant, et alors effacée par le vidage qui suit, soit jamais).
+    pub fn verrou_vivant(&self) -> Resultat<std::sync::MutexGuard<'_, Cache>> {
+        let c = self.verrou();
+        if self.est_perimee() {
+            return Err(perimee());
+        }
+        Ok(c)
+    }
+
+    pub fn est_perimee(&self) -> bool {
+        self.perimee.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Plus aucune écriture par cette session (voir `perimee`).
+    pub(crate) fn perimer(&self) {
+        let _c = self.verrou();
+        self.perimee.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Garde un fichier de cache (image, liste) seulement si la session est toujours la bonne, sous son verrou ;
+    /// écrit à côté puis renommé. Session remplacée : `Erreur::Perimee`, et ce qui a été reçu n'est pas rendu non plus
+    /// (jamais montré une fois ce qu'un autre compte avait reçu).
+    pub(crate) fn garder_fichier(&self, fichier: &Path, octets: &[u8]) -> Resultat<bool> {
+        let _c = self.verrou();
+        if self.est_perimee() {
+            return Err(perimee());
+        }
+        if let Some(d) = fichier.parent() {
+            std::fs::create_dir_all(d)?;
+        }
+        crate::medias::ecrire(fichier, octets)?;
+        Ok(true)
+    }
+}
+
+fn perimee() -> Erreur {
+    Erreur::Perimee("Le profil ou son jeton a changé pendant l'opération : rien de ce qui a été reçu n'est gardé.".into())
+}
+
+/// Pour `garder_fichier` quand garder est un plus : un disque plein n'empêche pas de rendre l'image (faux), une session
+/// remplacée, si (l'erreur remonte).
+pub(crate) fn perimee_seulement(e: Erreur) -> Resultat<bool> {
+    match e {
+        Erreur::Perimee(_) => Err(e),
+        _ => Ok(false),
+    }
+}
+
+/// La clé du compte d'un jeton (`/moi`) : `username#grade` (un grade baissé, admin → mineur, compte comme un autre
+/// compte : ce qui a été reçu au grade d'avant part). `None` sans `username`.
+pub(crate) fn cle_compte(moi: &Value) -> Option<String> {
+    let u = moi["username"].as_str().filter(|u| !u.trim().is_empty())?;
+    Some(format!("{u}#{}", moi["grade"].as_str().unwrap_or("")))
 }
 
 /// Taille au-delà de laquelle le journal est mis de côté (`journal.1.txt`) et recommencé.
@@ -223,13 +286,41 @@ impl Noyau {
     /// Ouvre un profil (après son PIN) : la session précédente est jetée.
     pub async fn ouvrir(&self, id: &str, pin: Option<&str>, connexion: &Connexion) -> Resultat<ProfilVisible> {
         self.profils.verifier_pin(id, pin)?;
-        let profil = ProfilVisible::from(&self.profils.trouver(id)?);
+        let complet = self.profils.trouver(id)?;
+        let profil = ProfilVisible::from(&complet);
         let source = self.source_pour(id, connexion)?;
         let dossier = self.dossier_session(id, connexion);
-        let cache = Cache::ouvrir(&dossier.join("ludotheque.db"))?;
-        *self.session.lock().await =
-            Some(Arc::new(Session { profil: profil.clone(), dossier, source, cache: std::sync::Mutex::new(cache) }));
+        let mut cache = Cache::ouvrir(&dossier.join("ludotheque.db"))?;
+        if !connexion.simule {
+            self.verifier_compte_attendu(id, &dossier, &mut cache)?;
+        }
+        self.installer_session(Some(Session::nouvelle(profil.clone(), dossier, source, cache))).await;
         Ok(profil)
+    }
+
+    /// Le cache RÉEL d'un profil dont le compte retenu n'est pas celui attendu par le profil (jeton changé : vu même
+    /// hors ligne, avant de rien montrer) est vidé. Un profil d'avant la 0.68.0 (aucun compte attendu) : rien.
+    fn verifier_compte_attendu(&self, id: &str, dossier: &Path, cache: &mut Cache) -> Resultat<()> {
+        if let Some(attendu) = self.profils.trouver(id)?.compte {
+            let retenu = cache.meta("compte")?;
+            if retenu.as_deref() != Some(attendu.as_str()) {
+                if retenu.is_none() && cache.nombre_de_jeux()? == 0 {
+                    // Un cache neuf (profil tout juste créé) : rien à oublier, le compte est seulement retenu.
+                    cache.ecrire_meta("compte", &attendu)?;
+                } else {
+                    self.oublier(id, dossier, cache, &attendu)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Remplace la session ouverte ; l'ancienne n'écrit plus rien (voir `Session::perimee`).
+    async fn installer_session(&self, nouvelle: Option<Arc<Session>>) {
+        let ancienne = std::mem::replace(&mut *self.session.lock().await, nouvelle);
+        if let Some(a) = ancienne {
+            a.perimer();
+        }
     }
 
     fn source_pour(&self, id: &str, connexion: &Connexion) -> Resultat<Source> {
@@ -243,7 +334,7 @@ impl Noyau {
     }
 
     pub async fn fermer(&self) {
-        *self.session.lock().await = None;
+        self.installer_session(None).await;
     }
 
     pub async fn actif(&self) -> Option<ProfilVisible> {
@@ -258,23 +349,84 @@ impl Noyau {
             .ok_or_else(|| Erreur::Profil("Aucun profil n'est ouvert.".into()))
     }
 
-    /// Remplace le jeton du profil ouvert, puis rouvre la session avec lui.
-    pub async fn changer_jeton(&self, jeton: &str, connexion: &Connexion) -> Resultat<()> {
+    /// Le cache d'un profil appartient à UN compte Firehouse (`username` de `/moi`, retenu dans le cache). Si le compte
+    /// du jeton n'est plus celui-là, tout ce qui a été reçu pour l'ancien compte part AVANT d'être montré (brief § 2 :
+    /// un admin remplacé par un mineur ne laisse rien derrière lui) : catalogue, fiches, jaquettes, visuels, listes de
+    /// documents. Les fichiers de documents téléchargés avec l'accord de la personne restent (ils ne sont plus montrés :
+    /// leur liste est partie). `inconnu_change` : un cache qui n'a encore retenu aucun compte compte comme un autre
+    /// (changement de jeton : dans le doute, on vide). Rend vrai si le cache a été vidé.
+    pub(crate) fn suivre_compte(&self, s: &Session, compte: &str, inconnu_change: bool) -> Resultat<bool> {
+        let mut c = s.verrou_vivant()?;
+        let change = match c.meta("compte")?.as_deref() {
+            Some(r) => r != compte,
+            None => inconnu_change,
+        };
+        if change {
+            self.oublier(&s.profil.id, &s.dossier, &mut c, compte)?;
+        } else {
+            c.ecrire_meta("compte", compte)?;
+        }
+        // Sous le verrou : un changement de jeton passé entre-temps ne fait jamais retenir l'ancien compte.
+        self.profils.retenir_compte(&s.profil.id, compte)?;
+        drop(c);
+        Ok(change)
+    }
+
+    /// Oublie tout ce que Firehouse a envoyé à un profil dans `dossier` (catalogue, fiches, fusions, jaquettes, visuels,
+    /// listes de documents, résumé de la dernière sauvegarde) et retient `compte` dans la même transaction. Les fichiers
+    /// de documents téléchargés avec l'accord de la personne restent, sans liste ils ne sont plus montrés. Un dossier
+    /// d'images qui ne part pas (fichier ouvert) est noté au journal, sans faire échouer : ses images ne sont plus
+    /// montrées (le catalogue est vide) et le ménage de la synchronisation suivante les retire.
+    fn oublier(&self, id: &str, dossier: &Path, cache: &mut Cache, compte: &str) -> Resultat<()> {
+        cache.vider_firehouse(compte)?;
+        for sous in ["jaquettes", "visuels"] {
+            let d = dossier.join(sous);
+            if std::fs::symlink_metadata(&d).is_ok_and(|m| m.is_dir()) {
+                if let Err(e) = std::fs::remove_dir_all(&d) {
+                    self.journaliser(&format!("profil {id} : {sous} pas entièrement retiré ({e})"));
+                }
+            }
+        }
+        for e in std::fs::read_dir(dossier.join("documents")).into_iter().flatten().flatten() {
+            let _ = std::fs::remove_file(e.path().join("documents.json"));
+        }
+        let _ = std::fs::remove_file(dossier.join("derniere-sauvegarde.json"));
+        self.journaliser(&format!("profil {id} : jeton d'un autre compte Firehouse, ce qui avait été reçu est oublié"));
+        Ok(())
+    }
+
+    /// Remplace le jeton du profil ouvert, puis rouvre la session avec lui. `compte` : la clé du compte du nouveau jeton
+    /// (`cle_compte` de son `/moi` vérifié) ; `None` (mode simulé, compte sans nom) : inconnu, et dans le doute le cache
+    /// réel du profil est vidé. L'ancienne session n'écrit plus rien dès le début ; le jeton n'est rangé qu'une fois le
+    /// cache vidé.
+    pub async fn changer_jeton(&self, jeton: &str, connexion: &Connexion, compte: Option<&str>) -> Resultat<()> {
         let s = self.session().await?;
+        let id = s.profil.id.clone();
         let jeton = jeton.trim();
         if jeton.is_empty() {
             return Err(Erreur::Coffre("Le jeton est vide.".into()));
         }
-        self.coffre.ranger(&s.profil.id, jeton)?;
-        let source = self.source_pour(&s.profil.id, connexion)?;
-        let dossier = self.dossier_session(&s.profil.id, connexion);
+        let source = if connexion.simule { Source::Simulee } else { Source::Firehouse(Client::nouveau(&connexion.adresse, jeton)?) };
+        let cle = compte.filter(|c| !c.trim().is_empty()).unwrap_or("?");
+        s.perimer();
+        let vider = || -> Resultat<()> {
+            let reel = self.dossier_profil(&id);
+            let mut c = Cache::ouvrir(&reel.join("ludotheque.db"))?;
+            if cle == "?" || c.meta("compte")?.as_deref() != Some(cle) {
+                self.oublier(&id, &reel, &mut c, cle)?;
+            }
+            Ok(())
+        };
+        if let Err(e) = vider().and_then(|_| self.profils.retenir_compte(&id, cle)).and_then(|_| self.coffre.ranger(&id, jeton)) {
+            // Le jeton n'a pas changé : l'ancienne session reprend. Si le cache a déjà été vidé (échec du coffre), il
+            // est simplement relu, et la synchronisation suivante — faite avec l'ancien jeton — retient de nouveau son
+            // compte (`/moi`) : rien de faux n'est jamais montré.
+            s.perimee.store(false, std::sync::atomic::Ordering::SeqCst);
+            return Err(e);
+        }
+        let dossier = self.dossier_session(&id, connexion);
         let cache = Cache::ouvrir(&dossier.join("ludotheque.db"))?;
-        *self.session.lock().await = Some(Arc::new(Session {
-            profil: s.profil.clone(),
-            dossier,
-            source,
-            cache: std::sync::Mutex::new(cache),
-        }));
+        self.installer_session(Some(Session::nouvelle(s.profil.clone(), dossier, source, cache))).await;
         Ok(())
     }
 
@@ -283,13 +435,11 @@ impl Noyau {
         let s = self.session().await?;
         let source = self.source_pour(&s.profil.id, connexion)?;
         let dossier = self.dossier_session(&s.profil.id, connexion);
-        let cache = Cache::ouvrir(&dossier.join("ludotheque.db"))?;
-        *self.session.lock().await = Some(Arc::new(Session {
-            profil: s.profil.clone(),
-            dossier,
-            source,
-            cache: std::sync::Mutex::new(cache),
-        }));
+        let mut cache = Cache::ouvrir(&dossier.join("ludotheque.db"))?;
+        if !connexion.simule {
+            self.verifier_compte_attendu(&s.profil.id, &dossier, &mut cache)?;
+        }
+        self.installer_session(Some(Session::nouvelle(s.profil.clone(), dossier, source, cache))).await;
         Ok(())
     }
 
@@ -323,6 +473,15 @@ impl Noyau {
         // UNE session pour tout : un changement de profil pendant la synchronisation n'écrit jamais les fusions d'un
         // profil dans le cache d'un autre.
         let s = self.session().await?;
+        // Le compte du jeton (`/moi`) : un autre que celui retenu (jeton changé ailleurs, par exemple en mode simulé)
+        // vide d'abord ce qui avait été reçu. Un `/moi` qui échoue n'empêche rien (la synchronisation dira l'erreur).
+        if !s.source.est_simulee() {
+            if let Ok(moi) = s.source.moi().await {
+                if let Some(cle) = cle_compte(&moi) {
+                    self.suivre_compte(&s, &cle, false)?;
+                }
+            }
+        }
         let mut bilan = self.synchroniser_catalogue(&s, progres, &mut fusions).await?;
         // Les fiches réunies (contrat 1.14) : jamais une raison d'échouer la synchronisation.
         bilan.rattaches = self.suivre_fusions(&s, fusions, bilan.mode == "complete").await;
@@ -380,7 +539,7 @@ impl Noyau {
             }
         }
         if let Some(l) = &fusions {
-            let mut c = s.verrou();
+            let Ok(mut c) = s.verrou_vivant() else { return Vec::new() };
             if let Err(e) = c.garder_fusions(l, completes) {
                 // Le rattrapage sera refait à la prochaine synchronisation.
                 let _ = c.ecrire_meta("fusions_lues", "0");
@@ -522,6 +681,8 @@ impl Noyau {
             let mut ids_visibles: Option<Vec<i64>> = None;
             let mut page = 1;
             loop {
+                // Profil ou jeton changé pendant la lecture : arrêtée tout de suite (rien ne serait gardé).
+                drop(s.verrou_vivant()?);
                 // Une page coupée par le réseau (la relecture complète dure quelques minutes) : un nouvel essai, pas
                 // tout à recommencer.
                 let v = match s.source.catalogue(page, depuis.as_deref()).await {
@@ -554,7 +715,7 @@ impl Noyau {
             let simule = s.source.est_simulee();
 
             if let (Some(_), Some(ids)) = (&depuis, ids_visibles) {
-                let mut c = s.verrou();
+                let mut c = s.verrou_vivant()?;
                 let recus: std::collections::HashSet<i64> = jeux.iter().map(|j| j.id).collect();
                 let mut inconnu = false;
                 for id in &ids {
@@ -588,7 +749,7 @@ impl Noyau {
                 depuis = None;
                 continue;
             }
-            let mut c = s.verrou();
+            let mut c = s.verrou_vivant()?;
             let avant = c.nombre_de_jeux()? as usize;
             c.remplacer(&plateformes, &jeux, &maintenant())?;
             let apres = jeux.len();
@@ -683,8 +844,7 @@ impl Noyau {
             // Jamais pour un jeu du PC pas encore rattaché : il garde sa fiche (et son bouton « Jouer »).
             Err(Erreur::Fusionne { nouveau, .. }) if nouveau != id => {
                 // Gardée pour la suite (plus d'aller-retour jusqu'à la prochaine synchronisation).
-                {
-                    let mut c = s.verrou();
+                if let Ok(mut c) = s.verrou_vivant() {
                     let f = crate::ludotheque::Fusion { ancien: id, nouveau, le: None };
                     let _ = c.retirer_reunie(id).and_then(|_| c.garder_fusions(&[f], false));
                 }
@@ -710,7 +870,7 @@ impl Noyau {
         }
         match s.source.fiche(id).await {
             Ok(f) => {
-                s.verrou().garder_fiche(id, &f, &maintenant())?;
+                s.verrou_vivant()?.garder_fiche(id, &f, &maintenant())?;
                 Ok(FicheLue { fiche: f, hors_ligne: false, locale: false, reunie_dans: None })
             }
             Err(Erreur::Reseau(motif)) => match s.verrou().fiche(id)? {
@@ -738,7 +898,7 @@ impl Noyau {
     /// garde le même id : il n'apparaît qu'une fois (Steam prime s'il est importé à part).
     pub async fn ranger_boutique(&self, source: &str, jeux: &[crate::boutiques::JeuBoutique]) -> Resultat<usize> {
         let s = self.session().await?;
-        let mut c = s.verrou();
+        let mut c = s.verrou_vivant()?;
         let steam_a_part = source == "galaxy" && c.sources_boutiques()?.iter().any(|x| x == "steam");
         let resumes: Vec<JeuResume> = jeux
             .iter()
@@ -840,12 +1000,12 @@ impl Noyau {
         }
         match recue {
             Some(img) => {
-                std::fs::write(&fichier, &img.octets)?;
+                s.garder_fichier(&fichier, &img.octets)?;
                 Ok(Some(Image { type_contenu: img.type_contenu.or_else(|| type_image(&img.octets)), octets: img.octets }))
             }
             None => {
                 if !s.source.est_simulee() {
-                    std::fs::write(&absent, b"")?;
+                    s.garder_fichier(&absent, b"")?;
                 }
                 Ok(None)
             }
@@ -919,7 +1079,7 @@ impl Noyau {
                     Ok(Some(img)) => {
                         // Le garder est un plus (un disque plein n'empêche pas de montrer l'image reçue) : écrit à côté
                         // puis renommé ; les anciennes versions de ce visuel partent.
-                        if crate::medias::ecrire(&fichier, &img.octets).is_ok() {
+                        if s.garder_fichier(&fichier, &img.octets).or_else(perimee_seulement)? {
                             purger(sorte, Some(&empreinte));
                         }
                         return Ok(Some(Image { type_contenu: img.type_contenu.or_else(|| type_image(&img.octets)), octets: img.octets }));
@@ -948,13 +1108,13 @@ impl Noyau {
             }
             match s.source.media(id, sorte, Some(largeur)).await {
                 Ok(Some(img)) => {
-                    let _ = std::fs::create_dir_all(&dossier).and_then(|_| std::fs::write(&fichier, &img.octets));
+                    s.garder_fichier(&fichier, &img.octets).or_else(perimee_seulement)?;
                     let _ = std::fs::remove_file(&absent);
                     return Ok(Some(Image { type_contenu: img.type_contenu.or_else(|| type_image(&img.octets)), octets: img.octets }));
                 }
                 Ok(None) => {
                     if !s.source.est_simulee() {
-                        let _ = std::fs::create_dir_all(&dossier).and_then(|_| std::fs::write(&absent, b""));
+                        s.garder_fichier(&absent, b"").or_else(perimee_seulement)?;
                     }
                 }
                 // Hors ligne ou serveur en panne : l'ancien visuel gardé, même vieux de plus de 7 jours ; sinon le type
@@ -1359,6 +1519,19 @@ mod tests {
         boite.assert_hits(2);
     }
 
+    /// Essai réel : `/moi` donne bien `username` (le compte retenu par le cache d'un profil). Le jeton n'est jamais
+    /// affiché. `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_compte -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_compte() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").unwrap();
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = Connexion { adresse: "https://jeux.hikari-no-sekai.fr".into(), simule: false };
+        let moi = Noyau::verifier_jeton(&c, &jeton).await.unwrap();
+        println!("MOI username={:?} grade={:?} clés={:?}", moi["username"], moi["grade"], moi.as_object().map(|o| o.keys().cloned().collect::<Vec<_>>()));
+    }
+
     /// Essai réel du lot Médias M3 (Taodbox) : le logo seul et le fond d'un jeu qui en a (116), rien pour un jeu sans
     /// images (110, Dune), le second appel servi par le cache.
     /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_taodbox -- --ignored --nocapture`
@@ -1738,6 +1911,74 @@ mod tests {
         n.reconnecter(&Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
         assert_eq!(n.session().await.unwrap().verrou().nombre_de_jeux().unwrap(), 2);
         assert!(vrai.join("jaquettes").join("987654-400-x.img").exists());
+    }
+
+    #[tokio::test]
+    async fn un_jeton_d_un_autre_compte_fait_oublier_tout_ce_qui_avait_ete_recu() {
+        let s = serveur_m4();
+        // `/moi` répond selon le jeton présenté, comme le vrai Firehouse.
+        for (jeton, nom, grade) in [("j", "seb", "admin"), ("j2", "seb", "admin"), ("j3", "lea", "mineur"), ("j4", "lea", "admin")] {
+            s.mock(move |w, t| {
+                w.method(GET).path("/api/jeux/v1/moi").header("Authorization", format!("Bearer {jeton}"));
+                t.status(200).json_body(json!({"ok": true, "username": nom, "grade": grade}));
+            });
+        }
+        let (_d, n) = ouvert(&s).await;
+        let id = n.session().await.unwrap().profil.id.clone();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        let p = n.session().await.unwrap().dossier.clone();
+        assert_eq!(n.session().await.unwrap().verrou().meta("compte").unwrap().as_deref(), Some("seb#admin"));
+        assert_eq!(n.profils.trouver(&id).unwrap().compte.as_deref(), Some("seb#admin"), "retenu aussi dans le profil");
+        let remplir = || {
+            for r in ["jaquettes/1-400-j1.img", "visuels/1/fond-1000-f1.img", "documents/1/documents.json", "documents/1/3.pdf", "derniere-sauvegarde.json"] {
+                std::fs::create_dir_all(p.join(r).parent().unwrap()).unwrap();
+                std::fs::write(p.join(r), b"x").unwrap();
+            }
+        };
+        remplir();
+        let conn = Connexion { adresse: s.base_url(), simule: false };
+        // Un nouveau jeton du MÊME compte (renouvelé) : rien ne bouge.
+        n.changer_jeton("j2", &conn, Some("seb#admin")).await.unwrap();
+        assert_eq!(n.session().await.unwrap().verrou().nombre_de_jeux().unwrap(), 2);
+        assert!(p.join("jaquettes/1-400-j1.img").exists());
+
+        // Le jeton d'un AUTRE compte (l'admin remplacé par Léa, mineure) : tout ce qui avait été reçu part AVANT d'être
+        // montré ; le fichier du document téléchargé reste, sa liste part. L'ancienne session n'écrit plus rien.
+        let vieille = n.session().await.unwrap();
+        n.changer_jeton("j3", &conn, Some("lea#mineur")).await.unwrap();
+        let session = n.session().await.unwrap();
+        assert_eq!(session.verrou().nombre_de_jeux().unwrap(), 0);
+        assert_eq!(session.verrou().meta("compte").unwrap().as_deref(), Some("lea#mineur"));
+        assert!(!p.join("jaquettes").exists() && !p.join("visuels").exists() && !p.join("derniere-sauvegarde.json").exists());
+        assert!(!p.join("documents/1/documents.json").exists());
+        assert!(p.join("documents/1/3.pdf").exists());
+        assert!(vieille.verrou_vivant().is_err(), "une synchronisation en cours avec l'ancien jeton n'écrit plus rien");
+        assert!(matches!(vieille.garder_fichier(&p.join("jaquettes/1-400-j1.img"), b"x"), Err(Erreur::Perimee(_))));
+        assert!(!p.join("jaquettes").exists());
+        drop((session, vieille));
+
+        // Le même compte, grade changé (vu à la synchronisation : jeton modifié dans Firehouse) : comme un autre compte.
+        n.synchroniser(|_, _| {}).await.unwrap();
+        remplir();
+        n.changer_jeton("j4", &conn, Some("lea#admin")).await.unwrap();
+        assert!(!p.join("jaquettes").exists());
+
+        // Hors ligne : un cache qui n'est pas celui du compte attendu par le profil est vidé à l'ouverture.
+        n.synchroniser(|_, _| {}).await.unwrap();
+        n.session().await.unwrap().verrou().ecrire_meta("compte", "quelqu-un#admin").unwrap();
+        let panne = Connexion { adresse: "http://127.0.0.1:9".into(), simule: false };
+        n.ouvrir(&id, None, &panne).await.unwrap();
+        assert_eq!(n.session().await.unwrap().verrou().nombre_de_jeux().unwrap(), 0);
+
+        // Un jeton changé en mode simulé (jamais vérifié) : dans le doute, le cache RÉEL est vidé.
+        n.ouvrir(&id, None, &conn).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        assert_eq!(n.session().await.unwrap().verrou().nombre_de_jeux().unwrap(), 2);
+        n.reconnecter(&Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        n.changer_jeton("j5", &Connexion { adresse: String::new(), simule: true }, None).await.unwrap();
+        assert_eq!(n.profils.trouver(&id).unwrap().compte.as_deref(), Some("?"));
+        n.reconnecter(&panne).await.unwrap();
+        assert_eq!(n.session().await.unwrap().verrou().nombre_de_jeux().unwrap(), 0);
     }
 
     #[tokio::test]
@@ -2607,6 +2848,7 @@ mod tests {
             dossier: std::env::temp_dir(),
             source: Source::Simulee,
             cache: std::sync::Mutex::new(Cache::en_memoire().unwrap()),
+            perimee: Default::default(),
         };
         let s = std::sync::Arc::new(s);
         let s2 = s.clone();

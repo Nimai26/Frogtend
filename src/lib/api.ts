@@ -360,7 +360,9 @@ export interface ErreurCoeur {
     | 'reglage'
     | 'version'
     | 'disque'
-    | 'fusionne';
+    | 'fusionne'
+    /** Une opération d'une session remplacée (profil ou jeton changé pendant qu'elle tournait) : rien à montrer. */
+    | 'perimee';
   motif: string;
   /** Pour `fusionne` (contrat 1.14) : la fiche où celle-ci a été réunie. */
   nouveau?: number;
