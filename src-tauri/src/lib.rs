@@ -379,6 +379,7 @@ pub fn run() {
             commandes::ludotheque_lister,
             commandes::ludotheque_au_hasard,
             commandes::ludotheque_fiche,
+            commandes::ludotheque_infos,
             commandes::ludotheque_annexe_texte,
             commandes::skins_obtenir,
             commandes::skin_enregistrer,

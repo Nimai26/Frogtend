@@ -4,6 +4,7 @@
   "genres": ["Aventure", "Stratégie"],
   "plateforme": "MS-DOS", "developpeur": "Cryo Interactive Entertainment", "editeur": "Virgin Games",
   "joueurs": "1", "cooperatif": false, "launchbox_id": 14133,
+  "infos": {"date_sortie": "1992", "type_sortie": "Released", "esrb": "Not Rated", "pegi": null, "note": 3.93827160493827, "joueurs_min": null, "joueurs_massif": false},
   "versions": [{
     "telechargement_id": 200,
     "nom": "Version automatique - Jeu CD-ROM avec voix françaises [Abandonware France]",

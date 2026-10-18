@@ -281,6 +281,14 @@ d'abord :
 
 ## ✅ Livré (version — ce qui a été vérifié)
 
+- **0.70.0** (19/10) — Contrat 1.15 (✅ Seb 19/10, après le 1.16) : les infos du jeu dans sa fiche — date de sortie en
+  français (découpée à la main, jamais `new Date`), type de sortie signalé en étiquette s'il n'est pas « Released »,
+  âge conseillé (« N ans et plus (PEGI/ESRB) », rien pour « Not Rated »/« RP »/inconnu), « Avis des joueurs ★ x,y / 5 »,
+  « (massivement multijoueur) ». Jeu du PC (fiche lue sur le disque) : infos relues EN DIRECT (`infos_jeu` : profil,
+  `visible_ou_reuni`, repli cache puis fiche.json) comme Firehouse le recommande. Avis de l'expert interface avant de
+  coder et relecture avant livraison. Vérifié : tests (formatage, garde-fous du cœur) ; essai réel en lecture seule
+  (Dune, Contra III, 3x3 Eyes, Spark World : dates, notes, ESRB « Not Rated ») ; 359 tests cœur, 181 interface.
+
 - **0.69.0** (19/10) — Contrat 1.16 (✅ Seb 19/10 : « Adapter le contrat 1.16 » d'abord, puis les infos 1.15) :
   `ligneDe` prend SEULE la ligne complète du conseil d'un autonome (RetroArch : comme avant) ; `changementDeConseil`
   compare sans le `"%rom%"` final et RÉPARE, sans question, une ligne doublée par Frogtend lui-même (préparée entre

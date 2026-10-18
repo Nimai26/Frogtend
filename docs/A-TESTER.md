@@ -48,6 +48,12 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Les infos dans la fiche du jeu (0.70.0)
+- [ ] Ouvre la fiche de Contra III (ou d'un jeu SNES) : « Sortie : 28 février 1992 » et « Avis des joueurs :
+      ★ 4,3 / 5 » dans les informations.
+- [ ] La fiche d'un de tes jeux installés : les mêmes lignes apparaissent (relues en direct).
+- [ ] Un jeu sans ces infos : aucune ligne vide, rien d'anglais.
+
 ## Les lignes de commande de la maison (0.69.0)
 - [ ] Un jeu PS3 : il se lance comme avant (ton RPCS3 réglé à la main n'est pas touché, aucune question au lancement).
 - [ ] (Si un jour tu prépares Dolphin, PCSX2 ou un autre émulateur avec « Prêt à jouer ») : le jeu démarre en plein

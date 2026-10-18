@@ -15,10 +15,13 @@
   import { grosPixels, largeurUtile, libelleMedia, ordonner, type MediaJeu } from '$lib/ludotheque/galerie';
   import { adresseMedia } from '$lib/api';
   import { documentsMontres, libelleDocument, ouvrirDocument, type DocumentOuvert } from '$lib/ludotheque/documents';
+  import { ageConseille, dateDeSortie, datePrecise, noteSurCinq, typeDeSortie, type InfosJeu } from '$lib/ludotheque/infos';
   import { mettreDansLaLudotheque, tele } from '$lib/ludotheque/telechargements.svelte';
   import { emulateursDuJeu, gererJeu, installer, jouer, jouerAvec, partie } from '$lib/ludotheque/jeu.svelte';
 
   let fiche = $state<Fiche | null>(null);
+  // Les infos du jeu (contrat 1.15) : celles de la fiche lue en ligne, ou relues en direct pour un jeu du PC.
+  let infos = $state<InfosJeu | null>(null);
   let horsLigne = $state(false);
   let locale = $state(false);
   let erreur = $state('');
@@ -44,6 +47,7 @@
 
   async function charger(n: number) {
     fiche = null;
+    infos = null;
     erreur = '';
     annexe = null;
     documents = [];
@@ -60,6 +64,7 @@
         return;
       }
       fiche = r.fiche;
+      infos = r.fiche.infos ?? null;
       horsLigne = r.hors_ligne;
       locale = r.locale;
     } catch (e) {
@@ -70,10 +75,18 @@
     // entre-temps ne reçoit jamais ceux-ci.
     // La galerie aussi est un plus : pas de section si elle ne vient pas (ou si le jeu n'a aucune image). Les deux
     // listes arrivent ensemble.
-    const [l, g] = await Promise.all([api.documents(n).catch(() => []), api.medias(n).catch(() => [])]);
+    // Un jeu du PC : sa fiche vient du disque (gardée à l'installation) ; ses infos sont relues en direct (Firehouse :
+    // elles peuvent changer sans que le jeu revienne par la synchronisation). Les autres les portent déjà.
+    const [l, g, i] = await Promise.all([
+      api.documents(n).catch(() => []),
+      api.medias(n).catch(() => []),
+      locale ? api.infosJeu(n).catch(() => null) : Promise.resolve(null),
+    ]);
     if (n === id) {
       documents = documentsMontres(l);
       medias = ordonner(g);
+      // Le cœur a tranché (caché, réuni, sans infos : rien) : jamais les anciennes infos du disque à la place.
+      if (locale) infos = i;
     }
   }
 
@@ -211,14 +224,33 @@
         <p class="sous">
           {fiche.plateforme}{fiche.annee ? ` · ${fiche.annee}` : ''}
         </p>
-        {#if fiche.genres?.length}
-          <div class="genres">{#each fiche.genres as g (g)}<span class="tag">{g}</span>{/each}</div>
+        {#if fiche.genres?.length || typeDeSortie(infos?.type_sortie)}
+          <div class="genres">
+            <!-- Un jeu pas sorti normalement (accès anticipé, jamais sorti…) : signalé d'emblée, pas en bas de liste. -->
+            {#if typeDeSortie(infos?.type_sortie)}<span class="tag warn">{typeDeSortie(infos?.type_sortie)}</span>{/if}
+            {#each fiche.genres ?? [] as g (g)}<span class="tag">{g}</span>{/each}
+          </div>
         {/if}
         {#if fiche.resume}<p class="resume">{fiche.resume}</p>{/if}
         <dl class="cx-kv">
+          <!-- La date de sortie seulement si elle dit plus que l'année (déjà sous le titre), ou si l'année manque. -->
+          {#if dateDeSortie(infos?.date_sortie) && (datePrecise(infos?.date_sortie) || !fiche.annee)}
+            <dt>Sortie</dt><dd>{dateDeSortie(infos?.date_sortie)}</dd>
+          {/if}
           {#if fiche.developpeur}<dt>Développeur</dt><dd>{fiche.developpeur}</dd>{/if}
           {#if fiche.editeur}<dt>Éditeur</dt><dd>{fiche.editeur}</dd>{/if}
-          {#if fiche.joueurs}<dt>Joueurs</dt><dd>{fiche.joueurs}{fiche.cooperatif ? ' (coopératif)' : ''}</dd>{/if}
+          {#if fiche.joueurs || infos?.joueurs_massif}
+            <dt>Joueurs</dt>
+            <dd>
+              {fiche.joueurs
+                ? [fiche.joueurs, fiche.cooperatif ? '(coopératif)' : '', infos?.joueurs_massif ? '(massivement multijoueur)' : '']
+                    .filter(Boolean)
+                    .join(' ')
+                : 'Massivement multijoueur'}
+            </dd>
+          {/if}
+          {#if ageConseille(infos)}<dt>Âge</dt><dd>{ageConseille(infos)}</dd>{/if}
+          {#if noteSurCinq(infos?.note)}<dt>Avis des joueurs</dt><dd><span aria-hidden="true">★</span> {noteSurCinq(infos?.note)}</dd>{/if}
         </dl>
       </div>
     </section>

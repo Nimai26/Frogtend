@@ -860,6 +860,28 @@ impl Noyau {
         }
     }
 
+    /// Les infos d'un jeu (contrat 1.15 : date de sortie, classement d'âge, note…) RELUES EN DIRECT pour un jeu du PC,
+    /// dont la fiche gardée avec lui date de son installation : Firehouse les lit dans sa base des jeux, et la mise à
+    /// jour LaunchBox de la semaine peut les changer sans faire bouger `maj_le`. Seulement pour ce profil et un jeu
+    /// qu'il voit ; hors ligne, celles de la fiche gardée pour ce profil, sinon de la fiche du jeu ; caché, réuni ou
+    /// inconnu : rien.
+    pub async fn infos_jeu(&self, id: i64) -> Resultat<Option<Value>> {
+        let s = self.session().await?;
+        if id <= 0 || !s.verrou().visible_ou_reuni(id)? {
+            return Ok(None);
+        }
+        let infos = |f: &Value| Some(f["infos"].clone()).filter(Value::is_object);
+        match s.source.fiche(id).await {
+            Ok(f) => Ok(infos(&f)),
+            Err(Erreur::Reseau(_) | Erreur::Serveur(_)) => {
+                let gardee = s.verrou().fiche(id)?;
+                Ok(gardee.as_ref().and_then(infos).or_else(|| self.fiche_locale(id).as_ref().and_then(infos)))
+            }
+            Err(Erreur::Introuvable(_) | Erreur::Fusionne { .. }) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
     async fn fiche_sans_reunion(&self, s: &Session, id: i64) -> Resultat<FicheLue> {
         // Un jeu de la ludothèque du PC : sa fiche est sur le disque (hors ligne), si ce profil a le droit de le voir.
         // Une fiche réunie (contrat 1.14) dont le jeu n'est pas encore rattaché compte aussi : il reste jouable.
@@ -1519,6 +1541,22 @@ mod tests {
         boite.assert_hits(2);
     }
 
+    /// Essai réel (lecture seule) : les `infos` (contrat 1.15) de quelques fiches.
+    /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_infos -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_infos() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").unwrap();
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        for id in [110, 324, 116, 1360] {
+            let v: Value = c.obtenir_json(&format!("/jeu/{id}")).await.unwrap_or(Value::Null);
+            let j = if v["jeu"].is_object() { &v["jeu"] } else { &v };
+            println!("INFOS {id} « {} » : {}", j["titre"], j["infos"]);
+        }
+    }
+
     /// Essai réel : `/moi` donne bien `username` (le compte retenu par le cache d'un profil). Le jeton n'est jamais
     /// affiché. `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_compte -- --ignored --nocapture`
     #[tokio::test]
@@ -2110,6 +2148,43 @@ mod tests {
         assert_eq!(n.precharger_taodbox(1).await.unwrap(), 1);
         assert_eq!(n.precharger_taodbox(1).await.unwrap(), 0);
         autres.assert_hits(2);
+    }
+
+    #[tokio::test]
+    async fn les_infos_d_un_jeu_sont_relues_en_direct_seulement_pour_un_jeu_visible() {
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "MS-DOS", "jeux": 1}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [{"id": 110, "titre": "Dune", "plateforme": "MS-DOS"}]}));
+        });
+        let mut direct = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/110");
+            t.status(200).json_body(json!({"ok": true, "jeu": {"id": 110, "titre": "Dune",
+                "infos": {"date_sortie": "1992", "type_sortie": "Released", "esrb": "Not Rated", "pegi": null, "note": 3.9, "joueurs_min": null, "joueurs_massif": false}}}));
+        });
+        let cache = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/999");
+            t.status(200).json_body(json!({"ok": true, "jeu": {"id": 999, "infos": {"note": 5}}}));
+        });
+        let (_d, n) = ouvert(&s).await;
+        n.synchroniser(|_, _| {}).await.unwrap();
+        // Relues en direct (Firehouse : elles peuvent changer sans `maj_le`).
+        assert_eq!(n.infos_jeu(110).await.unwrap().unwrap()["date_sortie"], "1992");
+        // Un jeu que ce profil ne voit pas : rien, et rien n'est demandé.
+        assert!(n.infos_jeu(999).await.unwrap().is_none());
+        cache.assert_hits(0);
+        // Hors ligne (Firehouse en panne) : celles de la fiche gardée pour ce profil.
+        n.session().await.unwrap().verrou().garder_fiche(110, &json!({"id": 110, "infos": {"note": 4.5}}), "t").unwrap();
+        direct.delete();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/110");
+            t.status(503);
+        });
+        assert_eq!(n.infos_jeu(110).await.unwrap().unwrap()["note"], 4.5);
     }
 
     #[tokio::test]

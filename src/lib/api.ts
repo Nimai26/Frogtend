@@ -3,6 +3,7 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import type { ActionProposee } from '$lib/assistant/actions';
 import type { CommandesJeu } from '$lib/reglages/reglages';
+import type { InfosJeu } from '$lib/ludotheque/infos';
 
 export interface Profil {
   id: string;
@@ -312,6 +313,8 @@ export interface Fiche {
   launchbox_id?: number;
   versions?: Version[];
   annexes?: Annexe[];
+  /** Contrat 1.15 : date de sortie, type, classement d'âge, note… (au détail seulement). */
+  infos?: InfosJeu | null;
 }
 
 export interface BilanSynchro {
@@ -492,6 +495,8 @@ export const api = {
     appeler<JeuResume | null>('ludotheque_au_hasard', { plateforme, locale }),
   /** `reunie_dans` : la fiche demandée a été réunie à celle-ci chez Firehouse (contrat 1.14). */
   fiche: (id: number) => appeler<{ fiche: Fiche; hors_ligne: boolean; locale: boolean; reunie_dans?: number }>('ludotheque_fiche', { id }),
+  /** Les infos d'un jeu du PC relues en direct (contrat 1.15) ; `null` : caché, inconnu, ou rien de gardé hors ligne. */
+  infosJeu: (id: number) => appeler<InfosJeu | null>('ludotheque_infos', { id }),
   annexeTexte: (id: number, i: number, cle: string) =>
     appeler<{ ok?: boolean; titre?: string; texte?: string }>('ludotheque_annexe_texte', { id, i, cle }),
 

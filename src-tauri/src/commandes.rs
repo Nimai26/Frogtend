@@ -219,6 +219,12 @@ pub async fn ludotheque_fiche(noyau: State<'_, Noyau>, id: i64) -> Resultat<Fich
     noyau.fiche(id).await
 }
 
+/// Les infos d'un jeu du PC relues en direct (contrat 1.15).
+#[tauri::command]
+pub async fn ludotheque_infos(noyau: State<'_, Noyau>, id: i64) -> Resultat<Option<Value>> {
+    noyau.infos_jeu(id).await
+}
+
 #[tauri::command]
 pub async fn ludotheque_annexe_texte(noyau: State<'_, Noyau>, id: i64, i: u32, cle: String) -> Resultat<Value> {
     noyau.annexe_texte(id, i, &cle).await

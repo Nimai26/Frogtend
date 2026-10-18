@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.70.0 — La fiche du jeu dit sa date de sortie, l'âge conseillé et l'avis des joueurs
+
+- Dans la fiche d'un jeu : la date de sortie précise (« 28 février 1992 »), l'âge conseillé (« 18 ans et plus
+  (PEGI) », quand il est connu) et l'avis des joueurs (« ★ 4,3 / 5 »).
+- Un jeu qui n'est pas sorti normalement (accès anticipé, jamais sorti, version amateur, ROM modifiée…) le dit
+  d'emblée, à côté de ses genres.
+- Pour un jeu de ton PC, ces infos sont relues en direct chez Firehouse à chaque ouverture (un admin peut les
+  corriger) ; sans Internet, celles déjà vues.
+
 ## 0.69.0 — Les émulateurs suivent les nouveaux réglages de la maison
 
 - Firehouse donne maintenant la ligne de commande complète de chaque émulateur (Dolphin, PCSX2, RPCS3, Cemu, Eden,
