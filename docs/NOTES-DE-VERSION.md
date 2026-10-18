@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.67.1 — Le mode simulé ne touche plus à ta vraie ludothèque
+
+- Correctif : un profil passé en mode simulé (Réglages ▸ Firehouse, pour une démonstration) rangeait ses jeux
+  d'exemple à la place de ta vraie ludothèque, jusqu'à la synchronisation suivante. Le mode simulé a maintenant son
+  propre rangement : revenu au vrai Firehouse, ta ludothèque est là, intacte, sans rien relire.
+- ⏳ Pour nettoyer une ludothèque déjà mélangée, la PREMIÈRE synchronisation après cette mise à jour relit tout le
+  catalogue une fois (environ 3 minutes) ; Frogtend reste utilisable pendant ce temps.
+
 ## 0.67.0 — Tes images aussi sans Internet, et un cache qui se range seul
 
 - Taodbox garde à l'avance le fond et le logo de tes jeux installés (après chaque synchronisation, quelques centaines

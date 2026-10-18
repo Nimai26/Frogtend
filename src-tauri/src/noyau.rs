@@ -190,6 +190,14 @@ impl Noyau {
         self.dossier.join("profils").join(id)
     }
 
+    /// Le dossier des caches d'une session (catalogue, jaquettes, visuels, documents) : celui du profil, ou, en mode
+    /// simulé, un dossier À PART (`simule`) — les jeux d'exemple ne remplacent jamais le vrai catalogue du profil, ni
+    /// leurs images les vraies (les numéros se recouvrent : Dune est 110 des deux côtés).
+    fn dossier_session(&self, id: &str, connexion: &Connexion) -> PathBuf {
+        let d = self.dossier_profil(id);
+        if connexion.simule { d.join("simule") } else { d }
+    }
+
     /// Crée un profil. Le jeton (facultatif en mode simulé) part dans le coffre.
     pub fn creer_profil(&self, nom: &str, pin: Option<&str>, jeton: Option<&str>) -> Resultat<ProfilVisible> {
         let jeton = jeton.map(str::trim).filter(|j| !j.is_empty());
@@ -217,7 +225,7 @@ impl Noyau {
         self.profils.verifier_pin(id, pin)?;
         let profil = ProfilVisible::from(&self.profils.trouver(id)?);
         let source = self.source_pour(id, connexion)?;
-        let dossier = self.dossier_profil(id);
+        let dossier = self.dossier_session(id, connexion);
         let cache = Cache::ouvrir(&dossier.join("ludotheque.db"))?;
         *self.session.lock().await =
             Some(Arc::new(Session { profil: profil.clone(), dossier, source, cache: std::sync::Mutex::new(cache) }));
@@ -259,10 +267,11 @@ impl Noyau {
         }
         self.coffre.ranger(&s.profil.id, jeton)?;
         let source = self.source_pour(&s.profil.id, connexion)?;
-        let cache = Cache::ouvrir(&s.dossier.join("ludotheque.db"))?;
+        let dossier = self.dossier_session(&s.profil.id, connexion);
+        let cache = Cache::ouvrir(&dossier.join("ludotheque.db"))?;
         *self.session.lock().await = Some(Arc::new(Session {
             profil: s.profil.clone(),
-            dossier: s.dossier.clone(),
+            dossier,
             source,
             cache: std::sync::Mutex::new(cache),
         }));
@@ -273,10 +282,11 @@ impl Noyau {
     pub async fn reconnecter(&self, connexion: &Connexion) -> Resultat<()> {
         let s = self.session().await?;
         let source = self.source_pour(&s.profil.id, connexion)?;
-        let cache = Cache::ouvrir(&s.dossier.join("ludotheque.db"))?;
+        let dossier = self.dossier_session(&s.profil.id, connexion);
+        let cache = Cache::ouvrir(&dossier.join("ludotheque.db"))?;
         *self.session.lock().await = Some(Arc::new(Session {
             profil: s.profil.clone(),
-            dossier: s.dossier.clone(),
+            dossier,
             source,
             cache: std::sync::Mutex::new(cache),
         }));
@@ -1166,8 +1176,21 @@ mod tests {
     async fn hors_ligne_la_fiche_deja_lue_reste_consultable() {
         let (_d, n) = noyau();
         let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
-        // Premier passage en simulé pour garder la fiche de Dune…
-        n.ouvrir(&id, None, &SIMULE).await.unwrap();
+        // Un premier passage en ligne garde la fiche de Dune…
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "MS-DOS", "jeux": 1}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [{"id": 110, "titre": "Dune", "plateforme": "MS-DOS"}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/110");
+            t.status(200).json_body(json!({"ok": true, "jeu": {"id": 110, "titre": "Dune", "plateforme": "MS-DOS"}}));
+        });
+        n.ouvrir(&id, None, &Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
         n.synchroniser(|_, _| {}).await.unwrap();
         assert!(!n.fiche(110).await.unwrap().hors_ligne);
         // … puis Firehouse injoignable.
@@ -1200,7 +1223,7 @@ mod tests {
             assert!(n.coffre.lire(&crate::boutiques::nom_secret(&lea, b)).unwrap().is_some());
         }
         assert!(!d.path().join("profils").join(&seb).exists());
-        assert!(d.path().join("profils").join(&lea).join("ludotheque.db").exists());
+        assert!(d.path().join("profils").join(&lea).join("simule").join("ludotheque.db").exists());
         assert!(!n.a_un_jeton(&seb).unwrap());
         assert!(n.a_un_jeton(&lea).unwrap());
     }
@@ -1696,17 +1719,56 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn le_mode_simule_ne_fait_jamais_de_menage() {
-        let (_d, n) = noyau();
-        let id = n.creer_profil("Seb", None, None).unwrap().id;
-        n.ouvrir(&id, None, &Connexion { adresse: String::new(), simule: true }).await.unwrap();
-        let p = n.session().await.unwrap().dossier.clone();
-        std::fs::create_dir_all(p.join("jaquettes")).unwrap();
-        std::fs::write(p.join("jaquettes").join("987654-400-x.img"), b"vraie").unwrap();
+    async fn le_mode_simule_a_son_propre_cache_et_ne_touche_jamais_au_vrai() {
+        let s = serveur_m4();
+        let (_d, n) = ouvert(&s).await;
+        n.synchroniser(|_, _| {}).await.unwrap();
+        let vrai = n.session().await.unwrap().dossier.clone();
+        std::fs::create_dir_all(vrai.join("jaquettes")).unwrap();
+        std::fs::write(vrai.join("jaquettes").join("987654-400-x.img"), b"vraie").unwrap();
+        // Passé en mode simulé (Réglages ▸ Firehouse) : un dossier à part, ses jeux d'exemple, aucun ménage.
+        n.reconnecter(&Connexion { adresse: String::new(), simule: true }).await.unwrap();
         let b = n.synchroniser(|_, _| {}).await.unwrap();
         assert!(b.simule);
         assert_eq!(b.menage, Default::default());
-        assert!(p.join("jaquettes").join("987654-400-x.img").exists(), "les images du vrai profil restent");
+        let simule = n.session().await.unwrap().dossier.clone();
+        assert_eq!(simule, vrai.join("simule"));
+        assert!(b.jeux > 2, "les jeux d'exemple, dans le cache simulé");
+        // Revenu au vrai Firehouse : le vrai catalogue est intact (sans resynchroniser), ses images aussi.
+        n.reconnecter(&Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
+        assert_eq!(n.session().await.unwrap().verrou().nombre_de_jeux().unwrap(), 2);
+        assert!(vrai.join("jaquettes").join("987654-400-x.img").exists());
+    }
+
+    #[tokio::test]
+    async fn un_ancien_cache_mele_de_jeux_d_exemple_est_relu_et_assaini() {
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "MS-DOS", "jeux": 1}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "ids_visibles": [110],
+                "jeux": [{"id": 110, "titre": "Dune (Firehouse)", "plateforme": "MS-DOS", "maj_le": "2026-10-01T00:00:00"}]}));
+        });
+        let (_d, n) = noyau();
+        let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
+        // Avant 0.67.1 : le mode simulé écrivait SES jeux (et la fiche d'exemple de Dune) dans le vrai cache.
+        n.ouvrir(&id, None, &Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
+        {
+            let session = n.session().await.unwrap();
+            let mut c = session.verrou();
+            let exemple: JeuResume = serde_json::from_value(json!({"id": 110, "titre": "Dune (exemple)", "plateforme": "MS-DOS"})).unwrap();
+            c.remplacer(&[], &[exemple], "t").unwrap();
+            c.garder_fiche(110, &json!({"id": 110, "titre": "Dune (exemple)"}), "t").unwrap();
+            c.ecrire_meta("schema_catalogue", "2").unwrap();
+        }
+        let b = n.synchroniser(|_, _| {}).await.unwrap();
+        assert_eq!(b.mode, "complete", "un cache d'un ancien schéma est relu en entier");
+        let session = n.session().await.unwrap();
+        assert_eq!(session.verrou().jeu(110).unwrap().unwrap().titre, "Dune (Firehouse)");
+        assert!(session.verrou().fiche(110).unwrap().is_none(), "la fiche d'exemple ne survit pas");
     }
 
     #[test]
@@ -1749,11 +1811,11 @@ mod tests {
         let s = serveur_m4();
         let fond = s.mock(|w, t| {
             w.method(GET).path("/api/jeux/v1/media/1/fond").query_param("largeur", "1000");
-            t.status(200).header("Content-Type", "image/webp").body(b"RIFF    WEBPf".to_vec());
+            t.status(200).header("Content-Type", "image/webp").body(b"RIFF\0\0\0\0WEBPf".to_vec());
         });
         let logo = s.mock(|w, t| {
             w.method(GET).path("/api/jeux/v1/media/1/logo").query_param("largeur", "600");
-            t.status(200).header("Content-Type", "image/webp").body(b"RIFF    WEBPl".to_vec());
+            t.status(200).header("Content-Type", "image/webp").body(b"RIFF\0\0\0\0WEBPl".to_vec());
         });
         let (d, n) = ouvert(&s).await;
         n.synchroniser(|_, _| {}).await.unwrap();
@@ -1793,7 +1855,7 @@ mod tests {
         });
         let autres = s.mock(|w, t| {
             w.method(GET).path_matches(httpmock::Regex::new("^/api/jeux/v1/media/[23]/fond$").unwrap());
-            t.status(200).header("Content-Type", "image/webp").body(b"RIFF    WEBPf".to_vec());
+            t.status(200).header("Content-Type", "image/webp").body(b"RIFF\0\0\0\0WEBPf".to_vec());
         });
         let (d, n) = ouvert(&s).await;
         n.synchroniser(|_, _| {}).await.unwrap();

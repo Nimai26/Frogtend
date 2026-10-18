@@ -48,6 +48,10 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Le mode simulé à part (0.67.1)
+- [ ] Réglages ▸ Firehouse ▸ coche le mode simulé, synchronise : une trentaine de jeux d'exemple.
+- [ ] Décoche-le : ta vraie ludothèque revient tout de suite (même nombre de jeux qu'avant), sans attendre.
+
 ## Images hors ligne et ménage (0.67.0)
 Chez toi le ménage ne retire rien (vérifié le 18/10 sur une copie de tes données : 66 jaquettes, toutes gardées).
 - [ ] Synchronise, attends une minute, puis coupe Internet (débranche le câble ou coupe le Wi-Fi) et ouvre Taodbox :

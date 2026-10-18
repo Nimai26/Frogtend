@@ -164,7 +164,7 @@
       ludothèque, les jaquettes et les visuels du profil ; si le nouveau jeton appartient à un AUTRE compte Firehouse
       (ex. un admin remplacé par un mineur), ce qui a été reçu pour l'ancien reste visible jusqu'à la synchronisation.
       → vider ces caches (ou forcer une synchronisation complète) quand le compte change. Règle du brief § 2.
-- [ ] **Mode simulé et vrai profil** (expert contrat, 18/10, déjà vrai avant) : un profil passé en mode simulé
+- [x] ✅ 0.67.1 **Mode simulé et vrai profil** (expert contrat, 18/10, déjà vrai avant) : un profil passé en mode simulé
       (Réglages ▸ Firehouse) range les ~30 jeux d'exemple dans le MÊME `ludotheque.db` que le vrai catalogue (une
       synchronisation simulée le remplace) ; repassé au vrai Firehouse, une relecture le corrige, mais d'ici là la
       ludothèque est fausse. → cache à part pour le mode simulé. Le ménage des images (0.67.0) ne tourne jamais en simulé.
@@ -276,6 +276,15 @@ d'abord :
       quelle (règles « Autoriser, privé » posées sur le RetroArch d'essai supprimé : sans effet, gardées).
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.67.1** (18/10) — Correctif : le mode simulé a son propre dossier de cache (`profils/<id>/simule` : catalogue,
+  jaquettes, visuels, documents) ; il ne remplace plus le vrai catalogue du profil ni ses images (les numéros se
+  recouvrent). Comptes du profil (Steam, RetroAchievements) inchangés. Les caches déjà mélangés sont assainis :
+  `SCHEMA_CATALOGUE` « 3 » force une relecture complète unique, et une relecture d'un ancien schéma vide aussi les
+  fiches gardées (relevé de l'expert contrat). Vérifié : test aller-retour vrai → simulé → vrai (catalogue et images
+  intacts sans resynchroniser), test d'un ancien cache mêlé (Dune d'exemple remplacé, sa fiche partie) ; 347 tests
+  cœur. Au passage : 12 octets nuls bruts de deux tests
+  remplacés par `\0` (le fichier passait pour binaire aux outils de recherche).
 
 - **0.67.0** (18/10) — Lot Médias M4 (FIN du lot Médias) : ménage des caches d'images d'un profil après une
   synchronisation lue en entier, face au vrai Firehouse seulement (`jaquettes/`, `visuels/` des ids ni au catalogue

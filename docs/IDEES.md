@@ -49,3 +49,5 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   7 jours même gardée à une autre ; le ménage lit le disque dans une tâche asynchrone (à passer en `spawn_blocking`
   si des milliers d'images) ; le préchargement des fonds de Taodbox (au plus 50 jeux, ~100 Ko chacun) se fait sans
   annonce, suivant le réglage « Fonds et logos » : à confirmer avec Seb pour une connexion limitée (chez sa sœur).
+- (18/10, expert contrat, 0.67.1) En mode simulé, les jeux Steam/GOG importés du vrai profil n'apparaissent pas, et
+  un import fait en simulé reste dans le cache simulé : le dire dans l'interface du mode simulé, ou refuser l'import.

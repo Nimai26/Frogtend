@@ -3,6 +3,14 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 18/10 — Des octets nuls bruts glissés dans le code par un script d'écriture
+Ce qui s'est passé : en écrivant des tests Rust par un script Python, l'échappement `\0` d'une chaîne d'octets est
+devenu un vrai octet nul dans `noyau.rs` (livré ainsi en 0.67.0). Rust l'accepte, mais les outils de recherche
+voient alors le fichier comme binaire (le même piège a ensuite glissé un octet nul et un saut de ligne dans cette
+leçon même, écrite par script). · Comment l'appliquer : pour un texte qui contient des barres obliques inverses
+(`\0`, `\n` voulus en toutes lettres), écrire avec l'outil d'écriture ou d'édition, jamais par un script ; après une
+écriture scriptée, vérifier qu'aucun octet nul n'est apparu (`git diff` puis un compte des octets nuls).
+
 ## 18/10 — Un test vert parce que son serveur simulé était plus simple que la vraie vie
 Ce qui s'est passé : le rattachement depuis la file de téléchargement (fiche réunie découverte par un 410) passait son
 test, mais ne pouvait jamais marcher en vrai. Le catalogue simulé ne servait plus l'ancien numéro, alors qu'un vrai

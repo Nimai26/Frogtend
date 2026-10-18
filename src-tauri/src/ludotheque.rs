@@ -22,7 +22,9 @@ pub struct Plateforme {
 /// La version du schéma des résumés gardés : quand elle change, la synchronisation suivante relit TOUT le catalogue
 /// une fois (les jeux déjà en cache n'auraient jamais les nouveaux champs : l'incrément ne relit que ce qui a changé).
 /// « 2 » (18/10) : `images`, `medias_empreinte`, `documents`, `documents_empreinte` (contrats 1.6 et 1.7).
-pub const SCHEMA_CATALOGUE: &str = "2";
+/// « 3 » (18/10, 0.67.1) : assainit les caches où le mode simulé avait rangé ses jeux d'exemple (avant qu'il ait son
+/// dossier à part) — tout est relu, et les fiches gardées repartent de zéro (celle de Dune pouvait être l'exemple).
+pub const SCHEMA_CATALOGUE: &str = "3";
 
 /// Un visuel mis en avant pour un type (contrat 1.6, `images` du catalogue) : ses dimensions d'ORIGINE et son
 /// empreinte (le visuel gardé n'est relu que quand elle change).
@@ -285,6 +287,12 @@ impl Cache {
     /// Remplace TOUT le catalogue d'un coup (transaction) : un jeu devenu invisible pour ce profil disparaît.
     pub fn remplacer(&mut self, plateformes: &[Plateforme], jeux: &[JeuResume], quand: &str) -> Resultat<()> {
         let tx = self.db.transaction()?;
+        // Un cache d'un ancien schéma : ses fiches gardées aussi repartent de zéro (relues à la prochaine ouverture).
+        let schema: Option<String> =
+            tx.query_row("SELECT valeur FROM meta WHERE cle = 'schema_catalogue'", [], |r| r.get(0)).optional()?;
+        if schema.as_deref() != Some(SCHEMA_CATALOGUE) {
+            tx.execute("DELETE FROM fiches", [])?;
+        }
         tx.execute("DELETE FROM jeux WHERE id > 0", [])?;
         tx.execute("DELETE FROM plateformes", [])?;
         // Les fiches gardées pour des jeux qui ne sont plus visibles partent aussi.
