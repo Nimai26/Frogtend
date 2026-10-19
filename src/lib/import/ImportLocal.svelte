@@ -195,6 +195,15 @@
   }
 
   async function chercher() {
+    // Un dossier RÉSEAU parcouru en entier peut être très long (des milliers de fichiers à travers le réseau) : on le
+    // dit avant, et la personne décide (règle de Seb : jamais une opération de masse sans l'annoncer).
+    if (/^\\\\/.test(dossier.trim())) {
+      const oui = await confirmer('🌐 Chercher dans un dossier réseau ?', {
+        message: `${dossier.trim()} est sur le réseau : la recherche${recursif && sorte === 'rom' ? ', sous-dossiers compris,' : ''} peut prendre plusieurs minutes. Frogtend ne fait que lire, rien n’est copié ni modifié.`,
+        libelleValider: '🔎 Chercher',
+      });
+      if (!oui) return;
+    }
     enCours = true;
     try {
       if (sorte === 'rom') {

@@ -37,7 +37,13 @@ pub(crate) fn dossier_abris_regle(app: &AppHandle) -> Option<std::path::PathBuf>
 #[tauri::command]
 pub async fn abris_regler(app: AppHandle, noyau: State<'_, Noyau>, dossier: String) -> Resultat<usize> {
     let d = std::path::PathBuf::from(dossier.trim());
+    // Durcissement (étape 6) : seulement le dossier des abris RÉGLÉ dans `pc.json` (l'interface l'y enregistre juste
+    // avant), jamais un autre dossier créé et rempli d'abris.
     if !dossier.trim().is_empty() {
+        let regle = dossier_abris_regle(&app);
+        if !regle.as_deref().is_some_and(|r| crate::garde::meme(&d, r)) {
+            return Err(Erreur::Refus("Ce dossier n'est pas le dossier des abris réglé : règle-le d'abord dans Réglages ▸ Emplacements.".into()));
+        }
         std::fs::create_dir_all(&d)?;
     }
     noyau.regler_abris(Some(d));
@@ -1297,8 +1303,10 @@ pub async fn emulateur_installer_firehouse(
     dossier: String,
 ) -> Resultat<InstallationFirehouse> {
     let base = std::path::PathBuf::from(&dossier);
+    // Le dossier réglé d'abord ; s'il n'existe pas encore (le dossier proposé par « Prêt à jouer »), il est créé.
+    exiger_dossier_de_base(&app, &base)?;
     if !base.is_dir() {
-        return Err(Erreur::Disque(format!("Dossier introuvable : {dossier}.")));
+        std::fs::create_dir_all(&base).map_err(|e| Erreur::Disque(format!("Dossier impossible à créer : {dossier} ({e}).")))?;
     }
     let p = noyau.session().await?.source.paquet_emulateur(&id).await?;
     let url = p["url"].as_str().unwrap_or("").to_string();
@@ -1808,6 +1816,14 @@ pub async fn import_installer_dos(app: AppHandle, noyau: State<'_, Noyau>, dosbo
     if std::fs::read_dir(&destination).is_ok_and(|mut l| l.next().is_some()) {
         return Err(Erreur::Refus(format!("Le dossier {} n'est pas vide : Frogtend n'installe pas par-dessus.", destination.display())));
     }
+    // Durcissement (étape 6) : le jeu s'installe dans un sous-dossier du dossier CHOISI par la personne (fenêtre du
+    // cœur), jamais dans un dossier système.
+    let reglages = app.store("pc.json").ok().and_then(|s| s.get("reglages")).unwrap_or(Value::Null);
+    let dans_un_emplacement = crate::garde::Reglages::lire(&reglages).emplacements.iter().any(|e| crate::garde::sous(&destination, e));
+    let parent_choisi = destination.parent().is_some_and(|p| noyau.a_ete_choisi(true, p)) || dans_un_emplacement;
+    if !parent_choisi || crate::garde::cle(&destination).is_none() || crate::garde::dossier_systeme(&destination) {
+        return Err(Erreur::Refus("Choisis avec l'explorateur où installer le jeu (« Où installer le jeu »).".into()));
+    }
     std::fs::create_dir_all(&destination)?;
     let arguments = crate::import_local::arguments_installation_dos(&source, &destination)?;
     noyau.journaliser(&format!("installation DOS : DOSBox {arguments:?}"));
@@ -1842,7 +1858,13 @@ pub async fn import_mesurer(elements: Vec<String>, destination: String) -> Resul
 
 /// Copie des jeux dans un emplacement (jamais déplacés, jamais par-dessus) ; rend leurs nouveaux chemins.
 #[tauri::command]
-pub async fn import_copier(noyau: State<'_, Noyau>, elements: Vec<String>, destination: String) -> Resultat<Vec<String>> {
+pub async fn import_copier(app: AppHandle, noyau: State<'_, Noyau>, elements: Vec<String>, destination: String) -> Resultat<Vec<String>> {
+    // Durcissement (étape 6) : on ne copie que DANS un emplacement de jeux réglé (ou dessous : `<défaut>\<système>`).
+    let reglages = app.store("pc.json").ok().and_then(|s| s.get("reglages")).unwrap_or(Value::Null);
+    let d = std::path::Path::new(&destination);
+    if !crate::garde::Reglages::lire(&reglages).emplacements.iter().any(|e| crate::garde::sous(d, e)) {
+        return Err(Erreur::Refus(format!("« {destination} » n'est pas dans un emplacement de jeux réglé (Réglages ▸ Emplacements).")));
+    }
     noyau.journaliser(&format!("import : copie de {} jeu(x) dans {destination}", elements.len()));
     tauri::async_runtime::spawn_blocking(move || {
         let e: Vec<std::path::PathBuf> = elements.iter().map(std::path::PathBuf::from).collect();
@@ -2159,7 +2181,8 @@ pub async fn jeu_triches(noyau: State<'_, Noyau>, id: i64) -> Resultat<Value> {
 /// Pose un fichier de triche de Firehouse dans le dossier du profil de l'émulateur (la personne l'a demandé). Un
 /// fichier différent déjà là est d'abord copié à côté (`.avant-frogtend`). Rend le chemin écrit.
 #[tauri::command]
-pub async fn triche_installer(noyau: State<'_, Noyau>, id: i64, cle: String, programme: String, ligne: String) -> Resultat<String> {
+pub async fn triche_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, cle: String, programme: String, ligne: String) -> Resultat<String> {
+    exiger_emulateur_pour_ecrire(&app, &noyau, std::path::Path::new(&programme))?;
     let s = noyau.session().await?;
     let liste = s.source.triches(id).await?;
     let code = liste["codes"]
@@ -2450,6 +2473,29 @@ pub async fn parcourir(
     Ok(Some(p.to_string_lossy().to_string()))
 }
 
+/// Durcissement (étape 5) : le cœur va ÉCRIRE dans le dossier de ce programme d'émulateur (BIOS, cœur, réglages de
+/// manette, triches) : il doit être de confiance (réglé, au registre, détecté), ou venir d'être choisi par la personne
+/// (l'assistant pose les BIOS d'un émulateur montré à la main avant de l'enregistrer).
+fn exiger_emulateur_pour_ecrire(app: &AppHandle, noyau: &Noyau, programme: &std::path::Path) -> Resultat<()> {
+    if programme.is_file() && noyau.a_ete_choisi(false, programme) {
+        return Ok(());
+    }
+    exiger_programme_de_confiance(app, noyau, programme)
+}
+
+/// Durcissement (étape 5) : un émulateur ne s'installe que dans le dossier des émulateurs ou des outils RÉGLÉ dans
+/// `pc.json` (relu ici), jamais dans un dossier quelconque.
+fn exiger_dossier_de_base(app: &AppHandle, dossier: &std::path::Path) -> Resultat<()> {
+    let reglages = app.store("pc.json").ok().and_then(|s| s.get("reglages")).unwrap_or(Value::Null);
+    if crate::garde::dossier_de_base_admis(&reglages, dossier) {
+        return Ok(());
+    }
+    Err(Erreur::Refus(format!(
+        "Frogtend n'installe un émulateur que dans le dossier des émulateurs (ou des outils) réglé : « {} » n'en est pas un. Règle-le d'abord dans Réglages ▸ Émulateurs.",
+        dossier.display()
+    )))
+}
+
 /// Durcissement : un programme que le cœur va LANCER doit être de confiance — réglé dans `pc.json` (relu ici, pas
 /// transmis par l'interface), inscrit au registre des émulateurs de Frogtend (installé ou adopté), ou trouvé dans son
 /// dossier habituel. Sinon : refusé, avec la raison.
@@ -2525,8 +2571,10 @@ pub async fn emulateur_installer(
 ) -> Resultat<crate::emulateurs::EmulateurInstalle> {
     let f = crate::emulateurs::fiche(&id).ok_or_else(|| Erreur::Introuvable("Émulateur inconnu.".into()))?;
     let base = std::path::PathBuf::from(&dossier);
+    // Le dossier réglé d'abord ; s'il n'existe pas encore (le dossier proposé par « Prêt à jouer »), il est créé.
+    exiger_dossier_de_base(&app, &base)?;
     if !base.is_dir() {
-        return Err(Erreur::Disque(format!("Dossier introuvable : {dossier}.")));
+        std::fs::create_dir_all(&base).map_err(|e| Erreur::Disque(format!("Dossier impossible à créer : {dossier} ({e}).")))?;
     }
     let paquet_info = crate::emulateurs::derniere_version(f).await?;
     let cible = base.join(f.nom);
@@ -2629,7 +2677,8 @@ pub fn retroarch_etat(programme: String, ligne: String, bios: Vec<String>) -> Et
 /// (jamais d'après l'interface), pour l'émulateur `programme` — seulement s'il est bien celui du conseil. Un seul accord
 /// a été donné avant (« Prêt à jouer »). PCSX2 : son BIOS par défaut réglé (contrat 1.11).
 #[tauri::command]
-pub async fn bios_poser(noyau: State<'_, Noyau>, plateforme: String, programme: String) -> Resultat<crate::bios::Bilan> {
+pub async fn bios_poser(app: AppHandle, noyau: State<'_, Noyau>, plateforme: String, programme: String) -> Resultat<crate::bios::Bilan> {
+    exiger_emulateur_pour_ecrire(&app, &noyau, std::path::Path::new(&programme))?;
     let s = noyau.session().await?;
     let reponse = s.source.emulateurs(&plateforme).await?;
     let conseil = &reponse["conseil"];
@@ -2665,10 +2714,11 @@ pub fn programme_du_conseil(id: &str, programme: &str) -> bool {
 
 /// Installe un cœur RetroArch SERVI PAR FIREHOUSE (vérifié ; jamais pris ailleurs).
 #[tauri::command]
-pub async fn retroarch_installer_coeur(noyau: State<'_, Noyau>, programme: String, coeur: String) -> Resultat<String> {
+pub async fn retroarch_installer_coeur(app: AppHandle, noyau: State<'_, Noyau>, programme: String, coeur: String) -> Resultat<String> {
     if !coeur.ends_with("_libretro.dll") || !crate::emulateurs::nom_de_coeur_sur(&coeur) {
         return Err(Erreur::Refus("Nom de cœur invalide.".into()));
     }
+    exiger_emulateur_pour_ecrire(&app, &noyau, std::path::Path::new(&programme))?;
     let dossier = std::path::Path::new(&programme).parent().map(std::path::PathBuf::from).unwrap_or_default();
     installer_coeur_servi(&noyau.session().await?.source, &dossier, &coeur).await
 }
@@ -2743,8 +2793,9 @@ pub struct ManetteReglee {
 /// « Remettre la manette par défaut » pour un émulateur (joueur 1, profil ouvert). La personne a donné son accord
 /// dans l'interface ; la configuration d'avant est copiée à l'abri, les touches du clavier sont gardées.
 #[tauri::command]
-pub async fn emulateur_regler_manette(noyau: State<'_, Noyau>, id: String, programme: String) -> Resultat<ManetteReglee> {
+pub async fn emulateur_regler_manette(app: AppHandle, noyau: State<'_, Noyau>, id: String, programme: String) -> Resultat<ManetteReglee> {
     crate::emulateurs::fiche(&id).ok_or_else(|| Erreur::Introuvable("Émulateur inconnu.".into()))?;
+    exiger_emulateur_pour_ecrire(&app, &noyau, std::path::Path::new(&programme))?;
     let dossier = std::path::Path::new(&programme).parent().map(std::path::PathBuf::from).unwrap_or_default();
     if !dossier.is_dir() {
         return Err(Erreur::Disque(format!("Dossier introuvable : {}.", dossier.display())));

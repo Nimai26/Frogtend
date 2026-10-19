@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.73.0 — Frogtend vérifie aussi où il écrit
+
+- Un émulateur ne s'installe que dans ton dossier des émulateurs (ou des outils) réglé.
+- Les fichiers système (BIOS), cœurs RetroArch, réglages de manette et triches ne sont posés que dans le dossier d'un
+  émulateur réglé, connu de Frogtend ou que tu viens de choisir.
+- Un jeu importé n'est copié que dans un de tes emplacements de jeux ; un jeu DOS ne s'installe que dans le dossier que
+  tu as choisi ; le dossier des abris de parties est celui que tu as réglé.
+- Avant de chercher des jeux dans un dossier réseau, Frogtend te prévient que ce peut être long.
+
 ## 0.72.0 — Frogtend n'accepte un chemin que si tu l'as choisi
 
 - Les fenêtres « Choisir un fichier / un dossier » sont maintenant ouvertes par le cœur de Frogtend lui-même : il sait

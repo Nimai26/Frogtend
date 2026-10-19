@@ -48,6 +48,12 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Où Frogtend écrit (0.73.0)
+- [ ] (Si tu prépares un nouvel émulateur avec « Prêt à jouer » ou l'assistant) : il s'installe comme avant, ses
+      fichiers système et son cœur sont posés.
+- [ ] Réglages ▸ Emplacements ▸ Abris de parties ▸ un dossier : réglé comme avant.
+- [ ] Importer ▸ chercher dans un dossier réseau (\\…) : Frogtend prévient d'abord que ce peut être long.
+
 ## Les choix de fichiers par le cœur (0.72.0) — ⚠️ À ESSAYER EN PREMIER
 Toutes les fenêtres « Choisir un fichier / un dossier » de Frogtend passent désormais par le cœur : je n'ai pas pu
 l'essayer moi-même (il faut un clic). Si l'une ne s'ouvre pas, dis-le-moi tout de suite.

@@ -172,7 +172,8 @@
       (Réglages ▸ Firehouse) range les ~30 jeux d'exemple dans le MÊME `ludotheque.db` que le vrai catalogue (une
       synchronisation simulée le remplace) ; repassé au vrai Firehouse, une relecture le corrige, mais d'ici là la
       ludothèque est fausse. → cache à part pour le mode simulé. Le ménage des images (0.67.0) ne tourne jamais en simulé.
-- [~] ✅ Seb 19/10 : « Les 3 premières étapes » (sur 7 proposées par l'expert lancement : module de garde, programmes
+- [x] ✅ Durcissement TERMINÉ en 0.73.0 (Seb : « Poursuis » : étapes 4 à 7 ; restes mineurs dans IDEES). Historique :
+      ✅ Seb 19/10 : « Les 3 premières étapes » (sur 7 proposées par l'expert lancement : module de garde, programmes
       lancés, effacements) → 0.71.0. Restent (à reproposer) : 4 choix de fichier ouverts par le cœur (`parcourir`,
       choix à usage unique, retrait de `dialog:allow-open`), `import_ajouter` et `emulateur_adopter` ; 5 écritures
       dans les dossiers d'émulateurs (`emulateur_installer(_firehouse)`, `bios_poser`, `retroarch_installer_coeur`,
@@ -293,6 +294,16 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.73.0** (19/10) — Durcissement, étapes 5 à 7 (fin du lot). Écritures dans les dossiers d'émulateurs :
+  installation seulement dans `dossierEmulateurs`/`dossierOutils` réglé (`garde::dossier_de_base_admis`, créé s'il
+  manque) ; BIOS, cœur RetroArch, réglages de manette, triches seulement pour un émulateur de confiance ou qui vient
+  d'être choisi (`a_ete_choisi`, sans consommer : l'assistant pose BIOS et cœur avant d'enregistrer). Emplacements :
+  `import_copier` sous un emplacement réglé ; `import_installer_dos` dans un dossier choisi ou un emplacement réglé,
+  jamais un dossier système ; `abris_regler` = le `dossierAbris` réglé. Recherche d'import dans un dossier `\\réseau`
+  annoncée avant. Relecture de l'expert lancement : ni bloquant ni important (parcours « Prêt à jouer », assistant,
+  import DOS, copie, abris suivis un par un ; le cœur lit le même magasin `pc.json` que l'interface, à jour). Vérifié :
+  tests (`dossier_de_base_admis`) ; 373 tests cœur, 181 interface.
 
 - **0.72.0** (19/10) — Durcissement, étape 4 (Seb : « Poursuis »). Les fenêtres de choix sont ouvertes PAR LE CŒUR
   (commande `parcourir` : `tauri-plugin-dialog` 2.8.0, API lue dans ses sources, `set_parent`, `blocking_pick_*` dans

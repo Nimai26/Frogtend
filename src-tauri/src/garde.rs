@@ -152,6 +152,15 @@ impl Reglages {
     }
 }
 
+/// Le dossier des émulateurs ou des outils RÉGLÉ dans `pc.json` (`dossierEmulateurs`, `dossierOutils`) : le seul où
+/// un émulateur s'installe (étape 5).
+pub fn dossier_de_base_admis(reglages: &Value, dossier: &Path) -> bool {
+    ["dossierEmulateurs", "dossierOutils"]
+        .iter()
+        .filter_map(|k| reglages[*k].as_str().filter(|s| !s.trim().is_empty()))
+        .any(|b| meme(dossier, Path::new(b)))
+}
+
 /// Un programme de confiance : un émulateur réglé dans `pc.json`, ou inscrit au registre des émulateurs de Frogtend
 /// (installé ou adopté), ou trouvé dans son dossier habituel. Le fichier doit exister.
 pub fn programme_de_confiance(p: &Path, reglages: &Reglages, connus: &[PathBuf]) -> bool {
@@ -213,6 +222,16 @@ mod tests {
         assert!(!r.est_un_dossier_regle(Path::new(r"E:\Jeux\Dune")));
         assert!(r.est_un_dossier_regle(Path::new(r"E:\")), "un dossier qui contient un emplacement");
         assert!(r.programmes.iter().any(|p| meme(p, Path::new(r"E:\Emu\RPCS3\rpcs3.exe"))), "{:?}", r.programmes);
+    }
+
+    #[test]
+    fn un_emulateur_ne_s_installe_que_dans_le_dossier_regle() {
+        let r = serde_json::json!({"dossierEmulateurs": r"E:\Emulateurs", "dossierOutils": ""});
+        assert!(dossier_de_base_admis(&r, Path::new(r"e:\emulateurs\")));
+        assert!(!dossier_de_base_admis(&r, Path::new(r"E:\Emulateurs\RPCS3")), "le dossier réglé lui-même, pas dessous");
+        assert!(!dossier_de_base_admis(&r, Path::new(r"C:\Windows")));
+        assert!(!dossier_de_base_admis(&r, Path::new("")), "un dossier des outils vide ne vaut rien");
+        assert!(dossier_de_base_admis(&serde_json::json!({"dossierOutils": r"F:\Outils"}), Path::new(r"F:\Outils")));
     }
 
     #[test]

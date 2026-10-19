@@ -59,3 +59,7 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   stock au 19/10.
 - (19/10, expert lancement) La dépendance JavaScript `@tauri-apps/plugin-dialog` n'est plus importée (les fenêtres de
   choix passent par le cœur depuis 0.72.0) : la retirer de package.json au prochain renouvellement des dépendances.
+- (19/10, expert lancement, durcissement) Restes mineurs : filtrer les commandes par fenêtre (déclarer les ~130
+  commandes dans `build.rs` avec `AppManifest::commands`, puis une capacité `menu-jeu` restreinte — gain faible, la
+  fenêtre charge le même code) ; annoncer aussi un lecteur réseau MONTÉ (`Z:`), pas seulement un chemin `\…`, avant
+  une recherche d'import (une petite commande « ce disque est-il sur le réseau ? »).

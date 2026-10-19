@@ -519,6 +519,17 @@ impl Noyau {
         c.push((dossier, k, std::time::Instant::now()));
     }
 
+    /// Ce chemin a-t-il été choisi par la personne (du bon genre, il y a moins de 10 minutes), SANS consommer le choix :
+    /// pour les écritures qui suivent un choix d'émulateur (BIOS, cœur, réglages), plusieurs à la suite.
+    pub(crate) fn a_ete_choisi(&self, dossier: bool, p: &Path) -> bool {
+        let Some(k) = crate::garde::cle(p) else { return false };
+        self.choix
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .any(|(d, x, q)| *d == dossier && *x == k && q.elapsed() < std::time::Duration::from_secs(600))
+    }
+
     /// Ce chemin vient-il d'un choix de la personne, du bon genre, il y a moins de 10 minutes ? Le choix est alors
     /// CONSOMMÉ (une seule fois).
     pub(crate) fn consommer_choix(&self, dossier: bool, p: &Path) -> bool {
