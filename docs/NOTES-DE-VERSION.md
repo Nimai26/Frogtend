@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.74.1 — Un avertissement pour les jeux PS3
+
+- 🎨 Image et fluidité prévient si RPCS3 est réglé pour oublier les effets déjà préparés (son « cache de shaders » est
+  coupé) : le début de chaque partie peut alors être plus lent. Frogtend dit comment le rétablir, sans y toucher
+  lui-même.
+
 ## 0.74.0 — L'image et la fluidité de tes jeux PS3
 
 - ⚙ Gérer le jeu ▸ **🎨 Image et fluidité**, pour un jeu PS3 lancé par RPCS3 : la fluidité (sans saccades, rapide ou le

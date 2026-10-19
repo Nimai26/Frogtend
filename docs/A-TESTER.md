@@ -56,6 +56,9 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Un autre jeu PS3 : il garde ses réglages habituels.
 - [ ] ↩ Valeurs de RPCS3 : le jeu redevient comme avant.
 - [ ] Un jeu encore en .zip (God of War III…) : Frogtend dit de le décompresser d'abord.
+- [ ] (0.74.1) Chez toi le cache de shaders est allumé : AUCUN avertissement « ⚠ RPCS3 est réglé pour oublier… » sous
+      le titre du menu. (Si tu veux voir l'avertissement : coche « Disable On-Disk Shader Cache » dans RPCS3, rouvre
+      le menu, puis décoche-le.)
 
 ## Où Frogtend écrit (0.73.0)
 - [ ] (Si tu prépares un nouvel émulateur avec « Prêt à jouer » ou l'assistant) : il s'installe comme avant, ses

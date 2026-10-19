@@ -863,6 +863,25 @@ pub fn rpcs3_image(rpcs3: &Path, numero: &str) -> Resultat<(Vec<(String, String)
     Ok((valeurs, par_jeu))
 }
 
+/// Le cache de shaders sur le disque est-il coupé pour ce jeu (`Video ▸ Disable On-Disk Shader Cache: true`, dans le
+/// fichier du jeu, sinon le global) ? Alors « Sans saccades » recompile tout à chaque partie. Lu seulement, jamais
+/// écrit : la personne l'a peut-être coupé exprès dans RPCS3 (✅ Seb 19/10 : prévenir ; avis de l'expert lancement : sans y toucher).
+pub fn rpcs3_cache_shaders_coupe(rpcs3: &Path, numero: &str) -> Resultat<bool> {
+    const CLE: &str = "Disable On-Disk Shader Cache";
+    for f in [rpcs3_config_du_jeu(rpcs3, numero)?, rpcs3.join("config").join("config.yml")] {
+        match std::fs::read_to_string(&f) {
+            Ok(t) => {
+                if let Some(v) = lire_cles_yaml(&t, "Video", &[CLE]).get(CLE) {
+                    return Ok(v == "true");
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Ok(false)
+}
+
 /// Règle pour CE jeu les clés données (seulement celles-là, valeurs de la liste fermée), dans son fichier de RPCS3
 /// (créé s'il manque, copié à l'abri sinon) ; `vide` = revenir aux valeurs de RPCS3 (les clés d'image retirées du
 /// fichier du jeu, jamais le fichier lui-même).
@@ -1114,6 +1133,18 @@ mod tests {
         assert_eq!(val(&v, "Resolution Scale"), "100");
         assert_eq!(val(&v, "FidelityFX CAS Sharpening Intensity"), "50", "absent du global : défaut de RPCS3");
         assert!(par_jeu.is_empty());
+        // Le cache de shaders : absent = pas coupé ; coupé dans le global ; le fichier du jeu l'emporte.
+        assert!(!rpcs3_cache_shaders_coupe(rpcs3, "BLES01227").unwrap());
+        let g = rpcs3.join("config").join("config.yml");
+        let global = std::fs::read_to_string(&g).unwrap();
+        std::fs::write(&g, global.replace("Video:\n", "Video:\n  Disable On-Disk Shader Cache: true\n")).unwrap();
+        assert!(rpcs3_cache_shaders_coupe(rpcs3, "BLES01227").unwrap());
+        let cc = rpcs3.join("config").join("custom_configs");
+        std::fs::create_dir_all(&cc).unwrap();
+        std::fs::write(cc.join("config_BLES01227.yml"), "Video:\n  Disable On-Disk Shader Cache: false\n").unwrap();
+        assert!(!rpcs3_cache_shaders_coupe(rpcs3, "BLES01227").unwrap());
+        std::fs::remove_dir_all(&cc).unwrap();
+        std::fs::write(&g, global).unwrap();
         // Deux réglages changés : le fichier du jeu n'en contient QUE deux (le reste suit le global).
         rpcs3_regler_image(rpcs3, "BLES01227", &[("Resolution Scale".into(), "200".into()), ("Output Scaling Mode".into(), "FidelityFX Super Resolution".into())], false).unwrap();
         let f = rpcs3.join("config").join("custom_configs").join("config_BLES01227.yml");

@@ -446,15 +446,19 @@ pub struct ImagePs3 {
     valeurs: Vec<(String, String)>,
     /// Les clés réglées pour CE jeu.
     par_jeu: Vec<String>,
+    /// Le cache de shaders sur le disque est coupé dans RPCS3 (pour ce jeu ou pour tous) : à dire, sans y toucher.
+    cache_coupe: bool,
 }
 
 /// Image et fluidité d'un jeu PS3 : ses réglages actuels ; `None` : pas un jeu PS3 lancé par RPCS3.
 #[tauri::command]
 pub async fn rpcs3_image(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<Option<ImagePs3>> {
     let Some((_, rpcs3, numero)) = contexte_image_ps3(&app, &noyau, id).await? else { return Ok(None) };
-    let Some(n) = numero else { return Ok(Some(ImagePs3 { numero: None, valeurs: vec![], par_jeu: vec![] })) };
+    let Some(n) = numero else { return Ok(Some(ImagePs3 { numero: None, valeurs: vec![], par_jeu: vec![], cache_coupe: false })) };
     let (valeurs, par_jeu) = crate::emulateurs_profils::rpcs3_image(&rpcs3, &n)?;
-    Ok(Some(ImagePs3 { numero: Some(n), valeurs, par_jeu }))
+    // Un simple avertissement : un fichier illisible ici ne ferme jamais l'écran.
+    let cache_coupe = crate::emulateurs_profils::rpcs3_cache_shaders_coupe(&rpcs3, &n).unwrap_or(false);
+    Ok(Some(ImagePs3 { numero: Some(n), valeurs, par_jeu, cache_coupe }))
 }
 
 /// Règle l'image et la fluidité d'un jeu PS3 (seulement les clés données) ; `vide` : revenir aux valeurs de RPCS3.

@@ -63,5 +63,5 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   commandes dans `build.rs` avec `AppManifest::commands`, puis une capacité `menu-jeu` restreinte — gain faible, la
   fenêtre charge le même code) ; annoncer aussi un lecteur réseau MONTÉ (`Z:`), pas seulement un chemin `\…`, avant
   une recherche d'import (une petite commande « ce disque est-il sur le réseau ? »).
-- (19/10, expert lancement, 0.74.0) « 🎨 Image et fluidité » : lire `Video ▸ Disable On-Disk Shader Cache` et avertir
+- ✅ (fait en 0.74.1) (19/10, expert lancement, 0.74.0) « 🎨 Image et fluidité » : lire `Video ▸ Disable On-Disk Shader Cache` et avertir
   s'il vaut `true` (« Sans saccades » ne tiendrait plus d'une partie à l'autre), sans y toucher.

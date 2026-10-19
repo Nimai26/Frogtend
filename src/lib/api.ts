@@ -588,7 +588,7 @@ export const api = {
   /** Image et fluidité d'un jeu PS3 dans RPCS3 : `null` = pas un jeu PS3 lancé par RPCS3 ; `numero` absent = disque
    * illisible (archive à décompresser…). */
   rpcs3Image: (id: number) =>
-    appeler<{ numero: string | null; valeurs: [string, string][]; par_jeu: string[] } | null>('rpcs3_image', { id }),
+    appeler<{ numero: string | null; valeurs: [string, string][]; par_jeu: string[]; cache_coupe: boolean } | null>('rpcs3_image', { id }),
   /** Règle pour CE jeu les réglages donnés ; `vide` : revenir aux valeurs de RPCS3. */
   rpcs3ReglerImage: (id: number, valeurs: [string, string][], vide = false) =>
     appeler<void>('rpcs3_regler_image', { id, valeurs, vide }),

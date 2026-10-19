@@ -317,6 +317,12 @@ d'abord :
   « 🗜 Décompresser pour jouer » ; valeur héritée choisie exprès = figée pour le jeu. FSR existe aussi pour OpenGL
   dans RPCS3 (`Emu/RSX/GL/upscalers/fsr_pass.h`) : rien à cacher selon le moteur. Avertissement « cache de shaders
   désactivé » noté dans IDEES.
+- **0.74.1** (19/10) — ✅ Seb 19/10 (lot suivant choisi : « PS3 : cache de shaders ») : 🎨 Image et fluidité avertit
+  si `Video ▸ Disable On-Disk Shader Cache: true` (fichier du jeu, sinon global ; clé vérifiée ligne 102 du vrai
+  `config.yml` de Seb, où elle vaut `false`). Lu seulement, jamais écrit ; une erreur de lecture ne ferme pas l'écran
+  (`unwrap_or(false)`). Relecture de l'expert lancement : texte corrigé (début de partie plus lent, pas des saccades)
+  et « comment le rétablir » ajouté. NON vérifié : l'onglet exact de RPCS3 où se trouve la case (le texte ne le nomme
+  pas).
 
 - **0.73.0** (19/10) — Durcissement, étapes 5 à 7 (fin du lot). Écritures dans les dossiers d'émulateurs :
   installation seulement dans `dossierEmulateurs`/`dossierOutils` réglé (`garde::dossier_de_base_admis`, créé s'il

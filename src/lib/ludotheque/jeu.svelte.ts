@@ -733,7 +733,10 @@ async function choisirImagePs3(id: number) {
     const c = await choisir<Ligne>(
       `🎨 Image et fluidité — « ${j.titre} »`,
       lignes,
-      `Ces réglages ne valent que pour ce jeu, pour tout le monde sur ce PC ; les autres jeux PS3 gardent ceux de RPCS3. Ils prennent effet au prochain lancement.`,
+      `Ces réglages ne valent que pour ce jeu, pour tout le monde sur ce PC ; les autres jeux PS3 gardent ceux de RPCS3. Ils prennent effet au prochain lancement.` +
+        (r.cache_coupe
+          ? `\n\n⚠ RPCS3 est réglé pour oublier les effets déjà préparés (son cache de shaders est coupé) : le jeu doit les préparer de nouveau à chaque partie, et le début de chaque partie peut être plus lent. Pour le rétablir : dans les réglages de RPCS3 (ceux du jeu s’il a les siens), décoche « Disable On-Disk Shader Cache ».`
+          : ''),
     );
     if (!c || c === 'fini') return;
     try {
