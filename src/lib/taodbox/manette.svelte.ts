@@ -98,9 +98,19 @@ export function appliquer(c: Commande) {
   else deplacer(c);
 }
 
-// Boutons de la disposition standard (W3C) : 0 = A, 1 = B, 12–15 = croix.
+/** Y : « ⚙ Gérer le jeu » (✅ Seb 19/10), comme la touche Menu (≣) du clavier. Hors des commandes de navigation : un
+ * lecteur qui a pris la main se fermerait sur une commande inconnue ; rien non plus par-dessus une fenêtre. Rend
+ * `true` si la touche a été envoyée. */
+export function appuiY(): boolean {
+  if (fenetreOuverte() || preneurs.length) return false;
+  touche('ContextMenu');
+  return true;
+}
+
+// Boutons de la disposition standard (W3C) : 0 = A, 1 = B, 3 = Y, 12–15 = croix.
 const A = 0;
 const B = 1;
+const Y = 3;
 const CROIX: [number, Direction][] = [
   [12, 'haut'],
   [13, 'bas'],
@@ -143,6 +153,7 @@ function lire() {
   const nouveaux = nouveauxAppuis(avant, maintenant);
   if (nouveaux.has(A)) appliquer('valider');
   if (nouveaux.has(B)) appliquer('retour');
+  if (nouveaux.has(Y)) appuiY();
   // Direction : un premier pas, puis la répétition après une pause (comme une touche tenue).
   const t = performance.now();
   if (d && d !== direction) {

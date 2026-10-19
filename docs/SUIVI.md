@@ -7,6 +7,22 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- **Lot 0.76.0 — « ⚙ Gérer le jeu » à la manette en Taodbox** (✅ Seb 19/10, choisi après le constat : AUCUN jeu
+  ScummVM ni Xbox au catalogue, 12 717 jeux surtout des cartouches rétro — SNES 1 892, GBA 1 774, GBC 1 225, GB 1 175,
+  Mega Drive 1 130… ; ScummVM et conversion XISO repoussés). Idée d'origine : IDEES (expert interface, 05/10).
+  ✅ Seb 19/10 : bouton **Y** (clavier : touche Menu ≣) ; **Retirer** (et le désinstalleur) **reste au bureau**, caché
+  en Taodbox. Plan de l'expert interface : mode canapé dans `gererJeu` (ni sélecteur de fichiers Windows, ni saisie,
+  ni installeur guidé : « à faire depuis le bureau ») ; Y → `ContextMenu` hors de `Commande` (les lecteurs de
+  livret/médias/images se ferment sur une commande inconnue) ; focus rendu à la carte après le menu.
+  ✅ LIVRÉ en 0.76.0 : `src/lib/taodbox/canape.ts` (`auCanape` = attribut `data-taodbox`, posé seulement par la vraie
+  Taodbox — pas `taodbox.actif`, vrai aussi dans le menu en jeu au bureau ; `seulementAuBureau`) ; filet dans les deux
+  `parcourir` ; renvoi AVANT les questions (installé ailleurs, dossier des outils) ; dossier des émulateurs proposé
+  d'office au canapé (comme « Prêt à jouer ») ; options cachées (guidée, Un autre programme/émulateur, à installer
+  soi-même, Retirer, « Rangé dans ») ; `appuiY` ; page : `gerer` + verrou, A bloqué pendant, menu natif bloqué
+  (`svelte:window oncontextmenu`), focus rendu. Relecture de l'expert interface appliquée. Vérifié : 189 tests
+  interface (Y, preneur, fenêtre, canapé), svelte-check. NON vérifié : à la vraie manette (Seb), la touche ≣ réelle
+  dans WebView2, Y par la manette virtuelle de Sunshine.
+
 - **Lot OSD — le menu en jeu universel** (Seb, 30/09 puis 04/10). Mots de Seb (04/10) : « servira pour Frogtend et
   Taodbox » ; « manette ET clavier souris » ; « il doit être le MÊME pour tous, seul le fond peut être différent en
   fonction des jeux ou systèmes, et certaines options bien sûr ». Exigences atomiques :

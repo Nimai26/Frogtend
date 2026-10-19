@@ -20,6 +20,7 @@ import { rechargerJeuxDuPc, tele } from './telechargements.svelte';
 import { estCourante, libelleVersion, nomDuFichier } from './versions';
 import { libellePleinEcran, TOUCHES_PLEIN_ECRAN } from './plein-ecran';
 import { BOUTONS, detailTouche, libelleClavier, memes, nettoyer, PREREGLAGES, TOUCHES, type Correspondance } from './clavier';
+import { auCanape, seulementAuBureau } from '$lib/taodbox/canape';
 
 export const partie = $state<{ enJeu: number | null; installation: number | null }>({ enJeu: null, installation: null });
 
@@ -52,6 +53,8 @@ export async function suivreParties() {
 /** Choisir un fichier ou un dossier avec l'explorateur de Windows, ouvert par le cœur (qui retient le choix). */
 async function parcourir(options: { dossier?: boolean; titre: string; extensions?: string[] }): Promise<string | null> {
   if (!isTauri()) return null;
+  // L'explorateur de Windows se pilote à la souris : jamais ouvert en Taodbox.
+  if (await seulementAuBureau(`Choisir « ${options.titre} »`)) return null;
   return api.parcourir(options);
 }
 
@@ -80,13 +83,15 @@ export async function installer(id: number): Promise<boolean> {
       `📦 Installer « ${p.titre} »`,
       [
         { valeur: 'auto', libelle: '⚙ Installation automatique (conseillée)', detail: `dans ${p.destination}` },
-        { valeur: 'guidee', libelle: '🧭 Installation guidée', detail: 'l’installeur s’ouvre, tu choisis toi-même' },
+        // L'installeur de Windows se pilote à la souris : pas en Taodbox.
+        ...(auCanape() ? [] : [{ valeur: 'guidee', libelle: '🧭 Installation guidée', detail: 'l’installeur s’ouvre, tu choisis toi-même' }]),
       ],
       `L’installeur (${p.methode.format === 'inno' ? 'Inno Setup' : 'NSIS'}) peut demander l’accord de Windows (droits administrateur).${notes}`,
     );
     if (!c) return false;
     automatique = c === 'auto';
   } else if (p.methode.sorte === 'installeur_guide') {
+    if (await seulementAuBureau(`L’installeur de « ${p.titre} »`)) return false;
     const oui = await confirmer(`📦 Installer « ${p.titre} »`, {
       message: `L’installeur du jeu va s’ouvrir. Quand il demande où installer, choisis ce dossier :\n${p.destination}\n\nIl peut demander l’accord de Windows (droits administrateur).${notes}`,
       libelleValider: '📦 Ouvrir l’installeur',
@@ -108,7 +113,8 @@ export async function installer(id: number): Promise<boolean> {
   } catch (e) {
     partie.installation = null;
     if (estErreurCoeur(e) && e.motif.includes("rien n'est dans")) {
-      // Installé ailleurs : la personne indique où.
+      // Installé ailleurs : la personne indique où (avec l'explorateur de Windows : pas en Taodbox).
+      if (await seulementAuBureau(`Montrer où « ${p.titre} » a été installé`)) return false;
       const d = await confirmer('📂 Où le jeu a-t-il été installé ?', {
         message: `${e.motif}\n\nChoisis le dossier où l’installeur a mis le jeu.`,
         libelleValider: '📂 Choisir le dossier',
@@ -150,6 +156,11 @@ export async function choisirLanceur(id: number): Promise<boolean> {
     return false;
   }
   const titre = tele.jeux[id]?.titre ?? 'ce jeu';
+  // En Taodbox, « un autre programme » ouvrirait l'explorateur de Windows : seulement les candidats trouvés.
+  if (auCanape() && !candidats.length) {
+    await seulementAuBureau(`Choisir ce qui lance « ${titre} »`);
+    return false;
+  }
   const c = await choisir<Candidat | 'autre'>(
     `🎯 Qu’est-ce qui lance « ${titre} » ?`,
     [
@@ -158,7 +169,7 @@ export async function choisirLanceur(id: number): Promise<boolean> {
         libelle: `${i === 0 ? '⭐ ' : ''}${c.relatif}`,
         detail: i === 0 ? 'le plus probable' : undefined,
       })),
-      { valeur: 'autre', libelle: '📂 Un autre programme…', detail: 'le choisir avec l’explorateur' },
+      ...(auCanape() ? [] : [{ valeur: 'autre' as const, libelle: '📂 Un autre programme…', detail: 'le choisir avec l’explorateur' }]),
     ],
     'Frogtend retiendra ce choix. Les notes de la version disent souvent quoi lancer.',
   );
@@ -436,7 +447,8 @@ export async function jouerAvec(id: number) {
         libelle: `${e.cle === actuel?.cle ? '⭐ ' : ''}${e.nom || e.programme}`,
         detail: e.cle === actuel?.cle ? 'celui d’habitude pour ce jeu' : undefined,
       })),
-      { valeur: '+', libelle: '➕ Un autre émulateur…', detail: `l’ajouter à ${j.plateforme}` },
+      // L'ajouter demande l'explorateur de Windows et une saisie : pas en Taodbox.
+      ...(auCanape() ? [] : [{ valeur: '+', libelle: '➕ Un autre émulateur…', detail: `l’ajouter à ${j.plateforme}` }]),
     ],
     'Pour cette partie seulement. Le choix d’habitude se règle dans ⚙ Gérer le jeu ▸ 🕹 Émulateur.',
   );
@@ -472,7 +484,8 @@ export async function choisirEmulateurDuJeu(id: number) {
     [
       { valeur: '', libelle: `${!propre ? '⭐ ' : ''}Comme la console`, detail: duSysteme ? duSysteme.nom || duSysteme.programme : 'aucun réglé' },
       ...s.liste.map((e) => ({ valeur: e.cle, libelle: `${propre === e.cle ? '⭐ ' : ''}${e.nom || e.programme}` })),
-      { valeur: '+', libelle: '➕ Un autre émulateur…', detail: `l’ajouter à ${j.plateforme}` },
+      // L'ajouter demande l'explorateur de Windows et une saisie : pas en Taodbox.
+      ...(auCanape() ? [] : [{ valeur: '+', libelle: '➕ Un autre émulateur…', detail: `l’ajouter à ${j.plateforme}` }]),
     ],
     `Le choix de la console se règle dans ⚙ Options ▸ Émulateurs.`,
   );
@@ -719,7 +732,7 @@ async function choisirImagePs3(id: number) {
     if (!r.numero) {
       await informer(
         '🎨 Image et fluidité',
-        `Frogtend ne lit pas le numéro du disque de « ${j.titre} ».\n\nS’il est encore compressé (.zip), décompresse-le d’abord avec le bouton « 🗜 Décompresser pour jouer » de sa fiche : RPCS3 en a besoin pour jouer, et Frogtend pour le régler.`,
+        `Frogtend ne lit pas le numéro du disque de « ${j.titre} ».\n\nS’il est encore compressé (.zip), décompresse-le d’abord avec le bouton « 🗜 Décompresser pour jouer » ${auCanape() ? 'de son panneau, sur l’écran du PC (hors Taodbox)' : 'de son panneau, dans la ludothèque'} : RPCS3 en a besoin pour jouer, et Frogtend pour le régler.`,
       );
       return;
     }
@@ -813,13 +826,15 @@ export async function gererJeu(id: number) {
   }
   if (j.installation)
     options.push({ valeur: 'abri', libelle: '💾 Mettre mes parties à l’abri', detail: 'une copie de ce qui a changé depuis l’installation' });
-  if (j.etat === 'telecharge')
+  // Retirer (et désinstaller) reste au bureau (✅ Seb 19/10) : il efface, et le désinstalleur se pilote à la souris.
+  if (j.etat === 'telecharge' && !auCanape())
     options.push(
       estImporte(j)
         ? { valeur: 'retirer', libelle: '🗑 Retirer de la ludothèque', detail: 'ses fichiers restent sur ton disque' }
         : { valeur: 'retirer', libelle: '🗑 Retirer du PC (désinstaller)', detail: 'tes parties sont copiées à l’abri d’abord' },
     );
-  const c = await choisir<Action>(`⚙ Gérer « ${j.titre} »`, options, `Rangé dans ${j.installation?.dossier ?? j.dossier}`);
+  // Un chemin de dossier ne dit rien à 3 m de la télé.
+  const c = await choisir<Action>(`⚙ Gérer « ${j.titre} »`, options, auCanape() ? undefined : `Rangé dans ${j.installation?.dossier ?? j.dossier}`);
   if (c === 'installer') await installer(id);
   else if (c === 'lanceur') await choisirLanceur(id);
   else if (c === 'version') await choisirVersionParDefaut(id);

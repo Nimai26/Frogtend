@@ -4,12 +4,13 @@
 
 import { listen } from '@tauri-apps/api/event';
 import { ajouter } from './choix';
-import { avecConseil, biosADireOuPoser, biosATelecharger, biosRetroArch, estConseille, ligneDe, palier, poidsBios, versionAutre } from './pret';
+import { avecConseil, biosADireOuPoser, biosATelecharger, biosRetroArch, dossierParDefaut, estConseille, ligneDe, palier, poidsBios, versionAutre } from './pret';
 import { isTauri } from '@tauri-apps/api/core';
 import { api, taille, type BilanBios, type EmulateurInstalle, type EmulateurRecommande } from '$lib/api';
 import { choisir, confirmer, demander, fermerToast, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat, reglerPc } from '$lib/etat.svelte';
+import { auCanape, seulementAuBureau } from '$lib/taodbox/canape';
 
 export const installationEmulateur = $state<{ id: string | null; recus: number; total: number | null }>({
   id: null,
@@ -21,12 +22,25 @@ export const installationEmulateur = $state<{ id: string | null; recus: number; 
  * les chemins vraiment choisis sont admis ensuite par les commandes sensibles). */
 export async function parcourir(options: { dossier?: boolean; titre: string; extensions?: string[] }): Promise<string | null> {
   if (!isTauri()) return null;
+  // L'explorateur de Windows se pilote à la souris : jamais ouvert en Taodbox.
+  if (await seulementAuBureau(`Choisir « ${options.titre} »`)) return null;
   return api.parcourir(options);
 }
 
 /** Le dossier où Frogtend installe les émulateurs ; demandé la première fois. */
 export async function dossierEmulateurs(changer = false): Promise<string | null> {
   if (etat.pc.dossierEmulateurs && !changer) return etat.pc.dossierEmulateurs;
+  // En Taodbox (pas d'explorateur) : le dossier proposé d'office, comme « Prêt à jouer », annoncé avant l'accord.
+  if (auCanape() && !changer) {
+    const d = dossierParDefaut(etat.pc.emplacements.defaut);
+    const oui = await confirmer('📁 Où installer les émulateurs ?', {
+      message: `Ils iront dans ${d}, chacun dans son sous-dossier. Tu pourras changer ce dossier plus tard, à l’écran du PC (⚙ Options ▸ 📁 Emplacements).`,
+      libelleValider: '✅ D’accord',
+    });
+    if (!oui) return null;
+    await reglerPc('dossierEmulateurs', d);
+    return d;
+  }
   const suggestion = etat.pc.emplacements.defaut[0] ? `${etat.pc.emplacements.defaut[0]}\\Émulateurs` : 'E:\\Émulateurs';
   const ok = await confirmer('📁 Où installer les émulateurs ?', {
     message: `Choisis (ou crée) un dossier pour les émulateurs, par exemple ${suggestion}.\nChaque émulateur y aura son sous-dossier, avec sa configuration (mode portable).`,
@@ -140,6 +154,7 @@ export function recommandationsParDefaut(plateforme: string): EmulateurRecommand
 /** Le dossier où Frogtend installe Cheat Engine et les autres outils (pas avec les émulateurs) ; demandé la 1re fois. */
 export async function dossierOutils(changer = false): Promise<string | null> {
   if (etat.pc.dossierOutils && !changer) return etat.pc.dossierOutils;
+  if (await seulementAuBureau('Choisir le dossier des outils')) return null;
   const suggestion = etat.pc.dossierEmulateurs ? `${etat.pc.dossierEmulateurs.replace(/[\\/][^\\/]*$/, '')}\\Outils` : 'E:\\Outils';
   const ok = await confirmer('📁 Où installer les outils ?', {
     message: `Choisis (ou crée) un dossier pour Cheat Engine et les autres outils, par exemple ${suggestion}.\nChaque outil y aura son sous-dossier ; rien n’est installé ailleurs.`,
@@ -300,6 +315,8 @@ export async function reglerEmulateur(plateforme: string): Promise<string | null
     const f = await api.emulateurFiche(rec.nom).catch(() => null);
     const installe = f ? installes.find((i) => i.id === f.id) : rec.id ? installes.find((i) => i.id === rec.id) : undefined;
     const parFirehouse = !f && !!rec.id && ((!!rec.telechargement && rec.telechargement.type !== 'page') || estConseille(rec, conseil));
+    // « À installer toi-même » finit par l'explorateur de Windows : pas proposé en Taodbox.
+    if (auCanape() && !installe && !f && !parFirehouse) continue;
     options.push({
       valeur: { rec, id: f?.id ?? null, nom: f?.nom ?? rec.nom, installe },
       libelle: conseil
@@ -312,7 +329,8 @@ export async function reglerEmulateur(plateforme: string): Promise<string | null
           : `à installer toi-même${rec.site_officiel || rec.site ? ` : ${rec.site_officiel || rec.site}` : ''}`,
     });
   }
-  options.push({ valeur: 'autre', libelle: '📂 Un autre émulateur…', detail: 'montrer son programme et écrire sa ligne de commande' });
+  // Montrer un programme et écrire une ligne de commande : pas en Taodbox.
+  if (!auCanape()) options.push({ valeur: 'autre', libelle: '📂 Un autre émulateur…', detail: 'montrer son programme et écrire sa ligne de commande' });
 
   const c = await choisir<Option>(
     `🕹 Quel émulateur pour ${plateforme} ?`,

@@ -1,5 +1,17 @@
 # Notes de version de Frogtend
 
+## 0.76.0 — Gérer un jeu depuis le canapé
+
+- En Taodbox, le bouton **Y** de la manette ouvre « ⚙ Gérer le jeu » sur la jaquette choisie (au clavier : la touche
+  Menu ≣ ; à la souris : clic droit). Tu y règles l'émulateur, les commandes, la version, le plein écran, l'image et
+  la fluidité d'un jeu PS3, « Figer pendant le menu », jouer à la manette un jeu fait pour le clavier, ou tu mets tes
+  parties à l'abri.
+- Tout se fait à la manette. Ce qui demande la souris (choisir un fichier dans l'explorateur de Windows, écrire une
+  ligne de commande, l'installation guidée) n'est pas proposé en Taodbox ; si on y arrive quand même, Frogtend dit de
+  le faire depuis le bureau.
+- Retirer un jeu du PC reste au bureau.
+- Quand le menu se ferme, la jaquette du jeu reste choisie.
+
 ## 0.75.0 — Les jeux Xbox : prévenu avant de lancer
 
 - Avant de lancer un jeu Xbox dans l'émulateur xemu, Frogtend regarde la forme de son image disque. xemu ne lit

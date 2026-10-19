@@ -48,6 +48,16 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Gérer un jeu depuis le canapé (0.76.0)
+- [ ] Taodbox, une jaquette choisie, **Y** : « ⚙ Gérer » s'ouvre ; la croix et A choisissent, B revient.
+- [ ] 🕹 Émulateur, 🎮 Commandes, 📀 Version (Dune ou un jeu à plusieurs versions), 🎨 Image et fluidité (Asura's
+      Wrath) : chacun se règle à la manette, sans souris.
+- [ ] Il n'y a ni « 🗑 Retirer », ni « ➕ Un autre émulateur… », ni « 📂 Un autre programme… ».
+- [ ] Le menu fermé, la même jaquette reste choisie (A la lance).
+- [ ] Au clavier en Taodbox : la touche Menu (≣) fait pareil ; à la souris, le clic droit.
+- [ ] Au bureau : « ⚙ Gérer le jeu » est comme avant (Retirer, Un autre émulateur… sont là).
+- [ ] Par Moonlight (manette de la box) : Y marche aussi (non vérifié avec la manette virtuelle de Sunshine).
+
 ## Jeux Xbox : prévenu avant de lancer (0.75.0)
 - [ ] (Quand un jeu Xbox sera là : aucun au stock ni chez toi au 19/10.) Une image XISO se lance dans xemu comme avant.
 - [ ] Une image « Redump » (≈ 7 Go) : ▶ Jouer ouvre une fenêtre qui explique pourquoi elle ne se lance pas ; xemu

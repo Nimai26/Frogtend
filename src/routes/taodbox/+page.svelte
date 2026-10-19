@@ -7,10 +7,10 @@
   import { api, type JeuPc } from '$lib/api';
   import { confirmer } from '$lib/dialogues/fenetres.svelte';
   import { etat, sortirDuProfil } from '$lib/etat.svelte';
-  import { installer, jouer, partie } from '$lib/ludotheque/jeu.svelte';
+  import { gererJeu, installer, jouer, partie } from '$lib/ludotheque/jeu.svelte';
   import Jaquette from '$lib/ludotheque/Jaquette.svelte';
   import { tele } from '$lib/ludotheque/telechargements.svelte';
-  import { taodbox } from '$lib/taodbox/manette.svelte';
+  import { fenetreOuverte, selectionner, taodbox } from '$lib/taodbox/manette.svelte';
   import { adresseImageBoutique } from '$lib/api';
   import { lireSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
   import { galaxy, lireGalaxy, ouvrirDansGalaxy } from '$lib/boutiques/galaxy.svelte';
@@ -75,11 +75,30 @@
   onDestroy(() => repos.annuler());
 
   async function jeu(j: JeuPc) {
-    if (partie.enJeu !== null) return;
+    // Pas pendant « Gérer le jeu » (un réglage peut attendre sans fenêtre ouverte).
+    if (partie.enJeu !== null || enGestion) return;
     if (!j.installation) {
       if (!(await installer(j.id))) return;
     }
     await jouer(j.id);
+  }
+
+  /** Y (ou la touche Menu ≣, ou le clic droit) : « ⚙ Gérer le jeu » de la carte choisie (✅ Seb 19/10), puis le focus
+   * revient à cette carte (la liste a pu être rechargée et retriée entre-temps). */
+  // La vraie touche Menu peut donner `keydown` PUIS `contextmenu` : un seul menu à la fois.
+  let enGestion = false;
+  async function gerer(j: JeuPc, e: Event) {
+    e.preventDefault();
+    if (enGestion || partie.enJeu !== null || fenetreOuverte()) return;
+    enGestion = true;
+    try {
+      await gererJeu(j.id);
+    } finally {
+      enGestion = false;
+    }
+    await tick();
+    const carte = document.querySelector<HTMLElement>(`.taodbox .carte[data-id="${j.id}"]`);
+    if (carte) selectionner(carte);
   }
 
   async function bureau() {
@@ -92,6 +111,10 @@
     await exit(0);
   }
 </script>
+
+<!-- Jamais le menu natif de la page (Précédent, Actualiser…) : la touche Menu ≣ le donne au relâchement, quand le focus
+     est déjà dans la fenêtre « Gérer » ; le clic droit sur une carte ouvre « Gérer ». -->
+<svelte:window oncontextmenu={(e) => e.preventDefault()} />
 
 <div class="taodbox" class:avec-fond={voile} onfocusin={surFocus}>
   {#if avecFonds && choisi}
@@ -157,7 +180,13 @@
   {:else}
     <div class="grille">
       {#each affiches as j (j.id)}
-        <button class="carte" data-id={j.id} onclick={() => jeu(j)} disabled={partie.enJeu !== null && partie.enJeu !== j.id} title={j.titre}>
+        <button
+          class="carte"
+          data-id={j.id}
+          onclick={() => jeu(j)}
+          oncontextmenu={(e) => gerer(j, e)}
+          onkeydown={(e) => e.key === 'ContextMenu' && gerer(j, e)}
+          disabled={partie.enJeu !== null && partie.enJeu !== j.id} title={j.titre}>
           <Jaquette id={j.id} titre={j.titre} plateforme={j.plateforme} largeur={180} visuel={etat.profil.ludotheque.visuel} />
           <span class="titre">{j.titre}</span>
           <span class="etat">{partie.enJeu === j.id ? '▶ En cours' : j.installation ? '' : '📦 À installer'}</span>
@@ -193,7 +222,7 @@
   {/if}
 
   <footer class="aide">
-    {#if taodbox.manettes}🎮 Croix pour choisir · A pour jouer · B pour revenir{:else}↑ ↓ ← → pour choisir · Entrée pour jouer · Échap pour revenir{/if}
+    {#if taodbox.manettes}🎮 Croix pour choisir · A pour jouer · Y pour gérer le jeu · B pour revenir{:else}↑ ↓ ← → pour choisir · Entrée pour jouer · Menu (≣) pour gérer le jeu · Échap pour revenir{/if}
     · Pendant le jeu : {etat.pc.menuJeu.touche === 'Pause' ? 'Pause/Attn' : etat.pc.menuJeu.touche} pour le menu
   </footer>
 </div>
