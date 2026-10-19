@@ -601,6 +601,41 @@ pub fn verifier(j: &JeuAImporter) -> Resultat<()> {
     }
 }
 
+/// Durcissement (étape 4) : ce qu'un jeu importé fera LANCER est-il admis ? Un jeu sans programme (une ROM, un
+/// fichier pour l'émulateur réglé) : oui. Un programme de Windows lui-même : jamais. Un jeu DOS installé : un DOSBox de
+/// confiance, avec EXACTEMENT les arguments que Frogtend calcule (`arguments_jeu_dos`), pour un programme du dossier du
+/// jeu. Sinon : sans arguments, et dans le dossier du jeu (qui n'est pas un dossier système), ou choisi par la personne
+/// dans une fenêtre ouverte par le cœur (`choisi` le consomme). `Err` : la raison, dite à la personne.
+pub fn programme_admis(j: &JeuAImporter, de_confiance: &dyn Fn(&Path) -> bool, choisi: &dyn Fn(&Path) -> bool) -> Result<(), String> {
+    let Some(p) = j.programme.as_deref().map(Path::new) else { return Ok(()) };
+    if std::env::var_os("SystemRoot").is_some_and(|w| crate::garde::sous(p, Path::new(&w))) {
+        return Err("un programme de Windows ne lance pas un jeu".into());
+    }
+    let dossier = Path::new(&j.dossier);
+    if !j.arguments.is_empty() {
+        let dosbox = p.file_name().is_some_and(|n| n.to_string_lossy().to_lowercase().starts_with("dosbox"));
+        if !dosbox || !de_confiance(p) {
+            return Err("seul un DOSBox réglé sur ce PC reçoit des commandes".into());
+        }
+        // Les arguments DOSBox de Frogtend : …, "-c", "cd \<dossier>", "-c", "<programme>", "-c", "exit".
+        let a = &j.arguments;
+        let relatif = match (a.get(5).and_then(|c| c.strip_prefix("cd \\")), a.get(7)) {
+            (Some(d), Some(prog)) if d.is_empty() => prog.clone(),
+            (Some(d), Some(prog)) => format!("{d}\\{prog}"),
+            _ => return Err("commandes DOSBox inattendues".into()),
+        };
+        let attendus = arguments_jeu_dos(dossier, &relatif).map_err(|e| e.to_string())?;
+        if &attendus != a || !dossier.join(&relatif).is_file() {
+            return Err("commandes DOSBox inattendues".into());
+        }
+        return Ok(());
+    }
+    if crate::garde::sous(p, dossier) && !crate::garde::dossier_systeme(dossier) || choisi(p) {
+        return Ok(());
+    }
+    Err("le programme n'est pas dans le dossier du jeu : choisis-le avec l'explorateur".into())
+}
+
 /// Le bilan d'un import.
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
 pub struct BilanImport {
@@ -734,14 +769,20 @@ impl crate::noyau::Noyau {
                 bilan.deja += 1;
                 continue;
             }
-            let lanceur = j.programme.as_ref().map(|p| Lanceur {
-                programme: p.clone(),
-                arguments: j.arguments.clone(),
-                dossier: if j.arguments.is_empty() {
+            let lanceur = j.programme.as_ref().map(|p| {
+                let dossier = if j.arguments.is_empty() {
                     Path::new(p).parent().map(|d| d.to_string_lossy().to_string()).unwrap_or_else(|| j.dossier.clone())
                 } else {
                     j.dossier.clone()
-                },
+                };
+                // Un raccourci ne se lance pas directement : Windows (explorer) l'ouvre et suit sa cible ; un .bat passe
+                // par cmd — la même forme que les lanceurs proposés par Frogtend (`installation::candidats`).
+                let ext = Path::new(p).extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+                match (ext.as_str(), j.arguments.is_empty()) {
+                    ("lnk", true) => Lanceur { programme: "explorer.exe".into(), arguments: vec![p.clone()], dossier },
+                    ("bat" | "cmd", true) => Lanceur { programme: "cmd.exe".into(), arguments: vec!["/C".into(), p.clone()], dossier },
+                    _ => Lanceur { programme: p.clone(), arguments: j.arguments.clone(), dossier },
+                }
             });
             self.registre().ajouter(&JeuPc {
                 id,
@@ -816,6 +857,84 @@ fn ligne_de_ludotheque(id: i64, j: &JeuAImporter, cle: String, annee: Option<i64
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn un_raccourci_importe_s_ouvre_par_windows() {
+        use crate::coffre::CoffreMemoire;
+        use crate::noyau::{Connexion, Noyau};
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let profil = n.creer_profil("Seb", None, None).unwrap().id;
+        n.ouvrir(&profil, None, &Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        let jeu = d.path().join("Jeu");
+        ecrire(&jeu, "Jeu.lnk", "raccourci");
+        ecrire(&jeu, "Jeu.bat", "@echo off");
+        let un = |f: &str| JeuAImporter {
+            titre: f.into(),
+            plateforme: "Windows".into(),
+            dossier: jeu.to_string_lossy().into(),
+            fichier: None,
+            programme: Some(jeu.join(f).to_string_lossy().into()),
+            arguments: vec![],
+            annee: None,
+            editeur: None,
+            genres: vec![],
+        };
+        assert_eq!(n.importer_locaux(&[un("Jeu.lnk"), un("Jeu.bat")]).await.unwrap().ajoutes, 2);
+        let lanceurs: Vec<crate::installation::Lanceur> = n.registre().tous().unwrap().into_iter().filter_map(|j| j.installation.and_then(|i| i.lanceur)).collect();
+        let lnk = lanceurs.iter().find(|l| l.arguments.iter().any(|a| a.ends_with("Jeu.lnk"))).unwrap();
+        assert_eq!((lnk.programme.as_str(), lnk.arguments.len()), ("explorer.exe", 1), "un raccourci : par explorer");
+        let bat = lanceurs.iter().find(|l| l.arguments.iter().any(|a| a.ends_with("Jeu.bat"))).unwrap();
+        assert_eq!((bat.programme.as_str(), bat.arguments[0].as_str()), ("cmd.exe", "/C"), "un .bat : par cmd");
+    }
+
+    #[test]
+    fn ce_qu_un_jeu_importe_fera_lancer_est_verifie() {
+        let d = tempfile::tempdir().unwrap();
+        let jeu = d.path().join("Mon jeu");
+        ecrire(&jeu, "JEU.EXE", "MZ");
+        ecrire(&jeu, "DOS/JEU.EXE", "MZ");
+        let ailleurs = d.path().join("Ailleurs");
+        ecrire(&ailleurs, "autre.exe", "MZ");
+        let dosbox = d.path().join("DOSBox").join("dosbox.exe");
+        ecrire(&d.path().join("DOSBox"), "dosbox.exe", "MZ");
+        let j = |programme: Option<&Path>, arguments: Vec<String>| JeuAImporter {
+            titre: "Jeu".into(),
+            plateforme: "Windows".into(),
+            dossier: jeu.to_string_lossy().into(),
+            fichier: None,
+            programme: programme.map(|p| p.to_string_lossy().to_string()),
+            arguments,
+            annee: None,
+            editeur: None,
+            genres: vec![],
+        };
+        let jamais = |_: &Path| false;
+        let toujours = |_: &Path| true;
+        // Une ROM (aucun programme) : rien à lancer d'autre que l'émulateur réglé.
+        assert!(programme_admis(&j(None, vec![]), &jamais, &jamais).is_ok());
+        // Le programme du jeu, dans son dossier, sans arguments.
+        assert!(programme_admis(&j(Some(&jeu.join("JEU.EXE")), vec![]), &jamais, &jamais).is_ok());
+        // Ailleurs : seulement choisi par la personne.
+        assert!(programme_admis(&j(Some(&ailleurs.join("autre.exe")), vec![]), &jamais, &jamais).is_err());
+        assert!(programme_admis(&j(Some(&ailleurs.join("autre.exe")), vec![]), &jamais, &toujours).is_ok());
+        // Un programme de Windows : jamais, même choisi.
+        if let Some(w) = std::env::var_os("SystemRoot") {
+            let cmd = Path::new(&w).join("System32").join("cmd.exe");
+            assert!(programme_admis(&j(Some(&cmd), vec![]), &toujours, &toujours).is_err());
+        }
+        // Des arguments à un programme qui n'est pas DOSBox : refusé.
+        assert!(programme_admis(&j(Some(&jeu.join("JEU.EXE")), vec!["-x".into()]), &toujours, &toujours).is_err());
+        // Un jeu DOS installé : DOSBox de confiance, avec EXACTEMENT les commandes de Frogtend.
+        let args = arguments_jeu_dos(&jeu, r"DOS\JEU.EXE").unwrap();
+        assert!(programme_admis(&j(Some(&dosbox), args.clone()), &toujours, &jamais).is_ok());
+        assert!(programme_admis(&j(Some(&dosbox), args.clone()), &jamais, &jamais).is_err(), "DOSBox pas de confiance");
+        let mut autres = args.clone();
+        autres[1] = r#"mount c "C:\""#.into();
+        assert!(programme_admis(&j(Some(&dosbox), autres), &toujours, &jamais).is_err(), "C: monté ailleurs que le jeu");
+        let racine = arguments_jeu_dos(&jeu, "JEU.EXE").unwrap();
+        assert!(programme_admis(&j(Some(&dosbox), racine), &toujours, &jamais).is_ok(), "programme à la racine du jeu");
+    }
 
     #[test]
     fn un_jeu_importe_se_reconnait_a_son_numero_jamais_a_sa_version() {

@@ -178,9 +178,8 @@
       dans les dossiers d'émulateurs (`emulateur_installer(_firehouse)`, `bios_poser`, `retroarch_installer_coeur`,
       `emulateur_regler_manette`, `triche_installer` par clé) ; 6 écritures dans les emplacements (`import_copier`,
       `import_installer_dos`, `abris_regler`) ; 7 droits de la fenêtre `menu-jeu`, scan réseau annoncé.
-      ⚠️ Brèches CONNUES restantes (relecture du 19/10) : `emulateur_adopter` inscrit n'importe quel fichier au
-      registre, qui le rend « de confiance » (atténué par les contrôles de nom : cheatengine*, rpcs3.exe, dosbox*) ;
-      `import_ajouter` accepte un programme et des arguments libres. → étapes 4 et 5.
+      ✅ Étape 4 livrée en 0.72.0 (les deux brèches `emulateur_adopter` et `import_ajouter` sont fermées). Restent les
+      étapes 5, 6, 7.
 - [ ] **Durcissement** (relevé à l'audit du 03/10) : le cœur ne recompare pas aux réglages les dossiers que
       l'interface lui donne (emplacements, émulateurs, outils).
 - [ ] DLC Xbox 360 (Xenia) et PS Vita (Vita3K) — aucun jeu chez Seb pour l'instant, priorité basse.
@@ -294,6 +293,21 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.72.0** (19/10) — Durcissement, étape 4 (Seb : « Poursuis »). Les fenêtres de choix sont ouvertes PAR LE CŒUR
+  (commande `parcourir` : `tauri-plugin-dialog` 2.8.0, API lue dans ses sources, `set_parent`, `blocking_pick_*` dans
+  `spawn_blocking`) qui retient le chemin choisi (fichier ou dossier, 10 min, une fois : `retenir_choix` /
+  `consommer_choix`) ; `dialog:allow-open` retiré à l'interface. Consommateurs : `choisir_lanceur` (programme hors du
+  dossier du jeu, .bat/.lnk d'ailleurs), `installation_ailleurs` (dossier), `emulateur_adopter` (détecté, sous le
+  dossier des émulateurs/outils réglé, ou choisi), `import_ajouter` (`programme_admis` : jamais un programme de
+  Windows ; DOSBox de confiance avec EXACTEMENT `arguments_jeu_dos` ; sinon sans arguments, sous le dossier du jeu non
+  système, ou choisi). Correctif hors lot : un .lnk importé passe par explorer, un .bat par cmd. Correctif trouvé
+  par un test ROUGE pendant la livraison (suite complète chargée, 21 s) : `Suivi` reconnaissait les processus de la
+  partie à leur seul NUMÉRO, que Windows réutilise → retient aussi leur heure de démarrage (`est_le_meme`, `descend`,
+  testés) ; suite complète rejouée 3 fois, verte. Relecture de l'expert
+  lancement : aucun parcours normal cassé, ni bloquant ni important. Vérifié : tests (choix à usage unique et du bon
+  genre ; règle d'import ; raccourci importé) ; 371 tests cœur, 181 interface. NON vérifié : l'ouverture RÉELLE de la
+  fenêtre de Windows par le cœur (un clic humain) → premier essai demandé à Seb (A-TESTER).
 
 - **0.71.0** (19/10) — Durcissement, étapes 1 à 3 (✅ Seb 19/10). Module `garde.rs` (chemins comparables : absolus,
   sans `..`, sans `\\?\`, sans casse, composant par composant ; jonctions vues par l'attribut de point de réparation ;

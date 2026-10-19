@@ -31,9 +31,7 @@
       { valeur: 'taper', libelle: '✏ Taper le chemin', detail: 'par exemple E:\\Jeux ou \\\\NAS\\Jeux' },
     ]);
     if (facon === 'parcourir' && isTauri()) {
-      const { open } = await import('@tauri-apps/plugin-dialog');
-      const r = await open({ directory: true, multiple: false, title: 'Où ranger les jeux ?' });
-      return typeof r === 'string' ? r : null;
+      return api.parcourir({ dossier: true, titre: 'Où ranger les jeux ?' });
     }
     if (facon === 'taper') {
       const c = await demander('✏ Chemin du dossier', { valeur: 'D:\\Jeux' });

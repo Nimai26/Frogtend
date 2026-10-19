@@ -1,5 +1,17 @@
 # Notes de version de Frogtend
 
+## 0.72.0 — Frogtend n'accepte un chemin que si tu l'as choisi
+
+- Les fenêtres « Choisir un fichier / un dossier » sont maintenant ouvertes par le cœur de Frogtend lui-même : il sait
+  ainsi ce que TU as choisi. Un programme pris ailleurs que dans le dossier du jeu, un dossier « installé ailleurs », un
+  émulateur adopté ou un jeu importé ne sont acceptés que s'ils viennent de ce choix (ou d'un endroit déjà sûr : le
+  dossier du jeu, le dossier des émulateurs réglé…).
+- Un jeu DOS installé n'est importé qu'avec exactement les commandes DOSBox que Frogtend a préparées.
+- Pour toi, rien ne change à l'usage : les mêmes fenêtres s'ouvrent, aux mêmes moments.
+- Correctif : un jeu importé par son raccourci (.lnk) se lance maintenant (Windows l'ouvre), comme un .bat.
+- Correctif : la fin d'une partie est mieux vue. Windows réutilise les numéros de processus : un autre programme qui
+  reprenait celui du jeu pouvait faire croire la partie toujours en cours (et compter du temps de jeu en trop).
+
 ## 0.71.0 — Frogtend vérifie ce qu'il lance et ce qu'il efface
 
 - Frogtend ne lance plus que des émulateurs et des outils réglés sur ce PC (Cheat Engine, RPCS3, DOSBox…). Un autre

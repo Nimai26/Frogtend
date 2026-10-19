@@ -585,6 +585,10 @@ export const api = {
     appeler<ReferenceManette>('reference_reprendre', { id, programme, genre, chemin, nom }),
   mettreALAbri: (id: number) => appeler<Abri>('parties_abri', { id }),
   retirer: (id: number) => appeler<Abri>('jeu_retirer', { id }),
+  /** La fenêtre de choix de Windows, ouverte PAR LE CŒUR (durcissement) : il retient le chemin choisi, seul admis
+   * ensuite par les commandes sensibles. `null` : fenêtre fermée. */
+  parcourir: (options: { dossier?: boolean; titre: string; extensions?: string[] }) =>
+    appeler<string | null>('parcourir', { dossier: options.dossier ?? false, titre: options.titre, extensions: options.extensions ?? null }),
   /** Le désinstalleur d'un jeu retiré qui restait installé ailleurs (proposé par le retrait, une fois). */
   desinstallerReste: (dossier: string) => appeler<number>('jeu_desinstaller_reste', { dossier }),
   emulateursInstalles: () => appeler<EmulateurInstalle[]>('emulateurs_installes'),

@@ -57,3 +57,5 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
 - (19/10, Firehouse) xemu exige une image XISO : prévenir la personne AVANT de lancer un .iso Redump d'un jeu Xbox (la
   `note` du conseil Xbox le dit) ; proposer plus tard une conversion (`xdvdfs pack`) avec son accord. Aucun jeu Xbox au
   stock au 19/10.
+- (19/10, expert lancement) La dépendance JavaScript `@tauri-apps/plugin-dialog` n'est plus importée (les fenêtres de
+  choix passent par le cœur depuis 0.72.0) : la retirer de package.json au prochain renouvellement des dépendances.

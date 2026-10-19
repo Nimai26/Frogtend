@@ -17,17 +17,11 @@ export const installationEmulateur = $state<{ id: string | null; recus: number; 
   total: null,
 });
 
-/** Choisir un fichier ou un dossier avec l'explorateur de Windows. */
+/** Choisir un fichier ou un dossier avec l'explorateur de Windows, ouvert par le cœur (qui retient le choix : seuls
+ * les chemins vraiment choisis sont admis ensuite par les commandes sensibles). */
 export async function parcourir(options: { dossier?: boolean; titre: string; extensions?: string[] }): Promise<string | null> {
   if (!isTauri()) return null;
-  const { open } = await import('@tauri-apps/plugin-dialog');
-  const r = await open({
-    directory: options.dossier ?? false,
-    multiple: false,
-    title: options.titre,
-    filters: options.extensions ? [{ name: 'Programmes', extensions: options.extensions }] : undefined,
-  });
-  return typeof r === 'string' ? r : null;
+  return api.parcourir(options);
 }
 
 /** Le dossier où Frogtend installe les émulateurs ; demandé la première fois. */

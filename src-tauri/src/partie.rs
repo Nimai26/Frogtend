@@ -66,27 +66,28 @@ fn fichier_principal(fichiers: &[String]) -> Option<String> {
 }
 
 /// Un lanceur par `cmd.exe` ou `explorer.exe` (`nom` : le nom du programme, en minuscules) qui n'ouvre qu'UN fichier
-/// existant : `cmd.exe /C <.bat|.cmd du jeu>`, ou `explorer.exe <.lnk>` du jeu, du Bureau ou du menu Démarrer (le
-/// raccourci qu'un installeur y pose, cas courant d'un jeu installé ailleurs).
-fn lanceur_systeme_du_jeu(l: &Lanceur, nom: &str, dossier_du_jeu: &Path) -> bool {
+/// existant : `cmd.exe /C <.bat|.cmd>` ou `explorer.exe <.lnk>`. `permis(fichier, raccourci)` dit si ce fichier est à
+/// une place admise (du jeu, choisi par la personne, et pour un raccourci le Bureau ou le menu Démarrer).
+fn lanceur_systeme_du_jeu(l: &Lanceur, nom: &str, permis: &dyn Fn(&Path, bool) -> bool) -> bool {
     let fichier = |f: &str, exts: &[&str]| {
         let p = Path::new(f);
         p.is_file() && p.extension().and_then(|e| e.to_str()).is_some_and(|e| exts.iter().any(|x| e.eq_ignore_ascii_case(x)))
     };
-    let du_jeu = |f: &str| crate::garde::sous(Path::new(f), dossier_du_jeu);
-    let raccourcis = || {
-        let env = |n: &str| std::env::var_os(n).map(PathBuf::from);
-        let menu = |b: PathBuf| b.join("Microsoft").join("Windows").join("Start Menu");
-        [env("USERPROFILE").map(|u| u.join("Desktop")), env("PUBLIC").map(|p| p.join("Desktop")), env("APPDATA").map(menu), env("ProgramData").map(menu)]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>()
-    };
     match nom {
-        "cmd.exe" => matches!(l.arguments.as_slice(), [c, f] if c.eq_ignore_ascii_case("/C") && fichier(f, &["bat", "cmd"]) && du_jeu(f)),
-        "explorer.exe" => matches!(l.arguments.as_slice(), [f] if fichier(f, &["lnk"]) && (du_jeu(f) || raccourcis().iter().any(|r| crate::garde::sous(Path::new(f), r)))),
+        "cmd.exe" => matches!(l.arguments.as_slice(), [c, f] if c.eq_ignore_ascii_case("/C") && fichier(f, &["bat", "cmd"]) && permis(Path::new(f), false)),
+        "explorer.exe" => matches!(l.arguments.as_slice(), [f] if fichier(f, &["lnk"]) && permis(Path::new(f), true)),
         _ => false,
     }
+}
+
+/// Les dossiers où un installeur pose ses raccourcis : le Bureau et le menu Démarrer (de la personne et de tous).
+fn dossiers_de_raccourcis() -> Vec<PathBuf> {
+    let env = |n: &str| std::env::var_os(n).map(PathBuf::from);
+    let menu = |b: PathBuf| b.join("Microsoft").join("Windows").join("Start Menu");
+    [env("USERPROFILE").map(|u| u.join("Desktop")), env("PUBLIC").map(|p| p.join("Desktop")), env("APPDATA").map(menu), env("ProgramData").map(menu)]
+        .into_iter()
+        .flatten()
+        .collect()
 }
 
 impl Noyau {
@@ -363,10 +364,18 @@ impl Noyau {
         let sous_windows = std::env::var_os("SystemRoot").is_some_and(|w| crate::garde::sous(Path::new(&lanceur.programme), Path::new(&w)));
         let nom = Path::new(&lanceur.programme).file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
         let court = ["cmd.exe", "explorer.exe"].iter().any(|p| lanceur.programme.eq_ignore_ascii_case(p));
+        let dossier_du_jeu = PathBuf::from(&i.dossier);
+        // Une place admise : dans le dossier du jeu, ou choisi par la personne dans une fenêtre ouverte par le cœur
+        // (étape 4), ou, pour un raccourci, le Bureau ou le menu Démarrer.
+        let permis = |f: &Path, raccourci: bool| {
+            crate::garde::sous(f, &dossier_du_jeu)
+                || raccourci && dossiers_de_raccourcis().iter().any(|r| crate::garde::sous(f, r))
+                || self.consommer_choix(false, f)
+        };
         if court || sous_windows {
-            if !lanceur_systeme_du_jeu(&lanceur, &nom, Path::new(&i.dossier)) {
+            if !lanceur_systeme_du_jeu(&lanceur, &nom, &permis) {
                 return Err(Erreur::Refus(
-                    "Ce lanceur n'est pas accepté : « cmd.exe » ne sert qu'à ouvrir un fichier .bat ou .cmd du jeu, « explorer.exe » un raccourci .lnk (du jeu, du Bureau ou du menu Démarrer). Sinon, choisis le .exe du jeu.".into(),
+                    "Ce lanceur n'est pas accepté : « cmd.exe » ne sert qu'à ouvrir un fichier .bat ou .cmd, « explorer.exe » un raccourci .lnk — du jeu, ou choisis-le avec « 📂 Un autre programme… ».".into(),
                 ));
             }
         } else {
@@ -375,6 +384,11 @@ impl Noyau {
             }
             if !lanceur.arguments.is_empty() {
                 return Err(Erreur::Refus("Ce lanceur n'est pas accepté : le programme du jeu se lance tel quel, sans arguments.".into()));
+            }
+            if !permis(Path::new(&lanceur.programme), false) {
+                return Err(Erreur::Refus(
+                    "Ce programme n'est pas dans le dossier du jeu : choisis-le toi-même avec « 📂 Un autre programme… ».".into(),
+                ));
             }
         }
         i.lanceur = Some(lanceur);
@@ -735,6 +749,17 @@ mod tests {
             n.choisir_lanceur(110, l(&cmd, vec!["/C".into(), bat])).await.unwrap();
         }
         n.choisir_lanceur(110, l(&Path::new(&i.dossier).join("DUNE.EXE").to_string_lossy(), vec![])).await.unwrap();
+        // Étape 4 : un programme hors du dossier du jeu n'est accepté que choisi par la personne (fenêtre du cœur),
+        // une seule fois.
+        let exe_ailleurs = ailleurs.path().join("Jeu.exe");
+        std::fs::write(&exe_ailleurs, b"MZ").unwrap();
+        let hors = l(&exe_ailleurs.to_string_lossy(), vec![]);
+        assert!(matches!(n.choisir_lanceur(110, hors.clone()).await, Err(Erreur::Refus(_))), "pas choisi : refusé");
+        n.retenir_choix(true, &exe_ailleurs);
+        assert!(n.choisir_lanceur(110, hors.clone()).await.is_err(), "un choix de DOSSIER ne vaut pas pour un programme");
+        n.retenir_choix(false, &exe_ailleurs);
+        n.choisir_lanceur(110, hors.clone()).await.unwrap();
+        assert!(n.choisir_lanceur(110, hors).await.is_err(), "un choix ne sert qu'une fois");
     }
 
     #[tokio::test]

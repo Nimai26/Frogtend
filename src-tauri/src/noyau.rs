@@ -153,6 +153,10 @@ pub struct Noyau {
     /// Les désinstalleurs d'un jeu retiré qui restait installé ailleurs, proposés à la personne (dossier normalisé →
     /// quand) : lançables UNE fois, peu après, par `desinstaller_reste` (durcissement : jamais un chemin libre).
     pub(crate) desinstalleurs: std::sync::Mutex<std::collections::HashMap<String, std::time::Instant>>,
+    /// Les chemins choisis par la personne dans une fenêtre de choix ouverte PAR LE CŒUR (`parcourir`) : (dossier ?,
+    /// chemin normalisé, quand). Une commande sensible n'accepte un chemin libre que s'il en vient (durcissement,
+    /// étape 4) ; chacun ne sert qu'une fois, dans les 10 minutes.
+    pub(crate) choix: std::sync::Mutex<Vec<(bool, String, std::time::Instant)>>,
 }
 
 /// Un jeu marqué « occupé » tant que cette garde vit.
@@ -186,6 +190,7 @@ impl Noyau {
             pause_mame: std::sync::atomic::AtomicBool::new(false),
             occupes: std::sync::Mutex::new(Default::default()),
             desinstalleurs: std::sync::Mutex::new(Default::default()),
+            choix: std::sync::Mutex::new(Default::default()),
             abris: std::sync::Mutex::new(None),
         })
     }
@@ -506,6 +511,29 @@ impl Noyau {
     }
 
     /// Marque un jeu « occupé » (partie, installation) tant que la garde vit.
+    /// Retient un chemin choisi par la personne dans une fenêtre de choix ouverte par le cœur (voir `choix`).
+    pub(crate) fn retenir_choix(&self, dossier: bool, p: &Path) {
+        let Some(k) = crate::garde::cle(p) else { return };
+        let mut c = self.choix.lock().unwrap_or_else(|e| e.into_inner());
+        c.retain(|(_, _, q)| q.elapsed() < std::time::Duration::from_secs(600));
+        c.push((dossier, k, std::time::Instant::now()));
+    }
+
+    /// Ce chemin vient-il d'un choix de la personne, du bon genre, il y a moins de 10 minutes ? Le choix est alors
+    /// CONSOMMÉ (une seule fois).
+    pub(crate) fn consommer_choix(&self, dossier: bool, p: &Path) -> bool {
+        let Some(k) = crate::garde::cle(p) else { return false };
+        let mut c = self.choix.lock().unwrap_or_else(|e| e.into_inner());
+        c.retain(|(_, _, q)| q.elapsed() < std::time::Duration::from_secs(600));
+        match c.iter().position(|(d, x, _)| *d == dossier && *x == k) {
+            Some(i) => {
+                c.remove(i);
+                true
+            }
+            None => false,
+        }
+    }
+
     pub(crate) fn occuper(&self, id: i64) -> Occupe<'_> {
         self.marquer_occupe(id);
         Occupe(self, id)

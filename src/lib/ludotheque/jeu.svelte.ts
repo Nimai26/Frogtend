@@ -48,17 +48,10 @@ export async function suivreParties() {
   });
 }
 
-/** Choisir un fichier ou un dossier avec l'explorateur de Windows. */
+/** Choisir un fichier ou un dossier avec l'explorateur de Windows, ouvert par le cœur (qui retient le choix). */
 async function parcourir(options: { dossier?: boolean; titre: string; extensions?: string[] }): Promise<string | null> {
   if (!isTauri()) return null;
-  const { open } = await import('@tauri-apps/plugin-dialog');
-  const r = await open({
-    directory: options.dossier ?? false,
-    multiple: false,
-    title: options.titre,
-    filters: options.extensions ? [{ name: 'Programmes', extensions: options.extensions }] : undefined,
-  });
-  return typeof r === 'string' ? r : null;
+  return api.parcourir(options);
 }
 
 async function apresChangement() {

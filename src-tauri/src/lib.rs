@@ -406,6 +406,7 @@ pub fn run() {
             commandes::parties_abri,
             commandes::jeu_retirer,
             commandes::jeu_desinstaller_reste,
+            commandes::parcourir,
             commandes::emulateurs_recommandes,
             commandes::emulateurs_installes,
             commandes::emulateur_fiche,

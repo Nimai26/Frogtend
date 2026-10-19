@@ -3,6 +3,12 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 19/10 — Un test rouge seulement pendant la livraison était un vrai défaut
+Ce qui s'est passé : le test du suivi d'un jeu lancé par un .bat passait seul, et a échoué dans la suite complète de
+la livraison (machine plus chargée). Ce n'était pas « un test capricieux » : le suivi reconnaissait les processus à
+leur seul numéro, que Windows réutilise. · Comment l'appliquer : un test qui échoue « de temps en temps » s'analyse
+comme un vrai défaut (ici : numéro + heure de démarrage) ; la livraison qui s'arrête sur un test rouge a bien fait.
+
 ## 18/10 — Eden ne lisait pas les dossiers que Frogtend lui donnait
 Ce qui s'est passé : depuis le lot des contenus Switch, Frogtend écrivait la liste des dossiers de mises à jour et
 DLC d'Eden dans une section `[Paths]` ; Eden la lit dans `[UI]` sous `Paths\…` (groupe imbriqué dans `qt_config.cpp`).

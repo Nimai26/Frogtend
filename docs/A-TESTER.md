@@ -48,6 +48,18 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Les choix de fichiers par le cœur (0.72.0) — ⚠️ À ESSAYER EN PREMIER
+Toutes les fenêtres « Choisir un fichier / un dossier » de Frogtend passent désormais par le cœur : je n'ai pas pu
+l'essayer moi-même (il faut un clic). Si l'une ne s'ouvre pas, dis-le-moi tout de suite.
+- [ ] Réglages ▸ Emplacements ▸ Ajouter ▸ « 📂 Choisir un dossier » : la fenêtre de Windows s'ouvre, au-dessus de
+      Frogtend ; le dossier choisi s'ajoute.
+- [ ] Bon à savoir : un choix ne sert qu'une fois, pendant 10 minutes. Si un import ou « installé ailleurs » refuse
+      avec « choisis-le avec l'explorateur », refais simplement le choix.
+- [ ] Importer ▸ un jeu Windows ▸ un raccourci (.lnk) : le jeu se lance (avant, un raccourci importé ne démarrait
+      pas).
+- [ ] Importer ▸ un jeu Windows ▸ « Choisir le programme » : la fenêtre s'ouvre ; l'import réussit.
+- [ ] (Si tu l'utilises) ⚙ Gérer ▸ « Un autre programme… » : la fenêtre s'ouvre ; le choix est enregistré.
+
 ## Ce que Frogtend lance et efface (0.71.0)
 - [ ] Un jeu PS3 : il se lance comme avant (RPCS3 est réglé).
 - [ ] RPCS3 ▸ installer le micrologiciel (si on te le propose) : accepté comme avant.

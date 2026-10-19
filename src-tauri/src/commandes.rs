@@ -706,6 +706,10 @@ pub async fn installation_ailleurs(
             "« {dossier} » est un dossier réglé de Frogtend (emplacement de jeux, émulateurs, outils ou abris) : choisis le dossier du jeu lui-même."
         )));
     }
+    // Étape 4 : ce dossier vient d'un choix de la personne (fenêtre ouverte par le cœur), jamais d'un chemin libre.
+    if !noyau.consommer_choix(true, std::path::Path::new(&dossier)) {
+        return Err(Erreur::Refus("Choisis le dossier du jeu avec l'explorateur (« 📂 Le jeu est installé ailleurs… »).".into()));
+    }
     noyau.installe_ailleurs(id, &dossier).await
 }
 
@@ -1858,8 +1862,26 @@ pub async fn import_chercher_dos(dossier: String) -> Resultat<Vec<crate::import_
 
 /// Ajoute à la ludothèque les jeux validés par la personne (rien n'est copié, déplacé ni renommé).
 #[tauri::command]
-pub async fn import_ajouter(noyau: State<'_, Noyau>, jeux: Vec<crate::import_local::JeuAImporter>) -> Resultat<crate::import_local::BilanImport> {
-    noyau.importer_locaux(&jeux).await
+pub async fn import_ajouter(app: AppHandle, noyau: State<'_, Noyau>, jeux: Vec<crate::import_local::JeuAImporter>) -> Resultat<crate::import_local::BilanImport> {
+    // Durcissement (étape 4) : ce que chaque jeu fera lancer est vérifié AVANT l'import ; un refusé est dit dans le
+    // bilan, les autres entrent.
+    let reglages = app.store("pc.json").ok().and_then(|s| s.get("reglages")).unwrap_or(Value::Null);
+    let r = crate::garde::Reglages::lire(&reglages);
+    let mut connus: Vec<std::path::PathBuf> = registre_emulateurs(&noyau).tous().into_iter().map(|e| e.programme.into()).collect();
+    connus.extend(crate::emulateurs::detecter().into_iter().map(|e| std::path::PathBuf::from(e.programme)));
+    let de_confiance = |p: &std::path::Path| crate::garde::programme_de_confiance(p, &r, &connus);
+    let choisi = |p: &std::path::Path| noyau.consommer_choix(false, p);
+    let mut admis = Vec::new();
+    let mut refuses = Vec::new();
+    for j in jeux {
+        match crate::import_local::programme_admis(&j, &de_confiance, &choisi) {
+            Ok(()) => admis.push(j),
+            Err(m) => refuses.push((j.titre.clone(), m)),
+        }
+    }
+    let mut bilan = noyau.importer_locaux(&admis).await?;
+    bilan.refuses.extend(refuses);
+    Ok(bilan)
 }
 
 /// Se connecter à GOG ou à Prime Gaming, une fois : la page officielle s'ouvre (navigateur PROPRE AU PROFIL) ;
@@ -2402,6 +2424,32 @@ fn registre_emulateurs(noyau: &Noyau) -> crate::emulateurs::Registre {
     crate::emulateurs::Registre::nouveau(&noyau.dossier.join("emulateurs.json"))
 }
 
+/// Ouvre la fenêtre de choix de Windows (fichier ou dossier) PAR LE CŒUR, au-dessus de la fenêtre qui la demande, et
+/// retient le chemin choisi (durcissement, étape 4) : les commandes sensibles (lanceur, import, « installé ailleurs »,
+/// adoption d'un émulateur) n'acceptent un chemin libre que s'il vient d'un tel choix. `None` : fenêtre fermée.
+#[tauri::command]
+pub async fn parcourir(
+    window: tauri::WebviewWindow,
+    noyau: State<'_, Noyau>,
+    dossier: bool,
+    titre: String,
+    extensions: Option<Vec<String>>,
+) -> Resultat<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    let mut f = window.dialog().file().set_parent(&window).set_title(titre);
+    if let Some(e) = extensions.filter(|e| !e.is_empty()) {
+        let e: Vec<&str> = e.iter().map(String::as_str).collect();
+        f = f.add_filter("Fichiers", &e);
+    }
+    let choisi = tauri::async_runtime::spawn_blocking(move || if dossier { f.blocking_pick_folder() } else { f.blocking_pick_file() })
+        .await
+        .map_err(|_| Erreur::Disque("La fenêtre de choix s'est fermée brutalement.".into()))?;
+    let Some(c) = choisi else { return Ok(None) };
+    let p = c.into_path().map_err(|e| Erreur::Disque(format!("Chemin illisible ({e}).")))?;
+    noyau.retenir_choix(dossier, &p);
+    Ok(Some(p.to_string_lossy().to_string()))
+}
+
 /// Durcissement : un programme que le cœur va LANCER doit être de confiance — réglé dans `pc.json` (relu ici, pas
 /// transmis par l'interface), inscrit au registre des émulateurs de Frogtend (installé ou adopté), ou trouvé dans son
 /// dossier habituel. Sinon : refusé, avec la raison.
@@ -2514,6 +2562,7 @@ pub async fn emulateur_installer(
 /// Retient un émulateur installé à la main (trouvé, ou montré par la personne).
 #[tauri::command]
 pub fn emulateur_adopter(
+    app: AppHandle,
     noyau: State<'_, Noyau>,
     id: String,
     programme: String,
@@ -2528,6 +2577,20 @@ pub fn emulateur_adopter(
     let p = std::path::PathBuf::from(&programme);
     if !p.is_file() {
         return Err(Erreur::Disque(format!("Programme introuvable : {programme}.")));
+    }
+    // Étape 4 : adopté, il devient « de confiance » (lançable) — seulement un émulateur trouvé dans son dossier
+    // habituel, installé dans le dossier des émulateurs ou des outils réglé, ou choisi par la personne dans une fenêtre
+    // ouverte par le cœur. Jamais un chemin libre.
+    let reglages = app.store("pc.json").ok().and_then(|s| s.get("reglages")).unwrap_or(Value::Null);
+    let bases: Vec<std::path::PathBuf> = ["dossierEmulateurs", "dossierOutils"]
+        .iter()
+        .filter_map(|k| reglages[*k].as_str().filter(|s| !s.trim().is_empty()).map(std::path::PathBuf::from))
+        .collect();
+    let admis = crate::emulateurs::detecter().iter().any(|e| crate::garde::meme(std::path::Path::new(&e.programme), &p))
+        || bases.iter().any(|b| crate::garde::sous(&p, b))
+        || noyau.consommer_choix(false, &p);
+    if !admis {
+        return Err(Erreur::Refus("Choisis le programme de l'émulateur avec l'explorateur : Frogtend n'adopte pas un chemin qu'il n'a pas vu choisir.".into()));
     }
     let e = crate::emulateurs::EmulateurInstalle {
         id,

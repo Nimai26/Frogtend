@@ -156,15 +156,37 @@ pub struct Suivi {
     racine: Pid,
     /// Les dossiers « du jeu » : un processus dont le programme y est fait partie de la partie.
     dossiers: Vec<PathBuf>,
-    /// Tous les processus vus dans la partie (même si leur parent s'est fermé depuis).
-    vus: HashSet<Pid>,
+    /// Tous les processus vus dans la partie (même si leur parent s'est fermé depuis), avec leur heure de démarrage :
+    /// Windows RÉUTILISE les numéros de processus, et un numéro repris par un autre programme (sous forte charge) ne
+    /// doit jamais faire croire la partie en cours. `0` : heure inconnue (déjà fermé au premier relevé).
+    vus: std::collections::HashMap<Pid, u64>,
+}
+
+/// Ce processus (`numero`, démarré à `debut`) est-il un de ceux retenus ? Même numéro ET même heure de démarrage.
+fn est_le_meme(vus: &std::collections::HashMap<Pid, u64>, numero: &Pid, debut: u64) -> bool {
+    vus.get(numero).is_some_and(|t| *t != 0 && *t == debut)
+}
+
+/// Un processus démarré à `debut`, dont le parent porte le numéro `parent`, descend-il de la partie ? Le parent retenu
+/// toujours vivant (même heure) : oui. Mort : oui si l'enfant est né après lui. Numéro repris par un autre programme
+/// (vivant, autre heure) : seulement si l'enfant est né AVANT ce nouveau venu (il vient donc de l'ancien).
+fn descend(vus: &std::collections::HashMap<Pid, u64>, parent: &Pid, debut: u64, parent_vivant: Option<u64>) -> bool {
+    let Some(t) = vus.get(parent).copied() else { return false };
+    match parent_vivant {
+        Some(v) if t != 0 && v == t => true,
+        Some(v) => debut < v && debut >= t,
+        None => debut >= t,
+    }
 }
 
 impl Suivi {
     pub fn nouveau(racine: u32, dossiers: Vec<PathBuf>) -> Self {
-        let mut vus = HashSet::new();
-        vus.insert(Pid::from_u32(racine));
-        Suivi { systeme: System::new(), racine: Pid::from_u32(racine), dossiers, vus }
+        let mut systeme = System::new();
+        let r = Pid::from_u32(racine);
+        systeme.refresh_processes(ProcessesToUpdate::Some(&[r]), true);
+        let debut = systeme.process(r).map(|p| p.start_time()).unwrap_or(0);
+        let vus = std::collections::HashMap::from([(r, debut)]);
+        Suivi { systeme, racine: r, dossiers, vus }
     }
 
     fn dans_un_dossier(&self, exe: Option<&Path>) -> bool {
@@ -179,12 +201,18 @@ impl Suivi {
     pub fn en_cours(&mut self) -> bool {
         self.systeme.refresh_processes(ProcessesToUpdate::All, true);
         let processus = self.systeme.processes();
-        // Les descendants : on répète tant qu'on en découvre (petits-enfants…).
+        // Les descendants : on répète tant qu'on en découvre (petits-enfants…), en reconnaissant chacun à son numéro ET
+        // à son heure de démarrage.
         loop {
             let avant = self.vus.len();
             for (pid, p) in processus {
-                if p.parent().is_some_and(|parent| self.vus.contains(&parent)) {
-                    self.vus.insert(*pid);
+                if self.vus.contains_key(pid) {
+                    continue;
+                }
+                let Some(parent) = p.parent() else { continue };
+                let parent_vivant = processus.get(&parent).map(|x| x.start_time());
+                if descend(&self.vus, &parent, p.start_time(), parent_vivant) {
+                    self.vus.insert(*pid, p.start_time());
                 }
             }
             if self.vus.len() == avant {
@@ -194,7 +222,7 @@ impl Suivi {
         let _ = self.racine;
         processus
             .iter()
-            .any(|(pid, p)| self.vus.contains(pid) || self.dans_un_dossier(p.exe()))
+            .any(|(pid, p)| est_le_meme(&self.vus, pid, p.start_time()) || self.dans_un_dossier(p.exe()))
     }
 }
 
@@ -202,6 +230,25 @@ impl Suivi {
 mod tests {
     use super::*;
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn un_numero_de_processus_repris_par_un_autre_programme_ne_compte_pas() {
+        let p = |n: u32| Pid::from_u32(n);
+        let vus = std::collections::HashMap::from([(p(100), 1000u64), (p(200), 0)]);
+        // Le même processus (même numéro, même heure) : oui ; le numéro repris par un autre (autre heure) : non.
+        assert!(est_le_meme(&vus, &p(100), 1000));
+        assert!(!est_le_meme(&vus, &p(100), 1500), "numéro repris par un autre programme");
+        assert!(!est_le_meme(&vus, &p(200), 0), "heure inconnue : jamais vivant");
+        // Enfant d'un parent retenu encore vivant : oui.
+        assert!(descend(&vus, &p(100), 1001, Some(1000)));
+        // Parent mort (le .bat qui s'est fermé) : un enfant né après lui en descend.
+        assert!(descend(&vus, &p(100), 1001, None));
+        assert!(!descend(&vus, &p(100), 999, None), "né avant le parent : impossible");
+        // Numéro du parent repris par un autre programme (né à 1500) : ses propres enfants ne sont pas de la partie.
+        assert!(!descend(&vus, &p(100), 1600, Some(1500)));
+        assert!(descend(&vus, &p(100), 1200, Some(1500)), "né avant le nouveau venu : de l'ancien parent");
+        assert!(!descend(&vus, &p(300), 1600, None), "parent inconnu");
+    }
 
     #[test]
     fn cmd_et_explorer_sont_pris_dans_windows() {
