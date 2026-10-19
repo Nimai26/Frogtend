@@ -496,7 +496,19 @@ pub struct PatchPs3 {
     titre: String,
     auteur: String,
     notes: String,
+    /// Contrat 1.20 : la traduction de Firehouse (`None` : pas encore traduite ; l'écran montre l'anglais, marqué).
+    /// Seulement à l'écran : `description` (l'anglais d'origine) reste ce que RPCS3 attend dans son fichier.
+    description_fr: Option<String>,
+    notes_fr: Option<String>,
     actif: bool,
+}
+
+/// Ce que l'écran montre d'un patch en plus de ce que RPCS3 range (auteur, notes, traductions du contrat 1.20).
+struct InfosPatch {
+    auteur: String,
+    notes: String,
+    description_fr: Option<String>,
+    notes_fr: Option<String>,
 }
 
 /// Les patchs d'un jeu PS3, et la liste de RPCS3 (présente, à jour, sa taille).
@@ -514,7 +526,7 @@ pub struct PatchsPs3 {
 
 /// Les patchs de Firehouse pour ce jeu qui valent pour SA version (avec la clé de version de RPCS3), leur auteur et
 /// leurs notes.
-async fn patchs_firehouse(source: &crate::source::Source, numero: &str, version: Option<&str>) -> Resultat<Vec<(crate::patchs_ps3::Patch, String, String)>> {
+async fn patchs_firehouse(source: &crate::source::Source, numero: &str, version: Option<&str>) -> Resultat<Vec<(crate::patchs_ps3::Patch, InfosPatch)>> {
     let v = source.patchs_rpcs3_jeu(numero, version).await?;
     let liste = v["patchs"].as_array().cloned().unwrap_or_default();
     Ok(liste
@@ -523,7 +535,9 @@ async fn patchs_firehouse(source: &crate::source::Source, numero: &str, version:
             let texte = |k: &str| p[k].as_str().unwrap_or("").to_string();
             let cle = crate::patchs_ps3::cle_version(&p["versions_du_jeu"], version)?;
             let patch = crate::patchs_ps3::Patch { hash: texte("hash"), description: texte("description"), titre: texte("titre"), numero: numero.to_string(), version: cle };
-            crate::patchs_ps3::hash_sur(&patch.hash).then_some((patch, texte("auteur"), texte("notes")))
+            let fr = |k: &str| p[k].as_str().map(str::to_string);
+            let infos = InfosPatch { auteur: texte("auteur"), notes: texte("notes"), description_fr: fr("description_fr"), notes_fr: fr("notes_fr") };
+            crate::patchs_ps3::hash_sur(&patch.hash).then_some((patch, infos))
         })
         .collect())
 }
@@ -563,11 +577,29 @@ pub async fn rpcs3_patchs(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> R
     };
     let mut patchs: Vec<PatchPs3> = proposes
         .into_iter()
-        .map(|(p, auteur, notes)| PatchPs3 { actif: actifs.contains(&p), hash: p.hash, description: p.description, titre: p.titre, auteur, notes })
+        .map(|(p, i)| PatchPs3 {
+            actif: actifs.contains(&p),
+            hash: p.hash,
+            description: p.description,
+            titre: p.titre,
+            auteur: i.auteur,
+            notes: i.notes,
+            description_fr: i.description_fr,
+            notes_fr: i.notes_fr,
+        })
         .collect();
     for a in actifs {
         if !patchs.iter().any(|p| p.hash == a.hash && p.description == a.description && p.titre == a.titre) {
-            patchs.push(PatchPs3 { actif: true, hash: a.hash, description: a.description, titre: a.titre, auteur: String::new(), notes: String::new() });
+            patchs.push(PatchPs3 {
+                actif: true,
+                hash: a.hash,
+                description: a.description,
+                titre: a.titre,
+                auteur: String::new(),
+                notes: String::new(),
+                description_fr: None,
+                notes_fr: None,
+            });
         }
     }
     Ok(Some(PatchsPs3 { numero: Some(n), version, patchs, liste_presente, liste_a_jour, taille_liste, hors_ligne }))
@@ -601,7 +633,7 @@ pub async fn rpcs3_patch_regler(
         let patch = patchs_firehouse(&session.source, &n, version.as_deref())
             .await?
             .into_iter()
-            .map(|(p, _, _)| p)
+            .map(|(p, _)| p)
             .find(|p| meme(p))
             .ok_or_else(|| Erreur::Refus("Ce patch n'est plus proposé par Firehouse pour ce jeu : rien n'est changé.".into()))?;
         let (_, a_jour, _, etat) = etat_liste_patchs(&session.source, &rpcs3).await?;

@@ -10,7 +10,7 @@ import { completerRetroArch, poserBios, reglerEmulateur } from '$lib/emulateurs/
 import { avecConseil, biosADireOuPoser, biosRetroArch, changementDeConseil, estConseille, poidsBios } from '$lib/emulateurs/pret';
 import { preparerPourJouer } from '$lib/emulateurs/pret.svelte';
 import { libelleValeur, REGLAGES_IMAGE, reglagesMontres } from '$lib/emulateurs/imagePs3';
-import { descriptionFr, detailPatch, titreDuJeu } from '$lib/emulateurs/patchsPs3';
+import { detailPatch, nomDuPatch, remarqueDuPatch, titreDuJeu } from '$lib/emulateurs/patchsPs3';
 import { adresseWeb, avertissements, fichierInstallable, raisonSansClic, type ModJeu } from '$lib/mods/mods';
 import { ouvrirPageWeb } from '$lib/web';
 import { estRetroArch, normaliser, pourLeJeu } from '$lib/emulateurs/choix';
@@ -874,7 +874,7 @@ async function choisirPatchsPs3(id: number) {
       return;
     }
     const lignes: { valeur: number | 'fini'; libelle: string; detail?: string }[] = duJeu.map((p, i) => {
-      const d = descriptionFr(p.description);
+      const d = nomDuPatch(p);
       return { valeur: i, libelle: `${p.actif ? '✅' : '⬜'} ${d.texte}${d.anglais ? ' (en anglais)' : ''}`, detail: detailPatch(p) };
     });
     lignes.push({ valeur: 'fini', libelle: '✅ Terminé' });
@@ -889,12 +889,13 @@ async function choisirPatchsPs3(id: number) {
     const c = await choisir<number | 'fini'>(`${TITRE} — « ${j.titre} »`, lignes, message);
     if (c === null || c === 'fini') return;
     const p = duJeu[c];
-    const nom = descriptionFr(p.description).texte;
+    const nom = nomDuPatch(p).texte;
     let liste = false;
     if (!p.actif) {
-      // La remarque de l'auteur avant d'activer (souvent une mise en garde ; en anglais tant que Firehouse ne la
-      // traduit pas — besoin 26).
-      if (p.notes.trim() && !(await confirmer(`🩹 « ${nom} »`, { message: `Remarque de l’auteur (en anglais) :\n${p.notes}`, libelleValider: 'Continuer' }))) continue;
+      // La remarque de l'auteur avant d'activer (souvent une mise en garde) : traduite par Firehouse (contrat 1.20),
+      // sinon l'anglais marqué.
+      const remarque = remarqueDuPatch(p);
+      if (remarque && !(await confirmer(`🩹 « ${nom} »`, { message: `Remarque de l’auteur${remarque.anglais ? ' (en anglais)' : ''} :\n${remarque.texte}`, libelleValider: 'Continuer' }))) continue;
       if (!r.liste_a_jour) {
         liste = await confirmer(`🩹 Activer « ${nom} » ?`, {
           message: `Frogtend ${r.liste_presente ? 'met d’abord à jour' : 'installe d’abord'} la liste officielle des patchs de RPCS3 : ${taille(r.taille_liste)}, depuis Firehouse, vérifiée avant d’être posée.${r.liste_presente ? ' L’ancienne liste est gardée de côté.' : ''}`,

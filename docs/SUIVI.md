@@ -57,6 +57,10 @@
   « ...Iru! » passe, `%2e%2e` non) ; relevé réel de Super Mario World (`?rom=`) testé et consigné (EXEMPLES) ; pas de
   `rom` quand le numéro PS3 suffit ou pour un EBOOT.BIN. Note : `est_importe` (id < 0) couvrirait aussi un jeu de
   boutique rangé dans le registre (aujourd'hui : recherche par titre et plateforme, sans fuite).
+- **0.81.2** (19/10) — Contrat 1.20 (besoin 26 servi) : `description_fr` / `notes_fr` passés du cœur (`InfosPatch`) à
+  l'écran (`nomDuPatch`, `remarqueDuPatch` : Firehouse d'abord, puis nos ~20 traductions, sinon l'anglais marqué) ;
+  `description` anglaise d'origine seule écrite dans `patch_config.yml` (inchangé). Réponse simulée remplacée par le
+  vrai relevé traduit du 19/10.
 
 - **Lot 0.80.0 — MAME : les sauvegardes des jeux d'arcade par profil** (Seb 19/10 : « ok enchaîne » après la 0.79.0 ;
   relevé par l'expert lancement pendant le lot 0.79.0 : `nvram\` (meilleurs scores, réglages de la borne) et les

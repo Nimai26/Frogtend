@@ -48,6 +48,12 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Retouches PS3 en français (0.81.2)
+- [ ] Asura's Wrath ▸ 🩹 Retouches du jeu : les noms sont en français ; « Menu développeur » montre sa remarque en
+      français avant d'activer.
+- [ ] Une retouche activée marche toujours en jeu (RPCS3 reçoit le nom anglais d'origine).
+- [ ] Hors ligne : les retouches actives restent affichées (nom de Frogtend, ou anglais marqué) et se désactivent.
+
 ## Codes et mods des jeux importés (0.81.1)
 - [ ] Un jeu importé de ton disque (une ROM, ou Mega Man Rock Force) ▸ sa fiche ▸ 🎯 Triches et mods : des codes
       apparaissent (s'il y en a pour ce jeu).

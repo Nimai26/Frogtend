@@ -152,6 +152,9 @@ export interface PatchPs3 {
   titre: string;
   auteur: string;
   notes: string;
+  /** Contrat 1.20 : la traduction de Firehouse (`null` : pas encore traduite ; `''` : texte d'origine vide). */
+  description_fr?: string | null;
+  notes_fr?: string | null;
   actif: boolean;
 }
 

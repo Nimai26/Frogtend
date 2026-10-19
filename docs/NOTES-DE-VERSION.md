@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.81.2 — Les retouches PS3 en français
+
+- 🩹 Retouches du jeu : les noms et les remarques des retouches arrivent maintenant **traduits en français** par
+  Firehouse (« Désactiver le flou de mouvement », la mise en garde de « Débloquer les FPS »…). Un texte pas encore
+  traduit reste en anglais, marqué comme tel.
+
 ## 0.81.1 — Codes et mods pour tes jeux importés
 
 - Un jeu que tu as ajouté depuis ton disque (sans fiche Firehouse) a maintenant ses codes de triche et ses mods : 🎯

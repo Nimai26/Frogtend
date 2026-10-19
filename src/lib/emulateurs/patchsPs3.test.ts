@@ -1,5 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { descriptionFr, detailPatch, titreDuJeu } from './patchsPs3';
+import { descriptionFr, detailPatch, nomDuPatch, remarqueDuPatch, titreDuJeu } from './patchsPs3';
+import vraie from '../../../src-tauri/fixtures/simule/patchs-BLES01227.json';
+
+describe('retouches traduites par Firehouse (contrat 1.20, vraie réponse d’Asura’s Wrath)', () => {
+  const patchs = (vraie as { patchs: { description: string; description_fr: string | null; notes: string; notes_fr: string | null }[] }).patchs;
+  it('la traduction de Firehouse d’abord ; sans elle, la nôtre ou l’anglais marqué', () => {
+    const flou = patchs.find((p) => p.description === 'Disable Motion Blur')!;
+    expect(nomDuPatch(flou)).toEqual({ texte: 'Désactiver le flou de mouvement', anglais: false });
+    expect(nomDuPatch({ ...flou, description_fr: null })).toEqual({ texte: 'Sans flou de mouvement', anglais: false });
+    expect(nomDuPatch({ description: 'Fix Shadows', description_fr: null })).toEqual({ texte: 'Fix Shadows', anglais: true });
+  });
+  it('la remarque traduite, sinon l’anglais marqué ; vide : rien', () => {
+    const menu = patchs.find((p) => p.description === 'Developer Menu')!;
+    expect(remarqueDuPatch(menu)?.anglais).toBe(false);
+    expect(remarqueDuPatch(menu)?.texte).toContain('croix directionnelle');
+    expect(remarqueDuPatch({ ...menu, notes_fr: null })).toEqual({ texte: menu.notes, anglais: true });
+    expect(remarqueDuPatch({ notes: '', notes_fr: '' })).toBeNull();
+  });
+});
 
 describe('retouches (patchs) PS3 en français', () => {
   it('les descriptions courantes sont traduites sans rien promettre, les autres marquées en anglais', () => {

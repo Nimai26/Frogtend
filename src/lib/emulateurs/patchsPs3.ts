@@ -25,6 +25,18 @@ const TRADUCTIONS: Record<string, string> = {
   'freecam': 'Caméra libre',
 };
 
+/** Le nom d'un patch à l'écran : la traduction de Firehouse (contrat 1.20), sinon une des nôtres, sinon l'anglais
+ * marqué. (Jamais écrit dans le fichier de RPCS3 : il attend l'anglais d'origine, que le cœur garde.) */
+export function nomDuPatch(p: { description: string; description_fr?: string | null }): { texte: string; anglais: boolean } {
+  return p.description_fr?.trim() ? { texte: p.description_fr.trim(), anglais: false } : descriptionFr(p.description);
+}
+
+/** La remarque de l'auteur : traduite par Firehouse si elle l'est (contrat 1.20), sinon l'anglais marqué ; vide : rien. */
+export function remarqueDuPatch(p: { notes: string; notes_fr?: string | null }): { texte: string; anglais: boolean } | null {
+  if (!p.notes.trim()) return null;
+  return p.notes_fr?.trim() ? { texte: p.notes_fr.trim(), anglais: false } : { texte: p.notes.trim(), anglais: true };
+}
+
 /** La description d'un patch en français si elle est connue, sinon telle quelle (et `anglais` vrai). */
 export function descriptionFr(description: string): { texte: string; anglais: boolean } {
   const t = TRADUCTIONS[description.trim().toLowerCase()];

@@ -390,6 +390,17 @@ réels à la fin de son EXEMPLES-API-JEUX-V1.md. Décisions de Seb (19/10) :
   code repris tel quel, seule une route `/triche/<clé>/fichier` admise ; relevé réel : Sonic → 8 codes RetroArch,
   Super Mario World avec `rom` → 1 code, `fichier` avec `?rom=`). Nexus (`nxm://`, enregistré par l'installeur, ✅ Seb) : 0.82.0.
 
+### 1.20 (19/10, Firehouse 2.84.0, en service le 19/10 à 21 h 37) — patchs RPCS3 en français (besoin 26)
+Reçu par message de la session Firehouse ; accord chiffré de Seb après un échantillon de 3. Ajout compatible.
+- Chaque patch de `GET …/rpcs3/patchs?serial=` (et de `patchs_rpcs3` dans `/triche/recherche`) porte en plus
+  `description_fr` et `notes_fr`, traduits UNE fois par Firehouse (touches, chiffres, versions, sigles laissés tels
+  quels). `null` = pas encore traduit (montrer l'anglais, marqué « en anglais ») ; `""` = texte d'origine vide.
+- `description` et `notes` restent l'anglais d'ORIGINE : c'est `description` que RPCS3 attend dans
+  `patch_config.yml` — n'y écrire JAMAIS la traduction.
+- Relevé réel (BLES01227) : « Boot to title screen » → « Démarrage jusqu'à l'écran titre » ; « Developer Menu » →
+  « Menu développeur » (note : « Appuyez sur la croix directionnelle gauche à tout moment pour accéder au menu
+  développeur. ») ; « Disable Ambient Occlusion » → « Désactiver l'occlusion ambiante ».
+
 ### Note 2.58.0 (contrat inchangé)
 Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a été RÉUNIE à celle du même jeu
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
