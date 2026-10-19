@@ -3,7 +3,7 @@
 
 import { listen } from '@tauri-apps/api/event';
 import { isTauri } from '@tauri-apps/api/core';
-import { api, duree, estErreurCoeur, taille, type Candidat, type JeuPc, type PatchsPs3, type VerificationFiger } from '$lib/api';
+import { api, duree, estErreurCoeur, taille, type Candidat, type JeuPc, type ModInstalle, type PatchsPs3, type VerificationFiger } from '$lib/api';
 import { attendreTouche, choisir, confirmer, fermerToast, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { completerRetroArch, poserBios, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
@@ -11,6 +11,8 @@ import { avecConseil, biosADireOuPoser, biosRetroArch, changementDeConseil, estC
 import { preparerPourJouer } from '$lib/emulateurs/pret.svelte';
 import { libelleValeur, REGLAGES_IMAGE, reglagesMontres } from '$lib/emulateurs/imagePs3';
 import { descriptionFr, detailPatch, titreDuJeu } from '$lib/emulateurs/patchsPs3';
+import { adresseWeb, avertissements, fichierInstallable, raisonSansClic, type ModJeu } from '$lib/mods/mods';
+import { ouvrirPageWeb } from '$lib/web';
 import { estRetroArch, normaliser, pourLeJeu } from '$lib/emulateurs/choix';
 import { etat, reglerPc, reglerProfil } from '$lib/etat.svelte';
 import type { CommandesJeu } from '$lib/reglages/reglages';
@@ -911,11 +913,156 @@ async function choisirPatchsPs3(id: number) {
   }
 }
 
+/**
+ * Les mods d'un jeu PC (contrat 1.19 ; ✅ Seb 19/10) : ceux qui sont installés (✅, à retirer), ceux qui s'installent
+ * d'un clic (⬇) et ceux qui se font à la main (🔗, la page). Avant le oui : ce qu'il fait, sa taille, son partage, une
+ * version d'essai, une page déplacée, une empreinte absente. Frogtend télécharge depuis la page GitHub de l'auteur,
+ * met à l'abri tout ce qui est remplacé (et les parties), et peut tout retirer.
+ */
+export async function choisirMods(id: number) {
+  const j = tele.jeux[id];
+  if (!j) return;
+  const TITRE = '🧩 Mods';
+  for (;;) {
+    // Les mods installés se lisent sur le disque : hors ligne, on peut toujours les retirer.
+    let installes: ModInstalle[];
+    try {
+      installes = await api.modsInstalles(id);
+    } catch (e) {
+      toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
+      return;
+    }
+    const liste: ModJeu[] | null = await api
+      .jeuTriches(id)
+      .then((t) => t.mods ?? [])
+      .catch(() => null);
+    type Choix = { sorte: 'installe'; m: ModInstalle } | { sorte: 'mod'; m: ModJeu } | 'fini';
+    const lignes: { valeur: Choix; libelle: string; detail?: string }[] = [
+      ...installes.map((m) => ({
+        valeur: { sorte: 'installe' as const, m },
+        libelle: `${m.etat === 'installe' ? '✅' : '⚠'} ${m.mod_nom}`,
+        detail: m.etat === 'installe' ? 'installé — choisis-le pour le retirer' : 'installation interrompue — choisis-le pour remettre le jeu comme avant',
+      })),
+      ...(liste ?? [])
+        .filter((m) => !installes.some((i) => i.mod_nom === m.nom))
+        .map((m) => {
+          const f = fichierInstallable(m);
+          return {
+            valeur: { sorte: 'mod' as const, m },
+            libelle: `${f ? '⬇' : '🔗'} ${m.nom}`,
+            detail: f ? `s’installe d’un clic (${taille(f.taille)})${m.description ? ` — ${court(m.description)} (en anglais)` : ''}` : raisonSansClic(m),
+          };
+        }),
+      { valeur: 'fini', libelle: '✅ Terminé' },
+    ];
+    if (lignes.length === 1) {
+      await informer(TITRE, liste === null ? 'Firehouse est injoignable, et aucun mod n’est installé dans ce jeu.' : `Firehouse ne connaît pas de mod pour « ${j.titre} ».`);
+      return;
+    }
+    const c = await choisir<Choix>(
+      `${TITRE} — « ${j.titre} »`,
+      lignes,
+      'Un mod est un ajout fait par des joueurs (image plus large, plus fluide, corrections…). Frogtend garde de côté tout ce qu’il remplace et peut tout retirer.' +
+        (liste === null ? '\n\nFirehouse est injoignable : tu peux retirer un mod, pas en ajouter.' : ''),
+    );
+    if (c === null || c === 'fini') return;
+    if (c.sorte === 'installe') {
+      if (!(await confirmer(`🧩 Retirer « ${c.m.mod_nom} » ?`, { message: 'Les fichiers d’origine du jeu sont remis en place. Un fichier du mod que tu as modifié est gardé (et copié de côté).', libelleValider: 'Retirer' })))
+        continue;
+      try {
+        const gardes = await api.modDesinstaller(id, c.m.cle);
+        toast(`🧩 « ${c.m.mod_nom} » retiré${gardes.length ? ` ; gardé(s) car modifié(s) : ${gardes.join(', ')}` : ''}.`);
+      } catch (e) {
+        toast(`Refusé : ${motifDuRefus(e)}`, 'erreur');
+      }
+      continue;
+    }
+    const m = c.m;
+    const f = fichierInstallable(m);
+    const page = adresseWeb(m.consignes_url) ?? adresseWeb(m.page) ?? adresseWeb(m.url);
+    if (!f) {
+      // À la main : la page, au bureau (au canapé, le navigateur passerait derrière la télé).
+      if (!page) {
+        await informer(`🔗 ${m.nom}`, raisonSansClic(m));
+      } else if (await seulementAuBureau(`Ouvrir la page de « ${m.nom} »`)) {
+        // Dit par la fenêtre.
+      } else if (
+        await confirmer(`🔗 ${m.nom}`, {
+          message: [m.description ? `Ce qu’il fait (en anglais) : ${m.description}` : '', raisonSansClic(m)].filter(Boolean).join('\n\n'),
+          libelleValider: '🌐 Ouvrir la page',
+        })
+      ) {
+        await ouvrirPageWeb(page);
+      }
+      continue;
+    }
+    // Un mod « à confirmer » : la page dit où le poser ; au canapé, à faire depuis l'écran du PC. Lire les consignes
+    // ramène à la même question (jamais à la liste de tous les mods).
+    let programme = false;
+    let annule = false;
+    while (f.a_confirmer) {
+      if (await seulementAuBureau(`Installer « ${m.nom} » (la page dit où le poser)`)) {
+        annule = true;
+        break;
+      }
+      const o = await choisir<'racine' | 'programme' | 'page'>(
+        `🧩 Où poser « ${m.nom} » ?`,
+        [
+          { valeur: 'page', libelle: '📖 Lire les consignes de la page d’abord' },
+          { valeur: 'racine', libelle: '📁 Dans le dossier du jeu' },
+          { valeur: 'programme', libelle: '🎮 À côté du programme du jeu', detail: 'si la page dit « à côté de l’exe »' },
+        ],
+        'La page du mod dit où le poser. En cas de doute, lis-la d’abord.',
+      );
+      if (!o) {
+        annule = true;
+        break;
+      }
+      if (o === 'page') {
+        await ouvrirPageWeb(f.consignes_url ?? page);
+        continue;
+      }
+      programme = o === 'programme';
+      break;
+    }
+    if (annule) continue;
+    const message = [
+      m.description ? `Ce qu’il fait (en anglais) : ${m.description}` : '',
+      `Taille : ${taille(f.taille)}, téléchargé depuis la page de l’auteur (GitHub).`,
+      ...avertissements(f),
+      'Tes parties sont mises à l’abri, et tout fichier du jeu remplacé est gardé de côté.',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+    if (!(await confirmer(`🧩 Installer « ${m.nom} » ?`, { message, libelleValider: '⬇ Télécharger et installer' }))) continue;
+    const t = toast(`🧩 Installation de « ${m.nom} »… (téléchargement, puis pose ; ne ferme pas Frogtend)`, 'neutre', { jusquaFermeture: true });
+    try {
+      const b = await api.modInstaller(id, m.nom, f.nom, programme);
+      fermerToast(t);
+      toast(`🧩 « ${m.nom} » installé : ${b.ajoutes} fichier(s) ajouté(s), ${b.remplaces} remplacé(s) (gardés de côté).`);
+    } catch (e) {
+      fermerToast(t);
+      toast(`Refusé : ${motifDuRefus(e)}`, 'erreur');
+    }
+  }
+}
+
+/** Un texte court pour une ligne de liste (le texte entier est montré avant le oui). */
+function court(t: string, n = 90): string {
+  return t.length > n ? `${t.slice(0, n - 1).trimEnd()}…` : t;
+}
+
+/** Un jeu PC lancé sans émulateur (ses mods, son plein écran, sa manette → clavier). */
+export function jeuPcSansEmulateur(id: number): boolean {
+  const j = tele.jeux[id];
+  return !!j?.installation && !j.installation.fichier_du_jeu && !pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, j.plateforme, id);
+}
+
 /** Le menu « ⚙ Gérer le jeu » : toutes les actions possibles sur un jeu du PC, au même endroit, bien visibles. */
 export async function gererJeu(id: number) {
   const j = tele.jeux[id];
   if (!j) return;
-  type Action = 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'patchs' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'retirer';
+  type Action = 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'patchs' | 'mods' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'retirer';
   const options: { valeur: Action; libelle: string; detail?: string }[] = [];
   if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
   if (j.installation && !j.installation.fichier_du_jeu)
@@ -942,9 +1089,11 @@ export async function gererJeu(id: number) {
   }
   // Un jeu lancé sans émulateur (jeu PC) : jouer à la manette, son plein écran au lancement, le figer pendant le menu.
   // « Commandes » ne concerne que les émulateurs : pas pour lui (deux entrées « manette » se confondraient).
-  const pcSansEmulateur = !!j.installation && !j.installation.fichier_du_jeu && !pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, j.plateforme, id);
+  const pcSansEmulateur = jeuPcSansEmulateur(id);
   if (!pcSansEmulateur) options.push({ valeur: 'commandes', libelle: '🎮 Commandes', detail: libelleCommandes(etat.profil.commandes[String(id)]) });
   if (pcSansEmulateur) {
+    // Ses mods (contrat 1.19 ; ✅ Seb 19/10).
+    options.push({ valeur: 'mods', libelle: '🧩 Mods', detail: 'ajouter ou retirer des mods — pour ce jeu' });
     options.push({
       valeur: 'clavier',
       libelle: '🕹 Jouer à la manette (jeu fait pour le clavier)',
@@ -974,6 +1123,7 @@ export async function gererJeu(id: number) {
   else if (c === 'emulateur') await choisirEmulateurDuJeu(id);
   else if (c === 'image') await choisirImagePs3(id);
   else if (c === 'patchs') await choisirPatchsPs3(id);
+  else if (c === 'mods') await choisirMods(id);
   else if (c === 'commandes') await choisirCommandes(id);
   else if (c === 'figer') await choisirFiger(id);
   else if (c === 'pleinEcran') await choisirPleinEcran(id);

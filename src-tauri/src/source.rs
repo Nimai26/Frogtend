@@ -713,6 +713,35 @@ mod tests {
         assert!(matches!(Source::Simulee.fiche(999_999).await, Err(Erreur::Introuvable(_))));
     }
 
+    /// RÉEL, lecture seule chez Firehouse (contrat 1.19) : les codes et mods d'un jeu sans fiche, copiés tels quels dans
+    /// `FROGTEND_SORTIE` (de quoi écrire les réponses simulées d'après la vraie vie). Rien d'autre n'est écrit.
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_SORTIE=<dossier> cargo test essai_mods_1_19 -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_mods_1_19() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let sortie = std::path::PathBuf::from(std::env::var("FROGTEND_SORTIE").unwrap());
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        for (nom, route) in [
+            ("spiderman", "/triche/recherche?titre=Ultimate%20Spider-Man&plateforme=Windows"),
+            ("skyrim", "/triche/recherche?titre=The%20Elder%20Scrolls%20V%3A%20Skyrim&plateforme=Windows"),
+            ("steam-skyrim-se", "/triche/recherche?steam_appid=489830"),
+            ("asura", "/triche/recherche?serial=BLES01227"),
+            ("vide", "/triche/recherche"),
+        ] {
+            match c.obtenir(route, None).await {
+                Ok(crate::firehouse::Reponse::Corps { octets, .. }) => {
+                    std::fs::write(sortie.join(format!("triche-{nom}.json")), &octets).unwrap();
+                    println!("== {nom} : {} octets", octets.len());
+                }
+                Ok(_) => println!("== {nom} : 304"),
+                Err(e) => println!("== {nom} : ERREUR {e:?}"),
+            }
+        }
+    }
+
     /// RÉEL, lecture seule chez Firehouse (contrat 1.18) : la forme exacte des réponses des patchs RPCS3, pour écrire
     /// les réponses simulées d'après la vraie vie. Rien n'est écrit sur le disque ; le jeton ne s'affiche jamais.
     /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_patchs_rpcs3 -- --ignored --nocapture`

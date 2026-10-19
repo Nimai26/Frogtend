@@ -7,6 +7,47 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- **Lot mods (contrat 1.19)** — ✅ Seb 19/10 : « oui prends-le en compte, et il faudra bien sûr que cela soit fait à
+  l'installation de Frogtend sur PC » : l'enregistrement de `nxm://` (registre de Windows, annoncé à Seb avant) se
+  fait par l'INSTALLEUR de Frogtend, pas au premier usage. Frogtend télécharge les mods lui-même (GitHub : sha256
+  vérifié ; Nexus : voie officielle nxm:// + clé d'API PERSONNELLE de chaque utilisateur, au coffre ; jamais
+  d'automate sur les pages de Nexus).
+  Découpage (19/10) : **0.81.0 = mods GitHub** (montrer licence / pré-version / dépôt déplacé avant le oui ; télécharger
+  avec sha256 ; installer dans le dossier du jeu, ce qui est remplacé copié à l'abri ; désinstaller) + recherche des
+  codes et mods d'un jeu IMPORTÉ (`/triche/recherche`) ; **0.82.0 = Nexus** (`nxm://` enregistré par l'installeur,
+  clé d'API de chaque profil au coffre). Relevé réel (lecture seule) : Ultimate Spider-Man → « Fusion Fix », 1 fichier
+  GitHub (7,1 Mo, sha256, MIT, `methode: extraire`, `cible: {base: jeu, dossier: ""}`, `a_confirmer: false`),
+  `references` cite la release d'un autre jeu ; Skyrim : mods sans fichier (consignes seulement) ; copié dans
+  `fixtures/simule/triche-ultimate-spider-man.json`.
+  ✅ Seb 19/10 : un mod SANS empreinte fournie = permis, avec avertissement avant le oui et taille exacte exigée ;
+  essai réel accepté (Fusion Fix, 7,1 Mo, dans un FAUX dossier de jeu, effacé après). Avis des 3 experts reçus
+  (téléchargeur dédié sans jeton, HTTPS + domaines GitHub, plafond = taille annoncée ; installation : liste refusée au
+  1er chemin dangereux, plafond de décompression, comparer au jeu, remplacés à l'abri dans `<jeu>\Frogtend\mods\`,
+  pose par renommage, manifeste par mod, désinstallation seulement si le fichier n'a pas changé ; écran « 🧩 Mods » dans
+  ⚙ Gérer le jeu). Découpage : 0.81.0 = mods GitHub ; 0.81.1 = recherche pour un jeu importé.
+  Fait (0.81.0) : `mods.rs` (FichierMod depuis la réponse : seulement `extraire` + `jeu` + .zip ; adresse admise
+  github.com/<dépôt>/releases/download/… ; client SANS jeton, https_only, redirections ≤5 vers *.githubusercontent.com ;
+  taille annoncée = plafond exact ; sha256 si donné ; reprise Range ; erreurs `without_url` ; `lister` refuse l'archive
+  au 1er chemin dangereux (.., absolu, « : », nom réservé, casse, lien) ; `installer` : décompression plafonnée à côté,
+  comparaison, remplacés copiés et vérifiés dans `<jeu>\Frogtend\mods\<clé>\remplaces`, manifeste « en_cours » avant
+  la pose, pose par renommage, défaite si interrompue, conflit avec un autre mod refusé ; `desinstaller` : seulement
+  les fichiers inchangés, les modifiés gardés + copiés). Commandes `mods_installes`, `mod_installer` (mod et fichier
+  REPRIS de la liste, anti-triche local, jeu non utilisé, parties à l'abri d'abord), `mod_desinstaller`. Interface :
+  `src/lib/mods/mods.ts` (+ tests sur la vraie réponse), `src/lib/web.ts`, « 🧩 Mods » dans ⚙ Gérer le jeu (jeu PC),
+  la page Triches renvoie vers lui. ✅ ESSAI RÉEL (accord de Seb) : vrai Fusion Fix téléchargé par le code de Frogtend
+  (7 115 342 octets, sha256 conforme, redirection vers release-assets.githubusercontent.com), installé dans un FAUX
+  jeu (2 ajoutés, dsound.dll remplacé et gardé), désinstallé (original revenu, scripts\ retiré). Essai effacé.
+  Relectures (contrat, interface : aucun bloquant ; lancement : 2 BLOQUANTS corrigés) : (1) un original remplacé n'est
+  plus jamais effacé tant qu'il n'a pas été remis (fichier modifié ou supprimé par la personne : sa copie reste) ;
+  (2) une archive ne dépose plus rien sous `Frogtend\`, et un manifeste n'est cru que s'il est sain (clé = nom,
+  chemins sûrs) — un faux manifeste ne fait rien effacer. Aussi : liens/jonctions sous la cible refusés ; empreinte de
+  l'original au manifeste (désinstallation reprise) ; manifeste « en cours » AVANT de toucher au jeu, nettoyage auto
+  avant, défaite après ; dossiers créés retirés ; reprise : nom = clé+taille+empreinte, jamais sans empreinte,
+  `Content-Range` vérifié ; adresse = chemin EXACT de la release ; règle de redirection testée ; messages réseau en
+  français ; jeu occupé dès la vérification ; refus pour un jeu émulé ; interface : attente qui reste affichée, retrait
+  possible hors ligne, page Triches = même tri, descriptions coupées, « installation interrompue » montrée. Essai réel
+  rejoué après corrections : OK. Tests 404 cœur, 206 interface.
+
 - **Lot 0.80.0 — MAME : les sauvegardes des jeux d'arcade par profil** (Seb 19/10 : « ok enchaîne » après la 0.79.0 ;
   relevé par l'expert lancement pendant le lot 0.79.0 : `nvram\` (meilleurs scores, réglages de la borne) et les
   autres données de MAME ne sont ni par profil ni dans la sauvegarde — règle « les sauvegardes sont sacrées »).

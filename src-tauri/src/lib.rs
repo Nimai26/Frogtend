@@ -38,6 +38,7 @@ pub mod menu_jeu;
 pub mod noyau;
 pub mod partie;
 pub mod pilotage;
+pub mod mods;
 pub mod patchs_ps3;
 pub mod plein_ecran;
 pub mod profils;
@@ -412,6 +413,9 @@ pub fn run() {
             commandes::rpcs3_regler_image,
             commandes::rpcs3_patchs,
             commandes::rpcs3_patch_regler,
+            commandes::mods_installes,
+            commandes::mod_installer,
+            commandes::mod_desinstaller,
             commandes::emulateurs_recommandes,
             commandes::emulateurs_installes,
             commandes::emulateur_fiche,

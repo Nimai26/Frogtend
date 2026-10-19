@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.81.0 — Les mods des jeux PC, d'un clic
+
+- ⚙ Gérer le jeu ▸ **🧩 Mods** (jeu PC) : les mods connus pour ce jeu. ⬇ s'installe d'un clic ; 🔗 se fait à la
+  main (la page du mod l'explique) ; ✅ est installé (choisis-le pour le retirer).
+- Avant ton oui : ce que fait le mod (en anglais pour l'instant), sa taille, s'il est libre de partage, si c'est une
+  version d'essai, si sa page a déménagé, et si son empreinte manque.
+- Frogtend le télécharge depuis la page de l'auteur (GitHub), vérifie qu'il a la bonne taille et la bonne empreinte,
+  met tes parties à l'abri, garde de côté tout fichier du jeu qu'il remplace, puis l'installe. **Retirer** remet le jeu
+  comme avant ; un réglage du mod que tu as changé est gardé (et copié de côté).
+- Jamais de mod dans un jeu protégé contre la triche en ligne.
+
 ## 0.80.0 — Les scores d'arcade de chacun, et sauvegardés
 
 - Dans les jeux d'arcade (MAME), ce que le jeu retient — meilleurs scores, réglages de la borne, tes touches, tes

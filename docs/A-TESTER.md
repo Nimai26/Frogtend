@@ -48,6 +48,14 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Les mods des jeux PC (0.81.0)
+- [ ] Un jeu PC installé ▸ ⚙ Gérer ▸ 🧩 Mods : la liste (⬇ d'un clic, 🔗 à la main).
+- [ ] ⬇ un mod : la fenêtre dit sa taille et son partage ; oui → « installé : N ajouté(s), M remplacé(s) ».
+- [ ] Lance le jeu : le mod marche (ex. Ultimate Spider-Man + Fusion Fix : écran large).
+- [ ] 🧩 Mods ▸ ✅ le mod ▸ Retirer : le jeu redevient comme avant.
+- [ ] 🔗 un mod : « Ouvrir la page » ouvre le navigateur (au bureau) ; au canapé, Frogtend dit de le faire à l'écran
+      du PC.
+
 ## Les scores d'arcade de chacun (0.80.0)
 - [ ] Un jeu d'arcade qui garde ses meilleurs scores : fais un score, quitte, relance : le score est là.
 - [ ] Change de profil, lance le même jeu : pas le score de l'autre (au tout premier lancement, le profil reçoit une

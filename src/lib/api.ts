@@ -4,6 +4,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 import type { ActionProposee } from '$lib/assistant/actions';
 import type { CommandesJeu } from '$lib/reglages/reglages';
 import type { InfosJeu } from '$lib/ludotheque/infos';
+import type { ModJeu } from '$lib/mods/mods';
 
 export interface Profil {
   id: string;
@@ -166,6 +167,16 @@ export interface PatchsPs3 {
   hors_ligne: boolean;
 }
 
+/** Un mod installé dans un jeu (son manifeste). */
+export interface ModInstalle {
+  cle: string;
+  mod_nom: string;
+  fichier: string;
+  pose_le: string;
+  etat: string;
+  fichiers: { chemin: string; sorte: string }[];
+}
+
 export interface EmulateurRecommande {
   nom: string;
   site: string;
@@ -247,7 +258,8 @@ export type InstallationFirehouse =
 export interface TrichesJeu {
   codes: { cle: string; emulateur: string; format: string; titre: string; nb_codes?: number; source?: string; correspondance?: string; confiance?: number; nom_fichier?: string }[];
   cheat_engine: { titre: string; version_jeu?: string; source?: string; page?: string; fichier?: string | null }[];
-  mods: { nom: string; description?: string; auteur?: string; version?: string; source?: string; page?: string; maj_le?: string }[];
+  /** Contrat 1.19 : fichiers, refus, liens cités (`src/lib/mods/mods.ts`). */
+  mods: (ModJeu & { auteur?: string; version?: string; source?: string; maj_le?: string })[];
   maj_le: string | null;
   /** Ce que Firehouse ne sait pas encore fournir (par exemple les tables Cheat Engine). */
   note?: string | null;
@@ -658,6 +670,14 @@ export const api = {
   cheatengineLancer: (programme: string, table?: string, brancher = false) =>
     appeler<void>('cheatengine_lancer', { programme, table: table ?? null, brancher }),
   jeuTriches: (id: number) => appeler<TrichesJeu>('jeu_triches', { id }),
+  /** Les mods installés dans un jeu du PC (contrat 1.19, lot 0.81.0). */
+  modsInstalles: (id: number) => appeler<ModInstalle[]>('mods_installes', { id }),
+  /** Télécharge et installe un mod (le cœur le reprend dans la liste de Firehouse) ; `programme` : dans le dossier du
+   * programme du jeu plutôt qu'à sa racine. */
+  modInstaller: (id: number, modNom: string, fichier: string, programme = false) =>
+    appeler<{ ajoutes: number; remplaces: number; identiques: number }>('mod_installer', { id, modNom, fichier, programme }),
+  /** Retire un mod ; rend les fichiers gardés (modifiés par la personne). */
+  modDesinstaller: (id: number, cle: string) => appeler<string[]>('mod_desinstaller', { id, cle }),
   tricheInstaller: (id: number, cle: string, programme: string, ligne: string) =>
     appeler<string>('triche_installer', { id, cle, programme, ligne }),
   jeuTailleInstallation: (id: number) => appeler<number>('jeu_taille_installation', { id }),

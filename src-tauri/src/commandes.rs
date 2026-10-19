@@ -2509,6 +2509,115 @@ pub async fn jeu_triches(noyau: State<'_, Noyau>, id: i64) -> Resultat<Value> {
     noyau.session().await?.source.triches(id).await
 }
 
+// --- Mods GitHub (contrat 1.19 ; ✅ Seb 19/10, lot 0.81.0) : le mod et son fichier sont REPRIS de la liste de
+// Firehouse (jamais d'une adresse envoyée par l'interface) ; installés dans le dossier du jeu après le oui. ---
+
+/// Le dossier d'un jeu du PC prêt à recevoir un mod : installé, pas en cours d'utilisation, sans anti-triche détecté.
+async fn jeu_pour_un_mod(noyau: &Noyau, id: i64) -> Resultat<(crate::jeux_pc::JeuPc, std::path::PathBuf)> {
+    let j = noyau.jeu_visible(id).await?;
+    let i = j.installation.as_ref().ok_or_else(|| Erreur::Refus("Installe d'abord le jeu.".into()))?;
+    let dossier = std::path::PathBuf::from(&i.dossier);
+    if !dossier.is_dir() {
+        return Err(Erreur::Disque(format!("Le dossier du jeu est introuvable : {}.", dossier.display())));
+    }
+    if i.fichier_du_jeu.is_some() {
+        return Err(Erreur::Refus("Ce jeu se lance par un émulateur : Frogtend n'y installe pas de mod de jeu PC.".into()));
+    }
+    if noyau.utilise(id) {
+        return Err(Erreur::Refus("Le jeu est en cours (partie, téléchargement ou installation) : réessaie après.".into()));
+    }
+    Ok((j, dossier))
+}
+
+/// Les mods installés dans un jeu du PC (manifestes de `<jeu>\Frogtend\mods`).
+#[tauri::command]
+pub async fn mods_installes(noyau: State<'_, Noyau>, id: i64) -> Resultat<Vec<crate::mods::Manifeste>> {
+    let j = noyau.jeu_visible(id).await?;
+    let Some(i) = j.installation else { return Ok(Vec::new()) };
+    let d = std::path::PathBuf::from(i.dossier);
+    Ok(tauri::async_runtime::spawn_blocking(move || crate::mods::installes(&d)).await.unwrap_or_default())
+}
+
+/// Télécharge et installe un mod (la personne a dit oui, taille et licence annoncées). `programme` : poser dans le
+/// dossier du programme du jeu plutôt qu'à sa racine (mod « à confirmer », choisi par la personne). Les parties sont
+/// d'abord mises à l'abri.
+#[tauri::command]
+pub async fn mod_installer(noyau: State<'_, Noyau>, id: i64, mod_nom: String, fichier: String, programme: bool) -> Resultat<crate::mods::Bilan> {
+    let (j, dossier) = jeu_pour_un_mod(&noyau, id).await?;
+    let liste = noyau.session().await?.source.triches(id).await?;
+    let m = liste["mods"]
+        .as_array()
+        .and_then(|l| l.iter().find(|m| m["nom"].as_str() == Some(mod_nom.as_str())).cloned())
+        .ok_or_else(|| Erreur::Introuvable("Ce mod n'est plus proposé par Firehouse.".into()))?;
+    if let Some(r) = m["refus"].as_str() {
+        return Err(Erreur::Refus(format!("Firehouse ne donne pas de fichier pour ce mod ({r}).")));
+    }
+    let f = m["fichiers"]
+        .as_array()
+        .and_then(|l| l.iter().find(|x| x["nom"].as_str() == Some(fichier.as_str())))
+        .and_then(crate::mods::FichierMod::depuis)
+        .ok_or_else(|| Erreur::Refus("Frogtend ne sait pas installer ce fichier d'un clic : suis la page du mod.".into()))?;
+    // Un anti-triche dans le jeu : jamais de mod (un compte pourrait être banni).
+    let d = dossier.clone();
+    let verification = tauri::async_runtime::spawn_blocking(move || crate::figer::anti_triche(&d))
+        .await
+        .map_err(|_| Erreur::Disque("La vérification anti-triche s'est arrêtée brutalement : rien n'est installé.".into()))?;
+    if let crate::figer::Verification::AntiTriche(a) = verification {
+        return Err(Erreur::Refus(format!("Ce jeu est protégé par {a} : Frogtend n'y installe pas de mod.")));
+    }
+    // Où poser : le dossier du mod (`cible.dossier`) ; ou, pour un mod « à confirmer », le dossier du programme.
+    let sous = if programme {
+        let lanceur = j.installation.as_ref().and_then(|i| i.lanceur.as_ref()).map(|l| std::path::PathBuf::from(&l.dossier));
+        // Sous le dossier du jeu (sans tenir compte des majuscules, comme Windows) : le reste du chemin.
+        match lanceur.as_deref().filter(|l| crate::garde::sous(l, &dossier)) {
+            Some(l) => l.components().skip(dossier.components().count()).map(|c| c.as_os_str().to_string_lossy().to_string()).collect::<Vec<_>>().join("/"),
+            None => return Err(Erreur::Refus("Le programme du jeu n'est pas dans son dossier : choisis la racine du jeu.".into())),
+        }
+    } else {
+        f.dossier.clone()
+    };
+    // Occupé dès maintenant : ni une partie ni un second clic ne passent entre la vérification et la pose.
+    let _occupe = noyau.occuper(id);
+    noyau.mettre_a_l_abri(id).await?;
+    let archive = crate::mods::dossier_mods(&dossier).join("telechargements").join(f.nom_telechargement());
+    crate::mods::telecharger(&f, &archive, &|_, _| {}).await?;
+    let quand = crate::noyau::maintenant();
+    // L'empreinte de l'archive reçue au manifeste (calculée si Firehouse n'en donnait pas).
+    let sha = match f.sha256.clone() {
+        Some(s) => s,
+        None => crate::sauvegarde::empreinte(&archive)?,
+    };
+    let (d, a, f2, nom) = (dossier.clone(), archive.clone(), f.clone(), mod_nom.clone());
+    let r = tauri::async_runtime::spawn_blocking(move || crate::mods::installer(&d, &a, &f2, &nom, &sha, &sous, false, &quand))
+        .await
+        .map_err(|_| Erreur::Disque("L'installation du mod s'est arrêtée brutalement.".into()))?;
+    let _ = std::fs::remove_file(&archive);
+    let _ = std::fs::remove_dir(archive.parent().unwrap_or(&dossier));
+    match &r {
+        Ok(b) => noyau.journaliser(&format!("mod « {mod_nom} » installé dans « {} » ({} ajouté(s), {} remplacé(s) — originaux à l'abri)", j.titre, b.ajoutes, b.remplaces)),
+        Err(e) => noyau.journaliser(&format!("mod « {mod_nom} » non installé dans « {} » ({e})", j.titre)),
+    }
+    r
+}
+
+/// Désinstalle un mod : rend les fichiers GARDÉS parce que la personne les avait modifiés (copiés à l'abri).
+#[tauri::command]
+pub async fn mod_desinstaller(noyau: State<'_, Noyau>, id: i64, cle: String) -> Resultat<Vec<String>> {
+    let (j, dossier) = jeu_pour_un_mod(&noyau, id).await?;
+    // Occupé dès maintenant : ni une partie ni un second clic ne passent entre la vérification et la pose.
+    let _occupe = noyau.occuper(id);
+    noyau.mettre_a_l_abri(id).await?;
+    let d = dossier.clone();
+    let c = cle.clone();
+    let r = tauri::async_runtime::spawn_blocking(move || crate::mods::desinstaller(&d, &c))
+        .await
+        .map_err(|_| Erreur::Disque("Le retrait du mod s'est arrêté brutalement.".into()))?;
+    if let Ok(g) = &r {
+        noyau.journaliser(&format!("mod {cle} retiré de « {} » ({} fichier(s) gardé(s), modifiés par la personne)", j.titre, g.len()));
+    }
+    r
+}
+
 /// Pose un fichier de triche de Firehouse dans le dossier du profil de l'émulateur (la personne l'a demandé). Un
 /// fichier différent déjà là est d'abord copié à côté (`.avant-frogtend`). Rend le chemin écrit.
 #[tauri::command]

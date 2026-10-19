@@ -381,8 +381,12 @@ réels à la fin de son EXEMPLES-API-JEUX-V1.md. Décisions de Seb (19/10) :
    semaine à l'autre ; une ancienne clé numérique → 404 : toujours reprendre la clé dans la liste.
 7. Un identifiant PPSSPP partagé par deux jeux (19 cas, dont ULES-00301) → UN seul .ini qui contient les deux blocs.
 - Côté Frogtend (relevé du 19/10) : les clés de code sont lues dans la liste à chaque fois (`codes[].cle`, texte) et
-  jamais gardées : la nouvelle forme passe telle quelle. Mods, `references`, recherche d'un jeu sans fiche : NON
-  encore adaptés (lot à venir ; l'enregistrement de `nxm://` touche le registre de Windows : à annoncer à Seb).
+  jamais gardées : la nouvelle forme passe telle quelle. ✅ Mods GitHub adaptés en 0.81.0 : un fichier n'est installé
+  d'un clic que si `methode: extraire`, `cible.base: jeu`, archive `.zip`, `taille` donnée, `refus` nul ; `a_confirmer`
+  respecté (consignes, choix racine / dossier du programme, jamais au canapé) ; `licence`, `licence_libre`,
+  `pre_version`, `depot_deplace`, empreinte absente AFFICHÉS avant le oui ; `references` montrées comme pages citées,
+  jamais téléchargées ; `sources_url` et les autres méthodes ignorés (la page reste). Recherche d'un jeu sans fiche :
+  0.81.1. Nexus (`nxm://`, enregistré par l'installeur, ✅ Seb) : 0.82.0.
 
 ### Note 2.58.0 (contrat inchangé)
 Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a été RÉUNIE à celle du même jeu

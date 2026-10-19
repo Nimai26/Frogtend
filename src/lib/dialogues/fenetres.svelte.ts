@@ -123,11 +123,12 @@ export function attendreTouche(titre: string, options: { message?: string; verif
 }
 
 /** Un compte rendu bref, qui ne bloque rien. Le type se déduit du message s'il n'est pas donné. */
-export function toast(message: string, type?: TypeToast): number {
+export function toast(message: string, type?: TypeToast, options: { jusquaFermeture?: boolean } = {}): number {
   const id = ++compteur;
   const t = type ?? deduireTypeToast(message);
   pile.toasts.push({ id, message, type: t });
-  setTimeout(() => fermerToast(id), dureeToast(t));
+  // Une attente (« Installation… ») reste affichée jusqu'à `fermerToast` : jamais un écran vide pendant le travail.
+  if (!options.jusquaFermeture) setTimeout(() => fermerToast(id), dureeToast(t));
   return id;
 }
 

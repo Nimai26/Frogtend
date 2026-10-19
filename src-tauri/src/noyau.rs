@@ -699,7 +699,7 @@ impl Noyau {
     }
 
     /// Un jeu en cours de téléchargement, de partie ou d'installation.
-    fn utilise(&self, id: i64) -> bool {
+    pub(crate) fn utilise(&self, id: i64) -> bool {
         self.occupes.lock().unwrap_or_else(|e| e.into_inner()).contains_key(&id)
             || self.en_cours.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|(i, _)| *i) == Some(id)
     }

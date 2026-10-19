@@ -11,7 +11,7 @@
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { etat } from '$lib/etat.svelte';
   import { tele } from '$lib/ludotheque/telechargements.svelte';
-  import { partie } from '$lib/ludotheque/jeu.svelte';
+  import { choisirMods, jeuPcSansEmulateur, partie } from '$lib/ludotheque/jeu.svelte';
 
   const id = $derived(Number(page.url.searchParams.get('jeu')));
   const jeu = $derived(tele.jeux[id]);
@@ -189,18 +189,18 @@
         {#if t.page_mods}
           <p><button class="btn petit" onclick={() => avantDeModder(t?.page_mods ?? undefined)}>🌐 Page des mods et correctifs (PCGamingWiki…)</button></p>
         {/if}
-        <ul>
-          {#each t.mods as m, i (i)}
-            <li>
-              <span>
-                <strong>{m.nom}</strong>
-                <span class="muted">{m.version ?? ''}{m.auteur ? ` · ${m.auteur}` : ''} · {m.source ?? ''}</span>
-                {#if m.description}<br /><span class="muted">{m.description}</span>{/if}
-              </span>
-              <button class="btn petit" onclick={() => avantDeModder(m.page)} disabled={!m.page}>🌐 Voir le mod</button>
-            </li>
-          {/each}
-        </ul>
+        <!-- Un seul écran pour voir, installer et retirer les mods (contrat 1.19) : celui de ⚙ Gérer le jeu, pour un jeu
+             PC lancé sans émulateur (comme lui). -->
+        <p>
+          {t.mods.length} mod(s) connu(s) pour ce jeu.
+          {#if jeuPcSansEmulateur(id)}
+            <button class="btn" onclick={() => choisirMods(id)}>🧩 Voir, installer ou retirer les mods</button>
+          {:else if tele.jeux[id]?.installation}
+            <span class="muted">Les mods de jeux PC ne s’installent pas dans un jeu lancé par un émulateur.</span>
+          {:else}
+            <span class="muted">Installe d’abord le jeu pour y ajouter des mods.</span>
+          {/if}
+        </p>
       </section>
     {/if}
   {/if}
