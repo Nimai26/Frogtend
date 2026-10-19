@@ -3,6 +3,13 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 19/10 — Le même test rouge pendant la livraison : un 2e défaut du suivi des parties
+Ce qui s'est passé : en livrant la 0.80.0, `un_jeu_lance_par_un_intermediaire…` a de nouveau échoué. Cause réelle :
+sous charge, le lanceur (.bat) finit AVANT le premier relevé ; son heure de démarrage était notée « 0 », et tout vieux
+processus orphelin dont le parent mort portait ce numéro passait pour un enfant du jeu (partie jamais finie). ·
+Comment l'appliquer : une valeur « inconnue » ne doit jamais valoir « depuis toujours » (0) dans une comparaison de
+dates ; prendre la borne sûre (l'instant du lancement). La leçon du 19/10 a payé : on a cherché, pas relancé.
+
 ## 19/10 — La lettre M refusée sur un clavier français
 Ce qui s'est passé : « appuie sur la touche » n'acceptait une lettre que si son `code` commençait par `Key` ; en AZERTY,
 M a le code `Semicolon` (la place du « ; » anglais). Les tests, écrits en pensant QWERTY, figeaient même ce refus. Vu
@@ -33,6 +40,8 @@ leçon même, écrite par script). · Comment l'appliquer : pour un texte qui co
 19/10 : revenu deux fois (un `.join('\n\n')` devenu un vrai retour à la ligne dans `jeu.svelte.ts`, vu par
 svelte-check ; un remplacement introuvable). Le code écrit par script passe désormais par un FICHIER de script dans le
 scratchpad avec des chaînes brutes, ou par l'outil d'édition — jamais par un script tapé dans le shell.
+19/10 (3e fois, lot 0.80.0, une chaîne de test cassée) : la règle devient stricte — tout texte de CODE qui contient
+une barre oblique inverse s'écrit avec l'outil d'édition, sans exception (les scripts gardent les seuls documents).
 
 ## 18/10 — Un test vert parce que son serveur simulé était plus simple que la vraie vie
 Ce qui s'est passé : le rattachement depuis la file de téléchargement (fiche réunie découverte par un 410) passait son

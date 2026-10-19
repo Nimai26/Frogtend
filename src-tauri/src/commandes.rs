@@ -3199,6 +3199,22 @@ async fn preparer_emulateur(
 ) -> Resultat<(String, String)> {
     let chemin = std::path::Path::new(programme);
     let nom = chemin.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
+    // MAME (paquet de Firehouse, hors catalogue) : ses dossiers de parties par profil, sur sa ligne de commande.
+    if nom.starts_with("mame") && nom.ends_with(".exe") {
+        let profil = noyau.actif().await.ok_or_else(|| Erreur::Profil("Aucun profil n'est ouvert.".into()))?;
+        let dossier = chemin.parent().map(std::path::PathBuf::from).unwrap_or_default();
+        let (args, notes) = tauri::async_runtime::spawn_blocking(move || crate::emulateurs_profils::preparer_mame_profil(&dossier, &profil.nom))
+            .await
+            .map_err(|_| Erreur::Disque("La préparation de MAME s'est arrêtée brutalement.".into()))??;
+        for n in notes {
+            noyau.journaliser(&n);
+        }
+        let mut complete: Vec<String> = args.iter().map(|a| format!("\"{a}\"")).collect();
+        if !ligne.trim().is_empty() {
+            complete.push(ligne.to_string());
+        }
+        return Ok((programme.into(), complete.join(" ")));
+    }
     let Some(f) = crate::emulateurs::CATALOGUE.iter().find(|f| nom.starts_with(f.programme)) else {
         return Ok((programme.into(), ligne.into())); // émulateur inconnu : rien à préparer
     };

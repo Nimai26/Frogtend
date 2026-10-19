@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.80.0 — Les scores d'arcade de chacun, et sauvegardés
+
+- Dans les jeux d'arcade (MAME), ce que le jeu retient — meilleurs scores, réglages de la borne, tes touches, tes
+  sauvegardes — est maintenant rangé dans TON profil : chaque personne de la maison a les siens, et ils partent avec
+  la sauvegarde du profil.
+- La première fois, ce que MAME avait déjà est recopié dans ton profil (rien n'est déplacé ni effacé).
+- Aucun fichier de réglages de MAME n'est modifié ; un dossier que tu aurais réglé toi-même dans MAME est respecté.
+- Correction : un jeu lancé par un « .bat » (qui rend la main aussitôt) pouvait, sur un PC très occupé, sembler ne
+  jamais se terminer. Frogtend voit maintenant toujours la fin de la partie.
+
 ## 0.79.0 — Sauver ta partie dans les jeux d'arcade
 
 - Pendant un jeu d'arcade (MAME), le menu en jeu propose enfin **💾 Sauver**, **📂 Charger** et **🔄 Recommencer**,

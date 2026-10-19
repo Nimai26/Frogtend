@@ -22,6 +22,131 @@ pub fn dossier_du_profil(emulateur: &Path, profil: &str) -> PathBuf {
     emulateur.join("Profils").join(crate::jeux_pc::nom_de_dossier(profil))
 }
 
+// --- MAME par profil (lot 0.80.0 ; les sauvegardes sont sacrées). Relevé dans les sources de MAME 0.289
+// (`src/emu/emuopts.cpp`/`.h`, 19/10) : `cfg_directory` (touches, réglages de la borne), `nvram_directory` (mémoire du
+// jeu : meilleurs scores, EEPROM), `state_directory` (sauvegardes d'état), `diff_directory` (disques durs modifiés),
+// `homepath` (données des greffons : le greffon hiscore écrit dans `<homepath>/hiscore`, `plugins/hiscore/init.lua`).
+// Frogtend les passe sur la LIGNE DE COMMANDE, vers `Profils\<profil>\…` (couvert par la sauvegarde du profil) :
+// aucun fichier de réglages de MAME n'est modifié. Une option déjà réglée par la personne dans `mame.ini` (autre que la
+// valeur d'origine) est respectée. ---
+
+/// (option de MAME, sa valeur d'origine, le sous-dossier du profil).
+pub const DOSSIERS_MAME: [(&str, &str, &str); 5] =
+    [("cfg_directory", "cfg", "cfg"), ("nvram_directory", "nvram", "nvram"), ("state_directory", "sta", "sta"), ("diff_directory", "diff", "diff"), ("homepath", ".", "home")];
+
+/// Ce que la première partie d'un profil reprend de MAME (copié, jamais déplacé) : au-delà, rien n'est copié (un
+/// disque dur modifié peut peser des Go) et c'est noté.
+pub const REPRISE_MAME_MAX: u64 = 256 * 1024 * 1024;
+
+/// La valeur d'une option dans le texte de `mame.ini` (`option   valeur`), sans guillemets.
+pub fn option_mame_ini(texte: &str, option: &str) -> Option<String> {
+    texte.lines().find_map(|l| {
+        let (cle, valeur) = l.trim().split_once(char::is_whitespace)?;
+        cle.eq_ignore_ascii_case(option).then(|| valeur.trim().trim_matches('"').to_string())
+    })
+}
+
+/// La taille des fichiers d'un dossier (liens et jonctions ignorés), arrêtée dès qu'elle dépasse `plafond`.
+fn taille_arbre(d: &Path, plafond: u64) -> u64 {
+    let mut total = 0u64;
+    let mut pile = vec![d.to_path_buf()];
+    while let Some(x) = pile.pop() {
+        let Ok(l) = std::fs::read_dir(&x) else { continue };
+        for e in l.flatten() {
+            let Ok(m) = std::fs::symlink_metadata(e.path()) else { continue };
+            if m.file_type().is_symlink() || crate::garde::est_un_lien(&e.path()) {
+                continue;
+            }
+            if m.is_dir() {
+                pile.push(e.path());
+            } else {
+                total += m.len();
+                if total > plafond {
+                    return total;
+                }
+            }
+        }
+    }
+    total
+}
+
+/// Copie un dossier dans un autre sans JAMAIS écraser (un fichier déjà là est gardé) ; liens et jonctions ignorés.
+fn copier_sans_ecraser(source: &Path, cible: &Path) -> Resultat<u64> {
+    let mut n = 0;
+    std::fs::create_dir_all(cible)?;
+    for e in std::fs::read_dir(source)?.flatten() {
+        let m = std::fs::symlink_metadata(e.path())?;
+        if m.file_type().is_symlink() || crate::garde::est_un_lien(&e.path()) {
+            continue;
+        }
+        let vers = cible.join(e.file_name());
+        if m.is_dir() {
+            n += copier_sans_ecraser(&e.path(), &vers)?;
+        } else if !vers.exists() {
+            std::fs::copy(e.path(), &vers)?;
+            n += 1;
+        }
+    }
+    Ok(n)
+}
+
+/// Les dossiers de MAME de ce profil, à passer sur sa ligne de commande (`-nvram_directory "<…>"`…), et les notes à
+/// journaliser (option laissée à la personne, reprise trop grosse). La PREMIÈRE fois pour ce profil, ce que MAME avait
+/// déjà (scores, touches de la personne, états) y est copié — jamais déplacé ni écrasé.
+pub fn preparer_mame_profil(mame: &Path, profil: &str) -> Resultat<(Vec<String>, Vec<String>)> {
+    // `mame.ini` est cherché à la racine de MAME, puis dans `ini\` (son `inipath` d'origine : « .;ini;ini/presets ») :
+    // le premier trouvé compte (ordre du chemin de recherche ; non vérifié dans les sources qu'un second ne s'ajoute pas).
+    let inis: Vec<String> = [mame.join("mame.ini"), mame.join("ini").join("mame.ini")].iter().find_map(|f| std::fs::read_to_string(f).ok()).into_iter().collect();
+    let racine = dossier_du_profil(mame, profil);
+    let (mut args, mut notes) = (Vec::new(), Vec::new());
+    // Un chemin que la ligne ne porterait pas sans risque (« % » d'une variable, « ; » séparateur de MAME,
+    // « autoboot » lu comme un script de la personne) : MAME garde ses dossiers communs, c'est noté.
+    let r = texte(&racine).to_lowercase();
+    if r.contains(['%', ';', '"']) || r.contains("autoboot") {
+        notes.push(format!("MAME : le nom du profil « {profil} » ne peut pas passer sur la ligne de MAME : parties dans les dossiers communs"));
+        return Ok((args, notes));
+    }
+    for (option, origine, sous) in DOSSIERS_MAME {
+        let reglee = inis.iter().find_map(|t| option_mame_ini(t, option)).filter(|v| !v.is_empty());
+        if reglee.as_deref().is_some_and(|v| v != origine) {
+            notes.push(format!("MAME : « {option} » réglé par la personne dans mame.ini, laissé tel quel (pas par profil)"));
+            continue;
+        }
+        let cible = racine.join(sous);
+        // La reprise de ce que MAME avait (copiée, jamais déplacée) : faite UNE fois par option, marquée une fois
+        // RÉUSSIE (un dossier du profil créé plus tôt — l'état « Sauver » du 0.79.0 — n'empêche pas la reprise).
+        let marque = racine.join(format!(".frogtend-reprise-{sous}"));
+        if !marque.is_file() {
+            // Pour `homepath` (« . » : tout MAME), seulement les données des greffons qui sont des parties ou des
+            // réglages de la personne (sources 0.289 : hiscore, autofire, inputmacro, timer écrivent dans `<homepath>/…`).
+            let paires: Vec<(PathBuf, PathBuf)> = if sous == "home" {
+                ["hiscore", "autofire", "inputmacro", "timer"].iter().map(|g| (mame.join(g), cible.join(g))).collect()
+            } else {
+                vec![(mame.join(origine), cible.clone())]
+            };
+            let presentes: Vec<_> = paires.into_iter().filter(|(s, _)| s.is_dir()).collect();
+            let taille: u64 = presentes.iter().map(|(s, _)| taille_arbre(s, REPRISE_MAME_MAX)).sum();
+            if taille > REPRISE_MAME_MAX {
+                // Trop gros (un disque dur modifié…) : MAME garde SON dossier pour cette option, jamais un dossier vide.
+                notes.push(format!("MAME : « {option} » trop gros pour être repris dans le profil ({} Mo et plus) : MAME garde son dossier commun", REPRISE_MAME_MAX / 1_048_576));
+                continue;
+            }
+            // Une copie interrompue (fichier verrouillé) : MAME garde son dossier commun cette fois ; la suivante
+            // reprend sans rien écraser.
+            if let Err(e) = presentes.iter().try_for_each(|(s, v)| copier_sans_ecraser(s, v).map(|_| ())) {
+                notes.push(format!("MAME : reprise de « {option} » interrompue ({e}) : MAME garde son dossier commun, nouvel essai au prochain lancement"));
+                continue;
+            }
+            std::fs::create_dir_all(&cible)?;
+            std::fs::write(&marque, b"")?;
+        }
+        std::fs::create_dir_all(&cible)?;
+        args.push(format!("-{option}"));
+        args.push(texte(&cible));
+    }
+    Ok((args, notes))
+}
+
 /// Écrit des valeurs dans une section d'un fichier INI en gardant tout le reste. Une clé répétée (liste) est
 /// remplacée par toutes les valeurs données.
 pub fn ecrire_ini(texte: &str, section: &str, valeurs: &[(&str, Vec<String>)]) -> String {
@@ -1174,6 +1299,122 @@ mod tests {
         assert_eq!(retirer_cles_yaml("Video:\n  MSAA: Auto\n  Renderer: Vulkan\nAudio:\n  X: 1\n", "Video", &["MSAA"]).as_deref(), Some("Video:\n  Renderer: Vulkan\nAudio:\n  X: 1\n"));
         // Relu comme RPCS3 le lirait (YAML valide).
         assert!(lire_cles_yaml("Video:\n  MSAA: \"Disabled\"\n", "Video", &["MSAA"])["MSAA"] == "Disabled");
+    }
+
+    #[test]
+    fn mame_range_les_parties_de_chaque_profil_a_part_sans_rien_perdre() {
+        let d = tempfile::tempdir().unwrap();
+        let mame = d.path().join("MAME l'été");
+        // Ce que MAME avait déjà (avant Frogtend) : un score, les touches de la personne, un état F7, un score du
+        // greffon hiscore.
+        for (f, c) in [("nvram/sf2/eeprom", "score"), ("cfg/default.cfg", "touches"), ("cfg/sf2.cfg", "sf2"), ("sta/sf2/1.sta", "etat"), ("hiscore/sf2.hi", "hi"), ("autofire/sf2.cfg", "tir")] {
+            let p = mame.join(f);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, c).unwrap();
+        }
+        // Le profil a déjà sauvé depuis le menu en jeu (0.79.0) : son dossier `sta` existe — la reprise se fait quand même.
+        let deja = dossier_du_profil(&mame, "Zoé").join("sta").join("sf2");
+        std::fs::create_dir_all(&deja).unwrap();
+        std::fs::write(deja.join("frogtend.sta"), "menu").unwrap();
+        let (args, notes) = preparer_mame_profil(&mame, "Zoé").unwrap();
+        assert!(notes.is_empty(), "{notes:?}");
+        let profil = dossier_du_profil(&mame, "Zoé");
+        let valeur = |o: &str| args.iter().position(|a| a == o).map(|i| args[i + 1].clone());
+        assert_eq!(valeur("-nvram_directory"), Some(texte(&profil.join("nvram"))));
+        assert_eq!(valeur("-cfg_directory"), Some(texte(&profil.join("cfg"))));
+        assert_eq!(valeur("-state_directory"), Some(texte(&profil.join("sta"))));
+        assert_eq!(valeur("-diff_directory"), Some(texte(&profil.join("diff"))));
+        assert_eq!(valeur("-homepath"), Some(texte(&profil.join("home"))));
+        // La première fois : repris (copié), l'original intact.
+        assert_eq!(std::fs::read_to_string(profil.join("nvram/sf2/eeprom")).unwrap(), "score");
+        assert_eq!(std::fs::read_to_string(profil.join("cfg/default.cfg")).unwrap(), "touches");
+        assert_eq!(std::fs::read_to_string(profil.join("sta/sf2/1.sta")).unwrap(), "etat");
+        assert_eq!(std::fs::read_to_string(profil.join("home/hiscore/sf2.hi")).unwrap(), "hi");
+        assert_eq!(std::fs::read_to_string(profil.join("home/autofire/sf2.cfg")).unwrap(), "tir");
+        assert_eq!(std::fs::read_to_string(profil.join("sta/sf2/frogtend.sta")).unwrap(), "menu", "rien d'écrasé");
+        assert_eq!(std::fs::read_to_string(mame.join("nvram/sf2/eeprom")).unwrap(), "score");
+        // Ensuite, chaque profil a les siens : rien n'est recopié par-dessus.
+        std::fs::write(profil.join("nvram/sf2/eeprom"), "score de Zoé").unwrap();
+        std::fs::write(mame.join("nvram/sf2/eeprom"), "autre").unwrap();
+        preparer_mame_profil(&mame, "Zoé").unwrap();
+        assert_eq!(std::fs::read_to_string(profil.join("nvram/sf2/eeprom")).unwrap(), "score de Zoé");
+        // Le dossier du profil est bien celui que la sauvegarde du profil emporte.
+        assert!(profil.starts_with(mame.join("Profils")));
+    }
+
+    /// RÉEL (lot 0.80.0) : un vrai MAME lancé avec les dossiers d'un profil accentué (« Zoé l'été ») sur sa ligne de
+    /// commande, quitté PROPREMENT après 5 s (il écrit alors cfg et nvram) : tout doit être dans le profil, rien dans
+    /// les dossiers communs de MAME. `FROGTEND_MAME=<MAME d'essai>` ; `FROGTEND_JEU_MAME` (pong) ; `FROGTEND_ROMPATH`
+    /// (lu seulement, pour un jeu à ROM).
+    #[test]
+    #[ignore]
+    fn essai_mame_par_profil() {
+        let mame = PathBuf::from(std::env::var("FROGTEND_MAME").unwrap());
+        let jeu = std::env::var("FROGTEND_JEU_MAME").unwrap_or_else(|_| "pong".into());
+        let rompath = std::env::var("FROGTEND_ROMPATH").unwrap_or_else(|_| "roms".into());
+        let (args, notes) = preparer_mame_profil(&mame, "Zoé l'été").unwrap();
+        println!("ARGUMENTS {args:?} ; NOTES {notes:?}");
+        std::fs::create_dir_all(mame.join("frogtend")).unwrap();
+        std::fs::write(mame.join("frogtend").join("sortie.lua"), "local n = 0\nemu.register_periodic(function() n = n + 1 if n == 300 then manager.machine:exit() end end)\n").unwrap();
+        let mut a = args.clone();
+        a.extend([jeu.clone(), "-rompath".into(), rompath, "-window".into(), "-nomax".into(), "-skip_gameinfo".into(), "-sound".into(), "none".into(), "-autoboot_script".into(), "frogtend\\sortie.lua".into()]);
+        let mut p = std::process::Command::new(mame.join("mame.exe")).args(&a).current_dir(&mame).spawn().unwrap();
+        let debut = std::time::Instant::now();
+        let fin = loop {
+            if let Some(s) = p.try_wait().unwrap() {
+                break Some(s);
+            }
+            if debut.elapsed().as_secs() > 40 {
+                let _ = p.kill();
+                break None;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        };
+        println!("SORTIE {fin:?}");
+        let profil = dossier_du_profil(&mame, "Zoé l'été");
+        let mut pile = vec![profil.clone()];
+        while let Some(x) = pile.pop() {
+            for e in std::fs::read_dir(&x).unwrap().flatten() {
+                if e.path().is_dir() {
+                    pile.push(e.path());
+                } else {
+                    println!("DANS LE PROFIL : {}", e.path().strip_prefix(&profil).unwrap().display());
+                }
+            }
+        }
+        for commun in ["cfg", "nvram", "sta", "diff", "hiscore"] {
+            println!("COMMUN {commun} : {:?}", std::fs::read_dir(mame.join(commun)).map(|l| l.flatten().map(|e| e.file_name()).collect::<Vec<_>>()).ok());
+        }
+        assert!(profil.join("cfg").join(format!("{jeu}.cfg")).is_file(), "le cfg du jeu va dans le profil");
+        assert!(!mame.join("cfg").join(format!("{jeu}.cfg")).exists(), "rien dans le cfg commun");
+    }
+
+    #[test]
+    fn mame_respecte_un_dossier_regle_par_la_personne_et_ne_reprend_pas_l_enorme() {
+        let d = tempfile::tempdir().unwrap();
+        let mame = d.path();
+        std::fs::write(mame.join("mame.ini"), "#\nrompath                   roms\nnvram_directory           \"D:\\Mes scores\"\ncfg_directory             cfg\n").unwrap();
+        assert_eq!(option_mame_ini("nvram_directory   \"D:\\x y\"\n", "nvram_directory").as_deref(), Some("D:\\x y"));
+        // Un disque dur modifié de 300 Mo : pas repris dans le profil (noté), jamais bloquant.
+        std::fs::create_dir_all(mame.join("diff")).unwrap();
+        std::fs::File::create(mame.join("diff").join("jeu.dif")).unwrap().set_len(300 * 1024 * 1024).unwrap();
+        let (args, notes) = preparer_mame_profil(mame, "Seb").unwrap();
+        assert!(!args.contains(&"-nvram_directory".to_string()), "réglé par la personne : laissé");
+        assert!(args.contains(&"-cfg_directory".to_string()), "valeur d'origine : par profil");
+        assert!(notes.iter().any(|n| n.contains("nvram_directory")) && notes.iter().any(|n| n.contains("trop gros")), "{notes:?}");
+        assert!(!dossier_du_profil(mame, "Seb").join("diff").join("jeu.dif").exists());
+        assert!(mame.join("diff").join("jeu.dif").exists());
+        // Trop gros : MAME garde SON dossier pour cette option (jamais un dossier vide à la place).
+        assert!(!args.contains(&"-diff_directory".to_string()));
+        // Sans `mame.ini` à la racine, celui de `ini\` compte : respecté.
+        std::fs::remove_file(mame.join("mame.ini")).unwrap();
+        std::fs::create_dir_all(mame.join("ini")).unwrap();
+        std::fs::write(mame.join("ini").join("mame.ini"), "cfg_directory   D:\\Mes touches\n").unwrap();
+        let (args, _) = preparer_mame_profil(mame, "Seb").unwrap();
+        assert!(!args.contains(&"-cfg_directory".to_string()));
+        // Un nom de profil que la ligne de MAME ne porterait pas : dossiers communs, noté.
+        let (args, notes) = preparer_mame_profil(mame, "50%;x").unwrap();
+        assert!(args.is_empty() && !notes.is_empty());
     }
 
     #[test]

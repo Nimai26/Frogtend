@@ -7,6 +7,28 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- **Lot 0.80.0 — MAME : les sauvegardes des jeux d'arcade par profil** (Seb 19/10 : « ok enchaîne » après la 0.79.0 ;
+  relevé par l'expert lancement pendant le lot 0.79.0 : `nvram\` (meilleurs scores, réglages de la borne) et les
+  autres données de MAME ne sont ni par profil ni dans la sauvegarde — règle « les sauvegardes sont sacrées »).
+  Sources de MAME 0.289 lues (`emuopts.cpp/.h`, `plugins/hiscore/init.lua` + `plugin.json`) : `cfg_directory`,
+  `nvram_directory`, `state_directory`, `diff_directory`, `homepath` (hiscore → `<homepath>/hiscore`, greffon
+  désactivé d'office). Fait : `preparer_mame_profil` (options sur la LIGNE DE COMMANDE vers `Profils\<profil>\…`,
+  rien d'écrit dans mame.ini ; option réglée par la personne = respectée et journalisée ; reprise COPIÉE la 1re fois,
+  sans écraser, liens ignorés, plafond 256 Mo) branché dans `preparer_emulateur` (arcade et machines de salon). La
+  sauvegarde/restauration du profil couvre déjà `Profils\<profil>\`. ✅ ESSAI RÉEL (MAME 0.289 officiel, profil
+  « Zoé l'été ») : Pong lancé et quitté proprement → `cfg\pong.cfg` + `default.cfg` DANS le profil, aucun dossier
+  commun créé. NON vérifié : l'écriture de la nvram en vrai (gridlee ne s'est pas fermé seul : avertissement de MAME
+  sur un romset de 2022 ?) — à essayer par Seb.
+  Relecture de l'expert lancement (aucun bloquant) appliquée : reprise marquée PAR OPTION une fois réussie
+  (`.frogtend-reprise-<dossier>`) — un `sta` créé par « Sauver » (0.79.0) n'empêche plus de reprendre les états F7 ;
+  trop gros ou copie interrompue = MAME garde SON dossier commun pour cette option (jamais un dossier vide), nouvel
+  essai au lancement suivant ; `homepath` reprend aussi autofire, inputmacro, timer (sources 0.289 vérifiées) ;
+  `ini\mame.ini` lu si la racine n'en a pas ; un nom de profil avec « % », « ; », « " » ou « autoboot » = dossiers
+  communs, noté. Tests 394 cœur.
+  Livraison arrêtée par un test rouge (`un_jeu_lance_par_un_intermediaire…`) : VRAI défaut trouvé et corrigé
+  (lanceur fini avant le 1er relevé → heure « 0 » → vieux orphelins adoptés ; désormais l'instant du lancement −5 s),
+  test ajouté, leçon écrite.
+
 - **Lot 0.78.0 — Patchs PS3 par Firehouse** (contrat 1.18 reçu le 19/10 16 h 37 ; ✅ Seb 19/10 : « Patchs PS3
   d'abord », MAME juste après). Fiche d'un jeu PS3 : ses patchs (par numéro de série + version du jeu), activés d'un
   clic dans `patch_config.yml` (copie de sauvegarde avant) ; `patch.yml` tenu à jour depuis Firehouse (sha256 vérifié

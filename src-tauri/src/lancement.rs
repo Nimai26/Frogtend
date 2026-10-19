@@ -184,7 +184,13 @@ impl Suivi {
         let mut systeme = System::new();
         let r = Pid::from_u32(racine);
         systeme.refresh_processes(ProcessesToUpdate::Some(&[r]), true);
-        let debut = systeme.process(r).map(|p| p.start_time()).unwrap_or(0);
+        // Le lanceur déjà fermé au premier relevé (un .bat qui lance le jeu puis rend la main, machine chargée) : son
+        // heure est inconnue. Prendre alors l'instant du lancement (moins une marge) : un enfant de la partie est
+        // forcément né après — jamais « 0 », qui ferait prendre pour un enfant tout vieux processus orphelin dont le
+        // parent mort portait le même numéro (vu le 19/10 : partie jamais finie, test rouge pendant la livraison).
+        let debut = systeme.process(r).map(|p| p.start_time()).unwrap_or_else(|| {
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0).saturating_sub(5)
+        });
         let vus = std::collections::HashMap::from([(r, debut)]);
         Suivi { systeme, racine: r, dossiers, vus }
     }
@@ -248,6 +254,19 @@ mod tests {
         assert!(!descend(&vus, &p(100), 1600, Some(1500)));
         assert!(descend(&vus, &p(100), 1200, Some(1500)), "né avant le nouveau venu : de l'ancien parent");
         assert!(!descend(&vus, &p(300), 1600, None), "parent inconnu");
+    }
+
+    #[test]
+    fn un_lanceur_deja_ferme_n_adopte_jamais_un_vieil_orphelin() {
+        // Le lanceur a fini avant le premier relevé (sous charge) : son heure n'est pas « 0 » mais l'instant du lancement.
+        let s = Suivi::nouveau(u32::MAX - 7, vec![]);
+        let maintenant = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        let t = s.vus[&s.racine];
+        assert!(t > 0 && t + 10 >= maintenant && t <= maintenant, "{t} / {maintenant}");
+        // Un vieux processus orphelin (né il y a une heure) dont le parent mort portait ce numéro : pas de la partie.
+        assert!(!descend(&s.vus, &s.racine, maintenant - 3600, None));
+        // Un enfant né après le lancement : de la partie.
+        assert!(descend(&s.vus, &s.racine, maintenant, None));
     }
 
     #[test]

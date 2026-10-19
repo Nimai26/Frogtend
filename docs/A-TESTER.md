@@ -48,6 +48,13 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Les scores d'arcade de chacun (0.80.0)
+- [ ] Un jeu d'arcade qui garde ses meilleurs scores : fais un score, quitte, relance : le score est là.
+- [ ] Change de profil, lance le même jeu : pas le score de l'autre (au tout premier lancement, le profil reçoit une
+      copie de ce que MAME avait avant).
+- [ ] Dans le dossier de MAME : `Profils\<ton profil>
+vram` et `cfg` contiennent le jeu.
+
 ## Sauver dans les jeux d'arcade (0.79.0)
 - [ ] Un jeu d'arcade (MAME) ▸ menu en jeu : 💾 Sauver, 📂 Charger, 🔄 Recommencer sont là.
 - [ ] 💾 Sauver, joue un peu, 📂 Charger : tu reviens au moment sauvé.
