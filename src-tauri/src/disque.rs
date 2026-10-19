@@ -940,9 +940,77 @@ fn empreinte_playstation(p: &Piste, cle: &str, prefixe: &str, ps1: bool) -> Resu
     Ok(Some(m.finalize().iter().map(|b| format!("{b:02x}")).collect()))
 }
 
+// --- Xbox (xemu) : xemu n'accepte qu'une image XISO (doc officielle, xemu.app/docs/disc-images, 19/10) ; une ISO
+// Redump (partition vidéo puis partition du jeu, ~7 Go) ne se lance pas. Relevé dans le code de xdvdfs
+// (`xdvdfs-core/src/layout/volume.rs`) : descripteur de volume de 0x800 octets au secteur 32, magie
+// `MICROSOFT*XBOX*MEDIA` au début ET à la fin (0x7ec). Dans une Redump, la partition du jeu commence à 387 Mio. ---
+
+/// Ce qu'est une image de jeu Xbox pour xemu.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ImageXbox {
+    /// Lisible par xemu.
+    Xiso,
+    /// ISO Redump : à convertir en XISO avant de jouer.
+    Redump,
+    /// Une archive (.zip, .7z, .rar) : à décompresser avant de jouer.
+    Archive,
+    /// Autre chose, ou illisible : on laisse xemu juger.
+    Inconnue,
+}
+
+/// Reconnaît une image Xbox en lisant au plus deux descripteurs de 0x800 octets (jamais le fichier entier).
+pub fn image_xbox(chemin: &Path) -> ImageXbox {
+    const MAGIE: &[u8; 0x14] = b"MICROSOFT*XBOX*MEDIA";
+    const DESCRIPTEUR: u64 = 32 * 2048;
+    const PARTITION_REDUMP: u64 = 387 * 1024 * 1024;
+    let ext = chemin.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    if matches!(ext.as_str(), "zip" | "7z" | "rar") {
+        return ImageXbox::Archive;
+    }
+    let Ok(mut f) = std::fs::File::open(chemin) else { return ImageXbox::Inconnue };
+    let volume = |f: &mut std::fs::File, pos: u64| {
+        let b = lire_a(f, pos, 0x800);
+        &b[..0x14] == MAGIE && &b[0x7ec..] == MAGIE
+    };
+    if volume(&mut f, DESCRIPTEUR) {
+        ImageXbox::Xiso
+    } else if volume(&mut f, PARTITION_REDUMP + DESCRIPTEUR) {
+        ImageXbox::Redump
+    } else {
+        ImageXbox::Inconnue
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn une_image_xbox_est_reconnue_xiso_redump_archive_ou_inconnue() {
+        let d = tempfile::tempdir().unwrap();
+        let ecrire = |nom: &str, pos: u64, longueur: u64, entiere: bool| {
+            use std::io::Write;
+            let p = d.path().join(nom);
+            let mut f = std::fs::File::create(&p).unwrap();
+            // Fichier creux : 7 Go sans rien écrire sur le disque.
+            f.set_len(longueur).unwrap();
+            f.seek(SeekFrom::Start(pos)).unwrap();
+            f.write_all(b"MICROSOFT*XBOX*MEDIA").unwrap();
+            if entiere {
+                f.seek(SeekFrom::Start(pos + 0x7ec)).unwrap();
+                f.write_all(b"MICROSOFT*XBOX*MEDIA").unwrap();
+            }
+            p
+        };
+        assert_eq!(image_xbox(&ecrire("jeu.iso", 0x10000, 1 << 30, true)), ImageXbox::Xiso);
+        assert_eq!(image_xbox(&ecrire("redump.iso", 0x1831_0000, 7 << 30, true)), ImageXbox::Redump);
+        // Une seule des deux magies : pas un descripteur de volume.
+        assert_eq!(image_xbox(&ecrire("abime.iso", 0x10000, 1 << 20, false)), ImageXbox::Inconnue);
+        // Trop court pour la position lue : inconnu, sans plantage.
+        assert_eq!(image_xbox(&ecrire("court.iso", 0, 100, false)), ImageXbox::Inconnue);
+        assert_eq!(image_xbox(&d.path().join("absent.iso")), ImageXbox::Inconnue);
+        assert_eq!(image_xbox(&d.path().join("Halo.ZIP")), ImageXbox::Archive);
+    }
 
     /// Un petit disque ISO 9660 : SYSTEM.CNF et le programme de démarrage, en secteurs de 2048 ou bruts (MODE2/2352).
     fn disque(brut: bool) -> (Vec<u8>, Vec<u8>) {

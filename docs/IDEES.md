@@ -54,7 +54,7 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
 - (19/10, expert lancement, contrat 1.16) ScummVM n'est pas branché : un jeu ScummVM se lance par son exécutable
   (prêt à jouer) ; s'il passait un jour par un émulateur, `%rom%` doit être le DOSSIER du jeu (`-p "%rom%"`), pas le
   fichier — à faire avec un test avant de promettre ScummVM.
-- (19/10, Firehouse) xemu exige une image XISO : prévenir la personne AVANT de lancer un .iso Redump d'un jeu Xbox (la
+- (0.75.0 : le « prévenir » est fait ; RESTE la conversion `xdvdfs pack`, avec accord et taille annoncée) (19/10, Firehouse) xemu exige une image XISO : prévenir la personne AVANT de lancer un .iso Redump d'un jeu Xbox (la
   `note` du conseil Xbox le dit) ; proposer plus tard une conversion (`xdvdfs pack`) avec son accord. Aucun jeu Xbox au
   stock au 19/10.
 - (19/10, expert lancement) La dépendance JavaScript `@tauri-apps/plugin-dialog` n'est plus importée (les fenêtres de

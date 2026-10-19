@@ -48,6 +48,12 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Jeux Xbox : prévenu avant de lancer (0.75.0)
+- [ ] (Quand un jeu Xbox sera là : aucun au stock ni chez toi au 19/10.) Une image XISO se lance dans xemu comme avant.
+- [ ] Une image « Redump » (≈ 7 Go) : ▶ Jouer ouvre une fenêtre qui explique pourquoi elle ne se lance pas ; xemu
+      ne s'ouvre pas. Pareil depuis Taodbox : la fenêtre se ferme à la manette.
+- [ ] Un jeu Xbox encore en .zip : la fenêtre renvoie au bouton « 🗜 Décompresser pour jouer ».
+
 ## Image et fluidité d'un jeu PS3 (0.74.0)
 - [ ] Asura's Wrath ▸ ⚙ Gérer le jeu ▸ 🎨 Image et fluidité : les 5 lignes (la 6e, netteté, apparaît avec
       « Plus net »), chacune « — comme RPCS3 ».

@@ -303,6 +303,10 @@ export async function jouer(id: number, emulateur?: string, version?: string) {
         if (!(await preparerPourJouer(j.plateforme, 1))) return;
       } else if (estErreurCoeur(e) && e.motif.startsWith('Choisis d')) {
         if (!(await choisirLanceur(id))) return;
+      } else if (estErreurCoeur(e) && e.sorte === 'prevenir') {
+        // Refusé avant de lancer, avec ce qu'il faut faire : expliqué dans une fenêtre, pas un message qui passe.
+        await informer(`▶ « ${j?.titre ?? 'Le jeu'} » ne peut pas encore se lancer`, e.motif);
+        return;
       } else {
         toast(`Impossible de lancer le jeu : ${motifDuRefus(e)}`, 'erreur');
         return;

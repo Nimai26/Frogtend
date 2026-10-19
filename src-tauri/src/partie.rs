@@ -90,7 +90,30 @@ fn dossiers_de_raccourcis() -> Vec<PathBuf> {
         .collect()
 }
 
+/// L'installation telle que CETTE partie la lance : une autre version (région) pour cette partie seulement.
+fn installation_de_la_partie(j: &JeuPc, version: Option<&str>) -> Resultat<Installation> {
+    let mut i = j.installation.clone().ok_or_else(|| Erreur::Refus("Installe d'abord le jeu.".into()))?;
+    if let Some(v) = version {
+        let v = i.versions.iter().find(|x| x.chemin.eq_ignore_ascii_case(v)).ok_or_else(|| Erreur::Refus("Cette version n'est pas celle de ce jeu.".into()))?;
+        let p = Path::new(&v.chemin);
+        i.dossier = p.parent().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
+        i.fichier_du_jeu = p.file_name().map(|n| n.to_string_lossy().to_string());
+    }
+    Ok(i)
+}
+
 impl Noyau {
+    /// Le fichier qu'un émulateur recevra pour cette partie (`None` : un lanceur choisi, ou rien à passer) — le même
+    /// choix que [`Noyau::jouer`].
+    pub(crate) async fn fichier_pour_l_emulateur(&self, id: i64, version: Option<&str>) -> Resultat<Option<PathBuf>> {
+        let j = self.jeu_visible(id).await?;
+        let i = installation_de_la_partie(&j, version)?;
+        Ok(match (&i.lanceur, &i.fichier_du_jeu) {
+            (None, Some(f)) => Some(Path::new(&i.dossier).join(f)),
+            _ => None,
+        })
+    }
+
     /// Un jeu du PC, visible par le profil ouvert.
     pub(crate) async fn jeu_visible(&self, id: i64) -> Resultat<JeuPc> {
         let s = self.session().await?;
@@ -402,14 +425,7 @@ impl Noyau {
     pub async fn jouer(&self, id: i64, emulateur: Option<(String, String)>, version: Option<&str>) -> Resultat<(u32, Vec<PathBuf>, bool)> {
         let _occupe = self.occuper(id);
         let j = self.jeu_visible(id).await?;
-        let mut i = j.installation.clone().ok_or_else(|| Erreur::Refus("Installe d'abord le jeu.".into()))?;
-        // Une autre version (région) pour CETTE partie seulement.
-        if let Some(v) = version {
-            let v = i.versions.iter().find(|x| x.chemin.eq_ignore_ascii_case(v)).ok_or_else(|| Erreur::Refus("Cette version n'est pas celle de ce jeu.".into()))?;
-            let p = Path::new(&v.chemin);
-            i.dossier = p.parent().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
-            i.fichier_du_jeu = p.file_name().map(|n| n.to_string_lossy().to_string());
-        }
+        let i = installation_de_la_partie(&j, version)?;
         self.pause_mame.store(false, std::sync::atomic::Ordering::SeqCst);
         let (lanceur, dossiers) = match (&i.lanceur, &i.fichier_du_jeu) {
             (Some(l), _) => (l.clone(), vec![PathBuf::from(&i.dossier)]),

@@ -56,6 +56,10 @@ pub enum Erreur {
     /// n'a été gardé ni rendu. Pas un échec à montrer : l'interface l'ignore.
     #[error("{0}")]
     Perimee(String),
+    /// Refusé avant d'agir parce que la personne doit d'abord savoir quelque chose (une image Xbox que xemu ne lit
+    /// pas…) : l'interface l'explique dans une fenêtre, pas dans un simple message qui passe.
+    #[error("{0}")]
+    Prevenir(String),
 }
 
 impl Serialize for Erreur {
@@ -77,6 +81,7 @@ impl Serialize for Erreur {
             Erreur::Disque(_) => "disque",
             Erreur::Fusionne { .. } => "fusionne",
             Erreur::Perimee(_) => "perimee",
+            Erreur::Prevenir(_) => "prevenir",
         };
         let mut m = s.serialize_map(None)?;
         m.serialize_entry("sorte", sorte)?;
@@ -100,6 +105,8 @@ mod tests_forme {
         assert_eq!(v["sorte"], "jeton_refuse");
         let v = serde_json::to_value(Erreur::Fusionne { motif: "réuni à la fiche 324".into(), nouveau: 324 }).unwrap();
         assert_eq!(v, serde_json::json!({"sorte": "fusionne", "motif": "réuni à la fiche 324", "nouveau": 324}));
+        let v = serde_json::to_value(Erreur::Prevenir("à convertir".into())).unwrap();
+        assert_eq!(v, serde_json::json!({"sorte": "prevenir", "motif": "à convertir"}));
     }
 }
 

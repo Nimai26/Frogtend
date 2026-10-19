@@ -808,6 +808,39 @@ pub struct Commandes {
     pub reference: Option<String>,
 }
 
+/// Une image Xbox que xemu ne lit pas (ISO Redump, archive) : refusée avec ce qu'il faut faire. Lue hors du fil
+/// asynchrone (un disque en veille peut tarder) ; illisible ou d'une autre forme : on laisse xemu juger. Le bouton
+/// « Décompresser pour jouer » n'est cité que s'il apparaîtra (archive que Frogtend sait ouvrir, avec une image dedans).
+async fn verifier_image_xbox(fichier: std::path::PathBuf, autre_version: bool) -> Resultat<()> {
+    use crate::disque::ImageXbox;
+    let nom = fichier.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let (image, decompressable) = tauri::async_runtime::spawn_blocking(move || {
+        let image = crate::disque::image_xbox(&fichier);
+        // Le bouton ne travaille que sur la version habituelle du jeu.
+        let d = !autre_version && image == ImageXbox::Archive && crate::decompression::examiner(&fichier).ok().flatten().is_some();
+        (image, d)
+    })
+    .await
+    .unwrap_or((ImageXbox::Inconnue, false));
+    match image {
+        ImageXbox::Redump => Err(Erreur::Prevenir(format!(
+            "« {nom} » est une copie complète du disque Xbox, dans une forme que l'émulateur de la Xbox ne sait pas lire : \
+             le jeu ne se lancerait pas. Tes fichiers restent intacts.\n\nIl faut une version de ce jeu préparée pour l'émulateur (une image \
+             « XISO »). Frogtend ne sait pas encore la préparer lui-même : c'est prévu."
+        ))),
+        ImageXbox::Archive if decompressable => Err(Erreur::Prevenir(format!(
+            "« {nom} » est encore compressé : l'émulateur de la Xbox ne sait pas l'ouvrir.\n\nDécompresse-le d'abord : sur \
+             le bureau de Frogtend (hors Taodbox), sélectionne le jeu dans la ludothèque et choisis « 🗜 Décompresser \
+             pour jouer » dans son panneau."
+        ))),
+        ImageXbox::Archive => Err(Erreur::Prevenir(format!(
+            "« {nom} » est encore compressé : l'émulateur de la Xbox ne sait pas l'ouvrir, et Frogtend ne sait pas le \
+             décompresser ici lui-même. Tes fichiers restent intacts."
+        ))),
+        ImageXbox::Xiso | ImageXbox::Inconnue => Ok(()),
+    }
+}
+
 /// Lance le jeu, puis le suit jusqu'à sa fermeture (événements « partie »).
 #[tauri::command]
 // Une commande de l'interface : chaque réglage du lancement est un argument nommé (Tauri).
@@ -835,6 +868,12 @@ pub async fn jeu_jouer(
             // MAME vient du paquet de Firehouse, pas du catalogue : reconnu par son programme.
             if id_emulateur.is_none() && nom.starts_with("mame") && nom.ends_with(".exe") {
                 id_emulateur = Some("mame".into());
+            }
+            // xemu ne lit qu'une XISO : dit AVANT de rien préparer (son profil copie un disque dur de plusieurs Go).
+            if id_emulateur.as_deref() == Some("xemu") {
+                if let Some(f) = noyau.fichier_pour_l_emulateur(id, version.as_deref()).await? {
+                    verifier_image_xbox(f, version.is_some()).await?;
+                }
             }
             Some(preparer_emulateur(&app, &noyau, &plateforme, &programme, &ligne, &commandes.unwrap_or_default()).await?)
         }

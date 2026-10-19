@@ -323,6 +323,19 @@ d'abord :
   (`unwrap_or(false)`). Relecture de l'expert lancement : texte corrigé (début de partie plus lent, pas des saccades)
   et « comment le rétablir » ajouté. NON vérifié : l'onglet exact de RPCS3 où se trouve la case (le texte ne le nomme
   pas).
+- **0.75.0** (19/10) — ✅ Seb 19/10 (lot choisi : « Xbox : prévenir avant »). Doc officielle xemu
+  (xemu.app/docs/disc-images) : XISO exigée, Redump incompatible, conversion `xdvdfs pack`. Code xdvdfs
+  (`xdvdfs-core/src/layout/volume.rs`) : descripteur 0x800 octets au secteur 32, magie `MICROSOFT*XBOX*MEDIA` au début
+  ET à 0x7ec ; partition du jeu d'une Redump à 387 Mio. Cœur : `disque::image_xbox` (2 lectures de 0x800 octets au
+  plus) ; `jeu_jouer` refuse AVANT `preparer_emulateur` et `marquer_occupe` (rien écrit, rien copié) quand l'émulateur
+  est xemu et l'image Redump ou une archive ; inconnue/illisible = lancée. Le fichier contrôlé est celui de CETTE
+  partie (`installation_de_la_partie`, commun avec `jouer`). Nouvelle sorte d'erreur `prevenir` → fenêtre maison
+  `informer`. Choix sans question à Seb (avis de l'expert) : une archive pour xemu est refusée aussi, avec renvoi vers
+  « 🗜 Décompresser pour jouer ». Conversion en XISO : plus tard (IDEES), avec accord. NON vérifié : aucun jeu Xbox
+  chez Seb ni au stock (tests sur fichiers creux seulement). Relectures (lancement + interface) appliquées : le
+  bouton n'est cité que s'il apparaîtra (`decompression::examiner` ; pas pour un .rar ni pour une autre version que
+  l'habituelle), avec le chemin (panneau de la ludothèque, hors Taodbox) ; « xemu » → « l'émulateur de la Xbox » ;
+  « écran noir » (non vérifié) → « ne se lancerait pas » ; « tes fichiers restent intacts ».
 
 - **0.73.0** (19/10) — Durcissement, étapes 5 à 7 (fin du lot). Écritures dans les dossiers d'émulateurs :
   installation seulement dans `dossierEmulateurs`/`dossierOutils` réglé (`garde::dossier_de_base_admis`, créé s'il

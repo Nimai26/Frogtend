@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.75.0 — Les jeux Xbox : prévenu avant de lancer
+
+- Avant de lancer un jeu Xbox dans l'émulateur xemu, Frogtend regarde la forme de son image disque. xemu ne lit
+  qu'une image « XISO » : une copie complète du disque (image « Redump ») ne se lancerait pas. Frogtend te
+  l'explique dans une fenêtre au lieu de lancer pour rien (en Taodbox aussi, et elle se ferme à la manette).
+- Un jeu Xbox encore compressé (.zip, .7z, .rar) : Frogtend te dit de le décompresser d'abord. Quand il sait le
+  faire, il te dit où : sélectionne le jeu dans la ludothèque, puis « 🗜 Décompresser pour jouer » dans son panneau.
+- Frogtend ne lit que deux petits morceaux de l'image (quelques kilo-octets), jamais le fichier entier, et n'écrit
+  rien.
+
 ## 0.74.1 — Un avertissement pour les jeux PS3
 
 - 🎨 Image et fluidité prévient si RPCS3 est réglé pour oublier les effets déjà préparés (son « cache de shaders » est
