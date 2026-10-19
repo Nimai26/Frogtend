@@ -48,6 +48,12 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Sauver dans les jeux d'arcade (0.79.0)
+- [ ] Un jeu d'arcade (MAME) ▸ menu en jeu : 💾 Sauver, 📂 Charger, 🔄 Recommencer sont là.
+- [ ] 💾 Sauver, joue un peu, 📂 Charger : tu reviens au moment sauvé.
+- [ ] 🔄 Recommencer : le jeu redémarre ; le menu marche encore ensuite (pause, sauver).
+- [ ] Un autre profil de la maison : son 📂 Charger dit « aucune sauvegarde rapide » (chacun la sienne).
+
 ## Les patchs PS3 (0.78.0)
 - [ ] Asura's Wrath ▸ ⚙ Gérer ▸ 🩹 Retouches du jeu : 6 retouches ; le texte dit que 2 autres (la démo) ne sont pas
       montrées.

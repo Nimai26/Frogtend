@@ -33,6 +33,19 @@
   sous un autre nom puis échangé (MAME efface après une écriture ratée) ; témoin « vivant » plus tard (0.79.1).
   ✅ Seb 19/10 : essai réel avec MAME 0.289 officiel (GitHub mamedev, 87,6 Mo, dans `D:\Frogtend\.essai-mame`, effacé
   après) ; un jeu qui gère mal les sauvegardes d'état (`supports_save` faux) : Sauver/Charger CACHÉS, Recommencer reste.
+  Fait : script Lua (commande numérotée lue puis effacée, `pcall`, `apres_commande` = jamais de nouvelle pause tant
+  que le témoin du menu qui se ferme existe ; `frogtend\jeu` = nom court + supports_save) ; `commande_mame` (écrite
+  puis renommée, verbes fermés, jamais deux lignes) ; `garder_etat_mame` (taille stable, sinon la bonne intacte) ;
+  `action_mame` : commande AVANT de cacher le menu ; menu filtré par `jeu_mame`. ✅ ESSAI RÉEL (MAME 0.289 officiel,
+  sha256 = celui publié par mamedev, dans `.essai-mame`) : Pong « sauve » ; Sauver ×2 → `Profils\Sébastien\sta\pong  frogtend.sta` 10 Ko (accents OK), précédente gardée ; Charger et Recommencer lus, MAME vivant ; Sauver après
+  Recommencer OK (le script survit). NON vérifié : que Charger ramène visiblement au moment sauvé (à voir par Seb) ;
+  le témoin « vivant » (0.79.1).
+  Relecture de l'expert lancement (aucun bloquant) appliquée : un échec de sauvegarde ROUVRE le menu (jeu en pause,
+  message visible) au lieu d'un message dans une fenêtre cachée ; la bonne sauvegarde reprend sa place si la nouvelle
+  ne se pose pas ; la sauvegarde du profil saute `frogtend-nouveau.sta` et un fichier disparu (au lieu de s'arrêter) ;
+  fichiers de la commande hors du fil asynchrone ; effacement du témoin réessayé ; `.essai-*/` ignoré par git ;
+  commentaire sur la pause de la personne (MAME repart après une commande). ✅ 2e ESSAI RÉEL (chemin du menu) : menu
+  ouvert → « pause » ; Sauver puis menu fermé → « reprise », jamais une nouvelle pause. MAME d'essai effacé.
 
 - **Lot 0.77.0 — Manette → clavier, plus simple** (Seb 19/10 : « ok enchaîne » après la 0.76.0 ; lot pris dans IDEES,
   expert interface 16/10, déjà proposé à Seb dans le choix du lot précédent) : choisir une touche en l'APPUYANT au

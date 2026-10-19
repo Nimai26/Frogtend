@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.79.0 — Sauver ta partie dans les jeux d'arcade
+
+- Pendant un jeu d'arcade (MAME), le menu en jeu propose enfin **💾 Sauver**, **📂 Charger** et **🔄 Recommencer**,
+  comme pour les autres consoles.
+- La sauvegarde rapide est la TIENNE : rangée dans ton profil (chaque personne de la maison a la sienne), et
+  sauvegardée avec lui. Une sauvegarde ratée ne remplace jamais la bonne ; la précédente est gardée.
+- Un jeu qui gère mal les sauvegardes (MAME le dit lui-même) : Sauver et Charger ne sont pas proposés, pour ne jamais
+  te faire perdre une partie. Recommencer reste.
+
 ## 0.78.0 — Les patchs de tes jeux PS3
 
 - ⚙ Gérer le jeu ▸ **🩹 Retouches du jeu (patchs)**, pour un jeu PS3 lancé par RPCS3 : les retouches connues pour

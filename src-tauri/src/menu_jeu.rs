@@ -117,7 +117,17 @@ pub fn etat(p: &PartieEnCours) -> EtatMenu {
         titre: p.titre.clone(),
         plateforme: p.plateforme.clone(),
         emulateur: p.emulateur.clone(),
-        actions: crate::pilotage::actions(e).into_iter().map(nom_action).collect(),
+        actions: crate::pilotage::actions(e)
+            .into_iter()
+            // Un jeu de MAME qui ne gère pas les sauvegardes d'état (dit par le script au démarrage) : ni sauver ni
+            // charger — une sauvegarde peu fiable serait une partie perdue (✅ Seb 19/10).
+            .filter(|a| {
+                e != "mame"
+                    || !matches!(a, crate::pilotage::Action::SauverEtat | crate::pilotage::Action::ChargerEtat)
+                    || p.dossier_emulateur.as_deref().and_then(|d| crate::pilotage::jeu_mame(std::path::Path::new(d))).is_some_and(|(_, sauve)| sauve)
+            })
+            .map(nom_action)
+            .collect(),
         en_pause: crate::pilotage::se_met_en_pause(e) && !p.figer_emulateur,
         taodbox: false,
     }
@@ -441,6 +451,20 @@ mod tests {
         assert_eq!(crate::pilotage::commande_retroarch(crate::pilotage::Action::ImagesParSeconde), "FPS_TOGGLE");
         assert_eq!(crate::pilotage::commande_retroarch(crate::pilotage::Action::Muet), "MUTE");
         assert!(action_de("formater").is_none());
+    }
+
+    #[test]
+    fn mame_ne_propose_sauver_et_charger_que_pour_un_jeu_qui_les_gere() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join(crate::pilotage::DOSSIER_MAME)).unwrap();
+        let p = PartieEnCours { dossier_emulateur: Some(d.path().to_string_lossy().into()), ..partie(Some("mame")) };
+        // Le script n'a encore rien dit : par prudence, ni sauver ni charger.
+        assert_eq!(etat(&p).actions, ["reset"]);
+        std::fs::write(d.path().join(crate::pilotage::JEU_MAME), "pong|ne-sauve-pas").unwrap();
+        assert_eq!(etat(&p).actions, ["reset"]);
+        std::fs::write(d.path().join(crate::pilotage::JEU_MAME), "sf2|sauve").unwrap();
+        assert_eq!(etat(&p).actions, ["reset", "sauver", "charger"]);
+        assert!(etat(&p).en_pause);
     }
 
     #[test]

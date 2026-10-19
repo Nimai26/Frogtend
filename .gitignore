@@ -12,6 +12,8 @@ src-tauri/gen/
 .env.*
 
 # Divers
+# Essais réels : émulateurs téléchargés, copies (effacés après chaque essai)
+.essai-*/
 *.log
 .DS_Store
 Thumbs.db

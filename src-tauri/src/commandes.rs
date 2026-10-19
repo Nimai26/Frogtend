@@ -1482,17 +1482,70 @@ pub async fn menu_jeu_reprendre(app: AppHandle) -> Resultat<()> {
 /// Une action du menu (`reset`, `disque`, `sauver`, `charger` ; options : `fps`, `rapide`, `capture`, `muet`) : le jeu
 /// reprend la main et reçoit l'ordre.
 #[tauri::command]
-pub async fn menu_jeu_action(app: AppHandle, action: String) -> Resultat<()> {
+pub async fn menu_jeu_action(app: AppHandle, noyau: State<'_, Noyau>, action: String) -> Resultat<()> {
     let a = crate::menu_jeu::action_de(&action).ok_or_else(|| Erreur::Refus(format!("Action inconnue : {action}.")))?;
     let p = app
         .state::<crate::menu_jeu::MenuJeu>()
         .partie()
         .ok_or_else(|| Erreur::Introuvable("Aucune partie en cours.".into()))?;
     let e = p.emulateur.clone().ok_or_else(|| Erreur::Refus("Ce jeu ne se pilote pas depuis le menu.".into()))?;
+    if e == "mame" {
+        return action_mame(&app, &noyau, p.dossier_emulateur.as_deref(), a).await;
+    }
     cacher_menu(&app);
     tauri::async_runtime::spawn_blocking(move || crate::menu_jeu::agir(&e, &crate::lancement::processus_de_la_partie(p.pid), a))
         .await
         .map_err(|_| Erreur::Disque("L'action s'est arrêtée brutalement.".into()))?
+}
+
+/// MAME : sauver, charger ou recommencer par son script Lua (lot 0.79.0). La commande part AVANT que le menu se
+/// ferme (sinon le jeu tournerait quelques images avant la sauvegarde) ; la sauvegarde rapide est celle du PROFIL
+/// (`Profils\<profil>\sta\<jeu>\frogtend.sta`), écrite sous un autre nom puis mise à la place une fois complète.
+async fn action_mame(app: &AppHandle, noyau: &Noyau, dossier: Option<&str>, a: crate::pilotage::Action) -> Resultat<()> {
+    use crate::pilotage::Action;
+    let dossier = std::path::PathBuf::from(dossier.ok_or_else(|| Erreur::Refus("MAME est introuvable.".into()))?);
+    let (nom, sauve) = crate::pilotage::jeu_mame(&dossier).ok_or_else(|| Erreur::Refus("MAME n'a pas encore dit quel jeu tourne : réessaie dans un instant.".into()))?;
+    let profil = profil_ouvert(noyau).await?;
+    let etats = crate::pilotage::dossier_etats_mame(&dossier, &profil.nom, &nom);
+    if matches!(a, Action::SauverEtat | Action::ChargerEtat) && !sauve {
+        return Err(Erreur::Refus("Ce jeu ne gère pas bien les sauvegardes : Frogtend ne les propose pas.".into()));
+    }
+    // Les fichiers hors du fil asynchrone (la commande peut attendre que le script lâche l'ancienne).
+    let (d, e) = (dossier.clone(), etats.clone());
+    tauri::async_runtime::spawn_blocking(move || -> Resultat<()> {
+        match a {
+            Action::Reset => crate::pilotage::commande_mame(&d, "reset", None),
+            Action::SauverEtat => {
+                std::fs::create_dir_all(&e)?;
+                let _ = std::fs::remove_file(e.join(crate::pilotage::ETAT_MAME_NOUVEAU));
+                crate::pilotage::commande_mame(&d, "save", Some(&e.join(crate::pilotage::ETAT_MAME_NOUVEAU)))
+            }
+            Action::ChargerEtat => {
+                let etat = e.join(crate::pilotage::ETAT_MAME);
+                if !etat.is_file() {
+                    return Err(Erreur::Refus("Aucune sauvegarde rapide pour ce jeu : sauve d'abord.".into()));
+                }
+                crate::pilotage::commande_mame(&d, "load", Some(&etat))
+            }
+            _ => Err(Erreur::Refus("MAME ne sait pas le faire depuis le menu.".into())),
+        }
+    })
+    .await
+    .map_err(|_| Erreur::Disque("L'action s'est arrêtée brutalement.".into()))??;
+    cacher_menu(app);
+    if a == Action::SauverEtat {
+        let r = tauri::async_runtime::spawn_blocking(move || crate::pilotage::garder_etat_mame(&etats, std::time::Duration::from_secs(5)))
+            .await
+            .map_err(|_| Erreur::Disque("La sauvegarde s'est arrêtée brutalement.".into()))?;
+        noyau.journaliser(&format!("MAME : sauvegarde rapide de {nom} {}", if r.is_ok() { "gardée" } else { "ratée (l'ancienne est intacte)" }));
+        if r.is_err() {
+            // Le menu est caché : il se rouvre (le jeu se remet en pause) pour que l'échec se VOIE.
+            let a2 = app.clone();
+            let _ = app.run_on_main_thread(move || ouvrir_menu(&a2));
+        }
+        r?;
+    }
+    Ok(())
 }
 
 /// Quitter le jeu proprement (la personne a confirmé dans le menu). Rend le nombre de fenêtres fermées.

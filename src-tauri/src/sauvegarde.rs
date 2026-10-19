@@ -284,7 +284,9 @@ pub async fn envoyer(d: &impl Destination, contenu: &Contenu, pc: &str, emplacem
         if !e.source.is_file() {
             continue;
         }
-        let taille = std::fs::metadata(&e.source)?.len();
+        // Un fichier disparu entre-temps (un émulateur qui écrit pendant la sauvegarde) : sauté, jamais tout arrêté.
+        let Ok(m) = std::fs::metadata(&e.source) else { continue };
+        let taille = m.len();
         let sha = empreinte(&e.source)?;
         let deja = ancien.fichiers.get(&e.relatif) == Some(&(sha.clone(), taille))
             && d.present(&e.relatif, taille).unwrap_or(true);
@@ -474,7 +476,11 @@ impl Noyau {
                 continue;
             }
             // Sans les fichiers qui portent une connexion RetroAchievements (jeton) : ils restent sur ce PC.
-            for r in fichiers_de(&du_profil)?.into_iter().filter(|r| !crate::emulateurs_profils::porte_un_secret(r)) {
+            // Ni une sauvegarde de MAME en cours d'écriture (elle n'est gardée qu'une fois complète).
+            for r in fichiers_de(&du_profil)?
+                .into_iter()
+                .filter(|r| !crate::emulateurs_profils::porte_un_secret(r) && !r.ends_with(crate::pilotage::ETAT_MAME_NOUVEAU))
+            {
                 parties.push(Element { source: du_profil.join(&r), relatif: format!("emulateurs/{nom_emulateur}/{r}") });
             }
         }

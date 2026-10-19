@@ -32,7 +32,7 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   Manager* (raccourcis des tables).
 - Peu utile pour nous : outils de développeurs (dumpers Unreal/Godot/IL2CPP, assembleur, structures).
 
-- (16/10, expert lancement) MAME : sauver / charger / recommencer depuis le menu en jeu par le même script Lua (un
+- ✅ (fait en 0.79.0) (16/10, expert lancement) MAME : sauver / charger / recommencer depuis le menu en jeu par le même script Lua (un
   fichier de commande lu par le script : `manager.machine:soft_reset()`, `:save(nom)`, `:load(nom)` — à vérifier dans
   luaengine.cpp), plus sûr que des touches (MAME demande un emplacement après Maj+F7 / F7).
 - (16/10, expert lancement) MAME : témoin « vivant » (réécrit par Frogtend toutes les quelques secondes ; le script
