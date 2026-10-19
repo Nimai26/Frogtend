@@ -88,18 +88,58 @@ pub fn valeur_sfo(sfo: &[u8], cle: &str) -> Option<String> {
     None
 }
 
-/// L'identifiant d'un jeu PS3 (TITLE_ID de son PARAM.SFO) : un .iso/.chd, ou un dossier de jeu.
-pub fn titre_id_ps3(chemin: &Path) -> Option<String> {
+/// Un PARAM.SFO fait quelques centaines d'octets : jamais plus lu (une image abîmée qui annonce 4 Go ne fait rien
+/// réserver).
+const SFO_MAX: u64 = 64 * 1024;
+
+/// Un PARAM.SFO sur le disque, s'il a une taille raisonnable.
+fn lire_sfo(f: &Path) -> Option<Vec<u8>> {
+    (std::fs::metadata(f).ok()?.len() <= SFO_MAX).then(|| std::fs::read(f).ok()).flatten()
+}
+
+/// Le PARAM.SFO d'un jeu PS3 : un .iso/.chd, ou un dossier de jeu.
+fn sfo_ps3(chemin: &Path) -> Option<Vec<u8>> {
     let ext = chemin.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-    let sfo = if ext == "iso" || ext == "chd" {
+    if ext == "iso" || ext == "chd" {
         let p = crate::disque::ouvrir(chemin).ok()??;
         let (s, t) = p.trouver("PS3_GAME\\PARAM.SFO").ok()??;
-        p.lire(s, t as usize).ok()?
+        p.lire(s, u64::from(t).min(SFO_MAX) as usize).ok()
     } else {
         let d = if chemin.is_dir() { chemin.to_path_buf() } else { chemin.parent()?.to_path_buf() };
-        [d.join("PS3_GAME").join("PARAM.SFO"), d.join("PARAM.SFO"), d.parent()?.join("PARAM.SFO")].iter().find_map(|f| std::fs::read(f).ok())?
+        [d.join("PS3_GAME").join("PARAM.SFO"), d.join("PARAM.SFO"), d.parent()?.join("PARAM.SFO")].iter().find_map(|f| lire_sfo(f))
+    }
+}
+
+/// L'identifiant d'un jeu PS3 (TITLE_ID de son PARAM.SFO) : un .iso/.chd, ou un dossier de jeu.
+pub fn titre_id_ps3(chemin: &Path) -> Option<String> {
+    valeur_sfo(&sfo_ps3(chemin)?, "TITLE_ID")
+}
+
+/// La version d'un PARAM.SFO comme RPCS3 la lit : APP_VER, sinon VERSION (`System.cpp`, relevé du 19/10).
+fn version_sfo(sfo: &[u8]) -> Option<String> {
+    valeur_sfo(sfo, "APP_VER").filter(|v| !v.is_empty()).or_else(|| valeur_sfo(sfo, "VERSION"))
+}
+
+/// La version d'un jeu PS3 telle que RPCS3 la LANCE (les patchs dépendent de l'exécutable qui tourne vraiment).
+/// Règle relevée dans `System.cpp` (19/10) : RPCS3 démarre la mise à jour installée dans `dev_hdd0\game\<numéro>\`
+/// seulement si elle a son `USRDIR\EBOOT.BIN` ET un PARAM.SFO du même jeu en catégorie GD — sinon (un simple cache,
+/// comme chez Seb pour Asura's Wrath), c'est la version du disque.
+pub fn version_ps3(chemin: &Path, rpcs3: &Path, numero: &str) -> Option<String> {
+    let dossier_maj = rpcs3.join("dev_hdd0").join("game").join(numero);
+    let maj = dossier_maj
+        .join("USRDIR")
+        .join("EBOOT.BIN")
+        .is_file()
+        .then(|| lire_sfo(&dossier_maj.join("PARAM.SFO")))
+        .flatten()
+        .filter(|s| valeur_sfo(s, "TITLE_ID").as_deref() == Some(numero) && valeur_sfo(s, "CATEGORY").as_deref() == Some("GD"));
+    let v = match maj {
+        Some(s) => version_sfo(&s)?,
+        None => version_sfo(&sfo_ps3(chemin)?)?,
     };
-    valeur_sfo(&sfo, "TITLE_ID")
+    // Une version de PS3 : « 01.00 » (jamais autre chose dans une requête ou un fichier).
+    let b = v.as_bytes();
+    (b.len() == 5 && b[2] == b'.' && b.iter().enumerate().all(|(i, c)| i == 2 || c.is_ascii_digit())).then_some(v)
 }
 
 fn lire_debut_zip(zip: &Path, entree: &str, n: usize) -> Option<Vec<u8>> {
@@ -747,6 +787,68 @@ mod tests {
         assert_eq!(content_id(b"pas un pkg"), None);
         assert_eq!(genre_du_nom("God of War - Achilles (Europe) (Avatar)"), "avatar");
         assert_eq!(genre_du_nom("Asuras Wrath - Episode 11.5 (Europe) (DLC)"), "dlc");
+    }
+
+    /// Un PARAM.SFO avec ces clés (chaînes UTF-8).
+    fn faire_sfo(paires: &[(&str, &str)]) -> Vec<u8> {
+        let mut cles: Vec<u8> = Vec::new();
+        let mut donnees: Vec<u8> = Vec::new();
+        let mut entrees: Vec<u8> = Vec::new();
+        for (k, v) in paires {
+            let (dk, dd) = (cles.len() as u16, donnees.len() as u32);
+            cles.extend(k.as_bytes());
+            cles.push(0);
+            let mut val = v.as_bytes().to_vec();
+            val.push(0);
+            let n = val.len() as u32;
+            donnees.extend(&val);
+            entrees.extend(dk.to_le_bytes());
+            entrees.extend(0x0204u16.to_le_bytes());
+            entrees.extend(n.to_le_bytes());
+            entrees.extend(n.to_le_bytes());
+            entrees.extend(dd.to_le_bytes());
+        }
+        let debut_cles = 0x14 + entrees.len();
+        let mut s = b"\0PSF".to_vec();
+        s.extend(0x0101u32.to_le_bytes());
+        s.extend((debut_cles as u32).to_le_bytes());
+        s.extend(((debut_cles + cles.len()) as u32).to_le_bytes());
+        s.extend((paires.len() as u32).to_le_bytes());
+        s.extend(entrees);
+        s.extend(cles);
+        s.extend(donnees);
+        s
+    }
+
+    #[test]
+    fn la_version_d_un_jeu_ps3_est_celle_que_rpcs3_lance() {
+        let d = tempfile::tempdir().unwrap();
+        let rpcs3 = d.path().join("RPCS3");
+        let jeu = d.path().join("Jeu");
+        std::fs::create_dir_all(jeu.join("PS3_GAME")).unwrap();
+        // Le disque d'Asura's Wrath (relevé réel du 19/10) : APP_VER 01.00, mais VERSION 01.01 — APP_VER compte.
+        std::fs::write(jeu.join("PS3_GAME").join("PARAM.SFO"), faire_sfo(&[("APP_VER", "01.00"), ("CATEGORY", "DG"), ("TITLE_ID", "BLES01227"), ("VERSION", "01.01")])).unwrap();
+        assert_eq!(version_ps3(&jeu, &rpcs3, "BLES01227").as_deref(), Some("01.00"));
+        // Un cache FIOS de RPCS3 (GD, sans EBOOT.BIN, comme chez Seb) : ce n'est pas une mise à jour.
+        let maj = rpcs3.join("dev_hdd0").join("game").join("BLES01227");
+        std::fs::create_dir_all(maj.join("USRDIR")).unwrap();
+        std::fs::write(maj.join("PARAM.SFO"), faire_sfo(&[("CATEGORY", "GD"), ("TITLE_ID", "BLES01227"), ("VERSION", "01.00"), ("APP_VER", "01.05")])).unwrap();
+        assert_eq!(version_ps3(&jeu, &rpcs3, "BLES01227").as_deref(), Some("01.00"));
+        // Une vraie mise à jour (EBOOT.BIN, même jeu, GD) : sa version.
+        std::fs::write(maj.join("USRDIR").join("EBOOT.BIN"), b"x").unwrap();
+        assert_eq!(version_ps3(&jeu, &rpcs3, "BLES01227").as_deref(), Some("01.05"));
+        // Le PARAM.SFO d'un AUTRE jeu dans ce dossier : ignoré.
+        std::fs::write(maj.join("PARAM.SFO"), faire_sfo(&[("CATEGORY", "GD"), ("TITLE_ID", "BLUS30721"), ("APP_VER", "01.05")])).unwrap();
+        assert_eq!(version_ps3(&jeu, &rpcs3, "BLES01227").as_deref(), Some("01.00"));
+        // Sans APP_VER : VERSION. Une valeur qui n'a pas la forme « 01.00 » : rien.
+        std::fs::remove_dir_all(&maj).unwrap();
+        std::fs::write(jeu.join("PS3_GAME").join("PARAM.SFO"), faire_sfo(&[("TITLE_ID", "BLES01227"), ("VERSION", "01.02")])).unwrap();
+        assert_eq!(version_ps3(&jeu, &rpcs3, "BLES01227").as_deref(), Some("01.02"));
+        std::fs::write(jeu.join("PS3_GAME").join("PARAM.SFO"), faire_sfo(&[("APP_VER", "../x")])).unwrap();
+        assert_eq!(version_ps3(&jeu, &rpcs3, "BLES01227"), None);
+        // Un PARAM.SFO démesuré n'est jamais lu en entier.
+        std::fs::File::create(jeu.join("PS3_GAME").join("PARAM.SFO")).unwrap().set_len(1 << 30).unwrap();
+        assert_eq!(titre_id_ps3(&jeu), None);
     }
 
     #[test]

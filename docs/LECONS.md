@@ -30,6 +30,9 @@ voient alors le fichier comme binaire (le même piège a ensuite glissé un octe
 leçon même, écrite par script). · Comment l'appliquer : pour un texte qui contient des barres obliques inverses
 (`\0`, `\n` voulus en toutes lettres), écrire avec l'outil d'écriture ou d'édition, jamais par un script ; après une
 écriture scriptée, vérifier qu'aucun octet nul n'est apparu (`git diff` puis un compte des octets nuls).
+19/10 : revenu deux fois (un `.join('\n\n')` devenu un vrai retour à la ligne dans `jeu.svelte.ts`, vu par
+svelte-check ; un remplacement introuvable). Le code écrit par script passe désormais par un FICHIER de script dans le
+scratchpad avec des chaînes brutes, ou par l'outil d'édition — jamais par un script tapé dans le shell.
 
 ## 18/10 — Un test vert parce que son serveur simulé était plus simple que la vraie vie
 Ce qui s'est passé : le rattachement depuis la file de téléchargement (fiche réunie découverte par un 410) passait son

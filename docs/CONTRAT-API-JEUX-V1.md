@@ -329,6 +329,32 @@ Reçu par message de la session Firehouse (sur demande de Seb), en service le 19
   compatible ; conversion `xdvdfs pack jeu.iso`, sans le correctif média des .xbe) ; la `note` du conseil Xbox le dit
   (Firehouse 2.78.2) ; aucun jeu Xbox au stock au 19/10. Le `username` d'un compte ne change jamais (seul le grade).
 
+### 1.18 (19/10, Firehouse 2.81.2, en service le 19/10 à 16 h 37) — patchs RPCS3 (besoin 24)
+Reçu par message de la session Firehouse, sur décision de Seb (un essai, puis une vérification par jour). Ajout
+compatible.
+- Firehouse garde la liste officielle `patch.yml`, prise comme RPCS3 la prend (rpcs3.net, moteur 1.2) et contrôlée
+  comme lui (moteur, sha256, YAML lu, taille) ; vérifiée chaque jour, l'ancienne copie reste servie si une nouvelle est
+  refusée. Au 19/10 : 1,2 Mo, 4 204 patchs pour 1 088 numéros de série.
+- **État de la liste** : `GET /api/jeux/v1/emulateurs/rpcs3/patchs[?v=1.2]` → `{version_moteur, sha256, taille,
+  maj_le, vu_le, fichier}` ; 404 si ce moteur n'a pas de copie ; `v` invalide → 404.
+- **Le fichier** : `GET …/rpcs3/patchs/fichier?v=1.2` → `patch.yml` brut ; reprise `Range`, `HEAD`, `ETag` = sha256 ;
+  **503** pendant un remplacement (réessayer plus tard). Vérifier le sha256 AVANT de remplacer
+  `<config RPCS3>/patches/patch.yml`. Ne JAMAIS toucher `imported_patch.yml` (à l'utilisateur) ; `patch_config.yml` seulement pour activer un patch,
+  à la demande de la personne, après une copie de sauvegarde (lecture côté Frogtend, 19/10 : les deux phrases du
+  message de Firehouse se lisent ainsi).
+- **Par jeu** : `GET …/rpcs3/patchs?serial=BLES00932[&version_jeu=01.02]` → `{patchs: [{hash, description, titre,
+  versions_du_jeu, auteur, notes, patch_version, groupe}]}`. `serial` : 9 lettres ou chiffres (TITLE_ID du PARAM.SFO),
+  `version_jeu` = APP_VER ; serial invalide → 400. `versions_du_jeu` : une liste, ou `"All"`. `hash` = clé de RPCS3
+  (`PPU-…`, `SPU-…`, `PRX-…`, `OVL-…`). Les patchs génériques (titre et série « All ») ne se cherchent pas par série :
+  ils sont dans le fichier et RPCS3 les applique lui-même.
+- **Activer un patch** : écrire SON `patch_config.yml` (après une copie de sauvegarde).
+- Exemple réel : BLES00932 (Demon's Souls) → 5 patchs (Aspect Ratio, Disable Motion Blur, Enable FreeCam, Skip Intro
+  Videos…) ; relevés complets à la fin de EXEMPLES-API-JEUX-V1.md (côté Firehouse).
+- **Besoin 25 (mods), décisions de Seb** : Nexus SANS clé d'API (payante, et interdite pour une application partagée)
+  — Frogtend montre le LIEN de la page Nexus, chacun télécharge avec son compte ; un mod servi en FICHIER à tous :
+  seulement sous licence libre explicite (GitHub d'abord), empreinte vérifiée, validé un par un par un admin, jamais
+  pour un jeu en ligne, jamais mis à jour sans nouvelle validation. Rien de livré pour le 25 au 19/10 (annoncé en 1.19).
+
 ### Note 2.58.0 (contrat inchangé)
 Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a été RÉUNIE à celle du même jeu
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne

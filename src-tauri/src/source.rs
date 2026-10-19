@@ -30,6 +30,17 @@ const CATALOGUE_SIMULE: &str = include_str!("../fixtures/simule/catalogue.json")
 const FICHE_110: &str = include_str!("../fixtures/simule/jeu-110.json");
 const DOCUMENTS_110: &str = include_str!("../fixtures/simule/documents-110.json");
 const LIVRET_9001: &[u8] = include_bytes!("../fixtures/simule/livret-9001.pdf");
+const PATCHS_BLES01227: &str = include_str!("../fixtures/simule/patchs-BLES01227.json");
+
+/// Les erreurs des routes des patchs RPCS3 (contrat 1.18) dites pour elles : 404 = pas de liste pour ce moteur (jamais
+/// « ce jeu ») ; 503 = la liste est en cours de remplacement chez Firehouse.
+pub fn erreur_patchs(e: Erreur) -> Erreur {
+    match e {
+        Erreur::Introuvable(_) => Erreur::Introuvable("Firehouse n'a pas de liste de patchs pour cette version de RPCS3.".into()),
+        Erreur::Serveur(m) if m.contains("maintenance") => Erreur::Serveur("Firehouse met à jour la liste des patchs : réessaie dans un moment.".into()),
+        e => e,
+    }
+}
 
 pub enum Source {
     Firehouse(Client),
@@ -231,6 +242,34 @@ impl Source {
         }
     }
 
+    /// Contrat 1.18 : l'état de la liste des patchs RPCS3 gardée par Firehouse (`{version_moteur, sha256, taille,
+    /// maj_le, vu_le, fichier}`, relevé réel du 19/10).
+    pub async fn patchs_rpcs3_etat(&self) -> Resultat<Value> {
+        match self {
+            Source::Firehouse(c) => c.obtenir_json("/emulateurs/rpcs3/patchs").await.map_err(erreur_patchs),
+            Source::Simulee => Ok(json!({ "ok": true, "version_moteur": "1.2", "sha256": "", "taille": 0, "fichier": "" })),
+        }
+    }
+
+    /// Contrat 1.18 : les patchs d'un jeu PS3 (`numero` déjà vérifié : 4 lettres + 5 chiffres ; `version` « 01.00 »).
+    pub async fn patchs_rpcs3_jeu(&self, numero: &str, version: Option<&str>) -> Resultat<Value> {
+        match self {
+            Source::Firehouse(c) => {
+                let v = version.map(|v| format!("&version_jeu={}", encoder(v))).unwrap_or_default();
+                c.obtenir_json(&format!("/emulateurs/rpcs3/patchs?serial={}{v}", encoder(numero))).await.map_err(erreur_patchs)
+            }
+            // La vraie réponse de Firehouse pour Asura's Wrath (relevé du 19/10), rien pour les autres jeux.
+            Source::Simulee => {
+                let mut v: Value = serde_json::from_str(PATCHS_BLES01227).unwrap_or(Value::Null);
+                if numero != "BLES01227" {
+                    v["serial"] = json!(numero);
+                    v["patchs"] = json!([]);
+                }
+                Ok(v)
+            }
+        }
+    }
+
     /// Les cœurs RetroArch servis par Firehouse (contrat 1.12) : `{ok, coeurs: [...]}`.
     pub async fn coeurs_retroarch(&self) -> Resultat<Vec<crate::emulateurs::CoeurServi>> {
         match self {
@@ -268,7 +307,22 @@ impl Source {
         types: &[&str],
         progres: &(dyn Fn(u64, Option<u64>) + Send + Sync),
     ) -> Resultat<u64> {
+        self.telecharger_plafonne(route, cible, sha256, types, None, progres).await
+    }
+
+    /// Comme `telecharger_controle`, en refusant tout fichier plus gros que `plafond` octets (annoncé ou reçu) : le
+    /// `.part` est alors retiré aussitôt, jamais un disque rempli par un serveur qui se trompe.
+    pub async fn telecharger_plafonne(
+        &self,
+        route: &str,
+        cible: &std::path::Path,
+        sha256: Option<&str>,
+        types: &[&str],
+        plafond: Option<u64>,
+        progres: &(dyn Fn(u64, Option<u64>) + Send + Sync),
+    ) -> Resultat<u64> {
         use std::io::Write;
+        let trop_gros = || Erreur::Serveur("Firehouse a envoyé un fichier bien plus gros que prévu : il n'est pas gardé.".into());
         let Source::Firehouse(c) = self else {
             return Err(Erreur::Refus("Mode simulé : rien à télécharger.".into()));
         };
@@ -298,12 +352,21 @@ impl Source {
             }
         }
         let total = flux.reponse.content_length().map(|n| if flux.reprise { n + debut } else { n });
+        if plafond.is_some_and(|p| total.is_some_and(|t| t > p) || debut > p) {
+            let _ = std::fs::remove_file(&part);
+            return Err(trop_gros());
+        }
         let reprise = flux.reprise && debut > 0;
         let mut sortie = std::fs::OpenOptions::new().create(true).write(true).append(reprise).truncate(!reprise).open(&part)?;
         let mut recus = if reprise { debut } else { 0 };
         while let Some(m) = Client::morceau(&mut flux).await? {
             sortie.write_all(&m)?;
             recus += m.len() as u64;
+            if plafond.is_some_and(|p| recus > p) {
+                drop(sortie);
+                let _ = std::fs::remove_file(&part);
+                return Err(trop_gros());
+            }
             progres(recus, total);
         }
         sortie.flush()?;
@@ -466,6 +529,73 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn les_patchs_rpcs3_d_un_jeu_et_leurs_erreurs_dites_simplement() {
+        use httpmock::prelude::*;
+        let m = MockServer::start();
+        // La VRAIE réponse de Firehouse pour Asura's Wrath (relevé du 19/10), servie telle quelle.
+        let vraie: Value = serde_json::from_str(PATCHS_BLES01227).unwrap();
+        let jeu = m.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/emulateurs/rpcs3/patchs").query_param("serial", "BLES01227").query_param("version_jeu", "01.00").header("authorization", "Bearer jeton");
+            t.status(200).json_body(vraie.clone());
+        });
+        let s = Source::Firehouse(crate::firehouse::Client::nouveau(&m.base_url(), "jeton").unwrap());
+        let r = s.patchs_rpcs3_jeu("BLES01227", Some("01.00")).await.unwrap();
+        assert_eq!(r["patchs"].as_array().unwrap().len(), 8);
+        // Les deux formes de `versions_du_jeu` sont bien là (liste et « All »).
+        assert!(r["patchs"].as_array().unwrap().iter().any(|p| p["versions_du_jeu"] == "All"));
+        assert!(r["patchs"].as_array().unwrap().iter().any(|p| p["versions_du_jeu"].is_array()));
+        jeu.assert();
+        // 503 (liste en cours de remplacement) et 404 (moteur inconnu) : dits pour CETTE route, jamais « ce jeu ».
+        let m2 = MockServer::start();
+        m2.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/emulateurs/rpcs3/patchs");
+            t.status(503).body("");
+        });
+        let s2 = Source::Firehouse(crate::firehouse::Client::nouveau(&m2.base_url(), "jeton").unwrap());
+        let e = s2.patchs_rpcs3_etat().await.unwrap_err().to_string();
+        assert!(e.contains("liste des patchs"), "{e}");
+        let m3 = MockServer::start();
+        m3.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/emulateurs/rpcs3/patchs");
+            t.status(404).json_body(json!({"ok": false}));
+        });
+        let s3 = Source::Firehouse(crate::firehouse::Client::nouveau(&m3.base_url(), "jeton").unwrap());
+        let e = s3.patchs_rpcs3_etat().await.unwrap_err().to_string();
+        assert!(e.contains("liste de patchs") && !e.contains("ce jeu"), "{e}");
+        // Simulé : la vraie réponse pour Asura's Wrath, rien pour un autre jeu.
+        assert_eq!(Source::Simulee.patchs_rpcs3_jeu("BLES01227", None).await.unwrap()["patchs"].as_array().unwrap().len(), 8);
+        assert!(Source::Simulee.patchs_rpcs3_jeu("BLUS30721", None).await.unwrap()["patchs"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn la_liste_des_patchs_ne_remplace_rien_si_son_empreinte_est_fausse() {
+        use httpmock::prelude::*;
+        let m = MockServer::start();
+        let contenu = "Version: 1.2\n\nAnchors:\n";
+        m.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/emulateurs/rpcs3/patchs/fichier").query_param("v", "1.2");
+            t.status(200).body(contenu);
+        });
+        let d = tempfile::tempdir().unwrap();
+        let rpcs3 = d.path();
+        std::fs::create_dir_all(rpcs3.join("patches")).unwrap();
+        std::fs::write(rpcs3.join("patches").join("patch.yml"), "Version: 1.2\nancienne\n").unwrap();
+        let s = Source::Firehouse(crate::firehouse::Client::nouveau(&m.base_url(), "jeton").unwrap());
+        let attente = rpcs3.join("patches").join("patch-0000.yml.frogtend");
+        let faux = "0".repeat(64);
+        assert!(s.telecharger_controle("/emulateurs/rpcs3/patchs/fichier?v=1.2", &attente, Some(&faux), &[], &|_, _| {}).await.is_err());
+        assert!(!attente.exists());
+        assert_eq!(std::fs::read_to_string(rpcs3.join("patches").join("patch.yml")).unwrap(), "Version: 1.2\nancienne\n");
+        // La bonne empreinte : reçue entière, puis posée (version du moteur relue).
+        use sha2::Digest;
+        let vrai = format!("{:x}", sha2::Sha256::digest(contenu.as_bytes()));
+        s.telecharger_controle("/emulateurs/rpcs3/patchs/fichier?v=1.2", &attente, Some(&vrai), &[], &|_, _| {}).await.unwrap();
+        crate::patchs_ps3::poser_liste(rpcs3, &attente, "1.2").unwrap();
+        assert_eq!(std::fs::read_to_string(rpcs3.join("patches").join("patch.yml")).unwrap(), contenu);
+        assert_eq!(crate::patchs_ps3::empreinte_liste(rpcs3).as_deref(), Some(vrai.as_str()));
+    }
+
+    #[tokio::test]
     async fn un_paquet_servi_par_firehouse_se_telecharge_avec_le_jeton_et_reprend() {
         use httpmock::prelude::*;
         let m = MockServer::start();
@@ -581,5 +711,54 @@ mod tests {
         assert_eq!(f["versions"][0]["qualite"], "Jeu — prêt à jouer");
         assert_eq!(f["annexes"].as_array().unwrap().len(), 2);
         assert!(matches!(Source::Simulee.fiche(999_999).await, Err(Erreur::Introuvable(_))));
+    }
+
+    /// RÉEL, lecture seule chez Firehouse (contrat 1.18) : la forme exacte des réponses des patchs RPCS3, pour écrire
+    /// les réponses simulées d'après la vraie vie. Rien n'est écrit sur le disque ; le jeton ne s'affiche jamais.
+    /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_patchs_rpcs3 -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_patchs_rpcs3() {
+        use crate::coffre::Coffre as _;
+        use sha2::Digest;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        let montrer = |route: &str, r: &Resultat<crate::firehouse::Reponse>| match r {
+            Ok(crate::firehouse::Reponse::Corps { octets, etag, type_contenu }) => {
+                let texte = String::from_utf8_lossy(&octets[..octets.len().min(1500)]).to_string();
+                println!("== {route}
+   type {type_contenu:?} etag {etag:?} taille {}
+   {texte}", octets.len());
+            }
+            Ok(crate::firehouse::Reponse::NonModifie) => println!("== {route} : 304"),
+            Err(e) => println!("== {route} : ERREUR {e:?}"),
+        };
+        for route in [
+            "/emulateurs/rpcs3/patchs",
+            "/emulateurs/rpcs3/patchs?v=1.2",
+            "/emulateurs/rpcs3/patchs?v=9.9",
+            "/emulateurs/rpcs3/patchs?serial=BLES00932",
+            "/emulateurs/rpcs3/patchs?serial=BLES00932&version_jeu=01.02",
+            "/emulateurs/rpcs3/patchs?serial=BLES01227",
+            "/emulateurs/rpcs3/patchs?serial=ABC",
+        ] {
+            let r = c.obtenir(route, None).await;
+            montrer(route, &r);
+        }
+        // La réponse COMPLÈTE pour Asura's Wrath, copiée telle quelle (de quoi écrire la réponse simulée d'après la vraie).
+        if let Ok(sortie) = std::env::var("FROGTEND_SORTIE") {
+            if let Ok(crate::firehouse::Reponse::Corps { octets, .. }) = c.obtenir("/emulateurs/rpcs3/patchs?serial=BLES01227&version_jeu=01.00", None).await {
+                std::fs::write(std::path::Path::new(&sortie).join("patchs-BLES01227.json"), &octets).unwrap();
+            }
+        }
+        // Le fichier entier, EN MÉMOIRE seulement : sa taille et son sha256 comparés à l'état.
+        let etat: Value = c.obtenir_json("/emulateurs/rpcs3/patchs").await.unwrap();
+        if let Ok(crate::firehouse::Reponse::Corps { octets, etag, .. }) = c.obtenir("/emulateurs/rpcs3/patchs/fichier?v=1.2", None).await {
+            let sha = format!("{:x}", sha2::Sha256::digest(&octets));
+            println!("FICHIER {} octets, sha256 {sha}, etag {etag:?}, état {:?} / {:?}", octets.len(), etat["sha256"], etat["taille"]);
+            println!("DÉBUT DU FICHIER :
+{}", String::from_utf8_lossy(&octets[..octets.len().min(600)]));
+        }
     }
 }

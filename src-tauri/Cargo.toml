@@ -1,6 +1,6 @@
 [package]
 name = "frogtend"
-version = "0.77.0"
+version = "0.78.0"
 description = "Frogtend — la ludothèque de la maison, servie par Firehouse"
 authors = ["Nimai"]
 license = "Apache-2.0"
@@ -45,6 +45,7 @@ chd = "0.3"
 nod = "1.4"
 flate2 = "1"
 tauri-plugin-global-shortcut = "2"
+yaml-rust2 = "0.13.0"
 
 [target.'cfg(windows)'.dependencies]
 # SDL3 compilé DANS le programme (décision de Seb, 30/09 : « SDL3 embarqué, aucune DLL ») : manettes PlayStation,

@@ -1513,3 +1513,36 @@ Règles données par Firehouse avec ce relevé :
 
 Les alternatives portent `emulateur: null` quand ce sont des cœurs RetroArch (bsnes, SwanStation) ; chaque cœur
 nommé a son `paquet` (url, sha256, taille, version « 1.22.2 », source « stable »).
+
+## Patchs RPCS3 (contrat 1.18) — relevé réel du 19/10/2026 (Firehouse 2.81.2, profil admin, lecture seule)
+
+`GET /api/jeux/v1/emulateurs/rpcs3/patchs` (pareil avec `?v=1.2`) :
+
+```json
+{"ok":true,"version_moteur":"1.2","sha256":"c5714842b1f2fcc8cc6f4c69113e3764c55588849f0a8680feceee1aad528122",
+ "taille":1197547,"maj_le":"2026-10-19T16:37:00","vu_le":"2026-10-19T16:37:15",
+ "fichier":"/api/jeux/v1/emulateurs/rpcs3/patchs/fichier?v=1.2"}
+```
+
+- `fichier` est un chemin COMPLET depuis la racine (avec `/api/jeux/v1`).
+- `GET …/patchs/fichier?v=1.2` : 1 197 547 octets, sha256 identique à l'état, `ETag` ENTRE GUILLEMETS
+  (`"c5714842…"`). Le fichier commence par `Version: 1.2` puis `Anchors:`.
+- `?v=9.9` → 404 (le message générique de Frogtend « ne connaît pas ce jeu » est à remplacer pour cette route).
+- `?serial=ABC` → 400, motif « numéro de série PS3 attendu (9 lettres ou chiffres, ex. BLES01234) ».
+
+`GET …/patchs?serial=BLES00932` → 5 patchs (début) :
+
+```json
+{"ok":true,"version_moteur":"1.2","serial":"BLES00932","patchs":[
+ {"hash":"PPU-5446a2645880eefa75f7e374abd6b7818511e2ef","description":"Aspect Ratio","titre":"Demon's Souls",
+  "versions_du_jeu":["01.00"],"auteur":"Whatcookie",
+  "notes":"Requires \"Stretch To Display Area\" checked in the GPU settings. UI elements will be stretched.",
+  "patch_version":"1.0","groupe":""}, …]}
+```
+
+- `?serial=BLES00932&version_jeu=01.02` → `"patchs":[]` : le filtre par version se fait CHEZ Firehouse.
+- `?serial=BLES01227&version_jeu=01.00` (Asura's Wrath, le jeu de Seb) → 8 patchs (réponse complète copiée dans
+  `src-tauri/fixtures/simule/patchs-BLES01227.json`), sous DEUX titres et deux `hash` : « ASURA'S WRATH
+  Preview » (`versions_du_jeu: ["01.00"]`, Boot to title screen) et « Asura's Wrath » (`versions_du_jeu: "All"` :
+  Developer Menu, Disable Ambient Occlusion, Disable Bloom, Disable Depth of Field, Disable Motion Blur, Unlock FPS…).
+  `versions_du_jeu` a bien les deux formes : liste ou `"All"`.

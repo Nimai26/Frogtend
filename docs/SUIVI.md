@@ -7,6 +7,33 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- **Lot 0.78.0 — Patchs PS3 par Firehouse** (contrat 1.18 reçu le 19/10 16 h 37 ; ✅ Seb 19/10 : « Patchs PS3
+  d'abord », MAME juste après). Fiche d'un jeu PS3 : ses patchs (par numéro de série + version du jeu), activés d'un
+  clic dans `patch_config.yml` (copie de sauvegarde avant) ; `patch.yml` tenu à jour depuis Firehouse (sha256 vérifié
+  avant de remplacer) ; jamais `imported_patch.yml`.
+  Avis des experts (contrat : `telecharger_controle`, `.part` nommé d'après le sha256, messages 404/503 propres à la
+  route ; lancement : sources de RPCS3 lues — `config\patch_config.yml`, 5 niveaux, clé de version = APP_VER si citée
+  sinon « All », version = mise à jour seulement si EBOOT.BIN + même jeu + GD ; plafond du PARAM.SFO). ✅ ESSAIS RÉELS
+  (lecture seule) : formes des réponses relevées (EXEMPLES-API-JEUX-V1.md) ; Asura's Wrath = BLES01227 v01.00 → 8
+  patchs ; sur une COPIE de RPCS3 : liste posée (1 197 547 octets, sha256 = annoncé), « Disable Motion Blur » écrit
+  et relu. Nouvelle dépendance : yaml-rust2 0.13 (lecture du YAML de RPCS3, pur Rust). Besoin 26 (patchs en français).
+  Relectures (lancement, contrat, interface ; aucun bloquant technique) appliquées : téléchargement PLAFONNÉ à la
+  taille annoncée (`telecharger_plafonne`), `installer_liste` déplacée dans patchs_ps3.rs et testée avec l'état RÉEL ;
+  restes nettoyés par nom exact (`patch-<16 hex>.yml.frogtend|.part`) ; désactiver sans réseau ou un patch retiré
+  (depuis `actives`) ; écran hors ligne ; clés entier/booléen et imbrication excessive = refus ; `rpcs3_ferme`
+  revérifié avant d'écrire ; refus journalisé ; 404/503 propres (`erreur_patchs`). Interface : « Retouches du jeu
+  (patchs) », seules celles du jeu (`titreDuJeu` : titre de la fiche, sinon le plus fréquent, à égalité le plus
+  court), remarque montrée AVANT d'activer, « Débloquer les images par seconde » sans promesse. Besoin 27 (même liste
+  pour tous les jetons ?). contenus.rs gardé en CRLF. NON vérifié : un jeu lancé avec le patch (Seb) ; la version du
+  moteur attendue par un RPCS3 ancien.
+- **Lot 0.79.0 — MAME : sauver / charger / recommencer depuis le menu en jeu** (idée IDEES de l'expert lancement 16/10 ;
+  pour les 592 jeux d'arcade). Avis de l'expert lancement reçu le 19/10 : script Lua + fichier « commande » écrit puis
+  renommé ; `save`/`load`/`soft_reset` relancent MAME (commande AVANT de cacher le menu) ; état dans
+  `<MAME>\Profils\<profil>\sta\<nom court>\frogtend.sta` (chemin absolu, par profil, couvert par la sauvegarde) écrit
+  sous un autre nom puis échangé (MAME efface après une écriture ratée) ; témoin « vivant » plus tard (0.79.1).
+  ✅ Seb 19/10 : essai réel avec MAME 0.289 officiel (GitHub mamedev, 87,6 Mo, dans `D:\Frogtend\.essai-mame`, effacé
+  après) ; un jeu qui gère mal les sauvegardes d'état (`supports_save` faux) : Sauver/Charger CACHÉS, Recommencer reste.
+
 - **Lot 0.77.0 — Manette → clavier, plus simple** (Seb 19/10 : « ok enchaîne » après la 0.76.0 ; lot pris dans IDEES,
   expert interface 16/10, déjà proposé à Seb dans le choix du lot précédent) : choisir une touche en l'APPUYANT au
   lieu d'une liste de 70 ; répétition automatique d'une touche tenue (les vieux menus ne défilent que par répétition).

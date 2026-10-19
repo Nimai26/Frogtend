@@ -144,6 +144,28 @@ export interface EtatRetroArch {
   bios_manquants: string[];
 }
 
+/** Un patch d'un jeu PS3 (contrat 1.18), et s'il est activé dans RPCS3. */
+export interface PatchPs3 {
+  hash: string;
+  description: string;
+  titre: string;
+  auteur: string;
+  notes: string;
+  actif: boolean;
+}
+
+/** Les patchs d'un jeu PS3 et la liste des patchs de RPCS3 (présente, à jour, sa taille). */
+export interface PatchsPs3 {
+  numero: string | null;
+  version: string | null;
+  patchs: PatchPs3[];
+  liste_presente: boolean;
+  liste_a_jour: boolean;
+  taille_liste: number;
+  /** Firehouse injoignable : seules les retouches actives (pour les désactiver). */
+  hors_ligne: boolean;
+}
+
 export interface EmulateurRecommande {
   nom: string;
   site: string;
@@ -596,6 +618,11 @@ export const api = {
   /** Règle pour CE jeu les réglages donnés ; `vide` : revenir aux valeurs de RPCS3. */
   rpcs3ReglerImage: (id: number, valeurs: [string, string][], vide = false) =>
     appeler<void>('rpcs3_regler_image', { id, valeurs, vide }),
+  /** Les patchs d'un jeu PS3 (contrat 1.18) ; `null` : pas un jeu PS3 lancé par RPCS3. */
+  rpcs3Patchs: (id: number) => appeler<PatchsPs3 | null>('rpcs3_patchs', { id }),
+  /** Active ou désactive un patch ; `liste` : la personne a accepté d'installer la liste des patchs de RPCS3. */
+  rpcs3PatchRegler: (id: number, p: PatchPs3, actif: boolean, liste = false) =>
+    appeler<void>('rpcs3_patch_regler', { id, hash: p.hash, description: p.description, titre: p.titre, actif, liste }),
   /** La fenêtre de choix de Windows, ouverte PAR LE CŒUR (durcissement) : il retient le chemin choisi, seul admis
    * ensuite par les commandes sensibles. `null` : fenêtre fermée. */
   parcourir: (options: { dossier?: boolean; titre: string; extensions?: string[] }) =>

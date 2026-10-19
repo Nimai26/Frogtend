@@ -415,7 +415,10 @@ pub struct ContenusDuJeu {
 
 /// Image et fluidité d'un jeu PS3 dans RPCS3 : son RPCS3 réglé (jamais reçu de l'interface) et son numéro (lu sur le
 /// disque, vérifié). `None` : pas un jeu PS3 lancé par RPCS3.
-async fn contexte_image_ps3(app: &AppHandle, noyau: &Noyau, id: i64) -> Resultat<Option<(std::path::PathBuf, std::path::PathBuf, Option<String>)>> {
+/// Un jeu PS3 lancé par RPCS3 : (programme, dossier de RPCS3, numéro du disque vérifié, version que RPCS3 lancera).
+type ContextePs3 = (std::path::PathBuf, std::path::PathBuf, Option<String>, Option<String>);
+
+async fn contexte_image_ps3(app: &AppHandle, noyau: &Noyau, id: i64) -> Resultat<Option<ContextePs3>> {
     let j = noyau.jeu_visible(id).await?;
     if crate::succes::console_de(&j.plateforme) != Some(82) {
         return Ok(None);
@@ -430,11 +433,17 @@ async fn contexte_image_ps3(app: &AppHandle, noyau: &Noyau, id: i64) -> Resultat
         Some(f) => std::path::Path::new(&i.dossier).join(f),
         None => std::path::PathBuf::from(&i.dossier),
     });
-    let numero = tauri::async_runtime::spawn_blocking(move || fichier_du_jeu.as_deref().and_then(crate::contenus::titre_id_ps3))
-        .await
-        .map_err(|_| Erreur::Disque("La lecture du disque du jeu s'est arrêtée brutalement.".into()))?
-        .filter(|n| crate::emulateurs_profils::numero_ps3_sur(n));
-    Ok(Some((programme, rpcs3, numero)))
+    let r = rpcs3.clone();
+    let (numero, version) = tauri::async_runtime::spawn_blocking(move || {
+        let f = fichier_du_jeu?;
+        let n = crate::contenus::titre_id_ps3(&f).filter(|n| crate::emulateurs_profils::numero_ps3_sur(n))?;
+        let v = crate::contenus::version_ps3(&f, &r, &n);
+        Some((n, v))
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La lecture du disque du jeu s'est arrêtée brutalement.".into()))?
+    .map_or((None, None), |(n, v)| (Some(n), v));
+    Ok(Some((programme, rpcs3, numero, version)))
 }
 
 /// Les réglages d'image et de fluidité d'un jeu PS3 (RPCS3).
@@ -453,7 +462,7 @@ pub struct ImagePs3 {
 /// Image et fluidité d'un jeu PS3 : ses réglages actuels ; `None` : pas un jeu PS3 lancé par RPCS3.
 #[tauri::command]
 pub async fn rpcs3_image(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<Option<ImagePs3>> {
-    let Some((_, rpcs3, numero)) = contexte_image_ps3(&app, &noyau, id).await? else { return Ok(None) };
+    let Some((_, rpcs3, numero, _)) = contexte_image_ps3(&app, &noyau, id).await? else { return Ok(None) };
     let Some(n) = numero else { return Ok(Some(ImagePs3 { numero: None, valeurs: vec![], par_jeu: vec![], cache_coupe: false })) };
     let (valeurs, par_jeu) = crate::emulateurs_profils::rpcs3_image(&rpcs3, &n)?;
     // Un simple avertissement : un fichier illisible ici ne ferme jamais l'écran.
@@ -465,13 +474,177 @@ pub async fn rpcs3_image(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Re
 /// RPCS3 fermé ; son programme de confiance ; fichier du jeu copié à l'abri.
 #[tauri::command]
 pub async fn rpcs3_regler_image(app: AppHandle, noyau: State<'_, Noyau>, id: i64, valeurs: Vec<(String, String)>, vide: bool) -> Resultat<()> {
-    let (programme, rpcs3, numero) =
+    let (programme, rpcs3, numero, _) =
         contexte_image_ps3(&app, &noyau, id).await?.ok_or_else(|| Erreur::Refus("Ce jeu ne se lance pas avec RPCS3.".into()))?;
     let n = numero.ok_or_else(|| Erreur::Refus("Frogtend ne reconnaît pas le disque de ce jeu : rien n'est réglé.".into()))?;
     exiger_emulateur_pour_ecrire(&app, &noyau, &programme)?;
     rpcs3_ferme(&rpcs3)?;
     crate::emulateurs_profils::rpcs3_regler_image(&rpcs3, &n, &valeurs, vide)?;
     noyau.journaliser(&format!("RPCS3 : image du jeu {n} réglée ({} réglage(s){})", valeurs.len(), if vide { ", valeurs de RPCS3" } else { "" }));
+    Ok(())
+}
+
+// --- Patchs PS3 par Firehouse (contrat 1.18 ; ✅ Seb 19/10). Les patchs proposés et activés viennent TOUJOURS de la
+// liste de Firehouse pour ce jeu (jamais d'un texte envoyé par l'interface) ; la liste de RPCS3 n'est remplacée
+// qu'après un accord, sha256 vérifié. ---
+
+/// Un patch d'un jeu PS3, tel que l'écran le montre.
+#[derive(Serialize)]
+pub struct PatchPs3 {
+    hash: String,
+    description: String,
+    titre: String,
+    auteur: String,
+    notes: String,
+    actif: bool,
+}
+
+/// Les patchs d'un jeu PS3, et la liste de RPCS3 (présente, à jour, sa taille).
+#[derive(Serialize)]
+pub struct PatchsPs3 {
+    numero: Option<String>,
+    version: Option<String>,
+    patchs: Vec<PatchPs3>,
+    liste_presente: bool,
+    liste_a_jour: bool,
+    taille_liste: u64,
+    /// Firehouse injoignable : seules les retouches actives sont montrées (pour les désactiver).
+    hors_ligne: bool,
+}
+
+/// Les patchs de Firehouse pour ce jeu qui valent pour SA version (avec la clé de version de RPCS3), leur auteur et
+/// leurs notes.
+async fn patchs_firehouse(source: &crate::source::Source, numero: &str, version: Option<&str>) -> Resultat<Vec<(crate::patchs_ps3::Patch, String, String)>> {
+    let v = source.patchs_rpcs3_jeu(numero, version).await?;
+    let liste = v["patchs"].as_array().cloned().unwrap_or_default();
+    Ok(liste
+        .iter()
+        .filter_map(|p| {
+            let texte = |k: &str| p[k].as_str().unwrap_or("").to_string();
+            let cle = crate::patchs_ps3::cle_version(&p["versions_du_jeu"], version)?;
+            let patch = crate::patchs_ps3::Patch { hash: texte("hash"), description: texte("description"), titre: texte("titre"), numero: numero.to_string(), version: cle };
+            crate::patchs_ps3::hash_sur(&patch.hash).then_some((patch, texte("auteur"), texte("notes")))
+        })
+        .collect())
+}
+
+/// La liste de Firehouse est-elle celle posée dans RPCS3 ? (présente, à jour, taille annoncée, état reçu)
+async fn etat_liste_patchs(source: &crate::source::Source, rpcs3: &std::path::Path) -> Resultat<(bool, bool, u64, Value)> {
+    let etat = source.patchs_rpcs3_etat().await?;
+    let r = rpcs3.to_path_buf();
+    let locale = tauri::async_runtime::spawn_blocking(move || crate::patchs_ps3::empreinte_liste(&r)).await.unwrap_or(None);
+    let annoncee = etat["sha256"].as_str().unwrap_or("").to_ascii_lowercase();
+    let a_jour = locale.as_deref().is_some_and(|l| !annoncee.is_empty() && l.eq_ignore_ascii_case(&annoncee));
+    Ok((locale.is_some(), a_jour, etat["taille"].as_u64().unwrap_or(0), etat))
+}
+
+/// Les patchs d'un jeu PS3 ; `None` : pas un jeu PS3 lancé par RPCS3. Firehouse injoignable (ou sa liste
+/// indisponible) : seules les retouches ACTIVES, lues dans RPCS3, pour pouvoir les désactiver (`hors_ligne`). Une
+/// retouche active que Firehouse ne propose plus est montrée aussi (sans auteur ni remarque), pour la même raison.
+#[tauri::command]
+pub async fn rpcs3_patchs(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<Option<PatchsPs3>> {
+    let Some((_, rpcs3, numero, version)) = contexte_image_ps3(&app, &noyau, id).await? else { return Ok(None) };
+    let Some(n) = numero else {
+        return Ok(Some(PatchsPs3 { numero: None, version, patchs: vec![], liste_presente: false, liste_a_jour: false, taille_liste: 0, hors_ligne: false }));
+    };
+    let r = rpcs3.clone();
+    // Illisible : aucune active (l'écran s'ouvre quand même ; une écriture serait refusée plus loin).
+    let config = tauri::async_runtime::spawn_blocking(move || crate::patchs_ps3::lire_config(&r)).await.ok().and_then(Result::ok).unwrap_or_default();
+    let actifs = crate::patchs_ps3::actives(&config, &n);
+    let session = noyau.session().await?;
+    let firehouse = match etat_liste_patchs(&session.source, &rpcs3).await {
+        Ok(e) => patchs_firehouse(&session.source, &n, version.as_deref()).await.map(|p| (e, p)),
+        Err(e) => Err(e),
+    };
+    let ((liste_presente, liste_a_jour, taille_liste, _), proposes, hors_ligne) = match firehouse {
+        Ok((e, p)) => (e, p, false),
+        Err(Erreur::JetonRefuse(m)) => return Err(Erreur::JetonRefuse(m)),
+        Err(_) => ((false, false, 0, Value::Null), Vec::new(), true),
+    };
+    let mut patchs: Vec<PatchPs3> = proposes
+        .into_iter()
+        .map(|(p, auteur, notes)| PatchPs3 { actif: actifs.contains(&p), hash: p.hash, description: p.description, titre: p.titre, auteur, notes })
+        .collect();
+    for a in actifs {
+        if !patchs.iter().any(|p| p.hash == a.hash && p.description == a.description && p.titre == a.titre) {
+            patchs.push(PatchPs3 { actif: true, hash: a.hash, description: a.description, titre: a.titre, auteur: String::new(), notes: String::new() });
+        }
+    }
+    Ok(Some(PatchsPs3 { numero: Some(n), version, patchs, liste_presente, liste_a_jour, taille_liste, hors_ligne }))
+}
+
+/// Active ou désactive un patch d'un jeu PS3. Pour l'ACTIVER, le patch est repris de la liste de Firehouse pour ce
+/// jeu (hash, description, titre), et la liste de RPCS3 doit être celle de Firehouse : `liste` = la personne a accepté
+/// de la poser (taille annoncée), sinon refus. Pour le DÉSACTIVER, il suffit qu'il soit actif dans RPCS3 (sans
+/// réseau, même retiré de la liste de Firehouse).
+#[tauri::command]
+// Une commande de l'interface : le patch désigné par ses trois noms, l'accord pour la liste (Tauri).
+#[allow(clippy::too_many_arguments)]
+pub async fn rpcs3_patch_regler(
+    app: AppHandle,
+    noyau: State<'_, Noyau>,
+    id: i64,
+    hash: String,
+    description: String,
+    titre: String,
+    actif: bool,
+    liste: bool,
+) -> Resultat<()> {
+    let (programme, rpcs3, numero, version) =
+        contexte_image_ps3(&app, &noyau, id).await?.ok_or_else(|| Erreur::Refus("Ce jeu ne se lance pas avec RPCS3.".into()))?;
+    let n = numero.ok_or_else(|| Erreur::Refus("Frogtend ne reconnaît pas le disque de ce jeu : rien n'est réglé.".into()))?;
+    exiger_emulateur_pour_ecrire(&app, &noyau, &programme)?;
+    rpcs3_ferme(&rpcs3)?;
+    let meme = |p: &crate::patchs_ps3::Patch| p.hash == hash && p.description == description && p.titre == titre;
+    let patch = if actif {
+        let session = noyau.session().await?;
+        let patch = patchs_firehouse(&session.source, &n, version.as_deref())
+            .await?
+            .into_iter()
+            .map(|(p, _, _)| p)
+            .find(|p| meme(p))
+            .ok_or_else(|| Erreur::Refus("Ce patch n'est plus proposé par Firehouse pour ce jeu : rien n'est changé.".into()))?;
+        let (_, a_jour, _, etat) = etat_liste_patchs(&session.source, &rpcs3).await?;
+        if !a_jour {
+            if !liste {
+                return Err(Erreur::Refus("La liste des patchs de RPCS3 doit d'abord être installée.".into()));
+            }
+            // RPCS3 a pu être ouvert pendant l'attente du réseau.
+            rpcs3_ferme(&rpcs3)?;
+            match crate::patchs_ps3::installer_liste(&session.source, &rpcs3, &etat).await {
+                Ok(t) => noyau.journaliser(&format!("RPCS3 : liste des patchs installée depuis Firehouse ({t} octets, sha256 vérifié)")),
+                Err(e) => {
+                    noyau.journaliser(&format!("RPCS3 : liste des patchs refusée ({e})"));
+                    return Err(e);
+                }
+            }
+        }
+        patch
+    } else {
+        let r = rpcs3.clone();
+        let config = tauri::async_runtime::spawn_blocking(move || crate::patchs_ps3::lire_config(&r))
+            .await
+            .map_err(|_| Erreur::Disque("La lecture des patchs s'est arrêtée brutalement.".into()))??;
+        crate::patchs_ps3::actives(&config, &n)
+            .into_iter()
+            .find(|p| meme(p))
+            .ok_or_else(|| Erreur::Refus("Ce patch n'est pas activé pour ce jeu : rien n'est changé.".into()))?
+    };
+    rpcs3_ferme(&rpcs3)?;
+    let r = rpcs3.clone();
+    let p = patch.clone();
+    let change = tauri::async_runtime::spawn_blocking(move || -> Resultat<bool> {
+        let avant = crate::patchs_ps3::lire_config(&r)?;
+        match crate::patchs_ps3::regler(&avant, &p, actif)? {
+            Some(apres) => crate::patchs_ps3::ecrire_config(&r, &apres).map(|_| true),
+            None => Ok(false),
+        }
+    })
+    .await
+    .map_err(|_| Erreur::Disque("L'écriture des patchs s'est arrêtée brutalement.".into()))??;
+    if change {
+        noyau.journaliser(&format!("RPCS3 : patch « {} » {} pour le jeu {n} ({})", patch.description, if actif { "activé" } else { "désactivé" }, patch.version));
+    }
     Ok(())
 }
 

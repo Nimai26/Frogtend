@@ -48,6 +48,17 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Les patchs PS3 (0.78.0)
+- [ ] Asura's Wrath ▸ ⚙ Gérer ▸ 🩹 Retouches du jeu : 6 retouches ; le texte dit que 2 autres (la démo) ne sont pas
+      montrées.
+- [ ] « Sans flou de mouvement » : Frogtend demande d'installer la liste (1,2 Mo) ; oui → ✅ devant la retouche.
+- [ ] « Débloquer les images par seconde » : la remarque de l'auteur (en anglais) s'affiche avant d'activer.
+- [ ] Débranche Internet, rouvre l'écran : seules les retouches actives, et on peut les désactiver.
+- [ ] Lance le jeu : le flou de mouvement a disparu. Dans RPCS3 ▸ Gestionnaire de patchs, le patch est coché.
+- [ ] Re-choisis-le : ⬜ ; relance : le flou revient.
+- [ ] « Débloquer les images par seconde » seul ne suffit peut-être pas : la remarque dit que le plafond dépend du
+      « Vblank » de RPCS3 (non réglé par Frogtend) ; à essayer.
+
 ## Manette → clavier, plus simple (0.77.0)
 - [ ] Un jeu PC fait pour le clavier ▸ ⚙ Gérer ▸ 🕹 Jouer à la manette ▸ ✏ Bouton par bouton ▸ A : la fenêtre
       « Appuie sur la touche » ; appuie sur Espace : A → Espace.

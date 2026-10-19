@@ -1087,7 +1087,8 @@ mod tests {
             });
             let n = f.as_deref().and_then(crate::contenus::titre_id_ps3);
             let image = n.as_deref().filter(|n| numero_ps3_sur(n)).map(|n| rpcs3_image(&rpcs3, n).map(|(v, p)| (v.len(), p.len())));
-            println!("PS3 « {} » : numéro {n:?} ; image {image:?}", j.titre);
+            let version = f.as_deref().zip(n.as_deref()).and_then(|(f, n)| crate::contenus::version_ps3(f, &rpcs3, n));
+            println!("PS3 « {} » : numéro {n:?} ; version {version:?} ; image {image:?}", j.titre);
         }
     }
 

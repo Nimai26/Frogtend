@@ -1,5 +1,21 @@
 # Notes de version de Frogtend
 
+## 0.78.0 — Les patchs de tes jeux PS3
+
+- ⚙ Gérer le jeu ▸ **🩹 Retouches du jeu (patchs)**, pour un jeu PS3 lancé par RPCS3 : les retouches connues pour
+  CE jeu et SA version (Asura's Wrath : sans flou de mouvement, sans halo, sans flou d'arrière-plan, débloquer les
+  images par seconde…). Un choix active ou désactive ; ça prend effet au prochain lancement. Tes fichiers de jeu ne
+  sont pas modifiés : RPCS3 applique la retouche pendant que le jeu tourne.
+- La remarque de l'auteur (souvent une mise en garde) est montrée AVANT d'activer. Les retouches d'une démo du même
+  jeu ne sont pas montrées (elles ne s'appliquent pas à ton jeu).
+- Sans Internet, ou si Firehouse retire une retouche : tu peux toujours désactiver celles qui sont actives.
+- La liste vient de **Firehouse** (la liste officielle de RPCS3, vérifiée chaque jour). Au premier patch activé,
+  Frogtend l'installe dans RPCS3 après ton oui (1,2 Mo), vérifiée avant d'être posée ; l'ancienne est gardée de côté.
+  Tes propres patchs (`imported_patch.yml`) ne sont jamais touchés.
+- Les retouches les plus courantes sont dites en français ; les autres restent en anglais (marqués), en attendant que
+  Firehouse les traduise.
+- La version du jeu est celle que RPCS3 lance vraiment (sa mise à jour installée, sinon le disque).
+
 ## 0.77.0 — Manette → clavier, plus simple
 
 - « Jouer à la manette » (jeu fait pour le clavier) ▸ ✏ Bouton par bouton : au lieu de chercher dans une liste de 70

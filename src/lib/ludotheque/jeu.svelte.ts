@@ -3,13 +3,14 @@
 
 import { listen } from '@tauri-apps/api/event';
 import { isTauri } from '@tauri-apps/api/core';
-import { api, duree, estErreurCoeur, taille, type Candidat, type JeuPc, type VerificationFiger } from '$lib/api';
+import { api, duree, estErreurCoeur, taille, type Candidat, type JeuPc, type PatchsPs3, type VerificationFiger } from '$lib/api';
 import { attendreTouche, choisir, confirmer, fermerToast, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { completerRetroArch, poserBios, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
 import { avecConseil, biosADireOuPoser, biosRetroArch, changementDeConseil, estConseille, poidsBios } from '$lib/emulateurs/pret';
 import { preparerPourJouer } from '$lib/emulateurs/pret.svelte';
 import { libelleValeur, REGLAGES_IMAGE, reglagesMontres } from '$lib/emulateurs/imagePs3';
+import { descriptionFr, detailPatch, titreDuJeu } from '$lib/emulateurs/patchsPs3';
 import { estRetroArch, normaliser, pourLeJeu } from '$lib/emulateurs/choix';
 import { etat, reglerPc, reglerProfil } from '$lib/etat.svelte';
 import type { CommandesJeu } from '$lib/reglages/reglages';
@@ -833,11 +834,88 @@ async function choisirImagePs3(id: number) {
   }
 }
 
+/**
+ * Les retouches (patchs) d'un jeu PS3 (contrat 1.18 ; ✅ Seb 19/10 : « par Firehouse ») : celles de Firehouse pour
+ * CE jeu et sa version, ✅/⬜ ; un choix active ou désactive (au prochain lancement). Seules celles du jeu lui-même
+ * sont montrées (une démo a le même numéro, mais un autre programme : ses retouches ne s'appliquent pas). La remarque
+ * de l'auteur est montrée AVANT d'activer. Au premier patch activé, la liste officielle des patchs de RPCS3 est
+ * installée ou mise à jour — après un oui, taille annoncée. Hors ligne : seules les retouches actives, à désactiver.
+ */
+async function choisirPatchsPs3(id: number) {
+  const j = tele.jeux[id];
+  if (!j) return;
+  const TITRE = '🩹 Retouches du jeu (patchs)';
+  for (;;) {
+    let r: PatchsPs3 | null;
+    try {
+      r = await api.rpcs3Patchs(id);
+    } catch (e) {
+      toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
+      return;
+    }
+    if (!r) {
+      toast(`« ${j.titre} » ne se lance plus avec RPCS3 sur ce PC : rien à régler ici.`, 'erreur');
+      return;
+    }
+    if (!r.numero) {
+      await informer(
+        TITRE,
+        `Frogtend ne lit pas le numéro du disque de « ${j.titre} ».\n\nS’il est encore compressé (.zip), décompresse-le d’abord avec le bouton « 🗜 Décompresser pour jouer » ${auCanape() ? 'de son panneau, sur l’écran du PC (hors Taodbox)' : 'de son panneau, dans la ludothèque'}.`,
+      );
+      return;
+    }
+    const titre = titreDuJeu(r.patchs, j.titre);
+    const duJeu = r.patchs.filter((p) => p.titre === titre);
+    const autres = r.patchs.length - duJeu.length;
+    if (!duJeu.length) {
+      await informer(TITRE, r.hors_ligne ? `Firehouse est injoignable, et aucune retouche n’est active pour « ${j.titre} ».` : `Aucune retouche connue pour « ${j.titre} »${r.version ? ` (version ${r.version})` : ''}.`);
+      return;
+    }
+    const lignes: { valeur: number | 'fini'; libelle: string; detail?: string }[] = duJeu.map((p, i) => {
+      const d = descriptionFr(p.description);
+      return { valeur: i, libelle: `${p.actif ? '✅' : '⬜'} ${d.texte}${d.anglais ? ' (en anglais)' : ''}`, detail: detailPatch(p) };
+    });
+    lignes.push({ valeur: 'fini', libelle: '✅ Terminé' });
+    const message = [
+      'Une retouche change le jeu pendant qu’il tourne (moins de flou, plus d’images par seconde…) ; tes fichiers ne sont pas modifiés. Elle vaut pour ce jeu, pour tout le monde sur ce PC, et prend effet au prochain lancement.',
+      r.hors_ligne ? 'Firehouse est injoignable : seules les retouches actives sont montrées, pour les désactiver.' : '',
+      !r.hors_ligne && !r.liste_a_jour ? `À la première retouche activée, Frogtend ${r.liste_presente ? 'met à jour' : 'installe'} la liste officielle des patchs de RPCS3 (${taille(r.taille_liste)}, depuis Firehouse).` : '',
+      autres ? `${autres} autre(s) retouche(s) concernent une autre édition (démo…) : pas montrées, elles ne s’appliquent pas à ce jeu.` : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+    const c = await choisir<number | 'fini'>(`${TITRE} — « ${j.titre} »`, lignes, message);
+    if (c === null || c === 'fini') return;
+    const p = duJeu[c];
+    const nom = descriptionFr(p.description).texte;
+    let liste = false;
+    if (!p.actif) {
+      // La remarque de l'auteur avant d'activer (souvent une mise en garde ; en anglais tant que Firehouse ne la
+      // traduit pas — besoin 26).
+      if (p.notes.trim() && !(await confirmer(`🩹 « ${nom} »`, { message: `Remarque de l’auteur (en anglais) :\n${p.notes}`, libelleValider: 'Continuer' }))) continue;
+      if (!r.liste_a_jour) {
+        liste = await confirmer(`🩹 Activer « ${nom} » ?`, {
+          message: `Frogtend ${r.liste_presente ? 'met d’abord à jour' : 'installe d’abord'} la liste officielle des patchs de RPCS3 : ${taille(r.taille_liste)}, depuis Firehouse, vérifiée avant d’être posée.${r.liste_presente ? ' L’ancienne liste est gardée de côté.' : ''}`,
+          libelleValider: '⬇ Installer et activer',
+        });
+        if (!liste) continue;
+      }
+    }
+    try {
+      await api.rpcs3PatchRegler(id, p, !p.actif, liste);
+      toast(`🩹 « ${nom} » ${p.actif ? 'désactivée' : 'activée'} pour « ${j.titre} » (au prochain lancement).`);
+    } catch (e) {
+      toast(`Refusé : ${motifDuRefus(e)}`, 'erreur');
+      return;
+    }
+  }
+}
+
 /** Le menu « ⚙ Gérer le jeu » : toutes les actions possibles sur un jeu du PC, au même endroit, bien visibles. */
 export async function gererJeu(id: number) {
   const j = tele.jeux[id];
   if (!j) return;
-  type Action = 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'retirer';
+  type Action = 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'patchs' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'retirer';
   const options: { valeur: Action; libelle: string; detail?: string }[] = [];
   if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
   if (j.installation && !j.installation.fichier_du_jeu)
@@ -856,8 +934,11 @@ export async function gererJeu(id: number) {
       detail: `${e?.nom || e?.programme || ''}${etat.pc.emulateursJeux[String(id)] ? ' (propre à ce jeu)' : ' (comme la console)'}`,
     });
     // Un jeu PS3 lancé par RPCS3 : son image et sa fluidité (✅ Seb 19/10 : « shaders = les deux »).
-    if (j.installation && /(^|[\\/])rpcs3\.exe$/i.test(e?.programme ?? ''))
+    if (j.installation && /(^|[\\/])rpcs3\.exe$/i.test(e?.programme ?? '')) {
       options.push({ valeur: 'image', libelle: '🎨 Image et fluidité', detail: 'résolution, saccades, netteté — pour ce jeu' });
+      // Ses patchs (contrat 1.18 ; ✅ Seb 19/10).
+      options.push({ valeur: 'patchs', libelle: '🩹 Retouches du jeu (patchs)', detail: 'moins de flou, plus d’images par seconde… — pour ce jeu' });
+    }
   }
   // Un jeu lancé sans émulateur (jeu PC) : jouer à la manette, son plein écran au lancement, le figer pendant le menu.
   // « Commandes » ne concerne que les émulateurs : pas pour lui (deux entrées « manette » se confondraient).
@@ -892,6 +973,7 @@ export async function gererJeu(id: number) {
   else if (c === 'version') await choisirVersionParDefaut(id);
   else if (c === 'emulateur') await choisirEmulateurDuJeu(id);
   else if (c === 'image') await choisirImagePs3(id);
+  else if (c === 'patchs') await choisirPatchsPs3(id);
   else if (c === 'commandes') await choisirCommandes(id);
   else if (c === 'figer') await choisirFiger(id);
   else if (c === 'pleinEcran') await choisirPleinEcran(id);
