@@ -153,7 +153,11 @@
       ludothèque (jaquette, boîte 3D, cartouche…), logos et fonds pour Taodbox, galerie dans la fiche, copie hors ligne
       des visuels choisis, retrait du cache d'une image que Firehouse ne sert plus (édition par un admin).
 - [ ] **RPCS3 : mods, shaders, triches** (Seb, 03/10 : « il manque encore la gestion des mods, shaders, cheats, l'OSD »)
-      — l'OSD passe d'abord (Seb, 04/10).
+      — l'OSD passe d'abord (Seb, 04/10). ✅ Seb 19/10 (lot commencé) : PATCHS (triches, 60 i/s, résolution) « par
+      Firehouse » → besoin 24 envoyé (Firehouse n'a aucun jeu PS3 au stock ; les jeux PS3 de Seb sont importés :
+      recherche par numéro de série) ; SHADERS : « les deux » (moins de saccades ET filtres d'image) ; MODS : « les
+      installer » → besoin 25 envoyé. Ordre : shaders d'abord (ne dépend que de RPCS3), patchs et mods quand Firehouse
+      les sert.
 - [x] ✅ 0.68.2 **Formats des fichiers d'émulateurs** (expert, 04/10, après le bug YAML de RPCS3) : xemu `xemu.toml`
       (emulateurs_profils.rs:402) — une apostrophe dans le chemin (« Jeux d'émulation », profil « D'Aquin ») rend le
       TOML illisible → chaîne "…" échappée + test qui relit en TOML ; Qt/QSettings (Eden `external_content_dirs`
@@ -294,6 +298,25 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.74.0** (19/10) — RPCS3 : image et fluidité par jeu (✅ Seb 19/10 : shaders = « les deux »). Clés et valeurs
+  relevées dans les SOURCES de RPCS3 (`Emu/system_config.h`, `system_config_types.cpp`, `Emu/system_utils.cpp` :
+  `config\custom_configs\config_<numéro>.yml`, appliqué par-dessus le global) et vérifiées dans le vrai `config.yml`
+  de Seb (lu sans écrire). Cœur : liste fermée de 6 réglages, numéro de disque vérifié (`[A-Z]{4}[0-9]{5}`), lecture
+  clé par clé (jeu, global, défaut), écriture des SEULES clés changées (`regler_cles_yaml` + `remplacer_config`,
+  copie à l'abri), « Valeurs de RPCS3 » retire nos clés (section vidée retirée), RPCS3 fermé, programme de confiance.
+  Interface : sous-menu « 🎨 Image et fluidité » dans ⚙ Gérer le jeu (libellés sans jargon, « pour ce jeu, pour tout
+  le monde sur ce PC, au prochain lancement »). Avis des experts lancement et interface avant de coder et relecture
+  avant livraison. Vérifié : tests (forme réelle du fichier, liste fermée, réglage fait à la main gardé, retour) ;
+  lecture seule sur le registre de Seb (Asura's Wrath : BLES01227 ; 6 jeux encore en .zip : illisibles, l'écran le
+  dit) ; répétition sur une COPIE de son `config.yml` (fichier du jeu = 2 lignes, global intact) ; 374 tests cœur,
+  184 interface. NON vérifié : RPCS3 lancé avec ces réglages (essai demandé à Seb).
+  Relecture avant livraison appliquée : numéro lu en OCTETS (un PARAM.SFO non ASCII faisait planter Frogtend,
+  `panic = abort`) ; doublons et « vide + valeurs » refusés ; fichier du jeu jamais laissé vide (les 2 lignes de la
+  pause au menu à la place) ; global illisible = erreur ; texte « disque illisible » renvoie au vrai bouton
+  « 🗜 Décompresser pour jouer » ; valeur héritée choisie exprès = figée pour le jeu. FSR existe aussi pour OpenGL
+  dans RPCS3 (`Emu/RSX/GL/upscalers/fsr_pass.h`) : rien à cacher selon le moteur. Avertissement « cache de shaders
+  désactivé » noté dans IDEES.
 
 - **0.73.0** (19/10) — Durcissement, étapes 5 à 7 (fin du lot). Écritures dans les dossiers d'émulateurs :
   installation seulement dans `dossierEmulateurs`/`dossierOutils` réglé (`garde::dossier_de_base_admis`, créé s'il

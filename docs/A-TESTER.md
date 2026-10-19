@@ -48,6 +48,15 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Image et fluidité d'un jeu PS3 (0.74.0)
+- [ ] Asura's Wrath ▸ ⚙ Gérer le jeu ▸ 🎨 Image et fluidité : les 5 lignes (la 6e, netteté, apparaît avec
+      « Plus net »), chacune « — comme RPCS3 ».
+- [ ] Résolution ▸ 200 % ; Agrandissement ▸ Plus net ; puis joue : l'image est plus fine (et le jeu un peu plus lourd).
+      Dans RPCS3, clic droit sur le jeu ▸ « Change Custom Configuration » : ces deux réglages y sont.
+- [ ] Un autre jeu PS3 : il garde ses réglages habituels.
+- [ ] ↩ Valeurs de RPCS3 : le jeu redevient comme avant.
+- [ ] Un jeu encore en .zip (God of War III…) : Frogtend dit de le décompresser d'abord.
+
 ## Où Frogtend écrit (0.73.0)
 - [ ] (Si tu prépares un nouvel émulateur avec « Prêt à jouer » ou l'assistant) : il s'installe comme avant, ses
       fichiers système et son cœur sont posés.

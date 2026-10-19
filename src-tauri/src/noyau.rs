@@ -1584,6 +1584,26 @@ mod tests {
         boite.assert_hits(2);
     }
 
+    /// Essai réel (lecture seule) : ce que Firehouse sert en triches/mods (contrat 13) pour des jeux PS3 de son stock.
+    /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_triches_ps3 -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_triches_ps3() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").unwrap();
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        let cat: Value = c.obtenir_json("/catalogue?plateforme=Sony%20Playstation%203&page=1").await.unwrap();
+        let jeux = cat["jeux"].as_array().cloned().unwrap_or_default();
+        println!("PS3 au stock (page 1) : {} jeux", jeux.len());
+        for j in jeux.iter().take(6) {
+            let id = j["id"].as_i64().unwrap_or(0);
+            let t: Value = c.obtenir_json(&format!("/jeu/{id}/triche")).await.unwrap_or(Value::Null);
+            let codes: Vec<String> = t["codes"].as_array().into_iter().flatten().map(|x| format!("{}:{}:{}", x["emulateur"], x["format"], x["nom_fichier"])).collect();
+            println!("TRICHES {id} « {} » : codes {codes:?} ; cheat_engine {} ; mods {}", j["titre"], t["cheat_engine"].as_array().map_or(0, |a| a.len()), t["mods"].as_array().map_or(0, |a| a.len()));
+        }
+    }
+
     /// Essai réel (lecture seule) : les `infos` (contrat 1.15) de quelques fiches.
     /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_infos -- --ignored --nocapture`
     #[tokio::test]

@@ -585,6 +585,13 @@ export const api = {
     appeler<ReferenceManette>('reference_reprendre', { id, programme, genre, chemin, nom }),
   mettreALAbri: (id: number) => appeler<Abri>('parties_abri', { id }),
   retirer: (id: number) => appeler<Abri>('jeu_retirer', { id }),
+  /** Image et fluidité d'un jeu PS3 dans RPCS3 : `null` = pas un jeu PS3 lancé par RPCS3 ; `numero` absent = disque
+   * illisible (archive à décompresser…). */
+  rpcs3Image: (id: number) =>
+    appeler<{ numero: string | null; valeurs: [string, string][]; par_jeu: string[] } | null>('rpcs3_image', { id }),
+  /** Règle pour CE jeu les réglages donnés ; `vide` : revenir aux valeurs de RPCS3. */
+  rpcs3ReglerImage: (id: number, valeurs: [string, string][], vide = false) =>
+    appeler<void>('rpcs3_regler_image', { id, valeurs, vide }),
   /** La fenêtre de choix de Windows, ouverte PAR LE CŒUR (durcissement) : il retient le chemin choisi, seul admis
    * ensuite par les commandes sensibles. `null` : fenêtre fermée. */
   parcourir: (options: { dossier?: boolean; titre: string; extensions?: string[] }) =>

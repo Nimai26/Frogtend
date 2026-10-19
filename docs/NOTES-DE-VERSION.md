@@ -1,5 +1,17 @@
 # Notes de version de Frogtend
 
+## 0.74.0 — L'image et la fluidité de tes jeux PS3
+
+- ⚙ Gérer le jeu ▸ **🎨 Image et fluidité**, pour un jeu PS3 lancé par RPCS3 : la fluidité (sans saccades, rapide ou le
+  plus sûr), la résolution (100 % à 300 %, avec ce que ça demande au PC), l'agrandissement plus net et sa netteté, la
+  netteté des sols et des murs au loin, les bords lissés.
+- Pour CE jeu seulement : les autres jeux PS3 gardent les réglages de RPCS3, et un réglage que tu ne touches pas suit
+  toujours RPCS3. « Valeurs de RPCS3 » fait tout revenir. Prend effet au prochain lancement.
+- Un jeu encore compressé (.zip) se décompresse d'abord, avec le bouton « 🗜 Décompresser pour jouer » de sa fiche :
+  Frogtend le dit.
+- Sûreté : un disque abîmé ne peut pas fermer Frogtend, le fichier de réglages du jeu n'est jamais laissé vide, et
+  une configuration de RPCS3 illisible est signalée au lieu d'afficher des valeurs fausses.
+
 ## 0.73.0 — Frogtend vérifie aussi où il écrit
 
 - Un émulateur ne s'installe que dans ton dossier des émulateurs (ou des outils) réglé.

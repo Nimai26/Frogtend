@@ -741,6 +741,171 @@ fn rpcs3_pause_dans(emulateur: &Path, fichier: &Path, creer: bool) -> Resultat<b
     Ok(true)
 }
 
+// --- RPCS3 : image et fluidité d'un jeu (✅ Seb 19/10 : « shaders = les deux »). Relevé dans les sources de RPCS3
+// (master, 19/10) : `Emu/system_config.h` section `Video`, chaînes de `system_config_types.cpp`, vérifiées dans le vrai
+// `config.yml` de Seb ; le fichier d'un jeu est `config\custom_configs\config_<numéro>.yml` (`Emu/system_utils.cpp`),
+// appliqué par-dessus le global à chaque démarrage. Frogtend n'y écrit QUE les clés changées par la personne. ---
+
+/// Les réglages d'image d'un jeu : (clé dans `Video:`, valeurs admises, valeur par défaut de RPCS3).
+pub const RPCS3_IMAGE: [(&str, &[&str], &str); 6] = [
+    (
+        "Shader Mode",
+        &["Async Recompiler with Shader Interpreter", "Async Recompiler (multi-threaded)", "Shader Interpreter only"],
+        "Async Recompiler with Shader Interpreter",
+    ),
+    ("Resolution Scale", &["100", "150", "200", "300"], "100"),
+    ("Output Scaling Mode", &["Bilinear", "FidelityFX Super Resolution"], "Bilinear"),
+    ("FidelityFX CAS Sharpening Intensity", &["0", "25", "50", "75", "100"], "50"),
+    ("Anisotropic Filter Override", &["0", "2", "4", "8", "16"], "0"),
+    ("MSAA", &["Auto", "Disabled"], "Auto"),
+];
+
+/// Un numéro de jeu PS3 utilisable dans un nom de fichier : 4 lettres majuscules puis 5 chiffres (`BLES01227`). Il est
+/// lu dans le PARAM.SFO d'un disque : jamais pris tel quel (un `..\x` sortirait du dossier).
+pub fn numero_ps3_sur(n: &str) -> bool {
+    // Sur les octets : un caractère non ASCII lu dans un PARAM.SFO abîmé ne coupe jamais une chaîne en deux.
+    let b = n.as_bytes();
+    b.len() == 9 && b[..4].iter().all(u8::is_ascii_uppercase) && b[4..].iter().all(u8::is_ascii_digit)
+}
+
+/// Le fichier des réglages propres à un jeu PS3 dans RPCS3.
+pub fn rpcs3_config_du_jeu(rpcs3: &Path, numero: &str) -> Resultat<PathBuf> {
+    if !numero_ps3_sur(numero) {
+        return Err(Erreur::Refus(format!("Numéro de jeu PS3 inattendu ({numero}) : rien n'est écrit.")));
+    }
+    Ok(rpcs3.join("config").join("custom_configs").join(format!("config_{numero}.yml")))
+}
+
+/// Les valeurs de clés de premier niveau d'une section YAML de RPCS3 (exactement deux espaces d'indentation, comme
+/// `regler_cles_yaml`) ; guillemets retirés.
+pub fn lire_cles_yaml(texte: &str, section: &str, cles: &[&str]) -> std::collections::HashMap<String, String> {
+    let entete = format!("{section}:");
+    let mut r = std::collections::HashMap::new();
+    let mut dans = false;
+    for l in texte.lines() {
+        let l = l.trim_end_matches('\r');
+        if !l.is_empty() && !l.starts_with(' ') {
+            dans = l.trim_end() == entete;
+            continue;
+        }
+        let Some(reste) = l.strip_prefix("  ").filter(|r| dans && !r.starts_with(' ')) else { continue };
+        if let Some((k, v)) = reste.split_once(':') {
+            if cles.contains(&k) {
+                let v = v.trim();
+                let v = v.strip_prefix('"').and_then(|x| x.strip_suffix('"')).or_else(|| v.strip_prefix('\'').and_then(|x| x.strip_suffix('\''))).unwrap_or(v);
+                r.insert(k.to_string(), v.to_string());
+            }
+        }
+    }
+    r
+}
+
+/// Retire des clés de premier niveau d'une section YAML (le reste recopié tel quel) ; une section qui n'a plus rien
+/// perd aussi son en-tête (un `Video:` vide serait un nœud nul pour RPCS3). `None` : rien à retirer.
+pub fn retirer_cles_yaml(texte: &str, section: &str, cles: &[&str]) -> Option<String> {
+    let entete = format!("{section}:");
+    let mut lignes: Vec<&str> = Vec::new();
+    // Où commence la section dans `lignes`, et combien de lignes lui restent.
+    let mut debut: Option<usize> = None;
+    let mut restent = 0usize;
+    let mut dans = false;
+    let mut change = false;
+    for ligne in texte.split_inclusive('\n') {
+        let nue = ligne.trim_end_matches(['\r', '\n']);
+        if !nue.is_empty() && !nue.starts_with(' ') {
+            dans = nue.trim_end() == entete;
+            if dans {
+                debut = Some(lignes.len());
+                restent = 0;
+            }
+        } else if dans {
+            if let Some(reste) = nue.strip_prefix("  ").filter(|r| !r.starts_with(' ')) {
+                if reste.split_once(':').is_some_and(|(k, _)| cles.contains(&k)) {
+                    change = true;
+                    continue;
+                }
+            }
+            if !nue.trim().is_empty() {
+                restent += 1;
+            }
+        }
+        lignes.push(ligne);
+    }
+    if !change {
+        return None;
+    }
+    if let (Some(i), 0) = (debut, restent) {
+        lignes.remove(i);
+    }
+    Some(lignes.concat())
+}
+
+/// Les réglages d'image d'un jeu, chacun : celui du fichier du jeu, sinon du global, sinon la valeur par défaut de
+/// RPCS3 ; et les clés réglées POUR CE JEU.
+pub fn rpcs3_image(rpcs3: &Path, numero: &str) -> Resultat<(Vec<(String, String)>, Vec<String>)> {
+    let cles: Vec<&str> = RPCS3_IMAGE.iter().map(|(k, _, _)| *k).collect();
+    let du_jeu = match std::fs::read_to_string(rpcs3_config_du_jeu(rpcs3, numero)?) {
+        Ok(t) => lire_cles_yaml(&t, "Video", &cles),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Default::default(),
+        Err(e) => return Err(e.into()),
+    };
+    // Absent : les défauts de RPCS3 ; illisible : une erreur (jamais des valeurs fausses à l'écran).
+    let global = match std::fs::read_to_string(rpcs3.join("config").join("config.yml")) {
+        Ok(t) => lire_cles_yaml(&t, "Video", &cles),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Default::default(),
+        Err(e) => return Err(e.into()),
+    };
+    let valeurs = RPCS3_IMAGE
+        .iter()
+        .map(|(k, _, defaut)| (k.to_string(), du_jeu.get(*k).or_else(|| global.get(*k)).cloned().unwrap_or_else(|| defaut.to_string())))
+        .collect();
+    let par_jeu = RPCS3_IMAGE.iter().filter(|(k, _, _)| du_jeu.contains_key(*k)).map(|(k, _, _)| k.to_string()).collect();
+    Ok((valeurs, par_jeu))
+}
+
+/// Règle pour CE jeu les clés données (seulement celles-là, valeurs de la liste fermée), dans son fichier de RPCS3
+/// (créé s'il manque, copié à l'abri sinon) ; `vide` = revenir aux valeurs de RPCS3 (les clés d'image retirées du
+/// fichier du jeu, jamais le fichier lui-même).
+pub fn rpcs3_regler_image(rpcs3: &Path, numero: &str, valeurs: &[(String, String)], vide: bool) -> Resultat<()> {
+    let fichier = rpcs3_config_du_jeu(rpcs3, numero)?;
+    // Un ancien `config.yml` à la racine que RPCS3 déplacera lui-même : on n'écrit rien tant qu'il est là.
+    if rpcs3.join("config.yml").exists() && !rpcs3.join("config").join("config.yml").exists() {
+        return Err(Erreur::Refus("RPCS3 n'a pas encore rangé ses réglages : lance une fois un jeu PS3, puis reviens ici.".into()));
+    }
+    if vide && !valeurs.is_empty() {
+        return Err(Erreur::Refus("Réglage inattendu : revenir aux valeurs de RPCS3 ne prend aucune valeur.".into()));
+    }
+    for (i, (k, v)) in valeurs.iter().enumerate() {
+        // Une clé deux fois serait écrite deux fois (clé YAML en double).
+        if valeurs[..i].iter().any(|(c, _)| c == k) {
+            return Err(Erreur::Refus(format!("Réglage en double : {k}.")));
+        }
+        let ok = RPCS3_IMAGE.iter().any(|(c, admises, _)| c == k && admises.contains(&v.as_str()));
+        if !ok {
+            return Err(Erreur::Refus(format!("Réglage inattendu : {k} = {v}.")));
+        }
+    }
+    let avant = match std::fs::read_to_string(&fichier) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e.into()),
+    };
+    let apres = if vide {
+        let cles: Vec<&str> = RPCS3_IMAGE.iter().map(|(k, _, _)| *k).collect();
+        retirer_cles_yaml(&avant, "Video", &cles)
+    } else {
+        let v: Vec<(&str, &str)> = valeurs.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        regler_cles_yaml(&avant, "Video", &v)
+    };
+    let Some(mut apres) = apres else { return Ok(()) };
+    // Jamais un fichier vide (sa lecture par RPCS3 n'est pas vérifiée) : à la place, les deux lignes que Frogtend y
+    // met déjà à chaque lancement (pause au menu), qui valent aussi dans le global : rien ne change pour le jeu.
+    if apres.trim().is_empty() {
+        apres = "Miscellaneous:\n  Pause emulation on RPCS3 focus loss: true\nInput/Output:\n  Background input enabled: false\n".into();
+    }
+    remplacer_config(rpcs3, &fichier, &apres)
+}
+
 /// La section `entete` de ce texte contient-elle la clé `cle` ?
 fn texte_section_contient(texte: &str, entete: &str, cle: &str) -> bool {
     let mut dans = false;
@@ -888,6 +1053,96 @@ pub fn traces_hors_du_dossier(id: &str) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Essai RÉEL en LECTURE SEULE sur les jeux PS3 de Seb : numéro lu sur le disque, réglages d'image affichés.
+    /// `FROGTEND_REGISTRE=<copie de jeux.db> FROGTEND_RPCS3=E:\Emulateurs\RPCS3 cargo test essai_image_ps3 -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn essai_image_ps3() {
+        let r = crate::jeux_pc::Registre::ouvrir(Path::new(&std::env::var("FROGTEND_REGISTRE").unwrap())).unwrap();
+        let rpcs3 = PathBuf::from(std::env::var("FROGTEND_RPCS3").unwrap());
+        for j in r.tous().unwrap().into_iter().filter(|j| j.plateforme.contains("3")) {
+            let f = j.installation.as_ref().map(|i| match &i.fichier_du_jeu {
+                Some(f) => Path::new(&i.dossier).join(f),
+                None => PathBuf::from(&i.dossier),
+            });
+            let n = f.as_deref().and_then(crate::contenus::titre_id_ps3);
+            let image = n.as_deref().filter(|n| numero_ps3_sur(n)).map(|n| rpcs3_image(&rpcs3, n).map(|(v, p)| (v.len(), p.len())));
+            println!("PS3 « {} » : numéro {n:?} ; image {image:?}", j.titre);
+        }
+    }
+
+    /// Répétition sur une COPIE du vrai RPCS3 de Seb (`FROGTEND_RPCS3_COPIE` : un dossier d'essai avec
+    /// `config\config.yml` copié) : régler, relire, revenir aux valeurs de RPCS3.
+    #[test]
+    #[ignore]
+    fn essai_regler_image_copie() {
+        let rpcs3 = PathBuf::from(std::env::var("FROGTEND_RPCS3_COPIE").unwrap());
+        let global_avant = std::fs::read(rpcs3.join("config").join("config.yml")).unwrap();
+        rpcs3_regler_image(&rpcs3, "BLES01227", &[("Resolution Scale".into(), "200".into()), ("Output Scaling Mode".into(), "FidelityFX Super Resolution".into())], false).unwrap();
+        let f = rpcs3_config_du_jeu(&rpcs3, "BLES01227").unwrap();
+        println!("FICHIER DU JEU :\n{}", std::fs::read_to_string(&f).unwrap());
+        println!("RELU : {:?}", rpcs3_image(&rpcs3, "BLES01227").unwrap());
+        assert_eq!(std::fs::read(rpcs3.join("config").join("config.yml")).unwrap(), global_avant, "le global n'est jamais touché");
+        rpcs3_regler_image(&rpcs3, "BLES01227", &[], true).unwrap();
+        println!("APRÈS « Valeurs de RPCS3 » :\n{:?}", std::fs::read_to_string(&f).unwrap());
+    }
+
+    #[test]
+    fn rpcs3_image_d_un_jeu_seulement_les_cles_changees_par_dessus_le_global() {
+        let d = tempfile::tempdir().unwrap();
+        let rpcs3 = d.path();
+        std::fs::create_dir_all(rpcs3.join("config")).unwrap();
+        // La forme du vrai config.yml de Seb (relevé du 19/10) : 2 espaces, sous-clés à 4 espaces laissées.
+        std::fs::write(
+            rpcs3.join("config").join("config.yml"),
+            "Video:\n  Renderer: Vulkan\n  MSAA: Auto\n  Shader Mode: Async Recompiler with Shader Interpreter\n  Resolution Scale: 100\n  Output Scaling Mode: Bilinear\n  Vulkan:\n    Adapter: \"\"\nAudio:\n  Renderer: Cubeb\n",
+        )
+        .unwrap();
+        // Un numéro douteux n'est jamais pris dans un chemin.
+        assert!(numero_ps3_sur("BLES01227") && !numero_ps3_sur(r"..\..\x") && !numero_ps3_sur("bles01227") && !numero_ps3_sur("BLES0122"));
+        assert!(!numero_ps3_sur("AAAé1234") && !numero_ps3_sur("ÉÉÉ12345"), "non ASCII : refusé, sans plantage");
+        assert!(rpcs3_regler_image(rpcs3, r"..\x", &[], false).is_err());
+        // Une clé en double, ou des valeurs avec « Valeurs de RPCS3 » : refusées, rien d'écrit.
+        let r200 = ("Resolution Scale".to_string(), "200".to_string());
+        assert!(rpcs3_regler_image(rpcs3, "BLES01227", &[r200.clone(), r200.clone()], false).is_err());
+        assert!(rpcs3_regler_image(rpcs3, "BLES01227", &[r200], true).is_err());
+        assert!(!rpcs3.join("config").join("custom_configs").exists());
+        // Rien pour ce jeu : tout vient du global, ou des défauts de RPCS3.
+        let (v, par_jeu) = rpcs3_image(rpcs3, "BLES01227").unwrap();
+        let val = |v: &[(String, String)], k: &str| v.iter().find(|(c, _)| c == k).unwrap().1.clone();
+        assert_eq!(val(&v, "Resolution Scale"), "100");
+        assert_eq!(val(&v, "FidelityFX CAS Sharpening Intensity"), "50", "absent du global : défaut de RPCS3");
+        assert!(par_jeu.is_empty());
+        // Deux réglages changés : le fichier du jeu n'en contient QUE deux (le reste suit le global).
+        rpcs3_regler_image(rpcs3, "BLES01227", &[("Resolution Scale".into(), "200".into()), ("Output Scaling Mode".into(), "FidelityFX Super Resolution".into())], false).unwrap();
+        let f = rpcs3.join("config").join("custom_configs").join("config_BLES01227.yml");
+        let t = std::fs::read_to_string(&f).unwrap();
+        assert!(t.contains("Video:") && t.contains("  Resolution Scale: 200") && t.contains("  Output Scaling Mode: FidelityFX Super Resolution"));
+        assert!(!t.contains("Renderer") && !t.contains("MSAA"), "{t}");
+        let (v, par_jeu) = rpcs3_image(rpcs3, "BLES01227").unwrap();
+        assert_eq!((val(&v, "Resolution Scale"), val(&v, "MSAA")), ("200".into(), "Auto".into()));
+        assert_eq!(par_jeu.len(), 2);
+        // Une valeur hors de la liste fermée : refusée, rien d'écrit.
+        assert!(rpcs3_regler_image(rpcs3, "BLES01227", &[("Resolution Scale".into(), "800".into())], false).is_err());
+        assert!(rpcs3_regler_image(rpcs3, "BLES01227", &[("Renderer".into(), "OpenGL".into())], false).is_err());
+        // Un réglage fait à la main dans RPCS3 pour ce jeu reste ; « Valeurs de RPCS3 » ne retire que les nôtres.
+        std::fs::write(&f, format!("{t}Miscellaneous:\n  Pause emulation on RPCS3 focus loss: true\n")).unwrap();
+        rpcs3_regler_image(rpcs3, "BLES01227", &[], true).unwrap();
+        let t = std::fs::read_to_string(&f).unwrap();
+        assert!(!t.contains("Resolution Scale") && t.contains("Pause emulation on RPCS3 focus loss: true"), "{t}");
+        assert!(f.is_file(), "le fichier du jeu n'est jamais effacé");
+        // Un fichier qui n'avait que nos réglages n'est jamais laissé vide.
+        std::fs::write(&f, "Video:\n  MSAA: Disabled\n").unwrap();
+        rpcs3_regler_image(rpcs3, "BLES01227", &[], true).unwrap();
+        let t = std::fs::read_to_string(&f).unwrap();
+        assert!(!t.contains("MSAA") && t.contains("  Background input enabled: false"), "{t}");
+        // Une section vidée perd son en-tête ; une section qui garde d'autres clés le garde.
+        assert_eq!(retirer_cles_yaml("Video:\n  MSAA: Auto\n", "Video", &["MSAA"]).as_deref(), Some(""));
+        assert_eq!(retirer_cles_yaml("Video:\n  MSAA: Auto\n  Renderer: Vulkan\nAudio:\n  X: 1\n", "Video", &["MSAA"]).as_deref(), Some("Video:\n  Renderer: Vulkan\nAudio:\n  X: 1\n"));
+        // Relu comme RPCS3 le lirait (YAML valide).
+        assert!(lire_cles_yaml("Video:\n  MSAA: \"Disabled\"\n", "Video", &["MSAA"])["MSAA"] == "Disabled");
+    }
 
     #[test]
     fn une_apostrophe_ou_une_virgule_dans_le_chemin_ne_casse_aucun_fichier_de_reglages() {

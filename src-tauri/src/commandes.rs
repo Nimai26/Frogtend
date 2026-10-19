@@ -413,6 +413,64 @@ pub struct ContenusDuJeu {
     pub contenus: Vec<ContenuVu>,
 }
 
+/// Image et fluidité d'un jeu PS3 dans RPCS3 : son RPCS3 réglé (jamais reçu de l'interface) et son numéro (lu sur le
+/// disque, vérifié). `None` : pas un jeu PS3 lancé par RPCS3.
+async fn contexte_image_ps3(app: &AppHandle, noyau: &Noyau, id: i64) -> Resultat<Option<(std::path::PathBuf, std::path::PathBuf, Option<String>)>> {
+    let j = noyau.jeu_visible(id).await?;
+    if crate::succes::console_de(&j.plateforme) != Some(82) {
+        return Ok(None);
+    }
+    let Some((programme, _)) = emulateur_regle(app, &j.plateforme, id, None) else { return Ok(None) };
+    let programme = std::path::PathBuf::from(programme);
+    if !programme.file_name().is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case("rpcs3.exe")) {
+        return Ok(None);
+    }
+    let rpcs3 = programme.parent().map(std::path::PathBuf::from).unwrap_or_default();
+    let fichier_du_jeu = j.installation.as_ref().map(|i| match &i.fichier_du_jeu {
+        Some(f) => std::path::Path::new(&i.dossier).join(f),
+        None => std::path::PathBuf::from(&i.dossier),
+    });
+    let numero = tauri::async_runtime::spawn_blocking(move || fichier_du_jeu.as_deref().and_then(crate::contenus::titre_id_ps3))
+        .await
+        .map_err(|_| Erreur::Disque("La lecture du disque du jeu s'est arrêtée brutalement.".into()))?
+        .filter(|n| crate::emulateurs_profils::numero_ps3_sur(n));
+    Ok(Some((programme, rpcs3, numero)))
+}
+
+/// Les réglages d'image et de fluidité d'un jeu PS3 (RPCS3).
+#[derive(Serialize)]
+pub struct ImagePs3 {
+    /// Le numéro du jeu ; `None` : illisible (rien ne peut être réglé pour ce jeu).
+    numero: Option<String>,
+    /// (clé, valeur actuelle) : celle du jeu, sinon de RPCS3.
+    valeurs: Vec<(String, String)>,
+    /// Les clés réglées pour CE jeu.
+    par_jeu: Vec<String>,
+}
+
+/// Image et fluidité d'un jeu PS3 : ses réglages actuels ; `None` : pas un jeu PS3 lancé par RPCS3.
+#[tauri::command]
+pub async fn rpcs3_image(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<Option<ImagePs3>> {
+    let Some((_, rpcs3, numero)) = contexte_image_ps3(&app, &noyau, id).await? else { return Ok(None) };
+    let Some(n) = numero else { return Ok(Some(ImagePs3 { numero: None, valeurs: vec![], par_jeu: vec![] })) };
+    let (valeurs, par_jeu) = crate::emulateurs_profils::rpcs3_image(&rpcs3, &n)?;
+    Ok(Some(ImagePs3 { numero: Some(n), valeurs, par_jeu }))
+}
+
+/// Règle l'image et la fluidité d'un jeu PS3 (seulement les clés données) ; `vide` : revenir aux valeurs de RPCS3.
+/// RPCS3 fermé ; son programme de confiance ; fichier du jeu copié à l'abri.
+#[tauri::command]
+pub async fn rpcs3_regler_image(app: AppHandle, noyau: State<'_, Noyau>, id: i64, valeurs: Vec<(String, String)>, vide: bool) -> Resultat<()> {
+    let (programme, rpcs3, numero) =
+        contexte_image_ps3(&app, &noyau, id).await?.ok_or_else(|| Erreur::Refus("Ce jeu ne se lance pas avec RPCS3.".into()))?;
+    let n = numero.ok_or_else(|| Erreur::Refus("Frogtend ne reconnaît pas le disque de ce jeu : rien n'est réglé.".into()))?;
+    exiger_emulateur_pour_ecrire(&app, &noyau, &programme)?;
+    rpcs3_ferme(&rpcs3)?;
+    crate::emulateurs_profils::rpcs3_regler_image(&rpcs3, &n, &valeurs, vide)?;
+    noyau.journaliser(&format!("RPCS3 : image du jeu {n} réglée ({} réglage(s){})", valeurs.len(), if vide { ", valeurs de RPCS3" } else { "" }));
+    Ok(())
+}
+
 /// Ce qu'il faut pour les contenus PS3 d'un jeu : le jeu, son RPCS3, le compte RPCS3 du profil, les contenus trouvés.
 async fn contexte_contenus(
     app: &AppHandle,

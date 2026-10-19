@@ -9,6 +9,7 @@ import { motifDuRefus } from '$lib/dialogues/messages';
 import { completerRetroArch, poserBios, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
 import { avecConseil, biosADireOuPoser, biosRetroArch, changementDeConseil, estConseille, poidsBios } from '$lib/emulateurs/pret';
 import { preparerPourJouer } from '$lib/emulateurs/pret.svelte';
+import { libelleValeur, REGLAGES_IMAGE, reglagesMontres } from '$lib/emulateurs/imagePs3';
 import { estRetroArch, normaliser, pourLeJeu } from '$lib/emulateurs/choix';
 import { etat, reglerPc, reglerProfil } from '$lib/etat.svelte';
 import type { CommandesJeu } from '$lib/reglages/reglages';
@@ -692,11 +693,79 @@ export async function choisirFiger(id: number) {
   toast(`❄ « ${j.titre} » sera figé pendant le menu de Frogtend.`, 'ok');
 }
 
+/**
+ * Image et fluidité d'un jeu PS3 (RPCS3) : un sous-menu qui revient sur lui-même, une ligne par réglage avec sa valeur
+ * actuelle ; un choix ne change QUE ce réglage pour CE jeu (le reste suit RPCS3). Prend effet au prochain lancement.
+ */
+async function choisirImagePs3(id: number) {
+  const j = tele.jeux[id];
+  if (!j) return;
+  for (;;) {
+    let r: Awaited<ReturnType<typeof api.rpcs3Image>>;
+    try {
+      r = await api.rpcs3Image(id);
+    } catch (e) {
+      toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
+      return;
+    }
+    if (!r) {
+      toast(`« ${j.titre} » ne se lance plus avec RPCS3 sur ce PC : rien à régler ici.`, 'erreur');
+      return;
+    }
+    if (!r.numero) {
+      await informer(
+        '🎨 Image et fluidité',
+        `Frogtend ne lit pas le numéro du disque de « ${j.titre} ».\n\nS’il est encore compressé (.zip), décompresse-le d’abord avec le bouton « 🗜 Décompresser pour jouer » de sa fiche : RPCS3 en a besoin pour jouer, et Frogtend pour le régler.`,
+      );
+      return;
+    }
+    const valeurs = new Map(r.valeurs);
+    const parJeu = new Set(r.par_jeu);
+    type Ligne = string | 'defaut' | 'fini';
+    const lignes: { valeur: Ligne; libelle: string; detail?: string }[] = reglagesMontres(valeurs).map((g) => ({
+      valeur: g.cle,
+      libelle: g.titre,
+      detail: `${libelleValeur(g.cle, valeurs.get(g.cle) ?? '')}${parJeu.has(g.cle) ? ' — pour ce jeu' : ' — comme RPCS3'}`,
+    }));
+    if (parJeu.size)
+      lignes.push({ valeur: 'defaut', libelle: '↩ Valeurs de RPCS3', detail: 'ce jeu reprend les réglages de RPCS3 (y compris ceux d’image faits pour lui dans RPCS3)' });
+    lignes.push({ valeur: 'fini', libelle: '✅ Terminé' });
+    const c = await choisir<Ligne>(
+      `🎨 Image et fluidité — « ${j.titre} »`,
+      lignes,
+      `Ces réglages ne valent que pour ce jeu, pour tout le monde sur ce PC ; les autres jeux PS3 gardent ceux de RPCS3. Ils prennent effet au prochain lancement.`,
+    );
+    if (!c || c === 'fini') return;
+    try {
+      if (c === 'defaut') {
+        await api.rpcs3ReglerImage(id, [], true);
+        toast(`✅ « ${j.titre} » reprend les réglages de RPCS3 (au prochain lancement).`);
+        continue;
+      }
+      const g = REGLAGES_IMAGE.find((x) => x.cle === c);
+      if (!g) return;
+      const actuelle = valeurs.get(c);
+      const v = await choisir<string>(
+        `${g.titre} — « ${j.titre} »`,
+        g.valeurs.map((x) => ({ valeur: x.valeur, libelle: `${x.valeur === actuelle ? '⭐ ' : ''}${x.libelle}`, detail: x.detail })),
+        'Pour ce jeu seulement. Prend effet au prochain lancement.',
+      );
+      // La valeur actuelle héritée de RPCS3, choisie exprès : elle est figée pour ce jeu.
+      if (!v || (v === actuelle && parJeu.has(c))) continue;
+      await api.rpcs3ReglerImage(id, [[c, v]]);
+      toast(`✅ ${g.titre.replace(/^\S+\s/, '')} : ${libelleValeur(c, v)}, pour « ${j.titre} » (au prochain lancement).`);
+    } catch (e) {
+      toast(`Refusé : ${motifDuRefus(e)}`, 'erreur');
+      return;
+    }
+  }
+}
+
 /** Le menu « ⚙ Gérer le jeu » : toutes les actions possibles sur un jeu du PC, au même endroit, bien visibles. */
 export async function gererJeu(id: number) {
   const j = tele.jeux[id];
   if (!j) return;
-  type Action = 'installer' | 'lanceur' | 'version' | 'emulateur' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'retirer';
+  type Action = 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'retirer';
   const options: { valeur: Action; libelle: string; detail?: string }[] = [];
   if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
   if (j.installation && !j.installation.fichier_du_jeu)
@@ -714,6 +783,9 @@ export async function gererJeu(id: number) {
       libelle: '🕹 Émulateur',
       detail: `${e?.nom || e?.programme || ''}${etat.pc.emulateursJeux[String(id)] ? ' (propre à ce jeu)' : ' (comme la console)'}`,
     });
+    // Un jeu PS3 lancé par RPCS3 : son image et sa fluidité (✅ Seb 19/10 : « shaders = les deux »).
+    if (j.installation && /(^|[\\/])rpcs3\.exe$/i.test(e?.programme ?? ''))
+      options.push({ valeur: 'image', libelle: '🎨 Image et fluidité', detail: 'résolution, saccades, netteté — pour ce jeu' });
   }
   // Un jeu lancé sans émulateur (jeu PC) : jouer à la manette, son plein écran au lancement, le figer pendant le menu.
   // « Commandes » ne concerne que les émulateurs : pas pour lui (deux entrées « manette » se confondraient).
@@ -745,6 +817,7 @@ export async function gererJeu(id: number) {
   else if (c === 'lanceur') await choisirLanceur(id);
   else if (c === 'version') await choisirVersionParDefaut(id);
   else if (c === 'emulateur') await choisirEmulateurDuJeu(id);
+  else if (c === 'image') await choisirImagePs3(id);
   else if (c === 'commandes') await choisirCommandes(id);
   else if (c === 'figer') await choisirFiger(id);
   else if (c === 'pleinEcran') await choisirPleinEcran(id);

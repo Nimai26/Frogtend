@@ -407,6 +407,8 @@ pub fn run() {
             commandes::jeu_retirer,
             commandes::jeu_desinstaller_reste,
             commandes::parcourir,
+            commandes::rpcs3_image,
+            commandes::rpcs3_regler_image,
             commandes::emulateurs_recommandes,
             commandes::emulateurs_installes,
             commandes::emulateur_fiche,
