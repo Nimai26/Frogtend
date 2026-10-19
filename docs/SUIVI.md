@@ -47,6 +47,16 @@
   français ; jeu occupé dès la vérification ; refus pour un jeu émulé ; interface : attente qui reste affichée, retrait
   possible hors ligne, page Triches = même tri, descriptions coupées, « installation interrompue » montrée. Essai réel
   rejoué après corrections : OK. Tests 404 cœur, 206 interface.
+- **0.81.1** (19/10) — Recherche des codes et mods d'un jeu IMPORTÉ (`/triche/recherche`, 25a) : `criteres_jeu_importe`
+  (lu AVANT d'ouvrir la session), `triches_avec` dans `jeu_triches`, `triche_installer` (fichier par
+  `fichier_triche_route`, `fichier` repris tel quel) et `mod_installer`. Relevé réel (lecture seule) : Sonic (8 codes),
+  Super Mario World + `rom` (1 code, `?rom=`) ; copié dans `fixtures/simule/triche-recherche-sonic.json`. Steam : pas
+  encore (les jeux Steam ne sont pas des jeux du PC de Frogtend ; à voir).
+  Relecture de l'expert contrat (aucun bloquant) appliquée : 404 du fichier d'un code = « ce code n'est plus proposé »
+  (aussi pour les jeux à fiche) ; route du fichier EXACTE `/triche/<clé [a-z0-9-]>/fichier[?rom=…]` (un nom No-Intro
+  « ...Iru! » passe, `%2e%2e` non) ; relevé réel de Super Mario World (`?rom=`) testé et consigné (EXEMPLES) ; pas de
+  `rom` quand le numéro PS3 suffit ou pour un EBOOT.BIN. Note : `est_importe` (id < 0) couvrirait aussi un jeu de
+  boutique rangé dans le registre (aujourd'hui : recherche par titre et plateforme, sans fuite).
 
 - **Lot 0.80.0 — MAME : les sauvegardes des jeux d'arcade par profil** (Seb 19/10 : « ok enchaîne » après la 0.79.0 ;
   relevé par l'expert lancement pendant le lot 0.79.0 : `nvram\` (meilleurs scores, réglages de la borne) et les

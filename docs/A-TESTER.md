@@ -48,6 +48,11 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Codes et mods des jeux importés (0.81.1)
+- [ ] Un jeu importé de ton disque (une ROM, ou Mega Man Rock Force) ▸ sa fiche ▸ 🎯 Triches et mods : des codes
+      apparaissent (s'il y en a pour ce jeu).
+- [ ] Pose un code dans l'émulateur : il marche en jeu.
+
 ## Les mods des jeux PC (0.81.0)
 - [ ] Un jeu PC installé ▸ ⚙ Gérer ▸ 🧩 Mods : la liste (⬇ d'un clic, 🔗 à la main).
 - [ ] ⬇ un mod : la fenêtre dit sa taille et son partage ; oui → « installé : N ajouté(s), M remplacé(s) ».

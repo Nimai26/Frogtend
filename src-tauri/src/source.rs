@@ -31,6 +31,29 @@ const FICHE_110: &str = include_str!("../fixtures/simule/jeu-110.json");
 const DOCUMENTS_110: &str = include_str!("../fixtures/simule/documents-110.json");
 const LIVRET_9001: &[u8] = include_bytes!("../fixtures/simule/livret-9001.pdf");
 const PATCHS_BLES01227: &str = include_str!("../fixtures/simule/patchs-BLES01227.json");
+const TRICHE_SPIDERMAN: &str = include_str!("../fixtures/simule/triche-ultimate-spider-man.json");
+
+/// Le 404 du fichier d'un code : la clé a changé (contrat 1.19, point 6), jamais « ce jeu est inconnu ».
+fn code_disparu(e: Erreur) -> Erreur {
+    match e {
+        Erreur::Introuvable(_) => Erreur::Introuvable("Ce code n'est plus proposé par Firehouse : rouvre la liste des codes.".into()),
+        e => e,
+    }
+}
+
+/// La route du fichier d'un code, EXACTEMENT `/triche/<clé>/fichier`, suivie au plus de `?rom=…` (contrat 1.19) ; la
+/// clé n'a que des minuscules, chiffres et tirets (rien de ce que le serveur lirait comme `..`, même encodé).
+fn route_de_code_sure(r: &str) -> bool {
+    let (chemin, requete) = r.split_once('?').unwrap_or((r, ""));
+    let parties: Vec<&str> = chemin.split('/').collect();
+    let cle_sure = |c: &str| !c.is_empty() && c.len() <= 64 && c.chars().all(|x| x.is_ascii_lowercase() || x.is_ascii_digit() || x == '-');
+    parties.len() == 4
+        && parties[0].is_empty()
+        && parties[1] == "triche"
+        && cle_sure(parties[2])
+        && parties[3] == "fichier"
+        && (requete.is_empty() || (requete.starts_with("rom=") && !requete.contains(['#', '&'])))
+}
 
 /// Les erreurs des routes des patchs RPCS3 (contrat 1.18) dites pour elles : 404 = pas de liste pour ce moteur (jamais
 /// « ce jeu ») ; 503 = la liste est en cours de remplacement chez Firehouse.
@@ -453,6 +476,45 @@ impl Source {
         }
     }
 
+    /// Contrat 1.19 (25a) : les codes et mods d'un jeu SANS fiche (jeu importé), d'après ce que Frogtend en sait
+    /// (`titre`, `plateforme`, `rom` = nom du fichier, `serial`, `steam_appid` ; au moins un). Même forme que
+    /// `/jeu/{id}/triche`, plus `patchs_rpcs3`. Même réponse quel que soit le grade.
+    pub async fn triche_recherche(&self, criteres: &[(&str, String)]) -> Resultat<Value> {
+        let vide = json!({"codes": [], "cheat_engine": [], "mods": [], "maj_le": null});
+        let q: Vec<String> = criteres.iter().filter(|(_, v)| !v.trim().is_empty()).map(|(k, v)| format!("{k}={}", encoder(v))).collect();
+        if q.is_empty() {
+            return Ok(vide);
+        }
+        match self {
+            Source::Firehouse(c) => c.obtenir_json(&format!("/triche/recherche?{}", q.join("&"))).await,
+            // La vraie réponse d'Ultimate Spider-Man (relevé du 19/10) pour ce titre ; rien pour les autres.
+            Source::Simulee => {
+                let spider = criteres.iter().any(|(k, v)| *k == "titre" && v.to_lowercase().contains("spider-man"));
+                Ok(if spider { serde_json::from_str(TRICHE_SPIDERMAN).unwrap_or(vide) } else { vide })
+            }
+        }
+    }
+
+    /// Le fichier d'un code d'un jeu sans fiche, par le `fichier` de la liste repris TEL QUEL (contrat 1.19) ; seule une
+    /// route `/triche/<clé>/fichier` de l'API est admise.
+    pub async fn fichier_triche_route(&self, fichier: &str) -> Resultat<Vec<u8>> {
+        let route = fichier
+            .strip_prefix(crate::firehouse::PREFIXE)
+            .filter(|r| route_de_code_sure(r))
+            .ok_or_else(|| Erreur::Serveur("Firehouse a décrit ce code de façon inattendue.".into()))?;
+        match self {
+            Source::Firehouse(c) => {
+                let b = c.brute(reqwest::Method::GET, route, None, &[]).await?;
+                if (200..300).contains(&b.statut) {
+                    Ok(b.octets.to_vec())
+                } else {
+                    Err(code_disparu(crate::firehouse::erreur_du_statut(b.statut, &b.octets)))
+                }
+            }
+            Source::Simulee => Err(Erreur::Refus("Mode simulé : pas de codes.".into())),
+        }
+    }
+
     /// Le fichier brut d'un code de triche (contrat 13).
     pub async fn fichier_triche(&self, media_id: i64, cle: &str) -> Resultat<Vec<u8>> {
         match self {
@@ -461,7 +523,7 @@ impl Source {
                 if (200..300).contains(&b.statut) {
                     Ok(b.octets.to_vec())
                 } else {
-                    Err(crate::firehouse::erreur_du_statut(b.statut, &b.octets))
+                    Err(code_disparu(crate::firehouse::erreur_du_statut(b.statut, &b.octets)))
                 }
             }
             Source::Simulee => Err(Erreur::Refus("Mode simulé : pas de codes.".into())),
@@ -565,6 +627,70 @@ mod tests {
         // Simulé : la vraie réponse pour Asura's Wrath, rien pour un autre jeu.
         assert_eq!(Source::Simulee.patchs_rpcs3_jeu("BLES01227", None).await.unwrap()["patchs"].as_array().unwrap().len(), 8);
         assert!(Source::Simulee.patchs_rpcs3_jeu("BLUS30721", None).await.unwrap()["patchs"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn les_codes_d_un_jeu_sans_fiche_se_cherchent_et_leur_fichier_se_reprend_tel_quel() {
+        use httpmock::prelude::*;
+        let m = MockServer::start();
+        // La VRAIE réponse de Firehouse pour Sonic (relevé du 19/10).
+        let vraie: Value = serde_json::from_str(include_str!("../fixtures/simule/triche-recherche-sonic.json")).unwrap();
+        let recherche = m.mock(|w, t| {
+            w.method(GET)
+                .path("/api/jeux/v1/triche/recherche")
+                .query_param("titre", "Sonic the Hedgehog")
+                .query_param("plateforme", "Sega Genesis")
+                .query_param("rom", "Sonic (W) [!].md")
+                // Un critère vide n'est jamais envoyé.
+                .matches(|r| !r.query_params.as_ref().is_some_and(|q| q.iter().any(|(k, _)| k == "serial")));
+            t.status(200).json_body(vraie.clone());
+        });
+        let fichier = m.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/triche/retroarch-61bb21b0369e0cc5/fichier");
+            t.status(200).body("cheats = 1\n");
+        });
+        let s = Source::Firehouse(crate::firehouse::Client::nouveau(&m.base_url(), "jeton").unwrap());
+        let r = s
+            .triche_recherche(&[("titre", "Sonic the Hedgehog".into()), ("plateforme", "Sega Genesis".into()), ("rom", "Sonic (W) [!].md".into()), ("serial", String::new())])
+            .await
+            .unwrap();
+        recherche.assert();
+        assert_eq!(r["codes"].as_array().unwrap().len(), 8);
+        let f = r["codes"][0]["fichier"].as_str().unwrap();
+        assert_eq!(s.fichier_triche_route(f).await.unwrap(), b"cheats = 1\n");
+        fichier.assert();
+        // Jamais une autre route que celle d'un fichier de code (même « .. » encodé).
+        for faux in [
+            "/api/jeux/v1/jeu/1/fichier/2/0",
+            "https://ailleurs.example/api/jeux/v1/triche/x/fichier",
+            "/api/jeux/v1/triche/../moi/fichier",
+            "/api/jeux/v1/triche/%2e%2e/fichier",
+            "/api/jeux/v1/triche/x",
+            "/api/jeux/v1/triche/x/fichier?autre=1",
+        ] {
+            assert!(s.fichier_triche_route(faux).await.is_err(), "{faux}");
+        }
+        // La VRAIE réponse de Super Mario World (le `fichier` porte `?rom=`, encodé par Firehouse) : reprise telle quelle.
+        let smw: Value = serde_json::from_str(include_str!("../fixtures/simule/triche-recherche-smw.json")).unwrap();
+        let avec_rom = m.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/triche/retroarch-7175b4fd6a5aaf30/fichier").query_param("rom", "Super Mario World (USA)");
+            t.status(200).body("smw");
+        });
+        assert_eq!(s.fichier_triche_route(smw["codes"][0]["fichier"].as_str().unwrap()).await.unwrap(), b"smw");
+        avec_rom.assert();
+        // Un nom No-Intro qui commence par des points n'est pas un « .. » de chemin.
+        assert!(super::route_de_code_sure("/triche/retroarch-1/fichier?rom=...Iru%21%20%28Japan%29"));
+        // Une clé disparue (404) : « ce code n'est plus proposé », jamais « ce jeu est inconnu ».
+        m.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/triche/ancienne/fichier");
+            t.status(404).json_body(json!({"ok": false}));
+        });
+        let e = s.fichier_triche_route("/api/jeux/v1/triche/ancienne/fichier").await.unwrap_err().to_string();
+        assert!(e.contains("plus proposé"), "{e}");
+        // Rien à chercher : aucun appel. Simulé : la vraie réponse de Spider-Man pour ce titre.
+        assert!(s.triche_recherche(&[("titre", "  ".into())]).await.unwrap()["codes"].as_array().unwrap().is_empty());
+        let sim = Source::Simulee.triche_recherche(&[("titre", "Ultimate Spider-Man".into()), ("plateforme", "Windows".into())]).await.unwrap();
+        assert!(sim["mods"].as_array().unwrap().iter().any(|m| m["nom"] == "Fusion Fix"));
     }
 
     #[tokio::test]
@@ -729,6 +855,8 @@ mod tests {
             ("skyrim", "/triche/recherche?titre=The%20Elder%20Scrolls%20V%3A%20Skyrim&plateforme=Windows"),
             ("steam-skyrim-se", "/triche/recherche?steam_appid=489830"),
             ("asura", "/triche/recherche?serial=BLES01227"),
+            ("smw", "/triche/recherche?titre=Super%20Mario%20World&plateforme=Super%20Nintendo%20Entertainment%20System&rom=Super%20Mario%20World%20(USA).sfc"),
+            ("sonic", "/triche/recherche?titre=Sonic%20the%20Hedgehog&plateforme=Sega%20Genesis"),
             ("vide", "/triche/recherche"),
         ] {
             match c.obtenir(route, None).await {

@@ -386,7 +386,9 @@ réels à la fin de son EXEMPLES-API-JEUX-V1.md. Décisions de Seb (19/10) :
   respecté (consignes, choix racine / dossier du programme, jamais au canapé) ; `licence`, `licence_libre`,
   `pre_version`, `depot_deplace`, empreinte absente AFFICHÉS avant le oui ; `references` montrées comme pages citées,
   jamais téléchargées ; `sources_url` et les autres méthodes ignorés (la page reste). Recherche d'un jeu sans fiche :
-  0.81.1. Nexus (`nxm://`, enregistré par l'installeur, ✅ Seb) : 0.82.0.
+  ✅ 0.81.1 (jeu importé : `titre`, `plateforme` toujours, `rom` = nom du fichier seul, `serial` PS3 ; le `fichier` d'un
+  code repris tel quel, seule une route `/triche/<clé>/fichier` admise ; relevé réel : Sonic → 8 codes RetroArch,
+  Super Mario World avec `rom` → 1 code, `fichier` avec `?rom=`). Nexus (`nxm://`, enregistré par l'installeur, ✅ Seb) : 0.82.0.
 
 ### Note 2.58.0 (contrat inchangé)
 Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a été RÉUNIE à celle du même jeu

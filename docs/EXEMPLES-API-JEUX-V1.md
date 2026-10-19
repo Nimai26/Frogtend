@@ -1546,3 +1546,21 @@ nommé a son `paquet` (url, sha256, taille, version « 1.22.2 », source « stab
   Preview » (`versions_du_jeu: ["01.00"]`, Boot to title screen) et « Asura's Wrath » (`versions_du_jeu: "All"` :
   Developer Menu, Disable Ambient Occlusion, Disable Bloom, Disable Depth of Field, Disable Motion Blur, Unlock FPS…).
   `versions_du_jeu` a bien les deux formes : liste ou `"All"`.
+
+## Codes d'un jeu sans fiche (contrat 1.19, 25a) — relevé réel du 19/10/2026 (lecture seule)
+
+`GET /api/jeux/v1/triche/recherche?titre=Super Mario World&plateforme=Super Nintendo Entertainment System&rom=Super Mario World (USA).sfc`
+→ 1 code (copié dans `src-tauri/fixtures/simule/triche-recherche-smw.json`) :
+
+```json
+{"cle":"retroarch-7175b4fd6a5aaf30","emulateur":"retroarch","format":"cht","titre":"Super Mario World (USA)",
+ "source":"retroarch","correspondance":"nom_fichier","confiance":1.0,"nom_fichier":"Super Mario World (USA).cht",
+ "dossier":"cheats/{coeur}","base":"donnees","serial":null,"crc":null,"gameid":null,
+ "fichier":"/api/jeux/v1/triche/retroarch-7175b4fd6a5aaf30/fichier?rom=Super%20Mario%20World%20%28USA%29"}
+```
+
+- Le nom de ROM avec son extension est accepté (correspondance « nom_fichier ») ; `fichier` porte `?rom=` encodé par
+  Firehouse, SANS extension ; à reprendre tel quel.
+- `titre=Sonic the Hedgehog&plateforme=Sega Genesis` → 8 codes RetroArch par titre (confiance 0.85), `fichier` sans
+  `?rom=` (`fixtures/simule/triche-recherche-sonic.json`). `serial=BLES01227` → 0 code, 8 `patchs_rpcs3`.
+- Sans aucun critère → 400 « donne au moins un titre, une ROM, un numéro de série ou un steam_appid ».

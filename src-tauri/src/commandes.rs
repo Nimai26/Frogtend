@@ -2503,10 +2503,43 @@ pub async fn cheatengine_lancer(
     Ok(())
 }
 
-/// Les triches et mods connus d'un jeu (contrat 13).
+/// Ce que Frogtend sait d'un jeu IMPORTÉ (sans fiche chez Firehouse) pour chercher ses codes et mods (contrat 1.19,
+/// 25a) : titre, plateforme (toujours : sans elle, aucun mod), nom du fichier du jeu (jamais son chemin), numéro de
+/// série PS3. `None` : un jeu de Firehouse (sa fiche suffit). Lu avant de prendre la session (qui ne se garde pas).
+async fn criteres_jeu_importe(noyau: &Noyau, id: i64) -> Resultat<Option<Vec<(&'static str, String)>>> {
+    let j = noyau.jeu_visible(id).await?;
+    if !crate::import_local::est_importe(&j) {
+        return Ok(None);
+    }
+    let fichier = j.installation.as_ref().and_then(|i| i.fichier_du_jeu.as_ref().map(|f| std::path::Path::new(&i.dossier).join(f)));
+    let rom = fichier.as_deref().and_then(|f| f.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let serial = match (crate::succes::console_de(&j.plateforme), fichier) {
+        (Some(82), Some(f)) => tauri::async_runtime::spawn_blocking(move || crate::contenus::titre_id_ps3(&f))
+            .await
+            .ok()
+            .flatten()
+            .filter(|n| crate::emulateurs_profils::numero_ps3_sur(n))
+            .unwrap_or_default(),
+        _ => String::new(),
+    };
+    // Un numéro PS3 suffit ; un « EBOOT.BIN » (jeu PS3 en dossier) ne dit rien du jeu : pas envoyé.
+    let rom = if !serial.is_empty() || rom.eq_ignore_ascii_case("EBOOT.BIN") { String::new() } else { rom };
+    Ok(Some(vec![("titre", j.titre), ("plateforme", j.plateforme), ("rom", rom), ("serial", serial)]))
+}
+
+/// Les codes et mods d'un jeu : sa fiche chez Firehouse, ou la recherche pour un jeu importé (`criteres`).
+async fn triches_avec(source: &crate::source::Source, id: i64, criteres: &Option<Vec<(&'static str, String)>>) -> Resultat<Value> {
+    match criteres {
+        Some(c) => source.triche_recherche(c).await,
+        None => source.triches(id).await,
+    }
+}
+
+/// Les triches et mods connus d'un jeu (contrat 13 ; jeu importé : la recherche du contrat 1.19).
 #[tauri::command]
 pub async fn jeu_triches(noyau: State<'_, Noyau>, id: i64) -> Resultat<Value> {
-    noyau.session().await?.source.triches(id).await
+    let criteres = criteres_jeu_importe(&noyau, id).await?;
+    triches_avec(&noyau.session().await?.source, id, &criteres).await
 }
 
 // --- Mods GitHub (contrat 1.19 ; ✅ Seb 19/10, lot 0.81.0) : le mod et son fichier sont REPRIS de la liste de
@@ -2544,7 +2577,8 @@ pub async fn mods_installes(noyau: State<'_, Noyau>, id: i64) -> Resultat<Vec<cr
 #[tauri::command]
 pub async fn mod_installer(noyau: State<'_, Noyau>, id: i64, mod_nom: String, fichier: String, programme: bool) -> Resultat<crate::mods::Bilan> {
     let (j, dossier) = jeu_pour_un_mod(&noyau, id).await?;
-    let liste = noyau.session().await?.source.triches(id).await?;
+    let criteres = criteres_jeu_importe(&noyau, id).await?;
+    let liste = triches_avec(&noyau.session().await?.source, id, &criteres).await?;
     let m = liste["mods"]
         .as_array()
         .and_then(|l| l.iter().find(|m| m["nom"].as_str() == Some(mod_nom.as_str())).cloned())
@@ -2623,8 +2657,9 @@ pub async fn mod_desinstaller(noyau: State<'_, Noyau>, id: i64, cle: String) -> 
 #[tauri::command]
 pub async fn triche_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, cle: String, programme: String, ligne: String) -> Resultat<String> {
     exiger_emulateur_pour_ecrire(&app, &noyau, std::path::Path::new(&programme))?;
+    let criteres = criteres_jeu_importe(&noyau, id).await?;
     let s = noyau.session().await?;
-    let liste = s.source.triches(id).await?;
+    let liste = triches_avec(&s.source, id, &criteres).await?;
     let code = liste["codes"]
         .as_array()
         .and_then(|l| l.iter().find(|c| c["cle"].as_str() == Some(cle.as_str())).cloned())
@@ -2649,7 +2684,11 @@ pub async fn triche_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, 
         &dossier_rel,
         code["nom_fichier"].as_str().ok_or_else(|| Erreur::Serveur("Firehouse n'a pas donné le nom du fichier.".into()))?,
     )?;
-    let octets = s.source.fichier_triche(id, &cle).await?;
+    // Jeu importé : le `fichier` de la liste repris tel quel (contrat 1.19) ; sinon la route de sa fiche.
+    let octets = match &criteres {
+        Some(_) => s.source.fichier_triche_route(code["fichier"].as_str().unwrap_or("")).await?,
+        None => s.source.fichier_triche(id, &cle).await?,
+    };
     if let Some(p) = place.parent() {
         std::fs::create_dir_all(p)?;
     }

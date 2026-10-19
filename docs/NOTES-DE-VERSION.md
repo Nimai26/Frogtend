@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.81.1 — Codes et mods pour tes jeux importés
+
+- Un jeu que tu as ajouté depuis ton disque (sans fiche Firehouse) a maintenant ses codes de triche et ses mods : 🎯
+  Triches et mods sur sa fiche, et 🧩 Mods dans ⚙ Gérer le jeu (jeu PC).
+- Frogtend les cherche chez Firehouse d'après le titre, la console, le NOM du fichier du jeu (jamais son chemin) et,
+  pour un jeu PS3, son numéro de disque.
+
 ## 0.81.0 — Les mods des jeux PC, d'un clic
 
 - ⚙ Gérer le jeu ▸ **🧩 Mods** (jeu PC) : les mods connus pour ce jeu. ⬇ s'installe d'un clic ; 🔗 se fait à la
