@@ -355,6 +355,35 @@ compatible.
   seulement sous licence libre explicite (GitHub d'abord), empreinte vérifiée, validé un par un par un admin, jamais
   pour un jeu en ligne, jamais mis à jour sans nouvelle validation. Rien de livré pour le 25 au 19/10 (annoncé en 1.19).
 
+### 1.19 (19/10, Firehouse 2.82.0, en service le 19/10 à 17 h 50) — codes et mods (besoin 25)
+Reçu par message de la session Firehouse ; détail dans son BRIEF § 1.5 et § 3 (« Codes et mods (1.19) »), relevés
+réels à la fin de son EXEMPLES-API-JEUX-V1.md. Décisions de Seb (19/10) :
+1. **Frogtend télécharge les MODS lui-même** (exception au « jamais sur Internet », limitée aux mods ; Firehouse n'en
+   garde aucune copie). GitHub : `fichiers[].url`, sha256 vérifié quand il est donné (différent : rien installé, liste
+   redemandée — relue chaque jour). Nexus : la voie OFFICIELLE `nxm://` (s'enregistrer pour les liens « Mod Manager
+   Download », puis demander le lien à l'API Nexus avec la clé d'API PERSONNELLE de l'utilisateur — gratuite, dans les
+   réglages de son compte Nexus ; chacun son compte et sa clé, rangés chez lui). JAMAIS d'automate sur les pages de
+   Nexus (conditions d'usage art. 11 : robots interdits, compte suspendu).
+2. Aucune validation par un admin ni filtre adulte sur les mods. Seul refus de principe : `refus: "anti_triche"` (jeu
+   à anti-triche : le lien reste, aucun fichier). `licence`, `licence_libre`, `pre_version`, `depot_deplace` : AFFICHÉS
+   avant le oui, jamais bloquants. Autres refus = Firehouse ne sait pas QUEL fichier donner (`sans_release_precise`,
+   `liens_contradictoires`, `github_indisponible`…).
+3. `a_confirmer: false` seulement quand la consigne PCGamingWiki dit d'extraire à la racine du jeu, pour une release
+   précise et (si elle en nomme un) pour CE fichier ; sinon montrer `consignes_url` et demander où poser. Frogtend
+   choisit ajouter ou remplacer en comparant l'archive au dossier du jeu (sauvegarde avant).
+4. Nouveau `references` : liens seulement CITÉS par la page, jamais à télécharger. `liens` garde son sens (1.18).
+5. Jeu sans fiche (25a) : `GET /api/jeux/v1/triche/recherche?titre=&plateforme=&rom=&serial=&steam_appid=` (au moins
+   un) → même forme que `/jeu/{id}/triche` + `patchs_rpcs3` (null hors numéro PS3, [] sans patch ; tiret accepté).
+   Sans plateforme : seul le numéro rapproche, aucun mod (mods seulement pour une plateforme PC ou un `steam_appid`).
+   Même réponse quel que soit le grade, jeu connu de Firehouse ou non. Fichier d'un code :
+   `GET /api/jeux/v1/triche/{cle}/fichier[?rom=]`, en reprenant le `fichier` de la liste tel quel.
+6. ⚠️ Les clés de code changent de forme PARTOUT (y compris `/jeu/{id}/triche`) : `source-<16 hexa>`, stables d'une
+   semaine à l'autre ; une ancienne clé numérique → 404 : toujours reprendre la clé dans la liste.
+7. Un identifiant PPSSPP partagé par deux jeux (19 cas, dont ULES-00301) → UN seul .ini qui contient les deux blocs.
+- Côté Frogtend (relevé du 19/10) : les clés de code sont lues dans la liste à chaque fois (`codes[].cle`, texte) et
+  jamais gardées : la nouvelle forme passe telle quelle. Mods, `references`, recherche d'un jeu sans fiche : NON
+  encore adaptés (lot à venir ; l'enregistrement de `nxm://` touche le registre de Windows : à annoncer à Seb).
+
 ### Note 2.58.0 (contrat inchangé)
 Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a été RÉUNIE à celle du même jeu
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
