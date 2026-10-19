@@ -29,6 +29,8 @@ pub struct PartieEnCours {
     pub dossier_jeu: Option<String>,
     /// Jeu PC : sa correspondance manette → clavier (bouton → touche), s'il en a une.
     pub clavier: Option<std::collections::BTreeMap<String, String>>,
+    /// Manette → clavier : une touche tenue se répète comme sur un vrai clavier (réglage du jeu, oui par défaut).
+    pub repeter_touches: bool,
     /// Émulateur figé pendant le menu (aucune pause réglable : Cemu, Xenia, xemu, Vita3K ; ou Eden/Azahar dont la
     /// pause n'a pas pu être réglée) : il n'est « en pause » qu'une fois VRAIMENT figé.
     pub figer_emulateur: bool,
@@ -406,6 +408,7 @@ mod tests {
             figer: false,
             dossier_jeu: None,
             clavier: None,
+            repeter_touches: true,
             figer_emulateur: false,
         }
     }

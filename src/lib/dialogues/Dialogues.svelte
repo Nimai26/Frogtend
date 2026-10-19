@@ -8,6 +8,51 @@
 
   const dessus = $derived(pile.dialogues.at(-1));
 
+  // « Appuie sur une touche » : pourquoi la dernière touche n'est pas possible, par fenêtre.
+  let refusTouche = $state<Record<number, string>>({});
+
+  // Fenêtre « touche » au-dessus : le clavier est à elle seule (phase de capture : Échap, Entrée, Tab n'agissent
+  // plus ailleurs). La touche est rendue à son RELÂCHEMENT. Une fausse touche de la manette (sans `code`) est ignorée.
+  $effect(() => {
+    const d = dessus;
+    if (!d || d.sorte !== 'touche') return;
+    let attendue: { code: string; key: string } | null = null;
+    const bas = (e: KeyboardEvent) => {
+      if (!e.code) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.repeat) return;
+      // Deux touches à la fois (AltGr = Ctrl + Alt droite sous Windows) : on recommence.
+      if (attendue) {
+        attendue = null;
+        refusTouche[d.id] = 'Une seule touche à la fois : appuie de nouveau.';
+        return;
+      }
+      const refus = d.verifier({ code: e.code, key: e.key });
+      if (refus) refusTouche[d.id] = refus;
+      else {
+        delete refusTouche[d.id];
+        attendue = { code: e.code, key: e.key };
+      }
+    };
+    const haut = (e: KeyboardEvent) => {
+      if (!e.code) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (attendue && e.code === attendue.code) d.fermer(attendue);
+    };
+    // La fenêtre perd la main entre l'appui et le relâchement : cette touche ne compte plus.
+    const oubli = () => (attendue = null);
+    window.addEventListener('keydown', bas, true);
+    window.addEventListener('keyup', haut, true);
+    window.addEventListener('blur', oubli);
+    return () => {
+      window.removeEventListener('keydown', bas, true);
+      window.removeEventListener('keyup', haut, true);
+      window.removeEventListener('blur', oubli);
+    };
+  });
+
   function valider(d: Dialogue) {
     if (d.sorte === 'confirmer') d.fermer(true);
     else if (d.sorte === 'demander') d.fermer(saisies[d.id] ?? d.valeur);
@@ -58,6 +103,11 @@
         {/if}
       {/if}
 
+      {#if d.sorte === 'touche'}
+        <!-- Le focus va ICI (jamais sur « Annuler » : Entrée y serait prise pour annuler, alors qu'elle est lue). -->
+        <p class="attente" tabindex="-1" data-premier aria-live="polite">{refusTouche[d.id] ?? '⌨ En attente d’une touche…'}</p>
+      {/if}
+
       {#if d.sorte === 'choisir'}
         {#if d.options.length === 0}
           <p class="muted">Aucun choix possible pour l'instant.</p>
@@ -86,6 +136,9 @@
             </button>
           {:else if d.sorte === 'demander'}
             <button class="btn primary" data-valider onclick={() => valider(d)}>{d.libelleValider}</button>
+          {:else if d.sorte === 'touche'}
+            <button class="btn" onclick={() => d.fermer('rien')}>⬜ Aucune touche</button>
+            <button class="btn" onclick={() => d.fermer('liste')}>📋 Dans la liste…</button>
           {/if}
         {/if}
       </div>
@@ -126,6 +179,14 @@
   .message {
     margin: 0 0 calc(14 * var(--u));
     white-space: pre-line;
+  }
+  .attente {
+    margin: 0 0 calc(14 * var(--u));
+    padding: calc(14 * var(--u));
+    text-align: center;
+    border: 2px dashed var(--accent);
+    border-radius: calc(10 * var(--u));
+    font-size: calc(15 * var(--u));
   }
   textarea,
   input {

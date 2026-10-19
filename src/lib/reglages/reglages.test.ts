@@ -48,6 +48,11 @@ describe('completer', () => {
     expect(completer(DEFAUTS_PROFIL, {}).figer).toEqual([]);
     expect(completer(DEFAUTS_PROFIL, { figer: ['42'] }).figer).toEqual(['42']);
   });
+  it('la répétition d’un bouton tenu : active d’office pour tous les jeux, la liste des exceptions lue est gardée', () => {
+    expect(DEFAUTS_PROFIL.sansRepetition).toEqual([]);
+    expect(completer(DEFAUTS_PROFIL, {}).sansRepetition).toEqual([]);
+    expect(completer(DEFAUTS_PROFIL, { sansRepetition: ['42'] }).sansRepetition).toEqual(['42']);
+  });
   it('garde les emplacements par système (dictionnaire libre)', () => {
     const r = completer(DEFAUTS_PC, { emplacements: { defaut: ['D:\\Jeux'], systemes: { 'MS-DOS': ['E:\\DOS'] } } });
     expect(r.emplacements.systemes['MS-DOS']).toEqual(['E:\\DOS']);

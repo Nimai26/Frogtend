@@ -855,6 +855,7 @@ pub async fn jeu_jouer(
     figer: Option<bool>,
     plein_ecran: Option<String>,
     clavier: Option<std::collections::BTreeMap<String, String>>,
+    repeter_touches: Option<bool>,
 ) -> Resultat<()> {
     let jeu = noyau.registre().jeu(id)?;
     let (plateforme, titre) = jeu.map(|j| (j.plateforme, j.titre)).unwrap_or_default();
@@ -926,6 +927,7 @@ pub async fn jeu_jouer(
         figer,
         // Manette → clavier : un jeu PC lancé sans émulateur seulement (un émulateur a ses propres manettes).
         clavier: clavier.filter(|c| !c.is_empty() && dossier_jeu.is_some()),
+        repeter_touches: repeter_touches.unwrap_or(true),
         dossier_jeu,
         figer_emulateur,
     });
@@ -1054,9 +1056,11 @@ fn suivre_manette_menu(app: &AppHandle, numero: u64) {
     // Manette → clavier (jeu PC, réglage du jeu) : le même fil traduit les boutons en touches.
     let partie = app.state::<crate::menu_jeu::MenuJeu>().partie();
     let dossier_jeu = partie.as_ref().and_then(|p| p.dossier_jeu.clone()).map(std::path::PathBuf::from);
+    let repeter = partie.as_ref().is_some_and(|p| p.repeter_touches);
     let mut clavier = partie
         .and_then(|p| p.clavier)
-        .map(|c| crate::clavier::Moteur::nouveau(&c, combo))
+        // La répétition d'une touche tenue : au délai et à la cadence du clavier de Windows, lus au lancement.
+        .map(|c| crate::clavier::Moteur::nouveau(&c, combo).avec_repetition(repeter.then(crate::clavier::Repetition::de_ce_pc)))
         .filter(|m| !m.est_vide());
     std::thread::spawn(move || {
         // Le premier plan est vérifié à CHAQUE envoi (le chemin du programme, seulement quand il change).

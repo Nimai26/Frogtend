@@ -1,5 +1,18 @@
 # Notes de version de Frogtend
 
+## 0.77.0 — Manette → clavier, plus simple
+
+- « Jouer à la manette » (jeu fait pour le clavier) ▸ ✏ Bouton par bouton : au lieu de chercher dans une liste de 70
+  touches, **appuie sur la touche voulue** sur ton clavier. « 📋 Dans la liste… » reste possible, et en Taodbox (sans
+  clavier) c'est la liste.
+- Une lettre de déplacement (Z Q S D) : Frogtend te demande si tu veux la LETTRE ou la PLACE de la touche (la place
+  marche aussi sur un clavier anglais).
+- **Un bouton tenu répète sa touche**, comme une touche tenue sur un clavier : les vieux menus qui ne défilent que
+  touche tenue défilent enfin. Même délai et même vitesse que ton clavier dans Windows. Maj, Ctrl et Alt ne se
+  répètent pas. Un jeu qui ferait l'action en boucle : « 🔁 Un bouton tenu répète sa touche : non » pour ce jeu.
+- ⚠ Pour les jeux déjà réglés aussi : un bouton relié à Échap ou Entrée, s'il est TENU, envoie maintenant sa touche
+  en boucle (comme une touche tenue). Appuie-le brièvement, ou coupe la répétition pour ce jeu.
+
 ## 0.76.0 — Gérer un jeu depuis le canapé
 
 - En Taodbox, le bouton **Y** de la manette ouvre « ⚙ Gérer le jeu » sur la jaquette choisie (au clavier : la touche

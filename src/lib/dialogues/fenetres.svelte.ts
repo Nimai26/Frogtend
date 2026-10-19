@@ -1,4 +1,4 @@
-// Les cinq outils maison (charte § 4) : Confirmer, Demander, Choisir, Informer, Toast.
+// Les outils maison (charte § 4) : Confirmer, Demander, Choisir, Informer, Toast — et « Appuie sur une touche ».
 // Aucune fenêtre native : ces fonctions ouvrent des fenêtres propres à l'application et rendent une promesse.
 
 import { deduireTypeToast, dureeToast, type TypeToast } from './messages';
@@ -27,7 +27,19 @@ export type Dialogue =
       fermer: (r: string | null) => void;
     })
   | (Base & { sorte: 'choisir'; options: OptionChoix<unknown>[]; fermer: (r: unknown | null) => void })
-  | (Base & { sorte: 'informer'; fermer: () => void });
+  | (Base & { sorte: 'informer'; fermer: () => void })
+  | (Base & {
+      sorte: 'touche';
+      /** Pourquoi une touche n'est pas possible (`null` : acceptée). */
+      verifier: (t: ToucheLue) => string | null;
+      fermer: (r: ToucheLue | 'liste' | 'rien' | null) => void;
+    });
+
+/** Une touche appuyée : sa place (`code`) et ce qu'elle affiche (`key`). */
+export interface ToucheLue {
+  code: string;
+  key: string;
+}
 
 export interface Toast {
   id: number;
@@ -101,6 +113,13 @@ export function choisir<T>(titre: string, options: OptionChoix<T>[], message?: s
 /** Un message qu'il faut avoir lu : un seul bouton « OK ». */
 export function informer(titre: string, message?: string): Promise<void> {
   return ouvrir<void>((id, fermer) => ({ id, sorte: 'informer', titre, message, fermer: () => fermer() }));
+}
+
+/** « Appuie sur la touche voulue » : TOUTES les touches sont prises (Échap et Tab compris) ; la touche est rendue à son
+ * relâchement (jamais une touche encore tenue qui validerait la fenêtre suivante). Rend la touche, `'liste'` (choisir
+ * dans la liste), `'rien'` (aucune touche) ou `null` (annulé, à la souris). */
+export function attendreTouche(titre: string, options: { message?: string; verifier: (t: ToucheLue) => string | null }): Promise<ToucheLue | 'liste' | 'rien' | null> {
+  return ouvrir<ToucheLue | 'liste' | 'rien' | null>((id, fermer) => ({ id, sorte: 'touche', titre, message: options.message, verifier: options.verifier, fermer }));
 }
 
 /** Un compte rendu bref, qui ne bloque rien. Le type se déduit du message s'il n'est pas donné. */

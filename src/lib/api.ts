@@ -564,6 +564,7 @@ export const api = {
     figer?: boolean,
     pleinEcran?: string,
     clavier?: Record<string, string>,
+    repeterTouches = true,
   ) =>
     appeler<void>('jeu_jouer', {
       id,
@@ -573,6 +574,7 @@ export const api = {
       figer: figer ?? false,
       pleinEcran: pleinEcran ?? null,
       clavier: clavier && Object.keys(clavier).length ? clavier : null,
+      repeterTouches,
     }),
   pleinEcranSuggestion: (id: number) => appeler<string | null>('jeu_plein_ecran_suggestion', { id }),
   jeuAntiTriche: (id: number) => appeler<VerificationFiger>('jeu_anti_triche', { id }),

@@ -102,16 +102,54 @@ fn appuye(bouton: &str, boutons: u16, e: &EtatManette) -> bool {
         }
 }
 
-/// Une touche à envoyer : touche virtuelle OU position fixe, étendue, appuyée (sinon relâchée).
+/// Une touche à envoyer : touche virtuelle OU position fixe, étendue, appuyée (sinon relâchée). Une `repetition` est
+/// un nouvel appui d'une touche DÉJÀ tenue (sans relâchement), comme le fait un vrai clavier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Frappe {
     pub vk: u16,
     pub position: u16,
     pub etendue: bool,
     pub bas: bool,
+    pub repetition: bool,
 }
 
 type Touche = (u16, u16, bool);
+
+/// La répétition d'une touche tenue (IDEES, 16/10 : les vieux menus ne défilent que par répétition). SendInput ne
+/// répète pas : c'est le pilote d'un vrai clavier qui le fait. Frogtend imite donc Windows : son délai et sa cadence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Repetition {
+    pub delai: Duration,
+    pub periode: Duration,
+}
+
+impl Repetition {
+    /// Depuis les réglages du clavier de Windows (`SPI_GETKEYBOARDDELAY` 0 à 3 : 250 à 1000 ms ; `SPI_GETKEYBOARDSPEED`
+    /// 0 à 31 : environ 2,5 à 30 fois par seconde, doc de Microsoft — entre les deux bouts, une approximation linéaire).
+    pub fn de_windows(delai: u32, vitesse: u32) -> Self {
+        let delai = Duration::from_millis(250 * (u64::from(delai.min(3)) + 1));
+        let par_seconde = 2.5 + (30.0 - 2.5) * f64::from(vitesse.min(31)) / 31.0;
+        Repetition { delai, periode: Duration::from_secs_f64(1.0 / par_seconde) }
+    }
+
+    /// Ceux de ce PC (les valeurs par défaut de Windows si la lecture échoue).
+    pub fn de_ce_pc() -> Self {
+        #[cfg(windows)]
+        {
+            let (d, v) = windows_impl::reglages_clavier().unwrap_or((1, 31));
+            Repetition::de_windows(d, v)
+        }
+        #[cfg(not(windows))]
+        {
+            Repetition::de_windows(1, 31)
+        }
+    }
+}
+
+/// Maj, Ctrl, Alt ne se répètent pas (inutile, et certains jeux s'en gênent).
+fn se_repete(t: &Touche) -> bool {
+    !matches!(t.0, 0xA0 | 0xA2 | 0xA4)
+}
 
 /// Le moteur d'un jeu : sa correspondance et les touches qu'IL tient (il ne relâche jamais que les siennes).
 pub struct Moteur {
@@ -123,6 +161,11 @@ pub struct Moteur {
     /// Depuis quand un bouton de la combinaison est appuyé SEUL (pas encore la combinaison), et lesquels.
     partiel_depuis: Option<Instant>,
     partiel_bits: u16,
+    /// La répétition (`None` : coupée pour ce jeu).
+    repetition: Option<Repetition>,
+    /// Comme un vrai clavier : seule la DERNIÈRE touche appuyée se répète ; l'instant de sa prochaine répétition. (Une
+    /// différence voulue : Maj, Ctrl ou Alt appuyée pendant ce temps ne l'arrête pas — Maj + Z en continu dans un jeu.)
+    derniere: Option<(Touche, Instant)>,
 }
 
 impl Moteur {
@@ -136,7 +179,13 @@ impl Moteur {
                 Some((b, (vk, pos, ext)))
             })
             .collect();
-        Moteur { liens, combo, tenues: Vec::new(), combo_vue: false, partiel_depuis: None, partiel_bits: 0 }
+        Moteur { liens, combo, tenues: Vec::new(), combo_vue: false, partiel_depuis: None, partiel_bits: 0, repetition: None, derniere: None }
+    }
+
+    /// Avec la répétition d'une touche tenue (`None` : coupée pour ce jeu).
+    pub fn avec_repetition(mut self, r: Option<Repetition>) -> Self {
+        self.repetition = r;
+        self
     }
 
     pub fn est_vide(&self) -> bool {
@@ -185,16 +234,36 @@ impl Moteur {
                 voulues.push(*touche);
             }
         }
-        let frappe = |t: &Touche, bas: bool| Frappe { vk: t.0, position: t.1, etendue: t.2, bas };
+        let frappe = |t: &Touche, bas: bool| Frappe { vk: t.0, position: t.1, etendue: t.2, bas, repetition: false };
         let mut f: Vec<Frappe> = self.tenues.iter().filter(|t| !voulues.contains(t)).map(|t| frappe(t, false)).collect();
-        f.extend(voulues.iter().filter(|v| !self.tenues.contains(v)).map(|v| frappe(v, true)));
+        let nouvelles: Vec<Touche> = voulues.iter().filter(|v| !self.tenues.contains(v)).copied().collect();
+        f.extend(nouvelles.iter().map(|v| frappe(v, true)));
+        if let Some(r) = self.repetition {
+            // La dernière touche appuyée (hors Maj, Ctrl, Alt) se répétera après le délai.
+            if let Some(n) = nouvelles.iter().rev().find(|n| se_repete(n)) {
+                self.derniere = Some((*n, t + r.delai));
+            }
+            // Relâchée : plus de répétition (les autres touches tenues ne reprennent pas, comme un vrai clavier).
+            if self.derniere.is_some_and(|(d, _)| !voulues.contains(&d)) {
+                self.derniere = None;
+            }
+            // Échue : UNE répétition par tour au plus (jamais de rafale après un trou, Frogtend occupé…).
+            if let Some((d, echeance)) = self.derniere {
+                if t >= echeance {
+                    f.push(Frappe { repetition: true, ..frappe(&d, true) });
+                    let suivante = echeance + r.periode;
+                    self.derniere = Some((d, if suivante > t { suivante } else { t + r.periode }));
+                }
+            }
+        }
         self.tenues = voulues;
         f
     }
 
     /// Relâche tout ce qu'il tient (menu qui s'ouvre, jeu qui perd le premier plan, fin de partie).
     pub fn relacher_tout(&mut self) -> Vec<Frappe> {
-        std::mem::take(&mut self.tenues).into_iter().map(|t| Frappe { vk: t.0, position: t.1, etendue: t.2, bas: false }).collect()
+        self.derniere = None;
+        std::mem::take(&mut self.tenues).into_iter().map(|t| Frappe { vk: t.0, position: t.1, etendue: t.2, bas: false, repetition: false }).collect()
     }
 }
 
@@ -216,6 +285,14 @@ impl Enfoncees {
         let mut l = Vec::new();
         for f in frappes {
             let id = (f.vk, f.position, f.etendue);
+            if f.repetition {
+                // Un nouvel appui du code DÉJÀ tenu, sans rien compter ; jamais pour une touche qui n'est plus tenue
+                // (ce serait un appui sans relâchement).
+                if let Some((_, code)) = self.par_touche.iter().find(|(i, _)| *i == id).filter(|_| f.bas) {
+                    l.push((*code, f.etendue, true));
+                }
+                continue;
+            }
             if f.bas {
                 if self.par_touche.iter().any(|(i, _)| *i == id) {
                     continue;
@@ -372,6 +449,18 @@ mod windows_impl {
         (l.len(), n)
     }
 
+    /// Le délai (0 à 3) et la vitesse (0 à 31) de répétition du clavier réglés dans Windows.
+    pub fn reglages_clavier() -> Option<(u32, u32)> {
+        use windows::Win32::UI::WindowsAndMessaging::{SystemParametersInfoW, SPI_GETKEYBOARDDELAY, SPI_GETKEYBOARDSPEED, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS};
+        let mut delai = 0u32;
+        let mut vitesse = 0u32;
+        unsafe {
+            SystemParametersInfoW(SPI_GETKEYBOARDDELAY, 0, Some(&mut delai as *mut u32 as *mut _), SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0)).ok()?;
+            SystemParametersInfoW(SPI_GETKEYBOARDSPEED, 0, Some(&mut vitesse as *mut u32 as *mut _), SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0)).ok()?;
+        }
+        Some((delai, vitesse))
+    }
+
     pub fn pid_au_premier_plan() -> u32 {
         let mut pid = 0u32;
         unsafe {
@@ -426,7 +515,7 @@ mod tests {
         EtatManette { boutons, ..Default::default() }
     }
     fn f(vk: u16, bas: bool) -> Frappe {
-        Frappe { vk, position: 0, etendue: false, bas }
+        Frappe { vk, position: 0, etendue: false, bas, repetition: false }
     }
 
     #[test]
@@ -438,9 +527,76 @@ mod tests {
         assert_eq!(m.pas(&e(0), t), [f(0x5A, false)]);
         // Le stick gauche vers le haut = la flèche (touche étendue).
         let haut = EtatManette { ly: 30_000, ..Default::default() };
-        assert_eq!(m.pas(&haut, t), [Frappe { vk: 0x26, position: 0, etendue: true, bas: true }]);
-        assert_eq!(m.relacher_tout(), [Frappe { vk: 0x26, position: 0, etendue: true, bas: false }]);
+        assert_eq!(m.pas(&haut, t), [Frappe { vk: 0x26, position: 0, etendue: true, bas: true, repetition: false }]);
+        assert_eq!(m.relacher_tout(), [Frappe { vk: 0x26, position: 0, etendue: true, bas: false, repetition: false }]);
         assert!(m.relacher_tout().is_empty());
+    }
+
+    #[test]
+    fn une_touche_tenue_se_repete_comme_un_vrai_clavier() {
+        let t0 = Instant::now();
+        let ms = |n: u64| t0 + Duration::from_millis(n);
+        let r = Repetition { delai: Duration::from_millis(500), periode: Duration::from_millis(50) };
+        let rep = |vk: u16| Frappe { repetition: true, ..f(vk, true) };
+        let mut m = Moteur::nouveau(&corr(&[("a", "Z"), ("x", "X"), ("rt", "Maj"), ("select", "Échap"), ("rb", "S")]), 0x0220).avec_repetition(Some(r));
+        // Rien avant le délai, puis une répétition à chaque période.
+        assert_eq!(m.pas(&e(0x1000), ms(0)), [f(0x5A, true)]);
+        assert!(m.pas(&e(0x1000), ms(499)).is_empty());
+        assert_eq!(m.pas(&e(0x1000), ms(500)), [rep(0x5A)]);
+        assert!(m.pas(&e(0x1000), ms(530)).is_empty());
+        assert_eq!(m.pas(&e(0x1000), ms(550)), [rep(0x5A)]);
+        // Un trou de 2 s (Frogtend occupé) : UNE seule répétition, jamais une rafale.
+        assert_eq!(m.pas(&e(0x1000), ms(2550)), [rep(0x5A)]);
+        assert!(m.pas(&e(0x1000), ms(2560)).is_empty());
+        // Une deuxième touche : c'est elle qui se répète ; la première ne reprend pas quand on lâche la seconde.
+        assert_eq!(m.pas(&e(0x1000 | 0x4000), ms(3000)), [f(0x58, true)]);
+        assert_eq!(m.pas(&e(0x1000 | 0x4000), ms(3500)), [rep(0x58)]);
+        assert_eq!(m.pas(&e(0x1000), ms(3600)), [f(0x58, false)]);
+        assert!(m.pas(&e(0x1000), ms(5000)).is_empty());
+        // Lâchée : plus rien ; rappuyée : le délai repart de zéro.
+        assert_eq!(m.pas(&e(0), ms(5100)), [f(0x5A, false)]);
+        assert_eq!(m.pas(&e(0x1000), ms(5200)), [f(0x5A, true)]);
+        assert!(m.pas(&e(0x1000), ms(5600)).is_empty());
+        // Le menu qui s'ouvre relâche tout : aucune répétition ensuite, et le délai repart.
+        m.relacher_tout();
+        assert_eq!(m.pas(&e(0x1000), ms(6000)), [f(0x5A, true)]);
+        assert!(m.pas(&e(0x1000), ms(6400)).is_empty());
+        m.relacher_tout();
+        // Maj tenue ne se répète pas.
+        assert_eq!(m.pas(&EtatManette { dt: 255, ..Default::default() }, ms(7000)), [f(0xA0, true)]);
+        assert!(m.pas(&EtatManette { dt: 255, ..Default::default() }, ms(9000)).is_empty());
+        m.relacher_tout();
+        // Les boutons de la combinaison du menu (View + RB) ne partent jamais, donc ne se répètent jamais.
+        assert!(m.pas(&e(0x0220), ms(10_000)).is_empty());
+        assert!(m.pas(&e(0x0220), ms(12_000)).is_empty());
+        // Coupée pour ce jeu : jamais de répétition.
+        let mut sans = Moteur::nouveau(&corr(&[("a", "Z")]), 0);
+        assert_eq!(sans.pas(&e(0x1000), ms(0)), [f(0x5A, true)]);
+        assert!(sans.pas(&e(0x1000), ms(5000)).is_empty());
+    }
+
+    #[test]
+    fn une_repetition_ne_change_pas_ce_qui_est_tenu() {
+        let mut en = Enfoncees::default();
+        let code_de = |vk: u16| vk + 0x100;
+        let z = f(0x5A, true);
+        let rep = Frappe { repetition: true, ..z };
+        assert_eq!(en.planifier(&[z], &code_de), [(0x15A, false, true)]);
+        assert_eq!(en.planifier(&[rep, rep], &code_de), [(0x15A, false, true), (0x15A, false, true)]);
+        // Un seul relâchement suffit (les répétitions n'ont rien compté).
+        assert_eq!(en.planifier(&[f(0x5A, false)], &code_de), [(0x15A, false, false)]);
+        // Une répétition d'une touche qui n'est plus tenue : rien (jamais un appui sans relâchement).
+        assert!(en.planifier(&[rep], &code_de).is_empty());
+    }
+
+    #[test]
+    fn le_delai_et_la_cadence_viennent_de_windows() {
+        assert_eq!(Repetition::de_windows(0, 31).delai, Duration::from_millis(250));
+        assert_eq!(Repetition::de_windows(3, 31).delai, Duration::from_millis(1000));
+        assert_eq!(Repetition::de_windows(9, 31).delai, Duration::from_millis(1000), "hors bornes : le maximum");
+        let vite = Repetition::de_windows(1, 31).periode.as_millis();
+        assert!((33..=34).contains(&vite), "{vite}");
+        assert_eq!(Repetition::de_windows(1, 0).periode.as_millis(), 400);
     }
 
     #[test]
@@ -456,7 +612,7 @@ mod tests {
         assert_eq!(m.pas(&e(0x0300), t).len(), 1, "LB et RB sur la même touche : une seule frappe");
         m.relacher_tout();
         // « Déplacement gauche » part par sa POSITION (celle de Q en AZERTY, A en QWERTY).
-        assert_eq!(m.pas(&e(0x0004), t), [Frappe { vk: 0, position: 0x1E, etendue: false, bas: true }]);
+        assert_eq!(m.pas(&e(0x0004), t), [Frappe { vk: 0, position: 0x1E, etendue: false, bas: true, repetition: false }]);
     }
 
     #[test]
@@ -487,8 +643,8 @@ mod tests {
     fn deux_noms_sur_la_meme_touche_physique_ne_relachent_qu_au_dernier() {
         // AZERTY : « Z » (touche virtuelle 0x5A → code 0x11) et « Déplacement haut » (position 0x11).
         let code_de = |vk: u16| if vk == 0x5A { 0x11 } else { 0 };
-        let z = Frappe { vk: 0x5A, position: 0, etendue: false, bas: true };
-        let dep = Frappe { vk: 0, position: 0x11, etendue: false, bas: true };
+        let z = Frappe { vk: 0x5A, position: 0, etendue: false, bas: true, repetition: false };
+        let dep = Frappe { vk: 0, position: 0x11, etendue: false, bas: true, repetition: false };
         let mut e = Enfoncees::default();
         assert_eq!(e.planifier(&[z], &code_de), [(0x11, false, true)]);
         assert!(e.planifier(&[dep], &code_de).is_empty(), "déjà enfoncée : pas un 2e appui");
@@ -499,7 +655,7 @@ mod tests {
         let autre_disposition = |_: u16| 0x2C;
         assert_eq!(e.planifier(&[Frappe { bas: false, ..z }], &autre_disposition), [(0x11, false, false)]);
         // Une touche sans code n'est jamais envoyée ; le crochet de panique relâche tout ce qui reste.
-        assert!(e.planifier(&[Frappe { vk: 0x99, position: 0, etendue: false, bas: true }], &code_de).is_empty());
+        assert!(e.planifier(&[Frappe { vk: 0x99, position: 0, etendue: false, bas: true, repetition: false }], &code_de).is_empty());
         e.planifier(&[dep], &code_de);
         assert_eq!(e.tout(), [(0x11, false, false)]);
     }
@@ -574,5 +730,49 @@ mod essai_reel {
         println!("RECU {recu:?}");
         // AZERTY : les lettres Z Q S D, puis les positions de ZQSD (= WASD en QWERTY), qui donnent aussi « zqsd ».
         assert_eq!(recu, "zqsdzqsd");
+    }
+
+    /// Une touche TENUE 1,5 s se répète dans une vraie fenêtre, au délai et à la cadence du clavier de Windows. Rien
+    /// n'est envoyé si la fenêtre d'essai n'a plus le premier plan (jamais une touche ailleurs).
+    #[test]
+    #[ignore]
+    fn essai_repetition_reelle() {
+        let d = tempfile::tempdir().unwrap();
+        let sortie = d.path().join("recu.txt");
+        let script = format!(
+            "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object Windows.Forms.Form; $f.Text = 'Frogtend essai répétition'; \
+             $t = New-Object Windows.Forms.TextBox; $t.Dock = 'Fill'; $f.Controls.Add($t); \
+             $m = New-Object Windows.Forms.Timer; $m.Interval = 6000; $m.Add_Tick({{ Set-Content -Path '{}' -Value $t.Text -Encoding UTF8; $f.Close() }}); $m.Start(); \
+             $f.Add_Shown({{ $f.Activate(); $t.Focus() }}); $f.ShowDialog()",
+            sortie.display()
+        );
+        let mut enfant = std::process::Command::new("powershell").args(["-NoProfile", "-Command", &script]).spawn().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(2500));
+        let r = super::Repetition::de_ce_pc();
+        println!("RÉPÉTITION {r:?}");
+        let corr: std::collections::BTreeMap<String, String> = [("a".to_string(), "Z".to_string())].into_iter().collect();
+        let mut m = super::Moteur::nouveau(&corr, 0).avec_repetition(Some(r));
+        let a = crate::osd_manette::EtatManette { boutons: 0x1000, ..Default::default() };
+        let debut = std::time::Instant::now();
+        let mut envoyes = 0;
+        while debut.elapsed() < std::time::Duration::from_millis(1500) {
+            if super::windows_impl::pid_au_premier_plan() != enfant.id() {
+                super::envoyer(&m.relacher_tout());
+                panic!("la fenêtre d'essai n'a plus le premier plan : arrêté, rien envoyé ailleurs");
+            }
+            let f = m.pas(&a, std::time::Instant::now());
+            envoyes += f.len();
+            super::envoyer(&f);
+            std::thread::sleep(std::time::Duration::from_millis(16));
+        }
+        super::envoyer(&m.relacher_tout());
+        let _ = enfant.wait();
+        let recu = std::fs::read_to_string(&sortie).unwrap_or_default();
+        let recu = recu.trim_start_matches('\u{feff}').trim().to_lowercase();
+        // Attendu : 1 appui + (1500 ms - délai) / période répétitions, à un ou deux près (le fil tourne par pas de 16 ms).
+        let attendu = 1 + (1500u128.saturating_sub(r.delai.as_millis())) / r.periode.as_millis().max(1);
+        println!("REÇU {} « z » (frappes envoyées {envoyes}, attendu ≈ {attendu})", recu.len());
+        assert!(recu.chars().all(|c| c == 'z'), "{recu:?}");
+        assert!(recu.len() as u128 + 3 >= attendu && recu.len() as u128 <= attendu + 1, "{} pour ≈ {attendu}", recu.len());
     }
 }

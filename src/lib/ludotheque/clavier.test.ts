@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOUTONS, detailTouche, libelleClavier, memes, nettoyer, PREREGLAGES, TOUCHES } from './clavier';
+import { BOUTONS, detailTouche, libelleClavier, memes, nettoyer, PREREGLAGES, toucheDepuisEvenement, TOUCHES } from './clavier';
 
 describe('manette → clavier', () => {
   it('les préréglages n’utilisent que des boutons et des touches connus, jamais View (Back) d’office', () => {
@@ -31,5 +31,50 @@ describe('manette → clavier', () => {
     expect(TOUCHES).toContain('Échap');
     expect(new Set(TOUCHES).size).toBe(TOUCHES.length);
     expect(BOUTONS).toHaveLength(16);
+  });
+});
+
+describe('choisir une touche en l’appuyant', () => {
+  const t = (code: string, key: string) => toucheDepuisEvenement({ code, key });
+  it('les lettres d’après ce qui est écrit sur la touche (clavier français)', () => {
+    expect(t('KeyQ', 'a')).toEqual({ touche: 'A' });
+    expect(t('KeyA', 'q')).toEqual({ touche: 'Q', position: 'Déplacement gauche' });
+    expect(t('KeyW', 'z')).toEqual({ touche: 'Z', position: 'Déplacement haut' });
+    expect(t('KeyS', 's')).toEqual({ touche: 'S', position: 'Déplacement bas' });
+    // Le M d'un clavier français est à la place du « ; » anglais (qui, lui, reste refusé).
+    expect(t('Semicolon', 'm')).toEqual({ touche: 'M' });
+  });
+  it('les chiffres d’après leur place (& é " sur la rangée du haut)', () => {
+    expect(t('Digit1', '&')).toEqual({ touche: '1' });
+    expect(t('Digit2', 'é')).toEqual({ touche: '2' });
+  });
+  it('les touches spéciales, Échap et Tab compris', () => {
+    expect(t('Escape', 'Escape')).toEqual({ touche: 'Échap' });
+    expect(t('Tab', 'Tab')).toEqual({ touche: 'Tab' });
+    expect(t('ShiftRight', 'Shift')).toEqual({ touche: 'Maj' });
+    expect(t('NumpadEnter', 'Enter')).toEqual({ touche: 'Entrée' });
+    expect(t('ArrowLeft', 'ArrowLeft')).toEqual({ touche: 'Gauche' });
+  });
+  it('refuse ce que le cœur ne sait pas envoyer', () => {
+    for (const [code, key] of [['Numpad1', '1'], ['BracketLeft', 'Dead'], ['MetaLeft', 'Meta'], ['CapsLock', 'CapsLock'], ['Semicolon', ';'], ['AltRight', 'AltGraph'], ['F13', 'F13']])
+      expect('refus' in t(code, key), code).toBe(true);
+  });
+  it('tout ce qui est accepté est une touche connue du cœur, et chaque touche est atteignable', () => {
+    const codes = [
+      ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map((l) => [`Key${l}`, l.toLowerCase()]),
+      ...'0123456789'.split('').map((c) => [`Digit${c}`, c]),
+      ...['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Space', 'Escape', 'ShiftLeft', 'ControlLeft', 'AltLeft', 'Tab', 'Backspace', 'Insert', 'Delete', 'Home', 'End', 'PageUp', 'PageDown', ...Array.from({ length: 12 }, (_, i) => `F${i + 1}`)].map((c) => [c, c]),
+    ];
+    const vues = new Set<string>();
+    for (const [code, key] of codes) {
+      const r = t(code, key);
+      expect('touche' in r, code).toBe(true);
+      if ('touche' in r) {
+        expect(TOUCHES).toContain(r.touche);
+        vues.add(r.touche);
+        if (r.position) vues.add(r.position);
+      }
+    }
+    expect(TOUCHES.filter((x) => !vues.has(x))).toEqual([]);
   });
 });

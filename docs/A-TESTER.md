@@ -48,6 +48,15 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Manette → clavier, plus simple (0.77.0)
+- [ ] Un jeu PC fait pour le clavier ▸ ⚙ Gérer ▸ 🕹 Jouer à la manette ▸ ✏ Bouton par bouton ▸ A : la fenêtre
+      « Appuie sur la touche » ; appuie sur Espace : A → Espace.
+- [ ] Appuie sur Z : Frogtend demande « 🧭 Déplacement haut » ou « 🔤 La lettre Z ».
+- [ ] Échap : il demande confirmation (« quitte certains jeux ») ; la touche Windows : « pas encore possible ».
+- [ ] « 📋 Dans la liste… », « ⬜ Aucune touche », « Annuler » marchent à la souris.
+- [ ] En jeu, un bouton TENU dans un menu (liste d'options, inventaire) : ça défile comme une touche tenue.
+- [ ] « 🔁 Un bouton tenu répète sa touche : non » : chaque appui = une seule touche.
+
 ## Gérer un jeu depuis le canapé (0.76.0)
 - [ ] Taodbox, une jaquette choisie, **Y** : « ⚙ Gérer » s'ouvre ; la croix et A choisissent, B revient.
 - [ ] 🕹 Émulateur, 🎮 Commandes, 📀 Version (Dune ou un jeu à plusieurs versions), 🎨 Image et fluidité (Asura's

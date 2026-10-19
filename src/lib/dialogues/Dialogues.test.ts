@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import Dialogues from './Dialogues.svelte';
-import { choisir, confirmer, demander, informer, pile, toast } from './fenetres.svelte';
+import { attendreTouche, choisir, confirmer, demander, informer, pile, toast } from './fenetres.svelte';
 
 afterEach(() => {
   cleanup();
@@ -142,5 +142,76 @@ describe('Une action dangereuse sélectionne « Annuler » d’abord', () => {
     void confirmer('🗑 Autre chose ?');
     await tick();
     expect(document.activeElement?.textContent?.trim()).toBe('Confirmer'); // sans danger : la validation, comme avant
+  });
+});
+
+describe('Appuie sur une touche', () => {
+  const verifier = (t: { code: string }) => (t.code === 'MetaLeft' ? 'pas possible' : null);
+
+  it('Échap est une touche comme une autre : rendue au relâchement, sans annuler', async () => {
+    render(Dialogues);
+    const r = attendreTouche('⌨ Touche pour Start', { verifier });
+    await tick();
+    // Aucun bouton n'a le focus (Entrée sur « Annuler » serait trompeuse) : la zone d'attente l'a.
+    expect(document.activeElement?.classList.contains('attente')).toBe(true);
+    await fireEvent.keyDown(window, { key: 'Escape', code: 'Escape' });
+    expect(pile.dialogues).toHaveLength(1);
+    await fireEvent.keyUp(window, { key: 'Escape', code: 'Escape' });
+    expect(await r).toEqual({ code: 'Escape', key: 'Escape' });
+  });
+
+  it('une touche refusée le dit et la fenêtre attend la suivante ; deux touches à la fois : on recommence', async () => {
+    render(Dialogues);
+    const r = attendreTouche('⌨ Touche pour A', { verifier });
+    await tick();
+    await fireEvent.keyDown(window, { key: 'Meta', code: 'MetaLeft' });
+    await fireEvent.keyUp(window, { key: 'Meta', code: 'MetaLeft' });
+    await tick();
+    expect(screen.getByText('pas possible')).toBeTruthy();
+    // AltGr sous Windows : Ctrl gauche puis Alt droite.
+    await fireEvent.keyDown(window, { key: 'Control', code: 'ControlLeft' });
+    await fireEvent.keyDown(window, { key: 'AltGraph', code: 'AltRight' });
+    await fireEvent.keyUp(window, { key: 'Control', code: 'ControlLeft' });
+    await tick();
+    expect(pile.dialogues).toHaveLength(1);
+    await fireEvent.keyDown(window, { key: 'z', code: 'KeyW' });
+    await fireEvent.keyUp(window, { key: 'z', code: 'KeyW' });
+    expect(await r).toEqual({ code: 'KeyW', key: 'z' });
+  });
+
+  it('une fausse touche de la manette (sans code) et une répétition sont ignorées ; Entrée ne valide rien ailleurs', async () => {
+    render(Dialogues);
+    let ailleurs = 0;
+    const compter = () => ailleurs++;
+    window.addEventListener('keydown', compter);
+    const r = attendreTouche('⌨ Touche pour A', { verifier });
+    await tick();
+    await fireEvent.keyDown(window, { key: 'Enter' });
+    await fireEvent.keyDown(window, { key: 'Enter', code: 'Enter' });
+    await fireEvent.keyDown(window, { key: 'Enter', code: 'Enter', repeat: true });
+    expect(pile.dialogues).toHaveLength(1);
+    expect(ailleurs).toBe(1);
+    await fireEvent.keyUp(window, { key: 'Enter', code: 'Enter' });
+    expect(await r).toEqual({ code: 'Enter', key: 'Enter' });
+    window.removeEventListener('keydown', compter);
+  });
+
+  it('à la souris : « Dans la liste… », « Aucune touche », « Annuler »', async () => {
+    render(Dialogues);
+    const r1 = attendreTouche('⌨ Touche', { verifier });
+    await tick();
+    await fireEvent.click(screen.getByRole('button', { name: /Dans la liste/ }));
+    expect(await r1).toBe('liste');
+    const r2 = attendreTouche('⌨ Touche', { verifier });
+    await tick();
+    await fireEvent.click(screen.getByRole('button', { name: /Aucune touche/ }));
+    expect(await r2).toBe('rien');
+    const r3 = attendreTouche('⌨ Touche', { verifier });
+    await tick();
+    await fireEvent.click(screen.getByRole('button', { name: 'Annuler' }));
+    expect(await r3).toBeNull();
+    // Fermée : le clavier redevient normal.
+    await tick();
+    expect(pile.dialogues).toHaveLength(0);
   });
 });

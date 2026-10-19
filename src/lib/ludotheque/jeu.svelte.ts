@@ -4,7 +4,7 @@
 import { listen } from '@tauri-apps/api/event';
 import { isTauri } from '@tauri-apps/api/core';
 import { api, duree, estErreurCoeur, taille, type Candidat, type JeuPc, type VerificationFiger } from '$lib/api';
-import { choisir, confirmer, fermerToast, informer, toast } from '$lib/dialogues/fenetres.svelte';
+import { attendreTouche, choisir, confirmer, fermerToast, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { completerRetroArch, poserBios, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
 import { avecConseil, biosADireOuPoser, biosRetroArch, changementDeConseil, estConseille, poidsBios } from '$lib/emulateurs/pret';
@@ -19,7 +19,7 @@ import { ludo, rechargerListe, rechargerPlateformes } from './ludotheque.svelte'
 import { rechargerJeuxDuPc, tele } from './telechargements.svelte';
 import { estCourante, libelleVersion, nomDuFichier } from './versions';
 import { libellePleinEcran, TOUCHES_PLEIN_ECRAN } from './plein-ecran';
-import { BOUTONS, detailTouche, libelleClavier, memes, nettoyer, PREREGLAGES, TOUCHES, type Correspondance } from './clavier';
+import { BOUTONS, detailTouche, libelleClavier, memes, nettoyer, PREREGLAGES, toucheDepuisEvenement, TOUCHES, type Correspondance } from './clavier';
 import { auCanape, seulementAuBureau } from '$lib/taodbox/canape';
 
 export const partie = $state<{ enJeu: number | null; installation: number | null }>({ enJeu: null, installation: null });
@@ -305,6 +305,7 @@ export async function jouer(id: number, emulateur?: string, version?: string) {
         etat.profil.figer.includes(String(id)),
         typeof pe === 'string' ? pe : undefined,
         nettoyer(etat.profil.clavier[String(id)]),
+        !etat.profil.sansRepetition.includes(String(id)),
       );
       toast(`▶ « ${j?.titre ?? 'Le jeu'} » se lance…`);
       return;
@@ -548,11 +549,48 @@ function nomCombinaison(): string {
  * « 🕹 Jouer à la manette » (jeu PC lancé sans émulateur, fait pour le clavier) : Frogtend traduit les boutons en
  * touches pendant la partie. Un préréglage courant, ou bouton par bouton ; désactivé d'office.
  */
+/** La touche d'un bouton : au bureau, en l'APPUYANT (IDEES 16/10), la liste en secours ; en Taodbox (pas de
+ * clavier), la liste. Rend le nom de la touche, `''` (aucune), ou `null` (rien de changé). */
+async function toucheDuBouton(nomBouton: string, bouton: string, actuelle: string | undefined): Promise<string | null> {
+  const liste = () =>
+    choisir<string>(`⌨ Quelle touche pour ${nomBouton} ?`, [
+      { valeur: '', libelle: '⬜ Rien', detail: 'ce bouton n’envoie aucune touche' },
+      ...TOUCHES.map((k) => ({ valeur: k, libelle: k, detail: detailTouche(k) })),
+    ]);
+  if (auCanape()) return liste();
+  const lue = await attendreTouche(`⌨ Appuie sur la touche pour ${nomBouton}`, {
+    message: `Actuellement : ${actuelle ?? 'rien'}.\nAppuie sur la touche voulue, sur ton clavier (Échap et Tab comptent aussi). Pour ne rien changer, clique sur « Annuler ».`,
+    verifier: (t) => {
+      const r = toucheDepuisEvenement(t);
+      return 'refus' in r ? r.refus : null;
+    },
+  });
+  if (lue === null) return null;
+  if (lue === 'rien') return '';
+  if (lue === 'liste') return liste();
+  const r = toucheDepuisEvenement(lue);
+  if (!('touche' in r)) return null;
+  // Une lettre de déplacement (Z Q S D en français) : la LETTRE, ou la PLACE, qui marche avec tous les claviers. Pour
+  // une direction de la manette, la place d'abord.
+  if (r.position) {
+    const direction = ['haut', 'bas', 'gauche', 'droite'].includes(bouton);
+    const options = [
+      { valeur: r.position, libelle: `🧭 ${r.position}`, detail: 'la touche à cette PLACE : marche avec tous les claviers (ZQSD ou WASD)' },
+      { valeur: r.touche, libelle: `🔤 La lettre ${r.touche}`, detail: 'toujours cette lettre, où qu’elle soit sur le clavier' },
+    ];
+    return choisir<string>(`⌨ ${nomBouton} → ${r.touche}`, direction ? options : options.reverse(), 'Sur ton clavier, c’est la même touche ; ça change seulement d’un clavier français à un clavier anglais.');
+  }
+  const attention = detailTouche(r.touche);
+  if (attention && !(await confirmer(`⌨ ${nomBouton} → ${r.touche} ?`, { message: `${r.touche} : ${attention}.`, libelleValider: 'Garder' }))) return null;
+  return r.touche;
+}
+
 export async function choisirClavier(id: number) {
   const j = tele.jeux[id];
   if (!j) return;
   const actuel = nettoyer(etat.profil.clavier[String(id)]);
-  type Choix = 'non' | 'perso' | `pre:${string}`;
+  const repete = !etat.profil.sansRepetition.includes(String(id));
+  type Choix = 'non' | 'perso' | 'repetition' | `pre:${string}`;
   const c = await choisir<Choix>(
     `🕹 Jouer à « ${j.titre} » à la manette`,
     [
@@ -563,10 +601,27 @@ export async function choisirClavier(id: number) {
         libelle: '✏ Bouton par bouton…',
         detail: Object.keys(actuel).length ? 'en partant du réglage actuel' : 'en partant de « Flèches + Z X C »',
       },
+      ...(Object.keys(actuel).length
+        ? [
+            {
+              valeur: 'repetition' as Choix,
+              libelle: `🔁 Un bouton tenu répète sa touche : ${repete ? 'oui' : 'non'}`,
+              detail: repete
+                ? 'comme une touche tenue sur un clavier (les menus défilent) ; « non » si le jeu fait l’action en boucle'
+                : 'chaque appui du bouton = une seule touche',
+            },
+          ]
+        : []),
     ],
     `Seulement pour un jeu fait pour le clavier, qui ne voit pas ta manette : Frogtend appuie sur les touches pour toi. Actuellement : ${libelleClavier(actuel)}. Le menu de Frogtend (${nomCombinaison()}) reste à sa place.`,
   );
   if (!c) return;
+  if (c === 'repetition') {
+    const l = etat.profil.sansRepetition.filter((x) => x !== String(id));
+    await reglerProfil('sansRepetition', repete ? [...l, String(id)] : l);
+    toast(`🔁 « ${j.titre} » : ${repete ? 'un bouton tenu n’envoie sa touche qu’une fois' : 'un bouton tenu répète sa touche, comme un clavier'}.`);
+    return;
+  }
   let nouvelle: Correspondance = {};
   if (c.startsWith('pre:')) nouvelle = { ...(PREREGLAGES.find((p) => `pre:${p.id}` === c)?.correspondance ?? {}) };
   if (c === 'perso') {
@@ -589,10 +644,7 @@ export async function choisirClavier(id: number) {
         return;
       }
       const nomBouton = BOUTONS.find((x) => x.id === b)?.nom ?? b;
-      const t = await choisir<string>(`⌨ Quelle touche pour ${nomBouton} ?`, [
-        { valeur: '', libelle: '⬜ Rien', detail: 'ce bouton n’envoie aucune touche' },
-        ...TOUCHES.map((k) => ({ valeur: k, libelle: k, detail: detailTouche(k) })),
-      ]);
+      const t = await toucheDuBouton(nomBouton, b, nouvelle[b]);
       if (t === null || t === undefined) continue;
       if (t === '') delete nouvelle[b];
       else nouvelle[b] = t;

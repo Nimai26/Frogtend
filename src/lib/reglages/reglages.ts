@@ -114,6 +114,8 @@ export interface ReglagesProfil {
   pleinEcran: Record<string, string>;
   /** Manette → clavier, jeu par jeu (identifiant → bouton → touche) ; absent : le jeu lit la manette lui-même. */
   clavier: Record<string, Record<string, string>>;
+  /** Manette → clavier : les jeux où une touche tenue ne se répète PAS (identifiants ; répétition d'office, 19/10). */
+  sansRepetition: string[];
   /** Les réunions de fiches (contrat 1.14, « ancien>nouveau ») dont les réglages ont déjà été copiés : jamais deux fois. */
   reunionsSuivies: string[];
 }
@@ -150,6 +152,7 @@ export const DEFAUTS_PROFIL: ReglagesProfil = {
   figer: [],
   pleinEcran: {},
   clavier: {},
+  sansRepetition: [],
   reunionsSuivies: [],
 };
 

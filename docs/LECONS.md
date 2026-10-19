@@ -3,6 +3,12 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 19/10 — La lettre M refusée sur un clavier français
+Ce qui s'est passé : « appuie sur la touche » n'acceptait une lettre que si son `code` commençait par `Key` ; en AZERTY,
+M a le code `Semicolon` (la place du « ; » anglais). Les tests, écrits en pensant QWERTY, figeaient même ce refus. Vu
+par l'expert interface avant livraison. · Comment l'appliquer : pour le clavier, tester AUSSI la disposition de Seb
+(AZERTY) — `code` = la place sur un clavier anglais, `key` = ce qui est écrit sur la touche ; jamais l'un pour l'autre.
+
 ## 19/10 — Un test rouge seulement pendant la livraison était un vrai défaut
 Ce qui s'est passé : le test du suivi d'un jeu lancé par un .bat passait seul, et a échoué dans la suite complète de
 la livraison (machine plus chargée). Ce n'était pas « un test capricieux » : le suivi reconnaissait les processus à

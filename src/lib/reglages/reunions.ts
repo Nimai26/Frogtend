@@ -21,13 +21,15 @@ export function migrerPc<T extends Suivi & { emulateursJeux: Record<string, stri
   return { ...pc, emulateursJeux: e ?? pc.emulateursJeux, reunionsSuivies: suivies };
 }
 
-/** Les réglages du profil propres à un jeu : commandes, plein écran, manette → clavier, gel pendant le menu. */
+/** Les réglages du profil propres à un jeu : commandes, plein écran, manette → clavier (et sa répétition), gel pendant
+ * le menu. */
 export function migrerProfil<
   T extends Suivi & {
     commandes: Record<string, unknown>;
     pleinEcran: Record<string, unknown>;
     clavier: Record<string, unknown>;
     figer: string[];
+    sansRepetition: string[];
   },
 >(p: T, reunions: [number, number][]): T | null {
   const { a_suivre, suivies } = nouvelles(p, reunions);
@@ -35,13 +37,16 @@ export function migrerProfil<
   const commandes = copier(p.commandes, a_suivre);
   const pleinEcran = copier(p.pleinEcran, a_suivre);
   const clavier = copier(p.clavier, a_suivre);
-  const ajout = a_suivre.filter(([a, n]) => p.figer.includes(String(a)) && !p.figer.includes(String(n))).map(([, n]) => String(n));
+  const ajoutDans = (l: string[]) => a_suivre.filter(([a, n]) => l.includes(String(a)) && !l.includes(String(n))).map(([, n]) => String(n));
+  const ajout = ajoutDans(p.figer);
+  const sansRep = ajoutDans(p.sansRepetition);
   return {
     ...p,
     commandes: commandes ?? p.commandes,
     pleinEcran: pleinEcran ?? p.pleinEcran,
     clavier: clavier ?? p.clavier,
     figer: ajout.length ? [...p.figer, ...ajout] : p.figer,
+    sansRepetition: sansRep.length ? [...p.sansRepetition, ...sansRep] : p.sansRepetition,
     reunionsSuivies: suivies,
   };
 }

@@ -7,6 +7,20 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- **Lot 0.77.0 — Manette → clavier, plus simple** (Seb 19/10 : « ok enchaîne » après la 0.76.0 ; lot pris dans IDEES,
+  expert interface 16/10, déjà proposé à Seb dans le choix du lot précédent) : choisir une touche en l'APPUYANT au
+  lieu d'une liste de 70 ; répétition automatique d'une touche tenue (les vieux menus ne défilent que par répétition).
+  Avis des experts avant de coder (lancement : répétition dans `Moteur::pas`, `Frappe.repetition` qui ne compte pas,
+  délai/cadence de Windows `SPI_GETKEYBOARDDELAY/SPEED`, seule la dernière touche, sans Maj/Ctrl/Alt, interrupteur
+  par jeu ; interface : fenêtre maison « touche » en capture, lettres par `key`, chiffres et le reste par `code`,
+  liste au canapé). Choix sans question à Seb, sur avis : répétition ACTIVE d'office, coupable jeu par jeu
+  (`sansRepetition`). ✅ ESSAI RÉEL : réglages Windows de ce PC 500 ms / 33 ms ; Z tenu 1,5 s → 31 « z » (attendu 31).
+  ✅ LIVRÉ en 0.77.0. Relectures : lancement (aucun bloquant ; commentaires précisés, test `sansRepetition`, note sur
+  Échap/Entrée tenus) ; interface (BLOQUANT corrigé : M refusé en AZERTY — leçon ; focus sur la zone d'attente, jamais
+  « Annuler » ; refus effacé, touche oubliée si la fenêtre perd la main ; textes). Tests 378 cœur, 199 interface.
+  NON vérifié : F5, F12, Alt, F10 réels dans WebView2 pendant la capture (à essayer par Seb) ; la répétition dans un
+  vrai jeu.
+
 - **Lot 0.76.0 — « ⚙ Gérer le jeu » à la manette en Taodbox** (✅ Seb 19/10, choisi après le constat : AUCUN jeu
   ScummVM ni Xbox au catalogue, 12 717 jeux surtout des cartouches rétro — SNES 1 892, GBA 1 774, GBC 1 225, GB 1 175,
   Mega Drive 1 130… ; ScummVM et conversion XISO repoussés). Idée d'origine : IDEES (expert interface, 05/10).

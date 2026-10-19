@@ -6,7 +6,7 @@
   par Steam ou DS4Windows. Piste : la source SDL de Dolphin (le nom de l'appareil y dépend du modèle).
 - ✅ (fait en 0.76.0, bouton Y) **« ⚙ Gérer le jeu » à la manette en Taodbox** (expert interface, 05/10) : Commandes, Émulateur, Figer pendant le
   menu, Plein écran au lancement, Jouer à la manette (jeu fait pour le clavier)… ne se règlent aujourd'hui qu'au bureau (le réglage s'applique ensuite en Taodbox).
-- **Manette → clavier** (expert interface, 16/10) : choisir une touche en l'APPUYANT (« appuie sur la touche
+- ✅ (fait en 0.77.0) **Manette → clavier** (expert interface, 16/10) : choisir une touche en l'APPUYANT (« appuie sur la touche
   voulue ») plutôt que dans une liste de 70 ; répétition automatique d'une touche tenue (vieux menus qui ne défilent
   que par répétition).
 - ~~Wii dans Dolphin~~ → passé dans le plan (lot 4c, profils Wiimote réglés par Seb).

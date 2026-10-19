@@ -22,12 +22,13 @@ describe('les réglages d’un jeu suivent sa nouvelle fiche', () => {
   });
 
   it('commandes, plein écran, clavier et gel du profil suivent aussi', () => {
-    const p = { commandes: { '1927': { a: 1 } }, pleinEcran: { '1927': 'F11' }, clavier: {}, figer: ['1927'], reunionsSuivies: [], skin: 'x' };
+    const p = { commandes: { '1927': { a: 1 } }, pleinEcran: { '1927': 'F11' }, clavier: {}, figer: ['1927'], sansRepetition: ['1927'], reunionsSuivies: [], skin: 'x' };
     const m = migrerProfil(p, R)!;
     expect(m.commandes).toEqual({ '1927': { a: 1 }, '324': { a: 1 } });
     expect(m.pleinEcran).toEqual({ '1927': 'F11', '324': 'F11' });
     expect(m.clavier).toEqual({});
     expect(m.figer).toEqual(['1927', '324']);
+    expect(m.sansRepetition).toEqual(['1927', '324']);
     expect(m.skin).toBe('x');
     expect(migrerProfil(m, R)).toBeNull();
   });

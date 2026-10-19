@@ -99,3 +99,33 @@ export function memes(a: Correspondance, b: Correspondance): boolean {
 function trier(c: Correspondance): [string, string][] {
   return Object.entries(c).sort(([a], [b]) => a.localeCompare(b));
 }
+
+/** Les touches reconnues par leur PLACE (`KeyboardEvent.code`), hors lettres et chiffres. */
+const PAR_CODE: Record<string, string> = {
+  ArrowUp: 'Haut', ArrowDown: 'Bas', ArrowLeft: 'Gauche', ArrowRight: 'Droite',
+  Enter: 'Entrée', NumpadEnter: 'Entrée', Space: 'Espace', Escape: 'Échap',
+  ShiftLeft: 'Maj', ShiftRight: 'Maj', ControlLeft: 'Ctrl', ControlRight: 'Ctrl', AltLeft: 'Alt',
+  Tab: 'Tab', Backspace: 'Retour arrière',
+  Insert: 'Inser', Delete: 'Suppr', Home: 'Origine', End: 'Fin', PageUp: 'Page préc.', PageDown: 'Page suiv.',
+  F1: 'F1', F2: 'F2', F3: 'F3', F4: 'F4', F5: 'F5', F6: 'F6', F7: 'F7', F8: 'F8', F9: 'F9', F10: 'F10', F11: 'F11', F12: 'F12',
+};
+
+/** Les touches de déplacement, par leur place (celles de W A S D sur un clavier anglais = Z Q S D en français). */
+const DEPLACEMENT: Record<string, string> = { KeyW: 'Déplacement haut', KeyA: 'Déplacement gauche', KeyS: 'Déplacement bas', KeyD: 'Déplacement droite' };
+
+/** Une touche appuyée (« appuie sur la touche voulue », IDEES 16/10) : son nom dans `TOUCHES`, et la touche de
+ * déplacement à la même place s'il y en a une ; ou pourquoi elle n'est pas possible.
+ * - Les LETTRES par ce qu'elles affichent (`key`) : sur un clavier français, la touche marquée A donne « A » — c'est
+ *   aussi ce que le cœur envoie (selon la disposition du clavier).
+ * - Les CHIFFRES par leur place (`code`) : sur un clavier français, `key` vaut « & », « é »… pour la rangée du haut.
+ * - Le reste par sa place. */
+export function toucheDepuisEvenement(e: { code: string; key: string }): { touche: string; position?: string } | { refus: string } {
+  const position = DEPLACEMENT[e.code];
+  // Toute lettre, quelle que soit sa place : sur un clavier français, M est à la place du « ; » anglais.
+  if (/^[a-z]$/i.test(e.key)) return { touche: e.key.toUpperCase(), position };
+  const chiffre = /^Digit([0-9])$/.exec(e.code);
+  if (chiffre) return { touche: chiffre[1] };
+  const t = PAR_CODE[e.code];
+  if (t) return { touche: t };
+  return { refus: 'Cette touche n’est pas encore possible : appuie sur une autre, ou choisis dans la liste.' };
+}
