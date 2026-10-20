@@ -48,6 +48,13 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Jeux sur plusieurs disquettes zippées (0.85.1)
+- [ ] Ludothèque ▸ NEC PC-8801 ▸ « Xak » : télécharger (moins de 1 Mo), installer : à côté des 4 zips, 4 fichiers
+      .d88 apparaissent dans le dossier du jeu.
+- [ ] ▶ Jouer : le jeu démarre sur le disque 1 ; quand il demande le disque 2, le changer par le menu de RetroArch
+      (Disc Control) marche.
+- [ ] Retirer le jeu : tout le dossier disparaît ; si tu as sauvegardé une partie, elle est dans tes abris.
+
 ## Jeux Steam suivis par Frogtend (0.85.0) — À ESSAYER AVEC MOI
 - [ ] Ma ludothèque : un jeu Steam installé (GTA V, XCOM 2…) a « ▶ Jouer » (pas « Jouer (Steam) ») ; « Sur ce PC »
       montre son dossier Steam.

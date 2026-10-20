@@ -18,7 +18,9 @@
   .m3u est ouvert par le cœur, pas décompressé par RetroArch : ce jeu ne se lancerait pas. Répondu à Firehouse
   (20/10) : garder les zips TOSEC avec le rôle `archive_a_extraire` (= décompresser sur place), servir le .m3u
   « après extraction » (noms .d88 lus dans les zips, jamais réécrit par Frogtend), Frogtend vérifie chaque ligne du
-  .m3u avant de lancer ; zips dans un .m3u seulement si le cœur conseillé déclare .zip. ⏳ Forme corrigée attendue.
+  .m3u avant de lancer ; zips dans un .m3u seulement si le cœur conseillé déclare .zip. ✅ Forme corrigée reçue
+  (Firehouse 2.94.1) et lue en 0.85.1. Reste : rôles `maj`/`dlc`/`licence`, formes archive/installeur/
+  contenus_emulateur (prochain relevé : Dreamcast multi-disques).
 
 - **Jeux PC des boutiques — vrais jeux du PC** (Seb, 20/10 : « gérer l'installation, le lancement, les succès, les
   mods… »). État au 20/10 : Frogtend importe la liste (Steam par l'API, Galaxy pour GOG + Epic/Xbox/Ubisoft/EA/Amazon
@@ -546,6 +548,15 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.85.1** (20/10) — Contrat 1.23, multi-disques zippés (avis et relecture de l'expert lancement) :
+  `installation.lancer` suivi (s'il est un fichier reçu) ; `archive_a_extraire` décompressés à côté
+  (`decompression::extraire_a_cote` : tout examiné avant d'écrire, lien dur pour ne jamais écraser, `take(taille)`
+  contre une archive piégée) ; zips gardés ; `Installation.extraits` relevés au manifeste, mis à l'abri avant
+  réinstallation ou retrait, effacés au retrait ; `verifier_m3u` avant d'installer (chaque disque présent).
+  Vérifié : tests (cœur 444, dont le relevé réel lu et un parcours complet installer → partie écrite → retrait avec
+  abri). NON vérifié : un vrai Xak téléchargé, installé et lancé par QUASI88 (à faire par Seb, A-TESTER) ; un .d88
+  qui change de TAILLE quand le jeu y écrit (la réinstallation serait alors refusée, message clair).
 
 - **0.85.0** (20/10) — Jeux de boutique, lots A2-A4 pour STEAM (avis et relectures des experts lancement et
   interface) : `Installation.boutique` ; `synchroniser_steam` (installés d'après le Steam de CE PC, jamais la liste

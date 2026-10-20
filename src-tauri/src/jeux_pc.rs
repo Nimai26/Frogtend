@@ -185,6 +185,10 @@ pub struct Installation {
     /// n'écrit, ne retire et ne désinstalle JAMAIS rien dans son dossier (lot A des jeux de boutique, 20/10).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub boutique: Option<LancementBoutique>,
+    /// Les fichiers que Frogtend a DÉCOMPRESSÉS à côté des fichiers reçus (disques d'un multi-disques zippé, contrat
+    /// 1.23 `archive_a_extraire`), relatifs au dossier du jeu : le retrait les efface avec les fichiers reçus.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extraits: Vec<String>,
 }
 
 /// Comment une boutique lance un de ses jeux.
@@ -644,6 +648,7 @@ mod tests {
             installe_le: "1".into(),
             versions: vec![],
             boutique: None,
+            extraits: vec![],
         };
         r.changer_installation(110, Some(&i)).unwrap();
         r.compter_partie(110, 600, "2").unwrap();

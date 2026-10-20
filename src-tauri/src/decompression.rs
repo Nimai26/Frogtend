@@ -195,7 +195,9 @@ fn extraire(archive: &Path, dossier: &Path, entrees: &[Entree], progres: &mut dy
                     continue;
                 }
                 let Some(nom) = chemin_sur(e.name()) else { continue };
-                ecrire(&mut e, &dossier.join(&nom), progres)?;
+                // Jamais plus que la taille annoncée (une archive piégée ne remplit pas le disque).
+                let taille = e.size();
+                ecrire(&mut (&mut e).take(taille), &dossier.join(&nom), progres)?;
             }
         }
         Some(_) => {
@@ -270,6 +272,133 @@ pub fn decompresser(archive: &Path, libre: Option<u64>, progres: &mut dyn FnMut(
         return Err(Erreur::Disque("Les fichiers décompressés ne sont pas tous là après le rangement.".into()));
     }
     Ok(dest.join(&a.principal))
+}
+
+/// Décompresse chaque archive À CÔTÉ d'elle, sans sous-dossier (les disques d'un multi-disques zippé, contrat 1.23
+/// `archive_a_extraire` : le .m3u qui les liste est déjà là). Rend les fichiers posés (déjà là compris). Un fichier
+/// déjà là à la bonne taille est gardé tel quel (une réinstallation ne touche pas aux disques) ; un fichier déjà là
+/// autrement (une partie écrite dedans ?) fait tout refuser : jamais rien par-dessus. Les archives ne sont jamais
+/// touchées. Rend (tous les fichiers, ceux posés CETTE fois) ; en cas d'échec, ceux posés cette fois sont effacés.
+pub fn extraire_a_cote(archives: &[PathBuf], libre: Option<u64>) -> Resultat<(Vec<PathBuf>, Vec<PathBuf>)> {
+    let mut jetons = Vec::new();
+    for a in archives {
+        let cle = PathBuf::from(a.to_string_lossy().to_lowercase());
+        if !EN_COURS.lock().unwrap_or_else(|e| e.into_inner()).insert(cle.clone()) {
+            return Err(Erreur::Refus("Ce jeu est déjà en train d'être décompressé.".into()));
+        }
+        jetons.push(Jeton(cle));
+    }
+    // Tout est examiné AVANT d'écrire quoi que ce soit : chemins, doublons entre archives, fichiers déjà là.
+    let mut plan = Vec::new();
+    let mut vus = std::collections::BTreeSet::new();
+    let mut besoin = 0u64;
+    for a in archives {
+        if est_archive(a).is_none() || !a.is_file() {
+            return Err(Erreur::Refus(format!("« {} » n'est pas une archive lisible.", a.display())));
+        }
+        let dossier = a.parent().map(Path::to_path_buf).unwrap_or_default();
+        let entrees = lister(a)?;
+        if entrees.is_empty() {
+            return Err(Erreur::Refus(format!("L'archive « {} » est vide.", a.display())));
+        }
+        let mut a_poser = Vec::new();
+        for e in &entrees {
+            if e.nom.contains('/') {
+                return Err(Erreur::Refus(format!("L'archive « {} » contient un dossier ({}) : Frogtend ne la décompresse pas à côté du jeu.", a.display(), e.nom)));
+            }
+            let cible = dossier.join(&e.nom);
+            if !vus.insert(cible.to_string_lossy().to_lowercase()) {
+                return Err(Erreur::Refus(format!("Deux archives de ce jeu contiennent le même fichier « {} » : rien n'est décompressé.", e.nom)));
+            }
+            match std::fs::symlink_metadata(&cible) {
+                Ok(m) if m.is_file() && m.len() == e.taille => {}
+                Ok(_) => {
+                    return Err(Erreur::Refus(format!(
+                        "« {} » est déjà à côté du jeu, mais pas tel que dans son archive (une partie y est peut-être écrite) : Frogtend n'écrit jamais par-dessus. Pour réinstaller, déplace d'abord ce fichier toi-même.",
+                        e.nom
+                    )))
+                }
+                Err(_) => {
+                    besoin += e.taille;
+                    a_poser.push(e.nom.clone());
+                }
+            }
+        }
+        plan.push((a.clone(), dossier, entrees, a_poser));
+    }
+    if let Some(libre) = libre {
+        let avec_marge = besoin + (besoin / 100).max(100 << 20);
+        if besoin > 0 && libre < avec_marge {
+            return Err(Erreur::Refus(format!(
+                "Pas assez de place sur le disque : il faut {} Go, il reste {} Go.",
+                avec_marge.div_ceil(1 << 30),
+                libre >> 30
+            )));
+        }
+    }
+    let mut nouveaux = Vec::new();
+    let r = poser(&plan, &mut nouveaux);
+    if r.is_err() {
+        // Rien d'orphelin : ce qui vient d'être posé (absent avant, donc à Frogtend) est retiré.
+        for p in &nouveaux {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+    r?;
+    drop(jetons);
+    let tous = plan.iter().flat_map(|(_, dossier, entrees, _)| entrees.iter().map(move |e| dossier.join(&e.nom))).collect();
+    Ok((tous, nouveaux))
+}
+
+type Plan = Vec<(PathBuf, PathBuf, Vec<Entree>, Vec<String>)>;
+
+/// Pose les fichiers du plan (`nouveaux` : ce qui a été posé, même en cas d'échec), puis vérifie le résultat.
+fn poser(plan: &Plan, nouveaux: &mut Vec<PathBuf>) -> Resultat<()> {
+    for (a, dossier, entrees, a_poser) in plan {
+        if a_poser.is_empty() {
+            continue;
+        }
+        let nom = a.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "jeu".into());
+        let tmp = provisoire(&dossier.join(nom));
+        if tmp.exists() {
+            std::fs::remove_dir_all(&tmp)?;
+        }
+        let r = extraire(a, &tmp, entrees, &mut |_| {}).and_then(|_| {
+            for n in a_poser {
+                poser_sans_ecraser(&tmp.join(n), &dossier.join(n))?;
+                nouveaux.push(dossier.join(n));
+            }
+            Ok(())
+        });
+        let _ = std::fs::remove_dir_all(&tmp);
+        r?;
+    }
+    // Vérifier le résultat, pas le retour.
+    for (_, dossier, entrees, _) in plan {
+        if !complet(dossier, entrees) {
+            return Err(Erreur::Disque("Les disques décompressés ne sont pas tous là, à la bonne taille.".into()));
+        }
+    }
+    Ok(())
+}
+
+/// Range un fichier décompressé à sa place, SANS jamais écraser (sous Windows, `rename` d'un fichier remplace la
+/// cible) : un lien dur échoue si la cible existe ; sur un disque qui n'en veut pas (partage réseau), on revérifie
+/// juste avant de déplacer.
+fn poser_sans_ecraser(source: &Path, cible: &Path) -> Resultat<()> {
+    match std::fs::hard_link(source, cible) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            Err(Erreur::Refus(format!("« {} » est apparu pendant la décompression : Frogtend n'écrit jamais par-dessus.", cible.display())))
+        }
+        Err(_) => {
+            if std::fs::symlink_metadata(cible).is_ok() {
+                return Err(Erreur::Refus(format!("« {} » est apparu pendant la décompression : Frogtend n'écrit jamais par-dessus.", cible.display())));
+            }
+            std::fs::rename(source, cible)?;
+            Ok(())
+        }
+    }
 }
 
 #[cfg(test)]
@@ -395,5 +524,55 @@ mod tests {
         assert_eq!(chemin_sur("C:/x.iso"), None);
         assert_eq!(chemin_sur("/x.iso"), None);
         assert_eq!(chemin_sur("a\\b.iso").as_deref(), Some("a/b.iso"));
+    }
+
+    #[test]
+    fn des_disques_zippes_se_posent_a_cote_sans_rien_ecraser() {
+        // Contrat 1.23 (relevé réel Xak, PC-8801) : un zip TOSEC par disque, un .d88 dedans.
+        let d = tempfile::tempdir().unwrap();
+        let (a1, a2) = (d.path().join("Xak (Disk 1 of 2).zip"), d.path().join("Xak (Disk 2 of 2).zip"));
+        zip(&a1, &[("Xak (Disk 1 of 2).d88", &[1u8; 10])]);
+        zip(&a2, &[("Xak (Disk 2 of 2).d88", &[2u8; 20])]);
+        let (poses, nouveaux) = extraire_a_cote(&[a1.clone(), a2.clone()], None).unwrap();
+        assert_eq!(poses, vec![d.path().join("Xak (Disk 1 of 2).d88"), d.path().join("Xak (Disk 2 of 2).d88")]);
+        assert_eq!(nouveaux, poses);
+        assert_eq!(std::fs::read(&poses[1]).unwrap(), vec![2u8; 20]);
+        assert!(a1.is_file() && a2.is_file(), "les archives restent");
+        assert_eq!(std::fs::read_dir(d.path()).unwrap().count(), 4, "aucun dossier provisoire laissé");
+
+        // Une réinstallation garde les disques tels quels…
+        let avant = std::fs::metadata(&poses[0]).unwrap().modified().unwrap();
+        assert!(extraire_a_cote(&[a1.clone(), a2.clone()], None).unwrap().1.is_empty(), "rien de posé cette fois");
+        assert_eq!(std::fs::metadata(&poses[0]).unwrap().modified().unwrap(), avant);
+        // … et un disque changé (une partie écrite dedans ?) fait tout refuser, sans rien toucher.
+        std::fs::write(&poses[1], b"partie").unwrap();
+        std::fs::remove_file(&poses[0]).unwrap();
+        assert!(matches!(extraire_a_cote(&[a1.clone(), a2.clone()], None), Err(Erreur::Refus(_))));
+        assert_eq!(std::fs::read(&poses[1]).unwrap(), b"partie");
+        assert!(!poses[0].exists(), "rien n'est décompressé quand une seule archive pose problème");
+    }
+
+    #[test]
+    fn des_disques_zippes_refuses_doublon_dossier_ou_place() {
+        let d = tempfile::tempdir().unwrap();
+        let (a1, a2, a3) = (d.path().join("1.zip"), d.path().join("2.zip"), d.path().join("3.zip"));
+        zip(&a1, &[("disque.d88", &[1u8; 10])]);
+        zip(&a2, &[("DISQUE.d88", &[2u8; 10])]);
+        zip(&a3, &[("sous/disque.d88", &[3u8; 10])]);
+        assert!(matches!(extraire_a_cote(&[a1.clone(), a2], None), Err(Erreur::Refus(_))), "deux archives, un même nom");
+        assert!(matches!(extraire_a_cote(&[a3], None), Err(Erreur::Refus(_))), "un dossier dans l'archive");
+        assert!(matches!(extraire_a_cote(std::slice::from_ref(&a1), Some(1 << 20)), Err(Erreur::Refus(_))), "pas la place");
+        assert!(!d.path().join("disque.d88").exists());
+        assert!(!EN_COURS.lock().unwrap().contains(&PathBuf::from(a1.to_string_lossy().to_lowercase())), "archives libérées");
+    }
+
+    #[test]
+    fn un_fichier_pose_n_ecrase_jamais() {
+        let d = tempfile::tempdir().unwrap();
+        let (s, c) = (d.path().join("s"), d.path().join("c"));
+        std::fs::write(&s, b"neuf").unwrap();
+        std::fs::write(&c, b"partie").unwrap();
+        assert!(poser_sans_ecraser(&s, &c).is_err());
+        assert_eq!(std::fs::read(&c).unwrap(), b"partie");
     }
 }

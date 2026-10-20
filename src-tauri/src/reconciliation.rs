@@ -691,6 +691,7 @@ mod tests {
                 installe_le: String::new(),
                 versions,
                 boutique: None,
+                extraits: vec![],
             }),
             temps_jeu: 0,
             derniere_partie: None,

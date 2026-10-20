@@ -485,6 +485,18 @@ API. Ajouts COMPATIBLES au détail `/jeu/{id}` :
   disque 1 + disque 2 est « exact ») ; `/fichier/{id}/{version}/{n}` accepte aussi l'identifiant d'un disque ;
   3ᵉ exception à « les telechargement_id des versions sont gardés » (le disque 1 garde le sien et devient celui de
   la version).
+- Relevé réel n° 1 (20/10, Firehouse 2.94.1, Xak PC-8801) : `.m3u` (role `liste_disques`) + 4 `.zip` TOSEC (role
+  `archive_a_extraire`, un .d88 dans chacun) ; le .m3u liste les noms INTERNES (.d88) — corrigé à la demande de
+  Frogtend (doc libretro : QUASI88 ne lit ni .zip ni un .zip nommé par un .m3u). Forme `fichier` tant qu'il y a un
+  `liste_disques` ; `archive` seulement pour un `archive_a_extraire` SANS liste. Rangé :
+  `src-tauri/fixtures/simule/version-multidisques-123.json`.
+- Côté Frogtend (0.85.1) : `installation.lancer` suivi s'il est l'un des fichiers reçus (forme vide ou `fichier`),
+  sinon le choix d'avant (.m3u d'abord) ; chaque `archive_a_extraire` décompressée À CÔTÉ d'elle (sans sous-dossier,
+  doublons entre archives refusés, jamais par-dessus un fichier existant, place vérifiée, taille annoncée jamais
+  dépassée) ; les zips sont GARDÉS (réinstallation, fichiers reçus complets) ; les fichiers posés retenus
+  (`Installation.extraits`), relevés au manifeste (une partie écrite dans un disque part à l'abri) et effacés au
+  retrait ; tout .m3u lancé est vérifié avant (chaque disque présent, chemin sûr, ≤ 64 Ko). Rôles `maj`/`dlc`/
+  `licence` et formes `archive`/`installeur`/`contenus_emulateur` : pas encore lus (pas servis).
 - Aujourd'hui SEUL `liste_disques` est posé ; `maj`/`dlc`/`licence`/`archive_a_extraire` et les formes
   archive/installeur/contenus_emulateur arriveront avec les lots Switch, PS3 et PC (contrat fixé d'avance).
 

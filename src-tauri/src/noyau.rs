@@ -1037,6 +1037,7 @@ impl Noyau {
                 installe_le: String::new(),
                 versions: vec![],
                 boutique: Some(crate::jeux_pc::LancementBoutique { source: "steam".into(), cle: b.id.clone() }),
+                extraits: vec![],
             };
             match registre.jeu(id)? {
                 Some(j) if j.installation.as_ref() == Some(&installation) => {}

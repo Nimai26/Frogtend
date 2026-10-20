@@ -115,6 +115,74 @@ fn fichier_principal(fichiers: &[String]) -> Option<String> {
     fichiers.first().cloned()
 }
 
+/// La version s'installe-t-elle « en fichiers » (contrat 1.23 : `installation.forme` absente, vide ou `fichier`) ?
+fn forme_fichier(version: &Value) -> bool {
+    matches!(version["installation"]["forme"].as_str().unwrap_or(""), "" | "fichier")
+}
+
+/// Les fichiers de la version qui ont l'un de ces rôles (contrat 1.23), nommés comme dans `JeuPc.fichiers`
+/// (« dossier/nom »).
+fn roles(version: &Value, voulus: &[&str]) -> Vec<String> {
+    version["fichiers"]
+        .as_array()
+        .map(|l| {
+            l.iter()
+                .filter(|f| voulus.contains(&f["role"].as_str().unwrap_or("jeu")))
+                .map(|f| {
+                    let nom = f["nom"].as_str().unwrap_or("");
+                    match f["dossier"].as_str().filter(|d| !d.is_empty()) {
+                        Some(d) => format!("{d}/{nom}"),
+                        None => nom.to_string(),
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Le fichier à lancer que dit Firehouse (contrat 1.23 `installation.lancer`), seulement s'il est l'un des fichiers
+/// reçus (`noms`) : jamais un chemin venu d'ailleurs.
+fn lancer_de(version: &Value, noms: &[String]) -> Option<String> {
+    if !forme_fichier(version) {
+        return None;
+    }
+    let l = version["installation"]["lancer"].as_str().filter(|l| !l.is_empty())?;
+    noms.iter().find(|n| n.as_str() == l).cloned()
+}
+
+/// Une liste de disques (.m3u) plus grande est refusée : ce n'en est pas une.
+const M3U_MAX: u64 = 64 * 1024;
+
+/// Chaque disque listé par ce .m3u est-il là, à côté de lui ? Sinon l'émulateur ne démarrerait pas : on le dit au
+/// lieu de lancer. Lignes vides et commentaires (`#`) ignorés ; « fichier|libellé » (RetroArch) compris.
+fn verifier_m3u(m3u: &Path) -> Resultat<()> {
+    let taille = std::fs::metadata(m3u).map(|m| m.len()).map_err(|_| Erreur::Refus(format!("La liste des disques « {} » manque.", m3u.display())))?;
+    if taille > M3U_MAX {
+        return Err(Erreur::Refus("La liste des disques de ce jeu est anormalement grande : il n'est pas lancé.".into()));
+    }
+    // Pas de l'UTF-8 (Shift-JIS, Latin-1…) : les noms ne peuvent pas être relus sûrement ; on ne refuse pas à tort.
+    let Ok(texte) = String::from_utf8(std::fs::read(m3u)?) else { return Ok(()) };
+    let dossier = m3u.parent().unwrap_or(Path::new(""));
+    let mut disques = 0;
+    for ligne in texte.trim_start_matches('\u{feff}').lines() {
+        let l = ligne.trim();
+        if l.is_empty() || l.starts_with('#') {
+            continue;
+        }
+        let nom = l.split('|').next().unwrap_or("").trim();
+        let rel = crate::decompression::chemin_sur(nom)
+            .ok_or_else(|| Erreur::Refus(format!("La liste des disques nomme « {nom} », hors du dossier du jeu : il n'est pas lancé.")))?;
+        if !dossier.join(&rel).is_file() {
+            return Err(Erreur::Refus(format!("Il manque le disque « {nom} » à côté de la liste des disques : le jeu ne pourrait pas démarrer.")));
+        }
+        disques += 1;
+    }
+    if disques == 0 {
+        return Err(Erreur::Refus("La liste des disques de ce jeu est vide.".into()));
+    }
+    Ok(())
+}
+
 /// Un lanceur par `cmd.exe` ou `explorer.exe` (`nom` : le nom du programme, en minuscules) qui n'ouvre qu'UN fichier
 /// existant : `cmd.exe /C <.bat|.cmd>` ou `explorer.exe <.lnk>`. `permis(fichier, raccourci)` dit si ce fichier est à
 /// une place admise (du jeu, choisi par la personne, et pour un raccourci le Bureau ou le menu Démarrer).
@@ -197,14 +265,13 @@ impl Noyau {
         if j.etat != Etat::Telecharge {
             return Err(Erreur::Refus("Le jeu n'est pas encore entièrement téléchargé.".into()));
         }
-        let fiche = self.fiche_locale(id).unwrap_or(Value::Null);
-        let version = fiche["versions"]
-            .as_array()
-            .and_then(|l| l.iter().find(|v| v["telechargement_id"].as_i64() == Some(j.version)))
-            .cloned()
-            .unwrap_or(Value::Null);
+        let version = self.version_de(&j);
         // Une version MAME (contrat 1.13) se donne telle quelle à MAME : une ROM (jamais décompressée).
-        let n = if version["mame"].is_object() { Nature::Rom } else { nature(version["qualite"].as_str().unwrap_or("")) };
+        let mut n = if version["mame"].is_object() { Nature::Rom } else { nature(version["qualite"].as_str().unwrap_or("")) };
+        // Un multi-disques (contrat 1.23 : un .m3u et ses disques) est une image disque, même de nature non dite.
+        if n == Nature::NonDite && forme_fichier(&version) && !roles(&version, &["liste_disques", "archive_a_extraire"]).is_empty() {
+            n = Nature::ImageDisque;
+        }
         let noms: Vec<String> = j.fichiers.iter().map(|f| f.nom.clone()).collect();
         let m = methode(n, Path::new(&j.dossier), &noms)?;
         let destination = match m {
@@ -228,6 +295,10 @@ impl Noyau {
         // Jamais rattaché à une autre fiche pendant l'installation (contrat 1.14).
         let _occupe = self.occuper(id);
         let j = self.jeu_visible(id).await?;
+        // Un jeu importé appartient à la personne : Frogtend n'écrit rien dans son dossier.
+        if crate::import_local::est_importe(&j) {
+            return Err(Erreur::Refus("Ce jeu vient de ton disque : il n'y a rien à installer.".into()));
+        }
         let p = self.preparer_installation(id).await?;
         let recus = PathBuf::from(&j.dossier);
         let dest = PathBuf::from(&p.destination);
@@ -235,6 +306,8 @@ impl Noyau {
         std::fs::create_dir_all(self.dossier_medias(id))?;
 
         let mut fichier_du_jeu = None;
+        let mut extraits = Vec::new();
+        let mut nouveaux: Vec<PathBuf> = Vec::new();
         match &p.methode {
             Methode::Installeur { fichier, format } => {
                 std::fs::create_dir_all(&dest)?;
@@ -275,8 +348,44 @@ impl Noyau {
                         Some(nom) => Some(noms.iter().find(|f| f.eq_ignore_ascii_case(&format!("{nom}.zip"))).cloned().ok_or_else(|| {
                             Erreur::Refus(format!("Le fichier {nom}.zip de ce jeu d'arcade manque dans ce que Firehouse a envoyé : il ne pourrait pas démarrer."))
                         })?),
-                        None => fichier_principal(&noms),
+                        None => {
+                            let version = self.version_de(&j);
+                            // Contrat 1.23 : les disques zippés se décompressent À CÔTÉ du .m3u qui les liste.
+                            let archives = roles(&version, &["archive_a_extraire"])
+                                .into_iter()
+                                .filter(|a| noms.contains(a))
+                                .map(|a| crate::jeux_pc::chemin_de_fichier_sur(&a).map(|r| recus.join(r)))
+                                .collect::<Resultat<Vec<_>>>()?;
+                            if !archives.is_empty() {
+                                // Une réinstallation : ce qui a changé (une partie dans un disque) d'abord à l'abri.
+                                if j.installation.is_some() {
+                                    self.mettre_a_l_abri(id).await?;
+                                }
+                                let libre = crate::jeux_pc::place_libre(&recus);
+                                let (poses, n) = tokio::task::spawn_blocking(move || crate::decompression::extraire_a_cote(&archives, libre))
+                                    .await
+                                    .map_err(|_| Erreur::Disque("La décompression s'est arrêtée brutalement.".into()))??;
+                                nouveaux = n;
+                                extraits = poses
+                                    .iter()
+                                    .filter_map(|p| p.strip_prefix(&recus).ok())
+                                    .map(|r| r.to_string_lossy().replace('\\', "/"))
+                                    .collect();
+                            }
+                            let connus: Vec<String> = noms.iter().chain(&extraits).cloned().collect();
+                            lancer_de(&version, &connus).or_else(|| fichier_principal(&noms))
+                        }
                     };
+                    // Un .m3u : chaque disque qu'il liste doit être là, sinon l'émulateur ne démarrerait pas (et ce
+                    // qui vient d'être décompressé est retiré : rien d'orphelin).
+                    if let Some(f) = fichier_du_jeu.as_deref().filter(|f| f.to_lowercase().ends_with(".m3u")) {
+                        if let Err(e) = crate::jeux_pc::chemin_de_fichier_sur(f).and_then(|r| verifier_m3u(&recus.join(r))) {
+                            for p in &nouveaux {
+                                let _ = std::fs::remove_file(p);
+                            }
+                            return Err(e);
+                        }
+                    }
                 }
             }
         }
@@ -289,9 +398,19 @@ impl Noyau {
                 dest.display()
             )));
         }
-        let i = self.retenir_installation(&j, &dest, p.methode, fichier_du_jeu, p.nature)?;
+        let i = self.retenir_installation(&j, &dest, p.methode, fichier_du_jeu, p.nature, extraits)?;
         self.reposer_parties_restaurees(id, &i).await;
         Ok(i)
+    }
+
+    /// La version installée, telle que dans la fiche gardée sur le PC (`Null` sans fiche : hors ligne).
+    fn version_de(&self, j: &JeuPc) -> Value {
+        let fiche = self.fiche_locale(j.id).unwrap_or(Value::Null);
+        fiche["versions"]
+            .as_array()
+            .and_then(|l| l.iter().find(|v| v["telechargement_id"].as_i64() == Some(j.version)))
+            .cloned()
+            .unwrap_or(Value::Null)
     }
 
     /// Des parties restaurées attendent ce jeu : elles sont reposées dans son dossier tout neuf (APRÈS le relevé des
@@ -335,7 +454,7 @@ impl Noyau {
                 "« {dossier} » contient d'autres jeux de ta ludothèque : choisis le dossier de CE jeu seulement."
             )));
         }
-        let i = self.retenir_installation(&j, &d, p.methode, None, p.nature)?;
+        let i = self.retenir_installation(&j, &d, p.methode, None, p.nature, vec![])?;
         self.reposer_parties_restaurees(id, &i).await;
         Ok(i)
     }
@@ -354,10 +473,11 @@ impl Noyau {
         methode: Methode,
         fichier_du_jeu: Option<String>,
         nature: Nature,
+        extraits: Vec<String>,
     ) -> Resultat<Installation> {
         // Le relevé des fichiers : ce qui changera ensuite (les parties) sera reconnu. Pas pour une ROM : ses parties
-        // sont chez l'émulateur.
-        if !matches!(nature, Nature::Rom | Nature::ImageDisque) {
+        // sont chez l'émulateur. Sauf des disques décompressés par Frogtend : un émulateur peut écrire dedans.
+        if !matches!(nature, Nature::Rom | Nature::ImageDisque) || !extraits.is_empty() {
             let m = relever(dest)?;
             std::fs::write(self.fichier_manifeste(j.id), serde_json::to_vec(&m).unwrap())?;
         }
@@ -369,6 +489,7 @@ impl Noyau {
             installe_le: maintenant(),
             versions: vec![],
             boutique: None,
+            extraits,
         };
         self.registre().changer_installation(j.id, Some(&i))?;
         Ok(i)
@@ -690,6 +811,15 @@ impl Noyau {
                 }
             }
         }
+        // Les disques décompressés par Frogtend (leurs changements sont déjà à l'abri), seulement DANS le dossier du
+        // jeu et sans lien entre les deux.
+        for e in j.installation.as_ref().map(|i| i.extraits.as_slice()).unwrap_or_default() {
+            let Some(rel) = crate::decompression::chemin_sur(e) else { continue };
+            let p = recus.join(&rel);
+            if p.is_file() && crate::garde::sous(&p, &recus) && !crate::garde::lien_entre(&recus, &p) {
+                std::fs::remove_file(&p)?;
+            }
+        }
         self.retirer_medias(&j)?;
         let _ = std::fs::remove_dir(&recus); // seulement s'il est vide
         self.registre().retirer(id)?;
@@ -798,6 +928,65 @@ mod tests {
         // Retirer le jeu retire aussi le sous-dossier reçu (vide).
         n.retirer_du_pc(110).await.unwrap();
         assert!(!std::path::Path::new(&i.dossier).join("sfiii").exists());
+    }
+
+    /// La forme du relevé réel 1.23 (Xak, PC-8801), en deux disques : un .m3u des .d88, un zip TOSEC par disque.
+    async fn multidisques_zippe(m3u: &[u8]) -> (tempfile::TempDir, Noyau) {
+        let (z1, z2) = (zip(&[("Xak (Disk 1 of 2).d88", &[1u8; 10])]), zip(&[("Xak (Disk 2 of 2).d88", &[2u8; 20])]));
+        let (d, n) = noyau_avec(&[("Xak.m3u", m3u), ("Xak (Disk 1 of 2).zip", &z1), ("Xak (Disk 2 of 2).zip", &z2)], "Jeu — nature non dite").await;
+        let fiche = serde_json::json!({"id": 110, "titre": "Xak", "versions": [
+            {"telechargement_id": 200, "qualite": "Jeu — nature non dite", "notes": "", "fichiers": [
+                {"nom": "Xak.m3u", "taille": m3u.len(), "dossier": "", "role": "liste_disques"},
+                {"nom": "Xak (Disk 1 of 2).zip", "taille": z1.len(), "dossier": "", "role": "archive_a_extraire"},
+                {"nom": "Xak (Disk 2 of 2).zip", "taille": z2.len(), "dossier": "", "role": "archive_a_extraire"}],
+             "installation": {"forme": "fichier", "extraire_dans": "", "lancer": "Xak.m3u", "arguments": ""}}]});
+        std::fs::write(n.dossier_medias(110).join("fiche.json"), fiche.to_string()).unwrap();
+        (d, n)
+    }
+
+    #[tokio::test]
+    async fn un_multidisques_zippe_se_decompresse_a_cote_et_se_lance_par_son_m3u() {
+        let (d, n) = multidisques_zippe(b"\xef\xbb\xbfXak (Disk 1 of 2).d88\r\n# commentaire\r\nXak (Disk 2 of 2).d88|Disque 2\r\n").await;
+        n.regler_abris(Some(d.path().join("Abris")));
+        let p = n.preparer_installation(110).await.unwrap();
+        assert_eq!((p.nature, p.methode), (Nature::ImageDisque, Methode::Aucune), "un multi-disques, jamais « une archive »");
+        let i = n.installer(110, true).await.unwrap();
+        assert_eq!(i.fichier_du_jeu.as_deref(), Some("Xak.m3u"));
+        assert_eq!(i.extraits, vec!["Xak (Disk 1 of 2).d88", "Xak (Disk 2 of 2).d88"]);
+        let dossier = PathBuf::from(&i.dossier);
+        assert!(dossier.join("Xak (Disk 2 of 2).d88").is_file() && dossier.join("Xak (Disk 1 of 2).zip").is_file(), "disques posés, zips gardés");
+
+        // L'émulateur écrit une partie dans un disque : le retrait la met d'abord à l'abri, puis efface tout.
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        std::fs::write(dossier.join("Xak (Disk 2 of 2).d88"), [9u8; 20]).unwrap();
+        let abri = n.retirer_du_pc(110).await.unwrap();
+        assert_eq!(abri.fichiers, 1, "la partie est à l'abri");
+        assert_eq!(std::fs::read(PathBuf::from(&abri.dossier).join("Xak (Disk 2 of 2).d88")).unwrap(), vec![9u8; 20]);
+        assert!(!dossier.exists(), "disques décompressés et fichiers reçus effacés");
+    }
+
+    #[tokio::test]
+    async fn un_m3u_qui_nomme_un_disque_absent_ou_hors_du_dossier_n_est_pas_installe() {
+        for m3u in [&b"Xak (Disk 1 of 2).d88\nXak (Disk 3 of 2).d88\n"[..], b"..\\..\\Windows\\win.ini\n", b"# rien\n"] {
+            let (_d, n) = multidisques_zippe(m3u).await;
+            assert!(matches!(n.installer(110, true).await, Err(Erreur::Refus(_))), "{}", String::from_utf8_lossy(m3u));
+            let j = n.registre().jeu(110).unwrap().unwrap();
+            assert!(j.installation.is_none());
+            assert!(!Path::new(&j.dossier).join("Xak (Disk 1 of 2).d88").exists(), "aucun disque orphelin");
+        }
+    }
+
+    #[test]
+    fn lancer_n_est_suivi_que_s_il_est_un_fichier_recu() {
+        let v = serde_json::json!({"installation": {"forme": "fichier", "lancer": "Xak.m3u"}});
+        assert_eq!(lancer_de(&v, &["Xak.m3u".into()]).as_deref(), Some("Xak.m3u"));
+        assert_eq!(lancer_de(&v, &["Autre.m3u".into()]), None);
+        assert_eq!(lancer_de(&serde_json::json!({"installation": {"forme": "installeur", "lancer": "Xak.m3u"}}), &["Xak.m3u".into()]), None);
+        // Le relevé réel : les rôles sont lus dans la fiche.
+        let r: Value = serde_json::from_str(include_str!("../fixtures/simule/version-multidisques-123.json")).unwrap();
+        assert_eq!(roles(&r["version"], &["archive_a_extraire"]).len(), 4);
+        assert_eq!(roles(&r["version"], &["liste_disques"]), vec!["Xak (1989)(Microcabin).m3u"]);
+        assert_eq!(lancer_de(&r["version"], &roles(&r["version"], &["liste_disques"])).as_deref(), Some("Xak (1989)(Microcabin).m3u"));
     }
 
     #[tokio::test]

@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.85.1 — Les jeux sur plusieurs disquettes zippées
+
+- Les jeux d'ordinateurs japonais et Amstrad sur plusieurs disquettes (PC-8801, CPC… 387 jeux chez Firehouse) :
+  Firehouse range chaque disquette dans un zip, que l'émulateur ne sait pas ouvrir. À l'installation, Frogtend
+  décompresse maintenant chaque disquette à côté de la liste des disques, puis lance la liste : l'émulateur passe
+  d'une disquette à l'autre tout seul.
+- Avant de lancer, Frogtend vérifie que chaque disque de la liste est bien là ; sinon il le dit au lieu de lancer un
+  jeu qui ne démarrerait pas.
+- Une disquette dans laquelle le jeu a écrit ta partie est mise à l'abri avant que le jeu soit retiré ou
+  réinstallé, et elle n'est jamais écrasée.
+
 ## 0.85.0 — Tes jeux Steam deviennent des jeux de Frogtend
 
 - Un jeu Steam installé sur ce PC est maintenant un vrai jeu de ta ludothèque : ▶ Jouer demande à Steam de le lancer
