@@ -19,7 +19,9 @@
   (20/10) : garder les zips TOSEC avec le rôle `archive_a_extraire` (= décompresser sur place), servir le .m3u
   « après extraction » (noms .d88 lus dans les zips, jamais réécrit par Frogtend), Frogtend vérifie chaque ligne du
   .m3u avant de lancer ; zips dans un .m3u seulement si le cœur conseillé déclare .zip. ✅ Forme corrigée reçue
-  (Firehouse 2.94.1) et lue en 0.85.1. Reste : rôles `maj`/`dlc`/`licence`, formes archive/installeur/
+  (Firehouse 2.94.1) et lue en 0.85.1. Firehouse (20/10) a contrôlé ses 387 versions CPC et PC-8801 : aucun
+  sous-dossier, aucun nom en double entre archives, tous les .m3u en UTF-8 ; il garde ses zips, et à sa prochaine
+  livraison ne servira plus en `archive_a_extraire` une forme que Frogtend refuserait. Reste : rôles `maj`/`dlc`/`licence`, formes archive/installeur/
   contenus_emulateur (prochain relevé : Dreamcast multi-disques).
 
 - **Jeux PC des boutiques — vrais jeux du PC** (Seb, 20/10 : « gérer l'installation, le lancement, les succès, les
