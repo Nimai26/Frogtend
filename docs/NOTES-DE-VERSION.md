@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.82.1 — Les archives 7z ne peuvent plus fermer Frogtend
+
+- Une archive .7z abîmée ou piégée (jeu, émulateur, ROM pour les succès) pouvait faire fermer Frogtend d'un coup.
+  Elle est maintenant lue par un petit Frogtend à part, à la mémoire limitée par Windows : s'il échoue, Frogtend te
+  dit que l'archive est abîmée et reste ouvert.
+- Rien ne change pour toi : décompresser un jeu, installer un émulateur ou vérifier une ROM se fait comme avant.
+
 ## 0.82.0 — Les mods de Nexus Mods
 
 - ⚙ Options ▸ Comptes ▸ **🧩 Nexus Mods** : colle ta clé d'API personnelle (gratuite, dans ton compte Nexus). Frogtend

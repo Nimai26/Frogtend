@@ -123,7 +123,8 @@ pub fn archive_7z_dans_exe(exe: &Path, sortie: &Path) -> Resultat<bool> {
             return Err(e.into());
         }
         // Une vraie archive (pas une simple suite d'octets qui ressemble à la signature) : elle doit s'ouvrir.
-        if sevenz_rust::SevenZReader::open(sortie, sevenz_rust::Password::empty()).is_ok() {
+        // Lue par un Frogtend enfant (`sept_z`) : une fausse archive ne peut pas fermer Frogtend.
+        if crate::sept_z::lister(sortie).is_ok() {
             return Ok(true);
         }
         let _ = std::fs::remove_file(sortie);
@@ -257,37 +258,16 @@ pub fn decompresser(archive: &Path, format: Format, destination: &Path) -> Resul
             // Pas `sevenz_rust::decompress_file` : il écrit chaque entrée là où son nom le dit, même « .. » ou « C:… ».
             // Chaque chemin est contrôlé ; un chemin dangereux fait refuser TOUTE l'archive (sauter une entrée d'un
             // bloc 7z compact abîmerait les suivantes).
-            let mut r = sevenz_rust::SevenZReader::open(archive, sevenz_rust::Password::empty())
-                .map_err(|e| Erreur::Disque(format!("Archive 7z illisible ({e}).")))?;
+            // Lue par un Frogtend enfant (`sept_z` : un 7z piégé ne peut pas fermer Frogtend).
             // Une entrée au nom vide (le dossier racine que certains outils ajoutent) est ignorée ; tout autre chemin
             // dangereux fait refuser l'archive.
             // Une entrée sans nom n'est tolérée que si elle ne porte AUCUNE donnée (sinon, la sauter décalerait le bloc).
-            let vide_sans_donnees = |e: &sevenz_rust::SevenZArchiveEntry| e.name().is_empty() && (e.is_directory() || !e.has_stream || e.size == 0);
-            if let Some(e) = r.archive().files.iter().find(|e| !vide_sans_donnees(e) && crate::decompression::chemin_sur(e.name()).is_none()) {
-                return Err(Erreur::Refus(format!("L'archive contient un chemin dangereux ({}) : refusée.", e.name())));
+            let entrees = crate::sept_z::lister(archive)?;
+            let vide_sans_donnees = |e: &crate::sept_z::EntreeSeptZ| e.nom.is_empty() && (e.dossier || !e.flux || e.taille == 0);
+            if let Some(e) = entrees.iter().find(|e| !vide_sans_donnees(e) && crate::decompression::chemin_sur(&e.nom).is_none()) {
+                return Err(Erreur::Refus(format!("L'archive contient un chemin dangereux ({}) : refusée.", e.nom)));
             }
-            let mut n = 0;
-            r.for_each_entries(|e, flux| {
-                let Some(nom) = crate::decompression::chemin_sur(e.name()) else {
-                    // Lue jusqu'au bout quand même : les entrées suivantes du bloc restent à leur place.
-                    std::io::copy(flux, &mut std::io::sink()).map_err(sevenz_rust::Error::io)?;
-                    return Ok(true);
-                };
-                let cible = destination.join(nom);
-                if e.is_directory() {
-                    std::fs::create_dir_all(&cible).map_err(sevenz_rust::Error::io)?;
-                } else {
-                    if let Some(p) = cible.parent() {
-                        std::fs::create_dir_all(p).map_err(sevenz_rust::Error::io)?;
-                    }
-                    let mut sortie = std::fs::File::create(&cible).map_err(sevenz_rust::Error::io)?;
-                    std::io::copy(flux, &mut sortie).map_err(sevenz_rust::Error::io)?;
-                    n += 1;
-                }
-                Ok(true)
-            })
-            .map_err(|e| Erreur::Disque(format!("Archive 7z illisible ({e}).")))?;
-            Ok(n)
+            crate::sept_z::extraire(archive, destination, &mut |_| {})
         }
         Format::Rar => Err(Erreur::Refus(
             "Frogtend ne sait pas encore ouvrir les archives RAR : ouvre-la avec 7-Zip dans le dossier du jeu.".into(),

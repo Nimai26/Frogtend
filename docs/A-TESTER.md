@@ -48,6 +48,12 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Archives 7z lues à part (0.82.1)
+- [ ] Décompresser un jeu en .7z (⚙ Gérer le jeu ▸ Décompresser) : la barre de progression avance, le jeu se lance.
+- [ ] Un jeu PC Engine en .7z : son panneau RetroAchievements dit toujours si ta version est compatible.
+- [ ] Pendant une décompression, regarde le Gestionnaire des tâches : un 2e « Frogtend » apparaît le temps de la
+      lecture, sans fenêtre, puis disparaît. Rien d'autre ne doit s'ouvrir.
+
 ## Les mods de Nexus Mods (0.82.0)
 > La mise à jour vers 0.82.0 prend les liens « Mod Manager Download » (une seule fois : si tu les rends ensuite à un
 > autre programme, Frogtend ne les reprend jamais). Si Vortex ou Mod Organizer est installé chez toi, Frogtend prend

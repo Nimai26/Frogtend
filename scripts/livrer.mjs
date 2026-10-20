@@ -5,7 +5,7 @@
 // FROGTEND_CLE_SIGNATURE, sinon dans %USERPROFILE%\.tauri\frogtend.key. Son mot de passe éventuel :
 // TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, statfsSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -16,6 +16,30 @@ const cheminCle = process.env.FROGTEND_CLE_SIGNATURE ?? join(homedir(), '.tauri'
 if (!existsSync(cheminCle)) {
   console.error(`Refusé : clé de signature introuvable (${cheminCle}). Sans elle, les mises à jour ne sont pas signées.`);
   process.exit(1);
+}
+
+// La place du disque AVANT de compiler (leçon du 20/10, 3e disque plein : Venkman calcule aussi pour Firehouse). Le
+// cache de compilation (`src-tauri/target/debug`) se reconstruit : on le dit, on ne l'efface pas tout seul.
+const PLACE_MIN = 20 * 1024 ** 3;
+const libre = statfsSync('.').bavail * statfsSync('.').bsize;
+if (libre < PLACE_MIN) {
+  console.error(
+    `Refusé : il ne reste que ${(libre / 1024 ** 3).toFixed(1)} Go sur le disque du projet (20 Go au moins pour compiler).\n` +
+      'Le cache de compilation se vide par « cargo clean --profile dev » dans src-tauri (il se reconstruit).',
+  );
+  process.exit(1);
+}
+
+// SDL3 se compile avec CMake : s'il n'est pas dans le PATH, celui des outils de Visual Studio.
+if (!process.env.CMAKE) {
+  let trouve = true;
+  try {
+    execSync('cmake --version', { stdio: 'ignore' });
+  } catch {
+    trouve = false;
+  }
+  const vs = 'C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe';
+  if (!trouve && existsSync(vs)) process.env.CMAKE = vs;
 }
 
 execSync('node scripts/tests.mjs', { stdio: 'inherit' });

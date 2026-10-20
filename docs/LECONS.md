@@ -78,6 +78,9 @@ de MAME (`emu.add_machine_*_notifier`) non gardé dans une variable est retiré 
 l'appliquer : regarder la place libre de D: au début de chaque session et avant une grosse compilation ; vider
 `target\debug` dès qu'il dépasse 30 Go ; dans un script Lua de MAME, garder chaque abonnement (ou utiliser
 `register_periodic`, permanent).
+20/10 (3e fois, livraison 0.82.1) : D: à 0 octet libre, `target\debug` à 65,7 Go ; je n'avais PAS regardé la place
+au début de la session malgré la règle. Une règle qui dépend de ma mémoire ne tient pas : `scripts/livrer.mjs`
+mesure désormais la place de D: et la taille de `target\debug` avant de compiler, et s'arrête en le disant.
 
 ## 16/10 — J'avais imaginé la forme du document au lieu de la regarder
 Ce qui s'est passé : j'ai écrit le lecteur du livret pour des pages en hauteur (largeur = hauteur × 0,75). La

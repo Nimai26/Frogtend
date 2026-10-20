@@ -188,27 +188,12 @@ pub fn empreinte_fichier(console: u32, chemin: &Path) -> Resultat<Option<String>
     if taille > 256 * 1024 * 1024 {
         return Ok(None); // pas une ROM de cartouche
     }
-    let o = std::fs::read(chemin)?;
-    // Un .7z d'un seul fichier (les jeux PC Engine de Seb, par exemple) : la ROM qu'il contient.
+    // Un .7z d'un seul fichier (les jeux PC Engine de Seb, par exemple) : la ROM qu'il contient, lue par un Frogtend
+    // enfant (`sept_z` : un 7z piégé ne peut pas fermer Frogtend), sans charger l'archive elle-même.
     if chemin.extension().is_some_and(|e| e.eq_ignore_ascii_case("7z")) {
-        let mut a = sevenz_rust::SevenZReader::open(chemin, sevenz_rust::Password::empty()).map_err(|_| Erreur::Disque("Archive 7z illisible.".into()))?;
-        let mut contenus: Vec<Vec<u8>> = Vec::new();
-        a.for_each_entries(|e, r| {
-            if e.is_directory() {
-                return Ok(true);
-            }
-            if !contenus.is_empty() || e.size() > 256 * 1024 * 1024 {
-                contenus.push(vec![]);
-                return Ok(false); // plusieurs fichiers (ou trop gros) : pas une ROM seule
-            }
-            let mut o = Vec::new();
-            r.read_to_end(&mut o)?;
-            contenus.push(o);
-            Ok(true)
-        })
-        .map_err(|_| Erreur::Disque("Archive 7z illisible.".into()))?;
-        return Ok(if contenus.len() == 1 { Some(empreinte_octets(console, &contenus[0])) } else { None });
+        return crate::sept_z::empreinte_unique(chemin, console, 256 * 1024 * 1024);
     }
+    let o = std::fs::read(chemin)?;
     let est_zip = chemin.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip"));
     if est_zip {
         let mut z = zip::ZipArchive::new(std::io::Cursor::new(&o)).map_err(|_| Erreur::Disque("Archive zip illisible.".into()))?;

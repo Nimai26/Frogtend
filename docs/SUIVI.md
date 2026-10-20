@@ -8,8 +8,14 @@
 ## 🔨 En cours / à faire (sans attendre Seb)
 
 - **Suites du lot Nexus (0.82.0 livré)** — à faire, dans l'ordre :
-  - 0.82.1 : archives 7z (durcissement de sevenz_rust AVANT d'ouvrir : taille d'en-tête et dictionnaire bornés ;
-    mêmes défauts dans decompression.rs, installation.rs, succes.rs).
+  - ✅ Seb 20/10 : « pas besoin de question » — les liens nxm:// restent pris d'office (installeur ou mise à jour,
+    une seule fois), même si Vortex / Mod Organizer les avait. Ne plus le redemander.
+  - 0.82.2 : les MODS en 7z (Nexus et GitHub) par le lecteur isolé de 0.82.1 : lister dans l'enfant avec les règles
+    de mods.rs (liens, anti-items, noms vides porteurs), extraire en UN passage dans `Frogtend\mods\<clé>\contenu`,
+    le parent revérifie ; détection par signature (PK / 7z), nom de l'archive selon le format ; rar refusé.
+  - Les 7z en PPMd (méthode [3,4,1], ex. sauvegardes de LaunchBox) : non pris en charge par sevenz-rust ; refus propre.
+  - Refuser une mise à jour de Frogtend pendant une décompression (déjà vrai avant 0.82.1 ; l'enfant meurt avec
+    Frogtend, la décompression repart de zéro).
   - Progression et débit pendant le téléchargement d'un mod (GitHub et Nexus : aujourd'hui un toast fixe ; Nexus
     jusqu'à 2 Go) — expert lancement 20/10.
   - Mods posés « tels quels » : un mod Nexus dont l'archive a un seul dossier racine (`NomDuMod/`, `Data/`) peut rester
@@ -356,12 +362,6 @@
 
 ## ❓ Attend une décision de Seb
 
-- [ ] **Nexus : prendre les liens à Vortex / Mod Organizer sans demander à la personne du PC ?** (expert lancement
-      20/10). Aujourd'hui (décision de Seb 19-20/10) : l'installeur ou la mise à jour vers 0.82.0 les prend une fois,
-      sans question. Chez sa sœur, Vortex perdrait ses liens sans un mot. Proposition : si un autre programme les a,
-      ne pas les prendre, et demander au 1er lancement « Vortex reçoit les liens Nexus : les confier à Frogtend ? ».
-      Effet connu : Vortex les reprend à chacun de ses démarrages.
-
 - [ ] **Jeux PC sans manette ni plein écran** (Seb, 05/10, Mega Man Rock Force : « il s'ouvre en tout petit fenêtré et
       ne reconnaît pas la manette »). Relevé : jeu Game Maker 8, clavier seulement (ReadMe : Z saut, X tir, C glisse,
       Entrée pause, A/S armes ; F4 plein écran) ; la manette est vue par Windows (joystick 1, XInput 0). Proposé :
@@ -464,6 +464,21 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.82.1** (20/10) — Toute lecture de 7z par un Frogtend ENFANT (`sept_z.rs`, avis de l'expert lancement : voie B) :
+  pré-lecture des 32 octets dans le parent ; job Windows (2 Gio, tué avec Frogtend) posé avant « go » ; lignes JSON,
+  réussite = ligne de fin ET code 0. Migrés : decompression.rs, installation.rs (2), succes.rs, commandes.rs.
+  Vérifié : tests du cœur (413), test avec le VRAI programme (chemin accentué, archive abîmée, en-tête codé gonflé à
+  3 Gio + dictionnaire 3,75 Gio → l'enfant meurt, Frogtend répond « piégée ») ; essai réel en lecture seule sur 3
+  archives de Seb (37 / 3 244 / 502 fichiers, 251 Mo, tailles exactes, archives intactes, essai effacé).
+  Après la relecture de l'expert : progression envoyée à chaque ligne (elle restait figée : test qui le prouve, rouge
+  sans le correctif) ; lignes et entrées bornées côté parent ; empreinte RetroAchievements calculée DANS l'enfant (plus
+  de fichier dans %TEMP%) ; pas de fenêtre d'erreur Windows quand l'enfant meurt ; contrôle des 32 octets partout.
+  Rejoué contre le programme LIVRÉ (release : sans console, `abort`) : 5 tests dont l'essai réel, aucun rapport
+  d'erreur Windows ni processus restant. Disque D: plein pendant la livraison (cache de compilation 65,7 Go, vidé) :
+  `livrer.mjs` vérifie désormais la place (20 Go) et trouve le CMake de Visual Studio.
+  NON vérifié : dans le programme INSTALLÉ chez Seb (antivirus, Sunshine) ; la mémoire réelle sur ses gros 7z ; un
+  chien de garde (enfant qui bouclerait sans rien écrire : comme avant, il bloquerait la décompression).
 
 - **0.82.0** (20/10) — Nexus Mods. Clé d'API personnelle par profil (vérifiée par `/users/validate`, au coffre,
   effacée avec le profil) ; `nxm://` pris par l'installeur (HKCU, une fois, rendu à la désinstallation) ; un 2e

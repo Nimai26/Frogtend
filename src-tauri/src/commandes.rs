@@ -867,7 +867,13 @@ pub async fn archive_du_jeu(noyau: State<'_, Noyau>, id: i64) -> Resultat<Option
 #[tauri::command]
 pub async fn decompresser_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<String> {
     let archive = noyau.fichier_lance(id).await?.ok_or_else(|| Erreur::Refus("Ce jeu n'a pas de fichier à décompresser.".into()))?;
-    let total = crate::decompression::examiner(&archive)?.map(|a| a.taille).unwrap_or(0);
+    // Hors du fil asynchrone : un 7z est lu par un Frogtend enfant (attente bloquante).
+    let a = archive.clone();
+    let total = tauri::async_runtime::spawn_blocking(move || crate::decompression::examiner(&a))
+        .await
+        .map_err(|_| Erreur::Disque("La lecture s'est arrêtée brutalement.".into()))??
+        .map(|a| a.taille)
+        .unwrap_or(0);
     let libre = archive.parent().and_then(crate::jeux_pc::place_libre);
     noyau.journaliser(&format!("décompression du jeu {id} : {}", archive.display()));
     let (a, app2) = (archive.clone(), app.clone());

@@ -40,6 +40,7 @@ pub mod partie;
 pub mod pilotage;
 pub mod mods;
 pub mod nexus;
+pub mod sept_z;
 pub mod patchs_ps3;
 pub mod plein_ecran;
 pub mod profils;
@@ -275,6 +276,11 @@ fn percent_decode(s: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Un Frogtend ENFANT qui lit une archive 7z pour son parent (voir `sept_z`) : rien d'autre, ni fenêtre ni données.
+    let arguments: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    if arguments.get(1).is_some_and(|a| a == sept_z::ARG) {
+        std::process::exit(sept_z::enfant(&arguments[2..]));
+    }
     let contexte = tauri::generate_context!();
     // Un lien nxm:// de Nexus (lot 0.82.0) : déposé dans la boîte aux lettres ; si un Frogtend tourne déjà, il le
     // relève et celui-ci s'arrête aussitôt, avant toute fenêtre.

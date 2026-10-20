@@ -92,13 +92,12 @@ fn lister(archive: &Path) -> Resultat<Vec<Entree>> {
             }
         }
         Some(_) => {
-            let r = sevenz_rust::SevenZReader::open(archive, sevenz_rust::Password::empty())
-                .map_err(|e| Erreur::Disque(format!("Archive 7z illisible ({e}).")))?;
-            // Un fichier vide n'a pas de flux (`has_stream` faux) : il compte quand même (taille 0).
-            for e in &r.archive().files {
-                if !e.is_directory() && !e.is_anti_item() {
-                    let nom = chemin_sur(e.name()).ok_or_else(|| Erreur::Refus(format!("L'archive contient un chemin dangereux : {}.", e.name())))?;
-                    l.push(Entree { nom, taille: e.size() });
+            // Lu par un Frogtend enfant (`sept_z` : un 7z piégé ne peut pas fermer Frogtend).
+            // Un fichier vide n'a pas de flux : il compte quand même (taille 0).
+            for e in crate::sept_z::lister(archive)? {
+                if !e.dossier && !e.anti {
+                    let nom = chemin_sur(&e.nom).ok_or_else(|| Erreur::Refus(format!("L'archive contient un chemin dangereux : {}.", e.nom)))?;
+                    l.push(Entree { nom, taille: e.taille });
                 }
             }
         }
@@ -200,18 +199,9 @@ fn extraire(archive: &Path, dossier: &Path, entrees: &[Entree], progres: &mut dy
             }
         }
         Some(_) => {
-            let mut r = sevenz_rust::SevenZReader::open(archive, sevenz_rust::Password::empty())
-                .map_err(|e| Erreur::Disque(format!("Archive 7z illisible ({e}).")))?;
-            r.for_each_entries(|e, flux| {
-                if e.is_directory() || e.is_anti_item() {
-                    return Ok(true);
-                }
-                if let Some(nom) = chemin_sur(e.name()) {
-                    ecrire(flux, &dossier.join(&nom), progres).map_err(sevenz_rust::Error::io)?;
-                }
-                Ok(true)
-            })
-            .map_err(|e| Erreur::Disque(format!("Décompression du 7z interrompue ({e}).")))?;
+            // Par un Frogtend enfant ; les chemins ont déjà été vérifiés par `lister`, et le résultat l'est par
+            // `complet` ci-dessous.
+            crate::sept_z::extraire(archive, dossier, progres)?;
         }
         None => return Err(Erreur::Refus("Ce fichier n'est pas une archive.".into())),
     }
