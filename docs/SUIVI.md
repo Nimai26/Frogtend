@@ -13,6 +13,12 @@
   le .m3u d'abord (`partie.rs` `fichier_principal` : .m3u, .cue, .gdi, .chd, .iso), jamais « le fichier n=0 » ; les
   multi-disques servis aujourd'hui se lancent donc bien. À coder avec un relevé réel de chaque forme (demandé à
   Firehouse) : lire `installation.lancer`/`forme`, les rôles `maj`/`dlc`/`licence` (Switch : Eden ; PS3 : RPCS3).
+  Relevé réel n° 1 (20/10, Xak PC-8801) rangé : `src-tauri/fixtures/simule/version-multidisques-123.json` — un .m3u
+  qui liste des .ZIP. ⚠️ La doc libretro de QUASI88 n'accepte que .d88/.u88/.m3u (pas .zip), et un nom écrit dans un
+  .m3u est ouvert par le cœur, pas décompressé par RetroArch : ce jeu ne se lancerait pas. Répondu à Firehouse
+  (20/10) : garder les zips TOSEC avec le rôle `archive_a_extraire` (= décompresser sur place), servir le .m3u
+  « après extraction » (noms .d88 lus dans les zips, jamais réécrit par Frogtend), Frogtend vérifie chaque ligne du
+  .m3u avant de lancer ; zips dans un .m3u seulement si le cœur conseillé déclare .zip. ⏳ Forme corrigée attendue.
 
 - **Jeux PC des boutiques — vrais jeux du PC** (Seb, 20/10 : « gérer l'installation, le lancement, les succès, les
   mods… »). État au 20/10 : Frogtend importe la liste (Steam par l'API, Galaxy pour GOG + Epic/Xbox/Ubisoft/EA/Amazon
