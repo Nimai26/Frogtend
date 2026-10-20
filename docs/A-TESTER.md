@@ -48,6 +48,15 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Jeux Steam suivis par Frogtend (0.85.0) — À ESSAYER AVEC MOI
+- [ ] Ma ludothèque : un jeu Steam installé (GTA V, XCOM 2…) a « ▶ Jouer » (pas « Jouer (Steam) ») ; « Sur ce PC »
+      montre son dossier Steam.
+- [ ] ▶ Jouer : le message « Steam lance… » s'affiche ; le jeu démarre ; la touche du menu en jeu marche ;
+      « Quitter » ferme le jeu ; le temps de jeu augmente. Essayer aussi avec Steam FERMÉ au départ.
+- [ ] Un second clic sur Jouer pendant le démarrage ne lance rien de plus.
+- [ ] En Taodbox : le jeu est dans la grille, une seule fois.
+- [ ] Ouvrir un profil sans compte Steam, puis revenir : le jeu et son temps de jeu sont toujours là.
+
 ## MAME reconnu un par un (0.84.2)
 - [ ] 📥 Importer ▸ 🔗 Reconnaître mes jeux importés après avoir importé ton MAME : la plupart des jeux MAME passent
       en « Reconnus » ; un jeu Neo-Geo dit « il manque à côté du jeu : neogeo (BIOS) » si le BIOS n'est pas dans le

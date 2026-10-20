@@ -27,7 +27,7 @@ import { libellePleinEcran, TOUCHES_PLEIN_ECRAN } from './plein-ecran';
 import { BOUTONS, detailTouche, libelleClavier, memes, nettoyer, PREREGLAGES, toucheDepuisEvenement, TOUCHES, type Correspondance } from './clavier';
 import { auCanape, seulementAuBureau } from '$lib/taodbox/canape';
 
-export const partie = $state<{ enJeu: number | null; installation: number | null }>({ enJeu: null, installation: null });
+export const partie = $state<{ enJeu: number | null; installation: number | null; lancement: number | null }>({ enJeu: null, installation: null, lancement: null });
 
 let ecoute: (() => void) | null = null;
 
@@ -295,6 +295,22 @@ async function prevenirPareFeu(id: number, plateforme: string | undefined, emula
 /** Jouer. `emulateur` : la clé d'un émulateur du système, pour ce lancement seulement. Si un réglage manque
  * (émulateur, lanceur), on le demande puis on relance. */
 export async function jouer(id: number, emulateur?: string, version?: string) {
+  // Un seul lancement à la fois (un jeu de boutique peut mettre plusieurs minutes à démarrer).
+  if (partie.lancement !== null) return;
+  partie.lancement = id;
+  // Un jeu de boutique : sa boutique le prépare (mise à jour…), on le dit tout de suite.
+  const attente = tele.jeux[id]?.installation?.boutique
+    ? toast(`▶ Steam lance « ${tele.jeux[id]?.titre ?? 'le jeu'} »… S’il fait une mise à jour, ça peut prendre quelques minutes.`, 'neutre', { jusquaFermeture: true })
+    : null;
+  try {
+    await jouerSansAttente(id, emulateur, version);
+  } finally {
+    if (attente !== null) fermerToast(attente);
+    partie.lancement = null;
+  }
+}
+
+async function jouerSansAttente(id: number, emulateur?: string, version?: string) {
   const j = tele.jeux[id];
   for (let essai = 0; essai < 2; essai++) {
     try {
@@ -1086,7 +1102,10 @@ export async function gererJeu(id: number) {
   type Action = 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'patchs' | 'mods' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'delier' | 'retirer';
   const options: { valeur: Action; libelle: string; detail?: string }[] = [];
   if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
-  if (j.installation && !j.installation.fichier_du_jeu)
+  // Un jeu d'une boutique (Steam) : c'est elle qui le lance, l'installe et le désinstalle ; Frogtend n'écrit rien dans
+  // son dossier (ni mods, ni abri pour l'instant).
+  const deBoutique = !!j.installation?.boutique;
+  if (j.installation && !j.installation.fichier_du_jeu && !deBoutique)
     options.push({ valeur: 'lanceur', libelle: '🎯 Changer ce qui lance le jeu' });
   const versions = j.installation?.versions ?? [];
   if (versions.length > 1 && j.installation) {
@@ -1113,8 +1132,8 @@ export async function gererJeu(id: number) {
   const pcSansEmulateur = jeuPcSansEmulateur(id);
   if (!pcSansEmulateur) options.push({ valeur: 'commandes', libelle: '🎮 Commandes', detail: libelleCommandes(etat.profil.commandes[String(id)]) });
   if (pcSansEmulateur) {
-    // Ses mods (contrat 1.19 ; ✅ Seb 19/10).
-    options.push({ valeur: 'mods', libelle: '🧩 Mods', detail: 'ajouter ou retirer des mods — pour ce jeu' });
+    // Ses mods (contrat 1.19 ; ✅ Seb 19/10) — pas encore pour un jeu de boutique (lot B).
+    if (!deBoutique) options.push({ valeur: 'mods', libelle: '🧩 Mods', detail: 'ajouter ou retirer des mods — pour ce jeu' });
     options.push({
       valeur: 'clavier',
       libelle: '🕹 Jouer à la manette (jeu fait pour le clavier)',
@@ -1127,13 +1146,13 @@ export async function gererJeu(id: number) {
       detail: etat.profil.figer.includes(String(id)) ? 'oui (le jeu s’arrête pendant le menu)' : 'non (le jeu continue derrière le menu)',
     });
   }
-  if (j.installation)
+  if (j.installation && !deBoutique)
     options.push({ valeur: 'abri', libelle: '💾 Mettre mes parties à l’abri', detail: 'une copie de ce qui a changé depuis l’installation' });
   // Un jeu importé relié à une fiche de Firehouse (contrat 1.21) : le lien se défait d'ici aussi.
   if (estImporte(j) && j.fiche)
     options.push({ valeur: 'delier', libelle: '🔗 Ce n’est pas ce jeu (ne plus relier)', detail: 'ton fichier ne bouge pas : il perd seulement la fiche de Firehouse' });
   // Retirer (et désinstaller) reste au bureau (✅ Seb 19/10) : il efface, et le désinstalleur se pilote à la souris.
-  if (j.etat === 'telecharge' && !auCanape())
+  if (j.etat === 'telecharge' && !auCanape() && !deBoutique)
     options.push(
       estImporte(j)
         ? { valeur: 'retirer', libelle: '🗑 Retirer de la ludothèque', detail: 'ses fichiers restent sur ton disque' }

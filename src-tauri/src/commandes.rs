@@ -1070,10 +1070,12 @@ pub async fn jeu_jouer(
     repeter_touches: Option<bool>,
 ) -> Resultat<()> {
     let jeu = noyau.registre().jeu(id)?;
+    // Un jeu d'une boutique : lancé par elle, jamais par un émulateur (même si un émulateur est réglé pour « Windows »).
+    let de_boutique = jeu.as_ref().and_then(|j| j.installation.as_ref()).is_some_and(|i| i.boutique.is_some());
     let (plateforme, titre) = jeu.map(|j| (j.plateforme, j.titre)).unwrap_or_default();
     let mut id_emulateur = None;
     let mut dossier_emulateur = None;
-    let emulateur = match emulateur_regle(&app, &plateforme, id, emulateur.as_deref()) {
+    let emulateur = match (!de_boutique).then(|| emulateur_regle(&app, &plateforme, id, emulateur.as_deref())).flatten() {
         Some((programme, ligne)) => {
             dossier_emulateur = std::path::Path::new(&programme).parent().map(|d| d.to_string_lossy().to_string());
             let nom = std::path::Path::new(&programme).file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
@@ -1093,6 +1095,11 @@ pub async fn jeu_jouer(
         None => None,
     };
     let par_emulateur = emulateur.is_some();
+    // Déjà en cours (un second clic pendant que Steam démarre le jeu, une partie, un téléchargement) : refusé, jamais
+    // deux parties suivies du même jeu.
+    if noyau.utilise(id) {
+        return Err(Erreur::Refus("Ce jeu est déjà en train de se lancer ou de tourner.".into()));
+    }
     // Un jeu resté figé d'une partie précédente repart d'abord.
     crate::figer::degeler();
     // « Occupé » du lancement jusqu'à la fin du suivi de la partie (deux tâches) : jamais rattaché entre les deux.
@@ -1597,8 +1604,19 @@ pub async fn menu_jeu_quitter(app: AppHandle) -> Resultat<usize> {
     cacher_menu(&app);
     let racine = p.pid;
     let dossier_emulateur = p.dossier_emulateur.clone();
+    let dossier_jeu = p.dossier_jeu.clone();
     let n = tauri::async_runtime::spawn_blocking(move || {
-        crate::menu_jeu::quitter(p.emulateur.as_deref(), &crate::lancement::processus_de_la_partie(racine))
+        // Un jeu PC (dont un jeu lancé par sa boutique, dont le premier programme a pu se fermer) : aussi les programmes
+        // de SON dossier — jamais rien hors de lui.
+        let mut pids = crate::lancement::processus_de_la_partie(racine);
+        if let Some(d) = dossier_jeu {
+            for p in crate::lancement::processus_du_dossier(std::path::Path::new(&d)) {
+                if !pids.contains(&p) {
+                    pids.push(p);
+                }
+            }
+        }
+        crate::menu_jeu::quitter(p.emulateur.as_deref(), &pids)
     })
     .await
     .map_err(|_| Erreur::Disque("La fermeture s'est arrêtée brutalement.".into()))??;
@@ -2001,6 +2019,19 @@ pub async fn boutique_steam_jeux(noyau: State<'_, Noyau>) -> Resultat<Vec<crate:
             j.dossier = i.map(|i| i.dossier.to_string_lossy().into_owned());
             j.pret = i.map(|i| i.pret);
             j.installe = i.is_some();
+        }
+        // Les installés deviennent des jeux du PC (lancés par Steam, parties suivies) ; les désinstallés en sortent.
+        let installes_pc: std::collections::BTreeSet<String> = installes.keys().cloned().collect();
+        match noyau.synchroniser_steam(&l, &installes_pc) {
+            Ok((a, r)) if a + r > 0 => noyau.journaliser(&format!("jeux Steam du PC : {a} ajouté(s), {r} retiré(s)")),
+            Ok(_) => {}
+            Err(e) => noyau.journaliser(&format!("jeux Steam du PC : {e:?}")),
+        }
+        // L'état « installé » de la ludothèque du profil suit le disque (filtre « Installés », bouton Steam).
+        if !l.is_empty() {
+            if let Err(e) = noyau.ranger_boutique("steam", &l).await {
+                noyau.journaliser(&format!("ludothèque Steam : {e:?}"));
+            }
         }
     }
     Ok(l)
@@ -2610,6 +2641,10 @@ async fn jeu_pour_un_mod(noyau: &Noyau, id: i64) -> Resultat<(crate::jeux_pc::Je
     }
     if i.fichier_du_jeu.is_some() {
         return Err(Erreur::Refus("Ce jeu se lance par un émulateur : Frogtend n'y installe pas de mod de jeu PC.".into()));
+    }
+    // Un jeu d'une boutique : jamais rien écrit dans son dossier (les mods des jeux de boutique viendront avec le lot B).
+    if i.boutique.is_some() {
+        return Err(Erreur::Refus("Les mods des jeux de tes boutiques arrivent bientôt : pour l'instant, Frogtend n'écrit rien dans leur dossier.".into()));
     }
     if noyau.utilise(id) {
         return Err(Erreur::Refus("Le jeu est en cours (partie, téléchargement ou installation) : réessaie après.".into()));

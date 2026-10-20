@@ -181,6 +181,19 @@ pub struct Installation {
     /// Celle qu'on lance par défaut est `dossier` + `fichier_du_jeu`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub versions: Vec<VersionLocale>,
+    /// Un jeu d'une BOUTIQUE (Steam…) installé par elle : Frogtend le LANCE par la boutique et suit la partie, mais
+    /// n'écrit, ne retire et ne désinstalle JAMAIS rien dans son dossier (lot A des jeux de boutique, 20/10).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub boutique: Option<LancementBoutique>,
+}
+
+/// Comment une boutique lance un de ses jeux.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LancementBoutique {
+    /// `steam` (l'adresse `steam://rungameid/<cle>`).
+    pub source: String,
+    /// L'identifiant du jeu dans la boutique (Steam : l'appid).
+    pub cle: String,
 }
 
 /// Une version d'un jeu importé : un fichier (ou le 1er disque d'un jeu sur plusieurs disques).
@@ -630,6 +643,7 @@ mod tests {
             fichier_du_jeu: None,
             installe_le: "1".into(),
             versions: vec![],
+            boutique: None,
         };
         r.changer_installation(110, Some(&i)).unwrap();
         r.compter_partie(110, 600, "2").unwrap();

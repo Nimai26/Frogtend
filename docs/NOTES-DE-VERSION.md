@@ -1,5 +1,18 @@
 # Notes de version de Frogtend
 
+## 0.85.0 — Tes jeux Steam deviennent des jeux de Frogtend
+
+- Un jeu Steam installé sur ce PC est maintenant un vrai jeu de ta ludothèque : ▶ Jouer demande à Steam de le lancer
+  (mises à jour et sauvegardes dans le nuage comprises), puis Frogtend suit la partie comme pour ses propres jeux :
+  menu en jeu, manette → clavier, plein écran, temps de jeu, et Firehouse met ses travaux en pause pendant que tu
+  joues.
+- En Taodbox, tes jeux Steam installés sont dans la grille avec les autres.
+- Pendant que Steam prépare le jeu (une mise à jour peut prendre quelques minutes), un message le dit, et un second
+  appui ne lance rien de plus.
+- Frogtend n'écrit jamais rien dans le dossier d'un jeu Steam et ne le désinstalle jamais : c'est Steam qui s'en
+  charge. Les mods des jeux de tes boutiques viendront ensuite.
+- GOG, Epic et les autres boutiques : toujours ouverts par GOG Galaxy pour l'instant.
+
 ## 0.84.2 — Tes jeux MAME reconnus un par un
 
 - 🔗 Reconnaître mes jeux importés reconnaît maintenant tes jeux d'arcade MAME même si ton romset est « fusionné »

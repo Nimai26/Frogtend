@@ -690,6 +690,7 @@ mod tests {
                 fichier_du_jeu: fichier.map(String::from),
                 installe_le: String::new(),
                 versions,
+                boutique: None,
             }),
             temps_jeu: 0,
             derniere_partie: None,

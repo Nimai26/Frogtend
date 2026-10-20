@@ -72,8 +72,9 @@
     {/if}
 
     <div class="actions">
-      {#if estJeuDeBoutique(j)}
-        <!-- Un jeu de tes boutiques : Steam ou GOG Galaxy s'en chargent. -->
+      {#if estJeuDeBoutique(j) && !surPc}
+        <!-- Un jeu de tes boutiques pas encore sur ce PC (ou que Frogtend ne sait pas encore lancer) : Steam ou GOG
+             Galaxy s'en chargent. Installé par Steam, c'est un jeu du PC : Jouer passe par Frogtend (partie suivie). -->
         <button class="btn primary grand" onclick={() => j && ouvrirJeuDeBoutique(j)}>
           {j.installe ? '▶ Jouer' : '⬇ Installer'} <span class="muted">({j.source === 'steam' ? 'Steam' : 'GOG Galaxy'})</span>
         </button>
@@ -92,7 +93,7 @@
         {:else if !surPc.installation}
           <button class="btn primary grand" onclick={() => installer(idPc)} disabled={!!surPc.d_un_autre} title={surPc.d_un_autre ? 'Seule la personne qui l’a importé peut l’installer' : undefined}>📦 Installer</button>
         {:else}
-          <button class="btn primary grand" onclick={() => jouer(idPc)} disabled={partie.enJeu !== null}>▶ Jouer</button>
+          <button class="btn primary grand" onclick={() => jouer(idPc)} disabled={partie.enJeu !== null || partie.lancement !== null}>{partie.lancement === idPc ? 'Lancement…' : '▶ Jouer'}</button>
           {#if emulateursDuJeu(j.plateforme).liste.length > 1 || (surPc.installation.versions?.length ?? 0) > 1}
             <button class="btn grand" onclick={() => jouerAvec(idPc)} disabled={partie.enJeu !== null}>▶ Jouer avec…</button>
           {/if}
@@ -113,7 +114,7 @@
       {#if j.developpeur}<dt>Développeur</dt><dd>{j.developpeur}</dd>{/if}
       {#if j.editeur}<dt>Éditeur</dt><dd>{j.editeur}</dd>{/if}
       {#if catalogue && j.versions != null}<dt>Versions</dt><dd>{j.versions || 'aucune pour l’instant'}</dd>{/if}
-      {#if surPc}<dt>Sur ce PC</dt><dd title={surPc.dossier}>{surPc.dossier}</dd>{/if}
+      {#if surPc}<dt>Sur ce PC</dt><dd title={surPc.installation?.boutique ? surPc.installation.dossier : surPc.dossier}>{surPc.installation?.boutique ? surPc.installation.dossier : surPc.dossier}</dd>{/if}
       {#if surPc?.temps_jeu}<dt>Temps de jeu</dt><dd>{duree(surPc.temps_jeu)}</dd>{/if}
       {#if (surPc?.installation?.versions?.length ?? 0) > 1}
         <dt>Versions</dt>

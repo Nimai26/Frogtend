@@ -62,6 +62,8 @@
       suivreTelechargements();
       suivreParties();
       untrack(() => auDemarrage());
+      // Les jeux Steam installés sur ce PC deviennent des jeux du PC (lancés par Steam, parties suivies).
+      untrack(() => void api.steamJeux().then(() => suivreTelechargements()).catch(() => {}));
       untrack(() => gratuitsAuDemarrage());
     } else {
       arreterSuivi();

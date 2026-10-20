@@ -55,6 +55,56 @@ pub struct FinDePartie {
     pub secondes: u64,
 }
 
+/// Le temps laissé à une boutique pour démarrer le jeu (mise à jour, préparation des shaders, fenêtre d'options…).
+const ATTENTE_BOUTIQUE: std::time::Duration = std::time::Duration::from_secs(180);
+
+/// L'adresse qui demande à la boutique de lancer ce jeu ; `None` pour une boutique que Frogtend ne sait pas encore
+/// lancer (Galaxy : sa ligne de commande n'est pas documentée officiellement, essai à faire avec Seb).
+pub(crate) fn adresse_boutique(b: &crate::jeux_pc::LancementBoutique) -> Option<String> {
+    match b.source.as_str() {
+        "steam" if !b.cle.is_empty() && b.cle.len() <= 12 && b.cle.chars().all(|c| c.is_ascii_digit()) => Some(format!("steam://rungameid/{}", b.cle)),
+        _ => None,
+    }
+}
+
+/// Parmi les processus d'un dossier, le « premier » du jeu : celui dont le parent n'est pas lui-même dans le dossier
+/// (le jeu, pas un de ses enfants) ; à défaut le plus petit numéro.
+fn racine_du_dossier(pids: &[u32]) -> Option<u32> {
+    let mut s = sysinfo::System::new();
+    s.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+    pids.iter()
+        .copied()
+        .find(|p| s.process(sysinfo::Pid::from_u32(*p)).and_then(|x| x.parent()).is_none_or(|parent| !pids.contains(&parent.as_u32())))
+        .or_else(|| pids.iter().copied().min())
+}
+
+/// Demande à la boutique de lancer le jeu, puis attend qu'un programme apparaisse DANS son dossier (jamais le client de
+/// la boutique, hors du dossier) : c'est lui que la partie suit (menu en jeu, quitter, manette → clavier).
+async fn lancer_par_la_boutique(b: &crate::jeux_pc::LancementBoutique, dossier: &Path) -> Resultat<u32> {
+    let adresse = adresse_boutique(b).ok_or_else(|| Erreur::Refus("Frogtend ne sait pas encore lancer un jeu de cette boutique : ouvre-le depuis elle.".into()))?;
+    if !crate::lancement::processus_du_dossier(dossier).is_empty() {
+        return Err(Erreur::Refus("Ce jeu tourne déjà.".into()));
+    }
+    tauri_plugin_opener::open_url(&adresse, None::<&str>).map_err(|_| Erreur::Disque("Steam ne s'ouvre pas : est-il installé ?".into()))?;
+    let d = dossier.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        let fin = Instant::now() + ATTENTE_BOUTIQUE;
+        while Instant::now() < fin {
+            let pids = crate::lancement::processus_du_dossier(&d);
+            if let Some(p) = racine_du_dossier(&pids) {
+                return Ok(p);
+            }
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+        Err(Erreur::Refus(
+            "Le jeu n'a pas démarré depuis Steam (3 minutes). Regarde dans Steam : une mise à jour, une fenêtre d'options ou une connexion attend peut-être ta réponse."
+                .into(),
+        ))
+    })
+    .await
+    .map_err(|_| Erreur::Disque("L'attente du jeu s'est arrêtée brutalement.".into()))?
+}
+
 /// Le fichier donné à l'émulateur : pour un jeu en plusieurs fichiers, celui qui les décrit (.cue, .m3u…).
 fn fichier_principal(fichiers: &[String]) -> Option<String> {
     for ext in [".m3u", ".cue", ".gdi", ".chd", ".iso"] {
@@ -318,6 +368,7 @@ impl Noyau {
             fichier_du_jeu,
             installe_le: maintenant(),
             versions: vec![],
+            boutique: None,
         };
         self.registre().changer_installation(j.id, Some(&i))?;
         Ok(i)
@@ -392,6 +443,9 @@ impl Noyau {
         let _occupe = self.occuper(id);
         let j = self.jeu_visible(id).await?;
         let mut i = j.installation.ok_or_else(|| Erreur::Refus("Le jeu n'est pas encore installé.".into()))?;
+        if i.boutique.is_some() {
+            return Err(Erreur::Refus("Ce jeu est lancé par sa boutique : rien à choisir.".into()));
+        }
         // Durcissement : un programme de Windows (nommé court, ou n'importe quel chemin sous `%SystemRoot%` : cmd,
         // powershell, rundll32…) n'est accepté que s'il s'agit de `cmd.exe` ou `explorer.exe` ouvrant UN fichier — un
         // .bat/.cmd du jeu (`/C <fichier>`), un raccourci .lnk du jeu, du Bureau ou du menu Démarrer — exactement la
@@ -440,6 +494,12 @@ impl Noyau {
         let j = self.jeu_jouable(id).await?;
         let i = installation_de_la_partie(&j, version)?;
         self.pause_mame.store(false, std::sync::atomic::Ordering::SeqCst);
+        // Un jeu d'une boutique : lancé PAR elle (mises à jour, sauvegardes dans le nuage, compte), puis suivi.
+        if let Some(b) = &i.boutique {
+            let pid = lancer_par_la_boutique(b, Path::new(&i.dossier)).await?;
+            let reponse = self.annoncer(id, "debut").await;
+            return Ok((pid, vec![PathBuf::from(&i.dossier)], reponse.is_some_and(|r| r["session"].is_object())));
+        }
         let (lanceur, dossiers) = match (&i.lanceur, &i.fichier_du_jeu) {
             (Some(l), _) => (l.clone(), vec![PathBuf::from(&i.dossier)]),
             (None, Some(f)) => {
@@ -572,6 +632,10 @@ impl Noyau {
         let j = self.jeu_visible(id).await?;
         if !matches!(j.etat, Etat::Telecharge) {
             return Err(Erreur::Refus("Ce jeu est en cours de téléchargement : annule plutôt le téléchargement.".into()));
+        }
+        // Un jeu d'une boutique : c'est elle qui le désinstalle ; Frogtend ne retire pas sa ligne (son temps de jeu).
+        if j.installation.as_ref().is_some_and(|i| i.boutique.is_some()) {
+            return Err(Erreur::Refus("Ce jeu est installé par sa boutique : désinstalle-le depuis elle.".into()));
         }
         let mut abri = if j.installation.is_some() {
             self.mettre_a_l_abri(id).await?

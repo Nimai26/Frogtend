@@ -197,10 +197,14 @@ impl Suivi {
 
     fn dans_un_dossier(&self, exe: Option<&Path>) -> bool {
         let Some(exe) = exe else { return false };
-        let exe = exe.to_string_lossy().to_lowercase();
-        self.dossiers
-            .iter()
-            .any(|d| !d.as_os_str().is_empty() && exe.starts_with(&d.to_string_lossy().to_lowercase()))
+        let exe = exe.to_string_lossy().to_lowercase().replace('/', "\\");
+        // Avec le séparateur final (« …\common\Portal » n'englobe jamais « …\common\Portal 2 ») et jamais la racine
+        // d'un disque (elle engloberait tout).
+        self.dossiers.iter().any(|d| {
+            let racine = d.parent().is_none() || d.as_os_str().is_empty();
+            let d = format!("{}\\", d.to_string_lossy().trim_end_matches(['\\', '/']).to_lowercase().replace('/', "\\"));
+            !racine && exe.starts_with(&d)
+        })
     }
 
     /// Vrai tant qu'un processus de la partie tourne.
@@ -236,6 +240,15 @@ impl Suivi {
 mod tests {
     use super::*;
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn un_dossier_n_englobe_jamais_son_voisin_ni_une_racine_de_disque() {
+        let s = Suivi::nouveau(0, vec![PathBuf::from(r"D:\Steam\steamapps\common\Portal"), PathBuf::from(r"E:\")]);
+        assert!(s.dans_un_dossier(Some(Path::new(r"D:\Steam\steamapps\common\Portal\portal.exe"))));
+        assert!(s.dans_un_dossier(Some(Path::new(r"d:/steam/steamapps/common/portal/bin/x.exe"))), "majuscules et « / »");
+        assert!(!s.dans_un_dossier(Some(Path::new(r"D:\Steam\steamapps\common\Portal 2\portal2.exe"))), "« Portal 2 » n'est pas « Portal »");
+        assert!(!s.dans_un_dossier(Some(Path::new(r"E:\autre\jeu.exe"))), "la racine d'un disque n'englobe rien");
+    }
 
     #[test]
     fn un_numero_de_processus_repris_par_un_autre_programme_ne_compte_pas() {

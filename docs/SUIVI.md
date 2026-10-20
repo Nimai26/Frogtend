@@ -7,6 +7,13 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- **Contrat 1.23 EN SERVICE** (20/10 22 h 29, Firehouse 2.94.0 ; détail dans CONTRAT § 1.23) : rôles des fichiers,
+  `installation {forme, extraire_dans, lancer, arguments}`, MULTI-DISQUES = une version dont le fichier n=0 est le
+  .m3u (lancer `installation.lancer`, jamais supposer n=0 = disque 1). ✅ Vérifié le 20/10 : Frogtend choisit déjà
+  le .m3u d'abord (`partie.rs` `fichier_principal` : .m3u, .cue, .gdi, .chd, .iso), jamais « le fichier n=0 » ; les
+  multi-disques servis aujourd'hui se lancent donc bien. À coder avec un relevé réel de chaque forme (demandé à
+  Firehouse) : lire `installation.lancer`/`forme`, les rôles `maj`/`dlc`/`licence` (Switch : Eden ; PS3 : RPCS3).
+
 - **Jeux PC des boutiques — vrais jeux du PC** (Seb, 20/10 : « gérer l'installation, le lancement, les succès, les
   mods… »). État au 20/10 : Frogtend importe la liste (Steam par l'API, Galaxy pour GOG + Epic/Xbox/Ubisoft/EA/Amazon
   reliés) et OUVRE le jeu dans sa boutique, rien de plus : pas de dossier d'installation lu, pas de suivi de partie
@@ -533,6 +540,19 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.85.0** (20/10) — Jeux de boutique, lots A2-A4 pour STEAM (avis et relectures des experts lancement et
+  interface) : `Installation.boutique` ; `synchroniser_steam` (installés d'après le Steam de CE PC, jamais la liste
+  d'un profil ; une ligne n'est retirée que si le jeu est désinstallé, son dossier disparu, sans temps de jeu et hors
+  partie ; `JeuPc.dossier` dans les données de Frogtend) ; `jouer` : `steam://rungameid/<appid>` puis attente (180 s)
+  d'un programme DANS le dossier, qui devient la racine de la partie (suivi, session APRÈS l'apparition, menu,
+  clavier) ; un second lancement refusé (`utilise`) ; « Quitter » ajoute les programmes du dossier ; `dans_un_dossier`
+  avec séparateur (testé) ; garde-fous : lanceur, mods, retrait, émulateur refusés pour un jeu de boutique.
+  Interface : Jouer suivi si le jeu est au registre (panneau, double-clic), « Lancement… » et message tout de suite,
+  Gérer réduit, Taodbox sans doublon, « installé » de la ludothèque suit le disque. Vérifié : tests (cœur 438,
+  interface 215). NON vérifié : un VRAI lancement (à faire AVEC Seb : Steam ouvert / fermé, menu en jeu, Quitter,
+  manette → clavier) ; jeu lancé en administrateur ; jeu qui démarre après 180 s (non suivi). GOG (ligne de commande
+  de Galaxy à vérifier avec Seb) et Epic : lots suivants. Deux temps de jeu (Steam / Frogtend) : à trancher avec Seb.
 
 - **0.84.2** (20/10) — Contrat 1.22 (besoin 29 ; relevé réel exact rangé : `fixtures/simule/reconcilier-122.json`).
   Arcade : verdict de LA machine du zip (le parent d'un zip fusionné), pas le groupe 1.21 ; BIOS / périphériques

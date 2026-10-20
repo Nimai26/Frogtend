@@ -446,7 +446,9 @@ Reçu par message de la session Firehouse (référence : BRIEF § « 1.22 » et 
 - exact = TOUTES les ROM requises de la machine (listxml 0.289, hors BIOS et ROM optionnelles) dans `entrees` ;
   probable = au moins la MOITIÉ ET, pour un clone, au moins une de ses ROM PROPRES ; sinon pas listée. Envoyer TOUTES
   les entrées (noms et sous-dossiers ignorés, doublons permis).
-- `dependances` : BIOS / devices à avoir À CÔTÉ (ex. neogeo) — la machine est exacte quand même ; à Frogtend de
+- `dependances` (précisé par Firehouse le 20/10 : SEULEMENT ce qui a des ROM à soi — le BIOS en remontant `romof`,
+  puis les devices avec au moins une ROM, parcours récursif, sans doublon : tout ce qui est listé et absent est un
+  vrai manque) : BIOS / devices à avoir À CÔTÉ (ex. neogeo) — la machine est exacte quand même ; à Frogtend de
   vérifier qu'ils sont chez la personne.
 - CHD : champ `chd_sha1` (40 hexa) = SHA1 GLOBAL de l'en-tête (v5 offset 84, v4 48, v3 80) ; JAMAIS dans `sha1`.
   Rend toutes les machines qui demandent ce disque ; au fichier : exact si une seule, sinon probable + candidats —
@@ -462,6 +464,29 @@ Reçu par message de la session Firehouse (référence : BRIEF § « 1.22 » et 
   media_id : 2020bb 12984 (telechargement_id parent -1234836732104409, 2020bba -1047494276407722, 2020bbh
   -1195061964255313) ; raycrisj 12484 / -1281373763000399 ; fbaitmca 15103 / -1218799250261530. JSON exact reçu le
   20/10 : `src-tauri/fixtures/simule/reconcilier-122.json`.
+
+### 1.23 (20/10, Firehouse 2.94.0, en service le 20/10 à 22 h 29, en-tête `X-Api-Jeux-Version: 1.23`) — rôles des fichiers, forme d'installation, multi-disques
+Reçu par message de la session Firehouse (BRIEF § 1.23 du dépôt Firehouse). Contexte : Seb fait rapatrier les jeux de
+Venkman dans Firehouse (4 392 jeux d'ordinateurs/portables rangés le 20/10 ; puis CPC, consoles à disques, Wii/Wii
+U/PS3/Switch, PC) ; les consoles récentes vont dans une 2ᵉ bibliothèque « Jeux vidéo — récents » (Stay-Puft) : même
+API. Ajouts COMPATIBLES au détail `/jeu/{id}` :
+- `versions[].fichiers[].role` : `jeu` (défaut), `liste_disques` (le .m3u d'un multi-disques), `maj`, `dlc`,
+  `licence` (.rap PS3, servi avec son DLC), `archive_a_extraire` (ZIP64 « stocké », sans compression).
+- `versions[].installation = {forme, extraire_dans, lancer, arguments}` — forme : `fichier` (défaut : tout se pose
+  dans le dossier de jeux choisi), `archive` (extraire dans `extraire_dans`, relatif au dossier choisi),
+  `installeur` (lancer l'installeur d'origine), `contenus_emulateur` (poser le jeu de base puis installer
+  maj/dlc/licence DANS l'émulateur : Eden pour la Switch, « Install Packages/Raps » de RPCS3) ; `lancer` = le
+  fichier à ouvrir.
+- MULTI-DISQUES : un jeu en plusieurs disques est UNE version. ⚠️ Son fichier n=0 est le .m3u : ne JAMAIS supposer
+  que n=0 est le disque 1 — lancer `installation.lancer` (le .m3u ; tous les disques dans le même dossier, le .m3u
+  ne contient que leurs noms nus). Une version réunie porte `disques: [{disque, telechargement_id}]` et N'A PAS
+  d'empreinte de version (`sha1`/`crc32` vides).
+- `/reconcilier` : un disque d'une version réunie rend le `telechargement_id` de SA VERSION + `disque: N` (un groupe
+  disque 1 + disque 2 est « exact ») ; `/fichier/{id}/{version}/{n}` accepte aussi l'identifiant d'un disque ;
+  3ᵉ exception à « les telechargement_id des versions sont gardés » (le disque 1 garde le sien et devient celui de
+  la version).
+- Aujourd'hui SEUL `liste_disques` est posé ; `maj`/`dlc`/`licence`/`archive_a_extraire` et les formes
+  archive/installeur/contenus_emulateur arriveront avec les lots Switch, PS3 et PC (contrat fixé d'avance).
 
 ### Note 2.58.0 (contrat inchangé)
 Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a été RÉUNIE à celle du même jeu

@@ -8,6 +8,7 @@
   import Jaquette from './Jaquette.svelte';
   import { chargerSuite, ludo } from './ludotheque.svelte';
   import { jeuSurPc } from './telechargements.svelte';
+  import { jouer } from './jeu.svelte';
 
   const pourcent = (recus: number, total: number) => (total > 0 ? Math.floor((recus / total) * 100) : 0);
 
@@ -101,7 +102,7 @@
             class:selectionnee={ludo.selection?.id === j.id}
             aria-pressed={ludo.selection?.id === j.id}
             onclick={() => (ludo.selection = j)}
-            ondblclick={() => (estJeuDeBoutique(j) ? ouvrirJeuDeBoutique(j) : j.id > 0 && goto(`/jeu/${j.id}`))}
+            ondblclick={() => (estJeuDeBoutique(j) && !jeuSurPc(j.id) ? ouvrirJeuDeBoutique(j) : j.id > 0 ? goto(`/jeu/${j.id}`) : jeuSurPc(j.id)?.installation && jouer(j.id))}
             onfocus={() => (ludo.selection = j)}
             onkeydown={(e) => surTouche(e, i)}
           >

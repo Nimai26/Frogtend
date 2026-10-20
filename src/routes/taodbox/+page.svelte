@@ -9,7 +9,7 @@
   import { etat, sortirDuProfil } from '$lib/etat.svelte';
   import { gererJeu, installer, jouer, partie } from '$lib/ludotheque/jeu.svelte';
   import Jaquette from '$lib/ludotheque/Jaquette.svelte';
-  import { jeuSurPc, tele } from '$lib/ludotheque/telechargements.svelte';
+  import { jeuSurPc, rechargerJeuxDuPc, tele } from '$lib/ludotheque/telechargements.svelte';
   import { fenetreOuverte, selectionner, taodbox } from '$lib/taodbox/manette.svelte';
   import { adresseImageBoutique } from '$lib/api';
   import { lireSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
@@ -62,13 +62,15 @@
   }
 
   /** Les jeux Steam installés sur ce PC, jouables depuis le canapé (Steam les lance). */
-  const steamInstalles = $derived(steam.jeux.filter((j) => j.installe));
+  // Ceux dont le dossier est connu sont des jeux du PC : dans la grille principale, jamais en double ici.
+  const steamInstalles = $derived(steam.jeux.filter((j) => j.installe && !j.dossier));
 
   /** Les jeux installés lus dans GOG Galaxy (hors Steam, déjà montré à part). */
   const galaxyInstalles = $derived(galaxy.jeux.filter((j) => j.installe && j.plateforme !== 'steam'));
 
   onMount(async () => {
-    lireSteam();
+    // Les jeux Steam installés deviennent des jeux du PC à la lecture : la grille est relue ensuite.
+    lireSteam().then(rechargerJeuxDuPc);
     lireGalaxy();
     lanceParSunshine = isTauri() ? await api.taodboxLance().catch(() => false) : false;
     await tick();
@@ -78,7 +80,7 @@
 
   async function jeu(j: JeuPc) {
     // Pas pendant « Gérer le jeu » (un réglage peut attendre sans fenêtre ouverte).
-    if (partie.enJeu !== null || enGestion) return;
+    if (partie.enJeu !== null || partie.lancement !== null || enGestion) return;
     if (!j.installation) {
       // Le jeu d'une autre personne : elle seule peut l'installer.
       if (j.d_un_autre || !(await installer(j.id))) return;

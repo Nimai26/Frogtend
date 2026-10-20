@@ -756,7 +756,7 @@ impl crate::noyau::Noyau {
             let versions = if nouvelles.len() > 1 || !nouvelles[0].disques.is_empty() { nouvelles.clone() } else { vec![] };
             self.registre().changer_installation(
                 id,
-                Some(&Installation { dossier, methode: Methode::Aucune, lanceur: None, fichier_du_jeu: fichier, installe_le: quand.clone(), versions }),
+                Some(&Installation { dossier, methode: Methode::Aucune, lanceur: None, fichier_du_jeu: fichier, installe_le: quand.clone(), versions, boutique: None }),
             )?;
             lignes.push(ligne_de_ludotheque(id, modele, cle, membres.iter().find_map(|j| j.annee), membres.iter().find_map(|j| j.editeur.clone())));
             bilan.ajoutes += 1;
@@ -807,6 +807,7 @@ impl crate::noyau::Noyau {
                 fichier_du_jeu: if lanceur.is_some() { None } else { j.fichier.clone() },
                 installe_le: quand.clone(),
                 versions: vec![],
+                boutique: None,
             };
             self.registre().changer_installation(id, Some(&installation))?;
             lignes.push(ligne_de_ludotheque(id, j, cle, j.annee, j.editeur.clone()));

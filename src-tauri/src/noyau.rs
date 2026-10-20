@@ -999,6 +999,73 @@ impl Noyau {
         s.source.annexe_texte(id, i, cle).await
     }
 
+    /// Les jeux Steam INSTALLÉS sur ce PC deviennent des jeux du PC (lot A, 20/10) : une ligne au registre (même numéro
+    /// que dans la ludothèque), le dossier de Steam en lecture seule, `JeuPc.dossier` dans les données de Frogtend (les
+    /// médias n'iront jamais chez Steam). Un jeu désinstallé par Steam : sa LIGNE seule part (jamais un fichier).
+    /// Rend (ajoutés, retirés).
+    /// `installes_pc` : les appid installés dans le Steam de CE PC (jamais la liste d'un profil : un profil sans Steam
+    /// ne retire rien) ; une ligne qui a du temps de jeu n'est jamais retirée (il serait perdu).
+    pub fn synchroniser_steam(&self, jeux: &[crate::boutiques::JeuBoutique], installes_pc: &std::collections::BTreeSet<String>) -> Resultat<(usize, usize)> {
+        let installes: std::collections::BTreeMap<i64, (&crate::boutiques::JeuBoutique, String)> = jeux
+            .iter()
+            .filter_map(|j| {
+                let d = j.dossier.clone().filter(|d| j.installe && installes_pc.contains(&j.id) && Path::new(d).is_dir())?;
+                Some((crate::ludotheque::id_boutique("steam", &j.id), (j, d)))
+            })
+            .collect();
+        let registre = self.registre();
+        let mut retires = 0;
+        for j in registre.tous()? {
+            let appid = j.installation.as_ref().and_then(|i| i.boutique.as_ref()).filter(|b| b.source == "steam").map(|b| b.cle.clone());
+            if let Some(appid) = appid {
+                // Seulement s'il n'est plus installé ET que son dossier a disparu (une bibliothèque Steam illisible un
+                // moment, un disque débranché, ne retire rien), sans temps de jeu, et jamais pendant une partie.
+                let dossier_present = j.installation.as_ref().is_some_and(|i| Path::new(&i.dossier).is_dir());
+                if !installes_pc.contains(&appid) && !dossier_present && j.temps_jeu == 0 && !self.utilise(j.id) {
+                    registre.retirer(j.id)?;
+                    retires += 1;
+                }
+            }
+        }
+        let mut ajoutes = 0;
+        for (id, (b, dossier)) in installes {
+            let installation = crate::jeux_pc::Installation {
+                dossier: dossier.clone(),
+                methode: crate::installation::Methode::Aucune,
+                lanceur: None,
+                fichier_du_jeu: None,
+                installe_le: String::new(),
+                versions: vec![],
+                boutique: Some(crate::jeux_pc::LancementBoutique { source: "steam".into(), cle: b.id.clone() }),
+            };
+            match registre.jeu(id)? {
+                Some(j) if j.installation.as_ref() == Some(&installation) => {}
+                Some(_) => registre.changer_installation(id, Some(&installation))?,
+                None => {
+                    registre.ajouter(&crate::jeux_pc::JeuPc {
+                        id,
+                        version: crate::import_local::VERSION_IMPORTEE,
+                        titre: b.nom.clone(),
+                        plateforme: "Windows".into(),
+                        dossier: self.dossier.join("boutiques").join(id.unsigned_abs().to_string()).to_string_lossy().into(),
+                        etat: crate::jeux_pc::Etat::Telecharge,
+                        total: 0,
+                        fichiers: vec![],
+                        message: None,
+                        ajoute_le: maintenant(),
+                        ajoute_par: "steam".into(),
+                        installation: None,
+                        temps_jeu: 0,
+                        derniere_partie: None,
+                    })?;
+                    registre.changer_installation(id, Some(&installation))?;
+                    ajoutes += 1;
+                }
+            }
+        }
+        Ok((ajoutes, retires))
+    }
+
     /// Une jaquette du profil ouvert, en miniature si `largeur` est donnée : depuis son dossier si elle y est (et que
     /// son empreinte n'a pas changé), sinon depuis Firehouse (et gardée). Une absence est retenue une semaine.
     /// Range les jeux d'une source de boutique (\`steam\`, \`galaxy\`) dans la ludothèque du profil, sous la plateforme
@@ -1346,6 +1413,60 @@ mod tests {
     use serde_json::json;
 
     const SIMULE: Connexion = Connexion { adresse: String::new(), simule: true };
+
+    /// Lot A des jeux de boutique : un jeu Steam installé (avec son dossier) devient un jeu du PC lancé par Steam ;
+    /// désinstallé, sa LIGNE seule part (le dossier n'est jamais touché) ; ses médias iraient dans les données de
+    /// Frogtend, jamais chez Steam.
+    #[test]
+    fn les_jeux_steam_installes_deviennent_des_jeux_du_pc_sans_jamais_toucher_a_leur_dossier() {
+        let (d, n) = noyau();
+        let steam = d.path().join("steamapps").join("common").join("Portal");
+        std::fs::create_dir_all(&steam).unwrap();
+        std::fs::write(steam.join("portal.exe"), b"jeu").unwrap();
+        let jeu = |id: &str, installe: bool, dossier: Option<&std::path::Path>| crate::boutiques::JeuBoutique {
+            id: id.into(),
+            nom: format!("Jeu {id}"),
+            minutes: 0,
+            derniere: 0,
+            installe,
+            plateforme: String::new(),
+            image: None,
+            dossier: dossier.map(|p| p.to_string_lossy().into_owned()),
+            pret: Some(true),
+            succes: None,
+        };
+        let l = vec![jeu("400", true, Some(&steam)), jeu("620", false, None)];
+        let pc: std::collections::BTreeSet<String> = ["400".to_string()].into();
+        assert_eq!(n.synchroniser_steam(&l, &pc).unwrap(), (1, 0));
+        assert_eq!(n.synchroniser_steam(&l, &pc).unwrap(), (0, 0), "rien à refaire");
+        // Un AUTRE profil, sans compte Steam : il ne retire rien (le jeu est toujours installé sur ce PC).
+        assert_eq!(n.synchroniser_steam(&[], &pc).unwrap(), (0, 0));
+        let id = crate::ludotheque::id_boutique("steam", "400");
+        let j = n.registre().jeu(id).unwrap().unwrap();
+        let i = j.installation.clone().unwrap();
+        assert_eq!(i.boutique, Some(crate::jeux_pc::LancementBoutique { source: "steam".into(), cle: "400".into() }));
+        assert_eq!(std::path::PathBuf::from(&i.dossier), steam);
+        assert!(std::path::Path::new(&j.dossier).starts_with(d.path().join("boutiques")), "les médias jamais chez Steam");
+        assert_eq!(crate::partie::adresse_boutique(i.boutique.as_ref().unwrap()).as_deref(), Some("steam://rungameid/400"));
+        assert_eq!(crate::partie::adresse_boutique(&crate::jeux_pc::LancementBoutique { source: "steam".into(), cle: "400;calc".into() }), None);
+        // Désinstallé par Steam, avec du temps de jeu : la ligne reste (le temps n'est jamais perdu).
+        n.registre().compter_partie(id, 60, "x").unwrap();
+        let vide = std::collections::BTreeSet::new();
+        assert_eq!(n.synchroniser_steam(&[jeu("400", false, None)], &vide).unwrap(), (0, 0));
+        assert!(n.registre().jeu(id).unwrap().is_some());
+        // Sans temps de jeu : la ligne part, le dossier reste.
+        let autre = d.path().join("steamapps").join("common").join("Autre");
+        std::fs::create_dir_all(&autre).unwrap();
+        let pc2: std::collections::BTreeSet<String> = ["500".to_string()].into();
+        n.synchroniser_steam(&[jeu("500", true, Some(&autre))], &pc2).unwrap();
+        // Bibliothèque illisible un moment (le jeu n'est plus « vu », son dossier est toujours là) : rien ne part.
+        assert_eq!(n.synchroniser_steam(&[], &vide).unwrap(), (0, 0));
+        // Steam l'a vraiment désinstallé (son dossier a disparu) : la ligne part.
+        std::fs::remove_dir_all(&autre).unwrap();
+        assert_eq!(n.synchroniser_steam(&[], &vide).unwrap(), (0, 1));
+        assert!(n.registre().jeu(crate::ludotheque::id_boutique("steam", "500")).unwrap().is_none());
+        assert!(steam.join("portal.exe").is_file());
+    }
 
     fn noyau() -> (tempfile::TempDir, Noyau) {
         let d = tempfile::tempdir().unwrap();

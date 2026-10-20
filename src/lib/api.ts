@@ -104,6 +104,8 @@ export interface Installation {
   installe_le: string;
   /** Les versions d'un jeu importé (fr, eu, us/en, autres), absentes s'il n'y en a qu'une. */
   versions?: import('$lib/ludotheque/versions').VersionLocale[];
+  /** Un jeu d'une boutique (Steam…), lancé par elle ; Frogtend n'écrit jamais dans son dossier. */
+  boutique?: { source: string; cle: string } | null;
 }
 
 export interface Preparation {
@@ -455,6 +457,8 @@ export interface JeuBoutique {
   plateforme?: string;
   /** La jaquette (adresse publique), quand la source la donne. */
   image?: string | null;
+  /** Le dossier d'installation sur ce PC (le jeu est alors un jeu du PC : lancé et suivi par Frogtend). */
+  dossier?: string | null;
 }
 
 /** Le bilan d'un passage sur GOG ou Prime Gaming. */
