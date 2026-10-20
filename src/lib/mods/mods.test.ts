@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import vraie from '../../../src-tauri/fixtures/simule/triche-ultimate-spider-man.json';
-import { adresseWeb, avertissements, fichierInstallable, pageNexus, raisonSansClic, type ModJeu } from './mods';
+import { adresseWeb, avertissements, chiffresMod, fichierInstallable, pageNexus, pourcentMod, raisonSansClic, type ModJeu, type ProgresMod } from './mods';
 
 const mods = (vraie as { mods: ModJeu[] }).mods;
 const mod = (nom: string) => mods.find((m) => m.nom === nom)!;
@@ -63,5 +63,21 @@ describe('mods en 7z (lot 0.82.2)', () => {
     expect(fichierInstallable(avec('Mod.7Z'))?.nom).toBe('Mod.7Z');
     expect(fichierInstallable(avec('Mod.rar'))).toBeNull();
     expect(fichierInstallable(avec('Mod.7z.exe'))).toBeNull();
+  });
+});
+
+describe('progression d’un mod (lot 0.82.3)', () => {
+  const p = (x: Partial<ProgresMod>): ProgresMod => ({ suivi: 1, etape: 'telechargement', faits: 0, total: 0, debit: 0, ...x });
+  it('dit les octets, le débit et le temps restant, sans jamais NaN ni plus de 100 %', () => {
+    const t = chiffresMod(p({ faits: 120 * 1024 ** 2, total: 450 * 1024 ** 2, debit: 5 * 1024 ** 2 }), true);
+    expect(t).toBe('120 Mo sur environ 450 Mo · 5 Mo/s · encore 1 min');
+    expect(chiffresMod(p({ faits: 10, total: 0 }))).toBe('10 o');
+    expect(chiffresMod(p({ faits: 600, total: 500, debit: 100 }), true)).toBe('500 o sur environ 500 o · 100 o/s');
+    expect(chiffresMod(p({ etape: 'pose', faits: 1, total: 30 }))).toBe('1 fichier sur 30');
+    expect(chiffresMod(p({ etape: 'pose', faits: 12, total: 30, debit: 99 }))).toBe('12 fichiers sur 30');
+    expect(pourcentMod(p({ faits: 600, total: 500 }))).toBe(100);
+    expect(pourcentMod(p({ faits: 5, total: 0 }))).toBe(0);
+    for (const x of [p({}), p({ debit: 0, total: 10 }), p({ etape: 'decompression', faits: 3, total: 9, debit: 1 })])
+      expect(chiffresMod(x)).not.toMatch(/NaN|Infinity/);
   });
 });

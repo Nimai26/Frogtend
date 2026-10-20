@@ -402,6 +402,38 @@ Reçu par message de la session Firehouse ; accord chiffré de Seb après un éc
   « Menu développeur » (note : « Appuyez sur la croix directionnelle gauche à tout moment pour accéder au menu
   développeur. ») ; « Disable Ambient Occlusion » → « Désactiver l'occlusion ambiante ».
 
+### 1.21 (20/10, Firehouse 2.89.0, en service le 20/10 à 15 h 22, en-tête `X-Api-Jeux-Version: 1.21`) — réconciliation (besoin 28)
+Reçu par message de la session Firehouse (référence : `docs/frogtend/BRIEF-AGENT-FROGTEND.md` § 3 « Réconciliation
+(1.21) » du dépôt Firehouse). La route ne fait que LIRE.
+- `POST /api/jeux/v1/reconcilier` `{"fichiers": [{cle, groupe?, plateforme, nom, taille, sha1?, crc32?, entrees?:
+  [{nom, crc32, taille}]}]}`.
+  - Lots ≤ 500 fichiers (413 au-delà, la limite est dans le message), ≤ 4 096 entrées par fichier, ≤ 50 000 entrées
+    par appel (réglables par l'admin : `jeux.reconcilier.lot_max` / `entrees_max` / `entrees_lot_max`).
+  - `nom` = nom SEUL, jamais un chemin (400) ; `cle` = la nôtre, unique dans l'appel, rendue telle quelle ; `groupe`
+    relie les fichiers d'un même jeu (.cue + .bin, .m3u + disques).
+  - `plateforme` (nom LaunchBox) INDISPENSABLE au rapprochement par contenu et par nom (sans elle : seuls sha1 et
+    signature MAME répondent).
+- Sens des empreintes : `sha1` = le fichier TEL QU'IL EST sur le disque (un .7z entier) ; `entrees` = nom SANS
+  dossier + crc32 + taille lus dans le répertoire du zip/7z (sans décompresser) ; fichier en clair (.nes, .sfc,
+  .lnx) : `crc32` + `taille` du fichier ENTIER, en-tête compris.
+- MAME : nom court (.zip) + l'ENSEMBLE des entrées ; « exact » seulement si l'ensemble (crc, taille) = celui du
+  romset 0.289 de Firehouse (zips autonomes, BIOS et parent inclus) ; split ou autre version = « probable » (motif
+  « autre version du romset MAME ») ; zip MAME SANS entrées = « probable » par le nom court.
+- Réponse, une entrée par fichier : `{cle, statut: exact|probable|inconnu, correspondance:
+  sha1|contenu|mame_ensemble|nom_taille|nom|null, confiance (1,0 exact ; 0,6 probable 1 candidat ; 0,5 plusieurs ; 0
+  inconnu), media_id, telechargement_id, motif, candidats: [{media_id, telechargement_id}] (≤ 10 ; plusieurs = jamais
+  exact), groupe?}` + `groupes: [{groupe, statut, media_id, telechargement_id, manquants}]` (exact seulement si TOUS
+  les fichiers du groupe le sont). « exact » par contenu = MÊME ensemble d'entrées (partiel ou augmenté = probable).
+  Plages de `telechargement_id` : stock = -<n° de ROM>, MAME ≤ -10^15.
+- Règles : Frogtend ne rattache SEUL que les « exact » ; le reste est MONTRÉ à la personne. Seules les fiches que CE
+  jeton voit sont cherchées (un jeu réservé ou caché répond comme un inconnu). 1re version (décision de Seb) :
+  cartouches (stock No-Intro) + MAME ; disques / PS3 / PC = au mieux « probable ».
+- État de l'index au 20/10 ~16 h 30 : sha1 des cartouches prêt ; le CONTENU des 16 512 archives du stock en lecture
+  (fin vers 20 h 05), puis les signatures MAME (dans la soirée). Premier vrai essai APRÈS ~20 h 30 : Firehouse
+  confirmera la fin des deux passages, avec un relevé réel.
+- Aussi (2.90.0, 20/10) : une fiche de la bibliothèque RÉSERVÉE (admin seul) a `launchbox_id: null` au détail (clé
+  LaunchBox interne) ; le sens du champ ne change pas — ne pas en déduire « jeu inconnu ».
+
 ### Note 2.58.0 (contrat inchangé)
 Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a été RÉUNIE à celle du même jeu
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne

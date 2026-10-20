@@ -45,6 +45,9 @@ export interface Toast {
   id: number;
   message: string;
   type: TypeToast;
+  /** Un travail en cours (lot 0.82.3) : l'étape (seule annoncée), les chiffres et le pourcentage ; jamais fermé au
+   * clic. */
+  progres?: { etape: string; chiffres: string; pourcent: number };
 }
 
 let compteur = 0;
@@ -130,6 +133,19 @@ export function toast(message: string, type?: TypeToast, options: { jusquaFermet
   // Une attente (« Installation… ») reste affichée jusqu'à `fermerToast` : jamais un écran vide pendant le travail.
   if (!options.jusquaFermeture) setTimeout(() => fermerToast(id), dureeToast(t));
   return id;
+}
+
+/** Un message de travail en cours, avec une barre : reste jusqu'à `fermerToast`, ne se ferme pas au clic. */
+export function toastProgres(message: string): number {
+  const id = ++compteur;
+  pile.toasts.push({ id, message, type: 'neutre', progres: { etape: '', chiffres: '', pourcent: 0 } });
+  return id;
+}
+
+/** Met à jour un message de progression (sans effet s'il est déjà fermé). */
+export function majProgres(id: number, progres: { etape: string; chiffres: string; pourcent: number }) {
+  const t = pile.toasts.find((x) => x.id === id);
+  if (t) t.progres = progres;
 }
 
 export function fermerToast(id: number) {

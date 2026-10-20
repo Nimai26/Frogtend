@@ -2,9 +2,10 @@
 // les liens « Mod Manager Download » reçus du site (nxm://), installés dans le jeu d'où la page a été ouverte, après
 // le oui de la personne. Jamais pendant une partie ni au canapé : les liens attendent.
 import { api, taille } from '$lib/api';
-import { choisir, confirmer, demander, fermerToast, informer, toast } from '$lib/dialogues/fenetres.svelte';
+import { choisir, confirmer, demander, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { ouvrirPageWeb } from '$lib/web';
+import { avecProgres } from './progres.svelte';
 
 /** La page de Nexus où se trouve la clé d'API personnelle (à vérifier à l'essai de Seb). */
 export const PAGE_CLE_NEXUS = 'https://next.nexusmods.com/settings/api-keys';
@@ -205,13 +206,10 @@ async function traiterUnLien(l: LienNexus): Promise<void> {
     await oublier();
     return;
   }
-  const t = toast(`🧩 Installation de « ${infos.mod_nom} »… (téléchargement, puis pose ; ne ferme pas Frogtend)`, 'neutre', { jusquaFermeture: true });
   try {
-    const b = await api.nexusInstaller(l.n, programme);
-    fermerToast(t);
+    const b = await avecProgres(`Installation de « ${infos.mod_nom} » (ne ferme pas Frogtend)`, true, (suivi) => api.nexusInstaller(l.n, programme, suivi));
     toast(`🧩 « ${infos.mod_nom} » installé : ${b.ajoutes} fichier(s) ajouté(s), ${b.remplaces} remplacé(s) (gardés de côté).`);
   } catch (err) {
-    fermerToast(t);
     // Pour réessayer : recliquer sur le site (la clé du lien ne sert qu'une fois).
     await oublier();
     toast(`🧩 « ${infos.mod_nom} » non installé : ${motifDuRefus(err)}`, 'erreur');

@@ -148,7 +148,19 @@
 
 <div class="toasts" aria-live="polite">
   {#each pile.toasts as t (t.id)}
-    <button class="toast {t.type}" onclick={() => fermerToast(t.id)}>{t.message}</button>
+    {#if t.progres}
+      <!-- Un travail en cours : jamais fermé au clic ; seule l'étape est annoncée, les chiffres se lisent à la demande. -->
+      <div class="toast progres {t.type}">
+        <p class="message">{t.message}</p>
+        {#if t.progres.etape}<p class="etape">{t.progres.etape}</p>{/if}
+        <div class="bar" role="progressbar" aria-label={t.progres.etape || t.message} aria-valuemin="0" aria-valuemax="100" aria-valuenow={t.progres.pourcent}>
+          <span style="width: {t.progres.pourcent}%"></span>
+        </div>
+        <p class="chiffres muted" aria-live="off">{t.progres.chiffres}</p>
+      </div>
+    {:else}
+      <button class="toast {t.type}" onclick={() => fermerToast(t.id)}>{t.message}</button>
+    {/if}
   {/each}
 </div>
 
@@ -233,6 +245,18 @@
     box-shadow: 0 calc(8 * var(--u)) calc(24 * var(--u)) var(--ombre-noire);
     backdrop-filter: blur(16px);
     cursor: pointer;
+  }
+  .toast.progres {
+    cursor: default;
+    display: grid;
+    gap: calc(6 * var(--u));
+  }
+  .toast.progres p {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+  .toast.progres .etape {
+    font-weight: 600;
   }
   .toast.ok { border-left-color: var(--ok); }
   .toast.alerte { border-left-color: var(--warn); }

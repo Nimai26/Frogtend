@@ -48,6 +48,11 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Progression d'un mod (0.82.3)
+- [ ] Installer un mod un peu gros (quelques dizaines de Mo) : en bas, l'étape change (Téléchargement →
+      Décompression → Pose dans le jeu), la barre avance, la vitesse et « encore … » s'affichent ; un clic ne ferme
+      pas le message ; il disparaît à la fin, remplacé par « installé ».
+
 ## Mods en .7z (0.82.2)
 - [ ] Sur Nexus, « Mod Manager Download » sur un fichier **.7z** (petit) depuis ⚙ Gérer le jeu ▸ 🧩 Mods ▸ 🌐 :
       Frogtend demande où le poser puis ton accord ; le mod devient ✅ ; Retirer remet le jeu comme avant.

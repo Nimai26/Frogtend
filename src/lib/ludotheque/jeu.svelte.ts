@@ -13,6 +13,7 @@ import { libelleValeur, REGLAGES_IMAGE, reglagesMontres } from '$lib/emulateurs/
 import { detailPatch, nomDuPatch, remarqueDuPatch, titreDuJeu } from '$lib/emulateurs/patchsPs3';
 import { adresseWeb, avertissements, fichierInstallable, pageNexus, raisonSansClic, type ModJeu } from '$lib/mods/mods';
 import { ouvrirSurNexus } from '$lib/mods/nexus.svelte';
+import { avecProgres } from '$lib/mods/progres.svelte';
 import { ouvrirPageWeb } from '$lib/web';
 import { estRetroArch, normaliser, pourLeJeu } from '$lib/emulateurs/choix';
 import { etat, reglerPc, reglerProfil } from '$lib/etat.svelte';
@@ -1057,13 +1058,10 @@ export async function choisirMods(id: number) {
       .filter(Boolean)
       .join('\n\n');
     if (!(await confirmer(`🧩 Installer « ${m.nom} » ?`, { message, libelleValider: '⬇ Télécharger et installer' }))) continue;
-    const t = toast(`🧩 Installation de « ${m.nom} »… (téléchargement, puis pose ; ne ferme pas Frogtend)`, 'neutre', { jusquaFermeture: true });
     try {
-      const b = await api.modInstaller(id, m.nom, f.nom, programme);
-      fermerToast(t);
+      const b = await avecProgres(`Installation de « ${m.nom} » (ne ferme pas Frogtend)`, false, (suivi) => api.modInstaller(id, m.nom, f.nom, programme, suivi));
       toast(`🧩 « ${m.nom} » installé : ${b.ajoutes} fichier(s) ajouté(s), ${b.remplaces} remplacé(s) (gardés de côté).`);
     } catch (e) {
-      fermerToast(t);
       toast(`Refusé : ${motifDuRefus(e)}`, 'erreur');
     }
   }

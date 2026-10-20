@@ -1,6 +1,7 @@
 // Les mods d'un jeu (contrat 1.19 ; ✅ Seb 19/10) dits pour des gens qui veulent juste jouer : ce qui s'installe d'un
 // clic, pourquoi un autre ne s'installe pas, et ce qu'il faut savoir AVANT de dire oui (taille, partage, version
 // d'essai, page déplacée, empreinte absente). Le cœur reprend toujours le mod dans la liste de Firehouse.
+import { duree, taille } from '$lib/api';
 
 /** Un fichier de mod servi par Firehouse (contrat 1.19). */
 export interface FichierMod {
@@ -83,3 +84,40 @@ export function pageNexus(url: string | null | undefined): { domaine: string; mo
   const m = /^https:\/\/(?:www\.)?nexusmods\.com\/([a-z0-9]{1,64})\/mods\/(\d+)(?:[/?#]|$)/.exec(url ?? '');
   return m ? { domaine: m[1], mod: Number(m[2]) } : null;
 }
+
+/** Où en est l'installation d'un mod (événement `mod-progres` du cœur, lot 0.82.3). */
+export interface ProgresMod {
+  suivi: number;
+  etape: 'telechargement' | 'decompression' | 'pose';
+  faits: number;
+  total: number;
+  /** Octets par seconde (0 : inconnu). */
+  debit: number;
+}
+
+/** Le nom de l'étape, court (c'est lui seul que lit un lecteur d'écran). */
+export const ETAPE_MOD: Record<ProgresMod['etape'], string> = {
+  telechargement: 'Téléchargement',
+  decompression: 'Décompression',
+  pose: 'Pose dans le jeu',
+};
+
+/** Le pourcentage, de 0 à 100 (jamais plus, même si le total annoncé était approximatif). */
+export function pourcentMod(p: ProgresMod): number {
+  if (!(p.total > 0)) return 0;
+  return Math.max(0, Math.min(100, Math.round((p.faits / p.total) * 100)));
+}
+
+/** Les chiffres : « 120 Mo sur environ 450 Mo · 5,2 Mo/s · encore 2 min » (`approx` : un total de Nexus, arrondi) ;
+ * pendant la pose, « 12 fichiers sur 30 ». Jamais « NaN » ni « Infinity ». */
+export function chiffresMod(p: ProgresMod, approx = false): string {
+  if (p.etape === 'pose') return `${p.faits} fichier${p.faits > 1 ? 's' : ''} sur ${p.total}`;
+  const faits = Math.min(p.faits, p.total > 0 ? p.total : p.faits);
+  let t = p.total > 0 ? `${taille(faits)} sur ${approx ? 'environ ' : ''}${taille(p.total)}` : taille(faits);
+  if (p.debit > 0) {
+    t += ` · ${taille(p.debit)}/s`;
+    if (p.total > faits) t += ` · encore ${duree((p.total - faits) / p.debit)}`;
+  }
+  return t;
+}
+

@@ -538,6 +538,13 @@ impl SourceMod {
 /// racine si `sans_racine`. Tout ce qui est remplacé est d'abord copié à l'abri ; une pose interrompue se défait.
 #[allow(clippy::too_many_arguments)]
 pub fn installer(jeu: &Path, archive: &Path, f: &FichierMod, mod_nom: &str, sha256_archive: &str, sous: &str, sans_racine: bool, quand: &str) -> Resultat<Bilan> {
+    installer_avec(jeu, archive, f, mod_nom, sha256_archive, sous, sans_racine, quand, &|_, _, _| {})
+}
+
+/// `installer`, en disant où il en est : `progres(étape, faits, total)` — « decompression » (octets) puis « pose »
+/// (fichiers).
+#[allow(clippy::too_many_arguments)]
+pub fn installer_avec(jeu: &Path, archive: &Path, f: &FichierMod, mod_nom: &str, sha256_archive: &str, sous: &str, sans_racine: bool, quand: &str, progres: &(dyn Fn(&'static str, u64, u64) + Sync)) -> Resultat<Bilan> {
     let cle = f.cle();
     if installes(jeu).iter().any(|m| m.cle == cle) {
         return Err(Erreur::Refus("Ce mod est déjà installé.".into()));
@@ -591,7 +598,12 @@ pub fn installer(jeu: &Path, archive: &Path, f: &FichierMod, mod_nom: &str, sha2
             // Un 7z : décompressé en UNE passe (un bloc compact se relirait depuis le début pour chaque fichier) par un
             // Frogtend enfant, dans `brut` ; chaque fichier y est ensuite vérifié avant d'être rangé.
             let brut = travail.join("brut");
-            crate::sept_z::extraire(archive, &brut, &mut |_| {})?;
+            let total = entrees.iter().map(|e| e.taille).sum::<u64>();
+            let mut faits = 0u64;
+            crate::sept_z::extraire(archive, &brut, &mut |n| {
+                faits += n;
+                progres("decompression", faits.min(total), total);
+            })?;
             SourceMod::SeptZ(brut)
         }
         _ => {
@@ -609,6 +621,7 @@ pub fn installer(jeu: &Path, archive: &Path, f: &FichierMod, mod_nom: &str, sha2
         }
     };
     let mut plan: Vec<(String, PathBuf)> = Vec::new();
+    let (mut faits_zip, total_zip) = (0u64, entrees.iter().map(|e| e.taille).sum::<u64>());
     for e in &entrees {
         let rel = rel_de(e);
         let vers = contenu.join(&rel);
@@ -620,6 +633,11 @@ pub fn installer(jeu: &Path, archive: &Path, f: &FichierMod, mod_nom: &str, sha2
             return Err(Erreur::Refus("L'archive du mod ne correspond pas à ce qu'elle annonce : rien n'est installé.".into()));
         }
         plan.push((dans_le_jeu(&rel), vers));
+        // Un zip se décompresse fichier par fichier ici (un 7z l'a été d'un coup par l'enfant, plus haut).
+        if let SourceMod::Zip(..) = source {
+            faits_zip += e.taille;
+            progres("decompression", faits_zip, total_zip);
+        }
     }
     // Ce que le 7z a laissé d'autre (dossiers vides) : retiré, rien n'en sort.
     if let SourceMod::SeptZ(brut) = &source {
@@ -715,6 +733,7 @@ pub fn installer(jeu: &Path, archive: &Path, f: &FichierMod, mod_nom: &str, sha2
         if let Err(e) = poser_fichier(source, dest) {
             return Err(echec(e, i, &m));
         }
+        progres("pose", i as u64 + 1, a_poser.len() as u64);
     }
     m.etat = "installe".into();
     if let Err(e) = ecrire_manifeste(jeu, &m) {
@@ -877,6 +896,24 @@ mod tests {
         desinstaller(&jeu, &f.cle()).unwrap();
         assert_eq!(std::fs::read(jeu.join("dsound.dll")).unwrap(), b"original");
         assert!(!jeu.join("scripts").exists());
+    }
+
+    #[test]
+    fn l_installation_dit_ou_elle_en_est_pour_un_zip_comme_pour_un_7z() {
+        for ext in ["zip", "7z"] {
+            let d = tempfile::tempdir().unwrap();
+            let jeu = d.path().join("Jeu");
+            std::fs::create_dir_all(&jeu).unwrap();
+            let a = d.path().join(format!("m.{ext}"));
+            let fichiers: &[(&str, &[u8])] = &[("a.dll", b"12345"), ("b/c.ini", b"678")];
+            if ext == "zip" { zip_de(&a, fichiers) } else { sept_de(&a, fichiers, None) }
+            let vus = std::sync::Mutex::new(Vec::new());
+            let f = FichierMod { nom: format!("m.{ext}"), taille: 1, sha256: None, url: String::new(), depot: "x/y".into(), tag: "1".into(), a_confirmer: true, dossier: String::new() };
+            installer_avec(&jeu, &a, &f, "M", "abc", "", false, "1", &|e, faits, total| vus.lock().unwrap().push((e, faits, total))).unwrap();
+            let vus = vus.into_inner().unwrap();
+            assert_eq!(vus.iter().filter(|v| v.0 == "decompression").last(), Some(&("decompression", 8, 8)), "{ext}");
+            assert_eq!(vus.last(), Some(&("pose", 2, 2)), "{ext}");
+        }
     }
 
     #[test]
@@ -1209,10 +1246,22 @@ mod tests {
         let f = FichierMod::depuis(&fusion()).unwrap();
         let archive = dossier_mods(&jeu).join("telechargements").join(format!("{}.zip", f.cle()));
         let debut = std::time::Instant::now();
-        let n = telecharger(&f, &archive, &|_, _| {}).await.unwrap();
+        let morceaux = std::sync::atomic::AtomicUsize::new(0);
+        let n = telecharger(&f, &archive, &|faits, total| {
+            assert!(faits <= total);
+            morceaux.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        })
+        .await
+        .unwrap();
+        println!("téléchargement : {} signes de progression", morceaux.load(std::sync::atomic::Ordering::Relaxed));
+        assert!(morceaux.load(std::sync::atomic::Ordering::Relaxed) > 1, "la progression arrive pendant le téléchargement");
         println!("TÉLÉCHARGÉ {n} octets en {:?} ; empreinte {}", debut.elapsed(), crate::sauvegarde::empreinte(&archive).unwrap());
         println!("CONTENU {:?}", lister(&archive).unwrap());
-        let b = installer(&jeu, &archive, &f, "Fusion Fix", f.sha256.as_deref().unwrap_or(""), "", false, "2026-10-19").unwrap();
+        let etapes = std::sync::Mutex::new(Vec::new());
+        let b = installer_avec(&jeu, &archive, &f, "Fusion Fix", f.sha256.as_deref().unwrap_or(""), "", false, "2026-10-19", &|e, faits, total| etapes.lock().unwrap().push((e, faits, total))).unwrap();
+        let etapes = etapes.into_inner().unwrap();
+        println!("pose : {:?} … {:?}", etapes.first(), etapes.last());
+        assert!(matches!(etapes.last(), Some(("pose", a, b)) if a == b));
         println!("INSTALLÉ {b:?}");
         for p in ["dsound.dll", "scripts/UltimateSpiderMan.WidescreenFix.asi", "scripts/UltimateSpiderMan.WidescreenFix.ini"] {
             println!("  {p} : {:?} octets", std::fs::metadata(jeu.join(p)).map(|m| m.len()).ok());

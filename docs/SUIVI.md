@@ -13,8 +13,6 @@
   - Les 7z en PPMd (méthode [3,4,1], ex. sauvegardes de LaunchBox) : non pris en charge par sevenz-rust ; refus propre.
   - Refuser une mise à jour de Frogtend pendant une décompression (déjà vrai avant 0.82.1 ; l'enfant meurt avec
     Frogtend, la décompression repart de zéro).
-  - Progression et débit pendant le téléchargement d'un mod (GitHub et Nexus : aujourd'hui un toast fixe ; Nexus
-    jusqu'à 2 Go) — expert lancement 20/10.
   - Mods posés « tels quels » : un mod Nexus dont l'archive a un seul dossier racine (`NomDuMod/`, `Data/`) peut rester
     inerte ; montrer l'arborescence avant le oui, ou déduire l'endroit — à proposer à Seb.
   - Jeu PC sans `manifeste.json` (rattaché du disque) : `mettre_a_l_abri` ne copie rien. Le texte Nexus le dit ; le
@@ -432,6 +430,10 @@ d'abord :
       eux seulement quand ils sont là.
 - [ ] **Firehouse — stock de départ** (~1,9 To de Venkman) : réconciliation des jeux déjà présents (nom ou empreinte,
       ne rien retélécharger), MUGEN, lot PS3 en dernier (simulation montrée à Seb d'abord).
+- [ ] **Firehouse — contrat 1.21 (besoin 28, RÉCONCILIATION) EN SERVICE** (20/10 15 h 22, Firehouse 2.89.0 ; détail
+      dans CONTRAT-API-JEUX-V1.md § 1.21). Seb a dit (20/10) qu'il le rappelait à Firehouse. Index : sha1 des
+      cartouches prêt ; contenu des archives vers 20 h 05 ; signatures MAME dans la soirée. Coder APRÈS le relevé
+      réel promis par Firehouse (règle de Seb : forme exacte + vrai échantillon) ; premier essai après ~20 h 30.
 
 ## 💡 Idées notées — PAS démarrées
 
@@ -461,6 +463,14 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.82.3** (20/10) — Progression d'une installation de mod (avis de l'expert interface) : le cœur émet `mod-progres`
+  {suivi, étape, faits, total, débit} au plus toutes les 400 ms (débit calculé par le cœur ; décompression zip et 7z,
+  pose en fichiers) ; message de progression non cliquable avec barre `role="progressbar"`, chiffres hors annonce ;
+  « environ » pour Nexus ; un numéro de suivi par installation. Vérifié : tests (cœur 417, interface 211), svelte-check ;
+  essai réel (vrai Fusion Fix 7,1 Mo de GitHub, faux jeu effacé) : 438 signes pendant le téléchargement, puis
+  décompression et pose 3/3. Relecture de l'expert : message créé APRÈS l'écoute (jamais bloqué à l'écran), pas de
+  rafale si le total est nul. NON vérifié : le rendu réel chez Seb, le lecteur d'écran.
 
 - **0.82.2** (20/10) — Les mods en 7z (Nexus et Firehouse/GitHub) par le lecteur isolé de 0.82.1 (avis de l'expert
   lancement) : format pris sur les octets ; liste par l'enfant puis les règles de mods.rs (liens refusés par leurs

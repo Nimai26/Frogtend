@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.82.3 — On voit où en est l'installation d'un mod
+
+- Pendant l'installation d'un mod, le message en bas de l'écran montre maintenant l'étape (téléchargement,
+  décompression, pose dans le jeu), une barre de progression, la vitesse et le temps restant. Il ne se ferme plus
+  par un clic malencontreux.
+- Pour un mod de Nexus, la taille est « environ » (Nexus ne donne qu'une taille arrondie).
+
 ## 0.82.2 — Les mods en .7z aussi
 
 - Les mods en archive **.7z** s'installent maintenant comme les .zip, depuis Nexus Mods ou depuis la liste de

@@ -2601,6 +2601,42 @@ async fn jeu_pour_un_mod(noyau: &Noyau, id: i64) -> Resultat<(crate::jeux_pc::Je
     Ok((j, dossier))
 }
 
+/// Où en est l'installation d'un mod (lot 0.82.3) : l'interface en tire la progression, le débit et le temps restant.
+#[derive(Clone, Serialize)]
+struct ProgresMod {
+    /// Le numéro de suivi donné par l'interface (deux installations ne se mélangent jamais).
+    suivi: u32,
+    etape: &'static str,
+    faits: u64,
+    total: u64,
+    /// Octets par seconde depuis le dernier envoi (0 : inconnu, ou une étape qui compte des fichiers).
+    debit: u64,
+}
+
+/// Le suivi d'une installation de mod : un événement `mod-progres` au plus toutes les 400 ms (comme les
+/// téléchargements de jeux), toujours à un changement d'étape et à la fin ; le débit est calculé ici.
+fn suivi_mod(app: &AppHandle, suivi: u32) -> impl Fn(&'static str, u64, u64) + Send + Sync + Clone + 'static {
+    let app = app.clone();
+    let dernier = std::sync::Arc::new(std::sync::Mutex::new(None::<(std::time::Instant, &'static str, u64)>));
+    move |etape, faits, total| {
+        let mut d = dernier.lock().unwrap_or_else(|e| e.into_inner());
+        let maintenant = std::time::Instant::now();
+        let debit = match *d {
+            Some((t, e, avant)) if e == etape => {
+                let ms = maintenant.duration_since(t).as_millis() as u64;
+                // Le dernier envoi passe toujours (fin d'étape) ; un total nul n'en fait jamais une rafale.
+                if ms < 400 && (total == 0 || faits < total) {
+                    return;
+                }
+                if etape == "pose" || ms == 0 { 0 } else { faits.saturating_sub(avant).saturating_mul(1000) / ms }
+            }
+            _ => 0,
+        };
+        *d = Some((maintenant, etape, faits));
+        let _ = app.emit("mod-progres", ProgresMod { suivi, etape, faits, total, debit });
+    }
+}
+
 /// Un anti-triche dans le jeu : jamais de mod (un compte pourrait être banni).
 async fn refuser_anti_triche(dossier: &std::path::Path) -> Resultat<()> {
     let d = dossier.to_path_buf();
@@ -2636,7 +2672,7 @@ pub async fn mods_installes(noyau: State<'_, Noyau>, id: i64) -> Resultat<Vec<cr
 /// dossier du programme du jeu plutôt qu'à sa racine (mod « à confirmer », choisi par la personne). Les parties sont
 /// d'abord mises à l'abri.
 #[tauri::command]
-pub async fn mod_installer(noyau: State<'_, Noyau>, id: i64, mod_nom: String, fichier: String, programme: bool) -> Resultat<crate::mods::Bilan> {
+pub async fn mod_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, mod_nom: String, fichier: String, programme: bool, suivi: u32) -> Resultat<crate::mods::Bilan> {
     let (j, dossier) = jeu_pour_un_mod(&noyau, id).await?;
     let criteres = criteres_jeu_importe(&noyau, id).await?;
     let liste = triches_avec(&noyau.session().await?.source, id, &criteres).await?;
@@ -2659,7 +2695,9 @@ pub async fn mod_installer(noyau: State<'_, Noyau>, id: i64, mod_nom: String, fi
     let _occupe = noyau.occuper(id);
     noyau.mettre_a_l_abri(id).await?;
     let archive = crate::mods::dossier_mods(&dossier).join("telechargements").join(f.nom_telechargement());
-    crate::mods::telecharger(&f, &archive, &|_, _| {}).await?;
+    let suivi = suivi_mod(&app, suivi);
+    let s2 = suivi.clone();
+    crate::mods::telecharger(&f, &archive, &move |faits, total| s2("telechargement", faits, total)).await?;
     let quand = crate::noyau::maintenant();
     // L'empreinte de l'archive reçue au manifeste (calculée si Firehouse n'en donnait pas).
     let sha = match f.sha256.clone() {
@@ -2667,7 +2705,7 @@ pub async fn mod_installer(noyau: State<'_, Noyau>, id: i64, mod_nom: String, fi
         None => crate::sauvegarde::empreinte(&archive)?,
     };
     let (d, a, f2, nom) = (dossier.clone(), archive.clone(), f.clone(), mod_nom.clone());
-    let r = tauri::async_runtime::spawn_blocking(move || crate::mods::installer(&d, &a, &f2, &nom, &sha, &sous, false, &quand))
+    let r = tauri::async_runtime::spawn_blocking(move || crate::mods::installer_avec(&d, &a, &f2, &nom, &sha, &sous, false, &quand, &suivi))
         .await
         .map_err(|_| Erreur::Disque("L'installation du mod s'est arrêtée brutalement.".into()))?;
     let _ = std::fs::remove_file(&archive);
@@ -2825,7 +2863,7 @@ pub async fn nexus_lien_infos(app: AppHandle, noyau: State<'_, Noyau>, n: u32) -
 /// Télécharge (taille de Nexus = plafond) et installe un mod de Nexus après le oui ; le fichier reçu doit être
 /// EXACTEMENT celui demandé (`md5_search`), sinon rien n'est installé. Les parties sont d'abord mises à l'abri.
 #[tauri::command]
-pub async fn nexus_installer(app: AppHandle, noyau: State<'_, Noyau>, n: u32, programme: bool) -> Resultat<crate::mods::Bilan> {
+pub async fn nexus_installer(app: AppHandle, noyau: State<'_, Noyau>, n: u32, programme: bool, suivi: u32) -> Resultat<crate::mods::Bilan> {
     let (r, cle, id, mod_nom) = lien_nexus(&app, &noyau, n).await?;
     if crate::nexus::expire(&r.lien, secondes_maintenant()) {
         return Err(Erreur::Refus("Ce lien de Nexus a expiré : reclique « Mod Manager Download » sur la page du mod.".into()));
@@ -2848,10 +2886,14 @@ pub async fn nexus_installer(app: AppHandle, noyau: State<'_, Noyau>, n: u32, pr
     let adresses = crate::nexus::adresses(crate::nexus::API, &r.lien, &cle).await?;
     let archive = crate::mods::dossier_mods(&dossier).join("telechargements").join(format!("nexus-{}-{}.archive", r.lien.mod_id, r.lien.fichier_id));
     let client = crate::nexus::client_telechargement()?;
+    let suivi = suivi_mod(&app, suivi);
     let _ramasse = crate::nexus::Ramasse(archive.clone());
     let mut recu = Err(Erreur::Reseau("Nexus n'a pas donné d'adresse de téléchargement.".into()));
     for a in &adresses {
-        recu = crate::mods::telecharger_plafonne(&client, a, plafond, &archive, &|_, _| {}).await;
+        let s2 = suivi.clone();
+        // Nexus ne donne qu'une taille arrondie : le total affiché est la sienne (en Ko).
+        let annonce = infos.taille_ko.saturating_mul(1024);
+        recu = crate::mods::telecharger_plafonne(&client, a, plafond, &archive, &move |faits, _| s2("telechargement", faits.min(annonce), annonce)).await;
         if recu.is_ok() {
             break;
         }
@@ -2879,7 +2921,7 @@ pub async fn nexus_installer(app: AppHandle, noyau: State<'_, Noyau>, n: u32, pr
     };
     let quand = crate::noyau::maintenant();
     let (d, a, f2, nom) = (dossier.clone(), archive.clone(), f.clone(), mod_nom.clone());
-    let res = tauri::async_runtime::spawn_blocking(move || crate::mods::installer(&d, &a, &f2, &nom, &crate::sauvegarde::empreinte(&a)?, &sous, false, &quand))
+    let res = tauri::async_runtime::spawn_blocking(move || crate::mods::installer_avec(&d, &a, &f2, &nom, &crate::sauvegarde::empreinte(&a)?, &sous, false, &quand, &suivi))
         .await
         .map_err(|_| Erreur::Disque("L'installation du mod s'est arrêtée brutalement.".into()))?;
     match &res {
