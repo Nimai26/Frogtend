@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.82.2 — Les mods en .7z aussi
+
+- Les mods en archive **.7z** s'installent maintenant comme les .zip, depuis Nexus Mods ou depuis la liste de
+  Firehouse : même accord, mêmes vérifications, fichiers remplacés gardés de côté, retirables pareil.
+- Ils sont lus par le petit Frogtend à part de la 0.82.1 : un .7z abîmé ou piégé est écarté sans rien toucher au jeu.
+- Les .rar ne sont pas encore pris en charge : Frogtend te le dit, et tu peux choisir un autre fichier ou l'installer
+  à la main.
+
 ## 0.82.1 — Les archives 7z ne peuvent plus fermer Frogtend
 
 - Une archive .7z abîmée ou piégée (jeu, émulateur, ROM pour les succès) pouvait faire fermer Frogtend d'un coup.

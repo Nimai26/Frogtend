@@ -10,9 +10,6 @@
 - **Suites du lot Nexus (0.82.0 livré)** — à faire, dans l'ordre :
   - ✅ Seb 20/10 : « pas besoin de question » — les liens nxm:// restent pris d'office (installeur ou mise à jour,
     une seule fois), même si Vortex / Mod Organizer les avait. Ne plus le redemander.
-  - 0.82.2 : les MODS en 7z (Nexus et GitHub) par le lecteur isolé de 0.82.1 : lister dans l'enfant avec les règles
-    de mods.rs (liens, anti-items, noms vides porteurs), extraire en UN passage dans `Frogtend\mods\<clé>\contenu`,
-    le parent revérifie ; détection par signature (PK / 7z), nom de l'archive selon le format ; rar refusé.
   - Les 7z en PPMd (méthode [3,4,1], ex. sauvegardes de LaunchBox) : non pris en charge par sevenz-rust ; refus propre.
   - Refuser une mise à jour de Frogtend pendant une décompression (déjà vrai avant 0.82.1 ; l'enfant meurt avec
     Frogtend, la décompression repart de zéro).
@@ -465,6 +462,18 @@ d'abord :
 
 ## ✅ Livré (version — ce qui a été vérifié)
 
+- **0.82.2** (20/10) — Les mods en 7z (Nexus et Firehouse/GitHub) par le lecteur isolé de 0.82.1 (avis de l'expert
+  lancement) : format pris sur les octets ; liste par l'enfant puis les règles de mods.rs (liens refusés par leurs
+  attributs, noms vides sans données et entrées « à supprimer » ignorés — sevenz-rust 0.6.1 marque à tort ainsi les
+  dossiers qu'il écrit) ; extraction en UNE passe dans `brut`, chaque fichier vérifié (vrai fichier, pas de lien,
+  taille exacte) puis renommé ; rar refusé. Vérifié : tests du cœur, 2 tests par le VRAI lecteur (chemin accentué, jeu
+  identique après retrait) ; essai réel : vraie archive de Seb (3 244 fichiers) posée dans un faux jeu puis retirée,
+  identique, archive intacte, essai effacé. Relecture de l'expert : défaut ANTÉRIEUR corrigé — réinstaller un mod
+  retiré effaçait les originaux gardés (`remplaces`) et les fichiers modifiés par la personne (`gardes`) : le dossier
+  est désormais mis de côté (`<clé>-ancien-…`), testé ; restes d'une pose arrêtée net (`brut`, `contenu`) rangés ;
+  conflit avec un autre mod vu AVANT de décompresser ; place = 2 × mod + originaux. NON vérifié : un vrai mod .7z de
+  Nexus chez Seb ; la progression pendant l'extraction d'un mod (toast fixe, comme avant).
+
 - **0.82.1** (20/10) — Toute lecture de 7z par un Frogtend ENFANT (`sept_z.rs`, avis de l'expert lancement : voie B) :
   pré-lecture des 32 octets dans le parent ; job Windows (2 Gio, tué avec Frogtend) posé avant « go » ; lignes JSON,
   réussite = ligne de fin ET code 0. Migrés : decompression.rs, installation.rs (2), succes.rs, commandes.rs.
@@ -485,7 +494,7 @@ d'abord :
   Frogtend dépose le lien dans `nxm-recus\` et s'arrête (mutex nommé ; jamais avec `--taodbox`, même un lien
   illisible ne fait jamais deux Frogtend) ; « Ouvrir sur Nexus » (mod et page repris de la liste de Firehouse) relie le
   lien au jeu (30 min, par profil) ; client API sans redirection, clé par requête ; téléchargement sans clé, taille de
-  Nexus = plafond, `md5_search` exige le mod et le fichier demandés ; zip seulement ; archive toujours ramassée.
+  Nexus = plafond, `md5_search` exige le mod et le fichier demandés ; zip seulement (7z depuis 0.82.2) ; archive toujours ramassée.
   Vérifié : tests du cœur (410) et de l'interface (209), svelte-check 0 erreur, 3 experts (corrigés : un lien
   illisible lançait un 2e Frogtend, archive laissée dans le jeu sur erreur, 401/403 Nexus pris pour le jeton
   Firehouse, occupation trop tardive, clés NSIS avant BUNDLEID, lien reçu pendant une fenêtre oublié, textes).

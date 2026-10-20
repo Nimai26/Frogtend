@@ -29,7 +29,8 @@ export interface InfosNexus {
   mod_nom: string;
   fichier: string;
   taille_ko: number;
-  zip: boolean;
+  /** Une archive que Frogtend sait poser (zip ou 7z). */
+  pris_en_charge: boolean;
   expire: boolean;
 }
 
@@ -162,10 +163,10 @@ async function traiterUnLien(l: LienNexus): Promise<void> {
     await oublier();
     return;
   }
-  if (!infos.zip) {
+  if (!infos.pris_en_charge) {
     await informer(
       `🧩 « ${infos.fichier} »`,
-      'Ce fichier est en 7z ou rar : Frogtend ne sait poser que les .zip pour l’instant. Choisis un fichier .zip sur la page du mod s’il y en a un, ou installe-le à la main.',
+      'Ce fichier n’est ni un .zip ni un .7z (un .rar, peut-être) : Frogtend ne sait pas encore le poser. Choisis un autre fichier sur la page du mod s’il y en a un, ou installe-le à la main.',
     );
     await oublier();
     return;

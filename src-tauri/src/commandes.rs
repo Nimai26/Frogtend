@@ -2783,7 +2783,8 @@ pub struct InfosNexus {
     pub mod_nom: String,
     pub fichier: String,
     pub taille_ko: u64,
-    pub zip: bool,
+    /// Une archive que Frogtend sait poser (zip ou 7z).
+    pub pris_en_charge: bool,
     pub expire: bool,
 }
 
@@ -2810,12 +2811,11 @@ pub async fn nexus_lien_infos(app: AppHandle, noyau: State<'_, Noyau>, n: u32) -
     let (r, cle, jeu, mod_nom) = lien_nexus(&app, &noyau, n).await?;
     let j = noyau.jeu_visible(jeu).await?;
     let f = crate::nexus::fichier(crate::nexus::API, &r.lien, &cle).await?;
-    let nom = f.nom.to_ascii_lowercase();
     Ok(InfosNexus {
         jeu_id: jeu,
         titre: j.titre,
         mod_nom,
-        zip: nom.ends_with(".zip"),
+        pris_en_charge: crate::nexus::nom_pris_en_charge(&f.nom),
         fichier: f.nom,
         taille_ko: f.taille_ko,
         expire: crate::nexus::expire(&r.lien, secondes_maintenant()),
@@ -2837,8 +2837,8 @@ pub async fn nexus_installer(app: AppHandle, noyau: State<'_, Noyau>, n: u32, pr
     refuser_anti_triche(&dossier).await?;
     let sous = if programme { dossier_du_programme(&j, &dossier)? } else { String::new() };
     let infos = crate::nexus::fichier(crate::nexus::API, &r.lien, &cle).await?;
-    if !infos.nom.to_ascii_lowercase().ends_with(".zip") {
-        return Err(Erreur::Refus("Ce mod est une archive 7z ou rar : Frogtend ne sait pas encore la poser.".into()));
+    if !crate::nexus::nom_pris_en_charge(&infos.nom) {
+        return Err(Erreur::Refus("Ce fichier n'est ni un .zip ni un .7z (un .rar, peut-être) : Frogtend ne sait pas encore le poser. Choisis un autre fichier sur la page du mod s'il y en a un, ou installe-le à la main.".into()));
     }
     let plafond = crate::nexus::plafond(infos.taille_ko);
     if plafond > crate::mods::DECOMPRESSE_MAX {
@@ -2846,7 +2846,7 @@ pub async fn nexus_installer(app: AppHandle, noyau: State<'_, Noyau>, n: u32, pr
     }
     noyau.mettre_a_l_abri(id).await?;
     let adresses = crate::nexus::adresses(crate::nexus::API, &r.lien, &cle).await?;
-    let archive = crate::mods::dossier_mods(&dossier).join("telechargements").join(format!("nexus-{}-{}.zip", r.lien.mod_id, r.lien.fichier_id));
+    let archive = crate::mods::dossier_mods(&dossier).join("telechargements").join(format!("nexus-{}-{}.archive", r.lien.mod_id, r.lien.fichier_id));
     let client = crate::nexus::client_telechargement()?;
     let _ramasse = crate::nexus::Ramasse(archive.clone());
     let mut recu = Err(Erreur::Reseau("Nexus n'a pas donné d'adresse de téléchargement.".into()));
@@ -2857,8 +2857,9 @@ pub async fn nexus_installer(app: AppHandle, noyau: State<'_, Noyau>, n: u32, pr
         }
     }
     let taille = recu?;
-    if !crate::nexus::est_un_zip(&archive) {
-        return Err(Erreur::Refus("Ce mod est une archive 7z ou rar : Frogtend ne sait pas encore la poser. Choisis un fichier .zip sur la page du mod, ou installe-le à la main.".into()));
+    // Le format réel, sur les octets reçus (jamais d'après le nom).
+    if crate::mods::format_mod(&archive).is_none() {
+        return Err(Erreur::Refus("Ce fichier n'est ni un .zip ni un .7z (un .rar, peut-être) : Frogtend ne sait pas encore le poser. Choisis un autre fichier sur la page du mod s'il y en a un, ou installe-le à la main.".into()));
     }
     let a = archive.clone();
     let md5 = tauri::async_runtime::spawn_blocking(move || crate::nexus::md5_de(&a)).await.map_err(|_| Erreur::Disque("Vérification du fichier interrompue.".into()))??;

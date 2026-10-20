@@ -34,12 +34,12 @@ export interface ModJeu {
   refus_detail?: string | null;
 }
 
-/** Le fichier que Frogtend sait installer d'un clic (une archive zip à extraire dans le jeu), sinon `null`. */
+/** Le fichier que Frogtend sait installer d'un clic (une archive zip ou 7z à extraire dans le jeu), sinon `null`. */
 export function fichierInstallable(m: ModJeu): FichierMod | null {
   if (m.refus) return null;
   return (
     (m.fichiers ?? []).find(
-      (f) => f.methode === 'extraire' && f.cible?.base === 'jeu' && f.nom.toLowerCase().endsWith('.zip') && f.taille > 0 && f.url.startsWith('https://'),
+      (f) => f.methode === 'extraire' && f.cible?.base === 'jeu' && /\.(zip|7z)$/i.test(f.nom) && f.taille > 0 && f.url.startsWith('https://'),
     ) ?? null
   );
 }

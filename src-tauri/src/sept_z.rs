@@ -67,6 +67,16 @@ pub struct EntreeSeptZ {
     pub anti: bool,
     /// Porte des données.
     pub flux: bool,
+    /// Les attributs Windows de l'entrée, s'ils sont donnés (un lien se reconnaît à eux).
+    #[serde(default)]
+    pub attributs: Option<u32>,
+}
+
+impl EntreeSeptZ {
+    /// Un lien (point de reparse Windows, ou lien symbolique Unix rangé dans les 16 bits hauts) : jamais posé.
+    pub fn est_un_lien(&self) -> bool {
+        self.attributs.is_some_and(|a| a & 0x400 != 0 || (a & 0x8000 != 0 && (a >> 16) & 0xF000 == 0xA000))
+    }
 }
 
 /// Les entrées de l'archive (rien n'est décompressé).
@@ -120,9 +130,21 @@ fn executer(args: &[OsString], ligne: &mut dyn FnMut(&Value)) -> Resultat<Value>
     }
     #[cfg(not(test))]
     {
-        let exe = std::env::current_exe().map_err(|_| Erreur::Disque("Frogtend ne se trouve pas lui-même.".into()))?;
+        let exe = match PROGRAMME.get() {
+            Some(p) => p.clone(),
+            None => std::env::current_exe().map_err(|_| Erreur::Disque("Frogtend ne se trouve pas lui-même.".into()))?,
+        };
         executer_avec(&exe, args, ligne)
     }
+}
+
+/// Le programme lecteur, quand ce n'est pas Frogtend lui-même : réglé UNIQUEMENT par les tests d'intégration (leur
+/// programme de test ne sait pas servir de lecteur ; ils donnent le vrai Frogtend). Jamais par l'application.
+static PROGRAMME: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
+#[doc(hidden)]
+pub fn programme_pour_les_tests(exe: &Path) {
+    let _ = PROGRAMME.set(exe.to_path_buf());
 }
 
 /// Lance `exe` en lecteur de 7z enfermé dans un job (mémoire plafonnée, tué avec Frogtend). Séparé pour le test qui
@@ -303,7 +325,7 @@ fn servir_lister(archive: &Path, sortie: &mut dyn Write) -> Result<Value, String
         if e.name().len() > NOM_MAX {
             return Err("L'archive 7z contient un nom démesuré : Frogtend l'a écartée.".into());
         }
-        let d = EntreeSeptZ { nom: e.name().to_string(), taille: e.size(), dossier: e.is_directory(), anti: e.is_anti_item(), flux: e.has_stream };
+        let d = EntreeSeptZ { nom: e.name().to_string(), taille: e.size(), dossier: e.is_directory(), anti: e.is_anti_item(), flux: e.has_stream, attributs: e.has_windows_attributes.then_some(e.windows_attributes) };
         writeln!(sortie, "{}", json!({ "e": d })).map_err(|e| e.to_string())?;
     }
     Ok(json!({}))

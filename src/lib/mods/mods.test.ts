@@ -54,3 +54,14 @@ describe('pages Nexus (lot 0.82.0)', () => {
     expect(pageNexus(null)).toBeNull();
   });
 });
+
+describe('mods en 7z (lot 0.82.2)', () => {
+  it('un fichier .7z à extraire s’installe d’un clic, un .rar non', () => {
+    const f = fichierInstallable(mod('Fusion Fix'))!;
+    const avec = (nom: string): ModJeu => ({ nom: 'M', fichiers: [{ ...f, nom }] });
+    expect(fichierInstallable(avec('Mod.7z'))?.nom).toBe('Mod.7z');
+    expect(fichierInstallable(avec('Mod.7Z'))?.nom).toBe('Mod.7Z');
+    expect(fichierInstallable(avec('Mod.rar'))).toBeNull();
+    expect(fichierInstallable(avec('Mod.7z.exe'))).toBeNull();
+  });
+});

@@ -37,7 +37,7 @@ pub struct FichierMod {
 }
 
 impl FichierMod {
-    /// Depuis la réponse de Firehouse : seulement `methode: "extraire"`, `cible.base: "jeu"`, une archive zip, une
+    /// Depuis la réponse de Firehouse : seulement `methode: "extraire"`, `cible.base: "jeu"`, une archive zip ou 7z, une
     /// taille, une adresse ; sinon `None` (Frogtend ne sait pas le poser sans risque : la page reste).
     pub fn depuis(v: &Value) -> Option<Self> {
         let texte = |k: &str| v[k].as_str().map(str::to_string);
@@ -45,7 +45,8 @@ impl FichierMod {
             return None;
         }
         let nom = texte("nom")?;
-        if !nom.to_ascii_lowercase().ends_with(".zip") {
+        let bas = nom.to_ascii_lowercase();
+        if !bas.ends_with(".zip") && !bas.ends_with(".7z") {
             return None;
         }
         let dossier = match v["cible"]["dossier"].as_str().unwrap_or("") {
@@ -76,7 +77,8 @@ impl FichierMod {
     /// sous la même version n'a jamais le même nom : un téléchargement coupé n'est jamais complété avec un autre).
     pub fn nom_telechargement(&self) -> String {
         let sha: String = self.sha256.as_deref().unwrap_or("sans-empreinte").chars().take(16).collect();
-        format!("{}-{}-{sha}.zip", self.cle(), self.taille)
+        let ext = if self.nom.to_ascii_lowercase().ends_with(".7z") { "7z" } else { "zip" };
+        format!("{}-{}-{sha}.{ext}", self.cle(), self.taille)
     }
 }
 
@@ -257,38 +259,102 @@ fn dans_frogtend(chemin: &str) -> bool {
     chemin.split('/').next().is_some_and(|p| p.eq_ignore_ascii_case("frogtend"))
 }
 
-/// Les fichiers d'une archive zip de mod, refusée EN ENTIER au premier chemin dangereux ; plafond de taille.
-pub fn lister(archive: &Path) -> Resultat<Vec<Entree>> {
-    let mut z = zip::ZipArchive::new(std::fs::File::open(archive)?).map_err(|e| Erreur::Disque(format!("Archive du mod illisible ({e}).")))?;
-    if z.len() > ENTREES_MAX {
-        return Err(Erreur::Refus("L'archive du mod contient bien trop de fichiers : rien n'est installé.".into()));
+/// Le format d'une archive de mod, d'après ses premiers octets (jamais d'après son nom).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FormatMod {
+    Zip,
+    SeptZ,
+}
+
+pub fn format_mod(archive: &Path) -> Option<FormatMod> {
+    let mut t = [0u8; 6];
+    std::fs::File::open(archive).and_then(|mut f| f.read_exact(&mut t)).ok()?;
+    if t[..4] == *b"PK\x03\x04" {
+        Some(FormatMod::Zip)
+    } else if t == [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C] {
+        Some(FormatMod::SeptZ)
+    } else {
+        None
     }
+}
+
+/// Une entrée brute d'une archive (zip ou 7z), avant les règles de Frogtend.
+struct Brute {
+    nom: String,
+    taille: u64,
+    dossier: bool,
+    lien: bool,
+}
+
+fn brutes(archive: &Path) -> Resultat<Vec<Brute>> {
+    let trop = || Erreur::Refus("L'archive du mod contient bien trop de fichiers : rien n'est installé.".into());
+    match format_mod(archive) {
+        Some(FormatMod::Zip) => {
+            let mut z = zip::ZipArchive::new(std::fs::File::open(archive)?).map_err(|e| Erreur::Disque(format!("Archive du mod illisible ({e}).")))?;
+            if z.len() > ENTREES_MAX {
+                return Err(trop());
+            }
+            (0..z.len())
+                .map(|i| {
+                    let e = z.by_index_raw(i).map_err(|e| Erreur::Disque(format!("Archive du mod abîmée ({e}).")))?;
+                    Ok(Brute { nom: e.name().to_string(), taille: e.size(), dossier: e.is_dir(), lien: e.is_symlink() })
+                })
+                .collect()
+        }
+        Some(FormatMod::SeptZ) => {
+            // Lu par un Frogtend enfant (`sept_z` : un 7z piégé ne peut pas fermer Frogtend).
+            let l = crate::sept_z::lister(archive)?;
+            if l.len() > ENTREES_MAX {
+                return Err(trop());
+            }
+            let mut r = Vec::new();
+            for e in l {
+                // Une entrée « à supprimer » (7z de mise à jour) ne porte aucune donnée : ignorée, Frogtend ne supprime
+                // jamais rien sur l'ordre d'une archive. (sevenz-rust 0.6.1 marque même ainsi, à tort, les dossiers
+                // ET les fichiers vides qu'il écrit : `write_file_anti_items` inverse le drapeau. Un fichier vide
+                // d'une telle archive est donc omis ; les archives de 7-Zip ne sont pas touchées.)
+                if e.anti {
+                    continue;
+                }
+                // Une entrée sans nom (le dossier racine de certains outils) est ignorée si elle ne porte rien.
+                if e.nom.is_empty() && (e.dossier || !e.flux || e.taille == 0) {
+                    continue;
+                }
+                r.push(Brute { lien: e.est_un_lien(), nom: e.nom, taille: e.taille, dossier: e.dossier });
+            }
+            Ok(r)
+        }
+        None => Err(Erreur::Refus("Ce fichier n'est ni un .zip ni un .7z (un .rar, peut-être) : Frogtend ne sait pas encore le poser. Choisis un autre fichier sur la page du mod s'il y en a un, ou installe-le à la main.".into())),
+    }
+}
+
+/// Les fichiers d'une archive de mod (zip ou 7z), refusée EN ENTIER au premier chemin dangereux ; plafond de taille.
+pub fn lister(archive: &Path) -> Resultat<Vec<Entree>> {
     let mut l: Vec<Entree> = Vec::new();
     let mut vus = std::collections::HashSet::new();
     let mut total = 0u64;
-    for i in 0..z.len() {
-        let e = z.by_index_raw(i).map_err(|e| Erreur::Disque(format!("Archive du mod abîmée ({e}).")))?;
-        let dangereux = || Erreur::Refus(format!("L'archive du mod contient un chemin dangereux ({}) : rien n'est installé.", e.name()));
-        if e.is_symlink() {
+    for e in brutes(archive)? {
+        let dangereux = || Erreur::Refus(format!("L'archive du mod contient un chemin dangereux ({}) : rien n'est installé.", e.nom));
+        if e.lien {
             return Err(dangereux());
         }
-        let chemin = crate::decompression::chemin_sur(e.name()).ok_or_else(dangereux)?;
+        let chemin = crate::decompression::chemin_sur(&e.nom).ok_or_else(dangereux)?;
         // Jamais dans le dossier de Frogtend du jeu (ses manifestes et ses copies de sauvegarde).
         if chemin.split('/').any(nom_reserve) || dans_frogtend(&chemin) {
             return Err(dangereux());
         }
-        if e.is_dir() {
+        if e.dossier {
             continue;
         }
         // Deux noms qui ne diffèrent que par la casse : un seul fichier sous Windows.
         if !vus.insert(chemin.to_lowercase()) {
             return Err(dangereux());
         }
-        total = total.saturating_add(e.size());
+        total = total.saturating_add(e.taille);
         if total > DECOMPRESSE_MAX {
             return Err(Erreur::Refus("L'archive du mod est démesurée une fois décompressée : rien n'est installé.".into()));
         }
-        l.push(Entree { chemin, taille: e.size() });
+        l.push(Entree { chemin, taille: e.taille });
     }
     if l.is_empty() {
         return Err(Erreur::Refus("L'archive du mod est vide.".into()));
@@ -420,6 +486,54 @@ pub struct Bilan {
     pub identiques: usize,
 }
 
+/// Les restes d'une pose arrêtée net (Frogtend fermé pendant l'extraction : le nettoyage n'a pas pu passer) : dans
+/// chaque dossier de mod SANS manifeste, seulement `brut` et `contenu` (des copies de l'archive, refaites à la pose).
+/// Jamais `remplaces` ni `gardes`.
+fn ranger_les_restes(jeu: &Path) {
+    let Ok(l) = std::fs::read_dir(dossier_mods(jeu)) else { return };
+    for e in l.flatten() {
+        let nom = e.file_name().to_string_lossy().to_string();
+        let cle_seule = nom.len() == 16 && nom.chars().all(|c| c.is_ascii_hexdigit());
+        if !cle_seule || !e.file_type().is_ok_and(|t| t.is_dir()) || dossier_mods(jeu).join(format!("{nom}.json")).exists() {
+            continue;
+        }
+        for reste in ["brut", "contenu"] {
+            let _ = std::fs::remove_dir_all(e.path().join(reste));
+        }
+    }
+}
+
+/// D'où viennent les fichiers d'un mod pendant la pose.
+enum SourceMod {
+    Zip(Box<zip::ZipArchive<std::fs::File>>, std::collections::HashMap<String, usize>),
+    /// Le dossier où le 7z a été décompressé par l'enfant.
+    SeptZ(PathBuf),
+}
+
+impl SourceMod {
+    /// Range le fichier `e` en `vers` ; rend sa taille (au plus `e.taille + 1` : au-delà, c'est déjà faux).
+    fn poser(&mut self, e: &Entree, vers: &Path) -> Resultat<u64> {
+        match self {
+            SourceMod::Zip(z, index) => {
+                let i = *index.get(&e.chemin).ok_or_else(|| Erreur::Disque(format!("Fichier introuvable dans l'archive : {}.", e.chemin)))?;
+                let mut entree = z.by_index(i).map_err(|_| Erreur::Disque(format!("Fichier illisible dans l'archive : {}.", e.chemin)))?;
+                let mut sortie = std::fs::File::create(vers)?;
+                Ok(std::io::copy(&mut (&mut entree).take(e.taille + 1), &mut sortie)?)
+            }
+            SourceMod::SeptZ(brut) => {
+                // Vérifier le résultat, pas le retour : un vrai fichier (jamais un lien), de la taille annoncée.
+                let de = brut.join(&e.chemin);
+                let m = std::fs::symlink_metadata(&de).map_err(|_| Erreur::Disque(format!("Fichier absent après la décompression : {}.", e.chemin)))?;
+                if !m.is_file() || crate::garde::lien_entre(brut, &de) {
+                    return Err(Erreur::Refus(format!("L'archive du mod contient un chemin dangereux ({}) : rien n'est installé.", e.chemin)));
+                }
+                std::fs::rename(&de, vers)?;
+                Ok(m.len())
+            }
+        }
+    }
+}
+
 /// Installe l'archive (déjà téléchargée et vérifiée) dans le jeu, dans `sous` (relatif au jeu), sans son dossier
 /// racine si `sans_racine`. Tout ce qui est remplacé est d'abord copié à l'abri ; une pose interrompue se défait.
 #[allow(clippy::too_many_arguments)]
@@ -433,58 +547,85 @@ pub fn installer(jeu: &Path, archive: &Path, f: &FichierMod, mod_nom: &str, sha2
     // Le dossier visé est vérifié (pas de lien) ; il est créé avec les autres, et noté s'il est nouveau.
     let (_cible, sous) = dossier_cible(jeu, sous)?;
     let sous = sous.as_str();
+    // Où va chaque fichier dans le jeu (avant toute décompression : un refus ne coûte rien).
+    let rel_de = |e: &Entree| match &racine {
+        Some(r) => e.chemin.strip_prefix(&format!("{r}/")).unwrap_or(&e.chemin).to_string(),
+        None => e.chemin.clone(),
+    };
+    let dans_le_jeu = |rel: &str| if sous.is_empty() { rel.to_string() } else { format!("{sous}/{rel}") };
+    // Un fichier qui appartient déjà à un autre mod : refusé (désinstaller l'autre d'abord).
+    let autres: Vec<(String, String)> = installes(jeu).into_iter().flat_map(|m| m.fichiers.into_iter().map(move |p| (p.chemin.to_lowercase(), m.mod_nom.clone()))).collect();
+    for e in &entrees {
+        let c = dans_le_jeu(&rel_de(e)).to_lowercase();
+        if let Some((_, autre)) = autres.iter().find(|(x, _)| *x == c) {
+            return Err(Erreur::Refus(format!("Ce mod remplacerait un fichier du mod « {autre} » : désinstalle-le d'abord.")));
+        }
+    }
+    // La place : le mod décompressé à côté, puis posé (deux fois sa taille), plus les originaux copiés à l'abri.
     if let Some(libre) = crate::jeux_pc::place_libre(jeu) {
-        if entrees.iter().map(|e| e.taille).sum::<u64>().saturating_mul(2) > libre {
+        let mod_ = entrees.iter().map(|e| e.taille).sum::<u64>();
+        let originaux: u64 = entrees.iter().filter_map(|e| std::fs::metadata(jeu.join(dans_le_jeu(&rel_de(e)))).ok()).filter(|m| m.is_file()).map(|m| m.len()).sum();
+        if mod_.saturating_mul(2).saturating_add(originaux) > libre {
             return Err(Erreur::Disque("Pas assez de place sur le disque du jeu pour ce mod.".into()));
         }
     }
-    // Un fichier qui appartient déjà à un autre mod : refusé (désinstaller l'autre d'abord).
-    let autres: Vec<(String, String)> = installes(jeu).into_iter().flat_map(|m| m.fichiers.into_iter().map(move |p| (p.chemin.to_lowercase(), m.mod_nom.clone()))).collect();
+    ranger_les_restes(jeu);
     let travail = dossier_mods(jeu).join(&cle);
     let contenu = travail.join("contenu");
     if travail.exists() {
-        // Les restes d'un essai précédent (jamais un mod installé : son manifeste aurait été vu plus haut).
-        std::fs::remove_dir_all(&travail)?;
+        // Un dossier de ce mod sans manifeste : une pose interrompue, ou un mod RETIRÉ dont la désinstallation a gardé
+        // des originaux (`remplaces`) ou des fichiers modifiés par la personne (`gardes`). Ceux-là ne s'effacent
+        // jamais : le dossier est mis de côté sous un autre nom ; sinon, ce ne sont que des restes.
+        if travail.join("remplaces").exists() || travail.join("gardes").exists() {
+            let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+            std::fs::rename(&travail, dossier_mods(jeu).join(format!("{cle}-ancien-{n}")))?;
+        } else {
+            std::fs::remove_dir_all(&travail)?;
+        }
     }
     // Tant que le manifeste n'est pas écrit, rien du jeu n'est touché : une erreur efface tout le travail.
     let mut nettoyage = Nettoyage { dossier: travail.clone(), actif: true };
     // 1. Décompresser à côté, plafonné à la taille annoncée de chaque fichier.
-    let mut z = zip::ZipArchive::new(std::fs::File::open(archive)?).map_err(|e| Erreur::Disque(format!("Archive du mod illisible ({e}).")))?;
-    // Chaque chemin sûr → son numéro dans l'archive (les noms bruts peuvent avoir « \ » ou « ./ »).
-    let mut index = std::collections::HashMap::new();
-    for i in 0..z.len() {
-        if let Ok(e) = z.by_index_raw(i) {
-            if let Some(c) = crate::decompression::chemin_sur(e.name()) {
-                index.insert(c, i);
-            }
+    let mut source = match format_mod(archive) {
+        Some(FormatMod::SeptZ) => {
+            // Un 7z : décompressé en UNE passe (un bloc compact se relirait depuis le début pour chaque fichier) par un
+            // Frogtend enfant, dans `brut` ; chaque fichier y est ensuite vérifié avant d'être rangé.
+            let brut = travail.join("brut");
+            crate::sept_z::extraire(archive, &brut, &mut |_| {})?;
+            SourceMod::SeptZ(brut)
         }
-    }
+        _ => {
+            let mut z = zip::ZipArchive::new(std::fs::File::open(archive)?).map_err(|e| Erreur::Disque(format!("Archive du mod illisible ({e}).")))?;
+            // Chaque chemin sûr → son numéro dans l'archive (les noms bruts peuvent avoir « \ » ou « ./ »).
+            let mut index = std::collections::HashMap::new();
+            for i in 0..z.len() {
+                if let Ok(e) = z.by_index_raw(i) {
+                    if let Some(c) = crate::decompression::chemin_sur(e.name()) {
+                        index.insert(c, i);
+                    }
+                }
+            }
+            SourceMod::Zip(Box::new(z), index)
+        }
+    };
     let mut plan: Vec<(String, PathBuf)> = Vec::new();
     for e in &entrees {
-        let rel = match &racine {
-            Some(r) => e.chemin.strip_prefix(&format!("{r}/")).unwrap_or(&e.chemin).to_string(),
-            None => e.chemin.clone(),
-        };
+        let rel = rel_de(e);
         let vers = contenu.join(&rel);
         if let Some(p) = vers.parent() {
             std::fs::create_dir_all(p)?;
         }
-        let i = *index.get(&e.chemin).ok_or_else(|| Erreur::Disque(format!("Fichier introuvable dans l'archive : {}.", e.chemin)))?;
-        let mut entree = z.by_index(i).map_err(|_| Erreur::Disque(format!("Fichier illisible dans l'archive : {}.", e.chemin)))?;
-        let mut sortie = std::fs::File::create(&vers)?;
-        let n = std::io::copy(&mut (&mut entree).take(e.taille + 1), &mut sortie)?;
-        if n != e.taille {
-            drop(sortie);
+        if source.poser(e, &vers)? != e.taille {
             let _ = std::fs::remove_dir_all(&travail);
             return Err(Erreur::Refus("L'archive du mod ne correspond pas à ce qu'elle annonce : rien n'est installé.".into()));
         }
-        let chemin_jeu = if sous.is_empty() { rel.clone() } else { format!("{sous}/{rel}") };
-        if let Some((_, autre)) = autres.iter().find(|(c, _)| *c == chemin_jeu.to_lowercase()) {
-            let _ = std::fs::remove_dir_all(&travail);
-            return Err(Erreur::Refus(format!("Ce mod remplacerait un fichier du mod « {autre} » : désinstalle-le d'abord.")));
-        }
-        plan.push((chemin_jeu, vers));
+        plan.push((dans_le_jeu(&rel), vers));
     }
+    // Ce que le 7z a laissé d'autre (dossiers vides) : retiré, rien n'en sort.
+    if let SourceMod::SeptZ(brut) = &source {
+        std::fs::remove_dir_all(brut)?;
+    }
+    drop(source);
     // 2. Comparer au jeu : ajouté, remplacé (l'original copié à l'abri, vérifié), ou identique.
     let remplaces = travail.join("remplaces");
     let mut m = Manifeste {
@@ -693,6 +834,104 @@ mod tests {
             }
         }
         z.finish().unwrap();
+    }
+
+    /// Un 7z sur mesure (noms bruts : les pièges s'y écrivent tels quels) ; `attributs` pour une entrée lien.
+    fn sept_de(f: &Path, fichiers: &[(&str, &[u8])], lien: Option<&str>) {
+        let mut w = sevenz_rust::SevenZWriter::create(f).unwrap();
+        for (nom, c) in fichiers {
+            let mut e = sevenz_rust::SevenZArchiveEntry::new();
+            e.name = nom.to_string();
+            if nom.ends_with('/') {
+                e.name = nom.trim_end_matches('/').to_string();
+                e.is_directory = true;
+                w.push_archive_entry::<&[u8]>(e, None).unwrap();
+                continue;
+            }
+            e.has_stream = true;
+            if lien == Some(*nom) {
+                e.has_windows_attributes = true;
+                e.windows_attributes = 0x400;
+            }
+            w.push_archive_entry(e, Some(*c)).unwrap();
+        }
+        w.finish().unwrap();
+    }
+
+    #[test]
+    fn un_mod_en_7z_s_installe_et_se_retire_comme_un_zip() {
+        let d = tempfile::tempdir().unwrap();
+        let jeu = d.path().join("Jeu");
+        std::fs::create_dir_all(&jeu).unwrap();
+        std::fs::write(jeu.join("jeu.exe"), b"jeu").unwrap();
+        std::fs::write(jeu.join("dsound.dll"), b"original").unwrap();
+        let a = d.path().join("mod.7z");
+        sept_de(&a, &[("MonMod/", b""), ("MonMod/dsound.dll", b"du mod"), ("MonMod/scripts/Fix.asi", b"asi")], None);
+        assert_eq!(format_mod(&a), Some(FormatMod::SeptZ));
+        let f = FichierMod { nom: "mod.7z".into(), taille: 1, sha256: None, url: String::new(), depot: "nexus/jeu/1".into(), tag: "2".into(), a_confirmer: true, dossier: String::new() };
+        let b = installer(&jeu, &a, &f, "Mon mod", "abc", "", true, "2026-10-20").unwrap();
+        assert_eq!(b, Bilan { ajoutes: 1, remplaces: 1, identiques: 0 });
+        assert_eq!(std::fs::read(jeu.join("dsound.dll")).unwrap(), b"du mod");
+        assert_eq!(std::fs::read(jeu.join("scripts/Fix.asi")).unwrap(), b"asi");
+        assert!(!dossier_mods(&jeu).join(f.cle()).join("brut").exists(), "le dossier de travail du 7z est retiré");
+        desinstaller(&jeu, &f.cle()).unwrap();
+        assert_eq!(std::fs::read(jeu.join("dsound.dll")).unwrap(), b"original");
+        assert!(!jeu.join("scripts").exists());
+    }
+
+    #[test]
+    fn reinstaller_un_mod_retire_ne_perd_ni_l_original_ni_les_fichiers_de_la_personne() {
+        let d = tempfile::tempdir().unwrap();
+        let jeu = d.path().join("Jeu");
+        std::fs::create_dir_all(&jeu).unwrap();
+        std::fs::write(jeu.join("dsound.dll"), b"original").unwrap();
+        let a = d.path().join("mod.zip");
+        zip_de(&a, &[("dsound.dll", b"du mod"), ("Fix.ini", b"ini")]);
+        let f = FichierMod::depuis(&fusion()).unwrap();
+        installer(&jeu, &a, &f, "Fusion Fix", "abc", "", false, "1").unwrap();
+        // La personne change le fichier du mod qui avait remplacé l'original, et son .ini.
+        std::fs::write(jeu.join("dsound.dll"), b"a moi").unwrap();
+        std::fs::write(jeu.join("Fix.ini"), b"mes reglages").unwrap();
+        desinstaller(&jeu, &f.cle()).unwrap();
+        let travail = dossier_mods(&jeu).join(f.cle());
+        assert!(travail.join("remplaces").join("dsound.dll").exists(), "l'original reste à l'abri");
+        // Réinstaller le même mod : l'ancien dossier est mis de côté, jamais effacé.
+        installer(&jeu, &a, &f, "Fusion Fix", "abc", "", false, "2").ok();
+        let anciens: Vec<_> = std::fs::read_dir(dossier_mods(&jeu)).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().contains("-ancien-")).collect();
+        assert_eq!(anciens.len(), 1);
+        assert_eq!(std::fs::read(anciens[0].path().join("remplaces").join("dsound.dll")).unwrap(), b"original");
+        // Des restes d'une pose arrêtée net (brut, contenu) partent ; jamais remplaces ni gardes.
+        let reste = dossier_mods(&jeu).join("0123456789abcdef");
+        for s in ["brut", "contenu", "remplaces", "gardes"] {
+            std::fs::create_dir_all(reste.join(s)).unwrap();
+            std::fs::write(reste.join(s).join("x"), b"x").unwrap();
+        }
+        ranger_les_restes(&jeu);
+        assert!(!reste.join("brut").exists() && !reste.join("contenu").exists());
+        assert!(reste.join("remplaces").join("x").exists() && reste.join("gardes").join("x").exists());
+    }
+
+    #[test]
+    fn un_7z_piege_est_refuse_en_entier_sans_rien_poser() {
+        let d = tempfile::tempdir().unwrap();
+        let a = d.path().join("m.7z");
+        for piege in ["../evil.dll", "C:/x.dll", "scripts/CON.ini", "Frogtend/mods/x.json"] {
+            sept_de(&a, &[("bon.txt", b"x"), (piege, b"y")], None);
+            assert!(lister(&a).is_err(), "{piege}");
+        }
+        sept_de(&a, &[("Dsound.dll", b"x"), ("dsound.DLL", b"y")], None);
+        assert!(lister(&a).is_err(), "deux noms qui ne diffèrent que par la casse");
+        sept_de(&a, &[("bon.txt", b"x"), ("lien.dll", b"C:/Windows")], Some("lien.dll"));
+        assert!(lister(&a).is_err(), "une entrée marquée lien (Windows)");
+        let lien_unix = crate::sept_z::EntreeSeptZ { nom: "l".into(), taille: 1, dossier: false, anti: false, flux: true, attributs: Some(0x8000 | (0o120777 << 16)) };
+        assert!(lien_unix.est_un_lien(), "un lien Unix (S_IFLNK dans les 16 bits hauts)");
+        assert!(!crate::sept_z::EntreeSeptZ { attributs: Some(0x8000 | (0o100644 << 16)), ..lien_unix.clone() }.est_un_lien(), "un fichier Unix ordinaire");
+        // Ni zip ni 7z (un rar, par exemple) : refusé, sans rien ouvrir.
+        std::fs::write(&a, b"Rar!\x1a\x07\x00reste").unwrap();
+        assert_eq!(format_mod(&a), None);
+        assert!(lister(&a).is_err());
+        // Rien n'a été posé nulle part par ces refus.
+        assert_eq!(std::fs::read_dir(d.path()).unwrap().count(), 1);
     }
 
     #[test]

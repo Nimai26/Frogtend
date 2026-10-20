@@ -48,6 +48,11 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Mods en .7z (0.82.2)
+- [ ] Sur Nexus, « Mod Manager Download » sur un fichier **.7z** (petit) depuis ⚙ Gérer le jeu ▸ 🧩 Mods ▸ 🌐 :
+      Frogtend demande où le poser puis ton accord ; le mod devient ✅ ; Retirer remet le jeu comme avant.
+- [ ] Un fichier .rar : Frogtend dit poliment qu'il ne sait pas encore le poser.
+
 ## Archives 7z lues à part (0.82.1)
 - [ ] Décompresser un jeu en .7z (⚙ Gérer le jeu ▸ Décompresser) : la barre de progression avance, le jeu se lance.
 - [ ] Un jeu PC Engine en .7z : son panneau RetroAchievements dit toujours si ta version est compatible.
@@ -66,7 +71,7 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Même chose avec Frogtend FERMÉ : le clic sur le site doit ouvrir Frogtend, puis la fenêtre arrive une fois ton
       profil ouvert.
 - [ ] Un clic pendant que Frogtend est déjà ouvert : pas de 2e fenêtre de Frogtend.
-- [ ] Un fichier .7z ou .rar : Frogtend dit poliment qu'il ne sait pas encore le poser.
+- [ ] Un fichier .rar : Frogtend dit poliment qu'il ne sait pas encore le poser (les .7z passent depuis 0.82.2).
 - [ ] Retirer le mod (🧩 Mods ▸ ✅ le mod ▸ Retirer) : le jeu redevient comme avant.
 - [ ] Pendant une partie, cliquer « Mod Manager Download » : rien ne s'ouvre avant la fin de la partie.
 - [ ] À vérifier par moi avec toi : l'adresse du serveur de téléchargement de Nexus, la forme exacte de la clé du lien.

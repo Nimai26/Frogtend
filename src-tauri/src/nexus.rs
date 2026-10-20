@@ -415,11 +415,10 @@ pub fn courrier(donnees: &std::path::Path) -> usize {
     std::fs::read_dir(boite(donnees)).map(|l| l.flatten().filter(|e| e.path().extension().is_some_and(|x| x == "lien")).count()).unwrap_or(0)
 }
 
-/// Un zip ? (signature `PK\x03\x04` ; un 7z ou un rar n'est pas encore posé par Frogtend)
-pub fn est_un_zip(f: &std::path::Path) -> bool {
-    use std::io::Read;
-    let mut t = [0u8; 4];
-    std::fs::File::open(f).and_then(|mut r| r.read_exact(&mut t)).is_ok() && t == *b"PK\x03\x04"
+/// Un nom de fichier de Nexus que Frogtend sait poser (zip ou 7z ; le format réel est revérifié sur les octets reçus).
+pub fn nom_pris_en_charge(nom: &str) -> bool {
+    let n = nom.to_ascii_lowercase();
+    n.ends_with(".zip") || n.ends_with(".7z")
 }
 
 #[cfg(test)]
@@ -512,11 +511,7 @@ mod tests {
         assert_eq!(n.liens("seb").len(), 1);
         n.oublier_profil("seb");
         assert!(n.liens("seb").is_empty());
-        let d = tempfile::tempdir().unwrap();
-        let z = d.path().join("a.zip");
-        std::fs::write(&z, b"PK\x03\x04reste").unwrap();
-        std::fs::write(d.path().join("b.7z"), b"7z\xBC\xAF\x27\x1C").unwrap();
-        assert!(est_un_zip(&z) && !est_un_zip(&d.path().join("b.7z")) && !est_un_zip(&d.path().join("absent")));
+        assert!(nom_pris_en_charge("Mod-1.ZIP") && nom_pris_en_charge("mod.7z") && !nom_pris_en_charge("mod.rar") && !nom_pris_en_charge("mod.zip.exe"));
     }
 
     #[tokio::test]
