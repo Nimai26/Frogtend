@@ -93,12 +93,35 @@ pub fn sur_le_reseau(f: &Path) -> bool {
     false
 }
 
+/// Le SHA1 GLOBAL d'un CHD (données + métadonnées, celui de `chdman info`), lu dans son en-tête : 124 octets au plus,
+/// jamais le fichier entier. Signature `MComprHD`, version en gros-boutiste à l'octet 12 ; SHA1 à l'octet 84 (v5), 48
+/// (v4) ou 80 (v3) — positions vérifiées dans chd.cpp par Firehouse et dans la crate `chd` (contrat 1.22).
+pub fn chd_sha1(f: &Path) -> Option<String> {
+    let mut t = [0u8; 124];
+    let n = std::fs::File::open(f).and_then(|mut r| r.read(&mut t)).ok()?;
+    if n < 100 || &t[..8] != b"MComprHD" {
+        return None;
+    }
+    let version = u32::from_be_bytes([t[12], t[13], t[14], t[15]]);
+    let debut = match version {
+        5 => 84,
+        4 => 48,
+        3 => 80,
+        _ => return None,
+    };
+    let sha = t.get(debut..debut + 20).filter(|_| debut + 20 <= n)?;
+    Some(sha.iter().map(|b| format!("{b:02x}")).collect())
+}
+
 /// Ce qui est su d'un fichier.
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Empreinte {
     pub crc32: Option<String>,
     pub sha1: Option<String>,
     pub entrees: Option<Vec<EntreeArchive>>,
+    /// Le SHA1 global d'un CHD (en-tête), contrat 1.22.
+    #[serde(default)]
+    pub chd_sha1: Option<String>,
 }
 
 /// La version du calcul : un cache d'une autre version est recalculé.
@@ -144,6 +167,24 @@ impl Cache {
 mod tests {
     use super::*;
     use crate::sept_z::EntreeSeptZ;
+
+    #[test]
+    fn le_sha1_global_d_un_chd_se_lit_dans_son_en_tete_v3_v4_v5() {
+        let d = tempfile::tempdir().unwrap();
+        for (version, debut) in [(5u32, 84usize), (4, 48), (3, 80)] {
+            let mut t = vec![0u8; 124];
+            t[..8].copy_from_slice(b"MComprHD");
+            t[12..16].copy_from_slice(&version.to_be_bytes());
+            for (i, b) in t[debut..debut + 20].iter_mut().enumerate() {
+                *b = i as u8 + 1;
+            }
+            let f = d.path().join(format!("v{version}.chd"));
+            std::fs::write(&f, &t).unwrap();
+            assert_eq!(chd_sha1(&f).as_deref(), Some("0102030405060708090a0b0c0d0e0f1011121314"), "v{version}");
+        }
+        std::fs::write(d.path().join("faux.chd"), b"pas un chd").unwrap();
+        assert_eq!(chd_sha1(&d.path().join("faux.chd")), None);
+    }
 
     #[test]
     fn le_cache_rend_une_empreinte_tant_que_le_fichier_n_a_pas_change() {

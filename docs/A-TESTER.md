@@ -48,6 +48,11 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## MAME reconnu un par un (0.84.2)
+- [ ] 📥 Importer ▸ 🔗 Reconnaître mes jeux importés après avoir importé ton MAME : la plupart des jeux MAME passent
+      en « Reconnus » ; un jeu Neo-Geo dit « il manque à côté du jeu : neogeo (BIOS) » si le BIOS n'est pas dans le
+      même dossier.
+
 ## Un jeu importé relié (0.84.1)
 - [ ] Après une reconnaissance : un jeu NES reconnu apparaît UNE fois dans Ma ludothèque, avec la jaquette de
       Firehouse ; « 📄 Voir la fiche » ouvre sa fiche ; ▶ Jouer lance ton fichier.

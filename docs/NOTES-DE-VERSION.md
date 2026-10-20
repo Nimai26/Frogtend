@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.84.2 — Tes jeux MAME reconnus un par un
+
+- 🔗 Reconnaître mes jeux importés reconnaît maintenant tes jeux d'arcade MAME même si ton romset est « fusionné »
+  (les variantes rangées dans le zip du jeu principal) : essai sur tes 30 premiers zips, 16 reconnus à coup sûr au
+  lieu de 4.
+- Frogtend te prévient quand il manque, à côté du jeu, ce dont MAME aura besoin pour le lancer : un BIOS (neogeo…),
+  un périphérique, ou un disque (CHD).
+- Les disques CHD d'un jeu d'arcade sont reconnus eux aussi (Frogtend ne lit que leur en-tête).
+
 ## 0.84.1 — Un jeu importé relié prend la fiche de Firehouse
 
 - Un jeu de ton disque relié à Firehouse montre maintenant SA fiche : jaquette, résumé, genres, documents, triches et

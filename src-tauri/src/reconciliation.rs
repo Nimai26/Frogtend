@@ -35,6 +35,9 @@ pub struct FichierLocal {
     pub crc32: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entrees: Option<Vec<EntreeArchive>>,
+    /// Contrat 1.22 : le SHA1 GLOBAL d'un CHD d'arcade (en-tête), jamais dans `sha1`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chd_sha1: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -68,6 +71,80 @@ pub struct ResultatFichier {
     pub candidats: Vec<Candidat>,
     #[serde(default)]
     pub groupe: Option<String>,
+    /// Contrat 1.22, fichiers Arcade : ce que MAME peut lancer avec ce zip (ou ce CHD), machine par machine.
+    #[serde(default)]
+    pub machines: Vec<Machine>,
+}
+
+/// Une machine MAME reconnue dans un fichier (contrat 1.22).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Machine {
+    pub nom_court: String,
+    pub statut: String,
+    #[serde(default)]
+    pub correspondance: Option<String>,
+    pub media_id: Option<i64>,
+    pub telechargement_id: Option<i64>,
+    #[serde(default)]
+    pub manquantes: u32,
+    /// Les BIOS / périphériques à avoir À CÔTÉ (la machine est exacte quand même ; à vérifier chez la personne).
+    #[serde(default)]
+    pub dependances: Vec<Dependance>,
+    /// Les disques (CHD) de la machine : `present` vrai/faux si le CHD était dans le même groupe que le zip, sinon
+    /// absent (aucun CHD envoyé avec le zip).
+    #[serde(default)]
+    pub disques: Vec<DisqueMachine>,
+    #[serde(default)]
+    pub complet_chez_nous: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DisqueMachine {
+    pub nom: String,
+    #[serde(default)]
+    pub chd_sha1: Option<String>,
+    #[serde(default)]
+    pub present: Option<bool>,
+}
+
+/// Ce qui manque à une machine reconnue pour que MAME la lance : ses BIOS / périphériques à côté du zip, ses disques
+/// (CHD) ; et si la version de Firehouse elle-même n'a pas tous ses disques.
+pub fn manques_machine(zip: &std::path::Path, m: &Machine) -> Option<String> {
+    let mut l = dependances_absentes(zip, &m.dependances);
+    l.extend(m.disques.iter().filter(|d| d.present != Some(true)).map(|d| format!("le disque {} (CHD)", d.nom)));
+    let mut t = if l.is_empty() { String::new() } else { format!("il manque à côté du jeu : {}", l.join(", ")) };
+    if !m.complet_chez_nous {
+        if !t.is_empty() {
+            t.push_str(" ; ");
+        }
+        t.push_str("la version de Firehouse n'a pas tous ses disques");
+    }
+    (!t.is_empty()).then_some(t)
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Dependance {
+    pub nom_court: String,
+    #[serde(rename = "type")]
+    pub sorte: String,
+}
+
+/// Les BIOS / périphériques d'une machine qui ne sont PAS à côté de son zip (`<nom court>.zip` ou `.7z` dans le même
+/// dossier, comme MAME les cherche) : « neogeo (BIOS) ».
+pub fn dependances_absentes(zip: &std::path::Path, deps: &[Dependance]) -> Vec<String> {
+    let Some(dossier) = zip.parent() else { return vec![] };
+    deps.iter()
+        .filter(|d| crate::jeux_pc::nom_de_fichier_sur(&d.nom_court).is_ok())
+        .filter(|d| !["zip", "7z"].iter().any(|e| dossier.join(format!("{}.{e}", d.nom_court)).is_file()))
+        .map(|d| format!("{} ({})", d.nom_court, if d.sorte == "bios" { "BIOS" } else { "périphérique" }))
+        .collect()
+}
+
+/// La machine d'un fichier Arcade qui correspond à CE fichier : celle qui porte le nom court du zip (le parent d'un
+/// zip fusionné ; les clones qu'il contient ne sont pas importés à part). Un CHD seul : la machine si elle est unique.
+pub fn machine_du_fichier<'a>(nom: &str, r: &'a ResultatFichier) -> Option<&'a Machine> {
+    let court = nom.rsplit_once('.').map(|(c, _)| c).unwrap_or(nom);
+    r.machines.iter().find(|m| m.nom_court.eq_ignore_ascii_case(court)).or_else(|| (r.machines.len() == 1).then(|| &r.machines[0]))
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -240,19 +317,33 @@ pub fn inventaire(jeux: &[crate::jeux_pc::JeuPc]) -> Vec<Prevu> {
         } else {
             i.versions.iter().map(|v| (v.chemin.clone(), if v.disques.is_empty() { vec![v.chemin.clone()] } else { v.disques.clone() })).collect()
         };
-        for (k, (version, fichiers)) in versions.into_iter().enumerate() {
+        for (k, (version, mut fichiers)) in versions.into_iter().enumerate() {
+            // Arcade (contrat 1.22) : les CHD du jeu, dans `<dossier>\<nom court>\` (là où MAME les cherche), partent
+            // AVEC le zip, dans son groupe (Firehouse dit alors si le disque est présent et tranche entre machines).
+            let arcade = j.plateforme == "Arcade";
+            if arcade {
+                if let Some(z) = fichiers.first().map(PathBuf::from).filter(|z| z.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip") || e.eq_ignore_ascii_case("7z"))) {
+                    if let (Some(dossier), Some(court)) = (z.parent(), z.file_stem()) {
+                        if let Ok(l) = std::fs::read_dir(dossier.join(court)) {
+                            let mut chd: Vec<String> = l.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("chd"))).map(|p| p.to_string_lossy().into_owned()).collect();
+                            chd.sort();
+                            fichiers.extend(chd);
+                        }
+                    }
+                }
+            }
             let groupe = (fichiers.len() > 1).then(|| format!("j{}v{k}", j.id.unsigned_abs()));
             for chemin in fichiers {
                 let p = PathBuf::from(&chemin);
                 let Some(nom) = p.file_name().map(|n| n.to_string_lossy().into_owned()).filter(|n| nom_envoyable(n)) else { continue };
-                // Les CHD : pas traités par la 1.21, n'en envoyer aucun (réponse de Firehouse au besoin 29 ; 1.22 à venir).
-                if nom.to_ascii_lowercase().ends_with(".chd") {
+                // Les CHD hors arcade : hors du périmètre du contrat (1.22 : arcade seulement).
+                if nom.to_ascii_lowercase().ends_with(".chd") && !arcade {
                     continue;
                 }
                 let n = l.len();
                 l.push(Prevu {
                     nature: crate::empreintes::nature(&j.plateforme, &nom),
-                    fichier: FichierLocal { cle: format!("f{n}"), groupe: groupe.clone(), plateforme: j.plateforme.clone(), nom, taille: 0, sha1: None, crc32: None, entrees: None },
+                    fichier: FichierLocal { cle: format!("f{n}"), groupe: groupe.clone(), plateforme: j.plateforme.clone(), nom, taille: 0, sha1: None, crc32: None, entrees: None, chd_sha1: None },
                     chemin: p,
                     jeu: j.id,
                     version: version.clone(),
@@ -348,6 +439,10 @@ pub fn calculer(prevus: Vec<Prevu>, cache: &Cache, plafond_sha1: u64, reseau_ok:
             Some(e) => e,
             None => {
                 let mut x = Empreinte { entrees: entrees.remove(&i).flatten(), ..Default::default() };
+                // Un CHD d'arcade : 124 octets d'en-tête seulement (même sur un disque réseau).
+                if p.fichier.nom.to_ascii_lowercase().ends_with(".chd") {
+                    x.chd_sha1 = crate::empreintes::chd_sha1(&p.chemin);
+                }
                 let permis = reseau_ok || !crate::empreintes::sur_le_reseau(&p.chemin);
                 if permis && lu_en_entier(p, m.len(), plafond_sha1) {
                     if let Ok((crc, sha)) = crate::empreintes::crc_sha1(&p.chemin) {
@@ -368,6 +463,7 @@ pub fn calculer(prevus: Vec<Prevu>, cache: &Cache, plafond_sha1: u64, reseau_ok:
         p.fichier.crc32 = e.crc32;
         p.fichier.sha1 = e.sha1;
         p.fichier.entrees = e.entrees;
+        p.fichier.chd_sha1 = e.chd_sha1;
         faits += 1;
         progres(chemins.len().max(faits).min(total), total);
     }
@@ -467,10 +563,18 @@ pub fn par_jeu(prets: &[Prevu], bilan: &Bilan, jeux: &[crate::jeux_pc::JeuPc]) -
                 continue;
             }
             let v = match resultat(&p.fichier.cle) {
-                Some(r) => {
-                    let (statut, media_id, telechargement_id) = statut_effectif(r, &bilan.reponse);
-                    VersionRapprochee { version: p.version.clone(), statut: statut.into(), media_id, telechargement_id, correspondance: r.correspondance.clone(), motif: r.motif.clone(), candidats: r.candidats.clone(), titre_fiche: None, annee_fiche: None }
-                }
+                // Arcade (contrat 1.22) : le verdict de LA machine de ce zip (le groupe est calculé à la 1.21 : on ne le
+                // lit pas pour l'arcade), avec ses BIOS / périphériques vérifiés à côté du zip.
+                Some(r) => match machine_du_fichier(&p.fichier.nom, r) {
+                    Some(m) => {
+                        let motif = manques_machine(&p.chemin, m).or_else(|| r.motif.clone().filter(|_| m.statut != "exact"));
+                        VersionRapprochee { version: p.version.clone(), statut: m.statut.clone(), media_id: m.media_id, telechargement_id: m.telechargement_id, correspondance: m.correspondance.clone(), motif, candidats: vec![], titre_fiche: None, annee_fiche: None }
+                    }
+                    None => {
+                        let (statut, media_id, telechargement_id) = statut_effectif(r, &bilan.reponse);
+                        VersionRapprochee { version: p.version.clone(), statut: statut.into(), media_id, telechargement_id, correspondance: r.correspondance.clone(), motif: r.motif.clone(), candidats: r.candidats.clone(), titre_fiche: None, annee_fiche: None }
+                    }
+                },
                 None => VersionRapprochee { version: p.version.clone(), statut: "non_envoye".into(), media_id: None, telechargement_id: None, correspondance: None, motif: Some("pas envoyé (trop gros pour un appel)".into()), candidats: vec![], titre_fiche: None, annee_fiche: None },
             };
             versions.push(v);
@@ -530,6 +634,7 @@ mod tests {
             sha1: None,
             crc32: None,
             entrees: (entrees > 0).then(|| (0..entrees).map(|i| EntreeArchive { nom: format!("e{i}"), crc32: "00000000".into(), taille: 1 }).collect()),
+            chd_sha1: None,
         }
     }
 
@@ -632,7 +737,7 @@ mod tests {
         // Relu depuis le cache : plus rien à lire.
         assert_eq!(annoncer(&p, &cache, PLAFOND_SHA1).connus, 4);
         // La décision jeu par jeu : Zelda exact → rattaché ; Mario probable → à voir ; FF7 (groupe incomplet) → à voir.
-        let r = |cle: &str, statut: &str, media: Option<i64>, groupe: Option<&str>| ResultatFichier { cle: cle.into(), statut: statut.into(), correspondance: None, confiance: 0.0, media_id: media, telechargement_id: None, motif: None, candidats: vec![], groupe: groupe.map(String::from) };
+        let r = |cle: &str, statut: &str, media: Option<i64>, groupe: Option<&str>| ResultatFichier { cle: cle.into(), statut: statut.into(), correspondance: None, confiance: 0.0, media_id: media, telechargement_id: None, motif: None, candidats: vec![], groupe: groupe.map(String::from), machines: vec![] };
         let cle = |j: i64| prets.iter().find(|x| x.jeu == j).unwrap().fichier.cle.clone();
         let g = par(-3).fichier.groupe.clone().unwrap();
         let ff7: Vec<String> = prets.iter().filter(|x| x.jeu == -3).map(|x| x.fichier.cle.clone()).collect();
@@ -649,6 +754,83 @@ mod tests {
         assert_eq!(dec(-2), ("a_voir", None));
         assert_eq!(dec(-3), ("a_voir", None), "un exact dans un groupe incomplet n'est pas rattaché");
         assert_eq!(d.iter().find(|x| x.jeu == -3).unwrap().versions.len(), 1, "les deux disques = une version");
+    }
+
+    /// Contrat 1.22 : un jeu d'arcade et ses CHD (dans `<nom court>\`) partent ensemble, dans un groupe, avec le SHA1
+    /// GLOBAL du CHD (124 octets lus) ; un CHD de console reste hors périmètre.
+    #[test]
+    fn un_jeu_d_arcade_part_avec_ses_chd_et_leur_sha1_global() {
+        let d = tempfile::tempdir().unwrap();
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(d.path().join("raycrisj.zip")).unwrap());
+        zip.start_file("rom.bin", zip::write::SimpleFileOptions::default()).unwrap();
+        std::io::Write::write_all(&mut zip, b"rom").unwrap();
+        zip.finish().unwrap();
+        let mut entete = vec![0u8; 124];
+        entete[..8].copy_from_slice(b"MComprHD");
+        entete[12..16].copy_from_slice(&5u32.to_be_bytes());
+        entete[84..104].copy_from_slice(&[0xab; 20]);
+        std::fs::create_dir_all(d.path().join("raycrisj")).unwrap();
+        std::fs::write(d.path().join("raycrisj").join("raycris.chd"), &entete).unwrap();
+        let jeux = vec![importe(-7, "Arcade", d.path(), Some("raycrisj.zip"), vec![])];
+        let p = inventaire(&jeux);
+        assert_eq!(p.len(), 2);
+        assert!(p[0].fichier.groupe.is_some() && p[0].fichier.groupe == p[1].fichier.groupe, "le zip et son CHD : un groupe");
+        let prets = calculer(p, &Cache::ouvrir(&d.path().join("c.db")).unwrap(), PLAFOND_SHA1, false, &mut |_, _| {});
+        let chd = prets.iter().find(|x| x.fichier.nom == "raycris.chd").unwrap();
+        assert_eq!(chd.fichier.chd_sha1.as_deref(), Some("abababababababababababababababababababab"));
+        assert!(chd.fichier.sha1.is_none(), "jamais dans « sha1 »");
+        assert!(prets.iter().find(|x| x.fichier.nom == "raycrisj.zip").unwrap().fichier.entrees.is_some());
+    }
+
+    /// La DÉCISION sur le relevé réel 1.22 : 2020bb relié (BIOS neogeo absent : signalé) ; fbaitmca relié par SA
+    /// machine (pas le groupe 1.21 « probable »), son disque présent, son BIOS sys573 signalé ; un jeu dont le disque
+    /// n'est pas là : relié mais signalé.
+    #[test]
+    fn la_decision_sur_le_releve_1_22_relie_les_machines_et_dit_ce_qui_manque() {
+        let v: Value = serde_json::from_str(include_str!("../fixtures/simule/reconcilier-122.json")).unwrap();
+        let reponse: Reponse = serde_json::from_value(v["reponse"].clone()).unwrap();
+        let requete: Vec<FichierLocal> = serde_json::from_value(v["requete"]["fichiers"].clone()).unwrap();
+        let d = tempfile::tempdir().unwrap();
+        let prevu = |cle: &str, jeu: i64, version: &str| {
+            let f = requete.iter().find(|x| x.cle == cle).unwrap().clone();
+            Prevu { chemin: d.path().join(&f.nom), nature: crate::empreintes::Nature::Mame, fichier: f, jeu, version: version.into() }
+        };
+        let prets = vec![prevu("zip-fusionne", -1, "a"), prevu("groupe-zip", -2, "b"), prevu("groupe-chd", -2, "b")];
+        let jeux = vec![importe(-1, "Arcade", d.path(), Some("2020bb.zip"), vec![]), importe(-2, "Arcade", d.path(), Some("fbaitmca.zip"), vec![])];
+        let decide = par_jeu(&prets, &Bilan { reponse, non_envoyes: vec![] }, &jeux);
+        let jeu = |id: i64| decide.iter().find(|x| x.jeu == id).unwrap();
+        assert_eq!((jeu(-1).decision.as_str(), jeu(-1).media_id), ("rattache", Some(12984)));
+        assert!(jeu(-1).versions[0].motif.as_deref().unwrap().contains("neogeo (BIOS)"));
+        assert_eq!((jeu(-2).decision.as_str(), jeu(-2).versions[0].telechargement_id), ("rattache", Some(-1_218_799_250_261_530)));
+        let m = jeu(-2).versions[0].motif.clone().unwrap();
+        assert!(m.contains("sys573") && !m.contains("disque"), "disque présent, BIOS absent : {m}");
+        // Le même jeu sans son CHD à côté : le disque est signalé.
+        let sans = Machine { disques: vec![DisqueMachine { nom: "889aa".into(), chd_sha1: None, present: None }], dependances: vec![], ..serde_json::from_value(v["reponse"]["fichiers"][3]["machines"][0].clone()).unwrap() };
+        assert!(manques_machine(&d.path().join("fbaitmca.zip"), &sans).unwrap().contains("le disque 889aa (CHD)"));
+    }
+
+    /// Le relevé RÉEL du contrat 1.22 : la requête se relit à l'identique ; un zip fusionné est « exact » pour SA
+    /// machine (le parent) même si le haut dit « probable » ; un CHD seul donne sa machine ; les BIOS sont vérifiés.
+    #[test]
+    fn le_vrai_releve_1_22_se_lit_machine_par_machine() {
+        let v: Value = serde_json::from_str(include_str!("../fixtures/simule/reconcilier-122.json")).unwrap();
+        let f: Vec<FichierLocal> = serde_json::from_value(v["requete"]["fichiers"].clone()).unwrap();
+        assert_eq!(serde_json::to_value(&f).unwrap(), v["requete"]["fichiers"], "le corps envoyé est exactement celui du relevé");
+        assert_eq!(f[2].chd_sha1.as_deref(), Some("015cb0e6c4421cc38809de28c4793b4491386aee"));
+        let r: Reponse = serde_json::from_value(v["reponse"].clone()).unwrap();
+        let par = |c: &str| r.fichiers.iter().find(|x| x.cle == c).unwrap();
+        assert_eq!(par("zip-fusionne").statut, "probable", "le haut reste à la 1.21");
+        let m = machine_du_fichier("2020bb.zip", par("zip-fusionne")).unwrap();
+        assert_eq!((m.nom_court.as_str(), m.statut.as_str(), m.telechargement_id), ("2020bb", "exact", Some(-1_234_836_732_104_409)));
+        assert_eq!(machine_du_fichier("2020bba.zip", par("zip-clone")).unwrap().nom_court, "2020bba");
+        assert_eq!(machine_du_fichier("disque.chd", par("chd-seul")).unwrap().nom_court, "raycrisj", "un seul : celle-là");
+        assert_eq!(machine_du_fichier("disque.chd", par("groupe-chd")).map(|m| m.nom_court.as_str()), None, "plusieurs machines, aucune au nom du fichier");
+        // Le BIOS neogeo : à côté du zip, ou signalé manquant.
+        let d = tempfile::tempdir().unwrap();
+        let zip = d.path().join("2020bb.zip");
+        assert_eq!(dependances_absentes(&zip, &m.dependances), ["neogeo (BIOS)"]);
+        std::fs::write(d.path().join("neogeo.zip"), b"x").unwrap();
+        assert!(dependances_absentes(&zip, &m.dependances).is_empty());
     }
 
     #[test]
@@ -686,7 +868,7 @@ mod tests {
         let v = |n: &str| crate::jeux_pc::VersionLocale { chemin: d.path().join(n).to_string_lossy().into(), libelle: String::new(), rang: 0, qualite: 0, disques: vec![] };
         let jeux = vec![importe(-1, "Nintendo Entertainment System", d.path(), None, vec![v("A (E).nes"), v("A (U).nes")])];
         let prets = calculer(inventaire(&jeux), &Cache::ouvrir(&d.path().join("c.db")).unwrap(), PLAFOND_SHA1, false, &mut |_, _| {});
-        let r = |cle: &str, media: i64| ResultatFichier { cle: cle.into(), statut: "exact".into(), correspondance: None, confiance: 1.0, media_id: Some(media), telechargement_id: None, motif: None, candidats: vec![], groupe: None };
+        let r = |cle: &str, media: i64| ResultatFichier { cle: cle.into(), statut: "exact".into(), correspondance: None, confiance: 1.0, media_id: Some(media), telechargement_id: None, motif: None, candidats: vec![], groupe: None, machines: vec![] };
         let bilan = Bilan { reponse: Reponse { fichiers: vec![r(&prets[0].fichier.cle, 1), r(&prets[1].fichier.cle, 2)], groupes: vec![] }, non_envoyes: vec![] };
         assert_eq!(par_jeu(&prets, &bilan, &jeux)[0].decision, "a_voir");
     }

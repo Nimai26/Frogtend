@@ -534,6 +534,16 @@ d'abord :
 
 ## ✅ Livré (version — ce qui a été vérifié)
 
+- **0.84.2** (20/10) — Contrat 1.22 (besoin 29 ; relevé réel exact rangé : `fixtures/simule/reconcilier-122.json`).
+  Arcade : verdict de LA machine du zip (le parent d'un zip fusionné), pas le groupe 1.21 ; BIOS / périphériques
+  cherchés à côté du zip, disques (CHD) `present`, `complet_chez_nous` : dits dans le motif sans empêcher « exact » ;
+  CHD d'arcade (`<dossier>\<nom court>\`) envoyés avec leur zip, SHA1 GLOBAL lu dans l'en-tête (v3/v4/v5), jamais
+  dans `sha1` ; CHD hors arcade : toujours écartés. Vérifié : tests (cœur 436 : relevé relu à l'identique, décision
+  sur le relevé, CHD v3/v4/v5) ; essai réel : 30 premiers zips MAME de Seb → 16 exact (4 avant), 14 inconnus
+  (machines absentes du romset de Firehouse). Relecture de l'expert contrat : disques manquants ajoutés au motif.
+  NON vérifié : un vrai CHD d'arcade (Seb n'en a aucun) ; un BIOS rangé ailleurs (autre `rompath`) serait signalé à
+  tort.
+
 - **0.84.1** (20/10) — Lot 4 de la réconciliation (avis des experts contrat et interface ; choix de Seb du 20/10).
   Cœur : `reliees`/`fiche_de` (fiche suivie par `reuni_vers`, vue par CE profil ; jamais pour une fiche aussi
   téléchargée : l'import reste alors un jeu à part) ; « Ma ludothèque » montre la FICHE et masque la ligne importée ;

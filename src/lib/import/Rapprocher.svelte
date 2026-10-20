@@ -243,6 +243,7 @@
           <li>
             <div>
               <strong>{j.titre}</strong> <span class="muted">— {j.plateforme} · {j.rattache_par === 'personne' ? 'relié par toi' : 'reconnu à coup sûr'}</span>
+              {#if j.versions[0]?.motif}<p class="muted">⚠ {texteMotif(j.versions[0].motif)}</p>{/if}
             </div>
             <button class="btn" onclick={() => defaire(j, i)} disabled={occupe}>Ne plus relier</button>
           </li>

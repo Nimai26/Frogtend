@@ -460,8 +460,8 @@ Reçu par message de la session Firehouse (référence : BRIEF § « 1.22 » et 
   (bios), haut probable / nom ; 2020bba.zip → 2020bba seul exact ; CHD seul 015cb0e6… → raycrisj exact (bios
   coh3002t) ; groupe fbaitmca.zip + CHD 0b567bf2… → CHD tranché sur fbaitmca, present = true, groupe probable.
   media_id : 2020bb 12984 (telechargement_id parent -1234836732104409, 2020bba -1047494276407722, 2020bbh
-  -1195061964255313) ; raycrisj 12484 / -1281373763000399 ; fbaitmca 15103 / -1218799250261530. JSON exact demandé à
-  Firehouse (pas encore dans ce dépôt).
+  -1195061964255313) ; raycrisj 12484 / -1281373763000399 ; fbaitmca 15103 / -1218799250261530. JSON exact reçu le
+  20/10 : `src-tauri/fixtures/simule/reconcilier-122.json`.
 
 ### Note 2.58.0 (contrat inchangé)
 Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a été RÉUNIE à celle du même jeu
