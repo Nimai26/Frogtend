@@ -48,6 +48,10 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Jeux Steam et GOG (0.83.0)
+- [ ] 🛒 Boutiques ▸ Steam : un jeu en cours de téléchargement dans Steam n'apparaît PAS comme installé ; il le
+      devient quand Steam a fini.
+
 ## Progression d'un mod (0.82.3)
 - [ ] Installer un mod un peu gros (quelques dizaines de Mo) : en bas, l'étape change (Téléchargement →
       Décompression → Pose dans le jeu), la barre avance, la vitesse et « encore … » s'affichent ; un clic ne ferme

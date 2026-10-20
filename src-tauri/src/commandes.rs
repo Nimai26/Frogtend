@@ -1993,9 +1993,14 @@ pub async fn boutique_steam_jeux(noyau: State<'_, Noyau>) -> Resultat<Vec<crate:
     let p = profil_ouvert(&noyau).await?;
     let mut l = crate::boutiques::lire(&dossier_profil_de(&noyau, &p.id)).map(|c| c.jeux).unwrap_or_default();
     if let Some(d) = crate::boutiques::dossier_steam() {
-        let installes = crate::boutiques::installes_steam(&d);
+        // Installés (sur le disque, même si une mise à jour attend ; jamais pendant le 1er téléchargement), avec leur
+        // dossier et s'ils sont prêts à lancer.
+        let installes = crate::boutiques::installes_steam_dossiers(&d);
         for j in &mut l {
-            j.installe = installes.contains(&j.id);
+            let i = installes.get(&j.id);
+            j.dossier = i.map(|i| i.dossier.to_string_lossy().into_owned());
+            j.pret = i.map(|i| i.pret);
+            j.installe = i.is_some();
         }
     }
     Ok(l)

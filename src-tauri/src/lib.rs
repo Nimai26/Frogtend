@@ -41,6 +41,7 @@ pub mod pilotage;
 pub mod mods;
 pub mod nexus;
 pub mod sept_z;
+pub mod registre;
 pub mod patchs_ps3;
 pub mod plein_ecran;
 pub mod profils;

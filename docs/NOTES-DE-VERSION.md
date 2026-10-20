@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.83.0 — Frogtend sait où sont tes jeux Steam et GOG
+
+- Un jeu Steam n'est plus dit « installé » pendant qu'il se télécharge ou se met à jour : seulement quand il est prêt
+  à jouer.
+- Frogtend connaît maintenant le dossier de tes jeux Steam et GOG installés (il le lit, sans jamais rien y écrire).
+  C'est la première marche pour suivre tes parties de ces jeux, puis pour leurs mods et leurs triches.
+- Un chemin de Steam avec des accents est maintenant lu correctement.
+
 ## 0.82.3 — On voit où en est l'installation d'un mod
 
 - Pendant l'installation d'un mod, le message en bas de l'écran montre maintenant l'étape (téléchargement,

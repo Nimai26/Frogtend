@@ -7,6 +7,29 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- **Jeux PC des boutiques — vrais jeux du PC** (Seb, 20/10 : « gérer l'installation, le lancement, les succès, les
+  mods… »). État au 20/10 : Frogtend importe la liste (Steam par l'API, Galaxy pour GOG + Epic/Xbox/Ubisoft/EA/Amazon
+  reliés) et OUVRE le jeu dans sa boutique, rien de plus : pas de dossier d'installation lu, pas de suivi de partie
+  (ni session Firehouse, ni menu en jeu, ni manette→clavier), pas de mods/triches/abris, pas dans la grille Taodbox,
+  pas de fiche. ✅ Seb 20/10 : **Galaxy reste la porte d'entrée** (Frogtend guide la liaison des comptes ; connexions
+  directes plus tard si besoin) ; ordre **A** (dossier d'installation, fin d'installation, lancement par la boutique
+  puis partie SUIVIE : session, temps, menu en jeu, manette→clavier, grille Taodbox) → **B** (mods, triches, Cheat
+  Engine, abris ; `steam_appid` pour la recherche ; jamais avec un anti-triche) → **C** (succès en détail) → **D**
+  (fiche par la base LaunchBox de Firehouse).
+  Avis de l'expert lancement (20/10, relevés réels en lecture seule) : inscrire ces jeux au REGISTRE du PC (sinon il
+  faut tout recopier) avec : `JeuPc.dossier` = `<données>outiques\<id>` (médias : pas de pieuvre), `Installation.
+  dossier` = le dossier de la boutique, JAMAIS écrit ni effacé ; marqueur `boutique` en `#[serde(default)]` (pas une
+  nouvelle `Methode`) et `est_de_boutique` (revoir chaque `est_importe`) ; lancement TOUJOURS par la boutique (Steam
+  `steam://rungameid`, GOG `GalaxyClient.exe /command=runGame /gameId= /path=` — doc non officielle, à vérifier ;
+  jamais l'exe direct : sauvegardes nuage) ; suivi PAR DOSSIER sans racine (attente « la boutique prépare le jeu »,
+  relances absorbées, fin après K relevés vides ; session et temps depuis l'APPARITION du jeu) ; quitter / rendre la
+  main / Cheat Engine par les processus du DOSSIER ; `dans_un_dossier` à corriger (séparateur, racine) ; figer non par
+  défaut ; jeu lancé en administrateur : le dire. Découpage : **A1** lire (Steam `installdir` + `StateFlags`,
+  bibliothèques dédoublonnées, registre par l'API ; Galaxy `installationPath`) → **A2** registre → **A3** suivi par
+  dossier → **A4** lancer → **A5** interface + Taodbox → **A6** Epic par ses manifestes `.item` (Xbox, Ubisoft, EA,
+  Amazon : plus tard). Relevés : `InstalledExternalProducts` n'a AUCUN chemin ; une PlayTask ne prouve pas
+  l'installation ; Steam : registre `d:/launchbox/games/steam` et vdf `D:\LaunchBox\Games\Steam` (double lecture).
+
 - **Suites du lot Nexus (0.82.0 livré)** — à faire, dans l'ordre :
   - ✅ Seb 20/10 : « pas besoin de question » — les liens nxm:// restent pris d'office (installeur ou mise à jour,
     une seule fois), même si Vortex / Mod Organizer les avait. Ne plus le redemander.
@@ -434,6 +457,10 @@ d'abord :
       dans CONTRAT-API-JEUX-V1.md § 1.21). Seb a dit (20/10) qu'il le rappelait à Firehouse. Index : sha1 des
       cartouches prêt ; contenu des archives vers 20 h 05 ; signatures MAME dans la soirée. Coder APRÈS le relevé
       réel promis par Firehouse (règle de Seb : forme exacte + vrai échantillon) ; premier essai après ~20 h 30.
+      ✅ RELEVÉ RÉEL reçu (20/10 soir, Firehouse 2.90.1 ; index complets : 16 511/16 512 archives, 8 322 signatures
+      MAME) → `fixtures/simule/reconcilier-releve.json` : exact sha1 / contenu / mame_ensemble, MAME autre version =
+      probable « nom » 0,6 avec media_id, inconnu, groupe probable (manquants 1, media_id null). N'existent pas dans les
+      vraies données : « plusieurs candidats » (0,5) et groupe .cue+.bin (aucun disque dans le stock).
 
 ## 💡 Idées notées — PAS démarrées
 
@@ -463,6 +490,13 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.83.0** (20/10) — Jeux de boutique, lot A1 « lire sans lancer » (avis de l'expert lancement) : registre de
+  Windows lu par son API (`registre.rs`, jamais `reg.exe`, jamais d'écriture) ; bibliothèques Steam dédoublonnées ;
+  manifestes Steam lus (`installdir` sûr, `StateFlags` : « installé » = bit 4, « prêt » = rien en attente — un jeu en
+  « mise à jour au lancement » reste installé, le 1er téléchargement non) ; dossier des jeux GOG (`installationPath`,
+  gardé s'il existe) ; Galaxy cherché sous %ProgramData%. Vérifié : tests (419) ; essai réel en lecture seule : 1
+  bibliothèque Steam (au lieu de 2), 11 jeux avec dossier, 2 jeux GOG avec dossier. Rien inscrit ni lancé (A2+).
 
 - **0.82.3** (20/10) — Progression d'une installation de mod (avis de l'expert interface) : le cœur émet `mod-progres`
   {suivi, étape, faits, total, débit} au plus toutes les 400 ms (débit calculé par le cœur ; décompression zip et 7z,

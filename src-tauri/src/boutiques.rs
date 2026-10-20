@@ -38,6 +38,14 @@ pub struct JeuBoutique {
     /// La jaquette (adresse publique), quand la source la donne.
     #[serde(default)]
     pub image: Option<String>,
+    /// Le dossier d'installation sur CE PC, quand la boutique le dit (Steam : manifeste ; GOG : base de Galaxy). Lu
+    /// seulement : Frogtend n'écrit, ne retire et ne désinstalle JAMAIS rien dans ce dossier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dossier: Option<String>,
+    /// Prêt à lancer tout de suite (Steam : aucune mise à jour en attente ni en cours) ; `None` : la boutique ne le dit
+    /// pas.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pret: Option<bool>,
     /// Succès (obtenus, total) connus de GOG Galaxy (`UserAchievements`) : GOG, Steam, Xbox, EA — pas Epic, que
     /// Galaxy ne synchronise pas (relevé le 02/10).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -133,6 +141,8 @@ pub async fn jeux_possedes(base: &str, cle: &str, steamid: &str) -> Resultat<Vec
                 installe: false,
                 plateforme: String::new(),
                 image: None,
+                dossier: None,
+                pret: None,
                 succes: None,
             })
         })
@@ -141,15 +151,22 @@ pub async fn jeux_possedes(base: &str, cle: &str, steamid: &str) -> Resultat<Vec
     Ok(l)
 }
 
-/// Les bibliothèques Steam de ce PC (`libraryfolders.vdf`, lignes `"path" "D:\\SteamLibrary"`).
+/// Une forme comparable d'un chemin Windows (« / » ou « \ », majuscules, séparateur final) : le registre donne
+/// `d:/launchbox/games/steam` et le vdf `D:\LaunchBox\Games\Steam` pour le MÊME dossier (relevé sur Venkman, 20/10).
+fn cle_chemin(p: &Path) -> String {
+    p.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase()
+}
+
+/// Les bibliothèques Steam de ce PC (`libraryfolders.vdf`, lignes `"path" "D:\\SteamLibrary"`), chacune une fois.
 pub fn bibliotheques_steam(dossier_steam: &Path) -> Vec<PathBuf> {
     let mut l = vec![dossier_steam.to_path_buf()];
-    let vdf = std::fs::read_to_string(dossier_steam.join("steamapps").join("libraryfolders.vdf")).unwrap_or_default();
+    // Lu en octets : un vdf qui ne serait pas tout à fait de l'UTF-8 ne fait pas perdre toutes les bibliothèques.
+    let vdf = std::fs::read(dossier_steam.join("steamapps").join("libraryfolders.vdf")).map(|o| String::from_utf8_lossy(&o).into_owned()).unwrap_or_default();
     for ligne in vdf.lines() {
         let morceaux: Vec<&str> = ligne.split('"').collect();
         if morceaux.len() >= 4 && morceaux[1].eq_ignore_ascii_case("path") {
             let p = PathBuf::from(morceaux[3].replace("\\\\", "\\"));
-            if !l.contains(&p) {
+            if !l.iter().any(|x| cle_chemin(x) == cle_chemin(&p)) {
                 l.push(p);
             }
         }
@@ -157,27 +174,77 @@ pub fn bibliotheques_steam(dossier_steam: &Path) -> Vec<PathBuf> {
     l
 }
 
-/// Les jeux Steam installés sur ce PC (un `appmanifest_<appid>.acf` dans une bibliothèque).
-pub fn installes_steam(dossier_steam: &Path) -> BTreeSet<String> {
-    let mut s = BTreeSet::new();
+/// Ce qu'un `appmanifest_<appid>.acf` dit d'un jeu : son numéro, son dossier (UN nom, sous `steamapps\common`) et son
+/// état (`StateFlags`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ManifesteSteam {
+    pub appid: String,
+    pub installdir: String,
+    pub etat: u64,
+}
+
+/// Lit les clés simples d'un manifeste Steam (format texte de Valve : `"clé"  "valeur"`, une par ligne).
+pub fn lire_manifeste_steam(texte: &str) -> Option<ManifesteSteam> {
+    let valeur = |cle: &str| {
+        texte.lines().find_map(|l| {
+            let m: Vec<&str> = l.split('"').collect();
+            (m.len() >= 4 && m[1].eq_ignore_ascii_case(cle)).then(|| m[3].to_string())
+        })
+    };
+    Some(ManifesteSteam { appid: valeur("appid").filter(|a| !a.is_empty() && a.chars().all(|c| c.is_ascii_digit()))?, installdir: valeur("installdir")?, etat: valeur("StateFlags")?.parse().ok()? })
+}
+
+/// Un jeu Steam prêt à jouer : entièrement installé (bit 4 de `StateFlags`) et rien en cours (mise à jour requise ou
+/// en cours, fichiers manquants ou abîmés, désinstallation, vérification, téléchargement…). Valeurs de `EAppState`
+/// (SteamKit) ; « Encrypted » (8, un pré-chargement pas encore jouable) empêche aussi ; « AppRunning » (64) et
+/// « Locked » (16) n'empêchent pas.
+pub fn steam_pret(etat: u64) -> bool {
+    const EMPECHE: u64 = 2 | 8 | 32 | 128 | 256 | 512 | 1024 | 2048 | 4096 | 65536 | 131072 | 262144 | 524288 | 1048576 | 2097152 | 4194304 | 8388608;
+    etat & 4 != 0 && etat & EMPECHE == 0
+}
+
+/// Un jeu Steam INSTALLÉ (bit 4) : il est sur le disque, même si une mise à jour l'attend (« mettre à jour au
+/// lancement » : 6) ; s'il n'est pas `steam_pret`, Steam le mettra à jour au lancement.
+pub fn steam_installe(etat: u64) -> bool {
+    etat & 4 != 0
+}
+
+/// Un jeu Steam installé sur ce PC : son dossier et s'il est prêt à lancer tout de suite.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InstalleSteam {
+    pub dossier: PathBuf,
+    pub pret: bool,
+}
+
+/// Les jeux Steam installés sur ce PC, avec leur dossier : `<bibliothèque>\steamapps\common\<installdir>`, où
+/// `installdir` doit être UN nom sûr (jamais vide, jamais « .. ») et le dossier exister.
+pub fn installes_steam_dossiers(dossier_steam: &Path) -> std::collections::BTreeMap<String, InstalleSteam> {
+    let mut s = std::collections::BTreeMap::new();
     for b in bibliotheques_steam(dossier_steam) {
         let Ok(entrees) = std::fs::read_dir(b.join("steamapps")) else { continue };
         for e in entrees.flatten() {
             let n = e.file_name().to_string_lossy().to_string();
-            if let Some(id) = n.strip_prefix("appmanifest_").and_then(|r| r.strip_suffix(".acf")) {
-                s.insert(id.to_string());
+            if !(n.starts_with("appmanifest_") && n.ends_with(".acf")) || !e.metadata().is_ok_and(|m| m.len() <= 1024 * 1024) {
+                continue;
+            }
+            let Some(m) = std::fs::read(e.path()).ok().and_then(|o| lire_manifeste_steam(&String::from_utf8_lossy(&o))) else { continue };
+            if !steam_installe(m.etat) || crate::jeux_pc::nom_de_fichier_sur(&m.installdir).is_err() {
+                continue;
+            }
+            let dossier = b.join("steamapps").join("common").join(&m.installdir);
+            if dossier.is_dir() {
+                s.insert(m.appid, InstalleSteam { dossier, pret: steam_pret(m.etat) });
             }
         }
     }
     s
 }
 
-/// Le dossier de Steam sur ce PC (registre `HKCU\Software\Valve\Steam`, valeur `SteamPath`, en LECTURE), sinon son
-/// dossier habituel.
+
+/// Le dossier de Steam sur ce PC (registre `HKCU\Software\Valve\Steam`, valeur `SteamPath`, LU par l'API de Windows :
+/// un chemin accentué reste juste), sinon son dossier habituel.
 pub fn dossier_steam() -> Option<PathBuf> {
-    let o = crate::lancement::outil_sans_fenetre("reg").args(["query", r"HKCU\Software\Valve\Steam", "/v", "SteamPath"]).output().ok()?;
-    let texte = String::from_utf8_lossy(&o.stdout);
-    let lu = texte.lines().find(|l| l.contains("SteamPath")).and_then(|l| l.split("REG_SZ").nth(1)).map(|v| PathBuf::from(v.trim().replace('/', "\\")));
+    let lu = crate::registre::lire_texte_hkcu(r"Software\Valve\Steam", "SteamPath").map(|v| PathBuf::from(v.trim().replace('/', "\\")));
     lu.filter(|p| p.is_dir()).or_else(|| {
         let p = PathBuf::from(r"C:\Program Files (x86)\Steam");
         p.is_dir().then_some(p)
@@ -228,7 +295,8 @@ pub const API_STEAM: &str = API;
 /// `GameTimes(minutesInGame)`, `LastPlayedDates(lastPlayedDate)`, `InstalledBaseProducts(productId)` (GOG),
 /// `InstalledExternalProducts(productId)` (les autres). La base est TOUJOURS lue sur une copie.
 pub fn dossier_galaxy() -> Option<PathBuf> {
-    let p = PathBuf::from(r"C:\ProgramData\GOG.com\Galaxy\storage");
+    // Toujours sous les données communes de Windows (pas un dossier écrit en dur : `%ProgramData%`).
+    let p = PathBuf::from(std::env::var_os("ProgramData")?).join("GOG.com").join("Galaxy").join("storage");
     p.join("galaxy-2.0.db").is_file().then_some(p)
 }
 
@@ -271,8 +339,14 @@ pub fn lire_galaxy(storage: &Path, travail: &Path) -> Resultat<Vec<JeuBoutique>>
             piece("title"),
             piece("originalImages")
         );
-        let installes_gog: BTreeSet<String> =
-            c.prepare("SELECT productId FROM InstalledBaseProducts")?.query_map([], |r| r.get::<_, i64>(0))?.flatten().map(|id| format!("gog_{id}")).collect();
+        // Les jeux GOG installés et leur dossier (`installationPath`, relevé le 20/10 : « D:\LaunchBox\Games\GOG
+        // Galaxy\Games\Horizon Zero Dawn ») ; les jeux des autres boutiques n'ont AUCUN chemin dans Galaxy.
+        let dossiers_gog: std::collections::HashMap<String, Option<String>> = c
+            .prepare("SELECT productId, installationPath FROM InstalledBaseProducts")?
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Option<String>>(1)?)))?
+            .flatten()
+            .map(|(id, p)| (format!("gog_{id}"), p.filter(|p| Path::new(p).is_dir())))
+            .collect();
         let installes_autres: BTreeSet<String> =
             c.prepare("SELECT productId FROM InstalledExternalProducts")?.query_map([], |r| r.get::<_, String>(0))?.flatten().collect();
         // Les succès (table présente seulement si Galaxy en a synchronisé).
@@ -296,9 +370,10 @@ pub fn lire_galaxy(storage: &Path, travail: &Path) -> Resultat<Vec<JeuBoutique>>
                 let minutes = r.get::<_, Option<i64>>(4)?.unwrap_or(0).max(0) as u64;
                 let derniere = r.get::<_, Option<String>>(5)?.and_then(|d| date_en_secondes(&d)).unwrap_or(0);
                 let (prefixe, id) = cle.split_once('_').unwrap_or(("", &cle));
-                let installe = installes_gog.contains(&cle) || (prefixe != "gog" && installes_autres.contains(id));
+                let installe = dossiers_gog.contains_key(&cle) || (prefixe != "gog" && installes_autres.contains(id));
+                let dossier = dossiers_gog.get(&cle).cloned().flatten();
                 let succes = succes.get(&cle).copied().filter(|(_, total)| *total > 0);
-                Ok(JeuBoutique { id: cle.clone(), nom, minutes, derniere, installe, plateforme: prefixe.to_string(), image, succes })
+                Ok(JeuBoutique { id: cle.clone(), nom, minutes, derniere, installe, plateforme: prefixe.to_string(), image, dossier, pret: None, succes })
             })?
             .flatten()
             .collect::<Vec<_>>();
@@ -453,10 +528,34 @@ mod tests {
             format!("\"libraryfolders\"\n{{\n\t\"0\"\n\t{{\n\t\t\"path\"\t\t\"{}\"\n\t}}\n\t\"1\"\n\t{{\n\t\t\"path\"\t\t\"{}\"\n\t}}\n}}\n",
                 steam.display().to_string().replace('\\', "\\\\"), autre.display().to_string().replace('\\', "\\\\")),
         ).unwrap();
-        std::fs::write(steam.join("steamapps/appmanifest_620.acf"), "x").unwrap();
-        std::fs::write(autre.join("steamapps/appmanifest_400.acf"), "x").unwrap();
-        let s = installes_steam(&steam);
-        assert!(s.contains("620") && s.contains("400") && s.len() == 2);
+        let manifeste = |appid: &str, dir: &str, etat: u64| format!("\"AppState\"\n{{\n\t\"appid\"\t\t\"{appid}\"\n\t\"StateFlags\"\t\t\"{etat}\"\n\t\"installdir\"\t\t\"{dir}\"\n}}\n");
+        std::fs::write(steam.join("steamapps/appmanifest_620.acf"), manifeste("620", "Portal 2", 4)).unwrap();
+        std::fs::write(autre.join("steamapps/appmanifest_400.acf"), manifeste("400", "Portal", 4 | 64)).unwrap();
+        // En cours de téléchargement (1048576) : pas prêt. Un dossier « .. » : refusé. Dossier absent : rien.
+        std::fs::write(autre.join("steamapps/appmanifest_500.acf"), manifeste("500", "Left 4 Dead", 4 | 1_048_576)).unwrap();
+        std::fs::write(autre.join("steamapps/appmanifest_501.acf"), manifeste("501", "..", 4)).unwrap();
+        std::fs::write(autre.join("steamapps/appmanifest_502.acf"), manifeste("502", "Absent", 4)).unwrap();
+        for (b, dir) in [(&steam, "Portal 2"), (&autre, "Portal"), (&autre, "Left 4 Dead")] {
+            std::fs::create_dir_all(b.join("steamapps/common").join(dir)).unwrap();
+        }
+        let s = installes_steam_dossiers(&steam);
+        assert_eq!(s.keys().collect::<Vec<_>>(), ["400", "500", "620"], "en mise à jour : installé quand même");
+        assert_eq!(s["400"].dossier, autre.join("steamapps/common/Portal"), "jamais « Portal 2 » pour « Portal »");
+        assert!(s["400"].pret && s["620"].pret && !s["500"].pret);
+        assert!(lire_manifeste_steam("\"appid\" \"12a\"\n\"installdir\" \"x\"\n\"StateFlags\" \"4\"").is_none());
+        assert!(steam_pret(4) && steam_pret(4 | 64) && !steam_pret(6) && !steam_pret(1) && !steam_pret(4 | 1024) && !steam_pret(4 | 8));
+        assert!(steam_installe(6) && !steam_installe(1) && !steam_installe(1_048_576), "mise à jour au lancement : installé ; 1er téléchargement : non");
+    }
+
+    #[test]
+    fn une_bibliotheque_steam_ecrite_deux_fois_n_est_lue_qu_une_fois() {
+        let d = tempfile::tempdir().unwrap();
+        let steam = d.path().join("Steam");
+        std::fs::create_dir_all(steam.join("steamapps")).unwrap();
+        // Le registre donne « d:/…/steam », le vdf « D:\…\Steam » : le même dossier.
+        let autre_forme = steam.to_string_lossy().to_uppercase().replace('\\', "\\\\");
+        std::fs::write(steam.join("steamapps/libraryfolders.vdf"), format!("\"0\"\n{{\n\t\"path\"\t\t\"{autre_forme}\\\\\"\n}}\n")).unwrap();
+        assert_eq!(bibliotheques_steam(&steam).len(), 1);
     }
 
     #[test]
@@ -470,8 +569,15 @@ mod tests {
             *par.entry(nom_plateforme(&j.plateforme).to_string()).or_default() += 1;
         }
         println!("par boutique : {par:?}");
-        for j in l.iter().filter(|j| j.installe).take(6) {
-            println!("installé : {} [{}] {} min, image={}", j.nom, j.plateforme, j.minutes, j.image.is_some());
+        for j in l.iter().filter(|j| j.installe) {
+            println!("installé : {} [{}] {} min, image={}, dossier={:?}", j.nom, j.plateforme, j.minutes, j.image.is_some(), j.dossier);
+        }
+        // Steam, en lecture seule aussi : le dossier par le registre (API), les jeux prêts et leur dossier.
+        if let Some(s) = dossier_steam() {
+            println!("Steam : {} ; bibliothèques {:?}", s.display(), bibliotheques_steam(&s));
+            for (id, i) in installes_steam_dossiers(&s) {
+                println!("Steam installé : {id} → {} (prêt : {})", i.dossier.display(), i.pret);
+            }
         }
         println!("avec jaquette : {}", l.iter().filter(|j| j.image.is_some()).count());
     }
@@ -570,6 +676,8 @@ mod tests {
         let l = lire_galaxy(&stock, &d.path().join("copie")).unwrap();
         assert_eq!(l.iter().map(|j| j.nom.as_str()).collect::<Vec<_>>(), ["Cyberpunk 2077", "Fortnite"], "DLC et caché écartés");
         assert!(l[0].installe && l[0].minutes == 92 && l[0].derniere == 1_651_263_802);
+        assert_eq!(l[0].dossier, None, "un dossier noté par Galaxy mais absent du disque n'est pas gardé");
+        assert_eq!(l[1].dossier, None, "Galaxy ne note aucun chemin pour les autres boutiques");
         assert_eq!(l[0].image.as_deref(), Some("https://images.gog.com/a.webp"));
         assert!(l[1].installe && l[1].plateforme == "epic");
         assert_eq!(l[0].succes, Some((1, 3)), "succès lus dans Galaxy");

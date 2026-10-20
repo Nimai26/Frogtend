@@ -1,0 +1,377 @@
+{
+ "_source": "Relevé RÉEL de POST /api/jeux/v1/reconcilier (contrat 1.21), envoyé par Firehouse 2.90.1 le 20/10 (visibilité d'un compte utilisateur). Seule modification : les `entrees` de `mame-autre-version`, abrégées dans le message, sont reconstituées comme Firehouse l'a décrit (les 22 dernières entrées de mame-exact).",
+ "requete": {
+  "fichiers": [
+   {
+    "cle": "sha1-cartouche",
+    "plateforme": "Super Nintendo Entertainment System",
+    "nom": "'96 Zenkoku Koukou Soccer Senshuken (Japan).7z",
+    "taille": 716309,
+    "sha1": "5aad0119620440a990cb03a24edc4f3f042fb799"
+   },
+   {
+    "cle": "contenu-archive",
+    "plateforme": "Super Nintendo Entertainment System",
+    "nom": "2020 Super Baseball (Japan).7z.copie.7z",
+    "taille": 1,
+    "entrees": [
+     {
+      "nom": "2020 Super Baseball (Japan).sfc",
+      "crc32": "e95a3dd7",
+      "taille": 1572864
+     }
+    ]
+   },
+   {
+    "cle": "mame-exact",
+    "plateforme": "Arcade",
+    "nom": "005.zip",
+    "taille": 29767,
+    "entrees": [
+     {
+      "nom": "1346b.cpu-u25",
+      "crc32": "8e68533e",
+      "taille": 2048
+     },
+     {
+      "nom": "5092.prom-u1",
+      "crc32": "29e10a81",
+      "taille": 2048
+     },
+     {
+      "nom": "5093.prom-u2",
+      "crc32": "e1edc3df",
+      "taille": 2048
+     },
+     {
+      "nom": "5094.prom-u3",
+      "crc32": "995773bb",
+      "taille": 2048
+     },
+     {
+      "nom": "5095.prom-u4",
+      "crc32": "f887f575",
+      "taille": 2048
+     },
+     {
+      "nom": "5096.prom-u5",
+      "crc32": "5545241e",
+      "taille": 2048
+     },
+     {
+      "nom": "5097.prom-u6",
+      "crc32": "428edb54",
+      "taille": 2048
+     },
+     {
+      "nom": "5098.prom-u7",
+      "crc32": "5bcb9d63",
+      "taille": 2048
+     },
+     {
+      "nom": "5099.prom-u8",
+      "crc32": "0ea24ba3",
+      "taille": 2048
+     },
+     {
+      "nom": "5100.prom-u9",
+      "crc32": "a79af131",
+      "taille": 2048
+     },
+     {
+      "nom": "5101.prom-u10",
+      "crc32": "8a1cdae0",
+      "taille": 2048
+     },
+     {
+      "nom": "5102.prom-u11",
+      "crc32": "70826a15",
+      "taille": 2048
+     },
+     {
+      "nom": "5103.prom-u12",
+      "crc32": "7f80c5b0",
+      "taille": 2048
+     },
+     {
+      "nom": "5104.prom-u13",
+      "crc32": "0140930e",
+      "taille": 2048
+     },
+     {
+      "nom": "5105.prom-u14",
+      "crc32": "17807a05",
+      "taille": 2048
+     },
+     {
+      "nom": "5106.prom-u15",
+      "crc32": "c7cdfa9d",
+      "taille": 2048
+     },
+     {
+      "nom": "5107.prom-u16",
+      "crc32": "95f8a2e6",
+      "taille": 2048
+     },
+     {
+      "nom": "5108.prom-u17",
+      "crc32": "d371cacd",
+      "taille": 2048
+     },
+     {
+      "nom": "5109.prom-u18",
+      "crc32": "48a20617",
+      "taille": 2048
+     },
+     {
+      "nom": "5110.prom-u19",
+      "crc32": "7d26111a",
+      "taille": 2048
+     },
+     {
+      "nom": "5111.prom-u20",
+      "crc32": "a888e175",
+      "taille": 2048
+     },
+     {
+      "nom": "6331.sound-u8",
+      "crc32": "1d298cb0",
+      "taille": 32
+     },
+     {
+      "nom": "epr-1286.sound-16",
+      "crc32": "fbe0d501",
+      "taille": 2048
+     }
+    ]
+   },
+   {
+    "cle": "mame-autre-version",
+    "plateforme": "Arcade",
+    "nom": "005.zip",
+    "taille": 29766,
+    "entrees": [
+     {
+      "nom": "5092.prom-u1",
+      "crc32": "29e10a81",
+      "taille": 2048
+     },
+     {
+      "nom": "5093.prom-u2",
+      "crc32": "e1edc3df",
+      "taille": 2048
+     },
+     {
+      "nom": "5094.prom-u3",
+      "crc32": "995773bb",
+      "taille": 2048
+     },
+     {
+      "nom": "5095.prom-u4",
+      "crc32": "f887f575",
+      "taille": 2048
+     },
+     {
+      "nom": "5096.prom-u5",
+      "crc32": "5545241e",
+      "taille": 2048
+     },
+     {
+      "nom": "5097.prom-u6",
+      "crc32": "428edb54",
+      "taille": 2048
+     },
+     {
+      "nom": "5098.prom-u7",
+      "crc32": "5bcb9d63",
+      "taille": 2048
+     },
+     {
+      "nom": "5099.prom-u8",
+      "crc32": "0ea24ba3",
+      "taille": 2048
+     },
+     {
+      "nom": "5100.prom-u9",
+      "crc32": "a79af131",
+      "taille": 2048
+     },
+     {
+      "nom": "5101.prom-u10",
+      "crc32": "8a1cdae0",
+      "taille": 2048
+     },
+     {
+      "nom": "5102.prom-u11",
+      "crc32": "70826a15",
+      "taille": 2048
+     },
+     {
+      "nom": "5103.prom-u12",
+      "crc32": "7f80c5b0",
+      "taille": 2048
+     },
+     {
+      "nom": "5104.prom-u13",
+      "crc32": "0140930e",
+      "taille": 2048
+     },
+     {
+      "nom": "5105.prom-u14",
+      "crc32": "17807a05",
+      "taille": 2048
+     },
+     {
+      "nom": "5106.prom-u15",
+      "crc32": "c7cdfa9d",
+      "taille": 2048
+     },
+     {
+      "nom": "5107.prom-u16",
+      "crc32": "95f8a2e6",
+      "taille": 2048
+     },
+     {
+      "nom": "5108.prom-u17",
+      "crc32": "d371cacd",
+      "taille": 2048
+     },
+     {
+      "nom": "5109.prom-u18",
+      "crc32": "48a20617",
+      "taille": 2048
+     },
+     {
+      "nom": "5110.prom-u19",
+      "crc32": "7d26111a",
+      "taille": 2048
+     },
+     {
+      "nom": "5111.prom-u20",
+      "crc32": "a888e175",
+      "taille": 2048
+     },
+     {
+      "nom": "6331.sound-u8",
+      "crc32": "1d298cb0",
+      "taille": 32
+     },
+     {
+      "nom": "epr-1286.sound-16",
+      "crc32": "fbe0d501",
+      "taille": 2048
+     }
+    ]
+   },
+   {
+    "cle": "inconnu",
+    "plateforme": "Nintendo Entertainment System",
+    "nom": "Mon jeu maison (France).nes",
+    "taille": 40976,
+    "crc32": "deadbeef"
+   },
+   {
+    "cle": "groupe-rom",
+    "groupe": "jeu-1",
+    "plateforme": "Nintendo Entertainment System",
+    "nom": "3-in-1 (E) [!].nes",
+    "taille": 524304,
+    "crc32": "94b036e3"
+   },
+   {
+    "cle": "groupe-manuel",
+    "groupe": "jeu-1",
+    "plateforme": "Nintendo Entertainment System",
+    "nom": "Manuel.pdf",
+    "taille": 123456,
+    "crc32": "0badf00d"
+   }
+  ]
+ },
+ "reponse": {
+  "ok": true,
+  "fichiers": [
+   {
+    "cle": "sha1-cartouche",
+    "statut": "exact",
+    "correspondance": "sha1",
+    "confiance": 1.0,
+    "media_id": 120,
+    "telechargement_id": -1,
+    "motif": null,
+    "candidats": []
+   },
+   {
+    "cle": "contenu-archive",
+    "statut": "exact",
+    "correspondance": "contenu",
+    "confiance": 1.0,
+    "media_id": 1412,
+    "telechargement_id": -2,
+    "motif": null,
+    "candidats": []
+   },
+   {
+    "cle": "mame-exact",
+    "statut": "exact",
+    "correspondance": "mame_ensemble",
+    "confiance": 1.0,
+    "media_id": 12830,
+    "telechargement_id": -1244226129853379,
+    "motif": null,
+    "candidats": []
+   },
+   {
+    "cle": "mame-autre-version",
+    "statut": "probable",
+    "correspondance": "nom",
+    "confiance": 0.6,
+    "media_id": 12830,
+    "telechargement_id": -1244226129853379,
+    "motif": "autre version du romset MAME",
+    "candidats": []
+   },
+   {
+    "cle": "inconnu",
+    "statut": "inconnu",
+    "correspondance": null,
+    "confiance": 0.0,
+    "media_id": null,
+    "telechargement_id": null,
+    "motif": "aucune correspondance",
+    "candidats": []
+   },
+   {
+    "cle": "groupe-rom",
+    "statut": "exact",
+    "correspondance": "contenu",
+    "confiance": 1.0,
+    "media_id": 8419,
+    "telechargement_id": -14927,
+    "motif": null,
+    "candidats": [],
+    "groupe": "jeu-1"
+   },
+   {
+    "cle": "groupe-manuel",
+    "statut": "inconnu",
+    "correspondance": null,
+    "confiance": 0.0,
+    "media_id": null,
+    "telechargement_id": null,
+    "motif": "aucune correspondance",
+    "candidats": [],
+    "groupe": "jeu-1"
+   }
+  ],
+  "groupes": [
+   {
+    "groupe": "jeu-1",
+    "statut": "probable",
+    "media_id": null,
+    "telechargement_id": null,
+    "manquants": 1
+   }
+  ]
+ }
+}
