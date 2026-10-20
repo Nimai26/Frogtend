@@ -13,7 +13,9 @@
   import { demarrer, demarrerMenuJeu, etat } from '$lib/etat.svelte';
   import { verifierMiseAJour } from '$lib/mises-a-jour';
   import { arreterSuivi, suivreTelechargements } from '$lib/ludotheque/telechargements.svelte';
-  import { suivreParties } from '$lib/ludotheque/jeu.svelte';
+  import { partie, suivreParties } from '$lib/ludotheque/jeu.svelte';
+  import { listen } from '@tauri-apps/api/event';
+  import { traiterLiensNexus } from '$lib/mods/nexus.svelte';
   import ChoixProfil from '$lib/profils/ChoixProfil.svelte';
   import { auDemarrage } from '$lib/sauvegarde.svelte';
   import { gratuitsAuDemarrage } from '$lib/boutiques/gratuits.svelte';
@@ -64,6 +66,20 @@
     } else {
       arreterSuivi();
     }
+  });
+
+  // Nexus (lot 0.82.0) : un lien « Mod Manager Download » arrivé est traité quand un profil est ouvert, hors partie et
+  // hors Taodbox (sinon il attend : rien ne s'ouvre par-dessus un jeu ni au canapé).
+  let courrierNexus = $state(0);
+  onMount(() => {
+    if (!isTauri() || estMenuJeu) return;
+    const arret = listen('nxm-recu', () => courrierNexus++);
+    return () => void arret.then((f) => f());
+  });
+  $effect(() => {
+    void courrierNexus;
+    if (estMenuJeu || !etat.profilOuvert || enTaodbox || partie.enJeu !== null || partie.installation !== null) return;
+    untrack(() => traiterLiensNexus());
   });
 </script>
 

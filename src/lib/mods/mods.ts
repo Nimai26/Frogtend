@@ -77,3 +77,9 @@ export function avertissements(f: FichierMod): string[] {
 export function adresseWeb(url: string | null | undefined): string | null {
   return url && /^https?:\/\//i.test(url) ? url : null;
 }
+
+/** Une page de mod sur Nexus (`https://www.nexusmods.com/<jeu>/mods/<n>`) : son jeu et son numéro, sinon `null`. */
+export function pageNexus(url: string | null | undefined): { domaine: string; mod: number } | null {
+  const m = /^https:\/\/(?:www\.)?nexusmods\.com\/([a-z0-9]{1,64})\/mods\/(\d+)(?:[/?#]|$)/.exec(url ?? '');
+  return m ? { domaine: m[1], mod: Number(m[2]) } : null;
+}

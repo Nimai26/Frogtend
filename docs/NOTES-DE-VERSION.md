@@ -1,5 +1,20 @@
 # Notes de version de Frogtend
 
+## 0.82.0 — Les mods de Nexus Mods
+
+- ⚙ Options ▸ Comptes ▸ **🧩 Nexus Mods** : colle ta clé d'API personnelle (gratuite, dans ton compte Nexus). Frogtend
+  la vérifie auprès de Nexus, la range dans le coffre de Windows et ne l'affiche plus jamais. Chaque profil a la sienne.
+- ⚙ Gérer le jeu ▸ 🧩 Mods : un mod marqué 🌐 est sur Nexus. **Ouvrir sur Nexus** ouvre sa page ; clique « Mod
+  Manager Download » sur le fichier voulu : Frogtend le reçoit, te demande où le poser et ton accord, puis
+  l'installe dans CE jeu (parties à l'abri, fichiers remplacés gardés de côté, retirable comme les autres mods).
+- Nexus ne donne pas d'empreinte : Frogtend vérifie la taille, puis demande à Nexus de reconnaître le fichier reçu ;
+  sinon rien n'est installé.
+- Pour l'instant, seulement les mods en archive **.zip** (les .7z et .rar viendront ensuite).
+- Frogtend prend en charge les liens « Mod Manager Download » (une seule fois, à cette mise à jour ou à la première
+  installation : jamais repris ensuite).
+  Si Vortex ou Mod Organizer les avait, ils leur sont rendus quand tu désinstalles Frogtend.
+- Rien ne s'ouvre pendant une partie ni en Taodbox : le lien attend que tu reviennes au bureau.
+
 ## 0.81.2 — Les retouches PS3 en français
 
 - 🩹 Retouches du jeu : les noms et les remarques des retouches arrivent maintenant **traduits en français** par

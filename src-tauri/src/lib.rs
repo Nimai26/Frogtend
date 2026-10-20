@@ -39,6 +39,7 @@ pub mod noyau;
 pub mod partie;
 pub mod pilotage;
 pub mod mods;
+pub mod nexus;
 pub mod patchs_ps3;
 pub mod plein_ecran;
 pub mod profils;
@@ -274,6 +275,16 @@ fn percent_decode(s: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let contexte = tauri::generate_context!();
+    // Un lien nxm:// de Nexus (lot 0.82.0) : déposé dans la boîte aux lettres ; si un Frogtend tourne déjà, il le
+    // relève et celui-ci s'arrête aussitôt, avant toute fenêtre.
+    if let Some(appdata) = std::env::var_os("APPDATA") {
+        let donnees = std::path::PathBuf::from(appdata).join(&contexte.config().identifier);
+        // `args_os` : un argument qui n'est pas de l'Unicode valide ne doit jamais empêcher Frogtend de démarrer.
+        if nexus::au_demarrage(&donnees, std::env::args_os().map(|a| a.to_string_lossy().into_owned())) {
+            return;
+        }
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
@@ -309,6 +320,22 @@ pub fn run() {
                 }
             });
             app.manage(menu_jeu::MenuJeu::default());
+            app.manage(nexus::Nexus::default());
+            // La boîte aux lettres des liens nxm:// : l'interface est prévenue quand il en arrive (elle les relève
+            // quand un profil est ouvert, hors partie et hors Taodbox).
+            let h = app.handle().clone();
+            let boite = dossier.clone();
+            std::thread::spawn(move || {
+                let mut avant = 0;
+                loop {
+                    let n = nexus::courrier(&boite);
+                    if n > 0 && n != avant {
+                        let _ = tauri::Emitter::emit(&h, "nxm-recu", ());
+                    }
+                    avant = n;
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                }
+            });
             // La touche du menu en jeu (armée seulement pendant une partie) ouvre le menu par-dessus le jeu.
             app.handle().plugin(
                 tauri_plugin_global_shortcut::Builder::new()
@@ -416,6 +443,14 @@ pub fn run() {
             commandes::mods_installes,
             commandes::mod_installer,
             commandes::mod_desinstaller,
+            commandes::nexus_etat,
+            commandes::nexus_regler,
+            commandes::nexus_oublier,
+            commandes::nexus_ouvrir,
+            commandes::nexus_liens,
+            commandes::nexus_oublier_lien,
+            commandes::nexus_lien_infos,
+            commandes::nexus_installer,
             commandes::emulateurs_recommandes,
             commandes::emulateurs_installes,
             commandes::emulateur_fiche,
@@ -497,7 +532,7 @@ pub fn run() {
             commandes::restauration_reposer_emulateurs,
             commandes::skin_personnel,
         ])
-        .build(tauri::generate_context!())
+        .build(contexte)
         .expect("impossible de démarrer Frogtend")
         .run(|app, evenement| {
             // Frogtend se ferme pendant que le menu fige un jeu : le jeu repart d'abord (jamais un jeu laissé figé).

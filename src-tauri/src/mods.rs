@@ -149,11 +149,18 @@ pub async fn telecharger(f: &FichierMod, cible: &Path, progres: &(dyn Fn(u64, u6
     if !adresse_admise(f) {
         return Err(Erreur::Refus("L'adresse de ce mod n'est pas une page de GitHub : Frogtend ne le télécharge pas.".into()));
     }
-    telecharger_depuis(&client()?, &f.url, f.taille, f.sha256.as_deref(), cible, progres).await
+    telecharger_depuis(&client()?, &f.url, f.taille, true, f.sha256.as_deref(), cible, progres).await
 }
 
-/// Le cœur du téléchargement (l'adresse déjà admise ; séparé pour les tests).
-async fn telecharger_depuis(c: &reqwest::Client, url: &str, taille: u64, sha256: Option<&str>, cible: &Path, progres: &(dyn Fn(u64, u64) + Send + Sync)) -> Resultat<u64> {
+/// Télécharge un fichier de Nexus (adresse donnée par son API, client sans clé) : Nexus ne donne que la taille arrondie
+/// en Ko, qui sert de PLAFOND ; jamais de reprise (pas d'empreinte). Rend la taille reçue.
+pub async fn telecharger_plafonne(c: &reqwest::Client, url: &str, plafond: u64, cible: &Path, progres: &(dyn Fn(u64, u64) + Send + Sync)) -> Resultat<u64> {
+    telecharger_depuis(c, url, plafond, false, None, cible, progres).await
+}
+
+/// Le cœur du téléchargement (l'adresse déjà admise ; séparé pour les tests). `exacte` : `taille` est la taille exacte
+/// du fichier ; sinon c'est un plafond.
+async fn telecharger_depuis(c: &reqwest::Client, url: &str, taille: u64, exacte: bool, sha256: Option<&str>, cible: &Path, progres: &(dyn Fn(u64, u64) + Send + Sync)) -> Resultat<u64> {
     if let Some(p) = cible.parent() {
         std::fs::create_dir_all(p)?;
     }
@@ -161,7 +168,7 @@ async fn telecharger_depuis(c: &reqwest::Client, url: &str, taille: u64, sha256:
     let mut debut = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
     // Sans empreinte, rien ne prouverait qu'un début gardé vient du même fichier (l'auteur peut le remplacer sous la
     // même version) : jamais de reprise, on repart de zéro.
-    if debut >= taille || sha256.is_none() {
+    if debut >= taille || sha256.is_none() || !exacte {
         let _ = std::fs::remove_file(&part);
         debut = 0;
     }
@@ -178,7 +185,7 @@ async fn telecharger_depuis(c: &reqwest::Client, url: &str, taille: u64, sha256:
             let _ = std::fs::remove_file(&part);
             return Err(Erreur::Reseau("Le téléchargement du mod doit repartir de zéro : réessaie.".into()));
         }
-        300..=399 => return Err(Erreur::Refus("Le site du mod renvoie hors de GitHub : Frogtend ne suit pas.".into())),
+        300..=399 => return Err(Erreur::Refus("Le site du mod renvoie vers une adresse non admise : Frogtend ne suit pas.".into())),
         _ => return Err(Erreur::Serveur(format!("Le site du mod a répondu {statut}."))),
     };
     // Une reprise doit continuer EXACTEMENT où on en était, sur un fichier de la taille annoncée.
@@ -190,7 +197,7 @@ async fn telecharger_depuis(c: &reqwest::Client, url: &str, taille: u64, sha256:
         }
     }
     let deja = if reprise { debut } else { 0 };
-    if rep.content_length().is_some_and(|n| n + deja != taille) {
+    if rep.content_length().is_some_and(|n| if exacte { n + deja != taille } else { n > taille }) {
         return Err(Erreur::Serveur("Le fichier du mod n'a pas la taille annoncée : il n'est pas téléchargé.".into()));
     }
     let mut sortie = std::fs::OpenOptions::new().create(true).write(true).append(reprise).truncate(!reprise).open(&part)?;
@@ -207,7 +214,11 @@ async fn telecharger_depuis(c: &reqwest::Client, url: &str, taille: u64, sha256:
     }
     sortie.flush()?;
     drop(sortie);
-    if recus != taille {
+    if !exacte && recus == 0 {
+        let _ = std::fs::remove_file(&part);
+        return Err(Erreur::Serveur("Le fichier du mod est vide : il n'est pas gardé.".into()));
+    }
+    if exacte && recus != taille {
         return Err(Erreur::Reseau("Le téléchargement du mod s'est arrêté avant la fin : il reprendra où il en était.".into()));
     }
     if let Some(attendue) = sha256 {
@@ -866,14 +877,14 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let cible = d.path().join("mod.zip");
         // Taille annoncée exacte, empreinte juste : reçu, sans jeton.
-        assert_eq!(telecharger_depuis(&c, &m.url("/mod.zip"), 10, Some(&sha), &cible, &|_, _| {}).await.unwrap(), 10);
+        assert_eq!(telecharger_depuis(&c, &m.url("/mod.zip"), 10, true, Some(&sha), &cible, &|_, _| {}).await.unwrap(), 10);
         mock.assert();
         // Plus gros qu'annoncé : refusé, rien ne reste.
         let autre = d.path().join("b.zip");
-        assert!(telecharger_depuis(&c, &m.url("/mod.zip"), 5, None, &autre, &|_, _| {}).await.is_err());
+        assert!(telecharger_depuis(&c, &m.url("/mod.zip"), 5, true, None, &autre, &|_, _| {}).await.is_err());
         assert!(!autre.exists());
         // Empreinte fausse : rien gardé.
-        assert!(matches!(telecharger_depuis(&c, &m.url("/mod.zip"), 10, Some(&"0".repeat(64)), &autre, &|_, _| {}).await, Err(Erreur::Conflit(_))));
+        assert!(matches!(telecharger_depuis(&c, &m.url("/mod.zip"), 10, true, Some(&"0".repeat(64)), &autre, &|_, _| {}).await, Err(Erreur::Conflit(_))));
         assert!(!autre.exists() && !PathBuf::from(format!("{}.part", autre.to_string_lossy())).exists());
         // Reprise : un .part de 4 octets, le serveur sert la suite (206).
         let m2 = MockServer::start();
@@ -883,7 +894,7 @@ mod tests {
         });
         let r = d.path().join("r.zip");
         std::fs::write(format!("{}.part", r.to_string_lossy()), &contenu[..4]).unwrap();
-        assert_eq!(telecharger_depuis(&c, &m2.url("/r.zip"), 10, Some(&sha), &r, &|_, _| {}).await.unwrap(), 10);
+        assert_eq!(telecharger_depuis(&c, &m2.url("/r.zip"), 10, true, Some(&sha), &r, &|_, _| {}).await.unwrap(), 10);
         assert_eq!(std::fs::read(&r).unwrap(), contenu);
         // Une reprise qui ne reprend pas où on en était (Content-Range faux) : on repart de zéro, rien de mélangé.
         let m3 = MockServer::start();
@@ -894,7 +905,7 @@ mod tests {
         let x = d.path().join("x.zip");
         let part_x = format!("{}.part", x.to_string_lossy());
         std::fs::write(&part_x, &contenu[..4]).unwrap();
-        assert!(telecharger_depuis(&c, &m3.url("/x.zip"), 10, Some(&sha), &x, &|_, _| {}).await.is_err());
+        assert!(telecharger_depuis(&c, &m3.url("/x.zip"), 10, true, Some(&sha), &x, &|_, _| {}).await.is_err());
         assert!(!std::path::Path::new(&part_x).exists());
         // Sans empreinte, jamais de reprise : un début gardé n'est pas réutilisé.
         std::fs::write(&part_x, b"XXXX").unwrap();
@@ -903,7 +914,7 @@ mod tests {
             w.method(GET).path("/y.zip");
             t.status(200).body(contenu.clone());
         });
-        assert_eq!(telecharger_depuis(&c, &m4.url("/y.zip"), 10, None, &x, &|_, _| {}).await.unwrap(), 10);
+        assert_eq!(telecharger_depuis(&c, &m4.url("/y.zip"), 10, true, None, &x, &|_, _| {}).await.unwrap(), 10);
         assert_eq!(std::fs::read(&x).unwrap(), contenu);
         // 416 : le reste est retiré ; une redirection rendue telle quelle (hors GitHub) : refusée.
         let m5 = MockServer::start();
@@ -917,12 +928,16 @@ mod tests {
         });
         let z = d.path().join("z.zip");
         std::fs::write(format!("{}.part", z.to_string_lossy()), b"ab").unwrap();
-        assert!(telecharger_depuis(&c, &m5.url("/z.zip"), 10, Some(&sha), &z, &|_, _| {}).await.is_err());
+        assert!(telecharger_depuis(&c, &m5.url("/z.zip"), 10, true, Some(&sha), &z, &|_, _| {}).await.is_err());
         assert!(!std::path::Path::new(&format!("{}.part", z.to_string_lossy())).exists());
         let sans_suivre = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).build().unwrap();
-        assert!(matches!(telecharger_depuis(&sans_suivre, &m5.url("/r3.zip"), 10, Some(&sha), &z, &|_, _| {}).await, Err(Erreur::Refus(_))));
+        assert!(matches!(telecharger_depuis(&sans_suivre, &m5.url("/r3.zip"), 10, true, Some(&sha), &z, &|_, _| {}).await, Err(Erreur::Refus(_))));
         // Une taille annoncée différente de celle de Firehouse : refusée avant d'écrire.
-        assert!(telecharger_depuis(&c, &m4.url("/y.zip"), 12, None, &d.path().join("w.zip"), &|_, _| {}).await.is_err());
+        assert!(telecharger_depuis(&c, &m4.url("/y.zip"), 12, true, None, &d.path().join("w.zip"), &|_, _| {}).await.is_err());
+        // Nexus : la taille est un PLAFOND (arrondie en Ko) ; au-delà, refusé et rien n'est gardé.
+        assert_eq!(telecharger_plafonne(&c, &m4.url("/y.zip"), 12, &d.path().join("n.zip"), &|_, _| {}).await.unwrap(), 10);
+        assert!(telecharger_plafonne(&c, &m4.url("/y.zip"), 9, &d.path().join("n2.zip"), &|_, _| {}).await.is_err());
+        assert!(!d.path().join("n2.zip").exists() && !d.path().join("n2.zip.part").exists());
     }
 
     #[test]

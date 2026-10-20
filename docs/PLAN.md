@@ -433,7 +433,9 @@ décision (acceptée/refusée) est notée au journal. Réponse rendue par un Mar
 Cheat Engine et les tables FearLess, Nexus Mods (par son API), les trainers, les autres sources du brief § 1.5.
 
 **Décisions de Seb (02/10)** :
-- **Pas d'API Nexus Mods** (trop chère).
+- ~~**Pas d'API Nexus Mods** (trop chère).~~ Remplacé le 19/10 : la clé d'API PERSONNELLE de chaque
+  utilisateur est gratuite et « ne demande aucune approbation » (annonce officielle de Nexus) ; voie `nxm://`
+  enregistrée par l'installeur, livrée en 0.82.0.
 - **Cheat Engine : Frogtend peut l'installer**, mais **une version propre** (sans les logiciels en plus que propose
   son installeur officiel) : trouver la source ou la méthode (installation silencieuse qui refuse les offres, paquet
   sans offres…) en lisant la doc et les sources officielles.

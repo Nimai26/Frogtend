@@ -167,6 +167,7 @@ pub async fn profil_renommer(noyau: State<'_, Noyau>, nom: String) -> Resultat<P
 pub async fn profil_supprimer(app: AppHandle, noyau: State<'_, Noyau>, id: String, pin: Option<String>) -> Resultat<()> {
     let nom = noyau.profils.trouver(&id)?.nom;
     noyau.supprimer_profil(&id, pin.as_deref()).await?;
+    app.state::<crate::nexus::Nexus>().oublier_profil(&id);
     // Sa connexion RetroAchievements ne reste pas dans les émulateurs.
     oublier_succes_partout(&app, &noyau, &nom);
     Ok(())
@@ -2594,6 +2595,28 @@ async fn jeu_pour_un_mod(noyau: &Noyau, id: i64) -> Resultat<(crate::jeux_pc::Je
     Ok((j, dossier))
 }
 
+/// Un anti-triche dans le jeu : jamais de mod (un compte pourrait être banni).
+async fn refuser_anti_triche(dossier: &std::path::Path) -> Resultat<()> {
+    let d = dossier.to_path_buf();
+    let verification = tauri::async_runtime::spawn_blocking(move || crate::figer::anti_triche(&d))
+        .await
+        .map_err(|_| Erreur::Disque("La vérification anti-triche s'est arrêtée brutalement : rien n'est installé.".into()))?;
+    if let crate::figer::Verification::AntiTriche(a) = verification {
+        return Err(Erreur::Refus(format!("Ce jeu est protégé par {a} : Frogtend n'y installe pas de mod.")));
+    }
+    Ok(())
+}
+
+/// Le dossier du programme du jeu, relatif au dossier du jeu (séparateur `/`).
+fn dossier_du_programme(j: &crate::jeux_pc::JeuPc, dossier: &std::path::Path) -> Resultat<String> {
+    let lanceur = j.installation.as_ref().and_then(|i| i.lanceur.as_ref()).map(|l| std::path::PathBuf::from(&l.dossier));
+    // Sous le dossier du jeu (sans tenir compte des majuscules, comme Windows) : le reste du chemin.
+    match lanceur.as_deref().filter(|l| crate::garde::sous(l, dossier)) {
+        Some(l) => Ok(l.components().skip(dossier.components().count()).map(|c| c.as_os_str().to_string_lossy().to_string()).collect::<Vec<_>>().join("/")),
+        None => Err(Erreur::Refus("Le programme du jeu n'est pas dans son dossier : choisis la racine du jeu.".into())),
+    }
+}
+
 /// Les mods installés dans un jeu du PC (manifestes de `<jeu>\Frogtend\mods`).
 #[tauri::command]
 pub async fn mods_installes(noyau: State<'_, Noyau>, id: i64) -> Resultat<Vec<crate::mods::Manifeste>> {
@@ -2623,25 +2646,9 @@ pub async fn mod_installer(noyau: State<'_, Noyau>, id: i64, mod_nom: String, fi
         .and_then(|l| l.iter().find(|x| x["nom"].as_str() == Some(fichier.as_str())))
         .and_then(crate::mods::FichierMod::depuis)
         .ok_or_else(|| Erreur::Refus("Frogtend ne sait pas installer ce fichier d'un clic : suis la page du mod.".into()))?;
-    // Un anti-triche dans le jeu : jamais de mod (un compte pourrait être banni).
-    let d = dossier.clone();
-    let verification = tauri::async_runtime::spawn_blocking(move || crate::figer::anti_triche(&d))
-        .await
-        .map_err(|_| Erreur::Disque("La vérification anti-triche s'est arrêtée brutalement : rien n'est installé.".into()))?;
-    if let crate::figer::Verification::AntiTriche(a) = verification {
-        return Err(Erreur::Refus(format!("Ce jeu est protégé par {a} : Frogtend n'y installe pas de mod.")));
-    }
+    refuser_anti_triche(&dossier).await?;
     // Où poser : le dossier du mod (`cible.dossier`) ; ou, pour un mod « à confirmer », le dossier du programme.
-    let sous = if programme {
-        let lanceur = j.installation.as_ref().and_then(|i| i.lanceur.as_ref()).map(|l| std::path::PathBuf::from(&l.dossier));
-        // Sous le dossier du jeu (sans tenir compte des majuscules, comme Windows) : le reste du chemin.
-        match lanceur.as_deref().filter(|l| crate::garde::sous(l, &dossier)) {
-            Some(l) => l.components().skip(dossier.components().count()).map(|c| c.as_os_str().to_string_lossy().to_string()).collect::<Vec<_>>().join("/"),
-            None => return Err(Erreur::Refus("Le programme du jeu n'est pas dans son dossier : choisis la racine du jeu.".into())),
-        }
-    } else {
-        f.dossier.clone()
-    };
+    let sous = if programme { dossier_du_programme(&j, &dossier)? } else { f.dossier.clone() };
     // Occupé dès maintenant : ni une partie ni un second clic ne passent entre la vérification et la pose.
     let _occupe = noyau.occuper(id);
     noyau.mettre_a_l_abri(id).await?;
@@ -2682,6 +2689,200 @@ pub async fn mod_desinstaller(noyau: State<'_, Noyau>, id: i64, cle: String) -> 
         noyau.journaliser(&format!("mod {cle} retiré de « {} » ({} fichier(s) gardé(s), modifiés par la personne)", j.titre, g.len()));
     }
     r
+}
+
+// --- Nexus Mods (lot 0.82.0 ; ✅ Seb 19-20/10) : la personne clique « Mod Manager Download » sur le site ; le lien
+// nxm:// arrive par la boîte aux lettres ; il va au jeu d'où la page a été ouverte ; rien ne s'installe sans son oui.
+// La clé d'API PERSONNELLE du profil vit dans le coffre de Windows et ne part que vers api.nexusmods.com. ---
+
+/// Le compte Nexus du profil (sans la clé, qui ne quitte jamais le coffre).
+#[derive(Serialize)]
+pub struct EtatNexus {
+    pub compte: Option<String>,
+    pub cle_enregistree: bool,
+}
+
+#[tauri::command]
+pub async fn nexus_etat(noyau: State<'_, Noyau>) -> Resultat<EtatNexus> {
+    let p = profil_ouvert(&noyau).await?;
+    let c = crate::boutiques::lire_source(&dossier_profil_de(&noyau, &p.id), "nexus");
+    Ok(EtatNexus {
+        compte: c.map(|c| c.compte).filter(|c| !c.is_empty()),
+        cle_enregistree: noyau.coffre.lire(&crate::boutiques::nom_secret(&p.id, "nexus"))?.is_some(),
+    })
+}
+
+/// Règle la clé d'API personnelle : VÉRIFIÉE auprès de Nexus avant d'être rangée au coffre.
+#[tauri::command]
+pub async fn nexus_regler(noyau: State<'_, Noyau>, cle: String) -> Resultat<EtatNexus> {
+    let p = profil_ouvert(&noyau).await?;
+    let cle = cle.trim().to_string();
+    let nom = crate::nexus::valider(crate::nexus::API, &cle).await?;
+    noyau.coffre.ranger(&crate::boutiques::nom_secret(&p.id, "nexus"), &cle)?;
+    drop(cle);
+    let c = crate::boutiques::CompteBoutique { compte: nom, maj_le: crate::noyau::maintenant(), ..Default::default() };
+    crate::boutiques::ecrire_source(&dossier_profil_de(&noyau, &p.id), "nexus", Some(&c))?;
+    noyau.journaliser(&format!("clé Nexus Mods réglée pour le profil {}", p.id));
+    nexus_etat(noyau).await
+}
+
+#[tauri::command]
+pub async fn nexus_oublier(noyau: State<'_, Noyau>) -> Resultat<()> {
+    let p = profil_ouvert(&noyau).await?;
+    noyau.coffre.oublier(&crate::boutiques::nom_secret(&p.id, "nexus"))?;
+    crate::boutiques::ecrire_source(&dossier_profil_de(&noyau, &p.id), "nexus", None)
+}
+
+/// Ouvre la page Nexus d'un mod de la liste de Firehouse (reprise dans la liste, jamais une adresse de l'interface) et
+/// retient le clic : le lien nxm:// qui reviendra ira à CE jeu.
+#[tauri::command]
+pub async fn nexus_ouvrir(app: AppHandle, noyau: State<'_, Noyau>, id: i64, mod_nom: String) -> Resultat<()> {
+    let p = profil_ouvert(&noyau).await?;
+    noyau.jeu_visible(id).await?;
+    let criteres = criteres_jeu_importe(&noyau, id).await?;
+    let liste = triches_avec(&noyau.session().await?.source, id, &criteres).await?;
+    let m = liste["mods"]
+        .as_array()
+        .and_then(|l| l.iter().find(|m| m["nom"].as_str() == Some(mod_nom.as_str())).cloned())
+        .ok_or_else(|| Erreur::Introuvable("Ce mod n'est plus proposé par Firehouse.".into()))?;
+    let url = ["url", "page"].iter().filter_map(|k| m[*k].as_str()).find(|u| crate::nexus::page_nexus(u).is_some()).ok_or_else(|| Erreur::Refus("Ce mod n'a pas de page sur Nexus.".into()))?;
+    let (domaine, mod_id) = crate::nexus::page_nexus(url).ok_or_else(|| Erreur::Refus("Ce mod n'a pas de page sur Nexus.".into()))?;
+    app.state::<crate::nexus::Nexus>().noter_clic(&p.id, id, &mod_nom, &domaine, mod_id);
+    use tauri_plugin_opener::OpenerExt;
+    app.opener().open_url(url, None::<&str>).map_err(|_| Erreur::Disque("Le navigateur ne s'ouvre pas.".into()))
+}
+
+/// Relève les liens nxm:// arrivés (profil ouvert seulement) et rend ceux de ce profil, sans leur clé.
+#[tauri::command]
+pub async fn nexus_liens(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<Vec<crate::nexus::LienRecu>> {
+    let p = profil_ouvert(&noyau).await?;
+    let donnees = app.path().app_data_dir().map_err(|_| Erreur::Disque("Dossier des données introuvable.".into()))?;
+    let nexus = app.state::<crate::nexus::Nexus>();
+    nexus.recevoir(&p.id, crate::nexus::relever(&donnees));
+    Ok(nexus.liens(&p.id))
+}
+
+#[tauri::command]
+pub async fn nexus_oublier_lien(app: AppHandle, noyau: State<'_, Noyau>, n: u32) -> Resultat<()> {
+    let p = profil_ouvert(&noyau).await?;
+    app.state::<crate::nexus::Nexus>().oublier(&p.id, n);
+    Ok(())
+}
+
+/// Ce que la personne doit savoir avant de dire oui : le jeu, le mod, le nom et la taille du fichier (dits par Nexus).
+#[derive(Serialize)]
+pub struct InfosNexus {
+    pub jeu_id: i64,
+    pub titre: String,
+    pub mod_nom: String,
+    pub fichier: String,
+    pub taille_ko: u64,
+    pub zip: bool,
+    pub expire: bool,
+}
+
+/// Le lien reçu, la clé du profil et le jeu visé (un lien sans clic depuis un jeu n'est pas installé).
+async fn lien_nexus(app: &AppHandle, noyau: &Noyau, n: u32) -> Resultat<(crate::nexus::Recu, String, i64, String)> {
+    let p = profil_ouvert(noyau).await?;
+    let r = app.state::<crate::nexus::Nexus>().recu(&p.id, n).ok_or_else(|| Erreur::Introuvable("Ce lien de Nexus n'est plus là : reclique sur le site.".into()))?;
+    let (Some(jeu), Some(mod_nom)) = (r.jeu_id, r.mod_nom.clone()) else {
+        return Err(Erreur::Refus("Frogtend ne sait pas à quel jeu va ce mod : ouvre sa page depuis ⚙ Gérer le jeu ▸ 🧩 Mods.".into()));
+    };
+    let cle = noyau
+        .coffre
+        .lire(&crate::boutiques::nom_secret(&p.id, "nexus"))?
+        .ok_or_else(|| Erreur::Refus("Règle d'abord ta clé Nexus dans ⚙ Options ▸ Comptes ▸ Nexus Mods.".into()))?;
+    Ok((r, cle, jeu, mod_nom))
+}
+
+fn secondes_maintenant() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+#[tauri::command]
+pub async fn nexus_lien_infos(app: AppHandle, noyau: State<'_, Noyau>, n: u32) -> Resultat<InfosNexus> {
+    let (r, cle, jeu, mod_nom) = lien_nexus(&app, &noyau, n).await?;
+    let j = noyau.jeu_visible(jeu).await?;
+    let f = crate::nexus::fichier(crate::nexus::API, &r.lien, &cle).await?;
+    let nom = f.nom.to_ascii_lowercase();
+    Ok(InfosNexus {
+        jeu_id: jeu,
+        titre: j.titre,
+        mod_nom,
+        zip: nom.ends_with(".zip"),
+        fichier: f.nom,
+        taille_ko: f.taille_ko,
+        expire: crate::nexus::expire(&r.lien, secondes_maintenant()),
+    })
+}
+
+/// Télécharge (taille de Nexus = plafond) et installe un mod de Nexus après le oui ; le fichier reçu doit être
+/// EXACTEMENT celui demandé (`md5_search`), sinon rien n'est installé. Les parties sont d'abord mises à l'abri.
+#[tauri::command]
+pub async fn nexus_installer(app: AppHandle, noyau: State<'_, Noyau>, n: u32, programme: bool) -> Resultat<crate::mods::Bilan> {
+    let (r, cle, id, mod_nom) = lien_nexus(&app, &noyau, n).await?;
+    if crate::nexus::expire(&r.lien, secondes_maintenant()) {
+        return Err(Erreur::Refus("Ce lien de Nexus a expiré : reclique « Mod Manager Download » sur la page du mod.".into()));
+    }
+    let (j, dossier) = jeu_pour_un_mod(&noyau, id).await?;
+    // Occupé aussitôt (aucune attente depuis la vérification) : ni une partie ni un second clic ne passent pendant les
+    // appels à Nexus.
+    let _occupe = noyau.occuper(id);
+    refuser_anti_triche(&dossier).await?;
+    let sous = if programme { dossier_du_programme(&j, &dossier)? } else { String::new() };
+    let infos = crate::nexus::fichier(crate::nexus::API, &r.lien, &cle).await?;
+    if !infos.nom.to_ascii_lowercase().ends_with(".zip") {
+        return Err(Erreur::Refus("Ce mod est une archive 7z ou rar : Frogtend ne sait pas encore la poser.".into()));
+    }
+    let plafond = crate::nexus::plafond(infos.taille_ko);
+    if plafond > crate::mods::DECOMPRESSE_MAX {
+        return Err(Erreur::Refus("Ce fichier de Nexus est trop gros pour être installé d'un clic.".into()));
+    }
+    noyau.mettre_a_l_abri(id).await?;
+    let adresses = crate::nexus::adresses(crate::nexus::API, &r.lien, &cle).await?;
+    let archive = crate::mods::dossier_mods(&dossier).join("telechargements").join(format!("nexus-{}-{}.zip", r.lien.mod_id, r.lien.fichier_id));
+    let client = crate::nexus::client_telechargement()?;
+    let _ramasse = crate::nexus::Ramasse(archive.clone());
+    let mut recu = Err(Erreur::Reseau("Nexus n'a pas donné d'adresse de téléchargement.".into()));
+    for a in &adresses {
+        recu = crate::mods::telecharger_plafonne(&client, a, plafond, &archive, &|_, _| {}).await;
+        if recu.is_ok() {
+            break;
+        }
+    }
+    let taille = recu?;
+    if !crate::nexus::est_un_zip(&archive) {
+        return Err(Erreur::Refus("Ce mod est une archive 7z ou rar : Frogtend ne sait pas encore la poser. Choisis un fichier .zip sur la page du mod, ou installe-le à la main.".into()));
+    }
+    let a = archive.clone();
+    let md5 = tauri::async_runtime::spawn_blocking(move || crate::nexus::md5_de(&a)).await.map_err(|_| Erreur::Disque("Vérification du fichier interrompue.".into()))??;
+    if !crate::nexus::verifier_md5(crate::nexus::API, &r.lien, &md5, &cle).await? {
+        return Err(Erreur::Conflit("Nexus ne reconnaît pas le fichier reçu comme celui de ce mod : rien n'est installé.".into()));
+    }
+    drop(cle);
+    let f = crate::mods::FichierMod {
+        nom: infos.nom.clone(),
+        taille,
+        sha256: None,
+        url: String::new(),
+        depot: format!("nexus/{}/{}", r.lien.jeu, r.lien.mod_id),
+        tag: r.lien.fichier_id.to_string(),
+        a_confirmer: true,
+        dossier: String::new(),
+    };
+    let quand = crate::noyau::maintenant();
+    let (d, a, f2, nom) = (dossier.clone(), archive.clone(), f.clone(), mod_nom.clone());
+    let res = tauri::async_runtime::spawn_blocking(move || crate::mods::installer(&d, &a, &f2, &nom, &crate::sauvegarde::empreinte(&a)?, &sous, false, &quand))
+        .await
+        .map_err(|_| Erreur::Disque("L'installation du mod s'est arrêtée brutalement.".into()))?;
+    match &res {
+        Ok(b) => {
+            app.state::<crate::nexus::Nexus>().oublier(&profil_ouvert(&noyau).await?.id, n);
+            noyau.journaliser(&format!("mod Nexus « {mod_nom} » installé dans « {} » ({} ajouté(s), {} remplacé(s) — originaux à l'abri)", j.titre, b.ajoutes, b.remplaces))
+        }
+        Err(e) => noyau.journaliser(&format!("mod Nexus « {mod_nom} » non installé dans « {} » ({e})", j.titre)),
+    }
+    res
 }
 
 /// Pose un fichier de triche de Firehouse dans le dossier du profil de l'émulateur (la personne l'a demandé). Un

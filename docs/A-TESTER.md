@@ -48,6 +48,23 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Les mods de Nexus Mods (0.82.0)
+> La mise à jour vers 0.82.0 prend les liens « Mod Manager Download » (une seule fois : si tu les rends ensuite à un
+> autre programme, Frogtend ne les reprend jamais). Si Vortex ou Mod Organizer est installé chez toi, Frogtend prend
+> leur place pour ces liens (et les leur rend si tu désinstalles Frogtend).
+- [ ] ⚙ Options ▸ Comptes ▸ 🧩 Nexus Mods ▸ **🌐 Trouver ma clé** : la page de la clé s'ouvre (sinon, dis-moi
+      l'adresse où tu la trouves). Colle ta « Personal API Key » : on doit voir ton nom de compte Nexus.
+- [ ] Un jeu PC installé qui a des mods 🌐 (Skyrim ?) ▸ ⚙ Gérer le jeu ▸ 🧩 Mods ▸ un mod 🌐 ▸ **Ouvrir sur Nexus** :
+      la page s'ouvre. Clique « Mod Manager Download » sur un fichier **.zip** (petit, pour l'essai) : Frogtend
+      revient avec « Où poser … ? » puis l'accord ; après le oui, le mod est ✅ installé dans la liste.
+- [ ] Même chose avec Frogtend FERMÉ : le clic sur le site doit ouvrir Frogtend, puis la fenêtre arrive une fois ton
+      profil ouvert.
+- [ ] Un clic pendant que Frogtend est déjà ouvert : pas de 2e fenêtre de Frogtend.
+- [ ] Un fichier .7z ou .rar : Frogtend dit poliment qu'il ne sait pas encore le poser.
+- [ ] Retirer le mod (🧩 Mods ▸ ✅ le mod ▸ Retirer) : le jeu redevient comme avant.
+- [ ] Pendant une partie, cliquer « Mod Manager Download » : rien ne s'ouvre avant la fin de la partie.
+- [ ] À vérifier par moi avec toi : l'adresse du serveur de téléchargement de Nexus, la forme exacte de la clé du lien.
+
 ## Retouches PS3 en français (0.81.2)
 - [ ] Asura's Wrath ▸ 🩹 Retouches du jeu : les noms sont en français ; « Menu développeur » montre sa remarque en
       français avant d'activer.

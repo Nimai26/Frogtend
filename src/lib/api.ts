@@ -699,6 +699,16 @@ export const api = {
   contenusDuJeu: (id: number) => appeler<import('$lib/contenus/contenus').ContenusDuJeu>('contenus_du_jeu', { id }),
   contenusInstaller: (id: number, choisis: string[]) =>
     appeler<{ installes: number; refuses: [string, string][] }>('contenus_installer', { id, choisis }),
+  /** Nexus Mods (lot 0.82.0) : la clé du profil (au coffre), les liens nxm:// reçus, l'installation après le oui. */
+  nexusEtat: () => appeler<import('$lib/mods/nexus.svelte').EtatNexus>('nexus_etat'),
+  nexusRegler: (cle: string) => appeler<import('$lib/mods/nexus.svelte').EtatNexus>('nexus_regler', { cle }),
+  nexusOublier: () => appeler<void>('nexus_oublier'),
+  nexusOuvrir: (id: number, modNom: string) => appeler<void>('nexus_ouvrir', { id, modNom }),
+  nexusLiens: () => appeler<import('$lib/mods/nexus.svelte').LienNexus[]>('nexus_liens'),
+  nexusOublierLien: (n: number) => appeler<void>('nexus_oublier_lien', { n }),
+  nexusLienInfos: (n: number) => appeler<import('$lib/mods/nexus.svelte').InfosNexus>('nexus_lien_infos', { n }),
+  nexusInstaller: (n: number, programme: boolean) =>
+    appeler<{ ajoutes: number; remplaces: number; identiques: number }>('nexus_installer', { n, programme }),
   raEtat: () => appeler<import('$lib/succes/succes.svelte').EtatRetro>('ra_etat'),
   raRegler: (compte: string, cle?: string) =>
     appeler<import('$lib/succes/succes.svelte').EtatRetro>('ra_regler', { compte, cle: cle ?? null }),

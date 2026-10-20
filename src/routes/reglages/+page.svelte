@@ -9,6 +9,7 @@
   import Steam from '$lib/options/Steam.svelte';
   import Galaxy from '$lib/options/Galaxy.svelte';
   import RetroAchievements from '$lib/options/RetroAchievements.svelte';
+  import Nexus from '$lib/options/Nexus.svelte';
   import Emulateurs from '$lib/reglages/Emulateurs.svelte';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
@@ -110,6 +111,7 @@
       { id: 'steam', libelle: '🎮 Steam' },
       { id: 'galaxy', libelle: '🟣 GOG Galaxy (lier les comptes)' },
       { id: 'retroachievements', libelle: '🏆 RetroAchievements' },
+      { id: 'nexus', libelle: '🧩 Nexus Mods' },
     ] },
     { groupe: 'Connexion', rubriques: [{ id: 'firehouse', libelle: '🔌 Firehouse' }] },
     { groupe: 'Frogtend', rubriques: [{ id: 'a-propos', libelle: 'ℹ À propos et mises à jour' }] },
@@ -368,6 +370,8 @@
       <Galaxy />
     {:else if rubrique === 'retroachievements'}
       <RetroAchievements />
+    {:else if rubrique === 'nexus'}
+      <Nexus />
     {:else if rubrique === 'a-propos'}
       <APropos />
     {/if}

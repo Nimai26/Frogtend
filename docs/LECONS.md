@@ -42,6 +42,9 @@ svelte-check ; un remplacement introuvable). Le code écrit par script passe dé
 scratchpad avec des chaînes brutes, ou par l'outil d'édition — jamais par un script tapé dans le shell.
 19/10 (3e fois, lot 0.80.0, une chaîne de test cassée) : la règle devient stricte — tout texte de CODE qui contient
 une barre oblique inverse s'écrit avec l'outil d'édition, sans exception (les scripts gardent les seuls documents).
+20/10 (4e fois, lot 0.82.0) : un `sed` sur `crochets.nsh` (code NSIS : des chemins du registre) a mangé les
+barres obliques inverses (`Classes` + retour à la ligne + `xm`). Vu aussitôt en relisant, fichier réécrit en entier
+par l'outil d'écriture et vérifié octet par octet. Un fichier d'INSTALLEUR est du code : même règle, aucun `sed`.
 
 ## 18/10 — Un test vert parce que son serveur simulé était plus simple que la vraie vie
 Ce qui s'est passé : le rattachement depuis la file de téléchargement (fiche réunie découverte par un 410) passait son

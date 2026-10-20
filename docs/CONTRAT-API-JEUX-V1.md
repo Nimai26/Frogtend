@@ -350,7 +350,8 @@ compatible.
 - **Activer un patch** : écrire SON `patch_config.yml` (après une copie de sauvegarde).
 - Exemple réel : BLES00932 (Demon's Souls) → 5 patchs (Aspect Ratio, Disable Motion Blur, Enable FreeCam, Skip Intro
   Videos…) ; relevés complets à la fin de EXEMPLES-API-JEUX-V1.md (côté Firehouse).
-- **Besoin 25 (mods), décisions de Seb** : Nexus SANS clé d'API (payante, et interdite pour une application partagée)
+- **Besoin 25 (mods), décisions de Seb** : Nexus SANS clé d'API (payante, et interdite pour une application partagée ;
+  ⚠ décision du 19/10 remplacée : clé PERSONNELLE de chaque utilisateur, gratuite, voie `nxm://`, livrée en 0.82.0)
   — Frogtend montre le LIEN de la page Nexus, chacun télécharge avec son compte ; un mod servi en FICHIER à tous :
   seulement sous licence libre explicite (GitHub d'abord), empreinte vérifiée, validé un par un par un admin, jamais
   pour un jeu en ligne, jamais mis à jour sans nouvelle validation. Rien de livré pour le 25 au 19/10 (annoncé en 1.19).

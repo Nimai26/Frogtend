@@ -7,6 +7,19 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- **Suites du lot Nexus (0.82.0 livré)** — à faire, dans l'ordre :
+  - 0.82.1 : archives 7z (durcissement de sevenz_rust AVANT d'ouvrir : taille d'en-tête et dictionnaire bornés ;
+    mêmes défauts dans decompression.rs, installation.rs, succes.rs).
+  - Progression et débit pendant le téléchargement d'un mod (GitHub et Nexus : aujourd'hui un toast fixe ; Nexus
+    jusqu'à 2 Go) — expert lancement 20/10.
+  - Mods posés « tels quels » : un mod Nexus dont l'archive a un seul dossier racine (`NomDuMod/`, `Data/`) peut rester
+    inerte ; montrer l'arborescence avant le oui, ou déduire l'endroit — à proposer à Seb.
+  - Jeu PC sans `manifeste.json` (rattaché du disque) : `mettre_a_l_abri` ne copie rien. Le texte Nexus le dit ; le
+    texte GitHub promet encore « parties à l'abri » → à corriger (ou localiser les sauvegardes connues).
+  - Copie de sauvegarde du jeu avant un mod « proposée » (PLAN, lot 8, 02/10) : pas encore proposée (GitHub ni Nexus).
+  - À relever à l'essai de Seb : vraie réponse de l'API Nexus (`size_kb`, `file_name`, `URI`, `md5_search`), vrai
+    lien nxm (caractères de `key`), adresse de la page de la clé, statut rendu pour un lien d'un autre compte.
+
 - **Lot mods (contrat 1.19)** — ✅ Seb 19/10 : « oui prends-le en compte, et il faudra bien sûr que cela soit fait à
   l'installation de Frogtend sur PC » : l'enregistrement de `nxm://` (registre de Windows, annoncé à Seb avant) se
   fait par l'INSTALLEUR de Frogtend, pas au premier usage. Frogtend télécharge les mods lui-même (GitHub : sha256
@@ -343,6 +356,12 @@
 
 ## ❓ Attend une décision de Seb
 
+- [ ] **Nexus : prendre les liens à Vortex / Mod Organizer sans demander à la personne du PC ?** (expert lancement
+      20/10). Aujourd'hui (décision de Seb 19-20/10) : l'installeur ou la mise à jour vers 0.82.0 les prend une fois,
+      sans question. Chez sa sœur, Vortex perdrait ses liens sans un mot. Proposition : si un autre programme les a,
+      ne pas les prendre, et demander au 1er lancement « Vortex reçoit les liens Nexus : les confier à Frogtend ? ».
+      Effet connu : Vortex les reprend à chacun de ses démarrages.
+
 - [ ] **Jeux PC sans manette ni plein écran** (Seb, 05/10, Mega Man Rock Force : « il s'ouvre en tout petit fenêtré et
       ne reconnaît pas la manette »). Relevé : jeu Game Maker 8, clavier seulement (ReadMe : Z saut, X tir, C glisse,
       Entrée pause, A/S armes ; F4 plein écran) ; la manette est vue par Windows (joystick 1, XInput 0). Proposé :
@@ -445,6 +464,17 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.82.0** (20/10) — Nexus Mods. Clé d'API personnelle par profil (vérifiée par `/users/validate`, au coffre,
+  effacée avec le profil) ; `nxm://` pris par l'installeur (HKCU, une fois, rendu à la désinstallation) ; un 2e
+  Frogtend dépose le lien dans `nxm-recus\` et s'arrête (mutex nommé ; jamais avec `--taodbox`, même un lien
+  illisible ne fait jamais deux Frogtend) ; « Ouvrir sur Nexus » (mod et page repris de la liste de Firehouse) relie le
+  lien au jeu (30 min, par profil) ; client API sans redirection, clé par requête ; téléchargement sans clé, taille de
+  Nexus = plafond, `md5_search` exige le mod et le fichier demandés ; zip seulement ; archive toujours ramassée.
+  Vérifié : tests du cœur (410) et de l'interface (209), svelte-check 0 erreur, 3 experts (corrigés : un lien
+  illisible lançait un 2e Frogtend, archive laissée dans le jeu sur erreur, 401/403 Nexus pris pour le jeton
+  Firehouse, occupation trop tardive, clés NSIS avant BUNDLEID, lien reçu pendant une fenêtre oublié, textes).
+  NON vérifié : aucun essai réel avec Nexus (il faut la clé de Seb) ; installeur non installé ici (registre de Seb).
 
 - **0.74.0** (19/10) — RPCS3 : image et fluidité par jeu (✅ Seb 19/10 : shaders = « les deux »). Clés et valeurs
   relevées dans les SOURCES de RPCS3 (`Emu/system_config.h`, `system_config_types.cpp`, `Emu/system_utils.cpp` :

@@ -11,7 +11,8 @@ import { avecConseil, biosADireOuPoser, biosRetroArch, changementDeConseil, estC
 import { preparerPourJouer } from '$lib/emulateurs/pret.svelte';
 import { libelleValeur, REGLAGES_IMAGE, reglagesMontres } from '$lib/emulateurs/imagePs3';
 import { detailPatch, nomDuPatch, remarqueDuPatch, titreDuJeu } from '$lib/emulateurs/patchsPs3';
-import { adresseWeb, avertissements, fichierInstallable, raisonSansClic, type ModJeu } from '$lib/mods/mods';
+import { adresseWeb, avertissements, fichierInstallable, pageNexus, raisonSansClic, type ModJeu } from '$lib/mods/mods';
+import { ouvrirSurNexus } from '$lib/mods/nexus.svelte';
 import { ouvrirPageWeb } from '$lib/web';
 import { estRetroArch, normaliser, pourLeJeu } from '$lib/emulateurs/choix';
 import { etat, reglerPc, reglerProfil } from '$lib/etat.svelte';
@@ -948,10 +949,15 @@ export async function choisirMods(id: number) {
         .filter((m) => !installes.some((i) => i.mod_nom === m.nom))
         .map((m) => {
           const f = fichierInstallable(m);
+          const surNexus = !f && !m.refus && !!(pageNexus(m.url) ?? pageNexus(m.page));
           return {
             valeur: { sorte: 'mod' as const, m },
-            libelle: `${f ? '⬇' : '🔗'} ${m.nom}`,
-            detail: f ? `s’installe d’un clic (${taille(f.taille)})${m.description ? ` — ${court(m.description)} (en anglais)` : ''}` : raisonSansClic(m),
+            libelle: `${f ? '⬇' : surNexus ? '🌐' : '🔗'} ${m.nom}`,
+            detail: f
+              ? `s’installe d’un clic (${taille(f.taille)})${m.description ? ` — ${court(m.description)} (en anglais)` : ''}`
+              : surNexus
+                ? 'sur Nexus Mods : s’installe après « Mod Manager Download » sur sa page'
+                : raisonSansClic(m),
           };
         }),
       { valeur: 'fini', libelle: '✅ Terminé' },
@@ -983,10 +989,25 @@ export async function choisirMods(id: number) {
     const page = adresseWeb(m.consignes_url) ?? adresseWeb(m.page) ?? adresseWeb(m.url);
     if (!f) {
       // À la main : la page, au bureau (au canapé, le navigateur passerait derrière la télé).
+      const nexus = pageNexus(m.url) ?? pageNexus(m.page);
       if (!page) {
         await informer(`🔗 ${m.nom}`, raisonSansClic(m));
       } else if (await seulementAuBureau(`Ouvrir la page de « ${m.nom} »`)) {
         // Dit par la fenêtre.
+      } else if (nexus) {
+        // Nexus (lot 0.82.0) : « Mod Manager Download » sur le site renvoie le fichier à Frogtend, pour CE jeu.
+        if (
+          await confirmer(`🔗 ${m.nom}`, {
+            message: [
+              m.description ? `Ce qu’il fait (en anglais) : ${m.description}` : '',
+              'Ce mod est sur Nexus Mods : sur sa page, clique « Mod Manager Download » ; Frogtend le reçoit et te demande ton accord avant de l’installer dans ce jeu.',
+            ]
+              .filter(Boolean)
+              .join('\n\n'),
+            libelleValider: '🌐 Ouvrir sur Nexus',
+          })
+        )
+          await ouvrirSurNexus(id, m.nom);
       } else if (
         await confirmer(`🔗 ${m.nom}`, {
           message: [m.description ? `Ce qu’il fait (en anglais) : ${m.description}` : '', raisonSansClic(m)].filter(Boolean).join('\n\n'),
