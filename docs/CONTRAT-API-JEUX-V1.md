@@ -434,6 +434,35 @@ Reçu par message de la session Firehouse (référence : `docs/frogtend/BRIEF-AG
 - Aussi (2.90.0, 20/10) : une fiche de la bibliothèque RÉSERVÉE (admin seul) a `launchbox_id: null` au détail (clé
   LaunchBox interne) ; le sens du champ ne change pas — ne pas en déduire « jeu inconnu ».
 
+### 1.22 (20/10, Firehouse 2.92.0, en service le 20/10 vers 18 h 25, en-tête `X-Api-Jeux-Version: 1.22`) — MAME par machine et CHD (besoin 29)
+Reçu par message de la session Firehouse (référence : BRIEF § « 1.22 » et `docs/frogtend/EXEMPLES-API-JEUX-V1.md`
+§ 1.22 du dépôt Firehouse). Index : 8 326 machines servies, 124 726 ROM requises, 298 avec un disque.
+- Pour une requête 1.21 (sans `chd_sha1`), le HAUT de chaque réponse est INCHANGÉ. S'ajoute, pour un fichier
+  Arcade : `machines: [{nom_court, statut: exact|probable, correspondance: mame_requis|chd_sha1, media_id,
+  telechargement_id, manquantes, dependances: [{nom_court, type: bios|device}], disques: [{nom, chd_sha1, present}],
+  complet_chez_nous}]`.
+- Ce que MAME peut lancer avec CE zip : zip du PARENT (fusionné ou non) → le parent ET ses clones ; zip d'un CLONE →
+  ce clone SEUL.
+- exact = TOUTES les ROM requises de la machine (listxml 0.289, hors BIOS et ROM optionnelles) dans `entrees` ;
+  probable = au moins la MOITIÉ ET, pour un clone, au moins une de ses ROM PROPRES ; sinon pas listée. Envoyer TOUTES
+  les entrées (noms et sous-dossiers ignorés, doublons permis).
+- `dependances` : BIOS / devices à avoir À CÔTÉ (ex. neogeo) — la machine est exacte quand même ; à Frogtend de
+  vérifier qu'ils sont chez la personne.
+- CHD : champ `chd_sha1` (40 hexa) = SHA1 GLOBAL de l'en-tête (v5 offset 84, v4 48, v3 80) ; JAMAIS dans `sha1`.
+  Rend toutes les machines qui demandent ce disque ; au fichier : exact si une seule, sinon probable + candidats —
+  SAUF si le zip du MÊME `groupe` désigne l'une d'elles : alors exact sur elle. Nouvelle `correspondance` au
+  fichier : `chd_sha1`. `disques[].present` : vrai/faux si le CHD est dans le même `groupe` que le zip, sinon null ;
+  `complet_chez_nous` : faux si la version de Firehouse n'a pas tous ses disques.
+- ⚠️ Le verdict de GROUPE reste calculé sur le haut de réponse (sémantique 1.21) : pour l'arcade, LIRE `machines`
+  (exact au niveau machine), pas `groupes`.
+- Limite connue : un set SPLIT n'est jamais exact pour un clone seul (chaque zip est jugé seul).
+- Relevé réel (identifiants) : 2020bb.zip fusionné → machines 2020bb, 2020bba, 2020bbh exact ×3, dépendance neogeo
+  (bios), haut probable / nom ; 2020bba.zip → 2020bba seul exact ; CHD seul 015cb0e6… → raycrisj exact (bios
+  coh3002t) ; groupe fbaitmca.zip + CHD 0b567bf2… → CHD tranché sur fbaitmca, present = true, groupe probable.
+  media_id : 2020bb 12984 (telechargement_id parent -1234836732104409, 2020bba -1047494276407722, 2020bbh
+  -1195061964255313) ; raycrisj 12484 / -1281373763000399 ; fbaitmca 15103 / -1218799250261530. JSON exact demandé à
+  Firehouse (pas encore dans ce dépôt).
+
 ### Note 2.58.0 (contrat inchangé)
 Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a été RÉUNIE à celle du même jeu
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne

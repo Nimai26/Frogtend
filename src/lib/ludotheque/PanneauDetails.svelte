@@ -8,7 +8,7 @@
   import { rangCourt } from './versions';
   import Jaquette from './Jaquette.svelte';
   import { jeuAuHasard, ludo } from './ludotheque.svelte';
-  import { annuler, mettreDansLaLudotheque, mettreEnPause, reprendre, tele } from './telechargements.svelte';
+  import { annuler, jeuSurPc, mettreDansLaLudotheque, mettreEnPause, reprendre } from './telechargements.svelte';
   import { emulateursDuJeu, gererJeu, installer, jouer, jouerAvec, partie } from './jeu.svelte';
   import { estJeuDeBoutique, ouvrirJeuDeBoutique } from '$lib/boutiques/jeu-boutique';
   import { nomPlateforme } from '$lib/boutiques/galaxy.svelte';
@@ -17,7 +17,9 @@
   import BlocDecompression from '$lib/decompression/BlocDecompression.svelte';
 
   const j = $derived(ludo.selection);
-  const surPc = $derived(j ? tele.jeux[j.id] : undefined);
+  const surPc = $derived(j ? jeuSurPc(j.id) : undefined);
+  /** Le numéro du jeu SUR CE PC (un jeu importé relié : son numéro local ; la ligne montre sa fiche). */
+  const idPc = $derived(surPc?.id ?? j?.id ?? 0);
   const plateforme = $derived(ludo.plateformes.find((p) => p.nom === ludo.plateforme));
   const catalogue = $derived(ludo.espace === 'catalogue');
   let ajout = $state(false);
@@ -60,11 +62,11 @@
         {#if surPc.message}<p class="muted">{surPc.message}</p>{/if}
         <div class="boutons">
           {#if surPc.etat === 'en_cours' || surPc.etat === 'attente'}
-            <button class="btn" onclick={() => mettreEnPause(j.id)}>⏸ Pause</button>
+            <button class="btn" onclick={() => mettreEnPause(idPc)}>⏸ Pause</button>
           {:else}
-            <button class="btn primary" onclick={() => reprendre(j.id)}>▶ Reprendre</button>
+            <button class="btn primary" onclick={() => reprendre(idPc)}>▶ Reprendre</button>
           {/if}
-          <button class="btn danger" onclick={() => annuler(j.id)}>Annuler</button>
+          <button class="btn danger" onclick={() => annuler(idPc)}>Annuler</button>
         </div>
       </div>
     {/if}
@@ -80,24 +82,24 @@
           {ajout ? 'Préparation…' : '➕ Mettre dans ma ludothèque'}
         </button>
       {:else if catalogue && surPc}
-        <p class="tag ok sur-pc">✅ Dans ta ludothèque</p>
+        <p class="tag ok sur-pc">{surPc.id < 0 ? '✅ Déjà sur ce PC (un fichier importé du disque)' : '✅ Dans ta ludothèque'}</p>
       {/if}
       {#if !catalogue && surPc?.etat === 'telecharge'}
-        {#if partie.enJeu === j.id}
+        {#if partie.enJeu === idPc}
           <p class="tag ok sur-pc">🎮 Partie en cours…</p>
-        {:else if partie.installation === j.id}
+        {:else if partie.installation === idPc}
           <button class="btn primary grand" disabled>📦 Installation…</button>
         {:else if !surPc.installation}
-          <button class="btn primary grand" onclick={() => installer(j.id)}>📦 Installer</button>
+          <button class="btn primary grand" onclick={() => installer(idPc)} disabled={!!surPc.d_un_autre} title={surPc.d_un_autre ? 'Seule la personne qui l’a importé peut l’installer' : undefined}>📦 Installer</button>
         {:else}
-          <button class="btn primary grand" onclick={() => jouer(j.id)} disabled={partie.enJeu !== null}>▶ Jouer</button>
+          <button class="btn primary grand" onclick={() => jouer(idPc)} disabled={partie.enJeu !== null}>▶ Jouer</button>
           {#if emulateursDuJeu(j.plateforme).liste.length > 1 || (surPc.installation.versions?.length ?? 0) > 1}
-            <button class="btn grand" onclick={() => jouerAvec(j.id)} disabled={partie.enJeu !== null}>▶ Jouer avec…</button>
+            <button class="btn grand" onclick={() => jouerAvec(idPc)} disabled={partie.enJeu !== null}>▶ Jouer avec…</button>
           {/if}
         {/if}
       {/if}
-      {#if !catalogue && surPc?.etat === 'telecharge'}
-        <button class="btn grand" onclick={() => gererJeu(j.id)} disabled={partie.enJeu === j.id}>
+      {#if !catalogue && surPc?.etat === 'telecharge' && !surPc.d_un_autre}
+        <button class="btn grand" onclick={() => gererJeu(idPc)} disabled={partie.enJeu === idPc}>
           ⚙ Gérer le jeu <span class="muted">(installer, désinstaller, parties…)</span>
         </button>
       {/if}
@@ -117,8 +119,10 @@
         <dt>Versions</dt>
         <dd>{surPc?.installation?.versions?.length} ({surPc?.installation?.versions?.map((v) => rangCourt(v)).join(', ')})</dd>
       {/if}
-      {#if j.source === 'local'}
-        <dt>Origine</dt><dd>importé de ton disque (Frogtend n’efface jamais ses fichiers)</dd>
+      {#if surPc?.d_un_autre}
+        <dt>Origine</dt><dd>importé du disque par une autre personne de ce PC : tu peux y jouer, elle seule peut le gérer</dd>
+      {:else if j.source === 'local' || (surPc && surPc.id < 0)}
+        <dt>Origine</dt><dd>importé de ton disque (Frogtend n’efface jamais ses fichiers){surPc && surPc.id < 0 && j.id > 0 ? ' ; fiche et images : Firehouse' : ''}</dd>
       {/if}
       {#if estJeuDeBoutique(j)}
         <dt>Boutique</dt><dd>{nomPlateforme(j.boutique ?? '')}</dd>
@@ -126,9 +130,9 @@
         {#if j.minutes}<dt>Temps de jeu</dt><dd>{duree(j.minutes * 60)}</dd>{/if}
       {/if}
     </dl>
-    {#if !catalogue && surPc?.installation}<BlocDecompression id={j.id} titre={j.titre} />{/if}
-    {#if !catalogue}<BlocSucces jeu={j} surPc={!!surPc?.installation} />{/if}
-    {#if !catalogue && surPc?.installation}<BlocContenus id={j.id} titre={j.titre} />{/if}
+    {#if !catalogue && surPc?.installation}<BlocDecompression id={idPc} titre={j.titre} />{/if}
+    {#if !catalogue}<BlocSucces jeu={j} surPc={!!surPc?.installation} idPc={idPc} />{/if}
+    {#if !catalogue && surPc?.installation}<BlocContenus id={idPc} titre={j.titre} />{/if}
     {#if j.genres.length}
       <div class="genres">
         {#each j.genres as g (g)}<span class="tag">{g}</span>{/each}

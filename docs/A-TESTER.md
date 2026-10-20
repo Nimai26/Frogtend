@@ -48,6 +48,13 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Un jeu importé relié (0.84.1)
+- [ ] Après une reconnaissance : un jeu NES reconnu apparaît UNE fois dans Ma ludothèque, avec la jaquette de
+      Firehouse ; « 📄 Voir la fiche » ouvre sa fiche ; ▶ Jouer lance ton fichier.
+- [ ] Ouvrir le profil d'une autre personne qui voit ce jeu : il est « sur ce PC », ▶ Jouer marche, ⚙ Gérer n'est
+      pas proposé.
+- [ ] ⚙ Gérer le jeu ▸ « Ce n'est pas ce jeu » : il redevient ton jeu importé, sans fiche.
+
 ## Reconnaître mes jeux importés (0.84.0)
 - [ ] 📥 Importer ▸ 🔗 Reconnaître mes jeux importés : l'annonce dit combien de fichiers seront lus et leur poids.
       Lancer : la barre avance, puis le compte rendu (reconnus, à vérifier, inconnus). Essai réel du 20/10 sur 90 de

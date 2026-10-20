@@ -1081,8 +1081,9 @@ export function jeuPcSansEmulateur(id: number): boolean {
 /** Le menu « ⚙ Gérer le jeu » : toutes les actions possibles sur un jeu du PC, au même endroit, bien visibles. */
 export async function gererJeu(id: number) {
   const j = tele.jeux[id];
-  if (!j) return;
-  type Action = 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'patchs' | 'mods' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'retirer';
+  // Le jeu importé par une AUTRE personne de ce PC : elle seule le gère (✅ Seb 20/10).
+  if (!j || j.d_un_autre) return;
+  type Action = 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'patchs' | 'mods' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'delier' | 'retirer';
   const options: { valeur: Action; libelle: string; detail?: string }[] = [];
   if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
   if (j.installation && !j.installation.fichier_du_jeu)
@@ -1128,6 +1129,9 @@ export async function gererJeu(id: number) {
   }
   if (j.installation)
     options.push({ valeur: 'abri', libelle: '💾 Mettre mes parties à l’abri', detail: 'une copie de ce qui a changé depuis l’installation' });
+  // Un jeu importé relié à une fiche de Firehouse (contrat 1.21) : le lien se défait d'ici aussi.
+  if (estImporte(j) && j.fiche)
+    options.push({ valeur: 'delier', libelle: '🔗 Ce n’est pas ce jeu (ne plus relier)', detail: 'ton fichier ne bouge pas : il perd seulement la fiche de Firehouse' });
   // Retirer (et désinstaller) reste au bureau (✅ Seb 19/10) : il efface, et le désinstalleur se pilote à la souris.
   if (j.etat === 'telecharge' && !auCanape())
     options.push(
@@ -1149,5 +1153,22 @@ export async function gererJeu(id: number) {
   else if (c === 'pleinEcran') await choisirPleinEcran(id);
   else if (c === 'clavier') await choisirClavier(id);
   else if (c === 'abri') await mettreALAbri(id);
+  else if (c === 'delier') await delier(j);
   else if (c === 'retirer') await retirer(j);
+}
+
+/** Défait le lien d'un jeu importé avec sa fiche de Firehouse (le jeu et ses fichiers ne bougent pas). */
+async function delier(j: JeuPc) {
+  if (!(await confirmer(`Ne plus relier « ${j.titre} » à sa fiche ?`, { message: 'Ton jeu ne bouge pas : il perd seulement la fiche et les images de Firehouse.', libelleValider: 'Ne plus relier' }))) return;
+  try {
+    await api.rapprochementDefaire(j.id);
+    await rechargerJeuxDuPc();
+    await rechargerListe();
+    await rechargerPlateformes();
+    // La fiche n'est plus montrée : la sélection revient sur la ligne du jeu importé.
+    ludo.selection = ludo.jeux.find((x) => x.id === j.id) ?? ludo.selection;
+    toast(`« ${j.titre} » n’est plus relié à Firehouse.`);
+  } catch (e) {
+    toast(`Refusé : ${motifDuRefus(e)}`, 'erreur');
+  }
 }

@@ -4,7 +4,8 @@
   import { api, type JeuResume } from '$lib/api';
   import { resumeRetro, type SuccesRetro } from './succes.svelte';
 
-  let { jeu, surPc }: { jeu: JeuResume; surPc: boolean } = $props();
+  /** `idPc` : le numéro du jeu SUR CE PC (un jeu importé relié montre sa fiche, son fichier est sous son numéro local). */
+  let { jeu, surPc, idPc }: { jeu: JeuResume; surPc: boolean; idPc?: number } = $props();
 
   let steam = $state<[number, number] | null>(null);
   let ra = $state<SuccesRetro | null>(null);
@@ -23,7 +24,7 @@
           const s = await api.succesSteam(j.cle_boutique).catch(() => null);
           if (!annule) steam = s;
         } else if (pc) {
-          const r = await api.succesRetro(j.id).catch(() => null);
+          const r = await api.succesRetro(idPc ?? j.id).catch(() => null);
           if (!annule) ra = r;
         }
       } finally {

@@ -473,12 +473,26 @@ d'abord :
       empreintes (annoncées, chiffrées) → 3 correspondances → 4 fiche sur l'import.
       ⏳ RESTE (lot 4) : la fiche, les images et les triches de Firehouse sur un jeu importé relié, visible de tous les
       profils qui voient la fiche (✅ Seb) ; les fusions 1.14 doivent réécrire `media_id` des correspondances.
+      Conception (experts contrat et interface, 20/10) : le numéro LOCAL reste l'identité sur le PC (jouer, gérer,
+      temps, abris, succès, réglages) ; la FICHE sert à l'affichage (fiche, jaquette, visuels, documents, annexes,
+      triches, assistant, session) ; une seule fonction de visibilité `fiche_visible` ; la grille montre la FICHE
+      (« installé sur ce PC ») et masque la ligne importée pour un profil qui voit la fiche ; `tele.jeux` aussi par
+      fiche ; session sans `media_id` négatif ; fusions suivies à la lecture (`reuni_vers`). Lots 4a cœur → 4b session,
+      triches, assistant → 4c interface → 4d hors-ligne et Taodbox.
+      ✅ Seb 20/10 : (1) un autre profil qui voit la fiche peut **JOUER seulement** (ses sauvegardes, ses réglages) ;
+      retirer, changer le programme, décompresser restent à celui qui a importé ; (2) **le lien est GARDÉ** au retrait
+      du jeu importé (réimporter le même fichier le retrouve) — mais tant que le jeu est absent du PC, il ne compte pas
+      (le téléchargement depuis Firehouse est permis : corrige le défaut de la 0.84.0) ; (3) deux imports reliés à la
+      même fiche : « Jouer » prend celui du profil ouvert, sinon le plus ancien ; « Jouer avec… » propose les autres ;
+      (4) filtre Boutique : un import relié est dans « Firehouse » ET « Importés de mon disque ».
       Firehouse (20/10 soir) : chaque inconnu de l'essai vérifié, aucun bug (versions écartées par le tri du stock ;
       MAME : machines absentes du romset servi). ✅ Seb 20/10 (via Firehouse) : **contrat 1.22 à venir** (besoin 29) —
       parent + CHAQUE clone d'un zip fusionné ; CHD par `chd_sha1` (SHA1 GLOBAL de l'en-tête v5 offset 84, v4 48,
       v3 80) ; machine exact si toutes ses ROM requises (hors BIOS/devices) sont dans le zip, avec une liste
       `dependances` à vérifier chez nous ; probable si au moins la moitié ; CHD présent chez nous mais absent chez
-      Firehouse = exact quand même ; CHD de console hors périmètre. Coder APRÈS l'annonce + relevé réel.
+      Firehouse = exact quand même ; CHD de console hors périmètre. Coder APRÈS l'annonce + relevé réel. ✅ **1.22 EN SERVICE** (20/10 ~18 h 25, Firehouse 2.92.0 ;
+      détail dans CONTRAT § 1.22). Relevé réel exact REÇU → `fixtures/simule/reconcilier-122.json` ; à faire : lire `machines` pour l'arcade (un zip fusionné → parent + clones), `chd_sha1` des CHD,
+      vérifier les `dependances` (BIOS/devices) chez la personne.
       Avis de l'expert lancement (côté fichiers, mesures réelles en lecture seule sur E:) : archive = `entrees`
       toujours + `sha1` du fichier entier sous un plafond réglable (512 Mo) ; zip MAME = nom court + entrées, JAMAIS de
       sha1 ; fichier en clair = crc32 + taille (une passe crc32+sha1, jamais `fs::read`) ; images disque = nom + taille
@@ -519,6 +533,20 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.84.1** (20/10) — Lot 4 de la réconciliation (avis des experts contrat et interface ; choix de Seb du 20/10).
+  Cœur : `reliees`/`fiche_de` (fiche suivie par `reuni_vers`, vue par CE profil ; jamais pour une fiche aussi
+  téléchargée : l'import reste alors un jeu à part) ; « Ma ludothèque » montre la FICHE et masque la ligne importée ;
+  « installé » sous sa fiche ; `jeu_jouable` (B joue l'import relié de A, jamais `jeu_visible` : gérer reste à A) ;
+  `jeux_du_pc` + `fiche`, `titre_fiche`, `d_un_autre` ; session jamais avec un numéro négatif ; triches par la fiche ;
+  liens dormants (`correspondances()` = imports encore au registre) ; la sauvegarde de B n'emporte pas l'import de A.
+  Interface : `jeuSurPc` (celui du profil, sinon le plus ancien), actions sous le numéro local, « Déjà sur ce PC »,
+  Gérer caché pour le jeu d'un autre (bureau, fiche, Taodbox), Taodbox sans doublon avec la jaquette, le fond, le logo
+  et le titre de la fiche, ⚙ Gérer ▸ « Ce n'est pas ce jeu », sélection gardée. Vérifié : tests (cœur 432,
+  interface 215), svelte-check ; test du scénario Seb/Léa. Deux interblocages de verrou trouvés par les tests et
+  corrigés ; fins de ligne d'un fichier réparées (leçon). NON vérifié : dans le programme installé.
+  ⏳ Lot 4d : prélire la fiche des jeux reliés (hors ligne) ; préparer les images de Taodbox par la fiche
+  (`medias.rs`) ; un réimport par un AUTRE profil réveille le lien confirmé par le premier (à trancher avec Seb).
 
 - **0.84.0** (20/10) — Reconnaître les jeux importés (contrat 1.21, lots 1 à 3 + écran ; avis des experts contrat,
   lancement et interface). Client `/reconcilier` (lots qui ne coupent jamais un groupe, 413 coupé en deux, 404 « pas

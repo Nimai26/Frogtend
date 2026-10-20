@@ -131,8 +131,10 @@ pub fn id_boutique(boutique: &str, cle: &str) -> i64 {
 
 /// La partie « quels jeux » d'une requête : le catalogue (`ids` absent) = les jeux de Firehouse seulement ; la
 /// ludothèque du PC (`ids` = les jeux du PC) = ces jeux-là ET ceux des boutiques de la personne.
+/// Dans la liste : un id POSITIF = un jeu de Firehouse à montrer ; un id NÉGATIF = une ligne locale (jeu importé)
+/// à MASQUER, parce que la fiche de Firehouse à laquelle il est relié (contrat 1.21) est montrée à sa place.
 fn restreindre(p: &str) -> String {
-    format!("(({p} IS NULL AND id > 0) OR ({p} IS NOT NULL AND (id < 0 OR id IN (SELECT value FROM json_each({p})))))")
+    format!("(({p} IS NULL AND id > 0) OR ({p} IS NOT NULL AND ((id < 0 AND id NOT IN (SELECT value FROM json_each({p}))) OR (id > 0 AND id IN (SELECT value FROM json_each({p}))))))")
 }
 
 /// Une fiche RÉUNIE à une autre chez Firehouse (contrat 1.14) : `ancien` → `nouveau`.

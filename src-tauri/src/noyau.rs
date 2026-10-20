@@ -827,36 +827,79 @@ impl Noyau {
     }
 
     /// `locale` : seulement les jeux du PC (« Ma ludothèque ») ; sinon tout le catalogue du profil.
-    fn restriction(&self, locale: bool) -> Resultat<Option<Vec<i64>>> {
-        Ok(if locale { Some(self.registre().ids()?) } else { None })
+    /// « Ma ludothèque » : les jeux de Firehouse du PC, plus la FICHE de chaque jeu importé relié que ce profil voit
+    /// (et sa ligne locale masquée : un jeu, une ligne) ; `None` : tout le catalogue.
+    fn restriction(&self, s: &Session, locale: bool) -> Resultat<Option<Vec<i64>>> {
+        if !locale {
+            return Ok(None);
+        }
+        let mut l: Vec<i64> = self.registre().ids()?.into_iter().filter(|id| *id > 0).collect();
+        for (local, fiche) in self.reliees(s)? {
+            l.push(fiche);
+            l.push(local);
+        }
+        Ok(Some(l))
+    }
+
+    /// Les jeux importés du PC reliés à une fiche (contrat 1.21) que CE profil voit : (numéro local, fiche montrée).
+    /// La fiche suit une réunion (contrat 1.14). Un profil qui ne voit pas la fiche n'en sait rien.
+    pub(crate) fn reliees(&self, s: &Session) -> Resultat<Vec<(i64, i64)>> {
+        let correspondances = self.registre().correspondances()?;
+        let telecharges: std::collections::BTreeSet<i64> = self.registre().ids()?.into_iter().filter(|id| *id > 0).collect();
+        let c = s.verrou();
+        let mut l = Vec::new();
+        for (local, media, _) in correspondances {
+            let fiche = c.reuni_vers(media)?.unwrap_or(media);
+            // La fiche est AUSSI téléchargée sur ce PC : elle garde sa ligne, et l'import reste un jeu à part (jamais
+            // masqué : on peut toujours y jouer, le gérer ou le délier).
+            if telecharges.contains(&fiche) {
+                continue;
+            }
+            if c.contient(fiche)? {
+                l.push((local, fiche));
+            }
+        }
+        Ok(l)
+    }
+
+    /// La fiche que montre un jeu du PC pour CE profil (un jeu de Firehouse : la sienne ; un import relié : celle de
+    /// Firehouse s'il la voit ; sinon `None`).
+    pub(crate) fn fiche_de(&self, s: &Session, id: i64) -> Resultat<Option<i64>> {
+        if id > 0 {
+            // Une fiche réunie (contrat 1.14) : la fiche finale.
+            return Ok(Some(s.verrou().reuni_vers(id)?.unwrap_or(id)));
+        }
+        Ok(self.reliees(s)?.into_iter().find(|(l, _)| *l == id).map(|(_, f)| f))
     }
 
     pub async fn plateformes(&self, locale: bool) -> Resultat<Vec<Plateforme>> {
         let s = self.session().await?;
-        let seulement = self.restriction(locale)?;
+        let seulement = self.restriction(&s, locale)?;
         let c = s.verrou();
         c.plateformes(seulement.as_deref())
     }
 
     pub async fn genres(&self, plateforme: Option<&str>, locale: bool) -> Resultat<Vec<String>> {
         let s = self.session().await?;
-        let seulement = self.restriction(locale)?;
+        let seulement = self.restriction(&s, locale)?;
         let c = s.verrou();
         c.genres(plateforme, seulement.as_deref())
     }
 
     pub async fn lister(&self, filtre: &Filtre) -> Resultat<Liste> {
         let s = self.session().await?;
-        let seulement = self.restriction(filtre.ludotheque)?;
-        let c = s.verrou();
+        let seulement = self.restriction(&s, filtre.ludotheque)?;
         // Les jeux de Firehouse installés sur ce PC (filtre « installé ou non »).
-        let installes: Vec<i64> = self.registre().tous()?.into_iter().filter(|j| j.installation.is_some()).map(|j| j.id).collect();
+        let mut installes: Vec<i64> = self.registre().tous()?.into_iter().filter(|j| j.installation.is_some()).map(|j| j.id).collect();
+        // Un jeu importé relié est « installé » sous sa fiche (lu AVANT de prendre le verrou du cache : `reliees` le prend).
+        installes.extend(self.reliees(&s)?.into_iter().map(|(_, f)| f));
+        let c = s.verrou();
         c.lister(filtre, seulement.as_deref(), &installes)
     }
 
     pub async fn au_hasard(&self, plateforme: Option<&str>, locale: bool) -> Resultat<Option<JeuResume>> {
         let s = self.session().await?;
-        let seulement = self.restriction(locale)?;
+        let seulement = self.restriction(&s, locale)?;
         let c = s.verrou();
         c.au_hasard(plateforme, seulement.as_deref())
     }

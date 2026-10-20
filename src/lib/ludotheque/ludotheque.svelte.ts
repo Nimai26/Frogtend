@@ -6,7 +6,7 @@ import { isTauri } from '@tauri-apps/api/core';
 import { api, estErreurCoeur, type JeuResume, type Plateforme } from '$lib/api';
 import { informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
-import { rechargerJeuxDuPc } from './telechargements.svelte';
+import { jeuSurPc, rechargerJeuxDuPc } from './telechargements.svelte';
 import { etat, suivreReunions } from '$lib/etat.svelte';
 
 /** Nombre de jeux chargés à la fois dans la grille. */
@@ -98,7 +98,12 @@ export async function rechargerListe() {
     ludo.jeux = l.jeux;
     ludo.total = l.total;
     ludo.totalLudotheque = l.total_ludotheque;
-    if (ludo.selection && !l.jeux.some((j) => j.id === ludo.selection!.id)) ludo.selection = null;
+    // La ligne choisie a disparu : un jeu importé qu'on vient de relier se montre désormais sous sa fiche (contrat 1.21) —
+    // la sélection la suit, pour ne jamais perdre sa place au clavier ou à la manette.
+    if (ludo.selection && !l.jeux.some((j) => j.id === ludo.selection!.id)) {
+      const ancien = ludo.selection.id;
+      ludo.selection = l.jeux.find((j) => jeuSurPc(j.id)?.id === ancien) ?? null;
+    }
   } catch (e) {
     toast(`Impossible de lire la liste des jeux : ${motifDuRefus(e)}`, 'erreur');
   } finally {

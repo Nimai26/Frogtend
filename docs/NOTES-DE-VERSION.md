@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.84.1 — Un jeu importé relié prend la fiche de Firehouse
+
+- Un jeu de ton disque relié à Firehouse montre maintenant SA fiche : jaquette, résumé, genres, documents, triches et
+  mods. Il n'apparaît qu'une fois dans ta ludothèque, marqué « installé » ; ▶ Jouer lance toujours TON fichier.
+- Les autres personnes de ce PC qui ont le droit de voir ce jeu chez Firehouse le voient aussi « sur ce PC » et
+  peuvent y jouer (avec leurs propres sauvegardes) ; seule la personne qui l'a importé peut le gérer.
+- ⚙ Gérer le jeu ▸ « 🔗 Ce n'est pas ce jeu (ne plus relier) ».
+- Retirer un jeu importé relié garde son lien en sommeil : si tu réimportes le même fichier, il retrouve sa fiche ;
+  en attendant, rien n'empêche de télécharger ce jeu depuis Firehouse.
+
 ## 0.84.0 — Firehouse reconnaît tes jeux importés
 
 - 📥 Importer ▸ **🔗 Reconnaître mes jeux importés** : Firehouse compare les jeux que tu as ajoutés depuis ton

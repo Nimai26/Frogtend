@@ -106,12 +106,25 @@ impl Noyau {
     /// Le fichier qu'un émulateur recevra pour cette partie (`None` : un lanceur choisi, ou rien à passer) — le même
     /// choix que [`Noyau::jouer`].
     pub(crate) async fn fichier_pour_l_emulateur(&self, id: i64, version: Option<&str>) -> Resultat<Option<PathBuf>> {
-        let j = self.jeu_visible(id).await?;
+        let j = self.jeu_jouable(id).await?;
         let i = installation_de_la_partie(&j, version)?;
         Ok(match (&i.lanceur, &i.fichier_du_jeu) {
             (None, Some(f)) => Some(Path::new(&i.dossier).join(f)),
             _ => None,
         })
+    }
+
+    /// Un jeu du PC que le profil ouvert peut LANCER : visible par lui, ou un jeu importé par un autre profil et relié
+    /// à une fiche qu'il voit (✅ Seb 20/10 : jouer seulement ; gérer reste à celui qui l'a importé).
+    pub(crate) async fn jeu_jouable(&self, id: i64) -> Resultat<JeuPc> {
+        let s = self.session().await?;
+        let j = self.registre().jeu(id)?.ok_or_else(|| Erreur::Introuvable("Ce jeu n'est pas sur ce PC.".into()))?;
+        // Le verrou du cache est relâché avant `fiche_de` (qui le reprend) : jamais deux fois à la suite.
+        let visible = s.verrou().visible_ou_reuni(id)?;
+        if visible || (id < 0 && self.fiche_de(&s, id)?.is_some()) {
+            return Ok(j);
+        }
+        Err(Erreur::Introuvable("Ce jeu n'est pas sur ce PC.".into()))
     }
 
     /// Un jeu du PC, visible par le profil ouvert.
@@ -424,7 +437,7 @@ impl Noyau {
     /// qu'une partie de ses travaux sur la carte graphique : on dit « session annoncée », pas « carte libérée ».
     pub async fn jouer(&self, id: i64, emulateur: Option<(String, String)>, version: Option<&str>) -> Resultat<(u32, Vec<PathBuf>, bool)> {
         let _occupe = self.occuper(id);
-        let j = self.jeu_visible(id).await?;
+        let j = self.jeu_jouable(id).await?;
         let i = installation_de_la_partie(&j, version)?;
         self.pause_mame.store(false, std::sync::atomic::Ordering::SeqCst);
         let (lanceur, dossiers) = match (&i.lanceur, &i.fichier_du_jeu) {
@@ -479,7 +492,9 @@ impl Noyau {
     /// et on ne réessaie pas.
     async fn annoncer(&self, id: i64, etat: &str) -> Option<Value> {
         let s = self.session().await.ok()?;
-        match s.source.session(etat, id).await {
+        // La fiche que ce profil voit (un import relié : celle de Firehouse ; un import seul : aucune).
+        let fiche = self.fiche_de(&s, id).ok().flatten();
+        match s.source.session(etat, fiche).await {
             Ok(v) => Some(v),
             Err(e) => {
                 self.journaliser(&format!("session « {etat} » du jeu {id} : {e:?}"));

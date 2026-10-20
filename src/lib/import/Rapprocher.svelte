@@ -8,6 +8,8 @@
   import { api, duree, taille } from '$lib/api';
   import { choisir, confirmer, fermerToast, majProgres, toast, toastProgres } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
+  import { rechargerListe, rechargerPlateformes } from '$lib/ludotheque/ludotheque.svelte';
+  import { rechargerJeuxDuPc } from '$lib/ludotheque/telechargements.svelte';
   import { dureeEstimee, ficheNommee, nomFiche, propositions, texteAnnonce, texteMotif, texteStatut, type Annonce, type JeuRapproche, type Rapprochement } from './rapprochement';
 
   let annonce = $state<Annonce | null>(null);
@@ -64,6 +66,9 @@
     try {
       const r = await api.rapprocher(reseau);
       rapport = r;
+      await rechargerJeuxDuPc();
+      await rechargerListe();
+      await rechargerPlateformes();
       const n = (d: string) => r.jeux.filter((j) => j.decision === d).length;
       toast(`🔗 ${n('rattache')} jeu(x) reconnu(s), ${n('a_voir')} à vérifier, ${n('inconnu')} inconnu(s) de Firehouse.`);
       annonce = await api.rapprocherAnnonce().catch(() => annonce);
@@ -81,6 +86,10 @@
    * la liste), jamais perdu pour le clavier et la manette. */
   async function apres(section: string, indice: number) {
     rapport = await api.rapprochementDernier().catch(() => rapport);
+    // La ludothèque montre la fiche d'un jeu relié (une seule ligne) : elle est relue.
+    await rechargerJeuxDuPc();
+    await rechargerListe();
+    await rechargerPlateformes();
     await tick();
     const lignes = liste?.querySelectorAll<HTMLElement>(`[data-section="${section}"] li`) ?? [];
     const cible = lignes[Math.min(indice, lignes.length - 1)];

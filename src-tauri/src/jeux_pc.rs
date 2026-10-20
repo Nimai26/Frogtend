@@ -345,7 +345,11 @@ impl Registre {
 
     /// Les jeux importés rattachés : (local, fiche de Firehouse, comment).
     pub fn correspondances(&self) -> Resultat<Vec<(i64, i64, String)>> {
-        let mut st = self.db.prepare("SELECT local, MIN(media_id), MIN(confirme) FROM correspondances GROUP BY local")?;
+        // Seulement les jeux importés ENCORE sur ce PC : un lien gardé après un retrait (✅ Seb 20/10, il revient au
+        // réimport) ne compte pas tant que le jeu est absent (le téléchargement depuis Firehouse reste permis).
+        let mut st = self.db.prepare(
+            "SELECT c.local, MIN(c.media_id), MIN(c.confirme) FROM correspondances c JOIN jeux_pc j ON j.id = c.local GROUP BY c.local ORDER BY MIN(j.ajoute_le), c.local",
+        )?;
         let l = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<Result<_, _>>()?;
         Ok(l)
     }

@@ -20,7 +20,24 @@ import { ludo, rechargerListe, rechargerPlateformes } from './ludotheque.svelte'
 export const tele = $state<{
   /** Les jeux du PC visibles pour ce profil, par id. */
   jeux: Record<number, JeuPc & { debit?: number }>;
-}>({ jeux: {} });
+  /** Les jeux importés reliés à une fiche, par numéro de fiche (contrat 1.21). */
+  parFiche: Record<number, JeuPc & { debit?: number }>;
+}>({ jeux: {}, parFiche: {} });
+
+/** Le jeu du PC d'une ligne de la ludothèque : par son numéro, sinon le jeu importé relié à cette fiche (✅ Seb
+ * 20/10 : celui de ce profil d'abord, sinon le plus ancien). */
+export function jeuSurPc(id: number): (JeuPc & { debit?: number }) | undefined {
+  return tele.jeux[id] ?? tele.parFiche[id];
+}
+
+/** Les jeux importés reliés, rangés par fiche (celui de ce profil d'abord, sinon le plus ancien). */
+export function rangerParFiche(liste: JeuPc[]): Record<number, JeuPc> {
+  const r: Record<number, JeuPc> = {};
+  const relies = liste.filter((j) => j.id < 0 && j.fiche != null && j.fiche > 0);
+  relies.sort((a, b) => Number(!!a.d_un_autre) - Number(!!b.d_un_autre) || a.ajoute_le.localeCompare(b.ajoute_le));
+  for (const j of relies) if (!(j.fiche! in r)) r[j.fiche!] = j;
+  return r;
+}
 
 /** Le nombre de téléchargements qui ne sont pas finis (pour la pastille de la barre du haut). */
 export function nombreEnCours(): number {
@@ -31,8 +48,10 @@ export async function rechargerJeuxDuPc() {
   try {
     const liste = await api.jeuxDuPc();
     tele.jeux = Object.fromEntries(liste.map((j) => [j.id, j]));
+    tele.parFiche = rangerParFiche(liste);
   } catch {
     tele.jeux = {};
+    tele.parFiche = {};
   }
 }
 

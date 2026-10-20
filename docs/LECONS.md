@@ -45,6 +45,11 @@ une barre oblique inverse s'écrit avec l'outil d'édition, sans exception (les 
 20/10 (4e fois, lot 0.82.0) : un `sed` sur `crochets.nsh` (code NSIS : des chemins du registre) a mangé les
 barres obliques inverses (`Classes` + retour à la ligne + `xm`). Vu aussitôt en relisant, fichier réécrit en entier
 par l'outil d'écriture et vérifié octet par octet. Un fichier d'INSTALLEUR est du code : même règle, aucun `sed`.
+20/10 (lot 0.84.1) : `sed -i` dans le Git Bash de Windows RETIRE les fins de ligne Windows (CRLF → LF) de TOUT le
+fichier : `GrilleJeux.svelte` montrait 452 lignes changées pour 4. Vu par la relecture de l'expert, réparé octet par
+octet. Comment l'appliquer : jamais `sed -i` sur un fichier du projet ; un script de remplacement garde les fins de
+ligne (lire, remplacer, réécrire à l'identique) ; avant chaque livraison, comparer les fins de ligne à HEAD (script
+`eol.py` du brouillon).
 
 ## 18/10 — Un test vert parce que son serveur simulé était plus simple que la vraie vie
 Ce qui s'est passé : le rattachement depuis la file de téléchargement (fiche réunie découverte par un 410) passait son

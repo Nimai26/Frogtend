@@ -16,7 +16,7 @@
   import { adresseMedia } from '$lib/api';
   import { documentsMontres, libelleDocument, ouvrirDocument, type DocumentOuvert } from '$lib/ludotheque/documents';
   import { ageConseille, dateDeSortie, datePrecise, noteSurCinq, typeDeSortie, type InfosJeu } from '$lib/ludotheque/infos';
-  import { mettreDansLaLudotheque, tele } from '$lib/ludotheque/telechargements.svelte';
+  import { jeuSurPc, mettreDansLaLudotheque } from '$lib/ludotheque/telechargements.svelte';
   import { emulateursDuJeu, gererJeu, installer, jouer, jouerAvec, partie } from '$lib/ludotheque/jeu.svelte';
 
   let fiche = $state<Fiche | null>(null);
@@ -199,8 +199,8 @@
     {:else if locale}
       <p class="tag ok">✅ Dans ta ludothèque : fiche et documents gardés sur ce PC</p>
     {/if}
-    {#if tele.jeux[fiche.id]?.etat === 'telecharge'}
-      {@const surPc = tele.jeux[fiche.id]}
+    {#if jeuSurPc(fiche.id)?.etat === 'telecharge'}
+      {@const surPc = jeuSurPc(fiche.id)!}
       <div class="actions-jeu">
         {#if !surPc.installation}
           <button class="btn primary" onclick={() => installer(surPc.id)} disabled={partie.installation === surPc.id}>📦 Installer</button>
@@ -210,8 +210,8 @@
             <button class="btn" onclick={() => jouerAvec(surPc.id)} disabled={partie.enJeu !== null}>▶ Jouer avec…</button>
           {/if}
         {/if}
-        <button class="btn" onclick={() => gererJeu(surPc.id)} disabled={partie.enJeu === surPc.id}>⚙ Gérer le jeu</button>
-        <a class="btn" href={`/assistant?jeu=${surPc.id}`}>💬 Demander à l’assistant</a>
+        {#if !surPc.d_un_autre}<button class="btn" onclick={() => gererJeu(surPc.id)} disabled={partie.enJeu === surPc.id}>⚙ Gérer le jeu</button>{/if}
+        <a class="btn" href={`/assistant?jeu=${fiche.id}`}>💬 Demander à l’assistant</a>
         <a class="btn" href={`/triches?jeu=${surPc.id}`}>🎯 Triches et mods</a>
       </div>
     {/if}
@@ -341,7 +341,7 @@
                   {#if v.notes_a_traduire}<p class="muted">Ces notes ne sont pas encore traduites.</p>{/if}
                 </details>
               {/if}
-              {#if !locale}
+              {#if !locale && !jeuSurPc(fiche.id)}
                 <button class="btn" onclick={() => fiche && mettreDansLaLudotheque(fiche.id)}>➕ Mettre dans ma ludothèque</button>
               {/if}
             </article>

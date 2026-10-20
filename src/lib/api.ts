@@ -74,6 +74,12 @@ export interface JeuPc {
   derniere_partie: string | null;
   /** Octets déjà sur le disque. */
   recus: number;
+  /** La fiche de Firehouse que montre ce jeu pour ce profil (un jeu importé relié : contrat 1.21). */
+  fiche?: number | null;
+  /** Importé par une autre personne de ce PC : on peut seulement y jouer (✅ Seb 20/10). */
+  d_un_autre?: boolean;
+  /** Le titre de la fiche reliée (à montrer à la place de celui du fichier). */
+  titre_fiche?: string | null;
 }
 
 export interface Lanceur {

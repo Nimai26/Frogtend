@@ -9,7 +9,7 @@
   import { etat, sortirDuProfil } from '$lib/etat.svelte';
   import { gererJeu, installer, jouer, partie } from '$lib/ludotheque/jeu.svelte';
   import Jaquette from '$lib/ludotheque/Jaquette.svelte';
-  import { tele } from '$lib/ludotheque/telechargements.svelte';
+  import { jeuSurPc, tele } from '$lib/ludotheque/telechargements.svelte';
   import { fenetreOuverte, selectionner, taodbox } from '$lib/taodbox/manette.svelte';
   import { adresseImageBoutique } from '$lib/api';
   import { lireSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
@@ -23,6 +23,8 @@
   const jeux = $derived(
     Object.values(tele.jeux)
       .filter((j: JeuPc) => j.etat === 'telecharge')
+      // Un jeu, une carte (contrat 1.21) : un import relié ne compte qu'une fois par fiche (le même que la ludothèque).
+      .filter((j: JeuPc) => !(j.id < 0 && j.fiche) || jeuSurPc(j.fiche)?.id === j.id)
       .sort((a, b) => (b.derniere_partie ?? '').localeCompare(a.derniere_partie ?? '') || a.titre.localeCompare(b.titre)),
   );
   const consoles = $derived([...new Set(jeux.map((j) => j.plateforme))].sort());
@@ -78,7 +80,8 @@
     // Pas pendant « Gérer le jeu » (un réglage peut attendre sans fenêtre ouverte).
     if (partie.enJeu !== null || enGestion) return;
     if (!j.installation) {
-      if (!(await installer(j.id))) return;
+      // Le jeu d'une autre personne : elle seule peut l'installer.
+      if (j.d_un_autre || !(await installer(j.id))) return;
     }
     await jouer(j.id);
   }
@@ -89,7 +92,7 @@
   let enGestion = false;
   async function gerer(j: JeuPc, e: Event) {
     e.preventDefault();
-    if (enGestion || partie.enJeu !== null || fenetreOuverte()) return;
+    if (enGestion || partie.enJeu !== null || fenetreOuverte() || j.d_un_autre) return;
     enGestion = true;
     try {
       await gererJeu(j.id);
@@ -122,7 +125,7 @@
       <img
         class="fond-jeu"
         class:visible={fondCharge}
-        src={adresseFondDuJeu(choisi.id)}
+        src={adresseFondDuJeu(choisi.fiche ?? choisi.id)}
         alt=""
         onload={() => (fondCharge = true)}
         onerror={() => (fondCharge = false)}
@@ -162,14 +165,14 @@
             <img
               class="logo-jeu"
               class:visible={logoCharge}
-              src={adresseLogoDuJeu(choisi.id)}
+              src={adresseLogoDuJeu(choisi.fiche ?? choisi.id)}
               alt=""
               onload={() => (logoCharge = true)}
               onerror={() => (logoAbsent = true)}
             />
           {/key}
         {/if}
-        {#if !logoCharge}<span class="titre-jeu">{choisi.titre}</span>{/if}
+        {#if !logoCharge}<span class="titre-jeu">{choisi.titre_fiche ?? choisi.titre}</span>{/if}
         <span class="console-jeu">{choisi.plateforme}</span>
       {/if}
     </div>
@@ -187,8 +190,8 @@
           oncontextmenu={(e) => gerer(j, e)}
           onkeydown={(e) => e.key === 'ContextMenu' && gerer(j, e)}
           disabled={partie.enJeu !== null && partie.enJeu !== j.id} title={j.titre}>
-          <Jaquette id={j.id} titre={j.titre} plateforme={j.plateforme} largeur={180} visuel={etat.profil.ludotheque.visuel} />
-          <span class="titre">{j.titre}</span>
+          <Jaquette id={j.fiche ?? j.id} titre={j.titre} plateforme={j.plateforme} largeur={180} visuel={etat.profil.ludotheque.visuel} />
+          <span class="titre">{j.titre_fiche ?? j.titre}</span>
           <span class="etat">{partie.enJeu === j.id ? '▶ En cours' : j.installation ? '' : '📦 À installer'}</span>
         </button>
       {/each}

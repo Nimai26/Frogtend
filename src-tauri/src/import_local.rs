@@ -1083,6 +1083,56 @@ mod tests {
         assert!(l[1].disques.is_empty(), "un seul disque : pas de liste");
     }
 
+    /// Contrat 1.21, lot 4 (✅ Seb 20/10) : un import relié montre sa FICHE une seule fois (pas de double) ; un autre
+    /// profil qui voit la fiche peut y jouer, pas le gérer ; retiré du PC, le lien dort (téléchargement permis).
+    #[tokio::test]
+    async fn un_import_relie_montre_sa_fiche_une_seule_fois_et_un_autre_profil_peut_seulement_y_jouer() {
+        use crate::coffre::CoffreMemoire;
+        use crate::noyau::{Connexion, Noyau};
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let seb = n.creer_profil("Seb", None, None).unwrap().id;
+        let lea = n.creer_profil("Léa", None, None).unwrap().id;
+        let simule = Connexion { adresse: String::new(), simule: true };
+        n.ouvrir(&seb, None, &simule).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        let roms = d.path().join("ROM");
+        ecrire(&roms, "Dune maison.nes", "rom");
+        let jeu = JeuAImporter {
+            titre: "Dune maison".into(),
+            plateforme: "Nintendo Entertainment System".into(),
+            dossier: roms.to_string_lossy().into(),
+            fichier: Some("Dune maison.nes".into()),
+            programme: None,
+            arguments: vec![],
+            annee: None,
+            editeur: None,
+            genres: vec![],
+        };
+        n.importer_locaux(&[jeu]).await.unwrap();
+        let local = n.lister(&crate::ludotheque::Filtre { boutique: Some("local".into()), ludotheque: true, ..Default::default() }).await.unwrap().jeux[0].id;
+        let ma_ludo = |installe: Option<bool>| crate::ludotheque::Filtre { ludotheque: true, installe, ..Default::default() };
+        // Relié à la fiche simulée 110 (Dune).
+        n.registre().noter_correspondance(local, &[(roms.join("Dune maison.nes").to_string_lossy().into(), 110, None, "exact".into(), None)], "auto", "x").unwrap();
+        let ids = |l: crate::ludotheque::Liste| l.jeux.iter().map(|j| j.id).collect::<Vec<_>>();
+        let vus = ids(n.lister(&ma_ludo(None)).await.unwrap());
+        assert!(vus.contains(&110) && !vus.contains(&local), "la fiche, une seule ligne : {vus:?}");
+        assert!(ids(n.lister(&ma_ludo(Some(true))).await.unwrap()).contains(&110), "« installé » sous sa fiche");
+        // Léa voit la fiche : elle voit le jeu sur le PC, peut y JOUER, pas le gérer.
+        n.ouvrir(&lea, None, &simule).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        let pc = n.jeux_du_pc().await.unwrap();
+        let chez_lea = pc.iter().find(|v| v.jeu.id == local).expect("l'import de Seb, vu par Léa");
+        assert_eq!((chez_lea.fiche, chez_lea.d_un_autre), (Some(110), true));
+        assert!(ids(n.lister(&ma_ludo(None)).await.unwrap()).contains(&110));
+        assert!(n.jeu_jouable(local).await.is_ok());
+        assert!(n.jeu_visible(local).await.is_err(), "gérer reste à Seb");
+        // Retiré du PC : le lien dort (gardé pour un réimport) et ne compte plus.
+        n.registre().retirer(local).unwrap();
+        assert!(n.registre().correspondances().unwrap().is_empty());
+        assert!(!ids(n.lister(&ma_ludo(None)).await.unwrap()).contains(&110));
+    }
+
     #[tokio::test]
     async fn une_fiche_par_jeu_et_ses_versions() {
         use crate::coffre::CoffreMemoire;

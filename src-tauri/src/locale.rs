@@ -39,6 +39,13 @@ pub struct JeuPcVu {
     #[serde(flatten)]
     pub jeu: JeuPc,
     pub recus: u64,
+    /// La fiche de Firehouse que montre ce jeu pour CE profil (un jeu importé relié : celle de Firehouse ; contrat
+    /// 1.21) ; `None` pour un import seul.
+    pub fiche: Option<i64>,
+    /// Le titre de cette fiche (catalogue du profil), pour l'afficher à la place de celui du fichier.
+    pub titre_fiche: Option<String>,
+    /// Le jeu a été importé par un AUTRE profil : ce profil peut seulement y jouer (✅ Seb 20/10).
+    pub d_un_autre: bool,
 }
 
 /// L'extension d'un document : d'après son CONTENU d'abord (Firehouse peut l'envoyer sans type précis), sinon
@@ -167,13 +174,23 @@ impl Noyau {
     pub async fn jeux_du_pc(&self) -> Resultat<Vec<JeuPcVu>> {
         let s = self.session().await?;
         let tous = self.registre().tous()?;
+        // Les jeux importés reliés à une fiche que ce profil voit (lu AVANT de prendre le verrou du cache).
+        let reliees = self.reliees(&s)?;
         let c = s.verrou();
         let mut vus = Vec::new();
         for j in tous {
-            // Visible par lui-même, ou par la fiche où il a été réuni (contrat 1.14, pas encore rattaché).
-            if c.visible_ou_reuni(j.id)? {
+            let fiche_reliee = reliees.iter().find(|(l, _)| *l == j.id).map(|(_, f)| *f);
+            // Visible par lui-même, ou par la fiche où il a été réuni (contrat 1.14, pas encore rattaché) ; ou un import
+            // d'un autre profil relié à une fiche que ce profil voit (contrat 1.21 : il peut y jouer).
+            let sien = c.visible_ou_reuni(j.id)?;
+            if sien || fiche_reliee.is_some() {
                 let recus = j.recus();
-                vus.push(JeuPcVu { jeu: j, recus });
+                let fiche = if j.id > 0 { Some(c.reuni_vers(j.id)?.unwrap_or(j.id)) } else { fiche_reliee };
+                let titre_fiche = match fiche_reliee {
+                    Some(f) => c.jeu(f)?.map(|x| x.titre),
+                    None => None,
+                };
+                vus.push(JeuPcVu { jeu: j, recus, fiche, titre_fiche, d_un_autre: !sien });
             }
         }
         Ok(vus)

@@ -7,7 +7,7 @@
   import { etat } from '$lib/etat.svelte';
   import Jaquette from './Jaquette.svelte';
   import { chargerSuite, ludo } from './ludotheque.svelte';
-  import { tele } from './telechargements.svelte';
+  import { jeuSurPc } from './telechargements.svelte';
 
   const pourcent = (recus: number, total: number) => (total > 0 ? Math.floor((recus / total) * 100) : 0);
 
@@ -114,14 +114,14 @@
               visuel={r.visuel}
               images={j.images}
             />
-            {#if tele.jeux[j.id] && tele.jeux[j.id].etat !== 'telecharge'}
-              {@const t = tele.jeux[j.id]}
+            {#if jeuSurPc(j.id) && jeuSurPc(j.id)?.etat !== 'telecharge'}
+              {@const t = jeuSurPc(j.id)!}
               <span class="progres" title="{pourcent(t.recus, t.total)} %">
                 <span class="bar"><span style="width: {pourcent(t.recus, t.total)}%"></span></span>
                 <span class="muted">{libelleEtat(t.etat, pourcent(t.recus, t.total))}</span>
               </span>
-            {:else if ludo.espace === 'catalogue' && tele.jeux[j.id]}
-              <span class="tag ok badge">✅ Dans ta ludothèque</span>
+            {:else if ludo.espace === 'catalogue' && jeuSurPc(j.id)}
+              <span class="tag ok badge">{(jeuSurPc(j.id)?.id ?? 0) < 0 ? '✅ Déjà sur ce PC' : '✅ Dans ta ludothèque'}</span>
             {/if}
             <span class="titre">{j.titre}</span>
             {#if sousTitre(j)}<span class="sous-titre">{sousTitre(j)}</span>{/if}

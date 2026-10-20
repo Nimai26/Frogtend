@@ -2550,10 +2550,21 @@ pub async fn cheatengine_lancer(
 /// Ce que Frogtend sait d'un jeu IMPORTÉ (sans fiche chez Firehouse) pour chercher ses codes et mods (contrat 1.19,
 /// 25a) : titre, plateforme (toujours : sans elle, aucun mod), nom du fichier du jeu (jamais son chemin), numéro de
 /// série PS3. `None` : un jeu de Firehouse (sa fiche suffit). Lu avant de prendre la session (qui ne se garde pas).
-async fn criteres_jeu_importe(noyau: &Noyau, id: i64) -> Resultat<Option<Vec<(&'static str, String)>>> {
+/// Où chercher les codes et mods d'un jeu : sa fiche chez Firehouse, ou la recherche du contrat 1.19 (jeu importé).
+enum OuChercher {
+    Fiche(i64),
+    Recherche(Vec<(&'static str, String)>),
+}
+
+async fn criteres_jeu_importe(noyau: &Noyau, id: i64) -> Resultat<OuChercher> {
     let j = noyau.jeu_visible(id).await?;
     if !crate::import_local::est_importe(&j) {
-        return Ok(None);
+        return Ok(OuChercher::Fiche(id));
+    }
+    // Un jeu importé relié à une fiche que ce profil voit (contrat 1.21) : les codes et mods de SA fiche.
+    let s = noyau.session().await?;
+    if let Some(f) = noyau.fiche_de(&s, id)? {
+        return Ok(OuChercher::Fiche(f));
     }
     let fichier = j.installation.as_ref().and_then(|i| i.fichier_du_jeu.as_ref().map(|f| std::path::Path::new(&i.dossier).join(f)));
     let rom = fichier.as_deref().and_then(|f| f.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
@@ -2568,14 +2579,14 @@ async fn criteres_jeu_importe(noyau: &Noyau, id: i64) -> Resultat<Option<Vec<(&'
     };
     // Un numéro PS3 suffit ; un « EBOOT.BIN » (jeu PS3 en dossier) ne dit rien du jeu : pas envoyé.
     let rom = if !serial.is_empty() || rom.eq_ignore_ascii_case("EBOOT.BIN") { String::new() } else { rom };
-    Ok(Some(vec![("titre", j.titre), ("plateforme", j.plateforme), ("rom", rom), ("serial", serial)]))
+    Ok(OuChercher::Recherche(vec![("titre", j.titre), ("plateforme", j.plateforme), ("rom", rom), ("serial", serial)]))
 }
 
 /// Les codes et mods d'un jeu : sa fiche chez Firehouse, ou la recherche pour un jeu importé (`criteres`).
-async fn triches_avec(source: &crate::source::Source, id: i64, criteres: &Option<Vec<(&'static str, String)>>) -> Resultat<Value> {
+async fn triches_avec(source: &crate::source::Source, criteres: &OuChercher) -> Resultat<Value> {
     match criteres {
-        Some(c) => source.triche_recherche(c).await,
-        None => source.triches(id).await,
+        OuChercher::Recherche(c) => source.triche_recherche(c).await,
+        OuChercher::Fiche(f) => source.triches(*f).await,
     }
 }
 
@@ -2583,7 +2594,7 @@ async fn triches_avec(source: &crate::source::Source, id: i64, criteres: &Option
 #[tauri::command]
 pub async fn jeu_triches(noyau: State<'_, Noyau>, id: i64) -> Resultat<Value> {
     let criteres = criteres_jeu_importe(&noyau, id).await?;
-    triches_avec(&noyau.session().await?.source, id, &criteres).await
+    triches_avec(&noyau.session().await?.source, &criteres).await
 }
 
 // --- Mods GitHub (contrat 1.19 ; ✅ Seb 19/10, lot 0.81.0) : le mod et son fichier sont REPRIS de la liste de
@@ -2680,7 +2691,7 @@ pub async fn mods_installes(noyau: State<'_, Noyau>, id: i64) -> Resultat<Vec<cr
 pub async fn mod_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, mod_nom: String, fichier: String, programme: bool, suivi: u32) -> Resultat<crate::mods::Bilan> {
     let (j, dossier) = jeu_pour_un_mod(&noyau, id).await?;
     let criteres = criteres_jeu_importe(&noyau, id).await?;
-    let liste = triches_avec(&noyau.session().await?.source, id, &criteres).await?;
+    let liste = triches_avec(&noyau.session().await?.source, &criteres).await?;
     let m = liste["mods"]
         .as_array()
         .and_then(|l| l.iter().find(|m| m["nom"].as_str() == Some(mod_nom.as_str())).cloned())
@@ -2789,7 +2800,7 @@ pub async fn nexus_ouvrir(app: AppHandle, noyau: State<'_, Noyau>, id: i64, mod_
     let p = profil_ouvert(&noyau).await?;
     noyau.jeu_visible(id).await?;
     let criteres = criteres_jeu_importe(&noyau, id).await?;
-    let liste = triches_avec(&noyau.session().await?.source, id, &criteres).await?;
+    let liste = triches_avec(&noyau.session().await?.source, &criteres).await?;
     let m = liste["mods"]
         .as_array()
         .and_then(|l| l.iter().find(|m| m["nom"].as_str() == Some(mod_nom.as_str())).cloned())
@@ -2946,7 +2957,7 @@ pub async fn triche_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, 
     exiger_emulateur_pour_ecrire(&app, &noyau, std::path::Path::new(&programme))?;
     let criteres = criteres_jeu_importe(&noyau, id).await?;
     let s = noyau.session().await?;
-    let liste = triches_avec(&s.source, id, &criteres).await?;
+    let liste = triches_avec(&s.source, &criteres).await?;
     let code = liste["codes"]
         .as_array()
         .and_then(|l| l.iter().find(|c| c["cle"].as_str() == Some(cle.as_str())).cloned())
@@ -2973,8 +2984,8 @@ pub async fn triche_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, 
     )?;
     // Jeu importé : le `fichier` de la liste repris tel quel (contrat 1.19) ; sinon la route de sa fiche.
     let octets = match &criteres {
-        Some(_) => s.source.fichier_triche_route(code["fichier"].as_str().unwrap_or("")).await?,
-        None => s.source.fichier_triche(id, &cle).await?,
+        OuChercher::Recherche(_) => s.source.fichier_triche_route(code["fichier"].as_str().unwrap_or("")).await?,
+        OuChercher::Fiche(f) => s.source.fichier_triche(*f, &cle).await?,
     };
     if let Some(p) = place.parent() {
         std::fs::create_dir_all(p)?;
@@ -4053,7 +4064,8 @@ pub async fn rapprochement_dernier(noyau: State<'_, Noyau>) -> Resultat<Option<R
     let (correspondances, ecartes) = (noyau.registre().correspondances()?, noyau.registre().ecartes()?);
     let s = noyau.session().await?;
     let c = s.verrou();
-    let titre_de = |id: i64| c.jeu(id).ok().flatten().map(|j| (j.titre, j.annee));
+    // Une fiche réunie à une autre (contrat 1.14) : le titre de la fiche finale.
+    let titre_de = |id: i64| c.jeu(c.reuni_vers(id).ok().flatten().unwrap_or(id)).ok().flatten().map(|j| (j.titre, j.annee));
     crate::reconciliation::actualiser(&mut r.jeux, &correspondances, &ecartes, &titre_de);
     Ok(Some(r))
 }

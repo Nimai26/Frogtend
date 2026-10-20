@@ -389,7 +389,8 @@ impl Noyau {
             "emulateurs_installes": lire_json(&self.dossier.join("emulateurs.json")),
         });
 
-        let jeux = self.jeux_du_pc().await?;
+        // Jamais le jeu importé par une AUTRE personne de ce PC (contrat 1.21 : ce profil peut seulement y jouer).
+        let jeux: Vec<_> = self.jeux_du_pc().await?.into_iter().filter(|v| !v.d_un_autre).collect();
         // Les jeux du PC que ce profil ne voit pas : leurs parties ne partent pas, ce qui en avait été envoyé reste.
         let visibles: std::collections::BTreeSet<i64> = jeux.iter().map(|v| v.jeu.id).collect();
         let mut gardes: std::collections::BTreeSet<i64> =
