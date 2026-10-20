@@ -260,6 +260,15 @@ impl Registre {
         // Contrat 1.14 : les jeux du PC rattachés à une fiche réunie (ancien → nouveau), pour ne rien perdre de vue
         // (abris de parties rangés sous l'ancien numéro, réglages de l'interface à faire suivre).
         db.execute_batch("CREATE TABLE IF NOT EXISTS reunions (ancien INTEGER PRIMARY KEY, nouveau INTEGER NOT NULL, le TEXT, applique_le TEXT NOT NULL);")?;
+        // Contrat 1.21 (✅ Seb 20/10) : un jeu IMPORTÉ reconnu chez Firehouse. Une CORRESPONDANCE à côté : la ligne du jeu
+        // importé ne change jamais (numéro, fichiers, temps de jeu) ; défaire = retirer ces lignes. Une ligne par
+        // version (le fichier lancé) ; `telechargement_id` peut manquer.
+        db.execute_batch(
+            "CREATE TABLE IF NOT EXISTS correspondances (local INTEGER NOT NULL, chemin TEXT NOT NULL, media_id INTEGER NOT NULL,
+               telechargement_id INTEGER, statut TEXT NOT NULL, correspondance TEXT, confirme TEXT NOT NULL, le TEXT NOT NULL,
+               PRIMARY KEY (local, chemin));
+             CREATE TABLE IF NOT EXISTS ecartes (local INTEGER NOT NULL, media_id INTEGER NOT NULL, le TEXT NOT NULL, PRIMARY KEY (local, media_id));",
+        )?;
         // Colonnes ajoutées par le lot 3 (un registre de la 0.4.0 est complété, rien n'est perdu).
         for colonne in ["installation TEXT", "temps_jeu INTEGER NOT NULL DEFAULT 0", "derniere_partie TEXT"] {
             let nom = colonne.split(' ').next().unwrap();
@@ -290,6 +299,55 @@ impl Registre {
         }
         tx.commit()?;
         Ok(n == 1)
+    }
+
+    /// Rattache les versions d'un jeu importé à une fiche de Firehouse (remplace ce qui était noté pour ce jeu).
+    /// `confirme` : « auto » (tout exact) ou « personne ».
+    pub fn noter_correspondance(&mut self, local: i64, versions: &[(String, i64, Option<i64>, String, Option<String>)], confirme: &str, quand: &str) -> Resultat<()> {
+        let tx = self.db.transaction()?;
+        tx.execute("DELETE FROM correspondances WHERE local = ?1", params![local])?;
+        for (chemin, media_id, telechargement_id, statut, correspondance) in versions {
+            tx.execute(
+                "INSERT INTO correspondances VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![local, chemin, media_id, telechargement_id, statut, correspondance, confirme, quand],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Défait le rattachement d'un jeu importé (rien d'autre ne change).
+    pub fn oublier_correspondance(&self, local: i64) -> Resultat<()> {
+        self.db.execute("DELETE FROM correspondances WHERE local = ?1", params![local])?;
+        Ok(())
+    }
+
+    /// La personne dit qu'un jeu importé N'EST PAS cette fiche : elle ne lui est plus jamais proposée (ni rattachée
+    /// seule).
+    pub fn ecarter(&self, local: i64, media_id: i64, quand: &str) -> Resultat<()> {
+        self.db.execute("INSERT OR REPLACE INTO ecartes VALUES (?1, ?2, ?3)", params![local, media_id, quand])?;
+        self.db.execute("DELETE FROM correspondances WHERE local = ?1 AND media_id = ?2", params![local, media_id])?;
+        Ok(())
+    }
+
+    /// La personne revient sur « ce n'est pas lui » : les fiches écartées de ce jeu lui sont de nouveau proposées.
+    pub fn reprendre_ecartes(&self, local: i64) -> Resultat<()> {
+        self.db.execute("DELETE FROM ecartes WHERE local = ?1", params![local])?;
+        Ok(())
+    }
+
+    /// Les fiches écartées : (local, fiche).
+    pub fn ecartes(&self) -> Resultat<Vec<(i64, i64)>> {
+        let mut st = self.db.prepare("SELECT local, media_id FROM ecartes")?;
+        let l = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?;
+        Ok(l)
+    }
+
+    /// Les jeux importés rattachés : (local, fiche de Firehouse, comment).
+    pub fn correspondances(&self) -> Resultat<Vec<(i64, i64, String)>> {
+        let mut st = self.db.prepare("SELECT local, MIN(media_id), MIN(confirme) FROM correspondances GROUP BY local")?;
+        let l = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<Result<_, _>>()?;
+        Ok(l)
     }
 
     /// Les rattachements faits sur ce PC : (ancien, nouveau).
@@ -444,6 +502,27 @@ impl Registre {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn une_correspondance_se_note_se_remplace_et_se_defait_sans_toucher_au_jeu() {
+        let d = tempfile::tempdir().unwrap();
+        let mut r = Registre::ouvrir(&d.path().join("jeux.db")).unwrap();
+        r.ajouter(&jeu(-5, d.path())).unwrap();
+        let avant = r.jeu(-5).unwrap();
+        r.noter_correspondance(-5, &[("E:/a.nes".into(), 120, Some(-1), "exact".into(), Some("sha1".into()))], "auto", "1").unwrap();
+        assert_eq!(r.correspondances().unwrap(), [(-5, 120, "auto".to_string())]);
+        r.noter_correspondance(-5, &[("E:/a.nes".into(), 121, None, "probable".into(), None)], "personne", "2").unwrap();
+        assert_eq!(r.correspondances().unwrap(), [(-5, 121, "personne".to_string())], "remplacée, une seule");
+        r.oublier_correspondance(-5).unwrap();
+        assert!(r.correspondances().unwrap().is_empty());
+        r.noter_correspondance(-5, &[("E:/a.nes".into(), 120, None, "exact".into(), None)], "auto", "3").unwrap();
+        r.ecarter(-5, 120, "4").unwrap();
+        assert!(r.correspondances().unwrap().is_empty(), "écarter défait le rattachement à cette fiche");
+        assert_eq!(r.ecartes().unwrap(), [(-5, 120)]);
+        r.reprendre_ecartes(-5).unwrap();
+        assert!(r.ecartes().unwrap().is_empty());
+        assert_eq!(r.jeu(-5).unwrap(), avant, "le jeu importé n'a jamais changé");
+    }
 
     fn jeu(id: i64, dossier: &Path) -> JeuPc {
         JeuPc {

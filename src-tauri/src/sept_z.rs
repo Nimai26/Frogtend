@@ -70,6 +70,9 @@ pub struct EntreeSeptZ {
     /// Les attributs Windows de l'entrée, s'ils sont donnés (un lien se reconnaît à eux).
     #[serde(default)]
     pub attributs: Option<u32>,
+    /// Le CRC32 du contenu, quand l'archive le donne (lu dans son répertoire, sans rien décompresser).
+    #[serde(default)]
+    pub crc: Option<u32>,
 }
 
 impl EntreeSeptZ {
@@ -117,11 +120,18 @@ pub fn empreinte_unique(archive: &Path, console: u32, max: u64) -> Resultat<Opti
 
 // --- Le parent ---
 
+/// L'ordre porte-t-il sur une LISTE d'archives (« repertoires ») ?
+fn par_lot(args: &[OsString]) -> bool {
+    args.first().is_some_and(|a| a == "repertoires")
+}
+
 /// Lance l'enfant et lit ses lignes ; rend le contenu de sa ligne `fin`.
 fn executer(args: &[OsString], ligne: &mut dyn FnMut(&Value)) -> Resultat<Value> {
     #[cfg(test)]
     {
-        verifier_entete(Path::new(&args[1]))?;
+        if !par_lot(args) {
+            verifier_entete(Path::new(&args[1]))?;
+        }
         // Les tests unitaires n'ont pas Frogtend.exe sous la main : l'enfant est servi sur place (l'isolement réel a
         // son propre test, `tests/sept_z.rs`, avec le vrai programme).
         let mut sortie = Vec::new();
@@ -150,7 +160,10 @@ pub fn programme_pour_les_tests(exe: &Path) {
 /// Lance `exe` en lecteur de 7z enfermé dans un job (mémoire plafonnée, tué avec Frogtend). Séparé pour le test qui
 /// passe le vrai programme.
 pub fn executer_avec(exe: &Path, args: &[OsString], ligne: &mut dyn FnMut(&Value)) -> Resultat<Value> {
-    verifier_entete(Path::new(args.get(1).ok_or_else(|| Erreur::Disque(PIEGEE.into()))?))?;
+    // Une archive seule : ses 32 octets contrôlés ici ; une liste (« repertoires ») : contrôlés par l'enfant, une à une.
+    if !par_lot(args) {
+        verifier_entete(Path::new(args.get(1).ok_or_else(|| Erreur::Disque(PIEGEE.into()))?))?;
+    }
     let mut c = std::process::Command::new(exe);
     c.arg(ARG).args(args).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
     #[cfg(windows)]
@@ -289,6 +302,7 @@ pub fn servir(args: &[OsString], sortie: &mut dyn Write) -> i32 {
             Some(d) => servir_extraire(archive, Path::new(d), sortie),
             None => return 2,
         },
+        "repertoires" => servir_repertoires(&args[1..], sortie),
         "empreinte" => {
             let nombre = |i: usize| args.get(i).and_then(|m| m.to_str()).and_then(|m| m.parse::<u64>().ok());
             match (nombre(2).and_then(|c| u32::try_from(c).ok()), nombre(3)) {
@@ -325,7 +339,7 @@ fn servir_lister(archive: &Path, sortie: &mut dyn Write) -> Result<Value, String
         if e.name().len() > NOM_MAX {
             return Err("L'archive 7z contient un nom démesuré : Frogtend l'a écartée.".into());
         }
-        let d = EntreeSeptZ { nom: e.name().to_string(), taille: e.size(), dossier: e.is_directory(), anti: e.is_anti_item(), flux: e.has_stream, attributs: e.has_windows_attributes.then_some(e.windows_attributes) };
+        let d = EntreeSeptZ { nom: e.name().to_string(), taille: e.size(), dossier: e.is_directory(), anti: e.is_anti_item(), flux: e.has_stream, attributs: e.has_windows_attributes.then_some(e.windows_attributes), crc: e.has_crc.then_some(e.crc as u32) };
         writeln!(sortie, "{}", json!({ "e": d })).map_err(|e| e.to_string())?;
     }
     Ok(json!({}))
@@ -402,6 +416,107 @@ fn servir_empreinte(archive: &Path, console: u32, max: u64) -> Result<Value, Str
     })
 }
 
+// --- Les répertoires d'une LISTE d'archives (contrat 1.21 : rapprocher les fichiers déjà sur un PC). Un seul enfant
+// pour beaucoup d'archives (pas 18 000 lancements) ; zip ET 7z lus dans l'enfant (des milliers d'archives étrangères,
+// `panic = "abort"`) ; rien n'est décompressé : noms, tailles et CRC viennent du répertoire de chaque archive. ---
+
+/// Ce que l'enfant dit d'une archive de la liste : ses entrées, ou pourquoi elle est écartée.
+pub type Repertoire = std::result::Result<Vec<EntreeSeptZ>, String>;
+
+/// Longueur de ligne de commande au plus pour un lancement (Windows en accepte 32 767 caractères).
+const LIGNE_MAX_COMMANDE: usize = 24_000;
+
+/// Les répertoires de `archives` (zip ou 7z, d'après leurs octets), dans l'ordre. Si l'enfant meurt sur une archive
+/// (piégée), elle seule est écartée et la lecture reprend à la suivante.
+pub fn repertoires(archives: &[std::path::PathBuf], progres: &mut dyn FnMut(usize)) -> Vec<Repertoire> {
+    let mut r: Vec<Option<Repertoire>> = vec![None; archives.len()];
+    let mut debut = 0;
+    while debut < archives.len() {
+        // Un lot qui tient sur une ligne de commande.
+        let mut fin = debut;
+        let mut longueur = 0;
+        while fin < archives.len() && (fin == debut || longueur + archives[fin].as_os_str().len() + 3 < LIGNE_MAX_COMMANDE) {
+            longueur += archives[fin].as_os_str().len() + 3;
+            fin += 1;
+        }
+        let mut args = vec![OsString::from("repertoires")];
+        args.extend(archives[debut..fin].iter().map(|a| a.as_os_str().to_os_string()));
+        let mut en_cours = None;
+        let resultat = executer(&args, &mut |v| {
+            if let Some(i) = v["debut"].as_u64() {
+                en_cours = Some(i as usize);
+            } else if let Some(i) = v["rep"].as_u64().map(|i| i as usize).filter(|i| debut + i < fin) {
+                r[debut + i] = Some(match v.get("echec").and_then(Value::as_str) {
+                    Some(e) => Err(e.to_string()),
+                    None => serde_json::from_value(v["entrees"].clone()).map_err(|_| "Répertoire illisible.".to_string()),
+                });
+                progres(debut + i + 1);
+            }
+        });
+        match resultat {
+            Ok(_) => debut = fin,
+            Err(_) => {
+                // L'enfant est mort : l'archive en cours est écartée ; on reprend après elle.
+                let i = en_cours.map(|i| debut + i).filter(|i| *i < fin).unwrap_or(debut);
+                r[i] = Some(Err(PIEGEE.into()));
+                progres(i + 1);
+                debut = i + 1;
+            }
+        }
+    }
+    r.into_iter().map(|x| x.unwrap_or_else(|| Err(PIEGEE.into()))).collect()
+}
+
+fn servir_repertoires(archives: &[OsString], sortie: &mut dyn Write) -> Result<Value, String> {
+    for (i, a) in archives.iter().enumerate() {
+        // Dit AVANT d'ouvrir : si l'enfant meurt ici, le parent sait quelle archive écarter.
+        writeln!(sortie, "{}", json!({ "debut": i })).map_err(|e| e.to_string())?;
+        let _ = sortie.flush();
+        let ligne = match repertoire(Path::new(a)) {
+            Ok(entrees) => json!({ "rep": i, "entrees": entrees }),
+            Err(e) => json!({ "rep": i, "echec": e }),
+        };
+        writeln!(sortie, "{ligne}").map_err(|e| e.to_string())?;
+    }
+    Ok(json!({}))
+}
+
+/// Le répertoire d'une archive : zip (répertoire central) ou 7z (en-tête), d'après ses premiers octets.
+fn repertoire(a: &Path) -> Result<Vec<EntreeSeptZ>, String> {
+    let mut t = [0u8; 6];
+    std::fs::File::open(a).and_then(|mut f| f.read_exact(&mut t)).map_err(|_| "Archive illisible.".to_string())?;
+    if t == SIGNATURE {
+        verifier_entete(a).map_err(|e| e.to_string())?;
+        let r = ouvrir(a)?;
+        if r.archive().files.len() > ENTREES_MAX {
+            return Err("L'archive annonce bien trop de fichiers.".into());
+        }
+        return Ok(r
+            .archive()
+            .files
+            .iter()
+            .filter(|e| e.name().len() <= NOM_MAX)
+            .map(|e| EntreeSeptZ { nom: e.name().to_string(), taille: e.size(), dossier: e.is_directory(), anti: e.is_anti_item(), flux: e.has_stream, attributs: None, crc: e.has_crc.then_some(e.crc as u32) })
+            .collect());
+    }
+    if t[..4] == *b"PK\x03\x04" || t[..4] == *b"PK\x05\x06" {
+        let f = std::io::BufReader::new(std::fs::File::open(a).map_err(|_| "Archive illisible.".to_string())?);
+        let mut z = zip::ZipArchive::new(f).map_err(|e| format!("Archive zip illisible ({e})."))?;
+        if z.len() > ENTREES_MAX {
+            return Err("L'archive annonce bien trop de fichiers.".into());
+        }
+        let mut l = Vec::with_capacity(z.len());
+        for i in 0..z.len() {
+            let e = z.by_index_raw(i).map_err(|e| format!("Archive zip abîmée ({e})."))?;
+            if e.name().len() <= NOM_MAX {
+                l.push(EntreeSeptZ { nom: e.name().to_string(), taille: e.size(), dossier: e.is_dir(), anti: false, flux: e.size() > 0, attributs: None, crc: Some(e.crc32()) });
+            }
+        }
+        return Ok(l);
+    }
+    Err("Ce fichier n'est ni un zip ni un 7z.".into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -434,6 +549,30 @@ mod tests {
         let un = archive(d2.path(), &[("rom.pce", b"ROM!")]);
         assert_eq!(empreinte_unique(&un, 8, 100).unwrap(), Some(crate::succes::empreinte_octets(8, b"ROM!")));
         assert_eq!(empreinte_unique(&un, 8, 3).unwrap(), None, "plus gros que le plafond");
+    }
+
+    #[test]
+    fn les_repertoires_d_une_liste_donnent_noms_tailles_et_crc_sans_rien_decompresser() {
+        let d = tempfile::tempdir().unwrap();
+        let sept = archive(d.path(), &[("jeu/rom.bin", b"0123456789")]);
+        let zip = d.path().join("b.zip");
+        {
+            let mut z = zip::ZipWriter::new(std::fs::File::create(&zip).unwrap());
+            z.start_file("ROM.SFC", zip::write::SimpleFileOptions::default()).unwrap();
+            z.write_all(b"abc").unwrap();
+            z.finish().unwrap();
+        }
+        let faux = d.path().join("faux.zip");
+        std::fs::write(&faux, b"pas une archive").unwrap();
+        let mut vus = 0;
+        let r = repertoires(&[sept, zip, faux], &mut |n| vus = n);
+        assert_eq!(vus, 3);
+        let e7 = r[0].as_ref().unwrap().iter().find(|e| e.nom == "jeu/rom.bin").unwrap();
+        assert_eq!((e7.taille, e7.crc), (10, Some(crc32fast::hash(b"0123456789"))));
+        let ez = &r[1].as_ref().unwrap()[0];
+        assert_eq!((ez.nom.as_str(), ez.taille, ez.crc), ("ROM.SFC", 3, Some(crc32fast::hash(b"abc"))));
+        assert!(r[2].is_err(), "écartée, sans arrêter les autres");
+        assert!(!d.path().join("jeu").exists(), "rien n'est décompressé");
     }
 
     #[test]

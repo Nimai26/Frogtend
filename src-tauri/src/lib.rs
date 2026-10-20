@@ -42,6 +42,8 @@ pub mod mods;
 pub mod nexus;
 pub mod sept_z;
 pub mod registre;
+pub mod reconciliation;
+pub mod empreintes;
 pub mod patchs_ps3;
 pub mod plein_ecran;
 pub mod profils;
@@ -458,6 +460,13 @@ pub fn run() {
             commandes::nexus_oublier_lien,
             commandes::nexus_lien_infos,
             commandes::nexus_installer,
+            commandes::rapprocher_annonce,
+            commandes::rapprocher,
+            commandes::rapprochement_dernier,
+            commandes::rapprochement_rattacher,
+            commandes::rapprochement_defaire,
+            commandes::rapprochement_ecarter,
+            commandes::rapprochement_reprendre,
             commandes::emulateurs_recommandes,
             commandes::emulateurs_installes,
             commandes::emulateur_fiche,

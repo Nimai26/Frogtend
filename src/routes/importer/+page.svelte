@@ -8,6 +8,7 @@
   import { importerSteam, lireSteam, steam } from '$lib/boutiques/steam.svelte';
   import { compterParGalaxy, explicationGalaxy, source, SOURCES } from '$lib/import/sources';
   import ImportLocal from '$lib/import/ImportLocal.svelte';
+  import Rapprocher from '$lib/import/Rapprocher.svelte';
 
   onMount(() => {
     lireSteam();
@@ -80,6 +81,8 @@
         </div>
         <p class="muted">La lecture prend TOUTES les boutiques reliées dans Galaxy d’un coup ; dans la ludothèque, le filtre « Boutique » les sépare.</p>
       </section>
+    {:else if s.voie === 'rapprocher'}
+      <Rapprocher />
     {:else if s.voie === 'local'}
       {#key s.id}<ImportLocal sorte={s.id as 'rom' | 'dos' | 'mame' | 'windows' | 'manuel' | 'installer-dos'} />{/key}
     {:else}

@@ -1,5 +1,17 @@
 # Notes de version de Frogtend
 
+## 0.84.0 — Firehouse reconnaît tes jeux importés
+
+- 📥 Importer ▸ **🔗 Reconnaître mes jeux importés** : Firehouse compare les jeux que tu as ajoutés depuis ton
+  disque (ROM, MAME…) avec les siens. Avant de lancer, Frogtend te dit combien de fichiers il va lire et combien ça
+  pèse. Tes fichiers sont lus sans rien modifier ; seuls leurs NOMS et leurs empreintes partent vers Firehouse, jamais
+  l'endroit où ils sont rangés.
+- Les jeux reconnus à coup sûr sont reliés tout seuls à leur fiche de Firehouse. Pour les autres, Frogtend te montre
+  ce que propose Firehouse : « C'est ce jeu » ou « Ce n'est pas lui ». Tu peux toujours défaire un lien.
+- Un jeu relié n'est jamais retéléchargé depuis Firehouse : il est déjà sur ton PC.
+- Un disque réseau n'est lu en entier que si tu le demandes.
+- À venir : la fiche, les images et les triches de Firehouse affichées sur un jeu relié.
+
 ## 0.83.0 — Frogtend sait où sont tes jeux Steam et GOG
 
 - Un jeu Steam n'est plus dit « installé » pendant qu'il se télécharge ou se met à jour : seulement quand il est prêt

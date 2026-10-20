@@ -3916,3 +3916,195 @@ mod tests {
         entier.assert_hits(1);
     }
 }
+
+// --- Rapprocher les jeux importés des fiches de Firehouse (contrat 1.21, besoin 28 ; ✅ Seb 20/10) : annoncé et
+// chiffré d'abord, lecture seule des fichiers, seuls les « exact » concordants se rattachent seuls (une
+// correspondance à côté : le jeu importé ne change jamais), le reste est montré. ---
+
+/// Les jeux importés que le profil ouvert voit (jamais ceux d'un autre profil : la réponse dépend du jeton).
+async fn imports_du_profil(noyau: &Noyau) -> Resultat<Vec<crate::jeux_pc::JeuPc>> {
+    let s = noyau.session().await?;
+    imports_de(noyau, &s)
+}
+
+/// Les jeux importés que voit le profil de CETTE session.
+fn imports_de(noyau: &Noyau, s: &crate::noyau::Session) -> Resultat<Vec<crate::jeux_pc::JeuPc>> {
+    let tous = noyau.registre().tous()?;
+    let c = s.verrou();
+    let mut l = Vec::new();
+    for j in tous {
+        if crate::import_local::est_importe(&j) && c.contient(j.id)? {
+            l.push(j);
+        }
+    }
+    Ok(l)
+}
+
+fn cache_empreintes(noyau: &Noyau) -> Resultat<crate::empreintes::Cache> {
+    crate::empreintes::Cache::ouvrir(&noyau.dossier.join("empreintes.db"))
+}
+
+/// Ce que coûtera le rapprochement (avant tout : la personne voit et dit oui).
+#[tauri::command]
+pub async fn rapprocher_annonce(noyau: State<'_, Noyau>) -> Resultat<crate::reconciliation::Annonce> {
+    let jeux = imports_du_profil(&noyau).await?;
+    let cache = cache_empreintes(&noyau)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let p = crate::reconciliation::inventaire(&jeux);
+        crate::reconciliation::annoncer(&p, &cache, crate::reconciliation::PLAFOND_SHA1)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("Le relevé s'est arrêté brutalement.".into()))
+}
+
+/// Le compte rendu d'un rapprochement (gardé dans le dossier du PROFIL : il dépend de son jeton).
+#[derive(Clone, Serialize, serde::Deserialize, Default)]
+pub struct Rapprochement {
+    pub le: String,
+    pub jeux: Vec<crate::reconciliation::JeuRapproche>,
+    pub non_envoyes: usize,
+}
+
+#[derive(Clone, Serialize)]
+struct ProgresRapprochement {
+    etape: &'static str,
+    faits: usize,
+    total: usize,
+}
+
+/// Relève les empreintes (lecture seule ; `reseau` : la personne permet de lire en entier sur un disque réseau),
+/// interroge Firehouse, rattache les « exact » concordants et garde le compte rendu.
+#[tauri::command]
+pub async fn rapprocher(app: AppHandle, noyau: State<'_, Noyau>, reseau: bool) -> Resultat<Rapprochement> {
+    // Une seule reconnaissance à la fois (un second clic, ou la page rouverte pendant la première).
+    static EN_COURS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if EN_COURS.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return Err(Erreur::Refus("Une reconnaissance est déjà en cours : attends sa fin.".into()));
+    }
+    struct Fin;
+    impl Drop for Fin {
+        fn drop(&mut self) {
+            EN_COURS.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    let _fin = Fin;
+    // UNE session du début à la fin : si la personne change de profil pendant la lecture, rien ne part avec le jeton
+    // d'un autre profil, et rien n'est écrit (contrat : la réponse dépend du jeton).
+    let s = noyau.session().await?;
+    let p = s.profil.clone();
+    let jeux = imports_de(&noyau, &s)?;
+    let cache = cache_empreintes(&noyau)?;
+    let (j2, a2) = (jeux.clone(), app.clone());
+    let prets = tauri::async_runtime::spawn_blocking(move || {
+        let mut dernier = std::time::Instant::now();
+        crate::reconciliation::calculer(crate::reconciliation::inventaire(&j2), &cache, crate::reconciliation::PLAFOND_SHA1, reseau, &mut |faits, total| {
+            if dernier.elapsed().as_millis() >= 400 || faits == total {
+                dernier = std::time::Instant::now();
+                let _ = a2.emit("rapprochement", ProgresRapprochement { etape: "lecture", faits, total });
+            }
+        })
+    })
+    .await
+    .map_err(|_| Erreur::Disque("Le relevé s'est arrêté brutalement.".into()))?;
+    let _ = app.emit("rapprochement", ProgresRapprochement { etape: "firehouse", faits: 0, total: prets.len() });
+    let change = || Erreur::Refus("Le profil a changé pendant la reconnaissance : rien n'est enregistré. Relance-la (ce qui est déjà lu ne sera pas relu).".into());
+    if s.est_perimee() {
+        return Err(change());
+    }
+    let bilan = crate::reconciliation::reconcilier(&s.source, prets.iter().map(|x| x.fichier.clone()).collect(), crate::reconciliation::Limites::default())
+        .await
+        .map_err(|e| match e {
+            Erreur::Reseau(m) => Erreur::Reseau(format!("{m} Relance : tes fichiers déjà lus ne seront pas relus.")),
+            e => e,
+        })?;
+    if s.est_perimee() {
+        return Err(change());
+    }
+    let jeux_rapproches = crate::reconciliation::par_jeu(&prets, &bilan, &jeux);
+    let quand = crate::noyau::maintenant();
+    // Les « exact » concordants se rattachent seuls ; un rattachement confirmé par la personne n'est jamais remplacé.
+    let confirmes: std::collections::BTreeSet<i64> = noyau.registre().correspondances()?.into_iter().filter(|(_, _, c)| c == "personne").map(|(l, _, _)| l).collect();
+    let ecartes = noyau.registre().ecartes()?;
+    for j in jeux_rapproches.iter().filter(|j| j.decision == "rattache" && !confirmes.contains(&j.jeu) && !j.media_id.is_some_and(|m| ecartes.contains(&(j.jeu, m)))) {
+        let v: Vec<_> = j.versions.iter().filter_map(|v| Some((v.version.clone(), v.media_id?, v.telechargement_id, v.statut.clone(), v.correspondance.clone()))).collect();
+        noyau.registre().noter_correspondance(j.jeu, &v, "auto", &quand)?;
+    }
+    let r = Rapprochement { le: quand, jeux: jeux_rapproches, non_envoyes: bilan.non_envoyes.len() };
+    let f = dossier_profil_de(&noyau, &p.id).join("rapprochement.json");
+    std::fs::write(&f, serde_json::to_vec(&r).unwrap_or_default())?;
+    let r = rapprochement_dernier(noyau.clone()).await?.unwrap_or(r);
+    noyau.journaliser(&format!(
+        "rapprochement : {} jeu(x) importé(s), {} rattaché(s), {} à voir (profil {})",
+        r.jeux.len(),
+        r.jeux.iter().filter(|j| j.decision == "rattache").count(),
+        r.jeux.iter().filter(|j| j.decision == "a_voir").count(),
+        p.id
+    ));
+    Ok(r)
+}
+
+/// Le dernier compte rendu de ce profil.
+#[tauri::command]
+pub async fn rapprochement_dernier(noyau: State<'_, Noyau>) -> Resultat<Option<Rapprochement>> {
+    let p = profil_ouvert(&noyau).await?;
+    let f = dossier_profil_de(&noyau, &p.id).join("rapprochement.json");
+    let Some(mut r) = std::fs::read(f).ok().and_then(|o| serde_json::from_slice::<Rapprochement>(&o).ok()) else { return Ok(None) };
+    // Toujours d'après ce qui est noté MAINTENANT sur ce PC (rattaché, défait, écarté), avec les titres des fiches.
+    let (correspondances, ecartes) = (noyau.registre().correspondances()?, noyau.registre().ecartes()?);
+    let s = noyau.session().await?;
+    let c = s.verrou();
+    let titre_de = |id: i64| c.jeu(id).ok().flatten().map(|j| (j.titre, j.annee));
+    crate::reconciliation::actualiser(&mut r.jeux, &correspondances, &ecartes, &titre_de);
+    Ok(Some(r))
+}
+
+/// La personne revient sur « ce n'est pas lui » : les fiches écartées de ce jeu sont de nouveau proposées.
+#[tauri::command]
+pub async fn rapprochement_reprendre(noyau: State<'_, Noyau>, jeu: i64) -> Resultat<()> {
+    if !imports_du_profil(&noyau).await?.iter().any(|x| x.id == jeu) {
+        return Err(Erreur::Introuvable("Ce jeu importé n'est pas visible pour ce profil.".into()));
+    }
+    noyau.registre().reprendre_ecartes(jeu)
+}
+
+/// La personne dit que ce jeu importé N'EST PAS cette fiche : elle ne lui sera plus proposée.
+#[tauri::command]
+pub async fn rapprochement_ecarter(noyau: State<'_, Noyau>, jeu: i64, media_id: i64) -> Resultat<()> {
+    if !imports_du_profil(&noyau).await?.iter().any(|x| x.id == jeu) {
+        return Err(Erreur::Introuvable("Ce jeu importé n'est pas visible pour ce profil.".into()));
+    }
+    noyau.registre().ecarter(jeu, media_id, &crate::noyau::maintenant())
+}
+
+/// La personne rattache elle-même un jeu « à voir » à la fiche qu'elle choisit (parmi celles proposées par Firehouse
+/// pour ce jeu dans le dernier compte rendu : jamais une fiche venue d'ailleurs).
+#[tauri::command]
+pub async fn rapprochement_rattacher(noyau: State<'_, Noyau>, jeu: i64, media_id: i64) -> Resultat<()> {
+    let r = rapprochement_dernier(noyau.clone()).await?.ok_or_else(|| Erreur::Refus("Lance d'abord un rapprochement.".into()))?;
+    let j = r.jeux.iter().find(|x| x.jeu == jeu).ok_or_else(|| Erreur::Introuvable("Ce jeu n'est pas dans le dernier rapprochement.".into()))?;
+    let propose = |v: &crate::reconciliation::VersionRapprochee| v.media_id == Some(media_id) || v.candidats.iter().any(|c| c.media_id == media_id);
+    if !j.versions.iter().any(propose) {
+        return Err(Erreur::Refus("Firehouse n'a pas proposé cette fiche pour ce jeu.".into()));
+    }
+    if !imports_du_profil(&noyau).await?.iter().any(|x| x.id == jeu) {
+        return Err(Erreur::Introuvable("Ce jeu importé n'est plus sur ce PC.".into()));
+    }
+    let v: Vec<_> = j
+        .versions
+        .iter()
+        .filter(|v| propose(v))
+        .map(|v| (v.version.clone(), media_id, v.candidats.iter().find(|c| c.media_id == media_id).and_then(|c| c.telechargement_id).or(v.telechargement_id.filter(|_| v.media_id == Some(media_id))), v.statut.clone(), v.correspondance.clone()))
+        .collect();
+    noyau.registre().noter_correspondance(jeu, &v, "personne", &crate::noyau::maintenant())?;
+    noyau.journaliser(&format!("jeu importé {jeu} rattaché à la fiche {media_id} par la personne"));
+    Ok(())
+}
+
+/// Défait le rattachement d'un jeu importé (le jeu lui-même ne change pas).
+#[tauri::command]
+pub async fn rapprochement_defaire(noyau: State<'_, Noyau>, jeu: i64) -> Resultat<()> {
+    if !imports_du_profil(&noyau).await?.iter().any(|x| x.id == jeu) {
+        return Err(Erreur::Introuvable("Ce jeu importé n'est pas visible pour ce profil.".into()));
+    }
+    noyau.registre().oublier_correspondance(jeu)
+}

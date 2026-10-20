@@ -960,7 +960,7 @@ mod tests {
         assert!(lister(&a).is_err(), "deux noms qui ne diffèrent que par la casse");
         sept_de(&a, &[("bon.txt", b"x"), ("lien.dll", b"C:/Windows")], Some("lien.dll"));
         assert!(lister(&a).is_err(), "une entrée marquée lien (Windows)");
-        let lien_unix = crate::sept_z::EntreeSeptZ { nom: "l".into(), taille: 1, dossier: false, anti: false, flux: true, attributs: Some(0x8000 | (0o120777 << 16)) };
+        let lien_unix = crate::sept_z::EntreeSeptZ { nom: "l".into(), taille: 1, dossier: false, anti: false, flux: true, attributs: Some(0x8000 | (0o120777 << 16)), crc: None };
         assert!(lien_unix.est_un_lien(), "un lien Unix (S_IFLNK dans les 16 bits hauts)");
         assert!(!crate::sept_z::EntreeSeptZ { attributs: Some(0x8000 | (0o100644 << 16)), ..lien_unix.clone() }.est_un_lien(), "un fichier Unix ordinaire");
         // Ni zip ni 7z (un rar, par exemple) : refusé, sans rien ouvrir.

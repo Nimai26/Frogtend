@@ -179,6 +179,19 @@ impl Source {
         }
     }
 
+    /// Envoie un lot à rapprocher (contrat 1.21, `POST /reconcilier`) ; rend le code HTTP et le corps (le découpage d'un
+    /// lot refusé pour sa taille se fait dans `reconciliation`). En mode simulé : aucune fiche n'est rapprochée.
+    pub async fn reconcilier_brut(&self, corps: &Value) -> Resultat<(u16, Vec<u8>)> {
+        match self {
+            Source::Firehouse(c) => {
+                let octets = serde_json::to_vec(corps).map_err(|_| Erreur::Disque("Envoi impossible à préparer.".into()))?;
+                let b = c.brute(reqwest::Method::POST, "/reconcilier", Some(octets), &[("content-type", "application/json".into())]).await?;
+                Ok((b.statut, b.octets))
+            }
+            Source::Simulee => Ok((200, serde_json::to_vec(&crate::reconciliation::reponse_simulee(corps)).unwrap_or_default())),
+        }
+    }
+
     /// Annonce une session de jeu à Firehouse (`debut`, `vivant`, `fin`) : il met en pause ses travaux sur la carte
     /// graphique si ce PC calcule pour lui. En mode simulé : rien.
     pub async fn session(&self, etat: &str, media_id: i64) -> Resultat<Value> {

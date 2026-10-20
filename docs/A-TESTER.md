@@ -48,6 +48,15 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Reconnaître mes jeux importés (0.84.0)
+- [ ] 📥 Importer ▸ 🔗 Reconnaître mes jeux importés : l'annonce dit combien de fichiers seront lus et leur poids.
+      Lancer : la barre avance, puis le compte rendu (reconnus, à vérifier, inconnus). Essai réel du 20/10 sur 90 de
+      tes fichiers : ~85 % des NES/SNES reconnus à coup sûr ; MAME surtout « à vérifier » (ton romset est fusionné).
+- [ ] « À vérifier » : « C'est ce jeu » sur un jeu, « Ce n'est pas lui » sur un autre ; relancer la reconnaissance :
+      le second ne revient pas.
+- [ ] « Ne plus relier » sur un jeu reconnu : il revient dans « À vérifier ».
+- [ ] Un jeu relié : « Mettre dans ma ludothèque » depuis le catalogue de Firehouse refuse de le retélécharger.
+
 ## Jeux Steam et GOG (0.83.0)
 - [ ] 🛒 Boutiques ▸ Steam : un jeu en cours de téléchargement dans Steam n'apparaît PAS comme installé ; il le
       devient quand Steam a fini.

@@ -700,6 +700,14 @@ export const api = {
   contenusInstaller: (id: number, choisis: string[]) =>
     appeler<{ installes: number; refuses: [string, string][] }>('contenus_installer', { id, choisis }),
   /** Nexus Mods (lot 0.82.0) : la clé du profil (au coffre), les liens nxm:// reçus, l'installation après le oui. */
+  /** Reconnaître les jeux importés (contrat 1.21, besoin 28). */
+  rapprocherAnnonce: () => appeler<import('$lib/import/rapprochement').Annonce>('rapprocher_annonce'),
+  rapprocher: (reseau: boolean) => appeler<import('$lib/import/rapprochement').Rapprochement>('rapprocher', { reseau }),
+  rapprochementDernier: () => appeler<import('$lib/import/rapprochement').Rapprochement | null>('rapprochement_dernier'),
+  rapprochementRattacher: (jeu: number, mediaId: number) => appeler<void>('rapprochement_rattacher', { jeu, mediaId }),
+  rapprochementDefaire: (jeu: number) => appeler<void>('rapprochement_defaire', { jeu }),
+  rapprochementEcarter: (jeu: number, mediaId: number) => appeler<void>('rapprochement_ecarter', { jeu, mediaId }),
+  rapprochementReprendre: (jeu: number) => appeler<void>('rapprochement_reprendre', { jeu }),
   nexusEtat: () => appeler<import('$lib/mods/nexus.svelte').EtatNexus>('nexus_etat'),
   nexusRegler: (cle: string) => appeler<import('$lib/mods/nexus.svelte').EtatNexus>('nexus_regler', { cle }),
   nexusOublier: () => appeler<void>('nexus_oublier'),

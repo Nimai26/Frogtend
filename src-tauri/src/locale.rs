@@ -206,7 +206,19 @@ impl Noyau {
         if self.registre().jeu(id)?.is_some() {
             return Err(Erreur::Refus("Ce jeu est déjà dans la ludothèque de ce PC.".into()));
         }
+        // La fiche d'abord : une fiche cachée à ce profil répond « inconnu » AVANT tout (jamais un indice qu'elle existe).
         let fiche = s.source.fiche(id).await?;
+        // Un jeu importé de ce PC rattaché à cette fiche (contrat 1.21), y compris à une fiche depuis RÉUNIE à celle-ci
+        // (contrat 1.14) : il est déjà là, jamais retéléchargé.
+        let deja = {
+            let c = s.verrou();
+            let correspondances = self.registre().correspondances()?;
+            correspondances.into_iter().find(|(_, media, _)| *media == id || c.reuni_vers(*media).ok().flatten() == Some(id)).map(|(local, _, _)| local)
+        };
+        if let Some(local) = deja {
+            let titre = self.registre().jeu(local)?.map(|j| j.titre).unwrap_or_default();
+            return Err(Erreur::Refus(format!("Ce jeu est déjà sur ce PC (importé de ton disque : « {titre} ») : rien à télécharger.")));
+        }
         let titre = fiche["titre"].as_str().unwrap_or("Jeu").to_string();
         let plateforme = fiche["plateforme"].as_str().unwrap_or("Autres").to_string();
 

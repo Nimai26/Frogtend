@@ -461,6 +461,35 @@ d'abord :
       MAME) → `fixtures/simule/reconcilier-releve.json` : exact sha1 / contenu / mame_ensemble, MAME autre version =
       probable « nom » 0,6 avec media_id, inconnu, groupe probable (manquants 1, media_id null). N'existent pas dans les
       vraies données : « plusieurs candidats » (0,5) et groupe .cue+.bin (aucun disque dans le stock).
+      ✅ Seb 20/10 : (1) rattacher par une **correspondance** (le jeu importé reste tel quel, numéro, fichiers, temps de
+      jeu ; on note « c'est la fiche N », réversible ; jamais de migration d'id — avis de l'expert contrat : la
+      protection « un import ne s'efface jamais » repose sur l'id négatif) ; (2) un import reconnu est visible de
+      **TOUS les profils qui voient ce jeu** chez Firehouse (sans retéléchargement) ; (3) versions qui ne donnent pas
+      le même jeu : **montrées à la personne**, rien de rattaché seul. Conception (expert contrat) : table
+      `correspondances` dans jeux.db (par fichier lancé, `telechargement_id` NULL possible), propositions
+      probable/inconnu dans le cache du PROFIL, un fichier d'un groupe suit le statut du GROUPE, clé opaque (jamais un
+      chemin), lots qui ne coupent jamais un groupe, 413 → lot coupé en deux, 404 → « Firehouse pas encore 1.21 »,
+      `ajouter` refuse un jeu déjà là par correspondance, fusions 1.14 réécrivent `media_id`. Lots : 1 client → 2
+      empreintes (annoncées, chiffrées) → 3 correspondances → 4 fiche sur l'import.
+      ⏳ RESTE (lot 4) : la fiche, les images et les triches de Firehouse sur un jeu importé relié, visible de tous les
+      profils qui voient la fiche (✅ Seb) ; les fusions 1.14 doivent réécrire `media_id` des correspondances.
+      Firehouse (20/10 soir) : chaque inconnu de l'essai vérifié, aucun bug (versions écartées par le tri du stock ;
+      MAME : machines absentes du romset servi). ✅ Seb 20/10 (via Firehouse) : **contrat 1.22 à venir** (besoin 29) —
+      parent + CHAQUE clone d'un zip fusionné ; CHD par `chd_sha1` (SHA1 GLOBAL de l'en-tête v5 offset 84, v4 48,
+      v3 80) ; machine exact si toutes ses ROM requises (hors BIOS/devices) sont dans le zip, avec une liste
+      `dependances` à vérifier chez nous ; probable si au moins la moitié ; CHD présent chez nous mais absent chez
+      Firehouse = exact quand même ; CHD de console hors périmètre. Coder APRÈS l'annonce + relevé réel.
+      Avis de l'expert lancement (côté fichiers, mesures réelles en lecture seule sur E:) : archive = `entrees`
+      toujours + `sha1` du fichier entier sous un plafond réglable (512 Mo) ; zip MAME = nom court + entrées, JAMAIS de
+      sha1 ; fichier en clair = crc32 + taille (une passe crc32+sha1, jamais `fs::read`) ; images disque = nom + taille
+      (rien lu) ; **CHD hors v1** (champ non défini au contrat) ; une entrée non vide sans CRC → pas d'`entrees` ; CRC
+      des 7z à ajouter à `EntreeSeptZ` ; lecteur isolé par LISTE (pas un enfant par archive : 18 141 .7z) et répertoires
+      zip AUSSI par l'enfant (28 784 zips étrangers, `panic = "abort"`) ; une version locale à plusieurs fichiers = un
+      groupe, jamais de fichier annexe ; disque réseau détecté (`GetDriveTypeW`) : répertoires seulement sans accord ;
+      annonce chiffrée (fichiers, Go lus en entier, réseau, durée mesurée) ; cache d'empreintes SQLite PC (chemin +
+      taille + date + version du calcul) ; réponses jamais partagées entre profils. Mesures : NES 1 086 (230 Mo) en
+      11,5 s ; 14 191 zips MAME : répertoires en 136 s à froid ; 10 679 7z en 96 s ; 5 643 zips MAME FUSIONNÉS (clones
+      en sous-dossier, 798 noms en double) → question à Firehouse (besoin 29).
 
 ## 💡 Idées notées — PAS démarrées
 
@@ -490,6 +519,24 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.84.0** (20/10) — Reconnaître les jeux importés (contrat 1.21, lots 1 à 3 + écran ; avis des experts contrat,
+  lancement et interface). Client `/reconcilier` (lots qui ne coupent jamais un groupe, 413 coupé en deux, 404 « pas
+  encore 1.21 ») ; empreintes en lecture seule (`empreintes.rs` : crc32+sha1 en une passe ; répertoires zip ET 7z par
+  le lecteur isolé, par LISTE, CRC compris ; disque réseau détecté ; cache SQLite du PC) ; inventaire des imports du
+  PROFIL (clés opaques, noms seuls, MS-DOS/Windows écartés, CHD et disques : nom + taille) ; décision par jeu ;
+  table `correspondances` + `ecartes` (jamais de migration d'id) ; « exact » concordants rattachés seuls ; écran
+  📥 Importer ▸ 🔗. `ajouter` refuse un jeu déjà là par correspondance. Vérifié : tests (cœur 431, interface 214) ;
+  essai réel (90 vrais fichiers, vrai Firehouse) : NES 25/30 exact, SNES 26/30, MAME 4 exact / 11 probable / 15
+  inconnu. Relectures (contrat, interface) — corrigés : UNE session du début à la fin (jamais le jeton d'un autre
+  profil si on change de profil pendant la lecture ; rien d'écrit alors) ; un 413 sur un seul groupe ne boucle plus ;
+  réponses filtrées sur les clés du lot ; un rattachement n'est montré qu'à un profil qui VOIT la fiche ; `ajouter`
+  lit la fiche AVANT de dire « déjà sur ce PC » (aucun indice d'une fiche cachée) et suit les fiches réunies ; CHD
+  plus envoyés (besoin 29) ; chemins `\\?\UNC\` vus comme réseau ; une seule reconnaissance à la fois ; écran : focus
+  gardé après chaque action, « Ce n'est pas lui » confirmé et réversible, durée estimée (débits mesurés chez Seb),
+  « pas vérifiés » distingués, fiche sans titre jamais proposée à juger, boutons inactifs pendant l'appel.
+  NON vérifié : la commande entière dans le programme installé sur les vrais imports de Seb ; affichage de la fiche
+  Firehouse sur un jeu relié (lot 4, à faire) ; fusions 1.14 sur les correspondances (seul `ajouter` les suit).
 
 - **0.83.0** (20/10) — Jeux de boutique, lot A1 « lire sans lancer » (avis de l'expert lancement) : registre de
   Windows lu par son API (`registre.rs`, jamais `reg.exe`, jamais d'écriture) ; bibliothèques Steam dédoublonnées ;

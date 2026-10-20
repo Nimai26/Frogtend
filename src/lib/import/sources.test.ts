@@ -3,7 +3,9 @@ import { compterParGalaxy, explicationGalaxy, source, SOURCES } from './sources'
 
 describe('le menu Importer', () => {
   it('reprend la liste de LaunchBox, dans le même ordre', () => {
-    expect(SOURCES.map((s) => s.libelle)).toEqual([
+    // Les 13 entrées de LaunchBox d'abord (règle de Seb), puis celle propre à Frogtend (contrat 1.21).
+    expect(SOURCES.at(-1)?.libelle).toBe('Reconnaître mes jeux importés');
+    expect(SOURCES.slice(0, -1).map((s) => s.libelle)).toEqual([
       'Fichiers ROM',
       'Jeux MS-DOS',
       'MAME Arcade Full Set',
