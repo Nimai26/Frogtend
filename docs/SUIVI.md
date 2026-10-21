@@ -103,7 +103,13 @@
   `/jeu/steam/{appid}`). Relevé réel (21/10, lecture seule, jeton de Seb) : les 11 jeux Steam installés de Venkman
   répondent TOUS 404 (pas dans le stock de Firehouse, probablement). Questions envoyées à Firehouse : la route ne
   sert-elle que le stock ? peut-elle servir la fiche de la BASE LaunchBox (hors stock : résumé, genres, jaquette,
-  visuels, sans versions) — esprit du besoin 16 ? et pour GOG / Epic ? ⏳ Rien de codé avant la réponse.
+  visuels, sans versions) — esprit du besoin 16 ? et pour GOG / Epic ? ✅ Seb 21/10 : plutôt que d'attendre
+  Firehouse, prendre les fiches des jeux de boutique DANS LES BOUTIQUES : GOG Galaxy (base locale, lecture seule :
+  `summary`, `meta` genres/développeurs/éditeurs/date, `media` captures, `originalImages` fond — en anglais) pour
+  tous ses jeux, et pour un jeu Steam la fiche FRANÇAISE de la boutique Steam (`store.steampowered.com/api/
+  appdetails?appids=<id>&l=french`, adresse publique, sans clé ; relevé réel XCOM 2 : description FR, genres,
+  développeurs, date, 16 captures, fond `page_bg_raw`, images sur `shared.akamai.steamstatic.com`), gardée en cache.
+  (LaunchBox, lui, prend ses fiches dans sa propre base LaunchBox Games DB.)
   ✅ Seb 21/10 (après 0.94.0) : pour Epic, il installe un PETIT jeu, TerraScape, dans
   `D:\LaunchBox\Games\Epic\Epic Games\Games` (Fortnite laissé tel quel) ; et « tout sera reset en fin de
   développement de Frogtend pour que tout soit bien géré par lui » : les installations actuelles (Steam, GOG,
@@ -661,6 +667,17 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.96.0** (21/10) — Lot D, fiches des jeux de boutique prises DANS les boutiques (décision de Seb ; relecture de
+  l'expert interface) : `boutiques::fiche_steam` (`store.steampowered.com/api/appdetails`, `l=french`, cache une
+  semaine, hors ligne = ancienne fiche, refus = pause de 5 minutes sans rien écrire ; « en anglais » d'après la
+  liste des langues) et `fiche_galaxy` (base locale, `summary` + `meta`, copie effacée, cache une semaine) ;
+  commande `boutique_fiche` (Steam français d'abord, aussi pour une clé Galaxy « steam_… », sinon Galaxy) ; hôte
+  d'images de la boutique Steam autorisé ; `FicheBoutique.svelte` dans le panneau (attente de 300 ms avant de
+  demander : le défilement ne lance rien). Vérifié : tests (cœur 461 : la fiche réelle de XCOM 2 lue) ; essais
+  RÉELS en lecture seule (Steam XCOM 2 en français ; Galaxy HZD et Shadow Tactics en anglais). NON vérifié : le
+  rendu (A-TESTER) ; les images de Galaxy (adresses à gabarit ; les serveurs d'images de GOG répondaient 500 et
+  gog.com 503 le 21/10 — à revoir) ; une fiche Epic hors Galaxy (aucune : TerraScape n'a que son nom).
 
 - **0.95.0** (21/10) — A6d, jeux Epic du PC (relevé réel TerraScape installé par Seb ; relecture de l'expert
   lancement) : `boutiques::installes_epic` lit les manifestes `.item` (`%ProgramData%\Epic\…\Manifests`) en

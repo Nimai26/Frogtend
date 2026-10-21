@@ -16,6 +16,7 @@
   import BlocContenus from '$lib/contenus/BlocContenus.svelte';
   import BlocDecompression from '$lib/decompression/BlocDecompression.svelte';
   import IconesBoutiques from '$lib/boutiques/IconesBoutiques.svelte';
+  import FicheBoutique from '$lib/boutiques/FicheBoutique.svelte';
   import { originesCarte } from '$lib/boutiques/copies';
 
   const j = $derived(ludo.selection);
@@ -140,6 +141,7 @@
       {/if}
     </dl>
     {#if !catalogue && surPc?.installation}<BlocDecompression id={idPc} titre={j.titre} />{/if}
+    {#if !catalogue && estJeuDeBoutique(j) && j.source !== 'local'}<FicheBoutique jeu={j} />{/if}
     {#if !catalogue}<BlocSucces jeu={j} surPc={!!surPc?.installation} idPc={idPc} />{/if}
     {#if !catalogue && surPc?.installation}<BlocContenus id={idPc} titre={j.titre} />{/if}
     {#if j.genres.length}

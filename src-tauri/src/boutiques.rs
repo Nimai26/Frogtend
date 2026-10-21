@@ -495,6 +495,164 @@ pub fn succes_galaxy(storage: &Path, travail: &Path, cle: &str) -> Resultat<Opti
     lire().map_err(|e| Erreur::Disque(format!("La base de GOG Galaxy est illisible ({e}).")))
 }
 
+/// La fiche d'un jeu de boutique (lot D, Seb 21/10 : prise DANS les boutiques) : la boutique Steam (en français) ou
+/// GOG Galaxy (sa base sur ce PC, en anglais).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct FicheBoutique {
+    /// `steam` ou `galaxy`.
+    pub source: String,
+    pub resume: Option<String>,
+    /// Le résumé n'existe qu'en anglais.
+    pub en_anglais: bool,
+    pub genres: Vec<String>,
+    pub developpeurs: Vec<String>,
+    pub editeurs: Vec<String>,
+    pub annee: Option<i32>,
+    /// La date de sortie telle que la boutique l'écrit (« 4 févr. 2016 »).
+    pub sortie: Option<String>,
+    pub fond: Option<String>,
+    /// Les captures (miniature, grande), adresses publiques autorisées.
+    pub captures: Vec<(String, String)>,
+}
+
+/// Quelques entités HTML d'un texte de boutique, rendues en clair (jamais de balise interprétée).
+fn texte_clair(t: &str) -> String {
+    t.replace("&quot;", "\"").replace("&#39;", "'").replace("&apos;", "'").replace("&lt;", "<").replace("&gt;", ">").replace("&nbsp;", " ").replace("&amp;", "&").trim().to_string()
+}
+
+/// La fiche d'un jeu d'après la réponse de la boutique Steam (`appdetails`, relevé réel XCOM 2 du 21/10).
+pub fn lire_fiche_steam(v: &Value, appid: &str) -> Option<FicheBoutique> {
+    let d = &v[appid];
+    if d["success"].as_bool() != Some(true) {
+        return None;
+    }
+    let x = &d["data"];
+    let liste = |cle: &str| x[cle].as_array().map(|l| l.iter().filter_map(|s| s.as_str().map(String::from)).collect()).unwrap_or_default();
+    let image = |u: &str| Some(u.to_string()).filter(|u| image_autorisee(u));
+    let sortie = x["release_date"]["date"].as_str().filter(|s| !s.is_empty()).map(String::from);
+    Some(FicheBoutique {
+        source: "steam".into(),
+        resume: x["short_description"].as_str().map(texte_clair).filter(|t| !t.is_empty()),
+        // Un jeu sans français : Steam rend son texte anglais (la liste de ses langues, écrite en français, le dit).
+        en_anglais: !x["supported_languages"].as_str().is_some_and(|l| l.contains("Français")),
+        genres: x["genres"].as_array().map(|l| l.iter().filter_map(|g| g["description"].as_str().map(String::from)).collect()).unwrap_or_default(),
+        developpeurs: liste("developers"),
+        editeurs: liste("publishers"),
+        annee: sortie.as_deref().and_then(|s| s.split(|c: char| !c.is_ascii_digit()).filter(|n| n.len() == 4).last()).and_then(|a| a.parse().ok()),
+        sortie,
+        fond: x["background_raw"].as_str().and_then(image),
+        captures: x["screenshots"]
+            .as_array()
+            .map(|l| l.iter().filter_map(|s| Some((image(s["path_thumbnail"].as_str()?)?, image(s["path_full"].as_str()?)?))).take(20).collect())
+            .unwrap_or_default(),
+    })
+}
+
+/// La fiche FRANÇAISE d'un jeu Steam, par l'adresse publique de la boutique (sans clé), gardée une semaine dans
+/// `cache` (données publiques, communes au PC). Hors ligne : l'ancienne fiche ; `None` : la boutique n'en a pas ;
+/// `Err(Reseau)` : Steam n'a pas répondu (ou refuse un moment) et aucune fiche n'est gardée.
+pub async fn fiche_steam(cache: &Path, appid: &str) -> Resultat<Option<FicheBoutique>> {
+    if appid.is_empty() || appid.len() > 12 || !appid.chars().all(|c| c.is_ascii_digit()) {
+        return Ok(None);
+    }
+    const SEMAINE: u64 = 7 * 24 * 3600;
+    let f = cache.join(format!("steam-fiche-{appid}.json"));
+    let recente = std::fs::metadata(&f).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|d| d.as_secs() < SEMAINE);
+    let lire_cache = || std::fs::read(&f).ok().and_then(|o| serde_json::from_slice::<Value>(&o).ok());
+    if recente {
+        if let Some(v) = lire_cache() {
+            return Ok(lire_fiche_steam(&v, appid));
+        }
+    }
+    let r = async {
+        reqwest::Client::builder()
+            .user_agent("Frogtend")
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .ok()?
+            .get("https://store.steampowered.com/api/appdetails")
+            .query(&[("appids", appid), ("l", "french"), ("cc", "fr")])
+            .send()
+            .await
+            .ok()?
+            .json::<Value>()
+            .await
+            .ok()
+    }
+    .await;
+    match r {
+        Some(v) if v[appid].is_object() => {
+            std::fs::create_dir_all(cache)?;
+            let _ = std::fs::write(&f, serde_json::to_vec(&v).unwrap_or_default());
+            Ok(lire_fiche_steam(&v, appid))
+        }
+        // Hors ligne (ou la boutique refuse un moment) : l'ancienne fiche vaut mieux que rien ; sinon, dit.
+        _ => match lire_cache() {
+            Some(v) => Ok(lire_fiche_steam(&v, appid)),
+            None => Err(Erreur::Reseau("La boutique Steam ne répond pas pour l'instant.".into())),
+        },
+    }
+}
+
+/// La fiche d'un jeu d'après GOG Galaxy (lecture seule, sur une copie de sa base effacée ensuite) : `summary`,
+/// `meta` (genres, développeurs, éditeurs, date de sortie en secondes). Relevé du 21/10 : textes en anglais. Ses
+/// images (`media`) ne sont pas reprises : leurs adresses à gabarit ne répondent pas aujourd'hui (à revoir).
+pub fn fiche_galaxy(storage: &Path, travail: &Path, cle: &str) -> Resultat<Option<FicheBoutique>> {
+    if cle.is_empty() || cle.len() > 128 || !cle.chars().all(|c| c.is_ascii_alphanumeric() || "_-.".contains(c)) {
+        return Ok(None);
+    }
+    struct Efface<'a>(&'a Path);
+    impl Drop for Efface<'_> {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(self.0);
+        }
+    }
+    let _efface = Efface(travail);
+    let fichiers = ["galaxy-2.0.db", "galaxy-2.0.db-wal", "galaxy-2.0.db-shm"];
+    let besoin: u64 = fichiers.iter().filter_map(|f| std::fs::metadata(storage.join(f)).ok()).map(|m| m.len()).sum::<u64>() + (64 << 20);
+    std::fs::create_dir_all(travail)?;
+    if crate::jeux_pc::place_libre(travail).is_some_and(|l| l < besoin) {
+        return Err(Erreur::Disque("Pas assez de place sur le disque des données de Frogtend pour lire GOG Galaxy.".into()));
+    }
+    for f in fichiers {
+        if storage.join(f).is_file() {
+            std::fs::copy(storage.join(f), travail.join(f))?;
+        }
+    }
+    let lire = || -> rusqlite::Result<Option<FicheBoutique>> {
+        let c = rusqlite::Connection::open(travail.join("galaxy-2.0.db"))?;
+        let piece = |t: &str| -> rusqlite::Result<Option<Value>> {
+            Ok(c.query_row(
+                "SELECT g.value FROM GamePieces g JOIN GamePieceTypes y ON y.id = g.gamePieceTypeId WHERE g.releaseKey = ?1 AND y.type = ?2 LIMIT 1",
+                rusqlite::params![cle, t],
+                |r| r.get::<_, String>(0),
+            )
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok()))
+        };
+        let (resume, meta) = (piece("summary")?, piece("meta")?);
+        if resume.is_none() && meta.is_none() {
+            return Ok(None);
+        }
+        let meta = meta.unwrap_or(Value::Null);
+        let liste = |cle: &str| meta[cle].as_array().map(|l| l.iter().filter_map(|s| s.as_str().map(String::from)).collect()).unwrap_or_default();
+        let annee = meta["releaseDate"].as_i64().or_else(|| meta["releaseDate"].as_str().and_then(|s| s.parse().ok())).filter(|s| *s > 0).map(|s| 1970 + (s / 31_556_952) as i32);
+        Ok(Some(FicheBoutique {
+            source: "galaxy".into(),
+            resume: resume.and_then(|r| r["summary"].as_str().map(texte_clair)).filter(|t| !t.is_empty()),
+            en_anglais: true,
+            genres: liste("genres"),
+            developpeurs: liste("developers"),
+            editeurs: liste("publishers"),
+            annee,
+            sortie: None,
+            fond: None,
+            captures: vec![],
+        }))
+    };
+    lire().map_err(|e| Erreur::Disque(format!("La base de GOG Galaxy est illisible ({e}).")))
+}
+
 /// Le dossier des manifestes de l'Epic Games Launcher (`%ProgramData%\Epic\EpicGamesLauncher\Data\Manifests`).
 pub fn dossier_manifestes_epic() -> Option<PathBuf> {
     let d = PathBuf::from(std::env::var_os("ProgramData")?).join("Epic").join("EpicGamesLauncher").join("Data").join("Manifests");
@@ -585,6 +743,8 @@ pub fn image_autorisee(url: &str) -> bool {
     url.starts_with("https://images.gog.com/")
         || url.starts_with("https://cdn.akamai.steamstatic.com/")
         || url.starts_with("https://cdn1.epicgames.com/")
+        // Les images de la fiche d'un jeu Steam (lot D : fond, captures ; relevé du 21/10).
+        || url.starts_with("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/")
         // Les badges des succès de RetroAchievements (lot C3).
         || url.starts_with("https://media.retroachievements.org/Badge/")
 }
@@ -912,6 +1072,23 @@ mod tests {
     }
 
     #[test]
+    fn la_fiche_steam_se_lit_en_francais() {
+        // Relevé réel (XCOM 2, 21/10), réduit.
+        let v: Value = serde_json::from_str(include_str!("../fixtures/simule/steam-fiche-268500.json")).unwrap();
+        let f = lire_fiche_steam(&v, "268500").unwrap();
+        assert!(f.resume.as_deref().unwrap().starts_with("XCOM"));
+        assert!(!f.en_anglais);
+        assert_eq!(f.genres, ["Stratégie"]);
+        assert_eq!(f.developpeurs[0], "Firaxis Games");
+        assert_eq!(f.annee, Some(2016));
+        assert_eq!(f.captures.len(), 2);
+        assert!(f.captures[0].0.contains("600x338") && image_autorisee(&f.captures[0].1));
+        assert!(f.fond.as_deref().is_some_and(image_autorisee));
+        assert_eq!(lire_fiche_steam(&serde_json::json!({"1": {"success": false}}), "1"), None);
+        assert_eq!(texte_clair("Rock &amp; Roll &quot;x&quot;"), "Rock & Roll \"x\"");
+    }
+
+    #[test]
     fn un_manifeste_epic_donne_un_jeu_jamais_unreal_ni_un_dlc() {
         // La forme réelle (TerraScape, relevé du 21/10), réduite à ce que Frogtend lit.
         let terra = r#"{"FormatVersion":0,"bIsIncompleteInstall":false,"AppName":"6ef17d9f63c143ea88a4a4bcbcf1e91c","DisplayName":"TerraScape",
@@ -931,6 +1108,18 @@ mod tests {
         assert!(lire_manifeste_epic(&avec(r#""bIsIncompleteInstall":false"#, r#""bIsIncompleteInstall":true"#)).is_none(), "installation pas finie");
         assert!(lire_manifeste_epic(&avec(r#""LaunchExecutable":"EOSBootstrapper.exe""#, r#""LaunchExecutable":"""#)).is_none());
         assert!(lire_manifeste_epic(&avec("6ef17d9f63c143ea88a4a4bcbcf1e91c", "x/../y")).is_none(), "identifiant douteux");
+    }
+
+    /// RÉEL, lecture seule (lot D) : la fiche d'un jeu d'après la vraie base de Galaxy (copie effacée ensuite).
+    /// `FROGTEND_GALAXY_JEU=gog_1209025141 cargo test essai_fiche_galaxy -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn essai_fiche_galaxy() {
+        let cle = std::env::var("FROGTEND_GALAXY_JEU").unwrap();
+        let d = tempfile::tempdir().unwrap();
+        let f = fiche_galaxy(&dossier_galaxy().expect("Galaxy"), &d.path().join("copie"), &cle).unwrap();
+        println!("{f:?}");
+        assert!(!d.path().join("copie").exists());
     }
 
     /// RÉEL, lecture seule (A6d) : les jeux Epic installés sur ce PC et leur adresse de lancement (rien n'est lancé).

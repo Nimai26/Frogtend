@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.96.0 — La fiche de tes jeux de boutique
+
+- Le panneau d'un jeu de tes boutiques montre maintenant sa fiche : résumé, genres, développeur, éditeur, date de
+  sortie et captures d'écran.
+- Pour un jeu Steam : la fiche EN FRANÇAIS de la boutique Steam (gardée une semaine). Pour les autres (GOG, Epic,
+  Xbox…) : ce que GOG Galaxy en sait sur ton PC, en anglais (c'est dit).
+- Rien n'est écrit chez les boutiques.
+
 ## 0.95.0 — Tes jeux Epic, lancés par Epic et suivis
 
 - Un jeu installé par l'Epic Games Launcher (TerraScape…) devient un vrai jeu de ta ludothèque : ▶ Jouer demande à

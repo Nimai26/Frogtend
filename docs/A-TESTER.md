@@ -48,6 +48,12 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Fiches des jeux de boutique (0.96.0)
+- [ ] Ludothèque ▸ XCOM 2 (Steam) : le panneau montre le résumé en français, « Stratégie », Firaxis Games, la date
+      et des captures.
+- [ ] Horizon Zero Dawn (GOG) : le résumé en anglais, avec « En anglais : la boutique n'a pas de texte français ».
+- [ ] Faire défiler vite la grille au clavier : la fiche n'arrive que sur la carte où l'on s'arrête.
+
 ## Jeux Epic lancés par Epic (0.95.0) — À ESSAYER AVEC MOI
 - [ ] Ludothèque : TerraScape a sa carte (pastille « Epic ») ; ▶ Jouer : « Epic Games lance… », Epic s'ouvre et le
       jeu démarre ; menu en jeu, « Quitter », temps de jeu.

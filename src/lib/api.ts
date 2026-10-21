@@ -284,6 +284,20 @@ export interface TrichesJeu {
   en_ligne?: { online: string | null; anticheat: string | null; source?: string; lu_le?: string } | null;
 }
 
+/** La fiche d'un jeu de boutique (lot D : boutique Steam en français, sinon GOG Galaxy). */
+export interface FicheBoutique {
+  source: 'steam' | 'galaxy';
+  resume: string | null;
+  en_anglais: boolean;
+  genres: string[];
+  developpeurs: string[];
+  editeurs: string[];
+  annee: number | null;
+  sortie: string | null;
+  fond: string | null;
+  captures: [string, string][];
+}
+
 /** Ce que Frogtend mettrait à l'abri des parties d'un jeu Steam (`nuage_steam_apercu`). */
 export interface ApercuNuage {
   fichiers: number;
@@ -767,6 +781,8 @@ export const api = {
     appeler<import('$lib/succes/succes.svelte').EtatRetro>('ra_connecter_emulateurs', { motDePasse }),
   succesRetro: (id: number) => appeler<import('$lib/succes/succes.svelte').SuccesRetro>('succes_retro', { id }),
   succesSteam: (appid: string) => appeler<[number, number] | null>('succes_steam', { appid }),
+  /** La fiche d'un jeu de boutique (lot D) ; `null` : aucune. */
+  boutiqueFiche: (source: 'steam' | 'galaxy', cle: string) => appeler<FicheBoutique | null>('boutique_fiche', { source, cle }),
   /** Les jeux possédés sur plusieurs boutiques, réunis en une carte (A6c) : les ids de leurs copies. */
   ludothequeGroupes: () => appeler<number[][]>('ludotheque_groupes'),
   /** Les succès en détail d'un jeu de boutique (lot C) ; `null` : la source n'en a pas. */

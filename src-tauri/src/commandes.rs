@@ -2059,6 +2059,67 @@ pub async fn succes_liste(noyau: State<'_, Noyau>, source: String, cle: String) 
     Ok(l.map(|succes| crate::succes::ListeSucces { source: "galaxy".into(), succes }))
 }
 
+/// La fiche d'un jeu de boutique (lot D, Seb 21/10 : prise DANS les boutiques) : `source` = `steam` (`cle` = l'appid :
+/// la fiche française de la boutique Steam, sinon celle de Galaxy) ou `galaxy` (`cle` = la clé Galaxy ; une clé
+/// « steam_<appid> » prend d'abord la fiche française de Steam). `None` : aucune fiche.
+#[tauri::command]
+pub async fn boutique_fiche(noyau: State<'_, Noyau>, source: String, cle: String) -> Resultat<Option<crate::boutiques::FicheBoutique>> {
+    profil_ouvert(&noyau).await?;
+    let appid = match source.as_str() {
+        "steam" => Some(cle.clone()),
+        "galaxy" => cle.strip_prefix("steam_").map(String::from),
+        _ => None,
+    };
+    if let Some(appid) = &appid {
+        // Steam a refusé (trop de demandes, panne) il y a moins de 5 minutes : on ne le relance pas, et on n'écrit rien
+        // (jamais une fiche « vide » gardée une semaine pour un refus passager).
+        static PAUSE_STEAM: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+        if PAUSE_STEAM.lock().unwrap_or_else(|e| e.into_inner()).is_some_and(|t| t.elapsed().as_secs() < 300) {
+            return Ok(None);
+        }
+        let cache = noyau.dossier.join("cache").join("boutiques");
+        match crate::boutiques::fiche_steam(&cache, appid).await {
+            Ok(Some(f)) => return Ok(Some(f)),
+            Ok(None) => {}
+            Err(_) => {
+                *PAUSE_STEAM.lock().unwrap_or_else(|e| e.into_inner()) = Some(std::time::Instant::now());
+                return Ok(None);
+            }
+        }
+    }
+    let cle_galaxy = match (source.as_str(), &appid) {
+        ("steam", Some(a)) => format!("steam_{a}"),
+        _ => cle,
+    };
+    let Some(storage) = crate::boutiques::dossier_galaxy() else { return Ok(None) };
+    if cle_galaxy.is_empty() || !cle_galaxy.chars().all(|c| c.is_ascii_alphanumeric() || "_-.".contains(c)) {
+        return Ok(None);
+    }
+    // La fiche lue une fois par semaine (texte public : rien du compte), jamais une copie de la base à chaque clic.
+    let cache = noyau.dossier.join("cache").join("boutiques").join(format!("galaxy-fiche-{cle_galaxy}.json"));
+    let recente = std::fs::metadata(&cache).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|d| d.as_secs() < 7 * 24 * 3600);
+    if recente {
+        if let Some(f) = std::fs::read(&cache).ok().and_then(|o| serde_json::from_slice::<Option<crate::boutiques::FicheBoutique>>(&o).ok()) {
+            return Ok(f);
+        }
+    }
+    // Une lecture de la base à la fois (comme les succès), copie effacée ensuite.
+    static UNE_A_LA_FOIS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _tour = UNE_A_LA_FOIS.lock().await;
+    let travail = noyau.dossier.join("travail").join("galaxy-fiche");
+    let f = tauri::async_runtime::spawn_blocking(move || {
+        let _ = std::fs::remove_dir_all(&travail);
+        crate::boutiques::fiche_galaxy(&storage, &travail, &cle_galaxy)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La lecture de GOG Galaxy s'est arrêtée brutalement.".into()))??;
+    if let Some(d) = cache.parent() {
+        let _ = std::fs::create_dir_all(d);
+        let _ = std::fs::write(&cache, serde_json::to_vec(&f).unwrap_or_default());
+    }
+    Ok(f)
+}
+
 /// Les succès en détail d'un jeu DU PC (menu en jeu, Taodbox : lot C5) : un jeu Steam du registre → ceux de son appid.
 /// `None` : aucun succès connu pour ce jeu (RetroAchievements : lot C3).
 #[tauri::command]

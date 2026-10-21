@@ -1,0 +1,46 @@
+{
+ "_source": "Relevé RÉEL (21/10) de https://store.steampowered.com/api/appdetails?appids=268500&l=french&cc=fr (XCOM 2), réduit aux champs lus par Frogtend (lot D).",
+ "268500": {
+  "success": true,
+  "data": {
+   "name": "XCOM® 2",
+   "steam_appid": 268500,
+   "short_description": "XCOM 2 est la suite de XCOM: Enemy Unknown, le jeu de stratégie à succès. Vingt années se sont écoulées depuis que l'humanité a perdu la guerre contre l'envahisseur extraterrestre, et un nouvel ordre mondial a été imposé sur Terre. Après des années passées dans l'ombre, XCOM va devoir renaître et éliminer la menace extraterrestre.",
+   "developers": [
+    "Firaxis Games",
+    "Feral Interactive (Mac)",
+    "Feral Interactive (Linux)"
+   ],
+   "publishers": [
+    "2K",
+    "Feral Interactive (Mac)",
+    "Feral Interactive (Linux)"
+   ],
+   "release_date": {
+    "coming_soon": false,
+    "date": "4 févr. 2016"
+   },
+   "genres": [
+    {
+     "id": "2",
+     "description": "Stratégie"
+    }
+   ],
+   "background_raw": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/268500/page_bg_raw.jpg?t=1772813016",
+   "header_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/268500/header.jpg?t=1772813016",
+   "screenshots": [
+    {
+     "id": 0,
+     "path_thumbnail": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/268500/ss_a95cdbe487dbabf6621962fc92f438e26c5fdfd3.600x338.jpg?t=1772813016",
+     "path_full": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/268500/ss_a95cdbe487dbabf6621962fc92f438e26c5fdfd3.1920x1080.jpg?t=1772813016"
+    },
+    {
+     "id": 1,
+     "path_thumbnail": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/268500/ss_ca76303e136d2ea500b8e6546d4319502ae8862a.600x338.jpg?t=1772813016",
+     "path_full": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/268500/ss_ca76303e136d2ea500b8e6546d4319502ae8862a.1920x1080.jpg?t=1772813016"
+    }
+   ],
+   "supported_languages": "Anglais<strong>*</strong>, Français<strong>*</strong>, Italien<strong>*</strong>, Allemand<strong>*</strong>, Espagnol - Espagne<strong>*</strong>, Japonais, Coréen, Polonais, Russe, Chinois simplifié, Chinois traditionnel<br><strong>*</strong>Langues avec support audio complet"
+  }
+ }
+}
