@@ -489,6 +489,8 @@ pub fn run() {
             commandes::cheatengine_lancer,
             commandes::cheatengine_risque,
             commandes::nuage_steam_apercu,
+            commandes::succes_liste,
+            commandes::succes_jeu,
             commandes::nuage_steam_abriter,
             commandes::gratuits_liste,
             commandes::gratuits_connexion_epic,

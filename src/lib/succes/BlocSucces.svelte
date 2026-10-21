@@ -1,6 +1,7 @@
 <script lang="ts">
   // 🏆 Les succès d'un jeu, dans le panneau de détails : Steam pour ses jeux, RetroAchievements pour les jeux émulés
   // présents sur le PC (version compatible ou non, et laquelle l'est).
+  import { goto } from '$app/navigation';
   import { api, type JeuResume } from '$lib/api';
   import { resumeRetro, type SuccesRetro } from './succes.svelte';
 
@@ -37,6 +38,11 @@
   });
 
   const resume = $derived(ra ? resumeRetro(ra) : null);
+
+  /** La liste en détail (lot C). */
+  function voir(source: 'steam' | 'galaxy', cle: string) {
+    goto(`/succes?source=${source}&cle=${encodeURIComponent(cle)}&titre=${encodeURIComponent(jeu.titre)}`);
+  }
 </script>
 
 {#if jeu.source === 'galaxy' && jeu.succes}
@@ -44,12 +50,14 @@
     <strong>🏆 Succès <span class="muted">(GOG Galaxy)</span></strong>
     <span>{jeu.succes[0]} / {jeu.succes[1]} obtenus</span>
     <div class="bar"><span style="width: {Math.round((jeu.succes[0] / jeu.succes[1]) * 100)}%"></span></div>
+    {#if jeu.cle_boutique}<button class="btn petit" onclick={() => voir('galaxy', jeu.cle_boutique ?? '')}>🏆 Voir les succès</button>{/if}
   </div>
 {:else if steam}
   <div class="succes cx-block">
     <strong>🏆 Succès Steam</strong>
     <span>{steam[0]} / {steam[1]} obtenus</span>
     <div class="bar"><span style="width: {steam[1] ? Math.round((steam[0] / steam[1]) * 100) : 0}%"></span></div>
+    {#if jeu.cle_boutique}<button class="btn petit" onclick={() => voir('steam', jeu.cle_boutique ?? '')}>🏆 Voir les succès</button>{/if}
   </div>
 {:else if ra && resume}
   <div class="succes cx-block">

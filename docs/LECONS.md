@@ -243,3 +243,6 @@ TOUTE modification, relancer la suite complète ; ne jamais modifier le code pen
 pendant une passe complète anormalement lente (21 s au lieu de 8 : PC chargé) ; analysé tout de suite : fichier non
 touché par le lot, 3 passes seules et 2 passes complètes vertes. Test dépendant du temps (un `ping` de ~2 s) : s'il
 rougit encore, le rendre robuste à la charge plutôt que de relancer jusqu'au vert.
+21/10 (0.90.0) : rouge à nouveau pendant `livrer` (« la fin est bien vue » : 20 s sans fin) ; rendu robuste : le .bat
+vit ~1 s de plus, le premier relevé connaît l'heure EXACTE du lanceur (plus de marge de 5 s qui laissait passer le
+processus d'un autre test). 3 passes complètes vertes, puis la livraison.

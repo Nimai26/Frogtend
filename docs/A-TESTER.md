@@ -48,6 +48,13 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Succès en détail (0.90.0)
+- [ ] Ludothèque ▸ un jeu GOG avec succès ▸ panneau ▸ 🏆 Voir les succès : la liste, obtenus d'abord, icônes,
+      dates, rareté ; ← Retour (ou Échap) revient.
+- [ ] Un jeu Steam installé (Final Fantasy VIII…) ▸ ⚙ Gérer le jeu ▸ 🏆 Succès : 34 succès, 29 obtenus.
+- [ ] En Taodbox, même chemin à la manette : on reste en plein écran, la croix parcourt la liste, B revient.
+- [ ] Pendant une partie d'un jeu Steam : menu en jeu ▸ 🏆 Succès, à la manette ; la ligne choisie reste lisible.
+
 ## Mods dans les jeux Steam (0.89.0) — À ESSAYER AVEC MOI
 - [ ] GTA V ▸ ⚙ Gérer le jeu ▸ 🧩 Mods ▸ un mod : REFUSÉ d'abord (BattlEye), sans choisir où le poser.
 - [ ] Un jeu solo (Skyrim SE, XCOM 2) ▸ 🧩 Mods : l'avertissement « Risque de bannissement » (Annuler d'abord) ;

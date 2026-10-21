@@ -2011,6 +2011,44 @@ pub async fn succes_steam(noyau: State<'_, Noyau>, appid: String) -> Resultat<Op
     crate::succes::succes_steam(crate::boutiques::API_STEAM, &cle, &c.steamid, &appid).await
 }
 
+/// Les succès en détail d'un jeu de boutique (lot C) : `source` = `galaxy` (`cle` = sa clé Galaxy) ou `steam` (`cle` =
+/// son appid). Un jeu Steam : en attendant le détail par l'API de Steam (lot C1, à relever avec le compte relié de
+/// Seb), celui que GOG Galaxy garde pour lui (`steam_<appid>`). Lecture seule, sur une copie de la base.
+#[tauri::command]
+pub async fn succes_liste(noyau: State<'_, Noyau>, source: String, cle: String) -> Resultat<Option<crate::succes::ListeSucces>> {
+    let cle_galaxy = match source.as_str() {
+        "galaxy" => cle,
+        "steam" if !cle.is_empty() && cle.len() <= 12 && cle.bytes().all(|c| c.is_ascii_digit()) => format!("steam_{cle}"),
+        _ => return Ok(None),
+    };
+    // Seulement pour un profil ouvert (comme l'import de Galaxy).
+    profil_ouvert(&noyau).await?;
+    let Some(storage) = crate::boutiques::dossier_galaxy() else { return Ok(None) };
+    // Une lecture à la fois (la base fait des dizaines de Mo : jamais deux copies ensemble) ; le second appel attend.
+    static UNE_A_LA_FOIS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _tour = UNE_A_LA_FOIS.lock().await;
+    let travail = noyau.dossier.join("travail").join("galaxy-succes");
+    let l = tauri::async_runtime::spawn_blocking(move || {
+        // Un reste d'une copie interrompue (Frogtend fermé net) part d'abord : c'est la nôtre, son nom le dit.
+        let _ = std::fs::remove_dir_all(&travail);
+        crate::boutiques::succes_galaxy(&storage, &travail, &cle_galaxy)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La lecture des succès s'est arrêtée brutalement.".into()))??;
+    Ok(l.map(|succes| crate::succes::ListeSucces { source: "galaxy".into(), succes }))
+}
+
+/// Les succès en détail d'un jeu DU PC (menu en jeu, Taodbox : lot C5) : un jeu Steam du registre → ceux de son appid.
+/// `None` : aucun succès connu pour ce jeu (RetroAchievements : lot C3).
+#[tauri::command]
+pub async fn succes_jeu(noyau: State<'_, Noyau>, id: i64) -> Resultat<Option<crate::succes::ListeSucces>> {
+    let j = noyau.jeu_visible(id).await?;
+    match j.installation.and_then(|i| i.boutique).filter(|b| b.source == "steam") {
+        Some(b) => succes_liste(noyau, "steam".into(), b.cle).await,
+        None => Ok(None),
+    }
+}
+
 /// Ce que Frogtend mettrait à l'abri des parties d'un jeu Steam (lot B2), à montrer avant.
 #[derive(Serialize)]
 pub struct ApercuNuage {

@@ -395,6 +395,87 @@ pub fn lire_galaxy(storage: &Path, travail: &Path) -> Resultat<Vec<JeuBoutique>>
     Ok(l)
 }
 
+/// Les succès en détail d'UN jeu de GOG Galaxy (`cle` : sa clé Galaxy, « gog_… », « steam_620 »…), en LECTURE SEULE
+/// sur une copie de sa base (effacée ensuite : elle contient les données du compte). `None` : Galaxy n'en a pas.
+/// Relevé réel (21/10) : textes en français notés « non traduits » (`isLocalized` 0, ils sont en anglais) → le
+/// français seulement s'il est vraiment traduit, sinon l'anglais (dit) ; aucun succès caché noté (`isVisible`
+/// toujours 1) ; rareté en % ; icônes sur images.gog.com ; date « AAAA-MM-JJ hh:mm:ss ».
+pub fn succes_galaxy(storage: &Path, travail: &Path, cle: &str) -> Resultat<Option<Vec<crate::succes::SuccesDetail>>> {
+    if cle.is_empty() || cle.len() > 128 || !cle.chars().all(|c| c.is_ascii_alphanumeric() || "_-.".contains(c)) {
+        return Ok(None);
+    }
+    // La copie part dans TOUS les cas (même une copie à moitié faite : elle contient les données du compte).
+    struct Efface<'a>(&'a Path);
+    impl Drop for Efface<'_> {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(self.0);
+        }
+    }
+    let _efface = Efface(travail);
+    let fichiers = ["galaxy-2.0.db", "galaxy-2.0.db-wal", "galaxy-2.0.db-shm"];
+    // La place : la base et son journal, plus une marge (jamais un disque rempli par une copie de lecture).
+    let besoin: u64 = fichiers.iter().filter_map(|f| std::fs::metadata(storage.join(f)).ok()).map(|m| m.len()).sum::<u64>() + (64 << 20);
+    std::fs::create_dir_all(travail)?;
+    if crate::jeux_pc::place_libre(travail).is_some_and(|l| l < besoin) {
+        return Err(Erreur::Disque("Pas assez de place sur le disque des données de Frogtend pour lire les succès de GOG Galaxy.".into()));
+    }
+    for f in fichiers {
+        let (src, dst) = (storage.join(f), travail.join(f));
+        if src.is_file() {
+            std::fs::copy(&src, &dst)?;
+        }
+    }
+    let lire = || -> rusqlite::Result<Option<Vec<crate::succes::SuccesDetail>>> {
+        let c = rusqlite::Connection::open(travail.join("galaxy-2.0.db"))?;
+        let tables: i64 = c.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('Achievements', 'UserAchievements', 'LocalizedAchievements', 'Languages')",
+            [],
+            |r| r.get(0),
+        )?;
+        if tables < 4 {
+            return Ok(None);
+        }
+        // Le texte : français vraiment traduit, sinon anglais (en-US), sinon n'importe lequel.
+        let sql = "SELECT a.apikey, a.imageUnlockedUrl, a.imageLockedUrl, a.isVisible, a.rarity,
+                    COALESCE(u.isUnlocked, 0), u.unlockTime,
+                    (SELECT l.name || char(31) || COALESCE(l.description, '') || char(31) ||
+                            (CASE WHEN g.code LIKE 'fr%' AND l.isLocalized = 1 THEN 'fr' ELSE 'autre' END)
+                       FROM LocalizedAchievements l LEFT JOIN Languages g ON g.id = l.languageId
+                      WHERE l.gameReleaseKey = a.gameReleaseKey AND l.apikey = a.apikey
+                      ORDER BY (CASE WHEN g.code LIKE 'fr%' AND l.isLocalized = 1 THEN 0 WHEN g.code = 'en-US' THEN 1 ELSE 2 END)
+                      LIMIT 1)
+             FROM Achievements a
+             LEFT JOIN UserAchievements u ON u.gameReleaseKey = a.gameReleaseKey AND u.apikey = a.apikey
+            WHERE a.gameReleaseKey = ?1";
+        let mut q = c.prepare(sql)?;
+        let l: Vec<crate::succes::SuccesDetail> = q
+            .query_map([cle], |r| {
+                let texte: Option<String> = r.get(7)?;
+                let mut t = texte.as_deref().unwrap_or("").split('\u{1f}');
+                let (nom, description, langue) = (t.next().unwrap_or("").to_string(), t.next().unwrap_or("").to_string(), t.next().unwrap_or("autre"));
+                let image = |v: Option<String>| v.filter(|u| image_autorisee(u));
+                Ok(crate::succes::SuccesDetail {
+                    id: r.get(0)?,
+                    nom,
+                    description,
+                    en_anglais: langue != "fr",
+                    obtenu: r.get::<_, Option<i64>>(5)?.unwrap_or(0) == 1,
+                    quand: r.get::<_, Option<String>>(6)?.and_then(|d| date_en_secondes(&d)),
+                    rarete: r.get::<_, Option<f64>>(4)?.filter(|x| x.is_finite() && *x >= 0.0 && *x <= 100.0),
+                    icone: image(r.get(1)?),
+                    icone_grise: image(r.get(2)?),
+                    secret: r.get::<_, Option<i64>>(3)?.unwrap_or(1) == 0,
+                })
+            })?
+            .flatten()
+            .filter(|s| !s.nom.is_empty())
+            .collect();
+        Ok((!l.is_empty()).then_some(l))
+    };
+    // La connexion est fermée à la fin de `lire` ; `_efface` retire ensuite la copie.
+    lire().map_err(|e| Erreur::Disque(format!("La base de GOG Galaxy est illisible ({e}).")))
+}
+
 /// « 2022-04-29 20:23:22 » → secondes depuis 1970 (UTC, sans les secondes intercalaires).
 fn date_en_secondes(d: &str) -> Option<u64> {
     let (date, heure) = d.split_once(' ').unwrap_or((d, "00:00:00"));
@@ -699,6 +780,60 @@ mod tests {
         assert_eq!(l[0].succes, Some((1, 3)), "succès lus dans Galaxy");
         assert_eq!(l[1].succes, None, "Epic : Galaxy ne les a pas");
         assert!(stock.join("galaxy-2.0.db").is_file(), "l'original n'est pas touché");
+    }
+
+    #[test]
+    fn les_succes_galaxy_en_detail_francais_s_il_est_vraiment_traduit_sinon_anglais() {
+        // La forme réelle des tables (relevé du 21/10 sur la base de Venkman, lue sur une copie).
+        let d = tempfile::tempdir().unwrap();
+        let stock = d.path().join("storage");
+        std::fs::create_dir_all(&stock).unwrap();
+        let c = rusqlite::Connection::open(stock.join("galaxy-2.0.db")).unwrap();
+        c.execute_batch(
+            "CREATE TABLE Achievements(gameReleaseKey TEXT, apikey TEXT, backendId TEXT, imageUnlockedUrl TEXT, imageLockedUrl TEXT, isVisible INTEGER, rarity REAL, raritySlug TEXT);
+             CREATE TABLE UserAchievements(gameReleaseKey TEXT, userId INTEGER, apikey TEXT, unlockTime TEXT, isUnlocked INTEGER);
+             CREATE TABLE LocalizedAchievements(gameReleaseKey TEXT, apikey TEXT, name TEXT, description TEXT, languageId INTEGER, isLocalized INTEGER);
+             CREATE TABLE Languages(id INTEGER, name TEXT, code TEXT);
+             INSERT INTO Languages VALUES (16, 'English', 'en-US'), (24, 'French', 'fr-FR'), (12, 'German', 'de-DE');
+             INSERT INTO Achievements VALUES ('gog_1', 'a', '1', 'https://images.gog.com/a.png', 'https://images.gog.com/a-gris.png', 1, 3.81, 'rare'),
+                                             ('gog_1', 'b', '2', 'https://ailleurs.example/b.png', NULL, 0, 80.5, 'common'),
+                                             ('gog_2', 'z', '3', NULL, NULL, 1, NULL, NULL);
+             INSERT INTO UserAchievements VALUES ('gog_1', 7, 'a', '2022-04-29 20:23:22', 1), ('gog_1', 7, 'b', NULL, 0);
+             INSERT INTO LocalizedAchievements VALUES ('gog_1', 'a', 'Legendary Fossil', 'Caught a Starlight Nautilus', 24, 0),
+                                                      ('gog_1', 'a', 'Legendary Fossil', 'Caught a Starlight Nautilus', 16, 0),
+                                                      ('gog_1', 'a', 'Legendärer', 'Gefangen', 12, 1),
+                                                      ('gog_1', 'b', 'Fossile', 'Un vrai texte français', 24, 1),
+                                                      ('gog_1', 'b', 'Fossil', 'English', 16, 0);",
+        )
+        .unwrap();
+        drop(c);
+        let travail = d.path().join("copie");
+        let l = succes_galaxy(&stock, &travail, "gog_1").unwrap().unwrap();
+        let a = l.iter().find(|s| s.id == "a").unwrap();
+        assert_eq!((a.nom.as_str(), a.en_anglais, a.obtenu, a.quand, a.rarete), ("Legendary Fossil", true, true, Some(1_651_263_802), Some(3.81)), "« français » non traduit : l'anglais, dit");
+        assert_eq!(a.icone_grise.as_deref(), Some("https://images.gog.com/a-gris.png"));
+        let b = l.iter().find(|s| s.id == "b").unwrap();
+        assert_eq!((b.description.as_str(), b.en_anglais, b.obtenu, b.secret), ("Un vrai texte français", false, false, true));
+        assert_eq!(b.icone, None, "un hôte d'image inconnu n'est jamais gardé");
+        assert!(!travail.exists(), "la copie de la base ne reste pas");
+        assert_eq!(succes_galaxy(&stock, &travail, "gog_2").unwrap(), None, "sans texte : rien");
+        assert_eq!(succes_galaxy(&stock, &travail, "x' OR 1=1 --").unwrap(), None, "clé douteuse : rien lu");
+        assert!(stock.join("galaxy-2.0.db").is_file());
+    }
+
+    /// RÉEL, lecture seule : les succès d'un jeu de la vraie base de Galaxy (sur une copie effacée ensuite).
+    /// `FROGTEND_GALAXY_JEU=gog_1084933262 cargo test essai_succes_galaxy -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn essai_succes_galaxy() {
+        let cle = std::env::var("FROGTEND_GALAXY_JEU").unwrap();
+        let d = tempfile::tempdir().unwrap();
+        let l = succes_galaxy(&dossier_galaxy().expect("Galaxy"), &d.path().join("copie"), &cle).unwrap().unwrap_or_default();
+        let obtenus = l.iter().filter(|s| s.obtenu).count();
+        println!("{cle} : {} succès, {obtenus} obtenus, {} en anglais, {} secrets, {} avec rareté, {} avec icône", l.len(), l.iter().filter(|s| s.en_anglais).count(), l.iter().filter(|s| s.secret).count(), l.iter().filter(|s| s.rarete.is_some()).count(), l.iter().filter(|s| s.icone.is_some()).count());
+        if let Some(s) = l.iter().find(|s| s.obtenu) {
+            println!("exemple obtenu : « {} » — {} ({:?} %, quand {:?})", s.nom, s.description, s.rarete, s.quand);
+        }
     }
 
     #[tokio::test]

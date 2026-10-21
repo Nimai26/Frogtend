@@ -765,6 +765,10 @@ export const api = {
     appeler<import('$lib/succes/succes.svelte').EtatRetro>('ra_connecter_emulateurs', { motDePasse }),
   succesRetro: (id: number) => appeler<import('$lib/succes/succes.svelte').SuccesRetro>('succes_retro', { id }),
   succesSteam: (appid: string) => appeler<[number, number] | null>('succes_steam', { appid }),
+  /** Les succès en détail d'un jeu de boutique (lot C) ; `null` : la source n'en a pas. */
+  succesListe: (source: 'steam' | 'galaxy', cle: string) => appeler<import('$lib/succes/liste').ListeSucces | null>('succes_liste', { source, cle }),
+  /** Les succès en détail d'un jeu DU PC (menu en jeu, Taodbox). */
+  succesJeu: (id: number) => appeler<import('$lib/succes/liste').ListeSucces | null>('succes_jeu', { id }),
   abrisRegler: (dossier: string) => appeler<number>('abris_regler', { dossier }),
   importTypesFichiers: (dossier: string, recursif: boolean) => appeler<[string, number][]>('import_types_fichiers', { dossier, recursif }),
   importChercherRoms: (dossier: string, extensions: string[], recursif: boolean) =>

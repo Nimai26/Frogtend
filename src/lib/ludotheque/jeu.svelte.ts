@@ -1175,7 +1175,7 @@ export async function gererJeu(id: number) {
   const j = tele.jeux[id];
   // Le jeu importé par une AUTRE personne de ce PC : elle seule le gère (✅ Seb 20/10).
   if (!j || j.d_un_autre) return;
-  type Action = 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'patchs' | 'mods' | 'triches' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'delier' | 'retirer';
+  type Action = 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'patchs' | 'mods' | 'triches' | 'succes' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'delier' | 'retirer';
   const options: { valeur: Action; libelle: string; detail?: string }[] = [];
   if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
   // Un jeu d'une boutique (Steam) : c'est elle qui le lance, l'installe et le désinstalle ; Frogtend n'écrit rien dans
@@ -1228,6 +1228,8 @@ export async function gererJeu(id: number) {
   }
   if (j.installation && !deBoutique)
     options.push({ valeur: 'abri', libelle: '💾 Mettre mes parties à l’abri', detail: 'une copie de ce qui a changé depuis l’installation' });
+  // Un jeu Steam : ses succès en détail (lot C ; au bureau ET au canapé, ✅ Seb 21/10).
+  if (j.installation?.boutique?.source === 'steam') options.push({ valeur: 'succes', libelle: '🏆 Succès', detail: 'la liste, obtenus et à obtenir' });
   // Un jeu Steam : ses parties que Steam garde pour son nuage (lot B2, lecture seule chez Steam).
   if (j.installation?.boutique?.source === 'steam')
     options.push({ valeur: 'abri', libelle: '💾 Mettre mes parties à l’abri', detail: 'une copie des parties que Steam garde pour son nuage' });
@@ -1251,6 +1253,9 @@ export async function gererJeu(id: number) {
   else if (c === 'patchs') await choisirPatchsPs3(id);
   else if (c === 'mods') await choisirMods(id);
   else if (c === 'triches') await goto(`/triches?jeu=${id}`);
+  else if (c === 'succes' && j.installation?.boutique)
+    // Au canapé, sous /taodbox : le mode canapé (manette, plein écran) reste actif.
+    await goto(`${auCanape() ? '/taodbox' : ''}/succes?source=steam&cle=${encodeURIComponent(j.installation.boutique.cle)}&titre=${encodeURIComponent(j.titre)}`);
   else if (c === 'commandes') await choisirCommandes(id);
   else if (c === 'figer') await choisirFiger(id);
   else if (c === 'pleinEcran') await choisirPleinEcran(id);

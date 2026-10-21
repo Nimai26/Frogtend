@@ -427,6 +427,33 @@ pub async fn liste_en_cache(cache: &Path, base: &str, cle: &str, console: u32) -
     }
 }
 
+/// Un succès en détail (lot C, Seb 21/10), le même pour Steam, GOG Galaxy et RetroAchievements.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SuccesDetail {
+    pub id: String,
+    pub nom: String,
+    pub description: String,
+    /// Le texte n'est pas traduit en français (la source n'a que l'anglais).
+    pub en_anglais: bool,
+    pub obtenu: bool,
+    /// Quand il a été obtenu (secondes depuis 1970), si la source le dit.
+    pub quand: Option<u64>,
+    /// La part des joueurs qui l'ont (en %), si la source la donne.
+    pub rarete: Option<f64>,
+    pub icone: Option<String>,
+    pub icone_grise: Option<String>,
+    /// Un succès SECRET : sa description se cache tant qu'il n'est pas obtenu (Seb, 21/10 : « Montrer » à la demande).
+    pub secret: bool,
+}
+
+/// La liste des succès d'un jeu, et d'où elle vient.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ListeSucces {
+    /// `steam`, `galaxy` ou `retroachievements`.
+    pub source: String,
+    pub succes: Vec<SuccesDetail>,
+}
+
 /// Steam : (obtenus, total) d'un jeu, ou `None` s'il n'a pas de succès.
 pub async fn succes_steam(base: &str, cle: &str, steamid: &str, appid: &str) -> Resultat<Option<(u32, u32)>> {
     let r = reqwest::Client::builder()
@@ -449,6 +476,44 @@ pub fn lire_succes_steam(v: &Value) -> Option<(u32, u32)> {
         return None;
     }
     Some((l.iter().filter(|a| a["achieved"].as_u64() == Some(1)).count() as u32, l.len() as u32))
+}
+
+#[cfg(test)]
+mod essai_reel {
+    /// RÉEL, lecture seule (lot C) : les succès Steam d'un jeu (joueur, schéma en français, rareté), copiés dans
+    /// `FROGTEND_SORTIE` AVEC le steamid remplacé ; la clé ne s'affiche jamais (elle n'est que dans la requête).
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_STEAM_APP=<appid> FROGTEND_SORTIE=<dossier> cargo test essai_succes_steam -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_succes_steam() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").unwrap();
+        let app = std::env::var("FROGTEND_STEAM_APP").unwrap();
+        let sortie = std::path::PathBuf::from(std::env::var("FROGTEND_SORTIE").unwrap());
+        let donnees = std::path::PathBuf::from(std::env::var("APPDATA").unwrap()).join("fr.hikari-no-sekai.frogtend");
+        let steamid = crate::boutiques::lire(&donnees.join("profils").join(&profil)).expect("compte Steam").steamid;
+        let cle = crate::coffre::CoffreWindows.lire(&crate::boutiques::nom_secret(&profil, "steam")).unwrap().expect("clé Steam");
+        let c = reqwest::Client::builder().user_agent("Frogtend").build().unwrap();
+        for (nom, route, avec_cle) in [
+            ("joueur", format!("{}/ISteamUserStats/GetPlayerAchievements/v1/?steamid={steamid}&appid={app}&l=french", crate::boutiques::API_STEAM), true),
+            ("schema", format!("{}/ISteamUserStats/GetSchemaForGame/v2/?appid={app}&l=french", crate::boutiques::API_STEAM), true),
+            ("rarete", format!("{}/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v2/?gameid={app}", crate::boutiques::API_STEAM), false),
+        ] {
+            let mut r = c.get(&route);
+            if avec_cle {
+                r = r.query(&[("key", cle.as_str())]);
+            }
+            match r.send().await {
+                Ok(rep) => {
+                    let statut = rep.status();
+                    let texte = rep.text().await.unwrap_or_default().replace(&steamid, "76561190000000000");
+                    std::fs::write(sortie.join(format!("succes-steam-{app}-{nom}.json")), &texte).unwrap();
+                    println!("== {nom} : {statut}, {} octets", texte.len());
+                }
+                Err(_) => println!("== {nom} : pas de réponse"),
+            }
+        }
+    }
 }
 
 #[cfg(test)]

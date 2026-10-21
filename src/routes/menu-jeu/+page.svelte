@@ -12,6 +12,8 @@
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { accordCheatEngine } from '$lib/mods/cheatengine';
+  import ListeSucces from '$lib/succes/ListeSucces.svelte';
+  import type { ListeSucces as ListeSuccesDuJeu } from '$lib/succes/liste';
   import { appliquer, arreterManette, demarrerManette, fenetreOuverte, selectionner } from '$lib/taodbox/manette.svelte';
   import type { Commande } from '$lib/taodbox/navigation';
 
@@ -23,6 +25,9 @@
    * noir sur le skin le temps d'apprendre qu'il n'y en a pas. */
   let fondCharge = $state(false);
   let documents = $state<Annexe[] | null>(null);
+  // Les succès du jeu (lot C5), lus à la demande.
+  let succes = $state<ListeSuccesDuJeu | null>(null);
+  let chargementSucces = $state(false);
   // L'écran des options propres à l'émulateur (lot OSD, i : images par seconde, avance rapide…).
   let options = $state(false);
   // L'avance rapide demandée depuis ce menu, pour CE jeu (une bascule : Frogtend ne connaît pas l'état réel de
@@ -55,6 +60,7 @@
     if (menu) modeTaodbox(menu.taodbox);
     cheatEngine = (await api.emulateursInstalles().catch(() => [])).find((e) => e.id === 'cheatengine')?.programme ?? null;
     documents = null;
+    succes = null;
     lecture = null;
     ouvert = null;
     options = false;
@@ -99,6 +105,7 @@
         visible = false;
         ouvert = null;
         documents = null;
+        succes = null;
         lecture = null;
         options = false;
       }),
@@ -142,6 +149,26 @@
       if (n === 0) toast('La fenêtre du jeu est introuvable : ferme-le toi-même.', 'alerte');
     } catch (e) {
       toast(`Impossible de quitter : ${motifDuRefus(e)}`, 'erreur');
+    }
+  }
+
+  /** Les succès du jeu en détail (lot C5) : lus à la demande (rien pendant la partie sans qu'on le demande). */
+  async function voirSucces() {
+    if (!menu || chargementSucces) return;
+    chargementSucces = true;
+    try {
+      const l = await api.succesJeu(menu.jeu);
+      if (!l) {
+        toast('Aucun succès connu pour ce jeu sur ce PC.', 'neutre');
+        return;
+      }
+      succes = l;
+      await tick();
+      selectionner(liste?.querySelector<HTMLButtonElement>('button'));
+    } catch (e) {
+      toast(`Impossible de lire les succès : ${motifDuRefus(e)}`, 'erreur');
+    } finally {
+      chargementSucces = false;
     }
   }
 
@@ -212,6 +239,7 @@
     if (e.key !== 'Escape') return;
     e.preventDefault();
     if (lecture) revenir(() => (lecture = null));
+    else if (succes) revenir(() => (succes = null), '[data-ecran="succes"]');
     else if (documents) revenir(() => (documents = null), '[data-ecran="documents"]');
     else if (options) revenir(() => (options = false), '[data-ecran="options"]');
     else reprendre();
@@ -284,6 +312,16 @@
       {#if a('muet')}<button class="btn" onclick={() => action('muet')}>🔇 Son : couper ou remettre</button>{/if}
       <button class="btn" onclick={() => revenir(() => (options = false))}>← Retour</button>
     </div>
+  {:else if succes}
+    <header>
+      <h1>🏆 Succès</h1>
+      <p class="muted">{menu.titre}</p>
+    </header>
+    <div class="liste" bind:this={liste}>
+      <button class="btn" onclick={() => revenir(() => (succes = null), '[data-ecran="succes"]')}>← Retour</button>
+      <ListeSucces liste={succes} />
+      <button class="btn" onclick={() => revenir(() => (succes = null), '[data-ecran="succes"]')}>← Retour</button>
+    </div>
   {:else if documents}
     <header>
       <h1>📖 Documents</h1>
@@ -324,6 +362,7 @@
       {/if}
       {#if a('disque')}<button class="btn" onclick={() => action('disque')}>💿 Disque suivant</button>{/if}
       <button class="btn" data-ecran="documents" onclick={voirDocuments}>📖 Manuel et documents</button>
+      {#if menu.jeu < 0 && menu.plateforme === 'Windows'}<button class="btn" data-ecran="succes" disabled={chargementSucces} onclick={voirSucces}>🏆 Succès{chargementSucces ? ' (chargement…)' : ''}</button>{/if}
       {#if ['fps', 'rapide', 'capture', 'muet'].some((o) => a(o))}
         <button class="btn" data-ecran="options" onclick={() => revenir(() => (options = true))}>⚙ Options du jeu</button>
       {/if}

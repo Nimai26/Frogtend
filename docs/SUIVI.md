@@ -36,6 +36,15 @@
   `extraire_dans`) — à coder avec le relevé réel d'un jeu de fans. Reste : rôles `maj`/`dlc`/`licence`, formes archive/installeur/
   contenus_emulateur (prochain relevé : Dreamcast multi-disques).
 
+- **Contrat 1.24** (21/10, Firehouse 2.96.0) : `fichiers[].sha1` sur toutes les versions (27 045 empreintes).
+  Relevés réels rangés : `version-segacd-124.json` (Dracula Unleashed, .m3u de 2 .chd : déjà lu par 0.85.1) et
+  `version-archive-pc-124.json` (Megaman's Christmas Carol 3, forme `archive`, UN ZIP64 stocké, `extraire_dans`,
+  `lancer` = exe). ⚠ À CODER après le lot C en cours : sa `qualite` vaut « Jeu — ROM » (cosmétique selon
+  Firehouse) — Frogtend 0.89.0 la prendrait pour une ROM (méthode « aucune ») et ne l'extrairait pas : la forme
+  `archive` doit FAIRE FOI (extraire dans `Jeu/<extraire_dans>`, sous-dossiers permis, lanceur = `lancer`, vide = la
+  personne choisit) ; puis vérifier chaque fichier téléchargé par son `sha1` (contrat 1.24). À venir : PS3 (.iso +
+  .pkg dlc + .rap licence, `contenus_emulateur`).
+
 - **Jeux PC des boutiques — vrais jeux du PC** (Seb, 20/10 : « gérer l'installation, le lancement, les succès, les
   mods… »). État au 20/10 : Frogtend importe la liste (Steam par l'API, Galaxy pour GOG + Epic/Xbox/Ubisoft/EA/Amazon
   reliés) et OUVRE le jeu dans sa boutique, rien de plus : pas de dossier d'installation lu, pas de suivi de partie
@@ -74,6 +83,16 @@
   échappe) ; manifestes de mods DANS le dossier du jeu ; Nexus exige un lanceur. Découpage : **B0** garde-fous →
   **B1** triches + Cheat Engine (aucune écriture chez Steam) → **B2** abris nuage Steam → **B3** mods GitHub (données
   à part, `buildid` surveillé) → **B4** Nexus pour Steam.
+  ✅ Seb 21/10 (après 0.89.0) : « lot C » — les succès en détail (B fini ; D et A6 attendront). Décisions (21/10,
+  ne plus les redemander) : succès SECRETS cachés (« 🔒 Succès secret — la description apparaîtra quand tu l'auras
+  obtenu ») avec « Montrer » à la demande ; un jeu Steam vu aussi par Galaxy : les succès de STEAM font foi (Galaxy
+  pour les jeux GOG et les autres boutiques reliées) ; la liste au bureau (panneau) ET dans le menu en jeu ET en
+  Taodbox ; l'alerte « succès obtenu » pendant la partie : plus tard (IDEES). Avis de l'expert interface (21/10) :
+  aujourd'hui seulement « x / y » dans le panneau ; Steam déjà appelé avec `l=french` mais réduit à un compte ;
+  Galaxy lisible en détail (tables `Achievements`, `UserAchievements`, `LocalizedAchievements` ; défauts : pas de
+  filtre `userId`, total compté sur `UserAchievements`) ; découpage C1 cœur Steam (détail, schéma, rareté, cache
+  PAR PROFIL pour le hors ligne) → C2 Galaxy → C3 RetroAchievements → C4 fenêtre du panneau → C5 menu en jeu et
+  Taodbox.
   ✅ Seb 21/10 : les abris des parties Steam partent AUSSI chez Firehouse avec la sauvegarde du profil (comme les
   autres jeux) ; les remettre en place : plus tard (Steam Cloud peut écraser ce qu'on remet à la main).
   Relevé réel B2 (21/10, lecture seule) : un seul compte dans `userdata` ; `remotecache.vdf` liste chaque fichier
@@ -588,6 +607,22 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.90.0** (21/10) — Lot C des jeux de boutique, sous-lots C2 + C4 + C5 (avis avant code et relectures des
+  experts interface et lancement) : `succes::SuccesDetail` / `ListeSucces` (même forme pour Steam, Galaxy,
+  RetroAchievements) ; `boutiques::succes_galaxy` (copie de la base, effacée dans TOUS les cas par un garde, place
+  vérifiée, requête paramétrée ; français seulement s'il est vraiment traduit, sinon anglais dit) ; commandes
+  `succes_liste` (profil ouvert exigé, une lecture à la fois, reste d'une copie interrompue effacé) et `succes_jeu`
+  (jeu du PC visible ; Steam → `steam_<appid>` de Galaxy en attendant C1) ; interface `ListeSucces.svelte` (chaque
+  succès est un bouton : clavier et manette ; secret caché, montré en le choisissant ; ligne choisie lisible),
+  `PageSucces` servie par `/succes` ET `/taodbox/succes` (le mode canapé reste actif), ← Retour et Échap/B,
+  panneau (jeu Galaxy), Gérer ▸ 🏆 Succès (jeu Steam), menu en jeu (jeu Windows de boutique). Vérifié : tests
+  (cœur 454, interface 221) ; essai RÉEL en lecture seule sur la base Galaxy de Venkman (FF VIII Steam : 34 succès,
+  29 obtenus, rareté, icônes ; un jeu GOG : 59). NON vérifié : rendu réel (A-TESTER) ; images dans la fenêtre du
+  menu en jeu. Reste du lot C : **C1** Steam en détail (API `GetPlayerAchievements` + `GetSchemaForGame` en
+  français, secrets, rareté `GetGlobalAchievementPercentagesForApp` — relevé réel de la rareté fait : `percent` est
+  un TEXTE « 80.3 ») — ATTEND que Seb relie son compte Steam (nouvelle clé) pour un relevé réel ; **C3**
+  RetroAchievements en détail.
 
 - **0.89.0** (21/10) — Lots B3 + B4 des jeux de boutique, mods GitHub et Nexus dans les jeux Steam (avis avant
   code et relectures des experts lancement et interface) : mods.rs `installes_dans` / `installer_dans` (paramètre

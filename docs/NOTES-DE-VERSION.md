@@ -1,5 +1,17 @@
 # Notes de version de Frogtend
 
+## 0.90.0 — Tes succès en détail
+
+- 🏆 Voir les succès : la liste complète d'un jeu de tes boutiques — icône (grise tant qu'il n'est pas obtenu), nom,
+  description, date d'obtention, et sa rareté en mots (« 4 % des joueurs : très rare »). Ceux que tu as obtenus
+  d'abord, les plus récents en tête ; puis les plus faciles à obtenir.
+- Un succès secret garde sa description cachée tant que tu ne l'as pas ; choisis-le pour la montrer quand même.
+- Dans le panneau d'un jeu GOG Galaxy (bouton « Voir les succès »), dans ⚙ Gérer le jeu ▸ 🏆 Succès d'un jeu Steam
+  (au bureau et en Taodbox), et dans le menu en jeu, à la manette.
+- Pour l'instant, le détail vient de GOG Galaxy (lu sur ce PC, sans rien y écrire), y compris pour tes jeux Steam :
+  ses textes sont en anglais. Les succès de Steam en français viendront quand ton compte Steam sera relié dans
+  Frogtend (⚙ Options ▸ Boutiques ▸ Steam, avec une nouvelle clé).
+
 ## 0.89.0 — Des mods dans tes jeux Steam
 
 - ⚙ Gérer le jeu ▸ 🧩 Mods : maintenant aussi pour tes jeux Steam, ceux de Firehouse (GitHub) comme ceux de Nexus

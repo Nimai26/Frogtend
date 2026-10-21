@@ -370,7 +370,10 @@ mod tests {
         // Un « .bat » qui lance un programme durant ~2 s puis se ferme aussitôt : c'est le programme qui compte.
         let d = tempfile::tempdir().unwrap();
         let bat = d.path().join("jeu.bat");
-        std::fs::write(&bat, "@echo off\r\nstart \"\" /b ping -n 3 127.0.0.1 >nul\r\nexit /b 0\r\n").unwrap();
+        // Le .bat vit encore ~1 s après avoir lancé le programme : le premier relevé connaît alors son heure de démarrage
+        // exacte. (Rouge deux fois pendant une livraison, PC chargé, 21/10 : le .bat déjà fermé au premier relevé, son
+        // heure prise « à 5 s près », et un processus d'un autre test pris pour un enfant de la partie.)
+        std::fs::write(&bat, "@echo off\r\nstart \"\" /b ping -n 3 127.0.0.1 >nul\r\nping -n 2 127.0.0.1 >nul\r\nexit /b 0\r\n").unwrap();
         let l = Lanceur {
             programme: "cmd.exe".into(),
             arguments: vec!["/C".into(), bat.to_string_lossy().into()],
