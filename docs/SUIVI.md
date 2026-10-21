@@ -118,7 +118,15 @@
   ✅ Seb 21/10 : « mettre des petites icônes sur les jeux représentant leur(s) magasin(s) d'origine » — sur chaque
   jeu (grille, panneau, Taodbox) : une petite icône par boutique où il est possédé (Steam, GOG, Epic…), plusieurs si
   la ligne réunit plusieurs copies ; à faire dans A6c (avec la ligne unique), icônes aux couleurs du thème (aucune
-  couleur en dur), lisibles à la télé.
+  couleur en dur), lisibles à la télé. Décisions A6c (Seb, 21/10, ne plus les redemander) : copies réunies
+  SEULEMENT si Galaxy les relie (`allGameReleases`), jamais par le titre ; icônes d'origine pour TOUS les jeux
+  (boutiques, Firehouse, « Disque » pour un jeu importé) ; temps de jeu d'un jeu réuni = la somme, avec le détail par
+  boutique ; installé de plusieurs côtés : demander À CHAQUE FOIS (rien retenu). Avis de l'expert interface : table
+  `copies(groupe, id)` remplie au rangement (toutes sources), carte maîtresse choisie à la lecture (steam, gog,
+  epic, puis autres), autres masquées ; filtres sur toutes les copies ; registre : une ligne par copie (inchangé) ;
+  `jouerLaCarte` commun (panneau, double-clic, Taodbox jeu/gérer) ; icônes en pastilles texte (pas de logos de
+  marque) ; doublon possible en Taodbox : `galaxyInstalles` ne filtre pas `dossier`. Découpage : A6c-1 cœur → A6c-2
+  jouerLaCarte → A6c-3 Taodbox → A6c-4 icônes.
   ✅ Seb 21/10 (après 0.89.0) : « lot C » — les succès en détail (B fini ; D et A6 attendront). Décisions (21/10,
   ne plus les redemander) : succès SECRETS cachés (« 🔒 Succès secret — la description apparaîtra quand tu l'auras
   obtenu ») avec « Montrer » à la demande ; un jeu Steam vu aussi par Galaxy : les succès de STEAM font foi (Galaxy
