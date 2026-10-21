@@ -12,6 +12,7 @@
   import { etat } from '$lib/etat.svelte';
   import { tele } from '$lib/ludotheque/telechargements.svelte';
   import { choisirMods, jeuPcSansEmulateur, partie } from '$lib/ludotheque/jeu.svelte';
+  import { accordCheatEngine } from '$lib/mods/cheatengine';
 
   const id = $derived(Number(page.url.searchParams.get('jeu')));
   const jeu = $derived(tele.jeux[id]);
@@ -49,8 +50,14 @@
       if (!e) return;
       cheatEngine = e.programme;
     }
+    let accepte = false;
+    if (brancher) {
+      const a = await accordCheatEngine(id);
+      if (a === null) return;
+      accepte = a;
+    }
     try {
-      await api.cheatengineLancer(cheatEngine, undefined, brancher);
+      await api.cheatengineLancer(cheatEngine, undefined, brancher, accepte);
       toast(brancher ? '🧰 Cheat Engine démarre et se branche sur le jeu.' : '🧰 Cheat Engine démarre, avec tes réglages à toi. Ils seront rangés dans ton profil à sa fermeture.');
     } catch (e) {
       toast(`Impossible de lancer Cheat Engine : ${motifDuRefus(e)}`, 'erreur');
@@ -86,7 +93,8 @@
   /** Avant d'aller chercher un mod : proposer une copie du jeu (pas obligatoire, avec un avertissement). */
   async function avantDeModder(pageMod: string | undefined) {
     if (!pageMod) return;
-    if (jeu?.installation) {
+    // Un jeu de boutique n'est jamais copié en entier (Seb, 21/10) : sa boutique sait le réparer.
+    if (jeu?.installation && !jeu.installation.boutique) {
       const octets = await api.jeuTailleInstallation(id).catch(() => null);
       const copier = await confirmer('💾 Copier le jeu avant de le modifier ?', {
         message: `Conseillé : un mod peut abîmer le jeu. La copie prend ${octets !== null ? taille(octets) : 'la taille du jeu'}, dans le dossier du jeu (sous « Frogtend\\copies »).`,
@@ -163,6 +171,18 @@
     <section class="cx-block">
       <h2>Cheat Engine</h2>
       <p class="muted">Pour les jeux PC : modifier des valeurs en mémoire. Fourni par Firehouse, sans logiciels en plus ; chaque profil garde ses réglages.</p>
+      {#if t.en_ligne && jeuPcSansEmulateur(id)}
+        {@const enLigne = ({ true: 'oui', limited: 'en partie', false: 'non' } as Record<string, string>)[t.en_ligne.online ?? ''] ?? 'inconnu'}
+        <p>
+          {#if t.en_ligne.anticheat}
+            <span class="tag warn">🛡 Anti-triche : {t.en_ligne.anticheat} — Cheat Engine n’est pas permis sur ce jeu</span>
+          {:else}
+            <span class="tag">🛡 Anti-triche : inconnu</span>
+          {/if}
+          <span class="tag {enLigne === 'oui' || enLigne === 'en partie' ? 'warn' : ''}">🌐 Jeu en ligne : {enLigne}</span>
+          {#if t.en_ligne.source === 'pcgamingwiki'}<span class="muted">(source : PCGamingWiki)</span>{/if}
+        </p>
+      {/if}
       <button class="btn petit" onclick={() => lancerCheatEngine()}>{cheatEngine ? '🧰 Lancer Cheat Engine' : '⬇ Installer Cheat Engine'}</button>
       {#if cheatEngine && partie.enJeu === id}
         <button class="btn petit primary" onclick={() => lancerCheatEngine(true)}>🧰 Brancher Cheat Engine sur le jeu</button>

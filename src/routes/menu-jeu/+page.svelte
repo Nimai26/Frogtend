@@ -11,6 +11,7 @@
   import { documentsDuMenu, documentsMontres, libelleDocument, ouvrirDocument, type DocumentOuvert } from '$lib/ludotheque/documents';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
+  import { accordCheatEngine } from '$lib/mods/cheatengine';
   import { appliquer, arreterManette, demarrerManette, fenetreOuverte, selectionner } from '$lib/taodbox/manette.svelte';
   import type { Commande } from '$lib/taodbox/navigation';
 
@@ -122,9 +123,11 @@
   }
 
   async function brancherCheatEngine() {
-    if (!cheatEngine) return;
+    if (!cheatEngine || !menu) return;
+    const accepte = await accordCheatEngine(menu.jeu);
+    if (accepte === null) return;
     try {
-      await api.cheatengineLancer(cheatEngine, undefined, true);
+      await api.cheatengineLancer(cheatEngine, undefined, true, accepte);
       toast('🧰 Cheat Engine se branche sur le jeu.');
     } catch (e) {
       toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');

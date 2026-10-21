@@ -285,15 +285,27 @@ const MAJ: u16 = 0x2A;
 const CTRL: u16 = 0x1D;
 const ALT: u16 = 0x38;
 
-/// Le processus du jeu en cours qui a la fenêtre (sinon le premier lancé).
-pub fn processus_du_jeu(racine: u32) -> u32 {
-    let pids = crate::lancement::processus_de_la_partie(racine);
+/// Le processus du jeu en cours qui a la fenêtre (sinon le premier lancé, s'il vit encore). Pour un jeu PC
+/// (`dossier_jeu`), aussi les programmes de SON dossier : un jeu lancé par sa boutique, ou dont le premier programme
+/// s'est fermé en relançant le vrai jeu, n'est pas un descendant de ce que Frogtend a lancé.
+pub fn processus_du_jeu(racine: u32, dossier_jeu: Option<&std::path::Path>) -> u32 {
+    let mut pids = crate::lancement::processus_de_la_partie(racine);
+    if let Some(d) = dossier_jeu {
+        for p in crate::lancement::processus_du_dossier(d) {
+            if !pids.contains(&p) {
+                pids.push(p);
+            }
+        }
+    }
     #[cfg(windows)]
     if let Some(p) = fenetres::pid_de_la_fenetre(&pids) {
         return p;
     }
-    let _ = pids;
-    racine
+    if pids.contains(&racine) {
+        racine
+    } else {
+        pids.first().copied().unwrap_or(racine)
+    }
 }
 
 /// Prépare la prise du premier plan par Frogtend (menu ouvert depuis la manette) : une entrée neutre.

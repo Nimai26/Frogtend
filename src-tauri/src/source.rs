@@ -872,6 +872,9 @@ mod tests {
             ("spiderman", "/triche/recherche?titre=Ultimate%20Spider-Man&plateforme=Windows"),
             ("skyrim", "/triche/recherche?titre=The%20Elder%20Scrolls%20V%3A%20Skyrim&plateforme=Windows"),
             ("steam-skyrim-se", "/triche/recherche?steam_appid=489830"),
+            // Lot B des jeux de boutique (21/10) : deux jeux Steam installés chez Seb, avec titre ET appid.
+            ("steam-gta5", "/triche/recherche?titre=Grand%20Theft%20Auto%20V&plateforme=Windows&steam_appid=271590"),
+            ("steam-xcom2", "/triche/recherche?titre=XCOM%202&plateforme=Windows&steam_appid=268500"),
             ("asura", "/triche/recherche?serial=BLES01227"),
             ("smw", "/triche/recherche?titre=Super%20Mario%20World&plateforme=Super%20Nintendo%20Entertainment%20System&rom=Super%20Mario%20World%20(USA).sfc"),
             ("sonic", "/triche/recherche?titre=Sonic%20the%20Hedgehog&plateforme=Sega%20Genesis"),

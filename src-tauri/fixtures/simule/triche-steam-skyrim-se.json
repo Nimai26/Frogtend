@@ -1,0 +1,31 @@
+{
+ "_source": "Relevé RÉEL (lecture seule, 21/10) de GET /api/jeux/v1/triche/recherche pour un jeu Steam (steam_appid), bloc en_ligne non documenté au contrat (besoin 30).",
+ "ok": true,
+ "codes": [],
+ "cheat_engine": [],
+ "mods": [
+  {
+   "nom": "Skip intro videos",
+   "description": "Modify configuration file",
+   "liens": [],
+   "references": [],
+   "source": "pcgamingwiki",
+   "page": "https://www.pcgamingwiki.com/wiki/The_Elder_Scrolls_V:_Skyrim_Special_Edition",
+   "consignes_url": "https://www.pcgamingwiki.com/wiki/The_Elder_Scrolls_V:_Skyrim_Special_Edition#Skip_intro_videos",
+   "url": "https://www.pcgamingwiki.com/wiki/The_Elder_Scrolls_V:_Skyrim_Special_Edition",
+   "fichiers": [],
+   "refus": null,
+   "refus_detail": null
+  }
+ ],
+ "page_mods": "https://www.pcgamingwiki.com/wiki/The_Elder_Scrolls_V:_Skyrim_Special_Edition",
+ "en_ligne": {
+  "online": null,
+  "anticheat": null,
+  "source": "pcgamingwiki",
+  "lu_le": "2026-10-19T18:18:14"
+ },
+ "patchs_rpcs3": null,
+ "maj_le": "2026-10-19T17:50:02",
+ "note": "Tables Cheat Engine : pas encore (aucune source lisible sans compte). Mods : Frogtend télécharge lui-même (GitHub : `fichiers[].url`, empreinte à vérifier ; Nexus : le lien, avec le compte de l'utilisateur)."
+}

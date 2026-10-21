@@ -2,6 +2,7 @@
 // mettre ses parties à l'abri, le retirer du PC. Chaque action qui touche au disque est expliquée et acceptée d'abord.
 
 import { listen } from '@tauri-apps/api/event';
+import { goto } from '$app/navigation';
 import { isTauri } from '@tauri-apps/api/core';
 import { api, duree, estErreurCoeur, taille, type Candidat, type JeuPc, type ModInstalle, type PatchsPs3, type VerificationFiger } from '$lib/api';
 import { attendreTouche, choisir, confirmer, fermerToast, informer, toast } from '$lib/dialogues/fenetres.svelte';
@@ -1099,7 +1100,7 @@ export async function gererJeu(id: number) {
   const j = tele.jeux[id];
   // Le jeu importé par une AUTRE personne de ce PC : elle seule le gère (✅ Seb 20/10).
   if (!j || j.d_un_autre) return;
-  type Action = 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'patchs' | 'mods' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'delier' | 'retirer';
+  type Action = 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'patchs' | 'mods' | 'triches' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'delier' | 'retirer';
   const options: { valeur: Action; libelle: string; detail?: string }[] = [];
   if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
   // Un jeu d'une boutique (Steam) : c'est elle qui le lance, l'installe et le désinstalle ; Frogtend n'écrit rien dans
@@ -1134,6 +1135,10 @@ export async function gererJeu(id: number) {
   if (pcSansEmulateur) {
     // Ses mods (contrat 1.19 ; ✅ Seb 19/10) — pas encore pour un jeu de boutique (lot B).
     if (!deBoutique) options.push({ valeur: 'mods', libelle: '🧩 Mods', detail: 'ajouter ou retirer des mods — pour ce jeu' });
+    // Triches et Cheat Engine (lot B, 21/10 : aussi pour un jeu de boutique) — au bureau : la page s'utilise à la
+    // souris ; au canapé, Cheat Engine reste dans le menu en jeu.
+    if (!auCanape())
+      options.push({ valeur: 'triches', libelle: '🧰 Triches et Cheat Engine', detail: 'Cheat Engine, mods conseillés — pour ce jeu' });
     options.push({
       valeur: 'clavier',
       libelle: '🕹 Jouer à la manette (jeu fait pour le clavier)',
@@ -1167,6 +1172,7 @@ export async function gererJeu(id: number) {
   else if (c === 'image') await choisirImagePs3(id);
   else if (c === 'patchs') await choisirPatchsPs3(id);
   else if (c === 'mods') await choisirMods(id);
+  else if (c === 'triches') await goto(`/triches?jeu=${id}`);
   else if (c === 'commandes') await choisirCommandes(id);
   else if (c === 'figer') await choisirFiger(id);
   else if (c === 'pleinEcran') await choisirPleinEcran(id);

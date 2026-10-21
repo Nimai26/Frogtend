@@ -48,6 +48,17 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Triches et Cheat Engine pour les jeux Steam (0.86.0)
+- [ ] Ludothèque ▸ un jeu Steam installé ▸ ⚙ Gérer le jeu ▸ 🧰 Triches et Cheat Engine : la page s'ouvre, avec
+      « Anti-triche » et « Jeu en ligne » (GTA V : BattlEye, oui ; XCOM 2 : en partie).
+- [ ] Lancer GTA V par Frogtend, puis « Brancher Cheat Engine » : REFUSÉ, avec la raison (BattlEye). (Ne lance PAS
+      Cheat Engine sur GTA V autrement.)
+- [ ] Un jeu solo (XCOM 2 en solo, ou Skyrim SE) : « Brancher Cheat Engine » → l'avertissement « Risque de
+      bannissement » ; « Annuler » ne lance rien ; « Lancer quand même » → Cheat Engine s'ouvre, déjà branché sur le
+      jeu (son nom en haut de Cheat Engine).
+- [ ] Même chose depuis le menu en jeu, à la manette : l'avertissement se pilote à la manette, « Annuler » choisi
+      d'abord.
+
 ## Jeux sur plusieurs disquettes zippées (0.85.1)
 - [ ] Ludothèque ▸ NEC PC-8801 ▸ « Xak » : télécharger (moins de 1 Mo), installer : à côté des 4 zips, 4 fichiers
       .d88 apparaissent dans le dossier du jeu.

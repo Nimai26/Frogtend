@@ -21,7 +21,12 @@
   .m3u avant de lancer ; zips dans un .m3u seulement si le cœur conseillé déclare .zip. ✅ Forme corrigée reçue
   (Firehouse 2.94.1) et lue en 0.85.1. Firehouse (20/10) a contrôlé ses 387 versions CPC et PC-8801 : aucun
   sous-dossier, aucun nom en double entre archives, tous les .m3u en UTF-8 ; il garde ses zips, et à sa prochaine
-  livraison ne servira plus en `archive_a_extraire` une forme que Frogtend refuserait. Reste : rôles `maj`/`dlc`/`licence`, formes archive/installeur/
+  livraison ne servira plus en `archive_a_extraire` une forme que Frogtend refuserait. Relevé réel Dreamcast
+  (Shenmue II, .m3u de 4 .chd, rôle `jeu`) : déjà lu par 0.85.1. ✅ Firehouse garantit des .m3u en LF, UTF-8, sans
+  BOM (410 contrôlés). À faire : Dolphin « Change Discs Automatically » (`AutoDiscChange` dans `Dolphin.ini`
+  [Core]) posé par Frogtend pour les 4 multi-disques GameCube. À venir de Firehouse : forme `archive` (jeux de fans,
+  MUGEN, DataXL : ZIP64 stocké, `extraire_dans`, `lancer` vide si ambigu) ; Switch `maj`/`dlc` en
+  `contenus_emulateur` (Eden ≥ 0.2.0 : « External Content » suffit). Reste : rôles `maj`/`dlc`/`licence`, formes archive/installeur/
   contenus_emulateur (prochain relevé : Dreamcast multi-disques).
 
 - **Jeux PC des boutiques — vrais jeux du PC** (Seb, 20/10 : « gérer l'installation, le lancement, les succès, les
@@ -46,6 +51,22 @@
   dossier → **A4** lancer → **A5** interface + Taodbox → **A6** Epic par ses manifestes `.item` (Xbox, Ubisoft, EA,
   Amazon : plus tard). Relevés : `InstalledExternalProducts` n'a AUCUN chemin ; une PlayTask ne prouve pas
   l'installation ; Steam : registre `d:/launchbox/games/steam` et vdf `D:\LaunchBox\Games\Steam` (double lecture).
+  ✅ Seb 21/10 : « ok lot b » — après A (Steam, 0.85.0), on passe au **lot B** (mods, triches, Cheat Engine, abris
+  des jeux de boutique) ; GOG/Epic (A6) attendront. Décisions de Seb (21/10, ne plus les redemander) :
+  (a) mods dans un dossier Steam : OUI avec garde-fous (originaux remplacés gardés dans les données de Frogtend,
+  `<données>\boutiques\<id>`, rien d'autre chez Steam ; retrait propre ; après une mise à jour Steam, prévenir que le
+  mod a pu être défait) — corriger la promesse de la note 0.85.0 ; (b) Cheat Engine : REFUSÉ si anti-triche connu
+  (Firehouse `en_ligne.anticheat`, ou trouvé sur le disque) ; jeu en ligne sans anti-triche connu, ou inconnu :
+  avertir « risque de bannissement » puis oui/non ; (c) parties : nuage Steam d'abord (`userdata\<compte>\<appid>`,
+  lecture seule) + besoin Firehouse « emplacement des parties » ; (d) PAS de copie complète du jeu avant un mod.
+  Relevé réel (21/10, lecture seule) : `/triche/recherche?steam_appid=` rend un bloc `en_ligne {online, anticheat,
+  source: pcgamingwiki, lu_le}` NON documenté au contrat (GTA V : BattlEye, online "true" ; XCOM 2 : "limited" ;
+  Skyrim SE : null) ; codes et tables CE vides pour ces jeux ; mods = conseils PCGamingWiki sans fichier.
+  Avis des experts (21/10) : `steam_appid` jamais envoyé (`criteres_jeu_importe`) ; `jeu_copie_avant_mod` sans
+  garde boutique ; `refuser_anti_triche` laisse passer l'inconnu ; Cheat Engine vise le 1er pid (le jeu relancé
+  échappe) ; manifestes de mods DANS le dossier du jeu ; Nexus exige un lanceur. Découpage : **B0** garde-fous →
+  **B1** triches + Cheat Engine (aucune écriture chez Steam) → **B2** abris nuage Steam → **B3** mods GitHub (données
+  à part, `buildid` surveillé) → **B4** Nexus pour Steam.
 
 - **Suites du lot Nexus (0.82.0 livré)** — à faire, dans l'ordre :
   - ✅ Seb 20/10 : « pas besoin de question » — les liens nxm:// restent pris d'office (installeur ou mise à jour,
@@ -550,6 +571,18 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.86.0** (21/10) — Lot B0 + B1 des jeux de boutique (avis avant code et relectures des experts lancement,
+  contrat et interface) : `steam_appid` envoyé à `/triche/recherche` ; `cheatengine_risque` (anti-triche du disque
+  ou de Firehouse `en_ligne.anticheat` = refus ; en ligne, ou jeu de boutique inconnu / hors ligne = avertissement
+  et `accepte`) revérifié par `cheatengine_lancer` sur UN relevé de la partie (refus si elle a changé) ;
+  `processus_du_jeu` cherche aussi dans le dossier du jeu ; mods : « trop de fichiers pour savoir » refusé pour un
+  jeu de boutique seulement ; `jeu_copie_avant_mod` refusé pour un jeu de boutique ; interface : Gérer ▸ Triches et
+  Cheat Engine (hors canapé), accord avant brancher (page et menu en jeu), bloc anti-triche / en ligne.
+  Vérifié : tests (cœur 446, interface 218), relevé réel lecture seule (GTA V, XCOM 2, Skyrim SE ; fixtures
+  `triche-steam-*.json`). NON vérifié : un vrai branchement de Cheat Engine sur un jeu Steam (A-TESTER, avec Seb) ;
+  `en_ligne` dans `/jeu/{id}/triche` (jeux de Firehouse) ; le pid écrit pour Cheat Engine qui changerait avant
+  qu'il le lise (mineur noté). Suite : B2 (parties du nuage Steam), B3 (mods), B4 (Nexus).
 
 - **0.85.1** (20/10) — Contrat 1.23, multi-disques zippés (avis et relecture de l'expert lancement) :
   `installation.lancer` suivi (s'il est un fichier reçu) ; `archive_a_extraire` décompressés à côté

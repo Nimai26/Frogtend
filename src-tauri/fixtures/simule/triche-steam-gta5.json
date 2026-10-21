@@ -1,0 +1,33 @@
+{
+ "_source": "Relevé RÉEL (lecture seule, 21/10) de GET /api/jeux/v1/triche/recherche pour un jeu Steam (steam_appid), bloc en_ligne non documenté au contrat (besoin 30).",
+ "ok": true,
+ "codes": [],
+ "cheat_engine": [],
+ "mods": [
+  {
+   "nom": "Skip intro videos",
+   "description": "Use ASI mod to skip intros",
+   "liens": [
+    "https://www.gta5-mods.com/scripts/skip-intro-legal-messages-service-upload"
+   ],
+   "references": [],
+   "source": "pcgamingwiki",
+   "page": "https://www.pcgamingwiki.com/wiki/Grand_Theft_Auto_V",
+   "consignes_url": "https://www.pcgamingwiki.com/wiki/Grand_Theft_Auto_V#Skip_intro_videos",
+   "url": "https://www.gta5-mods.com/scripts/skip-intro-legal-messages-service-upload",
+   "fichiers": [],
+   "refus": null,
+   "refus_detail": null
+  }
+ ],
+ "page_mods": "https://www.pcgamingwiki.com/wiki/Grand_Theft_Auto_V",
+ "en_ligne": {
+  "online": "true",
+  "anticheat": "BattlEye",
+  "source": "pcgamingwiki",
+  "lu_le": "2026-10-21T00:04:54"
+ },
+ "patchs_rpcs3": null,
+ "maj_le": "2026-10-19T17:50:02",
+ "note": "Tables Cheat Engine : pas encore (aucune source lisible sans compte). Mods : Frogtend télécharge lui-même (GitHub : `fichiers[].url`, empreinte à vérifier ; Nexus : le lien, avec le compte de l'utilisateur)."
+}

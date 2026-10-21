@@ -2536,6 +2536,7 @@ pub async fn cheatengine_lancer(
     programme: String,
     table: Option<String>,
     brancher: Option<bool>,
+    accepte: Option<bool>,
 ) -> Resultat<()> {
     let p = std::path::PathBuf::from(&programme);
     let nom = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
@@ -2543,6 +2544,28 @@ pub async fn cheatengine_lancer(
         return Err(Erreur::Refus("Ce n'est pas le programme de Cheat Engine.".into()));
     }
     exiger_programme_de_confiance(&app, &noyau, &p)?;
+    // Brancher sur un jeu PC (Seb, 21/10) : jamais avec un anti-triche connu ; un jeu en ligne ou inconnu, seulement
+    // après le oui de la personne (l'interface a montré `cheatengine_risque`).
+    // UN seul relevé de la partie, pour la vérification ET le branchement (revérifié juste avant de brancher).
+    let branchee = match brancher.unwrap_or(false) {
+        true => Some(
+            app.state::<crate::menu_jeu::MenuJeu>()
+                .partie()
+                .ok_or_else(|| Erreur::Refus("Lance d'abord le jeu : Cheat Engine se branchera dessus.".into()))?,
+        ),
+        false => None,
+    };
+    if let Some(partie) = &branchee {
+        if partie.dossier_jeu.is_some() {
+            let r = risque_cheatengine(&noyau, partie.jeu).await?;
+            if let Some(a) = r.anti_triche {
+                return Err(Erreur::Refus(format!("Ce jeu est protégé par {a} : Frogtend n'y branche pas Cheat Engine (ton compte pourrait être banni).")));
+            }
+            if (r.en_ligne.is_some() || r.inconnu) && !accepte.unwrap_or(false) {
+                return Err(Erreur::Refus("Ce jeu a peut-être du jeu en ligne : confirme d'abord que tu acceptes le risque.".into()));
+            }
+        }
+    }
     let dossier = p.parent().map(std::path::PathBuf::from).unwrap_or_default();
     let profil = noyau.actif().await.ok_or_else(|| Erreur::Profil("Aucun profil n'est ouvert.".into()))?.nom;
     let (d, pr) = (dossier.clone(), profil.clone());
@@ -2552,15 +2575,18 @@ pub async fn cheatengine_lancer(
     let table = table.filter(|t| t.to_lowercase().ends_with(".ct") && std::path::Path::new(t).is_file());
     let mut c = std::process::Command::new(&p);
     c.current_dir(&dossier);
-    if brancher.unwrap_or(false) {
+    if let Some(partie) = branchee {
         // « Lancer avec Cheat Engine » : notre script autorun se branche seul sur le jeu en cours et charge la table.
-        let partie = app
-            .state::<crate::menu_jeu::MenuJeu>()
-            .partie()
-            .ok_or_else(|| Erreur::Refus("Lance d'abord le jeu : Cheat Engine se branchera dessus.".into()))?;
-        let pid = tauri::async_runtime::spawn_blocking(move || crate::menu_jeu::processus_du_jeu(partie.pid))
-            .await
-            .map_err(|_| Erreur::Disque("La recherche du jeu s'est arrêtée brutalement.".into()))?;
+        let jeu = partie.jeu;
+        let pid = tauri::async_runtime::spawn_blocking(move || {
+            crate::menu_jeu::processus_du_jeu(partie.pid, partie.dossier_jeu.as_deref().map(std::path::Path::new))
+        })
+        .await
+        .map_err(|_| Erreur::Disque("La recherche du jeu s'est arrêtée brutalement.".into()))?;
+        // La partie vérifiée est-elle toujours celle en cours ? (Un autre jeu lancé entre-temps n'a pas été vérifié.)
+        if app.state::<crate::menu_jeu::MenuJeu>().partie().map(|p| p.jeu) != Some(jeu) {
+            return Err(Erreur::Refus("La partie a changé pendant la vérification : réessaie.".into()));
+        }
         crate::cheatengine::preparer_branchement(&dossier, pid, table.as_deref().map(std::path::Path::new))?;
     } else if let Some(t) = table {
         c.arg(t);
@@ -2610,7 +2636,73 @@ async fn criteres_jeu_importe(noyau: &Noyau, id: i64) -> Resultat<OuChercher> {
     };
     // Un numéro PS3 suffit ; un « EBOOT.BIN » (jeu PS3 en dossier) ne dit rien du jeu : pas envoyé.
     let rom = if !serial.is_empty() || rom.eq_ignore_ascii_case("EBOOT.BIN") { String::new() } else { rom };
-    Ok(OuChercher::Recherche(vec![("titre", j.titre), ("plateforme", j.plateforme), ("rom", rom), ("serial", serial)]))
+    // Un jeu Steam (lot B, 21/10) : son numéro Steam, que Firehouse sait lire (contrat 1.19).
+    let steam_appid = j
+        .installation
+        .as_ref()
+        .and_then(|i| i.boutique.as_ref())
+        .filter(|b| b.source == "steam" && !b.cle.is_empty() && b.cle.bytes().all(|c| c.is_ascii_digit()))
+        .map(|b| b.cle.clone())
+        .unwrap_or_default();
+    Ok(OuChercher::Recherche(vec![
+        ("titre", j.titre),
+        ("plateforme", j.plateforme),
+        ("rom", rom),
+        ("serial", serial),
+        ("steam_appid", steam_appid),
+    ]))
+}
+
+/// Ce que risque un compte si Cheat Engine se branche sur ce jeu (Seb, 21/10) : un anti-triche connu = refus ; un jeu
+/// en ligne, ou un jeu de boutique dont on ne sait rien = avertissement puis oui de la personne.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct RisqueTriche {
+    pub anti_triche: Option<String>,
+    /// Ce que dit PCGamingWiki (par Firehouse) du jeu en ligne : `true`, `limited`… (`None` : pas de jeu en ligne connu).
+    pub en_ligne: Option<String>,
+    /// On ne sait pas (dossier trop grand pour être regardé, ou Firehouse ne sait rien d'un jeu de boutique).
+    pub inconnu: bool,
+}
+
+/// Le risque d'après le dossier du jeu (`local`) et le bloc `en_ligne` de Firehouse (`null` = inconnu, jamais « sans »).
+fn risque_de(local: crate::figer::Verification, en_ligne: &Value, boutique: bool) -> RisqueTriche {
+    let texte = |v: &Value| v.as_str().map(str::trim).filter(|t| !t.is_empty() && !t.eq_ignore_ascii_case("false")).map(String::from);
+    let mut r = RisqueTriche { anti_triche: texte(&en_ligne["anticheat"]), en_ligne: texte(&en_ligne["online"]), inconnu: false };
+    match local {
+        crate::figer::Verification::AntiTriche(a) => r.anti_triche = Some(a.to_string()),
+        crate::figer::Verification::Inconnu => r.inconnu = true,
+        crate::figer::Verification::Aucun => {}
+    }
+    if boutique && en_ligne["anticheat"].is_null() && en_ligne["online"].is_null() {
+        r.inconnu = true;
+    }
+    r
+}
+
+/// Le risque de brancher Cheat Engine sur ce jeu (un jeu PC ; un jeu d'émulateur ne risque rien).
+async fn risque_cheatengine(noyau: &Noyau, id: i64) -> Resultat<RisqueTriche> {
+    let j = noyau.jeu_visible(id).await?;
+    let Some(i) = j.installation.clone().filter(|i| i.fichier_du_jeu.is_none()) else { return Ok(RisqueTriche::default()) };
+    let boutique = i.boutique.is_some();
+    let dossier = std::path::PathBuf::from(&i.dossier);
+    let local = tauri::async_runtime::spawn_blocking(move || crate::figer::anti_triche(&dossier))
+        .await
+        .map_err(|_| Erreur::Disque("La recherche d'un anti-triche s'est arrêtée brutalement.".into()))?;
+    // Hors ligne ou Firehouse en panne : on ne sait pas ce qu'il dit (jamais « sans anti-triche »).
+    let en_ligne = match criteres_jeu_importe(noyau, id).await {
+        Ok(c) => match noyau.session().await {
+            Ok(s) => triches_avec(&s.source, &c).await.map(|v| v["en_ligne"].clone()).unwrap_or(Value::Null),
+            Err(_) => Value::Null,
+        },
+        Err(_) => Value::Null,
+    };
+    Ok(risque_de(local, &en_ligne, boutique))
+}
+
+/// Le risque de brancher Cheat Engine sur ce jeu, à montrer AVANT (refus ou avertissement).
+#[tauri::command]
+pub async fn cheatengine_risque(noyau: State<'_, Noyau>, id: i64) -> Resultat<RisqueTriche> {
+    risque_cheatengine(&noyau, id).await
 }
 
 /// Les codes et mods d'un jeu : sa fiche chez Firehouse, ou la recherche pour un jeu importé (`criteres`).
@@ -2689,15 +2781,24 @@ fn suivi_mod(app: &AppHandle, suivi: u32) -> impl Fn(&'static str, u64, u64) + S
 }
 
 /// Un anti-triche dans le jeu : jamais de mod (un compte pourrait être banni).
-async fn refuser_anti_triche(dossier: &std::path::Path) -> Resultat<()> {
+async fn refuser_anti_triche(dossier: &std::path::Path, boutique: bool) -> Resultat<()> {
     let d = dossier.to_path_buf();
     let verification = tauri::async_runtime::spawn_blocking(move || crate::figer::anti_triche(&d))
         .await
         .map_err(|_| Erreur::Disque("La vérification anti-triche s'est arrêtée brutalement : rien n'est installé.".into()))?;
-    if let crate::figer::Verification::AntiTriche(a) = verification {
-        return Err(Erreur::Refus(format!("Ce jeu est protégé par {a} : Frogtend n'y installe pas de mod.")));
+    verdict_anti_triche(verification, boutique)
+}
+
+/// Un anti-triche trouvé : refus. Trop de fichiers pour tout regarder : refus pour un jeu de BOUTIQUE (souvent en
+/// ligne, comme pour figer le jeu) ; un jeu de Firehouse garde le comportement d'avant (ses gros repacks).
+fn verdict_anti_triche(v: crate::figer::Verification, boutique: bool) -> Resultat<()> {
+    match v {
+        crate::figer::Verification::AntiTriche(a) => Err(Erreur::Refus(format!("Ce jeu est protégé par {a} : Frogtend n'y installe pas de mod."))),
+        crate::figer::Verification::Inconnu if boutique => Err(Erreur::Refus(
+            "Ce jeu a trop de fichiers pour vérifier qu'aucun anti-triche ne le protège : dans le doute, Frogtend n'y installe pas de mod.".into(),
+        )),
+        _ => Ok(()),
     }
-    Ok(())
 }
 
 /// Le dossier du programme du jeu, relatif au dossier du jeu (séparateur `/`).
@@ -2739,7 +2840,7 @@ pub async fn mod_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, mod
         .and_then(|l| l.iter().find(|x| x["nom"].as_str() == Some(fichier.as_str())))
         .and_then(crate::mods::FichierMod::depuis)
         .ok_or_else(|| Erreur::Refus("Frogtend ne sait pas installer ce fichier d'un clic : suis la page du mod.".into()))?;
-    refuser_anti_triche(&dossier).await?;
+    refuser_anti_triche(&dossier, j.installation.as_ref().is_some_and(|i| i.boutique.is_some())).await?;
     // Où poser : le dossier du mod (`cible.dossier`) ; ou, pour un mod « à confirmer », le dossier du programme.
     let sous = if programme { dossier_du_programme(&j, &dossier)? } else { f.dossier.clone() };
     // Occupé dès maintenant : ni une partie ni un second clic ne passent entre la vérification et la pose.
@@ -2923,7 +3024,7 @@ pub async fn nexus_installer(app: AppHandle, noyau: State<'_, Noyau>, n: u32, pr
     // Occupé aussitôt (aucune attente depuis la vérification) : ni une partie ni un second clic ne passent pendant les
     // appels à Nexus.
     let _occupe = noyau.occuper(id);
-    refuser_anti_triche(&dossier).await?;
+    refuser_anti_triche(&dossier, j.installation.as_ref().is_some_and(|i| i.boutique.is_some())).await?;
     let sous = if programme { dossier_du_programme(&j, &dossier)? } else { String::new() };
     let infos = crate::nexus::fichier(crate::nexus::API, &r.lien, &cle).await?;
     if !crate::nexus::nom_pris_en_charge(&infos.nom) {
@@ -3048,6 +3149,11 @@ pub fn jeu_taille_installation(noyau: State<'_, Noyau>, id: i64) -> Resultat<u64
 pub async fn jeu_copie_avant_mod(noyau: State<'_, Noyau>, id: i64) -> Resultat<String> {
     let j = noyau.registre().jeu(id)?.ok_or_else(|| Erreur::Introuvable("Jeu introuvable sur ce PC.".into()))?;
     let i = j.installation.clone().ok_or_else(|| Erreur::Refus("Le jeu n'est pas installé.".into()))?;
+    // Un jeu de boutique : jamais de copie complète (Seb, 21/10 : parfois 100 Go ; « Vérifier l'intégrité » de la
+    // boutique répare le jeu, et les fichiers remplacés par un mod sont gardés à part).
+    if i.boutique.is_some() {
+        return Err(Erreur::Refus("Un jeu de boutique n'est pas copié en entier : sa boutique sait le réparer, et Frogtend garde les fichiers qu'un mod remplace.".into()));
+    }
     let source = std::path::PathBuf::from(&i.dossier);
     let copie = crate::locale::dossier_frogtend(&j).join("copies").join(format!("avant-mod-{}", crate::noyau::maintenant()));
     let (s, c) = (source.clone(), copie.clone());
@@ -3859,6 +3965,36 @@ mod tests {
         assert!(a(&["frogtend.exe", "--TAODBOX"]));
         assert!(!a(&["frogtend.exe"]));
         assert!(!a(&["frogtend.exe", "--taodboxx"]));
+    }
+
+    #[test]
+    fn le_risque_de_cheat_engine_suit_firehouse_et_le_disque() {
+        use crate::figer::Verification;
+        use serde_json::json;
+        // Relevés réels du 21/10 (`/triche/recherche?steam_appid=`) : GTA V, XCOM 2, Skyrim SE.
+        let gta = json!({"online": "true", "anticheat": "BattlEye", "source": "pcgamingwiki"});
+        let xcom = json!({"online": "limited", "anticheat": null, "source": "pcgamingwiki"});
+        let skyrim = json!({"online": null, "anticheat": null, "source": "pcgamingwiki"});
+        let r = super::risque_de(Verification::Aucun, &gta, true);
+        assert_eq!(r.anti_triche.as_deref(), Some("BattlEye"), "refusé");
+        let r = super::risque_de(Verification::Aucun, &xcom, true);
+        assert_eq!((r.anti_triche, r.en_ligne.as_deref(), r.inconnu), (None, Some("limited"), false), "avertir");
+        assert!(super::risque_de(Verification::Aucun, &skyrim, true).inconnu, "un jeu de boutique inconnu : avertir");
+        assert!(super::risque_de(Verification::Aucun, &serde_json::Value::Null, true).inconnu, "hors ligne : inconnu");
+        assert_eq!(super::risque_de(Verification::Aucun, &skyrim, false), super::RisqueTriche::default(), "un jeu de Firehouse sans rien : libre");
+        assert_eq!(super::risque_de(Verification::Aucun, &json!({"online": "false"}), false), super::RisqueTriche::default());
+        // Le disque a le dernier mot sur un anti-triche, et un dossier trop grand rend inconnu.
+        assert_eq!(super::risque_de(Verification::AntiTriche("Easy Anti-Cheat"), &skyrim, false).anti_triche.as_deref(), Some("Easy Anti-Cheat"));
+        assert!(super::risque_de(Verification::Inconnu, &skyrim, false).inconnu);
+    }
+
+    #[test]
+    fn un_mod_est_refuse_avec_un_anti_triche_et_dans_le_doute_pour_un_jeu_de_boutique() {
+        use crate::figer::Verification;
+        assert!(super::verdict_anti_triche(Verification::AntiTriche("BattlEye"), false).is_err());
+        assert!(super::verdict_anti_triche(Verification::Inconnu, true).is_err(), "boutique : dans le doute, rien");
+        assert!(super::verdict_anti_triche(Verification::Inconnu, false).is_ok(), "un gros repack de Firehouse : comme avant");
+        assert!(super::verdict_anti_triche(Verification::Aucun, true).is_ok());
     }
 
     #[tokio::test]

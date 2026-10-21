@@ -486,6 +486,7 @@ pub fn run() {
             commandes::emulateur_installer_firehouse,
             commandes::jeu_triches,
             commandes::cheatengine_lancer,
+            commandes::cheatengine_risque,
             commandes::gratuits_liste,
             commandes::gratuits_connexion_epic,
             commandes::gratuits_obtenir_epic,

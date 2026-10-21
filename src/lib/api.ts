@@ -276,6 +276,15 @@ export interface TrichesJeu {
   note?: string | null;
   /** La page des mods du jeu (PCGamingWiki…). */
   page_mods?: string | null;
+  /** Jeu en ligne et anti-triche d'après PCGamingWiki (relevé réel du 21/10, pas encore au contrat) : `null` = inconnu. */
+  en_ligne?: { online: string | null; anticheat: string | null; source?: string; lu_le?: string } | null;
+}
+
+/** Le risque de brancher Cheat Engine sur un jeu (`cheatengine_risque`). */
+export interface RisqueTriche {
+  anti_triche: string | null;
+  en_ligne: string | null;
+  inconnu: boolean;
 }
 
 export interface EmplacementPropose {
@@ -680,8 +689,11 @@ export const api = {
   steamJeux: () => appeler<JeuBoutique[]>('boutique_steam_jeux'),
   steamImporter: () => appeler<JeuBoutique[]>('boutique_steam_importer'),
   steamOuvrir: (appid: string, action: 'jouer' | 'installer') => appeler<void>('boutique_steam_ouvrir', { appid, action }),
-  cheatengineLancer: (programme: string, table?: string, brancher = false) =>
-    appeler<void>('cheatengine_lancer', { programme, table: table ?? null, brancher }),
+  /** `accepte` : la personne a dit oui à l'avertissement de `cheatengineRisque` (jeu en ligne ou inconnu). */
+  cheatengineLancer: (programme: string, table?: string, brancher = false, accepte = false) =>
+    appeler<void>('cheatengine_lancer', { programme, table: table ?? null, brancher, accepte }),
+  /** Le risque de brancher Cheat Engine sur ce jeu (Seb, 21/10 : anti-triche = refus ; en ligne ou inconnu = avertir). */
+  cheatengineRisque: (id: number) => appeler<RisqueTriche>('cheatengine_risque', { id }),
   jeuTriches: (id: number) => appeler<TrichesJeu>('jeu_triches', { id }),
   /** Les mods installés dans un jeu du PC (contrat 1.19, lot 0.81.0). */
   modsInstalles: (id: number) => appeler<ModInstalle[]>('mods_installes', { id }),

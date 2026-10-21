@@ -1,5 +1,19 @@
 # Notes de version de Frogtend
 
+## 0.86.0 — Triches et Cheat Engine pour tes jeux Steam
+
+- ⚙ Gérer le jeu ▸ 🧰 Triches et Cheat Engine : maintenant aussi pour tes jeux Steam (et tous tes jeux PC), au bureau.
+  Frogtend demande à Firehouse ce qu'il connaît du jeu par son numéro Steam.
+- Avant de brancher Cheat Engine sur un jeu en cours (page des triches ou menu en jeu) :
+  - un jeu protégé par un anti-triche (GTA V : BattlEye…) : c'est refusé, ton compte pourrait être banni ;
+  - un jeu qui se joue aussi en ligne, ou dont on ne sait rien : un avertissement « risque de bannissement », puis
+    c'est toi qui choisis.
+- La page des triches montre ce que dit PCGamingWiki du jeu : anti-triche, jeu en ligne.
+- Cheat Engine se branche sur le bon programme même quand le jeu s'est relancé tout seul (cas fréquent avec Steam).
+- Les mods des jeux Steam arrivent dans une prochaine version : ils poseront leurs fichiers dans le dossier du jeu,
+  en gardant les fichiers remplacés dans les données de Frogtend (accord de Seb du 21/10). Un jeu de boutique n'est
+  jamais copié en entier : Steam sait le réparer.
+
 ## 0.85.1 — Les jeux sur plusieurs disquettes zippées
 
 - Les jeux d'ordinateurs japonais et Amstrad sur plusieurs disquettes (PC-8801, CPC… 387 jeux chez Firehouse) :
