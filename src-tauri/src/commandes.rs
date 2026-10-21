@@ -722,6 +722,29 @@ async fn contexte_contenus(
     dossiers.sort();
     dossiers.dedup();
     let titre = j.titre.clone();
+    // Une version de Firehouse servie avec ses contenus (contrat 1.24) : SES fichiers aux rôles `dlc` et `licence`, sans
+    // deviner ni trier (ils sont à ce jeu). Hors ligne (pas de fiche gardée) : la recherche ordinaire ci-dessous.
+    let version = noyau.version_de(&j);
+    if j.installation.is_some() && crate::partie::contenus_emulateur(&version) {
+        let recus = std::path::PathBuf::from(&j.dossier);
+        let presents = |role: &str| -> Vec<std::path::PathBuf> {
+            crate::partie::roles(&version, &[role])
+                .iter()
+                .filter_map(|n| crate::jeux_pc::chemin_de_fichier_sur(n).ok())
+                .map(|r| recus.join(r))
+                .filter(|p| p.is_file() && !crate::garde::lien_entre(&recus, p))
+                .collect()
+        };
+        let pkgs: Vec<(std::path::PathBuf, &str)> =
+            presents("dlc").into_iter().map(|p| (p, "dlc")).chain(presents("maj").into_iter().map(|p| (p, "maj"))).collect();
+        let raps = presents("licence");
+        let (contenus, titre_id) = tauri::async_runtime::spawn_blocking(move || {
+            (crate::contenus::ps3_de_la_version(&pkgs, &raps), fichier_du_jeu.as_deref().and_then(crate::contenus::titre_id_ps3))
+        })
+        .await
+        .map_err(|_| Erreur::Disque("La lecture s'est arrêtée brutalement.".into()))?;
+        return Ok(Some((rpcs3, compte, titre_id, contenus)));
+    }
     let (contenus, titre_id) = tauri::async_runtime::spawn_blocking(move || {
         let mut l: Vec<crate::contenus::Contenu> = dossiers.iter().filter(|d| d.is_dir()).flat_map(|d| crate::contenus::chercher_ps3(d)).collect();
         l.sort_by(|a, b| a.id.cmp(&b.id));
@@ -842,7 +865,8 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
         contenus: contenus
             .into_iter()
             .map(|c| ContenuVu {
-                installe: faits.contains(&c.id) && (c.rap.is_none() || compte.as_deref().is_some_and(|k| crate::contenus::licence_posee(&rpcs3, k, &c.id))),
+                installe: (c.pkg.is_none() || faits.contains(&c.id))
+                    && (c.rap.is_none() || compte.as_deref().is_some_and(|k| crate::contenus::licence_posee(&rpcs3, k, &c.id))),
                 licence: c.rap.is_some(),
                 id: c.id,
                 nom: c.nom,
@@ -946,18 +970,32 @@ pub async fn contenus_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64
     }
     let (rpcs3, _, _, contenus) =
         contexte_contenus(&app, &noyau, id).await?.ok_or_else(|| Erreur::Refus("Ce jeu n'a pas de contenus gérés par Frogtend.".into()))?;
-    // La personne a dit oui : le compte RPCS3 de son profil est créé s'il manque (même nom qu'au lancement).
-    let p = profil_ouvert(&noyau).await?;
-    let compte = crate::emulateurs_profils::compte_rpcs3(&rpcs3, &crate::jeux_pc::nom_de_dossier(&p.nom))?;
     let programme = emulateur_regle(&app, &noyau.registre().jeu(id)?.map(|j| j.plateforme).unwrap_or_default(), id, None)
         .map(|(p, _)| std::path::PathBuf::from(p))
         .ok_or_else(|| Erreur::Reglage("Aucun RPCS3 réglé pour la PS3.".into()))?;
+    exiger_emulateur_pour_ecrire(&app, &noyau, &programme)?;
+    if !crate::contenus::dev_hdd0_a_sa_place(&rpcs3) {
+        return Err(Erreur::Refus("Ce RPCS3 range son disque dur (dev_hdd0) ailleurs que dans son dossier : Frogtend n'y installe rien.".into()));
+    }
+    // RPCS3 ouvert réécrirait ses fichiers par-dessus ceux de l'installation : il doit être fermé (avant d'écrire quoi
+    // que ce soit, même le compte).
+    if !crate::lancement::processus_du_dossier(&rpcs3).is_empty() {
+        return Err(Erreur::Refus("RPCS3 est ouvert : ferme-le d'abord, puis recommence l'installation.".into()));
+    }
+    // La personne a dit oui : le compte RPCS3 de son profil est créé s'il manque (même nom qu'au lancement).
+    let p = profil_ouvert(&noyau).await?;
+    let compte = crate::emulateurs_profils::compte_rpcs3(&rpcs3, &crate::jeux_pc::nom_de_dossier(&p.nom))?;
     let travail = noyau.dossier.join("travail").join("contenus");
     let a_faire: Vec<crate::contenus::Contenu> = contenus.into_iter().filter(|c| choisis.contains(&c.id)).collect();
     noyau.journaliser(&format!("contenus PS3 : installation de {} contenu(s) pour le compte {compte}", a_faire.len()));
     let bilan = tauri::async_runtime::spawn_blocking(move || {
         let mut b = BilanContenus::default();
         for c in &a_faire {
+            // Revérifié avant chaque contenu : RPCS3 a pu être ouvert entre-temps.
+            if !crate::lancement::processus_du_dossier(&rpcs3).is_empty() {
+                b.refuses.push((c.nom.clone(), "RPCS3 est ouvert : ferme-le d'abord".to_string()));
+                continue;
+            }
             let r = crate::contenus::installer_ps3(c, &rpcs3, &compte, &travail, &|pkg| {
                 let args = vec!["--headless".to_string(), "--installpkg".to_string(), pkg.to_string_lossy().to_string()];
                 let code = crate::installation::executer_et_attendre(&programme, &args, &rpcs3)?;

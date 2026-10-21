@@ -58,8 +58,10 @@
   aujourd'hui toujours avec son .pkg (24/24) mais le contrat ne le promet pas → poser chaque .rap dans `exdata` sous
   son nom, indépendamment ; apparier .rap ↔ .pkg par le content ID de l'en-tête du .pkg (octet 0x30), jamais par le
   nom du .pkg (aléatoire).
-  À coder ensuite : brancher l'installation existante des contenus PS3 (contenus.rs : `--installpkg`, .rap dans
-  `exdata` du compte RPCS3 du profil) sur les rôles `dlc`/`licence` d'une version Firehouse, après le oui.
+  ✅ Fait en 0.98.0 : les rôles `dlc`/`maj`/`licence` d'une version Firehouse PS3 installés par RPCS3 après le oui.
+  Firehouse (21/10) : aucun .pkg PS3 de mise à jour dans sa collection (tout est `dlc` + `licence`) ; s'il en vient,
+  ils seront en `maj` et Firehouse dira comment ordonner les versions (ne jamais réinstaller une vieille mise à jour
+  par-dessus une récente) — À FAIRE alors côté Frogtend. `steam_userdata` = même chose que la position du jeton.
 
 - **Jeux PC des boutiques — vrais jeux du PC** (Seb, 20/10 : « gérer l'installation, le lancement, les succès, les
   mods… »). État au 20/10 : Frogtend importe la liste (Steam par l'API, Galaxy pour GOG + Epic/Xbox/Ubisoft/EA/Amazon
@@ -99,6 +101,8 @@
   échappe) ; manifestes de mods DANS le dossier du jeu ; Nexus exige un lanceur. Découpage : **B0** garde-fous →
   **B1** triches + Cheat Engine (aucune écriture chez Steam) → **B2** abris nuage Steam → **B3** mods GitHub (données
   à part, `buildid` surveillé) → **B4** Nexus pour Steam.
+  ✅ Seb 21/10 (après 0.97.0) : « PS3 » — installer les contenus additionnels (.pkg) et licences (.rap) des jeux
+  PS3 servis par Firehouse (contrat 1.24, relevé God of War III `version-ps3-contenus-124.json`).
   ✅ Seb 21/10 (après 0.96.0) : « Parties Steam hors du nuage » — mettre aussi à l'abri les parties qu'un jeu
   Steam range HORS du nuage, d'après les emplacements que Firehouse donne (contrat 1.25 `sauvegardes`).
   ✅ Seb 21/10 (après 0.95.0) : « D » — les fiches des jeux de boutique (résumé, images) par Firehouse (contrat 1.25
@@ -670,6 +674,20 @@ d'abord :
 
 ## ✅ Livré (version — ce qui a été vérifié)
 
+- **0.98.0** (21/10) — Contenus PS3 servis par Firehouse (contrat 1.24 ; avis de l'expert lancement avant et après,
+  ses IMPORTANTS corrigés) : `ps3_de_la_version` (fichiers aux rôles `dlc`/`maj`/`licence` de la version, SANS tri par
+  TITLE_ID — un disque BCES00510 sert des licences BCES00799 ; .rap apparié par l'en-tête du .pkg, jamais le nom ;
+  .rap seul = licence seule si son nom est un content ID) ; `installer_ps3` : .pkg vérifié par un relevé avant/après
+  de `dev_hdd0\game\<jeu>` (sinon un fichier récent dans `game`), « déjà installé hors de Frogtend ? » dit tel quel ;
+  licence posée même si le .pkg n'a rien changé ; `poser_licence` : 16 octets, jamais par-dessus (create_new,
+  relecture) ; `dev_hdd0` déplacé par `vfs.yml` → refus ; RPCS3 ouvert → refus (avant le compte, et avant chaque
+  contenu) ; `exiger_emulateur_pour_ecrire`. Parties GTA V : hors de `userdata`, `<identifiant Steam>`/`<identifiant
+  utilisateur>` = un sous-dossier par utilisateur, énumérés (32 au plus, sans lien), jamais le compte Steam.
+  Vérifié : tests (fixture God of War III, .iso construit pour `titre_id_ps3`) ; essai RÉEL en lecture seule
+  (contrat 1.26 en service) : GTA V → `OneDrive\Documents\Rockstar Games\GTA V\Profiles\706F1DE1`, 0 illisible ;
+  XCOM 2 inchangé. NON vérifié : une vraie installation par RPCS3 (heure des fichiers écrits, réinstallation
+  d'un .pkg déjà là, code de retour en échec) ; un .pkg illisible n'est pas encore signalé dans la liste.
+
 - **0.97.0** (21/10) — Parties Steam HORS du nuage (contrats 1.25/1.26 `sauvegardes` ; relecture de l'expert
   lancement : 2 bloquants corrigés) : `nuage_steam::resoudre` (jetons du contrat seulement ; Mes documents par le
   registre — OneDrive ; refus de la racine perdue « \… », `~`, registre, jeton inconnu, `..`) ; `emplacements`
@@ -681,7 +699,7 @@ d'abord :
   pendant une partie lancée par Steam (programme du dossier) ; avant un mod, au-delà de `GROS`, le nuage seulement.
   Vérifié : tests (cœur 462) ; essai RÉEL en lecture seule : XCOM 2 → 25 fichiers dans `OneDrive\Documents\My
   Games\XCOM2\XComGame\SaveData` (que le nuage ne couvrait pas), GTA V → 2 illisibles (racine perdue chez
-  Firehouse, corrigée dans sa 1.26 pas encore en service). NON vérifié : l'abri complet dans le vrai dossier des
+  Firehouse, corrigée dans sa 1.26 — en service le 21/10, relue en 0.98.0). NON vérifié : l'abri complet dans le vrai dossier des
   abris (A-TESTER) ; le délai d'attente du client Firehouse avant un mod (à vérifier).
 
 - **0.96.0** (21/10) — Lot D, fiches des jeux de boutique prises DANS les boutiques (décision de Seb ; relecture de

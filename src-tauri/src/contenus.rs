@@ -27,8 +27,8 @@ pub struct Contenu {
     pub nom: String,
     /// `dlc`, `avatar`, `theme`, `maj` ou `autre` (d'après les étiquettes du nom).
     pub genre: String,
-    /// Le .pkg : fichier, et son nom DANS le zip s'il est zippé.
-    pub pkg: (String, Option<String>),
+    /// Le .pkg : fichier, et son nom DANS le zip s'il est zippé. Aucun : une licence seule (servie sans son .pkg).
+    pub pkg: Option<(String, Option<String>)>,
     /// La licence .rap, s'il y en a une (même forme).
     pub rap: Option<(String, Option<String>)>,
     pub taille: u64,
@@ -192,7 +192,7 @@ pub fn chercher_ps3(dossier: &Path) -> Vec<Contenu> {
                             jeu: jeu_du_content_id(&id).unwrap_or_default(),
                             genre: genre_du_nom(&nom_fichier).into(),
                             nom: nom_fichier.clone(),
-                            pkg: (chemin, None),
+                            pkg: Some((chemin, None)),
                             rap: None,
                             taille,
                             id,
@@ -215,7 +215,7 @@ pub fn chercher_ps3(dossier: &Path) -> Vec<Contenu> {
                                     jeu: jeu_du_content_id(&id).unwrap_or_default(),
                                     genre: genre_du_nom(&nom_fichier).into(),
                                     nom: nom_fichier.clone(),
-                                    pkg: (chemin.clone(), Some(n.clone())),
+                                    pkg: Some((chemin.clone(), Some(n.clone()))),
                                     rap: None,
                                     taille: *taille,
                                     id,
@@ -232,6 +232,57 @@ pub fn chercher_ps3(dossier: &Path) -> Vec<Contenu> {
         c.rap = raps.iter().find(|(id, _)| *id == c.id.to_uppercase()).map(|(_, r)| r.clone());
     }
     l.sort_by(|a, b| a.nom.to_lowercase().cmp(&b.nom.to_lowercase()));
+    l.dedup_by(|a, b| a.id == b.id);
+    l
+}
+
+/// Un nom lisible tiré d'un content ID, quand le fichier n'en a pas (les .pkg de Firehouse ont des noms aléatoires) :
+/// `EP9000-BCES00799_00-000000000DOMINUS` → « DOMINUS ».
+fn nom_du_content_id(id: &str) -> String {
+    let fin = id.rsplit('-').next().unwrap_or(id).trim_start_matches('0');
+    if fin.is_empty() { id.to_string() } else { fin.to_string() }
+}
+
+/// Les contenus d'une version de Firehouse (contrat 1.24, forme `contenus_emulateur`) : ses fichiers au rôle `dlc`
+/// ou `maj` (.pkg, avec ce genre) et `licence` (.rap) — ils sont À CE JEU, sans tri par identifiant (un disque BCES00510 sert aussi des
+/// licences BCES00799). Chaque .rap s'apparie à un .pkg par le content ID de l'EN-TÊTE du .pkg, jamais par son nom
+/// (aléatoire) ; un .rap sans .pkg reste une licence seule, posée sous son nom.
+pub fn ps3_de_la_version(pkgs: &[(PathBuf, &str)], raps: &[PathBuf]) -> Vec<Contenu> {
+    let mut l: Vec<Contenu> = Vec::new();
+    for (p, genre) in pkgs {
+        let Ok(mut f) = std::fs::File::open(p) else { continue };
+        let mut b = vec![0u8; 0x60];
+        let _ = f.read(&mut b);
+        let Some(id) = content_id(&b) else { continue };
+        l.push(Contenu {
+            jeu: jeu_du_content_id(&id).unwrap_or_default(),
+            nom: nom_du_content_id(&id),
+            genre: genre.to_string(),
+            pkg: Some((p.to_string_lossy().to_string(), None)),
+            rap: None,
+            taille: std::fs::metadata(p).map(|m| m.len()).unwrap_or(0),
+            id,
+        });
+    }
+    for r in raps {
+        let id = r.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        let source = (r.to_string_lossy().to_string(), None);
+        match l.iter_mut().find(|c| c.id.eq_ignore_ascii_case(&id)) {
+            Some(c) => c.rap = Some(source),
+            // Le nom d'une licence EST son content ID : rien d'autre n'est accepté (il devient un nom de fichier).
+            None if jeu_du_content_id(&id).is_some() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') => l.push(Contenu {
+                jeu: jeu_du_content_id(&id).unwrap_or_default(),
+                nom: nom_du_content_id(&id),
+                genre: "licence".into(),
+                pkg: None,
+                rap: Some(source),
+                taille: std::fs::metadata(r).map(|m| m.len()).unwrap_or(0),
+                id,
+            }),
+            None => {}
+        }
+    }
+    l.sort_by(|a, b| a.nom.to_lowercase().cmp(&b.nom.to_lowercase()).then(a.id.cmp(&b.id)));
     l.dedup_by(|a, b| a.id == b.id);
     l
 }
@@ -577,33 +628,153 @@ fn sortir(source: &(String, Option<String>), dossier: &Path) -> Resultat<(PathBu
 /// retirés ensuite (seulement eux).
 pub fn installer_ps3(c: &Contenu, rpcs3: &Path, compte: &str, travail: &Path, installer_pkg: &dyn Fn(&Path) -> Resultat<()>) -> Resultat<()> {
     let deja = installes(rpcs3);
-    if !deja.contains(&c.id) {
-        let (pkg, temporaire) = sortir(&c.pkg, travail)?;
-        let r = installer_pkg(&pkg);
-        if temporaire {
-            let _ = std::fs::remove_file(&pkg);
-        }
-        r?;
-        let mut l = deja;
-        l.push(c.id.clone());
-        std::fs::create_dir_all(rpcs3)?;
-        std::fs::write(registre(rpcs3), serde_json::to_vec_pretty(&l).unwrap_or_default())?;
+    let mut paquet: Resultat<()> = Ok(());
+    if let Some(source) = c.pkg.as_ref().filter(|_| !deja.contains(&c.id)) {
+        paquet = installer_paquet(c, source, rpcs3, travail, installer_pkg).and_then(|()| {
+            let mut l = deja;
+            l.push(c.id.clone());
+            std::fs::create_dir_all(rpcs3)?;
+            Ok(std::fs::write(registre(rpcs3), serde_json::to_vec_pretty(&l).unwrap_or_default())?)
+        });
     }
+    // La licence ne dépend pas du .pkg (il peut déjà être là, installé hors de Frogtend) : posée quand même.
     if let Some(rap) = &c.rap {
         let (fichier, temporaire) = sortir(rap, travail)?;
-        let dossier = rpcs3.join("dev_hdd0").join("home").join(compte).join("exdata");
-        std::fs::create_dir_all(&dossier)?;
-        let cible = dossier.join(format!("{}.rap", c.id));
-        let r = std::fs::copy(&fichier, &cible);
+        let r = poser_licence(&fichier, rpcs3, compte, &c.id);
         if temporaire {
             let _ = std::fs::remove_file(&fichier);
         }
         r?;
-        if std::fs::metadata(&cible).map(|m| m.len()).unwrap_or(0) < 0x10 {
-            return Err(Erreur::Disque("La licence .rap posée est trop courte : ce n'est pas une licence.".into()));
+    }
+    paquet
+}
+
+/// Le relevé d'un dossier (chemin → taille, heure), borné : `None` au-delà (trop gros pour en juger).
+fn releve(dossier: &Path) -> Option<std::collections::BTreeMap<PathBuf, (u64, Option<std::time::SystemTime>)>> {
+    let mut r = std::collections::BTreeMap::new();
+    let mut a_voir = vec![dossier.to_path_buf()];
+    while let Some(d) = a_voir.pop() {
+        let Ok(l) = std::fs::read_dir(&d) else { continue };
+        for e in l.flatten() {
+            if r.len() > 200_000 {
+                return None;
+            }
+            let Ok(t) = e.file_type() else { continue };
+            if t.is_dir() {
+                a_voir.push(e.path());
+            } else if let Ok(m) = e.metadata() {
+                r.insert(e.path(), (m.len(), m.modified().ok()));
+            }
         }
     }
+    Some(r)
+}
+
+/// Installe le .pkg d'un contenu par RPCS3, puis VÉRIFIE le résultat (jamais le seul code de retour) : un relevé de
+/// `dev_hdd0\game\<jeu>` avant/après (un fichier nouveau, changé de taille ou d'heure), sinon un fichier écrit
+/// depuis le début ailleurs dans `game` (un paquet peut choisir son dossier).
+fn installer_paquet(c: &Contenu, source: &(String, Option<String>), rpcs3: &Path, travail: &Path, installer_pkg: &dyn Fn(&Path) -> Resultat<()>) -> Resultat<()> {
+    let game = rpcs3.join("dev_hdd0").join("game");
+    let dossier_jeu = (!c.jeu.is_empty()).then(|| game.join(&c.jeu));
+    let avant = dossier_jeu.as_deref().and_then(releve);
+    let (pkg, temporaire) = sortir(source, travail)?;
+    let debut = std::time::SystemTime::now() - std::time::Duration::from_secs(2);
+    let r = installer_pkg(&pkg);
+    if temporaire {
+        let _ = std::fs::remove_file(&pkg);
+    }
+    r?;
+    let apres = dossier_jeu.as_deref().and_then(releve);
+    let change = match (&avant, &apres) {
+        (Some(a), Some(b)) => a != b,
+        _ => false,
+    };
+    if change || ecrit_depuis(&game, "", debut) {
+        return Ok(());
+    }
+    if avant.is_some_and(|a| !a.is_empty()) {
+        Err(Erreur::Refus("RPCS3 n'a rien changé : ce contenu était peut-être déjà installé hors de Frogtend. Il n'est pas noté installé.".into()))
+    } else {
+        Err(Erreur::Disque("RPCS3 s'est fermé sans rien installer (dev_hdd0\\game n'a pas changé) : ce contenu n'est pas noté installé.".into()))
+    }
+}
+
+/// `dev_hdd0` est-il à sa place, dans le dossier de RPCS3 ? RPCS3 permet de le déplacer (`config\vfs.yml`,
+/// `/dev_hdd0/`) : Frogtend ne poserait alors rien au bon endroit, il refuse.
+pub fn dev_hdd0_a_sa_place(rpcs3: &Path) -> bool {
+    let Ok(t) = std::fs::read_to_string(rpcs3.join("config").join("vfs.yml")) else { return true };
+    match t.lines().find_map(|l| l.trim().strip_prefix("/dev_hdd0/:")) {
+        None => true,
+        Some(v) => {
+            let v = v.trim().trim_matches(['"', '\'']).replace('\\', "/");
+            v.is_empty() || v.eq_ignore_ascii_case("$(EmulatorDir)dev_hdd0/") || v.eq_ignore_ascii_case("$(EmulatorDir)dev_hdd0")
+        }
+    }
+}
+
+/// Une licence est exactement 16 octets.
+const TAILLE_RAP: u64 = 0x10;
+
+/// Pose une licence dans le compte RPCS3 de ce profil, JAMAIS par-dessus une autre : la même déjà là → rien à faire ;
+/// une différente → refus (elle reste telle quelle).
+fn poser_licence(fichier: &Path, rpcs3: &Path, compte: &str, id: &str) -> Resultat<()> {
+    if std::fs::metadata(fichier).map(|m| m.len()).unwrap_or(0) != TAILLE_RAP {
+        return Err(Erreur::Refus("Ce fichier .rap n'a pas la taille d'une licence (16 octets) : il n'est pas posé.".into()));
+    }
+    let neuve = std::fs::read(fichier)?;
+    let dossier = rpcs3.join("dev_hdd0").join("home").join(compte).join("exdata");
+    let cible = dossier.join(format!("{id}.rap"));
+    if cible.exists() {
+        // La taille d'abord : un fichier énorme à ce nom n'est jamais lu en entier.
+        let pareille = std::fs::metadata(&cible).is_ok_and(|m| m.len() == TAILLE_RAP) && std::fs::read(&cible).ok().as_deref() == Some(&neuve[..]);
+        return if pareille {
+            Ok(())
+        } else {
+            Err(Erreur::Refus("Une autre licence pour ce contenu est déjà dans ton compte RPCS3 : Frogtend ne la remplace pas.".into()))
+        };
+    }
+    std::fs::create_dir_all(&dossier)?;
+    // `create_new` : rien n'est écrasé, même si une licence apparaît entre-temps.
+    let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&cible)?;
+    std::io::Write::write_all(&mut f, &neuve)?;
+    drop(f);
+    if std::fs::read(&cible).ok().as_deref() != Some(&neuve[..]) {
+        let _ = std::fs::remove_file(&cible);
+        return Err(Erreur::Disque("La licence relue ne correspond pas à celle de Firehouse : retirée.".into()));
+    }
     Ok(())
+}
+
+/// Quelque chose a-t-il été écrit dans `game` depuis `debut` ? D'abord le dossier du jeu du contenu (là où RPCS3
+/// installe d'ordinaire), sinon tout `game` (un paquet peut choisir son dossier). Relevé borné : au-delà, on ne sait
+/// pas, et on ne bloque pas.
+fn ecrit_depuis(game: &Path, jeu: &str, debut: std::time::SystemTime) -> bool {
+    let recent = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).is_ok_and(|t| t >= debut);
+    let cherche = |racine: &Path| -> Option<bool> {
+        let mut a_voir = vec![racine.to_path_buf()];
+        let mut vus = 0u32;
+        // Les FICHIERS seulement : l'heure d'un dossier change aussi quand on n'y fait que retirer.
+        while let Some(d) = a_voir.pop() {
+            let Ok(l) = std::fs::read_dir(&d) else { continue };
+            for e in l.flatten() {
+                vus += 1;
+                if vus > 200_000 {
+                    return None;
+                }
+                let p = e.path();
+                if e.file_type().is_ok_and(|t| t.is_dir()) {
+                    a_voir.push(p);
+                } else if recent(&p) {
+                    return Some(true);
+                }
+            }
+        }
+        Some(false)
+    };
+    if !jeu.is_empty() && cherche(&game.join(jeu)) == Some(true) {
+        return true;
+    }
+    cherche(game).unwrap_or(true)
 }
 
 #[cfg(test)]
@@ -901,6 +1072,9 @@ mod tests {
         installer_ps3(gow[0], &rpcs3, "00000002", &travail, &|p| {
             assert!(p.is_file(), "le .pkg extrait existe pendant l'installation");
             vus.borrow_mut().push(p.to_path_buf());
+            let g = rpcs3.join("dev_hdd0").join("game").join("BCES01741");
+            std::fs::create_dir_all(&g).unwrap();
+            std::fs::write(g.join("PARAM.SFO"), b"x").unwrap();
             Ok(())
         })
         .unwrap();
@@ -911,6 +1085,159 @@ mod tests {
         // Un 2e profil : le .pkg n'est pas réinstallé, seule sa licence est posée.
         installer_ps3(gow[0], &rpcs3, "00000003", &travail, &|_| panic!("pas de 2e installation du .pkg")).unwrap();
         assert!(licence_posee(&rpcs3, "00000003", id));
+    }
+
+    /// Le relevé RÉEL de Firehouse (God of War III, contrat 1.24) : 12 .pkg aux noms aléatoires, 6 licences.
+    fn version_gow3(d: &Path) -> (Vec<(PathBuf, &'static str)>, Vec<PathBuf>) {
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/simule/version-ps3-contenus-124.json")).unwrap()).unwrap();
+        let f = v["version"]["fichiers"].as_array().unwrap();
+        let raps: Vec<String> = f.iter().filter(|x| x["role"] == "licence").map(|x| x["nom"].as_str().unwrap().trim_end_matches(".rap").to_string()).collect();
+        let pkgs: Vec<String> = f.iter().filter(|x| x["role"] == "dlc").map(|x| x["nom"].as_str().unwrap().to_string()).collect();
+        assert_eq!((pkgs.len(), raps.len()), (12, 6));
+        // Les 6 premiers .pkg portent les content ID des licences (dans le désordre des noms), les 6 autres des DLC
+        // gratuits du même jeu.
+        let mut lp = Vec::new();
+        for (i, n) in pkgs.iter().enumerate() {
+            let id = if i < 6 { raps[5 - i].clone() } else { format!("EP9000-BCES00510_00-GRATUIT{i:09}") };
+            std::fs::write(d.join(n), entete_pkg(&id)).unwrap();
+            lp.push((d.join(n), "dlc"));
+        }
+        let mut lr = Vec::new();
+        for r in &raps {
+            std::fs::write(d.join(format!("{r}.rap")), [9u8; 16]).unwrap();
+            lr.push(d.join(format!("{r}.rap")));
+        }
+        (lp, lr)
+    }
+
+    #[test]
+    fn un_dev_hdd0_deplace_est_refuse_et_une_maj_reste_une_maj() {
+        let d = tempfile::tempdir().unwrap();
+        assert!(dev_hdd0_a_sa_place(d.path()), "sans vfs.yml : la place par défaut");
+        std::fs::create_dir_all(d.path().join("config")).unwrap();
+        std::fs::write(d.path().join("config").join("vfs.yml"), "$(EmulatorDir): \"\"\n/dev_hdd0/: $(EmulatorDir)dev_hdd0/\n").unwrap();
+        assert!(dev_hdd0_a_sa_place(d.path()));
+        std::fs::write(d.path().join("config").join("vfs.yml"), "/dev_hdd0/: E:/PS3/dev_hdd0/\n").unwrap();
+        assert!(!dev_hdd0_a_sa_place(d.path()));
+        let p = d.path().join("x.pkg");
+        std::fs::write(&p, entete_pkg("EP9000-BCES00510_00-0000000000PATCH1")).unwrap();
+        assert_eq!(ps3_de_la_version(&[(p, "maj")], &[])[0].genre, "maj");
+    }
+
+    #[test]
+    fn l_identifiant_d_un_jeu_ps3_se_lit_dans_son_iso() {
+        // Un petit ISO 9660 : PS3_GAME\PARAM.SFO (comme l'.iso déchiffré servi par Firehouse).
+        let sfo = faire_sfo(&[("TITLE_ID", "BCES00510"), ("APP_VER", "01.00")]);
+        let mut s = vec![vec![0u8; 2048]; 23];
+        s[16][0] = 1;
+        s[16][1..6].copy_from_slice(b"CD001");
+        s[16][128..130].copy_from_slice(&2048u16.to_le_bytes());
+        s[16][158..161].copy_from_slice(&[20, 0, 0]);
+        s[16][166..170].copy_from_slice(&2048u32.to_le_bytes());
+        let fiche = |nom: &str, secteur: u32, taille: u32, dossier: bool| {
+            let mut r = vec![0u8; 33 + nom.len() + (nom.len() + 1) % 2];
+            r[0] = r.len() as u8;
+            r[2..6].copy_from_slice(&secteur.to_le_bytes());
+            r[10..14].copy_from_slice(&taille.to_le_bytes());
+            r[25] = if dossier { 2 } else { 0 };
+            r[32] = nom.len() as u8;
+            r[33..33 + nom.len()].copy_from_slice(nom.as_bytes());
+            r
+        };
+        let r = fiche("PS3_GAME", 21, 2048, true);
+        s[20][..r.len()].copy_from_slice(&r);
+        let r = fiche("PARAM.SFO;1", 22, sfo.len() as u32, false);
+        s[21][..r.len()].copy_from_slice(&r);
+        s[22][..sfo.len()].copy_from_slice(&sfo);
+        let d = tempfile::tempdir().unwrap();
+        let iso = d.path().join("God of War III (Europe).iso");
+        std::fs::write(&iso, s.concat()).unwrap();
+        assert_eq!(titre_id_ps3(&iso).as_deref(), Some("BCES00510"));
+    }
+
+    #[test]
+    fn une_version_firehouse_apparie_ses_licences_par_l_entete_sans_trier_par_jeu() {
+        let d = tempfile::tempdir().unwrap();
+        let (pkgs, raps) = version_gow3(d.path());
+        let l = ps3_de_la_version(&pkgs, &raps);
+        assert_eq!(l.len(), 12, "un contenu par .pkg");
+        assert_eq!(l.iter().filter(|c| c.rap.is_some()).count(), 6);
+        // Les licences BCES00799 (disque BCES00510) ne sont pas écartées.
+        assert!(l.iter().any(|c| c.id == "EP9000-BCES00799_00-000000000DOMINUS" && c.rap.is_some() && c.nom == "DOMINUS"));
+        for c in l.iter().filter(|c| c.rap.is_some()) {
+            let r = c.rap.as_ref().unwrap();
+            assert!(r.0.ends_with(&format!("{}.rap", c.id)), "chaque licence à son .pkg par l'en-tête");
+        }
+        // Une licence sans son .pkg : proposée seule, sous son nom.
+        let l = ps3_de_la_version(&pkgs[6..], &raps);
+        assert_eq!(l.iter().filter(|c| c.pkg.is_none() && c.genre == "licence").count(), 6);
+        // Un .rap au nom qui n'est pas un content ID : ignoré (jamais un nom de fichier inventé).
+        std::fs::write(d.path().join("pas une licence.rap"), [1u8; 16]).unwrap();
+        assert!(ps3_de_la_version(&[], &[d.path().join("pas une licence.rap")]).is_empty());
+    }
+
+    #[test]
+    fn une_licence_seule_se_pose_sans_rpcs3_et_jamais_par_dessus_une_autre() {
+        let d = tempfile::tempdir().unwrap();
+        let (_, raps) = version_gow3(d.path());
+        let rpcs3 = d.path().join("RPCS3");
+        let travail = d.path().join("travail");
+        let l = ps3_de_la_version(&[], &raps);
+        let c = &l[0];
+        installer_ps3(c, &rpcs3, "00000001", &travail, &|_| panic!("aucun .pkg à installer")).unwrap();
+        assert!(licence_posee(&rpcs3, "00000001", &c.id));
+        assert!(installes(&rpcs3).is_empty(), "rien de noté pour un .pkg absent");
+        // Les mêmes octets : rien à faire. D'autres : refus, l'existante est gardée.
+        installer_ps3(c, &rpcs3, "00000001", &travail, &|_| panic!()).unwrap();
+        let cible = rpcs3.join("dev_hdd0").join("home").join("00000002").join("exdata").join(format!("{}.rap", c.id));
+        std::fs::create_dir_all(cible.parent().unwrap()).unwrap();
+        std::fs::write(&cible, [1u8; 16]).unwrap();
+        assert!(installer_ps3(c, &rpcs3, "00000002", &travail, &|_| panic!()).is_err());
+        assert_eq!(std::fs::read(&cible).unwrap(), [1u8; 16], "la licence d'avant est intacte");
+        // Un .rap qui n'a pas 16 octets n'est jamais posé.
+        std::fs::write(&raps[1], [9u8; 40]).unwrap();
+        let l = ps3_de_la_version(&[], &raps[1..2]);
+        assert!(installer_ps3(&l[0], &rpcs3, "00000003", &travail, &|_| panic!()).is_err());
+        assert!(!licence_posee(&rpcs3, "00000003", &l[0].id));
+    }
+
+    #[test]
+    fn un_paquet_que_rpcs3_dit_installe_sans_rien_ecrire_n_est_pas_note() {
+        let d = tempfile::tempdir().unwrap();
+        let (pkgs, raps) = version_gow3(d.path());
+        let rpcs3 = d.path().join("RPCS3");
+        let travail = d.path().join("travail");
+        let l = ps3_de_la_version(&pkgs, &raps);
+        let c = l.iter().find(|c| c.rap.is_some()).unwrap();
+        // Un ancien jeu déjà là, pas touché pendant l'installation.
+        let ancien = rpcs3.join("dev_hdd0").join("game").join("BLES01227");
+        std::fs::create_dir_all(&ancien).unwrap();
+        std::fs::write(ancien.join("EBOOT.BIN"), b"x").unwrap();
+        let vieux = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        std::fs::File::options().write(true).open(ancien.join("EBOOT.BIN")).unwrap().set_modified(vieux).unwrap();
+        let e = installer_ps3(c, &rpcs3, "00000001", &travail, &|_| Ok(())).unwrap_err();
+        assert!(format!("{e:?}").contains("sans rien installer"), "{e:?}");
+        assert!(installes(&rpcs3).is_empty(), "pas noté");
+        assert!(licence_posee(&rpcs3, "00000001", &c.id), "la licence ne dépend pas du .pkg");
+        // Déjà installé hors de Frogtend (le dossier du jeu existe, RPCS3 n'y change rien) : dit tel quel.
+        let autre = l.iter().find(|x| x.rap.is_none()).unwrap();
+        let g = rpcs3.join("dev_hdd0").join("game").join(&autre.jeu);
+        std::fs::create_dir_all(&g).unwrap();
+        std::fs::write(g.join("PARAM.SFO"), b"x").unwrap();
+        std::fs::File::options().write(true).open(g.join("PARAM.SFO")).unwrap().set_modified(vieux).unwrap();
+        let e = installer_ps3(autre, &rpcs3, "00000001", &travail, &|_| Ok(())).unwrap_err();
+        assert!(format!("{e:?}").contains("hors de Frogtend"), "{e:?}");
+        // Un paquet installé dans le dossier de SON jeu : noté, puis sa licence.
+        installer_ps3(c, &rpcs3, "00000001", &travail, &|_| {
+            let g = rpcs3.join("dev_hdd0").join("game").join(&c.jeu);
+            std::fs::create_dir_all(&g).unwrap();
+            std::fs::write(g.join("PARAM.SFO"), b"x").unwrap();
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(installes(&rpcs3), vec![c.id.clone()]);
+        assert!(licence_posee(&rpcs3, "00000001", &c.id));
     }
 }
 

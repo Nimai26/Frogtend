@@ -46,9 +46,10 @@
     const oui = await confirmer(`📦 Installer ${choisis.length} contenu(s) pour « ${titre} » ?`, {
       message: [
         `${taille(total)} à installer par RPCS3 (il travaille sans fenêtre, puis se ferme).`,
-        ...choisis.slice(0, 8).map((c) => `• ${nomCourt(c.nom, titre)} (${libelleGenre(c.genre)})${c.licence ? ' — avec sa licence' : ''}`),
+        ...choisis.slice(0, 8).map((c) => `• ${nomCourt(c.nom, titre)} (${libelleGenre(c.genre)})${c.licence && c.genre !== 'licence' ? ' — avec sa licence' : ''}`),
         choisis.length > 8 ? `… et ${choisis.length - 8} autre(s).` : '',
         'Les licences vont dans le compte RPCS3 de TON profil : un autre profil devra les installer pour lui.',
+        'Ferme RPCS3 avant : Frogtend refuse d’installer pendant qu’il est ouvert.',
       ]
         .filter(Boolean)
         .join('\n'),

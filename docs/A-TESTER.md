@@ -48,6 +48,14 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Contenus PS3 de Firehouse (0.98.0)
+- [ ] Un jeu PS3 téléchargé depuis Firehouse avec ses DLC (God of War III) ▸ 📦 Contenus additionnels : la liste
+      montre les paquets (DLC) et leurs licences ; « Tout cocher » ▸ Installer, RPCS3 FERMÉ : chaque contenu
+      installé ; le jeu les voit en jeu.
+- [ ] RPCS3 ouvert pendant l'installation : refusé (« ferme-le d'abord »).
+- [ ] Réinstaller un contenu déjà installé : message clair, rien d'abîmé.
+- [ ] GTA V ▸ 💾 Mettre mes parties à l'abri : le dossier `Profiles\<ton profil>` est dans l'abri.
+
 ## Parties Steam hors du nuage (0.97.0)
 - [ ] XCOM 2 ▸ ⚙ Gérer le jeu ▸ 💾 Mettre mes parties à l'abri : le message compte des fichiers « pris hors du
       nuage » ; dans l'abri, un dossier `hors-nuage` avec les parties de `Documents\My Games\XCOM2\…\SaveData`.

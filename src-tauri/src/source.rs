@@ -884,6 +884,30 @@ mod tests {
         std::fs::write(sortie.join("fiche-steam.json"), serde_json::to_vec_pretty(&toutes).unwrap()).unwrap();
     }
 
+    /// RÉEL, lecture seule (contrat 1.26) : les emplacements de parties que Firehouse donne pour des jeux Steam
+    /// (`FROGTEND_APPIDS`, séparés par des virgules), puis ce qu'ils deviennent sur CE PC. Rien n'est écrit.
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_APPIDS=271590 cargo test essai_sauvegardes_steam -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_sauvegardes_steam() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        let steam = crate::boutiques::dossier_steam();
+        for appid in std::env::var("FROGTEND_APPIDS").unwrap().split(',') {
+            let v: serde_json::Value = c.obtenir_json(&format!("/triche/recherche?steam_appid={}&plateforme=Windows", appid.trim())).await.unwrap();
+            println!("== {appid} : sauvegardes = {}", v["sauvegardes"]);
+            let jeu = steam.as_ref().and_then(|s| crate::boutiques::installes_steam_dossiers(s).get(appid.trim()).map(|i| i.dossier.clone()));
+            let ctx = crate::nuage_steam::Contexte { jeu, steam: steam.clone(), compte: None, windows: crate::nuage_steam::dossiers_windows() };
+            let (l, illisibles) = crate::nuage_steam::emplacements(&v["sauvegardes"], &ctx);
+            for e in &l {
+                println!("   → {} {:?}", e.dossier.display(), e.filtre);
+            }
+            println!("   illisibles : {illisibles}");
+        }
+    }
+
     /// RÉEL, lecture seule chez Firehouse (contrat 1.19) : les codes et mods d'un jeu sans fiche, copiés tels quels dans
     /// `FROGTEND_SORTIE` (de quoi écrire les réponses simulées d'après la vraie vie). Rien d'autre n'est écrit.
     /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_SORTIE=<dossier> cargo test essai_mods_1_19 -- --ignored --nocapture`

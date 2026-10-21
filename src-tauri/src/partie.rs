@@ -213,7 +213,7 @@ fn lanceur_de_l_archive(version: &Value, dest: &Path) -> Option<Lanceur> {
 }
 
 /// Un jeu de console servi avec ses mises à jour et DLC, que l'émulateur lit à côté (contrat 1.23 : Switch → Eden).
-fn contenus_emulateur(version: &Value) -> bool {
+pub(crate) fn contenus_emulateur(version: &Value) -> bool {
     version["installation"]["forme"].as_str() == Some("contenus_emulateur")
 }
 
@@ -233,7 +233,7 @@ fn fichier_au_role_jeu(version: &Value, noms: &[String]) -> Resultat<String> {
 
 /// Les fichiers de la version qui ont l'un de ces rôles (contrat 1.23), nommés comme dans `JeuPc.fichiers`
 /// (« dossier/nom »).
-fn roles(version: &Value, voulus: &[&str]) -> Vec<String> {
+pub(crate) fn roles(version: &Value, voulus: &[&str]) -> Vec<String> {
     version["fichiers"]
         .as_array()
         .map(|l| {
@@ -566,7 +566,7 @@ impl Noyau {
     }
 
     /// La version installée, telle que dans la fiche gardée sur le PC (`Null` sans fiche : hors ligne).
-    fn version_de(&self, j: &JeuPc) -> Value {
+    pub(crate) fn version_de(&self, j: &JeuPc) -> Value {
         let fiche = self.fiche_locale(j.id).unwrap_or(Value::Null);
         fiche["versions"]
             .as_array()

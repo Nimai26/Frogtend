@@ -420,6 +420,11 @@ pub fn resoudre(chemin: &str, ctx: &Contexte) -> Option<PathBuf> {
         // En minuscules ASCII seulement : les positions restent celles du texte d'origine (accents compris).
         let bas = r.to_ascii_lowercase();
         if let Some(i) = bas.find(&jeton.to_ascii_lowercase()) {
+            // Le compte Steam seulement SOUS `userdata` : ailleurs (le profil Rockstar de GTA V…), c'est l'identifiant
+            // propre au jeu, inconnu (Firehouse, 21/10) — `emplacements` énumère alors les sous-dossiers.
+            if jeton == "<identifiant Steam>" && !bas[..i].ends_with("\\userdata\\") {
+                return None;
+            }
             let v = valeur?;
             r = format!("{}{}{}", &r[..i], v.trim_end_matches('\\'), &r[i + jeton.len()..]);
         }
@@ -431,6 +436,40 @@ pub fn resoudre(chemin: &str, ctx: &Contexte) -> Option<PathBuf> {
     let p = PathBuf::from(r.trim_end_matches('\\'));
     // Un chemin absolu de ce PC, sans « .. ».
     (p.is_absolute() && !p.components().any(|c| matches!(c, std::path::Component::ParentDir))).then_some(p)
+}
+
+/// Au plus ce nombre de sous-dossiers « un par utilisateur » énumérés (au-delà, ce n'est pas un dossier de profils).
+const PROFILS_MAX: usize = 32;
+
+/// Les dossiers d'un emplacement : un seul, ou — quand l'identifiant de l'utilisateur est HORS de `userdata` (le
+/// profil propre au jeu, inconnu) — chaque vrai sous-dossier (sans lien) du dossier qui le précède, suivi de la fin
+/// du chemin. `None` : illisible.
+fn bases(base: &str, ctx: &Contexte) -> Option<Vec<PathBuf>> {
+    let bas = base.to_ascii_lowercase();
+    let jeton = ["<identifiant utilisateur>", "<identifiant steam>"]
+        .into_iter()
+        .filter_map(|j| bas.find(j).map(|i| (i, j.len())))
+        .find(|(i, _)| !bas[..*i].ends_with("\\userdata\\"));
+    let Some((i, n)) = jeton else { return resoudre(base, ctx).map(|p| vec![p]) };
+    let parent = resoudre(base[..i].trim_end_matches('\\'), ctx)?;
+    let reste = base[i + n..].trim_matches('\\');
+    // Le reste ne doit plus porter d'identifiant ni de jeton : un seul niveau énuméré.
+    if reste.contains(['<', '>', '%']) {
+        return None;
+    }
+    let Ok(l) = std::fs::read_dir(&parent) else { return Some(vec![]) };
+    let mut v: Vec<PathBuf> = l
+        .flatten()
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .filter(|e| !crate::garde::lien_entre(&parent, &e.path()))
+        .map(|e| if reste.is_empty() { e.path() } else { e.path().join(reste) })
+        .filter(|p| !p.components().any(|c| matches!(c, std::path::Component::ParentDir)))
+        .collect();
+    if v.len() > PROFILS_MAX {
+        return None;
+    }
+    v.sort();
+    Some(v)
 }
 
 /// Un emplacement de parties résolu : un dossier (sous-dossiers compris), ou seulement ses fichiers qui répondent à
@@ -501,16 +540,19 @@ pub fn emplacements(sauvegardes: &serde_json::Value, ctx: &Contexte) -> (Vec<Emp
             illisibles += 1;
             continue;
         }
-        match resoudre(&base, ctx) {
-            Some(p) if est_une_racine(&p, ctx) && filtre.is_none() => illisibles += 1,
-            Some(p) if p.is_dir() => {
-                let e = Emplacement { dossier: p, filtre };
+        let Some(candidats) = bases(&base, ctx) else {
+            illisibles += 1;
+            continue;
+        };
+        for p in candidats {
+            if est_une_racine(&p, ctx) && filtre.is_none() {
+                illisibles += 1;
+            } else if p.is_dir() {
+                let e = Emplacement { dossier: p, filtre: filtre.clone() };
                 if !l.contains(&e) {
                     l.push(e);
                 }
-            }
-            Some(_) => {} // pas (encore) de parties à cet endroit
-            None => illisibles += 1,
+            } // sinon : pas (encore) de parties à cet endroit
         }
     }
     // Un dossier entier DANS un autre déjà pris : une seule fois.
@@ -744,6 +786,33 @@ mod tests {
         let abris = d.path().join("Abris");
         assert!(abriter(&plan, "m1", &abris, -7, "100").is_err());
         assert!(!abris.join("-7").exists() && !abris.join(".frogtend-en-cours").exists());
+    }
+
+    #[test]
+    fn hors_de_userdata_l_identifiant_est_un_sous_dossier_par_utilisateur() {
+        // Relevé réel GTA V (Firehouse 1.26, 21/10) : le profil Rockstar n'est PAS le compte Steam.
+        let d = tempfile::tempdir().unwrap();
+        let docs = d.path().join("Docs");
+        let profils = docs.join("Rockstar Games").join("GTA V").join("Profiles");
+        for p in ["A1B2C3D4", "E5F6"] {
+            std::fs::create_dir_all(profils.join(p)).unwrap();
+            std::fs::write(profils.join(p).join("SGTA50000"), b"partie").unwrap();
+        }
+        std::fs::write(profils.join("pas-un-dossier.txt"), b"x").unwrap();
+        let ctx = Contexte { jeu: None, steam: Some(d.path().join("Steam")), compte: Some("42".into()), windows: vec![("Documents", docs.clone())] };
+        assert_eq!(resoudre(r"%USERPROFILE%\Documents\Rockstar Games\GTA V\Profiles\<identifiant Steam>", &ctx), None, "jamais le compte Steam");
+        let s = serde_json::json!([
+            {"os": "Windows", "chemin": r"%USERPROFILE%\Documents\Rockstar Games\GTA V\Profiles\<identifiant Steam>", "nature": "dossier"},
+            {"os": "Windows", "chemin": r"%USERPROFILE%\Documents\Rockstar Games\GTA V\Profiles\<identifiant utilisateur>\*.bak", "nature": "motif"},
+        ]);
+        let (l, illisibles) = emplacements(&s, &ctx);
+        assert_eq!(illisibles, 0);
+        let dossiers: Vec<_> = l.iter().filter(|e| e.filtre.is_none()).map(|e| e.dossier.clone()).collect();
+        assert_eq!(dossiers, vec![profils.join("A1B2C3D4"), profils.join("E5F6")], "chaque profil, rien d'autre");
+        // Sous userdata : toujours le compte Steam.
+        assert_eq!(bases(r"<Steam>\userdata\<identifiant Steam>\271590\remote", &ctx), Some(vec![d.path().join(r"Steam\userdata\42\271590\remote")]));
+        // Deux identifiants : jamais deviné.
+        assert_eq!(bases(r"%USERPROFILE%\Documents\<identifiant utilisateur>\<identifiant Steam>", &ctx), None);
     }
 
     #[test]

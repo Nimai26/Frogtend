@@ -19,7 +19,7 @@ export interface ContenusDuJeu {
   contenus: ContenuVu[];
 }
 
-const GENRES: Record<string, string> = { dlc: 'DLC', avatar: 'Avatar', theme: 'Thème', maj: 'Mise à jour', autre: 'Contenu' };
+const GENRES: Record<string, string> = { dlc: 'DLC', avatar: 'Avatar', theme: 'Thème', maj: 'Mise à jour', licence: 'Licence', autre: 'Contenu' };
 
 export function libelleGenre(g: string): string {
   return GENRES[g] ?? 'Contenu';

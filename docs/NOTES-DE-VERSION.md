@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.98.0 — Les DLC et licences de tes jeux PS3 de Firehouse
+
+- 📦 Un jeu PS3 téléchargé depuis Firehouse avec ses contenus (God of War III et ses 12 paquets, par exemple)
+  propose maintenant TOUS ses DLC, mises à jour et licences dans « Contenus additionnels », même ceux d'une autre
+  édition du jeu. Chaque licence va avec son paquet, reconnu par son contenu et pas par son nom.
+- Une licence servie sans son paquet est proposée seule. Une licence déjà dans ton compte RPCS3 n'est JAMAIS
+  remplacée par une autre.
+- Frogtend vérifie que RPCS3 a vraiment installé quelque chose avant de le noter, et refuse si RPCS3 est ouvert.
+- 💾 GTA V : les parties de ton profil Rockstar (dans tes Documents) sont maintenant trouvées et mises à l'abri.
+
 ## 0.97.0 — Les parties de tes jeux Steam, même hors du nuage
 
 - 💾 Mettre mes parties à l'abri (jeu Steam) copie maintenant AUSSI les parties que le jeu range hors du nuage de

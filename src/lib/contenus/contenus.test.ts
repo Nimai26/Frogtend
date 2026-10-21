@@ -7,6 +7,7 @@ describe('les contenus additionnels', () => {
     expect(nomCourt('God of War - Ascension - Achilles (Europe) (Avatar)', 'God of War - Ascension')).toBe('Ascension - Achilles');
     expect(nomCourt('Thème libre', 'Autre jeu')).toBe('Thème libre');
     expect(libelleGenre('avatar')).toBe('Avatar');
+    expect(libelleGenre('licence')).toBe('Licence');
     expect(libelleGenre('inconnu')).toBe('Contenu');
     const c = { id: 'a', nom: 'x', genre: 'dlc', taille: 1, licence: false, installe: false };
     expect(resume([c, { ...c, id: 'b', installe: true }])).toBe('2 disponible(s), 1 installé(s)');
