@@ -99,6 +99,11 @@
   échappe) ; manifestes de mods DANS le dossier du jeu ; Nexus exige un lanceur. Découpage : **B0** garde-fous →
   **B1** triches + Cheat Engine (aucune écriture chez Steam) → **B2** abris nuage Steam → **B3** mods GitHub (données
   à part, `buildid` surveillé) → **B4** Nexus pour Steam.
+  ✅ Seb 21/10 (après 0.95.0) : « D » — les fiches des jeux de boutique (résumé, images) par Firehouse (contrat 1.25
+  `/jeu/steam/{appid}`). Relevé réel (21/10, lecture seule, jeton de Seb) : les 11 jeux Steam installés de Venkman
+  répondent TOUS 404 (pas dans le stock de Firehouse, probablement). Questions envoyées à Firehouse : la route ne
+  sert-elle que le stock ? peut-elle servir la fiche de la BASE LaunchBox (hors stock : résumé, genres, jaquette,
+  visuels, sans versions) — esprit du besoin 16 ? et pour GOG / Epic ? ⏳ Rien de codé avant la réponse.
   ✅ Seb 21/10 (après 0.94.0) : pour Epic, il installe un PETIT jeu, TerraScape, dans
   `D:\LaunchBox\Games\Epic\Epic Games\Games` (Fortnite laissé tel quel) ; et « tout sera reset en fin de
   développement de Frogtend pour que tout soit bien géré par lui » : les installations actuelles (Steam, GOG,

@@ -857,6 +857,33 @@ mod tests {
         assert!(matches!(Source::Simulee.fiche(999_999).await, Err(Erreur::Introuvable(_))));
     }
 
+    /// RÉEL, lecture seule chez Firehouse (contrat 1.25, lot D) : la fiche de chaque jeu Steam INSTALLÉ sur ce PC par
+    /// `/jeu/steam/{appid}` (réponse copiée dans `FROGTEND_SORTIE` ; le jeton ne s'affiche jamais).
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_SORTIE=<dossier> cargo test essai_fiche_steam -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_fiche_steam() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let sortie = std::path::PathBuf::from(std::env::var("FROGTEND_SORTIE").unwrap());
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        let installes = crate::boutiques::installes_steam_dossiers(&crate::boutiques::dossier_steam().expect("Steam"));
+        let mut toutes = serde_json::Map::new();
+        for appid in installes.keys() {
+            match c.obtenir(&format!("/jeu/steam/{appid}"), None).await {
+                Ok(crate::firehouse::Reponse::Corps { octets, .. }) => {
+                    let v: serde_json::Value = serde_json::from_slice(&octets).unwrap_or_default();
+                    println!("== {appid} : {v}");
+                    toutes.insert(appid.clone(), v);
+                }
+                Ok(_) => println!("== {appid} : 304"),
+                Err(e) => println!("== {appid} : {e:?}"),
+            }
+        }
+        std::fs::write(sortie.join("fiche-steam.json"), serde_json::to_vec_pretty(&toutes).unwrap()).unwrap();
+    }
+
     /// RÉEL, lecture seule chez Firehouse (contrat 1.19) : les codes et mods d'un jeu sans fiche, copiés tels quels dans
     /// `FROGTEND_SORTIE` (de quoi écrire les réponses simulées d'après la vraie vie). Rien d'autre n'est écrit.
     /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_SORTIE=<dossier> cargo test essai_mods_1_19 -- --ignored --nocapture`
