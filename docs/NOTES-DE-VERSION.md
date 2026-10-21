@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.88.0 — Les jeux Switch avec leurs mises à jour et DLC
+
+- Firehouse sert maintenant certains jeux Switch avec leur dernière mise à jour et leurs DLC. Frogtend lance
+  toujours le jeu lui-même (jamais une mise à jour ou un DLC à sa place), et le bloc « 📦 » de la fiche propose
+  ensuite, en un clic, qu'Eden les lise.
+- Ce clic ne fait rien d'autre qu'ajouter le dossier du jeu à la liste des contenus d'Eden (copie de sauvegarde de
+  ses réglages avant). Il faut Eden, installé par Frogtend : avec un autre émulateur Switch, le bloc le dit.
+
 ## 0.87.0 — Les parties de tes jeux Steam à l'abri
 
 - ⚙ Gérer le jeu ▸ 💾 Mettre mes parties à l'abri : maintenant aussi pour tes jeux Steam. Frogtend copie les

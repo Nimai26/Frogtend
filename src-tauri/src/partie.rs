@@ -120,6 +120,25 @@ fn forme_fichier(version: &Value) -> bool {
     matches!(version["installation"]["forme"].as_str().unwrap_or(""), "" | "fichier")
 }
 
+/// Un jeu de console servi avec ses mises à jour et DLC, que l'émulateur lit à côté (contrat 1.23 : Switch → Eden).
+fn contenus_emulateur(version: &Value) -> bool {
+    version["installation"]["forme"].as_str() == Some("contenus_emulateur")
+}
+
+/// Le fichier lancé d'une version `contenus_emulateur` : `installation.lancer` s'il est donné, sinon L'UNIQUE fichier
+/// au rôle `jeu` — jamais une mise à jour ni un DLC (le premier fichier ne l'est que par hasard).
+fn fichier_au_role_jeu(version: &Value, noms: &[String]) -> Resultat<String> {
+    let l = version["installation"]["lancer"].as_str().filter(|l| !l.is_empty());
+    if let Some(n) = l.and_then(|l| noms.iter().find(|n| n.as_str() == l)) {
+        return Ok(n.clone());
+    }
+    let jeux: Vec<String> = roles(version, &["jeu"]).into_iter().filter(|r| noms.contains(r)).collect();
+    match jeux.as_slice() {
+        [un] => Ok(un.clone()),
+        _ => Err(Erreur::Refus("Firehouse n'a pas dit lequel de ces fichiers est le jeu (les autres sont ses mises à jour et DLC) : rien n'est installé.".into())),
+    }
+}
+
 /// Les fichiers de la version qui ont l'un de ces rôles (contrat 1.23), nommés comme dans `JeuPc.fichiers`
 /// (« dossier/nom »).
 fn roles(version: &Value, voulus: &[&str]) -> Vec<String> {
@@ -269,7 +288,10 @@ impl Noyau {
         // Une version MAME (contrat 1.13) se donne telle quelle à MAME : une ROM (jamais décompressée).
         let mut n = if version["mame"].is_object() { Nature::Rom } else { nature(version["qualite"].as_str().unwrap_or("")) };
         // Un multi-disques (contrat 1.23 : un .m3u et ses disques) est une image disque, même de nature non dite.
-        if n == Nature::NonDite && forme_fichier(&version) && !roles(&version, &["liste_disques", "archive_a_extraire"]).is_empty() {
+        // Un jeu de console avec ses mises à jour et DLC (contrat 1.23 `contenus_emulateur`) aussi : jamais « installé ».
+        if n == Nature::NonDite
+            && ((forme_fichier(&version) && !roles(&version, &["liste_disques", "archive_a_extraire"]).is_empty()) || contenus_emulateur(&version))
+        {
             n = Nature::ImageDisque;
         }
         let noms: Vec<String> = j.fichiers.iter().map(|f| f.nom.clone()).collect();
@@ -373,7 +395,11 @@ impl Noyau {
                                     .collect();
                             }
                             let connus: Vec<String> = noms.iter().chain(&extraits).cloned().collect();
-                            lancer_de(&version, &connus).or_else(|| fichier_principal(&noms))
+                            if contenus_emulateur(&version) {
+                                Some(fichier_au_role_jeu(&version, &noms)?)
+                            } else {
+                                lancer_de(&version, &connus).or_else(|| fichier_principal(&noms))
+                            }
                         }
                     };
                     // Un .m3u : chaque disque qu'il liste doit être là, sinon l'émulateur ne démarrerait pas (et ce
@@ -974,6 +1000,30 @@ mod tests {
             assert!(j.installation.is_none());
             assert!(!Path::new(&j.dossier).join("Xak (Disk 1 of 2).d88").exists(), "aucun disque orphelin");
         }
+    }
+
+    #[test]
+    fn un_jeu_switch_avec_maj_et_dlc_lance_son_xci_jamais_un_nsp() {
+        // Relevé réel 1.23 (Fire Emblem Three Houses : .xci + 6 DLC + 1 maj, forme contenus_emulateur, lancer vide).
+        let r: Value = serde_json::from_str(include_str!("../fixtures/simule/version-switch-contenus-123.json")).unwrap();
+        let mut v = r["version"].clone();
+        assert!(contenus_emulateur(&v) && !forme_fichier(&v));
+        let noms: Vec<String> = roles(&v, &["jeu", "dlc", "maj"]);
+        assert_eq!(noms.len(), 8);
+        assert_eq!(fichier_au_role_jeu(&v, &noms).unwrap(), "Fire Emblem Three Houses.xci");
+        // Le .xci en dernier : toujours lui (jamais « le premier fichier »).
+        v["fichiers"].as_array_mut().unwrap().rotate_left(1);
+        let noms: Vec<String> = roles(&v, &["jeu", "dlc", "maj"]);
+        assert!(noms[0].ends_with(".nsp"));
+        assert_eq!(fichier_au_role_jeu(&v, &noms).unwrap(), "Fire Emblem Three Houses.xci");
+        // Aucun fichier au rôle jeu (ou deux) : refus, jamais un .nsp.
+        let sans: Vec<String> = noms.iter().filter(|n| n.ends_with(".nsp")).cloned().collect();
+        assert!(fichier_au_role_jeu(&v, &sans).is_err());
+        // `lancer` donné par Firehouse : suivi s'il est un fichier reçu.
+        v["installation"]["lancer"] = "Fire Emblem Three Houses [v1.2.0][v327680] (nsw2u).nsp".into();
+        assert_eq!(fichier_au_role_jeu(&v, &noms).unwrap(), "Fire Emblem Three Houses [v1.2.0][v327680] (nsw2u).nsp");
+        v["installation"]["lancer"] = "ailleurs.xci".into();
+        assert_eq!(fichier_au_role_jeu(&v, &noms).unwrap(), "Fire Emblem Three Houses.xci");
     }
 
     #[test]

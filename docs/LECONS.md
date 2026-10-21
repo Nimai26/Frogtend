@@ -238,3 +238,8 @@ qui travaillent dans un dossier temporaire.
 ## Avant — Corriger un commentaire a cassé un test (0.38)
 Ce qui s'est passé : une retouche de commentaire a modifié une chaîne d'octets de test. · Comment l'appliquer : après
 TOUTE modification, relancer la suite complète ; ne jamais modifier le code pendant une construction.
+
+21/10 (0.88.0) : `lancement::tests::un_jeu_lance_par_un_intermediaire_est_suivi_jusqu_a_sa_fin` a échoué une fois
+pendant une passe complète anormalement lente (21 s au lieu de 8 : PC chargé) ; analysé tout de suite : fichier non
+touché par le lot, 3 passes seules et 2 passes complètes vertes. Test dépendant du temps (un `ping` de ~2 s) : s'il
+rougit encore, le rendre robuste à la charge plutôt que de relancer jusqu'au vert.

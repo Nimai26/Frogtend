@@ -142,9 +142,14 @@ export async function installer(id: number): Promise<boolean> {
   partie.installation = null;
   await apresChangement();
   if (p.nature === 'rom' || p.nature === 'image_disque') {
-    toast(`✅ « ${p.titre} » est prêt : il se lance par l’émulateur de son système.`);
-    // Sa console n'a pas encore d'émulateur : le proposer tout de suite (un seul accord).
     const plateforme = tele.jeux[id]?.plateforme;
+    // Un jeu Switch servi avec ses mises à jour et DLC (contrat 1.23) : Eden ne les lit qu'après un oui, dans le bloc
+    // « 📦 » de sa fiche (rien n'est écrit chez Eden sans lui).
+    const avecContenus = plateforme === 'Nintendo Switch' && (tele.jeux[id]?.fichiers.length ?? 0) > 1;
+    toast(
+      `✅ « ${p.titre} » est prêt : il se lance par l’émulateur de son système.${avecContenus ? ' Ses mises à jour et DLC sont dans le bloc « 📦 » de sa fiche : un clic pour qu’Eden les lise.' : ''}`,
+    );
+    // Sa console n'a pas encore d'émulateur : le proposer tout de suite (un seul accord).
     if (plateforme) await preparerPourJouer(plateforme, 1);
     return true;
   }

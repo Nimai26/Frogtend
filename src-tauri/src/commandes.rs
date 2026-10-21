@@ -733,7 +733,14 @@ async fn contexte_switch(app: &AppHandle, noyau: &Noyau, id: i64) -> Resultat<Op
         return Ok(None);
     }
     let Some((programme, _)) = emulateur_regle(app, &j.plateforme, id, None) else { return Err(Erreur::Reglage("Aucun Eden réglé pour la Switch.".into())) };
-    let eden = std::path::Path::new(&programme).parent().map(std::path::PathBuf::from).unwrap_or_default();
+    // Seul Eden lit une liste de dossiers de contenus (`qt-config.ini`) : un autre émulateur Switch (Ryubing, Citron…)
+    // n'y verrait rien, et Frogtend écrirait un fichier inutile chez lui.
+    let p = std::path::Path::new(&programme);
+    if !p.file_name().is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case("eden.exe")) {
+        // Un RÉGLAGE à changer (pas un refus) : l'aperçu montre alors « Règle Eden… » au lieu de rien.
+        return Err(Erreur::Reglage("Frogtend sait donner les mises à jour et DLC à Eden seulement : choisis Eden comme émulateur de la Switch pour ce jeu.".into()));
+    }
+    let eden = p.parent().map(std::path::PathBuf::from).unwrap_or_default();
     let mut dossiers: Vec<std::path::PathBuf> = vec![std::path::PathBuf::from(&j.dossier)];
     let mut fichier = None;
     if let Some(i) = &j.installation {
@@ -900,6 +907,14 @@ pub async fn decompresser_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) 
 pub async fn contenus_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, choisis: Vec<String>) -> Resultat<BilanContenus> {
     // Switch : Eden lit les dossiers des contenus choisis (ajoutés à sa liste ; rien n'est copié).
     if let Some((eden, l)) = contexte_switch(&app, &noyau, id).await? {
+        exiger_emulateur_pour_ecrire(&app, &noyau, &eden.join("eden.exe"))?;
+        // Eden en mode portable (son dossier `user` à côté de lui) : sinon il lit sa configuration ailleurs
+        // (`%APPDATA%\eden`) et la liste écrite ici ne servirait à rien, malgré une relecture « réussie ».
+        if !eden.join("user").is_dir() {
+            return Err(Erreur::Refus(
+                "Cet Eden range ses réglages hors de son dossier : Frogtend ne peut pas lui donner les contenus. Installe Eden par Frogtend (⚙ Options ▸ Émulateurs) pour qu'il le fasse.".into(),
+            ));
+        }
         let dossiers: Vec<String> = {
             let mut d: Vec<String> = l
                 .iter()

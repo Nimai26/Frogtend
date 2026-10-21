@@ -589,6 +589,17 @@ d'abord :
 
 ## ✅ Livré (version — ce qui a été vérifié)
 
+- **0.88.0** (21/10) — Contrat 1.23, Switch `contenus_emulateur` (avis avant code et relecture de l'expert
+  lancement ; relevé réel Fire Emblem Three Houses rangé : `version-switch-contenus-123.json`) : le fichier lancé
+  = `installation.lancer` s'il est reçu, sinon L'UNIQUE fichier au rôle `jeu` (jamais un .nsp ; sinon refus) ;
+  nature non dite → image disque ; contenus : Eden seulement (un autre émulateur Switch = réglage à changer, dit
+  dans le bloc 📦), `exiger_emulateur_pour_ecrire`, Eden portable exigé (dossier `user`) ; après l'installation,
+  le message renvoie au bloc 📦 (aucune écriture chez Eden sans le oui). Vérifié : tests (cœur 452, interface
+  218). NON vérifié : un vrai jeu Switch avec contenus (Eden n'est pas réglé dans le Frogtend de Seb) ; Eden ≥ 0.2.0
+  pour un Eden installé à la main (version jamais lue). Plus tard : retirer du `qt-config.ini` l'entrée posée par
+  Frogtend au retrait du jeu ; empreinte par fichier de contenu (Firehouse propose une mineure : utile, à brancher
+  dans un lot à part) ; repli « Install Files to NAND » pour un vieil Eden.
+
 - **0.87.0** (21/10) — Lot B2 des jeux de boutique, abris du nuage Steam (avis avant code et relectures des experts
   lancement et interface) : `nuage_steam.rs` (lecture tolérante de `remotecache.vdf` ; racine 0 = `remote\`, les
   autres retrouvées par taille + SHA1 dans les dossiers de Windows du registre, jamais devinées ; racine 1 =

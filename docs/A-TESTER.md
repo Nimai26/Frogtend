@@ -48,6 +48,13 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Jeux Switch avec mises à jour et DLC (0.88.0)
+- [ ] Il faut Eden installé par Frogtend (⚙ Options ▸ Émulateurs).
+- [ ] Un jeu Switch servi avec contenus (Fire Emblem Three Houses : 16 Go + 1,7 Go) : télécharger, installer ;
+      le message dit que les mises à jour et DLC sont dans le bloc « 📦 ».
+- [ ] Bloc « 📦 » : 1 mise à jour et 6 DLC listés ; les cocher ▸ Eden ferme ▸ « Rendre disponible ».
+- [ ] ▶ Jouer : Eden démarre le jeu en v1.2.0, et les DLC (Cindered Shadows…) sont dans le jeu.
+
 ## Parties des jeux Steam à l'abri (0.87.0)
 - [ ] XCOM 2 ▸ ⚙ Gérer le jeu ▸ 💾 Mettre mes parties à l'abri : « 42 fichier(s) de parties (environ 94 Mo) mis à
       l'abri ». Dans ton dossier des abris : un dossier du jeu avec `nuage-steam\…\Documents\my games\…`.
