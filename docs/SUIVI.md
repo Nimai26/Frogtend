@@ -115,6 +115,10 @@
   contient `games`, installation complète, `LaunchExecutable`, pas un DLC). Découpage : A6a GOG au registre +
   `synchroniser_boutique(source)` (retrait limité à SA source) → A6b lancement par Galaxy + suivi → A6c une ligne
   par jeu (allGameReleases) + choix de la copie avant de lancer + succès GOG au menu en jeu → A6d Epic.
+  ✅ Seb 21/10 : « mettre des petites icônes sur les jeux représentant leur(s) magasin(s) d'origine » — sur chaque
+  jeu (grille, panneau, Taodbox) : une petite icône par boutique où il est possédé (Steam, GOG, Epic…), plusieurs si
+  la ligne réunit plusieurs copies ; à faire dans A6c (avec la ligne unique), icônes aux couleurs du thème (aucune
+  couleur en dur), lisibles à la télé.
   ✅ Seb 21/10 (après 0.89.0) : « lot C » — les succès en détail (B fini ; D et A6 attendront). Décisions (21/10,
   ne plus les redemander) : succès SECRETS cachés (« 🔒 Succès secret — la description apparaîtra quand tu l'auras
   obtenu ») avec « Montrer » à la demande ; un jeu Steam vu aussi par Galaxy : les succès de STEAM font foi (Galaxy
