@@ -51,8 +51,12 @@
   `lancer` = exe). ⚠ À CODER après le lot C en cours : sa `qualite` vaut « Jeu — ROM » (cosmétique selon
   Firehouse) — Frogtend 0.89.0 la prendrait pour une ROM (méthode « aucune ») et ne l'extrairait pas : la forme
   `archive` doit FAIRE FOI (extraire dans `Jeu/<extraire_dans>`, sous-dossiers permis, lanceur = `lancer`, vide = la
-  personne choisit) ; puis vérifier chaque fichier téléchargé par son `sha1` (contrat 1.24). À venir : PS3 (.iso +
-  .pkg dlc + .rap licence, `contenus_emulateur`).
+  personne choisit) ; puis vérifier chaque fichier téléchargé par son `sha1` (contrat 1.24). ✅ (0.91.0) forme
+  archive. PS3 reçu (21/10, God of War III : .iso DÉCHIFFRÉ role jeu, 12 .pkg role dlc au nom aléatoire, 6
+  `<content id>.rap` role licence, `contenus_emulateur`) — relevé PARTIEL rangé `version-ps3-contenus-124.json` ;
+  questions envoyées (extension .pkg absente dans l'exemple ? liste complète des 19 fichiers ? .rap sans .pkg ?).
+  À coder ensuite : brancher l'installation existante des contenus PS3 (contenus.rs : `--installpkg`, .rap dans
+  `exdata` du compte RPCS3 du profil) sur les rôles `dlc`/`licence` d'une version Firehouse, après le oui.
 
 - **Jeux PC des boutiques — vrais jeux du PC** (Seb, 20/10 : « gérer l'installation, le lancement, les succès, les
   mods… »). État au 20/10 : Frogtend importe la liste (Steam par l'API, Galaxy pour GOG + Epic/Xbox/Ubisoft/EA/Amazon
