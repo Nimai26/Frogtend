@@ -452,10 +452,21 @@ impl Noyau {
             }
             par_jeu.entry(id).or_default().push(abri);
         }
+        // Les parties du nuage Steam (lot B2) d'un AUTRE compte Steam du PC ne partent jamais avec ce profil : seulement
+        // celles du compte relié à ce profil (sans compte relié : celles qu'il a mises à l'abri, un seul compte).
+        let marque_steam = crate::boutiques::lire(&self.dossier.join("profils").join(&profil.id))
+            .and_then(|c| crate::nuage_steam::compte(&c.steamid))
+            .map(|c| crate::nuage_steam::marque(&c));
+        let d_un_autre_compte = |r: &str| {
+            r.strip_prefix("nuage-steam/").and_then(|x| x.split('/').next()).is_some_and(|m| marque_steam.as_deref().is_some_and(|s| s != m))
+        };
         for (id, mut abris) in par_jeu {
             abris.sort_by(|a, b| b.0.cmp(&a.0));
             for (_, recente) in abris {
                 for r in fichiers_de(&recente)? {
+                    if d_un_autre_compte(&r) {
+                        continue;
+                    }
                     let relatif = format!("jeux/{id}/{r}");
                     if !parties.iter().any(|e| e.relatif == relatif) {
                         parties.push(Element { source: recente.join(&r), relatif });

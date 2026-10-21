@@ -26,7 +26,14 @@
   BOM (410 contrôlés). À faire : Dolphin « Change Discs Automatically » (`AutoDiscChange` dans `Dolphin.ini`
   [Core]) posé par Frogtend pour les 4 multi-disques GameCube. À venir de Firehouse : forme `archive` (jeux de fans,
   MUGEN, DataXL : ZIP64 stocké, `extraire_dans`, `lancer` vide si ambigu) ; Switch `maj`/`dlc` en
-  `contenus_emulateur` (Eden ≥ 0.2.0 : « External Content » suffit). Reste : rôles `maj`/`dlc`/`licence`, formes archive/installeur/
+  `contenus_emulateur` (Eden ≥ 0.2.0 : « External Content » suffit). ✅ Firehouse 2.95.0 EN SERVICE (21/10, contrat
+  1.23 inchangé) : jeu PC en archive (UN ZIP64 stocké `archive_a_extraire`, forme `archive`, `extraire_dans` =
+  dossier d'origine, `lancer` = exe relatif en « / », sous-dossiers PERMIS et dossiers vides présents, `lancer`
+  vide = deux exe plausibles → extraire puis faire choisir) ; Switch `maj`/`dlc` (.nsp d'origine, seule la maj la
+  plus récente) en `contenus_emulateur` ; Sega CD .chd par disque, multi-disques en .m3u LF ; PS3 en attente d'une
+  décision de Seb (ISO Redump chiffrés). ⚠️ Frogtend 0.85.1 REFUSE un sous-dossier dans `archive_a_extraire` (prévu
+  pour les multi-disques) : la forme `archive` demande son propre chemin d'installation (dans `Jeu/` ou
+  `extraire_dans`) — à coder avec le relevé réel d'un jeu de fans. Reste : rôles `maj`/`dlc`/`licence`, formes archive/installeur/
   contenus_emulateur (prochain relevé : Dreamcast multi-disques).
 
 - **Jeux PC des boutiques — vrais jeux du PC** (Seb, 20/10 : « gérer l'installation, le lancement, les succès, les
@@ -67,6 +74,16 @@
   échappe) ; manifestes de mods DANS le dossier du jeu ; Nexus exige un lanceur. Découpage : **B0** garde-fous →
   **B1** triches + Cheat Engine (aucune écriture chez Steam) → **B2** abris nuage Steam → **B3** mods GitHub (données
   à part, `buildid` surveillé) → **B4** Nexus pour Steam.
+  ✅ Seb 21/10 : les abris des parties Steam partent AUSSI chez Firehouse avec la sauvegarde du profil (comme les
+  autres jeux) ; les remettre en place : plus tard (Steam Cloud peut écraser ce qu'on remet à la main).
+  Relevé réel B2 (21/10, lecture seule) : un seul compte dans `userdata` ; `remotecache.vdf` liste chaque fichier
+  (`root`, `size`, `sha` = SHA1 vérifié sur 50 fichiers, `syncstate`) ; 13 jeux sur 21 ont un `remote\` (root 0),
+  d'autres n'ont QUE l'Auto-Cloud (XCOM 2 : root 2 = Documents, REDIRIGÉ vers OneDrive chez Seb — les 42 fichiers
+  retrouvés par SHA1 dans `OneDrive\Documents`, aucun dans `%USERPROFILE%\Documents` ; root 3 = AppData\Local) ;
+  root 1 = configurations de manette Steam (pas des parties). Les numéros de racine ne sont PAS documentés par Valve
+  (seuls les noms `WinMyDocuments`… le sont) : Frogtend retrouve chaque fichier par taille + SHA1 parmi les
+  dossiers de Windows (lus dans le registre « User Shell Folders »), jamais en devinant ; un fichier OneDrive « en
+  ligne seulement » n'est jamais lu (il serait téléchargé).
 
 - **Suites du lot Nexus (0.82.0 livré)** — à faire, dans l'ordre :
   - ✅ Seb 20/10 : « pas besoin de question » — les liens nxm:// restent pris d'office (installeur ou mise à jour,
@@ -571,6 +588,21 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.87.0** (21/10) — Lot B2 des jeux de boutique, abris du nuage Steam (avis avant code et relectures des experts
+  lancement et interface) : `nuage_steam.rs` (lecture tolérante de `remotecache.vdf` ; racine 0 = `remote\`, les
+  autres retrouvées par taille + SHA1 dans les dossiers de Windows du registre, jamais devinées ; racine 1 =
+  manettes, sautée ; partie plus récente que Steam, à un seul endroit : copiée et comptée ; OneDrive « en ligne
+  seulement » jamais lu ; `remote\` parcouru sans suivre lien ni jonction, 20 000 fichiers au plus ; abri par
+  dossier provisoire `.frogtend-en-cours` puis renommé, chaque copie vérifiée par SHA1, un fichier qui change est
+  recopié une fois sinon refus ; `nuage-steam/<marque du compte>/…` + `abri.json`, « déjà à l'abri » par compte) ;
+  commandes `nuage_steam_apercu` / `nuage_steam_abriter` (compte du profil, sinon le seul compte du PC ; refus
+  pendant une partie ; > 2 Go : confirmer) ; sauvegarde du profil : jamais les parties d'un autre compte Steam.
+  Vérifié : tests (cœur 451, interface 218) ; essai RÉEL en lecture seule chez Steam, abri dans un dossier
+  temporaire : XCOM 2 42 fichiers 98 Mo (OneDrive Documents), 1466860 8 fichiers, 241100 5 fichiers, « déjà à
+  l'abri » ensuite. NON vérifié : un vrai fichier OneDrive « en ligne seulement » ; l'abri dans le vrai dossier des
+  abris de Seb (A-TESTER) ; deux comptes Steam sur un PC (l'envoi ne prend que l'abri le plus récent du jeu) ;
+  remettre en place (plus tard, avec Seb). Suite : B3 (mods Steam), B4 (Nexus).
 
 - **0.86.0** (21/10) — Lot B0 + B1 des jeux de boutique (avis avant code et relectures des experts lancement,
   contrat et interface) : `steam_appid` envoyé à `/triche/recherche` ; `cheatengine_risque` (anti-triche du disque

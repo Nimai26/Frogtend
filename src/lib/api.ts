@@ -280,6 +280,18 @@ export interface TrichesJeu {
   en_ligne?: { online: string | null; anticheat: string | null; source?: string; lu_le?: string } | null;
 }
 
+/** Ce que Frogtend mettrait à l'abri des parties d'un jeu Steam (`nuage_steam_apercu`). */
+export interface ApercuNuage {
+  fichiers: number;
+  octets: number;
+  introuvables: number;
+  en_ligne_seulement: number;
+  en_attente: number;
+  modifies: number;
+  deja: boolean;
+  gros: boolean;
+}
+
 /** Le risque de brancher Cheat Engine sur un jeu (`cheatengine_risque`). */
 export interface RisqueTriche {
   anti_triche: string | null;
@@ -692,6 +704,10 @@ export const api = {
   /** `accepte` : la personne a dit oui à l'avertissement de `cheatengineRisque` (jeu en ligne ou inconnu). */
   cheatengineLancer: (programme: string, table?: string, brancher = false, accepte = false) =>
     appeler<void>('cheatengine_lancer', { programme, table: table ?? null, brancher, accepte }),
+  /** Les parties d'un jeu Steam que Steam garde pour son nuage (lot B2) : ce qui serait mis à l'abri. */
+  nuageSteamApercu: (id: number) => appeler<ApercuNuage>('nuage_steam_apercu', { id }),
+  /** Les met à l'abri (`accepte` : la personne a confirmé une très grosse copie). */
+  nuageSteamAbriter: (id: number, accepte = false) => appeler<{ dossier: string; fichiers: number; octets: number }>('nuage_steam_abriter', { id, accepte }),
   /** Le risque de brancher Cheat Engine sur ce jeu (Seb, 21/10 : anti-triche = refus ; en ligne ou inconnu = avertir). */
   cheatengineRisque: (id: number) => appeler<RisqueTriche>('cheatengine_risque', { id }),
   jeuTriches: (id: number) => appeler<TrichesJeu>('jeu_triches', { id }),

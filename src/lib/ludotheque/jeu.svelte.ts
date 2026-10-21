@@ -4,7 +4,7 @@
 import { listen } from '@tauri-apps/api/event';
 import { goto } from '$app/navigation';
 import { isTauri } from '@tauri-apps/api/core';
-import { api, duree, estErreurCoeur, taille, type Candidat, type JeuPc, type ModInstalle, type PatchsPs3, type VerificationFiger } from '$lib/api';
+import { api, duree, estErreurCoeur, taille, type ApercuNuage, type Candidat, type JeuPc, type ModInstalle, type PatchsPs3, type VerificationFiger } from '$lib/api';
 import { attendreTouche, choisir, confirmer, fermerToast, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { completerRetroArch, poserBios, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
@@ -354,6 +354,43 @@ export async function mettreALAbri(id: number) {
     const a = await api.mettreALAbri(id);
     if (a.fichiers === 0) toast('Rien de nouveau à mettre à l’abri : aucune partie n’a changé depuis l’installation.');
     else toast(`✅ ${a.fichiers} fichier(s) de parties (${taille(a.octets)}) mis à l’abri dans ${a.dossier}.`);
+  } catch (e) {
+    toast(`Échec de la mise à l’abri : ${motifDuRefus(e)}`, 'erreur');
+  }
+}
+
+/** Les parties d'un jeu Steam (lot B2) : Frogtend montre d'abord ce qu'il a trouvé, ne refait pas un abri identique,
+ * et demande avant une très grosse copie. Rien n'est écrit chez Steam. */
+export async function mettreALAbriSteam(id: number) {
+  const attente = toast('💾 Frogtend cherche les parties de ce jeu…', 'neutre', { jusquaFermeture: true });
+  let a: ApercuNuage;
+  try {
+    a = await api.nuageSteamApercu(id);
+  } catch (e) {
+    fermerToast(attente);
+    await informer('💾 Rien à mettre à l’abri', motifDuRefus(e));
+    return;
+  }
+  fermerToast(attente);
+  const reste = [
+    a.introuvables ? `${a.introuvables} fichier(s) notés par Steam n’ont pas été retrouvés tels quels sur ce PC : pas copiés.` : '',
+    a.en_ligne_seulement ? `${a.en_ligne_seulement} fichier(s) sont seulement dans ton nuage (OneDrive…), pas sur ce PC : pas copiés.` : '',
+    a.en_attente ? `Steam n’a pas fini de synchroniser ${a.en_attente} fichier(s) : lance Steam un moment, puis recommence.` : '',
+    a.modifies ? `${a.modifies} partie(s) plus récente(s) que la dernière synchronisation de Steam : copiées telles quelles.` : '',
+  ].filter(Boolean);
+  if (a.fichiers === 0) {
+    await informer('💾 Aucune partie sur ce PC', ['Steam garde peut-être les parties de ce jeu seulement dans son nuage.', ...reste].join('\n'));
+    return;
+  }
+  if (a.deja) {
+    if (reste.length) await informer('✅ Déjà à l’abri', ['Rien n’a changé depuis le dernier abri.', ...reste].join('\n'));
+    else toast('✅ Déjà à l’abri : rien n’a changé depuis le dernier abri.');
+    return;
+  }
+  if (a.gros && !(await confirmer('💾 Grosse copie', { message: `${a.fichiers} fichier(s), ${taille(a.octets)} : c’est beaucoup pour des parties. Les copier quand même ?`, libelleValider: 'Copier' }))) return;
+  try {
+    const r = await api.nuageSteamAbriter(id, a.gros);
+    toast(`✅ ${r.fichiers} fichier(s) de parties (${taille(r.octets)}) mis à l’abri.${reste.length ? ' ' + reste.join(' ') : ''}`);
   } catch (e) {
     toast(`Échec de la mise à l’abri : ${motifDuRefus(e)}`, 'erreur');
   }
@@ -1153,6 +1190,9 @@ export async function gererJeu(id: number) {
   }
   if (j.installation && !deBoutique)
     options.push({ valeur: 'abri', libelle: '💾 Mettre mes parties à l’abri', detail: 'une copie de ce qui a changé depuis l’installation' });
+  // Un jeu Steam : ses parties que Steam garde pour son nuage (lot B2, lecture seule chez Steam).
+  if (j.installation?.boutique?.source === 'steam')
+    options.push({ valeur: 'abri', libelle: '💾 Mettre mes parties à l’abri', detail: 'une copie des parties que Steam garde pour son nuage' });
   // Un jeu importé relié à une fiche de Firehouse (contrat 1.21) : le lien se défait d'ici aussi.
   if (estImporte(j) && j.fiche)
     options.push({ valeur: 'delier', libelle: '🔗 Ce n’est pas ce jeu (ne plus relier)', detail: 'ton fichier ne bouge pas : il perd seulement la fiche de Firehouse' });
@@ -1177,7 +1217,7 @@ export async function gererJeu(id: number) {
   else if (c === 'figer') await choisirFiger(id);
   else if (c === 'pleinEcran') await choisirPleinEcran(id);
   else if (c === 'clavier') await choisirClavier(id);
-  else if (c === 'abri') await mettreALAbri(id);
+  else if (c === 'abri') await (deBoutique ? mettreALAbriSteam(id) : mettreALAbri(id));
   else if (c === 'delier') await delier(j);
   else if (c === 'retirer') await retirer(j);
 }

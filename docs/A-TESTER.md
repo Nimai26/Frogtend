@@ -48,6 +48,14 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Parties des jeux Steam à l'abri (0.87.0)
+- [ ] XCOM 2 ▸ ⚙ Gérer le jeu ▸ 💾 Mettre mes parties à l'abri : « 42 fichier(s) de parties (environ 94 Mo) mis à
+      l'abri ». Dans ton dossier des abris : un dossier du jeu avec `nuage-steam\…\Documents\my games\…`.
+- [ ] Recommencer tout de suite : « Déjà à l'abri ».
+- [ ] Jouer une partie, sauvegarder, quitter, recommencer : un nouvel abri.
+- [ ] Pendant une partie : refusé (« quitte-le d'abord »).
+- [ ] Sauvegarde du profil chez Firehouse : les parties XCOM 2 y sont.
+
 ## Triches et Cheat Engine pour les jeux Steam (0.86.0)
 - [ ] Ludothèque ▸ un jeu Steam installé ▸ ⚙ Gérer le jeu ▸ 🧰 Triches et Cheat Engine : la page s'ouvre, avec
       « Anti-triche » et « Jeu en ligne » (GTA V : BattlEye, oui ; XCOM 2 : en partie).

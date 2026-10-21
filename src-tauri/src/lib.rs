@@ -40,6 +40,7 @@ pub mod partie;
 pub mod pilotage;
 pub mod mods;
 pub mod nexus;
+pub mod nuage_steam;
 pub mod sept_z;
 pub mod registre;
 pub mod reconciliation;
@@ -487,6 +488,8 @@ pub fn run() {
             commandes::jeu_triches,
             commandes::cheatengine_lancer,
             commandes::cheatengine_risque,
+            commandes::nuage_steam_apercu,
+            commandes::nuage_steam_abriter,
             commandes::gratuits_liste,
             commandes::gratuits_connexion_epic,
             commandes::gratuits_obtenir_epic,

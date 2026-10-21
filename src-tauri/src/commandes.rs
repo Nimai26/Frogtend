@@ -1996,6 +1996,114 @@ pub async fn succes_steam(noyau: State<'_, Noyau>, appid: String) -> Resultat<Op
     crate::succes::succes_steam(crate::boutiques::API_STEAM, &cle, &c.steamid, &appid).await
 }
 
+/// Ce que Frogtend mettrait à l'abri des parties d'un jeu Steam (lot B2), à montrer avant.
+#[derive(Serialize)]
+pub struct ApercuNuage {
+    fichiers: usize,
+    octets: u64,
+    introuvables: usize,
+    en_ligne_seulement: usize,
+    en_attente: usize,
+    /// Plus récents que la dernière synchronisation de Steam : copiés tels quels.
+    modifies: usize,
+    /// Le dernier abri contient déjà exactement ces fichiers.
+    deja: bool,
+    /// Plus de `nuage_steam::GROS` : la personne confirme.
+    gros: bool,
+}
+
+/// Le plan du nuage Steam d'un jeu Steam de ce PC, pour le compte Steam du profil (lecture seule).
+/// Rend le plan et la marque du compte (`nuage_steam::marque`).
+async fn plan_nuage(noyau: &Noyau, id: i64) -> Resultat<(crate::nuage_steam::Plan, String)> {
+    let j = noyau.jeu_visible(id).await?;
+    let appid = j
+        .installation
+        .as_ref()
+        .and_then(|i| i.boutique.as_ref())
+        .filter(|b| b.source == "steam" && !b.cle.is_empty() && b.cle.bytes().all(|c| c.is_ascii_digit()))
+        .map(|b| b.cle.clone())
+        .ok_or_else(|| Erreur::Refus("Ce n'est pas un jeu Steam de ce PC.".into()))?;
+    let steam = crate::boutiques::dossier_steam().ok_or_else(|| Erreur::Refus("Steam n'est pas installé sur ce PC.".into()))?;
+    let userdata = steam.join("userdata");
+    let p = profil_ouvert(noyau).await?;
+    // Le compte Steam du profil ; sans compte relié, le seul compte de ce PC (jamais deviner entre plusieurs).
+    let compte = match crate::boutiques::lire(&dossier_profil_de(noyau, &p.id)).and_then(|c| crate::nuage_steam::compte(&c.steamid)) {
+        Some(c) => c,
+        None => {
+            let l: Vec<String> = std::fs::read_dir(&userdata)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .filter(|e| e.path().is_dir())
+                .filter_map(|e| e.file_name().to_str().filter(|n| n.bytes().all(|c| c.is_ascii_digit()) && *n != "0").map(String::from))
+                .collect();
+            match l.as_slice() {
+                [un] => un.clone(),
+                [] => return Err(Erreur::Refus("Steam n'a encore rien rangé pour un compte sur ce PC.".into())),
+                _ => return Err(Erreur::Refus("Plusieurs comptes Steam sur ce PC : relie le tien (⚙ Options ▸ Boutiques ▸ Steam) pour que Frogtend prenne tes parties.".into())),
+            }
+        }
+    };
+    let app = userdata.join(&compte).join(&appid);
+    if !userdata.join(&compte).is_dir() {
+        return Err(Erreur::Refus("Ton compte Steam n'a encore rien rangé sur ce PC : rien à mettre à l'abri.".into()));
+    }
+    let marque = crate::nuage_steam::marque(&compte);
+    let m = marque.clone();
+    let plan = tauri::async_runtime::spawn_blocking(move || crate::nuage_steam::planifier(&app, &m, &crate::nuage_steam::dossiers_windows()))
+        .await
+        .map_err(|_| Erreur::Disque("La lecture du nuage Steam s'est arrêtée brutalement.".into()))??
+        .ok_or_else(|| {
+            Erreur::Refus("Steam ne garde pas les parties de ce jeu dans son nuage : Frogtend ne sait pas encore où ce jeu les range (Firehouse le dira bientôt).".into())
+        })?;
+    Ok((plan, marque))
+}
+
+/// Ce que Frogtend mettrait à l'abri des parties d'un jeu Steam.
+#[tauri::command]
+pub async fn nuage_steam_apercu(noyau: State<'_, Noyau>, id: i64) -> Resultat<ApercuNuage> {
+    // Sans dossier des abris, rien ne pourrait être copié : dit dès l'aperçu.
+    let abris = noyau.dossier_abris()?;
+    let (plan, marque) = plan_nuage(&noyau, id).await?;
+    let deja = crate::nuage_steam::deja_a_l_abri(&abris.join(id.to_string()), &marque, &plan);
+    Ok(ApercuNuage {
+        fichiers: plan.fichiers.len(),
+        octets: plan.octets,
+        introuvables: plan.introuvables,
+        en_ligne_seulement: plan.en_ligne_seulement,
+        en_attente: plan.en_attente,
+        modifies: plan.modifies,
+        deja,
+        gros: plan.octets > crate::nuage_steam::GROS,
+    })
+}
+
+/// Met à l'abri les parties d'un jeu Steam (lecture seule chez Steam ; le plan est refait ici, jamais repris de
+/// l'interface). Refusé pendant une partie ; au-delà de `GROS`, seulement avec `accepte`.
+#[tauri::command]
+pub async fn nuage_steam_abriter(noyau: State<'_, Noyau>, id: i64, accepte: bool) -> Resultat<crate::partie::Abri> {
+    // Une partie en cours (ou un autre travail sur ce jeu) : ses parties changeraient pendant la copie.
+    if noyau.utilise(id) {
+        return Err(Erreur::Refus("Le jeu est en cours : quitte-le d'abord, pour que ses parties ne changent pas pendant la copie.".into()));
+    }
+    let _occupe = noyau.occuper(id);
+    let (plan, marque) = plan_nuage(&noyau, id).await?;
+    if plan.fichiers.is_empty() {
+        return Err(Erreur::Refus("Aucune partie de ce jeu n'est sur ce PC (Steam les garde peut-être seulement dans son nuage).".into()));
+    }
+    if plan.octets > crate::nuage_steam::GROS && !accepte {
+        return Err(Erreur::Refus("Ces parties sont très grosses : confirme d'abord.".into()));
+    }
+    let abris = noyau.dossier_abris()?;
+    let quand = crate::noyau::maintenant();
+    let (n, octets) = (plan.fichiers.len(), plan.octets);
+    let fin = tauri::async_runtime::spawn_blocking(move || crate::nuage_steam::abriter(&plan, &marque, &abris, id, &quand))
+        .await
+        .map_err(|_| Erreur::Disque("La mise à l'abri s'est arrêtée brutalement.".into()))??;
+    noyau.journaliser(&format!("jeu {id} : {n} fichier(s) du nuage Steam mis à l'abri"));
+    Ok(crate::partie::Abri { dossier: fin.to_string_lossy().into(), fichiers: n, octets, reste_installe: None })
+}
+
 /// Oublie le compte Steam du profil : la clé quitte le coffre, la liste importée est retirée.
 #[tauri::command]
 pub async fn boutique_steam_oublier(noyau: State<'_, Noyau>) -> Resultat<()> {

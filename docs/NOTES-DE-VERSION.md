@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.87.0 — Les parties de tes jeux Steam à l'abri
+
+- ⚙ Gérer le jeu ▸ 💾 Mettre mes parties à l'abri : maintenant aussi pour tes jeux Steam. Frogtend copie les
+  parties que Steam garde pour son nuage, où que le jeu les range (dossier de Steam, tes Documents même dans
+  OneDrive, AppData…), chacune vérifiée. Rien n'est jamais écrit chez Steam.
+- Une partie jouée depuis la dernière synchronisation de Steam est copiée telle quelle (jamais perdue).
+- Un fichier qui n'est que dans ton nuage OneDrive (pas sur ce PC) n'est pas copié : Frogtend te le dit.
+- Si rien n'a changé depuis le dernier abri, il n'en refait pas un.
+- Ces abris partent aussi chez Firehouse avec la sauvegarde de ton profil (accord de Seb du 21/10). Les remettre en
+  place viendra plus tard.
+
 ## 0.86.0 — Triches et Cheat Engine pour tes jeux Steam
 
 - ⚙ Gérer le jeu ▸ 🧰 Triches et Cheat Engine : maintenant aussi pour tes jeux Steam (et tous tes jeux PC), au bureau.
