@@ -43,6 +43,55 @@ pub struct EmplacementPropose {
     pub assez: bool,
 }
 
+/// Un disque FIXE de ce PC (jamais une clé USB, un lecteur optique ni un partage réseau).
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct DisqueLocal {
+    /// `C:\`
+    pub racine: String,
+    pub libre: u64,
+    /// Le disque de Windows.
+    pub systeme: bool,
+}
+
+/// Les disques fixes de ce PC, avec leur place libre (lus sur CE PC, jamais supposés : pas de « D: » ni de « E: »).
+#[cfg(windows)]
+pub fn disques_locaux() -> Vec<DisqueLocal> {
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::{GetDriveTypeW, GetLogicalDrives};
+    const DRIVE_FIXED: u32 = 3;
+    let systeme = std::env::var("SystemDrive").unwrap_or_default().trim_end_matches('\\').to_uppercase();
+    let masque = unsafe { GetLogicalDrives() };
+    (0..26u8)
+        .filter(|i| masque & (1 << i) != 0)
+        .filter_map(|i| {
+            let racine = format!("{}:\\", (b'A' + i) as char);
+            let large: Vec<u16> = racine.encode_utf16().chain([0]).collect();
+            if unsafe { GetDriveTypeW(PCWSTR(large.as_ptr())) } != DRIVE_FIXED {
+                return None;
+            }
+            let libre = fs2::available_space(Path::new(&racine)).ok()?;
+            Some(DisqueLocal { systeme: racine.trim_end_matches('\\').eq_ignore_ascii_case(&systeme), racine, libre })
+        })
+        .collect()
+}
+
+#[cfg(not(windows))]
+pub fn disques_locaux() -> Vec<DisqueLocal> {
+    vec![]
+}
+
+/// Le disque proposé pour ranger les jeux quand rien n'est réglé : celui qui a le plus de place (à place égale, pas
+/// celui de Windows).
+pub fn disque_propose(disques: &[DisqueLocal]) -> Option<&DisqueLocal> {
+    disques.iter().max_by(|a, b| a.libre.cmp(&b.libre).then(b.systeme.cmp(&a.systeme)))
+}
+
+/// Le dossier des jeux proposé sur un disque : `<disque>\Frogtend\Jeux` (tout ce que Frogtend range est sous
+/// `Frogtend`, jamais mêlé à des dossiers existants).
+pub fn dossier_jeux_sur(d: &DisqueLocal) -> PathBuf {
+    Path::new(&d.racine).join("Frogtend").join("Jeux")
+}
+
 /// La place libre sur le disque d'un dossier, ou `None` s'il est introuvable.
 pub fn place_libre(chemin: &Path) -> Option<u64> {
     if !chemin.is_dir() {
@@ -53,14 +102,21 @@ pub fn place_libre(chemin: &Path) -> Option<u64> {
 
 /// Les emplacements d'un système avec leur place, dans l'ordre de préférence. Le premier qui convient est proposé.
 pub fn proposer(emplacements: &Emplacements, systeme: &str, taille: u64) -> Vec<EmplacementPropose> {
-    emplacements
-        .pour(systeme)
-        .iter()
-        .map(|c| {
-            let libre = place_libre(Path::new(c));
-            EmplacementPropose { chemin: c.clone(), libre, assez: libre.is_some_and(|l| l >= taille + MARGE_LIBRE) }
-        })
-        .collect()
+    let vu = |c: &String| {
+        let libre = place_libre(Path::new(c));
+        EmplacementPropose { chemin: c.clone(), libre, assez: libre.is_some_and(|l| l >= taille + MARGE_LIBRE) }
+    };
+    let mut l: Vec<EmplacementPropose> = emplacements.pour(systeme).iter().map(vu).collect();
+    // Les dossiers propres à ce système n'existent plus (PC formaté, disque changé) : ceux par défaut ensuite, plutôt
+    // que rien.
+    if l.iter().all(|e| e.libre.is_none()) {
+        for c in &emplacements.defaut {
+            if !l.iter().any(|e| e.chemin.eq_ignore_ascii_case(c)) {
+                l.push(vu(c));
+            }
+        }
+    }
+    l
 }
 
 /// Un nom de dossier sûr pour Windows, tiré d'un titre (les FICHIERS du jeu, eux, gardent toujours leur nom).
@@ -523,6 +579,32 @@ impl Registre {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn le_dossier_des_jeux_propose_va_sur_le_disque_le_plus_libre_sous_frogtend() {
+        let d = |r: &str, libre: u64, systeme: bool| DisqueLocal { racine: r.into(), libre, systeme };
+        assert_eq!(disque_propose(&[]), None, "aucun disque : rien d'inventé");
+        let l = [d("C:\\", 50, true), d("F:\\", 900, false), d("G:\\", 10, false)];
+        assert_eq!(disque_propose(&l).unwrap().racine, "F:\\");
+        // À place égale : pas le disque de Windows.
+        let l = [d("C:\\", 500, true), d("H:\\", 500, false)];
+        assert_eq!(disque_propose(&l).unwrap().racine, "H:\\");
+        // Un seul disque (un portable) : celui de Windows, bien sûr.
+        assert_eq!(dossier_jeux_sur(&d("C:\\", 80, true)), PathBuf::from("C:\\Frogtend\\Jeux"));
+        // Un dossier de système disparu : ceux par défaut ensuite (le dossier choisi sur le PC neuf).
+        let t = tempfile::tempdir().unwrap();
+        let e = Emplacements {
+            defaut: vec![t.path().to_string_lossy().into()],
+            systemes: [("Sony Playstation".to_string(), vec!["Q:\\Ancien PC\\PS1".to_string()])].into(),
+        };
+        let p = proposer(&e, "Sony Playstation", 1);
+        assert_eq!(p.len(), 2);
+        assert!(p[0].libre.is_none() && p[1].assez, "{p:?}");
+        // Les vrais disques de ce PC : tous fixes, avec une racine « X:\ ».
+        for x in disques_locaux() {
+            assert!(x.racine.len() == 3 && x.racine.ends_with(":\\"), "{x:?}");
+        }
+    }
 
     #[test]
     fn une_correspondance_se_note_se_remplace_et_se_defait_sans_toucher_au_jeu() {

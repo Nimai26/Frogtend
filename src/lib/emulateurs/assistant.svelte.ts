@@ -30,9 +30,15 @@ export async function parcourir(options: { dossier?: boolean; titre: string; ext
 /** Le dossier où Frogtend installe les émulateurs ; demandé la première fois. */
 export async function dossierEmulateurs(changer = false): Promise<string | null> {
   if (etat.pc.dossierEmulateurs && !changer) return etat.pc.dossierEmulateurs;
+  // Proposé sur un disque qui existe sur CE PC (celui des jeux, sinon le plus libre) — jamais une lettre supposée.
+  const p = changer ? null : await api.dossierJeuxPropose().catch(() => null);
+  const d = changer ? '' : dossierParDefaut(etat.pc.emplacements.defaut, p?.disque, p?.disques);
   // En Taodbox (pas d'explorateur) : le dossier proposé d'office, comme « Prêt à jouer », annoncé avant l'accord.
   if (auCanape() && !changer) {
-    const d = dossierParDefaut(etat.pc.emplacements.defaut);
+    if (!d) {
+      await informer('📁 Aucun disque trouvé', 'Frogtend ne trouve aucun disque où installer les émulateurs : règle un dossier à l’écran du PC (⚙ Options ▸ 📁 Emplacements).');
+      return null;
+    }
     const oui = await confirmer('📁 Où installer les émulateurs ?', {
       message: `Ils iront dans ${d}, chacun dans son sous-dossier. Tu pourras changer ce dossier plus tard, à l’écran du PC (⚙ Options ▸ 📁 Emplacements).`,
       libelleValider: '✅ D’accord',
@@ -41,16 +47,30 @@ export async function dossierEmulateurs(changer = false): Promise<string | null>
     await reglerPc('dossierEmulateurs', d);
     return d;
   }
-  const suggestion = etat.pc.emplacements.defaut[0] ? `${etat.pc.emplacements.defaut[0]}\\Émulateurs` : 'E:\\Émulateurs';
+  if (!changer && d) {
+    const c = await choisir(
+      '📁 Où installer les émulateurs ?',
+      [
+        { valeur: 'propose', libelle: `📁 ${d}`, detail: 'Chaque émulateur y aura son sous-dossier, avec sa configuration.' },
+        { valeur: 'autre', libelle: '📂 Choisir un autre dossier…', detail: 'Avec l’explorateur de Windows.' },
+      ],
+      'Tu pourras changer ce dossier plus tard (⚙ Options ▸ 📁 Emplacements).',
+    );
+    if (!c) return null;
+    if (c === 'propose') {
+      await reglerPc('dossierEmulateurs', d);
+      return d;
+    }
+  }
   const ok = await confirmer('📁 Où installer les émulateurs ?', {
-    message: `Choisis (ou crée) un dossier pour les émulateurs, par exemple ${suggestion}.\nChaque émulateur y aura son sous-dossier, avec sa configuration (mode portable).`,
+    message: `Choisis (ou crée) un dossier pour les émulateurs${d ? `, par exemple ${d}` : ''}.\nChaque émulateur y aura son sous-dossier, avec sa configuration.`,
     libelleValider: '📂 Choisir le dossier',
   });
   if (!ok) return null;
-  const d = await parcourir({ dossier: true, titre: 'Dossier des émulateurs' });
-  if (!d) return null;
-  await reglerPc('dossierEmulateurs', d);
-  return d;
+  const choisi = await parcourir({ dossier: true, titre: 'Dossier des émulateurs' });
+  if (!choisi) return null;
+  await reglerPc('dossierEmulateurs', choisi);
+  return choisi;
 }
 
 /** Installe (ou met à jour) un émulateur depuis sa source officielle, après avoir annoncé la taille. */
@@ -155,7 +175,12 @@ export function recommandationsParDefaut(plateforme: string): EmulateurRecommand
 export async function dossierOutils(changer = false): Promise<string | null> {
   if (etat.pc.dossierOutils && !changer) return etat.pc.dossierOutils;
   if (await seulementAuBureau('Choisir le dossier des outils')) return null;
-  const suggestion = etat.pc.dossierEmulateurs ? `${etat.pc.dossierEmulateurs.replace(/[\\/][^\\/]*$/, '')}\\Outils` : 'E:\\Outils';
+  const disque = etat.pc.dossierEmulateurs ? null : (await api.dossierJeuxPropose().catch(() => null))?.disque;
+  const suggestion = etat.pc.dossierEmulateurs
+    ? `${etat.pc.dossierEmulateurs.replace(/[\\/][^\\/]*$/, '')}\\Outils`
+    : disque
+      ? `${disque.replace(/\\$/, '')}\\Frogtend\\Outils`
+      : 'un dossier de ton choix';
   const ok = await confirmer('📁 Où installer les outils ?', {
     message: `Choisis (ou crée) un dossier pour Cheat Engine et les autres outils, par exemple ${suggestion}.\nChaque outil y aura son sous-dossier ; rien n’est installé ailleurs.`,
     libelleValider: '📂 Choisir le dossier',

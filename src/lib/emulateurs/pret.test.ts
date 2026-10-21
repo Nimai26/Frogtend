@@ -202,9 +202,15 @@ describe('prêt à jouer', () => {
   });
 
   it('propose le dossier des émulateurs sur le disque des jeux', () => {
-    expect(dossierParDefaut(['E:\\Jeux'])).toBe('E:\\Emulateurs');
-    expect(dossierParDefaut(['d:\\Ludo\\Jeux'])).toBe('D:\\Emulateurs');
-    expect(dossierParDefaut([])).toBe('E:\\Emulateurs');
+    expect(dossierParDefaut(['E:\\Jeux'])).toBe('E:\\Frogtend\\Emulateurs');
+    expect(dossierParDefaut(['d:\\Ludo\\Jeux'], 'C:\\')).toBe('D:\\Frogtend\\Emulateurs');
+    // Aucun dossier de jeux : le disque proposé par le cœur (il existe sur CE PC) ; aucun : rien d'inventé.
+    expect(dossierParDefaut([], 'F:\\')).toBe('F:\\Frogtend\\Emulateurs');
+    expect(dossierParDefaut([])).toBe('');
+    // Un dossier de jeux restauré d'un autre PC (E: n'existe pas ici) : le disque proposé, jamais E:.
+    expect(dossierParDefaut(['E:\\Jeux'], 'C:\\', ['C:\\'])).toBe('C:\\Frogtend\\Emulateurs');
+    expect(dossierParDefaut(['e:\\Jeux'], 'C:\\', ['C:\\', 'E:\\'])).toBe('E:\\Frogtend\\Emulateurs');
+    expect(dossierParDefaut([], null)).toBe('');
   });
 
   it('dit tout dans un seul message', () => {

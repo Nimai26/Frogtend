@@ -166,7 +166,11 @@ impl Noyau {
         let manifeste: ManifesteParties = serde_json::from_value(document("manifeste.json").await?)
             .map_err(|_| Erreur::Serveur("Le manifeste de la sauvegarde est illisible.".into()))?;
 
-        let zone = self.zone_restauration(&s.profil.id).join("parties");
+        // La liste des jeux restaurés, gardée sur le PC : une sauvegarde suivante la garde tant qu'ils ne sont pas remis.
+        let attente = self.zone_restauration(&s.profil.id);
+        std::fs::create_dir_all(&attente)?;
+        std::fs::write(attente.join("bibliotheque.json"), serde_json::to_vec_pretty(&bibliotheque).unwrap_or_default())?;
+        let zone = attente.join("parties");
         let total = manifeste.fichiers.len();
         let mut taille = 0;
         for (i, (relatif, (sha, t))) in manifeste.fichiers.iter().enumerate() {

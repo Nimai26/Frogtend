@@ -7,6 +7,31 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- ✅ Seb 21/10 : « Ok commencer par corriger les défauts » → lot 0.99.0 = les 3 BLOQUANTS (dossier de jeux
+  par défaut, plus de lettre E: supposée, sauvegarde auto qui n'écrase jamais une sauvegarde non restaurée).
+- ✅ Seb 21/10 (exigence) : « après un formatage de PC ou l'achat d'un nouveau, grâce à son jeton de user (même s'il
+  a changé), on puisse restaurer ses jeux et sauvegardes, quitte à poser des questions pour le choix des dossiers si
+  les anciens sont absents. » → la restauration retrouve tout par le COMPTE du jeton (pas par le jeton lui-même), et
+  demande un dossier pour chaque ancien emplacement absent (jamais deviné, jamais abandonné en silence).
+- **Lot « Bêta » — prêt pour une installation neuve ?** (Seb 21/10 : « tout est en place pour une fresh install de
+  test… afin que nous passions en version bêta ? » ; audit des 3 experts le même jour, lecture seule). Réponse :
+  PAS ENCORE. BLOQUANTS : (1) aucun dossier de jeux par défaut → le premier « Mettre dans ma ludothèque » renvoie
+  aux Options (`reglages.ts` `emplacements.defaut: []`, `telechargements.svelte.ts`) : proposer UN dossier (disque le
+  plus libre, place annoncée, un oui) ; (2) repli sur la lettre `E:` pour les émulateurs (`pret.ts` `?? 'E'`,
+  enregistré AVANT l'installation) : un disque qui existe, enregistré après réussite ; (3) sauvegarde automatique
+  qui peut VIDER la sauvegarde Firehouse d'un profil recréé au même nom/PC avant restauration (`sauvegarde.rs` DELETE
+  des absents ; liste en échec lue « aucune ») : pas d'envoi auto tant qu'une sauvegarde existante n'est ni
+  restaurée ni écartée ; (4) essais réels jamais faits : « Prêt à jouer » sur un PC sans émulateur, choix d'un
+  dossier, mise à jour en un clic, deux profils sur un même émulateur. IMPORTANTS : dossier des abris non réglé
+  (retrait refusé) ; `--taodbox` sans profil = impasse plein écran (pas de clavier à l'écran ni Quitter) ; mode
+  simulé visible de tous ; exemples « E:\ » dans les textes ; MAME exige MAME.xml de LaunchBox ; clé PRIVÉE de mise
+  à jour seulement sur Venkman (à copier ailleurs) ; « bêta » = numéros normaux (une pré-version GitHub n'est jamais
+  proposée par `latest`) ; régénérer la clé Steam. Peut attendre : VC++ redistribuable, PIN coché d'office,
+  `pc.json` abîmé → écran vide, chemins dans quelques messages. Avant le reset, Seb garde : `%APPDATA%r.hikari-no-
+  sekai.frogtend` (+ `.avant-desinstallation`), le dossier des abris, `<émulateur>\Profils\`, `dev_hdd0` de RPCS3,
+  `.frogtend-sauvegardes`, les dossiers des jeux ; une sauvegarde Firehouse récente ; nouveaux jetons (anciens
+  révoqués).
+
 - **Contrat 1.23 EN SERVICE** (20/10 22 h 29, Firehouse 2.94.0 ; détail dans CONTRAT § 1.23) : rôles des fichiers,
   `installation {forme, extraire_dans, lancer, arguments}`, MULTI-DISQUES = une version dont le fichier n=0 est le
   .m3u (lancer `installation.lancer`, jamais supposer n=0 = disque 1). ✅ Vérifié le 20/10 : Frogtend choisit déjà
@@ -673,6 +698,26 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.99.0** (21/10) — Lot Bêta, les 3 BLOQUANTS de l'audit + exigence de Seb « PC formaté » (relectures des 3
+  experts, BLOQUANT contrat corrigé : restaurer puis sauvegarder vidait les parties en attente). Cœur :
+  `disques_locaux` (GetLogicalDrives/GetDriveTypeW fixes), `disque_propose` (le plus libre, pas Windows à égalité),
+  `dossier_jeux_propose`/`dossier_jeux_creer` (seul `<disque fixe>\Frogtend\Jeux` admis) ; `proposer` retombe sur
+  les dossiers par défaut quand ceux d'un système n'existent plus ; sauvegarde : `verifier_reprise` (parties OU
+  jeux d'une sauvegarde existante → refus `A_REPRENDRE`), marque `sauvegarde-reprise.json` (profil, PC) posée par une
+  restauration de CETTE cible ou un « remplacer » explicite, effacée au changement de compte ; ce qui attend dans
+  `restauration/<profil>` (jeux, émulateurs) = `gardes`, et ses jeux restent dans `bibliotheque.json`. Interface :
+  « 📁 Où ranger tes jeux ? » (`dossierJeux.ts` : proposé / autre ; au canapé, jamais l'explorateur) au premier
+  téléchargement, quand les dossiers réglés n'existent plus, et à la restauration ; `dossierParDefaut` = `X:\Frogtend\
+  Emulateurs` sur un disque qui EXISTE (jamais E: supposé), non gardé si l'installation échoue ; Prêt à jouer repose
+  les parties restaurées ; `proposerReprise` (Restaurer / Remplacer + 2e confirmation / Plus tard, une fois par
+  profil) ; sauvegardes du COMPTE proposées sous un autre nom de profil ; liste illisible → pas de sauvegarde auto.
+  Vérifié : tests (cœur, interface 229) ; disques réels de Venkman lus en lecture seule. NON vérifié : tout le
+  parcours sur un vrai PC neuf (A-TESTER, à faire ensemble). RESTE (notés, pas faits) : clé des parties d'émulateur
+  par nom de DOSSIER (un émulateur installé à la main ou en sous-dossier versionné ne retrouve pas ses parties
+  restaurées) et repose seulement par Prêt à jouer (pas par l'assistant des Options) ; un disque USB externe compte
+  comme « fixe » (lire le type de bus) ; « autre dossier » n'interdit pas une racine ni Documents ; `nomRange` (TS)
+  recopie `nom_pour_api` ; `--taodbox` sans profil ; mode simulé visible ; MAME.xml de LaunchBox exigé.
 
 - **0.98.0** (21/10) — Contenus PS3 servis par Firehouse (contrat 1.24 ; avis de l'expert lancement avant et après,
   ses IMPORTANTS corrigés) : `ps3_de_la_version` (fichiers aux rôles `dlc`/`maj`/`licence` de la version, SANS tri par

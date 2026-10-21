@@ -322,6 +322,25 @@ pub async fn envoyer(d: &impl Destination, contenu: &Contenu, pc: &str, emplacem
     Ok(bilan)
 }
 
+/// Le début du refus « une sauvegarde à reprendre existe » (l'interface le reconnaît pour proposer de la restaurer).
+pub const A_REPRENDRE: &str = "Une sauvegarde de ce profil existe déjà chez Firehouse";
+
+/// Avant la PREMIÈRE sauvegarde d'un profil sur ce PC (rien envoyé d'ici, rien restauré, rien écarté) : si
+/// Firehouse a déjà, au même nom et au même PC, une sauvegarde avec des parties, l'envoyer la VIDERAIT (ce qui manque
+/// ici en sortirait). Refus : la personne la restaure, ou l'écarte en le disant.
+pub async fn verifier_reprise(d: &impl Destination) -> Resultat<()> {
+    let ancien: ManifesteParties = d.lire_document("manifeste.json").await?.and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default();
+    // Sa liste de jeux compte aussi (une sauvegarde sans parties mais avec 30 jeux à remettre).
+    let jeux = d.lire_document("bibliotheque.json").await?.and_then(|v| v["jeux"].as_array().map(|l| l.len())).unwrap_or(0);
+    if ancien.fichiers.is_empty() && jeux == 0 {
+        return Ok(());
+    }
+    Err(Erreur::Refus(format!(
+        "{A_REPRENDRE} pour ce PC ({} fichier(s) de parties, {jeux} jeu(x)) : restaure-la d'abord, ou choisis de la remplacer.",
+        ancien.fichiers.len()
+    )))
+}
+
 fn lire_json(p: &Path) -> Value {
     std::fs::read(p).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or(Value::Null)
 }
@@ -331,14 +350,41 @@ impl Noyau {
         self.dossier.join("profils").join(profil).join("derniere-sauvegarde.json")
     }
 
+    /// La marque « la sauvegarde existante chez Firehouse a été reprise (restaurée) ou écartée » : ce profil peut
+    /// désormais l'écrire.
+    fn fichier_reprise(&self, profil: &str) -> PathBuf {
+        self.dossier.join("profils").join(profil).join("sauvegarde-reprise.json")
+    }
+
+    /// Note que la personne a repris (restauré) ou écarté la sauvegarde existante.
+    /// `cible` : la sauvegarde concernée (profil, PC), telle que Firehouse la range — la garde n'est levée que pour ELLE.
+    pub async fn marquer_reprise(&self, comment: &str, profil: &str, pc: &str) -> Resultat<()> {
+        let s = self.session().await?;
+        let f = self.fichier_reprise(&s.profil.id);
+        if let Some(p) = f.parent() {
+            std::fs::create_dir_all(p)?;
+        }
+        let v = json!({ "comment": comment, "profil": nom_pour_api(profil), "pc": nom_pour_api(pc), "le": maintenant() });
+        std::fs::write(f, serde_json::to_vec_pretty(&v).unwrap())?;
+        Ok(())
+    }
+
+    /// La sauvegarde (profil, PC) de Firehouse a-t-elle été reprise (restaurée) ou écartée par ce profil ? Restaurer
+    /// celle d'un AUTRE PC ne lève pas la garde de celle de CE PC.
+    fn reprise_de(&self, profil_id: &str, profil: &str, pc: &str) -> bool {
+        let v = lire_json(&self.fichier_reprise(profil_id));
+        v["profil"].as_str() == Some(nom_pour_api(profil).as_str()) && v["pc"].as_str() == Some(nom_pour_api(pc).as_str())
+    }
+
     /// La dernière sauvegarde réussie du profil ouvert, depuis ce PC.
     pub async fn derniere_sauvegarde(&self) -> Resultat<Option<Bilan>> {
         let s = self.session().await?;
         Ok(std::fs::read(self.fichier_derniere_sauvegarde(&s.profil.id)).ok().and_then(|o| serde_json::from_slice(&o).ok()))
     }
 
-    /// Sauvegarde le profil ouvert chez Firehouse (`<username du jeton>/<profil>/<pc>/`).
-    pub async fn sauvegarder(&self, programmes_emulateurs: &[String], pc: &str) -> Resultat<Bilan> {
+    /// Sauvegarde le profil ouvert chez Firehouse (`<username du jeton>/<profil>/<pc>/`). `ecarter` : la personne a
+    /// choisi de REMPLACER une sauvegarde existante qu'elle n'a pas restaurée (sinon refus, `verifier_reprise`).
+    pub async fn sauvegarder(&self, programmes_emulateurs: &[String], pc: &str, ecarter: bool) -> Resultat<Bilan> {
         let s = self.session().await?;
         let client = match &s.source {
             crate::source::Source::Firehouse(c) => c,
@@ -355,6 +401,16 @@ impl Noyau {
         }
         let contenu = self.contenu_sauvegarde(programmes_emulateurs).await?;
         let api = Api { client, profil: nom_pour_api(&s.profil.nom), pc: nom_pour_api(pc), morceau: MORCEAU };
+        let premiere = !self.fichier_derniere_sauvegarde(&s.profil.id).is_file() && !self.reprise_de(&s.profil.id, &s.profil.nom, pc);
+        if premiere && ecarter {
+            self.marquer_reprise("ecartee", &s.profil.nom, pc).await?;
+            self.journaliser(&format!("profil {} : sauvegarde existante chez Firehouse écartée par la personne", s.profil.id));
+        } else if premiere {
+            match verifier_reprise(&api).await {
+                Ok(()) | Err(Erreur::Introuvable(_)) => {}
+                Err(e) => return Err(e),
+            }
+        }
         let bilan = match envoyer(&api, &contenu, pc, "Firehouse").await {
             Ok(b) => b,
             // Firehouse sans les routes de sauvegarde (avant le contrat 1.5).
@@ -497,12 +553,29 @@ impl Noyau {
             }
         }
 
-        Ok(Contenu {
-            configuration,
-            bibliotheque: json!({ "profil": profil.nom, "jeux": liste }),
-            parties,
-            gardes: gardes.into_iter().map(|id| format!("jeux/{id}/")).collect(),
-        })
+        // Ce qui ATTEND encore d'une restauration (PC formaté ou neuf : jeu pas encore remis, émulateur pas encore
+        // installé) n'est pas sur le PC mais n'est pas perdu : protégé chez Firehouse, jamais retiré de la sauvegarde.
+        let attente = self.dossier.join("restauration").join(&profil.id);
+        let mut gardes: Vec<String> = gardes.into_iter().map(|id| format!("jeux/{id}/")).collect();
+        for sorte in ["jeux", "emulateurs"] {
+            for e in std::fs::read_dir(attente.join("parties").join(sorte)).into_iter().flatten().flatten() {
+                if e.file_type().is_ok_and(|t| t.is_dir()) {
+                    gardes.push(format!("{sorte}/{}/", e.file_name().to_string_lossy()));
+                }
+            }
+        }
+        gardes.sort();
+        gardes.dedup();
+        // Les jeux de la sauvegarde restaurée pas encore remis restent dans sa liste (à remettre plus tard).
+        let restauree = lire_json(&attente.join("bibliotheque.json"));
+        let ici: std::collections::BTreeSet<i64> = liste.iter().filter_map(|j| j["id"].as_i64()).collect();
+        for j in restauree["jeux"].as_array().into_iter().flatten() {
+            if j["id"].as_i64().is_some_and(|id| !ici.contains(&id)) {
+                liste.push(j.clone());
+            }
+        }
+
+        Ok(Contenu { configuration, bibliotheque: json!({ "profil": profil.nom, "jeux": liste }), parties, gardes })
     }
 }
 
@@ -512,6 +585,22 @@ mod tests {
 
     fn contenu(parties: Vec<Element>) -> Contenu {
         Contenu { configuration: json!({"a": 1}), bibliotheque: json!({"jeux": []}), parties, gardes: vec![] }
+    }
+
+    #[tokio::test]
+    async fn une_sauvegarde_existante_n_est_jamais_videe_par_un_profil_neuf() {
+        let pc = tempfile::tempdir().unwrap();
+        let partage = tempfile::tempdir().unwrap();
+        let d = DossierLocal(partage.path().into());
+        // Rien chez Firehouse : la première sauvegarde part.
+        verifier_reprise(&d).await.unwrap();
+        let a = pc.path().join("PARTIE.SAV");
+        std::fs::write(&a, b"un").unwrap();
+        envoyer(&d, &contenu(vec![Element { source: a, relatif: "jeux/7/PARTIE.SAV".into() }]), "VENKMAN", "test").await.unwrap();
+        // Un profil recréé au même nom, sur le même PC, sans ses parties : refusé (sinon PARTIE.SAV sortirait).
+        let e = verifier_reprise(&d).await.unwrap_err();
+        assert!(format!("{e:?}").contains(A_REPRENDRE), "{e:?}");
+        assert!(partage.path().join("parties/jeux/7/PARTIE.SAV").is_file());
     }
 
     #[tokio::test]
@@ -753,6 +842,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn ce_qui_attend_d_une_restauration_n_est_jamais_retire_de_firehouse() {
+        use crate::coffre::CoffreMemoire;
+        use crate::noyau::Connexion;
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, None).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        // PC formaté : la sauvegarde restaurée attend (jeu 42 pas remis, RPCS3 pas encore installé).
+        let attente = d.path().join("app").join("restauration").join(&id);
+        for r in ["parties/jeux/42/SAVE.DAT", "parties/emulateurs/RPCS3/dev_hdd0/x"] {
+            std::fs::create_dir_all(attente.join(r).parent().unwrap()).unwrap();
+            std::fs::write(attente.join(r), b"partie").unwrap();
+        }
+        std::fs::write(attente.join("bibliotheque.json"), br#"{"jeux":[{"id":42,"titre":"Dune"}]}"#).unwrap();
+        let c = n.contenu_sauvegarde(&[]).await.unwrap();
+        assert!(c.gardes.contains(&"jeux/42/".to_string()) && c.gardes.contains(&"emulateurs/RPCS3/".to_string()), "{:?}", c.gardes);
+        assert!(c.bibliotheque["jeux"].as_array().unwrap().iter().any(|j| j["id"] == 42), "le jeu à remettre reste listé");
+
+        // Envoyé à Firehouse : ce qui y était (la sauvegarde restaurée) n'en sort pas.
+        let partage = tempfile::tempdir().unwrap();
+        let dl = DossierLocal(partage.path().into());
+        let ancien = attente.join("parties/jeux/42/SAVE.DAT");
+        envoyer(&dl, &contenu(vec![Element { source: ancien, relatif: "jeux/42/SAVE.DAT".into() }]), "VENKMAN", "test").await.unwrap();
+        let b = envoyer(&dl, &c, "VENKMAN", "test").await.unwrap();
+        assert_eq!(b.retires, 0);
+        assert!(partage.path().join("parties/jeux/42/SAVE.DAT").is_file());
+        // Et la garde d'une sauvegarde existante compte aussi ses jeux, même sans parties.
+        let vide = tempfile::tempdir().unwrap();
+        let dv = DossierLocal(vide.path().into());
+        dv.ecrire_document("bibliotheque.json", &json!({"jeux": [{"id": 1}]})).await.unwrap();
+        assert!(verifier_reprise(&dv).await.is_err());
+    }
+
+    #[tokio::test]
     async fn les_abris_d_un_jeu_cache_a_ce_profil_ne_partent_jamais() {
         use crate::coffre::CoffreMemoire;
         use crate::noyau::Connexion;
@@ -792,7 +916,7 @@ mod tests {
         let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
         n.ouvrir(&id, None, &Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
         // Refusé avant d'envoyer quoi que ce soit : aucune requête.
-        assert!(matches!(n.sauvegarder(&[], "Venkman").await, Err(Erreur::Refus(_))));
+        assert!(matches!(n.sauvegarder(&[], "Venkman", false).await, Err(Erreur::Refus(_))));
         tout.assert_hits(0);
     }
 

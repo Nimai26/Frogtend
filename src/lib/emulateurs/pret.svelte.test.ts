@@ -14,6 +14,11 @@ vi.mock('$lib/api', () => ({
     emulateurFiche: vi.fn(async () => ({ id: 'rpcs3', nom: 'RPCS3', ligne: '', installable: true })),
     emulateurDerniereVersion: vi.fn(async () => ({ url: 'https://github.com/x', version: '1', taille: 38914236 })),
     rpcs3Micrologiciel: vi.fn(async () => null),
+    dossierJeuxPropose: vi.fn(async () => ({ chemin: 'F:\\Frogtend\\Jeux', disque: 'F:\\', libre: 1 })),
+    restaurationReposerEmulateurs: vi.fn(async () => {
+      appels.push('reposer les parties restaurées');
+      return { reposes: 0, deja_la: 0, conflits: [] };
+    }),
     emulateurReglerManette: vi.fn(async (id: string) => {
       appels.push(`manette ${id}`);
       return { reglee: true, profils_ajoutes: 0 };
@@ -77,9 +82,9 @@ describe('prêt à jouer, de bout en bout', () => {
     expect(titre).toContain('Sony Playstation 3');
     expect(o.message).toContain('tes 7 jeux');
     expect(o.message).toContain('37.1 Mo');
-    expect(o.message).toContain('E:\\Emulateurs\\RPCS3');
-    expect(appels).toEqual(['installer rpcs3 sansQuestion=true', 'manette rpcs3']);
-    expect(reglages.dossierEmulateurs).toBe('E:\\Emulateurs');
+    expect(o.message).toContain('E:\\Frogtend\\Emulateurs\\RPCS3');
+    expect(appels).toEqual(['installer rpcs3 sansQuestion=true', 'manette rpcs3', 'reposer les parties restaurées']);
+    expect(reglages.dossierEmulateurs).toBe('E:\\Frogtend\\Emulateurs');
     expect(JSON.stringify(etat.pc.emulateurs)).toContain('rpcs3.exe');
     // Pas de micrologiciel PS3 : c'est dit tout de suite.
     expect(informer).toHaveBeenCalledTimes(1);
@@ -90,6 +95,17 @@ describe('prêt à jouer, de bout en bout', () => {
     etat.pc.emulateurs = { 'Sony Playstation 3': { defaut: '1', liste: [{ cle: '1', nom: 'RPCS3', programme: 'x', ligne: '' }] } };
     expect(await preparerPourJouer('Sony Playstation 3', 1)).toBe('1');
     expect(confirmer).not.toHaveBeenCalled();
+  });
+
+  it('sans dossier de jeux : le disque proposé par le cœur ; une installation ratée ne garde pas le dossier', async () => {
+    etat.pc.emplacements.defaut = [];
+    installer.mockResolvedValueOnce(null as never);
+    expect(await preparerPourJouer('Sony Playstation 3', 1)).toBeNull();
+    const [, o] = confirmer.mock.calls[0] as [string, { message: string }];
+    expect(o.message).toContain('F:\\Frogtend\\Emulateurs');
+    // Proposé de nouveau au prochain essai.
+    expect(etat.pc.dossierEmulateurs).toBe('');
+    etat.pc.emplacements.defaut = ['E:\\Jeux'];
   });
 
   it('n’installe rien si la personne dit non', async () => {

@@ -11,6 +11,7 @@ import { etat, reglerPc, remplacerReglagesProfil } from '$lib/etat.svelte';
 import { ajouter, normaliserTous } from '$lib/emulateurs/choix';
 import { depuis } from '$lib/ludotheque/ludotheque.svelte';
 import { rechargerJeuxDuPc, tele } from '$lib/ludotheque/telechargements.svelte';
+import { proposerDossierJeux } from '$lib/ludotheque/dossierJeux';
 
 export interface BilanSauvegarde {
   envoyes: number;
@@ -43,12 +44,44 @@ export async function lireDerniereSauvegarde() {
   sauvegarde.derniere = await api.derniereSauvegarde().catch(() => null);
 }
 
-/** Sauvegarde maintenant. `discrete` : pas de message si tout va bien. */
-export async function sauvegarder(discrete = false): Promise<boolean> {
+/** Le début du refus du cœur quand une sauvegarde existante n'a été ni restaurée ni écartée (`sauvegarde.rs`). */
+export const A_REPRENDRE = 'Une sauvegarde de ce profil existe déjà chez Firehouse';
+
+/** Déjà proposé pendant cette ouverture du profil (une sauvegarde automatique ne redemande pas à chaque partie). */
+let repriseProposee = '';
+
+/** Une sauvegarde de ce profil existe chez Firehouse et ce PC ne l'a jamais reprise : rien n'est envoyé tant que la
+ * personne n'a pas choisi (l'envoyer la viderait de ce qui manque ici). */
+export async function proposerReprise(motif: string, discrete: boolean) {
+  const profil = etat.profilOuvert?.id ?? '';
+  if (discrete && repriseProposee === profil) return;
+  repriseProposee = profil;
+  const c = await choisir(
+    '📥 Une sauvegarde de ce profil existe déjà',
+    [
+      { valeur: 'restaurer', libelle: '📥 La restaurer sur ce PC', detail: 'Tes réglages, tes parties, puis tes jeux.' },
+      { valeur: 'remplacer', libelle: '♻ La remplacer par ce PC', detail: 'Les parties qui ne sont pas sur ce PC seront retirées de la sauvegarde.' },
+      { valeur: 'plus_tard', libelle: '⏳ Plus tard', detail: 'Rien n’est envoyé en attendant.' },
+    ],
+    motif,
+  );
+  if (c === 'restaurer') return restaurer();
+  if (c !== 'remplacer') return;
+  const oui = await confirmer('♻ Remplacer la sauvegarde de Firehouse ?', {
+    message:
+      'La sauvegarde de Firehouse ne contiendra plus que ce qui est sur CE PC : les parties qui n’y sont pas en sortiront (Firehouse en garde seulement un historique).',
+    libelleValider: '♻ Remplacer',
+  });
+  if (oui) await sauvegarder(false, true);
+}
+
+/** Sauvegarde maintenant. `discrete` : pas de message si tout va bien. `ecarter` : remplacer une sauvegarde existante
+ * non restaurée (choix explicite de la personne). */
+export async function sauvegarder(discrete = false, ecarter = false): Promise<boolean> {
   if (sauvegarde.enCours || etat.pc.firehouse.simule) return false;
   sauvegarde.enCours = true;
   try {
-    const b = await api.sauvegarder();
+    const b = await api.sauvegarder(ecarter);
     sauvegarde.derniere = b;
     if (!discrete) {
       const seulsIci = b.non_envoyes
@@ -63,6 +96,10 @@ export async function sauvegarder(discrete = false): Promise<boolean> {
     return true;
   } catch (e) {
     const motif = motifDuRefus(e);
+    if (motif.includes(A_REPRENDRE)) {
+      void proposerReprise(motif, discrete);
+      return false;
+    }
     // Firehouse sans la sauvegarde (avant le contrat 1.5) : une sauvegarde automatique se tait.
     if (discrete && motif.includes('ne propose pas encore')) return false;
     // Ludothèque pas encore synchronisée (profil neuf, autre compte) : la sauvegarde automatique attend la suivante.
@@ -87,7 +124,9 @@ const nomRange = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '
 export async function auDemarrage() {
   await lireDerniereSauvegarde();
   if (!sauvegarde.derniere && !etat.pc.firehouse.simule && Object.keys(tele.jeux).length === 0) {
-    const liste = await api.restaurationListe().catch(() => []);
+    // Liste illisible (hors ligne…) : on ne conclut JAMAIS « aucune sauvegarde » — pas de sauvegarde automatique cette fois.
+    const liste = await api.restaurationListe().catch(() => null);
+    if (!liste) return;
     const a_moi = liste.filter((s) => s.profil === nomRange(etat.profilOuvert?.nom ?? ''));
     if (a_moi.length) {
       const s = a_moi[0];
@@ -97,6 +136,18 @@ export async function auDemarrage() {
       });
       if (oui) {
         await restaurer(s.profil, s.pc);
+        return;
+      }
+      // Déjà demandé : la sauvegarde automatique, refusée par le cœur, ne repose pas la question tout de suite.
+      repriseProposee = etat.profilOuvert?.id ?? '';
+    } else if (liste.length) {
+      // PC neuf ou formaté, profil recréé sous un autre nom : les sauvegardes du COMPTE (même avec un nouveau jeton).
+      const oui = await confirmer('📥 Des sauvegardes de ton compte existent', {
+        message: `${liste.length} sauvegarde(s) faite(s) depuis un autre profil ou un autre PC. En restaurer une ici (réglages, parties, puis tes jeux) ?`,
+        libelleValider: '📥 Voir les sauvegardes',
+      });
+      if (oui) {
+        await restaurer();
         return;
       }
     }
@@ -164,13 +215,17 @@ export async function restaurer(profilChoisi?: string, pcChoisi?: string) {
   if (conf.reglages_profil?.reglages) await remplacerReglagesProfil(conf.reglages_profil.reglages);
   const pcLu = conf.reglages_pc?.reglages ?? {};
   const existe = async (chemin: string) => (await api.espaceLibre(chemin).catch(() => null)) !== null;
+  // Les anciens dossiers absents de ce PC (formaté, neuf, autres disques) : jamais abandonnés en silence.
+  const absents: string[] = [];
   if (etat.pc.emplacements.defaut.length === 0 && Object.keys(etat.pc.emplacements.systemes).length === 0 && pcLu.emplacements) {
     const defaut = [];
     for (const d of pcLu.emplacements.defaut ?? []) if (await existe(d)) defaut.push(d);
+    else absents.push(d);
     const systemes: Record<string, string[]> = {};
     for (const [s, l] of Object.entries(pcLu.emplacements.systemes ?? {})) {
       const ok = [];
       for (const d of l as string[]) if (await existe(d)) ok.push(d);
+      else absents.push(d);
       if (ok.length) systemes[s] = ok;
     }
     await reglerPc('emplacements', { defaut, systemes });
@@ -206,6 +261,16 @@ export async function restaurer(profilChoisi?: string, pcChoisi?: string) {
   await rechargerJeuxDuPc();
   const aRemettre = (prete.bibliotheque?.jeux ?? []).filter((j: any) => !tele.jeux[j.id]);
   if (!aRemettre.length) return;
+  // Aucun dossier de jeux sur ce PC (les anciens n'existent plus) : on demande où les ranger, avant de rien chiffrer.
+  if (etat.pc.emplacements.defaut.length === 0) {
+    const raison = absents.length
+      ? `Tes jeux étaient rangés dans ${[...new Set(absents)].slice(0, 3).join(', ')} : ${absents.length > 1 ? 'ces dossiers n’existent' : 'ce dossier n’existe'} pas sur ce PC.`
+      : 'Frogtend ne sait pas encore où ranger tes jeux sur ce PC.';
+    if (!(await proposerDossierJeux(raison))) {
+      await informer('🎮 Tes jeux plus tard', 'Tes jeux pourront être remis quand un dossier sera choisi : ils restent dans ta ludothèque Firehouse, et leurs parties attendent sur ce PC.');
+      return;
+    }
+  }
   const total = aRemettre.reduce((s: number, j: any) => s + (j.total ?? 0), 0);
   const oui = await confirmer(`🎮 Remettre ${aRemettre.length} jeu(x) dans ta ludothèque ?`, {
     message: `${taille(total)} à télécharger, dans tes emplacements. Les parties de chaque jeu seront reposées dès qu’il sera réinstallé.\n\n${aRemettre.slice(0, 10).map((j: any) => `• ${j.titre} (${taille(j.total ?? 0)})`).join('\n')}${aRemettre.length > 10 ? `\n… et ${aRemettre.length - 10} autre(s)` : ''}`,

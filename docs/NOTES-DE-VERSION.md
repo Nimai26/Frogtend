@@ -1,5 +1,18 @@
 # Notes de version de Frogtend
 
+## 0.99.0 — Prêt pour un PC neuf (ou formaté)
+
+- 📁 Ton premier jeu sur un PC neuf : Frogtend te PROPOSE où le ranger (sur le disque qui a le plus de place, avec la
+  place libre affichée), un seul oui suffit. Fini le « va dans les Options ».
+- 🎮 Les émulateurs s'installent sur un disque qui existe vraiment sur ce PC (`Frogtend\Emulateurs`), plus jamais
+  sur un disque « E: » supposé. Si l'installation échoue, rien n'est retenu.
+- 📥 PC formaté ou nouveau PC : avec ton jeton (même un nouveau), Frogtend te propose de restaurer les sauvegardes de
+  ton compte, même sous un autre nom de profil. Si tes anciens dossiers n'existent plus, il te demande où ranger tes
+  jeux au lieu de les oublier. Les parties de tes émulateurs sont reposées dès que l'émulateur est réinstallé.
+- 🛡 Ta sauvegarde chez Firehouse n'est plus jamais vidée par un profil recréé : tant qu'elle n'est ni restaurée ni
+  écartée par toi, rien n'est envoyé — Frogtend te demande : la restaurer, la remplacer, ou plus tard. Ce qui attend
+  encore d'une restauration (jeux pas remis, émulateurs pas installés) reste protégé chez Firehouse.
+
 ## 0.98.0 — Les DLC et licences de tes jeux PS3 de Firehouse
 
 - 📦 Un jeu PS3 téléchargé depuis Firehouse avec ses contenus (God of War III et ses 12 paquets, par exemple)

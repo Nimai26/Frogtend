@@ -52,7 +52,11 @@ export async function preparerPourJouer(plateforme: string, jeux: number): Promi
   if (!choix) return reglerEmulateur(plateforme);
 
   const dossierNouveau = !etat.pc.dossierEmulateurs;
-  const dossier = etat.pc.dossierEmulateurs || dossierParDefaut(etat.pc.emplacements.defaut);
+  // Sur un disque qui existe sur CE PC (celui des jeux, sinon le plus libre) — jamais une lettre supposée.
+  const propose = etat.pc.dossierEmulateurs ? null : await api.dossierJeuxPropose().catch(() => null);
+  const dossier = etat.pc.dossierEmulateurs || dossierParDefaut(etat.pc.emplacements.defaut, propose?.disque, propose?.disques);
+  // Aucun disque connu et un émulateur à installer : l'assistant, qui fait choisir le dossier.
+  if (!dossier && choix.comment !== 'deja') return reglerEmulateur(plateforme);
   const paquet = choix.comment === 'frogtend' && choix.id ? await api.emulateurDerniereVersion(choix.id).catch(() => null) : null;
   // Celui du conseil, déjà sur le PC, mais pas dans la version attendue par les jeux de Firehouse (MAME) : on le dit.
   const installee = choix.programme ? installes.find((i) => i.programme === choix.programme)?.version : null;
@@ -71,12 +75,16 @@ export async function preparerPourJouer(plateforme: string, jeux: number): Promi
     libelleValider: choix.comment === 'deja' ? '🎮 C’est parti' : '🎮 Tout préparer',
   });
   if (!oui) return null;
-  if (dossierNouveau) await reglerPc('dossierEmulateurs', dossier);
+  if (dossierNouveau && dossier) await reglerPc('dossierEmulateurs', dossier);
 
   let programme = choix.programme ?? null;
   if (choix.comment === 'frogtend' && choix.id) programme = (await installerEmulateur(choix.id, choix.nom, false, { sansQuestion: true }))?.programme ?? null;
   if (choix.comment === 'firehouse' && choix.rec.id) programme = (await installerParFirehouse(choix.rec.id, choix.nom, false, { sansQuestion: true }))?.programme ?? null;
-  if (!programme) return null;
+  if (!programme) {
+    // L'installation a échoué : le dossier proposé n'est pas gardé (au prochain essai, il est proposé de nouveau).
+    if (dossierNouveau && etat.pc.dossierEmulateurs === dossier) await reglerPc('dossierEmulateurs', '');
+    return null;
+  }
 
   const ligne = lignes.get(choix.rec) ?? '';
   let nom = choix.nom;
@@ -105,7 +113,10 @@ export async function preparerPourJouer(plateforme: string, jeux: number): Promi
       toast(`${nom} est prêt, mais la manette n’a pas pu être réglée : ${motifDuRefus(e)}`, 'alerte');
     }
   }
-  toast(`✅ ${plateforme} est prêt : ${nom}${manette}.`);
+  // Des parties restaurées (PC neuf, formaté) attendaient cet émulateur : reposées maintenant, jamais par-dessus une autre.
+  const r = await api.restaurationReposerEmulateurs().catch(() => null);
+  const parties = r?.reposes ? `, ${r.reposes} partie(s) restaurée(s) reposée(s)` : '';
+  toast(`✅ ${plateforme} est prêt : ${nom}${manette}${parties}.`);
   // RPCS3 sans micrologiciel ne lance aucun jeu du commerce : celui de Firehouse est installé (compris dans l'accord) ;
   // s'il n'est pas servi, on le dit tout de suite, simplement.
   if (choix.id === 'rpcs3' && !(await api.rpcs3Micrologiciel(programme).catch(() => null))) {

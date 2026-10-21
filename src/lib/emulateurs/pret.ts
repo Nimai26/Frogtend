@@ -111,10 +111,14 @@ export function choisirSeul(possibles: Possible[], conseil?: Conseil | null): Ch
   return null;
 }
 
-/** Le dossier des émulateurs proposé d'office : « Emulateurs » à la racine du disque des jeux (sinon E:). */
-export function dossierParDefaut(emplacementsJeux: string[]): string {
-  const lecteur = /^([a-z]):/i.exec(emplacementsJeux[0] ?? '')?.[1]?.toUpperCase() ?? 'E';
-  return `${lecteur}:\\Emulateurs`;
+/** Le dossier des émulateurs proposé d'office : `Frogtend\Emulateurs` sur le disque des jeux, sinon sur `disque` (le
+ * disque fixe proposé par le cœur, qui existe sur CE PC) ; `''` : aucun disque connu (jamais une lettre supposée). */
+export function dossierParDefaut(emplacementsJeux: string[], disque?: string | null, disques?: string[]): string {
+  // La lettre du disque des jeux, seulement si ce disque existe sur CE PC (un réglage restauré peut venir d'un autre).
+  const jeux = /^([a-z]):/i.exec(emplacementsJeux[0] ?? '')?.[1];
+  const existe = !!jeux && (!disques || disques.some((d) => d.toUpperCase().startsWith(`${jeux.toUpperCase()}:`)));
+  const lecteur = (existe ? jeux : undefined) ?? /^([a-z]):/i.exec(disque ?? '')?.[1];
+  return lecteur ? `${lecteur.toUpperCase()}:\\Frogtend\\Emulateurs` : '';
 }
 
 /** Les émulateurs dont Frogtend règle la manette (une manette Xbox standard, ou toute manette reconnue). */

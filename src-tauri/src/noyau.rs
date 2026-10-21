@@ -400,6 +400,7 @@ impl Noyau {
             let _ = std::fs::remove_file(e.path().join("documents.json"));
         }
         let _ = std::fs::remove_file(dossier.join("derniere-sauvegarde.json"));
+        let _ = std::fs::remove_file(dossier.join("sauvegarde-reprise.json"));
         self.journaliser(&format!("profil {id} : jeton d'un autre compte Firehouse, ce qui avait été reçu est oublié"));
         Ok(())
     }

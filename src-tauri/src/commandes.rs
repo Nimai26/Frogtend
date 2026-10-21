@@ -390,6 +390,46 @@ pub fn espace_libre(chemin: String) -> Option<u64> {
     crate::jeux_pc::place_libre(std::path::Path::new(&chemin))
 }
 
+/// Un dossier proposé d'office (rien n'est encore réglé) : où, et la place libre sur son disque.
+#[derive(Serialize)]
+pub struct DossierPropose {
+    pub chemin: String,
+    /// Le disque (`D:\`) : le dossier des émulateurs proposé ira sur le même.
+    pub disque: String,
+    pub libre: u64,
+    /// Tous les disques fixes de ce PC (`C:\`, `D:\`…) : une lettre venue d'un autre PC n'est reprise que si elle existe.
+    pub disques: Vec<String>,
+}
+
+/// Le dossier des jeux proposé quand aucun n'est réglé (PC neuf, ancien dossier absent après une restauration) :
+/// `<disque fixe le plus libre>\Frogtend\Jeux`. Rien n'est créé ici.
+#[tauri::command]
+pub fn dossier_jeux_propose() -> Option<DossierPropose> {
+    let l = crate::jeux_pc::disques_locaux();
+    let d = crate::jeux_pc::disque_propose(&l)?;
+    Some(DossierPropose {
+        chemin: crate::jeux_pc::dossier_jeux_sur(d).to_string_lossy().into(),
+        disque: d.racine.clone(),
+        libre: d.libre,
+        disques: l.iter().map(|x| x.racine.clone()).collect(),
+    })
+}
+
+/// Crée le dossier des jeux PROPOSÉ (la personne a dit oui). Seul un dossier `<disque fixe>\Frogtend\Jeux` est admis :
+/// jamais un chemin quelconque venu de l'interface.
+#[tauri::command]
+pub fn dossier_jeux_creer(chemin: String) -> Resultat<String> {
+    let admis = crate::jeux_pc::disques_locaux().iter().map(crate::jeux_pc::dossier_jeux_sur).any(|p| p.to_string_lossy().eq_ignore_ascii_case(&chemin));
+    if !admis {
+        return Err(Erreur::Refus("Ce dossier n'est pas celui que Frogtend a proposé : choisis-le avec « 📂 Choisir un autre dossier ».".into()));
+    }
+    std::fs::create_dir_all(&chemin)?;
+    if !std::path::Path::new(&chemin).is_dir() {
+        return Err(Erreur::Disque(format!("Le dossier {chemin} n'a pas pu être créé.")));
+    }
+    Ok(chemin)
+}
+
 /// L'émulateur réglé pour un système (`pc.json` ▸ `emulateurs`) : (programme, ligne de commande).
 /// Parmi ceux réglés pour le système : celui demandé pour ce lancement, sinon le défaut du jeu, sinon celui du système.
 fn emulateur_regle(app: &AppHandle, plateforme: &str, jeu: i64, demande: Option<&str>) -> Option<(String, String)> {
@@ -4476,9 +4516,9 @@ fn programmes_emulateurs(app: &AppHandle) -> Vec<String> {
 
 /// Sauvegarde le profil ouvert chez Firehouse : configuration, liste des jeux, parties et codes de triche.
 #[tauri::command]
-pub async fn sauvegarde_lancer(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<crate::sauvegarde::Bilan> {
+pub async fn sauvegarde_lancer(app: AppHandle, noyau: State<'_, Noyau>, ecarter: Option<bool>) -> Resultat<crate::sauvegarde::Bilan> {
     let pc = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PC".into());
-    noyau.sauvegarder(&programmes_emulateurs(&app), &pc).await
+    noyau.sauvegarder(&programmes_emulateurs(&app), &pc, ecarter.unwrap_or(false)).await
 }
 
 #[tauri::command]
@@ -4513,6 +4553,8 @@ pub async fn restauration_preparer(
             let _ = app2.emit("restauration", ProgresRestauration { faits, total });
         })
         .await?;
+    // La personne a choisi de restaurer : la sauvegarde existante est reprise, ce profil peut ensuite l'écrire.
+    noyau.marquer_reprise("restauree", &profil, &pc).await?;
     let reposes = noyau.reposer_parties_emulateurs(&programmes_emulateurs(&app)).await?;
     Ok((prete, reposes))
 }

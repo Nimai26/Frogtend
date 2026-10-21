@@ -612,7 +612,8 @@ export const api = {
   ouvrirLivret: (id: number, doc: number) => appeler<number>('livret_ouvrir', { id, doc }),
   /** Télécharge une musique ou une vidéo si elle n'est pas sur le PC (le clic vaut accord, taille montrée). */
   preparerDocument: (id: number, doc: number) => appeler<DocumentJeu>('document_preparer', { id, doc }),
-  sauvegarder: () => appeler<import('./sauvegarde.svelte').BilanSauvegarde>('sauvegarde_lancer'),
+  /** `ecarter` : la personne a choisi de REMPLACER une sauvegarde existante qu'elle n'a pas restaurée. */
+  sauvegarder: (ecarter = false) => appeler<import('./sauvegarde.svelte').BilanSauvegarde>('sauvegarde_lancer', { ecarter }),
   derniereSauvegarde: () => appeler<import('./sauvegarde.svelte').BilanSauvegarde | null>('sauvegarde_derniere'),
   restaurationListe: () =>
     appeler<{ profil: string; pc: string; derniere: { date?: string; fichiers?: number; taille?: number } | null; octets: number }[]>(
@@ -624,6 +625,12 @@ export const api = {
       { profil, pc },
     ),
   espaceLibre: (chemin: string) => appeler<number | null>('espace_libre', { chemin }),
+  /** Le dossier des jeux proposé quand rien n'est réglé : `<disque fixe le plus libre>\Frogtend\Jeux` (rien n'est créé). */
+  dossierJeuxPropose: () => appeler<{ chemin: string; disque: string; libre: number; disques: string[] } | null>('dossier_jeux_propose'),
+  /** Crée le dossier PROPOSÉ (seul celui-là est admis par le cœur), après le oui de la personne. */
+  dossierJeuxCreer: (chemin: string) => appeler<string>('dossier_jeux_creer', { chemin }),
+  /** Repose les parties d'émulateurs restaurées qui attendaient un émulateur absent (jamais par-dessus une autre). */
+  restaurationReposerEmulateurs: () => appeler<{ reposes: number; deja_la: number; conflits: string[] }>('restauration_reposer_emulateurs'),
 
   preparerInstallation: (id: number) => appeler<Preparation>('installation_preparer', { id }),
   installer: (id: number, automatique: boolean) => appeler<Installation>('installation_lancer', { id, automatique }),

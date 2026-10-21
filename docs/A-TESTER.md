@@ -48,6 +48,17 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## PC neuf ou formaté (0.99.0) — À FAIRE ENSEMBLE à l'installation neuve
+- [ ] Profil neuf, premier « Mettre dans ma ludothèque » : « 📁 Où ranger tes jeux ? » propose `<disque>\Frogtend\Jeux`
+      avec la place libre ; un oui → le jeu se télécharge là.
+- [ ] Premier jeu d'une console sans émulateur : « Prêt à jouer » propose `<disque>\Frogtend\Emulateurs`.
+- [ ] Profil recréé au MÊME nom : « 📥 Une sauvegarde existe » ; répondre Annuler → aucune sauvegarde ne part
+      (« Restaurer / Remplacer / Plus tard » proposé une fois).
+- [ ] Restaurer : anciens dossiers absents → « Tes jeux étaient rangés dans … : où les ranger ? » ; puis une console
+      réinstallée par Prêt à jouer → « N partie(s) restaurée(s) reposée(s) ».
+- [ ] Après restauration, jouer une partie (sauvegarde auto) : chez Firehouse, les parties des jeux PAS encore remis
+      sont toujours là.
+
 ## Contenus PS3 de Firehouse (0.98.0)
 - [ ] Un jeu PS3 téléchargé depuis Firehouse avec ses DLC (God of War III) ▸ 📦 Contenus additionnels : la liste
       montre les paquets (DLC) et leurs licences ; « Tout cocher » ▸ Installer, RPCS3 FERMÉ : chaque contenu

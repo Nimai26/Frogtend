@@ -437,6 +437,8 @@ pub fn run() {
             commandes::livret_ouvrir,
             commandes::document_preparer,
             commandes::espace_libre,
+            commandes::dossier_jeux_propose,
+            commandes::dossier_jeux_creer,
             commandes::installation_preparer,
             commandes::installation_lancer,
             commandes::installation_ailleurs,
