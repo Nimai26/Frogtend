@@ -246,3 +246,10 @@ rougit encore, le rendre robuste à la charge plutôt que de relancer jusqu'au v
 21/10 (0.90.0) : rouge à nouveau pendant `livrer` (« la fin est bien vue » : 20 s sans fin) ; rendu robuste : le .bat
 vit ~1 s de plus, le premier relevé connaît l'heure EXACTE du lanceur (plus de marge de 5 s qui laissait passer le
 processus d'un autre test). 3 passes complètes vertes, puis la livraison.
+
+21/10 (0.90.0-0.92.0) : `sed -i` utilisé DEUX fois de plus (menu-jeu, succes.rs) malgré la règle — sans dégât cette
+fois (fichiers en LF, diff vérifié aussitôt), mais c'est un réflexe à casser : un remplacement d'une ligne de code
+passe par l'outil d'édition, toujours.
+21/10 (0.92.0) : `tests/sept_z.rs` (7z piégé) rouge pendant `livrer` : l'octet 0x0C était cherché dès le début d'un
+en-tête qui contient des dates et des CRC (un 0x0C par hasard → mauvaise place modifiée). Corrigé : chercher après
+le codeur. Un test qui « fabrique » un fichier binaire ne cherche jamais un octet seul sans ancrage.

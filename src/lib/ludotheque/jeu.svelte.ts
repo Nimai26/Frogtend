@@ -1234,8 +1234,12 @@ export async function gererJeu(id: number) {
   }
   if (j.installation && !deBoutique)
     options.push({ valeur: 'abri', libelle: '💾 Mettre mes parties à l’abri', detail: 'une copie de ce qui a changé depuis l’installation' });
-  // Un jeu Steam : ses succès en détail (lot C ; au bureau ET au canapé, ✅ Seb 21/10).
-  if (j.installation?.boutique?.source === 'steam') options.push({ valeur: 'succes', libelle: '🏆 Succès', detail: 'la liste, obtenus et à obtenir' });
+  // Ses succès en détail (lot C ; au bureau ET au canapé, ✅ Seb 21/10) : un jeu Steam, ou un jeu d'émulateur
+  // (RetroAchievements, lot C3).
+  const ra = !!j.installation && !pcSansEmulateur ? await api.raEtat().catch(() => null) : null;
+  const raRelie = !!ra?.cle_enregistree && !!ra?.compte;
+  if (j.installation?.boutique?.source === 'steam' || raRelie)
+    options.push({ valeur: 'succes', libelle: '🏆 Succès', detail: 'la liste, obtenus et à obtenir' });
   // Un jeu Steam : ses parties que Steam garde pour son nuage (lot B2, lecture seule chez Steam).
   if (j.installation?.boutique?.source === 'steam')
     options.push({ valeur: 'abri', libelle: '💾 Mettre mes parties à l’abri', detail: 'une copie des parties que Steam garde pour son nuage' });
@@ -1259,9 +1263,10 @@ export async function gererJeu(id: number) {
   else if (c === 'patchs') await choisirPatchsPs3(id);
   else if (c === 'mods') await choisirMods(id);
   else if (c === 'triches') await goto(`/triches?jeu=${id}`);
-  else if (c === 'succes' && j.installation?.boutique)
-    // Au canapé, sous /taodbox : le mode canapé (manette, plein écran) reste actif.
-    await goto(`${auCanape() ? '/taodbox' : ''}/succes?source=steam&cle=${encodeURIComponent(j.installation.boutique.cle)}&titre=${encodeURIComponent(j.titre)}`);
+  else if (c === 'succes')
+    // Au canapé, sous /taodbox : le mode canapé (manette, plein écran) reste actif. Le jeu DU PC : son jeu Steam, ou
+    // RetroAchievements pour un jeu d'émulateur (le cœur choisit).
+    await goto(`${auCanape() ? '/taodbox' : ''}/succes?jeu=${id}&titre=${encodeURIComponent(j.titre)}`);
   else if (c === 'commandes') await choisirCommandes(id);
   else if (c === 'figer') await choisirFiger(id);
   else if (c === 'pleinEcran') await choisirPleinEcran(id);

@@ -477,7 +477,7 @@ pub fn succes_galaxy(storage: &Path, travail: &Path, cle: &str) -> Resultat<Opti
 }
 
 /// « 2022-04-29 20:23:22 » → secondes depuis 1970 (UTC, sans les secondes intercalaires).
-fn date_en_secondes(d: &str) -> Option<u64> {
+pub(crate) fn date_en_secondes(d: &str) -> Option<u64> {
     let (date, heure) = d.split_once(' ').unwrap_or((d, "00:00:00"));
     let n: Vec<i64> = date.split('-').filter_map(|x| x.parse().ok()).collect();
     let h: Vec<i64> = heure.split(':').filter_map(|x| x.parse().ok()).collect();
@@ -501,7 +501,11 @@ fn date_en_secondes(d: &str) -> Option<u64> {
 
 /// Les hôtes d'images de boutiques autorisés (images publiques).
 pub fn image_autorisee(url: &str) -> bool {
-    url.starts_with("https://images.gog.com/") || url.starts_with("https://cdn.akamai.steamstatic.com/") || url.starts_with("https://cdn1.epicgames.com/")
+    url.starts_with("https://images.gog.com/")
+        || url.starts_with("https://cdn.akamai.steamstatic.com/")
+        || url.starts_with("https://cdn1.epicgames.com/")
+        // Les badges des succès de RetroAchievements (lot C3).
+        || url.starts_with("https://media.retroachievements.org/Badge/")
 }
 
 /// Une image publique de boutique (hôte autorisé), gardée en cache sous son empreinte.

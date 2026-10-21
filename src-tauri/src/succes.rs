@@ -302,20 +302,54 @@ pub struct Progression {
     pub points: u32,
     pub points_obtenus: u32,
     pub image: Option<String>,
+    /// Chaque succès en détail (lot C3), dans l'ordre du jeu. Pas envoyé avec le résumé (le panneau n'en a pas
+    /// besoin) : lu par `succes_jeu`.
+    #[serde(skip)]
+    pub liste: Vec<SuccesDetail>,
 }
+
+/// Les images des succès de RetroAchievements (badges : `<BadgeName>.png`, et `_lock.png` tant qu'il n'est pas obtenu).
+const BADGES_RA: &str = "https://media.retroachievements.org/Badge/";
 
 pub fn lire_progression(v: &Value) -> Progression {
     let mut points = 0;
     let mut points_obtenus = 0;
+    let joueurs = v["NumDistinctPlayers"].as_u64().unwrap_or(0);
+    let mut liste: Vec<((u64, u64), SuccesDetail)> = Vec::new();
     if let Some(a) = v["Achievements"].as_object() {
         for s in a.values() {
             let p = s["Points"].as_u64().unwrap_or(0) as u32;
             points += p;
-            if s["DateEarned"].is_string() || s["DateEarnedHardcore"].is_string() {
+            // Relevé de la documentation officielle (API_GetGameInfoAndUserProgress) : dates « AAAA-MM-JJ hh:mm:ss »,
+            // présentes seulement si le succès est obtenu ; `BadgeName` est un TEXTE.
+            let quand = [&s["DateEarnedHardcore"], &s["DateEarned"]].iter().filter_map(|d| d.as_str().and_then(crate::boutiques::date_en_secondes)).min();
+            let obtenu = s["DateEarned"].is_string() || s["DateEarnedHardcore"].is_string();
+            if obtenu {
                 points_obtenus += p;
             }
+            let badge = s["BadgeName"].as_str().filter(|b| !b.is_empty() && b.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
+            let description = s["Description"].as_str().unwrap_or("").to_string();
+            liste.push((
+                // L'ordre du jeu, puis le numéro du succès (jamais l'ordre des clés texte : « 10 » avant « 9 »).
+                (s["DisplayOrder"].as_u64().unwrap_or(u64::MAX), s["ID"].as_u64().unwrap_or(u64::MAX)),
+                SuccesDetail {
+                    id: s["ID"].as_u64().map(|i| i.to_string()).unwrap_or_default(),
+                    nom: s["Title"].as_str().unwrap_or("").to_string(),
+                    description: if p > 0 { format!("{description} ({p} points)") } else { description },
+                    en_anglais: true,
+                    obtenu,
+                    quand,
+                    rarete: s["NumAwarded"].as_u64().filter(|_| joueurs > 0).map(|n| (n as f64 * 100.0 / joueurs as f64).min(100.0)),
+                    icone: badge.map(|b| format!("{BADGES_RA}{b}.png")),
+                    icone_grise: badge.map(|b| format!("{BADGES_RA}{b}_lock.png")),
+                    // RetroAchievements n'a pas de succès secrets.
+                    secret: false,
+                },
+            ));
         }
     }
+    liste.sort_by_key(|(o, _)| *o);
+    let liste: Vec<SuccesDetail> = liste.into_iter().map(|(_, s)| s).filter(|s| !s.id.is_empty() && !s.nom.is_empty()).collect();
     Progression {
         id: v["ID"].as_u64().unwrap_or(0),
         titre: v["Title"].as_str().unwrap_or("").to_string(),
@@ -325,6 +359,7 @@ pub fn lire_progression(v: &Value) -> Progression {
         points,
         points_obtenus,
         image: v["ImageIcon"].as_str().map(|i| format!("https://media.retroachievements.org{i}")),
+        liste,
     }
 }
 
@@ -669,6 +704,24 @@ mod tests {
             "Achievements": {"1": {"Points": 5, "DateEarned": "2026-10-01 10:00:00"}, "2": {"Points": 10}}}));
         assert_eq!((p.obtenus, p.succes, p.points, p.points_obtenus), (1, 2, 15, 5));
         assert_eq!(p.image.as_deref(), Some("https://media.retroachievements.org/Images/1.png"));
+        // Lot C3 : le détail, d'après l'exemple de la documentation officielle (Sonic the Hedgehog, jeu 1).
+        let p = lire_progression(&json!({"ID": 1, "Title": "Sonic the Hedgehog", "NumDistinctPlayers": 27080, "NumAchievements": 2,
+            "Achievements": {
+                "10": {"ID": 10, "NumAwarded": 100, "Title": "Rare", "Description": "Fais ça", "Points": 25, "BadgeName": "250337", "DisplayOrder": 2, "type": null},
+                "9": {"ID": 9, "NumAwarded": 24273, "NumAwardedHardcore": 10831, "Title": "That Was Easy", "Description": "Complete the first act in Green Hill Zone",
+                      "Points": 3, "BadgeName": "250336", "DisplayOrder": 1, "type": "progression",
+                      "DateEarnedHardcore": "2016-03-12 17:47:29", "DateEarned": "2016-03-12 17:47:29"}}}));
+        assert_eq!(p.liste.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(), ["9", "10"], "dans l'ordre du jeu");
+        let s = &p.liste[0];
+        assert!(s.obtenu && s.en_anglais && !s.secret);
+        assert_eq!(s.quand, Some(1_457_804_849));
+        assert_eq!(s.description, "Complete the first act in Green Hill Zone (3 points)");
+        assert_eq!(s.icone.as_deref(), Some("https://media.retroachievements.org/Badge/250336.png"));
+        assert_eq!(s.icone_grise.as_deref(), Some("https://media.retroachievements.org/Badge/250336_lock.png"));
+        assert!(crate::boutiques::image_autorisee(s.icone_grise.as_deref().unwrap()));
+        assert!((s.rarete.unwrap() - 89.63).abs() < 0.01);
+        assert!(!p.liste[1].obtenu && p.liste[1].quand.is_none());
+        assert_eq!(lire_progression(&json!({"Achievements": {"1": {"ID": 1, "Title": "x", "BadgeName": "../a"}}})).liste[0].icone, None, "badge douteux");
         assert_eq!(lire_succes_steam(&json!({"playerstats": {"achievements": [{"achieved": 1}, {"achieved": 0}]}})), Some((1, 2)));
         assert_eq!(lire_succes_steam(&json!({"playerstats": {"error": "Requested app has no stats"}})), None);
         assert_eq!(titre_comparable("Legend of Zelda, The (USA)"), titre_comparable("legend of zelda"));

@@ -101,7 +101,7 @@
   Galaxy lisible en détail (tables `Achievements`, `UserAchievements`, `LocalizedAchievements` ; défauts : pas de
   filtre `userId`, total compté sur `UserAchievements`) ; découpage C1 cœur Steam (détail, schéma, rareté, cache
   PAR PROFIL pour le hors ligne) → C2 Galaxy → C3 RetroAchievements → C4 fenêtre du panneau → C5 menu en jeu et
-  Taodbox.
+  Taodbox. ✅ Seb 21/10 (après 0.91.0) : « ok pour C3 » — RetroAchievements en détail ; C1 (Steam) attend son compte.
   ✅ Seb 21/10 : les abris des parties Steam partent AUSSI chez Firehouse avec la sauvegarde du profil (comme les
   autres jeux) ; les remettre en place : plus tard (Steam Cloud peut écraser ce qu'on remet à la main).
   Relevé réel B2 (21/10, lecture seule) : un seul compte dans `userdata` ; `remotecache.vdf` liste chaque fichier
@@ -616,6 +616,18 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.92.0** (21/10) — Lot C3, RetroAchievements en détail (relecture de l'expert interface) :
+  `Progression.liste` (non envoyée avec le résumé) lue dans la réponse d'`API_GetGameInfoAndUserProgress` d'après
+  l'exemple de la documentation OFFICIELLE (pas de compte RA relié chez Seb pour un relevé réel) : badges
+  `media.retroachievements.org/Badge/<BadgeName>.png` / `_lock.png` (hôte ajouté à `image_autorisee`, nom filtré),
+  date la plus ancienne (hardcore ou non), rareté `NumAwarded / NumDistinctPlayers`, points dans la description,
+  ordre du jeu puis numéro ; `retro_du_jeu` (cœur de `succes_retro`) + `hors_ligne` ; `succes_jeu` : Steam, sinon
+  RetroAchievements (erreur claire hors ligne) ; interface : bouton du bloc RA, `?jeu=<id>` (page commune), menu en
+  jeu (jeux d'émulateur et jeux Windows de boutique), Gérer ▸ 🏆 Succès si le compte RA est relié (nom ET clé).
+  Vérifié : tests (cœur 456, interface 221). NON vérifié : une vraie réponse de RetroAchievements (compte de Seb à
+  relier), dates en UTC, calcul d'empreinte d'un CD jamais vu demandé PENDANT une partie (le bouton dit
+  « chargement… »). Lot C : reste C1 (Steam en détail, attend le compte Steam de Seb).
 
 - **0.91.0** (21/10) — Contrat 1.23/1.24, forme `archive` (avis avant code et relecture de l'expert lancement ;
   Firehouse a confirmé : zip SANS dossier racine, `lancer` relatif au dossier `extraire_dans`, introuvable = la

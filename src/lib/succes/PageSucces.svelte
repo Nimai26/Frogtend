@@ -1,5 +1,6 @@
 <script lang="ts">
-  // 🏆 Les succès d'un jeu de boutique en détail (lot C) : `?source=steam|galaxy&cle=…&titre=…` ; servie par `/succes`
+  // 🏆 Les succès d'un jeu en détail (lot C) : `?source=steam|galaxy&cle=…&titre=…`, ou `?jeu=<id du PC>&titre=…` (un
+  // jeu du PC : son jeu Steam, ou RetroAchievements pour un jeu d'émulateur, lot C3) ; servie par `/succes`
   // (bureau) et `/taodbox/succes` (canapé : l'adresse garde le mode Taodbox, sa manette et son plein écran).
   import { page } from '$app/state';
   import { api } from '$lib/api';
@@ -12,6 +13,10 @@
 
   const source = $derived<'steam' | 'galaxy'>(page.url.searchParams.get('source') === 'steam' ? 'steam' : 'galaxy');
   const cle = $derived(page.url.searchParams.get('cle') ?? '');
+  const jeu = $derived.by(() => {
+    const v = page.url.searchParams.get('jeu');
+    return v ? Number(v) : NaN;
+  });
   const titre = $derived(page.url.searchParams.get('titre') ?? '');
   let liste = $state<Liste | null | undefined>(undefined);
   let erreur = $state<string | null>(null);
@@ -19,11 +24,10 @@
   let page_ = $state<HTMLElement | null>(null);
 
   $effect(() => {
-    const [s, c] = [source, cle];
+    const [s, c, j] = [source, cle, jeu];
     liste = undefined;
     erreur = null;
-    api
-      .succesListe(s, c)
+    (Number.isFinite(j) ? api.succesJeu(j) : api.succesListe(s, c))
       .then(async (l) => {
         liste = l;
         // Au canapé (Taodbox) : la sélection sur le premier succès, pour la manette.
@@ -53,7 +57,7 @@
   {:else if liste === undefined}
     <p class="muted">Chargement…</p>
   {:else if liste === null}
-    <p class="muted">Aucun succès connu pour ce jeu sur ce PC (GOG Galaxy ne les a pas, ou le jeu n’en a pas).</p>
+    <p class="muted">Aucun succès connu pour ce jeu sur ce PC (le jeu n’en a pas, sa version n’est pas reconnue, ou le compte n’est pas relié).</p>
   {:else}
     <ListeSucces {liste} />
   {/if}

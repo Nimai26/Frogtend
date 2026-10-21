@@ -51,7 +51,9 @@ fn un_dictionnaire_demesure_bute_sur_le_plafond_du_job() {
     let i = entete.windows(5).position(|w| w == [0x23, 0x03, 0x01, 0x01, 0x05]).expect("codeur LZMA de l'en-tête") + 6;
     entete[i..i + 4].copy_from_slice(&0xF000_0000u32.to_le_bytes());
     // Et sa taille décompressée (0x0C, puis un nombre 7z) portée à 3 Gio : 0xFF + 8 octets.
-    let j = entete.iter().position(|b| *b == 0x0C).expect("tailles décompressées");
+    // Cherché APRÈS le codeur (les tailles le suivent) : avant lui, un 0x0C peut se trouver par hasard dans un CRC ou
+    // une date (rouge pendant la livraison 0.92.0, 21/10 : `BadTerminatedStreamsInfo`).
+    let j = i + 4 + entete[i + 4..].iter().position(|b| *b == 0x0C).expect("tailles décompressées");
     let longueur = match entete[j + 1] {
         x if x & 0x80 == 0 => 1,
         x if x & 0x40 == 0 => 2,

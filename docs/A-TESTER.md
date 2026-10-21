@@ -48,6 +48,12 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Succès RetroAchievements en détail (0.92.0)
+- [ ] Il faut ton compte RetroAchievements relié (⚙ Options ▸ Succès).
+- [ ] Un jeu d'émulateur reconnu (panneau : « x / y succès ») ▸ 🏆 Voir les succès : badges, points, dates, rareté.
+- [ ] Pendant une partie : menu en jeu ▸ 🏆 Succès, à la manette.
+- [ ] Sans Internet : « RetroAchievements ne répond pas ».
+
 ## Jeux PC de fans en archive (0.91.0)
 - [ ] Ludothèque ▸ Windows ▸ « Megaman's Christmas Carol 3 » (60 Mo) : télécharger, installer ; aucun choix de
       programme demandé ; ▶ Jouer lance le jeu.

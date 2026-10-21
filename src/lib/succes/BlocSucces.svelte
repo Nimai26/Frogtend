@@ -67,6 +67,10 @@
       <div class="bar"><span style="width: {Math.round((ra.jeu.obtenus / ra.jeu.succes) * 100)}%"></span></div>
     {/if}
     <p class={resume.ton === 'ok' ? 'ok' : resume.ton === 'alerte' ? 'alerte' : 'muted'}>{resume.texte}</p>
+    {#if ra.jeu && ra.jeu.succes}
+      <!-- Lot C3 : la liste en détail (le jeu du PC, reconnu comme ci-dessus). -->
+      <button class="btn petit" onclick={() => goto(`/succes?jeu=${idPc ?? jeu.id}&titre=${encodeURIComponent(jeu.titre)}`)}>🏆 Voir les succès</button>
+    {/if}
   </div>
 {:else if chargement && (surPc || jeu.source === 'steam')}
   <p class="muted">🏆 Succès… {surPc && /wii/i.test(jeu.plateforme) ? '(un jeu Wii se vérifie en ~30 s la première fois, ensuite c’est immédiat)' : ''}</p>

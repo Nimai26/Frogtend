@@ -362,7 +362,8 @@
       {/if}
       {#if a('disque')}<button class="btn" onclick={() => action('disque')}>💿 Disque suivant</button>{/if}
       <button class="btn" data-ecran="documents" onclick={voirDocuments}>📖 Manuel et documents</button>
-      {#if menu.jeu < 0 && menu.plateforme === 'Windows'}<button class="btn" data-ecran="succes" disabled={chargementSucces} onclick={voirSucces}>🏆 Succès{chargementSucces ? ' (chargement…)' : ''}</button>{/if}
+      <!-- Un jeu Steam (Galaxy en attendant Steam), ou un jeu d'émulateur (RetroAchievements, lot C3). -->
+      {#if (menu.jeu < 0 && menu.plateforme === 'Windows') || menu.plateforme !== 'Windows'}<button class="btn" data-ecran="succes" disabled={chargementSucces} onclick={voirSucces}>🏆 Succès{chargementSucces ? ' (chargement…)' : ''}</button>{/if}
       {#if ['fps', 'rapide', 'capture', 'muet'].some((o) => a(o))}
         <button class="btn" data-ecran="options" onclick={() => revenir(() => (options = true))}>⚙ Options du jeu</button>
       {/if}

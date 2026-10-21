@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.92.0 — Les succès RetroAchievements en détail
+
+- Pour tes jeux d'émulateur (compte RetroAchievements relié) : 🏆 Voir les succès dans le panneau du jeu, ⚙ Gérer le
+  jeu ▸ 🏆 Succès (bureau et Taodbox), et le menu en jeu. Chaque succès avec son badge (gris tant qu'il n'est pas
+  obtenu), ce qu'il demande, ses points, la date où tu l'as eu et sa rareté.
+- Hors ligne, Frogtend dit que RetroAchievements ne répond pas, au lieu de dire qu'il n'y a pas de succès.
+
 ## 0.91.0 — Les jeux PC de fans, prêts à jouer
 
 - Firehouse sert maintenant des jeux PC « de fans » (Mega Man, MUGEN…) dans une archive. Frogtend l'installe en

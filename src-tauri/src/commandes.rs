@@ -1927,11 +1927,19 @@ pub struct SuccesRetro {
     pub jeu: Option<crate::succes::Progression>,
     /// Si aucune de ses versions n'est reconnue : les versions compatibles connues de RetroAchievements.
     pub compatibles: Vec<crate::succes::VersionCompatible>,
+    /// Le jeu est reconnu, mais RetroAchievements n'a pas répondu (hors ligne).
+    #[serde(default)]
+    pub hors_ligne: bool,
 }
 
 #[tauri::command]
 pub async fn succes_retro(noyau: State<'_, Noyau>, id: i64) -> Resultat<SuccesRetro> {
-    let p = profil_ouvert(&noyau).await?;
+    retro_du_jeu(&noyau, id).await
+}
+
+/// Les succès RetroAchievements d'un jeu du PC (le jeu reconnu par l'empreinte de son fichier, sinon par son titre).
+async fn retro_du_jeu(noyau: &Noyau, id: i64) -> Resultat<SuccesRetro> {
+    let p = profil_ouvert(noyau).await?;
     let j = noyau.jeu_visible(id).await?;
     let Some(console) = crate::succes::console_de(&j.plateforme) else {
         return Ok(SuccesRetro { etat: "aucun".into(), ..Default::default() });
@@ -1989,7 +1997,11 @@ pub async fn succes_retro(noyau: State<'_, Noyau>, id: i64) -> Resultat<SuccesRe
         if jeu_ra.is_none() {
             r.compatibles = crate::succes::empreintes_du_jeu(crate::succes::API_RA, &cle, id_ra).await.unwrap_or_default();
         }
-        r.jeu = crate::succes::progression(crate::succes::API_RA, &cle, &compte, id_ra).await.ok();
+        match crate::succes::progression(crate::succes::API_RA, &cle, &compte, id_ra).await {
+            Ok(p) => r.jeu = Some(p),
+            // Jeu reconnu mais RetroAchievements injoignable : dit, jamais « aucun succès ».
+            Err(_) => r.hors_ligne = true,
+        }
     }
     Ok(r)
 }
@@ -2043,10 +2055,15 @@ pub async fn succes_liste(noyau: State<'_, Noyau>, source: String, cle: String) 
 #[tauri::command]
 pub async fn succes_jeu(noyau: State<'_, Noyau>, id: i64) -> Resultat<Option<crate::succes::ListeSucces>> {
     let j = noyau.jeu_visible(id).await?;
-    match j.installation.and_then(|i| i.boutique).filter(|b| b.source == "steam") {
-        Some(b) => succes_liste(noyau, "steam".into(), b.cle).await,
-        None => Ok(None),
+    if let Some(b) = j.installation.and_then(|i| i.boutique).filter(|b| b.source == "steam") {
+        return succes_liste(noyau, "steam".into(), b.cle).await;
     }
+    // Un jeu d'émulateur : RetroAchievements (lot C3), d'après le compte du profil.
+    let r = retro_du_jeu(&noyau, id).await?;
+    if r.hors_ligne {
+        return Err(Erreur::Reseau("RetroAchievements ne répond pas : réessaie dans un moment.".into()));
+    }
+    Ok(r.jeu.map(|p| p.liste).filter(|l| !l.is_empty()).map(|succes| crate::succes::ListeSucces { source: "retroachievements".into(), succes }))
 }
 
 /// Ce que Frogtend mettrait à l'abri des parties d'un jeu Steam (lot B2), à montrer avant.
