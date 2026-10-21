@@ -99,6 +99,22 @@
   échappe) ; manifestes de mods DANS le dossier du jeu ; Nexus exige un lanceur. Découpage : **B0** garde-fous →
   **B1** triches + Cheat Engine (aucune écriture chez Steam) → **B2** abris nuage Steam → **B3** mods GitHub (données
   à part, `buildid` surveillé) → **B4** Nexus pour Steam.
+  ✅ Seb 21/10 (après 0.92.0) : « A6 » — GOG et Epic comme Steam (inscrits au registre, lancés par leur
+  boutique, partie suivie) ; PS3 contenus, D et parties Steam hors nuage attendront. Décisions (21/10, ne plus les
+  redemander) : jeux GOG lancés PAR GOG GALAXY (nuage, succès, temps de Galaxy ; commande `GalaxyClient.exe
+  /command=runGame /gameId=<id> /path=<dossier>` NON documentée par GOG — forums GOG/LaunchBox/Lutris — à vérifier
+  au 1er essai avec Seb) ; un jeu possédé sur Steam ET sur GOG = UNE SEULE ligne, et s'il est installé des deux
+  côtés, Frogtend DEMANDE avant de lancer (« comme pour les autres jeux ») ; Epic : Seb signale Fortnite dans
+  `D:\LaunchBox\Games\Epic\Epic Games\Games\Fortnite` (81 Go) — relevé (lecture seule, 21/10) : dossier présent
+  (`.egstore` avec `Pending`) mais AUCUN manifeste `.item` de l'Epic Launcher pour lui (les 6 sont Unreal Engine et
+  plugins) : Epic ne le considère pas comme installé ; à faire reconnaître dans Epic (Bibliothèque ▸ Fortnite ▸
+  installer → choisir ce dossier, Epic le vérifie) avant le relevé et le code d'Epic. Relevés de l'expert : 2 jeux
+  GOG installés (HZD, Cyberpunk), `goggame-<id>.info` (playTasks), registre `HKLM\…\GOG.com\Games\<id>` ; Galaxy
+  regroupe les copies d'un même jeu dans `GamePieces` type `allGameReleases` (`{"releases":["steam_…","gog_…",
+  "epic_…"…]}`) : la clé fiable pour « même jeu, une seule ligne » ; manifestes Epic à filtrer (`AppCategories`
+  contient `games`, installation complète, `LaunchExecutable`, pas un DLC). Découpage : A6a GOG au registre +
+  `synchroniser_boutique(source)` (retrait limité à SA source) → A6b lancement par Galaxy + suivi → A6c une ligne
+  par jeu (allGameReleases) + choix de la copie avant de lancer + succès GOG au menu en jeu → A6d Epic.
   ✅ Seb 21/10 (après 0.89.0) : « lot C » — les succès en détail (B fini ; D et A6 attendront). Décisions (21/10,
   ne plus les redemander) : succès SECRETS cachés (« 🔒 Succès secret — la description apparaîtra quand tu l'auras
   obtenu ») avec « Montrer » à la demande ; un jeu Steam vu aussi par Galaxy : les succès de STEAM font foi (Galaxy
