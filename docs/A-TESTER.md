@@ -48,6 +48,11 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Jeux PC de fans en archive (0.91.0)
+- [ ] Ludothèque ▸ Windows ▸ « Megaman's Christmas Carol 3 » (60 Mo) : télécharger, installer ; aucun choix de
+      programme demandé ; ▶ Jouer lance le jeu.
+- [ ] Retirer le jeu : son dossier disparaît entièrement.
+
 ## Succès en détail (0.90.0)
 - [ ] Ludothèque ▸ un jeu GOG avec succès ▸ panneau ▸ 🏆 Voir les succès : la liste, obtenus d'abord, icônes,
       dates, rareté ; ← Retour (ou Échap) revient.

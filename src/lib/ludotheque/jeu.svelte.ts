@@ -114,9 +114,11 @@ export async function installer(id: number): Promise<boolean> {
   // « aucune » : rien n'est écrit (ROM, image disque, jeu déjà prêt) ; on retient seulement comment le lancer.
 
   partie.installation = id;
+  // Le programme est-il déjà choisi (jeu PC en archive : Firehouse dit lequel lancer, contrat 1.23) ?
+  let lanceurDonne = false;
   try {
     if (p.methode.sorte !== 'aucune') toast(`📦 Installation de « ${p.titre} »… (ça peut prendre quelques minutes)`);
-    await api.installer(id, automatique);
+    lanceurDonne = !!(await api.installer(id, automatique))?.lanceur;
   } catch (e) {
     partie.installation = null;
     if (estErreurCoeur(e) && e.motif.includes("rien n'est dans")) {
@@ -152,6 +154,10 @@ export async function installer(id: number): Promise<boolean> {
     );
     // Sa console n'a pas encore d'émulateur : le proposer tout de suite (un seul accord).
     if (plateforme) await preparerPourJouer(plateforme, 1);
+    return true;
+  }
+  if (lanceurDonne) {
+    toast(`✅ « ${p.titre} » est installé et prêt à jouer.`);
     return true;
   }
   toast(`✅ « ${p.titre} » est installé. Reste à choisir ce qui le lance.`);

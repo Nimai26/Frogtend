@@ -120,6 +120,44 @@ fn forme_fichier(version: &Value) -> bool {
     matches!(version["installation"]["forme"].as_str().unwrap_or(""), "" | "fichier")
 }
 
+/// Une version en forme `archive` (contrat 1.23/1.24) : (son UNIQUE fichier `archive_a_extraire`, reçu ; le sous-dossier
+/// `extraire_dans`, chemin relatif sûr, vide = `Jeu/` même). `None` : une autre forme. Plus d'une archive, ou un chemin
+/// douteux : refus (jamais deviner).
+fn forme_archive(version: &Value, noms: &[String]) -> Resultat<Option<(String, String)>> {
+    if version["installation"]["forme"].as_str() != Some("archive") {
+        return Ok(None);
+    }
+    let annoncees = roles(version, &["archive_a_extraire"]);
+    let [archive] = annoncees.as_slice() else {
+        return Err(Erreur::Refus("Firehouse n'a pas dit quelle archive installer pour ce jeu : rien n'est installé.".into()));
+    };
+    if !noms.contains(archive) {
+        return Err(Erreur::Refus("L'archive de ce jeu n'est pas parmi les fichiers reçus : télécharge-le de nouveau.".into()));
+    }
+    let sous = version["installation"]["extraire_dans"].as_str().unwrap_or("");
+    let sous = if sous.trim().is_empty() {
+        String::new()
+    } else {
+        crate::decompression::chemin_sur(sous).ok_or_else(|| Erreur::Refus("Firehouse indique un dossier d'installation inutilisable : rien n'est installé.".into()))?
+    };
+    Ok(Some((archive.clone(), sous)))
+}
+
+/// Le programme à lancer que dit Firehouse pour une forme `archive` (`installation.lancer`, relatif au dossier
+/// d'extraction), s'il y est vraiment, sans arguments (sinon la personne choisit).
+fn lanceur_de_l_archive(version: &Value, dest: &Path) -> Option<Lanceur> {
+    if !version["installation"]["arguments"].as_str().unwrap_or("").trim().is_empty() {
+        return None;
+    }
+    let rel = crate::decompression::chemin_sur(version["installation"]["lancer"].as_str()?)?;
+    let exe = dest.join(&rel);
+    if !exe.is_file() || !crate::garde::sous(&exe, dest) || crate::garde::lien_entre(dest, &exe) {
+        return None;
+    }
+    let dossier = exe.parent()?.to_string_lossy().to_string();
+    Some(Lanceur { programme: exe.to_string_lossy().into(), arguments: vec![], dossier })
+}
+
 /// Un jeu de console servi avec ses mises à jour et DLC, que l'émulateur lit à côté (contrat 1.23 : Switch → Eden).
 fn contenus_emulateur(version: &Value) -> bool {
     version["installation"]["forme"].as_str() == Some("contenus_emulateur")
@@ -295,6 +333,26 @@ impl Noyau {
             n = Nature::ImageDisque;
         }
         let noms: Vec<String> = j.fichiers.iter().map(|f| f.nom.clone()).collect();
+        // Un jeu PC en archive (contrat 1.23/1.24, forme `archive`) : la FORME fait foi, jamais la qualité (« Jeu — ROM »
+        // sur le relevé réel du 21/10) ; UNE archive à extraire dans `Jeu/<extraire_dans>`.
+        if let Some((archive, sous)) = forme_archive(&version, &noms)? {
+            let format = crate::installation::format_de(&Path::new(&j.dossier).join(crate::jeux_pc::chemin_de_fichier_sur(&archive)?))?;
+            if !matches!(format, crate::installation::Format::Zip | crate::installation::Format::SeptZip) {
+                return Err(Erreur::Refus("L'archive de ce jeu n'est ni un .zip ni un .7z : Frogtend ne sait pas l'installer.".into()));
+            }
+            let mut destination = Path::new(&j.dossier).join(DOSSIER_INSTALLATION);
+            if !sous.is_empty() {
+                destination = destination.join(sous);
+            }
+            let notes = version["notes"].as_str().filter(|t| !t.trim().is_empty()).map(String::from);
+            return Ok(Preparation {
+                nature: Nature::PretAJouer,
+                methode: Methode::Archive { fichier: archive, format },
+                destination: destination.to_string_lossy().into(),
+                notes,
+                titre: j.titre,
+            });
+        }
         let m = methode(n, Path::new(&j.dossier), &noms)?;
         let destination = match m {
             Methode::Aucune => j.dossier.clone(),
@@ -324,6 +382,8 @@ impl Noyau {
         let p = self.preparer_installation(id).await?;
         let recus = PathBuf::from(&j.dossier);
         let dest = PathBuf::from(&p.destination);
+        // Une version en forme `archive` (contrat 1.23/1.24) : son extraction et son programme suivent le contrat.
+        let version_archive = Some(self.version_de(&j)).filter(|v| v["installation"]["forme"].as_str() == Some("archive"));
         let journal = self.dossier_medias(id).join("installation.log");
         std::fs::create_dir_all(self.dossier_medias(id))?;
 
@@ -356,11 +416,25 @@ impl Noyau {
                     .map_err(|_| Erreur::Disque("L'installeur s'est arrêté brutalement.".into()))??;
             }
             Methode::Archive { fichier, format } => {
-                let archive = recus.join(fichier);
+                let archive = recus.join(crate::jeux_pc::chemin_de_fichier_sur(fichier)?);
                 let (d, f) = (dest.clone(), *format);
-                tokio::task::spawn_blocking(move || decompresser(&archive, f, &d))
-                    .await
-                    .map_err(|_| Erreur::Disque("La décompression s'est arrêtée brutalement.".into()))??;
+                if version_archive.is_some() {
+                    // Forme `archive` (contrat 1.23/1.24) : extraction sûre et complète, jamais par-dessus une
+                    // installation déjà là (dit AVANT tout travail : retirer le jeu garde les parties à l'abri).
+                    if std::fs::read_dir(&d).is_ok_and(|mut l| l.next().is_some()) {
+                        return Err(Erreur::Refus(
+                            "Ce jeu est déjà installé ici : pour le réinstaller, retire-le d'abord (⚙ Gérer ▸ Retirer : tes parties sont mises à l'abri), puis installe-le de nouveau.".into(),
+                        ));
+                    }
+                    let libre = crate::jeux_pc::place_libre(&recus);
+                    tokio::task::spawn_blocking(move || crate::decompression::extraire_dans(&archive, &d, libre))
+                        .await
+                        .map_err(|_| Erreur::Disque("La décompression s'est arrêtée brutalement.".into()))??;
+                } else {
+                    tokio::task::spawn_blocking(move || decompresser(&archive, f, &d))
+                        .await
+                        .map_err(|_| Erreur::Disque("La décompression s'est arrêtée brutalement.".into()))??;
+                }
             }
             Methode::Aucune => {
                 if matches!(p.nature, Nature::Rom | Nature::ImageDisque) {
@@ -426,6 +500,14 @@ impl Noyau {
         }
         let i = self.retenir_installation(&j, &dest, p.methode, fichier_du_jeu, p.nature, extraits)?;
         self.reposer_parties_restaurees(id, &i).await;
+        // Forme `archive` : le programme que dit Firehouse (relatif au dossier d'extraction, confirmé le 21/10), s'il y est
+        // vraiment, devient le lanceur (par `choisir_lanceur` et ses contrôles) ; sinon la personne choisit.
+        if let Some(l) = version_archive.as_ref().and_then(|v| lanceur_de_l_archive(v, &dest)) {
+            match self.choisir_lanceur(id, l).await {
+                Ok(()) => return Ok(self.registre().jeu(id)?.and_then(|j| j.installation).unwrap_or(i)),
+                Err(e) => self.journaliser(&format!("jeu {id} : programme de Firehouse non retenu ({e}), la personne choisira")),
+            }
+        }
         Ok(i)
     }
 
@@ -847,6 +929,8 @@ impl Noyau {
             }
         }
         self.retirer_medias(&j)?;
+        // `Jeu/` resté vide (un jeu en archive installé dans `Jeu/<extraire_dans>`), puis le dossier du jeu.
+        let _ = std::fs::remove_dir(recus.join(DOSSIER_INSTALLATION)); // seulement s'il est vide
         let _ = std::fs::remove_dir(&recus); // seulement s'il est vide
         self.registre().retirer(id)?;
         Ok(abri)
@@ -1000,6 +1084,51 @@ mod tests {
             assert!(j.installation.is_none());
             assert!(!Path::new(&j.dossier).join("Xak (Disk 1 of 2).d88").exists(), "aucun disque orphelin");
         }
+    }
+
+    #[tokio::test]
+    async fn un_jeu_pc_en_archive_s_extrait_entier_et_se_lance_par_son_programme_meme_dit_rom() {
+        // Relevé réel 1.24 (Megaman's Christmas Carol 3) : qualité « Jeu — ROM », forme archive, zip SANS dossier racine
+        // (confirmé par Firehouse), avec sous-dossier et dossier vide.
+        let mut o = std::io::Cursor::new(Vec::new());
+        {
+            let mut z = zip::ZipWriter::new(&mut o);
+            let opt = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored).large_file(true);
+            for (nom, c) in [("ChristmasCarol3.exe", &b"MZ"[..]), ("data.win", b"donnees"), ("Music/theme.ogg", b"ogg")] {
+                z.start_file(nom, opt).unwrap();
+                std::io::Write::write_all(&mut z, c).unwrap();
+            }
+            z.add_directory("Saves/", opt).unwrap();
+            z.finish().unwrap();
+        }
+        let archive = o.into_inner();
+        let (d, n) = noyau_avec(&[("Megaman's Christmas Carol 3.zip", &archive)], "Jeu — ROM").await;
+        n.regler_abris(Some(d.path().join("Abris")));
+        let r: Value = serde_json::from_str(include_str!("../fixtures/simule/version-archive-pc-124.json")).unwrap();
+        let mut v = r["version"].clone();
+        v["telechargement_id"] = 200.into();
+        v["fichiers"][0]["taille"] = archive.len().into();
+        std::fs::write(n.dossier_medias(110).join("fiche.json"), serde_json::json!({"id": 110, "titre": "Megaman", "versions": [v]}).to_string()).unwrap();
+
+        let p = n.preparer_installation(110).await.unwrap();
+        assert_eq!(p.nature, Nature::PretAJouer, "la forme fait foi, jamais « ROM »");
+        assert!(matches!(p.methode, Methode::Archive { .. }));
+        assert!(p.destination.ends_with("Megaman's Christmas Carol 3"));
+        let i = n.installer(110, true).await.unwrap();
+        let dest = PathBuf::from(&i.dossier);
+        assert!(dest.join("Music/theme.ogg").is_file() && dest.join("Saves").is_dir(), "sous-dossier et dossier vide");
+        let l = i.lanceur.expect("le programme de Firehouse est retenu");
+        assert_eq!(PathBuf::from(&l.programme), dest.join("ChristmasCarol3.exe"));
+
+        // Jamais par-dessus : une seconde extraction dans le même dossier est refusée, rien n'est touché.
+        std::fs::write(dest.join("Saves/partie.sav"), b"ma partie").unwrap();
+        assert!(crate::decompression::extraire_dans(&PathBuf::from(&n.registre().jeu(110).unwrap().unwrap().dossier).join("Megaman's Christmas Carol 3.zip"), &dest, None).is_err());
+        assert_eq!(std::fs::read(dest.join("Saves/partie.sav")).unwrap(), b"ma partie");
+
+        // Le retrait ne laisse ni `Jeu/` vide ni dossier du jeu.
+        let jeu = PathBuf::from(&n.registre().jeu(110).unwrap().unwrap().dossier);
+        n.retirer_du_pc(110).await.unwrap();
+        assert!(!jeu.exists());
     }
 
     #[test]

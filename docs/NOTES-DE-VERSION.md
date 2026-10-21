@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.91.0 — Les jeux PC de fans, prêts à jouer
+
+- Firehouse sert maintenant des jeux PC « de fans » (Mega Man, MUGEN…) dans une archive. Frogtend l'installe en
+  entier (dossiers compris) dans le dossier du jeu, choisit tout seul le programme à lancer que Firehouse indique,
+  et le jeu est prêt : ▶ Jouer.
+- Il n'écrit jamais par-dessus un jeu déjà installé ; s'il manque de place ou si l'archive est douteuse, il le dit et
+  ne laisse rien à moitié.
+
 ## 0.90.0 — Tes succès en détail
 
 - 🏆 Voir les succès : la liste complète d'un jeu de tes boutiques — icône (grise tant qu'il n'est pas obtenu), nom,

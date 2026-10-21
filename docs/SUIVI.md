@@ -36,6 +36,15 @@
   `extraire_dans`) — à coder avec le relevé réel d'un jeu de fans. Reste : rôles `maj`/`dlc`/`licence`, formes archive/installeur/
   contenus_emulateur (prochain relevé : Dreamcast multi-disques).
 
+- **Contrat 1.25** (21/10, Firehouse 2.98.0, besoins 30-32 SERVIS ; détail au BRIEF de Firehouse § 1.25) : (30)
+  `en_ligne {online, anticheat, anticheats[], source, lu_le}` dans `/jeu/{id}/triche` ET `/triche/recherche` —
+  `online` = texte de PCGamingWiki en minuscules (« true », « false », « limited », « hackable »… ; inconnu = en
+  ligne/inconnu), `null` = INCONNU ; Frogtend 0.86.0 le lit déjà ainsi (tout sauf « false » = en ligne) ; à faire :
+  lire `anticheats` ; (31) `GET /jeu/steam/{appid}` → `{media_id, launchbox_id}` (404 sinon, rapide) — pour le lot D
+  (fiches des jeux Steam) ; (32) `sauvegardes [{os, chemin, steam_userdata, nuage}]` et `configuration [{os,
+  chemin}]` (chemins NON résolus : %USERPROFILE%… <dossier du jeu>, <Steam>, <identifiant Steam>, HKEY_… ; clé
+  `null` = pas encore lu, `[]` = rien) — pour compléter les abris des jeux Steam (lot B2 : parties hors du nuage).
+
 - **Contrat 1.24** (21/10, Firehouse 2.96.0) : `fichiers[].sha1` sur toutes les versions (27 045 empreintes).
   Relevés réels rangés : `version-segacd-124.json` (Dracula Unleashed, .m3u de 2 .chd : déjà lu par 0.85.1) et
   `version-archive-pc-124.json` (Megaman's Christmas Carol 3, forme `archive`, UN ZIP64 stocké, `extraire_dans`,
@@ -607,6 +616,17 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.91.0** (21/10) — Contrat 1.23/1.24, forme `archive` (avis avant code et relecture de l'expert lancement ;
+  Firehouse a confirmé : zip SANS dossier racine, `lancer` relatif au dossier `extraire_dans`, introuvable = la
+  personne choisit) : la FORME fait foi (qualité « Jeu — ROM » ignorée) → prêt à jouer, Methode::Archive d'UNE
+  `archive_a_extraire` reçue ; `decompression::extraire_dans` (refus entier d'un chemin dangereux — fichier ou
+  dossier —, jamais par-dessus un dossier non vide, place vérifiée, taille plafonnée, dossiers vides créés,
+  provisoire puis renommé, résultat relu) dans `Jeu/<extraire_dans>` ; programme de Firehouse retenu par
+  `choisir_lanceur` (ses contrôles), sinon choix de la personne ; réinstallation refusée avec un message clair
+  (retirer d'abord) ; retrait sans `Jeu/` vide ; l'interface ne redemande pas le lanceur s'il est donné. Vérifié :
+  tests (cœur 456 : parcours complet sur la forme du relevé réel, pièges, place). NON vérifié : le vrai jeu (60 Mo,
+  A-TESTER) ; progression pendant une très grosse extraction (pas affichée : à faire si MUGEN/DataXL sont gros).
 
 - **0.90.0** (21/10) — Lot C des jeux de boutique, sous-lots C2 + C4 + C5 (avis avant code et relectures des
   experts interface et lancement) : `succes::SuccesDetail` / `ListeSucces` (même forme pour Steam, Galaxy,

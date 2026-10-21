@@ -382,6 +382,88 @@ fn poser(plan: &Plan, nouveaux: &mut Vec<PathBuf>) -> Resultat<()> {
     Ok(())
 }
 
+/// Les dossiers d'une archive (vides compris), chemins sûrs ; un chemin dangereux fait refuser l'archive entière.
+fn dossiers(archive: &Path) -> Resultat<Vec<String>> {
+    let mut l = Vec::new();
+    match est_archive(archive) {
+        Some("zip") => {
+            let mut z = zip::ZipArchive::new(std::fs::File::open(archive)?).map_err(|e| Erreur::Disque(format!("Archive zip illisible ({e}).")))?;
+            for i in 0..z.len() {
+                let e = z.by_index_raw(i).map_err(|e| Erreur::Disque(format!("Archive zip abîmée ({e}).")))?;
+                if e.is_dir() {
+                    l.push(chemin_sur(e.name()).ok_or_else(|| Erreur::Refus(format!("L'archive contient un chemin dangereux : {}.", e.name())))?);
+                }
+            }
+        }
+        Some(_) => {
+            for e in crate::sept_z::lister(archive)? {
+                if e.dossier && !e.anti {
+                    l.push(chemin_sur(&e.nom).ok_or_else(|| Erreur::Refus(format!("L'archive contient un chemin dangereux : {}.", e.nom)))?);
+                }
+            }
+        }
+        None => {}
+    }
+    Ok(l)
+}
+
+/// Décompresse TOUTE l'archive dans `dest` (un jeu PC en archive, contrat 1.23/1.24 forme `archive` : sous-dossiers
+/// et dossiers vides compris). Refus entier si un chemin est dangereux ; jamais par-dessus un dossier qui contient
+/// déjà quelque chose ; place vérifiée (marge de 1 %, au moins 100 Mo) ; chaque fichier plafonné à sa taille
+/// annoncée et vérifié ; extraction dans un dossier provisoire puis renommé (jamais une installation à moitié faite).
+pub fn extraire_dans(archive: &Path, dest: &Path, libre: Option<u64>) -> Resultat<()> {
+    if est_archive(archive).is_none() || !archive.is_file() {
+        return Err(Erreur::Refus("Ce fichier n'est ni un .zip ni un .7z.".into()));
+    }
+    let cle = PathBuf::from(archive.to_string_lossy().to_lowercase());
+    if !EN_COURS.lock().unwrap_or_else(|e| e.into_inner()).insert(cle.clone()) {
+        return Err(Erreur::Refus("Ce jeu est déjà en train d'être décompressé.".into()));
+    }
+    let _jeton = Jeton(cle);
+    if std::fs::read_dir(dest).is_ok_and(|mut l| l.next().is_some()) {
+        return Err(Erreur::Refus(format!(
+            "Le dossier « {} » contient déjà quelque chose : Frogtend n'écrit jamais par-dessus.",
+            dest.display()
+        )));
+    }
+    let entrees = lister(archive)?;
+    let vides = dossiers(archive)?;
+    if entrees.is_empty() {
+        return Err(Erreur::Refus("L'archive est vide.".into()));
+    }
+    let taille: u64 = entrees.iter().map(|e| e.taille).sum();
+    if let Some(libre) = libre {
+        let besoin = taille + (taille / 100).max(100 << 20);
+        if libre < besoin {
+            return Err(Erreur::Refus(format!("Pas assez de place sur le disque : il faut {} Go, il reste {} Go.", besoin.div_ceil(1 << 30), libre >> 30)));
+        }
+    }
+    let tmp = provisoire(dest);
+    if tmp.exists() {
+        std::fs::remove_dir_all(&tmp)?;
+    }
+    let r = extraire(archive, &tmp, &entrees, &mut |_| {}).and_then(|_| {
+        for d in &vides {
+            std::fs::create_dir_all(tmp.join(d))?;
+        }
+        // `dest` n'existe pas, ou existe VIDE (vérifié plus haut) : il est remplacé par le dossier provisoire.
+        if dest.exists() {
+            std::fs::remove_dir(dest)?;
+        }
+        std::fs::rename(&tmp, dest)?;
+        Ok(())
+    });
+    if r.is_err() {
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    r?;
+    // Vérifier le résultat, pas le retour.
+    if !complet(dest, &entrees) || !vides.iter().all(|d| dest.join(d).is_dir()) {
+        return Err(Erreur::Disque("Les fichiers décompressés ne sont pas tous là après le rangement.".into()));
+    }
+    Ok(())
+}
+
 /// Range un fichier décompressé à sa place, SANS jamais écraser (sous Windows, `rename` d'un fichier remplace la
 /// cible) : un lien dur échoue si la cible existe ; sur un disque qui n'en veut pas (partage réseau), on revérifie
 /// juste avant de déplacer.
@@ -564,6 +646,41 @@ mod tests {
         assert!(matches!(extraire_a_cote(std::slice::from_ref(&a1), Some(1 << 20)), Err(Erreur::Refus(_))), "pas la place");
         assert!(!d.path().join("disque.d88").exists());
         assert!(!EN_COURS.lock().unwrap().contains(&PathBuf::from(a1.to_string_lossy().to_lowercase())), "archives libérées");
+    }
+
+    #[test]
+    fn un_jeu_en_archive_piege_ou_trop_gros_n_est_jamais_extrait() {
+        let d = tempfile::tempdir().unwrap();
+        // Un chemin qui sort du dossier (fichier ou dossier) : refus entier, rien d'écrit, pas de provisoire laissé.
+        for (piege, dossier) in [("../evil.dll", false), ("C:/x.dll", false), ("../Ailleurs/", true)] {
+            let a = d.path().join("jeu.zip");
+            let mut z = zip::ZipWriter::new(std::fs::File::create(&a).unwrap());
+            let opt = zip::write::SimpleFileOptions::default();
+            z.start_file("bon.exe", opt).unwrap();
+            z.write_all(b"MZ").unwrap();
+            if dossier {
+                z.add_directory(piege, opt).unwrap();
+            } else {
+                z.start_file(piege, opt).unwrap();
+                z.write_all(b"x").unwrap();
+            }
+            z.finish().unwrap();
+            let dest = d.path().join("Jeu").join("Mon jeu");
+            assert!(extraire_dans(&a, &dest, None).is_err(), "{piege}");
+            assert!(!dest.exists() && !d.path().join("evil.dll").exists() && !d.path().join("Ailleurs").exists(), "{piege}");
+            assert!(!provisoire(&dest).exists());
+        }
+        // Pas la place : refus, rien d'écrit.
+        let a = d.path().join("ok.zip");
+        zip(&a, &[("jeu.exe", &[1u8; 10]), ("data/a.pak", &[2u8; 10])]);
+        let dest = d.path().join("Jeu").join("Ok");
+        assert!(matches!(extraire_dans(&a, &dest, Some(1 << 20)), Err(Erreur::Refus(_))));
+        assert!(!dest.exists());
+        // Sinon : tout est là ; un dossier de destination VIDE est accepté.
+        std::fs::create_dir_all(&dest).unwrap();
+        extraire_dans(&a, &dest, None).unwrap();
+        assert_eq!(std::fs::read(dest.join("data/a.pak")).unwrap(), vec![2u8; 10]);
+        assert!(!provisoire(&dest).exists());
     }
 
     #[test]
