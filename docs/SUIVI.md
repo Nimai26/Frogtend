@@ -99,6 +99,11 @@
   échappe) ; manifestes de mods DANS le dossier du jeu ; Nexus exige un lanceur. Découpage : **B0** garde-fous →
   **B1** triches + Cheat Engine (aucune écriture chez Steam) → **B2** abris nuage Steam → **B3** mods GitHub (données
   à part, `buildid` surveillé) → **B4** Nexus pour Steam.
+  ✅ Seb 21/10 (après 0.94.0) : pour Epic, il installe un PETIT jeu, TerraScape, dans
+  `D:\LaunchBox\Games\Epic\Epic Games\Games` (Fortnite laissé tel quel) ; et « tout sera reset en fin de
+  développement de Frogtend pour que tout soit bien géré par lui » : les installations actuelles (Steam, GOG,
+  Epic, LaunchBox) sont des données d'ESSAI, Frogtend reprendra tout en main à la fin — ne rien optimiser pour leur
+  état actuel, mais toujours en lecture seule tant que ce n'est pas lui qui les gère.
   ✅ Seb 21/10 (après 0.92.0) : « A6 » — GOG et Epic comme Steam (inscrits au registre, lancés par leur
   boutique, partie suivie) ; PS3 contenus, D et parties Steam hors nuage attendront. Décisions (21/10, ne plus les
   redemander) : jeux GOG lancés PAR GOG GALAXY (nuage, succès, temps de Galaxy ; commande `GalaxyClient.exe
