@@ -1,5 +1,18 @@
 # Notes de version de Frogtend
 
+## 0.89.0 — Des mods dans tes jeux Steam
+
+- ⚙ Gérer le jeu ▸ 🧩 Mods : maintenant aussi pour tes jeux Steam, ceux de Firehouse (GitHub) comme ceux de Nexus
+  Mods. Le mod se pose dans le dossier du jeu ; les fichiers d'origine qu'il remplace sont gardés dans les données
+  de Frogtend, et il se retire proprement.
+- Comme pour Cheat Engine : un jeu protégé par un anti-triche n'a jamais de mod ; un jeu en ligne, ou dont on ne
+  sait rien, demande d'abord ton accord (« risque de bannissement »).
+- Avant un mod, les parties que Steam garde pour son nuage sont mises à l'abri. Rien ne se fait pendant que Steam
+  met le jeu à jour, ni pendant une partie.
+- Si Steam met ensuite le jeu à jour, le mod est marqué ⚠ (il a pu être défait). Le retirer laisse les nouveaux
+  fichiers de Steam en place, puis propose d'ouvrir « Vérifier l'intégrité des fichiers » dans Steam.
+- Un mod se pose à la racine du jeu Steam (Frogtend ne sait pas quel programme Steam lance).
+
 ## 0.88.0 — Les jeux Switch avec leurs mises à jour et DLC
 
 - Firehouse sert maintenant certains jeux Switch avec leur dernière mise à jour et leurs DLC. Frogtend lance

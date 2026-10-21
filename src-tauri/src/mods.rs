@@ -397,9 +397,14 @@ pub struct Manifeste {
     pub fichiers: Vec<Pose>,
     /// Les dossiers créés par le mod (retirés à la désinstallation s'ils sont vides).
     pub dossiers: Vec<String>,
+    /// Un jeu Steam (lot B3) : la version du jeu (`buildid` de son appmanifest) quand le mod a été posé. Une autre
+    /// version ensuite = Steam a mis le jeu à jour, et le mod a pu être défait.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steam_buildid: Option<String>,
 }
 
-/// Le dossier de Frogtend pour les mods d'un jeu (dans le jeu : « pas de pieuvre »).
+/// Le dossier de Frogtend pour les mods d'un jeu (dans le jeu : « pas de pieuvre »). Un jeu de BOUTIQUE garde le sien
+/// dans les données de Frogtend (`installes_dans`, `installer_dans`, `desinstaller_dans` : le paramètre `garde`).
 pub fn dossier_mods(jeu: &Path) -> PathBuf {
     jeu.join("Frogtend").join("mods")
 }
@@ -418,7 +423,12 @@ fn manifeste_sain(m: &Manifeste, nom_fichier: &str) -> bool {
 
 /// Les mods installés dans ce jeu (manifestes lus, plafonnés, vérifiés ; un manifeste illisible ou douteux est ignoré).
 pub fn installes(jeu: &Path) -> Vec<Manifeste> {
-    let Ok(l) = std::fs::read_dir(dossier_mods(jeu)) else { return Vec::new() };
+    installes_dans(&dossier_mods(jeu))
+}
+
+/// `installes`, d'après le dossier de garde des mods (`garde`).
+pub fn installes_dans(garde: &Path) -> Vec<Manifeste> {
+    let Ok(l) = std::fs::read_dir(garde) else { return Vec::new() };
     let mut r: Vec<Manifeste> = l
         .flatten()
         .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
@@ -432,10 +442,10 @@ pub fn installes(jeu: &Path) -> Vec<Manifeste> {
     r
 }
 
-fn ecrire_manifeste(jeu: &Path, m: &Manifeste) -> Resultat<()> {
-    let f = dossier_mods(jeu).join(format!("{}.json", m.cle));
-    let tmp = dossier_mods(jeu).join(format!("{}.json.tmp", m.cle));
-    std::fs::create_dir_all(dossier_mods(jeu))?;
+fn ecrire_manifeste(garde: &Path, m: &Manifeste) -> Resultat<()> {
+    let f = garde.join(format!("{}.json", m.cle));
+    let tmp = garde.join(format!("{}.json.tmp", m.cle));
+    std::fs::create_dir_all(garde)?;
     std::fs::write(&tmp, serde_json::to_vec_pretty(m).map_err(|e| Erreur::Disque(e.to_string()))?)?;
     std::fs::rename(&tmp, &f)?;
     Ok(())
@@ -489,12 +499,12 @@ pub struct Bilan {
 /// Les restes d'une pose arrêtée net (Frogtend fermé pendant l'extraction : le nettoyage n'a pas pu passer) : dans
 /// chaque dossier de mod SANS manifeste, seulement `brut` et `contenu` (des copies de l'archive, refaites à la pose).
 /// Jamais `remplaces` ni `gardes`.
-fn ranger_les_restes(jeu: &Path) {
-    let Ok(l) = std::fs::read_dir(dossier_mods(jeu)) else { return };
+fn ranger_les_restes(garde: &Path) {
+    let Ok(l) = std::fs::read_dir(garde) else { return };
     for e in l.flatten() {
         let nom = e.file_name().to_string_lossy().to_string();
         let cle_seule = nom.len() == 16 && nom.chars().all(|c| c.is_ascii_hexdigit());
-        if !cle_seule || !e.file_type().is_ok_and(|t| t.is_dir()) || dossier_mods(jeu).join(format!("{nom}.json")).exists() {
+        if !cle_seule || !e.file_type().is_ok_and(|t| t.is_dir()) || garde.join(format!("{nom}.json")).exists() {
             continue;
         }
         for reste in ["brut", "contenu"] {
@@ -545,8 +555,27 @@ pub fn installer(jeu: &Path, archive: &Path, f: &FichierMod, mod_nom: &str, sha2
 /// (fichiers).
 #[allow(clippy::too_many_arguments)]
 pub fn installer_avec(jeu: &Path, archive: &Path, f: &FichierMod, mod_nom: &str, sha256_archive: &str, sous: &str, sans_racine: bool, quand: &str, progres: &(dyn Fn(&'static str, u64, u64) + Sync)) -> Resultat<Bilan> {
+    installer_dans(jeu, &dossier_mods(jeu), None, archive, f, mod_nom, sha256_archive, sous, sans_racine, quand, progres)
+}
+
+/// `installer_avec`, en gardant manifeste, travail et originaux dans `garde` (un jeu de boutique : hors de son dossier
+/// chez la boutique) ; `steam_buildid` : la version du jeu Steam à cet instant.
+#[allow(clippy::too_many_arguments)]
+pub fn installer_dans(
+    jeu: &Path,
+    garde: &Path,
+    steam_buildid: Option<String>,
+    archive: &Path,
+    f: &FichierMod,
+    mod_nom: &str,
+    sha256_archive: &str,
+    sous: &str,
+    sans_racine: bool,
+    quand: &str,
+    progres: &(dyn Fn(&'static str, u64, u64) + Sync),
+) -> Resultat<Bilan> {
     let cle = f.cle();
-    if installes(jeu).iter().any(|m| m.cle == cle) {
+    if installes_dans(garde).iter().any(|m| m.cle == cle) {
         return Err(Erreur::Refus("Ce mod est déjà installé.".into()));
     }
     let entrees = lister(archive)?;
@@ -561,23 +590,30 @@ pub fn installer_avec(jeu: &Path, archive: &Path, f: &FichierMod, mod_nom: &str,
     };
     let dans_le_jeu = |rel: &str| if sous.is_empty() { rel.to_string() } else { format!("{sous}/{rel}") };
     // Un fichier qui appartient déjà à un autre mod : refusé (désinstaller l'autre d'abord).
-    let autres: Vec<(String, String)> = installes(jeu).into_iter().flat_map(|m| m.fichiers.into_iter().map(move |p| (p.chemin.to_lowercase(), m.mod_nom.clone()))).collect();
+    let autres: Vec<(String, String)> = installes_dans(garde).into_iter().flat_map(|m| m.fichiers.into_iter().map(move |p| (p.chemin.to_lowercase(), m.mod_nom.clone()))).collect();
     for e in &entrees {
         let c = dans_le_jeu(&rel_de(e)).to_lowercase();
         if let Some((_, autre)) = autres.iter().find(|(x, _)| *x == c) {
             return Err(Erreur::Refus(format!("Ce mod remplacerait un fichier du mod « {autre} » : désinstalle-le d'abord.")));
         }
     }
-    // La place : le mod décompressé à côté, puis posé (deux fois sa taille), plus les originaux copiés à l'abri.
-    if let Some(libre) = crate::jeux_pc::place_libre(jeu) {
-        let mod_ = entrees.iter().map(|e| e.taille).sum::<u64>();
-        let originaux: u64 = entrees.iter().filter_map(|e| std::fs::metadata(jeu.join(dans_le_jeu(&rel_de(e)))).ok()).filter(|m| m.is_file()).map(|m| m.len()).sum();
-        if mod_.saturating_mul(2).saturating_add(originaux) > libre {
-            return Err(Erreur::Disque("Pas assez de place sur le disque du jeu pour ce mod.".into()));
-        }
+    // La place : le mod décompressé dans `garde`, puis posé dans le jeu, plus les originaux copiés dans `garde` (deux
+    // disques quand le jeu est chez sa boutique : chacun vérifié).
+    let mod_ = entrees.iter().map(|e| e.taille).sum::<u64>();
+    let originaux: u64 = entrees.iter().filter_map(|e| std::fs::metadata(jeu.join(dans_le_jeu(&rel_de(e)))).ok()).filter(|m| m.is_file()).map(|m| m.len()).sum();
+    std::fs::create_dir_all(garde)?;
+    let (libre_jeu, libre_garde) = (crate::jeux_pc::place_libre(jeu), crate::jeux_pc::place_libre(garde));
+    let meme_disque = jeu.components().next() == garde.components().next();
+    let manque = if meme_disque {
+        libre_jeu.is_some_and(|l| mod_.saturating_mul(2).saturating_add(originaux) > l)
+    } else {
+        libre_jeu.is_some_and(|l| mod_ > l) || libre_garde.is_some_and(|l| mod_.saturating_add(originaux) > l)
+    };
+    if manque {
+        return Err(Erreur::Disque("Pas assez de place sur le disque pour ce mod.".into()));
     }
-    ranger_les_restes(jeu);
-    let travail = dossier_mods(jeu).join(&cle);
+    ranger_les_restes(garde);
+    let travail = garde.join(&cle);
     let contenu = travail.join("contenu");
     if travail.exists() {
         // Un dossier de ce mod sans manifeste : une pose interrompue, ou un mod RETIRÉ dont la désinstallation a gardé
@@ -585,7 +621,7 @@ pub fn installer_avec(jeu: &Path, archive: &Path, f: &FichierMod, mod_nom: &str,
         // jamais : le dossier est mis de côté sous un autre nom ; sinon, ce ne sont que des restes.
         if travail.join("remplaces").exists() || travail.join("gardes").exists() {
             let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-            std::fs::rename(&travail, dossier_mods(jeu).join(format!("{cle}-ancien-{n}")))?;
+            std::fs::rename(&travail, garde.join(format!("{cle}-ancien-{n}")))?;
         } else {
             std::fs::remove_dir_all(&travail)?;
         }
@@ -657,6 +693,7 @@ pub fn installer_avec(jeu: &Path, archive: &Path, f: &FichierMod, mod_nom: &str,
         etat: "en_cours".into(),
         fichiers: Vec::new(),
         dossiers: Vec::new(),
+        steam_buildid,
     };
     let mut bilan = Bilan::default();
     let mut a_poser: Vec<(PathBuf, PathBuf, Pose)> = Vec::new();
@@ -716,10 +753,10 @@ pub fn installer_avec(jeu: &Path, archive: &Path, f: &FichierMod, mod_nom: &str,
     // 4. Le manifeste « en cours » AVANT de toucher au jeu (dossiers, fichiers) ; à partir de là, un échec DÉFAIT ce
     // qui a été fait (les originaux sont remis depuis leur copie, qui n'est effacée que si tout est remis).
     m.fichiers = a_poser.iter().map(|(_, _, p)| p.clone()).collect();
-    ecrire_manifeste(jeu, &m)?;
+    ecrire_manifeste(garde, &m)?;
     nettoyage.actif = false;
     let echec = |e: Erreur, n: usize, m: &Manifeste| -> Erreur {
-        if defaire(jeu, m, n).is_ok() {
+        if defaire(jeu, garde, m, n).is_ok() {
             let _ = std::fs::remove_dir_all(&travail);
         }
         e
@@ -736,7 +773,7 @@ pub fn installer_avec(jeu: &Path, archive: &Path, f: &FichierMod, mod_nom: &str,
         progres("pose", i as u64 + 1, a_poser.len() as u64);
     }
     m.etat = "installe".into();
-    if let Err(e) = ecrire_manifeste(jeu, &m) {
+    if let Err(e) = ecrire_manifeste(garde, &m) {
         return Err(echec(e, a_poser.len(), &m));
     }
     let _ = std::fs::remove_dir_all(&contenu);
@@ -745,8 +782,8 @@ pub fn installer_avec(jeu: &Path, archive: &Path, f: &FichierMod, mod_nom: &str,
 
 /// Défait les `n` premières poses d'un manifeste (installation interrompue) et retire les dossiers qu'il avait créés
 /// (s'ils sont vides). Le manifeste n'est retiré que si tout a été remis.
-fn defaire(jeu: &Path, m: &Manifeste, n: usize) -> Resultat<()> {
-    let remplaces = dossier_mods(jeu).join(&m.cle).join("remplaces");
+fn defaire(jeu: &Path, garde: &Path, m: &Manifeste, n: usize) -> Resultat<()> {
+    let remplaces = garde.join(&m.cle).join("remplaces");
     for p in m.fichiers.iter().take(n) {
         let dest = jeu.join(&p.chemin);
         if p.sorte == "remplace" {
@@ -756,7 +793,7 @@ fn defaire(jeu: &Path, m: &Manifeste, n: usize) -> Resultat<()> {
         }
     }
     retirer_dossiers_vides(jeu, &m.dossiers);
-    std::fs::remove_file(dossier_mods(jeu).join(format!("{}.json", m.cle)))?;
+    std::fs::remove_file(garde.join(format!("{}.json", m.cle)))?;
     Ok(())
 }
 
@@ -774,8 +811,25 @@ fn retirer_dossiers_vides(jeu: &Path, dossiers: &[String]) {
 /// n'est JAMAIS effacé tant qu'il n'a pas été remis (fichier modifié ou supprimé par la personne : sa copie reste dans
 /// `<jeu>\Frogtend\mods\<clé>\remplaces\`). Rend les fichiers gardés.
 pub fn desinstaller(jeu: &Path, cle: &str) -> Resultat<Vec<String>> {
-    let m = installes(jeu).into_iter().find(|m| m.cle == cle).ok_or_else(|| Erreur::Introuvable("Ce mod n'est pas installé dans ce jeu.".into()))?;
-    let travail = dossier_mods(jeu).join(&m.cle);
+    desinstaller_dans(jeu, &dossier_mods(jeu), cle, false).map(|r| r.gardes)
+}
+
+/// Ce que la désinstallation a laissé.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct Retrait {
+    /// Modifiés par la personne depuis la pose : gardés, et copiés à l'abri.
+    pub gardes: Vec<String>,
+    /// Remplacés par la boutique depuis la pose (une mise à jour) : laissés tels quels, jamais pris pour ceux de la
+    /// personne.
+    pub laisses_a_la_boutique: Vec<String>,
+}
+
+/// `desinstaller`, d'après le dossier de garde ; `apres_maj` : la boutique a mis le jeu à jour depuis la pose, donc un
+/// fichier qui n'est plus celui du mod est celui de la boutique (laissé, sans copie).
+pub fn desinstaller_dans(jeu: &Path, garde: &Path, cle: &str, apres_maj: bool) -> Resultat<Retrait> {
+    let m = installes_dans(garde).into_iter().find(|m| m.cle == cle).ok_or_else(|| Erreur::Introuvable("Ce mod n'est pas installé dans ce jeu.".into()))?;
+    let travail = garde.join(&m.cle);
+    let mut laisses = Vec::new();
     let remplaces = travail.join("remplaces");
     let gardes_dir = travail.join("gardes");
     let mut gardes = Vec::new();
@@ -799,6 +853,13 @@ pub fn desinstaller(jeu: &Path, cle: &str) -> Resultat<Vec<String>> {
             remis.push(origine);
             continue;
         }
+        if actuel != p.sha256_pose && apres_maj && p.sorte == "remplace" {
+            // La version de la boutique (elle ne connaît que SES fichiers : un fichier ajouté par le mod et changé est
+            // celui de la personne, traité plus bas) : laissée telle quelle (l'original gardé reste à l'abri).
+            laisses.push(p.chemin.clone());
+            originaux_restants |= p.sorte == "remplace" && origine.is_file();
+            continue;
+        }
         if actuel != p.sha256_pose {
             let copie = gardes_dir.join(&p.chemin);
             if let Some(d) = copie.parent() {
@@ -820,7 +881,7 @@ pub fn desinstaller(jeu: &Path, cle: &str) -> Resultat<Vec<String>> {
         }
     }
     retirer_dossiers_vides(jeu, &m.dossiers);
-    std::fs::remove_file(dossier_mods(jeu).join(format!("{}.json", m.cle)))?;
+    std::fs::remove_file(garde.join(format!("{}.json", m.cle)))?;
     // Seules les copies des originaux REMIS s'effacent ; le reste (originaux non remis, fichiers gardés) demeure.
     for o in remis {
         let _ = std::fs::remove_file(o);
@@ -828,7 +889,7 @@ pub fn desinstaller(jeu: &Path, cle: &str) -> Resultat<Vec<String>> {
     if !originaux_restants && gardes.is_empty() {
         let _ = std::fs::remove_dir_all(&travail);
     }
-    Ok(gardes)
+    Ok(Retrait { gardes, laisses_a_la_boutique: laisses })
 }
 
 #[cfg(test)]
@@ -943,9 +1004,43 @@ mod tests {
             std::fs::create_dir_all(reste.join(s)).unwrap();
             std::fs::write(reste.join(s).join("x"), b"x").unwrap();
         }
-        ranger_les_restes(&jeu);
+        ranger_les_restes(&dossier_mods(&jeu));
         assert!(!reste.join("brut").exists() && !reste.join("contenu").exists());
         assert!(reste.join("remplaces").join("x").exists() && reste.join("gardes").join("x").exists());
+    }
+
+    #[test]
+    fn un_jeu_steam_garde_tout_hors_de_son_dossier_et_se_retire_proprement_apres_une_maj() {
+        // Lot B3 : le jeu chez « Steam », la garde dans les données de Frogtend (un autre dossier, ici à côté).
+        let d = tempfile::tempdir().unwrap();
+        let (jeu, garde) = (d.path().join("steamapps/common/Jeu"), d.path().join("donnees/boutiques/42/mods"));
+        std::fs::create_dir_all(&jeu).unwrap();
+        std::fs::write(jeu.join("dsound.dll"), b"original").unwrap();
+        std::fs::write(jeu.join("data.pak"), b"original pak").unwrap();
+        let a = d.path().join("mod.zip");
+        zip_de(&a, &[("dsound.dll", b"du mod"), ("data.pak", b"pak du mod"), ("Fix.asi", b"asi")]);
+        let f = FichierMod::depuis(&fusion()).unwrap();
+        let b = installer_dans(&jeu, &garde, Some("100".into()), &a, &f, "Fusion Fix", "abc", "", false, "1", &|_, _, _| {}).unwrap();
+        assert_eq!((b.ajoutes, b.remplaces), (1, 2));
+        assert!(!jeu.join("Frogtend").exists(), "rien d'autre que le mod chez Steam");
+        assert_eq!(std::fs::read(garde.join(f.cle()).join("remplaces").join("dsound.dll")).unwrap(), b"original");
+        let m = &installes_dans(&garde)[0];
+        assert_eq!(m.steam_buildid.as_deref(), Some("100"));
+        assert!(installes(&jeu).is_empty(), "le dossier du jeu n'a aucun manifeste");
+
+        // Steam met le jeu à jour : il remplace data.pak par SA nouvelle version, laisse dsound.dll (fichier du mod) et
+        // Fix.asi (inconnu de lui) ; la personne, elle, a changé Fix.asi (un fichier AJOUTÉ par le mod).
+        std::fs::write(jeu.join("data.pak"), b"pak de la v2").unwrap();
+        std::fs::write(jeu.join("Fix.asi"), b"mes reglages").unwrap();
+        let r = desinstaller_dans(&jeu, &garde, &f.cle(), true).unwrap();
+        assert_eq!(r.laisses_a_la_boutique, vec!["data.pak"], "le fichier de Steam est laissé, jamais pris pour celui de la personne");
+        assert_eq!(r.gardes, vec!["Fix.asi"], "un ajout du mod changé est à la personne (Steam ne le connaît pas)");
+        assert_eq!(std::fs::read(garde.join(f.cle()).join("gardes").join("Fix.asi")).unwrap(), b"mes reglages");
+        assert_eq!(std::fs::read(jeu.join("data.pak")).unwrap(), b"pak de la v2");
+        assert_eq!(std::fs::read(jeu.join("dsound.dll")).unwrap(), b"original", "l'original remis (Steam le revérifiera)");
+        assert!(!garde.join(f.cle()).join("gardes").join("data.pak").exists(), "le fichier de Steam n'est pas copié comme « modifié par la personne »");
+        assert!(garde.join(f.cle()).join("remplaces").join("data.pak").exists(), "l'ancien original reste à l'abri");
+        assert!(!jeu.join("Frogtend").exists());
     }
 
     #[test]
@@ -1129,6 +1224,7 @@ mod tests {
             etat: "installe".into(),
             fichiers: vec![Pose { chemin: "../precieux.txt".into(), sorte: "ajoute".into(), sha256_pose: String::new(), sha256_origine: None }],
             dossiers: vec![],
+            steam_buildid: None,
         };
         std::fs::write(dossier_mods(&jeu).join("faux.json"), serde_json::to_vec(&faux).unwrap()).unwrap();
         let vrai_nom = Manifeste { cle: "0123456789abcdef".into(), ..faux.clone() };

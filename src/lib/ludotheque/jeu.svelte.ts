@@ -15,6 +15,7 @@ import { detailPatch, nomDuPatch, remarqueDuPatch, titreDuJeu } from '$lib/emula
 import { adresseWeb, avertissements, fichierInstallable, pageNexus, raisonSansClic, type ModJeu } from '$lib/mods/mods';
 import { ouvrirSurNexus } from '$lib/mods/nexus.svelte';
 import { avecProgres } from '$lib/mods/progres.svelte';
+import { accordModSteam } from '$lib/mods/cheatengine';
 import { ouvrirPageWeb } from '$lib/web';
 import { estRetroArch, normaliser, pourLeJeu } from '$lib/emulateurs/choix';
 import { etat, reglerPc, reglerProfil } from '$lib/etat.svelte';
@@ -985,6 +986,9 @@ export async function choisirMods(id: number) {
   const j = tele.jeux[id];
   if (!j) return;
   const TITRE = '🧩 Mods';
+  // Un jeu Steam (lot B3) : posé dans son dossier chez Steam, mais tout ce que Frogtend garde (originaux, manifestes)
+  // reste dans ses données ; à la racine du jeu seulement ; risque d'un jeu en ligne demandé avant.
+  const appidSteam = j.installation?.boutique?.source === 'steam' ? j.installation.boutique.cle : null;
   for (;;) {
     // Les mods installés se lisent sur le disque : hors ligne, on peut toujours les retirer.
     let installes: ModInstalle[];
@@ -1002,8 +1006,13 @@ export async function choisirMods(id: number) {
     const lignes: { valeur: Choix; libelle: string; detail?: string }[] = [
       ...installes.map((m) => ({
         valeur: { sorte: 'installe' as const, m },
-        libelle: `${m.etat === 'installe' ? '✅' : '⚠'} ${m.mod_nom}`,
-        detail: m.etat === 'installe' ? 'installé — choisis-le pour le retirer' : 'installation interrompue — choisis-le pour remettre le jeu comme avant',
+        libelle: `${m.etat === 'installe' && !m.steam_mis_a_jour ? '✅' : '⚠'} ${m.mod_nom}`,
+        detail:
+          m.etat !== 'installe'
+            ? 'installation interrompue — choisis-le pour remettre le jeu comme avant'
+            : m.steam_mis_a_jour
+              ? 'Steam a mis le jeu à jour depuis : le mod a pu être défait — choisis-le pour le retirer, puis réinstalle-le'
+              : 'installé — choisis-le pour le retirer',
       })),
       ...(liste ?? [])
         .filter((m) => !installes.some((i) => i.mod_nom === m.nom))
@@ -1034,11 +1043,24 @@ export async function choisirMods(id: number) {
     );
     if (c === null || c === 'fini') return;
     if (c.sorte === 'installe') {
-      if (!(await confirmer(`🧩 Retirer « ${c.m.mod_nom} » ?`, { message: 'Les fichiers d’origine du jeu sont remis en place. Un fichier du mod que tu as modifié est gardé (et copié de côté).', libelleValider: 'Retirer' })))
-        continue;
+      const message = c.m.steam_mis_a_jour
+        ? 'Steam a mis le jeu à jour depuis ce mod : les fichiers que Steam a déjà changés restent tels quels ; les autres fichiers d’origine sont remis, et Steam pourra ensuite tout revérifier.'
+        : 'Les fichiers d’origine du jeu sont remis en place. Un fichier du mod que tu as modifié est gardé (et copié de côté).';
+      if (!(await confirmer(`🧩 Retirer « ${c.m.mod_nom} » ?`, { message, libelleValider: 'Retirer' }))) continue;
       try {
-        const gardes = await api.modDesinstaller(id, c.m.cle);
-        toast(`🧩 « ${c.m.mod_nom} » retiré${gardes.length ? ` ; gardé(s) car modifié(s) : ${gardes.join(', ')}` : ''}.`);
+        const r = await api.modDesinstaller(id, c.m.cle);
+        toast(
+          `🧩 « ${c.m.mod_nom} » retiré${r.gardes.length ? ` ; gardé(s) car modifié(s) : ${r.gardes.join(', ')}` : ''}${r.laisses_a_la_boutique.length ? ` ; laissé(s) à Steam (sa mise à jour) : ${r.laisses_a_la_boutique.join(', ')}` : ''}.`,
+        );
+        // Après une mise à jour de Steam, les fichiers d'origine remis peuvent être d'une version d'avant : Steam les
+        // répare (« Vérifier l'intégrité »), avec l'accord de la personne — au bureau (la fenêtre de Steam se pilote à
+        // la souris).
+        if (appidSteam && (c.m.steam_mis_a_jour || r.laisses_a_la_boutique.length)) {
+          const texte = 'Steam a mis le jeu à jour depuis ce mod : certains fichiers remis peuvent dater d’avant. Steam peut les vérifier et remettre les siens (« Vérifier l’intégrité des fichiers »).';
+          if (auCanape()) await informer('🛠 À faire sur l’écran du PC', `${texte} Dans Steam : clic droit sur le jeu ▸ Propriétés ▸ Fichiers installés ▸ Vérifier l’intégrité.`);
+          else if (await confirmer('🛠 Faire vérifier le jeu par Steam ?', { message: texte, libelleValider: 'Ouvrir la vérification dans Steam' }))
+            await api.steamOuvrir(appidSteam, 'verifier').catch((e) => toast(`Steam ne s’ouvre pas : ${motifDuRefus(e)}`, 'erreur'));
+        }
       } catch (e) {
         toast(`Refusé : ${motifDuRefus(e)}`, 'erreur');
       }
@@ -1080,6 +1102,14 @@ export async function choisirMods(id: number) {
     }
     // Un mod « à confirmer » : la page dit où le poser ; au canapé, à faire depuis l'écran du PC. Lire les consignes
     // ramène à la même question (jamais à la liste de tous les mods).
+    // Un jeu Steam : le risque d'un jeu en ligne (anti-triche connu : refus) D'ABORD — un refus n'a pas à faire choisir
+    // l'emplacement pour rien.
+    let risque = false;
+    if (appidSteam) {
+      const a = await accordModSteam(id);
+      if (a === null) continue;
+      risque = a;
+    }
     let programme = false;
     let annule = false;
     while (f.a_confirmer) {
@@ -1092,7 +1122,8 @@ export async function choisirMods(id: number) {
         [
           { valeur: 'page', libelle: '📖 Lire les consignes de la page d’abord' },
           { valeur: 'racine', libelle: '📁 Dans le dossier du jeu' },
-          { valeur: 'programme', libelle: '🎮 À côté du programme du jeu', detail: 'si la page dit « à côté de l’exe »' },
+          // Un jeu Steam : Frogtend ne connaît pas son programme (Steam le lance) — la racine seulement.
+          ...(appidSteam ? [] : [{ valeur: 'programme' as const, libelle: '🎮 À côté du programme du jeu', detail: 'si la page dit « à côté de l’exe »' }]),
         ],
         'La page du mod dit où le poser. En cas de doute, lis-la d’abord.',
       );
@@ -1112,13 +1143,15 @@ export async function choisirMods(id: number) {
       m.description ? `Ce qu’il fait (en anglais) : ${m.description}` : '',
       `Taille : ${taille(f.taille)}, téléchargé depuis la page de l’auteur (GitHub).`,
       ...avertissements(f),
-      'Tes parties sont mises à l’abri, et tout fichier du jeu remplacé est gardé de côté.',
+      appidSteam
+        ? 'Les parties que Steam garde pour son nuage sont mises à l’abri, et les fichiers du jeu que le mod remplace sont gardés de côté dans les données de Frogtend. Après une mise à jour de Steam, le mod peut être à refaire.'
+        : 'Tes parties sont mises à l’abri, et tout fichier du jeu remplacé est gardé de côté.',
     ]
       .filter(Boolean)
       .join('\n\n');
     if (!(await confirmer(`🧩 Installer « ${m.nom} » ?`, { message, libelleValider: '⬇ Télécharger et installer' }))) continue;
     try {
-      const b = await avecProgres(`Installation de « ${m.nom} » (ne ferme pas Frogtend)`, false, (suivi) => api.modInstaller(id, m.nom, f.nom, programme, suivi));
+      const b = await avecProgres(`Installation de « ${m.nom} » (ne ferme pas Frogtend)`, false, (suivi) => api.modInstaller(id, m.nom, f.nom, programme, suivi, risque));
       toast(`🧩 « ${m.nom} » installé : ${b.ajoutes} fichier(s) ajouté(s), ${b.remplaces} remplacé(s) (gardés de côté).`);
     } catch (e) {
       toast(`Refusé : ${motifDuRefus(e)}`, 'erreur');
@@ -1175,8 +1208,8 @@ export async function gererJeu(id: number) {
   const pcSansEmulateur = jeuPcSansEmulateur(id);
   if (!pcSansEmulateur) options.push({ valeur: 'commandes', libelle: '🎮 Commandes', detail: libelleCommandes(etat.profil.commandes[String(id)]) });
   if (pcSansEmulateur) {
-    // Ses mods (contrat 1.19 ; ✅ Seb 19/10) — pas encore pour un jeu de boutique (lot B).
-    if (!deBoutique) options.push({ valeur: 'mods', libelle: '🧩 Mods', detail: 'ajouter ou retirer des mods — pour ce jeu' });
+    // Ses mods (contrat 1.19 ; ✅ Seb 19/10) — d'une boutique, Steam seulement (lot B3, ✅ Seb 21/10).
+    if (!deBoutique || j.installation?.boutique?.source === 'steam') options.push({ valeur: 'mods', libelle: '🧩 Mods', detail: 'ajouter ou retirer des mods — pour ce jeu' });
     // Triches et Cheat Engine (lot B, 21/10 : aussi pour un jeu de boutique) — au bureau : la page s'utilise à la
     // souris ; au canapé, Cheat Engine reste dans le menu en jeu.
     if (!auCanape())

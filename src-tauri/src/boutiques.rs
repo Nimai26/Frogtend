@@ -181,6 +181,8 @@ pub struct ManifesteSteam {
     pub appid: String,
     pub installdir: String,
     pub etat: u64,
+    /// La version installée (`buildid` ; jamais `TargetBuildID`, celle qu'une mise à jour visera) — facultative.
+    pub buildid: Option<String>,
 }
 
 /// Lit les clés simples d'un manifeste Steam (format texte de Valve : `"clé"  "valeur"`, une par ligne).
@@ -191,7 +193,12 @@ pub fn lire_manifeste_steam(texte: &str) -> Option<ManifesteSteam> {
             (m.len() >= 4 && m[1].eq_ignore_ascii_case(cle)).then(|| m[3].to_string())
         })
     };
-    Some(ManifesteSteam { appid: valeur("appid").filter(|a| !a.is_empty() && a.chars().all(|c| c.is_ascii_digit()))?, installdir: valeur("installdir")?, etat: valeur("StateFlags")?.parse().ok()? })
+    Some(ManifesteSteam {
+        appid: valeur("appid").filter(|a| !a.is_empty() && a.chars().all(|c| c.is_ascii_digit()))?,
+        installdir: valeur("installdir")?,
+        etat: valeur("StateFlags")?.parse().ok()?,
+        buildid: valeur("buildid").filter(|b| !b.is_empty() && b.chars().all(|c| c.is_ascii_digit())),
+    })
 }
 
 /// Un jeu Steam prêt à jouer : entièrement installé (bit 4 de `StateFlags`) et rien en cours (mise à jour requise ou
@@ -214,6 +221,10 @@ pub fn steam_installe(etat: u64) -> bool {
 pub struct InstalleSteam {
     pub dossier: PathBuf,
     pub pret: bool,
+    /// Sa version installée (`buildid`), si l'appmanifest la donne.
+    pub buildid: Option<String>,
+    /// Steam le dit en cours (« AppRunning », 64) : rien n'y est posé ni retiré.
+    pub lance: bool,
 }
 
 /// Les jeux Steam installés sur ce PC, avec leur dossier : `<bibliothèque>\steamapps\common\<installdir>`, où
@@ -233,7 +244,7 @@ pub fn installes_steam_dossiers(dossier_steam: &Path) -> std::collections::BTree
             }
             let dossier = b.join("steamapps").join("common").join(&m.installdir);
             if dossier.is_dir() {
-                s.insert(m.appid, InstalleSteam { dossier, pret: steam_pret(m.etat) });
+                s.insert(m.appid, InstalleSteam { dossier, pret: steam_pret(m.etat), lance: m.etat & 64 != 0, buildid: m.buildid });
             }
         }
     }
@@ -543,6 +554,11 @@ mod tests {
         assert_eq!(s["400"].dossier, autre.join("steamapps/common/Portal"), "jamais « Portal 2 » pour « Portal »");
         assert!(s["400"].pret && s["620"].pret && !s["500"].pret);
         assert!(lire_manifeste_steam("\"appid\" \"12a\"\n\"installdir\" \"x\"\n\"StateFlags\" \"4\"").is_none());
+        assert!(s["400"].lance && !s["620"].lance, "AppRunning (64)");
+        // `buildid` (relevé réel du 21/10 : présent dans les 11 appmanifest de Venkman), jamais `TargetBuildID`.
+        let m = lire_manifeste_steam("\"appid\" \"268500\"\n\"StateFlags\" \"4\"\n\"installdir\" \"XCOM 2\"\n\"TargetBuildID\" \"9\"\n\"buildid\" \"8270065\"").unwrap();
+        assert_eq!(m.buildid.as_deref(), Some("8270065"));
+        assert_eq!(lire_manifeste_steam("\"appid\" \"1\"\n\"StateFlags\" \"4\"\n\"installdir\" \"x\"\n\"TargetBuildID\" \"9\"").unwrap().buildid, None);
         assert!(steam_pret(4) && steam_pret(4 | 64) && !steam_pret(6) && !steam_pret(1) && !steam_pret(4 | 1024) && !steam_pret(4 | 8));
         assert!(steam_installe(6) && !steam_installe(1) && !steam_installe(1_048_576), "mise à jour au lancement : installé ; 1er téléchargement : non");
     }

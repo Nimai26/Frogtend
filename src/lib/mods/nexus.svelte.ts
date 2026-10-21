@@ -6,6 +6,7 @@ import { choisir, confirmer, demander, informer, toast } from '$lib/dialogues/fe
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { ouvrirPageWeb } from '$lib/web';
 import { avecProgres } from './progres.svelte';
+import { accordModSteam } from './cheatengine';
 
 /** La page de Nexus où se trouve la clé d'API personnelle (à vérifier à l'essai de Seb). */
 export const PAGE_CLE_NEXUS = 'https://next.nexusmods.com/settings/api-keys';
@@ -33,6 +34,8 @@ export interface InfosNexus {
   /** Une archive que Frogtend sait poser (zip ou 7z). */
   pris_en_charge: boolean;
   expire: boolean;
+  /** Le jeu visé est un jeu Steam (dit par le cœur). */
+  steam: boolean;
 }
 
 export const nexus = $state<{ etat: EtatNexus | null }>({ etat: null });
@@ -174,13 +177,25 @@ async function traiterUnLien(l: LienNexus): Promise<void> {
   }
   // Nexus ne dit pas où poser le mod : la page le dit (en cas de doute, la lire d'abord).
   const page = `https://www.nexusmods.com/${l.domaine}/mods/${l.mod_id}?tab=description`;
+  // Un jeu Steam (lot B4) : Frogtend ne connaît pas son programme (Steam le lance) — la racine seulement ; le risque
+  // d'un jeu en ligne demandé D'ABORD (un refus n'a pas à faire choisir l'emplacement pour rien).
+  const steam = infos.steam;
+  let risque = false;
+  if (steam) {
+    const a = await accordModSteam(infos.jeu_id);
+    if (a === null) {
+      await oublier();
+      return;
+    }
+    risque = a;
+  }
   let programme = false;
   for (;;) {
     const o = await choisir<'racine' | 'programme' | 'page'>(
       `🧩 Où poser « ${infos.mod_nom} » dans « ${infos.titre} » ?`,
       [
         { valeur: 'racine', libelle: '📁 Dans le dossier du jeu', detail: 'le plus courant' },
-        { valeur: 'programme', libelle: '🎮 À côté du programme du jeu', detail: 'si la page dit « à côté de l’exe »' },
+        ...(steam ? [] : [{ valeur: 'programme' as const, libelle: '🎮 À côté du programme du jeu', detail: 'si la page dit « à côté de l’exe »' }]),
         { valeur: 'page', libelle: '📖 Lire les consignes de la page d’abord' },
       ],
       'La page du mod dit où le poser. En cas de doute, lis-la d’abord.',
@@ -200,14 +215,16 @@ async function traiterUnLien(l: LienNexus): Promise<void> {
   const message = [
     `Fichier : ${infos.fichier}, environ ${taille(infos.taille_ko * 1024)}, téléchargé depuis Nexus Mods avec ton compte.`,
     'Frogtend vérifie auprès de Nexus que c’est bien le bon fichier avant de l’installer.',
-    'Tout fichier du jeu remplacé est gardé de côté, et tes parties sont mises à l’abri quand Frogtend sait où elles sont (jeu installé par Frogtend).',
+    steam
+      ? 'Les fichiers du jeu que le mod remplace sont gardés de côté dans les données de Frogtend, et les parties que Steam garde pour son nuage sont mises à l’abri. Après une mise à jour de Steam, le mod peut être à refaire.'
+      : 'Tout fichier du jeu remplacé est gardé de côté, et tes parties sont mises à l’abri quand Frogtend sait où elles sont (jeu installé par Frogtend).',
   ].join('\n\n');
   if (!(await confirmer(`🧩 Installer « ${infos.mod_nom} » dans « ${infos.titre} » ?`, { message, libelleValider: '⬇ Télécharger et installer' }))) {
     await oublier();
     return;
   }
   try {
-    const b = await avecProgres(`Installation de « ${infos.mod_nom} » (ne ferme pas Frogtend)`, true, (suivi) => api.nexusInstaller(l.n, programme, suivi));
+    const b = await avecProgres(`Installation de « ${infos.mod_nom} » (ne ferme pas Frogtend)`, true, (suivi) => api.nexusInstaller(l.n, programme, suivi, risque));
     toast(`🧩 « ${infos.mod_nom} » installé : ${b.ajoutes} fichier(s) ajouté(s), ${b.remplaces} remplacé(s) (gardés de côté).`);
   } catch (err) {
     // Pour réessayer : recliquer sur le site (la clé du lien ne sert qu'une fois).

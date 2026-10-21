@@ -589,6 +589,27 @@ d'abord :
 
 ## ✅ Livré (version — ce qui a été vérifié)
 
+- **0.89.0** (21/10) — Lots B3 + B4 des jeux de boutique, mods GitHub et Nexus dans les jeux Steam (avis avant
+  code et relectures des experts lancement et interface) : mods.rs `installes_dans` / `installer_dans` (paramètre
+  `garde` + `steam_buildid` ; place vérifiée sur les deux disques) / `desinstaller_dans` (`apres_maj` : un fichier
+  REMPLACÉ que Steam a changé est laissé à Steam, sans copie ; un fichier ajouté par le mod reste à la personne) ;
+  jeux Firehouse inchangés (les anciennes fonctions délèguent avec `dossier_mods(jeu)`). commandes.rs : `PourMod`
+  (Steam seulement ; garde = `<données>\boutiques\<id>\mods`, jamais chez Steam ni par un lien), état relu chez
+  Steam à la vérification ET juste avant poser/retirer (`steam_pret_a_ecrire` : prêt, pas lancé — bit 64 OU un
+  programme du dossier — même `buildid`), `risque_mod_steam` (anti-triche connu : refus ; en ligne / inconnu :
+  accord), parties du nuage à l'abri avant (`abriter_avant_mod`), racine seulement, `mods_installes` →
+  `steam_mis_a_jour`, `steam://validate/<appid>` ; boutiques.rs `buildid` (relevé réel : présent dans les 11
+  appmanifest de Venkman, jamais `TargetBuildID`) et `lance`. Interface : Gérer ▸ Mods pour Steam, risque demandé
+  D'ABORD, ligne ⚠ après une mise à jour, « Vérifier l'intégrité » proposé (au canapé : dit, à faire au PC),
+  `nexus_lien_infos.steam` dit par le cœur. Vérifié : tests (cœur 453, interface 219 ; un aller-retour complet
+  dans un faux dossier Steam avec mise à jour simulée). NON vérifié : un vrai mod dans un vrai jeu Steam (avec
+  Seb, A-TESTER) ; que Steam écrive le bit 64 pendant une partie (doublé par la recherche d'un programme du
+  dossier) ; `steam://validate` sur Venkman. Mineurs notés : les originaux d'un fichier laissé à Steam restent dans
+  `remplaces` (place qui s'accumule, rien n'est effacé — à proposer à Seb) ; `Frogtend\mods` vide créé avant un
+  refus faute de place (jeu Firehouse) ; « même disque » comparé sur le premier élément du chemin ; un
+  `.frogtend-tmp` pourrait rester après une coupure pile pendant la pose. Lot B fini (B0 à B4) ; suite proposée :
+  C (succès en détail), D (fiches des jeux Steam), A6 (GOG/Epic).
+
 - **0.88.0** (21/10) — Contrat 1.23, Switch `contenus_emulateur` (avis avant code et relecture de l'expert
   lancement ; relevé réel Fire Emblem Three Houses rangé : `version-switch-contenus-123.json`) : le fichier lancé
   = `installation.lancer` s'il est reçu, sinon L'UNIQUE fichier au rôle `jeu` (jamais un .nsp ; sinon refus) ;

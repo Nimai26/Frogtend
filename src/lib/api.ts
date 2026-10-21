@@ -186,6 +186,8 @@ export interface ModInstalle {
   pose_le: string;
   etat: string;
   fichiers: { chemin: string; sorte: string }[];
+  /** Un jeu Steam : Steam a mis le jeu à jour depuis la pose (le mod a pu être défait). */
+  steam_mis_a_jour?: boolean;
 }
 
 export interface EmulateurRecommande {
@@ -700,7 +702,7 @@ export const api = {
   steamOublier: () => appeler<void>('boutique_steam_oublier'),
   steamJeux: () => appeler<JeuBoutique[]>('boutique_steam_jeux'),
   steamImporter: () => appeler<JeuBoutique[]>('boutique_steam_importer'),
-  steamOuvrir: (appid: string, action: 'jouer' | 'installer') => appeler<void>('boutique_steam_ouvrir', { appid, action }),
+  steamOuvrir: (appid: string, action: 'jouer' | 'installer' | 'verifier') => appeler<void>('boutique_steam_ouvrir', { appid, action }),
   /** `accepte` : la personne a dit oui à l'avertissement de `cheatengineRisque` (jeu en ligne ou inconnu). */
   cheatengineLancer: (programme: string, table?: string, brancher = false, accepte = false) =>
     appeler<void>('cheatengine_lancer', { programme, table: table ?? null, brancher, accepte }),
@@ -715,10 +717,10 @@ export const api = {
   modsInstalles: (id: number) => appeler<ModInstalle[]>('mods_installes', { id }),
   /** Télécharge et installe un mod (le cœur le reprend dans la liste de Firehouse) ; `programme` : dans le dossier du
    * programme du jeu plutôt qu'à sa racine. */
-  modInstaller: (id: number, modNom: string, fichier: string, programme: boolean, suivi: number) =>
-    appeler<{ ajoutes: number; remplaces: number; identiques: number }>('mod_installer', { id, modNom, fichier, programme, suivi }),
-  /** Retire un mod ; rend les fichiers gardés (modifiés par la personne). */
-  modDesinstaller: (id: number, cle: string) => appeler<string[]>('mod_desinstaller', { id, cle }),
+  modInstaller: (id: number, modNom: string, fichier: string, programme: boolean, suivi: number, risqueAccepte = false) =>
+    appeler<{ ajoutes: number; remplaces: number; identiques: number }>('mod_installer', { id, modNom, fichier, programme, suivi, risqueAccepte }),
+  /** Retire un mod ; rend les fichiers gardés (modifiés par la personne) et ceux laissés à Steam (sa mise à jour). */
+  modDesinstaller: (id: number, cle: string) => appeler<{ gardes: string[]; laisses_a_la_boutique: string[] }>('mod_desinstaller', { id, cle }),
   tricheInstaller: (id: number, cle: string, programme: string, ligne: string) =>
     appeler<string>('triche_installer', { id, cle, programme, ligne }),
   jeuTailleInstallation: (id: number) => appeler<number>('jeu_taille_installation', { id }),
@@ -753,8 +755,8 @@ export const api = {
   nexusLiens: () => appeler<import('$lib/mods/nexus.svelte').LienNexus[]>('nexus_liens'),
   nexusOublierLien: (n: number) => appeler<void>('nexus_oublier_lien', { n }),
   nexusLienInfos: (n: number) => appeler<import('$lib/mods/nexus.svelte').InfosNexus>('nexus_lien_infos', { n }),
-  nexusInstaller: (n: number, programme: boolean, suivi: number) =>
-    appeler<{ ajoutes: number; remplaces: number; identiques: number }>('nexus_installer', { n, programme, suivi }),
+  nexusInstaller: (n: number, programme: boolean, suivi: number, risqueAccepte = false) =>
+    appeler<{ ajoutes: number; remplaces: number; identiques: number }>('nexus_installer', { n, programme, suivi, risqueAccepte }),
   raEtat: () => appeler<import('$lib/succes/succes.svelte').EtatRetro>('ra_etat'),
   raRegler: (compte: string, cle?: string) =>
     appeler<import('$lib/succes/succes.svelte').EtatRetro>('ra_regler', { compte, cle: cle ?? null }),

@@ -48,6 +48,16 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Mods dans les jeux Steam (0.89.0) — À ESSAYER AVEC MOI
+- [ ] GTA V ▸ ⚙ Gérer le jeu ▸ 🧩 Mods ▸ un mod : REFUSÉ d'abord (BattlEye), sans choisir où le poser.
+- [ ] Un jeu solo (Skyrim SE, XCOM 2) ▸ 🧩 Mods : l'avertissement « Risque de bannissement » (Annuler d'abord) ;
+      un mod installable d'un clic ou par Nexus (« Mod Manager Download ») : il s'installe ; dans le dossier du jeu
+      chez Steam, AUCUN dossier « Frogtend » n'apparaît.
+- [ ] Le retirer : le jeu redevient comme avant (Steam ▸ Vérifier l'intégrité : rien à réparer).
+- [ ] Pendant que Steam met le jeu à jour, ou pendant une partie : refusé, avec la raison.
+- [ ] Après une vraie mise à jour Steam d'un jeu moddé : le mod est marqué ⚠ ; le retirer propose « Vérifier
+      l'intégrité » et ouvre bien la vérification dans Steam.
+
 ## Jeux Switch avec mises à jour et DLC (0.88.0)
 - [ ] Il faut Eden installé par Frogtend (⚙ Options ▸ Émulateurs).
 - [ ] Un jeu Switch servi avec contenus (Fire Emblem Three Houses : 16 Go + 1,7 Go) : télécharger, installer ;

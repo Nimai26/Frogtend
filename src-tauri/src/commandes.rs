@@ -2645,6 +2645,9 @@ pub fn boutique_steam_ouvrir(app: AppHandle, appid: String, action: String) -> R
     let url = match action.as_str() {
         "jouer" => format!("steam://rungameid/{appid}"),
         "installer" => format!("steam://install/{appid}"),
+        // « Vérifier l'intégrité des fichiers » (protocole de Steam, Valve Developer Community « Steam browser
+        // protocol ») : Steam remet SES fichiers, après un mod retiré à la suite d'une mise à jour (lot B3).
+        "verifier" => format!("steam://validate/{appid}"),
         _ => return Err(Erreur::Refus("Action inconnue.".into())),
     };
     app.opener().open_url(url, None::<&str>).map_err(|_| Erreur::Disque("Steam ne s'ouvre pas : est-il installé ?".into()))
@@ -2846,8 +2849,21 @@ pub async fn jeu_triches(noyau: State<'_, Noyau>, id: i64) -> Resultat<Value> {
 // --- Mods GitHub (contrat 1.19 ; ✅ Seb 19/10, lot 0.81.0) : le mod et son fichier sont REPRIS de la liste de
 // Firehouse (jamais d'une adresse envoyée par l'interface) ; installés dans le dossier du jeu après le oui. ---
 
-/// Le dossier d'un jeu du PC prêt à recevoir un mod : installé, pas en cours d'utilisation, sans anti-triche détecté.
-async fn jeu_pour_un_mod(noyau: &Noyau, id: i64) -> Resultat<(crate::jeux_pc::JeuPc, std::path::PathBuf)> {
+/// Un jeu du PC prêt à recevoir (ou perdre) un mod.
+struct PourMod {
+    j: crate::jeux_pc::JeuPc,
+    /// Où le mod se pose : le dossier du jeu (chez Steam pour un jeu Steam).
+    dossier: std::path::PathBuf,
+    /// Où Frogtend garde manifestes, téléchargements et originaux remplacés : `<jeu>\Frogtend\mods` pour un jeu de
+    /// Firehouse (comme avant) ; dans les données de Frogtend pour un jeu Steam (Seb, 21/10 : rien d'autre chez Steam).
+    garde: std::path::PathBuf,
+    /// Un jeu Steam : sa version installée à cet instant (`buildid`).
+    steam: Option<Option<String>>,
+}
+
+/// Le dossier d'un jeu du PC prêt à recevoir un mod : installé, pas en cours d'utilisation, sans anti-triche détecté ;
+/// un jeu de boutique : Steam seulement (lot B3), prêt (ni mise à jour ni partie en cours chez Steam).
+async fn jeu_pour_un_mod(noyau: &Noyau, id: i64) -> Resultat<PourMod> {
     let j = noyau.jeu_visible(id).await?;
     let i = j.installation.as_ref().ok_or_else(|| Erreur::Refus("Installe d'abord le jeu.".into()))?;
     let dossier = std::path::PathBuf::from(&i.dossier);
@@ -2857,14 +2873,90 @@ async fn jeu_pour_un_mod(noyau: &Noyau, id: i64) -> Resultat<(crate::jeux_pc::Je
     if i.fichier_du_jeu.is_some() {
         return Err(Erreur::Refus("Ce jeu se lance par un émulateur : Frogtend n'y installe pas de mod de jeu PC.".into()));
     }
-    // Un jeu d'une boutique : jamais rien écrit dans son dossier (les mods des jeux de boutique viendront avec le lot B).
-    if i.boutique.is_some() {
-        return Err(Erreur::Refus("Les mods des jeux de tes boutiques arrivent bientôt : pour l'instant, Frogtend n'écrit rien dans leur dossier.".into()));
-    }
     if noyau.utilise(id) {
         return Err(Erreur::Refus("Le jeu est en cours (partie, téléchargement ou installation) : réessaie après.".into()));
     }
-    Ok((j, dossier))
+    let Some(b) = &i.boutique else {
+        let garde = crate::mods::dossier_mods(&dossier);
+        return Ok(PourMod { j, dossier, garde, steam: None });
+    };
+    if b.source != "steam" {
+        return Err(Erreur::Refus("Frogtend sait poser des mods dans les jeux Steam seulement, pour l'instant.".into()));
+    }
+    let buildid = steam_pret_a_ecrire(&b.cle, &dossier)?;
+    // Les données de Frogtend pour ce jeu, JAMAIS chez Steam ni par un lien.
+    let garde = std::path::Path::new(&j.dossier).join("mods");
+    if crate::garde::sous(&garde, &dossier) || crate::garde::meme(&garde, &dossier) || crate::garde::sous(&dossier, &garde) {
+        return Err(Erreur::Refus("Le dossier de Frogtend pour ce jeu est mal placé : rien n'est fait.".into()));
+    }
+    std::fs::create_dir_all(&garde)?;
+    if crate::garde::lien_entre(std::path::Path::new(&j.dossier), &garde) {
+        return Err(Erreur::Refus("Le dossier de Frogtend pour ce jeu passe par un lien : rien n'est fait.".into()));
+    }
+    Ok(PourMod { j, dossier, garde, steam: Some(buildid) })
+}
+
+/// Un jeu Steam relu chez Steam À L'INSTANT (jamais l'état gardé par l'interface) avant d'écrire dans son dossier :
+/// au même endroit, prêt (ni mise à jour ni vérification), pas en cours (ni pour Steam, ni un programme de son
+/// dossier). Rend sa version installée (`buildid`).
+fn steam_pret_a_ecrire(appid: &str, dossier: &std::path::Path) -> Resultat<Option<String>> {
+    let installe = crate::boutiques::dossier_steam()
+        .map(|s| crate::boutiques::installes_steam_dossiers(&s))
+        .and_then(|mut l| l.remove(appid))
+        .filter(|x| crate::garde::meme(&x.dossier, dossier))
+        .ok_or_else(|| Erreur::Refus("Steam ne voit plus ce jeu à cet endroit : ouvre Steam, puis réessaie.".into()))?;
+    if !installe.pret {
+        return Err(Erreur::Refus("Steam prépare ce jeu (mise à jour, vérification…) : attends qu'il ait fini.".into()));
+    }
+    if installe.lance || !crate::lancement::processus_du_dossier(dossier).is_empty() {
+        return Err(Erreur::Refus("Le jeu est en cours : quitte-le d'abord.".into()));
+    }
+    Ok(installe.buildid)
+}
+
+/// Juste avant de poser ou de retirer un mod dans un jeu Steam (le téléchargement a pu durer) : toujours prêt, et
+/// toujours la MÊME version qu'à la vérification (sinon Steam vient de le mettre à jour : on recommence).
+fn steam_inchange(j: &crate::jeux_pc::JeuPc, dossier: &std::path::Path, vu: &Option<String>) -> Resultat<()> {
+    let Some(b) = j.installation.as_ref().and_then(|i| i.boutique.as_ref()) else { return Ok(()) };
+    if steam_pret_a_ecrire(&b.cle, dossier)? != *vu {
+        return Err(Erreur::Refus("Steam vient de mettre le jeu à jour : rien n'est fait. Réessaie maintenant.".into()));
+    }
+    Ok(())
+}
+
+/// Avant un mod dans un jeu Steam : ses parties gardées pour le nuage sont mises à l'abri (lot B2) s'il y en a et si
+/// elles ont changé. Un jeu dont Steam ne garde rien : noté au journal (le mod ne touche que le dossier du jeu, et
+/// tout fichier qu'il remplace y est déjà gardé).
+async fn abriter_avant_mod(noyau: &Noyau, id: i64) -> Resultat<()> {
+    let (plan, marque) = match plan_nuage(noyau, id).await {
+        Ok(x) => x,
+        Err(e) => {
+            noyau.journaliser(&format!("jeu {id} : pas de parties du nuage Steam à mettre à l'abri avant le mod ({e})"));
+            return Ok(());
+        }
+    };
+    let abris = noyau.dossier_abris()?;
+    if plan.fichiers.is_empty() || crate::nuage_steam::deja_a_l_abri(&abris.join(id.to_string()), &marque, &plan) {
+        return Ok(());
+    }
+    let quand = crate::noyau::maintenant();
+    tauri::async_runtime::spawn_blocking(move || crate::nuage_steam::abriter(&plan, &marque, &abris, id, &quand))
+        .await
+        .map_err(|_| Erreur::Disque("La mise à l'abri s'est arrêtée brutalement.".into()))??;
+    Ok(())
+}
+
+/// Un jeu Steam (avis de Firehouse, contrat 1.19 `en_ligne`) : un anti-triche connu = jamais de mod ; un jeu en ligne
+/// ou inconnu = seulement après le oui de la personne (même règle que Cheat Engine, Seb 21/10).
+async fn risque_mod_steam(noyau: &Noyau, id: i64, accepte: bool) -> Resultat<()> {
+    let r = risque_cheatengine(noyau, id).await?;
+    if let Some(a) = r.anti_triche {
+        return Err(Erreur::Refus(format!("Ce jeu est protégé par {a} : Frogtend n'y installe pas de mod (ton compte pourrait être banni).")));
+    }
+    if (r.en_ligne.is_some() || r.inconnu) && !accepte {
+        return Err(Erreur::Refus("Ce jeu a peut-être du jeu en ligne : confirme d'abord que tu acceptes le risque.".into()));
+    }
+    Ok(())
 }
 
 /// Où en est l'installation d'un mod (lot 0.82.3) : l'interface en tire la progression, le débit et le temps restant.
@@ -2934,21 +3026,69 @@ fn dossier_du_programme(j: &crate::jeux_pc::JeuPc, dossier: &std::path::Path) ->
     }
 }
 
-/// Les mods installés dans un jeu du PC (manifestes de `<jeu>\Frogtend\mods`).
+/// Un mod installé, et si Steam a mis le jeu à jour depuis sa pose (le mod a pu être défait).
+#[derive(Serialize)]
+pub struct ModInstalleVu {
+    #[serde(flatten)]
+    m: crate::mods::Manifeste,
+    steam_mis_a_jour: bool,
+}
+
+/// Le dossier où Frogtend garde les mods d'un jeu (voir `PourMod::garde`), sans rien vérifier d'autre (lecture).
+fn garde_mods(j: &crate::jeux_pc::JeuPc) -> Option<std::path::PathBuf> {
+    let i = j.installation.as_ref()?;
+    match &i.boutique {
+        Some(b) if b.source == "steam" => Some(std::path::Path::new(&j.dossier).join("mods")),
+        Some(_) => None,
+        None => Some(crate::mods::dossier_mods(std::path::Path::new(&i.dossier))),
+    }
+}
+
+/// La version installée d'un jeu Steam, relue chez Steam (`None` : inconnue).
+fn buildid_steam(j: &crate::jeux_pc::JeuPc) -> Option<String> {
+    let b = j.installation.as_ref()?.boutique.as_ref().filter(|b| b.source == "steam")?;
+    crate::boutiques::installes_steam_dossiers(&crate::boutiques::dossier_steam()?).remove(&b.cle)?.buildid
+}
+
+/// Les mods installés dans un jeu du PC (manifestes du dossier de garde).
 #[tauri::command]
-pub async fn mods_installes(noyau: State<'_, Noyau>, id: i64) -> Resultat<Vec<crate::mods::Manifeste>> {
+pub async fn mods_installes(noyau: State<'_, Noyau>, id: i64) -> Resultat<Vec<ModInstalleVu>> {
     let j = noyau.jeu_visible(id).await?;
-    let Some(i) = j.installation else { return Ok(Vec::new()) };
-    let d = std::path::PathBuf::from(i.dossier);
-    Ok(tauri::async_runtime::spawn_blocking(move || crate::mods::installes(&d)).await.unwrap_or_default())
+    let Some(garde) = garde_mods(&j) else { return Ok(Vec::new()) };
+    Ok(tauri::async_runtime::spawn_blocking(move || {
+        let actuel = buildid_steam(&j);
+        crate::mods::installes_dans(&garde)
+            .into_iter()
+            .map(|m| ModInstalleVu {
+                // Seulement quand les deux versions sont connues et diffèrent (jamais une alerte sur une inconnue).
+                steam_mis_a_jour: matches!((&m.steam_buildid, &actuel), (Some(a), Some(b)) if a != b),
+                m,
+            })
+            .collect()
+    })
+    .await
+    .unwrap_or_default())
 }
 
 /// Télécharge et installe un mod (la personne a dit oui, taille et licence annoncées). `programme` : poser dans le
 /// dossier du programme du jeu plutôt qu'à sa racine (mod « à confirmer », choisi par la personne). Les parties sont
 /// d'abord mises à l'abri.
 #[tauri::command]
-pub async fn mod_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, mod_nom: String, fichier: String, programme: bool, suivi: u32) -> Resultat<crate::mods::Bilan> {
-    let (j, dossier) = jeu_pour_un_mod(&noyau, id).await?;
+#[allow(clippy::too_many_arguments)]
+pub async fn mod_installer(
+    app: AppHandle,
+    noyau: State<'_, Noyau>,
+    id: i64,
+    mod_nom: String,
+    fichier: String,
+    programme: bool,
+    suivi: u32,
+    risque_accepte: Option<bool>,
+) -> Resultat<crate::mods::Bilan> {
+    let PourMod { j, dossier, garde, steam } = jeu_pour_un_mod(&noyau, id).await?;
+    if steam.is_some() {
+        risque_mod_steam(&noyau, id, risque_accepte.unwrap_or(false)).await?;
+    }
     let criteres = criteres_jeu_importe(&noyau, id).await?;
     let liste = triches_avec(&noyau.session().await?.source, &criteres).await?;
     let m = liste["mods"]
@@ -2965,11 +3105,18 @@ pub async fn mod_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, mod
         .ok_or_else(|| Erreur::Refus("Frogtend ne sait pas installer ce fichier d'un clic : suis la page du mod.".into()))?;
     refuser_anti_triche(&dossier, j.installation.as_ref().is_some_and(|i| i.boutique.is_some())).await?;
     // Où poser : le dossier du mod (`cible.dossier`) ; ou, pour un mod « à confirmer », le dossier du programme.
+    if programme && steam.is_some() {
+        return Err(Erreur::Refus("Frogtend ne connaît pas le programme d'un jeu Steam : choisis la racine du jeu.".into()));
+    }
     let sous = if programme { dossier_du_programme(&j, &dossier)? } else { f.dossier.clone() };
     // Occupé dès maintenant : ni une partie ni un second clic ne passent entre la vérification et la pose.
     let _occupe = noyau.occuper(id);
-    noyau.mettre_a_l_abri(id).await?;
-    let archive = crate::mods::dossier_mods(&dossier).join("telechargements").join(f.nom_telechargement());
+    if steam.is_some() {
+        abriter_avant_mod(&noyau, id).await?;
+    } else {
+        noyau.mettre_a_l_abri(id).await?;
+    }
+    let archive = garde.join("telechargements").join(f.nom_telechargement());
     let suivi = suivi_mod(&app, suivi);
     let s2 = suivi.clone();
     crate::mods::telecharger(&f, &archive, &move |faits, total| s2("telechargement", faits, total)).await?;
@@ -2979,12 +3126,16 @@ pub async fn mod_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, mod
         Some(s) => s,
         None => crate::sauvegarde::empreinte(&archive)?,
     };
-    let (d, a, f2, nom) = (dossier.clone(), archive.clone(), f.clone(), mod_nom.clone());
-    let r = tauri::async_runtime::spawn_blocking(move || crate::mods::installer_avec(&d, &a, &f2, &nom, &sha, &sous, false, &quand, &suivi))
+    let (d, g, a, f2, nom) = (dossier.clone(), garde.clone(), archive.clone(), f.clone(), mod_nom.clone());
+    if let Some(vu) = &steam {
+        steam_inchange(&j, &dossier, vu)?;
+    }
+    let buildid = steam.flatten();
+    let r = tauri::async_runtime::spawn_blocking(move || crate::mods::installer_dans(&d, &g, buildid, &a, &f2, &nom, &sha, &sous, false, &quand, &suivi))
         .await
         .map_err(|_| Erreur::Disque("L'installation du mod s'est arrêtée brutalement.".into()))?;
     let _ = std::fs::remove_file(&archive);
-    let _ = std::fs::remove_dir(archive.parent().unwrap_or(&dossier));
+    let _ = std::fs::remove_dir(archive.parent().unwrap_or(&garde));
     match &r {
         Ok(b) => noyau.journaliser(&format!("mod « {mod_nom} » installé dans « {} » ({} ajouté(s), {} remplacé(s) — originaux à l'abri)", j.titre, b.ajoutes, b.remplaces)),
         Err(e) => noyau.journaliser(&format!("mod « {mod_nom} » non installé dans « {} » ({e})", j.titre)),
@@ -2992,20 +3143,37 @@ pub async fn mod_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, mod
     r
 }
 
-/// Désinstalle un mod : rend les fichiers GARDÉS parce que la personne les avait modifiés (copiés à l'abri).
+/// Désinstalle un mod : rend les fichiers GARDÉS parce que la personne les avait modifiés (copiés à l'abri), et ceux
+/// laissés à Steam (remplacés par une mise à jour depuis la pose).
 #[tauri::command]
-pub async fn mod_desinstaller(noyau: State<'_, Noyau>, id: i64, cle: String) -> Resultat<Vec<String>> {
-    let (j, dossier) = jeu_pour_un_mod(&noyau, id).await?;
+pub async fn mod_desinstaller(noyau: State<'_, Noyau>, id: i64, cle: String) -> Resultat<crate::mods::Retrait> {
+    let PourMod { j, dossier, garde, steam } = jeu_pour_un_mod(&noyau, id).await?;
     // Occupé dès maintenant : ni une partie ni un second clic ne passent entre la vérification et la pose.
     let _occupe = noyau.occuper(id);
-    noyau.mettre_a_l_abri(id).await?;
-    let d = dossier.clone();
-    let c = cle.clone();
-    let r = tauri::async_runtime::spawn_blocking(move || crate::mods::desinstaller(&d, &c))
+    if steam.is_some() {
+        abriter_avant_mod(&noyau, id).await?;
+    } else {
+        noyau.mettre_a_l_abri(id).await?;
+    }
+    // Steam a mis le jeu à jour depuis la pose : un fichier qui n'est plus celui du mod est le sien.
+    let apres_maj = match (&steam, crate::mods::installes_dans(&garde).into_iter().find(|m| m.cle == cle).and_then(|m| m.steam_buildid)) {
+        (Some(Some(actuel)), Some(pose)) => *actuel != pose,
+        _ => false,
+    };
+    if let Some(vu) = &steam {
+        steam_inchange(&j, &dossier, vu)?;
+    }
+    let (d, g, c) = (dossier.clone(), garde.clone(), cle.clone());
+    let r = tauri::async_runtime::spawn_blocking(move || crate::mods::desinstaller_dans(&d, &g, &c, apres_maj))
         .await
         .map_err(|_| Erreur::Disque("Le retrait du mod s'est arrêté brutalement.".into()))?;
-    if let Ok(g) = &r {
-        noyau.journaliser(&format!("mod {cle} retiré de « {} » ({} fichier(s) gardé(s), modifiés par la personne)", j.titre, g.len()));
+    if let Ok(x) = &r {
+        noyau.journaliser(&format!(
+            "mod {cle} retiré de « {} » ({} fichier(s) gardé(s), modifiés par la personne ; {} laissé(s) à Steam)",
+            j.titre,
+            x.gardes.len(),
+            x.laisses_a_la_boutique.len()
+        ));
     }
     r
 }
@@ -3099,6 +3267,8 @@ pub struct InfosNexus {
     /// Une archive que Frogtend sait poser (zip ou 7z).
     pub pris_en_charge: bool,
     pub expire: bool,
+    /// Le jeu visé est un jeu Steam (lot B4 : racine seulement, risque demandé avant), dit par le cœur.
+    pub steam: bool,
 }
 
 /// Le lien reçu, la clé du profil et le jeu visé (un lien sans clic depuis un jeu n'est pas installé).
@@ -3124,8 +3294,10 @@ pub async fn nexus_lien_infos(app: AppHandle, noyau: State<'_, Noyau>, n: u32) -
     let (r, cle, jeu, mod_nom) = lien_nexus(&app, &noyau, n).await?;
     let j = noyau.jeu_visible(jeu).await?;
     let f = crate::nexus::fichier(crate::nexus::API, &r.lien, &cle).await?;
+    let steam = j.installation.as_ref().and_then(|i| i.boutique.as_ref()).is_some_and(|b| b.source == "steam");
     Ok(InfosNexus {
         jeu_id: jeu,
+        steam,
         titre: j.titre,
         mod_nom,
         pris_en_charge: crate::nexus::nom_pris_en_charge(&f.nom),
@@ -3138,16 +3310,22 @@ pub async fn nexus_lien_infos(app: AppHandle, noyau: State<'_, Noyau>, n: u32) -
 /// Télécharge (taille de Nexus = plafond) et installe un mod de Nexus après le oui ; le fichier reçu doit être
 /// EXACTEMENT celui demandé (`md5_search`), sinon rien n'est installé. Les parties sont d'abord mises à l'abri.
 #[tauri::command]
-pub async fn nexus_installer(app: AppHandle, noyau: State<'_, Noyau>, n: u32, programme: bool, suivi: u32) -> Resultat<crate::mods::Bilan> {
+pub async fn nexus_installer(app: AppHandle, noyau: State<'_, Noyau>, n: u32, programme: bool, suivi: u32, risque_accepte: Option<bool>) -> Resultat<crate::mods::Bilan> {
     let (r, cle, id, mod_nom) = lien_nexus(&app, &noyau, n).await?;
     if crate::nexus::expire(&r.lien, secondes_maintenant()) {
         return Err(Erreur::Refus("Ce lien de Nexus a expiré : reclique « Mod Manager Download » sur la page du mod.".into()));
     }
-    let (j, dossier) = jeu_pour_un_mod(&noyau, id).await?;
+    let PourMod { j, dossier, garde, steam } = jeu_pour_un_mod(&noyau, id).await?;
     // Occupé aussitôt (aucune attente depuis la vérification) : ni une partie ni un second clic ne passent pendant les
     // appels à Nexus.
     let _occupe = noyau.occuper(id);
+    if steam.is_some() {
+        risque_mod_steam(&noyau, id, risque_accepte.unwrap_or(false)).await?;
+    }
     refuser_anti_triche(&dossier, j.installation.as_ref().is_some_and(|i| i.boutique.is_some())).await?;
+    if programme && steam.is_some() {
+        return Err(Erreur::Refus("Frogtend ne connaît pas le programme d'un jeu Steam : choisis la racine du jeu.".into()));
+    }
     let sous = if programme { dossier_du_programme(&j, &dossier)? } else { String::new() };
     let infos = crate::nexus::fichier(crate::nexus::API, &r.lien, &cle).await?;
     if !crate::nexus::nom_pris_en_charge(&infos.nom) {
@@ -3157,9 +3335,13 @@ pub async fn nexus_installer(app: AppHandle, noyau: State<'_, Noyau>, n: u32, pr
     if plafond > crate::mods::DECOMPRESSE_MAX {
         return Err(Erreur::Refus("Ce fichier de Nexus est trop gros pour être installé d'un clic.".into()));
     }
-    noyau.mettre_a_l_abri(id).await?;
+    if steam.is_some() {
+        abriter_avant_mod(&noyau, id).await?;
+    } else {
+        noyau.mettre_a_l_abri(id).await?;
+    }
     let adresses = crate::nexus::adresses(crate::nexus::API, &r.lien, &cle).await?;
-    let archive = crate::mods::dossier_mods(&dossier).join("telechargements").join(format!("nexus-{}-{}.archive", r.lien.mod_id, r.lien.fichier_id));
+    let archive = garde.join("telechargements").join(format!("nexus-{}-{}.archive", r.lien.mod_id, r.lien.fichier_id));
     let client = crate::nexus::client_telechargement()?;
     let suivi = suivi_mod(&app, suivi);
     let _ramasse = crate::nexus::Ramasse(archive.clone());
@@ -3195,8 +3377,14 @@ pub async fn nexus_installer(app: AppHandle, noyau: State<'_, Noyau>, n: u32, pr
         dossier: String::new(),
     };
     let quand = crate::noyau::maintenant();
-    let (d, a, f2, nom) = (dossier.clone(), archive.clone(), f.clone(), mod_nom.clone());
-    let res = tauri::async_runtime::spawn_blocking(move || crate::mods::installer_avec(&d, &a, &f2, &nom, &crate::sauvegarde::empreinte(&a)?, &sous, false, &quand, &suivi))
+    let (d, g, a, f2, nom) = (dossier.clone(), garde.clone(), archive.clone(), f.clone(), mod_nom.clone());
+    if let Some(vu) = &steam {
+        steam_inchange(&j, &dossier, vu)?;
+    }
+    let buildid = steam.flatten();
+    let res = tauri::async_runtime::spawn_blocking(move || {
+        crate::mods::installer_dans(&d, &g, buildid, &a, &f2, &nom, &crate::sauvegarde::empreinte(&a)?, &sous, false, &quand, &suivi)
+    })
         .await
         .map_err(|_| Erreur::Disque("L'installation du mod s'est arrêtée brutalement.".into()))?;
     match &res {
