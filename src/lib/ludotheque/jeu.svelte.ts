@@ -16,6 +16,8 @@ import { adresseWeb, avertissements, fichierInstallable, pageNexus, raisonSansCl
 import { ouvrirSurNexus } from '$lib/mods/nexus.svelte';
 import { avecProgres } from '$lib/mods/progres.svelte';
 import { accordModSteam } from '$lib/mods/cheatengine';
+import { groupeDe, libelleCopie } from '$lib/boutiques/copies';
+import { nomPlateforme } from '$lib/boutiques/galaxy.svelte';
 import { ouvrirPageWeb } from '$lib/web';
 import { estRetroArch, normaliser, pourLeJeu } from '$lib/emulateurs/choix';
 import { etat, reglerPc, reglerProfil } from '$lib/etat.svelte';
@@ -307,6 +309,36 @@ async function prevenirPareFeu(id: number, plateforme: string | undefined, emula
 
 /** Jouer. `emulateur` : la clé d'un émulateur du système, pour ce lancement seulement. Si un réglage manque
  * (émulateur, lanceur), on le demande puis on relance. */
+/** La copie d'une CARTE à utiliser (A6c) : un jeu possédé sur plusieurs boutiques et installé de plusieurs côtés →
+ * Frogtend DEMANDE laquelle, à chaque fois (Seb, 21/10) ; sinon la copie installée (ou le jeu lui-même). `null` :
+ * annulé. */
+export async function choisirCopie(id: number, quoi: 'jouer' | 'gerer'): Promise<number | null> {
+  const groupes = await api.ludothequeGroupes().catch(() => [] as number[][]);
+  const installees = groupeDe(id, groupes)
+    .map((x) => tele.jeux[x])
+    .filter((j): j is JeuPc => !!j?.installation && j.etat === 'telecharge');
+  if (installees.length < 2) return installees[0]?.id ?? id;
+  return choisir<number>(
+    quoi === 'jouer' ? `▶ Jouer à « ${installees[0].titre} » avec…` : `⚙ Gérer « ${installees[0].titre} » : quelle copie ?`,
+    installees.map((j) => ({ valeur: j.id, ...libelleCopie({ id: j.id, boutique: j.installation?.boutique?.source ?? '', temps_jeu: j.temps_jeu }, nomPlateforme, duree) })),
+    'Ce jeu est installé par plusieurs boutiques : chacune a ses parties et ses mises à jour.',
+  );
+}
+
+/** Jouer à une carte (A6c) : la copie choisie (voir `choisirCopie`). Rend l'id lancé. */
+export async function jouerLaCarte(id: number): Promise<number | null> {
+  const cible = await choisirCopie(id, 'jouer');
+  if (cible === null) return null;
+  await jouer(cible);
+  return cible;
+}
+
+/** « ⚙ Gérer le jeu » d'une carte réunie : la copie d'abord, s'il y en a plusieurs installées. */
+export async function gererLaCarte(id: number) {
+  const cible = await choisirCopie(id, 'gerer');
+  if (cible !== null) await gererJeu(cible);
+}
+
 export async function jouer(id: number, emulateur?: string, version?: string) {
   // Un seul lancement à la fois (un jeu de boutique peut mettre plusieurs minutes à démarrer).
   if (partie.lancement !== null) return;

@@ -9,17 +9,22 @@
   import Jaquette from './Jaquette.svelte';
   import { jeuAuHasard, ludo } from './ludotheque.svelte';
   import { annuler, jeuSurPc, mettreDansLaLudotheque, mettreEnPause, reprendre } from './telechargements.svelte';
-  import { emulateursDuJeu, gererJeu, installer, jouer, jouerAvec, partie } from './jeu.svelte';
+  import { emulateursDuJeu, gererLaCarte, installer, jouerAvec, jouerLaCarte, partie } from './jeu.svelte';
   import { estJeuDeBoutique, ouvrirJeuDeBoutique } from '$lib/boutiques/jeu-boutique';
   import { nomPlateforme } from '$lib/boutiques/galaxy.svelte';
   import BlocSucces from '$lib/succes/BlocSucces.svelte';
   import BlocContenus from '$lib/contenus/BlocContenus.svelte';
   import BlocDecompression from '$lib/decompression/BlocDecompression.svelte';
+  import IconesBoutiques from '$lib/boutiques/IconesBoutiques.svelte';
+  import { originesCarte } from '$lib/boutiques/copies';
 
   const j = $derived(ludo.selection);
-  const surPc = $derived(j ? jeuSurPc(j.id) : undefined);
+  // Un jeu réuni (A6c) : sa copie sur ce PC peut être une autre que la carte (la carte Steam, la copie GOG installée).
+  const surPc = $derived(j ? (jeuSurPc(j.id) ?? j.copies?.map((c) => jeuSurPc(c.id)).find((x) => !!x?.installation)) : undefined);
   /** Le numéro du jeu SUR CE PC (un jeu importé relié : son numéro local ; la ligne montre sa fiche). */
   const idPc = $derived(surPc?.id ?? j?.id ?? 0);
+  /** Une partie en cours sur CETTE carte, quelle que soit la copie lancée (A6c). */
+  const enJeuIci = $derived(partie.enJeu !== null && (partie.enJeu === idPc || !!j?.copies?.some((c) => c.id === partie.enJeu)));
   const plateforme = $derived(ludo.plateformes.find((p) => p.nom === ludo.plateforme));
   const catalogue = $derived(ludo.espace === 'catalogue');
   let ajout = $state(false);
@@ -86,21 +91,21 @@
         <p class="tag ok sur-pc">{surPc.id < 0 ? '✅ Déjà sur ce PC (un fichier importé du disque)' : '✅ Dans ta ludothèque'}</p>
       {/if}
       {#if !catalogue && surPc?.etat === 'telecharge'}
-        {#if partie.enJeu === idPc}
+        {#if enJeuIci}
           <p class="tag ok sur-pc">🎮 Partie en cours…</p>
         {:else if partie.installation === idPc}
           <button class="btn primary grand" disabled>📦 Installation…</button>
         {:else if !surPc.installation}
           <button class="btn primary grand" onclick={() => installer(idPc)} disabled={!!surPc.d_un_autre} title={surPc.d_un_autre ? 'Seule la personne qui l’a importé peut l’installer' : undefined}>📦 Installer</button>
         {:else}
-          <button class="btn primary grand" onclick={() => jouer(idPc)} disabled={partie.enJeu !== null || partie.lancement !== null}>{partie.lancement === idPc ? 'Lancement…' : '▶ Jouer'}</button>
+          <button class="btn primary grand" onclick={() => jouerLaCarte(idPc)} disabled={partie.enJeu !== null || partie.lancement !== null}>{partie.lancement === idPc ? 'Lancement…' : '▶ Jouer'}</button>
           {#if emulateursDuJeu(j.plateforme).liste.length > 1 || (surPc.installation.versions?.length ?? 0) > 1}
             <button class="btn grand" onclick={() => jouerAvec(idPc)} disabled={partie.enJeu !== null}>▶ Jouer avec…</button>
           {/if}
         {/if}
       {/if}
       {#if !catalogue && surPc?.etat === 'telecharge' && !surPc.d_un_autre}
-        <button class="btn grand" onclick={() => gererJeu(idPc)} disabled={partie.enJeu === idPc}>
+        <button class="btn grand" onclick={() => gererLaCarte(idPc)} disabled={enJeuIci}>
           ⚙ Gérer le jeu <span class="muted">(installer, désinstaller, parties…)</span>
         </button>
       {/if}
@@ -126,9 +131,12 @@
         <dt>Origine</dt><dd>importé de ton disque (Frogtend n’efface jamais ses fichiers){surPc && surPc.id < 0 && j.id > 0 ? ' ; fiche et images : Firehouse' : ''}</dd>
       {/if}
       {#if estJeuDeBoutique(j)}
-        <dt>Boutique</dt><dd>{nomPlateforme(j.boutique ?? '')}</dd>
-        <dt>Sur ce PC</dt><dd>{j.installe ? '✅ installé' : 'pas installé'}</dd>
-        {#if j.minutes}<dt>Temps de jeu</dt><dd>{duree(j.minutes * 60)}</dd>{/if}
+        <!-- Un jeu réuni (A6c) : toutes ses boutiques, et le temps de jeu en somme avec le détail (Seb, 21/10). -->
+        <dt>{j.copies?.length ? 'Boutiques' : 'Boutique'}</dt><dd><IconesBoutiques origines={originesCarte(j)} /></dd>
+        <dt>Sur ce PC</dt><dd>{j.installe ? `✅ installé${j.copies?.length ? ` (${j.copies.filter((c) => c.installe).map((c) => nomPlateforme(c.boutique)).join(', ')})` : ''}` : 'pas installé'}</dd>
+        {#if j.minutes}<dt>Temps de jeu</dt><dd>{duree(j.minutes * 60)}{j.copies && j.copies.filter((c) => c.minutes).length > 1 ? ` (${j.copies.filter((c) => c.minutes).map((c) => `${nomPlateforme(c.boutique)} ${duree(c.minutes * 60)}`).join(', ')})` : ''}</dd>{/if}
+      {:else if !surPc?.d_un_autre && j.source !== 'local' && !(surPc && surPc.id < 0)}
+        <dt>Origine</dt><dd><IconesBoutiques origines={originesCarte(j)} /></dd>
       {/if}
     </dl>
     {#if !catalogue && surPc?.installation}<BlocDecompression id={idPc} titre={j.titre} />{/if}

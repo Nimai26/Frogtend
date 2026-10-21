@@ -7,7 +7,9 @@
   import { api, type JeuPc } from '$lib/api';
   import { confirmer } from '$lib/dialogues/fenetres.svelte';
   import { etat, sortirDuProfil } from '$lib/etat.svelte';
-  import { gererJeu, installer, jouer, partie } from '$lib/ludotheque/jeu.svelte';
+  import { gererLaCarte, installer, jouerLaCarte, partie } from '$lib/ludotheque/jeu.svelte';
+  import { groupeDe, originesJeuPc, unParGroupe } from '$lib/boutiques/copies';
+  import IconesBoutiques from '$lib/boutiques/IconesBoutiques.svelte';
   import Jaquette from '$lib/ludotheque/Jaquette.svelte';
   import { jeuSurPc, rechargerJeuxDuPc, tele } from '$lib/ludotheque/telechargements.svelte';
   import { fenetreOuverte, selectionner, taodbox } from '$lib/taodbox/manette.svelte';
@@ -20,12 +22,21 @@
   let lanceParSunshine = $state(false);
   let console_ = $state<string | null>(null);
 
+  // Les jeux possédés sur plusieurs boutiques (A6c) : une seule carte, Frogtend demande laquelle lancer.
+  let groupes = $state<number[][]>([]);
+  $effect(() => {
+    void Object.keys(tele.jeux).length;
+    api.ludothequeGroupes().then((g) => (groupes = g)).catch(() => {});
+  });
   const jeux = $derived(
-    Object.values(tele.jeux)
-      .filter((j: JeuPc) => j.etat === 'telecharge')
-      // Un jeu, une carte (contrat 1.21) : un import relié ne compte qu'une fois par fiche (le même que la ludothèque).
-      .filter((j: JeuPc) => !(j.id < 0 && j.fiche) || jeuSurPc(j.fiche)?.id === j.id)
-      .sort((a, b) => (b.derniere_partie ?? '').localeCompare(a.derniere_partie ?? '') || a.titre.localeCompare(b.titre)),
+    unParGroupe(
+      Object.values(tele.jeux)
+        .filter((j: JeuPc) => j.etat === 'telecharge')
+        // Un jeu, une carte (contrat 1.21) : un import relié ne compte qu'une fois par fiche (le même que la ludothèque).
+        .filter((j: JeuPc) => !(j.id < 0 && j.fiche) || jeuSurPc(j.fiche)?.id === j.id)
+        .sort((a, b) => (b.derniere_partie ?? '').localeCompare(a.derniere_partie ?? '') || a.titre.localeCompare(b.titre)),
+      groupes,
+    ),
   );
   const consoles = $derived([...new Set(jeux.map((j) => j.plateforme))].sort());
   const affiches = $derived(console_ ? jeux.filter((j) => j.plateforme === console_) : jeux);
@@ -66,7 +77,8 @@
   const steamInstalles = $derived(steam.jeux.filter((j) => j.installe && !j.dossier));
 
   /** Les jeux installés lus dans GOG Galaxy (hors Steam, déjà montré à part). */
-  const galaxyInstalles = $derived(galaxy.jeux.filter((j) => j.installe && j.plateforme !== 'steam'));
+  // Un jeu GOG avec son dossier est un jeu du PC (A6a) : déjà dans la grille, jamais deux fois.
+  const galaxyInstalles = $derived(galaxy.jeux.filter((j) => j.installe && j.plateforme !== 'steam' && !(j.plateforme === 'gog' && j.dossier)));
 
   onMount(async () => {
     // Les jeux Steam installés deviennent des jeux du PC à la lecture : la grille est relue ensuite.
@@ -85,7 +97,7 @@
       // Le jeu d'une autre personne : elle seule peut l'installer.
       if (j.d_un_autre || !(await installer(j.id))) return;
     }
-    await jouer(j.id);
+    await jouerLaCarte(j.id);
   }
 
   /** Y (ou la touche Menu ≣, ou le clic droit) : « ⚙ Gérer le jeu » de la carte choisie (✅ Seb 19/10), puis le focus
@@ -97,7 +109,7 @@
     if (enGestion || partie.enJeu !== null || fenetreOuverte() || j.d_un_autre) return;
     enGestion = true;
     try {
-      await gererJeu(j.id);
+      await gererLaCarte(j.id);
     } finally {
       enGestion = false;
     }
@@ -191,10 +203,11 @@
           onclick={() => jeu(j)}
           oncontextmenu={(e) => gerer(j, e)}
           onkeydown={(e) => e.key === 'ContextMenu' && gerer(j, e)}
-          disabled={partie.enJeu !== null && partie.enJeu !== j.id} title={j.titre}>
+          disabled={partie.enJeu !== null && !groupeDe(j.id, groupes).includes(partie.enJeu)} title={j.titre}>
           <Jaquette id={j.fiche ?? j.id} titre={j.titre} plateforme={j.plateforme} largeur={180} visuel={etat.profil.ludotheque.visuel} />
           <span class="titre">{j.titre_fiche ?? j.titre}</span>
-          <span class="etat">{partie.enJeu === j.id ? '▶ En cours' : j.installation ? '' : '📦 À installer'}</span>
+          <IconesBoutiques grand origines={originesJeuPc(j, groupeDe(j.id, groupes), (x) => tele.jeux[x]?.installation?.boutique?.source)} />
+          <span class="etat">{partie.enJeu !== null && groupeDe(j.id, groupes).includes(partie.enJeu) ? '▶ En cours' : j.installation ? '' : '📦 À installer'}</span>
         </button>
       {/each}
     </div>

@@ -117,6 +117,107 @@ pub struct JeuResume {
     /// Succès (obtenus, total) d'un jeu de boutique, quand la source les donne (GOG Galaxy).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub succes: Option<(u32, u32)>,
+    // --- A6c (Seb, 21/10) : un jeu possédé sur plusieurs boutiques = UNE carte ---
+    /// Les copies du même jeu que GOG Galaxy relie (`allGameReleases` : « steam_620 », « gog_123 »…).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub releases: Option<Vec<String>>,
+    /// Ce jeu réunit plusieurs copies (seule la carte maîtresse est montrée) : toutes, la maîtresse d'abord.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub copies: Option<Vec<CopieBoutique>>,
+    /// `false` : une copie réunie sous une autre carte (toujours cachée ; un filtre par sa boutique trouve la carte maîtresse).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maitre: Option<bool>,
+    /// Les valeurs propres de la copie (avant la réunion : la carte maîtresse montre le total).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub propre: Option<(Option<bool>, Option<u64>)>,
+}
+
+/// Une copie d'un jeu réuni (A6c).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct CopieBoutique {
+    pub id: i64,
+    pub boutique: String,
+    #[serde(default)]
+    pub cle: String,
+    #[serde(default)]
+    pub installe: bool,
+    #[serde(default)]
+    pub minutes: u64,
+}
+
+/// Le rang d'une boutique pour choisir la carte maîtresse d'un jeu réuni : Steam, GOG, Epic, puis les autres.
+fn rang_boutique(b: &str) -> u8 {
+    match b {
+        "steam" => 0,
+        "gog" => 1,
+        "epic" => 2,
+        _ => 3,
+    }
+}
+
+/// Réunit les copies d'un même jeu (A6c) : `jeux` = les jeux de boutique de la ludothèque, rendus avec leurs champs de
+/// réunion recalculés (seuls les groupes d'au moins deux copies sont touchés). Galaxy fait foi pour « même jeu » (jamais
+/// le titre : Seb, 21/10).
+pub fn regrouper(mut jeux: Vec<JeuResume>) -> Vec<JeuResume> {
+    // Les valeurs propres d'abord (une réunion précédente est défaite).
+    for j in &mut jeux {
+        if let Some((installe, minutes)) = j.propre.take() {
+            j.installe = installe;
+            j.minutes = minutes;
+        }
+        j.copies = None;
+        j.maitre = None;
+    }
+    let index: BTreeMap<i64, usize> = jeux.iter().enumerate().map(|(i, j)| (j.id, i)).collect();
+    // Union-find sur les ids.
+    let mut parent: Vec<usize> = (0..jeux.len()).collect();
+    fn racine(p: &mut [usize], mut i: usize) -> usize {
+        while p[i] != i {
+            p[i] = p[p[i]];
+            i = p[i];
+        }
+        i
+    }
+    for (i, j) in jeux.iter().enumerate() {
+        for r in j.releases.iter().flatten() {
+            let Some((b, c)) = r.split_once('_') else { continue };
+            if let Some(&k) = index.get(&id_boutique(b, c)) {
+                let (a, z) = (racine(&mut parent, i), racine(&mut parent, k));
+                if a != z {
+                    parent[a] = z;
+                }
+            }
+        }
+    }
+    let mut groupes: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for i in 0..jeux.len() {
+        let r = racine(&mut parent, i);
+        groupes.entry(r).or_default().push(i);
+    }
+    for membres in groupes.into_values().filter(|m| m.len() > 1) {
+        let mut ordre = membres.clone();
+        ordre.sort_by_key(|&i| (rang_boutique(jeux[i].boutique.as_deref().unwrap_or("")), jeux[i].id));
+        let copies: Vec<CopieBoutique> = ordre
+            .iter()
+            .map(|&i| CopieBoutique {
+                id: jeux[i].id,
+                boutique: jeux[i].boutique.clone().unwrap_or_default(),
+                cle: jeux[i].cle_boutique.clone().unwrap_or_default(),
+                installe: jeux[i].installe.unwrap_or(false),
+                minutes: jeux[i].minutes.unwrap_or(0),
+            })
+            .collect();
+        let maitre = ordre[0];
+        for &i in &ordre {
+            jeux[i].maitre = Some(i == maitre);
+        }
+        let m = &mut jeux[maitre];
+        m.propre = Some((m.installe, m.minutes));
+        m.installe = Some(copies.iter().any(|c| c.installe));
+        m.minutes = Some(copies.iter().map(|c| c.minutes).sum());
+        m.copies = Some(copies);
+    }
+    jeux
 }
 
 /// L'id (négatif, stable) d'un jeu de boutique : le même jeu vu par Steam ET par GOG Galaxy a le même id.
@@ -134,7 +235,10 @@ pub fn id_boutique(boutique: &str, cle: &str) -> i64 {
 /// Dans la liste : un id POSITIF = un jeu de Firehouse à montrer ; un id NÉGATIF = une ligne locale (jeu importé)
 /// à MASQUER, parce que la fiche de Firehouse à laquelle il est relié (contrat 1.21) est montrée à sa place.
 fn restreindre(p: &str) -> String {
-    format!("(({p} IS NULL AND id > 0) OR ({p} IS NOT NULL AND ((id < 0 AND id NOT IN (SELECT value FROM json_each({p}))) OR (id > 0 AND id IN (SELECT value FROM json_each({p}))))))")
+    // Une copie réunie sous une autre carte (A6c : `maitre` faux) n'est jamais une ligne de plus.
+    format!(
+        "(({p} IS NULL AND id > 0) OR ({p} IS NOT NULL AND ((id < 0 AND id NOT IN (SELECT value FROM json_each({p})) AND COALESCE(json_extract(brut, '$.maitre'), 1) = 1) OR (id > 0 AND id IN (SELECT value FROM json_each({p}))))))"
+    )
 }
 
 /// Une fiche RÉUNIE à une autre chez Firehouse (contrat 1.14) : `ancien` → `nouveau`.
@@ -472,7 +576,8 @@ impl Cache {
         let condition = format!(
             "(?1 IS NULL OR plateforme = ?1) AND (?2 IS NULL OR titre_tri LIKE ?2)
              AND (?3 IS NULL OR instr(genres, ?3) > 0) AND {restriction}
-             AND (?5 IS NULL OR COALESCE(json_extract(brut, '$.boutique'), 'firehouse') = ?5)
+             AND (?5 IS NULL OR COALESCE(json_extract(brut, '$.boutique'), 'firehouse') = ?5
+                  OR EXISTS (SELECT 1 FROM json_each(jeux.brut, '$.copies') c WHERE json_extract(c.value, '$.boutique') = ?5))
              AND (?6 IS NULL OR (CASE WHEN id < 0 THEN COALESCE(json_extract(brut, '$.installe'), 0)
                                      ELSE id IN (SELECT value FROM json_each(?7)) END) = ?6)"
         );
@@ -517,6 +622,18 @@ impl Cache {
         Ok(brut.and_then(|b| serde_json::from_str(&b).ok()))
     }
 
+    /// Les jeux réunis (A6c) : pour chaque carte, les ids de ses copies, la maîtresse d'abord.
+    pub fn groupes(&self) -> Resultat<Vec<Vec<i64>>> {
+        let mut st = self.db.prepare("SELECT brut FROM jeux WHERE id < 0 AND json_extract(brut, '$.copies') IS NOT NULL")?;
+        let l = st
+            .query_map([], |r| r.get::<_, String>(0))?
+            .filter_map(|b| b.ok().and_then(|b| serde_json::from_str::<JeuResume>(&b).ok()))
+            .filter_map(|j| j.copies.map(|c| c.into_iter().map(|x| x.id).collect::<Vec<_>>()))
+            .filter(|g| g.len() > 1)
+            .collect();
+        Ok(l)
+    }
+
     /// Remplace les jeux d'une source de boutique (`steam`, `galaxy`) dans la ludothèque.
     pub fn remplacer_boutique(&mut self, source: &str, jeux: &[JeuResume]) -> Resultat<usize> {
         let tx = self.db.transaction()?;
@@ -536,6 +653,18 @@ impl Cache {
                     serde_json::to_string(&j.genres).unwrap(),
                     serde_json::to_string(j).unwrap(),
                 ])?;
+            }
+        }
+        // A6c : les copies d'un même jeu (toutes sources de boutique confondues) sont réunies de nouveau.
+        {
+            let tous: Vec<JeuResume> = tx
+                .prepare("SELECT brut FROM jeux WHERE id < 0 AND json_extract(brut, '$.source') IN ('steam', 'galaxy')")?
+                .query_map([], |r| r.get::<_, String>(0))?
+                .filter_map(|b| b.ok().and_then(|b| serde_json::from_str(&b).ok()))
+                .collect();
+            let mut maj = tx.prepare("UPDATE jeux SET brut = ?2 WHERE id = ?1")?;
+            for j in regrouper(tous) {
+                maj.execute(params![j.id, serde_json::to_string(&j).unwrap()])?;
             }
         }
         tx.commit()?;
@@ -780,6 +909,39 @@ pub(crate) mod tests {
         c.remplacer_boutique("galaxy", &[]).unwrap();
         assert_eq!(c.lister(&Filtre::default(), Some(pc), &[]).unwrap().total, 2);
         assert_eq!(c.sources_boutiques().unwrap(), ["steam"]);
+    }
+
+    #[test]
+    fn un_jeu_possede_sur_steam_et_gog_ne_fait_qu_une_carte() {
+        // A6c : Galaxy relie la copie GOG à la copie Steam (relevé réel : `allGameReleases`).
+        let mut c = cache_exemple();
+        let pc: &[i64] = &[110];
+        let mut steam = jeu_de_boutique("steam", "steam", "362960", "Jeu A", false);
+        steam.minutes = Some(600);
+        c.remplacer_boutique("steam", &[steam, jeu_de_boutique("steam", "steam", "620", "Portal 2", true)]).unwrap();
+        let mut gog = jeu_de_boutique("galaxy", "gog", "1266051739", "Jeu A", true);
+        gog.minutes = Some(120);
+        gog.releases = Some(vec!["steam_362960".into(), "gog_1266051739".into(), "origin_x".into(), "epic_z".into()]);
+        let mut homonyme = jeu_de_boutique("galaxy", "gog", "1", "Portal 2", false);
+        homonyme.releases = Some(vec!["gog_1".into()]);
+        c.remplacer_boutique("galaxy", &[gog, homonyme]).unwrap();
+        let l = c.lister(&Filtre { ludotheque: true, ..Default::default() }, Some(pc), &[110]).unwrap();
+        // Dune, Jeu A (une carte), Portal 2 Steam, et le « Portal 2 » GOG que Galaxy ne relie pas (jamais par le titre).
+        assert_eq!(l.total, 4);
+        let a = l.jeux.iter().find(|j| j.titre == "Jeu A").unwrap();
+        assert_eq!(a.boutique.as_deref(), Some("steam"), "Steam d'abord");
+        assert_eq!(a.installe, Some(true), "installé d'un côté au moins");
+        assert_eq!(a.minutes, Some(720), "la somme des temps");
+        let copies = a.copies.clone().unwrap();
+        assert_eq!(copies.iter().map(|x| (x.boutique.as_str(), x.installe, x.minutes)).collect::<Vec<_>>(), [("steam", false, 600), ("gog", true, 120)]);
+        // Le filtre GOG trouve la carte réunie ; les plateformes ne comptent qu'une carte.
+        let par = |b: &str| c.lister(&Filtre { boutique: Some(b.into()), ..Default::default() }, Some(pc), &[110]).unwrap().jeux.iter().map(|j| j.titre.clone()).collect::<Vec<_>>();
+        assert!(par("gog").contains(&"Jeu A".to_string()));
+        assert!(c.plateformes(Some(pc)).unwrap().iter().any(|x| x.nom == "Windows" && x.jeux == 3));
+        // Galaxy réimporté sans la copie GOG : la carte Steam retrouve ses propres valeurs.
+        c.remplacer_boutique("galaxy", &[]).unwrap();
+        let a = c.lister(&Filtre { ludotheque: true, ..Default::default() }, Some(pc), &[110]).unwrap().jeux.into_iter().find(|j| j.titre == "Jeu A").unwrap();
+        assert_eq!((a.installe, a.minutes, a.copies), (Some(false), Some(600), None));
     }
 
     #[test]

@@ -1118,6 +1118,8 @@ impl Noyau {
                     image: j.image.clone(),
                     minutes: Some(j.minutes),
                     succes: j.succes,
+                    // A6c : les copies du même jeu que Galaxy relie (la ludothèque n'en montre qu'une carte).
+                    releases: Some(j.releases.clone()).filter(|r| !r.is_empty()),
                     ..Default::default()
                 })
             })
@@ -1451,6 +1453,7 @@ mod tests {
             dossier: dossier.map(|p| p.to_string_lossy().into_owned()),
             pret: Some(true),
             succes: None,
+            releases: vec![],
         };
         let l = vec![jeu("400", true, Some(&steam)), jeu("620", false, None)];
         let pc: std::collections::BTreeSet<String> = ["400".to_string()].into();

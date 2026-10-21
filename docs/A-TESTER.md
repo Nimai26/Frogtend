@@ -48,6 +48,15 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Un jeu, une carte (0.94.0)
+- [ ] D'abord : ⚙ Options ▸ Boutiques ▸ GOG Galaxy ▸ relire tes jeux (les cartes se réunissent à cette lecture).
+- [ ] Ludothèque : GTA V n'apparaît qu'une fois, avec les pastilles « Steam » et « Epic » ; filtre « Epic » : il est
+      là aussi.
+- [ ] Un jeu installé des deux côtés (s'il y en a un) : ▶ Jouer demande « avec… Steam / GOG » ; Annuler ne lance
+      rien ; ⚙ Gérer le jeu demande aussi la copie.
+- [ ] Pastilles sur toutes les cartes : « Firehouse » pour un jeu de Firehouse, « Disque » pour un jeu importé.
+- [ ] En Taodbox : une carte par jeu, ses pastilles, la croix et A pour choisir la copie.
+
 ## Jeux GOG lancés par Galaxy (0.93.0) — À ESSAYER AVEC MOI
 - [ ] Ludothèque ▸ Horizon Zero Dawn (GOG) : ▶ Jouer (pas « Jouer (GOG Galaxy) ») ; le message « GOG Galaxy
       lance… » ; Galaxy s'ouvre et le jeu démarre (la commande de Galaxy n'est pas documentée : c'est LE test) ;

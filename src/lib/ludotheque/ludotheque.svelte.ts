@@ -100,9 +100,12 @@ export async function rechargerListe() {
     ludo.totalLudotheque = l.total_ludotheque;
     // La ligne choisie a disparu : un jeu importé qu'on vient de relier se montre désormais sous sa fiche (contrat 1.21) —
     // la sélection la suit, pour ne jamais perdre sa place au clavier ou à la manette.
-    if (ludo.selection && !l.jeux.some((j) => j.id === ludo.selection!.id)) {
+    // La carte choisie est toujours relue (une carte réunie, A6c, change de copies et de temps) ; une copie désormais
+    // réunie sous une autre carte la suit.
+    if (ludo.selection) {
       const ancien = ludo.selection.id;
-      ludo.selection = l.jeux.find((j) => jeuSurPc(j.id)?.id === ancien) ?? null;
+      ludo.selection =
+        l.jeux.find((j) => j.id === ancien) ?? l.jeux.find((j) => jeuSurPc(j.id)?.id === ancien || !!j.copies?.some((c) => c.id === ancien)) ?? null;
     }
   } catch (e) {
     toast(`Impossible de lire la liste des jeux : ${motifDuRefus(e)}`, 'erreur');

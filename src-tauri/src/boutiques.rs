@@ -50,6 +50,10 @@ pub struct JeuBoutique {
     /// Galaxy ne synchronise pas (relevé le 02/10).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub succes: Option<(u32, u32)>,
+    /// Les copies du même jeu que GOG Galaxy relie (`GamePieces` « allGameReleases » : « steam_620 », « gog_123 »…), pour
+    /// n'en montrer qu'une carte (A6c, Seb 21/10).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub releases: Vec<String>,
 }
 
 /// Ce que Frogtend garde d'une boutique pour un profil (`profils\<id>\boutiques.json`), sans aucun secret.
@@ -144,6 +148,7 @@ pub async fn jeux_possedes(base: &str, cle: &str, steamid: &str) -> Resultat<Vec
                 dossier: None,
                 pret: None,
                 succes: None,
+                releases: vec![],
             })
         })
         .collect();
@@ -343,12 +348,14 @@ pub fn lire_galaxy(storage: &Path, travail: &Path) -> Resultat<Vec<JeuBoutique>>
         let sql = format!(
             "SELECT DISTINCT l.releaseKey, {}, {}, {},
                     (SELECT MAX(t.minutesInGame) FROM GameTimes t WHERE t.releaseKey = l.releaseKey),
-                    (SELECT MAX(d.lastPlayedDate) FROM LastPlayedDates d WHERE d.gameReleaseKey = l.releaseKey)
+                    (SELECT MAX(d.lastPlayedDate) FROM LastPlayedDates d WHERE d.gameReleaseKey = l.releaseKey),
+                    {}
              FROM LibraryReleases l LEFT JOIN ReleaseProperties p ON p.releaseKey = l.releaseKey
              WHERE COALESCE(p.isDlc, 0) = 0 AND COALESCE(p.isVisibleInLibrary, 1) = 1",
             piece("originalTitle"),
             piece("title"),
-            piece("originalImages")
+            piece("originalImages"),
+            piece("allGameReleases")
         );
         // Les jeux GOG installés et leur dossier (`installationPath`, relevé le 20/10 : « D:\LaunchBox\Games\GOG
         // Galaxy\Games\Horizon Zero Dawn ») ; les jeux des autres boutiques n'ont AUCUN chemin dans Galaxy.
@@ -384,7 +391,19 @@ pub fn lire_galaxy(storage: &Path, travail: &Path) -> Resultat<Vec<JeuBoutique>>
                 let installe = dossiers_gog.contains_key(&cle) || (prefixe != "gog" && installes_autres.contains(id));
                 let dossier = dossiers_gog.get(&cle).cloned().flatten();
                 let succes = succes.get(&cle).copied().filter(|(_, total)| *total > 0);
-                Ok(JeuBoutique { id: cle.clone(), nom, minutes, derniere, installe, plateforme: prefixe.to_string(), image, dossier, pret: None, succes })
+                // Les copies du même jeu (relevé du 21/10 : `{"releases":["psn_…","epic_HZDPP","gog_1209025141",…]}`), clés
+                // sûres seulement.
+                let releases: Vec<String> = r
+                    .get::<_, Option<String>>(6)?
+                    .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+                    .and_then(|v| v["releases"].as_array().cloned())
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|x| x.as_str())
+                    .filter(|x| x.len() <= 128 && x.contains('_') && x.chars().all(|c| c.is_ascii_graphic()))
+                    .map(String::from)
+                    .collect();
+                Ok(JeuBoutique { id: cle.clone(), nom, minutes, derniere, installe, plateforme: prefixe.to_string(), image, dossier, pret: None, succes, releases })
             })?
             .flatten()
             .collect::<Vec<_>>();
@@ -670,6 +689,11 @@ mod tests {
             *par.entry(nom_plateforme(&j.plateforme).to_string()).or_default() += 1;
         }
         println!("par boutique : {par:?}");
+        // A6c : les jeux possédés sur plusieurs boutiques que Galaxy relie.
+        let cles: std::collections::BTreeSet<&str> = l.iter().map(|j| j.id.as_str()).collect();
+        let relies: Vec<(&str, Vec<&str>)> =
+            l.iter().map(|j| (j.nom.as_str(), j.releases.iter().map(String::as_str).filter(|r| *r != j.id && cles.contains(r)).collect::<Vec<_>>())).filter(|(_, r)| !r.is_empty()).collect();
+        println!("{} jeux avec releases ; {} reliés à une autre copie possédée : {:?}", l.iter().filter(|j| !j.releases.is_empty()).count(), relies.len(), relies.iter().take(8).collect::<Vec<_>>());
         for j in l.iter().filter(|j| j.installe) {
             println!("installé : {} [{}] {} min, image={}, dossier={:?}", j.nom, j.plateforme, j.minutes, j.image.is_some(), j.dossier);
         }

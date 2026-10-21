@@ -8,7 +8,14 @@
   import Jaquette from './Jaquette.svelte';
   import { chargerSuite, ludo } from './ludotheque.svelte';
   import { jeuSurPc } from './telechargements.svelte';
-  import { jouer } from './jeu.svelte';
+  import IconesBoutiques from '$lib/boutiques/IconesBoutiques.svelte';
+  import { originesCarte } from '$lib/boutiques/copies';
+
+  /** La copie de cette carte installée sur ce PC (un jeu réuni, A6c : peut-être une autre que la carte). */
+  function surPcCarte(j: JeuResume) {
+    return jeuSurPc(j.id)?.installation ? jeuSurPc(j.id) : j.copies?.map((c) => jeuSurPc(c.id)).find((x) => !!x?.installation);
+  }
+  import { jouerLaCarte } from './jeu.svelte';
 
   const pourcent = (recus: number, total: number) => (total > 0 ? Math.floor((recus / total) * 100) : 0);
 
@@ -102,7 +109,7 @@
             class:selectionnee={ludo.selection?.id === j.id}
             aria-pressed={ludo.selection?.id === j.id}
             onclick={() => (ludo.selection = j)}
-            ondblclick={() => (estJeuDeBoutique(j) && !jeuSurPc(j.id) ? ouvrirJeuDeBoutique(j) : j.id > 0 ? goto(`/jeu/${j.id}`) : jeuSurPc(j.id)?.installation && jouer(j.id))}
+            ondblclick={() => (estJeuDeBoutique(j) && !surPcCarte(j) ? ouvrirJeuDeBoutique(j) : j.id > 0 ? goto(`/jeu/${j.id}`) : surPcCarte(j) && jouerLaCarte(j.id))}
             onfocus={() => (ludo.selection = j)}
             onkeydown={(e) => surTouche(e, i)}
           >
@@ -126,6 +133,7 @@
             {/if}
             <span class="titre">{j.titre}</span>
             {#if sousTitre(j)}<span class="sous-titre">{sousTitre(j)}</span>{/if}
+            {#if ludo.espace !== 'catalogue'}<IconesBoutiques origines={originesCarte(j)} />{/if}
           </button>
         </li>
       {/each}

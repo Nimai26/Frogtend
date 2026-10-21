@@ -44,6 +44,8 @@ export interface JeuResume {
   installe?: boolean;
   image?: string | null;
   minutes?: number;
+  /** A6c : un jeu possédé sur plusieurs boutiques, réuni en une carte (la maîtresse d'abord). */
+  copies?: { id: number; boutique: string; cle: string; installe: boolean; minutes: number }[] | null;
 }
 
 export interface Liste {
@@ -765,6 +767,8 @@ export const api = {
     appeler<import('$lib/succes/succes.svelte').EtatRetro>('ra_connecter_emulateurs', { motDePasse }),
   succesRetro: (id: number) => appeler<import('$lib/succes/succes.svelte').SuccesRetro>('succes_retro', { id }),
   succesSteam: (appid: string) => appeler<[number, number] | null>('succes_steam', { appid }),
+  /** Les jeux possédés sur plusieurs boutiques, réunis en une carte (A6c) : les ids de leurs copies. */
+  ludothequeGroupes: () => appeler<number[][]>('ludotheque_groupes'),
   /** Les succès en détail d'un jeu de boutique (lot C) ; `null` : la source n'en a pas. */
   succesListe: (source: 'steam' | 'galaxy', cle: string) => appeler<import('$lib/succes/liste').ListeSucces | null>('succes_liste', { source, cle }),
   /** Les succès en détail d'un jeu DU PC (menu en jeu, Taodbox). */

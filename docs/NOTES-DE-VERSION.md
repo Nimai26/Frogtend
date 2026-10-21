@@ -1,5 +1,17 @@
 # Notes de version de Frogtend
 
+## 0.94.0 — Un jeu, une carte, et d'où il vient
+
+- Un jeu que tu possèdes sur plusieurs boutiques (GTA V sur Steam et Epic, Age of Empires IV sur Steam et Xbox…)
+  n'a plus qu'UNE carte dans ta ludothèque et en Taodbox. Frogtend s'appuie sur GOG Galaxy pour savoir que ce sont
+  les mêmes jeux (jamais sur le seul titre).
+- S'il est installé de plusieurs côtés, ▶ Jouer (et ⚙ Gérer le jeu) te demande à chaque fois laquelle utiliser :
+  chacune a ses parties et ses mises à jour.
+- Le panneau montre toutes ses boutiques, où il est installé, et le temps de jeu en somme avec le détail.
+- Chaque jeu porte de petites pastilles qui disent d'où il vient : Steam, GOG, Epic, Xbox…, Firehouse, ou Disque
+  pour un jeu importé.
+- Pour réunir tes jeux déjà importés : ⚙ Options ▸ Boutiques ▸ GOG Galaxy ▸ relire tes jeux une fois.
+
 ## 0.93.0 — Tes jeux GOG, lancés par GOG Galaxy et suivis
 
 - Un jeu GOG installé sur ce PC (Horizon Zero Dawn, Cyberpunk 2077…) devient un vrai jeu de ta ludothèque, comme

@@ -652,6 +652,20 @@ d'abord :
 
 ## ✅ Livré (version — ce qui a été vérifié)
 
+- **0.94.0** (21/10) — A6c, un jeu = une carte (avis avant code et relecture de l'expert interface ; décisions de
+  Seb du 21/10) : `lire_galaxy` lit `allGameReleases` (`JeuBoutique.releases`) ; `ludotheque::regrouper` (union des
+  copies que Galaxy relie, jamais par le titre ; maîtresse Steam > GOG > Epic > autres ; `installe` = une copie au
+  moins ; `minutes` = la somme ; valeurs propres gardées et rendues quand la réunion se défait) appliqué à chaque
+  rangement de boutique ; `restreindre` cache les copies non maîtresses (liste, plateformes, genres, hasard) ; le
+  filtre par boutique trouve la carte par ses copies ; `ludotheque_groupes` ; interface : `choisirCopie` (demande À
+  CHAQUE FOIS si plusieurs copies installées) → `jouerLaCarte` et `gererLaCarte` (panneau, double-clic, Taodbox),
+  partie en cours reconnue sur toute copie, sélection relue, Taodbox une carte par groupe (Galaxy sans doublon GOG),
+  pastilles d'origine `IconesBoutiques` (texte, aux couleurs du thème, pour TOUS les jeux). Vérifié : tests (cœur
+  458, interface 225) ; essai RÉEL en lecture seule : 18 jeux de Seb reliés à une autre copie possédée (GTA V
+  Steam + Epic, AoE IV Steam + Xbox…). NON vérifié : le rendu (A-TESTER) ; les cartes ne se réunissent qu'après une
+  relecture de GOG Galaxy (les lignes d'avant n'ont pas `releases`). Reste A6 : A6d Epic (Fortnite à faire
+  reconnaître par Epic d'abord).
+
 - **0.93.0** (21/10) — A6a + A6b, jeux GOG du PC (avis avant code et relecture de l'expert lancement) :
   `Noyau::synchroniser_boutique(source…)` (Steam délègue ; retrait limité à SA source, testé) ; `synchroniser_gog`
   à l'import Galaxy et à l'ouverture de sa liste (clés « gog_<id> », dossier de Galaxy présent) ; lancement PAR

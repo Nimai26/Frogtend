@@ -415,6 +415,7 @@ pub fn run() {
             commandes::ludotheque_synchroniser,
             commandes::ludotheque_synchronisee_le,
             commandes::ludotheque_plateformes,
+            commandes::ludotheque_groupes,
             commandes::ludotheque_genres,
             commandes::ludotheque_lister,
             commandes::ludotheque_au_hasard,

@@ -193,6 +193,15 @@ pub async fn ludotheque_synchronisee_le(noyau: State<'_, Noyau>) -> Resultat<Opt
     noyau.synchronise_le().await
 }
 
+/// Les jeux possédés sur plusieurs boutiques, réunis en une carte (A6c) : les ids de leurs copies, la maîtresse
+/// d'abord (pour demander laquelle lancer, et n'en montrer qu'une carte en Taodbox).
+#[tauri::command]
+pub async fn ludotheque_groupes(noyau: State<'_, Noyau>) -> Resultat<Vec<Vec<i64>>> {
+    let s = noyau.session().await?;
+    let c = s.verrou();
+    c.groupes()
+}
+
 #[tauri::command]
 pub async fn ludotheque_plateformes(noyau: State<'_, Noyau>, locale: Option<bool>) -> Resultat<Vec<Plateforme>> {
     noyau.plateformes(locale.unwrap_or(false)).await
