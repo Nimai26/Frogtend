@@ -51,6 +51,46 @@ pub struct DisqueLocal {
     pub libre: u64,
     /// Le disque de Windows.
     pub systeme: bool,
+    /// Branché en USB (ou carte SD) : on peut le débrancher — jamais proposé d'office s'il y a un disque interne.
+    pub externe: bool,
+}
+
+/// Le disque est-il branché en USB (ou carte SD/MMC) ? Windows le classe « fixe » quand c'est un disque dur externe ;
+/// seul son type de bus le dit (`IOCTL_STORAGE_QUERY_PROPERTY`). Dans le doute (lecture impossible) : non.
+#[cfg(windows)]
+fn disque_externe(racine: &str) -> bool {
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::Storage::FileSystem::{CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING, FILE_FLAGS_AND_ATTRIBUTES};
+    use windows::Win32::System::Ioctl::{PropertyStandardQuery, StorageDeviceProperty, IOCTL_STORAGE_QUERY_PROPERTY, STORAGE_DEVICE_DESCRIPTOR, STORAGE_PROPERTY_QUERY};
+    use windows::Win32::System::IO::DeviceIoControl;
+    let volume = format!("\\\\.\\{}", racine.trim_end_matches('\\'));
+    let large: Vec<u16> = volume.encode_utf16().chain([0]).collect();
+    // Accès 0 : demander les propriétés du périphérique n'exige aucun droit de lecture (pas d'administrateur).
+    let Ok(h) = (unsafe { CreateFileW(PCWSTR(large.as_ptr()), 0, FILE_SHARE_READ | FILE_SHARE_WRITE, None, OPEN_EXISTING, FILE_FLAGS_AND_ATTRIBUTES(0), None) }) else {
+        return false;
+    };
+    let q = STORAGE_PROPERTY_QUERY { PropertyId: StorageDeviceProperty, QueryType: PropertyStandardQuery, AdditionalParameters: [0] };
+    let mut d = STORAGE_DEVICE_DESCRIPTOR::default();
+    let mut lu = 0u32;
+    let ok = unsafe {
+        DeviceIoControl(
+            h,
+            IOCTL_STORAGE_QUERY_PROPERTY,
+            Some(&q as *const _ as *const core::ffi::c_void),
+            std::mem::size_of::<STORAGE_PROPERTY_QUERY>() as u32,
+            Some(&mut d as *mut _ as *mut core::ffi::c_void),
+            std::mem::size_of::<STORAGE_DEVICE_DESCRIPTOR>() as u32,
+            Some(&mut lu),
+            None,
+        )
+    }
+    .is_ok();
+    unsafe {
+        let _ = CloseHandle(h);
+    }
+    // 7 = USB, 12 = SD, 13 = MMC (STORAGE_BUS_TYPE).
+    ok && (lu as usize) >= std::mem::size_of::<STORAGE_DEVICE_DESCRIPTOR>() - 4 && matches!(d.BusType.0, 7 | 12 | 13)
 }
 
 /// Les disques fixes de ce PC, avec leur place libre (lus sur CE PC, jamais supposés : pas de « D: » ni de « E: »).
@@ -70,7 +110,7 @@ pub fn disques_locaux() -> Vec<DisqueLocal> {
                 return None;
             }
             let libre = fs2::available_space(Path::new(&racine)).ok()?;
-            Some(DisqueLocal { systeme: racine.trim_end_matches('\\').eq_ignore_ascii_case(&systeme), racine, libre })
+            Some(DisqueLocal { systeme: racine.trim_end_matches('\\').eq_ignore_ascii_case(&systeme), externe: disque_externe(&racine), racine, libre })
         })
         .collect()
 }
@@ -80,10 +120,10 @@ pub fn disques_locaux() -> Vec<DisqueLocal> {
     vec![]
 }
 
-/// Le disque proposé pour ranger les jeux quand rien n'est réglé : celui qui a le plus de place (à place égale, pas
-/// celui de Windows).
+/// Le disque proposé pour ranger les jeux quand rien n'est réglé : un disque INTERNE d'abord (un externe peut être
+/// débranché), celui qui a le plus de place (à place égale, pas celui de Windows).
 pub fn disque_propose(disques: &[DisqueLocal]) -> Option<&DisqueLocal> {
-    disques.iter().max_by(|a, b| a.libre.cmp(&b.libre).then(b.systeme.cmp(&a.systeme)))
+    disques.iter().max_by(|a, b| b.externe.cmp(&a.externe).then(a.libre.cmp(&b.libre)).then(b.systeme.cmp(&a.systeme)))
 }
 
 /// Le dossier des jeux proposé sur un disque : `<disque>\Frogtend\Jeux` (tout ce que Frogtend range est sous
@@ -582,7 +622,11 @@ mod tests {
 
     #[test]
     fn le_dossier_des_jeux_propose_va_sur_le_disque_le_plus_libre_sous_frogtend() {
-        let d = |r: &str, libre: u64, systeme: bool| DisqueLocal { racine: r.into(), libre, systeme };
+        let d = |r: &str, libre: u64, systeme: bool| DisqueLocal { racine: r.into(), libre, systeme, externe: false };
+        // Un disque USB externe énorme : jamais proposé devant un disque interne ; seul, il l'est (rien d'autre).
+        let usb = DisqueLocal { racine: "U:\\".into(), libre: 9000, systeme: false, externe: true };
+        assert_eq!(disque_propose(&[usb.clone(), d("C:\\", 50, true)]).unwrap().racine, "C:\\");
+        assert_eq!(disque_propose(std::slice::from_ref(&usb)).unwrap().racine, "U:\\");
         assert_eq!(disque_propose(&[]), None, "aucun disque : rien d'inventé");
         let l = [d("C:\\", 50, true), d("F:\\", 900, false), d("G:\\", 10, false)];
         assert_eq!(disque_propose(&l).unwrap().racine, "F:\\");
@@ -602,6 +646,7 @@ mod tests {
         assert!(p[0].libre.is_none() && p[1].assez, "{p:?}");
         // Les vrais disques de ce PC : tous fixes, avec une racine « X:\ ».
         for x in disques_locaux() {
+            println!("disque de ce PC : {x:?}");
             assert!(x.racine.len() == 3 && x.racine.ends_with(":\\"), "{x:?}");
         }
     }

@@ -1,5 +1,17 @@
 # Notes de version de Frogtend
 
+## 0.99.1 — Les dernières finitions avant la bêta
+
+- 📥 Après une restauration, les parties de tes émulateurs retrouvent leur émulateur même s'il a changé de dossier
+  (installé à la main sur l'ancien PC, autre version…) : Frogtend le reconnaît à son programme, sans jamais deviner
+  (dans le doute, il ne repose rien, et jamais les mêmes parties chez deux émulateurs). Elles sont aussi reposées
+  quand tu règles un émulateur depuis les Options.
+- 💾 Un disque dur USB externe n'est plus proposé d'office pour tes jeux s'il y a un disque interne (on peut le
+  débrancher) ; s'il est le seul, c'est dit : « garde-le branché ».
+- 🛋 Taodbox lancé sur un PC sans profil : un écran clair « Crée ton profil à l'écran du PC », avec « ⌨ Créer au
+  clavier » et « ⏻ Quitter » (plus d'impasse en plein écran).
+- Le mode simulé (des exemples pour le développement) n'est plus proposé à la famille.
+
 ## 0.99.0 — Prêt pour un PC neuf (ou formaté)
 
 - 📁 Ton premier jeu sur un PC neuf : Frogtend te PROPOSE où le ranger (sur le disque qui a le plus de place, avec la

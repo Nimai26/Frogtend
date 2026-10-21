@@ -399,6 +399,8 @@ pub struct DossierPropose {
     pub libre: u64,
     /// Tous les disques fixes de ce PC (`C:\`, `D:\`…) : une lettre venue d'un autre PC n'est reprise que si elle existe.
     pub disques: Vec<String>,
+    /// Le disque proposé est externe (USB) : il n'y en a pas d'autre ; c'est dit à la personne.
+    pub externe: bool,
 }
 
 /// Le dossier des jeux proposé quand aucun n'est réglé (PC neuf, ancien dossier absent après une restauration) :
@@ -412,6 +414,7 @@ pub fn dossier_jeux_propose() -> Option<DossierPropose> {
         disque: d.racine.clone(),
         libre: d.libre,
         disques: l.iter().map(|x| x.racine.clone()).collect(),
+        externe: d.externe,
     })
 }
 

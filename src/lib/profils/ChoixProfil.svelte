@@ -1,8 +1,10 @@
 <script lang="ts">
   // L'écran d'accueil : « Qui joue ? ». Choisir son profil (PIN s'il est protégé), ou en créer un.
   import { onMount } from 'svelte';
+  import { page } from '$app/state';
+  import { goto } from '$app/navigation';
   import { api, estErreurCoeur, type Profil } from '$lib/api';
-  import { choisir as choisirDans, demander, toast } from '$lib/dialogues/fenetres.svelte';
+  import { choisir as choisirDans, confirmer, demander, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { entrerDansProfil, etat, reglerPc } from '$lib/etat.svelte';
   import { verifierAdresse } from '$lib/reglages/reglages';
@@ -14,6 +16,19 @@
   let erreurPin = $state('');
   let creation = $state(false);
   let ouverture = $state(false);
+  // Lancé en Taodbox (Moonlight, `--taodbox`) : la manette ne sait pas taper un nom ni un jeton.
+  const auCanape = $derived(page.url.pathname.startsWith('/taodbox'));
+
+  /** B (Échap) = retour, comme partout au canapé. */
+  function surTouche(e: KeyboardEvent) {
+    if (e.key === 'Escape' && creation && auCanape && profils && profils.length > 0) creation = false;
+  }
+
+  async function quitter() {
+    if (!(await confirmer('⏻ Quitter Frogtend ?', { libelleValider: 'Quitter' }))) return;
+    const { exit } = await import('@tauri-apps/plugin-process');
+    await exit(0);
+  }
 
   async function charger() {
     try {
@@ -54,13 +69,18 @@
   /** Les réglages de connexion de ce PC, accessibles avant d'ouvrir un profil. */
   async function connexion() {
     const simule = etat.pc.firehouse.simule;
+    // Le mode simulé (des exemples) sert au développement : jamais proposé à la famille, sauf pour en SORTIR.
     const c = await choisirDans('🔌 Connexion à Firehouse', [
       { valeur: 'adresse', libelle: '✏ Changer l’adresse', detail: etat.pc.firehouse.adresse },
-      {
-        valeur: 'mode',
-        libelle: simule ? '🌐 Utiliser le vrai Firehouse' : '🧪 Passer en mode simulé',
-        detail: simule ? 'quitter les exemples' : 'des exemples, sans connexion',
-      },
+      ...(simule || import.meta.env.DEV
+        ? [
+            {
+              valeur: 'mode',
+              libelle: simule ? '🌐 Utiliser le vrai Firehouse' : '🧪 Passer en mode simulé',
+              detail: simule ? 'quitter les exemples' : 'des exemples, sans connexion',
+            },
+          ]
+        : []),
     ]);
     if (c === 'mode') {
       await reglerPc('firehouse.simule', !simule);
@@ -78,6 +98,8 @@
   }
 </script>
 
+<svelte:window onkeydown={surTouche} />
+
 <div class="accueil">
   <div class="panel boite">
     <div class="titre">
@@ -85,7 +107,16 @@
       <h1>Frogtend</h1>
     </div>
 
-    {#if creation}
+    {#if creation && auCanape}
+      <h2>👋 Bienvenue !</h2>
+      <p class="muted">Crée ton profil à l’écran du PC, au clavier : il faut taper ton nom et ton jeton Firehouse. Ensuite, Taodbox s’ouvrira ici directement.</p>
+      <div class="actions-canape">
+        {#if profils && profils.length > 0}<button class="btn" onclick={() => (creation = false)}>↩ Retour</button>{/if}
+        <!-- Devant l'écran du PC : la création au clavier, sans relancer Frogtend. -->
+        <button class="btn" onclick={() => goto('/')}>⌨ Créer au clavier</button>
+        <button class="btn primary" onclick={quitter}>⏻ Quitter</button>
+      </div>
+    {:else if creation}
       <NouveauProfil
         premier={profils?.length === 0}
         onannuler={profils && profils.length > 0 ? () => (creation = false) : undefined}
@@ -126,13 +157,20 @@
       {/if}
       <p class="pied muted">
         {etat.pc.firehouse.simule ? '🧪 Mode simulé' : `Firehouse : ${etat.pc.firehouse.adresse}`}
-        <button class="btn petit" onclick={connexion}>🔌 Connexion</button>
+        <!-- Une saisie d'adresse : au clavier, jamais au canapé. -->
+        {#if !auCanape}<button class="btn petit" onclick={connexion}>🔌 Connexion</button>{/if}
       </p>
     {/if}
   </div>
 </div>
 
 <style>
+  .actions-canape {
+    display: flex;
+    gap: calc(8 * var(--u));
+    justify-content: center;
+    flex-wrap: wrap;
+  }
   .accueil {
     min-height: 100%;
     display: grid;

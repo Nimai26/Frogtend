@@ -7,6 +7,22 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- [ ] **Contrat 1.27 EN SERVICE** (21/10, Firehouse 2.99.0) : (1) `/plateformes` → `nom_affiche` (nom européen court
+  choisi par Seb : Mega Drive, Super Nintendo, PC Engine… ; corrigeable au cockpit) — AFFICHAGE seulement, la clé
+  reste `nom` (rattachements, caches, chemins), repli sur `nom` ; (2) `/jeu/{id}` → `plateforme_affichee` (même
+  règle) ; (3) `{{p|uid}}` → `<identifiant utilisateur>` partout (déjà géré en 0.98.0 : sous-dossiers énumérés).
+  Firehouse : 10 jeux PC réservés en double servis désormais en ARCHIVE (anciennes versions « paquet » disparues des
+  fiches) → re-réconcilier si cache. À faire : afficher `nom_affiche`/`plateforme_affichee` partout (ludothèque,
+  Taodbox, fiches), jamais comme clé.
+- [ ] **À ANALYSER — arrêt brutal de la suite du cœur** (21/10, livraison 0.99.1) : `cargo test` sorti en code 1
+  « test exited abnormally » sans AUCUN test rouge (dernier vu : `noyau::tests::un_ancien_catalogue_…`, juste après
+  `lancement::tests::quitter_termine_un_emulateur_…`). Relancé 2 fois : vert. Code 1 = ce que donne
+  `TerminateProcess` : piste = un test qui TERMINE des processus par numéro (`lancement.rs` : `finir_la_partie` sur
+  System32 avec ping/cmd, `terminer(processus_de_la_partie(racine))` sans filtre de dossier) et un numéro réutilisé
+  par Windows. Non prouvé : à reproduire (boucle de suites) et à corriger (heure de démarrage comme `Suivi`).
+- ✅ Seb 21/10 (après 0.99.0) : « oui vas y » → dernier lot avant l'installation neuve : parties d'émulateur restaurées
+  retrouvées même si le dossier de l'émulateur a changé, reposées aussi depuis les Options ; disque USB externe pas
+  proposé d'office ; `--taodbox` sans profil ; mode simulé caché.
 - ✅ Seb 21/10 : « Ok commencer par corriger les défauts » → lot 0.99.0 = les 3 BLOQUANTS (dossier de jeux
   par défaut, plus de lettre E: supposée, sauvegarde auto qui n'écrase jamais une sauvegarde non restaurée).
 - ✅ Seb 21/10 (exigence) : « après un formatage de PC ou l'achat d'un nouveau, grâce à son jeton de user (même s'il
@@ -698,6 +714,19 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.99.1** (21/10) — Dernier lot avant l'installation neuve (relectures lancement et interface : rien de bloquant,
+  leurs IMPORTANTS corrigés). Parties d'émulateur restaurées : `anciens_programmes` (réglages restaurés gardés dans
+  `restauration/<profil>/configuration.json`), `cle_en_attente` (nom de dossier, sinon l'UNIQUE ancien au même
+  programme), `cles_en_attente` (un dossier d'attente à un seul émulateur présent : nom exact d'abord, rapprochement
+  seulement s'il est seul ; dans le doute personne) ; repose aussi après l'assistant des Options. Disques :
+  `disque_externe` (IOCTL_STORAGE_QUERY_PROPERTY, bus USB/SD/MMC, accès 0 sans administrateur), interne proposé
+  d'abord, « disque externe : garde-le branché ». Taodbox sans profil : « Bienvenue » (↩ Retour, ⌨ Créer au
+  clavier, ⏻ Quitter ; B = retour ; « Connexion » caché au canapé). Mode simulé proposé seulement en développement
+  ou pour en sortir. Vérifié : tests ; disques réels de Venkman (C:, D:, E: internes). NON vérifié : un vrai disque
+  USB (aucun branché), Taodbox sans profil par Moonlight. RESTE : la repose recalcule les empreintes de TOUTES les
+  parties en attente à chaque émulateur réglé (lent si beaucoup) ; deux restaurations de suite : le repli par
+  programme ne connaît que la dernière.
 
 - **0.99.0** (21/10) — Lot Bêta, les 3 BLOQUANTS de l'audit + exigence de Seb « PC formaté » (relectures des 3
   experts, BLOQUANT contrat corrigé : restaurer puis sauvegarder vidait les parties en attente). Cœur :

@@ -626,7 +626,7 @@ export const api = {
     ),
   espaceLibre: (chemin: string) => appeler<number | null>('espace_libre', { chemin }),
   /** Le dossier des jeux proposé quand rien n'est réglé : `<disque fixe le plus libre>\Frogtend\Jeux` (rien n'est créé). */
-  dossierJeuxPropose: () => appeler<{ chemin: string; disque: string; libre: number; disques: string[] } | null>('dossier_jeux_propose'),
+  dossierJeuxPropose: () => appeler<{ chemin: string; disque: string; libre: number; disques: string[]; externe: boolean } | null>('dossier_jeux_propose'),
   /** Crée le dossier PROPOSÉ (seul celui-là est admis par le cœur), après le oui de la personne. */
   dossierJeuxCreer: (chemin: string) => appeler<string>('dossier_jeux_creer', { chemin }),
   /** Repose les parties d'émulateurs restaurées qui attendaient un émulateur absent (jamais par-dessus une autre). */

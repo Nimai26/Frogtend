@@ -432,6 +432,9 @@ export async function reglerEmulateur(plateforme: string): Promise<string | null
   if (!programme) return null;
   const { sys, cle } = ajouter(etat.pc.emulateurs[plateforme], { nom, programme, ligne, ...(depuisConseil ? { conseil: depuisConseil } : {}) });
   await reglerPc('emulateurs', { ...etat.pc.emulateurs, [plateforme]: sys });
-  toast(sys.liste.length > 1 ? `✅ ${nom} ajouté pour ${plateforme}.` : `✅ ${nom} réglé pour ${plateforme}.`);
+  // Des parties restaurées (PC neuf, formaté) attendaient cet émulateur : reposées maintenant, jamais par-dessus une autre.
+  const r = await api.restaurationReposerEmulateurs().catch(() => null);
+  const parties = r?.reposes ? ` ${r.reposes} partie(s) restaurée(s) reposée(s).` : '';
+  toast((sys.liste.length > 1 ? `✅ ${nom} ajouté pour ${plateforme}.` : `✅ ${nom} réglé pour ${plateforme}.`) + parties);
   return cle;
 }

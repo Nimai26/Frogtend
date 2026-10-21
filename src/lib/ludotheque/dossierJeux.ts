@@ -20,7 +20,7 @@ export async function proposerDossierJeux(raison: string, besoin?: number): Prom
     return null;
   }
   const options: { valeur: 'propose' | 'autre'; libelle: string; detail?: string }[] = [];
-  if (p) options.push({ valeur: 'propose', libelle: `📁 ${p.chemin}`, detail: `${taille(p.libre)} libres sur ce disque` });
+  if (p) options.push({ valeur: 'propose', libelle: `📁 ${p.chemin}`, detail: `${taille(p.libre)} libres sur ce disque${p.externe ? ' — un disque externe (USB) : garde-le branché pour jouer' : ''}` });
   if (!canape) options.push({ valeur: 'autre', libelle: '📂 Choisir un autre dossier…', detail: 'Avec l’explorateur de Windows.' });
   const c = await choisir(
     '📁 Où ranger tes jeux ?',

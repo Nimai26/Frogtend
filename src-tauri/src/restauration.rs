@@ -101,6 +101,83 @@ async fn telecharger(client: &Client, route: &str, cible: &Path, sha: &str, tail
     Ok(())
 }
 
+fn lire_json_ou_rien(p: &Path) -> Value {
+    std::fs::read(p).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or(Value::Null)
+}
+
+/// Le nom sous lequel les parties d'un émulateur sont rangées dans la sauvegarde : celui de son dossier.
+fn nom_du_dossier_de(programme: &str) -> Option<String> {
+    let d = Path::new(programme).parent()?.file_name()?.to_string_lossy().to_string();
+    Some(crate::jeux_pc::nom_de_dossier(&d))
+}
+
+/// Les programmes d'émulateurs de l'ancien PC, lus dans ses réglages restaurés (toute valeur `programme`, quelle que
+/// soit la forme des réglages) : (nom de leur dossier, nom de leur programme en minuscules).
+pub fn anciens_programmes(configuration: &Value) -> Vec<(String, String)> {
+    fn chercher(v: &Value, l: &mut Vec<(String, String)>) {
+        match v {
+            Value::Object(m) => {
+                for (k, x) in m {
+                    if let (true, Some(p)) = (k == "programme", x.as_str()) {
+                        let exe = p.rsplit(['\\', '/']).next().unwrap_or("").to_lowercase();
+                        if let (Some(nom), false) = (nom_du_dossier_de(&p.replace('/', "\\")), exe.is_empty()) {
+                            l.push((nom, exe));
+                        }
+                    } else {
+                        chercher(x, l);
+                    }
+                }
+            }
+            Value::Array(a) => a.iter().for_each(|x| chercher(x, l)),
+            _ => {}
+        }
+    }
+    let mut l = Vec::new();
+    chercher(&configuration["reglages_pc"], &mut l);
+    l.sort();
+    l.dedup();
+    l
+}
+
+/// Le dossier d'attente des parties de CET émulateur : celui à son nom de dossier ; sinon celui de l'ancien émulateur
+/// qui avait le même programme (`rpcs3.exe`), s'il est le SEUL (deux anciens RetroArch : on ne choisit pas).
+pub fn cle_en_attente(zone: &Path, programme: &str, anciens: &[(String, String)]) -> Option<String> {
+    let nom = nom_du_dossier_de(programme)?;
+    if zone.join(&nom).is_dir() {
+        return Some(nom);
+    }
+    let exe = programme.rsplit(['\\', '/']).next()?.to_lowercase();
+    let mut l: Vec<&String> = anciens.iter().filter(|(d, e)| *e == exe && zone.join(d).is_dir()).map(|(d, _)| d).collect();
+    l.dedup();
+    match l.as_slice() {
+        [un] => Some((*un).clone()),
+        _ => None,
+    }
+}
+
+/// Les dossiers d'attente de TOUS les émulateurs présents, chacun donné à UN SEUL émulateur (jamais les mêmes parties
+/// copiées chez deux émulateurs qui divergeraient ensuite) : par le nom exact du dossier d'abord ; un rapprochement par
+/// le programme seulement s'il est seul à le revendiquer. Dans le doute : personne.
+pub fn cles_en_attente(zone: &Path, programmes: &[String], anciens: &[(String, String)]) -> Vec<(String, String)> {
+    let mut l: Vec<(String, String, bool)> = Vec::new();
+    for p in programmes {
+        let exact = nom_du_dossier_de(p).is_some_and(|n| zone.join(&n).is_dir());
+        if let Some(c) = cle_en_attente(zone, p, anciens) {
+            if !l.iter().any(|(x, _, _)| x == p) {
+                l.push((p.clone(), c, exact));
+            }
+        }
+    }
+    l.iter()
+        .filter(|(_, c, exact)| {
+            let memes: Vec<&(String, String, bool)> = l.iter().filter(|(_, x, _)| x == c).collect();
+            let exacts = memes.iter().filter(|(_, _, e)| *e).count();
+            if *exact { exacts == 1 } else { exacts == 0 && memes.len() == 1 }
+        })
+        .map(|(p, c, _)| (p.clone(), c.clone()))
+        .collect()
+}
+
 /// Copie les fichiers de `de` dans `vers` : un fichier absent est posé, un fichier identique compté, un fichier
 /// DIFFÉRENT gardé tel quel (conflit) — sauf si `ecraser`.
 pub fn reposer(de: &Path, vers: &Path, ecraser: bool) -> Resultat<Reposes> {
@@ -167,9 +244,11 @@ impl Noyau {
             .map_err(|_| Erreur::Serveur("Le manifeste de la sauvegarde est illisible.".into()))?;
 
         // La liste des jeux restaurés, gardée sur le PC : une sauvegarde suivante la garde tant qu'ils ne sont pas remis.
+        // Et les réglages : ils disent où étaient les émulateurs de l'ancien PC (pour leur rendre leurs parties).
         let attente = self.zone_restauration(&s.profil.id);
         std::fs::create_dir_all(&attente)?;
         std::fs::write(attente.join("bibliotheque.json"), serde_json::to_vec_pretty(&bibliotheque).unwrap_or_default())?;
+        std::fs::write(attente.join("configuration.json"), serde_json::to_vec_pretty(&configuration).unwrap_or_default())?;
         let zone = attente.join("parties");
         let total = manifeste.fichiers.len();
         let mut taille = 0;
@@ -186,15 +265,19 @@ impl Noyau {
         Ok(RestaurationPrete { configuration, bibliotheque, fichiers: total, taille })
     }
 
-    /// Repose les parties des émulateurs (en attente) dans le dossier du profil de chaque émulateur présent.
+    /// Repose les parties des émulateurs (en attente) dans le dossier du profil de chaque émulateur présent. Elles sont
+    /// rangées sous le nom du DOSSIER de l'émulateur de l'ancien PC ; s'il a changé (installé à la main, sous-dossier
+    /// numéroté…), elles sont retrouvées par le nom de son programme (`rpcs3.exe`), seulement s'il n'y a aucun doute.
     /// `programmes_emulateurs` : les programmes des émulateurs réglés sur ce PC.
     pub async fn reposer_parties_emulateurs(&self, programmes_emulateurs: &[String]) -> Resultat<Reposes> {
         let s = self.session().await?;
-        let zone = self.zone_restauration(&s.profil.id).join("parties").join("emulateurs");
+        let attente = self.zone_restauration(&s.profil.id);
+        let zone = attente.join("parties").join("emulateurs");
+        // Les programmes des émulateurs de l'ANCIEN PC (réglages restaurés) : leur dossier → leur programme.
+        let anciens = anciens_programmes(&lire_json_ou_rien(&attente.join("configuration.json")));
         let mut total = Reposes::default();
-        for programme in programmes_emulateurs {
-            let Some(dossier) = Path::new(programme).parent() else { continue };
-            let nom = crate::jeux_pc::nom_de_dossier(&dossier.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
+        for (programme, nom) in cles_en_attente(&zone, programmes_emulateurs, &anciens) {
+            let Some(dossier) = Path::new(&programme).parent() else { continue };
             let r = reposer(&zone.join(&nom), &crate::emulateurs_profils::dossier_du_profil(dossier, &s.profil.nom), false)?;
             total.reposes += r.reposes;
             total.deja_la += r.deja_la;
@@ -236,6 +319,41 @@ mod tests {
     use super::*;
     use httpmock::prelude::*;
     use serde_json::json;
+
+    #[test]
+    fn les_parties_d_un_emulateur_reinstalle_ailleurs_le_retrouvent_par_son_programme() {
+        let d = tempfile::tempdir().unwrap();
+        let zone = d.path();
+        for n in ["rpcs3-v0.0.38-win64", "Cemu_2.5", "RetroArch", "RetroArch-ancien"] {
+            std::fs::create_dir_all(zone.join(n)).unwrap();
+        }
+        // Les réglages de l'ancien PC (toutes formes : liste par système, programme seul).
+        let conf = json!({"reglages_pc": {"reglages": {"emulateurs": {
+            "Sony Playstation 3": {"defaut": "1", "liste": [{"cle": "1", "programme": "D:\\Emus\\rpcs3-v0.0.38-win64\\rpcs3.exe"}]},
+            "Nintendo Wii U": {"programme": "E:/Emus/Cemu_2.5/Cemu.exe"},
+            "SNES": {"liste": [{"programme": "D:\\RetroArch\\retroarch.exe"}, {"programme": "D:\\RetroArch-ancien\\retroarch.exe"}]}
+        }}}});
+        let a = anciens_programmes(&conf);
+        assert_eq!(a.len(), 4, "{a:?}");
+        // Même nom de dossier : tel quel.
+        assert_eq!(cle_en_attente(zone, "C:\\Frogtend\\Emulateurs\\RetroArch\\retroarch.exe", &a).as_deref(), Some("RetroArch"));
+        // Réinstallé par Frogtend dans « RPCS3 » : retrouvé par rpcs3.exe ; Cemu dans un autre sous-dossier numéroté.
+        assert_eq!(cle_en_attente(zone, "C:\\Frogtend\\Emulateurs\\RPCS3\\rpcs3.exe", &a).as_deref(), Some("rpcs3-v0.0.38-win64"));
+        assert_eq!(cle_en_attente(zone, "C:\\Emus\\Cemu\\Cemu_2.6\\cemu.exe", &a).as_deref(), Some("Cemu_2.5"));
+        // Deux anciens RetroArch et un nouveau nom : jamais deviné.
+        assert_eq!(cle_en_attente(zone, "C:\\Emus\\RA\\retroarch.exe", &a), None);
+        assert_eq!(cle_en_attente(zone, "C:\\Emus\\Dolphin\\Dolphin.exe", &a), None);
+
+        // Plusieurs émulateurs présents : un dossier d'attente à UN seul. Deux RPCS3 pour un seul ancien : personne ;
+        // RetroArch au même nom + un autre retroarch.exe : le nom exact seulement.
+        let p = |s: &str| s.to_string();
+        let c = cles_en_attente(
+            zone,
+            &[p("C:\\E\\RPCS3\\rpcs3.exe"), p("D:\\rpcs3-test\\rpcs3.exe"), p("C:\\E\\RetroArch\\retroarch.exe"), p("C:\\E\\Cemu\\Cemu.exe")],
+            &a,
+        );
+        assert_eq!(c, vec![(p("C:\\E\\RetroArch\\retroarch.exe"), p("RetroArch")), (p("C:\\E\\Cemu\\Cemu.exe"), p("Cemu_2.5"))]);
+    }
 
     #[test]
     fn reposer_ne_remplace_jamais_une_partie_differente_sans_le_dire() {

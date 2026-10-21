@@ -48,6 +48,13 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Finitions avant la bêta (0.99.1)
+- [ ] Moonlight ▸ Taodbox sur un PC sans profil : « 👋 Bienvenue ! », boutons atteints à la manette ; « ⌨ Créer
+      au clavier » ramène au bureau.
+- [ ] Un disque USB externe branché : « Où ranger tes jeux ? » propose un disque INTERNE (non vérifié en vrai :
+      Venkman n'avait aucun disque USB branché).
+- [ ] Après une restauration, un émulateur réglé par ⚙ Options ▸ Émulateurs : « N partie(s) restaurée(s) reposée(s) ».
+
 ## PC neuf ou formaté (0.99.0) — À FAIRE ENSEMBLE à l'installation neuve
 - [ ] Profil neuf, premier « Mettre dans ma ludothèque » : « 📁 Où ranger tes jeux ? » propose `<disque>\Frogtend\Jeux`
       avec la place libre ; un oui → le jeu se télécharge là.
