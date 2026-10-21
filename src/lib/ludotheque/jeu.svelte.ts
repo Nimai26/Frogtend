@@ -312,8 +312,10 @@ export async function jouer(id: number, emulateur?: string, version?: string) {
   if (partie.lancement !== null) return;
   partie.lancement = id;
   // Un jeu de boutique : sa boutique le prépare (mise à jour…), on le dit tout de suite.
-  const attente = tele.jeux[id]?.installation?.boutique
-    ? toast(`▶ Steam lance « ${tele.jeux[id]?.titre ?? 'le jeu'} »… S’il fait une mise à jour, ça peut prendre quelques minutes.`, 'neutre', { jusquaFermeture: true })
+  const b = tele.jeux[id]?.installation?.boutique;
+  const nomBoutique = b?.source === 'gog' ? 'GOG Galaxy' : b?.source === 'epic' ? 'Epic Games' : 'Steam';
+  const attente = b
+    ? toast(`▶ ${nomBoutique} lance « ${tele.jeux[id]?.titre ?? 'le jeu'} »… S’il fait une mise à jour, ça peut prendre quelques minutes.`, 'neutre', { jusquaFermeture: true })
     : null;
   try {
     await jouerSansAttente(id, emulateur, version);
@@ -1238,7 +1240,7 @@ export async function gererJeu(id: number) {
   // (RetroAchievements, lot C3).
   const ra = !!j.installation && !pcSansEmulateur ? await api.raEtat().catch(() => null) : null;
   const raRelie = !!ra?.cle_enregistree && !!ra?.compte;
-  if (j.installation?.boutique?.source === 'steam' || raRelie)
+  if (j.installation?.boutique?.source === 'steam' || j.installation?.boutique?.source === 'gog' || raRelie)
     options.push({ valeur: 'succes', libelle: '🏆 Succès', detail: 'la liste, obtenus et à obtenir' });
   // Un jeu Steam : ses parties que Steam garde pour son nuage (lot B2, lecture seule chez Steam).
   if (j.installation?.boutique?.source === 'steam')

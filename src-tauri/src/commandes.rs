@@ -2055,8 +2055,12 @@ pub async fn succes_liste(noyau: State<'_, Noyau>, source: String, cle: String) 
 #[tauri::command]
 pub async fn succes_jeu(noyau: State<'_, Noyau>, id: i64) -> Resultat<Option<crate::succes::ListeSucces>> {
     let j = noyau.jeu_visible(id).await?;
-    if let Some(b) = j.installation.and_then(|i| i.boutique).filter(|b| b.source == "steam") {
-        return succes_liste(noyau, "steam".into(), b.cle).await;
+    match j.installation.and_then(|i| i.boutique) {
+        Some(b) if b.source == "steam" => return succes_liste(noyau, "steam".into(), b.cle).await,
+        // Un jeu GOG du PC (A6) : ceux que Galaxy garde pour lui.
+        Some(b) if b.source == "gog" => return succes_liste(noyau, "galaxy".into(), format!("gog_{}", b.cle)).await,
+        Some(_) => return Ok(None),
+        None => {}
     }
     // Un jeu d'émulateur : RetroAchievements (lot C3), d'après le compte du profil.
     let r = retro_du_jeu(&noyau, id).await?;
@@ -2654,7 +2658,25 @@ pub async fn boutique_galaxy_etat(noyau: State<'_, Noyau>) -> Resultat<EtatGalax
 #[tauri::command]
 pub async fn boutique_galaxy_jeux(noyau: State<'_, Noyau>) -> Resultat<Vec<crate::boutiques::JeuBoutique>> {
     let p = profil_ouvert(&noyau).await?;
-    Ok(crate::boutiques::lire_source(&dossier_profil_de(&noyau, &p.id), "galaxy").map(|c| c.jeux).unwrap_or_default())
+    let l = crate::boutiques::lire_source(&dossier_profil_de(&noyau, &p.id), "galaxy").map(|c| c.jeux).unwrap_or_default();
+    synchroniser_gog(&noyau, &l);
+    Ok(l)
+}
+
+/// Les jeux GOG installés sur CE PC deviennent des jeux du PC (A6a) : lancés par Galaxy et suivis comme les jeux
+/// Steam. La liste vient de la base Galaxy de CE PC (gardée à l'import) ; un jeu n'est retiré que si son dossier a
+/// disparu (jamais sur la seule foi d'une liste). Un échec est noté, sans gêner l'import.
+fn synchroniser_gog(noyau: &Noyau, jeux: &[crate::boutiques::JeuBoutique]) {
+    let installes_pc: std::collections::BTreeSet<String> = jeux
+        .iter()
+        .filter(|j| j.dossier.as_deref().is_some_and(|d| std::path::Path::new(d).is_dir()))
+        .filter_map(|j| j.id.strip_prefix("gog_").map(String::from))
+        .collect();
+    match noyau.synchroniser_boutique("gog", jeux, &installes_pc) {
+        Ok((a, r)) if a + r > 0 => noyau.journaliser(&format!("jeux GOG du PC : {a} ajouté(s), {r} retiré(s)")),
+        Ok(_) => {}
+        Err(e) => noyau.journaliser(&format!("jeux GOG du PC : synchronisation impossible ({e})")),
+    }
 }
 
 /// Importe les jeux de GOG Galaxy (GOG et boutiques reliées), en LECTURE SEULE, sur une copie de sa base (accord de
@@ -2675,6 +2697,7 @@ pub async fn boutique_galaxy_importer(noyau: State<'_, Noyau>) -> Resultat<Vec<c
     crate::boutiques::ecrire_source(&dossier_profil_de(&noyau, &p.id), "galaxy", Some(&c))?;
     noyau.journaliser(&format!("import GOG Galaxy : {} jeu(x) pour le profil {}", c.jeux.len(), p.id));
     noyau.ranger_boutique("galaxy", &c.jeux).await?;
+    synchroniser_gog(&noyau, &c.jeux);
     Ok(c.jeux)
 }
 

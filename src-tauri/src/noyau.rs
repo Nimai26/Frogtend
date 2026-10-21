@@ -1006,17 +1006,33 @@ impl Noyau {
     /// `installes_pc` : les appid installés dans le Steam de CE PC (jamais la liste d'un profil : un profil sans Steam
     /// ne retire rien) ; une ligne qui a du temps de jeu n'est jamais retirée (il serait perdu).
     pub fn synchroniser_steam(&self, jeux: &[crate::boutiques::JeuBoutique], installes_pc: &std::collections::BTreeSet<String>) -> Resultat<(usize, usize)> {
-        let installes: std::collections::BTreeMap<i64, (&crate::boutiques::JeuBoutique, String)> = jeux
+        self.synchroniser_boutique("steam", jeux, installes_pc)
+    }
+
+    /// `synchroniser_steam` pour une boutique (`steam` : clé = l'appid ; `gog` : les jeux lus dans GOG Galaxy, clé
+    /// « gog_<id> » → « <id> », A6 du 21/10). `installes_pc` : les clés (sans préfixe) installées sur CE PC. Le retrait ne
+    /// touche que les lignes de CETTE boutique (une synchronisation GOG ne retire jamais un jeu Steam).
+    pub fn synchroniser_boutique(&self, source: &str, jeux: &[crate::boutiques::JeuBoutique], installes_pc: &std::collections::BTreeSet<String>) -> Resultat<(usize, usize)> {
+        let prefixe = format!("{source}_");
+        let cle_de = |j: &crate::boutiques::JeuBoutique| -> Option<String> {
+            if source == "steam" {
+                Some(j.id.clone())
+            } else {
+                j.id.strip_prefix(&prefixe).filter(|c| !c.is_empty()).map(String::from)
+            }
+        };
+        let installes: std::collections::BTreeMap<i64, (&crate::boutiques::JeuBoutique, String, String)> = jeux
             .iter()
             .filter_map(|j| {
-                let d = j.dossier.clone().filter(|d| j.installe && installes_pc.contains(&j.id) && Path::new(d).is_dir())?;
-                Some((crate::ludotheque::id_boutique("steam", &j.id), (j, d)))
+                let cle = cle_de(j)?;
+                let d = j.dossier.clone().filter(|d| j.installe && installes_pc.contains(&cle) && Path::new(d).is_dir())?;
+                Some((crate::ludotheque::id_boutique(source, &cle), (j, cle, d)))
             })
             .collect();
         let registre = self.registre();
         let mut retires = 0;
         for j in registre.tous()? {
-            let appid = j.installation.as_ref().and_then(|i| i.boutique.as_ref()).filter(|b| b.source == "steam").map(|b| b.cle.clone());
+            let appid = j.installation.as_ref().and_then(|i| i.boutique.as_ref()).filter(|b| b.source == source).map(|b| b.cle.clone());
             if let Some(appid) = appid {
                 // Seulement s'il n'est plus installé ET que son dossier a disparu (une bibliothèque Steam illisible un
                 // moment, un disque débranché, ne retire rien), sans temps de jeu, et jamais pendant une partie.
@@ -1028,7 +1044,7 @@ impl Noyau {
             }
         }
         let mut ajoutes = 0;
-        for (id, (b, dossier)) in installes {
+        for (id, (b, cle, dossier)) in installes {
             let installation = crate::jeux_pc::Installation {
                 dossier: dossier.clone(),
                 methode: crate::installation::Methode::Aucune,
@@ -1036,7 +1052,7 @@ impl Noyau {
                 fichier_du_jeu: None,
                 installe_le: String::new(),
                 versions: vec![],
-                boutique: Some(crate::jeux_pc::LancementBoutique { source: "steam".into(), cle: b.id.clone() }),
+                boutique: Some(crate::jeux_pc::LancementBoutique { source: source.into(), cle }),
                 extraits: vec![],
             };
             match registre.jeu(id)? {
@@ -1054,7 +1070,7 @@ impl Noyau {
                         fichiers: vec![],
                         message: None,
                         ajoute_le: maintenant(),
-                        ajoute_par: "steam".into(),
+                        ajoute_par: source.into(),
                         installation: None,
                         temps_jeu: 0,
                         derniere_partie: None,
@@ -1467,6 +1483,18 @@ mod tests {
         assert_eq!(n.synchroniser_steam(&[], &vide).unwrap(), (0, 1));
         assert!(n.registre().jeu(crate::ludotheque::id_boutique("steam", "500")).unwrap().is_none());
         assert!(steam.join("portal.exe").is_file());
+
+        // A6 : GOG (clés Galaxy « gog_<id> »), même règle ; une synchronisation GOG ne retire JAMAIS un jeu Steam.
+        let gog = d.path().join("GOG Galaxy").join("Games").join("Horizon");
+        std::fs::create_dir_all(&gog).unwrap();
+        let pcg: std::collections::BTreeSet<String> = ["1209025141".to_string()].into();
+        let lg = vec![jeu("gog_1209025141", true, Some(&gog)), jeu("steam_620", true, None), jeu("epic_x", true, None)];
+        assert_eq!(n.synchroniser_boutique("gog", &lg, &pcg).unwrap(), (1, 0), "seulement le jeu GOG avec son dossier");
+        let ig = n.registre().jeu(crate::ludotheque::id_boutique("gog", "1209025141")).unwrap().unwrap().installation.unwrap();
+        assert_eq!(ig.boutique, Some(crate::jeux_pc::LancementBoutique { source: "gog".into(), cle: "1209025141".into() }));
+        std::fs::remove_dir_all(&steam).unwrap();
+        assert_eq!(n.synchroniser_boutique("gog", &[], &std::collections::BTreeSet::new()).unwrap(), (0, 0), "le jeu Steam (dossier parti, temps de jeu) n'est pas à GOG");
+        assert!(n.registre().jeu(id).unwrap().is_some());
     }
 
     fn noyau() -> (tempfile::TempDir, Noyau) {

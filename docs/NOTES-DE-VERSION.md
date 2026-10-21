@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.93.0 — Tes jeux GOG, lancés par GOG Galaxy et suivis
+
+- Un jeu GOG installé sur ce PC (Horizon Zero Dawn, Cyberpunk 2077…) devient un vrai jeu de ta ludothèque, comme
+  tes jeux Steam : ▶ Jouer demande à GOG Galaxy de le lancer (son nuage, ses succès et son temps de jeu suivent),
+  puis Frogtend suit la partie (menu en jeu, manette → clavier, temps de jeu, Firehouse met ses travaux en pause).
+- En Taodbox, tes jeux GOG installés sont dans la grille.
+- ⚙ Gérer le jeu ▸ 🏆 Succès pour un jeu GOG, et dans le menu en jeu.
+- Frogtend n'écrit rien dans le dossier d'un jeu GOG et ne le désinstalle jamais.
+
 ## 0.92.0 — Les succès RetroAchievements en détail
 
 - Pour tes jeux d'émulateur (compte RetroAchievements relié) : 🏆 Voir les succès dans le panneau du jeu, ⚙ Gérer le

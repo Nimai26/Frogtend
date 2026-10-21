@@ -48,6 +48,14 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Jeux GOG lancés par Galaxy (0.93.0) — À ESSAYER AVEC MOI
+- [ ] Ludothèque ▸ Horizon Zero Dawn (GOG) : ▶ Jouer (pas « Jouer (GOG Galaxy) ») ; le message « GOG Galaxy
+      lance… » ; Galaxy s'ouvre et le jeu démarre (la commande de Galaxy n'est pas documentée : c'est LE test) ;
+      menu en jeu, « Quitter », temps de jeu.
+- [ ] Cyberpunk 2077 : son prélanceur, puis le jeu — la partie reste-t-elle suivie jusqu'au jeu, et se finit-elle
+      quand on quitte ?
+- [ ] En Taodbox : les deux jeux GOG sont dans la grille.
+
 ## Succès RetroAchievements en détail (0.92.0)
 - [ ] Il faut ton compte RetroAchievements relié (⚙ Options ▸ Succès).
 - [ ] Un jeu d'émulateur reconnu (panneau : « x / y succès ») ▸ 🏆 Voir les succès : badges, points, dates, rareté.

@@ -644,6 +644,19 @@ d'abord :
 
 ## ✅ Livré (version — ce qui a été vérifié)
 
+- **0.93.0** (21/10) — A6a + A6b, jeux GOG du PC (avis avant code et relecture de l'expert lancement) :
+  `Noyau::synchroniser_boutique(source…)` (Steam délègue ; retrait limité à SA source, testé) ; `synchroniser_gog`
+  à l'import Galaxy et à l'ouverture de sa liste (clés « gog_<id> », dossier de Galaxy présent) ; lancement PAR
+  GALAXY (`commande_galaxy` : client lu dans le registre HKLM, seul `GalaxyClient.exe` accepté, identifiant en
+  chiffres, `/command=runGame /gameId=<id>` puis `/path="<dossier>"` écrit tel quel comme sur les forums) puis
+  attente d'un programme dans le dossier et suivi comme Steam ; messages au nom de la boutique ; succès GOG au menu
+  en jeu et dans Gérer. Vérifié : tests (cœur 457) ; essai RÉEL en lecture seule (rien lancé) : client trouvé
+  (`D:\LaunchBox\Games\GOG Galaxy\GalaxyClient.exe`), commande construite pour HZD. NON vérifié : que Galaxy accepte
+  la commande (non documentée) — 1er essai AVEC Seb ; Cyberpunk (prélanceur dans le dossier, REDlauncher hors du
+  dossier : partie finie trop tôt, ou temps gonflé par REDlauncher ouvert) ; abris des parties GOG (dans le nuage
+  de Galaxy, rien hors de lui). Reste A6 : A6c (une ligne par jeu possédé sur plusieurs boutiques, choix de la copie
+  avant de lancer, icônes des boutiques), A6d Epic (Fortnite à faire reconnaître par Epic d'abord).
+
 - **0.92.0** (21/10) — Lot C3, RetroAchievements en détail (relecture de l'expert interface) :
   `Progression.liste` (non envoyée avec le résumé) lue dans la réponse d'`API_GetGameInfoAndUserProgress` d'après
   l'exemple de la documentation OFFICIELLE (pas de compte RA relié chez Seb pour un relevé réel) : badges

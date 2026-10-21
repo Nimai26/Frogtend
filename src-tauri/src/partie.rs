@@ -58,13 +58,39 @@ pub struct FinDePartie {
 /// Le temps laissé à une boutique pour démarrer le jeu (mise à jour, préparation des shaders, fenêtre d'options…).
 const ATTENTE_BOUTIQUE: std::time::Duration = std::time::Duration::from_secs(180);
 
-/// L'adresse qui demande à la boutique de lancer ce jeu ; `None` pour une boutique que Frogtend ne sait pas encore
-/// lancer (Galaxy : sa ligne de commande n'est pas documentée officiellement, essai à faire avec Seb).
+/// L'adresse qui demande à la boutique de lancer ce jeu ; `None` pour une boutique qui ne se lance pas par une adresse.
 pub(crate) fn adresse_boutique(b: &crate::jeux_pc::LancementBoutique) -> Option<String> {
     match b.source.as_str() {
         "steam" if !b.cle.is_empty() && b.cle.len() <= 12 && b.cle.chars().all(|c| c.is_ascii_digit()) => Some(format!("steam://rungameid/{}", b.cle)),
         _ => None,
     }
+}
+
+/// Le nom d'une boutique pour les messages.
+pub(crate) fn nom_boutique(source: &str) -> &'static str {
+    match source {
+        "steam" => "Steam",
+        "gog" => "GOG Galaxy",
+        "epic" => "Epic Games",
+        _ => "sa boutique",
+    }
+}
+
+/// GOG (A6, ✅ Seb 21/10 : PAR GALAXY, pour son nuage, ses succès et son temps de jeu) : `GalaxyClient.exe
+/// /command=runGame /gameId=<id> /path=<dossier>` — ligne NON documentée par GOG (forums GOG, LaunchBox, Lutris), à
+/// vérifier au premier essai avec Seb. Le client est celui que Galaxy note dans le registre (lecture seule).
+fn commande_galaxy(cle: &str, dossier: &Path) -> Option<(PathBuf, Vec<String>)> {
+    if cle.is_empty() || cle.len() > 20 || !cle.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let base = crate::registre::lire_texte_hklm(r"SOFTWARE\WOW6432Node\GOG.com\GalaxyClient\paths", "client")?;
+    let exe = crate::registre::lire_texte_hklm(r"SOFTWARE\WOW6432Node\GOG.com\GalaxyClient", "clientExecutable").unwrap_or_else(|| "GalaxyClient.exe".into());
+    // Jamais un autre programme que le client de Galaxy, même si le registre disait autre chose.
+    if !exe.eq_ignore_ascii_case("GalaxyClient.exe") {
+        return None;
+    }
+    let client = PathBuf::from(base).join(exe);
+    client.is_file().then(|| (client, vec!["/command=runGame".into(), format!("/gameId={cle}"), format!("/path={}", dossier.display())]))
 }
 
 /// Parmi les processus d'un dossier, le « premier » du jeu : celui dont le parent n'est pas lui-même dans le dossier
@@ -81,11 +107,32 @@ fn racine_du_dossier(pids: &[u32]) -> Option<u32> {
 /// Demande à la boutique de lancer le jeu, puis attend qu'un programme apparaisse DANS son dossier (jamais le client de
 /// la boutique, hors du dossier) : c'est lui que la partie suit (menu en jeu, quitter, manette → clavier).
 async fn lancer_par_la_boutique(b: &crate::jeux_pc::LancementBoutique, dossier: &Path) -> Resultat<u32> {
-    let adresse = adresse_boutique(b).ok_or_else(|| Erreur::Refus("Frogtend ne sait pas encore lancer un jeu de cette boutique : ouvre-le depuis elle.".into()))?;
+    let nom = nom_boutique(&b.source);
     if !crate::lancement::processus_du_dossier(dossier).is_empty() {
         return Err(Erreur::Refus("Ce jeu tourne déjà.".into()));
     }
-    tauri_plugin_opener::open_url(&adresse, None::<&str>).map_err(|_| Erreur::Disque("Steam ne s'ouvre pas : est-il installé ?".into()))?;
+    if let Some(adresse) = adresse_boutique(b) {
+        tauri_plugin_opener::open_url(&adresse, None::<&str>).map_err(|_| Erreur::Disque(format!("{nom} ne s'ouvre pas : est-il installé ?")))?;
+    } else if b.source == "gog" {
+        let (client, args) = commande_galaxy(&b.cle, dossier).ok_or_else(|| Erreur::Refus("GOG Galaxy est introuvable sur ce PC : installe-le (ou ouvre le jeu depuis lui).".into()))?;
+        // Le client de Galaxy, sans console et sans shell ; il reste ouvert après le jeu (c'est le sien).
+        let mut c = std::process::Command::new(&client);
+        // La forme des forums (`/path="D:\…"`), écrite telle quelle : Rust citerait l'argument entier
+        // (`"/path=D:\…"`), et la façon dont Galaxy lit sa ligne n'est pas documentée. Sans « \ » final (il
+        // neutraliserait le guillemet) ; un « " » ne peut pas être dans un chemin Windows.
+        c.args(args.iter().filter(|a| !a.starts_with("/path=")));
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            c.raw_arg(format!("/path=\"{}\"", dossier.to_string_lossy().trim_end_matches('\\')));
+        }
+        if let Some(d) = client.parent() {
+            c.current_dir(d);
+        }
+        c.spawn().map_err(|_| Erreur::Disque("GOG Galaxy ne démarre pas.".into()))?;
+    } else {
+        return Err(Erreur::Refus("Frogtend ne sait pas encore lancer un jeu de cette boutique : ouvre-le depuis elle.".into()));
+    }
     let d = dossier.to_path_buf();
     tokio::task::spawn_blocking(move || {
         let fin = Instant::now() + ATTENTE_BOUTIQUE;
@@ -96,10 +143,9 @@ async fn lancer_par_la_boutique(b: &crate::jeux_pc::LancementBoutique, dossier: 
             }
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
-        Err(Erreur::Refus(
-            "Le jeu n'a pas démarré depuis Steam (3 minutes). Regarde dans Steam : une mise à jour, une fenêtre d'options ou une connexion attend peut-être ta réponse."
-                .into(),
-        ))
+        Err(Erreur::Refus(format!(
+            "Le jeu n'a pas démarré depuis {nom} (3 minutes). Regarde dans {nom} : une mise à jour, une fenêtre d'options ou une connexion attend peut-être ta réponse."
+        )))
     })
     .await
     .map_err(|_| Erreur::Disque("L'attente du jeu s'est arrêtée brutalement.".into()))?
@@ -1129,6 +1175,24 @@ mod tests {
         let jeu = PathBuf::from(&n.registre().jeu(110).unwrap().unwrap().dossier);
         n.retirer_du_pc(110).await.unwrap();
         assert!(!jeu.exists());
+    }
+
+    #[test]
+    fn la_commande_de_galaxy_refuse_un_identifiant_douteux() {
+        assert_eq!(commande_galaxy("12;calc", Path::new("C:\\Jeux")), None);
+        assert_eq!(commande_galaxy("", Path::new("C:\\Jeux")), None);
+        assert_eq!(nom_boutique("gog"), "GOG Galaxy");
+    }
+
+    /// RÉEL, lecture seule (A6) : la commande qui lancerait un jeu GOG de ce PC par Galaxy (rien n'est lancé).
+    /// `FROGTEND_GOG_JEU=1209025141 FROGTEND_GOG_DOSSIER="D:\…\Horizon Zero Dawn" cargo test essai_commande_galaxy -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn essai_commande_galaxy() {
+        let (jeu, dossier) = (std::env::var("FROGTEND_GOG_JEU").unwrap(), std::env::var("FROGTEND_GOG_DOSSIER").unwrap());
+        let (client, args) = commande_galaxy(&jeu, Path::new(&dossier)).expect("Galaxy trouvé dans le registre");
+        println!("client : {} (existe : {})", client.display(), client.is_file());
+        println!("arguments : {args:?}");
     }
 
     #[test]
