@@ -48,6 +48,11 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Parties Steam hors du nuage (0.97.0)
+- [ ] XCOM 2 ▸ ⚙ Gérer le jeu ▸ 💾 Mettre mes parties à l'abri : le message compte des fichiers « pris hors du
+      nuage » ; dans l'abri, un dossier `hors-nuage` avec les parties de `Documents\My Games\XCOM2\…\SaveData`.
+- [ ] Pendant une partie lancée depuis Steam : refusé (« quitte-le d'abord »).
+
 ## Fiches des jeux de boutique (0.96.0)
 - [ ] Ludothèque ▸ XCOM 2 (Steam) : le panneau montre le résumé en français, « Stratégie », Firaxis Games, la date
       et des captures.

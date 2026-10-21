@@ -423,6 +423,8 @@ export async function mettreALAbriSteam(id: number) {
     a.en_ligne_seulement ? `${a.en_ligne_seulement} fichier(s) sont seulement dans ton nuage (OneDrive…), pas sur ce PC : pas copiés.` : '',
     a.en_attente ? `Steam n’a pas fini de synchroniser ${a.en_attente} fichier(s) : lance Steam un moment, puis recommence.` : '',
     a.modifies ? `${a.modifies} partie(s) plus récente(s) que la dernière synchronisation de Steam : copiées telles quelles.` : '',
+    a.hors_nuage ? `${a.hors_nuage} fichier(s) pris hors du nuage de Steam, là où le jeu range ses parties (d’après PCGamingWiki).` : '',
+    a.emplacements_illisibles ? `${a.emplacements_illisibles} emplacement(s) de parties indiqué(s) pour ce jeu ne se lisent pas : pas copiés.` : '',
   ].filter(Boolean);
   if (a.fichiers === 0) {
     await informer('💾 Aucune partie sur ce PC', ['Steam garde peut-être les parties de ce jeu seulement dans son nuage.', ...reste].join('\n'));
@@ -1276,7 +1278,7 @@ export async function gererJeu(id: number) {
     options.push({ valeur: 'succes', libelle: '🏆 Succès', detail: 'la liste, obtenus et à obtenir' });
   // Un jeu Steam : ses parties que Steam garde pour son nuage (lot B2, lecture seule chez Steam).
   if (j.installation?.boutique?.source === 'steam')
-    options.push({ valeur: 'abri', libelle: '💾 Mettre mes parties à l’abri', detail: 'une copie des parties que Steam garde pour son nuage' });
+    options.push({ valeur: 'abri', libelle: '💾 Mettre mes parties à l’abri', detail: 'une copie de ses parties (nuage de Steam et dossiers du jeu)' });
   // Un jeu importé relié à une fiche de Firehouse (contrat 1.21) : le lien se défait d'ici aussi.
   if (estImporte(j) && j.fiche)
     options.push({ valeur: 'delier', libelle: '🔗 Ce n’est pas ce jeu (ne plus relier)', detail: 'ton fichier ne bouge pas : il perd seulement la fiche de Firehouse' });

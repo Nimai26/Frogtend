@@ -99,6 +99,8 @@
   échappe) ; manifestes de mods DANS le dossier du jeu ; Nexus exige un lanceur. Découpage : **B0** garde-fous →
   **B1** triches + Cheat Engine (aucune écriture chez Steam) → **B2** abris nuage Steam → **B3** mods GitHub (données
   à part, `buildid` surveillé) → **B4** Nexus pour Steam.
+  ✅ Seb 21/10 (après 0.96.0) : « Parties Steam hors du nuage » — mettre aussi à l'abri les parties qu'un jeu
+  Steam range HORS du nuage, d'après les emplacements que Firehouse donne (contrat 1.25 `sauvegardes`).
   ✅ Seb 21/10 (après 0.95.0) : « D » — les fiches des jeux de boutique (résumé, images) par Firehouse (contrat 1.25
   `/jeu/steam/{appid}`). Relevé réel (21/10, lecture seule, jeton de Seb) : les 11 jeux Steam installés de Venkman
   répondent TOUS 404 (pas dans le stock de Firehouse, probablement). Questions envoyées à Firehouse : la route ne
@@ -667,6 +669,20 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.97.0** (21/10) — Parties Steam HORS du nuage (contrats 1.25/1.26 `sauvegardes` ; relecture de l'expert
+  lancement : 2 bloquants corrigés) : `nuage_steam::resoudre` (jetons du contrat seulement ; Mes documents par le
+  registre — OneDrive ; refus de la racine perdue « \… », `~`, registre, jeton inconnu, `..`) ; `emplacements`
+  (os « Windows »/« Steam », liste ouverte ; `nature` 1.26 dossier/fichier/motif, déduite sinon ; une RACINE —
+  dossier du jeu, de Steam, de Windows, de l'utilisateur, d'un disque — jamais un emplacement ; un dossier dans un
+  autre une seule fois) ; `ajouter_emplacements` (sans lien, déjà couvert par le nuage écarté — séparateurs
+  normalisés —, taille comptée AVANT toute lecture : plus de 2 Go = illisible, un emplacement en échec ne gêne
+  jamais les autres, clé stable par chemin) ; `plan_nuage` lit Firehouse (hors ligne : le nuage seul) ; abri refusé
+  pendant une partie lancée par Steam (programme du dossier) ; avant un mod, au-delà de `GROS`, le nuage seulement.
+  Vérifié : tests (cœur 462) ; essai RÉEL en lecture seule : XCOM 2 → 25 fichiers dans `OneDrive\Documents\My
+  Games\XCOM2\XComGame\SaveData` (que le nuage ne couvrait pas), GTA V → 2 illisibles (racine perdue chez
+  Firehouse, corrigée dans sa 1.26 pas encore en service). NON vérifié : l'abri complet dans le vrai dossier des
+  abris (A-TESTER) ; le délai d'attente du client Firehouse avant un mod (à vérifier).
 
 - **0.96.0** (21/10) — Lot D, fiches des jeux de boutique prises DANS les boutiques (décision de Seb ; relecture de
   l'expert interface) : `boutiques::fiche_steam` (`store.steampowered.com/api/appdetails`, `l=french`, cache une

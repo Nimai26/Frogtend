@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.97.0 — Les parties de tes jeux Steam, même hors du nuage
+
+- 💾 Mettre mes parties à l'abri (jeu Steam) copie maintenant AUSSI les parties que le jeu range hors du nuage de
+  Steam, aux endroits connus de PCGamingWiki (par Firehouse) : par exemple les 25 parties d'XCOM 2 dans tes
+  Documents (OneDrive), que Steam ne gardait pas.
+- Frogtend ne devine jamais : un endroit qu'il ne sait pas lire est compté et dit, un dossier trop grand ou trop
+  général (le dossier du jeu entier, tes Documents…) n'est jamais copié.
+- Refusé pendant une partie, même lancée depuis Steam. Rien n'est écrit chez Steam ni dans tes dossiers.
+
 ## 0.96.0 — La fiche de tes jeux de boutique
 
 - Le panneau d'un jeu de tes boutiques montre maintenant sa fiche : résumé, genres, développeur, éditeur, date de

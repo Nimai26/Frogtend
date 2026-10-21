@@ -306,6 +306,8 @@ export interface ApercuNuage {
   en_ligne_seulement: number;
   en_attente: number;
   modifies: number;
+  hors_nuage: number;
+  emplacements_illisibles: number;
   deja: boolean;
   gros: boolean;
 }

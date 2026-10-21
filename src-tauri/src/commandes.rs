@@ -2150,6 +2150,10 @@ pub struct ApercuNuage {
     en_attente: usize,
     /// Plus récents que la dernière synchronisation de Steam : copiés tels quels.
     modifies: usize,
+    /// Pris hors du nuage, aux emplacements que Firehouse donne.
+    hors_nuage: usize,
+    /// Emplacements de Firehouse illisibles (racine perdue, jeton inconnu).
+    emplacements_illisibles: usize,
     /// Le dernier abri contient déjà exactement ces fichiers.
     deja: bool,
     /// Plus de `nuage_steam::GROS` : la personne confirme.
@@ -2193,13 +2197,33 @@ async fn plan_nuage(noyau: &Noyau, id: i64) -> Resultat<(crate::nuage_steam::Pla
         return Err(Erreur::Refus("Ton compte Steam n'a encore rien rangé sur ce PC : rien à mettre à l'abri.".into()));
     }
     let marque = crate::nuage_steam::marque(&compte);
+    // Les emplacements de parties HORS du nuage, d'après Firehouse (contrat 1.25 `sauvegardes`, PCGamingWiki) ; hors
+    // ligne, seulement le nuage.
+    let sauvegardes = match criteres_jeu_importe(noyau, id).await {
+        Ok(c) => match noyau.session().await {
+            Ok(s) => triches_avec(&s.source, &c).await.map(|v| v["sauvegardes"].clone()).unwrap_or(Value::Null),
+            Err(_) => Value::Null,
+        },
+        Err(_) => Value::Null,
+    };
+    let jeu = j.installation.as_ref().map(|i| std::path::PathBuf::from(&i.dossier));
     let m = marque.clone();
-    let plan = tauri::async_runtime::spawn_blocking(move || crate::nuage_steam::planifier(&app, &m, &crate::nuage_steam::dossiers_windows()))
-        .await
-        .map_err(|_| Erreur::Disque("La lecture du nuage Steam s'est arrêtée brutalement.".into()))??
-        .ok_or_else(|| {
-            Erreur::Refus("Steam ne garde pas les parties de ce jeu dans son nuage : Frogtend ne sait pas encore où ce jeu les range (Firehouse le dira bientôt).".into())
-        })?;
+    let plan = tauri::async_runtime::spawn_blocking(move || -> Resultat<Option<crate::nuage_steam::Plan>> {
+        let windows = crate::nuage_steam::dossiers_windows();
+        let nuage = crate::nuage_steam::planifier(&app, &m, &windows)?;
+        let ctx = crate::nuage_steam::Contexte { jeu, steam: Some(steam), compte: Some(compte), windows };
+        let (dossiers, illisibles) = crate::nuage_steam::emplacements(&sauvegardes, &ctx);
+        if nuage.is_none() && dossiers.is_empty() {
+            return Ok(None);
+        }
+        let mut plan = nuage.unwrap_or_default();
+        plan.emplacements_illisibles = illisibles;
+        crate::nuage_steam::ajouter_emplacements(&mut plan, &m, &dossiers);
+        Ok(Some(plan))
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La lecture des parties s'est arrêtée brutalement.".into()))??
+    .ok_or_else(|| Erreur::Refus("Frogtend ne trouve aucune partie de ce jeu sur ce PC (ni dans le nuage de Steam, ni aux emplacements connus de Firehouse).".into()))?;
     Ok((plan, marque))
 }
 
@@ -2217,6 +2241,8 @@ pub async fn nuage_steam_apercu(noyau: State<'_, Noyau>, id: i64) -> Resultat<Ap
         en_ligne_seulement: plan.en_ligne_seulement,
         en_attente: plan.en_attente,
         modifies: plan.modifies,
+        hors_nuage: plan.hors_nuage,
+        emplacements_illisibles: plan.emplacements_illisibles,
         deja,
         gros: plan.octets > crate::nuage_steam::GROS,
     })
@@ -2226,8 +2252,10 @@ pub async fn nuage_steam_apercu(noyau: State<'_, Noyau>, id: i64) -> Resultat<Ap
 /// l'interface). Refusé pendant une partie ; au-delà de `GROS`, seulement avec `accepte`.
 #[tauri::command]
 pub async fn nuage_steam_abriter(noyau: State<'_, Noyau>, id: i64, accepte: bool) -> Resultat<crate::partie::Abri> {
-    // Une partie en cours (ou un autre travail sur ce jeu) : ses parties changeraient pendant la copie.
-    if noyau.utilise(id) {
+    // Une partie en cours (lancée par Frogtend, ou par Steam : un programme de son dossier tourne) : ses parties
+    // changeraient pendant la copie.
+    let dossier_jeu = noyau.jeu_visible(id).await?.installation.map(|i| std::path::PathBuf::from(i.dossier));
+    if noyau.utilise(id) || dossier_jeu.is_some_and(|d| !crate::lancement::processus_du_dossier(&d).is_empty()) {
         return Err(Erreur::Refus("Le jeu est en cours : quitte-le d'abord, pour que ses parties ne changent pas pendant la copie.".into()));
     }
     let _occupe = noyau.occuper(id);
@@ -3112,13 +3140,19 @@ fn steam_inchange(j: &crate::jeux_pc::JeuPc, dossier: &std::path::Path, vu: &Opt
 /// elles ont changé. Un jeu dont Steam ne garde rien : noté au journal (le mod ne touche que le dossier du jeu, et
 /// tout fichier qu'il remplace y est déjà gardé).
 async fn abriter_avant_mod(noyau: &Noyau, id: i64) -> Resultat<()> {
-    let (plan, marque) = match plan_nuage(noyau, id).await {
+    let (mut plan, marque) = match plan_nuage(noyau, id).await {
         Ok(x) => x,
         Err(e) => {
             noyau.journaliser(&format!("jeu {id} : pas de parties du nuage Steam à mettre à l'abri avant le mod ({e})"));
             return Ok(());
         }
     };
+    // Avant un mod, jamais une très grosse copie sans question : au-delà de `GROS`, les parties du nuage seulement.
+    if plan.octets > crate::nuage_steam::GROS {
+        plan.fichiers.retain(|f| !f.relatif.contains("/hors-nuage/"));
+        plan.octets = plan.fichiers.iter().map(|f| f.taille).sum();
+        noyau.journaliser(&format!("jeu {id} : parties hors du nuage trop grosses pour être copiées avant le mod (abri du nuage seulement)"));
+    }
     let abris = noyau.dossier_abris()?;
     if plan.fichiers.is_empty() || crate::nuage_steam::deja_a_l_abri(&abris.join(id.to_string()), &marque, &plan) {
         return Ok(());

@@ -55,7 +55,7 @@ fn fichiers_sans_lien(racine: &Path) -> Resultat<Vec<String>> {
                     l.push(r.to_string_lossy().replace('\\', "/"));
                 }
                 if l.len() > REMOTE_MAX {
-                    return Err(Erreur::Refus("Le dossier du nuage Steam de ce jeu contient trop de fichiers pour être des parties : rien n'est copié.".into()));
+                    return Err(Erreur::Refus("Ce dossier contient trop de fichiers pour être celui des parties : rien n'en est copié.".into()));
                 }
             }
         }
@@ -255,6 +255,10 @@ pub struct Plan {
     pub en_attente: usize,
     /// Plus récents que ce que Steam a noté (une partie jouée depuis sa dernière synchronisation) : copiés tels quels.
     pub modifies: usize,
+    /// Fichiers pris HORS du nuage, aux emplacements que Firehouse donne (contrat 1.25).
+    pub hors_nuage: usize,
+    /// Emplacements donnés par Firehouse que Frogtend ne sait pas lire (racine perdue, jeton inconnu…).
+    pub emplacements_illisibles: usize,
 }
 
 /// Ce qu'on trouve au chemin d'un fichier décrit par Steam, dans un dossier.
@@ -371,6 +375,211 @@ pub fn planifier(app: &Path, marque: &str, windows: &[(&'static str, PathBuf)]) 
     }
     plan.fichiers.sort_by(|a, b| a.relatif.cmp(&b.relatif));
     Ok(Some(plan))
+}
+
+/// De quoi résoudre un emplacement de parties donné par Firehouse (contrat 1.25 `sauvegardes`, chemins NON résolus).
+pub struct Contexte {
+    /// Le dossier du jeu (`<dossier du jeu>`).
+    pub jeu: Option<PathBuf>,
+    /// Le dossier de Steam (`<Steam>`).
+    pub steam: Option<PathBuf>,
+    /// Le compte Steam (`<identifiant Steam>`, le dossier de `userdata`).
+    pub compte: Option<String>,
+    /// Les dossiers de Windows lus dans le registre (`dossiers_windows`) : « Mes documents » peut être chez OneDrive.
+    pub windows: Vec<(&'static str, PathBuf)>,
+}
+
+/// Un emplacement de Firehouse rendu en vrai dossier de CE PC, ou `None` (jeton inconnu, racine perdue, registre,
+/// joker, chemin d'un autre système). Jamais deviné : seuls les jetons connus du contrat 1.25.
+pub fn resoudre(chemin: &str, ctx: &Contexte) -> Option<PathBuf> {
+    let c = chemin.trim().replace('/', "\\");
+    if c.is_empty() || c.starts_with('\\') || c.starts_with('~') || c.to_uppercase().starts_with("HKEY") || c.contains('*') || c.contains('?') {
+        return None;
+    }
+    let win = |n: &str| ctx.windows.iter().find(|(x, _)| *x == n).map(|(_, d)| d.to_string_lossy().to_string());
+    let env = |n: &str| std::env::var(n).ok().filter(|v| !v.is_empty());
+    // Les plus longs d'abord : « %USERPROFILE%\Documents » avant « %USERPROFILE% ».
+    let jetons: Vec<(&str, Option<String>)> = vec![
+        ("%USERPROFILE%\\Documents", win("Documents")),
+        ("%USERPROFILE%\\My Documents", win("Documents")),
+        ("%USERPROFILE%\\Saved Games", win("Parties-enregistrees")),
+        ("%USERPROFILE%\\AppData\\LocalLow", win("AppData-LocalLow")),
+        ("%LOCALAPPDATA%", win("AppData-Local").or_else(|| env("LOCALAPPDATA"))),
+        ("%APPDATA%", win("AppData-Roaming").or_else(|| env("APPDATA"))),
+        ("%USERPROFILE%", env("USERPROFILE")),
+        ("%PROGRAMDATA%", env("ProgramData")),
+        ("%ALLUSERSPROFILE%", env("ALLUSERSPROFILE")),
+        ("%PUBLIC%", env("PUBLIC")),
+        ("%USERNAME%", env("USERNAME")),
+        ("<dossier du jeu>", ctx.jeu.as_ref().map(|d| d.to_string_lossy().to_string())),
+        ("<Steam>", ctx.steam.as_ref().map(|d| d.to_string_lossy().to_string())),
+        ("<identifiant Steam>", ctx.compte.clone()),
+    ];
+    let mut r = c;
+    for (jeton, valeur) in jetons {
+        // En minuscules ASCII seulement : les positions restent celles du texte d'origine (accents compris).
+        let bas = r.to_ascii_lowercase();
+        if let Some(i) = bas.find(&jeton.to_ascii_lowercase()) {
+            let v = valeur?;
+            r = format!("{}{}{}", &r[..i], v.trim_end_matches('\\'), &r[i + jeton.len()..]);
+        }
+    }
+    // Un jeton resté inconnu (« <jeton> », « %X% ») : jamais deviné.
+    if r.contains('%') || r.contains('<') || r.contains('>') {
+        return None;
+    }
+    let p = PathBuf::from(r.trim_end_matches('\\'));
+    // Un chemin absolu de ce PC, sans « .. ».
+    (p.is_absolute() && !p.components().any(|c| matches!(c, std::path::Component::ParentDir))).then_some(p)
+}
+
+/// Un emplacement de parties résolu : un dossier (sous-dossiers compris), ou seulement ses fichiers qui répondent à
+/// `filtre` (contrat 1.26 `nature` : `fichier` = un nom exact, `motif` = un nom avec * ou ?).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Emplacement {
+    pub dossier: PathBuf,
+    pub filtre: Option<String>,
+}
+
+/// Un nom de fichier qui répond à un motif (`*`, `?`), sans tenir compte des majuscules (comme Windows).
+fn repond(nom: &str, motif: &str) -> bool {
+    fn m(n: &[char], p: &[char]) -> bool {
+        match (p.first(), n.first()) {
+            (None, None) => true,
+            (Some('*'), _) => m(n, &p[1..]) || (!n.is_empty() && m(&n[1..], p)),
+            (Some('?'), Some(_)) => m(&n[1..], &p[1..]),
+            (Some(a), Some(b)) if a == b => m(&n[1..], &p[1..]),
+            _ => false,
+        }
+    }
+    let (n, p): (Vec<char>, Vec<char>) = (nom.to_lowercase().chars().collect(), motif.to_lowercase().chars().collect());
+    m(&n, &p)
+}
+
+/// Une RACINE (dossier du jeu, de Steam, de Windows, de l'utilisateur, d'un disque) : jamais un emplacement de
+/// parties (elle ferait copier un disque entier) — comptée comme illisible.
+fn est_une_racine(p: &Path, ctx: &Contexte) -> bool {
+    let cle = |x: &Path| x.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
+    let c = cle(p);
+    let env = ["USERPROFILE", "ProgramData", "ALLUSERSPROFILE", "PUBLIC", "LOCALAPPDATA", "APPDATA", "SystemRoot", "ProgramFiles", "ProgramFiles(x86)"];
+    p.components().count() <= 2
+        || ctx.jeu.iter().chain(ctx.steam.iter()).chain(ctx.windows.iter().map(|(_, d)| d)).any(|r| cle(r) == c)
+        || env.iter().filter_map(|v| std::env::var_os(v)).any(|r| cle(Path::new(&r)) == c)
+}
+
+/// Les emplacements de parties d'un jeu Steam d'après Firehouse (`sauvegardes` : seulement « Windows » et « Steam »,
+/// liste ouverte : le reste est ignoré), résolus : (emplacements existants, nombre d'illisibles).
+pub fn emplacements(sauvegardes: &serde_json::Value, ctx: &Contexte) -> (Vec<Emplacement>, usize) {
+    let mut l: Vec<Emplacement> = Vec::new();
+    let mut illisibles = 0;
+    for s in sauvegardes.as_array().into_iter().flatten() {
+        if !matches!(s["os"].as_str(), Some("Windows") | Some("Steam")) {
+            continue;
+        }
+        let Some(chemin) = s["chemin"].as_str() else { continue };
+        let c = chemin.trim().replace('/', "\\");
+        let dernier = c.trim_end_matches('\\').rsplit('\\').next().unwrap_or("").to_string();
+        // La nature (contrat 1.26), sinon déduite comme Firehouse la décrit.
+        let nature = s["nature"].as_str().map(String::from).unwrap_or_else(|| {
+            if dernier.contains('*') || dernier.contains('?') {
+                "motif".into()
+            } else if !c.ends_with('\\') && dernier.contains('.') {
+                "fichier".into()
+            } else {
+                "dossier".into()
+            }
+        });
+        let (base, filtre) = match nature.as_str() {
+            "fichier" | "motif" => (c.trim_end_matches('\\').rsplit_once('\\').map(|(b, _)| b.to_string()).unwrap_or_default(), Some(dernier)),
+            "dossier" => (c.clone(), None),
+            _ => {
+                illisibles += 1;
+                continue;
+            }
+        };
+        if filtre.as_deref().is_some_and(|f| f.is_empty() || f.contains(['/', '\\', ':'])) {
+            illisibles += 1;
+            continue;
+        }
+        match resoudre(&base, ctx) {
+            Some(p) if est_une_racine(&p, ctx) && filtre.is_none() => illisibles += 1,
+            Some(p) if p.is_dir() => {
+                let e = Emplacement { dossier: p, filtre };
+                if !l.contains(&e) {
+                    l.push(e);
+                }
+            }
+            Some(_) => {} // pas (encore) de parties à cet endroit
+            None => illisibles += 1,
+        }
+    }
+    // Un dossier entier DANS un autre déjà pris : une seule fois.
+    let entiers: Vec<String> = l.iter().filter(|e| e.filtre.is_none()).map(|e| format!("{}\\", e.dossier.to_string_lossy().to_lowercase())).collect();
+    l.retain(|e| {
+        let moi = format!("{}\\", e.dossier.to_string_lossy().to_lowercase());
+        !entiers.iter().any(|x| moi.starts_with(x.as_str()) && (moi != *x || e.filtre.is_some()))
+    });
+    (l, illisibles)
+}
+
+/// Au plus cette taille par emplacement de parties (au-delà, ce n'est pas un dossier de parties : il est compté
+/// illisible, rien n'en est lu).
+pub const EMPLACEMENT_MAX: u64 = 2 << 30;
+
+/// Ajoute au plan les fichiers de ces emplacements (hors nuage), sans lien ni jonction ; un fichier déjà dans le plan
+/// (le nuage le couvre) n'est pas pris deux fois. Un emplacement trop gros ou illisible ne gêne jamais les autres.
+pub fn ajouter_emplacements(plan: &mut Plan, marque: &str, emplacements: &[Emplacement]) {
+    let normal = |p: &Path| p.to_string_lossy().replace('/', "\\").to_lowercase();
+    let deja: std::collections::BTreeSet<String> = plan.fichiers.iter().map(|f| normal(&f.source)).collect();
+    for e in emplacements {
+        // Une clé stable (le chemin), pour que « déjà à l'abri » ne change pas quand un autre emplacement apparaît.
+        let cle: String = {
+            use sha1::{Digest, Sha1};
+            Sha1::digest(normal(&e.dossier).as_bytes()).iter().take(4).map(|b| format!("{b:02x}")).collect()
+        };
+        let nom: String = e.dossier.file_name().map(|x| x.to_string_lossy().to_string()).unwrap_or_else(|| "parties".into()).chars().map(|c| if c.is_alphanumeric() || " -_.".contains(c) { c } else { '_' }).collect();
+        let relatifs: Vec<String> = match &e.filtre {
+            None => match fichiers_sans_lien(&e.dossier) {
+                Ok(l) => l,
+                Err(_) => {
+                    plan.emplacements_illisibles += 1;
+                    continue;
+                }
+            },
+            Some(f) => std::fs::read_dir(&e.dossier)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .filter(|x| x.file_type().is_ok_and(|t| t.is_file()))
+                .map(|x| x.file_name().to_string_lossy().to_string())
+                .filter(|n| repond(n, f))
+                .collect(),
+        };
+        // La taille d'abord (rien n'est lu au-delà du plafond).
+        let a_prendre: Vec<(PathBuf, String, std::fs::Metadata)> = relatifs
+            .into_iter()
+            .filter_map(|r| {
+                let p = e.dossier.join(&r);
+                let m = std::fs::symlink_metadata(&p).ok()?;
+                (m.is_file() && !deja.contains(&normal(&p))).then_some((p, r, m))
+            })
+            .collect();
+        if a_prendre.iter().map(|(_, _, m)| m.len()).sum::<u64>() > EMPLACEMENT_MAX {
+            plan.emplacements_illisibles += 1;
+            continue;
+        }
+        for (p, r, m) in a_prendre {
+            if en_ligne_seulement(&m) {
+                plan.en_ligne_seulement += 1;
+                continue;
+            }
+            let Ok(sha) = sha1(&p) else { continue };
+            plan.octets += m.len();
+            plan.hors_nuage += 1;
+            plan.fichiers.push(AMettre { source: p, relatif: format!("nuage-steam/{marque}/hors-nuage/{cle}-{nom}/{}", r.replace('\\', "/")), taille: m.len(), sha });
+        }
+    }
+    plan.fichiers.sort_by(|a, b| a.relatif.cmp(&b.relatif));
 }
 
 /// La liste rangée dans chaque abri du nuage Steam, par compte (pour ne pas refaire un abri identique).
@@ -535,6 +744,74 @@ mod tests {
         let abris = d.path().join("Abris");
         assert!(abriter(&plan, "m1", &abris, -7, "100").is_err());
         assert!(!abris.join("-7").exists() && !abris.join(".frogtend-en-cours").exists());
+    }
+
+    #[test]
+    fn les_emplacements_de_firehouse_se_resolvent_sans_rien_deviner() {
+        let d = tempfile::tempdir().unwrap();
+        let docs = d.path().join("OneDrive").join("Documents");
+        let saves = docs.join("My Games").join("XCOM2").join("XComGame").join("SaveData");
+        std::fs::create_dir_all(&saves).unwrap();
+        std::fs::write(saves.join("save_1"), b"partie").unwrap();
+        let ctx = Contexte { jeu: Some(d.path().join("Jeu")), steam: Some(d.path().join("Steam")), compte: Some("42".into()), windows: vec![("Documents", docs.clone())] };
+        // Mes documents par le registre (OneDrive chez Seb), jamais « %USERPROFILE%\Documents » écrit en dur.
+        assert_eq!(resoudre(r"%USERPROFILE%\Documents\My Games\XCOM2\XComGame\SaveData\", &ctx), Some(saves.clone()));
+        assert_eq!(resoudre(r"<Steam>\userdata\<identifiant Steam>\489830\remote\", &ctx), Some(d.path().join(r"Steam\userdata\42\489830\remote")));
+        // Relevés réels du 21/10 : la racine perdue (GTA V), un autre système, un joker, le registre, un jeton inconnu.
+        for douteux in [r"\Rockstar Games\GTA V\Profiles\", "~/Library/Application Support/x/", r"%APPDATA%\x\*.sav", r"HKEY_CURRENT_USER\Software\x", r"<inconnu>\x", r"%X%\y"] {
+            assert_eq!(resoudre(douteux, &ctx), None, "{douteux}");
+        }
+        // La réponse réelle de XCOM 2 : seulement « Windows » (et « Steam »), dossiers existants.
+        let v: serde_json::Value = serde_json::json!([
+            {"os": "Windows", "chemin": r"%USERPROFILE%\Documents\My Games\XCOM2\XComGame\SaveData\", "steam_userdata": false, "nuage": null},
+            {"os": "OS X", "chemin": "~/Library/Application Support/Feral Interactive/XCOM 2/", "steam_userdata": false, "nuage": null},
+            {"os": "Windows", "chemin": r"\Rockstar Games\GTA V\Profiles\", "steam_userdata": false, "nuage": null},
+            {"os": "Steam", "chemin": r"%USERPROFILE%\Documents\My Games\Absent\", "steam_userdata": true, "nuage": true}]);
+        let (l, illisibles) = emplacements(&v, &ctx);
+        assert_eq!((l.iter().map(|e| e.dossier.clone()).collect::<Vec<_>>(), illisibles), (vec![saves.clone()], 1));
+        // Le nuage couvre déjà un fichier (chemin écrit avec « / » par `planifier`) : jamais deux fois.
+        std::fs::write(saves.join("save_2"), b"nuage").unwrap();
+        let mut plan = Plan::default();
+        plan.fichiers.push(AMettre { source: PathBuf::from(format!("{}/save_2", saves.to_string_lossy())), relatif: "nuage-steam/m1/Documents/x".into(), taille: 5, sha: String::new() });
+        ajouter_emplacements(&mut plan, "m1", &l);
+        assert_eq!((plan.hors_nuage, plan.octets), (1, 6));
+        assert!(plan.fichiers.iter().any(|f| f.relatif.starts_with("nuage-steam/m1/hors-nuage/") && f.relatif.ends_with("-SaveData/save_1")));
+        // Une RACINE (le dossier du jeu entier, Mes documents…) n'est jamais un emplacement : illisible.
+        std::fs::create_dir_all(d.path().join("Jeu")).unwrap();
+        let racines = serde_json::json!([
+            {"os": "Windows", "chemin": r"<dossier du jeu>\"},
+            {"os": "Windows", "chemin": r"%USERPROFILE%\Documents\"},
+            {"os": "Epic Games Store", "chemin": r"%USERPROFILE%\Documents\My Games\XCOM2\"}]);
+        assert_eq!(emplacements(&racines, &ctx), (vec![], 2), "les racines refusées ; une autre boutique ignorée sans erreur");
+        // Contrat 1.26 : un FICHIER, un MOTIF ; un dossier dans un autre déjà pris n'est compté qu'une fois.
+        std::fs::write(saves.join("profil.ini"), b"ini").unwrap();
+        let v126 = serde_json::json!([
+            {"os": "Windows", "chemin": r"%USERPROFILE%\Documents\My Games\XCOM2\XComGame\SaveData\save_*", "nature": "motif"},
+            {"os": "Windows", "chemin": r"%USERPROFILE%\Documents\My Games\XCOM2\XComGame\SaveData\profil.ini", "nature": "fichier"},
+            {"os": "Windows", "chemin": r"%USERPROFILE%\Documents\My Games\XCOM2\"}]);
+        let (l, i) = emplacements(&v126, &ctx);
+        assert_eq!(i, 0);
+        assert_eq!(l.len(), 1, "le motif et le fichier sont DANS le dossier XCOM2 déjà pris en entier");
+        let seul = serde_json::json!([{"os": "Windows", "chemin": r"%USERPROFILE%\Documents\My Games\XCOM2\XComGame\SaveData\save_*"}]);
+        let (l, _) = emplacements(&seul, &ctx);
+        let mut p = Plan::default();
+        ajouter_emplacements(&mut p, "m1", &l);
+        assert_eq!(p.hors_nuage, 2, "save_1 et save_2, jamais profil.ini");
+        assert!(repond("SAVE_12.sav", "save_*.sav") && !repond("profil.ini", "save_*") && repond("a1", "a?"));
+    }
+
+    /// RÉEL, lecture seule : les emplacements d'une réponse de Firehouse (`FROGTEND_TRICHE_JSON`, fichier gardé par
+    /// `essai_mods_1_19`) résolus sur CE PC (rien n'est copié).
+    #[test]
+    #[ignore]
+    fn essai_emplacements() {
+        let v: serde_json::Value = serde_json::from_slice(&std::fs::read(std::env::var("FROGTEND_TRICHE_JSON").unwrap()).unwrap()).unwrap();
+        let ctx = Contexte { jeu: None, steam: crate::boutiques::dossier_steam(), compte: None, windows: dossiers_windows() };
+        let (d, illisibles) = emplacements(&v["sauvegardes"], &ctx);
+        for x in &d {
+            println!("dossier : {} {:?} ({} fichiers)", x.dossier.display(), x.filtre, fichiers_sans_lien(&x.dossier).map(|l| l.len()).unwrap_or(0));
+        }
+        println!("illisibles : {illisibles}");
     }
 
     #[test]
