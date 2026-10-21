@@ -1,1 +1,148 @@
-{"_source":"Relevé RÉEL PARTIEL du contrat 1.24 (Firehouse 2.97.0+, 21/10 15:56, transmis par message) : la version -34977 de la fiche 31181 (God of War III, PS3) — 1 .iso déchiffré (role jeu), 12 .pkg au nom aléatoire (role dlc ; un seul nom transmis, SANS extension .pkg dans le message — à confirmer), 6 .rap nommés <content id>.rap (role licence, jamais renommés), forme contenus_emulateur, lancer vide. Seuls les fichiers donnés en exemple sont ici.","version":{"telechargement_id":-34977,"qualite":"Jeu — image disque","fichiers":[{"nom":"God of War III (Europe) (En,Fr,De,Es,It,Nl,Pt,Pl,Ru).iso","taille":43203690496,"dossier":"","role":"jeu"},{"nom":"6gE8dHa0Rfpnn3Dowv5R3NpkoSfnWvhob05Ile1nQkTmQHLxlp9s4CY94psiW8j9","taille":102400,"dossier":"","role":"dlc"}],"installation":{"forme":"contenus_emulateur","extraire_dans":"","lancer":"","arguments":""}}}
+{
+ "_source": "Relevé RÉEL COMPLET du contrat 1.24 (Firehouse, 21/10, liste brute de /jeu/31181 transmise par message) : la version -34977 (God of War III, PS3) — .iso DÉCHIFFRÉ role jeu, .pkg (noms aléatoires AVEC extension) role dlc, <content id>.rap role licence (jamais renommés), forme contenus_emulateur, lancer vide. Un .rap s'apparie à un .pkg par le content ID de l'en-tête du .pkg (octet 0x30), jamais par le nom du .pkg.",
+ "version": {
+  "telechargement_id": -34977,
+  "qualite": "Jeu — image disque",
+  "fichiers": [
+   {
+    "nom": "God of War III (Europe) (En,Fr,De,Es,It,Nl,Pt,Pl,Ru).iso",
+    "taille": 43203690496,
+    "role": "jeu",
+    "sha1": "575ae38af8b51eee8929d8e67237bf5c22e9c805",
+    "dossier": ""
+   },
+   {
+    "nom": "6gE8dHa0Rfpnn3Dowv5R3NpkoSfnWvhob05Ile1nQkTmQHLxlp9s4CY94psiW8j9.pkg",
+    "taille": 102400,
+    "role": "dlc",
+    "sha1": "89b678dd4b7bad6a0224de6d11b1005b4032bc15",
+    "dossier": ""
+   },
+   {
+    "nom": "aXkmT0pt8bh8Qf6eY5lLaD2shhOstladt0ugTgDUYXblxpERxWwmFI5kh8hYMMfWghBcEq638d8FNTPcoVmihpOHsTgHxM1JWNg1G.pkg",
+    "taille": 102400,
+    "role": "dlc",
+    "sha1": "4eaea2dde8799e646f8cf91bcddc6c60b94b491a",
+    "dossier": ""
+   },
+   {
+    "nom": "OpWMUc35iOIhKIENRQ0Mn9qRCKf3l4CCIobjD5m0mIxBJrPwTd3RVVYrx4XDshmH.pkg",
+    "taille": 102400,
+    "role": "dlc",
+    "sha1": "83ca6efcb5a83cc969ea1005b3e0fd9656963943",
+    "dossier": ""
+   },
+   {
+    "nom": "S2cflvIhHCrn1VB01cnYc8YkyrSqV8MmejIcVYhHSnFMvvfAu8cILkB0Op75v5eI.pkg",
+    "taille": 102400,
+    "role": "dlc",
+    "sha1": "19d1b175c01eeab74161ace09c96fb1080ef839a",
+    "dossier": ""
+   },
+   {
+    "nom": "sTdpXpS9WLOAWaflkffYKm5bTnB0hDBf0BtY3ysB0LoNIqrURCRxbHjV858mmTY0QLdineW0pyHbvL3moJ2458WErxJ82Hlsk2nyF.pkg",
+    "taille": 102400,
+    "role": "dlc",
+    "sha1": "a9f839bd17e351538e141d3390a4d9ed2f9d4610",
+    "dossier": ""
+   },
+   {
+    "nom": "KrhDM4BGxVINoqYXdgoSMLIjSJC6xU4QWl4x7DAHahraE8oFepsfinFCyokGyMMX.pkg",
+    "taille": 102400,
+    "role": "dlc",
+    "sha1": "2b5845c391d7ea8f5414bb9e2e2266efd63ddb51",
+    "dossier": ""
+   },
+   {
+    "nom": "EP9000-BCES00510_00-0000000000DEIMOS.rap",
+    "taille": 16,
+    "role": "licence",
+    "sha1": "3e01c7c9a8f1cd8eddc0349623250422d3f70eea",
+    "dossier": ""
+   },
+   {
+    "nom": "jhVIwxaBKePXePUjafPithfEEVJnvrJTZttVqQNzANXDBhOQswKmooyhKnVtOcbX.pkg",
+    "taille": 69663968,
+    "role": "dlc",
+    "sha1": "dec73fa1d9c0c24f3a85467c55d90c425dff93bb",
+    "dossier": ""
+   },
+   {
+    "nom": "EP9000-BCES00799_00-000000000DOMINUS.rap",
+    "taille": 16,
+    "role": "licence",
+    "sha1": "a0e1d201a3236acade54c99e60a2bf2db207f47d",
+    "dossier": ""
+   },
+   {
+    "nom": "iu5WxBQA4Eiy1jcSXBudIVWN2vTrlHms8TscATqEACVomio3S2dqV5TN3nulG5go.pkg",
+    "taille": 102400,
+    "role": "dlc",
+    "sha1": "3bd801a01885908b27321bfba53546862b5f3712",
+    "dossier": ""
+   },
+   {
+    "nom": "EP9000-BCES00799_00-0000FORGOTTENWAR.rap",
+    "taille": 16,
+    "role": "licence",
+    "sha1": "f0d98e6407c1b21cbbe28d6a6b66ea253a547cc4",
+    "dossier": ""
+   },
+   {
+    "nom": "xiy2BHh0UUe0UfnsxWX87QTSpxIC4eVEEogbEi0IXG3RLsFV7CkAteR8MqUxAPgdTWE3kXxdjaF5bTAEsy4yPphEmsjGa96whnNep.pkg",
+    "taille": 102400,
+    "role": "dlc",
+    "sha1": "3a2e53099de863a675b46e79721d0d61fbb96cf7",
+    "dossier": ""
+   },
+   {
+    "nom": "EP9000-BCES00799_00-00000000MORPHEUS.rap",
+    "taille": 16,
+    "role": "licence",
+    "sha1": "793a14544fc21402470ffd3c2e3291942a167a67",
+    "dossier": ""
+   },
+   {
+    "nom": "hmIDV8GOnS5cfEOMDywCUJAvpct5RxiD5yg3h0NKmHT7wO7m1h6b9qLoklrKJxO5.pkg",
+    "taille": 102400,
+    "role": "dlc",
+    "sha1": "66374810d77fc3be8c6840ae918f3602fab33539",
+    "dossier": ""
+   },
+   {
+    "nom": "dpVRxA5H22jFTOiQ3i953ebt05YPq2FCgpJN92ma6USy6moUAQeWUxl5Dntjr4Vd.pkg",
+    "taille": 102400,
+    "role": "dlc",
+    "sha1": "8825e1cca96a623935c377d67fb6778c802ea55c",
+    "dossier": ""
+   },
+   {
+    "nom": "EP9000-BCES00799_00-0000PHANTOMCHAOS.rap",
+    "taille": 16,
+    "role": "licence",
+    "sha1": "18848a8b16e6fe62e5a6f7af804dedc1ffab02c9",
+    "dossier": ""
+   },
+   {
+    "nom": "3YKmNeVmKAOCJEj8eS8J8Dv70awjokqE8Pxna2l1BhgjkbpGA3sdIHOPc3E5AEy0stFtOmKVRMQarMAcQSJ5lbYk9PwV9Dyk2qqMT.pkg",
+    "taille": 102400,
+    "role": "dlc",
+    "sha1": "130206de9a2cee00bd6f8f7cf5ebd1a999e8e1c2",
+    "dossier": ""
+   },
+   {
+    "nom": "EP9000-BCES00510_00-00000000ULTIMATE.rap",
+    "taille": 16,
+    "role": "licence",
+    "sha1": "3d6948f87dd8a3974153e65b0aead04da1f28ac5",
+    "dossier": ""
+   }
+  ],
+  "installation": {
+   "forme": "contenus_emulateur",
+   "extraire_dans": "",
+   "lancer": "",
+   "arguments": ""
+  }
+ }
+}
