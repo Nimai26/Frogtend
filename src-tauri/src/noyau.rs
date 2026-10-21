@@ -1092,6 +1092,15 @@ impl Noyau {
         let s = self.session().await?;
         let mut c = s.verrou_vivant()?;
         let steam_a_part = source == "galaxy" && c.sources_boutiques()?.iter().any(|x| x == "steam");
+        // Epic (A6d) : une carte seulement pour un jeu que GOG Galaxy ne montre pas déjà (même id) ; celles de Galaxy
+        // suivent l'état « installé » lu chez Epic à l'instant.
+        let deja_galaxy = if source == "epic" {
+            let ids: std::collections::BTreeSet<i64> = jeux.iter().filter_map(|j| j.id.strip_prefix("epic_")).map(|a| crate::ludotheque::id_boutique("epic", a)).collect();
+            c.marquer_installes_galaxy("epic", &ids)?;
+            c.ids_de_source("galaxy")?
+        } else {
+            Default::default()
+        };
         let resumes: Vec<JeuResume> = jeux
             .iter()
             .filter_map(|j| {
@@ -1103,6 +1112,9 @@ impl Noyau {
                     (b.to_string(), c.to_string())
                 };
                 if steam_a_part && boutique == "steam" {
+                    return None;
+                }
+                if deja_galaxy.contains(&crate::ludotheque::id_boutique(&boutique, &cle)) {
                     return None;
                 }
                 Some(JeuResume {

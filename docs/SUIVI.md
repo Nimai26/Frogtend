@@ -657,6 +657,20 @@ d'abord :
 
 ## ✅ Livré (version — ce qui a été vérifié)
 
+- **0.95.0** (21/10) — A6d, jeux Epic du PC (relevé réel TerraScape installé par Seb ; relecture de l'expert
+  lancement) : `boutiques::installes_epic` lit les manifestes `.item` (`%ProgramData%\Epic\…\Manifests`) en
+  lecture seule — seulement un JEU (`AppCategories` « games »), complet, avec un programme, pas un DLC, ids sûrs,
+  dossier présent (Unreal Engine et plugins écartés ; Fortnite sans manifeste : rien) ; `adresse_epic` =
+  `com.epicgames.launcher://apps/<namespace>%3A<item>%3A<app>?action=launch&silent=true`, IDENTIQUE au raccourci
+  qu'Epic a posé sur le Bureau de Seb ; manifeste relu à chaque lancement ; `synchroniser_epic` (registre via
+  `synchroniser_boutique("epic")` + carte `epic` si Galaxy n'en a pas déjà une au même id — Galaxy range les jeux
+  Epic sous `epic_<AppName>` — et les cartes Galaxy d'un jeu Epic suivent l'état « installé » lu chez Epic), appelé
+  à la lecture des jeux Steam et Galaxy ; message clair si Epic ne voit plus le jeu. Vérifié : tests (cœur 460) ;
+  essai RÉEL en lecture seule : seul TerraScape vu, adresse exacte (rien lancé). NON vérifié : le vrai lancement
+  et le suivi (EOSBootstrapper puis TerraScape.exe, même dossier) — avec Seb. Lot A6 FINI (Steam, GOG, Epic, une
+  carte par jeu, pastilles). Reste aux boutiques : D (fiches des jeux Steam, contrat 1.25 `/jeu/steam/{appid}`),
+  parties Steam hors nuage (contrat 1.25 `sauvegardes`), PS3 contenus Firehouse, C1 (compte Steam de Seb).
+
 - **0.94.0** (21/10) — A6c, un jeu = une carte (avis avant code et relecture de l'expert interface ; décisions de
   Seb du 21/10) : `lire_galaxy` lit `allGameReleases` (`JeuBoutique.releases`) ; `ludotheque::regrouper` (union des
   copies que Galaxy relie, jamais par le titre ; maîtresse Steam > GOG > Epic > autres ; `installe` = une copie au

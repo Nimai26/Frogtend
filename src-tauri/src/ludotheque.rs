@@ -658,7 +658,7 @@ impl Cache {
         // A6c : les copies d'un même jeu (toutes sources de boutique confondues) sont réunies de nouveau.
         {
             let tous: Vec<JeuResume> = tx
-                .prepare("SELECT brut FROM jeux WHERE id < 0 AND json_extract(brut, '$.source') IN ('steam', 'galaxy')")?
+                .prepare("SELECT brut FROM jeux WHERE id < 0 AND json_extract(brut, '$.source') IN ('steam', 'galaxy', 'epic')")?
                 .query_map([], |r| r.get::<_, String>(0))?
                 .filter_map(|b| b.ok().and_then(|b| serde_json::from_str(&b).ok()))
                 .collect();
@@ -699,6 +699,38 @@ impl Cache {
     pub fn retirer_local(&self, id: i64) -> Resultat<()> {
         self.db.execute("DELETE FROM jeux WHERE id = ?1 AND id < 0 AND json_extract(brut, '$.source') = 'local'", [id])?;
         Ok(())
+    }
+
+    /// Les cartes de GOG Galaxy d'une boutique (`epic`) suivent l'état « installé » lu chez elle à l'instant (A6d : Galaxy
+    /// garde celui de son dernier import). Rien d'autre n'est touché ; la réunion des copies est refaite ensuite.
+    pub fn marquer_installes_galaxy(&mut self, boutique: &str, installes: &std::collections::BTreeSet<i64>) -> Resultat<()> {
+        let tx = self.db.transaction()?;
+        {
+            let lignes: Vec<JeuResume> = tx
+                .prepare("SELECT brut FROM jeux WHERE id < 0 AND json_extract(brut, '$.source') = 'galaxy' AND json_extract(brut, '$.boutique') = ?1")?
+                .query_map([boutique], |r| r.get::<_, String>(0))?
+                .filter_map(|b| b.ok().and_then(|b| serde_json::from_str(&b).ok()))
+                .collect();
+            let mut maj = tx.prepare("UPDATE jeux SET brut = ?2 WHERE id = ?1")?;
+            for mut j in lignes {
+                let oui = Some(installes.contains(&j.id));
+                // Une carte réunie garde sa valeur propre à part (`regrouper` la reprend).
+                match j.propre.as_mut() {
+                    Some(p) => p.0 = oui,
+                    None => j.installe = oui,
+                }
+                maj.execute(params![j.id, serde_json::to_string(&j).unwrap()])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Les ids des cartes d'une source de boutique.
+    pub fn ids_de_source(&self, source: &str) -> Resultat<std::collections::BTreeSet<i64>> {
+        let mut st = self.db.prepare("SELECT id FROM jeux WHERE id < 0 AND json_extract(brut, '$.source') = ?1")?;
+        let l = st.query_map([source], |r| r.get::<_, i64>(0))?.flatten().collect();
+        Ok(l)
     }
 
     /// Les sources de boutique présentes (`steam`, `galaxy`).
@@ -942,6 +974,18 @@ pub(crate) mod tests {
         c.remplacer_boutique("galaxy", &[]).unwrap();
         let a = c.lister(&Filtre { ludotheque: true, ..Default::default() }, Some(pc), &[110]).unwrap().jeux.into_iter().find(|j| j.titre == "Jeu A").unwrap();
         assert_eq!((a.installe, a.minutes, a.copies), (Some(false), Some(600), None));
+    }
+
+    #[test]
+    fn une_carte_galaxy_d_un_jeu_epic_suit_l_etat_lu_chez_epic() {
+        let mut c = cache_exemple();
+        c.remplacer_boutique("galaxy", &[jeu_de_boutique("galaxy", "epic", "Fangtooth", "Jeu E", false), jeu_de_boutique("galaxy", "gog", "1", "Jeu G", false)]).unwrap();
+        let ids: std::collections::BTreeSet<i64> = [id_boutique("epic", "Fangtooth")].into();
+        c.marquer_installes_galaxy("epic", &ids).unwrap();
+        assert_eq!(c.jeu(id_boutique("epic", "Fangtooth")).unwrap().unwrap().installe, Some(true));
+        assert_eq!(c.jeu(id_boutique("gog", "1")).unwrap().unwrap().installe, Some(false), "jamais une autre boutique");
+        c.marquer_installes_galaxy("epic", &Default::default()).unwrap();
+        assert_eq!(c.jeu(id_boutique("epic", "Fangtooth")).unwrap().unwrap().installe, Some(false), "désinstallé chez Epic");
     }
 
     #[test]

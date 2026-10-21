@@ -48,6 +48,11 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Jeux Epic lancés par Epic (0.95.0) — À ESSAYER AVEC MOI
+- [ ] Ludothèque : TerraScape a sa carte (pastille « Epic ») ; ▶ Jouer : « Epic Games lance… », Epic s'ouvre et le
+      jeu démarre ; menu en jeu, « Quitter », temps de jeu.
+- [ ] En Taodbox : TerraScape est dans la grille.
+
 ## Un jeu, une carte (0.94.0)
 - [ ] D'abord : ⚙ Options ▸ Boutiques ▸ GOG Galaxy ▸ relire tes jeux (les cartes se réunissent à cette lecture).
 - [ ] Ludothèque : GTA V n'apparaît qu'une fois, avec les pastilles « Steam » et « Epic » ; filtre « Epic » : il est

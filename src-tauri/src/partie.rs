@@ -62,6 +62,11 @@ const ATTENTE_BOUTIQUE: std::time::Duration = std::time::Duration::from_secs(180
 pub(crate) fn adresse_boutique(b: &crate::jeux_pc::LancementBoutique) -> Option<String> {
     match b.source.as_str() {
         "steam" if !b.cle.is_empty() && b.cle.len() <= 12 && b.cle.chars().all(|c| c.is_ascii_digit()) => Some(format!("steam://rungameid/{}", b.cle)),
+        // Epic (A6d) : son manifeste relu à l'instant (namespace et item ne sont pas gardés au registre).
+        "epic" => crate::boutiques::dossier_manifestes_epic()
+            .map(|d| crate::boutiques::installes_epic(&d))
+            .and_then(|l| l.into_iter().find(|j| j.app == b.cle))
+            .map(|j| crate::boutiques::adresse_epic(&j)),
         _ => None,
     }
 }
@@ -130,6 +135,9 @@ async fn lancer_par_la_boutique(b: &crate::jeux_pc::LancementBoutique, dossier: 
             c.current_dir(d);
         }
         c.spawn().map_err(|_| Erreur::Disque("GOG Galaxy ne démarre pas.".into()))?;
+    } else if b.source == "epic" {
+        // Le manifeste d'Epic n'est plus là (jeu désinstallé par Epic, dossier resté) : le dire, jamais deviner.
+        return Err(Erreur::Refus("Epic ne voit plus ce jeu installé : réinstalle-le ou répare-le depuis l'Epic Games Launcher.".into()));
     } else {
         return Err(Erreur::Refus("Frogtend ne sait pas encore lancer un jeu de cette boutique : ouvre-le depuis elle.".into()));
     }

@@ -2225,6 +2225,8 @@ pub async fn boutique_steam_jeux(noyau: State<'_, Noyau>) -> Resultat<Vec<crate:
             }
         }
     }
+    // Les jeux Epic installés (A6d) : lus à l'ouverture du profil, comme Steam.
+    synchroniser_epic(&noyau).await;
     Ok(l)
 }
 
@@ -2669,7 +2671,40 @@ pub async fn boutique_galaxy_jeux(noyau: State<'_, Noyau>) -> Resultat<Vec<crate
     let p = profil_ouvert(&noyau).await?;
     let l = crate::boutiques::lire_source(&dossier_profil_de(&noyau, &p.id), "galaxy").map(|c| c.jeux).unwrap_or_default();
     synchroniser_gog(&noyau, &l);
+    synchroniser_epic(&noyau).await;
     Ok(l)
+}
+
+/// Les jeux Epic installés sur CE PC (manifestes de l'Epic Games Launcher, lecture seule) deviennent des jeux du PC
+/// (A6d) : lancés par Epic et suivis comme Steam ; une carte dans la ludothèque si GOG Galaxy ne la montre pas déjà.
+async fn synchroniser_epic(noyau: &Noyau) {
+    let Some(d) = crate::boutiques::dossier_manifestes_epic() else { return };
+    let Ok(installes) = tauri::async_runtime::spawn_blocking(move || crate::boutiques::installes_epic(&d)).await else { return };
+    let jeux: Vec<crate::boutiques::JeuBoutique> = installes
+        .iter()
+        .map(|e| crate::boutiques::JeuBoutique {
+            id: format!("epic_{}", e.app),
+            nom: e.nom.clone(),
+            minutes: 0,
+            derniere: 0,
+            installe: true,
+            plateforme: "epic".into(),
+            image: None,
+            dossier: Some(e.dossier.to_string_lossy().into_owned()),
+            pret: Some(true),
+            succes: None,
+            releases: vec![],
+        })
+        .collect();
+    let pc: std::collections::BTreeSet<String> = installes.iter().map(|e| e.app.clone()).collect();
+    match noyau.synchroniser_boutique("epic", &jeux, &pc) {
+        Ok((a, r)) if a + r > 0 => noyau.journaliser(&format!("jeux Epic du PC : {a} ajouté(s), {r} retiré(s)")),
+        Ok(_) => {}
+        Err(e) => noyau.journaliser(&format!("jeux Epic du PC : synchronisation impossible ({e})")),
+    }
+    if let Err(e) = noyau.ranger_boutique("epic", &jeux).await {
+        noyau.journaliser(&format!("ludothèque Epic : {e:?}"));
+    }
 }
 
 /// Les jeux GOG installés sur CE PC deviennent des jeux du PC (A6a) : lancés par Galaxy et suivis comme les jeux
@@ -2707,6 +2742,7 @@ pub async fn boutique_galaxy_importer(noyau: State<'_, Noyau>) -> Resultat<Vec<c
     noyau.journaliser(&format!("import GOG Galaxy : {} jeu(x) pour le profil {}", c.jeux.len(), p.id));
     noyau.ranger_boutique("galaxy", &c.jeux).await?;
     synchroniser_gog(&noyau, &c.jeux);
+    synchroniser_epic(&noyau).await;
     Ok(c.jeux)
 }
 

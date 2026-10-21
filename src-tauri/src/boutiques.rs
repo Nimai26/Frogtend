@@ -495,6 +495,68 @@ pub fn succes_galaxy(storage: &Path, travail: &Path, cle: &str) -> Resultat<Opti
     lire().map_err(|e| Erreur::Disque(format!("La base de GOG Galaxy est illisible ({e}).")))
 }
 
+/// Le dossier des manifestes de l'Epic Games Launcher (`%ProgramData%\Epic\EpicGamesLauncher\Data\Manifests`).
+pub fn dossier_manifestes_epic() -> Option<PathBuf> {
+    let d = PathBuf::from(std::env::var_os("ProgramData")?).join("Epic").join("EpicGamesLauncher").join("Data").join("Manifests");
+    d.is_dir().then_some(d)
+}
+
+/// Un jeu installé par l'Epic Games Launcher (son manifeste `.item`, lu en LECTURE SEULE) : (AppName, namespace,
+/// item, nom, dossier). Relevé réel du 21/10 (TerraScape) ; seulement un JEU (`AppCategories` « games »), installé en
+/// entier, avec un programme, qui n'est pas un DLC, et dont le dossier existe — jamais Unreal Engine ni un plugin.
+#[derive(Debug, Clone, PartialEq)]
+pub struct JeuEpic {
+    pub app: String,
+    pub namespace: String,
+    pub item: String,
+    pub nom: String,
+    pub dossier: PathBuf,
+}
+
+/// Un identifiant Epic sûr (lettres, chiffres, quelques signes ; jamais un séparateur de chemin ou d'adresse).
+fn id_epic_sur(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 128 && s.chars().all(|c| c.is_ascii_alphanumeric() || "_-.".contains(c))
+}
+
+pub fn lire_manifeste_epic(texte: &str) -> Option<JeuEpic> {
+    let v: Value = serde_json::from_str(texte).ok()?;
+    let app = v["AppName"].as_str().filter(|a| id_epic_sur(a))?;
+    let jeu = v["AppCategories"].as_array().is_some_and(|l| l.iter().any(|c| c.as_str() == Some("games")));
+    let dlc = v["MainGameAppName"].as_str().is_some_and(|m| !m.is_empty() && m != app);
+    if !jeu || dlc || v["bIsIncompleteInstall"].as_bool() != Some(false) || v["LaunchExecutable"].as_str().unwrap_or("").is_empty() {
+        return None;
+    }
+    let dossier = PathBuf::from(v["InstallLocation"].as_str().filter(|d| !d.is_empty())?);
+    Some(JeuEpic {
+        app: app.to_string(),
+        namespace: v["CatalogNamespace"].as_str().filter(|a| id_epic_sur(a))?.to_string(),
+        item: v["CatalogItemId"].as_str().filter(|a| id_epic_sur(a))?.to_string(),
+        nom: v["DisplayName"].as_str().filter(|n| !n.trim().is_empty()).unwrap_or(app).to_string(),
+        dossier,
+    })
+}
+
+/// Les jeux Epic installés sur CE PC (dossier présent).
+pub fn installes_epic(manifestes: &Path) -> Vec<JeuEpic> {
+    let mut l: Vec<JeuEpic> = std::fs::read_dir(manifestes)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("item")) && e.metadata().is_ok_and(|m| m.is_file() && m.len() <= 4 * 1024 * 1024))
+        .filter_map(|e| std::fs::read(e.path()).ok().and_then(|o| lire_manifeste_epic(&String::from_utf8_lossy(&o))))
+        .filter(|j| j.dossier.is_dir())
+        .collect();
+    l.sort_by(|a, b| a.nom.to_lowercase().cmp(&b.nom.to_lowercase()));
+    l.dedup_by(|a, b| a.app == b.app);
+    l
+}
+
+/// L'adresse qui demande à l'Epic Games Launcher de lancer ce jeu, telle qu'Epic l'écrit dans ses propres raccourcis
+/// (relevé du 21/10 : `com.epicgames.launcher://apps/<namespace>%3A<item>%3A<app>?action=launch&silent=true`).
+pub fn adresse_epic(j: &JeuEpic) -> String {
+    format!("com.epicgames.launcher://apps/{}%3A{}%3A{}?action=launch&silent=true", j.namespace, j.item, j.app)
+}
+
 /// « 2022-04-29 20:23:22 » → secondes depuis 1970 (UTC, sans les secondes intercalaires).
 pub(crate) fn date_en_secondes(d: &str) -> Option<u64> {
     let (date, heure) = d.split_once(' ').unwrap_or((d, "00:00:00"));
@@ -847,6 +909,39 @@ mod tests {
         assert_eq!(succes_galaxy(&stock, &travail, "gog_2").unwrap(), None, "sans texte : rien");
         assert_eq!(succes_galaxy(&stock, &travail, "x' OR 1=1 --").unwrap(), None, "clé douteuse : rien lu");
         assert!(stock.join("galaxy-2.0.db").is_file());
+    }
+
+    #[test]
+    fn un_manifeste_epic_donne_un_jeu_jamais_unreal_ni_un_dlc() {
+        // La forme réelle (TerraScape, relevé du 21/10), réduite à ce que Frogtend lit.
+        let terra = r#"{"FormatVersion":0,"bIsIncompleteInstall":false,"AppName":"6ef17d9f63c143ea88a4a4bcbcf1e91c","DisplayName":"TerraScape",
+            "InstallLocation":"D:\\LaunchBox\\Games\\Epic\\Epic Games\\Games\\TerraScape","LaunchExecutable":"EOSBootstrapper.exe","LaunchCommand":"",
+            "CatalogNamespace":"bfb80547289b477193ce3b14d83cd292","CatalogItemId":"e6ebabecf20740628e42d3894ed872c5","AppCategories":["games","applications"],
+            "MainGameAppName":"","bCanRunOffline":false}"#;
+        let j = lire_manifeste_epic(terra).unwrap();
+        assert_eq!((j.app.as_str(), j.nom.as_str()), ("6ef17d9f63c143ea88a4a4bcbcf1e91c", "TerraScape"));
+        // EXACTEMENT l'adresse du raccourci qu'Epic a posé lui-même sur le Bureau.
+        assert_eq!(
+            adresse_epic(&j),
+            "com.epicgames.launcher://apps/bfb80547289b477193ce3b14d83cd292%3Ae6ebabecf20740628e42d3894ed872c5%3A6ef17d9f63c143ea88a4a4bcbcf1e91c?action=launch&silent=true"
+        );
+        let avec = |a: &str, b: &str| terra.replace(a, b);
+        assert!(lire_manifeste_epic(&avec(r#"["games","applications"]"#, r#"["engines"]"#)).is_none(), "Unreal Engine");
+        assert!(lire_manifeste_epic(&avec(r#""MainGameAppName":"""#, r#""MainGameAppName":"Autre""#)).is_none(), "un DLC");
+        assert!(lire_manifeste_epic(&avec(r#""bIsIncompleteInstall":false"#, r#""bIsIncompleteInstall":true"#)).is_none(), "installation pas finie");
+        assert!(lire_manifeste_epic(&avec(r#""LaunchExecutable":"EOSBootstrapper.exe""#, r#""LaunchExecutable":"""#)).is_none());
+        assert!(lire_manifeste_epic(&avec("6ef17d9f63c143ea88a4a4bcbcf1e91c", "x/../y")).is_none(), "identifiant douteux");
+    }
+
+    /// RÉEL, lecture seule (A6d) : les jeux Epic installés sur ce PC et leur adresse de lancement (rien n'est lancé).
+    /// `cargo test essai_jeux_epic -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn essai_jeux_epic() {
+        let d = dossier_manifestes_epic().expect("Epic");
+        for j in installes_epic(&d) {
+            println!("{} → {} ({})", j.nom, adresse_epic(&j), j.dossier.display());
+        }
     }
 
     /// RÉEL, lecture seule : les succès d'un jeu de la vraie base de Galaxy (sur une copie effacée ensuite).

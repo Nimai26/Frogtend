@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.95.0 — Tes jeux Epic, lancés par Epic et suivis
+
+- Un jeu installé par l'Epic Games Launcher (TerraScape…) devient un vrai jeu de ta ludothèque : ▶ Jouer demande à
+  Epic de le lancer (exactement comme le raccourci qu'Epic pose sur ton Bureau), puis Frogtend suit la partie (menu
+  en jeu, manette → clavier, temps de jeu, pause des travaux de Firehouse).
+- Il est dans ta ludothèque et en Taodbox, avec sa pastille « Epic ». Unreal Engine et ses plugins ne sont jamais
+  pris pour des jeux.
+- Si Epic ne voit plus le jeu installé, Frogtend le dit au lieu de lancer quoi que ce soit.
+- Frogtend n'écrit rien dans le dossier d'un jeu Epic et ne le désinstalle jamais.
+
 ## 0.94.0 — Un jeu, une carte, et d'où il vient
 
 - Un jeu que tu possèdes sur plusieurs boutiques (GTA V sur Steam et Epic, Age of Empires IV sur Steam et Xbox…)
