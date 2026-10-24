@@ -30,6 +30,7 @@ import { estCourante, libelleVersion, nomDuFichier } from './versions';
 import { libellePleinEcran, TOUCHES_PLEIN_ECRAN } from './plein-ecran';
 import { BOUTONS, detailTouche, libelleClavier, memes, nettoyer, PREREGLAGES, toucheDepuisEvenement, TOUCHES, type Correspondance } from './clavier';
 import { auCanape, seulementAuBureau } from '$lib/taodbox/canape';
+import { nomAffiche } from './ludotheque.svelte';
 
 export const partie = $state<{ enJeu: number | null; installation: number | null; lancement: number | null }>({ enJeu: null, installation: null, lancement: null });
 
@@ -265,7 +266,7 @@ async function suivreConseil(id: number, plateforme: string | undefined, emulate
   if (ch.sorte === 'reparer') return retenir({ ligne: ch.ligne });
   if (ch.sorte === 'ligne') {
     const poids = poidsBios(c.bios);
-    const oui = await confirmer(`🕹 Nouveau réglage conseillé pour ${plateforme}`, {
+    const oui = await confirmer(`🕹 Nouveau réglage conseillé pour ${nomAffiche(plateforme)}`, {
       message: `La maison a mis à jour son conseil pour ${e.nom}${c.coeur ? ` (cœur « ${c.coeur} », quelques Mo, vérifié)` : ''}${biosADireOuPoser(c.bios) && poids ? `, avec ses fichiers système (${taille(poids)})` : ''}.${c.note ? `\n\n${c.note}` : ''}\n\nL’appliquer maintenant ? Sinon, ${e.nom} garde son réglage actuel.`,
       libelleValider: '✅ Appliquer',
     });
@@ -282,7 +283,7 @@ async function suivreConseil(id: number, plateforme: string | undefined, emulate
     return retenir(oui ? { ligne: ch.ligne, ...(nom ? { nom } : {}) } : {});
   }
   const nom = rec?.nom ?? c.emulateur;
-  const oui = await confirmer(`🕹 La maison conseille maintenant ${nom} pour ${plateforme}`, {
+  const oui = await confirmer(`🕹 La maison conseille maintenant ${nom} pour ${nomAffiche(plateforme)}`, {
     message: `Ton émulateur actuel (${e.nom}) reste disponible, et ce jeu se lance avec lui maintenant.${c.note ? `\n\n${c.note}` : ''}\n\nPréparer ${nom} pour plus tard ?`,
     libelleValider: `🕹 Préparer ${nom}`,
   });
@@ -556,7 +557,7 @@ export async function jouerAvec(id: number) {
         detail: e.cle === actuel?.cle ? 'celui d’habitude pour ce jeu' : undefined,
       })),
       // L'ajouter demande l'explorateur de Windows et une saisie : pas en Taodbox.
-      ...(auCanape() ? [] : [{ valeur: '+', libelle: '➕ Un autre émulateur…', detail: `l’ajouter à ${j.plateforme}` }]),
+      ...(auCanape() ? [] : [{ valeur: '+', libelle: '➕ Un autre émulateur…', detail: `l’ajouter à ${nomAffiche(j.plateforme)}` }]),
     ],
     'Pour cette partie seulement. Le choix d’habitude se règle dans ⚙ Gérer le jeu ▸ 🕹 Émulateur.',
   );
@@ -593,7 +594,7 @@ export async function choisirEmulateurDuJeu(id: number) {
       { valeur: '', libelle: `${!propre ? '⭐ ' : ''}Comme la console`, detail: duSysteme ? duSysteme.nom || duSysteme.programme : 'aucun réglé' },
       ...s.liste.map((e) => ({ valeur: e.cle, libelle: `${propre === e.cle ? '⭐ ' : ''}${e.nom || e.programme}` })),
       // L'ajouter demande l'explorateur de Windows et une saisie : pas en Taodbox.
-      ...(auCanape() ? [] : [{ valeur: '+', libelle: '➕ Un autre émulateur…', detail: `l’ajouter à ${j.plateforme}` }]),
+      ...(auCanape() ? [] : [{ valeur: '+', libelle: '➕ Un autre émulateur…', detail: `l’ajouter à ${nomAffiche(j.plateforme)}` }]),
     ],
     `Le choix de la console se règle dans ⚙ Options ▸ Émulateurs.`,
   );

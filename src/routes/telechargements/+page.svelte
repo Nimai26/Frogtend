@@ -1,5 +1,6 @@
 <script lang="ts">
   // Les téléchargements : ce qui arrive sur le PC, où ça en est, et les boutons pour agir.
+  import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
   import { goto } from '$app/navigation';
   import { duree, taille } from '$lib/api';
   import { annuler, mettreEnPause, rechargerJeuxDuPc, reprendre, tele } from '$lib/ludotheque/telechargements.svelte';
@@ -44,7 +45,7 @@
               </div>
               <div class="bar"><span style="width: {pourcent(j.recus, j.total)}%"></span></div>
               <p class="muted">
-                {pourcent(j.recus, j.total)} % · {taille(j.recus)} sur {taille(j.total)} · {j.plateforme}
+                {pourcent(j.recus, j.total)} % · {taille(j.recus)} sur {taille(j.total)} · {nomAffiche(j.plateforme)}
                 {#if j.etat === 'en_cours' && j.debit}
                   · {taille(j.debit)}/s · encore {duree((j.total - j.recus) / j.debit)}
                 {/if}
@@ -74,7 +75,7 @@
           {#each finis as j (j.id)}
             <li>
               <button class="lien-titre" onclick={() => goto(`/jeu/${j.id}`)}>{j.titre}</button>
-              <span class="muted">{j.plateforme} · {taille(j.total)} · {j.dossier}</span>
+              <span class="muted">{nomAffiche(j.plateforme)} · {taille(j.total)} · {j.dossier}</span>
             </li>
           {/each}
         </ul>

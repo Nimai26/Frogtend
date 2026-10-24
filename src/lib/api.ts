@@ -14,8 +14,11 @@ export interface Profil {
 }
 
 export interface Plateforme {
+  /** Le nom LaunchBox : la CLÉ partout (filtres, réglages par système, chemins). */
   nom: string;
   jeux: number;
+  /** Le nom court choisi par Seb (contrat 1.27 : « Mega Drive ») — AFFICHAGE seulement. */
+  nom_affiche?: string;
 }
 
 export interface JeuResume {
@@ -394,6 +397,8 @@ export interface Fiche {
   resume?: string;
   genres?: string[];
   plateforme?: string;
+  /** Contrat 1.27 : le nom court de la plateforme — affichage seulement (`plateforme` reste la clé). */
+  plateforme_affichee?: string;
   developpeur?: string | null;
   editeur?: string | null;
   joueurs?: string | null;

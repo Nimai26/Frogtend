@@ -4,6 +4,7 @@
   // quoi qu'il arrive à l'état du composant. Un échec est retenté une fois avant d'abandonner.
   import { adresseJaquette, adresseVisuel } from '$lib/api';
   import { visuelDuJeu, type Dimensions } from './visuels';
+  import { nomAffiche } from './ludotheque.svelte';
 
   let {
     id,
@@ -67,7 +68,7 @@
   <div class="boite" class:ajustee={v.ratio !== null} style:--r={v.ratio ?? undefined}>
     <div class="remplacement" aria-hidden="true">
       <span class="titre">{titre}</span>
-      {#if plateforme}<span class="plateforme">{plateforme}</span>{/if}
+      {#if plateforme}<span class="plateforme">{nomAffiche(plateforme)}</span>{/if}
     </div>
     {#if (disponible !== false || v.sorte !== 'jaquette') && !abandon}
       <img {src} alt="" loading="lazy" decoding="async" class:pixels={v.pixels} onload={() => (chargee = true)} onerror={echec} />

@@ -65,7 +65,7 @@ export function categorieDe(nom: string): Categorie {
 }
 
 /** Regroupe des plateformes par catégorie, dans l'ordre d'affichage ; chaque groupe trié par nom. */
-export function grouperParCategorie<T extends { nom: string }>(plateformes: T[]): { categorie: Categorie; plateformes: T[] }[] {
+export function grouperParCategorie<T extends { nom: string; nom_affiche?: string }>(plateformes: T[]): { categorie: Categorie; plateformes: T[] }[] {
   const groupes = new Map<Categorie, T[]>();
   for (const p of plateformes) {
     const c = categorieDe(p.nom);
@@ -73,6 +73,7 @@ export function grouperParCategorie<T extends { nom: string }>(plateformes: T[])
   }
   return ORDRE_CATEGORIES.filter((c) => groupes.has(c)).map((c) => ({
     categorie: c,
-    plateformes: groupes.get(c)!.sort((a, b) => a.nom.localeCompare(b.nom, 'fr')),
+    // Triées sur le nom MONTRÉ (« Mega Drive » à la lettre M, pas à « Sega Genesis »).
+    plateformes: groupes.get(c)!.sort((a, b) => (a.nom_affiche ?? a.nom).localeCompare(b.nom_affiche ?? b.nom, 'fr')),
   }));
 }

@@ -7,7 +7,7 @@
   import { categorieDe, ICONES_CATEGORIES } from './categories';
   import { rangCourt } from './versions';
   import Jaquette from './Jaquette.svelte';
-  import { jeuAuHasard, ludo } from './ludotheque.svelte';
+  import { jeuAuHasard, ludo, nomAffiche } from './ludotheque.svelte';
   import { annuler, jeuSurPc, mettreDansLaLudotheque, mettreEnPause, reprendre } from './telechargements.svelte';
   import { emulateursDuJeu, gererLaCarte, installer, jouerAvec, jouerLaCarte, partie } from './jeu.svelte';
   import { estJeuDeBoutique, ouvrirJeuDeBoutique } from '$lib/boutiques/jeu-boutique';
@@ -115,7 +115,7 @@
 
     <dl class="cx-kv">
       <dt>Plateforme</dt>
-      <dd>{j.plateforme}</dd>
+      <dd>{nomAffiche(j.plateforme)}</dd>
       {#if j.annee}<dt>Année</dt><dd>{j.annee}</dd>{/if}
       {#if j.developpeur}<dt>Développeur</dt><dd>{j.developpeur}</dd>{/if}
       {#if j.editeur}<dt>Éditeur</dt><dd>{j.editeur}</dd>{/if}
@@ -152,7 +152,7 @@
   {:else}
     <div class="entete">
       <span class="icone" aria-hidden="true">{ludo.plateforme ? ICONES_CATEGORIES[categorieDe(ludo.plateforme)] : catalogue ? '🛒' : '🎮'}</span>
-      <h2>{ludo.plateforme ?? (catalogue ? 'Catalogue Firehouse' : 'Ma ludothèque')}</h2>
+      <h2>{ludo.plateforme ? nomAffiche(ludo.plateforme) : catalogue ? 'Catalogue Firehouse' : 'Ma ludothèque'}</h2>
       <p class="muted">
         {#if ludo.plateforme}
           {categorieDe(ludo.plateforme)} · {(plateforme?.jeux ?? 0).toLocaleString('fr-FR')} jeu(x)

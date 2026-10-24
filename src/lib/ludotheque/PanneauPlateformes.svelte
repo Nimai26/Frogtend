@@ -2,7 +2,7 @@
   // La colonne de gauche : la recherche, les filtres, puis les plateformes groupées par catégorie.
   import { etat } from '$lib/etat.svelte';
   import { grouperParCategorie, ICONES_CATEGORIES } from './categories';
-  import { choisirPlateforme, ludo, rechargerListe } from './ludotheque.svelte';
+  import { choisirPlateforme, ludo, nomAffiche, rechargerListe } from './ludotheque.svelte';
 
   let filtresOuverts = $state(false);
   let replies = $state<Record<string, boolean>>({});
@@ -93,7 +93,7 @@
             class:actif={ludo.plateforme === p.nom}
             onclick={() => choisirPlateforme(p.nom)}
           >
-            <span class="nom">{p.nom}</span>
+            <span class="nom">{nomAffiche(p.nom)}</span>
             <span class="nombre">{p.jeux.toLocaleString('fr-FR')}</span>
           </button>
         {/each}

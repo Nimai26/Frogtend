@@ -1,0 +1,141 @@
+{
+  "_source": "Relevé RÉEL (lecture seule, 24/10, Firehouse 2.101.0, contrats 1.27/1.28) de GET /api/jeux/v1/plateformes : 3 entrées sur 89, recopiées telles quelles (3DO : toutes les sortes d'images et leurs crédits ; Mega Drive : nom court ; e-Reader : icône seule).",
+  "ok": true,
+  "plateformes": [
+    {
+      "date_sortie": "1993-10-04",
+      "description_fr": "La 3DO Interactive Multiplayer est initialement le nom porté par la première console de jeux vidéo développée par la société Panasonic, sortie en 1993, et répondant au standard « 3DO » établi par The 3DO Company. Ce modèle comme les autres qui suivirent sont couramment abrégés en « 3DO ».",
+      "description_licence": "CC BY-SA 4.0 (Wikipédia) / CC0 (Wikidata)",
+      "description_source": "https://fr.wikipedia.org/wiki/3DO_Interactive_Multiplayer",
+      "fabricant": "Panasonic Corporation, Sanyo Electric Co., Ltd., GoldStar",
+      "images": {
+        "appareil": null,
+        "banniere": {
+          "auteur": null,
+          "empreinte": "f3c6c32289f706f8d97810e78f41049e37f105f5eacb5e4a0d2f9c99042f6b56",
+          "hauteur": 513,
+          "id": 1,
+          "largeur": 600,
+          "licence": null,
+          "source": "launchbox_venkman",
+          "url_source": null
+        },
+        "fond": {
+          "auteur": "Evan-Amos",
+          "empreinte": "b6a4ca8406328f8aad559d7f3a79ff25200bc6f412dc9ad3353bb5f7b98916c3",
+          "hauteur": 598,
+          "id": 201,
+          "largeur": 1280,
+          "licence": "CC BY-SA 3.0",
+          "source": "commons",
+          "url_source": "https://commons.wikimedia.org/wiki/File:3DO-FZ1-Console-Set.png"
+        },
+        "icone": {
+          "auteur": "libretro — retroarch-assets",
+          "empreinte": "15ee829952fe576a5c5f8ad8b95e2fc567ba9c67bfc561eb31e1f9d1fd93895d",
+          "hauteur": 256,
+          "id": 280,
+          "largeur": 256,
+          "licence": "CC BY 4.0",
+          "source": "libretro",
+          "url_source": "https://github.com/libretro/retroarch-assets/blob/master/xmb/monochrome/png/The%203DO%20Company%20-%203DO.png"
+        },
+        "logo": {
+          "auteur": null,
+          "empreinte": "e47e909160f36a97c2ad2cdaba0da0f16d3be776cd3a7b52e2c5a3eebff4cb3e",
+          "hauteur": 480,
+          "id": 2,
+          "largeur": 1502,
+          "licence": null,
+          "source": "launchbox_venkman",
+          "url_source": null
+        }
+      },
+      "images_empreinte": "8e711900ba253280",
+      "jeux": 181,
+      "nom": "3DO Interactive Multiplayer",
+      "nom_affiche": "3DO"
+    },
+    {
+      "date_sortie": null,
+      "description_fr": "Le Nintendo e-Reader, communément abrégé e-Reader, est un accessoire complémentaire du fabricant japonais Nintendo pour sa console de jeux vidéo portable Game Boy Advance. Il dispose d'un scanner à LED qui lit les « cartes e-Reader » — des cartes en papier sur lesquelles sont imprimées des données spécialement encodées sous forme de codes à points. Il est sorti au Japon en décembre 2001 et en Amérique du Nord en septembre 2002.\n\nSelon la carte et le jeu associé, les e-cartes sont généralement utilisées à la manière d'une clé pour débloquer des objets secrets, des niveaux ou jouer à des mini-jeux lorsqu'elles sont passées dans le lecteur. Les cartes elles-mêmes contiennent des données, contrairement au déblocage de données déjà présentes sur l'appareil.",
+      "description_licence": "CC BY-SA 4.0 (Wikipédia anglais, traduit par DeepSeek)",
+      "description_source": "https://en.wikipedia.org/wiki/Nintendo_e-Reader",
+      "fabricant": "Nintendo",
+      "images": {
+        "appareil": null,
+        "banniere": null,
+        "fond": null,
+        "icone": {
+          "auteur": "libretro — retroarch-assets",
+          "empreinte": "59cc16f60ca6a44a2b41d1d9d0be8dd23547a4947176ba42e1016bbde16b8e68",
+          "hauteur": 256,
+          "id": 333,
+          "largeur": 256,
+          "licence": "CC BY 4.0",
+          "source": "libretro",
+          "url_source": "https://github.com/libretro/retroarch-assets/blob/master/xmb/monochrome/png/Nintendo%20-%20e-Reader.png"
+        },
+        "logo": null
+      },
+      "images_empreinte": "9517d338be57cb11",
+      "jeux": 53,
+      "nom": "Nintendo e-Reader",
+      "nom_affiche": "e-Reader"
+    },
+    {
+      "date_sortie": "1989-08-14",
+      "description_fr": "La Mega Drive (メガドライブ, Mega Doraibu), ou Sega Genesis en Amérique du Nord, est une console de jeux vidéo de quatrième génération conçue et commercialisée par le constructeur japonais Sega Enterprises, Ltd. La Mega Drive est la troisième console de Sega, elle succède à la Master System. Sega sort d'abord la console au Japon sous le nom de Mega Drive en 1988, la console est ensuite lancée en 1989 en Amérique du Nord, renommée Genesis sur ce territoire. En 1990, la console sort dans la plupart des autres territoires en tant que Mega Drive.\n\nConçue par une équipe de recherche et développement supervisée par Masami Ishikawa, le hardware de la Mega Drive est adapté du System 16 pour borne d'arcade. Le système prend en charge une ludothèque de plus de 900 jeux créés par Sega et par un large éventail d'éditeurs tiers, publiés sous forme de cartouche de jeu vidéo.\n\nAu Japon, la Mega Drive ne se vend pas aussi bien que ses deux principales concurrentes, la Super Nintendo de Nintendo et la PC-Engine de NEC. Cependant, fort de sa riche expérience en salles d'arcade et prenant de court Nintendo sur le marché des consoles 16 bits, Sega parvient à bien positionner la Mega Drive en Amérique du Nord et en Europe, où elle connait un fort succès avec la captation de la majorité du marché 16 bits dans plusieurs territoires, particulièrement aux États-Unis et au Royaume-Uni. Les principaux composants qui œuvrent à son succès sont ses portages de jeux vidéo d'arcade, la popularité de la série Sonic the Hedgehog, plusieurs franchises connues de jeux de sport, ainsi qu'un marketing offensif envers le public jeune qui positionne le système comme étant la console « cool » pour les adolescents.",
+      "description_licence": "CC BY-SA 4.0 (Wikipédia) / CC0 (Wikidata)",
+      "description_source": "https://fr.wikipedia.org/wiki/Mega_Drive",
+      "fabricant": "Sega Enterprises",
+      "images": {
+        "appareil": null,
+        "banniere": {
+          "auteur": null,
+          "empreinte": "e30b151d9d03f826b55d799041432e0960b7ff32fae876b43240bdcc5565e5f7",
+          "hauteur": 513,
+          "id": 68,
+          "largeur": 600,
+          "licence": null,
+          "source": "launchbox_venkman",
+          "url_source": null
+        },
+        "fond": {
+          "auteur": "Evan-Amos",
+          "empreinte": "1f06475dc07b90c4d46817009955648b20c6e20acc3a27878f144fcc0a909a27",
+          "hauteur": 588,
+          "id": 135,
+          "largeur": 1280,
+          "licence": "Public domain",
+          "source": "commons",
+          "url_source": "https://commons.wikimedia.org/wiki/File:Sega-Genesis-NA-Mk2-Console-Set.png"
+        },
+        "icone": {
+          "auteur": "libretro — retroarch-assets",
+          "empreinte": "91165c63d8549b41753e0614eb6df27b2855aa18702feb4eaa0cfdb1ce825b46",
+          "hauteur": 256,
+          "id": 346,
+          "largeur": 256,
+          "licence": "CC BY 4.0",
+          "source": "libretro",
+          "url_source": "https://github.com/libretro/retroarch-assets/blob/master/xmb/monochrome/png/Sega%20-%20Mega%20Drive%20-%20Genesis.png"
+        },
+        "logo": {
+          "auteur": null,
+          "empreinte": "a76e26efc5f8811cb388ae025035a22978bc066bb741167b854a09afec4360f4",
+          "hauteur": 166,
+          "id": 69,
+          "largeur": 700,
+          "licence": null,
+          "source": "launchbox_venkman",
+          "url_source": null
+        }
+      },
+      "images_empreinte": "1d6d6deb43670707",
+      "jeux": 1150,
+      "nom": "Sega Genesis",
+      "nom_affiche": "Mega Drive"
+    }
+  ]
+}

@@ -2,6 +2,7 @@
   // 🔗 Reconnaître mes jeux importés (contrat 1.21, besoin 28 ; ✅ Seb 20/10). Annoncé et chiffré d'abord (fichiers,
   // poids, durée) ; tes fichiers sont lus sans rien modifier ; seuls les jeux reconnus à coup sûr sont reliés tout
   // seuls ; le reste t'est montré. Relier un jeu ne change ni ses fichiers ni son temps de jeu, et se défait.
+  import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
   import { onMount, tick } from 'svelte';
   import { isTauri } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
@@ -203,7 +204,7 @@
         Système :
         <select bind:value={plateforme}>
           <option value="">tous</option>
-          {#each plateformes as p (p)}<option value={p}>{p}</option>{/each}
+          {#each plateformes as p (p)}<option value={p}>{nomAffiche(p)}</option>{/each}
         </select>
       </label>
     {/if}
@@ -217,7 +218,7 @@
           {@const p = propositions(j)}
           <li>
             <div>
-              <strong>{j.titre}</strong> <span class="muted">— {j.plateforme}</span>
+              <strong>{j.titre}</strong> <span class="muted">— {nomAffiche(j.plateforme)}</span>
               <p class="muted">
                 Firehouse propose : {p.map(nomFiche).join(', ')}
                 · {j.versions[0]?.motif ? texteMotif(j.versions[0].motif) : texteStatut(j.versions[0]?.statut ?? 'inconnu')}
@@ -242,7 +243,7 @@
         {#each reconnus.slice(0, montres.reconnus) as j, i (j.jeu)}
           <li>
             <div>
-              <strong>{j.titre}</strong> <span class="muted">— {j.plateforme} · {j.rattache_par === 'personne' ? 'relié par toi' : 'reconnu à coup sûr'}</span>
+              <strong>{j.titre}</strong> <span class="muted">— {nomAffiche(j.plateforme)} · {j.rattache_par === 'personne' ? 'relié par toi' : 'reconnu à coup sûr'}</span>
               {#if j.versions[0]?.motif}<p class="muted">⚠ {texteMotif(j.versions[0].motif)}</p>{/if}
             </div>
             <button class="btn" onclick={() => defaire(j, i)} disabled={occupe}>Ne plus relier</button>
@@ -258,7 +259,7 @@
       <ul class="lignes" data-section="inconnus">
         {#each inconnus.slice(0, montres.inconnus) as j, i (j.jeu)}
           <li>
-            <span>{j.titre} <span class="muted">— {j.plateforme} · {nonVerifie(j) ? texteStatut('non_envoye') : aEteEcarte(j) ? texteStatut('ecarte') : texteStatut('inconnu')}</span></span>
+            <span>{j.titre} <span class="muted">— {nomAffiche(j.plateforme)} · {nonVerifie(j) ? texteStatut('non_envoye') : aEteEcarte(j) ? texteStatut('ecarte') : texteStatut('inconnu')}</span></span>
             {#if aEteEcarte(j)}<button class="btn" onclick={() => reprendre(j, i)} disabled={occupe}>↩ Revoir ce que Firehouse proposait</button>{/if}
           </li>
         {/each}

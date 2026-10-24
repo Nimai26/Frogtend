@@ -1,6 +1,7 @@
 <script lang="ts">
   // Les emplacements des jeux sur CE PC : un ou plusieurs dossiers par défaut, et, si besoin, des dossiers propres
   // à un système (SNES, MS-DOS…), dans l'ordre de préférence. Retirer un emplacement n'efface AUCUN fichier.
+  import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
   import { onMount } from 'svelte';
   import { isTauri } from '@tauri-apps/api/core';
   import { api, taille, type Plateforme } from '$lib/api';
@@ -98,7 +99,7 @@
     const deja = new Set(Object.keys(e.systemes));
     const s = await choisir(
       '🎮 Pour quel système ?',
-      plateformes.filter((p) => !deja.has(p.nom)).map((p) => ({ valeur: p.nom, libelle: p.nom, detail: `${p.jeux} jeu(x)` })),
+      plateformes.filter((p) => !deja.has(p.nom)).map((p) => ({ valeur: p.nom, libelle: nomAffiche(p.nom), detail: `${p.jeux} jeu(x)` })),
       'Ses jeux iront dans ses propres dossiers au lieu des dossiers par défaut.',
     );
     if (s) await ajouter(s);
@@ -142,9 +143,9 @@
 
   {#each Object.entries(e.systemes) as [systeme, chemins] (systeme)}
     <div class="cx-block">
-      <h3>{systeme}</h3>
+      <h3>{nomAffiche(systeme)}</h3>
       {@render liste(systeme, chemins)}
-      <button class="btn" onclick={() => ajouter(systeme)}>➕ Ajouter un dossier pour {systeme}</button>
+      <button class="btn" onclick={() => ajouter(systeme)}>➕ Ajouter un dossier pour {nomAffiche(systeme)}</button>
     </div>
   {/each}
 

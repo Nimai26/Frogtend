@@ -17,6 +17,7 @@
   import { documentsMontres, libelleDocument, ouvrirDocument, type DocumentOuvert } from '$lib/ludotheque/documents';
   import { ageConseille, dateDeSortie, datePrecise, noteSurCinq, typeDeSortie, type InfosJeu } from '$lib/ludotheque/infos';
   import { jeuSurPc, mettreDansLaLudotheque } from '$lib/ludotheque/telechargements.svelte';
+  import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
   import { emulateursDuJeu, gererJeu, installer, jouer, jouerAvec, partie } from '$lib/ludotheque/jeu.svelte';
 
   let fiche = $state<Fiche | null>(null);
@@ -222,7 +223,7 @@
         <h1>{fiche.titre}</h1>
         {#if fiche.titre_en && fiche.titre_en !== fiche.titre}<p class="muted">{fiche.titre_en}</p>{/if}
         <p class="sous">
-          {fiche.plateforme}{fiche.annee ? ` · ${fiche.annee}` : ''}
+          {fiche.plateforme_affichee || nomAffiche(fiche.plateforme)}{fiche.annee ? ` · ${fiche.annee}` : ''}
         </p>
         {#if fiche.genres?.length || typeDeSortie(infos?.type_sortie)}
           <div class="genres">

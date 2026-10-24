@@ -32,4 +32,13 @@ describe('grouperParCategorie', () => {
     expect(g[1].plateformes.map((p) => p.nom)).toEqual(['Nintendo 64', 'Super Nintendo']);
     expect(g[2].plateformes.map((p) => p.nom)).toEqual(['MS-DOS', 'Windows']);
   });
+
+  it('trie sur le nom court (contrat 1.27) : « Mega Drive » à la lettre M, la clé ne change pas', () => {
+    const g = grouperParCategorie([
+      { nom: 'Sega Genesis', nom_affiche: 'Mega Drive', jeux: 1 },
+      { nom: 'Nintendo 64', jeux: 1 },
+      { nom: 'Atari 2600', jeux: 1 },
+    ]);
+    expect(g[0].plateformes.map((p) => p.nom)).toEqual(['Atari 2600', 'Sega Genesis', 'Nintendo 64']);
+  });
 });

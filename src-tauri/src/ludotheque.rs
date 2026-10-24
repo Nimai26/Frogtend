@@ -13,10 +13,17 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::Path;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct Plateforme {
+    /// Le nom LaunchBox : la CLÉ partout (caches, réglages par système, chemins, filtres).
     pub nom: String,
     pub jeux: u64,
+    /// Le nom court choisi par Seb (contrat 1.27 : « Mega Drive ») — pour l'AFFICHAGE seulement ; absent : `nom`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nom_affiche: Option<String>,
+    /// L'entrée reçue telle quelle (contrat 1.28 : images, fabricant, description…), gardée pour la fiche du système.
+    #[serde(default, skip_serializing)]
+    pub fiche: Option<Value>,
 }
 
 /// La version du schéma des résumés gardés : quand elle change, la synchronisation suivante relit TOUT le catalogue
@@ -275,7 +282,8 @@ pub fn lire_plateformes(v: &Value) -> Vec<Plateforme> {
         .filter_map(|p| {
             let nom = ["nom", "plateforme", "name"].iter().find_map(|c| p.get(*c)?.as_str())?;
             let jeux = ["jeux", "nombre", "nb_jeux", "total", "count"].iter().find_map(|c| p.get(*c)?.as_u64());
-            Some(Plateforme { nom: nom.into(), jeux: jeux.unwrap_or(0) })
+            let nom_affiche = p.get("nom_affiche").and_then(Value::as_str).map(str::trim).filter(|n| !n.is_empty()).map(String::from);
+            Some(Plateforme { nom: nom.into(), jeux: jeux.unwrap_or(0), nom_affiche, fiche: p.is_object().then(|| p.clone()) })
         })
         .collect()
 }
@@ -387,6 +395,15 @@ impl Cache {
              CREATE TABLE IF NOT EXISTS meta (cle TEXT PRIMARY KEY, valeur TEXT NOT NULL);
              CREATE TABLE IF NOT EXISTS fusions (ancien INTEGER PRIMARY KEY, nouveau INTEGER NOT NULL, le TEXT);",
         )?;
+        // Contrats 1.27/1.28 : ajoutées à un cache existant (jamais de relecture complète pour ça) ; vides jusqu'à la
+        // synchronisation suivante, qui relit toujours `/plateformes`.
+        for colonne in ["nom_affiche TEXT", "fiche TEXT"] {
+            let nom = colonne.split(' ').next().unwrap();
+            let existe: bool = db.prepare("SELECT 1 FROM pragma_table_info('plateformes') WHERE name = ?1")?.exists([nom])?;
+            if !existe {
+                db.execute(&format!("ALTER TABLE plateformes ADD COLUMN {colonne}"), [])?;
+            }
+        }
         Ok(Cache { db })
     }
 
@@ -418,9 +435,9 @@ impl Cache {
                     serde_json::to_string(j).unwrap(),
                 ])?;
             }
-            let mut ins = tx.prepare("INSERT OR REPLACE INTO plateformes (nom, jeux) VALUES (?1, ?2)")?;
+            let mut ins = tx.prepare("INSERT OR REPLACE INTO plateformes (nom, jeux, nom_affiche, fiche) VALUES (?1, ?2, ?3, ?4)")?;
             for p in plateformes {
-                ins.execute(params![p.nom, p.jeux as i64])?;
+                ins.execute(params![p.nom, p.jeux as i64, p.nom_affiche, p.fiche.as_ref().map(|f| f.to_string())])?;
             }
         }
         tx.execute("DELETE FROM fiches WHERE id NOT IN (SELECT id FROM jeux)", [])?;
@@ -471,9 +488,9 @@ impl Cache {
         }
         tx.execute("DELETE FROM plateformes", [])?;
         {
-            let mut ins = tx.prepare("INSERT OR REPLACE INTO plateformes (nom, jeux) VALUES (?1, ?2)")?;
+            let mut ins = tx.prepare("INSERT OR REPLACE INTO plateformes (nom, jeux, nom_affiche, fiche) VALUES (?1, ?2, ?3, ?4)")?;
             for p in plateformes {
-                ins.execute(params![p.nom, p.jeux as i64])?;
+                ins.execute(params![p.nom, p.jeux as i64, p.nom_affiche, p.fiche.as_ref().map(|f| f.to_string())])?;
             }
         }
         tx.execute("DELETE FROM fiches WHERE id NOT IN (SELECT id FROM jeux)", [])?;
@@ -539,11 +556,15 @@ impl Cache {
     /// Les plateformes, avec le nombre de jeux présents dans le cache (plus fiable que celui annoncé).
     pub fn plateformes(&self, seulement: Option<&[i64]>) -> Resultat<Vec<Plateforme>> {
         let mut st = self.db.prepare(
-            &format!("SELECT plateforme, COUNT(*) FROM jeux WHERE {} GROUP BY plateforme ORDER BY plateforme COLLATE NOCASE", restreindre("?1")),
+            // Le nom court par une sous-requête (pas de jointure : `brut` et `jeux` existent dans les deux tables).
+            &format!(
+                "SELECT plateforme, COUNT(*), (SELECT p.nom_affiche FROM plateformes p WHERE p.nom = jeux.plateforme) FROM jeux WHERE {} GROUP BY plateforme ORDER BY plateforme COLLATE NOCASE",
+                restreindre("?1")
+            ),
         )?;
         let liste = st
             .query_map([Self::liste_json(seulement)], |r| {
-                Ok(Plateforme { nom: r.get(0)?, jeux: r.get::<_, i64>(1)? as u64 })
+                Ok(Plateforme { nom: r.get(0)?, jeux: r.get::<_, i64>(1)? as u64, nom_affiche: r.get(2)?, fiche: None })
             })?
             .collect::<Result<_, _>>()?;
         Ok(liste)
@@ -883,7 +904,7 @@ pub(crate) mod tests {
     fn cache_exemple() -> Cache {
         let mut c = Cache::en_memoire().unwrap();
         c.remplacer(
-            &[Plateforme { nom: "MS-DOS".into(), jeux: 2 }, Plateforme { nom: "Super Nintendo".into(), jeux: 1 }],
+            &[Plateforme { nom: "MS-DOS".into(), jeux: 2, ..Default::default() }, Plateforme { nom: "Super Nintendo".into(), jeux: 1, ..Default::default() }],
             &[
                 jeu(110, "Dune", "MS-DOS", Some(1992), &["Aventure", "Stratégie"]),
                 jeu(111, "Écho du passé", "MS-DOS", Some(1995), &["Aventure"]),
@@ -988,12 +1009,53 @@ pub(crate) mod tests {
         assert_eq!(c.jeu(id_boutique("epic", "Fangtooth")).unwrap().unwrap().installe, Some(false), "désinstallé chez Epic");
     }
 
+    /// Les plateformes sans l'entrée brute gardée (comparées champ par champ).
+    fn sans_fiche(l: Vec<Plateforme>) -> Vec<Plateforme> {
+        l.into_iter().map(|p| Plateforme { fiche: None, ..p }).collect()
+    }
+
+    #[test]
+    fn le_nom_court_et_la_fiche_du_systeme_sont_lus_gardes_et_servis_sans_changer_la_cle() {
+        // Le relevé RÉEL du 24/10 (contrats 1.27/1.28).
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/simule/plateformes-128.json")).unwrap()).unwrap();
+        let l = lire_plateformes(&v);
+        let md = l.iter().find(|p| p.nom == "Sega Genesis").unwrap();
+        assert_eq!(md.nom_affiche.as_deref(), Some("Mega Drive"));
+        assert_eq!(md.fiche.as_ref().unwrap()["nom_affiche"], "Mega Drive", "l'entrée entière est gardée (fiche du système)");
+        // Gardé, puis servi avec le nombre de jeux du cache ; un système sans nom court (jeu importé) : rien.
+        let d = tempfile::tempdir().unwrap();
+        let mut c = Cache::ouvrir(&d.path().join("c.db")).unwrap();
+        let jeu = |id: i64, p: &str| JeuResume { id, titre: format!("J{id}"), plateforme: p.into(), ..Default::default() };
+        c.remplacer(&l, &[jeu(1, "Sega Genesis"), jeu(2, "Sega Genesis"), jeu(3, "Atari 2600")], "2026-10-24").unwrap();
+        let p = c.plateformes(None).unwrap();
+        let md = p.iter().find(|x| x.nom == "Sega Genesis").unwrap();
+        assert_eq!((md.jeux, md.nom_affiche.as_deref()), (2, Some("Mega Drive")));
+        assert_eq!(p.iter().find(|x| x.nom == "Atari 2600").unwrap().nom_affiche, None);
+        // Jamais envoyée à l'interface avec la liste (lourde) : seulement par la fiche du système.
+        assert!(!serde_json::to_string(&l[0]).unwrap().contains("description_fr"));
+    }
+
+    #[test]
+    fn un_ancien_cache_recoit_les_colonnes_du_nom_court_sans_tout_relire() {
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("c.db");
+        {
+            let db = Connection::open(&f).unwrap();
+            db.execute_batch("CREATE TABLE plateformes (nom TEXT PRIMARY KEY, jeux INTEGER NOT NULL); INSERT INTO plateformes VALUES ('MS-DOS', 3);").unwrap();
+        }
+        let c = Cache::ouvrir(&f).unwrap();
+        let n: i64 = c.db.query_row("SELECT jeux FROM plateformes WHERE nom = 'MS-DOS'", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 3, "rien de perdu");
+        let vide: Option<String> = c.db.query_row("SELECT nom_affiche FROM plateformes", [], |r| r.get(0)).unwrap();
+        assert_eq!(vide, None);
+    }
+
     #[test]
     fn lit_les_plateformes_sous_plusieurs_formes() {
-        let attendu = vec![Plateforme { nom: "MS-DOS".into(), jeux: 812 }];
-        assert_eq!(lire_plateformes(&json!([{"nom": "MS-DOS", "jeux": 812}])), attendu);
-        assert_eq!(lire_plateformes(&json!({"plateformes": [{"nom": "MS-DOS", "nombre": 812}]})), attendu);
-        assert_eq!(lire_plateformes(&json!({"items": [{"name": "MS-DOS", "total": 812}]})), attendu);
+        let attendu = vec![Plateforme { nom: "MS-DOS".into(), jeux: 812, ..Default::default() }];
+        assert_eq!(sans_fiche(lire_plateformes(&json!([{"nom": "MS-DOS", "jeux": 812}]))), attendu);
+        assert_eq!(sans_fiche(lire_plateformes(&json!({"plateformes": [{"nom": "MS-DOS", "nombre": 812}]}))), attendu);
+        assert_eq!(sans_fiche(lire_plateformes(&json!({"items": [{"name": "MS-DOS", "total": 812}]}))), attendu);
         assert!(lire_plateformes(&json!({"rien": 1})).is_empty());
     }
 
@@ -1020,8 +1082,8 @@ pub(crate) mod tests {
 
     #[test]
     fn lit_les_vraies_reponses_de_firehouse() {
-        let p = lire_plateformes(&exemple_reel("## `GET /plateformes`"));
-        assert_eq!(p, vec![Plateforme { nom: "MS-DOS".into(), jeux: 1 }, Plateforme { nom: "Nintendo 64".into(), jeux: 1 }]);
+        let p = sans_fiche(lire_plateformes(&exemple_reel("## `GET /plateformes`")));
+        assert_eq!(p, vec![Plateforme { nom: "MS-DOS".into(), jeux: 1, ..Default::default() }, Plateforme { nom: "Nintendo 64".into(), jeux: 1, ..Default::default() }]);
 
         let page = lire_page(&exemple_reel("## `GET /catalogue"), 1);
         assert_eq!(page.encore, Some(false)); // "suivante": null
@@ -1124,7 +1186,7 @@ pub(crate) mod tests {
         let l = c.lister(&Filtre::default(), locale, &[]).unwrap();
         assert_eq!(l.jeux.iter().map(|j| j.id).collect::<Vec<_>>(), vec![110]);
         assert_eq!((l.total, l.total_ludotheque), (1, 1));
-        assert_eq!(c.plateformes(locale).unwrap(), vec![Plateforme { nom: "MS-DOS".into(), jeux: 1 }]);
+        assert_eq!(c.plateformes(locale).unwrap(), vec![Plateforme { nom: "MS-DOS".into(), jeux: 1, ..Default::default() }]);
         assert_eq!(c.genres(None, locale).unwrap(), vec!["Aventure", "Stratégie"]);
         assert_eq!(c.au_hasard(None, locale).unwrap().unwrap().id, 110);
         assert!(c.lister(&Filtre::default(), Some(&[]), &[]).unwrap().jeux.is_empty(), "PC vide : ludothèque vide");

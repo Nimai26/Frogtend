@@ -12,6 +12,7 @@
   import IconesBoutiques from '$lib/boutiques/IconesBoutiques.svelte';
   import Jaquette from '$lib/ludotheque/Jaquette.svelte';
   import { jeuSurPc, rechargerJeuxDuPc, tele } from '$lib/ludotheque/telechargements.svelte';
+  import { chargerNomsCourts, nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
   import { fenetreOuverte, selectionner, taodbox } from '$lib/taodbox/manette.svelte';
   import { adresseImageBoutique } from '$lib/api';
   import { lireSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
@@ -38,7 +39,8 @@
       groupes,
     ),
   );
-  const consoles = $derived([...new Set(jeux.map((j) => j.plateforme))].sort());
+  // Triées sur le nom MONTRÉ ; la clé reste le nom LaunchBox (le filtre compare `j.plateforme`).
+  const consoles = $derived([...new Set(jeux.map((j) => j.plateforme))].sort((a, b) => nomAffiche(a).localeCompare(nomAffiche(b), 'fr')));
   const affiches = $derived(console_ ? jeux.filter((j) => j.plateforme === console_) : jeux);
 
   // Le fond et le logo du jeu choisi (lot Médias, M3, règle dans `$lib/taodbox/fond`) : une seule image de chaque à la
@@ -84,6 +86,8 @@
     // Les jeux Steam installés deviennent des jeux du PC à la lecture : la grille est relue ensuite.
     lireSteam().then(rechargerJeuxDuPc);
     lireGalaxy();
+    // Les noms courts des consoles (« Mega Drive »), lus dans le cache du profil (hors ligne aussi).
+    chargerNomsCourts();
     lanceParSunshine = isTauri() ? await api.taodboxLance().catch(() => false) : false;
     await tick();
     document.querySelector<HTMLElement>('.taodbox .carte')?.focus();
@@ -165,7 +169,7 @@
     <nav class="consoles" aria-label="Consoles">
       <button class="btn" class:choisie={console_ === null} onclick={() => choisirConsole(null)}>Tout</button>
       {#each consoles as c (c)}
-        <button class="btn" class:choisie={console_ === c} onclick={() => choisirConsole(c)}>{c}</button>
+        <button class="btn" class:choisie={console_ === c} onclick={() => choisirConsole(c)}>{nomAffiche(c)}</button>
       {/each}
     </nav>
   {/if}
@@ -187,7 +191,7 @@
           {/key}
         {/if}
         {#if !logoCharge}<span class="titre-jeu">{choisi.titre_fiche ?? choisi.titre}</span>{/if}
-        <span class="console-jeu">{choisi.plateforme}</span>
+        <span class="console-jeu">{nomAffiche(choisi.plateforme)}</span>
       {/if}
     </div>
   {/if}

@@ -7,6 +7,11 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- **Lot « Plateformes »** (✅ Seb 24/10 : « Le lot plateformes », choisi devant l'installation neuve). Découpe : P1
+  noms courts (1.27 `nom_affiche`/`plateforme_affichee`, affichage seulement) ; P2 fiches de systèmes (1.28 :
+  images, fabricant, date, description FR, CRÉDITS obligatoires) dans la ludothèque et Taodbox ; P3 lancement
+  e-Reader (cartouche GBA « e-Reader » + `--ecard <carte>.raw`, jamais la carte seule ; `mgba --help` vérifié).
+  Experts consultés avant de coder (24/10).
 - [ ] **Contrat 1.27 EN SERVICE** (21/10, Firehouse 2.99.0) : (1) `/plateformes` → `nom_affiche` (nom européen court
   choisi par Seb : Mega Drive, Super Nintendo, PC Engine… ; corrigeable au cockpit) — AFFICHAGE seulement, la clé
   reste `nom` (rattachements, caches, chemins), repli sur `nom` ; (2) `/jeu/{id}` → `plateforme_affichee` (même
@@ -754,6 +759,18 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.100.0** (24/10) — Lot « Plateformes », P1 : noms courts (contrat 1.27 ; avis des experts contrat, interface et
+  lancement avant ; relecture interface après, ses IMPORTANTS — affichages oubliés — corrigés). Cœur : `Plateforme`
+  gagne `nom_affiche` et `fiche` (l'entrée brute, pour P2, jamais envoyée avec la liste) ; table `plateformes` +
+  colonnes `nom_affiche`/`fiche` ajoutées à un cache existant (sans relecture complète) ; `Cache::plateformes` lit le
+  nom court par sous-requête. Interface : `nomsCourts`/`nomAffiche`/`chargerNomsCourts` (affichage seulement ; les
+  CLÉS restent le nom LaunchBox) dans la colonne des plateformes (tri sur le nom montré), fiches, cartes, page du
+  jeu (`plateforme_affichee` d'abord), Taodbox, téléchargements, réglages, emplacements, émulateurs, rapprochement,
+  import, demander, et les messages de Prêt à jouer / assistant. Relevé réel 1.27/1.28 (lecture seule, 24/10) :
+  `fixtures/simule/plateformes-128.json` (3 sur 89). Vérifié : tests (cœur 476, interface 230). NON vérifié : le
+  rendu réel (A-TESTER). RESTE (mineur) : deux plateformes au même nom court seraient indiscernables ; `nomsCourts`
+  n'est pas vidé au changement de profil (noms de systèmes, rien de personnel).
 
 - **0.99.2** (24/10) — Analyse de la coupure de la suite (choix de Seb). Cause : sysinfo termine par
   `taskkill /F` (code 1, celui observé) ; `processus_de_la_partie` suivait le numéro du PARENT sans heure ; Windows

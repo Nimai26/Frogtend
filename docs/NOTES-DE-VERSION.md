@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.100.0 — Les noms courts des consoles
+
+- 🎮 Les consoles portent maintenant les noms courts que tu as choisis dans Firehouse : « Mega Drive » au lieu de
+  « Sega Genesis », « Super Nintendo », « PC Engine »… Partout : la liste des plateformes (rangée à la bonne lettre),
+  les fiches, les cartes, Taodbox, les téléchargements, les réglages et les messages de « Prêt à jouer ».
+- Rien d'autre ne change : tes réglages par console (émulateurs, dossiers, plateformes masquées) restent attachés
+  au nom d'origine, et une console sans nom court garde son nom habituel.
+
 ## 0.99.2 — Quitter un jeu ne ferme jamais autre chose que ce jeu
 
 - 🛡 Quand tu quittes un jeu et que son émulateur refuse de se fermer, Frogtend termine les programmes de CE jeu.

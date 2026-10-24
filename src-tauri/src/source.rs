@@ -884,6 +884,24 @@ mod tests {
         std::fs::write(sortie.join("fiche-steam.json"), serde_json::to_vec_pretty(&toutes).unwrap()).unwrap();
     }
 
+    /// RÉEL, lecture seule (contrats 1.27/1.28) : `/plateformes` et la fiche d'un jeu, copiées telles quelles dans
+    /// `FROGTEND_SORTIE` (de quoi écrire les réponses simulées d'après la vraie vie). Rien d'autre n'est écrit.
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_SORTIE=<dossier> cargo test essai_plateformes_128 -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_plateformes_128() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let sortie = std::path::PathBuf::from(std::env::var("FROGTEND_SORTIE").unwrap());
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        let p: serde_json::Value = c.obtenir_json("/plateformes").await.unwrap();
+        std::fs::write(sortie.join("plateformes.json"), serde_json::to_vec_pretty(&p).unwrap()).unwrap();
+        let j: serde_json::Value = c.obtenir_json("/jeu/110").await.unwrap();
+        std::fs::write(sortie.join("jeu-110.json"), serde_json::to_vec_pretty(&j).unwrap()).unwrap();
+        println!("plateformes : {} entrées", p["plateformes"].as_array().map(|l| l.len()).unwrap_or(0));
+    }
+
     /// RÉEL, lecture seule (contrat 1.26) : les emplacements de parties que Firehouse donne pour des jeux Steam
     /// (`FROGTEND_APPIDS`, séparés par des virgules), puis ce qu'ils deviennent sur CE PC. Rien n'est écrit.
     /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_APPIDS=271590 cargo test essai_sauvegardes_steam -- --ignored --nocapture`

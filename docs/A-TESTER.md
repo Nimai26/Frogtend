@@ -48,6 +48,11 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Noms courts des consoles (0.100.0)
+- [ ] Après une synchronisation : « Mega Drive », « Super Nintendo »… dans la colonne des plateformes (à la bonne
+      lettre), la fiche d'un jeu, Taodbox (boutons des consoles).
+- [ ] Tes réglages par console (émulateur, dossier, plateformes masquées) sont toujours là.
+
 ## Finitions avant la bêta (0.99.1)
 - [ ] Moonlight ▸ Taodbox sur un PC sans profil : « 👋 Bienvenue ! », boutons atteints à la manette ; « ⌨ Créer
       au clavier » ramène au bureau.

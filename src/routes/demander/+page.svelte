@@ -2,6 +2,7 @@
   // « Demander un jeu » (lot 6) : chercher dans toute la base LaunchBox de Firehouse un jeu qui n'est pas encore dans
   // le catalogue, et le demander. Firehouse fait valider la demande, cherche les sources et télécharge : Frogtend ne
   // télécharge jamais rien sur Internet de son côté.
+  import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
   import { api, type ResultatRecherche } from '$lib/api';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
@@ -29,7 +30,7 @@
 
   async function demander(r: ResultatRecherche) {
     const oui = await confirmer(`📨 Demander « ${r.titre} » ?`, {
-      message: `${r.plateforme}${r.annee ? `, ${r.annee}` : ''}.\nFirehouse fera valider la demande, cherchera le jeu et le téléchargera. Il apparaîtra ensuite dans le Catalogue Firehouse.`,
+      message: `${nomAffiche(r.plateforme)}${r.annee ? `, ${r.annee}` : ''}.\nFirehouse fera valider la demande, cherchera le jeu et le téléchargera. Il apparaîtra ensuite dans le Catalogue Firehouse.`,
       libelleValider: '📨 Demander',
     });
     if (!oui) return;
@@ -74,7 +75,7 @@
               <strong>{r.titre_fr || r.titre}</strong>
               {#if r.titre_fr && r.titre_fr !== r.titre}<span class="muted">({r.titre})</span>{/if}
               <span class="muted">
-                {r.plateforme}{r.annee ? ` · ${r.annee}` : ''}{r.developpeur ? ` · ${r.developpeur}` : ''}{r.genres?.length
+                {nomAffiche(r.plateforme)}{r.annee ? ` · ${r.annee}` : ''}{r.developpeur ? ` · ${r.developpeur}` : ''}{r.genres?.length
                   ? ` · ${r.genres.join(', ')}`
                   : ''}
               </span>

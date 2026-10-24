@@ -17,6 +17,7 @@ import { choisir, confirmer, informer, toast } from '$lib/dialogues/fenetres.sve
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { ludo, rechargerListe, rechargerPlateformes } from './ludotheque.svelte';
 import { proposerDossierJeux } from './dossierJeux';
+import { nomAffiche } from './ludotheque.svelte';
 
 export const tele = $state<{
   /** Les jeux du PC visibles pour ce profil, par id. */
@@ -163,7 +164,7 @@ export async function mettreDansLaLudotheque(id: number): Promise<boolean> {
   if (proposes.length === 0 || proposes.every((p) => p.libre === null)) {
     const raison = proposes.length
       ? `Le dossier de tes jeux (${proposes[0].chemin}) n’existe pas sur ce PC.`
-      : `C’est ton premier jeu sur ce PC : Frogtend ne sait pas encore où ranger les jeux ${plateforme}.`;
+      : `C’est ton premier jeu sur ce PC : Frogtend ne sait pas encore où ranger les jeux ${nomAffiche(plateforme)}.`;
     if (!(await proposerDossierJeux(raison, total))) return false;
     proposes = await api.proposerEmplacements(plateforme, total).catch(() => []);
     if (proposes.length === 0) {

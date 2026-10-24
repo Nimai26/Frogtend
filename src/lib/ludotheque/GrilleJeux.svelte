@@ -6,7 +6,7 @@
   import type { JeuResume } from '$lib/api';
   import { etat } from '$lib/etat.svelte';
   import Jaquette from './Jaquette.svelte';
-  import { chargerSuite, ludo } from './ludotheque.svelte';
+  import { chargerSuite, ludo, nomAffiche } from './ludotheque.svelte';
   import { jeuSurPc } from './telechargements.svelte';
   import IconesBoutiques from '$lib/boutiques/IconesBoutiques.svelte';
   import { originesCarte } from '$lib/boutiques/copies';
@@ -41,7 +41,7 @@
       case 'annee':
         return j.annee ? String(j.annee) : '';
       case 'plateforme':
-        return j.plateforme;
+        return nomAffiche(j.plateforme);
       default:
         return '';
     }

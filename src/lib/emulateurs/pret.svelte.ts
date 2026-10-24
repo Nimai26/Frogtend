@@ -10,6 +10,7 @@ import { etat, reglerPc } from '$lib/etat.svelte';
 import { completerRetroArch, installerEmulateur, installerMicrologicielPs3, installerParFirehouse, poserBios, recommandationsParDefaut, reglerEmulateur } from './assistant.svelte';
 import { ajouter } from './choix';
 import { avecConseil, biosADireOuPoser, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, MANETTE_REGLEE, messagePret, micrologicielServi, phraseVersionAutre, poidsBios, versionAutre, type Possible } from './pret';
+import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
 
 /** Les plateformes qui se jouent sans émulateur. */
 const SANS_EMULATEUR = ['Windows'];
@@ -61,9 +62,9 @@ export async function preparerPourJouer(plateforme: string, jeux: number): Promi
   // Celui du conseil, déjà sur le PC, mais pas dans la version attendue par les jeux de Firehouse (MAME) : on le dit.
   const installee = choix.programme ? installes.find((i) => i.programme === choix.programme)?.version : null;
   const autre = estConseille(choix.rec, conseil) ? versionAutre(installee, conseil) : null;
-  const oui = await confirmer(`🎮 Préparer ${plateforme} pour jouer ?`, {
+  const oui = await confirmer(`🎮 Préparer ${nomAffiche(plateforme)} pour jouer ?`, {
     message: (autre && installee ? `${phraseVersionAutre(choix.nom, installee, autre)}\n\n` : '') + messagePret({
-      plateforme,
+      plateforme: nomAffiche(plateforme),
       jeux,
       choix,
       taille: paquet?.taille ? taille(paquet.taille) : null,
@@ -116,7 +117,7 @@ export async function preparerPourJouer(plateforme: string, jeux: number): Promi
   // Des parties restaurées (PC neuf, formaté) attendaient cet émulateur : reposées maintenant, jamais par-dessus une autre.
   const r = await api.restaurationReposerEmulateurs().catch(() => null);
   const parties = r?.reposes ? `, ${r.reposes} partie(s) restaurée(s) reposée(s)` : '';
-  toast(`✅ ${plateforme} est prêt : ${nom}${manette}${parties}.`);
+  toast(`✅ ${nomAffiche(plateforme)} est prêt : ${nom}${manette}${parties}.`);
   // RPCS3 sans micrologiciel ne lance aucun jeu du commerce : celui de Firehouse est installé (compris dans l'accord) ;
   // s'il n'est pas servi, on le dit tout de suite, simplement.
   if (choix.id === 'rpcs3' && !(await api.rpcs3Micrologiciel(programme).catch(() => null))) {

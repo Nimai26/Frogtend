@@ -126,8 +126,30 @@ export async function chargerSuite() {
   }
 }
 
+/** Les noms courts des plateformes (contrat 1.27), par nom LaunchBox : connus pour TOUT le catalogue, quel que soit le
+ * filtre (Taodbox nomme les consoles des jeux du PC). */
+export const nomsCourts = $state<Record<string, string>>({});
+
+/** Le nom à MONTRER d'une plateforme : son nom court, sinon son nom LaunchBox. Jamais une clé (filtres, réglages,
+ * chemins gardent le nom LaunchBox). */
+export function nomAffiche(nom: string | null | undefined): string {
+  return (nom && nomsCourts[nom]) || nom || '';
+}
+
+function retenirNomsCourts(l: Plateforme[]) {
+  for (const p of l) if (p.nom_affiche && nomsCourts[p.nom] !== p.nom_affiche) nomsCourts[p.nom] = p.nom_affiche;
+}
+
+/** Les noms courts de tout le catalogue (Taodbox, qui ne passe pas par la ludothèque). */
+export async function chargerNomsCourts() {
+  retenirNomsCourts(await api.plateformes(false).catch(() => []));
+}
+
 export async function rechargerPlateformes() {
   ludo.plateformes = await api.plateformes(locale());
+  retenirNomsCourts(ludo.plateformes);
+  // Filtre « ma ludothèque » : les noms courts de tout le catalogue quand même (un jeu importé d'un autre système).
+  if (locale()) retenirNomsCourts(await api.plateformes(false).catch(() => []));
   ludo.genres = await api.genres(ludo.plateforme, locale());
   const le = await api.synchroniseeLe();
   ludo.synchroniseeLe = le ? Number(le) : null;

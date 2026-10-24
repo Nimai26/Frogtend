@@ -2,6 +2,7 @@
   // La fenêtre d'import des jeux déjà sur le disque : ROM d'un dossier, jeux MS-DOS (un par sous-dossier), un jeu
   // Windows, ou un ajout manuel. On CHERCHE d'abord, la personne voit la liste et coche, puis on ajoute. Rien n'est
   // copié, déplacé ni renommé.
+  import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
   import { untrack } from 'svelte';
   import { api, taille } from '$lib/api';
   import { choisir, confirmer, toast } from '$lib/dialogues/fenetres.svelte';
@@ -424,8 +425,8 @@ Rien n’est déplacé ni renommé. Les retirer plus tard de ta ludothèque ne l
         Plateforme
         <select class="large" bind:value={plateforme} onchange={recocher}>
           <option value="">— choisis la plateforme —</option>
-          {#if plateforme && !plateformes.includes(plateforme)}<option value={plateforme}>{plateforme}</option>{/if}
-          {#each plateformes as p (p)}<option value={p}>{p}</option>{/each}
+          {#if plateforme && !plateformes.includes(plateforme)}<option value={plateforme}>{nomAffiche(plateforme)}</option>{/if}
+          {#each plateformes as p (p)}<option value={p}>{nomAffiche(p)}</option>{/each}
         </select>
       </label>
       {#if dossier.trim() && !plateforme}

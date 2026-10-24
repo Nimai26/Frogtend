@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
   import { api } from '$lib/api';
   import Emplacements from '$lib/reglages/Emplacements.svelte';
   import { page } from '$app/state';
@@ -306,7 +307,7 @@
                   checked={!l.plateformesMasquees.includes(p.nom)}
                   onchange={(e) => basculerPlateforme(p.nom, e.currentTarget.checked)}
                 />
-                <span>{p.nom} <span class="muted">({p.jeux})</span></span>
+                <span>{nomAffiche(p.nom)} <span class="muted">({p.jeux})</span></span>
               </label>
             {/each}
           </div>

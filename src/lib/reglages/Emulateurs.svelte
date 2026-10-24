@@ -1,5 +1,6 @@
 <script lang="ts">
   // Les émulateurs réglés sur CE PC, par système. Retirer un réglage ne désinstalle rien.
+  import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
   import { onMount } from 'svelte';
   import { api, taille, type EmulateurInstalle, type Plateforme } from '$lib/api';
   import { versionDansNote } from '$lib/emulateurs/pret';
@@ -172,7 +173,7 @@
   async function parDefaut(systeme: string, cle: string) {
     const s = etat.pc.emulateurs[systeme];
     await reglerPc('emulateurs', { ...etat.pc.emulateurs, [systeme]: { ...s, defaut: cle } });
-    toast(`⭐ ${s.liste.find((x) => x.cle === cle)?.nom} : par défaut pour ${systeme}.`);
+    toast(`⭐ ${s.liste.find((x) => x.cle === cle)?.nom} : par défaut pour ${nomAffiche(systeme)}.`);
   }
 
   async function retirer(systeme: string, cle: string) {
@@ -183,13 +184,13 @@
     if (apres.liste.length) reste[systeme] = apres;
     else delete reste[systeme];
     await reglerPc('emulateurs', reste);
-    toast(`${nom} retiré de ${systeme} (il n’est pas désinstallé).`);
+    toast(`${nom} retiré de ${nomAffiche(systeme)} (il n’est pas désinstallé).`);
   }
 
   async function ajouter() {
     const s = await choisir(
       '🕹 Pour quel système ?',
-      plateformes.map((p) => ({ valeur: p.nom, libelle: p.nom, detail: p.jeux ? `${p.jeux} jeu(x)` : undefined })),
+      plateformes.map((p) => ({ valeur: p.nom, libelle: nomAffiche(p.nom), detail: p.jeux ? `${p.jeux} jeu(x)` : undefined })),
     );
     if (s) {
       await reglerEmulateur(s);
@@ -305,7 +306,7 @@
   {:else}
     {#each e as [systeme, reglage] (systeme)}
       <div class="cx-block systeme">
-        <h3>{systeme}</h3>
+        <h3>{nomAffiche(systeme)}</h3>
         <ul>
           {#each reglage.liste as emu (emu.cle)}
             <li>

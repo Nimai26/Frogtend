@@ -11,6 +11,7 @@ import { choisir, confirmer, demander, fermerToast, informer, toast } from '$lib
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat, reglerPc } from '$lib/etat.svelte';
 import { auCanape, seulementAuBureau } from '$lib/taodbox/canape';
+import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
 
 export const installationEmulateur = $state<{ id: string | null; recus: number; total: number | null }>({
   id: null,
@@ -272,7 +273,7 @@ export async function completerRetroArch(
     const oui =
       sansQuestion ||
       (await confirmer(`🧩 Installer le cœur « ${e.coeur} » ?`, {
-        message: `RetroArch a besoin de ce cœur pour ${plateforme}. Firehouse le fournit, vérifié (quelques Mo).`,
+        message: `RetroArch a besoin de ce cœur pour ${nomAffiche(plateforme)}. Firehouse le fournit, vérifié (quelques Mo).`,
         libelleValider: '⬇ Installer le cœur',
       }));
     if (!oui) return null;
@@ -287,7 +288,7 @@ export async function completerRetroArch(
   if (e && e.bios_manquants.length) {
     await informer(
       '⚠ Fichier système manquant',
-      `${plateforme} a besoin de : ${e.bios_manquants.join(', ')}.\n\nPlace ce fichier (tel quel, sans le renommer) dans :\n${e.dossier_bios}\n\nFirehouse ne le fournit pas (encore) pour cet émulateur.`,
+      `${nomAffiche(plateforme)} a besoin de : ${e.bios_manquants.join(', ')}.\n\nPlace ce fichier (tel quel, sans le renommer) dans :\n${e.dossier_bios}\n\nFirehouse ne le fournit pas (encore) pour cet émulateur.`,
     );
   }
   const coeur = e?.coeur ?? (await api.retroarchEtat(programme, ligne, []).catch(() => null))?.coeur;
@@ -300,20 +301,20 @@ export async function poserBios(plateforme: string, programme: string): Promise<
   try {
     b = await api.biosPoser(plateforme, programme);
   } catch (e) {
-    toast(`Fichiers système de ${plateforme} non posés : ${motifDuRefus(e)}`, 'alerte');
+    toast(`Fichiers système de ${nomAffiche(plateforme)} non posés : ${motifDuRefus(e)}`, 'alerte');
     return;
   }
   if (b.poses.length) toast(`📀 ${b.poses.length > 1 ? `${b.poses.length} fichiers système posés` : 'Fichier système posé'} (${b.poses.join(', ')}).`, 'ok');
   if (b.echecs.length) toast(`Fichiers système non posés : ${b.echecs.join(' ; ')}`, 'alerte');
   if (b.a_poser.length) {
     await informer(
-      `📀 ${plateforme} : ${b.a_poser.length > 1 ? 'des fichiers système manquent' : 'un fichier système manque'}`,
+      `📀 ${nomAffiche(plateforme)} : ${b.a_poser.length > 1 ? 'des fichiers système manquent' : 'un fichier système manque'}`,
       `Firehouse ne les fournit pas (encore) : ${b.a_poser.join(', ')}.\n\nSans eux, certains jeux ne démarrent pas. Frogtend te le redira au besoin.`,
     );
   }
   if (b.cles.length) {
     await informer(
-      `🔑 Il manque tes clés pour ${plateforme}`,
+      `🔑 Il manque tes clés pour ${nomAffiche(plateforme)}`,
       `${b.cles.join(', ')} : ce sont TES clés, tirées de ta propre console. Personne ne peut les fournir, ni Firehouse ni Frogtend. Sans elles, les jeux ne démarrent pas.`,
     );
   }
@@ -358,7 +359,7 @@ export async function reglerEmulateur(plateforme: string): Promise<string | null
   if (!auCanape()) options.push({ valeur: 'autre', libelle: '📂 Un autre émulateur…', detail: 'montrer son programme et écrire sa ligne de commande' });
 
   const c = await choisir<Option>(
-    `🕹 Quel émulateur pour ${plateforme} ?`,
+    `🕹 Quel émulateur pour ${nomAffiche(plateforme)} ?`,
     options,
     recs.length ? 'Recommandations de Firehouse.' : undefined,
   );
@@ -418,7 +419,7 @@ export async function reglerEmulateur(plateforme: string): Promise<string | null
     // Rien à télécharger (seulement des clés ou des fichiers à poser soi-même) : on le dit sans rien demander.
     const oui =
       !servis.length ||
-      (await confirmer(`📀 Poser les fichiers système de ${plateforme} ?`, {
+      (await confirmer(`📀 Poser les fichiers système de ${nomAffiche(plateforme)} ?`, {
         message: `Firehouse les fournit (${servis.map((b) => b.fichier).join(', ')}${poids ? `, ${taille(poids)}` : ''}) ; Frogtend les vérifie et les pose là où ${nom} les cherche. Un fichier déjà là n’est jamais remplacé.`,
         libelleValider: '📀 Les poser',
       }));
@@ -435,6 +436,6 @@ export async function reglerEmulateur(plateforme: string): Promise<string | null
   // Des parties restaurées (PC neuf, formaté) attendaient cet émulateur : reposées maintenant, jamais par-dessus une autre.
   const r = await api.restaurationReposerEmulateurs().catch(() => null);
   const parties = r?.reposes ? ` ${r.reposes} partie(s) restaurée(s) reposée(s).` : '';
-  toast((sys.liste.length > 1 ? `✅ ${nom} ajouté pour ${plateforme}.` : `✅ ${nom} réglé pour ${plateforme}.`) + parties);
+  toast((sys.liste.length > 1 ? `✅ ${nom} ajouté pour ${nomAffiche(plateforme)}.` : `✅ ${nom} réglé pour ${nomAffiche(plateforme)}.`) + parties);
   return cle;
 }
