@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.99.2 — Quitter un jeu ne ferme jamais autre chose que ce jeu
+
+- 🛡 Quand tu quittes un jeu et que son émulateur refuse de se fermer, Frogtend termine les programmes de CE jeu.
+  Il les reconnaissait par le « numéro de parent » que Windows donne à chaque programme ; or Windows réutilise ces
+  numéros : dans de rares cas, un programme sans rapport (et même Frogtend lui-même) pouvait passer pour un morceau
+  du jeu. C'est corrigé : un vrai programme du jeu est né APRÈS lui, et Frogtend ne se ferme jamais lui-même.
+- C'est ce qui avait coupé la suite de tests pendant la livraison de la 0.99.1.
+
 ## 0.99.1 — Les dernières finitions avant la bêta
 
 - 📥 Après une restauration, les parties de tes émulateurs retrouvent leur émulateur même s'il a changé de dossier

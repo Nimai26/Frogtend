@@ -14,7 +14,47 @@
   Firehouse : 10 jeux PC réservés en double servis désormais en ARCHIVE (anciennes versions « paquet » disparues des
   fiches) → re-réconcilier si cache. À faire : afficher `nom_affiche`/`plateforme_affichee` partout (ludothèque,
   Taodbox, fiches), jamais comme clé.
-- [ ] **À ANALYSER — arrêt brutal de la suite du cœur** (21/10, livraison 0.99.1) : `cargo test` sorti en code 1
+- [x] **Contrat 1.29** (22/10, Firehouse 2.101.0, ajouts compatibles) : ~3 700 fiches SANS LaunchBox (PC-88, C64,
+  CPC, Amiga, GBA…) reçoivent images (libretro, puis IGDB) et infos (année, genres, éditeur, résumé FR) par les
+  mêmes `medias`/`medias_empreinte`/`/jeu/{id}/media/{type}` ; leur `maj_le` bouge → relues par la synchro
+  incrémentale. `source` d'un média : aussi `libretro`/`igdb` ; `meta.jeu.resume_source`. ✅ Vérifié le 22/10 :
+  Frogtend ne filtre aucune valeur de `source` (rien à changer). À voir avec 1.28 : créditer ces images si leur
+  licence l'exige.
+- [ ] **Contrat 1.28 EN SERVICE — FICHES DE SYSTÈMES (besoin 20 servi)** (22/10, Firehouse 2.100.0 ; BRIEF § 1.28).
+  `/plateformes` gagne `images` {logo, banniere, fond, appareil, icone} (chacun {id, empreinte, largeur, hauteur,
+  source, licence, auteur, url_source} ou null), `images_empreinte` (change → relire les images), `fabricant`,
+  `date_sortie` (AAAA[-MM[-JJ]]), `description_fr`, `description_source`, `description_licence`. Image :
+  `GET /plateforme/media/{type}?plateforme=<nom>&largeur=100..1000&id=` (WebP, transparence gardée ; avec `id`
+  immuable, sans `id` no-cache + ETag ; 404 si ce jeton ne voit aucun jeu du système ou pas de visuel). CRÉDITS
+  OBLIGATOIRES : 84 icônes libretro (CC BY 4.0), ~30 photos Commons (CC BY/BY-SA), descriptions Wikipédia (CC
+  BY-SA) → afficher `auteur` + `licence` + lien `url_source` LÀ où le visuel/texte est montré (null pour
+  LaunchBox). Couverture (89 systèmes) : icône 84 (monochrome, à teinter en CSS), fond 69 (photos), logo 64,
+  bannière 33, appareil 0, description 85, date 78, fabricant 87. Taodbox : `logo`/`banniere` pour les boutons,
+  `fond` en plein écran. À coder (avec 1.27 `nom_affiche`) : panneau des plateformes, Taodbox, cache par
+  `images_empreinte` — jamais un cache d'un profil pour un autre (404 selon le jeton).
+  ✅ Seb (via Firehouse, 2.99.x) : un cœur RetroArch non servi (`paquet: null`) est téléchargé par RetroArch
+  lui-même.
+- [ ] **Firehouse 2.99.1** (21/10, contrat 1.27 inchangé) : (1) e-Reader : 3 172 fiches « une par carte » RÉUNIES
+  en 34 (une version = une carte, nom No-Intro ; jusqu'à ~660 versions par fiche, aucune « principale » ;
+  `telechargement_id`/`sha1` inchangés, seul le DOSSIER change : `Nintendo e-Reader/<Jeu>/`) → ~3 300 `fusions` en
+  page 1, `/jeu/{ancien}` = 410 `fusionne_dans`. Une carte ne se LANCE pas : mGBA ≥ 0.9.0 charge le jeu e-Reader
+  puis « File ▸ Scan e-Reader dotcodes ». À vérifier chez Frogtend : la synchro avec 3 300 fusions (temps, rien
+  de perdu), le choix d'une version parmi 660 (la fenêtre `choisir` n'est pas faite pour ça), le chemin d'une carte
+  déjà téléchargée qui change de dossier. (2) `fusions` filtrées par `depuis` côté serveur. (3) fiche iQue « SKSA »
+  retirée (passée en BIOS) : sort de `ids_visibles` SANS fusion, `/jeu` 404 — à oublier, rien à rattacher.
+  Lancement e-Reader (Firehouse, 21/10, source mgba-emu/mgba#2474, commit ce7e53d, jalon 0.10.0) : mGBA accepte
+  `--ecard <fichier>` (répétable, ou un .m3u qui liste les cartes) en plus de la ROM du jeu e-Reader. NON vérifié :
+  la version qui l'embarque → lire `mgba --help` de la version posée AVANT de s'en servir. BIOS : 12 fichiers
+  QUASI88 servis sous `quasi88/` (NEC - PC-8801, conseil `disponible`, 16 fichiers par *.rom) ; BIOS du VMU
+  Dreamcast (VMS 1.005) servi, sans rapprochement.
+  ⚠ Firehouse 2.99.2 (22/10) : conseil « Nintendo e-Reader » = mGBA, `ligne_de_commande` VIDE, qui ne veut PAS dire
+  « lancer le fichier » : une carte ne se lance JAMAIS seule. On lance la CARTOUCHE GBA « e-Reader (USA) » / « Card
+  e-Reader (Japan) » (fiches GBA) avec `--ecard "<carte>.raw"` (carte extraite de son .7z ; répétable ; .m3u lu) —
+  vérifié par Firehouse dans les sources mGBA 0.10.0 et 0.10.5. Aujourd'hui Frogtend lancerait la carte telle quelle
+  (sans danger, mais ça ne marche pas) : à coder AVANT d'annoncer l'e-Reader à la famille. Une nouvelle carte rejoint
+  seule la fiche de son jeu. Réconciliation : une entrée d'archive mal formée → 400 (plus 500). 135 fiches complétées,
+  16 doublons réunis (fusions), 6 909 images de jeux possédés en cours d'arrivée.
+- [x] ✅ RÉSOLU en 0.99.2 — **arrêt brutal de la suite du cœur** (21/10, livraison 0.99.1) : `cargo test` sorti en code 1
   « test exited abnormally » sans AUCUN test rouge (dernier vu : `noyau::tests::un_ancien_catalogue_…`, juste après
   `lancement::tests::quitter_termine_un_emulateur_…`). Relancé 2 fois : vert. Code 1 = ce que donne
   `TerminateProcess` : piste = un test qui TERMINE des processus par numéro (`lancement.rs` : `finir_la_partie` sur
@@ -714,6 +754,20 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.99.2** (24/10) — Analyse de la coupure de la suite (choix de Seb). Cause : sysinfo termine par
+  `taskkill /F` (code 1, celui observé) ; `processus_de_la_partie` suivait le numéro du PARENT sans heure ; Windows
+  réutilise les numéros et un programme garde celui de son parent mort : le `cmd` d'un essai qui recevait ce numéro
+  « adoptait » la suite de tests, terminée avec les programmes de la partie. Même défaut dans l'application (Quitter,
+  menu en jeu). Correctif (relecture de l'expert lancement, ses IMPORTANTS corrigés) : `descendants` pur (un enfant
+  naît APRÈS son parent ; racine fermée → ses enfants nés après son départ ; numéro repris → ni le nouveau venu ni ses
+  enfants), `noter_depart` = la vraie heure de Windows (comparée à l'égalité, comme `Suivi`), notée aussi pour un jeu
+  lancé par une boutique ; `terminer` ne touche jamais Frogtend ni ses ancêtres (`intouchables`, remontée arrêtée à
+  un parent né après son enfant). Vérifié : tests (dont le cas du 21/10 rejoué) ; après le correctif final, 42
+  suites complètes du cœur de suite : 41 vertes, 1 en échec AVANT que les journaux soient gardés (cause inconnue :
+  la même coupure ou un autre test) ; les 32 suivantes, journaux gardés : toutes vertes. À surveiller : si une
+  suite se coupe encore, garder son journal (`livrer.log`) et regarder le dernier test passé. RESTE (mineur) : la
+  même garde pour `fenetres::fermer` et `figer::suspendre`.
 
 - **0.99.1** (21/10) — Dernier lot avant l'installation neuve (relectures lancement et interface : rien de bloquant,
   leurs IMPORTANTS corrigés). Parties d'émulateur restaurées : `anciens_programmes` (réglages restaurés gardés dans

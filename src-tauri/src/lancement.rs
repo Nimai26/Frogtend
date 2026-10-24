@@ -58,26 +58,105 @@ pub fn demarrer(l: &Lanceur) -> Resultat<u32> {
             Erreur::Disque(format!("Impossible de lancer « {} » ({e}).", l.programme))
         }
     })?;
+    noter_depart(enfant.id());
     Ok(enfant.id())
+}
+
+/// L'heure de démarrage (secondes) de chaque partie lancée par Frogtend : même fermé ou repris par un autre programme
+/// (Windows réutilise les numéros), le numéro d'une partie reste daté.
+static DEPARTS: std::sync::Mutex<Vec<(u32, u64)>> = std::sync::Mutex::new(Vec::new());
+
+fn maintenant_s() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+/// Note le départ d'une partie (appelé dès qu'elle est lancée) : sa VRAIE heure de démarrage, lue chez Windows (la même
+/// que celle des relevés, comparée à l'égalité comme `Suivi`). Déjà fermée : l'instant présent moins 5 s.
+pub fn noter_depart(pid: u32) {
+    let mut s = System::new();
+    let p = Pid::from_u32(pid);
+    s.refresh_processes(ProcessesToUpdate::Some(&[p]), true);
+    let heure = s.process(p).map(|x| x.start_time()).filter(|t| *t > 0).unwrap_or_else(|| maintenant_s().saturating_sub(5));
+    let mut d = DEPARTS.lock().unwrap_or_else(|e| e.into_inner());
+    d.retain(|(p, _)| *p != pid);
+    d.push((pid, heure));
+    // Quelques centaines de parties dans une journée, au plus : on garde les dernières.
+    let n = d.len();
+    if n > 512 {
+        d.drain(..n - 512);
+    }
+}
+
+fn depart_note(pid: u32) -> Option<u64> {
+    DEPARTS.lock().unwrap_or_else(|e| e.into_inner()).iter().rev().find(|(p, _)| *p == pid).map(|(_, t)| *t)
 }
 
 /// Le processus lancé et tous ses descendants encore vivants (un lanceur .bat, puis l'émulateur qu'il ouvre…).
 pub fn processus_de_la_partie(racine: u32) -> Vec<u32> {
     let mut s = System::new();
     s.refresh_processes(ProcessesToUpdate::All, true);
-    let mut vus: HashSet<Pid> = HashSet::from([Pid::from_u32(racine)]);
+    let releve: Vec<(u32, Option<u32>, u64)> = s.processes().iter().map(|(pid, p)| (pid.as_u32(), p.parent().map(|x| x.as_u32()), p.start_time())).collect();
+    descendants(&releve, racine, depart_note(racine))
+}
+
+/// Les descendants VIVANTS de `racine` dans un relevé (numéro, parent noté, heure de démarrage), elle comprise.
+/// Windows RÉUTILISE les numéros, et un programme garde le numéro de son parent même quand ce parent est fermé depuis
+/// longtemps : un nouveau programme qui reçoit ce numéro « adopterait » alors des programmes sans rapport (vu le 21/10 :
+/// la suite de tests s'est fermée elle-même). Un vrai enfant démarre APRÈS son parent : sinon, il n'en est pas un.
+/// `depart` : l'heure notée au lancement de la partie (`noter_depart`) — elle garde les enfants d'une racine déjà
+/// fermée (le .bat qui a ouvert l'émulateur) et écarte un programme qui aurait repris son numéro depuis.
+pub fn descendants(releve: &[(u32, Option<u32>, u64)], racine: u32, depart: Option<u64>) -> Vec<u32> {
+    let vivante = releve.iter().find(|(p, _, _)| *p == racine).map(|(_, _, t)| *t);
+    // L'heure notée est celle de Windows (`noter_depart`) : une autre heure, c'est un autre programme.
+    let reprise = matches!((vivante, depart), (Some(v), Some(d)) if v != d);
+    let mut vus: Vec<(u32, u64)> = match (vivante, depart) {
+        (Some(t), _) if !reprise => vec![(racine, t)],
+        // Fermée, ou son numéro repris par un autre : seulement ses enfants nés après son départ.
+        (_, Some(d)) => vec![(racine, d)],
+        _ => vec![],
+    };
     loop {
         let avant = vus.len();
-        for (pid, p) in s.processes() {
-            if p.parent().is_some_and(|parent| vus.contains(&parent)) {
-                vus.insert(*pid);
+        for (pid, parent, t) in releve {
+            if vus.iter().any(|(v, _)| v == pid) {
+                continue;
+            }
+            if let Some(&(pa, t_parent)) = parent.and_then(|pa| vus.iter().find(|(v, _)| *v == pa)) {
+                // Numéro de la racine repris : un enfant né APRÈS l'arrivée du nouveau venu est le sien, pas le nôtre.
+                let du_nouveau_venu = reprise && pa == racine && vivante.is_some_and(|v| *t >= v);
+                if *t >= t_parent && !du_nouveau_venu {
+                    vus.push((*pid, *t));
+                }
             }
         }
         if vus.len() == avant {
             break;
         }
     }
-    vus.into_iter().filter(|p| s.process(*p).is_some()).map(|p| p.as_u32()).collect()
+    // Seulement ce qui vit encore : une racine fermée (ou reprise par un autre) n'en fait pas partie.
+    vus.into_iter().map(|(p, _)| p).filter(|p| releve.iter().any(|(x, _, _)| x == p) && !(*p == racine && (vivante.is_none() || reprise))).collect()
+}
+
+/// Frogtend lui-même et les programmes qui l'ont lancé (jusqu'en haut) : jamais terminés, quoi qu'il arrive.
+fn intouchables(s: &System) -> HashSet<u32> {
+    let mut l = HashSet::new();
+    let mut p = Some(Pid::from_u32(std::process::id()));
+    let mut avant = u64::MAX;
+    while let Some(pid) = p {
+        let Some(x) = s.process(pid) else { break };
+        // Un « parent » né après son enfant est un numéro repris : la remontée s'arrête là.
+        if x.start_time() > avant || !l.insert(pid.as_u32()) {
+            break;
+        }
+        avant = x.start_time();
+        p = x.parent();
+    }
+    l
+}
+
+/// Ce qui peut être terminé dans `pids` : jamais ce qui est dans `jamais`.
+fn a_terminer(pids: &[u32], jamais: &HashSet<u32>) -> Vec<u32> {
+    pids.iter().copied().filter(|p| !jamais.contains(p)).collect()
 }
 
 /// Les programmes d'un jeu PC à figer : TOUS les processus dont le programme est dans `dossier`, qu'ils descendent ou
@@ -105,7 +184,8 @@ pub fn processus_du_dossier(dossier: &Path) -> Vec<u32> {
 pub fn terminer(pids: &[u32]) -> usize {
     let mut s = System::new();
     s.refresh_processes(ProcessesToUpdate::All, true);
-    pids.iter().filter_map(|p| s.process(Pid::from_u32(*p))).filter(|p| p.kill()).count()
+    let jamais = intouchables(&s);
+    a_terminer(pids, &jamais).into_iter().filter_map(|p| s.process(Pid::from_u32(p))).filter(|p| p.kill()).count()
 }
 
 /// Les processus de cette liste dont le programme est dans `dossier` (sans tenir compte des majuscules).
@@ -242,6 +322,35 @@ mod tests {
     use std::time::{Duration, Instant};
 
     #[test]
+    fn un_numero_reutilise_par_windows_n_adopte_jamais_des_programmes_sans_rapport() {
+        // Le cas du 21/10 : la suite de tests (500), lancée il y a longtemps par un programme fermé depuis dont le
+        // numéro (77) vient d'être donné au `cmd` d'un essai. Elle « descendait » de 77 : elle s'est fermée elle-même.
+        let releve = vec![(77, Some(1), 1000), (78, Some(77), 1001), (500, Some(77), 10), (501, Some(500), 11)];
+        assert_eq!(descendants(&releve, 77, None), vec![77, 78], "jamais 500 ni ses enfants");
+        // Une partie dont le lanceur (.bat, 77) s'est fermé : l'émulateur qu'il a ouvert (78) reste à elle…
+        let releve = vec![(78, Some(77), 1001), (79, Some(78), 1002), (500, Some(77), 10)];
+        assert_eq!(descendants(&releve, 77, Some(1000)), vec![78, 79], "les orphelins nés après le départ, pas 500");
+        // … mais sans heure de départ connue, une racine fermée n'a plus d'enfants sûrs : rien.
+        assert!(descendants(&releve, 77, None).is_empty());
+        // Le numéro de la partie (77, partie à 1000) repris par un autre programme (né à 1500) : ni lui, ni ses
+        // enfants ; l'émulateur de la partie (78, né à 1001) si.
+        let releve = vec![(77, Some(3), 1500), (90, Some(77), 1501), (78, Some(77), 1001)];
+        assert_eq!(descendants(&releve, 77, Some(1000)), vec![78]);
+    }
+
+    #[test]
+    fn frogtend_ne_se_termine_jamais_lui_meme_ni_ce_qui_l_a_lance() {
+        let moi = std::process::id();
+        let mut s = System::new();
+        s.refresh_processes(ProcessesToUpdate::All, true);
+        let parent = s.process(Pid::from_u32(moi)).and_then(|p| p.parent()).map(|p| p.as_u32()).unwrap();
+        // Jamais le VRAI `terminer` sur la suite de tests ici : si la garde régressait, elle se fermerait sans test rouge.
+        let jamais = intouchables(&s);
+        assert!(jamais.contains(&moi) && jamais.contains(&parent));
+        assert_eq!(a_terminer(&[moi, parent, 4242], &jamais), vec![4242]);
+    }
+
+    #[test]
     fn un_dossier_n_englobe_jamais_son_voisin_ni_une_racine_de_disque() {
         let s = Suivi::nouveau(0, vec![PathBuf::from(r"D:\Steam\steamapps\common\Portal"), PathBuf::from(r"E:\")]);
         assert!(s.dans_un_dossier(Some(Path::new(r"D:\Steam\steamapps\common\Portal\portal.exe"))));
@@ -304,6 +413,8 @@ mod tests {
     fn programme_qui_reste() -> (std::process::Child, u32, PathBuf) {
         let enfant = std::process::Command::new("ping").args(["-n", "30", "127.0.0.1"]).stdout(std::process::Stdio::null()).spawn().unwrap();
         let pid = enfant.id();
+        // Daté comme une vraie partie (`demarrer`) : les essais suivent la même règle que l'application.
+        noter_depart(pid);
         let mut s = System::new();
         s.refresh_processes(ProcessesToUpdate::All, true);
         let dossier = s.process(Pid::from_u32(pid)).and_then(|p| p.exe()).and_then(|e| e.parent()).map(PathBuf::from).unwrap();

@@ -253,3 +253,10 @@ passe par l'outil d'édition, toujours.
 21/10 (0.92.0) : `tests/sept_z.rs` (7z piégé) rouge pendant `livrer` : l'octet 0x0C était cherché dès le début d'un
 en-tête qui contient des dates et des CRC (un 0x0C par hasard → mauvaise place modifiée). Corrigé : chercher après
 le codeur. Un test qui « fabrique » un fichier binaire ne cherche jamais un octet seul sans ancrage.
+
+## 24/10 — Des messages à Seb écrits en anglais
+
+Après une longue suite de messages de Firehouse, plusieurs réponses à Seb (et deux messages à Firehouse) sont
+parties en ANGLAIS. Seb ne répond qu'aux messages en français, pour être sûr de bien comprendre. Règle : relire
+CHAQUE message avant de l'envoyer — à Seb comme à Firehouse — et vérifier qu'il est en français, sans exception,
+même après un long travail ou un résumé de contexte.

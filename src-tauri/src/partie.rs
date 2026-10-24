@@ -147,6 +147,8 @@ async fn lancer_par_la_boutique(b: &crate::jeux_pc::LancementBoutique, dossier: 
         while Instant::now() < fin {
             let pids = crate::lancement::processus_du_dossier(&d);
             if let Some(p) = racine_du_dossier(&pids) {
+                // Daté dès qu'il est vu : un numéro repris plus tard par un autre programme ne comptera pas.
+                crate::lancement::noter_depart(p);
                 return Ok(p);
             }
             std::thread::sleep(std::time::Duration::from_secs(1));
