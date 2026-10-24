@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.101.0 — La fiche de chaque console
+
+- 🕹 Choisis une console dans la liste : le panneau de droite montre sa bannière (ou son logo), son fabricant, son
+  année de sortie et sa description en français, servis par Firehouse.
+- Les images et les textes venus de sources libres (Wikipédia, Wikimedia Commons, libretro) portent leurs crédits :
+  auteur, licence, et un lien « source » vers l'original, comme leurs licences le demandent.
+- Les images sont gardées sur le PC pour ton profil : elles restent visibles hors ligne, et ne sont retéléchargées
+  que si Firehouse les change.
+
 ## 0.100.0 — Les noms courts des consoles
 
 - 🎮 Les consoles portent maintenant les noms courts que tu as choisis dans Firehouse : « Mega Drive » au lieu de

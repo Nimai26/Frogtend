@@ -224,6 +224,33 @@ fn repondre_fond(app: &tauri::AppHandle, chemin: &str) -> tauri::http::Response<
     }
 }
 
+/// Répond aux adresses `systeme://localhost/<type>?plateforme=<nom encodé>&largeur=N&e=<empreinte>` (sous Windows :
+/// `http://systeme.localhost/…`) avec une image d'un système (contrat 1.28) pour le profil OUVERT. L'empreinte dans
+/// l'adresse distingue deux versions d'une image (rien n'est gardé par le navigateur).
+fn repondre_systeme(app: &tauri::AppHandle, chemin: &str, requete: Option<&str>) -> tauri::http::Response<Vec<u8>> {
+    let sorte = chemin.trim_matches('/');
+    let Some(nom) = parametre(requete, "plateforme").map(|n| percent_decode(&n.replace('+', " "))) else { return reponse_vide(400) };
+    let largeur = parametre(requete, "largeur").and_then(|l| l.parse::<u32>().ok()).unwrap_or(400);
+    let noyau = app.state::<noyau::Noyau>();
+    match tauri::async_runtime::block_on(noyau.image_systeme(&nom, sorte, largeur)) {
+        Ok(Some(img)) => tauri::http::Response::builder()
+            .status(200)
+            .header("Content-Type", img.type_contenu.unwrap_or_else(|| type_d_image(&img.octets).into()))
+            // Jamais gardée par le navigateur (son cache est commun à tous les profils), comme les jaquettes.
+            .header("Cache-Control", "no-store")
+            // Une icône monochrome sert de MASQUE CSS (teintée par le thème) : Chromium la charge avec un contrôle
+            // d'origine. Seulement l'application elle-même, jamais une page tierce.
+            .header("Access-Control-Allow-Origin", "http://tauri.localhost")
+            .body(img.octets)
+            .unwrap(),
+        Ok(None) => reponse_vide(404),
+        Err(e) => {
+            noyau.journaliser(&format!("image du système {nom} ({sorte}) : {e:?}"));
+            reponse_vide(404)
+        }
+    }
+}
+
 /// `boutique://steam/<appid>` : la jaquette officielle d'un jeu Steam, en cache (images publiques de Steam).
 fn repondre_boutique(app: &tauri::AppHandle, chemin: &str) -> tauri::http::Response<Vec<u8>> {
     let cache = app.state::<noyau::Noyau>().dossier.join("images-boutiques");
@@ -394,6 +421,17 @@ pub fn run() {
             let chemin = requete.uri().path().to_string();
             std::thread::spawn(move || repondeur.respond(repondre_fond(&app, &chemin)));
         })
+        .register_asynchronous_uri_scheme_protocol("systeme", |ctx, requete, repondeur| {
+            let app = ctx.app_handle().clone();
+            let chemin = requete.uri().path().to_string();
+            let parametres = requete.uri().query().map(String::from);
+            // Hors du fil de l'interface : l'image peut venir du réseau.
+            std::thread::spawn(move || {
+                let reponse = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| repondre_systeme(&app, &chemin, parametres.as_deref())))
+                    .unwrap_or_else(|_| reponse_vide(500));
+                repondeur.respond(reponse)
+            });
+        })
         .register_asynchronous_uri_scheme_protocol("boutique", |ctx, requete, repondeur| {
             let app = ctx.app_handle().clone();
             let chemin = requete.uri().path().to_string();
@@ -415,6 +453,7 @@ pub fn run() {
             commandes::ludotheque_synchroniser,
             commandes::ludotheque_synchronisee_le,
             commandes::ludotheque_plateformes,
+            commandes::plateforme_fiche,
             commandes::ludotheque_groupes,
             commandes::ludotheque_genres,
             commandes::ludotheque_lister,

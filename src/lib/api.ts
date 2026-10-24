@@ -13,6 +13,37 @@ export interface Profil {
   a_un_jeton?: boolean;
 }
 
+/** Une image d'un système (contrat 1.28) et ses CRÉDITS (`licence` null : rien à créditer, LaunchBox). */
+export interface ImageSysteme {
+  id: number;
+  empreinte: string;
+  largeur?: number;
+  hauteur?: number;
+  source?: string;
+  licence?: string | null;
+  auteur?: string | null;
+  url_source?: string | null;
+}
+
+/** La fiche d'un système (contrat 1.28), telle que Firehouse l'a donnée au profil. */
+export interface FicheSysteme {
+  nom: string;
+  nom_affiche?: string;
+  fabricant?: string | null;
+  date_sortie?: string | null;
+  description_fr?: string | null;
+  description_source?: string | null;
+  description_licence?: string | null;
+  images?: Partial<Record<'logo' | 'banniere' | 'fond' | 'appareil' | 'icone', ImageSysteme | null>>;
+}
+
+/** L'adresse d'une image d'un système (servie par le cœur pour le profil ouvert) ; l'empreinte change l'adresse quand
+ * l'image change. */
+export function adresseImageSysteme(nom: string, sorte: string, largeur: number, empreinte: string): string {
+  const l = Math.min(1000, Math.max(100, Math.ceil(largeur / 100) * 100));
+  return `http://systeme.localhost/${sorte}?plateforme=${encodeURIComponent(nom)}&largeur=${l}&e=${encodeURIComponent(empreinte.slice(0, 16))}`;
+}
+
 export interface Plateforme {
   /** Le nom LaunchBox : la CLÉ partout (filtres, réglages par système, chemins). */
   nom: string;
@@ -586,6 +617,8 @@ export const api = {
   reunions: () => appeler<[number, number][]>('jeux_reunions'),
   synchroniseeLe: () => appeler<string | null>('ludotheque_synchronisee_le'),
   plateformes: (locale: boolean) => appeler<Plateforme[]>('ludotheque_plateformes', { locale }),
+  /** La fiche d'un système (contrat 1.28) ; `null` : pas encore reçue. */
+  plateformeFiche: (nom: string) => appeler<FicheSysteme | null>('plateforme_fiche', { nom }),
   genres: (plateforme: string | null, locale: boolean) => appeler<string[]>('ludotheque_genres', { plateforme, locale }),
   lister: (filtre: Filtre) => appeler<Liste>('ludotheque_lister', { filtre }),
   auHasard: (plateforme: string | null, locale: boolean) =>

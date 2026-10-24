@@ -760,6 +760,18 @@ d'abord :
 
 ## ✅ Livré (version — ce qui a été vérifié)
 
+- **0.101.0** (24/10) — Lot « Plateformes », P2a : fiches des systèmes au bureau (contrat 1.28 ; relectures contrat
+  et interface : rien de bloquant, leurs IMPORTANTS corrigés). Cœur : `Cache::fiche_plateforme` ;
+  `Source::image_systeme` (`/plateforme/media/{type}?plateforme=&largeur=&id=`) ; `Noyau::fiche_systeme` et
+  `image_systeme` (dossier du PROFIL `systemes/<sha1 du nom>/<type>-<largeur>-<empreinte>.img`, relue quand
+  l'empreinte change, 404 → rien gardé pour ce jeton, hors ligne une autre largeur ; effacé au changement de compte
+  avec jaquettes et visuels) ; commande `plateforme_fiche` ; protocole `systeme` (`no-store`, origine de
+  l'application seule ; CSP). Interface : `FicheSysteme.svelte` dans le panneau de détails (bannière sinon logo,
+  repli si l'image échoue, fabricant · année, description repliée, crédits auteur · licence + « source » ; encre des
+  liens de la charte), `systemes.ts` (+ tests). Vérifié : tests (cœur 477, interface 234). NON vérifié : le rendu
+  réel (A-TESTER). RESTE : P2b Taodbox (boutons logo/bannière, fond du système, crédits par « ⓘ Crédits »), P2c
+  icônes teintées dans la colonne ; ménage des systèmes disparus ; « Lire la suite » même pour un texte court.
+
 - **0.100.0** (24/10) — Lot « Plateformes », P1 : noms courts (contrat 1.27 ; avis des experts contrat, interface et
   lancement avant ; relecture interface après, ses IMPORTANTS — affichages oubliés — corrigés). Cœur : `Plateforme`
   gagne `nom_affiche` et `fiche` (l'entrée brute, pour P2, jamais envoyée avec la liste) ; table `plateformes` +

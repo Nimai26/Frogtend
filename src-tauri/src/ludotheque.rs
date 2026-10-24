@@ -553,6 +553,12 @@ impl Cache {
         seulement.map(|ids| serde_json::to_string(ids).unwrap())
     }
 
+    /// La fiche d'un système (contrat 1.28) telle que Firehouse l'a donnée à CE profil, si elle est gardée.
+    pub fn fiche_plateforme(&self, nom: &str) -> Resultat<Option<Value>> {
+        let brut: Option<Option<String>> = self.db.query_row("SELECT fiche FROM plateformes WHERE nom = ?1", [nom], |r| r.get(0)).optional()?;
+        Ok(brut.flatten().and_then(|b| serde_json::from_str(&b).ok()))
+    }
+
     /// Les plateformes, avec le nombre de jeux présents dans le cache (plus fiable que celui annoncé).
     pub fn plateformes(&self, seulement: Option<&[i64]>) -> Resultat<Vec<Plateforme>> {
         let mut st = self.db.prepare(

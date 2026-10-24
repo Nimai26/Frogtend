@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: asset: http://asset.localhost jaquette: http://jaquette.localhost boutique: http://boutique.localhost document: http://document.localhost; media-src 'self' asset: http://asset.localhost fond: http://fond.localhost document: http://document.localhost; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost"
+      "csp": "default-src 'self'; img-src 'self' data: asset: http://asset.localhost jaquette: http://jaquette.localhost boutique: http://boutique.localhost document: http://document.localhost systeme: http://systeme.localhost; media-src 'self' asset: http://asset.localhost fond: http://fond.localhost document: http://document.localhost; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost"
     }
   },
   "bundle": {

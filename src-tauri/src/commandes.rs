@@ -207,6 +207,12 @@ pub async fn ludotheque_plateformes(noyau: State<'_, Noyau>, locale: Option<bool
     noyau.plateformes(locale.unwrap_or(false)).await
 }
 
+/// La fiche d'un système (contrat 1.28), gardée pour le profil ouvert ; `None` : pas (encore) reçue.
+#[tauri::command]
+pub async fn plateforme_fiche(noyau: State<'_, Noyau>, nom: String) -> Resultat<Option<Value>> {
+    noyau.fiche_systeme(&nom).await
+}
+
 #[tauri::command]
 pub async fn ludotheque_genres(
     noyau: State<'_, Noyau>,

@@ -388,7 +388,7 @@ impl Noyau {
     /// montrées (le catalogue est vide) et le ménage de la synchronisation suivante les retire.
     fn oublier(&self, id: &str, dossier: &Path, cache: &mut Cache, compte: &str) -> Resultat<()> {
         cache.vider_firehouse(compte)?;
-        for sous in ["jaquettes", "visuels"] {
+        for sous in ["jaquettes", "visuels", "systemes"] {
             let d = dossier.join(sous);
             if std::fs::symlink_metadata(&d).is_ok_and(|m| m.is_dir()) {
                 if let Err(e) = std::fs::remove_dir_all(&d) {
@@ -1219,6 +1219,70 @@ impl Noyau {
         }
     }
 
+    /// La fiche d'un système (contrat 1.28 : images avec leurs crédits, fabricant, date, description) telle que
+    /// Firehouse l'a donnée à CE profil ; `None` avant une synchronisation qui l'a reçue.
+    pub async fn fiche_systeme(&self, nom: &str) -> Resultat<Option<Value>> {
+        let s = self.session().await?;
+        let fiche = s.verrou().fiche_plateforme(nom)?;
+        Ok(fiche)
+    }
+
+    /// Une image d'un système (`logo`, `banniere`, `fond`, `appareil`, `icone`) pour le profil OUVERT, gardée dans SON
+    /// dossier (`systemes/<clé du nom>/<type>-<largeur>-<empreinte>.img` : jamais partagée, Firehouse répond selon le
+    /// jeton) et relue seulement quand son empreinte change ; hors ligne, la même image à une autre largeur.
+    pub async fn image_systeme(&self, nom: &str, sorte: &str, largeur: u32) -> Resultat<Option<Image>> {
+        const SORTES: [&str; 5] = ["logo", "banniere", "fond", "appareil", "icone"];
+        if !SORTES.contains(&sorte) {
+            return Ok(None);
+        }
+        let s = self.session().await?;
+        let fiche = s.verrou().fiche_plateforme(nom)?;
+        let Some(fiche) = fiche else { return Ok(None) };
+        let largeur = largeur.clamp(100, 1000).div_ceil(100) * 100;
+        // Un nom de système peut porter « / » (« Thomson MO/TO ») : le dossier est une empreinte du nom.
+        let cle: String = {
+            use sha1::{Digest, Sha1};
+            Sha1::digest(nom.as_bytes()).iter().take(8).map(|b| format!("{b:02x}")).collect()
+        };
+        let dossier = s.dossier.join("systemes").join(cle);
+        let purger = |garder: Option<&str>| {
+            for e in std::fs::read_dir(&dossier).into_iter().flatten().flatten() {
+                let n = e.file_name().to_string_lossy().to_string();
+                if n.starts_with(&format!("{sorte}-")) && !garder.is_some_and(|g| n.ends_with(&format!("-{g}.img"))) {
+                    let _ = std::fs::remove_file(e.path());
+                }
+            }
+        };
+        let image = &fiche["images"][sorte];
+        let empreinte: String = image["empreinte"].as_str().unwrap_or("").chars().filter(char::is_ascii_alphanumeric).take(32).collect();
+        if !image.is_object() || empreinte.is_empty() {
+            purger(None); // le système n'a pas (ou plus) ce visuel
+            return Ok(None);
+        }
+        let fichier = dossier.join(format!("{sorte}-{largeur}-{empreinte}.img"));
+        if let Ok(octets) = std::fs::read(&fichier) {
+            return Ok(Some(Image { type_contenu: type_image(&octets), octets }));
+        }
+        match s.source.image_systeme(nom, sorte, image["id"].as_i64(), largeur).await {
+            Ok(Some(img)) => {
+                if s.garder_fichier(&fichier, &img.octets).or_else(perimee_seulement)? {
+                    purger(Some(&empreinte));
+                }
+                Ok(Some(Image { type_contenu: img.type_contenu.or_else(|| type_image(&img.octets)), octets: img.octets }))
+            }
+            Ok(None) => {
+                if !s.source.est_simulee() {
+                    purger(None); // plus servi à CE jeton : rien de gardé pour lui
+                }
+                Ok(None)
+            }
+            Err(Erreur::Reseau(_) | Erreur::Serveur(_)) => {
+                Ok(crate::medias::autre_largeur(&dossier, &format!("{sorte}-"), &empreinte, largeur).map(|octets| Image { type_contenu: type_image(&octets), octets }))
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     /// Un visuel d'un jeu (contrat 1.6, relevé en réel le 15/10) : le premier des `sortes` que le jeu a, en 1 000 px au
     /// plus (jamais l'original). `jaquette` dans la liste passe par `jaquette` (son cache, les jeux de boutique, la
     /// copie hors ligne) : c'est le repli de la grille (`?visuel=boite_3d,jaquette`).
@@ -1604,6 +1668,57 @@ mod tests {
         // Le jeu 2 n'a pas de jaquette selon Firehouse : aucune requête.
         assert!(n.jaquette(2, None).await.unwrap().is_none());
         assert!(d.path().join("profils").join(&id).join("jaquettes").join("1-1000-x.img").is_file());
+    }
+
+    #[tokio::test]
+    async fn la_fiche_et_les_images_d_un_systeme_suivent_leur_empreinte_et_restent_hors_ligne() {
+        // Le relevé RÉEL du 24/10 (contrat 1.28) : 3DO (toutes les images), e-Reader (icône seule).
+        let reel: Value = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/simule/plateformes-128.json")).unwrap()).unwrap();
+        let serveur = MockServer::start();
+        serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(reel.clone());
+        });
+        serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [{"id": 1, "titre": "A", "plateforme": "3DO Interactive Multiplayer"}]}));
+        });
+        let png = [0x89u8, b'P', b'N', b'G', 9];
+        let fond = serveur.mock(|w, t| {
+            // Le nom en PARAMÈTRE (encodé), l'`id` de l'image (immuable), la largeur arrondie à la centaine.
+            w.method(GET).path("/api/jeux/v1/plateforme/media/fond").query_param("plateforme", "3DO Interactive Multiplayer").query_param("id", "201").query_param("largeur", "1000");
+            t.status(200).body(png);
+        });
+        let (d, n) = noyau();
+        let id = n.creer_profil("Seb", None, Some("jeton-test")).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: serveur.base_url(), simule: false }).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+
+        let f = n.fiche_systeme("3DO Interactive Multiplayer").await.unwrap().unwrap();
+        assert_eq!(f["images"]["fond"]["licence"], "CC BY-SA 3.0", "les crédits arrivent avec la fiche");
+        assert!(n.image_systeme("3DO Interactive Multiplayer", "fond", 960).await.unwrap().is_some());
+        n.image_systeme("3DO Interactive Multiplayer", "fond", 960).await.unwrap().unwrap();
+        fond.assert_hits(1); // la seconde fois vient du disque du profil
+        assert!(d.path().join("profils").join(&id).join("systemes").read_dir().unwrap().next().is_some());
+        // Un type que le système n'a pas, un type inconnu, un système inconnu : rien demandé.
+        assert!(n.image_systeme("Nintendo e-Reader", "fond", 400).await.unwrap().is_none());
+        assert!(n.image_systeme("3DO Interactive Multiplayer", "../../x", 400).await.unwrap().is_none());
+        assert!(n.image_systeme("Inconnue", "logo", 400).await.unwrap().is_none());
+        // Un 404 pour CE jeton (plus aucun jeu de ce système visible) : ce qui était gardé pour lui part.
+        let refus = serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateforme/media/icone");
+            t.status(404).json_body(json!({"ok": false}));
+        });
+        let dossier = d.path().join("profils").join(&id).join("systemes");
+        let sys = dossier.read_dir().unwrap().next().unwrap().unwrap().path();
+        std::fs::write(sys.join("icone-400-15ee829952fe576a5c5f8ad8b95e2fc5.img"), b"vieux").unwrap();
+        std::fs::write(sys.join("icone-200-ancienne.img"), b"vieux").unwrap();
+        assert!(n.image_systeme("3DO Interactive Multiplayer", "icone", 300).await.unwrap().is_none());
+        refus.assert_hits(1);
+        assert!(!sys.read_dir().unwrap().flatten().any(|e| e.file_name().to_string_lossy().starts_with("icone-")), "rien de gardé pour ce jeton");
+        // Hors ligne : la même image, gardée à une autre largeur.
+        n.ouvrir(&id, None, &Connexion { adresse: "http://127.0.0.1:9".into(), simule: false }).await.unwrap();
+        assert!(n.image_systeme("3DO Interactive Multiplayer", "fond", 500).await.unwrap().is_some());
     }
 
     #[tokio::test]
@@ -2242,7 +2357,7 @@ mod tests {
         assert_eq!(n.session().await.unwrap().verrou().meta("compte").unwrap().as_deref(), Some("seb#admin"));
         assert_eq!(n.profils.trouver(&id).unwrap().compte.as_deref(), Some("seb#admin"), "retenu aussi dans le profil");
         let remplir = || {
-            for r in ["jaquettes/1-400-j1.img", "visuels/1/fond-1000-f1.img", "documents/1/documents.json", "documents/1/3.pdf", "derniere-sauvegarde.json"] {
+            for r in ["jaquettes/1-400-j1.img", "visuels/1/fond-1000-f1.img", "systemes/0123abcd/fond-1000-f1.img", "documents/1/documents.json", "documents/1/3.pdf", "derniere-sauvegarde.json"] {
                 std::fs::create_dir_all(p.join(r).parent().unwrap()).unwrap();
                 std::fs::write(p.join(r), b"x").unwrap();
             }
@@ -2262,6 +2377,7 @@ mod tests {
         assert_eq!(session.verrou().nombre_de_jeux().unwrap(), 0);
         assert_eq!(session.verrou().meta("compte").unwrap().as_deref(), Some("lea#mineur"));
         assert!(!p.join("jaquettes").exists() && !p.join("visuels").exists() && !p.join("derniere-sauvegarde.json").exists());
+        assert!(!p.join("systemes").exists(), "les images des systèmes reçues pour l'ancien compte partent aussi");
         assert!(!p.join("documents/1/documents.json").exists());
         assert!(p.join("documents/1/3.pdf").exists());
         assert!(vieille.verrou_vivant().is_err(), "une synchronisation en cours avec l'ancien jeton n'écrit plus rien");

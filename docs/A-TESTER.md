@@ -48,6 +48,11 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Fiche de chaque console (0.101.0)
+- [ ] Après une synchronisation, choisir « 3DO » (ou une autre console) : bannière ou logo, fabricant · année,
+      description (« Lire la suite »), et sous l'image / le texte les crédits avec « source » (ouvre la page).
+- [ ] Débrancher Internet : la fiche et son image restent là.
+
 ## Noms courts des consoles (0.100.0)
 - [ ] Après une synchronisation : « Mega Drive », « Super Nintendo »… dans la colonne des plateformes (à la bonne
       lettre), la fiche d'un jeu, Taodbox (boutons des consoles).

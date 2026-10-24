@@ -162,6 +162,24 @@ impl Source {
         }
     }
 
+    /// Une image d'un SYSTÈME (contrat 1.28) : `GET /plateforme/media/{type}?plateforme=<nom>&largeur=&id=` (WebP,
+    /// transparence gardée) ; 404 → `None` (ce jeton ne voit aucun jeu du système, ou pas de visuel de ce type).
+    pub async fn image_systeme(&self, nom: &str, sorte: &str, id: Option<i64>, largeur: u32) -> Resultat<Option<Image>> {
+        match self {
+            Source::Firehouse(c) => {
+                let l = largeur.clamp(100, 1000);
+                let id = id.map(|i| format!("&id={i}")).unwrap_or_default();
+                match c.obtenir(&format!("/plateforme/media/{sorte}?plateforme={}&largeur={l}{id}", encoder(nom)), None).await {
+                    Ok(Reponse::Corps { octets, type_contenu, .. }) => Ok(Some(Image { octets, type_contenu })),
+                    Ok(Reponse::NonModifie) => Ok(None),
+                    Err(Erreur::Introuvable(_)) => Ok(None),
+                    Err(e) => Err(e),
+                }
+            }
+            Source::Simulee => Ok(None),
+        }
+    }
+
     /// Une image (`jaquette`…), en miniature si `largeur` est donnée. `None` si Firehouse n'en a pas.
     pub async fn media(&self, id: i64, sorte: &str, largeur: Option<u32>) -> Resultat<Option<Image>> {
         match self {

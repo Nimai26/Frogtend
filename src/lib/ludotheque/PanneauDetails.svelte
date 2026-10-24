@@ -8,6 +8,7 @@
   import { rangCourt } from './versions';
   import Jaquette from './Jaquette.svelte';
   import { jeuAuHasard, ludo, nomAffiche } from './ludotheque.svelte';
+  import FicheSysteme from './FicheSysteme.svelte';
   import { annuler, jeuSurPc, mettreDansLaLudotheque, mettreEnPause, reprendre } from './telechargements.svelte';
   import { emulateursDuJeu, gererLaCarte, installer, jouerAvec, jouerLaCarte, partie } from './jeu.svelte';
   import { estJeuDeBoutique, ouvrirJeuDeBoutique } from '$lib/boutiques/jeu-boutique';
@@ -161,6 +162,7 @@
         {/if}
       </p>
     </div>
+    {#if ludo.plateforme}<FicheSysteme nom={ludo.plateforme} />{/if}
     <button class="btn hasard" onclick={jeuAuHasard} disabled={ludo.totalLudotheque === 0}>
       <span class="de" aria-hidden="true">🎲</span>
       Jeu au hasard
