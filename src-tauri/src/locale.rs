@@ -257,7 +257,9 @@ impl Noyau {
                 Some(d) => format!("{}/{nom}", nom_de_fichier_sur(d)?),
                 None => nom,
             };
-            fichiers.push(FichierJeu { n: n as u32, nom, taille: f["taille"].as_u64().unwrap_or(0) });
+            // L'empreinte (contrat 1.24), seulement si elle a la forme d'un sha1 : vérifiée à la fin du téléchargement.
+            let sha1 = f["sha1"].as_str().filter(|h| h.len() == 40 && h.chars().all(|c| c.is_ascii_hexdigit())).map(str::to_lowercase);
+            fichiers.push(FichierJeu { n: n as u32, nom, taille: f["taille"].as_u64().unwrap_or(0), sha1, version: None });
         }
         if fichiers.is_empty() {
             return Err(Erreur::Refus("Cette version n'a aucun fichier à télécharger.".into()));
@@ -990,7 +992,7 @@ mod tests {
                 None => f["nom"].as_str().unwrap().to_string(),
             };
             let route = format!("/fichier/12258/{version}/{n}");
-            let r = crate::telechargements::telecharger_fichier(&c, &route, &brouillon, &nom, f["taille"].as_u64().unwrap(), &arret, 0, 0, 12258, &|_| {}).await;
+            let r = crate::telechargements::telecharger_fichier(&c, &route, &brouillon, &nom, f["taille"].as_u64().unwrap(), None, &arret, 0, 0, 12258, &|_| {}).await;
             println!("FICHIER {nom} : {:?}", r.map(|_| "ok"));
         }
     }

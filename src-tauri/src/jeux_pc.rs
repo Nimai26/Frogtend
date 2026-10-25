@@ -253,11 +253,18 @@ impl Etat {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct FichierJeu {
     pub n: u32,
     pub nom: String,
     pub taille: u64,
+    /// L'empreinte annoncée par Firehouse (contrat 1.24) : vérifiée à la fin du téléchargement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha1: Option<String>,
+    /// La version (`telechargement_id`) dont vient CE fichier, quand une ligne porte plusieurs versions (les cartes
+    /// d'un jeu e-Reader) ; absent : la version de la ligne.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<i64>,
 }
 
 /// Ce qui a été fait pour installer un jeu, et ce qu'on lance pour y jouer.
@@ -681,7 +688,7 @@ mod tests {
             dossier: dossier.to_string_lossy().into(),
             etat: Etat::Attente,
             total: 10,
-            fichiers: vec![FichierJeu { n: 0, nom: "Dune (1992) [MS-DOS].exe".into(), taille: 10 }],
+            fichiers: vec![FichierJeu { n: 0, nom: "Dune (1992) [MS-DOS].exe".into(), taille: 10, ..Default::default() }],
             message: None,
             ajoute_le: "1".into(),
             ajoute_par: "seb".into(),

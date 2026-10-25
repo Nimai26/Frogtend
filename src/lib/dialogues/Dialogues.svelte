@@ -2,9 +2,12 @@
   // Affiche la pile des fenêtres maison et les toasts. À poser une seule fois, dans la mise en page.
   import { annulerDessus, fermerToast, pile, type Dialogue } from './fenetres.svelte';
   import { retenirFocus } from './focus';
+  import { filtrerOptions, SEUIL_FILTRE } from './filtre';
 
   // Texte en cours de saisie de la fenêtre « Demander », par identifiant de fenêtre.
   let saisies = $state<Record<number, string>>({});
+  /** Le texte cherché dans une longue liste de choix (par fenêtre). */
+  let filtres = $state<Record<number, string>>({});
 
   const dessus = $derived(pile.dialogues.at(-1));
 
@@ -112,8 +115,20 @@
         {#if d.options.length === 0}
           <p class="muted">Aucun choix possible pour l'instant.</p>
         {:else}
+          {@const montrees = d.options.length > SEUIL_FILTRE ? filtrerOptions(d.options, filtres[d.id] ?? '') : d.options}
+          {#if d.options.length > SEUIL_FILTRE}
+            <input
+              class="filtre"
+              type="search"
+              placeholder="🔎 Chercher…"
+              aria-label="Chercher dans la liste"
+              value={filtres[d.id] ?? ''}
+              oninput={(e) => (filtres[d.id] = e.currentTarget.value)}
+            />
+            <p class="muted">{montrees.length ? `${montrees.length} sur ${d.options.length}` : 'Aucun choix ne correspond : essaie un autre mot.'}</p>
+          {/if}
           <ul class="choix">
-            {#each d.options as o, i (i)}
+            {#each montrees as o (o)}
               <li>
                 <button class="btn option" onclick={() => d.fermer(o.valeur)}>
                   <span>{o.libelle}</span>
@@ -203,6 +218,10 @@
   textarea,
   input {
     margin-bottom: calc(14 * var(--u));
+  }
+  .filtre {
+    width: 100%;
+    margin-bottom: calc(6 * var(--u));
   }
   .choix {
     list-style: none;

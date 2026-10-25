@@ -37,6 +37,41 @@ pub enum Issue {
     Pause,
 }
 
+/// Le refus d'un fichier arrivé abîmé (empreinte différente de celle de Firehouse) : il repartira de zéro.
+fn abime(nom: &str) -> Erreur {
+    Erreur::Serveur(format!(
+        "« {nom} » est arrivé abîmé (son empreinte n'est pas celle annoncée par Firehouse) : il a été écarté. Une reprise le retélécharge depuis le début ; s'il arrive encore abîmé, c'est le fichier chez Firehouse : inutile de relancer, préviens l'administrateur de Firehouse."
+    ))
+}
+
+/// Relit les `n` premiers octets d'un fichier dans une empreinte, par blocs (un `.part` de 50 Go prend du temps) :
+/// la pause est possible à chaque bloc (`None`), et la progression est dite.
+fn relire_dans(
+    h: &mut sha1::Sha1,
+    p: &Path,
+    n: u64,
+    arret: &AtomicBool,
+    signaler: &mut dyn FnMut(u64),
+) -> Resultat<Option<()>> {
+    use sha1::Digest;
+    use std::io::Read;
+    let mut f = std::fs::File::open(p)?.take(n);
+    let mut tampon = vec![0u8; 8 * 1024 * 1024];
+    let mut lus = 0u64;
+    loop {
+        if arret.load(Ordering::Relaxed) {
+            return Ok(None);
+        }
+        let k = f.read(&mut tampon)?;
+        if k == 0 {
+            return Ok(Some(()));
+        }
+        h.update(&tampon[..k]);
+        lus += k as u64;
+        signaler(lus);
+    }
+}
+
 /// Télécharge UN fichier vers `dossier/nom` en passant par `nom.part`.
 /// `deja` : octets du jeu déjà comptés avant ce fichier (pour la progression d'ensemble).
 #[allow(clippy::too_many_arguments)]
@@ -46,12 +81,14 @@ pub async fn telecharger_fichier(
     dossier: &Path,
     nom: &str,
     taille: u64,
+    sha1: Option<&str>,
     arret: &AtomicBool,
     deja: u64,
     total: u64,
     jeu: i64,
     progres: &(impl Fn(Progres) + ?Sized),
 ) -> Resultat<Issue> {
+    use sha1::{Digest, Sha1};
     // Un nom, ou « sous-dossier/nom » (CHD MAME) : chaque partie contrôlée, jamais hors du dossier du jeu.
     let rel = crate::jeux_pc::chemin_de_fichier_sur(nom)?;
     let final_ = dossier.join(&rel);
@@ -71,7 +108,20 @@ pub async fn telecharger_fichier(
         std::fs::remove_file(&part)?;
         debut = 0;
     }
+    // La progression pendant la relecture d'un début déjà reçu (vérification de l'empreinte).
+    let mut verifie = |lus: u64| progres(Progres { jeu, recus: deja + lus, total, debit: 0, fichier: format!("vérification de « {nom} »") });
     if debut == taille && taille > 0 {
+        if let Some(attendue) = sha1 {
+            let mut h = Sha1::new();
+            if relire_dans(&mut h, &part, taille, arret, &mut verifie)?.is_none() {
+                return Ok(Issue::Pause);
+            }
+            let recue: String = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
+            if !recue.eq_ignore_ascii_case(attendue) {
+                std::fs::remove_file(&part)?;
+                return Err(abime(nom));
+            }
+        }
         std::fs::rename(&part, &final_)?;
         return Ok(Issue::Termine);
     }
@@ -91,6 +141,18 @@ pub async fn telecharger_fichier(
         // Le serveur renvoie tout le fichier (il n'a pas repris) : on réécrit depuis le début.
         debut = 0;
     }
+    // L'empreinte (contrat 1.24) se calcule PENDANT la réception : le début déjà reçu d'abord (reprise), puis chaque
+    // morceau — jamais une deuxième lecture d'un fichier de 50 Go.
+    let mut empreinte = match sha1 {
+        Some(_) => {
+            let mut h = Sha1::new();
+            if debut > 0 && relire_dans(&mut h, &part, debut, arret, &mut verifie)?.is_none() {
+                return Ok(Issue::Pause);
+            }
+            Some(h)
+        }
+        None => None,
+    };
     let mut sortie = std::fs::OpenOptions::new()
         .create(true)
         .write(true)
@@ -108,6 +170,9 @@ pub async fn telecharger_fichier(
         }
         let Some(morceau) = Client::morceau(&mut flux).await? else { break };
         sortie.write_all(&morceau)?;
+        if let Some(h) = empreinte.as_mut() {
+            h.update(&morceau);
+        }
         ecrits += morceau.len() as u64;
         ecrits_depuis += morceau.len() as u64;
         if ecrits > taille {
@@ -140,6 +205,13 @@ pub async fn telecharger_fichier(
             "« {nom} » est incomplet ({sur_disque} octets sur {taille}). Il reprendra où il en était."
         )));
     }
+    if let (Some(h), Some(attendue)) = (empreinte.take(), sha1) {
+        let recue: String = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
+        if !recue.eq_ignore_ascii_case(attendue) {
+            std::fs::remove_file(&part)?;
+            return Err(abime(nom));
+        }
+    }
     std::fs::rename(&part, &final_)?;
     progres(Progres { jeu, recus: deja + taille, total, debit: 0, fichier: nom.into() });
     Ok(Issue::Termine)
@@ -155,8 +227,9 @@ pub async fn telecharger_jeu(
     let dossier = Path::new(&jeu.dossier);
     let mut deja = 0u64;
     for f in &jeu.fichiers {
-        let route = format!("/fichier/{}/{}/{}", jeu.id, jeu.version, f.n);
-        match telecharger_fichier(client, &route, dossier, &f.nom, f.taille, arret, deja, jeu.total, jeu.id, progres)
+        // Chaque fichier sous SA version (les cartes d'un jeu e-Reader), sinon celle de la ligne.
+        let route = format!("/fichier/{}/{}/{}", jeu.id, f.version.unwrap_or(jeu.version), f.n);
+        match telecharger_fichier(client, &route, dossier, &f.nom, f.taille, f.sha1.as_deref(), arret, deja, jeu.total, jeu.id, progres)
             .await?
         {
             Issue::Pause => return Ok(Issue::Pause),
@@ -218,8 +291,8 @@ mod tests {
         let j = jeu(
             d.path(),
             vec![
-                FichierJeu { n: 0, nom: "Super Mario World (USA).sfc".into(), taille: 20 },
-                FichierJeu { n: 1, nom: "LISEZ-MOI.txt".into(), taille: 3 },
+                FichierJeu { n: 0, nom: "Super Mario World (USA).sfc".into(), taille: 20, ..Default::default() },
+                FichierJeu { n: 1, nom: "LISEZ-MOI.txt".into(), taille: 3, ..Default::default() },
             ],
         );
         let c = Client::nouveau(&s.base_url(), "j").unwrap();
@@ -234,6 +307,75 @@ mod tests {
         assert_eq!(*vus.lock().unwrap().last().unwrap(), 23);
     }
 
+    /// Le sha1 d'un contenu, en hexadécimal.
+    fn sha1_de(o: &[u8]) -> String {
+        use sha1::{Digest, Sha1};
+        Sha1::digest(o).iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    #[tokio::test]
+    async fn l_empreinte_de_firehouse_est_verifiee_meme_apres_une_reprise() {
+        // Repris en 206 depuis l'octet 8, empreinte annoncée = celle du fichier entier : accepté.
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/fichier/110/200/0").header("range", "bytes=8-");
+            t.status(206).body(&CONTENU[8..]);
+        });
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("jeu.iso.part"), &CONTENU[..8]).unwrap();
+        let c = Client::nouveau(&s.base_url(), "j").unwrap();
+        let bon = FichierJeu { n: 0, nom: "jeu.iso".into(), taille: 20, sha1: Some(sha1_de(CONTENU)), version: None };
+        telecharger_jeu(&c, &jeu(d.path(), vec![bon.clone()]), &AtomicBool::new(false), &|_| {}).await.unwrap();
+        assert_eq!(std::fs::read(d.path().join("jeu.iso")).unwrap(), CONTENU);
+        // Une empreinte différente : le fichier est écarté (jamais gardé abîmé), et c'est dit.
+        let s2 = MockServer::start();
+        s2.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/fichier/110/200/0");
+            t.status(200).body(CONTENU);
+        });
+        let d2 = tempfile::tempdir().unwrap();
+        let faux = FichierJeu { sha1: Some("0".repeat(40)), ..bon };
+        let e = telecharger_jeu(&Client::nouveau(&s2.base_url(), "j").unwrap(), &jeu(d2.path(), vec![faux]), &AtomicBool::new(false), &|_| {})
+            .await
+            .unwrap_err();
+        assert!(format!("{e:?}").contains("abîmé"), "{e:?}");
+        assert!(!d2.path().join("jeu.iso").exists() && !d2.path().join("jeu.iso.part").exists());
+    }
+
+    #[tokio::test]
+    async fn un_part_deja_complet_mais_abime_est_ecarte_sans_rien_demander() {
+        let s = MockServer::start();
+        let rien = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/fichier/110/200/0");
+            t.status(200).body(CONTENU);
+        });
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("jeu.iso.part"), vec![b'x'; 20]).unwrap();
+        let f = FichierJeu { n: 0, nom: "jeu.iso".into(), taille: 20, sha1: Some(sha1_de(CONTENU)), version: None };
+        let e = telecharger_jeu(&Client::nouveau(&s.base_url(), "j").unwrap(), &jeu(d.path(), vec![f]), &AtomicBool::new(false), &|_| {})
+            .await
+            .unwrap_err();
+        assert!(format!("{e:?}").contains("abîmé"));
+        assert!(!d.path().join("jeu.iso").exists() && !d.path().join("jeu.iso.part").exists());
+        assert_eq!(rien.hits(), 0, "un .part complet n'est pas redemandé : il est vérifié");
+    }
+
+    #[tokio::test]
+    async fn un_fichier_de_sa_propre_version_est_demande_sous_elle() {
+        // Les cartes d'un jeu e-Reader : chaque fichier sous SA version (-41144), pas celle de la ligne (200).
+        let s = MockServer::start();
+        let carte = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/fichier/110/-41144/0");
+            t.status(200).body(b"carte");
+        });
+        let d = tempfile::tempdir().unwrap();
+        let f = FichierJeu { n: 0, nom: "carte.7z".into(), taille: 5, sha1: None, version: Some(-41144) };
+        let mut j = jeu(d.path(), vec![f]);
+        j.total = 5;
+        telecharger_jeu(&Client::nouveau(&s.base_url(), "j").unwrap(), &j, &AtomicBool::new(false), &|_| {}).await.unwrap();
+        carte.assert();
+    }
+
     #[tokio::test]
     async fn un_fichier_commence_reprend_avec_range() {
         let s = MockServer::start();
@@ -244,7 +386,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         std::fs::write(d.path().join("jeu.iso.part"), &CONTENU[..8]).unwrap();
         let c = Client::nouveau(&s.base_url(), "j").unwrap();
-        let j = jeu(d.path(), vec![FichierJeu { n: 0, nom: "jeu.iso".into(), taille: 20 }]);
+        let j = jeu(d.path(), vec![FichierJeu { n: 0, nom: "jeu.iso".into(), taille: 20, ..Default::default() }]);
         telecharger_jeu(&c, &j, &AtomicBool::new(false), &|_| {}).await.unwrap();
         reprise.assert();
         assert_eq!(std::fs::read(d.path().join("jeu.iso")).unwrap(), CONTENU);
@@ -260,7 +402,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         std::fs::write(d.path().join("jeu.iso.part"), &CONTENU[..8]).unwrap();
         let c = Client::nouveau(&s.base_url(), "j").unwrap();
-        let j = jeu(d.path(), vec![FichierJeu { n: 0, nom: "jeu.iso".into(), taille: 20 }]);
+        let j = jeu(d.path(), vec![FichierJeu { n: 0, nom: "jeu.iso".into(), taille: 20, ..Default::default() }]);
         telecharger_jeu(&c, &j, &AtomicBool::new(false), &|_| {}).await.unwrap();
         assert_eq!(std::fs::read(d.path().join("jeu.iso")).unwrap(), CONTENU);
     }
@@ -274,7 +416,7 @@ mod tests {
         });
         let d = tempfile::tempdir().unwrap();
         let c = Client::nouveau(&s.base_url(), "j").unwrap();
-        let j = jeu(d.path(), vec![FichierJeu { n: 0, nom: "jeu.iso".into(), taille: 20 }]);
+        let j = jeu(d.path(), vec![FichierJeu { n: 0, nom: "jeu.iso".into(), taille: 20, ..Default::default() }]);
         let e = telecharger_jeu(&c, &j, &AtomicBool::new(false), &|_| {}).await.unwrap_err();
         assert!(matches!(&e, Erreur::Reseau(m) if m.contains("12 octets sur 20")), "{e:?}");
         assert!(!d.path().join("jeu.iso").exists(), "jamais de nom final pour un fichier incomplet");
@@ -298,7 +440,7 @@ mod tests {
             let d = tempfile::tempdir().unwrap();
             std::fs::write(d.path().join("jeu.iso.part"), &CONTENU[..8]).unwrap();
             let c = Client::nouveau(&s.base_url(), "j").unwrap();
-            let j = jeu(d.path(), vec![FichierJeu { n: 0, nom: "jeu.iso".into(), taille: 20 }]);
+            let j = jeu(d.path(), vec![FichierJeu { n: 0, nom: "jeu.iso".into(), taille: 20, ..Default::default() }]);
             let e = telecharger_jeu(&c, &j, &AtomicBool::new(false), &|_| {}).await.unwrap_err();
             assert_eq!(std::fs::read(d.path().join("jeu.iso.part")).unwrap(), &CONTENU[..8], "{code} : le .part est gardé");
             m.assert_hits(1);
@@ -317,7 +459,7 @@ mod tests {
         });
         let d = tempfile::tempdir().unwrap();
         let c = Client::nouveau(&s.base_url(), "j").unwrap();
-        let j = jeu(d.path(), vec![FichierJeu { n: 0, nom: "jeu.iso".into(), taille: 20 }]);
+        let j = jeu(d.path(), vec![FichierJeu { n: 0, nom: "jeu.iso".into(), taille: 20, ..Default::default() }]);
         let e = telecharger_jeu(&c, &j, &AtomicBool::new(false), &|_| {}).await.unwrap_err();
         assert!(matches!(e, Erreur::Conflit(_)));
         m.assert_hits(1);
@@ -332,7 +474,7 @@ mod tests {
         });
         let d = tempfile::tempdir().unwrap();
         let c = Client::nouveau(&s.base_url(), "j").unwrap();
-        let j = jeu(d.path(), vec![FichierJeu { n: 0, nom: "jeu.iso".into(), taille: 20 }]);
+        let j = jeu(d.path(), vec![FichierJeu { n: 0, nom: "jeu.iso".into(), taille: 20, ..Default::default() }]);
         let issue = telecharger_jeu(&c, &j, &AtomicBool::new(true), &|_| {}).await.unwrap();
         assert_eq!(issue, Issue::Pause);
         assert!(!d.path().join("jeu.iso").exists());
@@ -348,7 +490,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         std::fs::write(d.path().join("jeu.iso"), CONTENU).unwrap();
         let c = Client::nouveau(&s.base_url(), "j").unwrap();
-        let j = jeu(d.path(), vec![FichierJeu { n: 0, nom: "jeu.iso".into(), taille: 20 }]);
+        let j = jeu(d.path(), vec![FichierJeu { n: 0, nom: "jeu.iso".into(), taille: 20, ..Default::default() }]);
         telecharger_jeu(&c, &j, &AtomicBool::new(false), &|_| {}).await.unwrap();
         m.assert_hits(0);
     }
@@ -362,7 +504,7 @@ mod tests {
         });
         let d = tempfile::tempdir().unwrap();
         let c = Client::nouveau(&s.base_url(), "j").unwrap();
-        let mut j = jeu(d.path(), vec![FichierJeu { n: 0, nom: "rom.bin".into(), taille: 3 }]);
+        let mut j = jeu(d.path(), vec![FichierJeu { n: 0, nom: "rom.bin".into(), taille: 3, ..Default::default() }]);
         j.version = 0;
         telecharger_jeu(&c, &j, &AtomicBool::new(false), &|_| {}).await.unwrap();
         m.assert();

@@ -23,6 +23,9 @@
   images des systèmes préchargées pour Taodbox + ménage de `systemes/` ; A7 plafond et purge du cache du profil ; A8
   liste des documents relue seulement si l'empreinte change, effacée sur 404 ; A9 mesure réelle d'une synchro avec
   ~3 300 fusions. Attend Firehouse : besoin 33 (cartouches), paquet RetroArch et `autoconfig.zip`, besoins 15-19.
+  ✅ A9 MESURÉ (25/10, lecture seule, dossier temporaire) : synchro complète réelle = 27 431 jeux, 55 pages, 3 318
+  fusions, 614 s ; synchro sans changement 21 s. Cause : CHAQUE requête Firehouse ≈ 10 s (même `/plateformes`), le
+  traitement de Frogtend est négligeable → besoin 34 envoyé à Firehouse.
   ✅ Seb 25/10 (mod à dossier racine unique) : « Demander » — après le téléchargement, Frogtend montre le dossier et
   demande « poser son contenu directement dans le jeu » ou « poser le dossier tel quel » ; rien n'est posé avant.
 - ✅ Seb 25/10 : « allons sur les deux petites protections puis liste-moi ce qu'il reste à faire » → la garde de
@@ -781,6 +784,17 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.106.0** (25/10) — Lot « Avant-bêta » : sha1 du contrat 1.24 (jamais vérifié jusqu'ici, relevé par l'expert
+  contrat ; sa relecture : rien de bloquant, ses IMPORTANTS corrigés). `FichierJeu.sha1`/`version` (serde default :
+  anciens registres lus), `locale::ajouter` garde le sha1 s'il en a la forme ; `telecharger_fichier` calcule
+  l'empreinte PENDANT la réception (début déjà reçu relu par blocs, pause possible, progression « vérification ») ;
+  différente → `.part` retiré, message qui dit de ne pas relancer en boucle si elle revient ; chaque fichier sous SA
+  version (cartes e-Reader, à brancher). Interface : `filtre.ts` (« Chercher » au-delà de 20 options dans
+  `choisir`, « aucun choix ne correspond »). Relevé réel e-Reader (lecture seule) : `fixtures/simule/ereader-125.json`
+  (Air Hockey-e 1 carte ; Pokemon-e TCG 3 sur 661 ; `dossier` vide, sha1 par fichier). Vérifié : tests (cœur 487,
+  interface 236). RESTE (A5) : plusieurs cartes par fiche sur le PC (option B de l'expert contrat), lancement
+  `--ecard` sur `cartouches` (contrat 1.30).
 
 - **0.105.0** (25/10) — Lot « Avant-bêta », A6, A7, A8 (relecture contrat : rien de bloquant, ses IMPORTANTS
   corrigés — préchargement qui s'arrête hors ligne, plafond qui retire les MOINS VUES). A6 : `cle_systeme`,

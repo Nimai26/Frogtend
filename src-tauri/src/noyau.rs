@@ -1689,6 +1689,31 @@ mod tests {
         assert!(d.path().join("profils").join(&id).join("jaquettes").join("1-1000-x.img").is_file());
     }
 
+    /// RÉEL, lecture seule chez Firehouse : une synchronisation COMPLÈTE du vrai catalogue dans un dossier TEMPORAIRE
+    /// (jamais les données de Frogtend de Seb), chronométrée, avec le nombre de fiches réunies (e-Reader : ~3 300).
+    /// Le jeton est lu dans le coffre et ne s'affiche jamais.
+    /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_synchro_complete -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_synchro_complete() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Essai", None, Some(&jeton)).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: "https://jeux.hikari-no-sekai.fr".into(), simule: false }).await.unwrap();
+        let debut = std::time::Instant::now();
+        let b = n.synchroniser(|page, jeux| eprintln!("  page {page} : {jeux} jeux ({:.0} s)", debut.elapsed().as_secs_f64())).await.unwrap();
+        let duree = debut.elapsed();
+        let fusions = n.session().await.unwrap().verrou().fusions().unwrap_or_default().len();
+        println!("synchro complète : {} jeux, {} plateformes, {} pages, {} fiches réunies gardées, en {:.1} s", b.jeux, b.plateformes, b.pages, fusions, duree.as_secs_f64());
+        // Puis une synchro par incrément (rien n'a changé) : elle doit être courte.
+        let debut = std::time::Instant::now();
+        let b2 = n.synchroniser(|_, _| {}).await.unwrap();
+        println!("synchro suivante ({}) : {} reçus, en {:.1} s", b2.mode, b2.recus, debut.elapsed().as_secs_f64());
+    }
+
     #[tokio::test]
     async fn la_fiche_et_les_images_d_un_systeme_suivent_leur_empreinte_et_restent_hors_ligne() {
         // Le relevé RÉEL du 24/10 (contrat 1.28) : 3DO (toutes les images), e-Reader (icône seule).
@@ -2115,7 +2140,7 @@ mod tests {
             dossier: dossier.to_string_lossy().into(),
             etat: crate::jeux_pc::Etat::Telecharge,
             total: 6,
-            fichiers: vec![crate::jeux_pc::FichierJeu { n: 0, nom: "jeu.exe".into(), taille: 6 }],
+            fichiers: vec![crate::jeux_pc::FichierJeu { n: 0, nom: "jeu.exe".into(), taille: 6, ..Default::default() }],
             message: None,
             ajoute_le: "1".into(),
             ajoute_par: "seb".into(),
@@ -2802,7 +2827,7 @@ mod tests {
                     Some(dd) => format!("{dd}/{nom}"),
                     None => nom,
                 };
-                crate::jeux_pc::FichierJeu { n: i as u32, nom, taille: f["taille"].as_u64().unwrap() }
+                crate::jeux_pc::FichierJeu { n: i as u32, nom, taille: f["taille"].as_u64().unwrap(), ..Default::default() }
             })
             .collect();
         println!("FICHE 324 « {} » : version {}, {} fichier(s)", fiche["titre"], j.version, j.fichiers.len());

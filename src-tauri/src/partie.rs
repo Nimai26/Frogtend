@@ -1034,7 +1034,7 @@ mod tests {
         for (i, (nom, o)) in fichiers.iter().enumerate() {
             std::fs::create_dir_all(dossier.join(nom).parent().unwrap()).unwrap();
             std::fs::write(dossier.join(nom), o).unwrap();
-            fj.push(FichierJeu { n: i as u32, nom: nom.to_string(), taille: o.len() as u64 });
+            fj.push(FichierJeu { n: i as u32, nom: nom.to_string(), taille: o.len() as u64, ..Default::default() });
         }
         let total = fj.iter().map(|f| f.taille).sum();
         n.registre()

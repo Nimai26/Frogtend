@@ -1,0 +1,203 @@
+{
+  "_source": "Relevés RÉELS (lecture seule, 25/10, Firehouse 2.130.x) de GET /api/jeux/v1/jeu/27855 (Air Hockey-e : 1 carte) et /jeu/29704 (Pokemon-e TCG : 3 cartes sur 661). Une version = une carte (.7z de quelques Ko, `dossier` vide, `sha1` par fichier, qualité « Jeu — ROM », forme « fichier »).",
+  "air_hockey": {
+    "jeu": {
+      "affiche": "",
+      "annee": 2002,
+      "annexes": [],
+      "annexes_lues_le": "",
+      "cooperatif": false,
+      "developpeur": "Nintendo",
+      "editeur": "Nintendo",
+      "genres": [
+        "Sport"
+      ],
+      "id": 27855,
+      "images": [],
+      "infos": {
+        "date_sortie": "",
+        "esrb": "",
+        "joueurs_massif": false,
+        "joueurs_min": null,
+        "note": null,
+        "pegi": null,
+        "type_sortie": ""
+      },
+      "joueurs": "",
+      "launchbox_id": null,
+      "plateforme": "Nintendo e-Reader",
+      "plateforme_affichee": "e-Reader",
+      "resume": "Air Hockey-e est un jeu e-Reader sorti en 2002, distribué gratuitement chez certains revendeurs aux États-Unis et en Australie. Il s'agit d'une simple partie de hockey sur air où le joueur affronte l'ordinateur. Le premier à marquer dix points gagne, avec une option de tir puissant via le bouton A.",
+      "statut": "possede",
+      "titre": "Air Hockey-e",
+      "titre_en": "Air Hockey-e",
+      "versions": [
+        {
+          "crc32": "",
+          "fichiers": [
+            {
+              "dossier": "",
+              "nom": "Air Hockey-e - 00-B000 (USA) (Promo).7z",
+              "role": "jeu",
+              "sha1": "16923402125c6faea025d2a3fbf480e6829624a6",
+              "taille": 6050
+            }
+          ],
+          "inedit": true,
+          "installation": {
+            "arguments": "",
+            "extraire_dans": "",
+            "forme": "fichier",
+            "lancer": ""
+          },
+          "nom": "Air Hockey-e - 00-B000 (USA) (Promo).7z",
+          "notes": "",
+          "notes_a_traduire": false,
+          "notes_origine": "",
+          "qualite": "Jeu — ROM",
+          "range_le": "2026-10-21T15:24:07",
+          "regions": [
+            "USA"
+          ],
+          "sha1": "16923402125c6faea025d2a3fbf480e6829624a6",
+          "telechargement_id": -39237,
+          "traduction": null,
+          "type_source": "stock"
+        }
+      ],
+      "video": ""
+    },
+    "ok": true
+  },
+  "pokemon": {
+    "jeu": {
+      "affiche": "",
+      "annee": null,
+      "annexes": [],
+      "annexes_lues_le": "",
+      "cooperatif": false,
+      "developpeur": "",
+      "editeur": "",
+      "genres": [],
+      "id": 29704,
+      "images": [],
+      "infos": {
+        "date_sortie": "",
+        "esrb": "",
+        "joueurs_massif": false,
+        "joueurs_min": null,
+        "note": null,
+        "pegi": null,
+        "type_sortie": ""
+      },
+      "joueurs": "",
+      "launchbox_id": null,
+      "plateforme": "Nintendo e-Reader",
+      "plateforme_affichee": "e-Reader",
+      "resume": "",
+      "statut": "possede",
+      "titre": "Pokemon-e TCG",
+      "titre_en": "Pokemon-e TCG",
+      "versions": [
+        {
+          "crc32": "",
+          "fichiers": [
+            {
+              "dossier": "",
+              "nom": "Pokemon-e TCG - Aquapolis - C-01-# - Nidoran Male (USA).7z",
+              "role": "jeu",
+              "sha1": "c498ecf7b89879a9d5de6c95142d52e6f400ae6b",
+              "taille": 4897
+            }
+          ],
+          "inedit": false,
+          "installation": {
+            "arguments": "",
+            "extraire_dans": "",
+            "forme": "fichier",
+            "lancer": ""
+          },
+          "nom": "Pokemon-e TCG - Aquapolis - C-01-# - Nidoran Male (USA).7z",
+          "notes": "",
+          "notes_a_traduire": false,
+          "notes_origine": "",
+          "qualite": "Jeu — ROM",
+          "range_le": "2026-10-21T15:25:20",
+          "regions": [
+            "USA"
+          ],
+          "sha1": "c498ecf7b89879a9d5de6c95142d52e6f400ae6b",
+          "telechargement_id": -41144,
+          "traduction": null,
+          "type_source": "stock"
+        },
+        {
+          "crc32": "500c4612",
+          "fichiers": [
+            {
+              "dossier": "",
+              "nom": "Pokemon-e TCG - Aquapolis - C-02-# - Nidorino (USA).7z",
+              "role": "jeu",
+              "sha1": "454dbe7c7090f0c56a2bb8d3aab2e82077f54164",
+              "taille": 2115
+            }
+          ],
+          "inedit": false,
+          "installation": {
+            "arguments": "",
+            "extraire_dans": "",
+            "forme": "fichier",
+            "lancer": ""
+          },
+          "nom": "Pokemon-e TCG - Aquapolis - C-02-# - Nidorino (USA).7z",
+          "notes": "",
+          "notes_a_traduire": false,
+          "notes_origine": "",
+          "qualite": "Jeu — ROM",
+          "range_le": "2026-10-21T15:25:20",
+          "regions": [
+            "USA"
+          ],
+          "sha1": "454dbe7c7090f0c56a2bb8d3aab2e82077f54164",
+          "telechargement_id": -41145,
+          "traduction": null,
+          "type_source": "stock"
+        },
+        {
+          "crc32": "",
+          "fichiers": [
+            {
+              "dossier": "",
+              "nom": "Pokemon-e TCG - Aquapolis - C-03-# - Grimer (USA).7z",
+              "role": "jeu",
+              "sha1": "06343030e8940ad94ac775d4f022b61a2adff0ce",
+              "taille": 5006
+            }
+          ],
+          "inedit": false,
+          "installation": {
+            "arguments": "",
+            "extraire_dans": "",
+            "forme": "fichier",
+            "lancer": ""
+          },
+          "nom": "Pokemon-e TCG - Aquapolis - C-03-# - Grimer (USA).7z",
+          "notes": "",
+          "notes_a_traduire": false,
+          "notes_origine": "",
+          "qualite": "Jeu — ROM",
+          "range_le": "2026-10-21T15:25:20",
+          "regions": [
+            "USA"
+          ],
+          "sha1": "06343030e8940ad94ac775d4f022b61a2adff0ce",
+          "telechargement_id": -41146,
+          "traduction": null,
+          "type_source": "stock"
+        }
+      ],
+      "video": ""
+    },
+    "ok": true
+  }
+}

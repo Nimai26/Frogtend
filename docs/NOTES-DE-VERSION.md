@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.106.0 — Avant la bêta (3) : chaque fichier vérifié
+
+- 🔒 Chaque fichier téléchargé depuis Firehouse est maintenant vérifié par son empreinte : un fichier arrivé abîmé est
+  écarté (jamais gardé), et c'est dit. La vérification se fait pendant le téléchargement, même après une reprise ;
+  la relecture d'un gros début déjà reçu se met en pause et montre sa progression. (Les jeux téléchargés avant cette
+  version ne sont pas revérifiés.)
+- 🔎 Les longues listes de choix (plus de 20 : par exemple les 661 cartes de Pokemon-e TCG) ont un champ « Chercher ».
+
 ## 0.105.0 — Avant la bêta (2) : la place des images, Taodbox hors ligne
 
 - 💾 Nouveau réglage (⚙ Options ▸ Emplacements) : la place au plus des images gardées par profil (2 Go d'office).

@@ -902,6 +902,48 @@ mod tests {
         std::fs::write(sortie.join("fiche-steam.json"), serde_json::to_vec_pretty(&toutes).unwrap()).unwrap();
     }
 
+    /// RÉEL, lecture seule : les fiches e-Reader (catalogue de la plateforme, puis Air Hockey-e — 1 carte — et
+    /// Pokemon-e TCG — la plus grosse), copiées telles quelles dans `FROGTEND_SORTIE`. Rien d'autre n'est écrit.
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_SORTIE=<dossier> cargo test essai_ereader -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_ereader() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let sortie = std::path::PathBuf::from(std::env::var("FROGTEND_SORTIE").unwrap());
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        let cat: serde_json::Value = c.obtenir_json(&format!("/catalogue?plateforme={}&page=1", encoder("Nintendo e-Reader"))).await.unwrap();
+        std::fs::write(sortie.join("catalogue-ereader.json"), serde_json::to_vec_pretty(&cat).unwrap()).unwrap();
+        // Air Hockey-e (1 carte, 2 bandes) et Pokemon-e TCG (la plus grosse), relevées le 25/10.
+        for id in [27855, 29704] {
+            let f: serde_json::Value = c.obtenir_json(&format!("/jeu/{id}")).await.unwrap();
+            println!("{id} : {} versions", f["jeu"]["versions"].as_array().map(|l| l.len()).unwrap_or(0));
+            std::fs::write(sortie.join(format!("jeu-{id}.json")), serde_json::to_vec_pretty(&f).unwrap()).unwrap();
+        }
+    }
+
+    /// RÉEL, lecture seule : le temps de réponse BRUT de Firehouse (sans rien traiter) pour `/plateformes` et deux pages
+    /// du catalogue, et la taille reçue — pour savoir où passe le temps d'une synchronisation.
+    /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_temps_firehouse -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_temps_firehouse() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        for route in ["/plateformes", "/catalogue?page=1", "/catalogue?page=2", "/catalogue?page=30", "/catalogue?depuis=2026-10-25T00:00:00&page=1"] {
+            let t = std::time::Instant::now();
+            let r = c.obtenir(route, None).await;
+            let taille = match &r {
+                Ok(crate::firehouse::Reponse::Corps { octets, .. }) => octets.len(),
+                _ => 0,
+            };
+            println!("{route} : {:.1} s, {} Ko{}", t.elapsed().as_secs_f64(), taille / 1024, if r.is_err() { " (erreur)" } else { "" });
+        }
+    }
+
     /// RÉEL, lecture seule (contrats 1.27/1.28) : `/plateformes` et la fiche d'un jeu, copiées telles quelles dans
     /// `FROGTEND_SORTIE` (de quoi écrire les réponses simulées d'après la vraie vie). Rien d'autre n'est écrit.
     /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_SORTIE=<dossier> cargo test essai_plateformes_128 -- --ignored --nocapture`
