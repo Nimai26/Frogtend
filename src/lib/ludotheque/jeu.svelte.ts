@@ -31,6 +31,7 @@ import { libellePleinEcran, TOUCHES_PLEIN_ECRAN } from './plein-ecran';
 import { BOUTONS, detailTouche, libelleClavier, memes, nettoyer, PREREGLAGES, toucheDepuisEvenement, TOUCHES, type Correspondance } from './clavier';
 import { auCanape, seulementAuBureau } from '$lib/taodbox/canape';
 import { nomAffiche } from './ludotheque.svelte';
+import { proposerCopieAvantMod } from '$lib/mods/copieAvantMod';
 
 export const partie = $state<{ enJeu: number | null; installation: number | null; lancement: number | null }>({ enJeu: null, installation: null, lancement: null });
 
@@ -1188,11 +1189,12 @@ export async function choisirMods(id: number) {
       ...avertissements(f),
       appidSteam
         ? 'Les parties que Steam garde pour son nuage sont mises à l’abri, et les fichiers du jeu que le mod remplace sont gardés de côté dans les données de Frogtend. Après une mise à jour de Steam, le mod peut être à refaire.'
-        : 'Tes parties sont mises à l’abri, et tout fichier du jeu remplacé est gardé de côté.',
+        : 'Tout fichier du jeu remplacé est gardé de côté, et tes parties sont mises à l’abri quand Frogtend sait où elles sont (jeu installé par Frogtend).',
     ]
       .filter(Boolean)
       .join('\n\n');
     if (!(await confirmer(`🧩 Installer « ${m.nom} » ?`, { message, libelleValider: '⬇ Télécharger et installer' }))) continue;
+    if (!(await proposerCopieAvantMod(id))) continue;
     try {
       const b = await avecProgres(`Installation de « ${m.nom} » (ne ferme pas Frogtend)`, false, (suivi) => api.modInstaller(id, m.nom, f.nom, programme, suivi, risque));
       toast(`🧩 « ${m.nom} » installé : ${b.ajoutes} fichier(s) ajouté(s), ${b.remplaces} remplacé(s) (gardés de côté).`);

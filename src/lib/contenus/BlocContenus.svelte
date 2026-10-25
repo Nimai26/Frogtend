@@ -77,8 +77,15 @@
 
 {#if donnees?.etat === 'emulateur'}
   <p class="muted">📦 Règle {donnees.systeme === 'switch' ? 'Eden' : 'RPCS3'} (⚙ Options ▸ Émulateurs) pour gérer les mises à jour et DLC de ce jeu.</p>
-{:else if donnees?.etat === 'ok' && donnees.contenus.length}
+{:else if donnees?.etat === 'ok' && (donnees.contenus.length || donnees.ignores?.length)}
   <div class="contenus cx-block">
+    {#if donnees.ignores?.length}
+      <p class="muted">
+        ⚠ {donnees.ignores.length} fichier(s) de contenus illisible(s), peut-être abîmé(s) au téléchargement : {donnees.ignores
+          .slice(0, 3)
+          .join(', ')}{donnees.ignores.length > 3 ? '…' : ''}. Pour les réparer : retire le jeu de ta ludothèque puis remets-le (ses parties sont gardées).
+      </p>
+    {/if}
     <button class="btn" onclick={() => (ouvert = !ouvert)}>📦 Contenus additionnels : {resume(donnees.contenus)} {ouvert ? '▴' : '▾'}</button>
     {#if ouvert && donnees.systeme === 'wiiu'}
       <p class="muted">Inclus dans le fichier .wua du jeu : Cemu les charge tout seul, rien à installer.</p>

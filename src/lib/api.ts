@@ -820,6 +820,8 @@ export const api = {
   nexusLiens: () => appeler<import('$lib/mods/nexus.svelte').LienNexus[]>('nexus_liens'),
   nexusOublierLien: (n: number) => appeler<void>('nexus_oublier_lien', { n }),
   nexusLienInfos: (n: number) => appeler<import('$lib/mods/nexus.svelte').InfosNexus>('nexus_lien_infos', { n }),
+  /** La réponse à « où poser ce mod rangé dans un seul dossier ? » (`null` : annuler). */
+  modRacineRepondre: (choix: boolean | null) => appeler<void>('mod_racine_repondre', { choix }),
   nexusInstaller: (n: number, programme: boolean, suivi: number, risqueAccepte = false) =>
     appeler<{ ajoutes: number; remplaces: number; identiques: number }>('nexus_installer', { n, programme, suivi, risqueAccepte }),
   raEtat: () => appeler<import('$lib/succes/succes.svelte').EtatRetro>('ra_etat'),

@@ -464,6 +464,7 @@ pub fn run() {
             commandes::ludotheque_synchronisee_le,
             commandes::ludotheque_plateformes,
             commandes::plateforme_fiche,
+            commandes::mod_racine_repondre,
             commandes::ludotheque_groupes,
             commandes::ludotheque_genres,
             commandes::ludotheque_lister,

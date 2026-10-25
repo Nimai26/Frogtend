@@ -3,6 +3,7 @@
   // triche ni les listes de mods ; Firehouse les fournit, jeu par jeu (contrat 13). Frogtend pose un fichier de codes
   // dans le dossier du profil de l'émulateur, sur demande ; les mods et tables Cheat Engine s'ouvrent dans le
   // navigateur, avec une copie du jeu PROPOSÉE avant de modder.
+  import { proposerCopieAvantMod } from '$lib/mods/copieAvantMod';
   import { page } from '$app/state';
   import { api, taille, type TrichesJeu } from '$lib/api';
   import { pourLeJeu } from '$lib/emulateurs/choix';
@@ -93,30 +94,7 @@
   /** Avant d'aller chercher un mod : proposer une copie du jeu (pas obligatoire, avec un avertissement). */
   async function avantDeModder(pageMod: string | undefined) {
     if (!pageMod) return;
-    // Un jeu de boutique n'est jamais copié en entier (Seb, 21/10) : sa boutique sait le réparer.
-    if (jeu?.installation && !jeu.installation.boutique) {
-      const octets = await api.jeuTailleInstallation(id).catch(() => null);
-      const copier = await confirmer('💾 Copier le jeu avant de le modifier ?', {
-        message: `Conseillé : un mod peut abîmer le jeu. La copie prend ${octets !== null ? taille(octets) : 'la taille du jeu'}, dans le dossier du jeu (sous « Frogtend\\copies »).`,
-        libelleValider: '💾 Copier d’abord',
-      });
-      if (copier) {
-        try {
-          const c = await api.jeuCopieAvantMod(id);
-          toast(`✅ Copie faite : ${c}`);
-        } catch (e) {
-          toast(`La copie a échoué : ${motifDuRefus(e)}`, 'erreur');
-          return;
-        }
-      } else {
-        const quand_meme = await confirmer('⚠ Sans copie', {
-          message: 'Si le mod abîme le jeu, il faudra le réinstaller (tes parties restent sauvegardées).',
-          libelleValider: 'Continuer sans copie',
-          danger: true,
-        });
-        if (!quand_meme) return;
-      }
-    }
+    if (!(await proposerCopieAvantMod(id))) return;
     await ouvrirPage(pageMod);
   }
 

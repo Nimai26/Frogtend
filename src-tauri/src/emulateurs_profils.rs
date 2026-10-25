@@ -503,6 +503,11 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             }
             let refs: Vec<(&str, Vec<String>)> = v.iter().map(|(c, vs)| (c.as_str(), vs.clone())).collect();
             modifier_ini(emulateur, &ini, "General", &refs)?;
+            // Un jeu GameCube en plusieurs disques (.m3u) : Dolphin change de disque seul quand le jeu le demande
+            // (« Change Discs Automatically »). Posé seulement si la personne n'a rien réglé : jamais son choix défait.
+            if crate::manettes::lire_ini(&std::fs::read_to_string(&ini).unwrap_or_default(), "Core", "AutoDiscChange").is_empty() {
+                modifier_ini(emulateur, &ini, "Core", &[("AutoDiscChange", vec!["True".into()])])?;
+            }
             regler_manette(id, emulateur, Some(&utilisateur), manette)?;
             Ok(vec!["-u".into(), texte(&utilisateur)])
         }
@@ -1692,6 +1697,13 @@ mod tests {
         assert_eq!(args[0], "-u");
         let ini = std::fs::read_to_string(PathBuf::from(&args[1]).join("Config").join("Dolphin.ini")).unwrap();
         assert!(ini.contains("ISOPaths = 2") && ini.contains("ISOPath1 = F:\\GC"));
+        // Les jeux en plusieurs disques : Dolphin change de disque seul…
+        assert_eq!(crate::manettes::lire_ini(&ini, "Core", "AutoDiscChange"), vec!["True"]);
+        // … sauf si la personne l'a désactivé : son choix est gardé.
+        let f = PathBuf::from(&args[1]).join("Config").join("Dolphin.ini");
+        std::fs::write(&f, ini.replace("AutoDiscChange = True", "AutoDiscChange = False")).unwrap();
+        preparer("dolphin", d.path(), "Seb", &["E:\\Jeux\\GC".into()], &Manette::Auto(None)).unwrap();
+        assert_eq!(crate::manettes::lire_ini(&std::fs::read_to_string(&f).unwrap(), "Core", "AutoDiscChange"), vec!["False"]);
     }
 
     #[test]

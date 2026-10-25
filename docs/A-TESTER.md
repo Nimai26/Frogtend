@@ -48,6 +48,12 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Avant la bêta (1) (0.104.0)
+- [ ] Un mod Nexus rangé dans un seul dossier : « 🧩 Où poser… ? » (contenu / dossier tel quel) ; fermer = rien posé.
+- [ ] Installer un mod GitHub ou Nexus sur un jeu installé par Frogtend : « 💾 Copier le jeu ? » (taille annoncée) ;
+      un 2e mod du même jeu ne le redemande pas.
+- [ ] Un jeu GameCube en 2 disques dans Dolphin : au changement de disque, Dolphin passe seul au disque 2.
+
 ## Icônes des consoles (0.103.0)
 - [ ] Liste des plateformes : une icône devant chaque console, de la couleur du texte ; changer de skin (clair /
       sombre) : elles suivent.

@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.104.0 — Avant la bêta (1) : mods, contenus, GameCube
+
+- 🧩 Un mod rangé dans un seul dossier (« MonMod/… ») : après le téléchargement, Frogtend te demande s'il faut poser
+  son contenu directement dans le jeu ou le dossier tel quel ; rien n'est posé avant ta réponse.
+- 🧩 Avant d'installer un mod (GitHub ou Nexus), Frogtend propose une copie du jeu — une fois par jeu, la place
+  vérifiée avant, le jeu bloqué pendant la copie. Les messages ne promettent plus que tes parties sont à l'abri
+  quand Frogtend ne sait pas où elles sont.
+- 📦 Un DLC PS3 de Firehouse illisible (abîmé au téléchargement) est signalé au lieu d'être ignoré en silence.
+- 💿 GameCube : Dolphin change de disque tout seul pour les jeux en plusieurs disques (sauf si tu l'as désactivé).
+- Une archive 7z d'un format que Frogtend ne lit pas le dit clairement, avec quoi faire.
+
 ## 0.103.1 — Le menu en jeu ne touche qu'au jeu
 
 - 🛡 Quand le menu en jeu fige le jeu, ferme ses fenêtres, lui rend le premier plan ou y branche Cheat Engine,

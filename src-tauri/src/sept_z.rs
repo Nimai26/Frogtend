@@ -326,8 +326,19 @@ pub fn servir(args: &[OsString], sortie: &mut dyn Write) -> i32 {
     }
 }
 
+/// Ce qu'on dit d'une archive 7z que Frogtend ne lit pas : une méthode de compression non prise en charge (PPMd, comme
+/// certaines sauvegardes de LaunchBox) est nommée, avec quoi faire ; le reste reste générique.
+fn message_7z(e: &sevenz_rust::Error) -> String {
+    match e {
+        sevenz_rust::Error::UnsupportedCompressionMethod(m) => format!(
+            "Cette archive 7z est compressée d'une façon que Frogtend ne sait pas lire ({m}) : décompresse-la d'abord (clic droit ▸ « Extraire tout » dans Windows 11, ou 7-Zip), puis importe le dossier obtenu."
+        ),
+        _ => format!("Archive 7z illisible ({e})."),
+    }
+}
+
 fn ouvrir(archive: &Path) -> Result<sevenz_rust::SevenZReader<std::fs::File>, String> {
-    sevenz_rust::SevenZReader::open(archive, sevenz_rust::Password::empty()).map_err(|e| format!("Archive 7z illisible ({e})."))
+    sevenz_rust::SevenZReader::open(archive, sevenz_rust::Password::empty()).map_err(|e| message_7z(&e))
 }
 
 fn servir_lister(archive: &Path, sortie: &mut dyn Write) -> Result<Value, String> {
@@ -409,7 +420,7 @@ fn servir_empreinte(archive: &Path, console: u32, max: u64) -> Result<Value, Str
         rom = Some(o);
         Ok(false)
     })
-    .map_err(|e| format!("Archive 7z illisible ({e})."))?;
+    .map_err(|e| message_7z(&e))?;
     Ok(match rom {
         Some(o) if o.len() as u64 <= max => json!({ "empreinte": crate::succes::empreinte_octets(console, &o) }),
         _ => json!({ "empreinte": null }),
@@ -520,6 +531,13 @@ fn repertoire(a: &Path) -> Result<Vec<EntreeSeptZ>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn une_methode_7z_non_prise_en_charge_est_nommee_avec_quoi_faire() {
+        let m = message_7z(&sevenz_rust::Error::UnsupportedCompressionMethod("PPMD".into()));
+        assert!(m.contains("PPMD") && m.contains("7-Zip"), "{m}");
+        assert!(message_7z(&sevenz_rust::Error::other("abîmée")).starts_with("Archive 7z illisible"));
+    }
 
     fn archive(d: &Path, fichiers: &[(&str, &[u8])]) -> std::path::PathBuf {
         let src = d.join("src");

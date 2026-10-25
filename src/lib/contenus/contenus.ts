@@ -17,6 +17,8 @@ export interface ContenusDuJeu {
   systeme?: 'ps3' | 'switch' | 'wiiu';
   titre_id: string | null;
   contenus: ContenuVu[];
+  /** Les fichiers servis comme contenus mais illisibles (en-tête abîmé) : dits, jamais écartés en silence. */
+  ignores?: string[];
 }
 
 const GENRES: Record<string, string> = { dlc: 'DLC', avatar: 'Avatar', theme: 'Thème', maj: 'Mise à jour', licence: 'Licence', autre: 'Contenu' };

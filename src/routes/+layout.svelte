@@ -19,6 +19,7 @@
   import ChoixProfil from '$lib/profils/ChoixProfil.svelte';
   import { auDemarrage } from '$lib/sauvegarde.svelte';
   import { gratuitsAuDemarrage } from '$lib/boutiques/gratuits.svelte';
+  import { ecouterQuestionsRacine } from '$lib/mods/racine';
 
   let { children } = $props();
 
@@ -76,7 +77,12 @@
   onMount(() => {
     if (!isTauri() || estMenuJeu) return;
     const arret = listen('nxm-recu', () => courrierNexus++);
-    return () => void arret.then((f) => f());
+    // Un mod rangé dans un seul dossier : la question posée pendant son installation.
+    const racine = ecouterQuestionsRacine();
+    return () => {
+      void arret.then((f) => f());
+      void racine.then((f) => f());
+    };
   });
   $effect(() => {
     void courrierNexus;

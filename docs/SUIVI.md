@@ -7,6 +7,24 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- **Lot « Avant-bêta »** (✅ Seb 25/10 : « lance tout ce qu'il reste AVANT la bêta ; une bêta certes non parfaite,
+  mais permettant de tester TOUTES les fonctionnalités prévues. Je vais rappeler à Firehouse ce que tu attends de
+  sa part. ») Tout ce qui ne dépend ni de Seb ni de Firehouse, par petits lots livrés un par un : vérifier d'abord
+  (experts) quelles anciennes entrées sont encore ouvertes ; puis Dolphin changement de disque, RPCS3 shaders,
+  restes Nexus, plafond/ménage des caches, durcissement des dossiers, écarts 1.13 restants, petits restes
+  (contenus PS3 illisibles, Taodbox hors ligne, ménage des systèmes, noms courts en double, choix parmi beaucoup de
+  versions). Ce qui attend Firehouse (besoins 15-19, 33, réconciliation lot 4) : codé dès son arrivée.
+  AUDIT des experts (25/10) — DÉJÀ FAITS (entrées restées ouvertes à tort) : contrat 1.13 et 1.7→1.13 lus ; shaders
+  RPCS3 (0.74) ; durcissement des dossiers (0.73) ; plein écran et manette → clavier (0.53/0.54/0.77) ; réconciliation
+  lot 4 et contrat 1.22 ; fiche retirée sans fusion oubliée. RESTE VRAIMENT : A1 mods (texte GitHub honnête, copie du
+  jeu proposée avant GitHub/Nexus, mod à dossier racine unique → question à Seb) ; A2 .pkg illisible signalé ; A3
+  Dolphin `AutoDiscChange` (seulement si absent) ; A4 message clair 7z PPMd ; A5 e-Reader (plusieurs cartes par fiche
+  sur le PC, filtre dans `choisir` > 20, lancement `--ecard` sur une liste `cartouches` simulée puis réelle) ; A6
+  images des systèmes préchargées pour Taodbox + ménage de `systemes/` ; A7 plafond et purge du cache du profil ; A8
+  liste des documents relue seulement si l'empreinte change, effacée sur 404 ; A9 mesure réelle d'une synchro avec
+  ~3 300 fusions. Attend Firehouse : besoin 33 (cartouches), paquet RetroArch et `autoconfig.zip`, besoins 15-19.
+  ✅ Seb 25/10 (mod à dossier racine unique) : « Demander » — après le téléchargement, Frogtend montre le dossier et
+  demande « poser son contenu directement dans le jeu » ou « poser le dossier tel quel » ; rien n'est posé avant.
 - ✅ Seb 25/10 : « allons sur les deux petites protections puis liste-moi ce qu'il reste à faire » → la garde de
   `terminer` (Frogtend et ses ancêtres jamais touchés) étendue à `fenetres::fermer` et `figer::suspendre` (0.103.1).
 - **Lot « Plateformes »** (✅ Seb 24/10 : « Le lot plateformes », choisi devant l'installation neuve). Découpe : P1
@@ -763,6 +781,16 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.104.0** (25/10) — Lot « Avant-bêta », A1 (avec le dossier racine unique : `choisir_racine` pose la question
+  PENDANT l'installation, par l'événement `mod-racine` et `mod_racine_repondre` — jamais de 2e téléchargement, le lien
+  Nexus ne sert qu'une fois — 10 min sans réponse ou fermer = rien posé ; testé), A2, A3, A4 (relecture lancement : rien de
+  bloquant, ses IMPORTANTS corrigés). `copieAvantMod.ts` partagé (Triches, GitHub, Nexus ; une fois par jeu et par
+  session) ; `jeu_copie_avant_mod` : jeu occupé, place vérifiée avant, copie à moitié retirée ; textes honnêtes
+  (parties à l'abri seulement quand Frogtend sait où) ; `contenus::illisibles` + `ContenusDuJeu.ignores` (version
+  Firehouse) dits dans le bloc 📦 ; Dolphin `[Core] AutoDiscChange=True` seulement s'il est absent ;
+  `sept_z::message_7z` (méthode non prise en charge nommée). Vérifié : tests (cœur 480, interface 234). NON vérifié :
+  la clé Dolphin sur la 2412+ (de mémoire `MainSettings.cpp`), un vrai 7z PPMd, la durée réelle d'un lien nxm.
 
 - **0.103.1** (25/10) — Les deux protections restantes (choix de Seb) : `lancement::sauf_frogtend` (un relevé, filtre
   `intouchables`), la garde commune désormais branchée sur figer (`figer::suspendre`), fermer les fenêtres, rendre le

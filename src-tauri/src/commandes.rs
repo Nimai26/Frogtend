@@ -470,6 +470,9 @@ pub struct ContenusDuJeu {
     pub systeme: String,
     pub titre_id: Option<String>,
     pub contenus: Vec<ContenuVu>,
+    /// Les fichiers servis comme contenus mais illisibles (en-tête abîmé) : dits, jamais écartés en silence.
+    #[serde(default)]
+    pub ignores: Vec<String>,
 }
 
 /// Image et fluidité d'un jeu PS3 dans RPCS3 : son RPCS3 réglé (jamais reçu de l'interface) et son numéro (lu sur le
@@ -744,7 +747,7 @@ async fn contexte_contenus(
     app: &AppHandle,
     noyau: &Noyau,
     id: i64,
-) -> Resultat<Option<(std::path::PathBuf, Option<String>, Option<String>, Vec<crate::contenus::Contenu>)>> {
+) -> Resultat<Option<(std::path::PathBuf, Option<String>, Option<String>, Vec<crate::contenus::Contenu>, Vec<String>)>> {
     let p = profil_ouvert(noyau).await?;
     // Seulement un jeu que ce profil voit (comme partout ailleurs).
     let j = noyau.jeu_visible(id).await?;
@@ -787,12 +790,16 @@ async fn contexte_contenus(
         let pkgs: Vec<(std::path::PathBuf, &str)> =
             presents("dlc").into_iter().map(|p| (p, "dlc")).chain(presents("maj").into_iter().map(|p| (p, "maj"))).collect();
         let raps = presents("licence");
-        let (contenus, titre_id) = tauri::async_runtime::spawn_blocking(move || {
-            (crate::contenus::ps3_de_la_version(&pkgs, &raps), fichier_du_jeu.as_deref().and_then(crate::contenus::titre_id_ps3))
+        let (contenus, titre_id, ignores) = tauri::async_runtime::spawn_blocking(move || {
+            (
+                crate::contenus::ps3_de_la_version(&pkgs, &raps),
+                fichier_du_jeu.as_deref().and_then(crate::contenus::titre_id_ps3),
+                crate::contenus::illisibles(&pkgs),
+            )
         })
         .await
         .map_err(|_| Erreur::Disque("La lecture s'est arrêtée brutalement.".into()))?;
-        return Ok(Some((rpcs3, compte, titre_id, contenus)));
+        return Ok(Some((rpcs3, compte, titre_id, contenus, ignores)));
     }
     let (contenus, titre_id) = tauri::async_runtime::spawn_blocking(move || {
         let mut l: Vec<crate::contenus::Contenu> = dossiers.iter().filter(|d| d.is_dir()).flat_map(|d| crate::contenus::chercher_ps3(d)).collect();
@@ -804,7 +811,8 @@ async fn contexte_contenus(
     })
     .await
     .map_err(|_| Erreur::Disque("La recherche s'est arrêtée brutalement.".into()))?;
-    Ok(Some((rpcs3, compte, titre_id, contenus)))
+    // Recherche sur le disque (jeu importé) : n'importe quel fichier peut s'y trouver, rien à signaler.
+    Ok(Some((rpcs3, compte, titre_id, contenus, vec![])))
 }
 
 /// Switch : les mises à jour et DLC d'un jeu trouvés sur ce PC, et l'Eden qui les lira.
@@ -864,6 +872,7 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
             etat: "ok".into(),
             systeme: "wiiu".into(),
             titre_id: None,
+            ignores: vec![],
             contenus: titres
                 .into_iter()
                 .filter(|t| t.genre != "jeu")
@@ -887,6 +896,7 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
                 etat: "ok".into(),
                 systeme: "switch".into(),
                 titre_id: None,
+                ignores: vec![],
                 contenus: l
                     .into_iter()
                     .map(|c| {
@@ -900,7 +910,7 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
         Err(Erreur::Reglage(_)) => return Ok(ContenusDuJeu { etat: "emulateur".into(), systeme: "switch".into(), ..Default::default() }),
         Err(e) => return Err(e),
     }
-    let (rpcs3, compte, titre_id, contenus) = match contexte_contenus(&app, &noyau, id).await {
+    let (rpcs3, compte, titre_id, contenus, ignores) = match contexte_contenus(&app, &noyau, id).await {
         Ok(Some(x)) => x,
         Ok(None) => return Ok(ContenusDuJeu { etat: "aucun".into(), ..Default::default() }),
         Err(Erreur::Reglage(_)) => return Ok(ContenusDuJeu { etat: "emulateur".into(), systeme: "ps3".into(), ..Default::default() }),
@@ -911,6 +921,7 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
         etat: "ok".into(),
         systeme: "ps3".into(),
         titre_id,
+        ignores,
         contenus: contenus
             .into_iter()
             .map(|c| ContenuVu {
@@ -1017,7 +1028,7 @@ pub async fn contenus_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64
         noyau.journaliser(&format!("contenus Switch : {} dossier(s) ajouté(s) à Eden", dossiers.len() - manquants.len()));
         return Ok(BilanContenus { installes: l.iter().filter(|c| choisis.contains(&c.id)).count() - manquants.len().min(choisis.len()), refuses: manquants });
     }
-    let (rpcs3, _, _, contenus) =
+    let (rpcs3, _, _, contenus, _) =
         contexte_contenus(&app, &noyau, id).await?.ok_or_else(|| Erreur::Refus("Ce jeu n'a pas de contenus gérés par Frogtend.".into()))?;
     let programme = emulateur_regle(&app, &noyau.registre().jeu(id)?.map(|j| j.plateforme).unwrap_or_default(), id, None)
         .map(|(p, _)| std::path::PathBuf::from(p))
@@ -3278,6 +3289,42 @@ struct ProgresMod {
 
 /// Le suivi d'une installation de mod : un événement `mod-progres` au plus toutes les 400 ms (comme les
 /// téléchargements de jeux), toujours à un changement d'étape et à la fin ; le débit est calculé ici.
+/// La réponse attendue à « où poser ce mod rangé dans un seul dossier ? » (une seule question à la fois).
+static REPONSE_RACINE: std::sync::Mutex<Option<std::sync::mpsc::Sender<Option<bool>>>> = std::sync::Mutex::new(None);
+
+/// Ce qu'on demande à l'interface quand l'archive d'un mod est rangée dans UN seul dossier.
+#[derive(Clone, Serialize)]
+struct QuestionRacine {
+    mod_nom: String,
+    dossier: String,
+}
+
+/// Le mod est-il rangé dans un seul dossier (« MonMod/… ») ? Alors la personne choisit (✅ Seb 25/10) : poser son
+/// CONTENU directement (`true`) ou le dossier tel quel (`false`). Rien n'est posé avant sa réponse ; pas de réponse
+/// (fenêtre fermée, 10 min) : rien n'est posé. `demander` envoie la question à l'interface.
+async fn choisir_racine(archive: &std::path::Path, mod_nom: &str, demander: impl Fn(QuestionRacine)) -> Resultat<bool> {
+    let a = archive.to_path_buf();
+    let racine = tauri::async_runtime::spawn_blocking(move || crate::mods::lister(&a).map(|l| crate::mods::racine_unique(&l)))
+        .await
+        .map_err(|_| Erreur::Disque("La lecture du mod s'est arrêtée brutalement.".into()))??;
+    let Some(dossier) = racine else { return Ok(false) };
+    let (tx, rx) = std::sync::mpsc::channel();
+    *REPONSE_RACINE.lock().unwrap_or_else(|e| e.into_inner()) = Some(tx);
+    demander(QuestionRacine { mod_nom: mod_nom.to_string(), dossier });
+    let r = tauri::async_runtime::spawn_blocking(move || rx.recv_timeout(std::time::Duration::from_secs(600)).ok().flatten())
+        .await
+        .map_err(|_| Erreur::Disque("La question s'est arrêtée brutalement.".into()))?;
+    r.ok_or_else(|| Erreur::Refus("Installation annulée : rien n'a été posé.".into()))
+}
+
+/// La réponse de la personne : `Some(true)` son contenu directement, `Some(false)` le dossier tel quel, `None` annuler.
+#[tauri::command]
+pub fn mod_racine_repondre(choix: Option<bool>) {
+    if let Some(tx) = REPONSE_RACINE.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        let _ = tx.send(choix);
+    }
+}
+
 fn suivi_mod(app: &AppHandle, suivi: u32) -> impl Fn(&'static str, u64, u64) + Send + Sync + Clone + 'static {
     let app = app.clone();
     let dernier = std::sync::Arc::new(std::sync::Mutex::new(None::<(std::time::Instant, &'static str, u64)>));
@@ -3436,7 +3483,19 @@ pub async fn mod_installer(
         steam_inchange(&j, &dossier, vu)?;
     }
     let buildid = steam.flatten();
-    let r = tauri::async_runtime::spawn_blocking(move || crate::mods::installer_dans(&d, &g, buildid, &a, &f2, &nom, &sha, &sous, false, &quand, &suivi))
+    let app2 = app.clone();
+    let sans_racine = match choisir_racine(&archive, &mod_nom, move |q| {
+        let _ = app2.emit("mod-racine", q);
+    })
+    .await
+    {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = std::fs::remove_file(&archive);
+            return Err(e);
+        }
+    };
+    let r = tauri::async_runtime::spawn_blocking(move || crate::mods::installer_dans(&d, &g, buildid, &a, &f2, &nom, &sha, &sous, sans_racine, &quand, &suivi))
         .await
         .map_err(|_| Erreur::Disque("L'installation du mod s'est arrêtée brutalement.".into()))?;
     let _ = std::fs::remove_file(&archive);
@@ -3687,8 +3746,14 @@ pub async fn nexus_installer(app: AppHandle, noyau: State<'_, Noyau>, n: u32, pr
         steam_inchange(&j, &dossier, vu)?;
     }
     let buildid = steam.flatten();
+    let app2 = app.clone();
+    // L'archive est retirée par `_ramasse` quoi qu'il arrive (aussi si la personne annule).
+    let sans_racine = choisir_racine(&archive, &mod_nom, move |q| {
+        let _ = app2.emit("mod-racine", q);
+    })
+    .await?;
     let res = tauri::async_runtime::spawn_blocking(move || {
-        crate::mods::installer_dans(&d, &g, buildid, &a, &f2, &nom, &crate::sauvegarde::empreinte(&a)?, &sous, false, &quand, &suivi)
+        crate::mods::installer_dans(&d, &g, buildid, &a, &f2, &nom, &crate::sauvegarde::empreinte(&a)?, &sous, sans_racine, &quand, &suivi)
     })
         .await
         .map_err(|_| Erreur::Disque("L'installation du mod s'est arrêtée brutalement.".into()))?;
@@ -3770,14 +3835,21 @@ pub async fn jeu_copie_avant_mod(noyau: State<'_, Noyau>, id: i64) -> Resultat<S
     if i.boutique.is_some() {
         return Err(Erreur::Refus("Un jeu de boutique n'est pas copié en entier : sa boutique sait le réparer, et Frogtend garde les fichiers qu'un mod remplace.".into()));
     }
+    // Ni partie ni mod pendant la copie (elle peut prendre longtemps).
+    let _occupe = noyau.occuper(id);
     let source = std::path::PathBuf::from(&i.dossier);
     let copie = crate::locale::dossier_frogtend(&j).join("copies").join(format!("avant-mod-{}", crate::noyau::maintenant()));
     let (s, c) = (source.clone(), copie.clone());
     let frogtend = crate::locale::dossier_frogtend(&j);
-    tauri::async_runtime::spawn_blocking(move || -> Resultat<()> {
+    let r = tauri::async_runtime::spawn_blocking(move || -> Resultat<()> {
         // La liste est faite AVANT de copier, et laisse de côté le dossier Frogtend (médias, copies précédentes).
         let fichiers: Vec<String> =
             crate::installation::fichiers_de(&s)?.into_iter().filter(|r| !s.join(r).starts_with(&frogtend)).collect();
+        // La place d'abord : jamais une copie à moitié faute de place (et une marge pour Windows).
+        let total: u64 = fichiers.iter().filter_map(|r| std::fs::metadata(s.join(r)).ok()).map(|m| m.len()).sum();
+        if crate::jeux_pc::place_libre(&s).is_some_and(|l| l < total + crate::jeux_pc::MARGE_LIBRE) {
+            return Err(Erreur::Refus("Pas assez de place sur ce disque pour copier le jeu : libère de la place, ou continue sans copie.".into()));
+        }
         for r in fichiers {
             let cible = c.join(&r);
             if let Some(p) = cible.parent() {
@@ -3788,7 +3860,12 @@ pub async fn jeu_copie_avant_mod(noyau: State<'_, Noyau>, id: i64) -> Resultat<S
         Ok(())
     })
     .await
-    .map_err(|_| Erreur::Disque("La copie s'est arrêtée brutalement.".into()))??;
+    .map_err(|_| Erreur::Disque("La copie s'est arrêtée brutalement.".into()))?;
+    if let Err(e) = r {
+        // Une copie à moitié faite ne sert à rien : retirée (seulement elle, toute neuve).
+        let _ = std::fs::remove_dir_all(&copie);
+        return Err(e);
+    }
     noyau.journaliser(&format!("copie avant mod du jeu {id} : {}", copie.display()));
     Ok(copie.to_string_lossy().into())
 }
@@ -4576,6 +4653,47 @@ pub async fn restauration_reposer_emulateurs(app: AppHandle, noyau: State<'_, No
 
 #[cfg(test)]
 mod tests {
+    /// Un zip de mod aux entrées données.
+    fn zip_de_mod(d: &std::path::Path, entrees: &[&str]) -> std::path::PathBuf {
+        use std::io::Write;
+        let p = d.join("mod.zip");
+        let mut z = zip::ZipWriter::new(std::fs::File::create(&p).unwrap());
+        for e in entrees {
+            z.start_file(*e, zip::write::SimpleFileOptions::default()).unwrap();
+            z.write_all(b"x").unwrap();
+        }
+        z.finish().unwrap();
+        p
+    }
+
+    #[tokio::test]
+    async fn un_mod_range_dans_un_seul_dossier_attend_le_choix_de_la_personne() {
+        let d = tempfile::tempdir().unwrap();
+        // Rangé dans « MonMod/ » : la question part, la réponse « son contenu directement » revient.
+        let a = zip_de_mod(d.path(), &["MonMod/plugin.dll", "MonMod/config/x.ini"]);
+        let r = super::choisir_racine(&a, "Mon mod", |q| {
+            assert_eq!(q.dossier, "MonMod");
+            std::thread::spawn(|| {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                super::mod_racine_repondre(Some(true));
+            });
+        })
+        .await
+        .unwrap();
+        assert!(r, "son contenu directement");
+        // Annuler : rien n'est posé (refus).
+        let r = super::choisir_racine(&a, "Mon mod", |_| {
+            std::thread::spawn(|| super::mod_racine_repondre(None));
+        })
+        .await;
+        assert!(matches!(r, Err(crate::erreurs::Erreur::Refus(_))));
+        // Plusieurs choses à la racine : aucune question, posé tel quel.
+        let b = d.path().join("b");
+        std::fs::create_dir_all(&b).unwrap();
+        let a = zip_de_mod(&b, &["plugin.dll", "Data/x.esp"]);
+        assert!(!super::choisir_racine(&a, "Autre", |_| panic!("pas de question")).await.unwrap());
+    }
+
     #[test]
     fn taodbox_se_reconnait_dans_la_ligne_de_commande() {
         let a = |l: &[&str]| super::lance_en_taodbox(l.iter().map(|s| s.to_string()));

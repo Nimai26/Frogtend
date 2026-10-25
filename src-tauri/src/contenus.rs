@@ -236,6 +236,19 @@ pub fn chercher_ps3(dossier: &Path) -> Vec<Contenu> {
     l
 }
 
+/// Les paquets d'une version qui ne sont PAS des .pkg lisibles (en-tête absent ou abîmé, fichier illisible) : leurs
+/// noms, pour le DIRE à la personne (jamais écartés en silence).
+pub fn illisibles(pkgs: &[(PathBuf, &str)]) -> Vec<String> {
+    pkgs.iter()
+        .filter(|(p, _)| {
+            let mut b = vec![0u8; 0x60];
+            let lu = std::fs::File::open(p).and_then(|mut f| f.read(&mut b)).is_ok();
+            !lu || content_id(&b).is_none()
+        })
+        .map(|(p, _)| p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
+        .collect()
+}
+
 /// Un nom lisible tiré d'un content ID, quand le fichier n'en a pas (les .pkg de Firehouse ont des noms aléatoires) :
 /// `EP9000-BCES00799_00-000000000DOMINUS` → « DOMINUS ».
 fn nom_du_content_id(id: &str) -> String {
@@ -1154,6 +1167,20 @@ mod tests {
         let iso = d.path().join("God of War III (Europe).iso");
         std::fs::write(&iso, s.concat()).unwrap();
         assert_eq!(titre_id_ps3(&iso).as_deref(), Some("BCES00510"));
+    }
+
+    #[test]
+    fn un_paquet_illisible_est_dit_jamais_ecarte_en_silence() {
+        let d = tempfile::tempdir().unwrap();
+        let bon = d.path().join("bon.pkg");
+        std::fs::write(&bon, entete_pkg("EP9000-BCES00510_00-0000000000DEIMOS")).unwrap();
+        let tronque = d.path().join("tronque.pkg");
+        std::fs::write(&tronque, b"PKG court").unwrap();
+        let faux = d.path().join("faux.pkg");
+        std::fs::write(&faux, vec![0u8; 0x100]).unwrap();
+        let l = [(bon.clone(), "dlc"), (tronque, "dlc"), (faux, "maj"), (d.path().join("absent.pkg"), "dlc")];
+        assert_eq!(illisibles(&l), vec!["tronque.pkg", "faux.pkg", "absent.pkg"]);
+        assert_eq!(ps3_de_la_version(&l, &[]).len(), 1, "seul le bon devient un contenu");
     }
 
     #[test]

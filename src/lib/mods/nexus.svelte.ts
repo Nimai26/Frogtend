@@ -7,6 +7,7 @@ import { motifDuRefus } from '$lib/dialogues/messages';
 import { ouvrirPageWeb } from '$lib/web';
 import { avecProgres } from './progres.svelte';
 import { accordModSteam } from './cheatengine';
+import { proposerCopieAvantMod } from './copieAvantMod';
 
 /** La page de Nexus où se trouve la clé d'API personnelle (à vérifier à l'essai de Seb). */
 export const PAGE_CLE_NEXUS = 'https://next.nexusmods.com/settings/api-keys';
@@ -220,6 +221,10 @@ async function traiterUnLien(l: LienNexus): Promise<void> {
       : 'Tout fichier du jeu remplacé est gardé de côté, et tes parties sont mises à l’abri quand Frogtend sait où elles sont (jeu installé par Frogtend).',
   ].join('\n\n');
   if (!(await confirmer(`🧩 Installer « ${infos.mod_nom} » dans « ${infos.titre} » ?`, { message, libelleValider: '⬇ Télécharger et installer' }))) {
+    await oublier();
+    return;
+  }
+  if (!(await proposerCopieAvantMod(infos.jeu_id))) {
     await oublier();
     return;
   }
