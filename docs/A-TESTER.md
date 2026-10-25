@@ -48,6 +48,10 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Avant la bêta (2) (0.105.0)
+- [ ] ⚙ Options ▸ Emplacements : « Place au plus des images gardées » (500 Mo à 10 Go).
+- [ ] Taodbox après une synchronisation, puis Internet coupé : photos et logos des consoles toujours là.
+
 ## Avant la bêta (1) (0.104.0)
 - [ ] Un mod Nexus rangé dans un seul dossier : « 🧩 Où poser… ? » (contenu / dossier tel quel) ; fermer = rien posé.
 - [ ] Installer un mod GitHub ou Nexus sur un jeu installé par Frogtend : « 💾 Copier le jeu ? » (taille annoncée) ;

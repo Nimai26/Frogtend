@@ -119,6 +119,15 @@ impl Noyau {
             }
             l
         };
+        // La liste gardée a l'empreinte que donne le catalogue : rien n'a changé, pas besoin de Firehouse.
+        let attendue = s.verrou().jeu(id)?.and_then(|j| j.documents_empreinte);
+        if let (Some(a), Ok(o)) = (&attendue, std::fs::read(&gardee)) {
+            if let Ok(v) = serde_json::from_slice::<Value>(&o) {
+                if v["documents_empreinte"].as_str() == Some(a.as_str()) {
+                    return Ok(marquer(lire_liste(&v)));
+                }
+            }
+        }
         match s.source.documents(id).await {
             Ok(v) => {
                 let liste = lire_liste(&v);
@@ -137,6 +146,12 @@ impl Noyau {
                 Ok(o) => Ok(marquer(serde_json::from_slice::<Value>(&o).map(|v| lire_liste(&v)).unwrap_or_default())),
                 Err(_) => Err(e),
             },
+            // Caché pour ce profil (404, comme un jeu inexistant) : la LISTE gardée part (jamais un fichier de document
+            // téléchargé avec l'accord de la personne).
+            Err(e @ Erreur::Introuvable(_)) => {
+                let _ = std::fs::remove_file(&gardee);
+                Err(e)
+            }
             Err(e) => Err(e),
         }
     }
@@ -442,6 +457,45 @@ mod tests {
             t.status(200).header("content-type", type_contenu).body(livret);
         });
         s
+    }
+
+    #[tokio::test]
+    async fn la_liste_des_documents_n_est_relue_que_si_son_empreinte_change_et_part_sur_un_404() {
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "Nintendo 64", "jeux": 1}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            // Le catalogue donne l'empreinte des documents (contrat 1.7).
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [{"id": 111, "titre": "Zelda", "plateforme": "Nintendo 64", "documents_empreinte": "a"}]}));
+        });
+        let mut liste = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/111/documents");
+            t.status(200).json_body(json!({"ok": true, "id": 111, "documents_empreinte": "a", "documents": [
+                {"id": 6142, "type": "livret", "format": "pdf", "taille": 3, "pages": 1, "empreinte": "x"}]}));
+        });
+        let (d, n) = noyau(s.base_url(), false).await;
+        assert_eq!(n.documents(111).await.unwrap().len(), 1);
+        assert_eq!(n.documents(111).await.unwrap().len(), 1);
+        liste.assert_hits(1); // la 2e fois : la liste gardée, son empreinte est celle du catalogue
+        // Un document téléchargé, puis le jeu caché à ce profil (404) : la LISTE part, jamais le fichier.
+        let p = n.session().await.unwrap().dossier.clone();
+        let livret = p.join("documents").join("111").join("6142.pdf");
+        std::fs::create_dir_all(livret.parent().unwrap()).unwrap();
+        std::fs::write(&livret, b"pdf").unwrap();
+        liste.delete();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/111/documents");
+            t.status(404).json_body(json!({"ok": false}));
+        });
+        // L'empreinte du catalogue ne correspond plus à rien de gardé : Firehouse est relu.
+        std::fs::write(p.join("documents").join("111").join("documents.json"), br#"{"documents_empreinte": "ancienne", "documents": []}"#).unwrap();
+        assert!(matches!(n.documents(111).await, Err(Erreur::Introuvable(_))));
+        assert!(!p.join("documents").join("111").join("documents.json").exists(), "la liste part");
+        assert!(livret.exists(), "le fichier téléchargé avec l'accord de la personne reste");
+        drop(d);
     }
 
     #[tokio::test]

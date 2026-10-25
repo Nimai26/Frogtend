@@ -30,6 +30,9 @@ export interface ReglagesPc {
   dossierOutils: string;
   /** Où Frogtend copie les parties avant de retirer un jeu (abris) ; vide : demandé quand il le faut. */
   dossierAbris: string;
+  /** La place au plus des images gardées pour chaque profil (jaquettes, visuels, consoles), en Go : au-delà, les moins
+   * vues partent après une synchronisation (jamais celles des jeux du PC ni un document). */
+  plafondImagesGo: number;
   /** La liste MAME (le MAME.xml des métadonnées de LaunchBox) pour l'import « MAME Arcade Full Set » ; vide : demandée. */
   listeMame: string;
   /** Le menu universel en jeu. */
@@ -128,6 +131,7 @@ export const DEFAUTS_PC: ReglagesPc = {
   avertiPareFeuRetroArch: false,
   dossierOutils: '',
   dossierAbris: '',
+  plafondImagesGo: 2,
   listeMame: '',
   menuJeu: { touche: 'Pause', manette: 'Select + R1', delaiQuitter: 10 },
   firehouse: { adresse: ADRESSE_FIREHOUSE_PAR_DEFAUT, simule: false },

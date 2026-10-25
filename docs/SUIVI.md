@@ -782,6 +782,15 @@ d'abord :
 
 ## ✅ Livré (version — ce qui a été vérifié)
 
+- **0.105.0** (25/10) — Lot « Avant-bêta », A6, A7, A8 (relecture contrat : rien de bloquant, ses IMPORTANTS
+  corrigés — préchargement qui s'arrête hors ligne, plafond qui retire les MOINS VUES). A6 : `cle_systeme`,
+  `systemes_gardes`, ménage de `systemes/` (clés de 16 hexa seulement), fonds et logos (sinon bannières) des consoles
+  des jeux du PC gardés à l'avance (`image_systeme_ou(…, remonter)`). A7 : `medias::a_retirer` (pur) et
+  `plafonner_images` (jaquettes, visuels, systèmes ; jamais les jeux du PC, leurs consoles, les documents, les liens
+  ni les `.part`), appelé après la synchronisation avec `pc.json ▸ plafondImagesGo` (2 Go) ; `noyau::vue` date une
+  image à chaque affichage. A8 : liste des documents rendue sans réseau si son empreinte = celle du catalogue, oubliée
+  sur un 404 (jamais le fichier). Vérifié : tests (cœur 484, interface 235).
+
 - **0.104.0** (25/10) — Lot « Avant-bêta », A1 (avec le dossier racine unique : `choisir_racine` pose la question
   PENDANT l'installation, par l'événement `mod-racine` et `mod_racine_repondre` — jamais de 2e téléchargement, le lien
   Nexus ne sert qu'une fois — 10 min sans réponse ou fermer = rien posé ; testé), A2, A3, A4 (relecture lancement : rien de

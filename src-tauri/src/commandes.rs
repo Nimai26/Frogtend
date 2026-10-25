@@ -181,11 +181,25 @@ struct ProgresSynchro {
 
 #[tauri::command]
 pub async fn ludotheque_synchroniser(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<BilanSynchro> {
-    noyau
+    let bilan = noyau
         .synchroniser(|page, jeux| {
             let _ = app.emit("synchro", ProgresSynchro { page, jeux });
         })
-        .await
+        .await?;
+    // Le plafond des images gardées (réglage du PC, `plafondImagesGo`, 2 Go d'office) : jamais une raison d'échouer.
+    if !bilan.simule {
+        let go = app
+            .store("pc.json")
+            .ok()
+            .and_then(|s| s.get("reglages"))
+            .and_then(|r| r["plafondImagesGo"].as_f64())
+            .filter(|g| *g > 0.0)
+            .unwrap_or(2.0);
+        if let Err(e) = noyau.plafonner_images((go * 1024.0 * 1024.0 * 1024.0) as u64).await {
+            noyau.journaliser(&format!("plafond des images impossible : {e:?}"));
+        }
+    }
+    Ok(bilan)
 }
 
 #[tauri::command]

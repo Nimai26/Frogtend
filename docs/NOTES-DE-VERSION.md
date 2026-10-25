@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.105.0 — Avant la bêta (2) : la place des images, Taodbox hors ligne
+
+- 💾 Nouveau réglage (⚙ Options ▸ Emplacements) : la place au plus des images gardées par profil (2 Go d'office).
+  Au-delà, les moins vues partent après une synchronisation — jamais celles des jeux de ce PC, jamais tes livrets.
+- 🛋 Taodbox hors ligne : la photo et le logo des consoles de tes jeux sont gardés à l'avance, comme les fonds des
+  jeux. Les images d'une console qui n'est plus servie à ton profil partent au ménage.
+- 📖 La liste des documents d'un jeu (livrets, musiques) n'est redemandée à Firehouse que si elle a changé, et elle
+  est oubliée quand le jeu n'est plus visible pour ton profil (les fichiers téléchargés restent).
+
 ## 0.104.0 — Avant la bêta (1) : mods, contenus, GameCube
 
 - 🧩 Un mod rangé dans un seul dossier (« MonMod/… ») : après le téléchargement, Frogtend te demande s'il faut poser

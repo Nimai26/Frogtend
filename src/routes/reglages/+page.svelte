@@ -322,7 +322,19 @@
     {:else if rubrique === 'emplacements'}
   <section class="panel">
     <header>📁 Emplacements des jeux <span class="muted">— ce PC</span></header>
-    <div class="corps"><Emplacements /></div>
+    <div class="corps">
+      <Emplacements />
+      <label class="champ">
+        <span>Place au plus des images gardées (jaquettes, fonds, consoles), par profil</span>
+        <select
+          value={String(etat.pc.plafondImagesGo ?? 2)}
+          onchange={(e) => reglerPc('plafondImagesGo', Number(e.currentTarget.value))}
+        >
+          {#each [0.5, 1, 2, 5, 10] as go (go)}<option value={String(go)}>{go < 1 ? '500 Mo' : `${go} Go`}</option>{/each}
+        </select>
+        <span class="muted">Au-delà, les moins vues partent après une synchronisation (elles reviennent si tu en as besoin). Jamais celles de tes jeux sur ce PC, ni tes livrets.</span>
+      </label>
+    </div>
   </section>
     {:else if rubrique === 'emulateurs'}
   <section class="panel">

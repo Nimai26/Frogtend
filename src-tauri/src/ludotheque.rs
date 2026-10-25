@@ -558,6 +558,13 @@ impl Cache {
         seulement.map(|ids| serde_json::to_string(ids).unwrap())
     }
 
+    /// Les systèmes dont la fiche est gardée pour ce profil (contrat 1.28).
+    pub fn systemes_gardes(&self) -> Resultat<Vec<String>> {
+        let mut st = self.db.prepare("SELECT nom FROM plateformes WHERE fiche IS NOT NULL")?;
+        let l = st.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?;
+        Ok(l)
+    }
+
     /// La fiche d'un système (contrat 1.28) telle que Firehouse l'a donnée à CE profil, si elle est gardée.
     pub fn fiche_plateforme(&self, nom: &str) -> Resultat<Option<Value>> {
         let brut: Option<Option<String>> = self.db.query_row("SELECT fiche FROM plateformes WHERE nom = ?1", [nom], |r| r.get(0)).optional()?;

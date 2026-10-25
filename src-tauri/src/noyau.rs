@@ -93,6 +93,21 @@ fn perimee() -> Erreur {
 
 /// Pour `garder_fichier` quand garder est un plus : un disque plein n'empêche pas de rendre l'image (faux), une session
 /// remplacée, si (l'erreur remonte).
+/// Le dossier des images d'un système dans le profil : une empreinte de son nom (un nom peut porter « / », comme
+/// « Thomson MO/TO »).
+/// Une image gardée vient d'être montrée : sa date passe à maintenant (le plafond des images retire les MOINS vues ;
+/// une image à empreinte n'est jamais réécrite). Sans importance si ça échoue.
+pub(crate) fn vue(p: &Path) {
+    if let Ok(f) = std::fs::File::options().write(true).open(p) {
+        let _ = f.set_modified(std::time::SystemTime::now());
+    }
+}
+
+pub(crate) fn cle_systeme(nom: &str) -> String {
+    use sha1::{Digest, Sha1};
+    Sha1::digest(nom.as_bytes()).iter().take(8).map(|b| format!("{b:02x}")).collect()
+}
+
 pub(crate) fn perimee_seulement(e: Erreur) -> Resultat<bool> {
     match e {
         Erreur::Perimee(_) => Err(e),
@@ -1178,6 +1193,7 @@ impl Noyau {
         let fichier = dossier.join(format!("{prefixe}{empreinte}.img"));
         let absent = dossier.join(format!("{prefixe}{empreinte}.absent"));
         if let Ok(octets) = std::fs::read(&fichier) {
+            vue(&fichier); // pour le plafond des images : les plus vues restent
             return Ok(Some(Image { type_contenu: type_image(&octets), octets }));
         }
         if let Ok(m) = std::fs::metadata(&absent) {
@@ -1231,6 +1247,12 @@ impl Noyau {
     /// dossier (`systemes/<clé du nom>/<type>-<largeur>-<empreinte>.img` : jamais partagée, Firehouse répond selon le
     /// jeton) et relue seulement quand son empreinte change ; hors ligne, la même image à une autre largeur.
     pub async fn image_systeme(&self, nom: &str, sorte: &str, largeur: u32) -> Resultat<Option<Image>> {
+        self.image_systeme_ou(nom, sorte, largeur, false).await
+    }
+
+    /// `image_systeme` ; `remonter` : hors ligne ou serveur en panne, l'erreur remonte (le préchargement s'arrête)
+    /// au lieu de la même image gardée à une autre largeur.
+    pub(crate) async fn image_systeme_ou(&self, nom: &str, sorte: &str, largeur: u32, remonter: bool) -> Resultat<Option<Image>> {
         const SORTES: [&str; 5] = ["logo", "banniere", "fond", "appareil", "icone"];
         if !SORTES.contains(&sorte) {
             return Ok(None);
@@ -1239,12 +1261,7 @@ impl Noyau {
         let fiche = s.verrou().fiche_plateforme(nom)?;
         let Some(fiche) = fiche else { return Ok(None) };
         let largeur = largeur.clamp(100, 1000).div_ceil(100) * 100;
-        // Un nom de système peut porter « / » (« Thomson MO/TO ») : le dossier est une empreinte du nom.
-        let cle: String = {
-            use sha1::{Digest, Sha1};
-            Sha1::digest(nom.as_bytes()).iter().take(8).map(|b| format!("{b:02x}")).collect()
-        };
-        let dossier = s.dossier.join("systemes").join(cle);
+        let dossier = s.dossier.join("systemes").join(cle_systeme(nom));
         let purger = |garder: Option<&str>| {
             for e in std::fs::read_dir(&dossier).into_iter().flatten().flatten() {
                 let n = e.file_name().to_string_lossy().to_string();
@@ -1261,6 +1278,7 @@ impl Noyau {
         }
         let fichier = dossier.join(format!("{sorte}-{largeur}-{empreinte}.img"));
         if let Ok(octets) = std::fs::read(&fichier) {
+            vue(&fichier); // pour le plafond des images : les plus vues restent
             return Ok(Some(Image { type_contenu: type_image(&octets), octets }));
         }
         match s.source.image_systeme(nom, sorte, image["id"].as_i64(), largeur).await {
@@ -1276,7 +1294,7 @@ impl Noyau {
                 }
                 Ok(None)
             }
-            Err(Erreur::Reseau(_) | Erreur::Serveur(_)) => {
+            Err(Erreur::Reseau(_) | Erreur::Serveur(_)) if !remonter => {
                 Ok(crate::medias::autre_largeur(&dossier, &format!("{sorte}-"), &empreinte, largeur).map(|octets| Image { type_contenu: type_image(&octets), octets }))
             }
             Err(e) => Err(e),
@@ -1344,6 +1362,7 @@ impl Noyau {
             if let Some(empreinte) = connu {
                 let fichier = du_jeu.join(format!("{sorte}-{largeur}-{empreinte}.img"));
                 if let Ok(octets) = std::fs::read(&fichier) {
+                    vue(&fichier); // pour le plafond des images : les plus vues restent
                     return Ok(Some(Image { type_contenu: type_image(&octets), octets }));
                 }
                 match s.source.media(id, sorte, Some(largeur)).await {
@@ -2302,18 +2321,23 @@ mod tests {
             "visuels/9-logo-600.img",
             "documents/9/documents.json",
             "documents/9/3.pdf",
+            // Un système dont la fiche n'est plus donnée (contrat 1.28), et un nom qui n'est pas une clé : jamais touché.
+            "systemes/0123456789abcdef/fond-1000-x.img",
+            "systemes/notes/x.txt",
         ] {
             ecrire(r);
         }
+        let garde = format!("systemes/{}/fond-1000-x.img", cle_systeme("SNES"));
+        ecrire(&garde);
         let b = n.synchroniser(|_, _| {}).await.unwrap();
         // Retirés : la jaquette, son absence, le dossier des visuels et l'ancien nom plat du jeu 9, et la liste de ses
         // documents (5 éléments) ; jamais le fichier du document (accord de la personne), ni le reste.
-        assert_eq!(b.menage.elements, 5, "{b:?}");
+        assert_eq!(b.menage.elements, 6, "{b:?}");
         assert!(b.menage.octets >= 5 * 5);
-        for parti in ["jaquettes/9-400-x.img", "jaquettes/9-400-x.absent", "visuels/9", "visuels/9-logo-600.img", "documents/9/documents.json"] {
+        for parti in ["jaquettes/9-400-x.img", "jaquettes/9-400-x.absent", "visuels/9", "visuels/9-logo-600.img", "documents/9/documents.json", "systemes/0123456789abcdef"] {
             assert!(!p.join(parti).exists(), "{parti}");
         }
-        for reste in ["jaquettes/1-400-j1.img", "jaquettes/77-400-x.img", "jaquettes/-5-400-x.img", "jaquettes/notes.txt", "visuels/1/fond-1000-f1.img", "documents/9/3.pdf"] {
+        for reste in ["jaquettes/1-400-j1.img", "jaquettes/77-400-x.img", "jaquettes/-5-400-x.img", "jaquettes/notes.txt", "visuels/1/fond-1000-f1.img", "documents/9/3.pdf", "systemes/notes/x.txt", garde.as_str()] {
             assert!(p.join(reste).exists(), "{reste}");
         }
     }

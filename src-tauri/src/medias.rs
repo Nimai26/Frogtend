@@ -202,6 +202,23 @@ fn taille(p: &Path) -> u64 {
     }
 }
 
+/// Ce qu'il faut retirer pour revenir sous `plafond` : les fichiers NON protégés, les MOINS VUS d'abord (heure de
+/// dernière vue : `noyau::vue` la met à jour à chaque image montrée). `fichiers` : (chemin, taille, heure, protégé).
+pub fn a_retirer(mut fichiers: Vec<(PathBuf, u64, std::time::SystemTime, bool)>, plafond: u64) -> Vec<PathBuf> {
+    let mut total: u64 = fichiers.iter().map(|f| f.1).sum();
+    fichiers.retain(|f| !f.3);
+    fichiers.sort_by_key(|f| f.2);
+    let mut l = Vec::new();
+    for (p, t, _, _) in fichiers {
+        if total <= plafond {
+            break;
+        }
+        total = total.saturating_sub(t);
+        l.push(p);
+    }
+    l
+}
+
 /// Ce que le ménage a retiré.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Serialize)]
 pub struct Menage {
@@ -243,6 +260,16 @@ impl Noyau {
                 }
             }
         }
+        // Les images d'un système dont la fiche n'est plus donnée à ce profil (contrat 1.28).
+        let systemes: std::collections::HashSet<String> = s.verrou().systemes_gardes()?.iter().map(|n| crate::noyau::cle_systeme(n)).collect();
+        if let Ok(l) = std::fs::read_dir(s.dossier.join("systemes")) {
+            for e in l.flatten() {
+                let n = e.file_name().to_string_lossy().to_string();
+                if n.len() == 16 && n.chars().all(|c| c.is_ascii_hexdigit()) && !systemes.contains(&n) {
+                    retirer(&e.path());
+                }
+            }
+        }
         if let Ok(l) = std::fs::read_dir(s.dossier.join("documents")) {
             for e in l.flatten() {
                 let n = e.file_name().to_string_lossy().to_string();
@@ -250,6 +277,51 @@ impl Noyau {
                     retirer(&e.path().join("documents.json"));
                 }
             }
+        }
+        Ok(m)
+    }
+
+    /// Le plafond des images gardées pour le profil ouvert (réglage du PC) : au-delà, les plus anciennes partent —
+    /// jaquettes, visuels et images des systèmes, JAMAIS celles des jeux du PC ni de leurs consoles (Taodbox hors
+    /// ligne), jamais un document (un livret téléchargé avec l'accord de la personne), jamais un lien.
+    pub async fn plafonner_images(&self, plafond: u64) -> Resultat<Menage> {
+        let s = self.session().await?;
+        let jeux_du_pc: std::collections::HashSet<i64> = self.registre().ids()?.into_iter().collect();
+        let consoles: std::collections::HashSet<String> =
+            self.registre().tous()?.into_iter().map(|j| crate::noyau::cle_systeme(&j.plateforme)).collect();
+        let mut fichiers = Vec::new();
+        let mut a_voir: Vec<(PathBuf, bool)> = Vec::new();
+        for sous in ["jaquettes", "visuels", "systemes"] {
+            for e in std::fs::read_dir(s.dossier.join(sous)).into_iter().flatten().flatten() {
+                let n = e.file_name().to_string_lossy().to_string();
+                let protege = if sous == "systemes" { consoles.contains(&n) } else { id_du_nom(&n).is_some_and(|id| jeux_du_pc.contains(&id)) };
+                a_voir.push((e.path(), protege));
+            }
+        }
+        while let Some((p, protege)) = a_voir.pop() {
+            let Ok(m) = std::fs::symlink_metadata(&p) else { continue };
+            if m.file_type().is_symlink() {
+                continue;
+            }
+            if m.is_dir() {
+                for e in std::fs::read_dir(&p).into_iter().flatten().flatten() {
+                    a_voir.push((e.path(), protege));
+                }
+            } else if !p.extension().is_some_and(|e| e == "part") {
+                // Jamais un fichier en cours d'écriture (`.part`, renommé ensuite).
+                fichiers.push((p, m.len(), m.modified().unwrap_or(std::time::UNIX_EPOCH), protege));
+            }
+        }
+        let tailles: std::collections::HashMap<PathBuf, u64> = fichiers.iter().map(|f| (f.0.clone(), f.1)).collect();
+        let mut m = Menage::default();
+        for p in a_retirer(fichiers, plafond) {
+            if std::fs::remove_file(&p).is_ok() {
+                m.elements += 1;
+                m.octets += tailles.get(&p).copied().unwrap_or(0);
+            }
+        }
+        if m.elements > 0 {
+            self.journaliser(&format!("plafond des images : {} image(s) retirée(s), {} octets", m.elements, m.octets));
         }
         Ok(m)
     }
@@ -276,6 +348,7 @@ impl Noyau {
         }
         let jeux: Vec<i64> = self.registre().tous()?.into_iter().filter(|j| j.etat == crate::jeux_pc::Etat::Telecharge).map(|j| j.id).collect();
         let mut recus = 0;
+        let mut hors_ligne = false;
         'jeux: for id in jeux {
             // Profil ou jeton changé entre-temps : plus rien à faire pour cette session.
             if recus >= plafond || s.est_perimee() {
@@ -310,6 +383,7 @@ impl Noyau {
                     Ok(None) => {} // Firehouse ne l'a pas (ou plus) : le jeu suivant
                     Err(Erreur::Reseau(_) | Erreur::Serveur(_)) => {
                         self.journaliser(&format!("Taodbox : fonds et logos gardés à l'avance arrêtés au jeu {id} (hors ligne ou Firehouse indisponible)"));
+                        hors_ligne = true;
                         if recu {
                             recus += 1;
                         }
@@ -320,6 +394,23 @@ impl Noyau {
             }
             if recu {
                 recus += 1;
+            }
+        }
+        // Les consoles des jeux du PC (contrat 1.28) : leur photo (fond) et leur logo, sinon leur bannière, aux largeurs
+        // de Taodbox. `image_systeme` ne télécharge que ce qui manque ou a changé.
+        if !s.est_perimee() && !hors_ligne {
+            let mut consoles: Vec<String> = self.registre().tous()?.into_iter().filter(|j| j.etat == crate::jeux_pc::Etat::Telecharge).map(|j| j.plateforme).collect();
+            consoles.sort();
+            consoles.dedup();
+            'consoles: for c in consoles {
+                for (sorte, largeur) in [("fond", 1000u32), ("logo", 300), ("banniere", 300)] {
+                    match self.image_systeme_ou(&c, sorte, largeur, true).await {
+                        Ok(Some(_)) if sorte == "logo" => break, // le logo suffit, pas besoin de la bannière
+                        Ok(_) => {}
+                        Err(Erreur::Reseau(_) | Erreur::Serveur(_)) => break 'consoles,
+                        Err(e) => return Err(e),
+                    }
+                }
             }
         }
         if recus > 0 {
@@ -336,6 +427,58 @@ mod tests {
     use crate::noyau::Connexion;
     use httpmock::prelude::*;
     use serde_json::json;
+
+    #[test]
+    fn au_dela_du_plafond_les_plus_anciennes_partent_jamais_les_protegees() {
+        let t = |s: u64| std::time::UNIX_EPOCH + std::time::Duration::from_secs(s);
+        let f = |n: &str, taille: u64, quand: u64, protege: bool| (PathBuf::from(n), taille, t(quand), protege);
+        let l = vec![f("recente", 40, 300, false), f("vieille", 40, 100, false), f("du-pc", 40, 50, true), f("moyenne", 40, 200, false)];
+        // 160 octets, plafond 90 : la plus vieille non protégée, puis la suivante (on tombe à 80).
+        assert_eq!(a_retirer(l.clone(), 90), vec![PathBuf::from("vieille"), PathBuf::from("moyenne")]);
+        assert!(a_retirer(l.clone(), 1000).is_empty(), "sous le plafond : rien");
+        // Plafond impossible à tenir : seules les non protégées partent.
+        assert_eq!(a_retirer(l, 0).len(), 3);
+    }
+
+    #[tokio::test]
+    async fn le_plafond_des_images_epargne_les_jeux_du_pc_et_leurs_consoles() {
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, None).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        let jeu = crate::jeux_pc::JeuPc {
+            id: 7,
+            version: 200,
+            titre: "Super C".into(),
+            plateforme: "SNES".into(),
+            dossier: d.path().join("J").to_string_lossy().into(),
+            etat: crate::jeux_pc::Etat::Telecharge,
+            total: 1,
+            fichiers: vec![],
+            message: None,
+            ajoute_le: "1".into(),
+            ajoute_par: "seb".into(),
+            installation: None,
+            temps_jeu: 0,
+            derniere_partie: None,
+        };
+        n.registre().ajouter(&jeu).unwrap();
+        let p = n.session().await.unwrap().dossier.clone();
+        let ecrire = |r: &str| {
+            let f = p.join(r);
+            std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+            std::fs::write(f, vec![0u8; 100]).unwrap();
+        };
+        let console = format!("systemes/{}/fond-1000-x.img", crate::noyau::cle_systeme("SNES"));
+        for r in ["jaquettes/7-400-a.img", "visuels/7/fond-1000-b.img", console.as_str(), "jaquettes/9-400-c.img", "visuels/9/fond-1000-d.img", "systemes/0123456789abcdef/logo-300-e.img", "documents/9/3.pdf"] {
+            ecrire(r);
+        }
+        let m = n.plafonner_images(0).await.unwrap();
+        assert_eq!(m.elements, 3, "{m:?}");
+        for reste in ["jaquettes/7-400-a.img", "visuels/7/fond-1000-b.img", console.as_str(), "documents/9/3.pdf"] {
+            assert!(p.join(reste).exists(), "{reste}");
+        }
+    }
 
     #[test]
     fn la_liste_garde_les_visuels_utilisables_un_par_un() {
