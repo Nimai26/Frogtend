@@ -227,7 +227,7 @@ fn repondre_fond(app: &tauri::AppHandle, chemin: &str) -> tauri::http::Response<
 /// Répond aux adresses `systeme://localhost/<type>?plateforme=<nom encodé>&largeur=N&e=<empreinte>` (sous Windows :
 /// `http://systeme.localhost/…`) avec une image d'un système (contrat 1.28) pour le profil OUVERT. L'empreinte dans
 /// l'adresse distingue deux versions d'une image (rien n'est gardé par le navigateur).
-fn repondre_systeme(app: &tauri::AppHandle, chemin: &str, requete: Option<&str>) -> tauri::http::Response<Vec<u8>> {
+fn repondre_systeme(app: &tauri::AppHandle, chemin: &str, requete: Option<&str>, origine: Option<&str>) -> tauri::http::Response<Vec<u8>> {
     let sorte = chemin.trim_matches('/');
     let Some(nom) = parametre(requete, "plateforme").map(|n| percent_decode(&n.replace('+', " "))) else { return reponse_vide(400) };
     let largeur = parametre(requete, "largeur").and_then(|l| l.parse::<u32>().ok()).unwrap_or(400);
@@ -240,7 +240,7 @@ fn repondre_systeme(app: &tauri::AppHandle, chemin: &str, requete: Option<&str>)
             .header("Cache-Control", "no-store")
             // Une icône monochrome sert de MASQUE CSS (teintée par le thème) : Chromium la charge avec un contrôle
             // d'origine. Seulement l'application elle-même, jamais une page tierce.
-            .header("Access-Control-Allow-Origin", "http://tauri.localhost")
+            .header("Access-Control-Allow-Origin", origine_de_l_application(origine))
             .body(img.octets)
             .unwrap(),
         Ok(None) => reponse_vide(404),
@@ -248,6 +248,15 @@ fn repondre_systeme(app: &tauri::AppHandle, chemin: &str, requete: Option<&str>)
             noyau.journaliser(&format!("image du système {nom} ({sorte}) : {e:?}"));
             reponse_vide(404)
         }
+    }
+}
+
+/// L'origine de l'application à autoriser : celle de la page qui demande si c'est bien l'application (installée :
+/// `http://tauri.localhost` ; en développement : `http://localhost:<port>`), sinon celle de l'application installée.
+fn origine_de_l_application(origine: Option<&str>) -> String {
+    match origine {
+        Some(o) if o == "http://tauri.localhost" || o == "https://tauri.localhost" || o.strip_prefix("http://localhost:").is_some_and(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit())) => o.to_string(),
+        _ => "http://tauri.localhost".to_string(),
     }
 }
 
@@ -425,9 +434,10 @@ pub fn run() {
             let app = ctx.app_handle().clone();
             let chemin = requete.uri().path().to_string();
             let parametres = requete.uri().query().map(String::from);
+            let origine = requete.headers().get("origin").and_then(|v| v.to_str().ok()).map(String::from);
             // Hors du fil de l'interface : l'image peut venir du réseau.
             std::thread::spawn(move || {
-                let reponse = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| repondre_systeme(&app, &chemin, parametres.as_deref())))
+                let reponse = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| repondre_systeme(&app, &chemin, parametres.as_deref(), origine.as_deref())))
                     .unwrap_or_else(|_| reponse_vide(500));
                 repondeur.respond(reponse)
             });
@@ -610,6 +620,17 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn seule_l_application_peut_lire_une_icone_de_systeme() {
+        assert_eq!(origine_de_l_application(Some("http://tauri.localhost")), "http://tauri.localhost");
+        assert_eq!(origine_de_l_application(Some("http://localhost:1420")), "http://localhost:1420", "en développement");
+        // Une page tierce (fenêtre web ouverte par l'application) : jamais son origine.
+        for autre in ["https://exemple.fr", "http://localhost:1420.exemple.fr", "http://localhost:", "null"] {
+            assert_eq!(origine_de_l_application(Some(autre)), "http://tauri.localhost", "{autre}");
+        }
+        assert_eq!(origine_de_l_application(None), "http://tauri.localhost");
+    }
 
     #[test]
     fn un_morceau_de_document_se_sert_avec_ses_en_tetes() {

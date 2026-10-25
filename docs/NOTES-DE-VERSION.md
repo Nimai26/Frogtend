@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.103.0 — Les icônes des consoles
+
+- 🎮 Dans la liste des plateformes, chaque console a sa petite icône (celles de libretro, servies par Firehouse),
+  de la couleur du texte de ton thème : elle s'adapte au clair, au sombre et à chaque skin.
+- Une console sans icône garde sa place : les noms restent bien alignés.
+
 ## 0.102.0 — Les consoles dans Taodbox
 
 - 🛋 Dans Taodbox, les boutons des consoles portent leur logo (sinon leur bannière, sinon leur nom).

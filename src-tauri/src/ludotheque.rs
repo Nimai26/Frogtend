@@ -24,6 +24,10 @@ pub struct Plateforme {
     /// L'entrée reçue telle quelle (contrat 1.28 : images, fabricant, description…), gardée pour la fiche du système.
     #[serde(default, skip_serializing)]
     pub fiche: Option<Value>,
+    /// L'empreinte de l'icône monochrome du système (contrat 1.28), s'il en a une : la colonne des plateformes la
+    /// montre teintée par le thème (l'image vient par le protocole `systeme`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icone: Option<String>,
 }
 
 /// La version du schéma des résumés gardés : quand elle change, la synchronisation suivante relit TOUT le catalogue
@@ -283,7 +287,8 @@ pub fn lire_plateformes(v: &Value) -> Vec<Plateforme> {
             let nom = ["nom", "plateforme", "name"].iter().find_map(|c| p.get(*c)?.as_str())?;
             let jeux = ["jeux", "nombre", "nb_jeux", "total", "count"].iter().find_map(|c| p.get(*c)?.as_u64());
             let nom_affiche = p.get("nom_affiche").and_then(Value::as_str).map(str::trim).filter(|n| !n.is_empty()).map(String::from);
-            Some(Plateforme { nom: nom.into(), jeux: jeux.unwrap_or(0), nom_affiche, fiche: p.is_object().then(|| p.clone()) })
+            let icone = p["images"]["icone"]["empreinte"].as_str().map(String::from);
+            Some(Plateforme { nom: nom.into(), jeux: jeux.unwrap_or(0), nom_affiche, fiche: p.is_object().then(|| p.clone()), icone })
         })
         .collect()
 }
@@ -564,13 +569,15 @@ impl Cache {
         let mut st = self.db.prepare(
             // Le nom court par une sous-requête (pas de jointure : `brut` et `jeux` existent dans les deux tables).
             &format!(
-                "SELECT plateforme, COUNT(*), (SELECT p.nom_affiche FROM plateformes p WHERE p.nom = jeux.plateforme) FROM jeux WHERE {} GROUP BY plateforme ORDER BY plateforme COLLATE NOCASE",
+                "SELECT plateforme, COUNT(*), (SELECT p.nom_affiche FROM plateformes p WHERE p.nom = jeux.plateforme),
+                   (SELECT json_extract(p.fiche, '$.images.icone.empreinte') FROM plateformes p WHERE p.nom = jeux.plateforme)
+                 FROM jeux WHERE {} GROUP BY plateforme ORDER BY plateforme COLLATE NOCASE",
                 restreindre("?1")
             ),
         )?;
         let liste = st
             .query_map([Self::liste_json(seulement)], |r| {
-                Ok(Plateforme { nom: r.get(0)?, jeux: r.get::<_, i64>(1)? as u64, nom_affiche: r.get(2)?, fiche: None })
+                Ok(Plateforme { nom: r.get(0)?, jeux: r.get::<_, i64>(1)? as u64, nom_affiche: r.get(2)?, fiche: None, icone: r.get(3)? })
             })?
             .collect::<Result<_, _>>()?;
         Ok(liste)
@@ -1036,6 +1043,8 @@ pub(crate) mod tests {
         let p = c.plateformes(None).unwrap();
         let md = p.iter().find(|x| x.nom == "Sega Genesis").unwrap();
         assert_eq!((md.jeux, md.nom_affiche.as_deref()), (2, Some("Mega Drive")));
+        // L'empreinte de l'icône (contrat 1.28) arrive avec la liste ; un système sans icône : rien.
+        assert!(md.icone.as_deref().is_some_and(|e| e.len() >= 16), "{:?}", md.icone);
         assert_eq!(p.iter().find(|x| x.nom == "Atari 2600").unwrap().nom_affiche, None);
         // Jamais envoyée à l'interface avec la liste (lourde) : seulement par la fiche du système.
         assert!(!serde_json::to_string(&l[0]).unwrap().contains("description_fr"));

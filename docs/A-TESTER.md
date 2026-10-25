@@ -48,6 +48,10 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Icônes des consoles (0.103.0)
+- [ ] Liste des plateformes : une icône devant chaque console, de la couleur du texte ; changer de skin (clair /
+      sombre) : elles suivent.
+
 ## Consoles dans Taodbox (0.102.0)
 - [ ] Taodbox (au moins deux consoles) : les boutons portent les logos ; un logo absent → le nom.
 - [ ] Choisir une console : sa photo en fond, sous un voile (texte lisible) ; s'arrêter sur un jeu qui a un fond :

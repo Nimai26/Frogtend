@@ -13,6 +13,7 @@
   e-Reader (cartouche GBA « e-Reader » + `--ecard <carte>.raw`, jamais la carte seule ; `mgba --help` vérifié).
   Experts consultés avant de coder (24/10).
   ✅ Seb 25/10 : « Oui vas y » → P2b Taodbox (boutons logo/bannière, fond du système, crédits).
+  ✅ Seb 25/10 : « oui » → P2c icônes teintées des consoles dans la colonne des plateformes.
 - [ ] **Contrat 1.27 EN SERVICE** (21/10, Firehouse 2.99.0) : (1) `/plateformes` → `nom_affiche` (nom européen court
   choisi par Seb : Mega Drive, Super Nintendo, PC Engine… ; corrigeable au cockpit) — AFFICHAGE seulement, la clé
   reste `nom` (rattachements, caches, chemins), repli sur `nom` ; (2) `/jeu/{id}` → `plateforme_affichee` (même
@@ -760,6 +761,15 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.103.0** (25/10) — Lot « Plateformes », P2c : icônes des consoles dans la colonne (relecture interface : rien de
+  bloquant, ses IMPORTANTS corrigés — case fixe pour l'alignement, couleur du texte pour le contraste). Cœur :
+  `Plateforme.icone` (empreinte lue par `json_extract` dans la fiche gardée) ; protocole `systeme` :
+  `Access-Control-Allow-Origin` = l'origine de l'application seule (`tauri.localhost`, ou `localhost:<port>` en
+  développement ; testé). Interface : icône monochrome en MASQUE CSS (`currentColor`), case toujours présente.
+  Vérifié : tests (cœur 478, interface 234). NON vérifié : le rendu réel, et que WebView2 transmet l'en-tête `Origin`
+  au protocole (sinon, en développement seulement, la case reste vide). Lot « Plateformes » : P1, P2a, P2b, P2c
+  livrés ; P3 (e-Reader) attend le contrat de Firehouse (besoin 33).
 
 - **0.102.0** (25/10) — Lot « Plateformes », P2b : Taodbox (relecture interface : rien de bloquant, ses IMPORTANTS
   corrigés — logo AVANT la bannière sur un bouton, plus de va-et-vient de la photo entre deux jeux). Fiches des

@@ -50,6 +50,8 @@ export interface Plateforme {
   jeux: number;
   /** Le nom court choisi par Seb (contrat 1.27 : « Mega Drive ») — AFFICHAGE seulement. */
   nom_affiche?: string;
+  /** L'empreinte de l'icône monochrome du système (contrat 1.28), s'il en a une. */
+  icone?: string;
 }
 
 export interface JeuResume {

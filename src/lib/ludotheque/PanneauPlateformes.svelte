@@ -1,5 +1,6 @@
 <script lang="ts">
   // La colonne de gauche : la recherche, les filtres, puis les plateformes groupées par catégorie.
+  import { adresseImageSysteme } from '$lib/api';
   import { etat } from '$lib/etat.svelte';
   import { grouperParCategorie, ICONES_CATEGORIES } from './categories';
   import { choisirPlateforme, ludo, nomAffiche, rechargerListe } from './ludotheque.svelte';
@@ -93,6 +94,13 @@
             class:actif={ludo.plateforme === p.nom}
             onclick={() => choisirPlateforme(p.nom)}
           >
+            <!-- L'icône monochrome du système (contrat 1.28) sert de MASQUE : elle prend la couleur du texte du thème. La
+                 case est TOUJOURS là (vide sans icône, ou si elle échoue) : les noms restent alignés. -->
+            <span
+              class="icone-systeme"
+              aria-hidden="true"
+              style:--masque={p.icone ? `url("${adresseImageSysteme(p.nom, 'icone', 100, p.icone)}")` : 'none'}
+            ></span>
             <span class="nom">{nomAffiche(p.nom)}</span>
             <span class="nombre">{p.jeux.toLocaleString('fr-FR')}</span>
           </button>
@@ -171,6 +179,14 @@
   }
   .sous {
     padding-left: calc(30 * var(--u));
+  }
+  .icone-systeme {
+    flex: none;
+    width: calc(18 * var(--u));
+    height: calc(18 * var(--u));
+    background: currentColor;
+    -webkit-mask: var(--masque) center / contain no-repeat;
+    mask: var(--masque) center / contain no-repeat;
   }
   .nom {
     flex: 1;
