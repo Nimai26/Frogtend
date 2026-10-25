@@ -254,8 +254,8 @@ mod windows_impl {
 
     /// Suspend tous les fils de ces processus (sauf Frogtend), en plusieurs passes.
     pub fn suspendre(pids: &[u32]) -> Vec<FilFige> {
-        let moi = std::process::id();
-        let pids: Vec<u32> = pids.iter().copied().filter(|p| *p != moi && *p != 0).collect();
+        // Jamais Frogtend ni ce qui l'a lancé (Steam, l'explorateur, Sunshine) : figer l'un d'eux bloquerait tout.
+        let pids: Vec<u32> = crate::lancement::sauf_frogtend(pids).into_iter().filter(|p| *p != 0).collect();
         let mut figes: Vec<FilFige> = Vec::new();
         let mut essayes: Vec<u32> = Vec::new();
         for _ in 0..PASSES {
@@ -372,6 +372,11 @@ mod tests {
         assert!(!fils.is_empty(), "au moins un fil suspendu");
         assert!(fils.iter().all(|f| f.pid == enfant.id()));
         assert!(suspendre(&[std::process::id()]).is_empty(), "Frogtend ne se fige jamais lui-même");
+        // Ni ce qui l'a lancé (Steam, l'explorateur, Sunshine…).
+        let mut s = sysinfo::System::new();
+        s.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+        let parent = s.process(sysinfo::Pid::from_u32(std::process::id())).and_then(|p| p.parent()).unwrap().as_u32();
+        assert!(suspendre(&[parent]).is_empty(), "jamais le parent de Frogtend");
         std::thread::sleep(Duration::from_secs(2));
         assert!(enfant.try_wait().unwrap().is_none(), "figé : il ne finit pas");
         relancer(fils);

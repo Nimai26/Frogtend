@@ -7,6 +7,8 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- ✅ Seb 25/10 : « allons sur les deux petites protections puis liste-moi ce qu'il reste à faire » → la garde de
+  `terminer` (Frogtend et ses ancêtres jamais touchés) étendue à `fenetres::fermer` et `figer::suspendre` (0.103.1).
 - **Lot « Plateformes »** (✅ Seb 24/10 : « Le lot plateformes », choisi devant l'installation neuve). Découpe : P1
   noms courts (1.27 `nom_affiche`/`plateforme_affichee`, affichage seulement) ; P2 fiches de systèmes (1.28 :
   images, fabricant, date, description FR, CRÉDITS obligatoires) dans la ludothèque et Taodbox ; P3 lancement
@@ -14,7 +16,7 @@
   Experts consultés avant de coder (24/10).
   ✅ Seb 25/10 : « Oui vas y » → P2b Taodbox (boutons logo/bannière, fond du système, crédits).
   ✅ Seb 25/10 : « oui » → P2c icônes teintées des consoles dans la colonne des plateformes.
-- [ ] **Contrat 1.27 EN SERVICE** (21/10, Firehouse 2.99.0) : (1) `/plateformes` → `nom_affiche` (nom européen court
+- [x] ✅ FAIT en 0.100.0 — **Contrat 1.27 EN SERVICE** (21/10, Firehouse 2.99.0) : (1) `/plateformes` → `nom_affiche` (nom européen court
   choisi par Seb : Mega Drive, Super Nintendo, PC Engine… ; corrigeable au cockpit) — AFFICHAGE seulement, la clé
   reste `nom` (rattachements, caches, chemins), repli sur `nom` ; (2) `/jeu/{id}` → `plateforme_affichee` (même
   règle) ; (3) `{{p|uid}}` → `<identifiant utilisateur>` partout (déjà géré en 0.98.0 : sous-dossiers énumérés).
@@ -27,7 +29,7 @@
   incrémentale. `source` d'un média : aussi `libretro`/`igdb` ; `meta.jeu.resume_source`. ✅ Vérifié le 22/10 :
   Frogtend ne filtre aucune valeur de `source` (rien à changer). À voir avec 1.28 : créditer ces images si leur
   licence l'exige.
-- [ ] **Contrat 1.28 EN SERVICE — FICHES DE SYSTÈMES (besoin 20 servi)** (22/10, Firehouse 2.100.0 ; BRIEF § 1.28).
+- [x] ✅ FAIT en 0.101.0 à 0.103.0 — **Contrat 1.28 EN SERVICE — FICHES DE SYSTÈMES (besoin 20 servi)** (22/10, Firehouse 2.100.0 ; BRIEF § 1.28).
   `/plateformes` gagne `images` {logo, banniere, fond, appareil, icone} (chacun {id, empreinte, largeur, hauteur,
   source, licence, auteur, url_source} ou null), `images_empreinte` (change → relire les images), `fabricant`,
   `date_sortie` (AAAA[-MM[-JJ]]), `description_fr`, `description_source`, `description_licence`. Image :
@@ -761,6 +763,12 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.103.1** (25/10) — Les deux protections restantes (choix de Seb) : `lancement::sauf_frogtend` (un relevé, filtre
+  `intouchables`), la garde commune désormais branchée sur figer (`figer::suspendre`), fermer les fenêtres, rendre le
+  premier plan et trouver le processus pour Cheat Engine (`menu_jeu::fenetres`). Relecture lancement : rien de
+  bloquant ni d'important, ses mineurs appliqués. Vérifié : tests (cœur 478, dont « jamais le parent de Frogtend »
+  pour le gel). NON vérifié : la durée réelle d'un relevé des processus à l'ouverture du menu.
 
 - **0.103.0** (25/10) — Lot « Plateformes », P2c : icônes des consoles dans la colonne (relecture interface : rien de
   bloquant, ses IMPORTANTS corrigés — case fixe pour l'alignement, couleur du texte pour le contraste). Cœur :

@@ -154,6 +154,14 @@ fn intouchables(s: &System) -> HashSet<u32> {
     l
 }
 
+/// `pids` sans Frogtend ni les programmes qui l'ont lancé (Steam, l'explorateur, Sunshine…) : la garde commune à tout
+/// ce qui AGIT sur les programmes d'une partie (terminer, fermer ses fenêtres, la figer). Un seul relevé.
+pub fn sauf_frogtend(pids: &[u32]) -> Vec<u32> {
+    let mut s = System::new();
+    s.refresh_processes(ProcessesToUpdate::All, true);
+    a_terminer(pids, &intouchables(&s))
+}
+
 /// Ce qui peut être terminé dans `pids` : jamais ce qui est dans `jamais`.
 fn a_terminer(pids: &[u32], jamais: &HashSet<u32>) -> Vec<u32> {
     pids.iter().copied().filter(|p| !jamais.contains(p)).collect()
@@ -184,6 +192,7 @@ pub fn processus_du_dossier(dossier: &Path) -> Vec<u32> {
 pub fn terminer(pids: &[u32]) -> usize {
     let mut s = System::new();
     s.refresh_processes(ProcessesToUpdate::All, true);
+    // La même garde que `sauf_frogtend`, sur le relevé gardé pour terminer.
     let jamais = intouchables(&s);
     a_terminer(pids, &jamais).into_iter().filter_map(|p| s.process(Pid::from_u32(p))).filter(|p| p.kill()).count()
 }
@@ -348,6 +357,7 @@ mod tests {
         let jamais = intouchables(&s);
         assert!(jamais.contains(&moi) && jamais.contains(&parent));
         assert_eq!(a_terminer(&[moi, parent, 4242], &jamais), vec![4242]);
+        assert_eq!(sauf_frogtend(&[moi, parent, 4242]), vec![4242], "la garde commune (fermer, figer)");
     }
 
     #[test]

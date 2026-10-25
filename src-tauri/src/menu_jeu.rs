@@ -207,7 +207,8 @@ mod fenetres {
 
     /// Le processus qui porte la fenêtre principale du jeu (celui sur lequel brancher Cheat Engine).
     pub fn pid_de_la_fenetre(pids: &[u32]) -> Option<u32> {
-        let h = du_processus(pids).into_iter().next()?;
+        // Jamais Frogtend ni ce qui l'a lancé : Cheat Engine se branche sur le JEU.
+        let h = du_processus(&crate::lancement::sauf_frogtend(pids)).into_iter().next()?;
         let mut pid = 0u32;
         unsafe {
             GetWindowThreadProcessId(h, Some(&mut pid));
@@ -217,7 +218,7 @@ mod fenetres {
 
     /// Rend le premier plan au jeu. Rend `false` si aucune fenêtre n'a été trouvée.
     pub fn au_premier_plan(pids: &[u32]) -> bool {
-        let Some(h) = du_processus(pids).into_iter().next() else { return false };
+        let Some(h) = du_processus(&crate::lancement::sauf_frogtend(pids)).into_iter().next() else { return false };
         unsafe {
             if IsIconic(h).as_bool() {
                 let _ = ShowWindow(h, SW_RESTORE);
@@ -228,7 +229,8 @@ mod fenetres {
 
     /// Demande poliment aux fenêtres du jeu de se fermer (comme la croix) : l'émulateur enregistre ce qu'il doit.
     pub fn fermer(pids: &[u32]) -> usize {
-        let l = du_processus(pids);
+        // Jamais les fenêtres de Frogtend ni de ce qui l'a lancé : seulement celles de la partie.
+        let l = du_processus(&crate::lancement::sauf_frogtend(pids));
         for h in &l {
             unsafe {
                 let _ = PostMessageW(Some(*h), WM_CLOSE, WPARAM(0), LPARAM(0));

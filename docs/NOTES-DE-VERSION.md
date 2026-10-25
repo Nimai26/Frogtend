@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.103.1 — Le menu en jeu ne touche qu'au jeu
+
+- 🛡 Quand le menu en jeu fige le jeu, ferme ses fenêtres, lui rend le premier plan ou y branche Cheat Engine,
+  Frogtend ne touche plus jamais à lui-même ni à ce qui l'a lancé (Steam, l'explorateur, Sunshine) — la même
+  protection que pour « Quitter » (0.99.2).
+
 ## 0.103.0 — Les icônes des consoles
 
 - 🎮 Dans la liste des plateformes, chaque console a sa petite icône (celles de libretro, servies par Firehouse),
