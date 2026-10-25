@@ -27,6 +27,9 @@ describe('fiches des systèmes (contrat 1.28)', () => {
     expect(imageEntete(null)).toBeNull();
     // La bannière n'a pas pu s'afficher : le logo.
     expect(imageEntete(troisDo, ['banniere'])?.sorte).toBe('logo');
+    // Pour un bouton : le logo d'abord, la bannière s'il manque ou échoue.
+    expect(imageEntete(troisDo, [], ['logo', 'banniere'])?.sorte).toBe('logo');
+    expect(imageEntete(troisDo, ['logo'], ['logo', 'banniere'])?.sorte).toBe('banniere');
   });
 
   it('fabricant et année', () => {

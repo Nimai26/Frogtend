@@ -2,10 +2,11 @@
   // Taodbox (lot 5) : le mode canapé. Les jeux de CE PC en grandes jaquettes, par console ; tout se fait à la manette
   // (croix, A, B) ou aux flèches. L'échelle ×2, le focus fort et la marge de la télé viennent de la charte (§ 7).
   import { goto } from '$app/navigation';
-  import { onDestroy, onMount, tick } from 'svelte';
+  import { onDestroy, onMount, tick, untrack } from 'svelte';
   import { isTauri } from '@tauri-apps/api/core';
-  import { api, type JeuPc } from '$lib/api';
-  import { confirmer } from '$lib/dialogues/fenetres.svelte';
+  import { adresseImageSysteme, api, type FicheSysteme, type JeuPc } from '$lib/api';
+  import { confirmer, informer } from '$lib/dialogues/fenetres.svelte';
+  import { creditImage, imageEntete } from '$lib/ludotheque/systemes';
   import { etat, sortirDuProfil } from '$lib/etat.svelte';
   import { gererLaCarte, installer, jouerLaCarte, partie } from '$lib/ludotheque/jeu.svelte';
   import { groupeDe, originesJeuPc, unParGroupe } from '$lib/boutiques/copies';
@@ -43,6 +44,7 @@
   const consoles = $derived([...new Set(jeux.map((j) => j.plateforme))].sort((a, b) => nomAffiche(a).localeCompare(nomAffiche(b), 'fr')));
   const affiches = $derived(console_ ? jeux.filter((j) => j.plateforme === console_) : jeux);
 
+
   // Le fond et le logo du jeu choisi (lot Médias, M3, règle dans `$lib/taodbox/fond`) : une seule image de chaque à la
   // fois, recréée à chaque jeu (`{#key}`) : jamais celle du jeu précédent ; un fond n'apparaît qu'une fois chargé, son
   // voile avec lui. Steam, GOG et les boutons : le fond du skin.
@@ -54,7 +56,53 @@
   const avecFonds = $derived(etat.profil.ludotheque.fondsTaodbox);
   // Un jeu sorti de la liste (autre console, jeu retiré) ne garde jamais son fond.
   const choisi = $derived(fondId === null ? null : (affiches.find((j) => j.id === fondId) ?? null));
-  const voile = $derived(avecFonds && choisi !== null && fondCharge);
+
+  // Les fiches des consoles (contrat 1.28), lues une fois chacune dans le cache du profil (hors ligne aussi) : le logo
+  // (sinon la bannière) sur leur bouton, la photo de la console en fond quand elle est choisie.
+  let fiches = $state<Record<string, FicheSysteme | null>>({});
+  /** Les images de bouton qui n'ont pas pu s'afficher (« console:sorte ») : la suivante, puis le nom en texte. */
+  let logosEnEchec = $state<string[]>([]);
+  $effect(() => {
+    const liste = consoles;
+    // Lire `fiches` sans s'y abonner : la remplir ne relance pas cet effet.
+    untrack(() => {
+      for (const c of liste) {
+        if (c in fiches) continue;
+        fiches[c] = null;
+        api
+          .plateformeFiche(c)
+          .then((f) => (fiches[c] = f))
+          .catch(() => {});
+      }
+    });
+  });
+  const logoDe = (c: string) =>
+    imageEntete(
+      fiches[c],
+      logosEnEchec.filter((e) => e.startsWith(`${c}:`)).map((e) => e.slice(c.length + 1)),
+      ['logo', 'banniere'],
+    );
+  // La photo de la console choisie : sous le fond d'un jeu (celui du jeu passe devant quand il est chargé).
+  const ficheChoisie = $derived(console_ ? (fiches[console_] ?? null) : null);
+  const fondSysteme = $derived(ficheChoisie?.images?.fond?.empreinte ? ficheChoisie.images.fond : null);
+  let fondSystemeCharge = $state(false);
+  /** Le fond du jeu choisi n'a pas pu s'afficher : la photo de la console reste. */
+  let fondEchec = $state(false);
+  // La photo de la console : seulement sans jeu choisi, ou si son fond a échoué (jamais un aller-retour entre deux jeux).
+  const photoVisible = $derived(fondSystemeCharge && (choisi === null || fondEchec));
+
+  /** Les crédits de ce que Taodbox montre de la console (logo, photo) : pas de navigateur au canapé, l'adresse en texte. */
+  function credits(c: string) {
+    const f = fiches[c];
+    const lignes = [logoDe(c)?.image, avecFonds && fondSystemeCharge ? f?.images?.fond : null]
+      .filter((i) => i?.licence)
+      .map((i) => `${creditImage(i)}${i!.url_source ? `\n${i!.url_source}` : ''}`);
+    informer(`ⓘ Crédits — ${nomAffiche(c)}`, lignes.join('\n\n'));
+  }
+  const aDesCredits = $derived(
+    console_ !== null && [logoDe(console_)?.image, avecFonds && fondSystemeCharge ? fondSysteme : null].some((i) => i?.licence),
+  );
+  const voile = $derived(avecFonds && ((choisi !== null && fondCharge) || (fondSysteme !== null && photoVisible)));
 
   function surFocus(e: FocusEvent) {
     repos.pousser(idDuFocus(e.target));
@@ -63,6 +111,7 @@
   function choisirFond(id: number | null) {
     if (id === fondId) return;
     fondCharge = false;
+    fondEchec = false;
     logoCharge = false;
     logoAbsent = false;
     fondId = id;
@@ -71,6 +120,7 @@
   function choisirConsole(c: string | null) {
     repos.annuler();
     choisirFond(null);
+    fondSystemeCharge = false;
     console_ = c;
   }
 
@@ -138,6 +188,18 @@
 <svelte:window oncontextmenu={(e) => e.preventDefault()} />
 
 <div class="taodbox" class:avec-fond={voile} onfocusin={surFocus}>
+  {#if avecFonds && console_ && fondSysteme}
+    {#key `${console_}-${fondSysteme.empreinte}`}
+      <img
+        class="fond-jeu"
+        class:visible={photoVisible}
+        src={adresseImageSysteme(console_, 'fond', 1000, fondSysteme.empreinte)}
+        alt=""
+        onload={() => (fondSystemeCharge = true)}
+        onerror={() => (fondSystemeCharge = false)}
+      />
+    {/key}
+  {/if}
   {#if avecFonds && choisi}
     {#key choisi.id}
       <img
@@ -146,12 +208,15 @@
         src={adresseFondDuJeu(choisi.fiche ?? choisi.id)}
         alt=""
         onload={() => (fondCharge = true)}
-        onerror={() => (fondCharge = false)}
+        onerror={() => {
+          fondCharge = false;
+          fondEchec = true;
+        }}
       />
     {/key}
-    <!-- Le voile suit toujours l'image (même fondu) : jamais une image sans voile sous le texte. -->
-    <div class="voile-jeu" class:visible={fondCharge}></div>
   {/if}
+  <!-- Le voile suit toujours l'image (même fondu) : jamais une image sans voile sous le texte. -->
+  {#if avecFonds}<div class="voile-jeu" class:visible={voile}></div>{/if}
   <header>
     <img class="logo" src="/grenouille.png" alt="" />
     <h1>Taodbox</h1>
@@ -169,8 +234,21 @@
     <nav class="consoles" aria-label="Consoles">
       <button class="btn" class:choisie={console_ === null} onclick={() => choisirConsole(null)}>Tout</button>
       {#each consoles as c (c)}
-        <button class="btn" class:choisie={console_ === c} onclick={() => choisirConsole(c)}>{nomAffiche(c)}</button>
+        {@const logo = logoDe(c)}
+        <button class="btn" class:choisie={console_ === c} class:avec-logo={logo} aria-label={nomAffiche(c)} title={nomAffiche(c)} onclick={() => choisirConsole(c)}>
+          {#if logo}
+            <img
+              class="logo-console"
+              src={adresseImageSysteme(c, logo.sorte, 300, logo.image.empreinte)}
+              alt=""
+              onerror={() => (logosEnEchec = [...logosEnEchec, `${c}:${logo.sorte}`])}
+            />
+          {:else}
+            {nomAffiche(c)}
+          {/if}
+        </button>
       {/each}
+      {#if aDesCredits && console_}<button class="btn" onclick={() => credits(console_!)}>ⓘ Crédits</button>{/if}
     </nav>
   {/if}
 
@@ -364,6 +442,17 @@
     display: flex;
     gap: calc(8 * var(--u));
     flex-wrap: wrap;
+  }
+  .logo-console {
+    display: block;
+    /* Une place réservée avant le chargement : la rangée ne s'élargit pas d'un coup. */
+    min-width: calc(60 * var(--u));
+    height: calc(28 * var(--u));
+    max-width: calc(140 * var(--u));
+    object-fit: contain;
+  }
+  .consoles .avec-logo {
+    padding-block: calc(4 * var(--u));
   }
   .consoles .choisie {
     background: color-mix(in srgb, var(--accent) 20%, transparent);

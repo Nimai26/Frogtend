@@ -48,6 +48,12 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Consoles dans Taodbox (0.102.0)
+- [ ] Taodbox (au moins deux consoles) : les boutons portent les logos ; un logo absent → le nom.
+- [ ] Choisir une console : sa photo en fond, sous un voile (texte lisible) ; s'arrêter sur un jeu qui a un fond :
+      le fond du jeu passe devant, sans clignoter d'un jeu à l'autre.
+- [ ] « ⓘ Crédits » (à la manette) : auteur, licence, adresse.
+
 ## Fiche de chaque console (0.101.0)
 - [ ] Après une synchronisation, choisir « 3DO » (ou une autre console) : bannière ou logo, fabricant · année,
       description (« Lire la suite »), et sous l'image / le texte les crédits avec « source » (ouvre la page).

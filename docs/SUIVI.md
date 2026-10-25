@@ -12,6 +12,7 @@
   images, fabricant, date, description FR, CRÉDITS obligatoires) dans la ludothèque et Taodbox ; P3 lancement
   e-Reader (cartouche GBA « e-Reader » + `--ecard <carte>.raw`, jamais la carte seule ; `mgba --help` vérifié).
   Experts consultés avant de coder (24/10).
+  ✅ Seb 25/10 : « Oui vas y » → P2b Taodbox (boutons logo/bannière, fond du système, crédits).
 - [ ] **Contrat 1.27 EN SERVICE** (21/10, Firehouse 2.99.0) : (1) `/plateformes` → `nom_affiche` (nom européen court
   choisi par Seb : Mega Drive, Super Nintendo, PC Engine… ; corrigeable au cockpit) — AFFICHAGE seulement, la clé
   reste `nom` (rattachements, caches, chemins), repli sur `nom` ; (2) `/jeu/{id}` → `plateforme_affichee` (même
@@ -759,6 +760,14 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.102.0** (25/10) — Lot « Plateformes », P2b : Taodbox (relecture interface : rien de bloquant, ses IMPORTANTS
+  corrigés — logo AVANT la bannière sur un bouton, plus de va-et-vient de la photo entre deux jeux). Fiches des
+  consoles lues une fois (cache du profil, `untrack`) ; boutons : logo, sinon bannière, sinon le nom (échec par
+  sorte) ; photo de la console (`fond`) en fond seulement sans jeu choisi ou si le fond du jeu échoue, un seul voile ;
+  « ⓘ Crédits » (informer : crédit + adresse en texte) pour ce qui est réellement montré. Vérifié : tests
+  (interface 234, cœur 477). NON vérifié : le rendu sur la télé (A-TESTER). RESTE : P2c icônes teintées ; les images
+  des systèmes ne sont pas gardées à l'avance pour Taodbox hors ligne (seulement après un premier affichage).
 
 - **0.101.0** (24/10) — Lot « Plateformes », P2a : fiches des systèmes au bureau (contrat 1.28 ; relectures contrat
   et interface : rien de bloquant, leurs IMPORTANTS corrigés). Cœur : `Cache::fiche_plateforme` ;

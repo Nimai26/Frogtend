@@ -4,9 +4,14 @@
 
 import type { FicheSysteme, ImageSysteme } from '$lib/api';
 
-/** L'image d'en-tête d'un système : la bannière, sinon le logo (`sauf` : celles qui n'ont pas pu s'afficher). */
-export function imageEntete(f: FicheSysteme | null | undefined, sauf: string[] = []): { sorte: 'banniere' | 'logo'; image: ImageSysteme } | null {
-  for (const sorte of ['banniere', 'logo'] as const) {
+/** L'image d'en-tête d'un système : la bannière, sinon le logo (`sauf` : celles qui n'ont pas pu s'afficher). `ordre` :
+ * pour un BOUTON (Taodbox), le logo d'abord — une bannière large y deviendrait minuscule. */
+export function imageEntete(
+  f: FicheSysteme | null | undefined,
+  sauf: string[] = [],
+  ordre: readonly ('banniere' | 'logo')[] = ['banniere', 'logo'],
+): { sorte: 'banniere' | 'logo'; image: ImageSysteme } | null {
+  for (const sorte of ordre) {
     if (sauf.includes(sorte)) continue;
     const image = f?.images?.[sorte];
     if (image?.empreinte) return { sorte, image };

@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.102.0 — Les consoles dans Taodbox
+
+- 🛋 Dans Taodbox, les boutons des consoles portent leur logo (sinon leur bannière, sinon leur nom).
+- Choisis une console : sa photo s'affiche en fond d'écran (le fond du jeu choisi passe devant quand il en a un).
+- « ⓘ Crédits » montre, sans navigateur, l'auteur, la licence et l'adresse des images libres affichées.
+
 ## 0.101.0 — La fiche de chaque console
 
 - 🕹 Choisis une console dans la liste : le panneau de droite montre sa bannière (ou son logo), son fabricant, son
