@@ -64,7 +64,30 @@
   `contenus::installer_chaine_ps3` et testée (faux RPCS3) ; « déjà à jour » compté à part.
   ⚠ DÉCOUVERT (même jour) : les parties PS3 (`dev_hdd0\home\<compte>\savedata`) ne partent PAS dans la sauvegarde
   chez Firehouse (elle ne prend que `<émulateur>\Profils\<profil>`) — même lacune que mGBA avant 0.109 : à régler.
-  PROCHAIN LOT (avis de l'expert lancement, 26/10) — « toutes les parties dans la sauvegarde » : NON couverts
+  ✅ FAIT (26/10, pour 0.111.0) : RPCS3 — `savedata` et `trophy` du compte du profil dans la sauvegarde (sous
+  `emulateurs/RPCS3/.rpcs3-compte/`, lu sans créer le compte, jamais `exdata`), restaurés dans le compte recalculé du
+  profil (sans écraser). RESTE : annonce de la taille avant l'envoi.
+  Relecture de l'expert (26/10) suivie : une partie PS3 (dossier `savedata\<partie>`, `trophy\<jeu>`) est reposée
+  ENTIÈRE ou pas du tout (conflit dit « PS3 : savedata/<partie> »), jamais un mélange. À REGARDER : la zone d'attente
+  des émulateurs n'est jamais vidée → une partie effacée par la personne reste dans la sauvegarde, et « Prêt à
+  jouer » redit des conflits après qu'elle a rejoué (déjà vrai pour `Profils`, maintenant aussi pour la PS3).
+  ✅ Seb 26/10 (Cemu, Vita3K, Eden, Azahar aux parties communes au PC) : « Séparer » — comme les autres émulateurs,
+  chaque personne a ses propres parties (dossier de la personne donné au lancement, si l'émulateur le permet : à
+  vérifier dans SA documentation), parties dans la sauvegarde de chacun ; les parties déjà là restent, COPIÉES dans le
+  profil de la première personne qui joue.
+  RECHERCHE (code source officiel, 26/10) — comment séparer :
+  · Cemu : un COMPTE Wii U par personne dans le mlc commun, `Cemu.exe -a 8000000X -g <jeu>` (LaunchSettings.cpp ;
+    parties `mlc01\usr\save\…\user\<id>` séparées par compte, `common` partagé comme sur la vraie Wii U ; jamais
+    `-mlc` par personne : les jeux installés y vivent). À trouver : créer `account.dat` sans l'interface.
+  · Vita3K : un UTILISATEUR par personne (`ux0\user\<id>`), config.yml par profil (`user-id`,
+    `user-auto-connect`) et `Vita3K.exe -c <profil>\config.yml -w -r <titre>` ; pas d'option utilisateur en ligne de
+    commande ; `pref-path` écrasé en portable. Risque : réglages communs copiés par profil.
+  · Eden : un UTILISATEUR Switch par personne, `eden.exe -u <index> -g <jeu>` (launch_params.cpp) ; parties séparées
+    par UUID dans le même nand (les parties « Device » restent communes, comme la vraie Switch). À trouver : créer les
+    profils sans l'interface (`profiles.dat`), et si `current_user` est réécrit dans la config à la fermeture.
+  · Azahar : AUCUNE option (la 3DS n'a qu'un compte) → échanger avant/après la partie `title\…\<titre>\data` (et
+    l'`extdata` du jeu) avec `Profils\<profil>` — à concevoir avec soin (parties sacrées).
+  (Avis d'origine :) PROCHAIN LOT (avis de l'expert lancement, 26/10) — « toutes les parties dans la sauvegarde » : NON couverts
   aujourd'hui = RPCS3 (`dev_hdd0\home\<compte>\savedata` + `trophy`, JAMAIS `exdata` = licences), Cemu
   (`mlc01`, commun à tous), Vita3K (`ux0`, commun), Eden (`user\`, `-u` seul), Azahar non portable
   (`%APPDATA%`). RPCS3 : lire le compte SANS le créer (`compte_rpcs3_existant`), envoyer sous

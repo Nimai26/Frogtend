@@ -547,6 +547,26 @@ impl Noyau {
                 continue;
             }
             let nom_emulateur = crate::jeux_pc::nom_de_dossier(&dossier.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
+            // RPCS3 : les parties et les trophées du compte RPCS3 de ce profil (`dev_hdd0\home\<compte>`), lus SANS créer
+            // le compte ; jamais `exdata` (les licences). Rangés sans le numéro du compte : la restauration les remet
+            // dans le compte du profil sur le nouveau PC, quel que soit son numéro.
+            if crate::emulateurs_profils::est_rpcs3(programme) {
+                if let Some(compte) = crate::emulateurs_profils::compte_rpcs3_existant(dossier, &crate::jeux_pc::nom_de_dossier(&profil.nom)) {
+                    let home = dossier.join("dev_hdd0").join("home").join(compte);
+                    for sous in crate::emulateurs_profils::PARTIES_RPCS3 {
+                        let d = home.join(sous);
+                        if !d.is_dir() {
+                            continue;
+                        }
+                        for r in fichiers_de(&d)? {
+                            parties.push(Element {
+                                source: d.join(&r),
+                                relatif: format!("emulateurs/{nom_emulateur}/{}/{sous}/{r}", crate::emulateurs_profils::COMPTE_RPCS3),
+                            });
+                        }
+                    }
+                }
+            }
             let du_profil = crate::emulateurs_profils::dossier_du_profil(dossier, &profil.nom);
             if !du_profil.is_dir() {
                 continue;
@@ -847,6 +867,43 @@ mod tests {
         assert_eq!(c.configuration["profil"]["nom"], "Seb");
         let rel: Vec<_> = c.parties.iter().map(|e| e.relatif.as_str()).collect();
         assert_eq!(rel, vec!["emulateurs/RetroArch/saves/Super Metroid (USA).srm"]);
+    }
+
+    #[tokio::test]
+    async fn les_parties_ps3_du_compte_du_profil_partent_sans_les_licences() {
+        use crate::coffre::CoffreMemoire;
+        use crate::noyau::Connexion;
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, None).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        let rpcs3 = d.path().join("Emulateurs").join("RPCS3");
+        let programme = rpcs3.join("rpcs3.exe").to_string_lossy().to_string();
+        // Pas encore de compte RPCS3 pour Seb : rien, et aucun compte créé par la sauvegarde.
+        assert!(n.contenu_sauvegarde(std::slice::from_ref(&programme)).await.unwrap().parties.is_empty());
+        assert!(!rpcs3.join("dev_hdd0").exists());
+        // Le compte 00000002 est celui de Léa, le 00000003 celui de Seb.
+        let home = rpcs3.join("dev_hdd0").join("home");
+        for (compte, nom) in [("00000002", "Lea"), ("00000003", "Seb")] {
+            std::fs::create_dir_all(home.join(compte)).unwrap();
+            std::fs::write(home.join(compte).join("localusername"), nom).unwrap();
+        }
+        for (r, o) in [
+            ("00000003/savedata/BCES00569-GAME/SAVE.DAT", &b"partie de Seb"[..]),
+            ("00000003/trophy/NPWR00001_00/TROPUSR.DAT", b"trophees"),
+            ("00000003/exdata/EP9001-BCES00569_00-CARPACK200000000.rif", b"licence"),
+            ("00000002/savedata/BCES00569-GAME/SAVE.DAT", b"partie de Lea"),
+        ] {
+            std::fs::create_dir_all(home.join(r).parent().unwrap()).unwrap();
+            std::fs::write(home.join(r), o).unwrap();
+        }
+        let c = n.contenu_sauvegarde(&[programme]).await.unwrap();
+        let rel: Vec<_> = c.parties.iter().map(|e| e.relatif.as_str()).collect();
+        assert_eq!(
+            rel,
+            vec!["emulateurs/RPCS3/.rpcs3-compte/savedata/BCES00569-GAME/SAVE.DAT", "emulateurs/RPCS3/.rpcs3-compte/trophy/NPWR00001_00/TROPUSR.DAT"],
+            "les parties et trophées de SEB seulement, jamais ses licences"
+        );
     }
 
     #[tokio::test]

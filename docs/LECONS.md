@@ -270,3 +270,6 @@ garde les fins de ligne d'origine ; et `git diff --stat` après chaque changemen
 Même jour : le nom du programme d'un émulateur (« mGBA.exe » écrit avec des majuscules) cassait toute sa recherche,
 alors que le test d'un seul morceau restait vert — un test doit passer par le même chemin que le vrai code (ici la
 recherche du programme dans le catalogue), pas appeler la fonction du bout directement.
+26/10 (0.111.0) : un `\r` d'un chemin Windows écrit dans un script Python en ligne est devenu un VRAI retour
+chariot dans un test Rust (`RetroArch\retroarch.exe`) ; le compilateur l'a refusé. Les chemins Windows dans du code
+passent par l'outil d'édition ; un script ne s'écrit qu'en fichier (outil d'écriture), jamais en ligne de commande.

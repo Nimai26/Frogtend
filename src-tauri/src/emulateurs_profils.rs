@@ -1146,6 +1146,17 @@ pub fn micrologiciel_rpcs3(emulateur: &Path) -> Option<String> {
     Some(format!("{}.{mineur}", if majeur.is_empty() { "0" } else { majeur }))
 }
 
+/// Dans une sauvegarde, le dossier (sous celui de l'émulateur) des parties du compte RPCS3 du profil — sans son numéro.
+pub const COMPTE_RPCS3: &str = ".rpcs3-compte";
+/// Ce qui part dans la sauvegarde, du compte RPCS3 d'un profil : ses parties et ses trophées. JAMAIS `exdata` (les
+/// licences .rif et act.dat).
+pub const PARTIES_RPCS3: [&str; 2] = ["savedata", "trophy"];
+
+/// Le programme est-il RPCS3 ?
+pub fn est_rpcs3(programme: &str) -> bool {
+    Path::new(programme).file_name().is_some_and(|n| n.to_string_lossy().to_ascii_lowercase().starts_with("rpcs3"))
+}
+
 /// Le compte RPCS3 d'un profil s'il existe déjà, sans rien créer.
 pub fn compte_rpcs3_existant(emulateur: &Path, profil: &str) -> Option<String> {
     std::fs::read_dir(emulateur.join("dev_hdd0").join("home")).ok()?.flatten().find_map(|e| {
@@ -1757,6 +1768,13 @@ mod tests {
         // Deux personnes : deux dossiers distincts (jamais les parties de l'une chez l'autre).
         let args2 = preparer("mgba", d.path(), "Léa", &[], &Manette::Auto(None)).unwrap();
         assert_ne!(args, args2);
+    }
+
+    #[test]
+    fn rpcs3_est_reconnu_a_son_programme() {
+        assert!(est_rpcs3(r"E:\Emulateurs\RPCS3\RPCS3.EXE"));
+        assert!(est_rpcs3("C:/RPCS3/rpcs3.exe"));
+        assert!(!est_rpcs3(r"E:\Emulateurs\RetroArch\retroarch.exe"));
     }
 
     #[test]

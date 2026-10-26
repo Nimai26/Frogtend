@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.111.0 — Tes parties PS3 dans ta sauvegarde
+
+- 💾 Ta sauvegarde chez Firehouse garde maintenant tes parties PS3 et tes trophées (ceux de ton compte dans RPCS3).
+  Tes licences de DLC, elles, ne quittent jamais le PC.
+- Sur un nouveau PC, la restauration les remet dans ton compte RPCS3 (créé s'il manque), sans jamais écraser une
+  partie différente déjà là.
+
 ## 0.110.0 — Les mises à jour PS3, dans l'ordre
 
 - 🔄 Les mises à jour d'un jeu PS3 servies par Firehouse (par exemple les 18 de Gran Turismo 5) apparaissent

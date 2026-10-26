@@ -181,11 +181,59 @@ pub fn cles_en_attente(zone: &Path, programmes: &[String], anciens: &[(String, S
 /// Copie les fichiers de `de` dans `vers` : un fichier absent est posé, un fichier identique compté, un fichier
 /// DIFFÉRENT gardé tel quel (conflit) — sauf si `ecraser`.
 pub fn reposer(de: &Path, vers: &Path, ecraser: bool) -> Resultat<Reposes> {
+    reposer_sauf(de, vers, ecraser, "")
+}
+
+/// Les parties d'un compte RPCS3 (`savedata\<partie>\…`, `trophy\<jeu>\…`) : chaque partie est un DOSSIER de fichiers
+/// qui vont ensemble (PARAM.SFO, SAVE.DAT, icônes ; TROPUSR.DAT et TROPTRNS.DAT). Elle est reposée ENTIÈRE si elle
+/// n'est pas sur ce PC ; déjà là à l'identique, rien ; si elle diffère en quoi que ce soit, on n'y touche pas du tout
+/// et c'est un conflit (`savedata/<partie>`) — jamais un mélange de deux parties.
+pub fn reposer_parties_entieres(de: &Path, vers: &Path) -> Resultat<Reposes> {
+    let mut r = Reposes::default();
+    for sorte in crate::emulateurs_profils::PARTIES_RPCS3 {
+        for e in std::fs::read_dir(de.join(sorte)).into_iter().flatten().flatten() {
+            if !e.file_type().is_ok_and(|t| t.is_dir()) {
+                continue;
+            }
+            let nom = e.file_name().to_string_lossy().to_string();
+            let (source, cible) = (e.path(), vers.join(sorte).join(&nom));
+            let fichiers = fichiers_de(&source)?;
+            if !cible.exists() {
+                for f in &fichiers {
+                    let c = cible.join(f);
+                    if let Some(p) = c.parent() {
+                        std::fs::create_dir_all(p)?;
+                    }
+                    std::fs::copy(source.join(f), &c)?;
+                }
+                r.reposes += fichiers.len();
+                continue;
+            }
+            let mut identique = fichiers_de(&cible)? == fichiers;
+            for f in &fichiers {
+                if !identique {
+                    break;
+                }
+                identique = empreinte(&cible.join(f))? == empreinte(&source.join(f))?;
+            }
+            if identique {
+                r.deja_la += fichiers.len();
+            } else {
+                r.conflits.push(format!("{sorte}/{nom}"));
+            }
+        }
+    }
+    Ok(r)
+}
+
+/// Comme [`reposer`], sans le sous-dossier `sauf` (de premier niveau) : il a sa propre place (le compte RPCS3).
+pub fn reposer_sauf(de: &Path, vers: &Path, ecraser: bool, sauf: &str) -> Resultat<Reposes> {
     let mut r = Reposes::default();
     if !de.is_dir() {
         return Ok(r);
     }
-    for f in fichiers_de(de)? {
+    let a_part = format!("{sauf}/");
+    for f in fichiers_de(de)?.into_iter().filter(|f| sauf.is_empty() || !f.starts_with(&a_part)) {
         let (source, cible) = (de.join(&f), vers.join(&f));
         if cible.is_file() {
             if empreinte(&cible)? == empreinte(&source)? {
@@ -278,7 +326,18 @@ impl Noyau {
         let mut total = Reposes::default();
         for (programme, nom) in cles_en_attente(&zone, programmes_emulateurs, &anciens) {
             let Some(dossier) = Path::new(&programme).parent() else { continue };
-            let r = reposer(&zone.join(&nom), &crate::emulateurs_profils::dossier_du_profil(dossier, &s.profil.nom), false)?;
+            let mut r = reposer_sauf(&zone.join(&nom), &crate::emulateurs_profils::dossier_du_profil(dossier, &s.profil.nom), false, crate::emulateurs_profils::COMPTE_RPCS3)?;
+            // RPCS3 : les parties du compte RPCS3 du profil reviennent dans SON compte sur ce PC (recréé si besoin, son
+            // numéro peut différer de l'ancien PC) ; jamais par-dessus une partie différente.
+            let compte = zone.join(&nom).join(crate::emulateurs_profils::COMPTE_RPCS3);
+            if compte.is_dir() && crate::emulateurs_profils::est_rpcs3(&programme) {
+                let numero = crate::emulateurs_profils::compte_rpcs3(dossier, &crate::jeux_pc::nom_de_dossier(&s.profil.nom))?;
+                let c = reposer_parties_entieres(&compte, &dossier.join("dev_hdd0").join("home").join(numero))?;
+                r.reposes += c.reposes;
+                r.deja_la += c.deja_la;
+                // Dit simplement : « PS3 : partie BCES00569-GAME ».
+                r.conflits.extend(c.conflits.into_iter().map(|f| format!("PS3 : {f}")));
+            }
             total.reposes += r.reposes;
             total.deja_la += r.deja_la;
             total.conflits.extend(r.conflits.into_iter().map(|f| format!("{nom}/{f}")));
@@ -375,6 +434,49 @@ mod tests {
         // Un jeu tout juste réinstallé : la partie restaurée remplace le fichier du jeu neuf.
         assert_eq!(reposer(&de, &vers, true).unwrap().reposes, 1);
         assert_eq!(std::fs::read(vers.join("saves/b.srm")).unwrap(), b"B restauree");
+    }
+
+    #[tokio::test]
+    async fn les_parties_ps3_reviennent_dans_le_compte_rpcs3_du_profil_meme_sous_un_autre_numero() {
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(crate::coffre::CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, None).unwrap().id;
+        n.ouvrir(&id, None, &crate::noyau::Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        // En attente (sauvegarde restaurée) : une partie PS3 du compte de Seb, et un fichier du dossier du profil.
+        let zone = d.path().join("app").join("restauration").join(&id).join("parties").join("emulateurs").join("RPCS3");
+        for (r, o) in [
+            (".rpcs3-compte/savedata/BCES00569-GAME/SAVE.DAT", &b"partie"[..]),
+            (".rpcs3-compte/savedata/BCES00569-GAME/ICON0.PNG", b"icone"),
+            ("frogtend.txt", b"profil"),
+        ] {
+            std::fs::create_dir_all(zone.join(r).parent().unwrap()).unwrap();
+            std::fs::write(zone.join(r), o).unwrap();
+        }
+        // Le nouveau PC : RPCS3 installé, le compte 00000002 déjà pris par Léa.
+        let rpcs3 = d.path().join("Emulateurs").join("RPCS3");
+        let lea = rpcs3.join("dev_hdd0").join("home").join("00000002");
+        std::fs::create_dir_all(&lea).unwrap();
+        std::fs::write(lea.join("localusername"), "Lea").unwrap();
+        let r = n.reposer_parties_emulateurs(&[rpcs3.join("rpcs3.exe").to_string_lossy().into()]).await.unwrap();
+        assert_eq!((r.reposes, r.conflits.len()), (3, 0));
+        let seb = rpcs3.join("dev_hdd0").join("home").join("00000003");
+        assert_eq!(std::fs::read_to_string(seb.join("localusername")).unwrap(), "Seb");
+        assert_eq!(std::fs::read(seb.join("savedata/BCES00569-GAME/SAVE.DAT")).unwrap(), b"partie");
+        let profil = crate::emulateurs_profils::dossier_du_profil(&rpcs3, "Seb");
+        assert!(profil.join("frogtend.txt").is_file());
+        assert!(!profil.join(".rpcs3-compte").exists(), "jamais rangées dans le dossier du profil");
+        assert!(!lea.join("savedata").exists(), "jamais dans le compte de quelqu'un d'autre");
+        // Reposée une seconde fois, à l'identique : rien à faire.
+        let r = n.reposer_parties_emulateurs(&[rpcs3.join("rpcs3.exe").to_string_lossy().into()]).await.unwrap();
+        assert_eq!((r.reposes, r.conflits.len()), (0, 0));
+        // Une partie différente déjà là (elle a rejoué : SAVE.DAT changé, l'icône partie) : on n'y touche PAS DU TOUT —
+        // jamais un mélange des deux parties — et c'est dit simplement.
+        std::fs::write(seb.join("savedata/BCES00569-GAME/SAVE.DAT"), b"plus recente").unwrap();
+        std::fs::remove_file(seb.join("savedata/BCES00569-GAME/ICON0.PNG")).unwrap();
+        let r = n.reposer_parties_emulateurs(&[rpcs3.join("rpcs3.exe").to_string_lossy().into()]).await.unwrap();
+        assert_eq!(r.conflits, ["RPCS3/PS3 : savedata/BCES00569-GAME"]);
+        assert_eq!(std::fs::read(seb.join("savedata/BCES00569-GAME/SAVE.DAT")).unwrap(), b"plus recente");
+        assert!(!seb.join("savedata/BCES00569-GAME/ICON0.PNG").exists(), "rien de l'ancienne partie mêlé à la nouvelle");
     }
 
     #[tokio::test]

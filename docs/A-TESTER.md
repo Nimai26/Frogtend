@@ -3,6 +3,12 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Les parties PS3 dans la sauvegarde (0.111.0)
+- [ ] Après avoir joué à un jeu PS3, **💾 Sauvegarder** : la sauvegarde chez Firehouse doit compter des fichiers de
+      plus (tes parties PS3).
+- [ ] Sur le PC de test (ou après une restauration) : relancer le jeu PS3 ; ta partie doit être là. (À vérifier :
+      RPCS3 accepte une partie revenue sous un autre numéro de compte.)
+
 ## Les mises à jour PS3 dans l'ordre (0.110.0)
 - [ ] Sur un jeu PS3 servi avec ses mises à jour (Gran Turismo 5, God of War: Ascension…), une fois le jeu installé :
       le bloc **📦 Contenus** liste « Mise à jour 01.05 », « 01.06 »… dans l'ordre.
