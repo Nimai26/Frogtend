@@ -503,9 +503,11 @@ mod tests {
         let pid = demarrer(&l).unwrap();
         let mut s = Suivi::nouveau(pid, vec![]);
         assert!(s.en_cours(), "juste après le lancement, la partie est en cours");
-        let duree = attendre_fin(&mut s, Duration::from_secs(20));
+        // 60 s de marge : rouge le 25/10 pendant une suite qui a pris 21,7 s au lieu de 9 (Venkman très chargé) — le
+        // programme ne vit que ~2 s, la limite ne sert qu'à voir que la fin est bien vue.
+        let duree = attendre_fin(&mut s, Duration::from_secs(60));
         assert!(duree >= Duration::from_millis(1500), "suivi jusqu'à la fin du programme lancé ({duree:?})");
-        assert!(duree < Duration::from_secs(20), "la fin est bien vue");
+        assert!(duree < Duration::from_secs(60), "la fin est bien vue");
     }
 
     #[test]

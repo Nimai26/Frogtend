@@ -101,7 +101,8 @@ export interface JeuPc {
   dossier: string;
   etat: EtatJeuPc;
   total: number;
-  fichiers: { n: number; nom: string; taille: number }[];
+  /** `version` : la version (carte e-Reader) d'où vient ce fichier, si ce n'est pas celle de la ligne. */
+  fichiers: { n: number; nom: string; taille: number; version?: number; sha1?: string }[];
   message: string | null;
   ajoute_le: string;
   ajoute_par: string;
@@ -639,6 +640,8 @@ export const api = {
   jeuxDuPc: () => appeler<JeuPc[]>('jeux_du_pc'),
   proposerEmplacements: (plateforme: string, taille: number) =>
     appeler<EmplacementPropose[]>('emplacements_proposer', { plateforme, taille }),
+  /** Retire UNE carte d'un jeu e-Reader (jamais la dernière, jamais les parties). */
+  retirerCarte: (id: number, version: number) => appeler<JeuPc>('jeu_retirer_carte', { id, version }),
   ajouterJeu: (id: number, version: number, emplacement: string) =>
     appeler<Omit<JeuPc, 'recus'>>('jeu_ajouter', { id, version, emplacement }),
   pause: (id: number) => appeler<void>('telechargement_pause', { id }),

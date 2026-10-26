@@ -9,6 +9,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+/// Les plateformes dont une fiche porte PLUSIEURS versions à garder ensemble sur le PC : les cartes d'un jeu e-Reader
+/// (une version = une carte ; Firehouse 2.99.1). Une nouvelle version s'AJOUTE à la ligne au lieu d'être refusée.
+pub const PLATEFORMES_A_CARTES: [&str; 1] = ["Nintendo e-Reader"];
+
+/// Cette plateforme garde-t-elle plusieurs versions (cartes) d'une fiche ?
+pub fn a_cartes(plateforme: &str) -> bool {
+    PLATEFORMES_A_CARTES.iter().any(|p| p.eq_ignore_ascii_case(plateforme))
+}
+
 /// Marge gardée libre sur un disque en plus de la taille du jeu (1 Gio) : un disque plein rend Windows instable.
 pub const MARGE_LIBRE: u64 = 1024 * 1024 * 1024;
 
@@ -518,6 +527,24 @@ impl Registre {
                 j.ajoute_par
             ],
         )?;
+        Ok(())
+    }
+
+    /// Remplace la liste des fichiers d'une ligne (les cartes d'un jeu e-Reader : une ajoutée ou retirée) et son
+    /// total ; `attente` : la remettre en file (une carte à télécharger).
+    pub fn changer_fichiers(&self, id: i64, fichiers: &[FichierJeu], attente: bool) -> Resultat<()> {
+        let total: u64 = fichiers.iter().map(|f| f.taille).sum();
+        let n = if attente {
+            self.db.execute(
+                "UPDATE jeux_pc SET fichiers = ?2, total = ?3, etat = 'attente', message = NULL WHERE id = ?1",
+                params![id, serde_json::to_string(fichiers).unwrap(), total as i64],
+            )?
+        } else {
+            self.db.execute("UPDATE jeux_pc SET fichiers = ?2, total = ?3 WHERE id = ?1", params![id, serde_json::to_string(fichiers).unwrap(), total as i64])?
+        };
+        if n == 0 {
+            return Err(Erreur::Introuvable("Ce jeu n'est pas sur ce PC.".into()));
+        }
         Ok(())
     }
 

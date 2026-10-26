@@ -23,6 +23,13 @@
   images des systèmes préchargées pour Taodbox + ménage de `systemes/` ; A7 plafond et purge du cache du profil ; A8
   liste des documents relue seulement si l'empreinte change, effacée sur 404 ; A9 mesure réelle d'une synchro avec
   ~3 300 fusions. Attend Firehouse : besoin 33 (cartouches), paquet RetroArch et `autoconfig.zip`, besoins 15-19.
+  ✅ Seb 25/10 (disque D: plein, 20 Go libres) : « Sur E: » → les fichiers de COMPILATION dans
+  `E:/Frogtend-compilation` (`src-tauri/.cargo/config.toml` `[build] target-dir`), `livrer.mjs` lit ce dossier par
+  `cargo metadata` et y mesure la place ; l'ancien `src-tauri/target` (cache qui se reconstruit, installeurs déjà
+  publiés) retiré de D:. Le code reste sur D:.
+  ✅ Seb 26/10 : « il faudra retourner sur D: qui est beaucoup plus rapide car c'est un SSD » (il a libéré de la place
+  sur D:) → compilation remise dans `src-tauri/target` (construction sur E: arrêtée, trop lente). Le dossier
+  `E:\Frogtend-compilation` (cache seulement) reste à effacer par Seb : la suppression a été bloquée par une sécurité.
   ✅ A9 MESURÉ (25/10, lecture seule, dossier temporaire) : synchro complète réelle = 27 431 jeux, 55 pages, 3 318
   fusions, 614 s ; synchro sans changement 21 s. Cause : CHAQUE requête Firehouse ≈ 10 s (même `/plateformes`), le
   traitement de Frogtend est négligeable → besoin 34 envoyé à Firehouse.
@@ -784,6 +791,18 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.107.0** (26/10) — Lot « Avant-bêta », A5 (stockage des cartes e-Reader, option B de l'expert contrat ; sa
+  relecture : 1 BLOQUANT corrigé — « Annuler » une carte ajoutée effaçait le jeu entier — et ses IMPORTANTS).
+  `jeux_pc::PLATEFORMES_A_CARTES`/`a_cartes`, `Registre::changer_fichiers` ; `locale::ajouter` → `ajouter_une_carte`
+  (carte déjà là, nom déjà pris, place → refus ; fichiers sous SA version) ; `annuler` d'un jeu à cartes déjà là :
+  seules les cartes pas reçues partent, le jeu redevient « téléchargé » ; `retirer_carte` (refusé pendant un
+  téléchargement ou une partie, jamais la 1re ni la dernière carte, un fichier qui ne part pas → rien changé, le jeu
+  redevient jouable) ; `bibliotheque.json` porte `cartes`, la restauration les remet (échecs dits). Interface :
+  `cartes.ts`, page du jeu « Ajouter / Retirer cette carte ». Test lanceur : marge 60 s (rouge une fois, suite de
+  21,7 s au lieu de 9, Venkman chargé ; 3 reprises vertes). Vérifié : tests (cœur 488, interface 237). RESTE :
+  lancement `--ecard` (contrat 1.30, cartouches) ; une fiche RÉUNIE avec plusieurs cartes ne se rattache pas (blocage,
+  pas de perte) ; deux ajouts simultanés d'une carte ; `fiche.json` non relue à l'ajout d'une carte.
 
 - **0.106.0** (25/10) — Lot « Avant-bêta » : sha1 du contrat 1.24 (jamais vérifié jusqu'ici, relevé par l'expert
   contrat ; sa relecture : rien de bloquant, ses IMPORTANTS corrigés). `FichierJeu.sha1`/`version` (serde default :

@@ -285,6 +285,10 @@ export async function restaurer(profilChoisi?: string, pcChoisi?: string) {
       const place = places.find((p) => p.assez);
       if (!place) throw new Error('aucun emplacement avec assez de place');
       await api.ajouterJeu(j.id, j.version, place.chemin);
+      // Un jeu à cartes (e-Reader) : ses autres cartes aussi, sur la même ligne.
+      for (const v of (j.cartes ?? []) as number[]) {
+        if (v !== j.version) await api.ajouterJeu(j.id, v, place.chemin).catch((e) => echecs.push(`${j.titre} (une carte) : ${motifDuRefus(e)}`));
+      }
       ok++;
     } catch (e) {
       echecs.push(`${j.titre} : ${motifDuRefus(e)}`);

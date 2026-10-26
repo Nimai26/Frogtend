@@ -220,7 +220,9 @@ impl Noyau {
         // numéros de version sont gardés tels quels par Firehouse.
         // (`reuni_vers` laisse à une fiche vivante son numéro.)
         let id = s.verrou().reuni_vers(id)?.unwrap_or(id);
-        if self.registre().jeu(id)?.is_some() {
+        // Déjà sur ce PC : refusé, SAUF un jeu à cartes (e-Reader) qui reçoit une carte de plus sur la même ligne.
+        let existant = self.registre().jeu(id)?;
+        if existant.as_ref().is_some_and(|e| !crate::jeux_pc::a_cartes(&e.plateforme)) {
             return Err(Erreur::Refus("Ce jeu est déjà dans la ludothèque de ce PC.".into()));
         }
         // La fiche d'abord : une fiche cachée à ce profil répond « inconnu » AVANT tout (jamais un indice qu'elle existe).
@@ -263,6 +265,10 @@ impl Noyau {
         }
         if fichiers.is_empty() {
             return Err(Erreur::Refus("Cette version n'a aucun fichier à télécharger.".into()));
+        }
+        // Une carte de plus pour un jeu à cartes déjà sur ce PC : ajoutée à SA ligne, sous SA version.
+        if let Some(e) = existant {
+            return self.ajouter_une_carte(e, version, fichiers);
         }
         let total: u64 = fichiers.iter().map(|f| f.taille).sum();
 
@@ -320,6 +326,71 @@ impl Noyau {
         self.garder_medias(&s, c, id, &fiche, &medias_du_jeu(&jeu)).await?;
         self.registre().ajouter(&jeu)?;
         Ok(jeu)
+    }
+
+    /// Ajoute les fichiers d'une carte (version) à la ligne d'un jeu à cartes déjà sur ce PC, puis la remet en file. Une
+    /// carte déjà là, un nom déjà pris (jamais rien par-dessus) ou pas assez de place : refusé.
+    fn ajouter_une_carte(&self, e: JeuPc, version: i64, fichiers: Vec<FichierJeu>) -> Resultat<JeuPc> {
+        let de = |f: &FichierJeu| f.version.unwrap_or(e.version);
+        if e.fichiers.iter().any(|f| de(f) == version) {
+            return Err(Erreur::Refus("Cette carte est déjà sur ce PC.".into()));
+        }
+        if let Some(f) = fichiers.iter().find(|f| e.fichiers.iter().any(|x| x.nom.eq_ignore_ascii_case(&f.nom))) {
+            return Err(Erreur::Refus(format!("Un fichier « {} » est déjà dans le dossier du jeu : Frogtend n'écrit pas par-dessus.", f.nom)));
+        }
+        let ajout: u64 = fichiers.iter().map(|f| f.taille).sum();
+        let libre = place_libre(Path::new(&e.dossier)).or_else(|| Path::new(&e.dossier).parent().and_then(place_libre));
+        if libre.is_some_and(|l| l < ajout + MARGE_LIBRE) {
+            return Err(Erreur::Disque("Pas assez de place sur ce disque pour cette carte.".into()));
+        }
+        let mut tous = e.fichiers.clone();
+        tous.extend(fichiers.into_iter().map(|f| FichierJeu { version: Some(version), ..f }));
+        self.registre().changer_fichiers(e.id, &tous, true)?;
+        Ok(self.registre().jeu(e.id)?.unwrap_or(e))
+    }
+
+    /// Retire UNE carte (version) d'un jeu à cartes : ses fichiers seulement (et leurs `.part`), jamais rien d'autre du
+    /// dossier, jamais la dernière carte (retirer le jeu, alors). Rend la ligne à jour.
+    pub async fn retirer_carte(&self, id: i64, version: i64) -> Resultat<JeuPc> {
+        let e = self.registre().jeu(id)?.ok_or_else(|| Erreur::Introuvable("Ce jeu n'est pas sur ce PC.".into()))?;
+        if !crate::jeux_pc::a_cartes(&e.plateforme) {
+            return Err(Erreur::Refus("Ce jeu n'a pas de cartes : retire le jeu entier.".into()));
+        }
+        // Jamais pendant un téléchargement ou une partie de ce jeu : un fichier ouvert ne part pas, et la file finirait
+        // avec l'ancienne liste.
+        if e.etat == Etat::EnCours || self.utilise(id) {
+            return Err(Erreur::Refus("Ce jeu est en cours (téléchargement ou partie) : réessaie quand il aura fini.".into()));
+        }
+        let _occupe = self.occuper(id);
+        // La 1re carte porte la version de la ligne (notes, sauvegarde) : elle ne se retire pas seule.
+        if version == e.version {
+            return Err(Erreur::Refus("C'est la première carte de ce jeu : elle ne se retire pas seule. Retire le jeu entier si tu n'en veux plus.".into()));
+        }
+        let de = |f: &FichierJeu| f.version.unwrap_or(e.version);
+        let (partent, restent): (Vec<FichierJeu>, Vec<FichierJeu>) = e.fichiers.iter().cloned().partition(|f| de(f) == version);
+        if partent.is_empty() {
+            return Err(Erreur::Introuvable("Cette carte n'est pas sur ce PC.".into()));
+        }
+        let dossier = Path::new(&e.dossier);
+        for f in &partent {
+            let rel = crate::jeux_pc::chemin_de_fichier_sur(&f.nom)?;
+            let p = dossier.join(&rel);
+            if crate::garde::sous(&p, dossier) && !crate::garde::lien_entre(dossier, &p) {
+                let _ = std::fs::remove_file(format!("{}.part", p.to_string_lossy()));
+                // Un fichier qui ne part pas (ouvert ailleurs) : la ligne n'est PAS changée (pas d'orphelin).
+                if p.is_file() {
+                    std::fs::remove_file(&p).map_err(|_| Erreur::Disque(format!("« {} » ne peut pas être retiré (ouvert ailleurs ?) : rien n'a changé.", f.nom)))?;
+                }
+            }
+        }
+        self.registre().changer_fichiers(id, &restent, false)?;
+        // Tout ce qui reste est là, à la bonne taille (la carte fautive retirée) : le jeu redevient jouable.
+        let complet = restent.iter().all(|f| crate::jeux_pc::chemin_de_fichier_sur(&f.nom).is_ok_and(|r| std::fs::metadata(dossier.join(r)).is_ok_and(|m| m.len() == f.taille)));
+        if complet && e.etat != Etat::Telecharge {
+            self.registre().changer_etat(id, Etat::Telecharge, None)?;
+        }
+        self.journaliser(&format!("jeu {id} : carte {version} retirée ({} fichier(s))", partent.len()));
+        Ok(self.registre().jeu(id)?.unwrap_or(e))
     }
 
     /// Garde sur le PC tout ce qui sert au jeu hors ligne : fiche, jaquette (en grand et en miniature), documents.
@@ -453,6 +524,27 @@ impl Noyau {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
         let dossier = Path::new(&j.dossier);
+        // Un jeu à cartes déjà là (une carte AJOUTÉE est en file) : seules les cartes pas encore reçues partent ; le jeu,
+        // ses autres cartes, ses médias et son installation restent — jamais tout effacé pour une carte annulée.
+        if crate::jeux_pc::a_cartes(&j.plateforme) {
+            let complet = |f: &FichierJeu| {
+                crate::jeux_pc::chemin_de_fichier_sur(&f.nom).is_ok_and(|r| std::fs::metadata(dossier.join(r)).is_ok_and(|m| m.len() == f.taille))
+            };
+            let (gardes, partent): (Vec<FichierJeu>, Vec<FichierJeu>) = j.fichiers.iter().cloned().partition(complet);
+            if !gardes.is_empty() {
+                for f in &partent {
+                    let p = dossier.join(crate::jeux_pc::chemin_de_fichier_sur(&f.nom)?);
+                    let _ = std::fs::remove_file(format!("{}.part", p.to_string_lossy()));
+                    if p.is_file() {
+                        std::fs::remove_file(&p)?;
+                    }
+                }
+                self.registre().changer_fichiers(id, &gardes, false)?;
+                self.registre().changer_etat(id, Etat::Telecharge, None)?;
+                self.journaliser(&format!("jeu {id} : {} carte(s) en attente annulée(s), les autres gardées", partent.len()));
+                return Ok(());
+            }
+        }
         for f in &j.fichiers {
             let rel = crate::jeux_pc::chemin_de_fichier_sur(&f.nom)?;
             let mut part = rel.clone().into_os_string();
@@ -596,6 +688,77 @@ mod tests {
         std::fs::create_dir_all(&jeux).unwrap();
         let e = Emplacements { defaut: vec![jeux.to_string_lossy().into()], ..Default::default() };
         (d, n, e)
+    }
+
+    #[tokio::test]
+    async fn les_cartes_d_un_jeu_e_reader_s_ajoutent_a_la_meme_ligne_et_se_retirent_une_par_une() {
+        use sha1::{Digest, Sha1};
+        // Le relevé RÉEL du 25/10 (Pokemon-e TCG, 3 cartes sur 661) ; les contenus servis ici sont des faux, leurs
+        // empreintes remplacent celles du relevé.
+        let reel: Value = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/simule/ereader-125.json")).unwrap()).unwrap();
+        let mut fiche = reel["pokemon"].clone();
+        let contenu = |i: usize| format!("carte {i}").into_bytes();
+        let sha = |o: &[u8]| Sha1::digest(o).iter().map(|b| format!("{b:02x}")).collect::<String>();
+        let mut versions = Vec::new();
+        for (i, v) in fiche["jeu"]["versions"].as_array_mut().unwrap().iter_mut().enumerate() {
+            let c = contenu(i);
+            v["fichiers"][0]["sha1"] = json!(sha(&c));
+            v["fichiers"][0]["taille"] = json!(c.len());
+            versions.push(v["telechargement_id"].as_i64().unwrap());
+        }
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "Nintendo e-Reader", "jeux": 1}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [{"id": 29704, "titre": "Pokemon-e TCG", "plateforme": "Nintendo e-Reader"}]}));
+        });
+        let f2 = fiche.clone();
+        s.mock(move |w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/29704");
+            t.status(200).json_body(f2.clone());
+        });
+        for (i, v) in versions.iter().enumerate() {
+            let c = contenu(i);
+            let route = format!("/api/jeux/v1/fichier/29704/{v}/0");
+            s.mock(move |w, t| {
+                w.method(GET).path(route.clone());
+                t.status(200).body(c.clone());
+            });
+        }
+        let (_d, n, e) = noyau_ouvert(&s).await;
+        let empl = e.defaut[0].clone();
+        // La 1re carte crée la ligne ; la 2e s'y AJOUTE (sous SA version) au lieu d'être refusée.
+        let j = n.ajouter(29704, versions[0], &empl, &e).await.unwrap();
+        let j2 = n.ajouter(29704, versions[1], &empl, &e).await.unwrap();
+        assert_eq!(j2.dossier, j.dossier, "même dossier, même ligne");
+        assert_eq!(j2.fichiers.len(), 2);
+        assert_eq!(j2.fichiers[1].version, Some(versions[1]));
+        assert!(matches!(n.ajouter(29704, versions[1], &empl, &e).await, Err(Erreur::Refus(_))), "une carte déjà là : refusée");
+        // La file télécharge chacune sous SA version, empreinte vérifiée.
+        let session = n.session().await.unwrap();
+        n.executer_file(session, &|_| {}).await.unwrap();
+        let dossier = Path::new(&j.dossier);
+        for (i, f) in j2.fichiers.iter().enumerate() {
+            assert_eq!(std::fs::read(dossier.join(&f.nom)).unwrap(), contenu(i));
+        }
+        // Retirer une carte : ses fichiers seulement ; la dernière ne se retire pas (retirer le jeu, alors).
+        let apres = n.retirer_carte(29704, versions[1]).await.unwrap();
+        assert_eq!(apres.fichiers.len(), 1);
+        assert!(!dossier.join(&j2.fichiers[1].nom).exists() && dossier.join(&j2.fichiers[0].nom).exists());
+        assert!(matches!(n.retirer_carte(29704, versions[0]).await, Err(Erreur::Refus(_))), "jamais la 1re carte seule");
+        assert_eq!(n.registre().jeu(29704).unwrap().unwrap().etat, Etat::Telecharge, "le jeu reste jouable");
+        // Une carte AJOUTÉE puis annulée avant d'arriver : elle seule part ; le jeu, sa carte reçue et ses médias
+        // restent, et il redevient jouable (jamais tout effacé pour une carte annulée).
+        n.ajouter(29704, versions[2], &empl, &e).await.unwrap();
+        assert_eq!(n.registre().jeu(29704).unwrap().unwrap().etat, Etat::Attente);
+        n.annuler(29704).await.unwrap();
+        let apres = n.registre().jeu(29704).unwrap().expect("le jeu est toujours là");
+        assert_eq!((apres.etat, apres.fichiers.len()), (Etat::Telecharge, 1));
+        assert!(dossier.join(&j2.fichiers[0].nom).exists() && n.fiche_locale(29704).is_some(), "carte et médias gardés");
+        // Un jeu SANS cartes déjà sur le PC reste refusé comme avant (testé par les autres essais d'ajout).
     }
 
     #[tokio::test]

@@ -455,10 +455,18 @@ impl Noyau {
         let mut liste = Vec::new();
         for vu in &jeux {
             let j = &vu.jeu;
+            // Un jeu à cartes (e-Reader) : TOUTES ses cartes, pour les remettre à une restauration (pas seulement la 1re).
+            let cartes: Vec<i64> = if crate::jeux_pc::a_cartes(&j.plateforme) {
+                let mut v: Vec<i64> = j.fichiers.iter().map(|f| f.version.unwrap_or(j.version)).collect();
+                v.dedup();
+                v
+            } else {
+                vec![]
+            };
             liste.push(json!({
                 "id": j.id, "version": j.version, "titre": j.titre, "plateforme": j.plateforme,
                 "dossier": j.dossier, "etat": j.etat, "total": j.total, "installation": j.installation,
-                "temps_jeu": j.temps_jeu, "derniere_partie": j.derniere_partie,
+                "temps_jeu": j.temps_jeu, "derniere_partie": j.derniere_partie, "cartes": cartes,
             }));
             // Les parties d'un jeu installé : ce qui a changé depuis son installation.
             let Some(i) = &j.installation else { continue };

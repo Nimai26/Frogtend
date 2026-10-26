@@ -465,6 +465,7 @@ pub fn run() {
             commandes::ludotheque_plateformes,
             commandes::plateforme_fiche,
             commandes::mod_racine_repondre,
+            commandes::jeu_retirer_carte,
             commandes::ludotheque_groupes,
             commandes::ludotheque_genres,
             commandes::ludotheque_lister,

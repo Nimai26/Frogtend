@@ -6,7 +6,7 @@
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { api, estErreurCoeur, taille, type Annexe, type DocumentJeu, type Fiche } from '$lib/api';
-  import { informer, toast } from '$lib/dialogues/fenetres.svelte';
+  import { confirmer, informer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import Jaquette from '$lib/ludotheque/Jaquette.svelte';
   import LecteurLivret from '$lib/ludotheque/LecteurLivret.svelte';
@@ -16,7 +16,8 @@
   import { adresseMedia } from '$lib/api';
   import { documentsMontres, libelleDocument, ouvrirDocument, type DocumentOuvert } from '$lib/ludotheque/documents';
   import { ageConseille, dateDeSortie, datePrecise, noteSurCinq, typeDeSortie, type InfosJeu } from '$lib/ludotheque/infos';
-  import { jeuSurPc, mettreDansLaLudotheque } from '$lib/ludotheque/telechargements.svelte';
+  import { jeuSurPc, mettreDansLaLudotheque, rechargerJeuxDuPc } from '$lib/ludotheque/telechargements.svelte';
+  import { aCartes, cartesSurPc } from '$lib/ludotheque/cartes';
   import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
   import { emulateursDuJeu, gererJeu, installer, jouer, jouerAvec, partie } from '$lib/ludotheque/jeu.svelte';
 
@@ -183,6 +184,22 @@
         m.startsWith('**') ? { gras: true, t: m.slice(2, -2) } : { gras: false, t: m.replace(/`/g, '') },
       ));
   }
+
+  /** Retire UNE carte e-Reader du PC (ses fichiers seulement ; les parties sont dans la cartouche). */
+  async function retirerUneCarte(id: number, version: number, nom: string) {
+    const oui = await confirmer(`🗑 Retirer la carte « ${nom} » ?`, {
+      message: 'Son fichier est retiré de ce PC ; les autres cartes et tes parties restent. Tu pourras la remettre plus tard.',
+      libelleValider: '🗑 Retirer',
+    });
+    if (!oui) return;
+    try {
+      await api.retirerCarte(id, version);
+      await rechargerJeuxDuPc();
+      toast('🗑 Carte retirée.');
+    } catch (e) {
+      toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
+    }
+  }
 </script>
 
 <div class="page">
@@ -342,7 +359,17 @@
                   {#if v.notes_a_traduire}<p class="muted">Ces notes ne sont pas encore traduites.</p>{/if}
                 </details>
               {/if}
-              {#if !locale && !jeuSurPc(fiche.id)}
+              {#if aCartes(fiche.plateforme)}
+                <!-- Un jeu à cartes (e-Reader) : chaque carte s'ajoute ou se retire à part. -->
+                {#if cartesSurPc(jeuSurPc(fiche.id)).includes(v.telechargement_id)}
+                  <p class="muted">✅ Cette carte est sur ce PC.</p>
+                  {#if cartesSurPc(jeuSurPc(fiche.id)).length > 1}
+                    <button class="btn" onclick={() => fiche && retirerUneCarte(fiche.id, v.telechargement_id, v.nom)}>🗑 Retirer cette carte</button>
+                  {/if}
+                {:else if !locale}
+                  <button class="btn" onclick={() => fiche && mettreDansLaLudotheque(fiche.id, v.telechargement_id)}>➕ Ajouter cette carte</button>
+                {/if}
+              {:else if !locale && !jeuSurPc(fiche.id)}
                 <button class="btn" onclick={() => fiche && mettreDansLaLudotheque(fiche.id)}>➕ Mettre dans ma ludothèque</button>
               {/if}
             </article>

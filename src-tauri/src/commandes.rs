@@ -338,6 +338,12 @@ pub async fn jeu_ajouter(
     Ok(j)
 }
 
+/// Retire UNE carte d'un jeu e-Reader du PC (ses fichiers seulement ; jamais la dernière carte, jamais les parties).
+#[tauri::command]
+pub async fn jeu_retirer_carte(noyau: State<'_, Noyau>, id: i64, version: i64) -> Resultat<JeuPc> {
+    noyau.retirer_carte(id, version).await
+}
+
 #[tauri::command]
 pub fn telechargement_pause(noyau: State<'_, Noyau>, id: i64) -> Resultat<()> {
     noyau.mettre_en_pause(id)

@@ -123,7 +123,7 @@ export function retenirDebit(debit: number) {
  * Mettre un jeu dans sa ludothèque : choisir la version, puis l'emplacement, voir le récapitulatif chiffré,
  * donner son accord. Rend vrai si le jeu a été ajouté.
  */
-export async function mettreDansLaLudotheque(id: number): Promise<boolean> {
+export async function mettreDansLaLudotheque(id: number, versionVoulue?: number): Promise<boolean> {
   let fiche: Fiche;
   try {
     fiche = (await api.fiche(id)).fiche;
@@ -140,9 +140,11 @@ export async function mettreDansLaLudotheque(id: number): Promise<boolean> {
     return false;
   }
 
-  // 1. La version (la plus récente en premier).
+  // 1. La version (la plus récente en premier) ; une carte e-Reader précise : celle-là.
   const version =
-    versions.length === 1
+    versionVoulue !== undefined
+      ? versions.find((v) => v.telechargement_id === versionVoulue)
+      : versions.length === 1
       ? versions[0]
       : await choisir(
           `📦 Quelle version de « ${fiche.titre} » ?`,

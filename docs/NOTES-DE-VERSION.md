@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.107.0 — Avant la bêta (4) : les cartes e-Reader
+
+- 🃏 Un jeu e-Reader (Pokemon-e TCG a 661 cartes) garde plusieurs cartes sur ton PC : sur la fiche du jeu, chaque
+  carte a « ➕ Ajouter cette carte » ou, si elle est déjà là, « 🗑 Retirer cette carte ». Chaque carte est
+  téléchargée et vérifiée à part ; en retirer une ne touche pas aux autres.
+- Annuler une carte en cours d'ajout ne retire qu'elle : le jeu et ses autres cartes restent jouables.
+- Ta sauvegarde chez Firehouse garde toutes tes cartes, et une restauration les remet toutes.
+- (Le lancement d'une carte dans mGBA arrive quand Firehouse servira la liste des cartouches e-Reader.)
+
 ## 0.106.0 — Avant la bêta (3) : chaque fichier vérifié
 
 - 🔒 Chaque fichier téléchargé depuis Firehouse est maintenant vérifié par son empreinte : un fichier arrivé abîmé est

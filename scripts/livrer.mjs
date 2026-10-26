@@ -5,7 +5,7 @@
 // FROGTEND_CLE_SIGNATURE, sinon dans %USERPROFILE%\.tauri\frogtend.key. Son mot de passe éventuel :
 // TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync, statSync, statfsSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, statfsSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -20,11 +20,17 @@ if (!existsSync(cheminCle)) {
 
 // La place du disque AVANT de compiler (leçon du 20/10, 3e disque plein : Venkman calcule aussi pour Firehouse). Le
 // cache de compilation (`src-tauri/target/debug`) se reconstruit : on le dit, on ne l'efface pas tout seul.
+// Le dossier de compilation est celui que donne cargo (réglé dans src-tauri/.cargo/config.toml : E: sur Venkman,
+// ✅ Seb 25/10) : la place se mesure LÀ.
+const cible = JSON.parse(
+  execSync('cargo metadata --format-version 1 --no-deps', { cwd: 'src-tauri', encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }),
+).target_directory;
+mkdirSync(cible, { recursive: true });
 const PLACE_MIN = 20 * 1024 ** 3;
-const libre = statfsSync('.').bavail * statfsSync('.').bsize;
+const libre = statfsSync(cible).bavail * statfsSync(cible).bsize;
 if (libre < PLACE_MIN) {
   console.error(
-    `Refusé : il ne reste que ${(libre / 1024 ** 3).toFixed(1)} Go sur le disque du projet (20 Go au moins pour compiler).\n` +
+    `Refusé : il ne reste que ${(libre / 1024 ** 3).toFixed(1)} Go sur le disque de compilation (${cible} ; 20 Go au moins pour compiler).\n` +
       'Le cache de compilation se vide par « cargo clean --profile dev » dans src-tauri (il se reconstruit).',
   );
   process.exit(1);
@@ -54,7 +60,7 @@ execSync('pnpm tauri build', {
   },
 });
 
-const dossier = 'src-tauri/target/release/bundle/nsis';
+const dossier = join(cible, 'release', 'bundle', 'nsis');
 const installateur = `Frogtend_${version}_x64-setup.exe`;
 const signature = `${installateur}.sig`;
 for (const f of [installateur, signature]) {

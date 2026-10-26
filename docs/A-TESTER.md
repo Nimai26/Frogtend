@@ -48,6 +48,10 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Le bloc 🏆 RetroAchievements ne parle plus de « version zippée ».
 - [ ] Un jeu NES zippé ne propose PAS de décompresser (les émulateurs lisent les cartouches zippées).
 
+## Cartes e-Reader (0.107.0)
+- [ ] Fiche de « Pokemon-e TCG » : « 🔎 Chercher » une carte ; « ➕ Ajouter cette carte » sur deux cartes ; elles
+      arrivent dans le même dossier ; « 🗑 Retirer » l'une : l'autre reste.
+
 ## Avant la bêta (2) (0.105.0)
 - [ ] ⚙ Options ▸ Emplacements : « Place au plus des images gardées » (500 Mo à 10 Go).
 - [ ] Taodbox après une synchronisation, puis Internet coupé : photos et logos des consoles toujours là.
