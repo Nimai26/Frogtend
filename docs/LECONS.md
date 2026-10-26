@@ -273,3 +273,14 @@ recherche du programme dans le catalogue), pas appeler la fonction du bout direc
 26/10 (0.111.0) : un `\r` d'un chemin Windows écrit dans un script Python en ligne est devenu un VRAI retour
 chariot dans un test Rust (`RetroArch\retroarch.exe`) ; le compilateur l'a refusé. Les chemins Windows dans du code
 passent par l'outil d'édition ; un script ne s'écrit qu'en fichier (outil d'écriture), jamais en ligne de commande.
+
+## 26/10 (0.113.0) — Commit et envoi faits sur une construction ÉCHOUÉE
+
+Le résultat de `npm run livrer` n'a pas été lu avant le commit et l'envoi : la construction avait échoué (un test
+rouge), aucun installeur n'existait, et le commit « version 0.113.0 » est parti quand même (aucune release publiée,
+donc rien de proposé aux PC). Règle : AVANT le commit d'une livraison, vérifier « ✅ Livraison X prête » dans le
+journal ET la présence de `Frogtend_X_x64-setup.exe` ; sinon, rien ne part.
+Le test rouge (`un_jeu_lance_par_un_intermediaire…`, attente de 60 s jusqu'au bout) : un programme d'un autre test,
+enfant d'un numéro REPRIS (son nouveau propriétaire vite refermé), était adopté comme morceau de la partie. Corrigé
+dans le suivi lui-même (un processus de la partie vu fermé n'a pu lancer que des enfants nés AVANT) — le même trou
+pouvait faire suivre un programme étranger dans une vraie partie.

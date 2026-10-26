@@ -249,6 +249,10 @@ pub struct Suivi {
     /// Windows RÉUTILISE les numéros de processus, et un numéro repris par un autre programme (sous forte charge) ne
     /// doit jamais faire croire la partie en cours. `0` : heure inconnue (déjà fermé au premier relevé).
     vus: std::collections::HashMap<Pid, u64>,
+    /// Les processus de la partie vus FERMÉS, avec l'instant où on l'a vu : un processus fermé ne lance plus rien, donc
+    /// un « enfant » né après cet instant vient d'un autre programme qui a repris le numéro (rouge le 26/10 pendant une
+    /// livraison : la partie jamais finie, un programme d'un autre test adopté).
+    morts: std::collections::HashMap<Pid, u64>,
 }
 
 /// Ce processus (`numero`, démarré à `debut`) est-il un de ceux retenus ? Même numéro ET même heure de démarrage.
@@ -260,11 +264,23 @@ fn est_le_meme(vus: &std::collections::HashMap<Pid, u64>, numero: &Pid, debut: u
 /// toujours vivant (même heure) : oui. Mort : oui si l'enfant est né après lui. Numéro repris par un autre programme
 /// (vivant, autre heure) : seulement si l'enfant est né AVANT ce nouveau venu (il vient donc de l'ancien).
 fn descend(vus: &std::collections::HashMap<Pid, u64>, parent: &Pid, debut: u64, parent_vivant: Option<u64>) -> bool {
+    descend_avant(vus, &Default::default(), parent, debut, parent_vivant)
+}
+
+/// Comme [`descend`], en sachant quand chaque processus de la partie a été vu fermé (`morts`) : un parent fermé
+/// n'a pu donner que des enfants nés AVANT qu'on le voie fermé.
+fn descend_avant(
+    vus: &std::collections::HashMap<Pid, u64>,
+    morts: &std::collections::HashMap<Pid, u64>,
+    parent: &Pid,
+    debut: u64,
+    parent_vivant: Option<u64>,
+) -> bool {
     let Some(t) = vus.get(parent).copied() else { return false };
     match parent_vivant {
         Some(v) if t != 0 && v == t => true,
         Some(v) => debut < v && debut >= t,
-        None => debut >= t,
+        None => debut >= t && morts.get(parent).is_none_or(|m| debut <= *m),
     }
 }
 
@@ -281,7 +297,7 @@ impl Suivi {
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0).saturating_sub(5)
         });
         let vus = std::collections::HashMap::from([(r, debut)]);
-        Suivi { systeme, racine: r, dossiers, vus }
+        Suivi { systeme, racine: r, dossiers, vus, morts: Default::default() }
     }
 
     fn dans_un_dossier(&self, exe: Option<&Path>) -> bool {
@@ -300,6 +316,13 @@ impl Suivi {
     pub fn en_cours(&mut self) -> bool {
         self.systeme.refresh_processes(ProcessesToUpdate::All, true);
         let processus = self.systeme.processes();
+        // Ceux de la partie qui viennent de se fermer (ou dont le numéro est repris par un autre) : notés, avec l'instant.
+        let maintenant = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        for (pid, t) in &self.vus {
+            if processus.get(pid).is_none_or(|p| p.start_time() != *t) {
+                self.morts.entry(*pid).or_insert(maintenant);
+            }
+        }
         // Les descendants : on répète tant qu'on en découvre (petits-enfants…), en reconnaissant chacun à son numéro ET
         // à son heure de démarrage.
         loop {
@@ -310,7 +333,7 @@ impl Suivi {
                 }
                 let Some(parent) = p.parent() else { continue };
                 let parent_vivant = processus.get(&parent).map(|x| x.start_time());
-                if descend(&self.vus, &parent, p.start_time(), parent_vivant) {
+                if descend_avant(&self.vus, &self.morts, &parent, p.start_time(), parent_vivant) {
                     self.vus.insert(*pid, p.start_time());
                 }
             }
@@ -386,6 +409,11 @@ mod tests {
         assert!(!descend(&vus, &p(100), 1600, Some(1500)));
         assert!(descend(&vus, &p(100), 1200, Some(1500)), "né avant le nouveau venu : de l'ancien parent");
         assert!(!descend(&vus, &p(300), 1600, None), "parent inconnu");
+        // Le parent vu fermé à 1100 : un « enfant » né après (numéro repris par un programme vite refermé) n'est pas
+        // de la partie ; né avant, si (lancé juste avant que le parent se ferme).
+        let morts = std::collections::HashMap::from([(p(100), 1100)]);
+        assert!(!descend_avant(&vus, &morts, &p(100), 1200, None));
+        assert!(descend_avant(&vus, &morts, &p(100), 1100, None));
     }
 
     #[test]
