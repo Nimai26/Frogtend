@@ -334,6 +334,16 @@
         </select>
         <span class="muted">Au-delà, les moins vues partent après une synchronisation (elles reviennent si tu en as besoin). Jamais celles de tes jeux sur ce PC, ni tes livrets.</span>
       </label>
+      <label class="champ">
+        <span>Demander avant d’envoyer une sauvegarde plus grosse que</span>
+        <select
+          value={String(etat.pc.seuilSauvegardeMo ?? 200)}
+          onchange={(e) => reglerPc('seuilSauvegardeMo', Number(e.currentTarget.value))}
+        >
+          {#each [50, 200, 500, 1000, 5000] as mo (mo)}<option value={String(mo)}>{mo < 1000 ? `${mo} Mo` : `${mo / 1000} Go`}</option>{/each}
+        </select>
+        <span class="muted">Une sauvegarde automatique plus grosse attend que tu la lances toi-même (une connexion modeste mettrait longtemps).</span>
+      </label>
     </div>
   </section>
     {:else if rubrique === 'emulateurs'}

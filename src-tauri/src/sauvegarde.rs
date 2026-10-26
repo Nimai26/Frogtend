@@ -34,6 +34,16 @@ pub struct ManifesteParties {
     pub fichiers: BTreeMap<String, (String, u64)>,
 }
 
+/// Ce qu'une sauvegarde enverrait (annoncé avant de l'envoyer).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct EstimationSauvegarde {
+    /// La taille de toutes les parties à sauvegarder maintenant.
+    pub total: u64,
+    /// Celle de la dernière sauvegarde faite depuis ce PC (aucune : la première).
+    pub precedent: Option<u64>,
+}
+
+/// Le bilan d'une sauvegarde.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct Bilan {
     pub envoyes: usize,
@@ -380,6 +390,15 @@ impl Noyau {
     pub async fn derniere_sauvegarde(&self) -> Resultat<Option<Bilan>> {
         let s = self.session().await?;
         Ok(std::fs::read(self.fichier_derniere_sauvegarde(&s.profil.id)).ok().and_then(|o| serde_json::from_slice(&o).ok()))
+    }
+
+    /// Ce qu'une sauvegarde enverrait, à annoncer AVANT (une première sauvegarde PS3 ou Xbox peut peser des centaines de
+    /// Mo) : la taille de toutes les parties, et celle de la dernière sauvegarde. Rien n'est lu au-delà des tailles.
+    pub async fn estimer_sauvegarde(&self, programmes_emulateurs: &[String]) -> Resultat<EstimationSauvegarde> {
+        let c = self.contenu_sauvegarde(programmes_emulateurs).await?;
+        let total = c.parties.iter().filter_map(|e| std::fs::metadata(&e.source).ok()).map(|m| m.len()).sum();
+        let precedent = self.derniere_sauvegarde().await.ok().flatten().map(|b| b.taille);
+        Ok(EstimationSauvegarde { total, precedent })
     }
 
     /// Sauvegarde le profil ouvert chez Firehouse (`<username du jeton>/<profil>/<pc>/`). `ecarter` : la personne a
@@ -923,6 +942,9 @@ mod tests {
         assert_eq!(c.configuration["profil"]["nom"], "Seb");
         let rel: Vec<_> = c.parties.iter().map(|e| e.relatif.as_str()).collect();
         assert_eq!(rel, vec!["emulateurs/RetroArch/saves/Super Metroid (USA).srm"]);
+        // Annoncé avant d'envoyer : la taille de toutes les parties, aucune sauvegarde précédente depuis ce PC.
+        let e = n.estimer_sauvegarde(&[emu.join("retroarch.exe").to_string_lossy().to_string()]).await.unwrap();
+        assert_eq!(e, EstimationSauvegarde { total: 3, precedent: None });
     }
 
     #[tokio::test]

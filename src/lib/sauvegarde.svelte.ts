@@ -12,6 +12,7 @@ import { ajouter, normaliserTous } from '$lib/emulateurs/choix';
 import { depuis } from '$lib/ludotheque/ludotheque.svelte';
 import { rechargerJeuxDuPc, tele } from '$lib/ludotheque/telechargements.svelte';
 import { proposerDossierJeux } from '$lib/ludotheque/dossierJeux';
+import { aAnnoncer } from './sauvegardeTaille';
 
 export interface BilanSauvegarde {
   envoyes: number;
@@ -75,12 +76,35 @@ export async function proposerReprise(motif: string, discrete: boolean) {
   if (oui) await sauvegarder(false, true);
 }
 
+/** Une grosse sauvegarde automatique déjà remise à plus tard (et dite) pendant cette session. */
+let grosseRemise = false;
+
 /** Sauvegarde maintenant. `discrete` : pas de message si tout va bien. `ecarter` : remplacer une sauvegarde existante
  * non restaurée (choix explicite de la personne). */
 export async function sauvegarder(discrete = false, ecarter = false): Promise<boolean> {
   if (sauvegarde.enCours || etat.pc.firehouse.simule) return false;
   sauvegarde.enCours = true;
   try {
+    // Une grosse sauvegarde (une première sauvegarde PS3 ou Xbox : des centaines de Mo) est ANNONCÉE avant d'envoyer :
+    // demandée à la main, remise à plus tard en automatique. Une estimation impossible n'empêche rien.
+    // Après « remplacer une sauvegarde » (`ecarter`), la taille a déjà été acceptée : jamais redemandée.
+    const est = ecarter ? null : await api.sauvegardeEstimer().catch(() => null);
+    const gros = est ? aAnnoncer(est, etat.pc.seuilSauvegardeMo ?? 200) : null;
+    if (gros !== null && discrete) {
+      // Dit une fois par ouverture de Frogtend, pas après chaque partie.
+      if (!grosseRemise) {
+        grosseRemise = true;
+        toast(`💾 Sauvegarde automatique remise à plus tard : au moins ${taille(gros)} de parties à envoyer. Lance-la toi-même (💾 Sauvegarder) quand ta connexion le permet.`, 'alerte');
+      }
+      return false;
+    }
+    if (gros !== null) {
+      const oui = await confirmer(`💾 Envoyer au moins ${taille(gros)} de parties à Firehouse ?`, {
+        message: `Tes parties ont beaucoup grossi depuis la dernière sauvegarde${est?.precedent == null ? ' (c’est la première depuis ce PC)' : ''}. Sur une connexion modeste, l’envoi peut prendre du temps ; tu peux continuer à utiliser Frogtend pendant ce temps.`,
+        libelleValider: 'Envoyer',
+      });
+      if (!oui) return false;
+    }
     const b = await api.sauvegarder(ecarter);
     sauvegarde.derniere = b;
     if (!discrete) {

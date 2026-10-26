@@ -807,6 +807,17 @@ impl Noyau {
                         crate::ereader::inserer_bandes(&mut l.arguments, &cartouche, &bandes);
                         l
                     }
+                    // Vita3K : un jeu déjà installé se lance par son numéro (jamais réinstallé à chaque partie) ; la première
+                    // fois, son fichier l'installe, comme avant.
+                    None if crate::vita3k::est_vita3k(&programme) => {
+                        let jeu = Path::new(&i.dossier).join(f);
+                        let mut l = lanceur_emulateur(&programme, &ligne, &jeu)?;
+                        let dossier_v = Path::new(&programme).parent().map(Path::to_path_buf).unwrap_or_default();
+                        if let Some(t) = crate::vita3k::pret_a_lancer(&dossier_v, &jeu) {
+                            crate::vita3k::lancer_par_numero(&mut l.arguments, &jeu, &t);
+                        }
+                        l
+                    }
                     None if crate::ereader::est_mgba(&programme) => {
                         let rom = Path::new(&i.dossier).join(f);
                         self.reprendre_partie_mgba(&programme, &rom).await;

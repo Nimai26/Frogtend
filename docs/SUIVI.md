@@ -106,6 +106,10 @@
   par défaut (un config.yml réduit à `user-id` est lu) ; `user-auto-connect` n'est lu NULLE PART (seulement déclaré,
   config.h:193). Commentaire après `user-id` géré. À ALIGNER plus tard (Eden, Cemu, Vita3K) : la marque de reprise est
   posée avant la copie et l'échec de la reprise n'est pas dit (rien n'est perdu : les parties d'origine restent).
+  ✅ FAIT (26/10, pour 0.115.0) : Vita3K lance un jeu déjà installé par `-r <TITLE_ID>` (plus de réinstallation) ;
+  taille d'une sauvegarde annoncée avant l'envoi (réglage `seuilSauvegardeMo`, 200 Mo d'office ; automatique remise à
+  plus tard et dite). REPORTÉ après la bêta (rien n'est perdu) : dire quand la reprise des parties d'avant échoue, et
+  la retenter pour la bonne personne (Eden, Cemu, Vita3K).
   · Vita3K : un UTILISATEUR par personne (`ux0\user\<id>`), config.yml par profil (`user-id`,
     `user-auto-connect`) et `Vita3K.exe -c <profil>\config.yml -w -r <titre>` ; pas d'option utilisateur en ligne de
     commande ; `pref-path` écrasé en portable. Risque : réglages communs copiés par profil.

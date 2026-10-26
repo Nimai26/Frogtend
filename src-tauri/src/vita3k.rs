@@ -202,6 +202,69 @@ pub fn parties(v: &Path, id: &str) -> PathBuf {
     ux0(v).join("user").join(id).join("savedata")
 }
 
+/// Un `param.sfo` lu (1 Mo au plus).
+fn lire_sfo(f: &Path) -> Option<Vec<u8>> {
+    (std::fs::metadata(f).ok()?.len() <= 1 << 20).then(|| std::fs::read(f).ok()).flatten()
+}
+
+/// Le `sce_sys\param.sfo` d'un jeu PS Vita : dans son dossier, ou dans son .vpk/.zip — UN SEUL jeu (un zip qui en
+/// contient plusieurs, de numéros différents : aucun, on ne devine pas lequel).
+fn sfo_du_jeu(jeu: &Path) -> Option<Vec<u8>> {
+    use std::io::Read;
+    if jeu.is_dir() {
+        return lire_sfo(&jeu.join("sce_sys").join("param.sfo"));
+    }
+    let mut z = zip::ZipArchive::new(std::fs::File::open(jeu).ok()?).ok()?;
+    let noms: Vec<String> = z
+        .file_names()
+        .filter(|n| {
+            let n = n.replace('\\', "/").to_ascii_lowercase();
+            n == "sce_sys/param.sfo" || n.ends_with("/sce_sys/param.sfo")
+        })
+        .map(String::from)
+        .collect();
+    let mut sfos = Vec::new();
+    for nom in noms {
+        let f = z.by_name(&nom).ok()?;
+        let mut o = Vec::new();
+        f.take(1 << 20).read_to_end(&mut o).ok()?;
+        sfos.push(o);
+    }
+    let mut ids: Vec<String> = sfos.iter().filter_map(|s| crate::contenus::valeur_sfo(s, "TITLE_ID")).collect();
+    ids.sort();
+    ids.dedup();
+    (ids.len() == 1).then(|| sfos.into_iter().next()).flatten()
+}
+
+fn id_valide(s: &[u8]) -> Option<String> {
+    crate::contenus::valeur_sfo(s, "TITLE_ID").filter(|t| t.len() == 9 && t.chars().all(|c| c.is_ascii_alphanumeric()))
+}
+
+/// Le numéro d'un jeu PS Vita (TITLE_ID), seulement 9 lettres et chiffres (il devient un nom de dossier).
+pub fn titre_id(jeu: &Path) -> Option<String> {
+    id_valide(&sfo_du_jeu(jeu)?)
+}
+
+/// Ce jeu peut-il se lancer par son numéro, sans repasser son fichier ? Seulement s'il est installé dans ce Vita3K À
+/// LA MÊME VERSION (`APP_VER` du fichier = celle de `ux0\patch\<id>` s'il y en a une, sinon de `ux0\app\<id>`) :
+/// une autre version (mise à jour, autre sortie) repasse par le fichier et s'installe, comme avant.
+pub fn pret_a_lancer(v: &Path, jeu: &Path) -> Option<String> {
+    let s = sfo_du_jeu(jeu)?;
+    let id = id_valide(&s)?;
+    let version = crate::contenus::valeur_sfo(&s, "APP_VER");
+    let installe = ["patch", "app"].iter().find_map(|d| lire_sfo(&ux0(v).join(d).join(&id).join("sce_sys").join("param.sfo")))?;
+    (crate::contenus::valeur_sfo(&installe, "APP_VER") == version).then_some(id)
+}
+
+/// Un jeu déjà installé se lance par son numéro (`-r <TITLE_ID>`, config.cpp L367) : l'argument qui EST le fichier du
+/// jeu est remplacé — Vita3K ne le réinstalle plus. Sans un tel argument (ligne réglée à la main), rien ne change.
+pub fn lancer_par_numero(arguments: &mut Vec<String>, jeu: &Path, titre: &str) {
+    let j = jeu.to_string_lossy().to_string();
+    if let Some(i) = arguments.iter().position(|a| *a == j) {
+        arguments.splice(i..=i, ["-r".to_string(), titre.to_string()]);
+    }
+}
+
 /// Décision de Seb (26/10) : les parties de l'utilisateur que Vita3K prenait AVANT Frogtend sont COPIÉES chez la
 /// première personne qui joue (`u.ancien_courant`), jeu par jeu ; jamais déplacées, jamais par-dessus.
 pub fn reprendre_parties_d_avant(v: &Path, u: &UtilisateurDuProfil) -> Resultat<usize> {
@@ -265,6 +328,111 @@ mod tests {
         std::fs::write(config(v), "---\nlog-level: 2").unwrap();
         choisir(v, "01").unwrap();
         assert_eq!(std::fs::read_to_string(config(v)).unwrap(), "---\nlog-level: 2\nuser-id: \"01\"\n");
+    }
+
+    fn sfo(titre: &str) -> Vec<u8> {
+        sfo_version(titre, None)
+    }
+
+    /// Un PARAM.SFO minimal : TITLE_ID, et APP_VER si donnée (clés texte).
+    fn sfo_version(titre: &str, version: Option<&str>) -> Vec<u8> {
+        let mut paires: Vec<(&str, String)> = vec![("TITLE_ID", format!("{titre}\0"))];
+        if let Some(v) = version {
+            paires.insert(0, ("APP_VER", format!("{v}\0")));
+        }
+        let mut cles: Vec<u8> = Vec::new();
+        let mut donnees: Vec<u8> = Vec::new();
+        let mut index = Vec::new();
+        for (c, v) in &paires {
+            index.extend((cles.len() as u16).to_le_bytes());
+            index.extend(0x0204u16.to_le_bytes());
+            index.extend((v.len() as u32).to_le_bytes());
+            index.extend((v.len() as u32).to_le_bytes());
+            index.extend((donnees.len() as u32).to_le_bytes());
+            cles.extend(c.as_bytes());
+            cles.push(0);
+            donnees.extend(v.as_bytes());
+        }
+        while cles.len() % 4 != 0 {
+            cles.push(0);
+        }
+        let debut_cles = 0x14 + index.len();
+        let debut_donnees = debut_cles + cles.len();
+        let mut o = Vec::new();
+        o.extend(b"\0PSF");
+        o.extend(0x0101u32.to_le_bytes());
+        o.extend((debut_cles as u32).to_le_bytes());
+        o.extend((debut_donnees as u32).to_le_bytes());
+        o.extend((paires.len() as u32).to_le_bytes());
+        o.extend(index);
+        o.extend(cles);
+        o.extend(donnees);
+        o
+    }
+
+    fn zip_de(f: &Path, entrees: &[(&str, Vec<u8>)]) {
+        let mut z = zip::ZipWriter::new(std::fs::File::create(f).unwrap());
+        for (n, o) in entrees {
+            z.start_file(*n, zip::write::SimpleFileOptions::default()).unwrap();
+            std::io::Write::write_all(&mut z, o).unwrap();
+        }
+        z.finish().unwrap();
+    }
+
+    #[test]
+    fn une_autre_version_ou_un_zip_a_plusieurs_jeux_repasse_par_le_fichier() {
+        let d = vita_portable();
+        let v = d.path();
+        let app = ux0(v).join("app").join("PCSB00245").join("sce_sys");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(app.join("param.sfo"), sfo_version("PCSB00245", Some("01.00"))).unwrap();
+        let maj = d.path().join("p4g 1.03.vpk");
+        zip_de(&maj, &[("sce_sys/param.sfo", sfo_version("PCSB00245", Some("01.03")))]);
+        assert_eq!(pret_a_lancer(v, &maj), None, "une autre version : installée par le fichier");
+        // Installée (patch 1.03) : directement.
+        let patch = ux0(v).join("patch").join("PCSB00245").join("sce_sys");
+        std::fs::create_dir_all(&patch).unwrap();
+        std::fs::write(patch.join("param.sfo"), sfo_version("PCSB00245", Some("01.03"))).unwrap();
+        assert_eq!(pret_a_lancer(v, &maj).as_deref(), Some("PCSB00245"));
+        // Un zip qui contient deux jeux : on ne devine pas.
+        let deux = d.path().join("deux.zip");
+        zip_de(&deux, &[("a/sce_sys/param.sfo", sfo("PCSB00245")), ("b/sce_sys/param.sfo", sfo("PCSE00120"))]);
+        assert_eq!(titre_id(&deux), None);
+        // `xsce_sys/param.sfo` n'est pas le param.sfo d'un jeu.
+        let faux = d.path().join("faux.zip");
+        zip_de(&faux, &[("xsce_sys/param.sfo", sfo("PCSB00245"))]);
+        assert_eq!(titre_id(&faux), None);
+    }
+
+    #[test]
+    fn un_jeu_deja_installe_se_lance_par_son_numero() {
+        let d = vita_portable();
+        let v = d.path();
+        // Le .vpk (un zip) du jeu.
+        let vpk = d.path().join("Persona 4 Golden (Europe).vpk");
+        {
+            let mut z = zip::ZipWriter::new(std::fs::File::create(&vpk).unwrap());
+            z.start_file("sce_sys/param.sfo", zip::write::SimpleFileOptions::default()).unwrap();
+            std::io::Write::write_all(&mut z, &sfo("PCSB00245")).unwrap();
+            z.finish().unwrap();
+        }
+        assert_eq!(titre_id(&vpk).as_deref(), Some("PCSB00245"));
+        assert_eq!(pret_a_lancer(v, &vpk), None, "pas encore installé");
+        let app = ux0(v).join("app").join("PCSB00245").join("sce_sys");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(app.join("param.sfo"), sfo("PCSB00245")).unwrap();
+        assert_eq!(pret_a_lancer(v, &vpk).as_deref(), Some("PCSB00245"));
+        assert_eq!(titre_id(&ux0(v).join("app").join("PCSB00245")).as_deref(), Some("PCSB00245"), "un dossier aussi");
+        let mut args = vec!["-F".to_string(), vpk.to_string_lossy().to_string()];
+        lancer_par_numero(&mut args, &vpk, "PCSB00245");
+        assert_eq!(args, ["-F", "-r", "PCSB00245"]);
+        // Une ligne réglée à la main où le fichier est collé à autre chose : rien ne change.
+        let mut args = vec![format!("--x={}", vpk.display())];
+        lancer_par_numero(&mut args, &vpk, "PCSB00245");
+        assert_eq!(args.len(), 1);
+        // Un numéro qui n'en est pas un (il deviendrait un chemin) : aucun.
+        std::fs::write(app.join("param.sfo"), sfo("../../x")).unwrap();
+        assert_eq!(titre_id(&ux0(v).join("app").join("PCSB00245")), None);
     }
 
     #[test]

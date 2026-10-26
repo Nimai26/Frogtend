@@ -660,6 +660,8 @@ export const api = {
   /** Télécharge une musique ou une vidéo si elle n'est pas sur le PC (le clic vaut accord, taille montrée). */
   preparerDocument: (id: number, doc: number) => appeler<DocumentJeu>('document_preparer', { id, doc }),
   /** `ecarter` : la personne a choisi de REMPLACER une sauvegarde existante qu'elle n'a pas restaurée. */
+  /** Ce qu'une sauvegarde enverrait : taille de toutes les parties, et celle de la dernière sauvegarde. */
+  sauvegardeEstimer: () => appeler<{ total: number; precedent: number | null }>('sauvegarde_estimer'),
   sauvegarder: (ecarter = false) => appeler<import('./sauvegarde.svelte').BilanSauvegarde>('sauvegarde_lancer', { ecarter }),
   derniereSauvegarde: () => appeler<import('./sauvegarde.svelte').BilanSauvegarde | null>('sauvegarde_derniere'),
   restaurationListe: () =>

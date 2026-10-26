@@ -4658,6 +4658,12 @@ pub async fn sauvegarde_lancer(app: AppHandle, noyau: State<'_, Noyau>, ecarter:
     noyau.sauvegarder(&programmes_emulateurs(&app), &pc, ecarter.unwrap_or(false)).await
 }
 
+/// Ce qu'une sauvegarde enverrait (à annoncer avant de l'envoyer).
+#[tauri::command]
+pub async fn sauvegarde_estimer(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<crate::sauvegarde::EstimationSauvegarde> {
+    noyau.estimer_sauvegarde(&programmes_emulateurs(&app)).await
+}
+
 #[tauri::command]
 pub async fn sauvegarde_derniere(noyau: State<'_, Noyau>) -> Resultat<Option<crate::sauvegarde::Bilan>> {
     noyau.derniere_sauvegarde().await

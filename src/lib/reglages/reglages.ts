@@ -33,6 +33,9 @@ export interface ReglagesPc {
   /** La place au plus des images gardées pour chaque profil (jaquettes, visuels, consoles), en Go : au-delà, les moins
    * vues partent après une synchronisation (jamais celles des jeux du PC ni un document). */
   plafondImagesGo: number;
+  /** Au-delà de cette taille de parties NOUVELLES (en Mo), une sauvegarde demande avant d'envoyer, et une sauvegarde
+   * automatique attend que la personne la lance elle-même. */
+  seuilSauvegardeMo: number;
   /** La liste MAME (le MAME.xml des métadonnées de LaunchBox) pour l'import « MAME Arcade Full Set » ; vide : demandée. */
   listeMame: string;
   /** Le menu universel en jeu. */
@@ -132,6 +135,7 @@ export const DEFAUTS_PC: ReglagesPc = {
   dossierOutils: '',
   dossierAbris: '',
   plafondImagesGo: 2,
+  seuilSauvegardeMo: 200,
   listeMame: '',
   menuJeu: { touche: 'Pause', manette: 'Select + R1', delaiQuitter: 10 },
   firehouse: { adresse: ADRESSE_FIREHOUSE_PAR_DEFAUT, simule: false },

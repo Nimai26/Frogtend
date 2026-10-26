@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.115.0 — Vita plus rapide, sauvegardes annoncées
+
+- ⚡ Un jeu PS Vita déjà installé dans Vita3K se lance directement : il n'est plus réinstallé à chaque partie.
+- 💾 Une grosse sauvegarde est annoncée avant d'être envoyée : au-delà de 200 Mo de parties nouvelles (réglable dans
+  ⚙ Options ▸ Emplacements), Frogtend te demande d'abord ; une sauvegarde automatique attend que tu la lances toi-même.
+
 ## 0.114.0 — Chacun ses parties PS Vita
 
 - 🎮 Dans Vita3K (PS Vita), chaque personne a maintenant son propre utilisateur Vita, créé par Frogtend la première

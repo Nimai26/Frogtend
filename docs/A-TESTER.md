@@ -3,6 +3,11 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Vita plus rapide, sauvegardes annoncées (0.115.0)
+- [ ] Lancer deux fois un jeu PS Vita : la seconde fois, il doit démarrer tout de suite (sans réinstallation).
+- [ ] Mettre le seuil à 50 Mo (⚙ Options ▸ Emplacements), jouer à un jeu PS3, puis **💾 Sauvegarder** : Frogtend doit
+      annoncer la taille et demander avant d'envoyer.
+
 ## Chacun ses parties PS Vita (0.114.0)
 - [ ] (Avec le Vita3K installé par Frogtend.) Jouer à un jeu PS Vita avec ton profil : dans Vita3K, l'utilisateur à
       ton nom doit être celui de la partie, et ta partie d'avant doit être là (recopiée).

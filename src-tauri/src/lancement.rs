@@ -263,6 +263,7 @@ fn est_le_meme(vus: &std::collections::HashMap<Pid, u64>, numero: &Pid, debut: u
 /// Un processus démarré à `debut`, dont le parent porte le numéro `parent`, descend-il de la partie ? Le parent retenu
 /// toujours vivant (même heure) : oui. Mort : oui si l'enfant est né après lui. Numéro repris par un autre programme
 /// (vivant, autre heure) : seulement si l'enfant est né AVANT ce nouveau venu (il vient donc de l'ancien).
+#[cfg(test)]
 fn descend(vus: &std::collections::HashMap<Pid, u64>, parent: &Pid, debut: u64, parent_vivant: Option<u64>) -> bool {
     descend_avant(vus, &Default::default(), parent, debut, parent_vivant)
 }
