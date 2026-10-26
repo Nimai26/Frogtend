@@ -553,10 +553,13 @@ impl Noyau {
             // dans le compte du profil sur le nouveau PC, quel que soit son numéro.
             // Un émulateur OUVERT peut être en train d'écrire une partie : ses parties de compte sont sautées cette fois
             // (jamais une partie à moitié écrite envoyée), et celles déjà chez Firehouse y restent (gardées).
-            let ouvert = (crate::emulateurs_profils::est_rpcs3(programme) || crate::eden::est_eden(programme) || crate::cemu::est_cemu(programme))
+            let ouvert = (crate::emulateurs_profils::est_rpcs3(programme)
+                || crate::eden::est_eden(programme)
+                || crate::cemu::est_cemu(programme)
+                || crate::vita3k::est_vita3k(programme))
                 && !crate::lancement::processus_du_dossier(dossier).is_empty();
             if ouvert {
-                for sous in [crate::emulateurs_profils::COMPTE_RPCS3, crate::eden::UTILISATEUR_EDEN, crate::cemu::COMPTE_CEMU] {
+                for sous in [crate::emulateurs_profils::COMPTE_RPCS3, crate::eden::UTILISATEUR_EDEN, crate::cemu::COMPTE_CEMU, crate::vita3k::UTILISATEUR_VITA] {
                     gardes_ouverts.push(format!("emulateurs/{nom_emulateur}/{sous}/"));
                 }
             }
@@ -592,6 +595,17 @@ impl Noyau {
                             for r in fichiers_de(&src)? {
                                 parties.push(Element { source: src.join(&r), relatif: format!("emulateurs/{nom_emulateur}/{}/{jeu}/{sous}/{r}", crate::cemu::COMPTE_CEMU) });
                             }
+                        }
+                    }
+                }
+            }
+            // Vita3K (portable) : les parties de l'utilisateur Vita de ce profil (lu SANS le créer).
+            if !ouvert && crate::vita3k::est_vita3k(programme) && crate::vita3k::portable(dossier) {
+                if let Some(id) = crate::vita3k::utilisateur_existant(dossier, &crate::jeux_pc::nom_de_dossier(&profil.nom)) {
+                    let d = crate::vita3k::parties(dossier, &id);
+                    if d.is_dir() {
+                        for r in fichiers_de(&d)? {
+                            parties.push(Element { source: d.join(&r), relatif: format!("emulateurs/{nom_emulateur}/{}/savedata/{r}", crate::vita3k::UTILISATEUR_VITA) });
                         }
                     }
                 }

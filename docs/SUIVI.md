@@ -97,6 +97,15 @@
     ⚠ `-a <id>` inconnu = PREMIER compte en silence (vérifiable dans log.txt « using account <nom> ») ; `-a` n'est
     jamais écrit dans settings.xml ; mlc : `--mlc`, sinon `mlc_path` de settings.xml, sinon `portable\mlc01` ; parties
     `<mlc>\usr\save\<haut>\<bas>\user\<id>\` (+ `user\common`, commun à tous).
+  ✅ FAIT (26/10, pour 0.114.0) — Vita3K : vita3k.rs (utilisateur Vita par profil au format de Vita3K, `user-id`
+  de config.yml réglé Vita3K fermé, seule cette ligne changée ; reprise ; sauvegarde/restauration). À FAIRE (petit lot
+  noté) : Frogtend passe le FICHIER du jeu à chaque lancement → Vita3K le RÉINSTALLE à chaque partie (lent) : lancer
+  par `-r <TITLE_ID>` une fois installé (TITLE_ID lu dans sce_sys\param.sfo) ; `-F` n'est plus lu par Vita3K
+  (plein écran : `boot-apps-full-screen: true`). JAMAIS `-d` (efface les parties de l'utilisateur 00).
+  Relecture de l'expert (26/10) : rien de bloquant. Vérifié dans config.cpp L97-103 : une clé absente prend sa valeur
+  par défaut (un config.yml réduit à `user-id` est lu) ; `user-auto-connect` n'est lu NULLE PART (seulement déclaré,
+  config.h:193). Commentaire après `user-id` géré. À ALIGNER plus tard (Eden, Cemu, Vita3K) : la marque de reprise est
+  posée avant la copie et l'échec de la reprise n'est pas dit (rien n'est perdu : les parties d'origine restent).
   · Vita3K : un UTILISATEUR par personne (`ux0\user\<id>`), config.yml par profil (`user-id`,
     `user-auto-connect`) et `Vita3K.exe -c <profil>\config.yml -w -r <titre>` ; pas d'option utilisateur en ligne de
     commande ; `pref-path` écrasé en portable. Risque : réglages communs copiés par profil.

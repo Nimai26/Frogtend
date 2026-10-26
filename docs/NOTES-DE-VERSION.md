@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.114.0 — Chacun ses parties PS Vita
+
+- 🎮 Dans Vita3K (PS Vita), chaque personne a maintenant son propre utilisateur Vita, créé par Frogtend la première
+  fois qu'elle joue : ses parties sont à elle, et partent dans SA sauvegarde chez Firehouse.
+- Les parties PS Vita d'avant sont recopiées pour la première personne qui joue (l'originale reste).
+- Sur un nouveau PC, la restauration recrée ton utilisateur Vita et y remet tes parties, sans jamais écraser.
+- (Seulement pour un Vita3K installé par Frogtend, dit « portable ».)
+- 🛠 Le suivi d'une partie ne prend plus jamais un programme étranger pour un morceau du jeu (cas rare sur un PC très
+  chargé, où la partie ne semblait jamais finie).
+
 ## 0.113.0 — Chacun ses parties Wii U
 
 - 🎮 Dans Cemu (Wii U), chaque personne a maintenant son propre compte Wii U, créé par Frogtend la première fois

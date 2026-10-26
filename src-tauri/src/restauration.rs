@@ -341,7 +341,7 @@ impl Noyau {
                 &zone.join(&nom),
                 &crate::emulateurs_profils::dossier_du_profil(dossier, &s.profil.nom),
                 false,
-                &[crate::emulateurs_profils::COMPTE_RPCS3, crate::eden::UTILISATEUR_EDEN, crate::cemu::COMPTE_CEMU],
+                &[crate::emulateurs_profils::COMPTE_RPCS3, crate::eden::UTILISATEUR_EDEN, crate::cemu::COMPTE_CEMU, crate::vita3k::UTILISATEUR_VITA],
             )?;
             // Eden : les parties de l'utilisateur Switch du profil reviennent dans SON utilisateur (créé s'il manque,
             // AVANT les parties : sinon Eden les prendrait pour celles d'un utilisateur disparu) — Eden portable et fermé
@@ -380,6 +380,24 @@ impl Noyau {
                         }
                     }
                     Err(e) => r.conflits.push(format!("Wii U : {e}")),
+                }
+            }
+            // Vita3K : les parties de l'utilisateur Vita du profil reviennent chez lui (créé s'il manque), jeu par jeu —
+            // Vita3K portable et fermé.
+            let attente_vita = zone.join(&nom).join(crate::vita3k::UTILISATEUR_VITA).join("savedata");
+            if attente_vita.is_dir()
+                && crate::vita3k::est_vita3k(&programme)
+                && crate::vita3k::portable(dossier)
+                && crate::lancement::processus_du_dossier(dossier).is_empty()
+            {
+                match crate::vita3k::utilisateur_du_profil(dossier, &crate::jeux_pc::nom_de_dossier(&s.profil.nom)) {
+                    Ok(u) => {
+                        let c = reposer_dossiers_entiers(&attente_vita, &crate::vita3k::parties(dossier, &u.id), "PS Vita")?;
+                        r.reposes += c.reposes;
+                        r.deja_la += c.deja_la;
+                        r.conflits.extend(c.conflits);
+                    }
+                    Err(e) => r.conflits.push(format!("PS Vita : {e}")),
                 }
             }
             let attente_eden = zone.join(&nom).join(crate::eden::UTILISATEUR_EDEN);
@@ -510,6 +528,31 @@ mod tests {
         // Un jeu tout juste réinstallé : la partie restaurée remplace le fichier du jeu neuf.
         assert_eq!(reposer(&de, &vers, true).unwrap().reposes, 1);
         assert_eq!(std::fs::read(vers.join("saves/b.srm")).unwrap(), b"B restauree");
+    }
+
+    #[tokio::test]
+    async fn les_parties_ps_vita_reviennent_chez_l_utilisateur_vita3k_du_profil_et_partent_en_sauvegarde() {
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(crate::coffre::CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, None).unwrap().id;
+        n.ouvrir(&id, None, &crate::noyau::Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        let zone = d.path().join("app").join("restauration").join(&id).join("parties").join("emulateurs").join("Vita3K");
+        let r = ".vita3k-utilisateur/savedata/PCSB00001/sce_sys.bin";
+        std::fs::create_dir_all(zone.join(r).parent().unwrap()).unwrap();
+        std::fs::write(zone.join(r), b"persona").unwrap();
+        let vita = d.path().join("Emulateurs").join("Vita3K");
+        std::fs::create_dir_all(vita.join("portable")).unwrap();
+        let programme: String = vita.join("Vita3K.exe").to_string_lossy().into();
+        let rep = n.reposer_parties_emulateurs(std::slice::from_ref(&programme)).await.unwrap();
+        assert_eq!((rep.reposes, rep.conflits.len()), (1, 0));
+        let u = crate::vita3k::utilisateur_existant(&vita, "Seb").unwrap();
+        let p = crate::vita3k::parties(&vita, &u).join("PCSB00001").join("sce_sys.bin");
+        assert_eq!(std::fs::read(&p).unwrap(), b"persona");
+        assert!(!crate::emulateurs_profils::dossier_du_profil(&vita, "Seb").join(".vita3k-utilisateur").exists());
+        // Et elles repartent dans la sauvegarde de Seb.
+        let c = n.contenu_sauvegarde(&[programme]).await.unwrap();
+        let rel: Vec<_> = c.parties.iter().map(|e| e.relatif.as_str()).collect();
+        assert!(rel.contains(&"emulateurs/Vita3K/.vita3k-utilisateur/savedata/PCSB00001/sce_sys.bin"), "{rel:?}");
     }
 
     #[tokio::test]

@@ -592,6 +592,18 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             let _ = crate::cemu::reprendre_parties_d_avant(emulateur, &c);
             Ok(vec!["-a".into(), format!("{:08x}", c.id)])
         }
+        // Vita3K : l'utilisateur Vita de ce profil (créé s'il manque), réglé dans config.yml (`user-id`) juste avant —
+        // un utilisateur inconnu ferait jouer le premier en silence (vita3k.rs). Seulement Vita3K portable et FERMÉ ;
+        // sinon, comme avant. Une erreur qui ferait jouer quelqu'un d'autre est DITE.
+        "vita3k" => {
+            if !crate::vita3k::portable(emulateur) || !crate::lancement::processus_du_dossier(emulateur).is_empty() {
+                return Ok(vec![]);
+            }
+            let u = crate::vita3k::utilisateur_du_profil(emulateur, profil_de(p))?;
+            let _ = crate::vita3k::reprendre_parties_d_avant(emulateur, &u);
+            crate::vita3k::choisir(emulateur, &u.id)?;
+            Ok(vec![])
+        }
         // RPCS3 : un compte RPCS3 par profil (\`--user-id\`, rpcs3.cpp), donc ses propres parties.
         "rpcs3" => {
             // La manette du joueur 1, à CHAQUE partie (oubli de la 0.44.0, vu par Seb le 04/10 : rien n'était branché).
@@ -1890,6 +1902,17 @@ mod tests {
         assert_eq!(preparer("cemu", &cemu, "Léa", &[], &Manette::Auto(None)).unwrap(), vec!["-a", "80000001"]);
         assert_eq!(preparer("cemu", &cemu, "Seb", &[], &Manette::Auto(None)).unwrap(), vec!["-a", "80000002"]);
         assert_eq!(crate::cemu::compte_existant(&cemu, "Léa"), Some(0x8000_0001));
+
+        // Vita3K : pas portable, rien ; portable, l'utilisateur Vita du profil créé et réglé pour la partie.
+        let vita = d.path().join("Vita3K");
+        std::fs::create_dir_all(&vita).unwrap();
+        assert!(preparer("vita3k", &vita, "Léa", &[], &Manette::Auto(None)).unwrap().is_empty());
+        assert!(!vita.join("portable").exists());
+        std::fs::create_dir_all(vita.join("portable")).unwrap();
+        assert!(preparer("vita3k", &vita, "Léa", &[], &Manette::Auto(None)).unwrap().is_empty());
+        assert!(std::fs::read_to_string(vita.join("portable").join("config.yml")).unwrap().contains("user-id: \"00\""));
+        preparer("vita3k", &vita, "Seb", &[], &Manette::Auto(None)).unwrap();
+        assert!(std::fs::read_to_string(vita.join("portable").join("config.yml")).unwrap().contains("user-id: \"01\""));
 
         // Azahar : rien tant qu'il n'est pas portable (il ne bascule jamais dans le dos de la personne) ; portable :
         // NAND et carte SD du profil.
