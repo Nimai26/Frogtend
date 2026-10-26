@@ -53,7 +53,26 @@
   `--ecard` avec une cartouche en .7z et le nom de sa sauvegarde (à l'essai ; repli : décompresser la cartouche) ;
   accents (profil « Zoé ») sur la ligne de mGBA ; triches mGBA pas encore par personne (`cheatsPath`) ; cartouche
   lancée seule pendant une lecture de carte non empêchée.
-  À FAIRE ENSUITE — contrat 1.31 (Firehouse 2.133.0, 26/10) : `fichiers[].version` des `maj` (« 01.05 », null si
+  ✅ FAIT (26/10, pour 0.110.0) — contrat 1.31 : relevé RÉEL (GT5 31183 : 18 maj 01.05→02.07 ; GoW Ascension 31179 :
+  9 maj) et EN-TÊTES réels lus (3 premiers morceaux) : toutes les maj ont le MÊME content ID → chaque maj a sa clé
+  `<cid>-A0105`, nom « Mise à jour 01.05 », ordre servi gardé ; maj dépassée (PARAM.SFO GD) = installée ; précédente
+  manquante = refus ; parties `savedata/<numéro>*` copiées dans `<RPCS3>\.frogtend-sauvegardes` avant la 1re maj ;
+  chaîne arrêtée au premier échec (les DLC continuent : choix par défaut, à confirmer avec Seb si besoin).
+  Relecture de l'expert (26/10) suivie : version servie contrôlée (« NN.NN », sinon le nom officiel) ; RPCS3 ouvert en
+  cours = chaîne cassée ; parties de TOUS les comptes à l'abri (jamais par-dessus un abri) ; version installée lue
+  seulement si `USRDIR\EBOOT.BIN` est là (même règle que le lancement) ; boucle sortie dans
+  `contenus::installer_chaine_ps3` et testée (faux RPCS3) ; « déjà à jour » compté à part.
+  ⚠ DÉCOUVERT (même jour) : les parties PS3 (`dev_hdd0\home\<compte>\savedata`) ne partent PAS dans la sauvegarde
+  chez Firehouse (elle ne prend que `<émulateur>\Profils\<profil>`) — même lacune que mGBA avant 0.109 : à régler.
+  PROCHAIN LOT (avis de l'expert lancement, 26/10) — « toutes les parties dans la sauvegarde » : NON couverts
+  aujourd'hui = RPCS3 (`dev_hdd0\home\<compte>\savedata` + `trophy`, JAMAIS `exdata` = licences), Cemu
+  (`mlc01`, commun à tous), Vita3K (`ux0`, commun), Eden (`user\`, `-u` seul), Azahar non portable
+  (`%APPDATA%`). RPCS3 : lire le compte SANS le créer (`compte_rpcs3_existant`), envoyer sous
+  `emulateurs/RPCS3/.rpcs3-compte/…` (sans numéro), et à la restauration reposer dans le compte recalculé du profil
+  (sans écraser). Aussi : aucune annonce de TAILLE avant l'envoi d'une sauvegarde (xemu .qcow2, PS3 : des centaines
+  de Mo) → la dire au-delà d'un seuil réglable. À vérifier en vrai : RPCS3 relit-il une savedata copiée d'un autre
+  numéro de compte ?
+  (Ancien texte :) À FAIRE ENSUITE — contrat 1.31 (Firehouse 2.133.0, 26/10) : `fichiers[].version` des `maj` (« 01.05 », null si
   inconnue) ; les `maj` servies dans l'ordre croissant d'installation = toute la chaîne Sony pour la PS3 → Frogtend
   trie aujourd'hui les contenus PS3 par NOM (`contenus.rs` `ps3_de_la_version`) : garder l'ordre servi pour les `maj`,
   montrer leur version. Premier lot servi : 40 paquets, 8,34 Go, 6 jeux (GT5 31183 : 27 ; GoW Ascension 31179 : 9).

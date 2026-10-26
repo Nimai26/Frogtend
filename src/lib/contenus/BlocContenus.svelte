@@ -4,7 +4,7 @@
   import { api, taille } from '$lib/api';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
-  import { libelleGenre, nomCourt, resume, type ContenusDuJeu } from './contenus';
+  import { cochesCoherentes, libelleGenre, nomCourt, resume, type ContenusDuJeu } from './contenus';
 
   let { id, titre }: { id: number; titre: string } = $props();
 
@@ -60,10 +60,11 @@
     enCours = true;
     try {
       const b = await api.contenusInstaller(id, choisis.map((c) => c.id));
+      const deja = b.deja ? ` (${b.deja} mise(s) à jour déjà dépassée(s) par celle installée : rien à refaire)` : '';
       toast(
         b.refuses.length
-          ? `📦 ${b.installes} installé(s), ${b.refuses.length} refusé(s) : ${b.refuses.map(([n, m]) => `${nomCourt(n, titre)} (${m})`).join(', ')}`
-          : `✅ ${b.installes} contenu(s) installé(s) pour « ${titre} ».`,
+          ? `📦 ${b.installes} installé(s)${deja}, ${b.refuses.length} refusé(s) : ${b.refuses.map(([n, m]) => `${nomCourt(n, titre)} (${m})`).join(', ')}`
+          : `✅ ${b.installes} contenu(s) installé(s) pour « ${titre} »${deja}.`,
         b.refuses.length ? 'alerte' : 'ok',
       );
       await charger(id);
@@ -99,7 +100,13 @@
             {#if c.installe}
               <span title="Déjà installé pour ton profil">✅</span>
             {:else}
-              <input type="checkbox" bind:group={coches} value={c.id} aria-label={`Choisir ${c.nom}`} />
+              <input
+                type="checkbox"
+                bind:group={coches}
+                value={c.id}
+                aria-label={`Choisir ${c.nom}`}
+                onchange={() => donnees && (coches = cochesCoherentes(donnees.contenus, coches, c.id))}
+              />
             {/if}
             <span class="nom">{nomCourt(c.nom, titre)}</span>
             <span class="muted">{libelleGenre(c.genre)} · {taille(c.taille)}{c.licence ? ' · licence' : ''}</span>

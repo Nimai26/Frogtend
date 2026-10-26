@@ -479,6 +479,8 @@ pub struct ContenuVu {
     pub installe: bool,
     /// Switch : le dossier qui sera ajouté à Eden (tout son contenu devient visible).
     pub dossier: Option<String>,
+    /// Une mise à jour PS3 : sa version (« 01.05 », contrat 1.31), dans l'ordre d'installation.
+    pub version: Option<String>,
 }
 
 /// Les contenus additionnels d'un jeu du PC.
@@ -807,14 +809,32 @@ async fn contexte_contenus(
                 .filter(|p| p.is_file() && !crate::garde::lien_entre(&recus, p))
                 .collect()
         };
-        let pkgs: Vec<(std::path::PathBuf, &str)> =
-            presents("dlc").into_iter().map(|p| (p, "dlc")).chain(presents("maj").into_iter().map(|p| (p, "maj"))).collect();
+        // Contrat 1.31 : la version de chaque mise à jour (« 01.05 »), dans l'ordre servi (celui de l'installation).
+        let versions: std::collections::HashMap<std::path::PathBuf, String> = version["fichiers"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|f| f["role"] == "maj")
+            .filter_map(|f| {
+                let r = crate::jeux_pc::chemin_de_fichier_sur(f["nom"].as_str()?).ok()?;
+                Some((recus.join(r), f["version"].as_str().filter(|v| !v.is_empty())?.to_string()))
+            })
+            .collect();
+        let pkgs: Vec<(std::path::PathBuf, &str, Option<String>)> = presents("maj")
+            .into_iter()
+            .map(|p| {
+                let v = versions.get(&p).cloned();
+                (p, "maj", v)
+            })
+            .chain(presents("dlc").into_iter().map(|p| (p, "dlc", None)))
+            .collect();
         let raps = presents("licence");
         let (contenus, titre_id, ignores) = tauri::async_runtime::spawn_blocking(move || {
+            let simples: Vec<(std::path::PathBuf, &str)> = pkgs.iter().map(|(p, g, _)| (p.clone(), *g)).collect();
             (
-                crate::contenus::ps3_de_la_version(&pkgs, &raps),
+                crate::contenus::ps3_avec_versions(&pkgs, &raps),
                 fichier_du_jeu.as_deref().and_then(crate::contenus::titre_id_ps3),
-                crate::contenus::illisibles(&pkgs),
+                crate::contenus::illisibles(&simples),
             )
         })
         .await
@@ -897,6 +917,7 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
                 .into_iter()
                 .filter(|t| t.genre != "jeu")
                 .map(|t| ContenuVu {
+                    version: None,
                     nom: format!("{} v{}", if t.genre == "maj" { "Mise à jour" } else { "DLC" }, t.version),
                     id: format!("{}_v{}", t.id, t.version),
                     genre: t.genre,
@@ -921,7 +942,7 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
                     .into_iter()
                     .map(|c| {
                         let d = parent(&c.chemin);
-                        ContenuVu { installe: lus.iter().any(|x| crate::contenus::meme_dossier(x, &d)), licence: false, id: c.id, nom: c.nom, genre: c.genre, taille: c.taille, dossier: Some(d) }
+                        ContenuVu { version: None, installe: lus.iter().any(|x| crate::contenus::meme_dossier(x, &d)), licence: false, id: c.id, nom: c.nom, genre: c.genre, taille: c.taille, dossier: Some(d) }
                     })
                     .collect(),
             });
@@ -937,6 +958,7 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
         Err(e) => return Err(e),
     };
     let faits = crate::contenus::installes(&rpcs3);
+    let installee = titre_id.as_deref().and_then(|n| crate::contenus::version_maj_installee(&rpcs3, n));
     Ok(ContenusDuJeu {
         etat: "ok".into(),
         systeme: "ps3".into(),
@@ -945,13 +967,14 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
         contenus: contenus
             .into_iter()
             .map(|c| ContenuVu {
-                installe: (c.pkg.is_none() || faits.contains(&c.id))
+                installe: (c.pkg.is_none() || faits.contains(&c.id) || crate::contenus::maj_depassee(&c, installee.as_deref()))
                     && (c.rap.is_none() || compte.as_deref().is_some_and(|k| crate::contenus::licence_posee(&rpcs3, k, &c.id))),
                 licence: c.rap.is_some(),
                 id: c.id,
                 nom: c.nom,
                 genre: c.genre,
                 taille: c.taille,
+                version: c.version,
                 dossier: None,
             })
             .collect(),
@@ -962,6 +985,8 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
 #[derive(Serialize, Default)]
 pub struct BilanContenus {
     pub installes: usize,
+    /// Des mises à jour déjà dépassées par celle qui est installée (rien n'a été renvoyé à RPCS3).
+    pub deja: usize,
     pub refuses: Vec<(String, String)>,
 }
 
@@ -1046,7 +1071,7 @@ pub async fn contenus_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64
         let manquants: Vec<(String, String)> =
             dossiers.iter().filter(|d| !relus.iter().any(|r| crate::contenus::meme_dossier(r, d))).map(|d| (d.clone(), "pas enregistré dans Eden".to_string())).collect();
         noyau.journaliser(&format!("contenus Switch : {} dossier(s) ajouté(s) à Eden", dossiers.len() - manquants.len()));
-        return Ok(BilanContenus { installes: l.iter().filter(|c| choisis.contains(&c.id)).count() - manquants.len().min(choisis.len()), refuses: manquants });
+        return Ok(BilanContenus { deja: 0, installes: l.iter().filter(|c| choisis.contains(&c.id)).count() - manquants.len().min(choisis.len()), refuses: manquants });
     }
     let (rpcs3, _, _, contenus, _) =
         contexte_contenus(&app, &noyau, id).await?.ok_or_else(|| Erreur::Refus("Ce jeu n'a pas de contenus gérés par Frogtend.".into()))?;
@@ -1066,36 +1091,41 @@ pub async fn contenus_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64
     let p = profil_ouvert(&noyau).await?;
     let compte = crate::emulateurs_profils::compte_rpcs3(&rpcs3, &crate::jeux_pc::nom_de_dossier(&p.nom))?;
     let travail = noyau.dossier.join("travail").join("contenus");
+    // Une mise à jour choisie sans une précédente (ni choisie, ni installée) : refusée, jamais installée hors de l'ordre.
+    let manquantes = {
+        let faits = crate::contenus::installes(&rpcs3);
+        let installee = contenus.iter().find(|c| c.version.is_some()).and_then(|c| crate::contenus::version_maj_installee(&rpcs3, &c.jeu));
+        crate::contenus::precedentes_manquantes(&contenus, &choisis, &faits, installee.as_deref())
+    };
     let a_faire: Vec<crate::contenus::Contenu> = contenus.into_iter().filter(|c| choisis.contains(&c.id)).collect();
     noyau.journaliser(&format!("contenus PS3 : installation de {} contenu(s) pour le compte {compte}", a_faire.len()));
     let bilan = tauri::async_runtime::spawn_blocking(move || {
-        let mut b = BilanContenus::default();
-        for c in &a_faire {
-            // Revérifié avant chaque contenu : RPCS3 a pu être ouvert entre-temps.
-            if !crate::lancement::processus_du_dossier(&rpcs3).is_empty() {
-                b.refuses.push((c.nom.clone(), "RPCS3 est ouvert : ferme-le d'abord".to_string()));
-                continue;
-            }
-            let r = crate::contenus::installer_ps3(c, &rpcs3, &compte, &travail, &|pkg| {
+        let b = crate::contenus::installer_chaine_ps3(
+            &a_faire,
+            &manquantes,
+            &rpcs3,
+            &compte,
+            &travail,
+            &|| !crate::lancement::processus_du_dossier(&rpcs3).is_empty(),
+            &|pkg| {
                 let args = vec!["--headless".to_string(), "--installpkg".to_string(), pkg.to_string_lossy().to_string()];
                 let code = crate::installation::executer_et_attendre(&programme, &args, &rpcs3)?;
                 if code != 0 {
                     return Err(Erreur::Disque(format!("RPCS3 a répondu {code} en installant le paquet.")));
                 }
                 Ok(())
-            });
-            match r {
-                Ok(()) => b.installes += 1,
-                Err(e) => b.refuses.push((c.nom.clone(), format!("{e:?}"))),
-            }
-        }
+            },
+        );
         let _ = std::fs::remove_dir(&travail); // seulement s'il est vide
         b
     })
     .await
     .map_err(|_| Erreur::Disque("L'installation s'est arrêtée brutalement.".into()))?;
-    noyau.journaliser(&format!("contenus PS3 : {} installé(s), {} refusé(s)", bilan.installes, bilan.refuses.len()));
-    Ok(bilan)
+    for n in &bilan.notes {
+        noyau.journaliser(n);
+    }
+    noyau.journaliser(&format!("contenus PS3 : {} installé(s), {} déjà à jour, {} refusé(s)", bilan.installes, bilan.a_jour, bilan.refuses.len()));
+    Ok(BilanContenus { installes: bilan.installes, deja: bilan.a_jour, refuses: bilan.refuses })
 }
 
 #[tauri::command]

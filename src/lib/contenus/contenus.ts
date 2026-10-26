@@ -10,6 +10,22 @@ export interface ContenuVu {
   installe: boolean;
   /** Switch : le dossier qu'Eden lira (tout son contenu devient visible). */
   dossier?: string | null;
+  /** Une mise à jour PS3 : sa version (« 01.05 », contrat 1.31), dans l'ordre d'installation. */
+  version?: string | null;
+}
+
+/** Les mises à jour s'installent DANS L'ORDRE (la chaîne de Sony) : cocher une mise à jour coche aussi les précédentes
+ * pas encore installées ; décocher une mise à jour décoche les suivantes. `id` : celle que la personne vient de changer. */
+export function cochesCoherentes(contenus: ContenuVu[], coches: string[], id: string): string[] {
+  const majs = contenus.filter((c) => c.version);
+  const i = majs.findIndex((c) => c.id === id);
+  if (i < 0) return coches;
+  if (coches.includes(id)) {
+    const avant = majs.slice(0, i).filter((c) => !c.installe && !coches.includes(c.id)).map((c) => c.id);
+    return [...coches, ...avant];
+  }
+  const apres = new Set(majs.slice(i + 1).map((c) => c.id));
+  return coches.filter((c) => !apres.has(c));
 }
 
 export interface ContenusDuJeu {

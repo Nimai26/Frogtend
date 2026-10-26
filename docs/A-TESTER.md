@@ -3,6 +3,14 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Les mises à jour PS3 dans l'ordre (0.110.0)
+- [ ] Sur un jeu PS3 servi avec ses mises à jour (Gran Turismo 5, God of War: Ascension…), une fois le jeu installé :
+      le bloc **📦 Contenus** liste « Mise à jour 01.05 », « 01.06 »… dans l'ordre.
+- [ ] Cocher seulement la dernière : les précédentes doivent se cocher seules ; en décocher une : les suivantes se
+      décochent.
+- [ ] Installer (RPCS3 fermé) : à la fin, toutes notées installées ; dans RPCS3, le jeu affiche la dernière version.
+- [ ] Dans le dossier de RPCS3, `.frogtend-sauvegardes` contient une copie de tes parties de ce jeu (si tu en avais).
+
 ## Lire une carte e-Reader (0.109.0)
 - [ ] **⚙ Options ▸ Émulateurs** : pour « e-Reader », choisir **mGBA** (Frogtend propose de l'installer, avec sa
       taille). Faire de même pour « Game Boy Advance » si tu veux.

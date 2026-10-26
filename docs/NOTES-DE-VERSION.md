@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.110.0 — Les mises à jour PS3, dans l'ordre
+
+- 🔄 Les mises à jour d'un jeu PS3 servies par Firehouse (par exemple les 18 de Gran Turismo 5) apparaissent
+  chacune avec son numéro (« Mise à jour 01.05 »…), dans l'ordre où elles doivent s'installer. Avant, Frogtend les
+  confondait toutes en une seule.
+- Cocher une mise à jour coche aussi celles qui doivent passer avant ; une mise à jour n'est jamais installée sans
+  les précédentes, et la suite s'arrête si l'une d'elles échoue.
+- Une mise à jour déjà dépassée par celle qui est installée est marquée installée, et n'est jamais renvoyée.
+- 💾 Avant la première mise à jour, les parties de ce jeu (celles de tous les comptes de la maison) sont copiées à
+  l'abri, dans le dossier de RPCS3 (« .frogtend-sauvegardes ») ; sans cette copie, rien n'est installé.
+
 ## 0.109.0 — Avant la bêta (5) : lire une carte e-Reader
 
 - 🃏 Une carte e-Reader se lit maintenant, comme sur la vraie console : « ▶ Jouer » (ou « ▶ Lire cette carte » sur la

@@ -905,6 +905,40 @@ mod tests {
     /// RÉEL, lecture seule : les fiches e-Reader (catalogue de la plateforme, puis Air Hockey-e — 1 carte — et
     /// Pokemon-e TCG — la plus grosse), copiées telles quelles dans `FROGTEND_SORTIE`. Rien d'autre n'est écrit.
     /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_SORTIE=<dossier> cargo test essai_ereader -- --ignored --nocapture`
+    /// RÉEL, lecture seule (contrat 1.31) : les fiches PS3 qui servent leurs mises à jour (`fichiers[].version`, ordre
+    /// d'installation), copiées telles quelles dans `FROGTEND_SORTIE`. Rien d'autre n'est écrit.
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_SORTIE=<dossier> cargo test essai_maj_ps3 -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_maj_ps3() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let sortie = std::path::PathBuf::from(std::env::var("FROGTEND_SORTIE").unwrap());
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        // GT5 (27 maj), God of War: Ascension (9), relevés par Firehouse le 26/10.
+        for id in [31183, 31179] {
+            let f: serde_json::Value = c.obtenir_json(&format!("/jeu/{id}")).await.unwrap();
+            std::fs::write(sortie.join(format!("jeu-{id}.json")), serde_json::to_vec_pretty(&f).unwrap()).unwrap();
+            for v in f["jeu"]["versions"].as_array().cloned().unwrap_or_default() {
+                for x in v["fichiers"].as_array().cloned().unwrap_or_default() {
+                    println!("{id} v{} {:<8} {:<10} {:>12} {}", v["telechargement_id"], x["role"], x["version"], x["taille"], x["nom"]);
+                }
+            }
+        }
+        // L'EN-TÊTE de deux maj de GT5 (seulement le premier morceau du flux, puis la connexion est coupée) : leur content
+        // ID est-il le même ?
+        let f: serde_json::Value = c.obtenir_json("/jeu/31183").await.unwrap();
+        let v = &f["jeu"]["versions"][0];
+        let fichiers = v["fichiers"].as_array().cloned().unwrap_or_default();
+        for (n, x) in fichiers.iter().enumerate().filter(|(_, x)| x["role"] == "maj").take(3) {
+            let mut flux = c.flux(&format!("/fichier/31183/{}/{n}", v["telechargement_id"]), 0).await.unwrap();
+            let morceau = crate::firehouse::Client::morceau(&mut flux).await.unwrap().unwrap_or_default();
+            drop(flux);
+            println!("maj {} ({}) : content ID {:?}", x["version"], x["nom"], crate::contenus::content_id(&morceau));
+        }
+    }
+
     #[tokio::test]
     #[ignore]
     async fn essai_ereader() {

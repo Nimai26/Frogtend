@@ -812,7 +812,7 @@ export const api = {
   decompresserJeu: (id: number) => appeler<string>('decompresser_jeu', { id }),
   contenusDuJeu: (id: number) => appeler<import('$lib/contenus/contenus').ContenusDuJeu>('contenus_du_jeu', { id }),
   contenusInstaller: (id: number, choisis: string[]) =>
-    appeler<{ installes: number; refuses: [string, string][] }>('contenus_installer', { id, choisis }),
+    appeler<{ installes: number; deja?: number; refuses: [string, string][] }>('contenus_installer', { id, choisis }),
   /** Nexus Mods (lot 0.82.0) : la clé du profil (au coffre), les liens nxm:// reçus, l'installation après le oui. */
   /** Reconnaître les jeux importés (contrat 1.21, besoin 28). */
   rapprocherAnnonce: () => appeler<import('$lib/import/rapprochement').Annonce>('rapprocher_annonce'),

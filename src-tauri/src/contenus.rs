@@ -32,6 +32,9 @@ pub struct Contenu {
     /// La licence .rap, s'il y en a une (même forme).
     pub rap: Option<(String, Option<String>)>,
     pub taille: u64,
+    /// La version d'une mise à jour (`maj`, contrat 1.31 : « 01.05 ») ; aucune pour les autres contenus.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
 }
 
 /// Le content ID d'un en-tête .pkg (les 0x60 premiers octets suffisent).
@@ -189,6 +192,7 @@ pub fn chercher_ps3(dossier: &Path) -> Vec<Contenu> {
                     if let Some(id) = content_id(&b) {
                         let taille = std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
                         l.push(Contenu {
+            version: None,
                             jeu: jeu_du_content_id(&id).unwrap_or_default(),
                             genre: genre_du_nom(&nom_fichier).into(),
                             nom: nom_fichier.clone(),
@@ -212,6 +216,7 @@ pub fn chercher_ps3(dossier: &Path) -> Vec<Contenu> {
                         } else if bas.ends_with(".pkg") {
                             if let Some(id) = lire_debut_zip(&p, n, 0x60).and_then(|b| content_id(&b)) {
                                 l.push(Contenu {
+            version: None,
                                     jeu: jeu_du_content_id(&id).unwrap_or_default(),
                                     genre: genre_du_nom(&nom_fichier).into(),
                                     nom: nom_fichier.clone(),
@@ -261,15 +266,47 @@ fn nom_du_content_id(id: &str) -> String {
 /// licences BCES00799). Chaque .rap s'apparie à un .pkg par le content ID de l'EN-TÊTE du .pkg, jamais par son nom
 /// (aléatoire) ; un .rap sans .pkg reste une licence seule, posée sous son nom.
 pub fn ps3_de_la_version(pkgs: &[(PathBuf, &str)], raps: &[PathBuf]) -> Vec<Contenu> {
+    let avec: Vec<(PathBuf, &str, Option<String>)> = pkgs.iter().map(|(p, g)| (p.clone(), *g, None)).collect();
+    ps3_avec_versions(&avec, raps)
+}
+
+/// Une version de PS3 : « 01.05 », jamais autre chose (elle se compare comme un texte).
+fn forme_version(v: &str) -> bool {
+    let b = v.as_bytes();
+    b.len() == 5 && b[2] == b'.' && b.iter().enumerate().all(|(i, c)| i == 2 || c.is_ascii_digit())
+}
+
+/// La version d'une mise à jour d'après le nom officiel de son paquet (`…-A0105-V0100-PE.pkg` → « 01.05 »), quand
+/// Firehouse ne la dit pas.
+fn version_du_nom(p: &Path) -> Option<String> {
+    let nom = p.file_name()?.to_string_lossy().to_ascii_uppercase();
+    nom.split('-').find_map(|m| {
+        let c = m.strip_prefix('A')?;
+        (c.len() == 4 && c.chars().all(|x| x.is_ascii_digit())).then(|| format!("{}.{}", &c[..2], &c[2..]))
+    })
+}
+
+/// Comme [`ps3_de_la_version`], avec la version de chaque mise à jour servie par Firehouse (contrat 1.31). Toutes les
+/// mises à jour d'un jeu portent le MÊME content ID (relevé réel GT5, 26/10 : `EP9001-BCES00569_00-0000000000000000`)
+/// : chacune est donc reconnue par son content ID ET sa version (`…-A0105`), jamais confondue avec les autres. Elles
+/// restent dans l'ORDRE servi (l'ordre d'installation de Sony), avant les autres contenus.
+pub fn ps3_avec_versions(pkgs: &[(PathBuf, &str, Option<String>)], raps: &[PathBuf]) -> Vec<Contenu> {
     let mut l: Vec<Contenu> = Vec::new();
-    for (p, genre) in pkgs {
+    for (p, genre, version) in pkgs {
         let Ok(mut f) = std::fs::File::open(p) else { continue };
         let mut b = vec![0u8; 0x60];
         let _ = f.read(&mut b);
-        let Some(id) = content_id(&b) else { continue };
+        let Some(cid) = content_id(&b) else { continue };
+        // Seulement la forme de la PS3 (« 01.05 ») : une autre forme ne se compare pas, le nom officiel la remplace.
+        let version = (*genre == "maj").then(|| version.clone().filter(|v| forme_version(v)).or_else(|| version_du_nom(p))).flatten();
+        let (id, nom) = match &version {
+            Some(v) => (format!("{cid}-A{}", v.replace('.', "")), format!("Mise à jour {v}")),
+            None => (cid.clone(), nom_du_content_id(&cid)),
+        };
         l.push(Contenu {
-            jeu: jeu_du_content_id(&id).unwrap_or_default(),
-            nom: nom_du_content_id(&id),
+            version,
+            jeu: jeu_du_content_id(&cid).unwrap_or_default(),
+            nom,
             genre: genre.to_string(),
             pkg: Some((p.to_string_lossy().to_string(), None)),
             rap: None,
@@ -284,6 +321,7 @@ pub fn ps3_de_la_version(pkgs: &[(PathBuf, &str)], raps: &[PathBuf]) -> Vec<Cont
             Some(c) => c.rap = Some(source),
             // Le nom d'une licence EST son content ID : rien d'autre n'est accepté (il devient un nom de fichier).
             None if jeu_du_content_id(&id).is_some() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') => l.push(Contenu {
+            version: None,
                 jeu: jeu_du_content_id(&id).unwrap_or_default(),
                 nom: nom_du_content_id(&id),
                 genre: "licence".into(),
@@ -295,9 +333,102 @@ pub fn ps3_de_la_version(pkgs: &[(PathBuf, &str)], raps: &[PathBuf]) -> Vec<Cont
             None => {}
         }
     }
-    l.sort_by(|a, b| a.nom.to_lowercase().cmp(&b.nom.to_lowercase()).then(a.id.cmp(&b.id)));
-    l.dedup_by(|a, b| a.id == b.id);
-    l
+    // Les mises à jour d'abord, dans l'ordre servi (tri stable) ; les autres contenus par nom.
+    let (mut majs, mut autres): (Vec<Contenu>, Vec<Contenu>) = l.into_iter().partition(|c| c.version.is_some());
+    autres.sort_by(|a, b| a.nom.to_lowercase().cmp(&b.nom.to_lowercase()).then(a.id.cmp(&b.id)));
+    autres.dedup_by(|a, b| a.id == b.id);
+    let mut vues = std::collections::HashSet::new();
+    majs.retain(|c| vues.insert(c.id.clone()));
+    majs.extend(autres);
+    majs
+}
+
+/// La version de la mise à jour INSTALLÉE dans RPCS3 pour ce jeu (`dev_hdd0\game\<numéro>\PARAM.SFO`, catégorie GD),
+/// sans repli sur le disque : aucune si aucune mise à jour n'est installée.
+pub fn version_maj_installee(rpcs3: &Path, numero: &str) -> Option<String> {
+    let dossier = rpcs3.join("dev_hdd0").join("game").join(numero);
+    // La même règle que pour lancer (`version_ps3`) : une mise à jour complète a son `USRDIR\EBOOT.BIN` — une
+    // installation interrompue ne fait jamais sauter les suivantes.
+    if !dossier.join("USRDIR").join("EBOOT.BIN").is_file() {
+        return None;
+    }
+    let s = lire_sfo(&dossier.join("PARAM.SFO"))?;
+    if valeur_sfo(&s, "TITLE_ID").as_deref() != Some(numero) || valeur_sfo(&s, "CATEGORY").as_deref() != Some("GD") {
+        return None;
+    }
+    version_sfo(&s).filter(|v| forme_version(v))
+}
+
+/// Les mises à jour CHOISIES dont une précédente (dans l'ordre servi) n'est ni choisie, ni installée, ni dépassée :
+/// id de la choisie → nom de la première qui manque. Elles ne sont jamais installées (la chaîne de Sony se suit).
+pub fn precedentes_manquantes(tous: &[Contenu], choisis: &[String], faits: &[String], installee: Option<&str>) -> std::collections::HashMap<String, String> {
+    let mut r = std::collections::HashMap::new();
+    let mut manque: Option<String> = None;
+    for c in tous.iter().filter(|c| c.version.is_some()) {
+        if choisis.contains(&c.id) {
+            if let Some(m) = &manque {
+                r.insert(c.id.clone(), m.clone());
+            }
+        } else if !faits.contains(&c.id) && !maj_depassee(c, installee) {
+            manque.get_or_insert_with(|| c.nom.clone());
+        }
+    }
+    r
+}
+
+/// Une mise à jour déjà dépassée par celle qui est installée (« 01.05 » ≤ « 02.07 ») : jamais renvoyée à RPCS3.
+pub fn maj_depassee(c: &Contenu, installee: Option<&str>) -> bool {
+    matches!((c.version.as_deref(), installee), (Some(v), Some(i)) if v <= i)
+}
+
+/// Met à l'abri les parties PS3 de ce jeu, pour TOUS les comptes RPCS3 (une mise à jour touche le jeu de chacun :
+/// `dev_hdd0\home\<compte>\savedata\<numéro>*`) AVANT une mise à jour : copiées dans
+/// `<RPCS3>\.frogtend-sauvegardes\<horodatage>-parties-<numéro>\<compte>\savedata\…`, jamais par-dessus un abri
+/// existant, relues (même taille). Rend l'abri et le nombre de fichiers ; aucun abri s'il n'y a aucune partie.
+pub fn abriter_parties_ps3(rpcs3: &Path, numero: &str) -> Resultat<Option<(PathBuf, usize)>> {
+    let home = rpcs3.join("dev_hdd0").join("home");
+    let mut fichiers: Vec<String> = Vec::new();
+    for compte in std::fs::read_dir(&home).into_iter().flatten().flatten() {
+        let savedata = compte.path().join("savedata");
+        for e in std::fs::read_dir(&savedata).into_iter().flatten().flatten() {
+            let nom = e.file_name().to_string_lossy().to_string();
+            if !nom.to_ascii_uppercase().starts_with(&numero.to_ascii_uppercase()) || !e.file_type().is_ok_and(|t| t.is_dir()) {
+                continue;
+            }
+            let mut a_voir = vec![e.path()];
+            while let Some(d) = a_voir.pop() {
+                for f in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+                    match f.file_type() {
+                        Ok(t) if t.is_dir() => a_voir.push(f.path()),
+                        Ok(t) if t.is_file() => {
+                            if let Ok(r) = f.path().strip_prefix(&home) {
+                                fichiers.push(r.to_string_lossy().to_string());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+    if fichiers.is_empty() {
+        return Ok(None);
+    }
+    let base = rpcs3.join(".frogtend-sauvegardes");
+    let nom = format!("{}-parties-{numero}", crate::noyau::maintenant());
+    let mut abri = base.join(&nom);
+    let mut n = 2;
+    while abri.exists() {
+        abri = base.join(format!("{nom}-{n}"));
+        n += 1;
+    }
+    crate::installation::copier(&home, &fichiers, &abri)?;
+    // Vérifier le résultat : chaque copie est là, à la même taille.
+    let taille = |p: &Path| std::fs::metadata(p).map(|m| m.len()).ok();
+    if let Some(r) = fichiers.iter().find(|r| taille(&abri.join(r)).is_none() || taille(&abri.join(r)) != taille(&home.join(r))) {
+        return Err(Erreur::Disque(format!("La copie de tes parties avant la mise à jour est incomplète ({r}) : rien n'est installé.")));
+    }
+    Ok(Some((abri, fichiers.len())))
 }
 
 // --- Switch (Eden) : mises à jour et DLC en .nsp. `user\config\qt-config.ini` a une liste `external_content_dirs` de
@@ -634,6 +765,91 @@ fn sortir(source: &(String, Option<String>), dossier: &Path) -> Resultat<(PathBu
             Ok((cible, true))
         }
     }
+}
+
+/// Le bilan d'une installation de contenus PS3.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct BilanPs3 {
+    pub installes: usize,
+    /// Des mises à jour déjà dépassées par celle qui est installée (jamais renvoyées à RPCS3).
+    pub a_jour: usize,
+    pub refuses: Vec<(String, String)>,
+    /// Ce qui va au journal (l'abri des parties).
+    pub notes: Vec<String>,
+}
+
+/// Installe les contenus choisis, DANS L'ORDRE reçu (mises à jour d'abord, dans l'ordre servi) :
+/// - une mise à jour sans une précédente (`manquantes`), après un échec d'une précédente, ou pendant que RPCS3 est
+///   ouvert, n'est jamais installée — et casse la suite de la chaîne ;
+/// - une mise à jour dépassée par celle qui est installée est sautée ;
+/// - les parties de ce jeu sont mises à l'abri AVANT la première mise à jour ; sans abri, aucune mise à jour.
+///
+/// Les DLC et licences s'installent quoi qu'il arrive à la chaîne (ils n'en dépendent pas).
+pub fn installer_chaine_ps3(
+    a_faire: &[Contenu],
+    manquantes: &std::collections::HashMap<String, String>,
+    rpcs3: &Path,
+    compte: &str,
+    travail: &Path,
+    rpcs3_ouvert: &dyn Fn() -> bool,
+    installer_pkg: &dyn Fn(&Path) -> Resultat<()>,
+) -> BilanPs3 {
+    let mut b = BilanPs3::default();
+    let mut parties_a_l_abri = false;
+    let mut chaine_cassee: Option<String> = None;
+    for c in a_faire {
+        let maj = c.version.is_some();
+        let refus = |b: &mut BilanPs3, motif: String| b.refuses.push((c.nom.clone(), motif));
+        // Revérifié avant chaque contenu : RPCS3 a pu être ouvert entre-temps.
+        if rpcs3_ouvert() {
+            refus(&mut b, "RPCS3 est ouvert : ferme-le d'abord".into());
+            if maj {
+                chaine_cassee.get_or_insert_with(|| c.nom.clone());
+            }
+            continue;
+        }
+        if maj {
+            if let Some(m) = manquantes.get(&c.id) {
+                refus(&mut b, format!("pas installée : il faut d'abord « {m} » (les mises à jour s'installent dans l'ordre)"));
+                chaine_cassee.get_or_insert_with(|| c.nom.clone());
+                continue;
+            }
+            // Jamais une mise à jour après l'échec d'une précédente (02.00 sans 01.13 casserait le jeu).
+            if let Some(v) = &chaine_cassee {
+                refus(&mut b, format!("pas installée : « {v} » n'a pas pu être installée avant elle"));
+                continue;
+            }
+            if maj_depassee(c, version_maj_installee(rpcs3, &c.jeu).as_deref()) {
+                b.a_jour += 1;
+                continue;
+            }
+            if !parties_a_l_abri {
+                match abriter_parties_ps3(rpcs3, &c.jeu) {
+                    Ok(abri) => {
+                        if let Some((d, n)) = abri {
+                            b.notes.push(format!("contenus PS3 : {n} fichier(s) de parties mis à l'abri dans {} avant les mises à jour", d.display()));
+                        }
+                        parties_a_l_abri = true;
+                    }
+                    Err(e) => {
+                        refus(&mut b, format!("{e:?}"));
+                        chaine_cassee = Some(c.nom.clone());
+                        continue;
+                    }
+                }
+            }
+        }
+        match installer_ps3(c, rpcs3, compte, travail, installer_pkg) {
+            Ok(()) => b.installes += 1,
+            Err(e) => {
+                if maj {
+                    chaine_cassee.get_or_insert_with(|| c.nom.clone());
+                }
+                refus(&mut b, format!("{e:?}"));
+            }
+        }
+    }
+    b
 }
 
 /// Installe un contenu PS3 dans un RPCS3, pour le compte de ce profil : le .pkg par \`installer_pkg\` (RPCS3 lui-même,
@@ -1136,6 +1352,170 @@ mod tests {
         let p = d.path().join("x.pkg");
         std::fs::write(&p, entete_pkg("EP9000-BCES00510_00-0000000000PATCH1")).unwrap();
         assert_eq!(ps3_de_la_version(&[(p, "maj")], &[])[0].genre, "maj");
+    }
+
+    #[test]
+    fn les_mises_a_jour_restent_distinctes_et_dans_l_ordre_servi() {
+        // Relevé RÉEL (26/10, GT5) : toutes les mises à jour portent le même content ID dans leur en-tête.
+        let d = tempfile::tempdir().unwrap();
+        let cid = "EP9001-BCES00569_00-0000000000000000";
+        let mut pkgs: Vec<(PathBuf, &str, Option<String>)> = Vec::new();
+        for (nom, v) in [("EP9001-BCES00569_00-0000000000000000-A0105-V0100-PE.pkg", Some("01.05")), ("b.pkg", Some("01.06")), ("EP9001-BCES00569_00-0000000000000000-A0107-V0100-PE.pkg", None)] {
+            let p = d.path().join(nom);
+            std::fs::write(&p, entete_pkg(cid)).unwrap();
+            pkgs.push((p, "maj", v.map(String::from)));
+        }
+        let dlc = d.path().join("aleatoire.pkg");
+        std::fs::write(&dlc, entete_pkg("EP9001-BCES00569_00-CARPACK200000000")).unwrap();
+        pkgs.insert(0, (dlc, "dlc", None));
+        let l = ps3_avec_versions(&pkgs, &[]);
+        let vu: Vec<(&str, Option<&str>, &str)> = l.iter().map(|c| (c.genre.as_str(), c.version.as_deref(), c.nom.as_str())).collect();
+        assert_eq!(
+            vu,
+            [("maj", Some("01.05"), "Mise à jour 01.05"), ("maj", Some("01.06"), "Mise à jour 01.06"), ("maj", Some("01.07"), "Mise à jour 01.07"), ("dlc", None, "CARPACK200000000")]
+        );
+        assert_eq!(l[0].id, format!("{cid}-A0105"));
+        assert!(l.iter().all(|c| c.jeu == "BCES00569"));
+        // Sans version (ni dans la fiche, ni dans le nom) : l'ancienne forme, une seule.
+        let p = d.path().join("sans.pkg");
+        std::fs::write(&p, entete_pkg(cid)).unwrap();
+        assert_eq!(ps3_de_la_version(&[(p.clone(), "maj"), (p, "maj")], &[]).len(), 1);
+    }
+
+    #[test]
+    fn une_mise_a_jour_ne_s_installe_jamais_sans_les_precedentes() {
+        let maj = |v: &str| Contenu { version: Some(v.into()), genre: "maj".into(), id: format!("A{v}"), jeu: "BCES00569".into(), nom: format!("Mise à jour {v}"), pkg: None, rap: None, taille: 0 };
+        let tous = [maj("01.05"), maj("01.06"), maj("01.07")];
+        let ch = |l: &[&str]| l.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(precedentes_manquantes(&tous, &ch(&["A01.05", "A01.06", "A01.07"]), &[], None).is_empty());
+        let r = precedentes_manquantes(&tous, &ch(&["A01.07"]), &[], None);
+        assert_eq!(r.get("A01.07").map(String::as_str), Some("Mise à jour 01.05"));
+        // Les précédentes déjà installées (registre) ou dépassées (version installée) ne manquent pas.
+        assert!(precedentes_manquantes(&tous, &ch(&["A01.07"]), &ch(&["A01.05"]), Some("01.06")).is_empty());
+        assert_eq!(precedentes_manquantes(&tous, &ch(&["A01.07"]), &ch(&["A01.05"]), None).get("A01.07").map(String::as_str), Some("Mise à jour 01.06"));
+    }
+
+    #[test]
+    fn une_mise_a_jour_deja_depassee_n_est_jamais_renvoyee() {
+        let d = tempfile::tempdir().unwrap();
+        let game = d.path().join("dev_hdd0").join("game").join("BCES00569");
+        assert_eq!(version_maj_installee(d.path(), "BCES00569"), None, "aucune mise à jour installée");
+        std::fs::create_dir_all(game.join("USRDIR")).unwrap();
+        std::fs::write(game.join("PARAM.SFO"), faire_sfo(&[("TITLE_ID", "BCES00569"), ("CATEGORY", "GD"), ("APP_VER", "01.10")])).unwrap();
+        assert_eq!(version_maj_installee(d.path(), "BCES00569"), None, "sans EBOOT.BIN : installation incomplète");
+        std::fs::write(game.join("USRDIR").join("EBOOT.BIN"), b"elf").unwrap();
+        let installee = version_maj_installee(d.path(), "BCES00569");
+        assert_eq!(installee.as_deref(), Some("01.10"));
+        let maj = |v: &str| Contenu { version: Some(v.into()), genre: "maj".into(), id: v.into(), jeu: "BCES00569".into(), nom: v.into(), pkg: None, rap: None, taille: 0 };
+        assert!(maj_depassee(&maj("01.05"), installee.as_deref()));
+        assert!(maj_depassee(&maj("01.10"), installee.as_deref()));
+        assert!(!maj_depassee(&maj("02.00"), installee.as_deref()));
+        assert!(!maj_depassee(&maj("01.05"), None));
+        // Un dossier d'un AUTRE genre (données du disque, catégorie HG) n'est pas une mise à jour.
+        std::fs::write(game.join("PARAM.SFO"), faire_sfo(&[("TITLE_ID", "BCES00569"), ("CATEGORY", "HG"), ("APP_VER", "01.10")])).unwrap();
+        assert_eq!(version_maj_installee(d.path(), "BCES00569"), None);
+    }
+
+    #[test]
+    fn les_parties_ps3_sont_mises_a_l_abri_avant_une_mise_a_jour() {
+        let d = tempfile::tempdir().unwrap();
+        assert_eq!(abriter_parties_ps3(d.path(), "BCES00569").unwrap(), None, "aucune partie : aucun abri");
+        let home = d.path().join("dev_hdd0").join("home");
+        for (compte, dossier, f, o) in [
+            ("00000001", "BCES00569-GAME", "SAVE.DAT", &b"partie"[..]),
+            ("00000001", "BCES00569-GAME", "ICON0.PNG", b"img"),
+            ("00000002", "BCES00569-GAME", "SAVE.DAT", b"partie de Lea"),
+            ("00000001", "BLES01227-SAVE", "SAVE.DAT", b"autre jeu"),
+        ] {
+            let s = home.join(compte).join("savedata").join(dossier);
+            std::fs::create_dir_all(&s).unwrap();
+            std::fs::write(s.join(f), o).unwrap();
+        }
+        let (abri, n) = abriter_parties_ps3(d.path(), "BCES00569").unwrap().unwrap();
+        assert_eq!(n, 3, "les parties de CE jeu, de TOUS les comptes");
+        assert!(abri.starts_with(d.path().join(".frogtend-sauvegardes")));
+        assert_eq!(std::fs::read(abri.join("00000001").join("savedata").join("BCES00569-GAME").join("SAVE.DAT")).unwrap(), b"partie");
+        assert_eq!(std::fs::read(abri.join("00000002").join("savedata").join("BCES00569-GAME").join("SAVE.DAT")).unwrap(), b"partie de Lea");
+        assert!(!abri.join("00000001").join("savedata").join("BLES01227-SAVE").exists());
+        assert!(home.join("00000001").join("savedata").join("BCES00569-GAME").join("SAVE.DAT").is_file(), "copiées, jamais déplacées");
+        // Un second abri dans la même seconde : jamais par-dessus le premier.
+        let (abri2, _) = abriter_parties_ps3(d.path(), "BCES00569").unwrap().unwrap();
+        assert_ne!(abri, abri2);
+    }
+
+    #[test]
+    fn la_chaine_des_mises_a_jour_s_installe_dans_l_ordre_et_s_arrete_au_premier_echec() {
+        let d = tempfile::tempdir().unwrap();
+        let rpcs3 = d.path().join("RPCS3");
+        let travail = d.path().join("travail");
+        let cid = "EP9001-BCES00569_00-0000000000000000";
+        let paquet = |nom: &str, id: &str| {
+            let p = d.path().join(nom);
+            std::fs::write(&p, entete_pkg(id)).unwrap();
+            p
+        };
+        let pkgs: Vec<(PathBuf, &str, Option<String>)> = vec![
+            (paquet("a.pkg", cid), "maj", Some("01.05".into())),
+            (paquet("b.pkg", cid), "maj", Some("01.06".into())),
+            (paquet("c.pkg", cid), "maj", Some("01.07".into())),
+            (paquet("dlc.pkg", "EP9001-BCES00569_00-CARPACK200000000"), "dlc", None),
+        ];
+        let tous = ps3_avec_versions(&pkgs, &[]);
+        // Un faux RPCS3 : il « installe » en écrivant dans dev_hdd0\game\BCES00569 ; il échoue sur b.pkg.
+        let recus = std::cell::RefCell::new(Vec::<String>::new());
+        let installer = |p: &Path| -> Resultat<()> {
+            let n = p.file_name().unwrap().to_string_lossy().to_string();
+            recus.borrow_mut().push(n.clone());
+            if n == "b.pkg" {
+                return Err(Erreur::Disque("échec simulé".into()));
+            }
+            let g = rpcs3.join("dev_hdd0").join("game").join("BCES00569");
+            std::fs::create_dir_all(&g).unwrap();
+            std::fs::write(g.join(format!("{n}.dat")), b"x").unwrap();
+            Ok(())
+        };
+        // Une partie d'un compte : à l'abri avant la première mise à jour.
+        let s = rpcs3.join("dev_hdd0").join("home").join("00000001").join("savedata").join("BCES00569-GAME");
+        std::fs::create_dir_all(&s).unwrap();
+        std::fs::write(s.join("SAVE.DAT"), b"partie").unwrap();
+        let aucune = std::collections::HashMap::new();
+        let b = installer_chaine_ps3(&tous, &aucune, &rpcs3, "00000001", &travail, &|| false, &installer);
+        assert_eq!(*recus.borrow(), ["a.pkg", "b.pkg", "dlc.pkg"], "01.07 jamais envoyée après l'échec de 01.06 ; le DLC passe");
+        assert_eq!((b.installes, b.a_jour, b.refuses.len()), (2, 0, 2));
+        assert!(b.refuses[1].1.contains("Mise à jour 01.06"), "{:?}", b.refuses);
+        assert_eq!(b.notes.len(), 1, "un seul abri, avant la première");
+        // RPCS3 ouvert : rien n'est envoyé, et la chaîne est cassée (jamais 01.07 sans 01.06 s'il se referme).
+        recus.borrow_mut().clear();
+        let ouvert = std::cell::Cell::new(true);
+        let b = installer_chaine_ps3(&tous[1..3], &aucune, &rpcs3, "00000001", &travail, &|| ouvert.replace(false), &installer);
+        assert!(recus.borrow().is_empty(), "{:?}", recus.borrow());
+        assert_eq!(b.refuses.len(), 2);
+        // Une précédente manquante : refusée, et les suivantes aussi.
+        let mut manque = std::collections::HashMap::new();
+        manque.insert(tous[1].id.clone(), "Mise à jour 01.05".to_string());
+        let b = installer_chaine_ps3(&tous[1..3], &manque, &rpcs3, "00000001", &travail, &|| false, &installer);
+        assert!(recus.borrow().is_empty());
+        assert_eq!(b.refuses.len(), 2);
+        // Déjà à jour (02.00 installée, complète) : rien n'est renvoyé.
+        let g = rpcs3.join("dev_hdd0").join("game").join("BCES00569");
+        std::fs::create_dir_all(g.join("USRDIR")).unwrap();
+        std::fs::write(g.join("USRDIR").join("EBOOT.BIN"), b"elf").unwrap();
+        std::fs::write(g.join("PARAM.SFO"), faire_sfo(&[("TITLE_ID", "BCES00569"), ("CATEGORY", "GD"), ("APP_VER", "02.00")])).unwrap();
+        let b = installer_chaine_ps3(&tous[..3], &aucune, &rpcs3, "00000001", &travail, &|| false, &installer);
+        assert!(recus.borrow().is_empty());
+        assert_eq!((b.installes, b.a_jour), (0, 3));
+    }
+
+    #[test]
+    fn une_version_d_une_autre_forme_est_remplacee_par_le_nom_officiel() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("EP9001-BCES00569_00-0000000000000000-A0105-V0100-PE.pkg");
+        std::fs::write(&p, entete_pkg("EP9001-BCES00569_00-0000000000000000")).unwrap();
+        let l = ps3_avec_versions(&[(p.clone(), "maj", Some("1.5".into()))], &[]);
+        assert_eq!(l[0].version.as_deref(), Some("01.05"));
+        let q = d.path().join("x-A01X5-y.pkg");
+        std::fs::write(&q, entete_pkg("EP9001-BCES00569_00-0000000000000000")).unwrap();
+        assert_eq!(ps3_avec_versions(&[(q, "maj", Some("v1".into()))], &[])[0].version, None, "aucune version sûre : aucune");
     }
 
     #[test]

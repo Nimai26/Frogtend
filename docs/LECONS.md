@@ -260,3 +260,13 @@ Après une longue suite de messages de Firehouse, plusieurs réponses à Seb (et
 parties en ANGLAIS. Seb ne répond qu'aux messages en français, pour être sûr de bien comprendre. Règle : relire
 CHAQUE message avant de l'envoyer — à Seb comme à Firehouse — et vérifier qu'il est en français, sans exception,
 même après un long travail ou un résumé de contexte.
+
+## 26/10 — `sed -i` a retourné un fichier CRLF entier (contenus.rs)
+
+Un `sed -i` d'une ligne sur `contenus.rs` (fins de ligne CRLF dans Git) a réécrit TOUT le fichier en LF : le diff
+montrait 2 858 lignes changées au lieu de 170. Repéré par `git diff --stat`, réparé en remettant les CRLF. La règle
+existait déjà (« jamais `sed -i` pour du code ») : un remplacement passe par l'outil d'édition, ou par un script qui
+garde les fins de ligne d'origine ; et `git diff --stat` après chaque changement d'un fichier CRLF.
+Même jour : le nom du programme d'un émulateur (« mGBA.exe » écrit avec des majuscules) cassait toute sa recherche,
+alors que le test d'un seul morceau restait vert — un test doit passer par le même chemin que le vrai code (ici la
+recherche du programme dans le catalogue), pas appeler la fonction du bout directement.
