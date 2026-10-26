@@ -25,7 +25,8 @@ import type { CommandesJeu } from '$lib/reglages/reglages';
 import { GENRES_MANETTE, libelleCommandes } from './commandes';
 import { apresUnePartie } from '$lib/sauvegarde.svelte';
 import { ludo, rechargerListe, rechargerPlateformes } from './ludotheque.svelte';
-import { rechargerJeuxDuPc, tele } from './telechargements.svelte';
+import { mettreDansLaLudotheque, rechargerJeuxDuPc, tele } from './telechargements.svelte';
+import { aCartes, choixDeCartes } from './cartes';
 import { estCourante, libelleVersion, nomDuFichier } from './versions';
 import { libellePleinEcran, TOUCHES_PLEIN_ECRAN } from './plein-ecran';
 import { BOUTONS, detailTouche, libelleClavier, memes, nettoyer, PREREGLAGES, toucheDepuisEvenement, TOUCHES, type Correspondance } from './clavier';
@@ -341,7 +342,8 @@ export async function gererLaCarte(id: number) {
   if (cible !== null) await gererJeu(cible);
 }
 
-export async function jouer(id: number, emulateur?: string, version?: string) {
+/** `carte` : la carte e-Reader à lire (sa version) ; sans elle, Frogtend demande laquelle s'il y en a plusieurs. */
+export async function jouer(id: number, emulateur?: string, version?: string, carte?: number) {
   // Un seul lancement à la fois (un jeu de boutique peut mettre plusieurs minutes à démarrer).
   if (partie.lancement !== null) return;
   partie.lancement = id;
@@ -352,15 +354,24 @@ export async function jouer(id: number, emulateur?: string, version?: string) {
     ? toast(`▶ ${nomBoutique} lance « ${tele.jeux[id]?.titre ?? 'le jeu'} »… S’il fait une mise à jour, ça peut prendre quelques minutes.`, 'neutre', { jusquaFermeture: true })
     : null;
   try {
-    await jouerSansAttente(id, emulateur, version);
+    await jouerSansAttente(id, emulateur, version, carte);
   } finally {
     if (attente !== null) fermerToast(attente);
     partie.lancement = null;
   }
 }
 
-async function jouerSansAttente(id: number, emulateur?: string, version?: string) {
+async function jouerSansAttente(id: number, emulateur?: string, version?: string, carte?: number) {
   const j = tele.jeux[id];
+  // Un jeu e-Reader : quelle carte lire, si plusieurs sont sur le PC (la liste se filtre au-delà de 20).
+  if (carte === undefined && aCartes(j?.plateforme)) {
+    const cartes = choixDeCartes(j);
+    if (cartes.length > 1) {
+      const c = await choisir<number>(`▶ « ${j?.titre ?? 'Le jeu'} » : quelle carte lire ?`, cartes, 'La carte est lue dans la cartouche e-Reader, comme sur la vraie console.');
+      if (c === null) return;
+      carte = c;
+    }
+  }
   for (let essai = 0; essai < 2; essai++) {
     try {
       // Un souci ici n'empêche JAMAIS le jeu de se lancer.
@@ -376,6 +387,7 @@ async function jouerSansAttente(id: number, emulateur?: string, version?: string
         typeof pe === 'string' ? pe : undefined,
         nettoyer(etat.profil.clavier[String(id)]),
         !etat.profil.sansRepetition.includes(String(id)),
+        carte,
       );
       toast(`▶ « ${j?.titre ?? 'Le jeu'} » se lance…`);
       return;
@@ -385,6 +397,15 @@ async function jouerSansAttente(id: number, emulateur?: string, version?: string
         if (!(await preparerPourJouer(j.plateforme, 1))) return;
       } else if (estErreurCoeur(e) && e.motif.startsWith('Choisis d')) {
         if (!(await choisirLanceur(id))) return;
+      } else if (estErreurCoeur(e) && e.sorte === 'cartouche_absente' && e.cartouche) {
+        // La cartouche e-Reader manque : la mettre sur le PC (récapitulatif chiffré et accord, comme tout jeu), puis
+        // la personne relance la carte quand elle est arrivée.
+        const oui = await confirmer('🎴 Il manque la cartouche e-Reader', {
+          message: `${e.motif}\n\nUne carte se lit dans la cartouche, comme sur la vraie console. Frogtend peut la mettre sur ce PC : tu verras sa taille avant de dire oui.`,
+          libelleValider: 'Voir la cartouche',
+        });
+        if (oui) await mettreDansLaLudotheque(e.cartouche);
+        return;
       } else if (estErreurCoeur(e) && e.sorte === 'prevenir') {
         // Refusé avant de lancer, avec ce qu'il faut faire : expliqué dans une fenêtre, pas un message qui passe.
         await informer(`▶ « ${j?.titre ?? 'Le jeu'} » ne peut pas encore se lancer`, e.motif);

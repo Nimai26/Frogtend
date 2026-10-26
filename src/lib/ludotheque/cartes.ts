@@ -14,3 +14,14 @@ export function cartesSurPc(j: JeuPc | null | undefined): number[] {
   if (!j) return [];
   return [...new Set(j.fichiers.map((f) => f.version ?? j.version))];
 }
+
+/** Les cartes du PC à proposer avant de jouer : leur nom officiel (sans « .7z »), dans l'ordre des noms. */
+export function choixDeCartes(j: JeuPc | null | undefined): { valeur: number; libelle: string }[] {
+  if (!j) return [];
+  const noms = new Map<number, string>();
+  for (const f of j.fichiers) {
+    const v = f.version ?? j.version;
+    if (!noms.has(v)) noms.set(v, f.nom.replace(/^.*[\/]/, '').replace(/\.(7z|zip|raw)$/i, ''));
+  }
+  return [...noms].map(([valeur, libelle]) => ({ valeur, libelle })).sort((a, b) => a.libelle.localeCompare(b.libelle, 'fr', { numeric: true }));
+}

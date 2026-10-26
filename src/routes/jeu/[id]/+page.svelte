@@ -363,6 +363,9 @@
                 <!-- Un jeu à cartes (e-Reader) : chaque carte s'ajoute ou se retire à part. -->
                 {#if cartesSurPc(jeuSurPc(fiche.id)).includes(v.telechargement_id)}
                   <p class="muted">✅ Cette carte est sur ce PC.</p>
+                  {#if jeuSurPc(fiche.id)?.installation}
+                    <button class="btn primary" onclick={() => fiche && jouer(fiche.id, undefined, undefined, v.telechargement_id)} disabled={partie.enJeu !== null}>▶ Lire cette carte</button>
+                  {/if}
                   {#if cartesSurPc(jeuSurPc(fiche.id)).length > 1}
                     <button class="btn" onclick={() => fiche && retirerUneCarte(fiche.id, v.telechargement_id, v.nom)}>🗑 Retirer cette carte</button>
                   {/if}

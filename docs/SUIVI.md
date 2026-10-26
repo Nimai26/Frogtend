@@ -38,6 +38,26 @@
   NUMÉRIQUE des bandes) ; cartouche par `region` de la carte dans `cartouches` (absente : proposer son ajout) ;
   `cartouches` gardée par profil pour le hors-ligne ; refus si l'émulateur réglé n'est pas mGBA ; retrait des .raw
   avec la carte et le jeu.
+  ✅ FAIT (26/10, pour 0.109.0) : mGBA au catalogue (GitHub mgba-emu/mgba `win64.7z`, `portable.ini`, `-f`), parties
+  par personne par `-C savegamePath/savestatePath/screenshotPath` vers `Profils\<profil>\` (déjà couvert par la
+  sauvegarde) ; lancement e-Reader (`ereader.rs`, `preparer_carte`) d'après le conseil RÉEL relevé le 26/10 (mgba,
+  cartouches 3666 Japon et 3681 USA = jeux Game Boy Advance) : bandes avant la cartouche, cartouche absente → fenêtre
+  « Voir la cartouche » (téléchargement avec accord), liste gardée dans le profil (`cartouches-ereader.json`).
+  Relecture de l'expert lancement (26/10) : BLOQUANT corrigé (programme « mGBA.exe » jamais reconnu, la casse : test
+  sur tout le catalogue) ; corrigés aussi : cartouche importée/réunie retrouvée, seulement téléchargée = son fichier,
+  en route = dit ; bandes en ARGUMENTS juste avant la cartouche (jamais dans le texte de la ligne) ; garde des liens et
+  plafond de 16 Mo par carte ; Firehouse lu 5 s au plus, liste gardée jamais vidée ; mGBA FIGÉ pendant le menu en jeu
+  (règle « toujours figé » du 16/10) ; ancienne partie `<rom>.sav` COPIÉE dans le profil au premier lancement ;
+  trace `%APPDATA%\mGBA` signalée. Essai RÉEL : paquet officiel 0.10.5 (14,2 Mo) installé en dossier temporaire,
+  `portable.ini` à côté. RESTE OUVERT : manette XInput dans mGBA (aucune configuration écrite : à voir à l'essai) ;
+  `--ecard` avec une cartouche en .7z et le nom de sa sauvegarde (à l'essai ; repli : décompresser la cartouche) ;
+  accents (profil « Zoé ») sur la ligne de mGBA ; triches mGBA pas encore par personne (`cheatsPath`) ; cartouche
+  lancée seule pendant une lecture de carte non empêchée.
+  À FAIRE ENSUITE — contrat 1.31 (Firehouse 2.133.0, 26/10) : `fichiers[].version` des `maj` (« 01.05 », null si
+  inconnue) ; les `maj` servies dans l'ordre croissant d'installation = toute la chaîne Sony pour la PS3 → Frogtend
+  trie aujourd'hui les contenus PS3 par NOM (`contenus.rs` `ps3_de_la_version`) : garder l'ordre servi pour les `maj`,
+  montrer leur version. Premier lot servi : 40 paquets, 8,34 Go, 6 jeux (GT5 31183 : 27 ; GoW Ascension 31179 : 9).
+  Relever la fiche réelle de GT5 (lecture seule) avant de coder.
   ✅ A9 MESURÉ (25/10, lecture seule, dossier temporaire) : synchro complète réelle = 27 431 jeux, 55 pages, 3 318
   fusions, 614 s ; synchro sans changement 21 s. Cause : CHAQUE requête Firehouse ≈ 10 s (même `/plateformes`), le
   traitement de Frogtend est négligeable → besoin 34 envoyé à Firehouse.

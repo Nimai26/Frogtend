@@ -511,6 +511,20 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             regler_manette(id, emulateur, Some(&utilisateur), manette)?;
             Ok(vec!["-u".into(), texte(&utilisateur)])
         }
+        // Les parties PAR PERSONNE : mGBA les écrit à côté de la ROM d'office (jamais protégées) ; `-C` les envoie dans le
+        // dossier du profil pour CE lancement, sans toucher à la configuration de mGBA (relevé le 26/10).
+        "mgba" => {
+            let (saves, etats, captures) = (p.join("saves"), p.join("states"), p.join("screenshots"));
+            creer(&[&saves, &etats, &captures])?;
+            Ok(vec![
+                "-C".into(),
+                format!("savegamePath={}", texte(&saves)),
+                "-C".into(),
+                format!("savestatePath={}", texte(&etats)),
+                "-C".into(),
+                format!("screenshotPath={}", texte(&captures)),
+            ])
+        }
         "ppsspp" => {
             relier_memstick(emulateur, &p.join("memstick"))?;
             Ok(vec![])
@@ -591,6 +605,29 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
         }
         _ => Ok(vec![]),
     }
+}
+
+/// mGBA : la partie qu'il avait écrite À CÔTÉ de la ROM (`<rom>.sav`, son réglage d'origine) est COPIÉE dans le
+/// dossier de parties du profil (`-C savegamePath`) si celui-ci n'en a pas encore pour ce jeu. Jamais déplacée, jamais
+/// par-dessus. Rend la copie faite.
+pub fn reprendre_partie_mgba(rom: &Path, emulateur: &Path, profil: &str) -> Resultat<Option<PathBuf>> {
+    let (Some(nom), Some(dossier)) = (rom.file_stem(), rom.parent()) else { return Ok(None) };
+    let ancienne = dossier.join(format!("{}.sav", nom.to_string_lossy()));
+    let nouvelle = dossier_du_profil(emulateur, profil).join("saves").join(format!("{}.sav", nom.to_string_lossy()));
+    if !ancienne.is_file() || nouvelle.exists() {
+        return Ok(None);
+    }
+    creer(&[nouvelle.parent().unwrap_or(emulateur)])?;
+    let octets = std::fs::read(&ancienne)?;
+    let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&nouvelle)?;
+    std::io::Write::write_all(&mut f, &octets)?;
+    drop(f);
+    // Vérifier le résultat : la copie relue est identique.
+    if std::fs::read(&nouvelle)? != octets {
+        let _ = std::fs::remove_file(&nouvelle);
+        return Err(Erreur::Disque("La copie de la partie de mGBA n'est pas identique : elle n'est pas gardée.".into()));
+    }
+    Ok(Some(nouvelle))
 }
 
 /// Le dossier « données » d'un émulateur pour un profil (contrat 13 : `base = donnees`), là où Frogtend range ses
@@ -1194,6 +1231,8 @@ pub fn traces_hors_du_dossier(id: &str) -> Vec<PathBuf> {
         "vita3k" => vec![env("APPDATA").map(|a| a.join("Vita3K"))],
         "eden" => vec![env("APPDATA").map(|a| a.join("eden"))],
         "dosbox-staging" => vec![env("LOCALAPPDATA").map(|a| a.join("DOSBox"))],
+        // mGBA non portable (sans `portable.ini`) : `mCoreConfigDirectory`, dossier « mGBA » de l’AppData itinérant.
+        "mgba" => vec![env("APPDATA").map(|a| a.join("mGBA"))],
         _ => vec![],
     };
     candidats.into_iter().flatten().filter(|p| p.is_dir()).collect()
@@ -1704,6 +1743,39 @@ mod tests {
         std::fs::write(&f, ini.replace("AutoDiscChange = True", "AutoDiscChange = False")).unwrap();
         preparer("dolphin", d.path(), "Seb", &["E:\\Jeux\\GC".into()], &Manette::Auto(None)).unwrap();
         assert_eq!(crate::manettes::lire_ini(&std::fs::read_to_string(&f).unwrap(), "Core", "AutoDiscChange"), vec!["False"]);
+    }
+
+    #[test]
+    fn mgba_range_les_parties_de_chaque_personne_dans_son_profil() {
+        let d = tempfile::tempdir().unwrap();
+        let args = preparer("mgba", d.path(), "Zoé", &[], &Manette::Auto(None)).unwrap();
+        let p = dossier_du_profil(d.path(), "Zoé");
+        assert_eq!(args.iter().filter(|a| *a == "-C").count(), 3);
+        assert!(args.contains(&format!("savegamePath={}", texte(&p.join("saves")))), "{args:?}");
+        assert!(args.contains(&format!("savestatePath={}", texte(&p.join("states")))));
+        assert!(p.join("saves").is_dir() && p.join("states").is_dir());
+        // Deux personnes : deux dossiers distincts (jamais les parties de l'une chez l'autre).
+        let args2 = preparer("mgba", d.path(), "Léa", &[], &Manette::Auto(None)).unwrap();
+        assert_ne!(args, args2);
+    }
+
+    #[test]
+    fn mgba_reprend_la_partie_d_a_cote_de_la_rom_sans_jamais_l_ecraser() {
+        let d = tempfile::tempdir().unwrap();
+        let (emu, jeux) = (d.path().join("mGBA"), d.path().join("Jeux"));
+        std::fs::create_dir_all(&jeux).unwrap();
+        let rom = jeux.join("Golden Sun (Europe).gba");
+        std::fs::write(&rom, b"ROM").unwrap();
+        assert_eq!(reprendre_partie_mgba(&rom, &emu, "Zoé").unwrap(), None, "pas de partie : rien");
+        std::fs::write(jeux.join("Golden Sun (Europe).sav"), b"partie d'avant").unwrap();
+        let p = reprendre_partie_mgba(&rom, &emu, "Zoé").unwrap().unwrap();
+        assert_eq!(p, dossier_du_profil(&emu, "Zoé").join("saves").join("Golden Sun (Europe).sav"));
+        assert_eq!(std::fs::read(&p).unwrap(), b"partie d'avant");
+        assert!(jeux.join("Golden Sun (Europe).sav").is_file(), "copiée, jamais déplacée");
+        // La partie du profil a avancé : jamais écrasée par l'ancienne.
+        std::fs::write(&p, b"partie de Zoe").unwrap();
+        assert_eq!(reprendre_partie_mgba(&rom, &emu, "Zoé").unwrap(), None);
+        assert_eq!(std::fs::read(&p).unwrap(), b"partie de Zoe");
     }
 
     #[test]

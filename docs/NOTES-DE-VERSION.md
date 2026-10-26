@@ -1,5 +1,18 @@
 # Notes de version de Frogtend
 
+## 0.109.0 — Avant la bêta (5) : lire une carte e-Reader
+
+- 🃏 Une carte e-Reader se lit maintenant, comme sur la vraie console : « ▶ Jouer » (ou « ▶ Lire cette carte » sur la
+  fiche) demande quelle carte lire s'il y en a plusieurs, puis mGBA ouvre la cartouche e-Reader et y passe la carte.
+  Les cartes japonaises vont dans la cartouche japonaise, les autres dans l'américaine.
+- 🎴 S'il manque la cartouche e-Reader sur le PC, Frogtend le dit et propose de l'y mettre (tu vois sa taille avant de
+  dire oui).
+- 🎮 mGBA (Game Boy Advance) rejoint les émulateurs que Frogtend installe et règle : les parties de chaque personne
+  sont rangées à part, et ta sauvegarde chez Firehouse les garde. Une partie que mGBA avait déjà écrite à côté d'un
+  jeu est recopiée pour toi au premier lancement (l'originale reste où elle était).
+- ⏸ Le menu en jeu fige mGBA pendant qu'il est ouvert.
+- Hors ligne, une carte se lit quand même : Frogtend garde la liste des cartouches de Firehouse.
+
 ## 0.108.0 — Une synchronisation bien plus rapide
 
 - ⚡ Firehouse a corrigé sa lenteur (contrat 1.30) : la synchronisation complète de ta ludothèque prend maintenant

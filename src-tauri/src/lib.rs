@@ -45,6 +45,7 @@ pub mod sept_z;
 pub mod registre;
 pub mod reconciliation;
 pub mod empreintes;
+pub mod ereader;
 pub mod patchs_ps3;
 pub mod plein_ecran;
 pub mod profils;

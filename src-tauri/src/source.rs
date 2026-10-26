@@ -921,6 +921,14 @@ mod tests {
             println!("{id} : {} versions", f["jeu"]["versions"].as_array().map(|l| l.len()).unwrap_or(0));
             std::fs::write(sortie.join(format!("jeu-{id}.json")), serde_json::to_vec_pretty(&f).unwrap()).unwrap();
         }
+        // Contrat 1.30 : le conseil « Nintendo e-Reader » et ses cartouches (3666 Japon, 3681 USA au 26/10).
+        let e: serde_json::Value = c.obtenir_json(&format!("/emulateurs?plateforme={}", encoder("Nintendo e-Reader"))).await.unwrap();
+        std::fs::write(sortie.join("emulateurs-ereader.json"), serde_json::to_vec_pretty(&e).unwrap()).unwrap();
+        for id in [3666, 3681] {
+            if let Ok(f) = c.obtenir_json::<serde_json::Value>(&format!("/jeu/{id}")).await {
+                std::fs::write(sortie.join(format!("jeu-{id}.json")), serde_json::to_vec_pretty(&f).unwrap()).unwrap();
+            }
+        }
     }
 
     /// RÉEL, lecture seule : le temps de réponse BRUT de Firehouse (sans rien traiter) pour `/plateformes` et deux pages

@@ -384,6 +384,11 @@ impl Noyau {
             }
         }
         self.registre().changer_fichiers(id, &restent, false)?;
+        // Ses bandes décompressées (dossier propre à Frogtend, refait à la prochaine lecture si besoin).
+        let bandes = crate::ereader::dossier_des_bandes(&dossier_frogtend(&e), version);
+        if bandes.starts_with(dossier.join("Frogtend")) && bandes.is_dir() && !crate::garde::lien_entre(dossier, &bandes) {
+            let _ = std::fs::remove_dir_all(&bandes);
+        }
         // Tout ce qui reste est là, à la bonne taille (la carte fautive retirée) : le jeu redevient jouable.
         let complet = restent.iter().all(|f| crate::jeux_pc::chemin_de_fichier_sur(&f.nom).is_ok_and(|r| std::fs::metadata(dossier.join(r)).is_ok_and(|m| m.len() == f.taille)));
         if complet && e.etat != Etat::Telecharge {
@@ -574,6 +579,11 @@ impl Noyau {
         let medias = medias_du_jeu(j);
         if medias.starts_with(Path::new(&j.dossier).join("Frogtend")) && medias.is_dir() {
             std::fs::remove_dir_all(&medias)?;
+        }
+        // Les bandes des cartes e-Reader décompressées par Frogtend (rien d'autre : les parties sont chez mGBA).
+        let cartes = dossier_frogtend(j).join("cartes");
+        if cartes.starts_with(Path::new(&j.dossier).join("Frogtend")) && cartes.is_dir() && !crate::garde::lien_entre(Path::new(&j.dossier), &cartes) {
+            std::fs::remove_dir_all(&cartes)?;
         }
         let mut d = medias.parent().map(Path::to_path_buf);
         while let Some(p) = d {

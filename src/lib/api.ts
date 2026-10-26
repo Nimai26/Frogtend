@@ -495,10 +495,14 @@ export interface ErreurCoeur {
     /** Une opération d'une session remplacée (profil ou jeton changé pendant qu'elle tournait) : rien à montrer. */
     | 'perimee'
     /** Refusé avant d'agir : le motif s'explique dans une fenêtre (image Xbox que xemu ne lit pas…). */
-    | 'prevenir';
+    | 'prevenir'
+    /** Une carte e-Reader dont la cartouche (`cartouche`) n'est pas sur ce PC : proposer de l'y mettre. */
+    | 'cartouche_absente';
   motif: string;
   /** Pour `fusionne` (contrat 1.14) : la fiche où celle-ci a été réunie. */
   nouveau?: number;
+  /** Pour `cartouche_absente` : la fiche de la cartouche e-Reader qui lit la carte. */
+  cartouche?: number;
 }
 
 export function estErreurCoeur(e: unknown): e is ErreurCoeur {
@@ -703,6 +707,7 @@ export const api = {
     pleinEcran?: string,
     clavier?: Record<string, string>,
     repeterTouches = true,
+    carte?: number,
   ) =>
     appeler<void>('jeu_jouer', {
       id,
@@ -713,6 +718,7 @@ export const api = {
       pleinEcran: pleinEcran ?? null,
       clavier: clavier && Object.keys(clavier).length ? clavier : null,
       repeterTouches,
+      carte: carte ?? null,
     }),
   pleinEcranSuggestion: (id: number) => appeler<string | null>('jeu_plein_ecran_suggestion', { id }),
   jeuAntiTriche: (id: number) => appeler<VerificationFiger>('jeu_anti_triche', { id }),

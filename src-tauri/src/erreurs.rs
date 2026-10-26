@@ -60,6 +60,10 @@ pub enum Erreur {
     /// pas…) : l'interface l'explique dans une fenêtre, pas dans un simple message qui passe.
     #[error("{0}")]
     Prevenir(String),
+    /// Une carte e-Reader dont la cartouche (`cartouche` : sa fiche chez Firehouse) n'est pas sur ce PC : l'interface
+    /// propose de l'y mettre (téléchargement, après un oui).
+    #[error("{motif}")]
+    CartoucheAbsente { motif: String, cartouche: i64 },
 }
 
 impl Serialize for Erreur {
@@ -82,12 +86,16 @@ impl Serialize for Erreur {
             Erreur::Fusionne { .. } => "fusionne",
             Erreur::Perimee(_) => "perimee",
             Erreur::Prevenir(_) => "prevenir",
+            Erreur::CartoucheAbsente { .. } => "cartouche_absente",
         };
         let mut m = s.serialize_map(None)?;
         m.serialize_entry("sorte", sorte)?;
         m.serialize_entry("motif", &self.to_string())?;
         if let Erreur::Fusionne { nouveau, .. } = self {
             m.serialize_entry("nouveau", nouveau)?;
+        }
+        if let Erreur::CartoucheAbsente { cartouche, .. } = self {
+            m.serialize_entry("cartouche", cartouche)?;
         }
         m.end()
     }

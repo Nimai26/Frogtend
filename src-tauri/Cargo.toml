@@ -1,6 +1,6 @@
 [package]
 name = "frogtend"
-version = "0.108.0"
+version = "0.109.0"
 description = "Frogtend — la ludothèque de la maison, servie par Firehouse"
 authors = ["Nimai"]
 license = "Apache-2.0"
@@ -30,7 +30,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 rusqlite = { version = "0.32", features = ["bundled"] }
 thiserror = "2"
 rand = "0.8"
-tokio = { version = "1", features = ["rt", "macros", "fs", "io-util"] }
+tokio = { version = "1", features = ["rt", "macros", "fs", "io-util", "time"] }
 fs2 = "0.4"
 bytes = "1"
 tauri-plugin-dialog = "2"

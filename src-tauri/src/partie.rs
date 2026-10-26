@@ -774,7 +774,8 @@ impl Noyau {
     /// Annonce le début de la session à Firehouse. Rend le processus, les dossiers à surveiller, et si Firehouse a
     /// ouvert une session pour ce PC (`session` non nulle : PC qui calcule pour lui). Au 30/09, cela ne met en pause
     /// qu'une partie de ses travaux sur la carte graphique : on dit « session annoncée », pas « carte libérée ».
-    pub async fn jouer(&self, id: i64, emulateur: Option<(String, String)>, version: Option<&str>) -> Resultat<(u32, Vec<PathBuf>, bool)> {
+    /// `carte` : la carte à lire d'un jeu e-Reader (sa version ; aucune : la première).
+    pub async fn jouer(&self, id: i64, emulateur: Option<(String, String)>, version: Option<&str>, carte: Option<i64>) -> Resultat<(u32, Vec<PathBuf>, bool)> {
         let _occupe = self.occuper(id);
         let j = self.jeu_jouable(id).await?;
         let i = installation_de_la_partie(&j, version)?;
@@ -798,6 +799,19 @@ impl Noyau {
                 // même zippée : décidé d'après la LIGNE, jamais d'après l'extension.
                 let arcade = crate::installation::nom_court_mame(&programme, f).filter(|_| !crate::installation::ligne_mame_de_salon(&ligne));
                 let l = match arcade {
+                    // Une carte e-Reader : lue DANS sa cartouche, jamais lancée seule (ce n'est pas une ROM).
+                    _ if crate::jeux_pc::a_cartes(&j.plateforme) => {
+                        let (cartouche, bandes) = self.preparer_carte(&j, &programme, carte).await?;
+                        self.reprendre_partie_mgba(&programme, &cartouche).await;
+                        let mut l = lanceur_emulateur(&programme, &ligne, &cartouche)?;
+                        crate::ereader::inserer_bandes(&mut l.arguments, &cartouche, &bandes);
+                        l
+                    }
+                    None if crate::ereader::est_mgba(&programme) => {
+                        let rom = Path::new(&i.dossier).join(f);
+                        self.reprendre_partie_mgba(&programme, &rom).await;
+                        lanceur_emulateur(&programme, &ligne, &rom)?
+                    }
                     // MAME : « mame <nom court> -rompath <dossier du jeu> » (contrat 1.13), jamais le chemin du zip.
                     Some(nom) => {
                         // Refusé AVANT de rien écrire dans le dossier de MAME.
@@ -831,6 +845,114 @@ impl Noyau {
         let reponse = self.annoncer(id, "debut").await;
         let carte_cedee = reponse.is_some_and(|r| r["session"].is_object());
         Ok((pid, dossiers, carte_cedee))
+    }
+
+    /// mGBA range désormais les parties de chaque personne dans son profil (`-C savegamePath`) : une partie qu'il avait
+    /// écrite À CÔTÉ de la ROM (avant Frogtend, ou un mGBA trouvé sur le PC) y est COPIÉE au premier lancement — jamais
+    /// déplacée, jamais par-dessus une partie du profil. Un échec n'empêche pas de jouer : il est noté.
+    async fn reprendre_partie_mgba(&self, programme: &str, rom: &Path) {
+        let Some(profil) = self.actif().await else { return };
+        let Some(emulateur) = Path::new(programme).parent() else { return };
+        match crate::emulateurs_profils::reprendre_partie_mgba(rom, emulateur, &profil.nom) {
+            Ok(Some(p)) => self.journaliser(&format!("mGBA : partie d'à côté de la ROM copiée dans le profil ({})", p.display())),
+            Ok(None) => {}
+            Err(e) => self.journaliser(&format!("mGBA : partie d'à côté de la ROM non copiée ({e:?})")),
+        }
+    }
+
+    /// Une carte e-Reader prête à lire : la cartouche qui la lit (un jeu Game Boy Advance de CE PC) et ses bandes, à
+    /// glisser avant elle. Refusé sans rien lancer : autre émulateur que mGBA, carte absente ou incomplète, cartouche
+    /// absente (l'interface propose alors de la mettre sur le PC) ou encore en route.
+    async fn preparer_carte(&self, j: &JeuPc, programme: &str, carte: Option<i64>) -> Resultat<(PathBuf, Vec<PathBuf>)> {
+        if !crate::ereader::est_mgba(programme) {
+            return Err(Erreur::Prevenir(
+                "Une carte e-Reader se lit avec l'émulateur mGBA (version 0.10 ou plus récente), pas avec celui qui est réglé. \
+                 Choisis mGBA pour « e-Reader » dans « Réglages » ▸ « Émulateurs »."
+                    .into(),
+            ));
+        }
+        let version = carte.unwrap_or(j.version);
+        let f = j
+            .fichiers
+            .iter()
+            .find(|f| f.version.unwrap_or(j.version) == version)
+            .ok_or_else(|| Erreur::Introuvable("Cette carte n'est pas sur ce PC.".into()))?;
+        let archive = Path::new(&j.dossier).join(crate::jeux_pc::chemin_de_fichier_sur(&f.nom)?);
+        if !std::fs::metadata(&archive).is_ok_and(|m| m.len() == f.taille) {
+            return Err(Erreur::Refus("Cette carte n'est pas encore entièrement sur ce PC.".into()));
+        }
+        let cartouches = self.cartouches_ereader().await;
+        let japonaise = crate::ereader::japonaise(&f.nom);
+        let c = crate::ereader::cartouche_pour(&cartouches, japonaise).ok_or_else(|| {
+            Erreur::Prevenir(if cartouches.is_empty() {
+                "Frogtend ne sait pas encore quelle cartouche e-Reader lit cette carte : connecte-toi une fois à Firehouse, puis réessaie.".into()
+            } else {
+                "Firehouse ne propose aucune cartouche e-Reader qui lise cette carte.".into()
+            })
+        })?;
+        // La cartouche : un jeu de CE PC que ce profil peut lancer, entièrement là.
+        let absente = || Erreur::CartoucheAbsente {
+            motif: format!("Pour lire cette carte, il faut la cartouche « {} » (Game Boy Advance) sur ce PC.", c.nom),
+            cartouche: c.media_id,
+        };
+        // Sa ligne sur CE PC : la fiche (réunie depuis à une autre ? contrat 1.14), sinon un jeu importé du disque rattaché
+        // à elle (contrat 1.21) — le même rapprochement que pour « Mettre dans ma ludothèque ».
+        let ligne_cartouche = {
+            let s = self.session().await?;
+            let cache = s.verrou();
+            let id = cache.reuni_vers(c.media_id)?.unwrap_or(c.media_id);
+            if self.registre().jeu(id)?.is_some() {
+                Some(id)
+            } else {
+                self.registre()
+                    .correspondances()?
+                    .into_iter()
+                    .find(|(_, media, _)| *media == id || cache.reuni_vers(*media).ok().flatten() == Some(id))
+                    .map(|(local, _, _)| local)
+            }
+        };
+        let jc = match ligne_cartouche {
+            Some(idc) => self.jeu_jouable(idc).await.map_err(|_| absente())?,
+            None => return Err(absente()),
+        };
+        if jc.etat != crate::jeux_pc::Etat::Telecharge {
+            return Err(Erreur::Prevenir(format!(
+                "La cartouche « {} » n'est pas encore entièrement sur ce PC (elle arrive, ou son téléchargement est arrêté) : \
+                 regarde dans les téléchargements, puis réessaie quand elle sera là.",
+                c.nom
+            )));
+        }
+        // Installée : son fichier lancé ; seulement téléchargée (une ROM n'a rien à installer) : son fichier reçu.
+        let installe = installation_de_la_partie(&jc, None).ok().and_then(|i| i.fichier_du_jeu.map(|f| Path::new(&i.dossier).join(f)));
+        let recu = || jc.fichiers.first().and_then(|f| crate::jeux_pc::chemin_de_fichier_sur(&f.nom).ok()).map(|r| Path::new(&jc.dossier).join(r));
+        let fichier_cartouche = installe.filter(|p| p.is_file()).or_else(|| recu().filter(|p| p.is_file())).ok_or_else(absente)?;
+        let dossier = crate::ereader::dossier_des_bandes(&crate::locale::dossier_frogtend(j), version);
+        let jeu = PathBuf::from(&j.dossier);
+        let bandes = tokio::task::spawn_blocking(move || crate::ereader::bandes(&archive, &jeu, &dossier))
+            .await
+            .map_err(|_| Erreur::Disque("La lecture de la carte s'est arrêtée brutalement.".into()))??;
+        self.journaliser(&format!("jeu {} : carte {version} lue dans la cartouche {} ({} bande(s))", j.id, jc.id, bandes.len()));
+        Ok((fichier_cartouche, bandes))
+    }
+
+    /// Les cartouches e-Reader du conseil de Firehouse, gardées dans le profil pour jouer hors ligne. Firehouse est
+    /// relu à chaque partie (sa liste fait foi), mais jamais plus de 5 s : au-delà, la liste gardée sert. Une réponse
+    /// sans cartouche n'efface jamais la liste gardée.
+    async fn cartouches_ereader(&self) -> Vec<crate::ereader::Cartouche> {
+        let Ok(s) = self.session().await else { return vec![] };
+        let garde = s.dossier.join(crate::ereader::FICHIER_CARTOUCHES);
+        let gardee = || std::fs::read(&garde).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default();
+        match tokio::time::timeout(Duration::from_secs(5), s.source.emulateurs(crate::ereader::PLATEFORME)).await {
+            Ok(Ok(v)) if !crate::ereader::cartouches(&v).is_empty() => {
+                let l = crate::ereader::cartouches(&v);
+                // Jamais écrit pour une session remplacée pendant la lecture (un autre profil).
+                if !s.perimee.load(std::sync::atomic::Ordering::SeqCst) {
+                    let _ = std::fs::write(&garde, serde_json::to_vec_pretty(&l).unwrap_or_default());
+                }
+                l
+            }
+            _ => gardee(),
+        }
     }
 
     /// Annonce une étape de session à Firehouse. Un échec (hors ligne, 403…) n'empêche jamais de jouer : il est noté,
@@ -1304,8 +1426,100 @@ mod tests {
         let (_d, n) = noyau_avec(&[("Dune (Europe).cue", b"FILE"), ("Dune (Europe).bin", b"\0\0")], "Image disque").await;
         let i = n.installer(110, true).await.unwrap();
         assert_eq!(i.fichier_du_jeu.as_deref(), Some("Dune (Europe).cue"), "le .cue décrit les pistes");
-        assert!(matches!(n.jouer(110, None, None).await, Err(Erreur::Reglage(_))));
+        assert!(matches!(n.jouer(110, None, None, None).await, Err(Erreur::Reglage(_))));
         assert!(Path::new(&i.dossier).join("Dune (Europe).bin").is_file(), "rien n'est renommé ni déplacé");
+    }
+
+    /// Une carte e-Reader en 7z, avec ses bandes.
+    fn carte_7z(bandes: &[&str]) -> Vec<u8> {
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("carte.7z");
+        let mut w = sevenz_rust::SevenZWriter::create(&f).unwrap();
+        for nom in bandes {
+            let mut e = sevenz_rust::SevenZArchiveEntry::new();
+            e.name = nom.to_string();
+            e.has_stream = true;
+            w.push_archive_entry(e, Some(&b"dotcode"[..])).unwrap();
+        }
+        w.finish().unwrap();
+        std::fs::read(&f).unwrap()
+    }
+
+    #[tokio::test]
+    async fn une_carte_e_reader_se_lit_dans_sa_cartouche_avec_ses_bandes() {
+        let (usa, japon) = (carte_7z(&["Carte (Strip 2).raw", "Carte (Strip 1).raw"]), carte_7z(&["Kado (Strip 1).raw"]));
+        let (_d, n) = noyau_avec(&[("e-Reader (USA).gba", b"ROM"), ("Carte (USA).7z", &usa), ("Kado (Japan).7z", &japon)], "ROM").await;
+        // Le jeu simulé sert à la fois de carte (ses .7z, la japonaise en version 201) et de cartouche (le .gba).
+        let mut j = n.registre().jeu(110).unwrap().unwrap();
+        j.fichiers[0].version = Some(300); // la « cartouche » n'est pas une carte
+        j.fichiers[2].version = Some(201);
+        j.plateforme = crate::ereader::PLATEFORME.into();
+        n.registre().retirer(110).unwrap();
+        n.registre().ajouter(&j).unwrap();
+        let i = Installation {
+            dossier: j.dossier.clone(),
+            methode: Methode::Aucune,
+            lanceur: None,
+            fichier_du_jeu: Some("e-Reader (USA).gba".into()),
+            installe_le: "1".into(),
+            versions: vec![],
+            boutique: None,
+            extraits: vec![],
+        };
+        n.registre().changer_installation(110, Some(&i)).unwrap();
+        let j = n.registre().jeu(110).unwrap().unwrap();
+        let mgba = r"C:\Emulateurs\mGBA\mGBA.exe";
+        // Un autre émulateur que mGBA : refusé.
+        assert!(matches!(n.preparer_carte(&j, r"C:\RetroArch\retroarch.exe", None).await, Err(Erreur::Prevenir(_))));
+        // Aucune cartouche connue (simulé, hors ligne, rien de gardé) : dit, rien de décompressé.
+        assert!(matches!(n.preparer_carte(&j, mgba, None).await, Err(Erreur::Prevenir(_))));
+        let bandes = Path::new(&j.dossier).join("Frogtend").join("cartes");
+        assert!(!bandes.exists());
+        // La liste gardée par le profil (hors ligne) : l'américaine est ce jeu, la japonaise n'est pas sur ce PC.
+        let s = n.session().await.unwrap();
+        let liste = serde_json::json!([
+            {"media_id": 110, "nom": "e-Reader (USA)", "region": "USA"},
+            {"media_id": 999, "nom": "Card e-Reader (Japan)", "region": "Japan"}]);
+        std::fs::write(s.dossier.join(crate::ereader::FICHIER_CARTOUCHES), liste.to_string()).unwrap();
+        let (cartouche, l) = n.preparer_carte(&j, mgba, None).await.unwrap();
+        assert!(cartouche.ends_with("e-Reader (USA).gba"), "{cartouche:?}");
+        let b1 = bandes.join("200").join("Carte (Strip 1).raw");
+        let b2 = bandes.join("200").join("Carte (Strip 2).raw");
+        assert_eq!(l, [b1.clone(), b2.clone()]);
+        assert_eq!(std::fs::read(&b1).unwrap(), b"dotcode");
+        // La ligne complète : bandes AVANT la cartouche, chacune un argument.
+        let mut lanceur = lanceur_emulateur(mgba, "-f", &cartouche).unwrap();
+        crate::ereader::inserer_bandes(&mut lanceur.arguments, &cartouche, &l);
+        let attendu: Vec<String> = ["-f".into(), "--ecard".into(), b1.display().to_string(), "--ecard".into(), b2.display().to_string(), cartouche.display().to_string()].to_vec();
+        assert_eq!(lanceur.arguments, attendu);
+        // La cartouche seulement TÉLÉCHARGÉE (une ROM n'a rien à installer) : son fichier reçu sert.
+        n.registre().changer_installation(110, None).unwrap();
+        let (sans_installation, _) = n.preparer_carte(&j, mgba, None).await.unwrap();
+        assert!(sans_installation.ends_with("e-Reader (USA).gba"));
+        // Encore en route : dit, jamais proposée au téléchargement.
+        n.registre().changer_etat(110, Etat::EnCours, None).unwrap();
+        assert!(matches!(n.preparer_carte(&j, mgba, None).await, Err(Erreur::Prevenir(_))));
+        n.registre().changer_etat(110, Etat::Telecharge, None).unwrap();
+        // La carte japonaise : sa cartouche manque, l'interface la propose (son numéro).
+        match n.preparer_carte(&j, mgba, Some(201)).await {
+            Err(Erreur::CartoucheAbsente { cartouche, .. }) => assert_eq!(cartouche, 999),
+            r => panic!("{r:?}"),
+        }
+        assert!(matches!(n.preparer_carte(&j, mgba, Some(555)).await, Err(Erreur::Introuvable(_))));
+        // Retirer une carte : ses bandes partent avec elle, et rien d'autre.
+        std::fs::create_dir_all(bandes.join("201")).unwrap();
+        std::fs::write(bandes.join("201").join("Kado (Strip 1).raw"), b"x").unwrap();
+        n.retirer_carte(110, 201).await.unwrap();
+        assert!(!bandes.join("201").exists() && b1.is_file(), "seulement les bandes de la carte retirée");
+        // Une carte incomplète (téléchargement en cours) : refusée.
+        std::fs::write(Path::new(&j.dossier).join("Carte (USA).7z"), b"tronque").unwrap();
+        std::fs::remove_dir_all(bandes.join("200")).unwrap();
+        assert!(matches!(n.preparer_carte(&j, mgba, None).await, Err(Erreur::Refus(_))));
+        // Les bandes partent avec le jeu.
+        std::fs::create_dir_all(bandes.join("200")).unwrap();
+        n.retirer_medias(&j).unwrap();
+        assert!(!bandes.exists());
+        assert!(Path::new(&j.dossier).join("Carte (USA).7z").is_file(), "jamais la carte elle-même");
     }
 
     #[tokio::test]
@@ -1315,7 +1529,7 @@ mod tests {
         n.installer(110, true).await.unwrap();
         let c = n.candidats_lancement(110).await.unwrap();
         n.choisir_lanceur(110, c[0].lanceur.clone()).await.unwrap();
-        let (pid, dossiers, carte) = n.jouer(110, None, None).await.unwrap();
+        let (pid, dossiers, carte) = n.jouer(110, None, None, None).await.unwrap();
         assert!(!carte, "en simulé, aucune carte n'est cédée");
         let fin = n.suivre_partie(110, pid, dossiers).await.unwrap();
         assert!(fin.secondes <= 30);

@@ -1210,6 +1210,7 @@ pub async fn jeu_jouer(
     plein_ecran: Option<String>,
     clavier: Option<std::collections::BTreeMap<String, String>>,
     repeter_touches: Option<bool>,
+    carte: Option<i64>,
 ) -> Resultat<()> {
     let jeu = noyau.registre().jeu(id)?;
     // Un jeu d'une boutique : lancé par elle, jamais par un émulateur (même si un émulateur est réglé pour « Windows »).
@@ -1246,7 +1247,7 @@ pub async fn jeu_jouer(
     crate::figer::degeler();
     // « Occupé » du lancement jusqu'à la fin du suivi de la partie (deux tâches) : jamais rattaché entre les deux.
     noyau.marquer_occupe(id);
-    let (pid, dossiers, carte_cedee) = match noyau.jouer(id, emulateur, version.as_deref()).await {
+    let (pid, dossiers, carte_cedee) = match noyau.jouer(id, emulateur, version.as_deref(), carte).await {
         Ok(r) => r,
         Err(e) => {
             noyau.liberer(id);

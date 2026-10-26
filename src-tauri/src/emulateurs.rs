@@ -189,6 +189,19 @@ pub const CATALOGUE: &[Fiche] = &[
         portable: Some("portable/"), // vita3k/app/src/app_init.cpp
         dossiers_habituels: &[],
     },
+    // L'émulateur de l'e-Reader (Firehouse 2.99.2 : la cartouche GBA lancée avec `--ecard`) et de la Game Boy.
+    // Relevé dans les sources officielles le 26/10 : `portable.ini` à côté de mGBA.exe = configuration dans son dossier
+    // (src/core/config.c) ; `-C savegamePath=…` change le dossier des parties pour un lancement (commandline.c).
+    Fiche {
+        id: "mgba",
+        nom: "mGBA",
+        alias: &["mgba"],
+        origine: Origine::GitHub { depot: "mgba-emu/mgba", morceaux: &["win64.7z"] },
+        programme: "mgba.exe",
+        ligne: "-f",
+        portable: Some("portable.ini"),
+        dossiers_habituels: &["%PROGRAMFILES%\\mGBA", "%LOCALAPPDATA%\\Programs\\mGBA"],
+    },
 ];
 
 /// La fiche d'un émulateur recommandé par Firehouse (d'après son nom).
@@ -931,6 +944,19 @@ mod tests {
     }
 
     #[test]
+    fn le_programme_de_chaque_emulateur_est_reconnu_quelle_que_soit_sa_casse() {
+        // Toutes les recherches comparent un nom passé en minuscules (`starts_with(f.programme)`) : un programme écrit
+        // avec des majuscules (« mGBA.exe ») ne serait jamais reconnu, ni installé, ni préparé.
+        for f in CATALOGUE {
+            assert_eq!(f.programme, f.programme.to_lowercase(), "{}", f.id);
+        }
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("mGBA.exe"), b"MZ").unwrap();
+        let f = CATALOGUE.iter().find(|f| f.id == "mgba").unwrap();
+        assert!(trouver_programme(d.path(), f).is_some_and(|p| p.ends_with("mGBA.exe")));
+    }
+
+    #[test]
     fn chaque_emulateur_reste_dans_son_dossier() {
         // Relevé dans les sources officielles le 30/09/2026.
         let attendu = [
@@ -940,6 +966,7 @@ mod tests {
             ("dosbox-staging", Some("dosbox-staging.conf")),
             ("retroarch", None), // le paquet .7z est portable de lui-même
             ("ppsspp", None),    // portable tant qu'il n'y a pas d'installed.txt
+            ("mgba", Some("portable.ini")), // src/core/config.c, relevé le 26/10
         ];
         for (id, portable) in attendu {
             assert_eq!(fiche(id).unwrap().portable, portable, "{id}");
@@ -1106,6 +1133,25 @@ mod tests {
             );
             r.unwrap();
         }
+    }
+
+    /// Essai RÉEL (26/10) : le paquet officiel de mGBA (GitHub, ≈ 14 Mo) dans un dossier TEMPORAIRE — un seul fichier
+    /// choisi, décompressé (filtres du 7z de mGBA), programme trouvé, `portable.ini` posé À CÔTÉ de lui. Rien n'est lancé.
+    /// `cargo test essai_paquet_mgba -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_paquet_mgba() {
+        let d = tempfile::tempdir().unwrap();
+        let f = fiche("mgba").unwrap();
+        let p = derniere_version(f).await.unwrap();
+        println!("mGBA {} : {}", p.version, p.url);
+        let paquet = d.path().join("mgba.paquet");
+        let n = telecharger(&p.url, &paquet, &|_, _| {}).await.unwrap();
+        let dossier = d.path().join(f.nom);
+        let programme = installer_paquet(f, &paquet, &dossier).unwrap();
+        println!("{n} octets → {} ({} fichiers)", programme.display(), fichiers_de(&dossier).map(|l| l.len()).unwrap_or(0));
+        assert!(programme.is_file());
+        assert!(programme.parent().unwrap().join("portable.ini").is_file(), "portable.ini à côté du programme");
     }
 
     /// Essai RÉEL : la dernière version officielle de chaque émulateur (aucun téléchargement de paquet).

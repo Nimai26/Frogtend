@@ -3,6 +3,19 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Lire une carte e-Reader (0.109.0)
+- [ ] **⚙ Options ▸ Émulateurs** : pour « e-Reader », choisir **mGBA** (Frogtend propose de l'installer, avec sa
+      taille). Faire de même pour « Game Boy Advance » si tu veux.
+- [ ] Mettre une carte sur le PC (par exemple **Air Hockey-e**), puis **▶ Jouer**. On doit voir la fenêtre « Il manque
+      la cartouche e-Reader » ; **Voir la cartouche** doit montrer « e-Reader (USA) » et sa taille.
+- [ ] Une fois la cartouche arrivée, **▶ Jouer** à nouveau : mGBA s'ouvre en plein écran sur l'e-Reader, et la carte
+      doit être lue (l'e-Reader demande de « scanner » : la carte est déjà glissée). Dis-moi ce que tu vois.
+- [ ] Avec deux cartes de **Pokemon-e TCG** : **▶ Jouer** doit demander laquelle lire.
+- [ ] Dans Taodbox, le même parcours à la manette : **la manette marche-t-elle dans mGBA** sans rien régler ?
+- [ ] Pendant la carte, **Pause/Attn** (menu en jeu) : mGBA doit s'arrêter derrière le menu, et « Quitter » le fermer.
+- [ ] Avec un profil qui a un accent (par exemple « Zoé ») : la carte se lit, et la partie de l'e-Reader se retrouve
+      au lancement suivant.
+
 ## Par où commencer (parcours conseillé, 03/10)
 Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est plus bas, dans sa section.
 0. ✅ **Fait le 03/10** : Asura's Wrath décompressé et lancé dans RPCS3 — « ça fonctionne nickel » (Seb).

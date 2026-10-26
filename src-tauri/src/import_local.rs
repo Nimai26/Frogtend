@@ -1190,7 +1190,7 @@ mod tests {
         n.choisir_version(mario, &fr).await.unwrap();
         assert_eq!(n.registre().jeu(mario).unwrap().unwrap().installation.unwrap().fichier_du_jeu.as_deref(), Some("Mario (F).nes"));
         assert!(n.choisir_version(mario, "C:\\ailleurs.nes").await.is_err());
-        assert!(n.jouer(mario, None, Some("C:\\ailleurs.nes")).await.is_err());
+        assert!(n.jouer(mario, None, Some("C:\\ailleurs.nes"), None).await.is_err());
 
         // Zelda a été importé seul ; sa version européenne arrive : l'américaine reste dans la liste.
         ecrire(&roms, "Zelda (E).nes", "rom");
