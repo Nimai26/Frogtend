@@ -568,19 +568,29 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
         // jouer en silence l'utilisateur précédent (eden.rs). Seulement Eden portable et FERMÉ (sinon il écraserait son
         // fichier des utilisateurs) ; autrement, le nom, comme avant.
         "eden" => {
-            let utilisateur = (crate::eden::portable(emulateur) && crate::lancement::processus_du_dossier(emulateur).is_empty())
-                .then(|| crate::eden::utilisateur_du_profil(emulateur, profil_de(p)).ok())
-                .flatten();
-            match utilisateur {
-                Some(u) => {
-                    // Les parties d'avant Frogtend : copiées chez la première personne qui joue (une fois). Un échec ne
-                    // touche à rien (elles restent où elles étaient) et n'empêche pas de jouer.
-                    let _ = crate::eden::reprendre_parties_d_avant(emulateur, profil_de(p), &u);
-                    Ok(vec!["-u".into(), u.index.to_string()])
-                }
-                // Pas portable, ouvert, ou son fichier des utilisateurs illisible : jamais bloqué, le nom comme avant.
-                None => Ok(vec!["-u".into(), profil_de(p).to_string()]),
+            // Pas portable, ou ouvert : le nom, comme avant. Sinon, une erreur (fichier abîmé, 8 utilisateurs) est DITE :
+            // lancer quand même ferait jouer l'utilisateur de quelqu'un d'autre, sur SES parties.
+            if !crate::eden::portable(emulateur) || !crate::lancement::processus_du_dossier(emulateur).is_empty() {
+                return Ok(vec!["-u".into(), profil_de(p).to_string()]);
             }
+            let u = crate::eden::utilisateur_du_profil(emulateur, profil_de(p))?;
+            // Les parties d'avant Frogtend : copiées chez la première personne qui joue. Un échec ne touche à rien
+            // (elles restent où elles étaient) et n'empêche pas de jouer.
+            let _ = crate::eden::reprendre_parties_d_avant(emulateur, &u);
+            Ok(vec!["-u".into(), u.index.to_string()])
+        }
+        // Cemu : le compte Wii U de ce profil (créé s'il manque), passé par `-a` — un compte inconnu ferait jouer le
+        // premier en silence (cemu.rs). Seulement Cemu portable et FERMÉ ; sinon (ou fichier de compte impossible à
+        // écrire), Cemu part comme avant, jamais bloqué.
+        "cemu" => {
+            // Pas portable, ou ouvert : comme avant. Sinon, une erreur (12 comptes, dossier de Cemu absent) est DITE :
+            // lancer sans `-a` ferait jouer le compte de quelqu'un d'autre, sur SES parties.
+            if !crate::cemu::portable(emulateur) || !crate::lancement::processus_du_dossier(emulateur).is_empty() {
+                return Ok(vec![]);
+            }
+            let c = crate::cemu::compte_du_profil(emulateur, profil_de(p))?;
+            let _ = crate::cemu::reprendre_parties_d_avant(emulateur, &c);
+            Ok(vec!["-a".into(), format!("{:08x}", c.id)])
         }
         // RPCS3 : un compte RPCS3 par profil (\`--user-id\`, rpcs3.cpp), donc ses propres parties.
         "rpcs3" => {
@@ -1871,6 +1881,15 @@ mod tests {
         assert_eq!(preparer("eden", &eden, "Léa", &[], &Manette::Auto(None)).unwrap(), vec!["-u", "1"]);
         assert_eq!(preparer("eden", &eden, "Seb", &[], &Manette::Auto(None)).unwrap(), vec!["-u", "2"]);
         assert_eq!(preparer("eden", &eden, "Léa", &[], &Manette::Auto(None)).unwrap(), vec!["-u", "1"]);
+
+        // Cemu : pas portable, rien (comme avant) ; portable, le compte Wii U du profil (créé), par `-a`.
+        let cemu = d.path().join("Cemu");
+        std::fs::create_dir_all(&cemu).unwrap();
+        assert!(preparer("cemu", &cemu, "Léa", &[], &Manette::Auto(None)).unwrap().is_empty());
+        std::fs::create_dir_all(cemu.join("portable")).unwrap();
+        assert_eq!(preparer("cemu", &cemu, "Léa", &[], &Manette::Auto(None)).unwrap(), vec!["-a", "80000001"]);
+        assert_eq!(preparer("cemu", &cemu, "Seb", &[], &Manette::Auto(None)).unwrap(), vec!["-a", "80000002"]);
+        assert_eq!(crate::cemu::compte_existant(&cemu, "Léa"), Some(0x8000_0001));
 
         // Azahar : rien tant qu'il n'est pas portable (il ne bascule jamais dans le dos de la personne) ; portable :
         // NAND et carte SD du profil.

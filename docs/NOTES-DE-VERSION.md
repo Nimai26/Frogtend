@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.113.0 — Chacun ses parties Wii U
+
+- 🎮 Dans Cemu (Wii U), chaque personne a maintenant son propre compte Wii U, créé par Frogtend la première fois
+  qu'elle joue : ses parties sont à elle, et partent dans SA sauvegarde chez Firehouse (avec les données communes de
+  ses jeux, comme sur la vraie console).
+- Les parties Wii U que tu avais avant sont recopiées pour la première personne qui joue (l'originale reste).
+- Sur un nouveau PC, la restauration recrée ton compte Wii U et y remet tes parties, sans jamais écraser une partie
+  différente.
+- (Seulement pour un Cemu installé par Frogtend, dit « portable » ; un Cemu installé à la main reste comme avant.)
+
 ## 0.112.0 — Chacun ses parties Switch
 
 - 🎮 Dans Eden (Switch), chaque personne a maintenant son propre utilisateur Switch, créé par Frogtend la première

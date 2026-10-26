@@ -553,10 +553,10 @@ impl Noyau {
             // dans le compte du profil sur le nouveau PC, quel que soit son numéro.
             // Un émulateur OUVERT peut être en train d'écrire une partie : ses parties de compte sont sautées cette fois
             // (jamais une partie à moitié écrite envoyée), et celles déjà chez Firehouse y restent (gardées).
-            let ouvert = (crate::emulateurs_profils::est_rpcs3(programme) || crate::eden::est_eden(programme))
+            let ouvert = (crate::emulateurs_profils::est_rpcs3(programme) || crate::eden::est_eden(programme) || crate::cemu::est_cemu(programme))
                 && !crate::lancement::processus_du_dossier(dossier).is_empty();
             if ouvert {
-                for sous in [crate::emulateurs_profils::COMPTE_RPCS3, crate::eden::UTILISATEUR_EDEN] {
+                for sous in [crate::emulateurs_profils::COMPTE_RPCS3, crate::eden::UTILISATEUR_EDEN, crate::cemu::COMPTE_CEMU] {
                     gardes_ouverts.push(format!("emulateurs/{nom_emulateur}/{sous}/"));
                 }
             }
@@ -579,6 +579,23 @@ impl Noyau {
             }
             // Eden (portable) : les parties de l'utilisateur Switch de ce profil, lu SANS le créer ; rangées sans son UUID
             // (la restauration les remet dans l'utilisateur du profil sur le nouveau PC).
+            // Cemu (portable) : les parties du compte Wii U de ce profil (lu SANS le créer), jeu par jeu, avec les données
+            // communes de chacun de ses jeux (`user\common`, comme sur la vraie Wii U).
+            if !ouvert && crate::cemu::est_cemu(programme) && crate::cemu::portable(dossier) {
+                if let Some(id) = crate::cemu::compte_existant(dossier, &crate::jeux_pc::nom_de_dossier(&profil.nom)) {
+                    for (jeu, d) in crate::cemu::parties_du_compte(dossier, id) {
+                        let commun = d.parent().map(|u| u.join("common")).unwrap_or_default();
+                        for (sous, src) in [("compte", d), ("common", commun)] {
+                            if !src.is_dir() {
+                                continue;
+                            }
+                            for r in fichiers_de(&src)? {
+                                parties.push(Element { source: src.join(&r), relatif: format!("emulateurs/{nom_emulateur}/{}/{jeu}/{sous}/{r}", crate::cemu::COMPTE_CEMU) });
+                            }
+                        }
+                    }
+                }
+            }
             if !ouvert && crate::eden::est_eden(programme) && crate::eden::portable(dossier) {
                 if let Some(uuid) = crate::eden::utilisateur_existant(dossier, &crate::jeux_pc::nom_de_dossier(&profil.nom)) {
                     for (sorte, d) in crate::eden::dossiers_parties(dossier, &uuid) {
@@ -892,6 +909,37 @@ mod tests {
         assert_eq!(c.configuration["profil"]["nom"], "Seb");
         let rel: Vec<_> = c.parties.iter().map(|e| e.relatif.as_str()).collect();
         assert_eq!(rel, vec!["emulateurs/RetroArch/saves/Super Metroid (USA).srm"]);
+    }
+
+    #[tokio::test]
+    async fn les_parties_wii_u_du_compte_cemu_du_profil_partent_avec_les_donnees_communes_de_ses_jeux() {
+        use crate::coffre::CoffreMemoire;
+        use crate::noyau::Connexion;
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, None).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        let cemu = d.path().join("Emulateurs").join("Cemu");
+        std::fs::create_dir_all(cemu.join("portable")).unwrap();
+        let programme = cemu.join("Cemu.exe").to_string_lossy().to_string();
+        assert!(n.contenu_sauvegarde(std::slice::from_ref(&programme)).await.unwrap().parties.is_empty());
+        let seb = crate::cemu::compte_du_profil(&cemu, "Seb").unwrap().id;
+        let lea = crate::cemu::compte_du_profil(&cemu, "Léa").unwrap().id;
+        for (compte, jeu, o) in [(seb, "00050000/101c9500", &b"zelda de Seb"[..]), (lea, "00050000/10145000", b"mario de Lea")] {
+            let p = crate::cemu::dossier_du_jeu(&cemu, jeu, compte);
+            std::fs::create_dir_all(&p).unwrap();
+            std::fs::write(p.join("save.dat"), o).unwrap();
+        }
+        let commun = crate::cemu::dossier_du_jeu(&cemu, "00050000/101c9500", seb).parent().unwrap().join("common");
+        std::fs::create_dir_all(&commun).unwrap();
+        std::fs::write(commun.join("options.dat"), b"commun").unwrap();
+        let c = n.contenu_sauvegarde(&[programme]).await.unwrap();
+        let rel: Vec<_> = c.parties.iter().map(|e| e.relatif.as_str()).collect();
+        assert_eq!(
+            rel,
+            vec!["emulateurs/Cemu/.cemu-compte/00050000/101c9500/compte/save.dat", "emulateurs/Cemu/.cemu-compte/00050000/101c9500/common/options.dat"],
+            "les parties de SEB (et le commun de SES jeux), jamais celles de Léa"
+        );
     }
 
     #[tokio::test]

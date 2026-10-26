@@ -46,6 +46,7 @@ pub mod registre;
 pub mod reconciliation;
 pub mod empreintes;
 pub mod eden;
+pub mod cemu;
 pub mod ereader;
 pub mod patchs_ps3;
 pub mod plein_ecran;

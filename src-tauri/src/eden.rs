@@ -170,7 +170,16 @@ pub fn utilisateur_du_profil(eden: &Path, profil: &str) -> Resultat<UtilisateurD
                     "Eden a déjà 8 utilisateurs (le maximum de la Switch) : Frogtend ne peut pas en créer un pour ce profil. Retire un utilisateur dans Eden (Émulation ▸ Configurer ▸ Profils), puis réessaie.".into(),
                 )
             })?;
-            let ancien = l.get(utilisateur_courant(eden)).or_else(|| l.first()).map(|u| u.uuid);
+            // La reprise : seulement à la TOUTE PREMIÈRE création par Frogtend sur cet Eden (au lancement OU à la
+            // restauration : la marque est posée ici) — jamais depuis l'utilisateur créé pour une autre personne.
+            let marque = eden.join("Profils").join(".reprise-eden");
+            let ancien = if marque.exists() {
+                None
+            } else {
+                std::fs::create_dir_all(eden.join("Profils"))?;
+                std::fs::write(&marque, &nom)?;
+                l.get(utilisateur_courant(eden)).or_else(|| l.first()).map(|u| u.uuid)
+            };
             let abri = abri_libre(&eden.join(".frogtend-sauvegardes"), &format!("{}-profiles.dat", crate::noyau::maintenant()));
             std::fs::create_dir_all(abri.parent().unwrap_or(eden))?;
             std::fs::write(&abri, a)?;
@@ -178,7 +187,12 @@ pub fn utilisateur_du_profil(eden: &Path, profil: &str) -> Resultat<UtilisateurD
             poser(&mut o, libre, &nouveau);
             (o, ancien)
         }
-        None => (ecrire(&[Utilisateur { uuid: uuid_neuf(), nom: "Eden".into() }, nouveau]), None),
+        None => {
+            // Un Eden neuf : rien à reprendre, et plus jamais ensuite.
+            std::fs::create_dir_all(eden.join("Profils"))?;
+            std::fs::write(eden.join("Profils").join(".reprise-eden"), &nom)?;
+            (ecrire(&[Utilisateur { uuid: uuid_neuf(), nom: "Eden".into() }, nouveau]), None)
+        }
     };
     if let Some(p) = f.parent() {
         std::fs::create_dir_all(p)?;
@@ -216,14 +230,10 @@ pub fn copier_dossier_entier(source: &Path, cible: &Path) -> Resultat<usize> {
 }
 
 /// Décision de Seb (26/10) : les parties qu'Eden avait AVANT Frogtend (celles de l'utilisateur qu'il prenait
-/// jusque-là, `u.ancien_courant`) sont COPIÉES dans l'utilisateur de la PREMIÈRE personne qui joue — une seule fois
-/// pour cet Eden (marque `Profils\.reprise-eden`), seulement quand son utilisateur vient d'être CRÉÉ ; jamais
-/// déplacées, jamais par-dessus une partie (un jeu déjà présent est laissé). Rend le nombre de jeux copiés.
-pub fn reprendre_parties_d_avant(eden: &Path, profil: &str, u: &UtilisateurDuProfil) -> Resultat<usize> {
-    let marque = eden.join("Profils").join(".reprise-eden");
-    if marque.exists() || !u.cree {
-        return Ok(0);
-    }
+/// jusque-là, `u.ancien_courant`, rempli seulement à la toute première création par Frogtend sur cet Eden) sont
+/// COPIÉES dans l'utilisateur de la PREMIÈRE personne qui joue ; jamais déplacées, jamais par-dessus une partie (un jeu
+/// déjà présent est laissé). Rend le nombre de jeux copiés.
+pub fn reprendre_parties_d_avant(eden: &Path, u: &UtilisateurDuProfil) -> Resultat<usize> {
     let mut copies = 0;
     if let Some(source) = u.ancien_courant.filter(|s| *s != u.uuid) {
         for ((_, de), (_, vers)) in dossiers_parties(eden, &source).into_iter().zip(dossiers_parties(eden, &u.uuid)) {
@@ -237,8 +247,6 @@ pub fn reprendre_parties_d_avant(eden: &Path, profil: &str, u: &UtilisateurDuPro
             }
         }
     }
-    std::fs::create_dir_all(eden.join("Profils"))?;
-    std::fs::write(&marque, nom_eden(profil))?;
     Ok(copies)
 }
 
@@ -364,19 +372,19 @@ mod tests {
         // Léa existait déjà : rien à reprendre pour elle.
         let ul = utilisateur_du_profil(eden, "Léa").unwrap();
         assert!(!ul.cree);
-        assert_eq!(reprendre_parties_d_avant(eden, "Léa", &ul).unwrap(), 0);
+        assert_eq!(reprendre_parties_d_avant(eden, &ul).unwrap(), 0);
         // Seb est créé : il reçoit les parties de l'utilisateur COURANT d'avant (Léa), jamais celles d'« Eden ».
         let seb = utilisateur_du_profil(eden, "Seb").unwrap();
         assert_eq!(seb.ancien_courant, Some(lea.uuid));
         let save_seb = dossiers_parties(eden, &seb.uuid)[0].1.clone();
-        assert_eq!(reprendre_parties_d_avant(eden, "Seb", &seb).unwrap(), 1);
+        assert_eq!(reprendre_parties_d_avant(eden, &seb).unwrap(), 1);
         assert_eq!(std::fs::read(save_seb.join("0100000000010000").join("save.bin")).unwrap(), b"zelda de Lea");
         assert!(!save_seb.join("0100000000020000").exists());
         assert!(dossiers_parties(eden, &lea.uuid)[0].1.join("0100000000010000").join("save.bin").is_file(), "copiées, jamais déplacées");
         assert!(!PathBuf::from(format!("{}.frogtend", save_seb.join("0100000000010000").display())).exists());
         // Une seule fois par Eden.
         let zoe = utilisateur_du_profil(eden, "Zoé").unwrap();
-        assert_eq!(reprendre_parties_d_avant(eden, "Zoé", &zoe).unwrap(), 0);
+        assert_eq!(reprendre_parties_d_avant(eden, &zoe).unwrap(), 0);
     }
 
     #[test]
@@ -392,8 +400,26 @@ mod tests {
         let cible = dossiers_parties(eden, &seb.uuid)[0].1.join("0100000000020000");
         std::fs::create_dir_all(&cible).unwrap();
         std::fs::write(cible.join("save.bin"), b"mario de Seb").unwrap();
-        assert_eq!(reprendre_parties_d_avant(eden, "Seb", &seb).unwrap(), 0);
+        assert_eq!(reprendre_parties_d_avant(eden, &seb).unwrap(), 0);
         assert_eq!(std::fs::read(cible.join("save.bin")).unwrap(), b"mario de Seb");
+    }
+
+    #[test]
+    fn apres_une_restauration_la_personne_suivante_ne_recoit_jamais_les_parties_d_une_autre() {
+        // PC neuf : Eden n'a jamais tourné ; la restauration crée l'utilisateur de Seb (avec ses parties).
+        let d = tempfile::tempdir().unwrap();
+        let seb = utilisateur_du_profil(d.path(), "Seb").unwrap();
+        assert_eq!(seb.ancien_courant, None);
+        let s = dossiers_parties(d.path(), &seb.uuid)[0].1.join("0100000000010000");
+        std::fs::create_dir_all(&s).unwrap();
+        std::fs::write(s.join("save.bin"), b"zelda de Seb").unwrap();
+        // Léa joue ensuite (Eden a remis Seb comme utilisateur courant) : jamais les parties de Seb.
+        std::fs::create_dir_all(d.path().join("user").join("config")).unwrap();
+        std::fs::write(d.path().join("user").join("config").join("qt-config.ini"), "current_user=1\n").unwrap();
+        let lea = utilisateur_du_profil(d.path(), "Léa").unwrap();
+        assert_eq!(lea.ancien_courant, None);
+        assert_eq!(reprendre_parties_d_avant(d.path(), &lea).unwrap(), 0);
+        assert!(!dossiers_parties(d.path(), &lea.uuid)[0].1.exists());
     }
 
     #[test]

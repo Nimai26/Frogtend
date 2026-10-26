@@ -79,6 +79,17 @@
   · Cemu : un COMPTE Wii U par personne dans le mlc commun, `Cemu.exe -a 8000000X -g <jeu>` (LaunchSettings.cpp ;
     parties `mlc01\usr\save\…\user\<id>` séparées par compte, `common` partagé comme sur la vraie Wii U ; jamais
     `-mlc` par personne : les jeux installés y vivent). À trouver : créer `account.dat` sans l'interface.
+  ✅ FAIT (26/10, pour 0.113.0) — Cemu : cemu.rs (compte Wii U par profil, Mii identique OCTET POUR OCTET à celui
+  du vrai Cemu de Venkman — relevé en lecture seule ; `-a <id>` ; reprise ; sauvegarde/restauration du compte et des
+  données communes de SES jeux). Le Cemu de Seb sur Venkman est NON portable (%APPDATA%) : pas concerné. RESTE : Vita3K.
+  Relecture de l'expert (26/10) suivie — BLOQUANT corrigé (Cemu ET Eden) : la reprise des parties d'avant n'a lieu
+  qu'à la TOUTE PREMIÈRE création de compte/utilisateur par Frogtend (marque posée à la création, au lancement comme
+  à la restauration) : après une restauration, la personne suivante ne reçoit jamais les parties d'une autre. Aussi :
+  mlc_path décodé, mlc réglé mais absent → refus (rien créé ailleurs) ; une erreur qui ferait jouer le compte d'un
+  autre (12 comptes, 8 utilisateurs, fichier abîmé, dossier absent) est DITE au lancement (jamais avalée) ; table
+  profil → compte (`Cemu\Profils\.comptes-frogtend`) : deux noms coupés pareil n'ont jamais le même compte ;
+  compte à MiiData nulle ignoré comme Cemu ; données communes déjà là et différentes : gardées, pas de conflit dit.
+  NON VÉRIFIÉ en vrai : `-a` lu en hexa sans « 0x » (relevé dans la source), account.dat en CRLF accepté.
   · Cemu, DÉTAIL (code source, commit 5f10237, 26/10) : compte = `<mlc>\usr\save\system\act\<id 8 hexa
     minuscules>\account.dat` (texte `clé=valeur`, CRLF ; Account.cpp:194-222) ; valide si id ≥ 0x80000001, MiiName
     (11 car. UTF-16 = 44 hexa) non vide, MiiData (96 octets) non nulle — à fabriquer comme Account.cpp:83-112 (nom à

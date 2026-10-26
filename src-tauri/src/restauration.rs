@@ -203,34 +203,37 @@ pub fn reposer_parties_entieres(de: &Path, vers: &Path) -> Resultat<Reposes> {
 /// à l'identique, rien ; s'il diffère en quoi que ce soit, on n'y touche pas et c'est un conflit (`<etiquette>/<nom>`).
 pub fn reposer_dossiers_entiers(de: &Path, vers: &Path, etiquette: &str) -> Resultat<Reposes> {
     let mut r = Reposes::default();
-    {
-        for e in std::fs::read_dir(de).into_iter().flatten().flatten() {
-            if !e.file_type().is_ok_and(|t| t.is_dir()) {
-                continue;
-            }
-            let nom = e.file_name().to_string_lossy().to_string();
-            let (source, cible) = (e.path(), vers.join(&nom));
-            let fichiers = fichiers_de(&source)?;
-            if !cible.exists() {
-                // Par un dossier provisoire, vérifié puis renommé : jamais une partie à moitié reposée.
-                r.reposes += crate::eden::copier_dossier_entier(&source, &cible)?;
-                continue;
-            }
-            let mut identique = fichiers_de(&cible)? == fichiers;
-            for f in &fichiers {
-                if !identique {
-                    break;
-                }
-                identique = empreinte(&cible.join(f))? == empreinte(&source.join(f))?;
-            }
-            if identique {
-                r.deja_la += fichiers.len();
-            } else {
-                r.conflits.push(format!("{etiquette}/{nom}"));
-            }
+    for e in std::fs::read_dir(de).into_iter().flatten().flatten() {
+        if !e.file_type().is_ok_and(|t| t.is_dir()) {
+            continue;
         }
+        let nom = e.file_name().to_string_lossy().to_string();
+        reposer_un_dossier(&e.path(), &vers.join(&nom), &format!("{etiquette}/{nom}"), &mut r)?;
     }
     Ok(r)
+}
+
+/// Une partie (un dossier) reposée ENTIÈRE si elle n'est pas là (dossier provisoire vérifié puis renommé) ; à
+/// l'identique, rien ; différente en quoi que ce soit : on n'y touche pas, conflit `etiquette`.
+pub fn reposer_un_dossier(source: &Path, cible: &Path, etiquette: &str, r: &mut Reposes) -> Resultat<()> {
+    let fichiers = fichiers_de(source)?;
+    if !cible.exists() {
+        r.reposes += crate::eden::copier_dossier_entier(source, cible)?;
+        return Ok(());
+    }
+    let mut identique = fichiers_de(cible)? == fichiers;
+    for f in &fichiers {
+        if !identique {
+            break;
+        }
+        identique = empreinte(&cible.join(f))? == empreinte(&source.join(f))?;
+    }
+    if identique {
+        r.deja_la += fichiers.len();
+    } else {
+        r.conflits.push(etiquette.to_string());
+    }
+    Ok(())
 }
 
 /// Comme [`reposer`], sans les sous-dossiers `sauf` (de premier niveau) : ils ont leur propre place (le compte RPCS3,
@@ -338,11 +341,47 @@ impl Noyau {
                 &zone.join(&nom),
                 &crate::emulateurs_profils::dossier_du_profil(dossier, &s.profil.nom),
                 false,
-                &[crate::emulateurs_profils::COMPTE_RPCS3, crate::eden::UTILISATEUR_EDEN],
+                &[crate::emulateurs_profils::COMPTE_RPCS3, crate::eden::UTILISATEUR_EDEN, crate::cemu::COMPTE_CEMU],
             )?;
             // Eden : les parties de l'utilisateur Switch du profil reviennent dans SON utilisateur (créé s'il manque,
             // AVANT les parties : sinon Eden les prendrait pour celles d'un utilisateur disparu) — Eden portable et fermé
             // seulement ; sinon elles attendent (gardées chez Firehouse).
+            // Cemu : les parties du compte Wii U du profil reviennent dans SON compte (créé s'il manque), jeu par jeu ;
+            // les données communes du jeu (`user\common`) seulement si elles manquent — Cemu portable et fermé.
+            let attente_cemu = zone.join(&nom).join(crate::cemu::COMPTE_CEMU);
+            if attente_cemu.is_dir()
+                && crate::cemu::est_cemu(&programme)
+                && crate::cemu::portable(dossier)
+                && crate::lancement::processus_du_dossier(dossier).is_empty()
+            {
+                match crate::cemu::compte_du_profil(dossier, &crate::jeux_pc::nom_de_dossier(&s.profil.nom)) {
+                    Ok(c) => {
+                        for haut in std::fs::read_dir(&attente_cemu).into_iter().flatten().flatten() {
+                            for bas in std::fs::read_dir(haut.path()).into_iter().flatten().flatten() {
+                                let jeu = format!("{}/{}", haut.file_name().to_string_lossy(), bas.file_name().to_string_lossy());
+                                let du_compte = crate::cemu::dossier_du_jeu(dossier, &jeu, c.id);
+                                let commun = du_compte.parent().map(|u| u.join("common")).unwrap_or_default();
+                                for (sous, vers) in [("compte", du_compte), ("common", commun)] {
+                                    let de = bas.path().join(sous);
+                                    if !de.is_dir() {
+                                        continue;
+                                    }
+                                    // Les données communes du jeu : déjà là, différentes (une autre personne a joué ici)
+                                    // — gardées telles quelles, sans le compter comme un souci.
+                                    let mut c = Reposes::default();
+                                    reposer_un_dossier(&de, &vers, &format!("Wii U : {jeu} ({sous})"), &mut c)?;
+                                    r.reposes += c.reposes;
+                                    r.deja_la += c.deja_la;
+                                    if sous == "compte" {
+                                        r.conflits.extend(c.conflits);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => r.conflits.push(format!("Wii U : {e}")),
+                }
+            }
             let attente_eden = zone.join(&nom).join(crate::eden::UTILISATEUR_EDEN);
             if attente_eden.is_dir()
                 && crate::eden::est_eden(&programme)
@@ -471,6 +510,37 @@ mod tests {
         // Un jeu tout juste réinstallé : la partie restaurée remplace le fichier du jeu neuf.
         assert_eq!(reposer(&de, &vers, true).unwrap().reposes, 1);
         assert_eq!(std::fs::read(vers.join("saves/b.srm")).unwrap(), b"B restauree");
+    }
+
+    #[tokio::test]
+    async fn les_parties_wii_u_reviennent_dans_le_compte_cemu_du_profil() {
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(crate::coffre::CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, None).unwrap().id;
+        n.ouvrir(&id, None, &crate::noyau::Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        let zone = d.path().join("app").join("restauration").join(&id).join("parties").join("emulateurs").join("Cemu");
+        for (r, o) in [(".cemu-compte/00050000/101c9500/compte/save.dat", &b"zelda"[..]), (".cemu-compte/00050000/101c9500/common/options.dat", b"commun")] {
+            std::fs::create_dir_all(zone.join(r).parent().unwrap()).unwrap();
+            std::fs::write(zone.join(r), o).unwrap();
+        }
+        let cemu = d.path().join("Emulateurs").join("Cemu");
+        std::fs::create_dir_all(cemu.join("portable")).unwrap();
+        // Un compte déjà là (celui de Cemu) : celui de Seb est créé à côté.
+        crate::cemu::compte_du_profil(&cemu, "default").unwrap();
+        let programme: String = cemu.join("Cemu.exe").to_string_lossy().into();
+        let r = n.reposer_parties_emulateurs(std::slice::from_ref(&programme)).await.unwrap();
+        assert_eq!((r.reposes, r.conflits.len()), (2, 0));
+        let seb = crate::cemu::compte_existant(&cemu, "Seb").unwrap();
+        assert_ne!(seb, 0x8000_0001);
+        let p = crate::cemu::dossier_du_jeu(&cemu, "00050000/101c9500", seb);
+        assert_eq!(std::fs::read(p.join("save.dat")).unwrap(), b"zelda");
+        assert_eq!(std::fs::read(p.parent().unwrap().join("common").join("options.dat")).unwrap(), b"commun");
+        assert!(!crate::emulateurs_profils::dossier_du_profil(&cemu, "Seb").join(".cemu-compte").exists());
+        // Il a rejoué depuis : jamais écrasé, conflit dit.
+        std::fs::write(p.join("save.dat"), b"zelda plus loin").unwrap();
+        let r = n.reposer_parties_emulateurs(&[programme]).await.unwrap();
+        assert_eq!(r.conflits, ["Cemu/Wii U : 00050000/101c9500 (compte)"]);
+        assert_eq!(std::fs::read(p.join("save.dat")).unwrap(), b"zelda plus loin");
     }
 
     #[tokio::test]
