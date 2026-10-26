@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.112.0 — Chacun ses parties Switch
+
+- 🎮 Dans Eden (Switch), chaque personne a maintenant son propre utilisateur Switch, créé par Frogtend la première
+  fois qu'elle joue : ses parties sont à elle, et partent dans SA sauvegarde chez Firehouse.
+- Les parties Switch que tu avais avant sont recopiées pour la première personne qui joue (l'originale reste).
+- Sur un nouveau PC, la restauration recrée ton utilisateur Switch et y remet tes parties, sans jamais écraser une
+  partie différente.
+- (Seulement pour un Eden installé par Frogtend, dit « portable » ; un Eden installé à la main reste comme avant.)
+
 ## 0.111.0 — Tes parties PS3 dans ta sauvegarde
 
 - 💾 Ta sauvegarde chez Firehouse garde maintenant tes parties PS3 et tes trophées (ceux de ton compte dans RPCS3).

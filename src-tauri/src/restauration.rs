@@ -181,7 +181,7 @@ pub fn cles_en_attente(zone: &Path, programmes: &[String], anciens: &[(String, S
 /// Copie les fichiers de `de` dans `vers` : un fichier absent est posé, un fichier identique compté, un fichier
 /// DIFFÉRENT gardé tel quel (conflit) — sauf si `ecraser`.
 pub fn reposer(de: &Path, vers: &Path, ecraser: bool) -> Resultat<Reposes> {
-    reposer_sauf(de, vers, ecraser, "")
+    reposer_sauf(de, vers, ecraser, &[])
 }
 
 /// Les parties d'un compte RPCS3 (`savedata\<partie>\…`, `trophy\<jeu>\…`) : chaque partie est un DOSSIER de fichiers
@@ -191,22 +191,29 @@ pub fn reposer(de: &Path, vers: &Path, ecraser: bool) -> Resultat<Reposes> {
 pub fn reposer_parties_entieres(de: &Path, vers: &Path) -> Resultat<Reposes> {
     let mut r = Reposes::default();
     for sorte in crate::emulateurs_profils::PARTIES_RPCS3 {
-        for e in std::fs::read_dir(de.join(sorte)).into_iter().flatten().flatten() {
+        let c = reposer_dossiers_entiers(&de.join(sorte), &vers.join(sorte), sorte)?;
+        r.reposes += c.reposes;
+        r.deja_la += c.deja_la;
+        r.conflits.extend(c.conflits);
+    }
+    Ok(r)
+}
+
+/// Chaque sous-dossier de `de` (une partie : ses fichiers vont ensemble) reposé ENTIER dans `vers` s'il n'y est pas ;
+/// à l'identique, rien ; s'il diffère en quoi que ce soit, on n'y touche pas et c'est un conflit (`<etiquette>/<nom>`).
+pub fn reposer_dossiers_entiers(de: &Path, vers: &Path, etiquette: &str) -> Resultat<Reposes> {
+    let mut r = Reposes::default();
+    {
+        for e in std::fs::read_dir(de).into_iter().flatten().flatten() {
             if !e.file_type().is_ok_and(|t| t.is_dir()) {
                 continue;
             }
             let nom = e.file_name().to_string_lossy().to_string();
-            let (source, cible) = (e.path(), vers.join(sorte).join(&nom));
+            let (source, cible) = (e.path(), vers.join(&nom));
             let fichiers = fichiers_de(&source)?;
             if !cible.exists() {
-                for f in &fichiers {
-                    let c = cible.join(f);
-                    if let Some(p) = c.parent() {
-                        std::fs::create_dir_all(p)?;
-                    }
-                    std::fs::copy(source.join(f), &c)?;
-                }
-                r.reposes += fichiers.len();
+                // Par un dossier provisoire, vérifié puis renommé : jamais une partie à moitié reposée.
+                r.reposes += crate::eden::copier_dossier_entier(&source, &cible)?;
                 continue;
             }
             let mut identique = fichiers_de(&cible)? == fichiers;
@@ -219,21 +226,22 @@ pub fn reposer_parties_entieres(de: &Path, vers: &Path) -> Resultat<Reposes> {
             if identique {
                 r.deja_la += fichiers.len();
             } else {
-                r.conflits.push(format!("{sorte}/{nom}"));
+                r.conflits.push(format!("{etiquette}/{nom}"));
             }
         }
     }
     Ok(r)
 }
 
-/// Comme [`reposer`], sans le sous-dossier `sauf` (de premier niveau) : il a sa propre place (le compte RPCS3).
-pub fn reposer_sauf(de: &Path, vers: &Path, ecraser: bool, sauf: &str) -> Resultat<Reposes> {
+/// Comme [`reposer`], sans les sous-dossiers `sauf` (de premier niveau) : ils ont leur propre place (le compte RPCS3,
+/// l'utilisateur Eden).
+pub fn reposer_sauf(de: &Path, vers: &Path, ecraser: bool, sauf: &[&str]) -> Resultat<Reposes> {
     let mut r = Reposes::default();
     if !de.is_dir() {
         return Ok(r);
     }
-    let a_part = format!("{sauf}/");
-    for f in fichiers_de(de)?.into_iter().filter(|f| sauf.is_empty() || !f.starts_with(&a_part)) {
+    let a_part: Vec<String> = sauf.iter().map(|s| format!("{s}/")).collect();
+    for f in fichiers_de(de)?.into_iter().filter(|f| !a_part.iter().any(|a| f.starts_with(a))) {
         let (source, cible) = (de.join(&f), vers.join(&f));
         if cible.is_file() {
             if empreinte(&cible)? == empreinte(&source)? {
@@ -326,7 +334,36 @@ impl Noyau {
         let mut total = Reposes::default();
         for (programme, nom) in cles_en_attente(&zone, programmes_emulateurs, &anciens) {
             let Some(dossier) = Path::new(&programme).parent() else { continue };
-            let mut r = reposer_sauf(&zone.join(&nom), &crate::emulateurs_profils::dossier_du_profil(dossier, &s.profil.nom), false, crate::emulateurs_profils::COMPTE_RPCS3)?;
+            let mut r = reposer_sauf(
+                &zone.join(&nom),
+                &crate::emulateurs_profils::dossier_du_profil(dossier, &s.profil.nom),
+                false,
+                &[crate::emulateurs_profils::COMPTE_RPCS3, crate::eden::UTILISATEUR_EDEN],
+            )?;
+            // Eden : les parties de l'utilisateur Switch du profil reviennent dans SON utilisateur (créé s'il manque,
+            // AVANT les parties : sinon Eden les prendrait pour celles d'un utilisateur disparu) — Eden portable et fermé
+            // seulement ; sinon elles attendent (gardées chez Firehouse).
+            let attente_eden = zone.join(&nom).join(crate::eden::UTILISATEUR_EDEN);
+            if attente_eden.is_dir()
+                && crate::eden::est_eden(&programme)
+                && crate::eden::portable(dossier)
+                && crate::lancement::processus_du_dossier(dossier).is_empty()
+            {
+                // Un échec (8 utilisateurs, fichier abîmé) est DIT et n'arrête pas les autres émulateurs ; les parties
+                // attendent (gardées chez Firehouse).
+                match crate::eden::utilisateur_du_profil(dossier, &crate::jeux_pc::nom_de_dossier(&s.profil.nom)) {
+                    Ok(u) => {
+                        for (sorte, vers) in crate::eden::dossiers_parties(dossier, &u.uuid) {
+                            let etiquette = if sorte == "save" { "Switch" } else { "Switch (compte)" };
+                            let c = reposer_dossiers_entiers(&attente_eden.join(sorte), &vers, etiquette)?;
+                            r.reposes += c.reposes;
+                            r.deja_la += c.deja_la;
+                            r.conflits.extend(c.conflits);
+                        }
+                    }
+                    Err(e) => r.conflits.push(format!("Switch : {e}")),
+                }
+            }
             // RPCS3 : les parties du compte RPCS3 du profil reviennent dans SON compte sur ce PC (recréé si besoin, son
             // numéro peut différer de l'ancien PC) ; jamais par-dessus une partie différente.
             let compte = zone.join(&nom).join(crate::emulateurs_profils::COMPTE_RPCS3);
@@ -434,6 +471,37 @@ mod tests {
         // Un jeu tout juste réinstallé : la partie restaurée remplace le fichier du jeu neuf.
         assert_eq!(reposer(&de, &vers, true).unwrap().reposes, 1);
         assert_eq!(std::fs::read(vers.join("saves/b.srm")).unwrap(), b"B restauree");
+    }
+
+    #[tokio::test]
+    async fn les_parties_switch_reviennent_dans_l_utilisateur_eden_du_profil() {
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(crate::coffre::CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, None).unwrap().id;
+        n.ouvrir(&id, None, &crate::noyau::Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        let zone = d.path().join("app").join("restauration").join(&id).join("parties").join("emulateurs").join("Eden");
+        let r = ".eden-utilisateur/save/0100000000010000/save.bin";
+        std::fs::create_dir_all(zone.join(r).parent().unwrap()).unwrap();
+        std::fs::write(zone.join(r), b"zelda").unwrap();
+        let eden = d.path().join("Emulateurs").join("Eden");
+        let programme: String = eden.join("eden.exe").to_string_lossy().into();
+        // Eden pas portable : rien n'est écrit chez lui, les parties attendent.
+        std::fs::create_dir_all(&eden).unwrap();
+        assert_eq!(n.reposer_parties_emulateurs(std::slice::from_ref(&programme)).await.unwrap().reposes, 0);
+        assert!(!crate::eden::fichier_profils(&eden).exists());
+        // Portable : l'utilisateur de Seb est créé, puis ses parties reposées chez lui (jamais dans `Profils`).
+        std::fs::create_dir_all(eden.join("user")).unwrap();
+        let rep = n.reposer_parties_emulateurs(std::slice::from_ref(&programme)).await.unwrap();
+        assert_eq!((rep.reposes, rep.conflits.len()), (1, 0));
+        let seb = crate::eden::utilisateur_existant(&eden, "Seb").unwrap();
+        let save = crate::eden::dossiers_parties(&eden, &seb)[0].1.join("0100000000010000").join("save.bin");
+        assert_eq!(std::fs::read(&save).unwrap(), b"zelda");
+        assert!(!crate::emulateurs_profils::dossier_du_profil(&eden, "Seb").join(".eden-utilisateur").exists());
+        // Il a rejoué depuis : jamais écrasé, conflit dit.
+        std::fs::write(&save, b"zelda plus loin").unwrap();
+        let rep = n.reposer_parties_emulateurs(&[programme]).await.unwrap();
+        assert_eq!(rep.conflits, ["Eden/Switch/0100000000010000"]);
+        assert_eq!(std::fs::read(&save).unwrap(), b"zelda plus loin");
     }
 
     #[tokio::test]

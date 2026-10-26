@@ -541,6 +541,7 @@ impl Noyau {
 
         // Les parties du profil dans chaque émulateur.
         let mut vus = std::collections::BTreeSet::new();
+        let mut gardes_ouverts: Vec<String> = Vec::new();
         for programme in programmes_emulateurs {
             let Some(dossier) = Path::new(programme).parent() else { continue };
             if !vus.insert(dossier.to_path_buf()) {
@@ -550,7 +551,16 @@ impl Noyau {
             // RPCS3 : les parties et les trophées du compte RPCS3 de ce profil (`dev_hdd0\home\<compte>`), lus SANS créer
             // le compte ; jamais `exdata` (les licences). Rangés sans le numéro du compte : la restauration les remet
             // dans le compte du profil sur le nouveau PC, quel que soit son numéro.
-            if crate::emulateurs_profils::est_rpcs3(programme) {
+            // Un émulateur OUVERT peut être en train d'écrire une partie : ses parties de compte sont sautées cette fois
+            // (jamais une partie à moitié écrite envoyée), et celles déjà chez Firehouse y restent (gardées).
+            let ouvert = (crate::emulateurs_profils::est_rpcs3(programme) || crate::eden::est_eden(programme))
+                && !crate::lancement::processus_du_dossier(dossier).is_empty();
+            if ouvert {
+                for sous in [crate::emulateurs_profils::COMPTE_RPCS3, crate::eden::UTILISATEUR_EDEN] {
+                    gardes_ouverts.push(format!("emulateurs/{nom_emulateur}/{sous}/"));
+                }
+            }
+            if !ouvert && crate::emulateurs_profils::est_rpcs3(programme) {
                 if let Some(compte) = crate::emulateurs_profils::compte_rpcs3_existant(dossier, &crate::jeux_pc::nom_de_dossier(&profil.nom)) {
                     let home = dossier.join("dev_hdd0").join("home").join(compte);
                     for sous in crate::emulateurs_profils::PARTIES_RPCS3 {
@@ -563,6 +573,20 @@ impl Noyau {
                                 source: d.join(&r),
                                 relatif: format!("emulateurs/{nom_emulateur}/{}/{sous}/{r}", crate::emulateurs_profils::COMPTE_RPCS3),
                             });
+                        }
+                    }
+                }
+            }
+            // Eden (portable) : les parties de l'utilisateur Switch de ce profil, lu SANS le créer ; rangées sans son UUID
+            // (la restauration les remet dans l'utilisateur du profil sur le nouveau PC).
+            if !ouvert && crate::eden::est_eden(programme) && crate::eden::portable(dossier) {
+                if let Some(uuid) = crate::eden::utilisateur_existant(dossier, &crate::jeux_pc::nom_de_dossier(&profil.nom)) {
+                    for (sorte, d) in crate::eden::dossiers_parties(dossier, &uuid) {
+                        if !d.is_dir() {
+                            continue;
+                        }
+                        for r in fichiers_de(&d)? {
+                            parties.push(Element { source: d.join(&r), relatif: format!("emulateurs/{nom_emulateur}/{}/{sorte}/{r}", crate::eden::UTILISATEUR_EDEN) });
                         }
                     }
                 }
@@ -585,6 +609,7 @@ impl Noyau {
         // installé) n'est pas sur le PC mais n'est pas perdu : protégé chez Firehouse, jamais retiré de la sauvegarde.
         let attente = self.dossier.join("restauration").join(&profil.id);
         let mut gardes: Vec<String> = gardes.into_iter().map(|id| format!("jeux/{id}/")).collect();
+        gardes.extend(gardes_ouverts);
         for sorte in ["jeux", "emulateurs"] {
             for e in std::fs::read_dir(attente.join("parties").join(sorte)).into_iter().flatten().flatten() {
                 if e.file_type().is_ok_and(|t| t.is_dir()) {
@@ -867,6 +892,33 @@ mod tests {
         assert_eq!(c.configuration["profil"]["nom"], "Seb");
         let rel: Vec<_> = c.parties.iter().map(|e| e.relatif.as_str()).collect();
         assert_eq!(rel, vec!["emulateurs/RetroArch/saves/Super Metroid (USA).srm"]);
+    }
+
+    #[tokio::test]
+    async fn les_parties_switch_de_l_utilisateur_eden_du_profil_partent() {
+        use crate::coffre::CoffreMemoire;
+        use crate::noyau::Connexion;
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, None).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        let eden = d.path().join("Emulateurs").join("Eden");
+        std::fs::create_dir_all(eden.join("user")).unwrap();
+        let programme = eden.join("eden.exe").to_string_lossy().to_string();
+        // Pas d'utilisateur pour Seb : rien, et rien de créé.
+        assert!(n.contenu_sauvegarde(std::slice::from_ref(&programme)).await.unwrap().parties.is_empty());
+        assert!(!crate::eden::fichier_profils(&eden).exists());
+        let seb = crate::eden::utilisateur_du_profil(&eden, "Seb").unwrap().uuid;
+        let lea = crate::eden::utilisateur_du_profil(&eden, "Léa").unwrap().uuid;
+        for (u, o) in [(&seb, &b"zelda de Seb"[..]), (&lea, b"zelda de Lea")] {
+            let s = crate::eden::dossiers_parties(&eden, u)[0].1.join("0100000000010000");
+            std::fs::create_dir_all(&s).unwrap();
+            std::fs::write(s.join("save.bin"), o).unwrap();
+        }
+        let c = n.contenu_sauvegarde(&[programme]).await.unwrap();
+        let rel: Vec<_> = c.parties.iter().map(|e| e.relatif.as_str()).collect();
+        assert_eq!(rel, vec!["emulateurs/Eden/.eden-utilisateur/save/0100000000010000/save.bin"]);
+        assert_eq!(std::fs::read(&c.parties[0].source).unwrap(), b"zelda de Seb", "jamais les parties de Léa");
     }
 
     #[tokio::test]

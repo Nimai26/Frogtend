@@ -564,7 +564,24 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
         }
         // Eden (Switch) : l'utilisateur Switch qui porte le nom du profil (`-u <nom>`, core/launch_params.cpp) ; à
         // créer une fois dans Eden. Absent : Eden garde son utilisateur courant.
-        "eden" => Ok(vec!["-u".into(), profil_de(p).to_string()]),
+        // Eden : l'utilisateur Switch de ce profil (créé s'il manque), passé par son INDEX — `-u <nom>` inconnu ferait
+        // jouer en silence l'utilisateur précédent (eden.rs). Seulement Eden portable et FERMÉ (sinon il écraserait son
+        // fichier des utilisateurs) ; autrement, le nom, comme avant.
+        "eden" => {
+            let utilisateur = (crate::eden::portable(emulateur) && crate::lancement::processus_du_dossier(emulateur).is_empty())
+                .then(|| crate::eden::utilisateur_du_profil(emulateur, profil_de(p)).ok())
+                .flatten();
+            match utilisateur {
+                Some(u) => {
+                    // Les parties d'avant Frogtend : copiées chez la première personne qui joue (une fois). Un échec ne
+                    // touche à rien (elles restent où elles étaient) et n'empêche pas de jouer.
+                    let _ = crate::eden::reprendre_parties_d_avant(emulateur, profil_de(p), &u);
+                    Ok(vec!["-u".into(), u.index.to_string()])
+                }
+                // Pas portable, ouvert, ou son fichier des utilisateurs illisible : jamais bloqué, le nom comme avant.
+                None => Ok(vec!["-u".into(), profil_de(p).to_string()]),
+            }
+        }
         // RPCS3 : un compte RPCS3 par profil (\`--user-id\`, rpcs3.cpp), donc ses propres parties.
         "rpcs3" => {
             // La manette du joueur 1, à CHAQUE partie (oubli de la 0.44.0, vu par Seb le 04/10 : rien n'était branché).
@@ -1845,8 +1862,15 @@ mod tests {
         assert_eq!(std::fs::read(racine.join("Profils").join("Seb").join("xbox_hdd.qcow2")).unwrap(), b"disque");
         assert_eq!(std::fs::read(&disque).unwrap(), b"disque", "le disque d'origine n'est pas touché");
 
-        // Eden : l'utilisateur Switch du nom du profil.
+        // Eden : l'utilisateur Switch du nom du profil (pas portable : son nom, rien n'est écrit chez lui).
         assert_eq!(preparer("eden", racine, "Léa", &[], &Manette::Auto(None)).unwrap(), vec!["-u", "Léa"]);
+        assert!(!crate::eden::fichier_profils(racine).exists());
+        // Portable : l'utilisateur de Léa est créé (après « Eden »), puis passé par son index ; retrouvé ensuite.
+        let eden = d.path().join("Eden");
+        std::fs::create_dir_all(eden.join("user")).unwrap();
+        assert_eq!(preparer("eden", &eden, "Léa", &[], &Manette::Auto(None)).unwrap(), vec!["-u", "1"]);
+        assert_eq!(preparer("eden", &eden, "Seb", &[], &Manette::Auto(None)).unwrap(), vec!["-u", "2"]);
+        assert_eq!(preparer("eden", &eden, "Léa", &[], &Manette::Auto(None)).unwrap(), vec!["-u", "1"]);
 
         // Azahar : rien tant qu'il n'est pas portable (il ne bascule jamais dans le dos de la personne) ; portable :
         // NAND et carte SD du profil.

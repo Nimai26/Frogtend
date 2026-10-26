@@ -79,9 +79,28 @@
   · Cemu : un COMPTE Wii U par personne dans le mlc commun, `Cemu.exe -a 8000000X -g <jeu>` (LaunchSettings.cpp ;
     parties `mlc01\usr\save\…\user\<id>` séparées par compte, `common` partagé comme sur la vraie Wii U ; jamais
     `-mlc` par personne : les jeux installés y vivent). À trouver : créer `account.dat` sans l'interface.
+  · Cemu, DÉTAIL (code source, commit 5f10237, 26/10) : compte = `<mlc>\usr\save\system\act\<id 8 hexa
+    minuscules>\account.dat` (texte `clé=valeur`, CRLF ; Account.cpp:194-222) ; valide si id ≥ 0x80000001, MiiName
+    (11 car. UTF-16 = 44 hexa) non vide, MiiData (96 octets) non nulle — à fabriquer comme Account.cpp:83-112 (nom à
+    0x1A + CRC16) ; nouvel id = max(PersistentIdHead de `persisid.dat` + 1, plus grand dossier + 1) ; 12 comptes max ;
+    ⚠ `-a <id>` inconnu = PREMIER compte en silence (vérifiable dans log.txt « using account <nom> ») ; `-a` n'est
+    jamais écrit dans settings.xml ; mlc : `--mlc`, sinon `mlc_path` de settings.xml, sinon `portable\mlc01` ; parties
+    `<mlc>\usr\save\<haut>\<bas>\user\<id>\` (+ `user\common`, commun à tous).
   · Vita3K : un UTILISATEUR par personne (`ux0\user\<id>`), config.yml par profil (`user-id`,
     `user-auto-connect`) et `Vita3K.exe -c <profil>\config.yml -w -r <titre>` ; pas d'option utilisateur en ligne de
     commande ; `pref-path` écrasé en portable. Risque : réglages communs copiés par profil.
+  ✅ FAIT (26/10, pour 0.112.0) — Eden : eden.rs (profiles.dat lu/écrit au format relevé, utilisateur créé Eden
+  fermé, `-u <index>`, reprise des parties d'avant chez la 1re personne, sauvegarde/restauration sous
+  `.eden-utilisateur`). Azahar portable était DÉJÀ séparé (NAND et SD du profil dans qt-config.ini) : seul un Azahar
+  installé à la main reste commun. RESTE : Cemu, Vita3K.
+  Relecture de l'expert (26/10) suivie — BLOQUANT corrigé : un profiles.dat illisible ou d'une autre taille n'est
+  JAMAIS refait (refus, rien d'écrit ; créé seulement s'il est absent) ; seule l'entrée ajoutée change (avatar et date
+  des autres intacts, place libre du milieu utilisée) ; reprise depuis l'utilisateur COURANT d'avant la création
+  (liste complète), seulement si l'utilisateur du profil vient d'être créé ; copies par dossier provisoire vérifié
+  puis renommé (reprise ET restauration, RPCS3 compris) ; RPCS3/Eden OUVERT pendant une sauvegarde : leurs parties de
+  compte sautées et GARDÉES chez Firehouse ; abri jamais écrasé ; un échec ne bloque ni le jeu (`-u <nom>`) ni la
+  restauration. NON TESTÉ automatiquement : la sauvegarde avec l'émulateur ouvert (processus réel). LACUNE notée :
+  les parties « Device » de la Switch (UUID nul, communes à tous) ne partent pas dans la sauvegarde.
   · Eden : un UTILISATEUR Switch par personne, `eden.exe -u <index> -g <jeu>` (launch_params.cpp) ; parties séparées
     par UUID dans le même nand (les parties « Device » restent communes, comme la vraie Switch). À trouver : créer les
     profils sans l'interface (`profiles.dat`), et si `current_user` est réécrit dans la config à la fermeture.

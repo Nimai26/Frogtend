@@ -3,6 +3,12 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Chacun ses parties Switch (0.112.0)
+- [ ] Jouer à un jeu Switch avec ton profil : dans Eden (Émulation ▸ Configurer ▸ Profils), un utilisateur à ton nom
+      doit exister, et ta partie d'avant doit être là (recopiée).
+- [ ] Un autre profil de la famille lance le même jeu : il doit commencer une partie neuve, et la tienne rester intacte.
+- [ ] **💾 Sauvegarder** : ta sauvegarde compte tes parties Switch.
+
 ## Les parties PS3 dans la sauvegarde (0.111.0)
 - [ ] Après avoir joué à un jeu PS3, **💾 Sauvegarder** : la sauvegarde chez Firehouse doit compter des fichiers de
       plus (tes parties PS3).
