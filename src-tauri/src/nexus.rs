@@ -187,6 +187,8 @@ pub async fn verifier_md5(base: &str, l: &LienNxm, md5: &str, cle: &str) -> Resu
 /// Le client de TÉLÉCHARGEMENT : sans clé, https seulement (redirections comprises), quelques redirections au plus.
 pub fn client_telechargement() -> Resultat<reqwest::Client> {
     reqwest::Client::builder()
+        // Un FICHIER téléchargé : jamais décompressé au passage (taille, reprise et empreinte restent exactes).
+        .no_gzip()
         .connect_timeout(std::time::Duration::from_secs(15))
         .read_timeout(std::time::Duration::from_secs(90))
         .user_agent(concat!("Frogtend/", env!("CARGO_PKG_VERSION")))

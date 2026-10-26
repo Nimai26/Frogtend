@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.108.0 — Une synchronisation bien plus rapide
+
+- ⚡ Firehouse a corrigé sa lenteur (contrat 1.30) : la synchronisation complète de ta ludothèque prend maintenant
+  environ 16 secondes au lieu de 10 minutes, et celle de tous les jours environ 1 seconde (mesuré depuis Venkman).
+- Frogtend demande en plus les listes compressées (plus légères, utile chez une connexion modeste). Les fichiers de
+  jeux, eux, ne le sont jamais : leur reprise et leur vérification restent exactes.
+
 ## 0.107.0 — Avant la bêta (4) : les cartes e-Reader
 
 - 🃏 Un jeu e-Reader (Pokemon-e TCG a 661 cartes) garde plusieurs cartes sur ton PC : sur la fiche du jeu, chaque

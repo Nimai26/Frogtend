@@ -30,6 +30,14 @@
   ✅ Seb 26/10 : « il faudra retourner sur D: qui est beaucoup plus rapide car c'est un SSD » (il a libéré de la place
   sur D:) → compilation remise dans `src-tauri/target` (construction sur E: arrêtée, trop lente). Le dossier
   `E:\Frogtend-compilation` (cache seulement) reste à effacer par Seb : la suppression a été bloquée par une sécurité.
+  ⚠ DÉCOUVERT (avis de l'expert lancement, 26/10, P3 e-Reader) : un émulateur HORS du catalogue de Frogtend (mGBA
+  aujourd'hui) écrit ses parties À CÔTÉ de la ROM ; une ROM n'a pas de manifeste → ni l'abri ni la sauvegarde
+  Firehouse ne les voient. AVANT de lancer une carte e-Reader : faire entrer mGBA au catalogue (source officielle,
+  dossier de parties PAR PERSONNE, manette XInput, plein écran Taodbox, menu en jeu). Puis P3 : « Jouer » → choisir la
+  carte ; .raw extraits dans `<jeu>/Frogtend/cartes/<version>/` (`extraire_dans`, .raw à plat seulement, tri
+  NUMÉRIQUE des bandes) ; cartouche par `region` de la carte dans `cartouches` (absente : proposer son ajout) ;
+  `cartouches` gardée par profil pour le hors-ligne ; refus si l'émulateur réglé n'est pas mGBA ; retrait des .raw
+  avec la carte et le jeu.
   ✅ A9 MESURÉ (25/10, lecture seule, dossier temporaire) : synchro complète réelle = 27 431 jeux, 55 pages, 3 318
   fusions, 614 s ; synchro sans changement 21 s. Cause : CHAQUE requête Firehouse ≈ 10 s (même `/plateformes`), le
   traitement de Frogtend est négligeable → besoin 34 envoyé à Firehouse.
@@ -791,6 +799,12 @@ d'abord :
   confirmée : à retransmettre par Seb si pas de réponse.
 
 ## ✅ Livré (version — ce qui a été vérifié)
+
+- **0.108.0** (26/10) — Contrat 1.30 (besoin 34 servi) : mesure réelle depuis Venkman — synchro complète 16,4 s
+  (avant 614 s), sans changement 1,1 s (avant 21 s), une page 0,1 à 0,3 s ; envoyée à Firehouse. reqwest `gzip` :
+  les réponses JSON arrivent compressées ; `no_gzip()` sur TOUS les clients qui téléchargent des fichiers (flux
+  Firehouse, émulateurs, mods GitHub, Nexus) ; test (liste compressée décompressée, fichier jamais demandé
+  compressé). Vérifié : tests.
 
 - **0.107.0** (26/10) — Lot « Avant-bêta », A5 (stockage des cartes e-Reader, option B de l'expert contrat ; sa
   relecture : 1 BLOQUANT corrigé — « Annuler » une carte ajoutée effaçait le jeu entier — et ses IMPORTANTS).

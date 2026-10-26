@@ -226,6 +226,8 @@ pub struct EmulateurInstalle {
 
 fn client() -> Resultat<reqwest::Client> {
     reqwest::Client::builder()
+        // Un FICHIER téléchargé : jamais décompressé au passage (taille, reprise et empreinte restent exactes).
+        .no_gzip()
         .connect_timeout(Duration::from_secs(15))
         .read_timeout(Duration::from_secs(90))
         .user_agent(concat!("Frogtend/", env!("CARGO_PKG_VERSION")))

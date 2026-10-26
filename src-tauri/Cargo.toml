@@ -1,6 +1,6 @@
 [package]
 name = "frogtend"
-version = "0.107.0"
+version = "0.108.0"
 description = "Frogtend — la ludothèque de la maison, servie par Firehouse"
 authors = ["Nimai"]
 license = "Apache-2.0"
@@ -26,7 +26,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 keyring = { version = "3", features = ["windows-native"] }
 argon2 = "0.5"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "gzip"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 thiserror = "2"
 rand = "0.8"
@@ -73,3 +73,5 @@ httpmock = "0.7"
 tempfile = "3"
 # Relire en vrai TOML ce que Frogtend écrit pour xemu (déjà dans l'arbre des dépendances : rien de plus à télécharger).
 toml = "0.8"
+# Compresser en gzip une réponse simulée (contrat 1.30) : déjà dans l'arbre des dépendances (zip, reqwest).
+flate2 = "1"

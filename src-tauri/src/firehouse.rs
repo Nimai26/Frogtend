@@ -167,7 +167,10 @@ impl Client {
             .user_agent(concat!("Frogtend/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(|_| Erreur::Reseau("Impossible de préparer la connexion.".into()))?;
+        // Les réponses JSON viennent compressées (contrat 1.30, `Accept-Encoding: gzip`, décompressées par reqwest) ;
+        // le flux des FICHIERS jamais (`no_gzip`) : sa taille, sa reprise `Range` et son empreinte restent exactes.
         let http_flux = reqwest::Client::builder()
+            .no_gzip()
             .connect_timeout(Duration::from_secs(15))
             .read_timeout(Duration::from_secs(90))
             .user_agent(concat!("Frogtend/", env!("CARGO_PKG_VERSION")))
@@ -324,6 +327,38 @@ impl Client {
 mod tests {
     use super::*;
     use httpmock::prelude::*;
+
+    #[tokio::test]
+    async fn les_listes_arrivent_compressees_jamais_les_fichiers() {
+        use std::io::Write;
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        gz.write_all(br#"{"ok": true, "plateformes": [{"nom": "SNES", "jeux": 3}]}"#).unwrap();
+        let compresse = gz.finish().unwrap();
+        let s = MockServer::start();
+        // Une liste : demandée compressée, décompressée par le client.
+        let liste = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes").header_exists("accept-encoding");
+            t.status(200).header("content-encoding", "gzip").header("content-type", "application/json").body(&compresse);
+        });
+        // Un fichier : JAMAIS demandé compressé (taille, reprise et empreinte exactes).
+        let fichier = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/fichier/1/2/0").matches(|r| {
+                !r.headers.as_ref().is_some_and(|h| h.iter().any(|(k, v)| k.eq_ignore_ascii_case("accept-encoding") && v.contains("gzip")))
+            });
+            t.status(200).body(b"octets");
+        });
+        let c = Client::nouveau(&s.base_url(), "j").unwrap();
+        let v: serde_json::Value = c.obtenir_json("/plateformes").await.unwrap();
+        assert_eq!(v["plateformes"][0]["nom"], "SNES");
+        liste.assert();
+        let mut f = c.flux("/fichier/1/2/0", 0).await.unwrap();
+        let mut recu = Vec::new();
+        while let Some(m) = Client::morceau(&mut f).await.unwrap() {
+            recu.extend_from_slice(&m);
+        }
+        assert_eq!(recu, b"octets");
+        fichier.assert();
+    }
 
     #[test]
     fn https_partout_http_seulement_a_la_maison() {
