@@ -514,8 +514,10 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
         // Les parties PAR PERSONNE : mGBA les écrit à côté de la ROM d'office (jamais protégées) ; `-C` les envoie dans le
         // dossier du profil pour CE lancement, sans toucher à la configuration de mGBA (relevé le 26/10).
         "mgba" => {
-            let (saves, etats, captures) = (p.join("saves"), p.join("states"), p.join("screenshots"));
-            creer(&[&saves, &etats, &captures])?;
+            // Et ses triches (`cheatsPath` : config.c L440 et directories.c L174 de mGBA 0.10.5, relus le 26/10) : celles
+            // de la personne, posées dans son dossier (`place_triche`).
+            let (saves, etats, captures, triches) = (p.join("saves"), p.join("states"), p.join("screenshots"), p.join("cheats"));
+            creer(&[&saves, &etats, &captures, &triches])?;
             Ok(vec![
                 "-C".into(),
                 format!("savegamePath={}", texte(&saves)),
@@ -523,6 +525,8 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
                 format!("savestatePath={}", texte(&etats)),
                 "-C".into(),
                 format!("screenshotPath={}", texte(&captures)),
+                "-C".into(),
+                format!("cheatsPath={}", texte(&triches)),
             ])
         }
         "ppsspp" => {
@@ -674,7 +678,7 @@ pub fn reprendre_partie_mgba(rom: &Path, emulateur: &Path, profil: &str) -> Resu
 pub fn dossier_donnees(id: &str, emulateur: &Path, profil: &str) -> PathBuf {
     let p = dossier_du_profil(emulateur, profil);
     match id {
-        "retroarch" | "duckstation" | "pcsx2" => p,
+        "retroarch" | "duckstation" | "pcsx2" | "mgba" => p,
         "dolphin" => p.join("User"),
         "ppsspp" => emulateur.join("memstick"),
         _ => emulateur.to_path_buf(),
@@ -690,6 +694,9 @@ pub fn place_triche(id: &str, emulateur: &Path, profil: &str, base: &str, dossie
         return Err(Erreur::Refus("Emplacement de triche douteux : refusé.".into()));
     }
     let racine = if base == "programme" { emulateur.to_path_buf() } else { dossier_donnees(id, emulateur, profil) };
+    // mGBA ne lit les triches que dans le `cheatsPath` que Frogtend lui donne (`<profil>\cheats`) : quel que soit le
+    // conseil, elles vont là — jamais un endroit où il ne regarde pas.
+    let (racine, dossier) = if id == "mgba" { (dossier_du_profil(emulateur, profil), "cheats") } else { (racine, dossier) };
     let mut c = racine.clone();
     for morceau in dossier.split(['/', '\\']).filter(|m| !m.is_empty()) {
         c = c.join(morceau);
@@ -1800,7 +1807,13 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let args = preparer("mgba", d.path(), "Zoé", &[], &Manette::Auto(None)).unwrap();
         let p = dossier_du_profil(d.path(), "Zoé");
-        assert_eq!(args.iter().filter(|a| *a == "-C").count(), 3);
+        assert_eq!(args.iter().filter(|a| *a == "-C").count(), 4);
+        assert!(args.contains(&format!("cheatsPath={}", texte(&p.join("cheats")))), "les triches de la personne");
+        assert_eq!(dossier_donnees("mgba", d.path(), "Zoé"), p, "les triches posées dans son dossier");
+        // Quel que soit le dossier conseillé, les triches vont là où mGBA les lit.
+        for conseil in ["", "Cheats/GBA", "cheats"] {
+            assert_eq!(place_triche("mgba", d.path(), "Zoé", "donnees", conseil, "Jeu.cheats").unwrap(), p.join("cheats").join("Jeu.cheats"));
+        }
         assert!(args.contains(&format!("savegamePath={}", texte(&p.join("saves")))), "{args:?}");
         assert!(args.contains(&format!("savestatePath={}", texte(&p.join("states")))));
         assert!(p.join("saves").is_dir() && p.join("states").is_dir());

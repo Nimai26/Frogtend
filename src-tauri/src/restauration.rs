@@ -417,6 +417,17 @@ impl Noyau {
                             r.deja_la += c.deja_la;
                             r.conflits.extend(c.conflits);
                         }
+                        // Les parties « Device » (communes) : remises si elles manquent ; déjà là et différentes (une
+                        // autre personne a joué ici), gardées telles quelles, sans le compter comme un souci.
+                        let c = reposer_dossiers_entiers(&attente_eden.join("device"), &crate::eden::dossier_device(dossier), "Switch (commun)")?;
+                        r.reposes += c.reposes;
+                        r.deja_la += c.deja_la;
+                        if !c.conflits.is_empty() {
+                            r.conflits.push(format!(
+                                "Switch : {} partie(s) commune(s) déjà présente(s) ici et différente(s), gardée(s) telle(s) quelle(s)",
+                                c.conflits.len()
+                            ));
+                        }
                     }
                     Err(e) => r.conflits.push(format!("Switch : {e}")),
                 }
@@ -596,6 +607,9 @@ mod tests {
         let r = ".eden-utilisateur/save/0100000000010000/save.bin";
         std::fs::create_dir_all(zone.join(r).parent().unwrap()).unwrap();
         std::fs::write(zone.join(r), b"zelda").unwrap();
+        let rd = ".eden-utilisateur/device/0100000000030000/commun.bin";
+        std::fs::create_dir_all(zone.join(rd).parent().unwrap()).unwrap();
+        std::fs::write(zone.join(rd), b"commun").unwrap();
         let eden = d.path().join("Emulateurs").join("Eden");
         let programme: String = eden.join("eden.exe").to_string_lossy().into();
         // Eden pas portable : rien n'est écrit chez lui, les parties attendent.
@@ -605,7 +619,8 @@ mod tests {
         // Portable : l'utilisateur de Seb est créé, puis ses parties reposées chez lui (jamais dans `Profils`).
         std::fs::create_dir_all(eden.join("user")).unwrap();
         let rep = n.reposer_parties_emulateurs(std::slice::from_ref(&programme)).await.unwrap();
-        assert_eq!((rep.reposes, rep.conflits.len()), (1, 0));
+        assert_eq!((rep.reposes, rep.conflits.len()), (2, 0));
+        assert_eq!(std::fs::read(crate::eden::dossier_device(&eden).join("0100000000030000").join("commun.bin")).unwrap(), b"commun");
         let seb = crate::eden::utilisateur_existant(&eden, "Seb").unwrap();
         let save = crate::eden::dossiers_parties(&eden, &seb)[0].1.join("0100000000010000").join("save.bin");
         assert_eq!(std::fs::read(&save).unwrap(), b"zelda");

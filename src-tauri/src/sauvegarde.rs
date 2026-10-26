@@ -631,11 +631,17 @@ impl Noyau {
             }
             if !ouvert && crate::eden::est_eden(programme) && crate::eden::portable(dossier) {
                 if let Some(uuid) = crate::eden::utilisateur_existant(dossier, &crate::jeux_pc::nom_de_dossier(&profil.nom)) {
-                    for (sorte, d) in crate::eden::dossiers_parties(dossier, &uuid) {
+                    // Avec les parties « Device », communes à tous (comme sur la vraie Switch).
+                    let device = [("device", crate::eden::dossier_device(dossier))];
+                    for (sorte, d) in crate::eden::dossiers_parties(dossier, &uuid).into_iter().chain(device) {
                         if !d.is_dir() {
                             continue;
                         }
                         for r in fichiers_de(&d)? {
+                            // Les parties communes : seulement celles des JEUX (jamais une donnée système).
+                            if sorte == "device" && !r.split('/').next().is_some_and(crate::eden::est_un_jeu) {
+                                continue;
+                            }
                             parties.push(Element { source: d.join(&r), relatif: format!("emulateurs/{nom_emulateur}/{}/{sorte}/{r}", crate::eden::UTILISATEUR_EDEN) });
                         }
                     }
@@ -999,9 +1005,15 @@ mod tests {
             std::fs::create_dir_all(&s).unwrap();
             std::fs::write(s.join("save.bin"), o).unwrap();
         }
+        let device = crate::eden::dossier_device(&eden).join("0100000000030000");
+        std::fs::create_dir_all(&device).unwrap();
+        std::fs::write(device.join("commun.bin"), b"commun").unwrap();
         let c = n.contenu_sauvegarde(&[programme]).await.unwrap();
         let rel: Vec<_> = c.parties.iter().map(|e| e.relatif.as_str()).collect();
-        assert_eq!(rel, vec!["emulateurs/Eden/.eden-utilisateur/save/0100000000010000/save.bin"]);
+        assert_eq!(
+            rel,
+            vec!["emulateurs/Eden/.eden-utilisateur/save/0100000000010000/save.bin", "emulateurs/Eden/.eden-utilisateur/device/0100000000030000/commun.bin"]
+        );
         assert_eq!(std::fs::read(&c.parties[0].source).unwrap(), b"zelda de Seb", "jamais les parties de Léa");
     }
 

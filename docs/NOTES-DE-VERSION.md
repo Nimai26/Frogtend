@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.116.0 — Petits restes avant la bêta
+
+- 🎮 mGBA : les triches de chaque personne sont rangées dans son dossier, comme ses parties.
+- 💾 Switch : les parties communes à tous (quelques jeux en ont, comme sur la vraie console) partent aussi dans ta
+  sauvegarde, et reviennent sur un nouveau PC si elles y manquent.
+
 ## 0.115.0 — Vita plus rapide, sauvegardes annoncées
 
 - ⚡ Un jeu PS Vita déjà installé dans Vita3K se lance directement : il n'est plus réinstallé à chaque partie.

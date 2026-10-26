@@ -256,6 +256,18 @@ pub fn utilisateur_existant(eden: &Path, profil: &str) -> Option<[u8; 16]> {
     lire(&std::fs::read(fichier_profils(eden)).ok()?).into_iter().find(|u| u.nom == nom).map(|u| u.uuid)
 }
 
+/// Les parties « Device » (communes à tous les utilisateurs, comme sur la vraie Switch : UUID nul,
+/// savedata_factory.cpp), jeu par jeu.
+pub fn dossier_device(eden: &Path) -> PathBuf {
+    eden.join("user").join("nand").join("user").join("save").join("0000000000000000").join("0".repeat(32))
+}
+
+/// Un dossier de parties d'un JEU Switch (son identifiant : 16 caractères hexadécimaux commençant par « 01 ») — jamais
+/// une donnée système rangée au même endroit.
+pub fn est_un_jeu(nom: &str) -> bool {
+    nom.len() == 16 && nom.starts_with("01") && nom.chars().all(|c| c.is_ascii_hexdigit())
+}
+
 /// Les dossiers des parties d'un utilisateur : (`save` : le NAND, `account` : le nouvel emplacement s'il existe).
 pub fn dossiers_parties(eden: &Path, uuid: &[u8; 16]) -> [(&'static str, PathBuf); 2] {
     let envers: String = uuid.iter().rev().map(|b| format!("{b:02X}")).collect();
@@ -420,6 +432,14 @@ mod tests {
         assert_eq!(lea.ancien_courant, None);
         assert_eq!(reprendre_parties_d_avant(d.path(), &lea).unwrap(), 0);
         assert!(!dossiers_parties(d.path(), &lea.uuid)[0].1.exists());
+    }
+
+    #[test]
+    fn seuls_les_jeux_ont_des_parties_communes() {
+        assert!(est_un_jeu("0100000000010000"));
+        assert!(!est_un_jeu("0000000000000010"), "une donnée système");
+        assert!(!est_un_jeu("01000000000100"));
+        assert!(!est_un_jeu("010000000001000G"));
     }
 
     #[test]

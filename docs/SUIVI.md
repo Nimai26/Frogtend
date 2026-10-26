@@ -110,6 +110,14 @@
   taille d'une sauvegarde annoncée avant l'envoi (réglage `seuilSauvegardeMo`, 200 Mo d'office ; automatique remise à
   plus tard et dite). REPORTÉ après la bêta (rien n'est perdu) : dire quand la reprise des parties d'avant échoue, et
   la retenter pour la bonne personne (Eden, Cemu, Vita3K).
+  ✅ FAIT (26/10, pour 0.116.0) : triches mGBA par personne (`-C cheatsPath`, données = dossier du profil) ;
+  parties Switch « Device » (communes) dans la sauvegarde, remises seulement si elles manquent. REPORTÉ après la
+  bêta : vider la zone d'attente des restaurations (un effacement de parties : à concevoir avec preuve).
+  Relecture de l'expert suivie : `cheatsPath` VÉRIFIÉ dans le code de mGBA 0.10.5 (config.c L440, directories.c L174) ;
+  triches mGBA toujours posées dans `<profil>\cheats` (quel que soit le dossier conseillé) ; parties « Device » :
+  seulement les dossiers de JEUX (16 hexa commençant par 01), une copie différente déjà là est DITE. À savoir : des
+  triches mGBA posées avant 0.116 dans le dossier de mGBA ne sont plus lues (peu probable : mGBA date de 0.109) ; la
+  partie commune est copiée dans la sauvegarde de chaque profil (petit volume).
   · Vita3K : un UTILISATEUR par personne (`ux0\user\<id>`), config.yml par profil (`user-id`,
     `user-auto-connect`) et `Vita3K.exe -c <profil>\config.yml -w -r <titre>` ; pas d'option utilisateur en ligne de
     commande ; `pref-path` écrasé en portable. Risque : réglages communs copiés par profil.
