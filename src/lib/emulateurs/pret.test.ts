@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Conseil } from '$lib/api';
-import { avecConseil, changementDeConseil, memeEmulateur, biosADire, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, messagePret, micrologicielServi, palier, poidsBios, versionAutre, versionDansNote, type Possible } from './pret';
+import { avecConseil, changementDeConseil, memeEmulateur, biosADire, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, messagePret, micrologicielServi, firmwareSwitchServi, questionFirmwareSwitch, palier, poidsBios, versionAutre, versionDansNote, type Possible } from './pret';
 
 const rec = (nom: string, recommande: boolean, bios = '') => ({ nom, site: '', recommande, ligne_de_commande: '', extensions: [], bios });
 
@@ -140,6 +140,22 @@ describe('le conseil de la maison (contrat 1.8)', () => {
     const m = messagePret({ plateforme: 'Sony Playstation 3', jeux: 7, choix, taille: null, dossier: 'E:\\Emulateurs', dossierNouveau: false, conseil: conseilPs3 });
     expect(m).toContain('le micrologiciel PS3 (197 Mo), fourni par Firehouse');
     expect(m).not.toContain('fichier système');
+  });
+
+  it('le firmware Switch servi (un zip vérifié) est annoncé dans l’accord d’Eden, jamais celui d’un autre', () => {
+    expect(firmwareSwitchServi(conseilSwitch.bios)).toBeUndefined();
+    const fw = { chemin: '', coffre: false, disponible: true, facultatif: false, fichier: 'firmware-switch.zip', racine: 'installation_par_l_emulateur', type: 'installation', sha1: 'f8', url: '/api/jeux/v1/bios/f8', taille: 336375526, note: 'firmware 18.1.0' } as Conseil['bios'][number];
+    const c = { ...conseilSwitch, bios: [conseilSwitch.bios[0], fw] };
+    expect(firmwareSwitchServi(c.bios)?.fichier).toBe('firmware-switch.zip');
+    const eden = { rec: ligneLb('Eden', 'eden', true), id: 'eden', nom: 'Eden', comment: 'frogtend' as const };
+    const m = messagePret({ plateforme: 'Nintendo Switch', jeux: 1, choix: eden, taille: null, dossier: 'E:\Emulateurs', dossierNouveau: false, conseil: c });
+    expect(m).toContain('le logiciel système de la Switch (version 18.1), 321 Mo, fourni par Firehouse, est installé aussi dès que tes clés sont dans Eden');
+    // Avant une partie : jamais la tournure conditionnelle de l'accord ; la durée au débit mesuré.
+    const q = questionFirmwareSwitch(fw, 1048576, (s) => `${Math.round(s / 60)} min`);
+    expect(q).toContain('Firehouse le fournit (version 18.1) : 321 Mo. Environ 5 min à ta vitesse habituelle. Le jeu se lance juste après.');
+    expect(q).not.toContain('S’il manque');
+    expect(questionFirmwareSwitch(fw, null, () => '')).not.toContain('Environ');
+    expect(micrologicielServi(c.bios)).toBeUndefined();
   });
 
   it('l’accord unique parle des fichiers du conseil et des clés manquantes', () => {

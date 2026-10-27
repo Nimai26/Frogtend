@@ -542,6 +542,8 @@ pub fn run() {
             commandes::emulateurs_installes,
             commandes::emulateur_fiche,
             commandes::emulateur_derniere_version,
+            commandes::eden_firmware,
+            commandes::eden_firmware_servi,
             commandes::emulateur_installer,
             commandes::emulateur_adopter,
             commandes::retroarch_etat,

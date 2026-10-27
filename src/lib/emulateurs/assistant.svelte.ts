@@ -126,6 +126,38 @@ export async function installerEmulateur(
   }
 }
 
+/** Pose le firmware Switch servi par Firehouse dans Eden (accord déjà donné), en montrant le téléchargement. */
+export async function installerFirmwareSwitch(programme: string): Promise<boolean> {
+  let message = toast('💿 Firmware Switch : téléchargement…', 'neutre');
+  let dernier: number | null = -1;
+  const arreter = isTauri()
+    ? await listen<{ id: string; recus: number; total: number | null }>('emulateur', (e) => {
+        if (e.payload.id !== 'eden-firmware') return;
+        const p = palier(e.payload.recus, e.payload.total);
+        if (p === dernier || p === null) return;
+        dernier = p;
+        fermerToast(message);
+        message = toast(
+          p >= 100
+            ? '💿 Firmware Switch : vérifié, mise en place dans Eden…'
+            : `💿 Firmware Switch : ${p} % (${taille(e.payload.recus)}${e.payload.total ? ` sur ${taille(e.payload.total)}` : ''})…`,
+          'neutre',
+        );
+      })
+    : () => {};
+  try {
+    await api.edenFirmwareServi(programme);
+    toast('✅ Logiciel système de la Switch installé dans Eden.', 'ok');
+    return true;
+  } catch (e) {
+    toast(`Firmware Switch non installé : ${motifDuRefus(e)}. En cas de coupure, il reprendra où il en était.`, 'erreur');
+    return false;
+  } finally {
+    arreter();
+    fermerToast(message);
+  }
+}
+
 /**
  * Le micrologiciel PS3 SERVI PAR FIREHOUSE : téléchargé (avancement montré tous les 10 %), vérifié, installé sans
  * fenêtre par RPCS3. L'accord (avec sa taille) est demandé AVANT par l'appelant. Rend la version installée, ou `null`.

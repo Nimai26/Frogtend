@@ -7,9 +7,9 @@ import { taille } from '$lib/api';
 import { confirmer, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat, reglerPc } from '$lib/etat.svelte';
-import { completerRetroArch, installerEmulateur, installerMicrologicielPs3, installerParFirehouse, poserBios, recommandationsParDefaut, reglerEmulateur } from './assistant.svelte';
+import { completerRetroArch, installerEmulateur, installerFirmwareSwitch, installerMicrologicielPs3, installerParFirehouse, poserBios, recommandationsParDefaut, reglerEmulateur } from './assistant.svelte';
 import { ajouter } from './choix';
-import { avecConseil, biosADireOuPoser, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, MANETTE_REGLEE, messagePret, micrologicielServi, phraseVersionAutre, poidsBios, versionAutre, type Possible } from './pret';
+import { avecConseil, biosADireOuPoser, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, firmwareSwitchServi, ligneDe, MANETTE_REGLEE, messagePret, micrologicielServi, phraseVersionAutre, poidsBios, versionAutre, type Possible } from './pret';
 import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
 
 /** Les plateformes qui se jouent sans émulateur. */
@@ -131,6 +131,12 @@ export async function preparerPourJouer(plateforme: string, jeux: number): Promi
         'Les jeux PS3 en ont besoin, et Firehouse ne le fournit pas en ce moment.\n\nTu peux l’installer toi-même : ⚙ Options ▸ 🕹 Émulateurs ▸ 💿 sur la ligne de RPCS3, avec le fichier PS3UPDAT.PUP du site officiel de PlayStation (quelques secondes, sans fenêtre).',
       );
     }
+  }
+  // Eden : le firmware de Firehouse, compris dans l'accord, dès que les clés de la personne sont là (sinon, il sera
+  // proposé avant la première partie, une fois les clés posées).
+  if (choix.id === 'eden' && conseil && estConseille(choix.rec, conseil) && firmwareSwitchServi(conseil.bios)) {
+    const e = await api.edenFirmware(programme).catch(() => null);
+    if (e?.portable && e.cles && !e.firmware) await installerFirmwareSwitch(programme);
   }
   return cle;
 }

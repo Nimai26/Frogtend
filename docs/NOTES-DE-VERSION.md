@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.126.0 — Le logiciel système de la Switch fourni par Firehouse
+
+- 💿 Eden (Switch) : le logiciel système (« firmware ») que Firehouse fournit est maintenant installé par Frogtend,
+  dès que tes clés sont dans Eden — au moment de « Prêt à jouer », ou avant ta première partie Switch (une question,
+  avec la taille et la durée). Il n'est jamais posé par-dessus un logiciel système déjà là, ni hors du dossier d'Eden,
+  et jamais à moitié : au moindre souci, rien ne reste.
+
 ## 0.125.0 — Vita3K en plein écran, installation qui avance
 
 - 🎮 Les jeux PS Vita (Vita3K) s'ouvrent maintenant en plein écran, comme les autres émulateurs (Vita3K ne lisait

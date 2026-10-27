@@ -7,8 +7,8 @@ import { isTauri } from '@tauri-apps/api/core';
 import { api, duree, estErreurCoeur, taille, type ApercuNuage, type Candidat, type JeuPc, type ModInstalle, type PatchsPs3, type VerificationFiger } from '$lib/api';
 import { attendreTouche, choisir, confirmer, fermerToast, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
-import { completerRetroArch, poserBios, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
-import { avecConseil, biosADireOuPoser, biosRetroArch, changementDeConseil, estConseille, poidsBios } from '$lib/emulateurs/pret';
+import { completerRetroArch, installerFirmwareSwitch, poserBios, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
+import { avecConseil, biosADireOuPoser, biosRetroArch, changementDeConseil, estConseille, firmwareSwitchServi, poidsBios, questionFirmwareSwitch } from '$lib/emulateurs/pret';
 import { preparerPourJouer } from '$lib/emulateurs/pret.svelte';
 import { libelleValeur, REGLAGES_IMAGE, reglagesMontres } from '$lib/emulateurs/imagePs3';
 import { detailPatch, nomDuPatch, remarqueDuPatch, titreDuJeu } from '$lib/emulateurs/patchsPs3';
@@ -25,7 +25,7 @@ import type { CommandesJeu } from '$lib/reglages/reglages';
 import { GENRES_MANETTE, libelleCommandes } from './commandes';
 import { apresUnePartie } from '$lib/sauvegarde.svelte';
 import { ludo, rechargerListe, rechargerPlateformes } from './ludotheque.svelte';
-import { mettreDansLaLudotheque, rechargerJeuxDuPc, tele } from './telechargements.svelte';
+import { debitConnu, mettreDansLaLudotheque, rechargerJeuxDuPc, tele } from './telechargements.svelte';
 import { aCartes, choixDeCartes } from './cartes';
 import { estCourante, libelleVersion, nomDuFichier } from './versions';
 import { libellePleinEcran, TOUCHES_PLEIN_ECRAN } from './plein-ecran';
@@ -347,6 +347,29 @@ export async function gererLaCarte(id: number) {
   if (cible !== null) await gererJeu(cible);
 }
 
+/** Les firmwares Switch déjà proposés pendant cette séance (un « non » ne revient pas à chaque partie). */
+const firmwaresProposes = new Set<string>();
+
+/** Avant une partie Switch dans Eden : clés posées mais pas de firmware, et Firehouse le fournit → proposé (taille dite).
+ * Jamais bloquant : un souci ici n'empêche pas de lancer. */
+async function firmwareSwitchAvant(id: number, plateforme: string | undefined, emulateur?: string) {
+  if (!plateforme || nomAffiche(plateforme) !== nomAffiche('Nintendo Switch')) return;
+  const s = normaliser(etat.pc.emulateurs[plateforme]);
+  const e = (emulateur && s.liste.find((x) => x.cle === emulateur)) || pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, plateforme, id);
+  if (!e || !/(^|[\\/])eden[^\\/]*\.exe$/i.test(e.programme) || firmwaresProposes.has(e.programme)) return;
+  const f = await api.edenFirmware(e.programme).catch(() => null);
+  if (!f?.portable || !f.cles || f.firmware) return;
+  const r = await auPlus(3000, api.emulateursRecommandes(plateforme));
+  const servi = r?.conseil ? firmwareSwitchServi(r.conseil.bios) : undefined;
+  if (!servi) return;
+  firmwaresProposes.add(e.programme);
+  const oui = await confirmer('💿 Il manque le logiciel système de la Switch', {
+    message: questionFirmwareSwitch(servi, debitConnu(), duree),
+    libelleValider: '💿 Installer puis jouer',
+  });
+  if (oui) await installerFirmwareSwitch(e.programme);
+}
+
 /** `carte` : la carte e-Reader à lire (sa version) ; sans elle, Frogtend demande laquelle s'il y en a plusieurs. */
 export async function jouer(id: number, emulateur?: string, version?: string, carte?: number) {
   // Un seul lancement à la fois (un jeu de boutique peut mettre plusieurs minutes à démarrer).
@@ -381,6 +404,7 @@ async function jouerSansAttente(id: number, emulateur?: string, version?: string
     try {
       // Un souci ici n'empêche JAMAIS le jeu de se lancer.
       await suivreConseil(id, j?.plateforme, emulateur).catch(() => {});
+      await firmwareSwitchAvant(id, j?.plateforme, emulateur).catch(() => {});
       await prevenirPareFeu(id, j?.plateforme, emulateur);
       const pe = etat.profil.pleinEcran[String(id)];
       await api.jouer(

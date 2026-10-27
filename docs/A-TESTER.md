@@ -3,6 +3,11 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Le logiciel système de la Switch (0.126.0)
+- [ ] Eden SANS firmware mais avec tes clés (prod.keys dans `user\keys`) : lancer un jeu Switch → la question « Il
+      manque le logiciel système de la Switch » (321 Mo, durée) → « Installer puis jouer » → le jeu démarre.
+- [ ] Eden qui a DÉJÀ un firmware : aucune question, rien n'est touché.
+
 ## Vita3K en plein écran, installation qui avance (0.125.0)
 - [ ] Lancer un jeu PS Vita : il s'ouvre en plein écran.
 - [ ] Installer un jeu PC livré en archive (.zip/.7z) : une barre montre l'avancement de la décompression.

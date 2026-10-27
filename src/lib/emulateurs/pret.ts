@@ -214,6 +214,26 @@ export function micrologicielServi(bios: BiosConseil[]): BiosConseil | undefined
   return bios.find((b) => b.type === 'installation' && b.disponible && !!b.sha1 && !!b.url && b.fichier.toLowerCase().endsWith('.pup'));
 }
 
+/** Le firmware Switch que Firehouse sert dans ce conseil (un zip de fichiers du système, posé par Frogtend dans Eden). */
+export function firmwareSwitchServi(bios: BiosConseil[]): BiosConseil | undefined {
+  return bios.find((b) => b.type === 'installation' && b.disponible && !!b.sha1 && !!b.url && b.fichier.toLowerCase().endsWith('.zip'));
+}
+
+const moFirmware = (f: BiosConseil) => (f.taille ? `${Math.round(f.taille / 1048576)} Mo` : 'quelques centaines de Mo');
+
+/** La phrase de l'accord pour le firmware Switch (« le logiciel système de la Switch », pour tout le monde). */
+export function phraseFirmwareSwitch(f: BiosConseil): string {
+  const v = versionDansNote(f.note);
+  return `S’il manque, le logiciel système de la Switch${v ? ` (version ${v})` : ''}, ${moFirmware(f)}, fourni par Firehouse, est installé aussi dès que tes clés sont dans Eden (jamais par-dessus celui qui serait déjà là).`;
+}
+
+/** La question avant une partie, quand il manque et que les clés sont là : taille, et durée au débit mesuré. */
+export function questionFirmwareSwitch(f: BiosConseil, debit: number | null, duree: (s: number) => string): string {
+  const v = versionDansNote(f.note);
+  const temps = debit && f.taille ? ` Environ ${duree(Math.round(f.taille / debit))} à ta vitesse habituelle.` : '';
+  return `Beaucoup de jeux Switch ne démarrent pas sans lui.\n\nFirehouse le fournit${v ? ` (version ${v})` : ''} : ${moFirmware(f)}.${temps} Le jeu se lance juste après.`;
+}
+
 /** Les fichiers système obligatoires d'un conseil, pour le dire dans l'accord : ceux que Firehouse fournit, et les
  * clés que personne ne peut fournir (jamais servies). Les firmwares à installer par l'émulateur sont dits à part. */
 export function biosADire(bios: BiosConseil[]): { fournis: string[]; aPoser: string[]; cles: string[] } {
@@ -264,6 +284,8 @@ export function messagePret(o: {
     if (pup && choix.id === 'rpcs3') {
       lignes.push(`S’il manque, le micrologiciel PS3 (${pup.taille ? `${Math.round(pup.taille / 1048576)} Mo` : 'quelques centaines de Mo'}), fourni par Firehouse, est installé aussi, sans aucune fenêtre.`);
     }
+    const fw = firmwareSwitchServi(o.conseil!.bios);
+    if (fw && choix.id === 'eden') lignes.push(phraseFirmwareSwitch(fw));
     if (cles.length) lignes.push(`Il te faudra aussi tes clés (${cles.join(', ')}) : personne ne peut les fournir, et sans elles les jeux ne démarrent pas.`);
   } else if (choix.rec.bios) {
     lignes.push(`Il lui faut aussi un fichier système (${choix.rec.bios}) : Firehouse le fournira ; en attendant, Frogtend te dira où le mettre.`);

@@ -745,6 +745,11 @@ export const api = {
   biosPoser: (plateforme: string, programme: string) => appeler<BilanBios>('bios_poser', { plateforme, programme }),
   firmwareServi: (plateforme: string) => appeler<BiosConseil | null>('firmware_servi', { plateforme }),
   rpcs3MicrologicielServi: (programme: string) => appeler<string>('rpcs3_micrologiciel_servi', { programme }),
+  /** Eden : portable, clés posées (prod.keys), firmware déjà là. */
+  edenFirmware: (programme: string) => appeler<{ portable: boolean; cles: boolean; firmware: boolean }>('eden_firmware', { programme }),
+  /** Le firmware Switch servi par Firehouse, posé dans un Eden fermé, portable, avec ses clés et SANS firmware (rend le
+   * nombre de fichiers posés ; progression : événement « emulateur », id « eden-firmware »). */
+  edenFirmwareServi: (programme: string) => appeler<number>('eden_firmware_servi', { programme }),
   choisirVersion: (id: number, chemin: string) => appeler<void>('jeu_choisir_version', { id, chemin }),
   referencesManette: (id: string) => appeler<ReferenceManette[]>('references_manette', { id }),
   profilsManetteEmulateur: (id: string, programme: string) =>

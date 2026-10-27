@@ -117,6 +117,117 @@ fn uuid_neuf() -> [u8; 16] {
     }
 }
 
+/// Le dossier NAND d'Eden portable : `user\nand`, sauf si `nand_directory` de qt-config.ini (Eden y écrit son chemin
+/// complet, frontend_common/config.cpp L281/L584) l'a mis ailleurs. `None` : HORS du dossier d'Eden — Frogtend n'y
+/// écrit pas (règle « pas de pieuvre »).
+pub fn dossier_nand(eden: &Path) -> Option<PathBuf> {
+    let defaut = eden.join("user").join("nand");
+    let regle = std::fs::read_to_string(eden.join("user").join("config").join("qt-config.ini"))
+        .ok()
+        .and_then(|t| t.lines().find_map(|l| l.trim().strip_prefix("nand_directory=").map(|v| v.trim().trim_matches('"').to_string())))
+        .filter(|v| !v.is_empty());
+    let Some(v) = regle else { return Some(defaut) };
+    let norme = |p: &Path| p.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
+    // Jamais un « .. » qui ressortirait du dossier d'Eden après l'avoir nommé.
+    let dans_eden = !v.contains("..") && norme(Path::new(&v)).starts_with(&format!("{}\\", norme(eden)));
+    dans_eden.then(|| PathBuf::from(v.replace('/', "\\")))
+}
+
+/// Le dossier du firmware (les .nca du système) : `<nand>\system\Contents\registered` (file_sys/bis_factory.cpp L19-31).
+pub fn dossier_firmware(eden: &Path) -> Option<PathBuf> {
+    dossier_nand(eden).map(|n| n.join("system").join("Contents").join("registered"))
+}
+
+/// Les clés de la personne sont-elles là (`user\keys\prod.keys`, crypto/key_manager.cpp L575) ? Sans elles, Eden
+/// refuse le firmware et les jeux.
+pub fn cles_presentes(eden: &Path) -> bool {
+    eden.join("user").join("keys").join("prod.keys").is_file()
+}
+
+/// Un firmware est-il déjà là (au moins un .nca dans `registered`, à plat ou dans un sous-dossier) ?
+pub fn firmware_present(eden: &Path) -> bool {
+    let Some(d) = dossier_firmware(eden) else { return false };
+    let est_nca = |p: &Path| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("nca"));
+    std::fs::read_dir(&d).into_iter().flatten().flatten().any(|e| {
+        let p = e.path();
+        est_nca(&p) || (p.is_dir() && std::fs::read_dir(&p).into_iter().flatten().flatten().any(|x| est_nca(&x.path())))
+    })
+}
+
+/// Pose le firmware servi (le .zip de Firehouse, déjà vérifié) dans un `registered` VIDE, Eden FERMÉ : extrait dans
+/// un dossier provisoire d'Eden, seuls des `<hexa>.nca` / `<hexa>.cnmt.nca` sont pris, chacun posé SANS JAMAIS
+/// ÉCRASER puis relu (taille). JAMAIS par le menu « Install Firmware » d'Eden, qui VIDE d'abord `registered`
+/// (qt_common/util/content.cpp L104-115). Rend le nombre de fichiers posés.
+pub fn poser_firmware(eden: &Path, zip: &Path) -> Resultat<usize> {
+    if !portable(eden) {
+        return Err(Erreur::Refus("Eden n'est pas installé en mode portable : Frogtend n'écrit pas dans ses données de Windows.".into()));
+    }
+    let Some(registered) = dossier_firmware(eden) else {
+        return Err(Erreur::Refus("Le dossier système d'Eden a été déplacé hors de son dossier : Frogtend n'y écrit pas.".into()));
+    };
+    if firmware_present(eden) {
+        return Err(Erreur::Refus("Un firmware est déjà installé dans Eden : il est laissé tel quel.".into()));
+    }
+    let tmp = eden.join("user").join(".frogtend-firmware");
+    if tmp.exists() {
+        std::fs::remove_dir_all(&tmp)?; // le NÔTRE, d'une pose coupée
+    }
+    let r = (|| -> Resultat<usize> {
+        crate::installation::decompresser(zip, crate::installation::Format::Zip, &tmp)?;
+        let mut nca = Vec::new();
+        let mut pile = vec![tmp.clone()];
+        while let Some(d) = pile.pop() {
+            for e in std::fs::read_dir(&d)?.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    pile.push(p);
+                } else if nom_de_nca(&p.file_name().unwrap_or_default().to_string_lossy()) {
+                    nca.push(p);
+                }
+            }
+        }
+        if nca.is_empty() {
+            return Err(Erreur::Serveur("Le firmware reçu ne contient aucun fichier du système (.nca).".into()));
+        }
+        // Deux fichiers au même nom (dans deux sous-dossiers) : refusé AVANT de poser quoi que ce soit.
+        let mut noms = std::collections::HashSet::new();
+        if !nca.iter().all(|f| noms.insert(f.file_name().unwrap_or_default().to_string_lossy().to_lowercase())) {
+            return Err(Erreur::Serveur("Le firmware reçu contient deux fois le même fichier : rien n'est posé.".into()));
+        }
+        std::fs::create_dir_all(&registered)?;
+        // Tout ou rien : au moindre échec, les fichiers posés PAR CETTE POSE (les nôtres, à l'instant) sont retirés,
+        // pour qu'Eden ne garde jamais un firmware à moitié posé (qui ferait refuser toute nouvelle pose).
+        let mut poses: Vec<PathBuf> = Vec::new();
+        let r = nca.iter().try_for_each(|f| -> Resultat<()> {
+            let nom = f.file_name().unwrap_or_default();
+            let taille = std::fs::metadata(f)?.len();
+            let cible = registered.join(nom);
+            crate::pack_mame::deplacer_sans_ecraser(f, &cible).map_err(|e| Erreur::Disque(format!("{} n'a pas pu être posé ({e}).", nom.to_string_lossy())))?;
+            poses.push(cible.clone());
+            if std::fs::metadata(&cible).map(|m| m.len()).ok() != Some(taille) {
+                return Err(Erreur::Disque(format!("{} est abîmé après la pose.", nom.to_string_lossy())));
+            }
+            Ok(())
+        });
+        if let Err(e) = r {
+            for p in &poses {
+                let _ = std::fs::remove_file(p);
+            }
+            return Err(e);
+        }
+        Ok(poses.len())
+    })();
+    let _ = std::fs::remove_dir_all(&tmp);
+    r
+}
+
+/// Un nom de fichier du système : `<32 hexa>.nca` ou `<32 hexa>.cnmt.nca` (file_sys/registered_cache.cpp L59-64).
+fn nom_de_nca(nom: &str) -> bool {
+    let n = nom.to_ascii_lowercase();
+    let Some(base) = n.strip_suffix(".cnmt.nca").or_else(|| n.strip_suffix(".nca")) else { return false };
+    base.len() == 32 && base.chars().all(|c| c.is_ascii_hexdigit())
+}
+
 /// Le rang de l'utilisateur qu'Eden utilisait jusque-là (`current_user` de `user\config\qt-config.ini`), 0 sinon.
 fn utilisateur_courant(eden: &Path) -> usize {
     std::fs::read_to_string(eden.join("user").join("config").join("qt-config.ini"))
@@ -281,6 +392,61 @@ pub fn dossiers_parties(eden: &Path, uuid: &[u8; 16]) -> [(&'static str, PathBuf
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn le_firmware_se_pose_seulement_dans_un_dossier_vide_et_jamais_ailleurs() {
+        use std::io::Write;
+        use super::*;
+        let d = tempfile::tempdir().unwrap();
+        let eden = d.path().join("Eden");
+        std::fs::create_dir_all(eden.join("user").join("config")).unwrap();
+        // Le zip servi : deux .nca, un fichier étranger (jamais posé), dans un sous-dossier.
+        let zip = d.path().join("firmware-switch.zip");
+        let mut z = zip::ZipWriter::new(std::fs::File::create(&zip).unwrap());
+        let o = zip::write::SimpleFileOptions::default();
+        for (n, c) in [("18.1.0/0123456789abcdef0123456789abcdef.nca", &b"AAAA"[..]), ("18.1.0/fedcba9876543210fedcba9876543210.cnmt.nca", b"BB"), ("18.1.0/lisez-moi.txt", b"x")] {
+            z.start_file(n, o).unwrap();
+            z.write_all(c).unwrap();
+        }
+        z.finish().unwrap();
+        assert!(!firmware_present(&eden) && !cles_presentes(&eden));
+        assert_eq!(poser_firmware(&eden, &zip).unwrap(), 2);
+        let reg = eden.join("user").join("nand").join("system").join("Contents").join("registered");
+        assert_eq!(std::fs::read(reg.join("0123456789abcdef0123456789abcdef.nca")).unwrap(), b"AAAA");
+        assert!(!reg.join("lisez-moi.txt").exists());
+        assert!(!eden.join("user").join(".frogtend-firmware").exists(), "rien ne reste à l'écart");
+        assert!(firmware_present(&eden));
+        // Déjà un firmware (d'une autre version peut-être) : jamais touché.
+        assert!(matches!(poser_firmware(&eden, &zip), Err(Erreur::Refus(_))));
+        assert_eq!(std::fs::read(reg.join("0123456789abcdef0123456789abcdef.nca")).unwrap(), b"AAAA");
+        // Un NAND déplacé HORS du dossier d'Eden : rien n'est écrit.
+        let autre = d.path().join("Eden2");
+        std::fs::create_dir_all(autre.join("user").join("config")).unwrap();
+        std::fs::write(autre.join("user").join("config").join("qt-config.ini"), format!("[Data%20Storage]\nnand_directory={}/Ailleurs/nand/\n", d.path().to_string_lossy().replace('\\', "/"))).unwrap();
+        assert!(dossier_nand(&autre).is_none());
+        assert!(matches!(poser_firmware(&autre, &zip), Err(Erreur::Refus(_))));
+        assert!(!d.path().join("Ailleurs").exists());
+        // Le chemin qu'Eden écrit lui-même (dans son dossier) est accepté.
+        std::fs::write(autre.join("user").join("config").join("qt-config.ini"), format!("nand_directory={}/user/nand/\n", autre.to_string_lossy().replace('\\', "/"))).unwrap();
+        assert!(dossier_nand(&autre).is_some());
+        std::fs::write(autre.join("user").join("config").join("qt-config.ini"), format!("nand_directory={}/user/../../Ailleurs/\n", autre.to_string_lossy().replace('\\', "/"))).unwrap();
+        assert!(dossier_nand(&autre).is_none(), "« .. » : refusé");
+        // Eden non portable : jamais.
+        assert!(matches!(poser_firmware(&d.path().join("SansUser"), &zip), Err(Erreur::Refus(_))));
+        // Un zip avec deux fois le même fichier : rien n'est posé (jamais un firmware à moitié).
+        let neuf = d.path().join("Eden3");
+        std::fs::create_dir_all(neuf.join("user")).unwrap();
+        let double = d.path().join("double.zip");
+        let mut z = zip::ZipWriter::new(std::fs::File::create(&double).unwrap());
+        for n in ["a/0123456789abcdef0123456789abcdef.nca", "b/0123456789abcdef0123456789abcdef.nca", "b/fedcba9876543210fedcba9876543210.nca"] {
+            z.start_file(n, o).unwrap();
+            z.write_all(b"x").unwrap();
+        }
+        z.finish().unwrap();
+        assert!(poser_firmware(&neuf, &double).is_err());
+        assert!(!firmware_present(&neuf), "rien de posé : une nouvelle pose reste possible");
+        assert!(nom_de_nca("0123456789ABCDEF0123456789abcdef.NCA") && !nom_de_nca("evil.nca") && !nom_de_nca("../0123456789abcdef0123456789abcdef.nca"));
+    }
+
     use super::*;
 
     fn poser_fichier(eden: &Path, o: &[u8]) {

@@ -9,7 +9,7 @@
 
 - **Liste VÉRIFIÉE des restes faisables par le code seul (audit du 27/10, toutes les entrées « RESTE / À FAIRE » de
   ce fichier relues contre le code et les notes ; celles qui ne sont pas ici sont faites, ou attendent Seb, Firehouse
-  ou un essai).** ✅ (1) et (2) FAITS en 0.125.0. Gênant : (1) Vita3K pas en plein écran (`-F` n'est plus lu, `boot-apps-full-screen` jamais
+  ou un essai).** ✅ (1) et (2) FAITS en 0.125.0, (4) en 0.126.0 (sources d'Eden lues : son menu vide d'abord le dossier, jamais utilisé). Gênant : (1) Vita3K pas en plein écran (`-F` n'est plus lu, `boot-apps-full-screen` jamais
   écrit) ; (2) aucune progression pendant l'extraction d'un gros jeu PC ; (3) zone d'attente des restaurations jamais
   vidée (Prêt à jouer redit des conflits réglés) ; (4) firmware Switch servi jamais installé. Mineur : (5) livret sans
   avancement ni annulation ; (6) pages du livret non gardées ; (7) échec de reprise des parties d'avant (Eden, Cemu,

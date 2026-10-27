@@ -284,3 +284,9 @@ Le test rouge (`un_jeu_lance_par_un_intermediaire…`, attente de 60 s jusqu'au 
 enfant d'un numéro REPRIS (son nouveau propriétaire vite refermé), était adopté comme morceau de la partie. Corrigé
 dans le suivi lui-même (un processus de la partie vu fermé n'a pu lancer que des enfants nés AVANT) — le même trou
 pouvait faire suivre un programme étranger dans une vraie partie.
+
+27/10 (6e et 7e fois, tests du pack MAME et d'Eden) : deux scripts python tapés dans le shell ont encore abîmé des
+barres obliques inverses dans du code de test (un chemin de test vidé, un littéral Rust cassé qui ne compilait plus,
+vu par l'expert). · Garde-fou ajouté : tout script de retouche vit dans un FICHIER du scratchpad (jamais un heredoc),
+et dès qu'un nouveau texte contient une barre oblique inverse, la retouche passe par l'outil d'édition ; après chaque
+script, compiler et lancer les tests du module AVANT d'appeler un expert.

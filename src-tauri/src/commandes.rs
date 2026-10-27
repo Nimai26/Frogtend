@@ -4047,6 +4047,87 @@ pub async fn rpcs3_micrologiciel_servi(app: AppHandle, noyau: State<'_, Noyau>, 
     r
 }
 
+const PLATEFORME_SWITCH: &str = "Nintendo Switch";
+
+/// Où en est Eden pour le firmware : portable, clés posées, firmware déjà là.
+#[derive(Serialize)]
+pub struct EtatFirmwareEden {
+    pub portable: bool,
+    pub cles: bool,
+    pub firmware: bool,
+}
+
+#[tauri::command]
+pub fn eden_firmware(programme: String) -> Resultat<EtatFirmwareEden> {
+    let p = std::path::PathBuf::from(&programme);
+    if !crate::eden::est_eden(&programme) || !p.is_file() {
+        return Err(Erreur::Refus("Ce n'est pas le programme d'Eden.".into()));
+    }
+    let d = p.parent().map(std::path::PathBuf::from).unwrap_or_default();
+    Ok(EtatFirmwareEden { portable: crate::eden::portable(&d) && crate::eden::dossier_nand(&d).is_some(), cles: crate::eden::cles_presentes(&d), firmware: crate::eden::firmware_present(&d) })
+}
+
+/// Le firmware Switch SERVI PAR FIREHOUSE (conseil de la Switch, contrat 1.10 : un zip de .nca) : téléchargé avec reprise
+/// et progression (événement « emulateur », id « eden-firmware »), SHA-1 vérifié, puis POSÉ par Frogtend dans le dossier
+/// système VIDE d'Eden (jamais par le menu d'Eden, qui vide d'abord ce dossier). Eden fermé, portable, clés posées ; un
+/// seul accord a été donné avant (sa taille annoncée). Rend le nombre de fichiers posés.
+#[tauri::command]
+pub async fn eden_firmware_servi(app: AppHandle, noyau: State<'_, Noyau>, programme: String) -> Resultat<usize> {
+    let p = std::path::PathBuf::from(&programme);
+    if !crate::eden::est_eden(&programme) || !p.is_file() {
+        return Err(Erreur::Refus("Ce n'est pas le programme d'Eden.".into()));
+    }
+    exiger_programme_de_confiance(&app, &noyau, &p)?;
+    let dossier = p.parent().map(std::path::PathBuf::from).unwrap_or_default();
+    // AVANT de télécharger 320 Mo : tout ce qui ferait refuser la pose.
+    if !crate::lancement::processus_du_dossier(&dossier).is_empty() {
+        return Err(Erreur::Refus("Eden est ouvert : ferme-le (ou quitte ta partie), puis recommence.".into()));
+    }
+    if !crate::eden::portable(&dossier) || crate::eden::dossier_nand(&dossier).is_none() {
+        return Err(Erreur::Refus("Eden n'est pas installé en mode portable : Frogtend n'écrit pas dans ses données de Windows.".into()));
+    }
+    if !crate::eden::cles_presentes(&dossier) {
+        return Err(Erreur::Refus("Tes clés (prod.keys) ne sont pas encore dans Eden : sans elles, Eden refuse le firmware. Pose-les d'abord.".into()));
+    }
+    if crate::eden::firmware_present(&dossier) {
+        return Err(Erreur::Refus("Un firmware est déjà installé dans Eden : il est laissé tel quel.".into()));
+    }
+    let s = noyau.session().await?;
+    let v = s.source.emulateurs(PLATEFORME_SWITCH).await?;
+    let mut ignore = crate::bios::Bilan::default();
+    let bios = crate::bios::lire_bios(&v["conseil"]["bios"], &mut ignore);
+    let f = crate::bios::firmware_servi(&bios)
+        .filter(|f| f.fichier.to_lowercase().ends_with(".zip"))
+        .cloned()
+        .ok_or_else(|| Erreur::Introuvable("Firehouse ne fournit pas (encore) le firmware Switch.".into()))?;
+    // Le zip, puis ses fichiers extraits à côté : environ trois fois sa taille, par prudence.
+    if let (Some(t), Some(libre)) = (f.taille, crate::jeux_pc::place_libre(&dossier)) {
+        if libre < t.saturating_mul(3) {
+            return Err(Erreur::Disque(format!("Pas assez de place sur le disque d'Eden : il faut environ {} Mo libres.", t.saturating_mul(3) / 1_048_576)));
+        }
+    }
+    let app2 = app.clone();
+    let progres = move |recus, total| {
+        let _ = app2.emit("emulateur", ProgresEmulateur { id: "eden-firmware".into(), recus, total });
+    };
+    let zip = crate::bios::telecharger_firmware(&s.source, &f, &dossier, &progres).await?;
+    // Eden a pu être ouvert pendant le téléchargement : revérifié juste avant de poser.
+    if !crate::lancement::processus_du_dossier(&dossier).is_empty() {
+        let _ = std::fs::remove_file(&zip);
+        return Err(Erreur::Refus("Eden a été ouvert pendant le téléchargement : ferme-le, puis recommence.".into()));
+    }
+    let (d, z) = (dossier.clone(), zip.clone());
+    let r = tauri::async_runtime::spawn_blocking(move || crate::eden::poser_firmware(&d, &z))
+        .await
+        .map_err(|_| Erreur::Disque("La pose du firmware s'est arrêtée brutalement.".into()))?;
+    let _ = std::fs::remove_file(&zip);
+    let _ = std::fs::remove_dir(dossier.join(".telechargements"));
+    if let Ok(n) = &r {
+        noyau.journaliser(&format!("firmware Switch posé dans Eden : {n} fichier(s)"));
+    }
+    r
+}
+
 /// Installe un PS3UPDAT.PUP dans RPCS3, sans fenêtre (`--headless --installfw`), et rend la version installée.
 /// `attendue` (la version annoncée par Firehouse) : l'installation n'est réussie que si RPCS3 la montre ensuite.
 /// Relevé en réel le 16/10 : RPCS3 installe bien (4.91 → 4.93 par-dessus), puis plante en se fermant (bogue connu,

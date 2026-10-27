@@ -107,7 +107,7 @@ fn liberable(f: &Path) -> bool {
 
 /// Déplace un fichier sur le même disque SANS JAMAIS ÉCRASER ce qui serait déjà à l'arrivée (sous Windows,
 /// `std::fs::rename` remplacerait la destination).
-fn deplacer_sans_ecraser(de: &Path, vers: &Path) -> std::io::Result<()> {
+pub(crate) fn deplacer_sans_ecraser(de: &Path, vers: &Path) -> std::io::Result<()> {
     #[cfg(windows)]
     {
         use std::os::windows::ffi::OsStrExt;
