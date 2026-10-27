@@ -9,7 +9,19 @@
 
 - **Liste VÉRIFIÉE des restes faisables par le code seul (audit du 27/10, toutes les entrées « RESTE / À FAIRE » de
   ce fichier relues contre le code et les notes ; celles qui ne sont pas ici sont faites, ou attendent Seb, Firehouse
-  ou un essai).** ✅ (1) et (2) FAITS en 0.125.0, (4) en 0.126.0 (sources d'Eden lues : son menu vide d'abord le dossier, jamais utilisé). Gênant : (1) Vita3K pas en plein écran (`-F` n'est plus lu, `boot-apps-full-screen` jamais
+  ou un essai).** ✅ Seb 27/10 sur (3) (zone d'attente des restaurations ; l'expert a trouvé pire : une partie
+  d'émulateur effacée par la personne REVIENT à chaque émulateur installé) : un conflit → « Proposer de remplacer »
+  (dit une fois avec l'endroit de la copie ; « Remplacer ma partie par la copie restaurée », la partie actuelle mise à
+  l'abri d'abord ; sans réponse, les deux restent) ; une partie restaurée puis effacée → « La garder dans la
+  sauvegarde » (elle ne revient plus sur le PC, mais reste dans la sauvegarde courante : `gardes` inchangé). Plan de
+  l'expert : registre `restauration\<profil>\reglees.json` (reposée / conflit + empreinte de la copie), rien effacé.
+  ✅ FAIT (0.127.0), relecture des experts suivie : une entrée n'est sautée que pour la MÊME cible (émulateur
+  réinstallé ailleurs : ses parties reviennent) ; une nouvelle restauration garde l'ancien registre à côté
+  (`reglees-<date>.json`) et remet tout en jeu ; signature rapide (taille, date) avant toute empreinte ; dossier
+  remplacé sans jamais rester vide ; cible revérifiée sous l'émulateur ; conflits relisibles (Options ▸ Sauvegarde).
+  RESTE (noté) : la partie effacée reste dans la sauvegarde COURANTE (décision de Seb) ; l'abri `remplacees\` n'est
+  jamais vidé (à la main) ; le titre d'un conflit est technique (« RPCS3/PS3 : savedata/… »), le nom du jeu serait mieux.
+  ✅ (1) et (2) FAITS en 0.125.0, (4) en 0.126.0 (sources d'Eden lues : son menu vide d'abord le dossier, jamais utilisé). Gênant : (1) Vita3K pas en plein écran (`-F` n'est plus lu, `boot-apps-full-screen` jamais
   écrit) ; (2) aucune progression pendant l'extraction d'un gros jeu PC ; (3) zone d'attente des restaurations jamais
   vidée (Prêt à jouer redit des conflits réglés) ; (4) firmware Switch servi jamais installé. Mineur : (5) livret sans
   avancement ni annulation ; (6) pages du livret non gardées ; (7) échec de reprise des parties d'avant (Eden, Cemu,

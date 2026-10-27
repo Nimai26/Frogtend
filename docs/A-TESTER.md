@@ -3,6 +3,13 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Les parties restaurées en double (0.127.0) — à faire ensemble, sur un PC d'essai
+- [ ] Restaurer une sauvegarde sur un PC où une partie d'émulateur existe déjà, différente : la question « Une partie
+      existe en deux versions » apparaît une fois ; « Remplacer ma partie » → la restaurée est en place, l'ancienne
+      dans le dossier d'abri annoncé.
+- [ ] Fermer la question sans répondre : ⚙ Options ▸ Sauvegarde montre « Voir les parties en double ».
+- [ ] Effacer une partie restaurée, puis installer un autre émulateur : elle ne revient pas.
+
 ## Le logiciel système de la Switch (0.126.0)
 - [ ] Eden SANS firmware mais avec tes clés (prod.keys dans `user\keys`) : lancer un jeu Switch → la question « Il
       manque le logiciel système de la Switch » (321 Mo, durée) → « Installer puis jouer » → le jeu démarre.

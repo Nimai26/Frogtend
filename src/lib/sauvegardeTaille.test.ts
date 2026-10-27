@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { aAnnoncer } from './sauvegardeTaille';
+import { aAnnoncer, dossierDesAbris, dossierDesCopies } from './sauvegardeTaille';
+
+describe('les dossiers des parties en double', () => {
+  it('donne le dossier commun des copies et celui de l’abri, jamais un chemin coupé au hasard', () => {
+    const r = 'C:\\Users\\Zoé\\AppData\\Roaming\\Frogtend\\restauration\\abc';
+    expect(dossierDesCopies(`${r}\\parties\\emulateurs\\DuckStation\\memcards\\ff7.mcd`)).toBe(`${r}\\parties\\emulateurs`);
+    expect(dossierDesAbris(`${r}\\remplacees\\2026-10-27T19-00-00\\DuckStation\\memcards\\ff7.mcd`)).toBe(`${r}\\remplacees\\2026-10-27T19-00-00`);
+    expect(dossierDesCopies('D:\\ailleurs\\x.mcd')).toBe('D:\\ailleurs\\x.mcd');
+  });
+});
 
 const MO = 1024 * 1024;
 

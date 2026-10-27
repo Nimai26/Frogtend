@@ -1,12 +1,20 @@
 <script lang="ts">
   // La sauvegarde du profil : ce qu'elle contient, où elle va, quand elle se fait.
   import { onMount } from 'svelte';
-  import { taille } from '$lib/api';
+  import { api, taille, type ConflitRestaure } from '$lib/api';
   import { etat, reglerProfil } from '$lib/etat.svelte';
   import { depuis } from '$lib/ludotheque/ludotheque.svelte';
-  import { lireDerniereSauvegarde, restaurer, sauvegarde, sauvegarder } from '$lib/sauvegarde.svelte';
+  import { lireDerniereSauvegarde, proposerRemplacements, restaurer, sauvegarde, sauvegarder } from '$lib/sauvegarde.svelte';
 
-  onMount(lireDerniereSauvegarde);
+  // Les parties restaurées encore en double : une proposition fermée sans répondre se retrouve ici.
+  let enDouble = $state<ConflitRestaure[]>([]);
+  const relireDoubles = async () => {
+    enDouble = await api.restaurationConflits().catch(() => []);
+  };
+  onMount(() => {
+    lireDerniereSauvegarde();
+    relireDoubles();
+  });
   const d = $derived(sauvegarde.derniere);
 </script>
 
@@ -49,6 +57,12 @@
         : '📥 Restaurer une sauvegarde…'}
     </button>
   </div>
+  {#if enDouble.length}
+    <p>💾 {enDouble.length} partie(s) restaurée(s) existe(nt) en deux versions : la tienne est gardée, la restaurée attend à part.</p>
+    <div class="actions">
+      <button class="btn" onclick={async () => { await proposerRemplacements(enDouble); await relireDoubles(); }}>🔎 Voir les parties en double</button>
+    </div>
+  {/if}
   {#if etat.pc.firehouse.simule}<p class="muted">En mode simulé, rien n’est sauvegardé.</p>{/if}
 </div>
 

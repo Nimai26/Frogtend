@@ -605,6 +605,22 @@ export interface ReferenceManette {
 /** Peut-on figer un jeu pendant le menu ? (`aucun` : oui ; un anti-triche, ou `inconnu` — trop de fichiers pour le savoir — : non.) */
 export type VerificationFiger = { sorte: 'aucun' } | { sorte: 'anti_triche'; nom: string } | { sorte: 'inconnu' };
 
+/** Une partie restaurée en double (dite UNE fois) : sa copie, et la partie en place, gardée. */
+export interface ConflitRestaure {
+  cle: string;
+  etiquette: string;
+  copie: string;
+  cible: string;
+}
+
+/** Ce qu'une repose de parties restaurées a fait. */
+export interface Reposes {
+  reposes: number;
+  deja_la: number;
+  conflits: string[];
+  a_remplacer: ConflitRestaure[];
+}
+
 export const api = {
   profils: () => appeler<Profil[]>('profils_lister'),
   creerProfil: (nom: string, pin: string | null, jeton: string | null) =>
@@ -686,7 +702,7 @@ export const api = {
       'restauration_liste',
     ),
   restaurationPreparer: (profil: string, pc: string) =>
-    appeler<[{ configuration: Record<string, any>; bibliotheque: { jeux?: any[] }; fichiers: number; taille: number }, { reposes: number; deja_la: number; conflits: string[] }]>(
+    appeler<[{ configuration: Record<string, any>; bibliotheque: { jeux?: any[] }; fichiers: number; taille: number }, Reposes]>(
       'restauration_preparer',
       { profil, pc },
     ),
@@ -696,7 +712,11 @@ export const api = {
   /** Crée le dossier PROPOSÉ (seul celui-là est admis par le cœur), après le oui de la personne. */
   dossierJeuxCreer: (chemin: string) => appeler<string>('dossier_jeux_creer', { chemin }),
   /** Repose les parties d'émulateurs restaurées qui attendaient un émulateur absent (jamais par-dessus une autre). */
-  restaurationReposerEmulateurs: () => appeler<{ reposes: number; deja_la: number; conflits: string[] }>('restauration_reposer_emulateurs'),
+  restaurationReposerEmulateurs: () => appeler<Reposes>('restauration_reposer_emulateurs'),
+  /** Remplace la partie en place par sa copie restaurée (sa partie actuelle mise à l'abri d'abord) ; rend l'abri. */
+  restaurationRemplacer: (cle: string) => appeler<string>('restauration_remplacer', { cle }),
+  /** Les parties restaurées encore en double (une proposition fermée sans répondre n'est jamais perdue). */
+  restaurationConflits: () => appeler<ConflitRestaure[]>('restauration_conflits'),
 
   preparerInstallation: (id: number) => appeler<Preparation>('installation_preparer', { id }),
   /** `suivi` : l'avancement de la décompression arrive par « mod-progres » sous ce numéro (voir `avecProgres`). */

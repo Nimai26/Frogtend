@@ -10,8 +10,9 @@ use crate::firehouse::Client;
 use crate::installation::fichiers_de;
 use crate::noyau::Noyau;
 use crate::sauvegarde::{empreinte, nom_pour_api, ManifesteParties};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -41,6 +42,182 @@ pub struct Reposes {
     pub deja_la: usize,
     /// Fichiers différents déjà présents : gardés tels quels (la version restaurée reste en attente).
     pub conflits: Vec<String>,
+    /// Les NOUVEAUX conflits d'une partie de la personne (dits une seule fois) : elle peut choisir de remplacer sa
+    /// partie par la copie restaurée (✅ Seb 27/10 : sa partie actuelle mise à l'abri d'abord).
+    pub a_remplacer: Vec<ConflitRestaure>,
+}
+
+impl Reposes {
+    /// Ajoute le bilan `c` ; ses conflits seulement si `avec_conflits` (les parties communes à tous, déjà là et
+    /// différentes, ne sont pas un souci).
+    fn ajouter(&mut self, c: Reposes, avec_conflits: bool) {
+        self.reposes += c.reposes;
+        self.deja_la += c.deja_la;
+        if avec_conflits {
+            self.conflits.extend(c.conflits);
+            self.a_remplacer.extend(c.a_remplacer);
+        }
+    }
+}
+
+/// Une partie restaurée en double : sa copie (dans la zone d'attente) et la partie en place, gardée.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ConflitRestaure {
+    /// Sa clé dans le registre des parties réglées.
+    pub cle: String,
+    pub etiquette: String,
+    pub copie: String,
+    pub cible: String,
+}
+
+/// Le registre des parties d'émulateur DÉJÀ réglées (`restauration\<profil>\reglees.json`) : reposée, en conflit (dit
+/// une fois), remplacée. Une entrée inscrite n'est plus retraitée tant que l'empreinte de sa copie ne change pas — une
+/// partie que la personne a effacée ne revient donc plus (✅ Seb 27/10 : elle reste dans la sauvegarde). Rien n'est
+/// effacé de la zone d'attente.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct Reglees {
+    /// La zone d'attente des émulateurs (`…\parties\emulateurs`) : les clés lui sont relatives. Vide : rien n'est suivi.
+    #[serde(skip)]
+    racine: PathBuf,
+    /// Le dossier de l'émulateur en cours (pour vérifier qu'il est fermé avant un remplacement).
+    #[serde(skip)]
+    emulateur: PathBuf,
+    #[serde(default)]
+    pub entrees: BTreeMap<String, Reglee>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Reglee {
+    /// « reposee », « conflit » ou « remplacee ».
+    pub etat: String,
+    /// L'empreinte de la COPIE restaurée (un fichier, ou un dossier entier).
+    pub empreinte: String,
+    pub cible: String,
+    #[serde(default)]
+    pub dossier: bool,
+    #[serde(default)]
+    pub etiquette: String,
+    #[serde(default)]
+    pub emulateur: String,
+    /// Remplacée : où la partie qui était en place a été mise à l'abri.
+    #[serde(default)]
+    pub abri: String,
+    /// Taille et date de la copie : inchangées, son empreinte n'est pas relue (des parties de plusieurs Go).
+    #[serde(default)]
+    pub signature: String,
+}
+
+/// La signature rapide d'une copie (fichier, ou dossier entier) : tailles et dates, sans lire les octets.
+fn signature(p: &Path, dossier: bool) -> String {
+    let une = |f: &Path| {
+        std::fs::metadata(f).ok().map(|m| (m.len(), m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos()).unwrap_or(0)))
+    };
+    if !dossier {
+        return une(p).map(|(l, t)| format!("{l}:{t}")).unwrap_or_default();
+    }
+    let Ok(fichiers) = fichiers_de(p) else { return String::new() };
+    let (mut total, mut derniere) = (0u64, 0u128);
+    for f in &fichiers {
+        let Some((l, t)) = une(&p.join(f)) else { return String::new() };
+        total += l;
+        derniere = derniere.max(t);
+    }
+    format!("{}:{total}:{derniere}", fichiers.len())
+}
+
+pub const REGLEES: &str = "reglees.json";
+
+impl Reglees {
+    /// Sans suivi (les parties des jeux, reposées une fois à l'installation).
+    pub fn sans_suivi() -> Self {
+        Self::default()
+    }
+
+    fn suivi(&self) -> bool {
+        !self.racine.as_os_str().is_empty()
+    }
+
+    fn cle(&self, source: &Path) -> Option<String> {
+        if !self.suivi() {
+            return None;
+        }
+        source.strip_prefix(&self.racine).ok().map(|r| r.to_string_lossy().replace('\\', "/"))
+    }
+
+    /// Déjà réglée À CET ENDROIT, et la copie n'a pas changé depuis ? `None` : rien à faire. Sinon l'empreinte de la
+    /// copie (vide sans suivi : l'appelant la calcule s'il en a besoin). Un émulateur réinstallé ailleurs (autre
+    /// cible) reçoit de nouveau ses parties.
+    fn examiner(&mut self, source: &Path, cible: &Path, dossier: bool, fichiers: Option<&[String]>) -> Resultat<Option<String>> {
+        let Some(cle) = self.cle(source) else { return Ok(Some(String::new())) };
+        let cible_txt = cible.to_string_lossy().to_string();
+        let sig = signature(source, dossier);
+        if let Some(e) = self.entrees.get(&cle) {
+            if e.cible == cible_txt && !sig.is_empty() && e.signature == sig {
+                return Ok(None);
+            }
+        }
+        let empreinte_copie = match (dossier, fichiers) {
+            (true, Some(f)) => empreinte_dossier(source, f)?,
+            (true, None) => empreinte_dossier(source, &fichiers_de(source)?)?,
+            (false, _) => empreinte(source)?,
+        };
+        if let Some(e) = self.entrees.get_mut(&cle) {
+            if e.cible == cible_txt && e.empreinte == empreinte_copie {
+                e.signature = sig;
+                return Ok(None);
+            }
+        }
+        Ok(Some(empreinte_copie))
+    }
+
+    fn noter(&mut self, source: &Path, etat: &str, empreinte: &str, cible: &Path, dossier: bool, etiquette: &str) -> Option<String> {
+        let cle = self.cle(source)?;
+        let emulateur = self.emulateur.to_string_lossy().to_string();
+        let signature = signature(source, dossier);
+        self.entrees.insert(
+            cle.clone(),
+            Reglee { etat: etat.into(), empreinte: empreinte.into(), cible: cible.to_string_lossy().into(), dossier, etiquette: etiquette.into(), emulateur, abri: String::new(), signature },
+        );
+        Some(cle)
+    }
+
+    /// Un conflit : noté (il ne sera plus redit) et proposé au remplacement.
+    fn conflit(&mut self, source: &Path, empreinte: &str, cible: &Path, dossier: bool, etiquette: &str, r: &mut Reposes) {
+        r.conflits.push(etiquette.to_string());
+        if let Some(cle) = self.noter(source, "conflit", empreinte, cible, dossier, etiquette) {
+            r.a_remplacer.push(ConflitRestaure { cle, etiquette: etiquette.into(), copie: source.to_string_lossy().into(), cible: cible.to_string_lossy().into() });
+        }
+    }
+}
+
+/// Le registre des parties réglées de cette zone d'attente (vide s'il n'existe pas, ou s'il est illisible : alors tout
+/// est simplement réexaminé, jamais rien effacé).
+pub fn lire_reglees(attente: &Path) -> Reglees {
+    let mut r: Reglees = std::fs::read(attente.join(REGLEES)).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default();
+    r.racine = attente.join("parties").join("emulateurs");
+    r
+}
+
+fn ecrire_reglees(attente: &Path, r: &Reglees) -> Resultat<()> {
+    let provisoire = attente.join(format!("{REGLEES}.frogtend"));
+    std::fs::write(&provisoire, serde_json::to_vec_pretty(r).unwrap_or_default())?;
+    std::fs::rename(&provisoire, attente.join(REGLEES))?;
+    Ok(())
+}
+
+/// L'empreinte d'un dossier entier : ses chemins relatifs et l'empreinte de chaque fichier.
+fn empreinte_dossier(d: &Path, fichiers: &[String]) -> Resultat<String> {
+    use sha2::{Digest, Sha256};
+    let mut tries = fichiers.to_vec();
+    tries.sort();
+    let mut h = Sha256::new();
+    for f in &tries {
+        h.update(f.as_bytes());
+        h.update(b"\t");
+        h.update(empreinte(&d.join(f))?.as_bytes());
+        h.update(b"\n");
+    }
+    Ok(format!("{:x}", h.finalize()))
 }
 
 pub async fn lister(client: &Client) -> Resultat<Vec<SauvegardeDisponible>> {
@@ -181,44 +358,45 @@ pub fn cles_en_attente(zone: &Path, programmes: &[String], anciens: &[(String, S
 /// Copie les fichiers de `de` dans `vers` : un fichier absent est posé, un fichier identique compté, un fichier
 /// DIFFÉRENT gardé tel quel (conflit) — sauf si `ecraser`.
 pub fn reposer(de: &Path, vers: &Path, ecraser: bool) -> Resultat<Reposes> {
-    reposer_sauf(de, vers, ecraser, &[])
+    reposer_sauf(de, vers, ecraser, &[], &mut Reglees::sans_suivi())
 }
 
 /// Les parties d'un compte RPCS3 (`savedata\<partie>\…`, `trophy\<jeu>\…`) : chaque partie est un DOSSIER de fichiers
 /// qui vont ensemble (PARAM.SFO, SAVE.DAT, icônes ; TROPUSR.DAT et TROPTRNS.DAT). Elle est reposée ENTIÈRE si elle
 /// n'est pas sur ce PC ; déjà là à l'identique, rien ; si elle diffère en quoi que ce soit, on n'y touche pas du tout
 /// et c'est un conflit (`savedata/<partie>`) — jamais un mélange de deux parties.
-pub fn reposer_parties_entieres(de: &Path, vers: &Path) -> Resultat<Reposes> {
+pub fn reposer_parties_entieres(de: &Path, vers: &Path, reglees: &mut Reglees) -> Resultat<Reposes> {
     let mut r = Reposes::default();
     for sorte in crate::emulateurs_profils::PARTIES_RPCS3 {
-        let c = reposer_dossiers_entiers(&de.join(sorte), &vers.join(sorte), sorte)?;
-        r.reposes += c.reposes;
-        r.deja_la += c.deja_la;
-        r.conflits.extend(c.conflits);
+        let c = reposer_dossiers_entiers(&de.join(sorte), &vers.join(sorte), sorte, reglees)?;
+        r.ajouter(c, true);
     }
     Ok(r)
 }
 
 /// Chaque sous-dossier de `de` (une partie : ses fichiers vont ensemble) reposé ENTIER dans `vers` s'il n'y est pas ;
 /// à l'identique, rien ; s'il diffère en quoi que ce soit, on n'y touche pas et c'est un conflit (`<etiquette>/<nom>`).
-pub fn reposer_dossiers_entiers(de: &Path, vers: &Path, etiquette: &str) -> Resultat<Reposes> {
+pub fn reposer_dossiers_entiers(de: &Path, vers: &Path, etiquette: &str, reglees: &mut Reglees) -> Resultat<Reposes> {
     let mut r = Reposes::default();
     for e in std::fs::read_dir(de).into_iter().flatten().flatten() {
         if !e.file_type().is_ok_and(|t| t.is_dir()) {
             continue;
         }
         let nom = e.file_name().to_string_lossy().to_string();
-        reposer_un_dossier(&e.path(), &vers.join(&nom), &format!("{etiquette}/{nom}"), &mut r)?;
+        reposer_un_dossier(&e.path(), &vers.join(&nom), &format!("{etiquette}/{nom}"), &mut r, reglees)?;
     }
     Ok(r)
 }
 
 /// Une partie (un dossier) reposée ENTIÈRE si elle n'est pas là (dossier provisoire vérifié puis renommé) ; à
 /// l'identique, rien ; différente en quoi que ce soit : on n'y touche pas, conflit `etiquette`.
-pub fn reposer_un_dossier(source: &Path, cible: &Path, etiquette: &str, r: &mut Reposes) -> Resultat<()> {
+pub fn reposer_un_dossier(source: &Path, cible: &Path, etiquette: &str, r: &mut Reposes, reglees: &mut Reglees) -> Resultat<()> {
     let fichiers = fichiers_de(source)?;
+    // Déjà réglée ici (reposée, dite en conflit, remplacée) : plus retraitée — même si la personne l'a effacée.
+    let Some(e) = reglees.examiner(source, cible, true, Some(&fichiers))? else { return Ok(()) };
     if !cible.exists() {
         r.reposes += crate::eden::copier_dossier_entier(source, cible)?;
+        reglees.noter(source, "reposee", &e, cible, true, etiquette);
         return Ok(());
     }
     let mut identique = fichiers_de(cible)? == fichiers;
@@ -230,15 +408,16 @@ pub fn reposer_un_dossier(source: &Path, cible: &Path, etiquette: &str, r: &mut 
     }
     if identique {
         r.deja_la += fichiers.len();
+        reglees.noter(source, "reposee", &e, cible, true, etiquette);
     } else {
-        r.conflits.push(etiquette.to_string());
+        reglees.conflit(source, &e, cible, true, etiquette, r);
     }
     Ok(())
 }
 
 /// Comme [`reposer`], sans les sous-dossiers `sauf` (de premier niveau) : ils ont leur propre place (le compte RPCS3,
 /// l'utilisateur Eden).
-pub fn reposer_sauf(de: &Path, vers: &Path, ecraser: bool, sauf: &[&str]) -> Resultat<Reposes> {
+pub fn reposer_sauf(de: &Path, vers: &Path, ecraser: bool, sauf: &[&str], reglees: &mut Reglees) -> Resultat<Reposes> {
     let mut r = Reposes::default();
     if !de.is_dir() {
         return Ok(r);
@@ -246,13 +425,19 @@ pub fn reposer_sauf(de: &Path, vers: &Path, ecraser: bool, sauf: &[&str]) -> Res
     let a_part: Vec<String> = sauf.iter().map(|s| format!("{s}/")).collect();
     for f in fichiers_de(de)?.into_iter().filter(|f| !a_part.iter().any(|a| f.starts_with(a))) {
         let (source, cible) = (de.join(&f), vers.join(&f));
+        // Déjà réglée ici : plus retraitée (une partie effacée par la personne ne revient pas).
+        let Some(mut es) = reglees.examiner(&source, &cible, false, None)? else { continue };
         if cible.is_file() {
-            if empreinte(&cible)? == empreinte(&source)? {
+            if es.is_empty() {
+                es = empreinte(&source)?;
+            }
+            if empreinte(&cible)? == es {
                 r.deja_la += 1;
+                reglees.noter(&source, "reposee", &es, &cible, false, &f);
                 continue;
             }
             if !ecraser {
-                r.conflits.push(f);
+                reglees.conflit(&source, &es, &cible, false, &f, &mut r);
                 continue;
             }
         }
@@ -260,6 +445,11 @@ pub fn reposer_sauf(de: &Path, vers: &Path, ecraser: bool, sauf: &[&str]) -> Res
             std::fs::create_dir_all(p)?;
         }
         std::fs::copy(&source, &cible)?;
+        // Relue avant d'être notée « reposée » (une copie coupée serait réessayée).
+        if reglees.suivi() && empreinte(&cible)? != es {
+            return Err(Erreur::Disque(format!("La partie « {f} » est abîmée après sa copie : elle sera réessayée.")));
+        }
+        reglees.noter(&source, "reposee", &es, &cible, false, &f);
         r.reposes += 1;
     }
     Ok(r)
@@ -306,6 +496,10 @@ impl Noyau {
         // Et les réglages : ils disent où étaient les émulateurs de l'ancien PC (pour leur rendre leurs parties).
         let attente = self.zone_restauration(&s.profil.id);
         std::fs::create_dir_all(&attente)?;
+        // Une NOUVELLE restauration (demandée par la personne) remet tout en jeu : l'ancien registre est gardé à côté.
+        if attente.join(REGLEES).is_file() {
+            std::fs::rename(attente.join(REGLEES), attente.join(format!("reglees-{}.json", crate::noyau::maintenant().replace(':', "-"))))?;
+        }
         std::fs::write(attente.join("bibliotheque.json"), serde_json::to_vec_pretty(&bibliotheque).unwrap_or_default())?;
         std::fs::write(attente.join("configuration.json"), serde_json::to_vec_pretty(&configuration).unwrap_or_default())?;
         let zone = attente.join("parties");
@@ -334,14 +528,33 @@ impl Noyau {
         let zone = attente.join("parties").join("emulateurs");
         // Les programmes des émulateurs de l'ANCIEN PC (réglages restaurés) : leur dossier → leur programme.
         let anciens = anciens_programmes(&lire_json_ou_rien(&attente.join("configuration.json")));
+        let mut reglees = lire_reglees(&attente);
+        let r = self.reposer_avec(&s, &zone, programmes_emulateurs, &anciens, &mut reglees);
+        // Écrit même après une erreur : ce qui a été réglé avant ne sera pas redit (l'erreur d'origine passe d'abord).
+        let ecrit = if attente.is_dir() { ecrire_reglees(&attente, &reglees) } else { Ok(()) };
+        let r = r?;
+        ecrit?;
+        Ok(r)
+    }
+
+    fn reposer_avec(
+        &self,
+        s: &crate::noyau::Session,
+        zone: &Path,
+        programmes_emulateurs: &[String],
+        anciens: &[(String, String)],
+        reglees: &mut Reglees,
+    ) -> Resultat<Reposes> {
         let mut total = Reposes::default();
-        for (programme, nom) in cles_en_attente(&zone, programmes_emulateurs, &anciens) {
+        for (programme, nom) in cles_en_attente(zone, programmes_emulateurs, anciens) {
             let Some(dossier) = Path::new(&programme).parent() else { continue };
+            reglees.emulateur = dossier.to_path_buf();
             let mut r = reposer_sauf(
                 &zone.join(&nom),
                 &crate::emulateurs_profils::dossier_du_profil(dossier, &s.profil.nom),
                 false,
                 &[crate::emulateurs_profils::COMPTE_RPCS3, crate::eden::UTILISATEUR_EDEN, crate::cemu::COMPTE_CEMU, crate::vita3k::UTILISATEUR_VITA],
+                reglees,
             )?;
             // Eden : les parties de l'utilisateur Switch du profil reviennent dans SON utilisateur (créé s'il manque,
             // AVANT les parties : sinon Eden les prendrait pour celles d'un utilisateur disparu) — Eden portable et fermé
@@ -369,12 +582,8 @@ impl Noyau {
                                     // Les données communes du jeu : déjà là, différentes (une autre personne a joué ici)
                                     // — gardées telles quelles, sans le compter comme un souci.
                                     let mut c = Reposes::default();
-                                    reposer_un_dossier(&de, &vers, &format!("Wii U : {jeu} ({sous})"), &mut c)?;
-                                    r.reposes += c.reposes;
-                                    r.deja_la += c.deja_la;
-                                    if sous == "compte" {
-                                        r.conflits.extend(c.conflits);
-                                    }
+                                    reposer_un_dossier(&de, &vers, &format!("Wii U : {jeu} ({sous})"), &mut c, reglees)?;
+                                    r.ajouter(c, sous == "compte");
                                 }
                             }
                         }
@@ -392,10 +601,8 @@ impl Noyau {
             {
                 match crate::vita3k::utilisateur_du_profil(dossier, &crate::jeux_pc::nom_de_dossier(&s.profil.nom)) {
                     Ok(u) => {
-                        let c = reposer_dossiers_entiers(&attente_vita, &crate::vita3k::parties(dossier, &u.id), "PS Vita")?;
-                        r.reposes += c.reposes;
-                        r.deja_la += c.deja_la;
-                        r.conflits.extend(c.conflits);
+                        let c = reposer_dossiers_entiers(&attente_vita, &crate::vita3k::parties(dossier, &u.id), "PS Vita", reglees)?;
+                        r.ajouter(c, true);
                     }
                     Err(e) => r.conflits.push(format!("PS Vita : {e}")),
                 }
@@ -412,21 +619,16 @@ impl Noyau {
                     Ok(u) => {
                         for (sorte, vers) in crate::eden::dossiers_parties(dossier, &u.uuid) {
                             let etiquette = if sorte == "save" { "Switch" } else { "Switch (compte)" };
-                            let c = reposer_dossiers_entiers(&attente_eden.join(sorte), &vers, etiquette)?;
-                            r.reposes += c.reposes;
-                            r.deja_la += c.deja_la;
-                            r.conflits.extend(c.conflits);
+                            let c = reposer_dossiers_entiers(&attente_eden.join(sorte), &vers, etiquette, reglees)?;
+                            r.ajouter(c, true);
                         }
                         // Les parties « Device » (communes) : remises si elles manquent ; déjà là et différentes (une
                         // autre personne a joué ici), gardées telles quelles, sans le compter comme un souci.
-                        let c = reposer_dossiers_entiers(&attente_eden.join("device"), &crate::eden::dossier_device(dossier), "Switch (commun)")?;
-                        r.reposes += c.reposes;
-                        r.deja_la += c.deja_la;
-                        if !c.conflits.is_empty() {
-                            r.conflits.push(format!(
-                                "Switch : {} partie(s) commune(s) déjà présente(s) ici et différente(s), gardée(s) telle(s) quelle(s)",
-                                c.conflits.len()
-                            ));
+                        let c = reposer_dossiers_entiers(&attente_eden.join("device"), &crate::eden::dossier_device(dossier), "Switch (commun)", reglees)?;
+                        let communes = c.conflits.len();
+                        r.ajouter(c, false);
+                        if communes > 0 {
+                            r.conflits.push(format!("Switch : {communes} partie(s) commune(s) déjà présente(s) ici et différente(s), gardée(s) telle(s) quelle(s)"));
                         }
                     }
                     Err(e) => r.conflits.push(format!("Switch : {e}")),
@@ -437,17 +639,116 @@ impl Noyau {
             let compte = zone.join(&nom).join(crate::emulateurs_profils::COMPTE_RPCS3);
             if compte.is_dir() && crate::emulateurs_profils::est_rpcs3(&programme) {
                 let numero = crate::emulateurs_profils::compte_rpcs3(dossier, &crate::jeux_pc::nom_de_dossier(&s.profil.nom))?;
-                let c = reposer_parties_entieres(&compte, &dossier.join("dev_hdd0").join("home").join(numero))?;
-                r.reposes += c.reposes;
-                r.deja_la += c.deja_la;
+                let mut c = reposer_parties_entieres(&compte, &dossier.join("dev_hdd0").join("home").join(numero), reglees)?;
                 // Dit simplement : « PS3 : partie BCES00569-GAME ».
-                r.conflits.extend(c.conflits.into_iter().map(|f| format!("PS3 : {f}")));
+                c.conflits = c.conflits.into_iter().map(|f| format!("PS3 : {f}")).collect();
+                for a in &mut c.a_remplacer {
+                    a.etiquette = format!("PS3 : {}", a.etiquette);
+                }
+                r.ajouter(c, true);
             }
-            total.reposes += r.reposes;
-            total.deja_la += r.deja_la;
-            total.conflits.extend(r.conflits.into_iter().map(|f| format!("{nom}/{f}")));
+            r.conflits = r.conflits.into_iter().map(|f| format!("{nom}/{f}")).collect();
+            for a in &mut r.a_remplacer {
+                a.etiquette = format!("{nom}/{}", a.etiquette);
+            }
+            total.ajouter(r, true);
         }
         Ok(total)
+    }
+
+    /// Les parties restaurées encore en double (une proposition fermée sans répondre n'est jamais perdue).
+    pub async fn conflits_restaures(&self) -> Resultat<Vec<ConflitRestaure>> {
+        let s = self.session().await?;
+        let r = lire_reglees(&self.zone_restauration(&s.profil.id));
+        Ok(r.entrees
+            .iter()
+            .filter(|(_, e)| e.etat == "conflit")
+            .map(|(cle, e)| ConflitRestaure { cle: cle.clone(), etiquette: e.etiquette.clone(), copie: r.racine.join(cle).to_string_lossy().into(), cible: e.cible.clone() })
+            .collect())
+    }
+
+    /// ✅ Seb 27/10 : une partie restaurée en double REMPLACE la partie en place, à la demande de la personne — la
+    /// partie en place est d'abord COPIÉE à l'abri (`restauration\<profil>\remplacees\<date>\…`) et relue identique ;
+    /// l'émulateur fermé ; la copie restaurée relue inchangée avant, et la partie posée relue après. Rend l'abri.
+    pub async fn remplacer_par_restauree(&self, cle: &str) -> Resultat<String> {
+        let s = self.session().await?;
+        let attente = self.zone_restauration(&s.profil.id);
+        let mut reglees = lire_reglees(&attente);
+        let e = reglees.entrees.get(cle).cloned().filter(|e| e.etat == "conflit").ok_or_else(|| Erreur::Introuvable("Cette partie en double n'est plus en attente.".into()))?;
+        if cle.split('/').any(|x| x == ".." || x.is_empty()) {
+            return Err(Erreur::Refus("Chemin refusé.".into()));
+        }
+        let (source, cible) = (reglees.racine.join(cle), PathBuf::from(&e.cible));
+        // Jamais écrire hors du dossier de l'émulateur (le registre est un fichier qu'on relit).
+        if e.emulateur.is_empty() || !cible.starts_with(&e.emulateur) || e.cible.contains("..") {
+            return Err(Erreur::Refus("Cette partie n'est pas dans le dossier d'un émulateur : rien n'est remplacé.".into()));
+        }
+        if !crate::lancement::processus_du_dossier(Path::new(&e.emulateur)).is_empty() {
+            return Err(Erreur::Refus("L'émulateur est ouvert : ferme-le (ou quitte ta partie), puis recommence.".into()));
+        }
+        let abri = attente.join("remplacees").join(crate::noyau::maintenant().replace(':', "-")).join(cle);
+        let (de, vers, ab, dossier, attendue) = (source.clone(), cible.clone(), abri.clone(), e.dossier, e.empreinte.clone());
+        tokio::task::spawn_blocking(move || -> Resultat<()> {
+            let empreinte_de = |p: &Path| -> Resultat<String> { if dossier { empreinte_dossier(p, &fichiers_de(p)?) } else { empreinte(p) } };
+            // La copie restaurée n'a pas changé depuis le conflit.
+            if empreinte_de(&de)? != attendue {
+                return Err(Erreur::Refus("La copie restaurée a changé depuis : rien n'est remplacé.".into()));
+            }
+            // La partie en place, d'abord à l'abri, relue identique.
+            if vers.exists() {
+                let avant = empreinte_de(&vers)?;
+                if dossier {
+                    crate::eden::copier_dossier_entier(&vers, &ab)?;
+                } else {
+                    if let Some(p) = ab.parent() {
+                        std::fs::create_dir_all(p)?;
+                    }
+                    std::fs::copy(&vers, &ab)?;
+                }
+                if empreinte_de(&ab)? != avant {
+                    return Err(Erreur::Disque("La mise à l'abri de ta partie a échoué : rien n'est remplacé.".into()));
+                }
+            }
+            // Puis la copie restaurée à sa place, relue.
+            if dossier {
+                // L'ancienne partie mise de côté (renommée), la restaurée posée, puis seulement l'ancienne retirée
+                // (déjà à l'abri, relue identique) : la place n'est jamais vide, un échec remet tout comme avant.
+                let mise_de_cote = PathBuf::from(format!("{}.frogtend-ancien", vers.to_string_lossy()));
+                if mise_de_cote.exists() {
+                    return Err(Erreur::Refus("Un remplacement précédent n'est pas fini : rien n'est remplacé.".into()));
+                }
+                let avait = vers.exists();
+                if avait {
+                    std::fs::rename(&vers, &mise_de_cote)?;
+                }
+                if let Err(e) = crate::eden::copier_dossier_entier(&de, &vers) {
+                    if avait {
+                        let _ = std::fs::rename(&mise_de_cote, &vers);
+                    }
+                    return Err(e);
+                }
+                if avait {
+                    std::fs::remove_dir_all(&mise_de_cote)?;
+                }
+            } else {
+                let provisoire = PathBuf::from(format!("{}.frogtend", vers.to_string_lossy()));
+                std::fs::copy(&de, &provisoire)?;
+                std::fs::rename(&provisoire, &vers)?;
+            }
+            if empreinte_de(&vers)? != attendue {
+                return Err(Erreur::Disque("La partie restaurée est abîmée après sa pose : ta partie d'avant est à l'abri.".into()));
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|_| Erreur::Disque("Le remplacement s'est arrêté brutalement.".into()))??;
+        if let Some(x) = reglees.entrees.get_mut(cle) {
+            x.etat = "remplacee".into();
+            x.abri = abri.to_string_lossy().into();
+        }
+        ecrire_reglees(&attente, &reglees)?;
+        self.journaliser(&format!("restauration : partie remplacée par la copie restaurée ({}), l'ancienne à l'abri", e.etiquette));
+        Ok(abri.to_string_lossy().into())
     }
 
     /// Juste après l'installation d'un jeu : si ses parties attendent d'être restaurées, elles sont reposées dans son
@@ -590,10 +891,10 @@ mod tests {
         assert_eq!(std::fs::read(p.join("save.dat")).unwrap(), b"zelda");
         assert_eq!(std::fs::read(p.parent().unwrap().join("common").join("options.dat")).unwrap(), b"commun");
         assert!(!crate::emulateurs_profils::dossier_du_profil(&cemu, "Seb").join(".cemu-compte").exists());
-        // Il a rejoué depuis : jamais écrasé, conflit dit.
+        // Il a rejoué depuis : jamais écrasé, et la partie déjà reposée n'est plus retraitée (aucun faux conflit).
         std::fs::write(p.join("save.dat"), b"zelda plus loin").unwrap();
         let r = n.reposer_parties_emulateurs(&[programme]).await.unwrap();
-        assert_eq!(r.conflits, ["Cemu/Wii U : 00050000/101c9500 (compte)"]);
+        assert!(r.conflits.is_empty() && r.a_remplacer.is_empty());
         assert_eq!(std::fs::read(p.join("save.dat")).unwrap(), b"zelda plus loin");
     }
 
@@ -625,10 +926,10 @@ mod tests {
         let save = crate::eden::dossiers_parties(&eden, &seb)[0].1.join("0100000000010000").join("save.bin");
         assert_eq!(std::fs::read(&save).unwrap(), b"zelda");
         assert!(!crate::emulateurs_profils::dossier_du_profil(&eden, "Seb").join(".eden-utilisateur").exists());
-        // Il a rejoué depuis : jamais écrasé, conflit dit.
+        // Il a rejoué depuis : jamais écrasé, et la partie déjà reposée n'est plus retraitée (aucun faux conflit).
         std::fs::write(&save, b"zelda plus loin").unwrap();
         let rep = n.reposer_parties_emulateurs(&[programme]).await.unwrap();
-        assert_eq!(rep.conflits, ["Eden/Switch/0100000000010000"]);
+        assert!(rep.conflits.is_empty());
         assert_eq!(std::fs::read(&save).unwrap(), b"zelda plus loin");
     }
 
@@ -665,14 +966,97 @@ mod tests {
         // Reposée une seconde fois, à l'identique : rien à faire.
         let r = n.reposer_parties_emulateurs(&[rpcs3.join("rpcs3.exe").to_string_lossy().into()]).await.unwrap();
         assert_eq!((r.reposes, r.conflits.len()), (0, 0));
-        // Une partie différente déjà là (elle a rejoué : SAVE.DAT changé, l'icône partie) : on n'y touche PAS DU TOUT —
-        // jamais un mélange des deux parties — et c'est dit simplement.
+        // Elle a rejoué depuis (SAVE.DAT changé, l'icône partie) : on n'y touche PAS DU TOUT — jamais un mélange des deux
+        // parties — et la partie déjà reposée n'est plus retraitée (aucun faux conflit).
         std::fs::write(seb.join("savedata/BCES00569-GAME/SAVE.DAT"), b"plus recente").unwrap();
         std::fs::remove_file(seb.join("savedata/BCES00569-GAME/ICON0.PNG")).unwrap();
         let r = n.reposer_parties_emulateurs(&[rpcs3.join("rpcs3.exe").to_string_lossy().into()]).await.unwrap();
+        assert!(r.conflits.is_empty());
+        // Un VRAI conflit : la partie en place était là AVANT (registre oublié = une autre restauration) : dit UNE fois,
+        // proposé au remplacement ; le remplacement met la partie en place à l'abri, relue.
+        std::fs::remove_file(d.path().join("app").join("restauration").join(&id).join(REGLEES)).unwrap();
+        let r = n.reposer_parties_emulateurs(&[rpcs3.join("rpcs3.exe").to_string_lossy().into()]).await.unwrap();
         assert_eq!(r.conflits, ["RPCS3/PS3 : savedata/BCES00569-GAME"]);
-        assert_eq!(std::fs::read(seb.join("savedata/BCES00569-GAME/SAVE.DAT")).unwrap(), b"plus recente");
-        assert!(!seb.join("savedata/BCES00569-GAME/ICON0.PNG").exists(), "rien de l'ancienne partie mêlé à la nouvelle");
+        assert_eq!(r.a_remplacer.len(), 1);
+        assert_eq!(r.a_remplacer[0].etiquette, "RPCS3/PS3 : savedata/BCES00569-GAME");
+        let r2 = n.reposer_parties_emulateurs(&[rpcs3.join("rpcs3.exe").to_string_lossy().into()]).await.unwrap();
+        assert!(r2.conflits.is_empty(), "un conflit n'est dit qu'une fois");
+        let abri = PathBuf::from(n.remplacer_par_restauree(&r.a_remplacer[0].cle).await.unwrap());
+        assert_eq!(std::fs::read(seb.join("savedata/BCES00569-GAME/SAVE.DAT")).unwrap(), b"partie");
+        assert_eq!(std::fs::read(seb.join("savedata/BCES00569-GAME/ICON0.PNG")).unwrap(), b"icone");
+        assert_eq!(std::fs::read(abri.join("SAVE.DAT")).unwrap(), b"plus recente", "la partie d'avant à l'abri");
+        assert!(!abri.join("ICON0.PNG").exists());
+        assert!(n.remplacer_par_restauree(&r.a_remplacer[0].cle).await.is_err(), "une seule fois");
+        // Effacée ensuite par la personne : elle ne revient PLUS (✅ Seb 27/10), mais reste dans la zone (sauvegarde).
+        std::fs::remove_dir_all(seb.join("savedata/BCES00569-GAME")).unwrap();
+        let r = n.reposer_parties_emulateurs(&[rpcs3.join("rpcs3.exe").to_string_lossy().into()]).await.unwrap();
+        assert_eq!((r.reposes, r.conflits.len()), (0, 0));
+        assert!(!seb.join("savedata/BCES00569-GAME").exists());
+        assert!(zone.join(".rpcs3-compte/savedata/BCES00569-GAME/SAVE.DAT").is_file(), "jamais effacée de la zone");
+    }
+
+    #[tokio::test]
+    async fn une_carte_memoire_en_double_est_dite_une_fois_et_remplacee_a_la_demande() {
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(crate::coffre::CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, None).unwrap().id;
+        n.ouvrir(&id, None, &crate::noyau::Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        let zone = d.path().join("app").join("restauration").join(&id).join("parties").join("emulateurs").join("DuckStation");
+        std::fs::create_dir_all(zone.join("memcards")).unwrap();
+        std::fs::write(zone.join("memcards").join("ff7.mcd"), b"restauree").unwrap();
+        std::fs::write(zone.join("memcards").join("tekken.mcd"), b"tekken").unwrap();
+        let duck = d.path().join("Emulateurs").join("DuckStation");
+        let profil = crate::emulateurs_profils::dossier_du_profil(&duck, "Seb");
+        std::fs::create_dir_all(profil.join("memcards")).unwrap();
+        std::fs::write(profil.join("memcards").join("ff7.mcd"), b"la mienne").unwrap();
+        let programme: String = duck.join("duckstation.exe").to_string_lossy().into();
+        let r = n.reposer_parties_emulateurs(std::slice::from_ref(&programme)).await.unwrap();
+        assert_eq!((r.reposes, r.a_remplacer.len()), (1, 1));
+        assert_eq!(std::fs::read(profil.join("memcards").join("ff7.mcd")).unwrap(), b"la mienne", "jamais remplacée sans le demander");
+        assert!(n.reposer_parties_emulateurs(std::slice::from_ref(&programme)).await.unwrap().conflits.is_empty(), "dit une fois");
+        // Tekken effacée par la personne : ne revient plus.
+        std::fs::remove_file(profil.join("memcards").join("tekken.mcd")).unwrap();
+        assert_eq!(n.reposer_parties_emulateurs(std::slice::from_ref(&programme)).await.unwrap().reposes, 0);
+        assert!(!profil.join("memcards").join("tekken.mcd").exists());
+        // Remplacer : la sienne à l'abri, la restaurée en place.
+        let abri = PathBuf::from(n.remplacer_par_restauree(&r.a_remplacer[0].cle).await.unwrap());
+        assert_eq!(std::fs::read(profil.join("memcards").join("ff7.mcd")).unwrap(), b"restauree");
+        assert_eq!(std::fs::read(&abri).unwrap(), b"la mienne");
+        assert!(n.remplacer_par_restauree("../../ailleurs").await.is_err());
+        assert!(n.conflits_restaures().await.unwrap().is_empty(), "remplacée : plus en double");
+        // DuckStation réinstallé AILLEURS : ses parties reviennent au nouvel endroit (même déjà reposées avant).
+        let autre = d.path().join("Autre").join("DuckStation");
+        let ailleurs: String = autre.join("duckstation.exe").to_string_lossy().into();
+        let r = n.reposer_parties_emulateurs(std::slice::from_ref(&ailleurs)).await.unwrap();
+        assert_eq!(r.reposes, 2);
+        assert!(crate::emulateurs_profils::dossier_du_profil(&autre, "Seb").join("memcards").join("tekken.mcd").is_file());
+    }
+
+    #[tokio::test]
+    async fn un_conflit_ferme_sans_reponse_reste_relisible() {
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(crate::coffre::CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, None).unwrap().id;
+        n.ouvrir(&id, None, &crate::noyau::Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        let attente = d.path().join("app").join("restauration").join(&id);
+        let zone = attente.join("parties").join("emulateurs").join("DuckStation");
+        std::fs::create_dir_all(zone.join("memcards")).unwrap();
+        std::fs::write(zone.join("memcards").join("ff7.mcd"), b"restauree").unwrap();
+        let duck = d.path().join("Emulateurs").join("DuckStation");
+        let profil = crate::emulateurs_profils::dossier_du_profil(&duck, "Seb");
+        std::fs::create_dir_all(profil.join("memcards")).unwrap();
+        std::fs::write(profil.join("memcards").join("ff7.mcd"), b"la mienne").unwrap();
+        let programme: String = duck.join("duckstation.exe").to_string_lossy().into();
+        assert_eq!(n.reposer_parties_emulateurs(std::slice::from_ref(&programme)).await.unwrap().a_remplacer.len(), 1);
+        let c = n.conflits_restaures().await.unwrap();
+        assert_eq!(c.len(), 1);
+        assert!(c[0].copie.ends_with("ff7.mcd"));
+        // Un registre trafiqué qui viserait hors de l'émulateur : refusé.
+        let mut r = lire_reglees(&attente);
+        r.entrees.values_mut().for_each(|e| e.cible = d.path().join("Ailleurs").join("x.mcd").to_string_lossy().into());
+        ecrire_reglees(&attente, &r).unwrap();
+        assert!(n.remplacer_par_restauree(&c[0].cle).await.is_err());
+        assert!(!d.path().join("Ailleurs").exists());
     }
 
     #[tokio::test]

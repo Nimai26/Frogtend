@@ -4,7 +4,7 @@
 
 import { listen } from '@tauri-apps/api/event';
 import { isTauri } from '@tauri-apps/api/core';
-import { api, taille } from '$lib/api';
+import { api, taille, type ConflitRestaure } from '$lib/api';
 import { choisir, confirmer, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat, reglerPc, remplacerReglagesProfil } from '$lib/etat.svelte';
@@ -12,7 +12,7 @@ import { ajouter, normaliserTous } from '$lib/emulateurs/choix';
 import { depuis } from '$lib/ludotheque/ludotheque.svelte';
 import { rechargerJeuxDuPc, tele } from '$lib/ludotheque/telechargements.svelte';
 import { proposerDossierJeux } from '$lib/ludotheque/dossierJeux';
-import { aAnnoncer } from './sauvegardeTaille';
+import { aAnnoncer, dossierDesAbris, dossierDesCopies } from './sauvegardeTaille';
 
 export interface BilanSauvegarde {
   envoyes: number;
@@ -274,12 +274,15 @@ export async function restaurer(profilChoisi?: string, pcChoisi?: string) {
     `✅ Restauré : réglages, ${prete.fichiers} fichier(s) de parties (${taille(prete.taille)}).` +
       (reposes.reposes ? ` ${reposes.reposes} partie(s) d’émulateur reposée(s).` : ''),
   );
-  if (reposes.conflits.length) {
+  // Les parties communes à tous (déjà là et différentes) sont seulement dites ; celles de la personne, proposées.
+  const autres = reposes.conflits.filter((c) => !(reposes.a_remplacer ?? []).some((a) => a.etiquette === c));
+  if (autres.length) {
     await informer(
       '⚠ Parties gardées telles quelles',
-      `Ces parties existaient déjà sur ce PC avec un contenu différent ; elles n’ont pas été remplacées :\n${reposes.conflits.slice(0, 12).join('\n')}${reposes.conflits.length > 12 ? `\n… et ${reposes.conflits.length - 12} autre(s)` : ''}`,
+      `Ces parties existaient déjà sur ce PC avec un contenu différent ; elles n’ont pas été remplacées :\n${autres.slice(0, 12).join('\n')}${autres.length > 12 ? `\n… et ${autres.length - 12} autre(s)` : ''}`,
     );
   }
+  await proposerRemplacements(reposes.a_remplacer ?? []);
 
   // Les jeux : on propose de les remettre (annoncé et chiffré d'abord).
   await rechargerJeuxDuPc();
@@ -321,4 +324,52 @@ export async function restaurer(profilChoisi?: string, pcChoisi?: string) {
   await rechargerJeuxDuPc();
   toast(`✅ ${ok} jeu(x) en cours de téléchargement.`);
   if (echecs.length) await informer('⚠ Jeux non remis', echecs.join('\n'));
+}
+
+/** Une partie restaurée en double : dite UNE fois (le cœur ne la redit plus), avec l'endroit de la copie ; la personne
+ * peut la mettre à la place de la sienne (✅ Seb 27/10 : sa partie actuelle d'abord mise à l'abri). Au-delà de 3, un
+ * choix d'abord : toutes, une par une, ou garder les deux versions. */
+export async function proposerRemplacements(conflits: ConflitRestaure[]): Promise<void> {
+  // (Appelée aussi depuis ⚙ Options ▸ Sauvegarde : une proposition fermée sans répondre se retrouve là.)
+  if (!conflits.length) return;
+  let une = true;
+  if (conflits.length > 3) {
+    const c = await choisir<'toutes' | 'une' | 'garder'>(
+      `💾 ${conflits.length} parties restaurées en double`,
+      [
+        { valeur: 'garder', libelle: '📂 Garder les deux versions', detail: 'tes parties restent ; les restaurées attendent à part' },
+        { valeur: 'une', libelle: '🔎 Choisir une par une' },
+        { valeur: 'toutes', libelle: '♻ Les remplacer toutes', detail: 'tes parties actuelles mises à l’abri d’abord' },
+      ],
+      'Ces parties existaient déjà sur ce PC avec un contenu différent. Rien n’a été remplacé.',
+    );
+    if (!c || c === 'garder') {
+      await informer('📂 Les deux versions sont gardées', `Tes parties restent telles quelles. Les ${conflits.length} parties restaurées attendent à part, dans :\n${dossierDesCopies(conflits[0].copie)}`);
+      return;
+    }
+    une = c === 'une';
+  }
+  const abris: string[] = [];
+  const echecs: string[] = [];
+  for (const c of conflits) {
+    if (une) {
+      const oui = await confirmer('💾 Une partie existe en deux versions', {
+        message: `${c.etiquette}\n\nTa partie actuelle est gardée. La partie restaurée est rangée à part :\n${c.copie}\n\nRemplacer ta partie par la partie restaurée ? Ta partie actuelle sera d’abord mise à l’abri.`,
+        libelleValider: '♻ Remplacer ma partie',
+      });
+      if (!oui) continue;
+    }
+    try {
+      abris.push(await api.restaurationRemplacer(c.cle));
+    } catch (e) {
+      echecs.push(`${c.etiquette} : ${motifDuRefus(e)}`);
+    }
+  }
+  // UN bilan qui reste affiché (un chemin ne disparaît jamais avant d'avoir été lu).
+  if (!abris.length && !echecs.length) return;
+  const lignes = [
+    abris.length ? `✅ ${abris.length} partie(s) restaurée(s) remise(s) en place. Les anciennes sont à l’abri dans :\n${dossierDesAbris(abris[0])}` : '',
+    echecs.length ? `⚠ Pas remplacée(s) (rien n’a changé pour elle·s) :\n${echecs.slice(0, 8).join('\n')}${echecs.length > 8 ? `\n… et ${echecs.length - 8} autre(s)` : ''}` : '',
+  ];
+  await informer('💾 Parties en double', lignes.filter(Boolean).join('\n\n'));
 }

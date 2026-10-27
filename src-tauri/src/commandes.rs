@@ -4930,6 +4930,19 @@ pub async fn restauration_reposer_emulateurs(app: AppHandle, noyau: State<'_, No
     noyau.reposer_parties_emulateurs(&programmes_emulateurs(&app)).await
 }
 
+/// Remplace la partie en place par sa copie restaurée (la personne l'a demandé ; sa partie actuelle mise à l'abri
+/// d'abord). Rend l'abri.
+#[tauri::command]
+pub async fn restauration_remplacer(noyau: State<'_, Noyau>, cle: String) -> Resultat<String> {
+    noyau.remplacer_par_restauree(&cle).await
+}
+
+/// Les parties restaurées encore en double (pour les proposer de nouveau).
+#[tauri::command]
+pub async fn restauration_conflits(noyau: State<'_, Noyau>) -> Resultat<Vec<crate::restauration::ConflitRestaure>> {
+    noyau.conflits_restaures().await
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

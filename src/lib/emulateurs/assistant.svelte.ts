@@ -6,6 +6,7 @@ import { listen } from '@tauri-apps/api/event';
 import { ajouter } from './choix';
 import { avecConseil, biosADireOuPoser, biosATelecharger, biosRetroArch, dossierParDefaut, estConseille, ligneDe, palier, poidsBios, versionAutre } from './pret';
 import { isTauri } from '@tauri-apps/api/core';
+import { proposerRemplacements } from '$lib/sauvegarde.svelte';
 import { api, taille, type BilanBios, type EmulateurInstalle, type EmulateurRecommande } from '$lib/api';
 import { choisir, confirmer, demander, fermerToast, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
@@ -470,5 +471,6 @@ export async function reglerEmulateur(plateforme: string): Promise<string | null
   const r = await api.restaurationReposerEmulateurs().catch(() => null);
   const parties = r?.reposes ? ` ${r.reposes} partie(s) restaurée(s) reposée(s).` : '';
   toast((sys.liste.length > 1 ? `✅ ${nom} ajouté pour ${nomAffiche(plateforme)}.` : `✅ ${nom} réglé pour ${nomAffiche(plateforme)}.`) + parties);
+  if (r?.a_remplacer?.length) await proposerRemplacements(r.a_remplacer);
   return cle;
 }

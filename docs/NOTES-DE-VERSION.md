@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.127.0 — Les parties restaurées en double
+
+- 💾 Après une restauration, une partie d'émulateur que tu avais effacée ne revient plus toute seule à chaque
+  émulateur installé (elle reste dans ta sauvegarde chez Firehouse).
+- Une partie restaurée qui existe déjà sur ce PC avec un autre contenu : Frogtend te le dit UNE fois, avec l'endroit
+  de la copie restaurée, et te propose « ♻ Remplacer ma partie » (ta partie actuelle est d'abord mise à l'abri).
+  Si tu fermes la question, tu la retrouves dans ⚙ Options ▸ Sauvegarde ▸ « Voir les parties en double ».
+- Un émulateur réinstallé à un autre endroit reçoit de nouveau ses parties ; une nouvelle restauration remet tout en
+  jeu.
+- Les longs chemins de dossier passent à la ligne dans les fenêtres de Frogtend.
+
 ## 0.126.0 — Le logiciel système de la Switch fourni par Firehouse
 
 - 💿 Eden (Switch) : le logiciel système (« firmware ») que Firehouse fournit est maintenant installé par Frogtend,

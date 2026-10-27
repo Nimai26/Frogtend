@@ -543,6 +543,8 @@ pub fn run() {
             commandes::emulateur_fiche,
             commandes::emulateur_derniere_version,
             commandes::eden_firmware,
+            commandes::restauration_remplacer,
+            commandes::restauration_conflits,
             commandes::eden_firmware_servi,
             commandes::emulateur_installer,
             commandes::emulateur_adopter,

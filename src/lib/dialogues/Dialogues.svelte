@@ -206,6 +206,8 @@
   .message {
     margin: 0 0 calc(14 * var(--u));
     white-space: pre-line;
+    /* Un long chemin de dossier, sans espaces, passe à la ligne au lieu de sortir de la fenêtre. */
+    overflow-wrap: anywhere;
   }
   .attente {
     margin: 0 0 calc(14 * var(--u));
@@ -264,6 +266,7 @@
     box-shadow: 0 calc(8 * var(--u)) calc(24 * var(--u)) var(--ombre-noire);
     backdrop-filter: blur(16px);
     cursor: pointer;
+    overflow-wrap: anywhere;
   }
   .toast.progres {
     cursor: default;

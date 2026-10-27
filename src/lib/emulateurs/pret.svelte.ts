@@ -2,6 +2,7 @@
 // (import, téléchargement) et quand on veut jouer sans émulateur : UN accord, puis Frogtend installe l'émulateur
 // recommandé, son cœur RetroArch s'il en faut un, règle la manette, et retient le tout pour la console.
 
+import { proposerRemplacements } from '$lib/sauvegarde.svelte';
 import { api } from '$lib/api';
 import { taille } from '$lib/api';
 import { confirmer, informer, toast } from '$lib/dialogues/fenetres.svelte';
@@ -119,6 +120,7 @@ export async function preparerPourJouer(plateforme: string, jeux: number): Promi
   const r = await api.restaurationReposerEmulateurs().catch(() => null);
   const parties = r?.reposes ? `, ${r.reposes} partie(s) restaurée(s) reposée(s)` : '';
   toast(`✅ ${nomAffiche(plateforme)} est prêt : ${nom}${manette}${parties}.`);
+  if (r?.a_remplacer?.length) await proposerRemplacements(r.a_remplacer);
   // RPCS3 sans micrologiciel ne lance aucun jeu du commerce : celui de Firehouse est installé (compris dans l'accord) ;
   // s'il n'est pas servi, on le dit tout de suite, simplement.
   if (choix.id === 'rpcs3' && !(await api.rpcs3Micrologiciel(programme).catch(() => null))) {
