@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.122.0 — RetroArch servi par Firehouse
+
+- 🎮 Quand Frogtend installe RetroArch, il le prend maintenant chez Firehouse (version 1.22.2, celle de ses cœurs),
+  avec son empreinte vérifiée ; si Firehouse ne le sert pas, le site officiel de RetroArch, comme avant.
+- La question avant l'installation annonce la version et la taille de CE paquet, et dit qu'il vient de Firehouse ;
+  la mise à jour de RetroArch n'est plus proposée en boucle quand le site officiel a une version plus récente.
+
 ## 0.121.0 — Les jeux du pack MAME avec leur fiche
 
 - 🕹 « Mettre ces jeux dans ma ludothèque » (pack MAME) ajoute maintenant chaque jeu AVEC sa fiche de Firehouse

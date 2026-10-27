@@ -240,13 +240,15 @@ export function messagePret(o: {
   conseil?: Conseil | null;
   /** La taille des fichiers système à télécharger (déjà mise en forme). */
   tailleBios?: string | null;
+  /** Le paquet est servi par Firehouse (RetroArch hébergé), pas par le site officiel. */
+  deFirehouse?: boolean;
 }): string {
   const { choix } = o;
   const pour = o.jeux > 1 ? `tes ${o.jeux} jeux ${o.plateforme}` : `ce jeu ${o.plateforme}`;
   const lignes = [
     choix.comment === 'deja'
       ? `Pour jouer à ${pour}, Frogtend utilise ${choix.nom}, déjà installé sur ce PC.`
-      : `Pour jouer à ${pour}, Frogtend installe ${choix.nom}, l’émulateur recommandé${o.taille ? ` (${o.taille})` : ''}, depuis son site officiel.`,
+      : `Pour jouer à ${pour}, Frogtend installe ${choix.nom}, l’émulateur recommandé${o.taille ? ` (${o.taille})` : ''}, ${o.deFirehouse ? 'fourni par Firehouse' : 'depuis son site officiel'}.`,
   ];
   if (choix.comment !== 'deja') lignes.push(`Dossier : ${o.dossier}\\${choix.nom}${o.dossierNouveau ? ' (le dossier des émulateurs, modifiable dans ⚙ Options ▸ Émulateurs)' : ''}`);
   if (choix.id && MANETTE_REGLEE.includes(choix.id)) lignes.push('Ta manette (Xbox ou autre) est réglée pour toi.');

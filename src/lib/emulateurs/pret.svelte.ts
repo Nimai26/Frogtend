@@ -68,6 +68,7 @@ export async function preparerPourJouer(plateforme: string, jeux: number): Promi
       jeux,
       choix,
       taille: paquet?.taille ? taille(paquet.taille) : null,
+      deFirehouse: !!paquet && !/^https?:/i.test(paquet.url),
       dossier,
       dossierNouveau,
       conseil,

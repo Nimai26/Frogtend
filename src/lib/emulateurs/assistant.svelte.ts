@@ -90,11 +90,12 @@ export async function installerEmulateur(
     toast(`Impossible de trouver ${nom} sur son site : ${motifDuRefus(e)}`, 'erreur');
     return null;
   }
-  const site = new URL(paquet.url).host;
+  // Une route sans hôte : le paquet est servi par Firehouse (RetroArch hébergé), pas par le site officiel.
+  const origine = /^https?:/i.test(paquet.url) ? `son site officiel (${new URL(paquet.url).host})` : 'Firehouse';
   // « Prêt à jouer » : la personne a déjà dit oui à une question qui disait tout.
   const oui = options.sansQuestion || await confirmer(`⬇ ${miseAJour ? 'Mettre à jour' : 'Installer'} ${nom} ${paquet.version} ?`, {
     message: [
-      `Téléchargement depuis son site officiel (${site}) : ${paquet.taille ? taille(paquet.taille) : 'taille non annoncée'}.`,
+      `Téléchargement depuis ${origine} : ${paquet.taille ? taille(paquet.taille) : 'taille non annoncée'}.`,
       `Dossier : ${dossier}\\${nom}`,
       miseAJour
         ? 'Ta configuration est gardée ; un fichier de réglages remplacé par la nouvelle version est d’abord copié à part.'

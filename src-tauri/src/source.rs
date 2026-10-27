@@ -1003,6 +1003,28 @@ mod tests {
         println!("version {} : {n} profils posés, dans {sous:?}", a["version"]);
     }
 
+    /// RÉEL (contrat 1.34) : RetroArch HÉBERGÉ par Firehouse (202 Mo) installé dans un dossier TEMPORAIRE par la fiche du
+    /// catalogue — empreinte vérifiée, dossier racine aplati, programme trouvé. Rien n'est lancé ; tout est effacé.
+    /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_retroarch_heberge -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_retroarch_heberge() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let s = Source::Firehouse(crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap());
+        let p = s.paquet_emulateur("retroarch").await.unwrap();
+        let d = tempfile::tempdir().unwrap();
+        let paquet = d.path().join("retroarch.paquet");
+        let route = p["url"].as_str().unwrap().strip_prefix(crate::firehouse::PREFIXE).unwrap().to_string();
+        let t = std::time::Instant::now();
+        s.telecharger_controle(&route, &paquet, p["sha256"].as_str(), &[], &|_, _| {}).await.unwrap();
+        println!("reçu {} octets en {:.1} s (empreinte vérifiée)", std::fs::metadata(&paquet).unwrap().len(), t.elapsed().as_secs_f64());
+        let f = crate::emulateurs::fiche("retroarch").unwrap();
+        let prog = crate::emulateurs::installer_paquet(f, &paquet, &d.path().join("RetroArch")).unwrap();
+        println!("installé : {} ; autoconfig présent : {}", prog.display(), d.path().join("RetroArch").join("autoconfig").is_dir());
+    }
+
     /// RÉEL (contrat 1.34) : le paquet MAME HÉBERGÉ par Firehouse (87 Mo) installé dans un dossier TEMPORAIRE — empreinte
     /// sha256 vérifiée, archive sortie de l'exe sans l'exécuter, programme trouvé. Rien n'est lancé ; tout est effacé.
     /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_mame_heberge -- --ignored --nocapture`

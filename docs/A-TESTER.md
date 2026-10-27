@@ -3,6 +3,11 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## RetroArch servi par Firehouse (0.122.0)
+- [ ] Sur un PC sans RetroArch : préparer une plateforme qui l'utilise (PlayStation, Super Nintendo…) : la question
+      dit « fourni par Firehouse » avec environ 193 Mo ; après le oui, RetroArch démarre un jeu.
+- [ ] ⚙ Options ▸ 🕹 Émulateurs : RetroArch ne propose PAS une mise à jour juste après son installation.
+
 ## Les jeux du pack MAME avec leur fiche (0.121.0)
 - [ ] Après avoir reçu (une partie) du pack : « Mettre ces jeux dans ma ludothèque » : les jeux apparaissent avec leur
       jaquette ; Pac-Man et ses variantes ne font qu'UN jeu (les variantes dans « Versions »).

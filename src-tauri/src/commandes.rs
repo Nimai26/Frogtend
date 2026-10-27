@@ -4264,9 +4264,43 @@ pub fn emulateur_fiche(nom: String) -> Option<InfoEmulateur> {
 
 /// La dernière version officielle d'un émulateur (version, adresse, taille).
 #[tauri::command]
-pub async fn emulateur_derniere_version(id: String) -> Resultat<crate::emulateurs::Paquet> {
+pub async fn emulateur_derniere_version(noyau: State<'_, Noyau>, id: String) -> Resultat<crate::emulateurs::Paquet> {
     let f = crate::emulateurs::fiche(&id).ok_or_else(|| Erreur::Introuvable("Émulateur inconnu.".into()))?;
+    // RetroArch hébergé : la version et la taille annoncées sont celles du paquet que Firehouse servira (sinon la
+    // mise à jour serait proposée sans fin, et l'accord donné sur une autre taille).
+    if f.id == "retroarch" {
+        if let Some(h) = retroarch_prevu(&noyau).await {
+            // `url` : la route de l'API (sans hôte), qui dit à l'interface que le paquet vient de Firehouse.
+            return Ok(crate::emulateurs::Paquet { version: h.version, url: format!("{}{}", crate::firehouse::PREFIXE, h.route), taille: h.taille });
+        }
+    }
     crate::emulateurs::derniere_version(f).await
+}
+
+/// Le RetroArch que Firehouse héberge (contrat 1.34, `heberge: true`) : `None` s'il ne l'héberge pas, s'il est
+/// injoignable, ou s'il manque l'empreinte, la route ou la version.
+struct RetroarchHeberge {
+    version: String,
+    route: String,
+    sha256: String,
+    taille: Option<u64>,
+}
+
+async fn retroarch_prevu(noyau: &Noyau) -> Option<RetroarchHeberge> {
+    let s = noyau.session().await.ok()?;
+    lire_retroarch_heberge(&s.source.paquet_emulateur("retroarch").await.ok()?)
+}
+
+fn lire_retroarch_heberge(p: &serde_json::Value) -> Option<RetroarchHeberge> {
+    if p["heberge"] != true {
+        return None;
+    }
+    Some(RetroarchHeberge {
+        version: p["version"].as_str().filter(|v| !v.is_empty())?.to_string(),
+        route: p["url"].as_str()?.strip_prefix(crate::firehouse::PREFIXE)?.to_string(),
+        sha256: p["sha256"].as_str().filter(|x| !x.is_empty())?.to_string(),
+        taille: p["taille"].as_u64(),
+    })
 }
 
 #[derive(Clone, Serialize)]
@@ -4292,14 +4326,26 @@ pub async fn emulateur_installer(
     if !base.is_dir() {
         std::fs::create_dir_all(&base).map_err(|e| Erreur::Disque(format!("Dossier impossible à créer : {dossier} ({e}).")))?;
     }
-    let paquet_info = crate::emulateurs::derniere_version(f).await?;
     let cible = base.join(f.nom);
     let paquet = base.join(".telechargements").join(format!("{}.paquet", f.id));
     let (app2, id2) = (app.clone(), id.clone());
-    crate::emulateurs::telecharger(&paquet_info.url, &paquet, &move |recus, total| {
+    let progres = move |recus, total| {
         let _ = app2.emit("emulateur", ProgresEmulateur { id: id2.clone(), recus, total });
-    })
-    .await?;
+    };
+    // RetroArch HÉBERGÉ par Firehouse (contrat 1.34 : la version des cœurs stables qu'il sert, empreinte vérifiée
+    // pendant la réception) ; sinon (pas hébergé, hors ligne, échec) sa source officielle, comme avant.
+    let heberge = if f.id == "retroarch" { retroarch_heberge(&noyau, &paquet, &progres).await } else { None };
+    let version = match heberge {
+        Some(v) => v,
+        None => {
+            // Rien de Firehouse ne reste (ni paquet, ni paquet partiel) : la source officielle repart de zéro.
+            let _ = std::fs::remove_file(&paquet);
+            let _ = std::fs::remove_file(paquet.with_extension("part"));
+            let paquet_info = crate::emulateurs::derniere_version(f).await?;
+            crate::emulateurs::telecharger(&paquet_info.url, &paquet, &progres).await?;
+            paquet_info.version
+        }
+    };
     let (p, c) = (paquet.clone(), cible.clone());
     let programme = tauri::async_runtime::spawn_blocking(move || crate::emulateurs::installer_paquet(f, &p, &c))
         .await
@@ -4313,7 +4359,7 @@ pub async fn emulateur_installer(
     let e = crate::emulateurs::EmulateurInstalle {
         id: f.id.into(),
         nom: f.nom.into(),
-        version: Some(paquet_info.version),
+        version: Some(version),
         dossier: cible.to_string_lossy().into(),
         programme: programme.to_string_lossy().into(),
         par_frogtend: true,
@@ -4321,6 +4367,18 @@ pub async fn emulateur_installer(
     };
     registre_emulateurs(&noyau).retenir(e.clone())?;
     Ok(e)
+}
+
+/// RetroArch servi par Firehouse (contrat 1.34, `heberge: true`) : téléchargé avec son empreinte sha256 vérifiée
+/// pendant la réception. Rend sa version ; `None` (et rien de gardé) au moindre manque ou échec.
+async fn retroarch_heberge(noyau: &Noyau, paquet: &std::path::Path, progres: &(dyn Fn(u64, Option<u64>) + Send + Sync)) -> Option<String> {
+    let s = noyau.session().await.ok()?;
+    let h = lire_retroarch_heberge(&s.source.paquet_emulateur("retroarch").await.ok()?)?;
+    if let Some(d) = paquet.parent() {
+        std::fs::create_dir_all(d).ok()?;
+    }
+    s.source.telecharger_controle(&h.route, paquet, Some(&h.sha256), &[], progres).await.ok()?;
+    Some(h.version)
 }
 
 /// Retient un émulateur installé à la main (trouvé, ou montré par la personne).
@@ -4503,7 +4561,7 @@ async fn installer_profils_retroarch(noyau: &Noyau, retroarch: &std::path::Path)
     .await;
     if depuis_firehouse.is_none() {
         let _ = std::fs::remove_file(&paquet);
-        let _ = std::fs::remove_file(format!("{}.part", paquet.to_string_lossy()));
+        let _ = std::fs::remove_file(paquet.with_extension("part"));
         crate::emulateurs::telecharger(crate::manettes::URL_PROFILS_RETROARCH, &paquet, &|_, _| {}).await?;
     }
     let (p, d) = (paquet.clone(), retroarch.to_path_buf());
@@ -4780,6 +4838,18 @@ pub async fn restauration_reposer_emulateurs(app: AppHandle, noyau: State<'_, No
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn retroarch_heberge_lu_seulement_complet() {
+        use serde_json::json;
+        let p = json!({"heberge": true, "version": "1.22.2", "url": "/api/jeux/v1/emulateurs/retroarch/fichier", "sha256": "ab", "taille": 202509078});
+        let h = super::lire_retroarch_heberge(&p).unwrap();
+        assert_eq!((h.version.as_str(), h.route.as_str(), h.taille), ("1.22.2", "/emulateurs/retroarch/fichier", Some(202509078)));
+        // Pas hébergé, ou sans empreinte, ou une adresse hors de l'API : la source officielle.
+        for manque in [json!({"heberge": false}), json!({"heberge": true, "version": "1", "url": "/api/jeux/v1/x", "sha256": ""}), json!({"heberge": true, "version": "1", "url": "https://x/y", "sha256": "ab"})] {
+            assert!(super::lire_retroarch_heberge(&manque).is_none(), "{manque}");
+        }
+    }
+
     /// Un zip de mod aux entrées données.
     fn zip_de_mod(d: &std::path::Path, entrees: &[&str]) -> std::path::PathBuf {
         use std::io::Write;

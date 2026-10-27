@@ -152,6 +152,13 @@ describe('le conseil de la maison (contrat 1.8)', () => {
       'des fichiers système (scph5500.bin, scph5501.bin) : Firehouse les fournit, Frogtend les pose pour toi (vérifié)',
     );
   });
+
+  it('RetroArch hébergé : l’annonce dit qu’il vient de Firehouse, pas du site officiel', () => {
+    const psx = { rec: ligneLb('RetroArch', 'retroarch', true), id: 'retroarch', nom: 'RetroArch', comment: 'frogtend' as const };
+    const o = { plateforme: 'Sony Playstation', jeux: 1, choix: psx, taille: '193 Mo', dossier: 'E:\\Emulateurs', dossierNouveau: false };
+    expect(messagePret({ ...o, deFirehouse: true })).toContain('(193 Mo), fourni par Firehouse.');
+    expect(messagePret(o)).toContain('depuis son site officiel.');
+  });
 });
 
 describe('la version attendue par le conseil (contrat 1.13)', () => {

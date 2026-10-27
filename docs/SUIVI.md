@@ -806,8 +806,9 @@ d'abord :
 - ✅ **Contrat 1.34 LIVRÉ par Firehouse (2.148.0, 27/10)** — vérifié EN VRAI (dossiers temporaires) : MAME 0.289
   hébergé (87,6 Mo en 5,2 s, sha256 conforme, archive sortie de l'exe sans l'exécuter : le code le gérait déjà) ;
   profils de manettes RetroArch 1.22.0 (sha256 conforme, 380 profils, seulement xinput/dinput/sdl2/hid, jamais
-  par-dessus) → Frogtend les prend chez Firehouse (buildbot en secours). RESTE : installer RetroArch 1.22.2 HÉBERGÉ
-  plutôt que par le buildbot (sa fiche du catalogue) — petit lot à part.
+  par-dessus) → Frogtend les prend chez Firehouse (buildbot en secours). ✅ FAIT (0.122.0) : RetroArch 1.22.2 HÉBERGÉ
+  installé par Frogtend (essai RÉEL en dossier temporaire : 202,5 Mo en 6,7 s, sha256 vérifié, racine aplatie,
+  autoconfig présent) ; la source officielle en secours.
   ✅ Seb 27/10 (pack MAME complet, lot 1.33b) : dossier NEUF proposé d'office (« <disque>\Frogtend\MAME » sur le
   disque qui a le plus de place, modifiable ; jamais le dossier de ROM de la personne) ; ouvert à TOUS les profils
   après annonce chiffrée et accord ; les CHD proposées À PART (après les zips). Plan de l'expert lancement : A annonce +
