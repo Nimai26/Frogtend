@@ -294,7 +294,7 @@ pub fn chercher_roms(dossier: &Path, extensions: &[String], recursif: bool) -> R
 }
 
 /// Les fichiers d'un dossier (et de ses sous-dossiers si `recursif`). Seuls les noms sont lus, jamais le contenu.
-fn fichiers_du_dossier(dossier: &Path, recursif: bool) -> Resultat<Vec<PathBuf>> {
+pub(crate) fn fichiers_du_dossier(dossier: &Path, recursif: bool) -> Resultat<Vec<PathBuf>> {
     if !dossier.is_dir() {
         return Err(Erreur::Disque(format!("Dossier introuvable : {}.", dossier.display())));
     }
@@ -306,7 +306,7 @@ fn fichiers_du_dossier(dossier: &Path, recursif: bool) -> Resultat<Vec<PathBuf>>
             let Ok(t) = e.file_type() else { continue };
             if t.is_dir() {
                 // Jamais l'atelier du pack MAME (des fichiers en cours de réception, à l'écart).
-                if recursif && e.file_name() != ".frogtend-recu" {
+                if recursif && e.file_name() != crate::pack_mame::ECART && e.file_name() != crate::pack_mame::ABRI {
                     a_voir.push(p);
                 }
             } else if t.is_file() {

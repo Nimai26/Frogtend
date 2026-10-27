@@ -11,7 +11,7 @@
   import { etat, reglerPc } from '$lib/etat.svelte';
   import { debitConnu, rechargerJeuxDuPc } from '$lib/ludotheque/telechargements.svelte';
   import { rechargerListe, rechargerPlateformes } from '$lib/ludotheque/ludotheque.svelte';
-  import { avisVersionMame, placeSuffisante, texteAnnoncePack, type AnnoncePack } from './packMame';
+  import { aFaire, avisVersionMame, placeSuffisante, texteAnnoncePack, type AnnoncePack } from './packMame';
 
 
   let dossier = $state('');
@@ -64,9 +64,12 @@
       await informer('🕹 Pas assez de place', `${texteAnnoncePack(annonce, debitConnu(), duree)}\n\nLibère de la place, ou choisis un dossier sur un autre disque.`);
       return;
     }
-    const oui = await confirmer('🕹 Recevoir le pack MAME ?', {
-      message: `${texteAnnoncePack(annonce, debitConnu(), duree)}\n\nDans : ${dossier}\n\nTu peux arrêter quand tu veux : la suite reprendra où elle en était. Rien n’est jamais effacé ni remplacé.`,
-      libelleValider: 'Recevoir',
+    // L'accord porte sur ce qui est annoncé : la mise à jour seulement si elle l'a été.
+    const maj = annonce.anciens > 0;
+    const titre = !maj ? '🕹 Recevoir le pack MAME ?' : annonce.a_recevoir > 0 ? '🕹 Recevoir et mettre à jour le pack MAME ?' : '🕹 Mettre à jour le pack MAME ?';
+    const oui = await confirmer(titre, {
+      message: `${texteAnnoncePack(annonce, debitConnu(), duree)}\n\nDans : ${dossier}\n\nTu peux arrêter quand tu veux : la suite reprendra où elle en était. Rien n’est jamais effacé${maj ? '.\nFerme MAME avant : un fichier en cours d’utilisation, ou que tu as modifié, est laissé tel quel.' : ' ni remplacé.'}`,
+      libelleValider: maj ? 'Mettre à jour' : 'Recevoir',
     });
     if (!oui) return;
     await reglerPc('dossierPackMame', dossier);
@@ -82,7 +85,7 @@
         }).catch(() => () => {})
       : () => {};
     try {
-      const b = await api.packMameLancer(dossier, avecChd);
+      const b = await api.packMameLancer(dossier, avecChd, maj ? annonce.version : null);
       const laisses = b.laisses.length ? ` ${b.laisses.length} fichier(s) laissé(s) (voir le journal).` : '';
       toast(
         b.arret ? `🕹 Pack MAME : ${b.recus} fichier(s) reçu(s), arrêté (${b.arret}) : relance pour continuer.${laisses}` : `✅ Pack MAME : ${b.recus} fichier(s) reçu(s).${laisses}`,
@@ -122,8 +125,10 @@
       </label>
     {/if}
     <div class="actions">
-      {#if annonce.a_recevoir > 0}
-        <button class="btn primary" onclick={recevoir} disabled={enCours}>{enCours ? 'Réception…' : '🕹 Recevoir le pack'}</button>
+      {#if aFaire(annonce)}
+        <button class="btn primary" onclick={recevoir} disabled={enCours}>
+          {enCours ? 'Réception…' : annonce.anciens > 0 ? '⬆ Mettre à jour le pack' : '🕹 Recevoir le pack'}
+        </button>
       {/if}
       {#if enCours}<button class="btn" onclick={() => api.packMameArreter()}>⏸ Arrêter</button>{/if}
       {#if (annonce.deja_la > 0 || fini) && !enCours}

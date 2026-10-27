@@ -6,6 +6,8 @@
 //! - la place est revérifiée avant CHAQUE fichier ; une coupure s'arrête là et reprend plus tard (les `.part`) ;
 //! - un fichier abîmé chez Firehouse (409) est noté et la suite continue ; un jeton refusé arrête tout ;
 //! - une CHD partagée par plusieurs machines (même `dossier/nom`) n'est reçue qu'UNE fois ;
+//! - la mise à jour (étape D, nouvelle version de MAME) garde chaque ancien fichier à l'abri (`.frogtend-ancien\`) ;
+//!   un fichier qui n'est plus servi n'est jamais déplacé (la liste dépend du grade) : il est seulement dit ;
 //! - rien n'est jamais effacé.
 
 use crate::erreurs::{Erreur, Resultat};
@@ -18,6 +20,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Le registre du pack, dans son dossier : ce que Frogtend y a posé.
 pub const REGISTRE: &str = ".frogtend-pack.json";
+/// Où chaque fichier est reçu avant d'être posé (`<ECART>\<version>\…`), et où un ancien fichier est mis à l'abri lors
+/// d'une mise à jour (`<ABRI>\<sa version>\…`) — tous deux dans le pack, jamais pris pour des ROM par un import.
+pub const ECART: &str = ".frogtend-recu";
+pub const ABRI: &str = ".frogtend-ancien";
 /// La place gardée libre sur le disque, en plus du fichier à recevoir.
 const MARGE: u64 = 1 << 30;
 
@@ -37,9 +43,113 @@ pub struct FichierPack {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct Registre {
+    /// La version de MAME du pack entier (elle ne change qu'une fois TOUS ses fichiers servis à la nouvelle).
     pub version: String,
     /// clé → taille reçue.
     pub recus: BTreeMap<String, u64>,
+    /// clé → sha1 donné par Firehouse quand le fichier a été posé (absent : la taille seule le reconnaît).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub empreintes: BTreeMap<String, String>,
+    /// clé → version de MAME du fichier quand ce n'est pas celle du pack (mise à jour en cours, ou plus servi).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub versions: BTreeMap<String, String>,
+    /// Mise à jour d'un fichier commencée : clé → où l'ancien part à l'abri (relatif à `<pack>\ABRI`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub maj_en_cours: BTreeMap<String, String>,
+}
+
+/// Un fichier du pack d'une autre version : taille changée, ou empreinte changée quand les deux sont connues.
+fn change(reg: &Registre, f: &FichierPack) -> bool {
+    match reg.recus.get(&f.cle) {
+        None => false,
+        Some(t) => *t != f.taille || matches!((reg.empreintes.get(&f.cle), &f.sha1), (Some(a), Some(b)) if !a.eq_ignore_ascii_case(b)),
+    }
+}
+
+/// Note un fichier posé (et vérifié) à la version `version` du romset.
+fn inscrire(reg: &mut Registre, f: &FichierPack, version: &str) {
+    reg.recus.insert(f.cle.clone(), f.taille);
+    match &f.sha1 {
+        Some(s) => reg.empreintes.insert(f.cle.clone(), s.clone()),
+        None => reg.empreintes.remove(&f.cle),
+    };
+    if version == reg.version {
+        reg.versions.remove(&f.cle);
+    } else {
+        reg.versions.insert(f.cle.clone(), version.to_string());
+    }
+    reg.maj_en_cours.remove(&f.cle);
+}
+
+const OCCUPE: &str = "en cours d'utilisation (MAME ouvert ?) : laissé tel quel, réessaie plus tard";
+
+/// Le chemin d'abri d'un ancien fichier, relatif à `<pack>\ABRI` : `<sa version>\<rel>`, ou `<sa version>-2\<rel>`… s'il
+/// y en a déjà un (Firehouse qui corrige deux fois un fichier de la même version) — jamais par-dessus une autre copie.
+fn choisir_abri(dossier: &Path, sa_version: &str, rel: &Path) -> Option<PathBuf> {
+    let v = crate::jeux_pc::nom_de_dossier(sa_version);
+    (1..100).map(|n| if n == 1 { PathBuf::from(&v).join(rel) } else { PathBuf::from(format!("{v}-{n}")).join(rel) }).find(|r| !dossier.join(ABRI).join(r).exists())
+}
+
+/// Le fichier peut-il quitter sa place maintenant ? (MAME qui le tient ouvert sans partage d'effacement : non.) Essayé
+/// AVANT de recevoir le nouveau, pour ne rien télécharger pour rien.
+fn liberable(f: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const DELETE: u32 = 0x0001_0000;
+        std::fs::OpenOptions::new().access_mode(DELETE).share_mode(7).open(f).is_ok()
+    }
+    #[cfg(not(windows))]
+    {
+        f.is_file()
+    }
+}
+
+/// Déplace un fichier sur le même disque SANS JAMAIS ÉCRASER ce qui serait déjà à l'arrivée (sous Windows,
+/// `std::fs::rename` remplacerait la destination).
+fn deplacer_sans_ecraser(de: &Path, vers: &Path) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        let large = |p: &Path| p.as_os_str().encode_wide().chain(std::iter::once(0)).collect::<Vec<u16>>();
+        let (a, b) = (large(de), large(vers));
+        // Sans MOVEFILE_REPLACE_EXISTING : échoue si la destination existe.
+        unsafe { windows::Win32::Storage::FileSystem::MoveFileExW(windows::core::PCWSTR(a.as_ptr()), windows::core::PCWSTR(b.as_ptr()), windows::Win32::Storage::FileSystem::MOVE_FILE_FLAGS(0)) }
+            .map_err(|e| std::io::Error::from_raw_os_error((e.code().0 & 0xFFFF) as i32))
+    }
+    #[cfg(not(windows))]
+    {
+        if vers.exists() {
+            return Err(std::io::Error::from(std::io::ErrorKind::AlreadyExists));
+        }
+        std::fs::rename(de, vers)
+    }
+}
+
+/// Met l'ancien fichier du pack à l'abri (jamais effacé, jamais par-dessus une autre copie) : un lien dur, puis la
+/// place libérée ; si elle ne se libère pas (MAME ouvert), le lien est retiré et le fichier reste où il était.
+fn mettre_a_l_abri(cible: &Path, abri: &Path) -> Result<(), String> {
+    if abri.exists() {
+        return Err("une ancienne copie de ce fichier est déjà à l'abri : laissé tel quel".into());
+    }
+    if let Some(p) = abri.parent() {
+        std::fs::create_dir_all(p).map_err(|e| format!("mise à l'abri impossible ({e}) : laissé tel quel"))?;
+    }
+    match std::fs::hard_link(cible, abri) {
+        Ok(()) => {
+            if std::fs::remove_file(cible).is_err() {
+                // Le fichier est toujours à sa place : seul le lien qu'on vient de faire est retiré (s'il ne part pas,
+                // c'est un 2e nom des mêmes octets, sans place en plus ; le prochain essai prend un autre abri).
+                if cible.is_file() {
+                    let _ = std::fs::remove_file(abri);
+                }
+                return Err(OCCUPE.into());
+            }
+            Ok(())
+        }
+        Err(_) if abri.exists() => Err("une ancienne copie de ce fichier est déjà à l'abri : laissé tel quel".into()),
+        Err(_) => deplacer_sans_ecraser(cible, abri).map_err(|_| OCCUPE.into()),
+    }
 }
 
 /// Ce qu'on annonce avant tout.
@@ -49,8 +159,15 @@ pub struct Annonce {
     pub a_recevoir: usize,
     pub octets: u64,
     pub deja_la: usize,
-    /// Des fichiers du pack d'une version plus ancienne (taille changée) : la mise à jour viendra, rien n'est remplacé.
+    /// Des fichiers du pack d'une autre version (taille ou empreinte changée) : la mise à jour les remplace après
+    /// accord, les anciens gardés à l'abri.
     pub anciens: usize,
+    /// Ce que coûte leur mise à jour (les anciens restent : autant de place en plus).
+    pub octets_maj: u64,
+    /// La place que les anciens garderont, à l'abri dans le pack.
+    pub octets_anciens: u64,
+    /// Des fichiers du pack que Firehouse ne sert plus à ce profil : jamais déplacés, seulement dits.
+    pub retires: usize,
     /// Une réception du pack est déjà en cours sur ce PC.
     pub en_cours: bool,
     /// Place libre sur le disque du pack (inconnue : None).
@@ -138,7 +255,9 @@ pub fn annoncer(romset: &Value, dossier: &Path, avec_chd: bool) -> Annonce {
     let r = lire_registre(dossier);
     let tous = fichiers(romset, avec_chd);
     let manque: Vec<&FichierPack> = tous.iter().filter(|f| !r.recus.contains_key(&f.cle)).collect();
-    let anciens = tous.iter().filter(|f| r.recus.get(&f.cle).is_some_and(|t| *t != f.taille)).count();
+    let changes: Vec<&FichierPack> = tous.iter().filter(|f| change(&r, f) || r.maj_en_cours.contains_key(&f.cle)).collect();
+    let anciens = changes.len();
+    let servis: std::collections::HashSet<String> = fichiers(romset, true).into_iter().map(|f| f.cle).collect();
     let chd: Vec<FichierPack> = fichiers(romset, true).into_iter().filter(|f| f.chd).collect();
     let chd_manquantes: Vec<&FichierPack> = chd.iter().filter(|f| !r.recus.contains_key(&f.cle)).collect();
     let mut cherche = dossier.to_path_buf();
@@ -154,6 +273,9 @@ pub fn annoncer(romset: &Value, dossier: &Path, avec_chd: bool) -> Annonce {
         octets: manque.iter().map(|f| f.taille).sum(),
         deja_la: tous.len() - manque.len() - anciens,
         anciens,
+        octets_maj: changes.iter().map(|f| f.taille).sum(),
+        octets_anciens: changes.iter().map(|f| r.recus.get(&f.cle).copied().unwrap_or(0)).sum(),
+        retires: r.recus.keys().filter(|c| !servis.contains(*c)).count(),
         en_cours: EN_COURS.load(Ordering::SeqCst),
         libre: crate::jeux_pc::place_libre(&cherche),
         chd_fichiers: chd_manquantes.len(),
@@ -189,9 +311,13 @@ impl Noyau {
     }
 
     /// Télécharge le pack dans `dossier` (déjà vérifié, accord donné), fichier par fichier, en reprenant où il en était.
-    /// Une seule réception à la fois sur ce PC. Chaque fichier est reçu À L'ÉCART (`.frogtend-recu\`), vérifié, puis
-    /// posé SANS JAMAIS ÉCRASER (un lien dur, qui échoue si la place est prise).
-    pub async fn telecharger_pack_mame(&self, dossier: &Path, avec_chd: bool, progres: &(dyn Fn(usize, usize, u64) + Send + Sync)) -> Resultat<Bilan> {
+    /// Une seule réception à la fois sur ce PC. Chaque fichier est reçu À L'ÉCART (`.frogtend-recu\<version>\`), vérifié,
+    /// puis posé SANS JAMAIS ÉCRASER (un lien dur, qui échoue si la place est prise).
+    /// `maj` (étape D, la personne a vu l'annonce des fichiers changés) : un fichier du pack d'une autre version est
+    /// remplacé dans l'ordre sûr — le nouveau reçu et vérifié, l'intention notée, l'ancien mis À L'ABRI
+    /// (`.frogtend-ancien\<sa version>\`, jamais effacé), puis le nouveau posé. Sans `maj` : laissé, et dit.
+    /// `maj` porte la version ANNONCÉE : si la liste de Firehouse a changé depuis, rien n'est remplacé (relire l'annonce).
+    pub async fn telecharger_pack_mame(&self, dossier: &Path, avec_chd: bool, maj: Option<&str>, progres: &(dyn Fn(usize, usize, u64) + Send + Sync)) -> Resultat<Bilan> {
         if EN_COURS.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return Err(Erreur::Refus("Le pack MAME est déjà en train d'arriver : attends la fin (ou arrête-le).".into()));
         }
@@ -207,19 +333,41 @@ impl Noyau {
         let romset = self.romset_mame().await?;
         let s = self.session().await?;
         std::fs::create_dir_all(dossier)?;
-        let ecart = dossier.join(".frogtend-recu");
+        let version = romset["version"].as_str().unwrap_or("").to_string();
+        if maj.is_some_and(|v| v != version) {
+            return Err(Erreur::Refus(format!("Firehouse est passé à MAME {version} depuis l'annonce : relis-la avant de mettre à jour.")));
+        }
+        let maj = maj.is_some();
         let mut reg = lire_registre(dossier);
-        reg.version = romset["version"].as_str().unwrap_or("").to_string();
+        // La version du PACK ne change qu'une fois tous ses fichiers à la nouvelle (jamais au début d'une réception).
+        if reg.version.is_empty() {
+            reg.version = version.clone();
+        }
+        let ecart_racine = dossier.join(ECART);
+        let ecart = ecart_racine.join(crate::jeux_pc::nom_de_dossier(&version));
         // Écrit tout de suite : le dossier est dès maintenant « un pack de Frogtend » (une coupure pendant le premier
         // gros fichier ne le fait jamais refuser ensuite comme « contient déjà autre chose »).
         ecrire_registre_a_part(dossier, &reg).await?;
         let mut b = Bilan::default();
-        // Les fichiers du pack d'une AUTRE version (taille changée) : la mise à jour viendra ; jamais remplacés ici.
         let tous = fichiers(&romset, avec_chd);
-        for f in tous.iter().filter(|f| reg.recus.get(&f.cle).is_some_and(|t| *t != f.taille)) {
-            b.laisses.push((f.cle.clone(), "version plus ancienne dans ton pack : la mise à jour du pack viendra (rien n'est remplacé)".into()));
+        // Une mise à jour coupée d'un fichier qui n'est plus dans cette liste (plus servi, ou CHD non demandées) :
+        // l'ancien, s'il est à l'abri et que sa place est libre, revient à sa place ; sinon on n'y touche pas.
+        let cles: std::collections::HashSet<&str> = tous.iter().map(|f| f.cle.as_str()).collect();
+        for (cle, abri) in reg.maj_en_cours.clone().into_iter().filter(|(c, _)| !cles.contains(c.as_str())) {
+            if let (Ok(rel), Ok(abri_rel)) = (crate::jeux_pc::chemin_de_fichier_sur(&cle), crate::jeux_pc::chemin_de_fichier_sur(&abri)) {
+                let (cible, abri) = (dossier.join(rel), dossier.join(ABRI).join(abri_rel));
+                if !cible.exists() && abri.is_file() {
+                    let _ = poser_sans_ecraser(&abri, &cible);
+                }
+            }
+            reg.maj_en_cours.remove(&cle);
         }
-        let a_faire: Vec<&FichierPack> = tous.iter().filter(|f| !reg.recus.contains_key(&f.cle)).collect();
+        if !maj {
+            for f in tous.iter().filter(|f| change(&reg, f)) {
+                b.laisses.push((f.cle.clone(), "version plus ancienne dans ton pack : propose la mise à jour du pack (rien n'est remplacé)".into()));
+            }
+        }
+        let a_faire: Vec<&FichierPack> = tous.iter().filter(|f| !reg.recus.contains_key(&f.cle) || reg.maj_en_cours.contains_key(&f.cle) || (maj && change(&reg, f))).collect();
         let total = a_faire.len();
         let mut ecrit_le = std::time::Instant::now();
         let mut a_ecrire = false;
@@ -235,17 +383,37 @@ impl Noyau {
             }
             let rel = crate::jeux_pc::chemin_de_fichier_sur(&f.cle)?;
             let cible = dossier.join(&rel);
-            // Déjà là sans être noté (une coupure entre la pose et le registre) : à la bonne taille — et à la bonne
-            // empreinte si Firehouse la donne —, il est inscrit tel quel ; sinon laissé. Jamais remplacé.
+            // Un fichier du pack à mettre à jour (ou dont la mise à jour a été coupée).
+            let ancien = reg.recus.get(&f.cle).copied();
             if cible.exists() {
                 let taille = std::fs::metadata(&cible).map(|m| m.len()).unwrap_or(0);
-                if taille == f.taille && empreinte_conforme(&cible, f.sha1.clone()).await {
-                    reg.recus.insert(f.cle.clone(), taille);
+                // L'empreinte lue UNE fois (une CHD : des dizaines de Go), seulement si elle sert.
+                let (sha_neuf, sha_ancien) = (f.sha1.clone().filter(|_| taille == f.taille), reg.empreintes.get(&f.cle).cloned().filter(|_| ancien == Some(taille)));
+                let sha = if sha_neuf.is_some() || sha_ancien.is_some() { sha1_de(&cible).await } else { None };
+                let conforme = |attendu: &Option<String>| attendu.as_ref().is_none_or(|a| sha.as_ref().is_some_and(|s| s.eq_ignore_ascii_case(a)));
+                // Déjà le bon (une coupure entre la pose et le registre) : inscrit tel quel.
+                if taille == f.taille && conforme(&sha_neuf) {
+                    inscrire(&mut reg, f, &version);
                     a_ecrire = true;
-                } else {
-                    b.laisses.push((f.cle.clone(), "un autre fichier de ce nom est déjà là : laissé tel quel".into()));
+                    continue;
                 }
-                continue;
+                // Ni le bon, ni NOTRE ancien (taille et empreinte notées) : quelqu'un l'a changé, ou il n'est pas au
+                // pack. Jamais remplacé.
+                let notre_ancien = ancien == Some(taille) && conforme(&sha_ancien);
+                if !notre_ancien {
+                    reg.maj_en_cours.remove(&f.cle);
+                    b.laisses.push((
+                        f.cle.clone(),
+                        if ancien.is_some() { "changé depuis sa réception (par toi ?) : laissé tel quel" } else { "un autre fichier de ce nom est déjà là : laissé tel quel" }.into(),
+                    ));
+                    continue;
+                }
+                // MAME le tient ouvert : laissé pour plus tard, AVANT de recevoir le nouveau (rien de reçu pour rien).
+                if !liberable(&cible) {
+                    reg.maj_en_cours.remove(&f.cle);
+                    b.laisses.push((f.cle.clone(), OCCUPE.into()));
+                    continue;
+                }
             }
             let libre = crate::jeux_pc::place_libre(dossier).unwrap_or(u64::MAX);
             if libre < f.taille + MARGE {
@@ -256,6 +424,12 @@ impl Noyau {
             if let Some(p) = recu.parent() {
                 std::fs::create_dir_all(p)?;
             }
+            // Un `.part` laissé par Frogtend 0.120–0.121 (à l'écart sans version) : repris seulement s'il est de cette
+            // version-ci (jamais un mélange de deux versions dans un fichier).
+            let part_d_avant = ecart_racine.join(&rel).with_extension("part");
+            if reg.version == version && part_d_avant.is_file() && !recu.with_extension("part").exists() {
+                let _ = std::fs::rename(&part_d_avant, recu.with_extension("part"));
+            }
             let deja = b.octets;
             match s.source.telecharger_route(&f.route, &recu, &|o, _| progres(i, total, deja + o)).await {
                 Ok(_) => {
@@ -265,12 +439,32 @@ impl Noyau {
                         b.laisses.push((f.cle.clone(), "arrivé abîmé : pas gardé (il sera redemandé la prochaine fois)".into()));
                         continue;
                     }
+                    // L'ancien (le nôtre, vérifié plus haut) part à l'abri AVANT que le nouveau ne soit posé ; l'intention
+                    // est notée d'abord (une coupure entre les deux reprend proprement).
+                    if cible.exists() {
+                        let sa_version = reg.versions.get(&f.cle).cloned().unwrap_or_else(|| reg.version.clone());
+                        let Some(abri_rel) = choisir_abri(dossier, &sa_version, &rel) else {
+                            let _ = std::fs::remove_file(&recu);
+                            b.laisses.push((f.cle.clone(), "trop d'anciennes copies déjà à l'abri : laissé tel quel".into()));
+                            continue;
+                        };
+                        reg.maj_en_cours.insert(f.cle.clone(), abri_rel.to_string_lossy().replace('\\', "/"));
+                        ecrire_registre_a_part(dossier, &reg).await?;
+                        let abri = dossier.join(ABRI).join(&abri_rel);
+                        if let Err(pourquoi) = mettre_a_l_abri(&cible, &abri) {
+                            let _ = std::fs::remove_file(&recu);
+                            reg.maj_en_cours.remove(&f.cle);
+                            a_ecrire = true;
+                            b.laisses.push((f.cle.clone(), pourquoi));
+                            continue;
+                        }
+                    }
                     if let Some(p) = cible.parent() {
                         std::fs::create_dir_all(p)?;
                     }
                     match poser_sans_ecraser(&recu, &cible) {
                         Ok(()) => {
-                            reg.recus.insert(f.cle.clone(), taille);
+                            inscrire(&mut reg, f, &version);
                             a_ecrire = true;
                             b.recus += 1;
                             b.octets += taille;
@@ -279,6 +473,7 @@ impl Noyau {
                             // Notre copie, reçue à l'écart et vérifiée : retirée (jamais laissée à traîner, où un
                             // import la prendrait pour une ROM en double).
                             let _ = std::fs::remove_file(&recu);
+                            reg.maj_en_cours.remove(&f.cle);
                             b.laisses.push((f.cle.clone(), "un autre fichier de ce nom est arrivé entre-temps : laissé tel quel".into()));
                         }
                     }
@@ -296,8 +491,19 @@ impl Noyau {
                 }
             }
         }
+        // Tous les fichiers servis sont à la nouvelle version : le pack l'est aussi. Les fichiers gardés qui ne sont pas
+        // dans cette liste (CHD non demandées, plus servis) gardent la leur, notée à part.
+        if reg.version != version && tous.iter().all(|f| reg.recus.contains_key(&f.cle) && !change(&reg, f)) && !reg.maj_en_cours.keys().any(|c| cles.contains(c.as_str())) {
+            let ancienne = std::mem::replace(&mut reg.version, version.clone());
+            for cle in reg.recus.keys().filter(|c| !cles.contains(c.as_str())) {
+                reg.versions.entry(cle.clone()).or_insert_with(|| ancienne.clone());
+            }
+            reg.versions.retain(|_, v| *v != version);
+        }
         ecrire_registre_a_part(dossier, &reg).await?;
-        let _ = std::fs::remove_dir(&ecart); // seulement s'il est vide (les `.part` d'une réception arrêtée restent)
+        // Seulement s'ils sont vides (les `.part` d'une réception arrêtée restent).
+        let _ = std::fs::remove_dir(&ecart);
+        let _ = std::fs::remove_dir(&ecart_racine);
         progres(total, total, b.octets);
         self.journaliser(&format!(
             "pack MAME ({}) : {} fichier(s) reçu(s), {} laissé(s){}",
@@ -333,7 +539,7 @@ impl Noyau {
         let mut par_fiche: BTreeMap<i64, Vec<(String, String, Option<i64>)>> = BTreeMap::new();
         for f in romset["fichiers"].as_array().into_iter().flatten() {
             let (Some(media), Some(nom)) = (f["media_id"].as_i64(), f["nom"].as_str()) else { continue };
-            if f["chd"] == true || !reg.recus.contains_key(nom) || crate::jeux_pc::nom_de_fichier_sur(nom).is_err() {
+            if f["chd"] == true || !reg.recus.contains_key(nom) || reg.maj_en_cours.contains_key(nom) || crate::jeux_pc::nom_de_fichier_sur(nom).is_err() {
                 continue;
             }
             par_fiche.entry(media).or_default().push((nom.to_string(), f["machine"].as_str().unwrap_or("").to_string(), f["telechargement_id"].as_i64()));
@@ -420,6 +626,12 @@ impl Noyau {
 /// Une réception du pack en cours sur ce PC (une seule à la fois).
 pub static EN_COURS: AtomicBool = AtomicBool::new(false);
 
+/// L'empreinte sha1 d'un fichier (lue hors du fil asynchrone : plusieurs Go).
+async fn sha1_de(f: &Path) -> Option<String> {
+    let f = f.to_path_buf();
+    tokio::task::spawn_blocking(move || crate::bios::sha1_fichier(&f).ok()).await.ok().flatten()
+}
+
 /// L'empreinte sha1 d'un fichier vaut-elle celle donnée par Firehouse ? Sans empreinte donnée : oui (la taille seule
 /// est vérifiée). Lue hors du fil asynchrone (plusieurs Go).
 async fn empreinte_conforme(f: &Path, sha1: Option<String>) -> bool {
@@ -435,7 +647,7 @@ fn poser_sans_ecraser(recu: &Path, cible: &Path) -> std::io::Result<()> {
         Ok(()) => std::fs::remove_file(recu),
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(e),
         Err(_) if cible.exists() => Err(std::io::Error::from(std::io::ErrorKind::AlreadyExists)),
-        Err(_) => std::fs::rename(recu, cible),
+        Err(_) => deplacer_sans_ecraser(recu, cible),
     }
 }
 
@@ -489,7 +701,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let a = annoncer(&romset(), d.path(), false);
         assert_eq!((a.version.as_str(), a.a_recevoir, a.octets, a.deja_la, a.chd_fichiers, a.chd_octets), ("0.289", 2, 5, 0, 1, 100));
-        ecrire_registre(d.path(), &Registre { version: "0.289".into(), recus: BTreeMap::from([("sf2.zip".into(), 3)]) }).unwrap();
+        ecrire_registre(d.path(), &Registre { version: "0.289".into(), recus: BTreeMap::from([("sf2.zip".into(), 3)]), ..Default::default() }).unwrap();
         let a = annoncer(&romset(), d.path(), false);
         assert_eq!((a.a_recevoir, a.octets, a.deja_la), (1, 2, 1));
     }
@@ -533,14 +745,14 @@ mod tests {
         let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
         n.ouvrir(&id, None, &crate::noyau::Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
         let pack = d.path().join("Pack");
-        let b = n.telecharger_pack_mame(&pack, false, &|_, _, _| {}).await.unwrap();
+        let b = n.telecharger_pack_mame(&pack, false, None, &|_, _, _| {}).await.unwrap();
         assert_eq!(b.recus, 1);
         assert_eq!(std::fs::read(pack.join("sf2.zip")).unwrap(), b"SF2");
         assert_eq!(b.laisses.len(), 1, "le fichier abîmé chez Firehouse : noté, la suite a continué");
         assert_eq!(lire_registre(&pack).recus.get("sf2.zip"), Some(&3));
         // La fois suivante : sf2 n'est pas redemandé ; un ddr2m.zip posé à la main n'est JAMAIS remplacé.
         std::fs::write(pack.join("ddr2m.zip"), b"le mien").unwrap();
-        let b = n.telecharger_pack_mame(&pack, false, &|_, _, _| {}).await.unwrap();
+        let b = n.telecharger_pack_mame(&pack, false, None, &|_, _, _| {}).await.unwrap();
         assert_eq!(b.recus, 0);
         assert_eq!(std::fs::read(pack.join("ddr2m.zip")).unwrap(), b"le mien");
         assert!(b.laisses[0].1.contains("déjà là"));
@@ -550,11 +762,11 @@ mod tests {
         r.recus.clear();
         ecrire_registre(&pack, &r).unwrap();
         std::fs::remove_file(pack.join("ddr2m.zip")).unwrap();
-        n.telecharger_pack_mame(&pack, false, &|_, _, _| {}).await.unwrap();
+        n.telecharger_pack_mame(&pack, false, None, &|_, _, _| {}).await.unwrap();
         assert_eq!(lire_registre(&pack).recus.get("sf2.zip"), Some(&3));
         // Une seule réception à la fois.
         EN_COURS.store(true, Ordering::SeqCst);
-        assert!(matches!(n.telecharger_pack_mame(&pack, false, &|_, _, _| {}).await, Err(Erreur::Refus(_))));
+        assert!(matches!(n.telecharger_pack_mame(&pack, false, None, &|_, _, _| {}).await, Err(Erreur::Refus(_))));
         EN_COURS.store(false, Ordering::SeqCst);
     }
 
@@ -577,7 +789,7 @@ mod tests {
         let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
         n.ouvrir(&id, None, &crate::noyau::Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
         let pack = d.path().join("Pack");
-        let b = n.telecharger_pack_mame(&pack, false, &|_, _, _| {}).await.unwrap();
+        let b = n.telecharger_pack_mame(&pack, false, None, &|_, _, _| {}).await.unwrap();
         assert!(b.arret.is_some());
         assert!(pack.join(REGISTRE).is_file(), "le registre est écrit dès le début");
         assert!(verifier_dossier(&pack).is_ok(), "jamais refusé ensuite comme « contient déjà autre chose »");
@@ -623,7 +835,7 @@ mod tests {
         for z in ["puckman.zip", "pacman.zip", "cache.zip", "galaga.zip"] {
             std::fs::write(pack.join(z), b"z").unwrap();
         }
-        ecrire_registre(&pack, &Registre { version: "0.289".into(), recus: [("puckman.zip", 1), ("pacman.zip", 1), ("cache.zip", 1), ("galaga.zip", 1)].map(|(k, v)| (k.to_string(), v)).into() }).unwrap();
+        ecrire_registre(&pack, &Registre { version: "0.289".into(), recus: [("puckman.zip", 1), ("pacman.zip", 1), ("cache.zip", 1), ("galaga.zip", 1)].map(|(k, v)| (k.to_string(), v)).into(), ..Default::default() }).unwrap();
         // Galaga a été importé AVANT à la main (import MAME : titre de la machine) : il doit être relié à sa fiche.
         n.importer_locaux(&[crate::import_local::JeuAImporter {
             titre: "Galaga (Namco rev. B)".into(),
@@ -658,6 +870,173 @@ mod tests {
         assert_eq!(n.registre().jeu(local).unwrap().unwrap().installation.unwrap().fichier_du_jeu.as_deref(), Some("pacman.zip"));
     }
 
+    /// Un pack 0.289 (sf2, ddr2m, vieux) et le romset 0.290 : sf2 a changé, ddr2m non, « vieux » n'est plus servi.
+    async fn pack_a_mettre_a_jour(s: &httpmock::MockServer) -> (tempfile::TempDir, Noyau, PathBuf) {
+        use httpmock::prelude::*;
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/mame/romset");
+            t.status(200).json_body(json!({"version": "0.290", "fichiers": [
+                {"media_id": 1, "telechargement_id": -1, "machine": "sf2", "nom": "sf2.zip", "taille": 4, "sha1": "2243de24e75eb275ea5b75a1c2231a2f4c9cff86", "dossier": null, "chd": false, "url": "/api/jeux/v1/fichier/1/-1/0"},
+                {"media_id": 2, "telechargement_id": -2, "machine": "ddr2m", "nom": "ddr2m.zip", "taille": 2, "sha1": null, "dossier": null, "chd": false, "url": "/api/jeux/v1/fichier/2/-2/0"}
+            ]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/fichier/1/-1/0");
+            t.status(200).body(b"SF2b");
+        });
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(crate::coffre::CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
+        n.ouvrir(&id, None, &crate::noyau::Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
+        let pack = d.path().join("Pack");
+        std::fs::create_dir_all(&pack).unwrap();
+        for (z, c) in [("sf2.zip", &b"SF2"[..]), ("ddr2m.zip", b"DD"), ("vieux.zip", b"V")] {
+            std::fs::write(pack.join(z), c).unwrap();
+        }
+        let recus = BTreeMap::from([("sf2.zip".to_string(), 3), ("ddr2m.zip".to_string(), 2), ("vieux.zip".to_string(), 1)]);
+        ecrire_registre(&pack, &Registre { version: "0.289".into(), recus, ..Default::default() }).unwrap();
+        (d, n, pack)
+    }
+
+    #[tokio::test]
+    async fn la_mise_a_jour_du_pack_garde_l_ancien_a_l_abri() {
+        let _un = UN_A_LA_FOIS.lock().unwrap_or_else(|e| e.into_inner());
+        let s = httpmock::MockServer::start();
+        let (_d, n, pack) = pack_a_mettre_a_jour(&s).await;
+        // L'annonce : 1 changé (4 octets), « vieux » plus servi (seulement dit).
+        let a = annoncer(&n.romset_mame().await.unwrap(), &pack, false);
+        assert_eq!((a.a_recevoir, a.anciens, a.octets_maj, a.octets_anciens, a.retires, a.deja_la), (0, 1, 4, 3, 1, 1));
+        // Sans l'accord de mise à jour : rien n'est remplacé, et le pack reste en 0.289.
+        let b = n.telecharger_pack_mame(&pack, false, None, &|_, _, _| {}).await.unwrap();
+        assert_eq!(b.recus, 0);
+        assert!(b.laisses[0].1.contains("mise à jour"));
+        assert_eq!(std::fs::read(pack.join("sf2.zip")).unwrap(), b"SF2");
+        assert_eq!(lire_registre(&pack).version, "0.289", "la version du pack ne change jamais au début d'une réception");
+        // Avec l'accord : le nouveau posé, l'ancien à l'abri sous SA version, « vieux » jamais déplacé.
+        let b = n.telecharger_pack_mame(&pack, false, Some("0.290"), &|_, _, _| {}).await.unwrap();
+        assert_eq!((b.recus, b.laisses.len()), (1, 0), "{:?}", b.laisses);
+        assert_eq!(std::fs::read(pack.join("sf2.zip")).unwrap(), b"SF2b");
+        assert_eq!(std::fs::read(pack.join(ABRI).join("0.289").join("sf2.zip")).unwrap(), b"SF2");
+        assert_eq!(std::fs::read(pack.join("vieux.zip")).unwrap(), b"V");
+        let r = lire_registre(&pack);
+        assert_eq!((r.version.as_str(), r.recus["sf2.zip"]), ("0.290", 4), "tous les fichiers servis à jour : le pack aussi");
+        assert_eq!(r.versions.get("vieux.zip").map(String::as_str), Some("0.289"), "le plus servi garde sa version");
+        assert!(r.versions.get("sf2.zip").is_none() && r.maj_en_cours.is_empty());
+        assert_eq!(r.empreintes["sf2.zip"], "2243de24e75eb275ea5b75a1c2231a2f4c9cff86");
+        // L'abri et l'écart ne sont jamais pris pour des ROM.
+        assert!(crate::import_local::fichiers_du_dossier(&pack, true).unwrap().iter().all(|f| !f.to_string_lossy().contains(ABRI) && !f.to_string_lossy().contains(ECART)));
+        // Une 2e fois : plus rien à faire.
+        let a = annoncer(&n.romset_mame().await.unwrap(), &pack, false);
+        assert_eq!((a.a_recevoir, a.anciens), (0, 0));
+    }
+
+    #[tokio::test]
+    async fn la_mise_a_jour_ne_touche_pas_un_fichier_change_par_la_personne() {
+        let _un = UN_A_LA_FOIS.lock().unwrap_or_else(|e| e.into_inner());
+        let s = httpmock::MockServer::start();
+        let (_d, n, pack) = pack_a_mettre_a_jour(&s).await;
+        std::fs::write(pack.join("sf2.zip"), b"le sien, plus long").unwrap();
+        let b = n.telecharger_pack_mame(&pack, false, Some("0.290"), &|_, _, _| {}).await.unwrap();
+        assert_eq!(b.recus, 0);
+        assert!(b.laisses[0].1.contains("changé depuis"));
+        assert_eq!(std::fs::read(pack.join("sf2.zip")).unwrap(), b"le sien, plus long");
+        assert!(!pack.join(ABRI).exists());
+        assert_eq!(lire_registre(&pack).version, "0.289");
+    }
+
+    #[tokio::test]
+    async fn une_mise_a_jour_coupee_reprend_sans_rien_perdre() {
+        let _un = UN_A_LA_FOIS.lock().unwrap_or_else(|e| e.into_inner());
+        let s = httpmock::MockServer::start();
+        let (_d, n, pack) = pack_a_mettre_a_jour(&s).await;
+        // Coupure juste après la mise à l'abri (l'intention notée, l'ancien à l'abri, le nouveau pas encore posé).
+        let abri = pack.join(ABRI).join("0.289").join("sf2.zip");
+        std::fs::create_dir_all(abri.parent().unwrap()).unwrap();
+        std::fs::rename(pack.join("sf2.zip"), &abri).unwrap();
+        let mut r = lire_registre(&pack);
+        r.maj_en_cours.insert("sf2.zip".into(), "0.289/sf2.zip".into());
+        ecrire_registre(&pack, &r).unwrap();
+        let b = n.telecharger_pack_mame(&pack, false, Some("0.290"), &|_, _, _| {}).await.unwrap();
+        assert_eq!(b.recus, 1);
+        assert_eq!(std::fs::read(pack.join("sf2.zip")).unwrap(), b"SF2b");
+        assert_eq!(std::fs::read(&abri).unwrap(), b"SF2", "l'ancien toujours à l'abri");
+        assert!(lire_registre(&pack).maj_en_cours.is_empty());
+        // Coupure entre la pose et le registre : le nouveau déjà là est inscrit tel quel, l'abri intact.
+        let mut r = lire_registre(&pack);
+        r.recus.insert("sf2.zip".into(), 3);
+        r.maj_en_cours.insert("sf2.zip".into(), "0.289/sf2.zip".into());
+        ecrire_registre(&pack, &r).unwrap();
+        let b = n.telecharger_pack_mame(&pack, false, Some("0.290"), &|_, _, _| {}).await.unwrap();
+        assert_eq!((b.recus, b.laisses.len()), (0, 0));
+        assert_eq!(lire_registre(&pack).recus["sf2.zip"], 4);
+        assert_eq!(std::fs::read(&abri).unwrap(), b"SF2");
+        // Une mise à jour coupée d'un fichier qui n'est PLUS servi (« vieux ») : l'ancien revient à sa place, le pack
+        // n'est jamais bloqué.
+        let abri_vieux = pack.join(ABRI).join("0.289").join("vieux.zip");
+        std::fs::rename(pack.join("vieux.zip"), &abri_vieux).unwrap();
+        let mut r = lire_registre(&pack);
+        r.maj_en_cours.insert("vieux.zip".into(), "0.289/vieux.zip".into());
+        r.version = "0.289".into();
+        ecrire_registre(&pack, &r).unwrap();
+        n.telecharger_pack_mame(&pack, false, Some("0.290"), &|_, _, _| {}).await.unwrap();
+        assert_eq!(std::fs::read(pack.join("vieux.zip")).unwrap(), b"V");
+        let r = lire_registre(&pack);
+        assert!(r.maj_en_cours.is_empty());
+        assert_eq!(r.version, "0.290");
+    }
+
+    #[tokio::test]
+    async fn deux_corrections_d_une_meme_version_ont_chacune_leur_abri() {
+        let _un = UN_A_LA_FOIS.lock().unwrap_or_else(|e| e.into_inner());
+        let s = httpmock::MockServer::start();
+        let (_d, n, pack) = pack_a_mettre_a_jour(&s).await;
+        // Une ancienne copie de sf2 0.289 déjà à l'abri (une 1re correction) : la 2e va à côté, rien n'est écrasé.
+        let premier = pack.join(ABRI).join("0.289").join("sf2.zip");
+        std::fs::create_dir_all(premier.parent().unwrap()).unwrap();
+        std::fs::write(&premier, b"premier").unwrap();
+        let b = n.telecharger_pack_mame(&pack, false, Some("0.290"), &|_, _, _| {}).await.unwrap();
+        assert_eq!(b.recus, 1, "{:?}", b.laisses);
+        assert_eq!(std::fs::read(&premier).unwrap(), b"premier");
+        assert_eq!(std::fs::read(pack.join(ABRI).join("0.289-2").join("sf2.zip")).unwrap(), b"SF2");
+        // Une annonce dépassée (Firehouse a changé de version depuis) : rien n'est remplacé.
+        assert!(matches!(n.telecharger_pack_mame(&pack, false, Some("0.291"), &|_, _, _| {}).await, Err(Erreur::Refus(_))));
+    }
+
+    #[test]
+    fn le_deplacement_n_ecrase_jamais() {
+        let d = tempfile::tempdir().unwrap();
+        let (a, b) = (d.path().join("a"), d.path().join("b"));
+        std::fs::write(&a, b"A").unwrap();
+        std::fs::write(&b, b"B").unwrap();
+        assert!(deplacer_sans_ecraser(&a, &b).is_err());
+        assert_eq!(std::fs::read(&b).unwrap(), b"B");
+        std::fs::remove_file(&b).unwrap();
+        deplacer_sans_ecraser(&a, &b).unwrap();
+        assert_eq!(std::fs::read(&b).unwrap(), b"A");
+    }
+
+    /// MAME ouvert tient le zip (sans partage d'effacement) : le fichier reste où il était, rien n'est perdu.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn un_fichier_tenu_par_mame_est_laisse_pour_plus_tard() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let _un = UN_A_LA_FOIS.lock().unwrap_or_else(|e| e.into_inner());
+        let s = httpmock::MockServer::start();
+        let (_d, n, pack) = pack_a_mettre_a_jour(&s).await;
+        let tenu = std::fs::OpenOptions::new().read(true).share_mode(1).open(pack.join("sf2.zip")).unwrap();
+        let b = n.telecharger_pack_mame(&pack, false, Some("0.290"), &|_, _, _| {}).await.unwrap();
+        drop(tenu);
+        assert_eq!(b.recus, 0);
+        assert!(b.laisses[0].1.contains("MAME ouvert"), "{:?}", b.laisses);
+        assert_eq!(std::fs::read(pack.join("sf2.zip")).unwrap(), b"SF2");
+        assert!(!pack.join(ABRI).join("0.289").join("sf2.zip").exists(), "pas de copie à l'abri en trop");
+        let r = lire_registre(&pack);
+        assert!(r.maj_en_cours.is_empty() && r.version == "0.289");
+        // MAME fermé : la mise à jour passe.
+        let b = n.telecharger_pack_mame(&pack, false, Some("0.290"), &|_, _, _| {}).await.unwrap();
+        assert_eq!(b.recus, 1);
+    }
+
     #[tokio::test]
     async fn un_fichier_plus_servi_ne_bloque_pas_la_suite() {
         let _un = UN_A_LA_FOIS.lock().unwrap_or_else(|e| e.into_inner());
@@ -681,9 +1060,9 @@ mod tests {
         let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
         n.ouvrir(&id, None, &crate::noyau::Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
         let pack = d.path().join("Pack");
-        let b = n.telecharger_pack_mame(&pack, false, &|_, _, _| {}).await.unwrap();
+        let b = n.telecharger_pack_mame(&pack, false, None, &|_, _, _| {}).await.unwrap();
         assert_eq!((b.recus, b.arret.clone()), (1, None));
         assert_eq!(std::fs::read(pack.join("ddr2m.zip")).unwrap(), b"DD");
-        assert!(!pack.join(".frogtend-recu").exists(), "rien ne reste à l'écart");
+        assert!(!pack.join(ECART).exists(), "rien ne reste à l'écart");
     }
 }

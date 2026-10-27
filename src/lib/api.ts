@@ -662,8 +662,9 @@ export const api = {
   /** Contrat 1.33 : le pack MAME (dossier proposé ou choisi, annonce chiffrée, réception, arrêt). */
   packMameAnnonce: (dossier: string | null, avecChd: boolean) =>
     appeler<[string, import('$lib/import/packMame').AnnoncePack]>('pack_mame_annonce', { dossier, avecChd }),
-  packMameLancer: (dossier: string, avecChd: boolean) =>
-    appeler<{ recus: number; octets: number; laisses: [string, string][]; arret: string | null }>('pack_mame_lancer', { dossier, avecChd }),
+  /** `maj` : la version ANNONCÉE, quand la personne a accepté la mise à jour (refusé si Firehouse a changé depuis). */
+  packMameLancer: (dossier: string, avecChd: boolean, maj: string | null = null) =>
+    appeler<{ recus: number; octets: number; laisses: [string, string][]; arret: string | null }>('pack_mame_lancer', { dossier, avecChd, maj }),
   packMameArreter: () => appeler<void>('pack_mame_arreter'),
   packMameLudotheque: (dossier: string) =>
     appeler<{ jeux: number; versions: number; deja: number; sans_fiche: number }>('pack_mame_ludotheque', { dossier }),

@@ -2665,12 +2665,13 @@ struct ProgresPack {
     octets: u64,
 }
 
-/// Télécharge le pack MAME (la personne a vu l'annonce et dit oui). Progression : événement « pack-mame ».
+/// Télécharge le pack MAME (la personne a vu l'annonce et dit oui). `maj` : la version annoncée, quand elle a aussi
+/// accepté la mise à jour des fichiers changés (les anciens gardés à l'abri). Progression : événement « pack-mame ».
 #[tauri::command]
-pub async fn pack_mame_lancer(app: AppHandle, noyau: State<'_, Noyau>, dossier: String, avec_chd: bool) -> Resultat<crate::pack_mame::Bilan> {
+pub async fn pack_mame_lancer(app: AppHandle, noyau: State<'_, Noyau>, dossier: String, avec_chd: bool, maj: Option<String>) -> Resultat<crate::pack_mame::Bilan> {
     let app2 = app.clone();
     noyau
-        .telecharger_pack_mame(std::path::Path::new(&dossier), avec_chd, &move |fait, total, octets| {
+        .telecharger_pack_mame(std::path::Path::new(&dossier), avec_chd, maj.as_deref(), &move |fait, total, octets| {
             let _ = app2.emit("pack-mame", ProgresPack { fait, total, octets });
         })
         .await

@@ -825,6 +825,22 @@ d'abord :
   ✅ ÉTAPES B et E FAITES (0.121.0) : `ludotheque_pack_mame` (un jeu importé par fiche visible, clones en versions,
   machine d'origine par défaut, relié « exact » à sa fiche ; fiche invisible = rien montré) ; avis si MAME n'est pas à
   la version du romset. RESTE : D (mise à jour du pack, l'ancien à l'abri, rien d'effacé).
+  ✅ ÉTAPE D FAITE (0.123.0), sur le plan de l'expert lancement : registre compatible (`empreintes`, `versions`,
+  `maj_en_cours` facultatifs : un registre d'avant se lit toujours) ; la version du PACK ne change qu'une fois tous ses
+  fichiers servis à jour (corrigé : elle était écrasée au début de toute réception) ; reçus à l'écart PAR VERSION
+  (jamais un `.part` mélangeant deux versions) ; fichier changé = taille, ou sha1 quand les deux sont connus ; ordre
+  sûr : nouveau reçu et vérifié → intention notée → ancien mis à l'abri (`.frogtend-ancien\<sa version>\`, lien dur ;
+  MAME qui le tient = laissé pour plus tard) → nouveau posé ; reprise après coupure à chaque étape ; un fichier changé
+  par la personne n'est jamais touché ; un fichier plus servi n'est JAMAIS déplacé (la liste dépend du grade),
+  seulement dit ; l'abri et l'écart ignorés par l'import. Annonce : fichiers changés, Go, place (anciens compris).
+  Relecture de l'expert suivie : MAME qui tient un fichier = essayé AVANT de recevoir (rien téléchargé pour rien) ;
+  abri unique (`0.289-2\` pour une 2e correction de la même version) ; déplacement de secours qui n'écrase jamais
+  (MoveFileExW sans remplacement) ; une mise à jour coupée d'un fichier plus servi remet l'ancien à sa place ;
+  empreinte lue une seule fois ; l'accord porte la version annoncée (refus si Firehouse a changé depuis) ; la
+  ludothèque ignore un fichier en cours de mise à jour ; l'annonce dit la place gardée par les anciens.
+  RESTE (noté) : les `.part` d'une version abandonnée ne sont pas annoncés ; arrêter au milieu d'un gros fichier ;
+  essai réel quand Firehouse passera à MAME 0.290 (le
+  comportement de MAME face au dossier caché `.frogtend-ancien` dans son rompath est à vérifier ce jour-là).
 - ✅ **Contrat 1.33 LIVRÉ par Firehouse (2.147.0, 27/10)** — relevé réel en lecture seule (`/mame/machines` 16 Mo en
   2,7 s, 50 368 machines dont 9 414 jouables ; `/mame/romset` 9 348 fichiers, 40,2 Go sans CHD / 445 Go avec, 280,2 Go
   dédoublonné). Lot 1.33a FAIT (0.118.0) : la liste de Firehouse trie l'import MAME (cache par profil + ETag, hors

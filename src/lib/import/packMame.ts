@@ -6,8 +6,14 @@ export interface AnnoncePack {
   a_recevoir: number;
   octets: number;
   deja_la: number;
-  /** Fichiers d'une version plus ancienne dans le pack : la mise à jour viendra (rien n'est remplacé). */
+  /** Fichiers du pack d'une autre version : la mise à jour les remplace après accord (les anciens gardés à l'abri). */
   anciens: number;
+  /** Ce que coûte leur mise à jour (les anciens restent sur le disque). */
+  octets_maj: number;
+  /** La place que les anciens garderont, à l'abri dans le pack. */
+  octets_anciens: number;
+  /** Fichiers du pack que Firehouse ne sert plus à ce profil : jamais déplacés, seulement dits. */
+  retires: number;
   /** Une réception du pack est déjà en cours sur ce PC. */
   en_cours: boolean;
   libre: number | null;
@@ -18,19 +24,31 @@ export interface AnnoncePack {
 const GO = 1024 ** 3;
 const go = (o: number) => `${(o / GO).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} Go`;
 
-/** Assez de place pour tout (avec 1 Go de marge) ? Place inconnue : on ne bloque pas. */
+/** Assez de place pour tout, mise à jour comprise (avec 1 Go de marge) ? Place inconnue : on ne bloque pas. */
 export function placeSuffisante(a: AnnoncePack): boolean {
-  return a.libre === null || a.libre >= a.octets + GO;
+  return a.libre === null || a.libre >= a.octets + a.octets_maj + GO;
 }
+
+/** Quelque chose à faire : des fichiers à recevoir, ou à mettre à jour. */
+export const aFaire = (a: AnnoncePack) => a.a_recevoir > 0 || a.anciens > 0;
 
 /** L'annonce lisible : combien, combien de Go, combien de temps (au débit mesuré sur ce PC), la place. */
 export function texteAnnoncePack(a: AnnoncePack, debit: number | null, duree: (s: number) => string): string {
-  if (a.a_recevoir === 0) return `Le pack MAME ${a.version} est complet dans ce dossier (${a.deja_la} fichier(s)).`;
+  const retires = a.retires
+    ? `${a.retires.toLocaleString('fr-FR')} fichier(s) de ton pack ne sont plus fournis par Firehouse : ils restent tels quels, rien n’est supprimé.`
+    : '';
+  if (!aFaire(a)) return [`Le pack MAME ${a.version} est complet dans ce dossier (${a.deja_la} fichier(s)).`, retires].filter(Boolean).join('\n');
+  const total = a.octets + a.octets_maj;
   const lignes = [
-    `${a.a_recevoir.toLocaleString('fr-FR')} fichier(s) à recevoir, ${go(a.octets)} (MAME ${a.version})${a.deja_la ? ` ; ${a.deja_la.toLocaleString('fr-FR')} déjà là` : ''}.`,
-    debit ? `Durée estimée à ta vitesse habituelle : ${duree(Math.round(a.octets / debit))}.` : 'Durée : inconnue (Frogtend n’a pas encore mesuré ta connexion).',
+    a.a_recevoir
+      ? `${a.a_recevoir.toLocaleString('fr-FR')} fichier(s) à recevoir, ${go(a.octets)} (MAME ${a.version})${a.deja_la ? ` ; ${a.deja_la.toLocaleString('fr-FR')} déjà là` : ''}.`
+      : '',
+    a.anciens
+      ? `Mise à jour vers MAME ${a.version} : ${a.anciens.toLocaleString('fr-FR')} fichier(s) ont changé, ${go(a.octets_maj)} à recevoir. Les anciens ne sont pas effacés : ils sont gardés à part (${go(a.octets_anciens)}, dossier « .frogtend-ancien » dans ton dossier MAME) ; tu pourras supprimer ce dossier quand tout marche.`
+      : '',
+    debit ? `Durée estimée à ta vitesse habituelle : ${duree(Math.round(total / debit))}.` : 'Durée : inconnue (Frogtend n’a pas encore mesuré ta connexion).',
     a.libre === null ? '' : `Place libre sur ce disque : ${go(a.libre)}${placeSuffisante(a) ? '' : ' — pas assez !'}.`,
-    a.anciens ? `${a.anciens} fichier(s) de ton pack sont d’une version plus ancienne : la mise à jour du pack viendra (rien n’est remplacé).` : '',
+    retires,
   ];
   return lignes.filter(Boolean).join('\n');
 }

@@ -3,6 +3,12 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## La mise à jour du pack MAME (0.123.0)
+- [ ] Rien à voir tant que Firehouse est en MAME 0.289 : l'écran du pack dit toujours « complet » (ou ce qu'il reste).
+- [ ] Le jour où Firehouse passe en 0.290 : l'écran annonce « Mise à jour vers MAME 0.290 : N fichier(s) ont changé » ;
+      après « ⬆ Mettre à jour le pack », les anciens sont dans `.frogtend-ancien\0.289\` du pack et les jeux démarrent
+      (avec MAME mis à jour lui aussi).
+
 ## RetroArch servi par Firehouse (0.122.0)
 - [ ] Sur un PC sans RetroArch : préparer une plateforme qui l'utilise (PlayStation, Super Nintendo…) : la question
       dit « fourni par Firehouse » avec environ 193 Mo ; après le oui, RetroArch démarre un jeu.

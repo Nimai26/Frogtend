@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.123.0 — La mise à jour du pack MAME
+
+- 🕹 Quand Firehouse passe à une nouvelle version de MAME, l'écran du pack l'annonce (combien de fichiers ont changé,
+  combien de Go, combien de temps) et propose « ⬆ Mettre à jour le pack ». Après ton accord, chaque fichier changé est
+  remplacé ; l'ancien n'est jamais effacé : il est gardé à part, dans le dossier « .frogtend-ancien » du pack.
+- Un fichier que tu as changé toi-même, ou que MAME tient ouvert, est laissé tel quel (et dit) ; une coupure reprend
+  où elle en était, sans rien perdre.
+- Les fichiers que Firehouse ne sert plus restent où ils sont : Frogtend le dit, sans les déplacer.
+
 ## 0.122.0 — RetroArch servi par Firehouse
 
 - 🎮 Quand Frogtend installe RetroArch, il le prend maintenant chez Firehouse (version 1.22.2, celle de ses cœurs),

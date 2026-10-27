@@ -87,7 +87,7 @@ export async function installerEmulateur(
   try {
     paquet = await api.emulateurDerniereVersion(id);
   } catch (e) {
-    toast(`Impossible de trouver ${nom} sur son site : ${motifDuRefus(e)}`, 'erreur');
+    toast(`Impossible de trouver ${nom} : ${motifDuRefus(e)}`, 'erreur');
     return null;
   }
   // Une route sans hôte : le paquet est servi par Firehouse (RetroArch hébergé), pas par le site officiel.
@@ -100,7 +100,7 @@ export async function installerEmulateur(
       miseAJour
         ? 'Ta configuration est gardée ; un fichier de réglages remplacé par la nouvelle version est d’abord copié à part.'
         : 'Il sera installé en mode portable : sa configuration reste dans son dossier.',
-      ...(id === 'retroarch' ? ['Ses profils de manette officiels (libretro, moins de 1 Mo) seront ajoutés s’ils manquent.'] : []),
+      ...(id === 'retroarch' ? ['Ses profils de manette (moins de 1 Mo) seront ajoutés s’ils manquent.'] : []),
     ].join('\n'),
     libelleValider: miseAJour ? '⬆ Mettre à jour' : '⬇ Installer',
   });
