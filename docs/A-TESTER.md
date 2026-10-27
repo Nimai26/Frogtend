@@ -3,6 +3,12 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Les options du menu en jeu pour MAME (0.132.0)
+- [ ] Un jeu MAME : menu en jeu ▸ « Compteur de fluidité » (le compteur s'affiche), « Avance rapide » (le jeu file),
+      « Couper le son », « Capture d'écran » (une image dans le dossier `snap` de MAME).
+- [ ] Quitter puis relancer le jeu : l'avance rapide et le son coupé NE restent PAS (non vérifié dans MAME).
+- [ ] DuckStation : F1/F2 (charger/sauver) marchent de nouveau, et le menu en jeu sauve/charge toujours.
+
 ## Les jeux importés aussi hors ligne (0.130.0)
 - [ ] Un jeu importé relié à sa fiche, déjà lancé une fois : synchroniser, couper Internet, ouvrir sa fiche et Taodbox
       → la fiche, le fond et le logo sont là.

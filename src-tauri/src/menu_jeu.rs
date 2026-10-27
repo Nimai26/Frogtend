@@ -476,12 +476,12 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(d.path().join(crate::pilotage::DOSSIER_MAME)).unwrap();
         let p = PartieEnCours { dossier_emulateur: Some(d.path().to_string_lossy().into()), ..partie(Some("mame")) };
-        // Le script n'a encore rien dit : par prudence, ni sauver ni charger.
-        assert_eq!(etat(&p).actions, ["reset"]);
+        // Le script n'a encore rien dit : par prudence, ni sauver ni charger (les options du jeu, toujours).
+        assert_eq!(etat(&p).actions, ["reset", "fps", "rapide", "capture", "muet"]);
         std::fs::write(d.path().join(crate::pilotage::JEU_MAME), "pong|ne-sauve-pas").unwrap();
-        assert_eq!(etat(&p).actions, ["reset"]);
+        assert_eq!(etat(&p).actions, ["reset", "fps", "rapide", "capture", "muet"]);
         std::fs::write(d.path().join(crate::pilotage::JEU_MAME), "sf2|sauve").unwrap();
-        assert_eq!(etat(&p).actions, ["reset", "sauver", "charger"]);
+        assert_eq!(etat(&p).actions, ["reset", "sauver", "charger", "fps", "rapide", "capture", "muet"]);
         assert!(etat(&p).en_pause);
     }
 

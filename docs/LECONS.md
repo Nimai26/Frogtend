@@ -295,3 +295,8 @@ script, compiler et lancer les tests du module AVANT d'appeler un expert.
 connaissait pas la nouvelle commande `dossierJeuxRefus`) : après avoir retouché un fichier de l'interface, je n'avais
 relancé que les tests du dossier voisin. · Comment l'appliquer : après toute retouche de l'interface, `npx vitest run`
 EN ENTIER avant d'appeler un expert ou de construire. (La chaîne de livraison a bien arrêté tout : rien n'est parti.)
+
+27/10 (8e fois, 0.132.0) : un heredoc python tapé dans le shell a mis de VRAIS retours chariot dans une chaîne de test
+Rust (pilotage.rs devenu « mixed ») ; la compilation et les tests passaient, seule la vérification des fins de ligne
+l'a vu. · Garde-fou : la règle « jamais de heredoc python pour du code » vaut AUSSI pour les petites retouches de
+tests ; la vérification des fins de ligne est faite AVANT la construction, et son résultat est lu avant de continuer.

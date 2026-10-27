@@ -1595,7 +1595,7 @@ dependencies = [
 
 [[package]]
 name = "frogtend"
-version = "0.131.0"
+version = "0.132.0"
 dependencies = [
  "argon2",
  "bytes",

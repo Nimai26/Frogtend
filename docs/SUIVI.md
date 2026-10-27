@@ -21,6 +21,14 @@
   remplacé sans jamais rester vide ; cible revérifiée sous l'émulateur ; conflits relisibles (Options ▸ Sauvegarde).
   RESTE (noté) : la partie effacée reste dans la sauvegarde COURANTE (décision de Seb) ; l'abri `remplacees\` n'est
   jamais vidé (à la main) ; le titre d'un conflit est technique (« RPCS3/PS3 : savedata/… »), le nom du jeu serait mieux.
+  ⏳ Mineur (11) — options du menu en jeu hors RetroArch (✅ Seb 27/10 « enchaîne avec les émulateurs ») : plan de
+  l'expert lancement (sources relues). FAIT en 0.132.0 : MAME (4 options par son script Lua, noms vérifiés dans
+  mame0289 ref-core.rst) ; CORRIGÉ un défaut déjà en place : les raccourcis de la personne étaient effacés par ceux
+  de Frogtend (DuckStation, PCSX2, Dolphin) → fusion, touches d'origine F1/F2 de DuckStation remises, appareil des
+  raccourcis Dolphin gardé. RESTE, lot 1b (ESSAI avec Seb d'abord : F17 à F20 envoyées par Frogtend, jamais
+  essayées — RetroArch n'acceptait que F13-F15) : DuckStation et PCSX2 (capture, avance rapide, muet), Dolphin
+  (capture, muet par Maj+F13/Maj+F14) ; lot 2 : RPCS3 (lire ses raccourcis réglés), DOSBox Staging, Azahar ; lot 3 :
+  compteur d'images par un réglage avant le lancement (à décider avec Seb), PPSSPP (touches AZERTY).
   ✅ Mineur (14) FAIT en 0.131.0 : la visionneuse crédite la source d'une image de jeu qui n'est pas de LaunchBox
   (« Image : IGDB.com », auteur, licence et page quand ils seront servis). Relevé réel (27/10, 25 fiches) : toutes
   `launchbox`, sans licence ; besoin 37 (crédits des images de jeux + règles IGDB/libretro) noté pour Firehouse

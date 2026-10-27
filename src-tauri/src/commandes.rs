@@ -1822,6 +1822,12 @@ async fn action_mame(app: &AppHandle, noyau: &Noyau, dossier: Option<&str>, a: c
                 }
                 crate::pilotage::commande_mame(&d, "load", Some(&etat))
             }
+            // Les options du jeu : une bascule dans MAME (compteur d'images, vitesse débridée, son coupé), ou une capture
+            // (rangée par MAME dans son dossier `snap`).
+            Action::ImagesParSeconde => crate::pilotage::commande_mame(&d, "fps", None),
+            Action::AvanceRapide => crate::pilotage::commande_mame(&d, "rapide", None),
+            Action::Capture => crate::pilotage::commande_mame(&d, "capture", None),
+            Action::Muet => crate::pilotage::commande_mame(&d, "muet", None),
             _ => Err(Erreur::Refus("MAME ne sait pas le faire depuis le menu.".into())),
         }
     })

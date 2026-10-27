@@ -79,7 +79,8 @@ pub fn actions(emulateur: &str) -> Vec<Action> {
         "pcsx2" => vec![Reset, SauverEtat, ChargerEtat],
         // MAME : par son script Lua (`COMMANDE_MAME`), seulement s'il est posé ; sauver/charger retirés pour un jeu qui ne
         // gère pas les sauvegardes d'état (`menu_jeu::etat`, ✅ Seb 19/10).
-        "mame" => vec![Reset, SauverEtat, ChargerEtat],
+        // Ses quatre options aussi, par le même script (sans aucune touche : rien à régler chez MAME).
+        "mame" => vec![Reset, SauverEtat, ChargerEtat, ImagesParSeconde, AvanceRapide, Capture, Muet],
         "dosbox-staging" => vec![Reset, DisqueSuivant],
         _ => vec![],
     }
@@ -130,8 +131,8 @@ pub const JEU_MAME: &str = "frogtend\\jeu";
 
 const LUA_MAME: &str = r#"-- Frogtend : la pause du menu en jeu. Écrit par Frogtend à chaque partie (ne pas modifier : il serait refait).
 -- Tant que le fichier témoin existe (menu de Frogtend ouvert), MAME est en pause ; ensuite il repart, seulement si
--- c'est ce script qui l'avait mis en pause. Une commande de Frogtend (sauver, charger, recommencer) est exécutée une
--- seule fois, puis effacée.
+-- c'est ce script qui l'avait mis en pause. Une commande de Frogtend (sauver, charger, recommencer ; ou une option :
+-- compteur d'images, avance rapide, capture, son coupé) est exécutée une seule fois, puis effacée.
 -- Une seule fois, même si MAME relance le script à chaque remise à zéro (F3).
 if frogtend_menu_en_jeu then return end
 frogtend_menu_en_jeu = true
@@ -164,12 +165,19 @@ emu.register_periodic(function()
       local n, verbe, chemin = ligne:match("^(%d+) (%a+) ?(.*)$")
       if n and n ~= derniere then
         derniere = n
-        if verbe == "save" and chemin ~= "" then m:save(chemin)
-        elseif verbe == "load" and chemin ~= "" then m:load(chemin)
-        elseif verbe == "reset" then m:soft_reset() end
-        -- MAME repart seul : le menu se ferme, la pause n'est plus la nôtre.
-        par_frogtend = false
-        apres_commande = true
+        -- Les options du jeu (MAME 0.289, ref-core.rst) : elles ne relancent pas MAME, la pause du menu reste la nôtre.
+        if verbe == "fps" then manager.ui.show_fps = not manager.ui.show_fps
+        elseif verbe == "rapide" then m.video.throttled = not m.video.throttled
+        elseif verbe == "capture" then m.video:snapshot()
+        elseif verbe == "muet" then m.sound.ui_mute = not m.sound.ui_mute
+        else
+          if verbe == "save" and chemin ~= "" then m:save(chemin)
+          elseif verbe == "load" and chemin ~= "" then m:load(chemin)
+          elseif verbe == "reset" then m:soft_reset() end
+          -- MAME repart seul : le menu se ferme, la pause n'est plus la nôtre.
+          par_frogtend = false
+          apres_commande = true
+        end
       end
     end)
   end
@@ -228,7 +236,7 @@ pub const ETAT_MAME_PRECEDENT: &str = "frogtend-precedent.sta";
 /// Une commande pour le script de MAME : écrite à côté puis renommée (le script ne lit jamais une ligne à moitié
 /// écrite), numérotée (exécutée une seule fois).
 pub fn commande_mame(dossier_mame: &Path, verbe: &str, chemin: Option<&Path>) -> Resultat<()> {
-    if !matches!(verbe, "save" | "load" | "reset") {
+    if !matches!(verbe, "save" | "load" | "reset" | "fps" | "rapide" | "capture" | "muet") {
         return Err(Erreur::Refus(format!("Commande inconnue pour MAME : {verbe}.")));
     }
     let chemin = chemin.map(|c| c.to_string_lossy().to_string()).unwrap_or_default();
@@ -336,6 +344,43 @@ fn un(v: &str) -> Vec<String> {
     vec![v.to_string()]
 }
 
+/// Les raccourcis de Frogtend AJOUTÉS à ceux de la personne, jamais à leur place (un réglage de la personne n'est
+/// jamais défait). `voulus` : (clé, touche de Frogtend, touche d'origine de l'émulateur). `liste` : une ligne par
+/// touche (DuckStation, PCSX2 : `GetStringList`) ; sinon UNE expression « sienne | nôtre » (Dolphin,
+/// ExpressionParser : `|` = l'une ou l'autre). Une clé dont la seule valeur est la nôtre : une version d'avant de
+/// Frogtend avait effacé la touche d'origine — elle est remise.
+fn raccourcis<'a>(fichier: &Path, section: &str, voulus: &[(&'a str, &str, Option<&str>)], liste: bool) -> Vec<(&'a str, Vec<String>)> {
+    let texte = std::fs::read_to_string(fichier).unwrap_or_default();
+    voulus
+        .iter()
+        .map(|(cle, notre, origine)| {
+            let avant: Vec<String> = crate::manettes::lire_ini(&texte, section, cle).into_iter().filter(|v| !v.trim().is_empty()).collect();
+            if liste {
+                let mut v = avant.clone();
+                if v.len() == 1 && v[0] == *notre {
+                    if let Some(o) = origine {
+                        v.insert(0, o.to_string());
+                    }
+                }
+                if !v.iter().any(|x| x == notre) {
+                    v.push(notre.to_string());
+                }
+                (*cle, v)
+            } else {
+                let sienne = avant.into_iter().next().unwrap_or_default();
+                let v = if sienne.is_empty() || sienne == *notre {
+                    origine.map(|o| format!("{o} | {notre}")).filter(|_| sienne == *notre).unwrap_or_else(|| notre.to_string())
+                } else if sienne.split('|').any(|morceau| morceau.trim() == *notre) {
+                    sienne
+                } else {
+                    format!("{sienne} | {notre}")
+                };
+                (*cle, vec![v])
+            }
+        })
+        .collect()
+}
+
 /// Règle l'émulateur pour le menu en jeu. `utilisateur` : le dossier utilisateur Dolphin du profil. PPSSPP : ses
 /// réglages sont dans `memstick`, qui mène déjà au profil (à appeler après `relier_memstick`).
 pub fn preparer(id: &str, emulateur: &Path, utilisateur: Option<&Path>) -> Resultat<()> {
@@ -349,31 +394,30 @@ pub fn preparer(id: &str, emulateur: &Path, utilisateur: Option<&Path>) -> Resul
                 "Main",
                 &[("PauseOnFocusLoss", un("true")), ("DisableBackgroundInput", un("true")), ("ConfirmPowerOff", un("false"))],
             )?;
-            modifier_ini(
-                emulateur,
+            // Les touches d'origine de DuckStation (hotkeys.cpp) : F2 sauve, F1 charge.
+            let v = raccourcis(
                 &ini,
                 "Hotkeys",
                 &[
-                    ("Reset", vec![clavier("F13")]),
-                    ("SwitchToNextDisc", vec![clavier("F14")]),
-                    ("SaveSelectedSaveState", vec![clavier("F15")]),
-                    ("LoadSelectedSaveState", vec![clavier("F16")]),
+                    ("Reset", &clavier("F13"), None),
+                    ("SwitchToNextDisc", &clavier("F14"), None),
+                    ("SaveSelectedSaveState", &clavier("F15"), Some(&clavier("F2"))),
+                    ("LoadSelectedSaveState", &clavier("F16"), Some(&clavier("F1"))),
                 ],
-            )?;
+                true,
+            );
+            modifier_ini(emulateur, &ini, "Hotkeys", &v)?;
         }
         "pcsx2" => {
             let ini = emulateur.join("inis").join("PCSX2.ini");
             modifier_ini(emulateur, &ini, "UI", &[("PauseOnFocusLoss", un("true")), ("ConfirmShutdown", un("false"))])?;
-            modifier_ini(
-                emulateur,
+            let v = raccourcis(
                 &ini,
                 "Hotkeys",
-                &[
-                    ("ResetVM", vec![clavier("F13")]),
-                    ("SaveStateToSlot1", vec![clavier("F15")]),
-                    ("LoadStateFromSlot1", vec![clavier("F16")]),
-                ],
-            )?;
+                &[("ResetVM", &clavier("F13"), None), ("SaveStateToSlot1", &clavier("F15"), None), ("LoadStateFromSlot1", &clavier("F16"), None)],
+                true,
+            );
+            modifier_ini(emulateur, &ini, "Hotkeys", &v)?;
         }
         "dolphin" => {
             let Some(u) = utilisateur else { return Ok(()) };
@@ -383,13 +427,21 @@ pub fn preparer(id: &str, emulateur: &Path, utilisateur: Option<&Path>) -> Resul
             let hotkeys = config.join("Hotkeys.ini");
             // Un Hotkeys.ini absent : Dolphin prendrait ses raccourcis d'origine ; en le créant, on les remet
             // (Échap = arrêter, F10 = pause, Alt+Entrée = plein écran) pour ne rien perdre.
-            let mut v: Vec<(&str, Vec<String>)> = vec![
-                ("Device", un("DInput/0/Keyboard Mouse")),
-                ("General/Reset", un("F13")),
-                ("General/Change Disc", un("F14")),
-                ("Save State/Save to Selected Slot", un("F15")),
-                ("Load State/Load from Selected Slot", un("@(Shift+F15)")),
-            ];
+            // L'appareil des raccourcis : celui de la personne s'il est réglé (une manette, par exemple) — jamais
+            // défait (nos touches F13… ne marcheront alors pas dans Dolphin, mais rien de son réglage n'est perdu).
+            let appareil = crate::manettes::lire_ini(&std::fs::read_to_string(&hotkeys).unwrap_or_default(), "Hotkeys", "Device").into_iter().next().filter(|d| !d.trim().is_empty());
+            let mut v: Vec<(&str, Vec<String>)> = vec![("Device", un(appareil.as_deref().unwrap_or("DInput/0/Keyboard Mouse")))];
+            v.extend(raccourcis(
+                &hotkeys,
+                "Hotkeys",
+                &[
+                    ("General/Reset", "F13", None),
+                    ("General/Change Disc", "F14", None),
+                    ("Save State/Save to Selected Slot", "F15", None),
+                    ("Load State/Load from Selected Slot", "@(Shift+F15)", None),
+                ],
+                false,
+            ));
             if !hotkeys.is_file() {
                 v.extend([
                     ("General/Stop", un("ESCAPE")),
@@ -700,7 +752,23 @@ mod tests {
         assert_eq!(lire_ini(&t, "Main", "DisableBackgroundInput"), vec!["true"]);
         assert_eq!(lire_ini(&t, "Hotkeys", "Reset"), vec!["Keyboard/F13"]);
         assert_eq!(lire_ini(&t, "Hotkeys", "TogglePause"), vec!["Keyboard/Space"], "les raccourcis de la personne restent");
+        assert_eq!(lire_ini(&t, "Hotkeys", "SaveSelectedSaveState"), vec!["Keyboard/F15"]);
         assert_eq!(lire_ini(&t, "Main", "SettingsVersion"), vec!["3"]);
+        // La touche d'origine (F2) effacée par une version d'avant de Frogtend (seule la nôtre reste) : remise ; une
+        // touche choisie par la personne (F7) : gardée, la nôtre AJOUTÉE à côté.
+        std::fs::write(
+            d.path().join("settings.ini"),
+            "[Hotkeys]\r\nSaveSelectedSaveState = Keyboard/F15\r\nLoadSelectedSaveState = Keyboard/F7\r\n",
+        )
+        .unwrap();
+        preparer("duckstation", d.path(), None).unwrap();
+        let t = std::fs::read_to_string(d.path().join("settings.ini")).unwrap();
+        assert_eq!(lire_ini(&t, "Hotkeys", "SaveSelectedSaveState"), vec!["Keyboard/F2", "Keyboard/F15"]);
+        assert_eq!(lire_ini(&t, "Hotkeys", "LoadSelectedSaveState"), vec!["Keyboard/F7", "Keyboard/F16"]);
+        // Une seconde fois : rien en double.
+        preparer("duckstation", d.path(), None).unwrap();
+        let t2 = std::fs::read_to_string(d.path().join("settings.ini")).unwrap();
+        assert_eq!(t, t2);
 
         preparer("pcsx2", d.path(), None).unwrap();
         let t = std::fs::read_to_string(d.path().join("inis").join("PCSX2.ini")).unwrap();
@@ -721,10 +789,17 @@ mod tests {
         assert_eq!(lire_ini(&h, "Hotkeys", "General/Stop"), vec!["ESCAPE"], "créé : les raccourcis d'origine sont remis");
 
         // Un Hotkeys.ini déjà là : on n'y remet pas nos défauts (la personne a peut-être changé Échap).
-        std::fs::write(c.join("Hotkeys.ini"), "[Hotkeys]\r\nGeneral/Stop = Q\r\n").unwrap();
+        std::fs::write(c.join("Hotkeys.ini"), "[Hotkeys]\r\nGeneral/Stop = Q\r\nGeneral/Reset = R\r\n").unwrap();
         preparer("dolphin", d.path(), Some(&u)).unwrap();
         let h = std::fs::read_to_string(c.join("Hotkeys.ini")).unwrap();
         assert_eq!(lire_ini(&h, "Hotkeys", "General/Stop"), vec!["Q"]);
+        assert_eq!(lire_ini(&h, "Hotkeys", "General/Reset"), vec!["R | F13"], "la touche de la personne gardée, la nôtre ajoutée");
+        // Ses raccourcis sur une manette : son appareil gardé ; « @(Shift+F15) » n'est pas pris pour « F15 ».
+        std::fs::write(c.join("Hotkeys.ini"), "[Hotkeys]\r\nDevice = XInput/0/Gamepad\r\nSave State/Save to Selected Slot = @(Shift+F15)\r\n").unwrap();
+        preparer("dolphin", d.path(), Some(&u)).unwrap();
+        let h = std::fs::read_to_string(c.join("Hotkeys.ini")).unwrap();
+        assert_eq!(lire_ini(&h, "Hotkeys", "Device"), vec!["XInput/0/Gamepad"]);
+        assert_eq!(lire_ini(&h, "Hotkeys", "Save State/Save to Selected Slot"), vec!["@(Shift+F15) | F15"]);
     }
 
     #[test]

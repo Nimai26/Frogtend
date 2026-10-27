@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.132.0 — Les options du menu en jeu pour MAME
+
+- 🕹 Menu en jeu de MAME : « Compteur de fluidité », « Avance rapide », « Capture d'écran » et « Couper le son »,
+  comme pour RetroArch (la capture est rangée par MAME dans son dossier « snap »).
+- 🛠 Correction : quand Frogtend règle ses raccourcis dans DuckStation, PCSX2 ou Dolphin, ceux que tu avais choisis
+  sont GARDÉS (Frogtend ajoute les siens à côté) ; les touches d'origine de DuckStation (F1 charger, F2 sauver),
+  effacées par les versions d'avant, sont remises. Dans Dolphin, un réglage des raccourcis sur une manette est gardé.
+
 ## 0.131.0 — Le crédit des images
 
 - 🖼 Dans la visionneuse des images d'un jeu, une image qui ne vient pas de LaunchBox dit d'où elle vient
