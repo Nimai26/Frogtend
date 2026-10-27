@@ -3,6 +3,12 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Le livret qui avance (0.129.0)
+- [ ] Ouvrir le livret d'un jeu jamais ouvert : le bouton montre le pourcentage ; « ⏹ Arrêter » l'interrompt (message
+      neutre) ; un nouveau clic reprend sans repartir de zéro.
+- [ ] Dans le menu en jeu, à la manette : la sélection va sur « Arrêter » pendant le téléchargement, puis revient.
+- [ ] Feuilleter le livret : revenir à une page déjà vue est instantané.
+
 ## Petites finitions (0.128.0)
 - [ ] ⚙ Options ▸ Emplacements ▸ ajouter « D:\ » ou Documents : refusé, avec un sous-dossier proposé.
 - [ ] Une console à description courte (Options ▸ fiche d'un système) : pas de « Lire la suite ».

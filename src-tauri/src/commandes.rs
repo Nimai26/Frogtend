@@ -399,15 +399,47 @@ pub async fn documents_jeu(noyau: State<'_, Noyau>, id: i64) -> Resultat<Vec<cra
 /// Ouvre le livret d'un jeu (le télécharge d'abord s'il n'est pas sur le PC : le clic de la personne, taille montrée,
 /// vaut son accord) ; rend son nombre de pages. Les pages se lisent ensuite par `document.localhost`.
 #[tauri::command]
-pub async fn livret_ouvrir(noyau: State<'_, Noyau>, id: i64, doc: i64) -> Resultat<u32> {
-    noyau.livret(id, doc).await
+pub async fn livret_ouvrir(app: AppHandle, noyau: State<'_, Noyau>, id: i64, doc: i64) -> Resultat<u32> {
+    crate::documents::oublier_arret(id, doc);
+    noyau.livret_suivi(id, doc, suivi_document(&app, id, doc)).await
+}
+
+#[derive(Clone, Serialize)]
+struct ProgresDocument {
+    jeu: i64,
+    doc: i64,
+    recus: u64,
+    total: Option<u64>,
+}
+
+/// L'avancement du téléchargement d'un document (événement « document-progres »), au plus un envoi toutes les 300 ms
+/// (le dernier passe toujours).
+fn suivi_document(app: &AppHandle, jeu: i64, doc: i64) -> crate::documents::Progres {
+    let app = app.clone();
+    let dernier = std::sync::Mutex::new(None::<std::time::Instant>);
+    std::sync::Arc::new(move |recus, total| {
+        let mut d = dernier.lock().unwrap_or_else(|e| e.into_inner());
+        let fin = total.is_some_and(|t| recus >= t);
+        if !fin && d.is_some_and(|t| t.elapsed() < std::time::Duration::from_millis(300)) {
+            return;
+        }
+        *d = Some(std::time::Instant::now());
+        let _ = app.emit("document-progres", ProgresDocument { jeu, doc, recus, total });
+    })
+}
+
+/// Arrête le téléchargement d'un document (livret, musique, vidéo) : ce qui est reçu est gardé pour la reprise.
+#[tauri::command]
+pub fn document_arreter(id: i64, doc: i64) {
+    crate::documents::arreter(id, doc);
 }
 
 /// Prépare une musique ou une vidéo du jeu (la télécharge d'abord si besoin : le clic de la personne, taille
 /// montrée, vaut son accord) ; elle se lit ensuite par `document.localhost/<jeu>/<document>/fichier`.
 #[tauri::command]
-pub async fn document_preparer(noyau: State<'_, Noyau>, id: i64, doc: i64) -> Resultat<crate::documents::Document> {
-    noyau.preparer_document(id, doc).await
+pub async fn document_preparer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, doc: i64) -> Resultat<crate::documents::Document> {
+    crate::documents::oublier_arret(id, doc);
+    noyau.preparer_document_suivi(id, doc, suivi_document(&app, id, doc)).await
 }
 
 /// La place libre dans un dossier (`None` : introuvable), pour l'écran des emplacements.

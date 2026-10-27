@@ -8,7 +8,8 @@
   import { adresseFondDuJeu, api, type Annexe, type DocumentJeu, type EtatMenuJeu } from '$lib/api';
   import LecteurLivret from '$lib/ludotheque/LecteurLivret.svelte';
   import LecteurMedia from '$lib/ludotheque/LecteurMedia.svelte';
-  import { documentsDuMenu, documentsMontres, libelleDocument, ouvrirDocument, type DocumentOuvert } from '$lib/ludotheque/documents';
+  import { documentsDuMenu, documentsMontres, libelleDocument, ouvrirDocument, texteChargement, type DocumentOuvert } from '$lib/ludotheque/documents';
+  import { arreterDocument, suiviDocument } from '$lib/ludotheque/documentsProgres.svelte';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { accordCheatEngine } from '$lib/mods/cheatengine';
@@ -185,20 +186,42 @@
     }
   }
 
+  /** « Arrêter » cliqué pendant le téléchargement : l'arrêt voulu n'est pas une erreur. */
+  let arretDemande = false;
+  function arreterDoc(jeu: number, doc: number) {
+    arretDemande = true;
+    arreterDocument(jeu, doc);
+  }
+
   async function ouvrirDoc(d: DocumentJeu) {
     if (!menu || ouverture !== null) return;
     const jeu = menu.jeu;
     ouverture = d.id;
+    arretDemande = false;
+    // Le bouton du document est désactivé pendant le téléchargement : la sélection va sur « Arrêter » (manette).
+    if (!d.garde) {
+      await tick();
+      const arret = liste?.querySelector<HTMLButtonElement>('[data-arret]');
+      if (arret) selectionner(arret);
+    }
+    let lecteur = false;
     try {
       const o = await ouvrirDocument(jeu, d);
       // Revenu au menu (ou une autre partie) pendant le téléchargement : on n'ouvre rien par-dessus.
       if (!visible || !documents || menu?.jeu !== jeu) return;
       ouvert = o;
+      lecteur = true;
       docs = docs.map((x) => (x.id === d.id ? { ...x, garde: true } : x));
     } catch (e) {
-      toast(`Impossible d’ouvrir ce document : ${motifDuRefus(e)}`, 'erreur');
+      if (arretDemande) toast('⏹ Téléchargement arrêté : il reprendra où il en était.', 'neutre');
+      else toast(`Impossible d’ouvrir ce document : ${motifDuRefus(e)}`, 'erreur');
     } finally {
       ouverture = null;
+      // Rien d'ouvert (arrêt, erreur) : la sélection revient sur le bouton du document.
+      if (!lecteur && visible && documents) {
+        await tick();
+        selectionner(liste?.querySelector<HTMLButtonElement>(`[data-doc="${d.id}"]`) ?? liste?.querySelector<HTMLButtonElement>('button'));
+      }
     }
   }
 
@@ -334,8 +357,11 @@
       {#each docsMenu as d (d.id)}
         {@const l = libelleDocument(d)}
         <button class="btn" data-doc={d.id} disabled={ouverture !== null} onclick={() => ouvrirDoc(d)}>
-          {l.titre} <span class="muted">{ouverture === d.id ? '⏳ chargement…' : l.detail}</span>
+          {l.titre} <span class="muted">{ouverture === d.id ? texteChargement(suiviDocument.courant) : l.detail}</span>
         </button>
+        {#if ouverture === d.id && !d.garde && menu}
+          <button class="btn" data-arret onclick={() => menu && arreterDoc(menu.jeu, d.id)}>⏹ Arrêter</button>
+        {/if}
       {/each}
       {#each documents as d (d.i)}
         <button class="btn" onclick={() => ouvrir(d)}>{d.titre}</button>

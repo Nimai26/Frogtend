@@ -492,6 +492,7 @@ pub fn run() {
             commandes::medias_jeu,
             commandes::jeux_reunions,
             commandes::livret_ouvrir,
+            commandes::document_arreter,
             commandes::document_preparer,
             commandes::espace_libre,
             commandes::dossier_jeux_propose,

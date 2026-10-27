@@ -21,6 +21,9 @@
   remplacé sans jamais rester vide ; cible revérifiée sous l'émulateur ; conflits relisibles (Options ▸ Sauvegarde).
   RESTE (noté) : la partie effacée reste dans la sauvegarde COURANTE (décision de Seb) ; l'abri `remplacees\` n'est
   jamais vidé (à la main) ; le titre d'un conflit est technique (« RPCS3/PS3 : savedata/… »), le nom du jeu serait mieux.
+  ✅ Mineurs (5) et (6) FAITS en 0.129.0 (livret : avancement, arrêt, 32 pages en mémoire), relectures suivies.
+  RESTE (noté) : un arrêt pendant le contrôle d'empreinte refait tout le fichier au clic suivant (416) ; deux
+  clics en file : « Arrêter » ne coupe que le premier.
   ✅ Mineurs (7), (8), (9), (10) FAITS en 0.128.0, relectures suivies. ⚠ À DIRE à Seb : la reprise des « parties
   d'avant » (décision du 26/10) ne copie PLUS jamais depuis un utilisateur/compte qui appartient à un profil de
   Frogtend (ex. : l'utilisateur « Léa » adopté par le profil de Léa → Seb ne reçoit pas ses parties) ; trois essais

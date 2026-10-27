@@ -548,7 +548,15 @@ impl Source {
 
     /// Télécharge un document d'un jeu (contrat 1.7, `/jeu/{id}/document/{doc}`), type et empreinte vérifiés avant de
     /// le garder. En mode simulé : le petit livret des fixtures (Dune).
-    pub async fn telecharger_document(&self, id: i64, doc: i64, cible: &std::path::Path, sha256: Option<&str>, types: &[&str]) -> Resultat<u64> {
+    pub async fn telecharger_document(
+        &self,
+        id: i64,
+        doc: i64,
+        cible: &std::path::Path,
+        sha256: Option<&str>,
+        types: &[&str],
+        progres: &(dyn Fn(u64, Option<u64>) + Send + Sync),
+    ) -> Resultat<u64> {
         if let Source::Simulee = self {
             if (id, doc) != (110, 9001) {
                 return Err(Erreur::Refus("Mode simulé : ce document n'existe pas.".into()));
@@ -559,7 +567,7 @@ impl Source {
             std::fs::write(cible, LIVRET_9001)?;
             return Ok(LIVRET_9001.len() as u64);
         }
-        self.telecharger_controle(&format!("/jeu/{id}/document/{doc}"), cible, sha256, types, &|_, _| {}).await
+        self.telecharger_controle(&format!("/jeu/{id}/document/{doc}"), cible, sha256, types, progres).await
     }
 
     /// Les triches et mods connus d'un jeu (contrat 13). Route pas encore servie (404) : listes vides.

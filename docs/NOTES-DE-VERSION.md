@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.129.0 — Le livret qui avance
+
+- 📖 Le livret, la musique ou la vidéo d'un jeu : pendant leur téléchargement, le bouton montre où il en est
+  (« 35 % (12 Mo sur 34 Mo) ») et un bouton « ⏹ Arrêter » apparaît à côté (aussi dans le menu en jeu, à la
+  manette). Ce qui est déjà reçu est gardé : le clic suivant reprend où il en était.
+- Tourner les pages du livret d'avant en arrière est plus rapide : les dernières pages vues sont gardées en mémoire.
+
 ## 0.128.0 — Petites finitions
 
 - 📁 Le dossier de tes jeux ne peut plus être la racine d'un disque, un dossier de Windows ou Documents : Frogtend le

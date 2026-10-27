@@ -675,6 +675,8 @@ export const api = {
   ouvrirLivret: (id: number, doc: number) => appeler<number>('livret_ouvrir', { id, doc }),
   /** Télécharge une musique ou une vidéo si elle n'est pas sur le PC (le clic vaut accord, taille montrée). */
   preparerDocument: (id: number, doc: number) => appeler<DocumentJeu>('document_preparer', { id, doc }),
+  /** Arrête le téléchargement d'un document (ce qui est reçu est gardé pour la reprise). */
+  arreterDocument: (id: number, doc: number) => appeler<void>('document_arreter', { id, doc }),
   /** Contrat 1.33 : le pack MAME (dossier proposé ou choisi, annonce chiffrée, réception, arrêt). */
   packMameAnnonce: (dossier: string | null, avecChd: boolean) =>
     appeler<[string, import('$lib/import/packMame').AnnoncePack]>('pack_mame_annonce', { dossier, avecChd }),

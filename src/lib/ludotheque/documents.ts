@@ -1,14 +1,24 @@
 // Les documents d'un jeu (contrat 1.7) : ce qui se montre sur la fiche et dans le menu en jeu, et comment on le dit.
 import { api, taille, type DocumentJeu } from '$lib/api';
+import { avecSuiviDocument } from './documentsProgres.svelte';
 
 /** Un document ouvert : le livret (ses pages), ou une musique ou une vidéo. */
 export type DocumentOuvert = { doc: number; livret: true; pages: number } | { doc: number; livret: false; video: boolean };
 
 /** Ouvre un document (téléchargé d'abord s'il n'est pas sur le PC : sa taille est sur le bouton, le clic vaut accord). */
 export async function ouvrirDocument(jeu: number, d: DocumentJeu): Promise<DocumentOuvert> {
-  if (d.type === 'livret') return { doc: d.id, livret: true, pages: await api.ouvrirLivret(jeu, d.id) };
-  await api.preparerDocument(jeu, d.id);
-  return { doc: d.id, livret: false, video: d.type !== 'musique' };
+  return avecSuiviDocument(jeu, d.id, async () => {
+    if (d.type === 'livret') return { doc: d.id, livret: true, pages: await api.ouvrirLivret(jeu, d.id) };
+    await api.preparerDocument(jeu, d.id);
+    return { doc: d.id, livret: false, video: d.type !== 'musique' };
+  });
+}
+
+/** Ce que dit le bouton pendant l'ouverture : « ⏳ 35 % (12 Mo sur 34 Mo) », ou « ⏳ chargement… » sans chiffres. */
+export function texteChargement(p: { recus: number; total: number | null } | null): string {
+  if (!p) return '⏳ chargement…';
+  if (p.total && p.total > 0) return `⏳ ${Math.min(100, Math.floor((p.recus / p.total) * 100))} % (${taille(p.recus)} sur ${taille(p.total)})`;
+  return `⏳ ${taille(p.recus)} reçus`;
 }
 
 /** Une durée lisible par tout le monde : « 2 min 32 », « 45 s ». */

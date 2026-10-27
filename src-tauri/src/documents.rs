@@ -13,6 +13,61 @@ use crate::erreurs::{Erreur, Resultat};
 use crate::noyau::{Noyau, Session};
 use crate::source::Image;
 
+/// L'avancement d'un téléchargement de document : (octets reçus, total s'il est connu).
+pub type Progres = std::sync::Arc<dyn Fn(u64, Option<u64>) + Send + Sync>;
+
+/// Les téléchargements de documents à ARRÊTER (jeu, document) : demandés par « Arrêter » ; ce qui est reçu reste
+/// dans son `.part` et la reprise repartira de là.
+static A_ARRETER: std::sync::Mutex<Vec<(i64, i64)>> = std::sync::Mutex::new(Vec::new());
+
+/// Demande d'arrêter le téléchargement de ce document (sans effet s'il n'y en a pas).
+pub fn arreter(id: i64, doc: i64) {
+    let mut l = A_ARRETER.lock().unwrap_or_else(|e| e.into_inner());
+    if !l.contains(&(id, doc)) {
+        l.push((id, doc));
+    }
+}
+
+fn arret_demande(id: i64, doc: i64) -> bool {
+    A_ARRETER.lock().unwrap_or_else(|e| e.into_inner()).contains(&(id, doc))
+}
+
+/// Oublie un « Arrêter » d'avant : appelé à la RÉCEPTION d'une demande d'ouverture (un arrêt cliqué ensuite, même
+/// pendant la relecture de la fiche ou l'attente du verrou, est donc bien suivi).
+pub fn oublier_arret(id: i64, doc: i64) {
+    A_ARRETER.lock().unwrap_or_else(|e| e.into_inner()).retain(|x| *x != (id, doc));
+}
+
+/// Les dernières pages de livret rendues (fichier, page, largeur) → image : tourner les pages d'avant en arrière ne
+/// relit pas le livret à chaque fois. 32 pages et 64 Mo au plus ; le fichier est celui du PROFIL ouvert (jamais servi
+/// à un autre profil : la clé est son chemin).
+static PAGES: std::sync::Mutex<Vec<((PathBuf, u32, u32), std::sync::Arc<Vec<u8>>)>> = std::sync::Mutex::new(Vec::new());
+const PAGES_MAX: usize = 32;
+const PAGES_OCTETS_MAX: usize = 64 << 20;
+
+fn page_gardee(cle: &(PathBuf, u32, u32)) -> Option<std::sync::Arc<Vec<u8>>> {
+    let mut l = PAGES.lock().unwrap_or_else(|e| e.into_inner());
+    let i = l.iter().position(|(c, _)| c == cle)?;
+    let e = l.remove(i);
+    let png = e.1.clone();
+    l.push(e); // la plus récente à la fin
+    Some(png)
+}
+
+fn garder_page(cle: (PathBuf, u32, u32), png: std::sync::Arc<Vec<u8>>) {
+    let mut l = PAGES.lock().unwrap_or_else(|e| e.into_inner());
+    l.retain(|(c, _)| *c != cle);
+    l.push((cle, png));
+    while l.len() > PAGES_MAX || (l.len() > 1 && l.iter().map(|(_, p)| p.len()).sum::<usize>() > PAGES_OCTETS_MAX) {
+        l.remove(0);
+    }
+}
+
+/// Oublie les pages gardées d'un fichier (retiré ou remplacé).
+fn oublier_pages(fichier: &std::path::Path) {
+    PAGES.lock().unwrap_or_else(|e| e.into_inner()).retain(|((f, ..), _)| f != fichier);
+}
+
 /// Un document d'un jeu, tel que Firehouse le décrit (jamais un chemin).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Document {
@@ -173,7 +228,7 @@ impl Noyau {
     /// Un document du jeu sur le PC : téléchargé s'il ne l'est pas encore (au clic de la personne, taille montrée),
     /// type, empreinte et taille vérifiés avant de le garder. `livret` : la sorte attendue (un livret, ou une musique
     /// ou une vidéo), vérifiée AVANT tout téléchargement.
-    async fn garder(&self, s: &Session, id: i64, doc: i64, livret: bool) -> Resultat<(Document, PathBuf)> {
+    async fn garder(&self, s: &Session, id: i64, doc: i64, livret: bool, progres: Progres) -> Resultat<(Document, PathBuf)> {
         let (d, fichier) = self
             .document(s, id, doc, true)
             .await?
@@ -189,7 +244,27 @@ impl Noyau {
             let _un_seul = verrou.lock().await;
             if !fichier.is_file() {
                 let types = [type_attendu(&d).unwrap_or("application/pdf")];
-                match s.source.telecharger_document(id, doc, &fichier, empreinte_valable(&d.empreinte), &types).await {
+                oublier_pages(&fichier);
+                let suivre = |r, t| progres(r, t);
+                let reception = s.source.telecharger_document(id, doc, &fichier, empreinte_valable(&d.empreinte), &types, &suivre);
+                // « Arrêter » coupe tout de suite (regardé 4 fois par seconde) : le `.part` reçu reste pour la reprise.
+                let arret = async {
+                    while !arret_demande(id, doc) {
+                        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                    }
+                };
+                let resultat = tokio::select! {
+                    r = reception => Some(r),
+                    () = arret => None,
+                };
+                oublier_arret(id, doc);
+                let Some(resultat) = resultat else {
+                    return Err(Erreur::Refus("Téléchargement arrêté : il reprendra où il en était au prochain clic.".into()));
+                };
+                if let Ok(n) = &resultat {
+                    progres(*n, Some(*n)); // la fin dite, même sans taille annoncée
+                }
+                match resultat {
                     Ok(n) if d.taille > 0 && n != d.taille => {
                         let _ = std::fs::remove_file(&fichier);
                         let quoi = if d.sorte == "livret" { "Le livret reçu" } else { "Le fichier reçu" };
@@ -211,8 +286,13 @@ impl Noyau {
     /// Prépare une musique ou une vidéo du jeu (téléchargée et vérifiée si besoin) : elle se lit ensuite par
     /// `document.localhost/<jeu>/<document>/fichier`.
     pub async fn preparer_document(&self, id: i64, doc: i64) -> Resultat<Document> {
+        self.preparer_document_suivi(id, doc, std::sync::Arc::new(|_, _| {})).await
+    }
+
+    /// Comme `preparer_document`, en disant l'avancement du téléchargement.
+    pub async fn preparer_document_suivi(&self, id: i64, doc: i64, progres: Progres) -> Resultat<Document> {
         let s = self.session_du_jeu(id).await?;
-        let (mut d, _) = self.garder(&s, id, doc, false).await?;
+        let (mut d, _) = self.garder(&s, id, doc, false, progres).await?;
         d.garde = true;
         Ok(d)
     }
@@ -230,8 +310,13 @@ impl Noyau {
 
     /// Le livret d'un jeu, téléchargé s'il ne l'est pas encore (vérifié), puis ouvert : rend son nombre de pages.
     pub async fn livret(&self, id: i64, doc: i64) -> Resultat<u32> {
+        self.livret_suivi(id, doc, std::sync::Arc::new(|_, _| {})).await
+    }
+
+    /// Comme `livret`, en disant l'avancement du téléchargement.
+    pub async fn livret_suivi(&self, id: i64, doc: i64, progres: Progres) -> Resultat<u32> {
         let s = self.session_du_jeu(id).await?;
-        let (d, fichier) = self.garder(&s, id, doc, true).await?;
+        let (d, fichier) = self.garder(&s, id, doc, true, progres).await?;
         let f = fichier.clone();
         let pages = tauri::async_runtime::spawn_blocking(move || crate::livret::pages(&f))
             .await
@@ -253,6 +338,7 @@ impl Noyau {
                     None => false,
                 };
                 if abime {
+                    oublier_pages(&fichier);
                     let _ = std::fs::remove_file(&fichier);
                     return Err(Erreur::Disque("Le livret gardé sur le PC était abîmé : il est retiré, et sera repris au prochain essai.".into()));
                 }
@@ -270,9 +356,14 @@ impl Noyau {
         if d.sorte != "livret" || !fichier.is_file() {
             return Ok(None);
         }
+        let cle = (fichier.clone(), n, largeur);
+        if let Some(png) = page_gardee(&cle) {
+            return Ok(Some(Image { octets: png.as_ref().clone(), type_contenu: Some("image/png".into()) }));
+        }
         let png = tauri::async_runtime::spawn_blocking(move || crate::livret::page_png(&fichier, n, largeur))
             .await
             .map_err(|_| Erreur::Disque("La lecture du livret s'est arrêtée.".into()))??;
+        garder_page(cle, std::sync::Arc::new(png.clone()));
         Ok(Some(Image { octets: png, type_contenu: Some("image/png".into()) }))
     }
 }
@@ -334,6 +425,22 @@ mod tests {
     use super::*;
     use crate::coffre::CoffreMemoire;
     use crate::noyau::Connexion;
+
+    #[test]
+    fn les_pages_gardees_ont_une_limite_et_l_arret_se_demande_par_document() {
+        let f = PathBuf::from("Z:/essai-pages/livret.pdf");
+        for n in 0..(PAGES_MAX as u32 + 5) {
+            garder_page((f.clone(), n, 400), std::sync::Arc::new(vec![n as u8; 10]));
+        }
+        assert!(page_gardee(&(f.clone(), 0, 400)).is_none(), "les plus anciennes sortent");
+        assert_eq!(page_gardee(&(f.clone(), PAGES_MAX as u32 + 4, 400)).unwrap()[0], (PAGES_MAX + 4) as u8);
+        oublier_pages(&f);
+        assert!(page_gardee(&(f.clone(), PAGES_MAX as u32 + 4, 400)).is_none());
+        arreter(990, 1);
+        assert!(arret_demande(990, 1) && !arret_demande(990, 2));
+        oublier_arret(990, 1);
+        assert!(!arret_demande(990, 1));
+    }
     use httpmock::prelude::*;
     use serde_json::json;
 
@@ -363,7 +470,7 @@ mod tests {
         let d = liste.iter().find(|d| d.sorte == "livret").expect("pas de livret");
         let pdf = sortie.join(format!("{}.pdf", d.id));
         let debut = std::time::Instant::now();
-        let n = source.telecharger_document(jeu, d.id, &pdf, empreinte_valable(&d.empreinte), &[type_attendu(d).unwrap()]).await.unwrap();
+        let n = source.telecharger_document(jeu, d.id, &pdf, empreinte_valable(&d.empreinte), &[type_attendu(d).unwrap()], &|_, _| {}).await.unwrap();
         println!("TELECHARGE {n} octets en {:?} (annoncé {})", debut.elapsed(), d.taille);
         let pages = crate::livret::pages(&pdf).unwrap();
         println!("PAGES {pages} (annoncé {:?})", d.pages);
@@ -390,7 +497,7 @@ mod tests {
         for d in lire_liste(&source.documents(jeu).await.unwrap()).iter().filter(|d| d.sorte == "musique" || d.sorte == "video") {
             let f = sortie.join(format!("{}.{}", d.id, d.format));
             let debut = std::time::Instant::now();
-            let n = source.telecharger_document(jeu, d.id, &f, empreinte_valable(&d.empreinte), &[type_attendu(d).unwrap()]).await.unwrap();
+            let n = source.telecharger_document(jeu, d.id, &f, empreinte_valable(&d.empreinte), &[type_attendu(d).unwrap()], &|_, _| {}).await.unwrap();
             let tete = lire_morceau(&f, 0, 11).unwrap();
             let (a, b) = plage(Some("bytes=0-"), n).unwrap().unwrap();
             let fin = plage(Some(&format!("bytes={}-", n - 100)), n).unwrap().unwrap();
@@ -410,6 +517,10 @@ mod tests {
         assert!(n.page_livret(110, 9001, 0, 600).await.unwrap().is_none());
         assert!(!l[0].garde);
         assert_eq!(n.livret(110, 9001).await.unwrap(), 2);
+        // Une page rendue deux fois : la seconde vient de la mémoire (même image).
+        let p1 = n.page_livret(110, 9001, 1, 400).await.unwrap().unwrap();
+        let p2 = n.page_livret(110, 9001, 1, 400).await.unwrap().unwrap();
+        assert_eq!(p1.octets, p2.octets);
         assert!(n.documents(110).await.unwrap()[0].garde, "désormais sur le PC");
         let img = n.page_livret(110, 9001, 1, 600).await.unwrap().unwrap();
         assert!(img.octets.starts_with(b"\x89PNG"));

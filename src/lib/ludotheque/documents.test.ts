@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { DocumentJeu } from '$lib/api';
-import { documentsDuMenu, documentsMontres, duree, libelleDocument } from './documents';
+import { documentsDuMenu, documentsMontres, duree, libelleDocument, texteChargement } from './documents';
+
+describe('le bouton d’un document pendant son téléchargement', () => {
+  it('dit le pourcentage et les tailles, jamais plus de 100 %', () => {
+    expect(texteChargement(null)).toBe('⏳ chargement…');
+    expect(texteChargement({ recus: 50, total: 200 })).toMatch(/^⏳ 25 % \(/);
+    expect(texteChargement({ recus: 300, total: 200 })).toMatch(/^⏳ 100 % /);
+    expect(texteChargement({ recus: 50, total: null })).toMatch(/reçus$/);
+  });
+});
 
 // L'exemple réel du 16/10 (Zelda, /jeu/111/documents).
 const livret: DocumentJeu = { id: 6142, type: 'livret', langue: '', format: 'pdf', taille: 8583117, pages: 23, duree_s: null };
