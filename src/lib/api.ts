@@ -659,9 +659,17 @@ export const api = {
   ouvrirLivret: (id: number, doc: number) => appeler<number>('livret_ouvrir', { id, doc }),
   /** Télécharge une musique ou une vidéo si elle n'est pas sur le PC (le clic vaut accord, taille montrée). */
   preparerDocument: (id: number, doc: number) => appeler<DocumentJeu>('document_preparer', { id, doc }),
-  /** `ecarter` : la personne a choisi de REMPLACER une sauvegarde existante qu'elle n'a pas restaurée. */
+  /** Contrat 1.32 : identifier les jeux importés sans fiche. `annonce` : [à envoyer, déjà cherchés, lots]. */
+  identificationAnnonce: () => appeler<[number, number, number]>('identification_annonce'),
+  identificationLancer: (tout = false) =>
+    appeler<{ envoyes: number; exacts: number; probables: number; inconnus: number; motif?: string | null }>('identification_lancer', { tout }),
+  identificationAChoisir: () => appeler<import('$lib/import/identification').AChoisir[]>('identification_a_choisir'),
+  identificationChoisir: (jeu: number, launchboxId: number) => appeler<void>('identification_choisir', { jeu, launchboxId }),
+  identificationEcarter: (jeu: number) => appeler<void>('identification_ecarter', { jeu }),
+  ficheBase: (jeu: number) => appeler<import('$lib/import/identification').FicheBase | null>('jeu_fiche_base', { jeu }),
   /** Ce qu'une sauvegarde enverrait : taille de toutes les parties, et celle de la dernière sauvegarde. */
   sauvegardeEstimer: () => appeler<{ total: number; precedent: number | null }>('sauvegarde_estimer'),
+  /** `ecarter` : la personne a choisi de REMPLACER une sauvegarde existante qu'elle n'a pas restaurée. */
   sauvegarder: (ecarter = false) => appeler<import('./sauvegarde.svelte').BilanSauvegarde>('sauvegarde_lancer', { ecarter }),
   derniereSauvegarde: () => appeler<import('./sauvegarde.svelte').BilanSauvegarde | null>('sauvegarde_derniere'),
   restaurationListe: () =>

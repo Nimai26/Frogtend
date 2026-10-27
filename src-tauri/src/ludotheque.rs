@@ -398,7 +398,11 @@ impl Cache {
              CREATE TABLE IF NOT EXISTS plateformes (nom TEXT PRIMARY KEY, jeux INTEGER NOT NULL);
              CREATE TABLE IF NOT EXISTS fiches (id INTEGER PRIMARY KEY, brut TEXT NOT NULL, lue_le TEXT NOT NULL);
              CREATE TABLE IF NOT EXISTS meta (cle TEXT PRIMARY KEY, valeur TEXT NOT NULL);
-             CREATE TABLE IF NOT EXISTS fusions (ancien INTEGER PRIMARY KEY, nouveau INTEGER NOT NULL, le TEXT);",
+             CREATE TABLE IF NOT EXISTS fusions (ancien INTEGER PRIMARY KEY, nouveau INTEGER NOT NULL, le TEXT);
+             CREATE TABLE IF NOT EXISTS identifications (
+               local INTEGER PRIMARY KEY, statut TEXT NOT NULL, launchbox_id INTEGER, methode TEXT,
+               candidats TEXT NOT NULL, confirme TEXT, le TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS fiches_base (launchbox_id INTEGER PRIMARY KEY, brut TEXT NOT NULL, lue_le TEXT NOT NULL);",
         )?;
         // Contrats 1.27/1.28 : ajoutées à un cache existant (jamais de relecture complète pour ça) ; vides jusqu'à la
         // synchronisation suivante, qui relit toujours `/plateformes`.
@@ -537,6 +541,11 @@ impl Cache {
         tx.execute("DELETE FROM plateformes", [])?;
         tx.execute("DELETE FROM fiches", [])?;
         tx.execute("DELETE FROM fusions", [])?;
+        // Contrat 1.32 : ce que l'ancien jeton a reçu pour les jeux importés (identifications, fiches de base) ; leurs
+        // cartes ne demandent plus de jaquette.
+        tx.execute("UPDATE jeux SET brut = json_set(brut, '$.jaquette', json('false')) WHERE id IN (SELECT local FROM identifications)", [])?;
+        tx.execute("DELETE FROM identifications", [])?;
+        tx.execute("DELETE FROM fiches_base", [])?;
         tx.execute("DELETE FROM meta", [])?;
         tx.execute("INSERT INTO meta (cle, valeur) VALUES ('compte', ?1)", [compte])?;
         tx.commit()?;
@@ -868,6 +877,75 @@ impl Cache {
         Ok(v)
     }
 
+    /// Note ce que Firehouse a dit d'un jeu importé (contrat 1.32) : `statut` `exact|probable|inconnu`, le jeu de la
+    /// base LaunchBox retenu (`launchbox_id`, seulement « exact » ou choisi par la personne), les candidats proposés.
+    /// Dans le cache DU PROFIL : une réponse reçue par un jeton n'est jamais montrée à un autre profil.
+    pub fn noter_identification(&self, local: i64, statut: &str, launchbox_id: Option<i64>, methode: Option<&str>, candidats: &Value, confirme: Option<&str>, quand: &str) -> Resultat<()> {
+        self.db.execute(
+            "INSERT OR REPLACE INTO identifications VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![local, statut, launchbox_id, methode, candidats.to_string(), confirme, quand],
+        )?;
+        Ok(())
+    }
+
+    /// Ce que Firehouse a dit d'un jeu importé : (statut, launchbox_id, méthode, candidats, confirmé par).
+    pub fn identification(&self, local: i64) -> Resultat<Option<(String, Option<i64>, Option<String>, Value, Option<String>)>> {
+        Ok(self
+            .db
+            .query_row("SELECT statut, launchbox_id, methode, candidats, confirme FROM identifications WHERE local = ?1", params![local], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get::<_, String>(3)?, r.get(4)?))
+            })
+            .optional()?
+            .map(|(s, l, m, c, k)| (s, l, m, serde_json::from_str(&c).unwrap_or(Value::Null), k)))
+    }
+
+    /// Les jeux importés déjà identifiés (quel que soit le statut) : jamais redemandés d'office.
+    pub fn identifies(&self) -> Resultat<Vec<i64>> {
+        let mut q = self.db.prepare("SELECT local FROM identifications")?;
+        let l = q.query_map([], |r| r.get(0))?.collect::<Result<Vec<i64>, _>>()?;
+        Ok(l)
+    }
+
+    /// La carte d'un jeu importé dit qu'il a (ou n'a plus) une jaquette : identifié, l'interface la demande ; sinon,
+    /// jamais (des milliers de ROM ne font aucune requête).
+    pub fn marquer_jaquette(&self, local: i64, a_une_jaquette: bool) -> Resultat<()> {
+        self.db.execute(
+            "UPDATE jeux SET brut = json_set(brut, '$.jaquette', json(?2)) WHERE id = ?1",
+            params![local, if a_une_jaquette { "true" } else { "false" }],
+        )?;
+        Ok(())
+    }
+
+    pub fn oublier_identification(&self, local: i64) -> Resultat<()> {
+        self.db.execute("DELETE FROM identifications WHERE local = ?1", params![local])?;
+        Ok(())
+    }
+
+    /// Garde la fiche de base d'un jeu (contrat 1.32) pour ce profil (hors ligne).
+    pub fn garder_fiche_base(&self, launchbox_id: i64, fiche: &Value, quand: &str) -> Resultat<()> {
+        self.db.execute("INSERT OR REPLACE INTO fiches_base VALUES (?1, ?2, ?3)", params![launchbox_id, fiche.to_string(), quand])?;
+        Ok(())
+    }
+
+    pub fn fiche_base(&self, launchbox_id: i64) -> Resultat<Option<Value>> {
+        Ok(self
+            .db
+            .query_row("SELECT brut FROM fiches_base WHERE launchbox_id = ?1", params![launchbox_id], |r| r.get::<_, String>(0))
+            .optional()?
+            .and_then(|b| serde_json::from_str(&b).ok()))
+    }
+
+    /// Une fiche de base que Firehouse ne sert plus à ce jeton (404) : oubliée, avec les identifications qui la visent.
+    pub fn oublier_fiche_base(&self, launchbox_id: i64) -> Resultat<()> {
+        self.db.execute("DELETE FROM fiches_base WHERE launchbox_id = ?1", params![launchbox_id])?;
+        self.db.execute(
+            "UPDATE jeux SET brut = json_set(brut, '$.jaquette', json('false')) WHERE id IN (SELECT local FROM identifications WHERE launchbox_id = ?1)",
+            params![launchbox_id],
+        )?;
+        self.db.execute("DELETE FROM identifications WHERE launchbox_id = ?1", params![launchbox_id])?;
+        Ok(())
+    }
+
     pub fn garder_fiche(&self, id: i64, fiche: &Value, quand: &str) -> Resultat<()> {
         self.db.execute(
             "INSERT OR REPLACE INTO fiches (id, brut, lue_le) VALUES (?1, ?2, ?3)",
@@ -887,6 +965,28 @@ impl Cache {
 pub(crate) mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn un_jeu_importe_identifie_demande_sa_jaquette_et_plus_apres_un_oubli() {
+        let mut c = Cache::en_memoire().unwrap();
+        c.ajouter_locaux(&[JeuResume { id: -5, titre: "Abadox".into(), plateforme: "Nintendo Entertainment System".into(), jaquette: Some(false), ..Default::default() }]).unwrap();
+        c.marquer_jaquette(-5, true).unwrap();
+        assert_eq!(c.jeu(-5).unwrap().unwrap().jaquette, Some(true));
+        assert_eq!(c.jeu(-5).unwrap().unwrap().titre, "Abadox", "le reste de la carte intact");
+        // La fiche de base n'est plus servie à ce jeton (404) : identification et jaquette oubliées.
+        c.noter_identification(-5, "exact", Some(1501), Some("titre"), &json!([]), Some("auto"), "x").unwrap();
+        c.oublier_fiche_base(1501).unwrap();
+        assert_eq!(c.jeu(-5).unwrap().unwrap().jaquette, Some(false));
+        assert!(c.identification(-5).unwrap().is_none());
+        // Un AUTRE compte sur ce profil : rien de ce que l'ancien jeton a reçu ne reste.
+        c.noter_identification(-5, "exact", Some(1501), Some("titre"), &json!([]), Some("auto"), "x").unwrap();
+        c.marquer_jaquette(-5, true).unwrap();
+        c.garder_fiche_base(1501, &json!({"titre": "Abadox"}), "x").unwrap();
+        c.vider_firehouse("autre").unwrap();
+        assert!(c.identification(-5).unwrap().is_none());
+        assert!(c.fiche_base(1501).unwrap().is_none());
+        assert_eq!(c.jeu(-5).unwrap().unwrap().jaquette, Some(false), "la carte reste, sans jaquette");
+    }
 
     #[test]
     fn un_jeu_aux_images_abimees_reste_dans_le_catalogue() {

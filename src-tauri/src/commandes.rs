@@ -4897,6 +4897,72 @@ mod tests {
 // correspondance à côté : le jeu importé ne change jamais), le reste est montré. ---
 
 /// Les jeux importés que le profil ouvert voit (jamais ceux d'un autre profil : la réponse dépend du jeton).
+/// Identifie les jeux importés de ce profil qui n'ont pas de fiche (contrat 1.32). `tout` : aussi ceux déjà
+/// identifiés (relancé par la personne) ; sinon seulement les nouveaux.
+#[tauri::command]
+pub async fn identification_lancer(noyau: State<'_, Noyau>, tout: Option<bool>) -> Resultat<crate::identification::Bilan> {
+    let jeux = {
+        let s = noyau.session().await?;
+        let deja = s.verrou().identifies()?;
+        let mut l = Vec::new();
+        for j in imports_de(&noyau, &s)? {
+            // Déjà relié à une fiche visible : rien à identifier. Un choix de la personne n'est jamais renvoyé.
+            let choisi = s.verrou().identification(j.id)?.is_some_and(|(st, ..)| st == "choisi");
+            if noyau.fiche_de(&s, j.id)?.is_some() || choisi || (!tout.unwrap_or(false) && deja.contains(&j.id)) {
+                continue;
+            }
+            l.push(j);
+        }
+        l
+    };
+    noyau.identifier(&jeux).await
+}
+
+/// Ce qu'une identification enverrait, à annoncer AVANT : (jeux à envoyer, déjà cherchés, lots de 500).
+#[tauri::command]
+pub async fn identification_annonce(noyau: State<'_, Noyau>) -> Resultat<(usize, usize, usize)> {
+    let s = noyau.session().await?;
+    let deja = s.verrou().identifies()?;
+    let (mut nouveaux, mut cherches) = (0, 0);
+    for j in imports_de(&noyau, &s)? {
+        // Relié à une fiche visible, ou rien d'envoyable (aucun nom de fichier) : jamais compté.
+        if noyau.fiche_de(&s, j.id)?.is_some() || crate::identification::demande("x", &j).is_none() {
+            continue;
+        }
+        if deja.contains(&j.id) {
+            cherches += 1;
+        } else {
+            nouveaux += 1;
+        }
+    }
+    Ok((nouveaux, cherches, nouveaux.div_ceil(crate::identification::LOT)))
+}
+
+/// Les jeux importés à faire choisir à la personne (identification « probable »).
+#[tauri::command]
+pub async fn identification_a_choisir(noyau: State<'_, Noyau>) -> Resultat<Vec<crate::identification::AChoisir>> {
+    noyau.a_choisir(&imports_du_profil(&noyau).await?).await
+}
+
+/// La personne choisit, parmi les candidats proposés, le jeu qu'est ce jeu importé.
+#[tauri::command]
+pub async fn identification_choisir(noyau: State<'_, Noyau>, jeu: i64, launchbox_id: i64) -> Resultat<()> {
+    let j = imports_du_profil(&noyau).await?.into_iter().find(|x| x.id == jeu).ok_or_else(|| Erreur::Introuvable("Ce jeu importé n'est plus sur ce PC.".into()))?;
+    noyau.choisir_identification(&j, launchbox_id).await
+}
+
+/// « Aucun de ceux-là » : plus proposé.
+#[tauri::command]
+pub async fn identification_ecarter(noyau: State<'_, Noyau>, jeu: i64) -> Resultat<()> {
+    noyau.ecarter_identification(jeu).await
+}
+
+/// La fiche de base (résumé, genres, images…) d'un jeu importé identifié, ou rien.
+#[tauri::command]
+pub async fn jeu_fiche_base(noyau: State<'_, Noyau>, jeu: i64) -> Resultat<Option<serde_json::Value>> {
+    noyau.fiche_base(jeu).await
+}
+
 async fn imports_du_profil(noyau: &Noyau) -> Resultat<Vec<crate::jeux_pc::JeuPc>> {
     let s = noyau.session().await?;
     imports_de(noyau, &s)

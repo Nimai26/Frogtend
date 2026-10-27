@@ -1,0 +1,309 @@
+{
+  "annee": 1989,
+  "date_sortie": "1989-12-15",
+  "developpeur": "Natsume",
+  "editeur": "Milton Bradley",
+  "fiche_id": 7742,
+  "genres": [
+    "Tir"
+  ],
+  "images": [
+    {
+      "empreinte": "4ccf7eb96e2c0415ee557ee4a9ee5c83efcac5b320f8dbeaa083c135654b7412",
+      "hauteur": 2100,
+      "id": 115845,
+      "largeur": 1465,
+      "principal": true,
+      "region": "North America",
+      "type": "jaquette"
+    },
+    {
+      "empreinte": "841687c3caaa0041cef698ee73be44028aba1bcf1f8027d7fdb26a3793e7288d",
+      "hauteur": 1116,
+      "id": 115846,
+      "largeur": 1600,
+      "principal": false,
+      "region": "Japan",
+      "type": "jaquette"
+    },
+    {
+      "empreinte": "ee808247d3a578762a06cf2f1fbf106b8100e586ee698bced48ce176722173a1",
+      "hauteur": 2100,
+      "id": 115843,
+      "largeur": 1465,
+      "principal": true,
+      "region": "North America",
+      "type": "dos"
+    },
+    {
+      "empreinte": "271e3bf4bf5faf0769b833a9b380965017b86577e41986d2bd423722804918d4",
+      "hauteur": 1100,
+      "id": 115842,
+      "largeur": 1598,
+      "principal": false,
+      "region": "Japan",
+      "type": "dos"
+    },
+    {
+      "empreinte": "131d3f167ce600f0de5423dc6c41aef869a1562d5cfc8e8cdf64b97a863c2c4a",
+      "hauteur": 1080,
+      "id": 115848,
+      "largeur": 149,
+      "principal": true,
+      "region": "North America",
+      "type": "tranche"
+    },
+    {
+      "empreinte": "fda3e08056a262cd317b69b2c6f563d87ce90f52e1e5f62bce9af53e683a1213",
+      "hauteur": 680,
+      "id": 115849,
+      "largeur": 97,
+      "principal": false,
+      "region": "Japan",
+      "type": "tranche"
+    },
+    {
+      "empreinte": "c9407adefefce49e642cccfd6c50fc0dd0b1d35a503403a943f5e1534a81309c",
+      "hauteur": 1401,
+      "id": 115841,
+      "largeur": 903,
+      "principal": true,
+      "region": "North America",
+      "type": "boite_3d"
+    },
+    {
+      "empreinte": "7ca68965a9bea65d467cff985241b7566d06d772f8fc227c8ad95781e1bf0c11",
+      "hauteur": 450,
+      "id": 115840,
+      "largeur": 600,
+      "principal": false,
+      "region": "Japan",
+      "type": "boite_3d"
+    },
+    {
+      "empreinte": "91ae46d4c0d84e04b40ae56fc3434aa5bb2051665113c486303976fab45edde5",
+      "hauteur": 779,
+      "id": 115853,
+      "largeur": 700,
+      "principal": true,
+      "region": "North America",
+      "type": "cartouche"
+    },
+    {
+      "empreinte": "2fe3e9c92ac175dc683a2cd7f602e4e87b7d226ac023ed3f78b96c38959e8ec9",
+      "hauteur": 448,
+      "id": 115854,
+      "largeur": 700,
+      "principal": false,
+      "region": "Japan",
+      "type": "cartouche"
+    },
+    {
+      "empreinte": "f3c39b3f537c692c99778570dcb7b42fd1f4fd1a62cfe5a2b13cd0f2ca5d4fb8",
+      "hauteur": 609,
+      "id": 115850,
+      "largeur": 500,
+      "principal": true,
+      "region": "North America",
+      "type": "cartouche_3d"
+    },
+    {
+      "empreinte": "ae840a5c15f8a778efd8749d60adda29398dcf2ff8613608a80899a138ad3532",
+      "hauteur": 395,
+      "id": 115851,
+      "largeur": 516,
+      "principal": false,
+      "region": "North America",
+      "type": "cartouche_3d"
+    },
+    {
+      "empreinte": "577389400c8571776c874446cb58d54a65f8d1936ca448eebda2a8e4b6f3abd6",
+      "hauteur": 809,
+      "id": 115852,
+      "largeur": 974,
+      "principal": false,
+      "region": "North America",
+      "type": "cartouche_3d"
+    },
+    {
+      "empreinte": "14f0fcf056802041e09453b8d5b3b9232268b55db05821d8939183e9b7cc3be8",
+      "hauteur": 154,
+      "id": 115855,
+      "largeur": 400,
+      "principal": true,
+      "region": "World",
+      "type": "logo"
+    },
+    {
+      "empreinte": "b8855dea0235d1399d79d68b33995b50671ddbf3a0f2a2ab348b7fe79b6b4b86",
+      "hauteur": 1080,
+      "id": 115856,
+      "largeur": 1920,
+      "principal": true,
+      "region": "",
+      "type": "fond"
+    },
+    {
+      "empreinte": "90c6b56cd939dae525b928bbb329596c37bfadfb58ff300cf3a08c9bd04d696a",
+      "hauteur": 1080,
+      "id": 115857,
+      "largeur": 1920,
+      "principal": false,
+      "region": "",
+      "type": "fond"
+    },
+    {
+      "empreinte": "f4548c1dd9fce64745c3e444f25da206ad287994f2d205458d57c530868ec249",
+      "hauteur": 240,
+      "id": 115865,
+      "largeur": 256,
+      "principal": true,
+      "region": "North America",
+      "type": "ecran_titre"
+    },
+    {
+      "empreinte": "ee7cc73eeee55e28f9b0c298e1c26847d1ae588d2ca5fba40559110ec4f2b645",
+      "hauteur": 240,
+      "id": 115864,
+      "largeur": 256,
+      "principal": false,
+      "region": "Japan",
+      "type": "ecran_titre"
+    },
+    {
+      "empreinte": "663fde10310fe67bbcb7d41fad2cb79a17672c6419b6dfd3b6139ae02ad42259",
+      "hauteur": 240,
+      "id": 115862,
+      "largeur": 256,
+      "principal": true,
+      "region": "",
+      "type": "capture"
+    },
+    {
+      "empreinte": "8f39abd7fceb10deb3e1ea00650c6dbfb85ad21823ae9b0c1fffb6838da83909",
+      "hauteur": 240,
+      "id": 115863,
+      "largeur": 256,
+      "principal": false,
+      "region": "",
+      "type": "capture"
+    },
+    {
+      "empreinte": "b39dfb9ec95983502319d84572e72e8f5f9f00506881a9a6641c00a1e77afa5b",
+      "hauteur": 700,
+      "id": 115835,
+      "largeur": 1920,
+      "principal": true,
+      "region": "North America",
+      "type": "banniere"
+    },
+    {
+      "empreinte": "a88c7d48519703cc0aafacae67d9b967331b3644cdb959b46042448a0cfe7893",
+      "hauteur": 250,
+      "id": 115836,
+      "largeur": 460,
+      "principal": false,
+      "region": "North America",
+      "type": "banniere"
+    },
+    {
+      "empreinte": "308a80bf15c5a7f1af29356d35b8eb3ac8f187d9149625b4db94d29facd212b9",
+      "hauteur": 442,
+      "id": 115837,
+      "largeur": 1366,
+      "principal": false,
+      "region": "North America",
+      "type": "banniere"
+    },
+    {
+      "empreinte": "2bca1ecc6c58b05f0fd80687b562a2bae69d74b43b924dd4bc1fda8298aa2f30",
+      "hauteur": 809,
+      "id": 115838,
+      "largeur": 1920,
+      "principal": false,
+      "region": "North America",
+      "type": "banniere"
+    },
+    {
+      "empreinte": "db86759be4d03553734300f0cb74925aae3b36a6b9b04c3beb323c06184fcfd9",
+      "hauteur": 500,
+      "id": 115839,
+      "largeur": 2250,
+      "principal": false,
+      "region": "Japan",
+      "type": "banniere"
+    },
+    {
+      "empreinte": "275a614360426882417c35345adfd4a31c3489a708e32728223cac5307e1704a",
+      "hauteur": 2136,
+      "id": 115834,
+      "largeur": 1600,
+      "principal": true,
+      "region": "North America",
+      "type": "autre_image"
+    },
+    {
+      "empreinte": "a4312f6ecb70927dca8f9a1154a0834598e4d7dab91028bd1c992748f0419cdc",
+      "hauteur": 2100,
+      "id": 115844,
+      "largeur": 1535,
+      "principal": false,
+      "region": "North America",
+      "type": "autre_image"
+    },
+    {
+      "empreinte": "628bcb34d782e6e080153adedf1f36a12c0f8c9c6c26616226fb047342571438",
+      "hauteur": 2100,
+      "id": 115847,
+      "largeur": 1537,
+      "principal": false,
+      "region": "North America",
+      "type": "autre_image"
+    },
+    {
+      "empreinte": "51cf6788b1a26dff2fe3f34936ca9dc9edf9c635785300b7737150eb9e3da55d",
+      "hauteur": 619,
+      "id": 115858,
+      "largeur": 454,
+      "principal": false,
+      "region": "North America",
+      "type": "autre_image"
+    },
+    {
+      "empreinte": "541887fe1c0504fa494e213a69c4b0673f8e1dbe6090a16125514d052b5f1231",
+      "hauteur": 1070,
+      "id": 115859,
+      "largeur": 900,
+      "principal": false,
+      "region": "North America",
+      "type": "autre_image"
+    },
+    {
+      "empreinte": "bd4f1cd9d7120d52b2ccfb7ee79ae2325af0bf3d69e9f75307c85b0199fed34f",
+      "hauteur": 599,
+      "id": 115860,
+      "largeur": 802,
+      "principal": false,
+      "region": "Japan",
+      "type": "autre_image"
+    },
+    {
+      "empreinte": "456846dbce435e2313bf18d1225eccace11cc68578f2b5245b01b8a2fc9e3c0a",
+      "hauteur": 500,
+      "id": 115861,
+      "largeur": 444,
+      "principal": false,
+      "region": "North America",
+      "type": "autre_image"
+    }
+  ],
+  "launchbox_id": 1501,
+  "medias_empreinte": "8109ce03b6576088",
+  "ok": true,
+  "plateforme": "Nintendo Entertainment System",
+  "plateforme_affichee": "NES",
+  "resume": "Ta planète natale, Abadox, a été engloutie tout entière par la menace la plus mortelle de l'espace ! Son nom : Parasitis. Sa proie : toutes les formes de vie environnantes. Son but : se nourrir de l'Univers entier !\n\nTu es le sous-lieutenant Nazal, le seul guerrier survivant de la World Alive Force. Parasitis a écrasé les vaisseaux d'attaque de la Force et a consumé un vaisseau-hôpital — avec la belle princesse Maria encore à bord ! Ta mission : te frayer un chemin à coups de blaster à l'intérieur du corps hideux de Parasitis et te battre jusqu'à son Cœur. Fais vite ! La princesse Maria est peut-être encore en vie !\n\nPlonge dans la gorge de Parasitis, explose ses parois cellulaires ! Repousse des organismes vicieux et sanguinaires avec des missiles guidés et des lasers en Six Étapes de Combat Interne ! Tues les monstres gardiens de chaque étape pour pouvoir atteindre le Cœur ! Détruis Parasitis, sauve la princesse Maria et sauve l'Univers !",
+  "resume_langue": "fr",
+  "titre": "Abadox: The Deadly Inner War",
+  "titre_fr": ""
+}

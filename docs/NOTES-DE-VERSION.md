@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.117.0 — Tes jeux importés trouvent leur jaquette
+
+- 🔎 Les jeux importés de ton disque qui n'avaient pas de fiche peuvent maintenant être cherchés dans la base de
+  Firehouse (📥 Importer ▸ Reconnaître mes jeux importés, en bas : « Chercher mes jeux sans fiche ») : Frogtend
+  annonce d'abord combien, et seuls leurs noms partent (aucun fichier n'est lu ni modifié).
+- Un jeu trouvé à coup sûr reçoit sa jaquette et son résumé tout seul ; quand Firehouse hésite, c'est toi qui
+  choisis parmi ses propositions (ou « aucun de ceux-là »). S'il est déjà dans ta ludothèque, ton jeu y est relié.
+- Le résumé apparaît dans le panneau du jeu ; s'il n'existe qu'en anglais, Frogtend le dit et le replie.
+
 ## 0.116.0 — Petits restes avant la bêta
 
 - 🎮 mGBA : les triches de chaque personne sont rangées dans son dossier, comme ses parties.

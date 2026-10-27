@@ -48,6 +48,7 @@ pub mod empreintes;
 pub mod eden;
 pub mod cemu;
 pub mod vita3k;
+pub mod identification;
 pub mod ereader;
 pub mod patchs_ps3;
 pub mod plein_ecran;
@@ -523,6 +524,12 @@ pub fn run() {
             commandes::rapprocher,
             commandes::rapprochement_dernier,
             commandes::rapprochement_rattacher,
+            commandes::identification_lancer,
+            commandes::identification_annonce,
+            commandes::identification_a_choisir,
+            commandes::identification_choisir,
+            commandes::identification_ecarter,
+            commandes::jeu_fiche_base,
             commandes::rapprochement_defaire,
             commandes::rapprochement_ecarter,
             commandes::rapprochement_reprendre,

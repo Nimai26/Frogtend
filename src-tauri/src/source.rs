@@ -197,6 +197,44 @@ impl Source {
         }
     }
 
+    /// Identifie des jeux importés sans fiche (contrat 1.32, `POST /identifier`, 500 au plus par lot) : un statut
+    /// `exact|probable|inconnu` par jeu. En mode simulé : tout est `inconnu`.
+    pub async fn identifier(&self, corps: &Value) -> Resultat<Value> {
+        match self {
+            Source::Firehouse(c) => c.envoyer_json("/identifier", corps).await,
+            Source::Simulee => Ok(json!({"ok": true, "resultats": corps["jeux"].as_array().cloned().unwrap_or_default().iter().map(|j| json!({
+                "cle": j["cle"], "statut": "inconnu", "methode": null, "launchbox_id": null, "fiche_id": null, "candidats": [], "motif": null
+            })).collect::<Vec<_>>()})),
+        }
+    }
+
+    /// La fiche « de base » d'un jeu de la base LaunchBox (contrat 1.32, `GET /base/{launchbox_id}`) ; 404 (absent, ou
+    /// caché à ce jeton) → `None`. En mode simulé : aucune.
+    pub async fn base(&self, launchbox_id: i64) -> Resultat<Option<Value>> {
+        match self {
+            Source::Firehouse(c) => match c.obtenir_json::<Value>(&format!("/base/{launchbox_id}")).await {
+                Ok(v) => Ok(Some(v)),
+                Err(Erreur::Introuvable(_)) => Ok(None),
+                Err(e) => Err(e),
+            },
+            Source::Simulee => Ok(None),
+        }
+    }
+
+    /// Une image d'une fiche de base (contrat 1.32, `GET /base/{launchbox_id}/media/{type}?largeur=`, mêmes règles que
+    /// `/media`) ; 404 → `None`.
+    pub async fn media_base(&self, launchbox_id: i64, sorte: &str, largeur: u32) -> Resultat<Option<Image>> {
+        match self {
+            Source::Firehouse(c) => match c.obtenir(&format!("/base/{launchbox_id}/media/{sorte}?largeur={largeur}"), None).await {
+                Ok(Reponse::Corps { octets, type_contenu, .. }) => Ok(Some(Image { octets, type_contenu })),
+                Ok(Reponse::NonModifie) => Ok(None),
+                Err(Erreur::Introuvable(_)) => Ok(None),
+                Err(e) => Err(e),
+            },
+            Source::Simulee => Ok(None),
+        }
+    }
+
     /// Envoie un lot à rapprocher (contrat 1.21, `POST /reconcilier`) ; rend le code HTTP et le corps (le découpage d'un
     /// lot refusé pour sa taille se fait dans `reconciliation`). En mode simulé : aucune fiche n'est rapprochée.
     pub async fn reconcilier_brut(&self, corps: &Value) -> Resultat<(u16, Vec<u8>)> {
@@ -902,9 +940,34 @@ mod tests {
         std::fs::write(sortie.join("fiche-steam.json"), serde_json::to_vec_pretty(&toutes).unwrap()).unwrap();
     }
 
-    /// RÉEL, lecture seule : les fiches e-Reader (catalogue de la plateforme, puis Air Hockey-e — 1 carte — et
-    /// Pokemon-e TCG — la plus grosse), copiées telles quelles dans `FROGTEND_SORTIE`. Rien d'autre n'est écrit.
-    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_SORTIE=<dossier> cargo test essai_ereader -- --ignored --nocapture`
+    /// RÉEL, lecture seule (contrat 1.32) : `/identifier` sur trois exemples et `/base/{launchbox_id}`, copiés tels quels
+    /// dans `FROGTEND_SORTIE`. Rien d'autre n'est écrit (aucun rattachement).
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_SORTIE=<dossier> cargo test essai_identifier -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_identifier() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let sortie = std::path::PathBuf::from(std::env::var("FROGTEND_SORTIE").unwrap());
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        let corps = serde_json::json!({"jeux": [
+            {"cle": "a", "plateforme": "Nintendo Entertainment System", "fichier": "Abadox - The Deadly Inner War (USA).zip"},
+            {"cle": "b", "plateforme": "Windows", "fichier": "Hades.exe", "dossier": "Hades"},
+            {"cle": "c", "plateforme": "Windows", "fichier": "Hades.exe", "dossier": "Hades", "steam_appid": 1145360},
+            {"cle": "d", "plateforme": "Sony Playstation 3", "fichier": "x.iso", "ps3_title_id": "BCES00569"},
+            {"cle": "e", "plateforme": "Inconnue", "fichier": "rien.bin"}
+        ]});
+        let r: serde_json::Value = c.envoyer_json("/identifier", &corps).await.unwrap();
+        std::fs::write(sortie.join("identifier.json"), serde_json::to_vec_pretty(&r).unwrap()).unwrap();
+        for x in r["resultats"].as_array().cloned().unwrap_or_default() {
+            println!("{} {} {} lb={} fiche={} cand={}", x["cle"], x["statut"], x["methode"], x["launchbox_id"], x["fiche_id"], x["candidats"].as_array().map(|l| l.len()).unwrap_or(0));
+        }
+        let b: serde_json::Value = c.obtenir_json("/base/1501").await.unwrap();
+        std::fs::write(sortie.join("base-1501.json"), serde_json::to_vec_pretty(&b).unwrap()).unwrap();
+        println!("base 1501 : {} / {} / images {}", b["titre"], b["plateforme_affichee"], b["images"].as_array().map(|l| l.len()).unwrap_or(0));
+    }
+
     /// RÉEL, lecture seule (contrat 1.31) : les fiches PS3 qui servent leurs mises à jour (`fichiers[].version`, ordre
     /// d'installation), copiées telles quelles dans `FROGTEND_SORTIE`. Rien d'autre n'est écrit.
     /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_SORTIE=<dossier> cargo test essai_maj_ps3 -- --ignored --nocapture`
@@ -939,6 +1002,9 @@ mod tests {
         }
     }
 
+    /// RÉEL, lecture seule : les fiches e-Reader (catalogue de la plateforme, puis Air Hockey-e — 1 carte — et
+    /// Pokemon-e TCG — la plus grosse), copiées telles quelles dans `FROGTEND_SORTIE`. Rien d'autre n'est écrit.
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_SORTIE=<dossier> cargo test essai_ereader -- --ignored --nocapture`
     #[tokio::test]
     #[ignore]
     async fn essai_ereader() {

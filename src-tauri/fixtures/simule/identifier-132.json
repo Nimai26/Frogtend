@@ -1,0 +1,88 @@
+{
+  "ok": true,
+  "resultats": [
+    {
+      "candidats": [
+        {
+          "annee": 1989,
+          "fiche_id": 7742,
+          "launchbox_id": 1501,
+          "plateforme": "Nintendo Entertainment System",
+          "titre": "Abadox: The Deadly Inner War"
+        }
+      ],
+      "cle": "a",
+      "fiche_id": null,
+      "launchbox_id": null,
+      "methode": "titre",
+      "motif": "un jeu à ce titre",
+      "statut": "probable"
+    },
+    {
+      "candidats": [
+        {
+          "annee": 2020,
+          "fiche_id": null,
+          "launchbox_id": 167721,
+          "plateforme": "Windows",
+          "titre": "Hades"
+        }
+      ],
+      "cle": "b",
+      "fiche_id": null,
+      "launchbox_id": null,
+      "methode": "titre",
+      "motif": "un jeu à ce titre",
+      "statut": "probable"
+    },
+    {
+      "candidats": [],
+      "cle": "c",
+      "fiche_id": null,
+      "launchbox_id": 167721,
+      "methode": "steam_appid",
+      "motif": "",
+      "statut": "exact"
+    },
+    {
+      "candidats": [
+        {
+          "annee": 2010,
+          "fiche_id": null,
+          "launchbox_id": 810,
+          "plateforme": "Sony Playstation 3",
+          "titre": "Gran Turismo 5"
+        },
+        {
+          "annee": 2012,
+          "fiche_id": null,
+          "launchbox_id": 32200,
+          "plateforme": "Sony Playstation 3",
+          "titre": "Gran Turismo 5: Academy Edition"
+        },
+        {
+          "annee": 2012,
+          "fiche_id": null,
+          "launchbox_id": 13848,
+          "plateforme": "Sony Playstation 3",
+          "titre": "Gran Turismo 5: XL Edition"
+        }
+      ],
+      "cle": "d",
+      "fiche_id": null,
+      "launchbox_id": null,
+      "methode": "titre",
+      "motif": "3 jeux à ce titre",
+      "statut": "probable"
+    },
+    {
+      "candidats": [],
+      "cle": "e",
+      "fiche_id": null,
+      "launchbox_id": null,
+      "methode": null,
+      "motif": "aucun jeu reconnu (plateforme non reconnue)",
+      "statut": "inconnu"
+    }
+  ]
+}

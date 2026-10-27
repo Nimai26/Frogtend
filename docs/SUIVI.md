@@ -798,6 +798,35 @@ d'abord :
 
 ## ⏳ Attend un événement extérieur
 
+- ✅ **Contrat 1.32 LIVRÉ par Firehouse (2.146.0, 27/10)** et INTÉGRÉ (0.117.0) : relevé réel en lecture seule
+  (`/identifier` : Hades exact par steam_appid, Abadox probable 1 candidat, BCES00569 probable 3 candidats ;
+  `/base/1501` : 32 images, résumé fr) ; identification.rs, tables `identifications`/`fiches_base` du profil,
+  jaquette et résumé des importés identifiés, écran « Chercher mes jeux sans fiche » (annonce chiffrée, choix parmi
+  les candidats). Réponses de Firehouse (27/10) : `methode` liste FERMÉE (launchbox_id, steam_appid,
+  fichier_launchbox, fichier_files_xml = exact ; titre = probable ; null) ; probable → seulement `candidats` ; caché =
+  exactement inconnu. À VENIR en 1.33 : candidat au titre exact du numéro PS3 en tête ; `medias_empreinte` dans un
+  exact (relire `/base` seulement si elle change).
+  Relectures des experts (27/10) suivies — BLOQUANTS corrigés : un changement de compte vide aussi les identifications,
+  les fiches de base et `<profil>\base\` (jamais servis à un autre jeton) ; toutes les écritures passent par
+  `verrou_vivant` (rien d'écrit ni de rendu pour une session remplacée). Aussi : un jeu déjà relié (registre commun)
+  n'est ni proposé ni écrasé ; fiche gardée d'abord (3 s au plus d'attente, relue une fois par session) ; « Tout
+  chercher de nouveau » ne renvoie jamais un choix de la personne ; arrêt en cours de route dit (bilan partiel) ;
+  rien noté en mode simulé ; focus gardé à la manette. Relevés réels versés dans `fixtures/simule/` (base-1501,
+  identifier-132) ; la jaquette principale est testée dessus. RESTE (noté) : un jeu retiré puis réimporté sous un
+  nouveau numéro laisse une identification orpheline (sans effet visible).
+- **Firehouse, état réel au 26/10 (FIREHOUSE 2)** — CORRECTION : les besoins 15 et 17 n'étaient PAS livrés (seuls
+  `mame_nom` 1.30 et `/emulateurs/mame/paquet` existent) ; Firehouse cite désormais NOTRE tableau des besoins.
+  Ordre annoncé : chantier en cours chez Firehouse, puis 1.32 → 1.33 → 1.34.
+  · 1.32 (besoin 16) : `GET …/base/{launchbox_id}` (+ `/media/{type}`) et `POST /identifier` (≤ 500 ; statuts
+    `exact|probable|inconnu` — ✅ confirmé ; `fichier` = nom seul tel qu'il est sur le disque ; ✅ Firehouse 26/10 :
+    champ facultatif `dossier` = le nom du SEUL dossier parent (un composant, ≤ 255 car.), même sens que dans
+    /reconcilier, utilisé pour un jeu PC (dossier + exe), ignoré ailleurs). ≈ 3 200 jeux sans fiche auront une image ; AUCUNE image PS3 par cette voie.
+  · 1.33 (besoins 15, 17) : `GET /mame/machines` (listxml 0.289 + catver + Working Arcade Clean ; machines adultes
+    ABSENTES pour un non-admin → « absent = écarter ») et `GET /mame/romset` (liste filtrée, totaux avec/sans CHD,
+    mise à jour = différence de sha1) ; MAME 0.289 hébergé par Firehouse (sha256). Garder le MAME.xml local d'ici là.
+  · 1.34 (besoin 35) : RetroArch 1.22.2 hébergé (sha256 + Range) et `/emulateurs/retroarch/autoconfig` figé (v1.22.0).
+    Rester sur le buildbot d'ici là ; `sha256` null → valeur (compatible, à vérifier dès qu'il est rempli).
+
 - [ ] **Firehouse — contrat 1.7 → 1.13** (16/10, message de la session Firehouse « FIREHOUSE 2 ») : Frogtend ne lit que
       la 1.3 (+ notes 1.6). ✅ Texte 1.7 → 1.13 reçu le 16/10 et intégré à CONTRAT-API-JEUX-V1.md ; exemples réels
       annoncés. → relecture par l'expert contrat : ce que Frogtend doit changer (documents 1.7, conseil 1.8, BIOS 1.9,

@@ -9,6 +9,7 @@
   import Jaquette from './Jaquette.svelte';
   import { jeuAuHasard, ludo, nomAffiche } from './ludotheque.svelte';
   import FicheSysteme from './FicheSysteme.svelte';
+  import ResumeBase from './ResumeBase.svelte';
   import { annuler, jeuSurPc, mettreDansLaLudotheque, mettreEnPause, reprendre } from './telechargements.svelte';
   import { emulateursDuJeu, gererLaCarte, installer, jouerAvec, jouerLaCarte, partie } from './jeu.svelte';
   import { estJeuDeBoutique, ouvrirJeuDeBoutique } from '$lib/boutiques/jeu-boutique';
@@ -145,6 +146,8 @@
     {#if !catalogue && estJeuDeBoutique(j) && j.source !== 'local'}<FicheBoutique jeu={j} />{/if}
     {#if !catalogue}<BlocSucces jeu={j} surPc={!!surPc?.installation} idPc={idPc} />{/if}
     {#if !catalogue && surPc?.installation}<BlocContenus id={idPc} titre={j.titre} />{/if}
+    <!-- Un jeu importé de ton disque, sans fiche : son résumé trouvé dans la base de Firehouse (contrat 1.32). -->
+    {#if j.id < 0 && j.source === 'local'}<ResumeBase jeu={j.id} genresConnus={j.genres.length > 0} />{/if}
     {#if j.genres.length}
       <div class="genres">
         {#each j.genres as g (g)}<span class="tag">{g}</span>{/each}

@@ -3,6 +3,14 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Tes jeux importés trouvent leur jaquette (0.117.0)
+- [ ] 📥 Importer ▸ Reconnaître mes jeux importés, en bas : « Chercher mes jeux sans fiche » annonce un nombre ;
+      lance la recherche : un message dit combien sont trouvés, à choisir, inconnus.
+- [ ] Un jeu trouvé (par exemple un jeu Steam importé) : sa jaquette apparaît dans la grille, son résumé dans le
+      panneau.
+- [ ] « À choisir » : « Choisir » montre les propositions (titre, année, console) et « Aucun de ceux-là ».
+- [ ] Tes jeux PS3 importés : Firehouse propose les éditions (pas d'image PS3 par cette voie, c'est normal).
+
 ## Vita plus rapide, sauvegardes annoncées (0.115.0)
 - [ ] Lancer deux fois un jeu PS Vita : la seconde fois, il doit démarrer tout de suite (sans réinstallation).
 - [ ] Mettre le seuil à 50 Mo (⚙ Options ▸ Emplacements), jouer à un jeu PS3, puis **💾 Sauvegarder** : Frogtend doit

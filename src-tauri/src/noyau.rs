@@ -403,7 +403,7 @@ impl Noyau {
     /// montrées (le catalogue est vide) et le ménage de la synchronisation suivante les retire.
     fn oublier(&self, id: &str, dossier: &Path, cache: &mut Cache, compte: &str) -> Resultat<()> {
         cache.vider_firehouse(compte)?;
-        for sous in ["jaquettes", "visuels", "systemes"] {
+        for sous in ["jaquettes", "visuels", "systemes", "base"] {
             let d = dossier.join(sous);
             if std::fs::symlink_metadata(&d).is_ok_and(|m| m.is_dir()) {
                 if let Err(e) = std::fs::remove_dir_all(&d) {
@@ -1168,7 +1168,12 @@ impl Noyau {
                 (None, Some("steam"), Some(cle)) => crate::boutiques::image_steam(&cache, cle.trim_start_matches("steam_")).await,
                 _ => None,
             };
-            return Ok(octets.map(|o| Image { type_contenu: type_image(&o), octets: o }));
+            drop(s);
+            // Sinon (jeu importé du disque) : celle de sa fiche de base, s'il a été identifié (contrat 1.32).
+            return match octets {
+                Some(o) => Ok(Some(Image { type_contenu: type_image(&o), octets: o })),
+                None => self.jaquette_base(id, largeur).await,
+            };
         }
         // Un jeu de la ludothèque du PC : sa jaquette est sur le disque (hors ligne).
         if let Some(octets) = self.jaquette_locale(id, largeur) {

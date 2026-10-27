@@ -118,6 +118,12 @@ pub fn titre_id_ps3(chemin: &Path) -> Option<String> {
     valeur_sfo(&sfo_ps3(chemin)?, "TITLE_ID")
 }
 
+/// Le numéro (TITLE_ID) et le titre (TITLE) d'un jeu PS3, lus une seule fois dans son PARAM.SFO.
+pub fn numero_et_titre_ps3(chemin: &Path) -> Option<(String, Option<String>)> {
+    let s = sfo_ps3(chemin)?;
+    Some((valeur_sfo(&s, "TITLE_ID")?, valeur_sfo(&s, "TITLE")))
+}
+
 /// La version d'un PARAM.SFO comme RPCS3 la lit : APP_VER, sinon VERSION (`System.cpp`, relevé du 19/10).
 fn version_sfo(sfo: &[u8]) -> Option<String> {
     valeur_sfo(sfo, "APP_VER").filter(|v| !v.is_empty()).or_else(|| valeur_sfo(sfo, "VERSION"))

@@ -11,6 +11,7 @@
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { rechargerListe, rechargerPlateformes } from '$lib/ludotheque/ludotheque.svelte';
   import { rechargerJeuxDuPc } from '$lib/ludotheque/telechargements.svelte';
+  import ChercherBase from './ChercherBase.svelte';
   import { dureeEstimee, ficheNommee, nomFiche, propositions, texteAnnonce, texteMotif, texteStatut, type Annonce, type JeuRapproche, type Rapprochement } from './rapprochement';
 
   let annonce = $state<Annonce | null>(null);
@@ -269,6 +270,9 @@
     {#if rapport.non_envoyes}<p class="muted">{rapport.non_envoyes} fichier(s) n’ont pas pu être vérifiés (trop de fichiers d’un coup pour Firehouse).</p>{/if}
   </section>
 {/if}
+
+<!-- Contrat 1.32 : les jeux sans fiche, cherchés dans la base de Firehouse (après le rapprochement par le contenu). -->
+<ChercherBase />
 
 <style>
   .annonce {
