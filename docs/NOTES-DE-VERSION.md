@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.128.0 — Petites finitions
+
+- 📁 Le dossier de tes jeux ne peut plus être la racine d'un disque, un dossier de Windows ou Documents : Frogtend le
+  dit et propose un sous-dossier (par exemple « D:\Jeux »), puis repose la question.
+- 🎮 Eden, Cemu, Vita3K : la reprise de tes parties d'avant Frogtend, si elle a été interrompue, est retentée aux
+  parties suivantes (trois fois au plus), et jamais depuis l'utilisateur ou le compte d'une autre personne.
+- mGBA déjà ouvert (une carte e-Reader ou sa cartouche) : Frogtend refuse d'en ouvrir un second, qui écrirait la même
+  sauvegarde.
+- « Lire la suite » n'apparaît plus sous une description courte.
+
 ## 0.127.0 — Les parties restaurées en double
 
 - 💾 Après une restauration, une partie d'émulateur que tu avais effacée ne revient plus toute seule à chaque

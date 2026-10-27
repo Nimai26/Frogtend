@@ -22,20 +22,28 @@ export async function proposerDossierJeux(raison: string, besoin?: number): Prom
   const options: { valeur: 'propose' | 'autre'; libelle: string; detail?: string }[] = [];
   if (p) options.push({ valeur: 'propose', libelle: `📁 ${p.chemin}`, detail: `${taille(p.libre)} libres sur ce disque${p.externe ? ' — un disque externe (USB) : garde-le branché pour jouer' : ''}` });
   if (!canape) options.push({ valeur: 'autre', libelle: '📂 Choisir un autre dossier…', detail: 'Avec l’explorateur de Windows.' });
-  const c = await choisir(
-    '📁 Où ranger tes jeux ?',
-    options,
-    `${raison}${besoin ? `\nCe jeu demande ${taille(besoin)}.` : ''}\nChaque jeu y aura son propre dossier. Tu pourras en ajouter d’autres plus tard (⚙ Options ▸ Emplacements).`,
-  );
   let chemin: string | null = null;
-  if (c === 'propose' && p) {
-    chemin = await api.dossierJeuxCreer(p.chemin).catch((e) => {
-      toast(`Le dossier n’a pas pu être créé : ${motifDuRefus(e)}`, 'erreur');
-      return null;
-    });
+  // Un dossier refusé (racine d'un disque, Windows, Documents) : dit, puis la même question revient (jamais
+  // l'installation en cours perdue).
+  for (;;) {
+    const c = await choisir(
+      '📁 Où ranger tes jeux ?',
+      options,
+      `${raison}${besoin ? `\nCe jeu demande ${taille(besoin)}.` : ''}\nChaque jeu y aura son propre dossier. Tu pourras en ajouter d’autres plus tard (⚙ Options ▸ Emplacements).`,
+    );
+    chemin = null;
+    if (c === 'propose' && p) {
+      chemin = await api.dossierJeuxCreer(p.chemin).catch((e) => {
+        toast(`Le dossier n’a pas pu être créé : ${motifDuRefus(e)}`, 'erreur');
+        return null;
+      });
+    }
+    if (c === 'autre') chemin = await parcourir({ dossier: true, titre: 'Dossier de tes jeux' });
+    if (!chemin) return null;
+    const refus = await api.dossierJeuxRefus(chemin).catch(() => null);
+    if (!refus) break;
+    await informer('📁 Choisis un autre dossier', refus);
   }
-  if (c === 'autre') chemin = await parcourir({ dossier: true, titre: 'Dossier de tes jeux' });
-  if (!chemin) return null;
   const e = etat.pc.emplacements;
   await reglerPc('emplacements', { ...e, defaut: [chemin, ...e.defaut.filter((d) => d.toLowerCase() !== chemin!.toLowerCase())] });
   return chemin;

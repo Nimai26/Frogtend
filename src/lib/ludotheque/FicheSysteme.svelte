@@ -11,6 +11,20 @@
   /** Les images qui n'ont pas pu s'afficher (la suivante prend leur place). */
   let echecs = $state<string[]>([]);
   let tout = $state(false);
+  /** Le texte replié déborde-t-il vraiment ? Sinon, pas de « Lire la suite » sous un texte court. */
+  let paragraphe = $state<HTMLParagraphElement | null>(null);
+  let deborde = $state(false);
+  $effect(() => {
+    const p = paragraphe;
+    if (!p) return;
+    const mesurer = () => {
+      if (!tout) deborde = p.scrollHeight > p.clientHeight + 1;
+    };
+    mesurer();
+    const o = new ResizeObserver(mesurer);
+    o.observe(p);
+    return () => o.disconnect();
+  });
 
   $effect(() => {
     const n = nom;
@@ -50,8 +64,10 @@
     {/if}
     {#if sous}<p class="muted">{sous}</p>{/if}
     {#if fiche.description_fr}
-      <p class="description" class:replie={!tout}>{fiche.description_fr}</p>
-      <button class="lien" aria-expanded={tout} onclick={() => (tout = !tout)}>{tout ? 'Réduire' : 'Lire la suite'}</button>
+      <p class="description" class:replie={!tout} bind:this={paragraphe}>{fiche.description_fr}</p>
+      {#if deborde || tout}
+        <button class="lien" aria-expanded={tout} onclick={() => (tout = !tout)}>{tout ? 'Réduire' : 'Lire la suite'}</button>
+      {/if}
       {#if texte}
         <p class="credit muted">
           {texte}

@@ -805,6 +805,11 @@ impl Noyau {
                 // Une machine de salon par MAME (contrat 1.16 : `studio2 -cart "%rom%"`) reçoit sa cartouche à sa place,
                 // même zippée : décidé d'après la LIGNE, jamais d'après l'extension.
                 let arcade = crate::installation::nom_court_mame(&programme, f).filter(|_| !crate::installation::ligne_mame_de_salon(&ligne));
+                // mGBA déjà ouvert (une carte e-Reader lue DANS sa cartouche, ou la cartouche seule) : jamais un second,
+                // qui écrirait la même sauvegarde de cartouche que le premier.
+                if crate::ereader::est_mgba(&programme) && crate::lancement::programme_ouvert(Path::new(&programme)) {
+                    return Err(Erreur::Refus("mGBA est déjà ouvert (une carte ou sa cartouche) : ferme-le d'abord, puis relance.".into()));
+                }
                 let l = match arcade {
                     // Une carte e-Reader : lue DANS sa cartouche, jamais lancée seule (ce n'est pas une ROM).
                     _ if crate::jeux_pc::a_cartes(&j.plateforme) => {

@@ -21,6 +21,11 @@
   remplacé sans jamais rester vide ; cible revérifiée sous l'émulateur ; conflits relisibles (Options ▸ Sauvegarde).
   RESTE (noté) : la partie effacée reste dans la sauvegarde COURANTE (décision de Seb) ; l'abri `remplacees\` n'est
   jamais vidé (à la main) ; le titre d'un conflit est technique (« RPCS3/PS3 : savedata/… »), le nom du jeu serait mieux.
+  ✅ Mineurs (7), (8), (9), (10) FAITS en 0.128.0, relectures suivies. ⚠ À DIRE à Seb : la reprise des « parties
+  d'avant » (décision du 26/10) ne copie PLUS jamais depuis un utilisateur/compte qui appartient à un profil de
+  Frogtend (ex. : l'utilisateur « Léa » adopté par le profil de Léa → Seb ne reçoit pas ses parties) ; trois essais
+  au plus. RESTE (noté) : une garde du dossier des jeux dans le cœur à l'enregistrement (l'interface seule vérifie) ;
+  Documents déplacés vers OneDrive non reconnus ; même règle pour les dossiers des émulateurs et outils.
   ✅ (1) et (2) FAITS en 0.125.0, (4) en 0.126.0 (sources d'Eden lues : son menu vide d'abord le dossier, jamais utilisé). Gênant : (1) Vita3K pas en plein écran (`-F` n'est plus lu, `boot-apps-full-screen` jamais
   écrit) ; (2) aucune progression pendant l'extraction d'un gros jeu PC ; (3) zone d'attente des restaurations jamais
   vidée (Prêt à jouer redit des conflits réglés) ; (4) firmware Switch servi jamais installé. Mineur : (5) livret sans

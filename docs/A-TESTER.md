@@ -3,6 +3,10 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Petites finitions (0.128.0)
+- [ ] ⚙ Options ▸ Emplacements ▸ ajouter « D:\ » ou Documents : refusé, avec un sous-dossier proposé.
+- [ ] Une console à description courte (Options ▸ fiche d'un système) : pas de « Lire la suite ».
+
 ## Les parties restaurées en double (0.127.0) — à faire ensemble, sur un PC d'essai
 - [ ] Restaurer une sauvegarde sur un PC où une partie d'émulateur existe déjà, différente : la question « Une partie
       existe en deux versions » apparaît une fois ; « Remplacer ma partie » → la restaurée est en place, l'ancienne

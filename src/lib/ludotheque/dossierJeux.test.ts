@@ -11,6 +11,8 @@ vi.mock('$lib/api', () => ({
       crees.push(c);
       return c;
     }),
+    // Le cœur refuse la racine d'un disque (garde::dossier_systeme).
+    dossierJeuxRefus: vi.fn(async (c: string) => (/^[A-Z]:\\?$/i.test(c) ? `« ${c} » ne convient pas` : null)),
   },
 }));
 const informer = vi.fn();
@@ -36,6 +38,7 @@ describe('où ranger les jeux sur un PC neuf', () => {
     crees.length = 0;
     choisir.mockReset();
     parcourir.mockReset();
+    informer.mockReset();
   });
 
   it('propose le dossier du disque le plus libre, le crée au oui, et le retient', async () => {
@@ -47,6 +50,17 @@ describe('où ranger les jeux sur un PC neuf', () => {
     const [, options, message] = choisir.mock.calls[0] as [string, { libelle: string; detail: string }[], string];
     expect(options[0].detail).toContain('900');
     expect(message).toContain('Premier jeu.');
+  });
+
+  it('la racine d’un disque est refusée, dite, et la même question revient (rien de perdu)', async () => {
+    propose = null;
+    informer.mockReset();
+    choisir.mockResolvedValueOnce('autre').mockResolvedValueOnce('autre');
+    parcourir.mockResolvedValueOnce('D:\\').mockResolvedValueOnce('D:\\Jeux');
+    expect(await proposerDossierJeux('x')).toBe('D:\\Jeux');
+    expect(informer).toHaveBeenCalledTimes(1);
+    expect(choisir).toHaveBeenCalledTimes(2);
+    expect(etat.pc.emplacements.defaut).toEqual(['D:\\Jeux']);
   });
 
   it('un autre dossier choisi dans l’explorateur ; rien de créé ni retenu si la personne renonce', async () => {

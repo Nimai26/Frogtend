@@ -136,7 +136,9 @@ pub fn utilisateur_du_profil(v: &Path, profil: &str) -> Resultat<UtilisateurDuPr
     let l = utilisateurs(v);
     if let Some(id) = trouver(v, &l, profil) {
         noter(v, &id, profil)?;
-        return Ok(UtilisateurDuProfil { id, cree: false, ancien_courant: None });
+        // Une reprise des parties d'avant pas encore réussie : retentée.
+        let ancien_courant = crate::emulateurs_profils::reprise_a_faire(v, profil);
+        return Ok(UtilisateurDuProfil { id, cree: false, ancien_courant });
     }
     // Le premier id libre (2 chiffres), jamais un dossier déjà là (même illisible).
     let id = (0..100).map(|n| format!("{n:02}")).find(|i| !ux0(v).join("user").join(i).exists()).ok_or_else(|| {
@@ -157,7 +159,11 @@ pub fn utilisateur_du_profil(v: &Path, profil: &str) -> Resultat<UtilisateurDuPr
         None
     } else {
         std::fs::write(&marque, profil)?;
-        user_id_regle(v).filter(|r| l.iter().any(|(i, _)| i == r)).or_else(|| l.first().map(|(i, _)| i.clone()))
+        let a = user_id_regle(v).filter(|r| l.iter().any(|(i, _)| i == r)).or_else(|| l.first().map(|(i, _)| i.clone()));
+        if let Some(a) = &a {
+            crate::emulateurs_profils::noter_reprise(v, profil, a)?;
+        }
+        a
     };
     Ok(UtilisateurDuProfil { id, cree: true, ancien_courant })
 }
@@ -301,6 +307,11 @@ pub fn lancer_par_numero(arguments: &mut Vec<String>, jeu: &Path, titre: &str) {
 /// première personne qui joue (`u.ancien_courant`), jeu par jeu ; jamais déplacées, jamais par-dessus.
 pub fn reprendre_parties_d_avant(v: &Path, u: &UtilisateurDuProfil) -> Resultat<usize> {
     let mut copies = 0;
+    // L'utilisateur d'avant appartient (désormais) au profil de quelqu'un : JAMAIS ses parties chez un autre.
+    if u.ancien_courant.as_deref().is_some_and(|s| table(v).iter().any(|(i, _)| i == s)) {
+        crate::emulateurs_profils::reprise_faite(v);
+        return Ok(0);
+    }
     if let Some(source) = u.ancien_courant.as_deref().filter(|s| *s != u.id) {
         for e in std::fs::read_dir(parties(v, source)).into_iter().flatten().flatten() {
             let cible = parties(v, &u.id).join(e.file_name());
@@ -309,6 +320,10 @@ pub fn reprendre_parties_d_avant(v: &Path, u: &UtilisateurDuProfil) -> Resultat<
                 copies += 1;
             }
         }
+    }
+    // Réussie (une erreur plus haut la laisse « à faire ») : plus jamais retentée.
+    if u.ancien_courant.is_some() {
+        crate::emulateurs_profils::reprise_faite(v);
     }
     Ok(copies)
 }

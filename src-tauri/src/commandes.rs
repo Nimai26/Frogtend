@@ -444,6 +444,34 @@ pub fn dossier_jeux_propose() -> Option<DossierPropose> {
     })
 }
 
+/// Un dossier choisi pour y RANGER des jeux : refusé (et pourquoi, avec un sous-dossier proposé) s'il est la racine
+/// d'un disque, Windows, Program Files ou un dossier de base de l'utilisateur (Documents, Bureau…). `None` : admis.
+#[tauri::command]
+pub fn dossier_jeux_refus(chemin: String) -> Option<String> {
+    refus_dossier_jeux(std::path::Path::new(chemin.trim()))
+}
+
+fn refus_dossier_jeux(p: &std::path::Path) -> Option<String> {
+    if !crate::garde::dossier_systeme(p) {
+        return None;
+    }
+    if !p.is_absolute() {
+        return Some(format!("« {} » n'est pas un chemin complet : donne-le en entier, par exemple « D:\\Jeux ».", p.display()));
+    }
+    // Un sous-dossier proposé qui convient lui-même (jamais sous Windows) ; sinon le dossier que Frogtend propose d'office.
+    let candidat = p.join("Jeux");
+    let candidat = if crate::garde::dossier_systeme(&candidat) {
+        crate::jeux_pc::disque_propose(&crate::jeux_pc::disques_locaux()).map(crate::jeux_pc::dossier_jeux_sur)
+    } else {
+        Some(candidat)
+    };
+    let propose = candidat.map(|c| format!(" — par exemple « {} »", c.display())).unwrap_or_default();
+    Some(format!(
+        "« {} » ne convient pas pour ranger des jeux (la racine d'un disque, un dossier de Windows, ou un dossier de base comme Documents ou le Bureau). Choisis ou crée un sous-dossier{propose}.",
+        p.display()
+    ))
+}
+
 /// Crée le dossier des jeux PROPOSÉ (la personne a dit oui). Seul un dossier `<disque fixe>\Frogtend\Jeux` est admis :
 /// jamais un chemin quelconque venu de l'interface.
 #[tauri::command]
@@ -4818,12 +4846,18 @@ async fn preparer_emulateur(
             let b = crate::emulateurs_profils::rpcs3_pause_au_menu(&d).err().map(|e| format!("pause au menu non réglée ({e:?})"));
             let v: Vec<String> = a.into_iter().chain(b).collect();
             (!v.is_empty()).then(|| v.join(" ; "))
-        } else if id == "vita3k" && (!crate::vita3k::portable(&d) || !crate::lancement::processus_du_dossier(&d).is_empty()) {
+        } else {
+            let mut v: Vec<&str> = Vec::new();
             // Rien n'a pu être réglé (installé hors mode portable, ou déjà ouvert) : noté, sinon le jeu s'ouvre en
             // fenêtre, avec l'utilisateur d'avant, sans indice.
-            Some("Vita3K non réglé (pas en mode portable, ou déjà ouvert) : utilisateur et plein écran inchangés".into())
-        } else {
-            None
+            if id == "vita3k" && (!crate::vita3k::portable(&d) || !crate::lancement::processus_du_dossier(&d).is_empty()) {
+                v.push("Vita3K non réglé (pas en mode portable, ou déjà ouvert) : utilisateur et plein écran inchangés");
+            }
+            // La reprise des parties d'avant Frogtend n'a pas abouti (retentée trois fois au plus).
+            if crate::emulateurs_profils::reprise_en_attente(&d) {
+                v.push("une reprise des parties d'avant Frogtend n'a pas encore abouti sur cet émulateur");
+            }
+            (!v.is_empty()).then(|| v.join(" ; "))
         };
         crate::emulateurs_profils::regler_succes(&id, &d, &n, compte_ra.as_ref().map(|(a, b)| (a.as_str(), b.as_str())))?;
         Ok::<_, Erreur>((args, alerte))
@@ -4945,6 +4979,23 @@ pub async fn restauration_conflits(noyau: State<'_, Noyau>) -> Resultat<Vec<crat
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn un_dossier_de_jeux_n_est_jamais_une_racine_ni_documents() {
+        let r = super::refus_dossier_jeux(std::path::Path::new(r"D:\")).unwrap();
+        assert!(r.contains(r"D:\Jeux"), "{r}");
+        if let Some(u) = std::env::var_os("USERPROFILE") {
+            assert!(super::refus_dossier_jeux(&std::path::Path::new(&u).join("Documents")).is_some());
+            assert!(super::refus_dossier_jeux(&std::path::Path::new(&u).join("Documents").join("Mes jeux")).is_none());
+        }
+        assert!(super::refus_dossier_jeux(std::path::Path::new(r"E:\Jeux")).is_none());
+        assert!(super::refus_dossier_jeux(std::path::Path::new("Jeux")).unwrap().contains("chemin complet"));
+        // Sous Windows : jamais « C:\Windows\Jeux » proposé (il serait refusé à son tour).
+        if let Some(w) = std::env::var_os("SystemRoot") {
+            let r = super::refus_dossier_jeux(std::path::Path::new(&w)).unwrap();
+            assert!(!r.to_lowercase().contains(&std::path::Path::new(&w).join("Jeux").to_string_lossy().to_lowercase()), "{r}");
+        }
+    }
+
     #[test]
     fn retroarch_heberge_lu_seulement_complet() {
         use serde_json::json;

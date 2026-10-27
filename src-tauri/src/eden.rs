@@ -228,6 +228,27 @@ fn nom_de_nca(nom: &str) -> bool {
     base.len() == 32 && base.chars().all(|c| c.is_ascii_hexdigit())
 }
 
+/// Les utilisateurs Eden qui appartiennent à un profil de Frogtend (`Profils\.utilisateurs-frogtend`, UUID en hexa
+/// par ligne) : jamais une source de reprise des « parties d'avant » (ce sont les parties de quelqu'un).
+fn table(eden: &Path) -> Vec<String> {
+    std::fs::read_to_string(eden.join("Profils").join(".utilisateurs-frogtend")).unwrap_or_default().lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect()
+}
+
+fn hex(u: &[u8; 16]) -> String {
+    u.iter().map(|o| format!("{o:02x}")).collect()
+}
+
+fn noter_profil(eden: &Path, uuid: &[u8; 16]) -> Resultat<()> {
+    let mut t = table(eden);
+    if t.contains(&hex(uuid)) {
+        return Ok(());
+    }
+    t.push(hex(uuid));
+    std::fs::create_dir_all(eden.join("Profils"))?;
+    std::fs::write(eden.join("Profils").join(".utilisateurs-frogtend"), t.iter().map(|l| format!("{l}\n")).collect::<String>())?;
+    Ok(())
+}
+
 /// Le rang de l'utilisateur qu'Eden utilisait jusque-là (`current_user` de `user\config\qt-config.ini`), 0 sinon.
 fn utilisateur_courant(eden: &Path) -> usize {
     std::fs::read_to_string(eden.join("user").join("config").join("qt-config.ini"))
@@ -270,7 +291,10 @@ pub fn utilisateur_du_profil(eden: &Path, profil: &str) -> Resultat<UtilisateurD
     let l = avant.as_deref().map(lire).unwrap_or_default();
     let nom = nom_eden(profil);
     if let Some(i) = l.iter().position(|u| u.nom == nom) {
-        return Ok(UtilisateurDuProfil { index: i, uuid: l[i].uuid, ancien_courant: None, cree: false });
+        // Une reprise des parties d'avant pas encore réussie : retentée.
+        noter_profil(eden, &l[i].uuid)?;
+        let ancien_courant = crate::emulateurs_profils::reprise_a_faire(eden, &nom).and_then(|s| uuid_de_hex(&s));
+        return Ok(UtilisateurDuProfil { index: i, uuid: l[i].uuid, ancien_courant, cree: false });
     }
     let uuid = uuid_neuf();
     let nouveau = Utilisateur { uuid, nom: nom.clone() };
@@ -289,7 +313,11 @@ pub fn utilisateur_du_profil(eden: &Path, profil: &str) -> Resultat<UtilisateurD
             } else {
                 std::fs::create_dir_all(eden.join("Profils"))?;
                 std::fs::write(&marque, &nom)?;
-                l.get(utilisateur_courant(eden)).or_else(|| l.first()).map(|u| u.uuid)
+                let a = l.get(utilisateur_courant(eden)).or_else(|| l.first()).map(|u| u.uuid);
+                if let Some(a) = a {
+                    crate::emulateurs_profils::noter_reprise(eden, &nom, &hex(&a))?;
+                }
+                a
             };
             let abri = abri_libre(&eden.join(".frogtend-sauvegardes"), &format!("{}-profiles.dat", crate::noyau::maintenant()));
             std::fs::create_dir_all(abri.parent().unwrap_or(eden))?;
@@ -314,7 +342,10 @@ pub fn utilisateur_du_profil(eden: &Path, profil: &str) -> Resultat<UtilisateurD
     // Vérifier le résultat : relu, l'utilisateur est là ; les autres entrées sont intactes.
     let relu = std::fs::read(&f)?;
     match lire(&relu).iter().position(|u| u.uuid == uuid) {
-        Some(i) if relu == octets => Ok(UtilisateurDuProfil { index: i, uuid, ancien_courant, cree: true }),
+        Some(i) if relu == octets => {
+            noter_profil(eden, &uuid)?;
+            Ok(UtilisateurDuProfil { index: i, uuid, ancien_courant, cree: true })
+        }
         _ => Err(Erreur::Disque("L'utilisateur Eden de ce profil n'a pas pu être enregistré.".into())),
     }
 }
@@ -346,6 +377,11 @@ pub fn copier_dossier_entier(source: &Path, cible: &Path) -> Resultat<usize> {
 /// déjà présent est laissé). Rend le nombre de jeux copiés.
 pub fn reprendre_parties_d_avant(eden: &Path, u: &UtilisateurDuProfil) -> Resultat<usize> {
     let mut copies = 0;
+    // L'utilisateur d'avant appartient (désormais) au profil de quelqu'un : JAMAIS ses parties chez un autre.
+    if u.ancien_courant.is_some_and(|s| table(eden).contains(&hex(&s))) {
+        crate::emulateurs_profils::reprise_faite(eden);
+        return Ok(0);
+    }
     if let Some(source) = u.ancien_courant.filter(|s| *s != u.uuid) {
         for ((_, de), (_, vers)) in dossiers_parties(eden, &source).into_iter().zip(dossiers_parties(eden, &u.uuid)) {
             for e in std::fs::read_dir(&de).into_iter().flatten().flatten() {
@@ -358,7 +394,22 @@ pub fn reprendre_parties_d_avant(eden: &Path, u: &UtilisateurDuProfil) -> Result
             }
         }
     }
+    // Réussie (une erreur plus haut la laisse « à faire ») : plus jamais retentée.
+    if u.ancien_courant.is_some() {
+        crate::emulateurs_profils::reprise_faite(eden);
+    }
     Ok(copies)
+}
+
+fn uuid_de_hex(s: &str) -> Option<[u8; 16]> {
+    if s.len() != 32 {
+        return None;
+    }
+    let mut u = [0u8; 16];
+    for (i, o) in u.iter_mut().enumerate() {
+        *o = u8::from_str_radix(s.get(i * 2..i * 2 + 2)?, 16).ok()?;
+    }
+    Some(u)
 }
 
 /// L'utilisateur Eden de ce profil s'il existe, SANS rien créer (pour la sauvegarde).
@@ -547,11 +598,8 @@ mod tests {
             std::fs::create_dir_all(&s).unwrap();
             std::fs::write(s.join("save.bin"), o).unwrap();
         }
-        // Léa existait déjà : rien à reprendre pour elle.
-        let ul = utilisateur_du_profil(eden, "Léa").unwrap();
-        assert!(!ul.cree);
-        assert_eq!(reprendre_parties_d_avant(eden, &ul).unwrap(), 0);
-        // Seb est créé : il reçoit les parties de l'utilisateur COURANT d'avant (Léa), jamais celles d'« Eden ».
+        // Seb est créé (l'utilisateur « Léa » n'appartient encore à aucun profil) : il reçoit les parties de
+        // l'utilisateur COURANT d'avant, jamais celles d'« Eden ».
         let seb = utilisateur_du_profil(eden, "Seb").unwrap();
         assert_eq!(seb.ancien_courant, Some(lea.uuid));
         let save_seb = dossiers_parties(eden, &seb.uuid)[0].1.clone();
@@ -560,9 +608,32 @@ mod tests {
         assert!(!save_seb.join("0100000000020000").exists());
         assert!(dossiers_parties(eden, &lea.uuid)[0].1.join("0100000000010000").join("save.bin").is_file(), "copiées, jamais déplacées");
         assert!(!PathBuf::from(format!("{}.frogtend", save_seb.join("0100000000010000").display())).exists());
+        // Léa existait déjà : rien à reprendre pour elle.
+        let ul = utilisateur_du_profil(eden, "Léa").unwrap();
+        assert!(!ul.cree);
+        assert_eq!(reprendre_parties_d_avant(eden, &ul).unwrap(), 0);
         // Une seule fois par Eden.
         let zoe = utilisateur_du_profil(eden, "Zoé").unwrap();
         assert_eq!(reprendre_parties_d_avant(eden, &zoe).unwrap(), 0);
+    }
+
+    #[test]
+    fn jamais_les_parties_d_un_utilisateur_qui_appartient_a_un_profil() {
+        let d = tempfile::tempdir().unwrap();
+        let eden = d.path();
+        // L'utilisateur courant d'avant s'appelle « Léa » et le profil de Léa l'a ADOPTÉ (même nom) : ce sont ses parties.
+        let lea = Utilisateur { uuid: [8; 16], nom: "Léa".into() };
+        poser_fichier(eden, &ecrire(&[lea.clone()]));
+        let s = dossiers_parties(eden, &lea.uuid)[0].1.join("0100000000010000");
+        std::fs::create_dir_all(&s).unwrap();
+        std::fs::write(s.join("save.bin"), b"zelda de Lea").unwrap();
+        assert!(!utilisateur_du_profil(eden, "Léa").unwrap().cree);
+        // Seb est créé ensuite : la reprise décidée pointe vers Léa → abandonnée, rien copié, plus rien à faire.
+        let seb = utilisateur_du_profil(eden, "Seb").unwrap();
+        assert_eq!(seb.ancien_courant, Some(lea.uuid));
+        assert_eq!(reprendre_parties_d_avant(eden, &seb).unwrap(), 0);
+        assert!(!dossiers_parties(eden, &seb.uuid)[0].1.join("0100000000010000").exists());
+        assert!(!crate::emulateurs_profils::reprise_en_attente(eden));
     }
 
     #[test]

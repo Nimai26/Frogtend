@@ -290,3 +290,8 @@ barres obliques inverses dans du code de test (un chemin de test vidé, un litt�
 vu par l'expert). · Garde-fou ajouté : tout script de retouche vit dans un FICHIER du scratchpad (jamais un heredoc),
 et dès qu'un nouveau texte contient une barre oblique inverse, la retouche passe par l'outil d'édition ; après chaque
 script, compiler et lancer les tests du module AVANT d'appeler un expert.
+
+27/10 (0.128.0) : une livraison arrêtée par 3 tests de l'interface rouges (le faux Firehouse d'un test ne
+connaissait pas la nouvelle commande `dossierJeuxRefus`) : après avoir retouché un fichier de l'interface, je n'avais
+relancé que les tests du dossier voisin. · Comment l'appliquer : après toute retouche de l'interface, `npx vitest run`
+EN ENTIER avant d'appeler un expert ou de construire. (La chaîne de livraison a bien arrêté tout : rien n'est parti.)

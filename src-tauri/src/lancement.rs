@@ -170,6 +170,17 @@ fn a_terminer(pids: &[u32], jamais: &HashSet<u32>) -> Vec<u32> {
 /// Les programmes d'un jeu PC à figer : TOUS les processus dont le programme est dans `dossier`, qu'ils descendent ou
 /// non de ce que Frogtend a lancé (un raccourci ouvert par l'explorateur, un jeu relancé par sa boutique) — jamais
 /// l'explorateur ni la boutique, hors du dossier. Un seul relevé des processus.
+/// Ce programme précis est-il ouvert (son exécutable, pas un autre rangé dans le même dossier) ?
+pub fn programme_ouvert(programme: &Path) -> bool {
+    let cle = programme.to_string_lossy().to_lowercase().replace('/', "\\");
+    if cle.is_empty() {
+        return false;
+    }
+    let mut s = System::new();
+    s.refresh_processes(ProcessesToUpdate::All, true);
+    s.processes().values().any(|p| p.exe().is_some_and(|e| e.to_string_lossy().to_lowercase().replace('/', "\\") == cle))
+}
+
 pub fn processus_du_dossier(dossier: &Path) -> Vec<u32> {
     if dossier.parent().is_none() || dossier.as_os_str().is_empty() {
         return vec![];

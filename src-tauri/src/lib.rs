@@ -545,6 +545,7 @@ pub fn run() {
             commandes::eden_firmware,
             commandes::restauration_remplacer,
             commandes::restauration_conflits,
+            commandes::dossier_jeux_refus,
             commandes::eden_firmware_servi,
             commandes::emulateur_installer,
             commandes::emulateur_adopter,

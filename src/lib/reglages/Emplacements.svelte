@@ -5,7 +5,7 @@
   import { onMount } from 'svelte';
   import { isTauri } from '@tauri-apps/api/core';
   import { api, taille, type Plateforme } from '$lib/api';
-  import { choisir, demander, toast } from '$lib/dialogues/fenetres.svelte';
+  import { choisir, demander, informer, toast } from '$lib/dialogues/fenetres.svelte';
   import { etat, reglerPc } from '$lib/etat.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
 
@@ -44,6 +44,12 @@
   async function ajouter(systeme: string | null) {
     const c = await demanderDossier();
     if (!c) return;
+    // Jamais la racine d'un disque, Windows ou Documents : le dire, avec un sous-dossier proposé.
+    const refus = await api.dossierJeuxRefus(c).catch(() => null);
+    if (refus) {
+      await informer('📁 Choisis un autre dossier', refus);
+      return;
+    }
     const libre = await api.espaceLibre(c).catch(() => null);
     if (libre === null) {
       toast(`Refusé : le dossier « ${c} » est introuvable. Crée-le d’abord, ou vérifie que le disque est branché.`, 'erreur');

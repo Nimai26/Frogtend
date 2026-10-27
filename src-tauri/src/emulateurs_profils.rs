@@ -434,6 +434,48 @@ pub fn oublier_succes(emulateur: &Path, profil: &str) -> Resultat<()> {
 
 /// Prépare l'émulateur pour ce profil avant une partie. Rend les arguments à mettre AVANT sa ligne de commande.
 /// `jeux` : les emplacements de Frogtend pour ce système.
+/// La reprise des parties d'avant Frogtend (Eden, Cemu, Vita3K), décidée UNE fois à la première création, reste
+/// « à faire » (`<émulateur>\Profils\.reprise-a-faire` : profil, tabulation, source) tant qu'elle n'a pas RÉUSSI : une
+/// copie coupée (disque plein, émulateur ouvert, ou décidée pendant une restauration) est reprise à la partie
+/// suivante. Elle ne remplace jamais un jeu déjà là : la refaire est sans risque.
+pub fn noter_reprise(emulateur: &Path, profil: &str, source: &str) -> Resultat<()> {
+    std::fs::create_dir_all(emulateur.join("Profils"))?;
+    std::fs::write(emulateur.join("Profils").join(".reprise-a-faire"), format!("{profil}\t{source}"))?;
+    Ok(())
+}
+
+/// Une reprise n'est retentée que trois fois (une copie qui échoue toujours ne tourne pas à chaque partie).
+const ESSAIS_REPRISE: u32 = 3;
+
+/// La source d'une reprise encore à faire pour CE profil (chaque lecture compte un essai ; au-delà de trois, ou une
+/// note illisible : abandonnée).
+pub fn reprise_a_faire(emulateur: &Path, profil: &str) -> Option<String> {
+    let f = emulateur.join("Profils").join(".reprise-a-faire");
+    let t = std::fs::read_to_string(&f).ok()?;
+    let mut champs = t.trim_end().split('\t');
+    let (p, s) = (champs.next()?, champs.next().unwrap_or(""));
+    let essais: u32 = champs.next().and_then(|e| e.parse().ok()).unwrap_or(0);
+    if s.is_empty() || s.contains(['/', '\\']) || s.contains("..") || essais >= ESSAIS_REPRISE {
+        reprise_faite(emulateur);
+        return None;
+    }
+    if p != profil {
+        return None;
+    }
+    let _ = std::fs::write(&f, format!("{p}\t{s}\t{}", essais + 1));
+    Some(s.to_string())
+}
+
+/// Une reprise reste-t-elle à faire sur cet émulateur (pour le dire) ?
+pub fn reprise_en_attente(emulateur: &Path) -> bool {
+    emulateur.join("Profils").join(".reprise-a-faire").is_file()
+}
+
+/// La reprise a réussi : plus rien à faire.
+pub fn reprise_faite(emulateur: &Path) {
+    let _ = std::fs::remove_file(emulateur.join("Profils").join(".reprise-a-faire"));
+}
+
 pub fn preparer(id: &str, emulateur: &Path, profil: &str, jeux: &[String], manette: &Manette) -> Resultat<Vec<String>> {
     let p = dossier_du_profil(emulateur, profil);
     let args = preparer_dossiers(id, emulateur, &p, jeux, manette)?;
@@ -1297,6 +1339,28 @@ pub fn traces_hors_du_dossier(id: &str) -> Vec<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn une_reprise_reste_a_faire_jusqu_a_sa_reussite_et_seulement_pour_son_profil() {
+        let d = tempfile::tempdir().unwrap();
+        assert!(!super::reprise_en_attente(d.path()));
+        super::noter_reprise(d.path(), "Seb", "80000001").unwrap();
+        assert_eq!(super::reprise_a_faire(d.path(), "Seb").as_deref(), Some("80000001"));
+        assert_eq!(super::reprise_a_faire(d.path(), "Léa"), None, "jamais pour une autre personne");
+        assert!(super::reprise_en_attente(d.path()));
+        super::reprise_faite(d.path());
+        assert_eq!(super::reprise_a_faire(d.path(), "Seb"), None);
+        // Trois essais au plus, puis abandonnée (jamais à chaque partie pour toujours).
+        super::noter_reprise(d.path(), "Seb", "02").unwrap();
+        for _ in 0..3 {
+            assert!(super::reprise_a_faire(d.path(), "Seb").is_some());
+        }
+        assert_eq!(super::reprise_a_faire(d.path(), "Seb"), None);
+        assert!(!super::reprise_en_attente(d.path()));
+        // Une source qui ressemblerait à un chemin : abandonnée.
+        super::noter_reprise(d.path(), "Seb", "../x").unwrap();
+        assert_eq!(super::reprise_a_faire(d.path(), "Seb"), None);
+    }
+
     use super::*;
 
     /// Essai RÉEL en LECTURE SEULE sur les jeux PS3 de Seb : numéro lu sur le disque, réglages d'image affichés.

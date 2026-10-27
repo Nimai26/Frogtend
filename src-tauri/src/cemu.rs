@@ -247,7 +247,9 @@ pub fn compte_du_profil(cemu: &Path, profil: &str) -> Resultat<CompteDuProfil> {
         if !table(cemu).iter().any(|(i, p)| *i == id && p == profil) {
             noter(cemu, id, profil)?;
         }
-        return Ok(CompteDuProfil { id, cree: false, ancien_courant: None });
+        // Une reprise des parties d'avant pas encore réussie : retentée.
+        let ancien_courant = crate::emulateurs_profils::reprise_a_faire(cemu, profil).and_then(|s| u32::from_str_radix(&s, 16).ok());
+        return Ok(CompteDuProfil { id, cree: false, ancien_courant });
     }
     if l.len() >= MAX {
         return Err(Erreur::Prevenir(
@@ -287,7 +289,11 @@ pub fn compte_du_profil(cemu: &Path, profil: &str) -> Resultat<CompteDuProfil> {
         None
     } else {
         std::fs::write(&marque, profil)?;
-        compte_regle(cemu).filter(|c| l.iter().any(|(i, _)| i == c)).or_else(|| l.first().map(|(i, _)| *i))
+        let a = compte_regle(cemu).filter(|c| l.iter().any(|(i, _)| i == c)).or_else(|| l.first().map(|(i, _)| *i));
+        if let Some(a) = a {
+            crate::emulateurs_profils::noter_reprise(cemu, profil, &format!("{a:08x}"))?;
+        }
+        a
     };
     Ok(CompteDuProfil { id, cree: true, ancien_courant })
 }
@@ -331,6 +337,11 @@ pub fn dossier_du_jeu(cemu: &Path, jeu: &str, id: u32) -> PathBuf {
 /// Frogtend sur ce Cemu ; jamais déplacées, jamais par-dessus. Rend le nombre de jeux copiés.
 pub fn reprendre_parties_d_avant(cemu: &Path, c: &CompteDuProfil) -> Resultat<usize> {
     let mut copies = 0;
+    // Le compte d'avant appartient (désormais) au profil de quelqu'un : JAMAIS ses parties chez un autre.
+    if c.ancien_courant.is_some_and(|s| table(cemu).iter().any(|(i, _)| *i == s)) {
+        crate::emulateurs_profils::reprise_faite(cemu);
+        return Ok(0);
+    }
     if let Some(source) = c.ancien_courant.filter(|s| *s != c.id) {
         for (jeu, de) in parties_du_compte(cemu, source) {
             let vers = dossier_du_jeu(cemu, &jeu, c.id);
@@ -339,6 +350,10 @@ pub fn reprendre_parties_d_avant(cemu: &Path, c: &CompteDuProfil) -> Resultat<us
                 copies += 1;
             }
         }
+    }
+    // Réussie (une erreur plus haut la laisse « à faire ») : plus jamais retentée.
+    if c.ancien_courant.is_some() {
+        crate::emulateurs_profils::reprise_faite(cemu);
     }
     Ok(copies)
 }
@@ -396,7 +411,12 @@ mod tests {
         std::fs::write(act(&mlc(cemu)).join("persisid.dat"), "PersistentIdManager_20120607\nPersistentIdHead=80000004\n").unwrap();
         let seb = compte_du_profil(cemu, "Seb").unwrap();
         assert_eq!((seb.id, seb.cree, seb.ancien_courant), (0x8000_0005, true, Some(0x8000_0001)), "après la tête de persisid.dat");
+        // La reprise n'a pas encore été faite : elle reste à faire (retentée), puis plus jamais une fois réussie.
+        let encore = compte_du_profil(cemu, "Seb").unwrap();
+        assert_eq!(encore, CompteDuProfil { id: 0x8000_0005, cree: false, ancien_courant: Some(0x8000_0001) });
+        reprendre_parties_d_avant(cemu, &encore).unwrap();
         assert_eq!(compte_du_profil(cemu, "Seb").unwrap(), CompteDuProfil { id: 0x8000_0005, cree: false, ancien_courant: None });
+        assert!(!crate::emulateurs_profils::reprise_en_attente(cemu));
         let lea = compte_du_profil(cemu, "Léa").unwrap();
         assert_eq!(lea.id, 0x8000_0006);
         assert_eq!(compte_existant(cemu, "Léa"), Some(0x8000_0006));
