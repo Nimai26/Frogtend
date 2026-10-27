@@ -2635,6 +2635,9 @@ pub async fn import_chercher_mame(noyau: State<'_, Noyau>, dossier: String, list
             "Firehouse ne répond pas et sa liste MAME n'a jamais été reçue sur ce PC : réessaie plus tard, ou choisis le fichier Metadata\\MAME.xml de ton LaunchBox.".into(),
         ));
     }
+    // Le secours (le MAME.xml de la personne) contient les jeux pour adultes : pour un profil qui n'est pas admin, ils
+    // sont écartés d'office (✅ Seb 27/10 ; avec la liste de Firehouse, c'est lui qui en décide).
+    let options = crate::mame::OptionsMame { adultes: options.adultes && (de_firehouse.is_some() || noyau.est_admin().await), ..options };
     tauri::async_runtime::spawn_blocking(move || match de_firehouse {
         Some(l) => crate::mame::trier(std::path::Path::new(&dossier), &l, &options).map(|t| crate::mame::TriMame { source: "firehouse".into(), ..t }),
         None => crate::mame::trier_avec_fichier(std::path::Path::new(&dossier), std::path::Path::new(&liste.unwrap_or_default()), &options)

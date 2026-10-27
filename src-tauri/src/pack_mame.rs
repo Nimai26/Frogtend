@@ -168,6 +168,9 @@ pub struct Annonce {
     pub octets_anciens: u64,
     /// Des fichiers du pack que Firehouse ne sert plus à ce profil : jamais déplacés, seulement dits.
     pub retires: usize,
+    /// Des fichiers à moitié reçus d'une version abandonnée (dans `.frogtend-recu`) : jamais repris, seulement dits.
+    pub parts_abandonnes: usize,
+    pub octets_abandonnes: u64,
     /// Une réception du pack est déjà en cours sur ce PC.
     pub en_cours: bool,
     /// Place libre sur le disque du pack (inconnue : None).
@@ -257,6 +260,7 @@ pub fn annoncer(romset: &Value, dossier: &Path, avec_chd: bool) -> Annonce {
     let manque: Vec<&FichierPack> = tous.iter().filter(|f| !r.recus.contains_key(&f.cle)).collect();
     let changes: Vec<&FichierPack> = tous.iter().filter(|f| change(&r, f) || r.maj_en_cours.contains_key(&f.cle)).collect();
     let anciens = changes.len();
+    let abandonnes = parts_abandonnes(dossier, romset["version"].as_str().unwrap_or(""), &r.version);
     let servis: std::collections::HashSet<String> = fichiers(romset, true).into_iter().map(|f| f.cle).collect();
     let chd: Vec<FichierPack> = fichiers(romset, true).into_iter().filter(|f| f.chd).collect();
     let chd_manquantes: Vec<&FichierPack> = chd.iter().filter(|f| !r.recus.contains_key(&f.cle)).collect();
@@ -276,6 +280,8 @@ pub fn annoncer(romset: &Value, dossier: &Path, avec_chd: bool) -> Annonce {
         octets_maj: changes.iter().map(|f| f.taille).sum(),
         octets_anciens: changes.iter().map(|f| r.recus.get(&f.cle).copied().unwrap_or(0)).sum(),
         retires: r.recus.keys().filter(|c| !servis.contains(*c)).count(),
+        parts_abandonnes: abandonnes.0,
+        octets_abandonnes: abandonnes.1,
         en_cours: EN_COURS.load(Ordering::SeqCst),
         libre: crate::jeux_pc::place_libre(&cherche),
         chd_fichiers: chd_manquantes.len(),
@@ -389,7 +395,16 @@ impl Noyau {
                 let taille = std::fs::metadata(&cible).map(|m| m.len()).unwrap_or(0);
                 // L'empreinte lue UNE fois (une CHD : des dizaines de Go), seulement si elle sert.
                 let (sha_neuf, sha_ancien) = (f.sha1.clone().filter(|_| taille == f.taille), reg.empreintes.get(&f.cle).cloned().filter(|_| ancien == Some(taille)));
-                let sha = if sha_neuf.is_some() || sha_ancien.is_some() { sha1_de(&cible).await } else { None };
+                let sha = if sha_neuf.is_some() || sha_ancien.is_some() {
+                    // Lue sans retenir « Arrêter » (une CHD : des minutes de lecture).
+                    let Some(sha) = jusqu_a_l_arret(sha1_de(&cible)).await else {
+                        b.arret = Some("arrêté à ta demande".into());
+                        break;
+                    };
+                    sha
+                } else {
+                    None
+                };
                 let conforme = |attendu: &Option<String>| attendu.as_ref().is_none_or(|a| sha.as_ref().is_some_and(|s| s.eq_ignore_ascii_case(a)));
                 // Déjà le bon (une coupure entre la pose et le registre) : inscrit tel quel.
                 if taille == f.taille && conforme(&sha_neuf) {
@@ -431,7 +446,15 @@ impl Noyau {
                 let _ = std::fs::rename(&part_d_avant, recu.with_extension("part"));
             }
             let deja = b.octets;
-            match s.source.telecharger_route(&f.route, &recu, &|o, _| progres(i, total, deja + o)).await {
+            // « Arrêter » coupe AUSSI le fichier en cours (une CHD : des heures) : ce qui est déjà reçu reste dans son
+            // `.part` (écrit morceau par morceau), et la reprise repartira de là.
+            let suivre = |o, _| progres(i, total, deja + o);
+            let reception = s.source.telecharger_route(&f.route, &recu, &suivre);
+            let Some(resultat) = jusqu_a_l_arret(reception).await else {
+                b.arret = Some("arrêté à ta demande (le fichier en cours reprendra où il en était)".into());
+                break;
+            };
+            match resultat {
                 Ok(_) => {
                     let taille = std::fs::metadata(&recu).map(|m| m.len()).unwrap_or(0);
                     if taille != f.taille || !empreinte_conforme(&recu, f.sha1.clone()).await {
@@ -625,6 +648,63 @@ impl Noyau {
 
 /// Une réception du pack en cours sur ce PC (une seule à la fois).
 pub static EN_COURS: AtomicBool = AtomicBool::new(false);
+
+/// Attend `travail`, sauf si « Arrêter » est demandé entre-temps (regardé 4 fois par seconde) : `None`, et le travail
+/// est abandonné à son prochain point d'attente (jamais au milieu de l'écriture d'un morceau).
+async fn jusqu_a_l_arret<T>(travail: impl std::future::Future<Output = T>) -> Option<T> {
+    let arret = async {
+        while !ARRET.load(Ordering::SeqCst) {
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        }
+    };
+    tokio::select! {
+        r = travail => Some(r),
+        () = arret => None,
+    }
+}
+
+/// Les `.part` laissés par une réception d'une AUTRE version que `version` (abandonnés : jamais repris) — combien, et
+/// leur taille. Ceux d'avant 0.123 (à l'écart sans version) ne comptent pas quand le pack est encore à `version` : ils
+/// seront repris.
+fn parts_abandonnes(dossier: &Path, version: &str, reg_version: &str) -> (usize, u64) {
+    let ecart = dossier.join(ECART);
+    let garde = ecart.join(crate::jeux_pc::nom_de_dossier(version));
+    let mut pile = vec![ecart.clone()];
+    let (mut n, mut octets) = (0, 0);
+    while let Some(d) = pile.pop() {
+        for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+            let p = e.path();
+            let Ok(t) = e.file_type() else { continue };
+            if t.is_dir() {
+                if p != garde {
+                    pile.push(p);
+                }
+            } else if p.extension().is_some_and(|x| x.eq_ignore_ascii_case("part")) {
+                // Directement à l'écart, sans dossier de version : de la version du pack d'alors.
+                let d_avant = p.strip_prefix(&ecart).is_ok_and(|r| !dans_un_dossier_de_version(r));
+                if d_avant && reg_version == version {
+                    continue;
+                }
+                n += 1;
+                octets += e.metadata().map(|m| m.len()).unwrap_or(0);
+            }
+        }
+    }
+    (n, octets)
+}
+
+/// Un chemin relatif à l'écart commence-t-il par un dossier de version (`0.289\…`) ? Une version de MAME : des
+/// chiffres, un point, des chiffres (jamais le dossier d'un jeu qui commence par un chiffre, comme `2spicy`).
+fn dans_un_dossier_de_version(rel: &Path) -> bool {
+    let mut c = rel.components();
+    match (c.next(), c.next()) {
+        (Some(premier), Some(_)) => {
+            let n = premier.as_os_str().to_string_lossy();
+            n.split_once('.').is_some_and(|(a, b)| !a.is_empty() && !b.is_empty() && a.chars().all(|x| x.is_ascii_digit()) && b.chars().all(|x| x.is_ascii_digit()))
+        }
+        _ => false,
+    }
+}
 
 /// L'empreinte sha1 d'un fichier (lue hors du fil asynchrone : plusieurs Go).
 async fn sha1_de(f: &Path) -> Option<String> {
@@ -1000,6 +1080,139 @@ mod tests {
         assert_eq!(std::fs::read(pack.join(ABRI).join("0.289-2").join("sf2.zip")).unwrap(), b"SF2");
         // Une annonce dépassée (Firehouse a changé de version depuis) : rien n'est remplacé.
         assert!(matches!(n.telecharger_pack_mame(&pack, false, Some("0.291"), &|_, _, _| {}).await, Err(Erreur::Refus(_))));
+    }
+
+    #[test]
+    fn les_parts_d_une_version_abandonnee_sont_comptes() {
+        let d = tempfile::tempdir().unwrap();
+        let e = d.path().join(ECART);
+        std::fs::create_dir_all(e.join("0.289").join("ddr2m")).unwrap();
+        std::fs::create_dir_all(e.join("0.290")).unwrap();
+        std::fs::write(e.join("0.289").join("ddr2m").join("gn895jaa.part"), b"12345").unwrap();
+        std::fs::write(e.join("0.290").join("sf2.part"), b"123").unwrap();
+        std::fs::write(e.join("vieux.part"), b"12").unwrap();
+        // Le romset en 0.290 : le .part de 0.289 est abandonné ; celui de 0.290 sera repris.
+        assert_eq!(parts_abandonnes(d.path(), "0.290", "0.290"), (1, 5), "celui d'avant 0.123 sera repris (même version)");
+        assert_eq!(parts_abandonnes(d.path(), "0.290", "0.289"), (2, 7), "celui d'avant 0.123, d'une autre version : abandonné");
+        assert_eq!(parts_abandonnes(&d.path().join("absent"), "0.290", "0.290"), (0, 0));
+        // Le dossier d'un jeu qui commence par un chiffre (CHD de « 2spicy », d'avant 0.123) : repris, pas abandonné.
+        std::fs::create_dir_all(e.join("2spicy")).unwrap();
+        std::fs::write(e.join("2spicy").join("disque.part"), b"1").unwrap();
+        assert_eq!(parts_abandonnes(d.path(), "0.290", "0.290"), (1, 5));
+    }
+
+    /// Un petit serveur qui envoie les 100 premiers octets d'un fichier de 1 000 puis se tait (une très longue
+    /// réception) ; une demande avec `Range` reçoit la suite (206). Rend son adresse et les demandes reçues.
+    fn serveur_lent() -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use std::io::{BufRead, Write};
+        let ecoute = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let adresse = format!("http://{}", ecoute.local_addr().unwrap());
+        let vues = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let v = vues.clone();
+        std::thread::spawn(move || {
+            for c in ecoute.incoming().flatten() {
+                let v = v.clone();
+                std::thread::spawn(move || {
+                    let mut c = c;
+                    let mut lire = std::io::BufReader::new(c.try_clone().unwrap());
+                    let mut demande = String::new();
+                    loop {
+                        let mut l = String::new();
+                        if lire.read_line(&mut l).unwrap_or(0) == 0 {
+                            return;
+                        }
+                        if l == "\r\n" {
+                            break;
+                        }
+                        demande.push_str(&l.to_lowercase());
+                    }
+                    v.lock().unwrap().push(demande.clone());
+                    let corps = vec![b'x'; 1000];
+                    let mut repondre = |entete: String, octets: &[u8]| {
+                        let _ = c.write_all(entete.as_bytes());
+                        let _ = c.write_all(octets);
+                        let _ = c.flush();
+                    };
+                    if demande.contains("/mame/romset") {
+                        let j = json!({"version": "0.290", "fichiers": [{"media_id": 1, "telechargement_id": -1, "machine": "sf2", "nom": "sf2.zip", "taille": 1000, "sha1": null, "dossier": null, "chd": false, "url": "/api/jeux/v1/fichier/1/-1/0"}]}).to_string();
+                        repondre(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", j.len()), j.as_bytes());
+                    } else if let Some(n) = demande.lines().find_map(|l| l.strip_prefix("range: bytes=")).and_then(|r| r.trim().trim_end_matches('-').parse::<usize>().ok()) {
+                        repondre(format!("HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {n}-999/1000\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", 1000 - n), &corps[n..]);
+                    } else if demande.contains("/fichier/") {
+                        repondre("HTTP/1.1 200 OK\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n".into(), &corps[..100]);
+                        std::thread::sleep(std::time::Duration::from_secs(10));
+                    } else {
+                        repondre("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".into(), b"");
+                    }
+                });
+            }
+        });
+        (adresse, vues)
+    }
+
+    #[tokio::test]
+    async fn un_fichier_arrete_au_milieu_reprend_ou_il_en_etait() {
+        let _un = UN_A_LA_FOIS.lock().unwrap_or_else(|e| e.into_inner());
+        let (adresse, vues) = serveur_lent();
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(crate::coffre::CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
+        n.ouvrir(&id, None, &crate::noyau::Connexion { adresse, simule: false }).await.unwrap();
+        let pack = d.path().join("Pack");
+        let part = pack.join(ECART).join("0.290").join("sf2.part");
+        let debut = std::time::Instant::now();
+        // « Arrêter » dès que les 100 premiers octets sont écrits.
+        let arreter = async {
+            while std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0) < 100 && debut.elapsed().as_secs() < 5 {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            ARRET.store(true, Ordering::SeqCst);
+        };
+        let (b, ()) = tokio::join!(n.telecharger_pack_mame(&pack, false, None, &|_, _, _| {}), arreter);
+        let b = b.unwrap();
+        assert!(debut.elapsed() < std::time::Duration::from_secs(5), "arrêté sans attendre la fin du fichier");
+        assert!(b.arret.unwrap().contains("à ta demande"));
+        assert_eq!(std::fs::metadata(&part).unwrap().len(), 100, "ce qui est reçu reste dans son .part");
+        assert!(lire_registre(&pack).recus.is_empty());
+        // La reprise : par Range, à partir de 100.
+        let b = n.telecharger_pack_mame(&pack, false, None, &|_, _, _| {}).await.unwrap();
+        assert_eq!(b.recus, 1);
+        assert!(vues.lock().unwrap().iter().any(|d| d.contains("range: bytes=100-")));
+        assert_eq!(std::fs::metadata(pack.join("sf2.zip")).unwrap().len(), 1000);
+        assert!(!part.exists());
+    }
+
+    #[tokio::test]
+    async fn arreter_coupe_aussi_le_fichier_en_cours() {
+        let _un = UN_A_LA_FOIS.lock().unwrap_or_else(|e| e.into_inner());
+        use httpmock::prelude::*;
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/mame/romset");
+            t.status(200).json_body(romset());
+        });
+        // Un fichier très long à venir (10 s) : « Arrêter » ne l'attend pas.
+        s.mock(|w, t| {
+            w.method(GET).path_matches(httpmock::Regex::new("/api/jeux/v1/fichier/.*").unwrap());
+            t.status(200).delay(std::time::Duration::from_secs(10)).body(b"SF2");
+        });
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(crate::coffre::CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
+        n.ouvrir(&id, None, &crate::noyau::Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
+        let pack = d.path().join("Pack");
+        let debut = std::time::Instant::now();
+        let arreter = async {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            ARRET.store(true, Ordering::SeqCst);
+        };
+        let (b, ()) = tokio::join!(n.telecharger_pack_mame(&pack, false, None, &|_, _, _| {}), arreter);
+        let b = b.unwrap();
+        assert!(debut.elapsed() < std::time::Duration::from_secs(5), "arrêté sans attendre la fin du fichier");
+        assert!(b.arret.unwrap().contains("à ta demande"));
+        assert_eq!(b.recus, 0);
+        assert!(lire_registre(&pack).recus.is_empty());
+        ARRET.store(false, Ordering::SeqCst);
     }
 
     #[test]

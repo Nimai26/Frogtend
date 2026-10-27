@@ -122,6 +122,11 @@ pub(crate) fn cle_compte(moi: &Value) -> Option<String> {
     Some(format!("{u}#{}", moi["grade"].as_str().unwrap_or("")))
 }
 
+/// Le grade d'un compte retenu (`username#grade`) est-il « admin » ?
+pub(crate) fn compte_admin(compte: Option<&str>) -> bool {
+    compte.and_then(|c| c.rsplit_once('#')).is_some_and(|(_, g)| g == "admin")
+}
+
 /// Taille au-delà de laquelle le journal est mis de côté (`journal.1.txt`) et recommencé.
 const TAILLE_MAX_JOURNAL: u64 = 512 * 1024;
 
@@ -422,6 +427,14 @@ impl Noyau {
         let _ = std::fs::remove_file(dossier.join("sauvegarde-reprise.json"));
         self.journaliser(&format!("profil {id} : jeton d'un autre compte Firehouse, ce qui avait été reçu est oublié"));
         Ok(())
+    }
+
+    /// Le profil ouvert est-il celui d'un ADMIN de Firehouse (son compte retenu à la synchronisation) ? Inconnu (mode
+    /// simulé, jamais synchronisé) : non — dans le doute, rien de réservé.
+    pub async fn est_admin(&self) -> bool {
+        let Ok(s) = self.session().await else { return false };
+        let compte = s.verrou().meta("compte").ok().flatten();
+        compte_admin(compte.as_deref())
     }
 
     /// Remplace le jeton du profil ouvert, puis rouvre la session avec lui. `compte` : la clé du compte du nouveau jeton
@@ -2414,6 +2427,7 @@ mod tests {
         let p = n.session().await.unwrap().dossier.clone();
         assert_eq!(n.session().await.unwrap().verrou().meta("compte").unwrap().as_deref(), Some("seb#admin"));
         assert_eq!(n.profils.trouver(&id).unwrap().compte.as_deref(), Some("seb#admin"), "retenu aussi dans le profil");
+        assert!(n.est_admin().await);
         let remplir = || {
             for r in ["jaquettes/1-400-j1.img", "visuels/1/fond-1000-f1.img", "systemes/0123abcd/fond-1000-f1.img", "documents/1/documents.json", "documents/1/3.pdf", "derniere-sauvegarde.json"] {
                 std::fs::create_dir_all(p.join(r).parent().unwrap()).unwrap();
@@ -2434,6 +2448,7 @@ mod tests {
         let session = n.session().await.unwrap();
         assert_eq!(session.verrou().nombre_de_jeux().unwrap(), 0);
         assert_eq!(session.verrou().meta("compte").unwrap().as_deref(), Some("lea#mineur"));
+        assert!(!n.est_admin().await, "Léa, mineure : pas admin");
         assert!(!p.join("jaquettes").exists() && !p.join("visuels").exists() && !p.join("derniere-sauvegarde.json").exists());
         assert!(!p.join("systemes").exists(), "les images des systèmes reçues pour l'ancien compte partent aussi");
         assert!(!p.join("documents/1/documents.json").exists());

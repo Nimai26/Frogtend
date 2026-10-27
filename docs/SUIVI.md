@@ -759,7 +759,8 @@
 
 ## ❓ Attend une décision de Seb
 
-- [ ] **Liste MAME de secours (27/10)** : quand Firehouse ne répond pas et que sa liste n'a jamais été reçue, l'import
+- [x] ✅ Seb 27/10 « Écarter d'office » — FAIT (0.124.0) : pour un profil non admin (ou de grade inconnu), le secours
+      MAME.xml écarte toujours les jeux pour adultes. **Liste MAME de secours (27/10)** : quand Firehouse ne répond pas et que sa liste n'a jamais été reçue, l'import
       MAME lit le MAME.xml de LaunchBox choisi par la personne — il contient les jeux pour adultes (`IsMature`), et la
       case « pour adultes » reste cochable. Pour un profil NON admin : forcer « pas de jeux pour adultes », ou seulement
       le dire ? (Frogtend ne filtre rien lui-même d'habitude ; c'est ici le fichier de la personne.)
@@ -838,8 +839,9 @@ d'abord :
   (MoveFileExW sans remplacement) ; une mise à jour coupée d'un fichier plus servi remet l'ancien à sa place ;
   empreinte lue une seule fois ; l'accord porte la version annoncée (refus si Firehouse a changé depuis) ; la
   ludothèque ignore un fichier en cours de mise à jour ; l'annonce dit la place gardée par les anciens.
-  RESTE (noté) : les `.part` d'une version abandonnée ne sont pas annoncés ; arrêter au milieu d'un gros fichier ;
-  essai réel quand Firehouse passera à MAME 0.290 (le
+  ✅ FAIT (0.124.0) : « Arrêter » coupe aussi le fichier en cours (et la lecture d'empreinte d'une CHD) — le `.part`
+  reste, la reprise repart de lui par Range (testé avec un serveur qui se tait au milieu) ; les `.part` d'une version
+  abandonnée sont comptés et dits dans l'annonce (jamais effacés). RESTE : essai réel quand Firehouse passera à MAME 0.290 (le
   comportement de MAME face au dossier caché `.frogtend-ancien` dans son rompath est à vérifier ce jour-là).
 - ✅ **Contrat 1.33 LIVRÉ par Firehouse (2.147.0, 27/10)** — relevé réel en lecture seule (`/mame/machines` 16 Mo en
   2,7 s, 50 368 machines dont 9 414 jouables ; `/mame/romset` 9 348 fichiers, 40,2 Go sans CHD / 445 Go avec, 280,2 Go

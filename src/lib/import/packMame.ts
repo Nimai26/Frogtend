@@ -14,6 +14,9 @@ export interface AnnoncePack {
   octets_anciens: number;
   /** Fichiers du pack que Firehouse ne sert plus à ce profil : jamais déplacés, seulement dits. */
   retires: number;
+  /** Fichiers à moitié reçus d'une version abandonnée (jamais repris) : seulement dits. */
+  parts_abandonnes: number;
+  octets_abandonnes: number;
   /** Une réception du pack est déjà en cours sur ce PC. */
   en_cours: boolean;
   libre: number | null;
@@ -37,7 +40,10 @@ export function texteAnnoncePack(a: AnnoncePack, debit: number | null, duree: (s
   const retires = a.retires
     ? `${a.retires.toLocaleString('fr-FR')} fichier(s) de ton pack ne sont plus fournis par Firehouse : ils restent tels quels, rien n’est supprimé.`
     : '';
-  if (!aFaire(a)) return [`Le pack MAME ${a.version} est complet dans ce dossier (${a.deja_la} fichier(s)).`, retires].filter(Boolean).join('\n');
+  const abandonnes = a.parts_abandonnes
+    ? `${a.parts_abandonnes.toLocaleString('fr-FR')} fichier(s) à moitié reçus d’une ancienne version de MAME (${go(a.octets_abandonnes)}) ne serviront plus : dans le dossier « .frogtend-recu » de ton dossier MAME, tu peux supprimer tout ce qui n’est pas le dossier « ${a.version} ».`
+    : '';
+  if (!aFaire(a)) return [`Le pack MAME ${a.version} est complet dans ce dossier (${a.deja_la} fichier(s)).`, retires, abandonnes].filter(Boolean).join('\n');
   const total = a.octets + a.octets_maj;
   const lignes = [
     a.a_recevoir
@@ -49,6 +55,7 @@ export function texteAnnoncePack(a: AnnoncePack, debit: number | null, duree: (s
     debit ? `Durée estimée à ta vitesse habituelle : ${duree(Math.round(total / debit))}.` : 'Durée : inconnue (Frogtend n’a pas encore mesuré ta connexion).',
     a.libre === null ? '' : `Place libre sur ce disque : ${go(a.libre)}${placeSuffisante(a) ? '' : ' — pas assez !'}.`,
     retires,
+    abandonnes,
   ];
   return lignes.filter(Boolean).join('\n');
 }

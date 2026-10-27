@@ -109,7 +109,7 @@
     <p class="muted">{refus}</p>
     <button class="btn" onclick={autreDossier}>📂 Choisir un dossier</button>
   {:else if annonce && annonce.en_cours && !enCours}
-    <p>🕹 Le pack MAME est déjà en train d’arriver sur ce PC (lancé plus tôt). Tu peux l’arrêter : il reprendra où il en était.</p>
+    <p>🕹 Le pack MAME est déjà en train d’arriver sur ce PC (lancé plus tôt). Tu peux l’arrêter tout de suite : il reprendra où il en était.</p>
     <div class="actions">
       <button class="btn" onclick={() => api.packMameArreter()}>⏸ Arrêter</button>
       <button class="btn" onclick={charger}>↻ Voir où il en est</button>

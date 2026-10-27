@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { avisVersionMame, placeSuffisante, texteAnnoncePack, type AnnoncePack } from './packMame';
 
 const GO = 1024 ** 3;
-const a = (x: Partial<AnnoncePack>): AnnoncePack => ({ version: '0.289', a_recevoir: 8994, octets: 40 * GO, deja_la: 0, anciens: 0, octets_maj: 0, octets_anciens: 0, retires: 0, en_cours: false, libre: 500 * GO, chd_fichiers: 300, chd_octets: 240 * GO, ...x });
+const a = (x: Partial<AnnoncePack>): AnnoncePack => ({ version: '0.289', a_recevoir: 8994, octets: 40 * GO, deja_la: 0, anciens: 0, octets_maj: 0, octets_anciens: 0, retires: 0, parts_abandonnes: 0, octets_abandonnes: 0, en_cours: false, libre: 500 * GO, chd_fichiers: 300, chd_octets: 240 * GO, ...x });
 
 describe('le pack MAME', () => {
   it('annonce combien, combien de Go, combien de temps et la place', () => {
@@ -26,6 +26,9 @@ describe('le pack MAME', () => {
     expect(placeSuffisante({ ...m, libre: 5.5 * GO })).toBe(false);
     expect(placeSuffisante({ ...m, libre: 6.5 * GO })).toBe(true);
     expect(texteAnnoncePack(a({ a_recevoir: 0, deja_la: 10, retires: 2 }), null, () => '')).toContain('complet');
+    const abandon = texteAnnoncePack(a({ a_recevoir: 0, deja_la: 10, parts_abandonnes: 2, octets_abandonnes: 3 * GO }), null, () => '');
+    expect(abandon).toContain('2 fichier(s) à moitié reçus d’une ancienne version de MAME (3 Go)');
+    expect(abandon).toContain('tout ce qui n’est pas le dossier « 0.289 »');
   });
 
   it('refuse quand le disque est trop petit', () => {

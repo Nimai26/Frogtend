@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.124.0 — Arrêter le pack MAME tout de suite
+
+- ⏸ « Arrêter » le pack MAME s'arrête maintenant tout de suite, même au milieu d'un gros fichier (un disque CHD peut
+  prendre des heures) : ce qui est déjà reçu est gardé, et la reprise repart de là.
+- L'écran du pack dit s'il reste des fichiers à moitié reçus d'une ancienne version de MAME (et lesquels supprimer).
+- 🔞 Import MAME sans Firehouse (avec le MAME.xml de LaunchBox) : pour un profil qui n'est pas admin, les jeux pour
+  adultes sont toujours écartés.
+
 ## 0.123.0 — La mise à jour du pack MAME
 
 - 🕹 Quand Firehouse passe à une nouvelle version de MAME, l'écran du pack l'annonce (combien de fichiers ont changé,

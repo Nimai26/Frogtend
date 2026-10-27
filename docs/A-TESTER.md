@@ -3,6 +3,10 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Arrêter le pack MAME tout de suite (0.124.0)
+- [ ] Pendant la réception du pack (cocher les CHD aide : gros fichiers) : « ⏸ Arrêter » → ça s'arrête en quelques
+      secondes ; « Recevoir le pack » ensuite → la réception reprend où elle en était (pas depuis le début du fichier).
+
 ## La mise à jour du pack MAME (0.123.0)
 - [ ] Rien à voir tant que Firehouse est en MAME 0.289 : l'écran du pack dit toujours « complet » (ou ce qu'il reste).
 - [ ] Le jour où Firehouse passe en 0.290 : l'écran annonce « Mise à jour vers MAME 0.290 : N fichier(s) ont changé » ;
