@@ -699,7 +699,8 @@ export const api = {
   restaurationReposerEmulateurs: () => appeler<{ reposes: number; deja_la: number; conflits: string[] }>('restauration_reposer_emulateurs'),
 
   preparerInstallation: (id: number) => appeler<Preparation>('installation_preparer', { id }),
-  installer: (id: number, automatique: boolean) => appeler<Installation>('installation_lancer', { id, automatique }),
+  /** `suivi` : l'avancement de la décompression arrive par « mod-progres » sous ce numéro (voir `avecProgres`). */
+  installer: (id: number, automatique: boolean, suivi: number | null = null) => appeler<Installation>('installation_lancer', { id, automatique, suivi }),
   installeAilleurs: (id: number, dossier: string) => appeler<Installation>('installation_ailleurs', { id, dossier }),
   candidatsLancement: (id: number) => appeler<Candidat[]>('lancement_candidats', { id }),
   choisirLanceur: (id: number, lanceur: Lanceur) => appeler<void>('lanceur_choisir', { id, lanceur }),

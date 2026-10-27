@@ -122,8 +122,13 @@ export async function installer(id: number): Promise<boolean> {
   // Le programme est-il déjà choisi (jeu PC en archive : Firehouse dit lequel lancer, contrat 1.23) ?
   let lanceurDonne = false;
   try {
-    if (p.methode.sorte !== 'aucune') toast(`📦 Installation de « ${p.titre} »… (ça peut prendre quelques minutes)`);
-    lanceurDonne = !!(await api.installer(id, automatique))?.lanceur;
+    if (p.methode.sorte === 'archive') {
+      // Un jeu en archive : la décompression montre son avancement (un gros jeu prend des minutes).
+      lanceurDonne = !!(await avecProgres(`📦 Installation de « ${p.titre} »`, false, (suivi) => api.installer(id, automatique, suivi)))?.lanceur;
+    } else {
+      if (p.methode.sorte !== 'aucune') toast(`📦 Installation de « ${p.titre} »… (ça peut prendre quelques minutes)`);
+      lanceurDonne = !!(await api.installer(id, automatique))?.lanceur;
+    }
   } catch (e) {
     partie.installation = null;
     if (estErreurCoeur(e) && e.motif.includes("rien n'est dans")) {

@@ -1133,14 +1133,19 @@ pub async fn installation_preparer(noyau: State<'_, Noyau>, id: i64) -> Resultat
     noyau.preparer_installation(id).await
 }
 
-/// Installe le jeu (la personne a donné son accord dans l'interface).
+/// Installe le jeu (la personne a donné son accord dans l'interface). `suivi` : l'avancement de la décompression d'un
+/// jeu en archive est envoyé (événement « mod-progres », étape « decompression ») sous ce numéro.
 #[tauri::command]
 pub async fn installation_lancer(
+    app: AppHandle,
     noyau: State<'_, Noyau>,
     id: i64,
     automatique: bool,
+    suivi: Option<u32>,
 ) -> Resultat<crate::jeux_pc::Installation> {
-    noyau.installer(id, automatique).await
+    let Some(suivi) = suivi else { return noyau.installer(id, automatique).await };
+    let f = suivi_mod(&app, suivi);
+    noyau.installer_suivi(id, automatique, std::sync::Arc::new(move |faits, total| f("decompression", faits, total))).await
 }
 
 #[tauri::command]
@@ -4732,6 +4737,10 @@ async fn preparer_emulateur(
             let b = crate::emulateurs_profils::rpcs3_pause_au_menu(&d).err().map(|e| format!("pause au menu non réglée ({e:?})"));
             let v: Vec<String> = a.into_iter().chain(b).collect();
             (!v.is_empty()).then(|| v.join(" ; "))
+        } else if id == "vita3k" && (!crate::vita3k::portable(&d) || !crate::lancement::processus_du_dossier(&d).is_empty()) {
+            // Rien n'a pu être réglé (installé hors mode portable, ou déjà ouvert) : noté, sinon le jeu s'ouvre en
+            // fenêtre, avec l'utilisateur d'avant, sans indice.
+            Some("Vita3K non réglé (pas en mode portable, ou déjà ouvert) : utilisateur et plein écran inchangés".into())
         } else {
             None
         };

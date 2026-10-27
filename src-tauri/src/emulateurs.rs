@@ -185,6 +185,7 @@ pub const CATALOGUE: &[Fiche] = &[
         alias: &["vita3k"],
         origine: Origine::GitHub { depot: "Vita3K/Vita3K", morceaux: &["windows-latest.zip"] },
         programme: "vita3k.exe",
+        // Accepté mais plus lu par Vita3K : le plein écran vient de son réglage `boot-apps-full-screen` (vita3k.rs).
         ligne: "-F",
         portable: Some("portable/"), // vita3k/app/src/app_init.cpp
         dossiers_habituels: &[],

@@ -411,7 +411,8 @@ fn dossiers(archive: &Path) -> Resultat<Vec<String>> {
 /// et dossiers vides compris). Refus entier si un chemin est dangereux ; jamais par-dessus un dossier qui contient
 /// déjà quelque chose ; place vérifiée (marge de 1 %, au moins 100 Mo) ; chaque fichier plafonné à sa taille
 /// annoncée et vérifié ; extraction dans un dossier provisoire puis renommé (jamais une installation à moitié faite).
-pub fn extraire_dans(archive: &Path, dest: &Path, libre: Option<u64>) -> Resultat<()> {
+/// `progres(faits, total)` : les octets écrits sur le total de l'archive (un gros jeu : des minutes).
+pub fn extraire_dans(archive: &Path, dest: &Path, libre: Option<u64>, progres: &mut dyn FnMut(u64, u64)) -> Resultat<()> {
     if est_archive(archive).is_none() || !archive.is_file() {
         return Err(Erreur::Refus("Ce fichier n'est ni un .zip ni un .7z.".into()));
     }
@@ -442,7 +443,13 @@ pub fn extraire_dans(archive: &Path, dest: &Path, libre: Option<u64>) -> Resulta
     if tmp.exists() {
         std::fs::remove_dir_all(&tmp)?;
     }
-    let r = extraire(archive, &tmp, &entrees, &mut |_| {}).and_then(|_| {
+    let mut faits = 0u64;
+    progres(0, taille);
+    let r = extraire(archive, &tmp, &entrees, &mut |n| {
+        faits += n;
+        progres(faits.min(taille), taille);
+    })
+    .and_then(|_| {
         for d in &vides {
             std::fs::create_dir_all(tmp.join(d))?;
         }
@@ -666,7 +673,7 @@ mod tests {
             }
             z.finish().unwrap();
             let dest = d.path().join("Jeu").join("Mon jeu");
-            assert!(extraire_dans(&a, &dest, None).is_err(), "{piege}");
+            assert!(extraire_dans(&a, &dest, None, &mut |_, _| {}).is_err(), "{piege}");
             assert!(!dest.exists() && !d.path().join("evil.dll").exists() && !d.path().join("Ailleurs").exists(), "{piege}");
             assert!(!provisoire(&dest).exists());
         }
@@ -674,12 +681,16 @@ mod tests {
         let a = d.path().join("ok.zip");
         zip(&a, &[("jeu.exe", &[1u8; 10]), ("data/a.pak", &[2u8; 10])]);
         let dest = d.path().join("Jeu").join("Ok");
-        assert!(matches!(extraire_dans(&a, &dest, Some(1 << 20)), Err(Erreur::Refus(_))));
+        assert!(matches!(extraire_dans(&a, &dest, Some(1 << 20), &mut |_, _| {}), Err(Erreur::Refus(_))));
         assert!(!dest.exists());
         // Sinon : tout est là ; un dossier de destination VIDE est accepté.
         std::fs::create_dir_all(&dest).unwrap();
-        extraire_dans(&a, &dest, None).unwrap();
+        let mut vus = Vec::new();
+        extraire_dans(&a, &dest, None, &mut |f, t| vus.push((f, t))).unwrap();
         assert_eq!(std::fs::read(dest.join("data/a.pak")).unwrap(), vec![2u8; 10]);
+        // L'avancement : de 0 au total (20 octets), sans jamais le dépasser.
+        assert_eq!((vus.first().copied(), vus.last().copied()), (Some((0, 20)), Some((20, 20))));
+        assert!(vus.windows(2).all(|w| w[0].0 <= w[1].0));
         assert!(!provisoire(&dest).exists());
     }
 

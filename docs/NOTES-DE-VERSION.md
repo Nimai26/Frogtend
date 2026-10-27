@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.125.0 — Vita3K en plein écran, installation qui avance
+
+- 🎮 Les jeux PS Vita (Vita3K) s'ouvrent maintenant en plein écran, comme les autres émulateurs (Vita3K ne lisait
+  plus l'ancienne option : Frogtend active UNE fois son réglage « jeux en plein écran », l'ancien fichier gardé ; si
+  tu le désactives ensuite dans Vita3K, Frogtend n'y touche plus).
+- 📦 L'installation d'un jeu PC en archive montre son avancement (combien de Go sur combien, vitesse, temps restant) :
+  un gros jeu ne semble plus figé pendant des minutes.
+
 ## 0.124.0 — Arrêter le pack MAME tout de suite
 
 - ⏸ « Arrêter » le pack MAME s'arrête maintenant tout de suite, même au milieu d'un gros fichier (un disque CHD peut

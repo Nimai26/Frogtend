@@ -81,11 +81,27 @@ pub fn user_xml(id: &str, nom: &str) -> String {
 
 /// La valeur de `user-id` dans config.yml (`user-id: 01` ou `user-id: "01"`).
 fn user_id_regle(v: &Path) -> Option<String> {
+    valeur_reglee(v, "user-id")
+}
+
+/// La valeur d'une clé de premier niveau de config.yml (sans guillemets ni commentaire).
+fn valeur_reglee(v: &Path, cle: &str) -> Option<String> {
+    let debut = format!("{cle}:");
     std::fs::read_to_string(config(v))
         .ok()?
         .lines()
-        .find_map(|l| l.strip_prefix("user-id:").map(|x| x.split(" #").next().unwrap_or("").trim().trim_matches(['"', '\'']).to_string()))
+        .find_map(|l| l.strip_prefix(debut.as_str()).map(|x| x.split(" #").next().unwrap_or("").trim().trim_matches(['"', '\'']).to_string()))
         .filter(|x| !x.is_empty())
+}
+
+/// Le plein écran au démarrage d'un jeu : c'est le réglage `boot-apps-full-screen` qui le décide (main_window.cpp,
+/// `launch_fullscreen = emuenv.cfg.boot_apps_full_screen`) ; l'option `-F` est acceptée mais n'est plus lue.
+const PLEIN_ECRAN: &str = "boot-apps-full-screen";
+
+/// Frogtend a activé le plein écran UNE fois (cette marque) : ensuite, un `false` est le choix de la personne, jamais
+/// défait (Vita3K écrit `false` par défaut : sans marque, on ne sait pas qui l'a mis).
+fn marque_plein_ecran(v: &Path) -> PathBuf {
+    v.join("Profils").join(".plein-ecran-frogtend")
 }
 
 /// La table profil → utilisateur que Frogtend tient pour ce Vita3K (`Profils\.utilisateurs-frogtend`).
@@ -146,10 +162,13 @@ pub fn utilisateur_du_profil(v: &Path, profil: &str) -> Resultat<UtilisateurDuPr
     Ok(UtilisateurDuProfil { id, cree: true, ancien_courant })
 }
 
-/// Règle l'utilisateur de la prochaine partie (`user-id` de config.yml), Vita3K FERMÉ. Seule cette ligne change
-/// (ajoutée si elle manque) ; l'ancien fichier est copié à l'abri avant ; écrit par un provisoire renommé, puis relu.
+/// Règle la prochaine partie dans config.yml, Vita3K FERMÉ : l'utilisateur (`user-id`) et, la PREMIÈRE fois
+/// seulement, le plein écran au démarrage du jeu (comme les autres émulateurs lancés par Frogtend ; ensuite, ce que la
+/// personne règle dans Vita3K est gardé). Seules ces lignes changent (ajoutées si elles manquent) ; l'ancien fichier
+/// est copié à l'abri avant ; écrit par un provisoire renommé, puis relu.
 pub fn choisir(v: &Path, id: &str) -> Resultat<()> {
-    if user_id_regle(v).as_deref() == Some(id) {
+    let plein_ecran = !marque_plein_ecran(v).exists();
+    if user_id_regle(v).as_deref() == Some(id) && !plein_ecran {
         return Ok(());
     }
     let f = config(v);
@@ -158,19 +177,10 @@ pub fn choisir(v: &Path, id: &str) -> Resultat<()> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(_) => return Err(Erreur::Prevenir("Les réglages de Vita3K sont illisibles : Frogtend n'y touche pas.".into())),
     };
-    let ligne = format!("user-id: \"{id}\"");
-    let apres = match &avant {
-        Some(t) if t.lines().any(|l| l.starts_with("user-id:")) => {
-            let fin = if t.contains("\r\n") { "\r\n" } else { "\n" };
-            let mut r: String = t.lines().map(|l| if l.starts_with("user-id:") { ligne.clone() } else { l.to_string() }).collect::<Vec<_>>().join(fin);
-            if t.ends_with('\n') {
-                r.push_str(fin);
-            }
-            r
-        }
-        Some(t) => format!("{}{}{ligne}\n", t, if t.is_empty() || t.ends_with('\n') { "" } else { "\n" }),
-        None => format!("---\n{ligne}\n"),
-    };
+    let mut apres = remplacer_ligne(&avant.clone().unwrap_or_else(|| "---\n".into()), "user-id", &format!("user-id: \"{id}\""));
+    if plein_ecran {
+        apres = remplacer_ligne(&apres, PLEIN_ECRAN, &format!("{PLEIN_ECRAN}: true"));
+    }
     if let Some(a) = &avant {
         let base = v.join(".frogtend-sauvegardes");
         std::fs::create_dir_all(&base)?;
@@ -189,7 +199,29 @@ pub fn choisir(v: &Path, id: &str) -> Resultat<()> {
     if user_id_regle(v).as_deref() != Some(id) {
         return Err(Erreur::Disque("L'utilisateur de Vita3K n'a pas pu être réglé.".into()));
     }
+    // La marque seulement une fois le plein écran relu (sinon, il sera réessayé à la partie suivante).
+    if plein_ecran && valeur_reglee(v, PLEIN_ECRAN).as_deref() == Some("true") {
+        std::fs::create_dir_all(v.join("Profils"))?;
+        std::fs::write(marque_plein_ecran(v), "")?;
+    }
     Ok(())
+}
+
+/// Remplace la ligne de premier niveau `cle:` de ce texte YAML par `ligne` (ajoutée à la fin si elle manque), en
+/// gardant les fins de ligne du fichier.
+fn remplacer_ligne(t: &str, cle: &str, ligne: &str) -> String {
+    let debut = format!("{cle}:");
+    if t.lines().any(|l| l.starts_with(debut.as_str())) {
+        let fin = if t.contains("\r\n") { "\r\n" } else { "\n" };
+        let mut r: String = t.lines().map(|l| if l.starts_with(debut.as_str()) { ligne.to_string() } else { l.to_string() }).collect::<Vec<_>>().join(fin);
+        if t.ends_with('\n') {
+            r.push_str(fin);
+        }
+        r
+    } else {
+        let fin = if t.contains("\r\n") { "\r\n" } else { "\n" };
+        format!("{t}{}{ligne}{fin}", if t.is_empty() || t.ends_with('\n') { "" } else { fin })
+    }
 }
 
 /// L'utilisateur Vita de ce profil s'il existe, SANS rien créer (pour la sauvegarde).
@@ -314,20 +346,27 @@ mod tests {
         assert_eq!(utilisateur_existant(v, "Léa").as_deref(), Some("02"));
         // La partie de Léa : seule la ligne user-id change, l'ancien fichier à l'abri.
         choisir(v, "02").unwrap();
-        assert_eq!(std::fs::read_to_string(config(v)).unwrap(), "---\nboot-apps-full-screen: true\nuser-id: \"02\"\nlog-level: 2\n");
+        assert_eq!(std::fs::read_to_string(config(v)).unwrap(), "---\nboot-apps-full-screen: true\nuser-id: \"02\"\nlog-level: 2\n", "plein écran déjà là : inchangé");
         assert_eq!(std::fs::read_dir(v.join(".frogtend-sauvegardes")).unwrap().count(), 1);
         choisir(v, "02").unwrap();
         assert_eq!(std::fs::read_dir(v.join(".frogtend-sauvegardes")).unwrap().count(), 1, "déjà réglé : rien de réécrit");
-        // Un commentaire après la valeur, des fins de ligne Windows : lus et gardés.
-        std::fs::write(config(v), "---\r\nuser-id: 02 # Léa\r\nlog-level: 2\r\n").unwrap();
+        assert!(marque_plein_ecran(v).exists(), "le plein écran était déjà là : noté comme réglé");
+        // La PREMIÈRE fois (pas encore de marque), Vita3K a écrit `false` par défaut : Frogtend met `true`. Un
+        // commentaire après la valeur, des fins de ligne Windows : lus et gardés.
+        std::fs::remove_file(marque_plein_ecran(v)).unwrap();
+        std::fs::write(config(v), "---\r\nuser-id: 02 # Léa\r\nlog-level: 2\r\nboot-apps-full-screen: false\r\n").unwrap();
         assert_eq!(user_id_regle(v).as_deref(), Some("02"));
         choisir(v, "01").unwrap();
-        assert_eq!(std::fs::read_to_string(config(v)).unwrap(), "---\r\nuser-id: \"01\"\r\nlog-level: 2\r\n");
+        assert_eq!(std::fs::read_to_string(config(v)).unwrap(), "---\r\nuser-id: \"01\"\r\nlog-level: 2\r\nboot-apps-full-screen: true\r\n");
+        // Ensuite, la personne le retire dans Vita3K : son choix est GARDÉ (seul l'utilisateur change).
+        std::fs::write(config(v), "---\nuser-id: \"01\"\nboot-apps-full-screen: false\n").unwrap();
+        choisir(v, "02").unwrap();
+        assert_eq!(std::fs::read_to_string(config(v)).unwrap(), "---\nuser-id: \"02\"\nboot-apps-full-screen: false\n");
         assert!(est_vita3k("C:\\Vita3K\\Vita3K.exe") && !est_vita3k("C:\\Cemu\\Cemu.exe"));
         // Sans la ligne : ajoutée.
         std::fs::write(config(v), "---\nlog-level: 2").unwrap();
         choisir(v, "01").unwrap();
-        assert_eq!(std::fs::read_to_string(config(v)).unwrap(), "---\nlog-level: 2\nuser-id: \"01\"\n");
+        assert_eq!(std::fs::read_to_string(config(v)).unwrap(), "---\nlog-level: 2\nuser-id: \"01\"\n", "plein écran déjà réglé une fois : plus touché");
     }
 
     fn sfo(titre: &str) -> Vec<u8> {

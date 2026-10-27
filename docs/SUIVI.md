@@ -7,6 +7,20 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- **Liste VÉRIFIÉE des restes faisables par le code seul (audit du 27/10, toutes les entrées « RESTE / À FAIRE » de
+  ce fichier relues contre le code et les notes ; celles qui ne sont pas ici sont faites, ou attendent Seb, Firehouse
+  ou un essai).** ✅ (1) et (2) FAITS en 0.125.0. Gênant : (1) Vita3K pas en plein écran (`-F` n'est plus lu, `boot-apps-full-screen` jamais
+  écrit) ; (2) aucune progression pendant l'extraction d'un gros jeu PC ; (3) zone d'attente des restaurations jamais
+  vidée (Prêt à jouer redit des conflits réglés) ; (4) firmware Switch servi jamais installé. Mineur : (5) livret sans
+  avancement ni annulation ; (6) pages du livret non gardées ; (7) échec de reprise des parties d'avant (Eden, Cemu,
+  Vita3K) non dit, marque posée avant la copie ; (8) cartouche e-Reader lançable seule pendant qu'une carte la lit ;
+  (9) « Autre dossier » des jeux accepte une racine ou Documents ; (10) « Lire la suite » sous un texte court ;
+  (11) options du menu en jeu seulement pour RetroArch ; (12) hors ligne : fiche et fonds Taodbox des imports reliés ;
+  (13) plusieurs clones MAME d'une fiche hors pack ; (14) crédits des images de jeux. Invisible : `anticheats[]` non
+  lu ; BIOS en archive retéléchargé ; empreintes de repose recalculées ; deux restaurations de suite ; verrou et
+  relecture des cartes e-Reader ; identification orpheline ; `nomsCourts` ; `nomRange` recopié ; `qt-config.ini`
+  d'Eden laissé ; restes des mods Steam ; DLC Xenia/Vita3K et succès Epic.
+
 - **Lot « Avant-bêta »** (✅ Seb 25/10 : « lance tout ce qu'il reste AVANT la bêta ; une bêta certes non parfaite,
   mais permettant de tester TOUTES les fonctionnalités prévues. Je vais rappeler à Firehouse ce que tu attends de
   sa part. ») Tout ce qui ne dépend ni de Seb ni de Firehouse, par petits lots livrés un par un : vérifier d'abord
@@ -16,7 +30,8 @@
   versions). Ce qui attend Firehouse (besoins 15-19, 33, réconciliation lot 4) : codé dès son arrivée.
   AUDIT des experts (25/10) — DÉJÀ FAITS (entrées restées ouvertes à tort) : contrat 1.13 et 1.7→1.13 lus ; shaders
   RPCS3 (0.74) ; durcissement des dossiers (0.73) ; plein écran et manette → clavier (0.53/0.54/0.77) ; réconciliation
-  lot 4 et contrat 1.22 ; fiche retirée sans fusion oubliée. RESTE VRAIMENT : A1 mods (texte GitHub honnête, copie du
+  lot 4 et contrat 1.22 ; fiche retirée sans fusion oubliée. ✅ AUDIT du 27/10 : A1 à A9 TOUS FAITS (A1-A4 0.104.0,
+  A6-A8 0.105.0, A5 0.106-0.109, A9 mesuré le 25/10 puis contrat 1.30 en 0.108.0). Ancien texte : RESTE VRAIMENT : A1 mods (texte GitHub honnête, copie du
   jeu proposée avant GitHub/Nexus, mod à dossier racine unique → question à Seb) ; A2 .pkg illisible signalé ; A3
   Dolphin `AutoDiscChange` (seulement si absent) ; A4 message clair 7z PPMd ; A5 e-Reader (plusieurs cartes par fiche
   sur le PC, filtre dans `choisir` > 20, lancement `--ecard` sur une liste `cartouches` simulée puis réelle) ; A6

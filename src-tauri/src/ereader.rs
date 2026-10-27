@@ -112,7 +112,7 @@ pub fn bandes(archive: &Path, jeu: &Path, dossier: &Path) -> Resultat<Vec<PathBu
     if let Some(p) = dossier.parent() {
         std::fs::create_dir_all(p)?;
     }
-    crate::decompression::extraire_dans(archive, dossier, None)?;
+    crate::decompression::extraire_dans(archive, dossier, None, &mut |_, _| {})?;
     let l = bandes_du_dossier(dossier);
     if l.is_empty() {
         let _ = std::fs::remove_dir_all(dossier);

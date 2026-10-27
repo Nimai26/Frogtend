@@ -428,6 +428,12 @@ impl Noyau {
     /// Installe le jeu (après l'accord de la personne). `automatique` : installeur silencieux si possible.
     /// Rend l'installation ; son lanceur reste à choisir (sauf ROM et image disque : l'émulateur s'en charge).
     pub async fn installer(&self, id: i64, automatique: bool) -> Resultat<Installation> {
+        self.installer_suivi(id, automatique, std::sync::Arc::new(|_, _| {})).await
+    }
+
+    /// Comme `installer`, en disant l'avancement de la décompression d'un jeu en archive (`progres(faits, total)` en
+    /// octets) : un gros jeu prend des minutes, l'écran ne doit jamais sembler figé.
+    pub async fn installer_suivi(&self, id: i64, automatique: bool, progres: std::sync::Arc<dyn Fn(u64, u64) + Send + Sync>) -> Resultat<Installation> {
         // Jamais rattaché à une autre fiche pendant l'installation (contrat 1.14).
         let _occupe = self.occuper(id);
         let j = self.jeu_visible(id).await?;
@@ -483,7 +489,8 @@ impl Noyau {
                         ));
                     }
                     let libre = crate::jeux_pc::place_libre(&recus);
-                    tokio::task::spawn_blocking(move || crate::decompression::extraire_dans(&archive, &d, libre))
+                    let suivre = progres.clone();
+                    tokio::task::spawn_blocking(move || crate::decompression::extraire_dans(&archive, &d, libre, &mut |f, t| suivre(f, t)))
                         .await
                         .map_err(|_| Erreur::Disque("La décompression s'est arrêtée brutalement.".into()))??;
                 } else {
@@ -1311,7 +1318,7 @@ mod tests {
 
         // Jamais par-dessus : une seconde extraction dans le même dossier est refusée, rien n'est touché.
         std::fs::write(dest.join("Saves/partie.sav"), b"ma partie").unwrap();
-        assert!(crate::decompression::extraire_dans(&PathBuf::from(&n.registre().jeu(110).unwrap().unwrap().dossier).join("Megaman's Christmas Carol 3.zip"), &dest, None).is_err());
+        assert!(crate::decompression::extraire_dans(&PathBuf::from(&n.registre().jeu(110).unwrap().unwrap().dossier).join("Megaman's Christmas Carol 3.zip"), &dest, None, &mut |_, _| {}).is_err());
         assert_eq!(std::fs::read(dest.join("Saves/partie.sav")).unwrap(), b"ma partie");
 
         // Le retrait ne laisse ni `Jeu/` vide ni dossier du jeu.
