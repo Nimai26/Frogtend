@@ -672,6 +672,9 @@ pub fn installer_coeur(paquet: &Path, retroarch: &Path, servi: &CoeurServi) -> R
     r
 }
 
+/// Les dossiers de profils de manettes de RetroArch utiles sous Windows.
+const PROFILS_WINDOWS: [&str; 4] = ["xinput", "dinput", "sdl2", "hid"];
+
 /// Ajoute les profils de manette officiels de RetroArch (paquet zip déjà téléchargé) dans `autoconfig\`. Un profil
 /// déjà présent n'est jamais remplacé. Rend le nombre de profils ajoutés.
 pub fn installer_profils_manette(paquet: &Path, retroarch: &Path) -> Resultat<usize> {
@@ -680,9 +683,19 @@ pub fn installer_profils_manette(paquet: &Path, retroarch: &Path) -> Resultat<us
         std::fs::remove_dir_all(&provisoire)?;
     }
     decompresser(paquet, Format::Zip, &provisoire)?;
+    // Le zip du dépôt (contrat 1.34, servi par Firehouse) a un dossier racine (`retroarch-joypad-autoconfig-1.22.0/`)
+    // et d'autres systèmes : sous Windows, seulement `xinput/ dinput/ sdl2/ hid/`. Le zip du buildbot les a à la racine.
+    let racine = {
+        let l: Vec<_> = std::fs::read_dir(&provisoire)?.flatten().collect();
+        match l.as_slice() {
+            [seul] if seul.file_type().is_ok_and(|t| t.is_dir()) && !PROFILS_WINDOWS.contains(&seul.file_name().to_string_lossy().as_ref()) => seul.path(),
+            _ => provisoire.clone(),
+        }
+    };
+    let windows = PROFILS_WINDOWS;
     let cible = retroarch.join("autoconfig");
     let mut ajoutes = 0;
-    for r in fichiers_de(&provisoire)? {
+    for r in fichiers_de(&racine)?.into_iter().filter(|r| windows.contains(&r.split('/').next().unwrap_or(""))) {
         let c = cible.join(&r);
         if c.exists() {
             continue;
@@ -690,7 +703,7 @@ pub fn installer_profils_manette(paquet: &Path, retroarch: &Path) -> Resultat<us
         if let Some(p) = c.parent() {
             std::fs::create_dir_all(p)?;
         }
-        std::fs::copy(provisoire.join(&r), &c)?;
+        std::fs::copy(racine.join(&r), &c)?;
         ajoutes += 1;
     }
     std::fs::remove_dir_all(&provisoire)?;
@@ -941,6 +954,34 @@ mod tests {
         installer_paquet(f, &paquet, &dossier).unwrap();
         let abris: Vec<_> = std::fs::read_dir(dossier.join(".frogtend-sauvegardes")).unwrap().flatten().collect();
         assert_eq!(std::fs::read(abris[0].path().join("dosbox-staging.conf")).unwrap(), b"ma conf");
+    }
+
+    #[test]
+    fn les_profils_de_manette_du_depot_ne_gardent_que_windows_et_n_ecrasent_rien() {
+        // La forme du zip servi par Firehouse (contrat 1.34) : un dossier racine, des systèmes de Windows et d'autres.
+        let d = tempfile::tempdir().unwrap();
+        let zip = d.path().join("autoconfig.zip");
+        {
+            let mut z = ::zip::ZipWriter::new(std::fs::File::create(&zip).unwrap());
+            for (n, o) in [
+                ("retroarch-joypad-autoconfig-1.22.0/xinput/XInput Controller.cfg", "nouveau"),
+                ("retroarch-joypad-autoconfig-1.22.0/sdl2/Manette.cfg", "sdl"),
+                ("retroarch-joypad-autoconfig-1.22.0/udev/Linux.cfg", "linux"),
+                ("retroarch-joypad-autoconfig-1.22.0/README.md", "lisez-moi"),
+            ] {
+                z.start_file(n, ::zip::write::SimpleFileOptions::default()).unwrap();
+                std::io::Write::write_all(&mut z, o.as_bytes()).unwrap();
+            }
+            z.finish().unwrap();
+        }
+        let ra = d.path().join("RetroArch");
+        std::fs::create_dir_all(ra.join("autoconfig").join("xinput")).unwrap();
+        std::fs::write(ra.join("autoconfig").join("xinput").join("XInput Controller.cfg"), "celui du 7z, plus récent").unwrap();
+        assert_eq!(installer_profils_manette(&zip, &ra).unwrap(), 1, "seulement le profil SDL, qui manquait");
+        assert_eq!(std::fs::read_to_string(ra.join("autoconfig").join("xinput").join("XInput Controller.cfg")).unwrap(), "celui du 7z, plus récent");
+        assert!(ra.join("autoconfig").join("sdl2").join("Manette.cfg").is_file());
+        assert!(!ra.join("autoconfig").join("udev").exists() && !ra.join("autoconfig").join("README.md").exists());
+        assert!(!ra.join("autoconfig.nouveau").exists());
     }
 
     #[test]

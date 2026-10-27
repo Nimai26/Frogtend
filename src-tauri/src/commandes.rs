@@ -4264,7 +4264,7 @@ pub async fn emulateur_installer(
     let _ = std::fs::remove_dir(base.join(".telechargements"));
     // RetroArch : ses profils de manette officiels, s'ils ne sont pas dans le paquet (annoncés avec l'installation).
     if f.id == "retroarch" && !crate::manettes::retroarch_a_ses_profils(&cible) {
-        installer_profils_retroarch(&cible).await?;
+        installer_profils_retroarch(&noyau, &cible).await?;
     }
     let e = crate::emulateurs::EmulateurInstalle {
         id: f.id.into(),
@@ -4442,10 +4442,26 @@ pub async fn installer_coeur_servi(source: &crate::source::Source, retroarch: &s
     Ok(r?.to_string_lossy().into())
 }
 
-/// Télécharge et ajoute les profils de manette officiels de RetroArch. Rend le nombre de profils ajoutés.
-async fn installer_profils_retroarch(retroarch: &std::path::Path) -> Resultat<usize> {
+/// Télécharge et ajoute les profils de manette officiels de RetroArch (jamais par-dessus un profil déjà là). Rend le
+/// nombre de profils ajoutés. Contrat 1.34 : la version STABLE figée servie par Firehouse (empreinte vérifiée) ; si
+/// Firehouse ne la sert pas, celle du buildbot de RetroArch.
+async fn installer_profils_retroarch(noyau: &Noyau, retroarch: &std::path::Path) -> Resultat<usize> {
     let paquet = retroarch.join("autoconfig.zip.telechargement");
-    crate::emulateurs::telecharger(crate::manettes::URL_PROFILS_RETROARCH, &paquet, &|_, _| {}).await?;
+    // Chez Firehouse : seulement avec une session, une adresse de l'API et une empreinte (vérifiée pendant la
+    // réception, le `.part` retiré si elle ne colle pas). Au moindre échec : le buildbot de RetroArch, comme avant.
+    let depuis_firehouse = async {
+        let s = noyau.session().await.ok()?;
+        let a = s.source.autoconfig_retroarch().await.ok()??;
+        let sha = a["sha256"].as_str().filter(|x| !x.is_empty())?.to_string();
+        let route = a["url"].as_str()?.strip_prefix(crate::firehouse::PREFIXE)?.to_string();
+        s.source.telecharger_controle(&route, &paquet, Some(&sha), &[], &|_, _| {}).await.ok()
+    }
+    .await;
+    if depuis_firehouse.is_none() {
+        let _ = std::fs::remove_file(&paquet);
+        let _ = std::fs::remove_file(format!("{}.part", paquet.to_string_lossy()));
+        crate::emulateurs::telecharger(crate::manettes::URL_PROFILS_RETROARCH, &paquet, &|_, _| {}).await?;
+    }
     let (p, d) = (paquet.clone(), retroarch.to_path_buf());
     let r = tauri::async_runtime::spawn_blocking(move || crate::emulateurs::installer_profils_manette(&p, &d))
         .await
@@ -4475,7 +4491,7 @@ pub async fn emulateur_regler_manette(app: AppHandle, noyau: State<'_, Noyau>, i
     let profil = noyau.actif().await.ok_or_else(|| Erreur::Profil("Aucun profil n'est ouvert.".into()))?;
     let mut profils_ajoutes = 0;
     if id == "retroarch" && !crate::manettes::retroarch_a_ses_profils(&dossier) {
-        profils_ajoutes = installer_profils_retroarch(&dossier).await?;
+        profils_ajoutes = installer_profils_retroarch(&noyau, &dossier).await?;
     }
     let d = dossier.clone();
     let reglee = tauri::async_runtime::spawn_blocking(move || {

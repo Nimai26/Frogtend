@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.119.0 — Manettes RetroArch servies par Firehouse
+
+- 🎮 Les profils de manettes de RetroArch viennent maintenant de Firehouse, dans une version stable (1.22.0) dont
+  l'empreinte est vérifiée ; ils complètent ceux déjà là sans jamais les remplacer.
+- MAME 0.289 est désormais hébergé par Firehouse (vérifié : il s'installe comme avant).
+
 ## 0.118.0 — La liste MAME vient de Firehouse
 
 - 🕹 📥 Importer ▸ MAME Arcade Full Set n'a plus besoin du fichier MAME.xml de LaunchBox : Firehouse donne la liste

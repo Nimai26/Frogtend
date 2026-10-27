@@ -803,6 +803,17 @@ d'abord :
 
 ## ⏳ Attend un événement extérieur
 
+- ✅ **Contrat 1.34 LIVRÉ par Firehouse (2.148.0, 27/10)** — vérifié EN VRAI (dossiers temporaires) : MAME 0.289
+  hébergé (87,6 Mo en 5,2 s, sha256 conforme, archive sortie de l'exe sans l'exécuter : le code le gérait déjà) ;
+  profils de manettes RetroArch 1.22.0 (sha256 conforme, 380 profils, seulement xinput/dinput/sdl2/hid, jamais
+  par-dessus) → Frogtend les prend chez Firehouse (buildbot en secours). RESTE : installer RetroArch 1.22.2 HÉBERGÉ
+  plutôt que par le buildbot (sa fiche du catalogue) — petit lot à part.
+  ✅ Seb 27/10 (pack MAME complet, lot 1.33b) : dossier NEUF proposé d'office (« <disque>\Frogtend\MAME » sur le
+  disque qui a le plus de place, modifiable ; jamais le dossier de ROM de la personne) ; ouvert à TOUS les profils
+  après annonce chiffrée et accord ; les CHD proposées À PART (après les zips). Plan de l'expert lancement : A annonce +
+  registre + zips (refus d'écraser un fichier étranger), B ludothèque (un jeu importé par fiche, versions = zips,
+  rompath = le pack), C CHD (une seule fois chacune), D mise à jour (rien n'est effacé, l'ancien à l'abri), E version
+  de MAME = celle du romset.
 - ✅ **Contrat 1.33 LIVRÉ par Firehouse (2.147.0, 27/10)** — relevé réel en lecture seule (`/mame/machines` 16 Mo en
   2,7 s, 50 368 machines dont 9 414 jouables ; `/mame/romset` 9 348 fichiers, 40,2 Go sans CHD / 445 Go avec, 280,2 Go
   dédoublonné). Lot 1.33a FAIT (0.118.0) : la liste de Firehouse trie l'import MAME (cache par profil + ETag, hors

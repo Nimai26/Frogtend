@@ -197,6 +197,19 @@ impl Source {
         }
     }
 
+    /// Les profils de manettes de RetroArch, version stable figée (contrat 1.34, `GET /emulateurs/retroarch/autoconfig`
+    /// → {version, taille, sha256, url}) ; `None` : Firehouse ne les sert pas (404, ou mode simulé).
+    pub async fn autoconfig_retroarch(&self) -> Resultat<Option<Value>> {
+        match self {
+            Source::Firehouse(c) => match c.obtenir_json::<Value>("/emulateurs/retroarch/autoconfig").await {
+                Ok(v) => Ok(Some(v)),
+                Err(Erreur::Introuvable(_)) => Ok(None),
+                Err(e) => Err(e),
+            },
+            Source::Simulee => Ok(None),
+        }
+    }
+
     /// La liste MAME servie par Firehouse (contrat 1.33, `GET /mame/machines`, plusieurs Mo) avec l'ETag gardé : `None`
     /// = 304 (la liste gardée vaut). Telle que CE jeton la voit (une machine absente est à écarter). Simulé : aucune.
     pub async fn mame_machines(&self, etag: Option<&str>) -> Resultat<Option<(Vec<u8>, Option<String>)>> {
@@ -950,6 +963,67 @@ mod tests {
             }
         }
         std::fs::write(sortie.join("fiche-steam.json"), serde_json::to_vec_pretty(&toutes).unwrap()).unwrap();
+    }
+
+    /// RÉEL, lecture seule (contrat 1.34) : les paquets hébergés de MAME et de RetroArch, et les profils de manettes de
+    /// RetroArch — seulement leurs DESCRIPTIONS (JSON), rien n'est téléchargé.
+    /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_paquets_134 -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_paquets_134() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        for route in ["/emulateurs/mame/paquet", "/emulateurs/retroarch/paquet", "/emulateurs/retroarch/autoconfig"] {
+            match c.obtenir_json::<serde_json::Value>(route).await {
+                Ok(v) => println!("{route} : {v}"),
+                Err(e) => println!("{route} : {e:?}"),
+            }
+        }
+    }
+
+    /// RÉEL (contrat 1.34) : les profils de manettes de RetroArch servis par Firehouse (800 Ko), empreinte vérifiée, posés
+    /// dans un RetroArch TEMPORAIRE. Tout est effacé.
+    /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_autoconfig_134 -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_autoconfig_134() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let s = Source::Firehouse(crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap());
+        let a = s.autoconfig_retroarch().await.unwrap().unwrap();
+        let d = tempfile::tempdir().unwrap();
+        let zip = d.path().join("autoconfig.zip");
+        s.telecharger_route(a["url"].as_str().unwrap().strip_prefix(crate::firehouse::PREFIXE).unwrap(), &zip, &|_, _| {}).await.unwrap();
+        assert_eq!(crate::sauvegarde::empreinte(&zip).unwrap(), a["sha256"].as_str().unwrap());
+        let n = crate::emulateurs::installer_profils_manette(&zip, &d.path().join("RetroArch")).unwrap();
+        let sous: Vec<String> = std::fs::read_dir(d.path().join("RetroArch").join("autoconfig")).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect();
+        println!("version {} : {n} profils posés, dans {sous:?}", a["version"]);
+    }
+
+    /// RÉEL (contrat 1.34) : le paquet MAME HÉBERGÉ par Firehouse (87 Mo) installé dans un dossier TEMPORAIRE — empreinte
+    /// sha256 vérifiée, archive sortie de l'exe sans l'exécuter, programme trouvé. Rien n'est lancé ; tout est effacé.
+    /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_mame_heberge -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_mame_heberge() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let s = Source::Firehouse(crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap());
+        let p = s.paquet_emulateur("mame").await.unwrap();
+        let d = tempfile::tempdir().unwrap();
+        let paquet = d.path().join("mame.paquet");
+        let route = p["url"].as_str().unwrap().strip_prefix(crate::firehouse::PREFIXE).unwrap().to_string();
+        let t = std::time::Instant::now();
+        s.telecharger_route(&route, &paquet, &|_, _| {}).await.unwrap();
+        let sha = crate::sauvegarde::empreinte(&paquet).unwrap();
+        println!("reçu {} octets en {:.1} s ; sha256 conforme : {}", std::fs::metadata(&paquet).unwrap().len(), t.elapsed().as_secs_f64(), sha == p["sha256"].as_str().unwrap());
+        assert_eq!(sha, p["sha256"].as_str().unwrap());
+        let r = crate::emulateurs::installer_paquet_decrit("MAME", &paquet, &d.path().join("MAME"), p["programme"].as_str(), None).unwrap();
+        println!("installé : {r:?}");
     }
 
     /// RÉEL, lecture seule (contrat 1.33) : `/mame/machines` et `/mame/romset`, copiés tels quels dans `FROGTEND_SORTIE`
