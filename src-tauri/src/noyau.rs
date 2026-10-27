@@ -403,6 +403,10 @@ impl Noyau {
     /// montrées (le catalogue est vide) et le ménage de la synchronisation suivante les retire.
     fn oublier(&self, id: &str, dossier: &Path, cache: &mut Cache, compte: &str) -> Resultat<()> {
         cache.vider_firehouse(compte)?;
+        // La liste MAME reçue par l'ancien jeton (contrat 1.33 : elle dépend du grade).
+        for f in ["mame-machines.json", "mame-machines.etag"] {
+            let _ = std::fs::remove_file(dossier.join(f));
+        }
         for sous in ["jaquettes", "visuels", "systemes", "base"] {
             let d = dossier.join(sous);
             if std::fs::symlink_metadata(&d).is_ok_and(|m| m.is_dir()) {

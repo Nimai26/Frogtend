@@ -76,6 +76,8 @@ export interface JeuMameRetenu extends RomTrouvee {
 }
 
 export interface TriMame {
+  /** D'où vient la liste : `firehouse` (contrat 1.33) ou `fichier` (le MAME.xml de LaunchBox, en secours). */
+  source: 'firehouse' | 'fichier';
   retenus: JeuMameRetenu[];
   ecartes: Record<string, number>;
 }

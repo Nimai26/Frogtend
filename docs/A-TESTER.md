@@ -3,6 +3,11 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## La liste MAME vient de Firehouse (0.118.0)
+- [ ] 📥 Importer ▸ MAME Arcade Full Set, ton dossier de ROM MAME, **🔍 Trier le dossier** (sans choisir de fichier
+      MAME.xml) : le tri doit se faire, avec les jeux retenus et les écartés par motif.
+- [ ] Le refaire hors ligne (câble débranché) : la liste gardée doit servir.
+
 ## Tes jeux importés trouvent leur jaquette (0.117.0)
 - [ ] 📥 Importer ▸ Reconnaître mes jeux importés, en bas : « Chercher mes jeux sans fiche » annonce un nombre ;
       lance la recherche : un message dit combien sont trouvés, à choisir, inconnus.

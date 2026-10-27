@@ -197,6 +197,18 @@ impl Source {
         }
     }
 
+    /// La liste MAME servie par Firehouse (contrat 1.33, `GET /mame/machines`, plusieurs Mo) avec l'ETag gardé : `None`
+    /// = 304 (la liste gardée vaut). Telle que CE jeton la voit (une machine absente est à écarter). Simulé : aucune.
+    pub async fn mame_machines(&self, etag: Option<&str>) -> Resultat<Option<(Vec<u8>, Option<String>)>> {
+        match self {
+            Source::Firehouse(c) => match c.obtenir_gros("/mame/machines", etag, 200 << 20).await? {
+                Reponse::NonModifie => Ok(None),
+                Reponse::Corps { octets, etag, .. } => Ok(Some((octets.to_vec(), etag))),
+            },
+            Source::Simulee => Err(Erreur::Introuvable("Pas de liste MAME en mode simulé.".into())),
+        }
+    }
+
     /// Identifie des jeux importés sans fiche (contrat 1.32, `POST /identifier`, 500 au plus par lot) : un statut
     /// `exact|probable|inconnu` par jeu. En mode simulé : tout est `inconnu`.
     pub async fn identifier(&self, corps: &Value) -> Resultat<Value> {
@@ -938,6 +950,29 @@ mod tests {
             }
         }
         std::fs::write(sortie.join("fiche-steam.json"), serde_json::to_vec_pretty(&toutes).unwrap()).unwrap();
+    }
+
+    /// RÉEL, lecture seule (contrat 1.33) : `/mame/machines` et `/mame/romset`, copiés tels quels dans `FROGTEND_SORTIE`
+    /// (plusieurs Mo). Rien d'autre n'est écrit, rien n'est téléchargé.
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_SORTIE=<dossier> cargo test essai_mame_133 -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_mame_133() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let sortie = std::path::PathBuf::from(std::env::var("FROGTEND_SORTIE").unwrap());
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        for (route, fichier) in [("/mame/machines", "mame-machines.json"), ("/mame/romset", "mame-romset.json")] {
+            let t = std::time::Instant::now();
+            match c.obtenir(route, None).await {
+                Ok(crate::firehouse::Reponse::Corps { octets, .. }) => {
+                    println!("{route} : {} Ko en {:.1} s", octets.len() / 1024, t.elapsed().as_secs_f64());
+                    std::fs::write(sortie.join(fichier), &octets).unwrap();
+                }
+                r => println!("{route} : {:?}", r.map(|_| "304")),
+            }
+        }
     }
 
     /// RÉEL, lecture seule (contrat 1.32) : `/identifier` sur trois exemples et `/base/{launchbox_id}`, copiés tels quels

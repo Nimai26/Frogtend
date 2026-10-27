@@ -228,6 +228,34 @@ impl Client {
         Ok(Reponse::Corps { octets, etag, type_contenu })
     }
 
+    /// `GET` d'une GROSSE réponse JSON (la liste MAME, contrat 1.33 : 16 Mo) : comme [`Client::obtenir`] (ETag, gzip),
+    /// mais jusqu'à 10 minutes pour cette seule requête (une connexion modeste), lue par morceaux et jamais au-delà de
+    /// `plafond` octets.
+    pub async fn obtenir_gros(&self, route: &str, etag: Option<&str>, plafond: usize) -> Resultat<Reponse> {
+        let mut req = self.http.get(self.url(route)).timeout(Duration::from_secs(600));
+        if let Some(e) = etag {
+            req = req.header(reqwest::header::IF_NONE_MATCH, e);
+        }
+        let mut rep = self.envoyer(req).await?;
+        let statut = rep.status().as_u16();
+        if statut == 304 {
+            return Ok(Reponse::NonModifie);
+        }
+        let entete = |nom: reqwest::header::HeaderName| rep.headers().get(nom).and_then(|v| v.to_str().ok()).map(String::from);
+        let (etag, type_contenu) = (entete(reqwest::header::ETAG), entete(reqwest::header::CONTENT_TYPE));
+        let mut octets = Vec::new();
+        while let Some(m) = rep.chunk().await.map_err(Self::erreur_reseau)? {
+            if octets.len() + m.len() > plafond {
+                return Err(Erreur::Serveur("Firehouse a envoyé une réponse bien trop grosse : elle n'est pas lue.".into()));
+            }
+            octets.extend_from_slice(&m);
+        }
+        if !(200..300).contains(&statut) {
+            return Err(erreur_du_statut(statut, &octets));
+        }
+        Ok(Reponse::Corps { octets, etag, type_contenu })
+    }
+
     /// `GET` d'une adresse complète hors de la base de l'API (la vidéo d'un skin : `origine + video_api`).
     pub async fn obtenir_absolu(&self, url: &str) -> Resultat<Vec<u8>> {
         let rep = self.envoyer(self.http.get(url)).await?;

@@ -863,7 +863,7 @@ export const api = {
   importTypesFichiers: (dossier: string, recursif: boolean) => appeler<[string, number][]>('import_types_fichiers', { dossier, recursif }),
   importChercherRoms: (dossier: string, extensions: string[], recursif: boolean) =>
     appeler<{ roms: import('$lib/import/local').RomTrouvee[]; contenus: number }>('import_chercher_roms', { dossier, extensions, recursif }),
-  importChercherMame: (dossier: string, liste: string, options: import('$lib/import/local').OptionsMame) =>
+  importChercherMame: (dossier: string, liste: string | null, options: import('$lib/import/local').OptionsMame) =>
     appeler<import('$lib/import/local').TriMame>('import_chercher_mame', { dossier, liste, options }),
   importInstallerDos: (dosbox: string, source: string, destination: string, titre: string) =>
     appeler<string[]>('import_installer_dos', { dosbox, source, destination, titre }),

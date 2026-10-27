@@ -212,7 +212,7 @@
         roms = l.roms.map((r) => ({ ...r, pris: true }));
         contenusEcartes = l.contenus;
       } else if (sorte === 'mame') {
-        tri = await api.importChercherMame(dossier, etat.pc.listeMame, $state.snapshot(optionsMame));
+        tri = await api.importChercherMame(dossier, etat.pc.listeMame || null, $state.snapshot(optionsMame));
         mamePris = tri.retenus.map(() => true);
       } else {
         const l = await api.importChercherDos(dossier);
@@ -372,11 +372,14 @@ Rien n’est déplacé ni renommé. Les retirer plus tard de ta ludothèque ne l
       <button class="btn" onclick={choisirDossier}>📂 Choisir le dossier des ROM MAME</button>
       <input class="large" bind:value={dossier} placeholder="E:\Games\MAME" aria-label="Dossier" />
     </div>
-    <div class="ligne">
-      <button class="btn" onclick={choisirListeMame}>📄 Choisir la liste MAME</button>
-      <span class="muted large">{etat.pc.listeMame || 'pas encore choisie : le fichier Metadata\\MAME.xml de ton LaunchBox'}</span>
-    </div>
-    <p class="muted">La liste MAME de LaunchBox dit, pour chaque zip, si c’est un jeu, un clone, un BIOS, s’il marche… Frogtend la lit sans la modifier. (Firehouse la servira plus tard.)</p>
+    <p class="muted">Firehouse donne la liste MAME : pour chaque zip, si c’est un jeu, un clone, un BIOS, s’il marche… Elle est gardée sur ce PC pour la suite.</p>
+    <details>
+      <summary>En secours (Firehouse injoignable) : la liste de LaunchBox</summary>
+      <div class="ligne">
+        <button class="btn" onclick={choisirListeMame}>📄 Choisir la liste MAME de LaunchBox</button>
+        <span class="muted large">{etat.pc.listeMame || 'pas choisie : le fichier Metadata\\MAME.xml de ton LaunchBox'}</span>
+      </div>
+    </details>
     <fieldset class="cases">
       <legend>Garder aussi :</legend>
       {#each LIBELLES_MAME as [cle, libelle] (cle)}
@@ -384,11 +387,12 @@ Rien n’est déplacé ni renommé. Les retirer plus tard de ta ludothèque ne l
       {/each}
     </fieldset>
     <div class="ligne">
-      <button class="btn primary" onclick={chercher} disabled={enCours || !dossier.trim() || !etat.pc.listeMame}>
+      <button class="btn primary" onclick={chercher} disabled={enCours || !dossier.trim()}>
         {enCours ? 'Tri en cours… (quelques secondes)' : '🔍 Trier le dossier'}
       </button>
     </div>
     {#if tri}
+      <p class="muted">Liste utilisée : {tri.source === 'firehouse' ? 'celle de Firehouse (MAME 0.289)' : 'ta liste de LaunchBox (Firehouse ne répondait pas)'}.</p>
       <p>
         <strong>{tri.retenus.length} jeu(x) retenu(s)</strong>
         {#if ecartes.length}

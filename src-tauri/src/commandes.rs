@@ -2624,11 +2624,21 @@ pub struct RomsTrouvees {
     pub contenus: usize,
 }
 
-/// 📥 Importer ▸ MAME Arcade Full Set : le tri du dossier d'après la liste MAME de LaunchBox (rien n'est encore ajouté).
+/// 📥 Importer ▸ MAME Arcade Full Set : le tri du dossier (rien n'est encore ajouté), d'après la liste MAME de Firehouse
+/// (contrat 1.33) ; en secours seulement (Firehouse injoignable, rien de gardé), le MAME.xml de LaunchBox choisi.
 #[tauri::command]
-pub async fn import_chercher_mame(dossier: String, liste: String, options: crate::mame::OptionsMame) -> Resultat<crate::mame::TriMame> {
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::mame::trier_avec_fichier(std::path::Path::new(&dossier), std::path::Path::new(&liste), &options)
+pub async fn import_chercher_mame(noyau: State<'_, Noyau>, dossier: String, liste: Option<String>, options: crate::mame::OptionsMame) -> Resultat<crate::mame::TriMame> {
+    let de_firehouse = noyau.liste_mame().await?;
+    let liste = liste.filter(|l| !l.trim().is_empty());
+    if de_firehouse.is_none() && liste.is_none() {
+        return Err(Erreur::Refus(
+            "Firehouse ne répond pas et sa liste MAME n'a jamais été reçue sur ce PC : réessaie plus tard, ou choisis le fichier Metadata\\MAME.xml de ton LaunchBox.".into(),
+        ));
+    }
+    tauri::async_runtime::spawn_blocking(move || match de_firehouse {
+        Some(l) => crate::mame::trier(std::path::Path::new(&dossier), &l, &options).map(|t| crate::mame::TriMame { source: "firehouse".into(), ..t }),
+        None => crate::mame::trier_avec_fichier(std::path::Path::new(&dossier), std::path::Path::new(&liste.unwrap_or_default()), &options)
+            .map(|t| crate::mame::TriMame { source: "fichier".into(), ..t }),
     })
     .await
     .map_err(|_| Erreur::Disque("Le tri s'est arrêté brutalement.".into()))?

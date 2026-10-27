@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.118.0 — La liste MAME vient de Firehouse
+
+- 🕹 📥 Importer ▸ MAME Arcade Full Set n'a plus besoin du fichier MAME.xml de LaunchBox : Firehouse donne la liste
+  MAME (version 0.289), qui dit pour chaque zip si c'est un jeu, un clone, un BIOS, s'il marche… Elle est gardée sur
+  le PC pour la suite (et hors ligne).
+- Le fichier de LaunchBox reste possible en secours, si Firehouse ne répond pas et que la liste n'a jamais été reçue.
+
 ## 0.117.0 — Tes jeux importés trouvent leur jaquette
 
 - 🔎 Les jeux importés de ton disque qui n'avaient pas de fiche peuvent maintenant être cherchés dans la base de

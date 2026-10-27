@@ -759,6 +759,11 @@
 
 ## ❓ Attend une décision de Seb
 
+- [ ] **Liste MAME de secours (27/10)** : quand Firehouse ne répond pas et que sa liste n'a jamais été reçue, l'import
+      MAME lit le MAME.xml de LaunchBox choisi par la personne — il contient les jeux pour adultes (`IsMature`), et la
+      case « pour adultes » reste cochable. Pour un profil NON admin : forcer « pas de jeux pour adultes », ou seulement
+      le dire ? (Frogtend ne filtre rien lui-même d'habitude ; c'est ici le fichier de la personne.)
+
 - [ ] **Jeux PC sans manette ni plein écran** (Seb, 05/10, Mega Man Rock Force : « il s'ouvre en tout petit fenêtré et
       ne reconnaît pas la manette »). Relevé : jeu Game Maker 8, clavier seulement (ReadMe : Z saut, X tir, C glisse,
       Entrée pause, A/S armes ; F4 plein écran) ; la manette est vue par Windows (joystick 1, XInput 0). Proposé :
@@ -798,6 +803,14 @@ d'abord :
 
 ## ⏳ Attend un événement extérieur
 
+- ✅ **Contrat 1.33 LIVRÉ par Firehouse (2.147.0, 27/10)** — relevé réel en lecture seule (`/mame/machines` 16 Mo en
+  2,7 s, 50 368 machines dont 9 414 jouables ; `/mame/romset` 9 348 fichiers, 40,2 Go sans CHD / 445 Go avec, 280,2 Go
+  dédoublonné). Lot 1.33a FAIT (0.118.0) : la liste de Firehouse trie l'import MAME (cache par profil + ETag, hors
+  ligne ; MAME.xml en secours) ; fixture = extrait RÉEL non-admin donné par Firehouse. Réponses de Firehouse : `jouable`
+  = Working Arcade Clean (pas une garantie ; qualité = `statut`) ; `sha1` présent → le comparer aussi ; ETag PAR GRADE ;
+  `taille_unique`/`fichiers_uniques` dans `variantes` en 1.34 ; pas de champ prototype/hack (repérage par description).
+  À FAIRE — lot 1.33b : « pack MAME » (tout le romset dans UN dossier de ROM, une ligne de file, CHD jamais dédoublés,
+  annonce chiffrée, place vérifiée, accord ; mise à jour nom + taille + version (+ sha1) ; rien n'est jamais effacé).
 - ✅ **Contrat 1.32 LIVRÉ par Firehouse (2.146.0, 27/10)** et INTÉGRÉ (0.117.0) : relevé réel en lecture seule
   (`/identifier` : Hades exact par steam_appid, Abadox probable 1 candidat, BCES00569 probable 3 candidats ;
   `/base/1501` : 32 images, résumé fr) ; identification.rs, tables `identifications`/`fiches_base` du profil,
