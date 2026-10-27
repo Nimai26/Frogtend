@@ -895,6 +895,61 @@ impl Noyau {
         Ok(l)
     }
 
+    /// Les fiches des imports reliés DÉJÀ JOUÉS sur ce PC (une partie retenue) : leurs fonds et logos de Taodbox sont
+    /// gardés à l'avance et protégés du plafond des images — jamais ceux de milliers d'imports jamais lancés.
+    pub(crate) fn fiches_reliees_jouees(&self, s: &Session) -> Resultat<Vec<i64>> {
+        let mut l = Vec::new();
+        for (local, fiche) in self.reliees(s)? {
+            if self.registre().jeu(local)?.is_some_and(|j| j.derniere_partie.is_some()) && !l.contains(&fiche) {
+                l.push(fiche);
+            }
+        }
+        Ok(l)
+    }
+
+    /// Hors ligne (lot 4d) : les fiches des imports reliés jamais affichées sont lues à l'avance, au plus `plafond` par
+    /// passage (les suivantes au passage d'après), gardées dans le cache du PROFIL (`verrou_vivant` : jamais pour une
+    /// session remplacée). Hors ligne, serveur en panne ou jeton refusé : arrêt ; une fiche cachée ou réunie : la
+    /// suivante. Un seul passage à la fois ; jamais une raison d'échouer. Rend le nombre de fiches gardées.
+    pub async fn prelire_fiches_reliees(&self, plafond: usize) -> Resultat<usize> {
+        static EN_COURS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if EN_COURS.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            return Ok(0);
+        }
+        let r = async {
+            let s = self.session().await?;
+            if s.source.est_simulee() {
+                return Ok(0);
+            }
+            let mut gardees = 0;
+            for (_, fiche) in self.reliees(&s)? {
+                if gardees >= plafond || s.est_perimee() {
+                    break;
+                }
+                if s.verrou().fiche(fiche)?.is_some() {
+                    continue;
+                }
+                match s.source.fiche(fiche).await {
+                    Ok(f) => {
+                        // Session remplacée entre-temps : le passage s'arrête (jamais gardé pour un autre jeton).
+                        let Ok(c) = s.verrou_vivant() else { break };
+                        c.garder_fiche(fiche, &f, &maintenant())?;
+                        gardees += 1;
+                    }
+                    Err(Erreur::Introuvable(_) | Erreur::Fusionne { .. }) => continue,
+                    Err(_) => break,
+                }
+            }
+            if gardees > 0 {
+                self.journaliser(&format!("hors ligne : {gardees} fiche(s) de jeux importés reliés gardée(s) à l'avance"));
+            }
+            Ok(gardees)
+        }
+        .await;
+        EN_COURS.store(false, std::sync::atomic::Ordering::SeqCst);
+        r
+    }
+
     /// La fiche que montre un jeu du PC pour CE profil (un jeu de Firehouse : la sienne ; un import relié : celle de
     /// Firehouse s'il la voit ; sinon `None`).
     pub(crate) fn fiche_de(&self, s: &Session, id: i64) -> Resultat<Option<i64>> {

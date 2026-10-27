@@ -591,6 +591,8 @@ export interface EtatMenuJeu {
   en_pause: boolean;
   /** Ouvert en Taodbox (télé) : le menu est à l'échelle ×2. */
   taodbox: boolean;
+  /** La fiche Firehouse du jeu pour ce profil (un import relié : celle de Firehouse), pour son fond. */
+  fiche: number | null;
 }
 
 /** Un réglage de manette de référence (livré avec Frogtend, ou repris sur ce PC). */
@@ -677,6 +679,8 @@ export const api = {
   preparerDocument: (id: number, doc: number) => appeler<DocumentJeu>('document_preparer', { id, doc }),
   /** Arrête le téléchargement d'un document (ce qui est reçu est gardé pour la reprise). */
   arreterDocument: (id: number, doc: number) => appeler<void>('document_arreter', { id, doc }),
+  /** Hors ligne : les fiches des jeux importés reliés lues à l'avance (150 au plus par passage). */
+  prelireFichesReliees: () => appeler<number>('fiches_reliees_prelire'),
   /** Contrat 1.33 : le pack MAME (dossier proposé ou choisi, annonce chiffrée, réception, arrêt). */
   packMameAnnonce: (dossier: string | null, avecChd: boolean) =>
     appeler<[string, import('$lib/import/packMame').AnnoncePack]>('pack_mame_annonce', { dossier, avecChd }),

@@ -3,6 +3,11 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Les jeux importés aussi hors ligne (0.130.0)
+- [ ] Un jeu importé relié à sa fiche, déjà lancé une fois : synchroniser, couper Internet, ouvrir sa fiche et Taodbox
+      → la fiche, le fond et le logo sont là.
+- [ ] Le menu en jeu de ce jeu montre son fond.
+
 ## Le livret qui avance (0.129.0)
 - [ ] Ouvrir le livret d'un jeu jamais ouvert : le bouton montre le pourcentage ; « ⏹ Arrêter » l'interrompt (message
       neutre) ; un nouveau clic reprend sans repartir de zéro.

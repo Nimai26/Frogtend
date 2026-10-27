@@ -188,7 +188,15 @@ export async function synchroniser(discrete = false) {
     await rechargerListe();
     // Fonds et logos de Taodbox gardés à l'avance pour le hors ligne (lot Médias M4), en arrière-plan : jamais une
     // raison d'échouer la synchronisation.
-    if (etat.profil.ludotheque.fondsTaodbox && !b.simule) void api.prechargerTaodbox().catch(() => {});
+    // Les fiches des jeux importés reliés, pour les voir hors ligne (par petits passages, en arrière-plan) ; puis les
+    // fonds et logos de Taodbox (les imports reliés déjà joués y sont).
+    if (!b.simule) {
+      void api
+        .prelireFichesReliees()
+        .catch(() => 0)
+        .then(() => (etat.profil.ludotheque.fondsTaodbox ? api.prechargerTaodbox() : 0))
+        .catch(() => {});
+    }
     if (!discrete) {
       const detail =
         b.mode === 'increment'

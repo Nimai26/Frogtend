@@ -81,6 +81,9 @@ pub struct EtatMenu {
     pub en_pause: bool,
     /// Ouvert en Taodbox (fenêtre principale en plein écran) : le menu est à l'échelle ×2. Rempli par la commande.
     pub taodbox: bool,
+    /// La fiche Firehouse que montre ce jeu pour le profil ouvert (un import relié : celle de Firehouse ; sinon
+    /// `None`) — pour son fond. Rempli par la commande.
+    pub fiche: Option<i64>,
 }
 
 pub fn nom_action(a: Action) -> &'static str {
@@ -113,6 +116,7 @@ pub fn action_de(nom: &str) -> Option<Action> {
 pub fn etat(p: &PartieEnCours) -> EtatMenu {
     let e = p.emulateur.as_deref().unwrap_or("");
     EtatMenu {
+        fiche: None,
         jeu: p.jeu,
         titre: p.titre.clone(),
         plateforme: p.plateforme.clone(),

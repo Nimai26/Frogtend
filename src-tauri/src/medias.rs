@@ -286,7 +286,9 @@ impl Noyau {
     /// ligne), jamais un document (un livret téléchargé avec l'accord de la personne), jamais un lien.
     pub async fn plafonner_images(&self, plafond: u64) -> Resultat<Menage> {
         let s = self.session().await?;
-        let jeux_du_pc: std::collections::HashSet<i64> = self.registre().ids()?.into_iter().collect();
+        let mut jeux_du_pc: std::collections::HashSet<i64> = self.registre().ids()?.into_iter().collect();
+        // Les fiches des imports reliés déjà joués : leurs fonds et logos de Taodbox restent (hors ligne).
+        jeux_du_pc.extend(self.fiches_reliees_jouees(&s)?);
         let consoles: std::collections::HashSet<String> =
             self.registre().tous()?.into_iter().map(|j| crate::noyau::cle_systeme(&j.plateforme)).collect();
         let mut fichiers = Vec::new();
@@ -346,7 +348,13 @@ impl Noyau {
         if s.source.est_simulee() {
             return Ok(0);
         }
-        let jeux: Vec<i64> = self.registre().tous()?.into_iter().filter(|j| j.etat == crate::jeux_pc::Etat::Telecharge).map(|j| j.id).collect();
+        let mut jeux: Vec<i64> = self.registre().tous()?.into_iter().filter(|j| j.etat == crate::jeux_pc::Etat::Telecharge && j.id > 0).map(|j| j.id).collect();
+        // Les imports reliés déjà joués : sous le numéro de LEUR FICHE (comme Taodbox les demande).
+        for f in self.fiches_reliees_jouees(&s)? {
+            if !jeux.contains(&f) {
+                jeux.push(f);
+            }
+        }
         let mut recus = 0;
         let mut hors_ligne = false;
         'jeux: for id in jeux {

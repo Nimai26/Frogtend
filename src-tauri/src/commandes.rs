@@ -1450,6 +1450,13 @@ pub async fn taodbox_precharger(noyau: State<'_, Noyau>) -> Resultat<usize> {
     noyau.precharger_taodbox(50).await
 }
 
+/// Hors ligne : les fiches des jeux importés reliés, lues à l'avance par petits passages (150 au plus) après la
+/// synchronisation. Rend le nombre de fiches gardées.
+#[tauri::command]
+pub async fn fiches_reliees_prelire(noyau: State<'_, Noyau>) -> Resultat<usize> {
+    noyau.prelire_fiches_reliees(150).await
+}
+
 /// Frogtend a-t-il été lancé en Taodbox (`--taodbox`, par exemple comme application de Sunshine) ?
 #[tauri::command]
 pub fn taodbox_lance() -> bool {
@@ -1738,14 +1745,18 @@ pub async fn jeu_anti_triche(noyau: State<'_, Noyau>, id: i64) -> Resultat<crate
 
 /// Ce que le menu en jeu montre (`null` hors partie).
 #[tauri::command]
-pub fn menu_jeu_etat(app: AppHandle, menu: State<'_, crate::menu_jeu::MenuJeu>) -> Option<crate::menu_jeu::EtatMenu> {
+pub async fn menu_jeu_etat(app: AppHandle, menu: State<'_, crate::menu_jeu::MenuJeu>, noyau: State<'_, Noyau>) -> Result<Option<crate::menu_jeu::EtatMenu>, ()> {
     let taodbox = app.get_webview_window("main").and_then(|m| m.is_fullscreen().ok()).unwrap_or(false);
-    menu.partie().map(|p| {
-        let e = crate::menu_jeu::etat(&p);
-        // Un jeu PC n'est « en pause » que s'il est VRAIMENT figé (pas seulement parce que l'option est cochée).
-        let en_pause = e.en_pause || ((p.figer || p.figer_emulateur) && crate::figer::est_fige());
-        crate::menu_jeu::EtatMenu { taodbox, en_pause, ..e }
-    })
+    let Some(p) = menu.partie() else { return Ok(None) };
+    let e = crate::menu_jeu::etat(&p);
+    // Un jeu PC n'est « en pause » que s'il est VRAIMENT figé (pas seulement parce que l'option est cochée).
+    let en_pause = e.en_pause || ((p.figer || p.figer_emulateur) && crate::figer::est_fige());
+    // La fiche du jeu pour ce profil (un import relié : celle de Firehouse), pour son fond.
+    let fiche = match noyau.session().await {
+        Ok(s) => noyau.fiche_de(&s, p.jeu).ok().flatten(),
+        Err(_) => None,
+    };
+    Ok(Some(crate::menu_jeu::EtatMenu { taodbox, en_pause, fiche, ..e }))
 }
 
 /// Reprendre : le menu se cache, le jeu reprend le premier plan (et sort seul de sa pause).

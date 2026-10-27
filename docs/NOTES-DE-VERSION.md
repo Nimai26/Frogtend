@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.130.0 — Les jeux importés aussi hors ligne
+
+- 📴 Un jeu de ton disque relié à une fiche de Firehouse montre sa fiche même hors ligne : Frogtend la garde à
+  l'avance, petit à petit après chaque synchronisation (150 fiches au plus à chaque fois, en arrière-plan).
+- 🛋 Taodbox hors ligne : le fond et le logo des jeux importés reliés que tu as déjà lancés sont gardés aussi (pas
+  ceux des milliers de jeux jamais lancés : la place du disque est gardée pour ce qui sert).
+- Le menu en jeu d'un jeu importé relié a maintenant son fond d'écran.
+
 ## 0.129.0 — Le livret qui avance
 
 - 📖 Le livret, la musique ou la vidéo d'un jeu : pendant leur téléchargement, le bouton montre où il en est

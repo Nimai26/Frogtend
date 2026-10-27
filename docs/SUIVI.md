@@ -21,6 +21,10 @@
   remplacé sans jamais rester vide ; cible revérifiée sous l'émulateur ; conflits relisibles (Options ▸ Sauvegarde).
   RESTE (noté) : la partie effacée reste dans la sauvegarde COURANTE (décision de Seb) ; l'abri `remplacees\` n'est
   jamais vidé (à la main) ; le titre d'un conflit est technique (« RPCS3/PS3 : savedata/… »), le nom du jeu serait mieux.
+  ✅ Mineur (12) FAIT en 0.130.0 (lot 4d hors ligne), relectures suivies : fiches des imports reliés lues à
+  l'avance (150 par synchro, besoin 36 = lecture par lot pour Firehouse) ; images Taodbox des imports reliés DÉJÀ
+  JOUÉS seulement (sinon 9 000 jeux MAME chasseraient tout le cache de 2 Go), protégées du plafond ; fond du menu en
+  jeu. RESTE (noté) : une fiche réunie (1.14) est redemandée jusqu'à ce que la synchro pose la réunion.
   ✅ Mineurs (5) et (6) FAITS en 0.129.0 (livret : avancement, arrêt, 32 pages en mémoire), relectures suivies.
   RESTE (noté) : un arrêt pendant le contrôle d'empreinte refait tout le fichier au clic suivant (416) ; deux
   clics en file : « Arrêter » ne coupe que le premier.

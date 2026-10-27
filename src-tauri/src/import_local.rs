@@ -1121,6 +1121,14 @@ mod tests {
         let vus = ids(n.lister(&ma_ludo(None)).await.unwrap());
         assert!(vus.contains(&110) && !vus.contains(&local), "la fiche, une seule ligne : {vus:?}");
         assert!(ids(n.lister(&ma_ludo(Some(true))).await.unwrap()).contains(&110), "« installé » sous sa fiche");
+        // Hors ligne (lot 4d) : ses images de Taodbox ne sont gardées à l'avance qu'une fois le jeu JOUÉ ; en mode
+        // simulé, rien n'est demandé à Firehouse.
+        let s = n.session().await.unwrap();
+        assert!(n.fiches_reliees_jouees(&s).unwrap().is_empty(), "jamais joué : rien gardé à l'avance");
+        n.registre().compter_partie(local, 60, "2026-10-27T20:00:00").unwrap();
+        assert_eq!(n.fiches_reliees_jouees(&s).unwrap(), [110]);
+        drop(s);
+        assert_eq!(n.prelire_fiches_reliees(150).await.unwrap(), 0);
         // Léa voit la fiche : elle voit le jeu sur le PC, peut y JOUER, pas le gérer.
         n.ouvrir(&lea, None, &simule).await.unwrap();
         n.synchroniser(|_, _| {}).await.unwrap();
@@ -1134,6 +1142,78 @@ mod tests {
         n.registre().retirer(local).unwrap();
         assert!(n.registre().correspondances().unwrap().is_empty());
         assert!(!ids(n.lister(&ma_ludo(None)).await.unwrap()).contains(&110));
+    }
+
+    /// Hors ligne (lot 4d) : les fiches des imports reliés lues à l'avance — une fiche déjà gardée n'est jamais
+    /// redemandée, une fiche cachée (404) fait passer à la suivante, un jeton refusé arrête tout, sans erreur.
+    #[tokio::test]
+    async fn les_fiches_des_imports_relies_sont_lues_a_l_avance_une_seule_fois() {
+        use crate::coffre::CoffreMemoire;
+        use crate::noyau::{Connexion, Noyau};
+        use httpmock::prelude::*;
+        let serveur = MockServer::start();
+        let fiche: serde_json::Value = serde_json::from_str(include_str!("../fixtures/simule/jeu-110.json")).unwrap();
+        let m20 = serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/20");
+            t.status(404).json_body(serde_json::json!({"ok": false, "erreur": "introuvable"}));
+        });
+        let m30 = serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/30");
+            t.status(200).json_body(fiche.clone());
+        });
+        let m10 = serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/10");
+            t.status(200).json_body(fiche.clone());
+        });
+        let m40 = serveur.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/40");
+            t.status(401).json_body(serde_json::json!({"ok": false, "erreur": "jeton"}));
+        });
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: serveur.base_url(), simule: false }).await.unwrap();
+        let resume = |i: i64| crate::ludotheque::JeuResume { id: i, titre: format!("Jeu {i}"), plateforme: "Arcade".into(), ..Default::default() };
+        n.session().await.unwrap().verrou().remplacer(&[], &[resume(10), resume(20), resume(30), resume(40)], "x").unwrap();
+        // La fiche 10 est déjà gardée (affichée une fois).
+        n.session().await.unwrap().verrou().garder_fiche(10, &fiche, "x").unwrap();
+        let roms = d.path().join("ROM");
+        let mut locaux = Vec::new();
+        for f in [10, 20, 30] {
+            let nom = format!("jeu{f}.zip");
+            ecrire(&roms, &nom, "rom");
+            n.importer_locaux(&[JeuAImporter {
+                titre: format!("Import {f}"),
+                plateforme: "Arcade".into(),
+                dossier: roms.to_string_lossy().into(),
+                fichier: Some(nom.clone()),
+                programme: None,
+                arguments: vec![],
+                annee: None,
+                editeur: None,
+                genres: vec![],
+            }])
+            .await
+            .unwrap();
+            let local = crate::ludotheque::id_boutique("local", &cle_de_jeu("Arcade", &format!("Import {f}")));
+            n.registre().noter_correspondance(local, &[(roms.join(&nom).to_string_lossy().into(), f, None, "exact".into(), None)], "auto", "x").unwrap();
+            locaux.push(local);
+        }
+        assert_eq!(n.prelire_fiches_reliees(150).await.unwrap(), 1, "seulement la 30 (la 10 déjà là, la 20 cachée)");
+        assert_eq!((m10.hits(), m20.hits(), m30.hits()), (0, 1, 1));
+        assert!(n.session().await.unwrap().verrou().fiche(30).unwrap().is_some());
+        // Au passage suivant, la 30 n'est plus demandée ; plafond à 0 : rien du tout.
+        n.prelire_fiches_reliees(150).await.unwrap();
+        assert_eq!(m30.hits(), 1);
+        assert_eq!(n.prelire_fiches_reliees(0).await.unwrap(), 0);
+        // Un jeton refusé (401) : le passage s'arrête, sans erreur.
+        let nom = "jeu40.zip";
+        ecrire(&roms, nom, "rom");
+        n.importer_locaux(&[JeuAImporter { titre: "Import 40".into(), plateforme: "Arcade".into(), dossier: roms.to_string_lossy().into(), fichier: Some(nom.into()), programme: None, arguments: vec![], annee: None, editeur: None, genres: vec![] }]).await.unwrap();
+        let l40 = crate::ludotheque::id_boutique("local", &cle_de_jeu("Arcade", "Import 40"));
+        n.registre().noter_correspondance(l40, &[(roms.join(nom).to_string_lossy().into(), 40, None, "exact".into(), None)], "auto", "x").unwrap();
+        assert!(n.prelire_fiches_reliees(150).await.is_ok());
+        assert!(m40.hits() <= 1);
     }
 
     #[tokio::test]

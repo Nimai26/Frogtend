@@ -54,7 +54,9 @@
     visible = true;
     menu = await api.menuJeuEtat().catch(() => null);
     if (menu && pauseRecue) menu.en_pause = true;
-    const adresse = menu && menu.jeu > 0 ? adresseFondDuJeu(menu.jeu) : null;
+    // Le fond du jeu : sa fiche (un import relié montre celle de Firehouse).
+    const fiche = menu ? (menu.fiche ?? (menu.jeu > 0 ? menu.jeu : null)) : null;
+    const adresse = fiche ? adresseFondDuJeu(fiche) : null;
     if (adresse !== fondJeu) fondCharge = false;
     fondJeu = adresse;
     // À la toute première ouverture, l'événement du cœur peut arriver avant la page : l'état dit aussi le mode.
