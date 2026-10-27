@@ -2676,6 +2676,12 @@ pub async fn pack_mame_lancer(app: AppHandle, noyau: State<'_, Noyau>, dossier: 
         .await
 }
 
+/// Met les jeux reçus du pack dans la ludothèque, un par fiche, reliés à leur fiche (étape B).
+#[tauri::command]
+pub async fn pack_mame_ludotheque(noyau: State<'_, Noyau>, dossier: String) -> Resultat<crate::pack_mame::BilanLudotheque> {
+    noyau.ludotheque_pack_mame(std::path::Path::new(&dossier)).await
+}
+
 /// Arrête le téléchargement du pack MAME après le fichier en cours (il reprendra où il en était).
 #[tauri::command]
 pub fn pack_mame_arreter() {

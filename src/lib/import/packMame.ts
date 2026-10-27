@@ -34,3 +34,15 @@ export function texteAnnoncePack(a: AnnoncePack, debit: number | null, duree: (s
   ];
   return lignes.filter(Boolean).join('\n');
 }
+
+/** MAME et son romset doivent être de la même version (un romset 0.289 dans un MAME 0.288 : des jeux qui ne démarrent
+ * pas). Rend l'avis à montrer, ou rien quand tout va. `mame` : le MAME installé (s'il y en a un). */
+export function avisVersionMame(mame: { version: string | null; par_frogtend: boolean } | undefined, attendue: string): string | null {
+  if (!attendue) return null;
+  if (!mame) return `MAME n’est pas encore installé : Frogtend l’installera (version ${attendue}) au premier jeu, après ton accord.`;
+  if (!mame.version) return `Ton MAME a été installé à la main (version inconnue) : le pack est fait pour MAME ${attendue}.`;
+  if (mame.version === attendue) return null;
+  return mame.par_frogtend
+    ? `Ton MAME est en version ${mame.version}, le pack en ${attendue} : mets MAME à jour (⚙ Options ▸ Émulateurs ▸ MAME), sinon certains jeux ne démarreront pas.`
+    : `Ton MAME est en version ${mame.version}, le pack en ${attendue} : certains jeux ne démarreront pas tant que MAME n’est pas en ${attendue}.`;
+}

@@ -529,6 +529,7 @@ pub fn run() {
             commandes::pack_mame_annonce,
             commandes::pack_mame_lancer,
             commandes::pack_mame_arreter,
+            commandes::pack_mame_ludotheque,
             commandes::identification_annonce,
             commandes::identification_a_choisir,
             commandes::identification_choisir,

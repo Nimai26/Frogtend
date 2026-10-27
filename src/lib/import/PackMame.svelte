@@ -9,10 +9,10 @@
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { parcourir } from '$lib/emulateurs/assistant.svelte';
   import { etat, reglerPc } from '$lib/etat.svelte';
-  import { debitConnu } from '$lib/ludotheque/telechargements.svelte';
-  import { placeSuffisante, texteAnnoncePack, type AnnoncePack } from './packMame';
+  import { debitConnu, rechargerJeuxDuPc } from '$lib/ludotheque/telechargements.svelte';
+  import { rechargerListe, rechargerPlateformes } from '$lib/ludotheque/ludotheque.svelte';
+  import { avisVersionMame, placeSuffisante, texteAnnoncePack, type AnnoncePack } from './packMame';
 
-  let { onimporter }: { onimporter: (dossier: string) => void } = $props();
 
   let dossier = $state('');
   let annonce = $state<AnnoncePack | null>(null);
@@ -20,17 +20,34 @@
   let avecChd = $state(false);
   let enCours = $state(false);
   let fini = $state(false);
+  let avisMame = $state<string | null>(null);
 
   async function charger() {
     try {
       [dossier, annonce] = await api.packMameAnnonce(etat.pc.dossierPackMame || null, avecChd);
       refus = '';
+      // MAME doit être à la version du romset (étape E) : dit avant la réception.
+      const mame = (await api.emulateursInstalles().catch(() => [])).find((e) => e.id === 'mame');
+      avisMame = avisVersionMame(mame, annonce.version);
     } catch (e) {
       annonce = null;
       refus = motifDuRefus(e);
     }
   }
   onMount(charger);
+
+  /** Étape B : un jeu par fiche de Firehouse, relié à elle (jaquette, résumé), ses clones en versions. */
+  async function versLaLudotheque() {
+    try {
+      const b = await api.packMameLudotheque(dossier);
+      await rechargerJeuxDuPc();
+      await rechargerListe();
+      await rechargerPlateformes();
+      toast(b.jeux || b.versions ? `✅ ${b.jeux} jeu(x) MAME ajouté(s) à ta ludothèque, avec leur fiche (${b.versions} version(s) de plus).` : `Les jeux du pack sont déjà dans ta ludothèque.`);
+    } catch (e) {
+      toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
+    }
+  }
 
   async function autreDossier() {
     const d = await parcourir({ dossier: true, titre: 'Dossier du pack MAME (vide ou nouveau)' });
@@ -96,6 +113,7 @@
     </div>
   {:else if annonce}
     <p class="annonce">{texteAnnoncePack(annonce, debitConnu(), duree)}</p>
+    {#if avisMame}<p class="avis">⚠ {avisMame}</p>{/if}
     <p class="muted">Dossier : {dossier} <button class="btn petit" onclick={autreDossier} disabled={enCours}>Changer</button></p>
     {#if annonce.chd_fichiers > 0 || avecChd}
       <label class="case">
@@ -109,7 +127,7 @@
       {/if}
       {#if enCours}<button class="btn" onclick={() => api.packMameArreter()}>⏸ Arrêter</button>{/if}
       {#if (annonce.deja_la > 0 || fini) && !enCours}
-        <button class="btn" onclick={() => onimporter(dossier)}>📥 Mettre ces jeux dans ma ludothèque</button>
+        <button class="btn" onclick={versLaLudotheque}>📥 Mettre ces jeux dans ma ludothèque</button>
       {/if}
     </div>
   {/if}
@@ -118,6 +136,9 @@
 <style>
   .annonce {
     white-space: pre-line;
+  }
+  .avis {
+    font-weight: 600;
   }
   .case {
     display: flex;

@@ -310,6 +310,113 @@ impl Noyau {
     }
 }
 
+/// Ce que la mise en ludothèque du pack a donné.
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+pub struct BilanLudotheque {
+    /// Jeux ajoutés (un par fiche, ses clones en versions).
+    pub jeux: usize,
+    pub versions: usize,
+    pub deja: usize,
+    /// Fiches que ce profil ne voit pas : leurs jeux ne sont pas montrés (seulement comptés).
+    pub sans_fiche: usize,
+}
+
+impl Noyau {
+    /// Étape B : met les jeux REÇUS du pack dans la ludothèque — un jeu importé par FICHE de Firehouse (ses clones en
+    /// versions, la machine d'origine par défaut), relié « à coup sûr » à sa fiche (c'est Firehouse qui a servi ces
+    /// fichiers). Rien n'est copié ni lu ; une fiche que ce profil ne voit pas n'est jamais montrée.
+    pub async fn ludotheque_pack_mame(&self, dossier: &Path) -> Resultat<BilanLudotheque> {
+        let romset = self.romset_mame().await?;
+        let reg = lire_registre(dossier);
+        let liste = self.liste_mame().await.ok().flatten().unwrap_or_default();
+        // media_id → [(nom du zip, machine, telechargement_id)] des zips reçus.
+        let mut par_fiche: BTreeMap<i64, Vec<(String, String, Option<i64>)>> = BTreeMap::new();
+        for f in romset["fichiers"].as_array().into_iter().flatten() {
+            let (Some(media), Some(nom)) = (f["media_id"].as_i64(), f["nom"].as_str()) else { continue };
+            if f["chd"] == true || !reg.recus.contains_key(nom) || crate::jeux_pc::nom_de_fichier_sur(nom).is_err() {
+                continue;
+            }
+            par_fiche.entry(media).or_default().push((nom.to_string(), f["machine"].as_str().unwrap_or("").to_string(), f["telechargement_id"].as_i64()));
+        }
+        let s = self.session().await?;
+        let mut b = BilanLudotheque::default();
+        let mut a_importer = Vec::new();
+        let mut fiches = Vec::new();
+        for (media, zips) in &par_fiche {
+            let Some(carte) = s.verrou().jeu(*media)? else {
+                b.sans_fiche += 1;
+                continue;
+            };
+            for (nom, _, _) in zips {
+                a_importer.push(crate::import_local::JeuAImporter {
+                    titre: carte.titre.clone(),
+                    plateforme: carte.plateforme.clone(),
+                    dossier: dossier.to_string_lossy().into(),
+                    fichier: Some(nom.clone()),
+                    programme: None,
+                    arguments: vec![],
+                    annee: carte.annee,
+                    editeur: None,
+                    genres: carte.genres.clone(),
+                });
+            }
+            fiches.push((*media, carte, zips.clone()));
+        }
+        drop(s);
+        // Les jeux déjà là AVANT ce passage (leur version par défaut est celle choisie par la personne : jamais changée).
+        let avant: std::collections::HashSet<i64> = self.registre().tous()?.into_iter().map(|j| j.id).collect();
+        let bi = self.importer_locaux(&a_importer).await?;
+        (b.jeux, b.versions, b.deja) = (bi.ajoutes, bi.versions, bi.deja);
+        // Chaque fichier reçu → le jeu importé qui le porte (créé à l'instant, ou importé avant à la main depuis le pack).
+        let mut par_chemin: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+        for j in self.registre().tous()?.into_iter().filter(crate::import_local::est_importe) {
+            if let Some(i) = &j.installation {
+                let mut chemins: Vec<String> = i.versions.iter().map(|v| v.chemin.clone()).collect();
+                chemins.extend(i.fichier_du_jeu.as_ref().map(|f| Path::new(&i.dossier).join(f).to_string_lossy().to_string()));
+                for c in chemins {
+                    par_chemin.insert(c.to_lowercase(), j.id);
+                }
+            }
+        }
+        // Par jeu importé : ses fichiers du pack et leur fiche. Relié seulement si TOUS viennent d'une même fiche (deux
+        // fiches au même titre ne sont jamais mélangées) et s'il n'est pas déjà relié.
+        let mut par_jeu: BTreeMap<i64, Vec<(String, i64, Option<i64>, String)>> = BTreeMap::new();
+        for (media, _, zips) in &fiches {
+            for (nom, machine, td) in zips {
+                let chemin = dossier.join(nom).to_string_lossy().to_string();
+                if let Some(local) = par_chemin.get(&chemin.to_lowercase()) {
+                    par_jeu.entry(*local).or_default().push((chemin, *media, *td, machine.clone()));
+                }
+            }
+        }
+        let quand = crate::noyau::maintenant();
+        let relies: std::collections::HashSet<i64> = self.registre().correspondances()?.into_iter().map(|(l, ..)| l).collect();
+        for (local, l) in par_jeu {
+            let media = l[0].1;
+            if l.iter().all(|x| x.1 == media) && !relies.contains(&local) {
+                let v: Vec<_> = l.iter().map(|(c, m, td, _)| (c.clone(), *m, *td, "exact".to_string(), Some("pack".to_string()))).collect();
+                self.registre().noter_correspondance(local, &v, "auto", &quand)?;
+            }
+            // La machine d'origine (sans « clone de ») par défaut — seulement pour un jeu CRÉÉ à ce passage.
+            if avant.contains(&local) {
+                continue;
+            }
+            let parent = l.iter().find(|(.., m)| liste.get(&m.to_lowercase()).is_some_and(|x| x.clone_de.is_none())).map(|(c, ..)| c.clone());
+            let Some(mut j) = self.registre().jeu(local)? else { continue };
+            if let (Some(p), Some(i)) = (parent, j.installation.as_mut()) {
+                let nom = Path::new(&p).file_name().map(|n| n.to_string_lossy().to_string());
+                if i.fichier_du_jeu != nom {
+                    i.fichier_du_jeu = nom;
+                    let i = i.clone();
+                    self.registre().changer_installation(local, Some(&i))?;
+                }
+            }
+        }
+        self.journaliser(&format!("pack MAME : {} jeu(x) mis en ludothèque, {} version(s), {} déjà là", b.jeux, b.versions, b.deja));
+        Ok(b)
+    }
+}
+
 /// Une réception du pack en cours sur ce PC (une seule à la fois).
 pub static EN_COURS: AtomicBool = AtomicBool::new(false);
 
@@ -474,6 +581,81 @@ mod tests {
         assert!(b.arret.is_some());
         assert!(pack.join(REGISTRE).is_file(), "le registre est écrit dès le début");
         assert!(verifier_dossier(&pack).is_ok(), "jamais refusé ensuite comme « contient déjà autre chose »");
+    }
+
+    #[tokio::test]
+    async fn les_jeux_du_pack_entrent_un_par_fiche_relies_a_leur_fiche() {
+        use httpmock::prelude::*;
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/mame/romset");
+            t.status(200).json_body(json!({"version": "0.289", "fichiers": [
+                {"media_id": 10, "telechargement_id": -10, "machine": "puckman", "nom": "puckman.zip", "taille": 1, "chd": false, "url": "/api/jeux/v1/fichier/10/-10/0"},
+                {"media_id": 10, "telechargement_id": -10, "machine": "pacman", "nom": "pacman.zip", "taille": 1, "chd": false, "url": "/api/jeux/v1/fichier/10/-10/1"},
+                {"media_id": 20, "telechargement_id": -20, "machine": "cache", "nom": "cache.zip", "taille": 1, "chd": false, "url": "/api/jeux/v1/fichier/20/-20/0"},
+                {"media_id": 30, "telechargement_id": -30, "machine": "galaga", "nom": "galaga.zip", "taille": 1, "chd": false, "url": "/api/jeux/v1/fichier/30/-30/0"}
+            ]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/mame/machines");
+            t.status(200).json_body(serde_json::from_str::<Value>(include_str!("../fixtures/simule/mame-machines-133.json")).unwrap());
+        });
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(crate::coffre::CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
+        n.ouvrir(&id, None, &crate::noyau::Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
+        // Ce profil voit la fiche 10 (Pac-Man), pas la 20.
+        n.session()
+            .await
+            .unwrap()
+            .verrou()
+            .remplacer(
+                &[],
+                &[
+                    crate::ludotheque::JeuResume { id: 10, titre: "Pac-Man".into(), plateforme: "Arcade".into(), ..Default::default() },
+                    crate::ludotheque::JeuResume { id: 30, titre: "Galaga".into(), plateforme: "Arcade".into(), ..Default::default() },
+                ],
+                "x",
+            )
+            .unwrap();
+        let pack = d.path().join("Pack");
+        std::fs::create_dir_all(&pack).unwrap();
+        for z in ["puckman.zip", "pacman.zip", "cache.zip", "galaga.zip"] {
+            std::fs::write(pack.join(z), b"z").unwrap();
+        }
+        ecrire_registre(&pack, &Registre { version: "0.289".into(), recus: [("puckman.zip", 1), ("pacman.zip", 1), ("cache.zip", 1), ("galaga.zip", 1)].map(|(k, v)| (k.to_string(), v)).into() }).unwrap();
+        // Galaga a été importé AVANT à la main (import MAME : titre de la machine) : il doit être relié à sa fiche.
+        n.importer_locaux(&[crate::import_local::JeuAImporter {
+            titre: "Galaga (Namco rev. B)".into(),
+            plateforme: "Arcade".into(),
+            dossier: pack.to_string_lossy().into(),
+            fichier: Some("galaga.zip".into()),
+            programme: None,
+            arguments: vec![],
+            annee: None,
+            editeur: None,
+            genres: vec![],
+        }])
+        .await
+        .unwrap();
+        let galaga = crate::ludotheque::id_boutique("local", &crate::import_local::cle_de_jeu("Arcade", "Galaga (Namco rev. B)"));
+        let b = n.ludotheque_pack_mame(&pack).await.unwrap();
+        assert_eq!((b.jeux, b.sans_fiche), (1, 1), "un jeu pour la fiche visible ; rien de la fiche cachée");
+        let local = crate::ludotheque::id_boutique("local", &crate::import_local::cle_de_jeu("Arcade", "Pac-Man"));
+        let j = n.registre().jeu(local).unwrap().unwrap();
+        let i = j.installation.unwrap();
+        assert_eq!(i.fichier_du_jeu.as_deref(), Some("puckman.zip"), "la machine d'origine par défaut");
+        assert_eq!(i.versions.len(), 2, "le clone en version");
+        assert!(i.versions.iter().all(|v| Path::new(&v.chemin).starts_with(&pack)), "dans le dossier du pack");
+        assert!(n.registre().correspondances().unwrap().iter().any(|(l, m, _)| *l == local && *m == 10), "relié à sa fiche");
+        assert!(n.registre().correspondances().unwrap().iter().any(|(l, m, _)| *l == galaga && *m == 30), "l'import d'avant relié aussi");
+        // La personne choisit le clone ; un 2e passage ne défait jamais son choix, ni ne met rien en double.
+        let mut i2 = n.registre().jeu(local).unwrap().unwrap().installation.unwrap();
+        i2.fichier_du_jeu = Some("pacman.zip".into());
+        n.registre().changer_installation(local, Some(&i2)).unwrap();
+        let b = n.ludotheque_pack_mame(&pack).await.unwrap();
+        assert_eq!(b.jeux, 0);
+        assert_eq!(n.registre().jeu(local).unwrap().unwrap().installation.unwrap().fichier_du_jeu.as_deref(), Some("pacman.zip"));
     }
 
     #[tokio::test]

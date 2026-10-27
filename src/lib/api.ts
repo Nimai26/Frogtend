@@ -665,6 +665,8 @@ export const api = {
   packMameLancer: (dossier: string, avecChd: boolean) =>
     appeler<{ recus: number; octets: number; laisses: [string, string][]; arret: string | null }>('pack_mame_lancer', { dossier, avecChd }),
   packMameArreter: () => appeler<void>('pack_mame_arreter'),
+  packMameLudotheque: (dossier: string) =>
+    appeler<{ jeux: number; versions: number; deja: number; sans_fiche: number }>('pack_mame_ludotheque', { dossier }),
   /** Contrat 1.32 : identifier les jeux importés sans fiche. `annonce` : [à envoyer, déjà cherchés, lots]. */
   identificationAnnonce: () => appeler<[number, number, number]>('identification_annonce'),
   identificationLancer: (tout = false) =>

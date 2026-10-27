@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.121.0 — Les jeux du pack MAME avec leur fiche
+
+- 🕹 « Mettre ces jeux dans ma ludothèque » (pack MAME) ajoute maintenant chaque jeu AVEC sa fiche de Firehouse
+  (jaquette, résumé, genres) : un jeu par fiche, ses variantes (clones) rangées comme des versions, la machine
+  d'origine par défaut.
+- Frogtend dit si ton MAME n'est pas à la version du pack (sinon certains jeux ne démarreraient pas).
+
 ## 0.120.0 — Tout MAME depuis Firehouse
 
 - 🕹 📥 Importer ▸ MAME Arcade Full Set ▸ « Tout MAME depuis Firehouse » : Frogtend propose de recevoir tout le

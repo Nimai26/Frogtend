@@ -369,7 +369,7 @@ Rien n’est déplacé ni renommé. Les retirer plus tard de ta ludothèque ne l
       <p class="muted">Il se lancera par DOSBox, avec C: sur son dossier d’installation, comme pendant l’installation.</p>
     {/if}
   {:else if sorte === 'mame'}
-    <PackMame onimporter={(d) => { dossier = d; }} />
+    <PackMame />
     <div class="ligne">
       <button class="btn" onclick={choisirDossier}>📂 Choisir le dossier des ROM MAME</button>
       <input class="large" bind:value={dossier} placeholder="E:\Games\MAME" aria-label="Dossier" />

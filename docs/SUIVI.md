@@ -821,6 +821,9 @@ d'abord :
   l'import MAME (la ludothèque passe par l'import MAME existant : B affinera, un jeu par fiche). Les CHD : case à
   cocher (étape C de base faite : une CHD partagée reçue une fois). RESTE : arrêter AU MILIEU d'un gros fichier (on
   s'arrête après lui) ; B (un jeu par fiche), D (mise à jour), E (version de MAME).
+  ✅ ÉTAPES B et E FAITES (0.121.0) : `ludotheque_pack_mame` (un jeu importé par fiche visible, clones en versions,
+  machine d'origine par défaut, relié « exact » à sa fiche ; fiche invisible = rien montré) ; avis si MAME n'est pas à
+  la version du romset. RESTE : D (mise à jour du pack, l'ancien à l'abri, rien d'effacé).
 - ✅ **Contrat 1.33 LIVRÉ par Firehouse (2.147.0, 27/10)** — relevé réel en lecture seule (`/mame/machines` 16 Mo en
   2,7 s, 50 368 machines dont 9 414 jouables ; `/mame/romset` 9 348 fichiers, 40,2 Go sans CHD / 445 Go avec, 280,2 Go
   dédoublonné). Lot 1.33a FAIT (0.118.0) : la liste de Firehouse trie l'import MAME (cache par profil + ETag, hors

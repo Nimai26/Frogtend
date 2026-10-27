@@ -3,6 +3,12 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Les jeux du pack MAME avec leur fiche (0.121.0)
+- [ ] Après avoir reçu (une partie) du pack : « Mettre ces jeux dans ma ludothèque » : les jeux apparaissent avec leur
+      jaquette ; Pac-Man et ses variantes ne font qu'UN jeu (les variantes dans « Versions »).
+- [ ] Jouer à un jeu du pack depuis sa fiche : il démarre.
+- [ ] L'écran du pack dit si ton MAME n'est pas en 0.289.
+
 ## Tout MAME depuis Firehouse (0.120.0)
 - [ ] 📥 Importer ▸ MAME Arcade Full Set : la section « Tout MAME depuis Firehouse » annonce le nombre de fichiers, les
       Go, la durée et la place libre, dans un dossier « Frogtend\MAME » proposé.
