@@ -49,6 +49,7 @@ pub mod eden;
 pub mod cemu;
 pub mod vita3k;
 pub mod identification;
+pub mod pack_mame;
 pub mod ereader;
 pub mod patchs_ps3;
 pub mod plein_ecran;
@@ -525,6 +526,9 @@ pub fn run() {
             commandes::rapprochement_dernier,
             commandes::rapprochement_rattacher,
             commandes::identification_lancer,
+            commandes::pack_mame_annonce,
+            commandes::pack_mame_lancer,
+            commandes::pack_mame_arreter,
             commandes::identification_annonce,
             commandes::identification_a_choisir,
             commandes::identification_choisir,

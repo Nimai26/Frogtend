@@ -3,6 +3,14 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Tout MAME depuis Firehouse (0.120.0)
+- [ ] 📥 Importer ▸ MAME Arcade Full Set : la section « Tout MAME depuis Firehouse » annonce le nombre de fichiers, les
+      Go, la durée et la place libre, dans un dossier « Frogtend\MAME » proposé.
+- [ ] « Changer » vers ton dossier de ROM actuel : Frogtend doit REFUSER (il contient déjà autre chose).
+- [ ] Recevoir, puis ⏸ Arrêter après quelques fichiers ; relancer : la suite reprend (les fichiers reçus ne sont pas
+      redemandés).
+- [ ] À la fin (ou après un arrêt), « Mettre ces jeux dans ma ludothèque », puis jouer à un jeu du pack.
+
 ## La liste MAME vient de Firehouse (0.118.0)
 - [ ] 📥 Importer ▸ MAME Arcade Full Set, ton dossier de ROM MAME, **🔍 Trier le dossier** (sans choisir de fichier
       MAME.xml) : le tri doit se faire, avec les jeux retenus et les écartés par motif.

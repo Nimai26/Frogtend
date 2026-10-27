@@ -2644,6 +2644,44 @@ pub async fn import_chercher_mame(noyau: State<'_, Noyau>, dossier: String, list
     .map_err(|_| Erreur::Disque("Le tri s'est arrêté brutalement.".into()))?
 }
 
+/// Le pack MAME (contrat 1.33) : le dossier proposé d'office (`<disque>\Frogtend\MAME`, le disque qui a le plus de
+/// place), et ce qu'il reste à y recevoir — annoncé AVANT tout accord.
+#[tauri::command]
+pub async fn pack_mame_annonce(noyau: State<'_, Noyau>, dossier: Option<String>, avec_chd: bool) -> Resultat<(String, crate::pack_mame::Annonce)> {
+    let dossier = match dossier.filter(|d| !d.trim().is_empty()) {
+        Some(d) => std::path::PathBuf::from(d),
+        None => crate::pack_mame::dossier_propose().ok_or_else(|| Erreur::Disque("Aucun disque n'a été trouvé pour le pack MAME : choisis un dossier.".into()))?,
+    };
+    crate::pack_mame::verifier_dossier(&dossier)?;
+    let romset = noyau.romset_mame().await?;
+    // (La réception en cours sur ce PC est dite dans l'annonce : l'écran ne propose pas d'en lancer une autre.)
+    Ok((dossier.to_string_lossy().into(), crate::pack_mame::annoncer(&romset, &dossier, avec_chd)))
+}
+
+#[derive(Clone, Serialize)]
+struct ProgresPack {
+    fait: usize,
+    total: usize,
+    octets: u64,
+}
+
+/// Télécharge le pack MAME (la personne a vu l'annonce et dit oui). Progression : événement « pack-mame ».
+#[tauri::command]
+pub async fn pack_mame_lancer(app: AppHandle, noyau: State<'_, Noyau>, dossier: String, avec_chd: bool) -> Resultat<crate::pack_mame::Bilan> {
+    let app2 = app.clone();
+    noyau
+        .telecharger_pack_mame(std::path::Path::new(&dossier), avec_chd, &move |fait, total, octets| {
+            let _ = app2.emit("pack-mame", ProgresPack { fait, total, octets });
+        })
+        .await
+}
+
+/// Arrête le téléchargement du pack MAME après le fichier en cours (il reprendra où il en était).
+#[tauri::command]
+pub fn pack_mame_arreter() {
+    crate::pack_mame::ARRET.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
 /// 📥 Importer ▸ Installer un jeu DOS : DOSBox s'ouvre avec la SOURCE (dossier, image de CD ou de disquette) et la
 /// DESTINATION (vide ou nouvelle : Frogtend n'écrit jamais par-dessus) ; la personne installe ; à la fermeture de
 /// DOSBox, Frogtend rend les programmes trouvés dans la destination (le plus probable d'abord).

@@ -814,6 +814,13 @@ d'abord :
   registre + zips (refus d'écraser un fichier étranger), B ludothèque (un jeu importé par fiche, versions = zips,
   rompath = le pack), C CHD (une seule fois chacune), D mise à jour (rien n'est effacé, l'ancien à l'abri), E version
   de MAME = celle du romset.
+  ✅ ÉTAPE A FAITE (0.120.0) : pack_mame.rs (annonce chiffrée, dossier neuf ou déjà un pack, une seule réception à la
+  fois, chaque fichier reçu À L'ÉCART puis posé sans jamais écraser (lien dur), fichier complet oublié du registre
+  inscrit sans être touché, place revérifiée, 409/404/410 notés et la suite continue, 401 arrête, coupure = reprise,
+  ancienne version dite « mise à jour à venir », registre compact écrit toutes les 20 s) ; PackMame.svelte dans
+  l'import MAME (la ludothèque passe par l'import MAME existant : B affinera, un jeu par fiche). Les CHD : case à
+  cocher (étape C de base faite : une CHD partagée reçue une fois). RESTE : arrêter AU MILIEU d'un gros fichier (on
+  s'arrête après lui) ; B (un jeu par fiche), D (mise à jour), E (version de MAME).
 - ✅ **Contrat 1.33 LIVRÉ par Firehouse (2.147.0, 27/10)** — relevé réel en lecture seule (`/mame/machines` 16 Mo en
   2,7 s, 50 368 machines dont 9 414 jouables ; `/mame/romset` 9 348 fichiers, 40,2 Go sans CHD / 445 Go avec, 280,2 Go
   dédoublonné). Lot 1.33a FAIT (0.118.0) : la liste de Firehouse trie l'import MAME (cache par profil + ETag, hors

@@ -101,7 +101,7 @@ export function nature(q: string): { libelle: string; ton: string } {
 const tailleVersion = (v: Version) => v.fichiers.reduce((s, f) => s + f.taille, 0);
 
 /** Débit moyen mesuré sur ce PC (pour estimer la durée d'un téléchargement), gardé dans le navigateur. */
-function debitConnu(): number | null {
+export function debitConnu(): number | null {
   try {
     const d = Number(localStorage.getItem('frogtend.debit'));
     return d > 0 ? d : null;

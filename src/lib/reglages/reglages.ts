@@ -36,6 +36,8 @@ export interface ReglagesPc {
   /** Au-delà de cette taille de parties NOUVELLES (en Mo), une sauvegarde demande avant d'envoyer, et une sauvegarde
    * automatique attend que la personne la lance elle-même. */
   seuilSauvegardeMo: number;
+  /** Le dossier du pack MAME (contrat 1.33) ; vide : proposé d'office. */
+  dossierPackMame: string;
   /** La liste MAME (le MAME.xml des métadonnées de LaunchBox) pour l'import « MAME Arcade Full Set » ; vide : demandée. */
   listeMame: string;
   /** Le menu universel en jeu. */
@@ -136,6 +138,7 @@ export const DEFAUTS_PC: ReglagesPc = {
   dossierAbris: '',
   plafondImagesGo: 2,
   seuilSauvegardeMo: 200,
+  dossierPackMame: '',
   listeMame: '',
   menuJeu: { touche: 'Pause', manette: 'Select + R1', delaiQuitter: 10 },
   firehouse: { adresse: ADRESSE_FIREHOUSE_PAR_DEFAUT, simule: false },

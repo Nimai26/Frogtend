@@ -7,6 +7,7 @@
   import { api, taille } from '$lib/api';
   import { choisir, confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
+  import PackMame from './PackMame.svelte';
   import { installerEmulateur, parcourir } from '$lib/emulateurs/assistant.svelte';
   import { PLATEFORMES_CONNUES } from '$lib/ludotheque/categories';
   import { ludo, rechargerListe, rechargerPlateformes } from '$lib/ludotheque/ludotheque.svelte';
@@ -368,6 +369,7 @@ Rien n’est déplacé ni renommé. Les retirer plus tard de ta ludothèque ne l
       <p class="muted">Il se lancera par DOSBox, avec C: sur son dossier d’installation, comme pendant l’installation.</p>
     {/if}
   {:else if sorte === 'mame'}
+    <PackMame onimporter={(d) => { dossier = d; }} />
     <div class="ligne">
       <button class="btn" onclick={choisirDossier}>📂 Choisir le dossier des ROM MAME</button>
       <input class="large" bind:value={dossier} placeholder="E:\Games\MAME" aria-label="Dossier" />

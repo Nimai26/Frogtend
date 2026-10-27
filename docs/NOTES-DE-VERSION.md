@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.120.0 — Tout MAME depuis Firehouse
+
+- 🕹 📥 Importer ▸ MAME Arcade Full Set ▸ « Tout MAME depuis Firehouse » : Frogtend propose de recevoir tout le
+  romset de Firehouse (MAME 0.289, environ 40 Go) dans un dossier à lui (proposé sur le disque qui a le plus de place,
+  modifiable). Il annonce d'abord combien de fichiers, combien de Go, combien de temps et la place libre, et ne
+  commence qu'après ton accord.
+- Tu peux arrêter quand tu veux (après le fichier en cours) : la suite reprend où elle en était. Les disques (CHD) de
+  quelques jeux se proposent à part. Rien n'est jamais effacé ni remplacé ; un dossier qui contient déjà autre chose est
+  refusé (jamais ton dossier de ROM).
+- À la fin, « Mettre ces jeux dans ma ludothèque » trie le dossier avec la liste MAME, comme un import.
+
 ## 0.119.0 — Manettes RetroArch servies par Firehouse
 
 - 🎮 Les profils de manettes de RetroArch viennent maintenant de Firehouse, dans une version stable (1.22.0) dont

@@ -305,7 +305,8 @@ fn fichiers_du_dossier(dossier: &Path, recursif: bool) -> Resultat<Vec<PathBuf>>
             let p = e.path();
             let Ok(t) = e.file_type() else { continue };
             if t.is_dir() {
-                if recursif {
+                // Jamais l'atelier du pack MAME (des fichiers en cours de réception, à l'écart).
+                if recursif && e.file_name() != ".frogtend-recu" {
                     a_voir.push(p);
                 }
             } else if t.is_file() {
