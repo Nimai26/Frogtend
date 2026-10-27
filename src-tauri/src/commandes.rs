@@ -3294,13 +3294,22 @@ pub struct RisqueTriche {
 /// Le risque d'après le dossier du jeu (`local`) et le bloc `en_ligne` de Firehouse (`null` = inconnu, jamais « sans »).
 fn risque_de(local: crate::figer::Verification, en_ligne: &Value, boutique: bool) -> RisqueTriche {
     let texte = |v: &Value| v.as_str().map(str::trim).filter(|t| !t.is_empty() && !t.eq_ignore_ascii_case("false")).map(String::from);
-    let mut r = RisqueTriche { anti_triche: texte(&en_ligne["anticheat"]), en_ligne: texte(&en_ligne["online"]), inconnu: false };
+    // Contrat 1.25 : `anticheat` (un nom) ET `anticheats` (la liste complète) — tous dits, sans doublon.
+    let mut noms: Vec<String> = texte(&en_ligne["anticheat"]).into_iter().collect();
+    for a in en_ligne["anticheats"].as_array().into_iter().flatten().filter_map(texte) {
+        if !noms.iter().any(|n| n.eq_ignore_ascii_case(&a)) {
+            noms.push(a);
+        }
+    }
+    // Firehouse SAIT quelque chose dès qu'il a répondu sur l'anti-triche, même « aucun » (`"false"`, liste vide).
+    let firehouse_sait = !noms.is_empty() || !en_ligne["anticheat"].is_null() || en_ligne["anticheats"].is_array();
+    let mut r = RisqueTriche { anti_triche: (!noms.is_empty()).then(|| noms.join(", ")), en_ligne: texte(&en_ligne["online"]), inconnu: false };
     match local {
         crate::figer::Verification::AntiTriche(a) => r.anti_triche = Some(a.to_string()),
         crate::figer::Verification::Inconnu => r.inconnu = true,
         crate::figer::Verification::Aucun => {}
     }
-    if boutique && en_ligne["anticheat"].is_null() && en_ligne["online"].is_null() {
+    if boutique && !firehouse_sait && en_ligne["online"].is_null() {
         r.inconnu = true;
     }
     r
@@ -5126,6 +5135,15 @@ mod tests {
         // Le disque a le dernier mot sur un anti-triche, et un dossier trop grand rend inconnu.
         assert_eq!(super::risque_de(Verification::AntiTriche("Easy Anti-Cheat"), &skyrim, false).anti_triche.as_deref(), Some("Easy Anti-Cheat"));
         assert!(super::risque_de(Verification::Inconnu, &skyrim, false).inconnu);
+        // Contrat 1.25 : la liste `anticheats` compte aussi (tous dits, sans doublon), même sans `anticheat`.
+        let deux = json!({"online": null, "anticheat": "BattlEye", "anticheats": ["BattlEye", "Easy Anti-Cheat"]});
+        assert_eq!(super::risque_de(Verification::Aucun, &deux, true).anti_triche.as_deref(), Some("BattlEye, Easy Anti-Cheat"));
+        let liste = json!({"online": null, "anticheat": null, "anticheats": ["Easy Anti-Cheat"]});
+        let r = super::risque_de(Verification::Aucun, &liste, true);
+        assert_eq!((r.anti_triche.as_deref(), r.inconnu), (Some("Easy Anti-Cheat"), false));
+        // « Aucun anti-triche » dit par Firehouse : il sait, le jeu n'est pas « inconnu ».
+        let r = super::risque_de(Verification::Aucun, &json!({"online": null, "anticheat": "false"}), true);
+        assert_eq!((r.anti_triche, r.inconnu), (None, false));
     }
 
     #[test]

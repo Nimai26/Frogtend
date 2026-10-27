@@ -174,6 +174,24 @@ fn deplacer(de: &Path, vers: &Path) -> Resultat<()> {
     Ok(())
 }
 
+/// Les archives de fichiers système déjà extraites dans cet émulateur (`.frogtend-bios` : « sha1<TAB>fichier|fichier »
+/// par ligne) : une archive dont tous les fichiers sont encore là n'est pas retéléchargée.
+fn archives_posees(dossier_emulateur: &Path) -> Vec<(String, Vec<String>)> {
+    std::fs::read_to_string(dossier_emulateur.join(".frogtend-bios"))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| l.split_once('\t').map(|(s, f)| (s.to_string(), f.split('|').filter(|x| !x.is_empty()).map(String::from).collect())))
+        .collect()
+}
+
+fn noter_archive(dossier_emulateur: &Path, sha1: &str, fichiers: &[String]) -> Resultat<()> {
+    let mut l = archives_posees(dossier_emulateur);
+    l.retain(|(s, _)| s != sha1);
+    l.push((sha1.to_string(), fichiers.to_vec()));
+    std::fs::write(dossier_emulateur.join(".frogtend-bios"), l.iter().map(|(s, f)| format!("{s}\t{}\n", f.join("|"))).collect::<String>())?;
+    Ok(())
+}
+
 /// Pose UN fichier servi (déjà trié) : téléchargé dans `<dossier de l'émulateur>\.telechargements`, SHA-1 vérifié,
 /// puis posé (un fichier) ou extrait sans rien remplacer (une archive). Rend `true` s'il a posé quelque chose.
 pub async fn poser_un(source: &Source, b: &BiosConseil, cible: &Path, dossier_emulateur: &Path) -> Resultat<bool> {
@@ -183,6 +201,18 @@ pub async fn poser_un(source: &Source, b: &BiosConseil, cible: &Path, dossier_em
     }
     if b.sorte == "fichier" && cible.exists() {
         return Ok(false); // déjà là : jamais remplacé
+    }
+    // Une archive déjà extraite ici, tous ses fichiers encore là : rien à retélécharger.
+    if b.sorte == "archive" {
+        if let Some((_, f)) = archives_posees(dossier_emulateur).into_iter().find(|(s, _)| *s == sha1) {
+            // Chaque chemin retenu, morceau par morceau, est un nom sûr (jamais « .. » ni un chemin absolu).
+            let sur = |r: &str| -> Option<std::path::PathBuf> {
+                r.split('/').map(|x| crate::jeux_pc::nom_de_fichier_sur(x).ok()).collect::<Option<Vec<_>>>().map(|l| l.iter().collect())
+            };
+            if !f.is_empty() && f.iter().all(|r| sur(r).is_some_and(|r| cible.join(r).exists())) {
+                return Ok(false);
+            }
+        }
     }
     let route = b
         .url
@@ -209,14 +239,17 @@ pub async fn poser_un(source: &Source, b: &BiosConseil, cible: &Path, dossier_em
         // Une archive : extraite à part, puis chaque fichier posé s'il n'existe pas déjà.
         crate::installation::decompresser(&paquet, crate::installation::Format::Zip, &a_part)?;
         let mut pose = false;
-        for rel in crate::installation::fichiers_de(&a_part)? {
-            let f = a_part.join(&rel);
-            let vers = cible.join(&rel);
+        let contenu = crate::installation::fichiers_de(&a_part)?;
+        for rel in &contenu {
+            let f = a_part.join(rel);
+            let vers = cible.join(rel);
             if !vers.exists() {
                 deplacer(&f, &vers)?;
                 pose = true;
             }
         }
+        // Retenu : la prochaine fois, rien n'est retéléchargé tant que tout est là.
+        let _ = noter_archive(dossier_emulateur, &sha1, &contenu.iter().map(|r| r.replace('\\', "/")).collect::<Vec<_>>());
         Ok(pose)
     })();
     // Le dossier d'extraction (nommé par l'empreinte vérifiée : 40 hexadécimaux) et le paquet, sur TOUS les chemins.
@@ -420,7 +453,7 @@ mod tests {
             w.method(GET).path(format!("/api/jeux/v1/bios/{sha}"));
             r.status(200).body(contenu.clone());
         });
-        serveur.mock(|w, r| {
+        let route_zip = serveur.mock(|w, r| {
             w.method(GET).path(format!("/api/jeux/v1/bios/{sha_zip}"));
             r.status(200).body(zip_octets.clone());
         });
@@ -454,6 +487,14 @@ mod tests {
         assert_eq!(std::fs::read(ra.join("system").join("Machines").join("MSX2").join("x.rom")).unwrap(), b"rom");
         assert_eq!(std::fs::read(ra.join("system").join("Databases").join("deja.xml")).unwrap(), b"le mien");
         assert!(!ra.join(".telechargements").exists());
+        // Une seconde fois, tout étant là : déjà posée, RIEN retéléchargé.
+        let msx = b(json!({"fichier": "blueMSX.zip", "type": "archive", "racine": "system_retroarch", "disponible": true, "sha1": sha_zip, "url": format!("/api/jeux/v1/bios/{sha_zip}?nom=blueMSX.zip")}));
+        assert_eq!(poser(&source, std::slice::from_ref(&msx), &ra, true).await.deja, ["blueMSX.zip"]);
+        route_zip.assert_hits(1);
+        // Un fichier de l'archive retiré : elle est reprise (et seul le manquant est reposé).
+        std::fs::remove_file(ra.join("system").join("Machines").join("MSX2").join("x.rom")).unwrap();
+        assert_eq!(poser(&source, &[msx], &ra, true).await.poses, ["blueMSX.zip"]);
+        route_zip.assert_hits(2);
     }
 
     #[test]

@@ -21,6 +21,10 @@
   remplacé sans jamais rester vide ; cible revérifiée sous l'émulateur ; conflits relisibles (Options ▸ Sauvegarde).
   RESTE (noté) : la partie effacée reste dans la sauvegarde COURANTE (décision de Seb) ; l'abri `remplacees\` n'est
   jamais vidé (à la main) ; le titre d'un conflit est technique (« RPCS3/PS3 : savedata/… »), le nom du jeu serait mieux.
+  ✅ Invisibles FAITS en 0.133.0 : `anticheats[]` lu (contrat 1.25) ; BIOS en archive plus retéléchargé (registre
+  `<émulateur>\.frogtend-bios`, empreinte de Firehouse ; un fichier manquant → reprise). Notés : un contenu corrigé
+  chez Firehouse sous les mêmes noms est téléchargé mais rien n'est remplacé (règle) ; les lignes d'anciennes
+  empreintes restent dans le registre.
   ⏳ Mineur (11) — options du menu en jeu hors RetroArch (✅ Seb 27/10 « enchaîne avec les émulateurs ») : plan de
   l'expert lancement (sources relues). FAIT en 0.132.0 : MAME (4 options par son script Lua, noms vérifiés dans
   mame0289 ref-core.rst) ; CORRIGÉ un défaut déjà en place : les raccourcis de la personne étaient effacés par ceux

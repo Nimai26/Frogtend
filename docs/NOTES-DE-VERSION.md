@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.133.0 — Finitions invisibles
+
+- 🛡 Un jeu protégé par plusieurs anti-triches les cite tous (avant Cheat Engine ou un mod) ; un jeu dont Firehouse
+  dit « aucun anti-triche » n'est plus traité comme « inconnu ».
+- 📀 Un fichier système livré en archive (par exemple pour le MSX) n'est plus retéléchargé à chaque fois : tant que
+  tous ses fichiers sont là, rien ne part sur Internet.
+
 ## 0.132.0 — Les options du menu en jeu pour MAME
 
 - 🕹 Menu en jeu de MAME : « Compteur de fluidité », « Avance rapide », « Capture d'écran » et « Couper le son »,

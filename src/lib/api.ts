@@ -318,7 +318,7 @@ export interface TrichesJeu {
   /** La page des mods du jeu (PCGamingWiki…). */
   page_mods?: string | null;
   /** Jeu en ligne et anti-triche d'après PCGamingWiki (relevé réel du 21/10, pas encore au contrat) : `null` = inconnu. */
-  en_ligne?: { online: string | null; anticheat: string | null; source?: string; lu_le?: string } | null;
+  en_ligne?: { online: string | null; anticheat: string | null; anticheats?: string[]; source?: string; lu_le?: string } | null;
 }
 
 /** La fiche d'un jeu de boutique (lot D : boutique Steam en français, sinon GOG Galaxy). */
