@@ -21,6 +21,11 @@
   remplacé sans jamais rester vide ; cible revérifiée sous l'émulateur ; conflits relisibles (Options ▸ Sauvegarde).
   RESTE (noté) : la partie effacée reste dans la sauvegarde COURANTE (décision de Seb) ; l'abri `remplacees\` n'est
   jamais vidé (à la main) ; le titre d'un conflit est technique (« RPCS3/PS3 : savedata/… »), le nom du jeu serait mieux.
+  ✅ Mineur (14) FAIT en 0.131.0 : la visionneuse crédite la source d'une image de jeu qui n'est pas de LaunchBox
+  (« Image : IGDB.com », auteur, licence et page quand ils seront servis). Relevé réel (27/10, 25 fiches) : toutes
+  `launchbox`, sans licence ; besoin 37 (crédits des images de jeux + règles IGDB/libretro) noté pour Firehouse
+  (FIREHOUSE 2 injoignable ce soir : à transmettre par Seb). RESTE (noté, avant que Firehouse serve autre chose que
+  LaunchBox) : le fond et le logo de Taodbox ne savent pas leur source → bouton « ⓘ Crédits » comme pour les consoles.
   ✅ Mineur (12) FAIT en 0.130.0 (lot 4d hors ligne), relectures suivies : fiches des imports reliés lues à
   l'avance (150 par synchro, besoin 36 = lecture par lot pour Firehouse) ; images Taodbox des imports reliés DÉJÀ
   JOUÉS seulement (sinon 9 000 jeux MAME chasseraient tout le cache de 2 Go), protégées du plafond ; fond du menu en

@@ -1082,6 +1082,51 @@ mod tests {
     /// RÉEL, lecture seule (contrat 1.32) : `/identifier` sur trois exemples et `/base/{launchbox_id}`, copiés tels quels
     /// dans `FROGTEND_SORTIE`. Rien d'autre n'est écrit (aucun rattachement).
     /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_SORTIE=<dossier> cargo test essai_identifier -- --ignored --nocapture`
+    /// RÉEL, lecture seule : les champs des images de JEUX (`/jeu/{id}/medias`) — y a-t-il une source, une licence, un
+    /// auteur à créditer ? Quelques fiches de quelques plateformes, rien d'écrit. Ne montre que des noms de champs et
+    /// des comptes.
+    /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_credits_medias -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_credits_medias() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        let mut cles: std::collections::BTreeMap<String, usize> = Default::default();
+        let mut sources: std::collections::BTreeMap<String, usize> = Default::default();
+        let mut exemples: Vec<String> = Vec::new();
+        for p in ["Commodore 64", "Amstrad CPC", "Nintendo Game Boy Advance", "Sega Genesis", "Windows"] {
+            let cat: serde_json::Value = match c.obtenir_json(&format!("/catalogue?plateforme={}&page=1", super::encoder(p))).await {
+                Ok(v) => v,
+                Err(e) => {
+                    println!("{p} : {e:?}");
+                    continue;
+                }
+            };
+            // Les fiches SANS LaunchBox (contrat 1.29 : leurs images viennent de libretro ou d'IGDB).
+            let ids: Vec<i64> = cat["jeux"].as_array().into_iter().flatten().filter(|j| j["launchbox_id"].is_null()).filter_map(|j| j["id"].as_i64()).take(5).collect();
+            println!("{p} : {} jeux lus", ids.len());
+            for id in ids {
+                let Ok(m) = c.obtenir_json::<serde_json::Value>(&format!("/jeu/{id}/medias")).await else { continue };
+                for x in m["medias"].as_array().into_iter().flatten() {
+                    for k in x.as_object().into_iter().flatten().map(|(k, _)| k.clone()) {
+                        *cles.entry(k).or_default() += 1;
+                    }
+                    *sources.entry(x["source"].as_str().unwrap_or("(aucune)").to_string()).or_default() += 1;
+                    if exemples.len() < 4 && (x.get("licence").is_some() || x["source"].as_str().is_some_and(|s| s != "launchbox")) {
+                        exemples.push(format!("{id} : source={} licence={} auteur={} url_source={}", x["source"], x["licence"], x["auteur"], x["url_source"]));
+                    }
+                }
+            }
+        }
+        println!("champs : {cles:?}");
+        println!("sources : {sources:?}");
+        for e in exemples {
+            println!("{e}");
+        }
+    }
+
     #[tokio::test]
     #[ignore]
     async fn essai_identifier() {

@@ -1,5 +1,10 @@
 # Notes de version de Frogtend
 
+## 0.131.0 — Le crédit des images
+
+- 🖼 Dans la visionneuse des images d'un jeu, une image qui ne vient pas de LaunchBox dit d'où elle vient
+  (« Image : IGDB.com », « Image : libretro-thumbnails »), avec son auteur et sa licence quand Firehouse les donne.
+
 ## 0.130.0 — Les jeux importés aussi hors ligne
 
 - 📴 Un jeu de ton disque relié à une fiche de Firehouse montre sa fiche même hors ligne : Frogtend la garde à

@@ -6,7 +6,7 @@
   import { adresseMedia } from '$lib/api';
   import { retenirFocus } from '$lib/dialogues/focus';
   import { fenetreOuverte, prendreLaMain, selectionner, taodbox } from '$lib/taodbox/manette.svelte';
-  import { grosPixels, largeurUtile, libelleMedia, type MediaJeu } from './galerie';
+  import { grosPixels, largeurUtile, creditMedia, libelleMedia, type MediaJeu } from './galerie';
 
   let {
     jeu,
@@ -85,7 +85,12 @@
 <section class="visionneuse" class:sous-la-barre={sousLaBarre} aria-label={`Images : ${titre}`} use:retenirFocus>
   <header>
     <strong>🖼 {titre}</strong>
-    {#if courant}<span class="legende" aria-live="polite">{libelleMedia(courant)} · {index + 1}/{medias.length}</span>{/if}
+    {#if courant}
+      {@const credit = creditMedia(courant)}
+      <span class="legende" aria-live="polite">{libelleMedia(courant)} · {index + 1}/{medias.length}</span>
+      <!-- Le crédit (licence de l'image) : à part, jamais relu à chaque image par le lecteur d'écran. -->
+      {#if credit}<span class="credit">{credit}{#if courant.url_source} — {courant.url_source}{/if}</span>{/if}
+    {/if}
   </header>
   <div class="scene">
     {#if echec}
@@ -138,6 +143,16 @@
   .aide {
     color: var(--encre-voile-dim);
     margin-left: auto;
+  }
+  header {
+    flex-wrap: wrap;
+  }
+  .credit {
+    color: var(--encre-voile-dim);
+    font-size: calc(12 * var(--u));
+    flex-basis: 100%;
+    text-align: right;
+    overflow-wrap: anywhere;
   }
   footer {
     justify-content: center;

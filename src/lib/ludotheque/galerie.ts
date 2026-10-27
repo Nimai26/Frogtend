@@ -8,6 +8,24 @@ export interface MediaJeu {
   region?: string | null;
   largeur?: number | null;
   hauteur?: number | null;
+  /** D'où vient l'image (`launchbox`, `libretro`, `igdb`…), et ses crédits s'ils sont donnés. */
+  source?: string | null;
+  licence?: string | null;
+  auteur?: string | null;
+  /** La page d'origine, montrée en texte quand une licence la demande. */
+  url_source?: string | null;
+}
+
+/** Les noms à créditer, par source (les images de LaunchBox ne demandent rien). */
+const SOURCES: Record<string, string> = { libretro: 'libretro-thumbnails', igdb: 'IGDB.com' };
+
+/** Le crédit d'une image (« Image : IGDB.com », « Image : Dupont · CC BY-SA 4.0 ») ; vide pour LaunchBox ou sans
+ * source. */
+export function creditMedia(m: MediaJeu): string {
+  const s = (m.source ?? '').trim();
+  if (!s || s.toLowerCase() === 'launchbox') return '';
+  const qui = [m.auteur?.trim(), SOURCES[s.toLowerCase()] ?? s].filter(Boolean).join(', ');
+  return `Image : ${qui}${m.licence?.trim() ? ` · ${m.licence.trim()}` : ''}`;
 }
 
 /** L'ordre des types (relu avec l'expert interface, 18/10) : la jaquette principale est déjà en haut de la fiche. */

@@ -30,6 +30,16 @@ pub struct Media {
     pub hauteur: Option<u32>,
     #[serde(default)]
     pub empreinte: String,
+    /// D'où vient l'image (`launchbox`, `libretro`, `igdb`… contrat 1.29) et, si Firehouse les donne, sa licence, son
+    /// auteur et sa page : CRÉDITÉS dans la visionneuse quand ce n'est pas LaunchBox.
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub licence: Option<String>,
+    #[serde(default)]
+    pub auteur: Option<String>,
+    #[serde(default)]
+    pub url_source: Option<String>,
 }
 
 /// L'empreinte, telle qu'elle entre dans un nom de fichier (alphanumérique, 32 caractères au plus).

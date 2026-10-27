@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { grosPixels, largeurUtile, libelleMedia, ordonner, type MediaJeu } from './galerie';
+import { creditMedia, grosPixels, largeurUtile, libelleMedia, ordonner, type MediaJeu } from './galerie';
 
 const m = (o: Partial<MediaJeu>): MediaJeu => ({ id: 1, type: 'capture', principal: false, ...o });
 
@@ -28,5 +28,16 @@ describe('la galerie d’un jeu', () => {
     expect(grosPixels(m({ largeur: 256 }), 1000)).toBe(true);
     expect(grosPixels(m({ largeur: 800 }), 1000)).toBe(false);
     expect(grosPixels(m({ largeur: 1920 }), 1000)).toBe(false);
+  });
+});
+
+describe('le crédit d’une image de jeu', () => {
+  it('cite la source sauf LaunchBox, avec l’auteur et la licence quand ils sont donnés', () => {
+    const m = { id: 1, type: 'capture', principal: false };
+    expect(creditMedia({ ...m, source: 'launchbox' })).toBe('');
+    expect(creditMedia(m)).toBe('');
+    expect(creditMedia({ ...m, source: 'igdb' })).toBe('Image : IGDB.com');
+    expect(creditMedia({ ...m, source: 'libretro' })).toBe('Image : libretro-thumbnails');
+    expect(creditMedia({ ...m, source: 'wikimedia', auteur: 'Dupont', licence: 'CC BY-SA 4.0' })).toBe('Image : Dupont, wikimedia · CC BY-SA 4.0');
   });
 });
