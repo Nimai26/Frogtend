@@ -596,6 +596,8 @@ export interface EtatMenuJeu {
   taodbox: boolean;
   /** La fiche Firehouse du jeu pour ce profil (un import relié : celle de Firehouse), pour son fond. */
   fiche: number | null;
+  /** L'emplacement de sauvegarde rapide choisi (RetroArch, MAME) ; `null` : celui de l'émulateur. */
+  emplacement: number | null;
 }
 
 /** Un réglage de manette de référence (livré avec Frogtend, ou repris sur ce PC). */
@@ -761,6 +763,10 @@ export const api = {
   menuJeuEtat: () => appeler<EtatMenuJeu | null>('menu_jeu_etat'),
   menuJeuReprendre: () => appeler<void>('menu_jeu_reprendre'),
   menuJeuAction: (action: string) => appeler<void>('menu_jeu_action', { action }),
+  /** Change l'emplacement de sauvegarde rapide choisi (−1 ou +1) ; rend le nouveau. */
+  menuJeuEmplacement: (sens: number) => appeler<number | null>('menu_jeu_emplacement', { sens }),
+  /** Les sauvegardes rapides du jeu en cours : [emplacement, date en secondes ou null si vide]. */
+  menuJeuEmplacements: () => appeler<[number, number | null][]>('menu_jeu_emplacements'),
   menuJeuQuitter: () => appeler<number>('menu_jeu_quitter'),
   jouer: (
     id: number,

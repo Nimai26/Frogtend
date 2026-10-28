@@ -1,5 +1,21 @@
 # Notes de version de Frogtend
 
+## 0.139.0 — Les sauvegardes rapides
+
+- 💾 Menu en jeu (RetroArch et MAME) : choisis l'**emplacement** de ta sauvegarde rapide (1 à 10) — sélectionne la
+  ligne « ◀ Emplacement N ▶ » puis gauche / droite ; chaque emplacement dit « vide » ou « sauvé le … ». Avant de
+  remplacer une sauvegarde, Frogtend te le demande, et l'ancienne est gardée à côté. « Charger » est grisé pour un
+  emplacement vide.
+- 🛡 RetroArch : avant chaque sauvegarde, TOUTES les sauvegardes du jeu sont mises à l'abri, puis Frogtend vérifie
+  laquelle a vraiment changé (si RetroArch avait changé d'emplacement de son côté, il le dit, rien n'est perdu). En
+  mode « hardcore » des succès, les sauvegardes rapides ne sont pas proposées (RetroArch les refuse).
+- 🎮 Sans ouvrir le menu : **Affichage (⧉) + LT** tenus une demi-seconde sauvent, **Affichage + RT** tenus une
+  seconde rechargent, dans l'emplacement choisi (RetroArch l'affiche à l'écran). Attention : le jeu voit aussi ces
+  boutons pendant ce temps ; si un de tes jeux s'en sert, coupe ces raccourcis dans ⚙ Options ▸ Émulateurs.
+- Dolphin dont les raccourcis sont réglés sur une manette : le menu ne propose plus de boutons qui ne marcheraient pas.
+- DuckStation, PCSX2, Dolphin : la sauvegarde rapide reste celle de l'émulateur (choisir l'emplacement viendra après
+  un essai, leurs raccourcis par emplacement étant à vérifier).
+
 ## 0.138.0 — Les corrections de la séance du 28/10
 
 - ▶ Une ROM ou une image disque est prête à jouer dès son arrivée : plus de « 📦 Installer » inutile (rien n'est

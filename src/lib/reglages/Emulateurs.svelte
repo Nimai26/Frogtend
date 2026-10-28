@@ -227,6 +227,21 @@
         <option value="Select + Start">Select + Start, tenus 1 s</option>
       </select>
     </dd>
+    <dt>Sauvegarde rapide à la manette</dt>
+    <dd>
+      <select
+        value={etat.pc.menuJeu.raccourcisEtats === false ? 'non' : 'oui'}
+        onchange={(e) => reglerPc('menuJeu.raccourcisEtats', e.currentTarget.value === 'oui')}
+      >
+        <option value="oui">Affichage (⧉) + LT = sauver, Affichage + RT = charger (tenus)</option>
+        <option value="non">pas de raccourci (seulement par le menu)</option>
+      </select>
+      <p class="muted">
+        Pendant une partie, sans ouvrir le menu : le bouton Affichage (⧉) et la gâchette gauche tenus une demi-seconde sauvent,
+        avec la gâchette droite tenus une seconde rechargent — dans l’emplacement choisi au menu en jeu (l’ancienne sauvegarde est
+        gardée à côté). Si un de tes jeux utilise déjà ces boutons ensemble, coupe-les ici. Prend effet à la prochaine partie.
+      </p>
+    </dd>
     <dt>Après « Quitter le jeu »</dt>
     <dd>
       <select

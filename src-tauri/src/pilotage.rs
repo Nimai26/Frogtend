@@ -233,6 +233,36 @@ pub const ETAT_MAME: &str = "frogtend.sta";
 pub const ETAT_MAME_NOUVEAU: &str = "frogtend-nouveau.sta";
 pub const ETAT_MAME_PRECEDENT: &str = "frogtend-precedent.sta";
 
+/// Dolphin : ses raccourcis sont-ils au CLAVIER (où arrivent les touches F13… de Frogtend) ? Un appareil réglé par la
+/// personne sur une manette est gardé (jamais défait) : le menu ne propose alors pas d'actions qui ne marcheraient
+/// pas (relecture de l'expert, 28/10 : les boutons ne faisaient rien, sans le dire).
+pub fn dolphin_raccourcis_au_clavier(utilisateur: &Path) -> bool {
+    let texte = std::fs::read_to_string(utilisateur.join("Config").join("Hotkeys.ini")).unwrap_or_default();
+    match crate::manettes::lire_ini(&texte, "Hotkeys", "Device").into_iter().next() {
+        Some(d) if !d.trim().is_empty() => d.to_lowercase().contains("keyboard"),
+        _ => true,
+    }
+}
+
+/// La sauvegarde rapide de Frogtend dans un EMPLACEMENT (0 : `frogtend.sta`, celle d'avant les emplacements, rien de
+/// perdu ; puis `frogtend-<n>.sta`).
+pub fn nom_etat_mame(n: u8) -> String {
+    if n == 0 {
+        ETAT_MAME.to_string()
+    } else {
+        format!("frogtend-{n}.sta")
+    }
+}
+
+/// Sa copie « précédente » (gardée à chaque nouvelle sauvegarde de cet emplacement).
+pub fn nom_etat_mame_precedent(n: u8) -> String {
+    if n == 0 {
+        ETAT_MAME_PRECEDENT.to_string()
+    } else {
+        format!("frogtend-{n}-precedent.sta")
+    }
+}
+
 /// Une commande pour le script de MAME : écrite à côté puis renommée (le script ne lit jamais une ligne à moitié
 /// écrite), numérotée (exécutée une seule fois).
 pub fn commande_mame(dossier_mame: &Path, verbe: &str, chemin: Option<&Path>) -> Resultat<()> {
@@ -268,7 +298,7 @@ pub fn commande_mame(dossier_mame: &Path, verbe: &str, chemin: Option<&Path>) ->
 /// Après une commande « save » : attend que MAME ait écrit la nouvelle sauvegarde en entier (présente, non vide, de
 /// taille stable), puis la met à la place de l'ancienne (gardée en « précédente »). Rien d'écrit dans le délai : la
 /// bonne sauvegarde n'est pas touchée.
-pub fn garder_etat_mame(dossier: &Path, delai: std::time::Duration) -> Resultat<()> {
+pub fn garder_etat_mame(dossier: &Path, delai: std::time::Duration, emplacement: u8) -> Resultat<()> {
     let nouveau = dossier.join(ETAT_MAME_NOUVEAU);
     let debut = std::time::Instant::now();
     let mut taille = 0u64;
@@ -284,8 +314,8 @@ pub fn garder_etat_mame(dossier: &Path, delai: std::time::Duration) -> Resultat<
         }
         std::thread::sleep(std::time::Duration::from_millis(250));
     }
-    let actuel = dossier.join(ETAT_MAME);
-    let precedent = dossier.join(ETAT_MAME_PRECEDENT);
+    let actuel = dossier.join(nom_etat_mame(emplacement));
+    let precedent = dossier.join(nom_etat_mame_precedent(emplacement));
     let avait = actuel.is_file();
     if avait {
         std::fs::rename(&actuel, &precedent)?;
@@ -343,7 +373,7 @@ pub fn lignes_retroarch() -> String {
         // profil → un numéro qu'aucune manette XInput n'a (0 à 10) ; plus aucun bouton n'ouvre son menu (F1 au clavier
         // le peut). Permanent (RetroArch recopie ces lignes, `config_save_on_exit`) : ✅ Seb 28/10 « Oui coupe.
         // RetroArch n'a pas vocation à être utilisé hors de Frogtend ». NON vérifié en vrai : à essayer avec Seb.
-        "quit_press_twice = \"false\"\ninput_menu_toggle_btn = \"99\"\n"
+        "quit_press_twice = \"false\"\ninput_menu_toggle_btn = \"99\"\nstate_slot = \"0\"\n"
     )
 }
 
@@ -558,7 +588,7 @@ mod tests {
         // Sauver deux fois : la 2e prend la place, la 1re devient « précédente ».
         for i in 1..=2 {
             super::commande_mame(&d, "save", Some(&etats.join(super::ETAT_MAME_NOUVEAU))).unwrap();
-            let r = super::garder_etat_mame(&etats, std::time::Duration::from_secs(5));
+            let r = super::garder_etat_mame(&etats, std::time::Duration::from_secs(5), 0);
             println!("SAUVER {i} : {r:?} ; fichier {:?} octets ; MAME vivant {}", std::fs::metadata(etats.join(super::ETAT_MAME)).map(|m| m.len()).ok(), vivant(&mut p));
             std::thread::sleep(std::time::Duration::from_secs(2));
         }
@@ -571,7 +601,7 @@ mod tests {
         println!("RECOMMENCER : commande lue {} ; MAME vivant {}", !d.join(super::COMMANDE_MAME).exists(), vivant(&mut p));
         // Après une remise à zéro, le script tourne encore (une 2e sauvegarde marche).
         super::commande_mame(&d, "save", Some(&etats.join(super::ETAT_MAME_NOUVEAU))).unwrap();
-        println!("SAUVER APRÈS RECOMMENCER : {:?}", super::garder_etat_mame(&etats, std::time::Duration::from_secs(5)));
+        println!("SAUVER APRÈS RECOMMENCER : {:?}", super::garder_etat_mame(&etats, std::time::Duration::from_secs(5), 0));
         let _ = p.kill();
         let _ = p.wait();
     }
@@ -607,7 +637,7 @@ mod tests {
         // Sauver : la commande d'abord, puis le menu se ferme (comme `action_mame`).
         super::commande_mame(&d, "save", Some(&etats.join(super::ETAT_MAME_NOUVEAU))).unwrap();
         super::menu_mame(&d, false);
-        println!("SAUVER : {:?}", super::garder_etat_mame(&etats, std::time::Duration::from_secs(5)));
+        println!("SAUVER : {:?}", super::garder_etat_mame(&etats, std::time::Duration::from_secs(5), 0));
         std::thread::sleep(std::time::Duration::from_secs(3));
         let fin = lire();
         println!("APRÈS : {fin:?}");
@@ -731,19 +761,36 @@ mod tests {
         let etats = d.path();
         std::fs::write(etats.join(super::ETAT_MAME), b"ancienne").unwrap();
         // Rien d'écrit par MAME dans le délai : la bonne reste.
-        assert!(super::garder_etat_mame(etats, std::time::Duration::from_millis(300)).is_err());
+        assert!(super::garder_etat_mame(etats, std::time::Duration::from_millis(300), 0).is_err());
         assert_eq!(std::fs::read(etats.join(super::ETAT_MAME)).unwrap(), b"ancienne");
         // Un fichier vide (écriture ratée) : pareil, et il est retiré.
         std::fs::write(etats.join(super::ETAT_MAME_NOUVEAU), b"").unwrap();
-        assert!(super::garder_etat_mame(etats, std::time::Duration::from_millis(300)).is_err());
+        assert!(super::garder_etat_mame(etats, std::time::Duration::from_millis(300), 0).is_err());
         assert!(!etats.join(super::ETAT_MAME_NOUVEAU).exists());
         assert_eq!(std::fs::read(etats.join(super::ETAT_MAME)).unwrap(), b"ancienne");
         // Écrite en entier : elle prend la place, l'ancienne devient « précédente ».
         std::fs::write(etats.join(super::ETAT_MAME_NOUVEAU), b"nouvelle").unwrap();
-        super::garder_etat_mame(etats, std::time::Duration::from_secs(3)).unwrap();
+        super::garder_etat_mame(etats, std::time::Duration::from_secs(3), 0).unwrap();
         assert_eq!(std::fs::read(etats.join(super::ETAT_MAME)).unwrap(), b"nouvelle");
         assert_eq!(std::fs::read(etats.join(super::ETAT_MAME_PRECEDENT)).unwrap(), b"ancienne");
         assert!(!etats.join(super::ETAT_MAME_NOUVEAU).exists());
+        // Un autre emplacement : son propre fichier, l'emplacement 0 n'est pas touché.
+        assert_eq!(super::nom_etat_mame(0), super::ETAT_MAME);
+        std::fs::write(etats.join(super::ETAT_MAME_NOUVEAU), b"emplacement 4").unwrap();
+        super::garder_etat_mame(etats, std::time::Duration::from_secs(3), 4).unwrap();
+        assert_eq!(std::fs::read(etats.join("frogtend-4.sta")).unwrap(), b"emplacement 4");
+        assert_eq!(std::fs::read(etats.join(super::ETAT_MAME)).unwrap(), b"nouvelle");
+    }
+
+    #[test]
+    fn dolphin_aux_raccourcis_sur_une_manette_est_reconnu() {
+        let d = tempfile::tempdir().unwrap();
+        assert!(super::dolphin_raccourcis_au_clavier(d.path()), "pas de fichier : les raccourcis d'origine, au clavier");
+        std::fs::create_dir_all(d.path().join("Config")).unwrap();
+        std::fs::write(d.path().join("Config").join("Hotkeys.ini"), "[Hotkeys]\r\nDevice = DInput/0/Keyboard Mouse\r\n").unwrap();
+        assert!(super::dolphin_raccourcis_au_clavier(d.path()));
+        std::fs::write(d.path().join("Config").join("Hotkeys.ini"), "[Hotkeys]\r\nDevice = XInput/0/Gamepad\r\n").unwrap();
+        assert!(!super::dolphin_raccourcis_au_clavier(d.path()));
     }
 
     use super::*;

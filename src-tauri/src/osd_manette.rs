@@ -52,7 +52,16 @@ pub enum Evenement {
     Ouvrir,
     /// Une commande pour le menu ouvert.
     Commande(&'static str),
+    /// Un raccourci de sauvegarde rapide, menu fermé (✅ Seb 28/10) : `sauver` (Vue + LT tenus 0,5 s) ou `charger`
+    /// (Vue + RT tenus 1 s), dans l'emplacement choisi.
+    Raccourci(&'static str),
 }
+
+/// Le maintien des raccourcis de sauvegarde rapide (charger plus long : on y perd la partie en cours).
+pub const MAINTIEN_SAUVER: Duration = Duration::from_millis(500);
+pub const MAINTIEN_CHARGER: Duration = Duration::from_millis(1000);
+/// Une gâchette « enfoncée » : au-delà de la moitié.
+const GACHETTE: u8 = 128;
 
 /// La combinaison d'ouverture d'après le réglage (`pc.json` ▸ `menuJeu.manette`) ; Select + R1 par défaut.
 pub fn combinaison(nom: &str) -> u16 {
@@ -100,11 +109,35 @@ pub struct Osd {
     etait_ouvert: bool,
     /// A ou B enfoncés menu ouvert : ils agiront au relâchement.
     armes: u16,
+    /// Les raccourcis de sauvegarde rapide (réglage, actifs d'office) ; tenus depuis ; déjà déclenchés (à relâcher).
+    raccourcis: bool,
+    sauver_depuis: Option<Instant>,
+    charger_depuis: Option<Instant>,
+    raccourci_fait: bool,
 }
 
 impl Osd {
     pub fn nouveau(combinaison: u16) -> Self {
-        Osd { combinaison, tenue_depuis: None, declenchee: false, avant: 0, dir: None, prochaine: None, etait_ouvert: false, armes: 0 }
+        Osd {
+            combinaison,
+            tenue_depuis: None,
+            declenchee: false,
+            avant: 0,
+            dir: None,
+            prochaine: None,
+            etait_ouvert: false,
+            armes: 0,
+            raccourcis: false,
+            sauver_depuis: None,
+            charger_depuis: None,
+            raccourci_fait: false,
+        }
+    }
+
+    /// Avec les raccourcis de sauvegarde rapide (Vue + LT / Vue + RT tenus), menu fermé.
+    pub fn avec_raccourcis(mut self, oui: bool) -> Self {
+        self.raccourcis = oui;
+        self
     }
 
     /// Un tour : l'état des manettes, l'heure, et si le menu est ouvert. Rend ce qu'il faut faire.
@@ -125,6 +158,30 @@ impl Osd {
                 if t.duration_since(depuis) >= MAINTIEN {
                     self.declenchee = true;
                     l.push(Evenement::Ouvrir);
+                }
+            }
+            // Vue + une SEULE gâchette, tenues (jamais pendant la combinaison du menu) : sauver ou charger, une fois.
+            let vue = b & SELECT != 0 && !tenue && self.raccourcis;
+            let (lt, rt) = (e.gt >= GACHETTE, e.dt >= GACHETTE);
+            let sauver = vue && lt && !rt;
+            let charger = vue && rt && !lt;
+            if !sauver {
+                self.sauver_depuis = None;
+            }
+            if !charger {
+                self.charger_depuis = None;
+            }
+            if !sauver && !charger {
+                self.raccourci_fait = false;
+            } else if !self.raccourci_fait {
+                let (depuis, maintien, quoi) = if sauver {
+                    (*self.sauver_depuis.get_or_insert(t), MAINTIEN_SAUVER, "sauver")
+                } else {
+                    (*self.charger_depuis.get_or_insert(t), MAINTIEN_CHARGER, "charger")
+                };
+                if t.duration_since(depuis) >= maintien {
+                    self.raccourci_fait = true;
+                    l.push(Evenement::Raccourci(quoi));
                 }
             }
             self.avant = b;
@@ -286,6 +343,35 @@ mod tests {
         assert!(o.pas(e(R1), t0 + Duration::from_millis(900), true).is_empty(), "tenu : une seule fois");
         o.pas(e(0), t0 + Duration::from_millis(950), true);
         assert_eq!(o.pas(e(L1), t0 + Duration::from_millis(1000), true), [Evenement::Commande("precedent")]);
+    }
+
+    #[test]
+    fn vue_et_une_gachette_tenues_sauvent_ou_chargent_une_seule_fois() {
+        let g = |boutons: u16, gt: u8, dt: u8| EtatManette { boutons, gt, dt, ..Default::default() };
+        let mut o = Osd::nouveau(combinaison("Select + R1")).avec_raccourcis(true);
+        let t0 = Instant::now();
+        assert!(o.pas(g(SELECT, 255, 0), t0, false).is_empty(), "pas encore 0,5 s");
+        assert_eq!(o.pas(g(SELECT, 255, 0), t0 + Duration::from_millis(520), false), [Evenement::Raccourci("sauver")]);
+        assert!(o.pas(g(SELECT, 255, 0), t0 + Duration::from_millis(1500), false).is_empty(), "tenus : une seule fois");
+        o.pas(g(0, 0, 0), t0 + Duration::from_millis(1600), false);
+        // Charger : 1 s.
+        assert!(o.pas(g(SELECT, 0, 200), t0 + Duration::from_millis(1700), false).is_empty());
+        assert!(o.pas(g(SELECT, 0, 200), t0 + Duration::from_millis(2300), false).is_empty(), "0,6 s : pas encore");
+        assert_eq!(o.pas(g(SELECT, 0, 200), t0 + Duration::from_millis(2710), false), [Evenement::Raccourci("charger")]);
+        o.pas(g(0, 0, 0), t0 + Duration::from_millis(2800), false);
+        // Les deux gâchettes, une gâchette à peine enfoncée, ou sans le réglage : rien.
+        o.pas(g(SELECT, 255, 255), t0 + Duration::from_millis(2900), false);
+        assert!(o.pas(g(SELECT, 255, 255), t0 + Duration::from_millis(4000), false).is_empty());
+        o.pas(g(0, 0, 0), t0 + Duration::from_millis(4100), false);
+        o.pas(g(SELECT, 60, 0), t0 + Duration::from_millis(4200), false);
+        assert!(o.pas(g(SELECT, 60, 0), t0 + Duration::from_millis(5000), false).is_empty());
+        let mut sans = Osd::nouveau(combinaison("Select + R1"));
+        sans.pas(g(SELECT, 255, 0), t0, false);
+        assert!(sans.pas(g(SELECT, 255, 0), t0 + Duration::from_secs(2), false).is_empty(), "réglage coupé");
+        // Menu ouvert : jamais.
+        let mut m = Osd::nouveau(combinaison("Select + R1")).avec_raccourcis(true);
+        m.pas(g(SELECT, 255, 0), t0, true);
+        assert!(!m.pas(g(SELECT, 255, 0), t0 + Duration::from_secs(2), true).iter().any(|e| matches!(e, Evenement::Raccourci(_))));
     }
 
     #[test]

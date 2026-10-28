@@ -1456,7 +1456,53 @@ pub async fn jeu_jouer(
     // « Disque suivant » seulement pour une liste de disques (une cartouche n'en a qu'un).
     let plusieurs_disques = par_emulateur
         && noyau.fichier_pour_l_emulateur(id, version.as_deref()).await.ok().flatten().is_some_and(|f| crate::menu_jeu::liste_de_disques(&f));
+    // RetroArch : où il range les sauvegardes rapides du profil, et le nom du jeu lancé (pour les emplacements).
+    let (etats, nom_rom) = if id_emulateur.as_deref() == Some("retroarch") {
+        let profil = profil_ouvert(&noyau).await.ok().map(|p| p.nom);
+        let etats = dossier_emulateur
+            .as_deref()
+            .zip(profil)
+            .map(|(d, nom)| crate::emulateurs_profils::dossier_du_profil(std::path::Path::new(d), &nom).join("states").to_string_lossy().to_string());
+        let nom_rom = noyau
+            .fichier_pour_l_emulateur(id, version.as_deref())
+            .await
+            .ok()
+            .flatten()
+            .and_then(|f| f.file_stem().map(|s| s.to_string_lossy().to_string()));
+        (etats, nom_rom)
+    } else {
+        (None, None)
+    };
+    // Dolphin : ses raccourcis réglés sur une manette (gardés) ne reçoivent pas les touches de Frogtend.
+    let raccourcis_clavier = if id_emulateur.as_deref() == Some("dolphin") {
+        match (dossier_emulateur.as_deref(), profil_ouvert(&noyau).await.ok()) {
+            (Some(d), Some(p)) => crate::pilotage::dolphin_raccourcis_au_clavier(&crate::emulateurs_profils::dossier_du_profil(std::path::Path::new(d), &p.nom).join("User")),
+            _ => true,
+        }
+    } else {
+        true
+    };
+    // RetroArch en mode « hardcore » des succès : pas de sauvegarde rapide (il les refuserait sans le dire).
+    let etats_interdits = if id_emulateur.as_deref() == Some("retroarch") {
+        match (dossier_emulateur.as_deref(), profil_ouvert(&noyau).await.ok()) {
+            (Some(d), Some(p)) => {
+                let d = std::path::Path::new(d);
+                let principal = std::fs::read_to_string(d.join("retroarch.cfg")).unwrap_or_default();
+                let du_profil = std::fs::read_to_string(crate::emulateurs_profils::dossier_du_profil(d, &p.nom).join("frogtend.cfg")).unwrap_or_default();
+                crate::menu_jeu::retroarch_hardcore(&principal, &du_profil)
+            }
+            _ => false,
+        }
+    } else {
+        false
+    };
     let numero = app.state::<crate::menu_jeu::MenuJeu>().commencer(crate::menu_jeu::PartieEnCours {
+        etats_interdits,
+        raccourcis_clavier,
+        emplacement: 0,
+        emplacement_ra: 0,
+        etats,
+        nom_rom,
         plusieurs_disques,
         jeu: id,
         titre,
@@ -1583,6 +1629,11 @@ fn armer_touche_menu(app: &AppHandle, actif: bool) {
 }
 
 /// La combinaison de la manette qui ouvre le menu en jeu (`pc.json` ▸ `menuJeu.manette`, Select + R1 par défaut).
+/// Les raccourcis de sauvegarde rapide à la manette (`pc.json` ▸ `menuJeu.raccourcisEtats`, actifs d'office).
+fn raccourcis_etats(app: &AppHandle) -> bool {
+    app.store("pc.json").ok().and_then(|s| s.get("reglages")).and_then(|r| r["menuJeu"]["raccourcisEtats"].as_bool()).unwrap_or(true)
+}
+
 fn combinaison_menu(app: &AppHandle) -> u16 {
     let nom = app
         .store("pc.json")
@@ -1598,7 +1649,7 @@ fn combinaison_menu(app: &AppHandle) -> u16 {
 fn suivre_manette_menu(app: &AppHandle, numero: u64) {
     let app = app.clone();
     let combo = combinaison_menu(&app);
-    let mut osd = crate::osd_manette::Osd::nouveau(combo);
+    let mut osd = crate::osd_manette::Osd::nouveau(combo).avec_raccourcis(raccourcis_etats(&app));
     let mut lecteur = crate::osd_manette::Lecteur::default();
     // Manette → clavier (jeu PC, réglage du jeu) : le même fil traduit les boutons en touches.
     let partie = app.state::<crate::menu_jeu::MenuJeu>().partie();
@@ -1678,6 +1729,11 @@ fn suivre_manette_menu(app: &AppHandle, numero: u64) {
                     }
                     crate::osd_manette::Evenement::Commande(c) => {
                         let _ = app.emit_to(FENETRE_MENU, "menu-manette", c);
+                    }
+                    // Vue + LT / Vue + RT : sauver ou charger dans l'emplacement choisi, sans ouvrir le menu.
+                    crate::osd_manette::Evenement::Raccourci(quoi) => {
+                        let a = app.clone();
+                        tauri::async_runtime::spawn(async move { raccourci_etat(&a, quoi).await });
                     }
                 }
             }
@@ -1868,18 +1924,194 @@ pub async fn menu_jeu_action(app: AppHandle, noyau: State<'_, Noyau>, action: St
         .ok_or_else(|| Erreur::Introuvable("Aucune partie en cours.".into()))?;
     let e = p.emulateur.clone().ok_or_else(|| Erreur::Refus("Ce jeu ne se pilote pas depuis le menu.".into()))?;
     if e == "mame" {
-        return action_mame(&app, &noyau, p.dossier_emulateur.as_deref(), a).await;
+        return action_mame(&app, &noyau, p.dossier_emulateur.as_deref(), a, p.emplacement).await;
     }
     cacher_menu(&app);
+    if e == "retroarch" && matches!(a, crate::pilotage::Action::SauverEtat | crate::pilotage::Action::ChargerEtat) {
+        // Le menu est déjà caché : une erreur est dite À L'ÉCRAN du jeu (sinon personne ne la verrait).
+        let r = etat_retroarch(&app, p, a).await;
+        if let Err(err) = &r {
+            let _ = crate::menu_jeu::commande_retroarch(&format!("SHOW_MSG Frogtend : {err}"));
+        }
+        return r;
+    }
     tauri::async_runtime::spawn_blocking(move || crate::menu_jeu::agir(&e, &crate::lancement::processus_de_la_partie(p.pid), a))
         .await
         .map_err(|_| Erreur::Disque("L'action s'est arrêtée brutalement.".into()))?
 }
 
+/// RetroArch : sauver ou charger dans l'emplacement CHOISI (✅ Seb 28/10). Charger : `LOAD_STATE_SLOT <n>` (vérifié dans
+/// le programme 1.22.2). Sauver : RetroArch ne sait sauver que dans SON emplacement courant (que la personne a pu
+/// changer : F6/F7, son menu…) — Frogtend l'amène au bon (`STATE_SLOT_PLUS/MINUS`), mais d'abord met À L'ABRI TOUTES
+/// les sauvegardes de ce jeu (une copie ratée : rien n'est envoyé), puis regarde laquelle a VRAIMENT changé : la bonne
+/// (sa copie devient `.frogtend-precedent`), une autre (dit franchement, son ancien contenu gardé à côté), aucune (dit,
+/// rien d'écrasé). Une seule sauvegarde ou un seul chargement à la fois (menu et raccourci manette).
+async fn etat_retroarch(app: &AppHandle, p: crate::menu_jeu::PartieEnCours, a: crate::pilotage::Action) -> Resultat<()> {
+    use crate::pilotage::Action;
+    let menu = app.state::<crate::menu_jeu::MenuJeu>();
+    let _seule = menu.prendre_etat().ok_or_else(|| Erreur::Refus("Une sauvegarde rapide est déjà en cours.".into()))?;
+    let n = p.emplacement;
+    let pids = crate::lancement::processus_de_la_partie(p.pid);
+    let etats = p.etats.clone().map(std::path::PathBuf::from);
+    let nom = p.nom_rom.clone();
+    let app2 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || -> Resultat<()> {
+        let tous = || etats.as_deref().zip(nom.as_deref()).map(|(d, r)| crate::menu_jeu::etats_du_jeu(d, r)).unwrap_or_default();
+        let de = |f: &std::path::Path| nom.as_deref().and_then(|r| crate::menu_jeu::emplacement_du_fichier(f, r));
+        // RetroArch doit avoir la main (sinon, en pause hors du premier plan, il pourrait ignorer les commandes).
+        if !crate::menu_jeu::reprendre(&pids) {
+            return Err(Erreur::Refus("Le jeu n'a pas pu reprendre la main : rien n'a été fait.".into()));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        if a == Action::ChargerEtat {
+            if etats.is_some() && nom.is_some() && !tous().iter().any(|(f, _)| de(f) == Some(n)) {
+                return Err(Erreur::Refus(format!("Aucune sauvegarde dans l'emplacement {} : sauve d'abord.", n + 1)));
+            }
+            return crate::menu_jeu::commande_retroarch(&format!("LOAD_STATE_SLOT {n}"));
+        }
+        // 1. Toutes les sauvegardes de ce jeu à l'abri (à côté, `.frogtend-abri`) : une seule copie ratée, rien n'est
+        //    envoyé (jamais une partie écrasée sans copie).
+        let avant = tous();
+        let abri = |f: &std::path::Path| std::path::PathBuf::from(format!("{}.frogtend-abri", f.to_string_lossy()));
+        for (f, _) in &avant {
+            if let Err(e) = std::fs::copy(f, abri(f)) {
+                for (g, _) in &avant {
+                    let _ = std::fs::remove_file(abri(g));
+                }
+                return Err(Erreur::Refus(format!("Ta sauvegarde n'a pas pu être mise à l'abri ({e}) : rien n'a été sauvé.")));
+            }
+        }
+        // 2. Amener RetroArch à l'emplacement voulu (noté à chaque pas : jamais de décalage caché).
+        let menu = app2.state::<crate::menu_jeu::MenuJeu>();
+        // (Relu sous le verrou : jamais la valeur d'une action qui vient de finir.)
+        let mut ra = menu.partie().map(|x| x.emplacement_ra).unwrap_or(p.emplacement_ra);
+        while ra != n {
+            let (commande, suivant) = if n > ra { ("STATE_SLOT_PLUS", ra + 1) } else { ("STATE_SLOT_MINUS", ra - 1) };
+            crate::menu_jeu::commande_retroarch(commande)?;
+            ra = suivant;
+            menu.noter_emplacement_ra(ra);
+            std::thread::sleep(std::time::Duration::from_millis(60));
+        }
+        crate::menu_jeu::commande_retroarch("SAVE_STATE")?;
+        // 3. Quelle sauvegarde a vraiment changé (au plus 4 s) ?
+        let mut change: Option<std::path::PathBuf> = None;
+        if etats.is_some() && nom.is_some() {
+            for _ in 0..40 {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                change = tous().into_iter().find(|(f, em)| avant.iter().all(|(g, e2)| g != f || e2 != em)).map(|(f, _)| f);
+                if change.is_some() {
+                    // Le temps que RetroArch finisse d'écrire.
+                    std::thread::sleep(std::time::Duration::from_millis(300));
+                    break;
+                }
+            }
+        } else {
+            for (g, _) in &avant {
+                let _ = std::fs::remove_file(abri(g));
+            }
+            return Ok(());
+        }
+        // Les copies : celle du fichier changé devient sa « précédente » ; les autres partent (rien n'a bougé). Rien vu
+        // changer dans le délai : TOUTES restent (RetroArch pourrait encore écrire juste après ; la sauvegarde suivante
+        // les remplace).
+        for (g, _) in avant.iter().filter(|_| change.is_some()) {
+            if change.as_deref() == Some(g.as_path()) {
+                let _ = std::fs::rename(abri(g), format!("{}.frogtend-precedent", g.to_string_lossy()));
+            } else {
+                let _ = std::fs::remove_file(abri(g));
+            }
+        }
+        match change {
+            None => Err(Erreur::Refus(format!(
+                "RetroArch n'a pas confirmé la sauvegarde dans l'emplacement {} (le mode « hardcore » des succès l'interdit, par exemple). Tes sauvegardes de ce jeu sont gardées à l'abri, à côté.",
+                n + 1
+            ))),
+            Some(f) => match de(&f) {
+                Some(k) if k == n => Ok(()),
+                Some(k) => {
+                    menu.noter_emplacement_ra(k);
+                    Err(Erreur::Refus(format!(
+                        "RetroArch a sauvé dans l'emplacement {} au lieu du {} (il avait changé d'emplacement de son côté) ; l'ancien contenu de l'emplacement {} est gardé à côté. Frogtend s'est recalé : réessaie.",
+                        k + 1,
+                        n + 1,
+                        k + 1
+                    )))
+                }
+                None => Err(Erreur::Refus("RetroArch a sauvé sa sauvegarde automatique au lieu de l'emplacement choisi ; l'ancienne est gardée à côté.".into())),
+            },
+        }
+    })
+    .await
+    .map_err(|_| Erreur::Disque("L'action s'est arrêtée brutalement.".into()))?
+}
+
+/// Un raccourci de sauvegarde rapide (menu fermé) : la même action que le menu, puis un message À L'ÉCRAN du jeu
+/// quand l'émulateur sait en montrer un (RetroArch : `SHOW_MSG`) ; un échec est noté au journal.
+async fn raccourci_etat(app: &AppHandle, quoi: &'static str) {
+    let noyau = app.state::<Noyau>();
+    let Some(p) = app.state::<crate::menu_jeu::MenuJeu>().partie() else { return };
+    let Some(e) = p.emulateur.clone() else { return };
+    let a = if quoi == "sauver" { crate::pilotage::Action::SauverEtat } else { crate::pilotage::Action::ChargerEtat };
+    // Seulement si le menu propose cette action pour ce jeu (jamais une touche qui n'arriverait pas).
+    if !crate::menu_jeu::etat(&p).actions.contains(&quoi) {
+        return;
+    }
+    let n = p.emplacement;
+    let est_retroarch = e == "retroarch";
+    let r = if e == "mame" {
+        action_mame(app, &noyau, p.dossier_emulateur.as_deref(), a, n).await
+    } else if e == "retroarch" {
+        etat_retroarch(app, p, a).await
+    } else {
+        let pids = crate::lancement::processus_de_la_partie(p.pid);
+        tauri::async_runtime::spawn_blocking(move || crate::menu_jeu::agir(&e, &pids, a))
+            .await
+            .unwrap_or_else(|_| Err(Erreur::Disque("L'action s'est arrêtée brutalement.".into())))
+    };
+    // Charger : « demandé » (RetroArch ne confirme pas un chargement).
+    let message = match (&r, quoi) {
+        (Ok(()), "sauver") => format!("Sauvegarde rapide : emplacement {}", n + 1),
+        (Ok(()), _) => format!("Chargement demandé : emplacement {}", n + 1),
+        (Err(err), _) => format!("Frogtend : {err}"),
+    };
+    if let Err(err) = &r {
+        noyau.journaliser(&format!("raccourci {quoi} (emplacement {}) : {err:?}", n + 1));
+    }
+    if est_retroarch {
+        let _ = crate::menu_jeu::commande_retroarch(&format!("SHOW_MSG {message}"));
+    }
+}
+
+/// Change l'emplacement de sauvegarde rapide choisi dans le menu (−1 ou +1). Rien n'est envoyé à l'émulateur : il
+/// est amené au bon emplacement au moment de sauver.
+#[tauri::command]
+pub fn menu_jeu_emplacement(menu: State<'_, crate::menu_jeu::MenuJeu>, sens: i8) -> Option<u8> {
+    menu.changer_emplacement(sens.signum())
+}
+
+/// Les sauvegardes rapides du jeu en cours, par emplacement : (numéro, date) — `None` : vide.
+#[tauri::command]
+pub async fn menu_jeu_emplacements(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<Vec<(u8, Option<u64>)>> {
+    let Some(p) = app.state::<crate::menu_jeu::MenuJeu>().partie() else { return Ok(vec![]) };
+    match p.emulateur.as_deref() {
+        Some("retroarch") => Ok(match (p.etats.as_deref(), p.nom_rom.as_deref()) {
+            (Some(d), Some(r)) => crate::menu_jeu::emplacements_retroarch(std::path::Path::new(d), r),
+            _ => vec![],
+        }),
+        Some("mame") => {
+            let Some(d) = p.dossier_emulateur.as_deref().map(std::path::PathBuf::from) else { return Ok(vec![]) };
+            let Some((nom, _)) = crate::pilotage::jeu_mame(&d) else { return Ok(vec![]) };
+            let etats = crate::pilotage::dossier_etats_mame(&d, &profil_ouvert(&noyau).await?.nom, &nom);
+            Ok((0..=crate::menu_jeu::EMPLACEMENT_MAX).map(|n| (n, crate::menu_jeu::date_de(&etats.join(crate::pilotage::nom_etat_mame(n))))).collect())
+        }
+        _ => Ok(vec![]),
+    }
+}
+
 /// MAME : sauver, charger ou recommencer par son script Lua (lot 0.79.0). La commande part AVANT que le menu se
 /// ferme (sinon le jeu tournerait quelques images avant la sauvegarde) ; la sauvegarde rapide est celle du PROFIL
 /// (`Profils\<profil>\sta\<jeu>\frogtend.sta`), écrite sous un autre nom puis mise à la place une fois complète.
-async fn action_mame(app: &AppHandle, noyau: &Noyau, dossier: Option<&str>, a: crate::pilotage::Action) -> Resultat<()> {
+async fn action_mame(app: &AppHandle, noyau: &Noyau, dossier: Option<&str>, a: crate::pilotage::Action, emplacement: u8) -> Resultat<()> {
     use crate::pilotage::Action;
     let dossier = std::path::PathBuf::from(dossier.ok_or_else(|| Erreur::Refus("MAME est introuvable.".into()))?);
     let (nom, sauve) = crate::pilotage::jeu_mame(&dossier).ok_or_else(|| Erreur::Refus("MAME n'a pas encore dit quel jeu tourne : réessaie dans un instant.".into()))?;
@@ -1888,6 +2120,12 @@ async fn action_mame(app: &AppHandle, noyau: &Noyau, dossier: Option<&str>, a: c
     if matches!(a, Action::SauverEtat | Action::ChargerEtat) && !sauve {
         return Err(Erreur::Refus("Ce jeu ne gère pas bien les sauvegardes : Frogtend ne les propose pas.".into()));
     }
+    let menu = app.state::<crate::menu_jeu::MenuJeu>();
+    let _seule = if matches!(a, Action::SauverEtat | Action::ChargerEtat) {
+        Some(menu.prendre_etat().ok_or_else(|| Erreur::Refus("Une sauvegarde rapide est déjà en cours.".into()))?)
+    } else {
+        None
+    };
     // Les fichiers hors du fil asynchrone (la commande peut attendre que le script lâche l'ancienne).
     let (d, e) = (dossier.clone(), etats.clone());
     tauri::async_runtime::spawn_blocking(move || -> Resultat<()> {
@@ -1899,9 +2137,9 @@ async fn action_mame(app: &AppHandle, noyau: &Noyau, dossier: Option<&str>, a: c
                 crate::pilotage::commande_mame(&d, "save", Some(&e.join(crate::pilotage::ETAT_MAME_NOUVEAU)))
             }
             Action::ChargerEtat => {
-                let etat = e.join(crate::pilotage::ETAT_MAME);
+                let etat = e.join(crate::pilotage::nom_etat_mame(emplacement));
                 if !etat.is_file() {
-                    return Err(Erreur::Refus("Aucune sauvegarde rapide pour ce jeu : sauve d'abord.".into()));
+                    return Err(Erreur::Refus(format!("Aucune sauvegarde dans l'emplacement {} : sauve d'abord.", emplacement + 1)));
                 }
                 crate::pilotage::commande_mame(&d, "load", Some(&etat))
             }
@@ -1918,7 +2156,7 @@ async fn action_mame(app: &AppHandle, noyau: &Noyau, dossier: Option<&str>, a: c
     .map_err(|_| Erreur::Disque("L'action s'est arrêtée brutalement.".into()))??;
     cacher_menu(app);
     if a == Action::SauverEtat {
-        let r = tauri::async_runtime::spawn_blocking(move || crate::pilotage::garder_etat_mame(&etats, std::time::Duration::from_secs(5)))
+        let r = tauri::async_runtime::spawn_blocking(move || crate::pilotage::garder_etat_mame(&etats, std::time::Duration::from_secs(5), emplacement))
             .await
             .map_err(|_| Erreur::Disque("La sauvegarde s'est arrêtée brutalement.".into()))?;
         noyau.journaliser(&format!("MAME : sauvegarde rapide de {nom} {}", if r.is_ok() { "gardée" } else { "ratée (l'ancienne est intacte)" }));

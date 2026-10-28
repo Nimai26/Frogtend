@@ -3,6 +3,14 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Les sauvegardes rapides (0.139.0)
+- [ ] Super Mario World (RetroArch) : menu en jeu ▸ « ◀ Emplacement 0 · … ▶ » ; aller à l'emplacement 3, « 💾
+      Sauvegarde rapide (emplacement 3) » ; rouvrir le menu : « sauvé le … » ; sauver encore → question « Remplacer… ».
+- [ ] Revenir à l'emplacement 0, sauver, puis charger l'emplacement 3 : on revient bien à la partie de l'emplacement 3.
+- [ ] Sans menu : View + LT tenus ½ s → message « Sauvegarde rapide : emplacement N » à l'écran ; View + RT tenus 1 s
+      → la partie revient. Les jeux qui utilisent View + gâchette : le dire (le réglage peut couper ces raccourcis).
+- [ ] Mode « hardcore » des succès RetroArch : la sauvegarde est refusée, et Frogtend le dit.
+
 ## Les corrections de la séance (0.138.0)
 - [ ] Super Mario All-Stars (arrivé, montrait « Installer ») : après l'ouverture de ton profil, il montre « ▶ Jouer ».
 - [ ] Un nouveau jeu SNES : à l'arrivée, « ✅ … est arrivé : ▶ Jouer » (jamais « Installer »).

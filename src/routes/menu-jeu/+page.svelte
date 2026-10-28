@@ -15,7 +15,7 @@
   import { accordCheatEngine } from '$lib/mods/cheatengine';
   import ListeSucces from '$lib/succes/ListeSucces.svelte';
   import type { ListeSucces as ListeSuccesDuJeu } from '$lib/succes/liste';
-  import { appliquerManette, arreterManette, demarrerManette, fenetreOuverte, selectionner } from '$lib/taodbox/manette.svelte';
+  import { appliquerManette, arreterManette, demarrerManette, fenetreOuverte, prendreLaMain, selectionner } from '$lib/taodbox/manette.svelte';
   import type { Commande } from '$lib/taodbox/navigation';
 
   let menu = $state<EtatMenuJeu | null>(null);
@@ -54,6 +54,7 @@
     visible = true;
     menu = await api.menuJeuEtat().catch(() => null);
     if (menu && pauseRecue) menu.en_pause = true;
+    void relireEmplacements();
     // Le fond du jeu : sa fiche (un import relié montre celle de Firehouse).
     const fiche = menu ? (menu.fiche ?? (menu.jeu > 0 ? menu.jeu : null)) : null;
     const adresse = fiche ? adresseFondDuJeu(fiche) : null;
@@ -121,6 +122,60 @@
 
   async function reprendre() {
     await api.menuJeuReprendre().catch((e) => toast(`Impossible de reprendre : ${motifDuRefus(e)}`, 'erreur'));
+  }
+
+  /** Les sauvegardes rapides du jeu (emplacement → date, `null` : vide), quand Frogtend choisit l'emplacement. */
+  let emplacements = $state<[number, number | null][]>([]);
+  /** La liste a-t-elle été relue pour CETTE ouverture ? (Sinon : « … », jamais les dates d'une autre partie.) */
+  let emplacementsLus = $state(false);
+  const dateEmplacement = (n: number | null | undefined) => (n === null || n === undefined ? null : emplacements.find(([e]) => e === n)?.[1] ?? null);
+  const quand = (s: number) => new Date(s * 1000).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+  /** Les emplacements sont numérotés de 1 à 10 pour la personne (0 à 9 dans le cœur). */
+  const numero = (n: number) => n + 1;
+
+  async function relireEmplacements() {
+    emplacementsLus = false;
+    emplacements = [];
+    if (menu?.emplacement === null || menu?.emplacement === undefined) return;
+    emplacements = await api.menuJeuEmplacements().catch(() => []);
+    emplacementsLus = true;
+  }
+
+  async function changerEmplacement(sens: number) {
+    const n = await api.menuJeuEmplacement(sens).catch(() => null);
+    if (menu && n !== null) menu.emplacement = n;
+  }
+
+  // La ligne de l'emplacement, choisie : la croix gauche / droite (ou les flèches) change l'emplacement ; A passe au
+  // suivant (en boucle de 1 à 10). Une seule ligne sélectionnable : la croix haut / bas l'atteint comme les autres.
+  let rendreEmplacement: (() => void) | null = null;
+  function prendreEmplacement() {
+    rendreEmplacement?.();
+    rendreEmplacement = prendreLaMain((c) => {
+      if (c === 'gauche' || c === 'droite') {
+        void changerEmplacement(c === 'droite' ? 1 : -1);
+        return true;
+      }
+      return false;
+    });
+  }
+  function lacherEmplacement() {
+    rendreEmplacement?.();
+    rendreEmplacement = null;
+  }
+
+  /** Sauver : l'emplacement choisi, et la question s'il contient déjà une partie (l'ancienne est gardée à côté). */
+  async function sauver() {
+    const n = menu?.emplacement;
+    const d = dateEmplacement(n);
+    if (n !== null && n !== undefined && d !== null) {
+      const oui = await confirmer(`💾 Remplacer la sauvegarde de l’emplacement ${numero(n)} (du ${quand(d)}) ?`, {
+        message: 'L’ancienne est gardée à côté, au cas où.',
+        libelleValider: '💾 Remplacer',
+      });
+      if (!oui) return;
+    }
+    await action('sauver');
   }
 
   async function action(nom: string, question?: string) {
@@ -382,10 +437,36 @@
     </header>
     <div class="liste" bind:this={liste}>
       <button class="btn" onclick={reprendre}>▶ Reprendre</button>
-      {#if a('sauver')}<button class="btn" onclick={() => action('sauver')}>💾 Sauvegarde rapide</button>{/if}
+      {#if (a('sauver') || a('charger')) && menu?.emplacement !== null && menu?.emplacement !== undefined}
+        <!-- L'emplacement des sauvegardes rapides (1 à 10), choisi ici (✅ Seb 28/10) ; aussi celui des raccourcis Affichage + LT / RT. -->
+        {@const d = dateEmplacement(menu.emplacement)}
+        <button
+          class="btn emplacement"
+          aria-label="Emplacement de sauvegarde {numero(menu.emplacement)} sur 10, {!emplacementsLus ? 'lecture' : d !== null ? `sauvé le ${quand(d)}` : 'vide'} — gauche ou droite pour en changer"
+          onfocus={prendreEmplacement}
+          onblur={lacherEmplacement}
+          onclick={() => changerEmplacement(1)}
+        >
+          <span aria-hidden="true">◀</span>
+          <span aria-live="polite">Emplacement {numero(menu.emplacement)} · {!emplacementsLus ? '…' : d !== null ? `sauvé le ${quand(d)}` : 'vide'}</span>
+          <span aria-hidden="true">▶</span>
+        </button>
+      {/if}
+      {#if a('sauver')}<button class="btn" disabled={menu?.emplacement != null && !emplacementsLus} onclick={sauver}>💾 Sauvegarde rapide{menu?.emplacement != null ? ` (emplacement ${numero(menu.emplacement)})` : ''}</button>{/if}
       {#if a('charger')}
-        <button class="btn" onclick={() => action('charger', '📂 Revenir à la sauvegarde rapide ? Ce qui s’est passé depuis sera perdu.')}>
-          📂 Charger la sauvegarde rapide
+        {@const vide = menu?.emplacement != null && emplacementsLus && dateEmplacement(menu.emplacement) === null}
+        <button
+          class="btn"
+          disabled={vide || (menu?.emplacement != null && !emplacementsLus)}
+          onclick={() =>
+            action(
+              'charger',
+              menu?.emplacement != null
+                ? `📂 Revenir à la sauvegarde de l’emplacement ${numero(menu.emplacement)}${dateEmplacement(menu.emplacement) !== null ? ` (du ${quand(dateEmplacement(menu.emplacement)!)})` : ''} ? Ce qui s’est passé depuis sera perdu.`
+                : '📂 Revenir à la sauvegarde rapide ? Ce qui s’est passé depuis sera perdu.',
+            )}
+        >
+          📂 Charger la sauvegarde rapide{menu?.emplacement != null ? ` (emplacement ${numero(menu.emplacement)}${vide ? ', vide' : ''})` : ''}
         </button>
       {/if}
       {#if a('disque')}<button class="btn" onclick={() => action('disque')}>💿 Disque suivant</button>{/if}
@@ -468,6 +549,14 @@
     display: grid;
     gap: calc(8 * var(--u));
     overflow: auto;
+  }
+  /* ◀ Emplacement N · sauvé le … ▶ : UNE ligne (la croix gauche / droite change l'emplacement quand elle est choisie). */
+  .emplacement {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: calc(8 * var(--u));
+    text-align: center;
   }
   /* Tous les boutons ont le même style au repos ; SEUL le bouton choisi se remplit de la couleur d'accent (Seb, 05/10 :
    * le contour passait derrière les boutons voisins, et « Reprendre », orange par son style, semblait toujours choisi).

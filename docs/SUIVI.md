@@ -7,6 +7,19 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- **✅ Seb 28/10 soir : « enchaîne tout ce qui a été décidé d'ajouter, en toute autonomie ; une fois tout fait, nouvelle
+  phase de tests ».** Ordre : (1) sauvegardes rapides (emplacement dans le menu en jeu + raccourcis manette) ; (2) bouton
+  Xbox → menu en jeu ; (3) triches dans le menu en jeu ; (4) image et confort : shaders, bezels, écran de lancement,
+  image de la manette. Chaque lot : avis des experts avant, relecture après, une version livrée.
+  ✅ (1) FAIT en 0.139.0 (avis lancement avant ; relectures lancement + interface, 2 tours, BLOQUANTS corrigés :
+  RetroArch pouvait écraser un AUTRE emplacement sans copie si la personne avait changé d'emplacement → toutes les
+  sauvegardes du jeu à l'abri avant, détection du fichier réellement changé, refus si une copie échoue ; flèches ◀ ▶
+  mal reliées à la croix → une ligne qui prend gauche/droite) : emplacements 1-10 (RetroArch : `state_slot = "0"` au
+  lancement, PLUS/MINUS, `LOAD_STATE_SLOT` ; MAME : `frogtend-<n>.sta`), raccourcis Affichage + LT / RT (réglage,
+  oui d'office), verrou une-sauvegarde-à-la-fois, mode hardcore → pas de sauvegarde rapide, Dolphin aux raccourcis
+  sur une manette → pas d'actions. RESTE (après essai avec Seb) : emplacements de DuckStation / PCSX2 / Dolphin (noms
+  de raccourcis par emplacement à vérifier), PPSSPP, mGBA ; `savestate_auto_index` (lire, ou le forcer : à demander) ;
+  à DIRE à Seb : le jeu voit aussi Affichage + gâchette pendant le maintien (MAME : Select = pièce).
 - **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un
   jeu du PC (la fiche GARDÉE a `locale: true`, le bouton exigeait `!locale` — même défaut pour « ➕ Ajouter cette
   carte » e-Reader) ; « Gérer ▸ Ajouter une autre version » ne faisait rien (même page). 0.137.4 (relecture interface

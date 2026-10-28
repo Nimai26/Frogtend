@@ -37,6 +37,116 @@ pub struct PartieEnCours {
     /// Le jeu lancé est une liste de disques (`.m3u`, la seule que RetroArch, DuckStation et Dolphin font défiler) :
     /// sinon « Disque suivant » n'est pas proposé (essai de Seb, 28/10 : il l'était pour une cartouche SNES).
     pub plusieurs_disques: bool,
+    /// L'emplacement de sauvegarde rapide choisi dans le menu (0 à 9 ; RetroArch et MAME : ✅ Seb 28/10).
+    pub emplacement: u8,
+    /// RetroArch : son emplacement courant, tel que Frogtend l'a réglé (`state_slot = "0"` au lancement, puis les
+    /// `STATE_SLOT_PLUS/MINUS` envoyés) — RetroArch ne sait pas sauver dans un emplacement précis.
+    pub emplacement_ra: u8,
+    /// RetroArch : le dossier des sauvegardes rapides du profil, et le nom du fichier lancé sans extension (pour
+    /// vérifier qu'une sauvegarde est bien écrite, et garder l'ancienne).
+    pub etats: Option<String>,
+    pub nom_rom: Option<String>,
+    /// Les touches que Frogtend envoie arrivent-elles à l'émulateur ? (Faux : Dolphin dont les raccourcis sont réglés
+    /// sur une manette — le menu ne propose alors que Reprendre et Quitter.)
+    pub raccourcis_clavier: bool,
+    /// RetroArch en mode « hardcore » des succès (succès actifs ET hardcore) : il refuse les sauvegardes rapides — le
+    /// menu ne les propose pas.
+    pub etats_interdits: bool,
+}
+
+/// RetroArch interdit-il les sauvegardes rapides ? (`cheevos_enable` ET `cheevos_hardcore_mode_enable` : la valeur du
+/// fichier de Frogtend pour le profil l'emporte sur celle de `retroarch.cfg`.)
+pub fn retroarch_hardcore(retroarch_cfg: &str, profil_cfg: &str) -> bool {
+    let valeur = |cle: &str| {
+        let lire = |t: &str| {
+            t.lines().rev().find_map(|l| {
+                let (c, v) = l.split_once('=')?;
+                (c.trim() == cle).then(|| v.trim().trim_matches('"').eq_ignore_ascii_case("true"))
+            })
+        };
+        lire(profil_cfg).or_else(|| lire(retroarch_cfg)).unwrap_or(false)
+    };
+    valeur("cheevos_enable") && valeur("cheevos_hardcore_mode_enable")
+}
+
+/// Les emplacements de sauvegarde rapide proposés dans le menu (0 à 9).
+pub const EMPLACEMENT_MAX: u8 = 9;
+
+/// Le nom du fichier d'une sauvegarde rapide de RetroArch : `<jeu>.state` pour l'emplacement 0, `<jeu>.state<N>`
+/// ensuite (relevé chez Seb : `states\Snes9x\Super Mario World (Europe) (Rev 1).state`).
+pub fn nom_etat_retroarch(nom_rom: &str, n: u8) -> String {
+    if n == 0 {
+        format!("{nom_rom}.state")
+    } else {
+        format!("{nom_rom}.state{n}")
+    }
+}
+
+/// Le fichier d'une sauvegarde rapide de RetroArch dans le dossier des états du profil (ou un sous-dossier par cœur,
+/// `sort_savestates_enable`), s'il existe.
+pub fn fichier_etat_retroarch(etats: &std::path::Path, nom_rom: &str, n: u8) -> Option<std::path::PathBuf> {
+    let nom = nom_etat_retroarch(nom_rom, n);
+    let direct = etats.join(&nom);
+    if direct.is_file() {
+        return Some(direct);
+    }
+    std::fs::read_dir(etats).ok()?.flatten().map(|e| e.path()).filter(|p| p.is_dir()).map(|d| d.join(&nom)).find(|p| p.is_file())
+}
+
+/// Les sauvegardes rapides d'un jeu : (emplacement, date de modification en secondes depuis 1970) — pour le menu
+/// (« vide » ou « sauvé le … », et la question avant d'en remplacer une).
+pub fn emplacements_retroarch(etats: &std::path::Path, nom_rom: &str) -> Vec<(u8, Option<u64>)> {
+    (0..=EMPLACEMENT_MAX)
+        .map(|n| (n, fichier_etat_retroarch(etats, nom_rom, n).and_then(|f| date_de(&f))))
+        .collect()
+}
+
+/// TOUTES les sauvegardes rapides d'un jeu chez RetroArch (emplacements 0 à 9 et `.state.auto`), à la racine du
+/// dossier des états et jusqu'à deux niveaux de sous-dossiers (rangement par cœur, par contenu) : (fichier, empreinte
+/// = taille + date complète). Sert à les mettre TOUTES à l'abri avant une sauvegarde, puis à voir laquelle a changé
+/// (RetroArch ne sait sauver que dans son emplacement courant, que la personne a pu changer : relecture de l'expert).
+pub fn etats_du_jeu(etats: &std::path::Path, nom_rom: &str) -> Vec<(std::path::PathBuf, (u64, std::time::SystemTime))> {
+    let est_etat = |nom: &str| {
+        let Some(reste) = nom.strip_prefix(nom_rom).and_then(|r| r.strip_prefix(".state")) else { return false };
+        reste.is_empty() || reste == ".auto" || (reste.len() <= 2 && reste.chars().all(|c| c.is_ascii_digit()))
+    };
+    let mut l = Vec::new();
+    let mut dossiers = vec![(etats.to_path_buf(), 0)];
+    while let Some((d, niveau)) = dossiers.pop() {
+        for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                if niveau < 2 {
+                    dossiers.push((p, niveau + 1));
+                }
+            } else if p.file_name().and_then(|n| n.to_str()).is_some_and(est_etat) {
+                if let Some(em) = empreinte(&p) {
+                    l.push((p, em));
+                }
+            }
+        }
+    }
+    l
+}
+
+/// Taille et date de modification complète (pas à la seconde : deux sauvegardes rapprochées se distinguent).
+pub fn empreinte(f: &std::path::Path) -> Option<(u64, std::time::SystemTime)> {
+    let m = std::fs::metadata(f).ok()?;
+    Some((m.len(), m.modified().ok()?))
+}
+
+/// L'emplacement d'un fichier de sauvegarde rapide de RetroArch (`None` : `.state.auto` ou autre chose).
+pub fn emplacement_du_fichier(f: &std::path::Path, nom_rom: &str) -> Option<u8> {
+    let reste = f.file_name()?.to_str()?.strip_prefix(nom_rom)?.strip_prefix(".state")?;
+    if reste.is_empty() {
+        Some(0)
+    } else {
+        reste.parse::<u8>().ok().filter(|n| *n <= EMPLACEMENT_MAX)
+    }
+}
+
+pub fn date_de(f: &std::path::Path) -> Option<u64> {
+    std::fs::metadata(f).ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs())
 }
 
 /// Le fichier lancé peut-il avoir plusieurs disques ? Une liste `.m3u`, ou un `.pbp` (PS1 : plusieurs disques dans un
@@ -57,6 +167,17 @@ pub struct MenuJeu {
     /// La fenêtre du menu est-elle ouverte ? Tenu par `ouvrir_menu` et `cacher_menu` (la lecture de la manette le
     /// consulte 60 fois par seconde sans interroger la fenêtre).
     pub ouvert: std::sync::atomic::AtomicBool,
+    /// Une sauvegarde ou un chargement rapide en cours (voir `prendre_etat`).
+    pub etat_en_cours: std::sync::atomic::AtomicBool,
+}
+
+/// Rendue à la fin de la sauvegarde ou du chargement, même après une erreur.
+pub struct EtatEnCours<'a>(&'a MenuJeu);
+
+impl Drop for EtatEnCours<'_> {
+    fn drop(&mut self) {
+        self.0.etat_en_cours.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 impl MenuJeu {
@@ -72,6 +193,25 @@ impl MenuJeu {
     pub fn finir(&self, numero: u64) {
         if self.numero.load(std::sync::atomic::Ordering::SeqCst) == numero {
             *self.partie.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        }
+    }
+    /// Change l'emplacement de sauvegarde rapide choisi (−1 ou +1, de 0 à 9) ; rend le nouveau.
+    pub fn changer_emplacement(&self, sens: i8) -> Option<u8> {
+        let mut g = self.partie.lock().unwrap_or_else(|e| e.into_inner());
+        let p = g.as_mut()?;
+        // En boucle (de 9 on passe à 0 et inversement) : jamais un bouton qui se grise sous la manette.
+        p.emplacement = (p.emplacement as i16 + sens as i16).rem_euclid(EMPLACEMENT_MAX as i16 + 1) as u8;
+        Some(p.emplacement)
+    }
+    /// Prend la main pour UNE sauvegarde / un chargement à la fois (le menu et un raccourci manette ne se chevauchent
+    /// jamais) ; `None` : une autre est en cours.
+    pub fn prendre_etat(&self) -> Option<EtatEnCours<'_>> {
+        (!self.etat_en_cours.swap(true, std::sync::atomic::Ordering::SeqCst)).then_some(EtatEnCours(self))
+    }
+    /// RetroArch : son emplacement courant, après les commandes envoyées.
+    pub fn noter_emplacement_ra(&self, n: u8) {
+        if let Some(p) = self.partie.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            p.emplacement_ra = n;
         }
     }
     /// La partie `numero` est-elle toujours celle en cours ?
@@ -97,6 +237,9 @@ pub struct EtatMenu {
     /// La fiche Firehouse que montre ce jeu pour le profil ouvert (un import relié : celle de Firehouse ; sinon
     /// `None`) — pour son fond. Rempli par la commande.
     pub fiche: Option<i64>,
+    /// L'emplacement de sauvegarde rapide choisi, quand l'émulateur sait en changer depuis Frogtend (RetroArch, MAME) ;
+    /// `None` : celui de l'émulateur (non choisi ici).
+    pub emplacement: Option<u8>,
 }
 
 pub fn nom_action(a: Action) -> &'static str {
@@ -138,6 +281,10 @@ pub fn etat(p: &PartieEnCours) -> EtatMenu {
             .into_iter()
             // Un jeu de MAME qui ne gère pas les sauvegardes d'état (dit par le script au démarrage) : ni sauver ni
             // charger — une sauvegarde peu fiable serait une partie perdue (✅ Seb 19/10).
+            // Des touches qui n'arriveraient pas (Dolphin, raccourcis sur une manette) : rien à proposer.
+            .filter(|_| p.raccourcis_clavier || e == "retroarch" || e == "mame")
+            // Le mode « hardcore » des succès : pas de sauvegarde rapide (RetroArch les refuserait).
+            .filter(|a| !p.etats_interdits || !matches!(a, crate::pilotage::Action::SauverEtat | crate::pilotage::Action::ChargerEtat))
             // DOSBox Staging change de disque par sa propre configuration : gardé tel quel.
             .filter(|a| {
                 !matches!(a, crate::pilotage::Action::DisqueSuivant) || p.plusieurs_disques || e == "dosbox-staging" || SYSTEMES_A_FACES.contains(&p.plateforme.as_str())
@@ -151,6 +298,7 @@ pub fn etat(p: &PartieEnCours) -> EtatMenu {
             .collect(),
         en_pause: crate::pilotage::se_met_en_pause(e) && !p.figer_emulateur,
         taodbox: false,
+        emplacement: matches!(e, "retroarch" | "mame").then_some(p.emplacement),
     }
 }
 
@@ -456,7 +604,79 @@ mod tests {
             repeter_touches: true,
             figer_emulateur: false,
             plusieurs_disques: true,
+            emplacement: 0,
+            emplacement_ra: 0,
+            etats: None,
+            nom_rom: None,
+            raccourcis_clavier: true,
+            etats_interdits: false,
         }
+    }
+
+    #[test]
+    fn les_emplacements_de_retroarch_sont_trouves_meme_rangés_par_coeur() {
+        assert_eq!(nom_etat_retroarch("Mario", 0), "Mario.state");
+        assert_eq!(nom_etat_retroarch("Mario", 3), "Mario.state3");
+        let d = tempfile::tempdir().unwrap();
+        // Rangé par cœur (`sort_savestates_enable`, relevé chez Seb) et à la racine.
+        std::fs::create_dir_all(d.path().join("Snes9x")).unwrap();
+        std::fs::write(d.path().join("Snes9x").join("Super Mario World (Europe) (Rev 1).state"), b"0").unwrap();
+        std::fs::write(d.path().join("Super Mario World (Europe) (Rev 1).state2"), b"2").unwrap();
+        let l = emplacements_retroarch(d.path(), "Super Mario World (Europe) (Rev 1)");
+        assert_eq!(l.len(), 10);
+        assert!(l[0].1.is_some() && l[1].1.is_none() && l[2].1.is_some(), "{l:?}");
+        assert!(fichier_etat_retroarch(d.path(), "Autre jeu", 0).is_none());
+    }
+
+    #[test]
+    fn toutes_les_sauvegardes_du_jeu_sont_vues_jamais_les_copies_de_frogtend() {
+        let d = tempfile::tempdir().unwrap();
+        let r = "Super Mario World (Europe) (Rev 1)";
+        std::fs::create_dir_all(d.path().join("Snes9x").join("Mario")).unwrap();
+        for f in [format!("Snes9x/{r}.state"), format!("Snes9x/{r}.state3"), format!("Snes9x/{r}.state.auto"), format!("Snes9x/Mario/{r}.state9")] {
+            std::fs::write(d.path().join(f), b"x").unwrap();
+        }
+        // Les copies de Frogtend, une vignette et un autre jeu : jamais comptés.
+        for f in [format!("{r}.state.frogtend-precedent"), format!("{r}.state3.frogtend-abri"), format!("{r}.state.png"), "Autre.state".into()] {
+            std::fs::write(d.path().join("Snes9x").join(f), b"y").unwrap();
+        }
+        let l = etats_du_jeu(d.path(), r);
+        assert_eq!(l.len(), 4, "{l:?}");
+        let mut empl: Vec<Option<u8>> = l.iter().map(|(f, _)| emplacement_du_fichier(f, r)).collect();
+        empl.sort();
+        assert_eq!(empl, [None, Some(0), Some(3), Some(9)], "l'automatique n'a pas d'emplacement");
+    }
+
+    #[test]
+    fn le_mode_hardcore_des_succes_interdit_les_sauvegardes_rapides() {
+        assert!(retroarch_hardcore("cheevos_enable = \"true\"\ncheevos_hardcore_mode_enable = \"true\"\n", ""));
+        assert!(!retroarch_hardcore("cheevos_enable = \"true\"\ncheevos_hardcore_mode_enable = \"true\"\n", "cheevos_enable = \"false\"\n"), "le profil de Frogtend l'emporte (chez Seb : succès coupés)");
+        assert!(!retroarch_hardcore("cheevos_hardcore_mode_enable = \"true\"\n", ""), "sans succès actifs");
+        let p = PartieEnCours { etats_interdits: true, ..partie(Some("retroarch")) };
+        let a = etat(&p).actions;
+        assert!(!a.contains(&"sauver") && !a.contains(&"charger") && a.contains(&"reset"));
+    }
+
+    #[test]
+    fn l_emplacement_choisi_reste_entre_0_et_9() {
+        let m = MenuJeu::default();
+        assert_eq!(m.changer_emplacement(1), None, "aucune partie");
+        m.commencer(partie(Some("retroarch")));
+        assert_eq!(m.changer_emplacement(-1), Some(EMPLACEMENT_MAX), "en boucle : de 0 à 9");
+        assert_eq!(m.changer_emplacement(1), Some(0), "et de 9 à 0");
+        for _ in 0..12 {
+            m.changer_emplacement(1);
+        }
+        assert_eq!(m.partie().unwrap().emplacement, 2);
+        m.changer_emplacement(-1);
+        m.changer_emplacement(-1);
+        m.changer_emplacement(-1);
+        assert_eq!(m.partie().unwrap().emplacement, EMPLACEMENT_MAX);
+        assert_eq!(etat(&m.partie().unwrap()).emplacement, Some(EMPLACEMENT_MAX));
+        assert_eq!(etat(&partie(Some("pcsx2"))).emplacement, None, "celui de l'émulateur : pas choisi ici");
+        // Dolphin aux raccourcis réglés sur une manette : rien à proposer (les touches n'y arriveraient pas).
+        let dolphin = PartieEnCours { raccourcis_clavier: false, ..partie(Some("dolphin")) };
+        assert!(etat(&dolphin).actions.is_empty());
     }
 
     #[test]
