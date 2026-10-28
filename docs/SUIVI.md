@@ -7,6 +7,12 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- **Game Bar et bouton Xbox (✅ Seb 28/10 soir)** — essai : la question n'est PAS venue (la page ne « voit » une
+  manette qu'après un appui sur un de ses boutons ; jeu lancé à la souris) ; le bouton Xbox ouvre la Game Bar ET Steam
+  (réglage de Steam : on ne le touche pas, on dit où le couper). Décisions : (1) « Demander à l'ouverture » — UNE
+  question à la 1re ouverture de Frogtend ou de Taodbox, même sans manette détectée, « Annuler » d'office ; (2) « Oui,
+  en plus de Vue + RB » : le bouton Xbox ouvrira AUSSI le menu en jeu de Frogtend (lot à part : vérifier d'abord
+  que Windows laisse lire ce bouton — XInput ne le donne pas officiellement ; Game Bar coupée exigée).
 - **Séance d'essais (2) avec Seb, 28/10 soir (0.137.0)** — ✅ mise à jour. ❌ Toutes les jaquettes de la
   ludothèque vides après un retour depuis une fiche OU les Options (cache intact : 1 337 images ; aucune erreur au
   journal ; les images des fiches restent ; changer de visuel puis revenir les fait réapparaître = échec PASSAGER au
@@ -18,7 +24,8 @@
   interface) : l'effet de remise à zéro de `Jaquette.svelte` lisait `v.sorte` → abonné à TOUT l'objet `v` ; au retour,
   `rechargerListe` donne des `images` neuves (identiques) → `v` recalculé → `chargee = false` (opacité 0) alors que
   l'adresse est la même → aucun nouveau `load`. Remise à zéro seulement quand l'ADRESSE (chaîne) change ; test qui
-  reproduit (échoue sur l'ancien code, prouvé) ; case vide si `disponible` passe à faux réglée. Leçon : demander d'abord à Seb CE QU'IL VOIT
+  reproduit (échoue sur l'ancien code, prouvé) ; case vide si `disponible` passe à faux réglée. ✅ VÉRIFIÉ PAR SEB
+  (28/10, 0.137.2) : « cela semble réglé ». Leçon : demander d'abord à Seb CE QU'IL VOIT
   exactement (« vide d'emblée » ou « là puis parti ») avant de chercher côté chargement.
 - **Séance d'essais avec Seb, 28/10 (0.134.0).** ✅ Mise à jour proposée à l'ouverture, un clic, redémarrage, 0.134.0
   affichée. ✅ Refus de `D:\` comme dossier des émulateurs (fenêtre maison, `D:\Emulateurs` proposé, réglage

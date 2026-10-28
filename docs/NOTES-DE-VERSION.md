@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.137.3 — Le bouton Xbox, demandé à l'ouverture
+
+- 🎮 La question « le bouton Xbox ouvre la Game Bar de Windows : le couper ? » est maintenant posée une fois, à
+  l'ouverture de Frogtend ou de Taodbox (elle ne venait pas si le jeu était lancé à la souris). Elle dit aussi où
+  régler Steam, qui peut s'ouvrir avec ce même bouton.
+
 ## 0.137.2 — Les jaquettes qui disparaissaient (pour de bon)
 
 - 🖼 La vraie cause trouvée grâce à ton essai (« là une fraction de seconde, puis disparues ») : au retour vers la

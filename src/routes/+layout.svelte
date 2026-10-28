@@ -13,7 +13,7 @@
   import { demarrer, demarrerMenuJeu, etat } from '$lib/etat.svelte';
   import { verifierMiseAJour } from '$lib/mises-a-jour';
   import { arreterSuivi, suivreTelechargements } from '$lib/ludotheque/telechargements.svelte';
-  import { partie, suivreParties } from '$lib/ludotheque/jeu.svelte';
+  import { partie, proposerCouperGameBar, suivreParties } from '$lib/ludotheque/jeu.svelte';
   import { listen } from '@tauri-apps/api/event';
   import { traiterLiensNexus } from '$lib/mods/nexus.svelte';
   import ChoixProfil from '$lib/profils/ChoixProfil.svelte';
@@ -63,6 +63,8 @@
       suivreTelechargements();
       suivreParties();
       untrack(() => auDemarrage());
+      // Une seule fois par PC, la question du bouton Xbox (Game Bar de Windows) — sans attendre une sauvegarde.
+      untrack(() => void proposerCouperGameBar().catch(() => {}));
       // Les jeux Steam installés sur ce PC deviennent des jeux du PC (lancés par Steam, parties suivies).
       untrack(() => void api.steamJeux().then(() => suivreTelechargements()).catch(() => {}));
       untrack(() => gratuitsAuDemarrage());

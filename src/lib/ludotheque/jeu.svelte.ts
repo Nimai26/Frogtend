@@ -315,21 +315,22 @@ async function prevenirPareFeu(id: number, plateforme: string | undefined, emula
   await reglerPc('avertiPareFeuRetroArch', true);
 }
 
-/** Avant le 1er jeu d'émulateur : le bouton Xbox ouvre la Game Bar de Windows (et ses jeux récents : un appui sur A y a
- * lancé RPCS3 pendant une partie SNES, essai de Seb du 28/10). Proposé UNE fois par PC (✅ Seb 28/10 « Proposer de
- * le couper ») : un réglage de Windows, changé seulement après le oui, réversible. Jamais bloquant pour la partie. */
-async function proposerCouperGameBar(plateforme: string | undefined) {
-  if (etat.pc.questionGameBar || !plateforme || plateforme === 'Windows') return;
-  // Après la préparation de la console (jamais avant la grande question « Préparer… ? »), et seulement avec une
-  // manette branchée (au clavier seul, la question attend : rien n'est noté).
-  if (!etat.pc.emulateurs[plateforme]?.liste?.length) return;
-  const manette = typeof navigator !== 'undefined' && !!navigator.getGamepads && [...navigator.getGamepads()].some((p) => !!p);
-  if (!manette) return;
+/** À l'ouverture de Frogtend ou de Taodbox : le bouton Xbox ouvre la Game Bar de Windows (et ses jeux récents : un
+ * appui sur A y a lancé RPCS3 pendant une partie SNES, essai de Seb du 28/10). Demandé UNE fois par PC (✅ Seb 28/10
+ * soir « Demander à l'ouverture », même sans manette détectée : la page ne « voit » une manette qu'après un appui sur
+ * un de ses boutons) : un réglage de Windows, changé seulement après le oui, réversible. */
+let gameBarDemandee = false;
+
+export async function proposerCouperGameBar() {
+  // Jamais deux fois (l'effet du profil ouvert peut repasser avant la réponse), jamais pendant une partie (la fenêtre
+  // serait derrière le jeu) : la question reviendra à la prochaine ouverture.
+  if (etat.pc.questionGameBar || gameBarDemandee || partie.enJeu !== null || partie.lancement !== null) return;
+  gameBarDemandee = true;
   const ouvre = await api.gameBarBouton().catch(() => null);
   if (ouvre !== true) return;
   const oui = await confirmer('🎮 Le bouton Xbox ouvre la Game Bar de Windows', {
     message:
-      'Pendant une partie, un appui sur le bouton Xbox (le logo au milieu de la manette) ouvre la Game Bar de Windows par-dessus le jeu, et un appui sur A peut y lancer un autre programme.\n\nFrogtend peut couper ce bouton (un réglage de Windows : « Ouvrir la Game Bar avec ce bouton d’une manette »). La Game Bar reste disponible au clavier (touche Windows + G), et tu pourras remettre le bouton dans les paramètres de Windows (Jeux ▸ Game Bar).',
+      'Pendant une partie, un appui sur le bouton Xbox (le logo au milieu de la manette) ouvre la Game Bar de Windows par-dessus le jeu, et un appui sur A peut y lancer un autre programme.\n\nFrogtend peut couper ce bouton (un réglage de Windows : « Ouvrir la Game Bar avec ce bouton d’une manette »). La Game Bar reste disponible au clavier (touche Windows + G), et tu pourras remettre le bouton dans les paramètres de Windows (Jeux ▸ Game Bar).\n\nSi Steam est installé, ce bouton peut aussi ouvrir Steam : cela se règle dans les paramètres de Steam (rubrique Manette), Frogtend n’y touche pas.',
     libelleValider: '🎮 Couper le bouton',
     // Le focus sur « Annuler » : un A répété au canapé ne change jamais un réglage de Windows sans lecture.
     danger: true,
@@ -439,7 +440,6 @@ async function jouerSansAttente(id: number, emulateur?: string, version?: string
       await suivreConseil(id, j?.plateforme, emulateur).catch(() => {});
       await firmwareSwitchAvant(id, j?.plateforme, emulateur).catch(() => {});
       await prevenirPareFeu(id, j?.plateforme, emulateur);
-      await proposerCouperGameBar(j?.plateforme).catch(() => {});
       const pe = etat.profil.pleinEcran[String(id)];
       await api.jouer(
         id,
