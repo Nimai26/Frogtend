@@ -1385,7 +1385,8 @@ export async function gererJeu(id: number) {
   // Un chemin de dossier ne dit rien à 3 m de la télé.
   const c = await choisir<Action>(`⚙ Gérer « ${j.titre} »`, options, auCanape() ? undefined : `Rangé dans ${j.installation?.dossier ?? j.dossier}`);
   if (c === 'jouerAvec') await jouerAvec(id);
-  else if (c === 'autreVersion') await goto(`/jeu/${id}`);
+  // Vers les versions de SA fiche : la page y descend elle-même une fois chargée (`?vers=versions`).
+  else if (c === 'autreVersion') await goto(`/jeu/${id}?vers=versions`);
   else if (c === 'installer') await installer(id);
   else if (c === 'lanceur') await choisirLanceur(id);
   else if (c === 'version') await choisirVersionParDefaut(id);

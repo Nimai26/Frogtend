@@ -7,12 +7,40 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un
+  jeu du PC (la fiche GARDÉE a `locale: true`, le bouton exigeait `!locale` — même défaut pour « ➕ Ajouter cette
+  carte » e-Reader) ; « Gérer ▸ Ajouter une autre version » ne faisait rien (même page). 0.137.4 (relecture interface
+  suivie) : `!horsLigne` ; `?vers=versions` → la page descend aux versions une fois chargée, sélection sur le 1er
+  « ➕ » ; phrase si aucun ajout possible ; B TENU = un seul retour (`e.repeat` d'Échap/Entrée/Espace ignoré).
+  RESTE (noté) : hors ligne, une fiche gardée n'est jamais « hors ligne » → le bouton s'affiche puis le cœur refuse
+  proprement ; une version publiée APRÈS l'installation n'apparaît pas sur la fiche gardée (fusionner, en ligne,
+  les `versions` du serveur).
+- **Demandes de Seb pendant l'essai (28/10 soir, menu en jeu)** — ✅ « Recommencer » et « Quitter » d'un seul appui
+  (RetroArch) VÉRIFIÉS. Nouvelles demandes (lot à venir, après les essais ; avis des experts d'abord) : (a) pour tout
+  émulateur qui le permet, CHOISIR l'emplacement (slot) de la sauvegarde rapide et du chargement rapide dans le menu en
+  jeu ; (b) si possible un slot DÉDIÉ avec des raccourcis manette de sauvegarde / chargement rapides (sans ouvrir le
+  menu) ; (c) une partie TRICHES dans le menu en jeu (aujourd'hui : seulement « 🧰 Cheat Engine » si installé ; la page
+  des triches existe hors du jeu) ; (d) Seb suppose que « plugins / shaders » manquent parce que la SNES n'en a pas :
+  FAUX, le menu en jeu n'a de shaders pour AUCUN émulateur (seul RPCS3 a « 🎨 Image et fluidité » dans Gérer le jeu)
+  — à lui dire ; à proposer (shaders RetroArch : CRT, lissage… par jeu ou par console).
+- **Lecteurs de documents à la manette (essai de Seb, 28/10 soir, menu en jeu)** — ❌ dans les lecteurs AUDIO et VIDÉO,
+  la croix déplace la piste (avance/recul) : impossible d'atteindre les autres boutons ; dans le LIVRET, la croix
+  fait défiler la page / change de page : les boutons ne sont pas accessibles non plus. Proposition de Seb : « au pire
+  utiliser d'autres boutons en l'indiquant dans l'aide en dessous ». À faire : LB / RB (ou X / Y) pour passer d'un
+  bouton à l'autre (ou « sortir » du contenu vers les boutons), la croix reste au contenu ; la ligne d'aide du bas le
+  dit. Avis de l'expert interface d'abord. ✅ Menu en jeu (0.137.3, Steam ouvert) VÉRIFIÉ PAR SEB : la croix avance
+  d'un élément ; « Disque suivant » absent pour une cartouche ; « Options du jeu » ouvre ses 4 lignes sans en
+  déclencher. ❌ B TENU trop longtemps = deux retours (ferme Options puis le menu) : Steam répète « Échap » comme une
+  touche maintenue ; à faire : ignorer les répétitions (`e.repeat`) d'Échap / Entrée / Espace dans `filtrerDoublons`.
 - **Game Bar et bouton Xbox (✅ Seb 28/10 soir)** — essai : la question n'est PAS venue (la page ne « voit » une
   manette qu'après un appui sur un de ses boutons ; jeu lancé à la souris) ; le bouton Xbox ouvre la Game Bar ET Steam
   (réglage de Steam : on ne le touche pas, on dit où le couper). Décisions : (1) « Demander à l'ouverture » — UNE
   question à la 1re ouverture de Frogtend ou de Taodbox, même sans manette détectée, « Annuler » d'office ; (2) « Oui,
   en plus de Vue + RB » : le bouton Xbox ouvrira AUSSI le menu en jeu de Frogtend (lot à part : vérifier d'abord
   que Windows laisse lire ce bouton — XInput ne le donne pas officiellement ; Game Bar coupée exigée).
+  ✅ VÉRIFIÉ PAR SEB (0.137.3) : la question vient à l'ouverture ; Game Bar coupée ; Steam réglé à la main (Paramètres ▸
+  Manette ▸ « le bouton Guide fait apparaître Steam » désactivé, puis Steam relancé) → le bouton Xbox n'ouvre plus rien
+  en jeu (RetroArch compris : `input_menu_toggle_btn = "99"` vérifié en vrai).
 - **Séance d'essais (2) avec Seb, 28/10 soir (0.137.0)** — ✅ mise à jour. ❌ Toutes les jaquettes de la
   ludothèque vides après un retour depuis une fiche OU les Options (cache intact : 1 337 images ; aucune erreur au
   journal ; les images des fiches restent ; changer de visuel puis revenir les fait réapparaître = échec PASSAGER au

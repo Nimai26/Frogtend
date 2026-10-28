@@ -113,6 +113,14 @@ export function appliquerManette(c: Commande) {
 function filtrerDoublons(e: KeyboardEvent) {
   if (fabriquees.has(e)) return;
   const id = e.code || e.key;
+  // Échap, Entrée ou Espace TENUS (Steam répète la touche quand on tient B ou A) : une seule action, jamais deux
+  // retours ou deux validations (essai de Seb, 28/10 : B tenu fermait les Options puis le menu). Les flèches gardent
+  // leur répétition.
+  if (e.type === 'keydown' && e.repeat && (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ')) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    return;
+  }
   if (e.type === 'keyup' || e.repeat) {
     if (ecartees.has(id)) {
       if (e.type === 'keyup') ecartees.delete(id);

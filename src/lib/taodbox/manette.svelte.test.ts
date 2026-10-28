@@ -159,6 +159,21 @@ describe('la même manette par deux voies (Steam ouvert : croix → flèches, A 
     expect(document.activeElement).toBe(l[1]);
   });
 
+  it('B tenu (Échap répété par Steam) : un seul retour ; une flèche tenue garde sa répétition', () => {
+    trois();
+    demarrerManette({ manette: false });
+    let echap = 0;
+    window.addEventListener('keydown', (e) => e.key === 'Escape' && echap++);
+    const t = (key: string, repeat: boolean) => document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key, code: key, repeat, bubbles: true, cancelable: true }));
+    t('Escape', false);
+    t('Escape', true);
+    t('Escape', true);
+    expect(echap).toBe(1);
+    t('ArrowDown', false);
+    t('ArrowDown', true);
+    expect((document.activeElement as HTMLElement).id).toBe('b3');
+  });
+
   it('deux appuis rapides restent deux pas ; l’Échap fabriqué par B n’est jamais écarté', () => {
     vi.useFakeTimers();
     const l = trois();

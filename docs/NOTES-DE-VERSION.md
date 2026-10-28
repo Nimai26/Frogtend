@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.137.4 — Le bouton « Ajouter cette version »
+
+- ➕ Sur la fiche d'un jeu déjà sur le PC, « Ajouter cette version » s'affiche enfin (il était caché, comme
+  « Ajouter cette carte » pour les jeux e-Reader) ; « ⚙ Gérer le jeu ▸ Ajouter une autre version » descend jusqu'aux
+  versions de la fiche.
+- 🎮 Un bouton B (ou Échap) TENU ne compte plus pour plusieurs retours.
+
 ## 0.137.3 — Le bouton Xbox, demandé à l'ouverture
 
 - 🎮 La question « le bouton Xbox ouvre la Game Bar de Windows : le couper ? » est maintenant posée une fois, à

@@ -227,6 +227,29 @@
     else avis = [];
   });
 
+  /** Peut-on ajouter une autre version à ce jeu du PC ? (Au moins une version cochable, pas encore là, et celle
+   * d'origine cochable aussi.) Sinon la section le dit, au lieu de rester muette. */
+  const ajoutPossible = $derived.by(() => {
+    const j = fiche ? jeuSurPc(fiche.id) : undefined;
+    if (!fiche || !j || j.id !== fiche.id || aCartes(j.plateforme) || j.etat !== 'telecharge') return null;
+    if (j.installation?.lanceur || j.installation?.boutique) return false;
+    const coch = (id: number) => !!avis.find((a) => a.telechargement_id === id)?.cochable;
+    return coch(j.version) && (fiche.versions ?? []).some((v) => coch(v.telechargement_id) && !cartesSurPc(j).includes(v.telechargement_id));
+  });
+
+  // Venu de « ⚙ Gérer ▸ Ajouter une autre version » (`?vers=versions`) : la page descend aux versions UNE fois la fiche
+  // et l'avis du cœur là, la sélection sur le premier « ➕ » (jamais sur un « 🗑 Retirer »), sinon sur le titre.
+  let versFaitPour = '';
+  $effect(() => {
+    if (versFaitPour === page.url.href || page.url.searchParams.get('vers') !== 'versions' || !fiche || ((fiche.versions?.length ?? 0) > 1 && !avis.length)) return;
+    versFaitPour = page.url.href;
+    void tick().then(() => {
+      const s = document.getElementById('versions');
+      s?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      (s?.querySelector<HTMLElement>('[data-ajout]') ?? s?.querySelector<HTMLElement>('h3'))?.focus({ preventScroll: true });
+    });
+  });
+
   /** Retire UNE carte e-Reader du PC (ses fichiers seulement ; les parties sont dans la cartouche). */
   async function retirerUneCarte(id: number, version: number, nom: string) {
     const oui = await confirmer(`🗑 Retirer la carte « ${nom} » ?`, {
@@ -375,8 +398,9 @@
       </section>
     {/if}
 
-    <section class="cx-block">
-      <h3>📦 Versions disponibles</h3>
+    <section class="cx-block" id="versions">
+      <h3 tabindex="-1">📦 Versions disponibles</h3>
+      {#if ajoutPossible === false && !horsLigne}<p class="muted">Aucune autre version ne peut s’ajouter à ce jeu (seulement pour des ROM ou des images disque).</p>{/if}
       {#if !fiche.versions?.length}
         <p class="muted">Aucune version n’est encore rangée dans Firehouse pour ce jeu.</p>
       {:else}
@@ -414,7 +438,7 @@
                   {#if cartesSurPc(jeuSurPc(fiche.id)).length > 1}
                     <button class="btn" onclick={() => fiche && retirerUneCarte(fiche.id, v.telechargement_id, v.nom)}>🗑 Retirer cette carte</button>
                   {/if}
-                {:else if !locale}
+                {:else if !horsLigne}
                   <button class="btn" onclick={() => fiche && mettreDansLaLudotheque(fiche.id, v.telechargement_id)}>➕ Ajouter cette carte</button>
                 {/if}
               {:else if jeuSurPc(fiche.id)?.id === fiche.id}
@@ -437,8 +461,8 @@
                   {#if v.telechargement_id !== surPc.version}
                     <button class="btn" onclick={() => fiche && retirerUneVersion(fiche.id, v.telechargement_id, v.nom, false)}>🗑 Retirer cette version</button>
                   {/if}
-                {:else if !locale && !surPc.installation?.lanceur && !surPc.installation?.boutique && avis.find((a) => a.telechargement_id === v.telechargement_id)?.cochable && avis.find((a) => a.telechargement_id === surPc.version)?.cochable}
-                  <button class="btn" onclick={() => fiche && ajouterUneVersion(fiche.id, v, fiche.titre)}>➕ Ajouter cette version</button>
+                {:else if !horsLigne && !surPc.installation?.lanceur && !surPc.installation?.boutique && avis.find((a) => a.telechargement_id === v.telechargement_id)?.cochable && avis.find((a) => a.telechargement_id === surPc.version)?.cochable}
+                  <button class="btn" data-ajout onclick={() => fiche && ajouterUneVersion(fiche.id, v, fiche.titre)}>➕ Ajouter cette version</button>
                 {/if}
               {:else if !locale && !jeuSurPc(fiche.id)}
                 <button class="btn" onclick={() => fiche && mettreDansLaLudotheque(fiche.id)}>➕ Mettre dans ma ludothèque</button>
