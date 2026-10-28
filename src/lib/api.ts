@@ -704,7 +704,7 @@ export const api = {
   sauvegarder: (ecarter = false) => appeler<import('./sauvegarde.svelte').BilanSauvegarde>('sauvegarde_lancer', { ecarter }),
   derniereSauvegarde: () => appeler<import('./sauvegarde.svelte').BilanSauvegarde | null>('sauvegarde_derniere'),
   restaurationListe: () =>
-    appeler<{ profil: string; pc: string; derniere: { date?: string; fichiers?: number; taille?: number } | null; octets: number }[]>(
+    appeler<{ profil: string; pc: string; derniere: { date?: string; fichiers?: number; taille?: number } | null; octets: number; a_moi: boolean }[]>(
       'restauration_liste',
     ),
   restaurationPreparer: (profil: string, pc: string) =>
@@ -718,7 +718,8 @@ export const api = {
   /** Crée le dossier PROPOSÉ (seul celui-là est admis par le cœur), après le oui de la personne. */
   dossierJeuxCreer: (chemin: string) => appeler<string>('dossier_jeux_creer', { chemin }),
   /** Pourquoi ce dossier ne convient pas pour ranger des jeux (racine d'un disque, Windows, Documents…), ou `null`. */
-  dossierJeuxRefus: (chemin: string) => appeler<string | null>('dossier_jeux_refus', { chemin }),
+  dossierJeuxRefus: (chemin: string, sorte?: 'emulateurs' | 'outils' | 'abris') =>
+    appeler<string | null>('dossier_jeux_refus', { chemin, sorte: sorte ?? null }),
   /** Repose les parties d'émulateurs restaurées qui attendaient un émulateur absent (jamais par-dessus une autre). */
   restaurationReposerEmulateurs: () => appeler<Reposes>('restauration_reposer_emulateurs'),
   /** Remplace la partie en place par sa copie restaurée (sa partie actuelle mise à l'abri d'abord) ; rend l'abri. */

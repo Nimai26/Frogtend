@@ -792,6 +792,7 @@ mod tests {
             assert_eq!(nom_pour_api("Léa & Zoé"), "Lea _ Zoe");
             assert_eq!(nom_pour_api(".."), "profil");
             assert_eq!(nom_pour_api("VENKMAN"), "VENKMAN");
+            assert_eq!(nom_pour_api("Seb."), "Seb");
         }
 
         #[tokio::test]

@@ -8,6 +8,7 @@ import { informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { jeuSurPc, rechargerJeuxDuPc } from './telechargements.svelte';
 import { etat, suivreReunions } from '$lib/etat.svelte';
+import { retenirNomsCourts } from './nomsCourts.svelte';
 
 /** Nombre de jeux chargés à la fois dans la grille. */
 export const TAILLE_LOT = 240;
@@ -126,30 +127,22 @@ export async function chargerSuite() {
   }
 }
 
-/** Les noms courts des plateformes (contrat 1.27), par nom LaunchBox : connus pour TOUT le catalogue, quel que soit le
- * filtre (Taodbox nomme les consoles des jeux du PC). */
-export const nomsCourts = $state<Record<string, string>>({});
+// Les noms courts des plateformes : module à part (oubliés à la sortie du profil, voir nomsCourts.svelte.ts).
+export { nomsCourts, nomAffiche } from './nomsCourts.svelte';
 
-/** Le nom à MONTRER d'une plateforme : son nom court, sinon son nom LaunchBox. Jamais une clé (filtres, réglages,
- * chemins gardent le nom LaunchBox). */
-export function nomAffiche(nom: string | null | undefined): string {
-  return (nom && nomsCourts[nom]) || nom || '';
-}
-
-function retenirNomsCourts(l: Plateforme[]) {
-  for (const p of l) if (p.nom_affiche && nomsCourts[p.nom] !== p.nom_affiche) nomsCourts[p.nom] = p.nom_affiche;
-}
-
-/** Les noms courts de tout le catalogue (Taodbox, qui ne passe pas par la ludothèque). */
-export async function chargerNomsCourts() {
-  retenirNomsCourts(await api.plateformes(false).catch(() => []));
+/** Les noms courts : TOUJOURS les mêmes listes réunies (ma ludothèque et le catalogue), d'où qu'on les charge
+ * (ludothèque, Taodbox) — une console porte le même nom partout. Une liste illisible ne vide jamais la table. `lue` :
+ * une des deux déjà lue (`locale` dit laquelle), pas redemandée. */
+export async function chargerNomsCourts(lue?: { locale: boolean; liste: Plateforme[] }) {
+  const lire = (l: boolean) => (lue && lue.locale === l ? Promise.resolve(lue.liste) : api.plateformes(l).catch(() => null));
+  const [locales, catalogue] = await Promise.all([lire(true), lire(false)]);
+  if (locales && catalogue) retenirNomsCourts(locales, catalogue);
 }
 
 export async function rechargerPlateformes() {
   ludo.plateformes = await api.plateformes(locale());
-  retenirNomsCourts(ludo.plateformes);
-  // Filtre « ma ludothèque » : les noms courts de tout le catalogue quand même (un jeu importé d'un autre système).
-  if (locale()) retenirNomsCourts(await api.plateformes(false).catch(() => []));
+  // Les noms courts de tout le catalogue quand même (un jeu importé d'un autre système).
+  await chargerNomsCourts({ locale: locale(), liste: ludo.plateformes });
   ludo.genres = await api.genres(ludo.plateforme, locale());
   const le = await api.synchroniseeLe();
   ludo.synchroniseeLe = le ? Number(le) : null;

@@ -300,3 +300,11 @@ EN ENTIER avant d'appeler un expert ou de construire. (La chaîne de livraison a
 Rust (pilotage.rs devenu « mixed ») ; la compilation et les tests passaient, seule la vérification des fins de ligne
 l'a vu. · Garde-fou : la règle « jamais de heredoc python pour du code » vaut AUSSI pour les petites retouches de
 tests ; la vérification des fins de ligne est faite AVANT la construction, et son résultat est lu avant de continuer.
+
+28/10 (9e et 10e fois, 0.134.0) : deux scripts de retouche ÉCRITS PAR `cat <<EOF` (donc encore un heredoc, même si le
+script finit dans un fichier) contenaient des barres obliques inverses : leurs vérifications ont refusé la retouche
+(rien d'abîmé), mais les retouches d'avant dans le même script étaient déjà écrites (moitié appliquée). Et l'outil
+d'édition a réécrit contenus.rs (CRLF dans le dépôt) entièrement en LF : vu par `git ls-files --eol` (« i/crlf
+w/lf ») et un diff de 3 600 lignes ; remis en CRLF. · Garde-fous : un script de retouche s'écrit avec l'outil
+d'écriture (jamais `cat <<EOF`), vérifie TOUTES ses retouches avant d'en écrire une ; la vérification des fins de
+ligne regarde aussi « i/crlf w/lf » et `git diff --stat` (un fichier entier changé = fins de ligne).

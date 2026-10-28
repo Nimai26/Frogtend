@@ -353,7 +353,7 @@ const firmwaresProposes = new Set<string>();
 /** Avant une partie Switch dans Eden : clés posées mais pas de firmware, et Firehouse le fournit → proposé (taille dite).
  * Jamais bloquant : un souci ici n'empêche pas de lancer. */
 async function firmwareSwitchAvant(id: number, plateforme: string | undefined, emulateur?: string) {
-  if (!plateforme || nomAffiche(plateforme) !== nomAffiche('Nintendo Switch')) return;
+  if (plateforme !== 'Nintendo Switch') return;
   const s = normaliser(etat.pc.emulateurs[plateforme]);
   const e = (emulateur && s.liste.find((x) => x.cle === emulateur)) || pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, plateforme, id);
   if (!e || !/(^|[\\/])eden[^\\/]*\.exe$/i.test(e.programme) || firmwaresProposes.has(e.programme)) return;

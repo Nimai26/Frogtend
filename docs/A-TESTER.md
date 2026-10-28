@@ -3,6 +3,13 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Finitions invisibles (0.134.0)
+- [ ] Réglages ▸ Emplacements ▸ dossier des émulateurs : choisir `D:\` → une fenêtre dit qu'il ne convient pas et
+      propose `D:\Emulateurs` ; rien n'est enregistré.
+- [ ] (Si Eden est réglé) un jeu Switch avec contenus : les installer avec Eden ouvert → refusé (« ferme-le ») ; Eden
+      fermé → ajoutés ; retirer le jeu → le dossier de ses contenus n'est plus dans la liste des dossiers de
+      contenus d'Eden, et tes propres dossiers y sont encore.
+
 ## Les options du menu en jeu pour MAME (0.132.0)
 - [ ] Un jeu MAME : menu en jeu ▸ « Compteur de fluidité » (le compteur s'affiche), « Avance rapide » (le jeu file),
       « Couper le son », « Capture d'écran » (une image dans le dossier `snap` de MAME).

@@ -222,11 +222,17 @@ impl Noyau {
 
     /// Le dossier des abris de parties ; refusé s'il n'est pas réglé (Frogtend n'écrit pas ailleurs).
     pub fn dossier_abris(&self) -> Resultat<PathBuf> {
-        self.abris.lock().unwrap_or_else(|e| e.into_inner()).clone().ok_or_else(|| {
+        let d = self.abris.lock().unwrap_or_else(|e| e.into_inner()).clone().ok_or_else(|| {
             crate::erreurs::Erreur::Reglage(
                 "Choisis d'abord le dossier des abris de parties (⚙ Options ▸ Emplacements) : Frogtend y copie tes parties avant de retirer un jeu.".into(),
             )
-        })
+        })?;
+        // Un ancien réglage (avant 0.134.0) à la racine d'un disque, sous Windows ou dans Documents : jamais écrit
+        // là (pas de pieuvre). Le réglage reste ; la lecture des abris déjà là reste permise (`dossiers_abris_a_lire`).
+        if let Some(m) = crate::commandes::refus_dossier(&d, "abris") {
+            return Err(crate::erreurs::Erreur::Reglage(format!("{m} (⚙ Options ▸ Emplacements)")));
+        }
+        Ok(d)
     }
 
     /// Où lire les abris : le dossier réglé, et l'ancien emplacement (`%APPDATA%\…\sauvegardes`, avant 0.30.0) tant
@@ -1677,6 +1683,16 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let n = Noyau::nouveau(d.path(), Box::new(CoffreMemoire::default())).unwrap();
         (d, n)
+    }
+
+    #[test]
+    fn un_ancien_dossier_d_abris_a_la_racine_n_est_jamais_ecrit() {
+        let (d, n) = noyau();
+        n.regler_abris(Some(PathBuf::from("D:\\")));
+        let e = n.dossier_abris().unwrap_err().to_string();
+        assert!(e.contains("abris de parties") && e.contains("Emplacements"), "{e}");
+        n.regler_abris(Some(d.path().join("Abris")));
+        assert_eq!(n.dossier_abris().unwrap(), d.path().join("Abris"));
     }
 
     #[tokio::test]

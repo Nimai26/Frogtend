@@ -620,6 +620,134 @@ pub fn ajouter_dossiers_eden(texte: &str, dossiers: &[String]) -> String {
     crate::emulateurs_profils::ecrire_ini(&texte, "Paths", &vides)
 }
 
+/// Retire des dossiers de la liste d'Eden, en gardant l'ordre des autres et tout le reste du fichier (les numéros
+/// sont refaits de 1 à n, les clés en trop effacées).
+pub fn retirer_dossiers_eden(texte: &str, dossiers: &[String]) -> String {
+    let avant = dossiers_externes_eden(texte);
+    let l: Vec<String> = avant.iter().filter(|x| !dossiers.iter().any(|d| meme_dossier(x, d))).map(|d| d.replace('\\', "/")).collect();
+    let lire = |cle: &str| crate::manettes::lire_ini(texte, "UI", cle).into_iter().next();
+    let ancien: usize = lire("Paths\\external_content_dirs\\size").and_then(|v| v.trim().parse().ok()).unwrap_or(0).min(256);
+    let mut valeurs: Vec<(String, Vec<String>)> = vec![("Paths\\external_content_dirs\\size".into(), vec![l.len().to_string()])];
+    for i in 1..=ancien.max(l.len()) {
+        let v = l.get(i - 1).map(|d| vec![crate::emulateurs_profils::valeur_qt(d)]).unwrap_or_default();
+        valeurs.push((format!("Paths\\external_content_dirs\\{i}\\path"), v));
+    }
+    let refs: Vec<(&str, Vec<String>)> = valeurs.iter().map(|(c, v)| (c.as_str(), v.clone())).collect();
+    crate::emulateurs_profils::ecrire_ini(texte, "UI", &refs)
+}
+
+/// La preuve des dossiers que Frogtend a ajoutés à la liste d'Eden (jamais ceux de la personne) : par dossier d'Eden,
+/// chaque dossier de contenus et les jeux qui s'en servent. Une liste de jeux vide = à retirer d'Eden dès que le
+/// dossier a disparu et qu'Eden est fermé. Fichier des données de Frogtend (`eden-contenus.json`).
+pub type RegistreEden = std::collections::BTreeMap<String, std::collections::BTreeMap<String, Vec<i64>>>;
+
+fn chemin_registre_eden(donnees: &Path) -> PathBuf {
+    donnees.join("eden-contenus.json")
+}
+
+/// Un seul lecteur-écrivain de la preuve à la fois (un retrait et un ajout en même temps ne perdent rien).
+static VERROU_EDEN: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+pub fn lire_registre_eden(donnees: &Path) -> RegistreEden {
+    let p = chemin_registre_eden(donnees);
+    let Ok(o) = std::fs::read(&p) else { return RegistreEden::new() };
+    serde_json::from_slice(&o).unwrap_or_else(|_| {
+        // Illisible : gardé à côté (jamais réécrit par-dessus) ; sans preuve, rien n'est jamais retiré d'Eden.
+        let _ = std::fs::rename(&p, donnees.join("eden-contenus.illisible.json"));
+        RegistreEden::new()
+    })
+}
+
+/// Note l'ajout (`noter_dossiers_eden`) et l'écrit, sous le verrou de la preuve.
+pub fn noter_et_ecrire_eden(donnees: &Path, eden: &Path, avant: &[String], ajoutes: &[String], id: i64) -> Resultat<()> {
+    let _v = VERROU_EDEN.lock().unwrap_or_else(|e| e.into_inner());
+    let mut r = lire_registre_eden(donnees);
+    noter_dossiers_eden(&mut r, eden, avant, ajoutes, id);
+    ecrire_registre_eden(donnees, &r)
+}
+
+pub fn ecrire_registre_eden(donnees: &Path, r: &RegistreEden) -> Resultat<()> {
+    std::fs::create_dir_all(donnees)?;
+    // Écrit à côté puis renommé : une coupure ne laisse jamais une preuve à moitié écrite.
+    let provisoire = donnees.join("eden-contenus.json.tmp");
+    std::fs::write(&provisoire, serde_json::to_vec_pretty(r).unwrap_or_default())?;
+    std::fs::rename(&provisoire, chemin_registre_eden(donnees))?;
+    Ok(())
+}
+
+/// Note ce que l'ajout a fait : un dossier déjà dans la liste d'Eden AVANT (`avant`) et absent du registre est celui
+/// de la personne — jamais noté ; un dossier déjà noté (posé par Frogtend pour un autre jeu) gagne ce jeu.
+pub fn noter_dossiers_eden(r: &mut RegistreEden, eden: &Path, avant: &[String], ajoutes: &[String], id: i64) {
+    let cle = eden.to_string_lossy().to_string();
+    let e = r.entry(cle).or_default();
+    for d in ajoutes {
+        let deja = e.keys().find(|k| meme_dossier(k, d)).cloned();
+        match deja {
+            Some(k) => {
+                let ids = e.get_mut(&k).unwrap();
+                if !ids.contains(&id) {
+                    ids.push(id);
+                }
+            }
+            None if !avant.iter().any(|a| meme_dossier(a, d)) => {
+                e.insert(d.clone(), vec![id]);
+            }
+            None => {}
+        }
+    }
+}
+
+/// Après le retrait d'un jeu (`retire`) ou avant une écriture chez Eden : les dossiers posés par Frogtend qui ne
+/// servent plus à aucun jeu ET n'existent plus sont retirés de la liste d'Eden — seulement Eden fermé (sinon il
+/// réécrirait son fichier) ; sinon ils attendent la prochaine fois. Rend le nombre de dossiers retirés. Jamais un
+/// dossier qui existe encore (un emplacement partagé), jamais un dossier de la personne (absent du registre).
+pub fn ranger_dossiers_eden(donnees: &Path, retire: Option<i64>, ouvert: &dyn Fn(&Path) -> bool) -> Resultat<usize> {
+    let _v = VERROU_EDEN.lock().unwrap_or_else(|e| e.into_inner());
+    let mut r = lire_registre_eden(donnees);
+    if r.is_empty() {
+        return Ok(0);
+    }
+    let avant = r.clone();
+    let mut retires = 0;
+    for (eden, dossiers) in r.iter_mut() {
+        if let Some(id) = retire {
+            for ids in dossiers.values_mut() {
+                ids.retain(|x| *x != id);
+            }
+        }
+        let a_retirer: Vec<String> = dossiers.iter().filter(|(d, ids)| ids.is_empty() && !Path::new(d).exists()).map(|(d, _)| d.clone()).collect();
+        if a_retirer.is_empty() {
+            continue;
+        }
+        let eden_p = Path::new(eden);
+        let ini = ini_eden(eden_p);
+        if !eden_p.is_dir() || !ini.is_file() {
+            // Eden retiré (ou sans réglages) : plus rien à nettoyer chez lui.
+            dossiers.retain(|d, _| !a_retirer.contains(d));
+            continue;
+        }
+        if ouvert(eden_p) {
+            continue;
+        }
+        let texte = std::fs::read_to_string(&ini)?;
+        let apres = retirer_dossiers_eden(&texte, &a_retirer);
+        crate::emulateurs_profils::remplacer_config(eden_p, &ini, &apres)?;
+        // Vérifier le résultat : seuls ceux qui ne sont plus dans la liste relue quittent le registre.
+        let relus = dossiers_externes_eden(&std::fs::read_to_string(&ini).unwrap_or_default());
+        for d in &a_retirer {
+            if !relus.iter().any(|x| meme_dossier(x, d)) {
+                dossiers.remove(d);
+                retires += 1;
+            }
+        }
+    }
+    r.retain(|_, d| !d.is_empty());
+    if r != avant {
+        ecrire_registre_eden(donnees, &r)?;
+    }
+    Ok(retires)
+}
+
 // --- Wii U : un .wua (ZArchive de l'équipe de Cemu, licence MIT-0) peut contenir le jeu, ses mises à jour et ses DLC,
 // chacun dans un dossier racine « <identifiant 16 chiffres>_v<version> » ; Cemu les lit directement (rien à installer).
 // Relevé dans ZArchive (include/zarchive/zarchivecommon.h, src/zarchivereader.cpp), 03/10 : fin de fichier de 144
@@ -1089,6 +1217,68 @@ mod tests {
         assert!(meme_dossier("D:/Switch Maj & DLC/", "d:\\switch maj & dlc"));
         assert!(!meme_dossier("D:/Switch", "D:/Switch2"));
         assert!(apres.contains("Paths\\gamedirs\\size") && apres.contains("theme=dark") && apres.contains("x=1"), "le reste est gardé");
+    }
+
+    #[test]
+    fn retirer_un_dossier_d_eden_garde_l_ordre_et_le_reste() {
+        let avant = ajouter_dossiers_eden("[UI]\r\ntheme=dark\r\n[Controls]\r\nx=1\r\n", &["E:\\A".into(), "D:\\Zelda, TOTK".into(), "F:\\C".into()]);
+        let apres = retirer_dossiers_eden(&avant, &["d:/zelda, totk".into()]);
+        assert_eq!(dossiers_externes_eden(&apres), ["E:/A", "F:/C"], "{apres}");
+        assert!(!apres.contains("\\3\\path"), "la clé en trop est effacée : {apres}");
+        assert!(apres.contains("theme=dark") && apres.contains("x=1"));
+        let vide = retirer_dossiers_eden(&apres, &["E:\\A".into(), "F:\\C".into()]);
+        assert!(dossiers_externes_eden(&vide).is_empty());
+        assert!(vide.contains("external_content_dirs\\size = 0") || vide.contains("external_content_dirs\\size=0"), "{vide}");
+        assert!(vide.contains("theme=dark"));
+    }
+
+    #[test]
+    fn seuls_les_dossiers_poses_par_frogtend_et_disparus_quittent_eden() {
+        let d = tempfile::tempdir().unwrap();
+        let donnees = d.path().join("donnees");
+        let eden = d.path().join("Eden");
+        let jeu_a = d.path().join("Jeux").join("Zelda");
+        let jeu_b = d.path().join("Jeux").join("Mario");
+        let partage = d.path().join("Switch DLC");
+        for p in [&jeu_a, &jeu_b, &partage] {
+            std::fs::create_dir_all(p).unwrap();
+        }
+        let s = |p: &Path| p.to_string_lossy().to_string();
+        let ini = ini_eden(&eden);
+        std::fs::create_dir_all(ini.parent().unwrap()).unwrap();
+        // La personne avait déjà E:\Siens dans sa liste ; puis Frogtend ajoute pour Zelda (10) son dossier, celui de la
+        // personne (qu'il ne doit jamais noter) et le dossier partagé ; pour Mario (20), le partagé aussi.
+        let texte = ajouter_dossiers_eden("[UI]\r\ntheme=dark\r\n", &["E:\\Siens".into()]);
+        let avant = dossiers_externes_eden(&texte);
+        std::fs::write(&ini, ajouter_dossiers_eden(&texte, &[s(&jeu_a), "E:\\Siens".into(), s(&partage), s(&jeu_b)])).unwrap();
+        let mut r = RegistreEden::new();
+        noter_dossiers_eden(&mut r, &eden, &avant, &[s(&jeu_a), "E:\\Siens".into(), s(&partage)], 10);
+        noter_dossiers_eden(&mut r, &eden, &avant, &[s(&partage), s(&jeu_b)], 20);
+        assert_eq!(r[&s(&eden)].len(), 3, "le dossier de la personne n'est jamais noté : {r:?}");
+        ecrire_registre_eden(&donnees, &r).unwrap();
+        let ferme = |_: &Path| false;
+        let ouvert = |_: &Path| true;
+
+        // Zelda retiré, son dossier parti avec lui, mais Eden ouvert : rien n'est écrit, la preuve attend.
+        std::fs::remove_dir_all(&jeu_a).unwrap();
+        assert_eq!(ranger_dossiers_eden(&donnees, Some(10), &ouvert).unwrap(), 0);
+        assert_eq!(dossiers_externes_eden(&std::fs::read_to_string(&ini).unwrap()).len(), 4);
+        assert_eq!(lire_registre_eden(&donnees)[&s(&eden)][&s(&jeu_a)], Vec::<i64>::new(), "à retirer plus tard");
+        // Eden fermé : son dossier part ; le partagé (encore utilisé par Mario) et celui de la personne restent.
+        assert_eq!(ranger_dossiers_eden(&donnees, None, &ferme).unwrap(), 1);
+        let l = dossiers_externes_eden(&std::fs::read_to_string(&ini).unwrap());
+        assert!(!l.iter().any(|x| meme_dossier(x, &s(&jeu_a))) && l.iter().any(|x| x == "E:/Siens"), "{l:?}");
+        assert_eq!(l.len(), 3);
+        // Mario retiré mais le dossier partagé existe encore : il reste dans Eden (jamais un dossier encore là).
+        std::fs::remove_dir_all(&jeu_b).unwrap();
+        assert_eq!(ranger_dossiers_eden(&donnees, Some(20), &ferme).unwrap(), 1);
+        let l = dossiers_externes_eden(&std::fs::read_to_string(&ini).unwrap());
+        assert!(l.iter().any(|x| meme_dossier(x, &s(&partage))) && l.iter().any(|x| x == "E:/Siens") && l.len() == 2, "{l:?}");
+        // Eden retiré du PC : la preuve s'efface sans rien écrire.
+        std::fs::remove_dir_all(&partage).unwrap();
+        std::fs::remove_dir_all(&eden).unwrap();
+        assert_eq!(ranger_dossiers_eden(&donnees, None, &ferme).unwrap(), 0);
+        assert!(lire_registre_eden(&donnees).is_empty());
     }
 
     #[test]

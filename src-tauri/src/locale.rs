@@ -247,6 +247,11 @@ impl Noyau {
                 "« {emplacement} » n'est pas un emplacement réglé pour {plateforme}. Règle-le dans « Réglages »."
             )));
         }
+        // Même réglé (avant la 0.128.0, l'interface l'acceptait) : jamais la racine d'un disque, Windows ou Documents.
+        // Le réglage reste tel quel ; seule l'installation y est refusée, rien n'est créé.
+        if let Some(m) = crate::commandes::refus_dossier_jeux(Path::new(emplacement)) {
+            return Err(Erreur::Reglage(m));
+        }
         let v = fiche["versions"]
             .as_array()
             .and_then(|l| l.iter().find(|v| v["telechargement_id"].as_i64() == Some(version)))

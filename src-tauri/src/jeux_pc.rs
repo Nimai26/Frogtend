@@ -155,11 +155,13 @@ pub fn proposer(emplacements: &Emplacements, systeme: &str, taille: u64) -> Vec<
         let libre = place_libre(Path::new(c));
         EmplacementPropose { chemin: c.clone(), libre, assez: libre.is_some_and(|l| l >= taille + MARGE_LIBRE) }
     };
-    let mut l: Vec<EmplacementPropose> = emplacements.pour(systeme).iter().map(vu).collect();
+    // Jamais proposé : la racine d'un disque, Windows ou Documents (un ancien réglage, gardé tel quel mais ignoré).
+    let admis = |c: &&String| !crate::garde::dossier_systeme(Path::new(c.as_str()));
+    let mut l: Vec<EmplacementPropose> = emplacements.pour(systeme).iter().filter(admis).map(vu).collect();
     // Les dossiers propres à ce système n'existent plus (PC formaté, disque changé) : ceux par défaut ensuite, plutôt
     // que rien.
     if l.iter().all(|e| e.libre.is_none()) {
-        for c in &emplacements.defaut {
+        for c in emplacements.defaut.iter().filter(admis) {
             if !l.iter().any(|e| e.chemin.eq_ignore_ascii_case(c)) {
                 l.push(vu(c));
             }
@@ -748,6 +750,19 @@ mod tests {
         assert!(p[1].libre.unwrap() > 0);
         // Un jeu plus gros que le disque : pas assez de place.
         assert!(!proposer(&e, "MS-DOS", u64::MAX / 2)[1].assez);
+    }
+
+    #[test]
+    fn une_racine_reglee_autrefois_n_est_jamais_proposee() {
+        let d = tempfile::tempdir().unwrap();
+        let e = Emplacements { defaut: vec!["D:\\".into(), d.path().to_string_lossy().into()], ..Default::default() };
+        let p = proposer(&e, "MS-DOS", 1);
+        assert_eq!(p.len(), 1, "{p:?}");
+        assert_eq!(p[0].chemin, d.path().to_string_lossy());
+        // Seulement une racine : rien à proposer (l'interface propose alors le dossier de Frogtend), réglage intact.
+        let e = Emplacements { defaut: vec!["D:\\".into()], ..Default::default() };
+        assert!(proposer(&e, "MS-DOS", 1).is_empty());
+        assert_eq!(e.defaut, ["D:\\"]);
     }
 
     #[test]

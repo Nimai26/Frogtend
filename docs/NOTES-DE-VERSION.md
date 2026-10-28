@@ -1,5 +1,18 @@
 # Notes de version de Frogtend
 
+## 0.134.0 — Finitions invisibles (2)
+
+- 🏷 Deux systèmes qui auraient le même nom court sont montrés sous leur nom complet : on ne les confond plus.
+- 📁 Frogtend refuse aussi la racine d'un disque, Windows ou Documents comme dossier des émulateurs, des outils ou
+  des abris de parties (comme pour les jeux), et le cœur de Frogtend le revérifie au moment d'installer. Un ancien
+  réglage de ce genre n'est ni effacé ni bloquant : il est simplement laissé de côté.
+- 🎮 Switch : Frogtend n'ajoute plus les contenus d'un jeu pendant qu'Eden est ouvert (Eden les aurait effacés en se
+  fermant). Quand tu retires un jeu Switch, le dossier de ses contenus que Frogtend avait donné à Eden quitte sa
+  liste ; un dossier que tu y avais mis toi-même n'est jamais touché.
+- 💾 Deux restaurations de suite ne se gênent plus : les parties de la première retrouvent encore leur émulateur.
+- La sauvegarde à ton nom est reconnue par le même calcul que l'envoi (un nom de profil avec un point final, par
+  exemple, la retrouve).
+
 ## 0.133.0 — Finitions invisibles
 
 - 🛡 Un jeu protégé par plusieurs anti-triches les cite tous (avant Cheat Engine ou un mod) ; un jeu dont Firehouse

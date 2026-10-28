@@ -24,6 +24,17 @@ pub struct SauvegardeDisponible {
     /// Le contenu de `derniere-sauvegarde.json` (date, fichiers, taille…), s'il existe.
     pub derniere: Value,
     pub octets: u64,
+    /// Rangée au nom du profil ouvert (même règle que l'envoi, `nom_pour_api`) : l'interface ne la recalcule jamais.
+    #[serde(default)]
+    pub a_moi: bool,
+}
+
+/// Marque les sauvegardes rangées au nom de ce profil (tel que Firehouse le range à l'envoi).
+pub fn marquer_les_miennes(liste: &mut [SauvegardeDisponible], nom_du_profil: &str) {
+    let moi = crate::sauvegarde::nom_pour_api(nom_du_profil);
+    for s in liste {
+        s.a_moi = s.profil == moi;
+    }
 }
 
 /// Ce que la restauration a préparé.
@@ -233,6 +244,7 @@ pub async fn lister(client: &Client) -> Resultat<Vec<SauvegardeDisponible>> {
                 pc: p["pc"].as_str()?.into(),
                 derniere: p["derniere"].clone(),
                 octets: p["octets"].as_u64().unwrap_or(0),
+                a_moi: false,
             })
         })
         .collect())
@@ -319,27 +331,53 @@ pub fn anciens_programmes(configuration: &Value) -> Vec<(String, String)> {
 /// Le dossier d'attente des parties de CET émulateur : celui à son nom de dossier ; sinon celui de l'ancien émulateur
 /// qui avait le même programme (`rpcs3.exe`), s'il est le SEUL (deux anciens RetroArch : on ne choisit pas).
 pub fn cle_en_attente(zone: &Path, programme: &str, anciens: &[(String, String)]) -> Option<String> {
+    cle_par_restaurations(zone, programme, &[anciens.to_vec()])
+}
+
+/// Pareil, avec les anciens émulateurs de PLUSIEURS restaurations (la dernière d'abord) : une restauration plus ancienne
+/// n'est consultée que si la dernière ne connaît AUCUN candidat (jamais l'union : deux anciens RPCS3 seraient ambigus).
+pub fn cle_par_restaurations(zone: &Path, programme: &str, restaurations: &[Vec<(String, String)>]) -> Option<String> {
     let nom = nom_du_dossier_de(programme)?;
     if zone.join(&nom).is_dir() {
         return Some(nom);
     }
     let exe = programme.rsplit(['\\', '/']).next()?.to_lowercase();
-    let mut l: Vec<&String> = anciens.iter().filter(|(d, e)| *e == exe && zone.join(d).is_dir()).map(|(d, _)| d).collect();
-    l.dedup();
-    match l.as_slice() {
-        [un] => Some((*un).clone()),
-        _ => None,
+    for anciens in restaurations {
+        let mut l: Vec<&String> = anciens.iter().filter(|(d, e)| *e == exe && zone.join(d).is_dir()).map(|(d, _)| d).collect();
+        l.dedup();
+        match l.as_slice() {
+            [] => continue,
+            [un] => return Some((*un).clone()),
+            _ => return None,
+        }
     }
+    None
+}
+
+/// Les anciens émulateurs de chaque restauration gardée dans la zone d'attente, la dernière d'abord
+/// (`configuration.json`, puis les `configuration-<date>.json` du plus récent au plus ancien).
+pub fn anciens_des_restaurations(attente: &Path) -> Vec<Vec<(String, String)>> {
+    let mut gardees: Vec<PathBuf> = std::fs::read_dir(attente)
+        .map(|l| l.flatten().map(|e| e.path()).filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("configuration-") && n.ends_with(".json"))).collect())
+        .unwrap_or_default();
+    // L'instant dans le nom (`configuration-<secondes>[-<n>].json`) : du plus récent au plus ancien.
+    let ordre = |p: &PathBuf| {
+        let n = p.file_stem().and_then(|n| n.to_str()).unwrap_or("").trim_start_matches("configuration-").to_string();
+        let mut m = n.splitn(2, '-');
+        (m.next().and_then(|x| x.parse::<u64>().ok()).unwrap_or(0), m.next().and_then(|x| x.parse::<u32>().ok()).unwrap_or(1))
+    };
+    gardees.sort_by_key(|p| std::cmp::Reverse(ordre(p)));
+    std::iter::once(attente.join("configuration.json")).chain(gardees).map(|p| anciens_programmes(&lire_json_ou_rien(&p))).collect()
 }
 
 /// Les dossiers d'attente de TOUS les émulateurs présents, chacun donné à UN SEUL émulateur (jamais les mêmes parties
 /// copiées chez deux émulateurs qui divergeraient ensuite) : par le nom exact du dossier d'abord ; un rapprochement par
 /// le programme seulement s'il est seul à le revendiquer. Dans le doute : personne.
-pub fn cles_en_attente(zone: &Path, programmes: &[String], anciens: &[(String, String)]) -> Vec<(String, String)> {
+pub fn cles_en_attente(zone: &Path, programmes: &[String], anciens: &[Vec<(String, String)>]) -> Vec<(String, String)> {
     let mut l: Vec<(String, String, bool)> = Vec::new();
     for p in programmes {
         let exact = nom_du_dossier_de(p).is_some_and(|n| zone.join(&n).is_dir());
-        if let Some(c) = cle_en_attente(zone, p, anciens) {
+        if let Some(c) = cle_par_restaurations(zone, p, anciens) {
             if !l.iter().any(|(x, _, _)| x == p) {
                 l.push((p.clone(), c, exact));
             }
@@ -464,7 +502,11 @@ impl Noyau {
     pub async fn sauvegardes_disponibles(&self) -> Resultat<Vec<SauvegardeDisponible>> {
         let s = self.session().await?;
         match &s.source {
-            crate::source::Source::Firehouse(c) => lister(c).await,
+            crate::source::Source::Firehouse(c) => {
+                let mut l = lister(c).await?;
+                marquer_les_miennes(&mut l, &s.profil.nom);
+                Ok(l)
+            }
             crate::source::Source::Simulee => Ok(vec![]),
         }
     }
@@ -500,6 +542,17 @@ impl Noyau {
         if attente.join(REGLEES).is_file() {
             std::fs::rename(attente.join(REGLEES), attente.join(format!("reglees-{}.json", crate::noyau::maintenant().replace(':', "-"))))?;
         }
+        // Les réglages de la restauration d'avant sont gardés à côté : ses parties encore en attente, rangées sous un
+        // ancien nom de dossier, retrouvent leur émulateur par le programme (`anciens_des_restaurations`).
+        if attente.join("configuration.json").is_file() {
+            // Deux préparations dans la même seconde : « -2 », « -3 »… (jamais écrasée, jamais perdue).
+            let instant = crate::noyau::maintenant().replace(':', "-");
+            let garde = (1..)
+                .map(|i| attente.join(if i == 1 { format!("configuration-{instant}.json") } else { format!("configuration-{instant}-{i}.json") }))
+                .find(|p| !p.exists())
+                .unwrap_or_default();
+            std::fs::rename(attente.join("configuration.json"), garde)?;
+        }
         std::fs::write(attente.join("bibliotheque.json"), serde_json::to_vec_pretty(&bibliotheque).unwrap_or_default())?;
         std::fs::write(attente.join("configuration.json"), serde_json::to_vec_pretty(&configuration).unwrap_or_default())?;
         let zone = attente.join("parties");
@@ -527,7 +580,7 @@ impl Noyau {
         let attente = self.zone_restauration(&s.profil.id);
         let zone = attente.join("parties").join("emulateurs");
         // Les programmes des émulateurs de l'ANCIEN PC (réglages restaurés) : leur dossier → leur programme.
-        let anciens = anciens_programmes(&lire_json_ou_rien(&attente.join("configuration.json")));
+        let anciens = anciens_des_restaurations(&attente);
         let mut reglees = lire_reglees(&attente);
         let r = self.reposer_avec(&s, &zone, programmes_emulateurs, &anciens, &mut reglees);
         // Écrit même après une erreur : ce qui a été réglé avant ne sera pas redit (l'erreur d'origine passe d'abord).
@@ -542,7 +595,7 @@ impl Noyau {
         s: &crate::noyau::Session,
         zone: &Path,
         programmes_emulateurs: &[String],
-        anciens: &[(String, String)],
+        anciens: &[Vec<(String, String)>],
         reglees: &mut Reglees,
     ) -> Resultat<Reposes> {
         let mut total = Reposes::default();
@@ -786,6 +839,19 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn seules_les_sauvegardes_au_nom_du_profil_sont_les_siennes() {
+        let s = |profil: &str| SauvegardeDisponible { profil: profil.into(), pc: "VENKMAN".into(), derniere: Value::Null, octets: 0, a_moi: true };
+        let mut l = vec![s("Sebastien"), s("Lea _ Zoe"), s("Seb")];
+        marquer_les_miennes(&mut l, "Sébastien");
+        assert_eq!(l.iter().map(|x| x.a_moi).collect::<Vec<_>>(), [true, false, false]);
+        // La même règle qu'à l'envoi : « Seb. » est rangé « Seb » (le calcul de l'interface ne le savait pas).
+        marquer_les_miennes(&mut l, "Seb.");
+        assert_eq!(l.iter().map(|x| x.a_moi).collect::<Vec<_>>(), [false, false, true]);
+        marquer_les_miennes(&mut l, "Léa & Zoé");
+        assert!(l[1].a_moi && !l[0].a_moi);
+    }
+
+    #[test]
     fn les_parties_d_un_emulateur_reinstalle_ailleurs_le_retrouvent_par_son_programme() {
         let d = tempfile::tempdir().unwrap();
         let zone = d.path();
@@ -815,9 +881,32 @@ mod tests {
         let c = cles_en_attente(
             zone,
             &[p("C:\\E\\RPCS3\\rpcs3.exe"), p("D:\\rpcs3-test\\rpcs3.exe"), p("C:\\E\\RetroArch\\retroarch.exe"), p("C:\\E\\Cemu\\Cemu.exe")],
-            &a,
+            &[a.clone()],
         );
+        // Deux restaurations de suite : la dernière ne connaît pas RPCS3 → la précédente le retrouve ; la dernière
+        // le connaît (même ambigu) → la précédente n'est jamais consultée.
+        let sans_rpcs3: Vec<(String, String)> = a.iter().filter(|(_, e)| e != "rpcs3.exe").cloned().collect();
+        assert_eq!(cle_par_restaurations(zone, "C:\\F\\RPCS3\\rpcs3.exe", &[sans_rpcs3, a.clone()]).as_deref(), Some("rpcs3-v0.0.38-win64"));
+        assert_eq!(cle_par_restaurations(zone, "C:\\Emus\\RA\\retroarch.exe", &[a.clone(), vec![(p("RetroArch-ancien"), p("retroarch.exe"))]]), None);
         assert_eq!(c, vec![(p("C:\\E\\RetroArch\\retroarch.exe"), p("RetroArch")), (p("C:\\E\\Cemu\\Cemu.exe"), p("Cemu_2.5"))]);
+    }
+
+    #[test]
+    fn les_reglages_des_restaurations_gardees_sont_lus_de_la_derniere_a_la_plus_ancienne() {
+        let d = tempfile::tempdir().unwrap();
+        let conf = |prog: &str| json!({"reglages_pc": {"reglages": {"emulateurs": {"X": {"programme": prog}}}}}).to_string();
+        std::fs::write(d.path().join("configuration.json"), conf("D:\\C\\c.exe")).unwrap();
+        // Les noms que `maintenant()` donne (secondes), dont deux préparations dans la même seconde.
+        std::fs::write(d.path().join("configuration-999999999.json"), conf("D:\\Z\\z.exe")).unwrap();
+        std::fs::write(d.path().join("configuration-1760000000.json"), conf("D:\\A\\a.exe")).unwrap();
+        std::fs::write(d.path().join("configuration-1761000000.json"), conf("D:\\B\\b.exe")).unwrap();
+        std::fs::write(d.path().join("configuration-1761000000-2.json"), conf("D:\\B2\\b2.exe")).unwrap();
+        let l = anciens_des_restaurations(d.path());
+        let exes: Vec<&str> = l.iter().map(|g| g[0].1.as_str()).collect();
+        assert_eq!(exes, ["c.exe", "b2.exe", "b.exe", "a.exe", "z.exe"]);
+        // Aucune restauration : une génération vide, rien d'autre.
+        let vide = tempfile::tempdir().unwrap();
+        assert_eq!(anciens_des_restaurations(vide.path()), vec![Vec::<(String, String)>::new()]);
     }
 
     #[test]

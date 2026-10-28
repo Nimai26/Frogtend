@@ -40,6 +40,9 @@ pub async fn abris_regler(app: AppHandle, noyau: State<'_, Noyau>, dossier: Stri
     // Durcissement (étape 6) : seulement le dossier des abris RÉGLÉ dans `pc.json` (l'interface l'y enregistre juste
     // avant), jamais un autre dossier créé et rempli d'abris.
     if !dossier.trim().is_empty() {
+        if let Some(m) = refus_dossier(&d, "abris") {
+            return Err(Erreur::Refus(m));
+        }
         let regle = dossier_abris_regle(&app);
         if !regle.as_deref().is_some_and(|r| crate::garde::meme(&d, r)) {
             return Err(Erreur::Refus("Ce dossier n'est pas le dossier des abris réglé : règle-le d'abord dans Réglages ▸ Emplacements.".into()));
@@ -478,28 +481,44 @@ pub fn dossier_jeux_propose() -> Option<DossierPropose> {
 
 /// Un dossier choisi pour y RANGER des jeux : refusé (et pourquoi, avec un sous-dossier proposé) s'il est la racine
 /// d'un disque, Windows, Program Files ou un dossier de base de l'utilisateur (Documents, Bureau…). `None` : admis.
+/// `sorte` : `emulateurs`, `outils` ou `abris` pour les autres dossiers de Frogtend (même règle), sinon les jeux.
 #[tauri::command]
-pub fn dossier_jeux_refus(chemin: String) -> Option<String> {
-    refus_dossier_jeux(std::path::Path::new(chemin.trim()))
+pub fn dossier_jeux_refus(chemin: String, sorte: Option<String>) -> Option<String> {
+    refus_dossier(std::path::Path::new(chemin.trim()), sorte.as_deref().unwrap_or("jeux"))
 }
 
-fn refus_dossier_jeux(p: &std::path::Path) -> Option<String> {
+pub(crate) fn refus_dossier_jeux(p: &std::path::Path) -> Option<String> {
+    refus_dossier(p, "jeux")
+}
+
+/// La règle des dossiers de Frogtend (jeux, émulateurs, outils, abris) : jamais la racine d'un disque, Windows,
+/// Program Files ni un dossier de base de l'utilisateur. Le cœur la revérifie à l'usage (l'interface peut se tromper).
+pub(crate) fn refus_dossier(p: &std::path::Path, sorte: &str) -> Option<String> {
     if !crate::garde::dossier_systeme(p) {
         return None;
     }
+    let (quoi, sous_dossier) = match sorte {
+        "emulateurs" => ("des émulateurs", "Emulateurs"),
+        "outils" => ("des outils", "Outils"),
+        "abris" => ("des abris de parties", "Abris de parties"),
+        _ => ("des jeux", "Jeux"),
+    };
     if !p.is_absolute() {
-        return Some(format!("« {} » n'est pas un chemin complet : donne-le en entier, par exemple « D:\\Jeux ».", p.display()));
+        return Some(format!("« {} » n'est pas un chemin complet : donne-le en entier, par exemple « D:\\{sous_dossier} ».", p.display()));
     }
-    // Un sous-dossier proposé qui convient lui-même (jamais sous Windows) ; sinon le dossier que Frogtend propose d'office.
-    let candidat = p.join("Jeux");
-    let candidat = if crate::garde::dossier_systeme(&candidat) {
+    // Un sous-dossier proposé qui convient lui-même (jamais sous Windows) ; sinon, pour les jeux, le dossier que
+    // Frogtend propose d'office.
+    let candidat = p.join(sous_dossier);
+    let candidat = if !crate::garde::dossier_systeme(&candidat) {
+        Some(candidat)
+    } else if sous_dossier == "Jeux" {
         crate::jeux_pc::disque_propose(&crate::jeux_pc::disques_locaux()).map(crate::jeux_pc::dossier_jeux_sur)
     } else {
-        Some(candidat)
+        None
     };
     let propose = candidat.map(|c| format!(" — par exemple « {} »", c.display())).unwrap_or_default();
     Some(format!(
-        "« {} » ne convient pas pour ranger des jeux (la racine d'un disque, un dossier de Windows, ou un dossier de base comme Documents ou le Bureau). Choisis ou crée un sous-dossier{propose}.",
+        "« {} » ne convient pas pour ranger {quoi} (la racine d'un disque, un dossier de Windows, ou un dossier de base comme Documents ou le Bureau). Choisis ou crée un sous-dossier{propose}.",
         p.display()
     ))
 }
@@ -1123,13 +1142,28 @@ pub async fn contenus_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64
             d.dedup();
             d
         };
+        // Eden ouvert réécrirait son fichier en quittant (la liste ajoutée disparaîtrait) : il doit être fermé.
+        if !crate::lancement::processus_du_dossier(&eden).is_empty() {
+            return Err(Erreur::Refus("Eden est ouvert : ferme-le (ou quitte ta partie), puis recommence.".into()));
+        }
+        // Les dossiers d'anciens jeux retirés qui attendaient qu'Eden soit fermé partent d'abord.
+        if let Err(e) = crate::contenus::ranger_dossiers_eden(&noyau.dossier, None, &|d| !crate::lancement::processus_du_dossier(d).is_empty()) {
+            noyau.journaliser(&format!("contenus Switch : liste d'Eden pas rangée ({e})"));
+        }
         let ini = crate::contenus::ini_eden(&eden);
-        let apres = crate::contenus::ajouter_dossiers_eden(&std::fs::read_to_string(&ini).unwrap_or_default(), &dossiers);
+        let texte = std::fs::read_to_string(&ini).unwrap_or_default();
+        let avant = crate::contenus::dossiers_externes_eden(&texte);
+        let apres = crate::contenus::ajouter_dossiers_eden(&texte, &dossiers);
         crate::emulateurs_profils::remplacer_config(&eden, &ini, &apres)?;
         // Vérifier le résultat : les dossiers sont bien dans la liste relue.
         let relus = crate::contenus::dossiers_externes_eden(&std::fs::read_to_string(&ini).unwrap_or_default());
         let manquants: Vec<(String, String)> =
             dossiers.iter().filter(|d| !relus.iter().any(|r| crate::contenus::meme_dossier(r, d))).map(|d| (d.clone(), "pas enregistré dans Eden".to_string())).collect();
+        // La preuve de ce que Frogtend a posé (pour le retirer avec le jeu), seulement les dossiers bien relus.
+        let poses: Vec<String> = dossiers.iter().filter(|d| relus.iter().any(|r| crate::contenus::meme_dossier(r, d))).cloned().collect();
+        if let Err(e) = crate::contenus::noter_et_ecrire_eden(&noyau.dossier, &eden, &avant, &poses, id) {
+            noyau.journaliser(&format!("contenus Switch : preuve des dossiers non notée ({e})"));
+        }
         noyau.journaliser(&format!("contenus Switch : {} dossier(s) ajouté(s) à Eden", dossiers.len() - manquants.len()));
         return Ok(BilanContenus { deja: 0, installes: l.iter().filter(|c| choisis.contains(&c.id)).count() - manquants.len().min(choisis.len()), refuses: manquants });
     }
@@ -1916,7 +1950,15 @@ pub async fn parties_abri(noyau: State<'_, Noyau>, id: i64) -> Resultat<crate::p
 
 #[tauri::command]
 pub async fn jeu_retirer(noyau: State<'_, Noyau>, id: i64) -> Resultat<crate::partie::Abri> {
-    noyau.retirer_du_pc(id).await
+    let abri = noyau.retirer_du_pc(id).await?;
+    // Les dossiers de contenus Switch que Frogtend avait donnés à Eden pour ce jeu (et qui ont disparu avec lui) quittent
+    // sa liste ; Eden ouvert → plus tard. Jamais un échec du retrait.
+    match crate::contenus::ranger_dossiers_eden(&noyau.dossier, Some(id), &|d| !crate::lancement::processus_du_dossier(d).is_empty()) {
+        Ok(n) if n > 0 => noyau.journaliser(&format!("contenus Switch : {n} dossier(s) retiré(s) de la liste d'Eden")),
+        Ok(_) => {}
+        Err(e) => noyau.journaliser(&format!("contenus Switch : liste d'Eden pas rangée ({e})")),
+    }
+    Ok(abri)
 }
 
 /// Le désinstalleur d'un jeu retiré qui restait installé ailleurs, après le oui de la personne (proposé par le retrait).
@@ -4378,7 +4420,12 @@ fn exiger_emulateur_pour_ecrire(app: &AppHandle, noyau: &Noyau, programme: &std:
 /// Durcissement (étape 5) : un émulateur ne s'installe que dans le dossier des émulateurs ou des outils RÉGLÉ dans
 /// `pc.json` (relu ici), jamais dans un dossier quelconque.
 fn exiger_dossier_de_base(app: &AppHandle, dossier: &std::path::Path) -> Resultat<()> {
+    // Même réglé, jamais la racine d'un disque, Windows ou Documents (réglage gardé tel quel, seulement refusé ici).
     let reglages = app.store("pc.json").ok().and_then(|s| s.get("reglages")).unwrap_or(Value::Null);
+    let outils = reglages["dossierOutils"].as_str().is_some_and(|o| !o.trim().is_empty() && crate::garde::meme(dossier, std::path::Path::new(o.trim())));
+    if let Some(m) = refus_dossier(dossier, if outils { "outils" } else { "emulateurs" }) {
+        return Err(Erreur::Refus(format!("{m} (⚙ Options ▸ 📁 Emplacements)")));
+    }
     if crate::garde::dossier_de_base_admis(&reglages, dossier) {
         return Ok(());
     }
@@ -5046,6 +5093,11 @@ mod tests {
             assert!(super::refus_dossier_jeux(&std::path::Path::new(&u).join("Documents").join("Mes jeux")).is_none());
         }
         assert!(super::refus_dossier_jeux(std::path::Path::new(r"E:\Jeux")).is_none());
+        // Les autres dossiers de Frogtend : même règle, leur nom dans le message et le sous-dossier proposé.
+        let r = super::refus_dossier(std::path::Path::new(r"D:\"), "emulateurs").unwrap();
+        assert!(r.contains("des émulateurs") && r.contains(r"D:\Emulateurs"), "{r}");
+        assert!(super::refus_dossier(std::path::Path::new(r"D:\"), "abris").unwrap().contains("abris de parties"));
+        assert!(super::refus_dossier(std::path::Path::new(r"D:\Emulateurs"), "emulateurs").is_none());
         assert!(super::refus_dossier_jeux(std::path::Path::new("Jeux")).unwrap().contains("chemin complet"));
         // Sous Windows : jamais « C:\Windows\Jeux » proposé (il serait refusé à son tour).
         if let Some(w) = std::env::var_os("SystemRoot") {

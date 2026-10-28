@@ -70,9 +70,17 @@ export async function dossierEmulateurs(changer = false): Promise<string | null>
   });
   if (!ok) return null;
   const choisi = await parcourir({ dossier: true, titre: 'Dossier des émulateurs' });
-  if (!choisi) return null;
+  if (!choisi || (await refuse(choisi, 'emulateurs'))) return null;
   await reglerPc('dossierEmulateurs', choisi);
   return choisi;
+}
+
+/** Un dossier choisi à l'explorateur qui ne convient pas (racine d'un disque, Windows, Documents…) : dit, avec un
+ * sous-dossier proposé ; le cœur le revérifie à l'installation. */
+async function refuse(dossier: string, sorte: 'emulateurs' | 'outils'): Promise<boolean> {
+  const m = await api.dossierJeuxRefus(dossier, sorte).catch(() => null);
+  if (m) await informer('📁 Choisis un autre dossier', m);
+  return !!m;
 }
 
 /** Installe (ou met à jour) un émulateur depuis sa source officielle, après avoir annoncé la taille. */
@@ -222,7 +230,7 @@ export async function dossierOutils(changer = false): Promise<string | null> {
   });
   if (!ok) return null;
   const d = await parcourir({ dossier: true, titre: 'Dossier des outils' });
-  if (!d) return null;
+  if (!d || (await refuse(d, 'outils'))) return null;
   await reglerPc('dossierOutils', d);
   return d;
 }

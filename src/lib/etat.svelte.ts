@@ -3,6 +3,7 @@
 import { isTauri } from '@tauri-apps/api/core';
 import { migrerPc, migrerProfil } from './reglages/reunions';
 import { oublierToutes } from '$lib/assistant/conversations.svelte';
+import { oublierNomsCourts } from '$lib/ludotheque/nomsCourts.svelte';
 import { normaliserTous } from '$lib/emulateurs/choix';
 import instantane from '../../docs/charte/themes.instantane.json';
 import { api, type Profil } from './api';
@@ -177,6 +178,7 @@ export async function entrerDansProfil(profil: Profil) {
 export async function sortirDuProfil() {
   await api.fermerProfil().catch(() => {});
   oublierToutes();
+  oublierNomsCourts();
   etat.profilOuvert = null;
   etat.skinFirehouse = null;
   magasinProfil = null;

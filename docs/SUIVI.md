@@ -25,6 +25,28 @@
   `<émulateur>\.frogtend-bios`, empreinte de Firehouse ; un fichier manquant → reprise). Notés : un contenu corrigé
   chez Firehouse sous les mêmes noms est téléchargé mais rien n'est remplacé (règle) ; les lignes d'anciennes
   empreintes restent dans le registre.
+  ✅ Invisibles FAITS en 0.134.0 (✅ Seb 28/10 « oui » à enchaîner les finitions ; avis des experts lancement et
+  interface AVANT) : (a) noms courts en double → nom LaunchBox pour les deux (règle unique dans `nomAffiche`, module
+  `nomsCourts.svelte.ts`, table remplacée à chaque chargement, oubliée à la sortie du profil) ; firmware Switch
+  comparé au nom LaunchBox (plus au nom montré) ; (b) `nomRange` TS supprimé : `a_moi` calculé par le cœur
+  (`nom_pour_api`, les deux calculs divergeaient : « Seb. », lettres hors de la table, emoji) ; (c) garde des dossiers
+  dans le cœur À L'USAGE (aucune commande n'enregistre les réglages : l'interface écrit `pc.json`) : `refus_dossier`
+  pour jeux, émulateurs, outils, abris ; un ancien réglage refusé reste tel quel, seulement ignoré (proposer) ou
+  refusé (installer) ; l'interface vérifie aussi les dossiers d'émulateurs/outils/abris ; (d) Eden : contenus
+  refusés si Eden est ouvert (défaut trouvé par l'expert) ; preuve `eden-contenus.json` (données de Frogtend) ; un
+  dossier posé par Frogtend quitte la liste d'Eden seulement quand plus aucun jeu ne s'en sert ET qu'il a disparu,
+  Eden fermé (sinon plus tard) ; jamais un dossier de la personne ; (e) deux restaurations de suite : réglages de la
+  précédente gardés (`configuration-<date>.json`), consultés seulement si la dernière ne connaît aucun candidat.
+  Taodbox « ⓘ Crédits » du fond/logo d'un jeu : NON codé (Firehouse ne sert que LaunchBox) ; besoin 37 complété
+  (crédits aussi dans `images` du catalogue) ; le jour venu : entrée dans « Gérer le jeu » (un bouton du bandeau
+  effacerait le fond en prenant le focus). RESTE (noté) : entrées d'Eden posées avant 0.134.0 sans preuve, laissées ;
+  `bibliotheque.json` toujours écrasé par une seconde restauration ; Documents sous OneDrive non reconnu. Relectures
+  AVANT livraison suivies (aucun bloquant) : abris d'un ancien réglage à la racine → jamais écrits (`dossier_abris`) ;
+  Taodbox et ludothèque réunissent les MÊMES listes de noms courts, une erreur ne vide plus la table ; preuve Eden
+  sous verrou, gardée à côté si illisible ; deux préparations dans la même seconde (`-2`). Notés (sens prudent, un
+  dossier oublié chez Eden, jamais un retrait à tort) : un import qui change de numéro garde l'ancien dans la preuve ;
+  Eden sur un disque débranché efface la preuve des dossiers à retirer ; sous-clés éventuelles d'une entrée
+  `external_content_dirs` (`deep_scan` ?) non relues dans qt_config.cpp (même limite que l'ajout).
   ⏳ Mineur (11) — options du menu en jeu hors RetroArch (✅ Seb 27/10 « enchaîne avec les émulateurs ») : plan de
   l'expert lancement (sources relues). FAIT en 0.132.0 : MAME (4 options par son script Lua, noms vérifiés dans
   mame0289 ref-core.rst) ; CORRIGÉ un défaut déjà en place : les raccourcis de la personne étaient effacés par ceux

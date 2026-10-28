@@ -140,9 +140,6 @@ export async function apresUnePartie() {
   if (etat.profil.sauvegarde.auto === 'apres_partie') await sauvegarder(true);
 }
 
-/** Le nom tel que Firehouse le range (accents retirés, casse gardée), pour reconnaître la sauvegarde d'un profil. */
-const nomRange = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9 ._-]/g, '_').slice(0, 64);
-
 /** À l'ouverture du profil : propose une restauration (profil jamais sauvegardé d'ici, sauvegarde à son nom), puis
  * sauvegarde quotidienne si le profil l'a choisi et que la dernière est ancienne. */
 export async function auDemarrage() {
@@ -151,7 +148,8 @@ export async function auDemarrage() {
     // Liste illisible (hors ligne…) : on ne conclut JAMAIS « aucune sauvegarde » — pas de sauvegarde automatique cette fois.
     const liste = await api.restaurationListe().catch(() => null);
     if (!liste) return;
-    const a_moi = liste.filter((s) => s.profil === nomRange(etat.profilOuvert?.nom ?? ''));
+    // Le cœur marque celles rangées au nom du profil ouvert (la même règle qu'à l'envoi).
+    const a_moi = liste.filter((s) => s.a_moi);
     if (a_moi.length) {
       const s = a_moi[0];
       const oui = await confirmer(`📥 Une sauvegarde de « ${s.profil} » existe`, {

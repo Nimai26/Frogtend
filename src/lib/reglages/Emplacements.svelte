@@ -88,6 +88,13 @@
   async function choisirAutre(cle: (typeof AUTRES)[number]['cle']) {
     const c = await demanderDossier();
     if (!c) return;
+    // Même règle que pour les jeux : jamais la racine d'un disque, Windows ou Documents (le cœur le revérifie).
+    const sorte = cle === 'dossierEmulateurs' ? 'emulateurs' : cle === 'dossierOutils' ? 'outils' : 'abris';
+    const refus = await api.dossierJeuxRefus(c, sorte).catch(() => null);
+    if (refus) {
+      await informer('📁 Choisis un autre dossier', refus);
+      return;
+    }
     await reglerPc(cle, c);
     if (cle === 'dossierAbris') {
       try {
