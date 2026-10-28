@@ -3,6 +3,13 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Plusieurs versions d'un jeu (2) (0.137.0)
+- [ ] Super Mario World (déjà installé) : sa fiche ▸ « ➕ Ajouter cette version » sur la version Japon → récapitulatif
+      → la fiche montre « ⬇ En cours d'arrivée — N % », la pastille du haut compte 1 ; le jeu se lance pendant ce temps.
+- [ ] À l'arrivée : « ✅ … est arrivée » ; « ▶ Jouer avec… » propose USA et Japon ; chacune lance sa ROM.
+- [ ] « 🗑 Retirer cette version » sur le Japon : seul son fichier part ; USA reste ⭐.
+- [ ] Fermer Frogtend pendant qu'une version arrive, le rouvrir : « ⏸ En pause » + « ▶ Reprendre » repart où elle en était.
+
 ## Plusieurs versions d'un jeu (0.136.0)
 - [ ] Un jeu SNES pas encore sur le PC avec plusieurs ROM : « ➕ Mettre dans ma ludothèque » → des cases à cocher
       (la plus récente cochée), le poids total change ; en cocher 2 ; le récapitulatif liste les deux et ⭐ celle

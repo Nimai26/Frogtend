@@ -317,3 +317,9 @@ un autre émulateur. · Comment l'appliquer : un parcours entier (installer → 
 se rejoue EN VRAI avec Seb avant toute bêta ; et chaque attente longue (installation, téléchargement) se demande :
 « que se passe-t-il si on clique ailleurs pendant ce temps ? ». (Et `confirmer` n'a PAS d'option `libelleAnnuler` :
 2e fois que je l'écris ; relire la signature d'une fonction avant de lui passer une option.)
+
+28/10 (étape 2 des versions) : un test bloqué sans fin — interblocage. `if let Some(j) = self.registre().jeu(id)? { …
+self.retenir_versions(…) }` : le verrou pris par `self.registre()` VIT jusqu'à la fin du bloc `if let` (de même pour
+`match self.registre()…`), et la fonction appelée le reprend. · Garde-fous : toujours `let lue =
+self.registre().…?;` AVANT un `if let` / `match` dont le bloc touche encore au registre (ou attend, `.await`) ; et
+lancer les tests avec une limite (`timeout 400 cargo test …`) pour qu'un blocage se voie au lieu d'attendre.

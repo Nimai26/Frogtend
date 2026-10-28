@@ -68,7 +68,14 @@
   de région donnés par le cœur (`versions_avis`), cases rangées FR > EU > US/EN, la plus haute cochée = ⭐ ; noms en
   double dits dans la fenêtre ; fenêtre maison `cocher` (manette, lecteur d'écran) ; « ▶ Jouer avec… » aussi sur la
   page du jeu et au canapé (menu Y) ; sauvegarde/restauration de toutes les versions (repli : la version d'habitude
-  seule si une région a disparu). ⏳ **ÉTAPE 2** (à faire, avant les essais) : « ➕ Ajouter une autre version » à un
+  seule si une région a disparu). ✅ **ÉTAPE 2 FAITE en 0.137.0** (relectures lancement + interface, 2 tours,
+  BLOQUANTS corrigés : interblocage `for … in self.registre()` dans pause/reprise, faux « téléchargé », version en
+  pause sans reprise, retrait pendant l'arrivée du jeu, progression invisible) : table `versions_pc` (état par version,
+  la ligne reste jouable), file après les jeux entiers, `retirer_version`, `arreter_versions` avant le retrait du jeu,
+  événements `version`/`progres_version`, choix au lancement complété sans rien reconstruire, fiche locale fusionnée.
+  RESTE (noté) : fiches réunies comparées par version ; nombre de disques d'une version .m3u ; versions plus chez
+  Firehouse (besoin 38) affichées hors ligne ; page /telechargements ne liste pas encore les versions ; une version
+  en erreur à l'ÉTAPE 1 (premier ajout groupé) bloque toujours la ligne entière. Ancien texte de l'étape 2 : « ➕ Ajouter une autre version » à un
   jeu DÉJÀ sur le PC — état PAR version (jamais la ligne repassée en attente, jeu jouable pendant le téléchargement),
   annuler/retirer UNE version (aussi une version en erreur 409/404 qui bloque aujourd'hui toute la ligne : I3), fiche
   locale rafraîchie (B3), relevé des parties sans les fichiers d'une autre version (B4), versions plus chez Firehouse

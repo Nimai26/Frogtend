@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.137.0 — Plusieurs versions d'un jeu (2)
+
+- ➕ Un jeu déjà sur le PC (Super Mario World USA, par exemple) peut recevoir une AUTRE version : sur sa fiche, chaque
+  version a son bouton « ➕ Ajouter cette version » (aussi par « ⚙ Gérer le jeu ▸ ➕ Ajouter une autre version »).
+  Le jeu reste jouable pendant qu'elle arrive ; son avancement s'affiche sur la fiche et compte dans la pastille des
+  téléchargements.
+- Une version qui n'arrive pas (erreur) ne bloque qu'elle-même : « ▶ Reprendre » ou « ✖ Annuler l'arrivée ».
+- 🗑 Une version ajoutée se retire seule (ses fichiers seulement ; tes parties restent). Si c'était ta version
+  d'habitude, celle d'origine le redevient.
+- Retirer le jeu entier arrête d'abord une version en route, sans laisser de fichier derrière.
+
 ## 0.136.0 — Plusieurs versions d'un jeu (1)
 
 - 📦 Quand un jeu de Firehouse existe en plusieurs ROM ou images disque (USA, Japon, Europe…), tu peux en COCHER

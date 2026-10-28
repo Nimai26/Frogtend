@@ -8,6 +8,7 @@ import {
   duree,
   estErreurCoeur,
   taille,
+  type EtatJeuPc,
   type EvenementTelechargement,
   type Fiche,
   type JeuPc,
@@ -20,12 +21,24 @@ import { ludo, rechargerListe, rechargerPlateformes } from './ludotheque.svelte'
 import { proposerDossierJeux } from './dossierJeux';
 import { nomAffiche } from './ludotheque.svelte';
 
+/** Une version AJOUTÉE à un jeu du PC qui arrive (son état et son avancement à elle). */
+export interface VersionEnRoute {
+  version: number;
+  etat: EtatJeuPc;
+  message: string | null;
+  recus: number;
+  total: number;
+  debit: number;
+}
+
 export const tele = $state<{
   /** Les jeux du PC visibles pour ce profil, par id. */
   jeux: Record<number, JeuPc & { debit?: number }>;
   /** Les jeux importés reliés à une fiche, par numéro de fiche (contrat 1.21). */
   parFiche: Record<number, JeuPc & { debit?: number }>;
-}>({ jeux: {}, parFiche: {} });
+  /** Les versions ajoutées en route, par jeu puis par version (événements de la file). */
+  versions: Record<number, Record<number, VersionEnRoute>>;
+}>({ jeux: {}, parFiche: {}, versions: {} });
 
 /** Le jeu du PC d'une ligne de la ludothèque : par son numéro, sinon le jeu importé relié à cette fiche (✅ Seb
  * 20/10 : celui de ce profil d'abord, sinon le plus ancien). */
@@ -44,7 +57,8 @@ export function rangerParFiche(liste: JeuPc[]): Record<number, JeuPc> {
 
 /** Le nombre de téléchargements qui ne sont pas finis (pour la pastille de la barre du haut). */
 export function nombreEnCours(): number {
-  return Object.values(tele.jeux).filter((j) => j.etat !== 'telecharge').length;
+  const versions = Object.values(tele.versions).flatMap((l) => Object.values(l)).filter((v) => v.etat === 'attente' || v.etat === 'en_cours').length;
+  return Object.values(tele.jeux).filter((j) => j.etat !== 'telecharge').length + versions;
 }
 
 export async function rechargerJeuxDuPc() {
@@ -67,6 +81,25 @@ export async function suivreTelechargements() {
   ecoute = await listen<EvenementTelechargement>('telechargement', async (e) => {
     const ev = e.payload;
     const j = tele.jeux[ev.jeu];
+    // Une version ajoutée : SON état et SON avancement (le jeu, lui, reste « téléchargé » et jouable).
+    if (ev.sorte === 'progres_version' || ev.sorte === 'version') {
+      const l = (tele.versions[ev.jeu] ??= {});
+      const v = (l[ev.version] ??= { version: ev.version, etat: 'en_cours', message: null, recus: 0, total: 0, debit: 0 });
+      if (ev.sorte === 'progres_version') {
+        Object.assign(v, { recus: ev.recus, total: ev.total, debit: ev.debit });
+        retenirDebit(ev.debit);
+        return;
+      }
+      Object.assign(v, { etat: ev.etat, message: ev.message });
+      const nom = `une autre version de « ${j?.titre ?? 'ce jeu'} »`;
+      if (ev.etat === 'telecharge') {
+        toast(`✅ ${nom.charAt(0).toUpperCase()}${nom.slice(1)} est arrivée : choisis-la avec « Jouer avec… ».`);
+        await rechargerJeuxDuPc();
+      } else if (ev.etat === 'erreur') {
+        toast(`⚠ ${nom.charAt(0).toUpperCase()}${nom.slice(1)} n’est pas arrivée : ${ev.message ?? 'motif inconnu'}. Le jeu reste jouable.`, 'erreur');
+      }
+      return;
+    }
     if (ev.sorte === 'progres') {
       if (j) Object.assign(j, { recus: ev.recus, total: ev.total, debit: ev.debit });
       retenirDebit(ev.debit);
@@ -86,6 +119,7 @@ export function arreterSuivi() {
   ecoute?.();
   ecoute = null;
   tele.jeux = {};
+  tele.versions = {};
 }
 
 /** Libellé lisible de la nature d'une version. */
@@ -253,6 +287,56 @@ export async function mettreDansLaLudotheque(id: number, versionVoulue?: number)
     await rechargerListe();
   }
   return true;
+}
+
+/** Ajoute UNE autre version (région) à un jeu déjà sur le PC (✅ Seb 28/10) : dans SON dossier, après un
+ * récapitulatif chiffré ; le jeu reste jouable pendant qu'elle arrive. */
+export async function ajouterUneVersion(id: number, v: Version, titre: string): Promise<boolean> {
+  const j = tele.jeux[id];
+  if (!j) return false;
+  const t = tailleVersion(v);
+  const debit = debitConnu();
+  const oui = await confirmer(`➕ Ajouter la version « ${v.nom} » ?`, {
+    message: [
+      `Jeu : ${titre} (déjà sur ce PC, il reste jouable pendant l’arrivée)`,
+      `Taille : ${taille(t)} (${v.fichiers.length} fichier(s)), dans le dossier du jeu`,
+      debit ? `Durée estimée : ${duree(t / debit)} au débit mesuré sur ce PC` : 'Durée : estimée dès le début du téléchargement',
+      'Tu la choisiras au moment de jouer (« Jouer avec… »).',
+    ].join('\n'),
+    libelleValider: '⬇ Télécharger',
+  });
+  if (!oui) return false;
+  try {
+    // Le dossier du jeu : le cœur range la version à côté des autres (l'emplacement n'y change rien).
+    await api.ajouterJeu(id, v.telechargement_id, j.dossier);
+  } catch (e) {
+    toast(`Refusé : ${motifDuRefus(e)}`, 'erreur');
+    return false;
+  }
+  toast(`✅ La version « ${v.nom} » arrive : le jeu reste jouable en attendant.`);
+  await rechargerJeuxDuPc();
+  return true;
+}
+
+/** Retire (ou annule) UNE version ajoutée : ses fichiers seulement ; jamais la version d'origine ni les parties. */
+export async function retirerUneVersion(id: number, version: number, nom: string, enRoute: boolean): Promise<boolean> {
+  const oui = await confirmer(enRoute ? `✖ Annuler l’arrivée de « ${nom} » ?` : `🗑 Retirer la version « ${nom} » ?`, {
+    message: enRoute
+      ? 'Ce qui est déjà reçu de cette version est effacé ; le jeu et ses autres versions restent.'
+      : 'Ses fichiers sont retirés de ce PC ; le jeu, ses autres versions et tes parties restent. Tu pourras la remettre plus tard.',
+    libelleValider: enRoute ? '✖ Annuler l’arrivée' : '🗑 Retirer',
+    danger: true,
+  });
+  if (!oui) return false;
+  try {
+    await api.retirerVersion(id, version);
+    await rechargerJeuxDuPc();
+    toast(enRoute ? '✖ Arrivée annulée.' : '🗑 Version retirée.');
+    return true;
+  } catch (e) {
+    toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
+    return false;
+  }
 }
 
 export async function mettreEnPause(id: number) {

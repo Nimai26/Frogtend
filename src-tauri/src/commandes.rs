@@ -349,6 +349,18 @@ pub async fn jeu_retirer_carte(noyau: State<'_, Noyau>, id: i64, version: i64) -
     noyau.retirer_carte(id, version).await
 }
 
+/// Retire UNE version ajoutée (région) d'un jeu, reçue ou en route (jamais la version d'origine, jamais les parties).
+#[tauri::command]
+pub async fn jeu_retirer_version(noyau: State<'_, Noyau>, id: i64, version: i64) -> Resultat<JeuPc> {
+    noyau.retirer_version(id, version).await
+}
+
+/// Les versions ajoutées d'un jeu du PC et où elles en sont (en attente, en route, en pause, en erreur, reçues).
+#[tauri::command]
+pub fn jeu_versions_ajoutees(noyau: State<'_, Noyau>, id: i64) -> Resultat<Vec<crate::jeux_pc::VersionAjoutee>> {
+    noyau.registre().versions_ajoutees(id)
+}
+
 #[tauri::command]
 pub fn telechargement_pause(noyau: State<'_, Noyau>, id: i64) -> Resultat<()> {
     noyau.mettre_en_pause(id)

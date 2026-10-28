@@ -17,7 +17,8 @@
   import { documentsMontres, libelleDocument, ouvrirDocument, texteChargement, type DocumentOuvert } from '$lib/ludotheque/documents';
   import { arreterDocument, suiviDocument } from '$lib/ludotheque/documentsProgres.svelte';
   import { ageConseille, dateDeSortie, datePrecise, noteSurCinq, typeDeSortie, type InfosJeu } from '$lib/ludotheque/infos';
-  import { jeuSurPc, mettreDansLaLudotheque, rechargerJeuxDuPc } from '$lib/ludotheque/telechargements.svelte';
+  import { ajouterUneVersion, jeuSurPc, mettreDansLaLudotheque, rechargerJeuxDuPc, reprendre, retirerUneVersion, tele } from '$lib/ludotheque/telechargements.svelte';
+  import type { AvisVersion } from '$lib/ludotheque/versions';
   import { aCartes, cartesSurPc } from '$lib/ludotheque/cartes';
   import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
   import { emulateursDuJeu, gererJeu, installer, jouer, jouerAvec, partie } from '$lib/ludotheque/jeu.svelte';
@@ -209,6 +210,23 @@
       ));
   }
 
+  /** Les versions AJOUTÉES du jeu sur ce PC (leur état) et l'avis du cœur sur chaque version (cochable ou pas). */
+  let ajoutees = $state<{ version: number; etat: 'attente' | 'en_cours' | 'pause' | 'telecharge' | 'erreur'; message: string | null }[]>([]);
+  let avis = $state<AvisVersion[]>([]);
+  const ETATS_VERSION = { attente: '⏳ En attente', en_cours: '⬇ En cours d’arrivée', pause: '⏸ En pause', telecharge: '✅ Reçue', erreur: '⚠ Pas arrivée' } as const;
+  $effect(() => {
+    const j = fiche ? jeuSurPc(fiche.id) : undefined;
+    // Relu à chaque changement du jeu sur le PC (événements du téléchargement).
+    // (Et quand une version change d'état : `tele.versions` du jeu.)
+    void (j && tele.versions[j.id] && Object.values(tele.versions[j.id]).map((v) => v.etat).join());
+    if (j && j.id === fiche?.id && !aCartes(j.plateforme)) api.versionsAjoutees(j.id).then((l) => (ajoutees = l)).catch(() => (ajoutees = []));
+    else ajoutees = [];
+  });
+  $effect(() => {
+    if (fiche && (fiche.versions?.length ?? 0) > 1) api.versionsAvis(fiche).then((l) => (avis = l)).catch(() => (avis = []));
+    else avis = [];
+  });
+
   /** Retire UNE carte e-Reader du PC (ses fichiers seulement ; les parties sont dans la cartouche). */
   async function retirerUneCarte(id: number, version: number, nom: string) {
     const oui = await confirmer(`🗑 Retirer la carte « ${nom} » ?`, {
@@ -398,6 +416,29 @@
                   {/if}
                 {:else if !locale}
                   <button class="btn" onclick={() => fiche && mettreDansLaLudotheque(fiche.id, v.telechargement_id)}>➕ Ajouter cette carte</button>
+                {/if}
+              {:else if jeuSurPc(fiche.id)?.id === fiche.id}
+                <!-- Déjà sur ce PC : chaque version (région) s'ajoute ou se retire à part ; le jeu reste jouable. -->
+                {@const surPc = jeuSurPc(fiche.id)!}
+                {@const enRoute = tele.versions[fiche.id]?.[v.telechargement_id]}
+                {@const ajoutee = enRoute ?? ajoutees.find((a) => a.version === v.telechargement_id)}
+                {#if surPc.etat !== 'telecharge'}
+                  <!-- Le jeu lui-même arrive encore : rien à ajouter ni à retirer version par version. -->
+                {:else if ajoutee && ajoutee.etat !== 'telecharge'}
+                  <p class="muted">
+                    {ETATS_VERSION[ajoutee.etat]}{enRoute && enRoute.total ? ` — ${Math.floor((enRoute.recus / enRoute.total) * 100)} %` : ''}{ajoutee.message ? ` : ${ajoutee.message}` : ''}
+                  </p>
+                  {#if ajoutee.etat !== 'en_cours'}
+                    <button class="btn primary" onclick={() => fiche && reprendre(fiche.id)}>▶ Reprendre</button>
+                  {/if}
+                  <button class="btn" onclick={() => fiche && retirerUneVersion(fiche.id, v.telechargement_id, v.nom, true)}>✖ Annuler l’arrivée</button>
+                {:else if cartesSurPc(surPc).includes(v.telechargement_id)}
+                  <p class="muted">✅ Cette version est sur ce PC{v.telechargement_id === surPc.version ? ' (celle d’origine)' : ''}.</p>
+                  {#if v.telechargement_id !== surPc.version}
+                    <button class="btn" onclick={() => fiche && retirerUneVersion(fiche.id, v.telechargement_id, v.nom, false)}>🗑 Retirer cette version</button>
+                  {/if}
+                {:else if !locale && !surPc.installation?.lanceur && !surPc.installation?.boutique && avis.find((a) => a.telechargement_id === v.telechargement_id)?.cochable && avis.find((a) => a.telechargement_id === surPc.version)?.cochable}
+                  <button class="btn" onclick={() => fiche && ajouterUneVersion(fiche.id, v, fiche.titre)}>➕ Ajouter cette version</button>
                 {/if}
               {:else if !locale && !jeuSurPc(fiche.id)}
                 <button class="btn" onclick={() => fiche && mettreDansLaLudotheque(fiche.id)}>➕ Mettre dans ma ludothèque</button>

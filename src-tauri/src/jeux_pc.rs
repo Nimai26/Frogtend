@@ -229,6 +229,14 @@ fn un_chemin_de_fichier_reste_dans_le_dossier_du_jeu() {
     }
 }
 
+/// Une version AJOUTÉE à un jeu déjà sur le PC, et où elle en est.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct VersionAjoutee {
+    pub version: i64,
+    pub etat: Etat,
+    pub message: Option<String>,
+}
+
 /// Où en est un jeu du PC.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -391,6 +399,13 @@ impl Registre {
         // Contrat 1.14 : les jeux du PC rattachés à une fiche réunie (ancien → nouveau), pour ne rien perdre de vue
         // (abris de parties rangés sous l'ancien numéro, réglages de l'interface à faire suivre).
         db.execute_batch("CREATE TABLE IF NOT EXISTS reunions (ancien INTEGER PRIMARY KEY, nouveau INTEGER NOT NULL, le TEXT, applique_le TEXT NOT NULL);")?;
+        // Les versions AJOUTÉES à un jeu déjà sur le PC (✅ Seb 28/10, plusieurs régions) : leur propre état, pour que
+        // le jeu reste jouable pendant qu'une autre version arrive (sa ligne n'est jamais repassée « en attente »), et
+        // qu'une version en erreur ne bloque qu'elle-même.
+        db.execute_batch(
+            "CREATE TABLE IF NOT EXISTS versions_pc (id INTEGER NOT NULL, version INTEGER NOT NULL, etat TEXT NOT NULL,
+               message TEXT, ajoute_le TEXT NOT NULL, PRIMARY KEY (id, version));",
+        )?;
         // Contrat 1.21 (✅ Seb 20/10) : un jeu IMPORTÉ reconnu chez Firehouse. Une CORRESPONDANCE à côté : la ligne du jeu
         // importé ne change jamais (numéro, fichiers, temps de jeu) ; défaire = retirer ces lignes. Une ligne par
         // version (le fichier lancé) ; `telechargement_id` peut manquer.
@@ -427,6 +442,8 @@ impl Registre {
                 "INSERT OR REPLACE INTO reunions (ancien, nouveau, le, applique_le) VALUES (?1, ?2, ?3, ?4)",
                 params![ancien, nouveau, le, quand],
             )?;
+            // Ses versions ajoutées le suivent (mêmes numéros de version, contrat 1.14).
+            tx.execute("UPDATE versions_pc SET id = ?2 WHERE id = ?1", params![ancien, nouveau])?;
         }
         tx.commit()?;
         Ok(n == 1)
@@ -610,6 +627,9 @@ impl Registre {
             "UPDATE jeux_pc SET etat = 'pause', message = 'Frogtend a été fermé pendant le téléchargement.'
              WHERE etat = 'en_cours'",
             [],
+        )? + self.db.execute(
+            "UPDATE versions_pc SET etat = 'pause', message = 'Frogtend a été fermé pendant le téléchargement.' WHERE etat = 'en_cours'",
+            [],
         )?)
     }
 
@@ -641,6 +661,46 @@ impl Registre {
     /// Retire un jeu du registre (ses fichiers, eux, ne sont effacés que par l'appelant, après vérification).
     pub fn retirer(&self, id: i64) -> Resultat<()> {
         self.db.execute("DELETE FROM jeux_pc WHERE id = ?1", [id])?;
+        self.db.execute("DELETE FROM versions_pc WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    /// Inscrit une version AJOUTÉE à un jeu du PC, en attente.
+    pub fn ajouter_version(&self, id: i64, version: i64, quand: &str) -> Resultat<()> {
+        self.db.execute(
+            "INSERT OR REPLACE INTO versions_pc (id, version, etat, message, ajoute_le) VALUES (?1, ?2, 'attente', NULL, ?3)",
+            params![id, version, quand],
+        )?;
+        Ok(())
+    }
+
+    /// Change l'état d'une version ajoutée — jamais ne la recrée (une version retirée pendant son téléchargement ne
+    /// revient pas).
+    pub fn noter_version(&self, id: i64, version: i64, etat: Etat, message: Option<&str>) -> Resultat<()> {
+        self.db.execute("UPDATE versions_pc SET etat = ?3, message = ?4 WHERE id = ?1 AND version = ?2", params![id, version, etat.texte(), message])?;
+        Ok(())
+    }
+
+    /// Les versions ajoutées d'un jeu, avec leur état (les plus anciennes d'abord).
+    pub fn versions_ajoutees(&self, id: i64) -> Resultat<Vec<VersionAjoutee>> {
+        let mut st = self.db.prepare("SELECT version, etat, message FROM versions_pc WHERE id = ?1 ORDER BY ajoute_le, version")?;
+        let l = st
+            .query_map([id], |r| Ok(VersionAjoutee { version: r.get(0)?, etat: Etat::depuis(&r.get::<_, String>(1)?), message: r.get(2)? }))?
+            .collect::<Result<_, _>>()?;
+        Ok(l)
+    }
+
+    /// La prochaine version ajoutée à télécharger (la plus ancienne en attente) : (jeu, version).
+    pub fn prochaine_version(&self) -> Resultat<Option<(i64, i64)>> {
+        Ok(self
+            .db
+            .query_row("SELECT id, version FROM versions_pc WHERE etat = 'attente' ORDER BY ajoute_le, version LIMIT 1", [], |r| Ok((r.get(0)?, r.get(1)?)))
+            .optional()?)
+    }
+
+    /// Oublie une version ajoutée (annulée ou retirée).
+    pub fn oublier_version(&self, id: i64, version: i64) -> Resultat<()> {
+        self.db.execute("DELETE FROM versions_pc WHERE id = ?1 AND version = ?2", params![id, version])?;
         Ok(())
     }
 

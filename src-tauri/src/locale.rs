@@ -31,6 +31,9 @@ pub const LARGEUR_GRANDE: u32 = 1000;
 pub enum Evenement {
     Progres(Progres),
     Etat { jeu: i64, etat: Etat, message: Option<String> },
+    /// Une version AJOUTÉE à un jeu du PC (la ligne du jeu, elle, ne change pas : il reste jouable).
+    Version { jeu: i64, version: i64, etat: Etat, message: Option<String> },
+    ProgresVersion { jeu: i64, version: i64, recus: u64, total: u64, debit: u64 },
 }
 
 /// Un jeu du PC tel que l'interface le voit : avec les octets déjà sur le disque.
@@ -252,9 +255,10 @@ impl Noyau {
         // numéros de version sont gardés tels quels par Firehouse.
         // (`reuni_vers` laisse à une fiche vivante son numéro.)
         let id = s.verrou().reuni_vers(id)?.unwrap_or(id);
-        // Déjà sur ce PC : refusé, SAUF un jeu à cartes (e-Reader) qui reçoit une carte de plus sur la même ligne.
+        // Déjà sur ce PC : une carte de plus (e-Reader) ou une AUTRE version (région) sur la même ligne ; la même
+        // version : refusée.
         let existant = self.registre().jeu(id)?;
-        if existant.as_ref().is_some_and(|e| !crate::jeux_pc::a_cartes(&e.plateforme)) {
+        if existant.as_ref().is_some_and(|e| !crate::jeux_pc::a_cartes(&e.plateforme) && e.fichiers.iter().any(|f| f.version.unwrap_or(e.version) == version)) {
             return Err(Erreur::Refus("Ce jeu est déjà dans la ludothèque de ce PC.".into()));
         }
         // La fiche d'abord : une fiche cachée à ce profil répond « inconnu » AVANT tout (jamais un indice qu'elle existe).
@@ -272,6 +276,13 @@ impl Noyau {
         }
         let titre = fiche["titre"].as_str().unwrap_or("Jeu").to_string();
         let plateforme = fiche["plateforme"].as_str().unwrap_or("Autres").to_string();
+        // Une autre version d'un jeu déjà sur le PC : dans SON dossier (l'emplacement n'y change rien).
+        if let Some(e) = existant.as_ref().filter(|e| !crate::jeux_pc::a_cartes(&e.plateforme)) {
+            if !autres.is_empty() {
+                return Err(Erreur::Refus("Une version à la fois pour un jeu déjà sur ce PC.".into()));
+            }
+            return self.ajouter_une_version(e.clone(), version, &fiche);
+        }
 
         // L'emplacement doit être l'un de ceux réglés pour ce système : l'interface ne peut pas écrire ailleurs.
         if !emplacements.pour(&plateforme).iter().any(|e| e == emplacement) {
@@ -408,6 +419,160 @@ impl Noyau {
         Ok(self.registre().jeu(e.id)?.unwrap_or(e))
     }
 
+    /// Ajoute une AUTRE version (région) à un jeu de Firehouse déjà sur le PC (✅ Seb 28/10) : ses fichiers sur la même
+    /// ligne, sous SA version, avec SON état (`versions_pc`) — la ligne reste « téléchargée », le jeu jouable pendant
+    /// l'arrivée. Seulement des ROM ou images disque simples (la version de la ligne aussi), jamais un nom déjà pris
+    /// (registre, disque ou fichier décompressé : jamais rien par-dessus, jamais renommé). La fiche gardée sur le PC
+    /// est complétée (la nouvelle, plus les versions de l'ancienne qu'elle n'a plus).
+    fn ajouter_une_version(&self, e: JeuPc, version: i64, fiche: &Value) -> Resultat<JeuPc> {
+        if e.etat != Etat::Telecharge {
+            return Err(Erreur::Refus("Ce jeu n'a pas fini d'arriver : ajoute une autre version quand il sera là.".into()));
+        }
+        if e.installation.as_ref().is_some_and(|i| i.boutique.is_some() || i.lanceur.is_some()) {
+            return Err(Erreur::Refus("Ce jeu ne se lance pas par un émulateur : une seule version possible.".into()));
+        }
+        if self.registre().versions_ajoutees(e.id)?.iter().any(|v| v.version == version) {
+            return Err(Erreur::Refus("Cette version est déjà en route vers ce PC.".into()));
+        }
+        let trouver = |f: &Value, n: i64| f["versions"].as_array().and_then(|l| l.iter().find(|v| v["telechargement_id"].as_i64() == Some(n)).cloned());
+        let v = trouver(fiche, version).ok_or_else(|| Erreur::Introuvable("Cette version n'existe plus dans Firehouse : relis la fiche.".into()))?;
+        let locale = self.fiche_locale(e.id).unwrap_or(Value::Null);
+        let de_la_ligne = trouver(&locale, e.version).or_else(|| trouver(fiche, e.version)).unwrap_or(Value::Null);
+        if !crate::partie::version_simple(&v) || !crate::partie::version_simple(&de_la_ligne) {
+            return Err(Erreur::Refus("Plusieurs versions : seulement pour des ROM ou des images disque.".into()));
+        }
+        let fichiers = fichiers_de_version(&v, Some(version))?;
+        if fichiers.is_empty() {
+            return Err(Erreur::Refus("Cette version n'a aucun fichier à télécharger.".into()));
+        }
+        let dossier = Path::new(&e.dossier);
+        let extraits = e.installation.as_ref().map(|i| i.extraits.clone()).unwrap_or_default();
+        for f in &fichiers {
+            let bas = f.nom.to_lowercase();
+            let pris = e.fichiers.iter().any(|x| x.nom.to_lowercase() == bas)
+                || extraits.iter().any(|x| x.to_lowercase() == bas)
+                || crate::jeux_pc::chemin_de_fichier_sur(&f.nom).is_ok_and(|r| dossier.join(&r).exists() || PathBuf::from(format!("{}.part", dossier.join(&r).to_string_lossy())).exists());
+            if pris {
+                return Err(Erreur::Refus(format!("Un fichier « {} » est déjà dans le dossier du jeu : Frogtend n'écrit pas par-dessus.", f.nom)));
+            }
+        }
+        let ajout: u64 = fichiers.iter().map(|f| f.taille).sum();
+        let libre = place_libre(dossier).or_else(|| dossier.parent().and_then(place_libre));
+        if libre.is_some_and(|l| l < ajout + MARGE_LIBRE) {
+            return Err(Erreur::Disque("Pas assez de place sur ce disque pour cette version.".into()));
+        }
+        // La fiche gardée : la nouvelle, plus les versions de l'ancienne qu'elle n'a plus (toujours sur le PC).
+        let mut nouvelle = fiche.clone();
+        if let (Some(l), Some(anciennes)) = (nouvelle["versions"].as_array_mut(), locale["versions"].as_array()) {
+            for a in anciennes {
+                if !l.iter().any(|x| x["telechargement_id"] == a["telechargement_id"]) {
+                    l.push(a.clone());
+                }
+            }
+        }
+        let medias = medias_du_jeu(&e);
+        std::fs::create_dir_all(&medias)?;
+        crate::medias::ecrire(&medias.join("fiche.json"), &serde_json::to_vec_pretty(&nouvelle).unwrap_or_default())?;
+        // Sous le verrou des jeux occupés (celui des retraits et de la file) : jamais pendant une partie ou un retrait ;
+        // la ligne RELUE juste avant d'écrire, et écrite sans relâcher le verrou (une version ajoutée ou retirée entre
+        // temps n'est jamais écrasée).
+        let o = self.occupes.lock().unwrap_or_else(|e| e.into_inner());
+        if o.get(&e.id).copied().unwrap_or(0) > 0 {
+            return Err(Erreur::Refus("Ce jeu est en cours (une partie, ou une autre action) : réessaie quand il aura fini.".into()));
+        }
+        let actuelle = self.registre().jeu(e.id)?.ok_or_else(|| Erreur::Introuvable("Ce jeu n'est plus sur ce PC.".into()))?;
+        if let Some(f) = fichiers.iter().find(|f| actuelle.fichiers.iter().any(|x| x.nom.to_lowercase() == f.nom.to_lowercase())) {
+            return Err(Erreur::Refus(format!("Un fichier « {} » est déjà dans le dossier du jeu : Frogtend n'écrit pas par-dessus.", f.nom)));
+        }
+        let mut tous = actuelle.fichiers.clone();
+        tous.extend(fichiers);
+        self.registre().changer_fichiers(e.id, &tous, false)?;
+        self.registre().ajouter_version(e.id, version, &maintenant())?;
+        drop(o);
+        self.journaliser(&format!("jeu {} : version {version} ajoutée ({} fichier(s))", e.id, tous.len() - actuelle.fichiers.len()));
+        Ok(self.registre().jeu(e.id)?.unwrap_or(e))
+    }
+
+    /// Retire UNE version AJOUTÉE (région) d'un jeu, reçue ou pas encore : ses fichiers seulement (et leurs `.part`),
+    /// jamais la version de la ligne (retirer le jeu, alors), jamais pendant une partie. Les parties restent chez
+    /// l'émulateur. Si c'était la version ⭐, celle de la ligne le redevient. Rend la ligne à jour.
+    pub async fn retirer_version(&self, id: i64, version: i64) -> Resultat<JeuPc> {
+        let e = self.registre().jeu(id)?.ok_or_else(|| Erreur::Introuvable("Ce jeu n'est pas sur ce PC.".into()))?;
+        if crate::jeux_pc::a_cartes(&e.plateforme) {
+            return self.retirer_carte(id, version).await;
+        }
+        if version == e.version {
+            return Err(Erreur::Refus("C'est la version d'origine de ce jeu : elle ne se retire pas seule. Retire le jeu entier si tu n'en veux plus.".into()));
+        }
+        if e.etat != Etat::Telecharge {
+            return Err(Erreur::Refus("Ce jeu n'a pas fini d'arriver : annule son téléchargement, ou attends qu'il soit là.".into()));
+        }
+        // Sous le verrou des jeux occupés (le même que la file prend avant une version) : une partie en cours → refus ;
+        // sinon la version en attente passe en pause, la file ne la prendra plus.
+        let en_route = {
+            let o = self.occupes.lock().unwrap_or_else(|e| e.into_inner());
+            if o.get(&id).copied().unwrap_or(0) > 0 {
+                return Err(Erreur::Refus("Ce jeu est en cours (une partie, ou une autre action) : réessaie quand il aura fini.".into()));
+            }
+            let l = self.registre().versions_ajoutees(id)?;
+            if l.iter().any(|v| v.version == version && v.etat == Etat::Attente) {
+                self.registre().noter_version(id, version, Etat::Pause, None)?;
+            }
+            l.iter().any(|v| v.version == version && v.etat == Etat::EnCours)
+        };
+        // Elle arrive en ce moment : arrêtée d'abord (au plus 10 s) ; ses `.part` partent ensuite avec elle.
+        if en_route {
+            self.attendre_arret(id).await;
+        }
+        let _occupe = self.occuper(id);
+        // Relue APRÈS l'attente : une version ajoutée entre-temps n'est jamais effacée de la ligne.
+        let e = self.registre().jeu(id)?.ok_or_else(|| Erreur::Introuvable("Ce jeu n'est plus sur ce PC.".into()))?;
+        let de = |f: &FichierJeu| f.version.unwrap_or(e.version);
+        let (partent, restent): (Vec<FichierJeu>, Vec<FichierJeu>) = e.fichiers.iter().cloned().partition(|f| de(f) == version);
+        if partent.is_empty() {
+            self.registre().oublier_version(id, version)?;
+            return Err(Erreur::Introuvable("Cette version n'est pas sur ce PC.".into()));
+        }
+        let dossier = Path::new(&e.dossier);
+        for f in &partent {
+            let p = dossier.join(crate::jeux_pc::chemin_de_fichier_sur(&f.nom)?);
+            if crate::garde::sous(&p, dossier) && !crate::garde::lien_entre(dossier, &p) {
+                let _ = std::fs::remove_file(format!("{}.part", p.to_string_lossy()));
+                // Un fichier qui ne part pas (ouvert ailleurs) : rien n'est changé (pas d'orphelin).
+                if p.is_file() {
+                    std::fs::remove_file(&p).map_err(|_| Erreur::Disque(format!("« {} » ne peut pas être retiré (ouvert ailleurs ?) : rien n'a changé.", f.nom)))?;
+                }
+            }
+        }
+        self.registre().changer_fichiers(id, &restent, false)?;
+        self.registre().oublier_version(id, version)?;
+        // L'installation : la version retirée sort du choix ; si elle était ⭐, celle de la ligne le redevient. (Lue
+        // d'abord : jamais le verrou du registre tenu pendant qu'on y réécrit.)
+        let lue = self.registre().jeu(id)?;
+        if let Some(j) = lue {
+            if let Some(mut i) = j.installation.clone() {
+                let retires: Vec<PathBuf> = partent.iter().filter_map(|f| crate::jeux_pc::chemin_de_fichier_sur(&f.nom).ok().map(|r| dossier.join(r))).collect();
+                if i.fichier_du_jeu.as_ref().is_some_and(|f| retires.contains(&Path::new(&i.dossier).join(f))) {
+                    i.fichier_du_jeu = None;
+                }
+                i.versions.retain(|v| !retires.contains(&PathBuf::from(&v.chemin)));
+                if i.fichier_du_jeu.is_none() {
+                    if let Some(v) = i.versions.first() {
+                        let p = Path::new(&v.chemin);
+                        i.dossier = p.parent().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
+                        i.fichier_du_jeu = p.file_name().map(|n| n.to_string_lossy().to_string());
+                    }
+                }
+                if i.versions.len() < 2 {
+                    i.versions.clear();
+                }
+                self.registre().changer_installation(id, Some(&i))?;
+            }
+        }
+        self.journaliser(&format!("jeu {id} : version {version} retirée ({} fichier(s))", partent.len()));
+        Ok(self.registre().jeu(id)?.unwrap_or(e))
+    }
+
     /// Retire UNE carte (version) d'un jeu à cartes : ses fichiers seulement (et leurs `.part`), jamais rien d'autre du
     /// dossier, jamais la dernière carte (retirer le jeu, alors). Rend la ligne à jour.
     pub async fn retirer_carte(&self, id: i64, version: i64) -> Resultat<JeuPc> {
@@ -497,7 +662,18 @@ impl Noyau {
     async fn boucle_file(&self, s: &Session, emettre: &(dyn Fn(Evenement) + Send + Sync)) -> Resultat<()> {
         let c = client(s)?;
         loop {
-            let Some(jeu) = self.registre().prochain()? else { return Ok(()) };
+            // Les jeux entiers d'abord ; puis les versions ajoutées à un jeu déjà là (jamais à la place d'un jeu).
+            let Some(jeu) = self.registre().prochain()? else {
+                // (Lue avant : le verrou du registre n'est jamais tenu pendant le téléchargement.)
+                let suivante = self.registre().prochaine_version()?;
+                match suivante {
+                    Some((id, version)) => {
+                        self.telecharger_une_version(c, id, version, emettre).await?;
+                        continue;
+                    }
+                    None => return Ok(()),
+                }
+            };
             let arret = Arc::new(AtomicBool::new(false));
             {
                 // Sous le verrou des jeux occupés (celui du rattachement) : un jeu rattaché entre-temps est repris au
@@ -546,6 +722,110 @@ impl Noyau {
         }
     }
 
+    /// Télécharge UNE version ajoutée à un jeu du PC : ses fichiers seulement, son état à elle (la ligne du jeu n'est
+    /// jamais touchée : il reste jouable) ; reçue, elle entre dans le choix au lancement s'il est installé.
+    async fn telecharger_une_version(&self, c: &Client, id: i64, version: i64, emettre: &(dyn Fn(Evenement) + Send + Sync)) -> Resultat<()> {
+        let arret = Arc::new(AtomicBool::new(false));
+        // Prise sous le verrou des jeux occupés (celui de `retirer_version`) : seulement si elle est TOUJOURS en attente
+        // (retirée ou mise en pause entre-temps : laissée).
+        let j = {
+            let _o = self.occupes.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(j) = self.registre().jeu(id)? else {
+                self.registre().oublier_version(id, version)?;
+                return Ok(());
+            };
+            let toujours = self.registre().versions_ajoutees(id)?.iter().any(|v| v.version == version && v.etat == Etat::Attente);
+            if !toujours {
+                return Ok(());
+            }
+            self.registre().noter_version(id, version, Etat::EnCours, None)?;
+            *self.en_cours.lock().unwrap_or_else(|e| e.into_inner()) = Some((id, arret.clone()));
+            j
+        };
+        // Quoi qu'il arrive ensuite (même une erreur), le jeu n'est plus « en cours de téléchargement » en sortant.
+        struct Liberer<'a>(&'a Noyau);
+        impl Drop for Liberer<'_> {
+            fn drop(&mut self) {
+                *self.0.en_cours.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            }
+        }
+        let liberer = Liberer(self);
+        emettre(Evenement::Version { jeu: id, version, etat: Etat::EnCours, message: None });
+        let mut seule = j.clone();
+        seule.fichiers.retain(|f| f.version.unwrap_or(j.version) == version);
+        // Le total vérifié à la fin : celui de CETTE version.
+        seule.total = seule.fichiers.iter().map(|f| f.taille).sum();
+        let issue = if seule.fichiers.is_empty() {
+            Err(Erreur::Introuvable("Cette version n'a plus de fichiers sur ce PC.".into()))
+        } else {
+            telecharger_jeu(c, &seule, &arret, &|p| emettre(Evenement::ProgresVersion { jeu: id, version, recus: p.recus, total: p.total, debit: p.debit })).await
+        };
+        drop(liberer);
+        // Retirée pendant le téléchargement : rien n'est réécrit (et `noter_version` ne la recrée jamais).
+        let _occupe = self.occuper(id);
+        if !self.registre().versions_ajoutees(id)?.iter().any(|v| v.version == version) {
+            return Ok(());
+        }
+        let (etat, message) = match issue {
+            Ok(Issue::Termine) => (Etat::Telecharge, None),
+            Ok(Issue::Pause) => (Etat::Pause, None),
+            Err(e) => {
+                self.journaliser(&format!("téléchargement de la version {version} du jeu {id} : {e:?}"));
+                (Etat::Erreur, Some(e.to_string()))
+            }
+        };
+        self.registre().noter_version(id, version, etat, message.as_deref())?;
+        // Reçue, et le jeu est installé : elle S'AJOUTE au choix au lancement (les autres entrées, y compris un fichier
+        // décompressé pour jouer, et la version ⭐ ne changent pas).
+        if etat == Etat::Telecharge {
+            // (Lue d'abord : le verrou du registre n'est jamais tenu pendant qu'on y réécrit.)
+            let lue = self.registre().jeu(id)?;
+            if let Some(j) = lue.filter(|j| j.installation.as_ref().is_some_and(|i| i.boutique.is_none() && i.lanceur.is_none())) {
+                if let Err(e) = self.ajouter_version_au_choix(&j, version) {
+                    self.journaliser(&format!("jeu {id} : version {version} reçue mais pas ajoutée au choix ({e:?})"));
+                }
+            }
+        }
+        emettre(Evenement::Version { jeu: id, version, etat, message });
+        Ok(())
+    }
+
+    /// Attend (au plus 10 s) que le téléchargement en cours de ce jeu se soit arrêté et ait lâché ses fichiers.
+    async fn attendre_arret(&self, id: i64) {
+        if let Some((en_cours, arret)) = self.en_cours.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            if *en_cours == id {
+                arret.store(true, Ordering::SeqCst);
+            }
+        }
+        for _ in 0..100 {
+            if self.en_cours.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|(i, _)| *i) != Some(id) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    }
+
+    /// Avant de retirer un jeu entier : ses versions ajoutées en route sont mises en pause (la file ne les reprend
+    /// plus) et celle qui arrive est arrêtée.
+    pub(crate) async fn arreter_versions(&self, id: i64) -> Resultat<()> {
+        // Sous le verrou des jeux occupés (celui que la file prend avant une version) : rien n'est pris entre la
+        // lecture et la mise en pause ; « en route » = le téléchargement en cours est celui de ce jeu.
+        let en_route = {
+            let _o = self.occupes.lock().unwrap_or_else(|e| e.into_inner());
+            let versions = self.registre().versions_ajoutees(id)?;
+            for v in versions {
+                if matches!(v.etat, Etat::Attente | Etat::EnCours) {
+                    self.registre().noter_version(id, v.version, Etat::Pause, None)?;
+                }
+            }
+            self.en_cours.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|(i, _)| *i == id)
+        };
+        if en_route {
+            self.attendre_arret(id).await;
+        }
+        Ok(())
+    }
+
     /// Met un téléchargement en pause (il reprendra où il en était).
     pub fn mettre_en_pause(&self, id: i64) -> Resultat<()> {
         if let Some((en_cours, arret)) = self.en_cours.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
@@ -557,6 +837,13 @@ impl Noyau {
         if matches!(j.etat, Etat::Attente | Etat::EnCours) {
             self.registre().changer_etat(id, Etat::Pause, None)?;
         }
+        // Ses versions ajoutées en route aussi. (Lues d'abord : jamais le verrou du registre tenu dans la boucle.)
+        let versions = self.registre().versions_ajoutees(id)?;
+        for v in versions {
+            if matches!(v.etat, Etat::Attente | Etat::EnCours) {
+                self.registre().noter_version(id, v.version, Etat::Pause, None)?;
+            }
+        }
         Ok(())
     }
 
@@ -565,6 +852,12 @@ impl Noyau {
         let j = self.registre().jeu(id)?.ok_or_else(|| Erreur::Introuvable("Ce jeu n'est pas sur ce PC.".into()))?;
         if matches!(j.etat, Etat::Pause | Etat::Erreur) {
             self.registre().changer_etat(id, Etat::Attente, None)?;
+        }
+        let versions = self.registre().versions_ajoutees(id)?;
+        for v in versions {
+            if matches!(v.etat, Etat::Pause | Etat::Erreur) {
+                self.registre().noter_version(id, v.version, Etat::Attente, None)?;
+            }
         }
         Ok(())
     }
@@ -845,6 +1138,8 @@ mod tests {
                 v(33, "Europe Rev 1", "Jeu — ROM", "Super Mario World (Europe) (Rev 1).sfc"),
                 v(34, "Pack prêt à jouer", "Jeu — prêt à jouer", "Mario pret.exe"),
                 v(35, "USA (copie)", "Jeu — ROM", "Super Mario World (USA).sfc"),
+                // Servie sans fichier (le serveur répond 404) : une version en erreur.
+                v(36, "Brésil", "Jeu — ROM", "Super Mario World (Brazil).sfc"),
             ], "annexes": []}});
         s.mock(|w, t| {
             w.method(GET).path("/api/jeux/v1/plateformes");
@@ -915,6 +1210,64 @@ mod tests {
         assert!(de(31).cochable && de(32).cochable && !de(34).cochable);
         assert!(de(33).rang < de(31).rang && de(31).rang < de(32).rang, "{avis:?}");
         assert_eq!(de(35).fichiers, ["Super Mario World (USA).sfc"]);
+    }
+
+    #[tokio::test]
+    async fn une_autre_version_s_ajoute_a_un_jeu_installe_qui_reste_jouable() {
+        let (s, _) = serveur_mario();
+        let (_d, n, e) = noyau_ouvert(&s).await;
+        let empl = e.defaut[0].clone();
+        // Mario USA seul, reçu et installé (comme chez Seb).
+        let j = n.ajouter(300, 31, &empl, &e).await.unwrap();
+        n.executer_file(n.session().await.unwrap(), &|_| {}).await.unwrap();
+        n.installer(300, true).await.unwrap();
+        let dossier = Path::new(&j.dossier).to_path_buf();
+        // La même version : refusée ; un « prêt à jouer » : refusé.
+        assert!(matches!(n.ajouter(300, 31, &empl, &e).await, Err(Erreur::Refus(_))));
+        assert!(matches!(n.ajouter(300, 34, &empl, &e).await, Err(Erreur::Refus(_))));
+        // Le Japon ajouté : la ligne reste « téléchargée » (jouable), la version a SON état.
+        let apres = n.ajouter(300, 32, &empl, &e).await.unwrap();
+        assert_eq!(apres.etat, Etat::Telecharge, "le jeu reste jouable");
+        assert_eq!(n.registre().versions_ajoutees(300).unwrap()[0].etat, Etat::Attente);
+        assert!(matches!(n.ajouter(300, 32, &empl, &e).await, Err(Erreur::Refus(_))), "déjà en route");
+        // Pause puis reprise d'une version (jamais de blocage : le registre n'est pas tenu dans la boucle).
+        n.mettre_en_pause(300).unwrap();
+        assert_eq!(n.registre().versions_ajoutees(300).unwrap()[0].etat, Etat::Pause);
+        assert_eq!(n.registre().jeu(300).unwrap().unwrap().etat, Etat::Telecharge, "le jeu, lui, reste là");
+        n.reprendre(300).unwrap();
+        assert_eq!(n.registre().versions_ajoutees(300).unwrap()[0].etat, Etat::Attente);
+        // Le Brésil (404 chez Firehouse) : SEULE cette version passe en erreur.
+        n.ajouter(300, 36, &empl, &e).await.unwrap();
+        n.executer_file(n.session().await.unwrap(), &|_| {}).await.unwrap();
+        let v = n.registre().versions_ajoutees(300).unwrap();
+        let etat = |x: i64| v.iter().find(|a| a.version == x).unwrap().etat;
+        assert_eq!((etat(32), etat(36)), (Etat::Telecharge, Etat::Erreur), "{v:?}");
+        let j = n.registre().jeu(300).unwrap().unwrap();
+        assert_eq!(j.etat, Etat::Telecharge);
+        // Le Japon est entré dans le choix au lancement ; ⭐ reste USA ; le Brésil n'y est pas.
+        let i = j.installation.clone().unwrap();
+        assert_eq!(i.fichier_du_jeu.as_deref(), Some("Super Mario World (USA).sfc"));
+        assert_eq!(i.versions.len(), 2, "{:?}", i.versions);
+        // La fiche gardée sur le PC connaît les nouvelles versions (notes, nature).
+        assert!(n.fiche_locale(300).unwrap()["versions"].as_array().unwrap().iter().any(|x| x["telechargement_id"] == 32));
+        // Retirer le Brésil en erreur, puis le Japon : leurs fichiers seulement ; jamais l'USA (version d'origine).
+        n.retirer_version(300, 36).await.unwrap();
+        assert!(!dossier.join("Super Mario World (Brazil).sfc.part").exists());
+        assert!(matches!(n.retirer_version(300, 31).await, Err(Erreur::Refus(_))));
+        n.choisir_version(300, &i.versions[1].chemin).await.unwrap();
+        let j = n.retirer_version(300, 32).await.unwrap();
+        assert!(!dossier.join("Super Mario World - Super Mario Bros. 4 (Japan).sfc").exists());
+        assert!(dossier.join("Super Mario World (USA).sfc").is_file());
+        let i = j.installation.unwrap();
+        assert_eq!(i.fichier_du_jeu.as_deref(), Some("Super Mario World (USA).sfc"), "la ⭐ retirée : l'USA le redevient");
+        assert!(i.versions.is_empty() && n.registre().versions_ajoutees(300).unwrap().is_empty());
+        assert_eq!(j.fichiers.len(), 1);
+        // Une version en attente, puis le jeu entier retiré : elle est arrêtée, ses restes partent, rien d'orphelin.
+        n.ajouter(300, 33, &empl, &e).await.unwrap();
+        std::fs::write(dossier.join("Super Mario World (Europe) (Rev 1).sfc.part"), b"debut").unwrap();
+        n.retirer_du_pc(300).await.unwrap();
+        assert!(n.registre().jeu(300).unwrap().is_none() && n.registre().versions_ajoutees(300).unwrap().is_empty());
+        assert!(!dossier.join("Super Mario World (Europe) (Rev 1).sfc.part").exists() && !dossier.join("Super Mario World (USA).sfc").exists());
     }
 
     #[tokio::test]

@@ -476,17 +476,21 @@ impl Noyau {
             let j = &vu.jeu;
             // Un jeu à cartes (e-Reader) ou à plusieurs régions : TOUTES ses versions, pour les remettre à une
             // restauration (pas seulement la 1re).
+            // Jamais une version en erreur (une restauration la retéléchargerait) ; le total suit ce qui est remis.
+            let en_erreur: Vec<i64> =
+                self.registre().versions_ajoutees(j.id).unwrap_or_default().into_iter().filter(|v| v.etat == crate::jeux_pc::Etat::Erreur).map(|v| v.version).collect();
             let cartes: Vec<i64> = if crate::jeux_pc::a_cartes(&j.plateforme) || crate::partie::plusieurs_versions(j) {
-                let mut v: Vec<i64> = j.fichiers.iter().map(|f| f.version.unwrap_or(j.version)).collect();
+                let mut v: Vec<i64> = j.fichiers.iter().map(|f| f.version.unwrap_or(j.version)).filter(|v| !en_erreur.contains(v)).collect();
                 v.sort();
                 v.dedup();
                 v
             } else {
                 vec![]
             };
+            let total: u64 = j.fichiers.iter().filter(|f| !en_erreur.contains(&f.version.unwrap_or(j.version))).map(|f| f.taille).sum();
             liste.push(json!({
                 "id": j.id, "version": j.version, "titre": j.titre, "plateforme": j.plateforme,
-                "dossier": j.dossier, "etat": j.etat, "total": j.total, "installation": j.installation,
+                "dossier": j.dossier, "etat": j.etat, "total": total, "installation": j.installation,
                 "temps_jeu": j.temps_jeu, "derniere_partie": j.derniere_partie, "cartes": cartes,
             }));
             // Les parties d'un jeu installé : ce qui a changé depuis son installation.

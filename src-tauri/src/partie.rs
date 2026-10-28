@@ -695,7 +695,7 @@ impl Noyau {
     /// Les versions d'une ligne à plusieurs régions, inscrites dans l'installation (le choix au lancement, ⭐ celle
     /// d'habitude) : le fichier lancé de CHACUNE, pris dans ses fichiers seulement, avec ses étiquettes. Celle de la
     /// ligne d'abord ; la version par défaut (`dossier` + `fichier_du_jeu`) n'est pas changée.
-    fn retenir_versions(&self, j: &JeuPc, mut i: Installation) -> Resultat<Installation> {
+    pub(crate) fn retenir_versions(&self, j: &JeuPc, mut i: Installation) -> Resultat<Installation> {
         let fiche = self.fiche_locale(j.id).unwrap_or(Value::Null);
         let mut numeros = vec![j.version];
         for f in &j.fichiers {
@@ -704,30 +704,7 @@ impl Noyau {
                 numeros.push(v);
             }
         }
-        let mut versions = Vec::new();
-        for n in numeros {
-            let noms: Vec<String> = j.fichiers.iter().filter(|f| f.version.unwrap_or(j.version) == n).map(|f| f.nom.clone()).collect();
-            let v = fiche["versions"].as_array().and_then(|l| l.iter().find(|v| v["telechargement_id"].as_i64() == Some(n))).cloned().unwrap_or(Value::Null);
-            let Some(fichier) = lancer_de(&v, &noms).or_else(|| fichier_principal(&noms)) else { continue };
-            // Une version qui ne démarrerait pas (chemin douteux, .m3u dont un disque manque) est seulement écartée
-            // du choix (jamais une installation à moitié inscrite) ; la version de la ligne a été vérifiée avant.
-            let chemin = match crate::jeux_pc::chemin_de_fichier_sur(&fichier).map(|r| Path::new(&j.dossier).join(r)) {
-                Ok(c) => c,
-                Err(e) => {
-                    self.journaliser(&format!("jeu {} : version {n} écartée du choix ({e})", j.id));
-                    continue;
-                }
-            };
-            if fichier.to_lowercase().ends_with(".m3u") {
-                if let Err(e) = verifier_m3u(&chemin) {
-                    self.journaliser(&format!("jeu {} : version {n} écartée du choix ({e})", j.id));
-                    continue;
-                }
-            }
-            let (rang, qualite, libelle, _) = crate::import_local::etiquettes(&fichier);
-            let libelle = if libelle.trim().is_empty() { v["nom"].as_str().unwrap_or(&fichier).to_string() } else { libelle };
-            versions.push(crate::jeux_pc::VersionLocale { chemin: chemin.to_string_lossy().into(), libelle, rang, qualite, disques: vec![] });
-        }
+        let versions: Vec<_> = numeros.into_iter().filter_map(|n| self.entree_du_choix(j, n, &fiche)).collect();
         // Une réinstallation garde la version ⭐ choisie avant (si elle est toujours là).
         if let Some(avant) = j.installation.as_ref().and_then(|a| a.fichier_du_jeu.as_ref().map(|f| Path::new(&a.dossier).join(f))) {
             if let Some(v) = versions.iter().find(|v| Path::new(&v.chemin) == avant) {
@@ -739,6 +716,59 @@ impl Noyau {
         i.versions = versions;
         self.registre().changer_installation(j.id, Some(&i))?;
         Ok(i)
+    }
+
+    /// L'entrée du choix au lancement d'UNE version de la ligne : son fichier lancé (pris dans SES fichiers), ses
+    /// étiquettes. `None` : incomplète sur le disque (une version encore en route), ou elle ne démarrerait pas
+    /// (chemin douteux, .m3u dont un disque manque : noté au journal).
+    fn entree_du_choix(&self, j: &JeuPc, n: i64, fiche: &Value) -> Option<crate::jeux_pc::VersionLocale> {
+        let siens: Vec<&crate::jeux_pc::FichierJeu> = j.fichiers.iter().filter(|f| f.version.unwrap_or(j.version) == n).collect();
+        let complete = !siens.is_empty()
+            && siens.iter().all(|f| crate::jeux_pc::chemin_de_fichier_sur(&f.nom).is_ok_and(|r| std::fs::metadata(Path::new(&j.dossier).join(r)).is_ok_and(|m| m.len() == f.taille)));
+        if !complete {
+            return None;
+        }
+        let noms: Vec<String> = siens.iter().map(|f| f.nom.clone()).collect();
+        let v = fiche["versions"].as_array().and_then(|l| l.iter().find(|v| v["telechargement_id"].as_i64() == Some(n))).cloned().unwrap_or(Value::Null);
+        let fichier = lancer_de(&v, &noms).or_else(|| fichier_principal(&noms))?;
+        let chemin = match crate::jeux_pc::chemin_de_fichier_sur(&fichier).map(|r| Path::new(&j.dossier).join(r)) {
+            Ok(c) => c,
+            Err(e) => {
+                self.journaliser(&format!("jeu {} : version {n} écartée du choix ({e})", j.id));
+                return None;
+            }
+        };
+        if fichier.to_lowercase().ends_with(".m3u") {
+            if let Err(e) = verifier_m3u(&chemin) {
+                self.journaliser(&format!("jeu {} : version {n} écartée du choix ({e})", j.id));
+                return None;
+            }
+        }
+        let (rang, qualite, libelle, _) = crate::import_local::etiquettes(&fichier);
+        let libelle = if libelle.trim().is_empty() { v["nom"].as_str().unwrap_or(&fichier).to_string() } else { libelle };
+        Some(crate::jeux_pc::VersionLocale { chemin: chemin.to_string_lossy().into(), libelle, rang, qualite, disques: vec![] })
+    }
+
+    /// Une version AJOUTÉE vient d'arriver : son entrée s'ajoute au choix au lancement, sans rien reconstruire (un
+    /// fichier décompressé pour jouer et la version ⭐ restent tels quels). Une liste vide (une seule version jusque-là)
+    /// reçoit d'abord l'entrée de la version d'habitude, telle qu'elle est lancée aujourd'hui.
+    pub(crate) fn ajouter_version_au_choix(&self, j: &JeuPc, n: i64) -> Resultat<()> {
+        let Some(mut i) = j.installation.clone() else { return Ok(()) };
+        let fiche = self.fiche_locale(j.id).unwrap_or(Value::Null);
+        let Some(nouvelle) = self.entree_du_choix(j, n, &fiche) else { return Ok(()) };
+        if i.versions.is_empty() {
+            if let Some(f) = i.fichier_du_jeu.clone() {
+                let (rang, qualite, libelle, _) = crate::import_local::etiquettes(&f);
+                let libelle = if libelle.trim().is_empty() { "Version d'origine".to_string() } else { libelle };
+                let chemin = Path::new(&i.dossier).join(&f).to_string_lossy().to_string();
+                i.versions.push(crate::jeux_pc::VersionLocale { chemin, libelle, rang, qualite, disques: vec![] });
+            }
+        }
+        if !i.versions.iter().any(|v| Path::new(&v.chemin) == Path::new(&nouvelle.chemin)) {
+            i.versions.push(nouvelle);
+        }
+        self.registre().changer_installation(j.id, Some(&i))?;
+        Ok(())
     }
 
     fn retenir_installation(
@@ -1167,6 +1197,9 @@ impl Noyau {
         if !matches!(j.etat, Etat::Telecharge) {
             return Err(Erreur::Refus("Ce jeu est en cours de téléchargement : annule plutôt le téléchargement.".into()));
         }
+        // Une autre version de ce jeu en route : arrêtée d'abord (la file ne la reprend plus) ; ses `.part` partent
+        // avec le reste.
+        self.arreter_versions(id).await?;
         // Un jeu d'une boutique : c'est elle qui le désinstalle ; Frogtend ne retire pas sa ligne (son temps de jeu).
         if j.installation.as_ref().is_some_and(|i| i.boutique.is_some()) {
             return Err(Erreur::Refus("Ce jeu est installé par sa boutique : désinstalle-le depuis elle.".into()));
@@ -1216,6 +1249,11 @@ impl Noyau {
             let p = recus.join(&rel);
             if p.is_file() {
                 std::fs::remove_file(&p)?;
+            }
+            // Le reste d'une version qui arrivait (jamais un fichier hors de la liste du jeu).
+            let part = PathBuf::from(format!("{}.part", p.to_string_lossy()));
+            if part.is_file() {
+                let _ = std::fs::remove_file(&part);
             }
             // Un sous-dossier reçu (CHD MAME), seulement s'il est vide.
             if rel.components().count() > 1 {

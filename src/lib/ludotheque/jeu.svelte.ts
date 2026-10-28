@@ -1304,7 +1304,7 @@ export async function gererJeu(id: number) {
   const j = tele.jeux[id];
   // Le jeu importé par une AUTRE personne de ce PC : elle seule le gère (✅ Seb 20/10).
   if (!j || j.d_un_autre) return;
-  type Action = 'jouerAvec' | 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'patchs' | 'mods' | 'triches' | 'succes' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'delier' | 'retirer';
+  type Action = 'jouerAvec' | 'autreVersion' | 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'patchs' | 'mods' | 'triches' | 'succes' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'delier' | 'retirer';
   const options: { valeur: Action; libelle: string; detail?: string }[] = [];
   if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
   // Un jeu d'une boutique (Steam) : c'est elle qui le lance, l'installe et le désinstalle ; Frogtend n'écrit rien dans
@@ -1316,6 +1316,9 @@ export async function gererJeu(id: number) {
   // Au canapé, pas de bouton « Jouer avec… » : une autre version (ou un autre émulateur) pour CETTE partie, par Y.
   if (auCanape() && j.installation && !deBoutique && (versions.length > 1 || emulateursDuJeu(j.plateforme).liste.length > 1))
     options.push({ valeur: 'jouerAvec', libelle: '▶ Jouer avec…', detail: 'une autre version ou un autre émulateur, pour cette partie' });
+  // Un jeu de Firehouse (ROM, image disque) : ses autres versions (régions) s'ajoutent depuis sa fiche.
+  if (!auCanape() && id > 0 && !deBoutique && !aCartes(j.plateforme) && j.etat === 'telecharge' && !!j.installation?.fichier_du_jeu)
+    options.push({ valeur: 'autreVersion', libelle: '➕ Ajouter une autre version', detail: 'sur la fiche du jeu, version par version' });
   if (versions.length > 1 && j.installation) {
     const courante = versions.find((v) => estCourante(v, j.installation!));
     options.push({ valeur: 'version', libelle: '📀 Version', detail: `${courante ? libelleVersion(courante) : '?'} (${versions.length} versions)` });
@@ -1382,6 +1385,7 @@ export async function gererJeu(id: number) {
   // Un chemin de dossier ne dit rien à 3 m de la télé.
   const c = await choisir<Action>(`⚙ Gérer « ${j.titre} »`, options, auCanape() ? undefined : `Rangé dans ${j.installation?.dossier ?? j.dossier}`);
   if (c === 'jouerAvec') await jouerAvec(id);
+  else if (c === 'autreVersion') await goto(`/jeu/${id}`);
   else if (c === 'installer') await installer(id);
   else if (c === 'lanceur') await choisirLanceur(id);
   else if (c === 'version') await choisirVersionParDefaut(id);

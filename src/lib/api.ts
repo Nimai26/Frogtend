@@ -366,7 +366,10 @@ export interface EmplacementPropose {
 /** Ce que la file de téléchargements envoie à l'interface. */
 export type EvenementTelechargement =
   | { sorte: 'progres'; jeu: number; recus: number; total: number; debit: number; fichier: string }
-  | { sorte: 'etat'; jeu: number; etat: EtatJeuPc; message: string | null };
+  | { sorte: 'etat'; jeu: number; etat: EtatJeuPc; message: string | null }
+  /** Une version AJOUTÉE à un jeu du PC (la ligne du jeu, elle, ne change pas : il reste jouable). */
+  | { sorte: 'version'; jeu: number; version: number; etat: EtatJeuPc; message: string | null }
+  | { sorte: 'progres_version'; jeu: number; version: number; recus: number; total: number; debit: number };
 
 export interface Filtre {
   plateforme?: string | null;
@@ -662,6 +665,11 @@ export const api = {
   jeuxDuPc: () => appeler<JeuPc[]>('jeux_du_pc'),
   proposerEmplacements: (plateforme: string, taille: number) =>
     appeler<EmplacementPropose[]>('emplacements_proposer', { plateforme, taille }),
+  /** Retire (ou annule) UNE version ajoutée d'un jeu (jamais la version d'origine, jamais les parties). */
+  retirerVersion: (id: number, version: number) => appeler<JeuPc>('jeu_retirer_version', { id, version }),
+  /** Les versions ajoutées d'un jeu du PC et où elles en sont. */
+  versionsAjoutees: (id: number) =>
+    appeler<{ version: number; etat: 'attente' | 'en_cours' | 'pause' | 'telecharge' | 'erreur'; message: string | null }[]>('jeu_versions_ajoutees', { id }),
   /** Retire UNE carte d'un jeu e-Reader (jamais la dernière, jamais les parties). */
   retirerCarte: (id: number, version: number) => appeler<JeuPc>('jeu_retirer_carte', { id, version }),
   /** `autres` : d'autres versions (régions) du même jeu, sur la même ligne — ROM ou images disque seulement. */
