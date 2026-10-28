@@ -170,6 +170,20 @@ pub fn appliquer_pids(pids: &dyn Fn() -> Vec<u32>, m: &Mode, etat: &dyn Fn() -> 
     }
 }
 
+/// Une fenêtre du jeu est-elle à l'écran ? (La plus grande fenêtre principale visible de ses programmes, au moins
+/// 200 × 150, jamais une console — la règle du plein écran.) Pour l'écran de lancement (lot 4c) : lecture seule.
+pub fn fenetre_visible(pids: &[u32]) -> bool {
+    #[cfg(windows)]
+    {
+        windows_impl::fenetre_du_jeu(pids).is_some()
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = pids;
+        false
+    }
+}
+
 #[cfg(windows)]
 mod windows_impl {
     use super::{couvre_l_ecran, Etat, Mode, TOUCHES};
@@ -205,7 +219,7 @@ mod windows_impl {
     }
 
     /// La plus grande fenêtre principale visible des programmes du jeu (au moins 200 × 150 ; jamais une console).
-    fn fenetre_du_jeu(pids: &[u32]) -> Option<(HWND, (i32, i32, i32, i32))> {
+    pub(super) fn fenetre_du_jeu(pids: &[u32]) -> Option<(HWND, (i32, i32, i32, i32))> {
         crate::menu_jeu::fenetres_du_processus(pids)
             .into_iter()
             .filter(|h| classe(*h) != "ConsoleWindowClass")
@@ -354,6 +368,15 @@ mod windows_impl {
                 }))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests_lancement {
+    #[test]
+    fn aucune_fenetre_pour_un_programme_absent() {
+        assert!(!super::fenetre_visible(&[]));
+        assert!(!super::fenetre_visible(&[u32::MAX - 7]));
     }
 }
 

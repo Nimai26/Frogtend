@@ -34,7 +34,16 @@ import { auCanape, seulementAuBureau } from '$lib/taodbox/canape';
 import { nomAffiche } from './ludotheque.svelte';
 import { proposerCopieAvantMod } from '$lib/mods/copieAvantMod';
 
-export const partie = $state<{ enJeu: number | null; installation: number | null; lancement: number | null }>({ enJeu: null, installation: null, lancement: null });
+/** `affichee` : la fenêtre du jeu en cours est apparue (l'écran de lancement se cache, lot 4c). */
+export const partie = $state<{ enJeu: number | null; installation: number | null; lancement: number | null; affichee: boolean }>({
+  enJeu: null,
+  installation: null,
+  lancement: null,
+  affichee: true,
+});
+
+/** L'écran de lancement est montré : la page dessous est inerte (lot 4c). */
+export const attenteLancement = $state({ montre: false });
 
 let ecoute: (() => void) | null = null;
 
@@ -48,8 +57,13 @@ export async function suivreParties() {
     const titre = tele.jeux[e.payload.jeu]?.titre ?? 'le jeu';
     toast(`🖥 Frogtend n’a pas pu mettre « ${titre} » en plein écran (${e.payload.message}). Essaie l’autre façon dans ⚙ Gérer le jeu ▸ Plein écran.`, 'alerte');
   });
+  // La fenêtre du jeu est apparue (ou la partie a fini, ou 3 minutes) : l'écran de lancement se cache.
+  await listen<{ jeu: number }>('partie-affichee', (e) => {
+    if (e.payload.jeu === partie.enJeu) partie.affichee = true;
+  });
   ecoute = await listen<{ sorte: 'debut' | 'fin'; jeu: number; secondes?: number; carte_cedee?: boolean }>('partie', async (e) => {
     if (e.payload.sorte === 'debut') {
+      partie.affichee = false;
       partie.enJeu = e.payload.jeu;
       if (e.payload.carte_cedee) toast('🎮 Session de jeu annoncée à Firehouse.', 'ok');
     } else {

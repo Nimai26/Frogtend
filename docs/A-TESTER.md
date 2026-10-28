@@ -3,6 +3,13 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## L'écran de lancement (0.143.0)
+- [ ] Un jeu lent (PS3 par RPCS3, ou un gros jeu PC) : après 2 s, son fond et « se lance… » ; il disparaît quand le
+      jeu s'affiche, et le jeu a bien la main (manette, clavier).
+- [ ] Super Mario World (rapide) : aucune attente visible.
+- [ ] Pendant l'attente : « Revenir à Frogtend » (souris), puis Échap, puis B en Taodbox — l'attente se cache.
+- [ ] Relancer le même jeu ensuite : l'attente revient.
+
 ## Les boutons de la manette d'origine (0.142.0)
 - [ ] Super Mario World : menu en jeu ▸ « 🗺 Les boutons » : le dessin, puis « A → B », « B → A », « X → Y »… ; la croix
       descend dans la liste et allume chaque bouton sur le dessin ; B revient au menu.

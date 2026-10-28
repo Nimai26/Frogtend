@@ -61,6 +61,15 @@
   déplacent des boutons (turbo, boutons C), type de manette du port, profils par jeu de DuckStation/PCSX2, Wii, MAME
   autonome, Cemu/Eden/RPCS3/xemu (« inconnu ») ; noms de `clavier.ts` (« Start », « View (Back) ») à harmoniser
   avec « Menu (≡) » / « Vue (⧉) » ; sous Sunshine la famille est toujours « xbox ».
+  ✅ (4c) FAIT en 0.143.0 (avis lancement avant ; relectures lancement + interface, sans BLOQUANT ; corrigés :
+  attente masquée qui ne revenait plus pour ce jeu, B pris avant une fenêtre ouverte, rien à la souris, page dessous
+  pilotable en aveugle → `inert`, fond d'un import relié, relevé des programmes espacé après 10 s) : couche
+  `EcranLancement.svelte` dans la fenêtre principale après 2 s ; le cœur émet `partie-affichee` quand la fenêtre du
+  jeu apparaît (règle du plein écran : plus grande fenêtre ≥ 200 × 150 des descendants du jeu), à la fin, ou à 3 min ;
+  jamais de premier plan pris. RESTE : les jeux de boutique (le « début » n'arrive qu'une fois le jeu trouvé : pas
+  d'attente pendant Steam/Epic, seulement le toast « Lancement… ») ; filtrer `partie-affichee` par numéro de partie
+  (aujourd'hui par jeu ; relance immédiate du même jeu en théorie) ; la fenêtre de compilation de RPCS3 cache
+  l'attente tôt (sans gravité).
 - **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un
   jeu du PC (la fiche GARDÉE a `locale: true`, le bouton exigeait `!locale` — même défaut pour « ➕ Ajouter cette
   carte » e-Reader) ; « Gérer ▸ Ajouter une autre version » ne faisait rien (même page). 0.137.4 (relecture interface

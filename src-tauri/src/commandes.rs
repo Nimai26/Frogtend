@@ -1536,6 +1536,24 @@ pub async fn jeu_jouer(
     });
     armer_touche_menu(&app, true);
     suivre_manette_menu(&app, numero);
+    // L'écran de lancement (lot 4c) : l'interface montre une attente si le jeu tarde ; le cœur lui dit quand la fenêtre
+    // du jeu apparaît (ou que la partie finit, ou au bout de 3 minutes). Lecture seule des fenêtres, toutes les 250 ms :
+    // rien ne prend le premier plan (un émulateur en pause hors du premier plan y resterait).
+    {
+        let app4 = app.clone();
+        std::thread::spawn(move || {
+            let debut = std::time::Instant::now();
+            let menu = app4.state::<crate::menu_jeu::MenuJeu>();
+            while menu.en_cours(numero) && debut.elapsed() < std::time::Duration::from_secs(180) {
+                if crate::plein_ecran::fenetre_visible(&crate::lancement::processus_de_la_partie(pid)) {
+                    break;
+                }
+                // Chaque relevé lit tous les programmes : serré au début, espacé ensuite (un jeu qui compile ses shaders).
+                std::thread::sleep(std::time::Duration::from_millis(if debut.elapsed().as_secs() < 10 { 250 } else { 1000 }));
+            }
+            let _ = app4.emit("partie-affichee", serde_json::json!({ "jeu": id, "ms": debut.elapsed().as_millis() as u64 }));
+        });
+    }
     // Plein écran au lancement (jeu PC sans émulateur, réglage du jeu) : dès que sa fenêtre est prête, jamais pendant
     // le menu en jeu ni un jeu figé ; un échec est dit à la personne.
     if let (Some(d), m) = (dossier_jeu_pe, crate::plein_ecran::mode(plein_ecran.as_deref().unwrap_or(""))) {

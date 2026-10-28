@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.143.0 — L'écran de lancement
+
+- ⏳ Un jeu qui met du temps à s'ouvrir : après 2 secondes, Frogtend montre son fond, son nom et « se lance… »,
+  jusqu'à ce que la fenêtre du jeu apparaisse. Un jeu rapide ne le voit jamais.
+- « Revenir à Frogtend » (ou B / Échap) cache cette attente ; le jeu continue de se lancer.
+- L'attente ne prend jamais la main au jeu : il passe devant dès qu'il est prêt.
+
 ## 0.142.0 — Les boutons de la manette d'origine
 
 - 🗺 **« Les boutons »** : un dessin de ta manette et la liste « bouton de ta manette → bouton de la manette
