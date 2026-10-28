@@ -1,7 +1,8 @@
 <script lang="ts">
   // La jaquette d'un jeu, servie par le cœur pour le profil ouvert.
   // La carte de remplacement (titre, plateforme) est DERRIÈRE l'image : dès que l'image est là, elle la couvre,
-  // quoi qu'il arrive à l'état du composant. Un échec est retenté une fois avant d'abandonner.
+  // quoi qu'il arrive à l'état du composant. Un échec est retenté trois fois, de plus en plus espacées, avant
+  // d'abandonner.
   import { adresseJaquette, adresseVisuel } from '$lib/api';
   import { visuelDuJeu, type Dimensions } from './visuels';
   import { nomAffiche } from './ludotheque.svelte';
@@ -36,30 +37,54 @@
     return l * echelle * (window.devicePixelRatio || 1);
   }
 
-  const DELAI_NOUVEL_ESSAI_MS = 1500;
+  /** Les nouveaux essais, de plus en plus espacés (essai de Seb, 28/10 : au retour vers la ludothèque, les demandes
+   * d'images échouaient un court instant ; un seul nouvel essai à 1,5 s tombait encore dedans, et toutes les
+   * jaquettes restaient vides jusqu'au redémarrage). */
+  const DELAIS_NOUVEL_ESSAI_MS = [1500, 4000, 10000];
   let essai = $state(0);
   let abandon = $state(false);
   let chargee = $state(false);
+  /** Une adresse PROPRE à cet affichage : le navigateur intégré ne ressert jamais l'échec gardé d'une demande
+   * annulée quand la grille a été quittée (piste de l'expert, 28/10 : changer de visuel — nouvelle adresse — réparait). */
+  const montage = Math.random().toString(36).slice(2, 8);
+  let minuteur: ReturnType<typeof setTimeout> | null = null;
+  const arreterMinuteur = () => {
+    if (minuteur !== null) clearTimeout(minuteur);
+    minuteur = null;
+  };
 
   const src = $derived.by(() => {
     const base = v.sorte === 'jaquette' ? adresseJaquette(id, pixels(largeur)) : adresseVisuel(id, v.sorte, pixels(largeur));
-    return essai === 0 ? base : `${base}${base.includes('?') ? '&' : '?'}essai=${essai}`;
+    return `${base}${base.includes('?') ? '&' : '?'}m=${montage}${essai === 0 ? '' : `-${essai}`}`;
   });
 
-  // Un autre jeu, ou une autre taille : on repart de zéro.
+  // Un autre jeu, ou une autre taille : on repart de zéro (et un essai prévu pour l'ancien est oublié). Au démontage,
+  // aucun minuteur ne survit.
   $effect(() => {
     void id;
     void largeur;
     void v.sorte;
+    arreterMinuteur();
     chargee = false;
     essai = 0;
     abandon = false;
+    return arreterMinuteur;
   });
 
   function echec() {
     chargee = false;
-    if (essai === 0) setTimeout(() => (essai = 1), DELAI_NOUVEL_ESSAI_MS);
-    else abandon = true;
+    const delai = DELAIS_NOUVEL_ESSAI_MS[essai];
+    if (delai === undefined) {
+      abandon = true;
+      return;
+    }
+    const suivant = essai + 1;
+    arreterMinuteur();
+    // Un léger décalage : des dizaines de jaquettes ne redemandent jamais toutes à la même milliseconde.
+    minuteur = setTimeout(() => {
+      minuteur = null;
+      if (!abandon) essai = suivant;
+    }, delai * (0.9 + Math.random() * 0.2));
   }
 </script>
 

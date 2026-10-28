@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.137.1 — Les jaquettes qui disparaissaient
+
+- 🖼 En revenant à la ludothèque (depuis une fiche ou les Options), les jaquettes pouvaient rester vides jusqu'au
+  redémarrage : chaque affichage demande maintenant ses images sous une adresse neuve (le navigateur intégré ne
+  ressert plus un échec gardé), et Frogtend réessaie plusieurs fois, patiemment, au lieu d'abandonner tout de suite.
+
 ## 0.137.0 — Plusieurs versions d'un jeu (2)
 
 - ➕ Un jeu déjà sur le PC (Super Mario World USA, par exemple) peut recevoir une AUTRE version : sur sa fiche, chaque

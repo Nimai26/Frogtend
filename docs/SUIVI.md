@@ -7,6 +7,13 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- **Séance d'essais (2) avec Seb, 28/10 soir (0.137.0)** — ✅ mise à jour. ❌ Toutes les jaquettes de la
+  ludothèque vides après un retour depuis une fiche OU les Options (cache intact : 1 337 images ; aucune erreur au
+  journal ; les images des fiches restent ; changer de visuel puis revenir les fait réapparaître = échec PASSAGER au
+  remontage de la grille). 0.137.1 (relecture interface suivie) : adresse PROPRE à chaque affichage (`m=<montage>`,
+  piste : la WebView ressert l'échec d'une demande annulée au démontage — cohérent avec « nouvelle adresse = réparé »
+  et « fiches épargnées », NON prouvé), puis 3 nouveaux essais (1,5 s, 4 s, 10 s, ±10 %), minuteurs nettoyés. À
+  revérifier avec Seb ; si ça revient : compter côté cœur les demandes reçues au retour (arrivent-elles ?).
 - **Séance d'essais avec Seb, 28/10 (0.134.0).** ✅ Mise à jour proposée à l'ouverture, un clic, redémarrage, 0.134.0
   affichée. ✅ Refus de `D:\` comme dossier des émulateurs (fenêtre maison, `D:\Emulateurs` proposé, réglage
   intact). ❌ **Jeu SNES de A à Z (Super Mario World)** : (1) **plusieurs versions d'une ROM** : Seb veut pouvoir en
