@@ -1634,6 +1634,11 @@ fn raccourcis_etats(app: &AppHandle) -> bool {
     app.store("pc.json").ok().and_then(|s| s.get("reglages")).and_then(|r| r["menuJeu"]["raccourcisEtats"].as_bool()).unwrap_or(true)
 }
 
+/// Le bouton Xbox ouvre le menu en jeu (`pc.json` ▸ `menuJeu.boutonXbox`, actif d'office ; ✅ Seb 28/10).
+fn bouton_xbox(app: &AppHandle) -> bool {
+    app.store("pc.json").ok().and_then(|s| s.get("reglages")).and_then(|r| r["menuJeu"]["boutonXbox"].as_bool()).unwrap_or(true)
+}
+
 fn combinaison_menu(app: &AppHandle) -> u16 {
     let nom = app
         .store("pc.json")
@@ -1649,10 +1654,29 @@ fn combinaison_menu(app: &AppHandle) -> u16 {
 fn suivre_manette_menu(app: &AppHandle, numero: u64) {
     let app = app.clone();
     let combo = combinaison_menu(&app);
-    let mut osd = crate::osd_manette::Osd::nouveau(combo).avec_raccourcis(raccourcis_etats(&app));
-    let mut lecteur = crate::osd_manette::Lecteur::default();
     // Manette → clavier (jeu PC, réglage du jeu) : le même fil traduit les boutons en touches.
     let partie = app.state::<crate::menu_jeu::MenuJeu>().partie();
+    // Le bouton Xbox : seulement si la Game Bar ne le prend pas, et hors des émulateurs qui s'en servent.
+    let reglage_xbox = bouton_xbox(&app);
+    let emulateur = partie.as_ref().and_then(|p| p.emulateur.clone());
+    // Sans émulateur reconnu : un jeu PC (son dossier est connu), sinon un émulateur hors catalogue.
+    let moteur = match (emulateur.as_deref(), partie.as_ref().is_some_and(|p| p.dossier_jeu.is_some())) {
+        (Some(e), _) => crate::osd_manette::Moteur::Emulateur(e),
+        (None, true) => crate::osd_manette::Moteur::JeuPc,
+        (None, false) => crate::osd_manette::Moteur::Inconnu,
+    };
+    let guide = crate::osd_manette::guide_permis(crate::registre::bouton_game_bar(), reglage_xbox, moteur);
+    if reglage_xbox && !guide {
+        app.state::<Noyau>().journaliser(&format!(
+            "bouton Xbox : n'ouvre pas le menu pendant cette partie (Game Bar : {:?}, émulateur : {})",
+            crate::registre::bouton_game_bar(),
+            emulateur.as_deref().unwrap_or("aucun")
+        ));
+    } else if guide && !crate::osd_manette::guide_lisible() {
+        app.state::<Noyau>().journaliser("bouton Xbox : illisible sur ce PC pour les manettes Xbox (XInputGetStateEx absent)");
+    }
+    let mut osd = crate::osd_manette::Osd::nouveau(combo).avec_raccourcis(raccourcis_etats(&app)).avec_guide(guide);
+    let mut lecteur = crate::osd_manette::Lecteur::default();
     let dossier_jeu = partie.as_ref().and_then(|p| p.dossier_jeu.clone()).map(std::path::PathBuf::from);
     let repeter = partie.as_ref().is_some_and(|p| p.repeter_touches);
     let mut clavier = partie

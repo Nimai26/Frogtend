@@ -47,7 +47,10 @@ Détails et preuves :
   - SDL3 avec `SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS` : le seul chemin qui couvre PS4/PS5/Switch Pro/8BitDo
     (HID brut). Coût : une DLL de 2 à 3 Mo, ou une compilation (CMake). **[À MESURER]** en arrière-plan.
   - GameInput (`GameInputEnableBackgroundInput`) : troisième piste.
-  - Le bouton Guide n'est pas exposé par XInput (et Steam / la Game Bar le prennent) → pas de Guide.
+  - Le bouton Guide n'est pas exposé par l'API OFFICIELLE de XInput (et Steam / la Game Bar le prennent). Corrigé le
+    28/10 (0.140.0) : `XInputGetStateEx` (ordinal 100 de xinput1_4.dll, non documenté, utilisé par SDL, RetroArch,
+    Dolphin) le donne (bit 0x0400) — trouvé sur Venkman. Frogtend s'en sert seulement si la Game Bar ne prend pas le
+    bouton ; repli sur `XInputGetState` s'il manque.
 - **Raccourci clavier global** : `tauri-plugin-global-shortcut` (RegisterHotKey). Appuyer dessus donne le droit de
   passer au premier plan.
 - **Afficher le menu par-dessus** : une fenêtre « toujours au-dessus » passe au-dessus d'un jeu en plein écran SANS

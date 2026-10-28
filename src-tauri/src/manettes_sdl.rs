@@ -19,7 +19,7 @@
 //!   l'émulateur — une manette qui ne passe QUE par DirectInput (générique) n'ouvre donc pas le menu en jeu.
 //! - Les boutons sont pris PAR POSITION : le bouton du bas valide (B sur une manette Nintendo), comme dans Taodbox.
 
-use crate::osd_manette::{EtatManette, A, B, BAS, DROITE, GAUCHE, HAUT, L1, L3, R1, R3, SELECT, START};
+use crate::osd_manette::{EtatManette, A, B, BAS, DROITE, GAUCHE, GUIDE, HAUT, L1, L3, R1, R3, SELECT, START};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -60,7 +60,7 @@ mod sdl {
     use sdl3_sys::everything::*;
 
     /// Les boutons SDL (par position) et leur bit XInput.
-    const BOUTONS: [(SDL_GamepadButton, u16); 14] = [
+    const BOUTONS: [(SDL_GamepadButton, u16); 15] = [
         (SDL_GAMEPAD_BUTTON_SOUTH, A),
         (SDL_GAMEPAD_BUTTON_EAST, B),
         (SDL_GAMEPAD_BUTTON_WEST, X),
@@ -75,6 +75,8 @@ mod sdl {
         (SDL_GAMEPAD_BUTTON_DPAD_DOWN, BAS),
         (SDL_GAMEPAD_BUTTON_DPAD_LEFT, GAUCHE),
         (SDL_GAMEPAD_BUTTON_DPAD_RIGHT, DROITE),
+        // Le bouton PS / Home / 8BitDo : comme le bouton Xbox (il n'ouvre le menu que si le réglage le permet).
+        (SDL_GAMEPAD_BUTTON_GUIDE, GUIDE),
     ];
 
     /// Les bits XInput des boutons enfoncés, d'après `appuye(bouton SDL)`.
@@ -110,6 +112,7 @@ mod sdl {
             SDL_SetEventEnabled(SDL_EVENT_JOYSTICK_UPDATE_COMPLETE.into(), false);
         }
         let mut ouvertes: Vec<Ouverte> = Vec::new();
+        let mut garde_guide = crate::osd_manette::GardeGuide::<SDL_JoystickID>::default();
         // Les manettes déjà vues (laissées à XInput, ou refusées à l'ouverture) : notées une fois, pas retentées.
         let mut ecartees: Vec<SDL_JoystickID> = Vec::new();
         let mut releve = Instant::now() - Duration::from_secs(2);
@@ -173,10 +176,13 @@ mod sdl {
                     }
                 }
                 let mut e = EtatManette::default();
+                // Le bouton PS / Home d'une manette tout juste ouverte (qu'il vient d'allumer) ne compte pas.
+                let presentes: Vec<SDL_JoystickID> = ouvertes.iter().map(|g| SDL_GetGamepadID(g.0)).collect();
+                garde_guide.retenir(&presentes);
                 for g in &ouvertes {
                     let g = g.0;
                     let lue = EtatManette {
-                        boutons: bits(|b| SDL_GetGamepadButton(g, b)),
+                        boutons: garde_guide.filtrer(SDL_GetGamepadID(g), bits(|b| SDL_GetGamepadButton(g, b))),
                         lx: SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_LEFTX),
                         ly: stick_y(SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_LEFTY)),
                         gt: gachette(SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_LEFT_TRIGGER)),
@@ -253,8 +259,8 @@ mod tests {
             assert_eq!(sdl::bits(|b| b == SDL_GAMEPAD_BUTTON_SOUTH), A, "le bouton du bas valide");
             assert_eq!(sdl::bits(|b| b == SDL_GAMEPAD_BUTTON_EAST), B);
             assert_eq!(sdl::bits(|b| b == SDL_GAMEPAD_BUTTON_BACK || b == SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER), SELECT | R1, "la combinaison du menu");
-            assert_eq!(sdl::bits(|b| b == SDL_GAMEPAD_BUTTON_GUIDE), 0, "le bouton PS/Home : rien");
-            assert_eq!(sdl::bits(|_| true).count_ones(), 14);
+            assert_eq!(sdl::bits(|b| b == SDL_GAMEPAD_BUTTON_GUIDE), GUIDE, "le bouton PS/Home : comme le bouton Xbox");
+            assert_eq!(sdl::bits(|_| true).count_ones(), 15);
         }
         assert_eq!(stick_y(100), -100);
         assert_eq!(stick_y(i16::MIN), i16::MAX, "sans débordement");

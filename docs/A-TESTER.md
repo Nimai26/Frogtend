@@ -3,6 +3,14 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Le bouton Xbox ouvre le menu en jeu (0.140.0)
+- [ ] Super Mario World : un appui court sur le bouton Xbox → le menu de Frogtend s'ouvre (et rien d'autre : ni Game
+      Bar, ni Steam) ; un nouvel appui → retour au jeu.
+- [ ] Le bouton Xbox tenu 2 secondes, ou avec un autre bouton : rien ne s'ouvre.
+- [ ] Manette éteinte pendant la partie, rallumée par le bouton Xbox : le menu ne s'ouvre pas.
+- [ ] ⚙ Options ▸ Émulateurs ▸ « Bouton Xbox » : « n'ouvre pas le menu » → à la partie suivante, il n'ouvre plus rien.
+- [ ] Plus tard, par Moonlight (Freebox Player) : le bouton Accueil / Xbox de la manette ouvre-t-il le menu ?
+
 ## Les sauvegardes rapides (0.139.0)
 - [ ] Super Mario World (RetroArch) : menu en jeu ▸ « ◀ Emplacement 0 · … ▶ » ; aller à l'emplacement 3, « 💾
       Sauvegarde rapide (emplacement 3) » ; rouvrir le menu : « sauvé le … » ; sauver encore → question « Remplacer… ».

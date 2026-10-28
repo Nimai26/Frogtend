@@ -55,6 +55,9 @@ export interface ReglagesPc {
     /** Les raccourcis de sauvegarde rapide à la manette, menu fermé : Vue + LT tenus 0,5 s = sauver, Vue + RT tenus 1 s
      * = charger, dans l'emplacement choisi (✅ Seb 28/10 ; actifs d'office). Lu par le cœur au début de chaque partie. */
     raccourcisEtats: boolean;
+    /** Le bouton Xbox (ou PS / Home) ouvre aussi le menu, d'un appui court ; menu ouvert, il rend la main au jeu (✅ Seb
+     * 28/10, « en plus de Vue + RB »). Seulement si la Game Bar de Windows ne le prend pas. Lu à chaque partie. */
+    boutonXbox: boolean;
   };
   firehouse: {
     adresse: string;
@@ -146,7 +149,7 @@ export const DEFAUTS_PC: ReglagesPc = {
   seuilSauvegardeMo: 200,
   dossierPackMame: '',
   listeMame: '',
-  menuJeu: { touche: 'Pause', manette: 'Select + R1', delaiQuitter: 10, raccourcisEtats: true },
+  menuJeu: { touche: 'Pause', manette: 'Select + R1', delaiQuitter: 10, raccourcisEtats: true, boutonXbox: true },
   firehouse: { adresse: ADRESSE_FIREHOUSE_PAR_DEFAUT, simule: false },
   reunionsSuivies: [],
 };

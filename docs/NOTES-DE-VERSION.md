@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.140.0 — Le bouton Xbox ouvre le menu en jeu
+
+- 🎮 Pendant une partie, un **appui court sur le bouton Xbox** (ou PS, ou Home) ouvre le menu de Frogtend ; menu
+  ouvert, il rend la main au jeu. Vue + RB tenus marche toujours.
+- Seulement si la Game Bar de Windows ne prend pas ce bouton. ⚙ Options ▸ Émulateurs le dit, et propose
+  « 🎮 Libérer le bouton Xbox » si besoin. Le réglage « Bouton Xbox » permet aussi de le couper.
+- Tenu longtemps (pour éteindre la manette), avec un autre bouton, ou pour allumer la manette : il n'ouvre rien.
+- Pas pendant un jeu PlayStation 3, Xbox, Xbox 360, Switch, Wii U, Vita ou PSP (par PPSSPP) : leur émulateur peut se
+  servir de ce bouton.
+
 ## 0.139.0 — Les sauvegardes rapides
 
 - 💾 Menu en jeu (RetroArch et MAME) : choisis l'**emplacement** de ta sauvegarde rapide (1 à 10) — sélectionne la

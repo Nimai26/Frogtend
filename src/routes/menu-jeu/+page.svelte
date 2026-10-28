@@ -98,7 +98,11 @@
         charger();
       }),
       // La manette lue par le cœur pendant la partie (étape 3 de l'OSD) : les mêmes commandes.
-      listen<Commande>('menu-manette', (e) => appliquerManette(e.payload)),
+      // Le bouton Xbox, menu ouvert : retour au jeu, jamais quand une question attend sa réponse.
+      listen<Commande | 'reprendre'>('menu-manette', (e) => {
+        if (e.payload !== 'reprendre') appliquerManette(e.payload);
+        else if (!fenetreOuverte()) reprendre();
+      }),
       // Un jeu PC figé par le cœur (option du jeu) : il est vraiment en pause.
       listen<boolean>('menu-jeu-pause', (e) => {
         pauseRecue = e.payload;

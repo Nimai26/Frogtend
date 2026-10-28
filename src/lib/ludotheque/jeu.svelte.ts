@@ -328,6 +328,12 @@ export async function proposerCouperGameBar() {
   gameBarDemandee = true;
   const ouvre = await api.gameBarBouton().catch(() => null);
   if (ouvre !== true) return;
+  await libererBoutonXbox(() => reglerPc('questionGameBar', true));
+}
+
+/** La question (danger : « Annuler » choisi d'office) puis, sur le oui, le réglage de Windows. `apresReponse` est
+ * appelé quelle que soit la réponse. Rend vrai si le bouton est libéré. Aussi depuis ⚙ Options ▸ Émulateurs. */
+export async function libererBoutonXbox(apresReponse?: () => Promise<unknown>): Promise<boolean> {
   const oui = await confirmer('🎮 Le bouton Xbox ouvre la Game Bar de Windows', {
     message:
       'Pendant une partie, un appui sur le bouton Xbox (le logo au milieu de la manette) ouvre la Game Bar de Windows par-dessus le jeu, et un appui sur A peut y lancer un autre programme.\n\nFrogtend peut couper ce bouton (un réglage de Windows : « Ouvrir la Game Bar avec ce bouton d’une manette »). La Game Bar reste disponible au clavier (touche Windows + G), et tu pourras remettre le bouton dans les paramètres de Windows (Jeux ▸ Game Bar).\n\nSi Steam est installé, ce bouton peut aussi ouvrir Steam : cela se règle dans les paramètres de Steam (rubrique Manette), Frogtend n’y touche pas.',
@@ -335,13 +341,15 @@ export async function proposerCouperGameBar() {
     // Le focus sur « Annuler » : un A répété au canapé ne change jamais un réglage de Windows sans lecture.
     danger: true,
   });
-  await reglerPc('questionGameBar', true);
-  if (!oui) return;
+  await apresReponse?.();
+  if (!oui) return false;
   try {
     await api.gameBarBoutonRegler(false);
     toast('✅ Le bouton Xbox n’ouvre plus la Game Bar.');
+    return true;
   } catch (e) {
     toast(`Le réglage de Windows n’a pas pu être changé : ${motifDuRefus(e)}. Tu peux le faire dans les paramètres de Windows (Jeux ▸ Game Bar).`, 'alerte');
+    return false;
   }
 }
 

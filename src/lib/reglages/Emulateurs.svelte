@@ -13,6 +13,7 @@
   import { PLATEFORMES_CONNUES } from '$lib/ludotheque/categories';
   import { tele } from '$lib/ludotheque/telechargements.svelte';
   import { GENRES_MANETTE } from '$lib/ludotheque/commandes';
+  import { libererBoutonXbox } from '$lib/ludotheque/jeu.svelte';
 
   const e = $derived(Object.entries(etat.pc.emulateurs));
   let plateformes = $state<Plateforme[]>([]);
@@ -26,7 +27,17 @@
     installes = await api.emulateursInstalles().catch(() => []);
     traces = await api.emulateursTraces().catch(() => []);
   }
+  /** La Game Bar de Windows prend-elle encore le bouton Xbox ? (Alors il n'ouvre pas le menu de Frogtend.) */
+  let gameBarPrend = $state<boolean | null>(null);
+  async function lireGameBar() {
+    gameBarPrend = await api.gameBarBouton().catch(() => null);
+  }
+  async function liberer() {
+    if (await libererBoutonXbox()) await lireGameBar();
+  }
+
   onMount(async () => {
+    lireGameBar();
     // Les jeux de ce PC (importés compris) et ceux du catalogue ; puis toutes les plateformes connues.
     const [pc, catalogue] = await Promise.all([api.plateformes(true).catch(() => []), api.plateformes(false).catch(() => [])]);
     plateformes = systemesProposes([...pc, ...catalogue], [...PLATEFORMES_CONNUES, ...Object.keys(etat.pc.emulateurs)]) as Plateforme[];
@@ -226,6 +237,27 @@
         <option value="L3 + R3">L3 + R3 (clic des deux sticks), tenus 1 s</option>
         <option value="Select + Start">Select + Start, tenus 1 s</option>
       </select>
+    </dd>
+    <dt>Bouton Xbox</dt>
+    <dd>
+      <select
+        value={etat.pc.menuJeu.boutonXbox === false ? 'non' : 'oui'}
+        onchange={(e) => reglerPc('menuJeu.boutonXbox', e.currentTarget.value === 'oui')}
+      >
+        <option value="oui">ouvre et ferme le menu en jeu (appui court)</option>
+        <option value="non">n’ouvre pas le menu de Frogtend</option>
+      </select>
+      <p class="muted">
+        Un appui court sur le bouton du milieu de la manette (Xbox, PS ou Home) ouvre le menu de Frogtend pendant une partie, et le
+        referme. Il ne marche pas pour les jeux PlayStation 3, de console Xbox, Switch, Wii U, PSP et Vita : leur émulateur se sert
+        de ce bouton. Si Steam l’utilise aussi, cela se règle dans Steam (rubrique Manette). Prend effet à la prochaine partie.
+      </p>
+      {#if gameBarPrend === true && etat.pc.menuJeu.boutonXbox !== false}
+        <p class="muted">
+          ⚠ La Game Bar de Windows utilise encore ce bouton : il n’ouvrira pas le menu.
+          <button class="btn" onclick={liberer}>🎮 Libérer le bouton Xbox</button>
+        </p>
+      {/if}
     </dd>
     <dt>Sauvegarde rapide à la manette</dt>
     <dd>

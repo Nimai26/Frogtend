@@ -20,6 +20,15 @@
   sur une manette → pas d'actions. RESTE (après essai avec Seb) : emplacements de DuckStation / PCSX2 / Dolphin (noms
   de raccourcis par emplacement à vérifier), PPSSPP, mGBA ; `savestate_auto_index` (lire, ou le forcer : à demander) ;
   à DIRE à Seb : le jeu voit aussi Affichage + gâchette pendant le maintien (MAME : Select = pièce).
+  ✅ (2) FAIT en 0.140.0 (avis lancement avant ; relectures lancement + interface, sans BLOQUANT ; corrigés : Xenia
+  et les émulateurs hors catalogue exclus, manette ALLUMÉE par le bouton Xbox → pas d'ouverture, aide du réglage avec
+  l'état de la Game Bar et « Libérer le bouton Xbox ») : `XInputGetStateEx` (ordinal 100 de xinput1_4.dll, repli sur
+  `XInputGetState` ; trouvé sur Venkman) + `SDL_GAMEPAD_BUTTON_GUIDE` ; appui court (< 1 s), seul, au relâchement →
+  menu ; menu ouvert → reprendre ; seulement si la Game Bar a lâché le bouton (`UseNexusForGameBarEnabled = 0`) ;
+  jamais pour RPCS3, xemu, Xenia, Eden, Cemu, PPSSPP, Vita3K, ni un émulateur hors catalogue ; réglage
+  `menuJeu.boutonXbox` (oui d'office). RESTE (essai) : vrai appui sur Venkman ; par Moonlight / Sunshine (ViGEm)
+  depuis le Freebox Player ; Steam qui prend aussi le bouton (réglage de Steam non lu) ; une manette qui se
+  DÉCONNECTE pendant un appui court passe pour un relâchement (rare, non traité).
 - **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un
   jeu du PC (la fiche GARDÉE a `locale: true`, le bouton exigeait `!locale` — même défaut pour « ➕ Ajouter cette
   carte » e-Reader) ; « Gérer ▸ Ajouter une autre version » ne faisait rien (même page). 0.137.4 (relecture interface

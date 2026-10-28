@@ -3,7 +3,9 @@
 //! le jeu a le premier plan. La page du menu ne lit pas la manette elle-même : la Gamepad API d'une fenêtre qui vient
 //! d'apparaître par-dessus un jeu ne répond pas (essai de Seb, 0.45.0).
 //!
-//! - Menu fermé : la combinaison (Select + R1 par défaut, décision de Seb du 04/10) tenue 1 s l'ouvre.
+//! - Menu fermé : la combinaison (Select + R1 par défaut, décision de Seb du 04/10) tenue 1 s l'ouvre ; le bouton Xbox
+//!   (Guide) aussi, d'un appui court, seul (✅ Seb 28/10, « en plus de Vue + RB ») — seulement si la Game Bar ne le prend
+//!   pas. Menu ouvert, le bouton Xbox rend la main au jeu.
 //! - Menu ouvert : la croix ou le stick gauche, A et B deviennent des commandes (`haut`, `bas`, `gauche`, `droite`,
 //!   `valider`, `retour`) envoyées à la page ; LB / RB : `precedent` / `suivant` (les boutons d'un lecteur). Seuls les appuis NOUVEAUX comptent : la combinaison encore tenue qui
 //!   vient d'ouvrir le menu ne fait rien. A et B agissent au RELÂCHEMENT (expert lancement, 05/10) : le bouton qui
@@ -24,6 +26,9 @@ pub const L3: u16 = 0x0040;
 pub const R3: u16 = 0x0080;
 pub const L1: u16 = 0x0100;
 pub const R1: u16 = 0x0200;
+/// Le bouton Xbox (Guide) : absent de l'API officielle, donné par `XInputGetStateEx` (ordinal 100 de xinput1_4.dll,
+/// non documenté, utilisé par SDL, RetroArch, Dolphin…) et par SDL pour les autres manettes (PS, Home).
+pub const GUIDE: u16 = 0x0400;
 pub const A: u16 = 0x1000;
 pub const B: u16 = 0x2000;
 
@@ -62,6 +67,79 @@ pub const MAINTIEN_SAUVER: Duration = Duration::from_millis(500);
 pub const MAINTIEN_CHARGER: Duration = Duration::from_millis(1000);
 /// Une gâchette « enfoncée » : au-delà de la moitié.
 const GACHETTE: u8 = 128;
+/// Le bouton Xbox n'ouvre le menu que d'un appui COURT : tenu plus longtemps, c'est qu'on éteint la manette.
+pub const GUIDE_COURT: Duration = Duration::from_millis(1000);
+
+/// Les émulateurs dont le réglage d'origine du bouton Xbox n'est pas connu (RPCS3 : le bouton PS ouvre son menu ;
+/// xemu, Xenia, Eden, Cemu, PPSSPP, Vita3K : pas vérifié). Le bouton y reste au jeu : on ne promet pas un double menu.
+const GUIDE_A_L_EMULATEUR: [&str; 7] = ["rpcs3", "xemu", "xenia", "eden", "cemu", "ppsspp", "vita3k"];
+
+/// Ce qui fait tourner la partie, pour le bouton Xbox.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Moteur<'a> {
+    /// Un jeu PC, sans émulateur.
+    JeuPc,
+    /// Un émulateur reconnu (son identifiant Frogtend).
+    Emulateur(&'a str),
+    /// Un émulateur que Frogtend ne reconnaît pas (hors catalogue) : on ne sait pas ce qu'il fait du bouton.
+    Inconnu,
+}
+
+/// Le bouton Xbox ouvre-t-il le menu pendant cette partie ? Seulement si la Game Bar de Windows ne le prend pas
+/// (`Some(false)` lu dans le registre ; `None` hors de Windows), si le réglage de Frogtend le permet, et si
+/// l'émulateur est connu et ne s'en sert pas lui-même.
+pub fn guide_permis(game_bar: Option<bool>, reglage: bool, moteur: Moteur) -> bool {
+    game_bar == Some(false)
+        && reglage
+        && match moteur {
+            Moteur::JeuPc => true,
+            Moteur::Emulateur(e) => !GUIDE_A_L_EMULATEUR.contains(&e),
+            Moteur::Inconnu => false,
+        }
+}
+
+/// Le bouton Xbox d'une manette qui vient d'apparaître ne compte pas tant qu'on ne l'a pas vu relâché : on ALLUME
+/// une manette sans fil par ce bouton, et sa première lecture le montre enfoncé (relecture lancement, 28/10).
+pub struct GardeGuide<K> {
+    vues: Vec<(K, bool)>,
+}
+
+impl<K: PartialEq + Copy> Default for GardeGuide<K> {
+    fn default() -> Self {
+        GardeGuide { vues: Vec::new() }
+    }
+}
+
+impl<K: PartialEq + Copy> GardeGuide<K> {
+    /// Les boutons de la manette `cle`, sans le Guide s'il n'a jamais été vu relâché depuis son apparition.
+    pub fn filtrer(&mut self, cle: K, boutons: u16) -> u16 {
+        let i = match self.vues.iter().position(|(k, _)| *k == cle) {
+            Some(i) => i,
+            None => {
+                self.vues.push((cle, false));
+                self.vues.len() - 1
+            }
+        };
+        if boutons & GUIDE == 0 {
+            self.vues[i].1 = true;
+        }
+        if self.vues[i].1 {
+            boutons
+        } else {
+            boutons & !GUIDE
+        }
+    }
+
+    /// Seules les manettes encore présentes restent connues.
+    pub fn retenir(&mut self, presentes: &[K]) {
+        self.vues.retain(|(k, _)| presentes.contains(k));
+    }
+
+    /// La manette `cle` a disparu : à sa réapparition, son Guide devra de nouveau être vu relâché.
+    pub fn oublier(&mut self, cle: K) {
+        self.vues.retain(|(k, _)| *k != cle);
+    }
+}
 
 /// La combinaison d'ouverture d'après le réglage (`pc.json` ▸ `menuJeu.manette`) ; Select + R1 par défaut.
 pub fn combinaison(nom: &str) -> u16 {
@@ -114,6 +192,12 @@ pub struct Osd {
     sauver_depuis: Option<Instant>,
     charger_depuis: Option<Instant>,
     raccourci_fait: bool,
+    /// Le bouton Xbox ouvre le menu ; enfoncé depuis (appui nouveau, menu fermé) ; un autre bouton est venu pendant.
+    guide: bool,
+    guide_depuis: Option<Instant>,
+    guide_gache: bool,
+    /// Au moins un tour a eu lieu : un bouton déjà tenu au premier tour (au lancement) n'est pas un appui nouveau.
+    vu: bool,
 }
 
 impl Osd {
@@ -131,7 +215,17 @@ impl Osd {
             sauver_depuis: None,
             charger_depuis: None,
             raccourci_fait: false,
+            guide: false,
+            guide_depuis: None,
+            guide_gache: false,
+            vu: false,
         }
+    }
+
+    /// Avec le bouton Xbox : un appui court et seul ouvre le menu ; menu ouvert, il rend la main au jeu.
+    pub fn avec_guide(mut self, oui: bool) -> Self {
+        self.guide = oui;
+        self
     }
 
     /// Avec les raccourcis de sauvegarde rapide (Vue + LT / Vue + RT tenus), menu fermé.
@@ -142,6 +236,12 @@ impl Osd {
 
     /// Un tour : l'état des manettes, l'heure, et si le menu est ouvert. Rend ce qu'il faut faire.
     pub fn pas(&mut self, e: EtatManette, t: Instant, menu_ouvert: bool) -> Vec<Evenement> {
+        let l = self.pas_interne(e, t, menu_ouvert);
+        self.vu = true;
+        l
+    }
+
+    fn pas_interne(&mut self, e: EtatManette, t: Instant, menu_ouvert: bool) -> Vec<Evenement> {
         let mut l = Vec::new();
         let b = e.boutons;
         let tenue = b & self.combinaison == self.combinaison;
@@ -158,6 +258,25 @@ impl Osd {
                 if t.duration_since(depuis) >= MAINTIEN {
                     self.declenchee = true;
                     l.push(Evenement::Ouvrir);
+                }
+            }
+            // Le bouton Xbox : ouvre au RELÂCHEMENT d'un appui nouveau, court, sans autre bouton ni gâchette entre-temps
+            // (Guide + autre chose est une combinaison d'un autre programme ; tenu longtemps, on éteint la manette).
+            if self.guide {
+                let g = b & GUIDE != 0;
+                if g && self.avant & GUIDE == 0 && self.vu {
+                    self.guide_depuis = Some(t);
+                    self.guide_gache = false;
+                }
+                if g && (b & !GUIDE != 0 || e.gt >= GACHETTE || e.dt >= GACHETTE) {
+                    self.guide_gache = true;
+                }
+                if !g {
+                    if let Some(d) = self.guide_depuis.take() {
+                        if !self.guide_gache && t.duration_since(d) < GUIDE_COURT && !l.contains(&Evenement::Ouvrir) {
+                            l.push(Evenement::Ouvrir);
+                        }
+                    }
                 }
             }
             // Vue + une SEULE gâchette, tenues (jamais pendant la combinaison du menu) : sauver ou charger, une fois.
@@ -188,10 +307,12 @@ impl Osd {
             return l;
         }
         // Menu ouvert : seuls les appuis nouveaux (un bouton tenu à l'ouverture ne compte pas).
+        self.guide_depuis = None;
         let premier_tour = !self.etait_ouvert;
         self.etait_ouvert = true;
         let nouveaux = if premier_tour { 0 } else { b & !self.avant };
-        self.armes |= nouveaux & (A | B);
+        let au_relachement = if self.guide { A | B | GUIDE } else { A | B };
+        self.armes |= nouveaux & au_relachement;
         let relaches = self.armes & !b;
         self.armes &= !relaches;
         if relaches & A != 0 {
@@ -199,6 +320,10 @@ impl Osd {
         }
         if relaches & B != 0 {
             l.push(Evenement::Commande("retour"));
+        }
+        // Le bouton Xbox, menu ouvert : retour au jeu (la page l'ignore si une question attend une réponse).
+        if relaches & GUIDE != 0 {
+            l.push(Evenement::Commande("reprendre"));
         }
         // LB / RB : d'un bouton à l'autre dans un lecteur (livret, musique, vidéo, images), dès l'appui (ils ne
         // ferment rien) ; tenus à l'ouverture (la combinaison Select + R1), ils ne comptent pas (essai de Seb, 28/10).
@@ -234,6 +359,55 @@ impl Osd {
 #[derive(Default)]
 pub struct Lecteur {
     vide_jusqu_a: [Option<Instant>; 4],
+    guide: GardeGuide<usize>,
+}
+
+/// L'état rendu par `XInputGetStateEx` : celui de `XINPUT_STATE` (16 octets) SUIVI d'un champ réservé (4 octets) — la
+/// structure officielle est trop petite pour lui (il écrirait au-delà). Une marge en plus, par prudence ; on ne lit que
+/// le début, identique à `XINPUT_STATE`.
+#[cfg(windows)]
+#[repr(C)]
+#[derive(Default)]
+struct EtatEx {
+    paquet: u32,
+    boutons: u16,
+    gt: u8,
+    dt: u8,
+    lx: i16,
+    ly: i16,
+    rx: i16,
+    ry: i16,
+    reserve: [u32; 8],
+}
+
+#[cfg(windows)]
+type LireEx = unsafe extern "system" fn(u32, *mut EtatEx) -> u32;
+
+/// `XInputGetStateEx` (ordinal 100 de xinput1_4.dll), cherché une seule fois ; `None` s'il n'existe pas (on garde
+/// alors `XInputGetState` : le bouton Xbox reste muet, tout le reste marche).
+#[cfg(windows)]
+fn lire_ex() -> Option<LireEx> {
+    static F: std::sync::OnceLock<Option<usize>> = std::sync::OnceLock::new();
+    let f = *F.get_or_init(|| {
+        use windows::core::{w, PCSTR};
+        use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress, LoadLibraryW};
+        let h = unsafe { GetModuleHandleW(w!("xinput1_4.dll")) }.or_else(|_| unsafe { LoadLibraryW(w!("xinput1_4.dll")) }).ok()?;
+        unsafe { GetProcAddress(h, PCSTR(100usize as *const u8)) }.map(|p| p as usize)
+    });
+    // SAFETY : l'adresse vient de GetProcAddress pour cet ordinal, dont la signature est (index, *mut état) -> code.
+    f.map(|p| unsafe { std::mem::transmute::<usize, LireEx>(p) })
+}
+
+/// Le bouton Xbox est-il lisible sur ce PC (pour le journal) ?
+pub fn guide_lisible() -> bool {
+    #[cfg(windows)]
+    {
+        lire_ex().is_some()
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
 }
 
 impl Lecteur {
@@ -244,24 +418,37 @@ impl Lecteur {
         #[cfg(windows)]
         {
             use windows::Win32::UI::Input::XboxController::{XInputGetState, XINPUT_STATE};
+            let ex = lire_ex();
             for i in 0..4usize {
                 if self.vide_jusqu_a[i].is_some_and(|f| t < f) {
                     continue;
                 }
-                let mut s = XINPUT_STATE::default();
-                if unsafe { XInputGetState(i as u32, &mut s) } != 0 {
+                let (code, s) = match ex {
+                    Some(f) => {
+                        let mut s = EtatEx::default();
+                        (unsafe { f(i as u32, &mut s) }, (s.boutons, s.gt, s.dt, s.lx, s.ly))
+                    }
+                    None => {
+                        let mut s = XINPUT_STATE::default();
+                        let code = unsafe { XInputGetState(i as u32, &mut s) };
+                        let g = s.Gamepad;
+                        (code, (g.wButtons.0, g.bLeftTrigger, g.bRightTrigger, g.sThumbLX, g.sThumbLY))
+                    }
+                };
+                if code != 0 {
                     self.vide_jusqu_a[i] = Some(t + Duration::from_secs(1));
+                    self.guide.oublier(i);
                     continue;
                 }
                 self.vide_jusqu_a[i] = None;
-                let g = s.Gamepad;
-                e.boutons |= g.wButtons.0;
-                e.gt = e.gt.max(g.bLeftTrigger);
-                e.dt = e.dt.max(g.bRightTrigger);
+                let (boutons, gt, dt, lx, ly) = s;
+                e.boutons |= self.guide.filtrer(i, boutons);
+                e.gt = e.gt.max(gt);
+                e.dt = e.dt.max(dt);
                 let force = |x: i16, y: i16| (x as i32).abs() + (y as i32).abs();
-                if force(g.sThumbLX, g.sThumbLY) > force(e.lx, e.ly) {
-                    e.lx = g.sThumbLX;
-                    e.ly = g.sThumbLY;
+                if force(lx, ly) > force(e.lx, e.ly) {
+                    e.lx = lx;
+                    e.ly = ly;
                 }
             }
         }
@@ -375,6 +562,110 @@ mod tests {
     }
 
     #[test]
+    fn le_bouton_xbox_court_et_seul_ouvre_au_relachement() {
+        let mut o = Osd::nouveau(combinaison("Select + R1")).avec_guide(true);
+        let t0 = Instant::now();
+        o.pas(e(0), t0, false);
+        assert!(o.pas(e(GUIDE), t0 + Duration::from_millis(20), false).is_empty(), "enfoncé : pas encore");
+        assert_eq!(o.pas(e(0), t0 + Duration::from_millis(200), false), [Evenement::Ouvrir]);
+        assert!(o.pas(e(0), t0 + Duration::from_millis(300), false).is_empty(), "une seule fois");
+        // Tenu plus d'une seconde (éteindre la manette) : rien.
+        o.pas(e(GUIDE), t0 + Duration::from_millis(400), false);
+        assert!(o.pas(e(0), t0 + Duration::from_millis(1500), false).is_empty(), "appui long");
+        // Avec un autre bouton ou une gâchette (combinaison d'un autre programme) : rien.
+        o.pas(e(GUIDE), t0 + Duration::from_millis(1600), false);
+        o.pas(e(GUIDE | A), t0 + Duration::from_millis(1650), false);
+        o.pas(e(GUIDE), t0 + Duration::from_millis(1700), false);
+        assert!(o.pas(e(0), t0 + Duration::from_millis(1750), false).is_empty(), "Guide + A");
+        o.pas(e(GUIDE), t0 + Duration::from_millis(1800), false);
+        o.pas(EtatManette { boutons: GUIDE, dt: 255, ..Default::default() }, t0 + Duration::from_millis(1850), false);
+        assert!(o.pas(e(0), t0 + Duration::from_millis(1900), false).is_empty(), "Guide + RT");
+    }
+
+    #[test]
+    fn le_bouton_xbox_sans_le_reglage_ou_tenu_au_lancement_n_ouvre_rien() {
+        let t0 = Instant::now();
+        let mut sans = Osd::nouveau(combinaison("Select + R1"));
+        sans.pas(e(0), t0, false);
+        sans.pas(e(GUIDE), t0 + Duration::from_millis(20), false);
+        assert!(sans.pas(e(0), t0 + Duration::from_millis(100), false).is_empty(), "réglage coupé");
+        // Tenu dès le premier tour (le lancement par Moonlight, par exemple) : son relâchement n'ouvre rien.
+        let mut o = Osd::nouveau(combinaison("Select + R1")).avec_guide(true);
+        o.pas(e(GUIDE), t0, false);
+        assert!(o.pas(e(0), t0 + Duration::from_millis(100), false).is_empty());
+    }
+
+    #[test]
+    fn menu_ouvert_le_bouton_xbox_rend_la_main_au_jeu() {
+        let mut o = Osd::nouveau(combinaison("Select + R1")).avec_guide(true);
+        let t0 = Instant::now();
+        o.pas(e(0), t0, false);
+        o.pas(e(GUIDE), t0 + Duration::from_millis(20), false);
+        assert_eq!(o.pas(e(0), t0 + Duration::from_millis(100), false), [Evenement::Ouvrir]);
+        assert!(o.pas(e(0), t0 + Duration::from_millis(150), true).is_empty());
+        assert!(o.pas(e(GUIDE), t0 + Duration::from_millis(200), true).is_empty(), "enfoncé : pas encore");
+        assert_eq!(o.pas(e(0), t0 + Duration::from_millis(250), true), [Evenement::Commande("reprendre")]);
+        // Tenu au moment de l'ouverture (ouvert par la combinaison) : son relâchement ne ferme rien.
+        let mut m = Osd::nouveau(combinaison("Select + R1")).avec_guide(true);
+        m.pas(e(0), t0, false);
+        m.pas(e(GUIDE), t0 + Duration::from_millis(20), true);
+        assert!(m.pas(e(0), t0 + Duration::from_millis(80), true).is_empty());
+        // Sans le réglage : rien.
+        let mut s = Osd::nouveau(combinaison("Select + R1"));
+        s.pas(e(0), t0, true);
+        s.pas(e(GUIDE), t0 + Duration::from_millis(20), true);
+        assert!(s.pas(e(0), t0 + Duration::from_millis(80), true).is_empty());
+    }
+
+    #[test]
+    fn le_bouton_xbox_ne_gene_ni_la_combinaison_ni_les_raccourcis() {
+        let mut o = Osd::nouveau(combinaison("Select + R1")).avec_guide(true).avec_raccourcis(true);
+        let t0 = Instant::now();
+        o.pas(e(0), t0, false);
+        o.pas(e(SELECT | R1), t0 + Duration::from_millis(10), false);
+        assert_eq!(o.pas(e(SELECT | R1), t0 + Duration::from_millis(1010), false), [Evenement::Ouvrir]);
+        o.pas(e(0), t0 + Duration::from_millis(1100), false);
+        let g = EtatManette { boutons: SELECT, gt: 255, ..Default::default() };
+        o.pas(g, t0 + Duration::from_millis(1200), false);
+        assert_eq!(o.pas(g, t0 + Duration::from_millis(1720), false), [Evenement::Raccourci("sauver")]);
+    }
+
+    #[test]
+    fn le_bouton_xbox_seulement_sans_game_bar_et_hors_des_emulateurs_qui_s_en_servent() {
+        use Moteur::*;
+        assert!(guide_permis(Some(false), true, Emulateur("retroarch")));
+        assert!(guide_permis(Some(false), true, JeuPc));
+        assert!(!guide_permis(Some(true), true, Emulateur("retroarch")), "la Game Bar le prend");
+        assert!(!guide_permis(None, true, Emulateur("retroarch")), "hors de Windows");
+        assert!(!guide_permis(Some(false), false, Emulateur("retroarch")), "réglage coupé");
+        assert!(!guide_permis(Some(false), true, Emulateur("rpcs3")), "le bouton PS de RPCS3");
+        assert!(!guide_permis(Some(false), true, Emulateur("xemu")));
+        assert!(!guide_permis(Some(false), true, Emulateur("xenia")));
+        assert!(!guide_permis(Some(false), true, Inconnu), "émulateur hors catalogue");
+    }
+
+    #[test]
+    fn une_manette_allumee_par_le_bouton_xbox_n_ouvre_pas_le_menu() {
+        let mut g = GardeGuide::<usize>::default();
+        assert_eq!(g.filtrer(0, GUIDE | A), A, "première lecture, Guide tenu (allumage) : masqué");
+        assert_eq!(g.filtrer(0, GUIDE), 0, "toujours tenu : masqué");
+        assert_eq!(g.filtrer(0, 0), 0);
+        assert_eq!(g.filtrer(0, GUIDE), GUIDE, "vu relâché : le prochain appui compte");
+        assert_eq!(g.filtrer(1, GUIDE), 0, "une autre manette : sa propre garde");
+        g.oublier(0);
+        assert_eq!(g.filtrer(0, GUIDE), 0, "réapparue : de nouveau masqué");
+        // Bout à bout avec le menu : rien ne s'ouvre au relâchement de l'allumage.
+        let mut o = Osd::nouveau(combinaison("Select + R1")).avec_guide(true);
+        let mut g = GardeGuide::<usize>::default();
+        let t0 = Instant::now();
+        o.pas(e(0), t0, false);
+        assert!(o.pas(e(g.filtrer(2, GUIDE)), t0 + Duration::from_millis(20), false).is_empty());
+        assert!(o.pas(e(g.filtrer(2, 0)), t0 + Duration::from_millis(200), false).is_empty(), "allumage : rien");
+        o.pas(e(g.filtrer(2, GUIDE)), t0 + Duration::from_millis(400), false);
+        assert_eq!(o.pas(e(g.filtrer(2, 0)), t0 + Duration::from_millis(500), false), [Evenement::Ouvrir]);
+    }
+
+    #[test]
     fn a_tenu_a_l_ouverture_ne_valide_rien() {
         let mut o = Osd::nouveau(combinaison("Select + R1"));
         let t0 = Instant::now();
@@ -417,7 +708,7 @@ mod essai_reel {
         while std::time::Instant::now() < fin {
             let e = l.lire(std::time::Instant::now());
             if e.boutons != avant.boutons {
-                println!("MANETTE boutons={:#06x} lx={} ly={}", e.boutons, e.lx, e.ly);
+                println!("MANETTE boutons={:#06x} lx={} ly={} (bouton Xbox lisible : {})", e.boutons, e.lx, e.ly, super::guide_lisible());
                 avant = e;
             }
             std::thread::sleep(std::time::Duration::from_millis(16));
