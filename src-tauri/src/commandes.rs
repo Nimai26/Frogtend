@@ -1392,11 +1392,19 @@ pub async fn jeu_jouer(
     let (plateforme, titre) = jeu.map(|j| (j.plateforme, j.titre)).unwrap_or_default();
     let mut id_emulateur = None;
     let mut dossier_emulateur = None;
+    // RetroArch : le nom du cœur (le dossier où il cherche les triches du jeu).
+    let mut coeur_ra: Option<String> = None;
     let emulateur = match (!de_boutique).then(|| emulateur_regle(&app, &plateforme, id, emulateur.as_deref())).flatten() {
         Some((programme, ligne)) => {
             dossier_emulateur = std::path::Path::new(&programme).parent().map(|d| d.to_string_lossy().to_string());
             let nom = std::path::Path::new(&programme).file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
             id_emulateur = crate::emulateurs::CATALOGUE.iter().find(|f| nom.starts_with(f.programme)).map(|f| f.id.to_string());
+            if id_emulateur.as_deref() == Some("retroarch") {
+                coeur_ra = std::path::Path::new(&programme)
+                    .parent()
+                    .zip(crate::emulateurs::coeur_de(&ligne))
+                    .and_then(|(d, c)| crate::emulateurs::nom_du_coeur(d, &c));
+            }
             // MAME vient du paquet de Firehouse, pas du catalogue : reconnu par son programme.
             if id_emulateur.is_none() && nom.starts_with("mame") && nom.ends_with(".exe") {
                 id_emulateur = Some("mame".into());
@@ -1417,6 +1425,31 @@ pub async fn jeu_jouer(
     if noyau.utilise(id) {
         return Err(Erreur::Refus("Ce jeu est déjà en train de se lancer ou de tourner.".into()));
     }
+    // RetroArch, AVANT le lancement (il lit le `.cht` en chargeant le jeu) : où sont les parties, les triches du jeu
+    // (lot 3) ; des triches restées cochées → la partie mise à l'abri d'abord (sinon rien ne se lance).
+    let prep_ra = match (id_emulateur.as_deref(), dossier_emulateur.clone(), profil_ouvert(&noyau).await.ok()) {
+        (Some("retroarch"), Some(d), Some(p)) => {
+            let fichier = noyau.fichier_pour_l_emulateur(id, version.as_deref()).await.ok().flatten();
+            let defaut = if version.is_some() { noyau.fichier_pour_l_emulateur(id, None).await.ok().flatten() } else { None };
+            let coeur = coeur_ra.clone();
+            let r = tauri::async_runtime::spawn_blocking(move || {
+                let d = std::path::PathBuf::from(d);
+                let profil = crate::emulateurs_profils::dossier_du_profil(&d, &p.nom);
+                crate::menu_jeu::preparer_ra(&d, &profil, coeur.as_deref(), fichier.as_deref(), defaut.as_deref(), secondes_maintenant())
+            })
+            .await
+            .map_err(|_| Erreur::Disque("La préparation des triches s'est arrêtée brutalement.".into()))?
+            .map_err(Erreur::Refus)?;
+            if let Some(s) = &r.cht_repris {
+                noyau.journaliser(&format!("triches : {} repris pour la version lancée", s.display()));
+            }
+            if r.abri_fait {
+                noyau.journaliser(&format!("triches : {} cochée(s) au lancement, partie mise à l'abri avant", r.triches.iter().filter(|t| t.active).count()));
+            }
+            Some(r)
+        }
+        _ => None,
+    };
     // Un jeu resté figé d'une partie précédente repart d'abord.
     crate::figer::degeler();
     // « Occupé » du lancement jusqu'à la fin du suivi de la partie (deux tâches) : jamais rattaché entre les deux.
@@ -1456,22 +1489,10 @@ pub async fn jeu_jouer(
     // « Disque suivant » seulement pour une liste de disques (une cartouche n'en a qu'un).
     let plusieurs_disques = par_emulateur
         && noyau.fichier_pour_l_emulateur(id, version.as_deref()).await.ok().flatten().is_some_and(|f| crate::menu_jeu::liste_de_disques(&f));
-    // RetroArch : où il range les sauvegardes rapides du profil, et le nom du jeu lancé (pour les emplacements).
-    let (etats, nom_rom) = if id_emulateur.as_deref() == Some("retroarch") {
-        let profil = profil_ouvert(&noyau).await.ok().map(|p| p.nom);
-        let etats = dossier_emulateur
-            .as_deref()
-            .zip(profil)
-            .map(|(d, nom)| crate::emulateurs_profils::dossier_du_profil(std::path::Path::new(d), &nom).join("states").to_string_lossy().to_string());
-        let nom_rom = noyau
-            .fichier_pour_l_emulateur(id, version.as_deref())
-            .await
-            .ok()
-            .flatten()
-            .and_then(|f| f.file_stem().map(|s| s.to_string_lossy().to_string()));
-        (etats, nom_rom)
-    } else {
-        (None, None)
+    // RetroArch : où il range les sauvegardes rapides, et le nom du jeu lancé (pour les emplacements) — préparé avant.
+    let (etats, nom_rom) = match prep_ra.as_ref().filter(|_| id_emulateur.as_deref() == Some("retroarch")) {
+        Some(r) => (r.etats.as_ref().map(|e| e.to_string_lossy().to_string()), r.nom_rom.clone()),
+        None => (None, None),
     };
     // Dolphin : ses raccourcis réglés sur une manette (gardés) ne reçoivent pas les touches de Frogtend.
     let raccourcis_clavier = if id_emulateur.as_deref() == Some("dolphin") {
@@ -1482,22 +1503,16 @@ pub async fn jeu_jouer(
     } else {
         true
     };
-    // RetroArch en mode « hardcore » des succès : pas de sauvegarde rapide (il les refuserait sans le dire).
-    let etats_interdits = if id_emulateur.as_deref() == Some("retroarch") {
-        match (dossier_emulateur.as_deref(), profil_ouvert(&noyau).await.ok()) {
-            (Some(d), Some(p)) => {
-                let d = std::path::Path::new(d);
-                let principal = std::fs::read_to_string(d.join("retroarch.cfg")).unwrap_or_default();
-                let du_profil = std::fs::read_to_string(crate::emulateurs_profils::dossier_du_profil(d, &p.nom).join("frogtend.cfg")).unwrap_or_default();
-                crate::menu_jeu::retroarch_hardcore(&principal, &du_profil)
-            }
-            _ => false,
-        }
-    } else {
-        false
-    };
+    // RetroArch en mode « hardcore » des succès : ni sauvegarde rapide (il les refuserait sans le dire), ni triche
+    // (il perdrait le hardcore). Ses triches (lot 3) : le `.cht` du jeu lu avant le lancement.
+    let prep = prep_ra.filter(|_| id_emulateur.as_deref() == Some("retroarch")).unwrap_or_default();
     let numero = app.state::<crate::menu_jeu::MenuJeu>().commencer(crate::menu_jeu::PartieEnCours {
-        etats_interdits,
+        etats_interdits: prep.etats_interdits,
+        triches: prep.triches,
+        triches_permises: !prep.etats_interdits,
+        triche_ra: 0,
+        parties: prep.parties.map(|d| d.to_string_lossy().to_string()),
+        abri_triches: prep.abri_fait,
         raccourcis_clavier,
         emplacement: 0,
         emplacement_ra: 0,
@@ -2104,6 +2119,76 @@ async fn raccourci_etat(app: &AppHandle, quoi: &'static str) {
     if est_retroarch {
         let _ = crate::menu_jeu::commande_retroarch(&format!("SHOW_MSG {message}"));
     }
+}
+
+/// Active ou coupe la triche `index` du jeu en cours (RetroArch, lot 3 ✅ Seb 28/10) : le menu se cache, le jeu
+/// reprend la main et la reçoit. Une erreur est dite À L'ÉCRAN du jeu.
+#[tauri::command]
+pub async fn menu_jeu_triche(app: AppHandle, index: usize) -> Resultat<()> {
+    let p = app
+        .state::<crate::menu_jeu::MenuJeu>()
+        .partie()
+        .ok_or_else(|| Erreur::Introuvable("Aucune partie en cours.".into()))?;
+    let permis = crate::menu_jeu::etat(&p).triches.is_some_and(|l| index < l.len());
+    if !permis {
+        return Err(Erreur::Refus("Cette triche ne peut pas être changée depuis le menu.".into()));
+    }
+    let menu = app.state::<crate::menu_jeu::MenuJeu>();
+    // Une seule action à la fois (avec les sauvegardes rapides), de la mise à l'abri jusqu'à la bascule.
+    let _seule = menu.prendre_etat().ok_or_else(|| Erreur::Refus("Une sauvegarde rapide ou une triche est déjà en cours.".into()))?;
+    // La mise à l'abri AVANT de cacher le menu : un échec s'y dit (le jeu, en pause derrière, ne montrerait rien).
+    if !menu.partie().is_some_and(|x| x.abri_triches) {
+        let nom = p.nom_rom.clone().ok_or_else(|| Erreur::Refus("Le jeu lancé est inconnu : sa partie ne peut pas être mise à l'abri, aucune triche n'a été activée.".into()))?;
+        let (parties, etats) = (p.parties.clone(), p.etats.clone());
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::menu_jeu::mettre_a_l_abri_avant_triche(
+                parties.as_deref().map(std::path::Path::new),
+                etats.as_deref().map(std::path::Path::new),
+                &nom,
+                secondes_maintenant(),
+            )
+        })
+        .await
+        .map_err(|_| Erreur::Disque("La mise à l'abri s'est arrêtée brutalement.".into()))?
+        .map_err(Erreur::Refus)?;
+        menu.noter_abri_triches();
+    }
+    cacher_menu(&app);
+    let r = triche_retroarch(&app, p, index).await;
+    if let Err(err) = &r {
+        let _ = crate::menu_jeu::commande_retroarch(&format!("SHOW_MSG Frogtend : {err}"));
+        app.state::<Noyau>().journaliser(&format!("triche {} : {err:?}", index + 1));
+    }
+    r
+}
+
+/// RetroArch (la partie déjà à l'abri, le verrou pris par l'appelant) : son index de triche est amené pas à pas
+/// (`CHEAT_INDEX_PLUS/MINUS`, noté à chaque pas : jamais de décalage caché ; 120 ms entre deux, pour que deux
+/// commandes n'arrivent pas dans la même image), et `CHEAT_TOGGLE` bascule la triche (RetroArch le confirme à l'écran).
+async fn triche_retroarch(app: &AppHandle, p: crate::menu_jeu::PartieEnCours, k: usize) -> Resultat<()> {
+    let pids = crate::lancement::processus_de_la_partie(p.pid);
+    let app2 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || -> Resultat<()> {
+        let menu = app2.state::<crate::menu_jeu::MenuJeu>();
+        // RetroArch doit avoir la main (sinon, en pause hors du premier plan, il pourrait ignorer les commandes).
+        if !crate::menu_jeu::reprendre(&pids) {
+            return Err(Erreur::Refus("Le jeu n'a pas pu reprendre la main : rien n'a été fait.".into()));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        // (Relu sous le verrou : jamais la valeur d'une action qui vient de finir.)
+        let mut i = menu.partie().map(|x| x.triche_ra).unwrap_or(p.triche_ra);
+        for c in crate::menu_jeu::pas_vers_triche(i, k) {
+            crate::menu_jeu::commande_retroarch(c)?;
+            i = if c == "CHEAT_INDEX_PLUS" { i + 1 } else { i - 1 };
+            menu.noter_triche_ra(i);
+            std::thread::sleep(std::time::Duration::from_millis(120));
+        }
+        crate::menu_jeu::commande_retroarch("CHEAT_TOGGLE")?;
+        menu.basculer_triche(k);
+        Ok(())
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La triche s'est arrêtée brutalement.".into()))?
 }
 
 /// Change l'emplacement de sauvegarde rapide choisi dans le menu (−1 ou +1). Rien n'est envoyé à l'émulateur : il
@@ -4346,13 +4431,26 @@ pub async fn triche_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, 
             .ok_or_else(|| Erreur::Refus("Le nom du cœur RetroArch de ce jeu est introuvable (fichier info du cœur absent).".into()))?;
         dossier_rel = dossier_rel.replace("{coeur}", &coeur);
     }
+    // RetroArch ne charge seul que `<nom du jeu lancé>.cht` : le fichier prend ce nom (la ROM n'est jamais renommée,
+    // seulement le fichier de codes ; relecture lancement, 28/10). Jeu pas encore sur le PC : le nom de Firehouse.
+    let nom_firehouse = code["nom_fichier"].as_str().ok_or_else(|| Erreur::Serveur("Firehouse n'a pas donné le nom du fichier.".into()))?;
+    let nom_ra = if emu == "retroarch" && nom_firehouse.to_lowercase().ends_with(".cht") {
+        noyau
+            .fichier_pour_l_emulateur(id, None)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|f| f.file_stem().map(|s| format!("{}.cht", s.to_string_lossy())))
+    } else {
+        None
+    };
     let place = crate::emulateurs_profils::place_triche(
         emu,
         dossier_emu,
         &s.profil.nom,
         code["base"].as_str().unwrap_or("donnees"),
         &dossier_rel,
-        code["nom_fichier"].as_str().ok_or_else(|| Erreur::Serveur("Firehouse n'a pas donné le nom du fichier.".into()))?,
+        nom_ra.as_deref().unwrap_or(nom_firehouse),
     )?;
     // Jeu importé : le `fichier` de la liste repris tel quel (contrat 1.19) ; sinon la route de sa fiche.
     let octets = match &criteres {
@@ -4362,8 +4460,23 @@ pub async fn triche_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, 
     if let Some(p) = place.parent() {
         std::fs::create_dir_all(p)?;
     }
-    if place.is_file() && std::fs::read(&place).ok().as_deref() != Some(octets.as_slice()) {
-        std::fs::copy(&place, place.with_extension(format!("{}.avant-frogtend", place.extension().and_then(|e| e.to_str()).unwrap_or(""))))?;
+    // Dolphin : `GameSettings/<ID>.ini` porte aussi les réglages par jeu de la personne → seules les sections de codes
+    // sont remplacées (jamais tout le fichier).
+    let ancien = std::fs::read(&place).ok();
+    let octets = match (emu, &ancien) {
+        ("dolphin", Some(a)) => crate::emulateurs_profils::fusionner_sections_ini(&String::from_utf8_lossy(a), &String::from_utf8_lossy(&octets)).into_bytes(),
+        _ => octets,
+    };
+    if ancien.is_some() && ancien.as_deref() != Some(octets.as_slice()) {
+        // L'ancien fichier gardé à côté, jamais par-dessus une copie déjà faite.
+        let ext = place.extension().and_then(|e| e.to_str()).unwrap_or("").to_string();
+        let mut copie = place.with_extension(format!("{ext}.avant-frogtend"));
+        let mut n = 0;
+        while copie.exists() {
+            n += 1;
+            copie = place.with_extension(format!("{ext}.avant-frogtend-{}-{n}", secondes_maintenant()));
+        }
+        std::fs::copy(&place, &copie)?;
     }
     std::fs::write(&place, &octets)?;
     noyau.journaliser(&format!("triche posée pour le jeu {id} : {}", place.display()));

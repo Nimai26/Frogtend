@@ -31,6 +31,9 @@
   let chargementSucces = $state(false);
   // L'écran des options propres à l'émulateur (lot OSD, i : images par seconde, avance rapide…).
   let options = $state(false);
+  // L'écran des triches du jeu (lot 3, RetroArch).
+  let triches = $state(false);
+  const trichesActives = $derived(menu?.triches?.filter((t) => t.active).length ?? 0);
   // L'avance rapide demandée depuis ce menu, pour CE jeu (une bascule : Frogtend ne connaît pas l'état réel de
   // l'émulateur ; il rappelle seulement ce qui a été demandé ici, pour qu'elle ne soit pas oubliée).
   let rapidePour = $state<number | null>(null);
@@ -68,6 +71,7 @@
     lecture = null;
     ouvert = null;
     options = false;
+    triches = false;
     await tick();
     selectionner(liste?.querySelector<HTMLButtonElement>('button'));
   }
@@ -116,6 +120,7 @@
         succes = null;
         lecture = null;
         options = false;
+        triches = false;
       }),
     ];
     return () => {
@@ -186,6 +191,27 @@
     if (question && !(await confirmer(question, { libelleValider: 'Oui' }))) return;
     try {
       await api.menuJeuAction(nom);
+    } catch (e) {
+      toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
+    }
+  }
+
+  /** Activer ou couper une triche : le menu se ferme et le jeu la reçoit (RetroArch la confirme en haut de l'écran).
+   * La première activation de la partie : une mise en garde (la partie est d'abord mise à l'abri par le cœur, qui dit
+   * si c'est déjà fait pour cette partie). */
+  async function basculerTriche(i: number) {
+    const t = menu?.triches?.[i];
+    if (!menu || !t) return;
+    if (!t.active && !menu.abri_triches) {
+      const oui = await confirmer(`🎯 Activer « ${t.titre} » ?`, {
+        message:
+          'Une triche peut abîmer une partie ou bloquer un jeu. Avant la première, Frogtend garde une copie de ta partie et de tes sauvegardes rapides de ce jeu, à côté.\n\nLe menu se ferme et le jeu reçoit la triche : RetroArch le confirme en haut de l’écran.',
+        libelleValider: '🎯 Activer',
+      });
+      if (!oui) return;
+    }
+    try {
+      await api.menuJeuTriche(i);
     } catch (e) {
       toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
     }
@@ -326,6 +352,7 @@
     else if (succes) revenir(() => (succes = null), '[data-ecran="succes"]');
     else if (documents) revenir(() => (documents = null), '[data-ecran="documents"]');
     else if (options) revenir(() => (options = false), '[data-ecran="options"]');
+    else if (triches) revenir(() => (triches = false), '[data-ecran="triches"]');
     else reprendre();
   }
 
@@ -394,7 +421,25 @@
       {/if}
       {#if a('capture')}<button class="btn" onclick={() => action('capture')}>📷 Photo de l’écran (rangée dans le dossier de l’émulateur)</button>{/if}
       {#if a('muet')}<button class="btn" onclick={() => action('muet')}>🔇 Son : couper ou remettre</button>{/if}
-      <button class="btn" onclick={() => revenir(() => (options = false))}>← Retour</button>
+      <button class="btn" onclick={() => revenir(() => (options = false), '[data-ecran="options"]')}>← Retour</button>
+    </div>
+  {:else if triches && menu.triches}
+    <header>
+      <h1>🎯 Triches</h1>
+      <p class="muted">Choisis une triche : le menu se ferme, et le jeu l’active ou la coupe.</p>
+    </header>
+    <div class="liste" bind:this={liste}>
+      {#if menu.triches.length > 8}
+        <button class="btn" onclick={() => revenir(() => (triches = false), '[data-ecran="triches"]')}>← Retour</button>
+      {/if}
+      {#each menu.triches as t, i (i)}
+        <button class="btn" aria-pressed={t.active} onclick={() => basculerTriche(i)}>
+          <span aria-hidden="true">{t.active ? '✅' : '⬜'}</span> {t.titre}
+        </button>
+      {:else}
+        <p class="muted">Aucune triche pour ce jeu. Tu peux en ajouter hors partie : sa fiche ▸ 🎯 Triches et mods.</p>
+      {/each}
+      <button class="btn" onclick={() => revenir(() => (triches = false), '[data-ecran="triches"]')}>← Retour</button>
     </div>
   {:else if succes}
     <header>
@@ -429,7 +474,7 @@
       {:else}
         {#if !docs.length}<p class="muted">Aucun document pour ce jeu.</p>{/if}
       {/each}
-      <button class="btn" onclick={() => revenir(() => (documents = null))}>← Retour</button>
+      <button class="btn" onclick={() => revenir(() => (documents = null), '[data-ecran="documents"]')}>← Retour</button>
     </div>
   {:else}
     <header>
@@ -479,6 +524,11 @@
       {#if (menu.jeu < 0 && menu.plateforme === 'Windows') || menu.plateforme !== 'Windows'}<button class="btn" data-ecran="succes" disabled={chargementSucces} onclick={voirSucces}>🏆 Succès{chargementSucces ? ' (chargement…)' : ''}</button>{/if}
       {#if ['fps', 'rapide', 'capture', 'muet'].some((o) => a(o))}
         <button class="btn" data-ecran="options" onclick={() => revenir(() => (options = true))}>⚙ Options du jeu</button>
+      {/if}
+      {#if menu.triches}
+        <button class="btn" data-ecran="triches" onclick={() => revenir(() => (triches = true))}>
+          🎯 Triches{trichesActives ? ` (${trichesActives} active${trichesActives > 1 ? 's' : ''})` : ''}
+        </button>
       {/if}
       {#if cheatEngine}<button class="btn" onclick={brancherCheatEngine}>🧰 Cheat Engine</button>{/if}
       {#if a('reset')}

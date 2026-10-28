@@ -3,6 +3,17 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Les triches dans le menu en jeu (0.141.0)
+- [ ] Super Mario World : fiche ▸ 🎯 Triches et mods ▸ ajouter une liste de codes RetroArch (Snes9x). Lancer le jeu,
+      menu ▸ « 🎯 Triches » : la liste s'affiche, toutes ⬜.
+- [ ] Choisir la 1re triche : question « Activer… ? » (une fois), le menu se ferme, RetroArch écrit en haut « Cheat:
+      #0 … ON » et la triche agit. Dans `saves`, une copie `….srm.avant-triche-…` est là.
+- [ ] Puis la 5e triche : RetroArch annonce bien le **n° 4** (Frogtend avance son index pas à pas — s'il annonce un
+      autre numéro, le noter : c'est le point non vérifié). Rouvrir le menu : ✅ sur les deux.
+- [ ] Une longue liste (30e triche ou plus) sur un jeu lourd : le bon numéro est-il annoncé ?
+- [ ] Quitter, relancer : les triches actives le sont toujours (✅ dans le menu, et en jeu).
+- [ ] Avec les succès en mode « hardcore » : pas d'entrée « Triches ».
+
 ## Le bouton Xbox ouvre le menu en jeu (0.140.0)
 - [ ] Super Mario World : un appui court sur le bouton Xbox → le menu de Frogtend s'ouvre (et rien d'autre : ni Game
       Bar, ni Steam) ; un nouvel appui → retour au jeu.

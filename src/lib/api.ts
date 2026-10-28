@@ -598,6 +598,11 @@ export interface EtatMenuJeu {
   fiche: number | null;
   /** L'emplacement de sauvegarde rapide choisi (RetroArch, MAME) ; `null` : celui de l'émulateur. */
   emplacement: number | null;
+  /** Les triches du jeu activables depuis le menu (RetroArch hors mode hardcore) ; `[]` : aucune posée ; `null` :
+   * pas de triches depuis le menu. */
+  triches: { titre: string; active: boolean }[] | null;
+  /** La partie du jeu est déjà à l'abri pour cette partie (la mise en garde a été lue). */
+  abri_triches: boolean;
 }
 
 /** Un réglage de manette de référence (livré avec Frogtend, ou repris sur ce PC). */
@@ -767,6 +772,7 @@ export const api = {
   menuJeuEmplacement: (sens: number) => appeler<number | null>('menu_jeu_emplacement', { sens }),
   /** Les sauvegardes rapides du jeu en cours : [emplacement, date en secondes ou null si vide]. */
   menuJeuEmplacements: () => appeler<[number, number | null][]>('menu_jeu_emplacements'),
+  menuJeuTriche: (index: number) => appeler<void>('menu_jeu_triche', { index }),
   menuJeuQuitter: () => appeler<number>('menu_jeu_quitter'),
   jouer: (
     id: number,

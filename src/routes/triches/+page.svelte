@@ -73,10 +73,12 @@
       message: [
         `${c.nb_codes ?? '?'} code(s), format ${c.format}${c.source ? `, source : ${c.source}` : ''}.`,
         c.confiance !== undefined && c.confiance < 1
-          ? `⚠ Trouvé par ${c.correspondance === 'titre' ? 'le titre' : c.correspondance} (${Math.round(c.confiance * 100)} %) : les codes peuvent viser une autre région du jeu. Le fichier garde le nom de la base : charge-le toi-même dans le menu de l’émulateur.`
+          ? `⚠ Trouvé par ${c.correspondance === 'titre' ? 'le titre' : c.correspondance} (${Math.round(c.confiance * 100)} %) : les codes peuvent viser une autre région du jeu.${c.emulateur === 'retroarch' ? '' : ' Le fichier garde le nom de la base : charge-le toi-même dans le menu de l’émulateur.'}`
           : '',
         `Le fichier ira dans le dossier de TON profil pour ${emulateur.nom || 'l’émulateur'} ; un fichier différent déjà là est gardé à côté.`,
-        'Les codes s’activent ensuite dans le menu de l’émulateur.',
+        c.emulateur === 'retroarch'
+          ? 'Pendant la partie, ouvre le menu de Frogtend (bouton Xbox, ou Affichage + RB tenus) ▸ 🎯 Triches : ta partie est gardée à côté avant la première. Pas avec les succès en mode « hardcore ».'
+          : 'Les codes s’activent ensuite dans le menu de l’émulateur.',
       ]
         .filter(Boolean)
         .join('\n'),

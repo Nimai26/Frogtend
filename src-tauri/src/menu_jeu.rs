@@ -52,21 +52,272 @@ pub struct PartieEnCours {
     /// RetroArch en mode « hardcore » des succès (succès actifs ET hardcore) : il refuse les sauvegardes rapides — le
     /// menu ne les propose pas.
     pub etats_interdits: bool,
+    /// RetroArch : les triches du jeu (son `.cht`, lu au lancement) et leur état, tenu par Frogtend (lot 3, ✅ Seb
+    /// 28/10). Vide : aucun fichier. Proposées seulement si `triches_permises` (hors mode hardcore : une triche le
+    /// ferait perdre pour la session — chaîne relevée dans RetroArch 1.22.2).
+    pub triches: Vec<Triche>,
+    pub triches_permises: bool,
+    /// RetroArch : son index de triche courant, tel que Frogtend l'a amené (0 au chargement, NON vérifié en vrai ;
+    /// puis les `CHEAT_INDEX_PLUS/MINUS` envoyés). Ses touches T / Y / U sont coupées par Frogtend.
+    pub triche_ra: usize,
+    /// RetroArch : le dossier des parties du profil (`savefile_directory`), pour les mettre à l'abri avant la
+    /// PREMIÈRE triche de la partie ; et si c'est fait.
+    pub parties: Option<String>,
+    pub abri_triches: bool,
+}
+
+/// Une triche d'un fichier `.cht` de RetroArch : son nom et si elle est active.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct Triche {
+    pub titre: String,
+    pub active: bool,
+}
+
+/// Un `.cht` plus gros n'est pas lu (une base de codes n'en approche jamais : un fichier abîmé ou autre chose).
+pub const CHT_MAX: u64 = 4 * 1024 * 1024;
+/// Au-delà, les triches ne sont pas montrées (le menu se parcourt à la manette).
+const TRICHES_MAX: usize = 500;
+
+/// Les triches d'un `.cht` de RetroArch (`cheats = N`, `cheatK_desc`, `cheatK_enable`) ; tolère un fichier abîmé :
+/// une triche sans nom s'appelle « Triche K », une valeur illisible vaut « non active ». `cheats` absent : rien.
+pub fn lire_cht(texte: &str) -> Vec<Triche> {
+    let mut valeurs = std::collections::HashMap::new();
+    for l in texte.lines() {
+        if let Some((c, v)) = l.split_once('=') {
+            valeurs.insert(c.trim().to_string(), v.trim().trim_matches('"').to_string());
+        }
+    }
+    let n = valeurs.get("cheats").and_then(|v| v.parse::<usize>().ok()).unwrap_or(0).min(TRICHES_MAX);
+    (0..n)
+        .map(|k| Triche {
+            titre: valeurs.get(&format!("cheat{k}_desc")).filter(|d| !d.trim().is_empty()).cloned().unwrap_or_else(|| format!("Triche {}", k + 1)),
+            active: valeurs.get(&format!("cheat{k}_enable")).is_some_and(|v| v.eq_ignore_ascii_case("true")),
+        })
+        .collect()
+}
+
+/// Lit le `.cht` d'un jeu s'il existe et reste raisonnable (sinon : aucune triche).
+pub fn lire_fichier_cht(f: &std::path::Path) -> Vec<Triche> {
+    match std::fs::metadata(f) {
+        Ok(m) if m.is_file() && m.len() <= CHT_MAX => std::fs::read(f).map(|o| lire_cht(&String::from_utf8_lossy(&o))).unwrap_or_default(),
+        _ => vec![],
+    }
+}
+
+/// Le `.cht` que RetroArch charge seul au lancement : `<cheat_database_path>/<nom du cœur>/<nom du jeu lancé>.cht`.
+pub fn fichier_cht(triches: &std::path::Path, coeur: &str, nom_rom: &str) -> std::path::PathBuf {
+    triches.join(coeur).join(format!("{nom_rom}.cht"))
+}
+
+/// Les commandes pour amener l'index de triche de RetroArch de `depuis` à `vers`, pas à pas, sans compter sur un
+/// passage de la dernière à la première (non vérifié).
+pub fn pas_vers_triche(depuis: usize, vers: usize) -> Vec<&'static str> {
+    if vers >= depuis {
+        vec!["CHEAT_INDEX_PLUS"; vers - depuis]
+    } else {
+        vec!["CHEAT_INDEX_MINUS"; depuis - vers]
+    }
+}
+
+/// Les extensions des parties chez RetroArch et ses cœurs (`.srm` de RetroArch, `.rtc` des horloges, et celles que
+/// des cœurs écrivent eux-mêmes : N64, PS1, DS, Saturn, Sega CD…). Une liste FERMÉE : quand les parties sont rangées à
+/// côté du jeu (`savefiles_in_content_dir`), le jeu lui-même (`.sfc`, `.chd`, `.iso`…) n'est jamais pris pour une
+/// partie (relecture lancement, 28/10).
+const EXTENSIONS_PARTIES: &[&str] = &["srm", "rtc", "sav", "ldci", "mcr", "eep", "fla", "sra", "mpk", "nv", "dsv", "brm", "bcr", "bkr", "ram"];
+
+/// Les parties d'un jeu chez RetroArch (`<jeu>.srm`, `<jeu>.rtc`…), à la racine du dossier des parties et jusqu'à deux
+/// niveaux de sous-dossiers (rangement par cœur, par contenu) — à mettre à l'abri avant la première triche.
+pub fn parties_du_jeu(parties: &std::path::Path, nom_rom: &str) -> Vec<std::path::PathBuf> {
+    let est_partie = |nom: &str| {
+        nom.strip_prefix(nom_rom)
+            .and_then(|r| r.strip_prefix('.'))
+            .is_some_and(|ext| EXTENSIONS_PARTIES.iter().any(|e| ext.eq_ignore_ascii_case(e)))
+    };
+    let mut l = Vec::new();
+    let mut dossiers = vec![(parties.to_path_buf(), 0)];
+    while let Some((d, niveau)) = dossiers.pop() {
+        for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                if niveau < 2 {
+                    dossiers.push((p, niveau + 1));
+                }
+            } else if p.file_name().and_then(|n| n.to_str()).is_some_and(est_partie) {
+                l.push(p);
+            }
+        }
+    }
+    l
+}
+
+/// Les triches de RetroArch sont-elles permises ? Pas en mode hardcore des succès (succès actifs ET hardcore : une
+/// triche le ferait perdre pour la session) — la même règle que les sauvegardes rapides. `retroarch.cfg` porte
+/// toujours la clé hardcore (RetroArch y recopie tout) : seuls les succès actifs du profil la rendent effective
+/// (relecture lancement, 28/10 : chez Seb, hardcore « true » et succès coupés).
+pub fn triches_permises_retroarch(retroarch_cfg: &str, profil_cfg: &str) -> bool {
+    !retroarch_hardcore(retroarch_cfg, profil_cfg)
+}
+
+/// Ce que Frogtend sait de RetroArch avant de lancer un jeu : où sont ses parties et sauvegardes rapides, le nom du
+/// jeu lancé, ses triches et si elles sont permises.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PreparationRa {
+    pub nom_rom: Option<String>,
+    pub etats: Option<std::path::PathBuf>,
+    pub parties: Option<std::path::PathBuf>,
+    pub etats_interdits: bool,
+    pub triches: Vec<Triche>,
+    /// Des triches cochées s'appliqueront au chargement : les parties du jeu ont été mises à l'abri avant.
+    pub abri_fait: bool,
+    /// Le `.cht` d'une autre version du même jeu a été repris pour celle-ci (dit au journal).
+    pub cht_repris: Option<std::path::PathBuf>,
+}
+
+/// Avant le lancement par RetroArch (il lit le `.cht` en chargeant le jeu). `profil` : le dossier du profil
+/// (`frogtend.cfg` y est déjà écrit pour cette partie) ; `fichier` : le jeu lancé ; `defaut` : le fichier de la version
+/// d'habitude (une triche posée depuis la page Triches porte son nom). Les parties et sauvegardes rapides vont à côté
+/// du jeu quand `savefiles_in_content_dir` / `savestates_in_content_dir` le disent. Des triches cochées (restées de la
+/// partie d'avant) : les parties sont mises à l'abri AVANT (une copie ratée : `Err`, rien ne se lance).
+pub fn preparer_ra(
+    retroarch: &std::path::Path,
+    profil: &std::path::Path,
+    coeur: Option<&str>,
+    fichier: Option<&std::path::Path>,
+    defaut: Option<&std::path::Path>,
+    quand: u64,
+) -> Result<PreparationRa, String> {
+    let principal = std::fs::read_to_string(retroarch.join("retroarch.cfg")).unwrap_or_default();
+    let du_profil = std::fs::read_to_string(profil.join("frogtend.cfg")).unwrap_or_default();
+    let a_cote = |cle: &str| cle_retroarch(&principal, &du_profil, cle).then(|| fichier.and_then(|f| f.parent()).map(|d| d.to_path_buf())).flatten();
+    let nom_rom = fichier.and_then(|f| f.file_stem()).map(|s| s.to_string_lossy().to_string());
+    let mut p = PreparationRa {
+        etats: a_cote("savestates_in_content_dir").or_else(|| Some(profil.join("states"))),
+        parties: a_cote("savefiles_in_content_dir").or_else(|| Some(profil.join("saves"))),
+        etats_interdits: retroarch_hardcore(&principal, &du_profil),
+        nom_rom: nom_rom.clone(),
+        ..Default::default()
+    };
+    let (Some(c), Some(r)) = (coeur, nom_rom.as_deref()) else { return Ok(p) };
+    let cht = fichier_cht(&profil.join("cheats"), c, r);
+    // Une autre version du jeu lancée : le `.cht` posé pour la version d'habitude est repris sous son nom (seulement
+    // s'il n'en a pas déjà un ; la ROM n'est jamais renommée) — TOUTES ses triches coupées : des codes d'une autre
+    // région ne s'appliquent jamais sans que la personne les choisisse (relecture lancement, 28/10).
+    if !cht.exists() {
+        if let Some(d) = defaut.and_then(|f| f.file_stem()).map(|s| s.to_string_lossy().to_string()).filter(|d| d != r) {
+            let source = fichier_cht(&profil.join("cheats"), c, &d);
+            let texte = std::fs::metadata(&source).ok().filter(|m| m.is_file() && m.len() <= CHT_MAX).and_then(|_| std::fs::read(&source).ok());
+            if let Some(o) = texte {
+                if std::fs::write(&cht, triches_coupees(&String::from_utf8_lossy(&o))).is_ok() {
+                    p.cht_repris = Some(source);
+                }
+            }
+        }
+    }
+    p.triches = lire_fichier_cht(&cht);
+    if !p.etats_interdits && p.triches.iter().any(|t| t.active) {
+        mettre_a_l_abri_avant_triche(p.parties.as_deref(), p.etats.as_deref(), r, quand)?;
+        p.abri_fait = true;
+    }
+    Ok(p)
+}
+
+/// Les parties et sauvegardes rapides du jeu copiées à côté (`<fichier>.avant-triche-<secondes>`) avant une triche :
+/// jamais par-dessus une copie (un nom libre est cherché), pas de nouvelle copie si la dernière est identique (les
+/// copies ne s'accumulent pas à chaque partie). Une copie ratée : celles faites sont retirées, `Err`.
+pub fn mettre_a_l_abri_avant_triche(parties: Option<&std::path::Path>, etats: Option<&std::path::Path>, nom_rom: &str, quand: u64) -> Result<(), String> {
+    let mut a_copier: Vec<std::path::PathBuf> = parties.map(|d| parties_du_jeu(d, nom_rom)).unwrap_or_default();
+    if let Some(e) = etats {
+        a_copier.extend(etats_du_jeu(e, nom_rom).into_iter().map(|(f, _)| f));
+    }
+    let mut faites = Vec::new();
+    for f in &a_copier {
+        if derniere_copie_identique(f) {
+            continue;
+        }
+        let mut copie = std::path::PathBuf::from(format!("{}.avant-triche-{quand}", f.to_string_lossy()));
+        let mut n = 1;
+        while copie.exists() {
+            copie = std::path::PathBuf::from(format!("{}.avant-triche-{quand}-{n}", f.to_string_lossy()));
+            n += 1;
+        }
+        if let Err(e) = std::fs::copy(f, &copie) {
+            for c in &faites {
+                let _ = std::fs::remove_file(c);
+            }
+            return Err(format!("Ta partie n'a pas pu être mise à l'abri ({e}) : aucune triche n'a été activée."));
+        }
+        faites.push(copie);
+    }
+    Ok(())
+}
+
+/// Un `.cht` dont toutes les triches sont coupées (`cheatN_enable = "false"`), le reste tel quel.
+pub fn triches_coupees(texte: &str) -> String {
+    texte
+        .lines()
+        .map(|l| match l.split_once('=') {
+            Some((c, _)) if c.trim().starts_with("cheat") && c.trim().ends_with("_enable") => format!("{} = \"false\"", c.trim()),
+            _ => l.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n"
+}
+
+/// Au-delà, une copie n'est pas comparée (elle est refaite) : jamais de gros fichier lu pour rien.
+const COMPARAISON_MAX: u64 = 64 * 1024 * 1024;
+
+/// Deux fichiers ont-ils le même contenu ? Lus par blocs, arrêt à la première différence ; trop gros : non.
+fn memes_octets(a: &std::path::Path, b: &std::path::Path) -> bool {
+    use std::io::Read;
+    let (Ok(ma), Ok(mb)) = (std::fs::metadata(a), std::fs::metadata(b)) else { return false };
+    if ma.len() != mb.len() || ma.len() > COMPARAISON_MAX {
+        return false;
+    }
+    let (Ok(mut fa), Ok(mut fb)) = (std::fs::File::open(a), std::fs::File::open(b)) else { return false };
+    let (mut ba, mut bb) = (vec![0u8; 64 * 1024], vec![0u8; 64 * 1024]);
+    loop {
+        let Ok(na) = fa.read(&mut ba) else { return false };
+        if na == 0 {
+            return true;
+        }
+        if fb.read_exact(&mut bb[..na]).is_err() || ba[..na] != bb[..na] {
+            return false;
+        }
+    }
+}
+
+/// La plus récente copie `.avant-triche-*` de ce fichier a-t-elle exactement le même contenu ?
+fn derniere_copie_identique(f: &std::path::Path) -> bool {
+    let (Some(dossier), Some(nom)) = (f.parent(), f.file_name().and_then(|n| n.to_str())) else { return false };
+    let prefixe = format!("{nom}.avant-triche-");
+    let derniere = std::fs::read_dir(dossier)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.file_name().to_str().is_some_and(|n| n.starts_with(&prefixe)))
+        .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
+        .max_by_key(|(t, _)| *t)
+        .map(|(_, p)| p);
+    derniere.is_some_and(|c| memes_octets(&c, f))
 }
 
 /// RetroArch interdit-il les sauvegardes rapides ? (`cheevos_enable` ET `cheevos_hardcore_mode_enable` : la valeur du
 /// fichier de Frogtend pour le profil l'emporte sur celle de `retroarch.cfg`.)
 pub fn retroarch_hardcore(retroarch_cfg: &str, profil_cfg: &str) -> bool {
-    let valeur = |cle: &str| {
-        let lire = |t: &str| {
-            t.lines().rev().find_map(|l| {
-                let (c, v) = l.split_once('=')?;
-                (c.trim() == cle).then(|| v.trim().trim_matches('"').eq_ignore_ascii_case("true"))
-            })
-        };
-        lire(profil_cfg).or_else(|| lire(retroarch_cfg)).unwrap_or(false)
+    cle_retroarch(retroarch_cfg, profil_cfg, "cheevos_enable") && cle_retroarch(retroarch_cfg, profil_cfg, "cheevos_hardcore_mode_enable")
+}
+
+/// Un réglage oui/non de RetroArch : celui du fichier de Frogtend pour le profil l'emporte sur `retroarch.cfg` (la
+/// dernière ligne d'un fichier compte) ; absent : non.
+pub fn cle_retroarch(retroarch_cfg: &str, profil_cfg: &str, cle: &str) -> bool {
+    let lire = |t: &str| {
+        t.lines().rev().find_map(|l| {
+            let (c, v) = l.split_once('=')?;
+            (c.trim() == cle).then(|| v.trim().trim_matches('"').eq_ignore_ascii_case("true"))
+        })
     };
-    valeur("cheevos_enable") && valeur("cheevos_hardcore_mode_enable")
+    lire(profil_cfg).or_else(|| lire(retroarch_cfg)).unwrap_or(false)
 }
 
 /// Les emplacements de sauvegarde rapide proposés dans le menu (0 à 9).
@@ -208,6 +459,24 @@ impl MenuJeu {
     pub fn prendre_etat(&self) -> Option<EtatEnCours<'_>> {
         (!self.etat_en_cours.swap(true, std::sync::atomic::Ordering::SeqCst)).then_some(EtatEnCours(self))
     }
+    /// RetroArch : son index de triche courant, après chaque commande envoyée.
+    pub fn noter_triche_ra(&self, i: usize) {
+        if let Some(p) = self.partie.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            p.triche_ra = i;
+        }
+    }
+    /// Une triche basculée (après le `CHEAT_TOGGLE` envoyé).
+    pub fn basculer_triche(&self, k: usize) {
+        if let Some(t) = self.partie.lock().unwrap_or_else(|e| e.into_inner()).as_mut().and_then(|p| p.triches.get_mut(k)) {
+            t.active = !t.active;
+        }
+    }
+    /// Les parties du jeu sont à l'abri pour cette partie (avant la première triche).
+    pub fn noter_abri_triches(&self) {
+        if let Some(p) = self.partie.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            p.abri_triches = true;
+        }
+    }
     /// RetroArch : son emplacement courant, après les commandes envoyées.
     pub fn noter_emplacement_ra(&self, n: u8) {
         if let Some(p) = self.partie.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
@@ -240,6 +509,12 @@ pub struct EtatMenu {
     /// L'emplacement de sauvegarde rapide choisi, quand l'émulateur sait en changer depuis Frogtend (RetroArch, MAME) ;
     /// `None` : celui de l'émulateur (non choisi ici).
     pub emplacement: Option<u8>,
+    /// Les triches du jeu, quand Frogtend sait les activer pendant la partie (RetroArch hors mode hardcore) ; une liste
+    /// vide : aucune triche posée pour ce jeu ; `None` : pas de triches depuis le menu.
+    pub triches: Option<Vec<Triche>>,
+    /// Les parties du jeu sont-elles déjà à l'abri pour CETTE partie ? (Sinon la page met en garde avant la première
+    /// triche ; la fenêtre du menu est réutilisée d'une partie à l'autre : c'est le cœur qui sait.)
+    pub abri_triches: bool,
 }
 
 pub fn nom_action(a: Action) -> &'static str {
@@ -299,6 +574,8 @@ pub fn etat(p: &PartieEnCours) -> EtatMenu {
         en_pause: crate::pilotage::se_met_en_pause(e) && !p.figer_emulateur,
         taodbox: false,
         emplacement: matches!(e, "retroarch" | "mame").then_some(p.emplacement),
+        triches: (e == "retroarch" && p.triches_permises && !p.etats_interdits).then(|| p.triches.clone()),
+        abri_triches: p.abri_triches,
     }
 }
 
@@ -610,7 +887,142 @@ mod tests {
             nom_rom: None,
             raccourcis_clavier: true,
             etats_interdits: false,
+            triches: vec![],
+            triches_permises: true,
+            triche_ra: 0,
+            parties: None,
+            abri_triches: false,
         }
+    }
+
+    #[test]
+    fn un_cht_de_retroarch_se_lit_meme_abime() {
+        let t = lire_cht("cheats = 3\ncheat0_desc = \"Vies infinies\"\ncheat0_enable = \"true\"\ncheat1_desc = \"\"\ncheat2_desc = \"Or\"\ncheat2_enable = \"false\"\n");
+        assert_eq!(t.len(), 3);
+        assert_eq!(t[0], Triche { titre: "Vies infinies".into(), active: true });
+        assert_eq!(t[1], Triche { titre: "Triche 2".into(), active: false }, "sans nom ni état");
+        assert!(!t[2].active);
+        assert!(lire_cht("cheat0_desc = \"X\"\n").is_empty(), "`cheats` absent : rien");
+        assert!(lire_cht("cheats = abc\n").is_empty());
+        assert_eq!(lire_cht("cheats = 999999\n").len(), TRICHES_MAX, "plafonné");
+        assert!(lire_cht("\u{FFFD}\u{0}=\n==\n").is_empty(), "illisible : rien, sans panique");
+        let d = tempfile::tempdir().unwrap();
+        let f = fichier_cht(d.path(), "Snes9x", "Mario (Europe)");
+        assert!(f.ends_with("Snes9x/Mario (Europe).cht"));
+        assert!(lire_fichier_cht(&f).is_empty(), "absent");
+        std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+        std::fs::write(&f, b"cheats = 1\ncheat0_desc = \"\xE9t\xE9\"\n").unwrap();
+        assert_eq!(lire_fichier_cht(&f).len(), 1, "texte non UTF-8 : lu quand même");
+    }
+
+    #[test]
+    fn avant_le_lancement_les_triches_cochees_mettent_la_partie_a_l_abri() {
+        let d = tempfile::tempdir().unwrap();
+        let (ra, profil) = (d.path().join("RA"), d.path().join("RA/Profils/Seb"));
+        for x in ["saves", "states", "cheats/Snes9x"] {
+            std::fs::create_dir_all(profil.join(x)).unwrap();
+        }
+        std::fs::write(ra.join("retroarch.cfg"), "cheevos_hardcore_mode_enable = \"true\"\n").unwrap();
+        std::fs::write(profil.join("frogtend.cfg"), "cheevos_enable = \"false\"\n").unwrap();
+        std::fs::write(profil.join("saves/Mario (Europe).srm"), b"partie").unwrap();
+        let jeux = d.path().join("Jeux");
+        std::fs::create_dir_all(&jeux).unwrap();
+        let (europe, japon) = (jeux.join("Mario (Europe).sfc"), jeux.join("Mario (Japan).sfc"));
+        // Sans triche : rien de copié, chemins du profil.
+        let p = preparer_ra(&ra, &profil, Some("Snes9x"), Some(&europe), None, 100).unwrap();
+        assert_eq!(p.nom_rom.as_deref(), Some("Mario (Europe)"));
+        assert_eq!(p.parties, Some(profil.join("saves")));
+        assert!(!p.etats_interdits && p.triches.is_empty() && !p.abri_fait);
+        // Une triche cochée : la partie copiée AVANT, une seule fois tant qu'elle ne change pas.
+        std::fs::write(profil.join("cheats/Snes9x/Mario (Europe).cht"), "cheats = 1\ncheat0_desc = \"Vies\"\ncheat0_enable = \"true\"\n").unwrap();
+        let p = preparer_ra(&ra, &profil, Some("Snes9x"), Some(&europe), None, 100).unwrap();
+        assert!(p.abri_fait && p.triches[0].active);
+        assert_eq!(std::fs::read(profil.join("saves/Mario (Europe).srm.avant-triche-100")).unwrap(), b"partie");
+        preparer_ra(&ra, &profil, Some("Snes9x"), Some(&europe), None, 200).unwrap();
+        assert!(!profil.join("saves/Mario (Europe).srm.avant-triche-200").exists(), "copie identique : pas de doublon");
+        std::fs::write(profil.join("saves/Mario (Europe).srm"), b"partie 2").unwrap();
+        preparer_ra(&ra, &profil, Some("Snes9x"), Some(&europe), None, 100).unwrap();
+        assert_eq!(std::fs::read(profil.join("saves/Mario (Europe).srm.avant-triche-100-1")).unwrap(), b"partie 2", "jamais par-dessus");
+        // Une autre version : le `.cht` de la version d'habitude repris sous son nom.
+        let p = preparer_ra(&ra, &profil, Some("Snes9x"), Some(&japon), Some(&europe), 300).unwrap();
+        assert!(p.cht_repris.is_some() && profil.join("cheats/Snes9x/Mario (Japan).cht").is_file());
+        assert_eq!(p.triches.len(), 1);
+        assert!(!p.triches[0].active && !p.abri_fait, "reprise d'une autre version : rien d'actif");
+        // Hardcore actif pour ce profil : interdites, rien de copié.
+        std::fs::write(profil.join("frogtend.cfg"), "cheevos_enable = \"true\"\n").unwrap();
+        let p = preparer_ra(&ra, &profil, Some("Snes9x"), Some(&europe), None, 400).unwrap();
+        assert!(p.etats_interdits && !p.abri_fait);
+        // Parties rangées à côté du jeu.
+        std::fs::write(profil.join("frogtend.cfg"), "savefiles_in_content_dir = \"true\"\n").unwrap();
+        assert_eq!(preparer_ra(&ra, &profil, None, Some(&europe), None, 500).unwrap().parties, Some(jeux.clone()));
+    }
+
+    #[test]
+    fn l_index_de_triche_avance_pas_a_pas_sans_boucler() {
+        assert!(pas_vers_triche(2, 2).is_empty());
+        assert_eq!(pas_vers_triche(0, 3), ["CHEAT_INDEX_PLUS"; 3]);
+        assert_eq!(pas_vers_triche(4, 1), ["CHEAT_INDEX_MINUS"; 3]);
+    }
+
+    #[test]
+    fn les_parties_d_un_jeu_sont_trouvees_meme_rangees_par_coeur() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join("Snes9x")).unwrap();
+        for f in ["Mario.srm", "Snes9x/Mario.rtc", "Mario 2.srm", "Mario.srm.frogtend-abri", "Mariokart.srm", "Mario.sfc", "Mario.chd", "Mario.m3u"] {
+            std::fs::write(d.path().join(f), b"x").unwrap();
+        }
+        let mut l: Vec<String> = parties_du_jeu(d.path(), "Mario").iter().map(|p| p.file_name().unwrap().to_string_lossy().into()).collect();
+        l.sort();
+        assert_eq!(l, ["Mario.rtc", "Mario.srm"], "jamais le jeu lui-même (parties rangées à côté du jeu)");
+    }
+
+    #[test]
+    fn un_cht_repris_a_toutes_ses_triches_coupees_et_les_copies_se_comparent_par_blocs() {
+        let t = triches_coupees("cheats = 2\ncheat0_enable = \"true\"\ncheat0_desc = \"enable\"\ncheat1_enable = true\n");
+        assert!(!t.contains("\"true\"") && !t.contains("= true"), "{t}");
+        assert!(t.contains("cheat0_desc = \"enable\"") && t.contains("cheats = 2"));
+        assert_eq!(lire_cht(&t).iter().filter(|x| x.active).count(), 0);
+        let d = tempfile::tempdir().unwrap();
+        let (a, b, c) = (d.path().join("a"), d.path().join("b"), d.path().join("c"));
+        let gros: Vec<u8> = (0..200_000u32).map(|i| (i % 251) as u8).collect();
+        std::fs::write(&a, &gros).unwrap();
+        std::fs::write(&b, &gros).unwrap();
+        let mut autre = gros.clone();
+        autre[150_000] ^= 1;
+        std::fs::write(&c, &autre).unwrap();
+        assert!(memes_octets(&a, &b));
+        assert!(!memes_octets(&a, &c), "différence loin dans le fichier");
+        assert!(!memes_octets(&a, &d.path().join("absent")));
+    }
+
+    #[test]
+    fn les_triches_seulement_pour_retroarch_hors_hardcore() {
+        let avec = Triche { titre: "Vies".into(), active: false };
+        let ra = PartieEnCours { triches: vec![avec.clone()], ..partie(Some("retroarch")) };
+        assert_eq!(etat(&ra).triches, Some(vec![avec.clone()]));
+        assert_eq!(etat(&PartieEnCours { triches: vec![], ..partie(Some("retroarch")) }).triches, Some(vec![]), "aucun fichier : dit");
+        assert_eq!(etat(&PartieEnCours { etats_interdits: true, ..ra.clone() }).triches, None, "hardcore");
+        assert_eq!(etat(&PartieEnCours { triches_permises: false, ..ra.clone() }).triches, None, "hardcore réglé");
+        assert_eq!(etat(&PartieEnCours { triches: vec![avec], ..partie(Some("duckstation")) }).triches, None);
+        assert!(triches_permises_retroarch("", ""));
+        // Chez Seb : la clé hardcore toujours là (recopiée par RetroArch), succès coupés → permises.
+        assert!(triches_permises_retroarch("cheevos_hardcore_mode_enable = \"true\"\ncheevos_enable = \"false\"\n", ""));
+        assert!(!triches_permises_retroarch("cheevos_hardcore_mode_enable = \"true\"\n", "cheevos_enable = \"true\"\n"), "succès du profil + hardcore");
+        assert!(triches_permises_retroarch("cheevos_hardcore_mode_enable = \"true\"\n", "cheevos_enable = \"true\"\ncheevos_hardcore_mode_enable = \"false\"\n"));
+    }
+
+    #[test]
+    fn une_triche_basculee_et_l_index_sont_retenus() {
+        let m = MenuJeu::default();
+        m.commencer(PartieEnCours { triches: vec![Triche { titre: "A".into(), active: false }], ..partie(Some("retroarch")) });
+        m.basculer_triche(0);
+        m.basculer_triche(7); // hors liste : rien
+        m.noter_triche_ra(3);
+        m.noter_abri_triches();
+        let p = m.partie().unwrap();
+        assert!(p.triches[0].active);
+        assert_eq!(p.triche_ra, 3);
+        assert!(p.abri_triches);
     }
 
     #[test]

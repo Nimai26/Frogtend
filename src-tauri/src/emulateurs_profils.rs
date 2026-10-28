@@ -318,6 +318,11 @@ pub fn regler_succes(id: &str, emulateur: &Path, profil: &str, compte: Option<(&
             cfg.push_str(&format!(
                 "cheevos_enable = \"{actif}\"\ncheevos_username = \"{nom}\"\ncheevos_token = \"{jeton}\"\ncheevos_password = \"\"\n"
             ));
+            // Les triches cochées du jeu s'appliquent au chargement (sinon la première bascule depuis le menu les
+            // appliquerait d'un coup) — jamais en mode hardcore des succès (une triche le ferait perdre : lot 3).
+            let principal = std::fs::read_to_string(emulateur.join("retroarch.cfg")).unwrap_or_default();
+            let triches = crate::menu_jeu::triches_permises_retroarch(&principal, &cfg);
+            cfg.push_str(&format!("apply_cheats_after_load = \"{triches}\"\n"));
             creer(&[&p])?;
             std::fs::write(&fichier, cfg)?;
         }
@@ -748,6 +753,44 @@ pub fn place_triche(id: &str, emulateur: &Path, profil: &str, base: &str, dossie
         return Err(Erreur::Refus("Emplacement de triche douteux : refusé.".into()));
     }
     Ok(c)
+}
+
+/// Dolphin : un fichier de codes posé dans `GameSettings/<ID>.ini` ne REMPLACE pas celui de la personne (il porte
+/// aussi ses réglages par jeu) — seules ses sections (`[ActionReplay]`, `[Gecko]`, leurs `_Enabled`…) prennent la
+/// place des mêmes sections ; les autres restent telles quelles (relecture lancement, 28/10).
+pub fn fusionner_sections_ini(ancien: &str, nouveau: &str) -> String {
+    fn sections(t: &str) -> Vec<(Option<String>, Vec<String>)> {
+        let mut l: Vec<(Option<String>, Vec<String>)> = vec![(None, vec![])];
+        for ligne in t.lines() {
+            let s = ligne.trim();
+            if s.starts_with('[') && s.ends_with(']') {
+                l.push((Some(s[1..s.len() - 1].trim().to_string()), vec![]));
+            } else {
+                if let Some(x) = l.last_mut() {
+                    x.1.push(ligne.to_string());
+                }
+            }
+        }
+        l
+    }
+    let mut a = sections(ancien);
+    for (nom, corps) in sections(nouveau).into_iter().filter(|(n, _)| n.is_some()) {
+        match a.iter_mut().find(|(n, _)| n.as_deref().map(str::to_lowercase) == nom.as_deref().map(str::to_lowercase)) {
+            Some(s) => s.1 = corps,
+            None => a.push((nom, corps)),
+        }
+    }
+    let mut sortie = String::new();
+    for (nom, corps) in a {
+        if let Some(n) = nom {
+            sortie.push_str(&format!("[{n}]\n"));
+        }
+        for l in corps {
+            sortie.push_str(&l);
+            sortie.push('\n');
+        }
+    }
+    sortie
 }
 
 /// Le nom du profil d'après son dossier (`…\Profils\<nom>`).
@@ -2107,6 +2150,35 @@ mod essai_reel_micrologiciel {
     fn lire_le_vrai_micrologiciel() {
         let d = std::path::PathBuf::from(std::env::var("FROGTEND_RPCS3").unwrap());
         println!("MICROLOGICIEL {:?}", super::micrologiciel_rpcs3(&d));
+    }
+}
+
+#[cfg(test)]
+mod tests_triches {
+    use super::*;
+
+    #[test]
+    fn retroarch_applique_les_triches_cochees_hors_hardcore() {
+        let d = tempfile::tempdir().unwrap();
+        let lire = || std::fs::read_to_string(dossier_du_profil(d.path(), "Seb").join("frogtend.cfg")).unwrap();
+        std::fs::write(d.path().join("retroarch.cfg"), "cheevos_hardcore_mode_enable = \"true\"\n").unwrap();
+        regler_succes("retroarch", d.path(), "Seb", None).unwrap();
+        assert!(lire().contains("apply_cheats_after_load = \"true\""), "succès coupés : permises");
+        regler_succes("retroarch", d.path(), "Seb", Some(("seb", "x"))).unwrap();
+        assert!(lire().ends_with("apply_cheats_after_load = \"false\"\n"), "succès + hardcore : jamais au lancement");
+    }
+
+    #[test]
+    fn la_fusion_d_un_ini_dolphin_garde_les_reglages_de_la_personne() {
+        let ancien = "[Core]\nCPUThread = False\n\n[ActionReplay]\n$Vieux\n00000000 1\n[Video_Settings]\nSafeTextureCacheColorSamples = 512\n";
+        let nouveau = "[ActionReplay]\n$Vies\n01234567 9\n[ActionReplay_Enabled]\n";
+        let f = fusionner_sections_ini(ancien, nouveau);
+        assert!(f.contains("[Core]\nCPUThread = False"), "{f}");
+        assert!(f.contains("SafeTextureCacheColorSamples = 512"));
+        assert!(f.contains("$Vies") && !f.contains("$Vieux"), "la section des codes remplacée");
+        assert!(f.contains("[ActionReplay_Enabled]"), "section nouvelle ajoutée");
+        assert_eq!(f.matches("[ActionReplay]").count(), 1);
+        assert_eq!(fusionner_sections_ini("", nouveau).matches('[').count(), 2);
     }
 }
 

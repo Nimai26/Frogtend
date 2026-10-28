@@ -29,6 +29,22 @@
   `menuJeu.boutonXbox` (oui d'office). RESTE (essai) : vrai appui sur Venkman ; par Moonlight / Sunshine (ViGEm)
   depuis le Freebox Player ; Steam qui prend aussi le bouton (réglage de Steam non lu) ; une manette qui se
   DÉCONNECTE pendant un appui court passe pour un relâchement (rare, non traité).
+  ✅ (3) FAIT en 0.141.0 (avis lancement avant ; relectures lancement + interface, 2 tours ; BLOQUANT corrigé : la
+  clé hardcore est TOUJOURS dans `retroarch.cfg` (recopiée), chez Seb `true` avec succès coupés → ma règle « prudente »
+  ne proposait jamais les triches ; règle = celle des sauvegardes rapides) : RetroArch seulement, en direct ;
+  `.cht` = `<profil>/cheats/<cœur>/<rom>.cht` lu AVANT le lancement (`preparer_ra`), repris d'une autre version avec
+  toutes ses triches COUPÉES (2e tour) ; parties = liste FERMÉE d'extensions (jamais la ROM rangée à côté, 2e tour) ;
+  copies comparées par blocs (plafond 64 Mo) ;
+  `apply_cheats_after_load` écrit par `regler_succes` (faux en hardcore) ; touches T / Y / U coupées (même accord que
+  le bouton du menu : « RetroArch seulement par Frogtend » — À DIRE à Seb) ; index suivi par Frogtend (0 au
+  chargement, PLUS/MINUS pas à pas, 120 ms) ; `CHEAT_TOGGLE` ; parties + états copiés `.avant-triche-<s>` avant la 1re
+  triche (ou avant le lancement si des triches sont restées cochées), jamais par-dessus, pas de doublon identique ;
+  parties à côté du jeu suivies (`*_in_content_dir`). Aussi : `triche_installer` nomme le `.cht` d'après la ROM,
+  `.avant-frogtend` jamais par-dessus, Dolphin : fusion des sections (`fusionner_sections_ini`). RESTE (essai) : index
+  0 au chargement et `CHEAT_TOGGLE` appliqué avec `apply_cheats_after_toggle = false` (non vérifiés) ; nom du cœur =
+  `library_name` (vrai pour Snes9x) ; relire le `.cht` en fin de partie pour vérifier l'état (non fait) ; autres
+  émulateurs (liste en lecture seule : non fait) ; Cheat Engine proposé aussi pour un jeu émulé (à cadrer) ; deux
+  listes Firehouse pour un même jeu et un même cœur visent le même `.cht` (la 2e remplace la 1re, gardée à côté).
 - **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un
   jeu du PC (la fiche GARDÉE a `locale: true`, le bouton exigeait `!locale` — même défaut pour « ➕ Ajouter cette
   carte » e-Reader) ; « Gérer ▸ Ajouter une autre version » ne faisait rien (même page). 0.137.4 (relecture interface

@@ -1,5 +1,20 @@
 # Notes de version de Frogtend
 
+## 0.141.0 — Les triches dans le menu en jeu
+
+- 🎯 Menu en jeu (jeux lancés par RetroArch) : **« Triches »** liste les triches de ton jeu, avec ✅ pour celles qui
+  sont actives. Choisis-en une : le menu se ferme, et le jeu l'active ou la coupe. RetroArch le confirme en haut de
+  l'écran.
+- 🛡 Avant la première triche d'une partie, Frogtend garde une copie de ta partie et de tes sauvegardes rapides de ce
+  jeu, à côté (`.avant-triche-…`), et te prévient une fois. Les triches restées actives d'une partie à l'autre
+  s'appliquent dès le lancement : la copie est alors faite avant.
+- Les triches s'ajoutent toujours hors partie, sur la fiche du jeu ▸ 🎯 Triches et mods. Pour RetroArch, le fichier
+  porte maintenant le nom du jeu lancé, pour que RetroArch le charge tout seul (et il est repris pour une autre version
+  du même jeu).
+- Pas de triches avec les succès en mode « hardcore » : RetroArch te ferait perdre ce mode.
+- Dolphin : ajouter des codes ne remplace plus tout le fichier de réglages du jeu ; seules les sections de codes
+  changent (l'ancien fichier est gardé à côté).
+
 ## 0.140.0 — Le bouton Xbox ouvre le menu en jeu
 
 - 🎮 Pendant une partie, un **appui court sur le bouton Xbox** (ou PS, ou Home) ouvre le menu de Frogtend ; menu

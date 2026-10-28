@@ -363,7 +363,8 @@ pub fn commande_retroarch(a: Action) -> &'static str {
     }
 }
 
-/// Les lignes à ajouter au fichier de réglages de RetroArch (`--appendconfig`).
+/// Les lignes à ajouter au fichier de réglages de RetroArch (`--appendconfig`). (`apply_cheats_after_load` est écrit
+/// par `emulateurs_profils::regler_succes`, qui sait si les succès du profil sont actifs.)
 pub fn lignes_retroarch() -> String {
     format!(
         "network_cmd_enable = \"true\"\nnetwork_cmd_port = \"{PORT_RETROARCH}\"\npause_nonactive = \"true\"\ninput_menu_toggle_gamepad_combo = \"0\"\n{}",
@@ -374,6 +375,12 @@ pub fn lignes_retroarch() -> String {
         // le peut). Permanent (RetroArch recopie ces lignes, `config_save_on_exit`) : ✅ Seb 28/10 « Oui coupe.
         // RetroArch n'a pas vocation à être utilisé hors de Frogtend ». NON vérifié en vrai : à essayer avec Seb.
         "quit_press_twice = \"false\"\ninput_menu_toggle_btn = \"99\"\nstate_slot = \"0\"\n"
+    ) + &format!(
+        // Les triches depuis le menu de Frogtend (lot 3) : les touches T / Y / U de RetroArch qui déplacent son index
+        // de triche sont coupées (Frogtend le suit lui-même : une frappe au clavier dans un jeu d'ordinateur ne doit
+        // pas le décaler). Même accord que ci-dessus (RetroArch : seulement par Frogtend).
+        "{}input_cheat_index_minus = \"nul\"\ninput_cheat_index_plus = \"nul\"\ninput_cheat_toggle = \"nul\"\n",
+        ""
     )
 }
 
@@ -883,6 +890,7 @@ mod tests {
         assert!(!actions("pcsx2").contains(&Action::DisqueSuivant), "PCSX2 ne sait pas changer de disque de l'extérieur");
         // Aucun réglage que RetroArch ignorerait (il n'a pas de `network_cmd_bind_address`, relu dans la 1.22.2).
         assert!(!lignes_retroarch().contains("network_cmd_bind_address"));
+        assert_eq!(lignes_retroarch().matches("= \"nul\"").count(), 3, "T / Y / U coupées");
         // Recommencer / Quitter en un seul appui ; aucun bouton de la manette n'ouvre le menu de RetroArch.
         assert_eq!(lignes_retroarch().matches("quit_press_twice = \"false\"").count(), 1);
         assert_eq!(lignes_retroarch().matches("input_menu_toggle_btn = \"99\"").count(), 1, "bouton Xbox coupé (✅ Seb 28/10)");

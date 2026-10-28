@@ -551,6 +551,7 @@ pub fn run() {
             commandes::versions_avis,
             commandes::menu_jeu_emplacement,
             commandes::menu_jeu_emplacements,
+            commandes::menu_jeu_triche,
             commandes::jeu_retirer_version,
             commandes::jeu_versions_ajoutees,
             commandes::game_bar_bouton,
