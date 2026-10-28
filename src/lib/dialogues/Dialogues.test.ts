@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import Dialogues from './Dialogues.svelte';
-import { attendreTouche, choisir, confirmer, demander, informer, pile, toast } from './fenetres.svelte';
+import { attendreTouche, choisir, cocher, confirmer, demander, informer, pile, toast } from './fenetres.svelte';
 
 afterEach(() => {
   cleanup();
@@ -71,6 +71,37 @@ describe('Demander', () => {
   it('rend null si on annule', async () => {
     render(Dialogues);
     const reponse = demander('Nom');
+    await tick();
+    await fireEvent.click(screen.getByRole('button', { name: 'Annuler' }));
+    expect(await reponse).toBeNull();
+  });
+});
+
+describe('Cocher (plusieurs versions)', () => {
+  it('les cases se cochent et se décochent, le résumé suit, au moins une pour valider', async () => {
+    render(Dialogues);
+    const reponse = cocher('Versions', [
+      { valeur: 31, libelle: 'USA' },
+      { valeur: 32, libelle: 'Japon' },
+    ], { coches: [true, false], resume: (l) => `${l.length} version(s)`, libelleValider: 'Continuer' });
+    await tick();
+    const usa = screen.getByRole('checkbox', { name: /USA/ });
+    expect(usa.getAttribute('aria-checked')).toBe('true');
+    expect(document.activeElement).toBe(usa);
+    expect(screen.getByText('1 version(s)')).toBeTruthy();
+    await fireEvent.click(screen.getByRole('checkbox', { name: /Japon/ }));
+    expect(screen.getByText('2 version(s)')).toBeTruthy();
+    await fireEvent.click(usa);
+    await fireEvent.click(screen.getByRole('checkbox', { name: /Japon/ }));
+    expect((screen.getByRole('button', { name: 'Continuer' }) as HTMLButtonElement).disabled).toBe(true);
+    await fireEvent.click(screen.getByRole('checkbox', { name: /Japon/ }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Continuer' }));
+    expect(await reponse).toEqual([32]);
+  });
+
+  it('Annuler rend null', async () => {
+    render(Dialogues);
+    const reponse = cocher('Versions', [{ valeur: 1, libelle: 'A' }], { coches: [true] });
     await tick();
     await fireEvent.click(screen.getByRole('button', { name: 'Annuler' }));
     expect(await reponse).toBeNull();

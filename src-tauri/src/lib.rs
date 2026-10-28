@@ -548,6 +548,7 @@ pub fn run() {
             commandes::restauration_remplacer,
             commandes::restauration_conflits,
             commandes::dossier_jeux_refus,
+            commandes::versions_avis,
             commandes::game_bar_bouton,
             commandes::game_bar_bouton_regler,
             commandes::eden_firmware_servi,

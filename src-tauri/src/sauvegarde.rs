@@ -474,9 +474,11 @@ impl Noyau {
         let mut liste = Vec::new();
         for vu in &jeux {
             let j = &vu.jeu;
-            // Un jeu à cartes (e-Reader) : TOUTES ses cartes, pour les remettre à une restauration (pas seulement la 1re).
-            let cartes: Vec<i64> = if crate::jeux_pc::a_cartes(&j.plateforme) {
+            // Un jeu à cartes (e-Reader) ou à plusieurs régions : TOUTES ses versions, pour les remettre à une
+            // restauration (pas seulement la 1re).
+            let cartes: Vec<i64> = if crate::jeux_pc::a_cartes(&j.plateforme) || crate::partie::plusieurs_versions(j) {
                 let mut v: Vec<i64> = j.fichiers.iter().map(|f| f.version.unwrap_or(j.version)).collect();
+                v.sort();
                 v.dedup();
                 v
             } else {

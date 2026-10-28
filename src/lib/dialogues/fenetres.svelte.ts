@@ -27,6 +27,18 @@ export type Dialogue =
       fermer: (r: string | null) => void;
     })
   | (Base & { sorte: 'choisir'; options: OptionChoix<unknown>[]; fermer: (r: unknown | null) => void })
+  | (Base & {
+      sorte: 'cocher';
+      options: OptionChoix<unknown>[];
+      /** Cochées à l'ouverture (même ordre que `options`). */
+      coches: boolean[];
+      /** Une ligne qui résume ce qui est coché (le poids total…), recalculée à chaque case. */
+      resume?: (valeurs: unknown[]) => string;
+      /** Pourquoi ce qui est coché ne peut pas être validé (dit dans la fenêtre, validation impossible), ou `null`. */
+      refus?: (valeurs: unknown[]) => string | null;
+      libelleValider: string;
+      fermer: (r: unknown[] | null) => void;
+    })
   | (Base & { sorte: 'informer'; fermer: () => void })
   | (Base & {
       sorte: 'touche';
@@ -110,6 +122,27 @@ export function choisir<T>(titre: string, options: OptionChoix<T>[], message?: s
     message,
     options: options as OptionChoix<unknown>[],
     fermer: fermer as (r: unknown | null) => void,
+  }));
+}
+
+/** Plusieurs choix dans une liste (cases à cocher : A ou Entrée coche / décoche). Rend les valeurs cochées (au moins
+ * une), ou `null`. */
+export function cocher<T>(
+  titre: string,
+  options: OptionChoix<T>[],
+  o: { message?: string; coches?: boolean[]; resume?: (valeurs: T[]) => string; refus?: (valeurs: T[]) => string | null; libelleValider?: string } = {},
+): Promise<T[] | null> {
+  return ouvrir<T[] | null>((id, fermer) => ({
+    id,
+    sorte: 'cocher',
+    titre,
+    message: o.message,
+    options: options as OptionChoix<unknown>[],
+    coches: options.map((_, i) => o.coches?.[i] ?? false),
+    resume: o.resume as ((valeurs: unknown[]) => string) | undefined,
+    refus: o.refus as ((valeurs: unknown[]) => string | null) | undefined,
+    libelleValider: o.libelleValider ?? 'Valider',
+    fermer: fermer as (r: unknown[] | null) => void,
   }));
 }
 

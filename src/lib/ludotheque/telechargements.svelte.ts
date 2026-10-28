@@ -13,7 +13,8 @@ import {
   type JeuPc,
   type Version,
 } from '$lib/api';
-import { choisir, confirmer, informer, toast } from '$lib/dialogues/fenetres.svelte';
+import { choisir, cocher, confirmer, informer, toast } from '$lib/dialogues/fenetres.svelte';
+import { nomEnDouble, ordreDesCases, plusieursPossibles } from './versions';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { ludo, rechargerListe, rechargerPlateformes } from './ludotheque.svelte';
 import { proposerDossierJeux } from './dossierJeux';
@@ -140,23 +141,47 @@ export async function mettreDansLaLudotheque(id: number, versionVoulue?: number)
     return false;
   }
 
-  // 1. La version (la plus récente en premier) ; une carte e-Reader précise : celle-là.
-  const version =
-    versionVoulue !== undefined
-      ? versions.find((v) => v.telechargement_id === versionVoulue)
-      : versions.length === 1
-      ? versions[0]
-      : await choisir(
-          `📦 Quelle version de « ${fiche.titre} » ?`,
-          versions.map((v, i) => ({
-            valeur: v,
-            libelle: `${nature(v.qualite).libelle} — ${v.nom}${i === 0 ? ' (la plus récente)' : ''}`,
-            detail: taille(tailleVersion(v)),
-          })),
-          'Chaque version a ses propres fichiers et ses propres notes.',
-        );
-  if (!version) return false;
-  const total = tailleVersion(version);
+  // 1. La version (la plus récente en premier) ; une carte e-Reader précise : celle-là. Des ROM ou images disque :
+  // plusieurs à la fois, cochées (✅ Seb 28/10 : choisir sa version au lancement ; la plus récente cochée d'office,
+  // elle est lancée par défaut).
+  const options = versions.map((v, i) => ({
+    valeur: v,
+    libelle: `${nature(v.qualite).libelle} — ${v.nom}${i === 0 ? ' (la plus récente)' : ''}`,
+    detail: taille(tailleVersion(v)),
+  }));
+  let choisies: Version[] | null;
+  let avis: import('./versions').AvisVersion[] = [];
+  if (versionVoulue !== undefined) {
+    const v = versions.find((x) => x.telechargement_id === versionVoulue);
+    choisies = v ? [v] : null;
+  } else if (versions.length === 1) {
+    choisies = [versions[0]];
+  } else if (plusieursPossibles((avis = await api.versionsAvis(fiche).catch(() => [])), fiche.plateforme)) {
+    // La région préférée d'abord (FR, EU, US/EN), cochée d'office : la plus haute cochée est ⭐ celle d'habitude.
+    const ordre = ordreDesCases(versions, avis);
+    const a = avis;
+    choisies = await cocher(
+      `📦 Quelle(s) version(s) de « ${fiche.titre} » ?`,
+      ordre.map((v) => ({ valeur: v, libelle: `${nature(v.qualite).libelle} — ${v.nom}`, detail: taille(tailleVersion(v)) })),
+      {
+        message: 'Coche celles que tu veux garder : tu choisiras laquelle lancer au moment de jouer. ⭐ Celle d’habitude : la plus haute cochée.',
+        coches: ordre.map((_, i) => i === 0),
+        resume: (l) => (l.length ? `${l.length} version(s) — ${taille(l.reduce((s, v) => s + tailleVersion(v), 0))}` : 'Coche au moins une version.'),
+        refus: (l) => {
+          const n = nomEnDouble(l.map((v) => v.telechargement_id), a);
+          return n ? `Deux versions cochées ont un fichier du même nom (« ${n} ») : n’en garde qu’une.` : null;
+        },
+        libelleValider: 'Continuer',
+      },
+    );
+  } else {
+    const v = await choisir(`📦 Quelle version de « ${fiche.titre} » ?`, options, 'Chaque version a ses propres fichiers et ses propres notes.');
+    choisies = v ? [v] : null;
+  }
+  if (!choisies?.length) return false;
+  const version = choisies[0];
+  const autres = choisies.slice(1);
+  const total = choisies.reduce((s, v) => s + tailleVersion(v), 0);
   const plateforme = fiche.plateforme ?? 'Autres';
 
   // 2. L'emplacement.
@@ -199,8 +224,10 @@ export async function mettreDansLaLudotheque(id: number, versionVoulue?: number)
   const debit = debitConnu();
   const oui = await confirmer(`⬇ Mettre « ${fiche.titre} » dans ta ludothèque ?`, {
     message: [
-      `Version : ${nature(version.qualite).libelle} — ${version.nom}`,
-      `Taille : ${taille(total)} (${version.fichiers.length} fichier(s)), plus la fiche, la jaquette et les documents`,
+      autres.length
+        ? `Versions : ${choisies.map((v) => v.nom).join(' ; ')}\n⭐ Lancée d’habitude : ${version.nom}`
+        : `Version : ${nature(version.qualite).libelle} — ${version.nom}`,
+      `Taille : ${taille(total)} (${choisies.reduce((s, v) => s + v.fichiers.length, 0)} fichier(s)), plus la fiche, la jaquette et les documents`,
       `Emplacement : ${emplacement.chemin}`,
       `Place restante ensuite : ${taille(Math.max(0, (emplacement.libre ?? 0) - total))}`,
       debit ? `Durée estimée : ${duree(total / debit)} au débit mesuré sur ce PC` : 'Durée : estimée dès le début du téléchargement',
@@ -210,7 +237,7 @@ export async function mettreDansLaLudotheque(id: number, versionVoulue?: number)
   if (!oui) return false;
 
   try {
-    await api.ajouterJeu(id, version.telechargement_id, emplacement.chemin);
+    await api.ajouterJeu(id, version.telechargement_id, emplacement.chemin, autres.map((v) => v.telechargement_id));
   } catch (e) {
     if (estErreurCoeur(e) && e.sorte === 'reseau') {
       toast(`⚠ Impossible sans connexion : ${e.motif}`, 'alerte');

@@ -335,8 +335,10 @@ pub async fn jeu_ajouter(
     id: i64,
     version: i64,
     emplacement: String,
+    autres: Option<Vec<i64>>,
 ) -> Resultat<JeuPc> {
-    let j = noyau.ajouter(id, version, &emplacement, &emplacements(&app)).await?;
+    // `autres` : d'autres versions (régions) du même jeu, sur la même ligne (✅ Seb 28/10).
+    let j = noyau.ajouter_versions(id, version, &autres.unwrap_or_default(), &emplacement, &emplacements(&app)).await?;
     lancer_file(&app);
     Ok(j)
 }
@@ -477,6 +479,12 @@ pub fn dossier_jeux_propose() -> Option<DossierPropose> {
         disques: l.iter().map(|x| x.racine.clone()).collect(),
         externe: d.externe,
     })
+}
+
+/// Avant de cocher plusieurs versions d'une fiche : ce que le cœur en dit (une seule règle, la sienne).
+#[tauri::command]
+pub fn versions_avis(fiche: Value) -> Vec<crate::partie::AvisVersion> {
+    crate::partie::avis_versions(&fiche)
 }
 
 /// Le bouton Xbox ouvre-t-il la Game Bar de Windows ? (`None` : hors de Windows.)

@@ -338,11 +338,12 @@ pub fn lignes_retroarch() -> String {
     format!(
         "network_cmd_enable = \"true\"\nnetwork_cmd_port = \"{PORT_RETROARCH}\"\npause_nonactive = \"true\"\ninput_menu_toggle_gamepad_combo = \"0\"\n{}",
         // Essai de Seb (28/10) : « Recommencer » et « Quitter » du menu de Frogtend demandaient un 2e appui
-        // (`quit_press_twice`, qui vaut aussi pour la remise à zéro). Le bouton Xbox qui ouvre le menu de RetroArch
-        // (profils XInput livrés : `input_menu_toggle_btn = "10"`) : PAS coupé ici — RetroArch recopie ces lignes
-        // dans son retroarch.cfg (`config_save_on_exit`, gardé par Seb), la coupure serait permanente hors de
-        // Frogtend : question posée à Seb.
-        "quit_press_twice = \"false\"\n"
+        // (`quit_press_twice`, qui vaut aussi pour la remise à zéro). Et le bouton Xbox ouvrait le menu de RetroArch
+        // (profils XInput livrés : `input_menu_toggle_btn = "10"`) : un bouton réglé (non « nul ») l'emporte sur le
+        // profil → un numéro qu'aucune manette XInput n'a (0 à 10) ; plus aucun bouton n'ouvre son menu (F1 au clavier
+        // le peut). Permanent (RetroArch recopie ces lignes, `config_save_on_exit`) : ✅ Seb 28/10 « Oui coupe.
+        // RetroArch n'a pas vocation à être utilisé hors de Frogtend ». NON vérifié en vrai : à essayer avec Seb.
+        "quit_press_twice = \"false\"\ninput_menu_toggle_btn = \"99\"\n"
     )
 }
 
@@ -837,6 +838,6 @@ mod tests {
         assert!(!lignes_retroarch().contains("network_cmd_bind_address"));
         // Recommencer / Quitter en un seul appui ; aucun bouton de la manette n'ouvre le menu de RetroArch.
         assert_eq!(lignes_retroarch().matches("quit_press_twice = \"false\"").count(), 1);
-        assert!(!lignes_retroarch().contains("input_menu_toggle_btn"), "le bouton Xbox : en attente de la décision de Seb");
+        assert_eq!(lignes_retroarch().matches("input_menu_toggle_btn = \"99\"").count(), 1, "bouton Xbox coupé (✅ Seb 28/10)");
     }
 }

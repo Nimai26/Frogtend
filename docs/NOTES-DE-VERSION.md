@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.136.0 — Plusieurs versions d'un jeu (1)
+
+- 📦 Quand un jeu de Firehouse existe en plusieurs ROM ou images disque (USA, Japon, Europe…), tu peux en COCHER
+  plusieurs en le mettant dans ta ludothèque (la plus récente est cochée d'office ; le poids total est affiché). Elles
+  arrivent ensemble, dans le même dossier, sans jamais être renommées.
+- ▶ Au moment de jouer, « Jouer avec… » te laisse choisir la version ; la première cochée est celle d'habitude (⭐),
+  que tu peux changer dans « ⚙ Gérer le jeu ».
+- Pas encore : ajouter une autre version à un jeu DÉJÀ sur le PC (prochaine étape).
+- 🎮 Le bouton Xbox n'ouvre plus le menu de RetroArch (ta décision : RetroArch ne sert qu'à travers Frogtend ; F1 au
+  clavier l'ouvre encore).
+
 ## 0.135.0 — Les corrections de la séance d'essais
 
 - 🎮 Menu en jeu et Taodbox : chaque appui de la manette ne compte plus qu'une fois, même quand Steam est ouvert (Steam

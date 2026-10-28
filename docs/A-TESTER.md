@@ -3,11 +3,19 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Plusieurs versions d'un jeu (0.136.0)
+- [ ] Un jeu SNES pas encore sur le PC avec plusieurs ROM : « ➕ Mettre dans ma ludothèque » → des cases à cocher
+      (la plus récente cochée), le poids total change ; en cocher 2 ; le récapitulatif liste les deux et ⭐ celle
+      d'habitude.
+- [ ] Après l'installation : « ▶ Jouer avec… » propose les deux versions ; chacune lance SA ROM.
+- [ ] ⚙ Gérer le jeu ▸ 📀 Version : changer celle d'habitude.
+
 ## Les corrections de la séance d'essais (0.135.0) — À REFAIRE ENSEMBLE (Super Mario World)
 - [ ] Au lancement du jeu, manette branchée : la question « 🎮 Le bouton Xbox ouvre la Game Bar » (« Annuler »
       choisi d'office) ; « Couper le bouton » → en jeu, le bouton Xbox n'ouvre plus la Game Bar (sans redémarrer ?
       la clé vient de tutoriels, pas de Microsoft). Plus tard : le même essai par Moonlight (manette de Sunshine).
-- [ ] Le bouton Xbox ouvre ENCORE le menu de RetroArch (pas coupé : décision de Seb attendue).
+- [ ] (0.136.0) Le bouton Xbox n'ouvre plus le menu de RetroArch (coupé, ✅ Seb 28/10 ; F1 au clavier l'ouvre
+      encore).
 - [ ] Menu en jeu (Vue + RB 1 s), Steam OUVERT : la croix avance d'UN élément à la fois ; « Options du jeu » ouvre
       bien ses 4 lignes ; essayer avance rapide, photo, son.
 - [ ] Pas de « Disque suivant » pour la cartouche.

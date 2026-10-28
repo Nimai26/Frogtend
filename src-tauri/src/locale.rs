@@ -135,6 +135,23 @@ pub fn deplacer_verifie(depuis: &Path, vers: &Path) -> Resultat<usize> {
     Ok(fichiers.len())
 }
 
+/// Les fichiers d'une version de la fiche, notés sous `version` (`None` : la version de la ligne).
+fn fichiers_de_version(v: &serde_json::Value, version: Option<i64>) -> Resultat<Vec<FichierJeu>> {
+    let mut fichiers = Vec::new();
+    for (n, f) in v["fichiers"].as_array().cloned().unwrap_or_default().iter().enumerate() {
+        let nom = nom_de_fichier_sur(f["nom"].as_str().unwrap_or(""))?.to_string();
+        // Un fichier dans un sous-dossier (contrat 1.13 : la CHD d'un jeu MAME, dans le dossier de son parent).
+        let nom = match f["dossier"].as_str().filter(|d| !d.is_empty()) {
+            Some(d) => format!("{}/{nom}", nom_de_fichier_sur(d)?),
+            None => nom,
+        };
+        // L'empreinte (contrat 1.24), seulement si elle a la forme d'un sha1 : vérifiée à la fin du téléchargement.
+        let sha1 = f["sha1"].as_str().filter(|h| h.len() == 40 && h.chars().all(|c| c.is_ascii_hexdigit())).map(str::to_lowercase);
+        fichiers.push(FichierJeu { n: n as u32, nom, taille: f["taille"].as_u64().unwrap_or(0), sha1, version });
+    }
+    Ok(fichiers)
+}
+
 impl Noyau {
     /// Les médias d'un jeu : dans son dossier s'il est sur le PC ; sinon l'ancien emplacement (avant 0.30.0).
     pub fn dossier_medias(&self, id: i64) -> PathBuf {
@@ -209,6 +226,21 @@ impl Noyau {
         emplacement: &str,
         emplacements: &Emplacements,
     ) -> Resultat<JeuPc> {
+        self.ajouter_versions(id, version, &[], emplacement, emplacements).await
+    }
+
+    /// Pareil, avec d'AUTRES versions du même jeu sur la même ligne (régions d'une ROM, ✅ Seb 28/10 : « choisir sa
+    /// version au lancement ») : un seul contrôle de place pour le tout, chaque fichier noté sous SA version, jamais un
+    /// nom en double (jamais renommé), et seulement des ROM ou images disque simples (`version_simple`). `version` est
+    /// celle lancée par défaut.
+    pub async fn ajouter_versions(
+        &self,
+        id: i64,
+        version: i64,
+        autres: &[i64],
+        emplacement: &str,
+        emplacements: &Emplacements,
+    ) -> Resultat<JeuPc> {
         // Un jeu de Firehouse a un numéro POSITIF : un numéro négatif est celui d'un jeu importé (`est_importe`), jamais
         // effacé du disque — il ne doit jamais entrer ici.
         if id <= 0 {
@@ -252,24 +284,46 @@ impl Noyau {
         if let Some(m) = crate::commandes::refus_dossier_jeux(Path::new(emplacement)) {
             return Err(Erreur::Reglage(m));
         }
-        let v = fiche["versions"]
-            .as_array()
-            .and_then(|l| l.iter().find(|v| v["telechargement_id"].as_i64() == Some(version)))
-            .ok_or_else(|| Erreur::Introuvable("Cette version n'existe plus dans Firehouse : relis la fiche.".into()))?;
-        let mut fichiers = Vec::new();
-        for (n, f) in v["fichiers"].as_array().cloned().unwrap_or_default().iter().enumerate() {
-            let nom = nom_de_fichier_sur(f["nom"].as_str().unwrap_or(""))?.to_string();
-            // Un fichier dans un sous-dossier (contrat 1.13 : la CHD d'un jeu MAME, dans le dossier de son parent).
-            let nom = match f["dossier"].as_str().filter(|d| !d.is_empty()) {
-                Some(d) => format!("{}/{nom}", nom_de_fichier_sur(d)?),
-                None => nom,
-            };
-            // L'empreinte (contrat 1.24), seulement si elle a la forme d'un sha1 : vérifiée à la fin du téléchargement.
-            let sha1 = f["sha1"].as_str().filter(|h| h.len() == 40 && h.chars().all(|c| c.is_ascii_hexdigit())).map(str::to_lowercase);
-            fichiers.push(FichierJeu { n: n as u32, nom, taille: f["taille"].as_u64().unwrap_or(0), sha1, version: None });
-        }
+        let trouver = |numero: i64| {
+            fiche["versions"]
+                .as_array()
+                .and_then(|l| l.iter().find(|v| v["telechargement_id"].as_i64() == Some(numero)))
+                .ok_or_else(|| Erreur::Introuvable("Cette version n'existe plus dans Firehouse : relis la fiche.".into()))
+        };
+        let v = trouver(version)?;
+        let mut fichiers = fichiers_de_version(v, None)?;
         if fichiers.is_empty() {
             return Err(Erreur::Refus("Cette version n'a aucun fichier à télécharger.".into()));
+        }
+        // Les autres versions cochées : seulement pour un jeu qui n'est pas encore sur le PC, et des ROM ou images disque
+        // simples (rien n'y est décompressé : aucune version ne touche une autre).
+        let mut vues = vec![version];
+        let autres: Vec<i64> = autres.iter().copied().filter(|a| *a != version).collect();
+        if !autres.is_empty() {
+            if existant.is_some() || crate::jeux_pc::a_cartes(&plateforme) {
+                return Err(Erreur::Refus("Plusieurs versions à la fois : seulement pour un jeu qui n'est pas encore sur ce PC.".into()));
+            }
+            if !crate::partie::version_simple(v) {
+                return Err(Erreur::Refus("Plusieurs versions à la fois : seulement pour des ROM ou des images disque.".into()));
+            }
+        }
+        for &a in &autres {
+            if vues.contains(&a) {
+                continue;
+            }
+            let va = trouver(a)?;
+            if !crate::partie::version_simple(va) {
+                return Err(Erreur::Refus("Plusieurs versions à la fois : seulement pour des ROM ou des images disque.".into()));
+            }
+            for f in fichiers_de_version(va, Some(a))? {
+                // Deux versions qui ont un fichier du même nom : refusé (une ROM n'est jamais renommée).
+                // (Sans casse, accents compris : comme NTFS.)
+                if fichiers.iter().any(|x| x.nom.to_lowercase() == f.nom.to_lowercase()) {
+                    return Err(Erreur::Refus(format!("Deux des versions choisies ont un fichier du même nom (« {} ») : choisis-en une seule.", f.nom)));
+                }
+                fichiers.push(f);
+            }
+            vues.push(a);
         }
         // Une carte de plus pour un jeu à cartes déjà sur ce PC : ajoutée à SA ligne, sous SA version.
         if let Some(e) = existant {
@@ -774,6 +828,93 @@ mod tests {
         assert_eq!((apres.etat, apres.fichiers.len()), (Etat::Telecharge, 1));
         assert!(dossier.join(&j2.fichiers[0].nom).exists() && n.fiche_locale(29704).is_some(), "carte et médias gardés");
         // Un jeu SANS cartes déjà sur le PC reste refusé comme avant (testé par les autres essais d'ajout).
+    }
+
+    /// Super Mario World en trois régions (essai de Seb, 28/10), plus un « prêt à jouer » et une version au même nom de
+    /// fichier, servis par un faux Firehouse.
+    fn serveur_mario() -> (MockServer, Vec<i64>) {
+        let s = MockServer::start();
+        let v = |id: i64, nom: &str, qualite: &str, fichier: &str| {
+            json!({"telechargement_id": id, "nom": nom, "qualite": qualite, "type_source": "ddl", "range_le": "2026-10-01T00:00:00",
+                   "fichiers": [{"nom": fichier, "taille": fichier.len()}], "notes": ""})
+        };
+        let fiche = json!({"ok": true, "jeu": {"id": 300, "titre": "Super Mario World", "annee": 1990, "plateforme": "Super Nintendo Entertainment System",
+            "versions": [
+                v(31, "USA", "Jeu — ROM", "Super Mario World (USA).sfc"),
+                v(32, "Japon", "Jeu — ROM", "Super Mario World - Super Mario Bros. 4 (Japan).sfc"),
+                v(33, "Europe Rev 1", "Jeu — ROM", "Super Mario World (Europe) (Rev 1).sfc"),
+                v(34, "Pack prêt à jouer", "Jeu — prêt à jouer", "Mario pret.exe"),
+                v(35, "USA (copie)", "Jeu — ROM", "Super Mario World (USA).sfc"),
+            ], "annexes": []}});
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "Super Nintendo Entertainment System", "jeux": 1}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [{"id": 300, "titre": "Super Mario World", "plateforme": "Super Nintendo Entertainment System"}]}));
+        });
+        s.mock(move |w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/300");
+            t.status(200).json_body(fiche.clone());
+        });
+        for (id, f) in [(31, "Super Mario World (USA).sfc"), (32, "Super Mario World - Super Mario Bros. 4 (Japan).sfc"), (33, "Super Mario World (Europe) (Rev 1).sfc")] {
+            let route = format!("/api/jeux/v1/fichier/300/{id}/0");
+            s.mock(move |w, t| {
+                w.method(GET).path(route.clone());
+                t.status(200).body(f);
+            });
+        }
+        (s, vec![31, 32, 33, 34, 35])
+    }
+
+    #[tokio::test]
+    async fn plusieurs_regions_d_une_rom_sur_la_meme_ligne_puis_choisies_au_lancement() {
+        let (s, v) = serveur_mario();
+        let (_d, n, e) = noyau_ouvert(&s).await;
+        let empl = e.defaut[0].clone();
+        // Refus : un « prêt à jouer » parmi elles ; deux versions au même nom de fichier (jamais renommé).
+        assert!(matches!(n.ajouter_versions(300, v[0], &[v[3]], &empl, &e).await, Err(Erreur::Refus(_))));
+        let r = n.ajouter_versions(300, v[0], &[v[4]], &empl, &e).await.err().unwrap().to_string();
+        assert!(r.contains("même nom"), "{r}");
+        assert!(n.registre().jeu(300).unwrap().is_none(), "rien d'ajouté après un refus");
+        // USA (par défaut), Japon et Europe : une ligne, chaque fichier sous SA version, un seul total.
+        let j = n.ajouter_versions(300, v[0], &[v[1], v[2], v[1]], &empl, &e).await.unwrap();
+        assert_eq!(j.fichiers.len(), 3);
+        assert_eq!(j.fichiers.iter().map(|f| f.version).collect::<Vec<_>>(), [None, Some(32), Some(33)]);
+        assert_eq!(j.total, j.fichiers.iter().map(|f| f.taille).sum::<u64>());
+        // Un jeu déjà là : plusieurs versions refusées (l'ajout à un jeu installé viendra à part).
+        assert!(matches!(n.ajouter_versions(300, v[0], &[v[1]], &empl, &e).await, Err(Erreur::Refus(_))));
+        let session = n.session().await.unwrap();
+        n.executer_file(session, &|_| {}).await.unwrap();
+        let dossier = Path::new(&j.dossier);
+        assert!(j.fichiers.iter().all(|f| dossier.join(&f.nom).is_file()), "les trois ROM reçues, sous leur nom");
+        // L'installation : USA lancée d'habitude, les trois proposées au lancement (chacune SON fichier).
+        let i = n.installer(300, true).await.unwrap();
+        assert_eq!(i.fichier_du_jeu.as_deref(), Some("Super Mario World (USA).sfc"));
+        assert_eq!(i.versions.len(), 3, "{:?}", i.versions);
+        assert!(i.versions[0].chemin.ends_with("Super Mario World (USA).sfc") && i.versions[1].chemin.ends_with("(Japan).sfc"));
+        assert!(i.versions.iter().any(|x| x.libelle.contains("Europe")), "{:?}", i.versions);
+        // Au lancement : la version Japon choisie pour cette partie → l'émulateur reçoit SON fichier.
+        let japon = i.versions[1].chemin.clone();
+        let f = n.fichier_pour_l_emulateur(300, Some(&japon)).await.unwrap().unwrap();
+        assert!(f.to_string_lossy().ends_with("(Japan).sfc"), "{f:?}");
+        assert!(n.fichier_pour_l_emulateur(300, None).await.unwrap().unwrap().to_string_lossy().ends_with("(USA).sfc"));
+        // ⭐ Japon choisie d'habitude : une réinstallation la garde.
+        n.choisir_version(300, &japon).await.unwrap();
+        let i = n.installer(300, true).await.unwrap();
+        assert!(i.fichier_du_jeu.as_deref().is_some_and(|f| f.ends_with("(Japan).sfc")), "{i:?}");
+        assert_eq!(i.versions.len(), 3);
+        // La sauvegarde retiendra les trois versions pour une restauration.
+        assert!(crate::partie::plusieurs_versions(&n.registre().jeu(300).unwrap().unwrap()));
+        // L'avis du cœur avant de cocher (une seule règle) : le « prêt à jouer » ne se coche pas ; l'Europe passe
+        // avant les USA, puis le Japon.
+        let fiche: Value = n.session().await.unwrap().source.fiche(300).await.unwrap();
+        let avis = crate::partie::avis_versions(&fiche);
+        let de = |id: i64| avis.iter().find(|a| a.telechargement_id == id).unwrap();
+        assert!(de(31).cochable && de(32).cochable && !de(34).cochable);
+        assert!(de(33).rang < de(31).rang && de(31).rang < de(32).rang, "{avis:?}");
+        assert_eq!(de(35).fichiers, ["Super Mario World (USA).sfc"]);
     }
 
     #[tokio::test]

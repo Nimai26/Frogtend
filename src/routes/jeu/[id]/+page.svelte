@@ -248,7 +248,7 @@
           <button class="btn primary" onclick={() => installer(surPc.id)} disabled={partie.installation === surPc.id}>📦 Installer</button>
         {:else}
           <button class="btn primary" onclick={() => jouer(surPc.id)} disabled={partie.enJeu !== null || partie.lancement !== null || libellePreparation(surPc.plateforme) !== null}>{libellePreparation(surPc.plateforme) ?? (partie.lancement === surPc.id ? 'Lancement…' : '▶ Jouer')}</button>
-          {#if emulateursDuJeu(surPc.plateforme).liste.length > 1}
+          {#if emulateursDuJeu(surPc.plateforme).liste.length > 1 || (surPc.installation.versions?.length ?? 0) > 1}
             <button class="btn" onclick={() => jouerAvec(surPc.id)} disabled={partie.enJeu !== null || partie.lancement !== null || libellePreparation(surPc.plateforme) !== null}>▶ Jouer avec…</button>
           {/if}
         {/if}

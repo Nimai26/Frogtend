@@ -12,6 +12,7 @@ import { ajouter, normaliserTous } from '$lib/emulateurs/choix';
 import { depuis } from '$lib/ludotheque/ludotheque.svelte';
 import { rechargerJeuxDuPc, tele } from '$lib/ludotheque/telechargements.svelte';
 import { proposerDossierJeux } from '$lib/ludotheque/dossierJeux';
+import { aCartes } from '$lib/ludotheque/cartes';
 import { aAnnoncer, dossierDesAbris, dossierDesCopies } from './sauvegardeTaille';
 
 export interface BilanSauvegarde {
@@ -309,10 +310,19 @@ export async function restaurer(profilChoisi?: string, pcChoisi?: string) {
       const places = await api.proposerEmplacements(j.plateforme, j.total ?? 0);
       const place = places.find((p) => p.assez);
       if (!place) throw new Error('aucun emplacement avec assez de place');
-      await api.ajouterJeu(j.id, j.version, place.chemin);
+      const autres = ((j.cartes ?? []) as number[]).filter((v) => v !== j.version);
+      // Plusieurs régions : toutes ensemble, sur la même ligne (un seul contrôle de place).
+      try {
+        await api.ajouterJeu(j.id, j.version, place.chemin, aCartes(j.plateforme) ? [] : autres);
+      } catch (e) {
+        // Une région qui n'est plus chez Firehouse : la version d'habitude seule, et les autres dites.
+        if (aCartes(j.plateforme) || !autres.length) throw e;
+        await api.ajouterJeu(j.id, j.version, place.chemin);
+        echecs.push(`${j.titre} (ses autres versions) : ${motifDuRefus(e)}`);
+      }
       // Un jeu à cartes (e-Reader) : ses autres cartes aussi, sur la même ligne.
-      for (const v of (j.cartes ?? []) as number[]) {
-        if (v !== j.version) await api.ajouterJeu(j.id, v, place.chemin).catch((e) => echecs.push(`${j.titre} (une carte) : ${motifDuRefus(e)}`));
+      if (aCartes(j.plateforme)) {
+        for (const v of autres) await api.ajouterJeu(j.id, v, place.chemin).catch((e) => echecs.push(`${j.titre} (une carte) : ${motifDuRefus(e)}`));
       }
       ok++;
     } catch (e) {

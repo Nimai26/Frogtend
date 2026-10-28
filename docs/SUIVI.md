@@ -57,7 +57,22 @@
   suivant » si .m3u/.pbp, DOSBox ou Famicom Disk System ; `message_disque` ; Game Bar : 1re écriture du registre
   (une valeur, relue), question après la préparation, manette branchée, « Annuler » d'office. ⏳ **Question à Seb** :
   couper aussi le bouton Xbox DANS RetroArch (`input_menu_toggle_btn = "99"`, non vérifié) — avec la recopie gardée
-  par Seb, ce serait PERMANENT hors de Frogtend (menu de RetroArch seulement par F1 au clavier). RESTE : plusieurs
+  par Seb, ce serait PERMANENT hors de Frogtend (menu de RetroArch seulement par F1 au clavier). ✅ Seb 28/10 : « Oui
+  coupe. RetroArch n'a pas vocation à être utilisé hors de Frogtend. » + « attaque la suite » (plusieurs versions)
+  + « Nous reprendrons les tests quand tout ce qui a été détecté lors des précédents sera réglé ». ✅ 0.136.0 :
+  bouton Xbox coupé dans RetroArch (`input_menu_toggle_btn = "99"`, non vérifié en vrai) ; **versions multiples,
+  ÉTAPE 1** (avis des experts contrat + lancement AVANT, relectures lancement + interface APRÈS, suivies) : plusieurs
+  ROM / images disque SIMPLES cochées au PREMIER ajout (`ajouter_versions`, une ligne, chaque fichier sous SA version,
+  un seul contrôle de place, noms en double refusés) ; installation : `retenir_versions` (chaque version SON fichier,
+  une version qui ne démarrerait pas est écartée et notée), ⭐ gardée à la réinstallation ; règle « cochable » et rang
+  de région donnés par le cœur (`versions_avis`), cases rangées FR > EU > US/EN, la plus haute cochée = ⭐ ; noms en
+  double dits dans la fenêtre ; fenêtre maison `cocher` (manette, lecteur d'écran) ; « ▶ Jouer avec… » aussi sur la
+  page du jeu et au canapé (menu Y) ; sauvegarde/restauration de toutes les versions (repli : la version d'habitude
+  seule si une région a disparu). ⏳ **ÉTAPE 2** (à faire, avant les essais) : « ➕ Ajouter une autre version » à un
+  jeu DÉJÀ sur le PC — état PAR version (jamais la ligne repassée en attente, jeu jouable pendant le téléchargement),
+  annuler/retirer UNE version (aussi une version en erreur 409/404 qui bloque aujourd'hui toute la ligne : I3), fiche
+  locale rafraîchie (B3), relevé des parties sans les fichiers d'une autre version (B4), versions plus chez Firehouse
+  montrées (besoin 38) ; et : fiches réunies à comparer par version, nombre de disques d'une version .m3u. RESTE : plusieurs
   versions d'une ROM (lot suivant) ; Taodbox sans libellé de préparation ; « Recommencer » a le focus sur « Oui »
   (le doublon est écarté, mais un vrai double A reste possible) ; pas de bouton pour remettre la Game Bar.
 

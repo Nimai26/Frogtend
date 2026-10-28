@@ -161,6 +161,58 @@ async fn lancer_par_la_boutique(b: &crate::jeux_pc::LancementBoutique, dossier: 
     .map_err(|_| Erreur::Disque("L'attente du jeu s'est arrêtée brutalement.".into()))?
 }
 
+/// La ligne porte-t-elle plusieurs RÉGIONS d'un jeu (pas les cartes e-Reader, qui ont leur propre lancement) ?
+pub(crate) fn plusieurs_versions(j: &JeuPc) -> bool {
+    !crate::jeux_pc::a_cartes(&j.plateforme) && j.fichiers.iter().any(|f| f.version.is_some_and(|v| v != j.version))
+}
+
+/// Une version qui peut COHABITER avec d'autres sur la même ligne (plusieurs régions d'un jeu, ✅ Seb 28/10) : une ROM
+/// ou une image disque donnée telle quelle à l'émulateur — jamais MAME (dossier `-rompath`, CHD), jamais une forme
+/// `archive`, des disques zippés à extraire ou des contenus d'émulateur (DLC) : rien n'y est décompressé ni installé,
+/// donc rien d'une version ne peut toucher une autre.
+pub(crate) fn version_simple(version: &Value) -> bool {
+    if version.is_null() || version["mame"].is_object() || contenus_emulateur(version) || !forme_fichier(version) {
+        return false;
+    }
+    if !roles(version, &["archive_a_extraire"]).is_empty() {
+        return false;
+    }
+    match nature(version["qualite"].as_str().unwrap_or("")) {
+        Nature::Rom | Nature::ImageDisque => true,
+        Nature::NonDite => !roles(version, &["liste_disques"]).is_empty(),
+        _ => false,
+    }
+}
+
+/// Ce que le cœur dit de chaque version d'une fiche avant qu'on coche (l'interface ne refait jamais la règle) : peut-elle
+/// cohabiter avec d'autres (`version_simple`), son rang de région et sa qualité (ordre de Seb : FR, EU, US/EN,
+/// autres), ses noms de fichiers (deux versions au même nom ne se cochent pas ensemble).
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct AvisVersion {
+    pub telechargement_id: i64,
+    pub cochable: bool,
+    pub rang: u8,
+    pub qualite: i32,
+    pub fichiers: Vec<String>,
+}
+
+pub fn avis_versions(fiche: &Value) -> Vec<AvisVersion> {
+    fiche["versions"]
+        .as_array()
+        .map(|l| {
+            l.iter()
+                .filter_map(|v| {
+                    let telechargement_id = v["telechargement_id"].as_i64()?;
+                    let fichiers: Vec<String> = v["fichiers"].as_array().map(|f| f.iter().filter_map(|x| x["nom"].as_str().map(String::from)).collect()).unwrap_or_default();
+                    let lance = lancer_de(v, &fichiers).or_else(|| fichier_principal(&fichiers)).unwrap_or_default();
+                    let (rang, qualite, _, _) = crate::import_local::etiquettes(&lance);
+                    Some(AvisVersion { telechargement_id, cochable: version_simple(v), rang, qualite, fichiers })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Le fichier donné à l'émulateur : pour un jeu en plusieurs fichiers, celui qui les décrit (.cue, .m3u…).
 fn fichier_principal(fichiers: &[String]) -> Option<String> {
     for ext in [".m3u", ".cue", ".gdi", ".chd", ".iso"] {
@@ -501,7 +553,9 @@ impl Noyau {
             }
             Methode::Aucune => {
                 if matches!(p.nature, Nature::Rom | Nature::ImageDisque) {
-                    let noms: Vec<String> = j.fichiers.iter().map(|f| f.nom.clone()).collect();
+                    // Plusieurs régions sur la ligne : le fichier lancé par défaut est pris dans SA version seulement.
+                    let multi = plusieurs_versions(&j);
+                    let noms: Vec<String> = j.fichiers.iter().filter(|f| !multi || f.version.unwrap_or(j.version) == j.version).map(|f| f.nom.clone()).collect();
                     // MAME : le zip du jeu (son nom court), jamais la CHD rangée à côté.
                     fichier_du_jeu = match self.mame_de(&j) {
                         Some(nom) => Some(noms.iter().find(|f| f.eq_ignore_ascii_case(&format!("{nom}.zip"))).cloned().ok_or_else(|| {
@@ -562,6 +616,7 @@ impl Noyau {
             )));
         }
         let i = self.retenir_installation(&j, &dest, p.methode, fichier_du_jeu, p.nature, extraits)?;
+        let i = if plusieurs_versions(&j) { self.retenir_versions(&j, i)? } else { i };
         self.reposer_parties_restaurees(id, &i).await;
         // Forme `archive` : le programme que dit Firehouse (relatif au dossier d'extraction, confirmé le 21/10), s'il y est
         // vraiment, devient le lanceur (par `choisir_lanceur` et ses contrôles) ; sinon la personne choisit.
@@ -637,6 +692,55 @@ impl Noyau {
         v["mame"]["nom"].as_str().filter(|n| crate::jeux_pc::nom_de_fichier_sur(n).is_ok()).map(String::from)
     }
 
+    /// Les versions d'une ligne à plusieurs régions, inscrites dans l'installation (le choix au lancement, ⭐ celle
+    /// d'habitude) : le fichier lancé de CHACUNE, pris dans ses fichiers seulement, avec ses étiquettes. Celle de la
+    /// ligne d'abord ; la version par défaut (`dossier` + `fichier_du_jeu`) n'est pas changée.
+    fn retenir_versions(&self, j: &JeuPc, mut i: Installation) -> Resultat<Installation> {
+        let fiche = self.fiche_locale(j.id).unwrap_or(Value::Null);
+        let mut numeros = vec![j.version];
+        for f in &j.fichiers {
+            let v = f.version.unwrap_or(j.version);
+            if !numeros.contains(&v) {
+                numeros.push(v);
+            }
+        }
+        let mut versions = Vec::new();
+        for n in numeros {
+            let noms: Vec<String> = j.fichiers.iter().filter(|f| f.version.unwrap_or(j.version) == n).map(|f| f.nom.clone()).collect();
+            let v = fiche["versions"].as_array().and_then(|l| l.iter().find(|v| v["telechargement_id"].as_i64() == Some(n))).cloned().unwrap_or(Value::Null);
+            let Some(fichier) = lancer_de(&v, &noms).or_else(|| fichier_principal(&noms)) else { continue };
+            // Une version qui ne démarrerait pas (chemin douteux, .m3u dont un disque manque) est seulement écartée
+            // du choix (jamais une installation à moitié inscrite) ; la version de la ligne a été vérifiée avant.
+            let chemin = match crate::jeux_pc::chemin_de_fichier_sur(&fichier).map(|r| Path::new(&j.dossier).join(r)) {
+                Ok(c) => c,
+                Err(e) => {
+                    self.journaliser(&format!("jeu {} : version {n} écartée du choix ({e})", j.id));
+                    continue;
+                }
+            };
+            if fichier.to_lowercase().ends_with(".m3u") {
+                if let Err(e) = verifier_m3u(&chemin) {
+                    self.journaliser(&format!("jeu {} : version {n} écartée du choix ({e})", j.id));
+                    continue;
+                }
+            }
+            let (rang, qualite, libelle, _) = crate::import_local::etiquettes(&fichier);
+            let libelle = if libelle.trim().is_empty() { v["nom"].as_str().unwrap_or(&fichier).to_string() } else { libelle };
+            versions.push(crate::jeux_pc::VersionLocale { chemin: chemin.to_string_lossy().into(), libelle, rang, qualite, disques: vec![] });
+        }
+        // Une réinstallation garde la version ⭐ choisie avant (si elle est toujours là).
+        if let Some(avant) = j.installation.as_ref().and_then(|a| a.fichier_du_jeu.as_ref().map(|f| Path::new(&a.dossier).join(f))) {
+            if let Some(v) = versions.iter().find(|v| Path::new(&v.chemin) == avant) {
+                let p = Path::new(&v.chemin);
+                i.dossier = p.parent().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
+                i.fichier_du_jeu = p.file_name().map(|n| n.to_string_lossy().to_string());
+            }
+        }
+        i.versions = versions;
+        self.registre().changer_installation(j.id, Some(&i))?;
+        Ok(i)
+    }
+
     fn retenir_installation(
         &self,
         j: &JeuPc,
@@ -673,7 +777,7 @@ impl Noyau {
         candidats(Path::new(&i.dossier), &j.titre)
     }
 
-    /// La version lancée par défaut d'un jeu importé (une de ses versions).
+    /// La version lancée par défaut d'un jeu (importé, ou de Firehouse en plusieurs régions) : une de ses versions.
     pub async fn choisir_version(&self, id: i64, chemin: &str) -> Resultat<()> {
         let j = self.jeu_visible(id).await?;
         let mut i = j.installation.ok_or_else(|| Erreur::Refus("Le jeu n'est pas installé.".into()))?;

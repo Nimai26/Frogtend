@@ -56,8 +56,21 @@
     };
   });
 
+  /** Les cases cochées d'une fenêtre « Cocher » (par fenêtre ; au départ, celles qu'elle a reçues). */
+  let cases = $state<Record<number, boolean[]>>({});
+  const cochees = (d: Extract<Dialogue, { sorte: 'cocher' }>) => cases[d.id] ?? d.coches;
+  const valeursCochees = (d: Extract<Dialogue, { sorte: 'cocher' }>) => d.options.filter((_, i) => cochees(d)[i]).map((o) => o.valeur);
+  function basculer(d: Extract<Dialogue, { sorte: 'cocher' }>, i: number) {
+    const l = [...cochees(d)];
+    l[i] = !l[i];
+    cases[d.id] = l;
+  }
+
   function valider(d: Dialogue) {
-    if (d.sorte === 'confirmer') d.fermer(true);
+    if (d.sorte === 'cocher') {
+      const v = valeursCochees(d);
+      if (v.length && !d.refus?.(v)) d.fermer(v);
+    } else if (d.sorte === 'confirmer') d.fermer(true);
     else if (d.sorte === 'demander') d.fermer(saisies[d.id] ?? d.valeur);
     else if (d.sorte === 'informer') d.fermer();
   }
@@ -140,6 +153,21 @@
         {/if}
       {/if}
 
+      {#if d.sorte === 'cocher'}
+        <ul class="choix" role="group" aria-labelledby="dlg-titre-{d.id}">
+          {#each d.options as o, i (o)}
+            <li>
+              <button class="btn option" role="checkbox" aria-checked={cochees(d)[i]} onclick={() => basculer(d, i)}>
+                <span><span aria-hidden="true">{cochees(d)[i] ? '☑' : '☐'}</span> {o.libelle}</span>
+                {#if o.detail}<span class="muted">{o.detail}</span>{/if}
+              </button>
+            </li>
+          {/each}
+        </ul>
+        {#if d.resume}<p class="muted" aria-live="polite">{d.resume(valeursCochees(d))}</p>{/if}
+        {#if d.refus?.(valeursCochees(d))}<p class="refus" role="alert">{d.refus(valeursCochees(d))}</p>{/if}
+      {/if}
+
       <div class="actions">
         {#if d.sorte === 'informer'}
           <button class="btn primary" data-valider onclick={() => d.fermer()}>OK</button>
@@ -151,6 +179,8 @@
             </button>
           {:else if d.sorte === 'demander'}
             <button class="btn primary" data-valider onclick={() => valider(d)}>{d.libelleValider}</button>
+          {:else if d.sorte === 'cocher'}
+            <button class="btn primary" disabled={valeursCochees(d).length === 0 || !!d.refus?.(valeursCochees(d))} onclick={() => valider(d)}>{d.libelleValider}</button>
           {:else if d.sorte === 'touche'}
             <button class="btn" onclick={() => d.fermer('rien')}>⬜ Aucune touche</button>
             <button class="btn" onclick={() => d.fermer('liste')}>📋 Dans la liste…</button>
@@ -236,6 +266,10 @@
     width: 100%;
     justify-content: space-between;
     text-align: left;
+  }
+  .refus {
+    color: var(--err);
+    margin: 0 0 calc(10 * var(--u));
   }
   .actions {
     display: flex;

@@ -664,8 +664,9 @@ export const api = {
     appeler<EmplacementPropose[]>('emplacements_proposer', { plateforme, taille }),
   /** Retire UNE carte d'un jeu e-Reader (jamais la dernière, jamais les parties). */
   retirerCarte: (id: number, version: number) => appeler<JeuPc>('jeu_retirer_carte', { id, version }),
-  ajouterJeu: (id: number, version: number, emplacement: string) =>
-    appeler<Omit<JeuPc, 'recus'>>('jeu_ajouter', { id, version, emplacement }),
+  /** `autres` : d'autres versions (régions) du même jeu, sur la même ligne — ROM ou images disque seulement. */
+  ajouterJeu: (id: number, version: number, emplacement: string, autres: number[] = []) =>
+    appeler<Omit<JeuPc, 'recus'>>('jeu_ajouter', { id, version, emplacement, autres }),
   pause: (id: number) => appeler<void>('telechargement_pause', { id }),
   reprendre: (id: number) => appeler<void>('telechargement_reprendre', { id }),
   annuler: (id: number) => appeler<void>('telechargement_annuler', { id }),
@@ -717,6 +718,8 @@ export const api = {
   dossierJeuxPropose: () => appeler<{ chemin: string; disque: string; libre: number; disques: string[]; externe: boolean } | null>('dossier_jeux_propose'),
   /** Crée le dossier PROPOSÉ (seul celui-là est admis par le cœur), après le oui de la personne. */
   dossierJeuxCreer: (chemin: string) => appeler<string>('dossier_jeux_creer', { chemin }),
+  /** Ce que le cœur dit de chaque version d'une fiche avant qu'on coche (cochable, région, fichiers). */
+  versionsAvis: (fiche: unknown) => appeler<import('$lib/ludotheque/versions').AvisVersion[]>('versions_avis', { fiche }),
   /** Le bouton Xbox ouvre-t-il la Game Bar de Windows ? (`null` : hors de Windows.) */
   gameBarBouton: () => appeler<boolean | null>('game_bar_bouton'),
   /** Change CE seul réglage de Windows, après le oui de la personne. */
