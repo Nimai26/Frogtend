@@ -10,6 +10,35 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe('jaquette déjà chargée quand la liste est relue', () => {
+  it('des informations d’image neuves mais identiques, ou quelques pixels de plus : elle RESTE affichée', async () => {
+    // L'essai réel de Seb (28/10) : au retour vers la ludothèque, l'image en mémoire s'affichait une fraction de
+    // seconde, puis la liste relue donnait des `images` NEUVES (identiques) et l'image se cachait pour toujours.
+    const images = { jaquette: { largeur: 600, hauteur: 800 } };
+    const { container, rerender } = render(Jaquette, { id: 110, titre: 'Dune', largeur: 150, visuel: 'jaquette', images });
+    await tick();
+    const img = () => container.querySelector('img')!;
+    const chargee = () => container.querySelector('.jaquette')!.classList.contains('chargee');
+    const avant = img().getAttribute('src');
+    await fireEvent.load(img());
+    await tick();
+    expect(chargee()).toBe(true);
+    await rerender({ id: 110, titre: 'Dune', largeur: 150, visuel: 'jaquette', images: { jaquette: { ...images.jaquette } } });
+    await tick();
+    expect(img().getAttribute('src')).toBe(avant);
+    expect(chargee(), 'la liste relue ne la cache pas').toBe(true);
+    await rerender({ id: 110, titre: 'Dune', largeur: 160 });
+    await tick();
+    expect(img().getAttribute('src')).toBe(avant);
+    expect(container.querySelector('.jaquette')!.classList.contains('chargee'), 'toujours visible').toBe(true);
+    // Une taille qui change vraiment l'image demandée : elle repart de zéro (et se recharge).
+    await rerender({ id: 110, titre: 'Dune', largeur: 600 });
+    await tick();
+    expect(img().getAttribute('src')).not.toBe(avant);
+    expect(container.querySelector('.jaquette')!.classList.contains('chargee')).toBe(false);
+  });
+});
+
 describe('jaquette qui ne vient pas tout de suite', () => {
   it('réessaie à 1,5 s, 4 s et 10 s, puis abandonne seulement après le 4e échec', async () => {
     vi.useFakeTimers();

@@ -323,3 +323,11 @@ self.retenir_versions(…) }` : le verrou pris par `self.registre()` VIT jusqu'�
 `match self.registre()…`), et la fonction appelée le reprend. · Garde-fous : toujours `let lue =
 self.registre().…?;` AVANT un `if let` / `match` dont le bloc touche encore au registre (ou attend, `.await`) ; et
 lancer les tests avec une limite (`timeout 400 cargo test …`) pour qu'un blocage se voie au lieu d'attendre.
+
+28/10 (jaquettes vides au retour vers la ludothèque, deux versions pour trouver) : j'ai d'abord cherché un échec de
+CHARGEMENT (0.137.1, sans effet) ; Seb a précisé « là une fraction de seconde, puis disparues » — c'était un
+MASQUAGE. Cause : en Svelte 5, un `$effect` qui lit `obj.champ` d'un `$derived` qui rend un OBJET est abonné à
+l'objet entier ; un objet recalculé (même contenu) relance l'effet. · Garde-fous : (1) demander d'abord à Seb CE
+QU'IL VOIT, précisément (jamais là / là puis parti / vide puis là) ; (2) un effet de remise à zéro ne dépend que de
+valeurs simples (une chaîne, un nombre), jamais d'un objet dérivé ; (3) un test de correctif doit ÉCHOUER sur
+l'ancien code (le vérifier en remettant l'ancien fichier un instant).

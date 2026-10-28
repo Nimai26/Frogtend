@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.137.2 — Les jaquettes qui disparaissaient (pour de bon)
+
+- 🖼 La vraie cause trouvée grâce à ton essai (« là une fraction de seconde, puis disparues ») : au retour vers la
+  ludothèque, la liste des jeux est relue, et chaque jaquette recevait ses informations d'image toutes neuves (mais
+  identiques) — ce qui la recachait sans jamais la recharger. Elles restent maintenant affichées.
+
 ## 0.137.1 — Les jaquettes qui disparaissaient
 
 - 🖼 En revenant à la ludothèque (depuis une fiche ou les Options), les jaquettes pouvaient rester vides jusqu'au

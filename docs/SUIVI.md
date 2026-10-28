@@ -14,6 +14,12 @@
   piste : la WebView ressert l'échec d'une demande annulée au démontage — cohérent avec « nouvelle adresse = réparé »
   et « fiches épargnées », NON prouvé), puis 3 nouveaux essais (1,5 s, 4 s, 10 s, ±10 %), minuteurs nettoyés. À
   revérifier avec Seb ; si ça revient : compter côté cœur les demandes reçues au retour (arrivent-elles ?).
+  ❌ 0.137.1 sans effet ; Seb précise « là une fraction de seconde, puis disparues ». VRAIE CAUSE (0.137.2, corrigée par l'expert
+  interface) : l'effet de remise à zéro de `Jaquette.svelte` lisait `v.sorte` → abonné à TOUT l'objet `v` ; au retour,
+  `rechargerListe` donne des `images` neuves (identiques) → `v` recalculé → `chargee = false` (opacité 0) alors que
+  l'adresse est la même → aucun nouveau `load`. Remise à zéro seulement quand l'ADRESSE (chaîne) change ; test qui
+  reproduit (échoue sur l'ancien code, prouvé) ; case vide si `disponible` passe à faux réglée. Leçon : demander d'abord à Seb CE QU'IL VOIT
+  exactement (« vide d'emblée » ou « là puis parti ») avant de chercher côté chargement.
 - **Séance d'essais avec Seb, 28/10 (0.134.0).** ✅ Mise à jour proposée à l'ouverture, un clic, redémarrage, 0.134.0
   affichée. ✅ Refus de `D:\` comme dossier des émulateurs (fenêtre maison, `D:\Emulateurs` proposé, réglage
   intact). ❌ **Jeu SNES de A à Z (Super Mario World)** : (1) **plusieurs versions d'une ROM** : Seb veut pouvoir en

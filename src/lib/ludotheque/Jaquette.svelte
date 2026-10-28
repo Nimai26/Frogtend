@@ -53,17 +53,17 @@
     minuteur = null;
   };
 
-  const src = $derived.by(() => {
-    const base = v.sorte === 'jaquette' ? adresseJaquette(id, pixels(largeur)) : adresseVisuel(id, v.sorte, pixels(largeur));
-    return `${base}${base.includes('?') ? '&' : '?'}m=${montage}${essai === 0 ? '' : `-${essai}`}`;
-  });
+  /** L'image demandée (sans les essais) : la largeur y est arrondie, deux largeurs voisines donnent la MÊME. */
+  const base = $derived(v.sorte === 'jaquette' ? adresseJaquette(id, pixels(largeur)) : adresseVisuel(id, v.sorte, pixels(largeur)));
+  const src = $derived(`${base}${base.includes('?') ? '&' : '?'}m=${montage}${essai === 0 ? '' : `-${essai}`}`);
 
-  // Un autre jeu, ou une autre taille : on repart de zéro (et un essai prévu pour l'ancien est oublié). Au démontage,
-  // aucun minuteur ne survit.
+  // Une autre IMAGE (autre jeu, autre visuel, autre taille arrondie) : on repart de zéro — et SEULEMENT alors (essai
+  // de Seb, 28/10 : au retour vers la ludothèque, l'image en mémoire s'affichait, puis la liste relue donnait des
+  // `images` neuves mais identiques ; l'ancien effet lisait `v.sorte`, donc tout l'objet `v` recalculé, repassait
+  // l'image « pas chargée » — cachée — alors que son adresse, inchangée, ne se rechargeait jamais). `base` est une
+  // chaîne : l'effet ne repart que si elle change. Au démontage, aucun minuteur ne survit.
   $effect(() => {
-    void id;
-    void largeur;
-    void v.sorte;
+    void base;
     arreterMinuteur();
     chargee = false;
     essai = 0;
@@ -88,7 +88,8 @@
   }
 </script>
 
-<div class="jaquette" class:chargee style:aspect-ratio={v.cadre}>
+<!-- (Une jaquette devenue indisponible : sa carte de remplacement revient, jamais une case vide.) -->
+<div class="jaquette" class:chargee={chargee && (disponible !== false || v.sorte !== 'jaquette')} style:aspect-ratio={v.cadre}>
   <!-- La boîte au ratio RÉEL de l'image (s'il est connu) : la carte de remplacement a déjà la place de l'image. -->
   <div class="boite" class:ajustee={v.ratio !== null} style:--r={v.ratio ?? undefined}>
     <div class="remplacement" aria-hidden="true">
