@@ -331,3 +331,8 @@ l'objet entier ; un objet recalculé (même contenu) relance l'effet. · Garde-f
 QU'IL VOIT, précisément (jamais là / là puis parti / vide puis là) ; (2) un effet de remise à zéro ne dépend que de
 valeurs simples (une chaîne, un nombre), jamais d'un objet dérivé ; (3) un test de correctif doit ÉCHOUER sur
 l'ancien code (le vérifier en remettant l'ancien fichier un instant).
+
+28/10 (0.138.0, livraison arrêtée par un test rouge) : un verrou `static` commun à tout le programme (installations
+en cours, par numéro de jeu) faisait se bloquer entre eux des tests parallèles qui installent tous Dune (110), chacun
+dans SES données. · Garde-fou : un état global se range par dossier de données (`self.dossier`) ou dans le `Noyau`,
+jamais par un simple numéro ; après un ajout de ce genre, lancer la suite du cœur deux ou trois fois de suite.

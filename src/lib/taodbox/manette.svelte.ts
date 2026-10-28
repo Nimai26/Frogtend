@@ -169,10 +169,22 @@ export function prendreLaMain(p: Preneur): () => void {
   };
 }
 
+/** LB / RB dans un lecteur (livret, musique, vidéo, images) : le bouton précédent / suivant de sa barre, en boucle
+ * (la croix y reste au contenu : pages, piste, volume — essai de Seb, 28/10 : les boutons étaient inaccessibles). */
+export function parcourir(conteneur: ParentNode | null | undefined, sens: 1 | -1) {
+  if (!conteneur) return;
+  const l = [...conteneur.querySelectorAll<HTMLElement>(FOCALISABLES)];
+  if (!l.length) return;
+  const i = l.indexOf(document.activeElement as HTMLElement);
+  selectionner(l[i < 0 ? (sens > 0 ? 0 : l.length - 1) : (i + sens + l.length) % l.length]);
+}
+
 /** Une commande, quelle que soit sa source (manette, clavier, cœur de Frogtend). */
 export function appliquer(c: Commande) {
   const p = preneurs[preneurs.length - 1];
   if (p && !fenetreOuverte() && p(c)) return;
+  // LB / RB : seulement pour un lecteur qui les prend ; ailleurs, rien (jamais un déplacement ni un retour).
+  if (c === 'precedent' || c === 'suivant') return;
   if (c === 'valider') valider();
   else if (c === 'retour') touche('Escape');
   else deplacer(c);
@@ -191,6 +203,8 @@ export function appuiY(): boolean {
 const A = 0;
 const B = 1;
 const Y = 3;
+const LB = 4;
+const RB = 5;
 const CROIX: [number, Direction][] = [
   [12, 'haut'],
   [13, 'bas'],
@@ -234,6 +248,8 @@ function lire() {
   if (nouveaux.has(A)) appliquerManette('valider');
   if (nouveaux.has(B)) appliquerManette('retour');
   if (nouveaux.has(Y)) appuiY();
+  if (nouveaux.has(LB)) appliquerManette('precedent');
+  if (nouveaux.has(RB)) appliquerManette('suivant');
   // Direction : un premier pas, puis la répétition après une pause (comme une touche tenue).
   const t = performance.now();
   if (d && d !== direction) {

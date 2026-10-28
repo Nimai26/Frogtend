@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.138.0 — Les corrections de la séance du 28/10
+
+- ▶ Une ROM ou une image disque est prête à jouer dès son arrivée : plus de « 📦 Installer » inutile (rien n'est
+  copié). Les jeux déjà arrivés le deviennent à l'ouverture de ton profil. « Installer » reste pour les jeux qui
+  demandent un vrai travail (disques à décompresser, installeurs).
+- 🎮 Livret, musique, vidéo et images à la manette : la croix reste au contenu (pages, piste, volume), et **LB / RB**
+  passent d'un bouton à l'autre de la barre ; A appuie sur le bouton choisi. La ligne d'aide le dit.
+- 📦 « Gérer ▸ Ajouter une autre version » descend bien jusqu'aux versions (la galerie ne la repousse plus).
+
 ## 0.137.4 — Le bouton « Ajouter cette version »
 
 - ➕ Sur la fiche d'un jeu déjà sur le PC, « Ajouter cette version » s'affiche enfin (il était caché, comme

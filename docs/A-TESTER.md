@@ -3,6 +3,13 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Les corrections de la séance (0.138.0)
+- [ ] Super Mario All-Stars (arrivé, montrait « Installer ») : après l'ouverture de ton profil, il montre « ▶ Jouer ».
+- [ ] Un nouveau jeu SNES : à l'arrivée, « ✅ … est arrivé : ▶ Jouer » (jamais « Installer »).
+- [ ] Menu en jeu ▸ Manuel et documents : livret, musique, vidéo — la croix bouge la page / la piste, LB et RB
+      passent d'un bouton à l'autre (jusqu'à « ✕ Fermer »), A appuie dessus.
+- [ ] Gérer ▸ « Ajouter une autre version » : la fiche descend jusqu'aux versions, sélection sur un « ➕ ».
+
 ## Plusieurs versions d'un jeu (2) (0.137.0)
 - [ ] Super Mario World (déjà installé) : sa fiche ▸ « ➕ Ajouter cette version » sur la version Japon → récapitulatif
       → la fiche montre « ⬇ En cours d'arrivée — N % », la pastille du haut compte 1 ; le jeu se lance pendant ce temps.

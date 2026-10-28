@@ -118,7 +118,17 @@ pub async fn profil_ouvrir(
     id: String,
     pin: Option<String>,
 ) -> Resultat<ProfilVisible> {
-    noyau.ouvrir(&id, pin.as_deref(), &connexion(&app)).await
+    let p = noyau.ouvrir(&id, pin.as_deref(), &connexion(&app)).await?;
+    // Les jeux déjà arrivés qu'il n'y avait rien à « installer » (ROM, images disque) deviennent prêts à jouer, en
+    // arrière-plan (registre, et parties restaurées qui les attendaient).
+    let app2 = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let n = app2.state::<Noyau>().installer_les_arrives().await;
+        if n > 0 {
+            let _ = app2.emit("jeux-pc-changes", n);
+        }
+    });
+    Ok(p)
 }
 
 #[tauri::command]

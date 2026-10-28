@@ -5,7 +5,7 @@
   import { onMount, tick, untrack } from 'svelte';
   import { adresseMedia } from '$lib/api';
   import { retenirFocus } from '$lib/dialogues/focus';
-  import { fenetreOuverte, prendreLaMain, selectionner, taodbox } from '$lib/taodbox/manette.svelte';
+  import { fenetreOuverte, parcourir, prendreLaMain, selectionner, taodbox } from '$lib/taodbox/manette.svelte';
   import { grosPixels, largeurUtile, creditMedia, libelleMedia, type MediaJeu } from './galerie';
 
   let {
@@ -26,6 +26,7 @@
   let precedent = $state<HTMLButtonElement>();
   let suivant = $state<HTMLButtonElement>();
   let fermeture = $state<HTMLButtonElement>();
+  let barre = $state<HTMLElement>();
 
   const courant = $derived(medias[index]);
   $effect(() => {
@@ -60,7 +61,9 @@
       if (c === 'gauche' || c === 'haut') aller(index - 1);
       else if (c === 'droite' || c === 'bas') aller(index + 1);
       else if (c === 'valider') return false;
-      else fermer();
+      else if (c === 'precedent' || c === 'suivant') parcourir(barre, c === 'suivant' ? 1 : -1);
+      else if (c === 'retour') fermer();
+      else return false;
       return true;
     });
     const touche = (e: KeyboardEvent) => {
@@ -109,11 +112,11 @@
       {#if !charge}<p class="note attente" aria-live="polite">⏳ Chargement…</p>{/if}
     {/if}
   </div>
-  <footer>
+  <footer bind:this={barre}>
     <button class="btn" bind:this={precedent} disabled={index === 0} onclick={() => aller(index - 1)}>◀ Précédente</button>
     <button class="btn" bind:this={suivant} disabled={index >= medias.length - 1} onclick={() => aller(index + 1)}>Suivante ▶</button>
     <button class="btn" bind:this={fermeture} onclick={fermer}>✕ Fermer</button>
-    {#if taodbox.actif}<span class="aide">◀ ▶ images · B revenir</span>
+    {#if taodbox.actif}<span class="aide">◀ ▶ images · LB RB choisir un bouton · A appuyer · B revenir</span>
     {:else}<span class="aide">← → images · Échap fermer</span>{/if}
   </footer>
 </section>

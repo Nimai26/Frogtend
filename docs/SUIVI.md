@@ -12,7 +12,11 @@
   carte » e-Reader) ; « Gérer ▸ Ajouter une autre version » ne faisait rien (même page). 0.137.4 (relecture interface
   suivie) : `!horsLigne` ; `?vers=versions` → la page descend aux versions une fois chargée, sélection sur le 1er
   « ➕ » ; phrase si aucun ajout possible ; B TENU = un seul retour (`e.repeat` d'Échap/Entrée/Espace ignoré).
-  RESTE (noté) : hors ligne, une fiche gardée n'est jamais « hors ligne » → le bouton s'affiche puis le cœur refuse
+  ✅ VÉRIFIÉ PAR SEB (0.137.4) : bouton « ➕ Ajouter cette version », récapitulatif, arrivée de la version Japon ;
+  « ▶ Jouer avec… » propose Europe ⭐ et Japon, chacune démarre sa ROM, « ▶ Jouer » lance l'Europe.
+  ❌ « Gérer ▸ Ajouter une autre version » atterrit au niveau des IMAGES (la galerie se charge au-dessus pendant le
+  défilement doux et repousse la section) → à faire : défilement instantané + nouveau défilement si la section a
+  bougé (galerie chargée). RESTE (noté) : hors ligne, une fiche gardée n'est jamais « hors ligne » → le bouton s'affiche puis le cœur refuse
   proprement ; une version publiée APRÈS l'installation n'apparaît pas sur la fiche gardée (fusionner, en ligne,
   les `versions` du serveur).
 - **Demandes de Seb pendant l'essai (28/10 soir, menu en jeu)** — ✅ « Recommencer » et « Quitter » d'un seul appui
@@ -22,7 +26,26 @@
   menu) ; (c) une partie TRICHES dans le menu en jeu (aujourd'hui : seulement « 🧰 Cheat Engine » si installé ; la page
   des triches existe hors du jeu) ; (d) Seb suppose que « plugins / shaders » manquent parce que la SNES n'en a pas :
   FAUX, le menu en jeu n'a de shaders pour AUCUN émulateur (seul RPCS3 a « 🎨 Image et fluidité » dans Gérer le jeu)
-  — à lui dire ; à proposer (shaders RetroArch : CRT, lissage… par jeu ou par console).
+  — à lui dire ; à proposer (shaders RetroArch : CRT, lissage… par jeu ou par console). Suite (même soir) : (e) les
+  BEZELS (cadres décoratifs autour de l'image) pour les émulateurs qui les gèrent, par jeu ou par défaut par système ;
+  (f) un ÉCRAN DE LANCEMENT (splash) pendant le démarrage des jeux lents ; (g) une IMAGE DE LA MANETTE utilisée, avec
+  la correspondance vers les boutons de la manette d'origine, dans le menu en jeu « et ailleurs ».
+  ❌ ESSAI (0.137.4) : un jeu SNES de Firehouse arrivé (Super Mario All-Stars, versions cochées : ✅ « tout semble
+  fonctionner ») montre « 📦 Installer » au lieu de « ▶ Jouer » — inutile pour une ROM ou une image disque (rien n'est
+  copié). Proposé à Seb : ROM / image disque PRÊTES dès la fin du téléchargement (installation = noter le fichier,
+  rien d'écrit) ; « Installer » seulement s'il y a du vrai travail (disques zippés à décompresser, installeur, repack).
+  ✅ FAIT en 0.138.0 (avis lancement + interface avant, relectures après, suivies) : `prete_a_l_arrivee` /
+  `installer_a_l_arrivee` dans la file (ROM, image disque, MAME, Switch avec contenus ; jamais disques zippés ni forme
+  archive) + rattrapage à l'ouverture du profil (`installer_les_arrives`, événement `jeux-pc-changes`) ; installation
+  EXCLUSIVE par jeu (deux en même temps pouvaient perdre une partie restaurée en attente) ; seule autre écriture :
+  les parties restaurées reposées dans le dossier du jeu (comme à toute installation) ; lecteurs : LB/RB (cœur :
+  L1/R1 → `precedent`/`suivant`), A = bouton choisi, aide ; défilement vers `#versions` après la galerie ; écoute des
+  téléchargements jamais doublée ni perdue.
+  ✅ Seb 28/10 soir : fin de la séance ; d'abord les corrections de la séance (ROM prêtes dès le téléchargement,
+  lecteurs de documents à la manette, défilement vers les versions), PUIS les nouveautés en commençant par les
+  **SAUVEGARDES RAPIDES** (choisir l'emplacement dans le menu en jeu + raccourcis manette) ; ensuite, dans l'ordre
+  proposé : bouton Xbox → menu en jeu, triches dans le menu, image et confort (shaders, bezels, écran de lancement,
+  image de la manette).
 - **Lecteurs de documents à la manette (essai de Seb, 28/10 soir, menu en jeu)** — ❌ dans les lecteurs AUDIO et VIDÉO,
   la croix déplace la piste (avance/recul) : impossible d'atteindre les autres boutons ; dans le LIVRET, la croix
   fait défiler la page / change de page : les boutons ne sont pas accessibles non plus. Proposition de Seb : « au pire

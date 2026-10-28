@@ -51,6 +51,7 @@
   const id = $derived(Number(page.params.id));
 
   async function charger(n: number) {
+    complements = false;
     fiche = null;
     infos = null;
     erreur = '';
@@ -74,6 +75,7 @@
       locale = r.locale;
     } catch (e) {
       erreur = estErreurCoeur(e) ? e.motif : motifDuRefus(e);
+      complements = true;
       return;
     }
     // Les documents sont un plus : s'ils ne viennent pas, la fiche reste complète sans eux. Une autre fiche ouverte
@@ -92,6 +94,7 @@
       medias = ordonner(g);
       // Le cœur a tranché (caché, réuni, sans infos : rien) : jamais les anciennes infos du disque à la place.
       if (locale) infos = i;
+      complements = true;
     }
   }
 
@@ -239,14 +242,27 @@
 
   // Venu de « ⚙ Gérer ▸ Ajouter une autre version » (`?vers=versions`) : la page descend aux versions UNE fois la fiche
   // et l'avis du cœur là, la sélection sur le premier « ➕ » (jamais sur un « 🗑 Retirer »), sinon sur le titre.
+  // (Après la galerie, les documents et les infos, qui s'insèrent AU-DESSUS : essai de Seb, 28/10 — on atterrissait
+  // au niveau des images. Défilement instantané, refait une fois si la page a encore bougé, sans jamais reprendre la
+  // main à quelqu'un qui défile lui-même.)
   let versFaitPour = '';
+  let complements = $state(false);
   $effect(() => {
-    if (versFaitPour === page.url.href || page.url.searchParams.get('vers') !== 'versions' || !fiche || ((fiche.versions?.length ?? 0) > 1 && !avis.length)) return;
+    if (versFaitPour === page.url.href || page.url.searchParams.get('vers') !== 'versions' || !fiche || !complements || ((fiche.versions?.length ?? 0) > 1 && !avis.length)) return;
     versFaitPour = page.url.href;
+    const descendre = () => document.getElementById('versions')?.scrollIntoView({ behavior: 'auto', block: 'start' });
     void tick().then(() => {
+      descendre();
       const s = document.getElementById('versions');
-      s?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       (s?.querySelector<HTMLElement>('[data-ajout]') ?? s?.querySelector<HTMLElement>('h3'))?.focus({ preventScroll: true });
+      let bouge = false;
+      const geste = () => (bouge = true);
+      for (const t of ['wheel', 'keydown', 'pointerdown', 'touchstart', 'focusin']) window.addEventListener(t, geste, { once: true, capture: true });
+      setTimeout(() => {
+        for (const t of ['wheel', 'keydown', 'pointerdown', 'touchstart', 'focusin']) window.removeEventListener(t, geste, { capture: true });
+        const r = document.getElementById('versions')?.getBoundingClientRect();
+        if (!bouge && r && Math.abs(r.top) > 40) descendre();
+      }, 900);
     });
   });
 

@@ -718,6 +718,10 @@ impl Noyau {
             if self.registre().jeu(jeu.id)?.is_some() {
                 self.registre().changer_etat(jeu.id, etat, message.as_deref())?;
             }
+            // Une ROM ou une image disque (rien à installer) : prête à jouer dès maintenant, AVANT de le dire.
+            if etat == Etat::Telecharge {
+                self.installer_a_l_arrivee(jeu.id, &s.profil.id).await;
+            }
             emettre(Evenement::Etat { jeu: jeu.id, etat, message });
         }
     }
@@ -1220,6 +1224,9 @@ mod tests {
         // Mario USA seul, reçu et installé (comme chez Seb).
         let j = n.ajouter(300, 31, &empl, &e).await.unwrap();
         n.executer_file(n.session().await.unwrap(), &|_| {}).await.unwrap();
+        // Une ROM : prête à jouer dès son arrivée, sans « Installer » (rien n'est écrit).
+        let i = n.registre().jeu(300).unwrap().unwrap().installation.expect("installée à l'arrivée");
+        assert_eq!(i.fichier_du_jeu.as_deref(), Some("Super Mario World (USA).sfc"));
         n.installer(300, true).await.unwrap();
         let dossier = Path::new(&j.dossier).to_path_buf();
         // La même version : refusée ; un « prêt à jouer » : refusé.

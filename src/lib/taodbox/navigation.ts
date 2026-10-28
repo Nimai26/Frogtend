@@ -42,7 +42,7 @@ export function directionDuStick(x: number, y: number, zoneMorte = 0.5): Directi
 }
 
 /** Ce qu'une manette (ou le cœur, qui lit la manette pendant une partie) demande à l'interface. */
-export type Commande = Direction | 'valider' | 'retour';
+export type Commande = Direction | 'valider' | 'retour' | 'precedent' | 'suivant';
 
 /**
  * Les boutons qui viennent d'être enfoncés : pas tenus au tour précédent. Un bouton déjà tenu quand la lecture

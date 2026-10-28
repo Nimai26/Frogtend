@@ -6,7 +6,7 @@
   import { onMount, tick } from 'svelte';
   import { adressePageLivret } from '$lib/api';
   import { retenirFocus } from '$lib/dialogues/focus';
-  import { fenetreOuverte, prendreLaMain, selectionner, taodbox } from '$lib/taodbox/manette.svelte';
+  import { fenetreOuverte, parcourir, prendreLaMain, selectionner, taodbox } from '$lib/taodbox/manette.svelte';
 
   let {
     jeu,
@@ -23,6 +23,8 @@
   let echec = $state(false);
   let zone = $state<HTMLDivElement>();
   let precedent = $state<HTMLButtonElement>();
+  let agrandir = $state<HTMLButtonElement>();
+  let barre = $state<HTMLElement>();
   let suivant = $state<HTMLButtonElement>();
   // Mesurée avant toute demande (sinon une première page serait rendue à une taille supposée, pour rien).
   let largeurZone = $state(0);
@@ -76,15 +78,18 @@
   }
 
   onMount(() => {
-    selectionner(suivant ?? precedent);
+    // Au départ sur « 🔍 Agrandir » : A agrandit, comme avant (A appuie maintenant sur le bouton choisi).
+    selectionner(agrandir ?? suivant ?? precedent);
     // La manette (et les flèches quand elle pilote la page) passe d'abord par le lecteur.
     const rendre = prendreLaMain((c) => {
       if (c === 'gauche') cote(-1);
       else if (c === 'droite') cote(1);
       else if (c === 'haut') defiler(-1);
       else if (c === 'bas') defiler(1);
-      else if (c === 'valider') agrandi = !agrandi;
-      else onfermer();
+      // LB / RB : un bouton de la barre à l'autre ; A appuie sur celui qui est choisi.
+      else if (c === 'precedent' || c === 'suivant') parcourir(barre, c === 'suivant' ? 1 : -1);
+      else if (c === 'retour') onfermer();
+      else return false;
       return true;
     });
     // Le clavier, quand la manette ne pilote pas la page (la fiche, au bureau) ; Échap toujours, avant la page.
@@ -126,12 +131,12 @@
     {/if}
     {#if !charge && !echec}<p class="note attente" aria-live="polite">⏳ Page {page + 1}…</p>{/if}
   </div>
-  <footer>
+  <footer bind:this={barre}>
     <button class="btn" bind:this={precedent} disabled={page === 0} onclick={() => aller(page - 1)}>◀ Précédente</button>
     <button class="btn" bind:this={suivant} disabled={page >= pages - 1} onclick={() => aller(page + 1)}>Suivante ▶</button>
-    <button class="btn" onclick={() => (agrandi = !agrandi)}>{agrandi ? '🔍 Page entière' : '🔍 Agrandir'}</button>
+    <button class="btn" bind:this={agrandir} onclick={() => (agrandi = !agrandi)}>{agrandi ? '🔍 Page entière' : '🔍 Agrandir'}</button>
     <button class="btn" onclick={onfermer}>✕ Fermer</button>
-    {#if taodbox.actif}<span class="aide">◀ ▶ pages · ▲ ▼ défiler · A agrandir · B revenir</span>
+    {#if taodbox.actif}<span class="aide">◀ ▶ pages · ▲ ▼ défiler · LB RB choisir un bouton · A appuyer · B revenir</span>
     {:else}<span class="aide">← → pages · ↑ ↓ défiler · Échap fermer</span>{/if}
   </footer>
 </section>

@@ -5,7 +5,7 @@
 //!
 //! - Menu fermé : la combinaison (Select + R1 par défaut, décision de Seb du 04/10) tenue 1 s l'ouvre.
 //! - Menu ouvert : la croix ou le stick gauche, A et B deviennent des commandes (`haut`, `bas`, `gauche`, `droite`,
-//!   `valider`, `retour`) envoyées à la page. Seuls les appuis NOUVEAUX comptent : la combinaison encore tenue qui
+//!   `valider`, `retour`) envoyées à la page ; LB / RB : `precedent` / `suivant` (les boutons d'un lecteur). Seuls les appuis NOUVEAUX comptent : la combinaison encore tenue qui
 //!   vient d'ouvrir le menu ne fait rien. A et B agissent au RELÂCHEMENT (expert lancement, 05/10) : le bouton qui
 //!   ferme le menu (« Reprendre ») n'est plus enfoncé quand le jeu reprend la main, il ne lui arrive donc pas.
 //!
@@ -143,6 +143,14 @@ impl Osd {
         if relaches & B != 0 {
             l.push(Evenement::Commande("retour"));
         }
+        // LB / RB : d'un bouton à l'autre dans un lecteur (livret, musique, vidéo, images), dès l'appui (ils ne
+        // ferment rien) ; tenus à l'ouverture (la combinaison Select + R1), ils ne comptent pas (essai de Seb, 28/10).
+        if nouveaux & L1 != 0 {
+            l.push(Evenement::Commande("precedent"));
+        }
+        if nouveaux & R1 != 0 {
+            l.push(Evenement::Commande("suivant"));
+        }
         let d = direction(e);
         match (d, self.dir) {
             (Some(d), Some(avant)) if d == avant => {
@@ -263,6 +271,21 @@ mod tests {
         // Le stick gauche.
         let haut = EtatManette { ly: 30_000, ..Default::default() };
         assert_eq!(o.pas(haut, t0 + Duration::from_millis(900), true), [Evenement::Commande("haut")]);
+    }
+
+    #[test]
+    fn lb_et_rb_passent_d_un_bouton_a_l_autre_jamais_ceux_de_la_combinaison() {
+        let mut o = Osd::nouveau(combinaison("Select + R1"));
+        let t0 = Instant::now();
+        // R1 tenu à l'ouverture (la combinaison) : rien, ni tout de suite ni tenu.
+        assert!(o.pas(e(SELECT | R1), t0, true).is_empty());
+        assert!(o.pas(e(R1), t0 + Duration::from_millis(50), true).is_empty());
+        o.pas(e(0), t0 + Duration::from_millis(100), true);
+        // Puis R1 et L1 : une commande à l'appui, une seule même tenus.
+        assert_eq!(o.pas(e(R1), t0 + Duration::from_millis(150), true), [Evenement::Commande("suivant")]);
+        assert!(o.pas(e(R1), t0 + Duration::from_millis(900), true).is_empty(), "tenu : une seule fois");
+        o.pas(e(0), t0 + Duration::from_millis(950), true);
+        assert_eq!(o.pas(e(L1), t0 + Duration::from_millis(1000), true), [Evenement::Commande("precedent")]);
     }
 
     #[test]

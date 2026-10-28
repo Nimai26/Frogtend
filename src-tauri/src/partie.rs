@@ -161,6 +161,98 @@ async fn lancer_par_la_boutique(b: &crate::jeux_pc::LancementBoutique, dossier: 
     .map_err(|_| Erreur::Disque("L'attente du jeu s'est arrêtée brutalement.".into()))?
 }
 
+/// Les jeux en cours d'installation, par dossier de données de Frogtend et numéro (un seul passage à la fois par jeu).
+static INSTALLATIONS_EN_COURS: std::sync::Mutex<Vec<(PathBuf, i64)>> = std::sync::Mutex::new(Vec::new());
+
+/// Rendue à la fin de l'installation, même après une erreur.
+struct InstallationEnCours((PathBuf, i64));
+
+impl InstallationEnCours {
+    fn prendre(donnees: &Path, id: i64) -> Resultat<Self> {
+        let cle = (donnees.to_path_buf(), id);
+        let mut l = INSTALLATIONS_EN_COURS.lock().unwrap_or_else(|e| e.into_inner());
+        if l.contains(&cle) {
+            return Err(Erreur::Refus("Ce jeu est déjà en train de s'installer : attends qu'il ait fini.".into()));
+        }
+        l.push(cle.clone());
+        Ok(InstallationEnCours(cle))
+    }
+}
+
+impl Drop for InstallationEnCours {
+    fn drop(&mut self) {
+        INSTALLATIONS_EN_COURS.lock().unwrap_or_else(|e| e.into_inner()).retain(|x| *x != self.0);
+    }
+}
+
+/// Une version dont l'« installation » n'écrit RIEN (une ROM ou une image disque donnée telle quelle, MAME, un jeu
+/// Switch avec ses contenus) : elle est prête à jouer dès son arrivée (essai de Seb, 28/10 : « Installer » ne sert à rien
+/// pour une Super Nintendo). Jamais des disques zippés à décompresser ni une forme `archive` (du vrai travail, avec
+/// l'accord de la personne) ; jamais sans fiche (on ne devine pas). Seule autre écriture, comme à toute installation :
+/// les parties restaurées qui attendaient ce jeu, reposées dans son dossier.
+pub(crate) fn prete_a_l_arrivee(version: &Value) -> bool {
+    if version.is_null() || !roles(version, &["archive_a_extraire"]).is_empty() {
+        return false;
+    }
+    // Un jeu Switch avec ses contenus : sa forme est la sienne (Eden ne lit les contenus qu'après un oui).
+    if contenus_emulateur(version) {
+        return true;
+    }
+    forme_fichier(version) && (version_simple(version) || version["mame"].is_object())
+}
+
+impl Noyau {
+    /// Un jeu qui vient d'arriver (ou arrivé avant cette règle) : installé tout seul si cela n'écrit rien (voir
+    /// `prete_a_l_arrivee`), pour le profil qui l'a fait venir. Un échec (zip MAME absent, disque manquant…) est noté au
+    /// journal ; « 📦 Installer » reste le recours.
+    pub(crate) async fn installer_a_l_arrivee(&self, id: i64, profil: &str) {
+        let Ok(s) = self.session().await else { return };
+        if s.profil.id != profil {
+            return;
+        }
+        drop(s);
+        let Ok(Some(j)) = self.registre().jeu(id) else { return };
+        if id <= 0 || j.etat != Etat::Telecharge || j.installation.is_some() || crate::import_local::est_importe(&j) {
+            return;
+        }
+        if !prete_a_l_arrivee(&self.version_de(&j)) {
+            return;
+        }
+        // Double garde : la préparation dit bien « rien à faire » pour une ROM ou une image disque.
+        match self.preparer_installation(id).await {
+            Ok(p) if p.methode == Methode::Aucune && matches!(p.nature, Nature::Rom | Nature::ImageDisque) => {}
+            _ => return,
+        }
+        match self.installer(id, false).await {
+            Ok(_) => self.journaliser(&format!("jeu {id} : prêt à jouer dès son arrivée (rien à installer)")),
+            Err(e) => self.journaliser(&format!("jeu {id} : pas prêt à l'arrivée ({e:?}) — « Installer » reste possible")),
+        }
+    }
+
+    /// À l'ouverture d'un profil : les jeux déjà arrivés mais jamais « installés » alors que rien n'était à faire
+    /// (avant cette règle) deviennent prêts à jouer. Aucun téléchargement ni décompression : le registre, et les
+    /// parties restaurées qui attendaient ce jeu reposées dans SON dossier (comme à toute installation).
+    pub async fn installer_les_arrives(&self) -> usize {
+        let Ok(s) = self.session().await else { return 0 };
+        let profil = s.profil.id.clone();
+        drop(s);
+        let candidats: Vec<i64> =
+            self.registre().tous().unwrap_or_default().into_iter().filter(|j| j.id > 0 && j.etat == Etat::Telecharge && j.installation.is_none()).map(|j| j.id).collect();
+        let mut n = 0;
+        for id in candidats {
+            // Seulement un jeu que ce profil voit.
+            if self.jeu_visible(id).await.is_err() {
+                continue;
+            }
+            self.installer_a_l_arrivee(id, &profil).await;
+            if self.registre().jeu(id).ok().flatten().is_some_and(|j| j.installation.is_some()) {
+                n += 1;
+            }
+        }
+        n
+    }
+}
+
 /// La ligne porte-t-elle plusieurs RÉGIONS d'un jeu (pas les cartes e-Reader, qui ont leur propre lancement) ?
 pub(crate) fn plusieurs_versions(j: &JeuPc) -> bool {
     !crate::jeux_pc::a_cartes(&j.plateforme) && j.fichiers.iter().any(|f| f.version.is_some_and(|v| v != j.version))
@@ -486,6 +578,10 @@ impl Noyau {
     /// Comme `installer`, en disant l'avancement de la décompression d'un jeu en archive (`progres(faits, total)` en
     /// octets) : un gros jeu prend des minutes, l'écran ne doit jamais sembler figé.
     pub async fn installer_suivi(&self, id: i64, automatique: bool, progres: std::sync::Arc<dyn Fn(u64, u64) + Send + Sync>) -> Resultat<Installation> {
+        // UNE installation à la fois pour un jeu (la file à l'arrivée, le rattrapage à l'ouverture du profil, un clic sur
+        // « Installer ») : deux en même temps reposeraient les parties restaurées l'une pendant que l'autre vide leur
+        // zone d'attente (relecture de l'expert, 28/10).
+        let _seule = InstallationEnCours::prendre(&self.dossier, id)?;
         // Jamais rattaché à une autre fiche pendant l'installation (contrat 1.14).
         let _occupe = self.occuper(id);
         let j = self.jeu_visible(id).await?;
@@ -1306,6 +1402,33 @@ mod tests {
     use crate::coffre::CoffreMemoire;
     use crate::jeux_pc::{Emplacements, FichierJeu};
     use crate::noyau::Connexion;
+
+    #[test]
+    fn prete_a_l_arrivee_seulement_quand_rien_n_est_a_faire() {
+        let v = |j: Value| prete_a_l_arrivee(&j);
+        assert!(v(serde_json::json!({"qualite": "Jeu — ROM"})), "une ROM");
+        assert!(v(serde_json::json!({"qualite": "Image disque"})), "une image disque");
+        assert!(v(serde_json::json!({"qualite": "Jeu — ROM", "mame": {"nom": "sf2"}})), "MAME : le zip tel quel");
+        assert!(!v(Value::Null), "sans fiche : on ne devine pas");
+        assert!(!v(serde_json::json!({"qualite": "Jeu — prêt à jouer"})), "un programme : il faut choisir le lanceur");
+        assert!(!v(serde_json::json!({"qualite": "Repack"})));
+        assert!(!v(serde_json::json!({"qualite": "Jeu — ROM", "installation": {"forme": "archive"}})), "forme archive");
+        let zippes = serde_json::json!({"qualite": "Image disque", "fichiers": [{"nom": "a.zip", "role": "archive_a_extraire"}]});
+        assert!(!v(zippes), "des disques zippés : du vrai travail, avec l'accord");
+        let switch = serde_json::json!({"qualite": "", "installation": {"forme": "contenus_emulateur"}, "fichiers": [{"nom": "j.nsp", "role": "jeu"}, {"nom": "maj.nsp", "role": "mise_a_jour"}]});
+        assert_eq!(v(switch.clone()), contenus_emulateur(&switch), "un jeu Switch avec ses contenus : prêt (Eden ne les lit qu'après un oui)");
+    }
+
+    #[test]
+    fn une_seule_installation_a_la_fois_pour_un_jeu() {
+        let d = Path::new("donnees-essai-exclusivite");
+        let a = InstallationEnCours::prendre(d, 424242).unwrap();
+        assert!(InstallationEnCours::prendre(d, 424242).is_err(), "la 2e est refusée");
+        assert!(InstallationEnCours::prendre(d, 424243).is_ok(), "un autre jeu : permis");
+        assert!(InstallationEnCours::prendre(Path::new("autres-donnees"), 424242).is_ok(), "d'autres données : permis");
+        drop(a);
+        assert!(InstallationEnCours::prendre(d, 424242).is_ok(), "rendue à la fin");
+    }
 
     /// Un noyau avec un profil (simulé) qui voit Dune (110), et Dune « téléchargé » sur le PC avec les fichiers donnés.
     async fn noyau_avec(fichiers: &[(&str, &[u8])], qualite: &str) -> (tempfile::TempDir, Noyau) {

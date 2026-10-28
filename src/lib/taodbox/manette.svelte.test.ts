@@ -1,7 +1,7 @@
 // La manette pilote la page ; un lecteur (le livret) peut PRENDRE LA MAIN, sans jamais passer devant une fenêtre maison.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Commande } from './navigation';
-import { appliquer, appliquerManette, appuiY, arreterManette, demarrerManette, prendreLaMain, taodbox } from './manette.svelte';
+import { appliquer, appliquerManette, appuiY, arreterManette, demarrerManette, parcourir, prendreLaMain, taodbox } from './manette.svelte';
 import { auCanape, seulementAuBureau } from './canape';
 import { pile } from '$lib/dialogues/fenetres.svelte';
 
@@ -157,6 +157,32 @@ describe('la même manette par deux voies (Steam ouvert : croix → flèches, A 
     vi.advanceTimersByTime(400);
     touche('keydown', 'ArrowDown');
     expect(document.activeElement).toBe(l[1]);
+  });
+
+  it('LB / RB : rien hors d’un lecteur ; dans un lecteur, d’un bouton à l’autre en boucle, sans le fermer', () => {
+    const l = trois();
+    let echap = 0;
+    window.addEventListener('keydown', (e) => e.key === 'Escape' && echap++);
+    appliquer('suivant');
+    appliquer('precedent');
+    expect(document.activeElement).toBe(l[0]);
+    expect(echap).toBe(0);
+    const recues: string[] = [];
+    const rendre = prendreLaMain((c) => {
+      recues.push(c);
+      if (c === 'suivant' || c === 'precedent') parcourir(document.body, c === 'suivant' ? 1 : -1);
+      else return false;
+      return true;
+    });
+    appliquer('suivant');
+    appliquer('suivant');
+    expect(document.activeElement).toBe(l[2]);
+    appliquer('suivant');
+    expect(document.activeElement, 'en boucle').toBe(l[0]);
+    appliquer('precedent');
+    expect(document.activeElement).toBe(l[2]);
+    expect(recues).toEqual(['suivant', 'suivant', 'suivant', 'precedent']);
+    rendre();
   });
 
   it('B tenu (Échap répété par Steam) : un seul retour ; une flèche tenue garde sa répétition', () => {

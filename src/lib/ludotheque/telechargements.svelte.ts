@@ -73,12 +73,38 @@ export async function rechargerJeuxDuPc() {
 }
 
 let ecoute: (() => void) | null = null;
+let ecouteArrives: (() => void) | null = null;
 
-/** Écoute les nouvelles de la file (une seule fois). */
-export async function suivreTelechargements() {
-  await rechargerJeuxDuPc();
-  if (ecoute || !isTauri()) return;
-  ecoute = await listen<EvenementTelechargement>('telechargement', async (e) => {
+/** Le démarrage de l'écoute en cours (deux appels rapprochés n'écoutent jamais deux fois) et la « génération » du
+ * suivi (un `arreterSuivi` passé pendant ce démarrage : les écoutes reçues sont aussitôt rendues). */
+let demarrage: Promise<void> | null = null;
+let generation = 0;
+
+/** Écoute les nouvelles de la file (une seule fois), PUIS relit les jeux du PC : un avis envoyé par le cœur pendant
+ * ce temps (le rattrapage des jeux prêts à l'ouverture du profil) n'est jamais perdu. */
+export function suivreTelechargements(): Promise<void> {
+  if (!isTauri()) return rechargerJeuxDuPc();
+  if (ecoute) return rechargerJeuxDuPc();
+  if (demarrage) return demarrage.then(() => rechargerJeuxDuPc());
+  const g = generation;
+  demarrage = (async () => {
+    // Le rattrapage à l'ouverture du profil a rendu prêts des jeux déjà arrivés : la ludothèque les montre jouables.
+    const a = await listen<number>('jeux-pc-changes', () => void rechargerJeuxDuPc());
+    const b = await listen<EvenementTelechargement>('telechargement', surEvenement);
+    if (g !== generation) {
+      a();
+      b();
+      return;
+    }
+    ecouteArrives = a;
+    ecoute = b;
+    await rechargerJeuxDuPc();
+  })().finally(() => (demarrage = null));
+  return demarrage;
+}
+
+async function surEvenement(e: { payload: EvenementTelechargement }) {
+  {
     const ev = e.payload;
     const j = tele.jeux[ev.jeu];
     // Une version ajoutée : SON état et SON avancement (le jeu, lui, reste « téléchargé » et jouable).
@@ -107,17 +133,23 @@ export async function suivreTelechargements() {
     }
     if (j) Object.assign(j, { etat: ev.etat, message: ev.message });
     if (ev.etat === 'telecharge') {
-      toast(`✅ « ${j?.titre ?? 'Le jeu'} » est téléchargé.`);
       await rechargerJeuxDuPc();
+      // Une ROM ou une image disque est déjà prête (le cœur l'a installée : rien n'était à faire) — jamais la question
+      // de l'émulateur ici : le premier « ▶ Jouer » la pose.
+      const pret = !!tele.jeux[ev.jeu]?.installation;
+      toast(pret ? `✅ « ${j?.titre ?? 'Le jeu'} » est arrivé : ▶ Jouer.` : `✅ « ${j?.titre ?? 'Le jeu'} » est téléchargé.`);
     } else if (ev.etat === 'erreur') {
       toast(`Échec du téléchargement de « ${j?.titre ?? 'ce jeu'} » : ${ev.message ?? 'motif inconnu'}`, 'erreur');
     }
-  });
+  }
 }
 
 export function arreterSuivi() {
+  generation++;
   ecoute?.();
   ecoute = null;
+  ecouteArrives?.();
+  ecouteArrives = null;
   tele.jeux = {};
   tele.versions = {};
 }
