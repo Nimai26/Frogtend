@@ -5,6 +5,7 @@ import type { ActionProposee } from '$lib/assistant/actions';
 import type { CommandesJeu } from '$lib/reglages/reglages';
 import type { InfosJeu } from '$lib/ludotheque/infos';
 import type { ModJeu } from '$lib/mods/mods';
+import type { InfosBoutons } from '$lib/manette/boutons';
 
 export interface Profil {
   id: string;
@@ -773,6 +774,8 @@ export const api = {
   /** Les sauvegardes rapides du jeu en cours : [emplacement, date en secondes ou null si vide]. */
   menuJeuEmplacements: () => appeler<[number, number | null][]>('menu_jeu_emplacements'),
   menuJeuTriche: (index: number) => appeler<void>('menu_jeu_triche', { index }),
+  /** Les boutons d'un jeu du PC, ou (`null`) de la partie en cours (lot 4d). */
+  boutonsDuJeu: (id: number | null) => appeler<InfosBoutons | null>('boutons_du_jeu', { id }),
   menuJeuQuitter: () => appeler<number>('menu_jeu_quitter'),
   jouer: (
     id: number,

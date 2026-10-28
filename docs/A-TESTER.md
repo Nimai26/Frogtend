@@ -3,6 +3,14 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Les boutons de la manette d'origine (0.142.0)
+- [ ] Super Mario World : menu en jeu ▸ « 🗺 Les boutons » : le dessin, puis « A → B », « B → A », « X → Y »… ; la croix
+      descend dans la liste et allume chaque bouton sur le dessin ; B revient au menu.
+- [ ] Le même depuis le panneau du jeu (bureau), et depuis ⚙ Gérer le jeu en Taodbox (B revient).
+- [ ] Un jeu PlayStation (DuckStation) : « A → Croix »… ; avec une manette PS5 seule branchée, les noms Croix / Rond.
+- [ ] Un jeu PC joué « comme un clavier » : les touches de chaque bouton ; sans correspondance : la phrase « Ce jeu lit
+      ta manette lui-même ».
+
 ## Les triches dans le menu en jeu (0.141.0)
 - [ ] Super Mario World : fiche ▸ 🎯 Triches et mods ▸ ajouter une liste de codes RetroArch (Snes9x). Lancer le jeu,
       menu ▸ « 🎯 Triches » : la liste s'affiche, toutes ⬜.

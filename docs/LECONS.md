@@ -336,3 +336,9 @@ l'ancien code (le vérifier en remettant l'ancien fichier un instant).
 en cours, par numéro de jeu) faisait se bloquer entre eux des tests parallèles qui installent tous Dune (110), chacun
 dans SES données. · Garde-fou : un état global se range par dossier de données (`self.dossier`) ou dans le `Noyau`,
 jamais par un simple numéro ; après un ajout de ce genre, lancer la suite du cœur deux ou trois fois de suite.
+
+28/10 (0.141.0, SUIVI.md passé de LF à CRLF sans le voir) : une retouche rapide par `pathlib.Path.write_text` en Python
+sous Windows convertit chaque fin de ligne en CRLF (mode texte). La vérification des fins de ligne ne regarde que
+l'écart index / disque : un fichier COMMITÉ en CRLF ne s'y voit plus. · Garde-fous : toujours `write_bytes` (ou
+`newline=""`), comme les scripts de retouche ; avant chaque commit, compter les CRLF des fichiers touchés et comparer
+avec la version précédente (`git show HEAD:fichier`).

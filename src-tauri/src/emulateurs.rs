@@ -713,11 +713,45 @@ pub fn installer_profils_manette(paquet: &Path, retroarch: &Path) -> Resultat<us
 
 /// Le dossier des BIOS de RetroArch : `system_directory` de retroarch.cfg s'il est réglé, sinon `system`.
 pub fn dossier_bios_retroarch(dossier: &Path) -> PathBuf {
-    let defaut = dossier.join("system");
+    dossier_reglage_retroarch(dossier, "system_directory", "system")
+}
+
+/// La personne a-t-elle changé les boutons dans RetroArch ? Alors Frogtend ne dessine pas la disposition d'origine
+/// (lot 4d). Vus : les remappages (`input_remapping_directory`, sinon `config/remaps` : `<cœur>/<nom>.rmp` pour ce
+/// jeu, son dossier ou tout le cœur), et les liaisons du joueur 1 (`input_player1_*_btn|axis` autres que « nul » —
+/// relevé chez Seb : toutes « nul », l'autoconfiguration fait le reste) dans `retroarch.cfg` et ses surcharges
+/// (`rgui_config_directory`, sinon `config` : `<cœur>/<nom>.cfg`). Pas vus : les options de cœur qui déplacent des
+/// boutons, le type de manette du port.
+pub fn remappage_retroarch(dossier: &Path, coeur: &str, noms: &[&str]) -> bool {
+    let tous: Vec<&str> = noms.iter().copied().chain(std::iter::once(coeur)).collect();
+    let remaps = dossier_reglage_retroarch(dossier, "input_remapping_directory", "config/remaps").join(coeur);
+    let surcharges = dossier_reglage_retroarch(dossier, "rgui_config_directory", "config").join(coeur);
+    tous.iter().any(|n| remaps.join(format!("{n}.rmp")).is_file())
+        || liaisons_changees(&std::fs::read_to_string(dossier.join("retroarch.cfg")).unwrap_or_default())
+        || tous.iter().any(|n| liaisons_changees(&std::fs::read_to_string(surcharges.join(format!("{n}.cfg"))).unwrap_or_default()))
+}
+
+/// Une liaison du joueur 1 réglée à la main (`input_player1_…_btn` / `_axis` qui ne vaut ni « nul » ni rien).
+fn liaisons_changees(cfg: &str) -> bool {
+    cfg.lines().any(|l| {
+        let Some((c, v)) = l.split_once('=') else { return false };
+        let c = c.trim();
+        let v = v.trim().trim_matches('"');
+        c.starts_with("input_player1_") && (c.ends_with("_btn") || c.ends_with("_axis")) && !v.is_empty() && v != "nul"
+    })
+}
+
+/// Un dossier réglé dans retroarch.cfg (`cle`), sinon `defaut` (relatif au dossier de RetroArch).
+pub fn dossier_reglage_retroarch(dossier: &Path, cle: &str, defaut: &str) -> PathBuf {
+    let defaut = dossier.join(defaut);
     let Ok(cfg) = std::fs::read_to_string(dossier.join("retroarch.cfg")) else { return defaut };
     for ligne in cfg.lines() {
-        if let Some(v) = ligne.trim().strip_prefix("system_directory") {
-            let v = v.trim().trim_start_matches('=').trim().trim_matches('"');
+        let Some(v) = ligne.trim().strip_prefix(cle) else { continue };
+        if !v.trim_start().starts_with('=') {
+            continue;
+        }
+        let v = v.trim().trim_start_matches('=').trim().trim_matches('"');
+        {
             if v.is_empty() || v == "default" {
                 return defaut;
             }

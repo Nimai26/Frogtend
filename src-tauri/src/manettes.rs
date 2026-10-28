@@ -242,6 +242,31 @@ pub fn regler(id: &str, emulateur: &Path, utilisateur_dolphin: Option<&Path>, fo
     }
 }
 
+/// Le joueur 1 a-t-il la disposition que Frogtend écrit (DuckStation, PCSX2 : `PAD_PLAYSTATION` ; Dolphin :
+/// `PAD_GAMECUBE`) ? Pas encore de manette : Frogtend l'écrira au lancement (oui). Une manette réglée autrement par la
+/// personne (Frogtend la garde) : non — l'interface ne dessine alors rien de faux (lot 4d). Autres émulateurs : oui.
+pub fn disposition_de_frogtend(id: &str, emulateur: &Path, utilisateur_dolphin: Option<&Path>) -> bool {
+    match id {
+        "duckstation" | "pcsx2" => {
+            let ini = if id == "duckstation" { emulateur.join("settings.ini") } else { emulateur.join("inis").join("PCSX2.ini") };
+            let texte = std::fs::read_to_string(ini).unwrap_or_default();
+            !pad1_a_une_manette(&texte)
+                || PAD_PLAYSTATION.iter().all(|(touche, sdl)| {
+                    let m: Vec<String> = lire_ini(&texte, "Pad1", touche).into_iter().filter(|l| est_manette(l)).collect();
+                    m == [format!("SDL-0/{sdl}")]
+                })
+        }
+        "dolphin" => {
+            let Some(u) = utilisateur_dolphin else { return true };
+            let texte = std::fs::read_to_string(u.join("Config").join("GCPadNew.ini")).unwrap_or_default();
+            let appareil = lire_ini(&texte, "GCPad1", "Device");
+            let deja = appareil.first().is_some_and(|d| !d.is_empty() && !d.to_lowercase().contains("keyboard"));
+            !deja || (appareil.first().is_some_and(|d| d == "XInput/0/Gamepad") && PAD_GAMECUBE.iter().all(|(c, v)| lire_ini(&texte, "GCPad1", c) == [v.to_string()]))
+        }
+        _ => true,
+    }
+}
+
 /// La première manette XInput branchée (0 à 3 ; la manette virtuelle de Sunshine en est une), par l'API de Windows.
 pub fn premiere_manette_xinput() -> Option<u32> {
     #[cfg(windows)]
@@ -412,6 +437,57 @@ pub fn regler_rpcs3_pour_partie(emulateur: &Path, forcer: bool, branchee: Option
         let _ = std::fs::write(&f, b.famille());
     }
     Ok(regle)
+}
+
+#[cfg(test)]
+mod tests_disposition {
+    use super::*;
+
+    #[test]
+    fn la_disposition_de_frogtend_est_reconnue_et_celle_de_la_personne_aussi() {
+        let d = tempfile::tempdir().unwrap();
+        assert!(disposition_de_frogtend("duckstation", d.path(), None), "pas encore de manette : Frogtend l'écrira");
+        regler("duckstation", d.path(), None, false).unwrap();
+        assert!(disposition_de_frogtend("duckstation", d.path(), None), "celle que Frogtend vient d'écrire");
+        let ini = d.path().join("settings.ini");
+        let t = std::fs::read_to_string(&ini).unwrap().replace("SDL-0/A", "SDL-0/B");
+        std::fs::write(&ini, t).unwrap();
+        assert!(!disposition_de_frogtend("duckstation", d.path(), None), "changée par la personne");
+        let u = d.path().join("User");
+        assert!(disposition_de_frogtend("dolphin", d.path(), Some(&u)));
+        regler("dolphin", d.path(), Some(&u), false).unwrap();
+        assert!(disposition_de_frogtend("dolphin", d.path(), Some(&u)));
+        let gc = u.join("Config").join("GCPadNew.ini");
+        let t = std::fs::read_to_string(&gc).unwrap().replace("`Button X`", "`Button Y`");
+        std::fs::write(&gc, t).unwrap();
+        assert!(!disposition_de_frogtend("dolphin", d.path(), Some(&u)));
+        assert!(disposition_de_frogtend("cemu", d.path(), None));
+    }
+
+    #[test]
+    fn un_remappage_retroarch_est_vu() {
+        let d = tempfile::tempdir().unwrap();
+        assert!(!crate::emulateurs::remappage_retroarch(d.path(), "Snes9x", &["Mario"]));
+        std::fs::create_dir_all(d.path().join("config/remaps/Snes9x")).unwrap();
+        std::fs::write(d.path().join("config/remaps/Snes9x/Mario.rmp"), "").unwrap();
+        assert!(crate::emulateurs::remappage_retroarch(d.path(), "Snes9x", &["Mario"]));
+        assert!(!crate::emulateurs::remappage_retroarch(d.path(), "Snes9x", &["Zelda"]));
+        std::fs::write(d.path().join("retroarch.cfg"), "input_remapping_directory = \":\\autres\"\n").unwrap();
+        assert!(!crate::emulateurs::remappage_retroarch(d.path(), "Snes9x", &["Mario"]), "dossier réglé ailleurs");
+        std::fs::create_dir_all(d.path().join("autres/Snes9x")).unwrap();
+        std::fs::write(d.path().join("autres/Snes9x/Snes9x.rmp"), "").unwrap();
+        assert!(crate::emulateurs::remappage_retroarch(d.path(), "Snes9x", &["Zelda"]), "pour tout le cœur");
+        // Les liaisons du joueur 1 : « nul » partout (comme chez Seb) = rien de changé ; une autre valeur = changé.
+        let e = tempfile::tempdir().unwrap();
+        std::fs::write(e.path().join("retroarch.cfg"), "input_player1_a_btn = \"nul\"\ninput_player1_l2_axis = \"nul\"\ninput_player1_a = \"x\"\n").unwrap();
+        assert!(!crate::emulateurs::remappage_retroarch(e.path(), "Snes9x", &["Mario"]));
+        std::fs::create_dir_all(e.path().join("config/Snes9x")).unwrap();
+        std::fs::write(e.path().join("config/Snes9x/Mario.cfg"), "input_player1_b_btn = \"2\"\n").unwrap();
+        assert!(crate::emulateurs::remappage_retroarch(e.path(), "Snes9x", &["Mario"]), "surcharge du jeu");
+        assert!(!crate::emulateurs::remappage_retroarch(e.path(), "Snes9x", &["Zelda"]));
+        std::fs::write(e.path().join("retroarch.cfg"), "input_player1_a_btn = \"1\"\n").unwrap();
+        assert!(crate::emulateurs::remappage_retroarch(e.path(), "Snes9x", &["Zelda"]), "liaison du joueur 1");
+    }
 }
 
 #[cfg(test)]

@@ -14,6 +14,8 @@
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { accordCheatEngine } from '$lib/mods/cheatengine';
   import ListeSucces from '$lib/succes/ListeSucces.svelte';
+  import SchemaManette from '$lib/manette/SchemaManette.svelte';
+  import type { InfosBoutons } from '$lib/manette/boutons';
   import type { ListeSucces as ListeSuccesDuJeu } from '$lib/succes/liste';
   import { appliquerManette, arreterManette, demarrerManette, fenetreOuverte, prendreLaMain, selectionner } from '$lib/taodbox/manette.svelte';
   import type { Commande } from '$lib/taodbox/navigation';
@@ -33,6 +35,8 @@
   let options = $state(false);
   // L'écran des triches du jeu (lot 3, RetroArch).
   let triches = $state(false);
+  // L'écran des boutons de la manette (lot 4d), lu à la demande.
+  let boutons = $state<InfosBoutons | null>(null);
   const trichesActives = $derived(menu?.triches?.filter((t) => t.active).length ?? 0);
   // L'avance rapide demandée depuis ce menu, pour CE jeu (une bascule : Frogtend ne connaît pas l'état réel de
   // l'émulateur ; il rappelle seulement ce qui a été demandé ici, pour qu'elle ne soit pas oubliée).
@@ -72,6 +76,7 @@
     ouvert = null;
     options = false;
     triches = false;
+    boutons = null;
     await tick();
     selectionner(liste?.querySelector<HTMLButtonElement>('button'));
   }
@@ -121,6 +126,7 @@
         lecture = null;
         options = false;
         triches = false;
+        boutons = null;
       }),
     ];
     return () => {
@@ -214,6 +220,20 @@
       await api.menuJeuTriche(i);
     } catch (e) {
       toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
+    }
+  }
+
+  async function voirBoutons() {
+    try {
+      const i = await api.boutonsDuJeu(null);
+      if (!i) {
+        toast('Les boutons de ce jeu sont inconnus.', 'neutre');
+        return;
+      }
+      boutons = i;
+      await premierBouton();
+    } catch (e) {
+      toast(`Impossible de lire les boutons : ${motifDuRefus(e)}`, 'erreur');
     }
   }
 
@@ -353,6 +373,7 @@
     else if (documents) revenir(() => (documents = null), '[data-ecran="documents"]');
     else if (options) revenir(() => (options = false), '[data-ecran="options"]');
     else if (triches) revenir(() => (triches = false), '[data-ecran="triches"]');
+    else if (boutons) revenir(() => (boutons = null), '[data-ecran="boutons"]');
     else reprendre();
   }
 
@@ -422,6 +443,16 @@
       {#if a('capture')}<button class="btn" onclick={() => action('capture')}>📷 Photo de l’écran (rangée dans le dossier de l’émulateur)</button>{/if}
       {#if a('muet')}<button class="btn" onclick={() => action('muet')}>🔇 Son : couper ou remettre</button>{/if}
       <button class="btn" onclick={() => revenir(() => (options = false), '[data-ecran="options"]')}>← Retour</button>
+    </div>
+  {:else if boutons}
+    <header>
+      <h1>🗺 Les boutons</h1>
+      <p class="muted">{menu.titre}</p>
+    </header>
+    <div class="liste" bind:this={liste}>
+      <button class="btn" onclick={() => revenir(() => (boutons = null), '[data-ecran="boutons"]')}>← Retour</button>
+      <SchemaManette infos={boutons} />
+      <button class="btn" onclick={() => revenir(() => (boutons = null), '[data-ecran="boutons"]')}>← Retour</button>
     </div>
   {:else if triches && menu.triches}
     <header>
@@ -520,6 +551,7 @@
       {/if}
       {#if a('disque')}<button class="btn" onclick={() => action('disque')}>💿 Disque suivant</button>{/if}
       <button class="btn" data-ecran="documents" onclick={voirDocuments}>📖 Manuel et documents</button>
+      <button class="btn" data-ecran="boutons" onclick={voirBoutons}>🗺 Les boutons</button>
       <!-- Un jeu Steam (Galaxy en attendant Steam), ou un jeu d'émulateur (RetroAchievements, lot C3). -->
       {#if (menu.jeu < 0 && menu.plateforme === 'Windows') || menu.plateforme !== 'Windows'}<button class="btn" data-ecran="succes" disabled={chargementSucces} onclick={voirSucces}>🏆 Succès{chargementSucces ? ' (chargement…)' : ''}</button>{/if}
       {#if ['fps', 'rapide', 'capture', 'muet'].some((o) => a(o))}

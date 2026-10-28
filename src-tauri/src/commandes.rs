@@ -1513,6 +1513,8 @@ pub async fn jeu_jouer(
         triche_ra: 0,
         parties: prep.parties.map(|d| d.to_string_lossy().to_string()),
         abri_triches: prep.abri_fait,
+        coeur: coeur_ra.clone(),
+        dossier_rom: prep.dossier_rom,
         raccourcis_clavier,
         emplacement: 0,
         emplacement_ra: 0,
@@ -2189,6 +2191,84 @@ async fn triche_retroarch(app: &AppHandle, p: crate::menu_jeu::PartieEnCours, k:
     })
     .await
     .map_err(|_| Erreur::Disque("La triche s'est arrêtée brutalement.".into()))?
+}
+
+/// Ce que le cœur sait des boutons d'un jeu (lot 4d) : l'émulateur et son cœur, la manette du joueur (Xbox, ou
+/// PlayStation si seule une manette Sony est branchée), et si la disposition a été changée à la main (alors l'interface
+/// ne dessine rien de faux). Le dessin et les tables sont dans l'interface (`src/lib/manette/boutons.ts`).
+#[derive(Serialize)]
+pub struct InfosBoutons {
+    plateforme: String,
+    emulateur: Option<String>,
+    coeur: Option<String>,
+    famille: &'static str,
+    personnalise: bool,
+    clavier: Option<std::collections::BTreeMap<String, String>>,
+}
+
+/// `id` : un jeu du PC (fiche, Gérer le jeu) ; `None` : la partie en cours (menu en jeu). `None` rendu : jeu inconnu.
+#[tauri::command]
+pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<i64>) -> Resultat<Option<InfosBoutons>> {
+    let profil = profil_ouvert(&noyau).await?.nom;
+    // (plateforme, émulateur, dossier de l'émulateur, cœur, nom du jeu lancé, nom de son dossier, clavier)
+    let (plateforme, emulateur, dossier, coeur, rom, contenu, clavier) = match id {
+        None => {
+            let Some(p) = app.state::<crate::menu_jeu::MenuJeu>().partie() else { return Ok(None) };
+            (p.plateforme, p.emulateur, p.dossier_emulateur.map(std::path::PathBuf::from), p.coeur, p.nom_rom, p.dossier_rom, p.clavier)
+        }
+        Some(id) => {
+            // Un jeu caché au profil ouvert : rien (jamais ce qui a été vu pour une autre personne).
+            let j = match noyau.jeu_jouable(id).await {
+                Ok(j) => j,
+                Err(Erreur::Introuvable(_)) => return Ok(None),
+                Err(e) => return Err(e),
+            };
+            let de_boutique = j.installation.as_ref().is_some_and(|i| i.boutique.is_some());
+            let regle = (!de_boutique).then(|| emulateur_regle(&app, &j.plateforme, id, None)).flatten();
+            let (mut emulateur, mut dossier, mut coeur) = (None, None, None);
+            if let Some((programme, ligne)) = regle {
+                let chemin = std::path::PathBuf::from(&programme);
+                let nom = chemin.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
+                emulateur = crate::emulateurs::CATALOGUE.iter().find(|f| nom.starts_with(f.programme)).map(|f| f.id.to_string());
+                if emulateur.is_none() && nom.starts_with("mame") && nom.ends_with(".exe") {
+                    emulateur = Some("mame".into());
+                }
+                dossier = chemin.parent().map(|d| d.to_path_buf());
+                if emulateur.as_deref() == Some("retroarch") {
+                    coeur = dossier.as_deref().zip(crate::emulateurs::coeur_de(&ligne)).and_then(|(d, c)| crate::emulateurs::nom_du_coeur(d, &c));
+                }
+            }
+            let fichier = if emulateur.is_some() { noyau.fichier_pour_l_emulateur(id, None).await.ok().flatten() } else { None };
+            let rom = fichier.as_deref().and_then(|f| f.file_stem()).map(|s| s.to_string_lossy().to_string());
+            let contenu = fichier.as_deref().and_then(|f| f.parent()).and_then(|d| d.file_name()).map(|s| s.to_string_lossy().to_string());
+            (j.plateforme, emulateur, dossier, coeur, rom, contenu, None)
+        }
+    };
+    let (e2, d2, c2) = (emulateur.clone(), dossier.clone(), coeur.clone());
+    // Dolphin : seule la manette GameCube est réglée par Frogtend (la Wii a ses Wiimotes : « inconnu » côté interface).
+    let gamecube = plateforme.to_lowercase().contains("gamecube");
+    let (famille, personnalise) = tauri::async_runtime::spawn_blocking(move || {
+        let famille = match crate::manettes::manette_branchee() {
+            Some(crate::manettes::PadRpcs3::Ds4) | Some(crate::manettes::PadRpcs3::DualSense) => "playstation",
+            _ => "xbox",
+        };
+        let personnalise = match (e2.as_deref(), d2.as_deref()) {
+            (Some("retroarch"), Some(d)) => c2.as_deref().is_some_and(|c| {
+                let noms: Vec<&str> = rom.iter().chain(contenu.iter()).map(|s| s.as_str()).collect();
+                crate::emulateurs::remappage_retroarch(d, c, &noms)
+            }),
+            (Some("dolphin"), _) if !gamecube => false,
+            (Some(e), Some(d)) => {
+                let utilisateur = crate::emulateurs_profils::dossier_du_profil(d, &profil).join("User");
+                !crate::manettes::disposition_de_frogtend(e, d, Some(&utilisateur))
+            }
+            _ => false,
+        };
+        (famille, personnalise)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La lecture des boutons s'est arrêtée brutalement.".into()))?;
+    Ok(Some(InfosBoutons { plateforme, emulateur, coeur, famille, personnalise, clavier: clavier.filter(|c| !c.is_empty()) }))
 }
 
 /// Change l'emplacement de sauvegarde rapide choisi dans le menu (−1 ou +1). Rien n'est envoyé à l'émulateur : il

@@ -1,5 +1,18 @@
 # Notes de version de Frogtend
 
+## 0.142.0 — Les boutons de la manette d'origine
+
+- 🗺 **« Les boutons »** : un dessin de ta manette et la liste « bouton de ta manette → bouton de la manette
+  d'origine » (A de la manette Xbox = B de la Super Nintendo, Croix de la PlayStation…). Le bouton choisi dans la liste
+  s'allume sur le dessin.
+- Où le trouver : dans le menu en jeu, sur le panneau d'un jeu du PC, et dans ⚙ Gérer le jeu (aussi en Taodbox).
+- Consoles connues : Super Nintendo, NES, Game Boy, GBA, Mega Drive, Master System, Nintendo 64, PlayStation (1 et 2),
+  PC Engine, Saturn, Dreamcast, PSP, DS, Atari 2600, arcade, GameCube. Une manette PlayStation branchée : ses noms
+  (Croix, Rond…).
+- Un jeu PC joué à la manette « comme un clavier » : les touches de chaque bouton.
+- Si tu as changé toi-même les boutons d'un jeu, ou si Frogtend ne connaît pas l'émulateur, il le dit plutôt que de
+  dessiner quelque chose de faux.
+
 ## 0.141.0 — Les triches dans le menu en jeu
 
 - 🎯 Menu en jeu (jeux lancés par RetroArch) : **« Triches »** liste les triches de ton jeu, avec ✅ pour celles qui

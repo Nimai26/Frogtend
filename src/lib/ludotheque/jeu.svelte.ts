@@ -746,6 +746,14 @@ function nomCombinaison(): string {
   return c.replace('Select', 'View').replace('R1', 'RB').replace('L1', 'LB');
 }
 
+/** Comment ouvrir le menu de Frogtend pendant une partie, d'après les réglages du PC (page « 🎮 Les boutons »). */
+export function aideMenuEnJeu(): string {
+  const combinaison = `${nomCombinaison()} tenus une seconde`;
+  return etat.pc.menuJeu?.boutonXbox === false
+    ? `Pendant une partie : ${combinaison} ouvre le menu de Frogtend.`
+    : `Pendant une partie : un appui court sur le bouton du milieu de la manette (si la Game Bar de Windows ne le prend pas), ou ${combinaison}, ouvre le menu de Frogtend.`;
+}
+
 /**
  * « 🕹 Jouer à la manette » (jeu PC lancé sans émulateur, fait pour le clavier) : Frogtend traduit les boutons en
  * touches pendant la partie. Un préréglage courant, ou bouton par bouton ; désactivé d'office.
@@ -1312,7 +1320,7 @@ export async function gererJeu(id: number) {
   const j = tele.jeux[id];
   // Le jeu importé par une AUTRE personne de ce PC : elle seule le gère (✅ Seb 20/10).
   if (!j || j.d_un_autre) return;
-  type Action = 'jouerAvec' | 'autreVersion' | 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'patchs' | 'mods' | 'triches' | 'succes' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'delier' | 'retirer';
+  type Action = 'jouerAvec' | 'autreVersion' | 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'patchs' | 'mods' | 'triches' | 'succes' | 'boutons' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'delier' | 'retirer';
   const options: { valeur: Action; libelle: string; detail?: string }[] = [];
   if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
   // Un jeu d'une boutique (Steam) : c'est elle qui le lance, l'installe et le désinstalle ; Frogtend n'écrit rien dans
@@ -1350,6 +1358,11 @@ export async function gererJeu(id: number) {
   // « Commandes » ne concerne que les émulateurs : pas pour lui (deux entrées « manette » se confondraient).
   const pcSansEmulateur = jeuPcSansEmulateur(id);
   if (!pcSansEmulateur) options.push({ valeur: 'commandes', libelle: '🎮 Commandes', detail: libelleCommandes(etat.profil.commandes[String(id)]) });
+  // Les boutons de la manette et ceux de la manette d'origine (lot 4d ; au bureau ET au canapé).
+  // Un jeu PC : seulement s'il a une correspondance manette → clavier (sinon il lit la manette lui-même).
+  const avecClavier = Object.values(nettoyer(etat.profil.clavier[String(id)]) ?? {}).some(Boolean);
+  if ((j.installation || j.etat === 'telecharge') && (!pcSansEmulateur || avecClavier))
+    options.push({ valeur: 'boutons', libelle: '🗺 Voir les boutons', detail: pcSansEmulateur ? 'ta manette et le clavier — pour ce jeu' : 'ta manette et celle d’origine — pour ce jeu' });
   if (pcSansEmulateur) {
     // Ses mods (contrat 1.19 ; ✅ Seb 19/10) — d'une boutique, Steam seulement (lot B3, ✅ Seb 21/10).
     if (!deBoutique || j.installation?.boutique?.source === 'steam') options.push({ valeur: 'mods', libelle: '🧩 Mods', detail: 'ajouter ou retirer des mods — pour ce jeu' });
@@ -1407,6 +1420,7 @@ export async function gererJeu(id: number) {
     // Au canapé, sous /taodbox : le mode canapé (manette, plein écran) reste actif. Le jeu DU PC : son jeu Steam, ou
     // RetroAchievements pour un jeu d'émulateur (le cœur choisit).
     await goto(`${auCanape() ? '/taodbox' : ''}/succes?jeu=${id}&titre=${encodeURIComponent(j.titre)}`);
+  else if (c === 'boutons') await goto(`${auCanape() ? '/taodbox' : ''}/boutons?jeu=${id}&titre=${encodeURIComponent(j.titre)}`);
   else if (c === 'commandes') await choisirCommandes(id);
   else if (c === 'figer') await choisirFiger(id);
   else if (c === 'pleinEcran') await choisirPleinEcran(id);

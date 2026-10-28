@@ -114,6 +114,9 @@
         </button>
       {/if}
       {#if j.id > 0}<button class="btn grand" onclick={() => goto(`/jeu/${j.id}`)}>📄 Voir la fiche</button>{/if}
+      {#if surPc && (surPc.installation || surPc.etat === 'telecharge')}
+        <button class="btn grand" onclick={() => goto(`/boutons?jeu=${idPc}&titre=${encodeURIComponent(j.titre)}`)}>🗺 Les boutons</button>
+      {/if}
     </div>
 
     <dl class="cx-kv">

@@ -64,6 +64,10 @@ pub struct PartieEnCours {
     /// PREMIÈRE triche de la partie ; et si c'est fait.
     pub parties: Option<String>,
     pub abri_triches: bool,
+    /// RetroArch : le nom du cœur qui fait tourner le jeu, et celui du dossier du jeu lancé (pour montrer les boutons de
+    /// la manette d'origine, et voir un remappage « par dossier » : lot 4d).
+    pub coeur: Option<String>,
+    pub dossier_rom: Option<String>,
 }
 
 /// Une triche d'un fichier `.cht` de RetroArch : son nom et si elle est active.
@@ -163,6 +167,8 @@ pub fn triches_permises_retroarch(retroarch_cfg: &str, profil_cfg: &str) -> bool
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PreparationRa {
     pub nom_rom: Option<String>,
+    /// Le nom du dossier du jeu lancé (remappages « par dossier » de RetroArch).
+    pub dossier_rom: Option<String>,
     pub etats: Option<std::path::PathBuf>,
     pub parties: Option<std::path::PathBuf>,
     pub etats_interdits: bool,
@@ -195,6 +201,7 @@ pub fn preparer_ra(
         parties: a_cote("savefiles_in_content_dir").or_else(|| Some(profil.join("saves"))),
         etats_interdits: retroarch_hardcore(&principal, &du_profil),
         nom_rom: nom_rom.clone(),
+        dossier_rom: fichier.and_then(|f| f.parent()).and_then(|d| d.file_name()).map(|s| s.to_string_lossy().to_string()),
         ..Default::default()
     };
     let (Some(c), Some(r)) = (coeur, nom_rom.as_deref()) else { return Ok(p) };
@@ -892,6 +899,8 @@ mod tests {
             triche_ra: 0,
             parties: None,
             abri_triches: false,
+            coeur: None,
+            dossier_rom: None,
         }
     }
 

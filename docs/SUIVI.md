@@ -45,6 +45,22 @@
   `library_name` (vrai pour Snes9x) ; relire le `.cht` en fin de partie pour vérifier l'état (non fait) ; autres
   émulateurs (liste en lecture seule : non fait) ; Cheat Engine proposé aussi pour un jeu émulé (à cadrer) ; deux
   listes Firehouse pour un même jeu et un même cœur visent le même `.cht` (la 2e remplace la 1re, gardée à côté).
+  (4) Image et confort — avis lancement : tout faisable SANS téléchargement (RetroArch livre shaders slang/glsl,
+  overlays `borders`, shaders à cadre Mega_Bezel / koko-aio) ; ordre : (d) manette, (c) écran de lancement, (a)
+  shaders par `--set-shader` (jamais `video_shader` en appendconfig : recopié dans retroarch.cfg), (b) bezels d'abord
+  par les shaders à cadre, puis overlays avec marque `.image-posee` et retour des valeurs de la personne.
+  ✅ (4d) FAIT en 0.142.0 (avis interface + recherche des dispositions dans le CODE des cœurs libretro, 28/10 ;
+  relectures interface + lancement ; BLOQUANTS corrigés : « Mesen-S » pris pour Mesen par une règle de préfixe →
+  noms EXACTS (`corename` relevés dans le RetroArch livré) ; remappage par dossier invisible dans le menu en jeu →
+  `dossier_rom`) : `src/lib/manette/boutons.ts` (Xbox → RetroPad A→B, B→A, X→Y, Y→X ; puis RetroPad → origine par
+  cœur ; DuckStation/PCSX2/Dolphin GameCube = profils écrits par Frogtend), `SchemaManette.svelte` (SVG aux jetons,
+  liste lisible, dessin collant / deux colonnes en grand), page `/boutons` et `/taodbox/boutons`, écran du menu en
+  jeu, panneau, Gérer le jeu ; cœur `boutons_du_jeu` (famille de manette, « personnalisé » : `.rmp`, liaisons
+  `input_player1_*` ≠ nul (toutes « nul » chez Seb), surcharges `config/<cœur>/*.cfg`, profils DuckStation / PCSX2 /
+  Dolphin changés, « 🎮 Commandes » sur une référence ; jeu caché au profil → rien). RESTE : options de cœur qui
+  déplacent des boutons (turbo, boutons C), type de manette du port, profils par jeu de DuckStation/PCSX2, Wii, MAME
+  autonome, Cemu/Eden/RPCS3/xemu (« inconnu ») ; noms de `clavier.ts` (« Start », « View (Back) ») à harmoniser
+  avec « Menu (≡) » / « Vue (⧉) » ; sous Sunshine la famille est toujours « xbox ».
 - **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un
   jeu du PC (la fiche GARDÉE a `locale: true`, le bouton exigeait `!locale` — même défaut pour « ➕ Ajouter cette
   carte » e-Reader) ; « Gérer ▸ Ajouter une autre version » ne faisait rien (même page). 0.137.4 (relecture interface
