@@ -741,6 +741,87 @@ fn liaisons_changees(cfg: &str) -> bool {
     })
 }
 
+/// Les effets d'image de RetroArch proposés par Frogtend (lot 4a, ✅ Seb 28/10 : shaders par jeu ou par console) :
+/// (identifiant, libellé, préréglage LIVRÉ avec RetroArch sous `shaders_slang`). Relevés dans le RetroArch 1.22.2
+/// installé par Frogtend (28/10). Rien n'est téléchargé ; Frogtend n'écrit rien dans `shaders`. Les CADRES (Mega
+/// Bezel, koko-aio) ne sont PAS ici : koko-aio ne marche pas sous Direct3D 11/12 (sa doc), Mega Bezel y est très lent,
+/// et tous demandent le rapport d'image « Full » (réglage de la personne à changer puis rendre) — reportés (lot 4b).
+/// Les libellés montrés sont dans l'interface (`src/lib/ludotheque/effetsImage.ts`), avec les mêmes identifiants.
+pub const EFFETS_IMAGE: &[(&str, &str, &str)] = &[
+    ("lisse", "Image adoucie", "interpolation/bicubic.slangp"),
+    ("net", "Pixels nets", "pixel-art-scaling/sharp-bilinear-simple.slangp"),
+    ("crt", "Télé d'époque (simple)", "crt/crt-easymode.slangp"),
+    ("crt-riche", "Télé d'époque (détaillée)", "crt/crt-guest-advanced-fast.slangp"),
+    ("portable", "Écran de console portable", "handheld/dot.slangp"),
+];
+
+/// Le choix d'effet pour un lancement.
+#[derive(Debug, PartialEq)]
+pub enum ChoixEffet {
+    /// Rien à donner à RetroArch.
+    Aucun,
+    /// Le préréglage à donner (`--set-shader`).
+    Effet(PathBuf),
+    /// La personne a son propre effet réglé dans RetroArch : il est gardé (rien à lui dire à chaque partie).
+    DeLaPersonne,
+}
+
+/// Les pilotes vidéo de RetroArch qui lisent les préréglages `.slangp` (les seuls proposés) ; absent : non dit.
+const PILOTES_SLANG: &[&str] = &["d3d11", "d3d12", "vulkan", "glcore"];
+
+/// Le pilote vidéo de RetroArch (`video_driver` de retroarch.cfg), s'il est dit.
+pub fn pilote_video_retroarch(dossier: &Path) -> Option<String> {
+    let cfg = std::fs::read_to_string(dossier.join("retroarch.cfg")).ok()?;
+    cfg.lines().find_map(|l| {
+        let (c, v) = l.split_once('=')?;
+        (c.trim() == "video_driver").then(|| v.trim().trim_matches('"').to_string())
+    })
+}
+
+/// Pourquoi les effets d'image ne sont pas possibles avec ce RetroArch (un pilote vidéo qui ne lit pas les `.slangp`).
+pub fn effets_impossibles(dossier: &Path) -> Option<String> {
+    match pilote_video_retroarch(dossier) {
+        Some(p) if !p.is_empty() && !PILOTES_SLANG.contains(&p.as_str()) => Some(format!(
+            "Ton RetroArch dessine l'image d'une façon (« {p} ») qui ne permet pas ces effets."
+        )),
+        _ => None,
+    }
+}
+
+/// Le fichier d'un effet d'image dans ce RetroArch (sous `video_shader_dir`, sinon `shaders`), s'il y est.
+pub fn fichier_effet(dossier: &Path, chemin: &str) -> Option<PathBuf> {
+    let f = dossier_reglage_retroarch(dossier, "video_shader_dir", "shaders").join("shaders_slang").join(chemin);
+    f.is_file().then_some(f)
+}
+
+/// L'effet à donner à RetroArch pour ce jeu. Un effet que la personne a déjà réglé dans RetroArch (pour ce jeu, son
+/// dossier, son cœur ou tous : `<cœur>/<nom>.slangp|glslp|cgp`, `global.*`, cherchés dans `config`, `shaders/presets`
+/// et le dossier de RetroArch) passe devant : jamais remplacé. Refusé (`Err`, dit à la personne, le jeu se lance
+/// quand même) : un effet inconnu ou absent de ce RetroArch, un pilote vidéo qui ne le lit pas.
+pub fn shader_retroarch(dossier: &Path, choix: &str, coeur: Option<&str>, noms: &[&str]) -> Result<ChoixEffet, String> {
+    if choix == "aucun" {
+        return Ok(ChoixEffet::Aucun);
+    }
+    let (_, libelle, chemin) = EFFETS_IMAGE.iter().find(|(id, ..)| *id == choix).ok_or_else(|| format!("effet d'image inconnu : {choix}"))?;
+    let lieux = [
+        dossier_reglage_retroarch(dossier, "rgui_config_directory", "config"),
+        dossier_reglage_retroarch(dossier, "video_shader_dir", "shaders").join("presets"),
+        dossier.to_path_buf(),
+    ];
+    let ext = ["slangp", "glslp", "cgp"];
+    let a_soi = lieux.iter().any(|l| {
+        ext.iter().any(|e| l.join(format!("global.{e}")).is_file())
+            || coeur.is_some_and(|c| noms.iter().chain(std::iter::once(&c)).any(|n| ext.iter().any(|e| l.join(c).join(format!("{n}.{e}")).is_file())))
+    });
+    if a_soi {
+        return Ok(ChoixEffet::DeLaPersonne);
+    }
+    if let Some(m) = effets_impossibles(dossier) {
+        return Err(m);
+    }
+    fichier_effet(dossier, chemin).map(ChoixEffet::Effet).ok_or_else(|| format!("l'effet « {libelle} » n'est pas dans ton RetroArch"))
+}
+
 /// Un dossier réglé dans retroarch.cfg (`cle`), sinon `defaut` (relatif au dossier de RetroArch).
 pub fn dossier_reglage_retroarch(dossier: &Path, cle: &str, defaut: &str) -> PathBuf {
     let defaut = dossier.join(defaut);
@@ -792,6 +873,47 @@ impl Registre {
     }
     pub fn un(&self, id: &str) -> Option<EmulateurInstalle> {
         self.tous().into_iter().find(|e| e.id == id)
+    }
+}
+
+#[cfg(test)]
+mod tests_effets {
+    use super::*;
+
+    #[test]
+    fn un_effet_d_image_seulement_s_il_est_livre_et_jamais_par_dessus_celui_de_la_personne() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        assert_eq!(shader_retroarch(r, "aucun", None, &[]), Ok(ChoixEffet::Aucun));
+        assert!(shader_retroarch(r, "inconnu", None, &[]).is_err());
+        assert!(shader_retroarch(r, "crt", Some("Snes9x"), &["Mario"]).unwrap_err().contains("n'est pas dans"));
+        let f = r.join("shaders/shaders_slang/crt/crt-easymode.slangp");
+        std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+        std::fs::write(&f, "").unwrap();
+        assert_eq!(shader_retroarch(r, "crt", Some("Snes9x"), &["Mario"]), Ok(ChoixEffet::Effet(f.clone())));
+        // Un pilote qui ne lit pas les .slangp : dit.
+        std::fs::write(r.join("retroarch.cfg"), "video_driver = \"gl\"\n").unwrap();
+        assert!(shader_retroarch(r, "crt", None, &[]).unwrap_err().contains("« gl »"));
+        assert!(effets_impossibles(r).is_some());
+        std::fs::write(r.join("retroarch.cfg"), "video_driver = \"d3d11\"\nvideo_shader_dir = \":\\autres\"\n").unwrap();
+        assert!(shader_retroarch(r, "crt", None, &[]).is_err(), "dossier des shaders réglé ailleurs");
+        std::fs::write(r.join("retroarch.cfg"), "video_driver = \"d3d11\"\n").unwrap();
+        // L'effet de la personne pour ce jeu, ce cœur, ou tous : gardé.
+        std::fs::create_dir_all(r.join("config/Snes9x")).unwrap();
+        std::fs::write(r.join("config/Snes9x/Mario.slangp"), "").unwrap();
+        assert_eq!(shader_retroarch(r, "crt", Some("Snes9x"), &["Mario"]), Ok(ChoixEffet::DeLaPersonne));
+        assert!(matches!(shader_retroarch(r, "crt", Some("Snes9x"), &["Zelda"]), Ok(ChoixEffet::Effet(_))));
+        std::fs::create_dir_all(r.join("shaders/presets/Snes9x")).unwrap();
+        std::fs::write(r.join("shaders/presets/Snes9x/Snes9x.slangp"), "").unwrap();
+        assert_eq!(shader_retroarch(r, "crt", Some("Snes9x"), &["Zelda"]), Ok(ChoixEffet::DeLaPersonne), "préréglage du cœur, rangé dans shaders/presets");
+        assert!(matches!(shader_retroarch(r, "crt", Some("mGBA"), &["Zelda"]), Ok(ChoixEffet::Effet(_))));
+        std::fs::write(r.join("config/global.glslp"), "").unwrap();
+        assert_eq!(shader_retroarch(r, "crt", Some("mGBA"), &["Zelda"]), Ok(ChoixEffet::DeLaPersonne));
+        // Chaque identifiant est unique.
+        let mut ids: Vec<&str> = EFFETS_IMAGE.iter().map(|e| e.0).collect();
+        ids.sort();
+        ids.dedup();
+        assert_eq!(ids.len(), EFFETS_IMAGE.len());
     }
 }
 

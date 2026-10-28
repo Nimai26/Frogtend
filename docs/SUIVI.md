@@ -70,6 +70,19 @@
   d'attente pendant Steam/Epic, seulement le toast « Lancement… ») ; filtrer `partie-affichee` par numéro de partie
   (aujourd'hui par jeu ; relance immédiate du même jeu en théorie) ; la fenêtre de compilation de RPCS3 cache
   l'attente tôt (sans gravité).
+  ✅ (4a) FAIT en 0.144.0 (avis lancement avant ; relectures lancement + interface ; BLOQUANT : koko-aio ne marche pas
+  sous d3d11/d3d12 (sa doc), Mega Bezel très lent sous D3D, et tous les cadres veulent « Aspect Ratio = Full »
+  → CADRES RETIRÉS de cette livraison) : 5 effets LIVRÉS avec RetroArch (`EFFETS_IMAGE` : bicubic, sharp-bilinear,
+  crt-easymode, crt-guest-advanced-fast, handheld/dot ; vérifiés chez Seb), par jeu ou par console (profil
+  `image`), `--set-shader="<chemin>"` en tête de la ligne, `video_shader_enable = "true"` AJOUTÉ (append) au
+  frogtend.cfg du profil seulement quand un effet est appliqué ; un effet de la personne (`config`, `shaders/presets`,
+  dossier de RetroArch : `global.*`, `<cœur>/<jeu|dossier|cœur>.*`) passe devant, sans rien dire à chaque partie ;
+  pilote vidéo qui ne lit pas les `.slangp` → dit. RESTE : (4b) CADRES — À DÉCIDER AVEC SEB : passer RetroArch en
+  Vulkan (koko-aio, Mega Bezel rapides) ? et le rapport d'image « Full » à poser pendant une partie avec cadre puis à
+  rendre (sa valeur gardée par Frogtend, réécrite à chaque lancement) ; ou des overlays `borders` livrés (peu de
+  consoles) ; ou des cadres servis par Firehouse. Aussi : aperçu des effets (vignette d'exemple : idée), essayer un
+  effet à chaud depuis le menu en jeu (`SHADER_TOGGLE`), raccourcis M/N/virgule de RetroArch actifs dans un jeu
+  d'ordinateur (d'avant).
 - **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un
   jeu du PC (la fiche GARDÉE a `locale: true`, le bouton exigeait `!locale` — même défaut pour « ➕ Ajouter cette
   carte » e-Reader) ; « Gérer ▸ Ajouter une autre version » ne faisait rien (même page). 0.137.4 (relecture interface

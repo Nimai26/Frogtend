@@ -134,6 +134,9 @@ export interface ReglagesProfil {
   sansRepetition: string[];
   /** Les réunions de fiches (contrat 1.14, « ancien>nouveau ») dont les réglages ont déjà été copiés : jamais deux fois. */
   reunionsSuivies: string[];
+  /** L'effet d'image de RetroArch (lot 4a/4b, ✅ Seb 28/10 : par jeu ou par console) : identifiant d'un effet du cœur
+   * (`EFFETS_IMAGE`) ou `aucun`. Le jeu passe devant sa console ; absent : rien. */
+  image: { consoles: Record<string, string>; jeux: Record<string, string> };
 }
 
 export const DEFAUTS_PC: ReglagesPc = {
@@ -174,6 +177,7 @@ export const DEFAUTS_PROFIL: ReglagesProfil = {
   clavier: {},
   sansRepetition: [],
   reunionsSuivies: [],
+  image: { consoles: {}, jeux: {} },
 };
 
 export const TAILLE_JAQUETTE_MIN = 110;

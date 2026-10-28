@@ -3,6 +3,13 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Les effets d'image (0.144.0)
+- [ ] Super Mario World : ⚙ Gérer le jeu ▸ « 🖼 Effet d'image » ▸ « Télé d'époque (simple) » ▸ « Pour ce jeu » ;
+      lancer : de fines lignes horizontales. Revenir à « Comme la console » : l'image normale.
+- [ ] « Télé d'époque (détaillée) » pour toute la Super Nintendo : un autre jeu SNES l'a aussi ; le démarrage reste
+      rapide.
+- [ ] Après une partie avec effet, un jeu sans effet : l'image est normale (rien n'est resté collé).
+
 ## L'écran de lancement (0.143.0)
 - [ ] Un jeu lent (PS3 par RPCS3, ou un gros jeu PC) : après 2 s, son fond et « se lance… » ; il disparaît quand le
       jeu s'affiche, et le jeu a bien la main (manette, clavier).

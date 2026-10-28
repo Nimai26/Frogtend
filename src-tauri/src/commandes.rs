@@ -1385,6 +1385,7 @@ pub async fn jeu_jouer(
     clavier: Option<std::collections::BTreeMap<String, String>>,
     repeter_touches: Option<bool>,
     carte: Option<i64>,
+    image: Option<String>,
 ) -> Resultat<()> {
     let jeu = noyau.registre().jeu(id)?;
     // Un jeu d'une boutique : lancé par elle, jamais par un émulateur (même si un émulateur est réglé pour « Windows »).
@@ -1415,7 +1416,51 @@ pub async fn jeu_jouer(
                     verifier_image_xbox(f, version.is_some()).await?;
                 }
             }
-            Some(preparer_emulateur(&app, &noyau, &plateforme, &programme, &ligne, &commandes.unwrap_or_default()).await?)
+            let (prog, mut ligne_c) = preparer_emulateur(&app, &noyau, &plateforme, &programme, &ligne, &commandes.unwrap_or_default()).await?;
+            // RetroArch : l'effet d'image choisi pour ce jeu ou sa console (lot 4a/4b), par `--set-shader` (rien n'est
+            // recopié dans retroarch.cfg) ; seul `video_shader_enable` est écrit, dans le fichier du profil (RetroArch
+            // ne charge aucun effet sans lui). Un refus est dit, le jeu se lance quand même.
+            if let (Some("retroarch"), Some(choix)) = (id_emulateur.as_deref(), image.as_deref()) {
+                let fichier = noyau.fichier_pour_l_emulateur(id, version.as_deref()).await.ok().flatten();
+                let profil = profil_ouvert(&noyau).await?.nom;
+                let (d, c, choix) = (std::path::PathBuf::from(dossier_emulateur.clone().unwrap_or_default()), coeur_ra.clone(), choix.to_string());
+                let r = tauri::async_runtime::spawn_blocking(move || -> Result<crate::emulateurs::ChoixEffet, String> {
+                    if !d.is_absolute() {
+                        return Err("le dossier de RetroArch est inconnu".into());
+                    }
+                    let noms: Vec<String> = fichier
+                        .iter()
+                        .flat_map(|f| [f.file_stem(), f.parent().and_then(|p| p.file_name())])
+                        .flatten()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .collect();
+                    let refs: Vec<&str> = noms.iter().map(|s| s.as_str()).collect();
+                    let s = crate::emulateurs::shader_retroarch(&d, &choix, c.as_deref(), &refs)?;
+                    if matches!(s, crate::emulateurs::ChoixEffet::Effet(_)) {
+                        // Ajouté à la fin (jamais le fichier réécrit en entier : une écriture coupée ne le tronque pas).
+                        use std::io::Write;
+                        let cfg = crate::emulateurs_profils::dossier_du_profil(&d, &profil).join("frogtend.cfg");
+                        std::fs::OpenOptions::new()
+                            .append(true)
+                            .open(&cfg)
+                            .and_then(|mut f| f.write_all(b"video_shader_enable = \"true\"\n"))
+                            .map_err(|e| format!("les réglages du profil n'ont pas pu être complétés ({e})"))?;
+                    }
+                    Ok(s)
+                })
+                .await
+                .map_err(|_| Erreur::Disque("La préparation de l'effet d'image s'est arrêtée brutalement.".into()))?;
+                match r {
+                    Ok(crate::emulateurs::ChoixEffet::Effet(s)) => ligne_c = format!("\"--set-shader={}\" {ligne_c}", s.to_string_lossy()),
+                    Ok(crate::emulateurs::ChoixEffet::Aucun) => {}
+                    Ok(crate::emulateurs::ChoixEffet::DeLaPersonne) => noyau.journaliser(&format!("effet d'image du jeu {id} : celui réglé dans RetroArch est gardé")),
+                    Err(m) => {
+                        noyau.journaliser(&format!("effet d'image du jeu {id} : {m}"));
+                        let _ = app.emit("effet-image", serde_json::json!({ "jeu": id, "message": m }));
+                    }
+                }
+            }
+            Some((prog, ligne_c))
         }
         None => None,
     };
@@ -2209,6 +2254,32 @@ async fn triche_retroarch(app: &AppHandle, p: crate::menu_jeu::PartieEnCours, k:
     })
     .await
     .map_err(|_| Erreur::Disque("La triche s'est arrêtée brutalement.".into()))?
+}
+
+/// Les effets d'image proposés pour un RetroArch (lot 4a/4b) : ceux qu'il a, et pourquoi aucun ne l'est (pilote
+/// vidéo). Lecture seule.
+#[derive(Serialize)]
+pub struct EffetImage {
+    id: &'static str,
+    present: bool,
+}
+
+#[derive(Serialize)]
+pub struct EffetsImage {
+    impossible: Option<String>,
+    effets: Vec<EffetImage>,
+}
+
+#[tauri::command]
+pub fn effets_image(programme: String) -> EffetsImage {
+    let d = std::path::Path::new(&programme).parent().map(|p| p.to_path_buf()).unwrap_or_default();
+    EffetsImage {
+        impossible: crate::emulateurs::effets_impossibles(&d),
+        effets: crate::emulateurs::EFFETS_IMAGE
+            .iter()
+            .map(|(id, _, chemin)| EffetImage { id, present: crate::emulateurs::fichier_effet(&d, chemin).is_some() })
+            .collect(),
+    }
 }
 
 /// Ce que le cœur sait des boutons d'un jeu (lot 4d) : l'émulateur et son cœur, la manette du joueur (Xbox, ou

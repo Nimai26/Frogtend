@@ -787,6 +787,7 @@ export const api = {
     clavier?: Record<string, string>,
     repeterTouches = true,
     carte?: number,
+    image?: string,
   ) =>
     appeler<void>('jeu_jouer', {
       id,
@@ -798,7 +799,11 @@ export const api = {
       clavier: clavier && Object.keys(clavier).length ? clavier : null,
       repeterTouches,
       carte: carte ?? null,
+      image: image ?? null,
     }),
+  /** Les effets d'image d'un RetroArch (lot 4a/4b). */
+  effetsImage: (programme: string) =>
+    appeler<{ impossible: string | null; effets: { id: string; present: boolean }[] }>('effets_image', { programme }),
   pleinEcranSuggestion: (id: number) => appeler<string | null>('jeu_plein_ecran_suggestion', { id }),
   jeuAntiTriche: (id: number) => appeler<VerificationFiger>('jeu_anti_triche', { id }),
   biosPoser: (plateforme: string, programme: string) => appeler<BilanBios>('bios_poser', { plateforme, programme }),

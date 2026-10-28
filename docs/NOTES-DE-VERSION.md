@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.144.0 — Les effets d'image
+
+- 📺 ⚙ Gérer le jeu ▸ **« 🖼 Effet d'image »** (jeux lancés par RetroArch) : télé d'époque (simple ou détaillée),
+  image adoucie, pixels nets, écran de console portable — pour ce jeu, ou pour tous les jeux de sa console. Appliqué
+  au prochain lancement.
+- Les effets sont ceux livrés avec RetroArch : rien n'est téléchargé. Si tu as déjà réglé un effet toi-même dans
+  RetroArch, il est gardé.
+- Les **cadres** autour de l'image ne sont pas encore là : ceux livrés avec RetroArch ne marchent pas bien avec ta
+  carte graphique réglée comme elle l'est (Direct3D 11), et ils demandent de changer le format d'image. On en reparle.
+
 ## 0.143.0 — L'écran de lancement
 
 - ⏳ Un jeu qui met du temps à s'ouvrir : après 2 secondes, Frogtend montre son fond, son nom et « se lance… »,

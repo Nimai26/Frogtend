@@ -53,6 +53,12 @@ describe('completer', () => {
     expect(completer(DEFAUTS_PROFIL, {}).sansRepetition).toEqual([]);
     expect(completer(DEFAUTS_PROFIL, { sansRepetition: ['42'] }).sansRepetition).toEqual(['42']);
   });
+  it('l’effet d’image : rien d’office, par console et par jeu (dictionnaires libres)', () => {
+    expect(completer(DEFAUTS_PROFIL, {}).image).toEqual({ consoles: {}, jeux: {} });
+    const r = completer(DEFAUTS_PROFIL, { image: { consoles: { 'Nintendo 64': 'crt' }, jeux: { '12': 'aucun' } } });
+    expect(r.image.consoles['Nintendo 64']).toBe('crt');
+    expect(r.image.jeux['12']).toBe('aucun');
+  });
   it('le bouton Xbox ouvre le menu en jeu d’office, même dans un ancien réglage sans la clé', () => {
     expect(DEFAUTS_PC.menuJeu.boutonXbox).toBe(true);
     expect(completer(DEFAUTS_PC, { menuJeu: { touche: 'Pause' } }).menuJeu.boutonXbox).toBe(true);

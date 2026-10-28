@@ -32,6 +32,7 @@ import { libellePleinEcran, TOUCHES_PLEIN_ECRAN } from './plein-ecran';
 import { BOUTONS, detailTouche, libelleClavier, memes, nettoyer, PREREGLAGES, toucheDepuisEvenement, TOUCHES, type Correspondance } from './clavier';
 import { auCanape, seulementAuBureau } from '$lib/taodbox/canape';
 import { nomAffiche } from './ludotheque.svelte';
+import { EFFETS_IMAGE, libelleEffet } from './effetsImage';
 import { proposerCopieAvantMod } from '$lib/mods/copieAvantMod';
 
 /** `affichee` : la fenêtre du jeu en cours est apparue (l'écran de lancement se cache, lot 4c). */
@@ -52,6 +53,11 @@ export async function suivreParties() {
   if (ecoute || !isTauri()) return;
   // Un jeu en administrateur ne reçoit pas les touches de la manette : le dire (une fois par partie).
   await listen<{ message: string }>('clavier', (e) => toast(`🕹 ${e.payload.message}.`, 'alerte'));
+  // L'effet d'image n'a pas pu être appliqué (le jeu s'est lancé sans) : le dire.
+  await listen<{ jeu: number; message: string }>('effet-image', (e) => {
+    const titre = tele.jeux[e.payload.jeu]?.titre ?? 'le jeu';
+    toast(`🖼 « ${titre} » se lance sans effet d’image : ${e.payload.message}.`, 'alerte');
+  });
   // Le plein écran au lancement n'a pas pu être appliqué : le dire, avec la piste (l'autre façon).
   await listen<{ jeu: number; message: string }>('plein-ecran', (e) => {
     const titre = tele.jeux[e.payload.jeu]?.titre ?? 'le jeu';
@@ -473,6 +479,7 @@ async function jouerSansAttente(id: number, emulateur?: string, version?: string
         nettoyer(etat.profil.clavier[String(id)]),
         !etat.profil.sansRepetition.includes(String(id)),
         carte,
+        effetImage(id, j?.plateforme),
       );
       toast(`▶ « ${j?.titre ?? 'Le jeu'} » se lance…`);
       return;
@@ -879,6 +886,65 @@ export async function choisirClavier(id: number) {
   else tous[String(id)] = nouvelle;
   await reglerProfil('clavier', tous);
   toast(`🕹 « ${j.titre} » : ${desactive ? 'la manette n’envoie plus de touches' : `manette — ${libelleClavier(nouvelle)}`}.`);
+}
+
+/** L'effet d'image de RetroArch pour ce jeu : le sien, sinon celui de sa console (le cœur l'ignore hors RetroArch). */
+export function effetImage(id: number, plateforme: string | undefined): string | undefined {
+  const im = etat.profil.image;
+  return im?.jeux[String(id)] ?? (plateforme ? im?.consoles[plateforme] : undefined);
+}
+
+/** « 🖼 Effet d'image » (jeu lancé par RetroArch, lot 4a) : télé d'époque, image adoucie, pixels nets… — pour ce jeu,
+ * ou pour toute sa console. Les effets viennent de RetroArch lui-même (rien n'est téléchargé) ; un effet réglé par la
+ * personne dans RetroArch passe devant (gardé, jamais remplacé). */
+async function choisirEffetImage(id: number, programme: string) {
+  const j = tele.jeux[id];
+  if (!j) return;
+  let r: Awaited<ReturnType<typeof api.effetsImage>>;
+  try {
+    r = await api.effetsImage(programme);
+  } catch (e) {
+    toast(`Impossible de lire les effets d’image : ${motifDuRefus(e)}`, 'erreur');
+    return;
+  }
+  if (r.impossible) {
+    await informer('🖼 Effet d’image', r.impossible);
+    return;
+  }
+  const presents = r.effets.filter((e) => e.present && EFFETS_IMAGE[e.id]);
+  if (!presents.length) {
+    await informer('🖼 Effet d’image', 'Ton RetroArch n’a pas les effets d’image que Frogtend sait proposer.');
+    return;
+  }
+  const duJeu = etat.profil.image.jeux[String(id)];
+  const deLaConsole = etat.profil.image.consoles[j.plateforme];
+  type Choix = 'console' | 'aucun' | string;
+  const options: { valeur: Choix; libelle: string; detail?: string }[] = [
+    { valeur: 'console', libelle: `🎮 Comme la console (${libelleEffet(deLaConsole)})`, detail: duJeu === undefined ? 'choix actuel' : undefined },
+    { valeur: 'aucun', libelle: '⬜ Aucun effet', detail: duJeu === 'aucun' ? 'choix actuel' : 'l’image telle que la console la donne' },
+    ...presents.map((e) => ({ valeur: e.id, libelle: `📺 ${EFFETS_IMAGE[e.id].libelle}`, detail: duJeu === e.id ? `choix actuel — ${EFFETS_IMAGE[e.id].detail}` : EFFETS_IMAGE[e.id].detail })),
+  ];
+  const c = await choisir<Choix>(`🖼 Effet d’image de « ${j.titre} »`, options, 'Appliqué au prochain lancement.');
+  if (c === null) return;
+  const jeux = { ...etat.profil.image.jeux };
+  const consoles = { ...etat.profil.image.consoles };
+  if (c === 'console') {
+    delete jeux[String(id)];
+  } else {
+    const pour = await choisir<'jeu' | 'console'>(`🖼 « ${libelleEffet(c)} »`, [
+      { valeur: 'jeu', libelle: `Pour « ${j.titre} » seulement` },
+      { valeur: 'console', libelle: `Pour tous les jeux ${nomAffiche(j.plateforme)}`, detail: 'un jeu réglé à part garde son choix' },
+    ]);
+    if (pour === null) return;
+    if (pour === 'jeu') jeux[String(id)] = c;
+    else {
+      delete jeux[String(id)];
+      if (c === 'aucun') delete consoles[j.plateforme];
+      else consoles[j.plateforme] = c;
+    }
+  }
+  await reglerProfil('image', { jeux, consoles });
+  toast(`🖼 « ${j.titre} » : ${libelleEffet(effetImage(id, j.plateforme))} (au prochain lancement).`);
 }
 
 let recherchePleinEcran = false;
@@ -1334,7 +1400,7 @@ export async function gererJeu(id: number) {
   const j = tele.jeux[id];
   // Le jeu importé par une AUTRE personne de ce PC : elle seule le gère (✅ Seb 20/10).
   if (!j || j.d_un_autre) return;
-  type Action = 'jouerAvec' | 'autreVersion' | 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'patchs' | 'mods' | 'triches' | 'succes' | 'boutons' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'delier' | 'retirer';
+  type Action = 'jouerAvec' | 'autreVersion' | 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'effet' | 'patchs' | 'mods' | 'triches' | 'succes' | 'boutons' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'delier' | 'retirer';
   const options: { valeur: Action; libelle: string; detail?: string }[] = [];
   if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
   // Un jeu d'une boutique (Steam) : c'est elle qui le lance, l'installe et le désinstalle ; Frogtend n'écrit rien dans
@@ -1361,6 +1427,12 @@ export async function gererJeu(id: number) {
       libelle: '🕹 Émulateur',
       detail: `${e?.nom || e?.programme || ''}${etat.pc.emulateursJeux[String(id)] ? ' (propre à ce jeu)' : ' (comme la console)'}`,
     });
+    // Un jeu lancé par RetroArch : son effet d'image (télé d'époque, image adoucie… ; lot 4a).
+    if (/(^|[\\/])retroarch[^\\/]*\.exe$/i.test(e?.programme ?? '')) {
+      const v = effetImage(id, j.plateforme);
+      const origine = etat.profil.image.jeux[String(id)] !== undefined ? 'pour ce jeu' : v !== undefined ? 'comme la console' : 'télé d’époque, pixels nets…';
+      options.push({ valeur: 'effet', libelle: '🖼 Effet d’image', detail: `${libelleEffet(v)} (${origine})` });
+    }
     // Un jeu PS3 lancé par RPCS3 : son image et sa fluidité (✅ Seb 19/10 : « shaders = les deux »).
     if (j.installation && /(^|[\\/])rpcs3\.exe$/i.test(e?.programme ?? '')) {
       options.push({ valeur: 'image', libelle: '🎨 Image et fluidité', detail: 'résolution, saccades, netteté — pour ce jeu' });
@@ -1427,6 +1499,10 @@ export async function gererJeu(id: number) {
   else if (c === 'version') await choisirVersionParDefaut(id);
   else if (c === 'emulateur') await choisirEmulateurDuJeu(id);
   else if (c === 'image') await choisirImagePs3(id);
+  else if (c === 'effet') {
+    const e = pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, j.plateforme, id);
+    if (e?.programme) await choisirEffetImage(id, e.programme);
+  }
   else if (c === 'patchs') await choisirPatchsPs3(id);
   else if (c === 'mods') await choisirMods(id);
   else if (c === 'triches') await goto(`/triches?jeu=${id}`);
