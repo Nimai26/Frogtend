@@ -308,3 +308,12 @@ d'édition a réécrit contenus.rs (CRLF dans le dépôt) entièrement en LF : v
 w/lf ») et un diff de 3 600 lignes ; remis en CRLF. · Garde-fous : un script de retouche s'écrit avec l'outil
 d'écriture (jamais `cat <<EOF`), vérifie TOUTES ses retouches avant d'en écrire une ; la vérification des fins de
 ligne regarde aussi « i/crlf w/lf » et `git diff --stat` (un fichier entier changé = fins de ligne).
+
+28/10 (séance d'essais réelle avec Seb, SNES de A à Z) : cinq défauts que 600 tests ne voyaient pas, tous à la
+frontière avec le vrai PC : Steam ouvert transforme la manette en touches (chaque appui compté deux fois) ; une
+longue préparation sans rien qui bloque « Jouer » (deux installations en même temps) ; un réglage de RetroArch
+(`quit_press_twice`) et un profil de manette livré par RetroArch (Guide → son menu) ; la Game Bar de Windows qui lance
+un autre émulateur. · Comment l'appliquer : un parcours entier (installer → préparer → jouer → menu en jeu → quitter)
+se rejoue EN VRAI avec Seb avant toute bêta ; et chaque attente longue (installation, téléchargement) se demande :
+« que se passe-t-il si on clique ailleurs pendant ce temps ? ». (Et `confirmer` n'a PAS d'option `libelleAnnuler` :
+2e fois que je l'écris ; relire la signature d'une fonction avant de lui passer une option.)

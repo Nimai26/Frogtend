@@ -1,5 +1,23 @@
 # Notes de version de Frogtend
 
+## 0.135.0 — Les corrections de la séance d'essais
+
+- 🎮 Menu en jeu et Taodbox : chaque appui de la manette ne compte plus qu'une fois, même quand Steam est ouvert (Steam
+  transforme la manette en touches du clavier : la croix sautait un élément sur deux, et « Options du jeu »
+  s'ouvrait puis validait aussitôt sa première option).
+- ⏳ Quand Frogtend prépare une console (installation de RetroArch…), le bouton « ▶ Jouer » le dit, avec
+  l'avancement ; un clic pendant ce temps attend la fin puis lance le jeu, au lieu de recommencer l'installation à
+  côté. Deux installations ne peuvent plus se gêner dans le même dossier.
+- 🔁 RetroArch : « Recommencer » et « Quitter » du menu en jeu marchent du premier coup (plus de « appuie une nouvelle
+  fois pour confirmer »).
+- 💿 « Disque suivant » n'est plus proposé pour un jeu qui n'a qu'un disque ou une cartouche.
+- 🛑 RPCS3 ne pose plus sa question de mise à jour en démarrant (sauf si tu as choisi toi-même autre chose dans
+  RPCS3).
+- 🎮 À ton premier jeu à la manette, Frogtend propose de couper le bouton Xbox qui ouvre la Game Bar de Windows (un
+  réglage de Windows, changé seulement si tu dis oui ; « Annuler » est choisi d'office).
+- Un problème de disque est dit simplement (« un fichier est utilisé par un autre programme… »), au lieu du message
+  technique de Windows.
+
 ## 0.134.0 — Finitions invisibles (2)
 
 - 🏷 Deux systèmes qui auraient le même nom court sont montrés sous leur nom complet : on ne les confond plus.

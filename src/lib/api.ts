@@ -717,6 +717,10 @@ export const api = {
   dossierJeuxPropose: () => appeler<{ chemin: string; disque: string; libre: number; disques: string[]; externe: boolean } | null>('dossier_jeux_propose'),
   /** Crée le dossier PROPOSÉ (seul celui-là est admis par le cœur), après le oui de la personne. */
   dossierJeuxCreer: (chemin: string) => appeler<string>('dossier_jeux_creer', { chemin }),
+  /** Le bouton Xbox ouvre-t-il la Game Bar de Windows ? (`null` : hors de Windows.) */
+  gameBarBouton: () => appeler<boolean | null>('game_bar_bouton'),
+  /** Change CE seul réglage de Windows, après le oui de la personne. */
+  gameBarBoutonRegler: (actif: boolean) => appeler<void>('game_bar_bouton_regler', { actif }),
   /** Pourquoi ce dossier ne convient pas pour ranger des jeux (racine d'un disque, Windows, Documents…), ou `null`. */
   dossierJeuxRefus: (chemin: string, sorte?: 'emulateurs' | 'outils' | 'abris') =>
     appeler<string | null>('dossier_jeux_refus', { chemin, sorte: sorte ?? null }),

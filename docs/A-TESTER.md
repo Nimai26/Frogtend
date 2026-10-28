@@ -3,6 +3,20 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+## Les corrections de la séance d'essais (0.135.0) — À REFAIRE ENSEMBLE (Super Mario World)
+- [ ] Au lancement du jeu, manette branchée : la question « 🎮 Le bouton Xbox ouvre la Game Bar » (« Annuler »
+      choisi d'office) ; « Couper le bouton » → en jeu, le bouton Xbox n'ouvre plus la Game Bar (sans redémarrer ?
+      la clé vient de tutoriels, pas de Microsoft). Plus tard : le même essai par Moonlight (manette de Sunshine).
+- [ ] Le bouton Xbox ouvre ENCORE le menu de RetroArch (pas coupé : décision de Seb attendue).
+- [ ] Menu en jeu (Vue + RB 1 s), Steam OUVERT : la croix avance d'UN élément à la fois ; « Options du jeu » ouvre
+      bien ses 4 lignes ; essayer avance rapide, photo, son.
+- [ ] Pas de « Disque suivant » pour la cartouche.
+- [ ] « Recommencer » et « Quitter » : un seul appui (après la confirmation de Frogtend), pas de message de RetroArch.
+- [ ] Un AUTRE système jamais préparé (ex. Game Boy) : « Mettre dans ma ludothèque », oui à la préparation, puis
+      cliquer « ▶ Jouer » PENDANT l'installation → le bouton dit « ⏳ Préparation de RetroArch… », aucune 2e question,
+      le jeu se lance tout seul à la fin.
+- [ ] Ouvrir RPCS3 à la main : aucune question de mise à jour.
+
 ## Finitions invisibles (0.134.0)
 - [ ] Réglages ▸ Emplacements ▸ dossier des émulateurs : choisir `D:\` → une fenêtre dit qu'il ne convient pas et
       propose `D:\Emulateurs` ; rien n'est enregistré.

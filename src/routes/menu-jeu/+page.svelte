@@ -15,7 +15,7 @@
   import { accordCheatEngine } from '$lib/mods/cheatengine';
   import ListeSucces from '$lib/succes/ListeSucces.svelte';
   import type { ListeSucces as ListeSuccesDuJeu } from '$lib/succes/liste';
-  import { appliquer, arreterManette, demarrerManette, fenetreOuverte, selectionner } from '$lib/taodbox/manette.svelte';
+  import { appliquerManette, arreterManette, demarrerManette, fenetreOuverte, selectionner } from '$lib/taodbox/manette.svelte';
   import type { Commande } from '$lib/taodbox/navigation';
 
   let menu = $state<EtatMenuJeu | null>(null);
@@ -97,7 +97,7 @@
         charger();
       }),
       // La manette lue par le cœur pendant la partie (étape 3 de l'OSD) : les mêmes commandes.
-      listen<Commande>('menu-manette', (e) => appliquer(e.payload)),
+      listen<Commande>('menu-manette', (e) => appliquerManette(e.payload)),
       // Un jeu PC figé par le cœur (option du jeu) : il est vraiment en pause.
       listen<boolean>('menu-jeu-pause', (e) => {
         pauseRecue = e.payload;

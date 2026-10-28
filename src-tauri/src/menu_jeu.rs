@@ -34,7 +34,20 @@ pub struct PartieEnCours {
     /// Émulateur figé pendant le menu (aucune pause réglable : Cemu, Xenia, xemu, Vita3K ; ou Eden/Azahar dont la
     /// pause n'a pas pu être réglée) : il n'est « en pause » qu'une fois VRAIMENT figé.
     pub figer_emulateur: bool,
+    /// Le jeu lancé est une liste de disques (`.m3u`, la seule que RetroArch, DuckStation et Dolphin font défiler) :
+    /// sinon « Disque suivant » n'est pas proposé (essai de Seb, 28/10 : il l'était pour une cartouche SNES).
+    pub plusieurs_disques: bool,
 }
+
+/// Le fichier lancé peut-il avoir plusieurs disques ? Une liste `.m3u`, ou un `.pbp` (PS1 : plusieurs disques dans un
+/// seul fichier, que RetroArch et DuckStation font défiler sans liste).
+pub fn liste_de_disques(fichier: &std::path::Path) -> bool {
+    fichier.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("m3u") || e.eq_ignore_ascii_case("pbp"))
+}
+
+/// Les systèmes à disquettes dont on RETOURNE la face par « Disque suivant » (commande `DISK_NEXT` de RetroArch) :
+/// toujours proposé (non vérifié sur un vrai cœur FDS).
+const SYSTEMES_A_FACES: &[&str] = &["Nintendo Famicom Disk System"];
 
 #[derive(Default)]
 pub struct MenuJeu {
@@ -125,6 +138,10 @@ pub fn etat(p: &PartieEnCours) -> EtatMenu {
             .into_iter()
             // Un jeu de MAME qui ne gère pas les sauvegardes d'état (dit par le script au démarrage) : ni sauver ni
             // charger — une sauvegarde peu fiable serait une partie perdue (✅ Seb 19/10).
+            // DOSBox Staging change de disque par sa propre configuration : gardé tel quel.
+            .filter(|a| {
+                !matches!(a, crate::pilotage::Action::DisqueSuivant) || p.plusieurs_disques || e == "dosbox-staging" || SYSTEMES_A_FACES.contains(&p.plateforme.as_str())
+            })
             .filter(|a| {
                 e != "mame"
                     || !matches!(a, crate::pilotage::Action::SauverEtat | crate::pilotage::Action::ChargerEtat)
@@ -438,7 +455,21 @@ mod tests {
             clavier: None,
             repeter_touches: true,
             figer_emulateur: false,
+            plusieurs_disques: true,
         }
+    }
+
+    #[test]
+    fn disque_suivant_seulement_pour_une_liste_de_disques() {
+        let cartouche = PartieEnCours { plusieurs_disques: false, ..partie(Some("retroarch")) };
+        assert!(!etat(&cartouche).actions.contains(&"disque"), "une cartouche SNES : pas de disque suivant");
+        assert!(etat(&partie(Some("retroarch"))).actions.contains(&"disque"));
+        assert!(etat(&PartieEnCours { plusieurs_disques: false, ..partie(Some("dosbox-staging")) }).actions.contains(&"disque"));
+        assert!(liste_de_disques(std::path::Path::new("E:\\Jeux\\FF7.M3U")) && liste_de_disques(std::path::Path::new("x.m3u")));
+        assert!(liste_de_disques(std::path::Path::new("Final Fantasy VII (France).PBP")), "un PBP PS1 peut contenir plusieurs disques");
+        let fds = PartieEnCours { plusieurs_disques: false, plateforme: "Nintendo Famicom Disk System".into(), ..partie(Some("retroarch")) };
+        assert!(etat(&fds).actions.contains(&"disque"), "Famicom Disk System : retourner la disquette");
+        assert!(!liste_de_disques(std::path::Path::new("Super Mario World (USA).sfc")) && !liste_de_disques(std::path::Path::new("FF7 (Disc 1).cue")));
     }
 
     #[test]

@@ -12,6 +12,7 @@
   import ResumeBase from './ResumeBase.svelte';
   import { annuler, jeuSurPc, mettreDansLaLudotheque, mettreEnPause, reprendre } from './telechargements.svelte';
   import { emulateursDuJeu, gererLaCarte, installer, jouerAvec, jouerLaCarte, partie } from './jeu.svelte';
+  import { libellePreparation } from '$lib/emulateurs/pret.svelte';
   import { estJeuDeBoutique, ouvrirJeuDeBoutique } from '$lib/boutiques/jeu-boutique';
   import { nomPlateforme } from '$lib/boutiques/galaxy.svelte';
   import BlocSucces from '$lib/succes/BlocSucces.svelte';
@@ -101,9 +102,9 @@
         {:else if !surPc.installation}
           <button class="btn primary grand" onclick={() => installer(idPc)} disabled={!!surPc.d_un_autre} title={surPc.d_un_autre ? 'Seule la personne qui l’a importé peut l’installer' : undefined}>📦 Installer</button>
         {:else}
-          <button class="btn primary grand" onclick={() => jouerLaCarte(idPc)} disabled={partie.enJeu !== null || partie.lancement !== null}>{partie.lancement === idPc ? 'Lancement…' : '▶ Jouer'}</button>
+          <button class="btn primary grand" onclick={() => jouerLaCarte(idPc)} disabled={partie.enJeu !== null || partie.lancement !== null || libellePreparation(j.plateforme) !== null}>{libellePreparation(j.plateforme) ?? (partie.lancement === idPc ? 'Lancement…' : '▶ Jouer')}</button>
           {#if emulateursDuJeu(j.plateforme).liste.length > 1 || (surPc.installation.versions?.length ?? 0) > 1}
-            <button class="btn grand" onclick={() => jouerAvec(idPc)} disabled={partie.enJeu !== null}>▶ Jouer avec…</button>
+            <button class="btn grand" onclick={() => jouerAvec(idPc)} disabled={partie.enJeu !== null || partie.lancement !== null || libellePreparation(j.plateforme) !== null}>▶ Jouer avec…</button>
           {/if}
         {/if}
       {/if}

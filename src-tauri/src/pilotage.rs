@@ -336,7 +336,13 @@ pub fn commande_retroarch(a: Action) -> &'static str {
 /// Les lignes à ajouter au fichier de réglages de RetroArch (`--appendconfig`).
 pub fn lignes_retroarch() -> String {
     format!(
-        "network_cmd_enable = \"true\"\nnetwork_cmd_port = \"{PORT_RETROARCH}\"\npause_nonactive = \"true\"\ninput_menu_toggle_gamepad_combo = \"0\"\n"
+        "network_cmd_enable = \"true\"\nnetwork_cmd_port = \"{PORT_RETROARCH}\"\npause_nonactive = \"true\"\ninput_menu_toggle_gamepad_combo = \"0\"\n{}",
+        // Essai de Seb (28/10) : « Recommencer » et « Quitter » du menu de Frogtend demandaient un 2e appui
+        // (`quit_press_twice`, qui vaut aussi pour la remise à zéro). Le bouton Xbox qui ouvre le menu de RetroArch
+        // (profils XInput livrés : `input_menu_toggle_btn = "10"`) : PAS coupé ici — RetroArch recopie ces lignes
+        // dans son retroarch.cfg (`config_save_on_exit`, gardé par Seb), la coupure serait permanente hors de
+        // Frogtend : question posée à Seb.
+        "quit_press_twice = \"false\"\n"
     )
 }
 
@@ -829,5 +835,8 @@ mod tests {
         assert!(!actions("pcsx2").contains(&Action::DisqueSuivant), "PCSX2 ne sait pas changer de disque de l'extérieur");
         // Aucun réglage que RetroArch ignorerait (il n'a pas de `network_cmd_bind_address`, relu dans la 1.22.2).
         assert!(!lignes_retroarch().contains("network_cmd_bind_address"));
+        // Recommencer / Quitter en un seul appui ; aucun bouton de la manette n'ouvre le menu de RetroArch.
+        assert_eq!(lignes_retroarch().matches("quit_press_twice = \"false\"").count(), 1);
+        assert!(!lignes_retroarch().contains("input_menu_toggle_btn"), "le bouton Xbox : en attente de la décision de Seb");
     }
 }

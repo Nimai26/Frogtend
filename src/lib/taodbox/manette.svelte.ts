@@ -61,7 +61,79 @@ export function deplacer(d: Direction) {
 
 function touche(cle: string) {
   const cible = (document.activeElement as HTMLElement) ?? document.body;
-  cible.dispatchEvent(new KeyboardEvent('keydown', { key: cle, bubbles: true, cancelable: true }));
+  const e = new KeyboardEvent('keydown', { key: cle, bubbles: true, cancelable: true });
+  fabriquees.add(e);
+  cible.dispatchEvent(e);
+}
+
+// --- Les doublons. Un autre programme peut transformer la MÊME manette en touches du clavier (Steam ouvert : sa
+// « configuration bureau » fait croix → flèches, A → Entrée, B → Échap ; essai de Seb, 28/10 : la croix sautait un
+// élément sur deux, « Options du jeu » s'ouvrait et validait aussitôt sa 1re option). Un appui arrivé par les DEUX
+// voies à moins de `DOUBLON` ms ne compte qu'une fois ; chaque paire est consommée (deux appuis rapides restent deux).
+const DOUBLON = 250;
+/** Nos propres touches (l'Échap du B…) : jamais prises pour un doublon. */
+const fabriquees = new WeakSet<Event>();
+type Recu = { c: Commande; t: number };
+let parLaManette: Recu[] = [];
+let parLeClavier: Recu[] = [];
+/** Les touches dont l'appui a été écarté : leur relâchement (et leur répétition) l'est aussi (Espace clique au relâché). */
+const ecartees = new Set<string>();
+
+function commandeDeTouche(e: KeyboardEvent): Commande | null {
+  const dirs: Record<string, Commande> = { ArrowUp: 'haut', ArrowDown: 'bas', ArrowLeft: 'gauche', ArrowRight: 'droite', Enter: 'valider', ' ': 'valider', Escape: 'retour' };
+  return dirs[e.key] ?? null;
+}
+
+/** Retire de `l` un appui de la même commande reçu il y a moins de `DOUBLON` ms : `true` s'il y en avait un. */
+function consommer(l: Recu[], c: Commande, t: number): boolean {
+  const i = l.findIndex((r) => r.c === c && t - r.t <= DOUBLON);
+  if (i >= 0) l.splice(i, 1);
+  return i >= 0;
+}
+
+const recents = (l: Recu[], t: number) => l.filter((r) => t - r.t <= DOUBLON);
+
+/** La fenêtre perd le focus : les relâchements attendus n'arriveront pas ici. */
+function oublierEcartees() {
+  ecartees.clear();
+}
+
+/** Une commande venue de la MANETTE (lue par Frogtend ou par son cœur) : ignorée si la même vient d'arriver par le
+ * clavier (fabriquée par un autre programme depuis le même appui). */
+export function appliquerManette(c: Commande) {
+  const t = performance.now();
+  parLeClavier = recents(parLeClavier, t);
+  if (consommer(parLeClavier, c, t)) return;
+  parLaManette = [...recents(parLaManette, t), { c, t }];
+  appliquer(c);
+}
+
+/** Avant tout autre écouteur (capture sur la fenêtre) : une touche qui double un appui de la manette est écartée
+ * (ni navigation, ni clic natif d'un bouton). Un vrai clavier seul n'est jamais touché. */
+function filtrerDoublons(e: KeyboardEvent) {
+  if (fabriquees.has(e)) return;
+  const id = e.code || e.key;
+  if (e.type === 'keyup' || e.repeat) {
+    if (ecartees.has(id)) {
+      if (e.type === 'keyup') ecartees.delete(id);
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+    return;
+  }
+  // Un nouvel appui de cette touche : un relâchement jamais reçu (la fenêtre a perdu le focus) ne la garde pas écartée.
+  ecartees.delete(id);
+  const c = commandeDeTouche(e);
+  if (!c) return;
+  const t = performance.now();
+  parLaManette = recents(parLaManette, t);
+  if (consommer(parLaManette, c, t)) {
+    ecartees.add(id);
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    return;
+  }
+  parLeClavier = [...recents(parLeClavier, t), { c, t }];
 }
 
 /** A : valider l'élément qui a le focus. */
@@ -151,16 +223,16 @@ function lire() {
     d ??= directionDuStick(p.axes[0] ?? 0, p.axes[1] ?? 0);
   }
   const nouveaux = nouveauxAppuis(avant, maintenant);
-  if (nouveaux.has(A)) appliquer('valider');
-  if (nouveaux.has(B)) appliquer('retour');
+  if (nouveaux.has(A)) appliquerManette('valider');
+  if (nouveaux.has(B)) appliquerManette('retour');
   if (nouveaux.has(Y)) appuiY();
   // Direction : un premier pas, puis la répétition après une pause (comme une touche tenue).
   const t = performance.now();
   if (d && d !== direction) {
-    appliquer(d);
+    appliquerManette(d);
     prochaine = t + 380;
   } else if (d && t >= prochaine) {
-    appliquer(d);
+    appliquerManette(d);
     prochaine = t + 130;
   }
   direction = d;
@@ -185,12 +257,21 @@ export function demarrerManette(options: { manette?: boolean } = {}) {
   // Les boutons déjà tenus au démarrage (la combinaison qui vient d'ouvrir le menu…) ne comptent pas.
   avant = appuyes(manettes());
   direction = null;
+  parLaManette = [];
+  parLeClavier = [];
+  ecartees.clear();
+  window.addEventListener('keydown', filtrerDoublons, true);
+  window.addEventListener('keyup', filtrerDoublons, true);
+  window.addEventListener('blur', oublierEcartees);
   window.addEventListener('keydown', fleches);
   if (options.manette !== false) boucle = requestAnimationFrame(lire);
 }
 
 export function arreterManette() {
   taodbox.actif = false;
+  window.removeEventListener('keydown', filtrerDoublons, true);
+  window.removeEventListener('keyup', filtrerDoublons, true);
+  window.removeEventListener('blur', oublierEcartees);
   window.removeEventListener('keydown', fleches);
   if (boucle !== null) cancelAnimationFrame(boucle);
   boucle = null;

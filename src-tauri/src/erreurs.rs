@@ -128,6 +128,41 @@ impl From<rusqlite::Error> for Erreur {
 
 impl From<std::io::Error> for Erreur {
     fn from(e: std::io::Error) -> Self {
-        Erreur::Disque(format!("Impossible d'accéder au disque ({e})."))
+        Erreur::Disque(message_disque(&e))
+    }
+}
+
+/// Une erreur de fichier dite simplement (essai de Seb, 28/10 : « Impossible d'accéder au disque (Le processus ne
+/// peut pas accéder au fichier… (os error 32)) »), avec le code de Windows à la fin pour qui doit chercher.
+pub fn message_disque(e: &std::io::Error) -> String {
+    let phrase = match e.raw_os_error() {
+        Some(32 | 33) => "Un fichier est utilisé par un autre programme (une installation en cours, l'émulateur ouvert, ou l'antivirus qui l'examine). Attends un instant, puis réessaie.",
+        Some(5) => "Windows refuse l'accès à un fichier ou un dossier (dossier protégé, fichier en lecture seule, ou l'antivirus).",
+        Some(112 | 39) => "Le disque est plein : libère de la place, puis réessaie.",
+        Some(2 | 3) => "Un fichier ou un dossier est introuvable (disque débranché ?).",
+        Some(21) => "Le disque n'est pas prêt (débranché ?).",
+        _ => match e.kind() {
+            std::io::ErrorKind::NotFound => "Un fichier ou un dossier est introuvable (disque débranché ?).",
+            std::io::ErrorKind::PermissionDenied => "Windows refuse l'accès à ce dossier (dossier protégé, ou l'antivirus).",
+            _ => "Problème d'accès au disque.",
+        },
+    };
+    let connu = !phrase.starts_with("Problème");
+    match e.raw_os_error() {
+        Some(n) if connu => format!("{phrase} (code Windows {n})"),
+        _ => format!("{phrase} ({e})"),
+    }
+}
+
+#[cfg(test)]
+mod tests_disque {
+    #[test]
+    fn une_erreur_de_fichier_est_dite_simplement() {
+        let m = super::message_disque(&std::io::Error::from_raw_os_error(32));
+        assert!(m.starts_with("Un fichier est utilisé par un autre programme") && m.ends_with("(code Windows 32)"), "{m}");
+        assert!(super::message_disque(&std::io::Error::from_raw_os_error(112)).contains("plein"));
+        assert!(super::message_disque(&std::io::Error::from_raw_os_error(5)).contains("refuse l'accès"));
+        assert!(super::message_disque(&std::io::Error::new(std::io::ErrorKind::NotFound, "x")).contains("introuvable"));
+        assert!(super::message_disque(&std::io::Error::other("bizarre")).starts_with("Problème d'accès au disque"));
     }
 }

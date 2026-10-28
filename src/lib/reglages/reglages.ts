@@ -26,6 +26,8 @@ export interface ReglagesPc {
   /** La personne a été prévenue de la question du pare-feu Windows pour RetroArch (une fois par PC, décision de Seb
    * du 16/10). */
   avertiPareFeuRetroArch: boolean;
+  /** La question « couper le bouton Xbox qui ouvre la Game Bar ? » a été posée (une fois par PC, ✅ Seb 28/10). */
+  questionGameBar: boolean;
   /** Où Frogtend installe Cheat Engine et les autres outils (règle « pas de pieuvre ») ; vide : demandé la 1re fois. */
   dossierOutils: string;
   /** Où Frogtend copie les parties avant de retirer un jeu (abris) ; vide : demandé quand il le faut. */
@@ -134,6 +136,7 @@ export const DEFAUTS_PC: ReglagesPc = {
   emulateursJeux: {},
   dossierEmulateurs: '',
   avertiPareFeuRetroArch: false,
+  questionGameBar: false,
   dossierOutils: '',
   dossierAbris: '',
   plafondImagesGo: 2,

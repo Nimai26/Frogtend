@@ -8,7 +8,7 @@ import { taille } from '$lib/api';
 import { confirmer, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat, reglerPc } from '$lib/etat.svelte';
-import { completerRetroArch, installerEmulateur, installerFirmwareSwitch, installerMicrologicielPs3, installerParFirehouse, poserBios, recommandationsParDefaut, reglerEmulateur } from './assistant.svelte';
+import { completerRetroArch, installationEmulateur, installerEmulateur, installerFirmwareSwitch, installerMicrologicielPs3, installerParFirehouse, poserBios, recommandationsParDefaut, reglerEmulateur } from './assistant.svelte';
 import { ajouter } from './choix';
 import { avecConseil, biosADireOuPoser, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, firmwareSwitchServi, ligneDe, MANETTE_REGLEE, messagePret, micrologicielServi, phraseVersionAutre, poidsBios, versionAutre, type Possible } from './pret';
 import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
@@ -16,11 +16,43 @@ import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
 /** Les plateformes qui se jouent sans émulateur. */
 const SANS_EMULATEUR = ['Windows'];
 
+/** Les consoles en cours de préparation (après le oui) : l'émulateur qui s'installe (son nom, et son identifiant pour
+ * n'afficher que SON avancement). */
+export const preparations = $state<Record<string, { nom: string; id: string | null }>>({});
+const enCours = new Map<string, Promise<string | null>>();
+
+/** La préparation en cours d'une console, s'il y en a une (« ▶ Jouer » l'attend au lieu d'en lancer une autre). */
+export function preparationEnCours(plateforme: string | undefined): Promise<string | null> | undefined {
+  return plateforme ? enCours.get(plateforme) : undefined;
+}
+
+/** Le libellé du bouton « Jouer » pendant la préparation de sa console (avec l'avancement du téléchargement). */
+export function libellePreparation(plateforme: string | undefined): string | null {
+  const p = plateforme ? preparations[plateforme] : undefined;
+  if (!p) return null;
+  const { id, recus, total } = installationEmulateur;
+  const pct = id && id === p.id && total ? ` ${Math.min(100, Math.floor((recus / total) * 100))} %` : '';
+  return `⏳ Préparation de ${p.nom}…${pct}`;
+}
+
 /**
  * Prépare une console pour jouer. Rend la clé de son émulateur (déjà réglé, ou préparé maintenant), ou `null` si la
- * personne n'a pas voulu ou si quelque chose a échoué (elle l'a lu dans un message).
+ * personne n'a pas voulu ou si quelque chose a échoué (elle l'a lu dans un message). UNE préparation par console à la
+ * fois : un 2e appel (« ▶ Jouer » pendant l'installation) attend la première, sans rien redemander (essai de Seb, 28/10 :
+ * deux installations de RetroArch en même temps dans le même dossier).
  */
-export async function preparerPourJouer(plateforme: string, jeux: number): Promise<string | null> {
+export function preparerPourJouer(plateforme: string, jeux: number): Promise<string | null> {
+  const deja = enCours.get(plateforme);
+  if (deja) return deja;
+  const p = preparer(plateforme, jeux).finally(() => {
+    enCours.delete(plateforme);
+    delete preparations[plateforme];
+  });
+  enCours.set(plateforme, p);
+  return p;
+}
+
+async function preparer(plateforme: string, jeux: number): Promise<string | null> {
   const deja = etat.pc.emulateurs[plateforme];
   if (deja?.liste?.length) return deja.defaut || deja.liste[0].cle;
   if (SANS_EMULATEUR.includes(plateforme)) return null;
@@ -78,6 +110,7 @@ export async function preparerPourJouer(plateforme: string, jeux: number): Promi
     libelleValider: choix.comment === 'deja' ? '🎮 C’est parti' : '🎮 Tout préparer',
   });
   if (!oui) return null;
+  preparations[plateforme] = { nom: choix.nom, id: choix.id ?? choix.rec.id ?? null };
   if (dossierNouveau && dossier) await reglerPc('dossierEmulateurs', dossier);
 
   let programme = choix.programme ?? null;

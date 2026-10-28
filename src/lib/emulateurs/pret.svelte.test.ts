@@ -48,6 +48,7 @@ const installer = vi.fn(async (id: string, _nom: string, _maj: boolean, o: { san
 const assistant = vi.fn(async () => 'assistant');
 const completerRetroArch = vi.fn(async (..._a: unknown[]) => 'RetroArch — snes9x');
 vi.mock('./assistant.svelte', () => ({
+  installationEmulateur: { id: 'rpcs3', recus: 19457118, total: 38914236 },
   installerEmulateur: (...a: unknown[]) => installer(...(a as [string, string, boolean, { sansQuestion?: boolean }])),
   installerParFirehouse: vi.fn(),
   installerMicrologicielPs3: vi.fn(async (programme: string) => {
@@ -62,7 +63,50 @@ vi.mock('./assistant.svelte', () => ({
   reglerEmulateur: () => assistant(),
 }));
 
-const { preparerPourJouer } = await import('./pret.svelte');
+const { preparerPourJouer, preparationEnCours, libellePreparation } = await import('./pret.svelte');
+
+describe('une préparation par console à la fois (essai de Seb, 28/10)', () => {
+  beforeEach(() => {
+    appels.length = 0;
+    confirmer.mockClear();
+    informer.mockClear();
+    etat.pc.emulateurs = {};
+    etat.pc.dossierEmulateurs = '';
+  });
+
+  it('« Jouer » pendant la préparation l’attend : une seule question, une seule installation, la même clé', async () => {
+    // L'installation dure (le téléchargement de RetroArch) : elle finit quand le test le décide.
+    let finir = () => {};
+    const lente = new Promise<void>((r) => (finir = r));
+    installer.mockImplementationOnce(async (id: string) => {
+      appels.push(`installer ${id} (lente)`);
+      await lente;
+      return { id, nom: 'RPCS3', programme: 'E:\\Emulateurs\\RPCS3\\rpcs3.exe', dossier: 'E:\\Emulateurs\\RPCS3' };
+    });
+    const premiere = preparerPourJouer('Sony Playstation 3', 1);
+    const seconde = preparerPourJouer('Sony Playstation 3', 1);
+    expect(seconde).toBe(premiere);
+    expect(preparationEnCours('Sony Playstation 3')).toBe(premiere);
+    await vi.waitFor(() => expect(libellePreparation('Sony Playstation 3')).toBe('⏳ Préparation de RPCS3… 50 %'));
+    finir();
+    expect(await seconde).toBe('1');
+    expect(confirmer).toHaveBeenCalledTimes(1);
+    expect(appels.filter((a) => a.startsWith('installer'))).toHaveLength(1);
+    // Fini : plus rien en cours, le bouton redevient « Jouer ».
+    expect(preparationEnCours('Sony Playstation 3')).toBeUndefined();
+    expect(libellePreparation('Sony Playstation 3')).toBeNull();
+  });
+
+  it('un « non » rend null aux deux appelants, et rien n’est affiché comme en préparation', async () => {
+    confirmer.mockImplementationOnce(async () => false);
+    const a = preparerPourJouer('Sony Playstation 3', 1);
+    const b = preparerPourJouer('Sony Playstation 3', 1);
+    expect(await a).toBeNull();
+    expect(await b).toBeNull();
+    expect(libellePreparation('Sony Playstation 3')).toBeNull();
+    expect(appels.filter((x) => x.startsWith('installer'))).toHaveLength(0);
+  });
+});
 
 describe('prêt à jouer, de bout en bout', () => {
   beforeEach(async () => {

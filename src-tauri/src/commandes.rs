@@ -479,6 +479,21 @@ pub fn dossier_jeux_propose() -> Option<DossierPropose> {
     })
 }
 
+/// Le bouton Xbox ouvre-t-il la Game Bar de Windows ? (`None` : hors de Windows.)
+#[tauri::command]
+pub fn game_bar_bouton() -> Option<bool> {
+    crate::registre::bouton_game_bar()
+}
+
+/// Change CE seul réglage de Windows, après le oui de la personne (fenêtre de l'interface) ; noté au journal.
+#[tauri::command]
+pub fn game_bar_bouton_regler(noyau: State<'_, Noyau>, actif: bool) -> Resultat<()> {
+    let avant = crate::registre::bouton_game_bar();
+    crate::registre::regler_bouton_game_bar(actif).map_err(Erreur::Refus)?;
+    noyau.journaliser(&format!("Windows : bouton Xbox → Game Bar {} (avant : {avant:?}), avec l'accord de la personne", if actif { "réactivé" } else { "désactivé" }));
+    Ok(())
+}
+
 /// Un dossier choisi pour y RANGER des jeux : refusé (et pourquoi, avec un sous-dossier proposé) s'il est la racine
 /// d'un disque, Windows, Program Files ou un dossier de base de l'utilisateur (Documents, Bureau…). `None` : admis.
 /// `sorte` : `emulateurs`, `outils` ou `abris` pour les autres dossiers de Frogtend (même règle), sinon les jeux.
@@ -1408,7 +1423,11 @@ pub async fn jeu_jouer(
         (Some(e), Some(d)) => crate::pilotage::fige_au_menu(e) || !crate::pilotage::pause_reglee(e, std::path::Path::new(d)),
         _ => false,
     };
+    // « Disque suivant » seulement pour une liste de disques (une cartouche n'en a qu'un).
+    let plusieurs_disques = par_emulateur
+        && noyau.fichier_pour_l_emulateur(id, version.as_deref()).await.ok().flatten().is_some_and(|f| crate::menu_jeu::liste_de_disques(&f));
     let numero = app.state::<crate::menu_jeu::MenuJeu>().commencer(crate::menu_jeu::PartieEnCours {
+        plusieurs_disques,
         jeu: id,
         titre,
         plateforme,
@@ -1990,14 +2009,16 @@ pub async fn emulateur_installer_firehouse(
     let base = std::path::PathBuf::from(&dossier);
     // Le dossier réglé d'abord ; s'il n'existe pas encore (le dossier proposé par « Prêt à jouer »), il est créé.
     exiger_dossier_de_base(&app, &base)?;
+    let nom_sur = crate::jeux_pc::nom_de_dossier(&nom);
+    let cible = base.join(&nom_sur);
+    // Une seule installation à la fois dans ce dossier, jamais par-dessus le programme ouvert.
+    let _occupe = occuper_installation(&base, &cible, &nom)?;
     if !base.is_dir() {
         std::fs::create_dir_all(&base).map_err(|e| Erreur::Disque(format!("Dossier impossible à créer : {dossier} ({e}).")))?;
     }
     let p = noyau.session().await?.source.paquet_emulateur(&id).await?;
     let url = p["url"].as_str().unwrap_or("").to_string();
     let version = p["version"].as_str().unwrap_or("").to_string();
-    let nom_sur = crate::jeux_pc::nom_de_dossier(&nom);
-    let cible = base.join(&nom_sur);
     let paquet = base.join(".telechargements").join(format!("{}.paquet", crate::jeux_pc::nom_de_dossier(&id)));
     let (app2, id2) = (app.clone(), id.clone());
     let progres = move |recus, total| {
@@ -4147,6 +4168,7 @@ pub async fn rpcs3_micrologiciel_servi(app: AppHandle, noyau: State<'_, Noyau>, 
     let dossier = p.parent().map(std::path::PathBuf::from).unwrap_or_default();
     // AVANT de télécharger 200 Mo : RPCS3 fermé, et la place sur le disque.
     rpcs3_ferme(&dossier)?;
+    let _occupe = occuper_installation(dossier.parent().unwrap_or(&dossier), &dossier, "RPCS3")?;
     let s = noyau.session().await?;
     let v = s.source.emulateurs(PLATEFORME_PS3).await?;
     let mut ignore = crate::bios::Bilan::default();
@@ -4211,6 +4233,7 @@ pub async fn eden_firmware_servi(app: AppHandle, noyau: State<'_, Noyau>, progra
     if !crate::lancement::processus_du_dossier(&dossier).is_empty() {
         return Err(Erreur::Refus("Eden est ouvert : ferme-le (ou quitte ta partie), puis recommence.".into()));
     }
+    let _occupe = occuper_installation(dossier.parent().unwrap_or(&dossier), &dossier, "Eden")?;
     if !crate::eden::portable(&dossier) || crate::eden::dossier_nand(&dossier).is_none() {
         return Err(Erreur::Refus("Eden n'est pas installé en mode portable : Frogtend n'écrit pas dans ses données de Windows.".into()));
     }
@@ -4546,10 +4569,12 @@ pub async fn emulateur_installer(
     let base = std::path::PathBuf::from(&dossier);
     // Le dossier réglé d'abord ; s'il n'existe pas encore (le dossier proposé par « Prêt à jouer »), il est créé.
     exiger_dossier_de_base(&app, &base)?;
+    let cible = base.join(f.nom);
+    // Une seule installation à la fois dans ce dossier, jamais par-dessus l'émulateur ouvert.
+    let _occupe = occuper_installation(&base, &cible, f.nom)?;
     if !base.is_dir() {
         std::fs::create_dir_all(&base).map_err(|e| Erreur::Disque(format!("Dossier impossible à créer : {dossier} ({e}).")))?;
     }
-    let cible = base.join(f.nom);
     let paquet = base.join(".telechargements").join(format!("{}.paquet", f.id));
     let (app2, id2) = (app.clone(), id.clone());
     let progres = move |recus, total| {
@@ -4579,6 +4604,12 @@ pub async fn emulateur_installer(
     if f.id == "retroarch" && !crate::manettes::retroarch_a_ses_profils(&cible) {
         installer_profils_retroarch(&noyau, &cible).await?;
     }
+    // RPCS3 : pas de question (ni de mise à jour) à son démarrage, même lancé hors de Frogtend (Game Bar…).
+    if f.id == "rpcs3" {
+        if let Err(e) = crate::emulateurs_profils::rpcs3_sans_boites(&cible) {
+            noyau.journaliser(&format!("RPCS3 installé : réglages de démarrage non posés ({e})"));
+        }
+    }
     let e = crate::emulateurs::EmulateurInstalle {
         id: f.id.into(),
         nom: f.nom.into(),
@@ -4590,6 +4621,35 @@ pub async fn emulateur_installer(
     };
     registre_emulateurs(&noyau).retenir(e.clone())?;
     Ok(e)
+}
+
+/// Les installations d'émulateurs et d'outils en cours, par dossier de base (en minuscules) : deux installations
+/// dans le même dossier écriraient le même paquet (`.telechargements`) et la même cible (essai de Seb, 28/10 :
+/// « Impossible d'accéder au disque »).
+static INSTALLATIONS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// Libère le dossier à la fin de l'installation, même après une erreur.
+pub(crate) struct Occupation(String);
+
+impl Drop for Occupation {
+    fn drop(&mut self) {
+        INSTALLATIONS.lock().unwrap_or_else(|e| e.into_inner()).retain(|x| x != &self.0);
+    }
+}
+
+/// Prend le dossier pour une installation : refusé (clairement, sans attendre) si une autre y est en cours, ou si le
+/// programme à remplacer est ouvert.
+pub(crate) fn occuper_installation(base: &std::path::Path, cible: &std::path::Path, nom: &str) -> Resultat<Occupation> {
+    if !crate::lancement::processus_du_dossier(cible).is_empty() {
+        return Err(Erreur::Refus(format!("{nom} est ouvert : ferme-le, puis recommence.")));
+    }
+    let cle = base.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
+    let mut l = INSTALLATIONS.lock().unwrap_or_else(|e| e.into_inner());
+    if l.contains(&cle) {
+        return Err(Erreur::Refus(format!("Une installation est déjà en cours dans ce dossier ({nom} ou un autre) : attends qu'elle se termine.")));
+    }
+    l.push(cle.clone());
+    Ok(Occupation(cle))
 }
 
 /// RetroArch servi par Firehouse (contrat 1.34, `heberge: true`) : téléchargé avec son empreinte sha256 vérifiée
@@ -4717,6 +4777,8 @@ pub async fn retroarch_installer_coeur(app: AppHandle, noyau: State<'_, Noyau>, 
     }
     exiger_emulateur_pour_ecrire(&app, &noyau, std::path::Path::new(&programme))?;
     let dossier = std::path::Path::new(&programme).parent().map(std::path::PathBuf::from).unwrap_or_default();
+    // Jamais pendant une autre installation dans le même dossier (RetroArch mis à jour…), ni RetroArch ouvert.
+    let _occupe = occuper_installation(dossier.parent().unwrap_or(&dossier), &dossier, "RetroArch")?;
     installer_coeur_servi(&noyau.session().await?.source, &dossier, &coeur).await
 }
 
@@ -5104,6 +5166,22 @@ mod tests {
             let r = super::refus_dossier_jeux(std::path::Path::new(&w)).unwrap();
             assert!(!r.to_lowercase().contains(&std::path::Path::new(&w).join("Jeux").to_string_lossy().to_lowercase()), "{r}");
         }
+    }
+
+    #[test]
+    fn une_seule_installation_a_la_fois_dans_un_dossier() {
+        let d = tempfile::tempdir().unwrap();
+        let (a, b) = (d.path().join("Emus"), d.path().join("Autres"));
+        let premiere = super::occuper_installation(&a, &a.join("RetroArch"), "RetroArch").unwrap();
+        // Même dossier (autre écriture du chemin) : refusé tout de suite ; un autre dossier : permis.
+        let ecrit_autrement = std::path::PathBuf::from(a.to_string_lossy().to_uppercase() + "\\");
+        let e = super::occuper_installation(&ecrit_autrement, &a.join("RetroArch"), "RetroArch").err().unwrap().to_string();
+        assert!(e.contains("déjà en cours"), "{e}");
+        let autre = super::occuper_installation(&b, &b.join("DuckStation"), "DuckStation").unwrap();
+        // Libéré à la fin, même après une erreur (la garde est rendue).
+        drop(premiere);
+        assert!(super::occuper_installation(&a, &a.join("RetroArch"), "RetroArch").is_ok());
+        drop(autre);
     }
 
     #[test]

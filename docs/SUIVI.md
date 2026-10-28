@@ -7,6 +7,60 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- **Séance d'essais avec Seb, 28/10 (0.134.0).** ✅ Mise à jour proposée à l'ouverture, un clic, redémarrage, 0.134.0
+  affichée. ✅ Refus de `D:\` comme dossier des émulateurs (fenêtre maison, `D:\Emulateurs` proposé, réglage
+  intact). ❌ **Jeu SNES de A à Z (Super Mario World)** : (1) **plusieurs versions d'une ROM** : Seb veut pouvoir en
+  mettre plusieurs à la fois dans sa ludothèque (« important pour choisir sa version au lancement ») — aujourd'hui
+  une seule par jeu de Firehouse (`telechargements.svelte.ts` « Quelle version »), le choix au lancement n'existe que
+  pour les imports ; (2) **« prêt » mal détecté** : après l'installation, « Prêt à jouer » prépare RetroArch (depuis
+  Firehouse) SANS que rien ne bloque « ▶ Jouer » ; Seb clique Jouer → 2e « Préparer » → 2e installation en même temps
+  dans le même dossier → « Impossible d'accéder au disque (…) » (message technique), puis la fenêtre du pare-feu
+  longtemps après, puis le jeu se lance. Correctif : UNE préparation par console à la fois (un 2e appel attend la
+  première), « ▶ Jouer » dit « Préparation de RetroArch… » pendant ce temps, avancement visible ; message d'erreur
+  disque humain. (3) **Menu en jeu (Select + RB) dans RetroArch** : ouvre, met en pause, stick gauche OK ; ❌ la
+  **croix saute d'un élément sur deux** (1 → 3 → 5) — piste : la croix arrive deux fois (manette lue par le cœur ET
+  touches fléchées que WebView2 fabrique avec la croix XInput) ; à corriger dans `fleches` (manette.svelte.ts) et à
+  revérifier avec Seb. (4) ❌ « Start + Select » (à préciser avec Seb) ouvre le menu de RetroArch ET la Game Bar /
+  un genre d'Alt+Tab : `input_menu_toggle_gamepad_combo = "0"` est bien posé (retroarch.cfg et frogtend.cfg), MAIS
+  l'autoconfig XInput livrée par RetroArch (« XBOX Series Controller.cfg », « Controller (Xbox One For Windows).cfg »)
+  met `input_menu_toggle_btn = "10"` (bouton Xbox/Guide) — le Guide ouvre aussi la Game Bar de Windows. À trancher
+  avec l'expert lancement (neutraliser le Guide dans RetroArch sans toucher l'autoconfig de la personne ? Game Bar =
+  réglage de Windows, jamais touché sans le dire). (5) ✅ Sauvegarde rapide / charger. ❌ « 💿 Disque suivant »
+  affiché pour une cartouche SNES (le bouton suit l'émulateur, pas le jeu : le cacher si le jeu n'a qu'un disque).
+  « Options du jeu » : Seb n'a vu que le compteur (les 4 options sont-elles affichées ? à préciser) ; « Manuel et
+  documents semble sauter » (à préciser) ; images du manuel : navigation OK. (6) ❌ « Options du jeu » n'ouvre
+  rien (ou s'ouvre et le même A valide aussitôt la 1re option = compteur) : très probablement le MÊME doublon que la
+  croix — Seb constate que la manette Xbox tape aussi dans les autres applications Chromium (ses réponses à
+  l'agent partaient dans VS Code) : WebView2 fabrique des touches (flèches, Entrée) avec la manette, en plus de la
+  manette lue par le cœur → chaque appui compte deux fois dans le menu en jeu. (7) ❌ « Recommencer » et « Quitter »
+  : RetroArch affiche « appuyer une nouvelle fois pour confirmer » — `quit_press_twice = "true"` dans
+  retroarch.cfg (vaut aussi pour la remise à zéro) ; Frogtend doit poser `quit_press_twice = "false"` dans son
+  frogtend.cfg. ⚠ Vérifier que « Quitter » ne finit pas par TUER RetroArch (une sauvegarde de cartouche SRAM n'est
+  écrite qu'à une vraie fermeture : parties sacrées). (8) ❌ **URGENT** : pendant la partie SNES, une fenêtre de
+  MISE À JOUR DE RPCS3 s'est ouverte (RPCS3 lancé par Frogtend sans raison ; Seb a dû le fermer). ✅ Seb 28/10 :
+  « Ok lance les corrections nécessaires » → lot de corrections de la séance, experts consultés d'abord ; puis
+  plusieurs versions d'une ROM (proposition faite à Seb : cases à cocher, « ➕ Ajouter une autre version », choix au
+  lancement avec ⭐). Diagnostic des experts : (8) RPCS3 lancé SANS argument (aucun lanceur de Frogtend ne le fait)
+  → hypothèse : bouton Xbox → Game Bar → jeux récents → RPCS3 → un A a validé sa mise à jour (0.0.43-20192 →
+  20415, update_history.log 15:35:29) ; doublons de la manette : Steam ouvert (configuration bureau). ✅ Décisions de
+  Seb 28/10 : (a) **RetroArch qui recopie le `--appendconfig` dans retroarch.cfg à la fermeture
+  (`config_save_on_exit = "true"`) : « Laisser comme ça »** (ne pas poser `config_save_on_exit=false`, ne rien
+  nettoyer ; les réglages de Frogtend deviennent permanents dans RetroArch) ; (b) **Game Bar : « Proposer de la
+  couper »** (fenêtre avec accord ; `HKCU\Software\Microsoft\GameBar\UseNexusForGameBarEnabled = 0`, réversible) +
+  `checkUpdateStart=false` dans `[Meta]` de RPCS3 (clé vérifiée dans rpcs3qt/gui_settings.h : `gui_save(meta,
+  "checkUpdateStart", update_on)`, valeurs true/false/auto/background) seulement si absente.
+  ✅ FAIT en 0.135.0 (relectures des deux experts suivies, aucun bloquant) : doublons de la manette écartés
+  (`appliquerManette` + filtre en capture, 250 ms, paires consommées) ; une préparation par console (« ⏳
+  Préparation de X… N % », Jouer désactivé pendant, un Jouer en cours l'attend) ; verrou d'installation par dossier
+  (émulateurs, Firehouse, cœurs, micrologiciel RPCS3, firmware Eden ; refus si le programme est ouvert) ;
+  `quit_press_twice = "false"` ; RPCS3 `checkUpdateStart=false` (si absent, aussi à l'installation) ; « Disque
+  suivant » si .m3u/.pbp, DOSBox ou Famicom Disk System ; `message_disque` ; Game Bar : 1re écriture du registre
+  (une valeur, relue), question après la préparation, manette branchée, « Annuler » d'office. ⏳ **Question à Seb** :
+  couper aussi le bouton Xbox DANS RetroArch (`input_menu_toggle_btn = "99"`, non vérifié) — avec la recopie gardée
+  par Seb, ce serait PERMANENT hors de Frogtend (menu de RetroArch seulement par F1 au clavier). RESTE : plusieurs
+  versions d'une ROM (lot suivant) ; Taodbox sans libellé de préparation ; « Recommencer » a le focus sur « Oui »
+  (le doublon est écarté, mais un vrai double A reste possible) ; pas de bouton pour remettre la Game Bar.
+
 - **Liste VÉRIFIÉE des restes faisables par le code seul (audit du 27/10, toutes les entrées « RESTE / À FAIRE » de
   ce fichier relues contre le code et les notes ; celles qui ne sont pas ici sont faites, ou attendent Seb, Firehouse
   ou un essai).** ✅ Seb 27/10 sur (3) (zone d'attente des restaurations ; l'expert a trouvé pire : une partie

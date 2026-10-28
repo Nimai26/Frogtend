@@ -1,7 +1,7 @@
 // La manette pilote la page ; un lecteur (le livret) peut PRENDRE LA MAIN, sans jamais passer devant une fenêtre maison.
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Commande } from './navigation';
-import { appliquer, appuiY, prendreLaMain, taodbox } from './manette.svelte';
+import { appliquer, appliquerManette, appuiY, arreterManette, demarrerManette, prendreLaMain, taodbox } from './manette.svelte';
 import { auCanape, seulementAuBureau } from './canape';
 import { pile } from '$lib/dialogues/fenetres.svelte';
 
@@ -108,5 +108,71 @@ describe('mode canapé', () => {
     expect(d.message).toContain('Choisir le dossier des outils');
     if (d.sorte === 'informer') d.fermer();
     expect(await r).toBe(true);
+  });
+});
+
+describe('la même manette par deux voies (Steam ouvert : croix → flèches, A → Entrée)', () => {
+  afterEach(() => {
+    arreterManette();
+    vi.useRealTimers();
+  });
+
+  /** Trois boutons l'un sous l'autre (jsdom ne calcule pas la géométrie : on la donne). */
+  function trois(): HTMLButtonElement[] {
+    document.body.innerHTML = '<button id="b1">1</button><button id="b2">2</button><button id="b3">3</button>';
+    const l = [...document.querySelectorAll('button')];
+    l.forEach((b) => (b.scrollIntoView = () => {}));
+    l.forEach((b, i) => (b.getBoundingClientRect =() => ({ left: 0, top: i * 50, width: 100, height: 40, right: 100, bottom: i * 50 + 40, x: 0, y: i * 50, toJSON() {} }) as DOMRect));
+    l[0].focus();
+    return l;
+  }
+  const touche = (type: 'keydown' | 'keyup', key: string, code = key) =>
+    document.activeElement!.dispatchEvent(new KeyboardEvent(type, { key, code, bubbles: true, cancelable: true }));
+
+  it('la croix par la manette PUIS par une flèche fabriquée : un seul pas ; dans l’autre ordre aussi', () => {
+    vi.useFakeTimers();
+    const l = trois();
+    demarrerManette({ manette: false });
+    appliquerManette('bas');
+    touche('keydown', 'ArrowDown');
+    expect(document.activeElement).toBe(l[1]);
+    vi.advanceTimersByTime(400);
+    touche('keydown', 'ArrowDown');
+    appliquerManette('bas');
+    expect(document.activeElement).toBe(l[2]);
+  });
+
+  it('A puis Entrée : un seul clic (le clic natif d’Entrée est empêché) ; une vraie flèche seule passe', () => {
+    vi.useFakeTimers();
+    const l = trois();
+    let clics = 0;
+    l[0].addEventListener('click', () => clics++);
+    demarrerManette({ manette: false });
+    appliquerManette('valider');
+    const entree = new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true });
+    l[0].dispatchEvent(entree);
+    expect(clics).toBe(1);
+    expect(entree.defaultPrevented).toBe(true);
+    touche('keyup', 'Enter');
+    vi.advanceTimersByTime(400);
+    touche('keydown', 'ArrowDown');
+    expect(document.activeElement).toBe(l[1]);
+  });
+
+  it('deux appuis rapides restent deux pas ; l’Échap fabriqué par B n’est jamais écarté', () => {
+    vi.useFakeTimers();
+    const l = trois();
+    demarrerManette({ manette: false });
+    appliquerManette('bas');
+    touche('keydown', 'ArrowDown');
+    vi.advanceTimersByTime(120);
+    appliquerManette('bas');
+    touche('keydown', 'ArrowDown');
+    expect(document.activeElement).toBe(l[2]);
+    let echap = 0;
+    window.addEventListener('keydown', (e) => e.key === 'Escape' && echap++);
+    vi.advanceTimersByTime(400);
+    appliquerManette('retour');
+    expect(echap).toBe(1);
   });
 });

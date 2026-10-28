@@ -9,7 +9,7 @@ import { attendreTouche, choisir, confirmer, fermerToast, informer, toast } from
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { completerRetroArch, installerFirmwareSwitch, poserBios, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
 import { avecConseil, biosADireOuPoser, biosRetroArch, changementDeConseil, estConseille, firmwareSwitchServi, poidsBios, questionFirmwareSwitch } from '$lib/emulateurs/pret';
-import { preparerPourJouer } from '$lib/emulateurs/pret.svelte';
+import { preparationEnCours, preparerPourJouer } from '$lib/emulateurs/pret.svelte';
 import { libelleValeur, REGLAGES_IMAGE, reglagesMontres } from '$lib/emulateurs/imagePs3';
 import { detailPatch, nomDuPatch, remarqueDuPatch, titreDuJeu } from '$lib/emulateurs/patchsPs3';
 import { adresseWeb, avertissements, fichierInstallable, pageNexus, raisonSansClic, type ModJeu } from '$lib/mods/mods';
@@ -315,6 +315,35 @@ async function prevenirPareFeu(id: number, plateforme: string | undefined, emula
   await reglerPc('avertiPareFeuRetroArch', true);
 }
 
+/** Avant le 1er jeu d'émulateur : le bouton Xbox ouvre la Game Bar de Windows (et ses jeux récents : un appui sur A y a
+ * lancé RPCS3 pendant une partie SNES, essai de Seb du 28/10). Proposé UNE fois par PC (✅ Seb 28/10 « Proposer de
+ * le couper ») : un réglage de Windows, changé seulement après le oui, réversible. Jamais bloquant pour la partie. */
+async function proposerCouperGameBar(plateforme: string | undefined) {
+  if (etat.pc.questionGameBar || !plateforme || plateforme === 'Windows') return;
+  // Après la préparation de la console (jamais avant la grande question « Préparer… ? »), et seulement avec une
+  // manette branchée (au clavier seul, la question attend : rien n'est noté).
+  if (!etat.pc.emulateurs[plateforme]?.liste?.length) return;
+  const manette = typeof navigator !== 'undefined' && !!navigator.getGamepads && [...navigator.getGamepads()].some((p) => !!p);
+  if (!manette) return;
+  const ouvre = await api.gameBarBouton().catch(() => null);
+  if (ouvre !== true) return;
+  const oui = await confirmer('🎮 Le bouton Xbox ouvre la Game Bar de Windows', {
+    message:
+      'Pendant une partie, un appui sur le bouton Xbox (le logo au milieu de la manette) ouvre la Game Bar de Windows par-dessus le jeu, et un appui sur A peut y lancer un autre programme.\n\nFrogtend peut couper ce bouton (un réglage de Windows : « Ouvrir la Game Bar avec ce bouton d’une manette »). La Game Bar reste disponible au clavier (touche Windows + G), et tu pourras remettre le bouton dans les paramètres de Windows (Jeux ▸ Game Bar).',
+    libelleValider: '🎮 Couper le bouton',
+    // Le focus sur « Annuler » : un A répété au canapé ne change jamais un réglage de Windows sans lecture.
+    danger: true,
+  });
+  await reglerPc('questionGameBar', true);
+  if (!oui) return;
+  try {
+    await api.gameBarBoutonRegler(false);
+    toast('✅ Le bouton Xbox n’ouvre plus la Game Bar.');
+  } catch (e) {
+    toast(`Le réglage de Windows n’a pas pu être changé : ${motifDuRefus(e)}. Tu peux le faire dans les paramètres de Windows (Jeux ▸ Game Bar).`, 'alerte');
+  }
+}
+
 /** Jouer. `emulateur` : la clé d'un émulateur du système, pour ce lancement seulement. Si un réglage manque
  * (émulateur, lanceur), on le demande puis on relance. */
 /** La copie d'une CARTE à utiliser (A6c) : un jeu possédé sur plusieurs boutiques et installé de plusieurs côtés →
@@ -391,6 +420,10 @@ export async function jouer(id: number, emulateur?: string, version?: string, ca
 
 async function jouerSansAttente(id: number, emulateur?: string, version?: string, carte?: number) {
   const j = tele.jeux[id];
+  // Sa console se prépare encore (installation de l'émulateur après le oui) : on l'attend, puis on lance — jamais une
+  // 2e préparation en même temps (essai de Seb, 28/10).
+  const enPreparation = preparationEnCours(j?.plateforme);
+  if (enPreparation && !(await enPreparation)) return;
   // Un jeu e-Reader : quelle carte lire, si plusieurs sont sur le PC (la liste se filtre au-delà de 20).
   if (carte === undefined && aCartes(j?.plateforme)) {
     const cartes = choixDeCartes(j);
@@ -406,6 +439,7 @@ async function jouerSansAttente(id: number, emulateur?: string, version?: string
       await suivreConseil(id, j?.plateforme, emulateur).catch(() => {});
       await firmwareSwitchAvant(id, j?.plateforme, emulateur).catch(() => {});
       await prevenirPareFeu(id, j?.plateforme, emulateur);
+      await proposerCouperGameBar(j?.plateforme).catch(() => {});
       const pe = etat.profil.pleinEcran[String(id)];
       await api.jouer(
         id,

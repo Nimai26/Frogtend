@@ -21,6 +21,7 @@
   import { aCartes, cartesSurPc } from '$lib/ludotheque/cartes';
   import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
   import { emulateursDuJeu, gererJeu, installer, jouer, jouerAvec, partie } from '$lib/ludotheque/jeu.svelte';
+  import { libellePreparation } from '$lib/emulateurs/pret.svelte';
 
   let fiche = $state<Fiche | null>(null);
   // Les infos du jeu (contrat 1.15) : celles de la fiche lue en ligne, ou relues en direct pour un jeu du PC.
@@ -246,9 +247,9 @@
         {#if !surPc.installation}
           <button class="btn primary" onclick={() => installer(surPc.id)} disabled={partie.installation === surPc.id}>📦 Installer</button>
         {:else}
-          <button class="btn primary" onclick={() => jouer(surPc.id)} disabled={partie.enJeu !== null}>▶ Jouer</button>
+          <button class="btn primary" onclick={() => jouer(surPc.id)} disabled={partie.enJeu !== null || partie.lancement !== null || libellePreparation(surPc.plateforme) !== null}>{libellePreparation(surPc.plateforme) ?? (partie.lancement === surPc.id ? 'Lancement…' : '▶ Jouer')}</button>
           {#if emulateursDuJeu(surPc.plateforme).liste.length > 1}
-            <button class="btn" onclick={() => jouerAvec(surPc.id)} disabled={partie.enJeu !== null}>▶ Jouer avec…</button>
+            <button class="btn" onclick={() => jouerAvec(surPc.id)} disabled={partie.enJeu !== null || partie.lancement !== null || libellePreparation(surPc.plateforme) !== null}>▶ Jouer avec…</button>
           {/if}
         {/if}
         {#if !surPc.d_un_autre}<button class="btn" onclick={() => gererJeu(surPc.id)} disabled={partie.enJeu === surPc.id}>⚙ Gérer le jeu</button>{/if}

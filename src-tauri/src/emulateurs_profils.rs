@@ -1207,7 +1207,14 @@ pub fn rpcs3_sans_boites(emulateur: &Path) -> Resultat<bool> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => return Err(e.into()),
     };
-    let Some(nouveau) = regler_cles_qt(&texte, "main_window", &[("infoBoxEnabledWelcome", "false"), ("confirmationBoxExitGame", "false")]) else {
+    let fenetres = regler_cles_qt(&texte, "main_window", &[("infoBoxEnabledWelcome", "false"), ("confirmationBoxExitGame", "false")]);
+    // Pas de question de mise à jour au démarrage (essai de Seb, 28/10 : RPCS3 ouvert par la Game Bar pendant une
+    // partie SNES, un A de la manette a accepté sa mise à jour). Seulement si la personne n'a rien choisi : un choix à
+    // elle (« background », « auto »…) reste. Clé relue dans rpcs3qt/gui_settings.h : `gui_save(meta,
+    // "checkUpdateStart", update_on)`, valeurs true / false / auto / background.
+    let base = fenetres.clone().unwrap_or_else(|| texte.clone());
+    let maj = if texte_section_contient(&base, "[Meta]", "checkUpdateStart") { None } else { regler_cles_qt(&base, "Meta", &[("checkUpdateStart", "false")]) };
+    let Some(nouveau) = maj.or(fenetres) else {
         return Ok(false);
     };
     mettre_a_l_abri(emulateur, &fichier)?;
@@ -1658,6 +1665,13 @@ mod tests {
         assert!(rpcs3_sans_boites(d.path()).unwrap());
         assert!(std::fs::read_to_string(d.path().join("GuiConfigs/CurrentSettings.ini")).unwrap().contains("infoBoxEnabledWelcome=false\r\n"));
         assert!(!rpcs3_sans_boites(d.path()).unwrap(), "la 2e fois : rien à faire");
+        assert!(std::fs::read_to_string(d.path().join("GuiConfigs/CurrentSettings.ini")).unwrap().contains("[Meta]\r\ncheckUpdateStart=false\r\n"), "pas de question de mise à jour au démarrage");
+        // Un choix de la personne (« en arrière-plan ») reste tel quel.
+        let e = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(e.path().join("GuiConfigs")).unwrap();
+        std::fs::write(e.path().join("GuiConfigs/CurrentSettings.ini"), "[Meta]\ncheckUpdateStart=background\n[main_window]\ninfoBoxEnabledWelcome=false\nconfirmationBoxExitGame=false\n").unwrap();
+        assert!(!rpcs3_sans_boites(e.path()).unwrap());
+        assert!(std::fs::read_to_string(e.path().join("GuiConfigs/CurrentSettings.ini")).unwrap().contains("checkUpdateStart=background"));
         assert!(d.path().join(".frogtend-sauvegardes").is_dir(), "l'original est à l'abri");
         // Un fichier illisible (octets non UTF-8) n'est jamais remplacé.
         let illisible = [b'[', b'm', b']', b'\n', 0xFF, 0xFE, b'\n'];
