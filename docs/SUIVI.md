@@ -77,7 +77,10 @@
   `image`), `--set-shader="<chemin>"` en tête de la ligne, `video_shader_enable = "true"` AJOUTÉ (append) au
   frogtend.cfg du profil seulement quand un effet est appliqué ; un effet de la personne (`config`, `shaders/presets`,
   dossier de RetroArch : `global.*`, `<cœur>/<jeu|dossier|cœur>.*`) passe devant, sans rien dire à chaque partie ;
-  pilote vidéo qui ne lit pas les `.slangp` → dit. RESTE : (4b) CADRES — À DÉCIDER AVEC SEB : passer RetroArch en
+  pilote vidéo qui ne lit pas les `.slangp` → dit. ✅ Seb 29/10 (cadres) : il en utilisait sans souci sur Venkman —
+  des cadres EN IMAGE (overlays PNG + zone d'image), pas les effets à cadre ; « le mieux serait que Firehouse les
+  fournisse avec les jeux et/ou avec les systèmes » → BESOINS-API n° 39 ; le lot (4b) attend ce contrat (overlay +
+  `custom_viewport_*` posés par partie, réglage de la personne rendu). Avant : (4b) CADRES — À DÉCIDER AVEC SEB : passer RetroArch en
   Vulkan (koko-aio, Mega Bezel rapides) ? et le rapport d'image « Full » à poser pendant une partie avec cadre puis à
   rendre (sa valeur gardée par Frogtend, réécrite à chaque lancement) ; ou des overlays `borders` livrés (peu de
   consoles) ; ou des cadres servis par Firehouse. Aussi : aperçu des effets (vignette d'exemple : idée), essayer un
