@@ -19,7 +19,7 @@
 - [x] (✅ Seb 29/10) Après une partie avec effet, un jeu sans effet : l'image est normale (rien n'est resté collé).
 
 ## L'écran de lancement (0.143.0)
-- [ ] Un jeu lent (PS3 par RPCS3, ou un gros jeu PC) : après 2 s, son fond et « se lance… » ; il disparaît quand le
+- [x] (✅ Seb 29/10, Asura's Wrath) Un jeu lent (PS3 par RPCS3, ou un gros jeu PC) : après 2 s, son fond et « se lance… » ; il disparaît quand le
       jeu s'affiche, et le jeu a bien la main (manette, clavier).
 - [ ] Super Mario World (rapide) : aucune attente visible.
 - [ ] Pendant l'attente : « Revenir à Frogtend » (souris), puis Échap, puis B en Taodbox — l'attente se cache.
