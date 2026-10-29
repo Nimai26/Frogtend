@@ -12,7 +12,7 @@
 - [x] (✅ Seb 29/10) B, puis rouvrir le menu : il a repris sa taille normale.
 
 ## Les effets d'image (0.144.0)
-- [ ] Super Mario World : ⚙ Gérer le jeu ▸ « 🖼 Effet d'image » ▸ « Télé d'époque (simple) » ▸ « Pour ce jeu » ;
+- [x] (✅ Seb 29/10, application) Super Mario World : ⚙ Gérer le jeu ▸ « 🖼 Effet d'image » ▸ « Télé d'époque (simple) » ▸ « Pour ce jeu » ;
       lancer : de fines lignes horizontales. Revenir à « Comme la console » : l'image normale.
 - [ ] « Télé d'époque (détaillée) » pour toute la Super Nintendo : un autre jeu SNES l'a aussi ; le démarrage reste
       rapide.
