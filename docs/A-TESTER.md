@@ -82,7 +82,7 @@
       (la plus récente cochée), le poids total change ; en cocher 2 ; le récapitulatif liste les deux et ⭐ celle
       d'habitude.
 - [x] (✅ Seb 28/10) Après l'installation : « ▶ Jouer avec… » propose les deux versions ; chacune lance SA ROM.
-- [ ] ⚙ Gérer le jeu ▸ 📀 Version : changer celle d'habitude.
+- [x] (✅ Seb 29/10) ⚙ Gérer le jeu ▸ 📀 Version : changer celle d'habitude.
 
 ## Les corrections de la séance d'essais (0.135.0) — À REFAIRE ENSEMBLE (Super Mario World)
 - [x] (✅ Seb 28/10) Au lancement du jeu, manette branchée : la question « 🎮 Le bouton Xbox ouvre la Game Bar » (« Annuler »
