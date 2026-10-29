@@ -35,6 +35,9 @@
   Seb 29/10 : « sur Windows 11, chercher "mode Xbox" et le désactiver » (piste de Seb, à confirmer : l'appui long
   n'ouvre-t-il plus l'Affichage des tâches ensuite ?). Si oui : le proposer comme la Game Bar (question à l'ouverture,
   après le oui de la personne) — clé à relever dans la doc avant (lot à décider).
+  Fil Reddit envoyé par Seb (r/techsupport 1nc8lvo) : réglage « Paramètres ▸ Jeux ▸ Mode Xbox » (builds récents ;
+  absent chez certains) ; écartés : couper le service GameInputSvc (droits admin, d'autres fonctions en dépendent,
+  contourné par des mises à jour) et retirer des mises à jour de Windows (jamais).
   ✅ (3) FAIT en 0.141.0 (avis lancement avant ; relectures lancement + interface, 2 tours ; BLOQUANT corrigé : la
   clé hardcore est TOUJOURS dans `retroarch.cfg` (recopiée), chez Seb `true` avec succès coupés → ma règle « prudente »
   ne proposait jamais les triches ; règle = celle des sauvegardes rapides) : RetroArch seulement, en direct ;
