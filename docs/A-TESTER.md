@@ -78,29 +78,29 @@
 - [x] (✅ Seb 29/10) Fermer Frogtend pendant qu'une version arrive, le rouvrir : « ⏸ En pause » + « ▶ Reprendre » repart où elle en était.
 
 ## Plusieurs versions d'un jeu (0.136.0)
-- [ ] Un jeu SNES pas encore sur le PC avec plusieurs ROM : « ➕ Mettre dans ma ludothèque » → des cases à cocher
+- [x] (✅ Seb 28/10) Un jeu SNES pas encore sur le PC avec plusieurs ROM : « ➕ Mettre dans ma ludothèque » → des cases à cocher
       (la plus récente cochée), le poids total change ; en cocher 2 ; le récapitulatif liste les deux et ⭐ celle
       d'habitude.
-- [ ] Après l'installation : « ▶ Jouer avec… » propose les deux versions ; chacune lance SA ROM.
+- [x] (✅ Seb 28/10) Après l'installation : « ▶ Jouer avec… » propose les deux versions ; chacune lance SA ROM.
 - [ ] ⚙ Gérer le jeu ▸ 📀 Version : changer celle d'habitude.
 
 ## Les corrections de la séance d'essais (0.135.0) — À REFAIRE ENSEMBLE (Super Mario World)
-- [ ] Au lancement du jeu, manette branchée : la question « 🎮 Le bouton Xbox ouvre la Game Bar » (« Annuler »
+- [x] (✅ Seb 28/10) Au lancement du jeu, manette branchée : la question « 🎮 Le bouton Xbox ouvre la Game Bar » (« Annuler »
       choisi d'office) ; « Couper le bouton » → en jeu, le bouton Xbox n'ouvre plus la Game Bar (sans redémarrer ?
       la clé vient de tutoriels, pas de Microsoft). Plus tard : le même essai par Moonlight (manette de Sunshine).
-- [ ] (0.136.0) Le bouton Xbox n'ouvre plus le menu de RetroArch (coupé, ✅ Seb 28/10 ; F1 au clavier l'ouvre
+- [x] (✅ Seb 29/10 : il ouvre celui de Frogtend) (0.136.0) Le bouton Xbox n'ouvre plus le menu de RetroArch (coupé, ✅ Seb 28/10 ; F1 au clavier l'ouvre
       encore).
-- [ ] Menu en jeu (Vue + RB 1 s), Steam OUVERT : la croix avance d'UN élément à la fois ; « Options du jeu » ouvre
+- [x] (✅ Seb 28/10) Menu en jeu (Vue + RB 1 s), Steam OUVERT : la croix avance d'UN élément à la fois ; « Options du jeu » ouvre
       bien ses 4 lignes ; essayer avance rapide, photo, son.
-- [ ] Pas de « Disque suivant » pour la cartouche.
-- [ ] « Recommencer » et « Quitter » : un seul appui (après la confirmation de Frogtend), pas de message de RetroArch.
+- [x] (✅ Seb 28/10) Pas de « Disque suivant » pour la cartouche.
+- [x] (✅ Seb 28/10) « Recommencer » et « Quitter » : un seul appui (après la confirmation de Frogtend), pas de message de RetroArch.
 - [ ] Un AUTRE système jamais préparé (ex. Game Boy) : « Mettre dans ma ludothèque », oui à la préparation, puis
       cliquer « ▶ Jouer » PENDANT l'installation → le bouton dit « ⏳ Préparation de RetroArch… », aucune 2e question,
       le jeu se lance tout seul à la fin.
 - [ ] Ouvrir RPCS3 à la main : aucune question de mise à jour.
 
 ## Finitions invisibles (0.134.0)
-- [ ] Réglages ▸ Emplacements ▸ dossier des émulateurs : choisir `D:\` → une fenêtre dit qu'il ne convient pas et
+- [x] (✅ Seb 28/10) Réglages ▸ Emplacements ▸ dossier des émulateurs : choisir `D:\` → une fenêtre dit qu'il ne convient pas et
       propose `D:\Emulateurs` ; rien n'est enregistré.
 - [ ] (Si Eden est réglé) un jeu Switch avec contenus : les installer avec Eden ouvert → refusé (« ferme-le ») ; Eden
       fermé → ajoutés ; retirer le jeu → le dossier de ses contenus n'est plus dans la liste des dossiers de
