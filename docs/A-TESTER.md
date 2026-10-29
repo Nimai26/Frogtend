@@ -56,10 +56,10 @@
 - [ ] Plus tard, par Moonlight (Freebox Player) : le bouton Accueil / Xbox de la manette ouvre-t-il le menu ?
 
 ## Les sauvegardes rapides (0.139.0)
-- [ ] Super Mario World (RetroArch) : menu en jeu ▸ « ◀ Emplacement 0 · … ▶ » ; aller à l'emplacement 3, « 💾
+- [x] (✅ Seb 29/10) Super Mario World (RetroArch) : menu en jeu ▸ « ◀ Emplacement 0 · … ▶ » ; aller à l'emplacement 3, « 💾
       Sauvegarde rapide (emplacement 3) » ; rouvrir le menu : « sauvé le … » ; sauver encore → question « Remplacer… ».
-- [ ] Revenir à l'emplacement 0, sauver, puis charger l'emplacement 3 : on revient bien à la partie de l'emplacement 3.
-- [ ] Sans menu : View + LT tenus ½ s → message « Sauvegarde rapide : emplacement N » à l'écran ; View + RT tenus 1 s
+- [x] (✅ Seb 29/10) Revenir à l'emplacement 0, sauver, puis charger l'emplacement 3 : on revient bien à la partie de l'emplacement 3.
+- [x] (✅ Seb 29/10) Sans menu : View + LT tenus ½ s → message « Sauvegarde rapide : emplacement N » à l'écran ; View + RT tenus 1 s
       → la partie revient. Les jeux qui utilisent View + gâchette : le dire (le réglage peut couper ces raccourcis).
 - [ ] Mode « hardcore » des succès RetroArch : la sauvegarde est refusée, et Frogtend le dit.
 
