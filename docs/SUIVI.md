@@ -79,7 +79,8 @@
   dossier de RetroArch : `global.*`, `<cœur>/<jeu|dossier|cœur>.*`) passe devant, sans rien dire à chaque partie ;
   pilote vidéo qui ne lit pas les `.slangp` → dit. ✅ Seb 29/10 (cadres) : il en utilisait sans souci sur Venkman —
   des cadres EN IMAGE (overlays PNG + zone d'image), pas les effets à cadre ; « le mieux serait que Firehouse les
-  fournisse avec les jeux et/ou avec les systèmes » → BESOINS-API n° 39 ; le lot (4b) attend ce contrat (overlay +
+  fournisse avec les jeux et/ou avec les systèmes » → BESOINS-API n° 39 (À ENVOYER à la session « FIREHOUSE 2 » dès
+  qu'elle est joignable : injoignable le 29/10) ; le lot (4b) attend ce contrat (overlay +
   `custom_viewport_*` posés par partie, réglage de la personne rendu). Avant : (4b) CADRES — À DÉCIDER AVEC SEB : passer RetroArch en
   Vulkan (koko-aio, Mega Bezel rapides) ? et le rapport d'image « Full » à poser pendant une partie avec cadre puis à
   rendre (sa valeur gardée par Frogtend, réécrite à chaque lancement) ; ou des overlays `borders` livrés (peu de
