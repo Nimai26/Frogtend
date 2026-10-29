@@ -34,8 +34,12 @@ body {
   line-height: 1.45;
 }
 
-/* Focus clavier et manette : partout, toujours visible. */
-:focus-visible {
+/* Focus clavier et manette : partout, toujours visible. Au canapé (Taodbox), le focus se voit quelle que soit la façon
+ * dont il est arrivé (manette après un clic : Chromium n'y met pas `:focus-visible`) ; et l'élément choisi à la
+ * manette garde sa marque (`data-choisi`). */
+:focus-visible,
+:root[data-taodbox] :focus,
+:root[data-taodbox] [data-choisi] {
   outline: calc(2 * var(--u)) solid var(--accent);
   outline-offset: calc(3 * var(--u));
 }

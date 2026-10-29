@@ -140,7 +140,7 @@
     chargerNomsCourts();
     lanceParSunshine = isTauri() ? await api.taodboxLance().catch(() => false) : false;
     await tick();
-    document.querySelector<HTMLElement>('.taodbox .carte')?.focus();
+    selectionner(document.querySelector<HTMLElement>('.taodbox .carte'));
   });
   onDestroy(() => repos.annuler());
 

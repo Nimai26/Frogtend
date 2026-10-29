@@ -25,7 +25,8 @@ export function retenirFocus(noeud: HTMLElement) {
   const origine = document.activeElement as HTMLElement | null;
   const cible = premierFocus(noeud);
   if (cible) {
-    cible.focus();
+    // Contour visible même après un clic (sinon la manette semble ne rien faire dans la fenêtre).
+    cible.focus({ focusVisible: true } as FocusOptions);
     if (cible instanceof HTMLInputElement || cible instanceof HTMLTextAreaElement) cible.select();
   }
 

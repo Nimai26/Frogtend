@@ -217,3 +217,43 @@ describe('la même manette par deux voies (Steam ouvert : croix → flèches, A 
     expect(echap).toBe(1);
   });
 });
+
+describe('le focus perdu (un clic sur la page, le retour d’une autre fenêtre ; essai de Seb, 29/10)', () => {
+  afterEach(() => arreterManette());
+
+  function trois(): HTMLButtonElement[] {
+    document.body.innerHTML = '<button id="b1">1</button><button id="b2">2</button><button id="b3">3</button>';
+    const l = [...document.querySelectorAll('button')];
+    l.forEach((b) => (b.scrollIntoView = () => {}));
+    l.forEach((b, i) => (b.getBoundingClientRect = () => ({ left: 0, top: i * 50, width: 100, height: 40, right: 100, bottom: i * 50 + 40, x: 0, y: i * 50, toJSON() {} }) as DOMRect));
+    return l;
+  }
+
+  it('la croix repart de l’élément choisi, jamais du haut de la page ; puis avance normalement', () => {
+    const l = trois();
+    demarrerManette({ manette: false });
+    appliquer('bas');
+    appliquer('bas');
+    expect(document.activeElement).toBe(l[1]);
+    (document.activeElement as HTMLElement).blur(); // un clic sur le fond : le focus va à la page
+    expect(document.activeElement).toBe(document.body);
+    appliquer('bas');
+    expect(document.activeElement).toBe(l[1]); // rendu à l'élément choisi
+    expect(l[1].hasAttribute('data-choisi')).toBe(true);
+    appliquer('bas');
+    expect(document.activeElement).toBe(l[2]);
+  });
+
+  it('A sur un focus perdu valide l’élément choisi', () => {
+    const l = trois();
+    let clics = 0;
+    l[2].addEventListener('click', () => clics++);
+    demarrerManette({ manette: false });
+    appliquer('bas');
+    appliquer('bas');
+    appliquer('bas');
+    (document.activeElement as HTMLElement).blur();
+    appliquer('valider');
+    expect(clics).toBe(1);
+  });
+});

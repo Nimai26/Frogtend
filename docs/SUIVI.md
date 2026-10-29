@@ -145,7 +145,13 @@
   (https://forums.launchbox-app.com/topic/35136-bedroom-theme/) — s'en INSPIRER, jamais le recopier ;
   ESSAI 2 (29/10) : au clavier la navigation marche (haut compris) mais seulement après une 1re flèche ; au retour d'une
   autre fenêtre, plus rien (même en cliquant) tant qu'on n'a pas tapé une flèche → piste FOCUS de la WebView ; et
-  ❌❌ « Voir les boutons » ÉTEINT la manette de Seb à chaque fois → deux enquêtes en cours (interface, lancement) ; DEMANDE de Seb (29/10) : « détecter la carte
+  ❌❌ « Voir les boutons » ÉTEINT la manette de Seb à chaque fois (récepteur Xbox sans fil en USB). Enquêtes :
+  (1) FOCUS : Chromium ne montre `:focus-visible` d'un focus posé par le code qu'après une touche du clavier → la
+  manette bougeait sans contour visible ; et un clic laissait le focus sur la page → CORRIGÉ (non livré) :
+  `focus({focusVisible})`, contour au canapé sur `:focus` et `[data-choisi]`, la croix / A / Y repartent de l'élément
+  choisi (tests) ; (2) MANETTE ÉTEINTE : aucune cause dans le code (lectures seules : XInputGetState, liste SetupAPI,
+  aucun ordinal 103, SDL non démarré hors partie) → à confirmer avec Seb (logo vraiment éteint ? écran ouvert à la
+  souris sans toucher la manette ?) ; DEMANDE de Seb (29/10) : « détecter la carte
   graphique d'un PC et faire le meilleur réglage » (ici une RTX 3080 Ti) — à cadrer après l'enquête (carte, mémoire
   vidéo, pilote ; réglages RPCS3 et autres émulateurs par carte ; jamais un réglage de la personne défait).
 - **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un

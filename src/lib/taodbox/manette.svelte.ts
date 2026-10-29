@@ -38,15 +38,33 @@ export function selectionner(e: HTMLElement | null | undefined) {
   if (!e) return;
   document.querySelectorAll('[data-choisi]').forEach((x) => x.removeAttribute('data-choisi'));
   e.setAttribute('data-choisi', '');
-  e.focus({ preventScroll: true });
+  // `focusVisible` : le contour s'affiche même si la dernière action était un clic (Chromium ne montre
+  // `:focus-visible` d'un focus posé par le code qu'après une touche du clavier ; essai de Seb, 29/10 : à la manette,
+  // rien ne semblait bouger avant d'avoir tapé une flèche). Un filet CSS (`[data-choisi]`) le double.
+  e.focus({ preventScroll: true, focusVisible: true } as FocusOptions);
   e.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+/** Le point de départ de la manette : l'élément qui a le focus ; sinon (focus perdu sur la page après un clic, ou au
+ * retour d'une autre fenêtre) l'élément choisi en dernier s'il est encore là. */
+function courant(l: HTMLElement[]): HTMLElement | null {
+  const a = document.activeElement as HTMLElement | null;
+  if (a && a !== document.body && a !== document.documentElement) return a;
+  const choisi = l.find((e) => e.hasAttribute('data-choisi'));
+  return choisi ?? null;
 }
 
 /** Déplace le focus dans une direction (ou sur le premier élément s'il n'y en a pas). */
 export function deplacer(d: Direction) {
   const l = visibles();
   if (!l.length) return;
-  const i = l.indexOf(document.activeElement as HTMLElement);
+  const c = courant(l);
+  if (c && c !== document.activeElement) {
+    // Le focus était perdu : on le rend d'abord à l'élément choisi (aucun saut vers le haut de la page).
+    selectionner(c);
+    return;
+  }
+  const i = c ? l.indexOf(c) : -1;
   if (i < 0) {
     selectionner(l[0]);
     return;
@@ -146,11 +164,13 @@ function filtrerDoublons(e: KeyboardEvent) {
 
 /** A : valider l'élément qui a le focus. */
 function valider() {
-  const e = document.activeElement as HTMLElement | null;
-  if (!e || e === document.body) {
-    selectionner(visibles()[0]);
+  const l = visibles();
+  const e = courant(l);
+  if (!e) {
+    selectionner(l[0]);
     return;
   }
+  if (e !== document.activeElement) selectionner(e);
   if (e.tagName === 'INPUT' || e.tagName === 'SELECT') touche('Enter');
   else e.click();
 }
@@ -195,6 +215,9 @@ export function appliquer(c: Commande) {
  * `true` si la touche a été envoyée. */
 export function appuiY(): boolean {
   if (fenetreOuverte() || preneurs.length) return false;
+  // Focus perdu (après un clic) : la touche irait à la page, pas à la carte choisie.
+  const c = courant(visibles());
+  if (c && c !== document.activeElement) selectionner(c);
   touche('ContextMenu');
   return true;
 }
