@@ -43,6 +43,8 @@
       <h3>Crédits</h3>
       <p>{etat.catalogue?.credit}</p>
       <p class="muted">Frogtend est distribué sous licence Apache 2.0.</p>
+      <!-- Voulu par Seb (29/10), tel quel. Le cœur est un émoji (rouge par lui-même) : aucune couleur écrite ici. -->
+      <p class="signature">Made with <span role="img" aria-label="love">❤️</span> by Nimai, Shyrka &amp; Claude</p>
     </div>
   </div>
 </section>
@@ -52,6 +54,11 @@
     padding: calc(16 * var(--u));
     display: grid;
     gap: calc(14 * var(--u));
+  }
+  .signature {
+    text-align: center;
+    font-weight: 600;
+    margin-top: calc(8 * var(--u));
   }
   .actions {
     display: flex;

@@ -64,7 +64,7 @@
 - [ ] Mode « hardcore » des succès RetroArch : la sauvegarde est refusée, et Frogtend le dit.
 
 ## Les corrections de la séance (0.138.0)
-- [ ] Super Mario All-Stars (arrivé, montrait « Installer ») : après l'ouverture de ton profil, il montre « ▶ Jouer ».
+- [x] (✅ Seb 29/10) Super Mario All-Stars (arrivé, montrait « Installer ») : après l'ouverture de ton profil, il montre « ▶ Jouer ».
 - [ ] Un nouveau jeu SNES : à l'arrivée, « ✅ … est arrivé : ▶ Jouer » (jamais « Installer »).
 - [x] (✅ Seb 29/10) Menu en jeu ▸ Manuel et documents : livret, musique, vidéo — la croix bouge la page / la piste, LB et RB
       passent d'un bouton à l'autre (jusqu'à « ✕ Fermer »), A appuie dessus.
