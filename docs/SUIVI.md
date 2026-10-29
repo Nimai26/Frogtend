@@ -28,7 +28,10 @@
   jamais pour RPCS3, xemu, Xenia, Eden, Cemu, PPSSPP, Vita3K, ni un émulateur hors catalogue ; réglage
   `menuJeu.boutonXbox` (oui d'office). RESTE (essai) : vrai appui sur Venkman ; par Moonlight / Sunshine (ViGEm)
   depuis le Freebox Player ; Steam qui prend aussi le bouton (réglage de Steam non lu) ; une manette qui se
-  DÉCONNECTE pendant un appui court passe pour un relâchement (rare, non traité).
+  DÉCONNECTE pendant un appui court passe pour un relâchement (rare, non traité). ✅ Seb 29/10 : appui court → menu,
+  2e appui → retour au jeu, Xbox + autre bouton → rien. Appui LONG : Windows ouvre son « Affichage des tâches »
+  (changement de Microsoft, 2025 : appui court = Game Bar, long = Task View ; pas de réglage connu pour le couper,
+  recherche du 29/10) — hors de Frogtend, dit à Seb.
   ✅ (3) FAIT en 0.141.0 (avis lancement avant ; relectures lancement + interface, 2 tours ; BLOQUANT corrigé : la
   clé hardcore est TOUJOURS dans `retroarch.cfg` (recopiée), chez Seb `true` avec succès coupés → ma règle « prudente »
   ne proposait jamais les triches ; règle = celle des sauvegardes rapides) : RetroArch seulement, en direct ;

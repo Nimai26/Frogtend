@@ -37,9 +37,11 @@
 - [ ] Avec les succès en mode « hardcore » : pas d'entrée « Triches ».
 
 ## Le bouton Xbox ouvre le menu en jeu (0.140.0)
-- [ ] Super Mario World : un appui court sur le bouton Xbox → le menu de Frogtend s'ouvre (et rien d'autre : ni Game
+- [x] (✅ Seb 29/10) Super Mario World : un appui court sur le bouton Xbox → le menu de Frogtend s'ouvre (et rien d'autre : ni Game
       Bar, ni Steam) ; un nouvel appui → retour au jeu.
-- [ ] Le bouton Xbox tenu 2 secondes, ou avec un autre bouton : rien ne s'ouvre.
+- [x] (✅ Seb 29/10) Le bouton Xbox avec un autre bouton : rien ne s'ouvre. Tenu 2 s : le menu de Frogtend ne s'ouvre
+      pas, mais WINDOWS ouvre son « Affichage des tâches » (changement de Microsoft de 2025 : appui long = Task View ;
+      aucun réglage connu pour le couper — limite notée).
 - [ ] Manette éteinte pendant la partie, rallumée par le bouton Xbox : le menu ne s'ouvre pas.
 - [ ] ⚙ Options ▸ Émulateurs ▸ « Bouton Xbox » : « n'ouvre pas le menu » → à la partie suivante, il n'ouvre plus rien.
 - [ ] Plus tard, par Moonlight (Freebox Player) : le bouton Accueil / Xbox de la manette ouvre-t-il le menu ?
