@@ -105,6 +105,10 @@
   de Seb : écran « Les boutons » trop petit et peu visible en jeu, et y mettre les raccourcis de Frogtend → 0.145.0
   (fenêtre agrandie 1100×820 au plus pendant cet écran, raccourcis lus dans les réglages du PC). NOTÉ : les noms des
   triches sont en anglais (ils viennent de la base de codes) — à traduire (Firehouse, comme les patchs RPCS3 ?).
+  DEMANDE de Seb (29/10) : changer l'effet d'image EN JEU depuis le menu de Frogtend. Faisable : la commande réseau
+  `SET_SHADER <chemin>` existe dans RetroArch 1.22.2 (relevée dans retroarch.exe, avec SHADER_TOGGLE/NEXT/PREV).
+  À faire APRÈS la phase d'essais (avis lancement d'abord) : écran « 🖼 Effet d'image » du menu en jeu (essai à chaud),
+  puis « garder pour ce jeu / cette console » ; point à vérifier : effet sans `video_shader_enable = true` au lancement.
 - **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un
   jeu du PC (la fiche GARDÉE a `locale: true`, le bouton exigeait `!locale` — même défaut pour « ➕ Ajouter cette
   carte » e-Reader) ; « Gérer ▸ Ajouter une autre version » ne faisait rien (même page). 0.137.4 (relecture interface
