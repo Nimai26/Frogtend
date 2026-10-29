@@ -118,7 +118,9 @@
   SPU à chaque fois ?) → ✅ Seb 29/10 : compilation finie, 2e lancement ~20 s. À FAIRE : prévenir avant de jouer quand
   RPCS3 a été mis à jour (« la 1re partie recompile, ne quitte pas ») ; RETOUR de Seb (29/10) : dans un jeu RPCS3, le
   bouton Xbox ouvre le menu de RPCS3 (en anglais), pas celui de Frogtend (voulu en 0.140.0 : RPCS3 exclu du Guide) —
-  question posée à Seb ; DEMANDE de Seb (29/10) : « détecter la carte
+  ✅ Seb 29/10 : « Frogtend partout, à condition de ne pas perdre save, load, reset, shader, triches… » → d'abord donner
+  au menu de Frogtend ce qu'offre le menu de RPCS3 (aujourd'hui : rien pour RPCS3), PUIS retirer le bouton PS à RPCS3 ;
+  avis lancement en cours ; DEMANDE de Seb (29/10) : « détecter la carte
   graphique d'un PC et faire le meilleur réglage » (ici une RTX 3080 Ti) — à cadrer après l'enquête (carte, mémoire
   vidéo, pilote ; réglages RPCS3 et autres émulateurs par carte ; jamais un réglage de la personne défait).
 - **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un
