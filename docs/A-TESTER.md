@@ -41,7 +41,7 @@
 - [ ] Puis la 5e triche : RetroArch annonce bien le **n° 4** (Frogtend avance son index pas à pas — s'il annonce un
       autre numéro, le noter : c'est le point non vérifié). Rouvrir le menu : ✅ sur les deux.
 - [ ] Une longue liste (30e triche ou plus) sur un jeu lourd : le bon numéro est-il annoncé ?
-- [ ] Quitter, relancer : les triches actives le sont toujours (✅ dans le menu, et en jeu).
+- [x] (✅ Seb 29/10) Quitter, relancer : les triches actives le sont toujours (✅ dans le menu, et en jeu).
 - [ ] Avec les succès en mode « hardcore » : pas d'entrée « Triches ».
 
 ## Le bouton Xbox ouvre le menu en jeu (0.140.0)
