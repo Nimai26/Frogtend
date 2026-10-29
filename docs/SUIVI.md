@@ -133,7 +133,11 @@
   émulateurs → parties, états, triches dans le dossier du PROFIL de l'émulateur (non touchés) ; réglages par jeu dans
   le profil Frogtend (gardés) ; jeu PC → parties copiées à l'abri AVANT le retrait, MAIS à la réinstallation elles ne
   sont PAS reposées seules (`reposer_parties_du_jeu` ne lit que la zone de restauration) → à proposer : les reposer
-  après un oui (avis lancement d'abord) ; DEMANDE de Seb (29/10) : « détecter la carte
+  après un oui (avis lancement d'abord) ;
+  ❌ ESSAI du 29/10 (0.145.0), Taodbox plein écran, manette : seule la grille des jeux répond ; impossible d'aller au
+  filtre par système, de changer de joueur, d'aller au bureau ; la fenêtre « Gérer le jeu » (Y) ne se pilote pas →
+  enquête interface en cours. DEMANDE de Seb (29/10) : « revoir l'interface de Taodbox, assez moche » — à cadrer avec
+  lui (ce qui déplaît, des exemples qu'il aime) après la correction ; DEMANDE de Seb (29/10) : « détecter la carte
   graphique d'un PC et faire le meilleur réglage » (ici une RTX 3080 Ti) — à cadrer après l'enquête (carte, mémoire
   vidéo, pilote ; réglages RPCS3 et autres émulateurs par carte ; jamais un réglage de la personne défait).
 - **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un
