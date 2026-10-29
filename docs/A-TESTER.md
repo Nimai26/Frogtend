@@ -3,6 +3,9 @@
 > Tenu à jour au fil du travail. Chaque ligne dit **quoi faire** et **ce qu'on doit voir**. Coche (`[x]`) ce qui
 > marche ; pour ce qui ne marche pas, un mot ou une capture suffit.
 
+> ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
+> « fiche de Super Mario World ▸ 🎯 Triches et mods ».
+
 ## Les effets d'image (0.144.0)
 - [ ] Super Mario World : ⚙ Gérer le jeu ▸ « 🖼 Effet d'image » ▸ « Télé d'époque (simple) » ▸ « Pour ce jeu » ;
       lancer : de fines lignes horizontales. Revenir à « Comme la console » : l'image normale.
