@@ -128,7 +128,12 @@
   (dev_hdd0) à l'abri avant chaque chargement ; (4) `PS: ""` dans le profil de manette MARQUÉ Frogtend seulement, et
   le bouton Xbox à Frogtend seulement si ce profil est le nôtre ; (5) image et patchs « changer puis recommencer » (à
   valider avec Seb) ; trophées : idée. NON vérifié : touches d'origine, `--no-gui`, relance après sauvegarde ;
-  ✅ Seb 29/10 : dans « À propos », « Made with ❤️ by Nimai, Shyrka & Claude » (fait, livré avec la prochaine version) ; DEMANDE de Seb (29/10) : « détecter la carte
+  ✅ Seb 29/10 : dans « À propos », « Made with ❤️ by Nimai, Shyrka & Claude » (fait, livré avec la prochaine version) ;
+  QUESTION de Seb (29/10) : un jeu retiré (manque de place) garde-t-il ses parties et réglages, comme Steam ? Relevé :
+  émulateurs → parties, états, triches dans le dossier du PROFIL de l'émulateur (non touchés) ; réglages par jeu dans
+  le profil Frogtend (gardés) ; jeu PC → parties copiées à l'abri AVANT le retrait, MAIS à la réinstallation elles ne
+  sont PAS reposées seules (`reposer_parties_du_jeu` ne lit que la zone de restauration) → à proposer : les reposer
+  après un oui (avis lancement d'abord) ; DEMANDE de Seb (29/10) : « détecter la carte
   graphique d'un PC et faire le meilleur réglage » (ici une RTX 3080 Ti) — à cadrer après l'enquête (carte, mémoire
   vidéo, pilote ; réglages RPCS3 et autres émulateurs par carte ; jamais un réglage de la personne défait).
 - **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un
