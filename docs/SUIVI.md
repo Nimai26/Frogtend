@@ -111,7 +111,11 @@
   puis « garder pour ce jeu / cette console » ; point à vérifier : effet sans `video_shader_enable = true` au lancement.
   ESSAI du 29/10, Asura's Wrath (RPCS3, BLES01227) : écran de lancement ✅ ; MAIS « Precompiling shader interpreter »
   plus de 5 min à CHAQUE lancement, puis d'autres compilations, CPU à 100 % ; rien d'écrit dans `cache\BLES01227` depuis
-  le 05/10 (RPCS3 mis à jour le 28/10) → enquête lancement en cours. DEMANDE de Seb (29/10) : « détecter la carte
+  le 05/10 (FAUX : relevé incomplet, voir plus bas) → enquête lancement : CAUSE = RPCS3 s'est mis à jour SEUL le
+  28/10 (0.0.43-20192 → 20415, `update_history.log`, via la Game Bar) : nouveau format de cache PPU (v8 → v9), tout est
+  recompilé UNE fois ; les fichiers v9 s'écrivent bien (70 le 29/10). Frogtend ne touche à rien du cache. Lancements
+  coupés avant ~5 min 30 = rien de gardé. À MESURER : le lancement suivant, une fois la compilation finie (5 min de
+  SPU à chaque fois ?). À FAIRE : prévenir avant de jouer quand RPCS3 a été mis à jour (« la 1re partie recompile ») ; DEMANDE de Seb (29/10) : « détecter la carte
   graphique d'un PC et faire le meilleur réglage » (ici une RTX 3080 Ti) — à cadrer après l'enquête (carte, mémoire
   vidéo, pilote ; réglages RPCS3 et autres émulateurs par carte ; jamais un réglage de la personne défait).
 - **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un
