@@ -553,6 +553,7 @@ pub fn run() {
             commandes::menu_jeu_emplacements,
             commandes::menu_jeu_triche,
             commandes::boutons_du_jeu,
+            commandes::menu_jeu_agrandir,
             commandes::effets_image,
             commandes::jeu_retirer_version,
             commandes::jeu_versions_ajoutees,

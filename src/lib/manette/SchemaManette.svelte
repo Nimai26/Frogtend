@@ -2,10 +2,10 @@
   // 🎮 Les boutons d'un jeu (lot 4d) : en haut, le dessin de la manette du joueur (décoratif, caché au lecteur d'écran) ;
   // en dessous, la liste « bouton de ta manette → bouton d'origine », le vrai contenu. La ligne choisie (clavier,
   // manette, souris) allume son bouton sur le dessin. Aucune couleur en dur : les jetons du thème.
-  import { NOMS, sansDessin, schema, type IdBouton, type InfosBoutons } from './boutons';
+  import { NOMS, raccourcis, sansDessin, schema, type IdBouton, type InfosBoutons } from './boutons';
 
-  /** `aide` : la phrase qui dit comment ouvrir le menu de Frogtend pendant une partie (rien dans le menu lui-même). */
-  let { infos, aide = null }: { infos: InfosBoutons; aide?: string | null } = $props();
+  let { infos }: { infos: InfosBoutons } = $props();
+  const touches = $derived(raccourcis(infos));
 
   const s = $derived(schema(infos));
   const ps = $derived(infos.famille === 'playstation');
@@ -75,7 +75,17 @@
   {:else}
     <p class="muted">{sansDessin(s)}</p>
   {/if}
-  {#if aide}<p class="muted">{aide}</p>{/if}
+  <h2>⚡ Les raccourcis de Frogtend pendant une partie</h2>
+  <div class="lignes">
+    {#each touches as t (t.geste)}
+      <button class="btn ligne" aria-label="{t.geste} : {t.effet}">
+        <span class="nom">{t.geste}</span>
+        <span aria-hidden="true">→</span>
+        <span class="role">{t.effet}</span>
+      </button>
+    {/each}
+  </div>
+  <p class="muted">Ils se changent dans Frogtend, après la partie : ⚙ Options ▸ Émulateurs.</p>
 </div>
 
 <style>
@@ -83,8 +93,13 @@
     display: grid;
     gap: calc(10 * var(--u));
   }
-  .schema p {
+  .schema p,
+  .schema h2 {
     margin: 0;
+  }
+  h2 {
+    font-size: calc(18 * var(--u));
+    margin-top: calc(6 * var(--u));
   }
   /* Le dessin reste visible pendant que la liste défile (sa ligne choisie l'allume) ; en grand (Taodbox, télé) : le
    * dessin à gauche, la liste à droite. */
@@ -102,7 +117,7 @@
     width: 100%;
     max-height: 30vh;
   }
-  @container (min-width: 900px) {
+  @container (min-width: 720px) {
     .corps-schema {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -115,19 +130,21 @@
   }
   .corps {
     fill: var(--bg2);
-    stroke: var(--line);
-    stroke-width: 2;
+    stroke: var(--ink);
+    stroke-opacity: 0.5;
+    stroke-width: 2.5;
     vector-effect: non-scaling-stroke;
   }
   .b :is(rect, circle, path):not(.symbole) {
     fill: var(--bg);
-    stroke: var(--line);
-    stroke-width: 1.5;
+    stroke: var(--ink);
+    stroke-opacity: 0.6;
+    stroke-width: 2;
     vector-effect: non-scaling-stroke;
   }
   .b text {
     fill: var(--ink);
-    font-size: 15px;
+    font-size: 17px;
     font-weight: 700;
     text-anchor: middle;
   }

@@ -223,6 +223,11 @@
     }
   }
 
+  function fermerBoutons() {
+    boutons = null;
+    void api.menuJeuAgrandir(false).catch(() => {});
+  }
+
   async function voirBoutons() {
     try {
       const i = await api.boutonsDuJeu(null);
@@ -230,6 +235,8 @@
         toast('Les boutons de ce jeu sont inconnus.', 'neutre');
         return;
       }
+      // La fenêtre s'agrandit d'abord (le dessin se lit), puis l'écran s'affiche.
+      await api.menuJeuAgrandir(true).catch(() => {});
       boutons = i;
       await premierBouton();
     } catch (e) {
@@ -373,7 +380,7 @@
     else if (documents) revenir(() => (documents = null), '[data-ecran="documents"]');
     else if (options) revenir(() => (options = false), '[data-ecran="options"]');
     else if (triches) revenir(() => (triches = false), '[data-ecran="triches"]');
-    else if (boutons) revenir(() => (boutons = null), '[data-ecran="boutons"]');
+    else if (boutons) revenir(fermerBoutons, '[data-ecran="boutons"]');
     else reprendre();
   }
 
@@ -417,7 +424,7 @@
 {/if}
 <!-- Le survol ne fait que déplacer la sélection : le clavier et la manette ont déjà leur propre navigation. -->
 <!-- svelte-ignore a11y_no_static_element_interactions, a11y_mouse_events_have_key_events -->
-<div class="menu cx-card" onpointermove={survol}>
+<div class="menu cx-card" class:large={!!boutons} onpointermove={survol}>
   {#if !menu}
     <p class="muted">Aucune partie en cours.</p>
   {:else if lecture}
@@ -450,9 +457,9 @@
       <p class="muted">{menu.titre}</p>
     </header>
     <div class="liste" bind:this={liste}>
-      <button class="btn" onclick={() => revenir(() => (boutons = null), '[data-ecran="boutons"]')}>← Retour</button>
+      <button class="btn" onclick={() => revenir(fermerBoutons, '[data-ecran="boutons"]')}>← Retour</button>
       <SchemaManette infos={boutons} />
-      <button class="btn" onclick={() => revenir(() => (boutons = null), '[data-ecran="boutons"]')}>← Retour</button>
+      <button class="btn" onclick={() => revenir(fermerBoutons, '[data-ecran="boutons"]')}>← Retour</button>
     </div>
   {:else if triches && menu.triches}
     <header>
@@ -620,6 +627,10 @@
     flex-direction: column;
     gap: calc(16 * var(--u));
     overflow: hidden;
+  }
+  /* L'écran des boutons : la carte prend la largeur de la fenêtre agrandie (dessin et liste côte à côte). */
+  .menu.large {
+    width: calc(100% - 2 * var(--marge));
   }
   :global([data-taodbox]) .menu {
     --marge: max(calc(16 * var(--u)), 5vh);

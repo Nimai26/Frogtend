@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.145.0 — Les boutons, en grand, avec les raccourcis de Frogtend
+
+- 🗺 Menu en jeu ▸ « Les boutons » : la fenêtre s'agrandit (le dessin à gauche, la liste à droite), le dessin est
+  plus contrasté ; elle reprend sa taille au retour.
+- ⚡ Les raccourcis de Frogtend pendant une partie y sont listés, d'après tes réglages : le bouton du milieu, la
+  combinaison du menu, la touche du clavier, la sauvegarde et le chargement rapides — avec les noms de ta manette.
+
 ## 0.144.0 — Les effets d'image
 
 - 📺 ⚙ Gérer le jeu ▸ **« 🖼 Effet d'image »** (jeux lancés par RetroArch) : télé d'époque (simple ou détaillée),

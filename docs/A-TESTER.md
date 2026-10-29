@@ -6,6 +6,11 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Les boutons en grand (0.145.0)
+- [ ] Super Mario World : menu ▸ « 🗺 Les boutons » : la fenêtre s'agrandit, dessin lisible, la liste à côté ; plus
+      bas, « ⚡ Les raccourcis de Frogtend » (bouton du milieu, Vue + RB, touche Pause/Attn, Vue + LT, Vue + RT).
+- [ ] B, puis rouvrir le menu : il a repris sa taille normale.
+
 ## Les effets d'image (0.144.0)
 - [ ] Super Mario World : ⚙ Gérer le jeu ▸ « 🖼 Effet d'image » ▸ « Télé d'époque (simple) » ▸ « Pour ce jeu » ;
       lancer : de fines lignes horizontales. Revenir à « Comme la console » : l'image normale.
@@ -29,9 +34,9 @@
       ta manette lui-même ».
 
 ## Les triches dans le menu en jeu (0.141.0)
-- [ ] Super Mario World : fiche ▸ 🎯 Triches et mods ▸ ajouter une liste de codes RetroArch (Snes9x). Lancer le jeu,
+- [x] (✅ Seb 29/10) Super Mario World : fiche ▸ 🎯 Triches et mods ▸ ajouter une liste de codes RetroArch (Snes9x). Lancer le jeu,
       menu ▸ « 🎯 Triches » : la liste s'affiche, toutes ⬜.
-- [ ] Choisir la 1re triche : question « Activer… ? » (une fois), le menu se ferme, RetroArch écrit en haut « Cheat:
+- [x] (✅ Seb 29/10) Choisir la 1re triche : question « Activer… ? » (une fois), le menu se ferme, RetroArch écrit en haut « Cheat:
       #0 … ON » et la triche agit. Dans `saves`, une copie `….srm.avant-triche-…` est là.
 - [ ] Puis la 5e triche : RetroArch annonce bien le **n° 4** (Frogtend avance son index pas à pas — s'il annonce un
       autre numéro, le noter : c'est le point non vérifié). Rouvrir le menu : ✅ sur les deux.

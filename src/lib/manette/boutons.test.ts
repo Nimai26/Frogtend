@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NOMS, ORDRE, sansDessin, schema, type InfosBoutons } from './boutons';
+import { NOMS, ORDRE, nomCombinaison, raccourcis, sansDessin, schema, type InfosBoutons } from './boutons';
 
 const infos = (i: Partial<InfosBoutons>): InfosBoutons => ({
   plateforme: 'Super Nintendo Entertainment System',
@@ -8,6 +8,7 @@ const infos = (i: Partial<InfosBoutons>): InfosBoutons => ({
   famille: 'xbox',
   personnalise: false,
   clavier: null,
+  raccourcis: { combinaison: 'Select + R1', bouton_xbox: true, touche: 'Pause', etats: true },
   ...i,
 });
 
@@ -79,5 +80,17 @@ describe('les boutons de la manette d’origine', () => {
     expect(sans.etat).toBe('jeu-pc');
     expect(sansDessin(sans)).toContain('Jouer à la manette');
     expect(schema(infos({ emulateur: null, coeur: null, clavier: { a: '' } })).etat).toBe('jeu-pc');
+  });
+
+  it('les raccourcis de Frogtend, d’après les réglages et la manette', () => {
+    expect(nomCombinaison('Select + R1', 'xbox')).toBe('Vue (⧉) + RB');
+    expect(nomCombinaison('L3 + R3', 'playstation')).toBe('L3 + R3');
+    expect(nomCombinaison('Select + Start', 'playstation')).toBe('Créer + Options');
+    const l = raccourcis(infos({}));
+    expect(l.map((x) => x.effet)).toEqual(['ouvrir ou fermer le menu de Frogtend', 'ouvrir le menu de Frogtend', 'ouvrir le menu de Frogtend', 'sauvegarde rapide', 'chargement rapide (la partie revient à la sauvegarde)']);
+    expect(l[2].geste).toContain('Pause/Attn');
+    expect(l[3].geste).toBe('Vue (⧉) + LT, tenus ½ seconde');
+    const sans = raccourcis(infos({ raccourcis: { combinaison: 'L3 + R3', bouton_xbox: false, touche: '', etats: false } }));
+    expect(sans).toEqual([{ geste: 'L3 + R3, tenus 1 seconde', effet: 'ouvrir le menu de Frogtend' }]);
   });
 });

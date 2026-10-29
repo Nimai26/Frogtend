@@ -776,6 +776,8 @@ export const api = {
   menuJeuTriche: (index: number) => appeler<void>('menu_jeu_triche', { index }),
   /** Les boutons d'un jeu du PC, ou (`null`) de la partie en cours (lot 4d). */
   boutonsDuJeu: (id: number | null) => appeler<InfosBoutons | null>('boutons_du_jeu', { id }),
+  /** La fenêtre du menu en jeu, agrandie pour l'écran des boutons (puis rendue à sa taille). */
+  menuJeuAgrandir: (grand: boolean) => appeler<void>('menu_jeu_agrandir', { grand }),
   menuJeuQuitter: () => appeler<number>('menu_jeu_quitter'),
   jouer: (
     id: number,

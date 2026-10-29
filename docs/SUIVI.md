@@ -100,6 +100,11 @@
   consoles) ; ou des cadres servis par Firehouse. Aussi : aperçu des effets (vignette d'exemple : idée), essayer un
   effet à chaud depuis le menu en jeu (`SHADER_TOGGLE`), raccourcis M/N/virgule de RetroArch actifs dans un jeu
   d'ordinateur (d'avant).
+- **Essais du 29/10 (0.144.0)** — ✅ Seb : bouton Xbox (menu, retour, avec un autre bouton, manette rallumée) ; triches
+  RetroArch (fichier posé au nom de la ROM, 336 triches ; activation en jeu, numéro annoncé juste, vies à 99). Retours
+  de Seb : écran « Les boutons » trop petit et peu visible en jeu, et y mettre les raccourcis de Frogtend → 0.145.0
+  (fenêtre agrandie 1100×820 au plus pendant cet écran, raccourcis lus dans les réglages du PC). NOTÉ : les noms des
+  triches sont en anglais (ils viennent de la base de codes) — à traduire (Firehouse, comme les patchs RPCS3 ?).
 - **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un
   jeu du PC (la fiche GARDÉE a `locale: true`, le bouton exigeait `!locale` — même défaut pour « ➕ Ajouter cette
   carte » e-Reader) ; « Gérer ▸ Ajouter une autre version » ne faisait rien (même page). 0.137.4 (relecture interface

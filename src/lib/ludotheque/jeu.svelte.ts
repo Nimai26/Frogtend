@@ -767,14 +767,6 @@ function nomCombinaison(): string {
   return c.replace('Select', 'View').replace('R1', 'RB').replace('L1', 'LB');
 }
 
-/** Comment ouvrir le menu de Frogtend pendant une partie, d'après les réglages du PC (page « 🎮 Les boutons »). */
-export function aideMenuEnJeu(): string {
-  const combinaison = `${nomCombinaison()} tenus une seconde`;
-  return etat.pc.menuJeu?.boutonXbox === false
-    ? `Pendant une partie : ${combinaison} ouvre le menu de Frogtend.`
-    : `Pendant une partie : un appui court sur le bouton du milieu de la manette (si la Game Bar de Windows ne le prend pas), ou ${combinaison}, ouvre le menu de Frogtend.`;
-}
-
 /**
  * « 🕹 Jouer à la manette » (jeu PC lancé sans émulateur, fait pour le clavier) : Frogtend traduit les boutons en
  * touches pendant la partie. Un préréglage courant, ou bouton par bouton ; désactivé d'office.

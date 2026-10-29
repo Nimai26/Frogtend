@@ -7,7 +7,6 @@
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { etat } from '$lib/etat.svelte';
   import { nettoyer } from '$lib/ludotheque/clavier';
-  import { aideMenuEnJeu } from '$lib/ludotheque/jeu.svelte';
   import { auCanape } from '$lib/taodbox/canape';
   import { fenetreOuverte, selectionner } from '$lib/taodbox/manette.svelte';
   import SchemaManette from './SchemaManette.svelte';
@@ -59,7 +58,7 @@
   {:else if infos === null}
     <p class="muted">Ce jeu n’est pas sur ce PC.</p>
   {:else}
-    <SchemaManette {infos} aide={aideMenuEnJeu()} />
+    <SchemaManette {infos} />
   {/if}
 </div>
 

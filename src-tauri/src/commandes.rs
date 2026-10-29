@@ -2293,6 +2293,35 @@ pub struct InfosBoutons {
     famille: &'static str,
     personnalise: bool,
     clavier: Option<std::collections::BTreeMap<String, String>>,
+    /// Les raccourcis de Frogtend pendant une partie, d'après les réglages de ce PC (essai de Seb, 29/10).
+    raccourcis: RaccourcisFrogtend,
+}
+
+/// Les raccourcis de Frogtend en jeu : la combinaison du menu (nom du réglage, « Select + R1 »…), le bouton du milieu
+/// (s'il ouvre le menu pour ce jeu), la touche du clavier, et les sauvegarde / chargement rapides à la manette.
+#[derive(Serialize)]
+pub struct RaccourcisFrogtend {
+    combinaison: String,
+    bouton_xbox: bool,
+    touche: String,
+    etats: bool,
+}
+
+fn raccourcis_frogtend(app: &AppHandle, moteur: crate::osd_manette::Moteur, etats_possibles: bool) -> RaccourcisFrogtend {
+    let combinaison = app
+        .store("pc.json")
+        .ok()
+        .and_then(|s| s.get("reglages"))
+        .and_then(|r| r["menuJeu"]["manette"].as_str().map(String::from))
+        .filter(|c| !c.trim().is_empty())
+        .unwrap_or_else(|| "Select + R1".into());
+    RaccourcisFrogtend {
+        combinaison,
+        // Annoncé seulement s'il marche vraiment sur ce PC (bouton lisible, Game Bar qui l'a lâché, émulateur permis).
+        bouton_xbox: crate::osd_manette::guide_permis(crate::registre::bouton_game_bar(), bouton_xbox(app), moteur) && crate::osd_manette::guide_lisible(),
+        touche: touche_menu(app),
+        etats: etats_possibles && raccourcis_etats(app),
+    }
 }
 
 /// `id` : un jeu du PC (fiche, Gérer le jeu) ; `None` : la partie en cours (menu en jeu). `None` rendu : jeu inconnu.
@@ -2300,9 +2329,14 @@ pub struct InfosBoutons {
 pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<i64>) -> Resultat<Option<InfosBoutons>> {
     let profil = profil_ouvert(&noyau).await?.nom;
     // (plateforme, émulateur, dossier de l'émulateur, cœur, nom du jeu lancé, nom de son dossier, clavier)
+    // Et pour les raccourcis : un jeu PC (sans émulateur) ? les sauvegardes rapides sont-elles proposées ?
+    let jeu_pc;
+    let etats_possibles;
     let (plateforme, emulateur, dossier, coeur, rom, contenu, clavier) = match id {
         None => {
             let Some(p) = app.state::<crate::menu_jeu::MenuJeu>().partie() else { return Ok(None) };
+            etats_possibles = crate::menu_jeu::etat(&p).actions.contains(&"sauver");
+            jeu_pc = p.emulateur.is_none() && p.dossier_jeu.is_some();
             (p.plateforme, p.emulateur, p.dossier_emulateur.map(std::path::PathBuf::from), p.coeur, p.nom_rom, p.dossier_rom, p.clavier)
         }
         Some(id) => {
@@ -2330,9 +2364,17 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
             let fichier = if emulateur.is_some() { noyau.fichier_pour_l_emulateur(id, None).await.ok().flatten() } else { None };
             let rom = fichier.as_deref().and_then(|f| f.file_stem()).map(|s| s.to_string_lossy().to_string());
             let contenu = fichier.as_deref().and_then(|f| f.parent()).and_then(|d| d.file_name()).map(|s| s.to_string_lossy().to_string());
+            jeu_pc = emulateur.is_none();
+            etats_possibles = emulateur.as_deref().is_some_and(|e| crate::pilotage::actions(e).contains(&crate::pilotage::Action::SauverEtat));
             (j.plateforme, emulateur, dossier, coeur, rom, contenu, None)
         }
     };
+    let moteur = match (emulateur.as_deref(), jeu_pc) {
+        (Some(e), _) => crate::osd_manette::Moteur::Emulateur(e),
+        (None, true) => crate::osd_manette::Moteur::JeuPc,
+        (None, false) => crate::osd_manette::Moteur::Inconnu,
+    };
+    let raccourcis = raccourcis_frogtend(&app, moteur, etats_possibles);
     let (e2, d2, c2) = (emulateur.clone(), dossier.clone(), coeur.clone());
     // Dolphin : seule la manette GameCube est réglée par Frogtend (la Wii a ses Wiimotes : « inconnu » côté interface).
     let gamecube = plateforme.to_lowercase().contains("gamecube");
@@ -2357,7 +2399,26 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
     })
     .await
     .map_err(|_| Erreur::Disque("La lecture des boutons s'est arrêtée brutalement.".into()))?;
-    Ok(Some(InfosBoutons { plateforme, emulateur, coeur, famille, personnalise, clavier: clavier.filter(|c| !c.is_empty()) }))
+    Ok(Some(InfosBoutons { plateforme, emulateur, coeur, famille, personnalise, clavier: clavier.filter(|c| !c.is_empty()), raccourcis }))
+}
+
+/// L'écran « Les boutons » du menu en jeu : la fenêtre s'agrandit (jusqu'à 1 100 × 820, 90 % de l'écran au plus) pour
+/// que le dessin se lise (essai de Seb, 29/10 : « trop petite et peu visible »), puis reprend sa taille. En Taodbox
+/// (plein écran) : rien à faire.
+#[tauri::command]
+pub fn menu_jeu_agrandir(app: AppHandle, grand: bool) {
+    let Some(w) = app.get_webview_window(FENETRE_MENU) else { return };
+    if w.is_fullscreen().unwrap_or(false) {
+        return;
+    }
+    let (mut l, mut h) = if grand { (1100.0, 820.0) } else { (560.0, 700.0) };
+    if let Ok(Some(m)) = w.current_monitor() {
+        let s = m.size().to_logical::<f64>(m.scale_factor());
+        l = f64::min(l, s.width * 0.9);
+        h = f64::min(h, s.height * 0.9);
+    }
+    let _ = w.set_size(tauri::LogicalSize::new(l, h));
+    let _ = w.center();
 }
 
 /// Change l'emplacement de sauvegarde rapide choisi dans le menu (−1 ou +1). Rien n'est envoyé à l'émulateur : il
