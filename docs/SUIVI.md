@@ -137,7 +137,11 @@
   ❌ ESSAI du 29/10 (0.145.0), Taodbox plein écran, manette : seule la grille des jeux répond ; impossible d'aller au
   filtre par système, de changer de joueur, d'aller au bureau ; la fenêtre « Gérer le jeu » (Y) ne se pilote pas →
   enquête interface en cours. DEMANDE de Seb (29/10) : « revoir l'interface de Taodbox, assez moche » — à cadrer avec
-  lui (ce qui déplaît, des exemples qu'il aime) après la correction ; DEMANDE de Seb (29/10) : « détecter la carte
+  lui (ce qui déplaît, des exemples qu'il aime) après la correction. Exemple donné par Seb (29/10,
+  `docs/maquettes/taodbox-idee-seb-2026-10-29.png`, « adapter à nos thèmes, je verrais bien un truc dans le genre ») :
+  une ROUE VERTICALE de logos de systèmes à gauche (le choisi en grand, au centre), à droite le grand visuel du système
+  (console, manettes, télé d'époque) et l'année de sortie ; flèches haut/bas. Visuels : ceux de Firehouse (contrat
+  1.28, fond/logo/bannière par système) ; aux couleurs du skin ; DEMANDE de Seb (29/10) : « détecter la carte
   graphique d'un PC et faire le meilleur réglage » (ici une RTX 3080 Ti) — à cadrer après l'enquête (carte, mémoire
   vidéo, pilote ; réglages RPCS3 et autres émulateurs par carte ; jamais un réglage de la personne défait).
 - **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un
