@@ -7,9 +7,9 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## Les boutons en grand (0.145.0)
-- [ ] Super Mario World : menu ▸ « 🗺 Les boutons » : la fenêtre s'agrandit, dessin lisible, la liste à côté ; plus
+- [x] (✅ Seb 29/10) Super Mario World : menu ▸ « 🗺 Les boutons » : la fenêtre s'agrandit, dessin lisible, la liste à côté ; plus
       bas, « ⚡ Les raccourcis de Frogtend » (bouton du milieu, Vue + RB, touche Pause/Attn, Vue + LT, Vue + RT).
-- [ ] B, puis rouvrir le menu : il a repris sa taille normale.
+- [x] (✅ Seb 29/10) B, puis rouvrir le menu : il a repris sa taille normale.
 
 ## Les effets d'image (0.144.0)
 - [ ] Super Mario World : ⚙ Gérer le jeu ▸ « 🖼 Effet d'image » ▸ « Télé d'époque (simple) » ▸ « Pour ce jeu » ;
