@@ -75,7 +75,7 @@
       → la fiche montre « ⬇ En cours d'arrivée — N % », la pastille du haut compte 1 ; le jeu se lance pendant ce temps.
 - [x] (✅ Seb 28/10, 0.137.4) À l'arrivée : « ✅ … est arrivée » ; « ▶ Jouer avec… » propose USA et Japon ; chacune lance sa ROM.
 - [x] (✅ Seb 29/10) « 🗑 Retirer cette version » sur le Japon : seul son fichier part ; USA reste ⭐.
-- [ ] Fermer Frogtend pendant qu'une version arrive, le rouvrir : « ⏸ En pause » + « ▶ Reprendre » repart où elle en était.
+- [x] (✅ Seb 29/10) Fermer Frogtend pendant qu'une version arrive, le rouvrir : « ⏸ En pause » + « ▶ Reprendre » repart où elle en était.
 
 ## Plusieurs versions d'un jeu (0.136.0)
 - [ ] Un jeu SNES pas encore sur le PC avec plusieurs ROM : « ➕ Mettre dans ma ludothèque » → des cases à cocher
