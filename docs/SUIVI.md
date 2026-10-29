@@ -109,6 +109,11 @@
   `SET_SHADER <chemin>` existe dans RetroArch 1.22.2 (relevée dans retroarch.exe, avec SHADER_TOGGLE/NEXT/PREV).
   À faire APRÈS la phase d'essais (avis lancement d'abord) : écran « 🖼 Effet d'image » du menu en jeu (essai à chaud),
   puis « garder pour ce jeu / cette console » ; point à vérifier : effet sans `video_shader_enable = true` au lancement.
+  ESSAI du 29/10, Asura's Wrath (RPCS3, BLES01227) : écran de lancement ✅ ; MAIS « Precompiling shader interpreter »
+  plus de 5 min à CHAQUE lancement, puis d'autres compilations, CPU à 100 % ; rien d'écrit dans `cache\BLES01227` depuis
+  le 05/10 (RPCS3 mis à jour le 28/10) → enquête lancement en cours. DEMANDE de Seb (29/10) : « détecter la carte
+  graphique d'un PC et faire le meilleur réglage » (ici une RTX 3080 Ti) — à cadrer après l'enquête (carte, mémoire
+  vidéo, pilote ; réglages RPCS3 et autres émulateurs par carte ; jamais un réglage de la personne défait).
 - **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un
   jeu du PC (la fiche GARDÉE a `locale: true`, le bouton exigeait `!locale` — même défaut pour « ➕ Ajouter cette
   carte » e-Reader) ; « Gérer ▸ Ajouter une autre version » ne faisait rien (même page). 0.137.4 (relecture interface
