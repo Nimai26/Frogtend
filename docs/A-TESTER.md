@@ -42,7 +42,8 @@
 - [x] (✅ Seb 29/10) Le bouton Xbox avec un autre bouton : rien ne s'ouvre. Tenu 2 s : le menu de Frogtend ne s'ouvre
       pas, mais WINDOWS ouvre son « Affichage des tâches » (changement de Microsoft de 2025 : appui long = Task View ;
       aucun réglage connu pour le couper — limite notée).
-- [ ] Manette éteinte pendant la partie, rallumée par le bouton Xbox : le menu ne s'ouvre pas.
+- [x] (✅ Seb 29/10) Manette éteinte pendant la partie, rallumée par le bouton Xbox : le menu ne s'ouvre pas
+      (l'extinction ouvre l'Affichage des tâches de Windows : voir plus haut).
 - [ ] ⚙ Options ▸ Émulateurs ▸ « Bouton Xbox » : « n'ouvre pas le menu » → à la partie suivante, il n'ouvre plus rien.
 - [ ] Plus tard, par Moonlight (Freebox Player) : le bouton Accueil / Xbox de la manette ouvre-t-il le menu ?
 
