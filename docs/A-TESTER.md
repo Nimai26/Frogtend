@@ -16,7 +16,7 @@
       lancer : de fines lignes horizontales. Revenir à « Comme la console » : l'image normale.
 - [ ] « Télé d'époque (détaillée) » pour toute la Super Nintendo : un autre jeu SNES l'a aussi ; le démarrage reste
       rapide.
-- [ ] Après une partie avec effet, un jeu sans effet : l'image est normale (rien n'est resté collé).
+- [x] (✅ Seb 29/10) Après une partie avec effet, un jeu sans effet : l'image est normale (rien n'est resté collé).
 
 ## L'écran de lancement (0.143.0)
 - [ ] Un jeu lent (PS3 par RPCS3, ou un gros jeu PC) : après 2 s, son fond et « se lance… » ; il disparaît quand le
