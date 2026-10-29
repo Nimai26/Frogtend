@@ -68,7 +68,7 @@
 - [ ] Un nouveau jeu SNES : à l'arrivée, « ✅ … est arrivé : ▶ Jouer » (jamais « Installer »).
 - [x] (✅ Seb 29/10) Menu en jeu ▸ Manuel et documents : livret, musique, vidéo — la croix bouge la page / la piste, LB et RB
       passent d'un bouton à l'autre (jusqu'à « ✕ Fermer »), A appuie dessus.
-- [ ] Gérer ▸ « Ajouter une autre version » : la fiche descend jusqu'aux versions, sélection sur un « ➕ ».
+- [x] (✅ Seb 29/10) Gérer ▸ « Ajouter une autre version » : la fiche descend jusqu'aux versions, sélection sur un « ➕ ».
 
 ## Plusieurs versions d'un jeu (2) (0.137.0)
 - [ ] Super Mario World (déjà installé) : sa fiche ▸ « ➕ Ajouter cette version » sur la version Japon → récapitulatif
