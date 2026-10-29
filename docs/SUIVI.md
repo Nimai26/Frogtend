@@ -141,7 +141,11 @@
   `docs/maquettes/taodbox-idee-seb-2026-10-29.png`, « adapter à nos thèmes, je verrais bien un truc dans le genre ») :
   une ROUE VERTICALE de logos de systèmes à gauche (le choisi en grand, au centre), à droite le grand visuel du système
   (console, manettes, télé d'époque) et l'année de sortie ; flèches haut/bas. Visuels : ceux de Firehouse (contrat
-  1.28, fond/logo/bannière par système) ; aux couleurs du skin ; DEMANDE de Seb (29/10) : « détecter la carte
+  1.28, fond/logo/bannière par système) ; aux couleurs du skin ; autre exemple aimé : le thème « Bedroom » de Big Box
+  (https://forums.launchbox-app.com/topic/35136-bedroom-theme/) — s'en INSPIRER, jamais le recopier ;
+  ESSAI 2 (29/10) : au clavier la navigation marche (haut compris) mais seulement après une 1re flèche ; au retour d'une
+  autre fenêtre, plus rien (même en cliquant) tant qu'on n'a pas tapé une flèche → piste FOCUS de la WebView ; et
+  ❌❌ « Voir les boutons » ÉTEINT la manette de Seb à chaque fois → deux enquêtes en cours (interface, lancement) ; DEMANDE de Seb (29/10) : « détecter la carte
   graphique d'un PC et faire le meilleur réglage » (ici une RTX 3080 Ti) — à cadrer après l'enquête (carte, mémoire
   vidéo, pilote ; réglages RPCS3 et autres émulateurs par carte ; jamais un réglage de la personne défait).
 - **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un
