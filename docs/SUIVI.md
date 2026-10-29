@@ -38,6 +38,8 @@
   Fil Reddit envoyé par Seb (r/techsupport 1nc8lvo) : réglage « Paramètres ▸ Jeux ▸ Mode Xbox » (builds récents ;
   absent chez certains) ; écartés : couper le service GameInputSvc (droits admin, d'autres fonctions en dépendent,
   contourné par des mises à jour) et retirer des mises à jour de Windows (jamais).
+  Relevé chez Seb (29/10, Windows 11 25H2 build 26200.9711) : PAS de page « Mode Xbox » dans Paramètres ▸ Jeux (seulement
+  Game Bar, Captures, Mode Jeu) → rien à proposer pour l'instant ; la gêne se limite à l'extinction de la manette.
   ✅ (3) FAIT en 0.141.0 (avis lancement avant ; relectures lancement + interface, 2 tours ; BLOQUANT corrigé : la
   clé hardcore est TOUJOURS dans `retroarch.cfg` (recopiée), chez Seb `true` avec succès coupés → ma règle « prudente »
   ne proposait jamais les triches ; règle = celle des sauvegardes rapides) : RetroArch seulement, en direct ;
