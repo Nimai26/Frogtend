@@ -71,9 +71,9 @@
 - [x] (✅ Seb 29/10) Gérer ▸ « Ajouter une autre version » : la fiche descend jusqu'aux versions, sélection sur un « ➕ ».
 
 ## Plusieurs versions d'un jeu (2) (0.137.0)
-- [ ] Super Mario World (déjà installé) : sa fiche ▸ « ➕ Ajouter cette version » sur la version Japon → récapitulatif
+- [x] (✅ Seb 28/10, 0.137.4) Super Mario World (déjà installé) : sa fiche ▸ « ➕ Ajouter cette version » sur la version Japon → récapitulatif
       → la fiche montre « ⬇ En cours d'arrivée — N % », la pastille du haut compte 1 ; le jeu se lance pendant ce temps.
-- [ ] À l'arrivée : « ✅ … est arrivée » ; « ▶ Jouer avec… » propose USA et Japon ; chacune lance sa ROM.
+- [x] (✅ Seb 28/10, 0.137.4) À l'arrivée : « ✅ … est arrivée » ; « ▶ Jouer avec… » propose USA et Japon ; chacune lance sa ROM.
 - [ ] « 🗑 Retirer cette version » sur le Japon : seul son fichier part ; USA reste ⭐.
 - [ ] Fermer Frogtend pendant qu'une version arrive, le rouvrir : « ⏸ En pause » + « ▶ Reprendre » repart où elle en était.
 
