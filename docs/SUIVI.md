@@ -32,6 +32,9 @@
   2e appui → retour au jeu, Xbox + autre bouton → rien. Appui LONG : Windows ouvre son « Affichage des tâches »
   (changement de Microsoft, 2025 : appui court = Game Bar, long = Task View ; pas de réglage connu pour le couper,
   recherche du 29/10) — hors de Frogtend, dit à Seb.
+  Seb 29/10 : « sur Windows 11, chercher "mode Xbox" et le désactiver » (piste de Seb, à confirmer : l'appui long
+  n'ouvre-t-il plus l'Affichage des tâches ensuite ?). Si oui : le proposer comme la Game Bar (question à l'ouverture,
+  après le oui de la personne) — clé à relever dans la doc avant (lot à décider).
   ✅ (3) FAIT en 0.141.0 (avis lancement avant ; relectures lancement + interface, 2 tours ; BLOQUANT corrigé : la
   clé hardcore est TOUJOURS dans `retroarch.cfg` (recopiée), chez Seb `true` avec succès coupés → ma règle « prudente »
   ne proposait jamais les triches ; règle = celle des sauvegardes rapides) : RetroArch seulement, en direct ;
