@@ -475,6 +475,9 @@ async function jouerSansAttente(id: number, emulateur?: string, version?: string
       carte = c;
     }
   }
+  // Des parties de ce jeu à l'abri (il a été retiré puis réinstallé) : les remettre, après un oui (lot 3). Une remise
+  // ratée : on demande avant de lancer (le jeu pourrait créer une nouvelle partie à la même place).
+  if (!(await proposerPartiesAbritees(id, j?.titre ?? 'Le jeu').catch(() => true))) return;
   let compilationDite = false;
   for (let essai = 0; essai < 2; essai++) {
     // Un jeu PS3 qui va compiler (1re partie, ou RPCS3 mis à jour) : le dire AVANT (✅ Seb 30/10 : « ne quitte pas ») —
@@ -901,6 +904,39 @@ export async function choisirClavier(id: number) {
   else tous[String(id)] = nouvelle;
   await reglerProfil('clavier', tous);
   toast(`🕹 « ${j.titre} » : ${desactive ? 'la manette n’envoie plus de touches' : `manette — ${libelleClavier(nouvelle)}`}.`);
+}
+
+/** Un jeu réinstallé dont les parties sont à l'abri : la question, une fois par abri (✅ Seb 30/10 : « comme Steam »).
+ * Rend `false` si le lancement doit s'arrêter (remise ratée et la personne ne veut pas jouer quand même). */
+async function proposerPartiesAbritees(id: number, titre: string): Promise<boolean> {
+  const a = await api.partiesAbriAReposer(id);
+  if (!a) return true;
+  const date = new Date(Number(a.date) * 1000).toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short' });
+  const oui = await confirmer(`💾 Tes parties de « ${titre} » sont à l’abri`, {
+    message: [
+      `Frogtend les a gardées à l’abri (copie du ${date}) : ${a.fichiers} fichier(s) à remettre, ${taille(a.octets)}.`,
+      'Les remettre dans le jeu ?',
+      a.gardes ? `${a.gardes} fichier(s) que tu as déjà changé(s) depuis la réinstallation ne seront pas touchés.` : '',
+      'La copie à l’abri reste, quoi que tu choisisses.',
+    ]
+      .filter(Boolean)
+      .join('\n\n'),
+    libelleValider: '💾 Les remettre',
+  });
+  if (!oui) {
+    await api.partiesAbriIgnorer(id, a.date).catch(() => {});
+    return true;
+  }
+  try {
+    const n = await api.partiesAbriReposer(id);
+    toast(`✅ ${n} fichier(s) de parties remis dans « ${titre} ».`);
+    return true;
+  } catch (e) {
+    return confirmer('💾 Tes parties n’ont pas pu être remises', {
+      message: `${motifDuRefus(e)}\n\nElles restent à l’abri. Si tu joues maintenant, le jeu peut créer une nouvelle partie à leur place.`,
+      libelleValider: '▶ Jouer quand même',
+    });
+  }
 }
 
 /** L'effet d'image de RetroArch pour ce jeu : le sien, sinon celui de sa console (le cœur l'ignore hors RetroArch). */

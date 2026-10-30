@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.152.0 — Tes parties reviennent quand tu réinstalles un jeu
+
+- 💾 Un jeu PC retiré puis réinstallé : à son premier lancement, Frogtend te dit qu'il a tes parties à l'abri (date,
+  nombre de fichiers, taille) et propose de les remettre — comme Steam.
+- Il ne remplace JAMAIS une partie à laquelle tu as joué depuis la réinstallation ; un fichier d'origine remplacé est
+  gardé à côté ; un ancien programme (mod, .dll) n'est pas remis dans une autre version du jeu ; la copie à l'abri reste.
+- Si tu dis non, la question ne revient pas (sauf pour une copie plus récente).
+
 ## 0.151.0 — L'effet d'image depuis le menu en jeu
 
 - 🖼 Menu en jeu (RetroArch) ▸ « Effet d'image » : choisis un effet (télé d'époque, pixels nets…) ou « Aucun effet » ;

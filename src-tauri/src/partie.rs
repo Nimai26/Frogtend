@@ -37,6 +37,110 @@ pub struct Preparation {
 }
 
 /// Un abri de parties : où, combien.
+/// Les dates des abris FINIS d'un dossier d'abris de jeu (noms tout en chiffres ; un `.en-cours` n'en est pas un).
+fn dates_d_abri(du_jeu: &Path) -> Vec<String> {
+    std::fs::read_dir(du_jeu)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .filter(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_digit()))
+        .collect()
+}
+
+/// Un programme ou une bibliothèque (d'une ancienne version, il casserait le jeu) : jamais remis d'une autre version.
+fn est_programme(r: &str) -> bool {
+    let r = r.to_ascii_lowercase();
+    [".exe", ".dll", ".asi", ".bat", ".cmd", ".com", ".sys", ".ocx"].iter().any(|e| r.ends_with(e))
+}
+
+/// Ce qu'il y a à remettre (voir `Noyau::abri_a_reposer`). Lit les abris ; compare par la taille d'abord, puis par
+/// blocs (jamais un gros fichier entier en mémoire).
+fn plan_abri(j: &JeuPc, i: &Installation, sources: &[PathBuf], manifeste: &Path) -> Resultat<Option<AbriAReposer>> {
+    let racine = PathBuf::from(&i.dossier);
+    if !racine.is_dir() {
+        return Ok(None);
+    }
+    // Le plus récent de chaque fichier : (date, chemin dans l'abri, version de l'abri).
+    let mut plus_recents: std::collections::BTreeMap<String, (String, PathBuf, Option<i64>)> = Default::default();
+    let mut date_lue = String::new();
+    for du_jeu in sources {
+        for date in dates_d_abri(du_jeu) {
+            let fiche: serde_json::Value = std::fs::read(du_jeu.join(format!("{date}.json"))).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default();
+            let version = fiche["version"].as_i64();
+            let dossier = du_jeu.join(&date);
+            for r in crate::installation::fichiers_de(&dossier)? {
+                if r.starts_with("nuage-steam/") {
+                    continue; // les parties du nuage Steam se rendent par Steam
+                }
+                let plus_ancien = plus_recents.get(&r).is_some_and(|(dt, ..)| dt.as_str() >= date.as_str());
+                if !plus_ancien {
+                    plus_recents.insert(r.clone(), (date.clone(), dossier.join(&r), version));
+                }
+            }
+            if date > date_lue {
+                date_lue = date;
+            }
+        }
+    }
+    if plus_recents.is_empty() {
+        return Ok(None);
+    }
+    let manifeste: crate::installation::Manifeste = std::fs::read(manifeste).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default();
+    let frogtend = crate::locale::dossier_frogtend(j);
+    let mut a_poser = Vec::new();
+    let mut gardes = 0;
+    let mut octets = 0;
+    for (r, (_, source, version)) in plus_recents {
+        let cible = racine.join(&r);
+        if cible.starts_with(&frogtend) {
+            continue;
+        }
+        let meme_version = version == Some(j.version);
+        let poser = if !cible.exists() {
+            // Absent : posé ; mais jamais un programme d'une autre version (ou d'un abri sans fiche).
+            if meme_version || !est_programme(&r) {
+                true
+            } else {
+                gardes += 1;
+                false
+            }
+        } else if crate::installation::memes_contenus(&cible, &source) {
+            false
+        } else {
+            let inchange = manifeste.fichiers.get(&r).is_some() && manifeste.fichiers.get(&r) == crate::installation::etat_fichier(&cible).as_ref();
+            if inchange && meme_version {
+                true
+            } else {
+                gardes += 1;
+                false
+            }
+        };
+        if poser {
+            octets += std::fs::metadata(&source).map(|m| m.len()).unwrap_or(0);
+            a_poser.push((r, source));
+        }
+    }
+    if a_poser.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(AbriAReposer { date: date_lue, fichiers: a_poser.len(), octets, gardes, plan: a_poser }))
+}
+
+/// Des parties à l'abri à remettre dans un jeu réinstallé (lot 3).
+#[derive(Debug, Clone, Serialize)]
+pub struct AbriAReposer {
+    /// La date (secondes) de l'abri le plus récent LU (la question ne revient pas avant un abri plus récent).
+    pub date: String,
+    pub fichiers: usize,
+    pub octets: u64,
+    /// Fichiers que la personne a déjà changés depuis la réinstallation (ou d'une autre version) : jamais touchés.
+    pub gardes: usize,
+    #[serde(skip)]
+    pub plan: Vec<(String, PathBuf)>,
+}
+
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
 pub struct Abri {
     pub dossier: String,
@@ -1271,17 +1375,128 @@ impl Noyau {
         if changes.is_empty() {
             return Ok(Abri::default());
         }
-        let abri = self.dossier_abris()?.join(id.to_string()).join(maintenant());
-        let octets = copier(&racine, &changes, &abri)?;
+        let date = maintenant();
+        let du_jeu = self.dossier_abris()?.join(id.to_string());
+        let abri = du_jeu.join(&date);
+        // Copié à côté puis renommé : un abri à moitié fait n'a jamais le nom d'un abri (lot 3, avis lancement 30/10).
+        let provisoire = du_jeu.join(format!("{date}.en-cours"));
+        let octets = copier(&racine, &changes, &provisoire)?;
         // Vérifier le résultat : chaque fichier est bien dans l'abri, à la même taille.
         for r in &changes {
-            let a = std::fs::metadata(abri.join(r)).map(|m| m.len()).ok();
+            let a = std::fs::metadata(provisoire.join(r)).map(|m| m.len()).ok();
             let b = std::fs::metadata(racine.join(r)).map(|m| m.len()).ok();
             if a != b {
                 return Err(Erreur::Disque(format!("La copie de « {r} » a échoué : le jeu n'est pas retiré.")));
             }
         }
+        std::fs::rename(&provisoire, &abri)?;
+        // La fiche de l'abri, À CÔTÉ (jamais dedans : elle partirait comme une partie) : la version du jeu, complet.
+        let fiche = serde_json::json!({ "version": j.version, "complet": true, "fichiers": changes.len(), "octets": octets });
+        if let Err(e) = std::fs::write(du_jeu.join(format!("{date}.json")), serde_json::to_vec_pretty(&fiche).unwrap_or_default()) {
+            // Sans fiche, seuls les fichiers absents reviendront un jour : noté.
+            self.journaliser(&format!("jeu {id} : fiche de l'abri non écrite ({e})"));
+        }
         Ok(Abri { dossier: abri.to_string_lossy().into(), fichiers: changes.len(), octets, reste_installe: None })
+    }
+
+    /// Ce qu'il y a à remettre d'un abri dans ce jeu réinstallé (lot 3, ✅ Seb 30/10) : le plus récent de chaque fichier,
+    /// sur tous les abris de ce jeu (et de ses anciens numéros), hors du nuage Steam. Par fichier : absent du jeu → posé ;
+    /// inchangé depuis l'installation et même version que l'abri → remplacé ; joué depuis (ou autre version) → jamais
+    /// touché. `None` : rien à remettre, ou déjà proposé pour cet abri.
+    pub async fn abri_a_reposer(&self, id: i64) -> Resultat<Option<AbriAReposer>> {
+        if id <= 0 {
+            return Ok(None); // un jeu importé n'est jamais retiré par Frogtend : pas d'abri de retrait
+        }
+        let j = match self.jeu_visible(id).await {
+            Ok(j) => j,
+            Err(Erreur::Introuvable(_)) => return Ok(None),
+            Err(e) => return Err(e),
+        };
+        let Some(i) = j.installation.clone().filter(|i| i.boutique.is_none()) else { return Ok(None) };
+        let sources = self.sources_abri(id)?;
+        // Rapide (chaque ▶ Jouer) : seulement les NOMS des abris ; déjà répondu pour le plus récent → rien d'autre lu.
+        let Some(plus_recent) = sources.iter().flat_map(|d| dates_d_abri(d)).max() else { return Ok(None) };
+        let proposes: serde_json::Value = std::fs::read(self.dossier.join("abris-proposes.json")).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default();
+        if proposes[id.to_string()].as_str().is_some_and(|d| d >= plus_recent.as_str()) {
+            return Ok(None);
+        }
+        let manifeste = self.fichier_manifeste(id);
+        tauri::async_runtime::spawn_blocking(move || plan_abri(&j, &i, &sources, &manifeste))
+            .await
+            .map_err(|_| Erreur::Disque("La lecture des abris s'est arrêtée brutalement.".into()))?
+    }
+
+    /// Les dossiers d'abris de ce jeu (et de ses anciens numéros), dans tous les dossiers d'abris à lire.
+    fn sources_abri(&self, id: i64) -> Resultat<Vec<PathBuf>> {
+        let mut numeros: Vec<i64> = self.registre().reunions()?.into_iter().filter(|(_, n)| *n == id).map(|(a, _)| a).collect();
+        numeros.push(id);
+        Ok(self.dossiers_abris_a_lire().iter().flat_map(|d| numeros.iter().map(move |n| d.join(n.to_string()))).collect())
+    }
+
+    /// Remet les parties à l'abri dans le jeu (après le oui de la personne). Jeu en cours ou occupé : refus. Un fichier
+    /// remplacé est d'abord gardé dans le dossier Frogtend du jeu (`avant-abri/<date>/`) ; chaque copie est écrite à
+    /// côté, vérifiée (taille), puis renommée ; l'abri reste. Rend le nombre de fichiers remis.
+    pub async fn reposer_abri(&self, id: i64) -> Resultat<usize> {
+        if self.utilise(id) {
+            return Err(Erreur::Refus("Ce jeu est occupé (partie, téléchargement ou mise à l'abri en cours) : réessaie après.".into()));
+        }
+        let _occupe = self.occuper(id);
+        let j = self.jeu_visible(id).await?;
+        let i = j.installation.clone().filter(|i| i.boutique.is_none()).ok_or_else(|| Erreur::Refus("Le jeu n'est pas installé par Frogtend.".into()))?;
+        if !crate::lancement::processus_du_dossier(Path::new(&i.dossier)).is_empty() {
+            return Err(Erreur::Refus("Le jeu est ouvert : ferme-le d'abord.".into()));
+        }
+        let sources = self.sources_abri(id)?;
+        let manifeste = self.fichier_manifeste(id);
+        let j2 = j.clone();
+        let (p, remis) = tauri::async_runtime::spawn_blocking(move || -> Resultat<(Option<AbriAReposer>, usize)> {
+            let Some(p) = plan_abri(&j2, &i, &sources, &manifeste)? else { return Ok((None, 0)) };
+            let racine = PathBuf::from(&i.dossier);
+            if crate::jeux_pc::place_libre(&racine).is_some_and(|l| l < p.octets.saturating_mul(2)) {
+                return Err(Erreur::Refus("Pas assez de place sur le disque du jeu pour remettre tes parties.".into()));
+            }
+            let garde = crate::locale::dossier_frogtend(&j2).join("avant-abri").join(maintenant());
+            for (r, source) in &p.plan {
+                let cible = racine.join(r);
+                if let Some(d) = cible.parent() {
+                    std::fs::create_dir_all(d)?;
+                }
+                if cible.exists() {
+                    let copie = garde.join(r);
+                    if let Some(d) = copie.parent() {
+                        std::fs::create_dir_all(d)?;
+                    }
+                    std::fs::copy(&cible, &copie)?;
+                }
+                let provisoire = PathBuf::from(format!("{}.frogtend-tmp", cible.to_string_lossy()));
+                std::fs::copy(source, &provisoire)?;
+                if std::fs::metadata(&provisoire).map(|m| m.len()).ok() != std::fs::metadata(source).map(|m| m.len()).ok() {
+                    let _ = std::fs::remove_file(&provisoire);
+                    return Err(Erreur::Disque(format!("La copie de « {r} » a échoué.")));
+                }
+                std::fs::rename(&provisoire, &cible)?;
+            }
+            let n = p.plan.len();
+            Ok((Some(p), n))
+        })
+        .await
+        .map_err(|_| Erreur::Disque("La remise des parties s'est arrêtée brutalement.".into()))??;
+        if let Some(p) = p {
+            self.noter_abri_propose(id, &p.date);
+            self.journaliser(&format!("jeu {id} : {remis} fichier(s) remis depuis l'abri du {}", p.date));
+        }
+        Ok(remis)
+    }
+
+    /// La personne a répondu (oui ou non) pour cet abri : la question ne revient pas, sauf pour un abri plus récent.
+    pub fn noter_abri_propose(&self, id: i64, date: &str) {
+        let f = self.dossier.join("abris-proposes.json");
+        let mut v: serde_json::Value = std::fs::read(&f).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_else(|| serde_json::json!({}));
+        if !v.is_object() {
+            v = serde_json::json!({});
+        }
+        v[id.to_string()] = serde_json::Value::String(date.to_string());
+        let _ = std::fs::write(&f, serde_json::to_vec_pretty(&v).unwrap_or_default());
     }
 
     /// Retire un jeu complet du PC : ses parties d'abord à l'abri (sinon rien n'est fait), puis son désinstalleur
@@ -1852,6 +2067,78 @@ mod tests {
         assert!(!d.path().join("Jeux").join("MS-DOS").join("Dune (1992)").join("dune.zip").exists());
         assert!(n.registre().jeu(110).unwrap().is_none());
         assert!(a.is_dir());
+    }
+
+    #[tokio::test]
+    async fn les_parties_a_l_abri_se_remettent_sans_jamais_ecraser_une_partie_jouee_depuis() {
+        let archive = zip(&[("DUNE.EXE", b"MZ"), ("DUNE.CFG", b"v1")]);
+        let (d, n) = noyau_avec(&[("dune.zip", &archive)], "Jeu — prêt à jouer").await;
+        let i = n.installer(110, true).await.unwrap();
+        let installe = PathBuf::from(&i.dossier);
+        std::fs::create_dir_all(installe.join("SAVES")).unwrap();
+        std::fs::write(installe.join("SAVES").join("PARTIE1.SAV"), b"partie").unwrap();
+        std::fs::write(installe.join("DUNE.CFG"), b"v2 !").unwrap();
+        n.regler_abris(Some(d.path().join("Abris")));
+        assert!(n.abri_a_reposer(110).await.unwrap().is_none(), "pas encore d'abri");
+        let abri = n.mettre_a_l_abri(110).await.unwrap();
+        let a = PathBuf::from(&abri.dossier);
+        // La fiche à côté, jamais dedans ; aucun dossier « en cours » laissé.
+        let date = a.file_name().unwrap().to_string_lossy().to_string();
+        assert!(a.parent().unwrap().join(format!("{date}.json")).is_file());
+        assert!(!a.join(format!("{date}.json")).exists());
+        // Le nuage Steam n'est jamais remis.
+        std::fs::create_dir_all(a.join("nuage-steam").join("x")).unwrap();
+        std::fs::write(a.join("nuage-steam").join("x").join("abri.json"), b"{}").unwrap();
+        // Tout est déjà identique : rien à remettre.
+        assert!(n.abri_a_reposer(110).await.unwrap().is_none());
+        // La partie a disparu (réinstallation) ; le réglage a été joué depuis : seule la partie revient.
+        std::fs::remove_file(installe.join("SAVES").join("PARTIE1.SAV")).unwrap();
+        std::fs::write(installe.join("DUNE.CFG"), b"v3 joue depuis").unwrap();
+        let p = n.abri_a_reposer(110).await.unwrap().expect("une partie à remettre");
+        assert_eq!((p.fichiers, p.gardes), (1, 1));
+        assert_eq!(n.reposer_abri(110).await.unwrap(), 1);
+        assert_eq!(std::fs::read(installe.join("SAVES").join("PARTIE1.SAV")).unwrap(), b"partie");
+        assert_eq!(std::fs::read(installe.join("DUNE.CFG")).unwrap(), b"v3 joue depuis", "jamais écrasé");
+        assert!(!installe.join("nuage-steam").exists());
+        assert!(a.join("SAVES").join("PARTIE1.SAV").is_file(), "l'abri reste");
+        // Une fois répondu pour cet abri, la question ne revient pas.
+        std::fs::remove_file(installe.join("SAVES").join("PARTIE1.SAV")).unwrap();
+        assert!(n.abri_a_reposer(110).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn un_fichier_d_origine_est_remplace_et_garde_a_cote_un_programme_d_une_autre_version_jamais() {
+        let archive = zip(&[("DUNE.EXE", b"MZ"), ("DUNE.CFG", b"v1")]);
+        let (d, n) = noyau_avec(&[("dune.zip", &archive)], "Jeu — prêt à jouer").await;
+        let i = n.installer(110, true).await.unwrap();
+        let installe = PathBuf::from(&i.dossier);
+        std::fs::write(installe.join("DUNE.CFG"), b"mes reglages").unwrap();
+        n.regler_abris(Some(d.path().join("Abris")));
+        let abri = PathBuf::from(n.mettre_a_l_abri(110).await.unwrap().dossier);
+        // Un programme ajouté dans l'abri (un mod), d'une AUTRE version : jamais remis.
+        let date = abri.file_name().unwrap().to_string_lossy().to_string();
+        std::fs::write(abri.join("MOD.DLL"), b"vieux").unwrap();
+        std::fs::write(abri.parent().unwrap().join(format!("{date}.json")), br#"{"version": 999, "complet": true}"#).unwrap();
+        // Réinstallé : le réglage est revenu à celui d'origine (comme au relevé) — même version que l'abri ?
+        // Ici la fiche dit 999 : le réglage n'est pas remplacé non plus, il est gardé.
+        let m = n.fichier_manifeste(110);
+        let releve: crate::installation::Manifeste = serde_json::from_slice(&std::fs::read(&m).unwrap()).unwrap();
+        std::fs::write(installe.join("DUNE.CFG"), b"v1").unwrap();
+        let mut releve2 = releve.clone();
+        releve2.fichiers.insert("DUNE.CFG".into(), crate::installation::etat_fichier(&installe.join("DUNE.CFG")).unwrap());
+        std::fs::write(&m, serde_json::to_vec(&releve2).unwrap()).unwrap();
+        let p = n.abri_a_reposer(110).await.unwrap();
+        assert!(p.is_none() || p.as_ref().unwrap().fichiers == 0, "autre version : rien");
+        // Même version : le réglage d'origine est remplacé, l'original gardé à côté ; le programme reste interdit ? non,
+        // même version : posé.
+        std::fs::write(abri.parent().unwrap().join(format!("{date}.json")), format!(r#"{{"version": {}, "complet": true}}"#, n.registre().jeu(110).unwrap().unwrap().version)).unwrap();
+        let p = n.abri_a_reposer(110).await.unwrap().expect("à remettre");
+        assert_eq!(p.fichiers, 2);
+        assert_eq!(n.reposer_abri(110).await.unwrap(), 2);
+        assert_eq!(std::fs::read(installe.join("DUNE.CFG")).unwrap(), b"mes reglages");
+        let garde = crate::locale::dossier_frogtend(&n.registre().jeu(110).unwrap().unwrap()).join("avant-abri");
+        assert!(crate::installation::fichiers_de(&garde).unwrap().iter().any(|f| f.ends_with("DUNE.CFG")), "l'original gardé à côté");
+        assert!(!installe.join("DUNE.CFG.frogtend-tmp").exists());
     }
 
     #[tokio::test]

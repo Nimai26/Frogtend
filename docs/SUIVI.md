@@ -21,6 +21,12 @@
   de partie s'il ne valait pas true avant (copie à l'abri, écrit puis renommé, jamais un fichier non UTF-8) ; « Garder »
   par la fenêtre principale (`menu-effet-garder`) ; pas de « Garder » si effet de la personne. RESTE (essai) : SET_SHADER
   avec video_shader_enable à false ; effets en hardcore ; Frogtend fermé pendant la partie → true non rendu ;
+  (3) FAIT en 0.152.0 (avis + relecture lancement, 2 BLOQUANTS corrigés : comparaison par blocs, jamais un fichier
+  entier en mémoire ; à chaque ▶ Jouer seulement les noms d'abris lus, plan complet hors du fil, une fois par abri) :
+  abri copié puis renommé + fiche `<date>.json` ; plan : absent → posé (sauf programme d'une autre version), identique →
+  rien, inchangé + même version → remplacé (original dans `<jeu>\Frogtendvant-abri\`), sinon gardé ; écriture
+  `.frogtend-tmp` puis renommée ; place vérifiée ; refus si le jeu est occupé ; remise ratée → « jouer quand même ? ».
+  RESTE : Échap sur la question = « non » pour toujours (une entrée « Remettre mes parties » dans Gérer le jeu ?) ;
   (1) menu de Frogtend partout dans RPCS3 (sauver / charger / recommencer d'abord, puis le bouton PS retiré) ; (2) effet
   d'image changé depuis le menu en jeu (SET_SHADER) ; (3) reposer les parties d'un jeu PC réinstallé (après un oui) ;
   (4) langue et région automatiques des émulateurs ; (5) prévenir quand RPCS3 vient d'être mis à jour. Puis maquette de

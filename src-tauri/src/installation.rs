@@ -300,7 +300,7 @@ pub struct Manifeste {
     pub fichiers: BTreeMap<String, (u64, u64)>,
 }
 
-fn etat_fichier(p: &Path) -> Option<(u64, u64)> {
+pub fn etat_fichier(p: &Path) -> Option<(u64, u64)> {
     let m = std::fs::metadata(p).ok()?;
     let date = m.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
     Some((m.len(), date))
@@ -314,6 +314,27 @@ pub fn relever(racine: &Path) -> Resultat<Manifeste> {
         }
     }
     Ok(Manifeste { fichiers })
+}
+
+/// Deux fichiers ont-ils le même contenu ? La taille d'abord, puis par blocs (arrêt à la première différence) : jamais un
+/// gros fichier entier en mémoire.
+pub fn memes_contenus(a: &Path, b: &Path) -> bool {
+    use std::io::Read;
+    let (Ok(ma), Ok(mb)) = (std::fs::metadata(a), std::fs::metadata(b)) else { return false };
+    if ma.len() != mb.len() {
+        return false;
+    }
+    let (Ok(mut fa), Ok(mut fb)) = (std::fs::File::open(a), std::fs::File::open(b)) else { return false };
+    let (mut ba, mut bb) = (vec![0u8; 64 * 1024], vec![0u8; 64 * 1024]);
+    loop {
+        let Ok(na) = fa.read(&mut ba) else { return false };
+        if na == 0 {
+            return true;
+        }
+        if fb.read_exact(&mut bb[..na]).is_err() || ba[..na] != bb[..na] {
+            return false;
+        }
+    }
 }
 
 /// Les fichiers NOUVEAUX ou MODIFIÉS depuis l'installation : les parties, les réglages du jeu…

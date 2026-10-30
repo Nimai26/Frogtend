@@ -807,6 +807,10 @@ export const api = {
       carte: carte ?? null,
       image: image ?? null,
     }),
+  /** Des parties à l'abri à remettre dans ce jeu réinstallé (lot 3). */
+  partiesAbriAReposer: (id: number) => appeler<{ date: string; fichiers: number; octets: number; gardes: number } | null>('parties_abri_a_reposer', { id }),
+  partiesAbriReposer: (id: number) => appeler<number>('parties_abri_reposer', { id }),
+  partiesAbriIgnorer: (id: number, date: string) => appeler<void>('parties_abri_ignorer', { id, date }),
   /** Un jeu PS3 qui sera long à démarrer (RPCS3 compile) : la phrase à dire avant de jouer. */
   jeuCompilationPs3: (id: number, emulateur?: string, version?: string) =>
     appeler<string | null>('jeu_compilation_ps3', { id, emulateur: emulateur ?? null, version: version ?? null }),

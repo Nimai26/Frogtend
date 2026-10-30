@@ -6,6 +6,11 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Les parties d'un jeu réinstallé (0.152.0)
+- [ ] Un petit jeu PC (Dune) : jouer et sauvegarder ; ⚙ Gérer ▸ « Retirer du PC » ; le remettre dans la ludothèque et
+      l'installer ; ▶ Jouer : « 💾 Tes parties de « Dune » sont à l'abri » ; « Les remettre » ; la partie est là en jeu.
+- [ ] Relancer : la question ne revient pas.
+
 ## L'effet d'image depuis le menu en jeu (0.151.0)
 - [ ] Super Mario World : menu ▸ « 🖼 Effet d'image » ▸ « Télé d'époque (simple) » : le menu se ferme, les lignes
       apparaissent ; rouvrir le menu : ✅ sur cet effet ; « Aucun effet » : l'image redevient normale.

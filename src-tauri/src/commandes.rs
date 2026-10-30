@@ -2462,6 +2462,24 @@ async fn triche_retroarch(app: &AppHandle, p: crate::menu_jeu::PartieEnCours, k:
     .map_err(|_| Erreur::Disque("La triche s'est arrêtée brutalement.".into()))?
 }
 
+/// Des parties à l'abri à remettre dans ce jeu réinstallé (lot 3) ; `None` : rien (ou déjà demandé).
+#[tauri::command]
+pub async fn parties_abri_a_reposer(noyau: State<'_, Noyau>, id: i64) -> Resultat<Option<crate::partie::AbriAReposer>> {
+    noyau.abri_a_reposer(id).await
+}
+
+/// Remet ces parties dans le jeu (après le oui de la personne).
+#[tauri::command]
+pub async fn parties_abri_reposer(noyau: State<'_, Noyau>, id: i64) -> Resultat<usize> {
+    noyau.reposer_abri(id).await
+}
+
+/// La personne a dit non : la question ne revient pas pour cet abri.
+#[tauri::command]
+pub fn parties_abri_ignorer(noyau: State<'_, Noyau>, id: i64, date: String) {
+    noyau.noter_abri_propose(id, &date);
+}
+
 /// Le fichier où Frogtend note les parties PS3 complètes, par version de RPCS3 (lot 5).
 fn notes_compilation_rpcs3(noyau: &Noyau) -> std::path::PathBuf {
     noyau.dossier.join("rpcs3-compile.json")
