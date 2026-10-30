@@ -7,12 +7,12 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## Le jeu visible derrière le menu en Taodbox (0.148.0)
-- [ ] Super Mario World lancé depuis Taodbox : le menu en jeu s'ouvre en grand au centre, le jeu visible autour ; texte
+- [x] (✅ Seb 30/10) Super Mario World lancé depuis Taodbox : le menu en jeu s'ouvre en grand au centre, le jeu visible autour ; texte
       lisible de loin ; « 🗺 Les boutons » ne rapetisse pas la fenêtre.
 
 ## Le menu en jeu en boucle (0.147.0)
-- [ ] Menu en jeu sur « ▶ Reprendre » : « haut » va à « ⏹ Quitter le jeu » ; « bas » revient à « Reprendre ».
-- [ ] Super Mario World lancé depuis Taodbox : le menu en jeu n'a plus l'énorme image zoomée (fond du thème).
+- [x] (✅ Seb 30/10) Menu en jeu sur « ▶ Reprendre » : « haut » va à « ⏹ Quitter le jeu » ; « bas » revient à « Reprendre ».
+- [x] (✅ Seb 30/10) Super Mario World lancé depuis Taodbox : le menu en jeu n'a plus l'énorme image zoomée (fond du thème).
 
 ## Taodbox à la manette (0.146.0)
 - [x] (✅ Seb 30/10) Taodbox : cliquer une fois dans la fenêtre, puis la croix vers le haut : un contour apparaît sur un bouton du haut
