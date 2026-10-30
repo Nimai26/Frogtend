@@ -151,7 +151,9 @@
   `focus({focusVisible})`, contour au canapé sur `:focus` et `[data-choisi]`, la croix / A / Y repartent de l'élément
   choisi (tests) ; (2) MANETTE ÉTEINTE : aucune cause dans le code (lectures seules : XInputGetState, liste SetupAPI,
   aucun ordinal 103, SDL non démarré hors partie) → à confirmer avec Seb (logo vraiment éteint ? écran ouvert à la
-  souris sans toucher la manette ?) ; DEMANDE de Seb (29/10) : « détecter la carte
+  souris sans toucher la manette ?) → ✅ RÉSOLU 30/10 : MATÉRIEL. Piles usées, puis piles rechargeables : la manette
+  s'éteint seule sur piles, quel que soit l'écran ; en USB, « Voir les boutons » ne l'éteint pas (Seb). Frogtend hors de
+  cause, diagnostic retiré ; DEMANDE de Seb (29/10) : « détecter la carte
   graphique d'un PC et faire le meilleur réglage » (ici une RTX 3080 Ti) — à cadrer après l'enquête (carte, mémoire
   vidéo, pilote ; réglages RPCS3 et autres émulateurs par carte ; jamais un réglage de la personne défait).
 - **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un

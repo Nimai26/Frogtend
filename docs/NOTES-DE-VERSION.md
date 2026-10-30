@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.146.0 — Taodbox à la manette, et un petit mot dans « À propos »
+
+- 🎮 Taodbox : la sélection se voit toujours à la manette, même après un clic ou au retour d'une autre fenêtre (avant,
+  elle bougeait sans contour tant qu'on n'avait pas tapé une flèche au clavier). Le haut de l'écran (systèmes, Changer
+  de joueur, Bureau) et la fenêtre « Gérer le jeu » se pilotent donc normalement.
+- Après un clic, la croix, A et Y repartent du dernier élément choisi au lieu de sauter en haut de la page.
+- ℹ « À propos » : « Made with ❤️ by Nimai, Shyrka & Claude ».
+
 ## 0.145.0 — Les boutons, en grand, avec les raccourcis de Frogtend
 
 - 🗺 Menu en jeu ▸ « Les boutons » : la fenêtre s'agrandit (le dessin à gauche, la liste à droite), le dessin est
