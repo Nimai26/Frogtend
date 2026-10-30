@@ -462,7 +462,17 @@ async function jouerSansAttente(id: number, emulateur?: string, version?: string
       carte = c;
     }
   }
+  let compilationDite = false;
   for (let essai = 0; essai < 2; essai++) {
+    // Un jeu PS3 qui va compiler (1re partie, ou RPCS3 mis à jour) : le dire AVANT (✅ Seb 30/10 : « ne quitte pas ») —
+    // aussi au 2e tour, quand RPCS3 vient d'être installé par « Prêt à jouer ».
+    if (!compilationDite) {
+      const compile = await api.jeuCompilationPs3(id, emulateur, version).catch(() => null);
+      if (compile) {
+        compilationDite = true;
+        if (!(await confirmer(`⏳ « ${j?.titre ?? 'Le jeu'} » va être long à démarrer`, { message: compile, libelleValider: '▶ Jouer quand même' }))) return;
+      }
+    }
     try {
       // Un souci ici n'empêche JAMAIS le jeu de se lancer.
       await suivreConseil(id, j?.plateforme, emulateur).catch(() => {});

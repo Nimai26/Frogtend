@@ -13,6 +13,9 @@
   parties PS3 à l'abri avant de charger ; état d'une ancienne version refusé ; `--no-gui` exigé ; profil de manette
   actif « Default » exigé ; un seul chemin menu + manette avec verrou). RESTE : Ctrl+Alt+1 en AZERTY (essai) ;
   refus fréquent de RPCS3 si le jeu sauvegarde (dit seulement au journal) ;
+  (5) FAIT en 0.150.0 (avis + relecture lancement : version lancée, « reprise » si prévenu sans partie complète, aussi
+  au 2e tour après « Prêt à jouer ») : `rpcs3-compile.json` (marque = taille + date de rpcs3.exe + micrologiciel), noté
+  après une partie ≥ 360 s ; message avant ▶ Jouer. RESTE : date de rpcs3.exe après une extraction 7z (non vérifié) ;
   (1) menu de Frogtend partout dans RPCS3 (sauver / charger / recommencer d'abord, puis le bouton PS retiré) ; (2) effet
   d'image changé depuis le menu en jeu (SET_SHADER) ; (3) reposer les parties d'un jeu PC réinstallé (après un oui) ;
   (4) langue et région automatiques des émulateurs ; (5) prévenir quand RPCS3 vient d'être mis à jour. Puis maquette de

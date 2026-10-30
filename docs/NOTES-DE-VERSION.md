@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.150.0 — Prévenu avant un long démarrage PS3
+
+- ⏳ Avant de lancer un jeu PS3 qui va être long à démarrer (sa première partie, ou RPCS3 vient d'être mis à jour),
+  Frogtend le dit : « cela peut prendre plusieurs minutes, ne quitte pas avant d'arriver au jeu ». Tu choisis « ▶ Jouer
+  quand même ».
+- Si la partie a été arrêtée pendant cette préparation, le message revient la fois suivante ; après une partie d'au
+  moins 6 minutes, il ne revient plus (jusqu'à la prochaine mise à jour de RPCS3).
+
 ## 0.149.0 — Le menu de Frogtend aussi dans les jeux PS3
 
 - 🎮 Jeux PS3 (RPCS3) : le bouton Xbox ouvre maintenant le menu de Frogtend, plus celui de RPCS3 (son bouton PS est

@@ -803,6 +803,9 @@ export const api = {
       carte: carte ?? null,
       image: image ?? null,
     }),
+  /** Un jeu PS3 qui sera long à démarrer (RPCS3 compile) : la phrase à dire avant de jouer. */
+  jeuCompilationPs3: (id: number, emulateur?: string, version?: string) =>
+    appeler<string | null>('jeu_compilation_ps3', { id, emulateur: emulateur ?? null, version: version ?? null }),
   /** Les effets d'image d'un RetroArch (lot 4a/4b). */
   effetsImage: (programme: string) =>
     appeler<{ impossible: string | null; effets: { id: string; present: boolean }[] }>('effets_image', { programme }),

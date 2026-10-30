@@ -1066,6 +1066,90 @@ pub fn numero_ps3_sur(n: &str) -> bool {
     b.len() == 9 && b[..4].iter().all(u8::is_ascii_uppercase) && b[4..].iter().all(u8::is_ascii_digit)
 }
 
+/// La « marque » d'une version de RPCS3 : taille et date de `rpcs3.exe`, et le micrologiciel. Elle change à chaque mise
+/// à jour (par RPCS3 lui-même ou par Frogtend) : le jeu est alors recompilé à sa première partie (plusieurs minutes,
+/// essai de Seb du 29/10 : 5 min 30 pour Asura's Wrath).
+pub fn marque_rpcs3(rpcs3: &Path) -> Option<String> {
+    let m = std::fs::metadata(rpcs3.join("rpcs3.exe")).ok()?;
+    let t = m.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+    Some(format!("{}-{t}-{}", m.len(), micrologiciel_rpcs3(rpcs3).unwrap_or_default()))
+}
+
+/// Pourquoi la prochaine partie de ce jeu PS3 sera longue (RPCS3 compile) : `premiere` (jamais compilé : pas de
+/// `cache/<numéro>`), `maj` (RPCS3 a changé depuis la dernière partie complète notée), ou rien. `notes` : le fichier de
+/// Frogtend `{dossier de RPCS3 : {numéro : marque}}`. Sans note : la compilation est-elle plus ancienne que RPCS3 ?
+pub fn compilation_rpcs3(rpcs3: &Path, numero: &str, notes: &Path) -> Option<&'static str> {
+    if !numero_ps3_sur(numero) {
+        return None;
+    }
+    let cache = rpcs3.join("cache").join(numero);
+    if !cache.is_dir() {
+        return Some("premiere");
+    }
+    let marque = marque_rpcs3(rpcs3)?;
+    let lues: serde_json::Value = std::fs::read(notes).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default();
+    match lues[rpcs3.to_string_lossy().as_ref()][numero].as_str() {
+        // Prévenu, mais aucune partie complète depuis (coupée pendant la compilation) : elle reprend.
+        Some(EN_COURS) => Some("reprise"),
+        Some(m) => (m != marque).then_some("maj"),
+        None => {
+            let exe = std::fs::metadata(rpcs3.join("rpcs3.exe")).and_then(|m| m.modified()).ok()?;
+            let plus_recent = plus_recent_dans(&cache, 2)?;
+            (plus_recent < exe).then_some("maj")
+        }
+    }
+}
+
+/// La date la plus récente des fichiers d'un dossier (jusqu'à `niveaux` sous-dossiers).
+fn plus_recent_dans(d: &Path, niveaux: u8) -> Option<std::time::SystemTime> {
+    let mut max: Option<std::time::SystemTime> = None;
+    for e in std::fs::read_dir(d).ok()?.flatten() {
+        let p = e.path();
+        let t = if p.is_dir() {
+            if niveaux == 0 {
+                continue;
+            }
+            plus_recent_dans(&p, niveaux - 1)
+        } else {
+            e.metadata().ok().and_then(|m| m.modified().ok())
+        };
+        if let Some(t) = t {
+            max = Some(max.map_or(t, |m| m.max(t)));
+        }
+    }
+    max
+}
+
+/// La note d'un jeu prévenu dont la compilation n'a pas encore été vue finie (une partie d'au moins 6 min).
+const EN_COURS: &str = "en-cours";
+
+/// Note qu'une partie COMPLÈTE (assez longue pour que la compilation ait fini) a été faite avec cette version de RPCS3 :
+/// le message ne reviendra plus pour ce jeu.
+pub fn noter_compilation_rpcs3(rpcs3: &Path, numero: &str, notes: &Path) -> Resultat<()> {
+    let Some(marque) = marque_rpcs3(rpcs3) else { return Ok(()) };
+    noter_rpcs3(rpcs3, numero, notes, &marque)
+}
+
+/// Note que la personne a été prévenue d'une compilation : tant qu'aucune partie complète ne suit, le message revient
+/// (une partie coupée pendant la compilation ne garde rien).
+pub fn noter_compilation_en_cours(rpcs3: &Path, numero: &str, notes: &Path) -> Resultat<()> {
+    noter_rpcs3(rpcs3, numero, notes, EN_COURS)
+}
+
+fn noter_rpcs3(rpcs3: &Path, numero: &str, notes: &Path, marque: &str) -> Resultat<()> {
+    let mut v: serde_json::Value = std::fs::read(notes).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_else(|| serde_json::json!({}));
+    if !v.is_object() {
+        v = serde_json::json!({});
+    }
+    let cle = rpcs3.to_string_lossy().to_string();
+    if !v[&cle].is_object() {
+        v[&cle] = serde_json::json!({});
+    }
+    v[&cle][numero] = serde_json::Value::String(marque.to_string());
+    std::fs::write(notes, serde_json::to_vec_pretty(&v).unwrap_or_default())?;
+    Ok(())
+}
+
 /// Le fichier des réglages propres à un jeu PS3 dans RPCS3.
 pub fn rpcs3_config_du_jeu(rpcs3: &Path, numero: &str) -> Resultat<PathBuf> {
     if !numero_ps3_sur(numero) {
@@ -2150,6 +2234,40 @@ mod essai_reel_micrologiciel {
     fn lire_le_vrai_micrologiciel() {
         let d = std::path::PathBuf::from(std::env::var("FROGTEND_RPCS3").unwrap());
         println!("MICROLOGICIEL {:?}", super::micrologiciel_rpcs3(&d));
+    }
+}
+
+#[cfg(test)]
+mod tests_compilation_rpcs3 {
+    use super::*;
+
+    #[test]
+    fn la_premiere_partie_puis_une_mise_a_jour_de_rpcs3_previennent() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path().join("RPCS3");
+        let notes = d.path().join("rpcs3-compile.json");
+        std::fs::create_dir_all(&r).unwrap();
+        std::fs::write(r.join("rpcs3.exe"), b"v1").unwrap();
+        assert_eq!(compilation_rpcs3(&r, "BLES01227", &notes), Some("premiere"), "jamais compilé");
+        assert_eq!(compilation_rpcs3(&r, "../x", &notes), None, "numéro douteux");
+        std::fs::create_dir_all(r.join("cache/BLES01227/ppu")).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(r.join("cache/BLES01227/ppu/a.obj"), b"x").unwrap();
+        assert_eq!(compilation_rpcs3(&r, "BLES01227", &notes), None, "sans note : la compilation est plus récente que RPCS3");
+        // Prévenu puis partie coupée : le message revient (« reprise ») jusqu'à une partie complète.
+        noter_compilation_en_cours(&r, "BLES01227", &notes).unwrap();
+        assert_eq!(compilation_rpcs3(&r, "BLES01227", &notes), Some("reprise"));
+        noter_compilation_rpcs3(&r, "BLES01227", &notes).unwrap();
+        assert_eq!(compilation_rpcs3(&r, "BLES01227", &notes), None);
+        // RPCS3 mis à jour (autre taille) : le message revient.
+        std::fs::write(r.join("rpcs3.exe"), b"version 2").unwrap();
+        assert_eq!(compilation_rpcs3(&r, "BLES01227", &notes), Some("maj"));
+        noter_compilation_rpcs3(&r, "BLES01227", &notes).unwrap();
+        assert_eq!(compilation_rpcs3(&r, "BLES01227", &notes), None);
+        // Un fichier de notes abîmé : rien ne plante.
+        std::fs::write(&notes, b"[1,2").unwrap();
+        assert!(compilation_rpcs3(&r, "BLES01227", &notes).is_none() || compilation_rpcs3(&r, "BLES01227", &notes) == Some("maj"));
+        noter_compilation_rpcs3(&r, "BLES01227", &notes).unwrap();
     }
 }
 

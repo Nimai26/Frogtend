@@ -6,6 +6,10 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Prévenu avant un long démarrage PS3 (0.150.0)
+- [ ] Un jeu PS3 jamais lancé : avant de jouer, « ⏳ … va être long à démarrer » ; « ▶ Jouer quand même » lance.
+- [ ] Asura's Wrath (déjà compilé, partie de plus de 6 min faite) : aucun message.
+
 ## Le menu de Frogtend dans les jeux PS3 (0.149.0)
 - [ ] Asura's Wrath : le bouton Xbox ouvre le menu de Frogtend (plus celui de RPCS3, en anglais).
 - [ ] « 💾 Sauvegarde rapide (le jeu repart un instant) » : le jeu s'arrête une seconde et repart au même endroit ;

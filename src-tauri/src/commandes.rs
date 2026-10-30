@@ -1560,6 +1560,17 @@ pub async fn jeu_jouer(
     // RetroArch en mode « hardcore » des succès : ni sauvegarde rapide (il les refuserait sans le dire), ni triche
     // (il perdrait le hardcore). Ses triches (lot 3) : le `.cht` du jeu lu avant le lancement.
     let prep = prep_ra.filter(|_| id_emulateur.as_deref() == Some("retroarch")).unwrap_or_default();
+    // RPCS3 : de quoi noter, à la fin, qu'une partie assez longue a fini la compilation (lot 5).
+    let compile_rpcs3 = match (id_emulateur.as_deref(), dossier_emulateur.clone()) {
+        (Some("rpcs3"), Some(d)) => noyau
+            .fichier_pour_l_emulateur(id, version.as_deref())
+            .await
+            .ok()
+            .flatten()
+            .and_then(|f| crate::contenus::titre_id_ps3(&f).filter(|n| crate::emulateurs_profils::numero_ps3_sur(n)))
+            .map(|n| (std::path::PathBuf::from(d), n)),
+        _ => None,
+    };
     let numero = app.state::<crate::menu_jeu::MenuJeu>().commencer(crate::menu_jeu::PartieEnCours {
         etats_interdits: prep.etats_interdits,
         triches: prep.triches,
@@ -1636,6 +1647,14 @@ pub async fn jeu_jouer(
     tauri::async_runtime::spawn(async move {
         let noyau = app2.state::<Noyau>();
         let fin = noyau.suivre_partie(id, pid, dossiers).await;
+        // Au moins 6 minutes (la compilation mesurée chez Seb : 5 min 30) : la prochaine partie démarre vite.
+        if let (Ok(f), Some((d, n))) = (&fin, &compile_rpcs3) {
+            if f.secondes >= 360 {
+                if let Err(e) = crate::emulateurs_profils::noter_compilation_rpcs3(d, n, &notes_compilation_rpcs3(&noyau)) {
+                    noyau.journaliser(&format!("RPCS3 : compilation de {n} non notée ({e:?})"));
+                }
+            }
+        }
         noyau.liberer(id);
         // Seulement si c'est bien la partie en cours qui finit (une partie plus récente garde sa touche et son menu).
         let menu = app2.state::<crate::menu_jeu::MenuJeu>();
@@ -2367,6 +2386,46 @@ async fn triche_retroarch(app: &AppHandle, p: crate::menu_jeu::PartieEnCours, k:
     })
     .await
     .map_err(|_| Erreur::Disque("La triche s'est arrêtée brutalement.".into()))?
+}
+
+/// Le fichier où Frogtend note les parties PS3 complètes, par version de RPCS3 (lot 5).
+fn notes_compilation_rpcs3(noyau: &Noyau) -> std::path::PathBuf {
+    noyau.dossier.join("rpcs3-compile.json")
+}
+
+/// Une partie PS3 qui sera LONGUE à démarrer (RPCS3 compile le jeu) : le message à dire AVANT de jouer, sinon `None`
+/// (✅ Seb 30/10, après Asura's Wrath : « ne quitte pas » — une partie coupée pendant la compilation ne garde rien).
+#[tauri::command]
+pub async fn jeu_compilation_ps3(app: AppHandle, noyau: State<'_, Noyau>, id: i64, emulateur: Option<String>, version: Option<String>) -> Resultat<Option<String>> {
+    let jeu = noyau.registre().jeu(id)?;
+    let Some(j) = jeu else { return Ok(None) };
+    let Some((programme, _)) = emulateur_regle(&app, &j.plateforme, id, emulateur.as_deref()) else { return Ok(None) };
+    let programme = std::path::PathBuf::from(programme);
+    if !programme.file_name().is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case("rpcs3.exe")) {
+        return Ok(None);
+    }
+    // La version qui sera lancée (deux régions = deux numéros, deux compilations).
+    let Some(fichier) = noyau.fichier_pour_l_emulateur(id, version.as_deref()).await.ok().flatten() else { return Ok(None) };
+    let notes = notes_compilation_rpcs3(&noyau);
+    let raison = tauri::async_runtime::spawn_blocking(move || {
+        let numero = crate::contenus::titre_id_ps3(&fichier)?;
+        let rpcs3 = programme.parent()?;
+        let r = crate::emulateurs_profils::compilation_rpcs3(rpcs3, &numero, &notes)?;
+        // Prévenu : le message reviendra tant qu'une partie complète (≥ 6 min) n'aura pas été vue.
+        let _ = crate::emulateurs_profils::noter_compilation_en_cours(rpcs3, &numero, &notes);
+        Some(r)
+    })
+    .await
+    .unwrap_or(None);
+    Ok(raison.map(|r| {
+        if r == "reprise" {
+            "La préparation de ce jeu par RPCS3 n'est pas terminée (la dernière partie a été arrêtée trop tôt) : cela peut encore prendre plusieurs minutes. Ne quitte pas avant d'arriver au jeu.".to_string()
+        } else if r == "premiere" {
+            "C'est la première partie de ce jeu : RPCS3 le prépare pour ton PC, cela peut prendre plusieurs minutes (l'écran reste figé ou affiche « Compiling… »). Ne quitte pas avant d'arriver au jeu : sinon tout recommence la fois suivante.".to_string()
+        } else {
+            "RPCS3 a été mis à jour : la première partie recompile ce jeu, cela peut prendre plusieurs minutes (l'écran reste figé ou affiche « Compiling… »). Ne quitte pas avant d'arriver au jeu : sinon tout recommence la fois suivante.".to_string()
+        }
+    }))
 }
 
 /// Les effets d'image proposés pour un RetroArch (lot 4a/4b) : ceux qu'il a, et pourquoi aucun ne l'est (pilote
