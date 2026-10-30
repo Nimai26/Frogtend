@@ -604,6 +604,8 @@ export interface EtatMenuJeu {
   triches: { titre: string; active: boolean }[] | null;
   /** La partie du jeu est déjà à l'abri pour cette partie (la mise en garde a été lue). */
   abri_triches: boolean;
+  /** RetroArch : les effets d'image changeables en jeu (`null` : pas d'écran). */
+  effets: { presents: string[]; actuel: string | null; de_la_personne: boolean } | null;
 }
 
 /** Un réglage de manette de référence (livré avec Frogtend, ou repris sur ce PC). */
@@ -774,6 +776,8 @@ export const api = {
   /** Les sauvegardes rapides du jeu en cours : [emplacement, date en secondes ou null si vide]. */
   menuJeuEmplacements: () => appeler<[number, number | null][]>('menu_jeu_emplacements'),
   menuJeuTriche: (index: number) => appeler<void>('menu_jeu_triche', { index }),
+  /** Change l'effet d'image en jeu (RetroArch) : `aucun` ou un identifiant d'effet. */
+  menuJeuEffet: (effet: string) => appeler<void>('menu_jeu_effet', { effet }),
   /** Les boutons d'un jeu du PC, ou (`null`) de la partie en cours (lot 4d). */
   boutonsDuJeu: (id: number | null) => appeler<InfosBoutons | null>('boutons_du_jeu', { id }),
   /** La fenêtre du menu en jeu, agrandie pour l'écran des boutons (puis rendue à sa taille). */

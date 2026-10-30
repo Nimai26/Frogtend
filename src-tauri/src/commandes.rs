@@ -1395,6 +1395,9 @@ pub async fn jeu_jouer(
     let mut dossier_emulateur = None;
     // RetroArch : le nom du cœur (le dossier où il cherche les triches du jeu). RPCS3 : sa ligne de lancement.
     let mut coeur_ra: Option<String> = None;
+    // RetroArch : l'effet d'image posé au lancement, ou celui de la personne (lot 2).
+    let mut effet_lance: Option<String> = None;
+    let mut effet_de_la_personne = false;
     let mut ligne_rpcs3: Option<String> = None;
     let emulateur = match (!de_boutique).then(|| emulateur_regle(&app, &plateforme, id, emulateur.as_deref())).flatten() {
         Some((programme, ligne)) => {
@@ -1425,6 +1428,7 @@ pub async fn jeu_jouer(
             // recopié dans retroarch.cfg) ; seul `video_shader_enable` est écrit, dans le fichier du profil (RetroArch
             // ne charge aucun effet sans lui). Un refus est dit, le jeu se lance quand même.
             if let (Some("retroarch"), Some(choix)) = (id_emulateur.as_deref(), image.as_deref()) {
+                let choix_effet = choix.to_string();
                 let fichier = noyau.fichier_pour_l_emulateur(id, version.as_deref()).await.ok().flatten();
                 let profil = profil_ouvert(&noyau).await?.nom;
                 let (d, c, choix) = (std::path::PathBuf::from(dossier_emulateur.clone().unwrap_or_default()), coeur_ra.clone(), choix.to_string());
@@ -1455,9 +1459,15 @@ pub async fn jeu_jouer(
                 .await
                 .map_err(|_| Erreur::Disque("La préparation de l'effet d'image s'est arrêtée brutalement.".into()))?;
                 match r {
-                    Ok(crate::emulateurs::ChoixEffet::Effet(s)) => ligne_c = format!("\"--set-shader={}\" {ligne_c}", s.to_string_lossy()),
+                    Ok(crate::emulateurs::ChoixEffet::Effet(s)) => {
+                        ligne_c = format!("\"--set-shader={}\" {ligne_c}", s.to_string_lossy());
+                        effet_lance = Some(choix_effet.clone());
+                    }
                     Ok(crate::emulateurs::ChoixEffet::Aucun) => {}
-                    Ok(crate::emulateurs::ChoixEffet::DeLaPersonne) => noyau.journaliser(&format!("effet d'image du jeu {id} : celui réglé dans RetroArch est gardé")),
+                    Ok(crate::emulateurs::ChoixEffet::DeLaPersonne) => {
+                        effet_de_la_personne = true;
+                        noyau.journaliser(&format!("effet d'image du jeu {id} : celui réglé dans RetroArch est gardé"));
+                    }
                     Err(m) => {
                         noyau.journaliser(&format!("effet d'image du jeu {id} : {m}"));
                         let _ = app.emit("effet-image", serde_json::json!({ "jeu": id, "message": m }));
@@ -1560,6 +1570,21 @@ pub async fn jeu_jouer(
     // RetroArch en mode « hardcore » des succès : ni sauvegarde rapide (il les refuserait sans le dire), ni triche
     // (il perdrait le hardcore). Ses triches (lot 3) : le `.cht` du jeu lu avant le lancement.
     let prep = prep_ra.filter(|_| id_emulateur.as_deref() == Some("retroarch")).unwrap_or_default();
+    // RetroArch : les effets changeables en jeu (si son pilote vidéo les lit) et `video_shader_enable` d'avant (lot 2).
+    let (effets_ra, shader_enable_avant) = match (id_emulateur.as_deref(), dossier_emulateur.clone()) {
+        (Some("retroarch"), Some(d)) => tauri::async_runtime::spawn_blocking(move || {
+            let d = std::path::PathBuf::from(d);
+            let presents: Vec<String> = if crate::emulateurs::effets_impossibles(&d).is_none() {
+                crate::emulateurs::EFFETS_IMAGE.iter().filter(|(_, _, c)| crate::emulateurs::fichier_effet(&d, c).is_some()).map(|(i, ..)| i.to_string()).collect()
+            } else {
+                vec![]
+            };
+            (presents, crate::emulateurs::reglage_retroarch(&d, "video_shader_enable"))
+        })
+        .await
+        .unwrap_or_default(),
+        _ => (vec![], None),
+    };
     // RPCS3 : de quoi noter, à la fin, qu'une partie assez longue a fini la compilation (lot 5).
     let compile_rpcs3 = match (id_emulateur.as_deref(), dossier_emulateur.clone()) {
         (Some("rpcs3"), Some(d)) => noyau
@@ -1580,6 +1605,11 @@ pub async fn jeu_jouer(
         abri_triches: prep.abri_fait,
         coeur: coeur_ra.clone(),
         dossier_rom: prep.dossier_rom,
+        effet_pose: effet_lance.is_some(),
+        effet: effet_lance,
+        effet_de_la_personne,
+        effets: effets_ra,
+        shader_enable_avant,
         raccourcis_clavier,
         emplacement: 0,
         emplacement_ra: 0,
@@ -1658,6 +1688,16 @@ pub async fn jeu_jouer(
         noyau.liberer(id);
         // Seulement si c'est bien la partie en cours qui finit (une partie plus récente garde sa touche et son menu).
         let menu = app2.state::<crate::menu_jeu::MenuJeu>();
+        // RetroArch a recopié `video_shader_enable = "true"` en quittant : rendu à « false » si c'était le réglage de la
+        // personne et que Frogtend a posé un effet (lot 2, avis lancement).
+        if let Some(p) = menu.partie().filter(|_| menu.en_cours(numero)) {
+            // Absent avant la partie = « false » (la valeur d'origine de RetroArch) : rendu aussi.
+            if let (true, false, Some(d)) = (p.effet_pose, p.shader_enable_avant == Some(true), p.dossier_emulateur.as_deref()) {
+                if let Err(e) = crate::emulateurs::rendre_shader_enable(std::path::Path::new(d)) {
+                    noyau.journaliser(&format!("effet d'image : video_shader_enable non rendu ({e:?})"));
+                }
+            }
+        }
         if menu.en_cours(numero) {
             menu.finir(numero);
             armer_touche_menu(&app2, false);
@@ -2091,6 +2131,40 @@ pub async fn menu_jeu_action(app: AppHandle, noyau: State<'_, Noyau>, action: St
     tauri::async_runtime::spawn_blocking(move || crate::menu_jeu::agir(&e, &crate::lancement::processus_de_la_partie(p.pid), a))
         .await
         .map_err(|_| Erreur::Disque("L'action s'est arrêtée brutalement.".into()))?
+}
+
+/// Change l'effet d'image À CHAUD (RetroArch, lot 2) : le menu se ferme, le jeu repart et reçoit `SET_SHADER`
+/// (RetroArch affiche « Applying shader » : rien ne le confirme à Frogtend). Une action à la fois.
+#[tauri::command]
+pub async fn menu_jeu_effet(app: AppHandle, effet: String) -> Resultat<()> {
+    let menu = app.state::<crate::menu_jeu::MenuJeu>();
+    let p = menu.partie().ok_or_else(|| Erreur::Introuvable("Aucune partie en cours.".into()))?;
+    let permis = crate::menu_jeu::etat(&p).effets.is_some_and(|e| effet == "aucun" || e.presents.contains(&effet));
+    if !permis {
+        return Err(Erreur::Refus("Cet effet ne peut pas être posé depuis le menu.".into()));
+    }
+    let _seule = menu.prendre_etat().ok_or_else(|| Erreur::Refus("Une autre action est en cours.".into()))?;
+    let d = std::path::PathBuf::from(p.dossier_emulateur.clone().unwrap_or_default());
+    let (e2, d2) = (effet.clone(), d.clone());
+    let commande = tauri::async_runtime::spawn_blocking(move || crate::emulateurs::commande_effet(&d2, &e2))
+        .await
+        .map_err(|_| Erreur::Disque("L'effet s'est arrêté brutalement.".into()))?
+        .map_err(Erreur::Refus)?;
+    cacher_menu(&app);
+    // Noté AVANT l'envoi : si la partie finit juste après, `video_shader_enable` est quand même rendu.
+    menu.noter_effet((effet != "aucun").then(|| effet.clone()));
+    let pids = crate::lancement::processus_de_la_partie(p.pid);
+    tauri::async_runtime::spawn_blocking(move || -> Resultat<()> {
+        // RetroArch doit avoir la main : en pause, il ne redessinerait pas l'image.
+        if !crate::menu_jeu::reprendre(&pids) {
+            return Err(Erreur::Refus("Le jeu n'a pas pu reprendre la main : rien n'a été fait.".into()));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        crate::menu_jeu::commande_retroarch(&commande)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("L'effet s'est arrêté brutalement.".into()))??;
+    Ok(())
 }
 
 /// La place minimale avant une sauvegarde d'état de RPCS3 : une écriture ratée (disque plein) le fait redémarrer le

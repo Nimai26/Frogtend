@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.151.0 — L'effet d'image depuis le menu en jeu
+
+- 🖼 Menu en jeu (RetroArch) ▸ « Effet d'image » : choisis un effet (télé d'époque, pixels nets…) ou « Aucun effet » ;
+  le menu se ferme et le jeu repart avec. Pour comparer, rouvre le menu.
+- 💾 « Garder pour ce jeu » ou « pour toute la console » : retenu pour les prochaines parties.
+- Si tu as réglé toi-même un effet dans RetroArch, tu peux en essayer un autre, mais le tien revient à la prochaine
+  partie.
+
 ## 0.150.0 — Prévenu avant un long démarrage PS3
 
 - ⏳ Avant de lancer un jeu PS3 qui va être long à démarrer (sa première partie, ou RPCS3 vient d'être mis à jour),

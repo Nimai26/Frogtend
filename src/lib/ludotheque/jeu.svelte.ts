@@ -53,6 +53,19 @@ export async function suivreParties() {
   if (ecoute || !isTauri()) return;
   // Un jeu en administrateur ne reçoit pas les touches de la manette : le dire (une fois par partie).
   await listen<{ message: string }>('clavier', (e) => toast(`🕹 ${e.payload.message}.`, 'alerte'));
+  // « Garder » l'effet choisi dans le menu en jeu (lot 2) : c'est cette fenêtre qui tient les réglages du profil.
+  await listen<{ jeu: number; plateforme: string; effet: string; pour: 'jeu' | 'console' }>('menu-effet-garder', async (e) => {
+    const { jeu, plateforme, effet, pour } = e.payload;
+    const jeux = { ...etat.profil.image.jeux };
+    const consoles = { ...etat.profil.image.consoles };
+    if (pour === 'jeu') jeux[String(jeu)] = effet;
+    else {
+      delete jeux[String(jeu)];
+      if (effet === 'aucun') delete consoles[plateforme];
+      else consoles[plateforme] = effet;
+    }
+    await reglerProfil('image', { jeux, consoles });
+  });
   // L'effet d'image n'a pas pu être appliqué (le jeu s'est lancé sans) : le dire.
   await listen<{ jeu: number; message: string }>('effet-image', (e) => {
     const titre = tele.jeux[e.payload.jeu]?.titre ?? 'le jeu';

@@ -556,6 +556,7 @@ pub fn run() {
             commandes::menu_jeu_agrandir,
             commandes::effets_image,
             commandes::jeu_compilation_ps3,
+            commandes::menu_jeu_effet,
             commandes::jeu_retirer_version,
             commandes::jeu_versions_ajoutees,
             commandes::game_bar_bouton,

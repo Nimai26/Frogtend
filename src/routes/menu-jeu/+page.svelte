@@ -16,6 +16,8 @@
   import { accordCheatEngine } from '$lib/mods/cheatengine';
   import ListeSucces from '$lib/succes/ListeSucces.svelte';
   import SchemaManette from '$lib/manette/SchemaManette.svelte';
+  import { EFFETS_IMAGE, libelleEffet } from '$lib/ludotheque/effetsImage';
+  import { emit } from '@tauri-apps/api/event';
   import type { InfosBoutons } from '$lib/manette/boutons';
   import type { ListeSucces as ListeSuccesDuJeu } from '$lib/succes/liste';
   import { appliquerManette, arreterManette, demarrerManette, fenetreOuverte, prendreLaMain, selectionner } from '$lib/taodbox/manette.svelte';
@@ -36,6 +38,25 @@
   let options = $state(false);
   // L'écran des triches du jeu (lot 3, RetroArch).
   let triches = $state(false);
+  // L'écran des effets d'image (lot 2, RetroArch).
+  let effets = $state(false);
+
+  /** Poser un effet : le menu se ferme et le jeu repart avec (pour comparer, on rouvre le menu). */
+  async function poserEffet(id: string) {
+    try {
+      await api.menuJeuEffet(id);
+    } catch (e) {
+      toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
+    }
+  }
+
+  /** Garder l'effet en cours : réglé par la fenêtre principale (elle tient les réglages du profil). */
+  async function garderEffet(pour: 'jeu' | 'console') {
+    if (!menu) return;
+    await emit('menu-effet-garder', { jeu: menu.jeu, plateforme: menu.plateforme, effet: menu.effets?.actuel ?? 'aucun', pour });
+    toast(`🖼 « ${libelleEffet(menu.effets?.actuel ?? undefined)} » gardé ${pour === 'jeu' ? 'pour ce jeu' : 'pour toute la console'}.`);
+  }
+
   // L'écran des boutons de la manette (lot 4d), lu à la demande.
   let boutons = $state<InfosBoutons | null>(null);
   const trichesActives = $derived(menu?.triches?.filter((t) => t.active).length ?? 0);
@@ -78,6 +99,7 @@
     options = false;
     triches = false;
     boutons = null;
+    effets = false;
     await tick();
     selectionner(liste?.querySelector<HTMLButtonElement>('button'));
   }
@@ -128,6 +150,7 @@
         options = false;
         triches = false;
         boutons = null;
+        effets = false;
       }),
     ];
     return () => {
@@ -382,6 +405,7 @@
     else if (options) revenir(() => (options = false), '[data-ecran="options"]');
     else if (triches) revenir(() => (triches = false), '[data-ecran="triches"]');
     else if (boutons) revenir(fermerBoutons, '[data-ecran="boutons"]');
+    else if (effets) revenir(() => (effets = false), '[data-ecran="effets"]');
     else reprendre();
   }
 
@@ -456,6 +480,28 @@
       {#if a('capture')}<button class="btn" onclick={() => action('capture')}>📷 Photo de l’écran (rangée dans le dossier de l’émulateur)</button>{/if}
       {#if a('muet')}<button class="btn" onclick={() => action('muet')}>🔇 Son : couper ou remettre</button>{/if}
       <button class="btn" onclick={() => revenir(() => (options = false), '[data-ecran="options"]')}>← Retour</button>
+    </div>
+  {:else if effets && menu.effets}
+    <header>
+      <h1>🖼 Effet d’image</h1>
+      <p class="muted">Choisis un effet : le menu se ferme et le jeu repart avec. Pour comparer, rouvre le menu.</p>
+      {#if menu.effets.de_la_personne}<p class="muted">Ton effet réglé dans RetroArch revient à la prochaine partie.</p>{/if}
+    </header>
+    <div class="liste" bind:this={liste}>
+      <button class="btn" aria-pressed={menu.effets.actuel === null} onclick={() => poserEffet('aucun')}>
+        <span aria-hidden="true">{menu.effets.actuel === null && !menu.effets.de_la_personne ? '✅' : '⬜'}</span> Aucun effet
+      </button>
+      {#each menu.effets.presents.filter((e) => EFFETS_IMAGE[e]) as e (e)}
+        <button class="btn" aria-pressed={menu.effets.actuel === e} onclick={() => poserEffet(e)}>
+          <span aria-hidden="true">{menu.effets.actuel === e ? '✅' : '⬜'}</span> {EFFETS_IMAGE[e].libelle}
+          <span class="muted">— {EFFETS_IMAGE[e].detail}</span>
+        </button>
+      {/each}
+      {#if !menu.effets.de_la_personne}
+        <button class="btn" onclick={() => garderEffet('jeu')}>💾 Garder « {libelleEffet(menu.effets.actuel ?? undefined)} » pour ce jeu</button>
+        <button class="btn" onclick={() => garderEffet('console')}>💾 Le garder pour toute la console</button>
+      {/if}
+      <button class="btn" onclick={() => revenir(() => (effets = false), '[data-ecran="effets"]')}>← Retour</button>
     </div>
   {:else if boutons}
     <header>
@@ -567,6 +613,9 @@
       <button class="btn" data-ecran="boutons" onclick={voirBoutons}>🗺 Les boutons</button>
       <!-- Un jeu Steam (Galaxy en attendant Steam), ou un jeu d'émulateur (RetroAchievements, lot C3). -->
       {#if (menu.jeu < 0 && menu.plateforme === 'Windows') || menu.plateforme !== 'Windows'}<button class="btn" data-ecran="succes" disabled={chargementSucces} onclick={voirSucces}>🏆 Succès{chargementSucces ? ' (chargement…)' : ''}</button>{/if}
+      {#if menu.effets}
+        <button class="btn" data-ecran="effets" onclick={() => revenir(() => (effets = true))}>🖼 Effet d’image <span class="muted">({libelleEffet(menu.effets.actuel ?? undefined)})</span></button>
+      {/if}
       {#if ['fps', 'rapide', 'capture', 'muet'].some((o) => a(o))}
         <button class="btn" data-ecran="options" onclick={() => revenir(() => (options = true))}>⚙ Options du jeu</button>
       {/if}

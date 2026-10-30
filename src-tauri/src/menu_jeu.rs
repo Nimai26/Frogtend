@@ -68,6 +68,22 @@ pub struct PartieEnCours {
     /// la manette d'origine, et voir un remappage « par dossier » : lot 4d).
     pub coeur: Option<String>,
     pub dossier_rom: Option<String>,
+    /// RetroArch : les effets d'image changeables en jeu (lot 2, ✅ Seb 30/10) — ceux présents (vide : aucun écran) ;
+    /// l'effet en cours (`None` : aucun) ; l'effet est-il celui de la personne (réglé dans RetroArch : il revient à la
+    /// prochaine partie) ; Frogtend en a-t-il posé un (au lancement ou en jeu) ; `video_shader_enable` avant la partie.
+    pub effets: Vec<String>,
+    pub effet: Option<String>,
+    pub effet_de_la_personne: bool,
+    pub effet_pose: bool,
+    pub shader_enable_avant: Option<bool>,
+}
+
+/// L'écran « Effet d'image » du menu en jeu.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct EffetsMenu {
+    pub presents: Vec<String>,
+    pub actuel: Option<String>,
+    pub de_la_personne: bool,
 }
 
 /// Une triche d'un fichier `.cht` de RetroArch : son nom et si elle est active.
@@ -478,6 +494,15 @@ impl MenuJeu {
             t.active = !t.active;
         }
     }
+    /// Un effet d'image posé en jeu (`None` : aucun).
+    pub fn noter_effet(&self, effet: Option<String>) {
+        if let Some(p) = self.partie.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            p.effet = effet;
+            p.effet_pose = true;
+            // `effet_de_la_personne` reste : son effet réglé dans RetroArch reviendra à la prochaine partie (un
+            // « Garder » serait un mensonge).
+        }
+    }
     /// Les parties du jeu sont à l'abri pour cette partie (avant la première triche).
     pub fn noter_abri_triches(&self) {
         if let Some(p) = self.partie.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
@@ -522,6 +547,8 @@ pub struct EtatMenu {
     /// Les parties du jeu sont-elles déjà à l'abri pour CETTE partie ? (Sinon la page met en garde avant la première
     /// triche ; la fenêtre du menu est réutilisée d'une partie à l'autre : c'est le cœur qui sait.)
     pub abri_triches: bool,
+    /// RetroArch : l'écran des effets d'image (`None` : pas d'écran).
+    pub effets: Option<EffetsMenu>,
 }
 
 pub fn nom_action(a: Action) -> &'static str {
@@ -583,6 +610,11 @@ pub fn etat(p: &PartieEnCours) -> EtatMenu {
         emplacement: matches!(e, "retroarch" | "mame").then_some(p.emplacement),
         triches: (e == "retroarch" && p.triches_permises && !p.etats_interdits).then(|| p.triches.clone()),
         abri_triches: p.abri_triches,
+        effets: (e == "retroarch" && !p.effets.is_empty()).then(|| EffetsMenu {
+            presents: p.effets.clone(),
+            actuel: p.effet.clone(),
+            de_la_personne: p.effet_de_la_personne,
+        }),
     }
 }
 
@@ -920,6 +952,11 @@ mod tests {
             abri_triches: false,
             coeur: None,
             dossier_rom: None,
+            effets: vec![],
+            effet: None,
+            effet_de_la_personne: false,
+            effet_pose: false,
+            shader_enable_avant: None,
         }
     }
 
@@ -1037,6 +1074,20 @@ mod tests {
         assert!(triches_permises_retroarch("cheevos_hardcore_mode_enable = \"true\"\ncheevos_enable = \"false\"\n", ""));
         assert!(!triches_permises_retroarch("cheevos_hardcore_mode_enable = \"true\"\n", "cheevos_enable = \"true\"\n"), "succès du profil + hardcore");
         assert!(triches_permises_retroarch("cheevos_hardcore_mode_enable = \"true\"\n", "cheevos_enable = \"true\"\ncheevos_hardcore_mode_enable = \"false\"\n"));
+    }
+
+    #[test]
+    fn l_ecran_des_effets_seulement_pour_retroarch_avec_des_effets() {
+        let ra = PartieEnCours { effets: vec!["crt".into()], ..partie(Some("retroarch")) };
+        assert_eq!(etat(&ra).effets, Some(EffetsMenu { presents: vec!["crt".into()], actuel: None, de_la_personne: false }));
+        assert_eq!(etat(&PartieEnCours { effets: vec![], ..partie(Some("retroarch")) }).effets, None);
+        assert_eq!(etat(&PartieEnCours { effets: vec!["crt".into()], ..partie(Some("duckstation")) }).effets, None);
+        let m = MenuJeu::default();
+        m.commencer(PartieEnCours { effet_de_la_personne: true, ..ra });
+        m.noter_effet(Some("crt".into()));
+        let p = m.partie().unwrap();
+        assert_eq!(p.effet.as_deref(), Some("crt"));
+        assert!(p.effet_pose && p.effet_de_la_personne, "son effet à elle revient à la prochaine partie");
     }
 
     #[test]

@@ -16,6 +16,11 @@
   (5) FAIT en 0.150.0 (avis + relecture lancement : version lancée, « reprise » si prévenu sans partie complète, aussi
   au 2e tour après « Prêt à jouer ») : `rpcs3-compile.json` (marque = taille + date de rpcs3.exe + micrologiciel), noté
   après une partie ≥ 360 s ; message avant ▶ Jouer. RESTE : date de rpcs3.exe après une extraction 7z (non vérifié) ;
+  (2) FAIT en 0.151.0 (avis + relecture lancement) : `SET_SHADER <chemin absolu>` après `reprendre`, jamais
+  SHADER_TOGGLE ; « aucun » = effet neutre nearest/bilinear (`video_smooth`) ; `video_shader_enable` rendu à false en fin
+  de partie s'il ne valait pas true avant (copie à l'abri, écrit puis renommé, jamais un fichier non UTF-8) ; « Garder »
+  par la fenêtre principale (`menu-effet-garder`) ; pas de « Garder » si effet de la personne. RESTE (essai) : SET_SHADER
+  avec video_shader_enable à false ; effets en hardcore ; Frogtend fermé pendant la partie → true non rendu ;
   (1) menu de Frogtend partout dans RPCS3 (sauver / charger / recommencer d'abord, puis le bouton PS retiré) ; (2) effet
   d'image changé depuis le menu en jeu (SET_SHADER) ; (3) reposer les parties d'un jeu PC réinstallé (après un oui) ;
   (4) langue et région automatiques des émulateurs ; (5) prévenir quand RPCS3 vient d'être mis à jour. Puis maquette de

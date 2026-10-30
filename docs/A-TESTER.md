@@ -6,6 +6,12 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## L'effet d'image depuis le menu en jeu (0.151.0)
+- [ ] Super Mario World : menu ▸ « 🖼 Effet d'image » ▸ « Télé d'époque (simple) » : le menu se ferme, les lignes
+      apparaissent ; rouvrir le menu : ✅ sur cet effet ; « Aucun effet » : l'image redevient normale.
+- [ ] « Garder pour ce jeu », quitter, relancer : l'effet est là dès le lancement.
+- [ ] Après la partie, un autre jeu RetroArch sans effet : image normale (rien de collé).
+
 ## Prévenu avant un long démarrage PS3 (0.150.0)
 - [ ] Un jeu PS3 jamais lancé : avant de jouer, « ⏳ … va être long à démarrer » ; « ▶ Jouer quand même » lance.
 - [ ] Asura's Wrath (déjà compilé, partie de plus de 6 min faite) : aucun message.

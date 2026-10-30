@@ -822,6 +822,68 @@ pub fn shader_retroarch(dossier: &Path, choix: &str, coeur: Option<&str>, noms: 
     fichier_effet(dossier, chemin).map(ChoixEffet::Effet).ok_or_else(|| format!("l'effet « {libelle} » n'est pas dans ton RetroArch"))
 }
 
+/// Un réglage oui/non de `retroarch.cfg` (`None` : absent).
+pub fn reglage_retroarch(dossier: &Path, cle: &str) -> Option<bool> {
+    let cfg = std::fs::read_to_string(dossier.join("retroarch.cfg")).ok()?;
+    cfg.lines().find_map(|l| {
+        let (c, v) = l.split_once('=')?;
+        (c.trim() == cle).then(|| v.trim().trim_matches('"').eq_ignore_ascii_case("true"))
+    })
+}
+
+/// La commande réseau qui pose un effet À CHAUD (`SET_SHADER <chemin absolu>`, sans guillemets : RetroArch prend tout le
+/// reste de la ligne). « aucun » : l'effet neutre d'une passe (`nearest` ou `bilinear` selon le lissage de la personne,
+/// `video_smooth`) — jamais `SHADER_TOGGLE`, qui changerait `video_shader_enable` pour tous les jeux (avis lancement 30/10).
+pub fn commande_effet(dossier: &Path, choix: &str) -> Result<String, String> {
+    let fichier = if choix == "aucun" {
+        let neutre = if reglage_retroarch(dossier, "video_smooth") == Some(true) { "bilinear.slangp" } else { "nearest.slangp" };
+        fichier_effet(dossier, neutre).ok_or("l'image sans effet n'est pas dans ton RetroArch")?
+    } else {
+        let (_, libelle, chemin) = EFFETS_IMAGE.iter().find(|(id, ..)| *id == choix).ok_or_else(|| format!("effet d'image inconnu : {choix}"))?;
+        fichier_effet(dossier, chemin).ok_or_else(|| format!("l'effet « {libelle} » n'est pas dans ton RetroArch"))?
+    };
+    let texte = fichier.to_string_lossy().to_string();
+    if !fichier.is_absolute() || texte.contains(['\n', '\r']) {
+        return Err("chemin de l'effet douteux : refusé".into());
+    }
+    Ok(format!("SET_SHADER {texte}"))
+}
+
+/// Remet `video_shader_enable = "false"` dans retroarch.cfg après une partie où Frogtend a posé un effet chez une
+/// personne qui l'avait à « false » (RetroArch recopie la valeur de la partie en quittant : ses propres effets
+/// automatiques se seraient rallumés partout). Copie à l'abri d'abord ; seulement cette ligne.
+pub fn rendre_shader_enable(dossier: &Path) -> crate::erreurs::Resultat<()> {
+    let f = dossier.join("retroarch.cfg");
+    let Ok(octets) = std::fs::read(&f) else { return Ok(()) };
+    // Un fichier qui n'est pas en UTF-8 (un chemin de la personne) : jamais réécrit (ses octets seraient changés).
+    let Ok(texte) = String::from_utf8(octets) else {
+        return Err(crate::erreurs::Erreur::Refus("retroarch.cfg n'est pas en UTF-8 : laissé tel quel".into()));
+    };
+    let crlf = texte.contains("\r\n");
+    let mut change = false;
+    let lignes: Vec<String> = texte
+        .lines()
+        .map(|l| {
+            if l.split_once('=').is_some_and(|(c, v)| c.trim() == "video_shader_enable" && v.trim().trim_matches('"') != "false") {
+                change = true;
+                "video_shader_enable = \"false\"".to_string()
+            } else {
+                l.to_string()
+            }
+        })
+        .collect();
+    if !change {
+        return Ok(());
+    }
+    crate::emulateurs_profils::mettre_a_l_abri(dossier, &f)?;
+    let fin = if crlf { "\r\n" } else { "\n" };
+    // Écrit à côté puis renommé : une coupure ne laisse jamais un retroarch.cfg tronqué.
+    let provisoire = dossier.join("retroarch.cfg.frogtend-tmp");
+    std::fs::write(&provisoire, lignes.join(fin) + fin)?;
+    std::fs::rename(&provisoire, &f)?;
+    Ok(())
+}
+
 /// Un dossier réglé dans retroarch.cfg (`cle`), sinon `defaut` (relatif au dossier de RetroArch).
 pub fn dossier_reglage_retroarch(dossier: &Path, cle: &str, defaut: &str) -> PathBuf {
     let defaut = dossier.join(defaut);
@@ -879,6 +941,43 @@ impl Registre {
 #[cfg(test)]
 mod tests_effets {
     use super::*;
+
+    #[test]
+    fn un_effet_a_chaud_par_son_chemin_absolu_et_l_effet_neutre_selon_le_lissage() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path().join("Retro Arch é");
+        for f in ["crt/crt-easymode.slangp", "nearest.slangp", "bilinear.slangp"] {
+            let p = r.join("shaders/shaders_slang").join(f);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, "").unwrap();
+        }
+        let c = commande_effet(&r, "crt").unwrap();
+        assert!(c.starts_with("SET_SHADER ") && c.ends_with("crt-easymode.slangp") && !c.contains('"'), "{c}");
+        assert!(c.contains("Retro Arch é"), "espaces et accents tels quels");
+        assert!(commande_effet(&r, "aucun").unwrap().ends_with("nearest.slangp"));
+        std::fs::write(r.join("retroarch.cfg"), "video_smooth = \"true\"\n").unwrap();
+        assert!(commande_effet(&r, "aucun").unwrap().ends_with("bilinear.slangp"));
+        assert!(commande_effet(&r, "inconnu").is_err());
+        assert!(commande_effet(&r, "lisse").is_err(), "absent de ce RetroArch");
+    }
+
+    #[test]
+    fn video_shader_enable_rendu_a_false_avec_copie_et_fins_de_ligne() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        std::fs::write(r.join("retroarch.cfg"), "a = \"1\"\r\nvideo_shader_enable = \"true\"\r\nb = \"2\"\r\n").unwrap();
+        rendre_shader_enable(r).unwrap();
+        let t = std::fs::read_to_string(r.join("retroarch.cfg")).unwrap();
+        assert_eq!(t, "a = \"1\"\r\nvideo_shader_enable = \"false\"\r\nb = \"2\"\r\n");
+        // Déjà à false : rien touché.
+        let avant = std::fs::metadata(r.join("retroarch.cfg")).unwrap().modified().unwrap();
+        rendre_shader_enable(r).unwrap();
+        assert_eq!(std::fs::metadata(r.join("retroarch.cfg")).unwrap().modified().unwrap(), avant);
+        // Pas en UTF-8 : jamais réécrit.
+        std::fs::write(r.join("retroarch.cfg"), b"x = \"\xE9\"\nvideo_shader_enable = \"true\"\n").unwrap();
+        assert!(rendre_shader_enable(r).is_err());
+        assert!(std::fs::read(r.join("retroarch.cfg")).unwrap().ends_with(b"\"true\"\n"));
+    }
 
     #[test]
     fn un_effet_d_image_seulement_s_il_est_livre_et_jamais_par_dessus_celui_de_la_personne() {
