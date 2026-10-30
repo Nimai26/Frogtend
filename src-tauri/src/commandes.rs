@@ -1509,6 +1509,44 @@ pub async fn jeu_jouer(
         }
         _ => None,
     };
+    // RPCS3, AVANT le lancement (fermé : il réécrirait ses réglages en quittant) : langue, clavier et zone de la console
+    // pris de Windows une seule fois ; un jeu japonais se valide avec Rond (lot 4, ✅ Seb 30/10).
+    if let (Some("rpcs3"), Some(d)) = (id_emulateur.as_deref(), dossier_emulateur.clone()) {
+        let fichier = noyau.fichier_pour_l_emulateur(id, version.as_deref()).await.ok().flatten();
+        let notes = noyau.dossier.join("langues-posees.json");
+        let r = tauri::async_runtime::spawn_blocking(move || -> Resultat<Vec<String>> {
+            let d = std::path::PathBuf::from(d);
+            let mut faits = Vec::new();
+            if !crate::lancement::processus_du_dossier(&d).is_empty() {
+                return Ok(faits);
+            }
+            let mut deja: serde_json::Value = std::fs::read(&notes).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_else(|| serde_json::json!({}));
+            let cle = d.to_string_lossy().to_string();
+            if deja[&cle].as_bool() != Some(true) && d.join("config").join("config.yml").exists() {
+                let (langue, clavier) = crate::emulateurs_profils::langue_et_clavier_de_windows();
+                if crate::emulateurs_profils::rpcs3_regler_langue(&d, langue, clavier)? {
+                    faits.push("langue, clavier et zone de la console pris de Windows".to_string());
+                }
+                if !deja.is_object() {
+                    deja = serde_json::json!({});
+                }
+                deja[&cle] = serde_json::Value::Bool(true);
+                let _ = std::fs::write(&notes, serde_json::to_vec_pretty(&deja).unwrap_or_default());
+            }
+            if let Some(n) = fichier.as_deref().and_then(crate::contenus::titre_id_ps3) {
+                if crate::emulateurs_profils::rpcs3_bouton_selon_region(&d, &n)? {
+                    faits.push(format!("{n} : validation avec Rond (jeu japonais)"));
+                }
+            }
+            Ok(faits)
+        })
+        .await
+        .unwrap_or_else(|_| Ok(vec![]));
+        match r {
+            Ok(faits) => faits.iter().for_each(|f| noyau.journaliser(&format!("RPCS3 : {f}"))),
+            Err(e) => noyau.journaliser(&format!("RPCS3 : langue non réglée ({e:?})")),
+        }
+    }
     // Un jeu resté figé d'une partie précédente repart d'abord.
     crate::figer::degeler();
     // « Occupé » du lancement jusqu'à la fin du suivi de la partie (deux tâches) : jamais rattaché entre les deux.

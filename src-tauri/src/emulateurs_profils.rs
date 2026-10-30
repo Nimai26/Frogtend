@@ -1066,6 +1066,162 @@ pub fn numero_ps3_sur(n: &str) -> bool {
     b.len() == 9 && b[..4].iter().all(u8::is_ascii_uppercase) && b[4..].iter().all(u8::is_ascii_digit)
 }
 
+/// Les valeurs d'ORIGINE de RPCS3 pour la langue, le clavier et la zone (Emu/system_config.h:326-329, relu le 30/10) :
+/// une valeur égale (ou absente) n'a jamais été choisie par la personne.
+const RPCS3_LANGUE_ORIGINE: [(&str, &str); 3] = [("Language", "English (US)"), ("Keyboard Type", "English keyboard (US standard)"), ("License Area", "SCEA")];
+
+/// La langue de la console PS3 d'après la langue de Windows (LANGID), aux noms de RPCS3 (cellSysutil.cpp:369-388).
+pub fn rpcs3_langue(langid: u16) -> Option<&'static str> {
+    Some(match (langid & 0x3FF, langid) {
+        (_, 0x0409) => "English (US)",
+        (0x09, _) => "English (UK)",
+        (0x0C, _) => "French",
+        (0x07, _) => "German",
+        (0x0A, _) => "Spanish",
+        (0x10, _) => "Italian",
+        (0x13, _) => "Dutch",
+        (_, 0x0416) => "Portuguese (Brazil)",
+        (0x16, _) => "Portuguese (Portugal)",
+        (0x19, _) => "Russian",
+        (0x12, _) => "Korean",
+        (_, 0x0404 | 0x0C04 | 0x1404) => "Chinese (Traditional)",
+        (0x04, _) => "Chinese (Simplified)",
+        (0x0B, _) => "Finnish",
+        (0x1D, _) => "Swedish",
+        (0x06, _) => "Danish",
+        (0x14, _) => "Norwegian",
+        (0x15, _) => "Polish",
+        (0x1F, _) => "Turkish",
+        (0x11, _) => "Japanese",
+        _ => return None,
+    })
+}
+
+/// Le clavier de la console d'après l'identifiant de DISPOSITION du clavier de Windows (un clavier belge, suisse ou
+/// canadien est différent du français ; KeyboardHandler.cpp:13-38). Voir `langue_et_clavier_de_windows`.
+pub fn rpcs3_clavier(disposition: u16) -> Option<&'static str> {
+    Some(match disposition {
+        0x040C => "French keyboard",
+        0x080C => "French keyboard (Belgium)",
+        0x100C => "French keyboard (Switzerland)",
+        0x0C0C => "French keyboard (Canada)",
+        0x0409 => "English keyboard (US standard)",
+        0x0809 => "English keyboard (UK standard)",
+        0x0407 => "German keyboard",
+        0x0807 => "German keyboard (Switzerland)",
+        0x040A | 0x0C0A => "Spanish keyboard",
+        0x0410 => "Italian keyboard",
+        0x0413 => "Dutch keyboard",
+        0x0816 => "Portuguese keyboard (Portugal)",
+        0x0416 => "Portuguese keyboard (Brazil)",
+        0x0419 => "Russian keyboard",
+        0x0412 => "Korean keyboard",
+        0x0414 => "Norwegian keyboard",
+        0x040B => "Finnish keyboard",
+        0x0406 => "Danish keyboard",
+        0x041D => "Swedish keyboard",
+        0x0415 => "Polish keyboard",
+        0x041F => "Turkish keyboard",
+        0x0411 => "Japanese keyboard",
+        _ => return None,
+    })
+}
+
+/// La zone de la console (SCEE pour l'Europe…) d'après la langue de Windows.
+pub fn rpcs3_zone(langid: u16) -> Option<&'static str> {
+    Some(match (langid & 0x3FF, langid) {
+        (_, 0x0409 | 0x1009) => "SCEA",
+        (0x11, _) => "SCEJ",
+        (0x12, _) => "SCEK",
+        (0x04, _) => "SCEH",
+        (0x09 | 0x0C | 0x07 | 0x0A | 0x10 | 0x13 | 0x16 | 0x19 | 0x0B | 0x1D | 0x06 | 0x14 | 0x15 | 0x1F, _) => "SCEE",
+        _ => return None,
+    })
+}
+
+/// La langue de Windows et la disposition du clavier PAR DÉFAUT de la personne (`SPI_GETDEFAULTINPUTLANG`, jamais
+/// celle du fil qui appelle). Un HKL : mot haut = la disposition (s'il ne commence pas par 0xF : alors une disposition
+/// « variante », on garde la langue de saisie du mot bas) ; un Français de France sur un clavier belge = 0x080C040C →
+/// belge (relecture lancement 30/10).
+pub fn langue_et_clavier_de_windows() -> (u16, u16) {
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::UI::WindowsAndMessaging::{SystemParametersInfoW, SPI_GETDEFAULTINPUTLANG, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS};
+        let langue = windows::Win32::Globalization::GetUserDefaultUILanguage();
+        let mut hkl: usize = 0;
+        let lu = SystemParametersInfoW(SPI_GETDEFAULTINPUTLANG, 0, Some(&mut hkl as *mut usize as *mut core::ffi::c_void), SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0)).is_ok();
+        let hkl = if lu && hkl != 0 { hkl } else { windows::Win32::UI::Input::KeyboardAndMouse::GetKeyboardLayout(0).0 as usize };
+        (langue, disposition_du_hkl(hkl))
+    }
+    #[cfg(not(windows))]
+    {
+        (0x0409, 0x0409)
+    }
+}
+
+/// L'identifiant de disposition d'un HKL (voir `langue_et_clavier_de_windows`).
+pub fn disposition_du_hkl(hkl: usize) -> u16 {
+    let haut = ((hkl >> 16) & 0xFFFF) as u16;
+    if haut != 0 && haut & 0xF000 != 0xF000 {
+        haut
+    } else {
+        (hkl & 0xFFFF) as u16
+    }
+}
+
+/// Langue, clavier et zone de la console PS3 pris de Windows (lot 4, ✅ Seb 30/10), UNE seule fois par RPCS3 : seulement
+/// une clé absente ou à sa valeur d'origine (jamais un choix de la personne : chez Seb, French / French keyboard / SCEE,
+/// gardés) ; jamais si RPCS3 est ouvert (il réécrirait en quittant) ; jamais un `config.yml` qui n'existe pas encore.
+/// `deja` : Frogtend l'a déjà fait pour ce RPCS3. Rend vrai si quelque chose a changé.
+pub fn rpcs3_regler_langue(rpcs3: &Path, langue: u16, clavier: u16) -> Resultat<bool> {
+    let fichier = rpcs3.join("config").join("config.yml");
+    // Absent : rien (RPCS3 le crée à sa 1re ouverture) ; présent mais illisible : erreur (jamais « fait » sans l'avoir fait).
+    let texte = match std::fs::read_to_string(&fichier) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e.into()),
+    };
+    let voulues = [("Language", rpcs3_langue(langue)), ("Keyboard Type", rpcs3_clavier(clavier)), ("License Area", rpcs3_zone(langue))];
+    let actuelles = lire_cles_yaml(&texte, "System", &RPCS3_LANGUE_ORIGINE.map(|(c, _)| c));
+    let mut a_poser: Vec<(&str, &str)> = Vec::new();
+    for ((cle, voulu), (_, origine)) in voulues.iter().zip(RPCS3_LANGUE_ORIGINE) {
+        let Some(v) = voulu else { continue };
+        if actuelles.get(*cle).is_none_or(|a| a == origine) && actuelles.get(*cle).map(String::as_str) != Some(*v) {
+            a_poser.push((cle, v));
+        }
+    }
+    if a_poser.is_empty() {
+        return Ok(false);
+    }
+    let Some(apres) = regler_cles_yaml(&texte, "System", &a_poser) else { return Ok(false) };
+    remplacer_config(rpcs3, &fichier, &apres)?;
+    Ok(true)
+}
+
+/// Un jeu PS3 japonais (3e lettre du numéro : J) se valide avec Rond, comme sur sa console : posé dans SES réglages
+/// (`custom_configs`), seulement si la clé n'y est pas déjà. (Asie, Corée : non vérifié, rien de posé.)
+pub fn rpcs3_bouton_selon_region(rpcs3: &Path, numero: &str) -> Resultat<bool> {
+    if !numero_ps3_sur(numero) || numero.as_bytes()[2] != b'J' {
+        return Ok(false);
+    }
+    if !rpcs3.join("config").join("config.yml").exists() {
+        return Ok(false);
+    }
+    let fichier = rpcs3_config_du_jeu(rpcs3, numero)?;
+    // Illisible : jamais remplacé (une ligne seule écraserait les réglages du jeu de la personne).
+    let avant = match std::fs::read_to_string(&fichier) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e.into()),
+    };
+    if lire_cles_yaml(&avant, "System", &["Enter button assignment"]).contains_key("Enter button assignment") {
+        return Ok(false);
+    }
+    let Some(apres) = regler_cles_yaml(&avant, "System", &[("Enter button assignment", "Enter with circle")]) else { return Ok(false) };
+    remplacer_config(rpcs3, &fichier, &apres)?;
+    Ok(true)
+}
+
 /// La « marque » d'une version de RPCS3 : taille et date de `rpcs3.exe`, et le micrologiciel. Elle change à chaque mise
 /// à jour (par RPCS3 lui-même ou par Frogtend) : le jeu est alors recompilé à sa première partie (plusieurs minutes,
 /// essai de Seb du 29/10 : 5 min 30 pour Asura's Wrath).
@@ -2234,6 +2390,74 @@ mod essai_reel_micrologiciel {
     fn lire_le_vrai_micrologiciel() {
         let d = std::path::PathBuf::from(std::env::var("FROGTEND_RPCS3").unwrap());
         println!("MICROLOGICIEL {:?}", super::micrologiciel_rpcs3(&d));
+    }
+}
+
+#[cfg(test)]
+mod tests_langue_rpcs3 {
+    use super::*;
+
+    /// Sur une COPIE du vrai config.yml : `FROGTEND_RPCS3_CFG=<chemin> cargo test --lib copie_langue -- --ignored`.
+    #[test]
+    #[ignore]
+    fn copie_langue_du_vrai_rpcs3() {
+        let source = std::env::var("FROGTEND_RPCS3_CFG").expect("FROGTEND_RPCS3_CFG");
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join("config")).unwrap();
+        let avant = std::fs::read(&source).unwrap();
+        std::fs::write(d.path().join("config/config.yml"), &avant).unwrap();
+        let change = rpcs3_regler_langue(d.path(), 0x040C, 0x040C).unwrap();
+        let apres = std::fs::read(d.path().join("config/config.yml")).unwrap();
+        println!("CHANGE : {change} ; IDENTIQUE : {}", apres == avant);
+    }
+
+    #[test]
+    fn la_langue_et_le_clavier_de_windows() {
+        assert_eq!(rpcs3_langue(0x040C), Some("French"));
+        assert_eq!(rpcs3_langue(0x0C0C), Some("French"), "français du Canada");
+        assert_eq!(rpcs3_clavier(0x0C0C), Some("French keyboard (Canada)"), "mais son clavier à lui");
+        assert_eq!(rpcs3_langue(0x0409), Some("English (US)"));
+        assert_eq!(rpcs3_langue(0x0809), Some("English (UK)"));
+        assert_eq!(rpcs3_langue(0x0416), Some("Portuguese (Brazil)"));
+        assert_eq!(rpcs3_zone(0x040C), Some("SCEE"));
+        assert_eq!(rpcs3_zone(0x0411), Some("SCEJ"));
+        assert_eq!(rpcs3_langue(0x0401), None, "arabe : rien de deviné");
+        assert_eq!(disposition_du_hkl(0x080C040C), 0x080C, "Français de France sur un clavier belge");
+        assert_eq!(disposition_du_hkl(0x040C040C), 0x040C);
+        assert_eq!(disposition_du_hkl(0xF020040C), 0x040C, "variante : la langue de saisie");
+    }
+
+    #[test]
+    fn rien_n_est_change_chez_qui_a_choisi_et_l_origine_est_remplacee() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        assert!(!rpcs3_regler_langue(r, 0x040C, 0x040C).unwrap(), "pas encore de config.yml : rien créé");
+        std::fs::create_dir_all(r.join("config")).unwrap();
+        // Chez Seb : ses choix, octet pour octet.
+        let seb = "Core:\r\n  X: 1\r\nSystem:\r\n  Enter button assignment: Enter with cross\r\n  Keyboard Type: French keyboard\r\n  Language: French\r\n  License Area: SCEE\r\n";
+        std::fs::write(r.join("config/config.yml"), seb).unwrap();
+        assert!(!rpcs3_regler_langue(r, 0x0409, 0x0409).unwrap());
+        assert_eq!(std::fs::read_to_string(r.join("config/config.yml")).unwrap(), seb);
+        // Valeurs d'origine : remplacées par celles de Windows (fins de ligne gardées).
+        std::fs::write(r.join("config/config.yml"), "System:\r\n  Keyboard Type: English keyboard (US standard)\r\n  Language: English (US)\r\n  License Area: SCEA\r\n").unwrap();
+        assert!(rpcs3_regler_langue(r, 0x040C, 0x040C).unwrap());
+        let t = std::fs::read_to_string(r.join("config/config.yml")).unwrap();
+        assert!(t.contains("  Language: French\r\n") && t.contains("  Keyboard Type: French keyboard\r\n") && t.contains("  License Area: SCEE\r\n"), "{t}");
+    }
+
+    #[test]
+    fn un_jeu_japonais_se_valide_avec_rond_dans_ses_propres_reglages() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        std::fs::create_dir_all(r.join("config")).unwrap();
+        std::fs::write(r.join("config/config.yml"), "System:\n  Language: French\n").unwrap();
+        assert!(!rpcs3_bouton_selon_region(r, "BLES01227").unwrap(), "européen : rien");
+        assert!(!rpcs3_bouton_selon_region(r, "BLAS50001").unwrap(), "Asie : non vérifié, rien");
+        assert!(rpcs3_bouton_selon_region(r, "BLJM60001").unwrap());
+        let f = rpcs3_config_du_jeu(r, "BLJM60001").unwrap();
+        assert!(std::fs::read_to_string(&f).unwrap().contains("Enter button assignment: Enter with circle"));
+        assert!(!rpcs3_bouton_selon_region(r, "BLJM60001").unwrap(), "déjà là : rien");
+        assert!(std::fs::read_to_string(r.join("config/config.yml")).unwrap() == "System:\n  Language: French\n", "le réglage général intact");
     }
 }
 

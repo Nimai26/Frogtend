@@ -27,6 +27,13 @@
   rien, inchangé + même version → remplacé (original dans `<jeu>\Frogtendvant-abri\`), sinon gardé ; écriture
   `.frogtend-tmp` puis renommée ; place vérifiée ; refus si le jeu est occupé ; remise ratée → « jouer quand même ? ».
   RESTE : Échap sur la question = « non » pour toujours (une entrée « Remettre mes parties » dans Gérer le jeu ?) ;
+  (4) FAIT en 0.153.0 pour RPCS3 seulement (valeurs d'origine et noms exacts relevés dans les sources de RPCS3 ; relecture
+  lancement : fichier illisible jamais remplacé, disposition par SPI_GETDEFAULTINPUTLANG) : langue/clavier/zone de Windows
+  une fois si absents ou d'origine (essai sur une copie du vrai config.yml de Seb : identique) ; jeu japonais (J) → Rond
+  dans custom_configs. RESTE : PPSSPP (langue, ButtonPreference), Dolphin, Eden, Cemu, Azahar après relevé de leurs
+  sources ; Asie / Corée (non vérifié) ;
+- **✅ (1)-(5) FAITS (0.149.0 → 0.153.0).** Suivent, AVEC Seb : maquette de la nouvelle Taodbox, cadrage des réglages
+  selon la carte graphique, nouvelle séance d'essais.
   (1) menu de Frogtend partout dans RPCS3 (sauver / charger / recommencer d'abord, puis le bouton PS retiré) ; (2) effet
   d'image changé depuis le menu en jeu (SET_SHADER) ; (3) reposer les parties d'un jeu PC réinstallé (après un oui) ;
   (4) langue et région automatiques des émulateurs ; (5) prévenir quand RPCS3 vient d'être mis à jour. Puis maquette de

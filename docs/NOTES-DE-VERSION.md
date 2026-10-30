@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.153.0 — La PS3 dans ta langue, toute seule
+
+- 🌍 RPCS3 : la langue, le clavier et la zone de la console sont pris de Windows (français, clavier français, Europe
+  chez toi), une seule fois. Un réglage que tu as fait toi-même n'est jamais changé (les tiens sont gardés tels quels).
+- 🇯🇵 Un jeu PS3 japonais se valide avec le bouton Rond, comme sur une console japonaise (réglé pour ce jeu seulement).
+- Les autres émulateurs suivront, une fois leurs réglages vérifiés dans leur documentation.
+
 ## 0.152.0 — Tes parties reviennent quand tu réinstalles un jeu
 
 - 💾 Un jeu PC retiré puis réinstallé : à son premier lancement, Frogtend te dit qu'il a tes parties à l'abri (date,
