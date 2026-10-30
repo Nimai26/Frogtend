@@ -7,6 +7,11 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- **✅ Seb 30/10 soir : « Oui go ! » — enchaîner en autonomie, une version par point, avis des experts avant chacun** :
+  (1) menu de Frogtend partout dans RPCS3 (sauver / charger / recommencer d'abord, puis le bouton PS retiré) ; (2) effet
+  d'image changé depuis le menu en jeu (SET_SHADER) ; (3) reposer les parties d'un jeu PC réinstallé (après un oui) ;
+  (4) langue et région automatiques des émulateurs ; (5) prévenir quand RPCS3 vient d'être mis à jour. Puis maquette de
+  la nouvelle Taodbox et cadrage « réglages selon la carte graphique » AVEC Seb, et une nouvelle séance d'essais.
 - **✅ Seb 28/10 soir : « enchaîne tout ce qui a été décidé d'ajouter, en toute autonomie ; une fois tout fait, nouvelle
   phase de tests ».** Ordre : (1) sauvegardes rapides (emplacement dans le menu en jeu + raccourcis manette) ; (2) bouton
   Xbox → menu en jeu ; (3) triches dans le menu en jeu ; (4) image et confort : shaders, bezels, écran de lancement,
