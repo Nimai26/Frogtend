@@ -6,6 +6,14 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Le menu de Frogtend dans les jeux PS3 (0.149.0)
+- [ ] Asura's Wrath : le bouton Xbox ouvre le menu de Frogtend (plus celui de RPCS3, en anglais).
+- [ ] « 💾 Sauvegarde rapide (le jeu repart un instant) » : le jeu s'arrête une seconde et repart au même endroit ;
+      puis « 📂 Charger la dernière sauvegarde rapide » : on revient à ce moment-là.
+- [ ] ⚠ À vérifier d'abord À LA MAIN, clavier français : dans RPCS3, Ctrl + Alt + & (la touche du 1) recharge-t-il ?
+      Si non, « Charger » ne marchera pas non plus (à corriger).
+- [ ] Photo de l'écran, son coupé, avance rapide depuis Options du jeu.
+
 ## Le jeu visible derrière le menu en Taodbox (0.148.0)
 - [x] (✅ Seb 30/10) Super Mario World lancé depuis Taodbox : le menu en jeu s'ouvre en grand au centre, le jeu visible autour ; texte
       lisible de loin ; « 🗺 Les boutons » ne rapetisse pas la fenêtre.

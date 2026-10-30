@@ -599,9 +599,18 @@ mod fenetres {
     use windows::core::BOOL;
     use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_EXTENDEDKEY,
-        KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, MOUSEEVENTF_MOVE, MOUSEINPUT, VIRTUAL_KEY,
+        GetKeyboardLayout, MapVirtualKeyExW, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYBD_EVENT_FLAGS,
+        KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, MAPVK_VK_TO_VSC, MOUSEEVENTF_MOVE, MOUSEINPUT, VIRTUAL_KEY,
     };
+
+    /// Le code de balayage d'une touche VIRTUELLE (une lettre, un chiffre) d'après la disposition du clavier du jeu au
+    /// premier plan : en AZERTY, « M » n'est pas à la place du M QWERTY (leçon du 19/10, relecture lancement 30/10).
+    pub fn scan_de_vk(vk: u16) -> u16 {
+        unsafe {
+            let fil = GetWindowThreadProcessId(GetForegroundWindow(), None);
+            MapVirtualKeyExW(vk as u32, MAPVK_VK_TO_VSC, Some(GetKeyboardLayout(fil))) as u16
+        }
+    }
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetForegroundWindow, GetWindow, GetWindowThreadProcessId, IsIconic, IsWindowVisible, PostMessageW,
         SetForegroundWindow, ShowWindow, GW_OWNER, SW_RESTORE, WM_CLOSE,
@@ -732,11 +741,7 @@ fn code(nom: &str) -> Option<(u16, bool)> {
         "F16" => (0x67, false),
         "F4" => (0x3E, false),
         "Home" => (0x47, true),
-        // RPCS3 (codes de balayage d'un clavier PC : la POSITION, la même sur AZERTY et QWERTY pour ces touches-là
-        // sauf S et M, qui ne bougent pas non plus entre les deux).
-        "S" => (0x1F, false),
-        "M" => (0x32, false),
-        "1" => (0x02, false),
+        // RPCS3 : F10 et F12 (les lettres et chiffres passent par la disposition du clavier, `scan_lettre`).
         "F10" => (0x44, false),
         "F12" => (0x58, false),
         _ => return None,
@@ -837,12 +842,19 @@ pub fn agir(emulateur: &str, pids: &[u32], a: Action) -> Resultat<()> {
     }
     let t = crate::pilotage::touche(emulateur, a)
         .ok_or_else(|| Erreur::Refus("Cet émulateur ne sait pas le faire depuis le menu.".into()))?;
-    let (scan, etendue) = code(t.touche).ok_or_else(|| Erreur::Refus(format!("Touche inconnue : {}.", t.touche)))?;
+    let lettre = t.touche.len() == 1 && t.touche.chars().all(|c| c.is_ascii_alphanumeric());
+    let (scan, etendue) = if lettre { (0, false) } else { code(t.touche).ok_or_else(|| Erreur::Refus(format!("Touche inconnue : {}.", t.touche)))? };
     if !reprendre(pids) {
         return Err(Erreur::Introuvable("La fenêtre du jeu est introuvable.".into()));
     }
     // Le temps que l'émulateur reprenne le premier plan et sorte de sa pause.
     std::thread::sleep(Duration::from_millis(250));
+    // Une lettre ou un chiffre : la touche de la disposition du jeu (au premier plan maintenant).
+    #[cfg(windows)]
+    let scan = if lettre { fenetres::scan_de_vk(t.touche.as_bytes()[0].to_ascii_uppercase() as u16) } else { scan };
+    if lettre && scan == 0 {
+        return Err(Erreur::Refus(format!("La touche {} n'existe pas sur ce clavier.", t.touche)));
+    }
     let mut m = Vec::new();
     if t.ctrl {
         m.push(CTRL);

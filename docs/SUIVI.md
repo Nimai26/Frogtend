@@ -8,6 +8,11 @@
 ## 🔨 En cours / à faire (sans attendre Seb)
 
 - **✅ Seb 30/10 soir : « Oui go ! » — enchaîner en autonomie, une version par point, avis des experts avant chacun** :
+  (1) FAIT en 0.149.0 (relevé des sources RPCS3 ; relecture lancement : B1 disque plein → jeu relancé du début ⇒ place
+  vérifiée ; AZERTY ⇒ lettres par la disposition du clavier ; états communs à la maison ⇒ seulement ceux du profil ;
+  parties PS3 à l'abri avant de charger ; état d'une ancienne version refusé ; `--no-gui` exigé ; profil de manette
+  actif « Default » exigé ; un seul chemin menu + manette avec verrou). RESTE : Ctrl+Alt+1 en AZERTY (essai) ;
+  refus fréquent de RPCS3 si le jeu sauvegarde (dit seulement au journal) ;
   (1) menu de Frogtend partout dans RPCS3 (sauver / charger / recommencer d'abord, puis le bouton PS retiré) ; (2) effet
   d'image changé depuis le menu en jeu (SET_SHADER) ; (3) reposer les parties d'un jeu PC réinstallé (après un oui) ;
   (4) langue et région automatiques des émulateurs ; (5) prévenir quand RPCS3 vient d'être mis à jour. Puis maquette de

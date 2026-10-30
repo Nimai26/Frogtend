@@ -1393,13 +1393,17 @@ pub async fn jeu_jouer(
     let (plateforme, titre) = jeu.map(|j| (j.plateforme, j.titre)).unwrap_or_default();
     let mut id_emulateur = None;
     let mut dossier_emulateur = None;
-    // RetroArch : le nom du cœur (le dossier où il cherche les triches du jeu).
+    // RetroArch : le nom du cœur (le dossier où il cherche les triches du jeu). RPCS3 : sa ligne de lancement.
     let mut coeur_ra: Option<String> = None;
+    let mut ligne_rpcs3: Option<String> = None;
     let emulateur = match (!de_boutique).then(|| emulateur_regle(&app, &plateforme, id, emulateur.as_deref())).flatten() {
         Some((programme, ligne)) => {
             dossier_emulateur = std::path::Path::new(&programme).parent().map(|d| d.to_string_lossy().to_string());
             let nom = std::path::Path::new(&programme).file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
             id_emulateur = crate::emulateurs::CATALOGUE.iter().find(|f| nom.starts_with(f.programme)).map(|f| f.id.to_string());
+            if id_emulateur.as_deref() == Some("rpcs3") {
+                ligne_rpcs3 = Some(ligne.clone());
+            }
             if id_emulateur.as_deref() == Some("retroarch") {
                 coeur_ra = std::path::Path::new(&programme)
                     .parent()
@@ -1546,8 +1550,10 @@ pub async fn jeu_jouer(
             _ => true,
         }
     } else if id_emulateur.as_deref() == Some("rpcs3") {
-        // RPCS3 : ses raccourcis d'origine (sinon le menu ne lui envoie rien).
-        dossier_emulateur.as_deref().is_some_and(|d| crate::pilotage::rpcs3_raccourcis_d_origine(std::path::Path::new(d)))
+        // RPCS3 : ses raccourcis d'origine, et lancé SANS sa fenêtre principale (`--no-gui` : sinon Ctrl+S y veut dire
+        // « Arrêter ») — sinon le menu ne lui envoie rien.
+        ligne_rpcs3.as_deref().is_some_and(|l| l.contains("--no-gui"))
+            && dossier_emulateur.as_deref().is_some_and(|d| crate::pilotage::rpcs3_raccourcis_d_origine(std::path::Path::new(d)))
     } else {
         true
     };
@@ -1743,7 +1749,10 @@ fn suivre_manette_menu(app: &AppHandle, numero: u64) {
     let reglage_xbox = bouton_xbox(&app);
     let emulateur = partie.as_ref().and_then(|p| p.emulateur.clone());
     // Sans émulateur reconnu : un jeu PC (son dossier est connu), sinon un émulateur hors catalogue.
-    let ps_retire = partie.as_ref().and_then(|p| p.dossier_emulateur.as_deref()).is_some_and(|d| crate::manettes::rpcs3_ps_retire(std::path::Path::new(d)));
+    let ps_retire = partie.as_ref().and_then(|p| p.dossier_emulateur.as_deref()).is_some_and(|d| {
+        let d = std::path::Path::new(d);
+        crate::manettes::rpcs3_ps_retire(d) && crate::pilotage::rpcs3_active_est_default(d, crate::pilotage::rpcs3_numero_en_cours(d).as_deref())
+    });
     let moteur = match (emulateur.as_deref(), partie.as_ref().is_some_and(|p| p.dossier_jeu.is_some())) {
         (Some("rpcs3"), _) if ps_retire => crate::osd_manette::Moteur::EmulateurLibere,
         (Some(e), _) => crate::osd_manette::Moteur::Emulateur(e),
@@ -2047,17 +2056,9 @@ pub async fn menu_jeu_action(app: AppHandle, noyau: State<'_, Noyau>, action: St
     if e == "mame" {
         return action_mame(&app, &noyau, p.dossier_emulateur.as_deref(), a, p.emplacement).await;
     }
-    // RPCS3 : charger sans aucun état de ce jeu ne ferait rien (dit dans le menu, encore ouvert).
-    if e == "rpcs3" && a == crate::pilotage::Action::ChargerEtat {
-        let d = p.dossier_emulateur.clone().map(std::path::PathBuf::from);
-        let vide = tauri::async_runtime::spawn_blocking(move || {
-            d.as_deref().and_then(|d| crate::pilotage::rpcs3_numero_en_cours(d).map(|n| crate::pilotage::rpcs3_etats(d, &n).is_empty()))
-        })
-        .await
-        .unwrap_or(None);
-        if vide == Some(true) {
-            return Err(Erreur::Refus("Aucune sauvegarde rapide de ce jeu : sauve d'abord.".into()));
-        }
+    // RPCS3 : sauver / charger avec leurs gardes (refus dit dans le menu, encore ouvert).
+    if e == "rpcs3" && matches!(a, crate::pilotage::Action::SauverEtat | crate::pilotage::Action::ChargerEtat) {
+        return etat_rpcs3(&app, &noyau, p, a, true).await;
     }
     cacher_menu(&app);
     if e == "retroarch" && matches!(a, crate::pilotage::Action::SauverEtat | crate::pilotage::Action::ChargerEtat) {
@@ -2068,31 +2069,90 @@ pub async fn menu_jeu_action(app: AppHandle, noyau: State<'_, Noyau>, action: St
         }
         return r;
     }
-    let rpcs3 = (e == "rpcs3" && a == crate::pilotage::Action::SauverEtat).then(|| p.dossier_emulateur.clone()).flatten();
     tauri::async_runtime::spawn_blocking(move || crate::menu_jeu::agir(&e, &crate::lancement::processus_de_la_partie(p.pid), a))
         .await
-        .map_err(|_| Erreur::Disque("L'action s'est arrêtée brutalement.".into()))??;
-    if let Some(d) = rpcs3 {
-        verifier_etat_rpcs3(app.clone(), std::path::PathBuf::from(d));
-    }
-    Ok(())
+        .map_err(|_| Erreur::Disque("L'action s'est arrêtée brutalement.".into()))?
 }
 
-/// RPCS3 : une sauvegarde rapide est-elle VRAIMENT écrite (un `.SAVESTAT` neuf dans les 30 s) ? Rien ne le confirme
-/// sinon ; le résultat est noté au journal (le jeu peut la refuser pendant qu'il sauvegarde lui-même).
-fn verifier_etat_rpcs3(app: AppHandle, d: std::path::PathBuf) {
-    std::thread::spawn(move || {
-        let debut = std::time::SystemTime::now() - std::time::Duration::from_secs(2);
-        let Some(n) = crate::pilotage::rpcs3_numero_en_cours(&d) else { return };
+/// La place minimale avant une sauvegarde d'état de RPCS3 : une écriture ratée (disque plein) le fait redémarrer le
+/// jeu depuis son lancement — la partie perdue (System.cpp:3833-4057, relecture lancement 30/10).
+const PLACE_MIN_RPCS3: u64 = 4 * 1024 * 1024 * 1024;
+
+/// Les sauvegardes d'état RPCS3 faites par ce profil (RPCS3 les range par jeu pour toute la maison : on ne recharge
+/// jamais celle d'un autre). `<profil>/rpcs3-etats.json` = noms de fichiers.
+fn etats_rpcs3_du_profil(noyau: &Noyau, profil: &str) -> std::path::PathBuf {
+    dossier_profil_de(noyau, profil).join("rpcs3-etats.json")
+}
+
+/// RPCS3 : sauver (Ctrl+S) ou charger le plus récent (Ctrl+Alt+1), depuis le menu (`depuis_menu` : il se cache
+/// seulement si tout est prêt) ou un raccourci manette. Une action à la fois. Sauver : assez de place sur le disque,
+/// puis le fichier neuf est attendu (30 s) et retenu pour CE profil. Charger : un état de ce jeu, fait par ce profil, et
+/// par CETTE version de RPCS3 (sinon le jeu s'arrêterait) ; les sauvegardes du jeu mises à l'abri avant (un état ne
+/// les contient pas : le jeu pourrait réécrire une progression plus ancienne) — une copie ratée, rien n'est envoyé.
+async fn etat_rpcs3(app: &AppHandle, noyau: &Noyau, p: crate::menu_jeu::PartieEnCours, a: crate::pilotage::Action, depuis_menu: bool) -> Resultat<()> {
+    use crate::pilotage::Action;
+    let menu = app.state::<crate::menu_jeu::MenuJeu>();
+    let _seule = menu.prendre_etat().ok_or_else(|| Erreur::Refus("Une sauvegarde rapide est déjà en cours.".into()))?;
+    let d = std::path::PathBuf::from(p.dossier_emulateur.clone().ok_or_else(|| Erreur::Refus("RPCS3 est introuvable.".into()))?);
+    let fichier_profil = etats_rpcs3_du_profil(noyau, &profil_ouvert(noyau).await?.id);
+    let (d2, f2) = (d.clone(), fichier_profil.clone());
+    let numero = tauri::async_runtime::spawn_blocking(move || -> Resultat<String> {
+        let n = crate::pilotage::rpcs3_numero_en_cours(&d2).ok_or_else(|| Erreur::Refus("Le jeu PS3 en cours est introuvable dans le journal de RPCS3.".into()))?;
+        if a == Action::SauverEtat {
+            let libre = crate::jeux_pc::place_libre(&d2).unwrap_or(u64::MAX);
+            let plus_gros = crate::pilotage::rpcs3_etats(&d2, &n).iter().filter_map(|(f, _)| std::fs::metadata(f).ok().map(|m| m.len())).max().unwrap_or(0);
+            if libre < u64::max(PLACE_MIN_RPCS3, 2 * plus_gros) {
+                return Err(Erreur::Refus("Pas assez de place sur le disque de RPCS3 pour une sauvegarde rapide : libère de la place d'abord (sinon le jeu repartirait du début).".into()));
+            }
+        } else {
+            let miens: Vec<String> = std::fs::read(&f2).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default();
+            let mut etats = crate::pilotage::rpcs3_etats(&d2, &n);
+            etats.sort_by_key(|(_, t)| *t);
+            let (plus_recent, quand) = etats.last().cloned().ok_or_else(|| Erreur::Refus("Aucune sauvegarde rapide de ce jeu : sauve d'abord.".into()))?;
+            let nom = plus_recent.file_name().map(|x| x.to_string_lossy().to_string()).unwrap_or_default();
+            if !miens.contains(&nom) {
+                return Err(Erreur::Refus("La dernière sauvegarde rapide de ce jeu a été faite par une autre personne : sauve d'abord la tienne.".into()));
+            }
+            let exe = std::fs::metadata(d2.join("rpcs3.exe")).and_then(|m| m.modified()).ok();
+            if exe.is_some_and(|e| quand < e) {
+                return Err(Erreur::Refus("Cette sauvegarde rapide a été faite avec une ancienne version de RPCS3 : elle ne se chargerait pas, et le jeu s'arrêterait.".into()));
+            }
+            crate::contenus::abriter_parties_ps3(&d2, &n).map_err(|e| Erreur::Refus(format!("Ta partie n'a pas pu être mise à l'abri ({e:?}) : rien n'a été chargé.")))?;
+        }
+        Ok(n)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La sauvegarde rapide s'est arrêtée brutalement.".into()))??;
+    if depuis_menu {
+        cacher_menu(app);
+    }
+    let pids = crate::lancement::processus_de_la_partie(p.pid);
+    let debut = std::time::SystemTime::now() - std::time::Duration::from_secs(2);
+    let app2 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || -> Resultat<()> {
+        crate::menu_jeu::agir("rpcs3", &pids, a)?;
+        if a != Action::SauverEtat {
+            return Ok(());
+        }
+        // Le fichier neuf (la touche ne confirme rien) ; la main n'est rendue qu'après (jamais deux actions mêlées).
         for _ in 0..60 {
             std::thread::sleep(std::time::Duration::from_millis(500));
-            if crate::pilotage::rpcs3_etats(&d, &n).iter().any(|(_, t)| *t >= debut) {
-                app.state::<Noyau>().journaliser(&format!("RPCS3 : sauvegarde rapide de {n} écrite"));
-                return;
+            if let Some((f, _)) = crate::pilotage::rpcs3_etats(&d, &numero).into_iter().find(|(_, t)| *t >= debut) {
+                let nom = f.file_name().map(|x| x.to_string_lossy().to_string()).unwrap_or_default();
+                let mut miens: Vec<String> = std::fs::read(&fichier_profil).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default();
+                if !miens.contains(&nom) {
+                    miens.push(nom);
+                }
+                let _ = std::fs::write(&fichier_profil, serde_json::to_vec(&miens).unwrap_or_default());
+                app2.state::<Noyau>().journaliser(&format!("RPCS3 : sauvegarde rapide de {numero} écrite"));
+                return Ok(());
             }
         }
-        app.state::<Noyau>().journaliser(&format!("RPCS3 : sauvegarde rapide de {n} NON écrite en 30 s (refusée par RPCS3 ?)"));
-    });
+        app2.state::<Noyau>().journaliser(&format!("RPCS3 : sauvegarde rapide de {numero} NON écrite en 30 s (refusée par RPCS3 : jeu en train de sauvegarder ?)"));
+        Ok(())
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La sauvegarde rapide s'est arrêtée brutalement.".into()))?
 }
 
 /// RetroArch : sauver ou charger dans l'emplacement CHOISI (✅ Seb 28/10). Charger : `LOAD_STATE_SLOT <n>` (vérifié dans
@@ -2217,6 +2277,8 @@ async fn raccourci_etat(app: &AppHandle, quoi: &'static str) {
         action_mame(app, &noyau, p.dossier_emulateur.as_deref(), a, n).await
     } else if e == "retroarch" {
         etat_retroarch(app, p, a).await
+    } else if e == "rpcs3" {
+        etat_rpcs3(app, &noyau, p, a, false).await
     } else {
         let pids = crate::lancement::processus_de_la_partie(p.pid);
         tauri::async_runtime::spawn_blocking(move || crate::menu_jeu::agir(&e, &pids, a))
@@ -2420,7 +2482,7 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
             (j.plateforme, emulateur, dossier, coeur, rom, contenu, None)
         }
     };
-    let ps_retire = dossier.as_deref().is_some_and(crate::manettes::rpcs3_ps_retire);
+    let ps_retire = dossier.as_deref().is_some_and(|d| crate::manettes::rpcs3_ps_retire(d) && crate::pilotage::rpcs3_active_est_default(d, None));
     let moteur = match (emulateur.as_deref(), jeu_pc) {
         (Some("rpcs3"), _) if ps_retire => crate::osd_manette::Moteur::EmulateurLibere,
         (Some(e), _) => crate::osd_manette::Moteur::Emulateur(e),

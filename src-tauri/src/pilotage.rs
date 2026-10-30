@@ -403,10 +403,12 @@ pub fn rpcs3_raccourcis_d_origine(rpcs3: &Path) -> bool {
             return false;
         }
         if section == "[Shortcuts]" {
-            if let Some((_, d)) = RACCOURCIS_RPCS3.iter().find(|(k, _)| *k == c) {
-                if !v.eq_ignore_ascii_case(d) {
-                    return false;
-                }
+            match RACCOURCIS_RPCS3.iter().find(|(k, _)| *k == c) {
+                Some((_, d)) if !v.eq_ignore_ascii_case(d) => return false,
+                Some(_) => {}
+                // Un AUTRE raccourci mis sur une de nos touches : RPCS3 ferait l'un ou l'autre au hasard.
+                None if RACCOURCIS_RPCS3.iter().any(|(_, d)| v.eq_ignore_ascii_case(d)) => return false,
+                None => {}
             }
         }
     }
@@ -418,10 +420,12 @@ pub fn rpcs3_raccourcis_d_origine(rpcs3: &Path) -> bool {
 /// Le numéro du jeu PS3 en cours (« BLES01227 »), lu dans le journal de RPCS3 (`SYS: Serial: …`, réécrit à chaque
 /// lancement).
 pub fn rpcs3_numero_en_cours(rpcs3: &Path) -> Option<String> {
-    let journal = std::fs::read(rpcs3.join("log").join("RPCS3.log")).ok()?;
-    String::from_utf8_lossy(&journal)
+    // Le début du journal seulement (le numéro y est écrit au démarrage ; le journal grossit pendant toute la partie).
+    use std::io::Read;
+    let mut debut = Vec::new();
+    std::fs::File::open(rpcs3.join("log").join("RPCS3.log")).ok()?.take(2 * 1024 * 1024).read_to_end(&mut debut).ok()?;
+    String::from_utf8_lossy(&debut)
         .lines()
-        .rev()
         .find_map(|l| l.split_once("SYS: Serial: ").map(|(_, s)| s.trim().to_string()).filter(|s| s.len() == 9 && s.chars().all(|c| c.is_ascii_alphanumeric())))
 }
 
@@ -432,9 +436,28 @@ pub fn rpcs3_etats(rpcs3: &Path, numero: &str) -> Vec<(std::path::PathBuf, std::
         .into_iter()
         .flatten()
         .flatten()
-        .filter(|e| e.file_name().to_string_lossy().contains(".SAVESTAT"))
+        // Comme RPCS3 (savestate_utils.cpp:311-333) : `<numéro>_…`, `.SAVESTAT`, plus de 1 Ko (jamais un fichier en cours).
+        .filter(|e| {
+            let n = e.file_name().to_string_lossy().to_string();
+            n.starts_with(&format!("{numero}_")) && n.contains(".SAVESTAT") && e.metadata().is_ok_and(|m| m.len() > 1024)
+        })
         .filter_map(|e| Some((e.path(), e.metadata().ok()?.modified().ok()?)))
         .collect()
+}
+
+/// Le bouton PS de RPCS3 est-il bien retiré pour CE jeu ? Le profil `global/Default.yml` de Frogtend (bouton PS
+/// détaché) n'est lu par RPCS3 que si la configuration active est « Default » et qu'aucune n'est choisie pour ce jeu
+/// (pad_config.cpp:308-330) ; sinon le bouton reste à RPCS3.
+pub fn rpcs3_active_est_default(rpcs3: &Path, numero: Option<&str>) -> bool {
+    let actives = std::fs::read_to_string(rpcs3.join("config").join("input_configs").join("active_input_configurations.yml")).unwrap_or_default();
+    actives.lines().all(|l| {
+        let Some((c, v)) = l.split_once(':') else { return true };
+        let (c, v) = (c.trim(), v.trim().trim_matches('"'));
+        match c {
+            "global" => v.is_empty() || v == "Default",
+            _ => numero.is_none_or(|n| c != n),
+        }
+    })
 }
 
 /// Les lignes à ajouter au fichier de réglages de RetroArch (`--appendconfig`). (`apply_cheats_after_load` est écrit
@@ -619,6 +642,8 @@ mod tests_rpcs3 {
         assert!(rpcs3_raccourcis_d_origine(r), "un autre raccourci changé : sans effet");
         std::fs::write(r.join("GuiConfigs/CurrentSettings.ini"), "[Shortcuts]\ngame_window_savestate=F9\n").unwrap();
         assert!(!rpcs3_raccourcis_d_origine(r), "sauver changé par la personne");
+        std::fs::write(r.join("GuiConfigs/CurrentSettings.ini"), "[Shortcuts]\ngame_window_stop=Ctrl+S\n").unwrap();
+        assert!(!rpcs3_raccourcis_d_origine(r), "un autre raccourci sur Ctrl+S");
         std::fs::write(r.join("GuiConfigs/CurrentSettings.ini"), "[GSFrame]\ndisableKbHotkeys=true\n").unwrap();
         assert!(!rpcs3_raccourcis_d_origine(r), "raccourcis coupés");
         std::fs::write(r.join("GuiConfigs/CurrentSettings.ini"), "").unwrap();
@@ -636,9 +661,19 @@ mod tests_rpcs3 {
         assert_eq!(rpcs3_numero_en_cours(r).as_deref(), Some("BLES01227"));
         assert!(rpcs3_etats(r, "BLES01227").is_empty());
         std::fs::create_dir_all(r.join("savestates/BLES01227")).unwrap();
-        std::fs::write(r.join("savestates/BLES01227/BLES01227_1_0.SAVESTAT.zst"), b"x").unwrap();
-        std::fs::write(r.join("savestates/BLES01227/autre.txt"), b"x").unwrap();
+        std::fs::write(r.join("savestates/BLES01227/BLES01227_1_0.SAVESTAT.zst"), vec![0u8; 2048]).unwrap();
+        std::fs::write(r.join("savestates/BLES01227/BLES01227_1_1.SAVESTAT.zst"), b"x").unwrap(); // en cours : trop petit
+        std::fs::write(r.join("savestates/BLES01227/autre.txt"), vec![0u8; 2048]).unwrap();
         assert_eq!(rpcs3_etats(r, "BLES01227").len(), 1);
+        // La configuration de manette active.
+        assert!(rpcs3_active_est_default(r, Some("BLES01227")));
+        std::fs::create_dir_all(r.join("config/input_configs")).unwrap();
+        std::fs::write(r.join("config/input_configs/active_input_configurations.yml"), "global: Default\n").unwrap();
+        assert!(rpcs3_active_est_default(r, Some("BLES01227")));
+        std::fs::write(r.join("config/input_configs/active_input_configurations.yml"), "global: Default\nBLES01227: Ma manette\n").unwrap();
+        assert!(!rpcs3_active_est_default(r, Some("BLES01227")), "un profil propre au jeu");
+        std::fs::write(r.join("config/input_configs/active_input_configurations.yml"), "global: Ma manette\n").unwrap();
+        assert!(!rpcs3_active_est_default(r, None));
     }
 }
 

@@ -1,5 +1,18 @@
 # Notes de version de Frogtend
 
+## 0.149.0 — Le menu de Frogtend aussi dans les jeux PS3
+
+- 🎮 Jeux PS3 (RPCS3) : le bouton Xbox ouvre maintenant le menu de Frogtend, plus celui de RPCS3 (son bouton PS est
+  retiré dans le profil de manette que Frogtend écrit ; un profil que tu aurais réglé toi-même n'est pas touché).
+- 💾 Le menu en jeu sait désormais, pour la PS3 : **sauvegarde rapide** (le jeu s'arrête un instant puis repart de la
+  sauvegarde), **charger la dernière sauvegarde rapide**, avance rapide, photo de l'écran, son coupé. Les raccourcis
+  Vue + LT / Vue + RT marchent aussi.
+- 🛡 Avant de charger : tes sauvegardes du jeu sont mises à l'abri ; Frogtend ne recharge que TA dernière sauvegarde
+  rapide (RPCS3 les garde pour toute la maison, 4 par jeu, et efface lui-même les plus anciennes) ; une sauvegarde faite
+  avec une ancienne version de RPCS3 est refusée (elle arrêterait le jeu). Avant de sauver : assez de place sur le
+  disque, sinon RPCS3 ferait repartir le jeu du début.
+- Pas de « Recommencer » pour la PS3 : celui de RPCS3 recharge en fait la dernière sauvegarde rapide.
+
 ## 0.148.0 — En Taodbox, le jeu reste visible derrière le menu
 
 - 📺 Taodbox : le menu en jeu n'occupe plus tout l'écran. Il s'ouvre dans une grande fenêtre au centre, toujours à la
