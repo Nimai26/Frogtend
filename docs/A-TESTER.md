@@ -101,7 +101,7 @@
       bien ses 4 lignes ; essayer avance rapide, photo, son.
 - [x] (✅ Seb 28/10) Pas de « Disque suivant » pour la cartouche.
 - [x] (✅ Seb 28/10) « Recommencer » et « Quitter » : un seul appui (après la confirmation de Frogtend), pas de message de RetroArch.
-- [ ] Un AUTRE système jamais préparé (ex. Game Boy) : « Mettre dans ma ludothèque », oui à la préparation, puis
+- [x] (✅ Seb 30/10, Game Boy : arrivée, livret, boutons, sauvegarde rapide) Un AUTRE système jamais préparé (ex. Game Boy) : « Mettre dans ma ludothèque », oui à la préparation, puis
       cliquer « ▶ Jouer » PENDANT l'installation → le bouton dit « ⏳ Préparation de RetroArch… », aucune 2e question,
       le jeu se lance tout seul à la fin.
 - [ ] Ouvrir RPCS3 à la main : aucune question de mise à jour.
