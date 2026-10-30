@@ -156,7 +156,12 @@
   cause, diagnostic retiré ;
   ESSAI 30/10 : menu en jeu de Taodbox, fond = « image de Mario zoomée à fond » → le fond d'un jeu sans vrai fond se
   replie sur une CAPTURE (SNES : 256 × 224) étirée sur la télé → CORRIGÉ (non livré) : sous 640 × 360, le fond du
-  thème (menu en jeu, écran de lancement, Taodbox) ; DEMANDE de Seb (29/10) : « détecter la carte
+  thème (menu en jeu, écran de lancement, Taodbox) ;
+  DEMANDE de Seb (30/10) : il a réglé À LA MAIN dans RPCS3 la région / la langue de la console et le clavier en Europe
+  FR → « par défaut, et adaptatif automatique si on lance un jeu d'une autre région ». À cadrer (avis lancement) :
+  langue système et clavier de chaque émulateur (RPCS3, PCSX2, Dolphin, PPSSPP, Eden, DuckStation…) pris d'office
+  de la langue de Windows, sans défaire un réglage de la personne ; par jeu : région lue dans le numéro de série / le
+  nom No-Intro (Japon → bouton de validation Rond, langue de repli si le jeu n'a pas le français…) ; DEMANDE de Seb (29/10) : « détecter la carte
   graphique d'un PC et faire le meilleur réglage » (ici une RTX 3080 Ti) — à cadrer après l'enquête (carte, mémoire
   vidéo, pilote ; réglages RPCS3 et autres émulateurs par carte ; jamais un réglage de la personne défait).
 - **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un

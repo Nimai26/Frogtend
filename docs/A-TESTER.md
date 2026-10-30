@@ -104,7 +104,7 @@
 - [x] (✅ Seb 30/10, Game Boy : arrivée, livret, boutons, sauvegarde rapide) Un AUTRE système jamais préparé (ex. Game Boy) : « Mettre dans ma ludothèque », oui à la préparation, puis
       cliquer « ▶ Jouer » PENDANT l'installation → le bouton dit « ⏳ Préparation de RetroArch… », aucune 2e question,
       le jeu se lance tout seul à la fin.
-- [ ] Ouvrir RPCS3 à la main : aucune question de mise à jour.
+- [x] (✅ Seb 30/10) Ouvrir RPCS3 à la main : aucune question de mise à jour.
 
 ## Finitions invisibles (0.134.0)
 - [x] (✅ Seb 28/10) Réglages ▸ Emplacements ▸ dossier des émulateurs : choisir `D:\` → une fenêtre dit qu'il ne convient pas et
