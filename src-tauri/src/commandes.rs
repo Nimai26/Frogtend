@@ -1846,6 +1846,11 @@ fn suivre_manette_menu(app: &AppHandle, numero: u64) {
     });
 }
 
+/// Taodbox est-il ouvert (la fenêtre principale en plein écran) ?
+fn taodbox_actif(app: &AppHandle) -> bool {
+    app.get_webview_window("main").and_then(|m| m.is_fullscreen().ok()).unwrap_or(false)
+}
+
 /// Ouvre (ou montre) la fenêtre du menu en jeu par-dessus le jeu, et lui donne le premier plan.
 pub fn ouvrir_menu(app: &AppHandle) {
     if app.state::<crate::menu_jeu::MenuJeu>().partie().is_none() {
@@ -1882,14 +1887,21 @@ pub fn ouvrir_menu(app: &AppHandle) {
             }
         },
     };
-    // En Taodbox (la fenêtre principale est en plein écran, sur la télé) : le menu aussi, à l'échelle ×2 ; sinon, une
-    // petite fenêtre centrée par-dessus le jeu.
-    let taodbox = app.get_webview_window("main").and_then(|m| m.is_fullscreen().ok()).unwrap_or(false);
-    let _ = w.set_fullscreen(taodbox);
-    if !taodbox {
-        let _ = w.set_size(tauri::LogicalSize::new(560.0, 700.0));
-        let _ = w.center();
+    // En Taodbox (la fenêtre principale est en plein écran, sur la télé) : le menu à l'échelle ×2, dans une grande
+    // fenêtre centrée PAR-DESSUS le jeu, qu'on voit autour (✅ Seb 30/10 : « jeu visible ») ; sinon, une petite fenêtre
+    // centrée.
+    let taodbox = taodbox_actif(app);
+    let _ = w.set_fullscreen(false);
+    let (mut l, mut h) = if taodbox { (1280.0, 1000.0) } else { (560.0, 700.0) };
+    if taodbox {
+        if let Ok(Some(m)) = w.current_monitor() {
+            let s = m.size().to_logical::<f64>(m.scale_factor());
+            l = f64::min(l, s.width * 0.7);
+            h = f64::min(h, s.height * 0.9);
+        }
     }
+    let _ = w.set_size(tauri::LogicalSize::new(l, h));
+    let _ = w.center();
     let _ = w.show();
     let _ = w.unminimize();
     let _ = w.set_focus();
@@ -2408,7 +2420,8 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
 #[tauri::command]
 pub fn menu_jeu_agrandir(app: AppHandle, grand: bool) {
     let Some(w) = app.get_webview_window(FENETRE_MENU) else { return };
-    if w.is_fullscreen().unwrap_or(false) {
+    // En Taodbox, la fenêtre est déjà grande (à l'échelle de la télé) : rien à changer.
+    if w.is_fullscreen().unwrap_or(false) || taodbox_actif(&app) {
         return;
     }
     let (mut l, mut h) = if grand { (1100.0, 820.0) } else { (560.0, 700.0) };

@@ -1,5 +1,10 @@
 # Notes de version de Frogtend
 
+## 0.148.0 — En Taodbox, le jeu reste visible derrière le menu
+
+- 📺 Taodbox : le menu en jeu n'occupe plus tout l'écran. Il s'ouvre dans une grande fenêtre au centre, toujours à la
+  taille de la télé, et le jeu reste visible tout autour, comme au bureau.
+
 ## 0.147.0 — Le menu en jeu en boucle, et des fonds plus nets
 
 - 🔁 Menu en jeu : tout en haut, « haut » passe au dernier bouton ; tout en bas, « bas » revient au premier.

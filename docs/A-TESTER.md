@@ -6,6 +6,10 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Le jeu visible derrière le menu en Taodbox (0.148.0)
+- [ ] Super Mario World lancé depuis Taodbox : le menu en jeu s'ouvre en grand au centre, le jeu visible autour ; texte
+      lisible de loin ; « 🗺 Les boutons » ne rapetisse pas la fenêtre.
+
 ## Le menu en jeu en boucle (0.147.0)
 - [ ] Menu en jeu sur « ▶ Reprendre » : « haut » va à « ⏹ Quitter le jeu » ; « bas » revient à « Reprendre ».
 - [ ] Super Mario World lancé depuis Taodbox : le menu en jeu n'a plus l'énorme image zoomée (fond du thème).

@@ -163,7 +163,10 @@
   de la langue de Windows, sans défaire un réglage de la personne ; par jeu : région lue dans le numéro de série / le
   nom No-Intro (Japon → bouton de validation Rond, langue de repli si le jeu n'a pas le français…) ; ✅ Seb 30/10 : propositions
   VALIDÉES (langue et clavier de Windows d'office, adaptation par région du jeu) — lot à faire après les essais ;
-  DEMANDE de Seb (30/10) : menu en jeu « en boucle » (haut sur le 1er → dernier ; bas sur le dernier → 1er) → FAIT 0.147.0 ; DEMANDE de Seb (29/10) : « détecter la carte
+  DEMANDE de Seb (30/10) : menu en jeu « en boucle » (haut sur le 1er → dernier ; bas sur le dernier → 1er) → FAIT 0.147.0 ;
+  ESSAI 30/10 : fond « zoomé » du menu en Taodbox = l'illustration officielle de SMW (fond 1000 × 563, gros plan sur
+  Mario, floutée), pas un bug ; résolution inchangée (RetroArch plein écran fenêtré). ✅ Seb : « jeu visible » → 0.148.0 :
+  en Taodbox, menu dans une grande fenêtre centrée (1280 × 1000 au plus, 70 % × 90 % de l'écran), échelle ×2, jeu autour ; DEMANDE de Seb (29/10) : « détecter la carte
   graphique d'un PC et faire le meilleur réglage » (ici une RTX 3080 Ti) — à cadrer après l'enquête (carte, mémoire
   vidéo, pilote ; réglages RPCS3 et autres émulateurs par carte ; jamais un réglage de la personne défait).
 - **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un
