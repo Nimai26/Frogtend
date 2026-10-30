@@ -75,6 +75,21 @@ export function deplacer(d: Direction) {
   });
   const n = voisin(boites, i, d);
   if (n !== null) selectionner(l[n]);
+  // Le menu en jeu boucle (✅ Seb 30/10) : en haut, « haut » va au dernier élément ; en bas, « bas » au premier.
+  else if (enBoucle && (d === 'haut' || d === 'bas')) selectionner(boucler(l, boites, d));
+}
+
+/** Le menu en jeu se parcourt en boucle verticale (réglé par `demarrerManette`). */
+let enBoucle = false;
+
+/** L'élément où l'on arrive en sortant par le haut (le plus bas) ou par le bas (le plus haut) de la liste. */
+function boucler(l: HTMLElement[], boites: { x: number; y: number; l: number; h: number }[], d: 'haut' | 'bas'): HTMLElement {
+  let k = 0;
+  for (let j = 1; j < l.length; j++) {
+    const plusBas = boites[j].y > boites[k].y;
+    if (d === 'haut' ? plusBas : boites[j].y < boites[k].y) k = j;
+  }
+  return l[k];
 }
 
 function touche(cle: string) {
@@ -298,9 +313,10 @@ function fleches(e: KeyboardEvent) {
 }
 
 /** `manette: false` : seulement les flèches du clavier (le menu en jeu reçoit la manette du cœur de Frogtend). */
-export function demarrerManette(options: { manette?: boolean } = {}) {
+export function demarrerManette(options: { manette?: boolean; boucle?: boolean } = {}) {
   if (taodbox.actif) return;
   taodbox.actif = true;
+  enBoucle = options.boucle === true;
   // Les boutons déjà tenus au démarrage (la combinaison qui vient d'ouvrir le menu…) ne comptent pas.
   avant = appuyes(manettes());
   direction = null;
@@ -316,6 +332,7 @@ export function demarrerManette(options: { manette?: boolean } = {}) {
 
 export function arreterManette() {
   taodbox.actif = false;
+  enBoucle = false;
   window.removeEventListener('keydown', filtrerDoublons, true);
   window.removeEventListener('keyup', filtrerDoublons, true);
   window.removeEventListener('blur', oublierEcartees);

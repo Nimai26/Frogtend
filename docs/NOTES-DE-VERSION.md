@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.147.0 — Le menu en jeu en boucle, et des fonds plus nets
+
+- 🔁 Menu en jeu : tout en haut, « haut » passe au dernier bouton ; tout en bas, « bas » revient au premier.
+- 🖼 Un jeu sans vraie image de fond n'affiche plus une petite capture d'écran étirée sur toute la télé (l'« énorme
+  image zoomée ») : le fond de ton thème à la place. Menu en jeu, écran de lancement et Taodbox.
+
 ## 0.146.0 — Taodbox à la manette, et un petit mot dans « À propos »
 
 - 🎮 Taodbox : la sélection se voit toujours à la manette, même après un clic ou au retour d'une autre fenêtre (avant,

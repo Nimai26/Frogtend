@@ -91,12 +91,12 @@
    * une fenêtre qui vient d'apparaître par-dessus un jeu (essai de Seb, 0.45.0). */
   function relancerManette() {
     arreterManette();
-    demarrerManette({ manette: false });
+    demarrerManette({ manette: false, boucle: true });
   }
 
   onMount(() => {
     charger();
-    demarrerManette({ manette: false });
+    demarrerManette({ manette: false, boucle: true });
     if (!isTauri()) return arreterManette;
     const arrets = [
       listen<{ taodbox?: boolean } | null>('menu-jeu', (e) => {

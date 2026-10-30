@@ -161,7 +161,9 @@
   FR → « par défaut, et adaptatif automatique si on lance un jeu d'une autre région ». À cadrer (avis lancement) :
   langue système et clavier de chaque émulateur (RPCS3, PCSX2, Dolphin, PPSSPP, Eden, DuckStation…) pris d'office
   de la langue de Windows, sans défaire un réglage de la personne ; par jeu : région lue dans le numéro de série / le
-  nom No-Intro (Japon → bouton de validation Rond, langue de repli si le jeu n'a pas le français…) ; DEMANDE de Seb (29/10) : « détecter la carte
+  nom No-Intro (Japon → bouton de validation Rond, langue de repli si le jeu n'a pas le français…) ; ✅ Seb 30/10 : propositions
+  VALIDÉES (langue et clavier de Windows d'office, adaptation par région du jeu) — lot à faire après les essais ;
+  DEMANDE de Seb (30/10) : menu en jeu « en boucle » (haut sur le 1er → dernier ; bas sur le dernier → 1er) → FAIT 0.147.0 ; DEMANDE de Seb (29/10) : « détecter la carte
   graphique d'un PC et faire le meilleur réglage » (ici une RTX 3080 Ti) — à cadrer après l'enquête (carte, mémoire
   vidéo, pilote ; réglages RPCS3 et autres émulateurs par carte ; jamais un réglage de la personne défait).
 - **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un

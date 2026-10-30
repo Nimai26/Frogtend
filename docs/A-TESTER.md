@@ -6,6 +6,10 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Le menu en jeu en boucle (0.147.0)
+- [ ] Menu en jeu sur « ▶ Reprendre » : « haut » va à « ⏹ Quitter le jeu » ; « bas » revient à « Reprendre ».
+- [ ] Super Mario World lancé depuis Taodbox : le menu en jeu n'a plus l'énorme image zoomée (fond du thème).
+
 ## Taodbox à la manette (0.146.0)
 - [x] (✅ Seb 30/10) Taodbox : cliquer une fois dans la fenêtre, puis la croix vers le haut : un contour apparaît sur un bouton du haut
       (systèmes, Changer de joueur, Bureau) ; A l'ouvre.
@@ -72,7 +76,7 @@
 
 ## Les corrections de la séance (0.138.0)
 - [x] (✅ Seb 29/10) Super Mario All-Stars (arrivé, montrait « Installer ») : après l'ouverture de ton profil, il montre « ▶ Jouer ».
-- [ ] Un nouveau jeu SNES : à l'arrivée, « ✅ … est arrivé : ▶ Jouer » (jamais « Installer »).
+- [x] (✅ Seb 30/10) Un nouveau jeu SNES : à l'arrivée, « ✅ … est arrivé : ▶ Jouer » (jamais « Installer »).
 - [x] (✅ Seb 29/10) Menu en jeu ▸ Manuel et documents : livret, musique, vidéo — la croix bouge la page / la piste, LB et RB
       passent d'un bouton à l'autre (jusqu'à « ✕ Fermer »), A appuie dessus.
 - [x] (✅ Seb 29/10) Gérer ▸ « Ajouter une autre version » : la fiche descend jusqu'aux versions, sélection sur un « ➕ ».

@@ -257,3 +257,32 @@ describe('le focus perdu (un clic sur la page, le retour d’une autre fenêtre 
     expect(clics).toBe(1);
   });
 });
+
+describe('le menu en jeu en boucle (✅ Seb 30/10)', () => {
+  afterEach(() => arreterManette());
+
+  function trois(): HTMLButtonElement[] {
+    document.body.innerHTML = '<button>1</button><button>2</button><button>3</button>';
+    const l = [...document.querySelectorAll('button')];
+    l.forEach((b) => (b.scrollIntoView = () => {}));
+    l.forEach((b, i) => (b.getBoundingClientRect = () => ({ left: 0, top: i * 50, width: 100, height: 40, right: 100, bottom: i * 50 + 40, x: 0, y: i * 50, toJSON() {} }) as DOMRect));
+    l[0].focus();
+    return l;
+  }
+
+  it('en haut, « haut » va au dernier ; en bas, « bas » au premier', () => {
+    const l = trois();
+    demarrerManette({ manette: false, boucle: true });
+    appliquer('haut');
+    expect(document.activeElement).toBe(l[2]);
+    appliquer('bas');
+    expect(document.activeElement).toBe(l[0]);
+  });
+
+  it('ailleurs (Taodbox, bureau) : pas de boucle', () => {
+    const l = trois();
+    demarrerManette({ manette: false });
+    appliquer('haut');
+    expect(document.activeElement).toBe(l[0]);
+  });
+});
