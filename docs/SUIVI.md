@@ -153,7 +153,10 @@
   aucun ordinal 103, SDL non démarré hors partie) → à confirmer avec Seb (logo vraiment éteint ? écran ouvert à la
   souris sans toucher la manette ?) → ✅ RÉSOLU 30/10 : MATÉRIEL. Piles usées, puis piles rechargeables : la manette
   s'éteint seule sur piles, quel que soit l'écran ; en USB, « Voir les boutons » ne l'éteint pas (Seb). Frogtend hors de
-  cause, diagnostic retiré ; DEMANDE de Seb (29/10) : « détecter la carte
+  cause, diagnostic retiré ;
+  ESSAI 30/10 : menu en jeu de Taodbox, fond = « image de Mario zoomée à fond » → le fond d'un jeu sans vrai fond se
+  replie sur une CAPTURE (SNES : 256 × 224) étirée sur la télé → CORRIGÉ (non livré) : sous 640 × 360, le fond du
+  thème (menu en jeu, écran de lancement, Taodbox) ; DEMANDE de Seb (29/10) : « détecter la carte
   graphique d'un PC et faire le meilleur réglage » (ici une RTX 3080 Ti) — à cadrer après l'enquête (carte, mémoire
   vidéo, pilote ; réglages RPCS3 et autres émulateurs par carte ; jamais un réglage de la personne défait).
 - **Ajouter une version : essai de Seb (28/10 soir)** — ❌ aucun bouton « ➕ Ajouter cette version » sur la fiche d'un

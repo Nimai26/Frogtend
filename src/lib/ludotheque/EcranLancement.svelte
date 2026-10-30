@@ -6,6 +6,7 @@
   // inerte (`attenteLancement.montre`, lu par la mise en page) : un A ne relance rien en aveugle.
   import { tick } from 'svelte';
   import { adresseFondDuJeu } from '$lib/api';
+  import { assezGrandPourUnFond } from '$lib/taodbox/fond';
   import { fenetreOuverte, selectionner } from '$lib/taodbox/manette.svelte';
   import { attenteLancement, partie } from './jeu.svelte';
   import { tele } from './telechargements.svelte';
@@ -64,7 +65,7 @@
 {#if montre}
   <div class="lancement" role="status" aria-live="polite">
     {#if fond}
-      <img class="fond" class:visible={fondCharge} src={fond} alt="" onload={() => (fondCharge = true)} onerror={() => (fondCharge = false)} />
+      <img class="fond" class:visible={fondCharge} src={fond} alt="" onload={(e) => (fondCharge = assezGrandPourUnFond((e.currentTarget as HTMLImageElement).naturalWidth, (e.currentTarget as HTMLImageElement).naturalHeight))} onerror={() => (fondCharge = false)} />
     {/if}
     <div class="voile" aria-hidden="true"></div>
     <div class="carte panel">

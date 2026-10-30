@@ -5,6 +5,7 @@
   import { onMount, tick } from 'svelte';
   import { isTauri } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
+  import { assezGrandPourUnFond } from '$lib/taodbox/fond';
   import { adresseFondDuJeu, api, type Annexe, type DocumentJeu, type EtatMenuJeu } from '$lib/api';
   import LecteurLivret from '$lib/ludotheque/LecteurLivret.svelte';
   import LecteurMedia from '$lib/ludotheque/LecteurMedia.svelte';
@@ -417,7 +418,12 @@
     class:visible={fondCharge}
     src={fondJeu}
     alt=""
-    onload={() => (fondCharge = true)}
+    onload={(e) => {
+      const i = e.currentTarget as HTMLImageElement;
+      // Trop petite (une capture : énorme zoom flou) : le fond du thème.
+      if (assezGrandPourUnFond(i.naturalWidth, i.naturalHeight)) fondCharge = true;
+      else fondJeu = null;
+    }}
     onerror={() => ((fondJeu = null), (fondCharge = false))}
   />
   {#if fondCharge}<div class="voile-jeu" aria-hidden="true"></div>{/if}

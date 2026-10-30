@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { apresRepos, idDuFocus, REPOS_MS } from './fond';
+import { apresRepos, assezGrandPourUnFond, idDuFocus, REPOS_MS } from './fond';
 
 describe('idDuFocus', () => {
   it('lit le numéro de la carte, même depuis un élément à l’intérieur', () => {
@@ -40,5 +40,13 @@ describe('apresRepos', () => {
     r.annuler();
     vi.advanceTimersByTime(REPOS_MS * 2);
     expect(vus).toEqual([]);
+  });
+});
+
+describe('une image assez grande pour un fond', () => {
+  it('une capture de Super Nintendo non ; un vrai fond oui', () => {
+    expect(assezGrandPourUnFond(256, 224)).toBe(false);
+    expect(assezGrandPourUnFond(1000, 562)).toBe(true);
+    expect(assezGrandPourUnFond(1000, 300)).toBe(false);
   });
 });

@@ -19,7 +19,7 @@
   import { lireSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
   import { galaxy, lireGalaxy, ouvrirDansGalaxy } from '$lib/boutiques/galaxy.svelte';
   import { adresseImageParUrl, adresseFondDuJeu, adresseLogoDuJeu } from '$lib/api';
-  import { apresRepos, idDuFocus } from '$lib/taodbox/fond';
+  import { apresRepos, assezGrandPourUnFond, idDuFocus } from '$lib/taodbox/fond';
 
   let lanceParSunshine = $state(false);
   let console_ = $state<string | null>(null);
@@ -207,7 +207,11 @@
         class:visible={fondCharge}
         src={adresseFondDuJeu(choisi.fiche ?? choisi.id)}
         alt=""
-        onload={() => (fondCharge = true)}
+        onload={(e) => {
+          // Trop petite (une capture : énorme zoom flou) : comme une absence, le fond du thème.
+          if (assezGrandPourUnFond((e.currentTarget as HTMLImageElement).naturalWidth, (e.currentTarget as HTMLImageElement).naturalHeight)) fondCharge = true;
+          else fondEchec = true;
+        }}
         onerror={() => {
           fondCharge = false;
           fondEchec = true;

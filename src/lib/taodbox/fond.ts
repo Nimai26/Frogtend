@@ -24,3 +24,10 @@ export function apresRepos<T>(rappel: (v: T) => void, ms = REPOS_MS) {
     },
   };
 }
+
+/** Une image assez grande pour couvrir l'écran en fond ? Le fond d'un jeu se replie sur une capture ou un écran titre
+ * quand il n'a pas de vrai fond : une capture de Super Nintendo fait 256 × 224, et étirée sur une télé elle n'est plus
+ * qu'un énorme zoom flou (essai de Seb, 30/10). En dessous de 640 × 360 : le fond du thème à la place. */
+export function assezGrandPourUnFond(largeur: number, hauteur: number): boolean {
+  return largeur >= 640 && hauteur >= 360;
+}
