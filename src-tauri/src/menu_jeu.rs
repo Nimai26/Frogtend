@@ -732,6 +732,13 @@ fn code(nom: &str) -> Option<(u16, bool)> {
         "F16" => (0x67, false),
         "F4" => (0x3E, false),
         "Home" => (0x47, true),
+        // RPCS3 (codes de balayage d'un clavier PC : la POSITION, la même sur AZERTY et QWERTY pour ces touches-là
+        // sauf S et M, qui ne bougent pas non plus entre les deux).
+        "S" => (0x1F, false),
+        "M" => (0x32, false),
+        "1" => (0x02, false),
+        "F10" => (0x44, false),
+        "F12" => (0x58, false),
         _ => return None,
     })
 }

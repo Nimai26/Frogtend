@@ -83,6 +83,9 @@ pub enum Moteur<'a> {
     Emulateur(&'a str),
     /// Un émulateur que Frogtend ne reconnaît pas (hors catalogue) : on ne sait pas ce qu'il fait du bouton.
     Inconnu,
+    /// Un émulateur qui se servait du bouton, mais à qui Frogtend l'a retiré (RPCS3 : bouton PS détaché dans le profil
+    /// de manette que Frogtend écrit, ✅ Seb 30/10 « Frogtend partout »).
+    EmulateurLibere,
 }
 
 /// Le bouton Xbox ouvre-t-il le menu pendant cette partie ? Seulement si la Game Bar de Windows ne le prend pas
@@ -92,7 +95,7 @@ pub fn guide_permis(game_bar: Option<bool>, reglage: bool, moteur: Moteur) -> bo
     game_bar == Some(false)
         && reglage
         && match moteur {
-            Moteur::JeuPc => true,
+            Moteur::JeuPc | Moteur::EmulateurLibere => true,
             Moteur::Emulateur(e) => !GUIDE_A_L_EMULATEUR.contains(&e),
             Moteur::Inconnu => false,
         }
@@ -642,6 +645,7 @@ mod tests {
         assert!(!guide_permis(Some(false), true, Emulateur("xemu")));
         assert!(!guide_permis(Some(false), true, Emulateur("xenia")));
         assert!(!guide_permis(Some(false), true, Inconnu), "émulateur hors catalogue");
+        assert!(guide_permis(Some(false), true, EmulateurLibere), "RPCS3 sans son bouton PS");
     }
 
     #[test]

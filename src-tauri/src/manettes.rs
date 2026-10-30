@@ -390,7 +390,17 @@ pub fn profil_rpcs3(pad: PadRpcs3) -> String {
     };
     // Valeurs ENTRE GUILLEMETS : en YAML, « #1 » après une espace est un commentaire (bug de la 0.44.3 : RPCS3 lisait
     // « XInput Pad », ne trouvait rien et mettait le joueur 1 sur « aucune entrée », clavier compris).
-    format!("{MARQUE_RPCS3}\nPlayer 1 Input:\n  Handler: \"{handler}\"\n  Device: \"{device}\"\n")
+    // Le bouton PS (Guide, ou Start + Back d'office en XInput) n'ouvre plus le menu de RPCS3 : le bouton Xbox est au
+    // menu de Frogtend (✅ Seb 30/10 ; clé `PS Button`, Emu/Io/pad_config.h:84 ; vide = détaché, pad_config.cpp:10).
+    // Le jeu, lui, ne lit pas ce bouton (réservé au système sur une vraie PS3).
+    format!("{MARQUE_RPCS3}\nPlayer 1 Input:\n  Handler: \"{handler}\"\n  Device: \"{device}\"\n  Config:\n    PS Button: \"\"\n")
+}
+
+/// Le bouton PS est-il retiré à RPCS3 (le profil du joueur 1 est celui de Frogtend, bouton PS détaché) ? Un profil de
+/// la personne n'est jamais touché : alors le bouton reste à RPCS3.
+pub fn rpcs3_ps_retire(rpcs3: &Path) -> bool {
+    std::fs::read_to_string(rpcs3.join("config").join("input_configs").join("global").join("Default.yml"))
+        .is_ok_and(|t| t.starts_with(PREFIXE_MARQUE) && t.contains("PS Button: \"\""))
 }
 
 /// Le joueur 1 de RPCS3 sur `pad`. Un fichier sans la marque de Frogtend est celui de la personne : il n'est remplacé
@@ -505,6 +515,8 @@ mod tests {
         // Rien de branché, rien de connu : une manette Xbox (RPCS3 la prendra quand elle se réveille) — PAS le clavier.
         assert!(regler_rpcs3_pour_partie(e, false, None).unwrap());
         assert!(lire().starts_with(MARQUE_RPCS3));
+        assert!(lire().contains("    PS Button: \"\""), "bouton PS détaché");
+        assert!(rpcs3_ps_retire(d.path()));
         assert_eq!((vu("Handler"), vu("Device")), ("XInput".into(), "XInput Pad #1".into()));
         // Une DualSense branchée : elle, et elle est retenue.
         regler_rpcs3_pour_partie(e, false, Some(PadRpcs3::DualSense)).unwrap();

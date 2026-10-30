@@ -12,6 +12,16 @@
   d'image changé depuis le menu en jeu (SET_SHADER) ; (3) reposer les parties d'un jeu PC réinstallé (après un oui) ;
   (4) langue et région automatiques des émulateurs ; (5) prévenir quand RPCS3 vient d'être mis à jour. Puis maquette de
   la nouvelle Taodbox et cadrage « réglages selon la carte graphique » AVEC Seb, et une nouvelle séance d'essais.
+  Avis lancement (30/10) pour (3)(4)(5), à suivre : (3) abri = `<abris>/<id>/<secondes>/`, sans fiche → écrire une
+  fiche `<id>/<date>.json` (version, fichiers + sha256, complet) ; exclure `nuage-steam/` ; ne PAS réutiliser
+  `reposer_parties_du_jeu` (écrase et efface) ; par fichier : absent → posé, inchangé depuis l'installation → remplacé
+  si même version, joué depuis → jamais touché ; question à la fin de l'installation (ou 1er ▶ Jouer), `abri_propose`.
+  (4) rien n'est réglé aujourd'hui ; jamais `user_language` dans frogtend.cfg ; écrire émulateur FERMÉ ; clavier =
+  disposition (HKL), pas la langue ; poser une seule fois si absent ou valeur d'origine (noté par Frogtend) ; RPCS3
+  d'abord (Seb : French / French keyboard / SCEE, à garder), par jeu dans custom_configs (3e lettre J/A → Rond) ;
+  valeurs d'origine RPCS3 et libellé « Enter with circle » à relever dans system_config.h. (5) marque = taille + date de
+  `rpcs3.exe` + micrologiciel, notée par jeu dans `rpcs3-compile.json` ; message aussi si `cache/<numéro>` absent ;
+  noter « prêt » seulement après une partie de ≥ 6 min ou un fichier de cache plus récent que rpcs3.exe.
 - **✅ Seb 28/10 soir : « enchaîne tout ce qui a été décidé d'ajouter, en toute autonomie ; une fois tout fait, nouvelle
   phase de tests ».** Ordre : (1) sauvegardes rapides (emplacement dans le menu en jeu + raccourcis manette) ; (2) bouton
   Xbox → menu en jeu ; (3) triches dans le menu en jeu ; (4) image et confort : shaders, bezels, écran de lancement,

@@ -545,7 +545,7 @@
           <span aria-hidden="true">▶</span>
         </button>
       {/if}
-      {#if a('sauver')}<button class="btn" disabled={menu?.emplacement != null && !emplacementsLus} onclick={sauver}>💾 Sauvegarde rapide{menu?.emplacement != null ? ` (emplacement ${numero(menu.emplacement)})` : ''}</button>{/if}
+      {#if a('sauver')}<button class="btn" disabled={menu?.emplacement != null && !emplacementsLus} onclick={sauver}>💾 Sauvegarde rapide{menu?.emplacement != null ? ` (emplacement ${numero(menu.emplacement)})` : menu?.emulateur === 'rpcs3' ? ' (le jeu repart un instant)' : ''}</button>{/if}
       {#if a('charger')}
         {@const vide = menu?.emplacement != null && emplacementsLus && dateEmplacement(menu.emplacement) === null}
         <button
@@ -559,7 +559,7 @@
                 : '📂 Revenir à la sauvegarde rapide ? Ce qui s’est passé depuis sera perdu.',
             )}
         >
-          📂 Charger la sauvegarde rapide{menu?.emplacement != null ? ` (emplacement ${numero(menu.emplacement)}${vide ? ', vide' : ''})` : ''}
+          📂 Charger {menu?.emulateur === 'rpcs3' ? 'la dernière sauvegarde rapide' : 'la sauvegarde rapide'}{menu?.emplacement != null ? ` (emplacement ${numero(menu.emplacement)}${vide ? ', vide' : ''})` : ''}
         </button>
       {/if}
       {#if a('disque')}<button class="btn" onclick={() => action('disque')}>💿 Disque suivant</button>{/if}

@@ -249,7 +249,7 @@
       </select>
       <p class="muted">
         Un appui court sur le bouton du milieu de la manette (Xbox, PS ou Home) ouvre le menu de Frogtend pendant une partie, et le
-        referme. Il ne marche pas pour les jeux PlayStation 3, de console Xbox, Switch, Wii U, PSP et Vita : leur émulateur se sert
+        referme. Il ne marche pas pour les jeux de console Xbox, Switch, Wii U, PSP et Vita : leur émulateur se sert
         de ce bouton. Si Steam l’utilise aussi, cela se règle dans Steam (rubrique Manette). Prend effet à la prochaine partie.
       </p>
       {#if gameBarPrend === true && etat.pc.menuJeu.boutonXbox !== false}

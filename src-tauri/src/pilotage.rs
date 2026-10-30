@@ -65,6 +65,15 @@ pub fn touche(emulateur: &str, a: Action) -> Option<Touche> {
         // DOSBox Staging (sdl_gui.cpp, bios_disk.cpp) : Ctrl+Alt+Début redémarre, Ctrl+F4 change de disque.
         ("dosbox-staging", Action::Reset) => Some(Touche { ctrl: true, alt: true, ..t("Home") }),
         ("dosbox-staging", Action::DisqueSuivant) => Some(Touche { ctrl: true, ..t("F4") }),
+        // RPCS3 : ses raccourcis d'ORIGINE de la fenêtre de jeu (rpcs3qt/shortcut_settings.cpp, relu le 30/10 ; seulement
+        // si la personne ne les a pas changés : `rpcs3_raccourcis_d_origine`). Ctrl+S sauve (le jeu s'arrête un instant
+        // puis repart de l'état) ; Ctrl+Alt+1 recharge l'état le PLUS RÉCENT ; F12 capture ; Ctrl+F10 limite d'images
+        // (l'avance rapide) ; Ctrl+Maj+M le son. Jamais Ctrl+R : il recharge le dernier état au lieu de recommencer.
+        ("rpcs3", Action::SauverEtat) => Some(Touche { ctrl: true, ..t("S") }),
+        ("rpcs3", Action::ChargerEtat) => Some(Touche { ctrl: true, alt: true, ..t("1") }),
+        ("rpcs3", Action::Capture) => Some(t("F12")),
+        ("rpcs3", Action::AvanceRapide) => Some(Touche { ctrl: true, ..t("F10") }),
+        ("rpcs3", Action::Muet) => Some(Touche { ctrl: true, maj: true, ..t("M") }),
         _ => None,
     }
 }
@@ -82,6 +91,8 @@ pub fn actions(emulateur: &str) -> Vec<Action> {
         // Ses quatre options aussi, par le même script (sans aucune touche : rien à régler chez MAME).
         "mame" => vec![Reset, SauverEtat, ChargerEtat, ImagesParSeconde, AvanceRapide, Capture, Muet],
         "dosbox-staging" => vec![Reset, DisqueSuivant],
+        // RPCS3 par ses raccourcis (pas de « Recommencer » : son Ctrl+R recharge le dernier état).
+        "rpcs3" => vec![SauverEtat, ChargerEtat, AvanceRapide, Capture, Muet],
         _ => vec![],
     }
 }
@@ -363,6 +374,69 @@ pub fn commande_retroarch(a: Action) -> &'static str {
     }
 }
 
+/// Les raccourcis de RPCS3 dont Frogtend se sert, avec leur touche d'origine (section `[Shortcuts]` de
+/// `GuiConfigs/CurrentSettings.ini` ; rpcs3qt/shortcut_settings.cpp:73-94).
+const RACCOURCIS_RPCS3: &[(&str, &str)] = &[
+    ("game_window_savestate", "Ctrl+S"),
+    ("game_window_savestate_1", "Alt+Ctrl+1"),
+    ("game_window_screenshot", "F12"),
+    ("game_window_frame_limit", "Ctrl+F10"),
+    ("gw_mute_unmute", "Ctrl+Shift+M"),
+];
+
+/// RPCS3 reçoit-il les touches de Frogtend ? Oui si ses raccourcis sont ceux d'origine (absents de `[Shortcuts]`, ou
+/// identiques), s'ils ne sont pas tous coupés (`disableKbHotkeys`), et si l'état n'est pas en « Suspend Emulation
+/// Savestate Mode » (RPCS3 s'y arrête sans repartir). Sinon le menu ne propose rien (jamais une touche qui ferait
+/// autre chose). Lecture seule.
+pub fn rpcs3_raccourcis_d_origine(rpcs3: &Path) -> bool {
+    let ini = std::fs::read_to_string(rpcs3.join("GuiConfigs").join("CurrentSettings.ini")).unwrap_or_default();
+    let mut section = String::new();
+    for l in ini.lines() {
+        let l = l.trim();
+        if l.starts_with('[') {
+            section = l.to_string();
+            continue;
+        }
+        let Some((c, v)) = l.split_once('=') else { continue };
+        let (c, v) = (c.trim(), v.trim().trim_matches('"'));
+        if c == "disableKbHotkeys" && v.eq_ignore_ascii_case("true") {
+            return false;
+        }
+        if section == "[Shortcuts]" {
+            if let Some((_, d)) = RACCOURCIS_RPCS3.iter().find(|(k, _)| *k == c) {
+                if !v.eq_ignore_ascii_case(d) {
+                    return false;
+                }
+            }
+        }
+    }
+    let cfg = std::fs::read_to_string(rpcs3.join("config").join("config.yml")).unwrap_or_default();
+    let suspend = crate::emulateurs_profils::lire_cles_yaml(&cfg, "Savestate", &["Suspend Emulation Savestate Mode"]);
+    suspend.get("Suspend Emulation Savestate Mode").is_none_or(|v| v != "true")
+}
+
+/// Le numéro du jeu PS3 en cours (« BLES01227 »), lu dans le journal de RPCS3 (`SYS: Serial: …`, réécrit à chaque
+/// lancement).
+pub fn rpcs3_numero_en_cours(rpcs3: &Path) -> Option<String> {
+    let journal = std::fs::read(rpcs3.join("log").join("RPCS3.log")).ok()?;
+    String::from_utf8_lossy(&journal)
+        .lines()
+        .rev()
+        .find_map(|l| l.split_once("SYS: Serial: ").map(|(_, s)| s.trim().to_string()).filter(|s| s.len() == 9 && s.chars().all(|c| c.is_ascii_alphanumeric())))
+}
+
+/// Les sauvegardes d'état de RPCS3 pour ce jeu (`savestates/<numéro>/<numéro>_*.SAVESTAT*`, savestate_utils.cpp) :
+/// (fichier, date).
+pub fn rpcs3_etats(rpcs3: &Path, numero: &str) -> Vec<(std::path::PathBuf, std::time::SystemTime)> {
+    std::fs::read_dir(rpcs3.join("savestates").join(numero))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().contains(".SAVESTAT"))
+        .filter_map(|e| Some((e.path(), e.metadata().ok()?.modified().ok()?)))
+        .collect()
+}
+
 /// Les lignes à ajouter au fichier de réglages de RetroArch (`--appendconfig`). (`apply_cheats_after_load` est écrit
 /// par `emulateurs_profils::regler_succes`, qui sait si les succès du profil sont actifs.)
 pub fn lignes_retroarch() -> String {
@@ -528,6 +602,44 @@ pub fn preparer(id: &str, emulateur: &Path, utilisateur: Option<&Path>) -> Resul
         _ => {}
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests_rpcs3 {
+    use super::*;
+
+    #[test]
+    fn les_raccourcis_de_rpcs3_seulement_s_ils_sont_d_origine() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        assert!(rpcs3_raccourcis_d_origine(r), "rien de réglé : ceux d'origine");
+        std::fs::create_dir_all(r.join("GuiConfigs")).unwrap();
+        std::fs::create_dir_all(r.join("config")).unwrap();
+        std::fs::write(r.join("GuiConfigs/CurrentSettings.ini"), "[Shortcuts]\ngame_window_savestate=Ctrl+S\ngame_window_restart=F5\n").unwrap();
+        assert!(rpcs3_raccourcis_d_origine(r), "un autre raccourci changé : sans effet");
+        std::fs::write(r.join("GuiConfigs/CurrentSettings.ini"), "[Shortcuts]\ngame_window_savestate=F9\n").unwrap();
+        assert!(!rpcs3_raccourcis_d_origine(r), "sauver changé par la personne");
+        std::fs::write(r.join("GuiConfigs/CurrentSettings.ini"), "[GSFrame]\ndisableKbHotkeys=true\n").unwrap();
+        assert!(!rpcs3_raccourcis_d_origine(r), "raccourcis coupés");
+        std::fs::write(r.join("GuiConfigs/CurrentSettings.ini"), "").unwrap();
+        std::fs::write(r.join("config/config.yml"), "Savestate:\n  Suspend Emulation Savestate Mode: true\n").unwrap();
+        assert!(!rpcs3_raccourcis_d_origine(r), "mode suspendu : RPCS3 ne repartirait pas");
+    }
+
+    #[test]
+    fn le_numero_du_jeu_et_ses_etats() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        assert_eq!(rpcs3_numero_en_cours(r), None);
+        std::fs::create_dir_all(r.join("log")).unwrap();
+        std::fs::write(r.join("log/RPCS3.log"), "x SYS: Serial: \"\"\ny SYS: Serial: BLES01227\nz\n").unwrap();
+        assert_eq!(rpcs3_numero_en_cours(r).as_deref(), Some("BLES01227"));
+        assert!(rpcs3_etats(r, "BLES01227").is_empty());
+        std::fs::create_dir_all(r.join("savestates/BLES01227")).unwrap();
+        std::fs::write(r.join("savestates/BLES01227/BLES01227_1_0.SAVESTAT.zst"), b"x").unwrap();
+        std::fs::write(r.join("savestates/BLES01227/autre.txt"), b"x").unwrap();
+        assert_eq!(rpcs3_etats(r, "BLES01227").len(), 1);
+    }
 }
 
 #[cfg(test)]
@@ -888,6 +1000,13 @@ mod tests {
             }
         }
         assert!(!actions("pcsx2").contains(&Action::DisqueSuivant), "PCSX2 ne sait pas changer de disque de l'extérieur");
+        // RPCS3 : jamais « Recommencer » (son Ctrl+R recharge le dernier état) ; sauver = Ctrl+S, charger = Ctrl+Alt+1.
+        assert!(!actions("rpcs3").contains(&Action::Reset));
+        assert_eq!(touche("rpcs3", Action::SauverEtat), Some(Touche { touche: "S", maj: false, ctrl: true, alt: false }));
+        assert_eq!(touche("rpcs3", Action::ChargerEtat), Some(Touche { touche: "1", maj: false, ctrl: true, alt: true }));
+        for a in actions("rpcs3") {
+            assert!(touche("rpcs3", a).is_some(), "{a:?} sans touche");
+        }
         // Aucun réglage que RetroArch ignorerait (il n'a pas de `network_cmd_bind_address`, relu dans la 1.22.2).
         assert!(!lignes_retroarch().contains("network_cmd_bind_address"));
         assert_eq!(lignes_retroarch().matches("= \"nul\"").count(), 3, "T / Y / U coupées");
