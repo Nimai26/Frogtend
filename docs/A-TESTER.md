@@ -10,8 +10,8 @@
 - [x] (✅ Seb 30/10) Taodbox : cliquer une fois dans la fenêtre, puis la croix vers le haut : un contour apparaît sur un bouton du haut
       (systèmes, Changer de joueur, Bureau) ; A l'ouvre.
 - [x] (✅ Seb 30/10) Y sur un jeu : « Gérer le jeu » s'ouvre, le contour est sur la 1re ligne, la croix descend, B ferme.
-- [ ] Revenir d'une autre fenêtre (Alt+Tab) : la croix repart du jeu choisi.
-- [ ] Options ▸ À propos : « Made with ❤️ by Nimai, Shyrka & Claude ».
+- [x] (✅ Seb 30/10) Revenir d'une autre fenêtre (Alt+Tab) : la croix repart du jeu choisi.
+- [x] (✅ Seb 30/10) Options ▸ À propos : « Made with ❤️ by Nimai, Shyrka & Claude ».
 
 ## Les boutons en grand (0.145.0)
 - [x] (✅ Seb 29/10) Super Mario World : menu ▸ « 🗺 Les boutons » : la fenêtre s'agrandit, dessin lisible, la liste à côté ; plus
