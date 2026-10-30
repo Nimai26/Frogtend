@@ -33,9 +33,9 @@
 - [ ] Relancer le même jeu ensuite : l'attente revient.
 
 ## Les boutons de la manette d'origine (0.142.0)
-- [ ] Super Mario World : menu en jeu ▸ « 🗺 Les boutons » : le dessin, puis « A → B », « B → A », « X → Y »… ; la croix
+- [x] (✅ Seb 30/10) Super Mario World : menu en jeu ▸ « 🗺 Les boutons » : le dessin, puis « A → B », « B → A », « X → Y »… ; la croix
       descend dans la liste et allume chaque bouton sur le dessin ; B revient au menu.
-- [ ] Le même depuis le panneau du jeu (bureau), et depuis ⚙ Gérer le jeu en Taodbox (B revient).
+- [x] (✅ Seb 30/10) Le même depuis le panneau du jeu (bureau), et depuis ⚙ Gérer le jeu en Taodbox (B revient).
 - [ ] Un jeu PlayStation (DuckStation) : « A → Croix »… ; avec une manette PS5 seule branchée, les noms Croix / Rond.
 - [ ] Un jeu PC joué « comme un clavier » : les touches de chaque bouton ; sans correspondance : la phrase « Ce jeu lit
       ta manette lui-même ».
