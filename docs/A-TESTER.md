@@ -6,6 +6,11 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Les sauvegardes rapides PS3 (0.154.0)
+- [ ] Asura's Wrath : ⚙ Gérer le jeu ▸ « 💾 Sauvegardes rapides » ▸ « Les rendre possibles » ; lancer ; Ctrl+S (ou le
+      menu) : la sauvegarde est faite (le jeu repart un instant) ; puis Ctrl+Alt+& au clavier : recharge-t-il ?
+- [ ] La fluidité : une différence sensible ?
+
 ## La PS3 dans ta langue (0.153.0)
 - [ ] Rien ne change chez toi (tes réglages de RPCS3 sont les tiens) : Asura's Wrath reste en français.
 - [ ] (Si un jeu japonais est là) : A (Croix) et B (Rond) sont inversés pour valider, comme au Japon.

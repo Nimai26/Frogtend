@@ -572,6 +572,7 @@
       <p class="muted">
         {menu.en_pause ? '⏸ Le jeu est en pause.' : 'Le jeu continue pendant que ce menu est ouvert.'}
         {#if rapide}<br />⏩ L’avance rapide est activée (Options du jeu pour la couper).{/if}
+        {#if menu.refus_etat}<br />💾 RPCS3 a refusé la sauvegarde rapide : après la partie, active « Sauvegardes rapides » dans ⚙ Gérer le jeu.{/if}
       </p>
     </header>
     <div class="liste" bind:this={liste}>

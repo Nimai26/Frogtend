@@ -1648,6 +1648,7 @@ pub async fn jeu_jouer(
         effet_de_la_personne,
         effets: effets_ra,
         shader_enable_avant,
+        refus_etat: false,
         raccourcis_clavier,
         emplacement: 0,
         emplacement_ra: 0,
@@ -2261,6 +2262,8 @@ async fn etat_rpcs3(app: &AppHandle, noyau: &Noyau, p: crate::menu_jeu::PartieEn
     let debut = std::time::SystemTime::now() - std::time::Duration::from_secs(2);
     let app2 = app.clone();
     tauri::async_runtime::spawn_blocking(move || -> Resultat<()> {
+        let menu = app2.state::<crate::menu_jeu::MenuJeu>();
+        let journal_avant = crate::pilotage::rpcs3_taille_journal(&d);
         crate::menu_jeu::agir("rpcs3", &pids, a)?;
         if a != Action::SauverEtat {
             return Ok(());
@@ -2280,6 +2283,10 @@ async fn etat_rpcs3(app: &AppHandle, noyau: &Noyau, p: crate::menu_jeu::PartieEn
             }
         }
         app2.state::<Noyau>().journaliser(&format!("RPCS3 : sauvegarde rapide de {numero} NON écrite en 30 s (refusée par RPCS3 : jeu en train de sauvegarder ?)"));
+        // « failed to lock SPU threads » : le mode compatible manque (dit au prochain menu, avec où le régler).
+        if crate::pilotage::rpcs3_refus_spu(&d, journal_avant) {
+            menu.noter_refus_etat();
+        }
         Ok(())
     })
     .await
@@ -2516,6 +2523,28 @@ pub async fn parties_abri_reposer(noyau: State<'_, Noyau>, id: i64) -> Resultat<
 #[tauri::command]
 pub fn parties_abri_ignorer(noyau: State<'_, Noyau>, id: i64, date: String) {
     noyau.noter_abri_propose(id, &date);
+}
+
+/// Le mode compatible des sauvegardes rapides d'un jeu PS3 (✅ Seb 31/10 : dans Gérer le jeu) : (actif, pour ce
+/// jeu) ; `None` : pas un jeu RPCS3 ou numéro illisible.
+#[tauri::command]
+pub async fn rpcs3_etats_compatibles(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<Option<(bool, bool)>> {
+    let Some((_, rpcs3, Some(n), _)) = contexte_image_ps3(&app, &noyau, id).await? else { return Ok(None) };
+    Ok(Some(crate::emulateurs_profils::rpcs3_etats_compatibles(&rpcs3, &n)?))
+}
+
+/// L'active ou le coupe pour ce jeu (RPCS3 fermé : il réécrirait ses réglages en quittant).
+#[tauri::command]
+pub async fn rpcs3_regler_etats_compatibles(app: AppHandle, noyau: State<'_, Noyau>, id: i64, actif: bool) -> Resultat<()> {
+    let Some((_, rpcs3, Some(n), _)) = contexte_image_ps3(&app, &noyau, id).await? else {
+        return Err(Erreur::Refus("Ce jeu ne se lance pas avec RPCS3, ou son numéro est illisible.".into()));
+    };
+    if !crate::lancement::processus_du_dossier(&rpcs3).is_empty() {
+        return Err(Erreur::Refus("RPCS3 est ouvert : ferme le jeu d'abord.".into()));
+    }
+    crate::emulateurs_profils::rpcs3_regler_etats_compatibles(&rpcs3, &n, actif)?;
+    noyau.journaliser(&format!("RPCS3 : mode compatible des sauvegardes rapides {} pour {n}", if actif { "activé" } else { "coupé" }));
+    Ok(())
 }
 
 /// Le fichier où Frogtend note les parties PS3 complètes, par version de RPCS3 (lot 5).

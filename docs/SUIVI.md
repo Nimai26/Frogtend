@@ -32,6 +32,11 @@
   une fois si absents ou d'origine (essai sur une copie du vrai config.yml de Seb : identique) ; jeu japonais (J) → Rond
   dans custom_configs. RESTE : PPSSPP (langue, ButtonPreference), Dolphin, Eden, Cemu, Azahar après relevé de leurs
   sources ; Asie / Corée (non vérifié) ;
+- **Essai du 31/10 (0.153.0)** : Ctrl+S dans Asura's Wrath → RPCS3 refuse (« failed to lock SPU threads execution… »,
+  `Compatible Savestate Mode: false` d'origine « pour les performances », system_config.h:363). ✅ Seb 31/10 : JEU PAR JEU
+  (« les jeux PS3 ont souvent leur propre système de sauvegarde »), dans Gérer le jeu avec ses conséquences → 0.154.0 :
+  « 💾 Sauvegardes rapides » (custom_configs du jeu), refus dit dans le menu. Ctrl+Alt+& (charger, AZERTY) : à tester
+  une fois le mode activé.
 - **✅ (1)-(5) FAITS (0.149.0 → 0.153.0).** Suivent, AVEC Seb : maquette de la nouvelle Taodbox, cadrage des réglages
   selon la carte graphique, nouvelle séance d'essais.
   (1) menu de Frogtend partout dans RPCS3 (sauver / charger / recommencer d'abord, puis le bouton PS retiré) ; (2) effet

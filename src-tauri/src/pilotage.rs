@@ -429,6 +429,22 @@ pub fn rpcs3_numero_en_cours(rpcs3: &Path) -> Option<String> {
         .find_map(|l| l.split_once("SYS: Serial: ").map(|(_, s)| s.trim().to_string()).filter(|s| s.len() == 9 && s.chars().all(|c| c.is_ascii_alphanumeric())))
 }
 
+/// La taille du journal de RPCS3 (pour ne relire ensuite que ce qui suit une demande).
+pub fn rpcs3_taille_journal(rpcs3: &Path) -> u64 {
+    std::fs::metadata(rpcs3.join("log").join("RPCS3.log")).map(|m| m.len()).unwrap_or(0)
+}
+
+/// RPCS3 a-t-il refusé une sauvegarde rapide faute du mode compatible (« failed to lock SPU threads ») DEPUIS `depuis`
+/// (la taille du journal au moment de la demande) ? 256 Ko lus au plus.
+pub fn rpcs3_refus_spu(rpcs3: &Path, depuis: u64) -> bool {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut f) = std::fs::File::open(rpcs3.join("log").join("RPCS3.log")) else { return false };
+    let _ = f.seek(SeekFrom::Start(depuis));
+    let mut fin = Vec::new();
+    let _ = f.take(256 * 1024).read_to_end(&mut fin);
+    String::from_utf8_lossy(&fin).contains("failed to lock SPU threads")
+}
+
 /// Les sauvegardes d'état de RPCS3 pour ce jeu (`savestates/<numéro>/<numéro>_*.SAVESTAT*`, savestate_utils.cpp) :
 /// (fichier, date).
 pub fn rpcs3_etats(rpcs3: &Path, numero: &str) -> Vec<(std::path::PathBuf, std::time::SystemTime)> {
@@ -665,6 +681,12 @@ mod tests_rpcs3 {
         std::fs::write(r.join("savestates/BLES01227/BLES01227_1_1.SAVESTAT.zst"), b"x").unwrap(); // en cours : trop petit
         std::fs::write(r.join("savestates/BLES01227/autre.txt"), vec![0u8; 2048]).unwrap();
         assert_eq!(rpcs3_etats(r, "BLES01227").len(), 1);
+        // Le refus SPU : seulement après la demande.
+        std::fs::write(r.join("log/RPCS3.log"), "SYS: Failed to savestate: failed to lock SPU threads execution.
+").unwrap();
+        let depuis = rpcs3_taille_journal(r);
+        assert!(!rpcs3_refus_spu(r, depuis), "un refus d'avant la demande ne compte pas");
+        assert!(rpcs3_refus_spu(r, 0));
         // La configuration de manette active.
         assert!(rpcs3_active_est_default(r, Some("BLES01227")));
         std::fs::create_dir_all(r.join("config/input_configs")).unwrap();

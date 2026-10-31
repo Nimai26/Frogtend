@@ -604,6 +604,8 @@ export interface EtatMenuJeu {
   triches: { titre: string; active: boolean }[] | null;
   /** La partie du jeu est déjà à l'abri pour cette partie (la mise en garde a été lue). */
   abri_triches: boolean;
+  /** RPCS3 a refusé une sauvegarde rapide faute de son « mode compatible ». */
+  refus_etat: boolean;
   /** RetroArch : les effets d'image changeables en jeu (`null` : pas d'écran). */
   effets: { presents: string[]; actuel: string | null; de_la_personne: boolean } | null;
 }
@@ -808,6 +810,9 @@ export const api = {
       image: image ?? null,
     }),
   /** Des parties à l'abri à remettre dans ce jeu réinstallé (lot 3). */
+  /** Le mode compatible des sauvegardes rapides d'un jeu PS3 : [actif, réglé pour ce jeu] ; `null` : sans objet. */
+  rpcs3EtatsCompatibles: (id: number) => appeler<[boolean, boolean] | null>('rpcs3_etats_compatibles', { id }),
+  rpcs3ReglerEtatsCompatibles: (id: number, actif: boolean) => appeler<void>('rpcs3_regler_etats_compatibles', { id, actif }),
   partiesAbriAReposer: (id: number) => appeler<{ date: string; fichiers: number; octets: number; gardes: number } | null>('parties_abri_a_reposer', { id }),
   partiesAbriReposer: (id: number) => appeler<number>('parties_abri_reposer', { id }),
   partiesAbriIgnorer: (id: number, date: string) => appeler<void>('parties_abri_ignorer', { id, date }),

@@ -939,6 +939,28 @@ async function proposerPartiesAbritees(id: number, titre: string): Promise<boole
   }
 }
 
+/** « 💾 Sauvegardes rapides » d'un jeu PS3 : le mode compatible de RPCS3, pour ce jeu, avec son prix. */
+async function choisirEtatsCompatibles(id: number) {
+  const j = tele.jeux[id];
+  const ec = await api.rpcs3EtatsCompatibles(id).catch(() => null);
+  if (!j || !ec) return;
+  const c = await choisir<boolean>(
+    `💾 Sauvegardes rapides de « ${j.titre} »`,
+    [
+      { valeur: true, libelle: '✅ Les rendre possibles (mode compatible)', detail: (ec[0] ? 'choix actuel — ' : '') + 'le jeu peut être un peu moins fluide' },
+      { valeur: false, libelle: '⬜ Fluidité maximale', detail: (!ec[0] ? 'choix actuel — ' : '') + 'RPCS3 refusera le plus souvent les sauvegardes rapides ; sauvegarde dans le jeu' },
+    ],
+    'RPCS3 coupe ce mode d’office pour la fluidité. Beaucoup de jeux PS3 ont leurs propres sauvegardes : le mode compatible ne sert que si tu veux sauver n’importe où.',
+  );
+  if (c === null || c === ec[0]) return;
+  try {
+    await api.rpcs3ReglerEtatsCompatibles(id, c);
+    toast(`💾 « ${j.titre} » : sauvegardes rapides ${c ? 'possibles (mode compatible)' : 'coupées (fluidité maximale)'}.`);
+  } catch (e) {
+    toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
+  }
+}
+
 /** L'effet d'image de RetroArch pour ce jeu : le sien, sinon celui de sa console (le cœur l'ignore hors RetroArch). */
 export function effetImage(id: number, plateforme: string | undefined): string | undefined {
   const im = etat.profil.image;
@@ -1451,7 +1473,7 @@ export async function gererJeu(id: number) {
   const j = tele.jeux[id];
   // Le jeu importé par une AUTRE personne de ce PC : elle seule le gère (✅ Seb 20/10).
   if (!j || j.d_un_autre) return;
-  type Action = 'jouerAvec' | 'autreVersion' | 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'effet' | 'patchs' | 'mods' | 'triches' | 'succes' | 'boutons' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'delier' | 'retirer';
+  type Action = 'jouerAvec' | 'autreVersion' | 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'etats' | 'effet' | 'patchs' | 'mods' | 'triches' | 'succes' | 'boutons' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'delier' | 'retirer';
   const options: { valeur: Action; libelle: string; detail?: string }[] = [];
   if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
   // Un jeu d'une boutique (Steam) : c'est elle qui le lance, l'installe et le désinstalle ; Frogtend n'écrit rien dans
@@ -1487,6 +1509,9 @@ export async function gererJeu(id: number) {
     // Un jeu PS3 lancé par RPCS3 : son image et sa fluidité (✅ Seb 19/10 : « shaders = les deux »).
     if (j.installation && /(^|[\\/])rpcs3\.exe$/i.test(e?.programme ?? '')) {
       options.push({ valeur: 'image', libelle: '🎨 Image et fluidité', detail: 'résolution, saccades, netteté — pour ce jeu' });
+      // Les sauvegardes rapides de RPCS3 (✅ Seb 31/10 : jeu par jeu, avec leur prix).
+      const ec = await api.rpcs3EtatsCompatibles(id).catch(() => null);
+      if (ec) options.push({ valeur: 'etats', libelle: '💾 Sauvegardes rapides', detail: ec[0] ? 'possibles (mode compatible) — pour ce jeu' : 'refusées le plus souvent par RPCS3 (réglage d’origine)' });
       // Ses patchs (contrat 1.18 ; ✅ Seb 19/10).
       options.push({ valeur: 'patchs', libelle: '🩹 Retouches du jeu (patchs)', detail: 'moins de flou, plus d’images par seconde… — pour ce jeu' });
     }
@@ -1550,6 +1575,7 @@ export async function gererJeu(id: number) {
   else if (c === 'version') await choisirVersionParDefaut(id);
   else if (c === 'emulateur') await choisirEmulateurDuJeu(id);
   else if (c === 'image') await choisirImagePs3(id);
+  else if (c === 'etats') await choisirEtatsCompatibles(id);
   else if (c === 'effet') {
     const e = pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, j.plateforme, id);
     if (e?.programme) await choisirEffetImage(id, e.programme);

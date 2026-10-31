@@ -1198,6 +1198,35 @@ pub fn rpcs3_regler_langue(rpcs3: &Path, langue: u16, clavier: u16) -> Resultat<
     Ok(true)
 }
 
+/// Le « mode compatible » des sauvegardes rapides de RPCS3 (`Savestate: Compatible Savestate Mode`, faux d'origine
+/// « pour des raisons de performances », system_config.h:363) : sans lui, RPCS3 refuse souvent (« failed to lock SPU
+/// threads execution »). ✅ Seb 31/10 : jeu par jeu, dans Gérer le jeu, en disant le prix (fluidité). Rend (actif,
+/// réglé pour ce jeu).
+pub fn rpcs3_etats_compatibles(rpcs3: &Path, numero: &str) -> Resultat<(bool, bool)> {
+    const CLE: &str = "Compatible Savestate Mode";
+    let du_jeu = std::fs::read_to_string(rpcs3_config_du_jeu(rpcs3, numero)?).unwrap_or_default();
+    if let Some(v) = lire_cles_yaml(&du_jeu, "Savestate", &[CLE]).get(CLE) {
+        return Ok((v == "true", true));
+    }
+    let general = std::fs::read_to_string(rpcs3.join("config").join("config.yml")).unwrap_or_default();
+    Ok((lire_cles_yaml(&general, "Savestate", &[CLE]).get(CLE).is_some_and(|v| v == "true"), false))
+}
+
+/// Règle ce mode pour CE jeu seulement (ses `custom_configs`) ; le fichier général n'est jamais touché.
+pub fn rpcs3_regler_etats_compatibles(rpcs3: &Path, numero: &str, actif: bool) -> Resultat<()> {
+    let fichier = rpcs3_config_du_jeu(rpcs3, numero)?;
+    let avant = match std::fs::read_to_string(&fichier) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e.into()),
+    };
+    let valeur = if actif { "true" } else { "false" };
+    if let Some(apres) = regler_cles_yaml(&avant, "Savestate", &[("Compatible Savestate Mode", valeur)]) {
+        remplacer_config(rpcs3, &fichier, &apres)?;
+    }
+    Ok(())
+}
+
 /// Un jeu PS3 japonais (3e lettre du numéro : J) se valide avec Rond, comme sur sa console : posé dans SES réglages
 /// (`custom_configs`), seulement si la clé n'y est pas déjà. (Asie, Corée : non vérifié, rien de posé.)
 pub fn rpcs3_bouton_selon_region(rpcs3: &Path, numero: &str) -> Resultat<bool> {
@@ -2443,6 +2472,22 @@ mod tests_langue_rpcs3 {
         assert!(rpcs3_regler_langue(r, 0x040C, 0x040C).unwrap());
         let t = std::fs::read_to_string(r.join("config/config.yml")).unwrap();
         assert!(t.contains("  Language: French\r\n") && t.contains("  Keyboard Type: French keyboard\r\n") && t.contains("  License Area: SCEE\r\n"), "{t}");
+    }
+
+    #[test]
+    fn le_mode_compatible_des_sauvegardes_rapides_pour_un_jeu_seulement() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        std::fs::create_dir_all(r.join("config")).unwrap();
+        let general = "Savestate:\n  Compatible Savestate Mode: false\n";
+        std::fs::write(r.join("config/config.yml"), general).unwrap();
+        assert_eq!(rpcs3_etats_compatibles(r, "BLES01227").unwrap(), (false, false));
+        rpcs3_regler_etats_compatibles(r, "BLES01227", true).unwrap();
+        assert_eq!(rpcs3_etats_compatibles(r, "BLES01227").unwrap(), (true, true));
+        assert_eq!(rpcs3_etats_compatibles(r, "BLUS30000").unwrap(), (false, false), "un autre jeu : inchangé");
+        assert_eq!(std::fs::read_to_string(r.join("config/config.yml")).unwrap(), general, "le général jamais touché");
+        rpcs3_regler_etats_compatibles(r, "BLES01227", false).unwrap();
+        assert_eq!(rpcs3_etats_compatibles(r, "BLES01227").unwrap(), (false, true));
     }
 
     #[test]

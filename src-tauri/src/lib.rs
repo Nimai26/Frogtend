@@ -560,6 +560,8 @@ pub fn run() {
             commandes::parties_abri_a_reposer,
             commandes::parties_abri_reposer,
             commandes::parties_abri_ignorer,
+            commandes::rpcs3_etats_compatibles,
+            commandes::rpcs3_regler_etats_compatibles,
             commandes::jeu_retirer_version,
             commandes::jeu_versions_ajoutees,
             commandes::game_bar_bouton,

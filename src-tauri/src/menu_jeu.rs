@@ -76,6 +76,8 @@ pub struct PartieEnCours {
     pub effet_de_la_personne: bool,
     pub effet_pose: bool,
     pub shader_enable_avant: Option<bool>,
+    /// RPCS3 a refusé une sauvegarde rapide faute du « mode compatible » (dit dans le menu).
+    pub refus_etat: bool,
 }
 
 /// L'écran « Effet d'image » du menu en jeu.
@@ -494,6 +496,12 @@ impl MenuJeu {
             t.active = !t.active;
         }
     }
+    /// RPCS3 a refusé une sauvegarde rapide (mode compatible absent).
+    pub fn noter_refus_etat(&self) {
+        if let Some(p) = self.partie.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            p.refus_etat = true;
+        }
+    }
     /// Un effet d'image posé en jeu (`None` : aucun).
     pub fn noter_effet(&self, effet: Option<String>) {
         if let Some(p) = self.partie.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
@@ -549,6 +557,8 @@ pub struct EtatMenu {
     pub abri_triches: bool,
     /// RetroArch : l'écran des effets d'image (`None` : pas d'écran).
     pub effets: Option<EffetsMenu>,
+    /// RPCS3 a refusé une sauvegarde rapide faute de son « mode compatible ».
+    pub refus_etat: bool,
 }
 
 pub fn nom_action(a: Action) -> &'static str {
@@ -610,6 +620,7 @@ pub fn etat(p: &PartieEnCours) -> EtatMenu {
         emplacement: matches!(e, "retroarch" | "mame").then_some(p.emplacement),
         triches: (e == "retroarch" && p.triches_permises && !p.etats_interdits).then(|| p.triches.clone()),
         abri_triches: p.abri_triches,
+        refus_etat: p.refus_etat,
         effets: (e == "retroarch" && !p.effets.is_empty()).then(|| EffetsMenu {
             presents: p.effets.clone(),
             actuel: p.effet.clone(),
@@ -957,6 +968,7 @@ mod tests {
             effet_de_la_personne: false,
             effet_pose: false,
             shader_enable_avant: None,
+            refus_etat: false,
         }
     }
 

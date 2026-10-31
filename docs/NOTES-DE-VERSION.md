@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.154.0 — Les sauvegardes rapides PS3, jeu par jeu
+
+- 💾 ⚙ Gérer le jeu (PS3) ▸ « Sauvegardes rapides » : « Les rendre possibles (mode compatible) » — le jeu peut être un
+  peu moins fluide — ou « Fluidité maximale » (le réglage d'origine de RPCS3 : il refuse alors le plus souvent les
+  sauvegardes rapides). Pour ce jeu seulement.
+- Si RPCS3 refuse une sauvegarde rapide pour cette raison, le menu en jeu le dit et indique où l'activer.
+
 ## 0.153.0 — La PS3 dans ta langue, toute seule
 
 - 🌍 RPCS3 : la langue, le clavier et la zone de la console sont pris de Windows (français, clavier français, Europe
