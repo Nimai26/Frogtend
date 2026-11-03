@@ -51,7 +51,10 @@
   l'année → corrigés ; VOULU : une télé typique de l'époque de chaque console, et une CHAMBRE D'ADO de l'époque avec des
   affiches de films emblématiques (comme Bedroom) → maquette 2 (`taodbox-maquette-2.html`) : 5 époques (papier peint,
   sol, 3 affiches typographiques), télés bois/argent/noire/argent 2000/plate, moniteur beige (PC), borne (arcade).
-  Question ouverte : les vraies affiches de films → à demander à Firehouse (sa médiathèque). EN ATTENTE de l'avis de Seb.
+  Question ouverte : les vraies affiches de films → à demander à Firehouse (sa médiathèque). 
+  Avis de Seb (03/11) : « mieux MAIS la chambre est vraiment simpliste comparé à l'exemple » ; « tu peux demander à
+  Firehouse de générer de vraies belles images avec nos IA et notre atelier » → besoin 40 envoyé (décors par époque,
+  télé incluse avec zone d'écran, affiches inventées). Taodbox codée seulement avec ces images (ou l'essai validé).
 - **✅ (1)-(5) FAITS (0.149.0 → 0.153.0).** Suivent, AVEC Seb : maquette de la nouvelle Taodbox, cadrage des réglages
   selon la carte graphique, nouvelle séance d'essais.
   (1) menu de Frogtend partout dans RPCS3 (sauver / charger / recommencer d'abord, puis le bouton PS retiré) ; (2) effet
