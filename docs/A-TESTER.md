@@ -9,7 +9,7 @@
 ## Un jeu en archive se décompresse avant de jouer (0.156.0)
 - [x] (✅ 03/11) Metal Gear Solid 4 : ▶ Jouer → « 🗜 … doit d'abord être décompressé » (32,7 Go, place libre, durée) ; « Décompresser
       puis jouer » : la barre avance, puis l'avertissement du long démarrage PS3, puis le jeu se lance.
-- [ ] Relancer : plus aucune question de décompression ; l'archive .zip est toujours là.
+- [x] (✅ 03/11) Relancer : plus aucune question de décompression ; l'archive .zip est toujours là.
 
 ## Les boutons PS3, sans sauvegardes rapides (0.155.0) — ✅ Seb 03/11
 - [x] Asura's Wrath : ⚙ Gérer le jeu ▸ « 💾 Remettre la fluidité d'origine » (l'entrée disparaît ensuite).
