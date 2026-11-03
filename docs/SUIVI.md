@@ -59,6 +59,12 @@
   (« Invalid file or folder ») : la décompression n'était proposée que par le bloc de la fiche. → 0.156.0 : ▶ Jouer
   propose « Décompresser puis jouer » (même accord chiffré, progression, archive gardée). Remarque de Seb : « on devrait
   avoir le bouton installer plutôt que lancer pour ces jeux… des cas spéciaux car importés et non servis par Firehouse ».
+  Suite (03/11) : 1re partie de MGS4 = ~1 h de préparation PPU, puis le jeu se relance lui-même (`_sys_process_exit2`
+  → MGS4.SELF) : fenêtre RÉDUITE à ce moment → RPCS3 « Invalid swapchain setup. Resizing the game window failed »
+  (VKPresent.cpp:469) et figé. Relancé : écran « Appuyez sur × pour installer » qui n'avançait pas = fenêtre sans le
+  focus (`Background input enabled: false` dans la config de Seb). À ÉTUDIER (pas fait) : rendre le focus à la
+  fenêtre du jeu à la fin de l'écran de lancement, et dire « ne réduis pas la fenêtre » dans l'avertissement PS3 ;
+  jamais changer `Background input` de la personne sans elle.
 - **✅ (1)-(5) FAITS (0.149.0 → 0.153.0).** Suivent, AVEC Seb : maquette de la nouvelle Taodbox, cadrage des réglages
   selon la carte graphique, nouvelle séance d'essais.
   (1) menu de Frogtend partout dans RPCS3 (sauver / charger / recommencer d'abord, puis le bouton PS retiré) ; (2) effet
