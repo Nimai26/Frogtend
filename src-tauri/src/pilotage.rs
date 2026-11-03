@@ -91,8 +91,9 @@ pub fn actions(emulateur: &str) -> Vec<Action> {
         // Ses quatre options aussi, par le même script (sans aucune touche : rien à régler chez MAME).
         "mame" => vec![Reset, SauverEtat, ChargerEtat, ImagesParSeconde, AvanceRapide, Capture, Muet],
         "dosbox-staging" => vec![Reset, DisqueSuivant],
-        // RPCS3 par ses raccourcis (pas de « Recommencer » : son Ctrl+R recharge le dernier état).
-        "rpcs3" => vec![SauverEtat, ChargerEtat, AvanceRapide, Capture, Muet],
+        // RPCS3 par ses raccourcis (pas de « Recommencer » : son Ctrl+R recharge le dernier état). Pas de sauvegardes
+        // rapides (✅ Seb 03/11) : refusées sans le mode compatible, et avec lui Asura's Wrath a redémarré puis écran noir.
+        "rpcs3" => vec![AvanceRapide, Capture, Muet],
         _ => vec![],
     }
 }
@@ -1057,8 +1058,10 @@ mod tests {
             }
         }
         assert!(!actions("pcsx2").contains(&Action::DisqueSuivant), "PCSX2 ne sait pas changer de disque de l'extérieur");
-        // RPCS3 : jamais « Recommencer » (son Ctrl+R recharge le dernier état) ; sauver = Ctrl+S, charger = Ctrl+Alt+1.
+        // RPCS3 : jamais « Recommencer » (son Ctrl+R recharge le dernier état) ; touches de sauver (Ctrl+S) et charger
+        // (Ctrl+Alt+1) gardées, mais plus proposées (✅ Seb 03/11).
         assert!(!actions("rpcs3").contains(&Action::Reset));
+        assert!(!actions("rpcs3").contains(&Action::SauverEtat) && !actions("rpcs3").contains(&Action::ChargerEtat), "PS3 : sauvegardes rapides retirées");
         assert_eq!(touche("rpcs3", Action::SauverEtat), Some(Touche { touche: "S", maj: false, ctrl: true, alt: false }));
         assert_eq!(touche("rpcs3", Action::ChargerEtat), Some(Touche { touche: "1", maj: false, ctrl: true, alt: true }));
         for a in actions("rpcs3") {

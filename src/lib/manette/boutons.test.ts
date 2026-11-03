@@ -69,6 +69,11 @@ describe('les boutons de la manette d’origine', () => {
     expect(role(gc, 'rb')).toBe('Z');
     expect(role(schema(infos({ emulateur: 'duckstation', coeur: null, famille: 'playstation' })), 'a')).toBe('Croix');
     expect(schema(infos({ emulateur: 'duckstation', coeur: null, famille: 'playstation' })).lignes[0].nom).toBe('Croix');
+    const ps3 = schema(infos({ emulateur: 'rpcs3', coeur: null, plateforme: 'Sony Playstation 3' }));
+    expect(ps3.console).toBe('PlayStation 3');
+    expect(role(ps3, 'a')).toBe('Croix');
+    expect(role(ps3, 'y')).toBe('Triangle');
+    expect(role(ps3, 'select')).toBe('Select');
   });
 
   it('un jeu PC : la correspondance manette → clavier', () => {

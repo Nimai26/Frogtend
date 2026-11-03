@@ -3,6 +3,13 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 03/11 — Une option « qui peut aider » d'un émulateur n'est pas une solution vérifiée
+Ce qui s'est passé : RPCS3 conseillait dans son journal d'activer le « Compatible Savestate Mode » ; livré en 0.154.0
+sur la foi de ce message, il a fait redémarrer Asura's Wrath puis écran noir. Une version livrée pour rien. · Comment
+l'appliquer : une fonction d'émulateur marquée expérimentale ou coupée d'office (sauvegardes d'état PS3, PS Vita,
+Switch…) se propose seulement après un essai réel AVEC Seb sur un jeu, avant d'écrire du code autour. Et l'écran « Les
+boutons » se vérifie pour CHAQUE émulateur pilotable, pas seulement ceux de la table.
+
 ## 19/10 — Le même test rouge pendant la livraison : un 2e défaut du suivi des parties
 Ce qui s'est passé : en livrant la 0.80.0, `un_jeu_lance_par_un_intermediaire…` a de nouveau échoué. Cause réelle :
 sous charge, le lanceur (.bat) finit AVANT le premier relevé ; son heure de démarrage était notée « 0 », et tout vieux

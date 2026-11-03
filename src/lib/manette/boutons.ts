@@ -123,6 +123,9 @@ const PS_FROGTEND: Record<string, string> = {
 const EMULATEURS: Record<string, (plateforme: string) => { console: string; boutons: Record<string, string> } | null> = {
   duckstation: () => ({ console: 'PlayStation', boutons: PS_FROGTEND }),
   pcsx2: () => ({ console: 'PlayStation 2', boutons: PS_FROGTEND }),
+  // RPCS3 : le profil de Frogtend garde la disposition d'origine de ses pilotes XInput, DualShock 4 et DualSense
+  // (xinput_pad_handler.cpp:102-118 relu le 03/11 : A → Croix, B → Rond, X → Carré, Y → Triangle, Back → Select).
+  rpcs3: () => ({ console: 'PlayStation 3', boutons: PS_FROGTEND }),
   // Dolphin : seulement la GameCube (la Wii a ses propres références de Wiimote).
   dolphin: (plateforme) =>
     /gamecube/i.test(plateforme)

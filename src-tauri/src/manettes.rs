@@ -263,6 +263,18 @@ pub fn disposition_de_frogtend(id: &str, emulateur: &Path, utilisateur_dolphin: 
             let deja = appareil.first().is_some_and(|d| !d.is_empty() && !d.to_lowercase().contains("keyboard"));
             !deja || (appareil.first().is_some_and(|d| d == "XInput/0/Gamepad") && PAD_GAMECUBE.iter().all(|(c, v)| lire_ini(&texte, "GCPad1", c) == [v.to_string()]))
         }
+        // RPCS3 : le profil de Frogtend (réécrit à chaque partie ; absent = il le sera) sur une manette, et lu par RPCS3
+        // (configuration active « Default ») ; celui de la personne ou le clavier : rien de dessiné (jamais deviné).
+        "rpcs3" => {
+            let lu = match std::fs::read_to_string(emulateur.join("config").join("input_configs").join("global").join("Default.yml")) {
+                Ok(t) => {
+                    let clavier = t.lines().any(|l| l.trim().strip_prefix("Handler:").is_some_and(|v| v.trim().trim_matches('"') == "Keyboard"));
+                    t.starts_with(PREFIXE_MARQUE) && !clavier
+                }
+                Err(e) => e.kind() == std::io::ErrorKind::NotFound,
+            };
+            lu && crate::pilotage::rpcs3_active_est_default(emulateur, None)
+        }
         _ => true,
     }
 }
@@ -472,6 +484,23 @@ mod tests_disposition {
         std::fs::write(&gc, t).unwrap();
         assert!(!disposition_de_frogtend("dolphin", d.path(), Some(&u)));
         assert!(disposition_de_frogtend("cemu", d.path(), None));
+        // RPCS3 : le profil de Frogtend sur une manette seulement.
+        let r = tempfile::tempdir().unwrap();
+        assert!(disposition_de_frogtend("rpcs3", r.path(), None), "pas encore de profil : Frogtend l'écrira");
+        let g = r.path().join("config").join("input_configs").join("global");
+        std::fs::create_dir_all(&g).unwrap();
+        std::fs::write(g.join("Default.yml"), profil_rpcs3(PadRpcs3::XInput(0))).unwrap();
+        assert!(disposition_de_frogtend("rpcs3", r.path(), None));
+        std::fs::write(g.join("Default.yml"), profil_rpcs3(PadRpcs3::Clavier)).unwrap();
+        assert!(!disposition_de_frogtend("rpcs3", r.path(), None), "clavier");
+        std::fs::write(g.join("Default.yml"), format!("{PREFIXE_MARQUE}\nPlayer 1 Input:\n  Handler: Keyboard\n")).unwrap();
+        assert!(!disposition_de_frogtend("rpcs3", r.path(), None), "clavier, profil de la 0.44 sans guillemets");
+        std::fs::write(g.join("Default.yml"), profil_rpcs3(PadRpcs3::XInput(0))).unwrap();
+        std::fs::write(r.path().join("config").join("input_configs").join("active_input_configurations.yml"), "global: \"Ma manette\"\n").unwrap();
+        assert!(!disposition_de_frogtend("rpcs3", r.path(), None), "configuration active de la personne");
+        std::fs::remove_file(r.path().join("config").join("input_configs").join("active_input_configurations.yml")).unwrap();
+        std::fs::write(g.join("Default.yml"), "Player 1 Input:\n  Handler: \"XInput\"\n").unwrap();
+        assert!(!disposition_de_frogtend("rpcs3", r.path(), None), "profil de la personne");
     }
 
     #[test]

@@ -2154,6 +2154,10 @@ pub async fn menu_jeu_action(app: AppHandle, noyau: State<'_, Noyau>, action: St
     if e == "mame" {
         return action_mame(&app, &noyau, p.dossier_emulateur.as_deref(), a, p.emplacement).await;
     }
+    // Seulement une action que le menu propose pour ce jeu (PS3 : plus de sauvegardes rapides, ✅ Seb 03/11).
+    if !crate::menu_jeu::etat(&p).actions.contains(&action.as_str()) {
+        return Err(Erreur::Refus("Cette action n'est pas proposée pour ce jeu.".into()));
+    }
     // RPCS3 : sauver / charger avec leurs gardes (refus dit dans le menu, encore ouvert).
     if e == "rpcs3" && matches!(a, crate::pilotage::Action::SauverEtat | crate::pilotage::Action::ChargerEtat) {
         return etat_rpcs3(&app, &noyau, p, a, true).await;

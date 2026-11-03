@@ -939,23 +939,14 @@ async function proposerPartiesAbritees(id: number, titre: string): Promise<boole
   }
 }
 
-/** « 💾 Sauvegardes rapides » d'un jeu PS3 : le mode compatible de RPCS3, pour ce jeu, avec son prix. */
+/** « 💾 Remettre la fluidité d'origine » d'un jeu PS3 : retire le mode compatible de RPCS3 posé pour ce jeu (le clic
+ * dans Gérer est l'accord ; le fichier d'avant est gardé à l'abri). */
 async function choisirEtatsCompatibles(id: number) {
   const j = tele.jeux[id];
-  const ec = await api.rpcs3EtatsCompatibles(id).catch(() => null);
-  if (!j || !ec) return;
-  const c = await choisir<boolean>(
-    `💾 Sauvegardes rapides de « ${j.titre} »`,
-    [
-      { valeur: true, libelle: '✅ Les rendre possibles (mode compatible)', detail: (ec[0] ? 'choix actuel — ' : '') + 'le jeu peut être un peu moins fluide' },
-      { valeur: false, libelle: '⬜ Fluidité maximale', detail: (!ec[0] ? 'choix actuel — ' : '') + 'RPCS3 refusera le plus souvent les sauvegardes rapides ; sauvegarde dans le jeu' },
-    ],
-    'RPCS3 coupe ce mode d’office pour la fluidité. Beaucoup de jeux PS3 ont leurs propres sauvegardes : le mode compatible ne sert que si tu veux sauver n’importe où.',
-  );
-  if (c === null || c === ec[0]) return;
+  if (!j) return;
   try {
-    await api.rpcs3ReglerEtatsCompatibles(id, c);
-    toast(`💾 « ${j.titre} » : sauvegardes rapides ${c ? 'possibles (mode compatible)' : 'coupées (fluidité maximale)'}.`);
+    await api.rpcs3ReglerEtatsCompatibles(id, false);
+    toast(`💾 « ${j.titre} » : fluidité d’origine remise. Sauvegarde dans le jeu, comme sur la console.`);
   } catch (e) {
     toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
   }
@@ -1509,9 +1500,10 @@ export async function gererJeu(id: number) {
     // Un jeu PS3 lancé par RPCS3 : son image et sa fluidité (✅ Seb 19/10 : « shaders = les deux »).
     if (j.installation && /(^|[\\/])rpcs3\.exe$/i.test(e?.programme ?? '')) {
       options.push({ valeur: 'image', libelle: '🎨 Image et fluidité', detail: 'résolution, saccades, netteté — pour ce jeu' });
-      // Les sauvegardes rapides de RPCS3 (✅ Seb 31/10 : jeu par jeu, avec leur prix).
+      // Les sauvegardes rapides PS3 sont retirées (✅ Seb 03/11 : redémarrage puis écran noir) : seulement de quoi
+      // remettre le réglage d'origine à un jeu où le mode compatible est encore posé.
       const ec = await api.rpcs3EtatsCompatibles(id).catch(() => null);
-      if (ec) options.push({ valeur: 'etats', libelle: '💾 Sauvegardes rapides', detail: ec[0] ? 'possibles (mode compatible) — pour ce jeu' : 'refusées le plus souvent par RPCS3 (réglage d’origine)' });
+      if (ec?.[0] && ec[1]) options.push({ valeur: 'etats', libelle: '💾 Remettre la fluidité d’origine', detail: 'le mode « sauvegardes rapides » est encore actif pour ce jeu' });
       // Ses patchs (contrat 1.18 ; ✅ Seb 19/10).
       options.push({ valeur: 'patchs', libelle: '🩹 Retouches du jeu (patchs)', detail: 'moins de flou, plus d’images par seconde… — pour ce jeu' });
     }

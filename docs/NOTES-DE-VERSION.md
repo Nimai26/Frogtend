@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.155.0 — Les boutons de la PS3, sans sauvegardes rapides
+
+- 🗺 « Les boutons » d'un jeu PS3 montre enfin ta manette : A → Croix, B → Rond, X → Carré, Y → Triangle, Vue → Select…
+- 💾 Les sauvegardes rapides PS3 sont retirées (ton essai : le mode compatible a fait redémarrer Asura's Wrath, puis
+  écran noir). Sauvegarde dans le jeu, comme sur la console. Avance rapide, capture et son restent dans le menu.
+- Un jeu PS3 où ce mode avait été activé : ⚙ Gérer le jeu ▸ « 💾 Remettre la fluidité d'origine ».
+
 ## 0.154.0 — Les sauvegardes rapides PS3, jeu par jeu
 
 - 💾 ⚙ Gérer le jeu (PS3) ▸ « Sauvegardes rapides » : « Les rendre possibles (mode compatible) » — le jeu peut être un

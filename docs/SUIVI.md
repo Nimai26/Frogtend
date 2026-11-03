@@ -37,6 +37,11 @@
   (« les jeux PS3 ont souvent leur propre système de sauvegarde »), dans Gérer le jeu avec ses conséquences → 0.154.0 :
   « 💾 Sauvegardes rapides » (custom_configs du jeu), refus dit dans le menu. Ctrl+Alt+& (charger, AZERTY) : à tester
   une fois le mode activé.
+- **Essai du 03/11 (0.154.0)** : mode compatible activé sur Asura's Wrath → Ctrl+S : redémarrage du jeu, recompilation
+  SPU, puis écran noir. ✅ Seb 03/11 : « on désactive les save et load rapides pour RPCS3 » → 0.155.0 : Sauver / Charger
+  retirés du menu en jeu et des raccourcis (pilotage::actions) ; Gérer ne garde que « Remettre la fluidité d'origine »
+  là où le mode est posé. Même essai : « Les boutons » en PS3 vide côté manette → disposition RPCS3 ajoutée (relevée dans
+  xinput_pad_handler.cpp, profil de Frogtend seulement).
 - **✅ (1)-(5) FAITS (0.149.0 → 0.153.0).** Suivent, AVEC Seb : maquette de la nouvelle Taodbox, cadrage des réglages
   selon la carte graphique, nouvelle séance d'essais.
   (1) menu de Frogtend partout dans RPCS3 (sauver / charger / recommencer d'abord, puis le bouton PS retiré) ; (2) effet

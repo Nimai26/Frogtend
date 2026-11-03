@@ -572,7 +572,6 @@
       <p class="muted">
         {menu.en_pause ? '⏸ Le jeu est en pause.' : 'Le jeu continue pendant que ce menu est ouvert.'}
         {#if rapide}<br />⏩ L’avance rapide est activée (Options du jeu pour la couper).{/if}
-        {#if menu.refus_etat}<br />💾 RPCS3 a refusé la sauvegarde rapide : après la partie, active « Sauvegardes rapides » dans ⚙ Gérer le jeu.{/if}
       </p>
     </header>
     <div class="liste" bind:this={liste}>
@@ -592,7 +591,7 @@
           <span aria-hidden="true">▶</span>
         </button>
       {/if}
-      {#if a('sauver')}<button class="btn" disabled={menu?.emplacement != null && !emplacementsLus} onclick={sauver}>💾 Sauvegarde rapide{menu?.emplacement != null ? ` (emplacement ${numero(menu.emplacement)})` : menu?.emulateur === 'rpcs3' ? ' (le jeu repart un instant)' : ''}</button>{/if}
+      {#if a('sauver')}<button class="btn" disabled={menu?.emplacement != null && !emplacementsLus} onclick={sauver}>💾 Sauvegarde rapide{menu?.emplacement != null ? ` (emplacement ${numero(menu.emplacement)})` : ''}</button>{/if}
       {#if a('charger')}
         {@const vide = menu?.emplacement != null && emplacementsLus && dateEmplacement(menu.emplacement) === null}
         <button
@@ -606,7 +605,7 @@
                 : '📂 Revenir à la sauvegarde rapide ? Ce qui s’est passé depuis sera perdu.',
             )}
         >
-          📂 Charger {menu?.emulateur === 'rpcs3' ? 'la dernière sauvegarde rapide' : 'la sauvegarde rapide'}{menu?.emplacement != null ? ` (emplacement ${numero(menu.emplacement)}${vide ? ', vide' : ''})` : ''}
+          📂 Charger la sauvegarde rapide{menu?.emplacement != null ? ` (emplacement ${numero(menu.emplacement)}${vide ? ', vide' : ''})` : ''}
         </button>
       {/if}
       {#if a('disque')}<button class="btn" onclick={() => action('disque')}>💿 Disque suivant</button>{/if}
