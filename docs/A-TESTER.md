@@ -7,7 +7,7 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## Un jeu en archive se décompresse avant de jouer (0.156.0)
-- [ ] Metal Gear Solid 4 : ▶ Jouer → « 🗜 … doit d'abord être décompressé » (32,7 Go, place libre, durée) ; « Décompresser
+- [x] (✅ 03/11) Metal Gear Solid 4 : ▶ Jouer → « 🗜 … doit d'abord être décompressé » (32,7 Go, place libre, durée) ; « Décompresser
       puis jouer » : la barre avance, puis l'avertissement du long démarrage PS3, puis le jeu se lance.
 - [ ] Relancer : plus aucune question de décompression ; l'archive .zip est toujours là.
 
@@ -33,7 +33,7 @@
 - [x] (✅ 03/11) Après la partie, un autre jeu RetroArch sans effet : image normale (rien de collé).
 
 ## Prévenu avant un long démarrage PS3 (0.150.0)
-- [ ] Un jeu PS3 jamais lancé : avant de jouer, « ⏳ … va être long à démarrer » ; « ▶ Jouer quand même » lance.
+- [x] (✅ 03/11) Un jeu PS3 jamais lancé : avant de jouer, « ⏳ … va être long à démarrer » ; « ▶ Jouer quand même » lance.
 - [x] (✅ 03/11) Asura's Wrath (déjà compilé, partie de plus de 6 min faite) : aucun message.
 
 ## Le menu de Frogtend dans les jeux PS3 (0.149.0)
