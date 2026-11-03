@@ -67,3 +67,6 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   s'il vaut `true` (« Sans saccades » ne tiendrait plus d'une partie à l'autre), sans y toucher.
 - (21/10, Seb, lot C) Une alerte « 🏆 Succès obtenu ! » de Frogtend pendant la partie (Steam, Galaxy, RetroArch
   l'affichent déjà chacun à leur façon) : plus tard, dans un lot à part.
+- (03/11, essai de Seb) « Retirer du PC » refusé tant que le dossier des abris de parties n'est pas réglé : pour un
+  novice, proposer à ce moment-là un dossier tout prêt (« E:\Abris de parties » sur le disque des jeux) en un clic,
+  au lieu de l'envoyer dans Réglages ▸ Emplacements.
