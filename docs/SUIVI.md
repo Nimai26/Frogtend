@@ -55,6 +55,8 @@
   Avis de Seb (03/11) : « mieux MAIS la chambre est vraiment simpliste comparé à l'exemple » ; « tu peux demander à
   Firehouse de générer de vraies belles images avec nos IA et notre atelier » → besoin 40 envoyé (décors par époque,
   télé incluse avec zone d'écran, affiches inventées). Taodbox codée seulement avec ces images (ou l'essai validé).
+  ✅ Seb 03/11 (23 h, transmis par Firehouse) : UN DÉCOR PAR CONSOLE (console fidèle dans l'image, comme Bedroom) et
+  de VRAIES affiches de films ; Frogtend choisira le décor par `plateforme`, affichera le jeu dans `ecran`.
 - **Essai du 03/11 (0.155.0)** : MGS4 importé (`.zip` de 32,7 Go contenant un `.iso`) → ▶ Jouer donnait le .zip à RPCS3
   (« Invalid file or folder ») : la décompression n'était proposée que par le bloc de la fiche. → 0.156.0 : ▶ Jouer
   propose « Décompresser puis jouer » (même accord chiffré, progression, archive gardée). Remarque de Seb : « on devrait
