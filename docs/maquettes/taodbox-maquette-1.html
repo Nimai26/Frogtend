@@ -1,0 +1,570 @@
+<title>Taodbox, la maquette</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;700;800&display=swap">
+<style>
+/* Mise en page : une « télé » 16:9 à l'échelle de la fenêtre (unités cqw = 1 % de sa largeur, comme à 3 m du canapé),
+   avec la barre des skins au-dessus et les notes pour Seb dessous. Les couleurs ne viennent QUE des 11 jetons des skins
+   de Firehouse (sombre d'abord ; le clair suit le thème du visiteur tant qu'aucun skin n'est choisi). */
+:root {
+  color-scheme: dark;
+  --bg: radial-gradient(1200px 800px at 70% -10%, #14202f 0%, #0a0e14 55%);
+  --bg2: #111722; --panel: #151c28; --line: #232c3b; --ink: #e6ecf5; --dim: #8a97ab;
+  --accent: #ff7a3c; --accent2: #3ca6ff; --ok: #46c98b; --warn: #e6b23c; --err: #e05a5a;
+  --on-accent: #10141a;
+  --fond: #0a0e14;
+  --affiche: "Saira Condensed", "Bahnschrift", "Arial Narrow", sans-serif;
+  --texte: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --radius: 12px;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]):not([data-skin]) {
+    color-scheme: light;
+    --bg: #eff1f5; --bg2: #ccd0da; --panel: #e6e9ef; --line: rgba(76, 79, 105, 0.2); --ink: #4c4f69; --dim: #6c6f85;
+    --accent: #1e66f5; --accent2: #1e66f5; --ok: #40a02b; --warn: #df8e1d; --err: #d20f39; --on-accent: #ffffff; --fond: #eff1f5;
+  }
+}
+:root[data-theme="light"]:not([data-skin]) {
+  color-scheme: light;
+  --bg: #eff1f5; --bg2: #ccd0da; --panel: #e6e9ef; --line: rgba(76, 79, 105, 0.2); --ink: #4c4f69; --dim: #6c6f85;
+  --accent: #1e66f5; --accent2: #1e66f5; --ok: #40a02b; --warn: #df8e1d; --err: #d20f39; --on-accent: #ffffff; --fond: #eff1f5;
+}
+
+html, body { min-height: 100%; }
+body {
+  background: var(--bg);
+  background-color: var(--fond);
+  background-attachment: fixed;
+  color: var(--ink);
+  font-family: var(--texte);
+  padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.page { max-width: 1280px; margin: 0 auto; display: grid; gap: 18px; }
+
+/* ——— Barre de la maquette (hors télé) ——— */
+.outils { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.outils h1 { font-family: var(--affiche); font-weight: 800; font-size: 28px; letter-spacing: .02em; margin: 0; text-wrap: balance; }
+.outils h1 small { font-family: var(--texte); font-weight: 400; font-size: 14px; color: var(--dim); margin-left: 8px; letter-spacing: 0; }
+.skins { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; align-items: center; }
+.skins span { color: var(--dim); font-size: 13px; margin-right: 4px; }
+.skins button {
+  font: inherit; font-size: 13px; padding: 5px 11px; border-radius: 999px; cursor: pointer;
+  background: var(--bg2); color: var(--ink); border: 1px solid var(--line);
+}
+.skins button[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.skins button:focus-visible, .tele button:focus-visible { outline: 3px solid var(--accent2); outline-offset: 2px; }
+
+/* ——— La télé ——— */
+.tele {
+  container-type: inline-size;
+  position: relative; aspect-ratio: 16 / 9; width: 100%;
+  border-radius: 14px; overflow: hidden; isolation: isolate;
+  background: var(--bg); background-color: var(--fond);
+  border: 1px solid var(--line);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .35);
+  font-size: 1.56cqw; /* 30 px en 1080p : l'échelle ×2 de la charte */
+  user-select: none;
+}
+.ecran { position: absolute; inset: 0; padding: 2.6cqw 2.8cqw 2.2cqw; display: grid; transition: opacity .25s ease; }
+.ecran[hidden] { display: none !important; }
+
+/* La pièce : un mur aux couleurs du skin, un sol, une lumière qui tombe sur la télé (inspiré des chambres
+   « d'époque » aimées par Seb, sans aucun de leurs éléments). */
+.piece { position: absolute; inset: 0; z-index: -1; overflow: hidden; }
+.piece .mur {
+  position: absolute; inset: 0 0 26% 0;
+  background:
+    radial-gradient(60% 80% at 68% 30%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%),
+    linear-gradient(180deg, color-mix(in srgb, var(--bg2) 85%, var(--ink) 4%), var(--bg2));
+}
+.piece .mur::after { /* le papier peint : de fines rayures verticales */
+  content: ""; position: absolute; inset: 0; opacity: .5;
+  background: repeating-linear-gradient(90deg, transparent 0 2.2cqw, color-mix(in srgb, var(--line) 60%, transparent) 2.2cqw 2.3cqw);
+}
+.piece .plinthe { position: absolute; left: 0; right: 0; bottom: 26%; height: .7cqw; background: var(--line); }
+.piece .sol {
+  position: absolute; inset: 74% 0 0 0;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, .25), transparent 40%),
+    repeating-linear-gradient(90deg, var(--panel) 0 7cqw, color-mix(in srgb, var(--panel) 80%, #000) 7cqw 7.15cqw);
+}
+
+/* ——— Haut et bas de chaque écran ——— */
+.haut { display: flex; align-items: center; gap: 1cqw; font-size: .8em; }
+.marque { display: flex; align-items: center; gap: .6cqw; font-family: var(--affiche); font-weight: 800; font-size: 1.25em; letter-spacing: .04em; }
+.marque i { width: 1.6cqw; height: 1.6cqw; border-radius: 50%; background: var(--ok); box-shadow: inset -.3cqw -.3cqw 0 rgba(0, 0, 0, .25); }
+.fil { color: var(--dim); }
+.fil b { color: var(--ink); font-weight: 600; }
+.espace { flex: 1; }
+.joueur { display: flex; align-items: center; gap: .6cqw; padding: .35cqw .9cqw .35cqw .35cqw; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); }
+.joueur i { width: 1.7cqw; height: 1.7cqw; border-radius: 50%; background: var(--accent2); display: grid; place-items: center; font-style: normal; font-size: .75em; font-weight: 700; color: var(--bg2); }
+.aide { display: flex; gap: 1.8cqw; justify-content: flex-end; align-items: center; font-size: .72em; color: var(--dim); }
+.aide span { display: inline-flex; align-items: center; gap: .5cqw; }
+.b { /* un bouton de manette dessiné */
+  display: inline-grid; place-items: center; min-width: 1.45cqw; height: 1.45cqw; padding: 0 .3cqw; border-radius: 999px;
+  font-weight: 800; font-size: .8em; color: var(--bg2); background: var(--ink);
+}
+.b.a { background: var(--ok); } .b.bb { background: var(--err); } .b.x { background: var(--accent2); } .b.y { background: var(--warn); }
+
+/* ——— Écran 1 : la roue des consoles ——— */
+#consoles { grid-template-columns: 31% 1fr; grid-template-rows: auto 1fr auto; column-gap: 2cqw; }
+#consoles .haut { grid-column: 1 / -1; }
+#consoles .aide { grid-column: 1 / -1; }
+.roue { position: relative; overflow: hidden; margin-block: .6cqw; mask-image: linear-gradient(180deg, transparent, #000 16%, #000 84%, transparent); }
+.roue ol { list-style: none; margin: 0; padding: 0; position: absolute; left: 0; right: 0; top: 50%; transition: transform .28s cubic-bezier(.2, .8, .2, 1); }
+.plaque {
+  height: 6.4cqw; margin-block: .7cqw; display: flex; flex-direction: column; justify-content: center; align-items: center;
+  border-radius: 999px; background: var(--bg2); border: .18cqw solid var(--line);
+  transform: scale(.8); opacity: .7; transition: transform .28s, opacity .28s, border-color .2s;
+  cursor: pointer; position: relative;
+}
+.plaque .nom { font-family: var(--affiche); font-weight: 800; font-size: 1.65em; line-height: 1; letter-spacing: .02em; text-transform: uppercase; }
+.plaque .fab { font-size: .62em; color: var(--dim); letter-spacing: .14em; text-transform: uppercase; margin-top: .25cqw; }
+.plaque.choisie {
+  transform: scale(1.06); opacity: 1; background: var(--panel); border: .25cqw solid var(--accent);
+  box-shadow: 0 0 0 .3cqw color-mix(in srgb, var(--accent) 25%, transparent), 0 1cqw 2cqw rgba(0, 0, 0, .35);
+}
+.fleche { position: absolute; left: 50%; translate: -50% 0; width: 2.6cqw; height: 2.6cqw; border: solid var(--dim); border-width: .45cqw .45cqw 0 0; opacity: .7; z-index: 2; pointer-events: none; }
+.fleche.h { top: 1.4cqw; rotate: -45deg; }
+.fleche.bas { bottom: 1.4cqw; rotate: 135deg; }
+
+.scene { position: relative; }
+.scene .tv-place { position: absolute; left: 6%; bottom: 14%; width: 56%; }
+.scene .appareil-place { position: absolute; right: 2%; bottom: 10%; width: 30%; }
+.annee {
+  position: absolute; right: 0; bottom: 0; text-align: right;
+  font-family: var(--affiche); font-weight: 700; font-size: 4.6em; line-height: .9; letter-spacing: .02em;
+  color: var(--ink); text-shadow: 0 .3cqw 1cqw rgba(0, 0, 0, .35); font-variant-numeric: tabular-nums;
+}
+.legende { position: absolute; left: 0; top: 0; max-width: 62%; display: grid; gap: .4cqw; }
+.legende .titre { font-family: var(--affiche); font-weight: 800; font-size: 2.1em; line-height: 1; text-wrap: balance; }
+.legende .infos { color: var(--dim); font-size: .78em; display: flex; gap: 1.2cqw; flex-wrap: wrap; }
+.legende .infos b { color: var(--ink); font-weight: 600; }
+
+/* La télé d'époque (dessinée, pour la maquette ; le vrai visuel de l'appareil vient de Firehouse) */
+.crt { position: relative; aspect-ratio: 4 / 3.25; border-radius: 1.4cqw; padding: 1.6cqw 8% 1.6cqw 1.6cqw;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--ink) 18%, #2a2a2a), #161616 70%);
+  box-shadow: inset 0 0 0 .25cqw rgba(255, 255, 255, .06), 0 1.4cqw 2.4cqw rgba(0, 0, 0, .45); }
+.crt .vitre { position: relative; height: 100%; border-radius: 1.6cqw / 2cqw; overflow: hidden; background: #000;
+  box-shadow: inset 0 0 2cqw rgba(0, 0, 0, .9); }
+.crt canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; filter: saturate(1.1) contrast(1.05); }
+.crt .vitre::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(180deg, rgba(0, 0, 0, .22) 0 2px, transparent 2px 4px),
+    radial-gradient(120% 90% at 30% 20%, rgba(255, 255, 255, .14), transparent 45%); }
+.crt .boutons { position: absolute; right: 2.2%; top: 18%; display: grid; gap: .5cqw; }
+.crt .boutons i { width: 1.3cqw; height: 1.3cqw; border-radius: 50%; background: #333; box-shadow: inset 0 0 0 .15cqw #555; }
+.crt .pieds { position: absolute; left: 12%; right: 12%; bottom: -1.2cqw; height: 1.2cqw; display: flex; justify-content: space-between; }
+.crt .pieds i { width: 1.2cqw; background: #222; border-radius: 0 0 .4cqw .4cqw; }
+
+.appareil { position: relative; display: grid; place-items: center; }
+.appareil .corps { width: 100%; aspect-ratio: 2.2 / 1; border-radius: .8cqw; position: relative;
+  background: linear-gradient(180deg, var(--c1), var(--c2)); box-shadow: 0 1cqw 2cqw rgba(0, 0, 0, .4), inset 0 .2cqw 0 rgba(255, 255, 255, .25); }
+.appareil .corps::before { content: ""; position: absolute; left: 12%; right: 40%; top: 22%; height: 16%; border-radius: .3cqw; background: rgba(0, 0, 0, .35); }
+.appareil .corps::after { content: ""; position: absolute; right: 10%; bottom: 20%; width: 9%; aspect-ratio: 1; border-radius: 50%; background: var(--c3); box-shadow: -2.2cqw 0 0 var(--c3); }
+.appareil .note { margin-top: .9cqw; font-size: .55em; color: var(--dim); letter-spacing: .12em; text-transform: uppercase; text-align: center; }
+
+/* ——— Écran 2 : les jeux d'une console ——— */
+#jeux { grid-template-rows: auto 1fr auto auto; row-gap: 1cqw; }
+.milieu { display: grid; grid-template-columns: 50% 1fr; gap: 3cqw; align-items: center; min-height: 0; }
+.milieu .crt { width: 92%; margin-left: 4%; }
+.fiche { display: grid; gap: .9cqw; align-content: center; min-width: 0; }
+.fiche .titre { font-family: var(--affiche); font-weight: 800; font-size: 2.6em; line-height: .95; text-wrap: balance; margin: 0; }
+.fiche .ligne { display: flex; flex-wrap: wrap; gap: .5cqw .8cqw; font-size: .72em; }
+.puce { padding: .2cqw .8cqw; border-radius: 999px; background: var(--bg2); border: 1px solid var(--line); color: var(--ink); }
+.puce.ok { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 16%, var(--bg2)); }
+.puce.attente { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, var(--bg2)); }
+.fiche .resume { font-size: .75em; line-height: 1.45; color: var(--ink); max-width: 34em; margin: 0;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.actions { display: flex; gap: 1cqw; flex-wrap: wrap; }
+.actions button { font: inherit; font-size: .78em; display: inline-flex; align-items: center; gap: .6cqw; cursor: pointer;
+  padding: .7cqw 1.4cqw; border-radius: .7cqw; border: .15cqw solid var(--line); background: var(--bg2); color: var(--ink); }
+.actions button.principal { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700; }
+
+.etagere { position: relative; padding-bottom: 1.1cqw; }
+.etagere::after { /* la planche */
+  content: ""; position: absolute; left: -1cqw; right: -1cqw; bottom: 0; height: 1.1cqw; border-radius: .3cqw;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 70%, var(--ink) 12%), var(--panel));
+  box-shadow: 0 .8cqw 1.4cqw rgba(0, 0, 0, .35);
+}
+.rangee { display: flex; gap: 1.1cqw; align-items: flex-end; transition: transform .28s cubic-bezier(.2, .8, .2, 1); }
+.boite { flex: 0 0 7.4cqw; aspect-ratio: 3 / 4.1; border-radius: .35cqw; position: relative; cursor: pointer; overflow: hidden;
+  background: linear-gradient(160deg, var(--c1), var(--c2)); box-shadow: inset 0 0 0 .12cqw rgba(255, 255, 255, .12), 0 .4cqw .8cqw rgba(0, 0, 0, .35);
+  transition: transform .2s, box-shadow .2s; }
+.boite span { position: absolute; left: 6%; right: 6%; bottom: 6%; font-family: var(--affiche); font-weight: 700; font-size: .55em; line-height: 1;
+  color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .7); }
+.boite::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 14%; background: rgba(0, 0, 0, .35); }
+.boite.choisie { transform: translateY(-1.2cqw) scale(1.12); box-shadow: 0 0 0 .3cqw var(--accent), 0 1.4cqw 2cqw rgba(0, 0, 0, .5); z-index: 1; }
+.boite.choisie::after { content: ""; position: absolute; inset: 0; background: linear-gradient(120deg, rgba(255, 255, 255, .25), transparent 40%); }
+
+/* ——— Le menu (Menu ≡) : la sortie de secours de chaque écran ——— */
+.voile { position: absolute; inset: 0; background: rgba(0, 0, 0, .55); z-index: 5; }
+.menu { position: absolute; top: 0; right: 0; bottom: 0; width: 34%; z-index: 6; padding: 2.6cqw 2.4cqw;
+  background: var(--panel); border-left: 1px solid var(--line); display: grid; align-content: start; gap: .8cqw;
+  box-shadow: -1cqw 0 3cqw rgba(0, 0, 0, .4); }
+.menu h2 { font-family: var(--affiche); font-weight: 800; font-size: 1.6em; margin: 0 0 .6cqw; }
+.menu button { font: inherit; font-size: .85em; text-align: left; padding: .9cqw 1.2cqw; border-radius: .7cqw; cursor: pointer;
+  background: var(--bg2); color: var(--ink); border: .15cqw solid var(--line); }
+.menu button small { display: block; color: var(--dim); font-size: .78em; margin-top: .2cqw; }
+.menu .choisi, .menu button:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 20%, var(--bg2)); }
+
+/* ——— Notes pour Seb ——— */
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px 28px; }
+.notes section { display: grid; gap: 6px; align-content: start; }
+.notes h2 { font-family: var(--affiche); font-weight: 700; font-size: 20px; letter-spacing: .04em; text-transform: uppercase; margin: 0; color: var(--accent); }
+.notes p, .notes li { margin: 0; line-height: 1.5; max-width: 65ch; font-size: 14.5px; }
+.notes ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.touches { color: var(--dim); font-size: 13.5px; }
+kbd { font-family: var(--texte); font-size: 12px; padding: 1px 6px; border-radius: 5px; border: 1px solid var(--line); background: var(--bg2); color: var(--ink); }
+
+@media (prefers-reduced-motion: reduce) {
+  .roue ol, .rangee, .plaque, .boite, .ecran { transition: none; }
+}
+</style>
+
+<div class="page">
+  <div class="outils">
+    <h1>Taodbox <small>maquette 1 · à piloter au clavier ou à la manette</small></h1>
+    <div class="skins" id="skins"><span>Skin :</span></div>
+  </div>
+
+  <div class="tele" id="tele" tabindex="0" aria-label="Écran de la télé (maquette)">
+    <div class="piece"><div class="mur"></div><div class="plinthe"></div><div class="sol"></div></div>
+
+    <!-- Écran 1 : les consoles -->
+    <div class="ecran" id="consoles">
+      <div class="haut">
+        <div class="marque"><i></i>Taodbox</div>
+        <span class="espace"></span>
+        <div class="joueur"><i>S</i>Seb</div>
+      </div>
+      <div class="roue" id="roue">
+        <div class="fleche h"></div>
+        <ol id="plaques"></ol>
+        <div class="fleche bas"></div>
+      </div>
+      <div class="scene">
+        <div class="legende">
+          <div class="titre" id="c-titre"></div>
+          <div class="infos" id="c-infos"></div>
+        </div>
+        <div class="tv-place">
+          <div class="crt"><div class="vitre"><canvas id="c-ecran" width="128" height="96"></canvas></div>
+            <div class="boutons"><i></i><i></i><i></i></div><div class="pieds"><i></i><i></i></div></div>
+        </div>
+        <div class="appareil-place">
+          <div class="appareil" id="c-appareil"><div class="corps"></div><div class="note">ici, la photo de la console (Firehouse)</div></div>
+        </div>
+        <div class="annee" id="c-annee"></div>
+      </div>
+      <div class="aide">
+        <span><b class="b">↕</b>Choisir</span>
+        <span><b class="b a">A</b>Voir les jeux</span>
+        <span><b class="b y">Y</b>Chercher</span>
+        <span><b class="b">≡</b>Menu</span>
+      </div>
+    </div>
+
+    <!-- Écran 2 : les jeux d'une console -->
+    <div class="ecran" id="jeux" hidden>
+      <div class="haut">
+        <div class="marque"><i></i>Taodbox</div>
+        <span class="fil" id="j-fil"></span>
+        <span class="espace"></span>
+        <div class="joueur"><i>S</i>Seb</div>
+      </div>
+      <div class="milieu">
+        <div class="crt"><div class="vitre"><canvas id="j-ecran" width="128" height="96"></canvas></div>
+          <div class="boutons"><i></i><i></i><i></i></div><div class="pieds"><i></i><i></i></div></div>
+        <div class="fiche">
+          <h2 class="titre" id="j-titre"></h2>
+          <div class="ligne" id="j-ligne"></div>
+          <p class="resume" id="j-resume"></p>
+          <div class="actions">
+            <button class="principal" type="button" id="j-jouer"><b class="b a">A</b><span id="j-jouer-txt">Jouer</span></button>
+            <button type="button"><b class="b y">Y</b>Gérer le jeu</button>
+            <button type="button"><b class="b x">X</b>Les boutons</button>
+          </div>
+        </div>
+      </div>
+      <div class="etagere"><div class="rangee" id="rangee"></div></div>
+      <div class="aide">
+        <span><b class="b">↔</b>Choisir</span>
+        <span><b class="b bb">B</b>Consoles</span>
+        <span><b class="b">≡</b>Menu</span>
+      </div>
+    </div>
+
+    <div class="voile" id="voile" hidden></div>
+    <div class="menu" id="menu" hidden role="dialog" aria-label="Menu">
+      <h2>Menu</h2>
+      <button type="button" data-m="0">🔍 Chercher un jeu<small>avec le clavier à l'écran</small></button>
+      <button type="button" data-m="1">👥 Changer de joueur<small>Seb, Lou, Invité…</small></button>
+      <button type="button" data-m="2">🎨 Changer de skin<small>les skins de Firehouse</small></button>
+      <button type="button" data-m="3">🖥 Revenir au bureau<small>Frogtend reste ouvert</small></button>
+      <button type="button" data-m="4">⏻ Quitter Taodbox<small>et rendre la main à Moonlight</small></button>
+    </div>
+  </div>
+
+  <div class="notes">
+    <section>
+      <h2>Ce que montre la maquette</h2>
+      <ul>
+        <li>Les consoles sur une roue verticale à gauche : celle qui est choisie au centre, en grand.</li>
+        <li>À droite, la console dans une pièce aux couleurs du skin, avec une télé d'époque et l'année de sortie.</li>
+        <li>Les jeux d'une console rangés sur une étagère. La télé montre le jeu choisi, sa fiche est à côté.</li>
+        <li>Le bouton Menu ≡ ouvre une sortie de secours depuis n'importe quel écran. On ne peut plus rester coincé.</li>
+      </ul>
+    </section>
+    <section>
+      <h2>Ce qui sera vrai dans Frogtend</h2>
+      <ul>
+        <li>Les logos, la photo de chaque console et son année viendront de Firehouse, comme aujourd'hui pour les fonds.</li>
+        <li>Les jaquettes et la capture du jeu viendront de sa fiche. Ici, ce sont des dessins provisoires.</li>
+        <li>Les couleurs suivent les 44 skins. Essaie-en quelques-uns en haut.</li>
+        <li>Les consoles et les jeux affichés sont des exemples, pas ta ludothèque.</li>
+      </ul>
+    </section>
+    <section>
+      <h2>Pour l'essayer</h2>
+      <p class="touches">Clique sur la télé, puis : <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> pour choisir, <kbd>Entrée</kbd> = A,
+        <kbd>Retour arrière</kbd> = B, <kbd>M</kbd> = Menu ≡. Une manette branchée au PC peut aussi marcher si ton navigateur la laisse lire.</p>
+    </section>
+  </div>
+</div>
+
+<script>
+(() => {
+  // Les skins (instantané de Firehouse du 29/09, 7 sur 44 pour la maquette).
+  const SKINS = {
+    'Auto': null,
+    'firehouse': { '--bg': 'radial-gradient(1200px 800px at 70% -10%, #14202f 0%, #0a0e14 55%)', '--bg2': '#111722', '--panel': '#151c28', '--line': '#232c3b', '--ink': '#e6ecf5', '--dim': '#8a97ab', '--accent': '#ff7a3c', '--accent2': '#3ca6ff', '--ok': '#46c98b', '--warn': '#e6b23c', '--err': '#e05a5a' },
+    'catppuccin-latte': { '--bg': '#eff1f5', '--bg2': '#ccd0da', '--panel': '#e6e9ef', '--line': 'rgba(76, 79, 105, 0.2)', '--ink': '#4c4f69', '--dim': '#6c6f85', '--accent': '#1e66f5', '--accent2': '#1e66f5', '--ok': '#40a02b', '--warn': '#df8e1d', '--err': '#d20f39' },
+    'dracula': { '--bg': '#282a36', '--bg2': '#1e2029', '--panel': '#1e2029', '--line': '#44475a', '--ink': '#f8f8f2', '--dim': '#6272a4', '--accent': '#bd93f9', '--accent2': '#ff79c6', '--ok': '#50fa7b', '--warn': '#ffb86c', '--err': '#ff5555' },
+    'nord': { '--bg': '#2E3440', '--bg2': '#333947', '--panel': '#3B4252', '--line': '#4C566A', '--ink': '#D8DEE9', '--dim': '#81A1C1', '--accent': '#5E81AC', '--accent2': '#81A1C1', '--ok': '#A3BE8C', '--warn': '#D08770', '--err': '#BF616A' },
+    'blackberry-pumpkin': { '--bg': 'radial-gradient(at center center, #ff8a00 50%, #37033a 100%) center center/cover no-repeat fixed', '--bg2': 'rgba(60, 25, 40, 0.95)', '--panel': 'rgba(40, 15, 30, 0.95)', '--line': 'rgba(255, 138, 0, 0.3)', '--ink': '#eee', '--dim': '#999', '--accent': '#ff8a00', '--accent2': '#ff8a00', '--ok': '#46c98b', '--warn': '#f39c12', '--err': '#e74c3c' },
+    'rosepine-dawn': { '--bg': '#fffaf3', '--bg2': '#f4ede8', '--panel': '#f2e9de', '--line': 'rgba(87, 82, 121, 0.2)', '--ink': '#575279', '--dim': '#9893a5', '--accent': '#b4637a', '--accent2': '#286983', '--ok': '#286983', '--warn': '#ea9d34', '--err': '#b4637a' },
+    'snowshelf-halloween': { '--bg': 'linear-gradient(135deg, #1a0a1a 0%, #0d0d1a 25%, #1a1a0a 50%, #0a0a0a 75%, #1a0a1a 100%) center center/cover no-repeat fixed', '--bg2': '#100810', '--panel': 'rgba(20, 25, 35, 0.86)', '--line': 'rgba(255, 140, 0, 0.3)', '--ink': '#e8e8e8', '--dim': '#9370db', '--accent': '#ff6600', '--accent2': '#9932cc', '--ok': '#32cd32', '--warn': '#ff6600', '--err': '#8b0000' },
+  };
+  const racine = document.documentElement;
+  const luminance = (hex) => {
+    const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());
+    if (!m) return .5;
+    const n = parseInt(m[1], 16), c = [n >> 16, (n >> 8) & 255, n & 255].map((v) => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; });
+    return .2126 * c[0] + .7152 * c[1] + .0722 * c[2];
+  };
+  function appliquerSkin(nom) {
+    for (const k of ['--bg', '--bg2', '--panel', '--line', '--ink', '--dim', '--accent', '--accent2', '--ok', '--warn', '--err', '--on-accent', '--fond', 'color-scheme']) racine.style.removeProperty(k);
+    const s = SKINS[nom];
+    if (s) {
+      racine.setAttribute('data-skin', nom);
+      for (const [k, v] of Object.entries(s)) racine.style.setProperty(k, v);
+      racine.style.setProperty('--on-accent', luminance(s['--accent']) > .35 ? '#10141a' : '#ffffff');
+      const fond = /^#/.test(s['--bg']) ? s['--bg'] : s['--bg2'];
+      racine.style.setProperty('--fond', fond);
+      racine.style.setProperty('color-scheme', luminance(/^#/.test(s['--bg2']) ? s['--bg2'] : '#000000') > .4 ? 'light' : 'dark');
+    } else racine.removeAttribute('data-skin');
+    for (const b of document.querySelectorAll('#skins button')) b.setAttribute('aria-pressed', String(b.dataset.skin === nom));
+    try { localStorage.setItem('taodbox-maquette-skin', nom); } catch {}
+    dessinerTout();
+  }
+  const barre = document.getElementById('skins');
+  for (const nom of Object.keys(SKINS)) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = nom === 'Auto' ? 'Auto (clair / sombre)' : nom; b.dataset.skin = nom; b.id = 'skin-' + nom;
+    b.onclick = () => appliquerSkin(nom);
+    barre.appendChild(b);
+  }
+
+  // Exemples (pas la ludothèque de Seb) : les années sont celles de la 1re sortie de chaque console.
+  const C = (nom, fab, annee, c1, c2, c3, ciel, jeux) => ({ nom, fab, annee, c1, c2, c3, ciel, jeux });
+  const J = (titre, annee, genres, joueurs, installe, resume) => ({ titre, annee, genres, joueurs, installe, resume });
+  const CONSOLES = [
+    C('MS-DOS', 'IBM PC', 1981, '#d8d2c0', '#a9a28c', '#4c7a3a', '#000000', [
+      J('Dune', 1992, ['Aventure', 'Stratégie'], '1', true, 'En l\'an de grâce 10191, la planète Arrakis est la seule source de l\'Épice. Paul Atréides doit gagner la confiance des Fremen pour en chasser les Harkonnen.'),
+      J('Prince of Persia', 1989, ['Plates-formes'], '1', true, 'Une heure pour sauver la princesse : pièges, gardes et sabres dans les cachots du grand vizir Jaffar.'),
+      J('Alone in the Dark', 1992, ['Horreur', 'Aventure'], '1', false, 'Le manoir de Derceto cache des créatures venues des récits de Lovecraft. Un des premiers jeux d\'horreur en 3D.'),
+      J('Lemmings', 1991, ['Réflexion'], '1', true, 'Guide des dizaines de petites créatures jusqu\'à la sortie en leur donnant les bons métiers au bon moment.'),
+    ]),
+    C('NES', 'Nintendo', 1985, '#d9d9d9', '#9a9a9a', '#c62828', '#6b8cff', [
+      J('Super Mario Bros.', 1985, ['Plates-formes'], '1-2', true, 'Mario traverse huit mondes pour délivrer la princesse Peach des griffes de Bowser.'),
+      J('The Legend of Zelda', 1986, ['Action', 'Aventure'], '1', true, 'Link explore Hyrule pour réunir les huit fragments de la Triforce de la sagesse.'),
+      J('Mega Man 2', 1988, ['Action', 'Plates-formes'], '1', false, 'Huit robots du docteur Wily, huit armes à gagner, dans l\'ordre que tu veux.'),
+      J('Duck Hunt', 1984, ['Tir'], '1', true, 'Le pistolet en main, abats les canards avant que le chien ne se moque de toi.'),
+      J('Metroid', 1986, ['Action', 'Exploration'], '1', false, 'Samus Aran explore la planète Zèbes pour y détruire Mother Brain.'),
+    ]),
+    C('Super Nintendo', 'Nintendo', 1990, '#d4d4dc', '#a8a8b8', '#6b4fbb', '#5c94fc', [
+      J('Super Mario World', 1990, ['Plates-formes'], '1-2', true, 'Mario et Luigi découvrent Dinosaur Land avec Yoshi, à la recherche de la princesse et des sept enfants de Bowser.'),
+      J('A Link to the Past', 1991, ['Action', 'Aventure'], '1', true, 'Entre le monde de la lumière et celui des ténèbres, Link affronte le sorcier Agahnim.'),
+      J('Super Metroid', 1994, ['Action', 'Exploration'], '1', true, 'Samus retourne sur Zèbes pour reprendre le dernier Metroid volé par les pirates de l\'espace.'),
+      J('Donkey Kong Country', 1994, ['Plates-formes'], '1-2', false, 'Donkey et Diddy partent reprendre leur réserve de bananes au roi K. Rool.'),
+      J('Secret of Mana', 1993, ['Action', 'RPG'], '1-3', true, 'Trois héros réveillent l\'épée de Mana et parcourent le monde, à trois joueurs si l\'on veut.'),
+      J('Street Fighter II Turbo', 1993, ['Combat'], '1-2', true, 'Le tournoi mondial des combattants de rue, plus rapide et avec de nouveaux coups spéciaux.'),
+      J('F-Zero', 1990, ['Course'], '1', false, 'Des bolides qui flottent au-dessus de la piste, à plus de 400 km/h.'),
+    ]),
+    C('Nintendo 64', 'Nintendo', 1996, '#3a3a3a', '#202020', '#2e7d32', '#87ceeb', [
+      J('Super Mario 64', 1996, ['Plates-formes'], '1', true, 'Mario en 3D dans le château de Peach, où chaque tableau cache un monde et ses étoiles.'),
+      J('Ocarina of Time', 1998, ['Action', 'Aventure'], '1', true, 'Link voyage dans le temps pour empêcher Ganondorf de s\'emparer de la Triforce.'),
+      J('Mario Kart 64', 1996, ['Course'], '1-4', false, 'Huit pilotes, des carapaces, des bananes, et quatre joueurs sur le même écran.'),
+    ]),
+    C('GameCube', 'Nintendo', 2001, '#5b4a9e', '#3a2d70', '#e0e0e0', '#9ad0ff', [
+      J('Wind Waker', 2002, ['Action', 'Aventure'], '1', true, 'Link prend la mer pour sauver sa sœur, sur un océan qui recouvre l\'ancien royaume d\'Hyrule.'),
+      J('Super Smash Bros. Melee', 2001, ['Combat'], '1-4', true, 'Les héros de Nintendo s\'affrontent à quatre dans des arènes de leurs propres jeux.'),
+    ]),
+    C('Game Boy', 'Nintendo', 1989, '#c8c4b8', '#a39f93', '#8b1e4a', '#9bbc0f', [
+      J('Tetris', 1989, ['Réflexion'], '1-2', true, 'Des pièces tombent, des lignes disparaissent. Le jeu vendu avec la console.'),
+      J('Pokémon Rouge', 1996, ['RPG'], '1', true, 'Attrape-les tous, de Bourg Palette au Plateau Indigo.'),
+    ]),
+    C('PlayStation', 'Sony', 1994, '#cfcfcf', '#9e9e9e', '#1565c0', '#2b2b48', [
+      J('Final Fantasy VII', 1997, ['RPG'], '1', false, 'Cloud et le groupe Avalanche contre la Shinra, qui épuise la planète.'),
+      J('Crash Bandicoot', 1996, ['Plates-formes'], '1', true, 'Crash s\'échappe du laboratoire du docteur Cortex et traverse trois îles.'),
+    ]),
+    C('PlayStation 2', 'Sony', 2000, '#2b2b2b', '#121212', '#1e88e5', '#1a1a2e', [
+      J('Shadow of the Colossus', 2005, ['Action', 'Aventure'], '1', true, 'Seize colosses à abattre dans une terre interdite, pour ramener une jeune fille à la vie.'),
+      J('Gran Turismo 4', 2004, ['Course'], '1-2', false, 'Plus de 700 voitures et des dizaines de circuits du monde entier.'),
+    ]),
+    C('PlayStation 3', 'Sony', 2006, '#1b1b1b', '#050505', '#b0bec5', '#20102a', [
+      J('Asura\'s Wrath', 2012, ['Action'], '1', true, 'Trahi par les autres demi-dieux, Asura se bat pour retrouver sa fille, avec une colère qui grandit à chaque épisode.'),
+      J('Demon\'s Souls', 2009, ['Action', 'RPG'], '1', false, 'Le royaume de Boletaria est envahi par un brouillard plein de démons.'),
+    ]),
+    C('Arcade', 'Bornes', 1978, '#262626', '#0d0d0d', '#ffd600', '#000014', [
+      J('Pac-Man', 1980, ['Labyrinthe'], '1-2', true, 'Mange toutes les pac-gommes sans croiser Blinky, Pinky, Inky et Clyde.'),
+      J('Metal Slug', 1996, ['Tir', 'Action'], '1-2', true, 'Des soldats, des chars et des explosions dessinés à la main, image par image.'),
+    ]),
+  ];
+
+  // Petits « écrans » de pixels, propres à chaque console et à chaque jeu (provisoires : la vraie capture vient de Firehouse).
+  function graine(s) { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return () => ((h = Math.imul(h ^ (h >>> 15), 2246822507) ^ Math.imul(h ^ (h >>> 13), 3266489909)) >>> 0) / 4294967296; }
+  function dessinerEcran(canvas, cle, ciel, teinte) {
+    const g = canvas.getContext('2d'), w = canvas.width, h = canvas.height, r = graine(cle);
+    g.fillStyle = ciel; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 4; i++) { // nuages
+      const x = r() * w, y = 8 + r() * 24; g.fillStyle = 'rgba(255,255,255,.85)';
+      g.fillRect(x, y, 14, 4); g.fillRect(x + 3, y - 3, 8, 3);
+    }
+    const sol = h - 18;
+    g.fillStyle = teinte; // collines
+    for (let i = 0; i < 3; i++) { const cx = r() * w, rr = 10 + r() * 18; g.beginPath(); g.arc(cx, sol, rr, Math.PI, 0); g.fill(); }
+    for (let x = 0; x < w; x += 8) { // briques
+      for (let y = sol; y < h; y += 6) { g.fillStyle = (x / 8 + y / 6) % 2 ? '#8b4513' : '#a0522d'; g.fillRect(x, y, 8, 6); g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x, y + 5, 8, 1); }
+    }
+    for (let i = 0; i < 3; i++) { const x = 20 + r() * (w - 40), y = 30 + r() * 25; g.fillStyle = '#e09a2c'; g.fillRect(x, y, 8, 8); g.fillStyle = '#5a2d00'; g.fillRect(x + 3, y + 2, 2, 4); }
+    const hx = 18 + r() * 40; g.fillStyle = '#d32f2f'; g.fillRect(hx, sol - 10, 6, 4); g.fillStyle = '#f5c08a'; g.fillRect(hx, sol - 6, 6, 3); g.fillStyle = '#1e40af'; g.fillRect(hx, sol - 3, 6, 3);
+  }
+
+  const etat = { ecran: 'consoles', c: 2, j: 0, menu: false, m: 0 };
+  const $ = (id) => document.getElementById(id);
+  const plaques = $('plaques');
+  CONSOLES.forEach((c, i) => {
+    const li = document.createElement('li');
+    li.className = 'plaque';
+    li.innerHTML = `<span class="nom"></span><span class="fab"></span>`;
+    li.querySelector('.nom').textContent = c.nom; li.querySelector('.fab').textContent = c.fab;
+    li.onclick = () => { if (etat.c === i) ouvrirJeux(); else { etat.c = i; dessinerTout(); } };
+    plaques.appendChild(li);
+  });
+
+  function dessinerConsoles() {
+    const c = CONSOLES[etat.c];
+    [...plaques.children].forEach((li, i) => li.classList.toggle('choisie', i === etat.c));
+    const li = plaques.children[etat.c];
+    plaques.style.transform = `translateY(${-(li.offsetTop + li.offsetHeight / 2)}px)`;
+    $('c-titre').textContent = c.nom;
+    const installes = c.jeux.filter((j) => j.installe).length;
+    $('c-infos').innerHTML = '';
+    for (const [k, v] of [['Fabricant', c.fab], ['Jeux', String(c.jeux.length)], ['Prêts à jouer', String(installes)]]) {
+      const s = document.createElement('span'); s.append(k + ' '); const b = document.createElement('b'); b.textContent = v; s.append(b); $('c-infos').append(s);
+    }
+    $('c-annee').textContent = c.annee;
+    const ap = $('c-appareil').querySelector('.corps');
+    ap.style.setProperty('--c1', c.c1); ap.style.setProperty('--c2', c.c2); ap.style.setProperty('--c3', c.c3);
+    dessinerEcran($('c-ecran'), c.nom, c.ciel, '#2e9e48');
+  }
+  function dessinerJeux() {
+    const c = CONSOLES[etat.c], j = c.jeux[etat.j];
+    $('j-fil').innerHTML = ''; const b = document.createElement('b'); b.textContent = c.nom; $('j-fil').append('· ', b, ` · ${c.jeux.length} jeux`);
+    $('j-titre').textContent = j.titre;
+    const ligne = $('j-ligne'); ligne.innerHTML = '';
+    const puce = (t, cl) => { const s = document.createElement('span'); s.className = 'puce' + (cl ? ' ' + cl : ''); s.textContent = t; ligne.append(s); };
+    puce(String(j.annee)); j.genres.forEach((g) => puce(g)); puce(j.joueurs === '1' ? '1 joueur' : j.joueurs + ' joueurs');
+    puce(j.installe ? '✔ Prêt à jouer' : '📦 À installer', j.installe ? 'ok' : 'attente');
+    $('j-resume').textContent = j.resume;
+    $('j-jouer-txt').textContent = j.installe ? 'Jouer' : 'Installer';
+    const rangee = $('rangee'); rangee.innerHTML = '';
+    c.jeux.forEach((x, i) => {
+      const d = document.createElement('div'); d.className = 'boite' + (i === etat.j ? ' choisie' : '');
+      const r = graine(x.titre); const teinte = Math.floor(r() * 360);
+      d.style.setProperty('--c1', `hsl(${teinte} 55% 45%)`); d.style.setProperty('--c2', `hsl(${(teinte + 40) % 360} 60% 22%)`);
+      const s = document.createElement('span'); s.textContent = x.titre; d.append(s);
+      d.onclick = () => { etat.j = i; dessinerTout(); };
+      rangee.append(d);
+    });
+    const choisie = rangee.children[etat.j], largeur = rangee.parentElement.clientWidth;
+    const decalage = Math.min(0, largeur / 2 - (choisie.offsetLeft + choisie.offsetWidth / 2));
+    rangee.style.transform = `translateX(${Math.max(decalage, Math.min(0, largeur - rangee.scrollWidth))}px)`;
+    const r = graine(j.titre);
+    dessinerEcran($('j-ecran'), j.titre, `hsl(${Math.floor(r() * 360)} 60% 62%)`, `hsl(${Math.floor(r() * 360)} 50% 38%)`);
+  }
+  function dessinerTout() {
+    $('consoles').hidden = etat.ecran !== 'consoles';
+    $('jeux').hidden = etat.ecran !== 'jeux';
+    if (etat.ecran === 'consoles') dessinerConsoles(); else dessinerJeux();
+    $('voile').hidden = $('menu').hidden = !etat.menu;
+    [...$('menu').querySelectorAll('button')].forEach((b, i) => b.classList.toggle('choisi', i === etat.m));
+  }
+  function ouvrirJeux() { etat.ecran = 'jeux'; etat.j = 0; dessinerTout(); }
+
+  // Les gestes : une seule table pour le clavier et la manette.
+  function geste(g) {
+    if (etat.menu) {
+      const n = $('menu').querySelectorAll('button').length;
+      if (g === 'haut') etat.m = (etat.m + n - 1) % n;
+      else if (g === 'bas') etat.m = (etat.m + 1) % n;
+      else if (g === 'b' || g === 'menu') etat.menu = false;
+      else if (g === 'a' && etat.m === 2) { const noms = Object.keys(SKINS); const act = racine.getAttribute('data-skin') ?? 'Auto'; appliquerSkin(noms[(noms.indexOf(act) + 1) % noms.length]); return; }
+      else if (g === 'a') etat.menu = false;
+    } else if (g === 'menu') { etat.menu = true; etat.m = 0; }
+    else if (etat.ecran === 'consoles') {
+      if (g === 'haut') etat.c = (etat.c + CONSOLES.length - 1) % CONSOLES.length; // la roue tourne en boucle
+      else if (g === 'bas') etat.c = (etat.c + 1) % CONSOLES.length;
+      else if (g === 'a' || g === 'droite') { ouvrirJeux(); return; }
+    } else {
+      const n = CONSOLES[etat.c].jeux.length;
+      if (g === 'gauche') etat.j = Math.max(0, etat.j - 1);
+      else if (g === 'droite') etat.j = Math.min(n - 1, etat.j + 1);
+      else if (g === 'b') etat.ecran = 'consoles';
+    }
+    dessinerTout();
+  }
+  const tele = $('tele');
+  tele.addEventListener('keydown', (e) => {
+    const g = { ArrowUp: 'haut', ArrowDown: 'bas', ArrowLeft: 'gauche', ArrowRight: 'droite', Enter: 'a', ' ': 'a', Backspace: 'b', Escape: 'b', m: 'menu', M: 'menu' }[e.key];
+    if (g) { e.preventDefault(); geste(g); }
+  });
+  $('voile').onclick = () => geste('b');
+  $('menu').querySelectorAll('button').forEach((b, i) => (b.onclick = () => { etat.m = i; geste('a'); }));
+  $('j-jouer').onclick = () => {};
+
+  // La manette (si le navigateur la laisse lire) : croix ou stick, A, B, Menu.
+  const avant = {};
+  function lireManette() {
+    let pads = [];
+    try { pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : []; } catch { pads = []; }
+    const p = pads[0];
+    if (p) {
+      const ax = p.axes || [], bt = (i) => !!p.buttons[i]?.pressed;
+      const etats = { haut: bt(12) || ax[1] < -.6, bas: bt(13) || ax[1] > .6, gauche: bt(14) || ax[0] < -.6, droite: bt(15) || ax[0] > .6, a: bt(0), b: bt(1), menu: bt(9) };
+      for (const [g, v] of Object.entries(etats)) { if (v && !avant[g]) geste(g); avant[g] = v; }
+    }
+    requestAnimationFrame(lireManette);
+  }
+  requestAnimationFrame(lireManette);
+
+  let depart = 'Auto';
+  try { depart = localStorage.getItem('taodbox-maquette-skin') || 'Auto'; } catch {}
+  appliquerSkin(SKINS[depart] !== undefined ? depart : 'Auto');
+  new ResizeObserver(() => dessinerTout()).observe(tele);
+  new MutationObserver(() => dessinerTout()).observe(racine, { attributes: true, attributeFilter: ['data-theme'] });
+})();
+</script>

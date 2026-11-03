@@ -42,6 +42,12 @@
   retirés du menu en jeu et des raccourcis (pilotage::actions) ; Gérer ne garde que « Remettre la fluidité d'origine »
   là où le mode est posé. Même essai : « Les boutons » en PS3 vide côté manette → disposition RPCS3 ajoutée (relevée dans
   xinput_pad_handler.cpp, profil de Frogtend seulement).
+- **Maquette 1 de la nouvelle Taodbox (03/11)** : `docs/maquettes/taodbox-maquette-1.html` (aussi en artifact privé de
+  Seb). Écran Consoles = roue verticale à gauche (choisie au centre, en grand, roue en boucle), à droite une « pièce » aux
+  couleurs du skin (mur, sol, télé d'époque, photo de la console de Firehouse) et l'année ; écran Jeux = télé avec la
+  capture du jeu, fiche à côté (Jouer/Installer, Gérer, Les boutons), jaquettes sur une étagère ; Menu ≡ = sortie de
+  secours partout (chercher, changer de joueur, skin, bureau, quitter). Visuels provisoires dessinés ; 7 skins de
+  l'instantané. EN ATTENTE de l'avis de Seb.
 - **✅ (1)-(5) FAITS (0.149.0 → 0.153.0).** Suivent, AVEC Seb : maquette de la nouvelle Taodbox, cadrage des réglages
   selon la carte graphique, nouvelle séance d'essais.
   (1) menu de Frogtend partout dans RPCS3 (sauver / charger / recommencer d'abord, puis le bouton PS retiré) ; (2) effet
