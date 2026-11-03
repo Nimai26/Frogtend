@@ -18,11 +18,11 @@
 - [x] Le menu en jeu ne propose plus Sauvegarder / Charger ; avance rapide, capture, son toujours là.
 
 ## La PS3 dans ta langue (0.153.0)
-- [ ] Rien ne change chez toi (tes réglages de RPCS3 sont les tiens) : Asura's Wrath reste en français.
+- [x] (✅ 03/11) Rien ne change chez toi (tes réglages de RPCS3 sont les tiens) : Asura's Wrath reste en français.
 - [ ] (Si un jeu japonais est là) : A (Croix) et B (Rond) sont inversés pour valider, comme au Japon.
 
 ## Les parties d'un jeu réinstallé (0.152.0)
-- [ ] Un petit jeu PC (Dune) : jouer et sauvegarder ; ⚙ Gérer ▸ « Retirer du PC » ; le remettre dans la ludothèque et
+- [x] (✅ 03/11) Un petit jeu PC (Dune) : jouer et sauvegarder ; ⚙ Gérer ▸ « Retirer du PC » ; le remettre dans la ludothèque et
       l'installer ; ▶ Jouer : « 💾 Tes parties de « Dune » sont à l'abri » ; « Les remettre » ; la partie est là en jeu.
 - [ ] Relancer : la question ne revient pas.
 
