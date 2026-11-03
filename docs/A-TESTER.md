@@ -6,6 +6,11 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Un jeu en archive se décompresse avant de jouer (0.156.0)
+- [ ] Metal Gear Solid 4 : ▶ Jouer → « 🗜 … doit d'abord être décompressé » (32,7 Go, place libre, durée) ; « Décompresser
+      puis jouer » : la barre avance, puis l'avertissement du long démarrage PS3, puis le jeu se lance.
+- [ ] Relancer : plus aucune question de décompression ; l'archive .zip est toujours là.
+
 ## Les boutons PS3, sans sauvegardes rapides (0.155.0) — ✅ Seb 03/11
 - [x] Asura's Wrath : ⚙ Gérer le jeu ▸ « 💾 Remettre la fluidité d'origine » (l'entrée disparaît ensuite).
 - [x] Lancer : le jeu démarre normalement (plus d'écran noir).
@@ -24,12 +29,12 @@
 ## L'effet d'image depuis le menu en jeu (0.151.0)
 - [x] (✅ Seb 30/10) Super Mario World : menu ▸ « 🖼 Effet d'image » ▸ « Télé d'époque (simple) » : le menu se ferme, les lignes
       apparaissent ; rouvrir le menu : ✅ sur cet effet ; « Aucun effet » : l'image redevient normale.
-- [ ] « Garder pour ce jeu », quitter, relancer : l'effet est là dès le lancement.
-- [ ] Après la partie, un autre jeu RetroArch sans effet : image normale (rien de collé).
+- [x] (✅ 03/11) « Garder pour ce jeu », quitter, relancer : l'effet est là dès le lancement.
+- [x] (✅ 03/11) Après la partie, un autre jeu RetroArch sans effet : image normale (rien de collé).
 
 ## Prévenu avant un long démarrage PS3 (0.150.0)
 - [ ] Un jeu PS3 jamais lancé : avant de jouer, « ⏳ … va être long à démarrer » ; « ▶ Jouer quand même » lance.
-- [ ] Asura's Wrath (déjà compilé, partie de plus de 6 min faite) : aucun message.
+- [x] (✅ 03/11) Asura's Wrath (déjà compilé, partie de plus de 6 min faite) : aucun message.
 
 ## Le menu de Frogtend dans les jeux PS3 (0.149.0)
 - [x] Asura's Wrath : le bouton Xbox ouvre le menu de Frogtend (plus celui de RPCS3, en anglais). ✅ 03/11

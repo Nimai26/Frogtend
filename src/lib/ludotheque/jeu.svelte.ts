@@ -5,7 +5,8 @@ import { listen } from '@tauri-apps/api/event';
 import { goto } from '$app/navigation';
 import { isTauri } from '@tauri-apps/api/core';
 import { api, duree, estErreurCoeur, taille, type ApercuNuage, type Candidat, type JeuPc, type ModInstalle, type PatchsPs3, type VerificationFiger } from '$lib/api';
-import { attendreTouche, choisir, confirmer, fermerToast, informer, toast } from '$lib/dialogues/fenetres.svelte';
+import { attendreTouche, choisir, confirmer, fermerToast, informer, majProgres, toast, toastProgres } from '$lib/dialogues/fenetres.svelte';
+import { dossierDe, messageConfirmation } from '$lib/decompression/decompression';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { completerRetroArch, installerFirmwareSwitch, poserBios, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
 import { avecConseil, biosADireOuPoser, biosRetroArch, changementDeConseil, estConseille, firmwareSwitchServi, poidsBios, questionFirmwareSwitch } from '$lib/emulateurs/pret';
@@ -478,6 +479,9 @@ async function jouerSansAttente(id: number, emulateur?: string, version?: string
   // Des parties de ce jeu à l'abri (il a été retiré puis réinstallé) : les remettre, après un oui (lot 3). Une remise
   // ratée : on demande avant de lancer (le jeu pourrait créer une nouvelle partie à la même place).
   if (!(await proposerPartiesAbritees(id, j?.titre ?? 'Le jeu').catch(() => true))) return;
+  // Un jeu rangé dans une archive avec une image disque (un .zip PS3…) : l'émulateur ne le lirait pas (essai de Seb,
+  // 03/11 : RPCS3 « Invalid file or folder » sur le .zip de MGS4). Décompressé d'abord, après un oui.
+  if (version === undefined && !(await decompresserAvantDeJouer(id, j?.titre ?? 'Le jeu'))) return;
   let compilationDite = false;
   for (let essai = 0; essai < 2; essai++) {
     // Un jeu PS3 qui va compiler (1re partie, ou RPCS3 mis à jour) : le dire AVANT (✅ Seb 30/10 : « ne quitte pas ») —
@@ -533,6 +537,40 @@ async function jouerSansAttente(id: number, emulateur?: string, version?: string
         return;
       }
     }
+  }
+}
+
+/** « 🗜 Décompresser puis jouer » : comme le bloc de la fiche (taille, dossier, place libre, durée ; archive gardée),
+ * mais depuis ▶ Jouer. Rend faux si la personne refuse ou si la décompression échoue (le jeu n'est pas lancé). */
+async function decompresserAvantDeJouer(id: number, titre: string): Promise<boolean> {
+  const a = await api.archiveDuJeu(id).catch(() => null);
+  if (!a) return true;
+  if (!a.deja) {
+    const libre = await api.espaceLibre(dossierDe(a.archive)).catch(() => null);
+    const oui = await confirmer(`🗜 « ${titre} » doit d’abord être décompressé`, {
+      message: `L’émulateur ne sait pas lire un jeu rangé dans une archive : Frogtend le décompresse une fois, puis le lance.\n\n${messageConfirmation(a, libre)}`,
+      libelleValider: '🗜 Décompresser puis jouer',
+    });
+    if (!oui) return false;
+  }
+  const t = toastProgres(`🗜 Décompression de « ${titre} »… Ne ferme pas Frogtend.`);
+  const arreter = isTauri()
+    ? await listen<{ jeu: number; ecrits: number; total: number }>('decompression', (e) => {
+        if (e.payload.jeu !== id) return;
+        const { ecrits, total } = e.payload;
+        majProgres(t, { etape: 'Décompression', chiffres: `${taille(ecrits)} / ${taille(total)}`, pourcent: total ? Math.round((ecrits / total) * 100) : 0 });
+      })
+    : () => {};
+  try {
+    await api.decompresserJeu(id);
+    await rechargerJeuxDuPc();
+    return true;
+  } catch (e) {
+    toast(`Décompression impossible : ${motifDuRefus(e)}`, 'erreur');
+    return false;
+  } finally {
+    arreter();
+    fermerToast(t);
   }
 }
 

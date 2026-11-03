@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.156.0 — Un jeu en archive se décompresse avant de jouer
+
+- 🗜 Un jeu importé rangé dans une archive avec une image disque (un .zip PS3, par exemple) : ▶ Jouer propose d'abord
+  « Décompresser puis jouer », avec la taille, le dossier, la place libre et la durée. La décompression montre sa
+  progression, puis le jeu se lance. L'archive est gardée.
+- Avant, ▶ Jouer donnait l'archive telle quelle à l'émulateur (RPCS3 : « Invalid file or folder »).
+
 ## 0.155.0 — Les boutons de la PS3, sans sauvegardes rapides
 
 - 🗺 « Les boutons » d'un jeu PS3 montre enfin ta manette : A → Croix, B → Rond, X → Carré, Y → Triangle, Vue → Select…
