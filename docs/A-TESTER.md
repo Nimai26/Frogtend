@@ -6,11 +6,11 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
-## Les boutons PS3, sans sauvegardes rapides (0.155.0)
-- [ ] Asura's Wrath : ⚙ Gérer le jeu ▸ « 💾 Remettre la fluidité d'origine » (l'entrée disparaît ensuite).
-- [ ] Lancer : le jeu démarre normalement (plus d'écran noir).
-- [ ] En jeu, menu de Frogtend ▸ « 🗺 Les boutons » : la manette est dessinée (A → Croix…), plus seulement les raccourcis.
-- [ ] Le menu en jeu ne propose plus Sauvegarder / Charger ; avance rapide, capture, son toujours là.
+## Les boutons PS3, sans sauvegardes rapides (0.155.0) — ✅ Seb 03/11
+- [x] Asura's Wrath : ⚙ Gérer le jeu ▸ « 💾 Remettre la fluidité d'origine » (l'entrée disparaît ensuite).
+- [x] Lancer : le jeu démarre normalement (plus d'écran noir).
+- [x] En jeu, menu de Frogtend ▸ « 🗺 Les boutons » : la manette est dessinée (A → Croix…), plus seulement les raccourcis.
+- [x] Le menu en jeu ne propose plus Sauvegarder / Charger ; avance rapide, capture, son toujours là.
 
 ## La PS3 dans ta langue (0.153.0)
 - [ ] Rien ne change chez toi (tes réglages de RPCS3 sont les tiens) : Asura's Wrath reste en français.
