@@ -22,7 +22,7 @@
 - [ ] Relancer : la question ne revient pas.
 
 ## L'effet d'image depuis le menu en jeu (0.151.0)
-- [ ] Super Mario World : menu ▸ « 🖼 Effet d'image » ▸ « Télé d'époque (simple) » : le menu se ferme, les lignes
+- [x] (✅ Seb 30/10) Super Mario World : menu ▸ « 🖼 Effet d'image » ▸ « Télé d'époque (simple) » : le menu se ferme, les lignes
       apparaissent ; rouvrir le menu : ✅ sur cet effet ; « Aucun effet » : l'image redevient normale.
 - [ ] « Garder pour ce jeu », quitter, relancer : l'effet est là dès le lancement.
 - [ ] Après la partie, un autre jeu RetroArch sans effet : image normale (rien de collé).
@@ -32,10 +32,10 @@
 - [ ] Asura's Wrath (déjà compilé, partie de plus de 6 min faite) : aucun message.
 
 ## Le menu de Frogtend dans les jeux PS3 (0.149.0)
-- [ ] Asura's Wrath : le bouton Xbox ouvre le menu de Frogtend (plus celui de RPCS3, en anglais).
-- [ ] « 💾 Sauvegarde rapide (le jeu repart un instant) » : le jeu s'arrête une seconde et repart au même endroit ;
+- [x] Asura's Wrath : le bouton Xbox ouvre le menu de Frogtend (plus celui de RPCS3, en anglais). ✅ 03/11
+- [~] SANS OBJET depuis la 0.155.0 (sauvegardes rapides PS3 retirées) : « 💾 Sauvegarde rapide (le jeu repart un instant) » : le jeu s'arrête une seconde et repart au même endroit ;
       puis « 📂 Charger la dernière sauvegarde rapide » : on revient à ce moment-là.
-- [ ] ⚠ À vérifier d'abord À LA MAIN, clavier français : dans RPCS3, Ctrl + Alt + & (la touche du 1) recharge-t-il ?
+- [~] SANS OBJET depuis la 0.155.0 : ⚠ À vérifier d'abord À LA MAIN, clavier français : dans RPCS3, Ctrl + Alt + & (la touche du 1) recharge-t-il ?
       Si non, « Charger » ne marchera pas non plus (à corriger).
 - [ ] Photo de l'écran, son coupé, avance rapide depuis Options du jeu.
 
