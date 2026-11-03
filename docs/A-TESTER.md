@@ -24,7 +24,7 @@
 ## Les parties d'un jeu réinstallé (0.152.0)
 - [x] (✅ 03/11) Un petit jeu PC (Dune) : jouer et sauvegarder ; ⚙ Gérer ▸ « Retirer du PC » ; le remettre dans la ludothèque et
       l'installer ; ▶ Jouer : « 💾 Tes parties de « Dune » sont à l'abri » ; « Les remettre » ; la partie est là en jeu.
-- [ ] Relancer : la question ne revient pas.
+- [x] (✅ 03/11) Relancer : la question ne revient pas. Plein écran de Dune (Alt+Entrée) aussi validé.
 
 ## L'effet d'image depuis le menu en jeu (0.151.0)
 - [x] (✅ Seb 30/10) Super Mario World : menu ▸ « 🖼 Effet d'image » ▸ « Télé d'époque (simple) » : le menu se ferme, les lignes
