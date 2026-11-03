@@ -47,7 +47,11 @@
   couleurs du skin (mur, sol, télé d'époque, photo de la console de Firehouse) et l'année ; écran Jeux = télé avec la
   capture du jeu, fiche à côté (Jouer/Installer, Gérer, Les boutons), jaquettes sur une étagère ; Menu ≡ = sortie de
   secours partout (chercher, changer de joueur, skin, bureau, quitter). Visuels provisoires dessinés ; 7 skins de
-  l'instantané. EN ATTENTE de l'avis de Seb.
+  l'instantané. Avis de Seb (03/11) : « pas mal » ; pastille choisie coupée, lettres des boutons décalées, texte derrière
+  l'année → corrigés ; VOULU : une télé typique de l'époque de chaque console, et une CHAMBRE D'ADO de l'époque avec des
+  affiches de films emblématiques (comme Bedroom) → maquette 2 (`taodbox-maquette-2.html`) : 5 époques (papier peint,
+  sol, 3 affiches typographiques), télés bois/argent/noire/argent 2000/plate, moniteur beige (PC), borne (arcade).
+  Question ouverte : les vraies affiches de films → à demander à Firehouse (sa médiathèque). EN ATTENTE de l'avis de Seb.
 - **✅ (1)-(5) FAITS (0.149.0 → 0.153.0).** Suivent, AVEC Seb : maquette de la nouvelle Taodbox, cadrage des réglages
   selon la carte graphique, nouvelle séance d'essais.
   (1) menu de Frogtend partout dans RPCS3 (sauver / charger / recommencer d'abord, puis le bouton PS retiré) ; (2) effet
