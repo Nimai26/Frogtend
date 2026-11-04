@@ -69,6 +69,13 @@
   relue, abandon journalisé après ~1 min. RESTE : relever les dossiers de MAME, Dolphin, PPSSPP, DuckStation, PCSX2,
   DOSBox Staging, Eden, Azahar, xemu, Cemu (doc + vraie capture) ; captures de mGBA/Dolphin/PPSSPP hors de la
   sauvegarde du profil une fois déplacées (à trancher avec Seb).
+- **Question de Seb (04/11)** : changer les dossiers Émulateurs / Outils / Abris déjà en place, avec déplacement du
+  contenu ? ÉTAT RÉEL (relu dans le code) : AUCUN déplacement proposé ; Abris : seuls les abris de l'ancien emplacement
+  interne (%APPDATA%\sauvegardes) sont rangés (`migrer_abris`), ceux d'un dossier d'abris CHOISI avant ne sont plus lus
+  (`dossiers_abris_a_lire`) → parties pas perdues mais plus proposées ; Émulateurs : les installés se lancent toujours
+  (chemin au registre), MAIS « Mettre à jour » installe dans le NOUVEAU dossier (`assistant.svelte.ts:93`) → une copie
+  neuve sans la configuration (le message « ta configuration est gardée » serait faux) ; Outils : idem ; Captures :
+  sans souci (les nouvelles vont au nouveau dossier). À PROPOSER à Seb : lot « changer un dossier sans rien casser ».
 - **Essai du 03/11 (0.155.0)** : MGS4 importé (`.zip` de 32,7 Go contenant un `.iso`) → ▶ Jouer donnait le .zip à RPCS3
   (« Invalid file or folder ») : la décompression n'était proposée que par le bloc de la fiche. → 0.156.0 : ▶ Jouer
   propose « Décompresser puis jouer » (même accord chiffré, progression, archive gardée). Remarque de Seb : « on devrait
