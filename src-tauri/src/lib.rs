@@ -601,6 +601,8 @@ pub fn run() {
             commandes::abris_regler,
             commandes::dossier_contenu,
             commandes::dossier_deplacer_contenu,
+            commandes::emulateur_deplacer,
+            commandes::dossier_retirer_si_vide,
             commandes::contenus_du_jeu,
             commandes::contenus_installer,
             commandes::archive_du_jeu,

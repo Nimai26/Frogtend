@@ -4,7 +4,7 @@
   import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
   import { onMount } from 'svelte';
   import { isTauri } from '@tauri-apps/api/core';
-  import { api, taille, type Plateforme } from '$lib/api';
+  import { api, taille, type EmulateurInstalle, type Plateforme } from '$lib/api';
   import { choisir, confirmer, demander, fermerToast, informer, majProgres, toast, toastProgres } from '$lib/dialogues/fenetres.svelte';
   import { listen } from '@tauri-apps/api/event';
   import { dureeEstimee } from '$lib/decompression/decompression';
@@ -14,6 +14,17 @@
   const e = $derived(etat.pc.emplacements);
   let libres = $state<Record<string, number | null>>({});
   let plateformes = $state<Plateforme[]>([]);
+  /** Les émulateurs et outils installés par Frogtend (pour « 📦 Les y déplacer »). */
+  let installes = $state<EmulateurInstalle[]>([]);
+  /** Les outils (le reste est un émulateur). */
+  const OUTILS = ['cheatengine'];
+  /** Ceux restés en dehors du dossier réglé (le réglage a changé, ou ils ont été installés avant). */
+  function horsDuDossier(cle: string): EmulateurInstalle[] {
+    const d = cle === 'dossierEmulateurs' ? etat.pc.dossierEmulateurs : cle === 'dossierOutils' ? etat.pc.dossierOutils : '';
+    if (!d) return [];
+    const outil = cle === 'dossierOutils';
+    return installes.filter((x) => x.par_frogtend && OUTILS.includes(x.id) === outil && !dans(x.dossier, d));
+  }
 
   async function mesurer(chemins: string[]) {
     for (const c of chemins) {
@@ -25,6 +36,7 @@
   });
   onMount(async () => {
     plateformes = await api.plateformes(false).catch(() => []);
+    installes = await api.emulateursInstalles().catch(() => []);
   });
 
   /** Demande un dossier : le sélecteur de Windows, ou un chemin tapé à la main. */
@@ -100,18 +112,11 @@
     }
     const ancien = etat.pc[cle];
     const change = !!ancien && ancien.toLowerCase().replace(/[\\/]+$/, '') !== c.toLowerCase().replace(/[\\/]+$/, '');
-    // Émulateurs et outils : ceux déjà installés restent où ils sont (et s'y mettent à jour) ; seuls les nouveaux vont
-    // au nouveau dossier (déplacer un émulateur demande de réécrire ses chemins : pas encore, avis lancement 04/11).
+    // Émulateurs et outils : ceux installés par Frogtend dans l'ancien dossier le suivent, après un oui chiffré
+    // (✅ Seb 04/11) ; ceux installés à la main restent où ils sont.
     if (change && (cle === 'dossierEmulateurs' || cle === 'dossierOutils')) {
-      const quoi = cle === 'dossierEmulateurs' ? 'émulateurs' : 'outils';
-      const oui = await confirmer(`📁 Changer le dossier des ${quoi} ?`, {
-        message: [
-          `Ceux déjà installés restent dans ${ancien} : ils continuent de marcher et s’y mettent à jour.`,
-          `Seuls les prochains iront dans ${c}.`,
-        ].join('\n'),
-        libelleValider: 'Changer',
-      });
-      if (!oui) return;
+      await changerDossierEmulateurs(cle, ancien, c);
+      return;
     }
     // Abris : le RÉGLAGE change d'abord (les nouveaux abris vont tout de suite au nouveau dossier, l'ancien reste lu),
     // PUIS ses abris sont déplacés (relecture lancement 04/11 : jamais d'abris dans un dossier que personne ne lit).
@@ -169,6 +174,97 @@
     } else {
       toast(`✅ Dossier réglé : ${c}. Les prochaines installations iront là ; celles déjà faites restent à leur place.`);
     }
+  }
+
+  /** Le chemin `p` désigne-t-il `d` ou quelque chose dedans ? (Sans casse, `\\` ou `/`.) */
+  function dans(p: string, d: string): boolean {
+    const n = (s: string) => s.toLowerCase().replace(/\//g, '\\').replace(/\\+$/, '');
+    return n(p) === n(d) || n(p).startsWith(n(d) + '\\');
+  }
+  /** `p` avec `ancien` remplacé par `nouveau` au début (s'il y est). */
+  function suivre(p: string, ancien: string, nouveau: string): string {
+    return dans(p, ancien) ? nouveau.replace(/[\\/]+$/, '') + p.slice(ancien.replace(/[\\/]+$/, '').length) : p;
+  }
+
+  async function changerDossierEmulateurs(cle: 'dossierEmulateurs' | 'dossierOutils', ancien: string, c: string) {
+    const quoi = cle === 'dossierEmulateurs' ? 'émulateurs' : 'outils';
+    const tous = await api.emulateursInstalles().catch(() => []);
+    const outil = cle === 'dossierOutils';
+    const ici = tous.filter((e) => e.par_frogtend && OUTILS.includes(e.id) === outil && dans(e.dossier, ancien));
+    const tailles = await Promise.all(ici.map((e) => api.dossierContenu('tout', e.dossier).catch(() => null)));
+    const total = tailles.reduce((s, t) => s + (t?.octets ?? 0), 0);
+    const memeDisque = ancien.slice(0, 2).toLowerCase() === c.slice(0, 2).toLowerCase();
+    let deplacer = false;
+    if (ici.length) {
+      const liste = ici.map((e, i) => `${e.nom}${tailles[i] ? ` (${taille(tailles[i]!.octets)})` : ''}`).join(', ');
+      const d = await choisir<boolean>(
+        `📁 Changer le dossier des ${quoi} ?`,
+        [
+          { valeur: true, libelle: `📦 Oui, et déplacer ${liste}`, detail: memeDisque ? 'même disque : instantané' : `${taille(total)}, ${dureeEstimee(total)}` },
+          { valeur: false, libelle: '📁 Oui, mais les laisser où ils sont', detail: `ils continuent de marcher et se mettent à jour dans ${ancien}` },
+        ],
+        'Leurs réglages, profils et parties partent avec eux. Ils doivent être fermés. Ceux installés à la main ne bougent jamais.',
+      );
+      if (d === null) return;
+      deplacer = d;
+    } else if (!(await confirmer(`📁 Changer le dossier des ${quoi} ?`, { message: `Aucun ${quoi === 'émulateurs' ? 'émulateur' : 'outil'} installé par Frogtend dans ${ancien}. Les prochains iront dans ${c}.`, libelleValider: 'Changer' }))) {
+      return;
+    }
+    await reglerPc(cle, c);
+    if (!deplacer) {
+      toast(`✅ Dossier réglé : ${c}. Les prochaines installations iront là.`);
+      return;
+    }
+    await deplacerEmulateurs(quoi, ici, c);
+  }
+
+  /** « 📦 Les y déplacer » : ceux restés en dehors du dossier réglé le rejoignent (même accord chiffré). */
+  async function rapatrier(cle: 'dossierEmulateurs' | 'dossierOutils') {
+    const c = cle === 'dossierEmulateurs' ? etat.pc.dossierEmulateurs : etat.pc.dossierOutils;
+    const quoi = cle === 'dossierEmulateurs' ? 'émulateurs' : 'outils';
+    const ici = horsDuDossier(cle);
+    if (!c || !ici.length) return;
+    const tailles = await Promise.all(ici.map((x) => api.dossierContenu('tout', x.dossier).catch(() => null)));
+    const total = tailles.reduce((s, t) => s + (t?.octets ?? 0), 0);
+    const memeDisque = ici.every((x) => x.dossier.slice(0, 2).toLowerCase() === c.slice(0, 2).toLowerCase());
+    const oui = await confirmer(`📦 Déplacer dans ${c} ?`, {
+      message: [
+        ici.map((x, i) => `${x.nom} (${x.dossier}${tailles[i] ? `, ${taille(tailles[i]!.octets)}` : ''})`).join('\n'),
+        memeDisque ? 'Même disque : instantané.' : `${taille(total)}, ${dureeEstimee(total)}.`,
+        'Leurs réglages, profils et parties partent avec eux. Ils doivent être fermés.',
+      ].join('\n'),
+      libelleValider: '📦 Déplacer',
+    });
+    if (oui) await deplacerEmulateurs(quoi, ici, c);
+  }
+
+  async function deplacerEmulateurs(quoi: string, ici: EmulateurInstalle[], c: string) {
+    const anciens = [...new Set(ici.map((x) => x.dossier.replace(/[\\/][^\\/]+[\\/]?$/, '')))];
+    let faits = 0;
+    for (const e of ici) {
+      const t = toastProgres(`📦 Déplacement de ${e.nom}… Ne ferme pas Frogtend.`);
+      try {
+        const r = await api.emulateurDeplacer(e.id, c);
+        // Les émulateurs réglés par console suivent (programme et ligne de commande qui le nomment).
+        const emulateurs = $state.snapshot(etat.pc.emulateurs);
+        for (const p of Object.values(emulateurs)) {
+          for (const x of p.liste ?? []) {
+            x.programme = suivre(x.programme, r.ancien, r.nouveau);
+          }
+        }
+        await reglerPc('emulateurs', emulateurs);
+        faits++;
+      } catch (err) {
+        toast(`${e.nom} : ${motifDuRefus(err)}`, 'erreur');
+      } finally {
+        fermerToast(t);
+      }
+    }
+    // Les anciens dossiers de base, s'ils sont vides (rien d'autre ne peut partir).
+    const retires: string[] = [];
+    for (const a of anciens) if (await api.dossierRetirerSiVide(a).catch(() => false)) retires.push(a);
+    installes = await api.emulateursInstalles().catch(() => installes);
+    if (faits) toast(`✅ ${faits} ${quoi} déplacé(s) dans ${c}.${retires.length ? ` Ancien dossier vide retiré : ${retires.join(', ')}.` : ''}`);
   }
 
   /** Déplace le contenu d'un ancien dossier (barre de progression) ; rend faux si le déplacement a échoué. */
@@ -264,6 +360,13 @@
           <span class="chemin">{etat.pc[a.cle] || (a.cle === 'dossierCaptures' ? 'pas choisi : chaque émulateur garde ses captures' : 'pas encore choisi (demandé quand il le faut)')}</span>
           <button class="btn petit" onclick={() => choisirAutre(a.cle)}>📂 Choisir</button>
           <span class="muted">{a.aide}</span>
+          {#if (a.cle === 'dossierEmulateurs' || a.cle === 'dossierOutils') && horsDuDossier(a.cle).length}
+            {@const hors = horsDuDossier(a.cle)}
+            <span class="hors">
+              {hors.map((x) => x.nom).join(', ')} {hors.length > 1 ? 'sont restés' : 'est resté'} ailleurs ({hors[0].dossier.replace(/[\\/][^\\/]+[\\/]?$/, '')}).
+              <button class="btn petit" onclick={() => rapatrier(a.cle as 'dossierEmulateurs' | 'dossierOutils')}>📦 Les y déplacer</button>
+            </span>
+          {/if}
         </dd>
       {/each}
     </dl>
@@ -271,6 +374,12 @@
 </div>
 
 <style>
+  .hors {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(6 * var(--u));
+  }
   .emplacements {
     display: grid;
     gap: calc(12 * var(--u));

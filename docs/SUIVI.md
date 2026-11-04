@@ -91,6 +91,18 @@
 - **Essai du 04/11 (0.158.0)** : captures ✅ ; changements de tous les dossiers ✅. DEMANDES de Seb : (1) après un
   déplacement, proposer de supprimer l'ancien dossier ; (2) voir ses captures : dans la fiche du jeu, depuis le menu en
   jeu, et une vue complète de toutes les captures dans les Options. → propositions envoyées à Seb (en attente).
+  Réponses de Seb (04/11) : galerie avec supprimer, ouvrir le dossier, diaporama, « en faire le fond du jeu » ; ancien
+  dossier : « rien n'a été déplacé alors que j'ai dit oui » = les ÉMULATEURS (voulu en 0.158 mais message trompeur) →
+  ✅ « déplacer les émulateurs d'abord » → 0.159.0 (`emulateur_deplacer` : renommage sur le même disque, sinon
+  `copier_arbre` comparé + dossiers vides + jonctions non suivies ; registre, pc.json ▸ emulateurs, notes
+  langues-posees/rpcs3-compile/eden-contenus, réglages xemu/Eden/Azahar/RetroArch/DuckStation/PCSX2/mGBA réécrits
+  seulement pour les valeurs de l'ancien dossier, copie à l'abri). Répétition : copie du vrai RetroArch (14 833
+  fichiers, 550 Mo) copiée-comparée puis renommée : identique. ENSUITE : la galerie des captures.
+  Relecture lancement : 2 BLOQUANTS corrigés avant livraison — émulateur ouvert (refus par processus_du_dossier ;
+  original renommé « (déplacé par Frogtend) » après copie, effacé seulement après le registre) ; points de réparation
+  non-liens sautés puis effacés (seul is_symlink est sauté, tout lien sauf memstick refuse) ; + pc.json réécrit côté
+  Rust, outils filtrés, dossier_retirer_si_vide refuse un dossier réglé, registre en échec → tout remis. Seconde
+  relecture : rien de bloquant. Bouton « 📦 Les y déplacer » pour les émulateurs restés hors du dossier réglé.
 - **Essai du 03/11 (0.155.0)** : MGS4 importé (`.zip` de 32,7 Go contenant un `.iso`) → ▶ Jouer donnait le .zip à RPCS3
   (« Invalid file or folder ») : la décompression n'était proposée que par le bloc de la fiche. → 0.156.0 : ▶ Jouer
   propose « Décompresser puis jouer » (même accord chiffré, progression, archive gardée). Remarque de Seb : « on devrait

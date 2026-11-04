@@ -5537,6 +5537,139 @@ fn registre_emulateurs(noyau: &Noyau) -> crate::emulateurs::Registre {
     crate::emulateurs::Registre::nouveau(&noyau.dossier.join("emulateurs.json"))
 }
 
+/// Ce qu'un déplacement d'émulateur a changé (l'interface réécrit les programmes de `pc.json`).
+#[derive(Serialize)]
+pub struct EmulateurDeplace {
+    ancien: String,
+    nouveau: String,
+    renomme: bool,
+}
+
+/// Déplace un émulateur ou un outil INSTALLÉ PAR FROGTEND dans le dossier des émulateurs (ou des outils) réglé
+/// (✅ Seb 04/11 ; avis lancement) : renommé sur le même disque, sinon copie comparée puis l'original retiré ; puis
+/// son chemin suit partout où Frogtend l'a noté (registre, notes, xemu.toml, Eden). Refusé s'il est ouvert, pendant
+/// une partie, un retrait ou une installation. Un émulateur installé à la main n'est jamais déplacé.
+#[tauri::command]
+pub async fn emulateur_deplacer(app: AppHandle, noyau: State<'_, Noyau>, id: String, base: String) -> Resultat<EmulateurDeplace> {
+    let reg = registre_emulateurs(&noyau);
+    let e = reg.un(&id).ok_or_else(|| Erreur::Introuvable("Émulateur inconnu de Frogtend.".into()))?;
+    if !e.par_frogtend {
+        return Err(Erreur::Refus(format!("{} a été installé à la main : Frogtend ne le déplace pas.", e.nom)));
+    }
+    let programme = std::path::PathBuf::from(&e.programme);
+    let source = racine_installation(&e.nom, &programme).unwrap_or_else(|| std::path::PathBuf::from(&e.dossier));
+    if !source.is_dir() || !crate::garde::sous(&programme, &source) {
+        return Err(Erreur::Refus(format!("{} n'est plus à sa place ({}) : rien n'est déplacé.", e.nom, source.display())));
+    }
+    let base = std::path::PathBuf::from(base.trim());
+    exiger_dossier_de_base(&app, &base)?;
+    let cible = base.join(source.file_name().ok_or_else(|| Erreur::Refus("Dossier de l'émulateur inattendu.".into()))?);
+    if app.state::<crate::menu_jeu::MenuJeu>().partie().is_some() || !noyau.occupes.lock().unwrap_or_else(|e| e.into_inner()).is_empty() {
+        return Err(Erreur::Refus("Un jeu est en cours (partie, retrait ou installation) : attends qu'il finisse, puis recommence.".into()));
+    }
+    // Ouvert (même hors de Frogtend) : jamais déplacé.
+    if !crate::lancement::processus_du_dossier(&source).is_empty() {
+        return Err(Erreur::Refus(format!("{} est ouvert : ferme-le, puis recommence.", e.nom)));
+    }
+    let _ici = occuper_installation(&base, &cible, &e.nom)?;
+    let _la = match source.parent() {
+        Some(p) if !crate::garde::meme(p, &base) => Some(occuper_installation(p, &source, &e.nom)?),
+        _ => None,
+    };
+    noyau.journaliser(&format!("déplacement de {} : {} → {}", e.nom, source.display(), cible.display()));
+    let (s, c) = (source.clone(), cible.clone());
+    let a_effacer = tauri::async_runtime::spawn_blocking(move || crate::demenagement::deplacer_dossier(&s, &c))
+        .await
+        .map_err(|_| Erreur::Disque("Le déplacement s'est arrêté brutalement.".into()))??;
+    let renomme = a_effacer.is_none();
+    // Le registre d'abord : c'est lui qui rend l'émulateur « de confiance » à son nouvel emplacement. Puis pc.json
+    // (les émulateurs réglés par console), écrit ICI pour qu'une fermeture de Frogtend ne le laisse jamais en arrière.
+    let nouveau_programme = crate::demenagement::remplacer_debut(&e.programme, &source, &cible).unwrap_or_else(|| e.programme.clone());
+    if let Err(err) = reg.retenir(crate::emulateurs::EmulateurInstalle { dossier: cible.to_string_lossy().into(), programme: nouveau_programme, ..e.clone() }) {
+        noyau.journaliser(&format!("déplacement de {} : registre non mis à jour ({err:?})", e.nom));
+        // Après une copie : tout est remis comme avant (l'original reprend son nom, la copie part).
+        if let Some(vieux) = &a_effacer {
+            if std::fs::rename(vieux, &source).is_ok() {
+                let _ = std::fs::remove_dir_all(&cible);
+                return Err(Erreur::Disque(format!("Frogtend n'a pas pu noter la nouvelle place de {} : rien n'a changé.", e.nom)));
+            }
+        }
+        return Err(Erreur::Disque(format!("{} a été déplacé dans {}, mais Frogtend n'a pas pu noter sa nouvelle place : choisis-le de nouveau dans ⚙ Réglages ▸ Émulateurs.", e.nom, cible.display())));
+    }
+    if let Err(err) = suivre_dans_pc_json(&app, &source, &cible) {
+        noyau.journaliser(&format!("déplacement de {} : pc.json non mis à jour ({err:?})", e.nom));
+    }
+    // L'original (après une copie d'un disque à l'autre), seulement maintenant : la nouvelle place est notée.
+    if let Some(vieux) = a_effacer {
+        if let Err(err) = std::fs::remove_dir_all(&vieux) {
+            noyau.journaliser(&format!("déplacement de {} : l'ancienne copie {} n'a pas pu être effacée ({err})", e.nom, vieux.display()));
+        }
+    }
+    for note in ["langues-posees.json", "rpcs3-compile.json", "eden-contenus.json"] {
+        if let Err(err) = crate::demenagement::renommer_cles_json(&noyau.dossier.join(note), &source, &cible) {
+            noyau.journaliser(&format!("déplacement de {} : note {note} non mise à jour ({err:?})", e.nom));
+        }
+    }
+    // Les réglages où l'émulateur a écrit son propre chemin complet (avis lancement : xemu, Eden), après une copie à l'abri.
+    let reglages: Vec<std::path::PathBuf> = match id.as_str() {
+        "xemu" => std::iter::once(cible.join("xemu.toml"))
+            .chain(std::fs::read_dir(cible.join("Profils")).into_iter().flatten().flatten().map(|p| p.path().join("xemu.toml")))
+            .collect(),
+        "eden" => vec![cible.join("user").join("config").join("qt-config.ini")],
+        "azahar" => vec![cible.join("user").join("config").join("qt-config.ini")],
+        // Ceux-là écrivent d'ordinaire des chemins relatifs ; sur un autre PC, un chemin complet vers leur propre dossier
+        // est possible (seules ces valeurs changent).
+        "retroarch" => vec![cible.join("retroarch.cfg")],
+        "duckstation" => vec![cible.join("settings.ini")],
+        "pcsx2" => vec![cible.join("inis").join("PCSX2.ini")],
+        "mgba" => vec![cible.join("config.ini")],
+        _ => vec![],
+    };
+    for f in reglages.into_iter().filter(|f| f.is_file()) {
+        let Ok(texte) = std::fs::read_to_string(&f) else { continue };
+        if let Some(nouveau) = crate::demenagement::reecrire_chemins(&texte, &source, &cible) {
+            let r = crate::emulateurs_profils::mettre_a_l_abri(&cible, &f).and_then(|_| std::fs::write(&f, nouveau).map_err(Erreur::from));
+            if let Err(err) = r {
+                noyau.journaliser(&format!("déplacement de {} : {} non mis à jour ({err:?})", e.nom, f.display()));
+            }
+        }
+    }
+    noyau.journaliser(&format!("déplacement de {} terminé ({})", e.nom, if renomme { "renommé" } else { "copié puis retiré" }));
+    Ok(EmulateurDeplace { ancien: source.to_string_lossy().into(), nouveau: cible.to_string_lossy().into(), renomme })
+}
+
+/// Les émulateurs réglés par console (`pc.json` ▸ `emulateurs[*].liste[].programme`) qui désignaient l'ancien dossier
+/// désignent le nouveau.
+fn suivre_dans_pc_json(app: &AppHandle, ancien: &std::path::Path, nouveau: &std::path::Path) -> Resultat<()> {
+    let store = app.store("pc.json").map_err(|e| Erreur::Disque(e.to_string()))?;
+    let Some(mut r) = store.get("reglages") else { return Ok(()) };
+    let mut change = false;
+    if let Some(plateformes) = r["emulateurs"].as_object_mut() {
+        for p in plateformes.values_mut() {
+            for x in p["liste"].as_array_mut().into_iter().flatten() {
+                if let Some(n) = x["programme"].as_str().and_then(|v| crate::demenagement::remplacer_debut(v, ancien, nouveau)) {
+                    x["programme"] = Value::String(n);
+                    change = true;
+                }
+            }
+        }
+    }
+    if change {
+        store.set("reglages", r);
+        store.save().map_err(|e| Erreur::Disque(e.to_string()))?;
+    }
+    Ok(())
+}
+
+/// Retire un ancien dossier de base des émulateurs ou des outils, seulement s'il est VIDE (rien d'autre ne peut partir)
+/// et n'est (ni ne contient) aucun dossier encore réglé (abris, captures, emplacements…).
+#[tauri::command]
+pub fn dossier_retirer_si_vide(app: AppHandle, chemin: String) -> bool {
+    let d = std::path::PathBuf::from(chemin.trim());
+    let reglages = app.store("pc.json").ok().and_then(|s| s.get("reglages")).unwrap_or(Value::Null);
+    refus_dossier(&d, "emulateurs").is_none() && !crate::garde::Reglages::lire(&reglages).est_un_dossier_regle(&d) && std::fs::remove_dir(&d).is_ok()
+}
+
 /// Le dossier d'un émulateur ou d'un outil que FROGTEND a déjà installé (son programme est toujours là) : c'est là
 /// qu'il se met à jour. Un émulateur installé à la main n'est jamais remplacé : `None`.
 fn deja_installe(noyau: &Noyau, id: &str) -> Option<std::path::PathBuf> {

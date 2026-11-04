@@ -1,5 +1,18 @@
 # Notes de version de Frogtend
 
+## 0.159.0 — Tes émulateurs suivent leur nouveau dossier
+
+- 📦 Changer le dossier des émulateurs (ou des outils) propose maintenant de DÉPLACER ceux que Frogtend a installés,
+  avec leurs réglages, profils et parties : sur le même disque c'est instantané (un simple renommage) ; sinon chaque
+  fichier est copié et comparé avant que l'ancien dossier ne soit retiré.
+- Tout ce qui retenait leur ancien chemin suit : la liste des émulateurs de Frogtend, tes émulateurs réglés par console,
+  ses notes (langue PS3, préparation PS3, contenus Switch), et leurs propres réglages quand ils y avaient écrit leur
+  chemin complet (une copie de chaque fichier modifié est gardée à côté).
+- Refusé s'ils sont ouverts, pendant une partie, un retrait ou une installation ; un émulateur installé à la main ne
+  bouge jamais. L'ancien dossier, s'il est vide ensuite, est retiré.
+- ⚙ Réglages ▸ Emplacements : si des émulateurs sont restés hors du dossier réglé (chez toi, RetroArch et RPCS3 dans
+  `E:\Emulateurs`), un bouton « 📦 Les y déplacer » le propose directement.
+
 ## 0.158.0 — Changer un dossier sans rien casser
 
 - 💾 Changer le dossier des **abris de parties** : Frogtend y déplace tes abris (combien de fichiers, quelle taille,

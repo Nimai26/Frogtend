@@ -957,7 +957,9 @@ export const api = {
   /** Les succès en détail d'un jeu DU PC (menu en jeu, Taodbox). */
   succesJeu: (id: number) => appeler<import('$lib/succes/liste').ListeSucces | null>('succes_jeu', { id }),
   abrisRegler: (dossier: string) => appeler<number>('abris_regler', { dossier }),
-  dossierContenu: (sorte: 'abris' | 'captures', chemin: string) => appeler<{ fichiers: number; octets: number }>('dossier_contenu', { sorte, chemin }),
+  emulateurDeplacer: (id: string, base: string) => appeler<{ ancien: string; nouveau: string; renomme: boolean }>('emulateur_deplacer', { id, base }),
+  dossierRetirerSiVide: (chemin: string) => appeler<boolean>('dossier_retirer_si_vide', { chemin }),
+  dossierContenu: (sorte: 'abris' | 'captures' | 'tout', chemin: string) => appeler<{ fichiers: number; octets: number }>('dossier_contenu', { sorte, chemin }),
   dossierDeplacerContenu: (sorte: 'abris' | 'captures', ancien: string, nouveau: string) =>
     appeler<{ deplaces: number; octets: number; laisses: string[] }>('dossier_deplacer_contenu', { sorte, ancien, nouveau }),
   importTypesFichiers: (dossier: string, recursif: boolean) => appeler<[string, number][]>('import_types_fichiers', { dossier, recursif }),
