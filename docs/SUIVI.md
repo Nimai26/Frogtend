@@ -61,6 +61,8 @@
   RPCS3 — `gw_frame_limit` dans son journal — mais le jeu ne va pas plus vite : il suit la Vblank à 60). DEMANDE de Seb
   (04/11) : un réglage GÉNÉRAL de Frogtend « dossier des captures d'écran » pour TOUS les jeux, rangées en
   `<dossier choisi>\<Système>\<nom du jeu>\<capture horodatée>.<extension>` (au lieu du dossier de l'émulateur).
+  ✅ Seb 04/11 : (1) avance rapide RETIRÉE du menu PS3 ; (2) captures DÉPLACÉES (pas copiées) dans le dossier choisi ;
+  (3) TOUTES les captures d'une partie lancée par Frogtend (menu ou touche de l'émulateur) → lot 0.157.0.
 - **Essai du 03/11 (0.155.0)** : MGS4 importé (`.zip` de 32,7 Go contenant un `.iso`) → ▶ Jouer donnait le .zip à RPCS3
   (« Invalid file or folder ») : la décompression n'était proposée que par le bloc de la fiche. → 0.156.0 : ▶ Jouer
   propose « Décompresser puis jouer » (même accord chiffré, progression, archive gardée). Remarque de Seb : « on devrait
