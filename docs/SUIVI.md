@@ -76,6 +76,18 @@
   (chemin au registre), MAIS « Mettre à jour » installe dans le NOUVEAU dossier (`assistant.svelte.ts:93`) → une copie
   neuve sans la configuration (le message « ta configuration est gardée » serait faux) ; Outils : idem ; Captures :
   sans souci (les nouvelles vont au nouveau dossier). À PROPOSER à Seb : lot « changer un dossier sans rien casser ».
+  ✅ Seb 04/11 « faisons-le tout de suite » → 0.158.0 (avis lancement : déplacer un ÉMULATEUR demande de réécrire ses
+  chemins — xemu.toml, Eden nand, jonction PPSSPP, emulateurs.json, pc.json, notes RPCS3/Eden — et un parcours qui ne
+  suit pas les jonctions ; donc PAS ENCORE) : (1) mise à jour d'un émulateur/outil installé par Frogtend À SA PLACE
+  (`deja_installe`) ; (2) abris : déplacement obligatoire avec accord chiffré (`demenagement.rs`, jamais par-dessus,
+  liens/jonctions jamais suivis), un reste → `anciensDossiersAbris` toujours lus ; (3) captures : déplacer ou laisser ;
+  (4) émulateurs/outils : les installés restent et se mettent à jour sur place, dit avant. Répétition sur une COPIE des
+  abris réels de Seb : 10 fichiers, identiques. RESTE (IDEES) : déplacer un émulateur, émulateur par émulateur.
+  Relecture lancement 04/11 : 2 BLOQUANTS corrigés avant livraison — un ancien réglage d'abris sur Documents ou la racine
+  aurait été VIDÉ (→ seul `<numéro>\…` / `<Système>\<jeu>\<image>` bouge, ancien dossier non admis jamais vidé) ;
+  `deja_installe` réinstallait dans le sous-dossier d'un programme adopté (→ `racine_installation`) ; abris : réglage
+  changé AVANT le déplacement (ancien toujours lu), refus pendant une partie ou un jeu occupé ; provisoire hors des
+  abris ; contenu comparé. Répétition refaite (copie des abris réels + un fichier personnel : resté en place).
 - **Essai du 03/11 (0.155.0)** : MGS4 importé (`.zip` de 32,7 Go contenant un `.iso`) → ▶ Jouer donnait le .zip à RPCS3
   (« Invalid file or folder ») : la décompression n'était proposée que par le bloc de la fiche. → 0.156.0 : ▶ Jouer
   propose « Décompresser puis jouer » (même accord chiffré, progression, archive gardée). Remarque de Seb : « on devrait

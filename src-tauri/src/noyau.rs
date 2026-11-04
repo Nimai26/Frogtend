@@ -166,6 +166,9 @@ pub struct Noyau {
     pub(crate) pause_mame: std::sync::atomic::AtomicBool,
     /// Le dossier des abris de parties (réglage du PC « dossierAbris », règle « pas de pieuvre »). `None` : pas réglé.
     pub(crate) abris: std::sync::Mutex<Option<PathBuf>>,
+    /// Les anciens dossiers d'abris où il reste des abris (un changement de dossier qui n'a pas pu tout déplacer) :
+    /// toujours LUS, jamais écrits (`pc.json` ▸ `anciensDossiersAbris`).
+    pub(crate) abris_anciens: std::sync::Mutex<Vec<PathBuf>>,
     /// Les jeux du PC en cours d'utilisation (partie, installation) : jamais rattachés à une autre fiche pendant ce
     /// temps (contrat 1.14 : la fin de partie compterait le temps sous un numéro qui n'existe plus).
     /// Un compteur par jeu : plusieurs gardes peuvent se chevaucher (lancement puis suivi de la partie).
@@ -212,12 +215,18 @@ impl Noyau {
             desinstalleurs: std::sync::Mutex::new(Default::default()),
             choix: std::sync::Mutex::new(Default::default()),
             abris: std::sync::Mutex::new(None),
+            abris_anciens: std::sync::Mutex::new(Vec::new()),
         })
     }
 
     /// Règle le dossier des abris de parties (vide : aucun).
     pub fn regler_abris(&self, dossier: Option<PathBuf>) {
         *self.abris.lock().unwrap_or_else(|e| e.into_inner()) = dossier.filter(|d| !d.as_os_str().is_empty());
+    }
+
+    /// Les anciens dossiers d'abris encore à lire (voir `abris_anciens`).
+    pub fn regler_abris_anciens(&self, dossiers: Vec<PathBuf>) {
+        *self.abris_anciens.lock().unwrap_or_else(|e| e.into_inner()) = dossiers;
     }
 
     /// Le dossier des abris de parties ; refusé s'il n'est pas réglé (Frogtend n'écrit pas ailleurs).
@@ -239,6 +248,7 @@ impl Noyau {
     /// qu'il en reste.
     pub fn dossiers_abris_a_lire(&self) -> Vec<PathBuf> {
         let mut l: Vec<PathBuf> = self.abris.lock().unwrap_or_else(|e| e.into_inner()).iter().cloned().collect();
+        l.extend(self.abris_anciens.lock().unwrap_or_else(|e| e.into_inner()).iter().filter(|d| d.is_dir()).cloned());
         l.push(self.dossier.join("sauvegardes"));
         l
     }

@@ -35,6 +35,8 @@ export interface ReglagesPc {
   /** Où Frogtend range les captures d'écran de TOUS les jeux (`<dossier>\<Système>\<jeu>\<date>.png`, ✅ Seb 04/11) ;
    * vide : chaque émulateur les garde dans son propre dossier. */
   dossierCaptures: string;
+  /** Les anciens dossiers d'abris où il reste des abris (un déplacement incomplet) : toujours lus, jamais écrits. */
+  anciensDossiersAbris: string[];
   /** La place au plus des images gardées pour chaque profil (jaquettes, visuels, consoles), en Go : au-delà, les moins
    * vues partent après une synchronisation (jamais celles des jeux du PC ni un document). */
   plafondImagesGo: number;
@@ -152,6 +154,7 @@ export const DEFAUTS_PC: ReglagesPc = {
   dossierOutils: '',
   dossierAbris: '',
   dossierCaptures: '',
+  anciensDossiersAbris: [],
   plafondImagesGo: 2,
   seuilSauvegardeMo: 200,
   dossierPackMame: '',

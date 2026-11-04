@@ -32,6 +32,86 @@ pub(crate) fn dossier_abris_regle(app: &AppHandle) -> Option<std::path::PathBuf>
     r["dossierAbris"].as_str().filter(|s| !s.trim().is_empty()).map(std::path::PathBuf::from)
 }
 
+/// Les anciens dossiers d'abris encore à lire (`pc.json` ▸ `anciensDossiersAbris`).
+pub(crate) fn anciens_dossiers_abris(app: &AppHandle) -> Vec<std::path::PathBuf> {
+    let Some(r) = app.store("pc.json").ok().and_then(|s| s.get("reglages")) else { return Vec::new() };
+    r["anciensDossiersAbris"].as_array().into_iter().flatten().filter_map(|v| v.as_str()).filter(|s| !s.trim().is_empty()).map(std::path::PathBuf::from).collect()
+}
+
+/// Ce que Frogtend a écrit dans un dossier d'abris ou de captures (pour l'accord chiffré avant un déplacement).
+#[tauri::command]
+pub async fn dossier_contenu(sorte: String, chemin: String) -> Resultat<crate::demenagement::Contenu> {
+    let d = std::path::PathBuf::from(chemin.trim());
+    tauri::async_runtime::spawn_blocking(move || crate::demenagement::mesurer(&d, &sorte))
+        .await
+        .map_err(|_| Erreur::Disque("La lecture du dossier s'est arrêtée brutalement.".into()))
+}
+
+/// Progression d'un déplacement de dossier.
+#[derive(Clone, Serialize)]
+struct ProgresDemenagement {
+    octets: u64,
+}
+
+/// Déplace ce que Frogtend a écrit dans un ancien dossier d'abris ou de captures (✅ Seb 04/11 ; seulement ses abris
+/// `<numéro>\…` ou ses captures `<Système>\<jeu>\<image>`, jamais par-dessus).
+/// - Abris : appelé APRÈS le changement de réglage (le noyau écrit déjà les nouveaux abris dans le nouveau dossier) ;
+///   `ancien` doit être dans `anciensDossiersAbris` et `nouveau` le dossier réglé (relus ici dans `pc.json`).
+/// - Captures : appelé AVANT le changement ; `ancien` doit être le dossier encore réglé.
+/// Un ancien dossier qui ne serait pas admis aujourd'hui (racine d'un disque, Documents…) n'est jamais vidé : il reste lu.
+#[tauri::command]
+pub async fn dossier_deplacer_contenu(app: AppHandle, noyau: State<'_, Noyau>, sorte: String, ancien: String, nouveau: String) -> Resultat<crate::demenagement::Bilan> {
+    let (ancien, nouveau) = (std::path::PathBuf::from(ancien.trim()), std::path::PathBuf::from(nouveau.trim()));
+    let reglages = app.store("pc.json").ok().and_then(|s| s.get("reglages")).unwrap_or(Value::Null);
+    let regle = |cle: &str| reglages[cle].as_str().map(str::trim).filter(|s| !s.is_empty()).map(std::path::PathBuf::from);
+    match sorte.as_str() {
+        "abris" => {
+            let connu = anciens_dossiers_abris(&app).iter().any(|a| crate::garde::meme(a, &ancien));
+            if !connu || !regle("dossierAbris").is_some_and(|r| crate::garde::meme(&r, &nouveau)) {
+                return Err(Erreur::Refus("Ces dossiers d'abris ne sont pas ceux du réglage : rien n'est déplacé.".into()));
+            }
+            // Un abri en train de s'écrire ou d'être reposé : jamais déplacé en même temps.
+            if app.state::<crate::menu_jeu::MenuJeu>().partie().is_some() || !noyau.occupes.lock().unwrap_or_else(|e| e.into_inner()).is_empty() {
+                return Err(Erreur::Refus("Un jeu est en cours (partie, retrait ou installation) : attends qu'il finisse, puis recommence.".into()));
+            }
+        }
+        "captures" => {
+            if !regle("dossierCaptures").is_some_and(|r| crate::garde::meme(&r, &ancien)) {
+                return Err(Erreur::Refus("Ce dossier n'est pas celui des captures réglé : rien n'est déplacé.".into()));
+            }
+            // Les captures d'une partie en cours iraient dans le dossier en train de partir.
+            if app.state::<crate::menu_jeu::MenuJeu>().partie().is_some() {
+                return Err(Erreur::Refus("Une partie est en cours : quitte le jeu, puis recommence.".into()));
+            }
+        }
+        _ => return Err(Erreur::Refus("Seuls les abris de parties et les captures se déplacent ainsi.".into())),
+    }
+    if let Some(m) = refus_dossier(&nouveau, &sorte) {
+        return Err(Erreur::Refus(m));
+    }
+    if let Some(m) = refus_dossier(&ancien, &sorte) {
+        return Err(Erreur::Refus(format!("L'ancien dossier n'est pas vidé ({m}) : Frogtend continue seulement d'y lire.")));
+    }
+    noyau.journaliser(&format!("déplacement du dossier des {sorte} : {} → {}", ancien.display(), nouveau.display()));
+    let app2 = app.clone();
+    let bilan = tauri::async_runtime::spawn_blocking(move || {
+        let mut dernier = std::time::Instant::now();
+        crate::demenagement::deplacer_contenu(&sorte, &ancien, &nouveau, &mut |octets| {
+            if dernier.elapsed().as_millis() >= 250 {
+                dernier = std::time::Instant::now();
+                let _ = app2.emit("demenagement", ProgresDemenagement { octets });
+            }
+        })
+    })
+    .await
+    .map_err(|_| Erreur::Disque("Le déplacement s'est arrêté brutalement.".into()))??;
+    noyau.journaliser(&format!("déplacement : {} fichier(s) déplacé(s), {} laissé(s)", bilan.deplaces, bilan.laisses.len()));
+    for l in bilan.laisses.iter().take(20) {
+        noyau.journaliser(&format!("  laissé à sa place : {l}"));
+    }
+    Ok(bilan)
+}
+
 /// Le dossier général des captures d'écran (`pc.json` ▸ `dossierCaptures`, ✅ Seb 04/11), s'il est réglé et admis.
 fn dossier_captures_regle(app: &AppHandle) -> Option<std::path::PathBuf> {
     let r = app.store("pc.json").ok()?.get("reglages")?;
@@ -58,6 +138,7 @@ pub async fn abris_regler(app: AppHandle, noyau: State<'_, Noyau>, dossier: Stri
         std::fs::create_dir_all(&d)?;
     }
     noyau.regler_abris(Some(d));
+    noyau.regler_abris_anciens(anciens_dossiers_abris(&app));
     // La copie (parfois des Go) se fait à part : la fenêtre ne se fige pas.
     tauri::async_runtime::spawn_blocking(move || app.state::<Noyau>().migrer_abris())
         .await
@@ -3024,15 +3105,21 @@ pub async fn emulateur_installer_firehouse(
     nom: String,
     dossier: String,
 ) -> Resultat<InstallationFirehouse> {
-    let base = std::path::PathBuf::from(&dossier);
-    // Le dossier réglé d'abord ; s'il n'existe pas encore (le dossier proposé par « Prêt à jouer »), il est créé.
-    exiger_dossier_de_base(&app, &base)?;
-    let nom_sur = crate::jeux_pc::nom_de_dossier(&nom);
-    let cible = base.join(&nom_sur);
+    let (base, cible) = match deja_installe(&noyau, &id) {
+        // Une mise à jour à sa place (voir `emulateur_installer`).
+        Some(c) => (c.parent().map(std::path::Path::to_path_buf).unwrap_or_else(|| c.clone()), c),
+        None => {
+            let base = std::path::PathBuf::from(&dossier);
+            // Le dossier réglé d'abord ; s'il n'existe pas encore (le dossier proposé par « Prêt à jouer »), il est créé.
+            exiger_dossier_de_base(&app, &base)?;
+            let cible = base.join(crate::jeux_pc::nom_de_dossier(&nom));
+            (base, cible)
+        }
+    };
     // Une seule installation à la fois dans ce dossier, jamais par-dessus le programme ouvert.
     let _occupe = occuper_installation(&base, &cible, &nom)?;
     if !base.is_dir() {
-        std::fs::create_dir_all(&base).map_err(|e| Erreur::Disque(format!("Dossier impossible à créer : {dossier} ({e}).")))?;
+        std::fs::create_dir_all(&base).map_err(|e| Erreur::Disque(format!("Dossier impossible à créer : {} ({e}).", base.display())))?;
     }
     let p = noyau.session().await?.source.paquet_emulateur(&id).await?;
     let url = p["url"].as_str().unwrap_or("").to_string();
@@ -5450,6 +5537,24 @@ fn registre_emulateurs(noyau: &Noyau) -> crate::emulateurs::Registre {
     crate::emulateurs::Registre::nouveau(&noyau.dossier.join("emulateurs.json"))
 }
 
+/// Le dossier d'un émulateur ou d'un outil que FROGTEND a déjà installé (son programme est toujours là) : c'est là
+/// qu'il se met à jour. Un émulateur installé à la main n'est jamais remplacé : `None`.
+fn deja_installe(noyau: &Noyau, id: &str) -> Option<std::path::PathBuf> {
+    let e = registre_emulateurs(noyau).un(id)?;
+    if !e.par_frogtend || !std::path::Path::new(&e.programme).is_file() {
+        return None;
+    }
+    racine_installation(&e.nom, std::path::Path::new(&e.programme))
+}
+
+/// Le dossier d'installation d'un programme : le dossier, au-dessus de lui, qui porte le nom donné à l'installation
+/// (`nom_de_dossier(nom)`) — un programme choisi dans un sous-dossier (« outils\b.exe ») ne fait jamais installer la
+/// mise à jour dans ce sous-dossier. Introuvable : `None` (la mise à jour va alors au dossier réglé, comme avant).
+pub(crate) fn racine_installation(nom: &str, programme: &std::path::Path) -> Option<std::path::PathBuf> {
+    let voulu = crate::jeux_pc::nom_de_dossier(nom).to_lowercase();
+    programme.ancestors().skip(1).find(|d| d.file_name().is_some_and(|n| n.to_string_lossy().to_lowercase() == voulu)).map(std::path::Path::to_path_buf)
+}
+
 /// Ouvre la fenêtre de choix de Windows (fichier ou dossier) PAR LE CŒUR, au-dessus de la fenêtre qui la demande, et
 /// retient le chemin choisi (durcissement, étape 4) : les commandes sensibles (lanceur, import, « installé ailleurs »,
 /// adoption d'un émulateur) n'acceptent un chemin libre que s'il vient d'un tel choix. `None` : fenêtre fermée.
@@ -5612,14 +5717,22 @@ pub async fn emulateur_installer(
     dossier: String,
 ) -> Resultat<crate::emulateurs::EmulateurInstalle> {
     let f = crate::emulateurs::fiche(&id).ok_or_else(|| Erreur::Introuvable("Émulateur inconnu.".into()))?;
-    let base = std::path::PathBuf::from(&dossier);
-    // Le dossier réglé d'abord ; s'il n'existe pas encore (le dossier proposé par « Prêt à jouer »), il est créé.
-    exiger_dossier_de_base(&app, &base)?;
-    let cible = base.join(f.nom);
+    let (base, cible) = match deja_installe(&noyau, &id) {
+        // Une MISE À JOUR se fait à sa place, même si le dossier des émulateurs a changé depuis (jamais une copie neuve
+        // ailleurs, sans sa configuration ni ses parties : relecture lancement 04/11).
+        Some(c) => (c.parent().map(std::path::Path::to_path_buf).unwrap_or_else(|| c.clone()), c),
+        None => {
+            let base = std::path::PathBuf::from(&dossier);
+            // Le dossier réglé d'abord ; s'il n'existe pas encore (le dossier proposé par « Prêt à jouer »), il est créé.
+            exiger_dossier_de_base(&app, &base)?;
+            let cible = base.join(f.nom);
+            (base, cible)
+        }
+    };
     // Une seule installation à la fois dans ce dossier, jamais par-dessus l'émulateur ouvert.
     let _occupe = occuper_installation(&base, &cible, f.nom)?;
     if !base.is_dir() {
-        std::fs::create_dir_all(&base).map_err(|e| Erreur::Disque(format!("Dossier impossible à créer : {dossier} ({e}).")))?;
+        std::fs::create_dir_all(&base).map_err(|e| Erreur::Disque(format!("Dossier impossible à créer : {} ({e}).", base.display())))?;
     }
     let paquet = base.join(".telechargements").join(format!("{}.paquet", f.id));
     let (app2, id2) = (app.clone(), id.clone());
@@ -6205,6 +6318,11 @@ mod tests {
         let r = super::refus_dossier(std::path::Path::new(r"D:\"), "emulateurs").unwrap();
         assert!(r.contains("des émulateurs") && r.contains(r"D:\Emulateurs"), "{r}");
         assert!(super::refus_dossier(std::path::Path::new(r"D:\"), "abris").unwrap().contains("abris de parties"));
+        // Une mise à jour à la place de l'installation, jamais dans le sous-dossier du programme choisi.
+        use std::path::Path;
+        assert_eq!(super::racine_installation("Cheat Engine", Path::new(r"E:\outils\Cheat Engine\outils\b.exe")).as_deref(), Some(Path::new(r"E:\outils\Cheat Engine")));
+        assert_eq!(super::racine_installation("RetroArch", Path::new(r"E:\Emulateurs\RetroArch\retroarch.exe")).as_deref(), Some(Path::new(r"E:\Emulateurs\RetroArch")));
+        assert_eq!(super::racine_installation("RPCS3", Path::new(r"E:\Ailleurs\rpcs3.exe")), None);
         assert!(super::refus_dossier(std::path::Path::new(r"D:\Emulateurs"), "emulateurs").is_none());
         assert!(super::refus_dossier_jeux(std::path::Path::new("Jeux")).unwrap().contains("chemin complet"));
         // Sous Windows : jamais « C:\Windows\Jeux » proposé (il serait refusé à son tour).

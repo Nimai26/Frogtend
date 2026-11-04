@@ -105,7 +105,7 @@ export async function installerEmulateur(
   const oui = options.sansQuestion || await confirmer(`⬇ ${miseAJour ? 'Mettre à jour' : 'Installer'} ${nom} ${paquet.version} ?`, {
     message: [
       `Téléchargement depuis ${origine} : ${paquet.taille ? taille(paquet.taille) : 'taille non annoncée'}.`,
-      `Dossier : ${dossier}\\${nom}`,
+      miseAJour ? 'Dossier : le sien, là où il est déjà installé.' : `Dossier : ${dossier}\\${nom}`,
       miseAJour
         ? 'Ta configuration est gardée ; un fichier de réglages remplacé par la nouvelle version est d’abord copié à part.'
         : 'Il sera installé en mode portable : sa configuration reste dans son dossier.',

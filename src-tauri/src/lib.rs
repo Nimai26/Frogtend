@@ -33,6 +33,7 @@ pub mod disque;
 pub mod documents;
 pub mod contenus;
 pub mod decompression;
+pub mod demenagement;
 pub mod osd_manette;
 pub mod ludotheque;
 pub mod menu_jeu;
@@ -352,6 +353,7 @@ pub fn run() {
             // de leur jeu (copie vérifiée). Un disque absent : ce sera pour un prochain démarrage.
             // Le dossier des abris de parties (réglage du PC) ; les abris de l'ancien emplacement y sont rangés.
             n.regler_abris(commandes::dossier_abris_regle(app.handle()));
+            n.regler_abris_anciens(commandes::anciens_dossiers_abris(app.handle()));
             // Un jeu laissé figé par un Frogtend arrêté brutalement repart (d'après la note du menu en jeu).
             let relances = figer::initialiser(dossier.join("menu-fige.txt"));
             // Si Frogtend plante pendant « manette → clavier », aucune touche ne reste enfoncée dans Windows.
@@ -597,6 +599,8 @@ pub fn run() {
             commandes::gratuits_connexion,
             commandes::gratuits_recuperer,
             commandes::abris_regler,
+            commandes::dossier_contenu,
+            commandes::dossier_deplacer_contenu,
             commandes::contenus_du_jeu,
             commandes::contenus_installer,
             commandes::archive_du_jeu,

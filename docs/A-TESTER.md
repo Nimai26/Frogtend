@@ -6,6 +6,14 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Changer un dossier sans rien casser (0.158.0)
+- [ ] ⚙ Réglages ▸ Emplacements ▸ « 💾 Abris de parties » ▸ Choisir un autre dossier : « Déplacer tes abris ? » avec le
+      nombre de fichiers et la taille ; « Déplacer et changer » : tout est dans le nouveau dossier (Dune compris), l'ancien
+      a disparu s'il est vide.
+- [ ] « 📷 Captures d'écran » ▸ un autre dossier : « Et les captures déjà prises ? » ; essayer « Les déplacer ».
+- [ ] « 🕹 Émulateurs » ▸ un autre dossier : le message dit que RetroArch et RPCS3 restent dans E:\Emulateurs ;
+      « Annuler » (ne change rien).
+
 ## Toutes tes captures au même endroit (0.157.0)
 - [ ] ⚙ Réglages ▸ Emplacements ▸ « 📷 Captures d'écran » ▸ Choisir (par exemple `E:\Captures`).
 - [ ] Super Mario World : deux captures (menu ▸ Options du jeu ▸ Photo de l'écran) ; quitter : « 📷 2 captures d'écran

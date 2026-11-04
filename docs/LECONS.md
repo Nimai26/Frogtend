@@ -3,6 +3,13 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 04/11 — Déplacer « tout le contenu » d'un dossier réglé, c'est déplacer des fichiers qui ne sont pas à Frogtend
+Ce qui s'est passé : la 1re version du changement de dossier des abris déplaçait TOUT l'ancien dossier ; un ancien
+réglage sur Documents (permis avant la 0.134) l'aurait vidé. Vu par la relecture, avant livraison. · Comment
+l'appliquer : un déplacement ou un effacement ne vise que ce que Frogtend a écrit lui-même, reconnu à sa forme
+(`<numéro>\…`), et un dossier qui ne serait plus admis aujourd'hui n'est jamais vidé. Et un script de retouche se
+passe par un FICHIER (Write), jamais par un heredoc dans le shell (deux échecs de guillemets ce jour).
+
 ## 03/11 — Une option « qui peut aider » d'un émulateur n'est pas une solution vérifiée
 Ce qui s'est passé : RPCS3 conseillait dans son journal d'activer le « Compatible Savestate Mode » ; livré en 0.154.0
 sur la foi de ce message, il a fait redémarrer Asura's Wrath puis écran noir. Une version livrée pour rien. · Comment

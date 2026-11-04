@@ -5,7 +5,9 @@
   import { onMount } from 'svelte';
   import { isTauri } from '@tauri-apps/api/core';
   import { api, taille, type Plateforme } from '$lib/api';
-  import { choisir, demander, informer, toast } from '$lib/dialogues/fenetres.svelte';
+  import { choisir, confirmer, demander, fermerToast, informer, majProgres, toast, toastProgres } from '$lib/dialogues/fenetres.svelte';
+  import { listen } from '@tauri-apps/api/event';
+  import { dureeEstimee } from '$lib/decompression/decompression';
   import { etat, reglerPc } from '$lib/etat.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
 
@@ -96,6 +98,64 @@
       await informer('📁 Choisis un autre dossier', refus);
       return;
     }
+    const ancien = etat.pc[cle];
+    const change = !!ancien && ancien.toLowerCase().replace(/[\\/]+$/, '') !== c.toLowerCase().replace(/[\\/]+$/, '');
+    // Émulateurs et outils : ceux déjà installés restent où ils sont (et s'y mettent à jour) ; seuls les nouveaux vont
+    // au nouveau dossier (déplacer un émulateur demande de réécrire ses chemins : pas encore, avis lancement 04/11).
+    if (change && (cle === 'dossierEmulateurs' || cle === 'dossierOutils')) {
+      const quoi = cle === 'dossierEmulateurs' ? 'émulateurs' : 'outils';
+      const oui = await confirmer(`📁 Changer le dossier des ${quoi} ?`, {
+        message: [
+          `Ceux déjà installés restent dans ${ancien} : ils continuent de marcher et s’y mettent à jour.`,
+          `Seuls les prochains iront dans ${c}.`,
+        ].join('\n'),
+        libelleValider: 'Changer',
+      });
+      if (!oui) return;
+    }
+    // Abris : le RÉGLAGE change d'abord (les nouveaux abris vont tout de suite au nouveau dossier, l'ancien reste lu),
+    // PUIS ses abris sont déplacés (relecture lancement 04/11 : jamais d'abris dans un dossier que personne ne lit).
+    if (change && cle === 'dossierAbris') {
+      const m = await api.dossierContenu('abris', ancien).catch(() => null);
+      const chiffres = m ? `${m.fichiers} fichier${m.fichiers > 1 ? 's' : ''}, ${taille(m.octets)} (${dureeEstimee(m.octets)})` : 'contenu illisible pour l’instant';
+      const oui = await confirmer('💾 Changer le dossier des abris de parties ?', {
+        message: [
+          `Tes abris (${chiffres}) vont de ${ancien} à ${c}.`,
+          'Chaque fichier est copié et vérifié avant d’être retiré de l’ancien dossier ; rien n’est écrit par-dessus. Seuls les abris de Frogtend bougent : rien d’autre de ce dossier.',
+          'Ce qui ne pourrait pas partir reste lu là-bas : tes parties ne sont jamais perdues de vue.',
+        ].join('\n'),
+        libelleValider: 'Changer et déplacer',
+      });
+      if (!oui) return;
+      await reglerPc('anciensDossiersAbris', [...new Set([...(etat.pc.anciensDossiersAbris ?? []), ancien])]);
+      await reglerPc(cle, c);
+      try {
+        await api.abrisRegler(c);
+      } catch (err) {
+        toast(`Dossier réglé, mais Frogtend n’a pas pu le préparer : ${motifDuRefus(err)}`, 'erreur');
+        return;
+      }
+      if (m && m.fichiers > 0) await deplacer('abris', ancien, c, m.octets);
+      else toast(`✅ Dossier des abris réglé : ${c}.`);
+      return;
+    }
+    // Captures : déplacer celles déjà prises, ou les laisser (AVANT le changement de réglage).
+    if (change && cle === 'dossierCaptures') {
+      const m = await api.dossierContenu('captures', ancien).catch(() => null);
+      if (m && m.fichiers > 0) {
+        const chiffres = `${m.fichiers} capture${m.fichiers > 1 ? 's' : ''}, ${taille(m.octets)} (${dureeEstimee(m.octets)})`;
+        const d = await choisir<boolean>(
+          '📷 Et les captures déjà prises ?',
+          [
+            { valeur: true, libelle: '📦 Les déplacer dans le nouveau dossier', detail: chiffres },
+            { valeur: false, libelle: '📁 Les laisser où elles sont', detail: ancien },
+          ],
+          'Rien n’est écrit par-dessus une capture déjà là ; seules les captures rangées par Frogtend bougent.',
+        );
+        if (d === null) return;
+        if (d && !(await deplacer('captures', ancien, c, m.octets))) return;
+      }
+    }
     await reglerPc(cle, c);
     if (cle === 'dossierAbris') {
       try {
@@ -107,7 +167,32 @@
     } else if (cle === 'dossierCaptures') {
       toast(`✅ Dossier des captures réglé : ${c}. Les captures des prochaines parties y seront rangées.`);
     } else {
-      toast(`✅ Dossier réglé : ${c}. Les prochaines installations iront là.`);
+      toast(`✅ Dossier réglé : ${c}. Les prochaines installations iront là ; celles déjà faites restent à leur place.`);
+    }
+  }
+
+  /** Déplace le contenu d'un ancien dossier (barre de progression) ; rend faux si le déplacement a échoué. */
+  async function deplacer(sorte: 'abris' | 'captures', ancien: string, nouveau: string, total: number): Promise<boolean> {
+    const t = toastProgres(`📦 Déplacement vers ${nouveau}… Ne ferme pas Frogtend.`);
+    const arreter = isTauri()
+      ? await listen<{ octets: number }>('demenagement', (e) =>
+          majProgres(t, { etape: 'Déplacement', chiffres: `${taille(e.payload.octets)} / ${taille(total)}`, pourcent: total ? Math.round((e.payload.octets / total) * 100) : 0 }),
+        )
+      : () => {};
+    try {
+      const b = await api.dossierDeplacerContenu(sorte, ancien, nouveau);
+      if (b.laisses.length) {
+        await informer('📦 Presque tout est déplacé', `${b.deplaces} fichier(s) déplacé(s). ${b.laisses.length} sont restés dans ${ancien} (déjà présents dans le nouveau dossier, ou impossibles à déplacer)${sorte === 'abris' ? ' : Frogtend continue de les lire là-bas.' : '.'}`);
+      } else {
+        toast(`✅ ${b.deplaces} fichier(s) déplacé(s) (${taille(b.octets)}).`);
+      }
+      return true;
+    } catch (err) {
+      toast(`Déplacement impossible : ${motifDuRefus(err)}${sorte === 'abris' ? ' Tes abris restent lus dans l’ancien dossier.' : ' Le dossier n’a pas changé.'}`, 'erreur');
+      return false;
+    } finally {
+      arreter();
+      fermerToast(t);
     }
   }
 

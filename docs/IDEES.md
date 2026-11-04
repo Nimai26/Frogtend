@@ -70,3 +70,10 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
 - (03/11, essai de Seb) « Retirer du PC » refusé tant que le dossier des abris de parties n'est pas réglé : pour un
   novice, proposer à ce moment-là un dossier tout prêt (« E:\Abris de parties » sur le disque des jeux) en un clic,
   au lieu de l'envoyer dans Réglages ▸ Emplacements.
+- (04/11, Seb + avis lancement) Déplacer un émulateur ou un outil déjà installé vers le nouveau dossier des émulateurs,
+  émulateur par émulateur, accord chiffré : renommage sur le même disque, sinon copie vérifiée (contenu) qui recrée les
+  dossiers vides et ne suit pas les jonctions ; puis réécrire emulateurs.json, pc.json ▸ emulateurs, les notes
+  (langues-posees, rpcs3-compile, eden-contenus), xemu.toml, Eden nand_directory, la jonction PPSSPP ; refus si ouvert,
+  partie en cours, Cheat Engine suivi, installation en cours.
+- (04/11, relecture lancement) Un abri déplacé à moitié (un fichier en échec) existe dans deux dossiers à la même date :
+  la sauvegarde vers Firehouse (sauvegarde.rs:520-529) n'en garde qu'un ; réunir les dossiers de même date.

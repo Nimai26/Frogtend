@@ -1,5 +1,17 @@
 # Notes de version de Frogtend
 
+## 0.158.0 — Changer un dossier sans rien casser
+
+- 💾 Changer le dossier des **abris de parties** : Frogtend y déplace tes abris (combien de fichiers, quelle taille,
+  quelle durée : annoncé avant). Chaque fichier est comparé à l'original avant d'être retiré de l'ancien dossier ; rien
+  n'est écrit par-dessus ; seuls les abris de Frogtend bougent, jamais un autre fichier du dossier. Ce qui ne peut pas
+  partir reste lu à l'ancienne place.
+- 📷 Changer le dossier des **captures** : tu choisis de déplacer les captures déjà prises ou de les laisser.
+- 🕹 Changer le dossier des **émulateurs** ou des **outils** : ceux déjà installés restent où ils sont, continuent de
+  marcher et s'y mettent à jour ; seuls les prochains vont au nouveau dossier (Frogtend te le dit avant).
+- 🔧 Une mise à jour d'émulateur ou d'outil se fait toujours dans SON dossier (avant : une copie neuve, sans ta
+  configuration, pouvait apparaître dans le dossier réglé s'il avait changé).
+
 ## 0.157.0 — Toutes tes captures d'écran au même endroit
 
 - 📷 ⚙ Réglages ▸ Emplacements ▸ « Captures d'écran » : choisis un dossier, et chaque capture prise pendant une partie
