@@ -6,6 +6,14 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Toutes tes captures au même endroit (0.157.0)
+- [ ] ⚙ Réglages ▸ Emplacements ▸ « 📷 Captures d'écran » ▸ Choisir (par exemple `E:\Captures`).
+- [ ] Super Mario World : deux captures (menu ▸ Options du jeu ▸ Photo de l'écran) ; quitter : « 📷 2 captures d'écran
+      rangées… » ; elles sont dans `E:\Captures\<Super Nintendo…>\Super Mario World\` avec la date et l'heure ; plus
+      dans le dossier de RetroArch.
+- [ ] Asura's Wrath : une capture par le menu, une par F12 au clavier : les deux rangées ; le menu n'a plus « Avance
+      rapide ».
+
 ## Un jeu en archive se décompresse avant de jouer (0.156.0)
 - [x] (✅ 03/11) Metal Gear Solid 4 : ▶ Jouer → « 🗜 … doit d'abord être décompressé » (32,7 Go, place libre, durée) ; « Décompresser
       puis jouer » : la barre avance, puis l'avertissement du long démarrage PS3, puis le jeu se lance.
@@ -42,7 +50,7 @@
       puis « 📂 Charger la dernière sauvegarde rapide » : on revient à ce moment-là.
 - [~] SANS OBJET depuis la 0.155.0 : ⚠ À vérifier d'abord À LA MAIN, clavier français : dans RPCS3, Ctrl + Alt + & (la touche du 1) recharge-t-il ?
       Si non, « Charger » ne marchera pas non plus (à corriger).
-- [ ] Photo de l'écran, son coupé, avance rapide depuis Options du jeu.
+- [x] (✅ 04/11) Photo de l'écran, son coupé ; avance rapide ❌ → retirée en 0.157.0.
 
 ## Le jeu visible derrière le menu en Taodbox (0.148.0)
 - [x] (✅ Seb 30/10) Super Mario World lancé depuis Taodbox : le menu en jeu s'ouvre en grand au centre, le jeu visible autour ; texte

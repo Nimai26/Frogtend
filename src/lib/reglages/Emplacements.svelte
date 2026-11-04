@@ -83,13 +83,14 @@
     { cle: 'dossierEmulateurs', titre: '🕹 Émulateurs', aide: 'chaque émulateur dans son sous-dossier, avec sa configuration' },
     { cle: 'dossierOutils', titre: '🧰 Outils', aide: 'Cheat Engine, trainers, gestionnaires de mods' },
     { cle: 'dossierAbris', titre: '💾 Abris de parties', aide: 'la copie de tes parties avant de retirer un jeu' },
+    { cle: 'dossierCaptures', titre: '📷 Captures d’écran', aide: 'les captures de tous les jeux, rangées par système puis par jeu (RetroArch, PS3, Game Boy Advance pour l’instant)' },
   ] as const;
 
   async function choisirAutre(cle: (typeof AUTRES)[number]['cle']) {
     const c = await demanderDossier();
     if (!c) return;
     // Même règle que pour les jeux : jamais la racine d'un disque, Windows ou Documents (le cœur le revérifie).
-    const sorte = cle === 'dossierEmulateurs' ? 'emulateurs' : cle === 'dossierOutils' ? 'outils' : 'abris';
+    const sorte = cle === 'dossierEmulateurs' ? 'emulateurs' : cle === 'dossierOutils' ? 'outils' : cle === 'dossierCaptures' ? 'captures' : 'abris';
     const refus = await api.dossierJeuxRefus(c, sorte).catch(() => null);
     if (refus) {
       await informer('📁 Choisis un autre dossier', refus);
@@ -103,6 +104,8 @@
       } catch (err) {
         toast(`Dossier réglé, mais les anciens abris n’ont pas pu y être rangés : ${motifDuRefus(err)}`, 'erreur');
       }
+    } else if (cle === 'dossierCaptures') {
+      toast(`✅ Dossier des captures réglé : ${c}. Les captures des prochaines parties y seront rangées.`);
     } else {
       toast(`✅ Dossier réglé : ${c}. Les prochaines installations iront là.`);
     }
@@ -173,7 +176,7 @@
       {#each AUTRES as a (a.cle)}
         <dt>{a.titre}</dt>
         <dd>
-          <span class="chemin">{etat.pc[a.cle] || 'pas encore choisi (demandé quand il le faut)'}</span>
+          <span class="chemin">{etat.pc[a.cle] || (a.cle === 'dossierCaptures' ? 'pas choisi : chaque émulateur garde ses captures' : 'pas encore choisi (demandé quand il le faut)')}</span>
           <button class="btn petit" onclick={() => choisirAutre(a.cle)}>📂 Choisir</button>
           <span class="muted">{a.aide}</span>
         </dd>

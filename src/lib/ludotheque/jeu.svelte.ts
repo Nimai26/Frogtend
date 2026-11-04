@@ -81,6 +81,11 @@ export async function suivreParties() {
   await listen<{ jeu: number }>('partie-affichee', (e) => {
     if (e.payload.jeu === partie.enJeu) partie.affichee = true;
   });
+  // Les captures de la partie, rangées dans le dossier général (✅ Seb 04/11).
+  await listen<{ jeu: number; nombre: number }>('captures-rangees', (e) => {
+    const n = e.payload.nombre;
+    toast(`📷 ${n} capture${n > 1 ? 's' : ''} d’écran rangée${n > 1 ? 's' : ''} dans ton dossier des captures.`, 'ok');
+  });
   ecoute = await listen<{ sorte: 'debut' | 'fin'; jeu: number; secondes?: number; carte_cedee?: boolean }>('partie', async (e) => {
     if (e.payload.sorte === 'debut') {
       partie.affichee = false;

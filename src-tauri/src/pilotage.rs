@@ -93,7 +93,9 @@ pub fn actions(emulateur: &str) -> Vec<Action> {
         "dosbox-staging" => vec![Reset, DisqueSuivant],
         // RPCS3 par ses raccourcis (pas de « Recommencer » : son Ctrl+R recharge le dernier état). Pas de sauvegardes
         // rapides (✅ Seb 03/11) : refusées sans le mode compatible, et avec lui Asura's Wrath a redémarré puis écran noir.
-        "rpcs3" => vec![AvanceRapide, Capture, Muet],
+        // Pas d'avance rapide (✅ Seb 04/11) : Ctrl+F10 coupe la limite d'images, mais un jeu réglé sur la Vblank (Asura's
+        // Wrath) ne va pas plus vite.
+        "rpcs3" => vec![Capture, Muet],
         _ => vec![],
     }
 }
@@ -1062,6 +1064,7 @@ mod tests {
         // (Ctrl+Alt+1) gardées, mais plus proposées (✅ Seb 03/11).
         assert!(!actions("rpcs3").contains(&Action::Reset));
         assert!(!actions("rpcs3").contains(&Action::SauverEtat) && !actions("rpcs3").contains(&Action::ChargerEtat), "PS3 : sauvegardes rapides retirées");
+        assert!(!actions("rpcs3").contains(&Action::AvanceRapide), "PS3 : avance rapide retirée");
         assert_eq!(touche("rpcs3", Action::SauverEtat), Some(Touche { touche: "S", maj: false, ctrl: true, alt: false }));
         assert_eq!(touche("rpcs3", Action::ChargerEtat), Some(Touche { touche: "1", maj: false, ctrl: true, alt: true }));
         for a in actions("rpcs3") {

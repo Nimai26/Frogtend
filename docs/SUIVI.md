@@ -63,6 +63,12 @@
   `<dossier choisi>\<Système>\<nom du jeu>\<capture horodatée>.<extension>` (au lieu du dossier de l'émulateur).
   ✅ Seb 04/11 : (1) avance rapide RETIRÉE du menu PS3 ; (2) captures DÉPLACÉES (pas copiées) dans le dossier choisi ;
   (3) TOUTES les captures d'une partie lancée par Frogtend (menu ou touche de l'émulateur) → lot 0.157.0.
+  FAIT en 0.157.0 (captures.rs) pour RetroArch (screenshot_directory lu sans écrire, relatif/« : » au dossier de
+  RetroArch, vide/default/screenshots_in_content_dir = dossier du jeu), RPCS3 (screenshots\) et mGBA (Profils\…\screenshots) ;
+  inventaire avant lancement, rangement toutes les 2 s + dernier passage, jamais par-dessus, original effacé après copie
+  relue, abandon journalisé après ~1 min. RESTE : relever les dossiers de MAME, Dolphin, PPSSPP, DuckStation, PCSX2,
+  DOSBox Staging, Eden, Azahar, xemu, Cemu (doc + vraie capture) ; captures de mGBA/Dolphin/PPSSPP hors de la
+  sauvegarde du profil une fois déplacées (à trancher avec Seb).
 - **Essai du 03/11 (0.155.0)** : MGS4 importé (`.zip` de 32,7 Go contenant un `.iso`) → ▶ Jouer donnait le .zip à RPCS3
   (« Invalid file or folder ») : la décompression n'était proposée que par le bloc de la fiche. → 0.156.0 : ▶ Jouer
   propose « Décompresser puis jouer » (même accord chiffré, progression, archive gardée). Remarque de Seb : « on devrait

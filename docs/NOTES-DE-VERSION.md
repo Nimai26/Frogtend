@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.157.0 — Toutes tes captures d'écran au même endroit
+
+- 📷 ⚙ Réglages ▸ Emplacements ▸ « Captures d'écran » : choisis un dossier, et chaque capture prise pendant une partie
+  (par le menu de Frogtend ou par la touche de l'émulateur) y est déplacée, rangée en
+  `<dossier>\<Système>\<nom du jeu>\<date heure>.png`. Pour l'instant : RetroArch, PS3 (RPCS3) et Game Boy Advance
+  (mGBA) ; les autres émulateurs suivront.
+- Une capture qui était déjà là avant la partie n'est jamais touchée ; deux captures de la même seconde ne s'écrasent
+  jamais (« -2 »). À la fin de la partie, Frogtend dit combien de captures il a rangées.
+- PS3 : l'« Avance rapide » est retirée du menu en jeu (les jeux PS3 ne vont pas plus vite pour autant).
+
 ## 0.156.0 — Un jeu en archive se décompresse avant de jouer
 
 - 🗜 Un jeu importé rangé dans une archive avec une image disque (un .zip PS3, par exemple) : ▶ Jouer propose d'abord

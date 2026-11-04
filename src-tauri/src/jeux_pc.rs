@@ -180,7 +180,8 @@ pub fn nom_de_dossier(titre: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");
-    let propre = propre.trim_end_matches(['.', ' ']).chars().take(80).collect::<String>();
+    // Coupé PUIS nettoyé : jamais un nom qui finit par un point ou une espace (refusé par Windows).
+    let propre = propre.chars().take(80).collect::<String>().trim_end_matches(['.', ' ']).to_string();
     // Noms réservés de Windows.
     let reserve = ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "LPT1", "LPT2", "LPT3"];
     if propre.is_empty() || reserve.contains(&propre.to_uppercase().as_str()) {

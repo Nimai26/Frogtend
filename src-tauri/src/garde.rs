@@ -141,7 +141,7 @@ impl Reglages {
             }
         }
         let programmes = crate::choix_emulateur::tous_les_programmes(reglages).into_iter().filter(|p| !p.trim().is_empty()).map(PathBuf::from).collect();
-        let dossiers = ["dossierEmulateurs", "dossierOutils", "dossierAbris"].iter().filter_map(|k| chemin(&reglages[*k])).collect();
+        let dossiers = ["dossierEmulateurs", "dossierOutils", "dossierAbris", "dossierCaptures"].iter().filter_map(|k| chemin(&reglages[*k])).collect();
         Reglages { emplacements, programmes, dossiers }
     }
 

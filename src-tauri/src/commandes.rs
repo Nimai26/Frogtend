@@ -32,6 +32,14 @@ pub(crate) fn dossier_abris_regle(app: &AppHandle) -> Option<std::path::PathBuf>
     r["dossierAbris"].as_str().filter(|s| !s.trim().is_empty()).map(std::path::PathBuf::from)
 }
 
+/// Le dossier général des captures d'écran (`pc.json` ▸ `dossierCaptures`, ✅ Seb 04/11), s'il est réglé et admis.
+fn dossier_captures_regle(app: &AppHandle) -> Option<std::path::PathBuf> {
+    let r = app.store("pc.json").ok()?.get("reglages")?;
+    let d = r["dossierCaptures"].as_str().filter(|s| !s.trim().is_empty()).map(std::path::PathBuf::from)?;
+    // Revérifié à l'usage (l'interface peut se tromper) : jamais un dossier de Windows ni la racine d'un disque.
+    refus_dossier(&d, "captures").is_none().then_some(d)
+}
+
 /// Le dossier des abris de parties vient d'être réglé : le noyau l'utilise, et y range les abris de l'ancien
 /// emplacement (copie vérifiée). Rend le nombre d'abris rangés.
 #[tauri::command]
@@ -546,6 +554,7 @@ pub(crate) fn refus_dossier(p: &std::path::Path, sorte: &str) -> Option<String> 
         "emulateurs" => ("des émulateurs", "Emulateurs"),
         "outils" => ("des outils", "Outils"),
         "abris" => ("des abris de parties", "Abris de parties"),
+        "captures" => ("des captures d'écran", "Captures"),
         _ => ("des jeux", "Jeux"),
     };
     if !p.is_absolute() {
@@ -1547,6 +1556,29 @@ pub async fn jeu_jouer(
             Err(e) => noyau.journaliser(&format!("RPCS3 : langue non réglée ({e:?})")),
         }
     }
+    // Les captures d'écran de la partie, rangées dans le dossier général (✅ Seb 04/11) : ce qui est déjà dans le
+    // dossier de captures de l'émulateur est noté AVANT le lancement (jamais touché).
+    let veilleur_captures = match (id_emulateur.as_deref(), dossier_emulateur.as_deref(), dossier_captures_regle(&app)) {
+        (Some(e), Some(d), Some(choisi)) => {
+            let d = std::path::PathBuf::from(d);
+            let profil = profil_ouvert(&noyau).await.ok().map(|p| crate::emulateurs_profils::dossier_du_profil(&d, &p.nom));
+            let fichier = noyau.fichier_pour_l_emulateur(id, version.as_deref()).await.ok().flatten();
+            let systeme = noyau.plateformes(true).await.ok().and_then(|l| l.into_iter().find(|p| p.nom == plateforme)).and_then(|p| p.nom_affiche).unwrap_or_else(|| plateforme.clone());
+            let (e, titre) = (e.to_string(), titre.clone());
+            tauri::async_runtime::spawn_blocking(move || {
+                let dossiers = crate::captures::dossiers_de(&e, &d, profil.as_deref(), fichier.as_deref());
+                crate::captures::Veilleur::nouveau(Some(choisi), dossiers, &systeme, &titre)
+            })
+            .await
+            .unwrap_or(Ok(None))
+            .unwrap_or_else(|m| {
+                noyau.journaliser(&format!("captures d'écran : {m}"));
+                None
+            })
+            .map(|v| std::sync::Arc::new(std::sync::Mutex::new(v)))
+        }
+        _ => None,
+    };
     // Un jeu resté figé d'une partie précédente repart d'abord.
     crate::figer::degeler();
     // « Occupé » du lancement jusqu'à la fin du suivi de la partie (deux tâches) : jamais rattaché entre les deux.
@@ -1712,10 +1744,51 @@ pub async fn jeu_jouer(
             });
         }
     }
+    // Les captures rangées pendant la partie (toutes les 2 s, tant qu'elle est la partie en cours).
+    let captures_rangees = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let captures_finies = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    if let Some(v) = veilleur_captures.clone() {
+        let (app3, total, fini3) = (app.clone(), captures_rangees.clone(), captures_finies.clone());
+        std::thread::spawn(move || loop {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            // Relu SOUS le verrou : après le dernier passage (`fini`), plus rien n'est rangé hors du compte annoncé.
+            let Ok(mut v) = v.lock() else { break };
+            if fini3.load(std::sync::atomic::Ordering::SeqCst) || !app3.state::<crate::menu_jeu::MenuJeu>().en_cours(numero) {
+                break;
+            }
+            let (n, abandons) = v.ranger();
+            total.fetch_add(n, std::sync::atomic::Ordering::SeqCst);
+            for a in abandons {
+                app3.state::<Noyau>().journaliser(&format!("captures d'écran : laissée à sa place, {a}"));
+            }
+        });
+    }
     let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
         let noyau = app2.state::<Noyau>();
         let fin = noyau.suivre_partie(id, pid, dossiers).await;
+        // Un dernier passage : une capture prise juste avant de quitter.
+        if let Some(v) = veilleur_captures {
+            let fini = captures_finies.clone();
+            let (n, abandons) = tauri::async_runtime::spawn_blocking(move || {
+                v.lock()
+                    .map(|mut v| {
+                        fini.store(true, std::sync::atomic::Ordering::SeqCst);
+                        v.ranger()
+                    })
+                    .unwrap_or_default()
+            })
+            .await
+            .unwrap_or_default();
+            for a in abandons {
+                noyau.journaliser(&format!("captures d'écran : laissée à sa place, {a}"));
+            }
+            let total = captures_rangees.fetch_add(n, std::sync::atomic::Ordering::SeqCst) + n;
+            if total > 0 {
+                noyau.journaliser(&format!("captures d'écran du jeu {id} : {total} rangée(s)"));
+                let _ = app2.emit("captures-rangees", serde_json::json!({ "jeu": id, "nombre": total }));
+            }
+        }
         // Au moins 6 minutes (la compilation mesurée chez Seb : 5 min 30) : la prochaine partie démarre vite.
         if let (Ok(f), Some((d, n))) = (&fin, &compile_rpcs3) {
             if f.secondes >= 360 {

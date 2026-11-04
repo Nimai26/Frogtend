@@ -4,6 +4,7 @@
 //! L'interface ne les reçoit jamais.
 
 pub mod bios;
+pub mod captures;
 pub mod boutiques;
 pub mod cheatengine;
 pub mod choix_emulateur;
