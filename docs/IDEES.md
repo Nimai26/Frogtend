@@ -77,3 +77,9 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   partie en cours, Cheat Engine suivi, installation en cours.
 - (04/11, relecture lancement) Un abri déplacé à moitié (un fichier en échec) existe dans deux dossiers à la même date :
   la sauvegarde vers Firehouse (sauvegarde.rs:520-529) n'en garde qu'un ; réunir les dossiers de même date.
+- (05/11, Seb : vidéo « Tuto Emulation Switch 2 » https://www.youtube.com/watch?v=UXpQFE8CvYo) Émulation Switch 2 : à ce
+  jour (relevé 05/11) un fork EXPÉRIMENTAL d'Eden, « Eden-NX2 » (apparu le 29/10, Mario Kart World et DK Bananza
+  démarrent mais saccadent ; d'autres forks : Eglantine, nxnative) ; disponibilité contradictoire (sorti / archivé
+  après 3 jours), risque de retrait par Nintendo. Frogtend connaît déjà Eden (profils, firmware, contenus) : l'intégrer
+  serait proche, MAIS seulement quand (1) une version stable existe à une source officielle ou servie par Firehouse,
+  (2) Firehouse sert une plateforme Switch 2 et ses jeux (les jeux ne viennent que de Firehouse). À revoir avec Seb.
