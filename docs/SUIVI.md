@@ -57,6 +57,10 @@
   télé incluse avec zone d'écran, affiches inventées). Taodbox codée seulement avec ces images (ou l'essai validé).
   ✅ Seb 03/11 (23 h, transmis par Firehouse) : UN DÉCOR PAR CONSOLE (console fidèle dans l'image, comme Bedroom) et
   de VRAIES affiches de films ; Frogtend choisira le décor par `plateforme`, affichera le jeu dans `ecran`.
+- **Essai du 04/11 (0.156.0), options du menu PS3** : photo ✅, son coupé ✅, AVANCE RAPIDE ❌ (Ctrl+F10 bien reçu par
+  RPCS3 — `gw_frame_limit` dans son journal — mais le jeu ne va pas plus vite : il suit la Vblank à 60). DEMANDE de Seb
+  (04/11) : un réglage GÉNÉRAL de Frogtend « dossier des captures d'écran » pour TOUS les jeux, rangées en
+  `<dossier choisi>\<Système>\<nom du jeu>\<capture horodatée>.<extension>` (au lieu du dossier de l'émulateur).
 - **Essai du 03/11 (0.155.0)** : MGS4 importé (`.zip` de 32,7 Go contenant un `.iso`) → ▶ Jouer donnait le .zip à RPCS3
   (« Invalid file or folder ») : la décompression n'était proposée que par le bloc de la fiche. → 0.156.0 : ▶ Jouer
   propose « Décompresser puis jouer » (même accord chiffré, progression, archive gardée). Remarque de Seb : « on devrait
