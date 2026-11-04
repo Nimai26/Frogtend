@@ -88,6 +88,9 @@
   `deja_installe` réinstallait dans le sous-dossier d'un programme adopté (→ `racine_installation`) ; abris : réglage
   changé AVANT le déplacement (ancien toujours lu), refus pendant une partie ou un jeu occupé ; provisoire hors des
   abris ; contenu comparé. Répétition refaite (copie des abris réels + un fichier personnel : resté en place).
+- **Essai du 04/11 (0.158.0)** : captures ✅ ; changements de tous les dossiers ✅. DEMANDES de Seb : (1) après un
+  déplacement, proposer de supprimer l'ancien dossier ; (2) voir ses captures : dans la fiche du jeu, depuis le menu en
+  jeu, et une vue complète de toutes les captures dans les Options. → propositions envoyées à Seb (en attente).
 - **Essai du 03/11 (0.155.0)** : MGS4 importé (`.zip` de 32,7 Go contenant un `.iso`) → ▶ Jouer donnait le .zip à RPCS3
   (« Invalid file or folder ») : la décompression n'était proposée que par le bloc de la fiche. → 0.156.0 : ▶ Jouer
   propose « Décompresser puis jouer » (même accord chiffré, progression, archive gardée). Remarque de Seb : « on devrait

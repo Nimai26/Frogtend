@@ -7,16 +7,16 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## Changer un dossier sans rien casser (0.158.0)
-- [ ] ⚙ Réglages ▸ Emplacements ▸ « 💾 Abris de parties » ▸ Choisir un autre dossier : « Déplacer tes abris ? » avec le
+- [x] (✅ 04/11) ⚙ Réglages ▸ Emplacements ▸ « 💾 Abris de parties » ▸ Choisir un autre dossier : « Déplacer tes abris ? » avec le
       nombre de fichiers et la taille ; « Déplacer et changer » : tout est dans le nouveau dossier (Dune compris), l'ancien
       a disparu s'il est vide.
-- [ ] « 📷 Captures d'écran » ▸ un autre dossier : « Et les captures déjà prises ? » ; essayer « Les déplacer ».
-- [ ] « 🕹 Émulateurs » ▸ un autre dossier : le message dit que RetroArch et RPCS3 restent dans E:\Emulateurs ;
+- [x] (✅ 04/11) « 📷 Captures d'écran » ▸ un autre dossier : « Et les captures déjà prises ? » ; essayer « Les déplacer ».
+- [x] (✅ 04/11) « 🕹 Émulateurs » ▸ un autre dossier : le message dit que RetroArch et RPCS3 restent dans E:\Emulateurs ;
       « Annuler » (ne change rien).
 
 ## Toutes tes captures au même endroit (0.157.0)
-- [ ] ⚙ Réglages ▸ Emplacements ▸ « 📷 Captures d'écran » ▸ Choisir (par exemple `E:\Captures`).
-- [ ] Super Mario World : deux captures (menu ▸ Options du jeu ▸ Photo de l'écran) ; quitter : « 📷 2 captures d'écran
+- [x] (✅ 04/11) ⚙ Réglages ▸ Emplacements ▸ « 📷 Captures d'écran » ▸ Choisir (par exemple `E:\Captures`).
+- [x] (✅ 04/11) Super Mario World : deux captures (menu ▸ Options du jeu ▸ Photo de l'écran) ; quitter : « 📷 2 captures d'écran
       rangées… » ; elles sont dans `E:\Captures\<Super Nintendo…>\Super Mario World\` avec la date et l'heure ; plus
       dans le dossier de RetroArch.
 - [ ] Asura's Wrath : une capture par le menu, une par F12 au clavier : les deux rangées ; le menu n'a plus « Avance
