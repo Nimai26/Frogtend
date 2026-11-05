@@ -6,11 +6,11 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
-## Tes émulateurs suivent leur nouveau dossier (0.159.0)
-- [ ] RetroArch et RPCS3 fermés. ⚙ Réglages ▸ Emplacements, ligne « 🕹 Émulateurs » : « RetroArch, RPCS3 sont restés
+## Tes émulateurs suivent leur nouveau dossier (0.159.0) — ✅ Seb 06/11
+- [x] RetroArch et RPCS3 fermés. ⚙ Réglages ▸ Emplacements, ligne « 🕹 Émulateurs » : « RetroArch, RPCS3 sont restés
       ailleurs (E:\Emulateurs) » ▸ « 📦 Les y déplacer » ; la question dit « Même disque : instantané » ; Déplacer.
-- [ ] Ils sont dans le nouveau dossier, `E:\Emulateurs` a disparu ; ⚙ Réglages ▸ Émulateurs montre les nouveaux chemins.
-- [ ] Super Mario World et Asura's Wrath se lancent ; Asura's Wrath ne recompile pas (la note a suivi) ; tes parties
+- [x] Ils sont dans le nouveau dossier, `E:\Emulateurs` a disparu ; ⚙ Réglages ▸ Émulateurs montre les nouveaux chemins.
+- [x] Super Mario World et Asura's Wrath se lancent ; Asura's Wrath ne recompile pas (la note a suivi) ; tes parties
       sont là.
 
 ## Changer un dossier sans rien casser (0.158.0)
