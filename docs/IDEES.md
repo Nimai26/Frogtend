@@ -83,3 +83,8 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   après 3 jours), risque de retrait par Nintendo. Frogtend connaît déjà Eden (profils, firmware, contenus) : l'intégrer
   serait proche, MAIS seulement quand (1) une version stable existe à une source officielle ou servie par Firehouse,
   (2) Firehouse sert une plateforme Switch 2 et ses jeux (les jeux ne viennent que de Firehouse). À revoir avec Seb.
+  Relevé 05/11 (lovegame.space, mis à jour le 03/11) : l'émulation Switch 2 n'utilise PAS de prod.keys ; eden-nx2 /
+  Eglantine chargent un jeu DÉJÀ déchiffré sur une Switch 2 (firmware 23.0.1 : exefs/main décompressé + romfs/) ; pas de
+  support dans Eden officiel (PR en brouillon au 01/11) ; 16 Go de RAM, GPU Vulkan 8 Go. Les clés de Seb
+  (Bureau\switch 2, vérifiées sans lire les valeurs) ont la forme d'un dump Switch 1 par Lockpick_RCM (mariko/tsec/keyblob,
+  master_key 00-16, 170 title.keys) : utiles pour Eden (Switch 1), pas pour la Switch 2.
