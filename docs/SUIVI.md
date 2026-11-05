@@ -103,6 +103,10 @@
   non-liens sautés puis effacés (seul is_symlink est sauté, tout lien sauf memstick refuse) ; + pc.json réécrit côté
   Rust, outils filtrés, dossier_retirer_si_vide refuse un dossier réglé, registre en échec → tout remis. Seconde
   relecture : rien de bloquant. Bouton « 📦 Les y déplacer » pour les émulateurs restés hors du dossier réglé.
+- **Galerie des captures (06/11)** : ✅ Seb : chaque profil ne voit QUE SES captures ; « en faire le fond » vaut pour SON
+  profil. Avis interface : réutiliser VisionneuseImages (croix = image, LB/RB = barre), section dans jeu/[id], écran du
+  menu en jeu, rubrique des Options ; Frogtend note qui a pris chaque capture et pour quel jeu (index). DEMANDE de Seb :
+  un admin peut envoyer ses captures à Firehouse → besoin 41.
 - **Essai du 03/11 (0.155.0)** : MGS4 importé (`.zip` de 32,7 Go contenant un `.iso`) → ▶ Jouer donnait le .zip à RPCS3
   (« Invalid file or folder ») : la décompression n'était proposée que par le bloc de la fiche. → 0.156.0 : ▶ Jouer
   propose « Décompresser puis jouer » (même accord chiffré, progression, archive gardée). Remarque de Seb : « on devrait
