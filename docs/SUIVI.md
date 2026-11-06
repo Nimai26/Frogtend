@@ -107,6 +107,18 @@
   profil. Avis interface : réutiliser VisionneuseImages (croix = image, LB/RB = barre), section dans jeu/[id], écran du
   menu en jeu, rubrique des Options ; Frogtend note qui a pris chaque capture et pour quel jeu (index). DEMANDE de Seb :
   un admin peut envoyer ses captures à Firehouse → besoin 41.
+  FAIT en 0.160.0 : index `captures.json` (profil, jeu) au rangement ; `captures_liste` (profil ouvert, jeux encore
+  visibles), protocole `capture.localhost/<id>`, supprimer / ouvrir le dossier / fond choisi (`<profil>\fonds-choisis.json`,
+  visuel « choisi » en tête d'`adresseFondDuJeu`) ; VisionneuseCaptures (diaporama 5 s) ; fiche, menu en jeu, Options.
+  Les 2 captures de SMW du 04/11 (avant l'index) ne sont pas dans la galerie. RESTE : miniatures réduites (pas de
+  redimensionnement local aujourd'hui), entrée en Taodbox (« Gérer le jeu »), bouton « ⬆ Envoyer à Firehouse »
+  quand le besoin 41 existera (Firehouse 06/11 : piste POST /media/{id}/capture admin, à soumettre à Seb ; ne pas
+  montrer le bouton d'ici là).
+  Relecture interface : corrigés avant livraison — fond rangé sous la FICHE du jeu (import relié), bouton caché sans
+  fiche ; capture trop petite (< 640 × 360) refusée comme fond (bouton grisé, cœur passe au visuel suivant) ; focus
+  rendu après la dernière suppression ; captures d'un jeu retiré du PC toujours montrées (titre noté à la capture,
+  jeu de Firehouse encore visible au profil) ; fond du menu redemandé ; verrou des fonds ; « Ouvrir le dossier » selon
+  le vrai mode Taodbox. RESTE : miniatures réduites (images entières servies aujourd'hui).
 - **Essai du 03/11 (0.155.0)** : MGS4 importé (`.zip` de 32,7 Go contenant un `.iso`) → ▶ Jouer donnait le .zip à RPCS3
   (« Invalid file or folder ») : la décompression n'était proposée que par le bloc de la fiche. → 0.156.0 : ▶ Jouer
   propose « Décompresser puis jouer » (même accord chiffré, progression, archive gardée). Remarque de Seb : « on devrait

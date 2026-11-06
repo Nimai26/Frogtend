@@ -7,6 +7,7 @@
   import Profil from '$lib/options/Profil.svelte';
   import APropos from '$lib/options/APropos.svelte';
   import Sauvegarde from '$lib/options/Sauvegarde.svelte';
+  import Captures from '$lib/options/Captures.svelte';
   import Steam from '$lib/options/Steam.svelte';
   import Galaxy from '$lib/options/Galaxy.svelte';
   import RetroAchievements from '$lib/options/RetroAchievements.svelte';
@@ -107,6 +108,7 @@
     { groupe: 'Jeux', rubriques: [
       { id: 'emplacements', libelle: '📁 Emplacements' },
       { id: 'emulateurs', libelle: '🕹 Émulateurs' },
+      { id: 'captures', libelle: '📷 Captures d’écran' },
     ] },
     { groupe: 'Comptes', rubriques: [
       { id: 'steam', libelle: '🎮 Steam' },
@@ -387,6 +389,8 @@
       </div>
     </div>
   </section>
+    {:else if rubrique === 'captures'}
+      <Captures />
     {:else if rubrique === 'steam'}
       <Steam />
     {:else if rubrique === 'galaxy'}

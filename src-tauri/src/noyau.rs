@@ -1433,6 +1433,17 @@ impl Noyau {
             }
         };
         for sorte in sortes {
+            // Le fond choisi par la personne parmi SES captures (✅ Seb 06/11), avant ceux de Firehouse (jamais écrasés).
+            if *sorte == "choisi" {
+                let choisi = crate::captures::fonds_choisis(&self.dossier.join("profils").join(&s.profil.id)).get(&id.to_string()).cloned();
+                if let Some(n) = choisi.and_then(|c| crate::captures::de_ce_profil(&self.dossier, &c, &s.profil.id)) {
+                    // Trop petite pour un fond net : on passe aux visuels de Firehouse (jamais le fond du thème).
+                    if let Some(octets) = std::fs::read(&n.chemin).ok().filter(|o| crate::captures::assez_grande_pour_un_fond(o)) {
+                        return Ok(Some(Image { octets, type_contenu: Some(crate::captures::type_image(Path::new(&n.chemin)).into()) }));
+                    }
+                }
+                continue;
+            }
             if *sorte == "jaquette" {
                 if let Some(img) = self.jaquette(id, Some(largeur)).await? {
                     return Ok(Some(img));

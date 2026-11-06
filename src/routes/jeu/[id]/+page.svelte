@@ -12,6 +12,10 @@
   import LecteurLivret from '$lib/ludotheque/LecteurLivret.svelte';
   import LecteurMedia from '$lib/ludotheque/LecteurMedia.svelte';
   import VisionneuseImages from '$lib/ludotheque/VisionneuseImages.svelte';
+  import VisionneuseCaptures from '$lib/captures/VisionneuseCaptures.svelte';
+  import GrilleCaptures from '$lib/captures/GrilleCaptures.svelte';
+  import type { Capture } from '$lib/captures/captures';
+  import { selectionner } from '$lib/taodbox/manette.svelte';
   import { grosPixels, largeurUtile, libelleMedia, ordonner, type MediaJeu } from '$lib/ludotheque/galerie';
   import { adresseMedia } from '$lib/api';
   import { documentsMontres, libelleDocument, ouvrirDocument, texteChargement, type DocumentOuvert } from '$lib/ludotheque/documents';
@@ -38,6 +42,9 @@
   // La galerie du jeu (lot Médias M2) : ses visuels, l'image ouverte en grand, les vignettes qui ne s'affichent pas.
   let medias = $state<MediaJeu[]>([]);
   let imageOuverte = $state<number | null>(null);
+  // Les captures d'écran de CE profil pour ce jeu (✅ Seb 06/11).
+  let captures = $state<Capture[]>([]);
+  let captureOuverte = $state<string | null>(null);
   let ratees = $state<number[]>([]);
   const boutonsMedias: Record<number, HTMLButtonElement> = {};
   /** La largeur d'une vignette (cellule fixe) : l'image s'y loge en entier. */
@@ -84,12 +91,14 @@
     // listes arrivent ensemble.
     // Un jeu du PC : sa fiche vient du disque (gardée à l'installation) ; ses infos sont relues en direct (Firehouse :
     // elles peuvent changer sans que le jeu revienne par la synchronisation). Les autres les portent déjà.
-    const [l, g, i] = await Promise.all([
+    const [l, g, i, c] = await Promise.all([
       api.documents(n).catch(() => []),
       api.medias(n).catch(() => []),
       locale ? api.infosJeu(n).catch(() => null) : Promise.resolve(null),
+      api.capturesListe(n).catch(() => []),
     ]);
     if (n === id) {
+      captures = c;
       documents = documentsMontres(l);
       medias = ordonner(g);
       // Le cœur a tranché (caché, réuni, sans infos : rien) : jamais les anciennes infos du disque à la place.
@@ -379,6 +388,13 @@
       </section>
     {/if}
 
+    {#if captures.length}
+      <section class="cx-block">
+        <h3>📷 Mes captures</h3>
+        <GrilleCaptures {captures} onouvrir={(c) => (captureOuverte = c)} />
+      </section>
+    {/if}
+
     {#if fiche.annexes?.length || documents.length}
       <section class="cx-block">
         <h3>📚 Documents du jeu</h3>
@@ -491,7 +507,25 @@
   {/if}
 </div>
 
-{#if imageOuverte !== null && fiche}
+{#if captureOuverte !== null && fiche}
+  <VisionneuseCaptures
+    {captures}
+    depart={captureOuverte}
+    titre={fiche.titre}
+    sousLaBarre
+    onfermer={(c) => {
+      captureOuverte = null;
+      const n = fiche?.id;
+      // La liste relue (une capture supprimée), puis la sélection rendue à la vignette regardée.
+      if (n !== undefined)
+        api.capturesListe(n).then((l) => {
+          captures = l;
+          // La vignette regardée ; supprimée (ou la section partie) : le premier bouton de la fiche.
+          tick().then(() => selectionner(document.querySelector<HTMLElement>(`[data-capture="${c}"]`) ?? document.querySelector<HTMLElement>('[data-capture]') ?? document.querySelector<HTMLElement>('.page button')));
+        });
+    }}
+  />
+{:else if imageOuverte !== null && fiche}
   <VisionneuseImages
     jeu={fiche.id}
     medias={medias.filter((m) => !ratees.includes(m.id))}

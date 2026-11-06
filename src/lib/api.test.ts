@@ -24,7 +24,7 @@ describe('adresseJaquette', () => {
 
 describe('adresseFondDuJeu', () => {
   it('demande le fond, sinon une capture, sinon l’écran titre, en 1 000 px au plus', () => {
-    expect(adresseFondDuJeu(116)).toBe('http://jaquette.localhost/116?visuel=fond,capture,ecran_titre&largeur=1000');
+    expect(adresseFondDuJeu(116)).toBe('http://jaquette.localhost/116?visuel=choisi,fond,capture,ecran_titre&largeur=1000');
   });
 });
 

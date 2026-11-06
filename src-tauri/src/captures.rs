@@ -9,6 +9,8 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
+
 /// Les extensions d'image déplacées (jamais une vidéo ni un son : DOSBox, RPCS3 rangent aussi des enregistrements).
 const IMAGES: &[&str] = &["png", "jpg", "jpeg", "bmp", "webp"];
 
@@ -178,9 +180,10 @@ impl Veilleur {
         Ok(Some(Veilleur { dossiers, vus, cible, echecs: Default::default() }))
     }
 
-    /// Range les nouvelles captures ; rend le nombre rangé à ce passage, et les captures abandonnées (à dire au journal).
-    pub fn ranger(&mut self) -> (usize, Vec<String>) {
-        let (mut n, mut abandons) = (0, Vec::new());
+    /// Range les nouvelles captures ; rend celles rangées à ce passage (leur nouvelle place), et les captures
+    /// abandonnées (à dire au journal).
+    pub fn ranger(&mut self) -> (Vec<PathBuf>, Vec<String>) {
+        let (mut n, mut abandons) = (Vec::new(), Vec::new());
         for f in inventaire(&self.dossiers) {
             // Présente avant la partie (à la personne), ou déjà rangée (original encore tenu par l'émulateur, qui reste
             // alors en double plutôt que d'être recopié) : jamais touchée.
@@ -188,8 +191,8 @@ impl Veilleur {
                 continue;
             }
             match deplacer(&f, &self.cible) {
-                Ok(_) => {
-                    n += 1;
+                Ok(place) => {
+                    n.push(place);
                     self.vus.insert(f);
                 }
                 // En cours d'écriture, ou tenue : reprise au passage suivant, puis laissée à sa place.
@@ -207,9 +210,169 @@ impl Veilleur {
     }
 }
 
+/// Une capture notée par Frogtend au rangement (✅ Seb 06/11) : QUI l'a prise (le profil) et pour QUEL jeu. Chaque
+/// profil ne voit que les siennes ; le jeu reste retrouvé même si son titre ou sa console changent de nom.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Notee {
+    /// Identifiant stable (empreinte du chemin), pour l'adresse `capture.localhost/<id>`.
+    pub id: String,
+    pub chemin: String,
+    pub profil: String,
+    pub jeu: i64,
+    /// Secondes depuis 1970.
+    pub quand: u64,
+    /// Le titre et la console au moment de la capture : la galerie les montre même si le jeu a quitté le PC.
+    #[serde(default)]
+    pub titre: String,
+    #[serde(default)]
+    pub plateforme: String,
+}
+
+/// Un seul lecteur-écrivain de l'index à la fois (rangement pendant la partie, suppression depuis la galerie).
+static VERROU_INDEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn fichier_index(donnees: &Path) -> PathBuf {
+    donnees.join("captures.json")
+}
+
+fn lire_sans_verrou(donnees: &Path) -> Vec<Notee> {
+    std::fs::read(fichier_index(donnees)).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default()
+}
+
+fn ecrire_sans_verrou(donnees: &Path, l: &[Notee]) -> std::io::Result<()> {
+    let f = fichier_index(donnees);
+    let provisoire = f.with_extension("json.tmp");
+    std::fs::write(&provisoire, serde_json::to_vec_pretty(l).unwrap_or_default())?;
+    std::fs::rename(&provisoire, &f)
+}
+
+/// L'index des captures (`captures.json` des données de Frogtend).
+pub fn index(donnees: &Path) -> Vec<Notee> {
+    let _v = VERROU_INDEX.lock().unwrap_or_else(|e| e.into_inner());
+    lire_sans_verrou(donnees)
+}
+
+/// L'identifiant d'une capture : les 16 premiers caractères de l'empreinte SHA-256 de son chemin.
+pub fn identifiant(chemin: &Path) -> String {
+    use sha2::Digest;
+    let h = sha2::Sha256::digest(chemin.to_string_lossy().to_lowercase().as_bytes());
+    h.iter().take(8).map(|o| format!("{o:02x}")).collect()
+}
+
+/// Note les captures rangées pour ce profil et ce jeu (sans profil ouvert : rien, elles ne seraient à personne).
+pub fn noter(donnees: &Path, places: &[PathBuf], profil: &str, jeu: i64, titre: &str, plateforme: &str) -> std::io::Result<()> {
+    if places.is_empty() || profil.is_empty() {
+        return Ok(());
+    }
+    let _v = VERROU_INDEX.lock().unwrap_or_else(|e| e.into_inner());
+    let mut l = lire_sans_verrou(donnees);
+    for p in places {
+        let quand = std::fs::metadata(p).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+        let id = identifiant(p);
+        l.retain(|n| n.id != id);
+        l.push(Notee { id, chemin: p.to_string_lossy().into(), profil: profil.into(), jeu, quand, titre: titre.into(), plateforme: plateforme.into() });
+    }
+    ecrire_sans_verrou(donnees, &l)
+}
+
+/// Retire une capture de l'index (supprimée, ou disparue du disque).
+pub fn oublier(donnees: &Path, id: &str) -> std::io::Result<()> {
+    let _v = VERROU_INDEX.lock().unwrap_or_else(|e| e.into_inner());
+    let mut l = lire_sans_verrou(donnees);
+    let avant = l.len();
+    l.retain(|n| n.id != id);
+    if l.len() != avant { ecrire_sans_verrou(donnees, &l) } else { Ok(()) }
+}
+
+/// Une capture de CE profil, encore sur le disque.
+pub fn de_ce_profil(donnees: &Path, id: &str, profil: &str) -> Option<Notee> {
+    notee_de_ce_profil(donnees, id, profil).filter(|n| Path::new(&n.chemin).is_file())
+}
+
+/// Une capture de CE profil notée dans l'index (même si son fichier a disparu).
+pub fn notee_de_ce_profil(donnees: &Path, id: &str, profil: &str) -> Option<Notee> {
+    index(donnees).into_iter().find(|n| n.id == id && n.profil == profil)
+}
+
+/// Les dimensions d'une image PNG (lues dans son en-tête) ; `None` pour un autre format.
+pub fn dimensions_png(octets: &[u8]) -> Option<(u32, u32)> {
+    if octets.len() < 24 || &octets[..8] != b"\x89PNG\r\n\x1a\n" {
+        return None;
+    }
+    Some((u32::from_be_bytes(octets[16..20].try_into().ok()?), u32::from_be_bytes(octets[20..24].try_into().ok()?)))
+}
+
+/// Assez grande pour un fond net (la même règle que l'interface, `assezGrandPourUnFond` : 640 × 360).
+pub fn assez_grande_pour_un_fond(octets: &[u8]) -> bool {
+    dimensions_png(octets).is_none_or(|(l, h)| l >= 640 && h >= 360)
+}
+
+/// Le type d'image d'après l'extension.
+pub fn type_image(chemin: &Path) -> &'static str {
+    match chemin.extension().map(|e| e.to_string_lossy().to_lowercase()).as_deref() {
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("bmp") => "image/bmp",
+        Some("webp") => "image/webp",
+        _ => "image/png",
+    }
+}
+
+/// Le fond choisi par un profil pour un jeu (`<profil>\fonds-choisis.json` : jeu → identifiant de capture).
+pub fn fonds_choisis(dossier_profil: &Path) -> std::collections::BTreeMap<String, String> {
+    std::fs::read(dossier_profil.join("fonds-choisis.json")).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default()
+}
+
+/// Un seul écrivain des fonds choisis à la fois (un changement de fond pendant une suppression ne perd rien).
+static VERROU_FONDS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+pub fn regler_fond(dossier_profil: &Path, jeu: i64, capture: Option<&str>) -> std::io::Result<()> {
+    let _v = VERROU_FONDS.lock().unwrap_or_else(|e| e.into_inner());
+    let mut m = fonds_choisis(dossier_profil);
+    match capture {
+        Some(c) => m.insert(jeu.to_string(), c.into()),
+        None => m.remove(&jeu.to_string()),
+    };
+    std::fs::create_dir_all(dossier_profil)?;
+    let f = dossier_profil.join("fonds-choisis.json");
+    let provisoire = f.with_extension("json.tmp");
+    std::fs::write(&provisoire, serde_json::to_vec_pretty(&m).unwrap_or_default())?;
+    std::fs::rename(&provisoire, &f)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn l_index_des_captures_par_profil() {
+        let d = tempfile::tempdir().unwrap();
+        let img = d.path().join("SNES").join("SMW").join("a.png");
+        std::fs::create_dir_all(img.parent().unwrap()).unwrap();
+        std::fs::write(&img, b"png").unwrap();
+        noter(d.path(), std::slice::from_ref(&img), "seb", 114, "Super Mario World", "Super Nintendo Entertainment System").unwrap();
+        noter(d.path(), std::slice::from_ref(&img), "", 114, "x", "y").unwrap();
+        let id = identifiant(&img);
+        assert_eq!(index(d.path()).len(), 1);
+        assert!(de_ce_profil(d.path(), &id, "seb").is_some());
+        assert!(de_ce_profil(d.path(), &id, "lea").is_none(), "jamais celle d'un autre profil");
+        noter(d.path(), std::slice::from_ref(&img), "seb", 114, "Super Mario World", "Super Nintendo Entertainment System").unwrap();
+        assert_eq!(index(d.path()).len(), 1, "jamais en double (ni sans profil)");
+        assert_eq!(index(d.path())[0].titre, "Super Mario World");
+        let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+        png.extend_from_slice(&240u32.to_be_bytes());
+        png.extend_from_slice(&160u32.to_be_bytes());
+        assert_eq!(dimensions_png(&png), Some((240, 160)));
+        assert!(!assez_grande_pour_un_fond(&png), "une capture de Game Boy Advance : trop petite");
+        assert!(assez_grande_pour_un_fond(b"jpeg"), "autre format : on ne sait pas, accepté");
+        oublier(d.path(), &id).unwrap();
+        assert!(index(d.path()).is_empty());
+        let p = d.path().join("profil");
+        regler_fond(&p, 114, Some(&id)).unwrap();
+        assert_eq!(fonds_choisis(&p).get("114"), Some(&id));
+        regler_fond(&p, 114, None).unwrap();
+        assert!(fonds_choisis(&p).is_empty());
+        assert_eq!(type_image(Path::new("x.JPG")), "image/jpeg");
+    }
 
     #[test]
     fn les_dossiers_de_chaque_emulateur() {
@@ -257,7 +420,7 @@ mod tests {
         std::fs::write(ecrans.join("states").join("x.png"), b"vignette").unwrap();
         std::fs::write(ecrans.join("jeu.state1.png"), b"vignette").unwrap();
         std::fs::write(ecrans.join("film.avi"), b"video").unwrap();
-        assert_eq!(v.ranger().0, 1);
+        assert_eq!(v.ranger().0.len(), 1);
         let rangees: Vec<_> = std::fs::read_dir(choisi.join("Sony Playstation 3").join("Asura's Wrath")).unwrap().flatten().map(|e| e.path()).collect();
         assert_eq!(rangees.len(), 1);
         assert_eq!(std::fs::read(&rangees[0]).unwrap(), b"image");
@@ -272,9 +435,9 @@ mod tests {
             std::fs::write(&f, format!("i{i}")).unwrap();
             std::fs::File::options().write(true).open(&f).unwrap().set_modified(t).unwrap();
         }
-        assert_eq!(v.ranger().0, 2);
+        assert_eq!(v.ranger().0.len(), 2);
         assert_eq!(std::fs::read_dir(choisi.join("Sony Playstation 3").join("Asura's Wrath")).unwrap().count(), 3);
-        assert_eq!(v.ranger().0, 0, "rien de neuf");
+        assert_eq!(v.ranger().0.len(), 0, "rien de neuf");
     }
 
     #[test]

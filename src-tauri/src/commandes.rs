@@ -112,6 +112,105 @@ pub async fn dossier_deplacer_contenu(app: AppHandle, noyau: State<'_, Noyau>, s
     Ok(bilan)
 }
 
+/// Une capture de la galerie (celles du profil ouvert seulement).
+#[derive(Serialize)]
+pub struct CaptureVue {
+    id: String,
+    jeu: i64,
+    titre: String,
+    plateforme: String,
+    quand: u64,
+    /// Le jeu a une fiche (Firehouse) : la capture peut en devenir le fond.
+    fond_possible: bool,
+    /// C'est le fond choisi de son jeu.
+    est_le_fond: bool,
+}
+
+/// La fiche (Firehouse) d'un jeu de capture pour ce profil : son fond est rangé sous elle (c'est elle que demandent
+/// le menu en jeu, l'écran de lancement et Taodbox). `None` : un import sans fiche.
+fn fiche_de_capture(noyau: &Noyau, s: &crate::noyau::Session, jeu: i64) -> Option<i64> {
+    noyau.fiche_de(s, jeu).ok().flatten()
+}
+
+/// La galerie du profil OUVERT : ses captures (d'un jeu — son numéro ou sa fiche —, ou toutes), plus récentes
+/// d'abord. Un jeu de Firehouse doit être encore visible à ce profil (même retiré du PC) ; une capture disparue du
+/// disque sort de l'index.
+#[tauri::command]
+pub async fn captures_liste(noyau: State<'_, Noyau>, jeu: Option<i64>) -> Resultat<Vec<CaptureVue>> {
+    let profil = profil_ouvert(&noyau).await?.id;
+    let s = noyau.session().await?;
+    let fonds = crate::captures::fonds_choisis(&dossier_profil_de(&noyau, &profil));
+    let mut l = Vec::new();
+    for n in crate::captures::index(&noyau.dossier).into_iter().filter(|n| n.profil == profil) {
+        if !std::path::Path::new(&n.chemin).is_file() {
+            let _ = crate::captures::oublier(&noyau.dossier, &n.id);
+            continue;
+        }
+        // Un jeu de Firehouse caché à ce profil (grade, réunion) : sa capture ne se montre pas (rien n'est effacé).
+        if n.jeu > 0 && !s.verrou().visible_ou_reuni(n.jeu).unwrap_or(false) {
+            continue;
+        }
+        let fiche = fiche_de_capture(&noyau, &s, n.jeu);
+        if jeu.is_some_and(|j| n.jeu != j && fiche != Some(j)) {
+            continue;
+        }
+        let est_le_fond = fiche.is_some_and(|f| fonds.get(&f.to_string()) == Some(&n.id));
+        l.push(CaptureVue { id: n.id, jeu: n.jeu, titre: n.titre, plateforme: n.plateforme, quand: n.quand, fond_possible: fiche.is_some(), est_le_fond });
+    }
+    l.sort_by(|a, b| b.quand.cmp(&a.quand));
+    Ok(l)
+}
+
+/// Supprime une capture du profil ouvert (la personne a confirmé) ; déjà partie du disque : seulement oubliée. Un fond
+/// choisi qui était elle est retiré.
+#[tauri::command]
+pub async fn capture_supprimer(noyau: State<'_, Noyau>, id: String) -> Resultat<()> {
+    let p = profil_ouvert(&noyau).await?;
+    let n = crate::captures::notee_de_ce_profil(&noyau.dossier, &id, &p.id).ok_or_else(|| Erreur::Introuvable("Capture introuvable.".into()))?;
+    match std::fs::remove_file(&n.chemin) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
+    }
+    crate::captures::oublier(&noyau.dossier, &id)?;
+    let dossier = dossier_profil_de(&noyau, &p.id);
+    if let Some(f) = noyau.session().await.ok().and_then(|s| fiche_de_capture(&noyau, &s, n.jeu)) {
+        if crate::captures::fonds_choisis(&dossier).get(&f.to_string()) == Some(&id) {
+            crate::captures::regler_fond(&dossier, f, None)?;
+        }
+    }
+    noyau.journaliser(&format!("capture supprimée : {}", n.chemin));
+    Ok(())
+}
+
+/// Ouvre dans l'Explorateur le dossier d'une capture du profil ouvert.
+#[tauri::command]
+pub async fn capture_ouvrir_dossier(app: AppHandle, noyau: State<'_, Noyau>, id: String) -> Resultat<()> {
+    let p = profil_ouvert(&noyau).await?;
+    let n = crate::captures::de_ce_profil(&noyau.dossier, &id, &p.id).ok_or_else(|| Erreur::Introuvable("Capture introuvable.".into()))?;
+    use tauri_plugin_opener::OpenerExt;
+    let dossier = std::path::Path::new(&n.chemin).parent().ok_or_else(|| Erreur::Introuvable("Dossier introuvable.".into()))?.to_path_buf();
+    app.opener().open_path(dossier.to_string_lossy(), None::<&str>).map_err(|e| Erreur::Refus(format!("Impossible d'ouvrir le dossier : {e}")))
+}
+
+/// « En faire le fond du jeu » (✅ Seb 06/11 : pour SON profil), rangé sous la fiche du jeu ; `actif` faux : rendre le
+/// fond de Firehouse. Une capture trop petite pour un fond net (moins de 640 × 360) est refusée.
+#[tauri::command]
+pub async fn capture_fond(noyau: State<'_, Noyau>, id: String, actif: bool) -> Resultat<()> {
+    let p = profil_ouvert(&noyau).await?;
+    let n = crate::captures::de_ce_profil(&noyau.dossier, &id, &p.id).ok_or_else(|| Erreur::Introuvable("Capture introuvable.".into()))?;
+    let s = noyau.session().await?;
+    let fiche = fiche_de_capture(&noyau, &s, n.jeu).ok_or_else(|| Erreur::Refus("Ce jeu n'a pas de fiche Firehouse : il n'a pas de fond à remplacer.".into()))?;
+    if actif {
+        let octets = std::fs::read(&n.chemin)?;
+        if !crate::captures::assez_grande_pour_un_fond(&octets) {
+            return Err(Erreur::Refus("Cette capture est trop petite pour un fond net (moins de 640 × 360).".into()));
+        }
+    }
+    crate::captures::regler_fond(&dossier_profil_de(&noyau, &p.id), fiche, actif.then_some(id.as_str()))?;
+    Ok(())
+}
+
 /// Le dossier général des captures d'écran (`pc.json` ▸ `dossierCaptures`, ✅ Seb 04/11), s'il est réglé et admis.
 fn dossier_captures_regle(app: &AppHandle) -> Option<std::path::PathBuf> {
     let r = app.store("pc.json").ok()?.get("reglages")?;
@@ -1481,6 +1580,8 @@ pub async fn jeu_jouer(
     // Un jeu d'une boutique : lancé par elle, jamais par un émulateur (même si un émulateur est réglé pour « Windows »).
     let de_boutique = jeu.as_ref().and_then(|j| j.installation.as_ref()).is_some_and(|i| i.boutique.is_some());
     let (plateforme, titre) = jeu.map(|j| (j.plateforme, j.titre)).unwrap_or_default();
+    // Pour l'index des captures (la galerie montre le titre même si le jeu quitte le PC).
+    let (titre_captures, plateforme_captures) = (titre.clone(), plateforme.clone());
     let mut id_emulateur = None;
     let mut dossier_emulateur = None;
     // RetroArch : le nom du cœur (le dossier où il cherche les triches du jeu). RPCS3 : sa ligne de lancement.
@@ -1827,9 +1928,12 @@ pub async fn jeu_jouer(
     }
     // Les captures rangées pendant la partie (toutes les 2 s, tant qu'elle est la partie en cours).
     let captures_rangees = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    // Le profil qui joue : chaque capture lui est notée (lui seul la verra dans la galerie, ✅ Seb 06/11).
+    let profil_captures = profil_ouvert(&noyau).await.map(|p| p.id).unwrap_or_default();
     let captures_finies = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     if let Some(v) = veilleur_captures.clone() {
         let (app3, total, fini3) = (app.clone(), captures_rangees.clone(), captures_finies.clone());
+        let (profil_captures, titre_captures, plateforme_captures) = (profil_captures.clone(), titre_captures.clone(), plateforme_captures.clone());
         std::thread::spawn(move || loop {
             std::thread::sleep(std::time::Duration::from_secs(2));
             // Relu SOUS le verrou : après le dernier passage (`fini`), plus rien n'est rangé hors du compte annoncé.
@@ -1837,8 +1941,12 @@ pub async fn jeu_jouer(
             if fini3.load(std::sync::atomic::Ordering::SeqCst) || !app3.state::<crate::menu_jeu::MenuJeu>().en_cours(numero) {
                 break;
             }
-            let (n, abandons) = v.ranger();
-            total.fetch_add(n, std::sync::atomic::Ordering::SeqCst);
+            let (places, abandons) = v.ranger();
+            total.fetch_add(places.len(), std::sync::atomic::Ordering::SeqCst);
+            let noyau = app3.state::<Noyau>();
+            if let Err(err) = crate::captures::noter(&noyau.dossier, &places, &profil_captures, id, &titre_captures, &plateforme_captures) {
+                noyau.journaliser(&format!("captures d'écran : non notées ({err})"));
+            }
             for a in abandons {
                 app3.state::<Noyau>().journaliser(&format!("captures d'écran : laissée à sa place, {a}"));
             }
@@ -1851,7 +1959,7 @@ pub async fn jeu_jouer(
         // Un dernier passage : une capture prise juste avant de quitter.
         if let Some(v) = veilleur_captures {
             let fini = captures_finies.clone();
-            let (n, abandons) = tauri::async_runtime::spawn_blocking(move || {
+            let (places, abandons) = tauri::async_runtime::spawn_blocking(move || {
                 v.lock()
                     .map(|mut v| {
                         fini.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -1861,6 +1969,10 @@ pub async fn jeu_jouer(
             })
             .await
             .unwrap_or_default();
+            let n = places.len();
+            if let Err(err) = crate::captures::noter(&noyau.dossier, &places, &profil_captures, id, &titre_captures, &plateforme_captures) {
+                noyau.journaliser(&format!("captures d'écran : non notées ({err})"));
+            }
             for a in abandons {
                 noyau.journaliser(&format!("captures d'écran : laissée à sa place, {a}"));
             }

@@ -6,6 +6,14 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Tes captures en galerie (0.160.0)
+- [ ] Super Mario World : deux nouvelles captures ; menu de Frogtend ▸ « 📷 Mes captures » : elles s'ouvrent en grand ;
+      ◀ ▶ ; « ▶ Diaporama » défile, B l'arrête ; B ferme et revient au menu (le jeu ne reprend pas tout seul).
+- [ ] « 🖼 En faire le fond du jeu » : rouvrir le menu en jeu → le fond est ta capture ; « Rendre le fond d'origine ».
+- [ ] Fiche de Super Mario World : section « 📷 Mes captures » ; « 📂 Ouvrir le dossier » ; « 🗑 Supprimer » (confirmé).
+- [ ] ⚙ Options ▸ « 📷 Captures d'écran » : Super Nintendo ▸ Super Mario World (déplier) ; à la manette aussi.
+- [ ] Avec un autre profil : ses Options ne montrent AUCUNE de tes captures.
+
 ## Tes émulateurs suivent leur nouveau dossier (0.159.0) — ✅ Seb 06/11
 - [x] RetroArch et RPCS3 fermés. ⚙ Réglages ▸ Emplacements, ligne « 🕹 Émulateurs » : « RetroArch, RPCS3 sont restés
       ailleurs (E:\Emulateurs) » ▸ « 📦 Les y déplacer » ; la question dit « Même disque : instantané » ; Déplacer.

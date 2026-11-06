@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.160.0 — Tes captures en galerie
+
+- 📷 Tes captures d'écran se regardent maintenant dans Frogtend : dans la fiche du jeu (« 📷 Mes captures »), depuis le
+  menu en jeu (« 📷 Mes captures », sans quitter la partie) et dans ⚙ Options ▸ « 📷 Captures d'écran » (toutes, par
+  console puis par jeu).
+- Dans la visionneuse : ◀ ▶ pour passer de l'une à l'autre, « ▶ Diaporama » (elles défilent toutes seules, B ou Échap
+  pour arrêter), « 🖼 En faire le fond du jeu » (pour toi seulement : le fond du menu en jeu, de l'écran de lancement et
+  de Taodbox), « 📂 Ouvrir le dossier » et « 🗑 Supprimer » (après confirmation).
+- Chacun ne voit que SES captures : Frogtend note qui a pris chaque capture et pour quel jeu. Les captures prises avant
+  cette version ne sont pas notées : elles restent dans le dossier, mais pas dans la galerie.
+
 ## 0.159.0 — Tes émulateurs suivent leur nouveau dossier
 
 - 📦 Changer le dossier des émulateurs (ou des outils) propose maintenant de DÉPLACER ceux que Frogtend a installés,

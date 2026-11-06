@@ -171,6 +171,23 @@ fn repondre_document(app: &tauri::AppHandle, chemin: &str, requete: Option<&str>
     }
 }
 
+/// `capture.localhost/<id>` : une capture d'écran du profil OUVERT (jamais celle d'un autre profil).
+fn repondre_capture(app: &tauri::AppHandle, chemin: &str) -> tauri::http::Response<Vec<u8>> {
+    let id = chemin.trim_matches('/');
+    let noyau = app.state::<noyau::Noyau>();
+    let Some(profil) = tauri::async_runtime::block_on(noyau.actif()) else { return reponse_vide(404) };
+    let Some(n) = captures::de_ce_profil(&noyau.dossier, id, &profil.id) else { return reponse_vide(404) };
+    match std::fs::read(&n.chemin) {
+        Ok(octets) => tauri::http::Response::builder()
+            .status(200)
+            .header("Content-Type", captures::type_image(std::path::Path::new(&n.chemin)))
+            .header("Cache-Control", "no-store")
+            .body(octets)
+            .unwrap(),
+        Err(_) => reponse_vide(404),
+    }
+}
+
 /// `document.localhost/<jeu>/<document>/fichier` : une musique ou une vidéo DÉJÀ sur le PC, servie par morceaux
 /// (`Range` → 206, ce qui permet d'avancer dans la lecture), pour le profil OUVERT seulement.
 fn repondre_fichier_document(app: &tauri::AppHandle, jeu: &str, doc: &str, range: Option<&str>) -> tauri::http::Response<Vec<u8>> {
@@ -434,6 +451,14 @@ pub fn run() {
                 repondeur.respond(reponse)
             });
         })
+        .register_asynchronous_uri_scheme_protocol("capture", |ctx, requete, repondeur| {
+            let app = ctx.app_handle().clone();
+            let chemin = requete.uri().path().to_string();
+            std::thread::spawn(move || {
+                let reponse = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| repondre_capture(&app, &chemin))).unwrap_or_else(|_| reponse_vide(500));
+                repondeur.respond(reponse)
+            });
+        })
         .register_asynchronous_uri_scheme_protocol("fond", |ctx, requete, repondeur| {
             let app = ctx.app_handle().clone();
             let chemin = requete.uri().path().to_string();
@@ -602,6 +627,10 @@ pub fn run() {
             commandes::dossier_contenu,
             commandes::dossier_deplacer_contenu,
             commandes::emulateur_deplacer,
+            commandes::captures_liste,
+            commandes::capture_supprimer,
+            commandes::capture_ouvrir_dossier,
+            commandes::capture_fond,
             commandes::dossier_retirer_si_vide,
             commandes::contenus_du_jeu,
             commandes::contenus_installer,

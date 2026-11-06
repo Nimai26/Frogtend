@@ -9,6 +9,8 @@
   import { adresseFondDuJeu, api, type Annexe, type DocumentJeu, type EtatMenuJeu } from '$lib/api';
   import LecteurLivret from '$lib/ludotheque/LecteurLivret.svelte';
   import LecteurMedia from '$lib/ludotheque/LecteurMedia.svelte';
+  import VisionneuseCaptures from '$lib/captures/VisionneuseCaptures.svelte';
+  import type { Capture } from '$lib/captures/captures';
   import { documentsDuMenu, documentsMontres, libelleDocument, ouvrirDocument, texteChargement, type DocumentOuvert } from '$lib/ludotheque/documents';
   import { arreterDocument, suiviDocument } from '$lib/ludotheque/documentsProgres.svelte';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
@@ -59,6 +61,8 @@
 
   // L'écran des boutons de la manette (lot 4d), lu à la demande.
   let boutons = $state<InfosBoutons | null>(null);
+  // Les captures de ce jeu prises par CE profil (✅ Seb 06/11), dans la visionneuse (fenêtre agrandie).
+  let captures = $state<Capture[] | null>(null);
   const trichesActives = $derived(menu?.triches?.filter((t) => t.active).length ?? 0);
   // L'avance rapide demandée depuis ce menu, pour CE jeu (une bascule : Frogtend ne connaît pas l'état réel de
   // l'émulateur ; il rappelle seulement ce qui a été demandé ici, pour qu'elle ne soit pas oubliée).
@@ -100,6 +104,7 @@
     triches = false;
     boutons = null;
     effets = false;
+    captures = null;
     await tick();
     selectionner(liste?.querySelector<HTMLButtonElement>('button'));
   }
@@ -151,6 +156,7 @@
         triches = false;
         boutons = null;
         effets = false;
+        captures = null;
       }),
     ];
     return () => {
@@ -245,6 +251,33 @@
     } catch (e) {
       toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
     }
+  }
+
+  async function voirCaptures() {
+    if (!menu) return;
+    const l = await api.capturesListe(menu.jeu).catch(() => []);
+    if (!l.length) {
+      toast('📷 Aucune capture de ce jeu pour l’instant : Options du jeu ▸ Photo de l’écran (ou la touche de l’émulateur).', 'neutre');
+      return;
+    }
+    await api.menuJeuAgrandir(true).catch(() => {});
+    captures = l;
+  }
+
+  /** Le fond a peut-être changé (une capture choisie, ou supprimée) : l'image du fond est redemandée. */
+  async function rafraichirFond() {
+    const a = fondJeu;
+    if (!a) return;
+    fondJeu = null;
+    fondCharge = false;
+    await tick();
+    fondJeu = a;
+  }
+
+  function fermerCaptures() {
+    captures = null;
+    void api.menuJeuAgrandir(false).catch(() => {});
+    premierBouton('[data-ecran="captures"]');
   }
 
   function fermerBoutons() {
@@ -477,7 +510,7 @@
           {rapide ? '⏩ Couper l’avance rapide' : '⏩ Avance rapide (le jeu va plus vite)'}
         </button>
       {/if}
-      {#if a('capture')}<button class="btn" onclick={() => action('capture')}>📷 Photo de l’écran (rangée dans le dossier de l’émulateur)</button>{/if}
+      {#if a('capture')}<button class="btn" onclick={() => action('capture')}>📷 Photo de l’écran</button>{/if}
       {#if a('muet')}<button class="btn" onclick={() => action('muet')}>🔇 Son : couper ou remettre</button>{/if}
       <button class="btn" onclick={() => revenir(() => (options = false), '[data-ecran="options"]')}>← Retour</button>
     </div>
@@ -611,6 +644,7 @@
       {#if a('disque')}<button class="btn" onclick={() => action('disque')}>💿 Disque suivant</button>{/if}
       <button class="btn" data-ecran="documents" onclick={voirDocuments}>📖 Manuel et documents</button>
       <button class="btn" data-ecran="boutons" onclick={voirBoutons}>🗺 Les boutons</button>
+      <button class="btn" data-ecran="captures" onclick={voirCaptures}>📷 Mes captures</button>
       <!-- Un jeu Steam (Galaxy en attendant Steam), ou un jeu d'émulateur (RetroAchievements, lot C3). -->
       {#if (menu.jeu < 0 && menu.plateforme === 'Windows') || menu.plateforme !== 'Windows'}<button class="btn" data-ecran="succes" disabled={chargementSucces} onclick={voirSucces}>🏆 Succès{chargementSucces ? ' (chargement…)' : ''}</button>{/if}
       {#if menu.effets}
@@ -638,7 +672,9 @@
   {/if}
 </div>
 
-{#if ouvert?.livret && menu}
+{#if captures && menu}
+  <VisionneuseCaptures {captures} depart={captures[0].id} titre={menu.titre} onfermer={fermerCaptures} onchange={rafraichirFond} />
+{:else if ouvert?.livret && menu}
   <LecteurLivret jeu={menu.jeu} doc={ouvert.doc} pages={ouvert.pages} titre={menu.titre} onfermer={fermerDocument} />
 {:else if ouvert && !ouvert.livret && menu}
   <LecteurMedia jeu={menu.jeu} doc={ouvert.doc} video={ouvert.video} titre={menu.titre} onfermer={fermerDocument} />

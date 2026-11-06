@@ -957,6 +957,10 @@ export const api = {
   /** Les succès en détail d'un jeu DU PC (menu en jeu, Taodbox). */
   succesJeu: (id: number) => appeler<import('$lib/succes/liste').ListeSucces | null>('succes_jeu', { id }),
   abrisRegler: (dossier: string) => appeler<number>('abris_regler', { dossier }),
+  capturesListe: (jeu?: number) => appeler<import('$lib/captures/captures').Capture[]>('captures_liste', { jeu: jeu ?? null }),
+  captureSupprimer: (id: string) => appeler<void>('capture_supprimer', { id }),
+  captureOuvrirDossier: (id: string) => appeler<void>('capture_ouvrir_dossier', { id }),
+  captureFond: (id: string, actif: boolean) => appeler<void>('capture_fond', { id, actif }),
   emulateurDeplacer: (id: string, base: string) => appeler<{ ancien: string; nouveau: string; renomme: boolean }>('emulateur_deplacer', { id, base }),
   dossierRetirerSiVide: (chemin: string) => appeler<boolean>('dossier_retirer_si_vide', { chemin }),
   dossierContenu: (sorte: 'abris' | 'captures' | 'tout', chemin: string) => appeler<{ fichiers: number; octets: number }>('dossier_contenu', { sorte, chemin }),
@@ -1017,7 +1021,8 @@ export function adresseDocument(jeu: number, doc: number): string {
 /** Le fond du menu en jeu : le premier visuel que Firehouse a pour ce jeu (fond, sinon capture, sinon écran titre),
  * servi et gardé par le cœur pour le profil ouvert, en 1 000 px au plus. */
 export function adresseFondDuJeu(id: number): string {
-  return `http://jaquette.localhost/${id}?visuel=fond,capture,ecran_titre&largeur=1000`;
+  // `choisi` d'abord : une capture que la personne a choisie comme fond (son profil, ✅ Seb 06/11).
+  return `http://jaquette.localhost/${id}?visuel=choisi,fond,capture,ecran_titre&largeur=1000`;
 }
 
 /** Le logo d'un jeu (Taodbox), SANS repli sur la jaquette : rien s'il n'en a pas. 600 px suffisent au bandeau. */
