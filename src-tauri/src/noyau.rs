@@ -3276,7 +3276,10 @@ mod tests {
             // Jamais le contenu d'une clé : seulement sa fiche.
             println!("bios Switch 2 : {} type={} racine={} chemin={} dispo={} coffre={} version={} sha1?={}", b["fichier"], b["type"], b["racine"], b["chemin"], b["disponible"], b["coffre"], b["version"], b["sha1"].is_string());
         }
-        println!("conseil Switch 2 : {}", e2["conseil"].to_string().chars().take(300).collect::<String>());
+        for b in e2["conseil"]["bios"].as_array().cloned().unwrap_or_default() {
+            // Jamais le contenu d'une clé : seulement sa fiche et son empreinte.
+            println!("conseil Switch 2 bios : {} dispo={} chemin={} sha1={} version={}", b["fichier"], b["disponible"], b["chemin"], b["sha1"], b["version"]);
+        }
         for id in ["eglantine", "eden", "citron_neo", "ryubing", "xenia", "cemu", "cheatengine"] {
             match s.paquet_emulateur(id).await {
                 Ok(p) => println!("paquet {id} : {} {} {} octets programme={} sha={}", p["version"], p["nom_fichier"], p["taille"], p["programme"], p["sha256"]),
