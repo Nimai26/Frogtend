@@ -88,3 +88,9 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   support dans Eden officiel (PR en brouillon au 01/11) ; 16 Go de RAM, GPU Vulkan 8 Go. Les clés de Seb
   (Bureau\switch 2, vérifiées sans lire les valeurs) ont la forme d'un dump Switch 1 par Lockpick_RCM (mariko/tsec/keyblob,
   master_key 00-16, 170 title.keys) : utiles pour Eden (Switch 1), pas pour la Switch 2.
+- (08/11, Firehouse contrat 1.39, Firehouse 3.126.0) `/plateformes` gagne `marque` (Nintendo, Sega, Sony, PC, Arcade,
+  MSX…) et `type_machine` (salon | portable | ordinateur | arcade | mobile) ; ordre conseillé : marque, type,
+  `date_sortie` ; `fabricant` (souvent l'usine : Switch 2 et Wii sous « Foxconn ») ne doit plus servir à ranger ;
+  corrigeables par un admin. Frogtend range aujourd'hui avec des listes en dur (`categories.ts` : Arcade / Consoles /
+  Portables / Ordinateurs) et montre `fabricant` dans la fiche système (`systemes.ts:29`) → utiliser `type_machine`
+  pour les catégories (listes en dur en repli) et `marque` + date pour l'ordre et la fiche. À proposer à Seb.
