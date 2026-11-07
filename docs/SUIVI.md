@@ -121,6 +121,11 @@
   le vrai mode Taodbox. RESTE : miniatures réduites (images entières servies aujourd'hui).
   ESSAI 07/11 (0.160.0) : « Cette capture ne s'affiche pas » → la CSP (tauri.conf.json img-src) n'avait pas
   `capture.localhost` → 0.160.1 + test `chaque_protocole_est_permis_par_la_csp`.
+- **Switch 2 (07/11)** : Zelda Ocarina of Time (.nup, 25,6 Go) refusé par l'Eglantine de Seb (exe du 02/11 malgré un
+  dossier du 07/11 : seuls eden-cli/lichii étaient neufs) → dernière version `daily-20261107` téléchargée (sha256
+  vérifié) dans Bureau\switch 2\Eglantine-2026-11-07 → ✅ le jeu fonctionne. DÉCISION de Seb : tout préparer pour la
+  gestion par Frogtend → besoin 42 envoyé à Firehouse (plateforme Switch 2, jeux .nup, Eglantine avec mises à jour,
+  firmware avec mises à jour, clés de Seb). Réglages par jeu : plus tard.
   ESSAI 07/11 (0.160.1) : les captures s'affichent ✅, mais les boutons sont cachés par la capture (fenêtre du menu en
   jeu) → scène `minmax(0, 1fr)` + image en position absolue `object-fit: contain` → 0.160.2.
 - **Essai du 03/11 (0.155.0)** : MGS4 importé (`.zip` de 32,7 Go contenant un `.iso`) → ▶ Jouer donnait le .zip à RPCS3
