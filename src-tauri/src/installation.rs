@@ -151,6 +151,10 @@ pub fn methode(nature: Nature, dossier: &Path, fichiers: &[String]) -> Resultat<
     if matches!(nature, Nature::Rom | Nature::ImageDisque) {
         return Ok(Methode::Aucune);
     }
+    // Un jeu Switch 2 au format .nup (contrat 1.38) se lance tel quel : jamais « installé », quoi qu'il contienne.
+    if !fichiers.is_empty() && fichiers.iter().all(|f| f.to_lowercase().ends_with(".nup")) {
+        return Ok(Methode::Aucune);
+    }
     let mut formats = Vec::new();
     for f in fichiers {
         formats.push((f.clone(), format_de(&dossier.join(f))?));

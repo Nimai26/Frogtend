@@ -259,6 +259,14 @@ pub async fn poser_un(source: &Source, b: &BiosConseil, cible: &Path, dossier_em
     r
 }
 
+/// Une destination sous `user\` d'un émulateur qui n'a PAS de dossier `user\` (Eden ou Eglantine installés hors mode
+/// portable : leurs réglages et parties sont dans %APPDATA%) : la créer le ferait basculer en portable et lui ferait
+/// perdre de vue ses parties (relecture lancement 08/11, contrat 1.38 : les clés passent par `user/keys/`).
+pub fn basculerait_en_portable(cible: &Path, dossier_emulateur: &Path) -> bool {
+    let user = dossier_emulateur.join("user");
+    cible.starts_with(&user) && !user.is_dir()
+}
+
 /// Pose les fichiers système obligatoires et servis d'un conseil pour l'émulateur installé dans `dossier_emulateur`
 /// (`retroarch` : vers son dossier `system`). Un échec n'arrête pas les autres ; tout est dit dans le bilan.
 pub async fn poser(source: &Source, bios: &[BiosConseil], dossier_emulateur: &Path, retroarch: bool) -> Bilan {
@@ -269,6 +277,10 @@ pub async fn poser(source: &Source, bios: &[BiosConseil], dossier_emulateur: &Pa
             bilan.a_poser.push(b.fichier.clone());
             continue;
         };
+        if basculerait_en_portable(&cible, dossier_emulateur) {
+            bilan.a_poser.push(format!("{} (émulateur installé hors mode portable : à poser toi-même dans ses réglages)", b.fichier));
+            continue;
+        }
         match poser_un(source, &b, &cible, dossier_emulateur).await {
             Ok(true) => bilan.poses.push(b.fichier.clone()),
             Ok(false) => bilan.deja.push(b.fichier.clone()),
@@ -370,6 +382,16 @@ pub fn regler_pcsx2(emulateur: &Path, bios: &[BiosConseil]) -> Resultat<bool> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn jamais_un_emulateur_non_portable_bascule_en_portable() {
+        let d = tempfile::tempdir().unwrap();
+        let cible = d.path().join("user").join("keys").join("prod.keys");
+        assert!(basculerait_en_portable(&cible, d.path()), "pas de user\\ : refusé");
+        std::fs::create_dir_all(d.path().join("user")).unwrap();
+        assert!(!basculerait_en_portable(&cible, d.path()), "déjà portable : permis");
+        assert!(!basculerait_en_portable(&d.path().join("bios").join("x.bin"), d.path()), "ailleurs : sans objet");
+    }
     use super::*;
     use serde_json::json;
 

@@ -57,7 +57,7 @@ pub enum Nature {
     Disque,
 }
 
-const EXTENSIONS_DISQUE: &[&str] = &["iso", "bin", "cue", "img", "chd", "gdi", "cdi", "m3u", "mds", "mdf", "ccd", "nrg", "pbp", "cso", "rvz", "gcz", "wbfs", "wux", "xci", "nsp", "pkg", "vpk"];
+const EXTENSIONS_DISQUE: &[&str] = &["iso", "bin", "cue", "img", "chd", "gdi", "cdi", "m3u", "mds", "mdf", "ccd", "nrg", "pbp", "cso", "rvz", "gcz", "wbfs", "wux", "xci", "nsp", "pkg", "vpk", "nup"];
 
 /// La nature d'un fichier d'après la plateforme et son nom.
 pub fn nature(plateforme: &str, nom: &str) -> Nature {
@@ -165,6 +165,12 @@ impl Cache {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn un_nup_n_est_jamais_lu_en_entier() {
+        // Un jeu Switch 2 .nup (25 Go) : jamais lu pour son empreinte (contrat 1.38).
+        assert!(matches!(nature("Nintendo Switch 2", "Zelda [0400486024DEC000][v131072].nup"), Nature::Disque));
+    }
     use super::*;
     use crate::sept_z::EntreeSeptZ;
 

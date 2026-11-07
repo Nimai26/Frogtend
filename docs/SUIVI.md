@@ -126,6 +126,18 @@
   vérifié) dans Bureau\switch 2\Eglantine-2026-11-07 → ✅ le jeu fonctionne. DÉCISION de Seb : tout préparer pour la
   gestion par Frogtend → besoin 42 envoyé à Firehouse (plateforme Switch 2, jeux .nup, Eglantine avec mises à jour,
   firmware avec mises à jour, clés de Seb). Réglages par jeu : plus tard.
+  ✅ Firehouse 08/11 : contrat 1.38 servi (voir besoin 42). Avis lancement (08/11), à coder dans le lot Eglantine :
+  fiche CATALOGUE `eglantine` (origine Firehouse : paquet `/emulateurs/eglantine/paquet`, programme eglantine.exe,
+  portable `user/` exigé, ligne `-f -g`) ; `famille_eden(id)` partout où « eden » est testé (profils `-u`
+  emulateurs_profils.rs:621, pause pilotage.rs:106/122/626, bouton Xbox osd_manette.rs:75, déménagement, pret.ts:128/288,
+  jeu.svelte.ts:436) ; `est_eden` accepte eglantine.exe (SAUVEGARDES : sauvegarde.rs:582/638, restauration.rs:665) ;
+  firmware par plateforme (PLATEFORME_SWITCH câblée, commandes.rs:5445/5492 : Switch 2 = firmware-switch2.zip 23.0.1) ;
+  `bios[].version` lu + `.frogtend-firmware` (version, sha1, .nca posés) → mise à jour du firmware proposée ; clés
+  servies proposées avant une partie (Eden déjà réglé) ; taille annoncée avant l'installation ; « Nintendo Switch 2 »
+  dans categories.ts. À VÉRIFIER dans les sources d'Eglantine : forme du paquet, contenu du firmware, pauseWhenInBackground,
+  profiles.dat. FAIT en 0.161.0 (sécurité, les clés étant déjà servies) : jamais de pose sous `user\` d'un émulateur
+  non portable (`bios::basculerait_en_portable`) ; `.nup` = image disque (jamais lu en entier, `empreintes.rs`) et
+  jamais « installé » (`installation::methode`).
   ESSAI 07/11 (0.160.1) : les captures s'affichent ✅, mais les boutons sont cachés par la capture (fenêtre du menu en
   jeu) → scène `minmax(0, 1fr)` + image en position absolue `object-fit: contain` → 0.160.2.
 - **Essai du 03/11 (0.155.0)** : MGS4 importé (`.zip` de 32,7 Go contenant un `.iso`) → ▶ Jouer donnait le .zip à RPCS3

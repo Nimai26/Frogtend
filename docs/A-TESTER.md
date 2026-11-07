@@ -6,6 +6,9 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Prêt pour les clés et les jeux Switch 2 (0.161.0)
+- [ ] Rien de visible à essayer seul : ces protections servent au lot Eglantine (0.162.0).
+
 ## Tes captures en galerie (0.160.0)
 - [x] (✅ 08/11, 0.160.2) Super Mario World : deux nouvelles captures ; menu de Frogtend ▸ « 📷 Mes captures » : elles s'ouvrent en grand ;
       ◀ ▶ ; « ▶ Diaporama » défile, B l'arrête ; B ferme et revient au menu (le jeu ne reprend pas tout seul).

@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.161.0 — Prêt pour les clés et les jeux Switch 2
+
+- 🔑 Firehouse sert maintenant les clés Switch : Frogtend ne les pose jamais dans un Eden (ou un Eglantine) installé
+  hors mode portable — ça lui ferait perdre de vue ses réglages et ses parties. Il te dit de les poser toi-même.
+- 🎮 Un jeu Switch 2 (.nup) n'est jamais lu en entier pour être reconnu (25 Go), ni pris pour un installeur : il se
+  lance tel quel.
+- Eglantine lui-même (installation, mises à jour, firmware, clés, profils par personne) arrive dans la version suivante.
+
 ## 0.160.2 — Les boutons restent visibles sous une capture
 
 - 📷 Dans le menu en jeu, une grande capture poussait les boutons de la visionneuse hors de la fenêtre : l'image
