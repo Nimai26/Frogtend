@@ -35,6 +35,9 @@ pub struct BiosConseil {
     pub url: Option<String>,
     #[serde(default, deserialize_with = "texte_ou_nul")]
     pub note: String,
+    /// La version (contrat 1.38 : un firmware), quand Firehouse la connaît.
+    #[serde(default)]
+    pub version: Option<String>,
 }
 
 /// Un texte absent ou `null` = vide.

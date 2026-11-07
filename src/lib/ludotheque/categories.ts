@@ -37,7 +37,7 @@ export const PLATEFORMES_CONNUES: string[] = [
   ...ORDINATEURS,
   ...PORTABLES,
   'Nintendo Entertainment System', 'Super Nintendo Entertainment System', 'Nintendo 64', 'Nintendo GameCube',
-  'Nintendo Wii', 'Nintendo Wii U', 'Nintendo Switch', 'Sega Master System', 'Sega Genesis', 'Sega CD', 'Sega 32X',
+  'Nintendo Wii', 'Nintendo Wii U', 'Nintendo Switch', 'Nintendo Switch 2', 'Sega Master System', 'Sega Genesis', 'Sega CD', 'Sega 32X',
   'Sega Saturn', 'Sega Dreamcast', 'Sony Playstation', 'Sony Playstation 2', 'Sony Playstation 3',
   'Microsoft Xbox', 'Microsoft Xbox 360', 'NEC TurboGrafx-16', 'NEC TurboGrafx-CD', 'Atari 2600', 'Atari 7800',
   'Atari Jaguar', '3DO Interactive Multiplayer', 'Philips CD-i', 'ColecoVision', 'Mattel Intellivision',

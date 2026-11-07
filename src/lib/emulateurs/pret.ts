@@ -125,7 +125,7 @@ export function dossierParDefaut(emplacementsJeux: string[], disque?: string | n
 export const MANETTE_REGLEE = ['retroarch', 'duckstation', 'pcsx2', 'dolphin', 'rpcs3'];
 
 /** Ceux qui préparent longuement la première partie de chaque jeu (compilation, une seule fois). */
-const PREMIERE_PARTIE_LONGUE = ['rpcs3', 'cemu', 'eden', 'xenia', 'yuzu', 'suyu', 'ryujinx'];
+const PREMIERE_PARTIE_LONGUE = ['rpcs3', 'cemu', 'eden', 'eglantine', 'xenia', 'yuzu', 'suyu', 'ryujinx'];
 
 /** Les fichiers système que Frogtend téléchargera (obligatoires, servis, ni clé ni firmware). */
 export function biosATelecharger(bios: BiosConseil[]): BiosConseil[] {
@@ -285,7 +285,7 @@ export function messagePret(o: {
       lignes.push(`S’il manque, le micrologiciel PS3 (${pup.taille ? `${Math.round(pup.taille / 1048576)} Mo` : 'quelques centaines de Mo'}), fourni par Firehouse, est installé aussi, sans aucune fenêtre.`);
     }
     const fw = firmwareSwitchServi(o.conseil!.bios);
-    if (fw && choix.id === 'eden') lignes.push(phraseFirmwareSwitch(fw));
+    if (fw && (choix.id === 'eden' || choix.id === 'eglantine')) lignes.push(phraseFirmwareSwitch(fw));
     if (cles.length) lignes.push(`Il te faudra aussi tes clés (${cles.join(', ')}) : personne ne peut les fournir, et sans elles les jeux ne démarrent pas.`);
   } else if (choix.rec.bios) {
     lignes.push(`Il lui faut aussi un fichier système (${choix.rec.bios}) : Firehouse le fournira ; en attendant, Frogtend te dira où le mettre.`);

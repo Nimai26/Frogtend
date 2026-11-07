@@ -103,7 +103,7 @@ pub fn actions(emulateur: &str) -> Vec<Action> {
 /// L'émulateur se met-il en pause quand il perd le premier plan (réglé par `preparer` ; RPCS3 par
 /// `commandes::preparer_emulateur`) ?
 pub fn se_met_en_pause(emulateur: &str) -> bool {
-    matches!(emulateur, "retroarch" | "duckstation" | "pcsx2" | "dolphin" | "ppsspp" | "dosbox-staging" | "rpcs3" | "mame" | "eden" | "azahar")
+    matches!(emulateur, "retroarch" | "duckstation" | "pcsx2" | "dolphin" | "ppsspp" | "dosbox-staging" | "rpcs3" | "mame" | "eden" | "eglantine" | "azahar")
 }
 
 /// Les émulateurs SANS pause réglable (code source relu le 16/10 : Cemu, Xenia Canary, xemu, Vita3K — au mieux une
@@ -119,7 +119,7 @@ pub fn fige_au_menu(emulateur: &str) -> bool {
 /// « pas de pause » choisi par la personne), ils sont figés pendant le menu comme ceux de `fige_au_menu`.
 pub fn pause_reglee(id: &str, emulateur: &Path) -> bool {
     match id {
-        "eden" | "azahar" => std::fs::read_to_string(emulateur.join("user").join("config").join("qt-config.ini"))
+        "eden" | "eglantine" | "azahar" => std::fs::read_to_string(emulateur.join("user").join("config").join("qt-config.ini"))
             .is_ok_and(|t| t.lines().any(|l| l.replace(' ', "") == "pauseWhenInBackground=true")),
         _ => true,
     }
@@ -623,7 +623,7 @@ pub fn preparer(id: &str, emulateur: &Path, utilisateur: Option<&Path>) -> Resul
         // Azahar uisettings.h:92, citra_qt.cpp:1035-1051) — ils ne reprennent que s'ils avaient eux-mêmes mis en pause.
         // QSettings ignore la valeur tant que `\default` vaut true : les deux lignes. Seulement en mode portable
         // (dossier `user` déjà là) : le créer ferait basculer l'émulateur en portable, loin des réglages de la personne.
-        "eden" | "azahar" => {
+        "eden" | "eglantine" | "azahar" => {
             let user = emulateur.join("user");
             let ini = user.join("config").join("qt-config.ini");
             // « Pas de pause » réglé par la personne elle-même (les deux lignes à false) : jamais défait (l'émulateur

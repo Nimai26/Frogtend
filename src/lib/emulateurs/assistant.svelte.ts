@@ -83,6 +83,9 @@ async function refuse(dossier: string, sorte: 'emulateurs' | 'outils'): Promise<
   return !!m;
 }
 
+/** Les émulateurs du catalogue que Firehouse résout (origine `Firehouse` côté cœur). */
+const PAR_FIREHOUSE = ['eglantine'];
+
 /** Installe (ou met à jour) un émulateur depuis sa source officielle, après avoir annoncé la taille. */
 export async function installerEmulateur(
   id: string,
@@ -90,6 +93,9 @@ export async function installerEmulateur(
   miseAJour = false,
   options: { sansQuestion?: boolean } = {},
 ): Promise<EmulateurInstalle | null> {
+  // Résolus par Firehouse (leur source n'a que des préversions : Eglantine, contrat 1.38) : installés et mis à jour
+  // par son paquet (empreinte vérifiée, à leur place pour une mise à jour).
+  if (PAR_FIREHOUSE.includes(id)) return installerParFirehouse(id, nom, false, options);
   const dossier = await dossierEmulateurs();
   if (!dossier) return null;
   let paquet;
@@ -136,7 +142,7 @@ export async function installerEmulateur(
 }
 
 /** Pose le firmware Switch servi par Firehouse dans Eden (accord déjà donné), en montrant le téléchargement. */
-export async function installerFirmwareSwitch(programme: string): Promise<boolean> {
+export async function installerFirmwareSwitch(programme: string, remplacer = false): Promise<boolean> {
   let message = toast('💿 Firmware Switch : téléchargement…', 'neutre');
   let dernier: number | null = -1;
   const arreter = isTauri()
@@ -155,8 +161,8 @@ export async function installerFirmwareSwitch(programme: string): Promise<boolea
       })
     : () => {};
   try {
-    await api.edenFirmwareServi(programme);
-    toast('✅ Logiciel système de la Switch installé dans Eden.', 'ok');
+    await api.edenFirmwareServi(programme, remplacer);
+    toast(remplacer ? '✅ Logiciel système de la console mis à jour (l’ancien est gardé à l’abri).' : '✅ Logiciel système de la console installé.', 'ok');
     return true;
   } catch (e) {
     toast(`Firmware Switch non installé : ${motifDuRefus(e)}. En cas de coupure, il reprendra où il en était.`, 'erreur');
@@ -245,10 +251,12 @@ export async function installerParFirehouse(
 ): Promise<EmulateurInstalle | null> {
   const dossier = outil ? await dossierOutils() : await dossierEmulateurs();
   if (!dossier) return null;
-  const oui = options.sansQuestion || await confirmer(`⬇ Installer ${nom} ?`, {
+  // La taille et la version annoncées avant l'accord (un émulateur du catalogue résolu par Firehouse : Eglantine).
+  const p = PAR_FIREHOUSE.includes(id) ? await api.emulateurDerniereVersion(id).catch(() => null) : null;
+  const oui = options.sansQuestion || await confirmer(`⬇ Installer ${nom}${p?.version ? ` ${p.version}` : ''} ?`, {
     message: [
-      `Firehouse donne sa source officielle et sa dernière version ; Frogtend la télécharge et vérifie qu’elle est intacte.`,
-      `Dossier : ${dossier}\\${nom}`,
+      `Firehouse donne sa source officielle et sa dernière version ; Frogtend la télécharge et vérifie qu’elle est intacte.${p?.taille ? ` Taille : ${taille(p.taille)}.` : ''}`,
+      `Dossier : ${dossier}\\${nom} (ou le sien, s’il est déjà installé)`,
       'Il sera installé en mode portable quand il en a un : sa configuration reste dans son dossier.',
     ].join('\n'),
     libelleValider: '⬇ Installer',

@@ -3267,7 +3267,17 @@ mod tests {
                 println!("brut {id} : {} {}", b.statut, String::from_utf8_lossy(&b.octets).chars().take(400).collect::<String>());
             }
         }
-        for id in ["eden", "citron_neo", "ryubing", "xenia", "cemu", "cheatengine"] {
+        // Contrat 1.38 (Switch 2, Eglantine).
+        let e2 = s.emulateurs("Nintendo Switch 2").await.unwrap();
+        for x in e2["emulateurs"].as_array().cloned().unwrap_or_default() {
+            println!("Switch 2 : {} id={} programme={} portable={} ligne={}", x["nom"], x["id"], x["programme"], x["portable"], x["ligne_de_commande"]);
+        }
+        for b in e2["bios"].as_array().cloned().unwrap_or_default() {
+            // Jamais le contenu d'une clé : seulement sa fiche.
+            println!("bios Switch 2 : {} type={} racine={} chemin={} dispo={} coffre={} version={} sha1?={}", b["fichier"], b["type"], b["racine"], b["chemin"], b["disponible"], b["coffre"], b["version"], b["sha1"].is_string());
+        }
+        println!("conseil Switch 2 : {}", e2["conseil"].to_string().chars().take(300).collect::<String>());
+        for id in ["eglantine", "eden", "citron_neo", "ryubing", "xenia", "cemu", "cheatengine"] {
             match s.paquet_emulateur(id).await {
                 Ok(p) => println!("paquet {id} : {} {} {} octets programme={} sha={}", p["version"], p["nom_fichier"], p["taille"], p["programme"], p["sha256"]),
                 Err(err) => println!("paquet {id} : {err:?}"),

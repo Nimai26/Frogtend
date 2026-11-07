@@ -29,6 +29,7 @@ import { ludo, rechargerListe, rechargerPlateformes } from './ludotheque.svelte'
 import { debitConnu, mettreDansLaLudotheque, rechargerJeuxDuPc, tele } from './telechargements.svelte';
 import { aCartes, choixDeCartes } from './cartes';
 import { estCourante, libelleVersion, nomDuFichier } from './versions';
+import { plusRecente } from '$lib/emulateurs/versions';
 import { libellePleinEcran, TOUCHES_PLEIN_ECRAN } from './plein-ecran';
 import { BOUTONS, detailTouche, libelleClavier, memes, nettoyer, PREREGLAGES, toucheDepuisEvenement, TOUCHES, type Correspondance } from './clavier';
 import { auCanape, seulementAuBureau } from '$lib/taodbox/canape';
@@ -427,24 +428,40 @@ export async function gererLaCarte(id: number) {
 /** Les firmwares Switch déjà proposés pendant cette séance (un « non » ne revient pas à chaque partie). */
 const firmwaresProposes = new Set<string>();
 
-/** Avant une partie Switch dans Eden : clés posées mais pas de firmware, et Firehouse le fournit → proposé (taille dite).
- * Jamais bloquant : un souci ici n'empêche pas de lancer. */
+/** Avant une partie Switch (Eden) ou Switch 2 (Eglantine) : clés posées mais pas de firmware, et Firehouse le fournit
+ * → proposé (taille dite) ; ou un firmware posé par Frogtend plus ancien que celui servi → mise à jour proposée
+ * (contrat 1.38). Jamais bloquant : un souci ici n'empêche pas de lancer. */
 async function firmwareSwitchAvant(id: number, plateforme: string | undefined, emulateur?: string) {
-  if (plateforme !== 'Nintendo Switch') return;
+  if (plateforme !== 'Nintendo Switch' && plateforme !== 'Nintendo Switch 2') return;
   const s = normaliser(etat.pc.emulateurs[plateforme]);
   const e = (emulateur && s.liste.find((x) => x.cle === emulateur)) || pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, plateforme, id);
-  if (!e || !/(^|[\\/])eden[^\\/]*\.exe$/i.test(e.programme) || firmwaresProposes.has(e.programme)) return;
-  const f = await api.edenFirmware(e.programme).catch(() => null);
-  if (!f?.portable || !f.cles || f.firmware) return;
+  if (!e || !/(^|[\\/])(eden|eglantine)[^\\/]*\.exe$/i.test(e.programme) || firmwaresProposes.has(e.programme)) return;
+  let f = await api.edenFirmware(e.programme).catch(() => null);
+  if (!f?.portable) return;
   const r = await auPlus(3000, api.emulateursRecommandes(plateforme));
+  // Les clés manquent et Firehouse les sert (contrat 1.38) : proposées d'abord (un seul accord).
+  if (!f.cles && r?.conseil?.bios.some((b) => /prod\.keys$/i.test(b.fichier) && b.disponible && !b.coffre)) {
+    firmwaresProposes.add(e.programme);
+    const oui = await confirmer('🔑 Il manque tes clés de la console', {
+      message: 'Firehouse les fournit : Frogtend les pose dans le dossier de l’émulateur. Sans elles, les jeux ne démarrent pas.',
+      libelleValider: '🔑 Les poser',
+    });
+    if (!oui) return;
+    await poserBios(plateforme, e.programme);
+    f = await api.edenFirmware(e.programme).catch(() => null);
+    if (!f?.cles) return;
+  }
+  if (!f.cles) return;
   const servi = r?.conseil ? firmwareSwitchServi(r.conseil.bios) : undefined;
   if (!servi) return;
+  const miseAJour = f.firmware && f.de_frogtend && !!servi.version && !!f.version && plusRecente(servi.version, f.version);
+  if (f.firmware && !miseAJour) return;
   firmwaresProposes.add(e.programme);
-  const oui = await confirmer('💿 Il manque le logiciel système de la Switch', {
-    message: questionFirmwareSwitch(servi, debitConnu(), duree),
-    libelleValider: '💿 Installer puis jouer',
+  const oui = await confirmer(miseAJour ? `💿 Mettre à jour le logiciel système (${f.version ?? '?'} → ${servi.version}) ?` : '💿 Il manque le logiciel système de la console', {
+    message: questionFirmwareSwitch(servi, debitConnu(), duree) + (miseAJour ? '\nL’ancien est gardé à l’abri dans le dossier de l’émulateur.' : ''),
+    libelleValider: miseAJour ? '💿 Mettre à jour puis jouer' : '💿 Installer puis jouer',
   });
-  if (oui) await installerFirmwareSwitch(e.programme);
+  if (oui) await installerFirmwareSwitch(e.programme, miseAJour);
 }
 
 /** `carte` : la carte e-Reader à lire (sa version) ; sans elle, Frogtend demande laquelle s'il y en a plusieurs. */

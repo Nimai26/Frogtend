@@ -1,5 +1,19 @@
 # Notes de version de Frogtend
 
+## 0.162.0 — La Switch 2, avec Eglantine
+
+- 🎮 Les jeux Switch 2 de Firehouse (au format .nup) se jouent avec **Eglantine** : « ▶ Prêt à jouer » l'installe
+  (taille annoncée, empreinte vérifiée), en mode portable (ses réglages et tes parties restent dans son dossier), puis
+  pose tes clés et le logiciel système de la Switch 2 (23.0.1), après ton accord.
+- Eglantine est traité comme Eden : un utilisateur Switch par profil, **tes parties mises à l'abri et sauvegardées**
+  (les parties communes des jeux Switch 2 aussi), le jeu en pause derrière le menu de Frogtend, le bouton Xbox.
+- ⬆ Ses mises à jour suivent celles que Firehouse retient, et s'installent à sa place.
+- 💿 Le logiciel système : quand Firehouse en sert un plus récent que celui posé par Frogtend, il est proposé au
+  lancement d'un jeu ; l'ancien est gardé à l'abri, et il revient si la mise à jour échoue.
+- 🔑 Eden et Eglantine déjà réglés : s'il manque tes clés, elles sont proposées avant la partie.
+- À savoir : l'Eglantine que tu as installé toi-même (Bureau) n'est pas géré par Frogtend ; Frogtend installe le sien,
+  et tes parties actuelles restent où elles sont (%APPDATA%\eden).
+
 ## 0.161.0 — Prêt pour les clés et les jeux Switch 2
 
 - 🔑 Firehouse sert maintenant les clés Switch : Frogtend ne les pose jamais dans un Eden (ou un Eglantine) installé

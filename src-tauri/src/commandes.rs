@@ -3257,7 +3257,14 @@ pub async fn emulateur_installer_firehouse(
         }
     }
     let programme = p["programme"].as_str().map(String::from);
-    let portable = (p["portable"]["type"].as_str().map(String::from), p["portable"]["nom"].as_str().map(String::from));
+    let mut portable = (p["portable"]["type"].as_str().map(String::from), p["portable"]["nom"].as_str().map(String::from));
+    // Un émulateur du catalogue qui EXIGE le mode portable (Eglantine : `user\`) l'a toujours, même si le paquet de
+    // Firehouse ne le dit pas : sinon il écrirait dans %APPDATA%\eden, chez Eden (relecture lancement 08/11).
+    if portable.0.is_none() {
+        if let Some(dossier) = crate::emulateurs::fiche(&id).and_then(|f| f.portable).and_then(|x| x.strip_suffix('/')) {
+            portable = (Some("dossier".into()), Some(dossier.into()));
+        }
+    }
     let (pq, c, n) = (paquet.clone(), cible.clone(), nom.clone());
     let r = tauri::async_runtime::spawn_blocking(move || {
         let port = match (&portable.0, &portable.1) {
@@ -5442,14 +5449,15 @@ pub async fn rpcs3_micrologiciel_servi(app: AppHandle, noyau: State<'_, Noyau>, 
     r
 }
 
-const PLATEFORME_SWITCH: &str = "Nintendo Switch";
-
-/// Où en est Eden pour le firmware : portable, clés posées, firmware déjà là.
+/// Où en est Eden (ou Eglantine) pour le firmware : portable, clés posées, firmware déjà là, et sa version s'il a été
+/// posé par Frogtend (contrat 1.38 : une version plus récente servie est proposée).
 #[derive(Serialize)]
 pub struct EtatFirmwareEden {
     pub portable: bool,
     pub cles: bool,
     pub firmware: bool,
+    pub version: Option<String>,
+    pub de_frogtend: bool,
 }
 
 #[tauri::command]
@@ -5459,7 +5467,14 @@ pub fn eden_firmware(programme: String) -> Resultat<EtatFirmwareEden> {
         return Err(Erreur::Refus("Ce n'est pas le programme d'Eden.".into()));
     }
     let d = p.parent().map(std::path::PathBuf::from).unwrap_or_default();
-    Ok(EtatFirmwareEden { portable: crate::eden::portable(&d) && crate::eden::dossier_nand(&d).is_some(), cles: crate::eden::cles_presentes(&d), firmware: crate::eden::firmware_present(&d) })
+    let note = crate::eden::note_firmware(&d);
+    Ok(EtatFirmwareEden {
+        portable: crate::eden::portable(&d) && crate::eden::dossier_nand(&d).is_some(),
+        cles: crate::eden::cles_presentes(&d),
+        firmware: crate::eden::firmware_present(&d),
+        version: note.as_ref().and_then(|n| n.version.clone()),
+        de_frogtend: note.is_some(),
+    })
 }
 
 /// Le firmware Switch SERVI PAR FIREHOUSE (conseil de la Switch, contrat 1.10 : un zip de .nca) : téléchargé avec reprise
@@ -5467,7 +5482,7 @@ pub fn eden_firmware(programme: String) -> Resultat<EtatFirmwareEden> {
 /// système VIDE d'Eden (jamais par le menu d'Eden, qui vide d'abord ce dossier). Eden fermé, portable, clés posées ; un
 /// seul accord a été donné avant (sa taille annoncée). Rend le nombre de fichiers posés.
 #[tauri::command]
-pub async fn eden_firmware_servi(app: AppHandle, noyau: State<'_, Noyau>, programme: String) -> Resultat<usize> {
+pub async fn eden_firmware_servi(app: AppHandle, noyau: State<'_, Noyau>, programme: String, remplacer: Option<bool>) -> Resultat<usize> {
     let p = std::path::PathBuf::from(&programme);
     if !crate::eden::est_eden(&programme) || !p.is_file() {
         return Err(Erreur::Refus("Ce n'est pas le programme d'Eden.".into()));
@@ -5483,13 +5498,15 @@ pub async fn eden_firmware_servi(app: AppHandle, noyau: State<'_, Noyau>, progra
         return Err(Erreur::Refus("Eden n'est pas installé en mode portable : Frogtend n'écrit pas dans ses données de Windows.".into()));
     }
     if !crate::eden::cles_presentes(&dossier) {
-        return Err(Erreur::Refus("Tes clés (prod.keys) ne sont pas encore dans Eden : sans elles, Eden refuse le firmware. Pose-les d'abord.".into()));
+        return Err(Erreur::Refus("Tes clés (prod.keys) ne sont pas encore dans l'émulateur : sans elles, il refuse le firmware. Pose-les d'abord.".into()));
     }
-    if crate::eden::firmware_present(&dossier) {
+    let remplacer = remplacer.unwrap_or(false);
+    if crate::eden::firmware_present(&dossier) && !(remplacer && crate::eden::note_firmware(&dossier).is_some()) {
         return Err(Erreur::Refus("Un firmware est déjà installé dans Eden : il est laissé tel quel.".into()));
     }
     let s = noyau.session().await?;
-    let v = s.source.emulateurs(PLATEFORME_SWITCH).await?;
+    // Le firmware de SA console : Switch pour Eden, Switch 2 pour Eglantine (contrat 1.38).
+    let v = s.source.emulateurs(crate::eden::plateforme(&programme)).await?;
     let mut ignore = crate::bios::Bilan::default();
     let bios = crate::bios::lire_bios(&v["conseil"]["bios"], &mut ignore);
     let f = crate::bios::firmware_servi(&bios)
@@ -5513,13 +5530,29 @@ pub async fn eden_firmware_servi(app: AppHandle, noyau: State<'_, Noyau>, progra
         return Err(Erreur::Refus("Eden a été ouvert pendant le téléchargement : ferme-le, puis recommence.".into()));
     }
     let (d, z) = (dossier.clone(), zip.clone());
-    let r = tauri::async_runtime::spawn_blocking(move || crate::eden::poser_firmware(&d, &z))
+    let version = f.version.clone();
+    let r = tauri::async_runtime::spawn_blocking(move || {
+        // Une mise à jour : l'ancien firmware de Frogtend part à l'abri, puis le nouveau est posé (jamais par-dessus) ;
+        // si la pose échoue, l'ancien revient tel quel (jamais un émulateur laissé sans firmware).
+        let abri = if remplacer && crate::eden::firmware_present(&d) { Some(crate::eden::mettre_firmware_a_l_abri(&d)?) } else { None };
+        let n = match crate::eden::poser_firmware(&d, &z) {
+            Ok(n) => n,
+            Err(e) => {
+                if let Some(a) = &abri {
+                    crate::eden::remettre_firmware(&d, a);
+                }
+                return Err(e);
+            }
+        };
+        crate::eden::noter_firmware(&d, version.as_deref())?;
+        Ok::<usize, Erreur>(n)
+    })
         .await
         .map_err(|_| Erreur::Disque("La pose du firmware s'est arrêtée brutalement.".into()))?;
     let _ = std::fs::remove_file(&zip);
     let _ = std::fs::remove_dir(dossier.join(".telechargements"));
     if let Ok(n) = &r {
-        noyau.journaliser(&format!("firmware Switch posé dans Eden : {n} fichier(s)"));
+        noyau.journaliser(&format!("firmware posé dans {} : {n} fichier(s), version {}", programme, f.version.as_deref().unwrap_or("inconnue")));
     }
     r
 }
@@ -5727,7 +5760,7 @@ pub async fn emulateur_deplacer(app: AppHandle, noyau: State<'_, Noyau>, id: Str
         "xemu" => std::iter::once(cible.join("xemu.toml"))
             .chain(std::fs::read_dir(cible.join("Profils")).into_iter().flatten().flatten().map(|p| p.path().join("xemu.toml")))
             .collect(),
-        "eden" => vec![cible.join("user").join("config").join("qt-config.ini")],
+        "eden" | "eglantine" => vec![cible.join("user").join("config").join("qt-config.ini")],
         "azahar" => vec![cible.join("user").join("config").join("qt-config.ini")],
         // Ceux-là écrivent d'ordinaire des chemins relatifs ; sur un autre PC, un chemin complet vers leur propre dossier
         // est possible (seules ces valeurs changent).
@@ -5908,6 +5941,15 @@ pub fn emulateur_fiche(nom: String) -> Option<InfoEmulateur> {
 #[tauri::command]
 pub async fn emulateur_derniere_version(noyau: State<'_, Noyau>, id: String) -> Resultat<crate::emulateurs::Paquet> {
     let f = crate::emulateurs::fiche(&id).ok_or_else(|| Erreur::Introuvable("Émulateur inconnu.".into()))?;
+    // Résolu par Firehouse (Eglantine) : sa version et sa taille sont celles du paquet qu'il servira.
+    if matches!(f.origine, crate::emulateurs::Origine::Firehouse) {
+        let p = noyau.session().await?.source.paquet_emulateur(&id).await?;
+        return Ok(crate::emulateurs::Paquet {
+            version: p["version"].as_str().unwrap_or("").to_string(),
+            url: p["url"].as_str().unwrap_or("").to_string(),
+            taille: p["taille"].as_u64(),
+        });
+    }
     // RetroArch hébergé : la version et la taille annoncées sont celles du paquet que Firehouse servira (sinon la
     // mise à jour serait proposée sans fin, et l'accord donné sur une autre taille).
     if f.id == "retroarch" {

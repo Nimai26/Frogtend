@@ -253,7 +253,8 @@ export interface BiosConseil {
   racine: 'system_retroarch' | 'dossier_emulateur' | 'installation_par_l_emulateur' | string;
   chemin?: string;
   facultatif?: boolean;
-  /** Une clé (prod.keys, keys.txt) : jamais servie, Frogtend dit qu'elle manque. */
+  /** Une clé gardée au coffre (keys.txt de la Wii U) : jamais servie, Frogtend dit qu'elle manque. Les clés Switch
+   * sont servies depuis le contrat 1.38 (`disponible`, sous `user/keys/`). */
   coffre?: boolean;
   note?: string;
   disponible?: boolean;
@@ -262,6 +263,8 @@ export interface BiosConseil {
   url?: string;
   /** Type `motif` : les fichiers servis (`null` est lu comme une liste vide). */
   fichiers?: { nom: string; sha1: string; taille: number; url: string }[] | null;
+  /** La version (un firmware, contrat 1.38), quand Firehouse la connaît. */
+  version?: string;
 }
 
 /** Un cœur RetroArch servi par Firehouse (contrat 1.12). */
@@ -828,10 +831,11 @@ export const api = {
   firmwareServi: (plateforme: string) => appeler<BiosConseil | null>('firmware_servi', { plateforme }),
   rpcs3MicrologicielServi: (programme: string) => appeler<string>('rpcs3_micrologiciel_servi', { programme }),
   /** Eden : portable, clés posées (prod.keys), firmware déjà là. */
-  edenFirmware: (programme: string) => appeler<{ portable: boolean; cles: boolean; firmware: boolean }>('eden_firmware', { programme }),
+  edenFirmware: (programme: string) =>
+    appeler<{ portable: boolean; cles: boolean; firmware: boolean; version: string | null; de_frogtend: boolean }>('eden_firmware', { programme }),
   /** Le firmware Switch servi par Firehouse, posé dans un Eden fermé, portable, avec ses clés et SANS firmware (rend le
    * nombre de fichiers posés ; progression : événement « emulateur », id « eden-firmware »). */
-  edenFirmwareServi: (programme: string) => appeler<number>('eden_firmware_servi', { programme }),
+  edenFirmwareServi: (programme: string, remplacer = false) => appeler<number>('eden_firmware_servi', { programme, remplacer }),
   choisirVersion: (id: number, chemin: string) => appeler<void>('jeu_choisir_version', { id, chemin }),
   referencesManette: (id: string) => appeler<ReferenceManette[]>('references_manette', { id }),
   profilsManetteEmulateur: (id: string, programme: string) =>

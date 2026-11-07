@@ -26,6 +26,15 @@ pub enum Origine {
     /// Les « releases » d'un Forgejo/Gitea officiel (même forme de réponse que GitHub) : `api` = l'adresse du dépôt
     /// dans son API (`https://…/api/v1/repos/<proprio>/<depot>`).
     Forgejo { api: &'static str, morceaux: &'static [&'static str] },
+    /// Résolu par Firehouse (`/emulateurs/{id}/paquet`, contrat 14) : sa source officielle n'a que des préversions
+    /// (Eglantine : `daily-*`), Firehouse choisit la bonne et donne son empreinte.
+    Firehouse,
+}
+
+/// Un émulateur de la famille d'Eden (même dossier portable `user\`, mêmes utilisateurs, même firmware, mêmes clés) :
+/// Eden (Switch) et son dérivé Eglantine (Switch 2, contrat 1.38).
+pub fn famille_eden(id: &str) -> bool {
+    matches!(id, "eden" | "eglantine")
 }
 
 /// Ce que Frogtend sait d'un émulateur.
@@ -176,6 +185,18 @@ pub const CATALOGUE: &[Fiche] = &[
         programme: "eden.exe",
         ligne: "-f -g",
         // Un dossier « user » à côté du programme = mode portable (common/fs/path_util.cpp).
+        portable: Some("user/"),
+        dossiers_habituels: &[],
+    },
+    Fiche {
+        id: "eglantine",
+        nom: "Eglantine",
+        alias: &["eglantine"],
+        // https://github.com/Djihads80/Eglantine : seulement des préversions (`daily-AAAAMMJJ`) → Firehouse les résout.
+        origine: Origine::Firehouse,
+        programme: "eglantine.exe",
+        ligne: "-f -g",
+        // Dérivé d'Eden : un dossier « user » à côté du programme = mode portable (common/fs/path_util.cpp L105-115).
         portable: Some("user/"),
         dossiers_habituels: &[],
     },
@@ -344,6 +365,7 @@ pub async fn derniere_version(f: &Fiche) -> Resultat<Paquet> {
             }
             Ok(p)
         }
+        Origine::Firehouse => Err(Erreur::Refus(format!("{} se met à jour par Firehouse.", f.nom))),
         Origine::Dolphin => {
             let v: Value = c
                 .get("https://dolphin-emu.org/update/latest/beta/")

@@ -6,8 +6,16 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## La Switch 2, avec Eglantine (0.162.0)
+- [ ] Catalogue ▸ Zelda Ocarina of Time (Nintendo Switch 2) dans ta ludothèque (25,6 Go, durée annoncée).
+- [ ] ▶ Jouer : « Prêt à jouer » propose Eglantine (taille ~110 Mo), tes clés et le logiciel système 23.0.1 en un
+      accord ; Eglantine s'installe dans E:\Frogtend\Emulateurs\Eglantine avec un dossier `user` ; le jeu se lance.
+- [ ] Une partie sauvegardée dans le jeu ; quitter : elle est dans Eglantine\user\nand\user\save… (ton profil).
+- [ ] ⚙ Réglages ▸ Émulateurs : Eglantine (daily-20261107) ; « Chercher les mises à jour » : à jour.
+- [ ] Le menu de Frogtend en jeu (bouton Xbox) : le jeu se met en pause derrière.
+
 ## Prêt pour les clés et les jeux Switch 2 (0.161.0)
-- [ ] Rien de visible à essayer seul : ces protections servent au lot Eglantine (0.162.0).
+- [x] Sans essai propre : protections reprises par la 0.162.0.
 
 ## Tes captures en galerie (0.160.0)
 - [x] (✅ 08/11, 0.160.2) Super Mario World : deux nouvelles captures ; menu de Frogtend ▸ « 📷 Mes captures » : elles s'ouvrent en grand ;

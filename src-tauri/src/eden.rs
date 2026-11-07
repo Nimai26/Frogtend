@@ -41,9 +41,98 @@ pub struct UtilisateurDuProfil {
     pub cree: bool,
 }
 
-/// Le programme est-il Eden ?
+/// Le programme est-il Eden, ou son dérivé Eglantine (Switch 2, mêmes dossiers : common/fs/path_util.cpp) ?
 pub fn est_eden(programme: &str) -> bool {
-    Path::new(programme).file_name().is_some_and(|n| n.to_string_lossy().to_ascii_lowercase().starts_with("eden"))
+    Path::new(programme).file_name().is_some_and(|n| {
+        let n = n.to_string_lossy().to_ascii_lowercase();
+        n.starts_with("eden") || n.starts_with("eglantine")
+    })
+}
+
+/// La plateforme d'un programme de la famille d'Eden : Eglantine = Switch 2, sinon Switch.
+pub fn plateforme(programme: &str) -> &'static str {
+    let n = Path::new(programme).file_name().map(|n| n.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    if n.starts_with("eglantine") { "Nintendo Switch 2" } else { "Nintendo Switch" }
+}
+
+/// Le firmware posé par Frogtend (`.frogtend-firmware.json` à côté du programme) : sa version, et SES fichiers (les
+/// seuls que Frogtend retirera pour une mise à jour).
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct NoteFirmware {
+    pub version: Option<String>,
+    pub fichiers: Vec<String>,
+}
+
+fn fichier_note_firmware(eden: &Path) -> PathBuf {
+    eden.join(".frogtend-firmware.json")
+}
+
+pub fn note_firmware(eden: &Path) -> Option<NoteFirmware> {
+    std::fs::read(fichier_note_firmware(eden)).ok().and_then(|o| serde_json::from_slice(&o).ok())
+}
+
+/// Note le firmware posé : tous les .nca de `registered` (il était vide avant la pose).
+pub fn noter_firmware(eden: &Path, version: Option<&str>) -> Resultat<()> {
+    let Some(d) = dossier_firmware(eden) else { return Ok(()) };
+    let mut fichiers: Vec<String> = std::fs::read_dir(&d)?.flatten().map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| nom_de_nca(n)).collect();
+    fichiers.sort();
+    let note = NoteFirmware { version: version.map(String::from), fichiers };
+    let f = fichier_note_firmware(eden);
+    let provisoire = f.with_extension("json.tmp");
+    std::fs::write(&provisoire, serde_json::to_vec_pretty(&note).unwrap_or_default())?;
+    std::fs::rename(&provisoire, &f)?;
+    Ok(())
+}
+
+/// Pour une mise à jour du firmware : les fichiers que FROGTEND a posés partent à l'abri
+/// (`.frogtend-sauvegardes\firmware-<version>`), jamais effacés. S'il reste un autre fichier système (posé par la
+/// personne ou par l'émulateur), tout est remis en place et la mise à jour refusée.
+pub fn mettre_firmware_a_l_abri(eden: &Path) -> Resultat<(PathBuf, NoteFirmware)> {
+    let note = note_firmware(eden).ok_or_else(|| Erreur::Refus("Ce firmware n'a pas été posé par Frogtend : il est laissé tel quel.".into()))?;
+    let registered = dossier_firmware(eden).ok_or_else(|| Erreur::Refus("Le dossier système a été déplacé : Frogtend n'y écrit pas.".into()))?;
+    let horodatage = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let abri = eden.join(".frogtend-sauvegardes").join(format!("firmware-{}-{horodatage}", crate::jeux_pc::nom_de_dossier(note.version.as_deref().unwrap_or("inconnu"))));
+    std::fs::create_dir_all(&abri)?;
+    let mut partis: Vec<String> = Vec::new();
+    let remettre = |partis: &[String]| {
+        for n in partis {
+            let _ = std::fs::rename(abri.join(n), registered.join(n));
+        }
+        let _ = std::fs::remove_dir(&abri); // seulement s'il est vide
+    };
+    for n in note.fichiers.iter().filter(|n| nom_de_nca(n)) {
+        let de = registered.join(n);
+        if !de.is_file() {
+            continue;
+        }
+        if let Err(e) = std::fs::rename(&de, abri.join(n)) {
+            remettre(&partis);
+            return Err(Erreur::Disque(format!("{n} n'a pas pu être mis à l'abri ({e}) : rien n'a changé.")));
+        }
+        partis.push(n.clone());
+    }
+    if firmware_present(eden) {
+        remettre(&partis);
+        return Err(Erreur::Refus("Le dossier système contient aussi des fichiers que Frogtend n'a pas posés : la mise à jour est refusée, rien n'a changé.".into()));
+    }
+    let _ = std::fs::remove_file(fichier_note_firmware(eden));
+    Ok((abri, note))
+}
+
+/// Remet le firmware mis à l'abri (une mise à jour qui a échoué) : ses fichiers reviennent dans `registered`, sa note
+/// aussi. Ce qui ne revient pas reste à l'abri (jamais effacé).
+pub fn remettre_firmware(eden: &Path, abri: &(PathBuf, NoteFirmware)) {
+    let Some(registered) = dossier_firmware(eden) else { return };
+    let _ = std::fs::create_dir_all(&registered);
+    for n in &abri.1.fichiers {
+        let de = abri.0.join(n);
+        if de.is_file() && !registered.join(n).exists() {
+            let _ = std::fs::rename(&de, registered.join(n));
+        }
+    }
+    let f = fichier_note_firmware(eden);
+    let _ = std::fs::write(&f, serde_json::to_vec_pretty(&abri.1).unwrap_or_default());
+    let _ = std::fs::remove_dir(&abri.0);
 }
 
 /// Eden est-il installé en portable (son dossier `user` à côté de lui) ? Sinon, ses données sont dans `%APPDATA%` :
@@ -222,7 +311,7 @@ pub fn poser_firmware(eden: &Path, zip: &Path) -> Resultat<usize> {
 }
 
 /// Un nom de fichier du système : `<32 hexa>.nca` ou `<32 hexa>.cnmt.nca` (file_sys/registered_cache.cpp L59-64).
-fn nom_de_nca(nom: &str) -> bool {
+pub(crate) fn nom_de_nca(nom: &str) -> bool {
     let n = nom.to_ascii_lowercase();
     let Some(base) = n.strip_suffix(".cnmt.nca").or_else(|| n.strip_suffix(".nca")) else { return false };
     base.len() == 32 && base.chars().all(|c| c.is_ascii_hexdigit())
@@ -427,7 +516,8 @@ pub fn dossier_device(eden: &Path) -> PathBuf {
 /// Un dossier de parties d'un JEU Switch (son identifiant : 16 caractères hexadécimaux commençant par « 01 ») — jamais
 /// une donnée système rangée au même endroit.
 pub fn est_un_jeu(nom: &str) -> bool {
-    nom.len() == 16 && nom.starts_with("01") && nom.chars().all(|c| c.is_ascii_hexdigit())
+    // Switch : « 01… » ; Switch 2 : « 04… » (Zelda Ocarina of Time : 0400486024DEC000, contrat 1.38).
+    nom.len() == 16 && (nom.starts_with("01") || nom.starts_with("04")) && nom.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 /// Les dossiers des parties d'un utilisateur : (`save` : le NAND, `account` : le nouvel emplacement s'il existe).
@@ -443,6 +533,36 @@ pub fn dossiers_parties(eden: &Path, uuid: &[u8; 16]) -> [(&'static str, PathBuf
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn eglantine_est_de_la_famille_et_son_firmware_se_met_a_jour() {
+        assert!(est_eden(r"E:\Emu\Eglantine\eglantine.exe") && est_eden("eden.exe") && !est_eden("ryujinx.exe"));
+        assert_eq!(plateforme(r"E:\Emu\Eglantine\eglantine.exe"), "Nintendo Switch 2");
+        assert_eq!(plateforme("eden.exe"), "Nintendo Switch");
+        assert!(est_un_jeu("0400486024DEC000") && est_un_jeu("0100000000010000") && !est_un_jeu("8000000000000010"));
+        let d = tempfile::tempdir().unwrap();
+        let reg = d.path().join("user").join("nand").join("system").join("Contents").join("registered");
+        std::fs::create_dir_all(&reg).unwrap();
+        let a = "00e57b67b4dbd750a2df0574cddc123d.nca";
+        std::fs::write(reg.join(a), b"nca").unwrap();
+        noter_firmware(d.path(), Some("23.0.1")).unwrap();
+        assert_eq!(note_firmware(d.path()).unwrap(), NoteFirmware { version: Some("23.0.1".into()), fichiers: vec![a.into()] });
+        // Un fichier système qui n'est pas de Frogtend : refusé, rien ne bouge.
+        let autre = "11111111111111111111111111111111.nca";
+        std::fs::write(reg.join(autre), b"x").unwrap();
+        assert!(mettre_firmware_a_l_abri(d.path()).is_err());
+        assert!(reg.join(a).is_file() && note_firmware(d.path()).is_some());
+        std::fs::remove_file(reg.join(autre)).unwrap();
+        let abri = mettre_firmware_a_l_abri(d.path()).unwrap();
+        assert!(!firmware_present(d.path()) && note_firmware(d.path()).is_none());
+        // Une pose qui échoue : l'ancien revient, avec sa note.
+        remettre_firmware(d.path(), &abri);
+        assert!(reg.join(a).is_file() && note_firmware(d.path()).unwrap().version.as_deref() == Some("23.0.1"));
+        mettre_firmware_a_l_abri(d.path()).unwrap();
+        let abris: Vec<_> = std::fs::read_dir(d.path().join(".frogtend-sauvegardes")).unwrap().flatten().collect();
+        assert_eq!(abris.len(), 1, "un refus ne laisse pas d'abri vide");
+        assert!(abris[0].path().join(a).is_file(), "à l'abri, jamais effacé");
+    }
     #[test]
     fn le_firmware_se_pose_seulement_dans_un_dossier_vide_et_jamais_ailleurs() {
         use std::io::Write;

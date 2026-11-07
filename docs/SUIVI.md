@@ -138,6 +138,11 @@
   profiles.dat. FAIT en 0.161.0 (sécurité, les clés étant déjà servies) : jamais de pose sous `user\` d'un émulateur
   non portable (`bios::basculerait_en_portable`) ; `.nup` = image disque (jamais lu en entier, `empreintes.rs`) et
   jamais « installé » (`installation::methode`).
+  FAIT en 0.162.0 : fiche `eglantine` (Origine::Firehouse ; portable imposé même si le paquet ne le dit pas),
+  `est_eden`/`plateforme` (Switch 2 → firmware-switch2), `.frogtend-firmware.json` + mise à jour du firmware (ancien à
+  l'abri, remis si échec), parties communes « 04… » sauvegardées, clés proposées avant une partie, famille Eden dans
+  profils/pause/bouton Xbox/déménagement. Relecture lancement : bloquant (portable non imposé) et 3 importants corrigés.
+  NON VÉRIFIÉ dans les sources d'Eglantine : `-u <index>`, `pauseWhenInBackground` (supposés identiques à Eden).
   ESSAI 07/11 (0.160.1) : les captures s'affichent ✅, mais les boutons sont cachés par la capture (fenêtre du menu en
   jeu) → scène `minmax(0, 1fr)` + image en position absolue `object-fit: contain` → 0.160.2.
 - **Essai du 03/11 (0.155.0)** : MGS4 importé (`.zip` de 32,7 Go contenant un `.iso`) → ▶ Jouer donnait le .zip à RPCS3
