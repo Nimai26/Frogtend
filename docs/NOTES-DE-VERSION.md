@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.163.0 — Un dossier pour chaque nouveau système
+
+- 📁 Le premier jeu d'un système qui n'a pas encore ses propres dossiers : Frogtend te dit où il ira (ton dossier par
+  défaut) et te propose d'en choisir un autre, rien que pour ce système. Ton choix est gardé dans ⚙ Options ▸
+  Emplacements (on peut le changer plus tard).
+
 ## 0.162.0 — La Switch 2, avec Eglantine
 
 - 🎮 Les jeux Switch 2 de Firehouse (au format .nup) se jouent avec **Eglantine** : « ▶ Prêt à jouer » l'installe

@@ -143,6 +143,9 @@
   l'abri, remis si échec), parties communes « 04… » sauvegardées, clés proposées avant une partie, famille Eden dans
   profils/pause/bouton Xbox/déménagement. Relecture lancement : bloquant (portable non imposé) et 3 importants corrigés.
   NON VÉRIFIÉ dans les sources d'Eglantine : `-u <index>`, `pauseWhenInBackground` (supposés identiques à Eden).
+  Essai 08/11 : la Switch 2 absente du catalogue = dernière synchro AVANT l'ajout de Zelda par Firehouse (→ 🔄).
+  DEMANDE de Seb (08/11) : « quand un nouveau système apparaît, dire où il va être installé et demander si on veut un
+  autre dossier pour ce système » → 0.163.0 (`dossierPourNouveauSysteme`, premier jeu d'un système sans dossiers à lui).
   ESSAI 07/11 (0.160.1) : les captures s'affichent ✅, mais les boutons sont cachés par la capture (fenêtre du menu en
   jeu) → scène `minmax(0, 1fr)` + image en position absolue `object-fit: contain` → 0.160.2.
 - **Essai du 03/11 (0.155.0)** : MGS4 importé (`.zip` de 32,7 Go contenant un `.iso`) → ▶ Jouer donnait le .zip à RPCS3

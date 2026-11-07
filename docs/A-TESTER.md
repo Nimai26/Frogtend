@@ -6,6 +6,11 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Un dossier pour chaque nouveau système (0.163.0)
+- [ ] 🔄 Synchroniser : la Switch 2 apparaît dans le catalogue.
+- [ ] Zelda (Switch 2) ▸ mettre dans la ludothèque : « 📁 Les jeux Switch 2 : où les ranger ? » ; essayer « 📂 Un
+      autre dossier… » ; le récapitulatif montre ce dossier ; ⚙ Options ▸ Emplacements le montre pour Switch 2.
+
 ## La Switch 2, avec Eglantine (0.162.0)
 - [ ] Catalogue ▸ Zelda Ocarina of Time (Nintendo Switch 2) dans ta ludothèque (25,6 Go, durée annoncée).
 - [ ] ▶ Jouer : « Prêt à jouer » propose Eglantine (taille ~110 Mo), tes clés et le logiciel système 23.0.1 en un

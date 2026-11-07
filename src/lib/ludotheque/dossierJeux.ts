@@ -48,3 +48,33 @@ export async function proposerDossierJeux(raison: string, besoin?: number): Prom
   await reglerPc('emplacements', { ...e, defaut: [chemin, ...e.defaut.filter((d) => d.toLowerCase() !== chemin!.toLowerCase())] });
   return chemin;
 }
+
+/** Le premier jeu d'un système qui n'a pas ses propres dossiers (✅ Seb 08/11) : Frogtend dit où ses jeux iront (le
+ * dossier par défaut), et propose d'en choisir un autre POUR CE SYSTÈME (enregistré dans Options ▸ Emplacements).
+ * Rend faux si la personne a annulé. */
+export async function dossierPourNouveauSysteme(plateforme: string, nom: string, parDefaut: string): Promise<boolean> {
+  const canape = auCanape();
+  const c = await choisir<'garder' | 'autre'>(
+    `📁 Les jeux ${nom} : où les ranger ?`,
+    [
+      { valeur: 'garder', libelle: `📁 ${parDefaut}`, detail: 'avec tes autres jeux (le dossier par défaut)' },
+      ...(canape ? [] : [{ valeur: 'autre' as const, libelle: `📂 Un autre dossier, rien que pour ${nom}…`, detail: 'avec l’explorateur de Windows' }]),
+    ],
+    `C’est ton premier jeu ${nom}. Tu peux changer plus tard dans ⚙ Options ▸ 📁 Emplacements.`,
+  );
+  if (c === null) return false;
+  if (c === 'garder') return true;
+  for (;;) {
+    const chemin = await parcourir({ dossier: true, titre: `Dossier des jeux ${nom}` });
+    if (!chemin) return false;
+    const refus = await api.dossierJeuxRefus(chemin).catch(() => null);
+    if (refus) {
+      await informer('📁 Choisis un autre dossier', refus);
+      continue;
+    }
+    const e = etat.pc.emplacements;
+    await reglerPc('emplacements.systemes', { ...e.systemes, [plateforme]: [chemin] });
+    toast(`✅ Les jeux ${nom} iront dans ${chemin}.`);
+    return true;
+  }
+}

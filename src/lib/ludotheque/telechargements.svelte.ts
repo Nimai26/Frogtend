@@ -18,7 +18,8 @@ import { choisir, cocher, confirmer, informer, toast } from '$lib/dialogues/fene
 import { nomEnDouble, ordreDesCases, plusieursPossibles } from './versions';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { ludo, rechargerListe, rechargerPlateformes } from './ludotheque.svelte';
-import { proposerDossierJeux } from './dossierJeux';
+import { dossierPourNouveauSysteme, proposerDossierJeux } from './dossierJeux';
+import { etat } from '$lib/etat.svelte';
 import { nomAffiche } from './ludotheque.svelte';
 
 /** Une version AJOUTÉE à un jeu du PC qui arrive (son état et son avancement à elle). */
@@ -264,6 +265,13 @@ export async function mettreDansLaLudotheque(id: number, versionVoulue?: number)
       toast('Le dossier choisi n’est pas utilisable pour ce jeu : réessaie, ou choisis-en un autre.', 'alerte');
       return false;
     }
+  }
+  // Le premier jeu d'un système sans dossiers à lui : dire où il ira, proposer un dossier pour ce système.
+  const premierDuSysteme = !etat.pc.emplacements.systemes[plateforme]?.length && !Object.values(tele.jeux).some((j) => j.plateforme === plateforme);
+  if (premierDuSysteme && proposes.some((p) => p.libre !== null)) {
+    const parDefaut = proposes.find((p) => p.libre !== null)!.chemin;
+    if (!(await dossierPourNouveauSysteme(plateforme, nomAffiche(plateforme), parDefaut))) return false;
+    if (etat.pc.emplacements.systemes[plateforme]?.length) proposes = await api.proposerEmplacements(plateforme, total).catch(() => proposes);
   }
   const possibles = proposes.filter((p) => p.assez);
   if (possibles.length === 0) {
