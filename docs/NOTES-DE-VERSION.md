@@ -1,5 +1,10 @@
 # Notes de version de Frogtend
 
+## 0.160.1 — Les captures s'affichent
+
+- 📷 La galerie affichait « Cette capture ne s'affiche pas » : la règle de sécurité de l'application ne permettait pas
+  encore leurs images. Corrigé, et un test vérifie maintenant que chaque image servie par Frogtend y est permise.
+
 ## 0.160.0 — Tes captures en galerie
 
 - 📷 Tes captures d'écran se regardent maintenant dans Frogtend : dans la fiche du jeu (« 📷 Mes captures »), depuis le

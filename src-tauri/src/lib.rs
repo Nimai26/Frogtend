@@ -793,3 +793,23 @@ mod tests {
         assert!(!brut["plugins"]["updater"]["pubkey"].as_str().unwrap().is_empty());
     }
 }
+
+#[cfg(test)]
+mod tests_csp {
+    /// Chaque adresse servie par le cœur (un protocole déclaré plus haut) est permise par la règle de
+    /// sécurité de l'interface (sinon l'image ne s'affiche pas : les captures en 0.160.0, essai de Seb 07/11).
+    #[test]
+    fn chaque_protocole_est_permis_par_la_csp() {
+        let source = include_str!("lib.rs");
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let csp = conf["app"]["security"]["csp"].as_str().unwrap();
+        let marque = concat!("register_asynchronous_uri_scheme_protocol", "(\"");
+        let mut vus = 0;
+        for morceau in source.split(marque).skip(1) {
+            let nom = morceau.split('"').next().unwrap();
+            vus += 1;
+            assert!(csp.contains(&format!("http://{nom}.localhost")), "le protocole « {nom} » manque à la CSP de tauri.conf.json");
+        }
+        assert!(vus >= 5, "{vus} protocoles trouvés");
+    }
+}

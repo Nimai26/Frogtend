@@ -119,6 +119,8 @@
   rendu après la dernière suppression ; captures d'un jeu retiré du PC toujours montrées (titre noté à la capture,
   jeu de Firehouse encore visible au profil) ; fond du menu redemandé ; verrou des fonds ; « Ouvrir le dossier » selon
   le vrai mode Taodbox. RESTE : miniatures réduites (images entières servies aujourd'hui).
+  ESSAI 07/11 (0.160.0) : « Cette capture ne s'affiche pas » → la CSP (tauri.conf.json img-src) n'avait pas
+  `capture.localhost` → 0.160.1 + test `chaque_protocole_est_permis_par_la_csp`.
 - **Essai du 03/11 (0.155.0)** : MGS4 importé (`.zip` de 32,7 Go contenant un `.iso`) → ▶ Jouer donnait le .zip à RPCS3
   (« Invalid file or folder ») : la décompression n'était proposée que par le bloc de la fiche. → 0.156.0 : ▶ Jouer
   propose « Décompresser puis jouer » (même accord chiffré, progression, archive gardée). Remarque de Seb : « on devrait

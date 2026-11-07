@@ -3,6 +3,12 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 07/11 — Un nouveau protocole d'images oublié dans la CSP
+Ce qui s'est passé : la galerie (0.160.0) servait ses images par `capture.localhost`, mais `tauri.conf.json` ne le
+permettait pas en `img-src` : « Cette capture ne s'affiche pas » chez Seb. Ni les tests ni les relectures ne lisent
+la CSP. · Comment l'appliquer : un test (lib.rs, `tests_csp`) compare maintenant chaque protocole déclaré à la CSP ;
+tout nouveau protocole doit y être ajouté dans le même commit.
+
 ## 04/11 — Déplacer « tout le contenu » d'un dossier réglé, c'est déplacer des fichiers qui ne sont pas à Frogtend
 Ce qui s'est passé : la 1re version du changement de dossier des abris déplaçait TOUT l'ancien dossier ; un ancien
 réglage sur Documents (permis avant la 0.134) l'aurait vidé. Vu par la relecture, avant livraison. · Comment
