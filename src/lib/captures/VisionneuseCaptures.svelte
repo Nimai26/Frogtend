@@ -212,12 +212,14 @@
     inset: 0;
     z-index: 50;
     display: grid;
-    grid-template-rows: auto 1fr auto;
+    /* La scène prend la place qui reste, jamais plus : une grande capture ne pousse pas les boutons hors de la
+       fenêtre (essai de Seb 07/11, menu en jeu). */
+    grid-template-rows: auto minmax(0, 1fr) auto;
     background: var(--voile-opaque);
     color: var(--encre-voile);
   }
   .visionneuse.diaporama {
-    grid-template-rows: 1fr auto;
+    grid-template-rows: minmax(0, 1fr) auto;
     background: var(--fond-media);
   }
   /* Sur la fiche : sous la barre de titre (BarreTitre.svelte : 34 u + son filet), pour garder réduire et déplacer. */
@@ -253,9 +255,17 @@
   .diaporama .scene {
     padding: 0;
   }
+  .diaporama .scene img {
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  /* L'image remplit la scène en gardant ses proportions (jamais sa taille d'origine). */
   .scene img {
-    max-width: 100%;
-    max-height: 100%;
+    position: absolute;
+    inset: calc(8 * var(--u));
+    width: calc(100% - 16 * var(--u));
+    height: calc(100% - 16 * var(--u));
     object-fit: contain;
     opacity: 0;
     transition: opacity 0.3s;

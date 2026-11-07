@@ -1,5 +1,10 @@
 # Notes de version de Frogtend
 
+## 0.160.2 — Les boutons restent visibles sous une capture
+
+- 📷 Dans le menu en jeu, une grande capture poussait les boutons de la visionneuse hors de la fenêtre : l'image
+  s'adapte maintenant toujours à la place entre le titre et les boutons.
+
 ## 0.160.1 — Les captures s'affichent
 
 - 📷 La galerie affichait « Cette capture ne s'affiche pas » : la règle de sécurité de l'application ne permettait pas
