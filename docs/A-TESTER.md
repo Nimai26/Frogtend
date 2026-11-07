@@ -7,7 +7,7 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## Tes captures en galerie (0.160.0)
-- [ ] Super Mario World : deux nouvelles captures ; menu de Frogtend ▸ « 📷 Mes captures » : elles s'ouvrent en grand ;
+- [x] (✅ 08/11, 0.160.2) Super Mario World : deux nouvelles captures ; menu de Frogtend ▸ « 📷 Mes captures » : elles s'ouvrent en grand ;
       ◀ ▶ ; « ▶ Diaporama » défile, B l'arrête ; B ferme et revient au menu (le jeu ne reprend pas tout seul).
 - [ ] « 🖼 En faire le fond du jeu » : rouvrir le menu en jeu → le fond est ta capture ; « Rendre le fond d'origine ».
 - [ ] Fiche de Super Mario World : section « 📷 Mes captures » ; « 📂 Ouvrir le dossier » ; « 🗑 Supprimer » (confirmé).
