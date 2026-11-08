@@ -157,6 +157,18 @@
   XInput (PS5…) : rien d'écrit. Raccourcis manette d'Eden (Home+…) perdus : Frogtend a son menu.
   Relecture lancement : 0 bloquant ; 2 importants corrigés (« Clavier » pour un jeu rend le clavier d'origine,
   `rendre_le_clavier` ; langue posée UNE fois, marque `user\.frogtend-langue`) + mineurs (System32, plafond 8 Mo, en-CA).
+  ESSAI 08/11 (0.164.0) ✅ manette et français dans Eglantine ; Zelda OoT : écran noir APRÈS la cinématique d'intro.
+  Recherche web : bogue CONNU d'Eglantine, toutes cartes (NVIDIA RTX 3060/5090 aussi), issues #589/#649 ouvertes ;
+  correctifs en PR non fusionnées (#614 brouillon, #644, #685) ; aucun réglage connu ne le corrige (gpu_accuracy High :
+  rien ; seule piste non confirmée : mode TV/docked). → attendre un daily officiel qui les contient (Firehouse sert
+  l'émulateur, Frogtend proposera la mise à jour). Jamais un fork non officiel (Fair-Tech, Aubépine).
+  ESSAI 08/11 : la fenêtre « Recommended Ocarina of Time settings » d'Eglantine (main_window.cpp, à CHAQUE démarrage,
+  aucun réglage pour la taire ; game_presets.h : Vulkan, 1x, GPU Low, async, BC3, VRAM conservative, reactive
+  flushing, FIFO Relaxed, Docked, ScaleForce, FXAA, pour la session) bloque le tout-manette → 0.165.0 : Frogtend y
+  envoie « Yes » (touche Y postée à la boîte, `menu_jeu::accepter_reglages_recommandes`). PAS VÉRIFIÉ en vrai (la
+  boîte n'apparaît qu'en lançant le jeu : essai Seb). Relecture lancement : 0 bloquant ; corrigé : fermeture VÉRIFIÉE
+  (IsWindow/IsWindowVisible, journalisée), O (« &Oui ») si Y ne ferme pas, fil arrêté dès la boîte traitée. DEMANDE de Seb : Lichii en émulateur secondaire (vidéo « tuto
+  Zelda OoT 60 FPS ») → besoin 43 envoyé à Firehouse ; le choix par jeu existe déjà (`choix_emulateur.rs`).
   ESSAI 07/11 (0.160.1) : les captures s'affichent ✅, mais les boutons sont cachés par la capture (fenêtre du menu en
   jeu) → scène `minmax(0, 1fr)` + image en position absolue `object-fit: contain` → 0.160.2.
 - **Essai du 03/11 (0.155.0)** : MGS4 importé (`.zip` de 32,7 Go contenant un `.iso`) → ▶ Jouer donnait le .zip à RPCS3

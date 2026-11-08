@@ -1789,6 +1789,7 @@ pub async fn jeu_jouer(
             figer = false;
         }
     }
+    let famille_eden = id_emulateur.as_deref().is_some_and(crate::emulateurs::famille_eden);
     let _ = app.emit("partie", EvenementPartie::Debut { jeu: id, carte_cedee });
     // Le menu en jeu : sa touche est active pendant la partie seulement.
     let dossier_jeu_pe = dossier_jeu.clone();
@@ -1900,6 +1901,29 @@ pub async fn jeu_jouer(
                 std::thread::sleep(std::time::Duration::from_millis(if debut.elapsed().as_secs() < 10 { 250 } else { 1000 }));
             }
             let _ = app4.emit("partie-affichee", serde_json::json!({ "jeu": id, "ms": debut.elapsed().as_millis() as u64 }));
+        });
+    }
+    // Eden, Eglantine : leur fenêtre « Recommended … settings » (posée à chaque démarrage, elle bloque le jeu à la
+    // manette) reçoit « Yes » (✅ Seb 08/11) : les réglages optimaux de l'émulateur, pour cette partie seulement.
+    if famille_eden {
+        let app5 = app.clone();
+        std::thread::spawn(move || {
+            let debut = std::time::Instant::now();
+            let menu = app5.state::<crate::menu_jeu::MenuJeu>();
+            // Une seule boîte par démarrage (par jeu) : le fil s'arrête dès qu'elle est traitée.
+            while menu.en_cours(numero) && debut.elapsed() < std::time::Duration::from_secs(300) {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                match crate::menu_jeu::accepter_reglages_recommandes(&crate::lancement::processus_de_la_partie(pid)) {
+                    crate::menu_jeu::Reponse::Aucune => continue,
+                    crate::menu_jeu::Reponse::Fermee { titre, touche } => {
+                        app5.state::<Noyau>().journaliser(&format!("Eglantine : « {titre} » → Oui (touche {touche}), fenêtre fermée"));
+                    }
+                    crate::menu_jeu::Reponse::ToujoursLa { titre } => {
+                        app5.state::<Noyau>().journaliser(&format!("Eglantine : « {titre} » toujours là après Y et O : laissée à la personne"));
+                    }
+                }
+                break;
+            }
         });
     }
     // Plein écran au lancement (jeu PC sans émulateur, réglage du jeu) : dès que sa fenêtre est prête, jamais pendant

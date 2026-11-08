@@ -362,3 +362,10 @@ sous Windows convertit chaque fin de ligne en CRLF (mode texte). La vérificatio
 l'écart index / disque : un fichier COMMITÉ en CRLF ne s'y voit plus. · Garde-fous : toujours `write_bytes` (ou
 `newline=""`), comme les scripts de retouche ; avant chaque commit, compter les CRLF des fichiers touchés et comparer
 avec la version précédente (`git show HEAD:fichier`).
+
+08/11 (0.165.0) : `un_jeu_lance_par_un_intermediaire…` rouge UNE fois pendant la livraison (suite de 62 s au lieu de
+12 s : PC très chargé), vert 5 fois seul. Rien de ce lot ne touche au suivi. Analyse : le suivi ne connaît l'heure de
+démarrage qu'à la SECONDE près, et l'instant de la mort d'un processus de la partie est celui où le suivi la VOIT
+(relevé en retard sous charge) — un processus d'un autre test, enfant d'un numéro repris dans cette fenêtre, peut être
+adopté. Piste notée dans IDEES (heure de création exacte, GetProcessTimes ; ou un « job » Windows). · Règle gardée :
+la livraison est relancée en entier, jamais de commit sur une construction rouge.

@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.165.0 — Eglantine : ses réglages recommandés, sans clic
+
+- 🎮 Eglantine demande à chaque démarrage s'il doit utiliser ses « réglages recommandés » pour Zelda Ocarina of Time
+  (ou Mario Kart World), dans une fenêtre qu'on ne peut fermer qu'à la souris. Frogtend y répond **Oui** pour toi :
+  les meilleurs réglages, choisis par l'équipe d'Eglantine, et tout se joue à la manette. Rien n'est enregistré dans
+  Eglantine (ils valent pour la partie).
+
 ## 0.164.0 — Eden et Eglantine : ta manette et le français, tout seuls
 
 - 🎮 Au lancement d'un jeu Switch ou Switch 2, Frogtend règle ta manette pour le joueur 1 (la disposition par

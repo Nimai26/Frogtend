@@ -773,6 +773,56 @@ mod fenetres {
             SendInput(&haut, std::mem::size_of::<INPUT>() as i32);
         }
     }
+
+    /// La fenêtre « Recommended … settings » d'Eglantine (voir `accepter_reglages_recommandes`), visible, d'un de ces
+    /// processus : son identifiant et son titre.
+    pub fn reglages_recommandes(pids: &[u32]) -> Option<(isize, String)> {
+        use windows::Win32::UI::WindowsAndMessaging::GetWindowTextW;
+        struct Ctx<'a> {
+            pids: &'a [u32],
+            trouvee: Option<(HWND, String)>,
+        }
+        unsafe extern "system" fn une(h: HWND, l: LPARAM) -> BOOL {
+            let ctx = &mut *(l.0 as *mut Ctx);
+            let mut pid = 0u32;
+            GetWindowThreadProcessId(h, Some(&mut pid));
+            if ctx.pids.contains(&pid) && IsWindowVisible(h).as_bool() {
+                let mut t = [0u16; 256];
+                let n = GetWindowTextW(h, &mut t).max(0) as usize;
+                let titre = String::from_utf16_lossy(&t[..n]);
+                if super::est_reglages_recommandes(&titre) {
+                    ctx.trouvee = Some((h, titre));
+                    return BOOL(0);
+                }
+            }
+            BOOL(1)
+        }
+        let mut ctx = Ctx { pids, trouvee: None };
+        unsafe {
+            let _ = EnumWindows(Some(une), LPARAM(&mut ctx as *mut _ as isize));
+        }
+        ctx.trouvee.map(|(h, t)| (h.0 as isize, t))
+    }
+
+    /// Poste une lettre (le raccourci d'un bouton de QMessageBox, QMessageBox::keyPressEvent) à cette fenêtre, sans
+    /// prendre le premier plan.
+    pub fn poster_lettre(h: isize, lettre: u8) {
+        use windows::Win32::UI::WindowsAndMessaging::{WM_KEYDOWN, WM_KEYUP};
+        let h = HWND(h as *mut core::ffi::c_void);
+        let vk = lettre.to_ascii_uppercase() as usize;
+        let scan = unsafe { MapVirtualKeyExW(vk as u32, MAPVK_VK_TO_VSC, None) } as isize;
+        unsafe {
+            let _ = PostMessageW(Some(h), WM_KEYDOWN, WPARAM(vk), LPARAM(1 | (scan << 16)));
+            let _ = PostMessageW(Some(h), WM_KEYUP, WPARAM(vk), LPARAM(1 | (scan << 16) | (1 << 30) | (1 << 31)));
+        }
+    }
+
+    /// Cette fenêtre est-elle encore là (et visible) ?
+    pub fn encore_la(h: isize) -> bool {
+        use windows::Win32::UI::WindowsAndMessaging::IsWindow;
+        let h = HWND(h as *mut core::ffi::c_void);
+        unsafe { IsWindow(Some(h)).as_bool() && IsWindowVisible(h).as_bool() }
+    }
 }
 
 /// Les codes de balayage (jeu 1) des touches envoyées.
@@ -843,6 +893,49 @@ pub fn envoyer_touche(scan: u16, etendue: bool, modificateurs: &[u16]) {
     fenetres::touche(scan, etendue, modificateurs);
     #[cfg(not(windows))]
     let _ = (scan, etendue, modificateurs);
+}
+
+/// La fenêtre d'Eglantine qui propose ses réglages recommandés pour un jeu (Ocarina of Time, Mario Kart World :
+/// `main_window.cpp`, posée à CHAQUE démarrage, aucun réglage pour la taire ; relu le 08/11 dans daily-20261107).
+pub fn est_reglages_recommandes(titre: &str) -> bool {
+    titre.starts_with("Recommended ") && titre.ends_with(" settings")
+}
+
+/// Ce qu'a donné la réponse à la fenêtre des réglages recommandés.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Reponse {
+    /// Pas (encore) de fenêtre.
+    Aucune,
+    /// Fermée par cette touche (« Y » : Yes ; « O » : Oui, si Qt est traduit).
+    Fermee { titre: String, touche: char },
+    /// Toujours là après Y puis O : la personne répond elle-même.
+    ToujoursLa { titre: String },
+}
+
+/// Répond « Oui » à cette fenêtre (✅ Seb 08/11 : « désactiver cela tout en gardant les options optimales » ; sinon
+/// elle bloque le jeu à la manette) : Y (« &Yes »), puis O (« &Oui ») si elle est toujours là — une lettre sans bouton
+/// ne fait rien, et la boîte n'a que Oui et Non. Les réglages valent pour cette partie seulement. Vérifie qu'elle est
+/// bien fermée (un envoi n'est pas une preuve).
+pub fn accepter_reglages_recommandes(pids: &[u32]) -> Reponse {
+    #[cfg(windows)]
+    {
+        let Some((h, titre)) = fenetres::reglages_recommandes(pids) else { return Reponse::Aucune };
+        for lettre in [b'Y', b'O'] {
+            fenetres::poster_lettre(h, lettre);
+            for _ in 0..15 {
+                std::thread::sleep(Duration::from_millis(100));
+                if !fenetres::encore_la(h) {
+                    return Reponse::Fermee { titre, touche: lettre as char };
+                }
+            }
+        }
+        Reponse::ToujoursLa { titre }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = pids;
+        Reponse::Aucune
+    }
 }
 
 /// Les fenêtres principales visibles de ces processus (pour le plein écran au lancement).
@@ -929,6 +1022,17 @@ pub fn quitter(emulateur: Option<&str>, pids: &[u32]) -> Resultat<usize> {
     {
         let _ = pids;
         Ok(0)
+    }
+}
+
+#[cfg(test)]
+mod tests_reglages_recommandes {
+    #[test]
+    fn seule_la_fenetre_des_reglages_recommandes_est_reconnue() {
+        assert!(super::est_reglages_recommandes("Recommended Ocarina of Time settings"));
+        assert!(super::est_reglages_recommandes("Recommended Mario Kart World settings"));
+        assert!(!super::est_reglages_recommandes("Eglantine Nightly | 216d3e2943-daily-20261107"));
+        assert!(!super::est_reglages_recommandes("Eglantine Configuration"));
     }
 }
 

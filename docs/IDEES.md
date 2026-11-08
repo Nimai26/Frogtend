@@ -94,3 +94,7 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   corrigeables par un admin. Frogtend range aujourd'hui avec des listes en dur (`categories.ts` : Arcade / Consoles /
   Portables / Ordinateurs) et montre `fabricant` dans la fiche système (`systemes.ts:29`) → utiliser `type_machine`
   pour les catégories (listes en dur en repli) et `marque` + date pour l'ordre et la fiche. À proposer à Seb.
+
+- **Suivi d'une partie plus sûr** (08/11, après un test rouge sous charge) : reconnaître un processus par son heure de
+  création EXACTE (GetProcessTimes, au 100 ns) plutôt qu'à la seconde, et/ou rattacher la partie à un « job » Windows
+  (ses enfants y entrent seuls) : plus jamais un programme étranger adopté par un numéro repris.
