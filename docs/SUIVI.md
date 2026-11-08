@@ -193,6 +193,15 @@
   là compris) et 3 importants (dossier non installé par Frogtend, échec à moitié, jonctions) → corrigés. Répétition
   sur le vrai dossier de Seb (lecture seule) : 40 fichiers du programme déplacés ; restent user\, Profils\, les
   fichiers .frogtend… et nx2_switches.txt.
+  ESSAI 08/11 (0.167.0) ✅ mises à jour de RPCS3 et d'Eglantine faites (Seb : « ont l'air bonnes et faites ») ; deux
+  à la fois → « une installation est en cours », bien géré. DEMANDES de Seb : l'avancement d'une mise à jour, et un
+  message au démarrage qui propose les mises à jour des émulateurs (→ PLAN, puis 0.168.0 : toastProgres + barre dans la
+  ligne, ⬆ grisés pendant une installation, « Tout mettre à jour » en série ; au démarrage une question par jour et par
+  PC, jamais en Taodbox ni pendant une partie, silencieux hors ligne). Question de Seb : un émulateur installé par
+  Frogtend va-t-il dans le dossier choisi ? Oui (portable, `user\` à côté du programme : vu dans
+  E:\Frogtend\Emulateurs\Eglantine\user). %APPDATA%\eden (401 Mo) vient d'un Eglantine « nx2-experimental » lancé à la
+  main du 05 au 07/11 (journal) et d'un Eden de mars 2025 ; une partie de Zelda dedans (account.sav, 320 o, 07/11) ;
+  listé 3 fois (Eden, Eglantine, Lichii) → une seule ligne en 0.168.0.
   ESSAI 07/11 (0.160.1) : les captures s'affichent ✅, mais les boutons sont cachés par la capture (fenêtre du menu en
   jeu) → scène `minmax(0, 1fr)` + image en position absolue `object-fit: contain` → 0.160.2.
 - **Essai du 03/11 (0.155.0)** : MGS4 importé (`.zip` de 32,7 Go contenant un `.iso`) → ▶ Jouer donnait le .zip à RPCS3

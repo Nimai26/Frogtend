@@ -1592,6 +1592,10 @@ pub async fn jeu_jouer(
     let mut ligne_rpcs3: Option<String> = None;
     let emulateur = match (!de_boutique).then(|| emulateur_regle(&app, &plateforme, id, emulateur.as_deref())).flatten() {
         Some((programme, ligne)) => {
+            // Son émulateur se met à jour en ce moment : on attend la fin (jamais un jeu lancé pendant le remplacement).
+            if en_installation(std::path::Path::new(&programme)) {
+                return Err(Erreur::Refus("Son émulateur est en train de se mettre à jour : attends la fin (la barre d'avancement), puis relance le jeu.".into()));
+            }
             dossier_emulateur = std::path::Path::new(&programme).parent().map(|d| d.to_string_lossy().to_string());
             let nom = std::path::Path::new(&programme).file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
             id_emulateur = crate::emulateurs::CATALOGUE.iter().find(|f| nom.starts_with(f.programme)).map(|f| f.id.to_string());
@@ -6111,12 +6115,28 @@ pub async fn emulateur_installer(
 /// « Impossible d'accéder au disque »).
 static INSTALLATIONS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
+/// Les dossiers des émulateurs en cours d'installation ou de mise à jour (en minuscules) : aucun jeu n'est lancé depuis
+/// l'un d'eux pendant ce temps (relecture interface 08/11 : la mise à jour proposée au démarrage tourne pendant qu'on
+/// clique ▶ Jouer).
+static CIBLES_EN_INSTALLATION: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+fn cle_de_dossier(d: &std::path::Path) -> String {
+    d.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase()
+}
+
+/// Ce programme est-il dans un dossier en cours d'installation ?
+fn en_installation(programme: &std::path::Path) -> bool {
+    let p = cle_de_dossier(programme);
+    CIBLES_EN_INSTALLATION.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|c| p == *c || p.starts_with(&format!("{c}\\")))
+}
+
 /// Libère le dossier à la fin de l'installation, même après une erreur.
-pub(crate) struct Occupation(String);
+pub(crate) struct Occupation(String, String);
 
 impl Drop for Occupation {
     fn drop(&mut self) {
         INSTALLATIONS.lock().unwrap_or_else(|e| e.into_inner()).retain(|x| x != &self.0);
+        CIBLES_EN_INSTALLATION.lock().unwrap_or_else(|e| e.into_inner()).retain(|x| x != &self.1);
     }
 }
 
@@ -6126,13 +6146,15 @@ pub(crate) fn occuper_installation(base: &std::path::Path, cible: &std::path::Pa
     if !crate::lancement::processus_du_dossier(cible).is_empty() {
         return Err(Erreur::Refus(format!("{nom} est ouvert : ferme-le, puis recommence.")));
     }
-    let cle = base.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
+    let cle = cle_de_dossier(base);
     let mut l = INSTALLATIONS.lock().unwrap_or_else(|e| e.into_inner());
     if l.contains(&cle) {
         return Err(Erreur::Refus(format!("Une installation est déjà en cours dans ce dossier ({nom} ou un autre) : attends qu'elle se termine.")));
     }
     l.push(cle.clone());
-    Ok(Occupation(cle))
+    let c = cle_de_dossier(cible);
+    CIBLES_EN_INSTALLATION.lock().unwrap_or_else(|e| e.into_inner()).push(c.clone());
+    Ok(Occupation(cle, c))
 }
 
 /// RetroArch servi par Firehouse (contrat 1.34, `heberge: true`) : téléchargé avec son empreinte sha256 vérifiée
@@ -6535,17 +6557,57 @@ pub struct Traces {
 /// L'« effet pieuvre » : les dossiers que des émulateurs ont laissés dans le dossier utilisateur de Windows.
 #[tauri::command]
 pub fn emulateurs_traces() -> Vec<Traces> {
-    crate::emulateurs::CATALOGUE
-        .iter()
-        .filter_map(|f| {
-            let d = crate::emulateurs_profils::traces_hors_du_dossier(f.id);
-            (!d.is_empty()).then(|| Traces {
-                id: f.id.into(),
-                nom: f.nom.into(),
-                dossiers: d.iter().map(|p| p.to_string_lossy().to_string()).collect(),
-            })
-        })
-        .collect()
+    regrouper_traces(crate::emulateurs::CATALOGUE.iter().map(|f| {
+        let d = crate::emulateurs_profils::traces_hors_du_dossier(f.id);
+        (f.id, f.nom, d.iter().map(|p| p.to_string_lossy().to_string()).collect())
+    }))
+}
+
+/// Un dossier partagé par plusieurs émulateurs (Eden, Eglantine et Lichii écrivent tous dans `%APPDATA%\eden` hors
+/// portable) : UNE ligne, avec leurs noms (essai de Seb 08/11 : le même dossier listé trois fois).
+fn regrouper_traces<'a>(l: impl Iterator<Item = (&'a str, &'a str, Vec<String>)>) -> Vec<Traces> {
+    let mut sortie: Vec<Traces> = Vec::new();
+    for (id, nom, dossiers) in l {
+        for d in dossiers {
+            match sortie.iter_mut().find(|t| t.dossiers == [d.clone()]) {
+                Some(t) => t.nom = format!("{} / {nom}", t.nom),
+                None => sortie.push(Traces { id: format!("{id}:{d}"), nom: nom.into(), dossiers: vec![d] }),
+            }
+        }
+    }
+    sortie
+}
+
+#[cfg(test)]
+mod tests_en_installation {
+    #[test]
+    fn aucun_jeu_ne_se_lance_depuis_un_emulateur_en_cours_de_mise_a_jour() {
+        let d = tempfile::tempdir().unwrap();
+        let cible = d.path().join("Eglantine");
+        let programme = cible.join("eglantine.exe");
+        assert!(!super::en_installation(&programme));
+        let o = super::occuper_installation(d.path(), &cible, "Eglantine").unwrap();
+        assert!(super::en_installation(&programme));
+        assert!(!super::en_installation(&d.path().join("Eglantine 2").join("eglantine.exe")), "seulement CE dossier");
+        drop(o);
+        assert!(!super::en_installation(&programme), "libéré à la fin, même après une erreur");
+    }
+}
+
+#[cfg(test)]
+mod tests_traces {
+    #[test]
+    fn un_dossier_partage_n_est_liste_qu_une_fois_avec_ses_emulateurs() {
+        let eden = r"C:\Users\x\AppData\Roaming\eden".to_string();
+        let cemu = r"C:\Users\x\AppData\Roaming\Cemu".to_string();
+        let t = super::regrouper_traces(
+            [("cemu", "Cemu", vec![cemu.clone()]), ("eden", "Eden", vec![eden.clone()]), ("eglantine", "Eglantine", vec![eden.clone()]), ("lichii", "Lichii", vec![eden.clone()]), ("pcsx2", "PCSX2", vec![])].into_iter(),
+        );
+        assert_eq!(t.len(), 2);
+        assert_eq!((t[0].nom.as_str(), t[0].dossiers.clone()), ("Cemu", vec![cemu]));
+        assert_eq!((t[1].nom.as_str(), t[1].dossiers.clone()), ("Eden / Eglantine / Lichii", vec![eden]));
+        assert_ne!(t[0].id, t[1].id, "clés distinctes pour l'affichage");
+    }
 }
 
 /// Les programmes des émulateurs réglés sur ce PC (`pc.json` ▸ `emulateurs`).

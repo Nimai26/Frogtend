@@ -1,5 +1,19 @@
 # Notes de version de Frogtend
 
+## 0.168.0 — Les mises à jour d'émulateurs, à vue
+
+- ⬆ **Au démarrage**, si des émulateurs installés par Frogtend ont une nouvelle version, Frogtend te le dit (une fois
+  par jour) et te propose de tout mettre à jour d'un coup, avec la taille. « Plus tard » : rien ne bouge, et c'est
+  toujours possible dans ⚙ Réglages ▸ Émulateurs.
+- 📊 **L'avancement se voit** : pendant une installation ou une mise à jour d'émulateur, un message avec sa barre (Mo
+  reçus sur le total), et la barre dans la ligne de l'émulateur. Les autres boutons ⬆ attendent qu'elle finisse ;
+  « ⬆ Tout mettre à jour » les fait l'une après l'autre.
+- 🛡 Pendant la mise à jour d'un émulateur, un jeu qui l'utilise ne se lance pas (« attends la fin ») ; et une mise à
+  jour de Frogtend acceptée attend la fin de celle de l'émulateur avant de redémarrer. Au démarrage, la question des
+  émulateurs attend que les autres questions soient fermées.
+- 📁 Un dossier laissé hors du dossier des émulateurs et partagé par plusieurs d'entre eux (Eden, Eglantine, Lichii)
+  n'est plus listé qu'une fois.
+
 ## 0.167.0 — Lichii, et Eglantine en version stable
 
 - 🎮 **Lichii**, un second émulateur Switch 2, fourni par Firehouse. Si un jeu passe mal avec Eglantine (Zelda Ocarina of

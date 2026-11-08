@@ -7,8 +7,9 @@
   import { choisir, confirmer, demander, informer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { etat, reglerPc } from '$lib/etat.svelte';
-  import { dossierEmulateurs, installerEmulateur, installerMicrologicielPs3, parcourir, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
+  import { dossierEmulateurs, installationEmulateur, installerEmulateur, installerMicrologicielPs3, parcourir, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
   import { miseAJourDisponible } from '$lib/emulateurs/versions';
+  import { chercher, dernieres, ligne, toutMettreAJour, type MiseAJour } from '$lib/emulateurs/majs.svelte';
   import { retirer as retirerEmulateur, systemesProposes } from '$lib/emulateurs/choix';
   import { PLATEFORMES_CONNUES } from '$lib/ludotheque/categories';
   import { tele } from '$lib/ludotheque/telechargements.svelte';
@@ -18,9 +19,18 @@
   const e = $derived(Object.entries(etat.pc.emulateurs));
   let plateformes = $state<Plateforme[]>([]);
   let installes = $state<EmulateurInstalle[]>([]);
-  /** Dernière version connue, par émulateur (après « Chercher des mises à jour »). */
-  let dernieres = $state<Record<string, string>>({});
   let recherche = $state(false);
+  /** Les mises à jour trouvées par la dernière recherche (pour « Tout mettre à jour »). */
+  let trouvees = $state<MiseAJour[]>([]);
+  /** Une installation en cours : les autres boutons ⬆ attendent (une seule à la fois). */
+  const occupe = $derived(installationEmulateur.id !== null);
+  /** Donne le focus à l'élément s'il s'est perdu (le bouton focalisé vient d'être retiré ou désactivé). */
+  function prendreFocus(n: HTMLElement) {
+    queueMicrotask(() => {
+      if (!document.activeElement || document.activeElement === document.body) n.focus();
+    });
+  }
+  const pourcent = $derived(installationEmulateur.total ? Math.min(100, Math.floor((installationEmulateur.recus / installationEmulateur.total) * 100)) : 0);
   let traces = $state<{ id: string; nom: string; dossiers: string[] }[]>([]);
 
   async function recharger() {
@@ -46,18 +56,24 @@
 
   async function chercherMisesAJour() {
     recherche = true;
-    let n = 0;
-    for (const e of installes.filter((e) => e.par_frogtend)) {
-      try {
-        const p = await api.emulateurDerniereVersion(e.id);
-        dernieres[e.id] = p.version;
-        if (miseAJourDisponible(e.id, p.version, e.version)) n++;
-      } catch {
-        // hors ligne : on n'en sait pas plus
-      }
-    }
+    trouvees = await chercher(installes);
     recherche = false;
-    toast(n ? `⬆ ${n} mise(s) à jour disponible(s).` : '✅ Tes émulateurs sont à jour.');
+    toast(trouvees.length ? `⬆ ${trouvees.length} mise(s) à jour disponible(s).` : '✅ Tes émulateurs sont à jour.');
+  }
+
+  async function toutMettreAJourIci() {
+    const l = trouvees.filter((m) => installes.some((i) => i.id === m.emulateur.id && miseAJourDisponible(i.id, dernieres[i.id]?.version, i.version)));
+    if (!l.length) return;
+    const total = l.reduce((s, m) => s + (m.taille ?? 0), 0);
+    const oui = await confirmer(`⬆ Mettre à jour ${l.length} émulateurs ?`, {
+      message: [...l.map((m) => `• ${ligne(m)}`), '', 'L’un après l’autre. Tes parties, tes clés et tes réglages sont gardés.'].join('\n'),
+      libelleValider: `⬆ Tout mettre à jour${total ? ` (${taille(total)})` : ''}`,
+    });
+    if (!oui) return;
+    const n = await toutMettreAJour(l);
+    toast(n === l.length ? `✅ ${n} émulateurs mis à jour.` : `⬆ ${n} sur ${l.length} émulateurs mis à jour.`);
+    await recharger();
+    trouvees = trouvees.filter((m) => installes.some((i) => i.id === m.emulateur.id && miseAJourDisponible(i.id, dernieres[i.id]?.version, i.version)));
   }
 
   async function mettreAJour(e: EmulateurInstalle) {
@@ -317,8 +333,17 @@
           <dt>{i.nom}</dt>
           <dd>
             <span class="muted">{i.version ?? 'installé à la main'}</span>
-            {#if i.par_frogtend && miseAJourDisponible(i.id, dernieres[i.id], i.version)}
-              <button class="btn petit primary" onclick={() => mettreAJour(i)}>⬆ {dernieres[i.id]}</button>
+            {#if installationEmulateur.id === i.id}
+              <!-- Le bouton cliqué disparaît : la barre prend le focus (clavier, manette), jamais un focus perdu. -->
+              <span class="avancement" tabindex="-1" use:prendreFocus>
+                <span class="bar" role="progressbar" aria-label="Mise à jour de {i.nom}" aria-valuemin="0" aria-valuemax="100" aria-valuenow={installationEmulateur.total ? pourcent : undefined}>
+                  <span style="width: {pourcent}%"></span>
+                </span>
+                <span class="muted">{installationEmulateur.total ? `${pourcent} %` : 'en cours…'}</span>
+              </span>
+            {:else if i.par_frogtend && miseAJourDisponible(i.id, dernieres[i.id]?.version, i.version)}
+              <button class="btn petit primary" disabled={occupe} onclick={() => mettreAJour(i)}>⬆ {dernieres[i.id]?.version}</button>
+              {#if occupe}<span class="muted">attends la fin de la mise à jour en cours</span>{/if}
             {/if}
             {#if MANETTE[i.id]}
               <button class="btn petit" title={MANETTE[i.id]} onclick={() => manetteParDefaut(i)}>🎮 Manette par défaut</button>
@@ -336,9 +361,12 @@
           </dd>
         {/each}
       </dl>
-      <button class="btn" onclick={chercherMisesAJour} disabled={recherche}>
+      <button class="btn" onclick={chercherMisesAJour} disabled={recherche || occupe}>
         {recherche ? 'Recherche…' : '🔎 Chercher des mises à jour'}
       </button>
+      {#if trouvees.length > 1}
+        <button class="btn primary" onclick={toutMettreAJourIci} disabled={occupe}>⬆ Tout mettre à jour ({trouvees.length})</button>
+      {/if}
     </div>
   {/if}
 
@@ -379,6 +407,15 @@
 </div>
 
 <style>
+  /* L'avancement d'une mise à jour, dans la ligne de l'émulateur (la barre `.bar` de la charte). */
+  .avancement {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(6 * var(--u));
+  }
+  .avancement .bar {
+    width: calc(120 * var(--u));
+  }
   .emulateurs {
     display: grid;
     gap: calc(10 * var(--u));

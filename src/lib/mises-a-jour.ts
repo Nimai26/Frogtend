@@ -1,7 +1,8 @@
 // Les mises à jour de Frogtend : vérifiées au démarrage, installées SEULEMENT après accord.
 
 import { isTauri } from '@tauri-apps/api/core';
-import { confirmer, toast } from './dialogues/fenetres.svelte';
+import { confirmer, fermerToast, toast } from './dialogues/fenetres.svelte';
+import { installationEmulateur } from './emulateurs/assistant.svelte';
 import { motifDuRefus } from './dialogues/messages';
 
 export type ResultatVerification = 'a-jour' | 'installee' | 'refusee' | 'indisponible' | 'erreur';
@@ -28,6 +29,12 @@ export async function verifierMiseAJour(silencieux = false): Promise<ResultatVer
       libelleValider: '⬇ Mettre à jour',
     });
     if (!oui) return 'refusee';
+    // Un émulateur en pleine mise à jour (proposée au démarrage) : Frogtend ne redémarre qu'après elle.
+    if (installationEmulateur.id !== null) {
+      const attente = toast('⏳ Frogtend se mettra à jour après celle de l’émulateur en cours.', 'neutre', { jusquaFermeture: true });
+      while (installationEmulateur.id !== null) await new Promise((r) => setTimeout(r, 500));
+      fermerToast(attente);
+    }
 
     let recu = 0;
     let total = 0;

@@ -6,7 +6,16 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Les mises à jour d'émulateurs, à vue (0.168.0)
+- [ ] Au prochain démarrage de Frogtend (profil ouvert) : si un émulateur a une nouvelle version, une question les
+      liste avec leur taille ; « ⬆ Mettre à jour » les fait l'une après l'autre, avec une barre d'avancement.
+- [ ] ⚙ Réglages ▸ Émulateurs ▸ un ⬆ : la barre avance dans la ligne de l'émulateur ; les autres ⬆ sont grisés
+      pendant ce temps.
+- [ ] « Hors du dossier des émulateurs » : C:\Users\nimai\AppData\Roaming\eden n'apparaît plus qu'une fois
+      (« Eden / Eglantine / Lichii »).
+
 ## Lichii, et Eglantine en version stable (0.167.0)
+- [x] Mises à jour faites (RPCS3 et Eglantine, Seb 08/11 ; deux à la fois : « une installation est en cours », bien géré).
 - [ ] ⚙ Réglages ▸ Émulateurs ▸ « Chercher les mises à jour » : Eglantine propose ⬆ v0.1.0-rc3 ; l'accord dit
       « Mettre à jour » et que tes parties ne sont pas touchées (69,8 Mo).
 - [ ] Après la mise à jour : ▶ Jouer à Zelda (Switch 2) : ta partie est là, la manette et le français aussi ;

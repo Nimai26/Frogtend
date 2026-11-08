@@ -20,6 +20,7 @@
   import ChoixProfil from '$lib/profils/ChoixProfil.svelte';
   import { auDemarrage } from '$lib/sauvegarde.svelte';
   import { gratuitsAuDemarrage } from '$lib/boutiques/gratuits.svelte';
+  import { emulateursAuDemarrage } from '$lib/emulateurs/majs.svelte';
   import { ecouterQuestionsRacine } from '$lib/mods/racine';
 
   let { children } = $props();
@@ -69,6 +70,8 @@
       // Les jeux Steam installés sur ce PC deviennent des jeux du PC (lancés par Steam, parties suivies).
       untrack(() => void api.steamJeux().then(() => suivreTelechargements()).catch(() => {}));
       untrack(() => gratuitsAuDemarrage());
+      // Les émulateurs installés par Frogtend qui ont une nouvelle version : proposés, une fois par jour (Seb, 08/11).
+      untrack(() => void emulateursAuDemarrage().catch(() => {}));
     } else {
       arreterSuivi();
     }

@@ -28,6 +28,8 @@ export interface ReglagesPc {
   avertiPareFeuRetroArch: boolean;
   /** La question « couper le bouton Xbox qui ouvre la Game Bar ? » a été posée (une fois par PC, ✅ Seb 28/10). */
   questionGameBar: boolean;
+  /** La dernière recherche des mises à jour d'émulateurs au démarrage (secondes) : une fois par jour et par PC. */
+  majEmulateursDerniere: number;
   /** Où Frogtend installe Cheat Engine et les autres outils (règle « pas de pieuvre ») ; vide : demandé la 1re fois. */
   dossierOutils: string;
   /** Où Frogtend copie les parties avant de retirer un jeu (abris) ; vide : demandé quand il le faut. */
@@ -151,6 +153,7 @@ export const DEFAUTS_PC: ReglagesPc = {
   dossierEmulateurs: '',
   avertiPareFeuRetroArch: false,
   questionGameBar: false,
+  majEmulateursDerniere: 0,
   dossierOutils: '',
   dossierAbris: '',
   dossierCaptures: '',

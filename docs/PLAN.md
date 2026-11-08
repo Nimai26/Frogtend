@@ -92,6 +92,13 @@ git 2.51, Node 24.11, pnpm 10.32, Rust 1.94 (stable, MSVC), Visual Studio Build 
 > État au 08/11 : manette réglée pour RetroArch, DuckStation, PCSX2, Dolphin, RPCS3 ; langue pour RPCS3 seulement.
 > Eden/Eglantine : en cours (0.164.0). Restent à passer en revue : DOSBox Staging, PPSSPP, Xenia, xemu, Cemu, Azahar,
 > Vita3K, mGBA (et la langue de DuckStation, PCSX2, Dolphin, RetroArch).
+>
+> ⚠ **Mises à jour des émulateurs (Seb, 08/11, après l'essai de la 0.167.0 : « les mises à jour ont l'air bonnes et
+> faites »).** (1) **L'avancement se voit** pendant une mise à jour lancée depuis ⚙ Réglages ▸ Émulateurs (« pas de
+> suivi de l'avancement ») ; une seconde demande pendant qu'une autre tourne est dite clairement (essai : RPCS3 et
+> Eglantine à la fois → « une installation est en cours », bien géré). (2) **Au démarrage**, si des émulateurs installés
+> par Frogtend ont une nouvelle version, un message le dit et propose la mise à jour (toujours avec l'accord de la
+> personne qui utilise le PC ; jamais en Taodbox ; hors ligne : rien).
 
 ## Les lots
 

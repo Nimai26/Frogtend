@@ -9,7 +9,7 @@ import { avecConseil, biosADireOuPoser, biosATelecharger, biosRetroArch, dossier
 import { isTauri } from '@tauri-apps/api/core';
 import { proposerRemplacements } from '$lib/sauvegarde.svelte';
 import { api, taille, type BilanBios, type EmulateurInstalle, type EmulateurRecommande } from '$lib/api';
-import { choisir, confirmer, demander, fermerToast, informer, toast } from '$lib/dialogues/fenetres.svelte';
+import { choisir, confirmer, demander, fermerToast, informer, majProgres, toast, toastProgres } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat, reglerPc } from '$lib/etat.svelte';
 import { auCanape, seulementAuBureau } from '$lib/taodbox/canape';
@@ -20,6 +20,39 @@ export const installationEmulateur = $state<{ id: string | null; recus: number; 
   recus: 0,
   total: null,
 });
+
+/** Suit le téléchargement d'un émulateur (événement « emulateur » du cœur) : `installationEmulateur` et un message avec
+ * sa barre, jusqu'à la fin (Seb 08/11 : « pas de suivi de l'avancement »). Rend de quoi l'arrêter. */
+async function suivreInstallation(id: string, titre: string, total: number | null): Promise<() => void> {
+  Object.assign(installationEmulateur, { id, recus: 0, total });
+  const message = toastProgres(titre);
+  const montrer = (recus: number, t: number | null) => {
+    const pourcent = t ? Math.min(100, Math.floor((recus / t) * 100)) : 0;
+    majProgres(message, {
+      etape: t && recus >= t ? 'Installation…' : 'Téléchargement…',
+      chiffres: t ? `${taille(recus)} sur ${taille(t)}` : `${taille(recus)} reçus`,
+      pourcent,
+    });
+  };
+  montrer(0, total);
+  let arreter: () => void = () => {};
+  try {
+    if (isTauri())
+      arreter = await listen<{ id: string; recus: number; total: number | null }>('emulateur', (e) => {
+        if (e.payload.id !== id) return;
+        const t = e.payload.total ?? installationEmulateur.total;
+        Object.assign(installationEmulateur, { recus: e.payload.recus, total: t });
+        montrer(e.payload.recus, t);
+      });
+  } catch {
+    // Sans l'avancement, l'installation se fait quand même ; le message reste jusqu'à la fin.
+  }
+  return () => {
+    arreter();
+    fermerToast(message);
+    installationEmulateur.id = null;
+  };
+}
 
 /** Choisir un fichier ou un dossier avec l'explorateur de Windows, ouvert par le cœur (qui retient le choix : seuls
  * les chemins vraiment choisis sont admis ensuite par les commandes sensibles). */
@@ -120,13 +153,7 @@ export async function installerEmulateur(
   });
   if (!oui) return null;
 
-  Object.assign(installationEmulateur, { id, recus: 0, total: paquet.taille });
-  const arreter = isTauri()
-    ? await listen<{ id: string; recus: number; total: number | null }>('emulateur', (e) => {
-        if (e.payload.id === id) Object.assign(installationEmulateur, { recus: e.payload.recus, total: e.payload.total });
-      })
-    : () => {};
-  toast(`⬇ ${nom} : téléchargement et installation…`);
+  const arreter = await suivreInstallation(id, `${miseAJour ? '⬆' : '⬇'} ${nom} ${paquet.version}`, paquet.taille ?? null);
   try {
     const e = await api.emulateurInstaller(id, dossier);
     toast(`✅ ${nom} ${e.version ?? ''} est installé.`);
@@ -136,7 +163,6 @@ export async function installerEmulateur(
     return null;
   } finally {
     arreter();
-    installationEmulateur.id = null;
   }
 }
 
@@ -266,12 +292,7 @@ export async function installerParFirehouse(
     libelleValider: maj ? '⬆ Mettre à jour' : '⬇ Installer',
   });
   if (!oui) return null;
-  Object.assign(installationEmulateur, { id, recus: 0, total: null });
-  const arreter = isTauri()
-    ? await listen<{ id: string; recus: number; total: number | null }>('emulateur', (e) => {
-        if (e.payload.id === id) Object.assign(installationEmulateur, { recus: e.payload.recus, total: e.payload.total });
-      })
-    : () => {};
+  const arreter = await suivreInstallation(id, `${maj ? '⬆' : '⬇'} ${nom}${p?.version ? ` ${p.version}` : ''}`, p?.taille ?? null);
   try {
     const r = await api.emulateurInstallerFirehouse(id, nom, dossier);
     if (r.sorte === 'installe') {
@@ -306,7 +327,6 @@ export async function installerParFirehouse(
     return null;
   } finally {
     arreter();
-    installationEmulateur.id = null;
   }
 }
 
