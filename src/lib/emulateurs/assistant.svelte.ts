@@ -4,6 +4,7 @@
 
 import { listen } from '@tauri-apps/api/event';
 import { ajouter } from './choix';
+import { FAMILLE_EDEN, PAR_FIREHOUSE } from './versions';
 import { avecConseil, biosADireOuPoser, biosATelecharger, biosRetroArch, dossierParDefaut, estConseille, ligneDe, palier, poidsBios, versionAutre } from './pret';
 import { isTauri } from '@tauri-apps/api/core';
 import { proposerRemplacements } from '$lib/sauvegarde.svelte';
@@ -83,8 +84,6 @@ async function refuse(dossier: string, sorte: 'emulateurs' | 'outils'): Promise<
   return !!m;
 }
 
-/** Les émulateurs du catalogue que Firehouse résout (origine `Firehouse` côté cœur). */
-const PAR_FIREHOUSE = ['eglantine'];
 
 /** Installe (ou met à jour) un émulateur depuis sa source officielle, après avoir annoncé la taille. */
 export async function installerEmulateur(
@@ -95,7 +94,7 @@ export async function installerEmulateur(
 ): Promise<EmulateurInstalle | null> {
   // Résolus par Firehouse (leur source n'a que des préversions : Eglantine, contrat 1.38) : installés et mis à jour
   // par son paquet (empreinte vérifiée, à leur place pour une mise à jour).
-  if (PAR_FIREHOUSE.includes(id)) return installerParFirehouse(id, nom, false, options);
+  if (PAR_FIREHOUSE.includes(id)) return installerParFirehouse(id, nom, false, { ...options, miseAJour });
   const dossier = await dossierEmulateurs();
   if (!dossier) return null;
   let paquet;
@@ -247,19 +246,24 @@ export async function installerParFirehouse(
   id: string,
   nom: string,
   outil = false,
-  options: { sansQuestion?: boolean } = {},
+  options: { sansQuestion?: boolean; miseAJour?: boolean } = {},
 ): Promise<EmulateurInstalle | null> {
   const dossier = outil ? await dossierOutils() : await dossierEmulateurs();
   if (!dossier) return null;
   // La taille et la version annoncées avant l'accord (un émulateur du catalogue résolu par Firehouse : Eglantine).
   const p = PAR_FIREHOUSE.includes(id) ? await api.emulateurDerniereVersion(id).catch(() => null) : null;
-  const oui = options.sansQuestion || await confirmer(`⬇ Installer ${nom}${p?.version ? ` ${p.version}` : ''} ?`, {
+  const maj = !!options.miseAJour;
+  const oui = options.sansQuestion || await confirmer(`${maj ? '⬆ Mettre à jour' : '⬇ Installer'} ${nom}${p?.version ? ` ${p.version}` : ''} ?`, {
     message: [
       `Firehouse donne sa source officielle et sa dernière version ; Frogtend la télécharge et vérifie qu’elle est intacte.${p?.taille ? ` Taille : ${taille(p.taille)}.` : ''}`,
-      `Dossier : ${dossier}\\${nom} (ou le sien, s’il est déjà installé)`,
-      'Il sera installé en mode portable quand il en a un : sa configuration reste dans son dossier.',
+      maj ? `Dossier : le sien (${nom})` : `Dossier : ${dossier}\\${nom} (ou le sien, s’il est déjà installé)`,
+      maj && FAMILLE_EDEN.includes(id)
+        ? 'La nouvelle version remplace l’ancienne ; tes parties, tes clés, ton firmware et tes réglages (son dossier « user ») ne sont jamais touchés, et l’ancienne version est gardée à l’abri à côté.'
+        : 'Il sera installé en mode portable quand il en a un : sa configuration reste dans son dossier.',
+      // Deux émulateurs Switch 2 = deux dossiers `user\` : rien n'est partagé (relecture lancement 08/11).
+      ...(!maj && id === 'lichii' ? ['Lichii garde ses propres parties : celles que tu as faites avec Eglantine restent dans Eglantine (rien n’est perdu).'] : []),
     ].join('\n'),
-    libelleValider: '⬇ Installer',
+    libelleValider: maj ? '⬆ Mettre à jour' : '⬇ Installer',
   });
   if (!oui) return null;
   Object.assign(installationEmulateur, { id, recus: 0, total: null });

@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.167.0 — Lichii, et Eglantine en version stable
+
+- 🎮 **Lichii**, un second émulateur Switch 2, fourni par Firehouse. Si un jeu passe mal avec Eglantine (Zelda Ocarina of
+  Time, par exemple), installe Lichii (⚙ Réglages ▸ Émulateurs ▸ Nintendo Switch 2) et choisis-le pour ce jeu seulement :
+  les autres jeux gardent Eglantine. Frogtend le règle comme Eglantine (ta manette, le français, tes clés et le
+  firmware). Lichii garde ses propres parties : celles faites avec Eglantine restent dans Eglantine.
+- ⬆ **Eglantine passe en version stable** (0.1.0-rc3, plus rapide, avec des correctifs de fermeture) : ⚙ Réglages ▸
+  Émulateurs ▸ « Chercher les mises à jour ». La nouvelle version remplace l'ancienne ; tes parties, tes clés, ton
+  firmware et tes réglages ne sont jamais touchés, et l'ancienne version est gardée à l'abri dans son dossier.
+
 ## 0.166.0 — Eglantine : quitter sans question
 
 - 🚪 « Quitter le jeu » du menu de Frogtend (et la croix d'Eglantine) ne passe plus par la question « Voulez-vous

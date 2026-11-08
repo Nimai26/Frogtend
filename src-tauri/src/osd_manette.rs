@@ -72,7 +72,7 @@ pub const GUIDE_COURT: Duration = Duration::from_millis(1000);
 
 /// Les émulateurs dont le réglage d'origine du bouton Xbox n'est pas connu (RPCS3 : le bouton PS ouvre son menu ;
 /// xemu, Xenia, Eden, Cemu, PPSSPP, Vita3K : pas vérifié). Le bouton y reste au jeu : on ne promet pas un double menu.
-const GUIDE_A_L_EMULATEUR: [&str; 8] = ["rpcs3", "xemu", "xenia", "eden", "eglantine", "cemu", "ppsspp", "vita3k"];
+const GUIDE_A_L_EMULATEUR: [&str; 9] = ["rpcs3", "xemu", "xenia", "eden", "eglantine", "lichii", "cemu", "ppsspp", "vita3k"];
 
 /// Ce qui fait tourner la partie, pour le bouton Xbox.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

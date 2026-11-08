@@ -180,6 +180,19 @@
   « Shutdown requested; waiting for emulation thread » ; le minuteur ForceStop d'1 s n'a rien journalisé) — Seb : figé
   pour de bon, fermeture forcée (rapport de plantage de Windows) : à revoir
   avec la rc3, qui touche la fermeture ; Frogtend ne termine jamais un émulateur qui a encore une fenêtre (expert, 05/10).
+  ✅ Firehouse (08/11, contrat 1.40, choix de Seb) : besoins 43 et 44 servis — relu en vrai : eglantine v0.1.0-rc3 (zip
+  MinGW PGO, 85 fichiers, pas de user\) ; lichii build-117 (zip PGO, 56 fichiers dont vc_redist.x64.exe et
+  lichii-updater.exe, pas de user\) ; alternative du conseil Switch 2 : Lichii « si un jeu ne passe pas avec Eglantine ».
+  → 0.167.0 : Lichii dans la famille Eden partout (avis lancement : est_eden/plateforme décident des sauvegardes chez
+  Firehouse et du firmware) ; mise à jour proposée dès que la version servie DIFFÈRE (la comparaison des nombres
+  donnait la rc3 pour plus ancienne que daily-20261107) ; une mise à jour de la famille Eden REMPLACE l'ancienne
+  version installée par Frogtend : seuls les fichiers du PROGRAMME (.exe/.dll/.pdb/qt.conf de la racine, DLL des
+  modules Qt) partent dans .frogtend-sauvegardes\<date>ncienne-version, tous ou aucun, jamais effacés, remis si la
+  copie échoue ; aucun lien suivi ; `user\` et `Profils\` (`.utilisateurs-frogtend`, qui est qui) jamais touchés ;
+  paquet portant ces dossiers refusé. Relecture lancement : 1 bloquant (tout le dossier était déplacé, un jeu rangé
+  là compris) et 3 importants (dossier non installé par Frogtend, échec à moitié, jonctions) → corrigés. Répétition
+  sur le vrai dossier de Seb (lecture seule) : 40 fichiers du programme déplacés ; restent user\, Profils\, les
+  fichiers .frogtend… et nx2_switches.txt.
   ESSAI 07/11 (0.160.1) : les captures s'affichent ✅, mais les boutons sont cachés par la capture (fenêtre du menu en
   jeu) → scène `minmax(0, 1fr)` + image en position absolue `object-fit: contain` → 0.160.2.
 - **Essai du 03/11 (0.155.0)** : MGS4 importé (`.zip` de 32,7 Go contenant un `.iso`) → ▶ Jouer donnait le .zip à RPCS3

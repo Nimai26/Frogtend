@@ -41,18 +41,20 @@ pub struct UtilisateurDuProfil {
     pub cree: bool,
 }
 
-/// Le programme est-il Eden, ou son dérivé Eglantine (Switch 2, mêmes dossiers : common/fs/path_util.cpp) ?
+/// Le programme est-il Eden, ou un de ses dérivés Eglantine et Lichii (Switch 2, mêmes dossiers :
+/// common/fs/path_util.cpp) ?
 pub fn est_eden(programme: &str) -> bool {
     Path::new(programme).file_name().is_some_and(|n| {
         let n = n.to_string_lossy().to_ascii_lowercase();
-        n.starts_with("eden") || n.starts_with("eglantine")
+        n.starts_with("eden") || n.starts_with("eglantine") || n.starts_with("lichii")
     })
 }
 
-/// La plateforme d'un programme de la famille d'Eden : Eglantine = Switch 2, sinon Switch.
+/// La plateforme d'un programme de la famille d'Eden : Eglantine et Lichii = Switch 2 (leurs clés et leur firmware
+/// sont ceux de la Switch 2), sinon Switch.
 pub fn plateforme(programme: &str) -> &'static str {
     let n = Path::new(programme).file_name().map(|n| n.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
-    if n.starts_with("eglantine") { "Nintendo Switch 2" } else { "Nintendo Switch" }
+    if n.starts_with("eglantine") || n.starts_with("lichii") { "Nintendo Switch 2" } else { "Nintendo Switch" }
 }
 
 /// Le firmware posé par Frogtend (`.frogtend-firmware.json` à côté du programme) : sa version, et SES fichiers (les
@@ -916,6 +918,8 @@ mod tests {
     fn eglantine_est_de_la_famille_et_son_firmware_se_met_a_jour() {
         assert!(est_eden(r"E:\Emu\Eglantine\eglantine.exe") && est_eden("eden.exe") && !est_eden("ryujinx.exe"));
         assert_eq!(plateforme(r"E:\Emu\Eglantine\eglantine.exe"), "Nintendo Switch 2");
+        assert!(est_eden(r"E:\Emu\Lichii\lichii.exe"));
+        assert_eq!(plateforme(r"E:\Emu\Lichii\lichii.exe"), "Nintendo Switch 2", "Lichii : les clés et le firmware de la Switch 2");
         assert_eq!(plateforme("eden.exe"), "Nintendo Switch");
         assert!(est_un_jeu("0400486024DEC000") && est_un_jeu("0100000000010000") && !est_un_jeu("8000000000000010"));
         let d = tempfile::tempdir().unwrap();

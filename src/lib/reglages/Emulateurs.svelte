@@ -8,7 +8,7 @@
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { etat, reglerPc } from '$lib/etat.svelte';
   import { dossierEmulateurs, installerEmulateur, installerMicrologicielPs3, parcourir, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
-  import { plusRecente } from '$lib/emulateurs/versions';
+  import { miseAJourDisponible } from '$lib/emulateurs/versions';
   import { retirer as retirerEmulateur, systemesProposes } from '$lib/emulateurs/choix';
   import { PLATEFORMES_CONNUES } from '$lib/ludotheque/categories';
   import { tele } from '$lib/ludotheque/telechargements.svelte';
@@ -51,7 +51,7 @@
       try {
         const p = await api.emulateurDerniereVersion(e.id);
         dernieres[e.id] = p.version;
-        if (e.version && plusRecente(p.version, e.version)) n++;
+        if (miseAJourDisponible(e.id, p.version, e.version)) n++;
       } catch {
         // hors ligne : on n'en sait pas plus
       }
@@ -317,7 +317,7 @@
           <dt>{i.nom}</dt>
           <dd>
             <span class="muted">{i.version ?? 'installé à la main'}</span>
-            {#if i.par_frogtend && dernieres[i.id] && i.version && plusRecente(dernieres[i.id], i.version)}
+            {#if i.par_frogtend && miseAJourDisponible(i.id, dernieres[i.id], i.version)}
               <button class="btn petit primary" onclick={() => mettreAJour(i)}>⬆ {dernieres[i.id]}</button>
             {/if}
             {#if MANETTE[i.id]}

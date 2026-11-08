@@ -435,7 +435,7 @@ async function firmwareSwitchAvant(id: number, plateforme: string | undefined, e
   if (plateforme !== 'Nintendo Switch' && plateforme !== 'Nintendo Switch 2') return;
   const s = normaliser(etat.pc.emulateurs[plateforme]);
   const e = (emulateur && s.liste.find((x) => x.cle === emulateur)) || pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, plateforme, id);
-  if (!e || !/(^|[\\/])(eden|eglantine)[^\\/]*\.exe$/i.test(e.programme) || firmwaresProposes.has(e.programme)) return;
+  if (!e || !/(^|[\\/])(eden|eglantine|lichii)[^\\/]*\.exe$/i.test(e.programme) || firmwaresProposes.has(e.programme)) return;
   let f = await api.edenFirmware(e.programme).catch(() => null);
   if (!f?.portable) return;
   const r = await auPlus(3000, api.emulateursRecommandes(plateforme));

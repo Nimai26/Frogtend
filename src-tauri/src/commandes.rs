@@ -1790,6 +1790,7 @@ pub async fn jeu_jouer(
         }
     }
     let famille_eden = id_emulateur.as_deref().is_some_and(crate::emulateurs::famille_eden);
+    let nom_eden = id_emulateur.as_deref().and_then(crate::emulateurs::fiche).map(|f| f.nom).unwrap_or("Eden");
     let _ = app.emit("partie", EvenementPartie::Debut { jeu: id, carte_cedee });
     // Le menu en jeu : sa touche est active pendant la partie seulement.
     let dossier_jeu_pe = dossier_jeu.clone();
@@ -1916,10 +1917,10 @@ pub async fn jeu_jouer(
                 match crate::menu_jeu::accepter_reglages_recommandes(&crate::lancement::processus_de_la_partie(pid)) {
                     crate::menu_jeu::Reponse::Aucune => continue,
                     crate::menu_jeu::Reponse::Fermee { titre, touche } => {
-                        app5.state::<Noyau>().journaliser(&format!("Eglantine : « {titre} » → Oui (touche {touche}), fenêtre fermée"));
+                        app5.state::<Noyau>().journaliser(&format!("{nom_eden} : « {titre} » → Oui (touche {touche}), fenêtre fermée"));
                     }
                     crate::menu_jeu::Reponse::ToujoursLa { titre } => {
-                        app5.state::<Noyau>().journaliser(&format!("Eglantine : « {titre} » toujours là après Y et O : laissée à la personne"));
+                        app5.state::<Noyau>().journaliser(&format!("{nom_eden} : « {titre} » toujours là après Y et O : laissée à la personne"));
                     }
                 }
                 break;
@@ -2145,7 +2146,7 @@ fn suivre_manette_menu(app: &AppHandle, numero: u64) {
     let home_retire = partie.as_ref().and_then(|p| p.dossier_emulateur.as_deref()).is_some_and(|d| crate::eden::home_retire(std::path::Path::new(d)));
     let moteur = match (emulateur.as_deref(), partie.as_ref().is_some_and(|p| p.dossier_jeu.is_some())) {
         (Some("rpcs3"), _) if ps_retire => crate::osd_manette::Moteur::EmulateurLibere,
-        (Some("eden" | "eglantine"), _) if home_retire => crate::osd_manette::Moteur::EmulateurLibere,
+        (Some(e), _) if home_retire && crate::emulateurs::famille_eden(e) => crate::osd_manette::Moteur::EmulateurLibere,
         (Some(e), _) => crate::osd_manette::Moteur::Emulateur(e),
         (None, true) => crate::osd_manette::Moteur::JeuPc,
         (None, false) => crate::osd_manette::Moteur::Inconnu,
@@ -3001,7 +3002,7 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
     let home_retire = dossier.as_deref().is_some_and(crate::eden::home_retire);
     let moteur = match (emulateur.as_deref(), jeu_pc) {
         (Some("rpcs3"), _) if ps_retire => crate::osd_manette::Moteur::EmulateurLibere,
-        (Some("eden" | "eglantine"), _) if home_retire => crate::osd_manette::Moteur::EmulateurLibere,
+        (Some(e), _) if home_retire && crate::emulateurs::famille_eden(e) => crate::osd_manette::Moteur::EmulateurLibere,
         (Some(e), _) => crate::osd_manette::Moteur::Emulateur(e),
         (None, true) => crate::osd_manette::Moteur::JeuPc,
         (None, false) => crate::osd_manette::Moteur::Inconnu,
@@ -3294,13 +3295,20 @@ pub async fn emulateur_installer_firehouse(
             portable = (Some("dossier".into()), Some(dossier.into()));
         }
     }
+    // La mise à jour d'Eden ou d'un dérivé (toutes ses données dans `user\`) : la nouvelle version REMPLACE l'ancienne
+    // (fichiers d'avant absents du paquet mis à l'abri, `user\` jamais touché) — Eglantine change de chaîne de
+    // compilation au contrat 1.40 (MSVC → MinGW) : ses anciennes DLL ne restent pas mêlées aux nouvelles.
+    // Seulement un émulateur que Frogtend a installé là (jamais un dossier trouvé ou installé à la main).
+    let remplacer = deja_installe(&noyau, &id).is_some() && crate::emulateurs::famille_eden(&id);
     let (pq, c, n) = (paquet.clone(), cible.clone(), nom.clone());
     let r = tauri::async_runtime::spawn_blocking(move || {
         let port = match (&portable.0, &portable.1) {
             (Some(t), Some(n)) => Some((t.as_str(), n.as_str())),
             _ => None,
         };
-        crate::emulateurs::installer_paquet_decrit(&n, &pq, &c, programme.as_deref(), port)
+        // `user\` : ses données ; `Profils\` : celles de Frogtend (qui est qui dans Eden : `.utilisateurs-frogtend`).
+        let garder: &[&str] = &["user", "Profils"];
+        crate::emulateurs::installer_paquet_decrit(&n, &pq, &c, programme.as_deref(), port, remplacer.then_some(garder))
     })
     .await
     .map_err(|_| Erreur::Disque("L'installation s'est arrêtée brutalement.".into()))??;
@@ -5789,7 +5797,7 @@ pub async fn emulateur_deplacer(app: AppHandle, noyau: State<'_, Noyau>, id: Str
         "xemu" => std::iter::once(cible.join("xemu.toml"))
             .chain(std::fs::read_dir(cible.join("Profils")).into_iter().flatten().flatten().map(|p| p.path().join("xemu.toml")))
             .collect(),
-        "eden" | "eglantine" => vec![cible.join("user").join("config").join("qt-config.ini")],
+        "eden" | "eglantine" | "lichii" => vec![cible.join("user").join("config").join("qt-config.ini")],
         "azahar" => vec![cible.join("user").join("config").join("qt-config.ini")],
         // Ceux-là écrivent d'ordinaire des chemins relatifs ; sur un autre PC, un chemin complet vers leur propre dossier
         // est possible (seules ces valeurs changent).

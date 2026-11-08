@@ -239,7 +239,7 @@ pub fn regler(id: &str, emulateur: &Path, utilisateur_dolphin: Option<&Path>, fo
         },
         "rpcs3" => regler_rpcs3_pour_partie(emulateur, forcer, manette_branchee()),
         // Eden, Eglantine : seulement portable, fermé, joueur 1 encore au clavier (ou `forcer`) — eden.rs.
-        "eden" | "eglantine" => crate::eden::regler_manette(emulateur, forcer, guid_manette_xinput().as_deref()),
+        "eden" | "eglantine" | "lichii" => crate::eden::regler_manette(emulateur, forcer, guid_manette_xinput().as_deref()),
         _ => Ok(false),
     }
 }
@@ -279,7 +279,7 @@ pub fn disposition_de_frogtend(id: &str, emulateur: &Path, utilisateur_dolphin: 
         }
         // Eden, Eglantine : la disposition de Frogtend, ou un joueur 1 encore au clavier (Frogtend l'écrira au
         // lancement) ; une manette réglée par la personne : rien de dessiné. Hors portable : Frogtend n'écrit rien.
-        "eden" | "eglantine" => {
+        "eden" | "eglantine" | "lichii" => {
             crate::eden::portable(emulateur)
                 && std::fs::read_to_string(crate::eden::fichier_reglages(emulateur)).map_or(true, |t| crate::eden::joueur1_au_clavier(&t) || crate::eden::joueur1_de_frogtend(&t))
         }

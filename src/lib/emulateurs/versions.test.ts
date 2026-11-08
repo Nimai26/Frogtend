@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { plusRecente } from './versions';
+import { miseAJourDisponible, plusRecente } from './versions';
+
+describe('miseAJourDisponible', () => {
+  it('résolu par Firehouse : toute version servie différente (contrat 1.40 : daily → v0.1.0-rc3)', () => {
+    expect(miseAJourDisponible('eglantine', 'v0.1.0-rc3', 'daily-20261107')).toBe(true);
+    expect(miseAJourDisponible('lichii', 'build-117', 'build-117')).toBe(false);
+    expect(miseAJourDisponible('eglantine', undefined, 'daily-20261107')).toBe(false);
+    expect(miseAJourDisponible('eglantine', 'v0.1.0-rc3', null)).toBe(false);
+  });
+  it('les autres : seulement plus récente', () => {
+    expect(miseAJourDisponible('pcsx2', 'v2.3.1', 'v2.3.0')).toBe(true);
+    expect(miseAJourDisponible('pcsx2', 'v2.2.0', 'v2.3.0')).toBe(false);
+  });
+});
 
 describe('plusRecente', () => {
   it('compare les nombres, pas le texte', () => {

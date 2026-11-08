@@ -622,7 +622,7 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
         // Eden : l'utilisateur Switch de ce profil (créé s'il manque), passé par son INDEX — `-u <nom>` inconnu ferait
         // jouer en silence l'utilisateur précédent (eden.rs). Seulement Eden portable et FERMÉ (sinon il écraserait son
         // fichier des utilisateurs) ; autrement, le nom, comme avant.
-        "eden" | "eglantine" => {
+        "eden" | "eglantine" | "lichii" => {
             // Pas portable, ou ouvert : le nom, comme avant. Sinon, une erreur (fichier abîmé, 8 utilisateurs) est DITE :
             // lancer quand même ferait jouer l'utilisateur de quelqu'un d'autre, sur SES parties.
             if !crate::eden::portable(emulateur) || !crate::lancement::processus_du_dossier(emulateur).is_empty() {
@@ -1656,7 +1656,7 @@ pub fn traces_hors_du_dossier(id: &str) -> Vec<PathBuf> {
         "cemu" => vec![env("APPDATA").map(|a| a.join("Cemu"))],
         "azahar" => vec![env("APPDATA").map(|a| a.join("Azahar"))],
         "vita3k" => vec![env("APPDATA").map(|a| a.join("Vita3K"))],
-        "eden" | "eglantine" => vec![env("APPDATA").map(|a| a.join("eden"))],
+        "eden" | "eglantine" | "lichii" => vec![env("APPDATA").map(|a| a.join("eden"))],
         "dosbox-staging" => vec![env("LOCALAPPDATA").map(|a| a.join("DOSBox"))],
         // mGBA non portable (sans `portable.ini`) : `mCoreConfigDirectory`, dossier « mGBA » de l’AppData itinérant.
         "mgba" => vec![env("APPDATA").map(|a| a.join("mGBA"))],

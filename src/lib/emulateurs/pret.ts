@@ -4,6 +4,7 @@
 // sans effet de bord (testées) ; l'enchaînement est dans `pret.svelte.ts`.
 
 import type { BiosConseil, Conseil, EmulateurRecommande } from '$lib/api';
+import { FAMILLE_EDEN } from './versions';
 
 /** Un émulateur possible pour une console, tel que Frogtend le voit. */
 export interface Possible {
@@ -122,10 +123,10 @@ export function dossierParDefaut(emplacementsJeux: string[], disque?: string | n
 }
 
 /** Les émulateurs dont Frogtend règle la manette (une manette Xbox standard, ou toute manette reconnue). */
-export const MANETTE_REGLEE = ['retroarch', 'duckstation', 'pcsx2', 'dolphin', 'rpcs3', 'eden', 'eglantine'];
+export const MANETTE_REGLEE = ['retroarch', 'duckstation', 'pcsx2', 'dolphin', 'rpcs3', 'eden', 'eglantine', 'lichii'];
 
 /** Ceux qui préparent longuement la première partie de chaque jeu (compilation, une seule fois). */
-const PREMIERE_PARTIE_LONGUE = ['rpcs3', 'cemu', 'eden', 'eglantine', 'xenia', 'yuzu', 'suyu', 'ryujinx'];
+const PREMIERE_PARTIE_LONGUE = ['rpcs3', 'cemu', 'eden', 'eglantine', 'lichii', 'xenia', 'yuzu', 'suyu', 'ryujinx'];
 
 /** Les fichiers système que Frogtend téléchargera (obligatoires, servis, ni clé ni firmware). */
 export function biosATelecharger(bios: BiosConseil[]): BiosConseil[] {
@@ -285,7 +286,7 @@ export function messagePret(o: {
       lignes.push(`S’il manque, le micrologiciel PS3 (${pup.taille ? `${Math.round(pup.taille / 1048576)} Mo` : 'quelques centaines de Mo'}), fourni par Firehouse, est installé aussi, sans aucune fenêtre.`);
     }
     const fw = firmwareSwitchServi(o.conseil!.bios);
-    if (fw && (choix.id === 'eden' || choix.id === 'eglantine')) lignes.push(phraseFirmwareSwitch(fw));
+    if (fw && choix.id && FAMILLE_EDEN.includes(choix.id)) lignes.push(phraseFirmwareSwitch(fw));
     if (cles.length) lignes.push(`Il te faudra aussi tes clés (${cles.join(', ')}) : personne ne peut les fournir, et sans elles les jeux ne démarrent pas.`);
   } else if (choix.rec.bios) {
     lignes.push(`Il lui faut aussi un fichier système (${choix.rec.bios}) : Firehouse le fournira ; en attendant, Frogtend te dira où le mettre.`);

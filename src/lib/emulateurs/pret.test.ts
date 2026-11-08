@@ -305,6 +305,6 @@ describe('le conseil de la maison a changé (contrat 1.8, maj_le)', () => {
 
 describe('les émulateurs dont Frogtend règle la manette', () => {
   it('Eden et Eglantine en sont (✅ Seb 08/11)', () => {
-    expect(MANETTE_REGLEE).toEqual(expect.arrayContaining(['rpcs3', 'eden', 'eglantine']));
+    expect(MANETTE_REGLEE).toEqual(expect.arrayContaining(['rpcs3', 'eden', 'eglantine', 'lichii']));
   });
 });

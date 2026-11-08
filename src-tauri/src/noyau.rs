@@ -3241,7 +3241,7 @@ mod tests {
         let sha = crate::sauvegarde::empreinte(&paquet).unwrap();
         println!("empreinte {} (attendue {})", sha, p["sha256"]);
         assert_eq!(Some(sha.as_str()), p["sha256"].as_str());
-        let r = crate::emulateurs::installer_paquet_decrit("Cheat Engine", &paquet, &d.path().join("Cheat Engine"), p["programme"].as_str(), None).unwrap();
+        let r = crate::emulateurs::installer_paquet_decrit("Cheat Engine", &paquet, &d.path().join("Cheat Engine"), p["programme"].as_str(), None, None).unwrap();
         println!("programme : {r:?}");
         let ce = d.path().join("Cheat Engine");
         for f in ["autorun/SetMemoryRegion.lua", "autorun/FontSizeAllForms.lua", "LISEZMOI-FIREHOUSE.txt"] {
@@ -3272,6 +3272,7 @@ mod tests {
         for x in e2["emulateurs"].as_array().cloned().unwrap_or_default() {
             println!("Switch 2 : {} id={} programme={} portable={} ligne={}", x["nom"], x["id"], x["programme"], x["portable"], x["ligne_de_commande"]);
         }
+        println!("conseil Switch 2 : recommande={} alternatives={}", e2["conseil"]["recommande"], e2["conseil"]["alternatives"]);
         for b in e2["bios"].as_array().cloned().unwrap_or_default() {
             // Jamais le contenu d'une clé : seulement sa fiche.
             println!("bios Switch 2 : {} type={} racine={} chemin={} dispo={} coffre={} version={} sha1?={}", b["fichier"], b["type"], b["racine"], b["chemin"], b["disponible"], b["coffre"], b["version"], b["sha1"].is_string());
@@ -3280,7 +3281,7 @@ mod tests {
             // Jamais le contenu d'une clé : seulement sa fiche et son empreinte.
             println!("conseil Switch 2 bios : {} dispo={} chemin={} sha1={} version={}", b["fichier"], b["disponible"], b["chemin"], b["sha1"], b["version"]);
         }
-        for id in ["eglantine", "eden", "citron_neo", "ryubing", "xenia", "cemu", "cheatengine"] {
+        for id in ["eglantine", "lichii", "eden", "citron_neo", "ryubing", "xenia", "cemu", "cheatengine"] {
             match s.paquet_emulateur(id).await {
                 Ok(p) => println!("paquet {id} : {} {} {} octets programme={} sha={}", p["version"], p["nom_fichier"], p["taille"], p["programme"], p["sha256"]),
                 Err(err) => println!("paquet {id} : {err:?}"),

@@ -32,9 +32,9 @@ pub enum Origine {
 }
 
 /// Un émulateur de la famille d'Eden (même dossier portable `user\`, mêmes utilisateurs, même firmware, mêmes clés) :
-/// Eden (Switch) et son dérivé Eglantine (Switch 2, contrat 1.38).
+/// Eden (Switch), son dérivé Eglantine (Switch 2, contrat 1.38) et Lichii, dérivé d'Eglantine (Switch 2, contrat 1.40).
 pub fn famille_eden(id: &str) -> bool {
-    matches!(id, "eden" | "eglantine")
+    matches!(id, "eden" | "eglantine" | "lichii")
 }
 
 /// Ce que Frogtend sait d'un émulateur.
@@ -192,11 +192,25 @@ pub const CATALOGUE: &[Fiche] = &[
         id: "eglantine",
         nom: "Eglantine",
         alias: &["eglantine"],
-        // https://github.com/Djihads80/Eglantine : seulement des préversions (`daily-AAAAMMJJ`) → Firehouse les résout.
+        // https://github.com/Eglantine-Community/Eglantine : Firehouse résout le paquet (contrat 1.40 : la dernière
+        // stable, build MinGW PGO ; avant, des préversions `daily-AAAAMMJJ`).
         origine: Origine::Firehouse,
         programme: "eglantine.exe",
         ligne: "-f -g",
         // Dérivé d'Eden : un dossier « user » à côté du programme = mode portable (common/fs/path_util.cpp L105-115).
+        portable: Some("user/"),
+        dossiers_habituels: &[],
+    },
+    // Second émulateur Switch 2 (✅ Seb 08/11, contrat 1.40) : dérivé d'Eglantine, dépôt officiel zortos293/Lichii,
+    // paquet résolu par Firehouse (lichii-windows-x86_64-pgo.zip). Mêmes dossiers qu'Eden (PORTABLE_DIR « user »,
+    // sinon %APPDATA%\eden : relevé par Firehouse dans src/common/fs/fs_paths.h et path_util.cpp:116).
+    Fiche {
+        id: "lichii",
+        nom: "Lichii",
+        alias: &["lichii"],
+        origine: Origine::Firehouse,
+        programme: "lichii.exe",
+        ligne: "-f -g",
         portable: Some("user/"),
         dossiers_habituels: &[],
     },
@@ -427,7 +441,7 @@ pub fn trouver_programme(dossier: &Path, f: &Fiche) -> Option<PathBuf> {
 /// copie par-dessus le dossier de l'émulateur. Ce qui n'est pas dans le paquet (sa configuration, les BIOS, les
 /// parties) n'est jamais touché. Le mode portable est activé.
 pub fn installer_paquet(f: &Fiche, paquet: &Path, dossier: &Path) -> Resultat<PathBuf> {
-    deposer_archive(f.nom, paquet, dossier)?;
+    deposer_archive(f.nom, paquet, dossier, None)?;
     if let Some(p) = f.portable {
         activer_portable(dossier, p)?;
     }
@@ -470,8 +484,9 @@ pub fn installer_paquet_decrit(
     dossier: &Path,
     programme: Option<&str>,
     portable: Option<(&str, &str)>,
+    remplacer: Option<&[&str]>,
 ) -> Resultat<ProgrammeTrouve> {
-    deposer_archive(nom, paquet, dossier)?;
+    deposer_archive(nom, paquet, dossier, remplacer)?;
     if let Some((genre, n)) = portable {
         if !n.is_empty() && !n.contains("..") {
             match genre {
@@ -515,7 +530,16 @@ pub fn installer_paquet_decrit(
 
 /// Décompresse un paquet (zip/7z) et le copie par-dessus le dossier de l'émulateur ; une configuration qui serait
 /// remplacée est d'abord copiée à part.
-fn deposer_archive(nom: &str, paquet: &Path, dossier: &Path) -> Resultat<()> {
+///
+/// `remplacer` (la mise à jour, par Frogtend, d'un émulateur qu'il a installé et dont les données vivent dans ces
+/// dossiers — Eden et ses dérivés : `user/`, et `Profils/` pour celles de Frogtend) : la nouvelle version REMPLACE
+/// l'ancienne, sans mélange de DLL (Eglantine passe de MSVC à MinGW, contrat 1.40). Les fichiers du PROGRAMME de
+/// l'ancienne version, et eux seuls (`est_du_programme`), sont DÉPLACÉS dans
+/// `.frogtend-sauvegardes/<horodatage>/ancienne-version/` (jamais effacés), tous ou aucun ; un échec de la copie remet
+/// l'ancienne version. Un paquet qui porte ces dossiers ou des fichiers `.frogtend…` est refusé avant toute copie
+/// (relecture lancement 08/11).
+fn deposer_archive(nom: &str, paquet: &Path, dossier: &Path, remplacer: Option<&[&str]>) -> Resultat<()> {
+    let nom_emulateur = nom;
     let format = crate::installation::format_de(paquet)?;
     // Un paquet « .exe » qui porte une archive 7z (MAME) : l'archive est sortie sans exécuter le programme.
     if format == Format::Exe {
@@ -523,7 +547,7 @@ fn deposer_archive(nom: &str, paquet: &Path, dossier: &Path) -> Resultat<()> {
         n.push(".7z");
         let archive = PathBuf::from(n);
         if crate::installation::archive_7z_dans_exe(paquet, &archive)? {
-            let r = deposer_archive(nom, &archive, dossier);
+            let r = deposer_archive(nom, &archive, dossier, remplacer);
             let _ = std::fs::remove_file(&archive);
             return r;
         }
@@ -546,25 +570,161 @@ fn deposer_archive(nom: &str, paquet: &Path, dossier: &Path) -> Resultat<()> {
     if entrees.len() == 1 && entrees[0].path().is_dir() {
         racine = entrees[0].path();
     }
+    let nouveaux = fichiers_de(&racine)?;
+    if let Some(garder) = remplacer {
+        if nouveaux.iter().any(|r| est_garde(r, garder)) {
+            let _ = std::fs::remove_dir_all(&provisoire);
+            return Err(Erreur::Refus(format!("Le paquet de {nom_emulateur} contient des données (dossier {}) ou des fichiers de Frogtend : rien n'est installé, pour ne jamais remplacer les tiennes.", garder.join(", "))));
+        }
+    }
     std::fs::create_dir_all(dossier)?;
     // Une configuration qui serait remplacée par celle du paquet est d'abord copiée à part.
     let abri = dossier.join(".frogtend-sauvegardes").join(crate::noyau::maintenant());
-    for r in fichiers_de(&racine)? {
-        let cible = dossier.join(&r);
-        if est_configuration(&r) && cible.is_file() && std::fs::read(&cible).ok() != std::fs::read(racine.join(&r)).ok() {
-            let copie = abri.join(&r);
-            if let Some(p) = copie.parent() {
+    // Remplacer : les fichiers du PROGRAMME de l'ancienne version (seulement eux) partent d'abord à l'abri, tous ou
+    // aucun ; si la copie de la nouvelle échoue ensuite, l'ancienne revient entière.
+    let deplaces = match remplacer {
+        Some(_) => match deplacer_l_ancienne_version(dossier, &abri.join("ancienne-version")) {
+            Ok(d) => d,
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&provisoire);
+                return Err(e);
+            }
+        },
+        None => Vec::new(),
+    };
+    let mut copies: Vec<PathBuf> = Vec::new();
+    let copie = (|| -> Resultat<()> {
+        for r in &nouveaux {
+            let cible = dossier.join(r);
+            if est_configuration(r) && cible.is_file() && std::fs::read(&cible).ok() != std::fs::read(racine.join(r)).ok() {
+                let copie = abri.join(r);
+                if let Some(p) = copie.parent() {
+                    std::fs::create_dir_all(p)?;
+                }
+                std::fs::copy(&cible, copie)?;
+            }
+            if let Some(p) = cible.parent() {
                 std::fs::create_dir_all(p)?;
             }
-            std::fs::copy(&cible, copie)?;
+            let existait = cible.exists();
+            std::fs::copy(racine.join(r), &cible)?;
+            if !existait {
+                copies.push(cible);
+            }
         }
-        if let Some(p) = cible.parent() {
-            std::fs::create_dir_all(p)?;
+        Ok(())
+    })();
+    if let Err(e) = copie {
+        if remplacer.is_some() {
+            // Seulement les fichiers NEUFS de cette copie (posés à l'instant, à la place de l'ancienne version
+            // déplacée), puis l'ancienne version remise à sa place.
+            for c in &copies {
+                let _ = std::fs::remove_file(c);
+            }
+            remettre(&deplaces);
         }
-        std::fs::copy(racine.join(&r), &cible)?;
+        let _ = std::fs::remove_dir_all(&provisoire);
+        return Err(e);
     }
     std::fs::remove_dir_all(&provisoire)?;
     Ok(())
+}
+
+/// Les dossiers des modules de Qt posés avec le programme (les paquets d'Eden, d'Eglantine et de Lichii, relevés le
+/// 08/11) : seules leurs DLL sont des fichiers du programme.
+const MODULES_QT: [&str; 8] = ["generic", "iconengines", "imageformats", "networkinformation", "platforms", "plugins", "styles", "tls"];
+
+/// Un fichier du PROGRAMME (chemin relatif, « / ») : à la racine, un `.exe`, `.dll`, `.pdb` ou `qt.conf` ; dans un
+/// dossier de modules de Qt, une `.dll`. Rien d'autre (un jeu, des notes, des textures rangés là par la personne).
+fn est_du_programme(relatif: &str) -> bool {
+    let bas = relatif.to_lowercase();
+    let mut morceaux = bas.split('/');
+    let premier = morceaux.next().unwrap_or("");
+    match bas.matches('/').count() {
+        0 => bas == "qt.conf" || [".exe", ".dll", ".pdb"].iter().any(|e| bas.ends_with(e)),
+        _ => MODULES_QT.contains(&premier) && bas.ends_with(".dll"),
+    }
+}
+
+/// Déplace les fichiers du programme (`est_du_programme`) de `dossier` vers `abri`, TOUS ou AUCUN : au premier échec
+/// (un fichier ouvert ailleurs), ceux déjà déplacés reviennent et rien n'a changé. Ne suit jamais un lien ni une
+/// jonction (ni ne le déplace), et ne descend que dans les dossiers de modules de Qt. Rend les paires (origine, abri).
+fn deplacer_l_ancienne_version(dossier: &Path, abri: &Path) -> Resultat<Vec<(PathBuf, PathBuf)>> {
+    let lien = |p: &Path| std::fs::symlink_metadata(p).map(|m| m.file_type().is_symlink() || est_point_de_reparse(&m)).unwrap_or(true);
+    let mut a_deplacer: Vec<String> = Vec::new();
+    for e in std::fs::read_dir(dossier)?.flatten() {
+        let p = e.path();
+        let n = e.file_name().to_string_lossy().to_string();
+        if lien(&p) {
+            continue;
+        }
+        if p.is_file() && est_du_programme(&n) {
+            a_deplacer.push(n);
+        } else if p.is_dir() && MODULES_QT.contains(&n.to_lowercase().as_str()) {
+            let mut pile = vec![p.clone()];
+            while let Some(d) = pile.pop() {
+                for f in std::fs::read_dir(&d)?.flatten() {
+                    let q = f.path();
+                    if lien(&q) {
+                        continue;
+                    }
+                    if q.is_dir() {
+                        pile.push(q);
+                    } else if let Ok(r) = q.strip_prefix(dossier) {
+                        let r = r.to_string_lossy().replace('\\', "/");
+                        if est_du_programme(&r) {
+                            a_deplacer.push(r);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let mut faits: Vec<(PathBuf, PathBuf)> = Vec::new();
+    for r in a_deplacer {
+        let (de, vers) = (dossier.join(&r), abri.join(&r));
+        let r = vers.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|_| std::fs::rename(&de, &vers));
+        if let Err(e) = r {
+            remettre(&faits);
+            return Err(Erreur::Refus(format!(
+                "Un fichier de l'ancienne version ({}) est utilisé par un autre programme : ferme-le puis recommence. Rien n'a changé ({e}).",
+                de.display()
+            )));
+        }
+        faits.push((de, vers));
+    }
+    Ok(faits)
+}
+
+/// Remet à leur place des fichiers déplacés (le plus récent d'abord).
+fn remettre(faits: &[(PathBuf, PathBuf)]) {
+    for (de, vers) in faits.iter().rev() {
+        let _ = std::fs::rename(vers, de);
+    }
+}
+
+/// Un point de reparse Windows (jonction, lien) : jamais suivi.
+fn est_point_de_reparse(m: &std::fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        m.file_attributes() & 0x400 != 0
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = m;
+        false
+    }
+}
+
+/// Un fichier (chemin relatif, « / ») qu'un paquet posé en remplacement ne doit jamais porter : sous un de ces dossiers
+/// de données, ou un fichier/dossier de Frogtend (`.frogtend…` : firmware posé, abris, marques).
+fn est_garde(relatif: &str, garder: &[&str]) -> bool {
+    let bas = relatif.to_lowercase();
+    garder.iter().any(|g| {
+        let g = g.trim_end_matches('/').to_lowercase();
+        bas == g || bas.starts_with(&format!("{g}/"))
+    }) || bas.split('/').any(|s| s.starts_with(".frogtend"))
 }
 
 /// Un fichier de configuration (réglages, manettes…) : on le met à l'abri avant de l'écraser.
@@ -1131,24 +1291,24 @@ mod tests {
         // Programme et mode portable donnés par Firehouse (Ryubing : un dossier « portable »).
         let p = zip("r.zip", &["publish/Ryujinx.exe", "publish/libs/x.dll"]);
         let ou = d.path().join("Ryubing");
-        let r = installer_paquet_decrit("Ryubing", &p, &ou, Some("Ryujinx.exe"), Some(("dossier", "portable"))).unwrap();
+        let r = installer_paquet_decrit("Ryubing", &p, &ou, Some("Ryujinx.exe"), Some(("dossier", "portable")), None).unwrap();
         assert_eq!(r, ProgrammeTrouve::Trouve { programme: ou.join("Ryujinx.exe").to_string_lossy().into() });
         assert!(ou.join("portable").is_dir());
         // Sans programme : un seul exe utile (le désinstalleur ne compte pas).
         let p = zip("c.zip", &["citron.exe", "unins000.exe"]);
-        let r = installer_paquet_decrit("Citron", &p, &d.path().join("Citron"), None, Some(("fichier", "portable.txt"))).unwrap();
+        let r = installer_paquet_decrit("Citron", &p, &d.path().join("Citron"), None, Some(("fichier", "portable.txt")), None).unwrap();
         assert!(matches!(r, ProgrammeTrouve::Trouve { ref programme } if programme.ends_with("citron.exe")));
         assert!(d.path().join("Citron").join("portable.txt").is_file());
         // Le programme est un NOM, cherché aussi dans un sous-dossier versionné (Cemu).
         let p = zip("cemu.zip", &["Cemu_2.6/Cemu.exe", "Cemu_2.6/resources/x.dat", "LISEZMOI.txt"]);
-        let r = installer_paquet_decrit("Cemu", &p, &d.path().join("Cemu"), Some("Cemu.exe"), None).unwrap();
+        let r = installer_paquet_decrit("Cemu", &p, &d.path().join("Cemu"), Some("Cemu.exe"), None, None).unwrap();
         assert!(matches!(r, ProgrammeTrouve::Trouve { ref programme } if programme.ends_with("Cemu.exe")));
         // Plusieurs : la personne choisit.
         let p = zip("m.zip", &["a.exe", "outils/b.exe"]);
-        let r = installer_paquet_decrit("Multi", &p, &d.path().join("Multi"), None, None).unwrap();
+        let r = installer_paquet_decrit("Multi", &p, &d.path().join("Multi"), None, None, None).unwrap();
         assert_eq!(r, ProgrammeTrouve::AChoisir { candidats: vec!["a.exe".into(), "outils/b.exe".into()] });
         // Un chemin douteux est refusé, rien hors du dossier.
-        assert!(installer_paquet_decrit("X", &p, &d.path().join("X"), Some("../evasion.exe"), Some(("dossier", "../hors"))).is_ok());
+        assert!(installer_paquet_decrit("X", &p, &d.path().join("X"), Some("../evasion.exe"), Some(("dossier", "../hors")), None).is_ok());
         assert!(!d.path().join("hors").exists());
     }
 
@@ -1232,6 +1392,113 @@ mod tests {
         installer_paquet(f, &paquet, &dossier).unwrap();
         let abris: Vec<_> = std::fs::read_dir(dossier.join(".frogtend-sauvegardes")).unwrap().flatten().collect();
         assert_eq!(std::fs::read(abris[0].path().join("dosbox-staging.conf")).unwrap(), b"ma conf");
+    }
+
+    fn zip_de(chemin: &Path, fichiers: &[(&str, &[u8])]) {
+        let mut z = zip::ZipWriter::new(std::fs::File::create(chemin).unwrap());
+        let o = zip::write::SimpleFileOptions::default();
+        for (n, c) in fichiers {
+            z.start_file(*n, o).unwrap();
+            z.write_all(c).unwrap();
+        }
+        z.finish().unwrap();
+    }
+
+    #[test]
+    fn une_mise_a_jour_qui_remplace_met_l_ancienne_version_a_l_abri_et_ne_touche_jamais_user() {
+        // Eglantine MSVC (daily) → MinGW PGO (contrat 1.40) : d'autres DLL.
+        let d = tempfile::tempdir().unwrap();
+        let dossier = d.path().join("Eglantine");
+        for (r, c) in [
+            ("eglantine.exe", "MSVC"),
+            ("vcruntime140.dll", "msvc"),
+            ("Jeux/zelda.xci", "UN JEU RANGÉ LÀ"),
+            ("notes.txt", "mes notes"),
+            ("styles/LISEZMOI.txt", "pas une DLL"),
+            ("imageformats/qjpeg.dll", "plugin msvc"),
+            ("user/nand/user/save/0000000000000000/partie.bin", "MA PARTIE"),
+            ("user/config/qt-config.ini", "mes réglages"),
+            ("Profils/.utilisateurs-frogtend", "Seb"),
+            (".frogtend-firmware.json", "{}"),
+        ] {
+            let p = dossier.join(r);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, c).unwrap();
+        }
+        let paquet = d.path().join("eglantine.zip");
+        zip_de(&paquet, &[("eglantine.exe", b"MinGW"), ("libstdc++-6.dll", b"mingw")]);
+        let garder: &[&str] = &["user", "Profils"];
+        let r = installer_paquet_decrit("Eglantine", &paquet, &dossier, Some("eglantine.exe"), Some(("dossier", "user")), Some(garder)).unwrap();
+        assert!(matches!(r, ProgrammeTrouve::Trouve { .. }));
+        let lire = |r: &str| std::fs::read_to_string(dossier.join(r)).unwrap();
+        assert_eq!(lire("eglantine.exe"), "MinGW");
+        assert_eq!(lire("libstdc++-6.dll"), "mingw");
+        assert!(!dossier.join("vcruntime140.dll").exists() && !dossier.join("imageformats/qjpeg.dll").exists());
+        assert_eq!(lire("user/nand/user/save/0000000000000000/partie.bin"), "MA PARTIE");
+        assert_eq!(lire("user/config/qt-config.ini"), "mes réglages");
+        assert_eq!(lire(".frogtend-firmware.json"), "{}");
+        assert_eq!(lire("Profils/.utilisateurs-frogtend"), "Seb", "qui est qui dans Eden : jamais déplacé");
+        // Seulement les fichiers du programme : ce que la personne a rangé là ne bouge pas.
+        assert_eq!(lire("Jeux/zelda.xci"), "UN JEU RANGÉ LÀ");
+        assert_eq!(lire("notes.txt"), "mes notes");
+        assert_eq!(lire("styles/LISEZMOI.txt"), "pas une DLL");
+        // Rien d'effacé : l'ancienne version est à l'abri, entière (sauf ce que le paquet a remplacé).
+        let abris: Vec<_> = std::fs::read_dir(dossier.join(".frogtend-sauvegardes")).unwrap().flatten().collect();
+        let ancienne = abris[0].path().join("ancienne-version");
+        assert_eq!(std::fs::read_to_string(ancienne.join("vcruntime140.dll")).unwrap(), "msvc");
+        assert_eq!(std::fs::read_to_string(ancienne.join("imageformats").join("qjpeg.dll")).unwrap(), "plugin msvc");
+        assert!(!ancienne.join("user").exists() && !ancienne.join("Jeux").exists());
+        assert_eq!(std::fs::read_to_string(ancienne.join("eglantine.exe")).unwrap(), "MSVC", "l'ancienne version entière");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn un_fichier_de_l_ancienne_version_utilise_ailleurs_et_rien_ne_change() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let d = tempfile::tempdir().unwrap();
+        let dossier = d.path().join("Eglantine");
+        std::fs::create_dir_all(dossier.join("platforms")).unwrap();
+        for (r, c) in [("eglantine.exe", "ancien"), ("a.dll", "a"), ("platforms/qwindows.dll", "q"), ("z.dll", "z")] {
+            std::fs::write(dossier.join(r), c).unwrap();
+        }
+        // Ouvert sans aucun partage (un antivirus, un débogueur…) : il ne peut pas être déplacé.
+        let _verrou = std::fs::OpenOptions::new().read(true).share_mode(0).open(dossier.join("z.dll")).unwrap();
+        let paquet = d.path().join("e.zip");
+        zip_de(&paquet, &[("eglantine.exe", b"nouveau")]);
+        let garder: &[&str] = &["user", "Profils"];
+        let e = installer_paquet_decrit("Eglantine", &paquet, &dossier, Some("eglantine.exe"), None, Some(garder)).unwrap_err();
+        assert!(format!("{e:?}").contains("utilisé par un autre programme"), "{e:?}");
+        for (r, c) in [("eglantine.exe", "ancien"), ("a.dll", "a"), ("platforms/qwindows.dll", "q")] {
+            assert_eq!(std::fs::read_to_string(dossier.join(r)).unwrap(), c, "{r} remis à sa place");
+        }
+        assert!(!d.path().join("Eglantine.frogtend-nouveau").exists());
+    }
+
+    #[test]
+    fn seuls_les_fichiers_du_programme_sont_de_l_ancienne_version() {
+        for r in ["eglantine.exe", "Qt6Core.dll", "eden-cli.pdb", "qt.conf", "platforms/qwindows.dll", "plugins/x/y.dll"] {
+            assert!(est_du_programme(r), "{r}");
+        }
+        for r in ["notes.txt", "Jeux/zelda.xci", "Jeux/outil.exe", "styles/LISEZMOI.txt", "nx2_switches.txt", "user/x.dll"] {
+            assert!(!est_du_programme(r), "{r}");
+        }
+    }
+
+    #[test]
+    fn un_paquet_qui_porte_des_donnees_n_est_jamais_pose_en_remplacement() {
+        let d = tempfile::tempdir().unwrap();
+        let dossier = d.path().join("Lichii");
+        std::fs::create_dir_all(dossier.join("user").join("keys")).unwrap();
+        std::fs::write(dossier.join("user").join("keys").join("prod.keys"), "mes clés").unwrap();
+        std::fs::write(dossier.join("lichii.exe"), "ancien").unwrap();
+        let paquet = d.path().join("lichii.zip");
+        zip_de(&paquet, &[("lichii.exe", b"nouveau"), ("User/keys/prod.keys", b"autres")]);
+        let garder: &[&str] = &["user"];
+        assert!(installer_paquet_decrit("Lichii", &paquet, &dossier, Some("lichii.exe"), None, Some(garder)).is_err());
+        assert_eq!(std::fs::read_to_string(dossier.join("user").join("keys").join("prod.keys")).unwrap(), "mes clés");
+        assert_eq!(std::fs::read_to_string(dossier.join("lichii.exe")).unwrap(), "ancien", "rien n'est posé");
+        assert!(!d.path().join("Lichii.frogtend-nouveau").exists());
+        assert!(fiche("lichii").is_some_and(|f| f.portable == Some("user/") && famille_eden(f.id)));
     }
 
     #[test]

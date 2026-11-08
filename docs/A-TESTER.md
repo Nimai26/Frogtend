@@ -6,6 +6,16 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Lichii, et Eglantine en version stable (0.167.0)
+- [ ] ⚙ Réglages ▸ Émulateurs ▸ « Chercher les mises à jour » : Eglantine propose ⬆ v0.1.0-rc3 ; l'accord dit
+      « Mettre à jour » et que tes parties ne sont pas touchées (69,8 Mo).
+- [ ] Après la mise à jour : ▶ Jouer à Zelda (Switch 2) : ta partie est là, la manette et le français aussi ;
+      les images par seconde (bas de la fenêtre) : mieux qu'avant ?
+- [ ] Quitter (bouton Xbox ▸ Quitter le jeu) : Eglantine se ferme sans question et sans se figer ?
+- [ ] ⚙ Réglages ▸ Émulateurs ▸ Nintendo Switch 2 : installer Lichii (87,3 Mo) ; puis Zelda ▸ choisir Lichii pour
+      ce jeu ; ▶ Jouer : tes clés et le firmware sont posés, la manette répond, le jeu est en français.
+- [ ] Avec Lichii : l'écran noir après l'intro a-t-il disparu, et combien d'images par seconde ?
+
 ## Eglantine : quitter sans question (0.166.0)
 - [ ] Mettre à jour Frogtend, ▶ Jouer à Zelda (Switch 2), puis bouton Xbox ▸ Quitter le jeu : Eglantine se ferme
       sans poser de question (si une question apparaît encore, le jeu était peut-être en train d'écrire : dis-le-moi).

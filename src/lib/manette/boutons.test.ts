@@ -81,6 +81,9 @@ describe('les boutons de la manette d’origine', () => {
     expect(role(s2, 'a')).toBe('B');
     expect(role(s2, 'lt')).toBe('ZL');
     expect(role(schema(infos({ emulateur: 'eden', coeur: null, plateforme: 'Nintendo Switch' })), 'start')).toBe('+');
+    const lichii = schema(infos({ emulateur: 'lichii', coeur: null, plateforme: 'Nintendo Switch 2' }));
+    expect(lichii.console).toBe('Switch 2');
+    expect(role(lichii, 'b')).toBe('A');
   });
 
   it('un jeu PC : la correspondance manette → clavier', () => {

@@ -1052,7 +1052,7 @@ mod tests {
         let sha = crate::sauvegarde::empreinte(&paquet).unwrap();
         println!("reçu {} octets en {:.1} s ; sha256 conforme : {}", std::fs::metadata(&paquet).unwrap().len(), t.elapsed().as_secs_f64(), sha == p["sha256"].as_str().unwrap());
         assert_eq!(sha, p["sha256"].as_str().unwrap());
-        let r = crate::emulateurs::installer_paquet_decrit("MAME", &paquet, &d.path().join("MAME"), p["programme"].as_str(), None).unwrap();
+        let r = crate::emulateurs::installer_paquet_decrit("MAME", &paquet, &d.path().join("MAME"), p["programme"].as_str(), None, None).unwrap();
         println!("installé : {r:?}");
     }
 

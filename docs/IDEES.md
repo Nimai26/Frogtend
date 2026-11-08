@@ -105,3 +105,19 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   (Attendre par défaut ; dire que les sauvegardes déjà écrites restent). Avant de forcer : mettre à l'abri le dossier
   des parties de l'émulateur ; ne terminer que les programmes de son dossier. À décider après l'essai de la rc3
   (besoin 44), qui corrige la fermeture.
+
+- **Montrer l'émulateur « alternatif » sur la fiche du jeu** (08/11, contrat 1.40 : le conseil Switch 2 a Lichii en
+  alternative, « si un jeu ne passe pas avec Eglantine ») : aujourd'hui l'interface ne lit pas `conseil.alternatives` ;
+  il faut passer par ⚙ Réglages ▸ Émulateurs puis choisir l'émulateur pour le jeu. Pour un novice : un bouton « Essayer
+  avec Lichii » sur la fiche (installation sur accord, choix pour CE jeu).
+- **Visual C++ pour Lichii sur un autre PC** (08/11) : le zip de Lichii porte `vc_redist.x64.exe` (Lichii est compilé
+  avec MSVC) ; sans le runtime Visual C++ 2015-2022 x64, lichii.exe ne démarre pas. Venkman l'a (14.51). À faire :
+  le détecter (registre, lecture) et proposer de l'installer (droits administrateur : à annoncer, accord de la personne).
+- **Parties entre Eglantine et Lichii** (08/11, avis lancement) : deux dossiers `user\`, rien de partagé. Proposer une
+  copie unique sur accord (jamais par-dessus), après avoir vérifié sur un vrai jeu que le format est le même.
+- **Abris des anciennes versions d'émulateurs** (08/11) : chaque mise à jour d'Eden, Eglantine ou Lichii garde
+  l'ancienne version (environ 100 à 200 Mo) dans `.frogtend-sauvegardes` ; rien ne fait le ménage. Montrer leur
+  taille et proposer de les retirer (accord, jamais seul).
+- **Mises à jour et DLC des jeux Switch 2** (08/11) : `contexte_switch` ne les gère que pour Eden (Switch).
+- **lichii-updater.exe** (08/11) : à vérifier dans les sources de Lichii s'il se met à jour seul au démarrage (il
+  écrirait hors de Frogtend, et la version notée serait fausse).

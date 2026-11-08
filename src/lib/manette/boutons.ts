@@ -134,6 +134,7 @@ const EMULATEURS: Record<string, (plateforme: string) => { console: string; bout
   // Switch (le A de la Switch est à droite) ; le bouton Home est rendu au menu de Frogtend.
   eden: () => ({ console: 'Switch', boutons: SWITCH_FROGTEND }),
   eglantine: () => ({ console: 'Switch 2', boutons: SWITCH_FROGTEND }),
+  lichii: () => ({ console: 'Switch 2', boutons: SWITCH_FROGTEND }),
   // Dolphin : seulement la GameCube (la Wii a ses propres références de Wiimote).
   dolphin: (plateforme) =>
     /gamecube/i.test(plateforme)
