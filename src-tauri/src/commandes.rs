@@ -2117,8 +2117,11 @@ fn suivre_manette_menu(app: &AppHandle, numero: u64) {
         let d = std::path::Path::new(d);
         crate::manettes::rpcs3_ps_retire(d) && crate::pilotage::rpcs3_active_est_default(d, crate::pilotage::rpcs3_numero_en_cours(d).as_deref())
     });
+    // Eden, Eglantine : le bouton Home retiré par Frogtend (sa disposition) → le bouton Xbox ouvre le menu de Frogtend.
+    let home_retire = partie.as_ref().and_then(|p| p.dossier_emulateur.as_deref()).is_some_and(|d| crate::eden::home_retire(std::path::Path::new(d)));
     let moteur = match (emulateur.as_deref(), partie.as_ref().is_some_and(|p| p.dossier_jeu.is_some())) {
         (Some("rpcs3"), _) if ps_retire => crate::osd_manette::Moteur::EmulateurLibere,
+        (Some("eden" | "eglantine"), _) if home_retire => crate::osd_manette::Moteur::EmulateurLibere,
         (Some(e), _) => crate::osd_manette::Moteur::Emulateur(e),
         (None, true) => crate::osd_manette::Moteur::JeuPc,
         (None, false) => crate::osd_manette::Moteur::Inconnu,
@@ -2971,8 +2974,10 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
         }
     };
     let ps_retire = dossier.as_deref().is_some_and(|d| crate::manettes::rpcs3_ps_retire(d) && crate::pilotage::rpcs3_active_est_default(d, None));
+    let home_retire = dossier.as_deref().is_some_and(crate::eden::home_retire);
     let moteur = match (emulateur.as_deref(), jeu_pc) {
         (Some("rpcs3"), _) if ps_retire => crate::osd_manette::Moteur::EmulateurLibere,
+        (Some("eden" | "eglantine"), _) if home_retire => crate::osd_manette::Moteur::EmulateurLibere,
         (Some(e), _) => crate::osd_manette::Moteur::Emulateur(e),
         (None, true) => crate::osd_manette::Moteur::JeuPc,
         (None, false) => crate::osd_manette::Moteur::Inconnu,

@@ -86,6 +86,13 @@
 git 2.51, Node 24.11, pnpm 10.32, Rust 1.94 (stable, MSVC), Visual Studio Build Tools 2022, WebView2 153.
 **Rien à installer en global.** Les dépendances du projet restent dans le projet (`node_modules`, `target`).
 
+> ⚠ **Règle « réglé à l'installation » (Seb, 08/11).** Tout émulateur que Frogtend installe ou lance est réglé SEUL
+> pour la personne : **la manette** (XInput standard, joueur 1) et **la langue en français** (d'après Windows), sauf
+> indication contraire — « le même principe que RPCS3 ». Jamais par-dessus un choix fait par la personne.
+> État au 08/11 : manette réglée pour RetroArch, DuckStation, PCSX2, Dolphin, RPCS3 ; langue pour RPCS3 seulement.
+> Eden/Eglantine : en cours (0.164.0). Restent à passer en revue : DOSBox Staging, PPSSPP, Xenia, xemu, Cemu, Azahar,
+> Vita3K, mGBA (et la langue de DuckStation, PCSX2, Dolphin, RetroArch).
+
 ## Les lots
 
 ### Lot 0 — Le socle (✅ construit en 0.1.0, jamais publié : remplacé par la 0.2.0)

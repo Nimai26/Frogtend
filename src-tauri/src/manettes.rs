@@ -238,6 +238,8 @@ pub fn regler(id: &str, emulateur: &Path, utilisateur_dolphin: Option<&Path>, fo
             None => Ok(false),
         },
         "rpcs3" => regler_rpcs3_pour_partie(emulateur, forcer, manette_branchee()),
+        // Eden, Eglantine : seulement portable, fermé, joueur 1 encore au clavier (ou `forcer`) — eden.rs.
+        "eden" | "eglantine" => crate::eden::regler_manette(emulateur, forcer, guid_manette_xinput().as_deref()),
         _ => Ok(false),
     }
 }
@@ -275,6 +277,12 @@ pub fn disposition_de_frogtend(id: &str, emulateur: &Path, utilisateur_dolphin: 
             };
             lu && crate::pilotage::rpcs3_active_est_default(emulateur, None)
         }
+        // Eden, Eglantine : la disposition de Frogtend, ou un joueur 1 encore au clavier (Frogtend l'écrira au
+        // lancement) ; une manette réglée par la personne : rien de dessiné. Hors portable : Frogtend n'écrit rien.
+        "eden" | "eglantine" => {
+            crate::eden::portable(emulateur)
+                && std::fs::read_to_string(crate::eden::fichier_reglages(emulateur)).map_or(true, |t| crate::eden::joueur1_au_clavier(&t) || crate::eden::joueur1_de_frogtend(&t))
+        }
         _ => true,
     }
 }
@@ -293,6 +301,44 @@ pub fn premiere_manette_xinput() -> Option<u32> {
         }
     }
     None
+}
+
+/// Le GUID SDL (tel qu'Eden le lie) de la première manette XInput branchée : fournisseur, produit et version lus par
+/// `XInputGetCapabilitiesEx` (ordinal 108 de xinput1_4.dll, comme SDL : `SDL_xinputjoystick.c`) ; s'il manque, le
+/// repli de SDL (045e:02a1). `None` : aucune manette XInput branchée.
+pub fn guid_manette_xinput() -> Option<String> {
+    #[cfg(windows)]
+    {
+        let i = premiere_manette_xinput()?;
+        #[repr(C)]
+        struct CapsEx {
+            caps: [u8; 20],
+            fournisseur: u16,
+            produit: u16,
+            version: u16,
+            r1: u16,
+            r2: u32,
+        }
+        type Lire = unsafe extern "system" fn(u32, u32, u32, *mut CapsEx) -> u32;
+        use windows::core::{w, PCSTR};
+        use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress, LoadLibraryExW, LOAD_LIBRARY_SEARCH_SYSTEM32};
+        // Seulement la DLL de Windows (System32), jamais une copie posée à côté du programme.
+        let f = unsafe { GetModuleHandleW(w!("xinput1_4.dll")) }
+            .or_else(|_| unsafe { LoadLibraryExW(w!("xinput1_4.dll"), None, LOAD_LIBRARY_SEARCH_SYSTEM32) })
+            .ok()
+            .and_then(|h| unsafe { GetProcAddress(h, PCSTR(108usize as *const u8)) });
+        let mut c = CapsEx { caps: [0; 20], fournisseur: 0, produit: 0, version: 0, r1: 0, r2: 0 };
+        // SAFETY : l'adresse vient de GetProcAddress pour l'ordinal 108, de signature (1, index, 0, *mut caps) -> code.
+        let lu = f.is_some_and(|f| unsafe { std::mem::transmute::<_, Lire>(f)(1, i, 0, &mut c) } == 0);
+        let sous_type = if lu { c.caps[1] } else { 1 };
+        let (v, p, n) = if lu && c.fournisseur != 0 && c.produit != 0 { (c.fournisseur, c.produit, c.version) } else { (0x045e, 0x02a1, 0) };
+        let _ = (c.r1, c.r2);
+        Some(crate::eden::guid_xinput(v, p, n, sous_type))
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
 }
 
 /// La manette du joueur 1 de RPCS3. RPCS3 n'a qu'UNE entrée par joueur, mais chacune a un nom générique et se
@@ -724,5 +770,15 @@ mod essai_reel_manette {
         println!("MANETTE BRANCHEE : {:?}", super::manette_branchee());
         let hid = super::peripheriques_hid();
         println!("HID : {} périphériques ; Sony : {:?}", hid.len(), hid.iter().filter(|h| h.to_lowercase().contains("054c")).collect::<Vec<_>>());
+    }
+}
+
+#[cfg(test)]
+mod essai_guid {
+    /// Sur le vrai PC (lecture seule) : `cargo test --lib essai_guid -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn essai_guid_de_la_manette_branchee() {
+        println!("manette XInput : {:?} ; GUID pour Eden : {:?}", super::premiere_manette_xinput(), super::guid_manette_xinput());
     }
 }

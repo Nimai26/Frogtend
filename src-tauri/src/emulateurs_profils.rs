@@ -278,6 +278,10 @@ fn regler_manette(id: &str, emulateur: &Path, utilisateur: Option<&Path>, manett
         Manette::Clavier if id == "rpcs3" => {
             crate::manettes::regler_rpcs3(emulateur, false, crate::manettes::PadRpcs3::Clavier)?;
         }
+        // Eden, Eglantine : la disposition de Frogtend (seulement elle) rendue au clavier d'origine.
+        Manette::Clavier if crate::emulateurs::famille_eden(id) => {
+            crate::eden::rendre_le_clavier(emulateur)?;
+        }
         Manette::Clavier => {}
         Manette::Auto(r) => {
             crate::manettes::regler(id, emulateur, utilisateur, false)?;
@@ -624,6 +628,9 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             if !crate::eden::portable(emulateur) || !crate::lancement::processus_du_dossier(emulateur).is_empty() {
                 return Ok(vec!["-u".into(), profil_de(p).to_string()]);
             }
+            // La manette du joueur 1 et la langue de la console (✅ Seb 08/11) : un échec n'empêche jamais de jouer.
+            let _ = regler_manette(id, emulateur, None, manette);
+            let _ = crate::eden::regler_langue(emulateur, langue_et_clavier_de_windows().0);
             let u = crate::eden::utilisateur_du_profil(emulateur, profil_de(p))?;
             // Les parties d'avant Frogtend : copiées chez la première personne qui joue. Un échec ne touche à rien
             // (elles restent où elles étaient) et n'empêche pas de jouer.

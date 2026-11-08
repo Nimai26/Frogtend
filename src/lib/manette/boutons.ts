@@ -119,6 +119,10 @@ const PS_FROGTEND: Record<string, string> = {
   a: 'Croix', b: 'Rond', x: 'Carré', y: 'Triangle', lb: 'L1', rb: 'R1', lt: 'L2', rt: 'R2', select: 'Select', start: 'Start', l3: 'L3', r3: 'R3', croix: CROIX, stickg: 'Stick gauche', stickd: 'Stick droit',
 };
 
+const SWITCH_FROGTEND: Record<string, string> = {
+  a: 'B', b: 'A', x: 'Y', y: 'X', lb: 'L', rb: 'R', lt: 'ZL', rt: 'ZR', select: '−', start: '+', l3: 'Clic du stick gauche', r3: 'Clic du stick droit', croix: CROIX, stickg: 'Stick gauche', stickd: 'Stick droit',
+};
+
 /** Les émulateurs à part, avec le profil que Frogtend écrit pour le joueur 1 (bouton du joueur → bouton d'origine). */
 const EMULATEURS: Record<string, (plateforme: string) => { console: string; boutons: Record<string, string> } | null> = {
   duckstation: () => ({ console: 'PlayStation', boutons: PS_FROGTEND }),
@@ -126,6 +130,10 @@ const EMULATEURS: Record<string, (plateforme: string) => { console: string; bout
   // RPCS3 : le profil de Frogtend garde la disposition d'origine de ses pilotes XInput, DualShock 4 et DualSense
   // (xinput_pad_handler.cpp:102-118 relu le 03/11 : A → Croix, B → Rond, X → Carré, Y → Triangle, Back → Select).
   rpcs3: () => ({ console: 'PlayStation 3', boutons: PS_FROGTEND }),
+  // Eden, Eglantine : la disposition que Frogtend écrit (eden.rs `disposition_manette`), par POSITION comme sur une
+  // Switch (le A de la Switch est à droite) ; le bouton Home est rendu au menu de Frogtend.
+  eden: () => ({ console: 'Switch', boutons: SWITCH_FROGTEND }),
+  eglantine: () => ({ console: 'Switch 2', boutons: SWITCH_FROGTEND }),
   // Dolphin : seulement la GameCube (la Wii a ses propres références de Wiimote).
   dolphin: (plateforme) =>
     /gamecube/i.test(plateforme)

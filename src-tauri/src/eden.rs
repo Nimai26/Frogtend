@@ -531,6 +531,338 @@ pub fn dossiers_parties(eden: &Path, uuid: &[u8; 16]) -> [(&'static str, PathBuf
     ]
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// La manette du joueur 1 et la langue de la console (✅ Seb 08/11 : « le même principe que RPCS3 »), dans
+// `user/config/qt-config.ini` d'un Eden ou d'un Eglantine PORTABLE et FERMÉ (sinon : rien ; il réécrirait ses
+// réglages en quittant, et hors portable ses réglages sont dans %APPDATA%, où Frogtend n'écrit jamais).
+// ---------------------------------------------------------------------------------------------------------------
+
+/// Le fichier de réglages d'un Eden portable.
+pub fn fichier_reglages(eden: &Path) -> PathBuf {
+    eden.join("user").join("config").join("qt-config.ini")
+}
+
+/// Le GUID SDL d'une manette XInput tel qu'Eden le lie (SDL3, pilote XInput : `SDL_xinputjoystick.c`, et Eden met le
+/// CRC du nom à zéro, `sdl_driver.cpp:30-37`, relu le 08/11) : bus USB, fournisseur, produit et version de la manette,
+/// signature « x » et sous-type. Il change d'une manette à l'autre (Xbox One/Series : 045e:02ff ; la manette virtuelle
+/// de Sunshine : celle d'une Xbox 360) : Frogtend le recalcule à chaque partie, pour la manette branchée.
+pub fn guid_xinput(fournisseur: u16, produit: u16, version: u16, sous_type: u8) -> String {
+    let mut o = [0u8; 16];
+    o[0] = 0x03;
+    o[4..6].copy_from_slice(&fournisseur.to_le_bytes());
+    o[8..10].copy_from_slice(&produit.to_le_bytes());
+    o[12..14].copy_from_slice(&version.to_le_bytes());
+    o[14] = b'x';
+    o[15] = sous_type;
+    o.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// La disposition que Frogtend écrit (celle qu'écrit la configuration automatique d'Eden pour une manette XInput, par
+/// POSITION comme sur une Switch : le A de la Switch, à droite, est le B de la manette Xbox). Le bouton Home est laissé
+/// vide : le bouton Xbox ouvre le menu de Frogtend (« Frogtend partout », comme le bouton PS de RPCS3).
+pub fn disposition_manette(g: &str) -> Vec<(&'static str, String)> {
+    let b = |n: u8| format!("\"engine:sdl,button:{n},port:0,guid:{g}\"");
+    let gachette = |axe: u8| format!("\"engine:sdl,invert:+,port:0,guid:{g},axis:{axe},threshold:0.500000\"");
+    let croix = |d: &str| format!("\"engine:sdl,direction:{d},port:0,guid:{g},hat:0\"");
+    let stick = |x: u8, y: u8| format!("\"engine:sdl,offset_y:0.000000,invert_x:+,invert_y:+,deadzone:0.150000,port:0,guid:{g},axis_x:{x},offset_x:-0.000000,axis_y:{y}\"");
+    vec![
+        ("player_0_button_a", b(1)),
+        ("player_0_button_b", b(0)),
+        ("player_0_button_x", b(3)),
+        ("player_0_button_y", b(2)),
+        ("player_0_button_lstick", b(8)),
+        ("player_0_button_rstick", b(9)),
+        ("player_0_button_l", b(4)),
+        ("player_0_button_r", b(5)),
+        ("player_0_button_zl", gachette(2)),
+        ("player_0_button_zr", gachette(5)),
+        ("player_0_button_plus", b(7)),
+        ("player_0_button_minus", b(6)),
+        ("player_0_button_dleft", croix("left")),
+        ("player_0_button_dup", croix("up")),
+        ("player_0_button_dright", croix("right")),
+        ("player_0_button_ddown", croix("down")),
+        ("player_0_button_slleft", b(4)),
+        ("player_0_button_srleft", b(5)),
+        ("player_0_button_slright", b(4)),
+        ("player_0_button_srright", b(5)),
+        ("player_0_button_home", "[empty]".to_string()),
+        ("player_0_button_screenshot", "[empty]".to_string()),
+        ("player_0_lstick", stick(0, 1)),
+        ("player_0_rstick", stick(3, 4)),
+    ]
+}
+
+/// La valeur d'une clé de `[Controls]` (sans guillemets).
+fn valeur_controls(texte: &str, cle: &str) -> Option<String> {
+    crate::manettes::lire_ini(texte, "Controls", cle).first().map(|v| crate::emulateurs_profils::lire_valeur_qt(v))
+}
+
+/// Le joueur 1 est-il encore au clavier (le réglage d'origine d'Eden, ou rien d'écrit) ?
+pub fn joueur1_au_clavier(texte: &str) -> bool {
+    valeur_controls(texte, "player_0_button_a").is_none_or(|v| v.is_empty() || v.starts_with("engine:keyboard"))
+}
+
+/// Le GUID de la manette du joueur 1 (lu sur son bouton A), s'il est sur SDL.
+fn guid_du_joueur1(texte: &str) -> Option<String> {
+    let a = valeur_controls(texte, "player_0_button_a")?;
+    a.split(',').find_map(|x| x.strip_prefix("guid:")).map(String::from)
+}
+
+/// Le joueur 1 a-t-il exactement la disposition de Frogtend (quelle que soit la manette) ?
+pub fn joueur1_de_frogtend(texte: &str) -> bool {
+    guid_du_joueur1(texte).is_some_and(|g| {
+        disposition_manette(&g).iter().all(|(c, v)| valeur_controls(texte, c).as_deref() == Some(crate::emulateurs_profils::lire_valeur_qt(v).as_str()))
+    })
+}
+
+/// Le bouton Home est-il retiré à Eden (la disposition de Frogtend, Home vide) ? Alors le bouton Xbox ouvre le menu
+/// de Frogtend ; un Home remis par la personne le rend à Eden.
+pub fn home_retire(eden: &Path) -> bool {
+    portable(eden)
+        && lire_reglages(eden).is_ok_and(|t| {
+            joueur1_de_frogtend(&t) && valeur_controls(&t, "player_0_button_home").is_some_and(|v| v.is_empty() || v == "[empty]")
+        })
+}
+
+/// Le fichier de réglages, lu avec un plafond (un fichier de plusieurs Mo n'est pas celui d'Eden : jamais touché).
+fn lire_reglages(eden: &Path) -> Resultat<String> {
+    let f = fichier_reglages(eden);
+    if std::fs::metadata(&f)?.len() > 8 * 1024 * 1024 {
+        return Err(Erreur::Refus("Le fichier de réglages d'Eden est anormalement gros : Frogtend n'y touche pas.".into()));
+    }
+    Ok(std::fs::read_to_string(f)?)
+}
+
+/// Peut-on écrire les réglages de cet Eden (portable, fermé, fichier déjà créé par Eden) ?
+fn reglages_modifiables(eden: &Path) -> bool {
+    portable(eden) && crate::lancement::processus_du_dossier(eden).is_empty() && fichier_reglages(eden).is_file()
+}
+
+/// Écrit des clés QSettings (chacune avec sa ligne `\default=false`, sinon Qt garde la valeur d'origine) dans une
+/// section, configuration d'avant mise à l'abri. Rend vrai si le fichier a changé.
+fn ecrire_qt(eden: &Path, texte: &str, section: &str, valeurs: &[(&str, String)]) -> Resultat<bool> {
+    let defauts: Vec<String> = valeurs.iter().map(|(c, _)| format!("{c}\\default")).collect();
+    let mut toutes: Vec<(&str, &str)> = Vec::new();
+    for d in &defauts {
+        toutes.push((d.as_str(), "false"));
+    }
+    for (c, v) in valeurs {
+        toutes.push((c, v.as_str()));
+    }
+    let Some(apres) = crate::emulateurs_profils::regler_cles_qt(texte, section, &toutes) else { return Ok(false) };
+    crate::emulateurs_profils::remplacer_config(eden, &fichier_reglages(eden), &apres)?;
+    Ok(true)
+}
+
+/// La manette du joueur 1 : la disposition XInput de Frogtend pour la manette branchée (`guid`, voir `guid_xinput`),
+/// seulement si le joueur 1 est encore au clavier, déjà à Frogtend (une autre manette : réécrit pour elle), ou à la
+/// demande de la personne (`forcer` : « Remettre la manette par défaut ») — jamais par-dessus une manette qu'elle a
+/// réglée elle-même. Sans manette XInput branchée : rien d'écrit. Rend vrai si le joueur 1 a la disposition de Frogtend.
+pub fn regler_manette(eden: &Path, forcer: bool, guid: Option<&str>) -> Resultat<bool> {
+    if !reglages_modifiables(eden) {
+        return Ok(false);
+    }
+    let texte = lire_reglages(eden)?;
+    let a_frogtend = joueur1_de_frogtend(&texte);
+    let Some(g) = guid else { return Ok(a_frogtend) };
+    if a_frogtend && guid_du_joueur1(&texte).as_deref() == Some(g) {
+        return Ok(true);
+    }
+    if !forcer && !a_frogtend && !joueur1_au_clavier(&texte) {
+        return Ok(false);
+    }
+    let mut v = disposition_manette(g);
+    v.push(("player_0_connected", "true".into()));
+    ecrire_qt(eden, &texte, "Controls", &v)?;
+    Ok(true)
+}
+
+/// « Clavier et souris » choisi pour ce jeu : la disposition de Frogtend (seulement elle) est rendue aux réglages
+/// d'origine d'Eden (`\default=true` : Qt reprend alors la valeur par défaut, le clavier). Rend vrai si le fichier a
+/// changé.
+pub fn rendre_le_clavier(eden: &Path) -> Resultat<bool> {
+    if !reglages_modifiables(eden) {
+        return Ok(false);
+    }
+    let texte = lire_reglages(eden)?;
+    let Some(g) = guid_du_joueur1(&texte).filter(|_| joueur1_de_frogtend(&texte)) else { return Ok(false) };
+    let defauts: Vec<String> = disposition_manette(&g).iter().map(|(c, _)| format!("{c}\\default")).collect();
+    let v: Vec<(&str, &str)> = defauts.iter().map(|d| (d.as_str(), "true")).collect();
+    let Some(apres) = crate::emulateurs_profils::regler_cles_qt(&texte, "Controls", &v) else { return Ok(false) };
+    crate::emulateurs_profils::remplacer_config(eden, &fichier_reglages(eden), &apres)?;
+    Ok(true)
+}
+
+/// La langue de la console Switch (énumération `Language` d'Eden) d'après la langue de Windows (LANGID).
+pub fn langue_switch(langid: u16) -> Option<u8> {
+    Some(match (langid & 0x3FF, langid) {
+        (_, 0x0409 | 0x1009) => 1,
+        (_, 0x0C0C) => 13,
+        (_, 0x0416) => 17,
+        (_, 0x0404 | 0x0C04 | 0x1404) => 16,
+        (_, 0x080A) => 14,
+        (0x09, _) => 12,
+        (0x0C, _) => 2,
+        (0x07, _) => 3,
+        (0x10, _) => 4,
+        (0x0A, _) => 5,
+        (0x04, _) => 15,
+        (0x12, _) => 7,
+        (0x13, _) => 8,
+        (0x16, _) => 9,
+        (0x19, _) => 10,
+        (0x11, _) => 0,
+        _ => return None,
+    })
+}
+
+/// La région de la console (énumération `Region` d'Eden) d'après la langue de Windows.
+pub fn region_switch(langid: u16) -> Option<u8> {
+    Some(match (langid & 0x3FF, langid) {
+        (_, 0x0409 | 0x1009 | 0x0C0C | 0x080A | 0x0416) => 1,
+        (_, 0x0C09) => 3,
+        (_, 0x0404 | 0x0C04 | 0x1404) => 6,
+        (0x11, _) => 0,
+        (0x12, _) => 5,
+        (0x04, _) => 4,
+        (0x09 | 0x0C | 0x07 | 0x10 | 0x0A | 0x13 | 0x16 | 0x19, _) => 2,
+        _ => return None,
+    })
+}
+
+/// La marque « langue déjà prise de Windows » (dans le dossier de l'émulateur, jamais ailleurs).
+fn marque_langue(eden: &Path) -> PathBuf {
+    eden.join("user").join(".frogtend-langue")
+}
+
+/// La langue et la région de la console prises de Windows, UNE seule fois par émulateur (une marque le retient :
+/// la personne qui choisit ensuite l'anglais dans Eden le garde), et seulement une clé encore à sa valeur d'origine
+/// (`\default` absent ou vrai). Rend vrai si le fichier a changé.
+pub fn regler_langue(eden: &Path, langid: u16) -> Resultat<bool> {
+    if !reglages_modifiables(eden) || marque_langue(eden).exists() {
+        return Ok(false);
+    }
+    let texte = lire_reglages(eden)?;
+    let d_origine = |cle: &str| crate::manettes::lire_ini(&texte, "System", &format!("{cle}\\default")).first().is_none_or(|v| v.trim() == "true");
+    let mut v: Vec<(&str, String)> = Vec::new();
+    if let Some(l) = langue_switch(langid).filter(|_| d_origine("language_index")) {
+        v.push(("language_index", l.to_string()));
+    }
+    if let Some(r) = region_switch(langid).filter(|_| d_origine("region_index")) {
+        v.push(("region_index", r.to_string()));
+    }
+    let change = !v.is_empty() && ecrire_qt(eden, &texte, "System", &v)?;
+    std::fs::write(marque_langue(eden), b"")?;
+    Ok(change)
+}
+
+#[cfg(test)]
+mod tests_reglages {
+    use super::*;
+
+    fn eden_portable(texte: &str) -> tempfile::TempDir {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join("user").join("config")).unwrap();
+        std::fs::write(fichier_reglages(d.path()), texte).unwrap();
+        d
+    }
+
+    const CLAVIER: &str = "[Controls]\r\nplayer_0_button_a\\default=false\r\nplayer_0_button_a=\"engine:keyboard,code:67,toggle:0\"\r\nplayer_0_button_home\\default=false\r\nplayer_0_button_home=\"engine:keyboard,code:0,toggle:0\"\r\n\r\n[System]\r\nlanguage_index\\default=true\r\nlanguage_index=1\r\nregion_index\\default=true\r\nregion_index=1\r\n";
+
+    #[test]
+    fn la_manette_est_posee_sur_un_joueur_au_clavier_puis_gardee() {
+        let d = eden_portable(CLAVIER);
+        assert!(!home_retire(d.path()));
+        assert!(!regler_manette(d.path(), false, None).unwrap(), "sans manette branchée : rien");
+        assert_eq!(std::fs::read_to_string(fichier_reglages(d.path())).unwrap(), CLAVIER);
+        assert!(regler_manette(d.path(), false, Some(UNE)).unwrap());
+        let t = std::fs::read_to_string(fichier_reglages(d.path())).unwrap();
+        assert!(t.contains("player_0_button_a\\default=false\r\nplayer_0_button_a=\"engine:sdl,button:1,port:0,guid:030000005e040000ff02000000007801\"\r\n"), "{t}");
+        assert!(t.contains("player_0_button_home=[empty]\r\n") && !t.contains("engine:keyboard"), "{t}");
+        assert!(t.contains("region_index=1\r\n"), "le reste intact");
+        assert!(joueur1_de_frogtend(&t) && home_retire(d.path()));
+        // L'ancienne configuration est gardée à l'abri.
+        assert!(walk(d.path()).iter().any(|p| p != &fichier_reglages(d.path()) && std::fs::read_to_string(p).is_ok_and(|x| x == CLAVIER)));
+        // Une seconde fois : rien ne change.
+        assert!(regler_manette(d.path(), false, Some(UNE)).unwrap());
+        assert_eq!(std::fs::read_to_string(fichier_reglages(d.path())).unwrap(), t);
+        // Une autre manette (celle de Sunshine) : réécrit pour elle ; aucune branchée : gardé.
+        assert!(regler_manette(d.path(), false, Some(AUTRE)).unwrap());
+        let t2 = std::fs::read_to_string(fichier_reglages(d.path())).unwrap();
+        assert!(t2.contains(&format!("guid:{AUTRE}\"")) && !t2.contains(UNE) && joueur1_de_frogtend(&t2));
+        assert!(regler_manette(d.path(), false, None).unwrap());
+        // « Clavier et souris » pour un jeu : rendu aux valeurs d'origine d'Eden, Home compris.
+        assert!(rendre_le_clavier(d.path()).unwrap());
+        let t3 = std::fs::read_to_string(fichier_reglages(d.path())).unwrap();
+        assert!(t3.contains("player_0_button_a\\default=true\r\n") && t3.contains("player_0_button_home\\default=true\r\n"), "{t3}");
+        assert!(!rendre_le_clavier(d.path()).unwrap(), "une seconde fois : rien");
+    }
+
+    const UNE: &str = "030000005e040000ff02000000007801";
+    const AUTRE: &str = "030000005e0400008e02000014017801";
+
+    #[test]
+    fn le_guid_a_la_forme_qu_eden_lie() {
+        // Relevé dans la configuration écrite par Eden chez Seb (manette Xbox, 08/11).
+        assert_eq!(guid_xinput(0x045e, 0x02ff, 0, 1), UNE);
+        assert_eq!(guid_xinput(0x045e, 0x028e, 0x0114, 1), AUTRE);
+    }
+
+    fn walk(d: &Path) -> Vec<PathBuf> {
+        let mut v = Vec::new();
+        for e in std::fs::read_dir(d).unwrap().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                v.extend(walk(&p));
+            } else {
+                v.push(p);
+            }
+        }
+        v
+    }
+
+    #[test]
+    fn une_manette_reglee_par_la_personne_n_est_jamais_remplacee_sans_sa_demande() {
+        let a_elle = "[Controls]\nplayer_0_button_a\\default=false\nplayer_0_button_a=\"engine:sdl,button:0,port:0,guid:03000000aaaa\"\n";
+        let d = eden_portable(a_elle);
+        assert!(!regler_manette(d.path(), false, Some(UNE)).unwrap());
+        assert_eq!(std::fs::read_to_string(fichier_reglages(d.path())).unwrap(), a_elle);
+        assert!(regler_manette(d.path(), true, Some(UNE)).unwrap(), "à sa demande");
+        assert!(joueur1_de_frogtend(&std::fs::read_to_string(fichier_reglages(d.path())).unwrap()));
+    }
+
+    #[test]
+    fn rien_hors_du_mode_portable_ni_sans_fichier() {
+        let d = tempfile::tempdir().unwrap();
+        assert!(!regler_manette(d.path(), true, Some(UNE)).unwrap() && !regler_langue(d.path(), 0x040C).unwrap());
+        assert!(!d.path().join("user").exists(), "jamais basculé en portable");
+        std::fs::create_dir_all(d.path().join("user")).unwrap();
+        assert!(!regler_manette(d.path(), true, Some(UNE)).unwrap());
+        assert!(!fichier_reglages(d.path()).exists(), "jamais créé (Eden l'écrit à sa première ouverture)");
+    }
+
+    #[test]
+    fn la_langue_vient_de_windows_sauf_choix_de_la_personne() {
+        let d = eden_portable(CLAVIER);
+        assert!(regler_langue(d.path(), 0x040C).unwrap());
+        let t = std::fs::read_to_string(fichier_reglages(d.path())).unwrap();
+        assert!(t.contains("language_index\\default=false\r\nlanguage_index=2\r\n") && t.contains("region_index\\default=false\r\nregion_index=2\r\n"), "{t}");
+        // Ensuite (ou un choix de la personne) : jamais retouché.
+        assert!(!regler_langue(d.path(), 0x0409).unwrap());
+        // Même si la personne a remis la valeur d'origine (l'anglais, `\default=true`) : une seule fois.
+        let remis = std::fs::read_to_string(fichier_reglages(d.path())).unwrap().replace("language_index\\default=false\r\nlanguage_index=2", "language_index\\default=true\r\nlanguage_index=1");
+        std::fs::write(fichier_reglages(d.path()), &remis).unwrap();
+        assert!(!regler_langue(d.path(), 0x040C).unwrap());
+        assert_eq!(std::fs::read_to_string(fichier_reglages(d.path())).unwrap(), remis);
+        std::fs::write(fichier_reglages(d.path()), CLAVIER).unwrap();
+        assert_eq!(langue_switch(0x1009), Some(1), "anglais du Canada : américain, région USA");
+        assert_eq!((langue_switch(0x0C0C), region_switch(0x0C0C)), (Some(13), Some(1)), "français du Canada");
+        assert_eq!((langue_switch(0x080C), region_switch(0x080C)), (Some(2), Some(2)), "Belgique");
+        assert_eq!(langue_switch(0x0401), None, "arabe : rien de deviné");
+    }
+}
+
 #[cfg(test)]
 mod tests {
 

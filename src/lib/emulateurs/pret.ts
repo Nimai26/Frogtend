@@ -122,7 +122,7 @@ export function dossierParDefaut(emplacementsJeux: string[], disque?: string | n
 }
 
 /** Les émulateurs dont Frogtend règle la manette (une manette Xbox standard, ou toute manette reconnue). */
-export const MANETTE_REGLEE = ['retroarch', 'duckstation', 'pcsx2', 'dolphin', 'rpcs3'];
+export const MANETTE_REGLEE = ['retroarch', 'duckstation', 'pcsx2', 'dolphin', 'rpcs3', 'eden', 'eglantine'];
 
 /** Ceux qui préparent longuement la première partie de chaque jeu (compilation, une seule fois). */
 const PREMIERE_PARTIE_LONGUE = ['rpcs3', 'cemu', 'eden', 'eglantine', 'xenia', 'yuzu', 'suyu', 'ryujinx'];

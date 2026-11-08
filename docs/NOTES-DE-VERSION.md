@@ -1,5 +1,17 @@
 # Notes de version de Frogtend
 
+## 0.164.0 — Eden et Eglantine : ta manette et le français, tout seuls
+
+- 🎮 Au lancement d'un jeu Switch ou Switch 2, Frogtend règle ta manette pour le joueur 1 (la disposition par
+  position, comme sur une Switch : le A de la Switch est le B de ta manette Xbox). Il la règle pour la manette
+  BRANCHÉE à ce moment-là : ta manette Xbox, ou la manette virtuelle quand tu joues en streaming sur la télé.
+- Une manette que tu as réglée toi-même dans Eden ou Eglantine n'est jamais remplacée (sauf avec « Remettre la
+  manette par défaut »). L'ancienne configuration est toujours gardée à l'abri.
+- 🇫🇷 La console est mise en français et en Europe (d'après la langue de Windows), seulement si tu n'as pas choisi
+  toi-même.
+- Le bouton Xbox ouvre le menu de Frogtend pendant la partie (il n'est plus le bouton Home de la Switch) ; l'écran
+  « 🎮 Boutons » du menu montre la correspondance avec la manette de la Switch.
+
 ## 0.163.0 — Un dossier pour chaque nouveau système
 
 - 📁 Le premier jeu d'un système qui n'a pas encore ses propres dossiers : Frogtend te dit où il ira (ton dossier par

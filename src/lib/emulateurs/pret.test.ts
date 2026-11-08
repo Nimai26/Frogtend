@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Conseil } from '$lib/api';
-import { avecConseil, changementDeConseil, memeEmulateur, biosADire, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, messagePret, micrologicielServi, firmwareSwitchServi, questionFirmwareSwitch, palier, poidsBios, versionAutre, versionDansNote, type Possible } from './pret';
+import { MANETTE_REGLEE, avecConseil, changementDeConseil, memeEmulateur, biosADire, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, messagePret, micrologicielServi, firmwareSwitchServi, questionFirmwareSwitch, palier, poidsBios, versionAutre, versionDansNote, type Possible } from './pret';
 
 const rec = (nom: string, recommande: boolean, bios = '') => ({ nom, site: '', recommande, ligne_de_commande: '', extensions: [], bios });
 
@@ -300,5 +300,11 @@ describe('le conseil de la maison a changé (contrat 1.8, maj_le)', () => {
     // Une ligne choisie par la personne n'est jamais touchée.
     const perso = { ...doublee, ligne: '-b -e --debugger "%rom%"' };
     expect(changementDeConseil(perso, c16, '-b -e')).toBeNull();
+  });
+});
+
+describe('les émulateurs dont Frogtend règle la manette', () => {
+  it('Eden et Eglantine en sont (✅ Seb 08/11)', () => {
+    expect(MANETTE_REGLEE).toEqual(expect.arrayContaining(['rpcs3', 'eden', 'eglantine']));
   });
 });

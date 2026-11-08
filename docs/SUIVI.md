@@ -146,6 +146,17 @@
   Essai 08/11 : la Switch 2 absente du catalogue = dernière synchro AVANT l'ajout de Zelda par Firehouse (→ 🔄).
   DEMANDE de Seb (08/11) : « quand un nouveau système apparaît, dire où il va être installé et demander si on veut un
   autre dossier pour ce système » → 0.163.0 (`dossierPourNouveauSysteme`, premier jeu d'un système sans dossiers à lui).
+  ESSAI 08/11 (0.163.0) ✅ jusqu'au lancement de Zelda ; MAIS (Seb) « l'installation ne fait pas la configuration de
+  la manette ni le réglage des langues… le même principe que RPCS3 » → règle générale notée dans PLAN.md (« réglé à
+  l'installation »). FAIT en 0.164.0 pour Eden/Eglantine : `eden::regler_manette` (joueur 1 au clavier ou déjà à
+  Frogtend, réécrit pour la manette BRANCHÉE à chaque partie : Eden lie par GUID exact, propre à chaque manette —
+  sources Eden master 07/11, SDL3 `SDL_xinputjoystick.c` ; GUID calculé par `manettes::guid_manette_xinput`, vérifié
+  identique à celui écrit par Eden chez Seb), `eden::regler_langue` (`\default` absent/true seulement), Home vidé →
+  bouton Xbox au menu (`Moteur::EmulateurLibere`), boutons.ts. Langue de l'INTERFACE d'Eden : vide = celle de Windows
+  (rien à faire). PAS VÉRIFIÉ : GUID de la manette virtuelle de Sunshine (calculé de la même façon) ; manettes non
+  XInput (PS5…) : rien d'écrit. Raccourcis manette d'Eden (Home+…) perdus : Frogtend a son menu.
+  Relecture lancement : 0 bloquant ; 2 importants corrigés (« Clavier » pour un jeu rend le clavier d'origine,
+  `rendre_le_clavier` ; langue posée UNE fois, marque `user\.frogtend-langue`) + mineurs (System32, plafond 8 Mo, en-CA).
   ESSAI 07/11 (0.160.1) : les captures s'affichent ✅, mais les boutons sont cachés par la capture (fenêtre du menu en
   jeu) → scène `minmax(0, 1fr)` + image en position absolue `object-fit: contain` → 0.160.2.
 - **Essai du 03/11 (0.155.0)** : MGS4 importé (`.zip` de 32,7 Go contenant un `.iso`) → ▶ Jouer donnait le .zip à RPCS3

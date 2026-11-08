@@ -6,10 +6,17 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Eden et Eglantine : ta manette et le français (0.164.0)
+- [ ] Manette Xbox branchée, ▶ Jouer à Zelda (Switch 2) : la manette répond dès le début, A de la Switch = B de la
+      manette Xbox ; le jeu est en français.
+- [ ] Le bouton Xbox ouvre le menu de Frogtend ; « 🎮 Boutons » montre la disposition de la Switch 2.
+- [ ] Plus tard, en streaming (Moonlight) : la manette de la télé répond aussi (Frogtend la règle au lancement).
+
 ## Un dossier pour chaque nouveau système (0.163.0)
-- [ ] 🔄 Synchroniser : la Switch 2 apparaît dans le catalogue.
-- [ ] Zelda (Switch 2) ▸ mettre dans la ludothèque : « 📁 Les jeux Switch 2 : où les ranger ? » ; essayer « 📂 Un
-      autre dossier… » ; le récapitulatif montre ce dossier ; ⚙ Options ▸ Emplacements le montre pour Switch 2.
+- [x] 🔄 Synchroniser : la Switch 2 apparaît dans le catalogue (Seb, 08/11).
+- [x] Zelda (Switch 2) ▸ mettre dans la ludothèque : la question est posée, « 📂 Un autre dossier… » choisi,
+      téléchargement lancé (Seb, 08/11).
+- [ ] ⚙ Options ▸ Emplacements montre ce dossier pour Switch 2.
 
 ## La Switch 2, avec Eglantine (0.162.0)
 - [ ] Catalogue ▸ Zelda Ocarina of Time (Nintendo Switch 2) dans ta ludothèque (25,6 Go, durée annoncée).

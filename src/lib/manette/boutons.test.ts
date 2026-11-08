@@ -74,6 +74,13 @@ describe('les boutons de la manette d’origine', () => {
     expect(role(ps3, 'a')).toBe('Croix');
     expect(role(ps3, 'y')).toBe('Triangle');
     expect(role(ps3, 'select')).toBe('Select');
+    // Eden, Eglantine : par position, comme sur une Switch (le A de la Switch est à droite : le B de la Xbox).
+    const s2 = schema(infos({ emulateur: 'eglantine', coeur: null, plateforme: 'Nintendo Switch 2' }));
+    expect(s2.console).toBe('Switch 2');
+    expect(role(s2, 'b')).toBe('A');
+    expect(role(s2, 'a')).toBe('B');
+    expect(role(s2, 'lt')).toBe('ZL');
+    expect(role(schema(infos({ emulateur: 'eden', coeur: null, plateforme: 'Nintendo Switch' })), 'start')).toBe('+');
   });
 
   it('un jeu PC : la correspondance manette → clavier', () => {
