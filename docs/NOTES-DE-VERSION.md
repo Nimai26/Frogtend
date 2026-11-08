@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.170.0 — Les clés et le logiciel système aussi pour Lichii
+
+- 🔑 Lichii reçoit enfin tes clés de la Switch 2 (servies par Firehouse) quand tu dis « Les poser » : avant, Frogtend
+  ne les posait que pour Eglantine, l'émulateur conseillé, et la question revenait à chaque partie sans rien faire.
+  Le logiciel système de la Switch 2 est proposé juste après.
+- Si les clés n'ont vraiment pas pu être posées, Frogtend te le dit au lieu de lancer le jeu en silence.
+
 ## 0.169.0 — Lichii réglé dès sa première partie
 
 - 🎮 Un émulateur Switch ou Switch 2 tout juste installé (Lichii, Eglantine, Eden) a ta manette, le français, le

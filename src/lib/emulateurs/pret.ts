@@ -26,6 +26,20 @@ export function estConseille(rec: EmulateurRecommande, conseil: Conseil | null |
   return !!conseil?.emulateur && rec.id === conseil.emulateur;
 }
 
+/** Les fichiers système du conseil (clés, firmware…) vont-ils aussi à cette ligne ? À l'émulateur du conseil, et à
+ * une alternative de la famille d'Eden que Firehouse cite pour la même console (Lichii pour la Switch 2 : mêmes
+ * dossiers, mêmes clés). Le pendant de `programme_pour_le_conseil` dans le cœur. */
+export function fichiersDuConseil(rec: EmulateurRecommande, conseil: Conseil | null | undefined): boolean {
+  if (estConseille(rec, conseil)) return true;
+  return (
+    !!conseil?.emulateur &&
+    !!rec.id &&
+    FAMILLE_EDEN.includes(conseil.emulateur) &&
+    FAMILLE_EDEN.includes(rec.id) &&
+    (conseil.alternatives ?? []).some((a) => a.emulateur === rec.id)
+  );
+}
+
 /**
  * La ligne de commande retenue (contrat 1.8). Pour l'émulateur du conseil : les options de Frogtend pour cet émulateur
  * (plein écran, sans interface…), puis la ligne DU CONSEIL (son cœur, `%rom%`) — JAMAIS celle de LaunchBox. Sinon (pas
@@ -273,7 +287,7 @@ export function messagePret(o: {
   ];
   if (choix.comment !== 'deja') lignes.push(`Dossier : ${o.dossier}\\${choix.nom}${o.dossierNouveau ? ' (le dossier des émulateurs, modifiable dans ⚙ Options ▸ Émulateurs)' : ''}`);
   if (choix.id && MANETTE_REGLEE.includes(choix.id)) lignes.push('Ta manette (Xbox ou autre) est réglée pour toi.');
-  if (estConseille(choix.rec, o.conseil)) {
+  if (fichiersDuConseil(choix.rec, o.conseil)) {
     const { fournis, aPoser, cles } = biosADire(o.conseil!.bios);
     if (fournis.length) {
       lignes.push(

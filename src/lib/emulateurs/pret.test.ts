@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Conseil } from '$lib/api';
-import { MANETTE_REGLEE, avecConseil, changementDeConseil, memeEmulateur, biosADire, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, ligneDe, messagePret, micrologicielServi, firmwareSwitchServi, questionFirmwareSwitch, palier, poidsBios, versionAutre, versionDansNote, type Possible } from './pret';
+import { MANETTE_REGLEE, avecConseil, changementDeConseil, memeEmulateur, biosADire, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, fichiersDuConseil, ligneDe, messagePret, micrologicielServi, firmwareSwitchServi, questionFirmwareSwitch, palier, poidsBios, versionAutre, versionDansNote, type Possible } from './pret';
 
 const rec = (nom: string, recommande: boolean, bios = '') => ({ nom, site: '', recommande, ligne_de_commande: '', extensions: [], bios });
 
@@ -306,5 +306,17 @@ describe('le conseil de la maison a changé (contrat 1.8, maj_le)', () => {
 describe('les émulateurs dont Frogtend règle la manette', () => {
   it('Eden et Eglantine en sont (✅ Seb 08/11)', () => {
     expect(MANETTE_REGLEE).toEqual(expect.arrayContaining(['rpcs3', 'eden', 'eglantine', 'lichii']));
+  });
+});
+
+describe('les clés et le firmware du conseil vont aussi à Lichii, alternative de la Switch 2 (08/11)', () => {
+  const s2 = { emulateur: 'eglantine', coeur: null, ligne_de_commande: '', maj_le: '', bios: [], alternatives: [{ nom: 'Lichii', emulateur: 'lichii', coeur: null, quand: '', site: '' }] } as unknown as Conseil;
+  const ligne = (id: string) => ({ ...ligneLb(id, id, false), id });
+  it('Eglantine et Lichii oui ; jamais une alternative non citée ni hors de la famille d’Eden', () => {
+    expect(fichiersDuConseil(ligne('eglantine'), s2)).toBe(true);
+    expect(fichiersDuConseil(ligne('lichii'), s2)).toBe(true);
+    expect(fichiersDuConseil(ligne('lichii'), { ...s2, alternatives: [] } as Conseil)).toBe(false);
+    expect(fichiersDuConseil(ligne('mesen'), { ...s2, emulateur: 'retroarch', alternatives: [{ nom: 'Mesen', emulateur: 'mesen', coeur: null, quand: '', site: '' }] } as Conseil)).toBe(false);
+    expect(fichiersDuConseil(ligne('lichii'), null)).toBe(false);
   });
 });

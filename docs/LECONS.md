@@ -382,3 +382,8 @@ l'émulateur » (prudente) rendait le réglage muet sur une installation NEUVE, 
 aucun test ne couvrait « installé puis lancé une fois ». Seb l'avait déjà demandé (règle du 08/11). · Règle : chaque
 émulateur a un test « installation neuve, première partie » (dossier portable vide, pas de fichier de config), et la
 répétition avant livraison fait ce premier lancement.
+
+08/11 (0.170.0) : « oui » sans effet : bios_poser rendait un bilan vide sans rien dire quand le programme n'était pas
+celui du conseil (Lichii, alternative), donc l'accord de Seb ne servait à rien et la question revenait. · Règle : une
+action acceptée qui ne fait rien le DIT (journal + fenêtre) ; et chaque émulateur ajouté se répète jusqu'au bout
+(clés, firmware, première partie) sur une installation neuve, pas seulement « il se lance ».

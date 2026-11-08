@@ -50,6 +50,18 @@ pub fn est_eden(programme: &str) -> bool {
     })
 }
 
+/// L'id Frogtend d'un programme de la famille d'Eden (« eglantine », « lichii », sinon « eden »).
+pub fn id_de(programme: &str) -> &'static str {
+    let n = Path::new(programme).file_name().map(|n| n.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    if n.starts_with("eglantine") {
+        "eglantine"
+    } else if n.starts_with("lichii") {
+        "lichii"
+    } else {
+        "eden"
+    }
+}
+
 /// La plateforme d'un programme de la famille d'Eden : Eglantine et Lichii = Switch 2 (leurs clés et leur firmware
 /// sont ceux de la Switch 2), sinon Switch.
 pub fn plateforme(programme: &str) -> &'static str {

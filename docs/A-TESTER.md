@@ -6,6 +6,11 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Les clés et le logiciel système pour Lichii (0.170.0)
+- [ ] Mettre à jour Frogtend, ▶ Jouer à Zelda avec Lichii : « 🔑 Les poser » → les clés posées, puis la question
+      du logiciel système de la Switch 2 → l'installer ; à la partie suivante, plus aucune question.
+- [ ] Avec clés et logiciel système, l'écran noir après l'intro revient-il ? Combien d'images par seconde ?
+
 ## Lichii réglé dès sa première partie (0.169.0)
 - [ ] Mettre à jour Frogtend, ▶ Jouer à Zelda avec Lichii : la manette répond (A de la Switch = B de la Xbox), le jeu
       est en français, le bouton Xbox ouvre le menu de Frogtend et « 🎮 Boutons » montre la Switch 2 ; Quitter : sans

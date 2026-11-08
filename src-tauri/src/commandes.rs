@@ -5530,13 +5530,15 @@ pub async fn eden_firmware_servi(app: AppHandle, noyau: State<'_, Noyau>, progra
     }
     exiger_programme_de_confiance(&app, &noyau, &p)?;
     let dossier = p.parent().map(std::path::PathBuf::from).unwrap_or_default();
+    // Son nom à lui dans les messages (Eglantine, Lichii…), jamais « Eden » pour un autre.
+    let nom = crate::emulateurs::fiche(crate::eden::id_de(&programme)).map(|f| f.nom).unwrap_or("Eden");
     // AVANT de télécharger 320 Mo : tout ce qui ferait refuser la pose.
     if !crate::lancement::processus_du_dossier(&dossier).is_empty() {
-        return Err(Erreur::Refus("Eden est ouvert : ferme-le (ou quitte ta partie), puis recommence.".into()));
+        return Err(Erreur::Refus(format!("{nom} est ouvert : ferme-le (ou quitte ta partie), puis recommence.")));
     }
-    let _occupe = occuper_installation(dossier.parent().unwrap_or(&dossier), &dossier, "Eden")?;
+    let _occupe = occuper_installation(dossier.parent().unwrap_or(&dossier), &dossier, nom)?;
     if !crate::eden::portable(&dossier) || crate::eden::dossier_nand(&dossier).is_none() {
-        return Err(Erreur::Refus("Eden n'est pas installé en mode portable : Frogtend n'écrit pas dans ses données de Windows.".into()));
+        return Err(Erreur::Refus(format!("{nom} n'est pas installé en mode portable : Frogtend n'écrit pas dans ses données de Windows.")));
     }
     if !crate::eden::cles_presentes(&dossier) {
         return Err(Erreur::Refus("Tes clés (prod.keys) ne sont pas encore dans l'émulateur : sans elles, il refuse le firmware. Pose-les d'abord.".into()));
@@ -5557,7 +5559,7 @@ pub async fn eden_firmware_servi(app: AppHandle, noyau: State<'_, Noyau>, progra
     // Le zip, puis ses fichiers extraits à côté : environ trois fois sa taille, par prudence.
     if let (Some(t), Some(libre)) = (f.taille, crate::jeux_pc::place_libre(&dossier)) {
         if libre < t.saturating_mul(3) {
-            return Err(Erreur::Disque(format!("Pas assez de place sur le disque d'Eden : il faut environ {} Mo libres.", t.saturating_mul(3) / 1_048_576)));
+            return Err(Erreur::Disque(format!("Pas assez de place sur le disque de {nom} : il faut environ {} Mo libres.", t.saturating_mul(3) / 1_048_576)));
         }
     }
     let app2 = app.clone();
@@ -5568,7 +5570,7 @@ pub async fn eden_firmware_servi(app: AppHandle, noyau: State<'_, Noyau>, progra
     // Eden a pu être ouvert pendant le téléchargement : revérifié juste avant de poser.
     if !crate::lancement::processus_du_dossier(&dossier).is_empty() {
         let _ = std::fs::remove_file(&zip);
-        return Err(Erreur::Refus("Eden a été ouvert pendant le téléchargement : ferme-le, puis recommence.".into()));
+        return Err(Erreur::Refus(format!("{nom} a été ouvert pendant le téléchargement : ferme-le, puis recommence.")));
     }
     let (d, z) = (dossier.clone(), zip.clone());
     let version = f.version.clone();
@@ -6246,7 +6248,12 @@ pub async fn bios_poser(app: AppHandle, noyau: State<'_, Noyau>, plateforme: Str
     let conseil = &reponse["conseil"];
     let Some(id) = conseil["emulateur"].as_str() else { return Ok(Default::default()) };
     let dossier = std::path::Path::new(&programme).parent().map(std::path::PathBuf::from).unwrap_or_default();
-    if !programme_du_conseil(id, &programme) || !dossier.is_dir() {
+    if !programme_pour_le_conseil(conseil, &plateforme, &programme) {
+        noyau.journaliser(&format!("fichiers système de {plateforme} : rien posé (le programme n'est pas celui du conseil « {id} »)"));
+        return Ok(Default::default());
+    }
+    if !dossier.is_dir() {
+        noyau.journaliser(&format!("fichiers système de {plateforme} : rien posé (dossier de l'émulateur introuvable)"));
         return Ok(Default::default());
     }
     let mut illisibles = crate::bios::Bilan::default();
@@ -6262,6 +6269,22 @@ pub async fn bios_poser(app: AppHandle, noyau: State<'_, Noyau>, plateforme: Str
         noyau.journaliser(&format!("fichiers système de {plateforme} : {:?}", bilan.echecs));
     }
     Ok(bilan)
+}
+
+/// Les fichiers système du conseil vont-ils à ce programme ? À l'émulateur du conseil ; et, dans la famille d'Eden, à
+/// une ALTERNATIVE que Firehouse cite pour la même console (Lichii pour la Switch 2, contrat 1.40) : même dossier
+/// `user\keys\`, mêmes clés et même firmware de SA console. Jamais à un autre émulateur (chemins inconnus).
+pub fn programme_pour_le_conseil(conseil: &serde_json::Value, plateforme: &str, programme: &str) -> bool {
+    let Some(id) = conseil["emulateur"].as_str() else { return false };
+    if programme_du_conseil(id, programme) {
+        return true;
+    }
+    crate::emulateurs::famille_eden(id)
+        && crate::eden::est_eden(programme)
+        && crate::eden::plateforme(programme) == plateforme
+        && conseil["alternatives"].as_array().is_some_and(|l| {
+            l.iter().filter_map(|a| a["emulateur"].as_str()).any(|a| crate::emulateurs::famille_eden(a) && programme_du_conseil(a, programme))
+        })
 }
 
 /// Le programme est-il celui de l'émulateur du conseil (id des sources de Firehouse : « retroarch », « pcsx2 »,
@@ -6885,6 +6908,20 @@ mod tests {
         assert!(!super::programme_du_conseil("retroarch", r"E:\Emulateurs\PCSX2\pcsx2-qt.exe"));
         assert!(!super::programme_du_conseil("retroarch", r"E:\Emulateurs\DuckStation\duckstation-qt-x64-ReleaseLTCG.exe"));
         assert!(!super::programme_du_conseil("", r"E:\x.exe"));
+    }
+
+    #[test]
+    fn les_cles_de_la_switch_2_vont_aussi_a_lichii_cite_en_alternative() {
+        let c = serde_json::json!({"emulateur": "eglantine", "alternatives": [{"nom": "Lichii", "emulateur": "lichii", "coeur": null}]});
+        let (s2, lichii) = ("Nintendo Switch 2", r"E:\Frogtend\Emulateurs\Lichii\lichii.exe");
+        assert!(super::programme_pour_le_conseil(&c, s2, r"E:\Frogtend\Emulateurs\Eglantine\eglantine.exe"));
+        assert!(super::programme_pour_le_conseil(&c, s2, lichii), "Lichii, alternative de la même console");
+        assert!(!super::programme_pour_le_conseil(&c, "Nintendo Switch", lichii), "jamais les clés d'une autre console");
+        let sans = serde_json::json!({"emulateur": "eglantine", "alternatives": []});
+        assert!(!super::programme_pour_le_conseil(&sans, s2, lichii), "seulement si Firehouse le cite");
+        let ra = serde_json::json!({"emulateur": "retroarch", "alternatives": [{"nom": "Mesen", "emulateur": "mesen"}]});
+        assert!(!super::programme_pour_le_conseil(&ra, "Nintendo Entertainment System", r"E:\Mesen\Mesen.exe"), "hors famille d'Eden : jamais");
+        assert!(!super::programme_pour_le_conseil(&serde_json::json!({}), s2, lichii));
     }
 
     /// RÉEL, sur une COPIE de brouillon de RPCS3 (`FROGTEND_RPCS3_BROUILLON=<dossier avec rpcs3.exe>`) : le micrologiciel

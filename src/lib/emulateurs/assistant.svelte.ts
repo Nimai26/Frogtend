@@ -179,7 +179,7 @@ export async function installerFirmwareSwitch(programme: string, remplacer = fal
         fermerToast(message);
         message = toast(
           p >= 100
-            ? '💿 Firmware Switch : vérifié, mise en place dans Eden…'
+            ? '💿 Firmware Switch : vérifié, mise en place dans l’émulateur…'
             : `💿 Firmware Switch : ${p} % (${taille(e.payload.recus)}${e.payload.total ? ` sur ${taille(e.payload.total)}` : ''})…`,
           'neutre',
         );

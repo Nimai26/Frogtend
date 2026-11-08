@@ -449,7 +449,11 @@ async function firmwareSwitchAvant(id: number, plateforme: string | undefined, e
     if (!oui) return;
     await poserBios(plateforme, e.programme);
     f = await api.edenFirmware(e.programme).catch(() => null);
-    if (!f?.cles) return;
+    // Jamais un « oui » sans effet en silence (Lichii, 08/11 : la question revenait à chaque partie).
+    if (!f?.cles) {
+      await informer('🔑 Les clés n’ont pas pu être posées', 'Frogtend n’a pas réussi à les mettre dans le dossier de cet émulateur. Le jeu risque de ne pas démarrer.\n\nLe détail est dans le journal de Frogtend.');
+      return;
+    }
   }
   if (!f.cles) return;
   const servi = r?.conseil ? firmwareSwitchServi(r.conseil.bios) : undefined;

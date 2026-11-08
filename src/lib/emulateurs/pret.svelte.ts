@@ -11,7 +11,7 @@ import { etat, reglerPc } from '$lib/etat.svelte';
 import { completerRetroArch, installationEmulateur, installerEmulateur, installerFirmwareSwitch, installerMicrologicielPs3, installerParFirehouse, poserBios, recommandationsParDefaut, reglerEmulateur } from './assistant.svelte';
 import { ajouter } from './choix';
 import { FAMILLE_EDEN } from './versions';
-import { avecConseil, biosADireOuPoser, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, firmwareSwitchServi, ligneDe, MANETTE_REGLEE, messagePret, micrologicielServi, phraseVersionAutre, poidsBios, versionAutre, type Possible } from './pret';
+import { avecConseil, biosADireOuPoser, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, fichiersDuConseil, firmwareSwitchServi, ligneDe, MANETTE_REGLEE, messagePret, micrologicielServi, phraseVersionAutre, poidsBios, versionAutre, type Possible } from './pret';
 import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
 
 /** Les plateformes qui se jouent sans émulateur. */
@@ -106,7 +106,7 @@ async function preparer(plateforme: string, jeux: number): Promise<string | null
       dossier,
       dossierNouveau,
       conseil,
-      tailleBios: conseil && estConseille(choix.rec, conseil) && poidsBios(conseil.bios) ? taille(poidsBios(conseil.bios)) : null,
+      tailleBios: conseil && fichiersDuConseil(choix.rec, conseil) && poidsBios(conseil.bios) ? taille(poidsBios(conseil.bios)) : null,
     }),
     libelleValider: choix.comment === 'deja' ? '🎮 C’est parti' : '🎮 Tout préparer',
   });
@@ -127,7 +127,7 @@ async function preparer(plateforme: string, jeux: number): Promise<string | null
   let nom = choix.nom;
   // Les fichiers système du conseil, posés et vérifiés par le cœur (compris dans l'accord) AVANT que RetroArch ne
   // vérifie ce qui lui manque.
-  if (conseil && estConseille(choix.rec, conseil) && biosADireOuPoser(conseil.bios)) await poserBios(plateforme, programme);
+  if (conseil && fichiersDuConseil(choix.rec, conseil) && biosADireOuPoser(conseil.bios)) await poserBios(plateforme, programme);
   if (choix.id === 'retroarch') {
     const n = await completerRetroArch(programme, ligne, biosRetroArch(choix.rec, conseil), plateforme, nom, true);
     if (!n) return null;
@@ -170,7 +170,7 @@ async function preparer(plateforme: string, jeux: number): Promise<string | null
   }
   // Eden : le firmware de Firehouse, compris dans l'accord, dès que les clés de la personne sont là (sinon, il sera
   // proposé avant la première partie, une fois les clés posées).
-  if (choix.id && FAMILLE_EDEN.includes(choix.id) && conseil && estConseille(choix.rec, conseil) && firmwareSwitchServi(conseil.bios)) {
+  if (choix.id && FAMILLE_EDEN.includes(choix.id) && conseil && fichiersDuConseil(choix.rec, conseil) && firmwareSwitchServi(conseil.bios)) {
     const e = await api.edenFirmware(programme).catch(() => null);
     if (e?.portable && e.cles && !e.firmware) await installerFirmwareSwitch(programme);
   }

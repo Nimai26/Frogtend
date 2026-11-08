@@ -2456,3 +2456,9 @@ d'abord :
 - **0.43.0** — décompresser pour jouer ; ✅ ESSAI DÉCISIF RÉUSSI par Seb le 03/10 : Asura's Wrath démarre dans
   RPCS3 depuis l'.iso, 60 i/s.
 - Avant : voir [NOTES-DE-VERSION.md](NOTES-DE-VERSION.md).
+- ESSAI 08/11 (0.169.0), Lichii : bouton Xbox → menu ✅, « 🎮 Boutons » ✅ ; écran noir après la cinématique
+  d'intro de Zelda (comme avec Eglantine) ; la question « 🔑 Il manque tes clés » revenait alors qu'il l'avait déjà
+  acceptée. Cause : user\keys\ et user\nand\ de Lichii VIDES (journal : « Decryption keys are missing », « No
+  firmware available ») — bios_poser ne posait rien, en silence, pour un programme autre que l'émulateur du conseil
+  (eglantine). → 0.170.0 : Lichii, cité en alternative de la Switch 2, reçoit les clés et le firmware ; un échec se
+  dit. L'écran noir est à revoir AVEC clés et firmware.
