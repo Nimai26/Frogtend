@@ -92,6 +92,11 @@ git 2.51, Node 24.11, pnpm 10.32, Rust 1.94 (stable, MSVC), Visual Studio Build 
 > État au 08/11 : manette réglée pour RetroArch, DuckStation, PCSX2, Dolphin, RPCS3 ; langue pour RPCS3 seulement.
 > Eden/Eglantine : en cours (0.164.0). Restent à passer en revue : DOSBox Staging, PPSSPP, Xenia, xemu, Cemu, Azahar,
 > Vita3K, mGBA (et la langue de DuckStation, PCSX2, Dolphin, RetroArch).
+> **Rappel de Seb (08/11, après Lichii, réglé seulement à la 2e partie) :** « frogtend DOIT configurer TOUS les
+> émulateurs avec les langues, touches, etc. à chaque nouvelle installation. C'est très important pour être users
+> friendly. Également il doit avoir son image des touches dans le menu. » → pour CHAQUE émulateur : manette, langue,
+> bouton du menu de Frogtend, dès la PREMIÈRE partie d'une installation neuve (fichier de config pas encore créé),
+> et son schéma « 🎮 Boutons » dans le menu en jeu. Testé sur une installation neuve à chaque fois.
 >
 > ⚠ **Mises à jour des émulateurs (Seb, 08/11, après l'essai de la 0.167.0 : « les mises à jour ont l'air bonnes et
 > faites »).** (1) **L'avancement se voit** pendant une mise à jour lancée depuis ⚙ Réglages ▸ Émulateurs (« pas de
@@ -99,6 +104,11 @@ git 2.51, Node 24.11, pnpm 10.32, Rust 1.94 (stable, MSVC), Visual Studio Build 
 > Eglantine à la fois → « une installation est en cours », bien géré). (2) **Au démarrage**, si des émulateurs installés
 > par Frogtend ont une nouvelle version, un message le dit et propose la mise à jour (toujours avec l'accord de la
 > personne qui utilise le PC ; jamais en Taodbox ; hors ligne : rien).
+>
+> ⚠ **Afficher les images par seconde depuis le menu en jeu (Seb, 08/11, après Zelda OoT encore lent avec Eglantine
+> 0.1.0-rc3 : « une option pour afficher ou non les FPS »).** Une entrée du menu de Frogtend (bouton Xbox) qui montre ou
+> cache le compteur d'images par seconde DE L'ÉMULATEUR (son propre affichage), pour chaque émulateur qui le permet ;
+> le choix est retenu. Les émulateurs qui ne le permettent pas : l'entrée n'apparaît pas.
 
 ## Les lots
 

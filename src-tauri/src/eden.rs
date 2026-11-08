@@ -630,15 +630,24 @@ pub fn home_retire(eden: &Path) -> bool {
 /// Le fichier de réglages, lu avec un plafond (un fichier de plusieurs Mo n'est pas celui d'Eden : jamais touché).
 fn lire_reglages(eden: &Path) -> Resultat<String> {
     let f = fichier_reglages(eden);
+    // Pas encore créé (installation neuve, avant sa première ouverture) : vide — Frogtend le crée avec SES clés, et
+    // l'émulateur garde ses valeurs d'origine pour toutes les autres (`Config::Initialize` → `SetUpIni` charge le
+    // fichier, `Reload` lit chaque clé ou sa valeur d'origine, puis réécrit le fichier complet ; relu le 08/11).
+    if !f.exists() {
+        return Ok(String::new());
+    }
     if std::fs::metadata(&f)?.len() > 8 * 1024 * 1024 {
         return Err(Erreur::Refus("Le fichier de réglages d'Eden est anormalement gros : Frogtend n'y touche pas.".into()));
     }
     Ok(std::fs::read_to_string(f)?)
 }
 
-/// Peut-on écrire les réglages de cet Eden (portable, fermé, fichier déjà créé par Eden) ?
+/// Peut-on écrire les réglages de cet Eden (portable, fermé) ? Son fichier peut ne pas exister encore : réglé DÈS la
+/// première partie d'une installation neuve (✅ Seb 08/11, Lichii : « ce doit être systématique à l'installation de
+/// TOUT nouvel émulateur »). Un chemin occupé par autre chose qu'un fichier : jamais touché.
 fn reglages_modifiables(eden: &Path) -> bool {
-    portable(eden) && crate::lancement::processus_du_dossier(eden).is_empty() && fichier_reglages(eden).is_file()
+    let f = fichier_reglages(eden);
+    portable(eden) && crate::lancement::processus_du_dossier(eden).is_empty() && (f.is_file() || !f.exists())
 }
 
 /// Écrit des clés QSettings (chacune avec sa ligne `\default=false`, sinon Qt garde la valeur d'origine) dans une
@@ -885,9 +894,28 @@ mod tests_reglages {
         let d = tempfile::tempdir().unwrap();
         assert!(!regler_manette(d.path(), true, Some(UNE)).unwrap() && !regler_langue(d.path(), 0x040C).unwrap());
         assert!(!d.path().join("user").exists(), "jamais basculé en portable");
+    }
+
+    #[test]
+    fn une_installation_neuve_est_reglee_des_sa_premiere_partie() {
+        // Lichii chez Seb (08/11) : installé, puis lancé — son qt-config.ini n'existait pas encore.
+        let d = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(d.path().join("user")).unwrap();
-        assert!(!regler_manette(d.path(), true, Some(UNE)).unwrap());
-        assert!(!fichier_reglages(d.path()).exists(), "jamais créé (Eden l'écrit à sa première ouverture)");
+        assert!(regler_manette(d.path(), false, Some(UNE)).unwrap());
+        assert!(regler_langue(d.path(), 0x040C).unwrap());
+        assert!(quitter_sans_question(d.path()).unwrap());
+        let t = std::fs::read_to_string(fichier_reglages(d.path())).unwrap();
+        assert!(joueur1_de_frogtend(&t) && guid_du_joueur1(&t).as_deref() == Some(UNE), "{t}");
+        assert!(t.contains("player_0_button_home=[empty]"), "{t}");
+        assert!(t.contains("language_index=2") && t.contains("region_index=2") && t.contains("confirmStop=1"), "{t}");
+        // Ensuite, comme d'habitude : rien de plus.
+        assert!(!regler_langue(d.path(), 0x0409).unwrap());
+        assert!(regler_manette(d.path(), false, Some(UNE)).unwrap());
+        assert_eq!(std::fs::read_to_string(fichier_reglages(d.path())).unwrap(), t);
+        // Un DOSSIER à la place du fichier : jamais touché.
+        let d2 = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(fichier_reglages(d2.path())).unwrap();
+        assert!(!regler_manette(d2.path(), false, Some(UNE)).unwrap());
     }
 
     #[test]

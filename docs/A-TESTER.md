@@ -6,6 +6,12 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Lichii réglé dès sa première partie (0.169.0)
+- [ ] Mettre à jour Frogtend, ▶ Jouer à Zelda avec Lichii : la manette répond (A de la Switch = B de la Xbox), le jeu
+      est en français, le bouton Xbox ouvre le menu de Frogtend et « 🎮 Boutons » montre la Switch 2 ; Quitter : sans
+      question.
+- [ ] Les images par seconde avec Lichii, et l'écran noir après l'intro ?
+
 ## Les mises à jour d'émulateurs, à vue (0.168.0)
 - [ ] Au prochain démarrage de Frogtend (profil ouvert) : si un émulateur a une nouvelle version, une question les
       liste avec leur taille ; « ⬆ Mettre à jour » les fait l'une après l'autre, avec une barre d'avancement.

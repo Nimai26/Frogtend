@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.169.0 — Lichii réglé dès sa première partie
+
+- 🎮 Un émulateur Switch ou Switch 2 tout juste installé (Lichii, Eglantine, Eden) a ta manette, le français, le
+  bouton Xbox pour le menu de Frogtend et la sortie sans question DÈS sa première partie (avant, seulement à la
+  seconde : son fichier de réglages n'existait pas encore). Ton Lichii déjà installé est réglé à la prochaine partie.
+
 ## 0.168.0 — Les mises à jour d'émulateurs, à vue
 
 - ⬆ **Au démarrage**, si des émulateurs installés par Frogtend ont une nouvelle version, Frogtend te le dit (une fois

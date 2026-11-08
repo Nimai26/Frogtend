@@ -202,6 +202,15 @@
   E:\Frogtend\Emulateurs\Eglantine\user). %APPDATA%\eden (401 Mo) vient d'un Eglantine « nx2-experimental » lancé à la
   main du 05 au 07/11 (journal) et d'un Eden de mars 2025 ; une partie de Zelda dedans (account.sav, 320 o, 07/11) ;
   listé 3 fois (Eden, Eglantine, Lichii) → une seule ligne en 0.168.0.
+  ESSAI 08/11 (0.168.0) : Zelda avec Eglantine 0.1.0-rc3 « tout a l'air bon », toujours peu d'images/s ; DEMANDE :
+  afficher/cacher les FPS depuis le menu (→ PLAN, relevé par l'expert lancement en cours). Lichii installé et lancé
+  ✅ MAIS ni manette ni langue (Seb : « tu as une nouvelle fois oublié… ce doit être systématique à l'installation de
+  TOUT nouvel émulateur ! ») : cause = eden.rs ne réglait qu'un qt-config.ini DÉJÀ créé par l'émulateur (choix
+  ancien : « Eden l'écrit à sa première ouverture ») ; Lichii l'a créé pendant sa 1re partie (21 h 31), et le bouton
+  Xbox n'a pas été rendu au menu (journal). → 0.169.0 : fichier absent = créé avec les seules clés de Frogtend (relu
+  dans Eden : Config::Initialize → SetUpIni charge, Reload lit chaque clé ou sa valeur d'origine et réécrit tout).
+  RÈGLE redite par Seb : TOUS les émulateurs, langue + touches dès chaque nouvelle installation, et leur schéma des
+  touches dans le menu (→ PLAN ; audit de tous les émulateurs demandé à l'expert lancement).
   ESSAI 07/11 (0.160.1) : les captures s'affichent ✅, mais les boutons sont cachés par la capture (fenêtre du menu en
   jeu) → scène `minmax(0, 1fr)` + image en position absolue `object-fit: contain` → 0.160.2.
 - **Essai du 03/11 (0.155.0)** : MGS4 importé (`.zip` de 32,7 Go contenant un `.iso`) → ▶ Jouer donnait le .zip à RPCS3

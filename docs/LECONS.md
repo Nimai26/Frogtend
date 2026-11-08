@@ -376,3 +376,9 @@ ligne dans le .rs → fichiers remis par `git checkout`, script réécrit en cha
 / `write_text` sur Windows ont changé TOUTES les fins de ligne de SUIVI.md (LF → CRLF, 4 841 lignes au diff) →
 remis en LF. · Règles : retouches par `read_bytes`/`write_bytes` et chaînes brutes ; `git diff --stat` après chaque
 retouche (un diff énorme = fins de ligne).
+
+08/11 (0.169.0) : Lichii réglé seulement à sa 2e partie : la condition « fichier de config déjà créé par
+l'émulateur » (prudente) rendait le réglage muet sur une installation NEUVE, le cas le plus important pour un novice ;
+aucun test ne couvrait « installé puis lancé une fois ». Seb l'avait déjà demandé (règle du 08/11). · Règle : chaque
+émulateur a un test « installation neuve, première partie » (dossier portable vide, pas de fichier de config), et la
+répétition avant livraison fait ce premier lancement.
