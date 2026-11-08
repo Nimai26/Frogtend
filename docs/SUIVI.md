@@ -169,6 +169,17 @@
   boîte n'apparaît qu'en lançant le jeu : essai Seb). Relecture lancement : 0 bloquant ; corrigé : fermeture VÉRIFIÉE
   (IsWindow/IsWindowVisible, journalisée), O (« &Oui ») si Y ne ferme pas, fil arrêté dès la boîte traitée. DEMANDE de Seb : Lichii en émulateur secondaire (vidéo « tuto
   Zelda OoT 60 FPS ») → besoin 43 envoyé à Firehouse ; le choix par jeu existe déjà (`choix_emulateur.rs`).
+  ESSAI 08/11 (0.165.0) ✅ la fenêtre « Recommended » se ferme seule (journal Frogtend : « → Oui (touche Y), fenêtre
+  fermée » ; journal Eglantine : « OOT recommended settings accepted: true »). L'écran noir se passe en appuyant sur un
+  bouton (Seb). MAIS : (1) ~15 images/s tout du long (10 799 « Native network pass » en 730 s), bogue connu (#687,
+  9-16 i/s, aucun réglage proposé) → besoin 44 : la v0.1.0-rc3 d'Eglantine (08/11, 65 commits de plus, correctifs
+  de lenteur et de fermeture), MSVC ou PGO, à trancher par Firehouse et Seb ; (2) « Quitter le jeu » du menu de Frogtend
+  coupé par la question d'Eglantine (`[UI] confirmStop=0`, Ask_Always) → 0.166.0 : `confirmStop=1` (Ask_Based_On_Game :
+  la question seulement quand le jeu verrouille sa sortie, pendant une écriture ; jamais Ask_Never — avis lancement),
+  une seule fois (marque `user/.frogtend-sortie`), sauf choix de la personne ; (3) Eglantine FIGÉ après avoir quitté (journal coupé au milieu d'une ligne juste après
+  « Shutdown requested; waiting for emulation thread » ; le minuteur ForceStop d'1 s n'a rien journalisé) — Seb : figé
+  pour de bon, fermeture forcée (rapport de plantage de Windows) : à revoir
+  avec la rc3, qui touche la fermeture ; Frogtend ne termine jamais un émulateur qui a encore une fenêtre (expert, 05/10).
   ESSAI 07/11 (0.160.1) : les captures s'affichent ✅, mais les boutons sont cachés par la capture (fenêtre du menu en
   jeu) → scène `minmax(0, 1fr)` + image en position absolue `object-fit: contain` → 0.160.2.
 - **Essai du 03/11 (0.155.0)** : MGS4 importé (`.zip` de 32,7 Go contenant un `.iso`) → ▶ Jouer donnait le .zip à RPCS3

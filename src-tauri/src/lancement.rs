@@ -229,8 +229,8 @@ pub fn processus_dans(pids: &[u32], dossier: &Path) -> Vec<u32> {
 }
 
 /// Après « Quitter » (demande polie déjà envoyée) : attend jusqu'à `delai` que l'ÉMULATEUR se ferme de lui-même ;
-/// sinon termine ceux de ses processus qui n'ont plus de fenêtre ou ne répondent plus (`abandonne`). Rend le nombre de
-/// processus terminés (0 : fermé seul, ou encore occupé avec sa fenêtre — il enregistre peut-être : on n'y touche pas).
+/// sinon termine ses processus s'ils n'ont TOUS plus aucune fenêtre visible (`abandonne`). Rend le nombre de
+/// processus terminés (0 : fermé seul, ou encore une fenêtre, même figée — il enregistre peut-être : on n'y touche pas).
 /// Vu le 05/10 chez Seb : RPCS3 ferme la fenêtre du jeu mais son programme reste en vie, caché, « ne répond pas ».
 /// Garde-fous (expert lancement, 05/10) : seuls les programmes situés dans le dossier de l'émulateur de la partie
 /// (jamais un jeu PC, une boutique relancée par le jeu, ni un programme qui aurait repris un numéro de processus).

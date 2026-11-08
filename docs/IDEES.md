@@ -98,3 +98,10 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
 - **Suivi d'une partie plus sûr** (08/11, après un test rouge sous charge) : reconnaître un processus par son heure de
   création EXACTE (GetProcessTimes, au 100 ns) plutôt qu'à la seconde, et/ou rattacher la partie à un « job » Windows
   (ses enfants y entrent seuls) : plus jamais un programme étranger adopté par un numéro repris.
+
+- **Émulateur figé après « Quitter »** (08/11, Eglantine daily-20261107 chez Seb ; avis de l'expert lancement) : si
+  sa fenêtre « ne répond plus » (IsHungAppWindow, déjà utilisé dans `plein_ecran.rs`) bien après le délai de
+  fermeture, une fenêtre maison pilotable à la manette : « Eglantine ne répond plus — Attendre / Forcer la fermeture »
+  (Attendre par défaut ; dire que les sauvegardes déjà écrites restent). Avant de forcer : mettre à l'abri le dossier
+  des parties de l'émulateur ; ne terminer que les programmes de son dossier. À décider après l'essai de la rc3
+  (besoin 44), qui corrige la fermeture.

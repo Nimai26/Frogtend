@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.166.0 — Eglantine : quitter sans question
+
+- 🚪 « Quitter le jeu » du menu de Frogtend (et la croix d'Eglantine) ne passe plus par la question « Voulez-vous
+  vraiment arrêter ? » d'Eglantine : Frogtend te l'a déjà demandé. Eglantine ne la pose plus que si le jeu est en
+  train d'écrire (sa sauvegarde par exemple), pour ne jamais l'abîmer. Réglé une seule fois : si tu remets
+  « Toujours demander » dans Eglantine, ton choix est gardé.
+
 ## 0.165.0 — Eglantine : ses réglages recommandés, sans clic
 
 - 🎮 Eglantine demande à chaque démarrage s'il doit utiliser ses « réglages recommandés » pour Zelda Ocarina of Time

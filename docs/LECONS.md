@@ -369,3 +369,10 @@ démarrage qu'à la SECONDE près, et l'instant de la mort d'un processus de la 
 (relevé en retard sous charge) — un processus d'un autre test, enfant d'un numéro repris dans cette fenêtre, peut être
 adopté. Piste notée dans IDEES (heure de création exacte, GetProcessTimes ; ou un « job » Windows). · Règle gardée :
 la livraison est relancée en entier, jamais de commit sur une construction rouge.
+
+08/11 (0.166.0) : deux retouches ratées, rattrapées avant toute construction. (1) Un script Python de retouche du
+code Rust avec des chaînes `'''…'''` NON brutes : `\r\n` des tests et `\default` sont devenus de vrais retours à la
+ligne dans le .rs → fichiers remis par `git checkout`, script réécrit en chaînes brutes `r'''…'''`. (2) `read_text`
+/ `write_text` sur Windows ont changé TOUTES les fins de ligne de SUIVI.md (LF → CRLF, 4 841 lignes au diff) →
+remis en LF. · Règles : retouches par `read_bytes`/`write_bytes` et chaînes brutes ; `git diff --stat` après chaque
+retouche (un diff énorme = fins de ligne).

@@ -631,6 +631,8 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             // La manette du joueur 1 et la langue de la console (✅ Seb 08/11) : un échec n'empêche jamais de jouer.
             let _ = regler_manette(id, emulateur, None, manette);
             let _ = crate::eden::regler_langue(emulateur, langue_et_clavier_de_windows().0);
+            // Sa question « Voulez-vous arrêter ? » : retirée (le menu de Frogtend a déjà demandé).
+            let _ = crate::eden::quitter_sans_question(emulateur);
             let u = crate::eden::utilisateur_du_profil(emulateur, profil_de(p))?;
             // Les parties d'avant Frogtend : copiées chez la première personne qui joue. Un échec ne touche à rien
             // (elles restent où elles étaient) et n'empêche pas de jouer.

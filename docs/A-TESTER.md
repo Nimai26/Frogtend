@@ -6,9 +6,14 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Eglantine : quitter sans question (0.166.0)
+- [ ] Mettre à jour Frogtend, ▶ Jouer à Zelda (Switch 2), puis bouton Xbox ▸ Quitter le jeu : Eglantine se ferme
+      sans poser de question (si une question apparaît encore, le jeu était peut-être en train d'écrire : dis-le-moi).
+- [ ] Après la fermeture : Eglantine se ferme vraiment (pas de fenêtre figée ; sinon, combien de temps attendu ?).
+
 ## Eglantine : ses réglages recommandés, sans clic (0.165.0)
-- [ ] ▶ Jouer à Zelda (Switch 2) : la fenêtre « Recommended Ocarina of Time settings » apparaît puis se ferme seule
-      en une ou deux secondes ; en bas d'Eglantine : VULKAN, DOCKED, SCALEFORCE, FXAA.
+- [x] La fenêtre « Recommended Ocarina of Time settings » se ferme seule (journal, Seb 08/11).
+- [ ] En bas d'Eglantine pendant la partie : VULKAN, DOCKED, SCALEFORCE, FXAA.
 
 ## Eden et Eglantine : ta manette et le français (0.164.0)
 - [ ] Manette Xbox branchée, ▶ Jouer à Zelda (Switch 2) : la manette répond dès le début, A de la Switch = B de la

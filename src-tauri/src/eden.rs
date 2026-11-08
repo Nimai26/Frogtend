@@ -757,6 +757,32 @@ pub fn regler_langue(eden: &Path, langid: u16) -> Resultat<bool> {
     Ok(change)
 }
 
+/// Quitter sans question (✅ Seb 08/11 : la confirmation d'Eglantine coupe « Quitter le jeu » du menu de Frogtend, qui
+/// a déjà demandé, et bloque le tout-manette) : `[UI] confirmStop` à 1, « selon le jeu » (`Ask_Based_On_Game` ;
+/// l'énumération `ConfirmStop` de `settings_enums.h` : Ask_Always, Ask_Based_On_Game, Ask_Never ; lue le 08/11 dans
+/// daily-20261107). `MainWindow::ConfirmClose` (la croix, donc le WM_CLOSE de Frogtend) et `ConfirmShutdownGame`
+/// (« Arrêter ») ne demandent alors plus rien, SAUF si le jeu a verrouillé sa sortie (`GetExitLocked` : il écrit,
+/// sa sauvegarde par exemple) — jamais « Ask_Never », qui fermerait aussi pendant cette écriture (expert lancement,
+/// 08/11). Section `[UI]` lue seulement dans les réglages généraux (`QtConfig::ReadValues`, `if (global)`) : rien par
+/// jeu. UNE seule fois par émulateur (une marque le retient : Qt réécrit `\default=true` dès qu'une valeur redevient
+/// celle d'origine, `Config::WritePreparedSetting`, donc la personne qui remet « Toujours demander » le garde), et
+/// seulement si la clé est encore à sa valeur d'origine. Rend vrai si le fichier a changé.
+pub fn quitter_sans_question(eden: &Path) -> Resultat<bool> {
+    if !reglages_modifiables(eden) || marque_sortie(eden).exists() {
+        return Ok(false);
+    }
+    let texte = lire_reglages(eden)?;
+    let d_origine = crate::manettes::lire_ini(&texte, "UI", "confirmStop\\default").first().is_none_or(|v| v.trim() == "true");
+    let change = d_origine && ecrire_qt(eden, &texte, "UI", &[("confirmStop", "1".to_string())])?;
+    std::fs::write(marque_sortie(eden), b"")?;
+    Ok(change)
+}
+
+/// La marque « question de sortie déjà réglée » (dans le dossier de l'émulateur, jamais ailleurs).
+fn marque_sortie(eden: &Path) -> PathBuf {
+    eden.join("user").join(".frogtend-sortie")
+}
+
 #[cfg(test)]
 mod tests_reglages {
     use super::*;
@@ -769,6 +795,26 @@ mod tests_reglages {
     }
 
     const CLAVIER: &str = "[Controls]\r\nplayer_0_button_a\\default=false\r\nplayer_0_button_a=\"engine:keyboard,code:67,toggle:0\"\r\nplayer_0_button_home\\default=false\r\nplayer_0_button_home=\"engine:keyboard,code:0,toggle:0\"\r\n\r\n[System]\r\nlanguage_index\\default=true\r\nlanguage_index=1\r\nregion_index\\default=true\r\nregion_index=1\r\n";
+
+    #[test]
+    fn la_confirmation_de_sortie_est_retiree_une_fois_jamais_par_dessus_un_choix() {
+        let d = eden_portable("[UI]\r\nconfirmStop\\default=true\r\nconfirmStop=0\r\n\r\n[System]\r\nlanguage_index=1\r\n");
+        assert!(quitter_sans_question(d.path()).unwrap());
+        let t = std::fs::read_to_string(fichier_reglages(d.path())).unwrap();
+        assert!(t.contains("confirmStop\\default=false\r\nconfirmStop=1\r\n") && !t.contains("confirmStop=0"), "{t}");
+        assert!(t.contains("[System]\r\nlanguage_index=1\r\n"), "le reste est gardé : {t}");
+        assert!(!quitter_sans_question(d.path()).unwrap(), "une seconde fois : rien");
+        // La personne remet « Toujours demander » dans Eglantine (Qt écrit alors `\default=true` et 0) : gardé.
+        let remis = "[UI]\r\nconfirmStop\\default=true\r\nconfirmStop=0\r\n";
+        std::fs::write(fichier_reglages(d.path()), remis).unwrap();
+        assert!(!quitter_sans_question(d.path()).unwrap());
+        assert_eq!(std::fs::read_to_string(fichier_reglages(d.path())).unwrap(), remis);
+        // Un choix déjà fait avant Frogtend (« Jamais ») : jamais touché, et la marque est posée.
+        let d2 = eden_portable("[UI]\r\nconfirmStop\\default=false\r\nconfirmStop=2\r\n");
+        assert!(!quitter_sans_question(d2.path()).unwrap());
+        assert_eq!(std::fs::read_to_string(fichier_reglages(d2.path())).unwrap(), "[UI]\r\nconfirmStop\\default=false\r\nconfirmStop=2\r\n");
+        assert!(marque_sortie(d2.path()).exists());
+    }
 
     #[test]
     fn la_manette_est_posee_sur_un_joueur_au_clavier_puis_gardee() {
