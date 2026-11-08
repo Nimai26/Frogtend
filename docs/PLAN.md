@@ -109,6 +109,10 @@ git 2.51, Node 24.11, pnpm 10.32, Rust 1.94 (stable, MSVC), Visual Studio Build 
 > 0.1.0-rc3 : « une option pour afficher ou non les FPS »).** Une entrée du menu de Frogtend (bouton Xbox) qui montre ou
 > cache le compteur d'images par seconde DE L'ÉMULATEUR (son propre affichage), pour chaque émulateur qui le permet ;
 > le choix est retenu. Les émulateurs qui ne le permettent pas : l'entrée n'apparaît pas.
+> **Décision de Seb (08/11) : le choix vaut PAR PERSONNE, pour tous ses jeux** (ni par jeu, ni par PC).
+> 0.171.0 : RetroArch, MAME (bascule), Eden/Eglantine/Lichii (clé au lancement + Ctrl+V), RPCS3 (au prochain lancement).
+> RESTE : DuckStation, PCSX2, Dolphin (clés à relire dans leur code), MAME au lancement (témoin), RPCS3 par jeu
+> (custom_configs).
 
 ## Les lots
 

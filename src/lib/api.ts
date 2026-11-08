@@ -611,6 +611,9 @@ export interface EtatMenuJeu {
   refus_etat: boolean;
   /** RetroArch : les effets d'image changeables en jeu (`null` : pas d'écran). */
   effets: { presents: string[]; actuel: string | null; de_la_personne: boolean } | null;
+  /** Les images par seconde : affichées (`null` : inconnu) ; la bascule se voit-elle tout de suite (sinon : à la
+   * prochaine partie). `null` : pas d'entrée. */
+  fps: { affiche: boolean | null; en_direct: boolean } | null;
 }
 
 /** Un réglage de manette de référence (livré avec Frogtend, ou repris sur ce PC). */
@@ -783,6 +786,8 @@ export const api = {
   menuJeuTriche: (index: number) => appeler<void>('menu_jeu_triche', { index }),
   /** Change l'effet d'image en jeu (RetroArch) : `aucun` ou un identifiant d'effet. */
   menuJeuEffet: (effet: string) => appeler<void>('menu_jeu_effet', { effet }),
+  /** Le compteur d'images par seconde pour les prochaines parties (émulateur qui ne bascule pas en jeu). */
+  menuJeuFps: (afficher: boolean) => appeler<void>('menu_jeu_fps', { afficher }),
   /** Les boutons d'un jeu du PC, ou (`null`) de la partie en cours (lot 4d). */
   boutonsDuJeu: (id: number | null) => appeler<InfosBoutons | null>('boutons_du_jeu', { id }),
   /** La fenêtre du menu en jeu, agrandie pour l'écran des boutons (puis rendue à sa taille). */
@@ -799,6 +804,7 @@ export const api = {
     repeterTouches = true,
     carte?: number,
     image?: string,
+    fps?: boolean,
   ) =>
     appeler<void>('jeu_jouer', {
       id,
@@ -811,6 +817,7 @@ export const api = {
       repeterTouches,
       carte: carte ?? null,
       image: image ?? null,
+      fps: fps ?? null,
     }),
   /** Des parties à l'abri à remettre dans ce jeu réinstallé (lot 3). */
   /** Le mode compatible des sauvegardes rapides d'un jeu PS3 : [actif, réglé pour ce jeu] ; `null` : sans objet. */

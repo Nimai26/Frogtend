@@ -121,3 +121,14 @@ describe('estAdresseLocale', () => {
     }
   });
 });
+
+describe('le compteur d’images par seconde, choix par personne (✅ Seb 08/11)', () => {
+  it('jamais choisi par défaut ; une valeur inconnue ne passe pas au cœur', async () => {
+    const { choixImagesParSeconde } = await import('./reglages');
+    expect(completer(DEFAUTS_PROFIL, {}).imagesParSeconde).toBe('');
+    expect(choixImagesParSeconde('affichees')).toBe(true);
+    expect(choixImagesParSeconde('cachees')).toBe(false);
+    expect(choixImagesParSeconde('')).toBeUndefined();
+    expect(choixImagesParSeconde(true)).toBeUndefined();
+  });
+});

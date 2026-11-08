@@ -22,7 +22,7 @@ import { nomPlateforme } from '$lib/boutiques/galaxy.svelte';
 import { ouvrirPageWeb } from '$lib/web';
 import { estRetroArch, normaliser, pourLeJeu } from '$lib/emulateurs/choix';
 import { etat, reglerPc, reglerProfil } from '$lib/etat.svelte';
-import type { CommandesJeu } from '$lib/reglages/reglages';
+import { choixImagesParSeconde, type CommandesJeu } from '$lib/reglages/reglages';
 import { GENRES_MANETTE, libelleCommandes } from './commandes';
 import { apresUnePartie } from '$lib/sauvegarde.svelte';
 import { ludo, rechargerListe, rechargerPlateformes } from './ludotheque.svelte';
@@ -67,6 +67,10 @@ export async function suivreParties() {
       else consoles[plateforme] = effet;
     }
     await reglerProfil('image', { jeux, consoles });
+  });
+  // Le compteur d'images par seconde changé dans le menu en jeu : le choix de la personne pour tous ses jeux (✅ Seb 08/11).
+  await listen<{ affiche: boolean }>('menu-fps-garder', async (e) => {
+    await reglerProfil('imagesParSeconde', e.payload.affiche ? 'affichees' : 'cachees');
   });
   // L'effet d'image n'a pas pu être appliqué (le jeu s'est lancé sans) : le dire.
   await listen<{ jeu: number; message: string }>('effet-image', (e) => {
@@ -462,7 +466,7 @@ async function firmwareSwitchAvant(id: number, plateforme: string | undefined, e
   if (f.firmware && !miseAJour) return;
   firmwaresProposes.add(e.programme);
   const oui = await confirmer(miseAJour ? `💿 Mettre à jour le logiciel système (${f.version ?? '?'} → ${servi.version}) ?` : '💿 Il manque le logiciel système de la console', {
-    message: questionFirmwareSwitch(servi, debitConnu(), duree) + (miseAJour ? '\nL’ancien est gardé à l’abri dans le dossier de l’émulateur.' : ''),
+    message: questionFirmwareSwitch(servi, debitConnu(), duree, plateforme === 'Nintendo Switch 2' ? 'Switch 2' : 'Switch') + (miseAJour ? '\nL’ancien est gardé à l’abri dans le dossier de l’émulateur.' : ''),
     libelleValider: miseAJour ? '💿 Mettre à jour puis jouer' : '💿 Installer puis jouer',
   });
   if (oui) await installerFirmwareSwitch(e.programme, miseAJour);
@@ -536,6 +540,7 @@ async function jouerSansAttente(id: number, emulateur?: string, version?: string
         !etat.profil.sansRepetition.includes(String(id)),
         carte,
         effetImage(id, j?.plateforme),
+        choixImagesParSeconde(etat.profil.imagesParSeconde),
       );
       toast(`▶ « ${j?.titre ?? 'Le jeu'} » se lance…`);
       return;

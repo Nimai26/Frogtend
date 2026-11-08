@@ -4,6 +4,7 @@
 //! L'interface ne les reçoit jamais.
 
 pub mod bios;
+pub mod images_par_seconde;
 pub mod captures;
 pub mod boutiques;
 pub mod cheatengine;
@@ -585,6 +586,7 @@ pub fn run() {
             commandes::effets_image,
             commandes::jeu_compilation_ps3,
             commandes::menu_jeu_effet,
+            commandes::menu_jeu_fps,
             commandes::parties_abri_a_reposer,
             commandes::parties_abri_reposer,
             commandes::parties_abri_ignorer,

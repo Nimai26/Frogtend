@@ -294,6 +294,15 @@
           />
           <span>Colonne des détails (à droite)</span>
         </label>
+        <!-- Aussi depuis le menu en jeu (✅ Seb 08/11 : un choix par personne, pour tous ses jeux). -->
+        <label class="champ">
+          <span>Compteur de fluidité (images par seconde) pendant tes jeux</span>
+          <select value={etat.profil.imagesParSeconde} onchange={(e) => reglerProfil('imagesParSeconde', e.currentTarget.value)}>
+            <option value="">Comme l’émulateur le fait</option>
+            <option value="affichees">Affiché</option>
+            <option value="cachees">Caché</option>
+          </select>
+        </label>
       </div>
 
       <details class="cx-block">

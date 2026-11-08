@@ -243,10 +243,12 @@ export function phraseFirmwareSwitch(f: BiosConseil): string {
 }
 
 /** La question avant une partie, quand il manque et que les clés sont là : taille, et durée au débit mesuré. */
-export function questionFirmwareSwitch(f: BiosConseil, debit: number | null, duree: (s: number) => string): string {
+export function questionFirmwareSwitch(f: BiosConseil, debit: number | null, duree: (s: number) => string, console = 'Switch'): string {
   const v = versionDansNote(f.note);
-  const temps = debit && f.taille ? ` Environ ${duree(Math.round(f.taille / debit))} à ta vitesse habituelle.` : '';
-  return `Beaucoup de jeux Switch ne démarrent pas sans lui.\n\nFirehouse le fournit${v ? ` (version ${v})` : ''} : ${moFirmware(f)}.${temps} Le jeu se lance juste après.`;
+  const d = debit && f.taille ? duree(Math.round(f.taille / debit)) : '';
+  // « Environ moins d’une minute » ne se dit pas.
+  const temps = d ? (/^moins/.test(d) ? ` ${d[0].toUpperCase()}${d.slice(1)} à ta vitesse habituelle.` : ` Environ ${d} à ta vitesse habituelle.`) : '';
+  return `Beaucoup de jeux ${console} ne démarrent pas sans lui.\n\nFirehouse le fournit${v ? ` (version ${v})` : ''} : ${moFirmware(f)}.${temps} Le jeu se lance juste après.`;
 }
 
 /** Les fichiers système obligatoires d'un conseil, pour le dire dans l'accord : ceux que Firehouse fournit, et les

@@ -155,6 +155,11 @@ describe('le conseil de la maison (contrat 1.8)', () => {
     expect(q).toContain('Firehouse le fournit (version 18.1) : 321 Mo. Environ 5 min à ta vitesse habituelle. Le jeu se lance juste après.');
     expect(q).not.toContain('S’il manque');
     expect(questionFirmwareSwitch(fw, null, () => '')).not.toContain('Environ');
+    // Switch 2 (Lichii, 08/11) : sa console nommée ; jamais « Environ moins d’une minute ».
+    const q2 = questionFirmwareSwitch(fw, 1e9, () => 'moins d’une minute', 'Switch 2');
+    expect(q2).toContain('Beaucoup de jeux Switch 2 ne démarrent pas');
+    expect(q2).toContain('Moins d’une minute à ta vitesse habituelle.');
+    expect(q2).not.toContain('Environ moins');
     expect(micrologicielServi(c.bios)).toBeUndefined();
   });
 

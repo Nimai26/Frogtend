@@ -2462,3 +2462,7 @@ d'abord :
   firmware available ») — bios_poser ne posait rien, en silence, pour un programme autre que l'émulateur du conseil
   (eglantine). → 0.170.0 : Lichii, cité en alternative de la Switch 2, reçoit les clés et le firmware ; un échec se
   dit. L'écran noir est à revoir AVEC clés et firmware.
+- 09/11 (0.170.0) : clés + logiciel système posés dans Lichii ✅ (journal : 238 fichiers, 23.0.1) ; la question du
+  logiciel système disait « jeux Switch » → « Switch 2 ». DÉCISION : le compteur d'images par seconde = choix PAR
+  PERSONNE pour tous ses jeux (A) → 0.171.0 (clé d'Eglantine vérifiée dans main_window.cpp : lue au démarrage,
+  Ctrl+V bascule, réenregistrée en quittant).

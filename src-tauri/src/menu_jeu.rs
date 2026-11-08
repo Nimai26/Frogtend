@@ -78,6 +78,22 @@ pub struct PartieEnCours {
     pub shader_enable_avant: Option<bool>,
     /// RPCS3 a refusé une sauvegarde rapide faute du « mode compatible » (dit dans le menu).
     pub refus_etat: bool,
+    /// Les images par seconde (✅ Seb 08/11, choix par personne) : ce que l'émulateur affiche (`None` : inconnu) ;
+    /// Frogtend sait-il le poser au lancement (`images_par_seconde::au_lancement`) ; la bascule en direct marche-t-elle
+    /// (Eden : raccourci d'origine) ; RetroArch : `fps_show` d'avant la partie et si Frogtend l'a changé (rendu après).
+    pub fps: Option<bool>,
+    pub fps_au_lancement: bool,
+    pub fps_en_direct: bool,
+    pub fps_avant: Option<bool>,
+    pub fps_pose: bool,
+}
+
+/// L'entrée « Images par seconde » du menu : ce qui est affiché (`None` : inconnu), et si le changement se voit tout
+/// de suite (sinon : à la prochaine partie).
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct FpsMenu {
+    pub affiche: Option<bool>,
+    pub en_direct: bool,
 }
 
 /// L'écran « Effet d'image » du menu en jeu.
@@ -502,6 +518,21 @@ impl MenuJeu {
             p.refus_etat = true;
         }
     }
+    /// Le compteur d'images par seconde a été basculé (en direct) ou choisi pour la prochaine partie : rend ce qui est
+    /// maintenant choisi (`None` : inconnu, la bascule d'un état inconnu).
+    pub fn noter_fps(&self, affiche: Option<bool>, en_direct: bool) -> Option<bool> {
+        let mut g = self.partie.lock().unwrap_or_else(|e| e.into_inner());
+        let p = g.as_mut()?;
+        p.fps = match affiche {
+            Some(v) => Some(v),
+            None => p.fps.map(|v| !v),
+        };
+        // RetroArch recopiera la valeur de la partie dans son fichier commun : rendue après.
+        if en_direct && p.emulateur.as_deref() == Some("retroarch") {
+            p.fps_pose = true;
+        }
+        p.fps
+    }
     /// Un effet d'image posé en jeu (`None` : aucun).
     pub fn noter_effet(&self, effet: Option<String>) {
         if let Some(p) = self.partie.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
@@ -559,6 +590,8 @@ pub struct EtatMenu {
     pub effets: Option<EffetsMenu>,
     /// RPCS3 a refusé une sauvegarde rapide faute de son « mode compatible ».
     pub refus_etat: bool,
+    /// Les images par seconde (`None` : pas d'entrée).
+    pub fps: Option<FpsMenu>,
 }
 
 pub fn nom_action(a: Action) -> &'static str {
@@ -602,6 +635,8 @@ pub fn etat(p: &PartieEnCours) -> EtatMenu {
             // charger — une sauvegarde peu fiable serait une partie perdue (✅ Seb 19/10).
             // Des touches qui n'arriveraient pas (Dolphin, raccourcis sur une manette) : rien à proposer.
             .filter(|_| p.raccourcis_clavier || e == "retroarch" || e == "mame")
+            // La famille d'Eden : Ctrl+V seulement s'il est encore son raccourci d'origine.
+            .filter(|a| !matches!(a, crate::pilotage::Action::ImagesParSeconde) || !matches!(e, "eden" | "eglantine" | "lichii") || p.fps_en_direct)
             // Le mode « hardcore » des succès : pas de sauvegarde rapide (RetroArch les refuserait).
             .filter(|a| !p.etats_interdits || !matches!(a, crate::pilotage::Action::SauverEtat | crate::pilotage::Action::ChargerEtat))
             // DOSBox Staging change de disque par sa propre configuration : gardé tel quel.
@@ -621,12 +656,22 @@ pub fn etat(p: &PartieEnCours) -> EtatMenu {
         triches: (e == "retroarch" && p.triches_permises && !p.etats_interdits).then(|| p.triches.clone()),
         abri_triches: p.abri_triches,
         refus_etat: p.refus_etat,
+        fps: fps_menu(p, e),
         effets: (e == "retroarch" && !p.effets.is_empty()).then(|| EffetsMenu {
             presents: p.effets.clone(),
             actuel: p.effet.clone(),
             de_la_personne: p.effet_de_la_personne,
         }),
     }
+}
+
+/// L'entrée « Images par seconde » : en direct quand la bascule part tout de suite (RetroArch, MAME, Eden avec son
+/// raccourci d'origine, et les touches qui arrivent) ; sinon, seulement si Frogtend sait la poser au lancement (RPCS3).
+fn fps_menu(p: &PartieEnCours, e: &str) -> Option<FpsMenu> {
+    let en_direct = crate::pilotage::actions(e).contains(&crate::pilotage::Action::ImagesParSeconde)
+        && (p.raccourcis_clavier || e == "retroarch" || e == "mame")
+        && (!matches!(e, "eden" | "eglantine" | "lichii") || p.fps_en_direct);
+    (en_direct || p.fps_au_lancement).then_some(FpsMenu { affiche: p.fps, en_direct })
 }
 
 /// Envoie une commande réseau à RetroArch (127.0.0.1, voir `pilotage::lignes_retroarch`).
@@ -1001,6 +1046,12 @@ pub fn agir(emulateur: &str, pids: &[u32], a: Action) -> Resultat<()> {
     if t.maj {
         m.push(MAJ);
     }
+    // Juste avant : le jeu a-t-il TOUJOURS le premier plan ? Sinon la touche (Ctrl+V…) partirait dans une autre
+    // fenêtre : rien n'est envoyé.
+    #[cfg(windows)]
+    if !pids.contains(&crate::clavier::pid_au_premier_plan()) {
+        return Err(Erreur::Introuvable("Le jeu n'a plus la main : rien n'a été envoyé.".into()));
+    }
     #[cfg(windows)]
     fenetres::touche(scan, etendue, &m);
     #[cfg(not(windows))]
@@ -1073,7 +1124,38 @@ mod tests {
             effet_pose: false,
             shader_enable_avant: None,
             refus_etat: false,
+            fps: None,
+            fps_au_lancement: false,
+            fps_en_direct: false,
+            fps_avant: None,
+            fps_pose: false,
         }
+    }
+
+    #[test]
+    fn les_images_par_seconde_dans_le_menu() {
+        let ra = PartieEnCours { fps: Some(false), ..partie(Some("retroarch")) };
+        assert_eq!(etat(&ra).fps, Some(FpsMenu { affiche: Some(false), en_direct: true }));
+        assert!(etat(&ra).actions.contains(&"fps"));
+        // Lichii : Ctrl+V d'origine → en direct ; raccourci changé → seulement « à la prochaine partie ».
+        let lichii = PartieEnCours { fps: Some(true), fps_au_lancement: true, fps_en_direct: true, ..partie(Some("lichii")) };
+        assert_eq!(etat(&lichii).fps, Some(FpsMenu { affiche: Some(true), en_direct: true }));
+        let change = PartieEnCours { fps_en_direct: false, ..lichii };
+        assert_eq!(etat(&change).fps, Some(FpsMenu { affiche: Some(true), en_direct: false }));
+        assert!(!etat(&change).actions.contains(&"fps"), "aucune touche envoyée sans le raccourci d'origine");
+        // RPCS3 : au prochain lancement seulement ; jamais une touche.
+        let rpcs3 = PartieEnCours { fps: Some(false), fps_au_lancement: true, ..partie(Some("rpcs3")) };
+        assert_eq!(etat(&rpcs3).fps, Some(FpsMenu { affiche: Some(false), en_direct: false }));
+        assert!(!etat(&rpcs3).actions.contains(&"fps"));
+        // Un jeu PC, Cemu : pas d'entrée.
+        assert_eq!(etat(&partie(None)).fps, None);
+        assert_eq!(etat(&partie(Some("cemu"))).fps, None);
+        // La bascule : l'état connu s'inverse ; un choix pour la prochaine partie est pris tel quel.
+        let m = MenuJeu::default();
+        m.commencer(ra);
+        assert_eq!(m.noter_fps(None, true), Some(true));
+        assert!(m.partie().unwrap().fps_pose, "RetroArch : rendu après la partie");
+        assert_eq!(m.noter_fps(Some(false), false), Some(false));
     }
 
     #[test]

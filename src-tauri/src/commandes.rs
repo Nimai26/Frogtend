@@ -1575,6 +1575,7 @@ pub async fn jeu_jouer(
     repeter_touches: Option<bool>,
     carte: Option<i64>,
     image: Option<String>,
+    fps: Option<bool>,
 ) -> Resultat<()> {
     let jeu = noyau.registre().jeu(id)?;
     // Un jeu d'une boutique : lancé par elle, jamais par un émulateur (même si un émulateur est réglé pour « Windows »).
@@ -1590,6 +1591,8 @@ pub async fn jeu_jouer(
     let mut effet_lance: Option<String> = None;
     let mut effet_de_la_personne = false;
     let mut ligne_rpcs3: Option<String> = None;
+    // Les images par seconde (✅ Seb 08/11, choix par personne) : ce qui sera affiché, et de quoi le rendre après.
+    let mut etat_fps = crate::images_par_seconde::EtatLancement::default();
     let emulateur = match (!de_boutique).then(|| emulateur_regle(&app, &plateforme, id, emulateur.as_deref())).flatten() {
         Some((programme, ligne)) => {
             // Son émulateur se met à jour en ce moment : on attend la fin (jamais un jeu lancé pendant le remplacement).
@@ -1619,6 +1622,22 @@ pub async fn jeu_jouer(
                 }
             }
             let (prog, mut ligne_c) = preparer_emulateur(&app, &noyau, &plateforme, &programme, &ligne, &commandes.unwrap_or_default()).await?;
+            // Le compteur d'images par seconde de la personne, posé avant le lancement ; un échec n'empêche pas de jouer.
+            if let (Some(ide), Some(d), Some(profil)) = (id_emulateur.clone(), dossier_emulateur.clone(), profil_ouvert(&noyau).await.ok().map(|p| p.nom)) {
+                // RPCS3 : le numéro du jeu (son réglage propre passe devant).
+                let ps3 = if ide == "rpcs3" {
+                    noyau.fichier_pour_l_emulateur(id, version.as_deref()).await.ok().flatten().and_then(|f| crate::contenus::titre_id_ps3(&f))
+                } else {
+                    None
+                };
+                let r = tauri::async_runtime::spawn_blocking(move || crate::images_par_seconde::au_lancement_de_la_partie(&ide, std::path::Path::new(&d), &profil, fps, ps3.as_deref()))
+                    .await
+                    .map_err(|_| Erreur::Disque("La préparation du compteur d'images s'est arrêtée brutalement.".into()))?;
+                if let Some(m) = &r.erreur {
+                    noyau.journaliser(&format!("images par seconde du jeu {id} : non posées ({m})"));
+                }
+                etat_fps = r;
+            }
             // RetroArch : l'effet d'image choisi pour ce jeu ou sa console (lot 4a/4b), par `--set-shader` (rien n'est
             // recopié dans retroarch.cfg) ; seul `video_shader_enable` est écrit, dans le fichier du profil (RetroArch
             // ne charge aucun effet sans lui). Un refus est dit, le jeu se lance quand même.
@@ -1869,6 +1888,11 @@ pub async fn jeu_jouer(
         effets: effets_ra,
         shader_enable_avant,
         refus_etat: false,
+        fps: etat_fps.affiche,
+        fps_au_lancement: etat_fps.au_lancement,
+        fps_en_direct: etat_fps.en_direct,
+        fps_avant: etat_fps.avant,
+        fps_pose: etat_fps.pose,
         raccourcis_clavier,
         emplacement: 0,
         emplacement_ra: 0,
@@ -2029,6 +2053,12 @@ pub async fn jeu_jouer(
             if let (true, false, Some(d)) = (p.effet_pose, p.shader_enable_avant == Some(true), p.dossier_emulateur.as_deref()) {
                 if let Err(e) = crate::emulateurs::rendre_shader_enable(std::path::Path::new(d)) {
                     noyau.journaliser(&format!("effet d'image : video_shader_enable non rendu ({e:?})"));
+                }
+            }
+            // RetroArch a aussi recopié `fps_show` de la partie : rendu à sa valeur d'avant (absent = « false »).
+            if let (true, Some("retroarch"), Some(d)) = (p.fps_pose, p.emulateur.as_deref(), p.dossier_emulateur.as_deref()) {
+                if let Err(e) = crate::emulateurs::rendre_reglage_retroarch(std::path::Path::new(d), "fps_show", p.fps_avant.unwrap_or(false)) {
+                    noyau.journaliser(&format!("images par seconde : fps_show non rendu ({e:?})"));
                 }
             }
         }
@@ -2449,6 +2479,24 @@ pub async fn menu_jeu_action(app: AppHandle, noyau: State<'_, Noyau>, action: St
         .partie()
         .ok_or_else(|| Erreur::Introuvable("Aucune partie en cours.".into()))?;
     let e = p.emulateur.clone().ok_or_else(|| Erreur::Refus("Ce jeu ne se pilote pas depuis le menu.".into()))?;
+    if a == crate::pilotage::Action::ImagesParSeconde {
+        // Le compteur basculé en direct : la nouvelle valeur (si elle est connue) devient le choix de la personne.
+        let r = if e == "mame" {
+            action_mame(&app, &noyau, p.dossier_emulateur.as_deref(), a, p.emplacement).await
+        } else {
+            if !crate::menu_jeu::etat(&p).actions.contains(&action.as_str()) {
+                return Err(Erreur::Refus("Cette action n'est pas proposée pour ce jeu.".into()));
+            }
+            cacher_menu(&app);
+            tauri::async_runtime::spawn_blocking(move || crate::menu_jeu::agir(&e, &crate::lancement::processus_de_la_partie(p.pid), a))
+                .await
+                .map_err(|_| Erreur::Disque("L'action s'est arrêtée brutalement.".into()))?
+        };
+        if r.is_ok() {
+            garder_fps(&app, None, true);
+        }
+        return r;
+    }
     if e == "mame" {
         return action_mame(&app, &noyau, p.dossier_emulateur.as_deref(), a, p.emplacement).await;
     }
@@ -2472,6 +2520,30 @@ pub async fn menu_jeu_action(app: AppHandle, noyau: State<'_, Noyau>, action: St
     tauri::async_runtime::spawn_blocking(move || crate::menu_jeu::agir(&e, &crate::lancement::processus_de_la_partie(p.pid), a))
         .await
         .map_err(|_| Erreur::Disque("L'action s'est arrêtée brutalement.".into()))?
+}
+
+/// Note le compteur d'images par seconde dans la partie, et le donne à la fenêtre principale qui le garde comme
+/// choix de la personne (`menu-fps-garder` ; la fenêtre du menu n'écrit rien elle-même).
+fn garder_fps(app: &AppHandle, affiche: Option<bool>, en_direct: bool) {
+    let menu = app.state::<crate::menu_jeu::MenuJeu>();
+    if let Some(v) = menu.noter_fps(affiche, en_direct) {
+        let _ = app.emit("menu-fps-garder", serde_json::json!({ "affiche": v }));
+    }
+}
+
+/// Le compteur d'images par seconde pour les PROCHAINES parties, quand l'émulateur ne sait pas le basculer en jeu
+/// (RPCS3, ou Eden dont le raccourci a été changé) : rien n'est envoyé au jeu, le choix est gardé.
+#[tauri::command]
+pub fn menu_jeu_fps(app: AppHandle, afficher: bool) -> Resultat<()> {
+    let p = app
+        .state::<crate::menu_jeu::MenuJeu>()
+        .partie()
+        .ok_or_else(|| Erreur::Introuvable("Aucune partie en cours.".into()))?;
+    if crate::menu_jeu::etat(&p).fps.is_none_or(|f| f.en_direct) {
+        return Err(Erreur::Refus("Le compteur ne se règle pas ainsi pour ce jeu.".into()));
+    }
+    garder_fps(&app, Some(afficher), false);
+    Ok(())
 }
 
 /// Change l'effet d'image À CHAUD (RetroArch, lot 2) : le menu se ferme, le jeu repart et reçoit `SET_SHADER`

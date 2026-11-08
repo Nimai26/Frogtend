@@ -395,6 +395,12 @@ impl PremierPlan {
     }
 }
 
+/// Le processus de la fenêtre au premier plan (0 : aucun).
+#[cfg(windows)]
+pub fn pid_au_premier_plan() -> u32 {
+    windows_impl::pid_au_premier_plan()
+}
+
 #[cfg(windows)]
 mod windows_impl {
     use super::{Frappe, ENFONCEES};

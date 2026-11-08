@@ -74,6 +74,9 @@ pub fn touche(emulateur: &str, a: Action) -> Option<Touche> {
         ("rpcs3", Action::Capture) => Some(t("F12")),
         ("rpcs3", Action::AvanceRapide) => Some(Touche { ctrl: true, ..t("F10") }),
         ("rpcs3", Action::Muet) => Some(Touche { ctrl: true, maj: true, ..t("M") }),
+        // Eden, Eglantine, Lichii : « Toggle Performance Overlay », Ctrl+V d'origine (main_window.cpp ; seulement s'il
+        // n'a pas été changé : `images_par_seconde::eden_en_direct`, vérifié au lancement).
+        ("eden" | "eglantine" | "lichii", Action::ImagesParSeconde) => Some(Touche { ctrl: true, ..t("V") }),
         _ => None,
     }
 }
@@ -96,6 +99,8 @@ pub fn actions(emulateur: &str) -> Vec<Action> {
         // Pas d'avance rapide (✅ Seb 04/11) : Ctrl+F10 coupe la limite d'images, mais un jeu réglé sur la Vblank (Asura's
         // Wrath) ne va pas plus vite.
         "rpcs3" => vec![Capture, Muet],
+        // La famille d'Eden : le compteur d'images par seconde (retiré si son raccourci a été changé : `menu_jeu::etat`).
+        "eden" | "eglantine" | "lichii" => vec![ImagesParSeconde],
         _ => vec![],
     }
 }

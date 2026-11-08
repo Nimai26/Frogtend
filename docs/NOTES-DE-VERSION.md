@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.171.0 — Les images par seconde depuis le menu
+
+- 📊 Dans le menu en jeu (bouton Xbox) ▸ ⚙ Options du jeu : « Images par seconde » montre ou cache le compteur de
+  l'émulateur. Ton choix est retenu pour TOUS tes jeux (chaque personne a le sien).
+- Tout de suite pendant la partie avec Eglantine, Lichii, Eden et RetroArch ; avec RPCS3, à la prochaine partie (il
+  ne sait pas le changer en cours de jeu, le menu le dit). MAME bascule aussi, mais ne retient pas encore ton choix.
+- Le même choix dans ⚙ Options ▸ 🎮 Ludothèque : « Comme l’émulateur le fait », « Affiché » ou « Caché ».
+- La question du logiciel système dit « Switch 2 » pour un jeu Switch 2.
+
 ## 0.170.0 — Les clés et le logiciel système aussi pour Lichii
 
 - 🔑 Lichii reçoit enfin tes clés de la Switch 2 (servies par Firehouse) quand tu dis « Les poser » : avant, Frogtend

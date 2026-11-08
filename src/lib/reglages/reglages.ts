@@ -144,6 +144,9 @@ export interface ReglagesProfil {
   /** L'effet d'image de RetroArch (lot 4a/4b, ✅ Seb 28/10 : par jeu ou par console) : identifiant d'un effet du cœur
    * (`EFFETS_IMAGE`) ou `aucun`. Le jeu passe devant sa console ; absent : rien. */
   image: { consoles: Record<string, string>; jeux: Record<string, string> };
+  /** Le compteur d'images par seconde de l'émulateur (✅ Seb 08/11 : un choix par personne, pour tous ses jeux), changé
+   * depuis le menu en jeu : `affichees`, `cachees`, ou `''` (jamais choisi : le réglage de l'émulateur est gardé). */
+  imagesParSeconde: '' | 'affichees' | 'cachees';
 }
 
 export const DEFAUTS_PC: ReglagesPc = {
@@ -188,7 +191,13 @@ export const DEFAUTS_PROFIL: ReglagesProfil = {
   sansRepetition: [],
   reunionsSuivies: [],
   image: { consoles: {}, jeux: {} },
+  imagesParSeconde: '',
 };
+
+/** Le choix du compteur d'images par seconde, tel que le cœur l'attend (`undefined` : jamais choisi). */
+export function choixImagesParSeconde(v: unknown): boolean | undefined {
+  return v === 'affichees' ? true : v === 'cachees' ? false : undefined;
+}
 
 export const TAILLE_JAQUETTE_MIN = 110;
 export const TAILLE_JAQUETTE_MAX = 320;

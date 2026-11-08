@@ -6,6 +6,14 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Les images par seconde depuis le menu (0.171.0)
+- [ ] Zelda avec Lichii, bouton Xbox ▸ ⚙ Options du jeu ▸ « 📊 Images par seconde » : le menu se ferme et le compteur
+      apparaît en haut de l'écran ; le refaire : il disparaît.
+- [ ] Le laisser affiché, quitter, relancer le jeu (ou un autre jeu Switch 2 / Switch) : le compteur est là dès le début.
+- [ ] Un jeu PS3 : l'entrée dit « à la prochaine partie » ; relancer : le compteur de RPCS3 est là.
+- [ ] ⚙ Options ▸ 🎮 Ludothèque ▸ « Compteur de fluidité » : le choix fait dans le menu y apparaît ; « Comme l’émulateur
+      le fait » rend la main à l'émulateur.
+
 ## Les clés et le logiciel système pour Lichii (0.170.0)
 - [ ] Mettre à jour Frogtend, ▶ Jouer à Zelda avec Lichii : « 🔑 Les poser » → les clés posées, puis la question
       du logiciel système de la Switch 2 → l'installer ; à la partie suivante, plus aucune question.

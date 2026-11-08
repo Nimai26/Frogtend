@@ -1035,6 +1035,14 @@ pub fn commande_effet(dossier: &Path, choix: &str) -> Result<String, String> {
 /// personne qui l'avait à « false » (RetroArch recopie la valeur de la partie en quittant : ses propres effets
 /// automatiques se seraient rallumés partout). Copie à l'abri d'abord ; seulement cette ligne.
 pub fn rendre_shader_enable(dossier: &Path) -> crate::erreurs::Resultat<()> {
+    rendre_reglage_retroarch(dossier, "video_shader_enable", false)
+}
+
+/// Remet une clé booléenne de retroarch.cfg à `valeur` après une partie (RetroArch recopie en quittant ce que Frogtend
+/// avait posé pour la partie : `video_shader_enable`, `fps_show`). Copie à l'abri d'abord ; seulement cette ligne ;
+/// une clé absente le reste.
+pub fn rendre_reglage_retroarch(dossier: &Path, cle: &str, valeur: bool) -> crate::erreurs::Resultat<()> {
+    let voulu = if valeur { "true" } else { "false" };
     let f = dossier.join("retroarch.cfg");
     let Ok(octets) = std::fs::read(&f) else { return Ok(()) };
     // Un fichier qui n'est pas en UTF-8 (un chemin de la personne) : jamais réécrit (ses octets seraient changés).
@@ -1046,9 +1054,9 @@ pub fn rendre_shader_enable(dossier: &Path) -> crate::erreurs::Resultat<()> {
     let lignes: Vec<String> = texte
         .lines()
         .map(|l| {
-            if l.split_once('=').is_some_and(|(c, v)| c.trim() == "video_shader_enable" && v.trim().trim_matches('"') != "false") {
+            if l.split_once('=').is_some_and(|(c, v)| c.trim() == cle && v.trim().trim_matches('"') != voulu) {
                 change = true;
-                "video_shader_enable = \"false\"".to_string()
+                format!("{cle} = \"{voulu}\"")
             } else {
                 l.to_string()
             }

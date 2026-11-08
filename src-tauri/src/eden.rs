@@ -640,7 +640,7 @@ pub fn home_retire(eden: &Path) -> bool {
 }
 
 /// Le fichier de réglages, lu avec un plafond (un fichier de plusieurs Mo n'est pas celui d'Eden : jamais touché).
-fn lire_reglages(eden: &Path) -> Resultat<String> {
+pub(crate) fn lire_reglages(eden: &Path) -> Resultat<String> {
     let f = fichier_reglages(eden);
     // Pas encore créé (installation neuve, avant sa première ouverture) : vide — Frogtend le crée avec SES clés, et
     // l'émulateur garde ses valeurs d'origine pour toutes les autres (`Config::Initialize` → `SetUpIni` charge le
@@ -778,6 +778,17 @@ pub fn regler_langue(eden: &Path, langid: u16) -> Resultat<bool> {
     let change = !v.is_empty() && ecrire_qt(eden, &texte, "System", &v)?;
     std::fs::write(marque_langue(eden), b"")?;
     Ok(change)
+}
+
+/// Le compteur d'images par seconde au lancement (choix de la personne, ✅ Seb 08/11) : `[UI]
+/// UIGameList\show_perf_overlay` (voir `images_par_seconde`). Portable et fermé seulement ; installation neuve : le
+/// fichier est créé. Rend vrai si le fichier a changé.
+pub fn regler_images_par_seconde(eden: &Path, afficher: bool) -> Resultat<bool> {
+    if !reglages_modifiables(eden) {
+        return Ok(false);
+    }
+    let texte = lire_reglages(eden)?;
+    ecrire_qt(eden, &texte, "UI", &[("UIGameList\\show_perf_overlay", if afficher { "true" } else { "false" }.to_string())])
 }
 
 /// Quitter sans question (✅ Seb 08/11 : la confirmation d'Eglantine coupe « Quitter le jeu » du menu de Frogtend, qui

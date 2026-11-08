@@ -232,6 +232,22 @@
     }
   }
 
+  /** Le compteur d'images par seconde (✅ Seb 08/11 : le choix vaut pour tous les jeux de la personne). En direct : le
+   * menu se ferme et le jeu bascule. Sinon (RPCS3) : rien n'est envoyé, le choix vaut à la prochaine partie, dit ici. */
+  async function basculerFps() {
+    const f = menu?.fps;
+    if (!menu || !f) return;
+    if (f.en_direct) return action('fps');
+    const afficher = !f.affiche;
+    try {
+      await api.menuJeuFps(afficher);
+      menu = { ...menu, fps: { ...f, affiche: afficher } };
+      toast(`📊 C’est noté : compteur ${afficher ? 'affiché' : 'caché'} dès ta prochaine partie.`, 'ok');
+    } catch (e) {
+      toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
+    }
+  }
+
   /** Activer ou couper une triche : le menu se ferme et le jeu la reçoit (RetroArch la confirme en haut de l'écran).
    * La première activation de la partie : une mise en garde (la partie est d'abord mise à l'abri par le cœur, qui dit
    * si c'est déjà fait pour cette partie). */
@@ -501,10 +517,24 @@
   {:else if options}
     <header>
       <h1>⚙ Options du jeu</h1>
-      <p class="muted">Chaque option se fait dans le jeu : le menu se ferme et le jeu reprend.</p>
+      <p class="muted">
+        Chaque option se fait dans le jeu : le menu se ferme et le jeu reprend.{menu.fps && !menu.fps.en_direct
+          ? ' Le compteur de fluidité, lui, change à ta prochaine partie : cet émulateur ne sait pas le faire en jouant.'
+          : ''}
+      </p>
     </header>
     <div class="liste" bind:this={liste}>
-      {#if a('fps')}<button class="btn" onclick={() => action('fps')}>📊 Compteur de fluidité (images par seconde) : afficher ou masquer</button>{/if}
+      {#if menu.fps}
+        <!-- En direct : sans état (la personne a pu le basculer dans l'émulateur lui-même). Sinon : un CHOIX pour la
+             prochaine partie, exact, dit à côté (le jeu en cours ne change pas). -->
+        <button class="btn" onclick={basculerFps}>
+          {#if menu.fps.en_direct}
+            📊 Compteur de fluidité (images par seconde) : afficher ou cacher
+          {:else}
+            📊 Compteur de fluidité : {menu.fps.affiche ? 'affiché (le cacher)' : 'caché (l’afficher)'} <span class="muted">(à ta prochaine partie)</span>
+          {/if}
+        </button>
+      {/if}
       {#if a('rapide')}
         <button class="btn" onclick={async () => { const jeu = menu?.jeu ?? null; await action('rapide'); rapidePour = rapide ? null : jeu; }}>
           {rapide ? '⏩ Couper l’avance rapide' : '⏩ Avance rapide (le jeu va plus vite)'}
@@ -650,7 +680,7 @@
       {#if menu.effets}
         <button class="btn" data-ecran="effets" onclick={() => revenir(() => (effets = true))}>🖼 Effet d’image <span class="muted">({libelleEffet(menu.effets.actuel ?? undefined)})</span></button>
       {/if}
-      {#if ['fps', 'rapide', 'capture', 'muet'].some((o) => a(o))}
+      {#if menu.fps || ['rapide', 'capture', 'muet'].some((o) => a(o))}
         <button class="btn" data-ecran="options" onclick={() => revenir(() => (options = true))}>⚙ Options du jeu</button>
       {/if}
       {#if menu.triches}
