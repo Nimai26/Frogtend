@@ -1033,6 +1033,44 @@ mod tests {
         println!("installé : {} ; autoconfig présent : {}", prog.display(), d.path().join("RetroArch").join("autoconfig").is_dir());
     }
 
+    /// RÉEL, lecture seule : ce que Firehouse sert pour CHAQUE émulateur connu de Frogtend (paquet hébergé ou source
+    /// officielle, version, taille). Rien n'est téléchargé.
+    /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_paquets_emulateurs -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_paquets_emulateurs() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let s = Source::Firehouse(crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap());
+        for f in crate::emulateurs::CATALOGUE.iter().map(|f| f.id).chain(["mame", "dosbox_staging", "xenia_canary", "bigpemu", "mesen", "ares", "ryubing", "flycast", "eka2l1"]) {
+            match s.paquet_emulateur(f).await {
+                Ok(p) => println!(
+                    "PAQUET {f} : heberge={} version={} taille={} url={} source={}",
+                    p["heberge"], p["version"], p["taille"], p["url"], p["source"]
+                ),
+                Err(e) => println!("PAQUET {f} : ERREUR {e}"),
+            }
+        }
+        // Les émulateurs CONSEILLÉS (ou alternatives) pour chaque plateforme présente, et ce que Frogtend ne connaît pas.
+        let c = crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        let pl: Value = c.obtenir_json("/plateformes").await.unwrap();
+        let liste = pl.as_array().cloned().or_else(|| pl["plateformes"].as_array().cloned()).unwrap_or_default();
+        for p in liste {
+            let nom = p["nom"].as_str().or_else(|| p.as_str()).unwrap_or_default().to_string();
+            let n = p["nombre"].clone();
+            let Ok(v) = c.obtenir_json::<Value>(&format!("/emulateurs?plateforme={}", encoder(&nom))).await else {
+                println!("PLATEFORME {nom} ({n}) : ERREUR");
+                continue;
+            };
+            let k = &v["conseil"];
+            let mut cites = vec![k["emulateur"].as_str().unwrap_or("-").to_string()];
+            cites.extend(k["alternatives"].as_array().into_iter().flatten().filter_map(|a| a["emulateur"].as_str().map(String::from)));
+            let inconnus: Vec<&String> = cites.iter().filter(|e| crate::emulateurs::CATALOGUE.iter().all(|f| !f.alias.contains(&e.to_lowercase().as_str()) && f.id != e.to_lowercase())).collect();
+            println!("PLATEFORME {nom} ({n}) : conseil={} coeur={} cites={cites:?} INCONNUS={inconnus:?}", k["emulateur"], k["coeur"]);
+        }
+    }
+
     /// RÉEL (contrat 1.34) : le paquet MAME HÉBERGÉ par Firehouse (87 Mo) installé dans un dossier TEMPORAIRE — empreinte
     /// sha256 vérifiée, archive sortie de l'exe sans l'exécuter, programme trouvé. Rien n'est lancé ; tout est effacé.
     /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_mame_heberge -- --ignored --nocapture`

@@ -10,8 +10,8 @@ Légende : ✅ fait · ⚠ fait avec un risque · ❌ absent · n/a sans objet.
 | Émulateur | Manette J1 | Langue | Bouton Xbox → menu | Installation neuve | Schéma 🎮 |
 |---|---|---|---|---|---|
 | RetroArch | ✅ profils officiels + autodétection | ❌ | ✅ (99, non essayé en vrai) | ✅ frogtend.cfg à chaque partie | ✅ par cœur |
-| DuckStation | ✅ SDL-0 | ❌ (la PS1 n'a pas de langue ; l'interface : à vérifier) | ✅ | ⚠ settings.ini créé sans `SettingsVersion` | ✅ |
-| PCSX2 | ✅ SDL-0 | ❌ (langue dans la NVM du BIOS : jamais touchée) | ✅ | ⚠ PCSX2.ini créé sans `[UI] SettingsVersion = 1` (contrat § 1.11) | ✅ |
+| DuckStation | ✅ SDL-0 | ❌ (la PS1 n'a pas de langue ; l'interface : à vérifier) | ✅ | ✅ 0.172.0 : base d'origine (assistant passé, clavier, raccourcis), essayé sur DuckStation 0.1-12640 neuf | ✅ |
+| PCSX2 | ✅ SDL-0 | ❌ (langue dans la NVM du BIOS : jamais touchée) | ✅ | ✅ 0.172.0 : base d'origine (`SettingsVersion = 1`, clavier, raccourcis) ; pas encore ouvert en vrai | ✅ |
 | Dolphin | ✅ GameCube ; Wii par référence | ❌ | ✅ | ✅ | ⚠ GameCube seulement |
 | RPCS3 | ✅ | ✅ | ✅ | ⚠ langue réglée à la 1re partie grâce à l'ordre des appels | ✅ |
 | Eden / Eglantine / Lichii | ✅ manette XInput branchée | ✅ | ✅ | ✅ depuis la 0.169.0 | ✅ |

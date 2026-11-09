@@ -348,7 +348,9 @@ pub fn regler_pcsx2(emulateur: &Path, bios: &[BiosConseil]) -> Resultat<bool> {
     let ini = emulateur.join("inis").join("PCSX2.ini");
     let mut texte = match std::fs::read_to_string(&ini) {
         Ok(t) => t,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        // Créé ici avant la première partie : la même base qu'une création par la manette ou les dossiers (clavier
+        // et raccourcis d'origine, version) ; sinon PCSX2 garderait un fichier sans touches.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => crate::emulateurs_profils::base_neuve(emulateur, &ini),
         Err(e) => return Err(e.into()),
     };
     let lire = |t: &str, s: &str, c: &str| crate::manettes::lire_ini(t, s, c).into_iter().find(|v| !v.trim().is_empty());
@@ -615,6 +617,9 @@ mod tests {
         assert_eq!(crate::manettes::lire_ini(&t, "Folders", "Bios"), ["bios"]);
         assert_eq!(crate::manettes::lire_ini(&t, "EmuCore", "EnableFastBoot"), ["true"]);
         assert_eq!(crate::manettes::lire_ini(&t, "UI", "SettingsVersion"), ["1"]);
+        assert_eq!(t.matches("[UI]").count(), 1);
+        assert_eq!(crate::manettes::lire_ini(&t, "Pad1", "Start"), ["Keyboard/Return"], "créé avec le clavier d'origine");
+        assert_eq!(crate::manettes::lire_ini(&t, "Hotkeys", "OpenPauseMenu"), ["Keyboard/Escape"]);
         assert!(!emu.join(".frogtend-sauvegardes").exists(), "rien à mettre à l'abri : le fichier n'existait pas");
         // Un BIOS choisi par la personne : jamais remplacé.
         std::fs::write(emu.join("inis").join("PCSX2.ini"), "[Filenames]\r\nBIOS = mon-bios.bin\r\n").unwrap();

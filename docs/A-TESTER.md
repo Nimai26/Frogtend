@@ -6,10 +6,15 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## PCSX2 et DuckStation réglés dès leur première partie (0.172.0)
+- [ ] Un jeu PS2 avec un PCSX2 jamais installé (Frogtend l'installe) : la partie démarre sans question en anglais ni
+      assistant, la manette marche tout de suite, et ta partie se sauvegarde (carte mémoire dans ton profil).
+- [ ] Pareil pour un jeu PS1 avec un DuckStation jamais installé : aucun assistant, la manette marche.
+
 ## Les images par seconde depuis le menu (0.171.0)
-- [ ] Zelda avec Lichii, bouton Xbox ▸ ⚙ Options du jeu ▸ « 📊 Images par seconde » : le menu se ferme et le compteur
+- [x] (✅ Seb 09/11) Zelda avec Lichii, bouton Xbox ▸ ⚙ Options du jeu ▸ « 📊 Images par seconde » : le menu se ferme et le compteur
       apparaît en haut de l'écran ; le refaire : il disparaît.
-- [ ] Le laisser affiché, quitter, relancer le jeu (ou un autre jeu Switch 2 / Switch) : le compteur est là dès le début.
+- [x] (✅ Seb 09/11, 60 i/s) Le laisser affiché, quitter, relancer le jeu (ou un autre jeu Switch 2 / Switch) : le compteur est là dès le début.
 - [ ] Un jeu PS3 : l'entrée dit « à la prochaine partie » ; relancer : le compteur de RPCS3 est là.
 - [ ] ⚙ Options ▸ 🎮 Ludothèque ▸ « Compteur de fluidité » : le choix fait dans le menu y apparaît ; « Comme l’émulateur
       le fait » rend la main à l'émulateur.

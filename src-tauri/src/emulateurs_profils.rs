@@ -230,11 +230,113 @@ pub(crate) fn remplacer_config(emulateur: &Path, fichier: &Path, apres: &str) ->
     Ok(())
 }
 
+/// Le clavier d'origine du joueur 1 (le même schéma « générique » chez les deux émulateurs ; les noms de touches
+/// diffèrent) : (touche de la manette PlayStation, DuckStation, PCSX2). Relevé du 09/11/2026 dans leur code :
+/// DuckStation src/util/input_manager.cpp GetKeyboardGenericBindingMapping ; PCSX2 pcsx2/Input/InputManager.cpp
+/// GetKeyboardGenericBindingMapping (appliqués par l'« automapper » de Settings/Pad::SetDefaultControllerConfig).
+const CLAVIER_PS: &[(&str, &str, &str)] = &[
+    ("Up", "UpArrow", "Up"),
+    ("Right", "RightArrow", "Right"),
+    ("Down", "DownArrow", "Down"),
+    ("Left", "LeftArrow", "Left"),
+    ("LUp", "W", "W"),
+    ("LRight", "D", "D"),
+    ("LDown", "S", "S"),
+    ("LLeft", "A", "A"),
+    ("RUp", "T", "T"),
+    ("RRight", "H", "H"),
+    ("RDown", "G", "G"),
+    ("RLeft", "F", "F"),
+    ("Start", "Enter", "Return"),
+    ("Select", "Backspace", "Backspace"),
+    ("Triangle", "I", "I"),
+    ("Circle", "L", "L"),
+    ("Cross", "K", "K"),
+    ("Square", "J", "J"),
+    ("L1", "Q", "Q"),
+    ("L2", "1", "1"),
+    ("L3", "2", "2"),
+    ("R1", "E", "E"),
+    ("R2", "3", "3"),
+    ("R3", "4", "4"),
+];
+
+/// Les raccourcis d'origine de DuckStation (src/core/hotkeys.cpp Settings::SetDefaultHotkeyConfig, 09/11/2026).
+const RACCOURCIS_DUCKSTATION: &[(&str, &str)] = &[
+    ("FastForward", "Keyboard/Tab"),
+    ("TogglePause", "Keyboard/Space"),
+    ("Screenshot", "Keyboard/F10"),
+    ("ToggleFullscreen", "Keyboard/F11"),
+    ("OpenPauseMenu", "Keyboard/Escape"),
+    ("LoadSelectedSaveState", "Keyboard/F1"),
+    ("SaveSelectedSaveState", "Keyboard/F2"),
+    ("SelectPreviousSaveStateSlot", "Keyboard/F3"),
+    ("SelectNextSaveStateSlot", "Keyboard/F4"),
+];
+
+/// Les raccourcis d'origine de PCSX2 (pcsx2/SIO/Pad/Pad.cpp Pad::SetDefaultHotkeyConfig, 09/11/2026).
+const RACCOURCIS_PCSX2: &[(&str, &str)] = &[
+    ("ToggleFullscreen", "Keyboard/Alt & Keyboard/Return"),
+    ("CycleAspectRatio", "Keyboard/F6"),
+    ("CycleInterlaceMode", "Keyboard/F5"),
+    ("ToggleMipmapMode", "Keyboard/Insert"),
+    ("GSDumpMultiFrame", "Keyboard/Control & Keyboard/Shift & Keyboard/F8"),
+    ("Screenshot", "Keyboard/F8"),
+    ("GSDumpSingleFrame", "Keyboard/Shift & Keyboard/F8"),
+    ("GSStartSavingMetricsVariableFrames", "Keyboard/F10"),
+    ("GSStartSavingMetricsFixedFrames", "Keyboard/Control & Keyboard/F10"),
+    ("ToggleSoftwareRendering", "Keyboard/F9"),
+    ("ZoomIn", "Keyboard/Control & Keyboard/Plus"),
+    ("ZoomOut", "Keyboard/Control & Keyboard/Minus"),
+    ("Mute", "Keyboard/Control & Keyboard/M"),
+    ("InputRecToggleMode", "Keyboard/Shift & Keyboard/R"),
+    ("LoadStateFromSlot", "Keyboard/F3"),
+    ("SaveStateToSlot", "Keyboard/F1"),
+    ("NextSaveStateSlot", "Keyboard/F2"),
+    ("PreviousSaveStateSlot", "Keyboard/Shift & Keyboard/F2"),
+    ("OpenPauseMenu", "Keyboard/Escape"),
+    ("ToggleFrameLimit", "Keyboard/F4"),
+    ("TogglePause", "Keyboard/Space"),
+    ("ToggleSlowMotion", "Keyboard/Shift & Keyboard/Backtab"),
+    ("ToggleTurbo", "Keyboard/Tab"),
+    ("HoldTurbo", "Keyboard/Period"),
+];
+
+/// Ce que porte un fichier de réglages CRÉÉ par Frogtend (jamais ajouté à un fichier existant), pour que l'émulateur
+/// le prenne tel quel à sa première partie :
+/// - PCSX2 (VMManager::Internal::CheckSettingsVersion) : sans `[UI] SettingsVersion = 1`, il pose une question en
+///   anglais puis remet TOUT par défaut (dossiers des cartes mémoire compris) ;
+/// - DuckStation (qthost.cpp InitializeFoldersAndConfig) : sans `SetupWizardIncomplete` ni `SettingsVersion`, son
+///   assistant de première configuration s'ouvre (Frogtend fait ce travail) ;
+/// - les deux n'écrivent leurs réglages d'origine (clavier du joueur 1, raccourcis) QUE s'il n'y a pas de fichier :
+///   Frogtend les écrit donc lui-même. Le type de manette n'y est pas : la manette de Frogtend le pose.
+pub(crate) fn base_neuve(emulateur: &Path, fichier: &Path) -> String {
+    // Comparé en texte, sans le préfixe `\\?\` ni la casse (un chemin écrit autrement donnerait sinon une base vide).
+    let norme = |p: &Path| p.to_string_lossy().trim_start_matches(r"\\?\").replace('\\', "/").trim_end_matches('/').to_lowercase();
+    let (e, f) = (norme(emulateur), norme(fichier));
+    let rel = f.strip_prefix(&format!("{e}/")).unwrap_or_default().to_string();
+    let (entete, pcsx2, raccourcis) = match rel.as_str() {
+        "inis/pcsx2.ini" => ("[UI]\r\nSettingsVersion = 1\r\n", true, RACCOURCIS_PCSX2),
+        "settings.ini" => ("[Main]\r\nSetupWizardIncomplete = false\r\n", false, RACCOURCIS_DUCKSTATION),
+        _ => return String::new(),
+    };
+    let mut t = format!("{entete}\r\n[Pad1]\r\n");
+    for c in CLAVIER_PS {
+        t.push_str(&format!("{} = Keyboard/{}\r\n", c.0, if pcsx2 { c.2 } else { c.1 }));
+    }
+    t.push_str("\r\n[Hotkeys]\r\n");
+    for (k, v) in raccourcis {
+        t.push_str(&format!("{k} = {v}\r\n"));
+    }
+    t
+}
+
 pub(crate) fn modifier_ini(emulateur: &Path, fichier: &Path, section: &str, valeurs: &[(&str, Vec<String>)]) -> Resultat<()> {
     // Un fichier qui existe mais ne se lit pas n'est JAMAIS remplacé (il le serait par une seule section ; expert, 05/10).
     let avant = match std::fs::read_to_string(fichier) {
         Ok(t) => t,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        // CRÉÉ par Frogtend : ce que l'émulateur y aurait mis lui-même (sinon il le refuse ou reste sans touches).
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => base_neuve(emulateur, fichier),
         Err(e) => return Err(e.into()),
     };
     let apres = ecrire_ini(&avant, section, valeurs);
@@ -2199,6 +2301,116 @@ mod tests {
         std::fs::write(&f, ini.replace("AutoDiscChange = True", "AutoDiscChange = False")).unwrap();
         preparer("dolphin", d.path(), "Seb", &["E:\\Jeux\\GC".into()], &Manette::Auto(None)).unwrap();
         assert_eq!(crate::manettes::lire_ini(&std::fs::read_to_string(&f).unwrap(), "Core", "AutoDiscChange"), vec!["False"]);
+    }
+
+    #[test]
+    fn pcsx2_et_duckstation_installation_neuve() {
+        use crate::manettes::lire_ini;
+        // Installation neuve, première partie : ni question, ni assistant, ni remise à zéro ; clavier et raccourcis
+        // d'origine, la manette en plus.
+        let d = tempfile::tempdir().unwrap();
+        preparer("pcsx2", d.path(), "Seb", &[], &Manette::Auto(None)).unwrap();
+        let t = std::fs::read_to_string(d.path().join("inis").join("PCSX2.ini")).unwrap();
+        assert_eq!(lire_ini(&t, "UI", "SettingsVersion"), ["1"]);
+        assert_eq!(t.matches("[UI]").count(), 1, "une seule section [UI]");
+        assert_eq!(lire_ini(&t, "Pad1", "Start"), ["Keyboard/Return", "SDL-0/Start"]);
+        assert_eq!(lire_ini(&t, "Pad1", "Type"), ["DualShock2"]);
+        assert_eq!(lire_ini(&t, "Hotkeys", "TogglePause"), ["Keyboard/Space"]);
+        assert!(t.contains("[Folders]") && t.contains("MemoryCards = "), "les dossiers du profil gardés");
+        assert_eq!(lire_ini(&t, "Hotkeys", "OpenPauseMenu"), ["Keyboard/Escape"], "le menu de l'émulateur gardé au clavier");
+        // Une 2e partie ne change plus rien (état final dès la 1re).
+        let ini = d.path().join("inis").join("PCSX2.ini");
+        preparer("pcsx2", d.path(), "Seb", &[], &Manette::Auto(None)).unwrap();
+        assert_eq!(std::fs::read_to_string(&ini).unwrap(), t);
+
+        let d = tempfile::tempdir().unwrap();
+        preparer("duckstation", d.path(), "Seb", &[], &Manette::Auto(None)).unwrap();
+        let t = std::fs::read_to_string(d.path().join("settings.ini")).unwrap();
+        assert_eq!(lire_ini(&t, "Main", "SetupWizardIncomplete"), ["false"]);
+        assert_eq!(t.matches("[Main]").count(), 1, "une seule section [Main]");
+        assert_eq!(lire_ini(&t, "Pad1", "Up"), ["Keyboard/UpArrow", "SDL-0/DPadUp"]);
+        assert_eq!(lire_ini(&t, "Pad1", "Type"), ["AnalogController"]);
+        assert_eq!(lire_ini(&t, "Hotkeys", "FastForward"), ["Keyboard/Tab"]);
+        // Les touches d'origine des sauvegardes rapides ET celles du menu de Frogtend, dès la 1re partie.
+        assert_eq!(lire_ini(&t, "Hotkeys", "LoadSelectedSaveState"), ["Keyboard/F1", "Keyboard/F16"]);
+        assert_eq!(lire_ini(&t, "Hotkeys", "SaveSelectedSaveState"), ["Keyboard/F2", "Keyboard/F15"]);
+        preparer("duckstation", d.path(), "Seb", &[], &Manette::Auto(None)).unwrap();
+        assert_eq!(std::fs::read_to_string(d.path().join("settings.ini")).unwrap(), t, "une 2e partie ne change rien");
+
+        // PCSX2 au clavier : les touches d'origine, aucune manette.
+        let d = tempfile::tempdir().unwrap();
+        preparer("pcsx2", d.path(), "Seb", &[], &Manette::Clavier).unwrap();
+        let t = std::fs::read_to_string(d.path().join("inis").join("PCSX2.ini")).unwrap();
+        assert_eq!(lire_ini(&t, "Pad1", "Cross"), ["Keyboard/K"]);
+        assert!(!t.contains("SDL-0"));
+
+        // BIOS posé avant la 1re partie (fichier créé par le BIOS), puis la partie : une seule [UI], tout ensemble.
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join("bios")).unwrap();
+        std::fs::write(d.path().join("bios").join("ps2-0250e-20100415.bin"), b"x").unwrap();
+        let bios: Vec<crate::bios::BiosConseil> = serde_json::from_value(serde_json::json!([{"fichier": "ps2-0250e-20100415.bin", "type": "fichier", "racine": "dossier_emulateur", "chemin": "bios/ps2-0250e-20100415.bin", "disponible": true}])).unwrap();
+        assert!(crate::bios::regler_pcsx2(d.path(), &bios).unwrap());
+        preparer("pcsx2", d.path(), "Seb", &[], &Manette::Auto(None)).unwrap();
+        let t = std::fs::read_to_string(d.path().join("inis").join("PCSX2.ini")).unwrap();
+        assert_eq!(t.matches("[UI]").count(), 1);
+        assert_eq!(lire_ini(&t, "UI", "SettingsVersion"), ["1"]);
+        assert_eq!(lire_ini(&t, "Pad1", "Start"), ["Keyboard/Return", "SDL-0/Start"]);
+        assert_eq!(lire_ini(&t, "Filenames", "BIOS"), ["ps2-0250e-20100415.bin"]);
+
+        // Au clavier : les touches d'origine, aucune manette.
+        let d = tempfile::tempdir().unwrap();
+        preparer("duckstation", d.path(), "Seb", &[], &Manette::Clavier).unwrap();
+        let t = std::fs::read_to_string(d.path().join("settings.ini")).unwrap();
+        assert_eq!(lire_ini(&t, "Pad1", "Cross"), ["Keyboard/K"]);
+        assert!(!t.contains("SDL-0"));
+
+        // « Remettre la manette » sur une installation neuve : même base.
+        let d = tempfile::tempdir().unwrap();
+        crate::manettes::regler("pcsx2", d.path(), None, true).unwrap();
+        let t = std::fs::read_to_string(d.path().join("inis").join("PCSX2.ini")).unwrap();
+        assert_eq!(lire_ini(&t, "UI", "SettingsVersion"), ["1"]);
+    }
+
+    /// RÉEL : une installation NEUVE (dossier fourni, déjà extrait, rien d'autre) réglée comme à sa première partie,
+    /// pour l'ouvrir ensuite à la main et voir qu'il garde tout (ni question, ni assistant).
+    /// `FROGTEND_EMU=<id> FROGTEND_BROUILLON=<dossier> cargo test essai_premiere_partie -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn essai_premiere_partie() {
+        let id = std::env::var("FROGTEND_EMU").expect("FROGTEND_EMU");
+        let d = PathBuf::from(std::env::var("FROGTEND_BROUILLON").expect("FROGTEND_BROUILLON"));
+        if let Some(p) = crate::emulateurs::fiche(&id).and_then(|f| f.portable) {
+            if !d.join(p).exists() {
+                std::fs::write(d.join(p), "").unwrap();
+            }
+        }
+        preparer(&id, &d, "Essai", &[], &Manette::Auto(None)).unwrap();
+        println!("réglé : {id} dans {}", d.display());
+    }
+
+    #[test]
+    fn un_fichier_existant_ne_recoit_aucune_base() {
+        use crate::manettes::lire_ini;
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("settings.ini"), "[Main]\r\nSetupWizardIncomplete = true\r\n").unwrap();
+        preparer("duckstation", d.path(), "Seb", &[], &Manette::Auto(None)).unwrap();
+        let t = std::fs::read_to_string(d.path().join("settings.ini")).unwrap();
+        assert_eq!(lire_ini(&t, "Main", "SetupWizardIncomplete"), ["true"], "le choix de l'émulateur gardé");
+        assert!(lire_ini(&t, "Pad1", "Up").iter().all(|v| !v.starts_with("Keyboard")), "aucun clavier ajouté");
+        assert!(lire_ini(&t, "Hotkeys", "FastForward").is_empty());
+
+        std::fs::create_dir_all(d.path().join("inis")).unwrap();
+        std::fs::write(d.path().join("inis").join("PCSX2.ini"), "[UI]\r\nSettingsVersion = 2\r\n").unwrap();
+        preparer("pcsx2", d.path(), "Seb", &[], &Manette::Auto(None)).unwrap();
+        let t = std::fs::read_to_string(d.path().join("inis").join("PCSX2.ini")).unwrap();
+        assert_eq!(lire_ini(&t, "UI", "SettingsVersion"), ["2"], "jamais changée");
+
+        // Un autre fichier créé par Frogtend : rien d'ajouté.
+        assert_eq!(base_neuve(d.path(), &d.path().join("User").join("Config").join("Dolphin.ini")), "");
+        assert_eq!(base_neuve(d.path(), &d.path().join("Profils").join("Seb").join("settings.ini")), "");
+        // Le même dossier écrit autrement (préfixe long, casse) : reconnu quand même.
+        assert!(base_neuve(Path::new(r"\\?\D:\Emus\PCSX2"), Path::new(r"d:\emus\pcsx2\inis\PCSX2.ini")).contains("SettingsVersion = 1"));
+        assert!(base_neuve(Path::new(r"D:\Emus\Duck\"), Path::new(r"D:\Emus\Duck\settings.ini")).contains("SetupWizardIncomplete = false"));
     }
 
     #[test]

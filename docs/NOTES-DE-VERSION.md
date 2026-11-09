@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.172.0 — PCSX2 et DuckStation réglés dès leur première partie
+
+- 🎮 Une installation neuve de PCSX2 (PS2) ou de DuckStation (PS1) est réglée par Frogtend AVANT sa première
+  ouverture comme l'émulateur l'aurait fait lui-même : PCSX2 ne pose plus de question en anglais et ne remet plus tout
+  à zéro (manette et dossiers des cartes mémoire de ton profil compris) ; DuckStation n'ouvre plus son assistant de
+  première configuration. Le clavier et les raccourcis d'origine sont là, ta manette en plus.
+- Un réglage que tu as déjà dans l'émulateur n'est jamais changé.
+
 ## 0.171.0 — Les images par seconde depuis le menu
 
 - 📊 Dans le menu en jeu (bouton Xbox) ▸ ⚙ Options du jeu : « Images par seconde » montre ou cache le compteur de

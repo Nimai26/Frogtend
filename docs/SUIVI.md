@@ -2466,3 +2466,15 @@ d'abord :
   logiciel système disait « jeux Switch » → « Switch 2 ». DÉCISION : le compteur d'images par seconde = choix PAR
   PERSONNE pour tous ses jeux (A) → 0.171.0 (clé d'Eglantine vérifiée dans main_window.cpp : lue au démarrage,
   Ctrl+V bascule, réenregistrée en quittant).
+- ESSAI 09/11 (0.171.0) : « 📊 Compteur de fluidité » depuis le menu avec Lichii (Ctrl+V en plein écran) ✅ Seb.
+  Relancé : compteur affiché dès le début (choix retenu) ✅ ; Zelda avec Lichii (clés + firmware 23.0.1) : 60 i/s
+  (contre ~15 avec Eglantine rc3).
+  Écran noir après l'intro de Zelda OoT TOUJOURS là avec Lichii (clés + firmware) : défaut de l'émulateur (vidéo AV1
+  de l'intro, nx2:gsv 903 non implémentée) → besoin 45 (Firehouse : son conseil cite Lichii comme remède).
+- 09/11 (0.172.0) : Seb autorise toutes les installations d'émulateurs nécessaires et demande de transmettre les
+  manquants à Firehouse → relevé réel (`essai_paquets_emulateurs`) : tout est servi sauf BigPEmu, Ryubing, la taille
+  de Dolphin et 16 plateformes sans conseil → besoin 46, envoyé à la session Firehouse avec le rappel du 45. Lichii
+  build-130 servi (Seb : build-117). Lot « tous les émulateurs », étape 1 : PCSX2 refusait un fichier sans version
+  (question en anglais puis remise à zéro, dossiers des cartes mémoire compris) et DuckStation ouvrait son assistant ;
+  tous deux n'écrivent leurs défauts que s'il n'y a pas de fichier → `base_neuve` (relevés dans leur code). DuckStation
+  neuf ouvert 10 s : aucun assistant, tout gardé ✅. PCSX2 : ouverture refusée par mon permis, à faire avec Seb.
