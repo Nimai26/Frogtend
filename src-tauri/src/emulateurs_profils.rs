@@ -691,10 +691,15 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             Ok(vec![])
         }
         // Xenia : les parties dans le dossier du profil (\`--content_root\`, xenia_main.cc).
+        // Et la langue de la console (une fois, dès que Xenia a créé sa configuration) ; le bouton Xbox laissé au menu
+        // de Frogtend (xenia.rs). Un échec de la langue n'empêche jamais de jouer.
         "xenia" => {
             let contenu = p.join("content");
             creer(&[&contenu])?;
-            Ok(vec![format!("--content_root={}", texte(&contenu))])
+            if let Err(e) = crate::xenia::regler_langue(emulateur, langue_et_clavier_de_windows().0) {
+                eprintln!("Xenia : langue non posée ({e:?})");
+            }
+            Ok(vec![format!("--content_root={}", texte(&contenu)), crate::xenia::BOUTON_XBOX_LIBRE.into()])
         }
         // xemu : les parties sont DANS le disque dur virtuel de la Xbox → un disque et un fichier de réglages par
         // profil (\`-config_path\`), copiés au premier lancement depuis ceux réglés dans xemu.
@@ -2594,7 +2599,8 @@ mod tests {
         let racine = d.path();
         // Xenia : dossier des parties du profil.
         let a = preparer("xenia", racine, "Seb", &[], &Manette::Auto(None)).unwrap();
-        assert_eq!(a, vec![format!("--content_root={}", racine.join("Profils").join("Seb").join("content").display())]);
+        // Et le bouton Xbox laissé au menu de Frogtend, à CHAQUE partie.
+        assert_eq!(a, vec![format!("--content_root={}", racine.join("Profils").join("Seb").join("content").display()), crate::xenia::BOUTON_XBOX_LIBRE.to_string()]);
 
         // RPCS3 : la manette est réglée à CHAQUE partie (manette branchée, sinon la dernière vue, sinon Xbox), « clavier » y remet le
         // clavier (bug de la 0.44.0 : ce réglage n'était appelé qu'à l'installation de RPCS3).

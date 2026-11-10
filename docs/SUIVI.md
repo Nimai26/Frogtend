@@ -2513,3 +2513,10 @@ d'abord :
 - 10/11 (0.175.0) : Vita3K (code relu, interface Qt) : manette SDL par position d'office (toute manette) ; bouton du
   milieu = pause en dur (gardé) ; `sys-lang` EN d'origine → posé une fois ; accueil anglais à chaque démarrage →
   `show-welcome: false` une fois ; schéma 🎮. Le firmware de la Vita n'est installé par personne → besoin 48.
+  Firehouse (session joignable par le pont après un message de sa part) : besoin 48 reçu, 3 fichiers relevés chez
+  Sony (134 + 129 + 57 Mo), en attente de l'accord de Seb ; noms distincts proposés (PSVUPDAT.PUP,
+  PSP2UPDAT-preinstall.PUP, PSP2UPDAT-polices.PUP).
+- 10/11 (0.176.0) : Xenia Canary (code relu, canary_experimental) : manette XInput d'office ; `--guide_button=false`
+  (hid_flags.cc) → bouton Xbox au menu de Frogtend ; langue dans `xconfig.settings` binaire (xconfig.h, 6 680 o,
+  langue à l'octet 2 322, créé par Xenia à son 1er démarrage) → posée une fois, fichier existant de la bonne taille
+  et encore en anglais seulement ; schéma 🎮.

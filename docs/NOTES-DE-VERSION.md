@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.176.0 — Xenia réglé : la langue et le bouton Xbox
+
+- 🌍 Xenia (Xbox 360) : les jeux s'affichent dans la langue de Windows (le français chez toi) au lieu de l'anglais, à
+  partir de la DEUXIÈME partie (Xenia crée les réglages de sa console à la première ; Frogtend ne les invente pas).
+  Une seule fois : si tu remets une autre langue dans Xenia, elle est gardée.
+- 🎮 Pendant un jeu Xenia, le bouton Xbox ouvre maintenant le menu de Frogtend (avant, il partait au jeu).
+- 🕹 Le menu en jeu montre l'image des touches de la Xbox 360. Ta manette marchait déjà d'office.
+
 ## 0.175.0 — Vita3K réglé dès sa première partie
 
 - 🌍 Vita3K (PS Vita) : les jeux s'affichent dans la langue de Windows (le français chez toi) au lieu de l'anglais.

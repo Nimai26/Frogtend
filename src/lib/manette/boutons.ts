@@ -151,6 +151,12 @@ const EMULATEURS: Record<string, (plateforme: string, famille: Famille) => { con
     boutons: { a: 'Croix', b: 'Rond', x: 'Carré', y: 'Triangle', lb: 'L', rb: 'R', select: 'Select', start: 'Start', croix: CROIX, stickg: 'Stick gauche', stickd: 'Stick droit' },
     remarque: `Le bouton ${famille === 'playstation' ? 'PS' : 'Xbox'} met le jeu en pause dans Vita3K.`,
   }),
+  // Xenia : la manette Xbox telle quelle (XInput, la manette de la console ; hid/xinput, relu le 10/11) ; une manette
+  // PlayStation y passe par SDL, rangée par position. Le bouton Xbox reste au menu de Frogtend (xenia.rs).
+  xenia: () => ({
+    console: 'Xbox 360',
+    boutons: { a: 'A', b: 'B', x: 'X', y: 'Y', lb: 'LB', rb: 'RB', lt: 'LT', rt: 'RT', select: 'Back', start: 'Start', l3: 'Clic du stick gauche', r3: 'Clic du stick droit', croix: CROIX, stickg: 'Stick gauche', stickd: 'Stick droit' },
+  }),
   // PPSSPP : sa propre disposition pour une manette XInput (Core/KeyMapDefaults.cpp `defaultXInputKeyMap`, relu le
   // 10/11), que Frogtend n'écrit pas : PPSSPP la prend seul. Une manette PlayStation y passe par DirectInput, dont les
   // numéros de boutons dépendent du modèle : rien de dessiné (jamais deviné).

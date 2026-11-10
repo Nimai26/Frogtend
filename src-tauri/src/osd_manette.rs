@@ -70,9 +70,10 @@ const GACHETTE: u8 = 128;
 /// Le bouton Xbox n'ouvre le menu que d'un appui COURT : tenu plus longtemps, c'est qu'on éteint la manette.
 pub const GUIDE_COURT: Duration = Duration::from_millis(1000);
 
-/// Les émulateurs dont le réglage d'origine du bouton Xbox n'est pas connu (RPCS3 : le bouton PS ouvre son menu ;
-/// xemu, Xenia, Eden, Cemu, PPSSPP, Vita3K : pas vérifié). Le bouton y reste au jeu : on ne promet pas un double menu.
-const GUIDE_A_L_EMULATEUR: [&str; 9] = ["rpcs3", "xemu", "xenia", "eden", "eglantine", "lichii", "cemu", "ppsspp", "vita3k"];
+/// Les émulateurs qui se servent du bouton Xbox, ou dont on ne sait pas (RPCS3 : le bouton PS ouvre son menu ; PPSSPP
+/// et Vita3K : leur pause ; Cemu : libéré seulement avec la manette de Frogtend ; xemu, Eden : pas vérifié). Le bouton y
+/// reste au jeu : on ne promet pas un double menu. Xenia n'y est plus : Frogtend lui passe `--guide_button=false`.
+const GUIDE_A_L_EMULATEUR: [&str; 8] = ["rpcs3", "xemu", "eden", "eglantine", "lichii", "cemu", "ppsspp", "vita3k"];
 
 /// Ce qui fait tourner la partie, pour le bouton Xbox.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -643,7 +644,8 @@ mod tests {
         assert!(!guide_permis(Some(false), false, Emulateur("retroarch")), "réglage coupé");
         assert!(!guide_permis(Some(false), true, Emulateur("rpcs3")), "le bouton PS de RPCS3");
         assert!(!guide_permis(Some(false), true, Emulateur("xemu")));
-        assert!(!guide_permis(Some(false), true, Emulateur("xenia")));
+        assert!(guide_permis(Some(false), true, Emulateur("xenia")), "Xenia : --guide_button=false à chaque partie");
+        assert!(!guide_permis(Some(false), true, Emulateur("cemu")), "Cemu : libéré seulement avec la manette de Frogtend");
         assert!(!guide_permis(Some(false), true, Inconnu), "émulateur hors catalogue");
         assert!(guide_permis(Some(false), true, EmulateurLibere), "RPCS3 sans son bouton PS");
     }

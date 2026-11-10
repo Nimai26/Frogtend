@@ -6,6 +6,10 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Xenia (0.176.0)
+- [ ] Un jeu Xbox 360 avec un Xenia jamais installé : la manette marche, le bouton Xbox ouvre le menu de Frogtend.
+- [ ] Quitter, relancer le jeu : il est en français (s'il a le français).
+
 ## Vita3K (0.175.0)
 - [ ] Un jeu PS Vita avec un Vita3K jamais installé : sans le logiciel système de la Vita (pas encore servi par
       Firehouse, besoin 48), l'accueil de Vita3K s'ouvre encore et beaucoup de jeux ne démarrent pas : l'essai

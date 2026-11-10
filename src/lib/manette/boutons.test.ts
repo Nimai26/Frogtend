@@ -85,6 +85,14 @@ describe('les boutons de la manette d’origine', () => {
     expect(schema(infos({ emulateur: 'vita3k', coeur: null, personnalise: true })).etat).toBe('personnalise');
   });
 
+  it('Xenia : la manette de la Xbox 360 telle quelle', () => {
+    const x360 = schema(infos({ emulateur: 'xenia', coeur: null, plateforme: 'Microsoft Xbox 360' }));
+    expect(x360.console).toBe('Xbox 360');
+    expect(role(x360, 'a')).toBe('A');
+    expect(role(x360, 'select')).toBe('Back');
+    expect(schema(infos({ emulateur: 'xenia', coeur: null, famille: 'playstation' })).lignes[0].nom).toBe('Croix');
+  });
+
   it('PPSSPP : sa disposition d’origine pour une manette Xbox, rien de deviné pour une PlayStation', () => {
     const psp = schema(infos({ emulateur: 'ppsspp', coeur: null, plateforme: 'Sony PSP' }));
     expect(psp.etat).toBe('connu');

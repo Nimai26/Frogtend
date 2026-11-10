@@ -17,7 +17,7 @@ Légende : ✅ fait · ⚠ fait avec un risque · ❌ absent · n/a sans objet.
 | Eden / Eglantine / Lichii | ✅ manette XInput branchée | ✅ | ✅ | ✅ depuis la 0.169.0 | ✅ |
 | Cemu | ✅ 0.174.0 : `controller0.xml` XInput, disposition d'origine de Cemu (une manette PlayStation seule : rien) | ✅ 0.174.0 : `console_language`, une fois (l'interface suit déjà Windows) | ✅ 0.174.0 avec la manette de Frogtend (Cemu ne lit pas le bouton Xbox) | ✅ settings.xml créé avec la langue : assistant sauté | ✅ |
 | PPSSPP | ✅ par PPSSPP lui-même (XInput d'office, KeyMapDefaults.cpp) | ✅ par PPSSPP lui-même (`DefaultLangRegion`, jeux compris) | ⚠ à PPSSPP : son menu de pause (`NKCODE_HOME`), gardé | ppsspp.ini créé (une ligne, sans effet de bord : `FirstRun` ne sert à rien) | ✅ 0.174.0 manette Xbox ; PlayStation (DirectInput) : rien |
-| Xenia | ❌ | ❌ | ❌ | n/a | ❌ |
+| Xenia | ✅ par Xenia lui-même (XInput ; SDL pour les autres) | ✅ 0.176.0 : `xconfig.settings` (binaire), une fois, à la 2e partie (Xenia le crée à la 1re) | ✅ 0.176.0 : `--guide_button=false` à chaque partie | n/a | ✅ 0.176.0 |
 | xemu | ❌ | ❌ | ❌ | xemu.toml créé | ❌ |
 | Azahar | ❌ | ❌ | ⚠ donné au menu sans relevé (la 3DS a un bouton Home) | n/a | ❌ |
 | Vita3K | ✅ par Vita3K lui-même (SDL, par position, toute manette) | ✅ 0.175.0 : `sys-lang`, une fois (l'interface suit déjà Windows) ; accueil anglais retiré une fois, seulement firmware installé (`fs\vs0\sys\external`) | ⚠ à Vita3K : pause, en dur (`on_ps_button`), gardé | config.yml créé ; ⚠ **firmware non installé** (besoin 48) | ✅ 0.175.0 |
@@ -43,7 +43,8 @@ Légende : ✅ fait · ⚠ fait avec un risque · ❌ absent · n/a sans objet.
    - ✅ PPSSPP (0.174.0) : rien à écrire. Le bouton Xbox reste à son menu (le retirer = réécrire tout `controls.ini`).
    - ✅ Vita3K (0.175.0) : langue et accueil. Reste : le firmware de la Vita (besoin 48), installé par
      `Vita3K --firmware <PUP>` une fois servi par Firehouse.
-   - Xenia : `user_language`.
+   - ✅ Xenia (0.176.0). `user_language` n'existe plus : la langue est dans `xconfig.settings` (6 680 octets, octet
+     2 322) ; Frogtend ne crée jamais ce fichier, d'où la langue à la 2e partie seulement.
    - Azahar : manette SDL ; la langue est dans la sauvegarde système.
    - PPSSPP : `[SystemParam]`.
    - mGBA, DOSBox et MAME : schéma uniquement.
