@@ -3101,6 +3101,7 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
     .map_err(|_| Erreur::Disque("La lecture des boutons s'est arrêtée brutalement.".into()))?;
     let inconnue = match (emulateur.as_deref(), dossier.as_deref()) {
         (Some("cemu"), Some(d)) => !crate::cemu::portable(d),
+        (Some("vita3k"), Some(d)) => !crate::vita3k::portable(d),
         (Some(e), Some(d)) if crate::emulateurs::famille_eden(e) => !crate::eden::portable(d),
         _ => false,
     };

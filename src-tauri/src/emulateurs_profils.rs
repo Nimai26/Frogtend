@@ -773,6 +773,10 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             let u = crate::vita3k::utilisateur_du_profil(emulateur, profil_de(p))?;
             let _ = crate::vita3k::reprendre_parties_d_avant(emulateur, &u);
             crate::vita3k::choisir(emulateur, &u.id)?;
+            // La langue de la console et l'accueil retiré, une fois : un échec n'empêche jamais de jouer.
+            if let Err(e) = crate::vita3k::premiere_partie(emulateur, langue_et_clavier_de_windows().0) {
+                eprintln!("Vita3K : réglages de la première partie non posés ({e:?})");
+            }
             Ok(vec![])
         }
         // RPCS3 : un compte RPCS3 par profil (\`--user-id\`, rpcs3.cpp), donc ses propres parties.

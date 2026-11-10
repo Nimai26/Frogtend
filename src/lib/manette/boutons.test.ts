@@ -73,6 +73,18 @@ describe('les boutons de la manette d’origine', () => {
     expect(schema(infos({ emulateur: 'cemu', coeur: null, inconnue: true, personnalise: true })).etat).toBe('inconnu');
   });
 
+  it('Vita3K : sa disposition d’origine par position, pour toute manette', () => {
+    const vita = schema(infos({ emulateur: 'vita3k', coeur: null, plateforme: 'Sony PS Vita' }));
+    expect(vita.console).toBe('PS Vita');
+    expect(role(vita, 'a')).toBe('Croix');
+    expect(role(vita, 'y')).toBe('Triangle');
+    expect(role(vita, 'lt')).toBeUndefined();
+    const ps = schema(infos({ emulateur: 'vita3k', coeur: null, famille: 'playstation' }));
+    expect(ps.etat).toBe('connu');
+    expect(ps.etat === 'connu' && ps.remarque).toContain('bouton PS');
+    expect(schema(infos({ emulateur: 'vita3k', coeur: null, personnalise: true })).etat).toBe('personnalise');
+  });
+
   it('PPSSPP : sa disposition d’origine pour une manette Xbox, rien de deviné pour une PlayStation', () => {
     const psp = schema(infos({ emulateur: 'ppsspp', coeur: null, plateforme: 'Sony PSP' }));
     expect(psp.etat).toBe('connu');

@@ -2510,3 +2510,6 @@ d'abord :
   profil). Cemu (code relu) : `console_language` EN d'origine, aucune manette sans `controller0.xml`, assistant sans
   settings.xml → langue une fois, profil XInput à la disposition d'origine de Cemu (marqué), bouton Xbox au menu de
   Frogtend (XInputGetState ne le voit pas), schéma. Reste : Vita3K, Xenia, xemu, Azahar ; schémas mGBA, DOSBox, MAME.
+- 10/11 (0.175.0) : Vita3K (code relu, interface Qt) : manette SDL par position d'office (toute manette) ; bouton du
+  milieu = pause en dur (gardé) ; `sys-lang` EN d'origine → posé une fois ; accueil anglais à chaque démarrage →
+  `show-welcome: false` une fois ; schéma 🎮. Le firmware de la Vita n'est installé par personne → besoin 48.

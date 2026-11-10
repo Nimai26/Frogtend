@@ -20,7 +20,7 @@ Légende : ✅ fait · ⚠ fait avec un risque · ❌ absent · n/a sans objet.
 | Xenia | ❌ | ❌ | ❌ | n/a | ❌ |
 | xemu | ❌ | ❌ | ❌ | xemu.toml créé | ❌ |
 | Azahar | ❌ | ❌ | ⚠ donné au menu sans relevé (la 3DS a un bouton Home) | n/a | ❌ |
-| Vita3K | ❌ | ❌ | ❌ | config.yml créé | ❌ |
+| Vita3K | ✅ par Vita3K lui-même (SDL, par position, toute manette) | ✅ 0.175.0 : `sys-lang`, une fois (l'interface suit déjà Windows) ; accueil anglais retiré une fois, seulement firmware installé (`fs\vs0\sys\external`) | ⚠ à Vita3K : pause, en dur (`on_ps_button`), gardé | config.yml créé ; ⚠ **firmware non installé** (besoin 48) | ✅ 0.175.0 |
 | mGBA | ❌ | n/a | ✅ | n/a | ❌ |
 | DOSBox Staging | joysticktype auto | n/a | ✅ | .conf créé | ❌ |
 | MAME | ❌ | n/a | ✅ | n/a | ❌ |
@@ -41,7 +41,8 @@ Légende : ✅ fait · ⚠ fait avec un risque · ❌ absent · n/a sans objet.
      seulement) → rien d'inventé ; la manette de Frogtend reste. Si la personne valide les réglages de manette de
      Cemu, même sans rien changer, le profil devient le sien : le bouton Xbox revient à Cemu (prudent).
    - ✅ PPSSPP (0.174.0) : rien à écrire. Le bouton Xbox reste à son menu (le retirer = réécrire tout `controls.ini`).
-   - Vita3K : `sys-lang`.
+   - ✅ Vita3K (0.175.0) : langue et accueil. Reste : le firmware de la Vita (besoin 48), installé par
+     `Vita3K --firmware <PUP>` une fois servi par Firehouse.
    - Xenia : `user_language`.
    - Azahar : manette SDL ; la langue est dans la sauvegarde système.
    - PPSSPP : `[SystemParam]`.

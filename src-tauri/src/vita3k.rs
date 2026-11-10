@@ -213,6 +213,170 @@ pub fn choisir(v: &Path, id: &str) -> Resultat<()> {
     Ok(())
 }
 
+// --- La langue de la console et l'écran d'accueil dès la première partie (règle de Seb, 08/11). Relevé dans le code
+// de Vita3K (branche master, 10/11/2026) :
+// - `sys-lang` vaut ENGLISH_US (1) d'origine (config/config.h) ; l'ordre des langues = `locale_tag_for_sys_lang`
+//   (lang/src/lang.cpp) : ja 0, en 1, fr 2, es 3, de 4, it 5, nl 6, pt-PT 7, ru 8, ko 9, zh-Hant 10, zh-Hans 11, fi 12,
+//   sv 13, da 14, no 15, pl 16, pt-BR 17, en-GB 18, tr 19 ; Vita3K réécrit config.yml avec toutes ses clés : « 1 » ne
+//   dit pas qui l'a choisi → posée UNE seule fois (marque), comme pour Cemu et RPCS3 ;
+// - l'interface suit déjà Windows tant que `user-lang` est vide (gui-qt/src/gui_language.cpp, `QLocale::system()`) ;
+// - `show-welcome` vrai d'origine : la fenêtre d'accueil (en anglais, gui-qt/src/main_window.cpp) s'ouvre à CHAQUE
+//   démarrage, devant le jeu → mise à faux une seule fois ; la personne peut la remettre dans Vita3K ;
+// - la manette : SDL, disposition d'origine par POSITION (app.cpp `reset_controller_binding` : bas = Croix, droite =
+//   Rond, gauche = Carré, haut = Triangle), pour toute manette (Xbox comme PlayStation) : rien à écrire ;
+// - le bouton du milieu (SDL_GAMEPAD_BUTTON_GUIDE) met le jeu en pause, en dur (main_window.cpp `on_ps_button`) : il
+//   reste à Vita3K.
+
+/// Frogtend a posé la langue UNE fois sur ce Vita3K (cette marque) : ensuite, ce que la personne règle est gardé.
+fn marque_premiere_partie(v: &Path) -> PathBuf {
+    v.join("Profils").join(".reglages-frogtend")
+}
+
+/// Frogtend a retiré l'accueil UNE fois (cette marque) : la personne peut le remettre dans Vita3K.
+fn marque_accueil(v: &Path) -> PathBuf {
+    v.join("Profils").join(".accueil-frogtend")
+}
+
+/// Le firmware de la Vita est-il installé ? `install_pup` (packages/src/pup.cpp, relu le 10/11) extrait `vs0` dans
+/// `portable\fs\` ; ses modules système sont dans `vs0\sys\external`. Tant qu'il manque, l'accueil de Vita3K reste :
+/// c'est lui qui dit où le trouver (besoin 48 : Firehouse le servira).
+pub fn firmware_installe(v: &Path) -> bool {
+    v.join("portable").join("fs").join("vs0").join("sys").join("external").is_dir()
+}
+
+/// La langue de la console Vita pour une langue de Windows (LANGID) ; `None` : une langue que la Vita n'a pas.
+pub fn langue_console(langid: u16) -> Option<u8> {
+    Some(match langid & 0x3FF {
+        0x11 => 0,
+        // Anglais : celui des États-Unis (et du Canada…) ; britannique pour le Royaume-Uni, l'Australie, la
+        // Nouvelle-Zélande, l'Irlande et l'Afrique du Sud.
+        0x09 if matches!(langid, 0x0809 | 0x0C09 | 0x1409 | 0x1809 | 0x1C09) => 18,
+        0x09 => 1,
+        0x0C => 2,
+        0x0A => 3,
+        0x07 => 4,
+        0x10 => 5,
+        0x13 => 6,
+        0x16 if langid == 0x0416 => 17,
+        0x16 => 7,
+        0x19 => 8,
+        0x12 => 9,
+        // Chinois : traditionnel à Taïwan, Hong Kong et Macao (et le traditionnel neutre), simplifié ailleurs.
+        0x04 if matches!(langid, 0x0404 | 0x0C04 | 0x1404 | 0x7C04) => 10,
+        0x04 => 11,
+        0x0B => 12,
+        0x1D => 13,
+        0x06 => 14,
+        0x14 => 15,
+        0x15 => 16,
+        0x1F => 19,
+        _ => return None,
+    })
+}
+
+/// Avant une partie sur ce Vita3K (portable et FERMÉ, après `choisir`) : la langue de la console prise de Windows
+/// (seulement absente ou à sa valeur d'origine), UNE seule fois ; l'accueil retiré (seulement absent ou vrai), UNE
+/// seule fois et seulement une fois le firmware installé. L'ancien fichier est copié à l'abri ; écrit par un
+/// provisoire renommé, puis chaque clé posée est relue. Rend vrai si config.yml a changé.
+pub fn premiere_partie(v: &Path, langid: u16) -> Resultat<bool> {
+    if !portable(v) {
+        return Ok(false);
+    }
+    let langue_a_faire = !marque_premiere_partie(v).exists();
+    let accueil_a_faire = !marque_accueil(v).exists() && firmware_installe(v);
+    if !langue_a_faire && !accueil_a_faire {
+        return Ok(false);
+    }
+    let f = config(v);
+    let avant = match std::fs::read_to_string(&f) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => "---\n".into(),
+        Err(_) => return Err(Erreur::Prevenir("Les réglages de Vita3K sont illisibles : Frogtend n'y touche pas.".into())),
+    };
+    let mut apres = avant.clone();
+    let mut posees: Vec<(&str, String)> = Vec::new();
+    if langue_a_faire {
+        if let Some(n) = langue_console(langid) {
+            if valeur_reglee(v, "sys-lang").is_none_or(|x| x == "1") {
+                apres = remplacer_ligne(&apres, "sys-lang", &format!("sys-lang: {n}"));
+                posees.push(("sys-lang", n.to_string()));
+            }
+        }
+    }
+    if accueil_a_faire && valeur_reglee(v, "show-welcome").is_none_or(|x| x == "true") {
+        apres = remplacer_ligne(&apres, "show-welcome", "show-welcome: false");
+        posees.push(("show-welcome", "false".into()));
+    }
+    let change = apres != avant;
+    if change {
+        if f.exists() {
+            let base = v.join(".frogtend-sauvegardes");
+            std::fs::create_dir_all(&base)?;
+            let nom = format!("{}-config.yml", crate::noyau::maintenant());
+            let mut abri = base.join(&nom);
+            let mut n = 2;
+            while abri.exists() {
+                abri = base.join(format!("{nom}-{n}"));
+                n += 1;
+            }
+            std::fs::write(&abri, &avant)?;
+        }
+        let provisoire = f.with_extension("yml.frogtend");
+        std::fs::write(&provisoire, &apres)?;
+        if let Err(e) = std::fs::rename(&provisoire, &f) {
+            let _ = std::fs::remove_file(&provisoire);
+            return Err(e.into());
+        }
+        // Relu : les marques seulement si c'est bien écrit (sinon, réessayé à la partie suivante).
+        if posees.iter().any(|(cle, val)| valeur_reglee(v, cle).as_deref() != Some(val.as_str())) {
+            return Err(Erreur::Disque("Les réglages de Vita3K n'ont pas pu être posés.".into()));
+        }
+    }
+    std::fs::create_dir_all(v.join("Profils"))?;
+    if langue_a_faire {
+        std::fs::write(marque_premiere_partie(v), "")?;
+    }
+    if accueil_a_faire {
+        std::fs::write(marque_accueil(v), "")?;
+    }
+    Ok(change)
+}
+
+/// La disposition des boutons de Vita3K est-elle celle d'origine ? `controller-binds` (15 boutons) et
+/// `controller-axis-binds` (6 axes) : absents, vides ou d'une autre longueur, Vita3K reprend celle d'origine
+/// (app_init.cpp) ; sinon l'identité (bouton SDL n → bouton SDL n, app.cpp `reset_controller_binding`).
+pub fn disposition_d_origine(v: &Path) -> bool {
+    if !portable(v) {
+        return false;
+    }
+    let texte = std::fs::read_to_string(config(v)).unwrap_or_default();
+    let identite = |cle: &str, taille: usize| {
+        let l = liste_yaml(&texte, cle);
+        l.len() != taille || l.iter().enumerate().all(|(i, x)| *x == i as i64)
+    };
+    identite("controller-binds", 15) && identite("controller-axis-binds", 6)
+}
+
+/// Les nombres d'une liste YAML de premier niveau (`cle: [0, 1]` ou `cle:` suivi de lignes `  - 0`). Une valeur
+/// illisible compte comme -1 (jamais l'identité).
+fn liste_yaml(texte: &str, cle: &str) -> Vec<i64> {
+    let debut = format!("{cle}:");
+    let mut lignes = texte.lines().skip_while(|l| !l.starts_with(debut.as_str()));
+    let Some(premiere) = lignes.next() else { return vec![] };
+    let reste = premiere[debut.len()..].split(" #").next().unwrap_or("").trim();
+    let nombre = |s: &str| s.trim().parse::<i64>().unwrap_or(-1);
+    if let Some(dedans) = reste.strip_prefix('[') {
+        return dedans.trim_end_matches(']').split(',').filter(|s| !s.trim().is_empty()).map(nombre).collect();
+    }
+    if !reste.is_empty() {
+        return vec![-1];
+    }
+    lignes
+        .take_while(|l| l.starts_with(' ') || l.starts_with('-'))
+        .filter_map(|l| l.trim().strip_prefix('-').map(nombre))
+        .collect()
+}
+
 /// Remplace la ligne de premier niveau `cle:` de ce texte YAML par `ligne` (ajoutée à la fin si elle manque), en
 /// gardant les fins de ligne du fichier.
 fn remplacer_ligne(t: &str, cle: &str, ligne: &str) -> String {
@@ -382,6 +546,102 @@ mod tests {
         std::fs::write(config(v), "---\nlog-level: 2").unwrap();
         choisir(v, "01").unwrap();
         assert_eq!(std::fs::read_to_string(config(v)).unwrap(), "---\nlog-level: 2\nuser-id: \"01\"\n", "plein écran déjà réglé une fois : plus touché");
+    }
+
+    /// Le firmware de la Vita posé comme par `install_pup` (seulement le dossier qui le signale).
+    fn avec_firmware(v: &Path) {
+        std::fs::create_dir_all(v.join("portable").join("fs").join("vs0").join("sys").join("external")).unwrap();
+    }
+
+    #[test]
+    fn la_premiere_partie_pose_la_langue_et_retire_l_accueil_une_seule_fois() {
+        let d = vita_portable();
+        let v = d.path();
+        // Vita3K jamais ouvert, sans firmware : la langue seule, l'accueil reste (il dit où trouver le firmware).
+        assert!(premiere_partie(v, 0x040C).unwrap());
+        assert_eq!(std::fs::read_to_string(config(v)).unwrap(), "---\nsys-lang: 2\n");
+        assert!(!premiere_partie(v, 0x040C).unwrap(), "rien de plus sans firmware");
+        // Le firmware installé : l'accueil retiré, une seule fois.
+        avec_firmware(v);
+        assert!(premiere_partie(v, 0x040C).unwrap());
+        assert_eq!(std::fs::read_to_string(config(v)).unwrap(), "---\nsys-lang: 2\nshow-welcome: false\n");
+        // La personne remet l'anglais et l'accueil : gardés.
+        std::fs::write(config(v), "---\nsys-lang: 1\nshow-welcome: true\n").unwrap();
+        assert!(!premiere_partie(v, 0x040C).unwrap());
+        assert_eq!(std::fs::read_to_string(config(v)).unwrap(), "---\nsys-lang: 1\nshow-welcome: true\n");
+        // Un Vita3K déjà ouvert (valeurs d'origine), avec firmware : les deux changées, l'ancien fichier à l'abri.
+        let d2 = vita_portable();
+        let v2 = d2.path();
+        avec_firmware(v2);
+        std::fs::write(config(v2), "---\r\nsys-lang: 1\r\nshow-welcome: true\r\nuser-id: \"01\"\r\n").unwrap();
+        assert!(premiere_partie(v2, 0x0407).unwrap());
+        assert_eq!(std::fs::read_to_string(config(v2)).unwrap(), "---\r\nsys-lang: 4\r\nshow-welcome: false\r\nuser-id: \"01\"\r\n");
+        assert_eq!(std::fs::read_dir(v2.join(".frogtend-sauvegardes")).unwrap().count(), 1);
+        // Un autre choix déjà fait (japonais) : gardé ; une langue que la Vita n'a pas : l'accueil seul.
+        let d3 = vita_portable();
+        let v3 = d3.path();
+        avec_firmware(v3);
+        std::fs::write(config(v3), "---\nsys-lang: 0\n").unwrap();
+        assert!(premiere_partie(v3, 0x040C).unwrap());
+        assert_eq!(std::fs::read_to_string(config(v3)).unwrap(), "---\nsys-lang: 0\nshow-welcome: false\n");
+        let d4 = vita_portable();
+        avec_firmware(d4.path());
+        assert!(premiere_partie(d4.path(), 0x0418).unwrap(), "roumain");
+        assert_eq!(std::fs::read_to_string(config(d4.path())).unwrap(), "---\nshow-welcome: false\n");
+        // Une valeur d'accueil inhabituelle (« yes ») : pas touchée, la langue posée sans erreur.
+        let d5 = vita_portable();
+        avec_firmware(d5.path());
+        std::fs::write(config(d5.path()), "---\nshow-welcome: yes\n").unwrap();
+        assert!(premiere_partie(d5.path(), 0x040C).unwrap());
+        assert_eq!(std::fs::read_to_string(config(d5.path())).unwrap(), "---\nshow-welcome: yes\nsys-lang: 2\n");
+        // Hors portable : rien.
+        let hors = tempfile::tempdir().unwrap();
+        assert!(!premiere_partie(hors.path(), 0x040C).unwrap());
+        assert!(!hors.path().join("Profils").exists());
+        assert_eq!((langue_console(0x0809), langue_console(0x0C09), langue_console(0x0416), langue_console(0x0816)), (Some(18), Some(18), Some(17), Some(7)));
+        assert_eq!((langue_console(0x0404), langue_console(0x7C04), langue_console(0x0804)), (Some(10), Some(10), Some(11)));
+    }
+
+    #[test]
+    fn choisir_puis_la_premiere_partie_gardent_l_utilisateur_et_le_plein_ecran() {
+        let d = vita_portable();
+        let v = d.path();
+        avec_firmware(v);
+        choisir(v, "01").unwrap();
+        assert!(premiere_partie(v, 0x040C).unwrap());
+        let t = std::fs::read_to_string(config(v)).unwrap();
+        assert_eq!(t, "---\nuser-id: \"01\"\nboot-apps-full-screen: true\nsys-lang: 2\nshow-welcome: false\n");
+        assert!(marque_plein_ecran(v).exists() && marque_premiere_partie(v).exists() && marque_accueil(v).exists());
+        // Partie suivante : seul l'utilisateur peut changer.
+        choisir(v, "02").unwrap();
+        assert!(!premiere_partie(v, 0x040C).unwrap());
+        assert_eq!(std::fs::read_to_string(config(v)).unwrap(), t.replace("\"01\"", "\"02\""));
+    }
+
+    #[test]
+    fn un_config_illisible_n_est_jamais_touche() {
+        let d = vita_portable();
+        let v = d.path();
+        std::fs::write(config(v), [0xFFu8, 0xFE, 0x00, 0xD8]).unwrap();
+        assert!(premiere_partie(v, 0x040C).is_err());
+        assert!(!marque_premiere_partie(v).exists());
+    }
+
+    #[test]
+    fn la_disposition_de_vita3k_d_origine_ou_changee() {
+        let d = vita_portable();
+        let v = d.path();
+        assert!(!disposition_d_origine(tempfile::tempdir().unwrap().path()), "hors portable : Frogtend ne sait pas");
+        assert!(disposition_d_origine(v), "pas de config.yml");
+        let origine = "---\ncontroller-binds:\n  - 0\n  - 1\n  - 2\n  - 3\n  - 4\n  - 5\n  - 6\n  - 7\n  - 8\n  - 9\n  - 10\n  - 11\n  - 12\n  - 13\n  - 14\ncontroller-axis-binds: [0, 1, 2, 3, 4, 5]\nuser-id: 00\n";
+        std::fs::write(config(v), origine).unwrap();
+        assert!(disposition_d_origine(v));
+        std::fs::write(config(v), origine.replace("  - 0\n  - 1\n", "  - 1\n  - 0\n")).unwrap();
+        assert!(!disposition_d_origine(v), "Croix et Rond échangés");
+        std::fs::write(config(v), origine.replace("[0, 1, 2, 3, 4, 5]", "[2, 3, 0, 1, 4, 5]")).unwrap();
+        assert!(!disposition_d_origine(v), "sticks échangés");
+        std::fs::write(config(v), "---\ncontroller-binds: []\n").unwrap();
+        assert!(disposition_d_origine(v), "vide : Vita3K reprend celle d'origine");
     }
 
     fn sfo(titre: &str) -> Vec<u8> {

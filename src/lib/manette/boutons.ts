@@ -144,6 +144,13 @@ const EMULATEURS: Record<string, (plateforme: string, famille: Famille) => { con
     /gamecube/i.test(plateforme)
       ? { console: 'GameCube', boutons: { a: 'A', x: 'B', b: 'X', y: 'Y', rb: 'Z', lt: 'L', rt: 'R', start: 'Start', croix: CROIX, stickg: 'Stick', stickd: 'Stick C' } }
       : null,
+  // Vita3K : sa disposition d'origine (SDL, par position, toute manette ; app.cpp `reset_controller_binding`, relu le
+  // 10/11), que Frogtend n'écrit pas. LT et RT ne servent qu'à la PS TV : rien de dessiné.
+  vita3k: (_plateforme, famille) => ({
+    console: 'PS Vita',
+    boutons: { a: 'Croix', b: 'Rond', x: 'Carré', y: 'Triangle', lb: 'L', rb: 'R', select: 'Select', start: 'Start', croix: CROIX, stickg: 'Stick gauche', stickd: 'Stick droit' },
+    remarque: `Le bouton ${famille === 'playstation' ? 'PS' : 'Xbox'} met le jeu en pause dans Vita3K.`,
+  }),
   // PPSSPP : sa propre disposition pour une manette XInput (Core/KeyMapDefaults.cpp `defaultXInputKeyMap`, relu le
   // 10/11), que Frogtend n'écrit pas : PPSSPP la prend seul. Une manette PlayStation y passe par DirectInput, dont les
   // numéros de boutons dépendent du modèle : rien de dessiné (jamais deviné).

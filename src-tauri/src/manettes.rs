@@ -296,6 +296,8 @@ pub fn disposition_de_frogtend(id: &str, emulateur: &Path, profil: Option<&Path>
         // Cemu : la manette de Frogtend, ou pas encore de profil (Frogtend l'écrira au lancement). Hors portable :
         // Frogtend n'écrit rien.
         "cemu" => crate::cemu::portable(emulateur) && (crate::cemu::manette_de_frogtend(emulateur) || !emulateur.join("portable").join("controllerProfiles").join("controller0.xml").exists()),
+        // Vita3K : sa disposition d'origine (SDL, par position), tant que la personne ne l'a pas changée.
+        "vita3k" => crate::vita3k::disposition_d_origine(emulateur),
         // PPSSPP : `memstick` est relié au dossier du profil (`relier_memstick`), ses touches y sont rangées.
         "ppsspp" => {
             let Some(p) = profil else { return true };

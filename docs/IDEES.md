@@ -119,5 +119,8 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   l'ancienne version (environ 100 à 200 Mo) dans `.frogtend-sauvegardes` ; rien ne fait le ménage. Montrer leur
   taille et proposer de les retirer (accord, jamais seul).
 - **Mises à jour et DLC des jeux Switch 2** (08/11) : `contexte_switch` ne les gère que pour Eden (Switch).
+- **Vita3K `--frontend sdl`** (10/11, vu dans config.cpp) : une simple fenêtre qui lance le jeu donné par `-r` et
+  se ferme avec lui, sans l'interface Qt (ni accueil, ni liste de jeux). À essayer pour les parties lancées par
+  Frogtend : plein écran, pause et manette à vérifier d'abord.
 - **lichii-updater.exe** (08/11) : à vérifier dans les sources de Lichii s'il se met à jour seul au démarrage (il
   écrirait hors de Frogtend, et la version notée serait fausse).

@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.175.0 — Vita3K réglé dès sa première partie
+
+- 🌍 Vita3K (PS Vita) : les jeux s'affichent dans la langue de Windows (le français chez toi) au lieu de l'anglais.
+  Une seule fois : si tu choisis une autre langue dans Vita3K, elle est gardée.
+- La fenêtre d'accueil de Vita3K (en anglais, à chaque démarrage, devant le jeu) ne s'ouvre plus dès que le logiciel
+  système de la Vita est installé (avant, c'est elle qui dit où le trouver).
+- 🕹 Le menu en jeu montre l'image des touches de la PS Vita. Ta manette (Xbox ou PlayStation) marche d'office ; le
+  bouton du milieu met le jeu en pause dans Vita3K.
+- ⚠ Le logiciel système de la PS Vita (le firmware), dont beaucoup de jeux ont besoin, n'est pas encore installé par
+  Frogtend : demandé à Firehouse.
+
 ## 0.174.0 — Cemu réglé dès sa première partie, et l'image des touches de la PSP
 
 - 🎮 Cemu (Wii U) : ta manette marche dès la toute première partie (avant, Cemu n'en avait aucune tant qu'on ne

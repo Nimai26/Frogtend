@@ -6,6 +6,13 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Vita3K (0.175.0)
+- [ ] Un jeu PS Vita avec un Vita3K jamais installé : sans le logiciel système de la Vita (pas encore servi par
+      Firehouse, besoin 48), l'accueil de Vita3K s'ouvre encore et beaucoup de jeux ne démarrent pas : l'essai
+      complet attend le besoin 48 (ou un jeu qui démarre sans). Avec : pas d'accueil, le jeu en français (s'il l'a),
+      la manette marche ; 🎮 « Les touches » montre la manette de la PS Vita.
+- [ ] Le bouton Xbox met le jeu en pause dans Vita3K (Select + RB tenus : le menu de Frogtend).
+
 ## Cemu et PPSSPP (0.174.0)
 - [ ] Un jeu Wii U avec un Cemu jamais installé (Frogtend l'installe) : pas d'assistant en anglais, la manette marche
       tout de suite, le jeu est en français (s'il a le français).
