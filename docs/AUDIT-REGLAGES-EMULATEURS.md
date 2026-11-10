@@ -20,7 +20,7 @@ Légende : ✅ fait · ⚠ fait avec un risque · ❌ absent · n/a sans objet.
 | Xenia | ✅ par Xenia lui-même (XInput ; SDL pour les autres) | ✅ 0.176.0 : `xconfig.settings` (binaire), une fois, à la 2e partie (Xenia le crée à la 1re) | ✅ 0.176.0 : `--guide_button=false` à chaque partie | n/a | ✅ 0.176.0 |
 | xemu | ❌ | ❌ | ❌ | xemu.toml créé | ❌ |
 | Azahar | ❌ | ❌ | ⚠ donné au menu sans relevé (la 3DS a un bouton Home) | n/a | ❌ |
-| Vita3K | ✅ par Vita3K lui-même (SDL, par position, toute manette) | ✅ 0.175.0 : `sys-lang`, une fois (l'interface suit déjà Windows) ; accueil anglais retiré une fois, seulement firmware installé (`fs\vs0\sys\external`) | ⚠ à Vita3K : pause, en dur (`on_ps_button`), gardé | config.yml créé ; ⚠ **firmware non installé** (besoin 48) | ✅ 0.175.0 |
+| Vita3K | ✅ par Vita3K lui-même (SDL, par position, toute manette) | ✅ 0.175.0 : `sys-lang`, une fois (l'interface suit déjà Windows) ; accueil anglais retiré une fois, seulement firmware installé (système `fs\vs0\sys\external` et polices `fs\sa0`, 0.177.0) | ⚠ à Vita3K : pause, en dur (`on_ps_button`), gardé | config.yml créé ; firmware servi (besoin 48) installé par Frogtend 0.177.0 | ✅ 0.175.0 |
 | mGBA | ❌ | n/a | ✅ | n/a | ❌ |
 | DOSBox Staging | joysticktype auto | n/a | ✅ | .conf créé | ❌ |
 | MAME | ❌ | n/a | ✅ | n/a | ❌ |
@@ -41,8 +41,7 @@ Légende : ✅ fait · ⚠ fait avec un risque · ❌ absent · n/a sans objet.
      seulement) → rien d'inventé ; la manette de Frogtend reste. Si la personne valide les réglages de manette de
      Cemu, même sans rien changer, le profil devient le sien : le bouton Xbox revient à Cemu (prudent).
    - ✅ PPSSPP (0.174.0) : rien à écrire. Le bouton Xbox reste à son menu (le retirer = réécrire tout `controls.ini`).
-   - ✅ Vita3K (0.175.0) : langue et accueil. Reste : le firmware de la Vita (besoin 48), installé par
-     `Vita3K --firmware <PUP>` une fois servi par Firehouse.
+   - ✅ Vita3K (0.175.0) : langue et accueil ; firmware de la Vita (0.177.0, besoin 48 servi par Firehouse 3.160.0).
    - ✅ Xenia (0.176.0). `user_language` n'existe plus : la langue est dans `xconfig.settings` (6 680 octets, octet
      2 322) ; Frogtend ne crée jamais ce fichier, d'où la langue à la 2e partie seulement.
    - Azahar : manette SDL ; la langue est dans la sauvegarde système.

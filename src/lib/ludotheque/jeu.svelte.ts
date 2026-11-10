@@ -8,8 +8,8 @@ import { api, duree, estErreurCoeur, taille, type ApercuNuage, type Candidat, ty
 import { attendreTouche, choisir, confirmer, fermerToast, informer, majProgres, toast, toastProgres } from '$lib/dialogues/fenetres.svelte';
 import { dossierDe, messageConfirmation } from '$lib/decompression/decompression';
 import { motifDuRefus } from '$lib/dialogues/messages';
-import { completerRetroArch, installerFirmwareSwitch, poserBios, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
-import { avecConseil, biosADireOuPoser, biosRetroArch, changementDeConseil, estConseille, firmwareSwitchServi, poidsBios, questionFirmwareSwitch } from '$lib/emulateurs/pret';
+import { completerRetroArch, installerFirmwareSwitch, installerFirmwareVita, poserBios, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
+import { avecConseil, biosADireOuPoser, biosRetroArch, changementDeConseil, estConseille, firmwareSwitchServi, poidsBios, questionFirmwareSwitch, questionFirmwareVita } from '$lib/emulateurs/pret';
 import { preparationEnCours, preparerPourJouer } from '$lib/emulateurs/pret.svelte';
 import { libelleValeur, REGLAGES_IMAGE, reglagesMontres } from '$lib/emulateurs/imagePs3';
 import { detailPatch, nomDuPatch, remarqueDuPatch, titreDuJeu } from '$lib/emulateurs/patchsPs3';
@@ -472,6 +472,24 @@ async function firmwareSwitchAvant(id: number, plateforme: string | undefined, e
   if (oui) await installerFirmwareSwitch(e.programme, miseAJour);
 }
 
+/** Avant une partie PS Vita (Vita3K) : le firmware de la Vita manque et Firehouse le fournit → proposé (taille et
+ * durée dites), une fois par séance. Jamais bloquant : un souci ici n'empêche pas de lancer. */
+async function firmwareVitaAvant(id: number, plateforme: string | undefined, emulateur?: string) {
+  if (plateforme !== 'Sony Playstation Vita') return;
+  const s = normaliser(etat.pc.emulateurs[plateforme]);
+  const e = (emulateur && s.liste.find((x) => x.cle === emulateur)) || pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, plateforme, id);
+  if (!e || !/(^|[\\/])vita3k[^\\/]*\.exe$/i.test(e.programme) || firmwaresProposes.has(e.programme)) return;
+  const manque = await auPlus(3000, api.vita3kFirmwareManquant(e.programme));
+  // Rien ne manque (ou Firehouse injoignable) : plus redemandé pendant cette séance.
+  firmwaresProposes.add(e.programme);
+  if (!manque?.length) return;
+  const oui = await confirmer('💿 Il manque le logiciel système de la PS Vita', {
+    message: questionFirmwareVita(manque, debitConnu(), duree),
+    libelleValider: '💿 Installer puis jouer',
+  });
+  if (oui) await installerFirmwareVita(e.programme);
+}
+
 /** `carte` : la carte e-Reader à lire (sa version) ; sans elle, Frogtend demande laquelle s'il y en a plusieurs. */
 export async function jouer(id: number, emulateur?: string, version?: string, carte?: number) {
   // Un seul lancement à la fois (un jeu de boutique peut mettre plusieurs minutes à démarrer).
@@ -527,6 +545,7 @@ async function jouerSansAttente(id: number, emulateur?: string, version?: string
       // Un souci ici n'empêche JAMAIS le jeu de se lancer.
       await suivreConseil(id, j?.plateforme, emulateur).catch(() => {});
       await firmwareSwitchAvant(id, j?.plateforme, emulateur).catch(() => {});
+      await firmwareVitaAvant(id, j?.plateforme, emulateur).catch(() => {});
       await prevenirPareFeu(id, j?.plateforme, emulateur);
       const pe = etat.profil.pleinEcran[String(id)];
       await api.jouer(

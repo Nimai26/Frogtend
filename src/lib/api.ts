@@ -837,6 +837,10 @@ export const api = {
   biosPoser: (plateforme: string, programme: string) => appeler<BilanBios>('bios_poser', { plateforme, programme }),
   firmwareServi: (plateforme: string) => appeler<BiosConseil | null>('firmware_servi', { plateforme }),
   rpcs3MicrologicielServi: (programme: string) => appeler<string>('rpcs3_micrologiciel_servi', { programme }),
+  /** Vita3K : les fichiers du firmware de la Vita servis par Firehouse qui manquent encore (vide : rien à faire). */
+  vita3kFirmwareManquant: (programme: string) => appeler<BiosConseil[]>('vita3k_firmware_manquant', { programme }),
+  /** Vita3K : installe ces fichiers (accord déjà donné) ; rend le nombre installé. */
+  vita3kFirmwareServi: (programme: string) => appeler<number>('vita3k_firmware_servi', { programme }),
   /** Eden : portable, clés posées (prod.keys), firmware déjà là. */
   edenFirmware: (programme: string) =>
     appeler<{ portable: boolean; cles: boolean; firmware: boolean; version: string | null; de_frogtend: boolean }>('eden_firmware', { programme }),

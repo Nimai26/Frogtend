@@ -605,6 +605,8 @@ pub fn run() {
             commandes::bios_poser,
             commandes::firmware_servi,
             commandes::rpcs3_micrologiciel_servi,
+            commandes::vita3k_firmware_manquant,
+            commandes::vita3k_firmware_servi,
             commandes::emulateur_regler_manette,
             commandes::rpcs3_installer_micrologiciel,
             commandes::rpcs3_micrologiciel,

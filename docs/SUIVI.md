@@ -2520,3 +2520,7 @@ d'abord :
   (hid_flags.cc) → bouton Xbox au menu de Frogtend ; langue dans `xconfig.settings` binaire (xconfig.h, 6 680 o,
   langue à l'octet 2 322, créé par Xenia à son 1er démarrage) → posée une fois, fichier existant de la bonne taille
   et encore en anglais seulement ; schéma 🎮.
+- 10/11 (0.177.0) : besoin 48 SERVI (Firehouse 3.160.0, accord de Seb) → Frogtend installe les 3 PUP de la Vita
+  (`vita3k_firmware_servi` : téléchargement vérifié, `Vita3K --firmware` sans fenêtre, contrôle du dossier donné :
+  vs0\sys\external, pd0, sa0 ; empreintes notées dans fs\.frogtend-firmware) : dans l'accord de « Prêt à jouer » et
+  avant une partie PS Vita. Pas essayé en vrai (pas de Vita3K chez Seb).

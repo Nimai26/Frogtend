@@ -241,7 +241,161 @@ fn marque_accueil(v: &Path) -> PathBuf {
 /// `portable\fs\` ; ses modules système sont dans `vs0\sys\external`. Tant qu'il manque, l'accueil de Vita3K reste :
 /// c'est lui qui dit où le trouver (besoin 48 : Firehouse le servira).
 pub fn firmware_installe(v: &Path) -> bool {
-    v.join("portable").join("fs").join("vs0").join("sys").join("external").is_dir()
+    // Le système ET les polices (la documentation de Vita3K exige les deux) : sans les polices, l'accueil reste.
+    let fs = v.join("portable").join("fs");
+    fs.join("vs0").join("sys").join("external").is_dir() && fs.join("sa0").is_dir()
+}
+
+// --- Le firmware de la Vita SERVI PAR FIREHOUSE (besoin 48, Firehouse 3.160.0 : conseil « Sony Playstation Vita »,
+// trois `.PUP` `type: installation`, dans l'ordre : système, pré-installation, polices). Relevé dans le code de Vita3K
+// (master, 10/11) : `Vita3K --firmware <fichier.PUP>` installe puis QUITTE sans fenêtre (main.cpp, `QuitRequested`) ;
+// `install_pup` (packages/src/pup.cpp) extrait os0, pd0, sa0 et vs0 dans le dossier `fs` (portable\fs) : le système
+// donne `vs0\sys\external`, la pré-installation `pd0`, les polices `sa0`. Frogtend note les empreintes installées
+// (`fs\.frogtend-firmware`, une par ligne) : un fichier déjà posé n'est jamais retéléchargé.
+
+/// Les fichiers du firmware de la Vita que Firehouse sert dans ce conseil, dans SON ordre.
+pub fn firmwares_servis(bios: &[crate::bios::BiosConseil]) -> Vec<crate::bios::BiosConseil> {
+    bios.iter()
+        .filter(|b| b.sorte == "installation" && b.disponible && b.url.is_some() && b.sha1.as_deref().is_some_and(|s| s.len() == 40) && b.fichier.to_lowercase().ends_with(".pup"))
+        .cloned()
+        .collect()
+}
+
+fn note_firmware(v: &Path) -> PathBuf {
+    v.join("portable").join("fs").join(".frogtend-firmware")
+}
+
+/// Les empreintes des fichiers du firmware posés par Frogtend.
+/// Chaque ligne de la note : « <sha1> <dossier donné> » (le dossier relatif à `fs`, `/` comme séparateur).
+fn empreintes_posees(v: &Path) -> Vec<(String, String)> {
+    std::fs::read_to_string(note_firmware(v))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| {
+            let mut m = l.split_whitespace();
+            Some((m.next()?.to_lowercase(), m.next().unwrap_or("").to_string()))
+        })
+        .collect()
+}
+
+/// Le nom court d'un dossier donné par le firmware, pour la note (« vs0/sys/external », « pd0 », « sa0 »).
+fn nom_de_trace(v: &Path, trace: &Path) -> String {
+    trace.strip_prefix(v.join("portable").join("fs")).map(|r| r.to_string_lossy().replace('\\', "/")).unwrap_or_default()
+}
+
+/// Le dossier que donne le `n`-ième fichier du firmware servi une fois installé : d'après son nom chez Firehouse
+/// (« preinstall », « polices »), sinon d'après sa place dans l'ordre servi (besoin 48 : système, pré-installation,
+/// polices). `None` : un fichier en trop, inconnu — jamais installé à l'aveugle.
+fn trace_du_fichier(v: &Path, fichier: &str, n: usize) -> Option<PathBuf> {
+    let fs = v.join("portable").join("fs");
+    let nom = fichier.to_lowercase();
+    let systeme = fs.join("vs0").join("sys").join("external");
+    Some(if nom.contains("preinst") {
+        fs.join("pd0")
+    } else if nom.contains("polices") || nom.contains("font") {
+        fs.join("sa0")
+    } else if nom == "psvupdat.pup" {
+        systeme
+    } else {
+        match n {
+            0 => systeme,
+            1 => fs.join("pd0"),
+            2 => fs.join("sa0"),
+            _ => return None,
+        }
+    })
+}
+
+/// L'empreinte d'un dossier pour voir si une installation l'a changé : nombre de fichiers et date la plus récente.
+fn empreinte_dossier(d: &Path) -> Option<(usize, std::time::SystemTime)> {
+    if !d.is_dir() {
+        return None;
+    }
+    let mut n = 0;
+    let mut recent = std::time::SystemTime::UNIX_EPOCH;
+    let mut a_voir = vec![d.to_path_buf()];
+    while let Some(x) = a_voir.pop() {
+        for e in std::fs::read_dir(&x).ok()?.flatten() {
+            let m = e.metadata().ok()?;
+            if m.is_dir() {
+                a_voir.push(e.path());
+            } else {
+                n += 1;
+                recent = recent.max(m.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH));
+            }
+        }
+    }
+    Some((n, recent))
+}
+
+/// Ce qui manque encore parmi les fichiers servis (avec sa place dans l'ordre servi) : rien hors portable ; un fichier
+/// que Frogtend n'a pas encore posé, seulement si son dossier n'existe pas encore, ou si c'est Frogtend qui l'avait
+/// donné (une version plus récente servie) — jamais par-dessus ce que la personne a installé elle-même. (`pref-path`
+/// ne compte pas : Vita3K l'écrase en portable, relevé du 26/10.)
+pub fn firmwares_manquants(v: &Path, servis: &[crate::bios::BiosConseil]) -> Vec<(usize, crate::bios::BiosConseil)> {
+    if !portable(v) {
+        return vec![];
+    }
+    let posees = empreintes_posees(v);
+    servis
+        .iter()
+        .enumerate()
+        .filter(|(n, f)| {
+            let sha1 = f.sha1.clone().unwrap_or_default().to_lowercase();
+            let Some(trace) = trace_du_fichier(v, &f.fichier, *n) else { return false };
+            let nom = nom_de_trace(v, &trace);
+            !posees.iter().any(|(s, _)| *s == sha1) && (!trace.is_dir() || posees.iter().any(|(_, d)| *d == nom))
+        })
+        .map(|(n, f)| (n, f.clone()))
+        .collect()
+}
+
+/// Installe le `n`-ième fichier du firmware, déjà téléchargé et vérifié, par Vita3K lui-même (`--firmware`), Vita3K
+/// FERMÉ, sans fenêtre, 10 minutes au plus. Réussi seulement si le dossier qu'il doit donner est apparu ou a changé
+/// (Vita3K rend « réussi » même quand il échoue) ; alors noté.
+pub fn installer_firmware(v: &Path, programme: &Path, n: usize, f: &crate::bios::BiosConseil, pup: &Path) -> Resultat<()> {
+    if !crate::lancement::processus_du_dossier(v).is_empty() {
+        return Err(Erreur::Refus("Vita3K est ouvert : ferme-le (ou quitte ta partie), puis recommence.".into()));
+    }
+    let trace = trace_du_fichier(v, &f.fichier, n).ok_or_else(|| Erreur::Refus(format!("{} : fichier inconnu, pas installé.", f.fichier)))?;
+    let avant = empreinte_dossier(&trace);
+    let mut enfant = crate::lancement::outil_sans_fenetre(&programme.to_string_lossy())
+        .arg("--firmware")
+        .arg(pup)
+        .current_dir(v)
+        .spawn()
+        .map_err(|e| Erreur::Disque(format!("Vita3K ne démarre pas ({e}).")))?;
+    let debut = std::time::Instant::now();
+    let statut = loop {
+        if let Some(s) = enfant.try_wait().map_err(|e| Erreur::Disque(format!("Vita3K : {e}.")))? {
+            break s;
+        }
+        if debut.elapsed() > std::time::Duration::from_secs(600) {
+            let _ = enfant.kill();
+            let _ = enfant.wait();
+            return Err(Erreur::Disque(format!("Vita3K n'a pas fini d'installer {} en 10 minutes : arrêté.", f.fichier)));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    };
+    constater_installation(v, f, &trace, avant, statut.success())
+}
+
+/// Le constat après `--firmware` : l'installation a réussi si Vita3K a fini sans erreur ET si le dossier attendu est
+/// apparu ou a changé ; alors l'empreinte du fichier est notée.
+fn constater_installation(v: &Path, f: &crate::bios::BiosConseil, trace: &Path, avant: Option<(usize, std::time::SystemTime)>, fini: bool) -> Resultat<()> {
+    let apres = empreinte_dossier(trace);
+    if !fini || apres.is_none() || apres == avant {
+        return Err(Erreur::Disque(format!("Vita3K n'a pas installé {} (fichier refusé ?).", f.fichier)));
+    }
+    let sha1 = f.sha1.clone().unwrap_or_default().to_lowercase();
+    let mut posees = empreintes_posees(v);
+    if !posees.iter().any(|(s, _)| *s == sha1) {
+        posees.push((sha1, nom_de_trace(v, trace)));
+    }
+    std::fs::create_dir_all(v.join("portable").join("fs"))?;
+    let texte: String = posees.iter().map(|(s, d)| format!("{s} {d}\n")).collect();
+    std::fs::write(note_firmware(v), texte)?;
+    Ok(())
 }
 
 /// La langue de la console Vita pour une langue de Windows (LANGID) ; `None` : une langue que la Vita n'a pas.
@@ -551,6 +705,7 @@ mod tests {
     /// Le firmware de la Vita posé comme par `install_pup` (seulement le dossier qui le signale).
     fn avec_firmware(v: &Path) {
         std::fs::create_dir_all(v.join("portable").join("fs").join("vs0").join("sys").join("external")).unwrap();
+        std::fs::create_dir_all(v.join("portable").join("fs").join("sa0")).unwrap();
     }
 
     #[test]
@@ -625,6 +780,83 @@ mod tests {
         std::fs::write(config(v), [0xFFu8, 0xFE, 0x00, 0xD8]).unwrap();
         assert!(premiere_partie(v, 0x040C).is_err());
         assert!(!marque_premiere_partie(v).exists());
+    }
+
+    fn pup(fichier: &str, sha1: char) -> crate::bios::BiosConseil {
+        let mut ignore = crate::bios::Bilan::default();
+        let s: String = std::iter::repeat_n(sha1, 40).collect();
+        crate::bios::lire_bios(
+            &serde_json::json!([{"fichier": fichier, "type": "installation", "racine": "installation_par_l_emulateur", "disponible": true, "sha1": s, "taille": 10, "url": format!("/api/jeux/v1/bios/{s}")}]),
+            &mut ignore,
+        )
+        .remove(0)
+    }
+
+    #[test]
+    fn le_firmware_servi_dans_l_ordre_et_seulement_ce_qui_manque() {
+        let servis = vec![pup("PSVUPDAT.PUP", 'a'), pup("PSP2UPDAT-preinstall.PUP", 'b'), pup("PSP2UPDAT-polices.PUP", 'c')];
+        let mut tous = servis.clone();
+        tous.push(pup("autre.zip", 'd'));
+        assert_eq!(firmwares_servis(&tous).iter().map(|f| f.fichier.as_str()).collect::<Vec<_>>(), ["PSVUPDAT.PUP", "PSP2UPDAT-preinstall.PUP", "PSP2UPDAT-polices.PUP"]);
+        assert!(firmwares_manquants(tempfile::tempdir().unwrap().path(), &servis).is_empty(), "hors portable : rien");
+        let d = vita_portable();
+        let v = d.path();
+        let noms = |l: Vec<(usize, crate::bios::BiosConseil)>| l.into_iter().map(|(n, f)| format!("{n}:{}", f.fichier)).collect::<Vec<_>>();
+        assert_eq!(noms(firmwares_manquants(v, &servis)).len(), 3);
+        // Le système installé par Frogtend (constaté, noté) : les deux autres restent.
+        let fs = v.join("portable").join("fs");
+        let systeme = fs.join("vs0").join("sys").join("external");
+        std::fs::create_dir_all(&systeme).unwrap();
+        std::fs::write(systeme.join("libc.suprx"), "x").unwrap();
+        constater_installation(v, &servis[0], &systeme, None, true).unwrap();
+        assert_eq!(std::fs::read_to_string(note_firmware(v)).unwrap(), format!("{} vs0/sys/external\n", "a".repeat(40)));
+        assert_eq!(noms(firmwares_manquants(v, &servis)), ["1:PSP2UPDAT-preinstall.PUP", "2:PSP2UPDAT-polices.PUP"]);
+        // Une version plus récente du système servie : c'est Frogtend qui l'avait posé → proposée.
+        let mut nouveau = servis.clone();
+        nouveau[0] = pup("PSVUPDAT.PUP", 'e');
+        assert_eq!(noms(firmwares_manquants(v, &nouveau))[0], "0:PSVUPDAT.PUP");
+        // Le système installé par la personne elle-même, rien d'autre : seulement la pré-installation et les polices.
+        let d2 = vita_portable();
+        std::fs::create_dir_all(d2.path().join("portable").join("fs").join("vs0").join("sys").join("external")).unwrap();
+        assert_eq!(noms(firmwares_manquants(d2.path(), &servis)), ["1:PSP2UPDAT-preinstall.PUP", "2:PSP2UPDAT-polices.PUP"]);
+        // Tout installé par la personne : rien.
+        for s in ["pd0", "sa0"] {
+            std::fs::create_dir_all(d2.path().join("portable").join("fs").join(s)).unwrap();
+        }
+        assert!(firmwares_manquants(d2.path(), &servis).is_empty());
+        // Le type d'après le nom, sinon d'après la place ; un 4e fichier inconnu : jamais installé.
+        assert_eq!(trace_du_fichier(v, "PSP2UPDAT-polices.PUP", 0), Some(fs.join("sa0")));
+        assert_eq!(trace_du_fichier(v, "PSP2UPDAT.PUP", 2), Some(fs.join("sa0")));
+        assert_eq!(trace_du_fichier(v, "PSP2UPDAT.PUP", 3), None);
+        let mut en_trop = servis.clone();
+        en_trop.push(pup("autre.PUP", 'f'));
+        assert_eq!(firmwares_servis(&en_trop).len(), 4);
+        assert_eq!(noms(firmwares_manquants(d2.path(), &en_trop)), Vec::<String>::new());
+    }
+
+    #[test]
+    fn un_echec_de_vita3k_n_est_jamais_note_comme_installe() {
+        let d = vita_portable();
+        let v = d.path();
+        let f = pup("PSP2UPDAT-polices.PUP", 'c');
+        let sa0 = v.join("portable").join("fs").join("sa0");
+        // Rien n'est apparu : échec, même si Vita3K a fini « sans erreur ».
+        assert!(constater_installation(v, &f, &sa0, None, true).is_err());
+        // Un dossier qui était déjà là et n'a pas changé : échec aussi.
+        std::fs::create_dir_all(sa0.join("data")).unwrap();
+        std::fs::write(sa0.join("data").join("x.pvf"), "x").unwrap();
+        let avant = empreinte_dossier(&sa0);
+        assert!(constater_installation(v, &f, &sa0, avant, true).is_err());
+        // Vita3K en erreur : échec.
+        assert!(constater_installation(v, &f, &sa0, None, false).is_err());
+        assert!(!note_firmware(v).exists(), "rien de noté");
+        // Le dossier est apparu : noté.
+        assert!(constater_installation(v, &f, &sa0, None, true).is_ok());
+        assert!(std::fs::read_to_string(note_firmware(v)).unwrap().ends_with(" sa0\n"));
+        // Un fichier écarté par le conseil (indisponible) n'est jamais servi.
+        let mut ignore = crate::bios::Bilan::default();
+        let indispo = crate::bios::lire_bios(&serde_json::json!([{"fichier": "PSVUPDAT.PUP", "type": "installation", "racine": "installation_par_l_emulateur", "disponible": false, "sha1": "a".repeat(40), "url": "/x"}]), &mut ignore);
+        assert!(firmwares_servis(&indispo).is_empty());
     }
 
     #[test]

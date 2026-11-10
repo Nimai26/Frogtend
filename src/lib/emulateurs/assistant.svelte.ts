@@ -198,6 +198,45 @@ export async function installerFirmwareSwitch(programme: string, remplacer = fal
   }
 }
 
+/** Le firmware de la PS Vita servi par Firehouse, installé par Vita3K (accord déjà donné), en montrant le
+ * téléchargement des fichiers qui manquent. */
+export async function installerFirmwareVita(programme: string): Promise<boolean> {
+  let message = toast('💿 Logiciel système de la PS Vita : téléchargement…', 'neutre');
+  let dernier: number | null = -1;
+  const arreter = isTauri()
+    ? await listen<{ id: string; recus: number; total: number | null }>('emulateur', (e) => {
+        // L'installation d'un fichier par Vita3K (quelques minutes) : dite, pour ne pas sembler bloquée.
+        if (e.payload.id === 'vita3k-firmware-installation') {
+          fermerToast(message);
+          message = toast(`💿 Logiciel système de la PS Vita : installation dans Vita3K (${e.payload.recus} sur ${e.payload.total ?? '?'}, sans fenêtre, quelques minutes)…`, 'neutre');
+          return;
+        }
+        if (e.payload.id !== 'vita3k-firmware') return;
+        const p = palier(e.payload.recus, e.payload.total);
+        if (p === dernier || p === null) return;
+        dernier = p;
+        fermerToast(message);
+        message = toast(
+          p >= 100
+            ? '💿 Logiciel système de la PS Vita : téléchargé et vérifié…'
+            : `💿 Logiciel système de la PS Vita : ${p} % (${taille(e.payload.recus)}${e.payload.total ? ` sur ${taille(e.payload.total)}` : ''})…`,
+          'neutre',
+        );
+      })
+    : () => {};
+  try {
+    await api.vita3kFirmwareServi(programme);
+    toast('✅ Logiciel système de la PS Vita installé.', 'ok');
+    return true;
+  } catch (e) {
+    toast(`Logiciel système de la PS Vita non installé : ${motifDuRefus(e)}. Ce qui est déjà installé est gardé ; une coupure du téléchargement reprend où elle en était.`, 'erreur');
+    return false;
+  } finally {
+    arreter();
+    fermerToast(message);
+  }
+}
+
 /**
  * Le micrologiciel PS3 SERVI PAR FIREHOUSE : téléchargé (avancement montré tous les 10 %), vérifié, installé sans
  * fenêtre par RPCS3. L'accord (avec sa taille) est demandé AVANT par l'appelant. Rend la version installée, ou `null`.

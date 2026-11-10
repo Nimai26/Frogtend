@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Conseil } from '$lib/api';
-import { MANETTE_REGLEE, avecConseil, changementDeConseil, memeEmulateur, biosADire, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, fichiersDuConseil, ligneDe, messagePret, micrologicielServi, firmwareSwitchServi, questionFirmwareSwitch, palier, poidsBios, versionAutre, versionDansNote, type Possible } from './pret';
+import { MANETTE_REGLEE, firmwaresVitaServis, moFirmwares, questionFirmwareVita, avecConseil, changementDeConseil, memeEmulateur, biosADire, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, fichiersDuConseil, ligneDe, messagePret, micrologicielServi, firmwareSwitchServi, questionFirmwareSwitch, palier, poidsBios, versionAutre, versionDansNote, type Possible } from './pret';
 
 const rec = (nom: string, recommande: boolean, bios = '') => ({ nom, site: '', recommande, ligne_de_commande: '', extensions: [], bios });
 
@@ -140,6 +140,19 @@ describe('le conseil de la maison (contrat 1.8)', () => {
     const m = messagePret({ plateforme: 'Sony Playstation 3', jeux: 7, choix, taille: null, dossier: 'E:\\Emulateurs', dossierNouveau: false, conseil: conseilPs3 });
     expect(m).toContain('le micrologiciel PS3 (197 Mo), fourni par Firehouse');
     expect(m).not.toContain('fichier système');
+  });
+
+  it('Vita3K : le firmware de la PS Vita servi est annoncé dans l’accord, avec sa taille', () => {
+    const pupV = (fichier: string, taille: number) => ({ chemin: '', coffre: false, disponible: true, facultatif: false, fichier, racine: 'installation_par_l_emulateur', type: 'installation', sha1: 'a'.repeat(40), url: '/api/jeux/v1/bios/a', taille, note: '' }) as Conseil['bios'][number];
+    const bios = [pupV('PSVUPDAT.PUP', 133834240), pupV('PSP2UPDAT-preinstall.PUP', 128798720), pupV('PSP2UPDAT-polices.PUP', 56778752)];
+    expect(firmwaresVitaServis(bios)).toHaveLength(3);
+    expect(moFirmwares(bios)).toBe('305 Mo');
+    const vita = { rec: ligneLb('Vita3K', 'vita3k', true), id: 'vita3k', nom: 'Vita3K', comment: 'frogtend' as const };
+    const c = { ...conseilSwitch, plateforme: 'Sony Playstation Vita', emulateur: 'vita3k', bios };
+    const m = messagePret({ plateforme: 'Sony Playstation Vita', jeux: 1, choix: vita, taille: null, dossier: 'E:\\Emulateurs', dossierNouveau: false, conseil: c });
+    expect(m).toContain('le logiciel système de la PS Vita (305 Mo), fourni par Firehouse');
+    const q = questionFirmwareVita(bios, 1048576, (s) => `${Math.round(s / 60)} min`);
+    expect(q).toContain('Firehouse le fournit : 305 Mo. Environ 5 min à ta vitesse habituelle.');
   });
 
   it('Cemu : l’accord ne promet que la manette Xbox', () => {

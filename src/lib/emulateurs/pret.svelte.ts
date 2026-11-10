@@ -8,10 +8,10 @@ import { taille } from '$lib/api';
 import { confirmer, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat, reglerPc } from '$lib/etat.svelte';
-import { completerRetroArch, installationEmulateur, installerEmulateur, installerFirmwareSwitch, installerMicrologicielPs3, installerParFirehouse, poserBios, recommandationsParDefaut, reglerEmulateur } from './assistant.svelte';
+import { completerRetroArch, installationEmulateur, installerEmulateur, installerFirmwareSwitch, installerFirmwareVita, installerMicrologicielPs3, installerParFirehouse, poserBios, recommandationsParDefaut, reglerEmulateur } from './assistant.svelte';
 import { ajouter } from './choix';
 import { FAMILLE_EDEN } from './versions';
-import { avecConseil, biosADireOuPoser, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, fichiersDuConseil, firmwareSwitchServi, ligneDe, MANETTE_REGLEE, messagePret, micrologicielServi, phraseVersionAutre, poidsBios, versionAutre, type Possible } from './pret';
+import { avecConseil, biosADireOuPoser, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, fichiersDuConseil, firmwareSwitchServi, firmwaresVitaServis, ligneDe, MANETTE_REGLEE, messagePret, micrologicielServi, phraseVersionAutre, poidsBios, versionAutre, type Possible } from './pret';
 import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
 
 /** Les plateformes qui se jouent sans émulateur. */
@@ -170,6 +170,11 @@ async function preparer(plateforme: string, jeux: number): Promise<string | null
         'Les jeux PS3 en ont besoin, et Firehouse ne le fournit pas en ce moment.\n\nTu peux l’installer toi-même : ⚙ Options ▸ 🕹 Émulateurs ▸ 💿 sur la ligne de RPCS3, avec le fichier PS3UPDAT.PUP du site officiel de PlayStation (quelques secondes, sans fenêtre).',
       );
     }
+  }
+  // Vita3K : le firmware de la Vita servi par Firehouse, compris dans l'accord (sa taille y est dite).
+  if (choix.id === 'vita3k' && conseil && fichiersDuConseil(choix.rec, conseil) && firmwaresVitaServis(conseil.bios).length) {
+    const manque = await api.vita3kFirmwareManquant(programme).catch(() => []);
+    if (manque.length) await installerFirmwareVita(programme);
   }
   // Eden : le firmware de Firehouse, compris dans l'accord, dès que les clés de la personne sont là (sinon, il sera
   // proposé avant la première partie, une fois les clés posées).

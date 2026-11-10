@@ -234,6 +234,25 @@ export function firmwareSwitchServi(bios: BiosConseil[]): BiosConseil | undefine
   return bios.find((b) => b.type === 'installation' && b.disponible && !!b.sha1 && !!b.url && b.fichier.toLowerCase().endsWith('.zip'));
 }
 
+/** Le firmware de la PS Vita que Firehouse sert dans ce conseil (besoin 48 : trois `.PUP`, dans l'ordre). */
+export function firmwaresVitaServis(bios: BiosConseil[]): BiosConseil[] {
+  return bios.filter((b) => b.type === 'installation' && b.disponible && !!b.sha1 && !!b.url && b.fichier.toLowerCase().endsWith('.pup'));
+}
+
+/** La taille en Mo de plusieurs fichiers (inconnue : « quelques centaines de Mo »). */
+export function moFirmwares(f: BiosConseil[]): string {
+  const t = f.reduce((s, b) => s + (b.taille ?? 0), 0);
+  return f.length && f.every((b) => b.taille) ? `${Math.round(t / 1048576)} Mo` : 'quelques centaines de Mo';
+}
+
+/** La question avant une partie PS Vita, quand le firmware manque : taille, et durée au débit mesuré. */
+export function questionFirmwareVita(f: BiosConseil[], debit: number | null, duree: (s: number) => string): string {
+  const t = f.reduce((s, b) => s + (b.taille ?? 0), 0);
+  const d = debit && t ? duree(Math.round(t / debit)) : '';
+  const temps = d ? (/^moins/.test(d) ? ` ${d[0].toUpperCase()}${d.slice(1)} à ta vitesse habituelle.` : ` Environ ${d} à ta vitesse habituelle.`) : '';
+  return `Beaucoup de jeux PS Vita ne démarrent pas sans lui.\n\nFirehouse le fournit : ${moFirmwares(f)}.${temps} Vita3K l’installe sans fenêtre, puis le jeu se lance.`;
+}
+
 const moFirmware = (f: BiosConseil) => (f.taille ? `${Math.round(f.taille / 1048576)} Mo` : 'quelques centaines de Mo');
 
 /** La phrase de l'accord pour le firmware Switch (« le logiciel système de la Switch », pour tout le monde). */
@@ -302,6 +321,8 @@ export function messagePret(o: {
     if (pup && choix.id === 'rpcs3') {
       lignes.push(`S’il manque, le micrologiciel PS3 (${pup.taille ? `${Math.round(pup.taille / 1048576)} Mo` : 'quelques centaines de Mo'}), fourni par Firehouse, est installé aussi, sans aucune fenêtre.`);
     }
+    const vita = choix.id === 'vita3k' ? firmwaresVitaServis(o.conseil!.bios) : [];
+    if (vita.length) lignes.push(`S’il manque, le logiciel système de la PS Vita (${moFirmwares(vita)}), fourni par Firehouse, est installé aussi par Vita3K, sans aucune fenêtre.`);
     const fw = firmwareSwitchServi(o.conseil!.bios);
     if (fw && choix.id && FAMILLE_EDEN.includes(choix.id)) lignes.push(phraseFirmwareSwitch(fw));
     if (cles.length) lignes.push(`Il te faudra aussi tes clés (${cles.join(', ')}) : personne ne peut les fournir, et sans elles les jeux ne démarrent pas.`);

@@ -5559,6 +5559,95 @@ pub async fn rpcs3_micrologiciel_servi(app: AppHandle, noyau: State<'_, Noyau>, 
     r
 }
 
+/// La plateforme de la PS Vita chez Firehouse (nom LaunchBox).
+const PLATEFORME_VITA: &str = "Sony Playstation Vita";
+
+/// Vita3K : le programme, vérifié, et son dossier.
+fn programme_vita3k(programme: &str) -> Resultat<(std::path::PathBuf, std::path::PathBuf)> {
+    let p = std::path::PathBuf::from(programme);
+    if !crate::vita3k::est_vita3k(programme) || !p.is_file() {
+        return Err(Erreur::Refus("Ce n'est pas le programme de Vita3K.".into()));
+    }
+    let d = p.parent().map(std::path::PathBuf::from).unwrap_or_default();
+    Ok((p, d))
+}
+
+/// Les fichiers du firmware de la Vita que Firehouse sert et qui manquent encore à ce Vita3K (vide : rien à faire), pour
+/// annoncer leur taille avant tout accord.
+#[tauri::command]
+pub async fn vita3k_firmware_manquant(noyau: State<'_, Noyau>, programme: String) -> Resultat<Vec<crate::bios::BiosConseil>> {
+    let (_, dossier) = programme_vita3k(&programme)?;
+    let v = noyau.session().await?.source.emulateurs(PLATEFORME_VITA).await?;
+    let mut ignore = crate::bios::Bilan::default();
+    let servis = crate::vita3k::firmwares_servis(&crate::bios::lire_bios(&v["conseil"]["bios"], &mut ignore));
+    Ok(crate::vita3k::firmwares_manquants(&dossier, &servis).into_iter().map(|(_, f)| f).collect())
+}
+
+/// Le firmware de la Vita SERVI PAR FIREHOUSE (besoin 48) : chaque fichier qui manque, dans l'ordre servi, est
+/// téléchargé (reprise, progression : événement « emulateur », id « vita3k-firmware »), son SHA-1 vérifié, puis installé
+/// par Vita3K (`--firmware`, sans fenêtre). Vita3K fermé ; un seul accord a été donné avant (la taille annoncée). Rend
+/// le nombre de fichiers installés.
+#[tauri::command]
+pub async fn vita3k_firmware_servi(app: AppHandle, noyau: State<'_, Noyau>, programme: String) -> Resultat<usize> {
+    let (p, dossier) = programme_vita3k(&programme)?;
+    exiger_programme_de_confiance(&app, &noyau, &p)?;
+    if !crate::vita3k::portable(&dossier) {
+        return Err(Erreur::Refus("Vita3K n'est pas installé en portable : Frogtend n'y installe rien.".into()));
+    }
+    // AVANT de télécharger 300 Mo : Vita3K fermé, et la place sur le disque.
+    if !crate::lancement::processus_du_dossier(&dossier).is_empty() {
+        return Err(Erreur::Refus("Vita3K est ouvert : ferme-le (ou quitte ta partie), puis recommence.".into()));
+    }
+    let _occupe = occuper_installation(dossier.parent().unwrap_or(&dossier), &dossier, "Vita3K")?;
+    let s = noyau.session().await?;
+    let v = s.source.emulateurs(PLATEFORME_VITA).await?;
+    let mut ignore = crate::bios::Bilan::default();
+    let servis = crate::vita3k::firmwares_servis(&crate::bios::lire_bios(&v["conseil"]["bios"], &mut ignore));
+    let a_faire = crate::vita3k::firmwares_manquants(&dossier, &servis);
+    if a_faire.is_empty() {
+        return Ok(0);
+    }
+    // Chaque PUP, puis ce qu'il donne une fois extrait : environ trois fois leur taille, par prudence.
+    let total: u64 = a_faire.iter().filter_map(|(_, f)| f.taille).sum();
+    if let Some(libre) = crate::jeux_pc::place_libre(&dossier) {
+        if libre < total.saturating_mul(3) {
+            return Err(Erreur::Disque(format!("Pas assez de place sur le disque de Vita3K : il faut environ {} Mo libres.", total.saturating_mul(3) / 1_048_576)));
+        }
+    }
+    let deja = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let mut faits = 0;
+    for (i, (n, f)) in a_faire.iter().enumerate() {
+        let (app2, deja2) = (app.clone(), deja.clone());
+        let progres = move |recus: u64, _total: Option<u64>| {
+            let base = deja2.load(std::sync::atomic::Ordering::Relaxed);
+            let _ = app2.emit("emulateur", ProgresEmulateur { id: "vita3k-firmware".into(), recus: base + recus, total: Some(total) });
+        };
+        let pup = match crate::bios::telecharger_firmware(&s.source, f, &dossier, &progres).await {
+            Ok(p) => p,
+            Err(e) => {
+                noyau.journaliser(&format!("Vita3K : {} non téléchargé ({e:?})", f.fichier));
+                return Err(e);
+            }
+        };
+        // L'étape d'installation, dite (elle peut durer quelques minutes) : `recus` = n° du fichier, `total` = combien.
+        let _ = app.emit("emulateur", ProgresEmulateur { id: "vita3k-firmware-installation".into(), recus: i as u64 + 1, total: Some(a_faire.len() as u64) });
+        let (d, prog, fc, pc, n) = (dossier.clone(), p.clone(), f.clone(), pup.clone(), *n);
+        let r = tauri::async_runtime::spawn_blocking(move || crate::vita3k::installer_firmware(&d, &prog, n, &fc, &pc))
+            .await
+            .map_err(|_| Erreur::Disque("L'installation du firmware s'est arrêtée brutalement.".into()))?;
+        let _ = std::fs::remove_file(&pup);
+        if let Err(e) = r {
+            noyau.journaliser(&format!("Vita3K : {} non installé ({e:?})", f.fichier));
+            return Err(e);
+        }
+        deja.fetch_add(f.taille.unwrap_or(0), std::sync::atomic::Ordering::Relaxed);
+        faits += 1;
+        noyau.journaliser(&format!("Vita3K : {} installé ({faits}/{})", f.fichier, a_faire.len()));
+    }
+    let _ = std::fs::remove_dir(dossier.join(".telechargements"));
+    Ok(faits)
+}
+
 /// Où en est Eden (ou Eglantine) pour le firmware : portable, clés posées, firmware déjà là, et sa version s'il a été
 /// posé par Frogtend (contrat 1.38 : une version plus récente servie est proposée).
 #[derive(Serialize)]

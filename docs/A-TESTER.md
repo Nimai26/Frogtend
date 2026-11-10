@@ -6,6 +6,12 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Le logiciel système de la PS Vita (0.177.0)
+- [ ] Un jeu PS Vita avec un Vita3K jamais installé : l'accord annonce le logiciel système (305 Mo) ; après le oui,
+      il s'installe (avancement en %), sans fenêtre ; le jeu démarre, sans accueil en anglais, en français.
+- [ ] (Si Vita3K était déjà là) Avant la partie, la question « 💿 Il manque le logiciel système de la PS Vita » donne
+      la taille et la durée ; « Installer puis jouer » → installé, puis le jeu se lance.
+
 ## Xenia (0.176.0)
 - [ ] Un jeu Xbox 360 avec un Xenia jamais installé : la manette marche, le bouton Xbox ouvre le menu de Frogtend.
 - [ ] Quitter, relancer le jeu : il est en français (s'il a le français).

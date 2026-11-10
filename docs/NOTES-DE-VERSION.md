@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.177.0 — Le logiciel système de la PS Vita, installé pour toi
+
+- 💿 Firehouse fournit maintenant le logiciel système de la PS Vita (environ 305 Mo), dont beaucoup de jeux ont
+  besoin. Frogtend l'installe avec Vita3K : annoncé dans l'accord quand Vita3K s'installe, ou proposé avant une
+  partie PS Vita s'il manque (taille et durée dites). Vita3K le met en place sans aucune fenêtre.
+- Une fois installé, la fenêtre d'accueil de Vita3K (en anglais) ne s'ouvre plus.
+
 ## 0.176.0 — Xenia réglé : la langue et le bouton Xbox
 
 - 🌍 Xenia (Xbox 360) : les jeux s'affichent dans la langue de Windows (le français chez toi) au lieu de l'anglais, à
