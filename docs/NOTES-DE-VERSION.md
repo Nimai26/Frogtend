@@ -1,5 +1,17 @@
 # Notes de version de Frogtend
 
+## 0.174.0 — Cemu réglé dès sa première partie, et l'image des touches de la PSP
+
+- 🎮 Cemu (Wii U) : ta manette marche dès la toute première partie (avant, Cemu n'en avait aucune tant qu'on ne
+  l'avait pas réglée dans ses options). Les boutons sont placés comme sur la Wii U, et le bouton Xbox ouvre le menu
+  de Frogtend.
+- 🌍 Cemu : les jeux Wii U s'affichent dans la langue de Windows (le français chez toi) au lieu de l'anglais, et
+  l'assistant de premier démarrage de Cemu (en anglais) ne s'ouvre plus. Une seule fois : si tu choisis une autre
+  langue dans Cemu, elle est gardée.
+- 🕹 Le menu en jeu montre l'image des touches pour la Wii U (Cemu) et pour la PSP (PPSSPP).
+- PPSSPP prend déjà tout seul la langue de Windows et ta manette Xbox : rien à faire. Chez lui, le bouton Xbox ouvre
+  son propre menu de pause (comme LT) ; RT accélère le jeu tant qu'il est tenu.
+
 ## 0.173.0 — La langue de Dolphin et de RPCS3 dès leur première partie
 
 - 🌍 Dolphin : les jeux GameCube s'affichent dans la langue de Windows (le français chez toi) dès leur première partie,

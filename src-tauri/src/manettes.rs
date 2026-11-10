@@ -240,14 +240,23 @@ pub fn regler(id: &str, emulateur: &Path, utilisateur_dolphin: Option<&Path>, fo
         "rpcs3" => regler_rpcs3_pour_partie(emulateur, forcer, manette_branchee()),
         // Eden, Eglantine : seulement portable, fermé, joueur 1 encore au clavier (ou `forcer`) — eden.rs.
         "eden" | "eglantine" | "lichii" => crate::eden::regler_manette(emulateur, forcer, guid_manette_xinput().as_deref()),
+        // Cemu : le GamePad Wii U sur la manette XInput branchée (sinon la première : celle qu'on branchera, ou celle
+        // de Sunshine). Une manette PlayStation seule n'est pas XInput : rien d'écrit (jamais un profil qui ne marche pas).
+        "cemu" => match manette_branchee() {
+            Some(PadRpcs3::Ds4) | Some(PadRpcs3::DualSense) => Ok(false),
+            Some(PadRpcs3::XInput(i)) => crate::cemu::regler_manette(emulateur, forcer, i),
+            _ => crate::cemu::regler_manette(emulateur, forcer, 0),
+        },
         _ => Ok(false),
     }
 }
 
 /// Le joueur 1 a-t-il la disposition que Frogtend écrit (DuckStation, PCSX2 : `PAD_PLAYSTATION` ; Dolphin :
 /// `PAD_GAMECUBE`) ? Pas encore de manette : Frogtend l'écrira au lancement (oui). Une manette réglée autrement par la
-/// personne (Frogtend la garde) : non — l'interface ne dessine alors rien de faux (lot 4d). Autres émulateurs : oui.
-pub fn disposition_de_frogtend(id: &str, emulateur: &Path, utilisateur_dolphin: Option<&Path>) -> bool {
+/// personne (Frogtend la garde) : non — l'interface ne dessine alors rien de faux (lot 4d). PPSSPP : sa disposition
+/// d'origine pour la manette XInput, tant que la personne n'a pas changé ses touches (`controls.ini` du profil).
+/// Autres émulateurs : oui. `profil` : le dossier du profil dans l'émulateur (`Profils\<profil>`).
+pub fn disposition_de_frogtend(id: &str, emulateur: &Path, profil: Option<&Path>) -> bool {
     match id {
         "duckstation" | "pcsx2" => {
             let ini = if id == "duckstation" { emulateur.join("settings.ini") } else { emulateur.join("inis").join("PCSX2.ini") };
@@ -259,7 +268,8 @@ pub fn disposition_de_frogtend(id: &str, emulateur: &Path, utilisateur_dolphin: 
                 })
         }
         "dolphin" => {
-            let Some(u) = utilisateur_dolphin else { return true };
+            let Some(p) = profil else { return true };
+            let u = p.join("User");
             let texte = std::fs::read_to_string(u.join("Config").join("GCPadNew.ini")).unwrap_or_default();
             let appareil = lire_ini(&texte, "GCPad1", "Device");
             let deja = appareil.first().is_some_and(|d| !d.is_empty() && !d.to_lowercase().contains("keyboard"));
@@ -283,8 +293,59 @@ pub fn disposition_de_frogtend(id: &str, emulateur: &Path, utilisateur_dolphin: 
             crate::eden::portable(emulateur)
                 && std::fs::read_to_string(crate::eden::fichier_reglages(emulateur)).map_or(true, |t| crate::eden::joueur1_au_clavier(&t) || crate::eden::joueur1_de_frogtend(&t))
         }
+        // Cemu : la manette de Frogtend, ou pas encore de profil (Frogtend l'écrira au lancement). Hors portable :
+        // Frogtend n'écrit rien.
+        "cemu" => crate::cemu::portable(emulateur) && (crate::cemu::manette_de_frogtend(emulateur) || !emulateur.join("portable").join("controllerProfiles").join("controller0.xml").exists()),
+        // PPSSPP : `memstick` est relié au dossier du profil (`relier_memstick`), ses touches y sont rangées.
+        "ppsspp" => {
+            let Some(p) = profil else { return true };
+            let texte = std::fs::read_to_string(p.join("memstick").join("PSP").join("SYSTEM").join("controls.ini")).unwrap_or_default();
+            ppsspp_disposition_d_origine(&texte)
+        }
         _ => true,
     }
+}
+
+/// PPSSPP, manette XInput n° 1 (`DEVICE_ID_XINPUT_0` = 20) : sa disposition d'origine, relevée le 10/11 dans
+/// Core/KeyMapDefaults.cpp (`defaultXInputKeyMap`), Common/Input/KeyCodes.h (codes) et InputState.h (un axe =
+/// 4000 + axe × 2, + 1 vers le négatif). Le bouton Xbox (`NKCODE_HOME` = 3, Windows/XinputDevice.cpp) met en pause,
+/// comme LT ; RT accélère tant qu'il est tenu ; R3 bascule la vitesse.
+const PAD_PPSSPP: [(&str, &[u32]); 19] = [
+    ("Cross", &[96]),
+    ("Circle", &[97]),
+    ("Square", &[99]),
+    ("Triangle", &[100]),
+    ("Up", &[19]),
+    ("Down", &[20]),
+    ("Left", &[21]),
+    ("Right", &[22]),
+    ("Start", &[108]),
+    ("Select", &[109]),
+    ("L", &[102]),
+    ("R", &[103]),
+    ("An.Up", &[4002]),
+    ("An.Down", &[4003]),
+    ("An.Left", &[4001]),
+    ("An.Right", &[4000]),
+    ("Pause", &[3, 4034, 4046]),
+    ("Fast-forward", &[4036, 4044]),
+    ("SpeedToggle", &[107]),
+];
+
+/// `controls.ini` de PPSSPP : absent ou sans `[ControlMapping]`, PPSSPP prend sa disposition d'origine (KeyMap.cpp,
+/// `LoadFromIni`) ; sinon chaque bouton dessiné doit avoir exactement ses liens d'origine pour la manette XInput
+/// (une touche vidée efface le lien d'origine : ce n'est plus la disposition d'origine).
+pub fn ppsspp_disposition_d_origine(texte: &str) -> bool {
+    let section = texte.lines().any(|l| l.trim().eq_ignore_ascii_case("[ControlMapping]"));
+    !section
+        || PAD_PPSSPP.iter().all(|(touche, codes)| {
+            let valeur = lire_ini(texte, "ControlMapping", touche).into_iter().next().unwrap_or_default();
+            let mut lus: Vec<String> = valeur.split(',').map(str::trim).filter(|m| m.starts_with("20-")).map(str::to_string).collect();
+            let mut attendus: Vec<String> = codes.iter().map(|c| format!("20-{c}")).collect();
+            lus.sort();
+            attendus.sort();
+            lus == attendus
+        })
 }
 
 /// La première manette XInput branchée (0 à 3 ; la manette virtuelle de Sunshine en est une), par l'API de Windows.
@@ -522,14 +583,16 @@ mod tests_disposition {
         std::fs::write(&ini, t).unwrap();
         assert!(!disposition_de_frogtend("duckstation", d.path(), None), "changée par la personne");
         let u = d.path().join("User");
-        assert!(disposition_de_frogtend("dolphin", d.path(), Some(&u)));
+        assert!(disposition_de_frogtend("dolphin", d.path(), Some(d.path())));
         regler("dolphin", d.path(), Some(&u), false).unwrap();
-        assert!(disposition_de_frogtend("dolphin", d.path(), Some(&u)));
+        assert!(disposition_de_frogtend("dolphin", d.path(), Some(d.path())));
         let gc = u.join("Config").join("GCPadNew.ini");
         let t = std::fs::read_to_string(&gc).unwrap().replace("`Button X`", "`Button Y`");
         std::fs::write(&gc, t).unwrap();
-        assert!(!disposition_de_frogtend("dolphin", d.path(), Some(&u)));
-        assert!(disposition_de_frogtend("cemu", d.path(), None));
+        assert!(!disposition_de_frogtend("dolphin", d.path(), Some(d.path())));
+        assert!(!disposition_de_frogtend("cemu", d.path(), None), "Cemu pas portable : Frogtend n'écrit rien");
+        std::fs::create_dir_all(d.path().join("portable")).unwrap();
+        assert!(disposition_de_frogtend("cemu", d.path(), None), "pas encore de profil : Frogtend l'écrira");
         // RPCS3 : le profil de Frogtend sur une manette seulement.
         let r = tempfile::tempdir().unwrap();
         assert!(disposition_de_frogtend("rpcs3", r.path(), None), "pas encore de profil : Frogtend l'écrira");
@@ -547,6 +610,32 @@ mod tests_disposition {
         std::fs::remove_file(r.path().join("config").join("input_configs").join("active_input_configurations.yml")).unwrap();
         std::fs::write(g.join("Default.yml"), "Player 1 Input:\n  Handler: \"XInput\"\n").unwrap();
         assert!(!disposition_de_frogtend("rpcs3", r.path(), None), "profil de la personne");
+    }
+
+    #[test]
+    fn ppsspp_sa_disposition_d_origine_ou_celle_de_la_personne() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("Profils").join("seb");
+        assert!(disposition_de_frogtend("ppsspp", d.path(), Some(&p)), "pas de controls.ini : celle d'origine");
+        // Ce que PPSSPP écrit lui-même (SaveToIni) : clavier, manette générique et XInput mêlés.
+        let origine = "[ControlMapping]\nUp = 1-19,10-19,20-19\nDown = 1-20,20-20\nLeft = 1-21,20-21\nRight = 1-22,20-22\n\
+            Circle = 1-52,20-97\nCross = 1-54,20-96\nSquare = 1-29,20-99\nTriangle = 1-51,20-100\nStart = 1-62,20-108\n\
+            Select = 1-66,20-109\nL = 1-45,20-102\nR = 1-33,20-103\nAn.Up = 1-37,20-4002\nAn.Down = 1-39,20-4003\n\
+            An.Left = 1-38,20-4001\nAn.Right = 1-40,20-4000\nFast-forward = 1-61,20-4036,20-4044\n\
+            Pause = 1-111,20-4034,20-3,20-4046\nSpeedToggle = 20-107\n";
+        let f = p.join("memstick").join("PSP").join("SYSTEM");
+        std::fs::create_dir_all(&f).unwrap();
+        std::fs::write(f.join("controls.ini"), origine).unwrap();
+        assert!(disposition_de_frogtend("ppsspp", d.path(), Some(&p)));
+        std::fs::write(f.join("controls.ini"), origine.replace("Cross = 1-54,20-96", "Cross = 1-54,20-97")).unwrap();
+        assert!(!disposition_de_frogtend("ppsspp", d.path(), Some(&p)), "A et B échangés");
+        std::fs::write(f.join("controls.ini"), origine.replace("SpeedToggle = 20-107", "SpeedToggle =")).unwrap();
+        assert!(!disposition_de_frogtend("ppsspp", d.path(), Some(&p)), "un lien vidé");
+        std::fs::write(f.join("controls.ini"), origine.replace("Pause = 1-111,20-4034,20-3,20-4046", "Pause = 1-111,20-4034:20-3")).unwrap();
+        assert!(!disposition_de_frogtend("ppsspp", d.path(), Some(&p)), "une combinaison");
+        std::fs::write(f.join("controls.ini"), "[General]\nFirstRun = False\n").unwrap();
+        assert!(disposition_de_frogtend("ppsspp", d.path(), Some(&p)), "sans [ControlMapping] : celle d'origine");
+        assert!(disposition_de_frogtend("ppsspp", d.path(), None));
     }
 
     #[test]

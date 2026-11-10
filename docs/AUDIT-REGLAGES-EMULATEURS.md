@@ -15,8 +15,8 @@ Légende : ✅ fait · ⚠ fait avec un risque · ❌ absent · n/a sans objet.
 | Dolphin | ✅ GameCube ; Wii par référence | ✅ 0.173.0 GameCube (`SelectedLanguage`, une fois par profil) ; Wii et interface : langue de Windows d'office | ✅ | ✅ | ⚠ GameCube seulement |
 | RPCS3 | ✅ | ✅ | ✅ | ✅ 0.173.0 : `rpcs3_avant_la_partie` crée le fichier et pose la langue, test d'installation neuve | ✅ |
 | Eden / Eglantine / Lichii | ✅ manette XInput branchée | ✅ | ✅ | ✅ depuis la 0.169.0 | ✅ |
-| Cemu | ❌ | ❌ | ❌ (laissé à l'émulateur) | n/a | ❌ |
-| PPSSPP | « rien à régler » (relevé du 30/09) | ❌ | ❌ | ppsspp.ini créé | ❌ |
+| Cemu | ✅ 0.174.0 : `controller0.xml` XInput, disposition d'origine de Cemu (une manette PlayStation seule : rien) | ✅ 0.174.0 : `console_language`, une fois (l'interface suit déjà Windows) | ✅ 0.174.0 avec la manette de Frogtend (Cemu ne lit pas le bouton Xbox) | ✅ settings.xml créé avec la langue : assistant sauté | ✅ |
+| PPSSPP | ✅ par PPSSPP lui-même (XInput d'office, KeyMapDefaults.cpp) | ✅ par PPSSPP lui-même (`DefaultLangRegion`, jeux compris) | ⚠ à PPSSPP : son menu de pause (`NKCODE_HOME`), gardé | ppsspp.ini créé (une ligne, sans effet de bord : `FirstRun` ne sert à rien) | ✅ 0.174.0 manette Xbox ; PlayStation (DirectInput) : rien |
 | Xenia | ❌ | ❌ | ❌ | n/a | ❌ |
 | xemu | ❌ | ❌ | ❌ | xemu.toml créé | ❌ |
 | Azahar | ❌ | ❌ | ⚠ donné au menu sans relevé (la 3DS a un bouton Home) | n/a | ❌ |
@@ -36,7 +36,11 @@ Légende : ✅ fait · ⚠ fait avec un risque · ❌ absent · n/a sans objet.
 4. **Langue** de RetroArch (`user_language`, français = 2) et de Dolphin (`SelectedLanguage` ; SYSCONF pour la Wii),
    à vérifier dans leur code. Sans écraser un choix de la personne.
 5. **Les autres émulateurs**, chacun après avoir relu son code : manette, langue, bouton Xbox et schéma.
-   - Cemu : controller0.xml, `console_language`.
+   - ✅ Cemu (0.174.0). Reste : une manette PlayStation seule (profil SDL à relever). Le clavier choisi pour un jeu :
+     Cemu n'a AUCUNE disposition clavier d'origine (VPADController.cpp `set_default_mapping` : SDL et XInput
+     seulement) → rien d'inventé ; la manette de Frogtend reste. Si la personne valide les réglages de manette de
+     Cemu, même sans rien changer, le profil devient le sien : le bouton Xbox revient à Cemu (prudent).
+   - ✅ PPSSPP (0.174.0) : rien à écrire. Le bouton Xbox reste à son menu (le retirer = réécrire tout `controls.ini`).
    - Vita3K : `sys-lang`.
    - Xenia : `user_language`.
    - Azahar : manette SDL ; la langue est dans la sauvegarde système.

@@ -754,6 +754,11 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             if !crate::cemu::portable(emulateur) || !crate::lancement::processus_du_dossier(emulateur).is_empty() {
                 return Ok(vec![]);
             }
+            // La langue de la console (une fois) et la manette du joueur 1 : un échec n'empêche jamais de jouer.
+            if let Err(e) = crate::cemu::regler_langue(emulateur, langue_et_clavier_de_windows().0) {
+                eprintln!("Cemu : langue non posée ({e:?})");
+            }
+            let _ = regler_manette(id, emulateur, None, manette);
             let c = crate::cemu::compte_du_profil(emulateur, profil_de(p))?;
             let _ = crate::cemu::reprendre_parties_d_avant(emulateur, &c);
             Ok(vec!["-a".into(), format!("{:08x}", c.id)])
@@ -2468,7 +2473,11 @@ mod tests {
         let d = PathBuf::from(std::env::var("FROGTEND_BROUILLON").expect("FROGTEND_BROUILLON"));
         if let Some(p) = crate::emulateurs::fiche(&id).and_then(|f| f.portable) {
             if !d.join(p).exists() {
-                std::fs::write(d.join(p), "").unwrap();
+                if p.ends_with('/') {
+                    std::fs::create_dir_all(d.join(p)).unwrap();
+                } else {
+                    std::fs::write(d.join(p), "").unwrap();
+                }
             }
         }
         preparer(&id, &d, "Essai", &[], &Manette::Auto(None)).unwrap();

@@ -2161,9 +2161,12 @@ fn suivre_manette_menu(app: &AppHandle, numero: u64) {
     });
     // Eden, Eglantine : le bouton Home retiré par Frogtend (sa disposition) → le bouton Xbox ouvre le menu de Frogtend.
     let home_retire = partie.as_ref().and_then(|p| p.dossier_emulateur.as_deref()).is_some_and(|d| crate::eden::home_retire(std::path::Path::new(d)));
+    // Cemu avec la manette de Frogtend (XInput) : il ne voit pas le bouton Xbox.
+    let cemu_libre = partie.as_ref().and_then(|p| p.dossier_emulateur.as_deref()).is_some_and(|d| crate::cemu::guide_libre(std::path::Path::new(d)));
     let moteur = match (emulateur.as_deref(), partie.as_ref().is_some_and(|p| p.dossier_jeu.is_some())) {
         (Some("rpcs3"), _) if ps_retire => crate::osd_manette::Moteur::EmulateurLibere,
         (Some(e), _) if home_retire && crate::emulateurs::famille_eden(e) => crate::osd_manette::Moteur::EmulateurLibere,
+        (Some("cemu"), _) if cemu_libre => crate::osd_manette::Moteur::EmulateurLibere,
         (Some(e), _) => crate::osd_manette::Moteur::Emulateur(e),
         (None, true) => crate::osd_manette::Moteur::JeuPc,
         (None, false) => crate::osd_manette::Moteur::Inconnu,
@@ -2980,6 +2983,9 @@ pub struct InfosBoutons {
     coeur: Option<String>,
     famille: &'static str,
     personnalise: bool,
+    /// Frogtend ne règle pas la manette de cet émulateur ici (Cemu, Eden et sa famille hors portable) : rien de dessiné,
+    /// sans dire pour autant que la personne a changé ses boutons.
+    inconnue: bool,
     clavier: Option<std::collections::BTreeMap<String, String>>,
     /// Les raccourcis de Frogtend pendant une partie, d'après les réglages de ce PC (essai de Seb, 29/10).
     raccourcis: RaccourcisFrogtend,
@@ -3059,9 +3065,11 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
     };
     let ps_retire = dossier.as_deref().is_some_and(|d| crate::manettes::rpcs3_ps_retire(d) && crate::pilotage::rpcs3_active_est_default(d, None));
     let home_retire = dossier.as_deref().is_some_and(crate::eden::home_retire);
+    let cemu_libre = dossier.as_deref().is_some_and(crate::cemu::guide_libre);
     let moteur = match (emulateur.as_deref(), jeu_pc) {
         (Some("rpcs3"), _) if ps_retire => crate::osd_manette::Moteur::EmulateurLibere,
         (Some(e), _) if home_retire && crate::emulateurs::famille_eden(e) => crate::osd_manette::Moteur::EmulateurLibere,
+        (Some("cemu"), _) if cemu_libre => crate::osd_manette::Moteur::EmulateurLibere,
         (Some(e), _) => crate::osd_manette::Moteur::Emulateur(e),
         (None, true) => crate::osd_manette::Moteur::JeuPc,
         (None, false) => crate::osd_manette::Moteur::Inconnu,
@@ -3082,8 +3090,8 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
             }),
             (Some("dolphin"), _) if !gamecube => false,
             (Some(e), Some(d)) => {
-                let utilisateur = crate::emulateurs_profils::dossier_du_profil(d, &profil).join("User");
-                !crate::manettes::disposition_de_frogtend(e, d, Some(&utilisateur))
+                let dossier_profil = crate::emulateurs_profils::dossier_du_profil(d, &profil);
+                !crate::manettes::disposition_de_frogtend(e, d, Some(&dossier_profil))
             }
             _ => false,
         };
@@ -3091,7 +3099,12 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
     })
     .await
     .map_err(|_| Erreur::Disque("La lecture des boutons s'est arrêtée brutalement.".into()))?;
-    Ok(Some(InfosBoutons { plateforme, emulateur, coeur, famille, personnalise, clavier: clavier.filter(|c| !c.is_empty()), raccourcis }))
+    let inconnue = match (emulateur.as_deref(), dossier.as_deref()) {
+        (Some("cemu"), Some(d)) => !crate::cemu::portable(d),
+        (Some(e), Some(d)) if crate::emulateurs::famille_eden(e) => !crate::eden::portable(d),
+        _ => false,
+    };
+    Ok(Some(InfosBoutons { plateforme, emulateur, coeur, famille, personnalise, inconnue, clavier: clavier.filter(|c| !c.is_empty()), raccourcis }))
 }
 
 /// L'écran « Les boutons » du menu en jeu : la fenêtre s'agrandit (jusqu'à 1 100 × 820, 90 % de l'écran au plus) pour

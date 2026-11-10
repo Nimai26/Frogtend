@@ -124,7 +124,7 @@ const SWITCH_FROGTEND: Record<string, string> = {
 };
 
 /** Les émulateurs à part, avec le profil que Frogtend écrit pour le joueur 1 (bouton du joueur → bouton d'origine). */
-const EMULATEURS: Record<string, (plateforme: string) => { console: string; boutons: Record<string, string> } | null> = {
+const EMULATEURS: Record<string, (plateforme: string, famille: Famille) => { console: string; boutons: Record<string, string>; remarque?: string } | null> = {
   duckstation: () => ({ console: 'PlayStation', boutons: PS_FROGTEND }),
   pcsx2: () => ({ console: 'PlayStation 2', boutons: PS_FROGTEND }),
   // RPCS3 : le profil de Frogtend garde la disposition d'origine de ses pilotes XInput, DualShock 4 et DualSense
@@ -135,10 +135,28 @@ const EMULATEURS: Record<string, (plateforme: string) => { console: string; bout
   eden: () => ({ console: 'Switch', boutons: SWITCH_FROGTEND }),
   eglantine: () => ({ console: 'Switch 2', boutons: SWITCH_FROGTEND }),
   lichii: () => ({ console: 'Switch 2', boutons: SWITCH_FROGTEND }),
+  // Cemu : la disposition d'origine de Cemu pour une manette XInput, que Frogtend écrit (cemu.rs
+  // `DISPOSITION_XINPUT`) : par POSITION comme sur la Wii U, comme la Switch ; le bouton Xbox reste au menu de Frogtend.
+  // Une manette PlayStation seule : Frogtend n'écrit rien pour elle (manettes.rs) → rien de dessiné.
+  cemu: (_plateforme, famille) => (famille === 'xbox' ? { console: 'Wii U (GamePad)', boutons: SWITCH_FROGTEND } : null),
   // Dolphin : seulement la GameCube (la Wii a ses propres références de Wiimote).
   dolphin: (plateforme) =>
     /gamecube/i.test(plateforme)
       ? { console: 'GameCube', boutons: { a: 'A', x: 'B', b: 'X', y: 'Y', rb: 'Z', lt: 'L', rt: 'R', start: 'Start', croix: CROIX, stickg: 'Stick', stickd: 'Stick C' } }
+      : null,
+  // PPSSPP : sa propre disposition pour une manette XInput (Core/KeyMapDefaults.cpp `defaultXInputKeyMap`, relu le
+  // 10/11), que Frogtend n'écrit pas : PPSSPP la prend seul. Une manette PlayStation y passe par DirectInput, dont les
+  // numéros de boutons dépendent du modèle : rien de dessiné (jamais deviné).
+  ppsspp: (_plateforme, famille) =>
+    famille === 'xbox'
+      ? {
+          console: 'PSP',
+          boutons: {
+            a: 'Croix', b: 'Rond', x: 'Carré', y: 'Triangle', lb: 'L', rb: 'R', select: 'Select', start: 'Start', croix: CROIX, stickg: 'Stick',
+            lt: 'Pause (menu de PPSSPP)', rt: 'Avance rapide (tant qu’il est tenu)', r3: 'Vitesse alternative (marche/arrêt)',
+          },
+          remarque: 'Le bouton Xbox ouvre aussi le menu de PPSSPP.',
+        }
       : null,
 };
 
@@ -150,6 +168,8 @@ export interface InfosBoutons {
   famille: Famille;
   /** La disposition a été changée à la main (remappage RetroArch, profil de la personne) : rien n'est dessiné. */
   personnalise: boolean;
+  /** Frogtend ne règle pas la manette de cet émulateur ici (Cemu, Eden hors portable) : on ne sait pas, rien de dessiné. */
+  inconnue?: boolean;
   /** Jeu PC : sa correspondance manette → clavier (bouton → touche). */
   clavier: Record<string, string> | null;
   /** Les raccourcis de Frogtend pendant une partie (réglages de ce PC). */
@@ -230,8 +250,9 @@ export function schema(infos: InfosBoutons): Schema {
     if (!d) return { etat: 'inconnu', console: null, lignes: [] };
     return connu(d.console, (id) => d.boutons[VERS_RETROPAD[id]], d.remarque);
   }
-  const e = EMULATEURS[infos.emulateur]?.(infos.plateforme);
-  if (e) return connu(e.console, (id) => e.boutons[id]);
+  if (infos.inconnue) return { etat: 'inconnu', console: null, lignes: [] };
+  const e = EMULATEURS[infos.emulateur]?.(infos.plateforme, infos.famille);
+  if (e) return connu(e.console, (id) => e.boutons[id], e.remarque);
   return { etat: 'inconnu', console: null, lignes: [] };
 }
 

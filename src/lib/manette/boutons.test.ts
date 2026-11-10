@@ -52,7 +52,6 @@ describe('les boutons de la manette d’origine', () => {
     // Personnalisé, mais disposition inconnue : « inconnu » (la Wii n'est pas réglée par Frogtend).
     expect(schema(infos({ emulateur: 'dolphin', coeur: null, plateforme: 'Nintendo Wii', personnalise: true })).etat).toBe('inconnu');
     expect(schema(infos({ coeur: 'Un cœur nouveau' })).etat).toBe('inconnu');
-    expect(schema(infos({ emulateur: 'cemu', coeur: null })).etat).toBe('inconnu');
     expect(schema(infos({ emulateur: 'dolphin', coeur: null, plateforme: 'Nintendo Wii' })).etat).toBe('inconnu');
     const p = schema(infos({ personnalise: true }));
     expect(p.etat).toBe('personnalise');
@@ -60,6 +59,33 @@ describe('les boutons de la manette d’origine', () => {
     expect(sansDessin(p)).toContain('changé toi-même');
     expect(sansDessin(schema(infos({ coeur: 'X' })))).toContain('ne connaît pas encore');
     expect(sansDessin(schema(infos({})))).toBeNull();
+  });
+
+  it('Cemu : le GamePad Wii U par position, comme la Switch', () => {
+    const wiiu = schema(infos({ emulateur: 'cemu', coeur: null, plateforme: 'Nintendo Wii U' }));
+    expect(wiiu.console).toBe('Wii U (GamePad)');
+    expect(role(wiiu, 'b')).toBe('A');
+    expect(role(wiiu, 'a')).toBe('B');
+    expect(role(wiiu, 'lt')).toBe('ZL');
+    expect(role(wiiu, 'start')).toBe('+');
+    expect(schema(infos({ emulateur: 'cemu', coeur: null, personnalise: true })).etat).toBe('personnalise');
+    expect(schema(infos({ emulateur: 'cemu', coeur: null, famille: 'playstation' })).etat).toBe('inconnu');
+    expect(schema(infos({ emulateur: 'cemu', coeur: null, inconnue: true, personnalise: true })).etat).toBe('inconnu');
+  });
+
+  it('PPSSPP : sa disposition d’origine pour une manette Xbox, rien de deviné pour une PlayStation', () => {
+    const psp = schema(infos({ emulateur: 'ppsspp', coeur: null, plateforme: 'Sony PSP' }));
+    expect(psp.etat).toBe('connu');
+    expect(psp.console).toBe('PSP');
+    expect(role(psp, 'a')).toBe('Croix');
+    expect(role(psp, 'b')).toBe('Rond');
+    expect(role(psp, 'x')).toBe('Carré');
+    expect(role(psp, 'y')).toBe('Triangle');
+    expect(role(psp, 'lt')).toContain('Pause');
+    expect(role(psp, 'stickd')).toBeUndefined();
+    expect(psp.etat === 'connu' && psp.remarque).toContain('bouton Xbox');
+    expect(schema(infos({ emulateur: 'ppsspp', coeur: null, famille: 'playstation' })).etat).toBe('inconnu');
+    expect(schema(infos({ emulateur: 'ppsspp', coeur: null, personnalise: true })).etat).toBe('personnalise');
   });
 
   it('les émulateurs à part : le profil écrit par Frogtend', () => {

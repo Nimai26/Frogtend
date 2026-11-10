@@ -40,6 +40,189 @@ pub fn portable(cemu: &Path) -> bool {
     cemu.join("portable").is_dir()
 }
 
+// --- La langue de la console et la manette dès la première partie (règle de Seb, 08/11 : « configurer TOUS les
+// émulateurs […] à chaque nouvelle installation »). Relevé dans le code de Cemu (branche main, 10/11/2026) :
+// - `portable\settings.xml`, racine `<content>` (CemuConfig.cpp `Load` : `parser.get("content")`), chaque clé lue avec
+//   sa valeur d'origine si elle manque ; `console_language` vaut EN (1) d'origine (CemuConfig.h, `CafeConsoleLanguage` :
+//   JA 0, EN 1, FR 2, DE 3, IT 4, ES 5, ZH 6, KO 7, NL 8, PT 9, RU 10, TW 11) et Cemu la réécrit à chaque sauvegarde :
+//   « 1 » ne dit donc pas si la personne l'a choisie → posée UNE seule fois (marque), comme pour RPCS3 ;
+// - sans settings.xml, Cemu ouvre son assistant de premier démarrage (CemuApp.cpp, `isFirstStart`), en anglais ; un
+//   settings.xml présent le saute, et le mlc est créé de la même façon (`CreateDefaultMLCFiles` dans les deux cas) ;
+//   l'interface suit la langue de Windows tant que `language` manque (`wxLANGUAGE_DEFAULT`) ;
+// - la manette : `portable\controllerProfiles\controller0.xml` (InputManager.cpp `load`) ; sans lui, AUCUNE manette.
+//   La disposition d'origine de Cemu pour une manette XInput (VPADController.cpp `set_default_mapping`, appliquée
+//   seulement depuis ses réglages) : boutons XInput par numéro de bit (A = 12, B = 13, X = 14, Y = 15…), par POSITION
+//   comme sur la Wii U (le A de la Wii U est à droite) ; axes `Buttons2` (Controller.h) : kAxisXP 38, kAxisYP 39,
+//   kRotationXP 40, kRotationYP 41, kTriggerXP 42, kTriggerYP 43, kAxisXN 44, kAxisYN 45, kRotationXN 46,
+//   kRotationYN 47 ;
+// - Cemu lit XInput par `XInputGetState` (XInputControllerProvider.cpp), qui ne voit jamais le bouton Xbox, et aucune
+//   disposition d'origine ne lie le bouton Home : avec la manette de Frogtend, le bouton Xbox reste au menu de Frogtend.
+
+/// La marque du profil de manette écrit par Frogtend (un commentaire : Cemu l'ignore, et le perd s'il réécrit le
+/// fichier depuis ses réglages — le profil devient alors celui de la personne).
+const MARQUE_MANETTE: &str = "<!-- Frogtend : manette du joueur 1 -->";
+
+/// Joueur 1 de Cemu (GamePad Wii U) → bouton de la manette XInput : la disposition d'origine de Cemu (voir plus haut).
+const DISPOSITION_XINPUT: [(u8, u8); 24] = [
+    (1, 13),  // A ← B (position de droite)
+    (2, 12),  // B ← A
+    (3, 15),  // X ← Y
+    (4, 14),  // Y ← X
+    (5, 8),   // L ← LB
+    (6, 9),   // R ← RB
+    (7, 42),  // ZL ← LT
+    (8, 43),  // ZR ← RT
+    (9, 4),   // + ← Menu
+    (10, 5),  // − ← Vue
+    (11, 0),  // croix haut
+    (12, 1),  // croix bas
+    (13, 2),  // croix gauche
+    (14, 3),  // croix droite
+    (15, 6),  // clic du stick gauche
+    (16, 7),  // clic du stick droit
+    (17, 39), // stick gauche haut
+    (18, 45), // stick gauche bas
+    (19, 44), // stick gauche gauche
+    (20, 38), // stick gauche droite
+    (21, 41), // stick droit haut
+    (22, 47), // stick droit bas
+    (23, 46), // stick droit gauche
+    (24, 40), // stick droit droite
+];
+
+fn fichier_manette(cemu: &Path) -> PathBuf {
+    cemu.join("portable").join("controllerProfiles").join("controller0.xml")
+}
+
+/// Le profil de manette du joueur 1 que Frogtend écrit : le GamePad Wii U sur la manette XInput n° `index` (0 à 3).
+pub fn profil_manette(index: u32) -> String {
+    let mut s = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n{MARQUE_MANETTE}\n<emulated_controller>\n    <type>Wii U GamePad</type>\n    <controller>\n        <api>XInput</api>\n        <uuid>{index}</uuid>\n        <display_name>Controller {}</display_name>\n        <mappings>\n",
+        index + 1
+    );
+    for (m, b) in DISPOSITION_XINPUT {
+        s.push_str(&format!("            <entry>\n                <mapping>{m}</mapping>\n                <button>{b}</button>\n            </entry>\n"));
+    }
+    s.push_str("        </mappings>\n    </controller>\n</emulated_controller>\n");
+    s
+}
+
+/// Le profil du joueur 1 est-il celui de Frogtend ?
+pub fn manette_de_frogtend(cemu: &Path) -> bool {
+    std::fs::read_to_string(fichier_manette(cemu)).is_ok_and(|t| t.contains(MARQUE_MANETTE))
+}
+
+/// Le bouton Xbox est-il libre pour le menu de Frogtend ? Oui avec la manette de Frogtend (XInput : Cemu ne le voit
+/// pas) ; avec celle de la personne (SDL, bouton Home lié à la main…), on ne sait pas : il reste à Cemu.
+pub fn guide_libre(cemu: &Path) -> bool {
+    portable(cemu) && manette_de_frogtend(cemu)
+}
+
+/// Le joueur 1 sur la manette XInput n° `index`. Seulement Cemu portable et FERMÉ. Un profil sans la marque de
+/// Frogtend est celui de la personne : remplacé seulement à sa demande (`forcer`), après une copie à l'abri. Rend vrai
+/// si le joueur 1 a la manette de Frogtend.
+pub fn regler_manette(cemu: &Path, forcer: bool, index: u32) -> Resultat<bool> {
+    if !portable(cemu) || !crate::lancement::processus_du_dossier(cemu).is_empty() {
+        return Ok(false);
+    }
+    let fichier = fichier_manette(cemu);
+    let actuel = match std::fs::read_to_string(&fichier) {
+        Ok(t) => Some(t),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(e.into()),
+    };
+    let a_nous = actuel.as_deref().is_none_or(|t| t.contains(MARQUE_MANETTE));
+    if !a_nous && !forcer {
+        return Ok(false);
+    }
+    let voulu = profil_manette(index);
+    if actuel.as_deref() != Some(voulu.as_str()) {
+        if !a_nous {
+            crate::emulateurs_profils::mettre_a_l_abri(cemu, &fichier)?;
+        }
+        if let Some(p) = fichier.parent() {
+            std::fs::create_dir_all(p)?;
+        }
+        ecrire_puis_renommer(&fichier, &voulu)?;
+    }
+    Ok(true)
+}
+
+/// La langue de la console Wii U pour une langue de Windows (LANGID) ; `None` : une langue que la Wii U n'a pas.
+pub fn langue_console(langid: u16) -> Option<u8> {
+    Some(match langid & 0x3FF {
+        0x11 => 0,
+        0x09 => 1,
+        0x0C => 2,
+        0x07 => 3,
+        0x10 => 4,
+        0x0A => 5,
+        // Chinois : traditionnel à Taïwan, Hong Kong et Macao, simplifié ailleurs.
+        0x04 if matches!(langid, 0x0404 | 0x0C04 | 0x1404) => 11,
+        0x04 => 6,
+        0x12 => 7,
+        0x13 => 8,
+        0x16 => 9,
+        0x19 => 10,
+        _ => return None,
+    })
+}
+
+/// `settings.xml` avec la langue `n` : posée si la clé manque ou vaut celle d'origine (1) ; `None` : rien à changer
+/// (un autre choix, déjà fait), ou un fichier dont la forme n'est pas celle de Cemu (jamais touché).
+fn avec_langue(xml: &str, n: u8) -> Option<String> {
+    let (ouvre, ferme) = ("<console_language>", "</console_language>");
+    if let Some(debut) = xml.find(ouvre) {
+        let valeur = debut + ouvre.len();
+        let fin = valeur + xml[valeur..].find(ferme)?;
+        return (xml[valeur..fin].trim() == "1" && n != 1).then(|| format!("{}{n}{}", &xml[..valeur], &xml[fin..]));
+    }
+    let racine = xml.rfind("</content>")?;
+    Some(format!("{}    {ouvre}{n}{ferme}\n{}", &xml[..racine], &xml[racine..]))
+}
+
+/// Écrit `texte` dans un fichier provisoire puis le renomme : jamais un fichier à moitié écrit.
+fn ecrire_puis_renommer(fichier: &Path, texte: &str) -> Resultat<()> {
+    let provisoire = fichier.with_extension("xml.frogtend-tmp");
+    std::fs::write(&provisoire, texte)?;
+    if let Err(e) = std::fs::rename(&provisoire, fichier) {
+        let _ = std::fs::remove_file(&provisoire);
+        return Err(e.into());
+    }
+    Ok(())
+}
+
+/// La langue de la console prise de Windows, UNE seule fois par Cemu (marque `portable\.frogtend-langue`) : seulement
+/// Cemu portable et FERMÉ (il réécrit settings.xml en quittant). Sans settings.xml, Frogtend le crée avec la langue :
+/// l'assistant de premier démarrage de Cemu (en anglais) est sauté. Rend vrai si la langue a été posée.
+pub fn regler_langue(cemu: &Path, langid: u16) -> Resultat<bool> {
+    let marque = cemu.join("portable").join(".frogtend-langue");
+    if !portable(cemu) || marque.exists() || !crate::lancement::processus_du_dossier(cemu).is_empty() {
+        return Ok(false);
+    }
+    let fichier = cemu.join("portable").join("settings.xml");
+    let mut pose = false;
+    let langue = langue_console(langid);
+    match std::fs::read_to_string(&fichier) {
+        // Absent : créé (l'assistant de Cemu est sauté), avec la langue si la Wii U l'a ; sinon Cemu garde l'anglais.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let cle = langue.map(|n| format!("    <console_language>{n}</console_language>\n")).unwrap_or_default();
+            ecrire_puis_renommer(&fichier, &format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<content>\n{cle}</content>\n"))?;
+            pose = langue.is_some();
+        }
+        Err(e) => return Err(e.into()),
+        Ok(xml) => {
+            if let Some(nouveau) = langue.and_then(|n| avec_langue(&xml, n)).filter(|x| *x != xml) {
+                crate::emulateurs_profils::mettre_a_l_abri(cemu, &fichier)?;
+                ecrire_puis_renommer(&fichier, &nouveau)?;
+                pose = true;
+            }
+        }
+    }
+    std::fs::write(&marque, "")?;
+    Ok(pose)
+}
+
 fn reglages(cemu: &Path) -> String {
     std::fs::read_to_string(cemu.join("portable").join("settings.xml")).unwrap_or_default()
 }
@@ -361,6 +544,80 @@ pub fn reprendre_parties_d_avant(cemu: &Path, c: &CompteDuProfil) -> Resultat<us
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cemu_neuf_recoit_sa_langue_une_seule_fois_sans_l_assistant() {
+        let d = tempfile::tempdir().unwrap();
+        assert!(!regler_langue(d.path(), 0x040C).unwrap(), "pas portable : rien");
+        std::fs::create_dir_all(d.path().join("portable")).unwrap();
+        assert!(regler_langue(d.path(), 0x040C).unwrap());
+        let xml = std::fs::read_to_string(d.path().join("portable").join("settings.xml")).unwrap();
+        assert!(xml.starts_with("<?xml") && xml.contains("<content>\n    <console_language>2</console_language>\n</content>"), "{xml}");
+        // Une seule fois : un choix fait ensuite dans Cemu (anglais) reste.
+        std::fs::write(d.path().join("portable").join("settings.xml"), xml.replace(">2<", ">1<")).unwrap();
+        assert!(!regler_langue(d.path(), 0x040C).unwrap());
+        assert!(std::fs::read_to_string(d.path().join("portable").join("settings.xml")).unwrap().contains(">1<"));
+    }
+
+    #[test]
+    fn la_langue_de_cemu_jamais_par_dessus_un_choix() {
+        assert_eq!(avec_langue("<content>\n    <console_language>1</console_language>\n</content>", 2).as_deref(), Some("<content>\n    <console_language>2</console_language>\n</content>"));
+        assert_eq!(avec_langue("<content>\n    <console_language>3</console_language>\n</content>", 2), None, "allemand choisi");
+        assert_eq!(avec_langue("<content>\n    <logflag>0</logflag>\n</content>\n", 2).as_deref(), Some("<content>\n    <logflag>0</logflag>\n    <console_language>2</console_language>\n</content>\n"));
+        assert_eq!(avec_langue("<autre/>", 2), None, "forme inconnue : pas touché");
+        // Une langue que la Wii U n'a pas (suédois) : settings.xml créé quand même, sans langue (assistant sauté).
+        let s = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(s.path().join("portable")).unwrap();
+        assert!(!regler_langue(s.path(), 0x041D).unwrap());
+        let xml = std::fs::read_to_string(s.path().join("portable").join("settings.xml")).unwrap();
+        assert!(xml.contains("<content>\n</content>") && !xml.contains("console_language"), "{xml}");
+        // Forme inconnue : pas touché, marque posée.
+        let f = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(f.path().join("portable")).unwrap();
+        std::fs::write(f.path().join("portable").join("settings.xml"), "<autre/>").unwrap();
+        assert!(!regler_langue(f.path(), 0x040C).unwrap());
+        assert_eq!(std::fs::read_to_string(f.path().join("portable").join("settings.xml")).unwrap(), "<autre/>");
+        assert!(f.path().join("portable").join(".frogtend-langue").exists());
+        assert_eq!(langue_console(0x040C), Some(2));
+        assert_eq!(langue_console(0x0C0C), Some(2), "français du Canada");
+        assert_eq!(langue_console(0x0404), Some(11));
+        assert_eq!(langue_console(0x0804), Some(6));
+        assert_eq!(langue_console(0x041D), None, "suédois : la Wii U ne l'a pas");
+        // Présent et déjà réglé : à l'abri puis changé.
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join("portable")).unwrap();
+        let f = d.path().join("portable").join("settings.xml");
+        std::fs::write(&f, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<content>\n    <mlc_path></mlc_path>\n    <console_language>1</console_language>\n</content>\n").unwrap();
+        assert!(regler_langue(d.path(), 0x040C).unwrap());
+        assert!(std::fs::read_to_string(&f).unwrap().contains("<console_language>2</console_language>"));
+        assert!(d.path().join(".frogtend-sauvegardes").is_dir(), "l'original est à l'abri");
+    }
+
+    #[test]
+    fn cemu_neuf_recoit_la_manette_xinput_et_garde_celle_de_la_personne() {
+        let d = tempfile::tempdir().unwrap();
+        assert!(!regler_manette(d.path(), false, 0).unwrap(), "pas portable : rien");
+        std::fs::create_dir_all(d.path().join("portable")).unwrap();
+        assert!(!guide_libre(d.path()));
+        assert!(regler_manette(d.path(), false, 0).unwrap());
+        let xml = std::fs::read_to_string(fichier_manette(d.path())).unwrap();
+        assert!(xml.contains("<type>Wii U GamePad</type>") && xml.contains("<api>XInput</api>") && xml.contains("<uuid>0</uuid>"));
+        assert!(xml.contains("<mapping>1</mapping>\n                <button>13</button>"), "A de la Wii U ← B de la manette (position)");
+        assert_eq!(xml.matches("<entry>").count(), 24);
+        assert!(guide_libre(d.path()));
+        // La manette Xbox n° 2 : réécrit (c'est le nôtre).
+        assert!(regler_manette(d.path(), false, 1).unwrap());
+        assert!(std::fs::read_to_string(fichier_manette(d.path())).unwrap().contains("<uuid>1</uuid>"));
+        // Réécrit par Cemu depuis ses réglages : celui de la personne, gardé…
+        std::fs::write(fichier_manette(d.path()), "<?xml version=\"1.0\"?>\n<emulated_controller><type>Wii U Pro Controller</type></emulated_controller>").unwrap();
+        assert!(!regler_manette(d.path(), false, 0).unwrap());
+        assert!(!guide_libre(d.path()));
+        assert!(std::fs::read_to_string(fichier_manette(d.path())).unwrap().contains("Pro Controller"));
+        // … sauf à sa demande, après une copie à l'abri.
+        assert!(regler_manette(d.path(), true, 0).unwrap());
+        assert!(manette_de_frogtend(d.path()));
+        assert!(d.path().join(".frogtend-sauvegardes").is_dir());
+    }
 
     #[test]
     fn le_mii_par_defaut_est_celui_de_cemu() {

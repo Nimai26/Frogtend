@@ -142,6 +142,13 @@ describe('le conseil de la maison (contrat 1.8)', () => {
     expect(m).not.toContain('fichier système');
   });
 
+  it('Cemu : l’accord ne promet que la manette Xbox', () => {
+    const cemu = { rec: ligneLb('Cemu', 'cemu', true), id: 'cemu', nom: 'Cemu', comment: 'frogtend' as const };
+    const m = messagePret({ plateforme: 'Nintendo Wii U', jeux: 1, choix: cemu, taille: null, dossier: 'E:\\Emulateurs', dossierNouveau: false, conseil: null });
+    expect(m).toContain('Ta manette Xbox est réglée pour toi');
+    expect(m).not.toContain('Xbox ou autre');
+  });
+
   it('le firmware Switch servi (un zip vérifié) est annoncé dans l’accord d’Eden, jamais celui d’un autre', () => {
     expect(firmwareSwitchServi(conseilSwitch.bios)).toBeUndefined();
     const fw = { chemin: '', coffre: false, disponible: true, facultatif: false, fichier: 'firmware-switch.zip', racine: 'installation_par_l_emulateur', type: 'installation', sha1: 'f8', url: '/api/jeux/v1/bios/f8', taille: 336375526, note: 'firmware 18.1.0' } as Conseil['bios'][number];

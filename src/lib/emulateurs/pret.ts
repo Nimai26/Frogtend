@@ -137,7 +137,7 @@ export function dossierParDefaut(emplacementsJeux: string[], disque?: string | n
 }
 
 /** Les émulateurs dont Frogtend règle la manette (une manette Xbox standard, ou toute manette reconnue). */
-export const MANETTE_REGLEE = ['retroarch', 'duckstation', 'pcsx2', 'dolphin', 'rpcs3', 'eden', 'eglantine', 'lichii'];
+export const MANETTE_REGLEE = ['retroarch', 'duckstation', 'pcsx2', 'dolphin', 'rpcs3', 'eden', 'eglantine', 'lichii', 'cemu'];
 
 /** Ceux qui préparent longuement la première partie de chaque jeu (compilation, une seule fois). */
 const PREMIERE_PARTIE_LONGUE = ['rpcs3', 'cemu', 'eden', 'eglantine', 'lichii', 'xenia', 'yuzu', 'suyu', 'ryujinx'];
@@ -288,7 +288,8 @@ export function messagePret(o: {
       : `Pour jouer à ${pour}, Frogtend installe ${choix.nom}, l’émulateur recommandé${o.taille ? ` (${o.taille})` : ''}, ${o.deFirehouse ? 'fourni par Firehouse' : 'depuis son site officiel'}.`,
   ];
   if (choix.comment !== 'deja') lignes.push(`Dossier : ${o.dossier}\\${choix.nom}${o.dossierNouveau ? ' (le dossier des émulateurs, modifiable dans ⚙ Options ▸ Émulateurs)' : ''}`);
-  if (choix.id && MANETTE_REGLEE.includes(choix.id)) lignes.push('Ta manette (Xbox ou autre) est réglée pour toi.');
+  if (choix.id === 'cemu') lignes.push('Ta manette Xbox est réglée pour toi (une manette PlayStation se règle dans Cemu).');
+  else if (choix.id && MANETTE_REGLEE.includes(choix.id)) lignes.push('Ta manette (Xbox ou autre) est réglée pour toi.');
   if (fichiersDuConseil(choix.rec, o.conseil)) {
     const { fournis, aPoser, cles } = biosADire(o.conseil!.bios);
     if (fournis.length) {

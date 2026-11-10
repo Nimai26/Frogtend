@@ -6,6 +6,12 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Cemu et PPSSPP (0.174.0)
+- [ ] Un jeu Wii U avec un Cemu jamais installé (Frogtend l'installe) : pas d'assistant en anglais, la manette marche
+      tout de suite, le jeu est en français (s'il a le français).
+- [ ] Pendant ce jeu, le bouton Xbox ouvre le menu de Frogtend ; 🎮 « Les touches » montre la manette de la Wii U.
+- [ ] Un jeu PSP (PPSSPP) : 🎮 « Les touches » montre la manette de la PSP ; le bouton Xbox ouvre le menu de PPSSPP.
+
 ## La langue de Dolphin et de RPCS3 (0.173.0)
 - [ ] Un jeu GameCube européen (PAL) multilingue : il s'affiche en français dès la première partie.
 - [ ] Dans Dolphin, remettre une autre langue (Config ▸ GameCube ▸ Langue système), relancer le jeu depuis

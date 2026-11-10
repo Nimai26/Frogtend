@@ -2505,3 +2505,8 @@ d'abord :
   du GameCube (`[Core] SelectedLanguage`, ordre relu dans GameCubePane.cpp) posée une fois par profil, jamais
   par-dessus un choix ; Wii et interface suivent déjà Windows ; RPCS3 : `rpcs3_avant_la_partie` (langue sans
   dépendre de l'ordre des appels, test d'installation neuve) ; « Prêt à jouer » lit `reglee`.
+- 10/11 (0.174.0) : étape 5 de l'audit, avis lancement d'abord. PPSSPP (code relu) : langue de Windows et manette
+  XInput prises seules → seulement le schéma 🎮 (+ disposition changée par la personne lue dans `controls.ini` du
+  profil). Cemu (code relu) : `console_language` EN d'origine, aucune manette sans `controller0.xml`, assistant sans
+  settings.xml → langue une fois, profil XInput à la disposition d'origine de Cemu (marqué), bouton Xbox au menu de
+  Frogtend (XInputGetState ne le voit pas), schéma. Reste : Vita3K, Xenia, xemu, Azahar ; schémas mGBA, DOSBox, MAME.
