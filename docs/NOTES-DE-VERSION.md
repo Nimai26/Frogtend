@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.178.0 — Le logiciel système de la PS Vita s'installe aussi sur un Vita3K tout neuf
+
+- 🛠 Essayé en vrai (avec ton accord) sur un Vita3K neuf, dans un dossier à part effacé ensuite : le premier des trois
+  fichiers échouait, parce que Vita3K, au tout premier démarrage, ne retrouve pas encore son propre dossier.
+  Frogtend fait maintenant d'abord créer à Vita3K sa configuration (sans fenêtre, une seconde), puis installe : les
+  trois fichiers passent, en une quinzaine de secondes en tout.
+- L'échec avait bien été repéré (rien n'avait été noté comme installé à tort).
+
 ## 0.177.0 — Le logiciel système de la PS Vita, installé pour toi
 
 - 💿 Firehouse fournit maintenant le logiciel système de la PS Vita (environ 305 Mo), dont beaucoup de jeux ont

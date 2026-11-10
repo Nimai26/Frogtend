@@ -7106,6 +7106,65 @@ mod tests {
         let _ = std::fs::remove_file(&pup);
     }
 
+    /// RÉEL (✅ Seb 11/11), dans un dossier TEMPORAIRE effacé à la fin (`FROGTEND_ESSAI_DOSSIER`, par exemple
+    /// `D:\temp-tests-frogtend`) : Vita3K officiel installé en portable (≈ 38 Mo), puis les trois `.PUP` servis par
+    /// Firehouse (≈ 305 Mo) téléchargés, vérifiés et installés par `Vita3K --firmware`, comme le fait Frogtend.
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_ESSAI_DOSSIER=<dossier> cargo test essai_firmware_vita -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_firmware_vita() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").unwrap();
+        let racine = std::env::var("FROGTEND_ESSAI_DOSSIER").unwrap();
+        let d = tempfile::tempdir_in(racine).unwrap();
+        let f = crate::emulateurs::fiche("vita3k").unwrap();
+        let p = crate::emulateurs::derniere_version(f).await.unwrap();
+        let paquet = d.path().join("vita3k.paquet");
+        let n = crate::emulateurs::telecharger(&p.url, &paquet, &|_, _| {}).await.unwrap();
+        let v = d.path().join("Vita3K");
+        let programme = crate::emulateurs::installer_paquet(f, &paquet, &v).unwrap();
+        println!("Vita3K {} : {n} octets → {}", p.version, programme.display());
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().unwrap();
+        let s = crate::source::Source::Firehouse(crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap());
+        let conseil = s.emulateurs(super::PLATEFORME_VITA).await.unwrap();
+        let servis = crate::vita3k::firmwares_servis(&crate::bios::lire_bios(&conseil["conseil"]["bios"], &mut Default::default()));
+        println!("{} fichiers servis", servis.len());
+        let mut pups = Vec::new();
+        for (i, f) in crate::vita3k::firmwares_manquants(&v, &servis) {
+            let debut = std::time::Instant::now();
+            let pup = crate::bios::telecharger_firmware(&s, &f, &v, &|_, _| {}).await.unwrap();
+            println!("{} téléchargé et vérifié en {:?}", f.fichier, debut.elapsed());
+            // Copié à part : le 2e cas (ci-dessous) le réinstalle sans retélécharger.
+            let copie = d.path().join(format!("{i}.PUP"));
+            std::fs::copy(&pup, &copie).unwrap();
+            pups.push((i, f.clone(), copie));
+            let debut = std::time::Instant::now();
+            let r = crate::vita3k::installer_firmware(&v, &programme, i, &f, &pup);
+            println!("{} : {r:?} en {:?}", f.fichier, debut.elapsed());
+            let _ = std::fs::remove_file(&pup);
+        }
+        // 2e cas : une partie a déjà eu lieu avant le firmware → config.yml écrit par Frogtend (`choisir`), presque vide.
+        let v2 = d.path().join("Vita3K-2");
+        let programme2 = crate::emulateurs::installer_paquet(f, &paquet, &v2).unwrap();
+        crate::vita3k::choisir(&v2, "00").unwrap();
+        println!("2E CAS, config.yml de Frogtend : {:?}", std::fs::read_to_string(v2.join("portable").join("config.yml")).unwrap());
+        for (i, f, pup) in &pups {
+            println!("2E CAS {} : {:?}", f.fichier, crate::vita3k::installer_firmware(&v2, &programme2, *i, f, pup));
+        }
+        println!("2E CAS firmware_installe = {}", crate::vita3k::firmware_installe(&v2));
+        assert!(crate::vita3k::firmware_installe(&v2));
+        let fs = v.join("portable").join("fs");
+        for s in ["os0", "pd0", "sa0", "vs0", "vs0/sys/external"] {
+            let x = fs.join(s);
+            println!("{s:<18} {}", if x.is_dir() { format!("{} éléments", std::fs::read_dir(&x).unwrap().count()) } else { "ABSENT".into() });
+        }
+        println!("note : {:?}", std::fs::read_to_string(fs.join(".frogtend-firmware")));
+        println!("firmware_installe = {}", crate::vita3k::firmware_installe(&v));
+        println!("encore à installer : {:?}", crate::vita3k::firmwares_manquants(&v, &servis).iter().map(|(_, f)| &f.fichier).collect::<Vec<_>>());
+        assert!(crate::vita3k::firmware_installe(&v));
+        assert!(crate::vita3k::firmwares_manquants(&v, &servis).is_empty());
+    }
+
     #[tokio::test]
     async fn un_part_d_une_autre_version_ne_bloque_jamais_le_telechargement() {
         use httpmock::prelude::*;

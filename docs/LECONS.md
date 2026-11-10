@@ -3,6 +3,13 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 11/11 — Un outil en ligne de commande peut se comporter autrement à son tout premier démarrage
+Ce qui s'est passé : `Vita3K --firmware` (0.177.0), relu dans le code et testé avec des imitations, plantait sur un
+Vita3K neuf : au premier démarrage, il crée sa configuration sans la relire. Seul l'essai réel l'a montré ; le
+contrôle « dossier apparu » a empêché de noter un faux succès. · Comment l'appliquer : un émulateur piloté en ligne
+de commande s'essaie en vrai sur une installation NEUVE (dossier à part, accord de Seb) avant de dire « vérifié » ;
+et on juge toujours sur ce qui est apparu sur le disque, jamais sur le code de retour.
+
 ## 07/11 — Un nouveau protocole d'images oublié dans la CSP
 Ce qui s'est passé : la galerie (0.160.0) servait ses images par `capture.localhost`, mais `tauri.conf.json` ne le
 permettait pas en `img-src` : « Cette capture ne s'affiche pas » chez Seb. Ni les tests ni les relectures ne lisent

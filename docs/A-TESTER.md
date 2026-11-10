@@ -6,7 +6,8 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
-## Le logiciel système de la PS Vita (0.177.0)
+## Le logiciel système de la PS Vita (0.177.0, corrigé en 0.178.0)
+> Déjà essayé par Claude le 11/11 sur un Vita3K neuf à part : les trois fichiers s'installent. Reste à le voir chez toi.
 - [ ] Un jeu PS Vita avec un Vita3K jamais installé : l'accord annonce le logiciel système (305 Mo) ; après le oui,
       il s'installe (avancement en %), sans fenêtre ; le jeu démarre, sans accueil en anglais, en français.
 - [ ] (Si Vita3K était déjà là) Avant la partie, la question « 💿 Il manque le logiciel système de la PS Vita » donne

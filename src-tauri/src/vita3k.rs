@@ -354,30 +354,53 @@ pub fn firmwares_manquants(v: &Path, servis: &[crate::bios::BiosConseil]) -> Vec
 /// FERMÉ, sans fenêtre, 10 minutes au plus. Réussi seulement si le dossier qu'il doit donner est apparu ou a changé
 /// (Vita3K rend « réussi » même quand il échoue) ; alors noté.
 pub fn installer_firmware(v: &Path, programme: &Path, n: usize, f: &crate::bios::BiosConseil, pup: &Path) -> Resultat<()> {
+    if !portable(v) {
+        return Err(Erreur::Refus("Vita3K n'est pas installé en portable : Frogtend n'y installe rien.".into()));
+    }
     if !crate::lancement::processus_du_dossier(v).is_empty() {
         return Err(Erreur::Refus("Vita3K est ouvert : ferme-le (ou quitte ta partie), puis recommence.".into()));
     }
     let trace = trace_du_fichier(v, &f.fichier, n).ok_or_else(|| Erreur::Refus(format!("{} : fichier inconnu, pas installé.", f.fichier)))?;
+    // Au TOUT PREMIER démarrage, Vita3K crée son config.yml sans le relire : le chemin de `fs` reste vide et
+    // `--firmware` plante (`create_directories: ""`) — config.cpp `init_config`, main.cpp, constaté le 11/11 sur un
+    // Vita3K neuf. Il crée donc d'abord ce fichier lui-même (`--version` : écrit config.yml puis quitte, sans fenêtre).
+    if !config(v).is_file() {
+        // 60 s : un antivirus peut examiner longuement le programme à son tout premier démarrage.
+        match attendre_vita3k(v, programme, &["--version".as_ref()], 60)? {
+            None => return Err(Erreur::Disque("Vita3K n'a pas créé sa configuration en une minute : arrêté, firmware pas installé.".into())),
+            Some(s) if !s.success() || !config(v).is_file() => {
+                return Err(Erreur::Disque("Vita3K n'a pas créé sa configuration : firmware pas installé.".into()))
+            }
+            Some(_) => {}
+        }
+    }
     let avant = empreinte_dossier(&trace);
+    let Some(statut) = attendre_vita3k(v, programme, &["--firmware".as_ref(), pup.as_os_str()], 600)? else {
+        return Err(Erreur::Disque(format!("Vita3K n'a pas fini d'installer {} en 10 minutes : arrêté.", f.fichier)));
+    };
+    constater_installation(v, f, &trace, avant, statut.success())
+}
+
+/// Lance Vita3K sans fenêtre avec ces arguments et attend sa fin, `secondes` au plus (`None` : arrêté au bout du
+/// temps — seulement ce processus-là, lancé par Frogtend).
+fn attendre_vita3k(v: &Path, programme: &Path, args: &[&std::ffi::OsStr], secondes: u64) -> Resultat<Option<std::process::ExitStatus>> {
     let mut enfant = crate::lancement::outil_sans_fenetre(&programme.to_string_lossy())
-        .arg("--firmware")
-        .arg(pup)
+        .args(args)
         .current_dir(v)
         .spawn()
         .map_err(|e| Erreur::Disque(format!("Vita3K ne démarre pas ({e}).")))?;
     let debut = std::time::Instant::now();
-    let statut = loop {
+    loop {
         if let Some(s) = enfant.try_wait().map_err(|e| Erreur::Disque(format!("Vita3K : {e}.")))? {
-            break s;
+            return Ok(Some(s));
         }
-        if debut.elapsed() > std::time::Duration::from_secs(600) {
+        if debut.elapsed() > std::time::Duration::from_secs(secondes) {
             let _ = enfant.kill();
             let _ = enfant.wait();
-            return Err(Erreur::Disque(format!("Vita3K n'a pas fini d'installer {} en 10 minutes : arrêté.", f.fichier)));
+            return Ok(None);
         }
         std::thread::sleep(std::time::Duration::from_millis(250));
-    };
-    constater_installation(v, f, &trace, avant, statut.success())
+    }
 }
 
 /// Le constat après `--firmware` : l'installation a réussi si Vita3K a fini sans erreur ET si le dossier attendu est

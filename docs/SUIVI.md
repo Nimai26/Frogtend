@@ -2524,3 +2524,11 @@ d'abord :
   (`vita3k_firmware_servi` : téléchargement vérifié, `Vita3K --firmware` sans fenêtre, contrôle du dossier donné :
   vs0\sys\external, pd0, sa0 ; empreintes notées dans fs\.frogtend-firmware) : dans l'accord de « Prêt à jouer » et
   avant une partie PS Vita. Pas essayé en vrai (pas de Vita3K chez Seb).
+- 11/11 (0.178.0) : essai RÉEL (✅ Seb), test ignoré `essai_firmware_vita` (commandes.rs), Vita3K 2026-11-10 neuf en
+  portable dans D:\temp-tests-frogtend (effacé) : le 1er `--firmware` plantait (`create_directories: ""`) — au tout
+  premier démarrage Vita3K écrit config.yml SANS le relire (config.cpp `init_config`), le chemin de `fs` reste vide.
+  Correctif : `Vita3K --version` d'abord si config.yml manque (il l'écrit puis quitte). Ensuite : les 3 PUP installés
+  (7,6 s, 1,8 s, 2,8 s), os0/pd0/sa0/vs0\sys\external présents, `firmware_installe`, rien à refaire. L'échec du 1er
+  essai avait bien été vu par `constater_installation` (rien noté).
+  2e cas essayé aussi (relecture de l'expert) : partie lancée AVANT le firmware (config.yml écrit par `choisir`, 3
+  lignes) → les 3 PUP passent. `installer_firmware` refuse maintenant un Vita3K non portable.
