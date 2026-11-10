@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const appels: string[] = [];
 const reglages: Record<string, unknown> = {};
 
+const manetteReglee = vi.hoisted(() => ({ valeur: true }));
 vi.mock('$lib/api', () => ({
   taille: (o: number) => `${(o / 1024 / 1024).toFixed(1)} Mo`,
   api: {
@@ -21,14 +22,15 @@ vi.mock('$lib/api', () => ({
     }),
     emulateurReglerManette: vi.fn(async (id: string) => {
       appels.push(`manette ${id}`);
-      return { reglee: true, profils_ajoutes: 0 };
+      return { reglee: manetteReglee.valeur, profils_ajoutes: 0 };
     }),
   },
 }));
 
 const confirmer = vi.fn(async (..._a: unknown[]) => true);
 const informer = vi.fn(async (..._a: unknown[]) => {});
-vi.mock('$lib/dialogues/fenetres.svelte', () => ({ confirmer: (...a: unknown[]) => confirmer(...a), informer: (...a: unknown[]) => informer(...a), toast: vi.fn() }));
+const toast = vi.fn((..._a: unknown[]) => {});
+vi.mock('$lib/dialogues/fenetres.svelte', () => ({ confirmer: (...a: unknown[]) => confirmer(...a), informer: (...a: unknown[]) => informer(...a), toast: (...a: unknown[]) => toast(...a) }));
 vi.mock('$lib/dialogues/messages', () => ({ motifDuRefus: () => '' }));
 
 const etat = { pc: { emulateurs: {} as Record<string, unknown>, dossierEmulateurs: '', emplacements: { defaut: ['E:\\Jeux'], systemes: {} } } };
@@ -68,6 +70,7 @@ const { preparerPourJouer, preparationEnCours, libellePreparation } = await impo
 describe('une préparation par console à la fois (essai de Seb, 28/10)', () => {
   beforeEach(() => {
     appels.length = 0;
+    manetteReglee.valeur = true;
     confirmer.mockClear();
     informer.mockClear();
     etat.pc.emulateurs = {};
@@ -133,6 +136,18 @@ describe('prêt à jouer, de bout en bout', () => {
     // Pas de micrologiciel PS3 : c'est dit tout de suite.
     expect(informer).toHaveBeenCalledTimes(1);
     expect(String(informer.mock.calls[0][0])).toContain('micrologiciel');
+  });
+
+  it('« manette réglée » seulement si le cœur l’a vraiment réglée', async () => {
+    const dernier = () => String(toast.mock.calls.at(-1)?.[0] ?? '');
+    manetteReglee.valeur = true;
+    await preparerPourJouer('Sony Playstation 3', 7);
+    expect(dernier()).toContain('manette réglée');
+    etat.pc.emulateurs = {};
+    manetteReglee.valeur = false;
+    await preparerPourJouer('Sony Playstation 3', 7);
+    expect(dernier()).toContain('est prêt');
+    expect(dernier()).not.toContain('manette réglée');
   });
 
   it('ne demande rien si la console a déjà son émulateur', async () => {

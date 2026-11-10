@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.173.0 — La langue de Dolphin et de RPCS3 dès leur première partie
+
+- 🌍 Dolphin : les jeux GameCube s'affichent dans la langue de Windows (le français chez toi) dès leur première partie,
+  au lieu de l'anglais. Une seule fois par personne : si tu remets une autre langue dans Dolphin, elle est gardée.
+- 🌍 RPCS3 : sur une installation neuve, la langue, le clavier et la zone de la console sont pris de Windows dès la
+  toute première partie (avant, ça pouvait attendre la deuxième).
+- RetroArch prend déjà tout seul la langue de Windows : rien à faire.
+- « Prêt à jouer » n'annonce plus « manette réglée » quand elle ne l'a pas été (elle le sera à la première partie).
+
 ## 0.172.0 — PCSX2 et DuckStation réglés dès leur première partie
 
 - 🎮 Une installation neuve de PCSX2 (PS2) ou de DuckStation (PS1) est réglée par Frogtend AVANT sa première

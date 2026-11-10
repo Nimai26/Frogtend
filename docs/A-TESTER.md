@@ -6,6 +6,11 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## La langue de Dolphin et de RPCS3 (0.173.0)
+- [ ] Un jeu GameCube européen (PAL) multilingue : il s'affiche en français dès la première partie.
+- [ ] Dans Dolphin, remettre une autre langue (Config ▸ GameCube ▸ Langue système), relancer le jeu depuis
+      Frogtend : ta langue est gardée.
+
 ## PCSX2 et DuckStation réglés dès leur première partie (0.172.0)
 - [ ] Un jeu PS2 avec un PCSX2 jamais installé (Frogtend l'installe) : la partie démarre sans question en anglais ni
       assistant, la manette marche tout de suite, et ta partie se sauvegarde (carte mémoire dans ton profil).

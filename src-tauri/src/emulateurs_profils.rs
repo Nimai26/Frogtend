@@ -661,6 +661,10 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             if crate::manettes::lire_ini(&std::fs::read_to_string(&ini).unwrap_or_default(), "Core", "AutoDiscChange").is_empty() {
                 modifier_ini(emulateur, &ini, "Core", &[("AutoDiscChange", vec!["True".into()])])?;
             }
+            // Jamais bloquant : la partie se lance même si la langue n'a pas pu être posée.
+            if let Err(e) = dolphin_regler_langue(emulateur, &utilisateur, langue_et_clavier_de_windows().0) {
+                eprintln!("Dolphin : langue non posée ({e:?})");
+            }
             regler_manette(id, emulateur, Some(&utilisateur), manette)?;
             Ok(vec!["-u".into(), texte(&utilisateur)])
         }
@@ -1103,6 +1107,51 @@ pub fn regler_cles_yaml(texte: &str, section: &str, valeurs: &[(&str, &str)]) ->
     change.then_some(sortie)
 }
 
+/// RPCS3, AVANT le lancement (fermé : il réécrirait ses réglages en quittant) : langue, clavier et zone de la console
+/// pris de Windows UNE seule fois par dossier (note dans `notes`), et un jeu japonais validé avec Rond (lot 4, ✅ Seb
+/// 30/10). Le `config.yml` est créé ICI s'il manque (installation neuve) : la langue ne dépend plus de l'ordre des
+/// autres préparations. Un ancien `config.yml` à la racine (que RPCS3 déplacera) : rien créé, rien noté. Une erreur
+/// sur la langue n'empêche jamais le bouton du jeu japonais (rendue après).
+pub fn rpcs3_avant_la_partie(rpcs3: &Path, notes: &Path, langue: u16, clavier: u16, numero: Option<&str>) -> Resultat<Vec<String>> {
+    let langue_faite = rpcs3_langue_une_fois(rpcs3, notes, langue, clavier);
+    let mut faits = Vec::new();
+    if let Some(n) = numero {
+        if rpcs3_bouton_selon_region(rpcs3, n)? {
+            faits.push(format!("{n} : validation avec Rond (jeu japonais)"));
+        }
+    }
+    faits.extend(langue_faite?);
+    Ok(faits)
+}
+
+fn rpcs3_langue_une_fois(rpcs3: &Path, notes: &Path, langue: u16, clavier: u16) -> Resultat<Option<String>> {
+    let cle = rpcs3.to_string_lossy().to_string();
+    let mut deja: serde_json::Value = std::fs::read(notes).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_else(|| serde_json::json!({}));
+    if deja[&cle].as_bool() == Some(true) {
+        return Ok(None);
+    }
+    // Installation neuve : le fichier est créé maintenant (même contenu que la préparation habituelle).
+    if !rpcs3.join("config").join("config.yml").exists() {
+        rpcs3_pause_au_menu(rpcs3)?;
+    }
+    if !rpcs3.join("config").join("config.yml").exists() {
+        return Ok(None);
+    }
+    let fait = rpcs3_regler_langue(rpcs3, langue, clavier)?.then(|| "langue, clavier et zone de la console pris de Windows".to_string());
+    if !deja.is_object() {
+        deja = serde_json::json!({});
+    }
+    deja[&cle] = serde_json::Value::Bool(true);
+    if let Some(p) = notes.parent() {
+        std::fs::create_dir_all(p)?;
+    }
+    // Écrite à côté puis renommée : une coupure ne perd jamais les notes déjà prises.
+    let provisoire = notes.with_extension("json.tmp");
+    std::fs::write(&provisoire, serde_json::to_vec_pretty(&deja).unwrap_or_default())?;
+    std::fs::rename(&provisoire, notes)?;
+    Ok(fait)
+}
+
 /// RPCS3 et le menu de Frogtend (05/10, Seb : « le menu ne met pas en pause le jeu et les boutons sont encore saisis
 /// dans le jeu »). Relevé dans son code (05/10) : `Miscellaneous ▸ Pause emulation on RPCS3 focus loss` (faux par
 /// défaut ; gui_application.cpp OnAppStateChanged : pause quand RPCS3 perd le premier plan, reprise quand il le
@@ -1268,6 +1317,44 @@ pub fn langue_et_clavier_de_windows() -> (u16, u16) {
     {
         (0x0409, 0x0409)
     }
+}
+
+/// Dolphin : la langue du GameCube (`[Core] SelectedLanguage`, valeur d'origine 0 : MAIN_GC_LANGUAGE dans
+/// Core/Config/MainSettings.cpp ; ordre de DolphinQt/Settings/GameCubePane.cpp, relus le 10/11/2026 : anglais, allemand,
+/// français, espagnol, italien, néerlandais). Elle ne sert qu'aux jeux PAL multilingues. Une langue de Windows absente
+/// de la liste : rien.
+pub fn dolphin_langue_gc(langid: u16) -> Option<u8> {
+    Some(match langid & 0x3FF {
+        0x09 => 0,
+        0x07 => 1,
+        0x0C => 2,
+        0x0A => 3,
+        0x10 => 4,
+        0x13 => 5,
+        _ => return None,
+    })
+}
+
+/// La langue du GameCube prise de Windows (✅ Seb 30/10, PLAN : « la langue en français, d'après Windows », même principe
+/// que RPCS3 et Eden) : UNE seule fois par profil (marque `User\.frogtend-langue`), seulement si la clé est ABSENTE (un
+/// « 0 » écrit peut être un vrai choix de la personne), et jamais Dolphin ouvert (il réécrirait ses réglages en
+/// quittant : ni réglage ni marque, refait à la partie suivante). La Wii prend déjà la langue de Windows d'office
+/// (SYSCONF IPL.LNG, GetDefaultLanguage) ; son interface aussi (LanguageCode vide).
+pub fn dolphin_regler_langue(emulateur: &Path, utilisateur: &Path, langid: u16) -> Resultat<bool> {
+    let marque = utilisateur.join(".frogtend-langue");
+    if marque.exists() || !crate::lancement::processus_du_dossier(emulateur).is_empty() {
+        return Ok(false);
+    }
+    let ini = utilisateur.join("Config").join("Dolphin.ini");
+    let absente = crate::manettes::lire_ini(&std::fs::read_to_string(&ini).unwrap_or_default(), "Core", "SelectedLanguage").is_empty();
+    let mut pose = false;
+    if let Some(n) = dolphin_langue_gc(langid).filter(|n| *n != 0 && absente) {
+        modifier_ini(emulateur, &ini, "Core", &[("SelectedLanguage", vec![n.to_string()])])?;
+        pose = true;
+    }
+    std::fs::create_dir_all(utilisateur)?;
+    std::fs::write(&marque, "")?;
+    Ok(pose)
 }
 
 /// L'identifiant de disposition d'un HKL (voir `langue_et_clavier_de_windows`).
@@ -2389,6 +2476,35 @@ mod tests {
     }
 
     #[test]
+    fn dolphin_prend_la_langue_de_windows_une_seule_fois() {
+        use crate::manettes::lire_ini;
+        let lire = |u: &Path| lire_ini(&std::fs::read_to_string(u.join("Config").join("Dolphin.ini")).unwrap_or_default(), "Core", "SelectedLanguage");
+        // Installation neuve, Windows en français : français (2), une seule fois.
+        let d = tempfile::tempdir().unwrap();
+        let u = d.path().join("Profils").join("Seb").join("User");
+        assert!(dolphin_regler_langue(d.path(), &u, 0x040C).unwrap());
+        assert_eq!(lire(&u), ["2"]);
+        // La personne remet l'anglais : gardé (la marque est posée).
+        modifier_ini(d.path(), &u.join("Config").join("Dolphin.ini"), "Core", &[("SelectedLanguage", vec!["0".into()])]).unwrap();
+        assert!(!dolphin_regler_langue(d.path(), &u, 0x040C).unwrap());
+        assert_eq!(lire(&u), ["0"]);
+        // Un choix déjà écrit avant Frogtend (italien, ou même l'anglais « 0 ») : jamais défait.
+        for choix in ["4", "0"] {
+            let e = tempfile::tempdir().unwrap();
+            let u = e.path().join("User");
+            modifier_ini(e.path(), &u.join("Config").join("Dolphin.ini"), "Core", &[("SelectedLanguage", vec![choix.into()])]).unwrap();
+            assert!(!dolphin_regler_langue(e.path(), &u, 0x040C).unwrap());
+            assert_eq!(lire(&u), [choix]);
+        }
+        // Windows en anglais, ou dans une langue que le GameCube n'a pas : rien d'écrit.
+        let f = tempfile::tempdir().unwrap();
+        assert!(!dolphin_regler_langue(f.path(), &f.path().join("User"), 0x0409).unwrap());
+        assert!(!dolphin_regler_langue(f.path(), &f.path().join("V"), 0x0411).unwrap());
+        assert!(!f.path().join("User").join("Config").join("Dolphin.ini").exists());
+        assert_eq!((dolphin_langue_gc(0x080C), dolphin_langue_gc(0x0C07), dolphin_langue_gc(0x0413)), (Some(2), Some(1), Some(5)));
+    }
+
+    #[test]
     fn un_fichier_existant_ne_recoit_aucune_base() {
         use crate::manettes::lire_ini;
         let d = tempfile::tempdir().unwrap();
@@ -2693,6 +2809,31 @@ mod tests_langue_rpcs3 {
         assert!(rpcs3_regler_langue(r, 0x040C, 0x040C).unwrap());
         let t = std::fs::read_to_string(r.join("config/config.yml")).unwrap();
         assert!(t.contains("  Language: French\r\n") && t.contains("  Keyboard Type: French keyboard\r\n") && t.contains("  License Area: SCEE\r\n"), "{t}");
+    }
+
+    #[test]
+    fn rpcs3_neuf_recoit_sa_langue_des_sa_premiere_partie_quel_que_soit_l_ordre() {
+        // Installation neuve, rien d'autre de préparé avant : la langue est là dès la 1re partie.
+        let d = tempfile::tempdir().unwrap();
+        let notes = d.path().join("donnees").join("langues-posees.json");
+        let faits = rpcs3_avant_la_partie(d.path(), &notes, 0x040C, 0x040C, None).unwrap();
+        let t = std::fs::read_to_string(d.path().join("config/config.yml")).unwrap();
+        assert!(t.contains("  Language: French") && t.contains("  Keyboard Type: French keyboard") && t.contains("  License Area: SCEE"), "{t}");
+        assert!(t.contains("Pause emulation on RPCS3 focus loss: true"), "la préparation habituelle aussi : {t}");
+        assert_eq!(faits.len(), 1);
+        assert!(notes.is_file() && !notes.with_extension("json.tmp").exists());
+        // La préparation habituelle ensuite ne défait rien.
+        rpcs3_pause_au_menu(d.path()).unwrap();
+        assert!(std::fs::read_to_string(d.path().join("config/config.yml")).unwrap().contains("  Language: French"));
+        // 2e partie : la note est posée, la personne a remis l'anglais → gardé.
+        std::fs::write(d.path().join("config/config.yml"), "System:\n  Language: English (US)\n").unwrap();
+        assert!(rpcs3_avant_la_partie(d.path(), &notes, 0x040C, 0x040C, None).unwrap().is_empty());
+        assert!(std::fs::read_to_string(d.path().join("config/config.yml")).unwrap().contains("English (US)"));
+        // Un ancien config.yml à la racine (RPCS3 le déplacera) : rien créé, rien noté.
+        let e = tempfile::tempdir().unwrap();
+        std::fs::write(e.path().join("config.yml"), "").unwrap();
+        rpcs3_avant_la_partie(e.path(), &e.path().join("n.json"), 0x040C, 0x040C, None).unwrap();
+        assert!(!e.path().join("config/config.yml").exists() && !e.path().join("n.json").exists());
     }
 
     #[test]

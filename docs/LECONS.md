@@ -387,3 +387,6 @@ répétition avant livraison fait ce premier lancement.
 celui du conseil (Lichii, alternative), donc l'accord de Seb ne servait à rien et la question revenait. · Règle : une
 action acceptée qui ne fait rien le DIT (journal + fenêtre) ; et chaque émulateur ajouté se répète jusqu'au bout
 (clés, firmware, première partie) sur une installation neuve, pas seulement « il se lance ».
+- 10/11 (0.173.0) : JAMAIS `cargo fmt` dans ce projet — le code n'a jamais été mis en forme par rustfmt : la commande
+  (même suivie d'un seul fichier) reformate TOUTE la caisse (68 fichiers, 35 000 lignes). Rattrapé avant tout commit :
+  fichiers non concernés remis par git, modifications refaites sur la base propre.

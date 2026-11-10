@@ -144,8 +144,11 @@ async function preparer(plateforme: string, jeux: number): Promise<string | null
   let manette = '';
   if (choix.id && MANETTE_REGLEE.includes(choix.id)) {
     try {
-      await api.emulateurReglerManette(choix.id, programme);
-      manette = ', manette réglée';
+      const r = await api.emulateurReglerManette(choix.id, programme);
+      // Dit seulement si c'est VRAI (`reglee` du cœur) : Eden non portable ou sans manette branchée, un réglage de la
+      // personne… → rien d'annoncé, la manette sera réglée à la première partie. RetroArch : `reglee` est toujours faux
+      // (manettes.rs) ; l'appel réussi = ses profils officiels de manettes sont posés.
+      if (r.reglee || choix.id === 'retroarch') manette = ', manette réglée';
     } catch (e) {
       toast(`${nom} est prêt, mais la manette n’a pas pu être réglée : ${motifDuRefus(e)}`, 'alerte');
     }

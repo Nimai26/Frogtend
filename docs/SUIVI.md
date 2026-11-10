@@ -2500,3 +2500,8 @@ d'abord :
   custom\0400486024DEC000.ini) : moins d'à-coups mais textures noires, « ça rend moche » (Seb) → retour à GPU
   conseillé. Bilan : Zelda OoT « presque jouable » avec Lichii build-130 ; les à-coups restants = décodage ASTC de
   l'émulateur, à revoir à sa prochaine version.
+- 10/11 (0.173.0) : lot « tous les émulateurs », étapes 2–4 (avis lancement) : RetroArch prend seul la langue de
+  Windows (configuration.c : `user_language` absent → frontend_driver_get_user_language) → rien ; Dolphin : langue
+  du GameCube (`[Core] SelectedLanguage`, ordre relu dans GameCubePane.cpp) posée une fois par profil, jamais
+  par-dessus un choix ; Wii et interface suivent déjà Windows ; RPCS3 : `rpcs3_avant_la_partie` (langue sans
+  dépendre de l'ordre des appels, test d'installation neuve) ; « Prêt à jouer » lit `reglee`.
