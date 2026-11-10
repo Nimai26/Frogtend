@@ -2478,3 +2478,25 @@ d'abord :
   (question en anglais puis remise à zéro, dossiers des cartes mémoire compris) et DuckStation ouvrait son assistant ;
   tous deux n'écrivent leurs défauts que s'il n'y a pas de fichier → `base_neuve` (relevés dans leur code). DuckStation
   neuf ouvert 10 s : aucun assistant, tout gardé ✅. PCSX2 : ouverture refusée par mon permis, à faire avec Seb.
+- ESSAI 09/11 (0.172.0) : mises à jour Lichii (build-117 → 130) et RPCS3 acceptées ✅ (programmes remplacés à 22 h 23,
+  user\ intact). Zelda OoT avec Lichii build-130 : la vidéo AV1 de l'intro est maintenant DÉCODÉE (libdav1d, 9 250
+  images jusqu'à « end of stream » à 218 s) ; juste après, 0 i/s et écran noir (décodage ASTC de 20 s), puis Lichii
+  plante et Epic Games Launcher tombe aussi : « fichier de pagination insuffisant » = mémoire de Windows épuisée
+  (32 Go de RAM + fichier d'échange de 55 Go sur C:, qui n'a plus que 4,8 Go libres : il ne peut pas grandir).
+  À mesurer : la mémoire de Lichii pendant la partie.
+- 09/11 22 h 40 : relevé mémoire (lecture seule) : Lichii ~2 Go seulement ; mémoire engagée de Windows déjà à 74/86 Go
+  AVANT la partie (Photoshop ×2 : ~25 Go) → 85,4/86,6 au chargement de Zelda → plantage. Seb a libéré C: (4,8 →
+  287 Go). 2e essai (Photoshop sans doute encore ouvert, 83–85 Go engagés) : « Userspace PANIC » du jeu à 87 s.
+  Tutoriel Lichii pour OoT (réglages PAR JEU) → besoin 47 ; Frogtend ne touche jamais `user\config\custom\`.
+- 09/11 22 h 55 : Firehouse 3.150.0 répond aux besoins 45 et 46 (voir BESOINS-API). Chez Seb : pilote NVIDIA 610.88
+  (< 621.14 conseillé), cache de shaders de Zelda dans Lichii : 22 Mo (créé 22 h 24, après la build-130 ?) ; fichier
+  d'échange géré par Windows sur C: (55 Go, il peut grandir depuis le ménage). À FAIRE dans Frogtend : fiches BigPEmu
+  et Ryubing (besoin 46 servi).
+- 10/11 00 h 10–00 h 17 (après redémarrage, pilote NVIDIA 621.14, réglages par jeu du tutoriel posés par Seb dans
+  Lichii) : Zelda OoT chargé depuis la sauvegarde, AUCUN plantage ; Lichii au plus 11,6 Go, mémoire engagée au plus
+  55,6/73,9 Go ; 25–45 i/s, à-coups jusqu'à 3 s pendant les décodages ASTC (jusqu'à 24 s pour 3 textures), fermeture
+  propre. Les 2 Photoshop coincés (22 Go, dont un du 03/11) arrêtés avec l'accord de Seb, libérés au redémarrage.
+- 10/11 00 h 25 : essai « ASTC Decoding Method = CPU Asynchronously » pour Zelda (accelerate_astc=2 dans
+  custom\0400486024DEC000.ini) : moins d'à-coups mais textures noires, « ça rend moche » (Seb) → retour à GPU
+  conseillé. Bilan : Zelda OoT « presque jouable » avec Lichii build-130 ; les à-coups restants = décodage ASTC de
+  l'émulateur, à revoir à sa prochaine version.
