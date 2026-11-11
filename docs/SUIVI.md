@@ -2562,3 +2562,4 @@ d'abord :
   BigPEmu 1.221 ouvert SANS jeu dans D:\temp-tests-frogtend (accord de Seb « tu as mon accord ») : JSON, mode 0 = sans
   bord plein écran, manette Xbox liée seule au 1er démarrage, AutoAssign=1 la lie ensuite. Fiche BigPEmu livrée :
   UserData\ par profil (jonction), AutoAssign, figé au menu, schéma Jaguar, taille vérifiée.
+- 11/11 : besoin 49 transmis à la session FIREHOUSE (« transmet », Seb), par message ; lecture non confirmée.
