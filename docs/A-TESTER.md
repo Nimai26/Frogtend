@@ -6,6 +6,10 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## BigPEmu : photos d'écran (0.191.0)
+- [ ] Bubsy, menu ▸ ⚙ Options du jeu ▸ 📷 Photo de l'écran, puis quitter : un message dit que la capture est rangée ;
+      📷 Mes captures la montre (Atari Jaguar ▸ Bubsy), image correcte (ni retournée, ni aux couleurs inversées).
+
 ## BigPEmu : rappel des triches avant de jouer (0.190.0)
 - [x] (✅ Seb 12/11) Bubsy (« Infinite lives » cochée) : sous ▶ Jouer, la ligne « 🎯 Triches cochées… » est là (fiche et panneau).
 - [x] (✅ Seb 12/11) Un autre jeu Jaguar sans triche : pas de ligne.
@@ -38,7 +42,7 @@
 ## BigPEmu : sauvegardes rapides, effets, triches (0.185.0)
 - [ ] Un jeu Jaguar (Bubsy) : dans le menu (bouton Xbox), 💾 Sauvegarde rapide, puis plus tard 📂 Charger la sauvegarde rapide :
       la partie revient. Pareil avec Vue + LT (sauver) et Vue + RT (charger), menu fermé.
-- [ ] ⚙ Options du jeu ▸ 📷 Photo de l'écran : BigPEmu dit en bas de l'écran où il l'a rangée — me dire où (elle
+- [x] (✅ Seb 12/11 : UserData de Frogtend → 0.191.0) ⚙ Options du jeu ▸ 📷 Photo de l'écran : BigPEmu dit en bas de l'écran où il l'a rangée — me dire où (elle
       n'arrive pas encore dans 📷 Mes captures : son dossier n'est pas relevé).
 - [ ] 🖼 Effet d'image ▸ « Télé d'époque » : le menu dit « dès ta prochaine partie » ; quitter et relancer : l'effet
       est là. Dire si les noms des effets correspondent à ce que tu vois.

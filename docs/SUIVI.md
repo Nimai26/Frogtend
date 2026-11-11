@@ -2614,3 +2614,7 @@ d'abord :
 - 11/11 (0.190.0) : Seb — rappel du lancement invisible ; « oui » au rappel sous ▶ Jouer (fiche, panneau) et dans
   Taodbox (3 s avant). Commande `bigpemu_triches_cochees` en lecture seule (cartouche lue seulement si une triche est
   cochée quelque part). Relu par l'expert interface (relecture après partie, attente Taodbox gardée, texte novice).
+- 12/11 (0.191.0) : Seb — effet « Télé d'époque » OK ; photo : message « sauvée dans … UserData », absente de Mes
+  captures. Relevé : `UserData\game<EMPREINTE>_screen0000.tga` (TGA type 2, 320×240, 24 bits, origine en bas, sans
+  pied). `captures::dossiers_de("bigpemu")` = UserData du profil ; TGA converti en BMP sans perte au rangement
+  (relu, puis original retiré). Idée de Seb notée au PLAN : relancer pour appliquer + Reset normalisé.

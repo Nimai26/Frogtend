@@ -12,7 +12,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 /// Les extensions d'image déplacées (jamais une vidéo ni un son : DOSBox, RPCS3 rangent aussi des enregistrements).
-const IMAGES: &[&str] = &["png", "jpg", "jpeg", "bmp", "webp"];
+/// `tga` : BigPEmu (converti en `bmp` au rangement, l'interface ne sait pas l'afficher).
+const IMAGES: &[&str] = &["png", "jpg", "jpeg", "bmp", "webp", "tga"];
 
 /// Les dossiers où l'émulateur range ses captures. Seulement ceux vérifiés (04/11) : RetroArch (son
 /// `screenshot_directory`, « : » = son dossier, vide = le dossier du jeu), RPCS3 (`screenshots\<numéro>\`, vu dans le
@@ -33,6 +34,9 @@ pub fn dossiers_de(emulateur: &str, dossier_emulateur: &Path, profil: Option<&Pa
         }
         "rpcs3" => vec![dossier_emulateur.join("screenshots")],
         "mgba" => profil.map(|p| p.join("screenshots")).into_iter().collect(),
+        // BigPEmu : `UserData\game<empreinte>_screenNNNN.tga` (son message à l'écran, relevé de Seb le 12/11 ; nom
+        // `game%016llX_screen%04i.tga` dans le programme 1.221), chez la personne qui joue.
+        "bigpemu" => profil.map(|p| p.join(crate::bigpemu::DOSSIER_DONNEES)).into_iter().collect(),
         _ => Vec::new(),
     }
 }
@@ -130,6 +134,48 @@ fn stable(f: &Path) -> Option<u64> {
     (a > 0 && a == b).then_some(a)
 }
 
+/// Une image TGA sans compression (type 2, 24 ou 32 bits, sans palette) en BMP, sans perte : mêmes pixels (BGR ou
+/// BGRA), lignes remises de bas en haut. `None` : une autre sorte de TGA (laissée telle quelle).
+pub fn tga_en_bmp(tga: &[u8]) -> Option<Vec<u8>> {
+    if tga.len() < 18 {
+        return None;
+    }
+    let (id, palette, sorte) = (tga[0] as usize, tga[1], tga[2]);
+    let largeur = u16::from_le_bytes([tga[12], tga[13]]) as usize;
+    let hauteur = u16::from_le_bytes([tga[14], tga[15]]) as usize;
+    let (bits, descripteur) = (tga[16], tga[17]);
+    if palette != 0 || sorte != 2 || !(bits == 24 || bits == 32) || largeur == 0 || hauteur == 0 || descripteur & 0x10 != 0 {
+        return None;
+    }
+    let octets = bits as usize / 8;
+    let ligne = largeur * octets;
+    let debut = 18 + id;
+    let pixels = tga.get(debut..debut + ligne * hauteur)?;
+    let pas = ligne.div_ceil(4) * 4;
+    let taille_image = pas * hauteur;
+    let mut b = Vec::with_capacity(54 + taille_image);
+    b.extend_from_slice(b"BM");
+    b.extend_from_slice(&((54 + taille_image) as u32).to_le_bytes());
+    b.extend_from_slice(&[0; 4]);
+    b.extend_from_slice(&54u32.to_le_bytes());
+    b.extend_from_slice(&40u32.to_le_bytes());
+    b.extend_from_slice(&(largeur as i32).to_le_bytes());
+    b.extend_from_slice(&(hauteur as i32).to_le_bytes());
+    b.extend_from_slice(&1u16.to_le_bytes());
+    b.extend_from_slice(&(bits as u16).to_le_bytes());
+    b.extend_from_slice(&[0; 4]);
+    b.extend_from_slice(&(taille_image as u32).to_le_bytes());
+    b.extend_from_slice(&[0; 16]);
+    // BMP : de bas en haut. Le TGA l'est aussi, sauf si son bit 5 dit « en haut à gauche ».
+    let de_haut = descripteur & 0x20 != 0;
+    for k in 0..hauteur {
+        let r = if de_haut { hauteur - 1 - k } else { k };
+        b.extend_from_slice(&pixels[r * ligne..(r + 1) * ligne]);
+        b.extend(std::iter::repeat_n(0u8, pas - ligne));
+    }
+    Some(b)
+}
+
 /// Déplace une capture : renommage sur le même disque ; sinon copie à côté sous un nom provisoire, taille relue,
 /// renommage, et SEULEMENT ENSUITE l'original effacé. Rend la destination.
 fn deplacer(source: &Path, dossier: &Path) -> std::io::Result<PathBuf> {
@@ -137,6 +183,22 @@ fn deplacer(source: &Path, dossier: &Path) -> std::io::Result<PathBuf> {
     let date = std::fs::metadata(source)?.modified().unwrap_or_else(|_| std::time::SystemTime::now());
     let ext = source.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_else(|| "png".into());
     std::fs::create_dir_all(dossier)?;
+    // Une capture TGA (BigPEmu) devient un BMP sans perte : écrit à côté sous un nom provisoire, relu, puis l'original
+    // effacé. Un TGA d'une autre sorte est rangé tel quel.
+    if ext == "tga" {
+        if let Some(bmp) = std::fs::read(source).ok().and_then(|t| tga_en_bmp(&t)) {
+            let cible = nom_libre(dossier, &horodatage(date), "bmp");
+            let provisoire = cible.with_extension("bmp.en-cours");
+            std::fs::write(&provisoire, &bmp)?;
+            if std::fs::read(&provisoire).ok().as_deref() != Some(bmp.as_slice()) {
+                let _ = std::fs::remove_file(&provisoire);
+                return Err(std::io::Error::other("conversion incomplète"));
+            }
+            std::fs::rename(&provisoire, &cible)?;
+            let _ = std::fs::remove_file(source);
+            return Ok(cible);
+        }
+    }
     let cible = nom_libre(dossier, &horodatage(date), &ext);
     if std::fs::rename(source, &cible).is_ok() {
         return Ok(cible);
@@ -342,6 +404,34 @@ pub fn regler_fond(dossier_profil: &Path, jeu: i64, capture: Option<&str>) -> st
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn une_capture_tga_de_bigpemu_devient_un_bmp_sans_perte() {
+        // 2 × 2 pixels, 24 bits, origine en bas à gauche (comme BigPEmu : `0 0 2 … 24 0`).
+        let mut tga = vec![0u8, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 24, 0];
+        let pixels: Vec<u8> = (1..=12).collect();
+        tga.extend_from_slice(&pixels);
+        let bmp = tga_en_bmp(&tga).unwrap();
+        assert_eq!(&bmp[..2], b"BM");
+        assert_eq!(bmp.len(), 54 + 2 * 8, "lignes de 6 octets complétées à 8");
+        assert_eq!(&bmp[54..60], &pixels[..6], "même ordre de bas en haut");
+        assert_eq!(&bmp[62..68], &pixels[6..]);
+        let mut en_haut = tga.clone();
+        en_haut[17] = 0x20;
+        assert_eq!(&tga_en_bmp(&en_haut).unwrap()[54..60], &pixels[6..], "origine en haut : lignes retournées");
+        let mut rle = tga.clone();
+        rle[2] = 10;
+        assert!(tga_en_bmp(&rle).is_none(), "compressé : laissé tel quel");
+        // Rangée : un .bmp, l'original retiré.
+        let d = tempfile::tempdir().unwrap();
+        let src = d.path().join("game5C0C7827948F0F27_screen0000.tga");
+        std::fs::write(&src, &tga).unwrap();
+        let place = deplacer(&src, &d.path().join("rangees")).unwrap();
+        assert_eq!(place.extension().unwrap(), "bmp");
+        assert_eq!(std::fs::read(&place).unwrap(), bmp);
+        assert!(!src.exists());
+        assert_eq!(dossiers_de("bigpemu", d.path(), Some(d.path()), None), vec![d.path().join("UserData")]);
+    }
 
     #[test]
     fn l_index_des_captures_par_profil() {

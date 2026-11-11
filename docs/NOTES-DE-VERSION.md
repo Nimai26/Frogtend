@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.191.0 — BigPEmu : les photos d'écran dans 📷 Mes captures
+
+- 📷 Jeux Jaguar : une photo prise pendant la partie (menu ▸ ⚙ Options du jeu ▸ Photo de l'écran) arrive dans ton
+  dossier des captures et dans 📷 Mes captures, comme pour les autres émulateurs. BigPEmu les enregistre en TGA,
+  un format que Frogtend ne sait pas afficher : elles sont converties en BMP, sans perte.
+- Une photo prise avant cette version reste où BigPEmu l'a mise (Frogtend ne touche pas ce qui existait avant la
+  partie).
+
 ## 0.190.0 — BigPEmu : le rappel des triches AVANT de jouer
 
 - 🎯 Un jeu Jaguar avec une triche cochée : sous ▶ Jouer (fiche du jeu et panneau de la ludothèque), Frogtend
