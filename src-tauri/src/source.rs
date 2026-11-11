@@ -1071,6 +1071,26 @@ mod tests {
         }
     }
 
+    /// LECTURE SEULE : ce que Firehouse dit de BigPEmu (Atari Jaguar) et de Ryubing (Switch) : description et paquet.
+    /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_bigpemu_ryubing -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_bigpemu_ryubing() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let s = Source::Firehouse(crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap());
+        for p in ["Atari Jaguar", "Atari Jaguar CD", "Nintendo Switch"] {
+            println!("EMULATEURS {p} : {}", serde_json::to_string_pretty(&s.emulateurs(p).await.unwrap()).unwrap());
+        }
+        for id in ["bigpemu", "ryubing"] {
+            match s.paquet_emulateur(id).await {
+                Ok(p) => println!("PAQUET {id} : {}", serde_json::to_string_pretty(&p).unwrap()),
+                Err(e) => println!("PAQUET {id} : ERREUR {e}"),
+            }
+        }
+    }
+
     /// RÉEL (contrat 1.34) : le paquet MAME HÉBERGÉ par Firehouse (87 Mo) installé dans un dossier TEMPORAIRE — empreinte
     /// sha256 vérifiée, archive sortie de l'exe sans l'exécuter, programme trouvé. Rien n'est lancé ; tout est effacé.
     /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_mame_heberge -- --ignored --nocapture`

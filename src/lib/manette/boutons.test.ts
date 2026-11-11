@@ -197,6 +197,21 @@ describe('les boutons de la manette d’origine', () => {
     expect(schema(infos({ emulateur: null, coeur: null, inconnue: true })).etat).toBe('inconnu');
   });
 
+  it('BigPEmu : la manette Jaguar telle qu’il la lie seul, au clavier sans manette, rien pour une PlayStation', () => {
+    const d = schema(infos({ emulateur: 'bigpemu', coeur: null, plateforme: 'Atari Jaguar' }));
+    expect(d.etat).toBe('connu');
+    expect(d.console).toBe('Jaguar');
+    expect(role(d, 'b')).toBe('A');
+    expect(role(d, 'a')).toBe('B');
+    expect(role(d, 'x')).toBe('C');
+    expect(role(d, 'select')).toBe('Pause');
+    expect(role(d, 'start')).toBe('Option');
+    expect(role(d, 'rt')).toContain('menu de BigPEmu');
+    expect(schema(infos({ emulateur: 'bigpemu', coeur: null, famille: 'playstation' })).etat).toBe('inconnu');
+    expect(schema(infos({ emulateur: 'bigpemu', coeur: null, personnalise: true })).etat).toBe('personnalise');
+    expect(schema(infos({ emulateur: 'bigpemu', coeur: null, au_clavier: true })).etat).toBe('au-clavier');
+  });
+
   it('Eden au clavier (pas de manette Xbox au lancement) : pas de dessin de manette, et on dit pourquoi', () => {
     const s = schema(infos({ emulateur: 'eden', coeur: null, plateforme: 'Nintendo Switch', au_clavier: true, personnalise: true }));
     expect(s.etat).toBe('au-clavier');

@@ -117,7 +117,8 @@ pub fn se_met_en_pause(emulateur: &str) -> bool {
 /// pause » qu'une fois le gel réussi (`menu-jeu-pause`).
 pub fn fige_au_menu(emulateur: &str) -> bool {
     // mGBA (26/10) : sa pause en arrière-plan n'est pas posée par Frogtend, il est figé comme eux.
-    matches!(emulateur, "cemu" | "xenia" | "xemu" | "vita3k" | "mgba")
+    // BigPEmu (11/11) : sa pause en arrière-plan n'est pas connue (code fermé), il est figé comme eux.
+    matches!(emulateur, "cemu" | "xenia" | "xemu" | "vita3k" | "mgba" | "bigpemu")
 }
 
 /// Eden et Azahar : leur pause en arrière-plan est-elle VRAIMENT réglée (après `preparer`) ? Sinon (pas portable, ou

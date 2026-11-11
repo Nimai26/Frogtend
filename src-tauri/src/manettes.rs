@@ -316,6 +316,12 @@ pub fn disposition_de_frogtend(id: &str, emulateur: &Path, profil: Option<&Path>
         }
         // DOSBox Staging : sa disposition d'origine, tant que la personne n'a changé ni ses touches ni son joystick.
         "dosbox-staging" => dosbox_disposition_d_origine(emulateur),
+        // BigPEmu : la disposition qu'il lie seul à une manette Xbox, dans les réglages de la personne (`UserData\` relié
+        // à son profil), tant qu'elle ne l'a pas changée ; pas encore lancé, ou au clavier : il la liera.
+        "bigpemu" => {
+            let Some(p) = profil else { return true };
+            !matches!(crate::bigpemu::joueur1(p), crate::bigpemu::Joueur1::Autre)
+        }
         _ => true,
     }
 }

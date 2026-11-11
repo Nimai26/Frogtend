@@ -3153,6 +3153,14 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
                 let encore_au_clavier = std::fs::read_to_string(crate::eden::fichier_reglages(d)).map_or(true, |t| crate::eden::joueur1_au_clavier(&t));
                 encore_au_clavier && (en_partie || crate::manettes::guid_manette_pour_eden().is_none())
             }
+            // BigPEmu lie seul une manette branchée au lancement (au premier, ou ensuite par `AutoAssign` que Frogtend
+            // pose) ; sans manette Xbox branchée, le joueur 1 reste au clavier. (Pendant la partie, son fichier peut dater
+            // d'avant le lancement : seule la manette branchée compte.)
+            (Some("bigpemu"), Some(d)) => {
+                use crate::bigpemu::Joueur1;
+                let j = crate::bigpemu::joueur1(&crate::emulateurs_profils::dossier_du_profil(d, &profil));
+                matches!(j, Joueur1::AuClavier | Joueur1::PasEncore) && crate::manettes::premiere_manette_xinput().is_none()
+            }
             _ => false,
         };
         let famille = match crate::manettes::manette_branchee() {
@@ -3435,6 +3443,15 @@ pub async fn emulateur_installer_firehouse(
     } else {
         return Err(Erreur::Serveur("Firehouse n'a pas donné d'adresse sûre (https) pour ce paquet.".into()));
     }
+    // La taille annoncée par Firehouse (celle de l'accord) : un paquet d'une autre taille n'est jamais installé (sans
+    // empreinte — BigPEmu, Ryubing — c'est la seule vérification possible).
+    if let Some(annoncee) = p["taille"].as_u64().filter(|t| *t > 0) {
+        let recue = std::fs::metadata(&paquet).map(|m| m.len()).unwrap_or(0);
+        if recue != annoncee {
+            let _ = std::fs::remove_file(&paquet);
+            return Err(Erreur::Conflit(format!("Le paquet de {nom} n'a pas la taille annoncée ({recue} octets au lieu de {annoncee}) : rien n'est installé.")));
+        }
+    }
     if let Some(attendue) = p["sha256"].as_str().filter(|s| !s.is_empty()) {
         if crate::sauvegarde::empreinte(&paquet)?.to_lowercase() != attendue.to_lowercase() {
             let _ = std::fs::remove_file(&paquet);
@@ -3455,14 +3472,17 @@ pub async fn emulateur_installer_firehouse(
     // compilation au contrat 1.40 (MSVC → MinGW) : ses anciennes DLL ne restent pas mêlées aux nouvelles.
     // Seulement un émulateur que Frogtend a installé là (jamais un dossier trouvé ou installé à la main).
     let remplacer = deja_installe(&noyau, &id).is_some() && crate::emulateurs::famille_eden(&id);
-    let (pq, c, n) = (paquet.clone(), cible.clone(), nom.clone());
+    // BigPEmu : ses données sont un LIEN vers le profil de la dernière personne (`UserData\`) ; un paquet qui en
+    // porterait serait copié AU TRAVERS : refusé avant toute copie, comme pour Eden (`deposer_archive`).
+    let remplacer = remplacer || (id == "bigpemu" && deja_installe(&noyau, &id).is_some());
+    let (pq, c, n, id_install) = (paquet.clone(), cible.clone(), nom.clone(), id.clone());
     let r = tauri::async_runtime::spawn_blocking(move || {
         let port = match (&portable.0, &portable.1) {
             (Some(t), Some(n)) => Some((t.as_str(), n.as_str())),
             _ => None,
         };
         // `user\` : ses données ; `Profils\` : celles de Frogtend (qui est qui dans Eden : `.utilisateurs-frogtend`).
-        let garder: &[&str] = &["user", "Profils"];
+        let garder: &[&str] = if id_install == "bigpemu" { &["UserData", "Profils"] } else { &["user", "Profils"] };
         crate::emulateurs::installer_paquet_decrit(&n, &pq, &c, programme.as_deref(), port, remplacer.then_some(garder))
     })
     .await
@@ -6804,8 +6824,10 @@ async fn preparer_emulateur(
         noyau.journaliser(&format!("RPCS3 : {a}"));
     }
     let mut complete: Vec<String> = avant.iter().map(|a| format!("\"{a}\"")).collect();
+    // BigPEmu : jamais sans `-localdata`, l'image toujours en premier (bigpemu.rs).
+    let ligne = if f.id == "bigpemu" { crate::bigpemu::ligne_complete(ligne) } else { ligne.to_string() };
     if !ligne.trim().is_empty() {
-        complete.push(ligne.to_string());
+        complete.push(ligne);
     }
     Ok((programme.into(), complete.join(" ")))
 }

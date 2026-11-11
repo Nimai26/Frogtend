@@ -3,6 +3,7 @@
 //! Règle : les secrets (jeton Firehouse, identifiants des boutiques) restent de ce côté-ci.
 //! L'interface ne les reçoit jamais.
 
+pub mod bigpemu;
 pub mod bios;
 pub mod images_par_seconde;
 pub mod captures;

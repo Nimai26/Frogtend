@@ -2,8 +2,8 @@
 export const FAMILLE_EDEN = ['eden', 'eglantine', 'lichii'];
 
 /** Les émulateurs du catalogue que Firehouse résout (origine `Firehouse` côté cœur) : Eglantine (contrat 1.38), Lichii
- * (contrat 1.40). */
-export const PAR_FIREHOUSE = ['eglantine', 'lichii'];
+ * (contrat 1.40), BigPEmu (besoin 46 : depuis son site officiel). */
+export const PAR_FIREHOUSE = ['eglantine', 'lichii', 'bigpemu'];
 
 /** Une mise à jour à proposer ? Pour un émulateur résolu par Firehouse, toute version servie DIFFÉRENTE de l'installée
  * (Firehouse est juge : Eglantine passe de « daily-20261107 » à « v0.1.0-rc3 », que la comparaison des nombres donne

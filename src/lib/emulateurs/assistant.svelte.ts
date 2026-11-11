@@ -320,7 +320,7 @@ export async function installerParFirehouse(
   const maj = !!options.miseAJour;
   const oui = options.sansQuestion || await confirmer(`${maj ? '⬆ Mettre à jour' : '⬇ Installer'} ${nom}${p?.version ? ` ${p.version}` : ''} ?`, {
     message: [
-      `Firehouse donne sa source officielle et sa dernière version ; Frogtend la télécharge et vérifie qu’elle est intacte.${p?.taille ? ` Taille : ${taille(p.taille)}.` : ''}`,
+      `Firehouse donne sa source officielle et sa dernière version ; Frogtend la télécharge et vérifie ${p?.taille ? 'qu’elle a bien la taille annoncée' : 'qu’elle est intacte quand Firehouse le permet'}.${p?.taille ? ` Taille : ${taille(p.taille)}.` : ''}`,
       maj ? `Dossier : le sien (${nom})` : `Dossier : ${dossier}\\${nom} (ou le sien, s’il est déjà installé)`,
       maj && FAMILLE_EDEN.includes(id)
         ? 'La nouvelle version remplace l’ancienne ; tes parties, tes clés, ton firmware et tes réglages (son dossier « user ») ne sont jamais touchés, et l’ancienne version est gardée à l’abri à côté.'

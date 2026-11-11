@@ -238,6 +238,19 @@ pub const CATALOGUE: &[Fiche] = &[
         portable: Some("portable.ini"),
         dossiers_habituels: &["%PROGRAMFILES%\\mGBA", "%LOCALAPPDATA%\\Programs\\mGBA"],
     },
+    // Atari Jaguar et Jaguar CD (besoin 46, Firehouse 3.150.0) : gratuit, code fermé, paquet résolu par Firehouse depuis
+    // le site officiel (richwhitehouse.com/jaguar). L'image EN PREMIER ; `-localdata` = données dans `UserData\` à côté
+    // du programme (manuel officiel) : c'est son mode portable, sans fichier marqueur (bigpemu.rs).
+    Fiche {
+        id: "bigpemu",
+        nom: "BigPEmu",
+        alias: &["bigpemu"],
+        origine: Origine::Firehouse,
+        programme: "bigpemu.exe",
+        ligne: "\"%rom%\" -localdata",
+        portable: None,
+        dossiers_habituels: &[],
+    },
 ];
 
 /// La fiche d'un émulateur recommandé par Firehouse (d'après son nom).
@@ -1561,7 +1574,10 @@ mod tests {
             ("retroarch", None), // le paquet .7z est portable de lui-même
             ("ppsspp", None),    // portable tant qu'il n'y a pas d'installed.txt
             ("mgba", Some("portable.ini")), // src/core/config.c, relevé le 26/10
+            ("bigpemu", None), // `-localdata` dans sa ligne (manuel officiel, relevé le 11/11)
         ];
+        assert!(fiche("bigpemu").unwrap().ligne.contains("-localdata"));
+        assert_eq!(fiche_pour("BigPEmu").map(|f| f.id), Some("bigpemu"));
         for (id, portable) in attendu {
             assert_eq!(fiche(id).unwrap().portable, portable, "{id}");
         }

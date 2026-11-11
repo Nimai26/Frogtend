@@ -2556,3 +2556,9 @@ d'abord :
 - 11/11 (0.183.0) : « vas y code » (Seb) : Eden + manette PlayStation par le SDL3 embarqué (relevé sans ouverture :
   GUID, fournisseur, disposition ; CRC mis à zéro comme Eden) ; brochage HIDAPI d'après SDL_gamepad.c 3.4.8. Cemu +
   PlayStation : pas écrit (SDL2 dans Cemu 2.6, GUID différent possible) → relevé réel d'abord.
+- 11/11 (0.184.0) : « oui » (Seb) : fiches BigPEmu puis Ryubing (besoin 46). Relevé lecture seule de Firehouse
+  (`essai_bigpemu_ryubing`) ; Ryubing 1.3.3 lu dans son code (portable\, -f, --system-language, -r, --hide-updates ;
+  clavier d'origine, Discord, question de mise à jour ; manette SDL2 par RAWINPUT : identifiant à relever en vrai).
+  BigPEmu 1.221 ouvert SANS jeu dans D:\temp-tests-frogtend (accord de Seb « tu as mon accord ») : JSON, mode 0 = sans
+  bord plein écran, manette Xbox liée seule au 1er démarrage, AutoAssign=1 la lie ensuite. Fiche BigPEmu livrée :
+  UserData\ par profil (jonction), AutoAssign, figé au menu, schéma Jaguar, taille vérifiée.

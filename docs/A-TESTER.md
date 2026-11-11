@@ -6,6 +6,16 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## BigPEmu, Atari Jaguar (0.184.0)
+- [ ] Un jeu Jaguar ▸ 🎮 Préparer : la taille (10,8 Mo) est annoncée ; BigPEmu s'installe ; le jeu se lance en
+      plein écran.
+- [ ] Manette Xbox branchée avant : elle marche tout de suite ; 🎮 « Les touches » montre la manette Jaguar
+      (A = bouton B de la manette, B = A, C = X, Pause = Vue, Option = Menu).
+- [ ] Bouton Xbox : le menu de Frogtend s'ouvre, le jeu est en pause ; « Quitter » ferme BigPEmu.
+- [ ] Sauvegarder une partie (un jeu qui en a : Tempest 2000 garde ses records), quitter, changer de profil : l'autre
+      personne ne la voit pas ; revenir : elle est là.
+- [ ] Lancer un jeu manette débranchée, puis la brancher et relancer : la manette marche.
+
 ## Eden avec une manette PlayStation (0.183.0) — quand une manette PlayStation sera là
 - [ ] Brancher seulement la manette PlayStation (en USB, puis en Bluetooth), lancer un jeu Switch : la manette
       marche tout de suite ; 🎮 « Les touches » la montre ; le bouton PS ouvre le menu de Frogtend.

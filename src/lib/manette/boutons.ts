@@ -225,6 +225,21 @@ const EMULATEURS: Record<string, (plateforme: string, famille: Famille, wiimote:
           remarque: 'Seulement dans les jeux qui se jouent au joystick (souvent à choisir dans leur menu) ; les autres se jouent au clavier.',
         }
       : null,
+  // BigPEmu : ce qu'il lie seul à une manette Xbox (relevé le 11/11 sur BigPEmu 1.221 neuf, `bigpemu.rs`
+  // DISPOSITION_XBOX), que Frogtend n'écrit pas. Une manette PlayStation : non relevée, rien de dessiné.
+  bigpemu: (_plateforme, famille) =>
+    famille === 'xbox'
+      ? {
+          console: 'Jaguar',
+          boutons: {
+            b: 'A', a: 'B', x: 'C', select: 'Pause', start: 'Option', croix: CROIX, stickg: 'Stick (jeux analogiques)',
+            lb: 'Pavé : 4', y: 'Pavé : 5', rb: 'Pavé : 6', l3: 'Pavé : *', r3: 'Pavé : #',
+            lt: 'Tenue : le reste du pavé (A = 8, B = 3, X = 1, Y = 2, LB = 7, RB = 9, R3 = 0)',
+            rt: 'Tenue avec Start : le menu de BigPEmu',
+          },
+          remarque: 'Le pavé numérique de la manette Jaguar sert surtout aux jeux qui le demandent (options, armes).',
+        }
+      : null,
   // PPSSPP : sa propre disposition pour une manette XInput (Core/KeyMapDefaults.cpp `defaultXInputKeyMap`, relu le
   // 10/11), que Frogtend n'écrit pas : PPSSPP la prend seul. Une manette PlayStation y passe par DirectInput, dont les
   // numéros de boutons dépendent du modèle : rien de dessiné (jamais deviné).

@@ -693,6 +693,16 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             relier_memstick(emulateur, &p.join("memstick"))?;
             Ok(vec![])
         }
+        // BigPEmu : ses données (`-localdata` : `UserData\` à côté du programme) sont celles de la personne, par un
+        // lien (bigpemu.rs). Le joueur 1 encore au clavier prendra la manette branchée (`AutoAssign`). Un échec de la
+        // manette n'empêche jamais de jouer ; un échec du lien, si : on jouerait sur les parties d'un autre.
+        "bigpemu" => {
+            crate::bigpemu::relier_donnees(emulateur, p)?;
+            if let Err(e) = crate::bigpemu::lier_la_manette_branchee(emulateur, p) {
+                eprintln!("BigPEmu : manette non réglée ({e:?})");
+            }
+            Ok(vec![])
+        }
         // Xenia : les parties dans le dossier du profil (\`--content_root\`, xenia_main.cc).
         // Et la langue de la console (une fois, dès que Xenia a créé sa configuration) ; le bouton Xbox laissé au menu
         // de Frogtend (xenia.rs). Un échec de la langue n'empêche jamais de jouer.
@@ -871,6 +881,7 @@ pub fn dossier_donnees(id: &str, emulateur: &Path, profil: &str) -> PathBuf {
         "retroarch" | "duckstation" | "pcsx2" | "mgba" => p,
         "dolphin" => p.join("User"),
         "ppsspp" => emulateur.join("memstick"),
+        "bigpemu" => p.join(crate::bigpemu::DOSSIER_DONNEES),
         _ => emulateur.to_path_buf(),
     }
 }
@@ -1827,14 +1838,20 @@ pub fn compte_rpcs3(emulateur: &Path, profil: &str) -> Resultat<String> {
 /// administrateur) vers celui du profil. Un vrai dossier `memstick` déjà rempli (avant Frogtend) est renommé en
 /// `memstick (avant Frogtend)` : rien n'est effacé.
 pub fn relier_memstick(emulateur: &Path, cible: &Path) -> Resultat<()> {
+    relier_dossier(emulateur, "memstick", cible, "PPSSPP")
+}
+
+/// Le dossier `nom` de l'émulateur devient un lien (jonction Windows, sans droits administrateur) vers `cible` ; un
+/// vrai dossier déjà là est renommé `<nom> (avant Frogtend)` : rien n'est effacé.
+pub fn relier_dossier(emulateur: &Path, nom: &str, cible: &Path, quoi: &str) -> Resultat<()> {
     std::fs::create_dir_all(cible)?;
-    let lien = emulateur.join("memstick");
+    let lien = emulateur.join(nom);
     if let Ok(m) = std::fs::symlink_metadata(&lien) {
         let est_lien = m.file_type().is_symlink() || std::fs::read_link(&lien).is_ok();
         if est_lien {
             std::fs::remove_dir(&lien)?; // retire le LIEN seulement, pas ce vers quoi il pointe
         } else {
-            let de_cote = emulateur.join("memstick (avant Frogtend)");
+            let de_cote = emulateur.join(format!("{nom} (avant Frogtend)"));
             if de_cote.exists() {
                 return Err(Erreur::Refus(format!(
                     "{} et {} existent tous les deux : range-les avant de jouer.",
@@ -1850,9 +1867,9 @@ pub fn relier_memstick(emulateur: &Path, cible: &Path) -> Resultat<()> {
         .arg(&lien)
         .arg(cible)
         .output()
-        .map_err(|e| Erreur::Disque(format!("Impossible de créer le lien de PPSSPP ({e}).")))?;
+        .map_err(|e| Erreur::Disque(format!("Impossible de créer le lien de {quoi} ({e}).")))?;
     if !s.status.success() || !lien.exists() {
-        return Err(Erreur::Disque("Impossible de créer le lien du dossier memstick de PPSSPP.".into()));
+        return Err(Erreur::Disque(format!("Impossible de créer le lien du dossier {nom} de {quoi}.")));
     }
     Ok(())
 }
@@ -1877,6 +1894,8 @@ pub fn traces_hors_du_dossier(id: &str) -> Vec<PathBuf> {
         "dosbox-staging" => vec![env("LOCALAPPDATA").map(|a| a.join("DOSBox"))],
         // mGBA non portable (sans `portable.ini`) : `mCoreConfigDirectory`, dossier « mGBA » de l’AppData itinérant.
         "mgba" => vec![env("APPDATA").map(|a| a.join("mGBA"))],
+        // BigPEmu sans `-localdata` (manuel officiel).
+        "bigpemu" => vec![env("APPDATA").map(|a| a.join("BigPEmu"))],
         _ => vec![],
     };
     candidats.into_iter().flatten().filter(|p| p.is_dir()).collect()

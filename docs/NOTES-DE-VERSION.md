@@ -1,5 +1,20 @@
 # Notes de version de Frogtend
 
+## 0.184.0 — BigPEmu (Atari Jaguar) connu de Frogtend
+
+- 🎮 BigPEmu, l'émulateur conseillé pour la Jaguar et le Jaguar CD, a maintenant sa fiche dans Frogtend :
+  - sa taille est annoncée avant ton accord (10,8 Mo), et le paquet reçu doit avoir exactement cette taille ;
+  - **chaque personne a ses propres parties** (mémoire des cartouches, du Jaguar CD, sauvegardes d'état, réglages),
+    rangées dans son dossier et sauvegardées chez Firehouse comme les autres ; les parties faites avant cette version
+    sont copiées chez la première personne qui joue (l'ancien dossier est gardé, renommé « avant Frogtend ») ;
+  - la manette Xbox : BigPEmu la règle seul si elle est branchée au lancement ; Frogtend lui demande aussi de prendre
+    une manette branchée plus tard ;
+  - le bouton Xbox ouvre le menu de Frogtend, et BigPEmu est mis en pause pendant ce menu ;
+  - 🎮 « Les touches » montre la manette Jaguar (A, B, C, Pause, Option, et le pavé numérique) ;
+  - les mises à jour de BigPEmu sont proposées par Frogtend.
+- Pour tous les émulateurs servis par Firehouse : un paquet qui n'a pas la taille annoncée n'est jamais installé.
+- Ryubing (Switch) : pas encore (prochaine version).
+
 ## 0.183.0 — Eden avec une manette PlayStation
 
 - 🎮 Eden, Eglantine et Lichii (Switch) : une manette PlayStation (DualShock 4 ou DualSense) branchée seule est

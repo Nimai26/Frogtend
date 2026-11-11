@@ -200,7 +200,8 @@ fn copier_arbre(source: &Path, cible: &Path) -> Resultat<()> {
                 let r = rel.join(e.file_name());
                 // `is_symlink` couvre sous Windows les liens symboliques ET les jonctions (jamais un fichier compressé).
                 if t.is_symlink() {
-                    if e.file_name().eq_ignore_ascii_case("memstick") {
+                    // Les liens que Frogtend pose vers les profils : `memstick` (PPSSPP), `UserData` (BigPEmu, à la racine).
+                    if e.file_name().eq_ignore_ascii_case("memstick") || (rel.as_os_str().is_empty() && e.file_name().eq_ignore_ascii_case("UserData")) {
                         continue;
                     }
                     return Err(Erreur::Refus(format!(
@@ -415,6 +416,17 @@ mod tests {
                 assert!(!c3.exists(), "copie commencée retirée");
                 std::fs::remove_dir(&lien).unwrap();
             }
+            // La jonction `UserData` de BigPEmu (posée par Frogtend vers le profil) : admise, jamais suivie.
+            let b = d.path().join("BigPEmu");
+            let profil = b.join("Profils").join("Seb").join("UserData");
+            std::fs::create_dir_all(&b).unwrap();
+            std::fs::write(b.join("BigPEmu.exe"), b"exe").unwrap();
+            crate::emulateurs_profils::relier_dossier(&b, "UserData", &profil, "BigPEmu").unwrap();
+            std::fs::write(profil.join("game_eeprom.bigpeep"), b"partie").unwrap();
+            let b2 = d.path().join("Quatre").join("BigPEmu");
+            copier_arbre(&b, &b2).unwrap();
+            assert_eq!(std::fs::read(b2.join("Profils").join("Seb").join("UserData").join("game_eeprom.bigpeep")).unwrap(), b"partie");
+            assert!(!b2.join("UserData").exists(), "le lien n'est pas suivi (Frogtend le recrée au lancement)");
         }
     }
 
