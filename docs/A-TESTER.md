@@ -8,7 +8,7 @@
 
 ## BigPEmu : rappel des triches avant de jouer (0.190.0)
 - [x] (✅ Seb 12/11) Bubsy (« Infinite lives » cochée) : sous ▶ Jouer, la ligne « 🎯 Triches cochées… » est là (fiche et panneau).
-- [ ] Un autre jeu Jaguar sans triche : pas de ligne.
+- [x] (✅ Seb 12/11) Un autre jeu Jaguar sans triche : pas de ligne.
 - [ ] Taodbox, A sur Bubsy : le rappel s'affiche, le jeu se lance 3 s après.
 - [ ] Décocher la triche dans le menu en jeu, quitter : la ligne disparaît sous ▶ Jouer.
 
@@ -31,7 +31,7 @@
 - [x] (✅ Seb 11/11, aussi l'emplacement 4) Bouger un peu, menu, emplacement 3 ▸ 📂 Charger : la partie revient au moment sauvé (attendre ~2 s).
 - [ ] Sauver à nouveau dans l'emplacement 3 : Frogtend demande avant de remplacer.
 - [x] (✅ Seb 11/11) Vue + LT / Vue + RT (menu fermé) : sauvent / chargent dans l'emplacement choisi.
-- [ ] Un autre jeu Jaguar : ses emplacements sont vides (ceux de Bubsy ne s'y voient pas).
+- [x] (✅ Seb 12/11) Un autre jeu Jaguar : ses emplacements sont vides (ceux de Bubsy ne s'y voient pas).
 - [ ] À savoir : la sauvegarde faite en 0.185.0 n'est pas dans ces 10 emplacements (elle reste celle de BigPEmu,
       `state000.bigpstate`, jamais effacée).
 
