@@ -139,6 +139,13 @@ const EMULATEURS: Record<string, (plateforme: string, famille: Famille) => { con
   // `DISPOSITION_XINPUT`) : par POSITION comme sur la Wii U, comme la Switch ; le bouton Xbox reste au menu de Frogtend.
   // Une manette PlayStation seule : Frogtend n'écrit rien pour elle (manettes.rs) → rien de dessiné.
   cemu: (_plateforme, famille) => (famille === 'xbox' ? { console: 'Wii U (GamePad)', boutons: SWITCH_FROGTEND } : null),
+  // Azahar : la disposition que Frogtend écrit (azahar.rs `disposition`, celle de la configuration automatique
+  // d'Azahar), toute manette, par POSITION comme sur la 3DS ; le bouton Home reste au clavier : le bouton Xbox ouvre le
+  // menu de Frogtend.
+  azahar: () => ({
+    console: '3DS',
+    boutons: { ...SWITCH_FROGTEND, select: 'Select', start: 'Start', l3: '', r3: '', stickg: 'Pad circulaire', stickd: 'Stick C (New 3DS)' },
+  }),
   // Dolphin : seulement la GameCube (la Wii a ses propres références de Wiimote).
   dolphin: (plateforme) =>
     /gamecube/i.test(plateforme)

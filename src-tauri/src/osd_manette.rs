@@ -71,9 +71,9 @@ const GACHETTE: u8 = 128;
 pub const GUIDE_COURT: Duration = Duration::from_millis(1000);
 
 /// Les émulateurs qui se servent du bouton Xbox, ou dont on ne sait pas (RPCS3 : le bouton PS ouvre son menu ; PPSSPP
-/// et Vita3K : leur pause ; Cemu : libéré seulement avec la manette de Frogtend ; xemu : son menu, en dur, ui/xui/main.cc ; Eden : pas vérifié). Le bouton y
+/// et Vita3K : leur pause ; Cemu : libéré seulement avec la manette de Frogtend ; xemu : son menu, en dur, ui/xui/main.cc ; Azahar : libéré tant que son bouton Home n'est pas sur une manette ; Eden : pas vérifié). Le bouton y
 /// reste au jeu : on ne promet pas un double menu. Xenia n'y est plus : Frogtend lui passe `--guide_button=false`.
-const GUIDE_A_L_EMULATEUR: [&str; 8] = ["rpcs3", "xemu", "eden", "eglantine", "lichii", "cemu", "ppsspp", "vita3k"];
+const GUIDE_A_L_EMULATEUR: [&str; 9] = ["rpcs3", "xemu", "eden", "eglantine", "lichii", "cemu", "ppsspp", "vita3k", "azahar"];
 
 /// Ce qui fait tourner la partie, pour le bouton Xbox.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.180.0 — Azahar réglé : la manette, la langue et l'image des touches de la 3DS
+
+- 🎮 Azahar (3DS) : ta manette marche dès la première partie (avant, ses touches étaient au clavier). N'importe quelle
+  manette, Xbox ou PlayStation, rangée comme sur la 3DS. Si tu as déjà réglé ta manette dans Azahar, elle est gardée.
+- 🌍 Les jeux s'affichent dans la langue de Windows (le français chez toi) au lieu de l'anglais, à partir de la
+  DEUXIÈME partie (Azahar crée la mémoire de sa console à la première), une fois pour chaque profil.
+- 🕹 Le menu en jeu montre l'image des touches de la 3DS ; le bouton Xbox ouvre le menu de Frogtend.
+
 ## 0.179.0 — xemu réglé : la langue et l'image des touches de la Xbox
 
 - 🌍 xemu (Xbox) : les jeux s'affichent dans la langue de Windows (le français chez toi) au lieu de l'anglais, à

@@ -93,6 +93,18 @@ describe('les boutons de la manette d’origine', () => {
     expect(schema(infos({ emulateur: 'xenia', coeur: null, famille: 'playstation' })).lignes[0].nom).toBe('Croix');
   });
 
+  it('Azahar : la 3DS par position, sans les clics des sticks', () => {
+    const t = schema(infos({ emulateur: 'azahar', coeur: null, plateforme: 'Nintendo 3DS' }));
+    expect(t.etat).toBe('connu');
+    expect(t.console).toBe('3DS');
+    expect(role(t, 'a')).toBe('B');
+    expect(role(t, 'b')).toBe('A');
+    expect(role(t, 'lt')).toBe('ZL');
+    expect(role(t, 'select')).toBe('Select');
+    expect(role(t, 'l3')).toBeUndefined();
+    expect(role(t, 'stickg')).toBe('Pad circulaire');
+  });
+
   it('xemu : la manette Xbox d’origine (Blanc et Noir), et son menu sur le bouton Xbox', () => {
     const xbox = schema(infos({ emulateur: 'xemu', coeur: null, plateforme: 'Microsoft Xbox' }));
     expect(xbox.etat).toBe('connu');

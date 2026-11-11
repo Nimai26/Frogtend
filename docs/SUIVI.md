@@ -2538,3 +2538,8 @@ d'abord :
   portable, xemu fermé, encore en anglais ; langues `XC_LANGUAGE_*` (Cxbx-Reloaded) ; schéma 🎮 Xbox (Blanc/Noir) et
   disposition changée lue dans `gamepad_mappings` du xemu.toml du profil. Pas d'EEPROM réelle sur Venkman (xemu
   jamais lancé) : vérifié sur une EEPROM faite comme xemu la fait.
+- 11/11 (0.180.0) : Azahar (code relu, master) : touches d'origine au clavier → `azahar::regler_manette` écrit le
+  profil courant (`profiles\<n>\…`, `engine:sdl,api:controller,maptype:all` = toute manette, sdl_impl.cpp ;
+  disposition `xinput_to_3ds_mapping` sans Home) ; bouton Xbox libre tant que Home n'est pas sur une manette
+  (`guide_libre`) ; langue : bloc 0x000A0002 du fichier `config` de la NAND du profil (cfg.cpp), une fois par
+  profil ; schéma 🎮 3DS ; « Clavier et souris » rend le clavier d'origine.

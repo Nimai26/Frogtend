@@ -384,6 +384,9 @@ fn regler_manette(id: &str, emulateur: &Path, utilisateur: Option<&Path>, manett
         Manette::Clavier if crate::emulateurs::famille_eden(id) => {
             crate::eden::rendre_le_clavier(emulateur)?;
         }
+        Manette::Clavier if id == "azahar" => {
+            crate::azahar::rendre_le_clavier(emulateur)?;
+        }
         Manette::Clavier => {}
         Manette::Auto(r) => {
             crate::manettes::regler(id, emulateur, utilisateur, false)?;
@@ -825,6 +828,12 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
                     ("sdmc_directory", vec![barre(&sdmc)]),
                 ],
             )?;
+            // La langue de la console de ce profil (une fois, dès qu'Azahar a créé sa sauvegarde système ; azahar.rs)
+            // et la manette du joueur 1 (ou le clavier choisi pour ce jeu) : un échec n'empêche jamais de jouer.
+            if let Err(e) = crate::azahar::regler_langue(emulateur, p, langue_et_clavier_de_windows().0) {
+                eprintln!("Azahar : langue non posée ({e:?})");
+            }
+            let _ = regler_manette(id, emulateur, None, manette);
             Ok(vec![])
         }
         _ => Ok(vec![]),
@@ -2149,6 +2158,12 @@ mod tests {
         assert!(nand.starts_with('"'), "{nand}");
         let attendu = format!("{}/", dossier_du_profil(&racine, profil).join("nand").display().to_string().replace('\\', "/"));
         assert_eq!(lire_valeur_qt(&nand), attendu);
+        // Et la manette du joueur 1, à chaque lancement ; « Clavier et souris » pour un jeu : rendue au clavier.
+        let a = crate::manettes::lire_ini(&ini, "Controls", "profiles\\1\\button_a").pop().unwrap_or_default();
+        assert!(lire_valeur_qt(&a).contains("maptype:all"), "{ini}");
+        preparer("azahar", &racine, profil, &[], &Manette::Clavier).unwrap();
+        let ini = std::fs::read_to_string(racine.join("user/config/qt-config.ini")).unwrap();
+        assert_eq!(crate::manettes::lire_ini(&ini, "Controls", "profiles\\1\\button_a\\default"), ["true"]);
     }
 
     #[test]

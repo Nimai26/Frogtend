@@ -240,6 +240,8 @@ pub fn regler(id: &str, emulateur: &Path, utilisateur_dolphin: Option<&Path>, fo
         "rpcs3" => regler_rpcs3_pour_partie(emulateur, forcer, manette_branchee()),
         // Eden, Eglantine : seulement portable, fermé, joueur 1 encore au clavier (ou `forcer`) — eden.rs.
         "eden" | "eglantine" | "lichii" => crate::eden::regler_manette(emulateur, forcer, guid_manette_xinput().as_deref()),
+        // Azahar : toute manette (aucun GUID), seulement portable, fermé, joueur 1 encore au clavier (ou `forcer`).
+        "azahar" => crate::azahar::regler_manette(emulateur, forcer),
         // Cemu : le GamePad Wii U sur la manette XInput branchée (sinon la première : celle qu'on branchera, ou celle
         // de Sunshine). Une manette PlayStation seule n'est pas XInput : rien d'écrit (jamais un profil qui ne marche pas).
         "cemu" => match manette_branchee() {
@@ -302,6 +304,8 @@ pub fn disposition_de_frogtend(id: &str, emulateur: &Path, profil: Option<&Path>
             let Some(p) = profil else { return true };
             crate::xemu::disposition_d_origine(std::fs::read_to_string(p.join("xemu.toml")).ok().as_deref())
         }
+        // Azahar : la disposition de Frogtend, ou un joueur 1 encore au clavier (Frogtend l'écrira au lancement).
+        "azahar" => crate::azahar::disposition_de_frogtend(emulateur),
         // Vita3K : sa disposition d'origine (SDL, par position), tant que la personne ne l'a pas changée.
         "vita3k" => crate::vita3k::disposition_d_origine(emulateur),
         // PPSSPP : `memstick` est relié au dossier du profil (`relier_memstick`), ses touches y sont rangées.

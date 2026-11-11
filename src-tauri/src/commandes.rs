@@ -2163,10 +2163,13 @@ fn suivre_manette_menu(app: &AppHandle, numero: u64) {
     let home_retire = partie.as_ref().and_then(|p| p.dossier_emulateur.as_deref()).is_some_and(|d| crate::eden::home_retire(std::path::Path::new(d)));
     // Cemu avec la manette de Frogtend (XInput) : il ne voit pas le bouton Xbox.
     let cemu_libre = partie.as_ref().and_then(|p| p.dossier_emulateur.as_deref()).is_some_and(|d| crate::cemu::guide_libre(std::path::Path::new(d)));
+    // Azahar : son bouton Home pas sur une manette (la disposition de Frogtend le laisse au clavier).
+    let azahar_libre = partie.as_ref().and_then(|p| p.dossier_emulateur.as_deref()).is_some_and(|d| crate::azahar::guide_libre(std::path::Path::new(d)));
     let moteur = match (emulateur.as_deref(), partie.as_ref().is_some_and(|p| p.dossier_jeu.is_some())) {
         (Some("rpcs3"), _) if ps_retire => crate::osd_manette::Moteur::EmulateurLibere,
         (Some(e), _) if home_retire && crate::emulateurs::famille_eden(e) => crate::osd_manette::Moteur::EmulateurLibere,
         (Some("cemu"), _) if cemu_libre => crate::osd_manette::Moteur::EmulateurLibere,
+        (Some("azahar"), _) if azahar_libre => crate::osd_manette::Moteur::EmulateurLibere,
         (Some(e), _) => crate::osd_manette::Moteur::Emulateur(e),
         (None, true) => crate::osd_manette::Moteur::JeuPc,
         (None, false) => crate::osd_manette::Moteur::Inconnu,
@@ -3066,10 +3069,12 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
     let ps_retire = dossier.as_deref().is_some_and(|d| crate::manettes::rpcs3_ps_retire(d) && crate::pilotage::rpcs3_active_est_default(d, None));
     let home_retire = dossier.as_deref().is_some_and(crate::eden::home_retire);
     let cemu_libre = dossier.as_deref().is_some_and(crate::cemu::guide_libre);
+    let azahar_libre = dossier.as_deref().is_some_and(crate::azahar::guide_libre);
     let moteur = match (emulateur.as_deref(), jeu_pc) {
         (Some("rpcs3"), _) if ps_retire => crate::osd_manette::Moteur::EmulateurLibere,
         (Some(e), _) if home_retire && crate::emulateurs::famille_eden(e) => crate::osd_manette::Moteur::EmulateurLibere,
         (Some("cemu"), _) if cemu_libre => crate::osd_manette::Moteur::EmulateurLibere,
+        (Some("azahar"), _) if azahar_libre => crate::osd_manette::Moteur::EmulateurLibere,
         (Some(e), _) => crate::osd_manette::Moteur::Emulateur(e),
         (None, true) => crate::osd_manette::Moteur::JeuPc,
         (None, false) => crate::osd_manette::Moteur::Inconnu,

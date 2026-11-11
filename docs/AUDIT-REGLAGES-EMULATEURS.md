@@ -19,7 +19,7 @@ Légende : ✅ fait · ⚠ fait avec un risque · ❌ absent · n/a sans objet.
 | PPSSPP | ✅ par PPSSPP lui-même (XInput d'office, KeyMapDefaults.cpp) | ✅ par PPSSPP lui-même (`DefaultLangRegion`, jeux compris) | ⚠ à PPSSPP : son menu de pause (`NKCODE_HOME`), gardé | ppsspp.ini créé (une ligne, sans effet de bord : `FirstRun` ne sert à rien) | ✅ 0.174.0 manette Xbox ; PlayStation (DirectInput) : rien |
 | Xenia | ✅ par Xenia lui-même (XInput ; SDL pour les autres) | ✅ 0.176.0 : `xconfig.settings` (binaire), une fois, à la 2e partie (Xenia le crée à la 1re) | ✅ 0.176.0 : `--guide_button=false` à chaque partie | n/a | ✅ 0.176.0 |
 | xemu | ✅ par xemu lui-même (`auto_bind` : 1re manette SDL au port 1) | ✅ 0.179.0 : `eeprom.bin` (octet 0x90, somme refaite), une fois, à la 2e partie (xemu la crée à la 1re) | ⚠ à xemu : son menu, en dur (ui/xui/main.cc), gardé | xemu.toml créé | ✅ 0.179.0 |
-| Azahar | ❌ | ❌ | ⚠ donné au menu sans relevé (la 3DS a un bouton Home) | n/a | ❌ |
+| Azahar | ✅ 0.180.0 : profil courant de `qt-config.ini`, toute manette (`maptype:all`), disposition de l'auto-configuration d'Azahar (par position) ; jamais par-dessus celle de la personne | ✅ 0.180.0 : fichier `config` de la NAND du profil (bloc 0x000A0002), une fois par profil, à la 2e partie | ✅ 0.180.0 : Home laissé au clavier → menu de Frogtend ; à Azahar si la personne a mis Home sur sa manette | qt-config.ini créé avec le profil de manette | ✅ 0.180.0 |
 | Vita3K | ✅ par Vita3K lui-même (SDL, par position, toute manette) | ✅ 0.175.0 : `sys-lang`, une fois (l'interface suit déjà Windows) ; accueil anglais retiré une fois, seulement firmware installé (système `fs\vs0\sys\external` et polices `fs\sa0`, 0.177.0) | ⚠ à Vita3K : pause, en dur (`on_ps_button`), gardé | config.yml créé ; firmware servi (besoin 48) installé par Frogtend 0.177.0 | ✅ 0.175.0 |
 | mGBA | ❌ | n/a | ✅ | n/a | ❌ |
 | DOSBox Staging | joysticktype auto | n/a | ✅ | .conf créé | ❌ |
@@ -46,7 +46,9 @@ Légende : ✅ fait · ⚠ fait avec un risque · ❌ absent · n/a sans objet.
      2 322) ; Frogtend ne crée jamais ce fichier, d'où la langue à la 2e partie seulement.
    - ✅ xemu (0.179.0) : langue dans l'EEPROM (256 o, section utilisateur non chiffrée) ; seulement celle d'origine
      du dossier d'xemu portable, jamais une EEPROM choisie ailleurs.
-   - Azahar : manette SDL ; la langue est dans la sauvegarde système.
+   - ✅ Azahar (0.180.0) : touches d'origine au CLAVIER → profil de manette écrit (comme Eden, sans GUID) ; langue dans
+     la sauvegarde système (un octet, pas de somme). Non vérifié : un jeu japonais lancé en premier peut faire
+     réécrire le japonais par Azahar (`UpdatePreferredRegionCode`) ; alors le français n'est pas posé (« encore anglais »).
    - PPSSPP : `[SystemParam]`.
    - mGBA, DOSBox et MAME : schéma uniquement.
 6. **Points mineurs** :

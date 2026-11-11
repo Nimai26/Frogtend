@@ -657,14 +657,14 @@ pub(crate) fn lire_reglages(eden: &Path) -> Resultat<String> {
 /// Peut-on écrire les réglages de cet Eden (portable, fermé) ? Son fichier peut ne pas exister encore : réglé DÈS la
 /// première partie d'une installation neuve (✅ Seb 08/11, Lichii : « ce doit être systématique à l'installation de
 /// TOUT nouvel émulateur »). Un chemin occupé par autre chose qu'un fichier : jamais touché.
-fn reglages_modifiables(eden: &Path) -> bool {
+pub(crate) fn reglages_modifiables(eden: &Path) -> bool {
     let f = fichier_reglages(eden);
     portable(eden) && crate::lancement::processus_du_dossier(eden).is_empty() && (f.is_file() || !f.exists())
 }
 
 /// Écrit des clés QSettings (chacune avec sa ligne `\default=false`, sinon Qt garde la valeur d'origine) dans une
 /// section, configuration d'avant mise à l'abri. Rend vrai si le fichier a changé.
-fn ecrire_qt(eden: &Path, texte: &str, section: &str, valeurs: &[(&str, String)]) -> Resultat<bool> {
+pub(crate) fn ecrire_qt(eden: &Path, texte: &str, section: &str, valeurs: &[(&str, String)]) -> Resultat<bool> {
     let defauts: Vec<String> = valeurs.iter().map(|(c, _)| format!("{c}\\default")).collect();
     let mut toutes: Vec<(&str, &str)> = Vec::new();
     for d in &defauts {

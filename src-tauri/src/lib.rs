@@ -52,6 +52,7 @@ pub mod eden;
 pub mod cemu;
 pub mod vita3k;
 pub mod xemu;
+pub mod azahar;
 pub mod xenia;
 pub mod identification;
 pub mod pack_mame;

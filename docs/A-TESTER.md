@@ -6,6 +6,11 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Azahar (0.180.0)
+- [ ] Un jeu 3DS avec un Azahar jamais installé : la manette marche tout de suite ; 🎮 « Les touches » montre la 3DS.
+- [ ] Le bouton Xbox ouvre le menu de Frogtend.
+- [ ] Quitter, relancer le jeu : il est en français (s'il a le français).
+
 ## xemu (0.179.0)
 - [ ] Un jeu Xbox : la manette marche ; 🎮 « Les touches » montre la Xbox (Blanc et Noir sur LB et RB).
 - [ ] Quitter, relancer le jeu : il est en français (s'il a le français).
