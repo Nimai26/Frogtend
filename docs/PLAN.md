@@ -118,6 +118,16 @@ git 2.51, Node 24.11, pnpm 10.32, Rust 1.94 (stable, MSVC), Visual Studio Build 
 > rapides…) à la manette ET au clavier, ceux d'aujourd'hui par défaut ; l'image « 🎮 Les touches » du menu en jeu
 > montre toujours les raccourcis réellement réglés. À faire après les états/effets/triches de BigPEmu.
 >
+> ⚠ **Relancer pour appliquer, et Reset partout (Seb, 12/11, après l'effet BigPEmu validé) :** « pour tout émulateur
+> le supportant, un truc qui dit quand un restart est nécessaire, demander de confirmer et on restart auto pour la
+> prise en compte des modifications ; en plus de quitter, un bouton reset éventuellement ; comme toujours normalisé
+> avec tous les systèmes compatibles ». → (1) un réglage qui ne vaut qu'au prochain lancement (effet, triches de
+> BigPEmu, compteur d'images de RPCS3…) propose « 🔄 Relancer maintenant », avec confirmation (la partie non
+> sauvegardée serait perdue : proposer une sauvegarde rapide d'abord quand l'émulateur en a) ; Frogtend quitte
+> proprement et relance le même jeu. (2) « Recommencer » (Reset) dans le menu pour TOUS les émulateurs qui le
+> permettent (déjà : RetroArch, DuckStation, Dolphin, PCSX2, MAME, DOSBox Staging ; BigPEmu : son action « Reload
+> Image » à relever ; les autres à l'audit).
+>
 > ⚠ **Mises à jour des émulateurs (Seb, 08/11, après l'essai de la 0.167.0 : « les mises à jour ont l'air bonnes et
 > faites »).** (1) **L'avancement se voit** pendant une mise à jour lancée depuis ⚙ Réglages ▸ Émulateurs (« pas de
 > suivi de l'avancement ») ; une seconde demande pendant qu'une autre tourne est dite clairement (essai : RPCS3 et
