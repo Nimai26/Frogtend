@@ -43,10 +43,16 @@
   // L'écran des effets d'image (lot 2, RetroArch).
   let effets = $state(false);
 
-  /** Poser un effet : le menu se ferme et le jeu repart avec (pour comparer, on rouvre le menu). */
+  /** Poser un effet : le menu se ferme et le jeu repart avec (pour comparer, on rouvre le menu). BigPEmu (pas en
+   * direct) : le choix est gardé pour ce jeu et vaut dès la prochaine partie ; le menu reste ouvert. */
   async function poserEffet(id: string) {
     try {
       await api.menuJeuEffet(id);
+      if (menu?.effets && !menu.effets.en_direct) {
+        menu = { ...menu, effets: { ...menu.effets, actuel: id === 'aucun' ? null : id } };
+        await emit('menu-effet-garder', { jeu: menu.jeu, plateforme: menu.plateforme, effet: id, pour: 'jeu' });
+        toast(`🖼 C’est noté : « ${libelleEffet(id)} » pour ce jeu, dès ta prochaine partie.`, 'ok');
+      }
     } catch (e) {
       toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
     }
@@ -56,7 +62,7 @@
   async function garderEffet(pour: 'jeu' | 'console') {
     if (!menu) return;
     await emit('menu-effet-garder', { jeu: menu.jeu, plateforme: menu.plateforme, effet: menu.effets?.actuel ?? 'aucun', pour });
-    toast(`🖼 « ${libelleEffet(menu.effets?.actuel ?? undefined)} » gardé ${pour === 'jeu' ? 'pour ce jeu' : 'pour toute la console'}.`);
+    toast(`🖼 « ${libelleEffet(menu.effets?.actuel ?? undefined)} » gardé ${pour === 'jeu' ? 'pour ce jeu' : 'pour toute la console'}${menu.effets?.en_direct === false ? ', dès ta prochaine partie' : ''}.`);
   }
 
   // L'écran des boutons de la manette (lot 4d), lu à la demande.
@@ -251,9 +257,35 @@
   /** Activer ou couper une triche : le menu se ferme et le jeu la reçoit (RetroArch la confirme en haut de l'écran).
    * La première activation de la partie : une mise en garde (la partie est d'abord mise à l'abri par le cœur, qui dit
    * si c'est déjà fait pour cette partie). */
+  // Une bascule de triche en cours (BigPEmu : des appuis répétés ne font qu'un choix à la fois).
+  let basculeEnCours = false;
   async function basculerTriche(i: number) {
     const t = menu?.triches?.[i];
-    if (!menu || !t) return;
+    if (!menu || !t || basculeEnCours) return;
+    // BigPEmu : le choix vaut au prochain lancement (il ne lit ses triches qu'au démarrage) ; le menu reste ouvert.
+    if (!menu.triches_en_direct) {
+      if (!t.active && !menu.triches?.some((x) => x.active)) {
+        const oui = await confirmer(`🎯 Cocher « ${t.titre} » ?`, {
+          message:
+            'Une triche peut abîmer une partie ou bloquer un jeu. Au prochain lancement, avant de jouer, Frogtend garde une copie de ta partie de ce jeu, à côté.\n\nLa triche vaut dès ta prochaine partie. Au démarrage, une petite fenêtre en anglais montre tes triches déjà cochées : valide-la avec son bouton « Accept » pour jouer avec.',
+          libelleValider: '🎯 Cocher',
+        });
+        if (!oui) return;
+      }
+      basculeEnCours = true;
+      try {
+        await api.menuJeuTriche(i);
+        if (!menu) return;
+        const l = menu.triches?.map((x, k) => (k === i ? { ...x, active: !x.active } : x)) ?? null;
+        menu = { ...menu, triches: l };
+        toast(`🎯 C’est noté : « ${t.titre} » ${t.active ? 'coupée' : 'cochée'} dès ta prochaine partie.`, 'ok');
+      } catch (e) {
+        toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
+      } finally {
+        basculeEnCours = false;
+      }
+      return;
+    }
     if (!t.active && !menu.abri_triches) {
       const oui = await confirmer(`🎯 Activer « ${t.titre} » ?`, {
         message:
@@ -547,7 +579,11 @@
   {:else if effets && menu.effets}
     <header>
       <h1>🖼 Effet d’image</h1>
-      <p class="muted">Choisis un effet : le menu se ferme et le jeu repart avec. Pour comparer, rouvre le menu.</p>
+      {#if menu.effets.en_direct}
+        <p class="muted">Choisis un effet : le menu se ferme et le jeu repart avec. Pour comparer, rouvre le menu.</p>
+      {:else}
+        <p class="muted">Choisis un effet pour ce jeu : il vaut dès ta prochaine partie (cet émulateur ne le change pas en cours de jeu).</p>
+      {/if}
       {#if menu.effets.de_la_personne}<p class="muted">Ton effet réglé dans RetroArch revient à la prochaine partie.</p>{/if}
     </header>
     <div class="liste" bind:this={liste}>
@@ -561,7 +597,9 @@
         </button>
       {/each}
       {#if !menu.effets.de_la_personne}
-        <button class="btn" onclick={() => garderEffet('jeu')}>💾 Garder « {libelleEffet(menu.effets.actuel ?? undefined)} » pour ce jeu</button>
+        {#if menu.effets.en_direct}
+          <button class="btn" onclick={() => garderEffet('jeu')}>💾 Garder « {libelleEffet(menu.effets.actuel ?? undefined)} » pour ce jeu</button>
+        {/if}
         <button class="btn" onclick={() => garderEffet('console')}>💾 Le garder pour toute la console</button>
       {/if}
       <button class="btn" onclick={() => revenir(() => (effets = false), '[data-ecran="effets"]')}>← Retour</button>
@@ -579,7 +617,14 @@
   {:else if triches && menu.triches}
     <header>
       <h1>🎯 Triches</h1>
-      <p class="muted">Choisis une triche : le menu se ferme, et le jeu l’active ou la coupe.</p>
+      {#if menu.triches_en_direct}
+        <p class="muted">Choisis une triche : le menu se ferme, et le jeu l’active ou la coupe.</p>
+      {:else}
+        <p class="muted">
+          Coche ou décoche : ton choix vaut dès ta prochaine partie. Au démarrage, une petite fenêtre en anglais montre tes
+          triches cochées : valide-la avec son bouton « Accept » pour jouer avec.
+        </p>
+      {/if}
     </header>
     <div class="liste" bind:this={liste}>
       {#if menu.triches.length > 8}
@@ -590,7 +635,11 @@
           <span aria-hidden="true">{t.active ? '✅' : '⬜'}</span> {t.titre}
         </button>
       {:else}
-        <p class="muted">Aucune triche pour ce jeu. Tu peux en ajouter hors partie : sa fiche ▸ 🎯 Triches et mods.</p>
+        {#if menu.triches_en_direct}
+          <p class="muted">Aucune triche pour ce jeu. Tu peux en ajouter hors partie : sa fiche ▸ 🎯 Triches et mods.</p>
+        {:else}
+          <p class="muted">L’émulateur n’a pas de triche pour ce jeu.</p>
+        {/if}
       {/each}
       <button class="btn" onclick={() => revenir(() => (triches = false), '[data-ecran="triches"]')}>← Retour</button>
     </div>
@@ -685,7 +734,9 @@
       {/if}
       {#if menu.triches}
         <button class="btn" data-ecran="triches" onclick={() => revenir(() => (triches = true))}>
-          🎯 Triches{trichesActives ? ` (${trichesActives} active${trichesActives > 1 ? 's' : ''})` : ''}
+          🎯 Triches{trichesActives
+            ? ` (${trichesActives} ${menu.triches_en_direct ? 'active' : 'cochée'}${trichesActives > 1 ? 's' : ''})`
+            : ''}
         </button>
       {/if}
       {#if cheatEngine}<button class="btn" onclick={brancherCheatEngine}>🧰 Cheat Engine</button>{/if}

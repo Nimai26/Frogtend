@@ -701,6 +701,10 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             if let Err(e) = crate::bigpemu::lier_la_manette_branchee(emulateur, p) {
                 eprintln!("BigPEmu : manette non réglée ({e:?})");
             }
+            // F13 / F14 / F15 pour sauver, charger et capturer depuis le menu (un échec : le menu ne les propose pas).
+            if let Err(e) = crate::bigpemu::poser_raccourcis(emulateur, p) {
+                eprintln!("BigPEmu : touches du menu non posées ({e:?})");
+            }
             Ok(vec![])
         }
         // Xenia : les parties dans le dossier du profil (\`--content_root\`, xenia_main.cc).

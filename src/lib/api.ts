@@ -605,12 +605,15 @@ export interface EtatMenuJeu {
   /** Les triches du jeu activables depuis le menu (RetroArch hors mode hardcore) ; `[]` : aucune posée ; `null` :
    * pas de triches depuis le menu. */
   triches: { titre: string; active: boolean }[] | null;
+  /** Les triches changent tout de suite (RetroArch) ; sinon (BigPEmu) le choix vaut au prochain lancement. */
+  triches_en_direct: boolean;
   /** La partie du jeu est déjà à l'abri pour cette partie (la mise en garde a été lue). */
   abri_triches: boolean;
   /** RPCS3 a refusé une sauvegarde rapide faute de son « mode compatible ». */
   refus_etat: boolean;
-  /** RetroArch : les effets d'image changeables en jeu (`null` : pas d'écran). */
-  effets: { presents: string[]; actuel: string | null; de_la_personne: boolean } | null;
+  /** Les effets d'image (`null` : pas d'écran) : RetroArch les change tout de suite (`en_direct`) ; BigPEmu au
+   * prochain lancement. */
+  effets: { presents: string[]; actuel: string | null; de_la_personne: boolean; en_direct: boolean } | null;
   /** Les images par seconde : affichées (`null` : inconnu) ; la bascule se voit-elle tout de suite (sinon : à la
    * prochaine partie). `null` : pas d'entrée. */
   fps: { affiche: boolean | null; en_direct: boolean } | null;

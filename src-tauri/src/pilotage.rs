@@ -77,6 +77,11 @@ pub fn touche(emulateur: &str, a: Action) -> Option<Touche> {
         // Eden, Eglantine, Lichii : « Toggle Performance Overlay », Ctrl+V d'origine (main_window.cpp ; seulement s'il
         // n'a pas été changé : `images_par_seconde::eden_en_direct`, vérifié au lancement).
         ("eden" | "eglantine" | "lichii", Action::ImagesParSeconde) => Some(Touche { ctrl: true, ..t("V") }),
+        // BigPEmu : F13 / F14 / F15 que Frogtend lie à Save State / Load State / Screenshot (`bigpemu::RACCOURCIS`,
+        // posées avant le lancement ; le menu ne les propose que si elles sont en place).
+        ("bigpemu", Action::SauverEtat) => Some(t("F13")),
+        ("bigpemu", Action::ChargerEtat) => Some(t("F14")),
+        ("bigpemu", Action::Capture) => Some(t("F15")),
         _ => None,
     }
 }
@@ -101,6 +106,8 @@ pub fn actions(emulateur: &str) -> Vec<Action> {
         "rpcs3" => vec![Capture, Muet],
         // La famille d'Eden : le compteur d'images par seconde (retiré si son raccourci a été changé : `menu_jeu::etat`).
         "eden" | "eglantine" | "lichii" => vec![ImagesParSeconde],
+        // BigPEmu (✅ Seb 11/11 : tout ce que l'émulateur propose) : ses états et sa capture, par les touches de Frogtend.
+        "bigpemu" => vec![SauverEtat, ChargerEtat, Capture],
         _ => vec![],
     }
 }
@@ -1056,7 +1063,7 @@ mod tests {
 
     #[test]
     fn chaque_action_a_son_moyen() {
-        for e in ["retroarch", "duckstation", "pcsx2", "dolphin", "dosbox-staging"] {
+        for e in ["retroarch", "duckstation", "pcsx2", "dolphin", "dosbox-staging", "bigpemu"] {
             for a in actions(e) {
                 if e == "retroarch" {
                     assert!(!commande_retroarch(a).is_empty());

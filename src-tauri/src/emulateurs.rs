@@ -994,7 +994,8 @@ pub fn fichier_effet(dossier: &Path, chemin: &str) -> Option<PathBuf> {
 /// et le dossier de RetroArch) passe devant : jamais remplacé. Refusé (`Err`, dit à la personne, le jeu se lance
 /// quand même) : un effet inconnu ou absent de ce RetroArch, un pilote vidéo qui ne le lit pas.
 pub fn shader_retroarch(dossier: &Path, choix: &str, coeur: Option<&str>, noms: &[&str]) -> Result<ChoixEffet, String> {
-    if choix == "aucun" {
+    // « aucun », ou un effet de BigPEmu choisi pour la même console : rien pour RetroArch.
+    if choix == "aucun" || choix.starts_with(crate::bigpemu::PREFIXE_EFFET) {
         return Ok(ChoixEffet::Aucun);
     }
     let (_, libelle, chemin) = EFFETS_IMAGE.iter().find(|(id, ..)| *id == choix).ok_or_else(|| format!("effet d'image inconnu : {choix}"))?;

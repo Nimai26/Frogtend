@@ -1040,7 +1040,8 @@ async function choisirEtatsCompatibles(id: number) {
   }
 }
 
-/** L'effet d'image de RetroArch pour ce jeu : le sien, sinon celui de sa console (le cœur l'ignore hors RetroArch). */
+/** L'effet d'image pour ce jeu : le sien, sinon celui de sa console (RetroArch ; BigPEmu pour ses effets `bigpemu:` —
+ * chacun ignore ceux de l'autre). */
 export function effetImage(id: number, plateforme: string | undefined): string | undefined {
   const im = etat.profil.image;
   return im?.jeux[String(id)] ?? (plateforme ? im?.consoles[plateforme] : undefined);
@@ -1065,7 +1066,7 @@ async function choisirEffetImage(id: number, programme: string) {
   }
   const presents = r.effets.filter((e) => e.present && EFFETS_IMAGE[e.id]);
   if (!presents.length) {
-    await informer('🖼 Effet d’image', 'Ton RetroArch n’a pas les effets d’image que Frogtend sait proposer.');
+    await informer('🖼 Effet d’image', 'Cet émulateur n’a pas les effets d’image que Frogtend sait proposer.');
     return;
   }
   const duJeu = etat.profil.image.jeux[String(id)];
@@ -1579,8 +1580,8 @@ export async function gererJeu(id: number) {
       libelle: '🕹 Émulateur',
       detail: `${e?.nom || e?.programme || ''}${etat.pc.emulateursJeux[String(id)] ? ' (propre à ce jeu)' : ' (comme la console)'}`,
     });
-    // Un jeu lancé par RetroArch : son effet d'image (télé d'époque, image adoucie… ; lot 4a).
-    if (/(^|[\\/])retroarch[^\\/]*\.exe$/i.test(e?.programme ?? '')) {
+    // Un jeu lancé par RetroArch ou BigPEmu : son effet d'image (télé d'époque, image adoucie… ; lot 4a, 11/11).
+    if (/(^|[\\/])(retroarch|bigpemu)[^\\/]*\.exe$/i.test(e?.programme ?? '')) {
       const v = effetImage(id, j.plateforme);
       const origine = etat.profil.image.jeux[String(id)] !== undefined ? 'pour ce jeu' : v !== undefined ? 'comme la console' : 'télé d’époque, pixels nets…';
       options.push({ valeur: 'effet', libelle: '🖼 Effet d’image', detail: `${libelleEffet(v)} (${origine})` });

@@ -1591,6 +1591,8 @@ pub async fn jeu_jouer(
     let mut effet_lance: Option<String> = None;
     let mut effet_de_la_personne = false;
     let mut ligne_rpcs3: Option<String> = None;
+    // BigPEmu : l'effet, les triches et les touches préparés avant le lancement (pour le menu en jeu).
+    let mut lancement_bp: Option<crate::bigpemu::Lancement> = None;
     // Les images par seconde (✅ Seb 08/11, choix par personne) : ce qui sera affiché, et de quoi le rendre après.
     let mut etat_fps = crate::images_par_seconde::EtatLancement::default();
     let emulateur = match (!de_boutique).then(|| emulateur_regle(&app, &plateforme, id, emulateur.as_deref())).flatten() {
@@ -1687,6 +1689,31 @@ pub async fn jeu_jouer(
                         let _ = app.emit("effet-image", serde_json::json!({ "jeu": id, "message": m }));
                     }
                 }
+            }
+            // BigPEmu (✅ Seb 11/11 : tout ce qu'il propose, dans notre menu) : l'effet d'écran choisi, les triches
+            // choisies dans le menu (le jeu à l'abri d'abord s'il en a de cochées : un échec, rien ne se lance).
+            if let (Some("bigpemu"), Some(d)) = (id_emulateur.as_deref(), dossier_emulateur.clone()) {
+                let fichier = noyau.fichier_pour_l_emulateur(id, version.as_deref()).await.ok().flatten();
+                let profil = profil_ouvert(&noyau).await?.nom;
+                let choix = image.clone();
+                let quand = secondes_maintenant();
+                let l = tauri::async_runtime::spawn_blocking(move || {
+                    let d = std::path::PathBuf::from(d);
+                    let p = crate::emulateurs_profils::dossier_du_profil(&d, &profil);
+                    crate::bigpemu::preparer_partie(&d, &p, fichier.as_deref(), choix.as_deref(), quand)
+                })
+                .await
+                .map_err(|_| Erreur::Disque("La préparation de BigPEmu s'est arrêtée brutalement.".into()))??;
+                if let Some(m) = &l.erreur_effet {
+                    noyau.journaliser(&format!("effet d'écran du jeu {id} : {m}"));
+                }
+                if let Some(m) = &l.erreur_triches {
+                    noyau.journaliser(&format!("BigPEmu : triches du jeu {id} non posées ({m})"));
+                }
+                if l.abri_fait {
+                    noyau.journaliser(&format!("BigPEmu : triches cochées pour le jeu {id}, ses fichiers mis à l'abri avant"));
+                }
+                lancement_bp = Some(l);
             }
             Some((prog, ligne_c))
         }
@@ -1824,6 +1851,9 @@ pub async fn jeu_jouer(
         // « Arrêter ») — sinon le menu ne lui envoie rien.
         ligne_rpcs3.as_deref().is_some_and(|l| l.contains("--no-gui"))
             && dossier_emulateur.as_deref().is_some_and(|d| crate::pilotage::rpcs3_raccourcis_d_origine(std::path::Path::new(d)))
+    } else if id_emulateur.as_deref() == Some("bigpemu") {
+        // BigPEmu : F13 / F14 / F15 en place chez la personne (pas avant son premier lancement).
+        lancement_bp.as_ref().is_some_and(|l| l.raccourcis)
     } else {
         true
     };
@@ -1856,17 +1886,33 @@ pub async fn jeu_jouer(
             .map(|n| (std::path::PathBuf::from(d), n)),
         _ => None,
     };
+    // BigPEmu : ses effets et ses triches remplacent ceux de RetroArch dans le menu.
+    let (effets_ra, effet_bp, triches, abri_triches, empreinte, cles_triches, dossier_profil_bp) = match lancement_bp {
+        Some(l) => (
+            l.effets,
+            l.effet,
+            l.triches.iter().map(|t| crate::menu_jeu::Triche { titre: t.titre.clone(), active: t.active }).collect(),
+            l.abri_fait,
+            l.empreinte,
+            l.triches.into_iter().map(|t| t.cle).collect(),
+            Some(l.dossier_profil.to_string_lossy().to_string()),
+        ),
+        None => (effets_ra, None, prep.triches, prep.abri_fait, None, vec![], None),
+    };
     let numero = app.state::<crate::menu_jeu::MenuJeu>().commencer(crate::menu_jeu::PartieEnCours {
         etats_interdits: prep.etats_interdits,
-        triches: prep.triches,
+        triches,
         triches_permises: !prep.etats_interdits,
         triche_ra: 0,
         parties: prep.parties.map(|d| d.to_string_lossy().to_string()),
-        abri_triches: prep.abri_fait,
+        abri_triches,
+        empreinte,
+        dossier_profil: dossier_profil_bp,
+        cles_triches,
         coeur: coeur_ra.clone(),
         dossier_rom: prep.dossier_rom,
         effet_pose: effet_lance.is_some(),
-        effet: effet_lance,
+        effet: effet_lance.or(effet_bp),
         effet_de_la_personne,
         effets: effets_ra,
         shader_enable_avant,
@@ -2551,6 +2597,12 @@ pub async fn menu_jeu_effet(app: AppHandle, effet: String) -> Resultat<()> {
         return Err(Erreur::Refus("Cet effet ne peut pas être posé depuis le menu.".into()));
     }
     let _seule = menu.prendre_etat().ok_or_else(|| Erreur::Refus("Une autre action est en cours.".into()))?;
+    // BigPEmu ne change pas d'effet en pleine partie : le choix est seulement noté (la fenêtre principale le garde
+    // pour ce jeu ou sa console, `menu-effet-garder`) ; il vaut au prochain lancement. Le menu reste ouvert.
+    if p.emulateur.as_deref() == Some("bigpemu") {
+        menu.noter_effet((effet != "aucun").then(|| effet.clone()));
+        return Ok(());
+    }
     let d = std::path::PathBuf::from(p.dossier_emulateur.clone().unwrap_or_default());
     let (e2, d2) = (effet.clone(), d.clone());
     let commande = tauri::async_runtime::spawn_blocking(move || crate::emulateurs::commande_effet(&d2, &e2))
@@ -2820,6 +2872,19 @@ pub async fn menu_jeu_triche(app: AppHandle, index: usize) -> Resultat<()> {
     let menu = app.state::<crate::menu_jeu::MenuJeu>();
     // Une seule action à la fois (avec les sauvegardes rapides), de la mise à l'abri jusqu'à la bascule.
     let _seule = menu.prendre_etat().ok_or_else(|| Erreur::Refus("Une sauvegarde rapide ou une triche est déjà en cours.".into()))?;
+    // BigPEmu : le choix est noté pour le prochain lancement (il ne lit ses triches qu'au démarrage ; ses parties sont
+    // mises à l'abri à ce moment-là, avant de jouer avec). Le menu reste ouvert.
+    if p.emulateur.as_deref() == Some("bigpemu") {
+        let (Some(profil), Some(cle), Some(t)) = (p.dossier_profil.clone(), p.cles_triches.get(index).cloned(), p.triches.get(index)) else {
+            return Err(Erreur::Refus("Cette triche ne peut pas être changée depuis le menu.".into()));
+        };
+        let active = !t.active;
+        tauri::async_runtime::spawn_blocking(move || crate::bigpemu::choisir_triche(std::path::Path::new(&profil), &cle, active))
+            .await
+            .map_err(|_| Erreur::Disque("La triche s'est arrêtée brutalement.".into()))??;
+        menu.basculer_triche(index);
+        return Ok(());
+    }
     // La mise à l'abri AVANT de cacher le menu : un échec s'y dit (le jeu, en pause derrière, ne montrerait rien).
     if !menu.partie().is_some_and(|x| x.abri_triches) {
         let nom = p.nom_rom.clone().ok_or_else(|| Erreur::Refus("Le jeu lancé est inconnu : sa partie ne peut pas être mise à l'abri, aucune triche n'a été activée.".into()))?;
@@ -2959,7 +3024,7 @@ pub async fn jeu_compilation_ps3(app: AppHandle, noyau: State<'_, Noyau>, id: i6
 /// vidéo). Lecture seule.
 #[derive(Serialize)]
 pub struct EffetImage {
-    id: &'static str,
+    id: String,
     present: bool,
 }
 
@@ -2972,11 +3037,26 @@ pub struct EffetsImage {
 #[tauri::command]
 pub fn effets_image(programme: String) -> EffetsImage {
     let d = std::path::Path::new(&programme).parent().map(|p| p.to_path_buf()).unwrap_or_default();
+    // BigPEmu : ses propres effets d'écran (livrés avec lui, `bigpemu::EFFETS`).
+    let nom = std::path::Path::new(&programme).file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+    if nom.starts_with("bigpemu") {
+        let presents = crate::bigpemu::effets_presents(&d);
+        return EffetsImage {
+            impossible: None,
+            effets: crate::bigpemu::EFFETS
+                .iter()
+                .map(|e| {
+                    let id = format!("{}{e}", crate::bigpemu::PREFIXE_EFFET);
+                    EffetImage { present: presents.contains(&id), id }
+                })
+                .collect(),
+        };
+    }
     EffetsImage {
         impossible: crate::emulateurs::effets_impossibles(&d),
         effets: crate::emulateurs::EFFETS_IMAGE
             .iter()
-            .map(|(id, _, chemin)| EffetImage { id, present: crate::emulateurs::fichier_effet(&d, chemin).is_some() })
+            .map(|(id, _, chemin)| EffetImage { id: id.to_string(), present: crate::emulateurs::fichier_effet(&d, chemin).is_some() })
             .collect(),
     }
 }
@@ -3093,7 +3173,10 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
                 (Some("mame"), Some((programme, ligne)), Some(f)) if !crate::installation::ligne_mame_de_salon(ligne) => crate::installation::nom_court_mame(programme, f),
                 _ => None,
             };
-            etats_possibles = emulateur.as_deref().is_some_and(|e| crate::pilotage::actions(e).contains(&crate::pilotage::Action::SauverEtat));
+            etats_possibles = emulateur.as_deref().is_some_and(|e| crate::pilotage::actions(e).contains(&crate::pilotage::Action::SauverEtat))
+                // BigPEmu : seulement une fois ses touches posées (pas avant son premier lancement pour cette personne).
+                && (emulateur.as_deref() != Some("bigpemu")
+                    || dossier.as_deref().is_some_and(|d| crate::bigpemu::raccourcis_poses(&crate::emulateurs_profils::dossier_du_profil(std::path::Path::new(d), &profil))));
             (j.plateforme, emulateur, dossier, coeur, rom, contenu, None)
         }
     };

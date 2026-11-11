@@ -1,5 +1,23 @@
 # Notes de version de Frogtend
 
+## 0.185.0 — BigPEmu : sauvegardes rapides, effets d'écran et triches dans le menu
+
+- 🎮 Jeux Jaguar (BigPEmu), dans le menu de Frogtend (bouton Xbox) :
+  - **💾 Sauvegarde et chargement rapides**, aussi avec tes raccourcis de la manette (Vue + LT pour sauver, Vue + RT
+    pour charger) ;
+  - **📷 Photo de l'écran** (dans ⚙ Options du jeu ; rangée par BigPEmu, pas encore dans 📷 Mes captures) ;
+  - **🖼 Effet d'image** : 8 effets livrés avec BigPEmu (télé d'époque, lignes de télé, écran bombé, contours
+    lissés…). BigPEmu ne change pas d'effet en cours de jeu : ton choix vaut **dès ta prochaine partie**, pour ce jeu
+    ou pour toute la console. Aussi depuis la fiche du jeu ▸ Gérer ce jeu ▸ 🖼 Effet d'image ;
+  - **🎯 Triches** (si tu en as activé dans BigPEmu lui-même, Frogtend n'y touche pas) : celles livrées avec BigPEmu pour chaque jeu en cartouche (vies infinies, invincibilité…). Coche ou
+    décoche : ça vaut dès ta prochaine partie. Avant de jouer avec une triche, Frogtend garde une copie de ta partie
+    de ce jeu. Au démarrage, BigPEmu montre sa petite fenêtre (en anglais) avec tes triches cochées : valide-la avec
+    son bouton « Accept ». Sans triche cochée, cette fenêtre ne s'ouvre plus.
+- Ces touches et réglages sont posés au lancement, BigPEmu fermé ; rien de ce que tu as réglé toi-même dans BigPEmu
+  n'est retiré.
+- Pas encore : les triches des jeux Jaguar CD, et 11 triches dont le nom a un signe (-, /, parenthèses) — à vérifier
+  d'abord.
+
 ## 0.184.0 — BigPEmu (Atari Jaguar) connu de Frogtend
 
 - 🎮 BigPEmu, l'émulateur conseillé pour la Jaguar et le Jaguar CD, a maintenant sa fiche dans Frogtend :

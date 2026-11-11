@@ -2581,3 +2581,12 @@ d'abord :
   ("01000000") ; fnv1a64 du .j64 dans le zip calculé par Frogtend = celui de BigPEmu (5c0c7827948f0f27). Le script
   ouvre sa fenêtre de triches à chaque chargement d'un jeu qui en a. Inconnus : noms avec - / ( ) (11 sur 159),
   empreinte d'un jeu CD.
+- 11/11 (0.185.0) : BigPEmu dans le menu en jeu — états F13/F14 + capture F15 (Bindings[40..42], ajoutées sans rien
+  retirer, menu seulement si posées), 8 effets `bigpemu:` (ScreenEffect au 1er niveau, marque `.frogtend-bigpemu-effet`,
+  au prochain lancement), triches des cartouches (FNV-1a64 du .j64, `cheat_codes.json`, choix en attente
+  `.frogtend-bigpemu-triches.json`, prévues sans écrire → partie à l'abri → écrites ; module retiré seulement si
+  Frogtend l'a activé, marque `.frogtend-bigpemu-module`). Répétition sur une COPIE du profil de Seb relue par BigPEmu
+  (touches, effet, triche, manette gardés ; aucun nombre changé). Relus par experts lancement + interface (corrigés :
+  écriture des triches non bloquante, abri avant écriture, module de la personne gardé, captures non relevées
+  retirées, marque d'effet avant écriture, textes « Accept » non promis). Non vérifié : un vrai jeu (états, capture,
+  effet visible, fenêtre de triches à la manette), dossier des états/captures, jeux CD.

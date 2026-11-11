@@ -6,6 +6,17 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## BigPEmu : sauvegardes rapides, effets, triches (0.185.0)
+- [ ] Un jeu Jaguar (Bubsy) : dans le menu (bouton Xbox), 💾 Sauvegarde rapide, puis plus tard 📂 Charger la sauvegarde rapide :
+      la partie revient. Pareil avec Vue + LT (sauver) et Vue + RT (charger), menu fermé.
+- [ ] ⚙ Options du jeu ▸ 📷 Photo de l'écran : BigPEmu dit en bas de l'écran où il l'a rangée — me dire où (elle
+      n'arrive pas encore dans 📷 Mes captures : son dossier n'est pas relevé).
+- [ ] 🖼 Effet d'image ▸ « Télé d'époque » : le menu dit « dès ta prochaine partie » ; quitter et relancer : l'effet
+      est là. Dire si les noms des effets correspondent à ce que tu vois.
+- [ ] 🎯 Triches : ta triche « Infinite lives » est déjà cochée ; en décocher / cocher une ; relancer : la fenêtre de
+      BigPEmu montre le bon choix ; **son bouton « Accept » se valide-t-il à la manette** (A) ? ; la triche agit.
+- [ ] Tout décocher, relancer : plus de fenêtre de triches au démarrage.
+
 ## BigPEmu, Atari Jaguar (0.184.0)
 - [ ] Un jeu Jaguar ▸ 🎮 Préparer : la taille (10,8 Mo) est annoncée ; BigPEmu s'installe ; le jeu se lance en
       plein écran.

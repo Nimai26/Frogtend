@@ -86,6 +86,11 @@ pub struct PartieEnCours {
     pub fps_en_direct: bool,
     pub fps_avant: Option<bool>,
     pub fps_pose: bool,
+    /// BigPEmu : l'empreinte du jeu lancé (ses triches ; `None` : un jeu CD, pas de triches), le dossier du profil (où
+    /// les choix du menu attendent le prochain lancement) et la clé de chaque triche de `triches`, dans l'ordre.
+    pub empreinte: Option<String>,
+    pub dossier_profil: Option<String>,
+    pub cles_triches: Vec<String>,
 }
 
 /// L'entrée « Images par seconde » du menu : ce qui est affiché (`None` : inconnu), et si le changement se voit tout
@@ -102,6 +107,8 @@ pub struct EffetsMenu {
     pub presents: Vec<String>,
     pub actuel: Option<String>,
     pub de_la_personne: bool,
+    /// L'effet change tout de suite (RetroArch) ; sinon (BigPEmu) le choix vaut au prochain lancement.
+    pub en_direct: bool,
 }
 
 /// Une triche d'un fichier `.cht` de RetroArch : son nom et si elle est active.
@@ -114,7 +121,7 @@ pub struct Triche {
 /// Un `.cht` plus gros n'est pas lu (une base de codes n'en approche jamais : un fichier abîmé ou autre chose).
 pub const CHT_MAX: u64 = 4 * 1024 * 1024;
 /// Au-delà, les triches ne sont pas montrées (le menu se parcourt à la manette).
-const TRICHES_MAX: usize = 500;
+pub const TRICHES_MAX: usize = 500;
 
 /// Les triches d'un `.cht` de RetroArch (`cheats = N`, `cheatK_desc`, `cheatK_enable`) ; tolère un fichier abîmé :
 /// une triche sans nom s'appelle « Triche K », une valeur illisible vaut « non active ». `cheats` absent : rien.
@@ -270,8 +277,14 @@ pub fn mettre_a_l_abri_avant_triche(parties: Option<&std::path::Path>, etats: Op
     if let Some(e) = etats {
         a_copier.extend(etats_du_jeu(e, nom_rom).into_iter().map(|(f, _)| f));
     }
+    mettre_a_l_abri_fichiers(&a_copier, quand)
+}
+
+/// Une copie de chaque fichier à côté de lui (`<fichier>.avant-triche-<quand>`), sauf si la dernière copie est
+/// identique ; une copie ratée : celles déjà faites sont retirées, `Err`.
+pub fn mettre_a_l_abri_fichiers(a_copier: &[std::path::PathBuf], quand: u64) -> Result<(), String> {
     let mut faites = Vec::new();
-    for f in &a_copier {
+    for f in a_copier {
         if derniere_copie_identique(f) {
             continue;
         }
@@ -536,8 +549,9 @@ impl MenuJeu {
     /// Un effet d'image posé en jeu (`None` : aucun).
     pub fn noter_effet(&self, effet: Option<String>) {
         if let Some(p) = self.partie.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            // BigPEmu : rien n'est posé pendant la partie (le choix vaut au prochain lancement).
+            p.effet_pose = p.emulateur.as_deref() == Some("retroarch");
             p.effet = effet;
-            p.effet_pose = true;
             // `effet_de_la_personne` reste : son effet réglé dans RetroArch reviendra à la prochaine partie (un
             // « Garder » serait un mensonge).
         }
@@ -583,6 +597,8 @@ pub struct EtatMenu {
     /// Les triches du jeu, quand Frogtend sait les activer pendant la partie (RetroArch hors mode hardcore) ; une liste
     /// vide : aucune triche posée pour ce jeu ; `None` : pas de triches depuis le menu.
     pub triches: Option<Vec<Triche>>,
+    /// Les triches changent tout de suite (RetroArch) ; sinon (BigPEmu) le choix vaut au prochain lancement.
+    pub triches_en_direct: bool,
     /// Les parties du jeu sont-elles déjà à l'abri pour CETTE partie ? (Sinon la page met en garde avant la première
     /// triche ; la fenêtre du menu est réutilisée d'une partie à l'autre : c'est le cœur qui sait.)
     pub abri_triches: bool,
@@ -653,14 +669,16 @@ pub fn etat(p: &PartieEnCours) -> EtatMenu {
         en_pause: crate::pilotage::se_met_en_pause(e) && !p.figer_emulateur,
         taodbox: false,
         emplacement: matches!(e, "retroarch" | "mame").then_some(p.emplacement),
-        triches: (e == "retroarch" && p.triches_permises && !p.etats_interdits).then(|| p.triches.clone()),
+        triches: ((e == "retroarch" && p.triches_permises && !p.etats_interdits) || (e == "bigpemu" && p.empreinte.is_some())).then(|| p.triches.clone()),
+        triches_en_direct: e == "retroarch",
         abri_triches: p.abri_triches,
         refus_etat: p.refus_etat,
         fps: fps_menu(p, e),
-        effets: (e == "retroarch" && !p.effets.is_empty()).then(|| EffetsMenu {
+        effets: (matches!(e, "retroarch" | "bigpemu") && !p.effets.is_empty()).then(|| EffetsMenu {
             presents: p.effets.clone(),
             actuel: p.effet.clone(),
             de_la_personne: p.effet_de_la_personne,
+            en_direct: e == "retroarch",
         }),
     }
 }
@@ -1129,7 +1147,25 @@ mod tests {
             fps_en_direct: false,
             fps_avant: None,
             fps_pose: false,
+            empreinte: None,
+            dossier_profil: None,
+            cles_triches: vec![],
         }
+    }
+
+    #[test]
+    fn bigpemu_ses_effets_et_triches_valent_au_prochain_lancement() {
+        let t = Triche { titre: "Infinite lives".into(), active: true };
+        let bp = PartieEnCours { effets: vec!["bigpemu:crt-hyllian".into()], triches: vec![t.clone()], empreinte: Some("5c0c7827948f0f27".into()), ..partie(Some("bigpemu")) };
+        let e = etat(&bp);
+        assert_eq!(e.effets.map(|x| x.en_direct), Some(false));
+        assert_eq!(e.triches, Some(vec![t.clone()]));
+        assert!(!e.triches_en_direct);
+        assert_eq!(e.actions, vec!["sauver", "charger", "capture"]);
+        // Un jeu CD (empreinte inconnue) : pas de triches ; touches pas posées : ni sauver, ni charger, ni capturer.
+        assert_eq!(etat(&PartieEnCours { empreinte: None, ..bp.clone() }).triches, None);
+        assert!(etat(&PartieEnCours { raccourcis_clavier: false, ..bp }).actions.is_empty());
+        assert!(etat(&PartieEnCours { triches: vec![t], ..partie(Some("retroarch")) }).triches_en_direct);
     }
 
     #[test]
@@ -1277,7 +1313,7 @@ mod tests {
     #[test]
     fn l_ecran_des_effets_seulement_pour_retroarch_avec_des_effets() {
         let ra = PartieEnCours { effets: vec!["crt".into()], ..partie(Some("retroarch")) };
-        assert_eq!(etat(&ra).effets, Some(EffetsMenu { presents: vec!["crt".into()], actuel: None, de_la_personne: false }));
+        assert_eq!(etat(&ra).effets, Some(EffetsMenu { presents: vec!["crt".into()], actuel: None, de_la_personne: false, en_direct: true }));
         assert_eq!(etat(&PartieEnCours { effets: vec![], ..partie(Some("retroarch")) }).effets, None);
         assert_eq!(etat(&PartieEnCours { effets: vec!["crt".into()], ..partie(Some("duckstation")) }).effets, None);
         let m = MenuJeu::default();
