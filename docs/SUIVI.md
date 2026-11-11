@@ -2568,3 +2568,5 @@ d'abord :
   `portable/system/`, firmware par `--install-firmware`, ligne `-f "%rom%"` (pas `-g`) ; `actif` de Ryubing corrigé
   à true ; sha256 seulement si Firehouse héberge les paquets (accord de Seb demandé par Firehouse). Ryubing : à coder
   quand 3.167.0 sera en service (relevé lecture seule pour vérifier d'abord), après l'essai BigPEmu.
+- 11/11 : Firehouse héberge BigPEmu 1.221 et Ryubing 1.3.3 (accord de Seb) : relu en lecture seule (`essai_bigpemu_ryubing`), sha256
+  et route API servis ; 0.184.0 les vérifie déjà (`emulateur_installer_firehouse`), rien à coder.
