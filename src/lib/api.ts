@@ -789,6 +789,8 @@ export const api = {
   /** Les sauvegardes rapides du jeu en cours : [emplacement, date en secondes ou null si vide]. */
   menuJeuEmplacements: () => appeler<[number, number | null][]>('menu_jeu_emplacements'),
   menuJeuTriche: (index: number) => appeler<void>('menu_jeu_triche', { index }),
+  /** BigPEmu : une triche est cochée pour ce jeu (rappel sous ▶ Jouer : sa fenêtre de triches attend A puis B). */
+  bigpemuTrichesCochees: (id: number) => appeler<boolean>('bigpemu_triches_cochees', { id }),
   /** Change l'effet d'image en jeu (RetroArch) : `aucun` ou un identifiant d'effet. */
   menuJeuEffet: (effet: string) => appeler<void>('menu_jeu_effet', { effet }),
   /** Le compteur d'images par seconde pour les prochaines parties (émulateur qui ne bascule pas en jeu). */

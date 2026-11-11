@@ -492,6 +492,20 @@ pub fn prevoir_triches(dossier_profil: &Path, empreinte: Option<&str>) -> Option
     Some(TrichesPrevues { reglages: v, a_poser, change, actives, module })
 }
 
+/// Une triche est-elle cochée pour ce jeu (choix du menu en attente compris) ? Lecture seule (rien n'est écrit) :
+/// pour le rappel sous ▶ Jouer.
+pub fn triches_cochees(dossier_profil: &Path, rom: &Path) -> bool {
+    // Le cas courant (aucune triche cochée nulle part, aucun choix en attente) : réponse sans lire la cartouche.
+    let Some(v) = lire_json(&reglages_du_profil(dossier_profil)) else { return false };
+    let une_cochee = v["BigPEmuConfig"].as_object().is_some_and(|c| c.iter().any(|(k, val)| k.starts_with("ScriptData_CheatSetting_") && valeur_cochee(val)));
+    let en_attente = lire_json(&dossier_profil.join(TRICHES_A_POSER)).is_some_and(|a| a.as_object().is_some_and(|o| o.values().any(|x| x.as_bool() == Some(true))));
+    if !une_cochee && !en_attente {
+        return false;
+    }
+    let Some(e) = empreinte_jeu(rom) else { return false };
+    prevoir_triches(dossier_profil, Some(&e)).is_some_and(|x| x.actives)
+}
+
 /// Écrit ce qui a été prévu (BigPEmu fermé), relu ; les choix posés sont alors oubliés.
 pub fn ecrire_triches(emulateur: &Path, dossier_profil: &Path, prevu: TrichesPrevues) -> Resultat<()> {
     let marque = dossier_profil.join(MARQUE_MODULE);
@@ -1221,7 +1235,11 @@ mod tests {
         // Premier lancement du profil : pas encore de réglages, rien n'est posé, donc pas d'Échap.
         let l = preparer_partie(d.path(), &p, Some(&rom), None, 1).unwrap();
         assert!(!l.fenetre_triches, "sans réglages : pas de module, pas de fenêtre");
+        assert!(!triches_cochees(&p, &rom), "pas de rappel non plus");
         std::fs::write(reglages_du_profil(&p), XBOX).unwrap();
+        let avant = std::fs::read(reglages_du_profil(&p)).unwrap();
+        assert!(triches_cochees(&p, &rom), "le choix en attente : rappel sous ▶ Jouer");
+        assert_eq!(std::fs::read(reglages_du_profil(&p)).unwrap(), avant, "lecture seule");
         let l = preparer_partie(d.path(), &p, Some(&rom), None, 2).unwrap();
         assert!(l.fenetre_triches, "module posé pour la triche cochée");
         let v: Value = serde_json::from_str(&std::fs::read_to_string(reglages_du_profil(&p)).unwrap()).unwrap();

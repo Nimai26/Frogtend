@@ -1995,9 +1995,10 @@ pub async fn jeu_jouer(
     // BigPEmu : sa fenêtre de triches (ouverte à chaque démarrage d'un jeu à triche cochée ; les codes ne s'appliquent
     // qu'à sa fermeture, `cheat_codes.c`) est laissée à la personne (✅ Seb 11/11 : son écran « Press A/S » n'accepte une
     // touche qu'après 2 à 11 s, aucun signal lisible : une touche envoyée à l'aveugle ouvrirait le menu de BigPEmu).
-    // Frogtend prévient au lancement.
+    // Le rappel est montré AVANT le lancement, sous ▶ Jouer (`bigpemu_triches_cochees`) : au lancement, BigPEmu
+    // couvre l'écran tout de suite.
     if fenetre_triches_bp {
-        let _ = app.emit("bigpemu-triches", serde_json::json!({ "jeu": id }));
+        noyau.journaliser(&format!("BigPEmu : jeu {id} lancé avec une triche cochée (sa fenêtre de triches attend la personne)"));
     }
     // Plein écran au lancement (jeu PC sans émulateur, réglage du jeu) : dès que sa fenêtre est prête, jamais pendant
     // le menu en jeu ni un jeu figé ; un échec est dit à la personne.
@@ -3384,6 +3385,25 @@ pub async fn menu_jeu_emplacements(app: AppHandle, noyau: State<'_, Noyau>) -> R
         Some("bigpemu") => Ok(p.etats_bigpemu.map(|e| e.emplacements()).unwrap_or_default()),
         _ => Ok(vec![]),
     }
+}
+
+/// Un jeu lancé par BigPEmu a-t-il une triche cochée pour la personne du profil (un choix du menu en attente
+/// compris) ? Lecture seule : pour le rappel sous ▶ Jouer (sa fenêtre de triches attend A puis B au démarrage).
+#[tauri::command]
+pub async fn bigpemu_triches_cochees(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<bool> {
+    let Some(jeu) = noyau.registre().jeu(id)? else { return Ok(false) };
+    if jeu.installation.as_ref().is_some_and(|i| i.boutique.is_some()) {
+        return Ok(false);
+    }
+    let Some((programme, _)) = emulateur_regle(&app, &jeu.plateforme, id, None) else { return Ok(false) };
+    let programme = std::path::PathBuf::from(programme);
+    let est_bigpemu = programme.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.to_lowercase().starts_with("bigpemu"));
+    let Some(d) = programme.parent().filter(|_| est_bigpemu).map(std::path::PathBuf::from) else { return Ok(false) };
+    let Some(fichier) = noyau.fichier_pour_l_emulateur(id, None).await.ok().flatten() else { return Ok(false) };
+    let profil = profil_ouvert(&noyau).await?.nom;
+    Ok(tauri::async_runtime::spawn_blocking(move || crate::bigpemu::triches_cochees(&crate::emulateurs_profils::dossier_du_profil(&d, &profil), &fichier))
+        .await
+        .unwrap_or(false))
 }
 
 /// MAME : sauver, charger ou recommencer par son script Lua (lot 0.79.0). La commande part AVANT que le menu se

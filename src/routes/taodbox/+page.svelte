@@ -5,7 +5,7 @@
   import { onDestroy, onMount, tick, untrack } from 'svelte';
   import { isTauri } from '@tauri-apps/api/core';
   import { adresseImageSysteme, api, type FicheSysteme, type JeuPc } from '$lib/api';
-  import { confirmer, informer } from '$lib/dialogues/fenetres.svelte';
+  import { confirmer, informer, toast } from '$lib/dialogues/fenetres.svelte';
   import { creditImage, imageEntete } from '$lib/ludotheque/systemes';
   import { etat, sortirDuProfil } from '$lib/etat.svelte';
   import { gererLaCarte, installer, jouerLaCarte, partie } from '$lib/ludotheque/jeu.svelte';
@@ -142,14 +142,33 @@
     await tick();
     selectionner(document.querySelector<HTMLElement>('.taodbox .carte'));
   });
-  onDestroy(() => repos.annuler());
+  onDestroy(() => {
+    detruit = true;
+    repos.annuler();
+  });
+
+  /** Le rappel des triches est affiché (3 s avant le lancement) ; la page a été quittée. */
+  let rappelEnCours = false;
+  let detruit = false;
 
   async function jeu(j: JeuPc) {
     // Pas pendant « Gérer le jeu » (un réglage peut attendre sans fenêtre ouverte).
-    if (partie.enJeu !== null || partie.lancement !== null || enGestion) return;
+    if (partie.enJeu !== null || partie.lancement !== null || enGestion || rappelEnCours) return;
     if (!j.installation) {
       // Le jeu d'une autre personne : elle seule peut l'installer.
       if (j.d_un_autre || !(await installer(j.id))) return;
+    }
+    // Un jeu Jaguar à triche cochée : le rappel AVANT le lancement, le temps de le lire (ensuite BigPEmu couvre
+    // l'écran ; ✅ Seb 11/11).
+    rappelEnCours = true;
+    try {
+      if (await api.bigpemuTrichesCochees(j.id).catch(() => false)) {
+        toast("🎯 Triches cochées : au démarrage, une petite fenêtre en anglais s’affiche. Attends quelques secondes, puis appuie sur A, puis sur B : le jeu démarre avec tes triches.", 'neutre');
+        await new Promise((r) => setTimeout(r, 3000));
+        if (detruit || enGestion || fenetreOuverte() || partie.enJeu !== null || partie.lancement !== null) return;
+      }
+    } finally {
+      rappelEnCours = false;
     }
     await jouerLaCarte(j.id);
   }

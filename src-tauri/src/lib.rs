@@ -585,6 +585,7 @@ pub fn run() {
             commandes::menu_jeu_emplacement,
             commandes::menu_jeu_emplacements,
             commandes::menu_jeu_triche,
+            commandes::bigpemu_triches_cochees,
             commandes::boutons_du_jeu,
             commandes::menu_jeu_agrandir,
             commandes::effets_image,

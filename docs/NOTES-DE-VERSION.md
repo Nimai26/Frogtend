@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.190.0 — BigPEmu : le rappel des triches AVANT de jouer
+
+- 🎯 Un jeu Jaguar avec une triche cochée : sous ▶ Jouer (fiche du jeu et panneau de la ludothèque), Frogtend
+  rappelle quoi faire au démarrage : attendre quelques secondes la petite fenêtre en anglais, puis A, puis B.
+- Taodbox : le même rappel s'affiche 3 secondes avant le lancement.
+- Le rappel au lancement (invisible : le jeu couvrait l'écran) est retiré.
+
 ## 0.189.0 — BigPEmu : la fenêtre de triches laissée à toi, et expliquée
 
 - 🎮 Jeux Jaguar avec une triche cochée : Frogtend n'appuie plus de touches à ta place dans la fenêtre de triches de

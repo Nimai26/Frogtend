@@ -9,6 +9,7 @@
   import { confirmer, informer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import Jaquette from '$lib/ludotheque/Jaquette.svelte';
+  import RappelTriches from '$lib/ludotheque/RappelTriches.svelte';
   import LecteurLivret from '$lib/ludotheque/LecteurLivret.svelte';
   import LecteurMedia from '$lib/ludotheque/LecteurMedia.svelte';
   import VisionneuseImages from '$lib/ludotheque/VisionneuseImages.svelte';
@@ -322,6 +323,7 @@
         <a class="btn" href={`/assistant?jeu=${fiche.id}`}>💬 Demander à l’assistant</a>
         <a class="btn" href={`/triches?jeu=${surPc.id}`}>🎯 Triches et mods</a>
       </div>
+      {#if surPc.installation}<RappelTriches id={surPc.id} />{/if}
     {/if}
 
     <section class="jeu">

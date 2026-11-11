@@ -2611,3 +2611,6 @@ d'abord :
 - 11/11 (0.189.0) : essai de Seb sur 0.188.0 — échec : « Press A/S » accepte S seulement après ~11 s. Décision de Seb :
   laisser la fenêtre à la personne et prévenir. Envoi automatique retiré (S/Échap) ; rappel au lancement (événement
   `bigpemu-triches`, toast), dans 🎯 Triches et dans l'Aide. Le module reste tenu par Frogtend (0.187.0).
+- 11/11 (0.190.0) : Seb — rappel du lancement invisible ; « oui » au rappel sous ▶ Jouer (fiche, panneau) et dans
+  Taodbox (3 s avant). Commande `bigpemu_triches_cochees` en lecture seule (cartouche lue seulement si une triche est
+  cochée quelque part). Relu par l'expert interface (relecture après partie, attente Taodbox gardée, texte novice).

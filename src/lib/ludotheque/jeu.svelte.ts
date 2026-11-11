@@ -82,10 +82,6 @@ export async function suivreParties() {
     const titre = tele.jeux[e.payload.jeu]?.titre ?? 'le jeu';
     toast(`🖥 Frogtend n’a pas pu mettre « ${titre} » en plein écran (${e.payload.message}). Essaie l’autre façon dans ⚙ Gérer le jeu ▸ Plein écran.`, 'alerte');
   });
-  // BigPEmu, un jeu à triche cochée : sa fenêtre de triches s'ouvre au démarrage (laissée à la personne, ✅ Seb 11/11).
-  await listen<{ jeu: number }>('bigpemu-triches', () => {
-    toast('🎯 Triches cochées : au démarrage, BigPEmu montre sa fenêtre de triches. Attends quelques secondes qu’elle réponde, puis appuie sur A, puis sur B pour lancer le jeu (tes triches restent cochées).', 'neutre');
-  });
   // La fenêtre du jeu est apparue (ou la partie a fini, ou 3 minutes) : l'écran de lancement se cache.
   await listen<{ jeu: number }>('partie-affichee', (e) => {
     if (e.payload.jeu === partie.enJeu) partie.affichee = true;

@@ -6,8 +6,14 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## BigPEmu : rappel des triches avant de jouer (0.190.0)
+- [ ] Bubsy (« Infinite lives » cochée) : sous ▶ Jouer, la ligne « 🎯 Triches cochées… » est là (fiche et panneau).
+- [ ] Un autre jeu Jaguar sans triche : pas de ligne.
+- [ ] Taodbox, A sur Bubsy : le rappel s'affiche, le jeu se lance 3 s après.
+- [ ] Décocher la triche dans le menu en jeu, quitter : la ligne disparaît sous ▶ Jouer.
+
 ## BigPEmu : fenêtre de triches laissée à la personne (0.189.0)
-- [ ] Bubsy, « Infinite lives » cochée : au lancement, Frogtend affiche le rappel « attends…, puis A, puis B » ;
+- [x] (✗ Seb 11/11 : rappel invisible, BigPEmu couvre l'écran → 0.190.0) Bubsy, « Infinite lives » cochée : au lancement, Frogtend affiche le rappel « attends…, puis A, puis B » ;
       aucune touche n'est envoyée seule (rien ne s'ouvre en plus). A puis B : le jeu démarre avec les vies infinies.
 - [ ] ❓ Aide ▸ Pendant une partie : la ligne des jeux Jaguar est là.
 - [x] (✗ 0.188.0, Seb 11/11 : l'écran met ~11 s à accepter S — envoi automatique retiré)

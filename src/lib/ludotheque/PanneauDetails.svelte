@@ -16,6 +16,7 @@
   import { estJeuDeBoutique, ouvrirJeuDeBoutique } from '$lib/boutiques/jeu-boutique';
   import { nomPlateforme } from '$lib/boutiques/galaxy.svelte';
   import BlocSucces from '$lib/succes/BlocSucces.svelte';
+  import RappelTriches from './RappelTriches.svelte';
   import BlocContenus from '$lib/contenus/BlocContenus.svelte';
   import BlocDecompression from '$lib/decompression/BlocDecompression.svelte';
   import IconesBoutiques from '$lib/boutiques/IconesBoutiques.svelte';
@@ -106,6 +107,7 @@
           {#if emulateursDuJeu(j.plateforme).liste.length > 1 || (surPc.installation.versions?.length ?? 0) > 1}
             <button class="btn grand" onclick={() => jouerAvec(idPc)} disabled={partie.enJeu !== null || partie.lancement !== null || libellePreparation(j.plateforme) !== null}>▶ Jouer avec…</button>
           {/if}
+          <RappelTriches id={idPc} />
         {/if}
       {/if}
       {#if !catalogue && surPc?.etat === 'telecharge' && !surPc.d_un_autre}
