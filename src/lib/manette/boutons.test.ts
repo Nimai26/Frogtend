@@ -130,6 +130,40 @@ describe('les boutons de la manette d’origine', () => {
     expect(schema(infos({ emulateur: 'ppsspp', coeur: null, personnalise: true })).etat).toBe('personnalise');
   });
 
+  it('MAME autonome : sa disposition d’origine XInput, rien de deviné pour une PlayStation', () => {
+    const m = schema(infos({ emulateur: 'mame', coeur: null, plateforme: 'Arcade' }));
+    expect(m.etat).toBe('connu');
+    expect(m.console).toBe('l’arcade');
+    expect(role(m, 'a')).toBe('Bouton 1');
+    expect(role(m, 'b')).toBe('Bouton 2');
+    expect(role(m, 'lb')).toBe('Bouton 5');
+    expect(role(m, 'r3')).toBe('Bouton 8');
+    expect(role(m, 'select')).toBe('Pièce');
+    expect(role(m, 'lt')).toBeUndefined();
+    expect(m.etat === 'connu' && m.remarque).toContain('propre disposition');
+    expect(schema(infos({ emulateur: 'mame', coeur: null, famille: 'playstation' })).etat).toBe('inconnu');
+    expect(schema(infos({ emulateur: 'mame', coeur: null, personnalise: true })).etat).toBe('personnalise');
+    // Le cœur MAME de RetroArch garde la sienne (LB = Bouton 5 par la RetroPad).
+    expect(role(schema(infos({ coeur: 'MAME', plateforme: 'Arcade' })), 'lb')).toBe('Bouton 5');
+  });
+
+  it('DOSBox Staging : le joystick de PC à 4 boutons, rien de deviné pour une PlayStation', () => {
+    const d = schema(infos({ emulateur: 'dosbox-staging', coeur: null, plateforme: 'MS-DOS' }));
+    expect(d.etat).toBe('connu');
+    expect(d.console).toBe('joystick du PC');
+    expect(role(d, 'a')).toBe('Bouton 1');
+    expect(role(d, 'y')).toBe('Bouton 4');
+    expect(role(d, 'stickg')).toBe('Joystick');
+    expect(role(d, 'lb')).toBeUndefined();
+    expect(role(d, 'croix')).toBeUndefined();
+    expect(role(d, 'stickd')).toBeUndefined();
+    expect(d.etat === 'connu' && d.remarque).toContain('clavier');
+    expect(schema(infos({ emulateur: 'dosbox-staging', coeur: null, famille: 'playstation' })).etat).toBe('inconnu');
+    expect(schema(infos({ emulateur: 'dosbox-staging', coeur: null, inconnue: true })).etat).toBe('inconnu');
+    // Pendant une partie, un émulateur sans nom (hors catalogue, MAME sans son script) n'est pas un jeu PC.
+    expect(schema(infos({ emulateur: null, coeur: null, inconnue: true })).etat).toBe('inconnu');
+  });
+
   it('les émulateurs à part : le profil écrit par Frogtend', () => {
     const gc = schema(infos({ emulateur: 'dolphin', coeur: null, plateforme: 'Nintendo GameCube' }));
     expect(role(gc, 'x')).toBe('B');

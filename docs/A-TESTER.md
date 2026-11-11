@@ -6,6 +6,12 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## MAME et DOSBox : l'image des touches (0.181.0)
+- [ ] Un jeu d'arcade dans MAME, manette Xbox : 🎮 « Les touches » ; Back met bien une pièce, A = bouton 1.
+- [ ] Ouvrir le menu de Frogtend par Select + RB dans MAME : est-ce que ça met aussi une pièce (et appuie sur le
+      bouton 6) dans le jeu ? (pas vérifié)
+- [ ] Un jeu DOS au joystick dans DOSBox Staging : A = bouton 1, le stick gauche bouge.
+
 ## Azahar (0.180.0)
 - [ ] Un jeu 3DS avec un Azahar jamais installé : la manette marche tout de suite ; 🎮 « Les touches » montre la 3DS.
 - [ ] Le bouton Xbox ouvre le menu de Frogtend.

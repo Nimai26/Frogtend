@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.181.0 — L'image des touches de MAME et de DOSBox
+
+- 🕹 MAME (arcade) : le menu en jeu montre à quoi sert chaque bouton de ta manette Xbox : Back met une pièce, Start
+  lance la partie, A, B, X, Y, LB, RB, L3 et R3 sont les boutons 1 à 8 de la borne.
+- 🕹 DOSBox (jeux DOS) : A, B, X et Y sont les 4 boutons du joystick du PC, le stick gauche le joystick. Seulement
+  dans les jeux qui se jouent au joystick ; les autres se jouent au clavier.
+- Si tu as changé toi-même les touches, ou si le jeu se lance autrement (son propre lanceur, plusieurs manettes pour
+  DOSBox, une manette PlayStation), Frogtend ne dessine rien plutôt que de te montrer quelque chose de faux.
+- Par prudence : si MAME est réglé sur un autre pilote de manette que celui d'origine, Frogtend ne prend plus le
+  bouton Xbox (on ne sait pas ce que MAME en fait) ; le menu de Frogtend reste sur Select + RB tenus.
+
 ## 0.180.0 — Azahar réglé : la manette, la langue et l'image des touches de la 3DS
 
 - 🎮 Azahar (3DS) : ta manette marche dès la première partie (avant, ses touches étaient au clavier). N'importe quelle

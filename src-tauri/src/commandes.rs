@@ -2165,11 +2165,16 @@ fn suivre_manette_menu(app: &AppHandle, numero: u64) {
     let cemu_libre = partie.as_ref().and_then(|p| p.dossier_emulateur.as_deref()).is_some_and(|d| crate::cemu::guide_libre(std::path::Path::new(d)));
     // Azahar : son bouton Home pas sur une manette (la disposition de Frogtend le laisse au clavier).
     let azahar_libre = partie.as_ref().and_then(|p| p.dossier_emulateur.as_deref()).is_some_and(|d| crate::azahar::guide_libre(std::path::Path::new(d)));
+    // MAME réglé sur un autre pilote de manette que celui d'origine : on ne sait pas ce qu'il fait du bouton Xbox (sa
+    // version SDL le donne à son menu, input_sdl.cpp ; le MAME officiel pour Windows : non vérifié).
+    let mame_autre_pilote = emulateur.as_deref() == Some("mame")
+        && partie.as_ref().and_then(|p| p.dossier_emulateur.as_deref()).is_some_and(|d| !crate::manettes::mame_pilote_d_origine(std::path::Path::new(d)));
     let moteur = match (emulateur.as_deref(), partie.as_ref().is_some_and(|p| p.dossier_jeu.is_some())) {
         (Some("rpcs3"), _) if ps_retire => crate::osd_manette::Moteur::EmulateurLibere,
         (Some(e), _) if home_retire && crate::emulateurs::famille_eden(e) => crate::osd_manette::Moteur::EmulateurLibere,
         (Some("cemu"), _) if cemu_libre => crate::osd_manette::Moteur::EmulateurLibere,
         (Some("azahar"), _) if azahar_libre => crate::osd_manette::Moteur::EmulateurLibere,
+        (Some("mame"), _) if mame_autre_pilote => crate::osd_manette::Moteur::Inconnu,
         (Some(e), _) => crate::osd_manette::Moteur::Emulateur(e),
         (None, true) => crate::osd_manette::Moteur::JeuPc,
         (None, false) => crate::osd_manette::Moteur::Inconnu,
@@ -3029,11 +3034,20 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
     // Et pour les raccourcis : un jeu PC (sans émulateur) ? les sauvegardes rapides sont-elles proposées ?
     let jeu_pc;
     let etats_possibles;
+    // MAME : le nom du jeu tel que MAME nomme ses fichiers de touches (`cfg\<jeu>.cfg`), s'il est connu.
+    let jeu_mame;
+    // Le jeu se lance-t-il par l'émulateur réglé ? (Faux : son propre lanceur, un DOSBox livré avec le jeu…)
+    let par_l_emulateur;
+    // Pendant une partie : un émulateur que le menu ne nomme pas (hors catalogue, MAME sans son script) : on ne sait pas.
+    let sans_nom;
     let (plateforme, emulateur, dossier, coeur, rom, contenu, clavier) = match id {
         None => {
             let Some(p) = app.state::<crate::menu_jeu::MenuJeu>().partie() else { return Ok(None) };
             etats_possibles = crate::menu_jeu::etat(&p).actions.contains(&"sauver");
             jeu_pc = p.emulateur.is_none() && p.dossier_jeu.is_some();
+            sans_nom = p.emulateur.is_none() && p.dossier_jeu.is_none() && p.dossier_emulateur.is_some();
+            jeu_mame = p.dossier_emulateur.as_deref().filter(|_| p.emulateur.as_deref() == Some("mame")).and_then(|d| crate::pilotage::jeu_mame(std::path::Path::new(d))).map(|(n, _)| n);
+            par_l_emulateur = !matches!(p.emulateur.as_deref(), Some("mame" | "dosbox-staging")) || noyau.fichier_pour_l_emulateur(p.jeu, None).await.ok().flatten().is_some();
             (p.plateforme, p.emulateur, p.dossier_emulateur.map(std::path::PathBuf::from), p.coeur, p.nom_rom, p.dossier_rom, p.clavier)
         }
         Some(id) => {
@@ -3046,6 +3060,7 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
             let de_boutique = j.installation.as_ref().is_some_and(|i| i.boutique.is_some());
             let regle = (!de_boutique).then(|| emulateur_regle(&app, &j.plateforme, id, None)).flatten();
             let (mut emulateur, mut dossier, mut coeur) = (None, None, None);
+            let mut programme_et_ligne = None;
             if let Some((programme, ligne)) = regle {
                 let chemin = std::path::PathBuf::from(&programme);
                 let nom = chemin.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
@@ -3057,11 +3072,20 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
                 if emulateur.as_deref() == Some("retroarch") {
                     coeur = dossier.as_deref().zip(crate::emulateurs::coeur_de(&ligne)).and_then(|(d, c)| crate::emulateurs::nom_du_coeur(d, &c));
                 }
+                programme_et_ligne = Some((programme, ligne));
             }
             let fichier = if emulateur.is_some() { noyau.fichier_pour_l_emulateur(id, None).await.ok().flatten() } else { None };
             let rom = fichier.as_deref().and_then(|f| f.file_stem()).map(|s| s.to_string_lossy().to_string());
             let contenu = fichier.as_deref().and_then(|f| f.parent()).and_then(|d| d.file_name()).map(|s| s.to_string_lossy().to_string());
             jeu_pc = emulateur.is_none();
+            sans_nom = false;
+            par_l_emulateur = emulateur.is_none() || fichier.is_some();
+            // Le nom court que Frogtend donne à MAME (`installation::nom_court_mame`) ; une machine de salon : celui de
+            // la machine, inconnu ici (seul `default.cfg` est lu).
+            jeu_mame = match (emulateur.as_deref(), &programme_et_ligne, j.installation.as_ref().and_then(|i| i.fichier_du_jeu.as_deref())) {
+                (Some("mame"), Some((programme, ligne)), Some(f)) if !crate::installation::ligne_mame_de_salon(ligne) => crate::installation::nom_court_mame(programme, f),
+                _ => None,
+            };
             etats_possibles = emulateur.as_deref().is_some_and(|e| crate::pilotage::actions(e).contains(&crate::pilotage::Action::SauverEtat));
             (j.plateforme, emulateur, dossier, coeur, rom, contenu, None)
         }
@@ -3070,11 +3094,15 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
     let home_retire = dossier.as_deref().is_some_and(crate::eden::home_retire);
     let cemu_libre = dossier.as_deref().is_some_and(crate::cemu::guide_libre);
     let azahar_libre = dossier.as_deref().is_some_and(crate::azahar::guide_libre);
+    // MAME réglé sur un autre pilote de manette que celui d'origine : on ne sait pas ce qu'il fait du bouton Xbox (sa
+    // version SDL le donne à son menu, input_sdl.cpp ; le MAME officiel pour Windows : non vérifié).
+    let mame_autre_pilote = emulateur.as_deref() == Some("mame") && dossier.as_deref().is_some_and(|d| !crate::manettes::mame_pilote_d_origine(d));
     let moteur = match (emulateur.as_deref(), jeu_pc) {
         (Some("rpcs3"), _) if ps_retire => crate::osd_manette::Moteur::EmulateurLibere,
         (Some(e), _) if home_retire && crate::emulateurs::famille_eden(e) => crate::osd_manette::Moteur::EmulateurLibere,
         (Some("cemu"), _) if cemu_libre => crate::osd_manette::Moteur::EmulateurLibere,
         (Some("azahar"), _) if azahar_libre => crate::osd_manette::Moteur::EmulateurLibere,
+        (Some("mame"), _) if mame_autre_pilote => crate::osd_manette::Moteur::Inconnu,
         (Some(e), _) => crate::osd_manette::Moteur::Emulateur(e),
         (None, true) => crate::osd_manette::Moteur::JeuPc,
         (None, false) => crate::osd_manette::Moteur::Inconnu,
@@ -3083,7 +3111,10 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
     let (e2, d2, c2) = (emulateur.clone(), dossier.clone(), coeur.clone());
     // Dolphin : seule la manette GameCube est réglée par Frogtend (la Wii a ses Wiimotes : « inconnu » côté interface).
     let gamecube = plateforme.to_lowercase().contains("gamecube");
-    let (famille, personnalise) = tauri::async_runtime::spawn_blocking(move || {
+    let dosbox = emulateur.as_deref() == Some("dosbox-staging");
+    let (famille, personnalise, plusieurs_manettes) = tauri::async_runtime::spawn_blocking(move || {
+        // DOSBox : deux manettes = deux joysticks à 2 boutons (mapper.cpp `QueryJoysticks`).
+        let plusieurs_manettes = dosbox && crate::manettes::nombre_de_manettes() > 1;
         let famille = match crate::manettes::manette_branchee() {
             Some(crate::manettes::PadRpcs3::Ds4) | Some(crate::manettes::PadRpcs3::DualSense) => "playstation",
             _ => "xbox",
@@ -3094,21 +3125,27 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
                 crate::emulateurs::remappage_retroarch(d, c, &noms)
             }),
             (Some("dolphin"), _) if !gamecube => false,
+            (Some("mame"), Some(d)) => !crate::manettes::mame_disposition_d_origine(d, &crate::emulateurs_profils::dossier_du_profil(d, &profil), jeu_mame.as_deref()),
             (Some(e), Some(d)) => {
                 let dossier_profil = crate::emulateurs_profils::dossier_du_profil(d, &profil);
                 !crate::manettes::disposition_de_frogtend(e, d, Some(&dossier_profil))
             }
             _ => false,
         };
-        (famille, personnalise)
+        (famille, personnalise, plusieurs_manettes)
     })
     .await
     .map_err(|_| Erreur::Disque("La lecture des boutons s'est arrêtée brutalement.".into()))?;
     let inconnue = match (emulateur.as_deref(), dossier.as_deref()) {
         (Some("cemu"), Some(d)) => !crate::cemu::portable(d),
         (Some("vita3k"), Some(d)) => !crate::vita3k::portable(d),
+        // MAME et DOSBox : seulement lancés par l'émulateur réglé (un lanceur du jeu, un DOSBox livré avec lui : on ne
+        // sait pas lequel tourne). MAME sur un autre pilote de manette ; DOSBox non portable (sa configuration est
+        // ailleurs, ou un autre DOSBox nommé dosbox.exe), ou plusieurs manettes (deux joysticks à 2 boutons).
+        (Some("mame"), Some(_)) => !par_l_emulateur || mame_autre_pilote,
+        (Some("dosbox-staging"), Some(d)) => !par_l_emulateur || !d.join("dosbox-staging.conf").is_file() || plusieurs_manettes,
         (Some(e), Some(d)) if crate::emulateurs::famille_eden(e) => !crate::eden::portable(d),
-        _ => false,
+        _ => sans_nom,
     };
     Ok(Some(InfosBoutons { plateforme, emulateur, coeur, famille, personnalise, inconnue, clavier: clavier.filter(|c| !c.is_empty()), raccourcis }))
 }

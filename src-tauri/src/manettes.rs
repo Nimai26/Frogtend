@@ -314,8 +314,121 @@ pub fn disposition_de_frogtend(id: &str, emulateur: &Path, profil: Option<&Path>
             let texte = std::fs::read_to_string(p.join("memstick").join("PSP").join("SYSTEM").join("controls.ini")).unwrap_or_default();
             ppsspp_disposition_d_origine(&texte)
         }
+        // DOSBox Staging : sa disposition d'origine, tant que la personne n'a changé ni ses touches ni son joystick.
+        "dosbox-staging" => dosbox_disposition_d_origine(emulateur),
         _ => true,
     }
+}
+
+/// Un fichier de réglages trop gros pour être celui d'un émulateur : on ne sait pas (rien de dessiné).
+const PLAFOND_REGLAGES: u64 = 8 * 1024 * 1024;
+
+/// Le texte d'un fichier de réglages : `Ok(None)` s'il n'existe pas, `Err(())` s'il est illisible ou trop gros.
+fn lire_reglages(f: &Path) -> Result<Option<String>, ()> {
+    match std::fs::metadata(f) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(_) => Err(()),
+        Ok(m) if !m.is_file() || m.len() > PLAFOND_REGLAGES => Err(()),
+        Ok(_) => std::fs::read_to_string(f).map(Some).map_err(|_| ()),
+    }
+}
+
+/// DOSBox Staging (portable : `dosbox-staging.conf` à côté du programme, `emulateurs.rs`) : la disposition d'origine
+/// (mapper.cpp `CreateDefaultBinds`, 0.83.0, relu le 11/11) tant que `joysticktype` est `auto`, que `swap34` et
+/// `buttonwrap` sont éteints, et qu'aucun fichier de touches n'est chargé : `mapperfile` d'origine
+/// (`mapper-sdl2-<version>.map`, mapper.h) absent du dossier, ou vide (« les touches d'origine », mapper.cpp
+/// `load_binds_from_file`). Un autre fichier de touches (même un préréglage `xbox/…` de DOSBox) : rien de dessiné.
+pub fn dosbox_disposition_d_origine(dosbox: &Path) -> bool {
+    // Un `dosbox.conf` à côté (lu aussi par DOSBox depuis son dossier ? non vérifié) : on ne sait pas.
+    if dosbox.join("dosbox.conf").exists() {
+        return false;
+    }
+    let Ok(Some(conf)) = lire_reglages(&dosbox.join("dosbox-staging.conf")) else { return false };
+    // (section, clé, valeur), sans les commentaires, jusqu'à `[autoexec]` (des commandes DOS, pas des réglages).
+    let mut lignes = Vec::new();
+    let mut section = String::new();
+    for l in conf.lines() {
+        let l = l.split('#').next().unwrap_or("").trim();
+        if let Some(s) = l.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+            section = s.trim().to_lowercase();
+            if section == "autoexec" {
+                break;
+            }
+        } else if let Some((c, v)) = l.split_once('=') {
+            lignes.push((section.clone(), c.trim().to_lowercase(), v.trim().trim_matches('"').to_string()));
+        }
+    }
+    // La dernière valeur compte ; les réglages du joystick dans `[joystick]`, `mapperfile` dans n'importe quelle section.
+    let valeur = |cle: &str| lignes.iter().rev().find(|(s, c, _)| c == cle && (cle == "mapperfile" || s == "joystick")).map(|(_, _, v)| v.clone());
+    let eteint = |cle: &str| valeur(cle).is_none_or(|v| matches!(v.to_lowercase().as_str(), "" | "false" | "off" | "0"));
+    if !valeur("joysticktype").is_none_or(|v| v.is_empty() || v.eq_ignore_ascii_case("auto")) || !eteint("swap34") || !eteint("buttonwrap") {
+        return false;
+    }
+    match valeur("mapperfile") {
+        Some(v) if v.is_empty() => true,
+        Some(v) if !(v.starts_with("mapper-sdl2-") && v.ends_with(".map") && !v.contains(['/', '\\'])) => false,
+        // Le fichier d'origine : seulement s'il n'a jamais été écrit (« Enregistrer » dans le mappeur de DOSBox).
+        Some(v) => !dosbox.join(v).exists(),
+        None => !std::fs::read_dir(dosbox).is_ok_and(|l| l.flatten().any(|e| e.file_name().to_string_lossy().to_lowercase().starts_with("mapper-sdl2-"))),
+    }
+}
+
+/// MAME : le pilote de manette d'origine sous Windows (`joystickprovider` vide ou `auto` : « winhybrid »,
+/// osdobj_common.cpp 0.289 ; `winhybrid` ou `xinput` choisis : les mêmes boutons XInput). Un autre (`sdljoy`,
+/// `dinput`…) : ses boutons sont autres, et on ne sait pas ce qu'il fait du bouton Xbox (le module SDL des manettes
+/// le donne au menu de MAME, input_sdl.cpp ; il n'est construit que dans la version SDL de MAME).
+pub fn mame_pilote_d_origine(mame: &Path) -> bool {
+    let ini = [mame.join("mame.ini"), mame.join("ini").join("mame.ini")].iter().find_map(|f| lire_reglages(f).ok().flatten());
+    ini.and_then(|t| crate::emulateurs_profils::option_mame_ini(&t, "joystickprovider"))
+        .is_none_or(|v| matches!(v.to_lowercase().as_str(), "" | "auto" | "winhybrid" | "xinput"))
+}
+
+/// Combien de manettes sont branchées : XInput (emplacements 0 à 3) et PlayStation (HID). Une manette DirectInput d'une
+/// autre marque n'est pas comptée (non reconnue) ; une PlayStation vue aussi en XInput (DS4Windows) l'est deux fois ;
+/// deux PlayStation du même modèle comptent pour une (sans effet : une PlayStation n'a pas de schéma DOSBox).
+pub fn nombre_de_manettes() -> usize {
+    #[allow(unused_mut)]
+    let mut n = 0;
+    #[cfg(windows)]
+    {
+        use windows::Win32::UI::Input::XboxController::{XInputGetState, XINPUT_STATE};
+        for i in 0..4u32 {
+            let mut s = XINPUT_STATE::default();
+            if unsafe { XInputGetState(i, &mut s) } == 0 {
+                n += 1;
+            }
+        }
+    }
+    let mut sony: Vec<String> = peripheriques_hid().into_iter().filter(|p| famille_hid(p).is_some()).collect();
+    // Une manette peut avoir plusieurs collections HID (`…&COL01`, `…&COL02`) : comptée une fois.
+    sony.iter_mut().for_each(|p| *p = p.to_lowercase().split("&col").next().unwrap_or("").to_string());
+    sony.sort();
+    sony.dedup();
+    n + sony.len()
+}
+
+/// MAME autonome : sa disposition d'origine (input_xinput.cpp, 0.289) tant que la personne n'a changé aucune touche :
+/// pas de manette ou de touche choisie (`<newseq`) ni de manette renumérotée (`<mapdevice`) dans `default.cfg` ou
+/// dans le fichier du jeu, ni de fichier de manette (`ctrlr` de `mame.ini`). Les dossiers lus : celui du profil
+/// (`preparer_mame_profil`) ET celui de MAME (il le garde dans certains cas) ; un dossier illisible : on ne sait pas.
+pub fn mame_disposition_d_origine(mame: &Path, profil: &Path, jeu: Option<&str>) -> bool {
+    let inis: Vec<String> = [mame.join("mame.ini"), mame.join("ini").join("mame.ini")].iter().filter_map(|f| lire_reglages(f).ok().flatten()).collect();
+    if inis.iter().any(|t| crate::emulateurs_profils::option_mame_ini(t, "ctrlr").is_some_and(|v| !v.is_empty())) {
+        return false;
+    }
+    let mut dossiers = vec![profil.join("cfg"), mame.join("cfg")];
+    if let Some(c) = inis.iter().find_map(|t| crate::emulateurs_profils::option_mame_ini(t, "cfg_directory")).filter(|v| !v.is_empty()) {
+        let c = Path::new(&c);
+        dossiers.push(if c.is_absolute() { c.to_path_buf() } else { mame.join(c) });
+    }
+    let jeu = jeu.filter(|j| !j.is_empty() && !j.contains(['/', '\\', '.']));
+    dossiers.iter().all(|d| {
+        std::iter::once("default".to_string()).chain(jeu.map(str::to_string)).all(|n| match lire_reglages(&d.join(format!("{n}.cfg"))) {
+            Ok(None) => true,
+            Ok(Some(t)) => !t.contains("<newseq") && !t.contains("<mapdevice"),
+            Err(()) => false,
+        })
+    })
 }
 
 /// PPSSPP, manette XInput n° 1 (`DEVICE_ID_XINPUT_0` = 20) : sa disposition d'origine, relevée le 10/11 dans
@@ -881,5 +994,68 @@ mod essai_guid {
     #[ignore]
     fn essai_guid_de_la_manette_branchee() {
         println!("manette XInput : {:?} ; GUID pour Eden : {:?}", super::premiere_manette_xinput(), super::guid_manette_xinput());
+    }
+}
+
+#[cfg(test)]
+mod tests_dosbox_mame {
+    use super::{dosbox_disposition_d_origine, mame_disposition_d_origine, mame_pilote_d_origine};
+
+    #[test]
+    fn mame_pilote_de_manette_d_origine() {
+        let m = tempfile::tempdir().unwrap();
+        assert!(mame_pilote_d_origine(m.path()), "pas de mame.ini");
+        for (v, attendu) in [("auto", true), ("", true), ("winhybrid", true), ("XInput", true), ("sdljoy", false), ("dinput", false)] {
+            std::fs::write(m.path().join("mame.ini"), format!("joystickprovider          {v}\n")).unwrap();
+            assert_eq!(mame_pilote_d_origine(m.path()), attendu, "{v}");
+        }
+    }
+
+    #[test]
+    fn dosbox_d_origine_tant_que_rien_n_est_change() {
+        let d = tempfile::tempdir().unwrap();
+        let conf = d.path().join("dosbox-staging.conf");
+        assert!(!dosbox_disposition_d_origine(d.path()), "pas de configuration portable : on ne sait pas");
+        std::fs::write(&conf, "[joystick]\n# joysticktype = 2axis\njoysticktype = auto\nswap34 = off\nbuttonwrap = false\n").unwrap();
+        assert!(dosbox_disposition_d_origine(d.path()));
+        std::fs::write(d.path().join("mapper-sdl2-0.83.0.map"), "key_a \"key 4\"\n").unwrap();
+        assert!(!dosbox_disposition_d_origine(d.path()), "touches enregistrées dans le mappeur");
+        std::fs::write(&conf, "[sdl]\nmapperfile = \n[joystick]\njoysticktype = auto\n").unwrap();
+        assert!(dosbox_disposition_d_origine(d.path()), "mapperfile vide : les touches d'origine");
+        // Commentaires, autre section, commandes de `[autoexec]` : sans effet.
+        std::fs::remove_file(d.path().join("mapper-sdl2-0.83.0.map")).unwrap();
+        std::fs::write(&conf, "[joystick]\njoysticktype = auto # d'origine\n[cpu]\nswap34 = on\n[autoexec]\njoysticktype = 2axis\n").unwrap();
+        assert!(dosbox_disposition_d_origine(d.path()));
+        std::fs::write(d.path().join("dosbox.conf"), "").unwrap();
+        assert!(!dosbox_disposition_d_origine(d.path()), "un dosbox.conf à côté : on ne sait pas");
+        std::fs::remove_file(d.path().join("dosbox.conf")).unwrap();
+        for c in ["joysticktype = 2axis", "swap34 = on", "buttonwrap = true", "mapperfile = xbox/aitd.map"] {
+            std::fs::write(&conf, format!("[joystick]\n{c}\n")).unwrap();
+            assert!(!dosbox_disposition_d_origine(d.path()), "{c}");
+        }
+    }
+
+    #[test]
+    fn mame_d_origine_tant_qu_aucune_touche_n_est_choisie() {
+        let m = tempfile::tempdir().unwrap();
+        let p = m.path().join("Profils").join("Zoé");
+        std::fs::create_dir_all(p.join("cfg")).unwrap();
+        std::fs::create_dir_all(m.path().join("cfg")).unwrap();
+        assert!(mame_disposition_d_origine(m.path(), &p, Some("sf2")), "rien d'écrit : d'origine");
+        std::fs::write(p.join("cfg").join("sf2.cfg"), "<mameconfig><system name=\"sf2\"><counters/></system></mameconfig>").unwrap();
+        assert!(mame_disposition_d_origine(m.path(), &p, Some("sf2")), "compteurs seulement");
+        std::fs::write(p.join("cfg").join("sf2.cfg"), "<port type=\"P1_BUTTON1\"><newseq type=\"standard\">JOYCODE_1_BUTTON3</newseq></port>").unwrap();
+        assert!(!mame_disposition_d_origine(m.path(), &p, Some("sf2")), "touche choisie pour le jeu");
+        assert!(mame_disposition_d_origine(m.path(), &p, Some("pacman")), "un autre jeu");
+        std::fs::write(m.path().join("cfg").join("default.cfg"), "<mapdevice device=\"XInput Player 1\" controller=\"JOYCODE_2\" />").unwrap();
+        assert!(!mame_disposition_d_origine(m.path(), &p, Some("pacman")), "dossier commun de MAME aussi lu");
+        std::fs::remove_file(m.path().join("cfg").join("default.cfg")).unwrap();
+        std::fs::write(m.path().join("mame.ini"), "ctrlr                     xarcade\n").unwrap();
+        assert!(!mame_disposition_d_origine(m.path(), &p, None), "fichier de manette");
+        std::fs::write(m.path().join("mame.ini"), "ctrlr                     \ncfg_directory             cfg-a-moi\n").unwrap();
+        assert!(mame_disposition_d_origine(m.path(), &p, None));
+        std::fs::create_dir_all(m.path().join("cfg-a-moi")).unwrap();
+        std::fs::write(m.path().join("cfg-a-moi").join("default.cfg"), "<newseq type=\"standard\">KEYCODE_A</newseq>").unwrap();
+        assert!(!mame_disposition_d_origine(m.path(), &p, None), "le dossier réglé dans mame.ini");
     }
 }

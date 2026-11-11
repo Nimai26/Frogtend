@@ -2543,3 +2543,8 @@ d'abord :
   disposition `xinput_to_3ds_mapping` sans Home) ; bouton Xbox libre tant que Home n'est pas sur une manette
   (`guide_libre`) ; langue : bloc 0x000A0002 du fichier `config` de la NAND du profil (cfg.cpp), une fois par
   profil ; schéma 🎮 3DS ; « Clavier et souris » rend le clavier d'origine.
+- 11/11 (0.181.0) : schémas de MAME (0.289 : XInput A..R3 = boutons 1-8, Back = pièce, Start = start) et DOSBox
+  Staging (0.83.0 : 4axis, SDL 0-3 = boutons 1-4, stick gauche ; croix non liée) ; « personnalisé » lu dans leurs
+  fichiers (`manettes::mame_disposition_d_origine`, `dosbox_disposition_d_origine`) ; « inconnu » pendant une partie
+  pour un émulateur sans nom, et pour un jeu lancé par son lanceur ; MAME en `joystickprovider` SDL → bouton Xbox
+  laissé à MAME (guetteur et schéma). mGBA : pas de schéma (profil XInput lié au nom SDL de la manette, à essayer).

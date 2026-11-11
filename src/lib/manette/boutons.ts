@@ -172,6 +172,35 @@ const EMULATEURS: Record<string, (plateforme: string, famille: Famille) => { con
     boutons: { a: 'A', b: 'B', x: 'X', y: 'Y', lb: 'Blanc', rb: 'Noir', lt: 'Gâchette gauche', rt: 'Gâchette droite', select: 'Back', start: 'Start', l3: 'Clic du stick gauche', r3: 'Clic du stick droit', croix: CROIX, stickg: 'Stick gauche', stickd: 'Stick droit' },
     remarque: `Le bouton ${famille === 'playstation' ? 'PS' : 'Xbox'} ouvre le menu d’xemu.`,
   }),
+  // MAME (autonome) : sa disposition d'origine, que Frogtend n'écrit pas (relue le 11/11 dans MAME 0.289). Sous
+  // Windows, une manette XInput passe par son pilote XInput (« winhybrid », osdobj_common.cpp) : A, B, X, Y, LB, RB,
+  // L3, R3 = boutons 1 à 8 dans cet ordre (input_xinput.cpp `configure`), Back = Pièce 1 et Start = Start 1
+  // (inpttype.ipp : JOYCODE_SELECT, JOYCODE_START), croix et stick gauche = joystick, stick droit = second joystick des
+  // jeux qui en ont deux. LT et RT (pédales des jeux de course) : pas dessinés. Une manette PlayStation passe par
+  // DirectInput, dont les numéros de boutons dépendent du modèle : rien de dessiné (jamais deviné).
+  mame: (_plateforme, famille) =>
+    famille === 'xbox'
+      ? {
+          console: 'l’arcade',
+          boutons: {
+            a: 'Bouton 1', b: 'Bouton 2', x: 'Bouton 3', y: 'Bouton 4', lb: 'Bouton 5', rb: 'Bouton 6', l3: 'Bouton 7', r3: 'Bouton 8',
+            select: 'Pièce', start: 'Start', croix: 'Joystick', stickg: 'Joystick', stickd: 'Second joystick (jeux à deux joysticks)',
+          },
+          remarque: 'Certains jeux (combat, Neo Geo) ont leur propre disposition.',
+        }
+      : null,
+  // DOSBox Staging : sa disposition d'origine (relue le 11/11 dans la 0.83.0, mapper.cpp `CreateDefaultBinds` et
+  // `QueryJoysticks`) : une seule manette = joystick de PC à 4 boutons ; les boutons SDL 0 à 3 (A, B, X, Y) sont ses
+  // boutons 1 à 4, le stick gauche le joystick. La croix n'est pas liée ; le stick droit dépend du pilote SDL : pas
+  // dessiné. Une manette PlayStation : l'ordre de ses boutons dépend du pilote SDL : rien de dessiné.
+  'dosbox-staging': (_plateforme, famille) =>
+    famille === 'xbox'
+      ? {
+          console: 'joystick du PC',
+          boutons: { a: 'Bouton 1', b: 'Bouton 2', x: 'Bouton 3', y: 'Bouton 4', stickg: 'Joystick' },
+          remarque: 'Seulement dans les jeux qui se jouent au joystick (souvent à choisir dans leur menu) ; les autres se jouent au clavier.',
+        }
+      : null,
   // PPSSPP : sa propre disposition pour une manette XInput (Core/KeyMapDefaults.cpp `defaultXInputKeyMap`, relu le
   // 10/11), que Frogtend n'écrit pas : PPSSPP la prend seul. Une manette PlayStation y passe par DirectInput, dont les
   // numéros de boutons dépendent du modèle : rien de dessiné (jamais deviné).
@@ -196,7 +225,8 @@ export interface InfosBoutons {
   famille: Famille;
   /** La disposition a été changée à la main (remappage RetroArch, profil de la personne) : rien n'est dessiné. */
   personnalise: boolean;
-  /** Frogtend ne règle pas la manette de cet émulateur ici (Cemu, Eden hors portable) : on ne sait pas, rien de dessiné. */
+  /** Frogtend ne règle pas la manette de cet émulateur ici (Cemu, Eden hors portable), ou ne sait pas lequel tourne (un
+   * émulateur hors catalogue, un jeu lancé par son propre lanceur) : on ne sait pas, rien de dessiné. */
   inconnue?: boolean;
   /** Jeu PC : sa correspondance manette → clavier (bouton → touche). */
   clavier: Record<string, string> | null;
@@ -264,6 +294,8 @@ export function schema(infos: InfosBoutons): Schema {
   // « Personnalisé » ne compte qu'une fois la disposition connue (sinon : « inconnu », la seule phrase juste).
   const connu = (console: string, role: (id: IdBouton) => string | undefined, remarque?: string): Schema =>
     infos.personnalise ? { etat: 'personnalise', console: null, lignes: [] } : { etat: 'connu', console, lignes: lignes(role), remarque };
+  // Un émulateur que Frogtend ne sait pas lire (hors catalogue pendant une partie, MAME lancé par un autre lanceur…).
+  if (infos.inconnue) return { etat: 'inconnu', console: null, lignes: [] };
   if (infos.emulateur === null) {
     const c = infos.clavier;
     if (!c || !Object.values(c).some(Boolean)) return { etat: 'jeu-pc', console: null, lignes: [] };
@@ -278,7 +310,6 @@ export function schema(infos: InfosBoutons): Schema {
     if (!d) return { etat: 'inconnu', console: null, lignes: [] };
     return connu(d.console, (id) => d.boutons[VERS_RETROPAD[id]], d.remarque);
   }
-  if (infos.inconnue) return { etat: 'inconnu', console: null, lignes: [] };
   const e = EMULATEURS[infos.emulateur]?.(infos.plateforme, infos.famille);
   if (e) return connu(e.console, (id) => e.boutons[id], e.remarque);
   return { etat: 'inconnu', console: null, lignes: [] };

@@ -21,9 +21,9 @@ Légende : ✅ fait · ⚠ fait avec un risque · ❌ absent · n/a sans objet.
 | xemu | ✅ par xemu lui-même (`auto_bind` : 1re manette SDL au port 1) | ✅ 0.179.0 : `eeprom.bin` (octet 0x90, somme refaite), une fois, à la 2e partie (xemu la crée à la 1re) | ⚠ à xemu : son menu, en dur (ui/xui/main.cc), gardé | xemu.toml créé | ✅ 0.179.0 |
 | Azahar | ✅ 0.180.0 : profil courant de `qt-config.ini`, toute manette (`maptype:all`), disposition de l'auto-configuration d'Azahar (par position) ; jamais par-dessus celle de la personne | ✅ 0.180.0 : fichier `config` de la NAND du profil (bloc 0x000A0002), une fois par profil, à la 2e partie | ✅ 0.180.0 : Home laissé au clavier → menu de Frogtend ; à Azahar si la personne a mis Home sur sa manette | qt-config.ini créé avec le profil de manette | ✅ 0.180.0 |
 | Vita3K | ✅ par Vita3K lui-même (SDL, par position, toute manette) | ✅ 0.175.0 : `sys-lang`, une fois (l'interface suit déjà Windows) ; accueil anglais retiré une fois, seulement firmware installé (système `fs\vs0\sys\external` et polices `fs\sa0`, 0.177.0) | ⚠ à Vita3K : pause, en dur (`on_ps_button`), gardé | config.yml créé ; firmware servi (besoin 48) installé par Frogtend 0.177.0 | ✅ 0.175.0 |
-| mGBA | ❌ | n/a | ✅ | n/a | ❌ |
-| DOSBox Staging | joysticktype auto | n/a | ✅ | .conf créé | ❌ |
-| MAME | ❌ | n/a | ✅ | n/a | ❌ |
+| mGBA | ❌ (voir plus bas : sa table XInput date d'un ancien SDL) | n/a | ✅ | n/a | ❌ |
+| DOSBox Staging | joysticktype auto | n/a | ✅ | .conf créé | ✅ 0.181.0 manette Xbox seule (4 boutons, stick gauche) ; PlayStation, plusieurs manettes, lanceur du jeu : rien |
+| MAME | ✅ par MAME lui-même (XInput, winhybrid) | n/a | ✅ (0.181.0 : pas pris si MAME est réglé sur un autre pilote) | n/a | ✅ 0.181.0 manette Xbox ; PlayStation (DirectInput) : rien |
 
 ## À faire, dans l'ordre (les émulateurs de Seb d'abord)
 
@@ -50,7 +50,18 @@ Légende : ✅ fait · ⚠ fait avec un risque · ❌ absent · n/a sans objet.
      la sauvegarde système (un octet, pas de somme). Non vérifié : un jeu japonais lancé en premier peut faire
      réécrire le japonais par Azahar (`UpdatePreferredRegionCode`) ; alors le français n'est pas posé (« encore anglais »).
    - PPSSPP : `[SystemParam]`.
-   - mGBA, DOSBox et MAME : schéma uniquement.
+   - ✅ MAME et DOSBox Staging (0.181.0) : schéma, relevé dans leur code (MAME 0.289 input_xinput.cpp et
+     inpttype.ipp ; DOSBox Staging 0.83.0 mapper.cpp). Rien de dessiné dès que la disposition peut être autre :
+     touches changées (`<newseq`/`<mapdevice` des cfg, `ctrlr`, mappeur de DOSBox, `joysticktype`…), autre pilote
+     de MAME, DOSBox non portable ou avec `dosbox.conf`, plusieurs manettes, jeu lancé par son propre lanceur.
+     Limite connue : une manette DirectInput d'une autre marque (Switch Pro, 8BitDo en mode D) n'est pas reconnue ;
+     seule, elle reçoit le dessin d'une manette Xbox, que MAME et DOSBox ne lui appliquent pas.
+   - ⚠ mGBA : PAS de schéma. Sa disposition d'origine ne lie que la croix et le stick (sdl-events.c
+     `mSDLInitBindingsGBA`) ; ses boutons viennent d'un profil intégré choisi par le NOM SDL de la manette
+     (InputProfile.cpp : « XInput Controller #N », numéros de boutons de l'ancien SDL : A = 11, B = 10…). Avec un
+     SDL récent, le nom et la numérotation ont changé : sans essai réel, on ne sait pas ce que font les boutons.
+     À faire : un essai avec Seb (mGBA 0.10.5, manette Xbox), puis sans doute écrire la manette de mGBA comme pour
+     Azahar.
 6. **Points mineurs** :
    - Eden et sa famille avec une manette PlayStation (seul le GUID XInput est calculé).
    - Le schéma s'affiche même quand aucune manette n'était branchée.
