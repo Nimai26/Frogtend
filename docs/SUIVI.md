@@ -2563,3 +2563,8 @@ d'abord :
   bord plein écran, manette Xbox liée seule au 1er démarrage, AutoAssign=1 la lie ensuite. Fiche BigPEmu livrée :
   UserData\ par profil (jonction), AutoAssign, figé au menu, schéma Jaguar, taille vérifiée.
 - 11/11 : besoin 49 transmis à la session FIREHOUSE (« transmet », Seb), par message ; lecture non confirmée.
+- 11/11 : réponse de FIREHOUSE au besoin 49 (contrat 1.41, Firehouse 3.167.0, en service après son redémarrage) :
+  `alternatives[].bios` et `.commande` (null = non décrits, ne jamais reprendre ceux du conseil) ; Ryubing : clés en
+  `portable/system/`, firmware par `--install-firmware`, ligne `-f "%rom%"` (pas `-g`) ; `actif` de Ryubing corrigé
+  à true ; sha256 seulement si Firehouse héberge les paquets (accord de Seb demandé par Firehouse). Ryubing : à coder
+  quand 3.167.0 sera en service (relevé lecture seule pour vérifier d'abord), après l'essai BigPEmu.
