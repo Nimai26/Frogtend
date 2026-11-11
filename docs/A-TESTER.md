@@ -7,7 +7,7 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## BigPEmu : rappel des triches avant de jouer (0.190.0)
-- [ ] Bubsy (« Infinite lives » cochée) : sous ▶ Jouer, la ligne « 🎯 Triches cochées… » est là (fiche et panneau).
+- [x] (✅ Seb 12/11) Bubsy (« Infinite lives » cochée) : sous ▶ Jouer, la ligne « 🎯 Triches cochées… » est là (fiche et panneau).
 - [ ] Un autre jeu Jaguar sans triche : pas de ligne.
 - [ ] Taodbox, A sur Bubsy : le rappel s'affiche, le jeu se lance 3 s après.
 - [ ] Décocher la triche dans le menu en jeu, quitter : la ligne disparaît sous ▶ Jouer.
