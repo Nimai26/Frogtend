@@ -7,9 +7,9 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## BigPEmu : 10 emplacements par jeu (0.186.0)
-- [ ] Bubsy, menu (bouton Xbox) : la ligne « Emplacement 1 » est là ; gauche / droite → emplacement 3 ; 💾 Sauver ;
+- [x] (✅ Seb 11/11) Bubsy, menu (bouton Xbox) : la ligne « Emplacement 1 » est là ; gauche / droite → emplacement 3 ; 💾 Sauver ;
       rouvrir le menu : l'emplacement 3 a la date du jour.
-- [ ] Bouger un peu, menu, emplacement 3 ▸ 📂 Charger : la partie revient au moment sauvé (attendre ~2 s).
+- [x] (✅ Seb 11/11, aussi l'emplacement 4) Bouger un peu, menu, emplacement 3 ▸ 📂 Charger : la partie revient au moment sauvé (attendre ~2 s).
 - [ ] Sauver à nouveau dans l'emplacement 3 : Frogtend demande avant de remplacer.
 - [ ] Vue + LT / Vue + RT (menu fermé) : sauvent / chargent dans l'emplacement choisi.
 - [ ] Un autre jeu Jaguar : ses emplacements sont vides (ceux de Bubsy ne s'y voient pas).
