@@ -6,9 +6,11 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
-## BigPEmu : fenêtre de triches passée seule (0.188.0)
-- [ ] Bubsy, « Infinite lives » cochée, sans toucher à la manette : ~4 s après l'apparition, l'écran « Press A/S »
-      passe, puis la liste se ferme ; le jeu démarre avec les vies infinies, sans le menu principal de BigPEmu.
+## BigPEmu : fenêtre de triches laissée à la personne (0.189.0)
+- [ ] Bubsy, « Infinite lives » cochée : au lancement, Frogtend affiche le rappel « attends…, puis A, puis B » ;
+      aucune touche n'est envoyée seule (rien ne s'ouvre en plus). A puis B : le jeu démarre avec les vies infinies.
+- [ ] ❓ Aide ▸ Pendant une partie : la ligne des jeux Jaguar est là.
+- [x] (✗ 0.188.0, Seb 11/11 : l'écran met ~11 s à accepter S — envoi automatique retiré)
 
 ## BigPEmu : fenêtre de triches (0.187.0)
 - [ ] Bubsy (« Infinite lives » cochée) : la fenêtre de triches s'ouvre puis se ferme seule après ~3 s ; le jeu

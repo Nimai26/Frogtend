@@ -268,7 +268,7 @@
       if (!t.active && !menu.triches?.some((x) => x.active)) {
         const oui = await confirmer(`🎯 Cocher « ${t.titre} » ?`, {
           message:
-            'Une triche peut abîmer une partie ou bloquer un jeu. Au prochain lancement, avant de jouer, Frogtend garde une copie de ta partie de ce jeu, à côté.\n\nLa triche vaut dès ta prochaine partie. Au démarrage, une petite fenêtre en anglais montre tes triches déjà cochées : Frogtend la ferme tout seul après quelques secondes (sinon : A, puis B).',
+            'Une triche peut abîmer une partie ou bloquer un jeu. Au prochain lancement, avant de jouer, Frogtend garde une copie de ta partie de ce jeu, à côté.\n\nLa triche vaut dès ta prochaine partie. Au démarrage, une petite fenêtre en anglais montre tes triches déjà cochées : attends quelques secondes qu’elle réponde, puis A, puis B pour lancer le jeu.',
           libelleValider: '🎯 Cocher',
         });
         if (!oui) return;
@@ -623,7 +623,7 @@
       {:else}
         <p class="muted">
           Coche ou décoche : ton choix vaut dès ta prochaine partie. Au démarrage, une petite fenêtre en anglais montre tes
-          triches cochées : Frogtend la ferme tout seul après quelques secondes (sinon : A, puis B).
+          triches cochées : attends quelques secondes qu’elle réponde, puis A, puis B pour lancer le jeu.
         </p>
       {/if}
     </header>

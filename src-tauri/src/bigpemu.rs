@@ -215,29 +215,6 @@ fn lire_json(f: &Path) -> Option<Value> {
 /// capture (DIK_F13 = 0x64…, les codes de balayage envoyés par le menu, `menu_jeu::code`).
 pub const RACCOURCIS: [(usize, u64); 3] = [(40, 100), (41, 101), (42, 102)];
 
-/// Le délai entre l'apparition de la fenêtre de BigPEmu et la première touche à sa fenêtre de triches (essai de Seb,
-/// 11/11 : son écran « Press A/S » n'accepte la touche qu'après ~2 s).
-pub const DELAI_FENETRE_TRICHES_MS: u64 = 3500;
-/// Entre la touche qui ouvre la liste des triches et Échap qui la ferme.
-pub const DELAI_LISTE_TRICHES_MS: u64 = 800;
-
-/// La touche du clavier qui passe l'écran « Press A/S » de la fenêtre de triches : celle du bouton B de la Jaguar
-/// (`Bindings[1]`, la touche S d'origine — relevé de Seb, 11/11 : S puis Échap lance le jeu, triches gardées). Le code
-/// DirectInput d'une touche simple (sous 0x80) est son code de balayage. `None` : pas de touche seule liée.
-pub fn touche_ouvrir_triches(dossier_profil: &Path) -> Option<u16> {
-    let v = lire_json(&reglages_du_profil(dossier_profil))?;
-    v["BigPEmuConfig"]["Input"]["Device0"]["Bindings"][1]["Triggers"]
-        .as_array()?
-        .iter()
-        .filter(|t| t["B_KB"].as_bool() == Some(true) && t.get("M_ID").is_none())
-        .filter_map(|t| t["B_ID"].as_u64())
-        .find(|c| (1..0x80).contains(c))
-        .map(|c| c as u16)
-}
-
-/// Échap (code de balayage 0x01) : « retour / annuler » dans les menus de BigPEmu (manuel officiel : flèches, Entrée,
-/// Échap) — ferme sa fenêtre de triches au démarrage.
-pub const TOUCHE_RETOUR: u16 = 0x01;
 
 /// Ce déclencheur est-il cette touche du clavier, seule (sans touche tenue) ?
 fn est_la_touche(t: &Value, code: u64) -> bool {
@@ -577,10 +554,8 @@ pub struct Lancement {
     /// Une sauvegarde rapide coupée la fois d'avant n'a pas pu être remise en place.
     pub erreur_etats: Option<String>,
     /// Le module de triches est actif pour ce jeu avec une triche cochée : BigPEmu ouvrira sa fenêtre de triches au
-    /// démarrage (Frogtend la ferme). Faux sans réglages lisibles (premier lancement d'un profil) : rien n'a été posé.
+    /// démarrage (laissée à la personne, Frogtend prévient). Faux sans réglages lisibles (premier lancement d'un profil) : rien n'a été posé.
     pub fenetre_triches: bool,
-    /// La touche qui passe le premier écran de cette fenêtre (`touche_ouvrir_triches`).
-    pub touche_triches: Option<u16>,
     pub empreinte: Option<String>,
     pub triches: Vec<TricheBp>,
     /// Des triches sont cochées pour ce jeu : ses fichiers ont été mis à l'abri avant.
@@ -628,7 +603,6 @@ pub fn preparer_partie(emulateur: &Path, dossier_profil: &Path, rom: Option<&Pat
     }
     l.triches = l.empreinte.as_deref().map(|e| triches_du_jeu(emulateur, dossier_profil, e)).unwrap_or_default();
     l.raccourcis = raccourcis_poses(dossier_profil);
-    l.touche_triches = touche_ouvrir_triches(dossier_profil);
     l.etats = etats_de_la_partie(dossier_profil, l.empreinte.as_deref()).filter(|_| reprise.is_ok());
     Ok(l)
 }
@@ -1250,7 +1224,6 @@ mod tests {
         std::fs::write(reglages_du_profil(&p), XBOX).unwrap();
         let l = preparer_partie(d.path(), &p, Some(&rom), None, 2).unwrap();
         assert!(l.fenetre_triches, "module posé pour la triche cochée");
-        assert_eq!(l.touche_triches, Some(31), "la touche S du bouton B de la Jaguar (DIK 31)");
         let v: Value = serde_json::from_str(&std::fs::read_to_string(reglages_du_profil(&p)).unwrap()).unwrap();
         assert_eq!(v["BigPEmuConfig"]["ScriptsEnabled"], serde_json::json!(["cheat_codes"]));
     }

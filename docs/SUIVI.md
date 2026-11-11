@@ -2608,3 +2608,6 @@ d'abord :
   envoyé). Relevé de Seb au clavier : S (bouton B Jaguar, `Bindings[1]`, DIK 31) puis Échap lance le jeu, vies
   infinies gardées ; S accepté après ~2 s. Frogtend : touche du bouton B lue dans les réglages de la personne, 3,5 s,
   puis Échap 0,8 s après.
+- 11/11 (0.189.0) : essai de Seb sur 0.188.0 — échec : « Press A/S » accepte S seulement après ~11 s. Décision de Seb :
+  laisser la fenêtre à la personne et prévenir. Envoi automatique retiré (S/Échap) ; rappel au lancement (événement
+  `bigpemu-triches`, toast), dans 🎯 Triches et dans l'Aide. Le module reste tenu par Frogtend (0.187.0).

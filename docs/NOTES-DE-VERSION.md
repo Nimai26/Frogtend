@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.189.0 — BigPEmu : la fenêtre de triches laissée à toi, et expliquée
+
+- 🎮 Jeux Jaguar avec une triche cochée : Frogtend n'appuie plus de touches à ta place dans la fenêtre de triches de
+  BigPEmu (elle met de 2 à 11 secondes à répondre, impossible à deviner sans risque). Au lancement, Frogtend te
+  rappelle quoi faire : **attendre qu'elle réponde, puis A, puis B**. Aussi dans 🎯 Triches et dans l'Aide.
+- Rappel : cette fenêtre ne s'ouvre que pour un jeu où une triche est cochée.
+
 ## 0.188.0 — BigPEmu : la fenêtre de triches se ferme vraiment seule
 
 - 🎮 Jeux Jaguar avec une triche cochée : Frogtend passe l'écran « Press A/S » de BigPEmu (la touche de ton bouton B

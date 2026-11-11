@@ -108,6 +108,11 @@
       <li><strong>⚙ Gérer le jeu</strong> : changer d’émulateur pour ce jeu seulement, les commandes, ce qui lance le jeu.</li>
       <li>Les triches et les mods se trouvent par jeu ; avant de modder, Frogtend propose une copie du jeu.</li>
       <li>
+        Jeux Jaguar (BigPEmu) : les triches se cochent dans le menu en jeu (🎯 Triches) et valent dès la partie suivante.
+        Au démarrage d’un jeu à triche cochée, BigPEmu montre sa fenêtre de triches : attends quelques secondes qu’elle
+        réponde, puis <strong>A</strong> (ouvre la liste), puis <strong>B</strong> (lance le jeu, triches gardées).
+      </li>
+      <li>
         Un jeu à disque rangé dans un .zip ou un .7z (PS3, PS2, GameCube…) : l’émulateur ne le lit pas tel quel. Le
         panneau du jeu propose <strong>🗜 Décompresser pour jouer</strong>, avec la taille et la durée annoncées ;
         l’archive est gardée.
