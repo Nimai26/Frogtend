@@ -98,6 +98,22 @@ git 2.51, Node 24.11, pnpm 10.32, Rust 1.94 (stable, MSVC), Visual Studio Build 
 > bouton du menu de Frogtend, dès la PREMIÈRE partie d'une installation neuve (fichier de config pas encore créé),
 > et son schéma « 🎮 Boutons » dans le menu en jeu. Testé sur une installation neuve à chaque fois.
 >
+> ⚠ **Tout ce que l'émulateur propose, dans le menu en jeu (Seb, 11/11, après l'essai de BigPEmu 0.184.0 : « pas de
+> quick save et load, pas de touche non plus en raccourci, pas d'option pour shaders, pas de code triches […] quand un
+> émulateur propose ce genre de chose et que c'est possible, il faut à tout prix que ce soit systématiquement inclus
+> dans notre menu »).** Pour CHAQUE émulateur : sauvegarde et chargement rapides (avec leur raccourci), effets d'écran
+> (shaders), codes de triche, et le reste de ce qu'il offre, dans le menu de Frogtend dès qu'il le permet ; relevé
+> AVANT de livrer une fiche ; ce qui est impossible est dit à Seb avec sa raison. Audit de tous les émulateurs à faire
+> (colonnes « États rapides », « Effets d'écran », « Triches » dans AUDIT-REGLAGES-EMULATEURS.md).
+> Les raccourcis manette de sauvegarde rapide de Frogtend (Vue + LT sauver, Vue + RT charger, déjà décidés et montrés
+> sous l'image de la manette) valent pour tout émulateur dont le menu sait sauver/charger.
+>
+> ⚠ **Raccourcis réglables (Seb, 11/11) :** « ce sera cool que ce soit les réglages par défaut, mais qu'il y ait une
+> rubrique dans les options pour définir les raccourcis manette ET clavier, et qu'ils restent tout de même à jour dans
+> le menu des manettes ». → une rubrique des Réglages : les raccourcis de Frogtend (menu, sauvegarde et chargement
+> rapides…) à la manette ET au clavier, ceux d'aujourd'hui par défaut ; l'image « 🎮 Les touches » du menu en jeu
+> montre toujours les raccourcis réellement réglés. À faire après les états/effets/triches de BigPEmu.
+>
 > ⚠ **Mises à jour des émulateurs (Seb, 08/11, après l'essai de la 0.167.0 : « les mises à jour ont l'air bonnes et
 > faites »).** (1) **L'avancement se voit** pendant une mise à jour lancée depuis ⚙ Réglages ▸ Émulateurs (« pas de
 > suivi de l'avancement ») ; une seconde demande pendant qu'une autre tourne est dite clairement (essai : RPCS3 et

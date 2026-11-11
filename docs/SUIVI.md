@@ -2570,3 +2570,14 @@ d'abord :
   quand 3.167.0 sera en service (relevé lecture seule pour vérifier d'abord), après l'essai BigPEmu.
 - 11/11 : Firehouse héberge BigPEmu 1.221 et Ryubing 1.3.3 (accord de Seb) : relu en lecture seule (`essai_bigpemu_ryubing`), sha256
   et route API servis ; 0.184.0 les vérifie déjà (`emulateur_installer_firehouse`), rien à coder.
+- 11/11 : essai BigPEmu 0.184.0 par Seb : installé, lancé, touches et menu OK. Manquaient : sauvegardes rapides, effets
+  d'écran, triches → règle de Seb « tout ce que l'émulateur propose, dans notre menu » (PLAN). Relevé SANS jeu
+  (accord de Seb) dans D:\temp-tests-frogtend\bigpemu-releve2 : options lues seulement APRÈS l'image (`"*null"`
+  d'abord, sinon -localdata ignoré et écriture dans %APPDATA%\BigPEmu — dossier créé par l'essai à 14:43:23,
+  déplacé dans le dossier d'essai, rien de Seb touché) ; -setcfgprop refuse ScreenEffect/StateSlot ; effet =
+  `"ScreenEffect": "crt-hyllian.dstack"` AU PREMIER NIVEAU, gardé ; Device0.Bindings[40]/[41] (Save/Load State,
+  vides d'origine) gardent F13/F14 (DIK 100/101). Triches (Seb, Bubsy, « Infinite lives ») : `ScriptsEnabled:
+  ["cheat_codes"]`, `ScriptData_CheatSetting_<fnv1a64>_<nom, espaces→_>` = uint32 petit-boutiste en hexa
+  ("01000000") ; fnv1a64 du .j64 dans le zip calculé par Frogtend = celui de BigPEmu (5c0c7827948f0f27). Le script
+  ouvre sa fenêtre de triches à chaque chargement d'un jeu qui en a. Inconnus : noms avec - / ( ) (11 sur 159),
+  empreinte d'un jeu CD.
