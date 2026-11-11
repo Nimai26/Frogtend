@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.188.0 — BigPEmu : la fenêtre de triches se ferme vraiment seule
+
+- 🎮 Jeux Jaguar avec une triche cochée : Frogtend passe l'écran « Press A/S » de BigPEmu (la touche de ton bouton B
+  Jaguar, S d'origine) puis ferme la liste (Échap), environ 4 s après l'apparition du jeu — l'enchaînement relevé
+  par Seb. Tes triches restent actives. Laisse faire : si tu passes la fenêtre toi-même avant, l'Échap de Frogtend
+  ouvrira le menu de BigPEmu (B pour le refermer).
+
 ## 0.187.0 — BigPEmu : plus de fenêtre de triches à chaque lancement
 
 - 🎮 Jeux Jaguar : la fenêtre de triches de BigPEmu ne s'ouvre plus que pour un jeu où tu as coché une triche dans le

@@ -6,6 +6,10 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## BigPEmu : fenêtre de triches passée seule (0.188.0)
+- [ ] Bubsy, « Infinite lives » cochée, sans toucher à la manette : ~4 s après l'apparition, l'écran « Press A/S »
+      passe, puis la liste se ferme ; le jeu démarre avec les vies infinies, sans le menu principal de BigPEmu.
+
 ## BigPEmu : fenêtre de triches (0.187.0)
 - [ ] Bubsy (« Infinite lives » cochée) : la fenêtre de triches s'ouvre puis se ferme seule après ~3 s ; le jeu
       démarre (pas figé) avec les vies infinies. Le menu principal de BigPEmu ne doit PAS s'ouvrir.

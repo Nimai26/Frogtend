@@ -2604,3 +2604,7 @@ d'abord :
   coupé), fenêtre fermée par Échap (manuel : Échap = retour) 2,5 s après la fenêtre, BigPEmu au premier plan, menu de
   Frogtend fermé, et seulement si le module a été posé (relecture de l'expert : pas d'Échap au 1er lancement d'un
   profil). Non vérifié : Échap passe-t-il par cheat_menu_done (essai de Seb).
+- 11/11 (0.188.0) : essai de Seb sur 0.187.0 — Échap seul ne passe pas le premier écran « Press A/S » (journal : Échap
+  envoyé). Relevé de Seb au clavier : S (bouton B Jaguar, `Bindings[1]`, DIK 31) puis Échap lance le jeu, vies
+  infinies gardées ; S accepté après ~2 s. Frogtend : touche du bouton B lue dans les réglages de la personne, 3,5 s,
+  puis Échap 0,8 s après.

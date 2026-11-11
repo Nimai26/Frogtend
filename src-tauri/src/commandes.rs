@@ -1892,7 +1892,7 @@ pub async fn jeu_jouer(
     // BigPEmu : ses effets et ses triches remplacent ceux de RetroArch dans le menu.
     let etats_bigpemu = lancement_bp.as_ref().and_then(|l| l.etats.clone());
     // Une triche cochée pour ce jeu (posée sans erreur) : BigPEmu montrera sa fenêtre de triches au démarrage.
-    let fenetre_triches_bp = lancement_bp.as_ref().is_some_and(|l| l.fenetre_triches);
+    let fenetre_triches_bp = lancement_bp.as_ref().filter(|l| l.fenetre_triches).map(|l| l.touche_triches);
     let (effets_ra, effet_bp, triches, abri_triches, empreinte, cles_triches, dossier_profil_bp) = match lancement_bp {
         Some(l) => (
             l.effets,
@@ -1998,25 +1998,40 @@ pub async fn jeu_jouer(
     // (`DELAI_FENETRE_TRICHES_MS`, aucun signal lisible de son ouverture : ni journal ni titre)
     // après l'apparition de la fenêtre du jeu, et seulement si BigPEmu a le premier plan (jamais dans une autre
     // fenêtre ni pendant le menu de Frogtend).
-    if fenetre_triches_bp {
+    if let Some(touche_triches) = fenetre_triches_bp {
         let app6 = app.clone();
         std::thread::spawn(move || {
             let debut = std::time::Instant::now();
             let menu = app6.state::<crate::menu_jeu::MenuJeu>();
             while menu.en_cours(numero) && debut.elapsed() < std::time::Duration::from_secs(60) {
                 if crate::plein_ecran::fenetre_visible(&crate::lancement::processus_de_la_partie(pid)) {
+                    // BigPEmu au premier plan, menu de Frogtend fermé : sinon rien n'est envoyé.
+                    let pret = || {
+                        #[cfg(windows)]
+                        let devant = crate::lancement::processus_de_la_partie(pid).contains(&crate::clavier::pid_au_premier_plan());
+                        #[cfg(not(windows))]
+                        let devant = false;
+                        menu.en_cours(numero) && devant && !menu.ouvert.load(std::sync::atomic::Ordering::SeqCst)
+                    };
+                    let noyau = app6.state::<Noyau>();
+                    let Some(t) = touche_triches else {
+                        noyau.journaliser("BigPEmu : fenêtre de triches laissée à la personne (aucune touche du clavier pour le bouton B)");
+                        break;
+                    };
+                    // L'écran « Press A/S » : la touche du bouton B ouvre la liste, Échap la ferme et lance le jeu.
                     std::thread::sleep(std::time::Duration::from_millis(crate::bigpemu::DELAI_FENETRE_TRICHES_MS));
-                    let pids = crate::lancement::processus_de_la_partie(pid);
-                    #[cfg(windows)]
-                    let devant = pids.contains(&crate::clavier::pid_au_premier_plan());
-                    #[cfg(not(windows))]
-                    let devant = false;
-                    if menu.en_cours(numero) && devant && !menu.ouvert.load(std::sync::atomic::Ordering::SeqCst) {
-                        crate::menu_jeu::envoyer_touche(crate::bigpemu::TOUCHE_RETOUR, false, &[]);
-                        app6.state::<Noyau>().journaliser("BigPEmu : fenêtre de triches fermée par Échap (triches cochées gardées)");
-                    } else {
-                        app6.state::<Noyau>().journaliser("BigPEmu : fenêtre de triches laissée à la personne (BigPEmu sans le premier plan, ou menu de Frogtend ouvert)");
+                    if !pret() {
+                        noyau.journaliser("BigPEmu : fenêtre de triches laissée à la personne (BigPEmu sans le premier plan, ou menu de Frogtend ouvert)");
+                        break;
                     }
+                    crate::menu_jeu::envoyer_touche(t, false, &[]);
+                    std::thread::sleep(std::time::Duration::from_millis(crate::bigpemu::DELAI_LISTE_TRICHES_MS));
+                    if !pret() {
+                        noyau.journaliser("BigPEmu : liste des triches ouverte puis laissée à la personne (premier plan perdu, ou menu de Frogtend ouvert)");
+                        break;
+                    }
+                    crate::menu_jeu::envoyer_touche(crate::bigpemu::TOUCHE_RETOUR, false, &[]);
+                    noyau.journaliser("BigPEmu : fenêtre de triches passée (bouton B puis Échap, triches cochées gardées)");
                     break;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(250));
