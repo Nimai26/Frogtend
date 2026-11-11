@@ -726,6 +726,11 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
                 modifier_ini(emulateur, &cfg, "sys.files", &v)?;
             }
             modifier_ini(emulateur, &cfg, "display.window", &[("fullscreen_on_startup", vec!["true".into()])])?;
+            // La langue de la console (une fois, dès qu'xemu a créé son EEPROM ; xemu.rs). Un échec n'empêche jamais
+            // de jouer. La manette : xemu la branche seul (`auto_bind`).
+            if let Err(e) = crate::xemu::regler_langue(emulateur, &cfg, langue_et_clavier_de_windows().0) {
+                eprintln!("xemu : langue non posée ({e:?})");
+            }
             Ok(vec!["-config_path".into(), texte(&cfg)])
         }
         // Eden (Switch) : l'utilisateur Switch qui porte le nom du profil (`-u <nom>`, core/launch_params.cpp) ; à

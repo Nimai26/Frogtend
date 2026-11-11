@@ -6,6 +6,11 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## xemu (0.179.0)
+- [ ] Un jeu Xbox : la manette marche ; 🎮 « Les touches » montre la Xbox (Blanc et Noir sur LB et RB).
+- [ ] Quitter, relancer le jeu : il est en français (s'il a le français).
+- [ ] Le bouton Xbox ouvre le menu d'xemu ; Select + RB tenus ouvrent celui de Frogtend.
+
 ## Le logiciel système de la PS Vita (0.177.0, corrigé en 0.178.0)
 > Déjà essayé par Claude le 11/11 sur un Vita3K neuf à part : les trois fichiers s'installent. Reste à le voir chez toi.
 - [ ] Un jeu PS Vita avec un Vita3K jamais installé : l'accord annonce le logiciel système (305 Mo) ; après le oui,

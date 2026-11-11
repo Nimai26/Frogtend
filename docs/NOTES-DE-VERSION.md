@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.179.0 — xemu réglé : la langue et l'image des touches de la Xbox
+
+- 🌍 xemu (Xbox) : les jeux s'affichent dans la langue de Windows (le français chez toi) au lieu de l'anglais, à
+  partir de la DEUXIÈME partie (xemu crée la mémoire de sa console à la première ; Frogtend ne l'invente pas). Une
+  seule fois : si tu remets une autre langue, elle est gardée.
+- 🕹 Le menu en jeu montre l'image des touches de la Xbox : LB et RB y sont les boutons Blanc et Noir de la manette
+  d'origine. Ta manette (Xbox ou PlayStation) marchait déjà d'office.
+- Le bouton Xbox ouvre le menu d'xemu (c'est fixé dans xemu) ; le menu de Frogtend reste sur Select + RB tenus.
+
 ## 0.178.0 — Le logiciel système de la PS Vita s'installe aussi sur un Vita3K tout neuf
 
 - 🛠 Essayé en vrai (avec ton accord) sur un Vita3K neuf, dans un dossier à part effacé ensuite : le premier des trois

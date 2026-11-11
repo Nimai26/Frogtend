@@ -51,6 +51,7 @@ pub mod empreintes;
 pub mod eden;
 pub mod cemu;
 pub mod vita3k;
+pub mod xemu;
 pub mod xenia;
 pub mod identification;
 pub mod pack_mame;

@@ -2532,3 +2532,9 @@ d'abord :
   essai avait bien été vu par `constater_installation` (rien noté).
   2e cas essayé aussi (relecture de l'expert) : partie lancée AVANT le firmware (config.yml écrit par `choisir`, 3
   lignes) → les 3 PUP passent. `installer_firmware` refuse maintenant un Vita3K non portable.
+- 11/11 (0.179.0) : xemu (code relu, master) : manette SDL branchée seule (`auto_bind`) ; bouton Xbox = son menu, en
+  dur (ui/xui/main.cc) → gardé ; langue dans `eeprom.bin` (créée par xemu à son démarrage, vl.c), octet 0x90,
+  somme utilisateur à 0x60 (`xbox_eeprom_crc` recopiée) → posée une fois, EEPROM d'origine du dossier d'xemu
+  portable, xemu fermé, encore en anglais ; langues `XC_LANGUAGE_*` (Cxbx-Reloaded) ; schéma 🎮 Xbox (Blanc/Noir) et
+  disposition changée lue dans `gamepad_mappings` du xemu.toml du profil. Pas d'EEPROM réelle sur Venkman (xemu
+  jamais lancé) : vérifié sur une EEPROM faite comme xemu la fait.

@@ -157,6 +157,14 @@ const EMULATEURS: Record<string, (plateforme: string, famille: Famille) => { con
     console: 'Xbox 360',
     boutons: { a: 'A', b: 'B', x: 'X', y: 'Y', lb: 'LB', rb: 'RB', lt: 'LT', rt: 'RT', select: 'Back', start: 'Start', l3: 'Clic du stick gauche', r3: 'Clic du stick droit', croix: CROIX, stickg: 'Stick gauche', stickd: 'Stick droit' },
   }),
+  // xemu : sa disposition d'origine (config_spec.yml `controller_mapping`, relu le 11/11), que Frogtend n'écrit pas :
+  // toute manette SDL, par position ; LB et RB sont les boutons Blanc et Noir de la manette Xbox d'origine
+  // (ui/xemu-input.c). Le bouton Xbox ouvre le menu d'xemu, en dur (ui/xui/main.cc).
+  xemu: (_plateforme, famille) => ({
+    console: 'Xbox',
+    boutons: { a: 'A', b: 'B', x: 'X', y: 'Y', lb: 'Blanc', rb: 'Noir', lt: 'Gâchette gauche', rt: 'Gâchette droite', select: 'Back', start: 'Start', l3: 'Clic du stick gauche', r3: 'Clic du stick droit', croix: CROIX, stickg: 'Stick gauche', stickd: 'Stick droit' },
+    remarque: `Le bouton ${famille === 'playstation' ? 'PS' : 'Xbox'} ouvre le menu d’xemu.`,
+  }),
   // PPSSPP : sa propre disposition pour une manette XInput (Core/KeyMapDefaults.cpp `defaultXInputKeyMap`, relu le
   // 10/11), que Frogtend n'écrit pas : PPSSPP la prend seul. Une manette PlayStation y passe par DirectInput, dont les
   // numéros de boutons dépendent du modèle : rien de dessiné (jamais deviné).

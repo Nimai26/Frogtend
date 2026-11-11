@@ -3,6 +3,12 @@
 > Méthode : [METHODE-DE-TRAVAIL.md](METHODE-DE-TRAVAIL.md) § 5. Chaque erreur qui a coûté du temps entre ici le jour
 > même. À relire au début de chaque session et avant de toucher au domaine d'une leçon.
 
+## 11/11 — Une dépendance réservée aux tests passe les tests ciblés, pas la livraison
+Ce qui s'est passé : xemu.rs (0.179.0) lisait le TOML avec `toml`, qui n'est qu'une dépendance de TEST : `cargo test
+--lib xemu` passait, la livraison a échoué à la compilation du programme. Vu avant de publier. · Comment
+l'appliquer : avant de lancer la livraison, compiler toutes les cibles (`cargo test --all-targets --no-run`) ; une
+crate nouvelle dans le code du programme se vérifie dans [dependencies] de Cargo.toml.
+
 ## 11/11 — Un outil en ligne de commande peut se comporter autrement à son tout premier démarrage
 Ce qui s'est passé : `Vita3K --firmware` (0.177.0), relu dans le code et testé avec des imitations, plantait sur un
 Vita3K neuf : au premier démarrage, il crée sa configuration sans la relire. Seul l'essai réel l'a montré ; le

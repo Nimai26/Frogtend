@@ -93,6 +93,16 @@ describe('les boutons de la manette d’origine', () => {
     expect(schema(infos({ emulateur: 'xenia', coeur: null, famille: 'playstation' })).lignes[0].nom).toBe('Croix');
   });
 
+  it('xemu : la manette Xbox d’origine (Blanc et Noir), et son menu sur le bouton Xbox', () => {
+    const xbox = schema(infos({ emulateur: 'xemu', coeur: null, plateforme: 'Microsoft Xbox' }));
+    expect(xbox.etat).toBe('connu');
+    expect(xbox.console).toBe('Xbox');
+    expect(role(xbox, 'lb')).toBe('Blanc');
+    expect(role(xbox, 'rb')).toBe('Noir');
+    expect(xbox.etat === 'connu' && xbox.remarque).toContain('menu d’xemu');
+    expect(schema(infos({ emulateur: 'xemu', coeur: null, personnalise: true })).etat).not.toBe('connu');
+  });
+
   it('PPSSPP : sa disposition d’origine pour une manette Xbox, rien de deviné pour une PlayStation', () => {
     const psp = schema(infos({ emulateur: 'ppsspp', coeur: null, plateforme: 'Sony PSP' }));
     expect(psp.etat).toBe('connu');
