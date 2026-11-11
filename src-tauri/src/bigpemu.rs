@@ -534,7 +534,8 @@ pub fn fichiers_du_jeu(dossier_profil: &Path, empreinte: &str) -> Vec<PathBuf> {
         .filter(|p| p.is_file())
         .filter(|p| p.file_name().is_some_and(|n| {
             let n = n.to_string_lossy().to_lowercase();
-            n.contains(&e) && !n.contains(".avant-triche-")
+            // Ni les copies de Frogtend (abris, sauvegardes rapides de côté ou précédentes).
+            n.contains(&e) && !n.contains(".avant-triche-") && !n.contains(".frogtend-")
         }))
         .collect()
 }
@@ -548,6 +549,8 @@ pub struct Lancement {
     /// L'effet, les triches n'ont pas pu être posés (dit au journal ; le jeu se lance quand même).
     pub erreur_effet: Option<String>,
     pub erreur_triches: Option<String>,
+    /// Une sauvegarde rapide coupée la fois d'avant n'a pas pu être remise en place.
+    pub erreur_etats: Option<String>,
     pub empreinte: Option<String>,
     pub triches: Vec<TricheBp>,
     /// Des triches sont cochées pour ce jeu : ses fichiers ont été mis à l'abri avant.
@@ -556,6 +559,9 @@ pub struct Lancement {
     pub raccourcis: bool,
     /// Le dossier du profil de la personne qui joue (où les choix du menu attendent le prochain lancement).
     pub dossier_profil: PathBuf,
+    /// Les emplacements de sauvegarde rapide (`None` : BigPEmu sauve seul, dans son emplacement — « Increment on
+    /// Save », ou une série par jeu pour un jeu sans empreinte).
+    pub etats: Option<EtatsBp>,
 }
 
 /// Avant le lancement (BigPEmu fermé, `UserData\` déjà relié au profil) : l'effet choisi, les triches choisies dans le
@@ -568,6 +574,13 @@ pub fn preparer_partie(emulateur: &Path, dossier_profil: &Path, rom: Option<&Pat
         Err(e) => l.erreur_effet = Some(format!("{e:?}")),
     }
     l.empreinte = rom.and_then(empreinte_jeu);
+    // Une sauvegarde rapide coupée la fois d'avant (Frogtend arrêté au milieu) : tout est remis en place AVANT le reste
+    // (la mise à l'abri des triches copierait sinon un fichier de passage) ; un échec : pas d'emplacements cette
+    // partie (jamais une opération par-dessus une autre), dit au journal.
+    let reprise = reprendre_operations_coupees(dossier_profil, quand);
+    if let Err(e) = &reprise {
+        l.erreur_etats = Some(format!("{e:?}"));
+    }
     // La partie à l'abri AVANT d'écrire la moindre triche : une copie ratée, rien n'est écrit (le choix attend) et
     // rien ne se lance. Une écriture ratée ensuite : dit au journal, on joue sans le changement.
     let prevu = prevoir_triches(dossier_profil, l.empreinte.as_deref());
@@ -582,7 +595,287 @@ pub fn preparer_partie(emulateur: &Path, dossier_profil: &Path, rom: Option<&Pat
     }
     l.triches = l.empreinte.as_deref().map(|e| triches_du_jeu(emulateur, dossier_profil, e)).unwrap_or_default();
     l.raccourcis = raccourcis_poses(dossier_profil);
+    l.etats = etats_de_la_partie(dossier_profil, l.empreinte.as_deref()).filter(|_| reprise.is_ok());
     Ok(l)
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Les emplacements de sauvegarde rapide (✅ Seb 11/11 : « le même menu que la SNES », emplacements 1 à 10 PAR JEU).
+// BigPEmu 1.221 n'a AUCUNE action pour changer d'emplacement en jeu (ses 51 actions, `STR_EMUBUTTON0..50` de
+// `strings_en.txt`) : il sauve et charge dans `System.StateSlot`, lu au démarrage. Noms relevés dans le programme :
+// `state%03i.bigpstate`, ou `game%016llX_state%03i.bigpstate` avec « Per-Title States » (`PerGameSlots`).
+// Les 10 emplacements de Frogtend portent TOUJOURS le nom par jeu (`game<EMPREINTE>_stateNNN`) : d'origine, ceux de
+// BigPEmu sont communs à tous les jeux (relecture de l'expert : une partie d'un jeu en remplaçait une d'un autre).
+// Chaque opération passe par le fichier de BigPEmu (le « passage »), mis de côté le temps de l'opération puis
+// remis. Rien n'est jamais effacé, sauf la copie de passage d'un chargement restée identique à son emplacement.
+
+const EXT_ETAT: &str = "bigpstate";
+const DE_COTE: &str = "frogtend-de-cote";
+const PRECEDENT: &str = "frogtend-precedent";
+
+/// Où sont les sauvegardes rapides de ce jeu, et le fichier où BigPEmu sauve et charge (le passage).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EtatsBp {
+    pub dossier: PathBuf,
+    /// L'empreinte du jeu, en majuscules (comme BigPEmu l'écrit).
+    pub empreinte: String,
+    pub passage: PathBuf,
+}
+
+fn suffixe(f: &Path, s: &str) -> PathBuf {
+    PathBuf::from(format!("{}.{s}", f.to_string_lossy()))
+}
+
+fn maintenant_ms() -> u128 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)
+}
+
+impl EtatsBp {
+    pub fn fichier(&self, n: u8) -> PathBuf {
+        self.dossier.join(format!("game{}_state{n:03}.{EXT_ETAT}", self.empreinte))
+    }
+    fn de_cote(&self) -> PathBuf {
+        suffixe(&self.passage, DE_COTE)
+    }
+    /// Les emplacements du menu (0 à 9) et la date de leur sauvegarde (`None` : vide).
+    pub fn emplacements(&self) -> Vec<(u8, Option<u64>)> {
+        (0..=crate::menu_jeu::EMPLACEMENT_MAX).map(|n| (n, crate::menu_jeu::date_de(&self.fichier(n)))).collect()
+    }
+}
+
+/// Les sauvegardes rapides de ce jeu, d'après les réglages de la personne (absents : ceux d'origine, emplacement 0,
+/// une série commune). `None` : pas d'empreinte (jeu CD), ou « Increment on Save » (BigPEmu change d'emplacement
+/// seul à chaque sauvegarde).
+pub fn etats_de_la_partie(dossier_profil: &Path, empreinte: Option<&str>) -> Option<EtatsBp> {
+    let empreinte = empreinte?.to_uppercase();
+    let v = lire_json(&reglages_du_profil(dossier_profil)).unwrap_or(Value::Null);
+    let s = &v["BigPEmuConfig"]["System"];
+    let n = |k: &str| s[k].as_u64().unwrap_or(0);
+    if n("SaveAutoIncr") != 0 {
+        return None;
+    }
+    let slot = n("StateSlot");
+    if slot > 999 {
+        return None;
+    }
+    let dossier = dossier_profil.join(DOSSIER_DONNEES);
+    let nom = if n("PerGameSlots") != 0 { format!("game{empreinte}_state{slot:03}.{EXT_ETAT}") } else { format!("state{slot:03}.{EXT_ETAT}") };
+    Some(EtatsBp { passage: dossier.join(nom), dossier, empreinte })
+}
+
+/// Une opération coupée (Frogtend arrêté au milieu) : chaque fichier mis de côté (`*.frogtend-de-cote`, quel que soit
+/// le jeu) revient à sa place ; ce qui occupe sa place est gardé à côté (`.frogtend-recupere-<quand>`). Rend le
+/// nombre de fichiers remis.
+pub fn reprendre_operations_coupees(dossier_profil: &Path, quand: u64) -> Resultat<usize> {
+    let mut n = 0;
+    let fin = format!(".{DE_COTE}");
+    for cote in std::fs::read_dir(dossier_profil.join(DOSSIER_DONNEES)).into_iter().flatten().flatten().map(|x| x.path()) {
+        let nom = cote.to_string_lossy().to_string();
+        let Some(original) = nom.strip_suffix(&fin).map(PathBuf::from) else { continue };
+        if !cote.is_file() {
+            continue;
+        }
+        if original.exists() {
+            std::fs::rename(&original, suffixe(&original, &format!("frogtend-recupere-{quand}-{}", maintenant_ms())))?;
+        }
+        std::fs::rename(&cote, &original)?;
+        n += 1;
+    }
+    Ok(n)
+}
+
+/// Le fichier peut-il être ouvert seul (BigPEmu l'a fermé) ?
+fn libre(f: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new().read(true).share_mode(0).open(f).is_ok()
+    }
+    #[cfg(not(windows))]
+    {
+        f.is_file()
+    }
+}
+
+/// Le fichier existe, non vide, de taille stable entre deux regards, et fermé par BigPEmu.
+fn attendre_fichier(f: &Path, delai: std::time::Duration) -> bool {
+    let debut = std::time::Instant::now();
+    let mut avant: Option<u64> = None;
+    while debut.elapsed() < delai {
+        let t = std::fs::metadata(f).ok().map(|m| m.len()).filter(|t| *t > 0);
+        if t.is_some() && t == avant && libre(f) {
+            return true;
+        }
+        avant = t;
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    false
+}
+
+/// Un renommage réessayé (BigPEmu peut tenir le fichier un instant).
+fn renommer(de: &Path, vers: &Path) -> std::io::Result<()> {
+    let mut r = std::fs::rename(de, vers);
+    for _ in 0..10 {
+        if r.is_ok() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        r = std::fs::rename(de, vers);
+    }
+    r
+}
+
+/// Les sauvegardes rapides du dossier, avec leur taille et leur date (pour voir laquelle BigPEmu a écrite).
+fn releve(dossier: &Path) -> Vec<(PathBuf, Option<(u64, std::time::SystemTime)>)> {
+    std::fs::read_dir(dossier)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|x| x.path())
+        .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case(EXT_ETAT)))
+        .map(|p| {
+            let m = std::fs::metadata(&p).ok().and_then(|m| Some((m.len(), m.modified().ok()?)));
+            (p, m)
+        })
+        .collect()
+}
+
+/// Le fichier du passage revient. Un fichier arrivé entre-temps à sa place est gardé à côté (nom unique) ; s'il ne
+/// peut pas l'être, rien n'est remis (la reprise du prochain lancement s'en chargera).
+fn remettre(e: &EtatsBp, avait: bool) {
+    if !avait {
+        return;
+    }
+    if e.passage.exists() && std::fs::rename(&e.passage, suffixe(&e.passage, &format!("frogtend-tardif-{}", maintenant_ms()))).is_err() {
+        return;
+    }
+    if !e.passage.exists() {
+        let _ = std::fs::rename(e.de_cote(), &e.passage);
+    }
+}
+
+fn mettre_de_cote(e: &EtatsBp) -> Resultat<bool> {
+    if e.de_cote().exists() {
+        return Err(Erreur::Refus("Une sauvegarde rapide précédente n'a pas fini : quitte le jeu et relance-le, Frogtend remettra tout en place.".into()));
+    }
+    if !e.passage.exists() {
+        return Ok(false);
+    }
+    std::fs::rename(&e.passage, e.de_cote()).map_err(|er| Erreur::Refus(format!("La sauvegarde de BigPEmu n'a pas pu être mise de côté ({er}) : rien n'a été fait.")))?;
+    Ok(true)
+}
+
+/// Sauver dans l'emplacement `n` : le passage mis de côté, `envoyer` (la touche de BigPEmu), la nouvelle sauvegarde
+/// attendue (au plus `delai`) puis rangée dans `n` (l'ancienne de `n` copiée en `.frogtend-precedent` d'abord), le
+/// passage remis.
+pub fn sauver(e: &EtatsBp, n: u8, envoyer: impl FnOnce() -> Resultat<()>, delai: std::time::Duration) -> Resultat<()> {
+    let avait = mettre_de_cote(e)?;
+    let avant = releve(&e.dossier);
+    // Chaque emplacement du jeu copié à l'abri d'abord (si BigPEmu a changé d'emplacement dans son propre menu, F13
+    // écrirait dans un autre : son ancien contenu deviendra sa « précédente ») ; une copie ratée : rien n'est envoyé.
+    let abri = |f: &Path| suffixe(f, "frogtend-abri");
+    let mut abris: Vec<PathBuf> = Vec::new();
+    for f in (0..=crate::menu_jeu::EMPLACEMENT_MAX).map(|k| e.fichier(k)).filter(|f| f.is_file() && *f != e.passage) {
+        if let Err(er) = std::fs::copy(&f, abri(&f)) {
+            for g in &abris {
+                let _ = std::fs::remove_file(abri(g));
+            }
+            remettre(e, avait);
+            return Err(Erreur::Refus(format!("Tes sauvegardes n'ont pas pu être mises à l'abri ({er}) : rien n'a été sauvé.")));
+        }
+        abris.push(f);
+    }
+    // Après l'envoi : la copie d'un emplacement réécrit par BigPEmu devient sa « précédente », les autres partent.
+    let ranger_abris = || {
+        for g in &abris {
+            let change = releve(&e.dossier).into_iter().find(|(f, _)| f == g).map(|(_, m)| m) != avant.iter().find(|(f, _)| f == g).map(|(_, m)| *m);
+            if change {
+                let _ = renommer(&abri(g), &suffixe(g, PRECEDENT));
+            } else {
+                let _ = std::fs::remove_file(abri(g));
+            }
+        }
+    };
+    if let Err(er) = envoyer() {
+        ranger_abris();
+        remettre(e, avait);
+        return Err(er);
+    }
+    let vue = attendre_fichier(&e.passage, delai);
+    ranger_abris();
+    if !vue {
+        // Pas de sauvegarde vue : une COPIE revient au passage, l'original reste à côté sous un nom unique (une
+        // sauvegarde tardive de BigPEmu n'écrasera que la copie).
+        if avait {
+            let garde = suffixe(&e.passage, &format!("frogtend-avant-{}", maintenant_ms()));
+            if renommer(&e.de_cote(), &garde).is_ok() && !e.passage.exists() {
+                let _ = std::fs::copy(&garde, &e.passage);
+            }
+        }
+        let autre = releve(&e.dossier).into_iter().find(|(f, m)| *f != e.passage && avant.iter().all(|(g, m2)| g != f || m2 != m)).map(|(f, _)| f);
+        return Err(Erreur::Refus(match autre {
+            Some(f) => format!(
+                "BigPEmu a sauvé dans un autre fichier ({}) : son emplacement a dû être changé dans son propre menu ; l'ancien contenu est gardé à côté. Quitte et relance le jeu.",
+                f.file_name().unwrap_or_default().to_string_lossy()
+            ),
+            None => format!(
+                "BigPEmu n'a pas confirmé la sauvegarde dans l'emplacement {} : tes sauvegardes sont gardées (celle de BigPEmu aussi, à côté de « {} »).",
+                n + 1,
+                e.passage.file_name().unwrap_or_default().to_string_lossy()
+            ),
+        }));
+    }
+    let coupe = |er: std::io::Error| {
+        Erreur::Refus(format!("La sauvegarde est faite mais n'a pas pu être rangée ({er}) : rien n'est perdu, relance le jeu pour que Frogtend remette tout en place."))
+    };
+    let cible = e.fichier(n);
+    if cible == e.passage {
+        if avait {
+            renommer(&e.de_cote(), &suffixe(&cible, PRECEDENT)).map_err(coupe)?;
+        }
+        return Ok(());
+    }
+    if cible.exists() {
+        std::fs::copy(&cible, suffixe(&cible, PRECEDENT)).map_err(coupe)?;
+    }
+    renommer(&e.passage, &cible).map_err(coupe)?;
+    if avait && !e.passage.exists() {
+        renommer(&e.de_cote(), &e.passage).map_err(coupe)?;
+    }
+    Ok(())
+}
+
+fn identiques(a: &Path, b: &Path) -> bool {
+    matches!((std::fs::read(a), std::fs::read(b)), (Ok(x), Ok(y)) if x == y)
+}
+
+/// Charger l'emplacement `n` : une COPIE de sa sauvegarde à la place du passage (mis de côté), `envoyer`, le temps
+/// que BigPEmu la lise (`lecture`), puis la copie retirée (seulement si elle est restée identique, sinon gardée à
+/// côté) et le passage remis. L'emplacement `n` n'est jamais déplacé.
+pub fn charger(e: &EtatsBp, n: u8, envoyer: impl FnOnce() -> Resultat<()>, lecture: std::time::Duration) -> Resultat<()> {
+    let cible = e.fichier(n);
+    if !cible.is_file() {
+        return Err(Erreur::Refus(format!("Aucune sauvegarde dans l'emplacement {} : sauve d'abord.", n + 1)));
+    }
+    if cible == e.passage {
+        return envoyer();
+    }
+    let avait = mettre_de_cote(e)?;
+    if let Err(er) = std::fs::copy(&cible, &e.passage) {
+        // Le passage était libre (mis de côté ou absent) : ce qui s'y trouve est la copie ratée de Frogtend.
+        let _ = std::fs::remove_file(&e.passage);
+        remettre(e, avait);
+        return Err(Erreur::Refus(format!("La sauvegarde de l'emplacement {} n'a pas pu être préparée ({er}) : rien n'a été fait.", n + 1)));
+    }
+    let r = envoyer();
+    if r.is_ok() {
+        std::thread::sleep(lecture);
+    }
+    if identiques(&e.passage, &cible) {
+        let _ = std::fs::remove_file(&e.passage);
+    }
+    remettre(e, avait);
+    r
 }
 
 /// Les données de BigPEmu de cette personne : `UserData\` relié à `Profils\<profil>\UserData`. Un vrai dossier
@@ -607,6 +900,150 @@ mod tests {
     use super::*;
 
     const XBOX: &str = include_str!("../fixtures/bigpemu/neuf-manette-xbox.bigpcfg");
+
+    const E: &str = "5C0C7827948F0F27";
+
+    /// Un dossier de données avec le passage commun d'origine (`state000`).
+    fn etats_dans(d: &Path) -> EtatsBp {
+        std::fs::create_dir_all(d).unwrap();
+        EtatsBp { dossier: d.to_path_buf(), empreinte: E.into(), passage: d.join("state000.bigpstate") }
+    }
+
+    fn lire_t(f: &Path) -> String {
+        std::fs::read_to_string(f).unwrap()
+    }
+
+    #[test]
+    fn chaque_jeu_a_ses_emplacements_et_le_passage_est_celui_de_bigpemu() {
+        let d = profil_avec(XBOX);
+        let p = d.path().join("Profils").join("Seb");
+        let e = etats_de_la_partie(&p, Some("5c0c7827948f0f27")).unwrap();
+        assert_eq!(e.passage.file_name().unwrap(), "state000.bigpstate");
+        assert_eq!(e.fichier(4).file_name().unwrap(), "game5C0C7827948F0F27_state004.bigpstate", "par jeu, même d'origine");
+        assert_eq!(etats_de_la_partie(&p, None), None, "jeu sans empreinte (CD) : pas d'emplacements");
+        let mut v: Value = serde_json::from_str(XBOX).unwrap();
+        v["BigPEmuConfig"]["System"]["PerGameSlots"] = 1.into();
+        v["BigPEmuConfig"]["System"]["StateSlot"] = 3.into();
+        std::fs::write(reglages_du_profil(&p), v.to_string()).unwrap();
+        let e = etats_de_la_partie(&p, Some("5c0c7827948f0f27")).unwrap();
+        assert_eq!(e.passage, e.fichier(3), "Per-Title States : le passage est l'emplacement 4 du jeu");
+        v["BigPEmuConfig"]["System"]["SaveAutoIncr"] = 1.into();
+        std::fs::write(reglages_du_profil(&p), v.to_string()).unwrap();
+        assert_eq!(etats_de_la_partie(&p, Some("5c0c7827948f0f27")), None, "Increment on Save : BigPEmu choisit seul");
+    }
+
+    #[test]
+    fn sauver_range_dans_l_emplacement_du_jeu_et_remet_le_passage() {
+        let d = tempfile::tempdir().unwrap();
+        let e = etats_dans(d.path());
+        std::fs::write(&e.passage, "passage").unwrap();
+        std::fs::write(e.fichier(4), "ancienne").unwrap();
+        let pass = e.passage.clone();
+        let r = sauver(&e, 4, || {
+            assert!(!pass.exists(), "le passage est de côté pendant la sauvegarde (aucune question de BigPEmu)");
+            std::fs::write(&pass, "nouvelle").map_err(Erreur::from)
+        }, std::time::Duration::from_secs(2));
+        assert!(r.is_ok(), "{r:?}");
+        assert_eq!(lire_t(&e.fichier(4)), "nouvelle");
+        assert_eq!(lire_t(&e.passage), "passage", "le passage est remis");
+        assert_eq!(lire_t(&suffixe(&e.fichier(4), PRECEDENT)), "ancienne");
+        assert!(!e.de_cote().exists());
+    }
+
+    #[test]
+    fn sauver_dans_le_passage_par_jeu_garde_l_ancienne_a_cote() {
+        let d = tempfile::tempdir().unwrap();
+        let mut e = etats_dans(d.path());
+        e.passage = e.fichier(2);
+        std::fs::write(&e.passage, "ancienne").unwrap();
+        let f = e.passage.clone();
+        sauver(&e, 2, || std::fs::write(&f, "nouvelle").map_err(Erreur::from), std::time::Duration::from_secs(2)).unwrap();
+        assert_eq!(lire_t(&e.fichier(2)), "nouvelle");
+        assert_eq!(lire_t(&suffixe(&e.fichier(2), PRECEDENT)), "ancienne");
+    }
+
+    #[test]
+    fn une_sauvegarde_non_vue_garde_l_original_et_ne_touche_pas_l_emplacement() {
+        let d = tempfile::tempdir().unwrap();
+        let e = etats_dans(d.path());
+        std::fs::write(&e.passage, "passage").unwrap();
+        std::fs::write(e.fichier(4), "ancienne").unwrap();
+        assert!(sauver(&e, 4, || Err(Erreur::Refus("touche".into())), std::time::Duration::from_millis(300)).is_err());
+        assert_eq!(std::fs::read_dir(d.path()).unwrap().count(), 2, "touche non envoyée : tout remis, rien en plus");
+        assert!(sauver(&e, 4, || Ok(()), std::time::Duration::from_millis(300)).is_err());
+        assert_eq!(lire_t(&e.passage), "passage", "une copie revient au passage");
+        assert_eq!(lire_t(&e.fichier(4)), "ancienne");
+        let gardes: Vec<_> = std::fs::read_dir(d.path()).unwrap().flatten().filter(|x| x.file_name().to_string_lossy().contains(".frogtend-avant-")).collect();
+        assert_eq!(gardes.len(), 1, "l'original reste à côté : une sauvegarde tardive n'écrase que la copie");
+        assert_eq!(lire_t(&gardes[0].path()), "passage");
+    }
+
+    #[test]
+    fn bigpemu_qui_sauve_ailleurs_ne_fait_rien_perdre() {
+        let d = tempfile::tempdir().unwrap();
+        let mut e = etats_dans(d.path());
+        e.passage = e.fichier(0);
+        std::fs::write(e.fichier(0), "zero").unwrap();
+        std::fs::write(e.fichier(5), "cinq").unwrap();
+        let k = e.fichier(5);
+        // Son emplacement changé dans son propre menu : F13 écrit dans l'emplacement 6 du jeu.
+        let r = sauver(&e, 0, || std::fs::write(&k, "ecrasee").map_err(Erreur::from), std::time::Duration::from_millis(300));
+        assert!(r.unwrap_err().to_string().contains("autre fichier"));
+        assert_eq!(lire_t(&suffixe(&e.fichier(5), PRECEDENT)), "cinq", "l'ancien contenu est gardé");
+        assert_eq!(lire_t(&e.fichier(0)), "zero");
+        assert!(std::fs::read_dir(d.path()).unwrap().flatten().all(|x| !x.file_name().to_string_lossy().ends_with(".frogtend-abri")));
+    }
+
+    #[test]
+    fn un_fichier_arrive_pendant_l_operation_n_est_jamais_ecrase() {
+        let d = tempfile::tempdir().unwrap();
+        let e = etats_dans(d.path());
+        std::fs::write(&e.passage, "passage").unwrap();
+        std::fs::write(e.fichier(7), "sept").unwrap();
+        let pass = e.passage.clone();
+        // BigPEmu sauve (par sa propre touche) pendant le chargement : sa sauvegarde est gardée à côté.
+        charger(&e, 7, || std::fs::write(&pass, "ecrite par bigpemu").map_err(Erreur::from), std::time::Duration::ZERO).unwrap();
+        assert_eq!(lire_t(&e.passage), "passage");
+        let tardifs: Vec<_> = std::fs::read_dir(d.path()).unwrap().flatten().filter(|x| x.file_name().to_string_lossy().contains(".frogtend-tardif-")).collect();
+        assert_eq!(tardifs.len(), 1);
+        assert_eq!(lire_t(&tardifs[0].path()), "ecrite par bigpemu");
+    }
+
+    #[test]
+    fn charger_un_emplacement_passe_par_une_copie() {
+        let d = tempfile::tempdir().unwrap();
+        let e = etats_dans(d.path());
+        std::fs::write(&e.passage, "passage").unwrap();
+        std::fs::write(e.fichier(7), "sept").unwrap();
+        let pass = e.passage.clone();
+        let lu = std::cell::RefCell::new(String::new());
+        charger(&e, 7, || {
+            *lu.borrow_mut() = lire_t(&pass);
+            Ok(())
+        }, std::time::Duration::from_millis(10))
+        .unwrap();
+        assert_eq!(*lu.borrow(), "sept", "BigPEmu lit l'emplacement 7 à la place du sien");
+        assert_eq!(lire_t(&e.passage), "passage");
+        assert_eq!(lire_t(&e.fichier(7)), "sept");
+        assert_eq!(std::fs::read_dir(d.path()).unwrap().count(), 2);
+        assert!(charger(&e, 5, || Ok(()), std::time::Duration::ZERO).is_err(), "emplacement vide");
+    }
+
+    #[test]
+    fn une_operation_coupee_est_remise_en_place_sans_rien_perdre() {
+        let d = profil_avec(XBOX);
+        let p = d.path().join("Profils").join("Seb");
+        let e = etats_de_la_partie(&p, Some(E)).unwrap();
+        std::fs::write(e.de_cote(), "passage").unwrap();
+        std::fs::write(&e.passage, "copie").unwrap();
+        assert!(sauver(&e, 3, || Ok(()), std::time::Duration::ZERO).is_err(), "jamais par-dessus une opération coupée");
+        assert_eq!(reprendre_operations_coupees(&p, 9).unwrap(), 1);
+        assert_eq!(lire_t(&e.passage), "passage");
+        let recup: Vec<_> = std::fs::read_dir(e.passage.parent().unwrap()).unwrap().flatten().filter(|x| x.file_name().to_string_lossy().contains(".frogtend-recupere-9-")).collect();
+        assert_eq!(lire_t(&recup[0].path()), "copie");
+        assert_eq!(reprendre_operations_coupees(&p, 9).unwrap(), 0);
+        assert!(fichiers_du_jeu(&p, E).iter().all(|f| !f.to_string_lossy().contains(".frogtend-")), "jamais copiés avant une triche");
+    }
     const CLAVIER: &str = include_str!("../fixtures/bigpemu/neuf-clavier.bigpcfg");
 
     fn profil_avec(texte: &str) -> tempfile::TempDir {

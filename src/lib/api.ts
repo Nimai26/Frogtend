@@ -611,6 +611,8 @@ export interface EtatMenuJeu {
   abri_triches: boolean;
   /** RPCS3 a refusé une sauvegarde rapide faute de son « mode compatible ». */
   refus_etat: boolean;
+  /** L'échec d'un raccourci de sauvegarde rapide (menu fermé), dit une fois à l'ouverture. */
+  message: string | null;
   /** Les effets d'image (`null` : pas d'écran) : RetroArch les change tout de suite (`en_direct`) ; BigPEmu au
    * prochain lancement. */
   effets: { presents: string[]; actuel: string | null; de_la_personne: boolean; en_direct: boolean } | null;

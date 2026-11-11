@@ -107,6 +107,10 @@ git 2.51, Node 24.11, pnpm 10.32, Rust 1.94 (stable, MSVC), Visual Studio Build 
 > (colonnes « États rapides », « Effets d'écran », « Triches » dans AUDIT-REGLAGES-EMULATEURS.md).
 > Les raccourcis manette de sauvegarde rapide de Frogtend (Vue + LT sauver, Vue + RT charger, déjà décidés et montrés
 > sous l'image de la manette) valent pour tout émulateur dont le menu sait sauver/charger.
+> **Menus normalisés (Seb, 11/11, après BigPEmu 0.185.0 sans les emplacements) :** « quand cela est possible nos menus
+> et actions doivent être normalisés ; ils sont différents uniquement quand des fonctions sont indisponibles sur
+> certains émulateurs ». Référence : le menu de RetroArch (SNES) — sauvegarde/chargement rapides ET choix de
+> l'emplacement (0 à 9), effets, triches, capture.
 >
 > ⚠ **Raccourcis réglables (Seb, 11/11) :** « ce sera cool que ce soit les réglages par défaut, mais qu'il y ait une
 > rubrique dans les options pour définir les raccourcis manette ET clavier, et qu'ils restent tout de même à jour dans

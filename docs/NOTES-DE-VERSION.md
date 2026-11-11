@@ -1,5 +1,19 @@
 # Notes de version de Frogtend
 
+## 0.186.0 — BigPEmu : 10 emplacements de sauvegarde par jeu, comme la SNES
+
+- 🎮 Jeux Jaguar : le menu propose maintenant les **10 emplacements de sauvegarde rapide**, comme pour la SNES (choisis
+  l'emplacement avec gauche / droite, sa date est affichée, Frogtend demande avant de remplacer une sauvegarde et garde
+  l'ancienne à côté). Les raccourcis Vue + LT / Vue + RT sauvent et chargent dans l'emplacement choisi.
+- **Chaque jeu a ses 10 emplacements** : une sauvegarde de Tempest 2000 ne remplace jamais celle de Bubsy.
+- BigPEmu ne sait pas changer d'emplacement en cours de jeu : Frogtend fait passer la sauvegarde par celui de BigPEmu,
+  puis la range à la bonne place. **BigPEmu affiche donc toujours « slot 0 »** : c'est normal.
+- Si un raccourci de la manette échoue, le menu s'ouvre et dit pourquoi.
+- La fenêtre des triches de BigPEmu au démarrage : appuie sur **B** pour lancer le jeu (A ouvre la liste, la gâchette
+  droite change une triche) — le texte du menu le dit maintenant.
+- La sauvegarde rapide faite avec la 0.185.0 reste dans l'emplacement de BigPEmu ; elle n'apparaît pas dans les 10
+  emplacements du jeu.
+
 ## 0.185.0 — BigPEmu : sauvegardes rapides, effets d'écran et triches dans le menu
 
 - 🎮 Jeux Jaguar (BigPEmu), dans le menu de Frogtend (bouton Xbox) :
@@ -11,8 +25,8 @@
     ou pour toute la console. Aussi depuis la fiche du jeu ▸ Gérer ce jeu ▸ 🖼 Effet d'image ;
   - **🎯 Triches** (si tu en as activé dans BigPEmu lui-même, Frogtend n'y touche pas) : celles livrées avec BigPEmu pour chaque jeu en cartouche (vies infinies, invincibilité…). Coche ou
     décoche : ça vaut dès ta prochaine partie. Avant de jouer avec une triche, Frogtend garde une copie de ta partie
-    de ce jeu. Au démarrage, BigPEmu montre sa petite fenêtre (en anglais) avec tes triches cochées : valide-la avec
-    son bouton « Accept ». Sans triche cochée, cette fenêtre ne s'ouvre plus.
+    de ce jeu. Au démarrage, BigPEmu montre sa petite fenêtre (en anglais) avec tes triches cochées : appuie sur B
+    pour lancer le jeu (A ouvre la liste, la gâchette droite change une triche). Sans triche cochée, cette fenêtre ne s'ouvre plus.
 - Ces touches et réglages sont posés au lancement, BigPEmu fermé ; rien de ce que tu as réglé toi-même dans BigPEmu
   n'est retiré.
 - Pas encore : les triches des jeux Jaguar CD, et 11 triches dont le nom a un signe (-, /, parenthèses) — à vérifier

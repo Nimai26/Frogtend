@@ -91,6 +91,13 @@ pub struct PartieEnCours {
     pub empreinte: Option<String>,
     pub dossier_profil: Option<String>,
     pub cles_triches: Vec<String>,
+    /// BigPEmu : ses sauvegardes rapides, pour les emplacements du menu (`None` : pas d'emplacements).
+    #[serde(skip)]
+    pub etats_bigpemu: Option<crate::bigpemu::EtatsBp>,
+    /// Un échec d'un raccourci de sauvegarde rapide (menu fermé), à dire à la prochaine ouverture du menu (BigPEmu ne
+    /// sait pas afficher un message de Frogtend).
+    #[serde(skip)]
+    pub message: Option<String>,
 }
 
 /// L'entrée « Images par seconde » du menu : ce qui est affiché (`None` : inconnu), et si le changement se voit tout
@@ -525,6 +532,16 @@ impl MenuJeu {
             t.active = !t.active;
         }
     }
+    /// Un message à dire à la prochaine ouverture du menu.
+    pub fn noter_message(&self, m: String) {
+        if let Some(p) = self.partie.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            p.message = Some(m);
+        }
+    }
+    /// Le message en attente, dit une seule fois.
+    pub fn prendre_message(&self) -> Option<String> {
+        self.partie.lock().unwrap_or_else(|e| e.into_inner()).as_mut().and_then(|p| p.message.take())
+    }
     /// RPCS3 a refusé une sauvegarde rapide (mode compatible absent).
     pub fn noter_refus_etat(&self) {
         if let Some(p) = self.partie.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
@@ -608,6 +625,8 @@ pub struct EtatMenu {
     pub refus_etat: bool,
     /// Les images par seconde (`None` : pas d'entrée).
     pub fps: Option<FpsMenu>,
+    /// Un échec d'un raccourci de sauvegarde rapide, dit une fois à l'ouverture du menu.
+    pub message: Option<String>,
 }
 
 pub fn nom_action(a: Action) -> &'static str {
@@ -668,12 +687,13 @@ pub fn etat(p: &PartieEnCours) -> EtatMenu {
             .collect(),
         en_pause: crate::pilotage::se_met_en_pause(e) && !p.figer_emulateur,
         taodbox: false,
-        emplacement: matches!(e, "retroarch" | "mame").then_some(p.emplacement),
+        emplacement: (matches!(e, "retroarch" | "mame") || (e == "bigpemu" && p.etats_bigpemu.is_some() && p.raccourcis_clavier)).then_some(p.emplacement),
         triches: ((e == "retroarch" && p.triches_permises && !p.etats_interdits) || (e == "bigpemu" && p.empreinte.is_some())).then(|| p.triches.clone()),
         triches_en_direct: e == "retroarch",
         abri_triches: p.abri_triches,
         refus_etat: p.refus_etat,
         fps: fps_menu(p, e),
+        message: None,
         effets: (matches!(e, "retroarch" | "bigpemu") && !p.effets.is_empty()).then(|| EffetsMenu {
             presents: p.effets.clone(),
             actuel: p.effet.clone(),
@@ -1150,6 +1170,8 @@ mod tests {
             empreinte: None,
             dossier_profil: None,
             cles_triches: vec![],
+            etats_bigpemu: None,
+            message: None,
         }
     }
 
@@ -1158,6 +1180,13 @@ mod tests {
         let t = Triche { titre: "Infinite lives".into(), active: true };
         let bp = PartieEnCours { effets: vec!["bigpemu:crt-hyllian".into()], triches: vec![t.clone()], empreinte: Some("5c0c7827948f0f27".into()), ..partie(Some("bigpemu")) };
         let e = etat(&bp);
+        assert_eq!(e.emplacement, None, "sans ses sauvegardes connues : pas d'emplacements");
+        let avec = PartieEnCours {
+            etats_bigpemu: Some(crate::bigpemu::EtatsBp { dossier: "x".into(), empreinte: "5C0C7827948F0F27".into(), passage: "x/state000.bigpstate".into() }),
+            emplacement: 3,
+            ..bp.clone()
+        };
+        assert_eq!(etat(&avec).emplacement, Some(3), "les emplacements comme pour la SNES (✅ Seb 11/11)");
         assert_eq!(e.effets.map(|x| x.en_direct), Some(false));
         assert_eq!(e.triches, Some(vec![t.clone()]));
         assert!(!e.triches_en_direct);

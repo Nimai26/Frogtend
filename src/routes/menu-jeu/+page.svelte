@@ -93,6 +93,7 @@
     visible = true;
     menu = await api.menuJeuEtat().catch(() => null);
     if (menu && pauseRecue) menu.en_pause = true;
+    if (menu?.message) toast(menu.message, 'erreur');
     void relireEmplacements();
     // Le fond du jeu : sa fiche (un import relié montre celle de Firehouse).
     const fiche = menu ? (menu.fiche ?? (menu.jeu > 0 ? menu.jeu : null)) : null;
@@ -267,7 +268,7 @@
       if (!t.active && !menu.triches?.some((x) => x.active)) {
         const oui = await confirmer(`🎯 Cocher « ${t.titre} » ?`, {
           message:
-            'Une triche peut abîmer une partie ou bloquer un jeu. Au prochain lancement, avant de jouer, Frogtend garde une copie de ta partie de ce jeu, à côté.\n\nLa triche vaut dès ta prochaine partie. Au démarrage, une petite fenêtre en anglais montre tes triches déjà cochées : valide-la avec son bouton « Accept » pour jouer avec.',
+            'Une triche peut abîmer une partie ou bloquer un jeu. Au prochain lancement, avant de jouer, Frogtend garde une copie de ta partie de ce jeu, à côté.\n\nLa triche vaut dès ta prochaine partie. Au démarrage, une petite fenêtre en anglais montre tes triches déjà cochées : appuie sur B pour lancer le jeu avec (A ouvre la liste, la gâchette droite change une triche).',
           libelleValider: '🎯 Cocher',
         });
         if (!oui) return;
@@ -622,7 +623,7 @@
       {:else}
         <p class="muted">
           Coche ou décoche : ton choix vaut dès ta prochaine partie. Au démarrage, une petite fenêtre en anglais montre tes
-          triches cochées : valide-la avec son bouton « Accept » pour jouer avec.
+          triches cochées : appuie sur B pour lancer le jeu avec (A ouvre la liste, la gâchette droite change une triche).
         </p>
       {/if}
     </header>

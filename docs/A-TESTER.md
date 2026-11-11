@@ -6,6 +6,16 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## BigPEmu : 10 emplacements par jeu (0.186.0)
+- [ ] Bubsy, menu (bouton Xbox) : la ligne « Emplacement 1 » est là ; gauche / droite → emplacement 3 ; 💾 Sauver ;
+      rouvrir le menu : l'emplacement 3 a la date du jour.
+- [ ] Bouger un peu, menu, emplacement 3 ▸ 📂 Charger : la partie revient au moment sauvé (attendre ~2 s).
+- [ ] Sauver à nouveau dans l'emplacement 3 : Frogtend demande avant de remplacer.
+- [ ] Vue + LT / Vue + RT (menu fermé) : sauvent / chargent dans l'emplacement choisi.
+- [ ] Un autre jeu Jaguar : ses emplacements sont vides (ceux de Bubsy ne s'y voient pas).
+- [ ] À savoir : la sauvegarde faite en 0.185.0 n'est pas dans ces 10 emplacements (elle reste celle de BigPEmu,
+      `state000.bigpstate`, jamais effacée).
+
 ## BigPEmu : sauvegardes rapides, effets, triches (0.185.0)
 - [ ] Un jeu Jaguar (Bubsy) : dans le menu (bouton Xbox), 💾 Sauvegarde rapide, puis plus tard 📂 Charger la sauvegarde rapide :
       la partie revient. Pareil avec Vue + LT (sauver) et Vue + RT (charger), menu fermé.
@@ -14,7 +24,7 @@
 - [ ] 🖼 Effet d'image ▸ « Télé d'époque » : le menu dit « dès ta prochaine partie » ; quitter et relancer : l'effet
       est là. Dire si les noms des effets correspondent à ce que tu vois.
 - [ ] 🎯 Triches : ta triche « Infinite lives » est déjà cochée ; en décocher / cocher une ; relancer : la fenêtre de
-      BigPEmu montre le bon choix ; **son bouton « Accept » se valide-t-il à la manette** (A) ? ; la triche agit.
+      BigPEmu montre le bon choix ; ✅ 11/11 : A ouvre la liste, gâchette droite change, B valide et lance ; la triche agit.
 - [ ] Tout décocher, relancer : plus de fenêtre de triches au démarrage.
 
 ## BigPEmu, Atari Jaguar (0.184.0)

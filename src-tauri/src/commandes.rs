@@ -1710,6 +1710,9 @@ pub async fn jeu_jouer(
                 if let Some(m) = &l.erreur_triches {
                     noyau.journaliser(&format!("BigPEmu : triches du jeu {id} non posées ({m})"));
                 }
+                if let Some(m) = &l.erreur_etats {
+                    noyau.journaliser(&format!("BigPEmu : sauvegarde rapide coupée non remise en place, pas d'emplacements ({m})"));
+                }
                 if l.abri_fait {
                     noyau.journaliser(&format!("BigPEmu : triches cochées pour le jeu {id}, ses fichiers mis à l'abri avant"));
                 }
@@ -1887,6 +1890,7 @@ pub async fn jeu_jouer(
         _ => None,
     };
     // BigPEmu : ses effets et ses triches remplacent ceux de RetroArch dans le menu.
+    let etats_bigpemu = lancement_bp.as_ref().and_then(|l| l.etats.clone());
     let (effets_ra, effet_bp, triches, abri_triches, empreinte, cles_triches, dossier_profil_bp) = match lancement_bp {
         Some(l) => (
             l.effets,
@@ -1909,6 +1913,8 @@ pub async fn jeu_jouer(
         empreinte,
         dossier_profil: dossier_profil_bp,
         cles_triches,
+        etats_bigpemu,
+        message: None,
         coeur: coeur_ra.clone(),
         dossier_rom: prep.dossier_rom,
         effet_pose: effet_lance.is_some(),
@@ -2491,7 +2497,8 @@ pub async fn menu_jeu_etat(app: AppHandle, menu: State<'_, crate::menu_jeu::Menu
         Ok(s) => noyau.fiche_de(&s, p.jeu).ok().flatten(),
         Err(_) => None,
     };
-    Ok(Some(crate::menu_jeu::EtatMenu { taodbox, en_pause, fiche, ..e }))
+    let message = menu.prendre_message();
+    Ok(Some(crate::menu_jeu::EtatMenu { taodbox, en_pause, fiche, message, ..e }))
 }
 
 /// Reprendre : le menu se cache, le jeu reprend le premier plan (et sort seul de sa pause).
@@ -2547,6 +2554,17 @@ pub async fn menu_jeu_action(app: AppHandle, noyau: State<'_, Noyau>, action: St
     // RPCS3 : sauver / charger avec leurs gardes (refus dit dans le menu, encore ouvert).
     if e == "rpcs3" && matches!(a, crate::pilotage::Action::SauverEtat | crate::pilotage::Action::ChargerEtat) {
         return etat_rpcs3(&app, &noyau, p, a, true).await;
+    }
+    if e == "bigpemu" && p.etats_bigpemu.is_some() && matches!(a, crate::pilotage::Action::SauverEtat | crate::pilotage::Action::ChargerEtat) {
+        cacher_menu(&app);
+        let r = etat_bigpemu(&app, p, a).await;
+        if let Err(err) = &r {
+            // Le menu est caché : il se rouvre (le jeu se remet en pause) pour que l'échec se VOIE.
+            noyau.journaliser(&format!("BigPEmu : sauvegarde rapide : {err:?}"));
+            let a2 = app.clone();
+            let _ = app.run_on_main_thread(move || ouvrir_menu(&a2));
+        }
+        return r;
     }
     cacher_menu(&app);
     if e == "retroarch" && matches!(a, crate::pilotage::Action::SauverEtat | crate::pilotage::Action::ChargerEtat) {
@@ -2818,6 +2836,28 @@ async fn etat_retroarch(app: &AppHandle, p: crate::menu_jeu::PartieEnCours, a: c
     .map_err(|_| Erreur::Disque("L'action s'est arrêtée brutalement.".into()))?
 }
 
+/// BigPEmu : sauver ou charger dans l'emplacement CHOISI (✅ Seb 11/11, comme la SNES). BigPEmu ne sait pas changer
+/// d'emplacement en jeu : chaque emplacement passe par le sien (`bigpemu::sauver` / `charger`). Une seule sauvegarde
+/// ou un seul chargement à la fois (menu et raccourci manette).
+async fn etat_bigpemu(app: &AppHandle, p: crate::menu_jeu::PartieEnCours, a: crate::pilotage::Action) -> Resultat<()> {
+    use crate::pilotage::Action;
+    let menu = app.state::<crate::menu_jeu::MenuJeu>();
+    let _seule = menu.prendre_etat().ok_or_else(|| Erreur::Refus("Une sauvegarde rapide est déjà en cours.".into()))?;
+    let e = p.etats_bigpemu.clone().ok_or_else(|| Erreur::Refus("Les sauvegardes rapides de BigPEmu sont introuvables.".into()))?;
+    let n = p.emplacement;
+    let pids = crate::lancement::processus_de_la_partie(p.pid);
+    tauri::async_runtime::spawn_blocking(move || {
+        let envoyer = || crate::menu_jeu::agir("bigpemu", &pids, a);
+        if a == Action::SauverEtat {
+            crate::bigpemu::sauver(&e, n, envoyer, std::time::Duration::from_secs(5))
+        } else {
+            crate::bigpemu::charger(&e, n, envoyer, std::time::Duration::from_millis(1500))
+        }
+    })
+    .await
+    .map_err(|_| Erreur::Disque("L'action s'est arrêtée brutalement.".into()))?
+}
+
 /// Un raccourci de sauvegarde rapide (menu fermé) : la même action que le menu, puis un message À L'ÉCRAN du jeu
 /// quand l'émulateur sait en montrer un (RetroArch : `SHOW_MSG`) ; un échec est noté au journal.
 async fn raccourci_etat(app: &AppHandle, quoi: &'static str) {
@@ -2831,12 +2871,15 @@ async fn raccourci_etat(app: &AppHandle, quoi: &'static str) {
     }
     let n = p.emplacement;
     let est_retroarch = e == "retroarch";
+    let est_bigpemu = e == "bigpemu";
     let r = if e == "mame" {
         action_mame(app, &noyau, p.dossier_emulateur.as_deref(), a, n).await
     } else if e == "retroarch" {
         etat_retroarch(app, p, a).await
     } else if e == "rpcs3" {
         etat_rpcs3(app, &noyau, p, a, false).await
+    } else if e == "bigpemu" && p.etats_bigpemu.is_some() {
+        etat_bigpemu(app, p, a).await
     } else {
         let pids = crate::lancement::processus_de_la_partie(p.pid);
         tauri::async_runtime::spawn_blocking(move || crate::menu_jeu::agir(&e, &pids, a))
@@ -2854,6 +2897,12 @@ async fn raccourci_etat(app: &AppHandle, quoi: &'static str) {
     }
     if est_retroarch {
         let _ = crate::menu_jeu::commande_retroarch(&format!("SHOW_MSG {message}"));
+    }
+    // BigPEmu n'affiche pas les messages de Frogtend : un échec rouvre le menu (le jeu en pause), qui le dit.
+    if let (true, Err(err)) = (est_bigpemu, &r) {
+        app.state::<crate::menu_jeu::MenuJeu>().noter_message(format!("{err}"));
+        let a2 = app.clone();
+        let _ = app.run_on_main_thread(move || ouvrir_menu(&a2));
     }
 }
 
@@ -3323,6 +3372,7 @@ pub async fn menu_jeu_emplacements(app: AppHandle, noyau: State<'_, Noyau>) -> R
             let etats = crate::pilotage::dossier_etats_mame(&d, &profil_ouvert(&noyau).await?.nom, &nom);
             Ok((0..=crate::menu_jeu::EMPLACEMENT_MAX).map(|n| (n, crate::menu_jeu::date_de(&etats.join(crate::pilotage::nom_etat_mame(n))))).collect())
         }
+        Some("bigpemu") => Ok(p.etats_bigpemu.map(|e| e.emplacements()).unwrap_or_default()),
         _ => Ok(vec![]),
     }
 }

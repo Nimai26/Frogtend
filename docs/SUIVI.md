@@ -2590,3 +2590,10 @@ d'abord :
   écriture des triches non bloquante, abri avant écriture, module de la personne gardé, captures non relevées
   retirées, marque d'effet avant écriture, textes « Accept » non promis). Non vérifié : un vrai jeu (états, capture,
   effet visible, fenêtre de triches à la manette), dossier des états/captures, jeux CD.
+- 11/11 (0.186.0) : essai de Seb sur 0.185.0 — fenêtre de triches : A ouvre la liste, gâchette droite change, B
+  valide et lance (textes corrigés) ; sauvegarde/chargement rapides OK (`UserData\state000.bigpstate`). Seb : « nos
+  menus et actions doivent être normalisés » → 10 emplacements comme la SNES (accord « oui » sur le passage par
+  l'emplacement de BigPEmu). Relevé dans BigPEmu.exe : `state%03i.bigpstate`, `game%016llX_state%03i.bigpstate`
+  (Per-Title), captures `game%016llX_screen%04i.tga` ; aucune action pour changer d'emplacement en jeu. Relecture
+  de l'expert lancement : emplacements d'origine communs à tous les jeux (bloquant) → les 10 emplacements de
+  Frogtend portent toujours l'empreinte du jeu ; délai, renommages, raccourci silencieux, reprise corrigés.

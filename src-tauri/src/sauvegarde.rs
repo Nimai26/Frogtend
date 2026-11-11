@@ -658,10 +658,11 @@ impl Noyau {
                 continue;
             }
             // Sans les fichiers qui portent une connexion RetroAchievements (jeton) : ils restent sur ce PC.
-            // Ni une sauvegarde de MAME en cours d'écriture (elle n'est gardée qu'une fois complète).
+            // Ni une sauvegarde de MAME en cours d'écriture (elle n'est gardée qu'une fois complète), ni une sauvegarde
+            // rapide de BigPEmu mise de côté le temps d'une opération (remise en place au prochain lancement).
             for r in fichiers_de(&du_profil)?
                 .into_iter()
-                .filter(|r| !crate::emulateurs_profils::porte_un_secret(r) && !r.ends_with(crate::pilotage::ETAT_MAME_NOUVEAU))
+                .filter(|r| !crate::emulateurs_profils::porte_un_secret(r) && !r.ends_with(crate::pilotage::ETAT_MAME_NOUVEAU) && !r.ends_with(".frogtend-de-cote"))
             {
                 parties.push(Element { source: du_profil.join(&r), relatif: format!("emulateurs/{nom_emulateur}/{r}") });
             }
