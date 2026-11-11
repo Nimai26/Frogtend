@@ -63,7 +63,12 @@ Légende : ✅ fait · ⚠ fait avec un risque · ❌ absent · n/a sans objet.
      À faire : un essai avec Seb (mGBA 0.10.5, manette Xbox), puis sans doute écrire la manette de mGBA comme pour
      Azahar.
 6. **Points mineurs** :
-   - Eden et sa famille avec une manette PlayStation (seul le GUID XInput est calculé).
+   - ✅ (0.183.0, non essayé en vrai) Eden et sa famille avec une manette PlayStation : GUID et disposition lus dans
+     le SDL3 de Frogtend (`manettes_sdl::releve_des_manettes`, sans ouvrir la manette) ; écrit seulement pour une
+     manette Sony du pilote HIDAPI dont la disposition SDL est exactement la standard (`eden::DISPOSITION_SDL_HIDAPI`).
+   - ⚠ Cemu avec une manette PlayStation seule : rien d'écrit. Cemu 2.6 lit les manettes par SDL2 et les nomme
+     `<index>_<GUID SDL2>` avec la somme du nom (SDLController.cpp) ; SDL2 2.30 note le bus USB même en Bluetooth
+     (SDL_hidapijoystick.c:929) : le GUID de SDL3 ne peut pas être recopié sans un relevé réel.
    - ✅ (0.182.0) Le schéma s'affichait même quand aucune manette n'était branchée : seule la famille Eden en dépend
      (manette liée par son GUID, donc seulement branchée au lancement) → état « au clavier » ; le clavier choisi pour
      un jeu → « clavier choisi » sur la fiche. Correctif : `\default=true` (clavier rendu) lu comme la valeur d'origine.

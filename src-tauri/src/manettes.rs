@@ -239,7 +239,7 @@ pub fn regler(id: &str, emulateur: &Path, utilisateur_dolphin: Option<&Path>, fo
         },
         "rpcs3" => regler_rpcs3_pour_partie(emulateur, forcer, manette_branchee()),
         // Eden, Eglantine : seulement portable, fermé, joueur 1 encore au clavier (ou `forcer`) — eden.rs.
-        "eden" | "eglantine" | "lichii" => crate::eden::regler_manette(emulateur, forcer, guid_manette_xinput().as_deref()),
+        "eden" | "eglantine" | "lichii" => crate::eden::regler_manette(emulateur, forcer, guid_manette_pour_eden().as_deref()),
         // Azahar : toute manette (aucun GUID), seulement portable, fermé, joueur 1 encore au clavier (ou `forcer`).
         "azahar" => crate::azahar::regler_manette(emulateur, forcer),
         // Cemu : le GamePad Wii U sur la manette XInput branchée (sinon la première : celle qu'on branchera, ou celle
@@ -487,6 +487,27 @@ pub fn premiere_manette_xinput() -> Option<u32> {
         }
     }
     None
+}
+
+/// La manette à lier dans Eden : la première manette XInput, sinon une DualShock 4 / DualSense que SDL présente avec sa
+/// disposition standard (`guid_manette_playstation`). `None` : aucune (Eden reste au clavier).
+pub fn guid_manette_pour_eden() -> Option<String> {
+    guid_manette_xinput().or_else(|| crate::manettes_sdl::releve_des_manettes().and_then(|l| guid_manette_playstation(&l)))
+}
+
+/// Une manette PlayStation (Sony, pilote HIDAPI de SDL, signature « h ») parmi celles que SDL voit, avec EXACTEMENT
+/// la disposition standard qu'Eden lira (`eden::DISPOSITION_SDL_HIDAPI`, d'autres liaisons en plus permises : pavé
+/// tactile, micro) : son GUID tel qu'Eden le lie. Une manette passée par XInput (DS4Windows, Steam) : celle d'XInput.
+pub fn guid_manette_playstation(vues: &[crate::manettes_sdl::ManetteVue]) -> Option<String> {
+    vues.iter()
+        .find(|m| {
+            let liaisons: Vec<&str> = m.disposition.split(',').map(str::trim).collect();
+            !crate::manettes_sdl::ecartee(&m.chemin)
+                && m.fournisseur == 0x054c
+                && m.guid[14] == b'h'
+                && crate::eden::DISPOSITION_SDL_HIDAPI.iter().all(|d| liaisons.contains(d))
+        })
+        .map(|m| crate::eden::guid_pour_eden(&m.guid))
 }
 
 /// Le GUID SDL (tel qu'Eden le lie) de la première manette XInput branchée : fournisseur, produit et version lus par
@@ -994,6 +1015,29 @@ mod essai_guid {
     #[ignore]
     fn essai_guid_de_la_manette_branchee() {
         println!("manette XInput : {:?} ; GUID pour Eden : {:?}", super::premiere_manette_xinput(), super::guid_manette_xinput());
+    }
+}
+
+#[cfg(test)]
+mod tests_playstation_eden {
+    use crate::manettes_sdl::ManetteVue;
+
+    const PS5: &str = "a:b0,b:b1,back:b4,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,dpup:h0.1,guide:b5,leftshoulder:b9,leftstick:b7,lefttrigger:a4,leftx:a0,lefty:a1,rightshoulder:b10,rightstick:b8,righttrigger:a5,rightx:a2,righty:a3,start:b6,x:b2,y:b3,touchpad:b11,misc1:b12,platform:Windows,";
+
+    fn vue(chemin: &str, fournisseur: u16, signature: u8, disposition: &str) -> ManetteVue {
+        ManetteVue { chemin: chemin.into(), guid: [0x03, 0, 0x12, 0x34, 0x4c, 0x05, 0, 0, 0xe6, 0x0c, 0, 0, 0, 0x01, signature, 0], fournisseur, disposition: disposition.into() }
+    }
+
+    #[test]
+    fn une_dualsense_vue_par_sdl_est_choisie_pour_eden() {
+        let ps = vue(r"\\?\HID#VID_054C&PID_0CE6", 0x054c, b'h', PS5);
+        assert_eq!(super::guid_manette_playstation(&[ps.clone()]).as_deref(), Some("030000004c050000e60c000000016800"));
+        // Vue par XInput (DS4Windows), autre pilote, autre marque, disposition différente : rien.
+        assert_eq!(super::guid_manette_playstation(&[vue("XInput#0", 0x054c, b'h', PS5)]), None);
+        assert_eq!(super::guid_manette_playstation(&[vue("x", 0x054c, b'd', PS5)]), None);
+        assert_eq!(super::guid_manette_playstation(&[vue("x", 0x057e, b'h', PS5)]), None);
+        assert_eq!(super::guid_manette_playstation(&[vue("x", 0x054c, b'h', &PS5.replace("leftshoulder:b9", "leftshoulder:b4"))]), None);
+        assert_eq!(super::guid_manette_playstation(&[vue("XInput#0", 0x045e, b'x', "a:b0"), ps]).as_deref(), Some("030000004c050000e60c000000016800"));
     }
 }
 

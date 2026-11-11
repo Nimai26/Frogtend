@@ -6,6 +6,12 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Eden avec une manette PlayStation (0.183.0) — quand une manette PlayStation sera là
+- [ ] Brancher seulement la manette PlayStation (en USB, puis en Bluetooth), lancer un jeu Switch : la manette
+      marche tout de suite ; 🎮 « Les touches » la montre ; le bouton PS ouvre le menu de Frogtend.
+- [ ] Puis une manette Xbox à la place : Frogtend la reprend à la partie suivante.
+- [ ] Cemu : avec la manette PlayStation, noter ce que montrent ses réglages de manette (pour l'écrire ensuite).
+
 ## Wii et Eden au clavier (0.182.0)
 - [ ] Un jeu Wii, manette Xbox : 🎮 « Les touches » montre la Wiimote + Nunchuk ; R3 = Home ; le bouton Xbox ouvre
       le menu de Frogtend.

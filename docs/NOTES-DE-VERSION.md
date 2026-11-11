@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.183.0 — Eden avec une manette PlayStation
+
+- 🎮 Eden, Eglantine et Lichii (Switch) : une manette PlayStation (DualShock 4 ou DualSense) branchée seule est
+  maintenant réglée dès la première partie, comme une manette Xbox (avant : le jeu restait au clavier). Rangée par
+  position comme sur une Switch ; le bouton PS ouvre le menu de Frogtend.
+- Frogtend demande à SDL (qu'il embarque déjà) comment il voit la manette, sans rien lui envoyer : il n'écrit la
+  manette que si SDL la décrit exactement comme Eden la lira.
+- Pas encore essayé avec une vraie manette PlayStation (à faire quand tu en auras une).
+- Cemu avec une manette PlayStation seule : toujours rien d'écrit (Cemu 2.6 la nomme autrement, par SDL2 : à
+  relever avec une vraie manette avant de l'écrire).
+
 ## 0.182.0 — L'image des touches de la Wii, et Eden au clavier
 
 - 🕹 Wii (Dolphin) : le menu en jeu et la fiche montrent les touches de la Wiimote de Frogtend : « Wiimote +

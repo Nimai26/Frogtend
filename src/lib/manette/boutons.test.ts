@@ -201,7 +201,7 @@ describe('les boutons de la manette d’origine', () => {
     const s = schema(infos({ emulateur: 'eden', coeur: null, plateforme: 'Nintendo Switch', au_clavier: true, personnalise: true }));
     expect(s.etat).toBe('au-clavier');
     expect(s.lignes).toEqual([]);
-    expect(sansDessin(s)).toContain('branche une manette Xbox');
+    expect(sansDessin(s)).toContain('branche-la avant de lancer');
     expect(schema(infos({ emulateur: 'eden', coeur: null, plateforme: 'Nintendo Switch' })).etat).toBe('connu');
   });
 

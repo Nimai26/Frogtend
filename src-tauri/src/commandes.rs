@@ -3145,13 +3145,13 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
         };
         // DOSBox : deux manettes = deux joysticks à 2 boutons (mapper.cpp `QueryJoysticks`).
         let plusieurs_manettes = dosbox && crate::manettes::nombre_de_manettes() > 1;
-        // Eden et sa famille : Frogtend ne lie la manette qu'à une manette XInput BRANCHÉE au lancement (son GUID,
+        // Eden et sa famille : Frogtend ne lie la manette qu'à une manette BRANCHÉE au lancement (XInput ou PlayStation : son GUID,
         // `manettes::regler`) ; sans elle, le joueur 1 reste au clavier. Pendant la partie, le fichier le dit ; avant,
         // un joueur 1 encore au clavier sans manette Xbox branchée le restera.
         let au_clavier = match (e2.as_deref(), d2.as_deref()) {
             (Some(e), Some(d)) if crate::emulateurs::famille_eden(e) && crate::eden::portable(d) => {
                 let encore_au_clavier = std::fs::read_to_string(crate::eden::fichier_reglages(d)).map_or(true, |t| crate::eden::joueur1_au_clavier(&t));
-                encore_au_clavier && (en_partie || crate::manettes::guid_manette_xinput().is_none())
+                encore_au_clavier && (en_partie || crate::manettes::guid_manette_pour_eden().is_none())
             }
             _ => false,
         };

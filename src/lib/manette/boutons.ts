@@ -252,7 +252,7 @@ export interface InfosBoutons {
   /** Frogtend ne règle pas la manette de cet émulateur ici (Cemu, Eden hors portable), ou ne sait pas lequel tourne (un
    * émulateur hors catalogue, un jeu lancé par son propre lanceur) : on ne sait pas, rien de dessiné. */
   inconnue?: boolean;
-  /** L'émulateur joue au clavier (Eden : aucune manette Xbox branchée au lancement, ou le clavier choisi pour ce jeu). */
+  /** L'émulateur joue au clavier (Eden : aucune manette branchée au lancement, ou le clavier choisi pour ce jeu). */
   au_clavier?: boolean;
   /** Le clavier a été choisi pour ce jeu dans « 🎮 Commandes » (fiche) : rien de dessiné, on dit pourquoi. */
   clavier_choisi?: boolean;
@@ -379,7 +379,7 @@ export function schema(infos: InfosBoutons): Schema {
 export function sansDessin(s: Schema): string | null {
   if (s.etat === 'personnalise') return 'Tu as changé toi-même les boutons de ce jeu : Frogtend ne peut pas te les montrer.';
   if (s.etat === 'inconnu') return 'Frogtend ne connaît pas encore les boutons de cet émulateur.';
-  if (s.etat === 'au-clavier') return 'Ce jeu se joue au clavier. Pour jouer à la manette, branche une manette Xbox avant de lancer le jeu.';
+  if (s.etat === 'au-clavier') return 'Ce jeu se joue au clavier. Pour jouer à la manette, branche-la avant de lancer le jeu.';
   if (s.etat === 'clavier-choisi') return 'Tu as choisi de jouer à ce jeu au clavier (⚙ Gérer le jeu ▸ 🎮 Commandes).';
   if (s.etat === 'jeu-pc')
     return 'Ce jeu lit ta manette lui-même : ses boutons sont dans ses options. Pour un jeu fait pour le clavier : ⚙ Gérer le jeu ▸ 🕹 Jouer à la manette.';

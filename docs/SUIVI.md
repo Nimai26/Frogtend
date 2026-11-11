@@ -2553,3 +2553,6 @@ d'abord :
   Xbox au lancement → « au clavier » ; fiche : `infosDeLaFiche` (clavier choisi, référence) remplace le forçage de
   PageBoutons ; correctif Eden : une clé `\default=true` vaut la valeur d'origine (après « Clavier et souris », la
   manette n'était plus réécrite). Restent : Eden et Cemu avec une manette PlayStation (essai réel quand Seb en aura une).
+- 11/11 (0.183.0) : « vas y code » (Seb) : Eden + manette PlayStation par le SDL3 embarqué (relevé sans ouverture :
+  GUID, fournisseur, disposition ; CRC mis à zéro comme Eden) ; brochage HIDAPI d'après SDL_gamepad.c 3.4.8. Cemu +
+  PlayStation : pas écrit (SDL2 dans Cemu 2.6, GUID différent possible) → relevé réel d'abord.

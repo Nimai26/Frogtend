@@ -571,39 +571,92 @@ pub fn guid_xinput(fournisseur: u16, produit: u16, version: u16, sous_type: u8) 
     o.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// La disposition que Frogtend écrit (celle qu'écrit la configuration automatique d'Eden pour une manette XInput, par
-/// POSITION comme sur une Switch : le A de la Switch, à droite, est le B de la manette Xbox). Le bouton Home est laissé
-/// vide : le bouton Xbox ouvre le menu de Frogtend (« Frogtend partout », comme le bouton PS de RPCS3).
+/// Les numéros SDL (niveau joystick) d'une manette, tels qu'Eden les lie : boutons, gâchettes (axes) et sticks (axes
+/// x, y) ; la croix est le chapeau 0 pour les deux pilotes.
+pub struct Brochage {
+    a: u8,
+    b: u8,
+    x: u8,
+    y: u8,
+    l3: u8,
+    r3: u8,
+    l: u8,
+    r: u8,
+    plus: u8,
+    minus: u8,
+    zl: u8,
+    zr: u8,
+    gauche: (u8, u8),
+    droit: (u8, u8),
+}
+
+/// Pilote XInput de SDL (GUID signé « x ») : A0 B1 X2 Y3 LB4 RB5 Back6 Start7 L3 8 R3 9 ; axes LX0 LY1 LT2 RX3 RY4 RT5.
+const BROCHAGE_XINPUT: Brochage = Brochage { a: 1, b: 0, x: 3, y: 2, l3: 8, r3: 9, l: 4, r: 5, plus: 7, minus: 6, zl: 2, zr: 5, gauche: (0, 1), droit: (3, 4) };
+
+/// Pilote HIDAPI de SDL (GUID signé « h ») pour une DualShock 4 ou une DualSense : sa disposition standard
+/// (SDL_gamepad.c `SDL_CreateMappingForHIDAPIGamepad`, cas général, SDL release-3.4.8 relu le 11/11 ; Eden se
+/// construit avec SDL 3.4) : Croix 0, Rond 1, Carré 2, Triangle 3, Share/Créer 4, PS 5, Options 6, L3 7, R3 8,
+/// L1 9, R1 10 ; axes LX0 LY1 RX2 RY3 L2 4 R2 5.
+const BROCHAGE_HIDAPI: Brochage = Brochage { a: 1, b: 0, x: 3, y: 2, l3: 7, r3: 8, l: 9, r: 10, plus: 6, minus: 4, zl: 4, zr: 5, gauche: (0, 1), droit: (2, 3) };
+
+/// La disposition SDL attendue d'une DualShock 4 / DualSense (les liaisons qu'Eden lira) : sans elle, rien d'écrit.
+pub const DISPOSITION_SDL_HIDAPI: [&str; 21] = [
+    "a:b0", "b:b1", "x:b2", "y:b3", "back:b4", "guide:b5", "start:b6", "leftstick:b7", "rightstick:b8", "leftshoulder:b9", "rightshoulder:b10",
+    "dpup:h0.1", "dpright:h0.2", "dpdown:h0.4", "dpleft:h0.8", "leftx:a0", "lefty:a1", "rightx:a2", "righty:a3", "lefttrigger:a4", "righttrigger:a5",
+];
+
+/// Le brochage d'après la signature du pilote dans le GUID (octet 14) : « h » (0x68) HIDAPI, sinon XInput.
+fn brochage(g: &str) -> &'static Brochage {
+    if g.len() == 32 && g.get(28..30) == Some("68") {
+        &BROCHAGE_HIDAPI
+    } else {
+        &BROCHAGE_XINPUT
+    }
+}
+
+/// Le GUID d'une manette tel qu'Eden le lie : celui de SDL, CRC du nom (octets 2-3) mis à zéro (`sdl_driver.cpp`
+/// `GetGUID`), en hexadécimal.
+pub fn guid_pour_eden(guid_sdl: &[u8; 16]) -> String {
+    let mut g = *guid_sdl;
+    g[2] = 0;
+    g[3] = 0;
+    g.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// La disposition que Frogtend écrit (celle qu'écrit la configuration automatique d'Eden, par POSITION comme sur une
+/// Switch : le A de la Switch, à droite, est le B de la manette Xbox, le Rond d'une PlayStation). Le bouton Home est
+/// laissé vide : le bouton Xbox (ou PS) ouvre le menu de Frogtend (« Frogtend partout », comme le bouton PS de RPCS3).
 pub fn disposition_manette(g: &str) -> Vec<(&'static str, String)> {
+    let n = brochage(g);
     let b = |n: u8| format!("\"engine:sdl,button:{n},port:0,guid:{g}\"");
     let gachette = |axe: u8| format!("\"engine:sdl,invert:+,port:0,guid:{g},axis:{axe},threshold:0.500000\"");
     let croix = |d: &str| format!("\"engine:sdl,direction:{d},port:0,guid:{g},hat:0\"");
     let stick = |x: u8, y: u8| format!("\"engine:sdl,offset_y:0.000000,invert_x:+,invert_y:+,deadzone:0.150000,port:0,guid:{g},axis_x:{x},offset_x:-0.000000,axis_y:{y}\"");
     vec![
-        ("player_0_button_a", b(1)),
-        ("player_0_button_b", b(0)),
-        ("player_0_button_x", b(3)),
-        ("player_0_button_y", b(2)),
-        ("player_0_button_lstick", b(8)),
-        ("player_0_button_rstick", b(9)),
-        ("player_0_button_l", b(4)),
-        ("player_0_button_r", b(5)),
-        ("player_0_button_zl", gachette(2)),
-        ("player_0_button_zr", gachette(5)),
-        ("player_0_button_plus", b(7)),
-        ("player_0_button_minus", b(6)),
+        ("player_0_button_a", b(n.a)),
+        ("player_0_button_b", b(n.b)),
+        ("player_0_button_x", b(n.x)),
+        ("player_0_button_y", b(n.y)),
+        ("player_0_button_lstick", b(n.l3)),
+        ("player_0_button_rstick", b(n.r3)),
+        ("player_0_button_l", b(n.l)),
+        ("player_0_button_r", b(n.r)),
+        ("player_0_button_zl", gachette(n.zl)),
+        ("player_0_button_zr", gachette(n.zr)),
+        ("player_0_button_plus", b(n.plus)),
+        ("player_0_button_minus", b(n.minus)),
         ("player_0_button_dleft", croix("left")),
         ("player_0_button_dup", croix("up")),
         ("player_0_button_dright", croix("right")),
         ("player_0_button_ddown", croix("down")),
-        ("player_0_button_slleft", b(4)),
-        ("player_0_button_srleft", b(5)),
-        ("player_0_button_slright", b(4)),
-        ("player_0_button_srright", b(5)),
+        ("player_0_button_slleft", b(n.l)),
+        ("player_0_button_srleft", b(n.r)),
+        ("player_0_button_slright", b(n.l)),
+        ("player_0_button_srright", b(n.r)),
         ("player_0_button_home", "[empty]".to_string()),
         ("player_0_button_screenshot", "[empty]".to_string()),
-        ("player_0_lstick", stick(0, 1)),
-        ("player_0_rstick", stick(3, 4)),
+        ("player_0_lstick", stick(n.gauche.0, n.gauche.1)),
+        ("player_0_rstick", stick(n.droit.0, n.droit.1)),
     ]
 }
 
@@ -891,6 +944,40 @@ mod tests_reglages {
 
     const UNE: &str = "030000005e040000ff02000000007801";
     const AUTRE: &str = "030000005e0400008e02000014017801";
+
+    /// Une DualSense en USB vue par le pilote HIDAPI de SDL : bus 3, CRC du nom (abcd, mis à zéro par Eden), 054c:0ce6,
+    /// version 0x0100, signature « h ».
+    const DUALSENSE_SDL: [u8; 16] = [0x03, 0x00, 0xab, 0xcd, 0x4c, 0x05, 0, 0, 0xe6, 0x0c, 0, 0, 0x00, 0x01, b'h', 0];
+
+    #[test]
+    fn une_manette_playstation_a_sa_disposition_hidapi() {
+        let g = guid_pour_eden(&DUALSENSE_SDL);
+        assert_eq!(g, "030000004c050000e60c000000016800", "CRC à zéro, comme Eden");
+        let d: std::collections::HashMap<_, _> = disposition_manette(&g).into_iter().collect();
+        let b = |n: u8| format!("\"engine:sdl,button:{n},port:0,guid:{g}\"");
+        // Par position : le A de la Switch (à droite) = Rond (1) ; L = L1 (9) ; + = Options (6) ; − = Créer (4).
+        assert_eq!(d["player_0_button_a"], b(1));
+        assert_eq!(d["player_0_button_b"], b(0));
+        assert_eq!(d["player_0_button_l"], b(9));
+        assert_eq!(d["player_0_button_r"], b(10));
+        assert_eq!(d["player_0_button_lstick"], b(7));
+        assert_eq!(d["player_0_button_plus"], b(6));
+        assert_eq!(d["player_0_button_minus"], b(4));
+        assert!(d["player_0_button_zl"].contains("axis:4,") && d["player_0_button_zr"].contains("axis:5,"));
+        assert!(d["player_0_rstick"].contains("axis_x:2,") && d["player_0_rstick"].ends_with("axis_y:3\""));
+        assert!(d["player_0_button_dup"].contains("hat:0"));
+        // La manette Xbox garde la sienne.
+        let x: std::collections::HashMap<_, _> = disposition_manette(UNE).into_iter().collect();
+        assert!(x["player_0_button_l"].contains("button:4,") && x["player_0_rstick"].contains("axis_x:3,"));
+        // Écrite sur un joueur au clavier, puis reconnue comme celle de Frogtend.
+        let e = eden_portable(CLAVIER);
+        assert!(regler_manette(e.path(), false, Some(&g)).unwrap());
+        let t = std::fs::read_to_string(fichier_reglages(e.path())).unwrap();
+        assert!(joueur1_de_frogtend(&t) && home_retire(e.path()), "{t}");
+        // Puis une manette Xbox branchée à sa place : réécrit pour elle.
+        assert!(regler_manette(e.path(), false, Some(UNE)).unwrap());
+        assert!(std::fs::read_to_string(fichier_reglages(e.path())).unwrap().contains("button:4,port:0,guid:030000005e040000ff02000000007801"));
+    }
 
     #[test]
     fn le_guid_a_la_forme_qu_eden_lie() {

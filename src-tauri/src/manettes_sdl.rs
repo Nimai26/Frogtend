@@ -20,7 +20,7 @@
 //! - Les boutons sont pris PAR POSITION : le bouton du bas valide (B sur une manette Nintendo), comme dans Taodbox.
 
 use crate::osd_manette::{EtatManette, A, B, BAS, DROITE, GAUCHE, GUIDE, HAUT, L1, L3, R1, R3, SELECT, START};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -45,6 +45,19 @@ pub fn stick_y(v: i16) -> i16 {
 /// Une gâchette SDL (0 à 32 767) en XInput (0 à 255).
 pub fn gachette(v: i16) -> u8 {
     ((v.max(0) as u32 * 255) / 32_767) as u8
+}
+
+/// Une manette vue par SDL, SANS l'ouvrir (rien n'est envoyé à la manette) : pour régler un émulateur qui lit les
+/// manettes par SDL (Eden) exactement comme SDL les lui présentera.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ManetteVue {
+    /// Le chemin SDL (`XInput#…` : une manette XInput).
+    pub chemin: String,
+    /// Le GUID SDL (16 octets), tel que `SDL_GetGamepadGUIDForID`.
+    pub guid: [u8; 16],
+    pub fournisseur: u16,
+    /// La disposition SDL de la manette (`SDL_GetGamepadMappingForID`), sans le GUID ni le nom : `a:b0,b:b1,…`.
+    pub disposition: String,
 }
 
 /// Deux lectures réunies : les boutons de l'une OU de l'autre, le stick le plus poussé, la gâchette la plus enfoncée.
@@ -87,6 +100,31 @@ mod sdl {
     /// Une manette ouverte : touchée SEULEMENT par le fil SDL.
     struct Ouverte(*mut SDL_Gamepad);
 
+    /// Le relevé des manettes, sans les ouvrir (fil SDL seulement).
+    unsafe fn relever() -> Vec<ManetteVue> {
+        let texte = |p: *const std::ffi::c_char| if p.is_null() { String::new() } else { std::ffi::CStr::from_ptr(p).to_string_lossy().to_string() };
+        SDL_UpdateJoysticks();
+        let mut l = Vec::new();
+        let mut n = 0;
+        let ids = SDL_GetGamepads(&mut n);
+        if ids.is_null() {
+            return l;
+        }
+        for k in 0..n.max(0) as usize {
+            let id = *ids.add(k);
+            let m = SDL_GetGamepadMappingForID(id);
+            let mapping = texte(m);
+            if !m.is_null() {
+                SDL_free(m as *mut _);
+            }
+            // « GUID,nom,a:b0,… » : la disposition commence au troisième champ.
+            let disposition = mapping.splitn(3, ',').nth(2).unwrap_or("").to_string();
+            l.push(ManetteVue { chemin: texte(SDL_GetGamepadPathForID(id)), guid: SDL_GetGamepadGUIDForID(id).data, fournisseur: SDL_GetGamepadVendorForID(id), disposition });
+        }
+        SDL_free(ids as *mut _);
+        l
+    }
+
     /// Le fil SDL : prépare SDL, puis relit les manettes tant que quelqu'un s'en sert (sinon il dort).
     pub fn fil(
         etat: &'static Mutex<EtatManette>,
@@ -94,6 +132,8 @@ mod sdl {
         debut: Instant,
         erreur: &'static Mutex<Option<String>>,
         vues: &'static Mutex<Vec<String>>,
+        releve_demande: &'static AtomicBool,
+        releve_fait: &'static Mutex<Option<Vec<ManetteVue>>>,
     ) {
         unsafe {
             // Avant SDL_Init (SDL_hints.h) : lue en arrière-plan (le jeu a le premier plan), rien changé à la manette.
@@ -117,6 +157,11 @@ mod sdl {
         let mut ecartees: Vec<SDL_JoystickID> = Vec::new();
         let mut releve = Instant::now() - Duration::from_secs(2);
         loop {
+            // Un relevé demandé (`releve_des_manettes`) : fait ici, sur le fil de SDL.
+            if releve_demande.swap(false, Ordering::SeqCst) {
+                let l = unsafe { relever() };
+                *releve_fait.lock().unwrap_or_else(|p| p.into_inner()) = Some(l);
+            }
             // Personne ne s'en sert depuis 2 s (pas de partie) : les manettes se referment, et on dort.
             let derniere = Duration::from_millis(demande.load(Ordering::Relaxed));
             if debut.elapsed().saturating_sub(derniere) > Duration::from_secs(2) {
@@ -129,7 +174,13 @@ mod sdl {
                 ecartees.clear();
                 releve = Instant::now() - Duration::from_secs(2);
                 unsafe { SDL_FlushEvents(SDL_EVENT_FIRST.into(), SDL_EVENT_LAST.into()) };
-                std::thread::sleep(Duration::from_millis(250));
+                // Courts sommeils : un relevé demandé répond vite.
+                for _ in 0..10 {
+                    if releve_demande.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(25));
+                }
                 continue;
             }
             unsafe {
@@ -205,6 +256,8 @@ struct Partage {
     erreur: Mutex<Option<String>>,
     /// Les manettes vues par SDL (nom, chemin, lue ou laissée à XInput), pour le journal.
     vues: Mutex<Vec<String>>,
+    releve_demande: AtomicBool,
+    releve: Mutex<Option<Vec<ManetteVue>>>,
 }
 
 fn partage() -> &'static Partage {
@@ -216,12 +269,14 @@ fn partage() -> &'static Partage {
             debut: Instant::now(),
             erreur: Mutex::new(None),
             vues: Mutex::new(Vec::new()),
+            releve_demande: AtomicBool::new(false),
+            releve: Mutex::new(None),
         }));
         #[cfg(windows)]
         {
             if let Err(e) = std::thread::Builder::new()
                 .name("manettes-sdl".into())
-                .spawn(move || sdl::fil(&p.etat, &p.demande, p.debut, &p.erreur, &p.vues))
+                .spawn(move || sdl::fil(&p.etat, &p.demande, p.debut, &p.erreur, &p.vues, &p.releve_demande, &p.releve))
             {
                 *p.erreur.lock().unwrap_or_else(|x| x.into_inner()) = Some(format!("fil non créé : {e}"));
             }
@@ -240,6 +295,28 @@ pub fn etat() -> EtatManette {
 /// Les manettes vues par SDL depuis la dernière fois (nom, chemin, lue ou laissée à XInput) : pour le journal.
 pub fn nouvelles_vues() -> Vec<String> {
     std::mem::take(&mut *partage().vues.lock().unwrap_or_else(|e| e.into_inner()))
+}
+
+/// Les manettes branchées telles que SDL les voit, sans les ouvrir : demandé au fil SDL (lancé au besoin), réponse
+/// attendue 2 s au plus. `None` : SDL n'a pas répondu (pas démarré, hors Windows).
+pub fn releve_des_manettes() -> Option<Vec<ManetteVue>> {
+    // Un relevé à la fois : deux demandes en même temps (fiche ouverte pendant un lancement) se suivent.
+    static UN_A_LA_FOIS: Mutex<()> = Mutex::new(());
+    let _tour = UN_A_LA_FOIS.lock().unwrap_or_else(|e| e.into_inner());
+    let p = partage();
+    if erreur().is_some() {
+        return None;
+    }
+    *p.releve.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    p.releve_demande.store(true, Ordering::SeqCst);
+    let debut = Instant::now();
+    while debut.elapsed() < Duration::from_secs(2) {
+        if let Some(l) = p.releve.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            return Some(l);
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    None
 }
 
 /// L'échec de démarrage de SDL, s'il y en a eu un (pour le journal) : XInput continue seul.
@@ -297,5 +374,17 @@ mod tests {
         }
         println!("MANETTES VUES : {:?}", nouvelles_vues());
         println!("ERREUR SDL : {:?} ; boutons vus en 10 s : {vus:#06x}", erreur());
+    }
+
+    /// RÉEL : le relevé SDL des manettes branchées (chemin, GUID, disposition), sans les ouvrir.
+    /// `cargo test essai_releve_sdl -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn essai_releve_sdl() {
+        for m in releve_des_manettes().unwrap_or_default() {
+            let g: String = m.guid.iter().map(|b| format!("{b:02x}")).collect();
+            println!("{} | {g} | {:04x} | {}", m.chemin, m.fournisseur, m.disposition);
+        }
+        println!("ERREUR SDL : {:?}", erreur());
     }
 }
