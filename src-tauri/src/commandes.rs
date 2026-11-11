@@ -1891,6 +1891,8 @@ pub async fn jeu_jouer(
     };
     // BigPEmu : ses effets et ses triches remplacent ceux de RetroArch dans le menu.
     let etats_bigpemu = lancement_bp.as_ref().and_then(|l| l.etats.clone());
+    // Une triche cochée pour ce jeu (posée sans erreur) : BigPEmu montrera sa fenêtre de triches au démarrage.
+    let fenetre_triches_bp = lancement_bp.as_ref().is_some_and(|l| l.fenetre_triches);
     let (effets_ra, effet_bp, triches, abri_triches, empreinte, cles_triches, dossier_profil_bp) = match lancement_bp {
         Some(l) => (
             l.effets,
@@ -1987,6 +1989,37 @@ pub async fn jeu_jouer(
                     }
                 }
                 break;
+            }
+        });
+    }
+    // BigPEmu : sa fenêtre de triches (ouverte à chaque démarrage d'un jeu à triche cochée, les codes ne s'appliquent
+    // qu'à sa fermeture : `cheat_codes.c`) est fermée par Échap, son « retour » (manuel de BigPEmu : flèches, Entrée,
+    // Échap) — comme B à la manette, les choix déjà posés par Frogtend restent (✅ Seb 11/11). Une seule fois, 2,5 s
+    // (`DELAI_FENETRE_TRICHES_MS`, aucun signal lisible de son ouverture : ni journal ni titre)
+    // après l'apparition de la fenêtre du jeu, et seulement si BigPEmu a le premier plan (jamais dans une autre
+    // fenêtre ni pendant le menu de Frogtend).
+    if fenetre_triches_bp {
+        let app6 = app.clone();
+        std::thread::spawn(move || {
+            let debut = std::time::Instant::now();
+            let menu = app6.state::<crate::menu_jeu::MenuJeu>();
+            while menu.en_cours(numero) && debut.elapsed() < std::time::Duration::from_secs(60) {
+                if crate::plein_ecran::fenetre_visible(&crate::lancement::processus_de_la_partie(pid)) {
+                    std::thread::sleep(std::time::Duration::from_millis(crate::bigpemu::DELAI_FENETRE_TRICHES_MS));
+                    let pids = crate::lancement::processus_de_la_partie(pid);
+                    #[cfg(windows)]
+                    let devant = pids.contains(&crate::clavier::pid_au_premier_plan());
+                    #[cfg(not(windows))]
+                    let devant = false;
+                    if menu.en_cours(numero) && devant && !menu.ouvert.load(std::sync::atomic::Ordering::SeqCst) {
+                        crate::menu_jeu::envoyer_touche(crate::bigpemu::TOUCHE_RETOUR, false, &[]);
+                        app6.state::<Noyau>().journaliser("BigPEmu : fenêtre de triches fermée par Échap (triches cochées gardées)");
+                    } else {
+                        app6.state::<Noyau>().journaliser("BigPEmu : fenêtre de triches laissée à la personne (BigPEmu sans le premier plan, ou menu de Frogtend ouvert)");
+                    }
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(250));
             }
         });
     }

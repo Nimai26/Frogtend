@@ -2597,3 +2597,10 @@ d'abord :
   (Per-Title), captures `game%016llX_screen%04i.tga` ; aucune action pour changer d'emplacement en jeu. Relecture
   de l'expert lancement : emplacements d'origine communs à tous les jeux (bloquant) → les 10 emplacements de
   Frogtend portent toujours l'empreinte du jeu ; délai, renommages, raccourci silencieux, reprise corrigés.
+- 11/11 (0.187.0) : Seb — raccourcis Vue+LT/RT OK ; la fenêtre de triches s'ouvre à chaque lancement. Lu dans
+  `Scripts/cheat_codes.c` : affichée à chaque jeu présent dans cheat_codes.json tant que le module est actif, codes
+  appliqués seulement à sa fermeture (cheat_menu_done réécrit les valeurs lues : choix gardés). Accord de Seb (« oui,
+  tant que cela garde les choix ») : module tenu par Frogtend (actif seulement si une triche est cochée, CD compris
+  coupé), fenêtre fermée par Échap (manuel : Échap = retour) 2,5 s après la fenêtre, BigPEmu au premier plan, menu de
+  Frogtend fermé, et seulement si le module a été posé (relecture de l'expert : pas d'Échap au 1er lancement d'un
+  profil). Non vérifié : Échap passe-t-il par cheat_menu_done (essai de Seb).

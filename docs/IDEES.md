@@ -124,3 +124,4 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   Frogtend : plein écran, pause et manette à vérifier d'abord.
 - **lichii-updater.exe** (08/11) : à vérifier dans les sources de Lichii s'il se met à jour seul au démarrage (il
   écrirait hors de Frogtend, et la version notée serait fausse).
+- BigPEmu : relever l'empreinte des jeux Jaguar CD (cheat_codes.json les couvre, ReadMe l.28) pour proposer leurs triches dans le menu (noté 11/11, 0.187.0).

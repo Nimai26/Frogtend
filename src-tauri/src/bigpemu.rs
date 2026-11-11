@@ -215,6 +215,13 @@ fn lire_json(f: &Path) -> Option<Value> {
 /// capture (DIK_F13 = 0x64…, les codes de balayage envoyés par le menu, `menu_jeu::code`).
 pub const RACCOURCIS: [(usize, u64); 3] = [(40, 100), (41, 101), (42, 102)];
 
+/// Le délai entre l'apparition de la fenêtre de BigPEmu et l'envoi d'Échap à sa fenêtre de triches.
+pub const DELAI_FENETRE_TRICHES_MS: u64 = 2500;
+
+/// Échap (code de balayage 0x01) : « retour / annuler » dans les menus de BigPEmu (manuel officiel : flèches, Entrée,
+/// Échap) — ferme sa fenêtre de triches au démarrage.
+pub const TOUCHE_RETOUR: u16 = 0x01;
+
 /// Ce déclencheur est-il cette touche du clavier, seule (sans touche tenue) ?
 fn est_la_touche(t: &Value, code: u64) -> bool {
     t["B_KB"].as_bool() == Some(true) && t["B_ID"].as_u64() == Some(code) && t.get("M_ID").is_none()
@@ -438,8 +445,8 @@ pub fn choisir_triche(dossier_profil: &Path, cle: &str, active: bool) -> Resulta
     Ok(())
 }
 
-/// La marque « le module de triches a été activé par Frogtend » : sans elle, un module actif est celui de la personne
-/// (jamais retiré).
+/// La marque « le module de triches a été activé par Frogtend » (gardée pour mémoire : depuis la 0.187.0, Frogtend tient
+/// le module dans tous les cas, ✅ Seb 11/11).
 const MARQUE_MODULE: &str = ".frogtend-bigpemu-module";
 
 /// Ce que le lancement va écrire pour les triches (rien n'est encore écrit).
@@ -449,14 +456,13 @@ pub struct TrichesPrevues {
     change: bool,
     /// Une triche est cochée pour ce jeu.
     pub actives: bool,
-    /// `Some(vrai)` : Frogtend active le module (marque posée) ; `Some(faux)` : il retire celui qu'il avait activé.
+    /// `Some(vrai)` : Frogtend active le module (marque posée) ; `Some(faux)` : il le retire.
     module: Option<bool>,
 }
 
 /// Prévoit, SANS RIEN ÉCRIRE, les triches du prochain lancement : les choix du menu posés, et le module actif seulement
-/// si ce jeu a une triche cochée (sinon sa fenêtre s'ouvrirait pour rien). Le module n'est retiré que si Frogtend
-/// l'avait activé ; un jeu sans empreinte (CD) : le module tel quel. `None` : pas encore de réglages (les choix
-/// attendent).
+/// si ce jeu a une triche cochée (sinon sa fenêtre s'ouvrirait pour rien), coupé sinon (jeu CD compris). `None` : pas
+/// encore de réglages (les choix attendent).
 pub fn prevoir_triches(dossier_profil: &Path, empreinte: Option<&str>) -> Option<TrichesPrevues> {
     let mut v = lire_json(&reglages_du_profil(dossier_profil))?;
     let a_poser = lire_json(&dossier_profil.join(TRICHES_A_POSER)).unwrap_or(Value::Null);
@@ -471,19 +477,21 @@ pub fn prevoir_triches(dossier_profil: &Path, empreinte: Option<&str>) -> Option
         let prefixe = format!("ScriptData_CheatSetting_{e}_");
         c.iter().any(|(k, val)| k.starts_with(&prefixe) && valeur_cochee(val))
     });
+    // Le module de triches, tenu par Frogtend (✅ Seb 11/11 : « oui, tant que cela garde les choix ») : actif
+    // seulement pour un jeu dont une triche est cochée, coupé pour les autres (jeux CD compris) — même activé par la
+    // personne dans BigPEmu. Il montre sinon sa fenêtre à CHAQUE jeu qui a des triches (`cheat_codes.c` : les codes ne
+    // s'appliquent qu'à sa fermeture) ; les triches se choisissent dans le menu de Frogtend. Les choix eux-mêmes
+    // (`ScriptData_CheatSetting_*`) ne sont jamais touchés ici.
     let mut module = None;
-    if empreinte.is_some() {
-        let par_frogtend = dossier_profil.join(MARQUE_MODULE).exists();
-        let modules = c.entry("ScriptsEnabled").or_insert_with(|| Value::Array(vec![]));
-        if let Some(l) = modules.as_array_mut() {
-            let est_le_module = |m: &Value| m.as_str().is_some_and(|s| s.eq_ignore_ascii_case(MODULE_TRICHES) || s.eq_ignore_ascii_case("cheat_codes.bigpcvm"));
-            if actives && !l.iter().any(est_le_module) {
-                l.push(Value::String(MODULE_TRICHES.into()));
-                module = Some(true);
-            } else if !actives && par_frogtend {
-                l.retain(|m| !est_le_module(m));
-                module = Some(false);
-            }
+    let modules = c.entry("ScriptsEnabled").or_insert_with(|| Value::Array(vec![]));
+    if let Some(l) = modules.as_array_mut() {
+        let est_le_module = |m: &Value| m.as_str().is_some_and(|s| s.eq_ignore_ascii_case(MODULE_TRICHES) || s.eq_ignore_ascii_case("cheat_codes.bigpcvm"));
+        if actives && !l.iter().any(est_le_module) {
+            l.push(Value::String(MODULE_TRICHES.into()));
+            module = Some(true);
+        } else if !actives && l.iter().any(est_le_module) {
+            l.retain(|m| !est_le_module(m));
+            module = Some(false);
         }
     }
     let change = *c != avant;
@@ -551,6 +559,9 @@ pub struct Lancement {
     pub erreur_triches: Option<String>,
     /// Une sauvegarde rapide coupée la fois d'avant n'a pas pu être remise en place.
     pub erreur_etats: Option<String>,
+    /// Le module de triches est actif pour ce jeu avec une triche cochée : BigPEmu ouvrira sa fenêtre de triches au
+    /// démarrage (Frogtend la ferme). Faux sans réglages lisibles (premier lancement d'un profil) : rien n'a été posé.
+    pub fenetre_triches: bool,
     pub empreinte: Option<String>,
     pub triches: Vec<TricheBp>,
     /// Des triches sont cochées pour ce jeu : ses fichiers ont été mis à l'abri avant.
@@ -589,8 +600,11 @@ pub fn preparer_partie(emulateur: &Path, dossier_profil: &Path, rom: Option<&Pat
         l.abri_fait = true;
     }
     if let Some(x) = prevu {
-        if let Err(e) = ecrire_triches(emulateur, dossier_profil, x) {
-            l.erreur_triches = Some(format!("{e:?}"));
+        let actives = x.actives;
+        match ecrire_triches(emulateur, dossier_profil, x) {
+            // Le module est posé (ou l'était déjà) pour une triche cochée : BigPEmu montrera sa fenêtre.
+            Ok(()) => l.fenetre_triches = actives,
+            Err(e) => l.erreur_triches = Some(format!("{e:?}")),
         }
     }
     l.triches = l.empreinte.as_deref().map(|e| triches_du_jeu(emulateur, dossier_profil, e)).unwrap_or_default();
@@ -1202,6 +1216,25 @@ mod tests {
         {"Name": "Force lap count", "Code": ["a", "b"], "CodeLabels": ["!STR_DISABLED", "1"]}]}}}"#;
 
     #[test]
+    fn la_fenetre_de_triches_n_est_prevue_que_si_le_module_est_pose() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("Profils").join("Seb");
+        std::fs::create_dir_all(p.join(DOSSIER_DONNEES)).unwrap();
+        let rom = d.path().join("jeu.j64");
+        std::fs::write(&rom, b"cartouche").unwrap();
+        let e = empreinte_jeu(&rom).unwrap();
+        choisir_triche(&p, &format!("{e}_Infinite_lives"), true).unwrap();
+        // Premier lancement du profil : pas encore de réglages, rien n'est posé, donc pas d'Échap.
+        let l = preparer_partie(d.path(), &p, Some(&rom), None, 1).unwrap();
+        assert!(!l.fenetre_triches, "sans réglages : pas de module, pas de fenêtre");
+        std::fs::write(reglages_du_profil(&p), XBOX).unwrap();
+        let l = preparer_partie(d.path(), &p, Some(&rom), None, 2).unwrap();
+        assert!(l.fenetre_triches, "module posé pour la triche cochée");
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(reglages_du_profil(&p)).unwrap()).unwrap();
+        assert_eq!(v["BigPEmuConfig"]["ScriptsEnabled"], serde_json::json!(["cheat_codes"]));
+    }
+
+    #[test]
     fn les_triches_choisies_sont_posees_au_lancement_avec_la_partie_a_l_abri() {
         let d = profil_avec(XBOX);
         let p = d.path().join("Profils").join("Seb");
@@ -1243,13 +1276,18 @@ mod tests {
         let v: Value = serde_json::from_str(&std::fs::read_to_string(reglages_du_profil(&p)).unwrap()).unwrap();
         assert_eq!(v["BigPEmuConfig"]["ScriptsEnabled"], serde_json::json!(["turbo_joy"]));
         assert_eq!(v["BigPEmuConfig"]["ScriptData_CheatSetting_5c0c7827948f0f27_Infinite_lives"], "00000000");
-        // Le module activé par la personne elle-même (pas de marque) : jamais retiré.
-        let mut v: Value = serde_json::from_str(&std::fs::read_to_string(reglages_du_profil(&p)).unwrap()).unwrap();
-        v["BigPEmuConfig"]["ScriptsEnabled"] = serde_json::json!(["cheat_codes"]);
-        std::fs::write(reglages_du_profil(&p), v.to_string()).unwrap();
-        assert!(!appliquer_triches(d.path(), &p, Some(h)).unwrap());
-        let v: Value = serde_json::from_str(&std::fs::read_to_string(reglages_du_profil(&p)).unwrap()).unwrap();
-        assert_eq!(v["BigPEmuConfig"]["ScriptsEnabled"], serde_json::json!(["cheat_codes"]));
+        // Le module activé par la personne elle-même (✅ Seb 11/11) : coupé aussi sans triche cochée (sinon sa fenêtre à
+        // chaque lancement), pour un jeu CD aussi ; les choix restent.
+        for empreinte in [Some(h), None] {
+            let mut v: Value = serde_json::from_str(&std::fs::read_to_string(reglages_du_profil(&p)).unwrap()).unwrap();
+            v["BigPEmuConfig"]["ScriptsEnabled"] = serde_json::json!(["cheat_codes", "turbo_joy"]);
+            v["BigPEmuConfig"]["ScriptData_CheatSetting_aaaaaaaaaaaaaaaa_Autre"] = "01000000".into();
+            std::fs::write(reglages_du_profil(&p), v.to_string()).unwrap();
+            assert!(!appliquer_triches(d.path(), &p, empreinte).unwrap());
+            let v: Value = serde_json::from_str(&std::fs::read_to_string(reglages_du_profil(&p)).unwrap()).unwrap();
+            assert_eq!(v["BigPEmuConfig"]["ScriptsEnabled"], serde_json::json!(["turbo_joy"]));
+            assert_eq!(v["BigPEmuConfig"]["ScriptData_CheatSetting_aaaaaaaaaaaaaaaa_Autre"], "01000000", "le choix d'un autre jeu reste");
+        }
     }
 
     /// RÉEL, lecture seule : l'empreinte d'un jeu et ses triches dans un BigPEmu installé (rien n'est écrit).

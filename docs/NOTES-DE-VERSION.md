@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.187.0 — BigPEmu : plus de fenêtre de triches à chaque lancement
+
+- 🎮 Jeux Jaguar : la fenêtre de triches de BigPEmu ne s'ouvre plus que pour un jeu où tu as coché une triche dans le
+  menu de Frogtend (🎯 Triches). Pour les autres jeux, le jeu se lance directement.
+- Quand une triche est cochée, BigPEmu montre encore sa fenêtre au démarrage (c'est elle qui active les codes) :
+  Frogtend la ferme tout seul après un instant, tes triches restent cochées.
+- Les triches se choisissent dans le menu de Frogtend ; le module de triches de BigPEmu est désormais tenu par
+  Frogtend (même si tu l'avais activé toi-même), tes choix sont gardés.
+- Conséquence : les triches des jeux **Jaguar CD** ne sont plus proposées (Frogtend ne sait pas encore reconnaître un
+  jeu CD dans la liste de BigPEmu) ; leurs choix restent enregistrés.
+
 ## 0.186.0 — BigPEmu : 10 emplacements de sauvegarde par jeu, comme la SNES
 
 - 🎮 Jeux Jaguar : le menu propose maintenant les **10 emplacements de sauvegarde rapide**, comme pour la SNES (choisis

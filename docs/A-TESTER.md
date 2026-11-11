@@ -6,12 +6,19 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## BigPEmu : fenêtre de triches (0.187.0)
+- [ ] Bubsy (« Infinite lives » cochée) : la fenêtre de triches s'ouvre puis se ferme seule après ~3 s ; le jeu
+      démarre (pas figé) avec les vies infinies. Le menu principal de BigPEmu ne doit PAS s'ouvrir.
+- [ ] Ouvrir le menu de Frogtend (bouton Xbox) dans les 3 premières secondes : rien ne part dans BigPEmu.
+- [ ] 🎯 Triches : tout décocher, quitter, relancer : plus aucune fenêtre, le jeu démarre directement.
+- [ ] Recocher « Infinite lives », relancer : la fenêtre revient, se ferme seule, la triche agit.
+
 ## BigPEmu : 10 emplacements par jeu (0.186.0)
 - [x] (✅ Seb 11/11) Bubsy, menu (bouton Xbox) : la ligne « Emplacement 1 » est là ; gauche / droite → emplacement 3 ; 💾 Sauver ;
       rouvrir le menu : l'emplacement 3 a la date du jour.
 - [x] (✅ Seb 11/11, aussi l'emplacement 4) Bouger un peu, menu, emplacement 3 ▸ 📂 Charger : la partie revient au moment sauvé (attendre ~2 s).
 - [ ] Sauver à nouveau dans l'emplacement 3 : Frogtend demande avant de remplacer.
-- [ ] Vue + LT / Vue + RT (menu fermé) : sauvent / chargent dans l'emplacement choisi.
+- [x] (✅ Seb 11/11) Vue + LT / Vue + RT (menu fermé) : sauvent / chargent dans l'emplacement choisi.
 - [ ] Un autre jeu Jaguar : ses emplacements sont vides (ceux de Bubsy ne s'y voient pas).
 - [ ] À savoir : la sauvegarde faite en 0.185.0 n'est pas dans ces 10 emplacements (elle reste celle de BigPEmu,
       `state000.bigpstate`, jamais effacée).
