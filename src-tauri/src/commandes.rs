@@ -2994,6 +2994,11 @@ pub struct InfosBoutons {
     /// Frogtend ne règle pas la manette de cet émulateur ici (Cemu, Eden et sa famille hors portable) : rien de dessiné,
     /// sans dire pour autant que la personne a changé ses boutons.
     inconnue: bool,
+    /// L'émulateur joue au clavier (Eden et sa famille : aucune manette Xbox branchée au lancement, ou le clavier choisi
+    /// pour ce jeu) : le dessin de la manette serait faux.
+    au_clavier: bool,
+    /// Dolphin, une Wii : la référence livrée de Wiimote en place dans le profil (« Wiimote + Nunchuk »…), s'il y en a une.
+    wiimote: Option<&'static str>,
     clavier: Option<std::collections::BTreeMap<String, String>>,
     /// Les raccourcis de Frogtend pendant une partie, d'après les réglages de ce PC (essai de Seb, 29/10).
     raccourcis: RaccourcisFrogtend,
@@ -3028,7 +3033,9 @@ fn raccourcis_frogtend(app: &AppHandle, moteur: crate::osd_manette::Moteur, etat
 
 /// `id` : un jeu du PC (fiche, Gérer le jeu) ; `None` : la partie en cours (menu en jeu). `None` rendu : jeu inconnu.
 #[tauri::command]
-pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<i64>) -> Resultat<Option<InfosBoutons>> {
+/// `wiimote_choisie` : la référence de Wiimote choisie pour ce jeu dans « 🎮 Commandes » (fiche seulement), imposée au
+/// lancement.
+pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<i64>, wiimote_choisie: Option<String>) -> Resultat<Option<InfosBoutons>> {
     let profil = profil_ouvert(&noyau).await?.nom;
     // (plateforme, émulateur, dossier de l'émulateur, cœur, nom du jeu lancé, nom de son dossier, clavier)
     // Et pour les raccourcis : un jeu PC (sans émulateur) ? les sauvegardes rapides sont-elles proposées ?
@@ -3112,9 +3119,42 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
     // Dolphin : seule la manette GameCube est réglée par Frogtend (la Wii a ses Wiimotes : « inconnu » côté interface).
     let gamecube = plateforme.to_lowercase().contains("gamecube");
     let dosbox = emulateur.as_deref() == Some("dosbox-staging");
-    let (famille, personnalise, plusieurs_manettes) = tauri::async_runtime::spawn_blocking(move || {
+    let en_partie = id.is_none();
+    let plateforme_wii = plateforme.clone();
+    let magasin = noyau.dossier.join("references");
+    let wiimote_choisie = wiimote_choisie.filter(|_| !en_partie);
+    let (famille, personnalise, plusieurs_manettes, au_clavier, wiimote) = tauri::async_runtime::spawn_blocking(move || {
+        // Une Wii dans Dolphin : la référence choisie pour le jeu (imposée au lancement) ; sinon la Wiimote 1 du profil
+        // (`-u <profil>\User`), écrite par Frogtend au lancement ; jamais lancé : la référence du système, appliquée alors.
+        let wiimote = match (e2.as_deref(), d2.as_deref()) {
+            (Some("dolphin"), Some(d)) if !gamecube => match &wiimote_choisie {
+                Some(n) => crate::references::trouver(&magasin, "dolphin", "Wiimote", n).and_then(|r| crate::references::wiimote_livree(&r)),
+                None => {
+                    let f = crate::emulateurs_profils::dossier_du_profil(d, &profil).join("User").join("Config").join("WiimoteNew.ini");
+                    match std::fs::metadata(&f) {
+                        Ok(m) if m.len() > 8 * 1024 * 1024 => None,
+                        Ok(_) => std::fs::read_to_string(&f).ok().and_then(|t| crate::references::wiimote_en_place(&t)),
+                        Err(e) if !en_partie && e.kind() == std::io::ErrorKind::NotFound => crate::references::par_defaut(&plateforme_wii)
+                            .and_then(|(e, g, n)| crate::references::trouver(&magasin, e, g, n))
+                            .and_then(|r| crate::references::wiimote_livree(&r)),
+                        Err(_) => None,
+                    }
+                }
+            },
+            _ => None,
+        };
         // DOSBox : deux manettes = deux joysticks à 2 boutons (mapper.cpp `QueryJoysticks`).
         let plusieurs_manettes = dosbox && crate::manettes::nombre_de_manettes() > 1;
+        // Eden et sa famille : Frogtend ne lie la manette qu'à une manette XInput BRANCHÉE au lancement (son GUID,
+        // `manettes::regler`) ; sans elle, le joueur 1 reste au clavier. Pendant la partie, le fichier le dit ; avant,
+        // un joueur 1 encore au clavier sans manette Xbox branchée le restera.
+        let au_clavier = match (e2.as_deref(), d2.as_deref()) {
+            (Some(e), Some(d)) if crate::emulateurs::famille_eden(e) && crate::eden::portable(d) => {
+                let encore_au_clavier = std::fs::read_to_string(crate::eden::fichier_reglages(d)).map_or(true, |t| crate::eden::joueur1_au_clavier(&t));
+                encore_au_clavier && (en_partie || crate::manettes::guid_manette_xinput().is_none())
+            }
+            _ => false,
+        };
         let famille = match crate::manettes::manette_branchee() {
             Some(crate::manettes::PadRpcs3::Ds4) | Some(crate::manettes::PadRpcs3::DualSense) => "playstation",
             _ => "xbox",
@@ -3132,7 +3172,7 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
             }
             _ => false,
         };
-        (famille, personnalise, plusieurs_manettes)
+        (famille, personnalise && !au_clavier, plusieurs_manettes, au_clavier, wiimote)
     })
     .await
     .map_err(|_| Erreur::Disque("La lecture des boutons s'est arrêtée brutalement.".into()))?;
@@ -3147,7 +3187,7 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
         (Some(e), Some(d)) if crate::emulateurs::famille_eden(e) => !crate::eden::portable(d),
         _ => sans_nom,
     };
-    Ok(Some(InfosBoutons { plateforme, emulateur, coeur, famille, personnalise, inconnue, clavier: clavier.filter(|c| !c.is_empty()), raccourcis }))
+    Ok(Some(InfosBoutons { plateforme, emulateur, coeur, famille, personnalise, inconnue, au_clavier, wiimote, clavier: clavier.filter(|c| !c.is_empty()), raccourcis }))
 }
 
 /// L'écran « Les boutons » du menu en jeu : la fenêtre s'agrandit (jusqu'à 1 100 × 820, 90 % de l'écran au plus) pour

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NOMS, ORDRE, nomCombinaison, raccourcis, sansDessin, schema, type InfosBoutons } from './boutons';
+import { NOMS, ORDRE, infosDeLaFiche, nomCombinaison, raccourcis, sansDessin, schema, type InfosBoutons } from './boutons';
 
 const infos = (i: Partial<InfosBoutons>): InfosBoutons => ({
   plateforme: 'Super Nintendo Entertainment System',
@@ -59,6 +59,39 @@ describe('les boutons de la manette d’origine', () => {
     expect(sansDessin(p)).toContain('changé toi-même');
     expect(sansDessin(schema(infos({ coeur: 'X' })))).toContain('ne connaît pas encore');
     expect(sansDessin(schema(infos({})))).toBeNull();
+  });
+
+  it('Wii : la référence de Wiimote en place, rien sinon', () => {
+    const n = schema(infos({ emulateur: 'dolphin', coeur: null, plateforme: 'Nintendo Wii', wiimote: 'Wiimote + Nunchuk' }));
+    expect(n.console).toBe('Wiimote + Nunchuk');
+    expect(role(n, 'a')).toBe('A');
+    expect(role(n, 'rt')).toBe('B');
+    expect(role(n, 'lt')).toBe('Z (Nunchuk)');
+    expect(role(n, 'r3')).toBe('Home');
+    const h = schema(infos({ emulateur: 'dolphin', coeur: null, plateforme: 'Nintendo Wii', wiimote: 'Wiimote horizontale' }));
+    expect(role(h, 'a')).toBe('2');
+    expect(role(h, 'b')).toBe('A');
+    expect(role(h, 'lt')).toBe('Pencher la Wiimote à gauche');
+    expect(schema(infos({ emulateur: 'dolphin', coeur: null, plateforme: 'Nintendo Wii', wiimote: 'Ma Wiimote' })).etat).toBe('inconnu');
+    expect(schema(infos({ emulateur: 'dolphin', coeur: null, plateforme: 'Nintendo Wii', wiimote: 'Wiimote + Nunchuk', famille: 'playstation' })).etat).toBe('inconnu');
+  });
+
+  it('la fiche : le choix de « Commandes » pour le jeu', () => {
+    const wii = infos({ emulateur: 'dolphin', coeur: null, plateforme: 'Nintendo Wii', wiimote: 'Wiimote horizontale' });
+    const ref = { mode: 'reference' as const, genre: 'Wiimote', reference: 'Wiimote horizontale' };
+    expect(schema(infosDeLaFiche(wii, ref, null)).etat).toBe('connu');
+    // Une Wiimote retouchée : « inconnu » (« personnalisé » seulement quand la disposition d'origine est connue).
+    expect(schema(infosDeLaFiche({ ...wii, wiimote: null }, ref, null)).etat).toBe('inconnu');
+    const gc = infos({ emulateur: 'dolphin', coeur: null, plateforme: 'Nintendo GameCube' });
+    expect(schema(infosDeLaFiche(gc, { mode: 'reference', genre: 'GCPad', reference: 'X' }, null)).etat).toBe('personnalise');
+    expect(schema(infosDeLaFiche(gc, { mode: 'auto' }, null)).etat).toBe('connu');
+    expect(schema(infosDeLaFiche(infos({ emulateur: 'pcsx2', coeur: null, plateforme: 'Sony Playstation 2' }), { mode: 'clavier' }, null)).etat).toBe('personnalise');
+    for (const e of ['eden', 'azahar', 'rpcs3']) {
+      const s = schema(infosDeLaFiche(infos({ emulateur: e, coeur: null }), { mode: 'clavier' }, null));
+      expect(s.etat).toBe('clavier-choisi');
+      expect(sansDessin(s)).toContain('Commandes');
+    }
+    expect(infosDeLaFiche(infos({ emulateur: null, coeur: null }), undefined, { a: 'Espace' }).clavier).toEqual({ a: 'Espace' });
   });
 
   it('Cemu : le GamePad Wii U par position, comme la Switch', () => {
@@ -162,6 +195,14 @@ describe('les boutons de la manette d’origine', () => {
     expect(schema(infos({ emulateur: 'dosbox-staging', coeur: null, inconnue: true })).etat).toBe('inconnu');
     // Pendant une partie, un émulateur sans nom (hors catalogue, MAME sans son script) n'est pas un jeu PC.
     expect(schema(infos({ emulateur: null, coeur: null, inconnue: true })).etat).toBe('inconnu');
+  });
+
+  it('Eden au clavier (pas de manette Xbox au lancement) : pas de dessin de manette, et on dit pourquoi', () => {
+    const s = schema(infos({ emulateur: 'eden', coeur: null, plateforme: 'Nintendo Switch', au_clavier: true, personnalise: true }));
+    expect(s.etat).toBe('au-clavier');
+    expect(s.lignes).toEqual([]);
+    expect(sansDessin(s)).toContain('branche une manette Xbox');
+    expect(schema(infos({ emulateur: 'eden', coeur: null, plateforme: 'Nintendo Switch' })).etat).toBe('connu');
   });
 
   it('les émulateurs à part : le profil écrit par Frogtend', () => {

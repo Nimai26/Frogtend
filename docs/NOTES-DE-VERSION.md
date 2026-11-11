@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.182.0 — L'image des touches de la Wii, et Eden au clavier
+
+- 🕹 Wii (Dolphin) : le menu en jeu et la fiche montrent les touches de la Wiimote de Frogtend : « Wiimote +
+  Nunchuk » (d'office) ou « Wiimote tenue à l'horizontale » (si tu l'as choisie pour le jeu). Le bouton Home est sur
+  le clic du stick droit ; le bouton Xbox ouvre le menu de Frogtend. Une Wiimote que tu as retouchée : rien de dessiné.
+- 🎮 Eden (Switch) : sans manette Xbox branchée au lancement, le jeu se joue au clavier ; l'écran des touches le dit
+  maintenant, au lieu de dessiner une manette qui ne marche pas.
+- Correctif Eden : après un jeu réglé sur « ⌨ Clavier et souris », la manette pouvait rester coupée aux parties
+  suivantes (Frogtend croyait sa manette encore en place). Elle est remise à la partie suivante.
+- La fiche d'un jeu Switch, 3DS ou PS3 réglé sur « ⌨ Clavier et souris » dit que tu as choisi le clavier pour lui.
+
 ## 0.181.0 — L'image des touches de MAME et de DOSBox
 
 - 🕹 MAME (arcade) : le menu en jeu montre à quoi sert chaque bouton de ta manette Xbox : Back met une pièce, Start

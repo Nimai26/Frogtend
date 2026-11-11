@@ -10,7 +10,7 @@
   import { auCanape } from '$lib/taodbox/canape';
   import { fenetreOuverte, selectionner } from '$lib/taodbox/manette.svelte';
   import SchemaManette from './SchemaManette.svelte';
-  import type { InfosBoutons } from './boutons';
+  import { infosDeLaFiche, type InfosBoutons } from './boutons';
 
   const jeu = $derived(Number(page.url.searchParams.get('jeu')));
   const titre = $derived(page.url.searchParams.get('titre') ?? '');
@@ -22,14 +22,12 @@
     const id = jeu;
     infos = undefined;
     erreur = null;
+    const commande = etat.profil.commandes[String(id)];
     api
-      .boutonsDuJeu(id)
+      .boutonsDuJeu(id, commande?.mode === 'reference' && commande.genre === 'Wiimote' ? (commande.reference ?? null) : null)
       .then(async (i) => {
-        // Un jeu PC : sa correspondance manette → clavier (réglée dans Frogtend, par profil). Un émulateur réglé par
-        // « 🎮 Commandes » sur une référence ou le clavier : ce n'est plus le profil de Frogtend (rien de dessiné).
-        const mode = etat.profil.commandes[String(id)]?.mode;
-        const ailleurs = !!i && ['duckstation', 'pcsx2', 'dolphin'].includes(i.emulateur ?? '') && (mode === 'reference' || mode === 'clavier');
-        infos = !i ? i : i.emulateur === null && !i.clavier ? { ...i, clavier: nettoyer(etat.profil.clavier[String(id)]) ?? null } : ailleurs ? { ...i, personnalise: true } : i;
+        // Le choix de « 🎮 Commandes » pour ce jeu et sa correspondance manette → clavier (jeu PC) : `infosDeLaFiche`.
+        infos = !i ? i : infosDeLaFiche(i, commande, nettoyer(etat.profil.clavier[String(id)]) ?? null);
         await tick();
         if (auCanape()) selectionner(page_?.querySelector<HTMLButtonElement>('button'));
       })

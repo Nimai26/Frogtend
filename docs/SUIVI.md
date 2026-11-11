@@ -2548,3 +2548,8 @@ d'abord :
   fichiers (`manettes::mame_disposition_d_origine`, `dosbox_disposition_d_origine`) ; « inconnu » pendant une partie
   pour un émulateur sans nom, et pour un jeu lancé par son lanceur ; MAME en `joystickprovider` SDL → bouton Xbox
   laissé à MAME (guetteur et schéma). mGBA : pas de schéma (profil XInput lié au nom SDL de la manette, à essayer).
+- 11/11 (0.182.0) : Seb n'a pas de manette PlayStation pour les essais → d'abord les points mineurs sans elle.
+  Schéma Wii (références livrées en place, ou choisie pour le jeu, contenu vérifié par le cœur) ; Eden sans manette
+  Xbox au lancement → « au clavier » ; fiche : `infosDeLaFiche` (clavier choisi, référence) remplace le forçage de
+  PageBoutons ; correctif Eden : une clé `\default=true` vaut la valeur d'origine (après « Clavier et souris », la
+  manette n'était plus réécrite). Restent : Eden et Cemu avec une manette PlayStation (essai réel quand Seb en aura une).

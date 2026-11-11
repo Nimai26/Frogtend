@@ -202,6 +202,36 @@ fn lignes_section(texte: &str, section: &str) -> Vec<(String, String)> {
     v
 }
 
+/// La référence LIVRÉE de Wiimote en place dans le `WiimoteNew.ini` d'un profil de Dolphin (`[Wiimote1]`, Wiimote
+/// émulée : `Source` absente ou 1), pour le schéma des touches : exactement ses clés et valeurs (hors `Source`, sans
+/// tenir compte de l'ordre ni de la casse des clés). Une autre disposition (retouchée, reprise, vraie Wiimote) : aucune.
+pub fn wiimote_en_place(texte: &str) -> Option<&'static str> {
+    let normaliser = |l: Vec<(String, String)>| {
+        let mut l: Vec<(String, String)> =
+            l.into_iter().filter(|(c, v)| !c.eq_ignore_ascii_case("Source") && !v.is_empty()).map(|(c, v)| (c.to_lowercase(), v)).collect();
+        l.sort();
+        l
+    };
+    let lignes = lignes_section(texte, "Wiimote1");
+    if lignes.iter().any(|(c, v)| c.eq_ignore_ascii_case("Source") && v != "1") {
+        return None;
+    }
+    let en_place = normaliser(lignes);
+    LIVREES
+        .iter()
+        .find(|(e, g, _, contenu)| *e == "dolphin" && *g == "Wiimote" && normaliser(lignes_section(contenu, "Profile")) == en_place)
+        .map(|(_, _, nom, _)| *nom)
+}
+
+/// Une référence de Wiimote (du magasin : livrée, ou reprise sur ce PC sous n'importe quel nom) identique à une
+/// référence LIVRÉE : le nom de celle-ci (ses touches sont connues de l'interface).
+pub fn wiimote_livree(r: &Reference) -> Option<&'static str> {
+    if r.emulateur != "dolphin" || r.genre != "Wiimote" {
+        return None;
+    }
+    wiimote_en_place(&lignes_section(&r.contenu, "Profile").iter().fold("[Wiimote1]\n".to_string(), |t, (c, v)| format!("{t}{c} = {v}\n")))
+}
+
 fn empreinte_section(texte: &str, section: &str) -> String {
     let mut h = Sha256::new();
     for (c, v) in lignes_section(texte, section) {
@@ -274,6 +304,35 @@ pub fn appliquer(r: &Reference, dossier: &Path, utilisateur: &Path, imposee: boo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn la_wiimote_livree_en_place() {
+        let nunchuk = include_str!("../references/dolphin/Wiimote/Wiimote + Nunchuk.ini");
+        // Comme Frogtend l'écrit : la section [Wiimote1], avec la Source gardée, dans un autre ordre.
+        let mut lignes: Vec<&str> = nunchuk.lines().skip(1).collect();
+        lignes.reverse();
+        let ecrit = format!("[Wiimote1]
+Source = 1
+{}
+[Wiimote2]
+Source = 0
+", lignes.join("
+"));
+        assert_eq!(wiimote_en_place(&ecrit), Some("Wiimote + Nunchuk"));
+        assert_eq!(wiimote_en_place(&ecrit.replace("Source = 1", "Source = 2")), None, "une vraie Wiimote");
+        assert_eq!(wiimote_en_place(&ecrit.replace("`Button X`", "`Button B`")), None, "retouchée");
+        let h = include_str!("../references/dolphin/Wiimote/Wiimote horizontale.ini").replacen("[Profile]", "[Wiimote1]", 1);
+        assert_eq!(wiimote_en_place(&h), Some("Wiimote horizontale"));
+        assert_eq!(wiimote_en_place(""), None);
+        // Une référence du magasin : livrée, ou reprise sous un autre nom avec les mêmes touches ; retouchée : aucune.
+        let m = tempfile::tempdir().unwrap();
+        let livree = trouver(m.path(), "dolphin", "Wiimote", "Wiimote + Nunchuk").unwrap();
+        assert_eq!(wiimote_livree(&livree), Some("Wiimote + Nunchuk"));
+        let copie = Reference { nom: "Ma Wiimote".into(), livree: false, ..livree.clone() };
+        assert_eq!(wiimote_livree(&copie), Some("Wiimote + Nunchuk"));
+        let retouchee = Reference { contenu: livree.contenu.replace("`Button X`", "`Button B`"), ..copie };
+        assert_eq!(wiimote_livree(&retouchee), None);
+    }
 
     fn reference(nom: &str, contenu: &str) -> Reference {
         Reference { emulateur: "dolphin".into(), genre: "Wiimote".into(), nom: nom.into(), contenu: contenu.into(), livree: false }

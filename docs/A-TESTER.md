@@ -6,6 +6,14 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Wii et Eden au clavier (0.182.0)
+- [ ] Un jeu Wii, manette Xbox : 🎮 « Les touches » montre la Wiimote + Nunchuk ; R3 = Home ; le bouton Xbox ouvre
+      le menu de Frogtend.
+- [ ] ⚙ Gérer le jeu ▸ 🎮 Commandes ▸ « Wiimote horizontale » : la fiche le montre tout de suite, et la partie aussi.
+- [ ] Un jeu Switch (Eden) lancé SANS manette branchée : « Les touches » dit qu'il se joue au clavier.
+- [ ] Un jeu Switch réglé sur « Clavier et souris », puis remis en « Automatique » : la manette remarche à la partie
+      suivante.
+
 ## MAME et DOSBox : l'image des touches (0.181.0)
 - [ ] Un jeu d'arcade dans MAME, manette Xbox : 🎮 « Les touches » ; Back met bien une pièce, A = bouton 1.
 - [ ] Ouvrir le menu de Frogtend par Select + RB dans MAME : est-ce que ça met aussi une pièce (et appuie sur le

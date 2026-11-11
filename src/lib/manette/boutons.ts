@@ -123,8 +123,29 @@ const SWITCH_FROGTEND: Record<string, string> = {
   a: 'B', b: 'A', x: 'Y', y: 'X', lb: 'L', rb: 'R', lt: 'ZL', rt: 'ZR', select: '−', start: '+', l3: 'Clic du stick gauche', r3: 'Clic du stick droit', croix: CROIX, stickg: 'Stick gauche', stickd: 'Stick droit',
 };
 
+/** Les références livrées de Wiimote (src-tauri/references/dolphin/Wiimote/*.ini) : bouton XInput → bouton de la Wii.
+ * Le bouton Home est sur R3 : le bouton Xbox reste au menu de Frogtend. */
+const WIIMOTES: Record<string, { console: string; boutons: Record<string, string>; remarque?: string }> = {
+  'Wiimote + Nunchuk': {
+    console: 'Wiimote + Nunchuk',
+    boutons: {
+      a: 'A', rt: 'B', x: '1', y: '2', select: '−', start: '+', r3: 'Home', croix: CROIX, stickd: 'Pointer l’écran',
+      rb: 'Secouer la Wiimote', lb: 'C (Nunchuk)', lt: 'Z (Nunchuk)', stickg: 'Stick du Nunchuk', l3: 'Secouer le Nunchuk',
+    },
+    remarque: 'Le bouton Home est sur le clic du stick droit : le bouton Xbox ouvre le menu de Frogtend.',
+  },
+  'Wiimote horizontale': {
+    console: 'Wiimote tenue à l’horizontale',
+    boutons: {
+      b: 'A', y: 'B', x: '1', a: '2', select: '−', start: '+', r3: 'Home', croix: CROIX, stickg: CROIX,
+      lt: 'Pencher la Wiimote à gauche', rt: 'Pencher la Wiimote à droite', lb: 'Secouer la Wiimote', rb: 'Secouer la Wiimote',
+    },
+    remarque: 'Le bouton Home est sur le clic du stick droit : le bouton Xbox ouvre le menu de Frogtend.',
+  },
+};
+
 /** Les émulateurs à part, avec le profil que Frogtend écrit pour le joueur 1 (bouton du joueur → bouton d'origine). */
-const EMULATEURS: Record<string, (plateforme: string, famille: Famille) => { console: string; boutons: Record<string, string>; remarque?: string } | null> = {
+const EMULATEURS: Record<string, (plateforme: string, famille: Famille, wiimote: string | null) => { console: string; boutons: Record<string, string>; remarque?: string } | null> = {
   duckstation: () => ({ console: 'PlayStation', boutons: PS_FROGTEND }),
   pcsx2: () => ({ console: 'PlayStation 2', boutons: PS_FROGTEND }),
   // RPCS3 : le profil de Frogtend garde la disposition d'origine de ses pilotes XInput, DualShock 4 et DualSense
@@ -146,11 +167,14 @@ const EMULATEURS: Record<string, (plateforme: string, famille: Famille) => { con
     console: '3DS',
     boutons: { ...SWITCH_FROGTEND, select: 'Select', start: 'Start', l3: '', r3: '', stickg: 'Pad circulaire', stickd: 'Stick C (New 3DS)' },
   }),
-  // Dolphin : seulement la GameCube (la Wii a ses propres références de Wiimote).
-  dolphin: (plateforme) =>
+  // Dolphin : la GameCube ; la Wii, seulement quand une référence livrée de Wiimote est en place (manette Xbox : leurs
+  // touches sont celles de XInput).
+  dolphin: (plateforme, famille, wiimote) =>
     /gamecube/i.test(plateforme)
       ? { console: 'GameCube', boutons: { a: 'A', x: 'B', b: 'X', y: 'Y', rb: 'Z', lt: 'L', rt: 'R', start: 'Start', croix: CROIX, stickg: 'Stick', stickd: 'Stick C' } }
-      : null,
+      : famille === 'xbox' && wiimote
+        ? WIIMOTES[wiimote] ?? null
+        : null,
   // Vita3K : sa disposition d'origine (SDL, par position, toute manette ; app.cpp `reset_controller_binding`, relu le
   // 10/11), que Frogtend n'écrit pas. LT et RT ne servent qu'à la PS TV : rien de dessiné.
   vita3k: (_plateforme, famille) => ({
@@ -228,6 +252,12 @@ export interface InfosBoutons {
   /** Frogtend ne règle pas la manette de cet émulateur ici (Cemu, Eden hors portable), ou ne sait pas lequel tourne (un
    * émulateur hors catalogue, un jeu lancé par son propre lanceur) : on ne sait pas, rien de dessiné. */
   inconnue?: boolean;
+  /** L'émulateur joue au clavier (Eden : aucune manette Xbox branchée au lancement, ou le clavier choisi pour ce jeu). */
+  au_clavier?: boolean;
+  /** Le clavier a été choisi pour ce jeu dans « 🎮 Commandes » (fiche) : rien de dessiné, on dit pourquoi. */
+  clavier_choisi?: boolean;
+  /** Dolphin, une Wii : la référence livrée de Wiimote en place (« Wiimote + Nunchuk »…), sinon rien de dessiné. */
+  wiimote?: string | null;
   /** Jeu PC : sa correspondance manette → clavier (bouton → touche). */
   clavier: Record<string, string> | null;
   /** Les raccourcis de Frogtend pendant une partie (réglages de ce PC). */
@@ -273,7 +303,7 @@ export interface Ligne {
 
 export type Schema =
   | { etat: 'connu'; console: string; lignes: Ligne[]; remarque?: string }
-  | { etat: 'personnalise' | 'inconnu' | 'jeu-pc'; console: string | null; lignes: [] };
+  | { etat: 'personnalise' | 'inconnu' | 'jeu-pc' | 'au-clavier' | 'clavier-choisi'; console: string | null; lignes: [] };
 
 const cle = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -281,6 +311,34 @@ const cle = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 function dispositionDuCoeur(coeur: string, plateforme: string): Disposition | null {
   const d = COEURS[cle(coeur)];
   return d ? d(plateforme) : null;
+}
+
+/** Le choix fait pour un jeu dans « 🎮 Commandes ». */
+export interface ChoixCommandes {
+  mode: 'auto' | 'clavier' | 'reference';
+  genre?: string;
+  reference?: string;
+}
+
+/** Les émulateurs dont Frogtend rend le clavier d'origine quand « ⌨ Clavier et souris » est choisi pour un jeu. */
+const CLAVIER_RENDU = ['eden', 'eglantine', 'lichii', 'azahar', 'rpcs3'];
+
+/** Sur la fiche d'un jeu : ce que le cœur a lu, complété par le choix de « 🎮 Commandes » (imposé au lancement) et la
+ * correspondance manette → clavier d'un jeu PC. */
+export function infosDeLaFiche(i: InfosBoutons, choix: ChoixCommandes | undefined, clavierDuJeu: Record<string, string> | null): InfosBoutons {
+  if (i.emulateur === null) return i.clavier ? i : { ...i, clavier: clavierDuJeu };
+  const e = i.emulateur;
+  if (choix?.mode === 'clavier' && CLAVIER_RENDU.includes(e)) return { ...i, clavier_choisi: true };
+  // DuckStation, PCSX2, Dolphin : « Clavier et souris » n'y touche à rien (la manette déjà réglée marche encore) ; ce
+  // n'est plus le profil de Frogtend qui compte : rien de dessiné.
+  if (choix?.mode === 'clavier' && ['duckstation', 'pcsx2', 'dolphin'].includes(e)) return { ...i, personnalise: true };
+  // Une référence : ce n'est plus le profil de Frogtend ; pour la Wii, seulement si elle n'a pas les touches d'une
+  // référence livrée (le cœur l'a vérifié : `wiimote`).
+  if (choix?.mode === 'reference' && ['duckstation', 'pcsx2', 'dolphin'].includes(e)) {
+    const wii = e === 'dolphin' && !/gamecube/i.test(i.plateforme);
+    return wii && i.wiimote ? i : { ...i, personnalise: true };
+  }
+  return i;
 }
 
 /** Le schéma à montrer pour un jeu. */
@@ -296,6 +354,8 @@ export function schema(infos: InfosBoutons): Schema {
     infos.personnalise ? { etat: 'personnalise', console: null, lignes: [] } : { etat: 'connu', console, lignes: lignes(role), remarque };
   // Un émulateur que Frogtend ne sait pas lire (hors catalogue pendant une partie, MAME lancé par un autre lanceur…).
   if (infos.inconnue) return { etat: 'inconnu', console: null, lignes: [] };
+  if (infos.clavier_choisi && infos.emulateur !== null) return { etat: 'clavier-choisi', console: null, lignes: [] };
+  if (infos.au_clavier && infos.emulateur !== null) return { etat: 'au-clavier', console: null, lignes: [] };
   if (infos.emulateur === null) {
     const c = infos.clavier;
     if (!c || !Object.values(c).some(Boolean)) return { etat: 'jeu-pc', console: null, lignes: [] };
@@ -310,7 +370,7 @@ export function schema(infos: InfosBoutons): Schema {
     if (!d) return { etat: 'inconnu', console: null, lignes: [] };
     return connu(d.console, (id) => d.boutons[VERS_RETROPAD[id]], d.remarque);
   }
-  const e = EMULATEURS[infos.emulateur]?.(infos.plateforme, infos.famille);
+  const e = EMULATEURS[infos.emulateur]?.(infos.plateforme, infos.famille, infos.wiimote ?? null);
   if (e) return connu(e.console, (id) => e.boutons[id], e.remarque);
   return { etat: 'inconnu', console: null, lignes: [] };
 }
@@ -319,6 +379,8 @@ export function schema(infos: InfosBoutons): Schema {
 export function sansDessin(s: Schema): string | null {
   if (s.etat === 'personnalise') return 'Tu as changé toi-même les boutons de ce jeu : Frogtend ne peut pas te les montrer.';
   if (s.etat === 'inconnu') return 'Frogtend ne connaît pas encore les boutons de cet émulateur.';
+  if (s.etat === 'au-clavier') return 'Ce jeu se joue au clavier. Pour jouer à la manette, branche une manette Xbox avant de lancer le jeu.';
+  if (s.etat === 'clavier-choisi') return 'Tu as choisi de jouer à ce jeu au clavier (⚙ Gérer le jeu ▸ 🎮 Commandes).';
   if (s.etat === 'jeu-pc')
     return 'Ce jeu lit ta manette lui-même : ses boutons sont dans ses options. Pour un jeu fait pour le clavier : ⚙ Gérer le jeu ▸ 🕹 Jouer à la manette.';
   return null;

@@ -789,7 +789,7 @@ export const api = {
   /** Le compteur d'images par seconde pour les prochaines parties (émulateur qui ne bascule pas en jeu). */
   menuJeuFps: (afficher: boolean) => appeler<void>('menu_jeu_fps', { afficher }),
   /** Les boutons d'un jeu du PC, ou (`null`) de la partie en cours (lot 4d). */
-  boutonsDuJeu: (id: number | null) => appeler<InfosBoutons | null>('boutons_du_jeu', { id }),
+  boutonsDuJeu: (id: number | null, wiimoteChoisie: string | null = null) => appeler<InfosBoutons | null>('boutons_du_jeu', { id, wiimoteChoisie }),
   /** La fenêtre du menu en jeu, agrandie pour l'écran des boutons (puis rendue à sa taille). */
   menuJeuAgrandir: (grand: boolean) => appeler<void>('menu_jeu_agrandir', { grand }),
   menuJeuQuitter: () => appeler<number>('menu_jeu_quitter'),

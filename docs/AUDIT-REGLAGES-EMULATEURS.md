@@ -12,7 +12,7 @@ Légende : ✅ fait · ⚠ fait avec un risque · ❌ absent · n/a sans objet.
 | RetroArch | ✅ profils officiels + autodétection | ✅ par RetroArch lui-même (langue de Windows si `user_language` absent, configuration.c ; chez Seb : 2) | ✅ (99, non essayé en vrai) | ✅ frogtend.cfg à chaque partie | ✅ par cœur |
 | DuckStation | ✅ SDL-0 | ❌ (la PS1 n'a pas de langue ; l'interface : à vérifier) | ✅ | ✅ 0.172.0 : base d'origine (assistant passé, clavier, raccourcis), essayé sur DuckStation 0.1-12640 neuf | ✅ |
 | PCSX2 | ✅ SDL-0 | ❌ (langue dans la NVM du BIOS : jamais touchée) | ✅ | ✅ 0.172.0 : base d'origine (`SettingsVersion = 1`, clavier, raccourcis) ; pas encore ouvert en vrai | ✅ |
-| Dolphin | ✅ GameCube ; Wii par référence | ✅ 0.173.0 GameCube (`SelectedLanguage`, une fois par profil) ; Wii et interface : langue de Windows d'office | ✅ | ✅ | ⚠ GameCube seulement |
+| Dolphin | ✅ GameCube ; Wii par référence | ✅ 0.173.0 GameCube (`SelectedLanguage`, une fois par profil) ; Wii et interface : langue de Windows d'office | ✅ | ✅ | ✅ GameCube ; Wii (0.182.0) : les références livrées |
 | RPCS3 | ✅ | ✅ | ✅ | ✅ 0.173.0 : `rpcs3_avant_la_partie` crée le fichier et pose la langue, test d'installation neuve | ✅ |
 | Eden / Eglantine / Lichii | ✅ manette XInput branchée | ✅ | ✅ | ✅ depuis la 0.169.0 | ✅ |
 | Cemu | ✅ 0.174.0 : `controller0.xml` XInput, disposition d'origine de Cemu (une manette PlayStation seule : rien) | ✅ 0.174.0 : `console_language`, une fois (l'interface suit déjà Windows) | ✅ 0.174.0 avec la manette de Frogtend (Cemu ne lit pas le bouton Xbox) | ✅ settings.xml créé avec la langue : assistant sauté | ✅ |
@@ -64,5 +64,8 @@ Légende : ✅ fait · ⚠ fait avec un risque · ❌ absent · n/a sans objet.
      Azahar.
 6. **Points mineurs** :
    - Eden et sa famille avec une manette PlayStation (seul le GUID XInput est calculé).
-   - Le schéma s'affiche même quand aucune manette n'était branchée.
-   - Le schéma de la Wii.
+   - ✅ (0.182.0) Le schéma s'affichait même quand aucune manette n'était branchée : seule la famille Eden en dépend
+     (manette liée par son GUID, donc seulement branchée au lancement) → état « au clavier » ; le clavier choisi pour
+     un jeu → « clavier choisi » sur la fiche. Correctif : `\default=true` (clavier rendu) lu comme la valeur d'origine.
+   - ✅ (0.182.0) Le schéma de la Wii : seulement une référence livrée en place (contenu comparé, `references::
+     wiimote_en_place` / `wiimote_livree`) ; retouchée, vraie Wiimote : rien.

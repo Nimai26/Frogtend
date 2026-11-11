@@ -607,8 +607,12 @@ pub fn disposition_manette(g: &str) -> Vec<(&'static str, String)> {
     ]
 }
 
-/// La valeur d'une clé de `[Controls]` (sans guillemets).
+/// La valeur d'une clé de `[Controls]` (sans guillemets). Avec `<clé>\default=true`, Qt (donc Eden) prend la valeur
+/// d'origine et ignore celle écrite (`rendre_le_clavier` s'en sert) : `None`, comme une clé absente.
 fn valeur_controls(texte: &str, cle: &str) -> Option<String> {
+    if crate::manettes::lire_ini(texte, "Controls", &format!("{cle}\\default")).first().is_some_and(|d| d.trim() == "true") {
+        return None;
+    }
     crate::manettes::lire_ini(texte, "Controls", cle).first().map(|v| crate::emulateurs_profils::lire_valeur_qt(v))
 }
 
@@ -877,6 +881,12 @@ mod tests_reglages {
         let t3 = std::fs::read_to_string(fichier_reglages(d.path())).unwrap();
         assert!(t3.contains("player_0_button_a\\default=true\r\n") && t3.contains("player_0_button_home\\default=true\r\n"), "{t3}");
         assert!(!rendre_le_clavier(d.path()).unwrap(), "une seconde fois : rien");
+        // Rendu au clavier, il est lu comme tel (Qt ignore les valeurs marquées `\default=true`), et la partie suivante
+        // à la manette remet la disposition de Frogtend (avant : « déjà à Frogtend », rien de réécrit, manette coupée).
+        assert!(joueur1_au_clavier(&t3) && !joueur1_de_frogtend(&t3) && !home_retire(d.path()));
+        assert!(regler_manette(d.path(), false, Some(UNE)).unwrap());
+        let t4 = std::fs::read_to_string(fichier_reglages(d.path())).unwrap();
+        assert!(t4.contains("player_0_button_a\\default=false\r\n") && joueur1_de_frogtend(&t4), "{t4}");
     }
 
     const UNE: &str = "030000005e040000ff02000000007801";
