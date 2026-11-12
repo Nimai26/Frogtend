@@ -75,3 +75,38 @@ Légende : ✅ fait · ⚠ fait avec un risque · ❌ absent · n/a sans objet.
      un jeu → « clavier choisi » sur la fiche. Correctif : `\default=true` (clavier rendu) lu comme la valeur d'origine.
    - ✅ (0.182.0) Le schéma de la Wii : seulement une référence livrée en place (contenu comparé, `references::
      wiimote_en_place` / `wiimote_livree`) ; retouchée, vraie Wiimote : rien.
+
+# Le menu en jeu, émulateur par émulateur — audit du 12/11/2026
+
+> Règles de Seb (11/11) : « tout ce que l'émulateur propose, dans notre menu, systématiquement » et « nos menus et
+> actions doivent être normalisés ; différents uniquement quand des fonctions sont indisponibles ». Référence :
+> RetroArch (SNES). Relevé dans le CODE de la 0.193.0 par l'expert lancement (lecture seule, rien lancé).
+> Commun à tous : Reprendre, Manuel et documents, Les boutons, Mes captures, Succès, Cheat Engine s'il est installé,
+> Quitter. Pas de bouton Pause : le menu ouvert met en pause (premier plan perdu, ou jeu gelé).
+
+| Émulateur | Sauver / charger | Emplacements | Vue+LT/RT | Effets | Triches | Capture | Reset | Avance rapide | Son coupé | Autres |
+|---|---|---|---|---|---|---|---|---|---|---|
+| RetroArch | ✅ UDP | ✅ 10 | ✅ | ✅ en direct | ✅ en direct | ✅ | ✅ | ✅ | ✅ | disque suivant (.m3u), compteur d'images ; hardcore : ni états ni triches |
+| DuckStation | ✅ F15/F16 (son emplacement) | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ F13 | ❌ | ❌ | disque suivant F14 |
+| PCSX2 | ✅ F15/F16 (toujours le 1) | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ F13 | ❌ | ❌ | — |
+| Dolphin | ✅ F15 / Maj+F15 (son emplacement) | ❌ | ✅ si raccourcis au clavier | ❌ | ❌ | ❌ | ✅ F13 | ❌ | ❌ | disque suivant F14 ; raccourcis sur manette : rien |
+| RPCS3 | ❌ retiré (✅ Seb 03/11) | ❌ | ❌ | ❌ | ❌ | ✅ F12 | ❌ (Ctrl+R recharge) | ❌ retiré (Seb 04/11) | ✅ | compteur d'images au prochain lancement |
+| Eden / Eglantine / Lichii | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | compteur d'images Ctrl+V |
+| Cemu, PPSSPP, Xenia, xemu, Azahar, Vita3K, mGBA | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — (pause seulement) |
+| DOSBox Staging | n/a (pas d'états) | n/a | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | changer de disque Ctrl+F4 |
+| BigPEmu | ✅ F13/F14 | ✅ 10 (cartouches) | ✅ | ✅ au prochain lancement | ✅ au prochain lancement | ✅ F15 | ❌ (« Reload Image » à relever) | ❌ | ❌ | — |
+| MAME | ✅ Lua | ✅ 10 | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | compteur d'images |
+| Jeux PC | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | manette → clavier, Cheat Engine |
+
+**Les écarts les plus visibles :** (1) le choix de l'emplacement n'existe que pour RetroArch, MAME, BigPEmu ;
+(2) la capture manque à presque tous ; (3) effets et triches : RetroArch seul en direct ; (4) sept émulateurs sans
+aucune action ; (5) Reset absent de BigPEmu, PPSSPP et des sept ; (6) avance rapide et son : RetroArch et MAME.
+
+**Déjà relevé comme possible (docs) :** DuckStation triches (`OpenCheatsMenu`), PCSX2 états par PINE, Dolphin
+capture/son (Maj+F13/F14), PPSSPP Reset/états par WebSocket et raccourcis, BigPEmu « Reload Image », touches F17-F20
+à essayer (capture, avance rapide, son de DuckStation/PCSX2). Rien de relevé pour Cemu, Xenia, xemu, Vita3K, mGBA,
+Eden. À corriger : RECHERCHE-MENU-EN-JEU.md conseille `network_cmd_bind_address`, absent de RetroArch 1.22.2.
+
+**Ordre proposé :** DuckStation, PCSX2, Dolphin d'abord (leurs raccourcis sont déjà pilotés : emplacements 1 à 10,
+capture, avance rapide, son en ajoutant des touches), puis PPSSPP, BigPEmu (Reset), puis les autres après relevé de
+leur code.
