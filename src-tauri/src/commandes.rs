@@ -53,6 +53,9 @@ struct ProgresDemenagement {
     octets: u64,
 }
 
+/// Un déplacement du dossier des captures est en cours : la galerie n'oublie alors aucune capture absente.
+static DEPLACEMENT_CAPTURES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// Déplace ce que Frogtend a écrit dans un ancien dossier d'abris ou de captures (✅ Seb 04/11 ; seulement ses abris
 /// `<numéro>\…` ou ses captures `<Système>\<jeu>\<image>`, jamais par-dessus).
 /// - Abris : appelé APRÈS le changement de réglage (le noyau écrit déjà les nouveaux abris dans le nouveau dossier) ;
@@ -93,8 +96,12 @@ pub async fn dossier_deplacer_contenu(app: AppHandle, noyau: State<'_, Noyau>, s
         return Err(Erreur::Refus(format!("L'ancien dossier n'est pas vidé ({m}) : Frogtend continue seulement d'y lire.")));
     }
     noyau.journaliser(&format!("déplacement du dossier des {sorte} : {} → {}", ancien.display(), nouveau.display()));
+    let (est_captures, ancien2, nouveau2) = (sorte == "captures", ancien.clone(), nouveau.clone());
+    if est_captures {
+        DEPLACEMENT_CAPTURES.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
     let app2 = app.clone();
-    let bilan = tauri::async_runtime::spawn_blocking(move || {
+    let resultat = tauri::async_runtime::spawn_blocking(move || {
         let mut dernier = std::time::Instant::now();
         crate::demenagement::deplacer_contenu(&sorte, &ancien, &nouveau, &mut |octets| {
             if dernier.elapsed().as_millis() >= 250 {
@@ -104,7 +111,18 @@ pub async fn dossier_deplacer_contenu(app: AppHandle, noyau: State<'_, Noyau>, s
         })
     })
     .await
-    .map_err(|_| Erreur::Disque("Le déplacement s'est arrêté brutalement.".into()))??;
+    .map_err(|_| Erreur::Disque("Le déplacement s'est arrêté brutalement.".into()))
+    .and_then(|r| r);
+    // Les captures déplacées restent les mêmes pour la galerie et la sauvegarde (sinon oubliées comme disparues) :
+    // même si le déplacement s'est arrêté en route (ce qui a bougé est suivi).
+    if est_captures {
+        match crate::captures::suivre_deplacement(&noyau.dossier, &ancien2, &nouveau2) {
+            Ok(n) => noyau.journaliser(&format!("déplacement : {n} capture(s) suivie(s) dans la galerie")),
+            Err(e) => noyau.journaliser(&format!("déplacement : galerie non mise à jour ({e})")),
+        }
+        DEPLACEMENT_CAPTURES.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+    let bilan = resultat?;
     noyau.journaliser(&format!("déplacement : {} fichier(s) déplacé(s), {} laissé(s)", bilan.deplaces, bilan.laisses.len()));
     for l in bilan.laisses.iter().take(20) {
         noyau.journaliser(&format!("  laissé à sa place : {l}"));
@@ -136,14 +154,21 @@ fn fiche_de_capture(noyau: &Noyau, s: &crate::noyau::Session, jeu: i64) -> Optio
 /// d'abord. Un jeu de Firehouse doit être encore visible à ce profil (même retiré du PC) ; une capture disparue du
 /// disque sort de l'index.
 #[tauri::command]
-pub async fn captures_liste(noyau: State<'_, Noyau>, jeu: Option<i64>) -> Resultat<Vec<CaptureVue>> {
+pub async fn captures_liste(app: AppHandle, noyau: State<'_, Noyau>, jeu: Option<i64>) -> Resultat<Vec<CaptureVue>> {
+    let regle = dossier_captures_regle(&app);
+    let deplacement = DEPLACEMENT_CAPTURES.load(std::sync::atomic::Ordering::SeqCst);
     let profil = profil_ouvert(&noyau).await?.id;
     let s = noyau.session().await?;
     let fonds = crate::captures::fonds_choisis(&dossier_profil_de(&noyau, &profil));
     let mut l = Vec::new();
     for n in crate::captures::index(&noyau.dossier).into_iter().filter(|n| n.profil == profil) {
         if !std::path::Path::new(&n.chemin).is_file() {
-            let _ = crate::captures::oublier(&noyau.dossier, &n.id);
+            // Oubliée seulement si son dossier est là (effacée à la main) : jamais pendant un déplacement du dossier, ni
+            // si elle est retrouvée sous le dossier réglé (déplacée) ; un disque débranché ne fait rien oublier (elle
+            // resterait sinon hors de la sauvegarde chez Firehouse).
+            if !deplacement && !regle.as_deref().is_some_and(|r| crate::captures::retrouver(&noyau.dossier, &n.id, r)) && std::path::Path::new(&n.chemin).parent().is_some_and(|d| d.is_dir()) {
+                let _ = crate::captures::oublier(&noyau.dossier, &n.id);
+            }
             continue;
         }
         // Un jeu de Firehouse caché à ce profil (grade, réunion) : sa capture ne se montre pas (rien n'est effacé).
@@ -7115,6 +7140,22 @@ pub async fn restauration_preparer(
     noyau.marquer_reprise("restauree", &profil, &pc).await?;
     let reposes = noyau.reposer_parties_emulateurs(&programmes_emulateurs(&app)).await?;
     Ok((prete, reposes))
+}
+
+/// Les captures restaurées reposées, et celles qui attendent encore (pas de dossier des captures, jeu caché).
+#[derive(Debug, Serialize)]
+pub struct CapturesReposees {
+    pub reposees: usize,
+    pub en_attente: usize,
+}
+
+/// Repose les captures d'écran restaurées dans le dossier des captures réglé (✅ Seb 12/11) : après une restauration,
+/// et quand la personne choisit ce dossier.
+#[tauri::command]
+pub async fn restauration_reposer_captures(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<CapturesReposees> {
+    let d = dossier_captures_regle(&app);
+    let (reposees, en_attente) = noyau.reposer_captures(d.as_deref()).await?;
+    Ok(CapturesReposees { reposees, en_attente })
 }
 
 /// Repose les parties d'émulateurs restaurées (après avoir installé un émulateur qui manquait).

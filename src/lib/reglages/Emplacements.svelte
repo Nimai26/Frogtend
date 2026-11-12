@@ -97,7 +97,7 @@
     { cle: 'dossierEmulateurs', titre: '🕹 Émulateurs', aide: 'chaque émulateur dans son sous-dossier, avec sa configuration' },
     { cle: 'dossierOutils', titre: '🧰 Outils', aide: 'Cheat Engine, trainers, gestionnaires de mods' },
     { cle: 'dossierAbris', titre: '💾 Abris de parties', aide: 'la copie de tes parties avant de retirer un jeu' },
-    { cle: 'dossierCaptures', titre: '📷 Captures d’écran', aide: 'les captures de tous les jeux, rangées par système puis par jeu (RetroArch, PS3, Game Boy Advance pour l’instant)' },
+    { cle: 'dossierCaptures', titre: '📷 Captures d’écran', aide: 'les captures de tous les jeux, rangées par système puis par jeu (RetroArch, PS3, Game Boy Advance, Jaguar pour l’instant)' },
   ] as const;
 
   async function choisirAutre(cle: (typeof AUTRES)[number]['cle']) {
@@ -170,7 +170,12 @@
         toast(`Dossier réglé, mais les anciens abris n’ont pas pu y être rangés : ${motifDuRefus(err)}`, 'erreur');
       }
     } else if (cle === 'dossierCaptures') {
-      toast(`✅ Dossier des captures réglé : ${c}. Les captures des prochaines parties y seront rangées.`);
+      // Des captures restaurées attendaient ce dossier (✅ Seb 12/11).
+      const r = await api.restaurationReposerCaptures().catch(() => null);
+      toast(
+        `✅ Dossier des captures réglé : ${c}. Les captures des prochaines parties y seront rangées.` +
+          (r?.reposees ? ` 📷 ${r.reposees} capture(s) de ta sauvegarde y ont été remises.` : ''),
+      );
     } else {
       toast(`✅ Dossier réglé : ${c}. Les prochaines installations iront là ; celles déjà faites restent à leur place.`);
     }

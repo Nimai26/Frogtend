@@ -179,6 +179,13 @@ export async function synchroniser(discrete = false) {
     }
     await rechargerPlateformes();
     await rechargerListe();
+    // Des captures restaurées attendaient le catalogue (jeu pas encore connu de ce PC) : reposées maintenant.
+    void api
+      .restaurationReposerCaptures()
+      .then((r) => {
+        if (r.reposees) toast(`📷 ${r.reposees} capture(s) d’écran de ta sauvegarde remise(s) dans Mes captures.`);
+      })
+      .catch(() => {});
     // Fonds et logos de Taodbox gardés à l'avance pour le hors ligne (lot Médias M4), en arrière-plan : jamais une
     // raison d'échouer la synchronisation.
     // Les fiches des jeux importés reliés, pour les voir hors ligne (par petits passages, en arrière-plan) ; puis les

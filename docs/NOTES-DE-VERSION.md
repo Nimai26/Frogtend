@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.193.0 — Tes captures d'écran dans ta sauvegarde
+
+- 📷 La sauvegarde chez Firehouse emporte maintenant tes captures d'écran (seulement les tiennes), avec leur jeu,
+  leur console et leur date. Seules les nouvelles partent à chaque sauvegarde.
+- Sur un PC neuf, la restauration les remet dans ton dossier des captures, rangées comme avant, et elles
+  reviennent dans 📷 Mes captures (ton fond choisi aussi). Jamais par-dessus une image déjà là. Sans dossier des
+  captures, Frogtend te dit qu'elles attendent : elles arrivent dès que tu le choisis.
+- Déplacer le dossier des captures ne les fait plus disparaître de 📷 Mes captures.
+- Un disque des captures débranché ne fait plus rien oublier : les captures reviennent quand il est rebranché.
+
 ## 0.192.0 — BigPEmu : la photo d'écran arrive vraiment dans 📷 Mes captures
 
 - 📷 Jeux Jaguar : BigPEmu donne le même nom à la première photo de chaque partie, par-dessus celle de la fois

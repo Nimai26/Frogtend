@@ -694,6 +694,7 @@ pub fn run() {
             commandes::restauration_liste,
             commandes::restauration_preparer,
             commandes::restauration_reposer_emulateurs,
+            commandes::restauration_reposer_captures,
             commandes::skin_personnel,
         ])
         .build(contexte)

@@ -20,8 +20,8 @@
 
 <div class="sauvegarde">
   <p class="muted">
-    Tout ce qui ne se retélécharge pas : tes réglages, la liste de tes jeux, et les parties et codes de triche de
-    tous tes jeux (jeux PC comme émulateurs). Elle part chez Firehouse, dans ton dossier, par Internet : ça marche à
+    Tout ce qui ne se retélécharge pas : tes réglages, la liste de tes jeux, les parties et codes de triche de
+    tous tes jeux (jeux PC comme émulateurs), et tes captures d’écran. Elle part chez Firehouse, dans ton dossier, par Internet : ça marche à
     la maison comme ailleurs. Firehouse garde les versions précédentes. Après un reformatage, tu retrouves tout.
   </p>
 

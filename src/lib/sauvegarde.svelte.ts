@@ -268,11 +268,25 @@ export async function restaurer(profilChoisi?: string, pcChoisi?: string) {
     }
   }
   await reglerPc('emulateurs', emus);
+  // Les captures d'écran (✅ Seb 12/11) : dans le dossier des captures de ce PC, ou celui de l'ancien s'il existe ici.
+  if (!etat.pc.dossierCaptures && pcLu.dossierCaptures && (await existe(pcLu.dossierCaptures))) {
+    await reglerPc('dossierCaptures', pcLu.dossierCaptures);
+  }
+  const captures = await api.restaurationReposerCaptures().catch(() => ({ reposees: 0, en_attente: 0 }));
 
   toast(
     `✅ Restauré : réglages, ${prete.fichiers} fichier(s) de parties (${taille(prete.taille)}).` +
-      (reposes.reposes ? ` ${reposes.reposes} partie(s) d’émulateur reposée(s).` : ''),
+      (reposes.reposes ? ` ${reposes.reposes} partie(s) d’émulateur reposée(s).` : '') +
+      (captures.reposees ? ` 📷 ${captures.reposees} capture(s) d’écran remise(s) dans Mes captures.` : ''),
   );
+  if (captures.en_attente && etat.pc.dossierCaptures) {
+    toast(`📷 ${captures.en_attente} capture(s) d’écran attendent que leur jeu soit connu de ce PC : elles arriveront après la prochaine synchronisation.`);
+  } else if (captures.en_attente) {
+    await informer(
+      '📷 Tes captures d’écran attendent',
+      `${captures.en_attente} capture(s) d’écran de ta sauvegarde attendent un dossier où les ranger. Choisis-le dans Options ▸ Emplacements ▸ 📷 Captures d’écran : elles y arriveront aussitôt.`,
+    );
+  }
   // Les parties communes à tous (déjà là et différentes) sont seulement dites ; celles de la personne, proposées.
   const autres = reposes.conflits.filter((c) => !(reposes.a_remplacer ?? []).some((a) => a.etiquette === c));
   if (autres.length) {

@@ -6,6 +6,13 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Les captures d'écran dans la sauvegarde (0.193.0)
+- [ ] Options ▸ Sauvegarde : le texte dit « … et tes captures d'écran ». 💾 Sauvegarder maintenant : le nombre de
+      fichiers grandit de 2 par capture (l'image et sa fiche) ; une 2e sauvegarde juste après n'envoie rien de neuf.
+- [ ] (plus tard, sur un PC neuf ou chez ta sœur) Restaurer la sauvegarde : le message de fin dit « 📷 N capture(s)
+      d'écran remise(s) dans Mes captures », et 📷 Mes captures les montre, avec leur jeu et leur date d'origine.
+- [ ] (si tu déplaces le dossier des captures, Options ▸ Emplacements) : 📷 Mes captures les montre toujours toutes.
+
 ## BigPEmu : photos d'écran (0.192.0)
 - [x] (✅ Seb 12/11 en 0.192.0 ; ❌ en 0.191.0 : pas rangée, même nom que la photo d'avant) Bubsy, menu ▸ ⚙ Options du jeu ▸ 📷 Photo de l'écran, puis quitter : un message dit que la capture est rangée ;
       📷 Mes captures la montre (Atari Jaguar ▸ Bubsy), image correcte (ni retournée, ni aux couleurs inversées).

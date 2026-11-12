@@ -760,6 +760,8 @@ export const api = {
     appeler<string | null>('dossier_jeux_refus', { chemin, sorte: sorte ?? null }),
   /** Repose les parties d'émulateurs restaurées qui attendaient un émulateur absent (jamais par-dessus une autre). */
   restaurationReposerEmulateurs: () => appeler<Reposes>('restauration_reposer_emulateurs'),
+  /** Les captures d'écran restaurées, remises dans le dossier des captures réglé (sinon elles attendent). */
+  restaurationReposerCaptures: () => appeler<{ reposees: number; en_attente: number }>('restauration_reposer_captures'),
   /** Remplace la partie en place par sa copie restaurée (sa partie actuelle mise à l'abri d'abord) ; rend l'abri. */
   restaurationRemplacer: (cle: string) => appeler<string>('restauration_remplacer', { cle }),
   /** Les parties restaurées encore en double (une proposition fermée sans répondre n'est jamais perdue). */

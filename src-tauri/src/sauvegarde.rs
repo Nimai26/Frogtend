@@ -6,6 +6,8 @@
 //! - `parties\` : les parties et codes de triche de TOUS les jeux — pour un jeu installé, les fichiers changés depuis
 //!   son installation ; pour chaque émulateur, le dossier du profil (`<émulateur>\Profils\<profil>\`) ;
 //!   `parties\manifeste.json` donne l'empreinte (sha256) de chacun : seul ce qui a changé est renvoyé ;
+//!   `parties\captures\<jeu>\<id>.<ext>` : les captures d'écran du profil (✅ Seb 12/11), chacune avec sa fiche à
+//!   côté (`<id>.json` : jeu, titre, console, date, nom, fond choisi) ;
 //! - `derniere-sauvegarde.json` : quand, depuis quel PC, combien.
 //!
 //! Frogtend écrit la version COURANTE ; l'historique est gardé par le serveur (instantanés ZFS).
@@ -332,6 +334,9 @@ pub async fn envoyer(d: &impl Destination, contenu: &Contenu, pc: &str, emplacem
     Ok(bilan)
 }
 
+/// Le dossier des fiches des captures envoyées (`profils\<id>\fiches-captures\<id de la capture>.json`).
+pub const FICHES_CAPTURES: &str = "fiches-captures";
+
 /// Le début du refus « une sauvegarde à reprendre existe » (l'interface le reconnaît pour proposer de la restaurer).
 pub const A_REPRENDRE: &str = "Une sauvegarde de ce profil existe déjà chez Firehouse";
 
@@ -449,6 +454,63 @@ impl Noyau {
         }
         std::fs::write(f, serde_json::to_vec_pretty(&bilan).unwrap())?;
         Ok(bilan)
+    }
+
+    /// Les captures d'écran du profil (✅ Seb 12/11 : « les screens, comme les saves ») : chaque image part avec sa
+    /// fiche à côté, écrite dans `profils\<id>\fiches-captures\`. Rend aussi ce qui reste tel quel chez Firehouse :
+    /// une capture d'un jeu que ce profil ne voit plus, ou dont l'image manque (disque débranché) — jamais retirée
+    /// de la sauvegarde pour autant.
+    fn captures_a_sauvegarder(&self, s: &crate::noyau::Session, profil: &str) -> Resultat<(Vec<Element>, Vec<String>)> {
+        let dossier_profil = self.dossier.join("profils").join(profil);
+        let fiches = dossier_profil.join(FICHES_CAPTURES);
+        let fonds = crate::captures::fonds_choisis(&dossier_profil);
+        let (mut parties, mut gardes) = (Vec::new(), Vec::new());
+        let mut ecrites = std::collections::BTreeSet::new();
+        let mut cles = std::collections::BTreeSet::new();
+        for n in crate::captures::index(&self.dossier).into_iter().filter(|n| n.profil == profil) {
+            // Une clé déjà prise par une autre capture : la sienne propre (jamais deux images à la même place).
+            let cle = if cles.insert(n.cle_sauvegarde().to_string()) { n.cle_sauvegarde().to_string() } else { n.id.clone() };
+            cles.insert(cle.clone());
+            let base = format!("captures/{}/{cle}", n.jeu);
+            // Comme la galerie : un jeu de Firehouse caché à ce profil (grade, réunion) ne part pas.
+            if n.jeu > 0 && !s.verrou().visible_ou_reuni(n.jeu).unwrap_or(false) {
+                gardes.push(format!("captures/{}/", n.jeu));
+                continue;
+            }
+            let image = PathBuf::from(&n.chemin);
+            if !image.is_file() {
+                gardes.push(format!("{base}."));
+                continue;
+            }
+            let ext = image.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_else(|| "png".into());
+            let fond = self.fiche_de(s, n.jeu).ok().flatten().is_some_and(|f| fonds.get(&f.to_string()) == Some(&n.id));
+            // Les noms des dossiers où elle était rangée (`<Système>\<jeu>\`) : la restauration la remet sous les mêmes.
+            let nom_de = |p: Option<&Path>| p.and_then(|p| p.file_name()).map(|x| x.to_string_lossy().to_string()).unwrap_or_default();
+            let fiche = json!({
+                "jeu": n.jeu, "titre": n.titre, "plateforme": n.plateforme, "quand": n.quand,
+                "nom": nom_de(Some(&image)), "dossier_jeu": nom_de(image.parent()), "systeme": nom_de(image.parent().and_then(|p| p.parent())),
+                "fond": fond,
+            });
+            std::fs::create_dir_all(&fiches)?;
+            let f = fiches.join(format!("{cle}.json"));
+            let octets = serde_json::to_vec_pretty(&fiche).unwrap_or_default();
+            // Réécrite seulement si elle a changé (son empreinte ne bouge pas : rien n'est renvoyé).
+            if std::fs::read(&f).ok().as_deref() != Some(octets.as_slice()) {
+                std::fs::write(&f, &octets)?;
+            }
+            ecrites.insert(f.clone());
+            parties.push(Element { source: image, relatif: format!("{base}.{ext}") });
+            parties.push(Element { source: f, relatif: format!("{base}.json") });
+        }
+        // Les fiches qui ne partent plus (capture supprimée, jeu caché, image absente) : réécrites au besoin, celles déjà
+        // chez Firehouse y restent (gardes).
+        for e in std::fs::read_dir(&fiches).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.extension().is_some_and(|x| x == "json") && !ecrites.contains(&p) {
+                let _ = std::fs::remove_file(&p);
+            }
+        }
+        Ok((parties, gardes))
     }
 
     /// Rassemble ce qu'il faut sauvegarder pour le profil ouvert. `programmes_emulateurs` : les programmes des
@@ -668,11 +730,21 @@ impl Noyau {
             }
         }
 
+        let (captures, gardes_captures) = self.captures_a_sauvegarder(&s, &profil.id)?;
+        parties.extend(captures);
+
         // Ce qui ATTEND encore d'une restauration (PC formaté ou neuf : jeu pas encore remis, émulateur pas encore
-        // installé) n'est pas sur le PC mais n'est pas perdu : protégé chez Firehouse, jamais retiré de la sauvegarde.
+        // installé, capture pas encore reposée) n'est pas sur le PC mais n'est pas perdu : protégé chez Firehouse,
+        // jamais retiré de la sauvegarde.
         let attente = self.dossier.join("restauration").join(&profil.id);
         let mut gardes: Vec<String> = gardes.into_iter().map(|id| format!("jeux/{id}/")).collect();
         gardes.extend(gardes_ouverts);
+        gardes.extend(gardes_captures);
+        for jeu in std::fs::read_dir(attente.join("parties").join("captures")).into_iter().flatten().flatten() {
+            for f in std::fs::read_dir(jeu.path()).into_iter().flatten().flatten() {
+                gardes.push(format!("captures/{}/{}", jeu.file_name().to_string_lossy(), f.file_name().to_string_lossy()));
+            }
+        }
         for sorte in ["jeux", "emulateurs"] {
             for e in std::fs::read_dir(attente.join("parties").join(sorte)).into_iter().flatten().flatten() {
                 if e.file_type().is_ok_and(|t| t.is_dir()) {
@@ -1060,6 +1132,73 @@ mod tests {
             vec!["emulateurs/RPCS3/.rpcs3-compte/savedata/BCES00569-GAME/SAVE.DAT", "emulateurs/RPCS3/.rpcs3-compte/trophy/NPWR00001_00/TROPUSR.DAT"],
             "les parties et trophées de SEB seulement, jamais ses licences"
         );
+    }
+
+    #[tokio::test]
+    async fn les_captures_du_profil_partent_et_reviennent_sur_un_pc_neuf() {
+        use crate::coffre::CoffreMemoire;
+        use crate::noyau::Connexion;
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, None).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        // Une capture d'un jeu importé (-5), une dont l'image manque (disque débranché), une d'un jeu caché, une d'une autre personne.
+        let rangee = d.path().join("Captures").join("Atari Jaguar").join("Bubsy");
+        std::fs::create_dir_all(&rangee).unwrap();
+        let img = rangee.join("2026-11-12 01-50-00.bmp");
+        std::fs::write(&img, b"BMimage").unwrap();
+        crate::captures::noter(&n.dossier, std::slice::from_ref(&img), &id, -5, "Bubsy", "Atari Jaguar").unwrap();
+        let absente = rangee.join("absente.bmp");
+        let cachee = rangee.join("cachee.bmp");
+        std::fs::write(&cachee, b"x").unwrap();
+        crate::captures::noter(&n.dossier, &[absente.clone()], &id, -5, "Bubsy", "Atari Jaguar").unwrap();
+        crate::captures::noter(&n.dossier, &[cachee], &id, 987_654_321, "Caché", "X").unwrap();
+        let autre = rangee.join("autre.bmp");
+        std::fs::write(&autre, b"y").unwrap();
+        crate::captures::noter(&n.dossier, &[autre], "quelqu-un-d-autre", -5, "Bubsy", "Atari Jaguar").unwrap();
+        let cle = crate::captures::identifiant(&img);
+
+        let c = n.contenu_sauvegarde(&[]).await.unwrap();
+        let rel: Vec<_> = c.parties.iter().map(|e| e.relatif.clone()).collect();
+        assert_eq!(rel, vec![format!("captures/-5/{cle}.bmp"), format!("captures/-5/{cle}.json")], "seulement la sienne, avec sa fiche");
+        assert!(c.gardes.contains(&format!("captures/-5/{}.", crate::captures::identifiant(&absente))), "image absente : gardée chez Firehouse");
+        assert!(c.gardes.contains(&"captures/987654321/".to_string()), "jeu caché : gardé, jamais envoyé");
+        let fiche: Value = serde_json::from_slice(&std::fs::read(&c.parties[1].source).unwrap()).unwrap();
+        assert_eq!((fiche["systeme"].as_str(), fiche["dossier_jeu"].as_str(), fiche["nom"].as_str()), (Some("Atari Jaguar"), Some("Bubsy"), Some("2026-11-12 01-50-00.bmp")));
+        let partage = tempfile::tempdir().unwrap();
+        let dl = DossierLocal(partage.path().into());
+        envoyer(&dl, &c, "VENKMAN", "test").await.unwrap();
+
+        // Le PC neuf : plus d'image ni d'index, la sauvegarde téléchargée dans la zone d'attente.
+        std::fs::remove_file(&img).unwrap();
+        std::fs::write(n.dossier.join("captures.json"), b"[]").unwrap();
+        let attente = n.dossier.join("restauration").join(&id).join("parties").join("captures");
+        std::fs::create_dir_all(attente.join("-5")).unwrap();
+        for f in [format!("{cle}.bmp"), format!("{cle}.json")] {
+            std::fs::copy(partage.path().join("parties/captures/-5").join(&f), attente.join("-5").join(&f)).unwrap();
+        }
+        assert_eq!(n.reposer_captures(None).await.unwrap(), (0, 1), "sans dossier des captures : elle attend");
+        assert!(n.contenu_sauvegarde(&[]).await.unwrap().gardes.contains(&format!("captures/-5/{cle}.bmp")), "en attente : jamais retirée de Firehouse");
+        let neuf = d.path().join("Nouveau");
+        assert_eq!(n.reposer_captures(Some(&neuf)).await.unwrap(), (1, 0));
+        let revenue = neuf.join("Atari Jaguar").join("Bubsy").join("2026-11-12 01-50-00.bmp");
+        assert_eq!(std::fs::read(&revenue).unwrap(), b"BMimage");
+        let l = crate::captures::index(&n.dossier);
+        assert_eq!(l.len(), 1);
+        assert_eq!((l[0].profil.as_str(), l[0].jeu, l[0].titre.as_str(), l[0].cle_sauvegarde()), (id.as_str(), -5, "Bubsy", cle.as_str()));
+        assert!(!attente.join("-5").exists(), "posée, relue, notée : retirée de l'attente");
+        // Sauvegardée de nouveau : même place, rien renvoyé.
+        let b = envoyer(&dl, &n.contenu_sauvegarde(&[]).await.unwrap(), "VENKMAN", "test").await.unwrap();
+        assert_eq!((b.envoyes, b.retires), (0, 0), "{b:?}");
+        // Restaurée une 2e fois : l'image identique est reprise, pas de doublon.
+        std::fs::create_dir_all(attente.join("-5")).unwrap();
+        for f in [format!("{cle}.bmp"), format!("{cle}.json")] {
+            std::fs::copy(partage.path().join("parties/captures/-5").join(&f), attente.join("-5").join(&f)).unwrap();
+        }
+        assert_eq!(n.reposer_captures(Some(&neuf)).await.unwrap(), (1, 0));
+        assert_eq!(std::fs::read_dir(neuf.join("Atari Jaguar").join("Bubsy")).unwrap().count(), 1);
+        assert_eq!(crate::captures::index(&n.dossier).len(), 1);
     }
 
     #[tokio::test]

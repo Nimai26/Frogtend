@@ -327,6 +327,17 @@ pub struct Notee {
     pub titre: String,
     #[serde(default)]
     pub plateforme: String,
+    /// L'identifiant qu'elle avait sur le PC d'où elle a été restaurée (vide sinon) : sa place dans la sauvegarde ne
+    /// change pas (jamais renvoyée en double).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub origine: String,
+}
+
+impl Notee {
+    /// Son nom dans la sauvegarde (`captures/<jeu>/<ceci>.<ext>`).
+    pub fn cle_sauvegarde(&self) -> &str {
+        if self.origine.is_empty() { &self.id } else { &self.origine }
+    }
 }
 
 /// Un seul lecteur-écrivain de l'index à la fois (rangement pendant la partie, suppression depuis la galerie).
@@ -371,9 +382,124 @@ pub fn noter(donnees: &Path, places: &[PathBuf], profil: &str, jeu: i64, titre: 
         let quand = std::fs::metadata(p).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
         let id = identifiant(p);
         l.retain(|n| n.id != id);
-        l.push(Notee { id, chemin: p.to_string_lossy().into(), profil: profil.into(), jeu, quand, titre: titre.into(), plateforme: plateforme.into() });
+        l.push(Notee { id, chemin: p.to_string_lossy().into(), profil: profil.into(), jeu, quand, titre: titre.into(), plateforme: plateforme.into(), origine: String::new() });
     }
     ecrire_sans_verrou(donnees, &l)
+}
+
+/// Le dossier des captures a été déplacé : les captures notées sous `ancien` et retrouvées sous `nouveau` (même place
+/// relative) y sont suivies, sans changer d'identifiant (fond choisi, sauvegarde). Rend combien.
+pub fn suivre_deplacement(donnees: &Path, ancien: &Path, nouveau: &Path) -> std::io::Result<usize> {
+    let _v = VERROU_INDEX.lock().unwrap_or_else(|e| e.into_inner());
+    let mut l = lire_sans_verrou(donnees);
+    let mut n = 0;
+    for c in &mut l {
+        let avant = PathBuf::from(&c.chemin);
+        // Sans casse (`d:\` et `D:\` sont le même dossier sous Windows).
+        let chemin = c.chemin.replace('/', "\\");
+        let racine = ancien.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_string();
+        if !chemin.to_lowercase().starts_with(&format!("{}\\", racine.to_lowercase())) {
+            continue;
+        }
+        let Some(r) = chemin.get(racine.len() + 1..) else { continue };
+        let apres = nouveau.join(r);
+        if !avant.is_file() && apres.is_file() {
+            c.chemin = apres.to_string_lossy().into();
+            n += 1;
+        }
+    }
+    if n > 0 {
+        ecrire_sans_verrou(donnees, &l)?;
+    }
+    Ok(n)
+}
+
+/// Une capture du profil dont l'image n'est plus à sa place notée : retrouvée sous le dossier des captures réglé, à
+/// la même place `<Système>\<jeu>\<image>` (dossier déplacé), elle y est suivie (même identifiant). Rend vrai si oui.
+pub fn retrouver(donnees: &Path, id: &str, dossier_regle: &Path) -> bool {
+    let _v = VERROU_INDEX.lock().unwrap_or_else(|e| e.into_inner());
+    let mut l = lire_sans_verrou(donnees);
+    let Some(c) = l.iter_mut().find(|n| n.id == id) else { return false };
+    let p = PathBuf::from(&c.chemin);
+    let morceaux: Vec<_> = p.components().rev().take(3).collect();
+    if morceaux.len() < 3 {
+        return false;
+    }
+    let ici = morceaux.iter().rev().fold(dossier_regle.to_path_buf(), |d, m| d.join(m.as_os_str()));
+    if ici == p || !ici.is_file() {
+        return false;
+    }
+    c.chemin = ici.to_string_lossy().into();
+    ecrire_sans_verrou(donnees, &l).is_ok()
+}
+
+/// Une image acceptée à la restauration (les mêmes extensions que le rangement).
+pub fn extension_admise(f: &Path) -> bool {
+    f.extension().is_some_and(|e| IMAGES.contains(&e.to_string_lossy().to_lowercase().as_str()))
+}
+
+/// Pose une capture restaurée dans `dossier` sous `nom`, jamais par-dessus une image (nom pris : « -2 », « -3 »…,
+/// réservé par une création exclusive). Une image IDENTIQUE déjà là et que `reprendre` accepte (pas notée pour une
+/// autre personne) est reprise telle quelle. La copie est relue, puis datée du moment de la capture. Rend sa place.
+pub fn poser_restauree(source: &Path, dossier: &Path, nom: &str, quand: u64, reprendre: &dyn Fn(&Path) -> bool) -> std::io::Result<PathBuf> {
+    use std::io::Write;
+    let octets = std::fs::read(source)?;
+    std::fs::create_dir_all(dossier)?;
+    for e in std::fs::read_dir(dossier)?.flatten() {
+        let p = e.path();
+        if p.is_file() && std::fs::metadata(&p).map(|m| m.len()).ok() == Some(octets.len() as u64) && reprendre(&p) && std::fs::read(&p).ok().as_deref() == Some(octets.as_slice()) {
+            return Ok(p);
+        }
+    }
+    let chemin = Path::new(nom);
+    let (base, ext) = (
+        chemin.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
+        chemin.extension().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
+    );
+    for i in 1..1000 {
+        let cible = dossier.join(if i == 1 { format!("{base}.{ext}") } else { format!("{base}-{i}.{ext}") });
+        let mut f = match std::fs::OpenOptions::new().write(true).create_new(true).open(&cible) {
+            Ok(f) => f,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        };
+        let ecrit = f.write_all(&octets).and_then(|_| f.sync_all());
+        drop(f);
+        if ecrit.is_err() || std::fs::read(&cible).ok().as_deref() != Some(octets.as_slice()) {
+            let _ = std::fs::remove_file(&cible);
+            return Err(ecrit.err().unwrap_or_else(|| std::io::Error::other("copie incomplète")));
+        }
+        if quand > 0 {
+            let t = std::time::UNIX_EPOCH + std::time::Duration::from_secs(quand);
+            let _ = std::fs::File::options().write(true).open(&cible).and_then(|f| f.set_modified(t));
+        }
+        return Ok(cible);
+    }
+    Err(std::io::Error::other("aucun nom libre"))
+}
+
+/// Note une capture restaurée pour ce profil, avec sa date et son identifiant d'origine. Déjà notée à cette place
+/// (restauration refaite) : gardée, son origine complétée. Rend son identifiant.
+#[allow(clippy::too_many_arguments)]
+pub fn noter_restauree(donnees: &Path, place: &Path, profil: &str, jeu: i64, titre: &str, plateforme: &str, quand: u64, origine: &str) -> std::io::Result<String> {
+    let _v = VERROU_INDEX.lock().unwrap_or_else(|e| e.into_inner());
+    let mut l = lire_sans_verrou(donnees);
+    let id = identifiant(place);
+    // Une origine déjà portée par une autre capture du profil (son id ou son origine) n'est pas reprise : deux
+    // captures n'ont jamais la même place dans la sauvegarde.
+    let prise = l.iter().any(|n| n.profil == profil && n.id != id && (n.id == origine || n.origine == origine));
+    let origine = if prise || origine == id { "" } else { origine };
+    if let Some(n) = l.iter_mut().find(|n| n.id == id && n.profil == profil) {
+        if n.origine.is_empty() && !origine.is_empty() {
+            n.origine = origine.into();
+        }
+    } else {
+        l.retain(|n| n.id != id);
+        let origine = origine.to_string();
+        l.push(Notee { id: id.clone(), chemin: place.to_string_lossy().into(), profil: profil.into(), jeu, quand, titre: titre.into(), plateforme: plateforme.into(), origine });
+    }
+    ecrire_sans_verrou(donnees, &l)?;
+    Ok(id)
 }
 
 /// Retire une capture de l'index (supprimée, ou disparue du disque).
@@ -590,6 +716,59 @@ mod tests {
         let rangees: Vec<_> = std::fs::read_dir(choisi.join("Atari Jaguar").join("Bubsy")).unwrap().flatten().map(|e| e.path()).collect();
         assert_eq!(std::fs::read(&rangees[0]).unwrap(), b"aujourd'hui");
         assert_eq!(v.ranger().0.len(), 0);
+    }
+
+    #[test]
+    fn une_capture_restauree_ne_passe_jamais_par_dessus_une_image() {
+        let d = tempfile::tempdir().unwrap();
+        let src = d.path().join("attente.png");
+        std::fs::write(&src, b"image").unwrap();
+        let cible = d.path().join("Mes captures").join("SNES").join("SMW");
+        std::fs::create_dir_all(&cible).unwrap();
+        std::fs::write(cible.join("a.png"), b"autre").unwrap();
+        let oui = |_: &Path| true;
+        let p = poser_restauree(&src, &cible, "a.png", 1_700_000_000, &oui).unwrap();
+        assert_eq!(p.file_name().unwrap(), "a-2.png");
+        assert_eq!(std::fs::read(cible.join("a.png")).unwrap(), b"autre", "jamais écrasée");
+        assert_eq!(std::fs::read(&p).unwrap(), b"image");
+        let date = std::fs::metadata(&p).unwrap().modified().unwrap();
+        assert_eq!(date, std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000), "datée du moment de la capture");
+        // Refaite : l'image identique est reprise, rien en plus.
+        assert_eq!(poser_restauree(&src, &cible, "a.png", 0, &oui).unwrap(), p);
+        assert_eq!(std::fs::read_dir(&cible).unwrap().count(), 2);
+        // Identique mais à une autre personne : une copie à part.
+        let non = |_: &Path| false;
+        assert_eq!(poser_restauree(&src, &cible, "a.png", 0, &non).unwrap().file_name().unwrap(), "a-3.png");
+        // Notée une seule fois, avec son origine ; son nom dans la sauvegarde ne change pas.
+        let id = noter_restauree(d.path(), &p, "seb", 3, "SMW", "SNES", 1_700_000_000, "0123456789abcdef").unwrap();
+        assert_eq!(noter_restauree(d.path(), &p, "seb", 3, "SMW", "SNES", 1_700_000_000, "0123456789abcdef").unwrap(), id);
+        let l = index(d.path());
+        assert_eq!(l.len(), 1);
+        assert_eq!(l[0].cle_sauvegarde(), "0123456789abcdef");
+        assert_eq!(l[0].quand, 1_700_000_000);
+        // Le dossier déplacé : suivie, même identifiant.
+        let nouveau = d.path().join("Ailleurs");
+        std::fs::create_dir_all(nouveau.join("SNES").join("SMW")).unwrap();
+        std::fs::rename(&p, nouveau.join("SNES").join("SMW").join("a-2.png")).unwrap();
+        assert_eq!(suivre_deplacement(d.path(), &d.path().join("Mes captures"), &nouveau).unwrap(), 1);
+        let l = index(d.path());
+        assert_eq!(l[0].id, id);
+        assert!(Path::new(&l[0].chemin).is_file());
+        // Une autre capture restaurée avec la même origine : elle n'en hérite pas.
+        let autre = nouveau.join("SNES").join("SMW").join("b.png");
+        std::fs::write(&autre, b"b").unwrap();
+        noter_restauree(d.path(), &autre, "seb", 3, "SMW", "SNES", 0, "0123456789abcdef").unwrap();
+        let l = index(d.path());
+        assert_eq!(l.iter().filter(|n| n.cle_sauvegarde() == "0123456789abcdef").count(), 1, "jamais deux à la même place");
+        // Déplacée de nouveau (casse différente), puis retrouvée sous le dossier réglé.
+        let encore = d.path().join("Encore");
+        std::fs::create_dir_all(encore.join("SNES").join("SMW")).unwrap();
+        std::fs::rename(nouveau.join("SNES").join("SMW").join("a-2.png"), encore.join("SNES").join("SMW").join("a-2.png")).unwrap();
+        assert_eq!(suivre_deplacement(d.path(), Path::new(&nouveau.to_string_lossy().to_uppercase()), &encore).unwrap(), 1, "sans casse");
+        std::fs::create_dir_all(d.path().join("Dernier").join("SNES").join("SMW")).unwrap();
+        std::fs::rename(encore.join("SNES").join("SMW").join("a-2.png"), d.path().join("Dernier").join("SNES").join("SMW").join("a-2.png")).unwrap();
+        assert!(retrouver(d.path(), &id, &d.path().join("Dernier")));
+        assert!(Path::new(&index(d.path()).into_iter().find(|n| n.id == id).unwrap().chemin).is_file());
     }
 
     #[test]

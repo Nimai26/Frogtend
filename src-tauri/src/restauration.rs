@@ -571,6 +571,81 @@ impl Noyau {
         Ok(RestaurationPrete { configuration, bibliotheque, fichiers: total, taille })
     }
 
+    /// Repose les captures d'écran restaurées (✅ Seb 12/11) dans le dossier des captures de ce PC (`dossier`, le
+    /// réglage ; aucun : elles attendent), sous les mêmes `<Système>\<jeu>\` que sur l'ancien PC, notées pour le profil
+    /// ouvert avec leur date. Jamais par-dessus une image ; celle d'un jeu que ce profil ne voit pas attend. Chaque
+    /// image n'est retirée de la zone d'attente qu'une fois posée, relue ET notée (elle repart alors par la sauvegarde
+    /// normale). Rend (reposées, encore en attente).
+    pub async fn reposer_captures(&self, dossier: Option<&Path>) -> Resultat<(usize, usize)> {
+        let s = self.session().await?;
+        let attente = self.zone_restauration(&s.profil.id).join("parties").join("captures");
+        let dossier_profil = self.dossier.join("profils").join(&s.profil.id);
+        let (mut reposees, mut restent) = (0, 0);
+        for d in std::fs::read_dir(&attente).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_dir()) {
+            let Some(jeu) = d.file_name().and_then(|n| n.to_str()).and_then(|n| n.parse::<i64>().ok()) else { continue };
+            let fichiers: Vec<PathBuf> = std::fs::read_dir(&d).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_file()).collect();
+            for fiche in fichiers.iter().filter(|p| p.extension().is_some_and(|e| e == "json")) {
+                let Some(origine) = fiche.file_stem().map(|s| s.to_string_lossy().to_string()) else { continue };
+                let Some(image) = fichiers.iter().find(|p| p.file_stem().is_some_and(|s| *s.to_string_lossy() == origine) && crate::captures::extension_admise(p)) else {
+                    continue;
+                };
+                restent += 1;
+                let Some(cible) = dossier else { continue };
+                if jeu > 0 && !s.verrou().visible_ou_reuni(jeu).unwrap_or(false) {
+                    continue;
+                }
+                let v: Value = std::fs::read(fiche).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or(Value::Null);
+                let texte = |k: &str| v[k].as_str().unwrap_or("").to_string();
+                // Les noms viennent du serveur : seulement un nom de fichier, une image, et des dossiers sans détour.
+                let ext = image.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+                let nom = Path::new(&texte("nom")).file_name().map(|n| n.to_string_lossy().to_string()).filter(|n| {
+                    !n.contains("..") && !n.contains([':', '\\', '/']) && Path::new(n).extension().is_some_and(|e| e.to_string_lossy().to_lowercase() == ext)
+                });
+                let nom = nom.unwrap_or_else(|| format!("{origine}.{ext}"));
+                let systeme = crate::jeux_pc::nom_de_dossier(&[texte("systeme"), texte("plateforme")].into_iter().find(|x| !x.trim().is_empty()).unwrap_or_default());
+                let dossier_jeu = crate::jeux_pc::nom_de_dossier(&[texte("dossier_jeu"), texte("titre")].into_iter().find(|x| !x.trim().is_empty()).unwrap_or_default());
+                if systeme.is_empty() || dossier_jeu.is_empty() {
+                    continue;
+                }
+                let quand = v["quand"].as_u64().unwrap_or(0);
+                let donnees = self.dossier.clone();
+                let profil = s.profil.id.clone();
+                // Une image identique déjà là n'est reprise que si elle n'est à personne, ou si c'est déjà CETTE capture
+                // (restauration refaite) : jamais celle d'une autre personne ni une autre capture du profil.
+                let reprendre = |p: &Path| {
+                    let id = crate::captures::identifiant(p);
+                    crate::captures::index(&donnees).iter().all(|n| n.id != id || (n.profil == profil && n.cle_sauvegarde() == origine))
+                };
+                let place = match crate::captures::poser_restauree(image, &cible.join(&systeme).join(&dossier_jeu), &nom, quand, &reprendre) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        self.journaliser(&format!("capture restaurée laissée en attente ({}) : {e}", image.display()));
+                        continue;
+                    }
+                };
+                let id = crate::captures::noter_restauree(&self.dossier, &place, &s.profil.id, jeu, &texte("titre"), &texte("plateforme"), quand, &origine)?;
+                // Le fond choisi revient, sauf si la personne en a déjà choisi un pour ce jeu sur ce PC.
+                if v["fond"] == true {
+                    if let Some(f) = self.fiche_de(&s, jeu).ok().flatten() {
+                        if !crate::captures::fonds_choisis(&dossier_profil).contains_key(&f.to_string()) {
+                            let _ = crate::captures::regler_fond(&dossier_profil, f, Some(&id));
+                        }
+                    }
+                }
+                // Posée, relue, notée : la copie d'attente peut partir (la sauvegarde suivante la reprend du dossier).
+                let _ = std::fs::remove_file(image);
+                let _ = std::fs::remove_file(fiche);
+                reposees += 1;
+                restent -= 1;
+            }
+            let _ = std::fs::remove_dir(&d);
+        }
+        if reposees > 0 {
+            self.journaliser(&format!("captures restaurées : {reposees} reposée(s), {restent} en attente"));
+        }
+        Ok((reposees, restent))
+    }
+
     /// Repose les parties des émulateurs (en attente) dans le dossier du profil de chaque émulateur présent. Elles sont
     /// rangées sous le nom du DOSSIER de l'émulateur de l'ancien PC ; s'il a changé (installé à la main, sous-dossier
     /// numéroté…), elles sont retrouvées par le nom de son programme (`rpcs3.exe`), seulement s'il n'y a aucun doute.
