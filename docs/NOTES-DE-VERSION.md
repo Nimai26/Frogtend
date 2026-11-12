@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.194.0 — Switch 2 (Eglantine, Lichii) : plus d'actions dans le menu en jeu
+
+- 🎮 Le menu en jeu d'Eden, d'Eglantine et de Lichii gagne 📷 Photo de l'écran, 🔇 Son coupé, ⏩ Turbo et
+  🔄 Recommencer, comme les autres consoles. Chacune n'apparaît que si son raccourci est encore celui d'origine
+  (Frogtend ne devine jamais une touche que tu as changée).
+- 📷 La photo arrive dans 📷 Mes captures. Frogtend retire une fois la fenêtre « Enregistrer sous » qu'Eden ouvrait
+  à chaque photo.
+- 🔇 Le son coupé par le menu revient tout seul à la partie suivante.
+- Pas de sauvegardes rapides : ces émulateurs n'en ont pas.
+
 ## 0.193.0 — Tes captures d'écran dans ta sauvegarde
 
 - 📷 La sauvegarde chez Firehouse emporte maintenant tes captures d'écran (seulement les tiennes), avec leur jeu,

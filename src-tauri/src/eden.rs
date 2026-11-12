@@ -869,6 +869,89 @@ pub fn quitter_sans_question(eden: &Path) -> Resultat<bool> {
     Ok(change)
 }
 
+/// Les actions du menu en jeu par les raccourcis d'ORIGINE de la famille d'Eden (relevés dans main_window.cpp
+/// d'Eglantine daily-20261107 et dans les réglages d'Eglantine et de Lichii chez Seb, 12/11) : (action, nom du
+/// raccourci, touche d'origine). Un raccourci changé par la personne n'est jamais deviné : l'action n'est pas proposée.
+pub const RACCOURCIS_MENU: &[(crate::pilotage::Action, &str, &str)] = &[
+    (crate::pilotage::Action::Capture, "Capture%20Screenshot", "Ctrl+P"),
+    (crate::pilotage::Action::Muet, "Audio%20Mute\\Unmute", "Ctrl+M"),
+    // « Toggle Turbo Speed » (vitesse turbo réglée dans Eden) ; pas « Toggle Framerate Limit », sans plafond.
+    (crate::pilotage::Action::AvanceRapide, "Toggle%20Turbo%20Speed", "Ctrl+Z"),
+    // « Restart Emulation » : `OnRestartGame`, sans question sauf jeu qui verrouille sa sortie (comme Quitter).
+    (crate::pilotage::Action::Reset, "Restart%20Emulation", "F6"),
+];
+
+/// Les actions du menu dont le raccourci est encore celui d'origine (Eden portable seulement : sinon ses réglages
+/// sont dans le dossier de Windows, jamais devinés). La capture exige en plus que « Enregistrer sous » soit coupé
+/// (sinon une fenêtre de Windows s'ouvrirait en plein jeu, `OnCaptureScreenshot`).
+pub fn actions_d_origine(eden: &Path) -> Vec<crate::pilotage::Action> {
+    if !portable(eden) {
+        return vec![];
+    }
+    let Ok(t) = lire_reglages(eden) else { return vec![] };
+    let sans_question = crate::manettes::lire_ini(&t, "UI", "Screenshots\\enable_screenshot_save_as").first().is_some_and(|v| v.trim() == "false");
+    RACCOURCIS_MENU
+        .iter()
+        .filter(|(a, nom, origine)| {
+            let v = crate::manettes::lire_ini(&t, "UI", &format!("Shortcuts\\Main%20Window\\{nom}\\KeySeq"));
+            let d_origine = v.first().is_none_or(|v| v.trim().trim_matches('"').eq_ignore_ascii_case(origine));
+            d_origine && (!matches!(a, crate::pilotage::Action::Capture) || sans_question)
+        })
+        .map(|(a, _, _)| *a)
+        .collect()
+}
+
+/// Les captures sans question (✅ Seb 12/11 : la photo de l'écran du menu) : `[UI] Screenshots\enable_screenshot_save_as`
+/// à false — d'origine à true sous Windows, il ouvre « Enregistrer sous » à chaque capture, en pleine partie. UNE seule
+/// fois par émulateur (marque), et seulement s'il est encore à sa valeur d'origine : un choix de la personne est gardé.
+pub fn captures_sans_question(eden: &Path) -> Resultat<bool> {
+    if !reglages_modifiables(eden) || marque_captures(eden).exists() {
+        return Ok(false);
+    }
+    let texte = lire_reglages(eden)?;
+    let d_origine = crate::manettes::lire_ini(&texte, "UI", "Screenshots\\enable_screenshot_save_as\\default").first().is_none_or(|v| v.trim() == "true");
+    let change = d_origine && ecrire_qt(eden, &texte, "UI", &[("Screenshots\\enable_screenshot_save_as", "false".to_string())])?;
+    std::fs::write(marque_captures(eden), b"")?;
+    Ok(change)
+}
+
+fn marque_captures(eden: &Path) -> PathBuf {
+    eden.join("user").join(".frogtend-captures")
+}
+
+/// Le son coupé par le menu de Frogtend : Eden l'ENREGISTRE (`audio_muted`), la partie suivante serait muette sans
+/// que la personne sache pourquoi. Une marque le note ; au lancement suivant, le son est remis (`son_remis`).
+pub fn noter_muet(eden: &Path) {
+    if portable(eden) {
+        let _ = std::fs::write(eden.join("user").join(".frogtend-muet"), b"");
+    }
+}
+
+/// Avant une partie : le son coupé par le menu la fois d'avant est remis (`[Audio] audio_muted` à false), puis la
+/// marque retirée. Rend vrai si le fichier a changé.
+pub fn son_remis(eden: &Path) -> Resultat<bool> {
+    let marque = eden.join("user").join(".frogtend-muet");
+    if !marque.exists() || !reglages_modifiables(eden) {
+        return Ok(false);
+    }
+    let texte = lire_reglages(eden)?;
+    let coupe = crate::manettes::lire_ini(&texte, "Audio", "audio_muted").first().is_some_and(|v| v.trim() == "true");
+    let change = coupe && ecrire_qt(eden, &texte, "Audio", &[("audio_muted", "false".to_string())])?;
+    std::fs::remove_file(&marque)?;
+    Ok(change)
+}
+
+/// Le dossier des captures d'Eden : `[UI] Screenshots\screenshot_path`, sinon `user\screenshots` (path_util.cpp).
+pub fn dossier_captures(eden: &Path) -> PathBuf {
+    lire_reglages(eden)
+        .ok()
+        .and_then(|t| crate::manettes::lire_ini(&t, "UI", "Screenshots\\screenshot_path").into_iter().next())
+        .map(|v| v.trim().trim_matches('"').to_string())
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| eden.join("user").join("screenshots"))
+}
+
 /// La marque « question de sortie déjà réglée » (dans le dossier de l'émulateur, jamais ailleurs).
 fn marque_sortie(eden: &Path) -> PathBuf {
     eden.join("user").join(".frogtend-sortie")
@@ -877,6 +960,24 @@ fn marque_sortie(eden: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests_reglages {
     use super::*;
+
+    #[test]
+    fn le_menu_ne_propose_que_les_raccourcis_d_origine_et_la_capture_sans_question() {
+        let d = eden_portable("[UI]\r\nScreenshots\\enable_screenshot_save_as\\default=true\r\nScreenshots\\enable_screenshot_save_as=true\r\nShortcuts\\Main%20Window\\Audio%20Mute\\Unmute\\KeySeq=Ctrl+M\r\nShortcuts\\Main%20Window\\Restart%20Emulation\\KeySeq=F7\r\n\r\n[Audio]\r\naudio_muted\\default=false\r\naudio_muted=true\r\n");
+        use crate::pilotage::Action::*;
+        assert_eq!(actions_d_origine(d.path()), vec![Muet, AvanceRapide], "capture : « Enregistrer sous » encore là ; Reset changé en F7");
+        assert!(captures_sans_question(d.path()).unwrap());
+        assert_eq!(actions_d_origine(d.path()), vec![Capture, Muet, AvanceRapide]);
+        assert!(!captures_sans_question(d.path()).unwrap(), "une seule fois");
+        // Le son coupé par le menu revient à la partie suivante ; sans marque, jamais touché.
+        assert!(!son_remis(d.path()).unwrap());
+        noter_muet(d.path());
+        assert!(son_remis(d.path()).unwrap());
+        assert!(lire_reglages(d.path()).unwrap().contains("audio_muted=false"));
+        assert_eq!(dossier_captures(d.path()), d.path().join("user").join("screenshots"));
+        let r = eden_portable("[UI]\r\nScreenshots\\screenshot_path=\"E:/Jeux/Eden/captures\"\r\n");
+        assert_eq!(dossier_captures(r.path()), PathBuf::from("E:/Jeux/Eden/captures"), "le dossier réglé, guillemets ôtés");
+    }
 
     fn eden_portable(texte: &str) -> tempfile::TempDir {
         let d = tempfile::tempdir().unwrap();

@@ -6,6 +6,17 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Switch 2 : le menu en jeu complété (0.194.0)
+- [ ] Un jeu Eglantine (ou Lichii), menu en jeu : on voit 🔄 Recommencer, 📷 Photo de l'écran, 🔇 Son coupé, ⏩ Turbo
+      (et le compteur d'images, comme avant).
+- [ ] 📷 Photo de l'écran : AUCUNE fenêtre « Enregistrer sous » ; en quittant, « capture rangée » ; 📷 Mes captures
+      la montre (Nintendo Switch 2 ▸ le jeu).
+- [ ] 🔇 Son coupé : plus de son ; une 2e fois : il revient. Coupe-le, quitte, relance : le son est là.
+- [ ] ⏩ Turbo : le jeu va plus vite ; une 2e fois : vitesse normale.
+- [ ] 🔄 Recommencer : le jeu redémarre (sans question, sauf si le jeu est en train de sauvegarder).
+- [ ] ❓ À décider : une photo prise par le JEU lui-même (l'album de la Switch) arrive dans le même dossier ; Frogtend
+      la range aussi dans 📷 Mes captures, donc elle quitte l'album d'Eden. D'accord, ou faut-il laisser l'album ?
+
 ## Les captures d'écran dans la sauvegarde (0.193.0)
 - [ ] Options ▸ Sauvegarde : le texte dit « … et tes captures d'écran ». 💾 Sauvegarder maintenant : le nombre de
       fichiers grandit de 2 par capture (l'image et sa fiche) ; une 2e sauvegarde juste après n'envoie rien de neuf.

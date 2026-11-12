@@ -77,6 +77,11 @@ pub fn touche(emulateur: &str, a: Action) -> Option<Touche> {
         // Eden, Eglantine, Lichii : « Toggle Performance Overlay », Ctrl+V d'origine (main_window.cpp ; seulement s'il
         // n'a pas été changé : `images_par_seconde::eden_en_direct`, vérifié au lancement).
         ("eden" | "eglantine" | "lichii", Action::ImagesParSeconde) => Some(Touche { ctrl: true, ..t("V") }),
+        // Et ses autres raccourcis d'origine (`eden::RACCOURCIS_MENU`, proposés seulement s'ils n'ont pas changé).
+        ("eden" | "eglantine" | "lichii", Action::Capture) => Some(Touche { ctrl: true, ..t("P") }),
+        ("eden" | "eglantine" | "lichii", Action::Muet) => Some(Touche { ctrl: true, ..t("M") }),
+        ("eden" | "eglantine" | "lichii", Action::AvanceRapide) => Some(Touche { ctrl: true, ..t("Z") }),
+        ("eden" | "eglantine" | "lichii", Action::Reset) => Some(t("F6")),
         // BigPEmu : F13 / F14 / F15 que Frogtend lie à Save State / Load State / Screenshot (`bigpemu::RACCOURCIS`,
         // posées avant le lancement ; le menu ne les propose que si elles sont en place).
         ("bigpemu", Action::SauverEtat) => Some(t("F13")),
@@ -104,8 +109,9 @@ pub fn actions(emulateur: &str) -> Vec<Action> {
         // Pas d'avance rapide (✅ Seb 04/11) : Ctrl+F10 coupe la limite d'images, mais un jeu réglé sur la Vblank (Asura's
         // Wrath) ne va pas plus vite.
         "rpcs3" => vec![Capture, Muet],
-        // La famille d'Eden : le compteur d'images par seconde (retiré si son raccourci a été changé : `menu_jeu::etat`).
-        "eden" | "eglantine" | "lichii" => vec![ImagesParSeconde],
+        // La famille d'Eden : le compteur d'images, la capture, le son, le turbo, recommencer (chacun retiré si son
+        // raccourci a été changé : `menu_jeu::etat`). Pas de sauvegardes rapides : Eden n'en a pas.
+        "eden" | "eglantine" | "lichii" => vec![Reset, ImagesParSeconde, AvanceRapide, Capture, Muet],
         // BigPEmu (✅ Seb 11/11 : tout ce que l'émulateur propose) : ses états et sa capture, par les touches de Frogtend.
         "bigpemu" => vec![SauverEtat, ChargerEtat, Capture],
         _ => vec![],

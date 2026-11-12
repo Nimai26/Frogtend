@@ -84,6 +84,9 @@ pub struct PartieEnCours {
     pub fps: Option<bool>,
     pub fps_au_lancement: bool,
     pub fps_en_direct: bool,
+    /// La famille d'Eden : les actions dont le raccourci est encore d'origine (lu au lancement).
+    #[serde(skip)]
+    pub eden_d_origine: Vec<crate::pilotage::Action>,
     pub fps_avant: Option<bool>,
     pub fps_pose: bool,
     /// BigPEmu : l'empreinte du jeu lancé (ses triches ; `None` : un jeu CD, pas de triches), le dossier du profil (où
@@ -672,6 +675,8 @@ pub fn etat(p: &PartieEnCours) -> EtatMenu {
             .filter(|_| p.raccourcis_clavier || e == "retroarch" || e == "mame")
             // La famille d'Eden : Ctrl+V seulement s'il est encore son raccourci d'origine.
             .filter(|a| !matches!(a, crate::pilotage::Action::ImagesParSeconde) || !matches!(e, "eden" | "eglantine" | "lichii") || p.fps_en_direct)
+            // Ses autres raccourcis : seulement ceux encore d'origine (`eden::actions_d_origine`).
+            .filter(|a| matches!(a, crate::pilotage::Action::ImagesParSeconde) || !matches!(e, "eden" | "eglantine" | "lichii") || p.eden_d_origine.contains(a))
             // Le mode « hardcore » des succès : pas de sauvegarde rapide (RetroArch les refuserait).
             .filter(|a| !p.etats_interdits || !matches!(a, crate::pilotage::Action::SauverEtat | crate::pilotage::Action::ChargerEtat))
             // DOSBox Staging change de disque par sa propre configuration : gardé tel quel.
@@ -916,6 +921,7 @@ fn code(nom: &str) -> Option<(u16, bool)> {
         "F15" => (0x66, false),
         "F16" => (0x67, false),
         "F4" => (0x3E, false),
+        "F6" => (0x40, false),
         "Home" => (0x47, true),
         // RPCS3 : F10 et F12 (les lettres et chiffres passent par la disposition du clavier, `scan_lettre`).
         "F10" => (0x44, false),
@@ -1165,6 +1171,7 @@ mod tests {
             fps: None,
             fps_au_lancement: false,
             fps_en_direct: false,
+            eden_d_origine: vec![],
             fps_avant: None,
             fps_pose: false,
             empreinte: None,
@@ -1208,6 +1215,11 @@ mod tests {
         let change = PartieEnCours { fps_en_direct: false, ..lichii };
         assert_eq!(etat(&change).fps, Some(FpsMenu { affiche: Some(true), en_direct: false }));
         assert!(!etat(&change).actions.contains(&"fps"), "aucune touche envoyée sans le raccourci d'origine");
+        // Ses autres raccourcis : seulement ceux encore d'origine (capture, son, turbo, recommencer).
+        assert_eq!(etat(&change).actions, Vec::<&str>::new(), "aucun raccourci d'origine connu : rien");
+        use crate::pilotage::Action::*;
+        let eden = PartieEnCours { eden_d_origine: vec![Capture, Muet, Reset], ..partie(Some("eglantine")) };
+        assert_eq!(etat(&eden).actions, vec!["reset", "capture", "muet"]);
         // RPCS3 : au prochain lancement seulement ; jamais une touche.
         let rpcs3 = PartieEnCours { fps: Some(false), fps_au_lancement: true, ..partie(Some("rpcs3")) };
         assert_eq!(etat(&rpcs3).fps, Some(FpsMenu { affiche: Some(false), en_direct: false }));

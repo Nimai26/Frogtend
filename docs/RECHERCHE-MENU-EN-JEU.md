@@ -69,3 +69,29 @@ Détails et preuves :
 - **Jeux PC natifs** : pas de pause universelle sûre. Suspendre le processus existe (gel par Job), mais son qui boucle,
   anti-triche, blocages : jamais d'office, jamais sur un jeu en ligne. Leur menu propose : reprendre, lire le manuel,
   quitter.
+
+## Raccourcis officiels de DuckStation, PCSX2 et Dolphin (relevé du 12/11/2026, code source, lecture seule)
+
+Versions lues : DuckStation « latest » (bb4e9ac, 07/11/2026), PCSX2 v2.8.2, Dolphin 2609b. Aucun essai réel.
+
+- **DuckStation** (`src/core/hotkeys.cpp`) : ⚠ noms INVERSÉS dans l'ini — l'emplacement DU JEU N est
+  `SaveGlobalStateN` / `LoadGlobalStateN` (l. 811-843) ; `SaveGameStateN` vise les emplacements globaux. `Screenshot`,
+  `ToggleFastForward` (bascule), `AudioMute` (bascule), `TogglePostProcessing`, `OpenCheatsMenu`, `UndoLoadState`.
+  Aucun effet de bord sur l'emplacement sélectionné. Exige un numéro de série du disque. Défauts : Tab, Espace, F1-F4,
+  F10, F11, Échap. Syntaxe : `Keyboard/LeftShift & Keyboard/F15` ; F13-F24 connues, lues par CODE DE BALAYAGE
+  (F13 0x64 … F23 0x6E, F24 0x76 ; Maj GAUCHE 0x2A seulement). Une combinaison annule la liaison plus courte.
+- **PCSX2** (`pcsx2/Hotkeys.cpp`, `GS/GS.cpp`) : `SaveStateToSlot1..10`, `LoadStateFromSlot1..10`, `Screenshot`,
+  `ToggleTurbo`, `Mute`, `CycleTVShader` (8 filtres), `ResetVM` ; AUCUN raccourci de triches. Aucun effet de bord.
+  Défauts jusqu'à F12 seulement. Syntaxe : `Keyboard/Shift & Keyboard/F15` ; F13-F35 connues (par la touche Qt = VK).
+  Chargement refusé en Hardcore RetroAchievements ; refusé si la carte mémoire écrit.
+- **Dolphin** (`HotkeyManager.cpp`) : `Save State/Save State Slot N`, `Load State/Load State Slot N`, `Select
+  State/Select State Slot N` (⚠ le choix est ENREGISTRÉ, `Emulation/StateSlot`), `General/Take Screenshot`,
+  `Volume/Volume Toggle Mute`, `Emulation Speed/Disable Emulation Speed Limit` (MAINTIEN seulement). Aucun raccourci
+  d'effets ni de triches. ⚠ DInput : F1 à F15 SEULEMENT (NamedKeys.h) ; syntaxe `@(Ctrl+Shift+F14)` ; Maj tenu
+  ~20-30 ms avant la touche, touche tenue ~30-50 ms (lecture toutes les 5 ms). 25 combinaisons nécessaires, 24
+  possibles avec F13-F15 × {rien, Maj, Ctrl, Ctrl+Maj, Alt…} : à décider après un essai réel (touches rares KANA,
+  CONVERT… ou « Select State Slot »).
+
+Plan retenu pour DuckStation et PCSX2 : Maj+F15…Maj+F24 = sauver 1…10, Ctrl+F15…Ctrl+F24 = charger 1…10, F15 capture,
+F16 avance rapide (bascule), F17 son coupé ; F13 Reset et F14 disque suivant inchangés. ⚠ F16 à F24 jamais essayées
+envoyées par Frogtend : essai avec Seb avant de les dire sûres.

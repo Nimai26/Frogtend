@@ -34,6 +34,8 @@ pub fn dossiers_de(emulateur: &str, dossier_emulateur: &Path, profil: Option<&Pa
             }
         }
         "rpcs3" => vec![dossier_emulateur.join("screenshots")],
+        // La famille d'Eden : `Screenshots\screenshot_path`, sinon `user\screenshots` (`<numéro du jeu en hexadécimal>_<date>.png`).
+        "eden" | "eglantine" | "lichii" => vec![crate::eden::dossier_captures(dossier_emulateur)],
         "mgba" => profil.map(|p| p.join("screenshots")).into_iter().collect(),
         // BigPEmu : `UserData\game<empreinte>_screenNNNN.tga` (son message à l'écran, relevé de Seb le 12/11 ; nom
         // `game%016llX_screen%04i.tga` dans le programme 1.221), chez la personne qui joue.

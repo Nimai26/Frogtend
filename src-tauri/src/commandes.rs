@@ -1801,6 +1801,12 @@ pub async fn jeu_jouer(
     }
     // Les captures d'écran de la partie, rangées dans le dossier général (✅ Seb 04/11) : ce qui est déjà dans le
     // dossier de captures de l'émulateur est noté AVANT le lancement (jamais touché).
+    // La famille d'Eden : ses raccourcis encore d'origine (capture, son, turbo, recommencer), lus AVANT le lancement
+    // (au démarrage, Eden réécrit tout son fichier), sans rien écrire.
+    let eden_d_origine = match (id_emulateur.as_deref(), dossier_emulateur.as_deref()) {
+        (Some("eden" | "eglantine" | "lichii"), Some(d)) => crate::eden::actions_d_origine(std::path::Path::new(d)),
+        _ => vec![],
+    };
     let veilleur_captures = match (id_emulateur.as_deref(), dossier_emulateur.as_deref(), dossier_captures_regle(&app)) {
         (Some(e), Some(d), Some(choisi)) => {
             let d = std::path::PathBuf::from(d);
@@ -1953,6 +1959,7 @@ pub async fn jeu_jouer(
         fps: etat_fps.affiche,
         fps_au_lancement: etat_fps.au_lancement,
         fps_en_direct: etat_fps.en_direct,
+        eden_d_origine,
         fps_avant: etat_fps.avant,
         fps_pose: etat_fps.pose,
         raccourcis_clavier,
@@ -2610,9 +2617,18 @@ pub async fn menu_jeu_action(app: AppHandle, noyau: State<'_, Noyau>, action: St
         }
         return r;
     }
-    tauri::async_runtime::spawn_blocking(move || crate::menu_jeu::agir(&e, &crate::lancement::processus_de_la_partie(p.pid), a))
+    let dossier = p.dossier_emulateur.clone();
+    let muet_eden = a == crate::pilotage::Action::Muet && matches!(e.as_str(), "eden" | "eglantine" | "lichii");
+    let r = tauri::async_runtime::spawn_blocking(move || crate::menu_jeu::agir(&e, &crate::lancement::processus_de_la_partie(p.pid), a))
         .await
-        .map_err(|_| Erreur::Disque("L'action s'est arrêtée brutalement.".into()))?
+        .map_err(|_| Erreur::Disque("L'action s'est arrêtée brutalement.".into()))?;
+    // Eden enregistre le son coupé : il sera remis au prochain lancement (`eden::son_remis`).
+    if r.is_ok() && muet_eden {
+        if let Some(d) = dossier {
+            crate::eden::noter_muet(std::path::Path::new(&d));
+        }
+    }
+    r
 }
 
 /// Note le compteur d'images par seconde dans la partie, et le donne à la fenêtre principale qui le garde comme
