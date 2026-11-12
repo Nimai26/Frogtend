@@ -91,10 +91,10 @@ Légende : ✅ fait · ⚠ fait avec un risque · ❌ absent · n/a sans objet.
 | PCSX2 | ✅ F15/F16 (toujours le 1) | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ F13 | ❌ | ❌ | — |
 | Dolphin | ✅ F15 / Maj+F15 (son emplacement) | ❌ | ✅ si raccourcis au clavier | ❌ | ❌ | ❌ | ✅ F13 | ❌ | ❌ | disque suivant F14 ; raccourcis sur manette : rien |
 | RPCS3 | ❌ retiré (✅ Seb 03/11) | ❌ | ❌ | ❌ | ❌ | ✅ F12 | ❌ (Ctrl+R recharge) | ❌ retiré (Seb 04/11) | ✅ | compteur d'images au prochain lancement |
-| Eden / Eglantine / Lichii | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | compteur d'images Ctrl+V |
+| Eden / Eglantine / Lichii | n/a (pas d'états) | n/a | n/a | ❌ | ❌ | ✅ 0.194.0 Ctrl+P | ✅ 0.194.0 F6 | ✅ 0.194.0 turbo Ctrl+Z | ✅ 0.194.0 Ctrl+M | compteur d'images Ctrl+V ; chaque touche seulement si d'origine |
 | Cemu, PPSSPP, Xenia, xemu, Azahar, Vita3K, mGBA | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — (pause seulement) |
 | DOSBox Staging | n/a (pas d'états) | n/a | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | changer de disque Ctrl+F4 |
-| BigPEmu | ✅ F13/F14 | ✅ 10 (cartouches) | ✅ | ✅ au prochain lancement | ✅ au prochain lancement | ✅ F15 | ❌ (« Reload Image » à relever) | ❌ | ❌ | — |
+| BigPEmu | ✅ F13/F14 | ✅ 10 (cartouches) | ✅ | ✅ au prochain lancement | ✅ au prochain lancement | ✅ F15 | ✅ 0.195.0 F16 « Reload Image » (essai de Seb) | ❌ | ❌ | — |
 | MAME | ✅ Lua | ✅ 10 | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | compteur d'images |
 | Jeux PC | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | manette → clavier, Cheat Engine |
 

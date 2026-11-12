@@ -2628,3 +2628,13 @@ d'abord :
   d'effacer ; création exclusive ; date d'origine ; `origine` pour ne rien renvoyer) ; relecture avant livraison
   (clé unique, reprise après synchro, fond gardé, déplacement suivi même après un arrêt). Non vérifié en vrai : envoi
   à Firehouse, restauration sur un PC neuf.
+- 12/11 : audit du menu en jeu (AUDIT-REGLAGES-EMULATEURS.md) ; relevé des raccourcis officiels DuckStation /
+  PCSX2 / Dolphin (RECHERCHE-MENU-EN-JEU.md : noms inversés de DuckStation, Dolphin limité à F13-F15). Seb n'a ni
+  DuckStation, ni PCSX2, ni Dolphin réglés → priorité à ses émulateurs.
+- 12/11 (0.194.0) : famille d'Eden — capture Ctrl+P, muet Ctrl+M, turbo Ctrl+Z, recommencer F6, chacun seulement si
+  d'origine (lu AVANT le lancement, relecture de l'expert) ; « Enregistrer sous » retiré une fois ; son remis au
+  lancement suivant ; captures depuis screenshot_path. Question à Seb : l'album Switch (photos du jeu) déplacé aussi.
+- 12/11 (0.195.0) : BigPEmu — Recommencer par F16 sur « Reload Image » (action 46). NON VÉRIFIÉ : rechargement direct
+  ou sélecteur de fichier ; la question de Recommencer prévient du retour de la fenêtre des triches.
+- RESTE (ordre proposé) : DuckStation et PCSX2 (emplacements 1-10 Maj/Ctrl+F15…F24, capture, avance, muet ; essai F16-F24
+  avec Seb d'abord), Dolphin (après essai), « Relancer pour appliquer », raccourcis réglables, Ryubing.
