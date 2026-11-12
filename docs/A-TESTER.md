@@ -6,6 +6,11 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Jaguar : Recommencer (0.195.0)
+- [ ] Bubsy (BigPEmu déjà lancé une fois) : le menu montre 🔄 Recommencer. ⚠ NON VÉRIFIÉ : « Reload Image » de BigPEmu
+      recharge-t-il le jeu, ou ouvre-t-il une fenêtre de fichier ? (si une fenêtre s'ouvre : Échap, et dis-le-moi.)
+      Avec une triche cochée, la question de Recommencer prévient que la petite fenêtre des triches reviendra.
+
 ## Switch 2 : le menu en jeu complété (0.194.0)
 - [ ] Un jeu Eglantine (ou Lichii), menu en jeu : on voit 🔄 Recommencer, 📷 Photo de l'écran, 🔇 Son coupé, ⏩ Turbo
       (et le compteur d'images, comme avant).

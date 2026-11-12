@@ -87,6 +87,8 @@ pub struct PartieEnCours {
     /// La famille d'Eden : les actions dont le raccourci est encore d'origine (lu au lancement).
     #[serde(skip)]
     pub eden_d_origine: Vec<crate::pilotage::Action>,
+    /// BigPEmu : F16 liée à « Reload Image » (Recommencer).
+    pub reset_bigpemu: bool,
     pub fps_avant: Option<bool>,
     pub fps_pose: bool,
     /// BigPEmu : l'empreinte du jeu lancé (ses triches ; `None` : un jeu CD, pas de triches), le dossier du profil (où
@@ -675,6 +677,8 @@ pub fn etat(p: &PartieEnCours) -> EtatMenu {
             .filter(|_| p.raccourcis_clavier || e == "retroarch" || e == "mame")
             // La famille d'Eden : Ctrl+V seulement s'il est encore son raccourci d'origine.
             .filter(|a| !matches!(a, crate::pilotage::Action::ImagesParSeconde) || !matches!(e, "eden" | "eglantine" | "lichii") || p.fps_en_direct)
+            // BigPEmu : Recommencer seulement si F16 est liée à « Reload Image » chez la personne.
+            .filter(|a| e != "bigpemu" || !matches!(a, crate::pilotage::Action::Reset) || p.reset_bigpemu)
             // Ses autres raccourcis : seulement ceux encore d'origine (`eden::actions_d_origine`).
             .filter(|a| matches!(a, crate::pilotage::Action::ImagesParSeconde) || !matches!(e, "eden" | "eglantine" | "lichii") || p.eden_d_origine.contains(a))
             // Le mode « hardcore » des succès : pas de sauvegarde rapide (RetroArch les refuserait).
@@ -1172,6 +1176,7 @@ mod tests {
             fps_au_lancement: false,
             fps_en_direct: false,
             eden_d_origine: vec![],
+            reset_bigpemu: false,
             fps_avant: None,
             fps_pose: false,
             empreinte: None,
@@ -1200,6 +1205,8 @@ mod tests {
         assert_eq!(e.actions, vec!["sauver", "charger", "capture"]);
         // Un jeu CD (empreinte inconnue) : pas de triches ; touches pas posées : ni sauver, ni charger, ni capturer.
         assert_eq!(etat(&PartieEnCours { empreinte: None, ..bp.clone() }).triches, None);
+        assert!(!etat(&bp).actions.contains(&"reset"), "sans F16 sur « Reload Image » : pas de Recommencer");
+        assert!(etat(&PartieEnCours { reset_bigpemu: true, ..bp.clone() }).actions.contains(&"reset"));
         assert!(etat(&PartieEnCours { raccourcis_clavier: false, ..bp }).actions.is_empty());
         assert!(etat(&PartieEnCours { triches: vec![t], ..partie(Some("retroarch")) }).triches_en_direct);
     }

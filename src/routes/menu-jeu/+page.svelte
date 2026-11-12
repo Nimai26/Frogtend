@@ -742,7 +742,16 @@
       {/if}
       {#if cheatEngine}<button class="btn" onclick={brancherCheatEngine}>🧰 Cheat Engine</button>{/if}
       {#if a('reset')}
-        <button class="btn" onclick={() => action('reset', '🔄 Recommencer le jeu depuis le début ? La partie non sauvegardée sera perdue.')}>
+        <!-- BigPEmu : sa fenêtre de triches revient à chaque rechargement du jeu (ReadMe : « any time a software image is loaded »). -->
+        <button
+          class="btn"
+          onclick={() =>
+            action(
+              'reset',
+              '🔄 Recommencer le jeu depuis le début ? La partie non sauvegardée sera perdue.' +
+                (menu?.emulateur === 'bigpemu' && trichesActives ? ' 🎯 Tes triches : la petite fenêtre en anglais reviendra ; attends quelques secondes, puis A, puis B.' : ''),
+            )}
+        >
           🔄 Recommencer
         </button>
       {/if}

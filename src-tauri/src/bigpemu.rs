@@ -215,6 +215,16 @@ fn lire_json(f: &Path) -> Option<Value> {
 /// capture (DIK_F13 = 0x64…, les codes de balayage envoyés par le menu, `menu_jeu::code`).
 pub const RACCOURCIS: [(usize, u64); 3] = [(40, 100), (41, 101), (42, 102)];
 
+/// « Recommencer » (✅ Seb 12/11 : un Reset normalisé) : F16 (DIK 0x67) liée à « Reload Image » (`STR_EMUBUTTON46`,
+/// relevé dans Strings\strings_en.txt de la 1.221). Posée comme les trois autres, mais à part : sans elle, sauver,
+/// charger et capturer restent proposés.
+pub const RACCOURCI_RESET: (usize, u64) = (46, 103);
+
+/// F16 est-elle liée à « Reload Image » chez cette personne ? (Sinon le menu ne propose pas Recommencer.)
+pub fn reset_pose(dossier_profil: &Path) -> bool {
+    lire_json(&reglages_du_profil(dossier_profil)).is_some_and(|v| a_la_touche(&v["BigPEmuConfig"]["Input"]["Device0"]["Bindings"][RACCOURCI_RESET.0], RACCOURCI_RESET.1))
+}
+
 
 /// Ce déclencheur est-il cette touche du clavier, seule (sans touche tenue) ?
 fn est_la_touche(t: &Value, code: u64) -> bool {
@@ -237,7 +247,7 @@ pub fn raccourcis_poses(dossier_profil: &Path) -> bool {
     lire_json(&reglages_du_profil(dossier_profil)).is_some_and(|v| raccourcis_dans(&v))
 }
 
-/// Lie F13, F14 et F15 à sauver, charger et capturer, AJOUTÉES à ce que la personne a déjà lié (jamais rien de
+/// Lie F13, F14 et F15 à sauver, charger et capturer (et F16 à recommencer, `RACCOURCI_RESET`), AJOUTÉES à ce que la personne a déjà lié (jamais rien de
 /// retiré) ; une touche déjà prise par une autre action de BigPEmu n'est pas posée (elle ferait les deux). Rien avant le
 /// premier lancement (pas encore de réglages : BigPEmu les crée en quittant). Rend vrai si les trois sont en place.
 pub fn poser_raccourcis(emulateur: &Path, dossier_profil: &Path) -> Resultat<bool> {
@@ -248,7 +258,8 @@ pub fn poser_raccourcis(emulateur: &Path, dossier_profil: &Path) -> Resultat<boo
         return Ok(false);
     }
     let mut change = false;
-    for (action, code) in RACCOURCIS {
+    let n = b.len();
+    for (action, code) in RACCOURCIS.into_iter().chain(std::iter::once(RACCOURCI_RESET)).filter(|(a, _)| *a < n) {
         if a_la_touche(&b[action], code) {
             continue;
         }
@@ -576,6 +587,8 @@ pub struct Lancement {
     pub abri_fait: bool,
     /// F13 / F14 / F15 en place (sinon le menu ne propose ni sauver, ni charger, ni capturer).
     pub raccourcis: bool,
+    /// F16 liée à « Reload Image » (sinon pas de Recommencer).
+    pub reset: bool,
     /// Le dossier du profil de la personne qui joue (où les choix du menu attendent le prochain lancement).
     pub dossier_profil: PathBuf,
     /// Les emplacements de sauvegarde rapide (`None` : BigPEmu sauve seul, dans son emplacement — « Increment on
@@ -617,6 +630,7 @@ pub fn preparer_partie(emulateur: &Path, dossier_profil: &Path, rom: Option<&Pat
     }
     l.triches = l.empreinte.as_deref().map(|e| triches_du_jeu(emulateur, dossier_profil, e)).unwrap_or_default();
     l.raccourcis = raccourcis_poses(dossier_profil);
+    l.reset = reset_pose(dossier_profil);
     l.etats = etats_de_la_partie(dossier_profil, l.empreinte.as_deref()).filter(|_| reprise.is_ok());
     Ok(l)
 }
@@ -1133,6 +1147,8 @@ mod tests {
         let b = &v["BigPEmuConfig"]["Input"]["Device0"]["Bindings"];
         assert_eq!(b[40]["Triggers"], serde_json::json!([{"B_KB": true, "B_ID": 100, "B_AH": 0.0}]));
         assert_eq!(b[42]["Triggers"][0]["B_ID"], 102);
+        assert_eq!(b[46]["Triggers"][0]["B_ID"], 103, "Recommencer : F16 sur « Reload Image »");
+        assert!(reset_pose(&p));
         // La manette d'origine est intacte ; une seconde fois : rien à écrire.
         assert_eq!(liaisons_joueur1(&std::fs::read_to_string(reglages_du_profil(&p)).unwrap()).unwrap(), DISPOSITION_XBOX.to_vec());
         let avant = std::fs::read_to_string(reglages_du_profil(&p)).unwrap();

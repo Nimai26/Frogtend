@@ -1922,6 +1922,7 @@ pub async fn jeu_jouer(
     };
     // BigPEmu : ses effets et ses triches remplacent ceux de RetroArch dans le menu.
     let etats_bigpemu = lancement_bp.as_ref().and_then(|l| l.etats.clone());
+    let reset_bigpemu = lancement_bp.as_ref().is_some_and(|l| l.reset);
     // Une triche cochée pour ce jeu (posée sans erreur) : BigPEmu montrera sa fenêtre de triches au démarrage.
     let fenetre_triches_bp = lancement_bp.as_ref().is_some_and(|l| l.fenetre_triches);
     let (effets_ra, effet_bp, triches, abri_triches, empreinte, cles_triches, dossier_profil_bp) = match lancement_bp {
@@ -1960,6 +1961,7 @@ pub async fn jeu_jouer(
         fps_au_lancement: etat_fps.au_lancement,
         fps_en_direct: etat_fps.en_direct,
         eden_d_origine,
+        reset_bigpemu,
         fps_avant: etat_fps.avant,
         fps_pose: etat_fps.pose,
         raccourcis_clavier,

@@ -87,6 +87,7 @@ pub fn touche(emulateur: &str, a: Action) -> Option<Touche> {
         ("bigpemu", Action::SauverEtat) => Some(t("F13")),
         ("bigpemu", Action::ChargerEtat) => Some(t("F14")),
         ("bigpemu", Action::Capture) => Some(t("F15")),
+        ("bigpemu", Action::Reset) => Some(t("F16")),
         _ => None,
     }
 }
@@ -113,7 +114,8 @@ pub fn actions(emulateur: &str) -> Vec<Action> {
         // raccourci a été changé : `menu_jeu::etat`). Pas de sauvegardes rapides : Eden n'en a pas.
         "eden" | "eglantine" | "lichii" => vec![Reset, ImagesParSeconde, AvanceRapide, Capture, Muet],
         // BigPEmu (✅ Seb 11/11 : tout ce que l'émulateur propose) : ses états et sa capture, par les touches de Frogtend.
-        "bigpemu" => vec![SauverEtat, ChargerEtat, Capture],
+        // Recommencer par « Reload Image » (F16), seulement si elle est en place (`menu_jeu::etat`).
+        "bigpemu" => vec![Reset, SauverEtat, ChargerEtat, Capture],
         _ => vec![],
     }
 }

@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.195.0 — Jaguar : 🔄 Recommencer dans le menu en jeu
+
+- 🎮 Le menu en jeu de BigPEmu gagne 🔄 Recommencer, comme les autres consoles : Frogtend lie une touche (F16) à son
+  action « Reload Image », en plus de tes touches (jamais à la place). Le bouton apparaît dès que la touche est en
+  place, à partir de ta prochaine partie.
+
 ## 0.194.0 — Switch 2 (Eglantine, Lichii) : plus d'actions dans le menu en jeu
 
 - 🎮 Le menu en jeu d'Eden, d'Eglantine et de Lichii gagne 📷 Photo de l'écran, 🔇 Son coupé, ⏩ Turbo et
