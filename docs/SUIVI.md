@@ -2618,3 +2618,13 @@ d'abord :
   captures. Relevé : `UserData\game<EMPREINTE>_screen0000.tga` (TGA type 2, 320×240, 24 bits, origine en bas, sans
   pied). `captures::dossiers_de("bigpemu")` = UserData du profil ; TGA converti en BMP sans perte au rangement
   (relu, puis original retiré). Idée de Seb notée au PLAN : relancer pour appliquer + Reset normalisé.
+- 12/11 (0.192.0) : essai de Seb sur 0.191.0 — photo absente : BigPEmu reprend `…_screen0000.tga` à chaque partie
+  (par-dessus la précédente) ; le Veilleur ne la reconnaissait qu'au nom. Correctif : trace (taille + date) ; relu par
+  l'expert lancement (trace illisible = jamais touchée ; original effacé seulement s'il n'a pas changé). ✅ Seb 12/11.
+  Décision de Seb : les anciennes photos écrasées par BigPEmu, « on s'en fiche ».
+- 12/11 (0.193.0) : demande de Seb — captures dans la sauvegarde Firehouse et restaurées. Avis contrat (aucun besoin
+  d'API ; fiches perdues / disque absent → fiche à côté de chaque image, gardes) et lancement (branchement après les
+  réglages et au choix du dossier ; nom Système = dossiers d'origine ; noms du serveur vérifiés ; noter avant
+  d'effacer ; création exclusive ; date d'origine ; `origine` pour ne rien renvoyer) ; relecture avant livraison
+  (clé unique, reprise après synchro, fond gardé, déplacement suivi même après un arrêt). Non vérifié en vrai : envoi
+  à Firehouse, restauration sur un PC neuf.
