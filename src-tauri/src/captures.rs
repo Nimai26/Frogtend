@@ -3,10 +3,11 @@
 //! `<dossier choisi>\<Système>\<nom du jeu>\<date heure>.<extension>`.
 //!
 //! Règle « pas de pieuvre » : seul le dossier de captures de l'émulateur LANCÉ est regardé, et seules les images
-//! apparues après le début de la partie (absentes de l'inventaire pris avant le lancement) sont déplacées. Une capture
+//! apparues après le début de la partie (absentes de l'inventaire pris avant le lancement, ou RÉÉCRITES depuis : BigPEmu
+//! reprend `…_screen0000.tga` à chaque partie, par-dessus la précédente) sont déplacées. Une capture
 //! prise hors d'une partie de Frogtend n'est jamais touchée. Un original n'est effacé qu'une fois sa copie relue.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -82,6 +83,21 @@ pub fn inventaire(dossiers: &[PathBuf]) -> HashSet<PathBuf> {
         }
     }
     l
+}
+
+/// Ce qui distingue deux images au même nom : sa taille et sa date d'écriture.
+type Trace = Option<(u64, std::time::SystemTime)>;
+
+fn trace(f: &Path) -> Trace {
+    std::fs::metadata(f).ok().and_then(|m| Some((m.len(), m.modified().ok()?)))
+}
+
+/// Une image déjà vue : avec sa trace (réécrite, elle redevient une capture), ou présente avant la partie sans trace
+/// lisible (jamais touchée : on ne saurait pas dire si elle a été réécrite).
+#[derive(Debug, PartialEq)]
+enum Vu {
+    Trace(Trace),
+    Jamais,
 }
 
 /// Le dossier choisi ne doit être ni dans un dossier regardé, ni le contenir (sinon les captures déplacées seraient
@@ -177,9 +193,18 @@ pub fn tga_en_bmp(tga: &[u8]) -> Option<Vec<u8>> {
 }
 
 /// Déplace une capture : renommage sur le même disque ; sinon copie à côté sous un nom provisoire, taille relue,
-/// renommage, et SEULEMENT ENSUITE l'original effacé. Rend la destination.
-fn deplacer(source: &Path, dossier: &Path) -> std::io::Result<PathBuf> {
+/// renommage, et SEULEMENT ENSUITE l'original effacé — s'il n'a pas été réécrit entre-temps (sinon il reste, pour le
+/// passage suivant). Rend la destination, et la trace de l'original resté en place (`None` : il n'y est plus).
+fn deplacer(source: &Path, dossier: &Path) -> std::io::Result<(PathBuf, Trace)> {
     let taille = stable(source).ok_or_else(|| std::io::Error::other("capture en cours d'écriture"))?;
+    let avant = trace(source);
+    let effacer = || {
+        let t = trace(source);
+        if t == avant && avant.is_some() && std::fs::remove_file(source).is_ok() {
+            return None;
+        }
+        trace(source)
+    };
     let date = std::fs::metadata(source)?.modified().unwrap_or_else(|_| std::time::SystemTime::now());
     let ext = source.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_else(|| "png".into());
     std::fs::create_dir_all(dossier)?;
@@ -195,13 +220,12 @@ fn deplacer(source: &Path, dossier: &Path) -> std::io::Result<PathBuf> {
                 return Err(std::io::Error::other("conversion incomplète"));
             }
             std::fs::rename(&provisoire, &cible)?;
-            let _ = std::fs::remove_file(source);
-            return Ok(cible);
+            return Ok((cible, effacer()));
         }
     }
     let cible = nom_libre(dossier, &horodatage(date), &ext);
     if std::fs::rename(source, &cible).is_ok() {
-        return Ok(cible);
+        return Ok((cible, None));
     }
     let provisoire = cible.with_extension(format!("{ext}.en-cours"));
     let copie = std::fs::copy(source, &provisoire);
@@ -211,14 +235,15 @@ fn deplacer(source: &Path, dossier: &Path) -> std::io::Result<PathBuf> {
     }
     std::fs::rename(&provisoire, &cible)?;
     // L'original n'est effacé qu'une fois la copie en place (s'il est encore tenu, il reste : noté dans `vus`).
-    let _ = std::fs::remove_file(source);
-    Ok(cible)
+    Ok((cible, effacer()))
 }
 
 /// Le veilleur d'une partie : les dossiers regardés, ce qui y était avant, et où ranger.
 pub struct Veilleur {
     pub dossiers: Vec<PathBuf>,
-    vus: HashSet<PathBuf>,
+    /// Chaque image vue (avant la partie, ou déjà rangée), avec sa trace : une image réécrite sous le même nom est
+    /// une nouvelle capture.
+    vus: HashMap<PathBuf, Vu>,
     cible: PathBuf,
     echecs: std::collections::HashMap<PathBuf, u32>,
 }
@@ -237,7 +262,13 @@ impl Veilleur {
         if !cible_sure(&choisi, &dossiers) {
             return Err(format!("le dossier des captures {} touche un dossier de captures de l'émulateur ({dossiers:?}) : rien n'est rangé", choisi.display()));
         }
-        let vus = inventaire(&dossiers);
+        let vus = inventaire(&dossiers).into_iter().map(|f| {
+            let t = match trace(&f) {
+                Some(t) => Vu::Trace(Some(t)),
+                None => Vu::Jamais,
+            };
+            (f, t)
+        }).collect();
         let cible = choisi.join(crate::jeux_pc::nom_de_dossier(systeme)).join(crate::jeux_pc::nom_de_dossier(jeu));
         Ok(Some(Veilleur { dossiers, vus, cible, echecs: Default::default() }))
     }
@@ -248,14 +279,21 @@ impl Veilleur {
         let (mut n, mut abandons) = (Vec::new(), Vec::new());
         for f in inventaire(&self.dossiers) {
             // Présente avant la partie (à la personne), ou déjà rangée (original encore tenu par l'émulateur, qui reste
-            // alors en double plutôt que d'être recopié) : jamais touchée.
-            if self.vus.contains(&f) {
-                continue;
+            // alors en double plutôt que d'être recopié) : jamais touchée, tant qu'elle n'est pas réécrite.
+            match self.vus.get(&f) {
+                Some(Vu::Jamais) => continue,
+                Some(Vu::Trace(t)) if *t == trace(&f) => continue,
+                Some(Vu::Trace(_)) => {
+                    // Réécrite : ses essais repartent de zéro.
+                    self.echecs.remove(&f);
+                }
+                None => {}
             }
             match deplacer(&f, &self.cible) {
-                Ok(place) => {
+                Ok((place, reste)) => {
                     n.push(place);
-                    self.vus.insert(f);
+                    self.echecs.remove(&f);
+                    self.vus.insert(f, Vu::Trace(reste));
                 }
                 // En cours d'écriture, ou tenue : reprise au passage suivant, puis laissée à sa place.
                 Err(e) => {
@@ -263,7 +301,8 @@ impl Veilleur {
                     *k += 1;
                     if *k >= ESSAIS {
                         abandons.push(format!("{} ({e})", f.display()));
-                        self.vus.insert(f);
+                        let t = trace(&f);
+                        self.vus.insert(f, Vu::Trace(t));
                     }
                 }
             }
@@ -426,7 +465,8 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let src = d.path().join("game5C0C7827948F0F27_screen0000.tga");
         std::fs::write(&src, &tga).unwrap();
-        let place = deplacer(&src, &d.path().join("rangees")).unwrap();
+        let (place, reste) = deplacer(&src, &d.path().join("rangees")).unwrap();
+        assert_eq!(reste, None);
         assert_eq!(place.extension().unwrap(), "bmp");
         assert_eq!(std::fs::read(&place).unwrap(), bmp);
         assert!(!src.exists());
@@ -528,6 +568,28 @@ mod tests {
         assert_eq!(v.ranger().0.len(), 2);
         assert_eq!(std::fs::read_dir(choisi.join("Sony Playstation 3").join("Asura's Wrath")).unwrap().count(), 3);
         assert_eq!(v.ranger().0.len(), 0, "rien de neuf");
+    }
+
+    #[test]
+    fn une_capture_reecrite_sous_le_meme_nom_est_rangee() {
+        // BigPEmu reprend `…_screen0000.tga` à chaque partie, par-dessus celle de la fois d'avant.
+        let d = tempfile::tempdir().unwrap();
+        let ecrans = d.path().join("UserData");
+        std::fs::create_dir_all(&ecrans).unwrap();
+        let f = ecrans.join("game5C0C7827948F0F27_screen0000.tga");
+        std::fs::write(&f, b"hier").unwrap();
+        let hier = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        std::fs::File::options().write(true).open(&f).unwrap().set_modified(hier).unwrap();
+        let choisi = d.path().join("Mes captures");
+        let mut v = Veilleur::nouveau(Some(choisi.clone()), vec![ecrans.clone()], "Atari Jaguar", "Bubsy").unwrap().unwrap();
+        assert_eq!(v.ranger().0.len(), 0, "celle d'avant la partie : jamais touchée");
+        assert!(f.exists());
+        std::fs::write(&f, b"aujourd'hui").unwrap();
+        assert_eq!(v.ranger().0.len(), 1, "réécrite pendant la partie : une nouvelle capture");
+        assert!(!f.exists());
+        let rangees: Vec<_> = std::fs::read_dir(choisi.join("Atari Jaguar").join("Bubsy")).unwrap().flatten().map(|e| e.path()).collect();
+        assert_eq!(std::fs::read(&rangees[0]).unwrap(), b"aujourd'hui");
+        assert_eq!(v.ranger().0.len(), 0);
     }
 
     #[test]

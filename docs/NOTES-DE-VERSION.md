@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.192.0 — BigPEmu : la photo d'écran arrive vraiment dans 📷 Mes captures
+
+- 📷 Jeux Jaguar : BigPEmu donne le même nom à la première photo de chaque partie, par-dessus celle de la fois
+  d'avant. Frogtend la prenait pour l'ancienne et ne la rangeait pas. Il regarde maintenant aussi l'heure à laquelle
+  la photo a été écrite : une photo prise pendant la partie est rangée, même sous un nom déjà vu.
+
 ## 0.191.0 — BigPEmu : les photos d'écran dans 📷 Mes captures
 
 - 📷 Jeux Jaguar : une photo prise pendant la partie (menu ▸ ⚙ Options du jeu ▸ Photo de l'écran) arrive dans ton
