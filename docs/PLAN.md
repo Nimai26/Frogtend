@@ -269,6 +269,15 @@ vraie sauvegarde, faite par Seb** (Options ▸ Sauvegarde ▸ 💾 Sauvegarder m
 À la restauration, Frogtend remet la configuration et les parties, puis propose de retélécharger les jeux de la
 liste (annoncé et chiffré d'abord : combien de jeux, combien de Go).
 
+**Les captures d'écran dans la sauvegarde (Seb, 12/11 : « il faut que les screens, comme les saves, soient
+sauvegardés par Firehouse et proposés à la restauration lors d'une nouvelle installation d'un user »).** À faire :
+vérifié le 12/11, elles n'y sont PAS (ni les images de 📷 Mes captures, ni l'index `captures.json` qui dit à quel
+profil et à quel jeu chacune appartient). Prévu : les captures DU PROFIL (jamais celles d'un autre) partent avec ses
+parties (`captures/…` dans la sauvegarde, seul ce qui a changé est renvoyé, taille comptée dans l'annonce) avec leur
+fiche (jeu, titre, console, date) ; à la restauration, remises dans le dossier des captures choisi sur ce PC
+(`<Système>\<jeu>\`), notées pour le nouveau profil, jamais par-dessus une image existante. Une capture
+supprimée dans Frogtend sort de la version courante (l'historique de Firehouse la garde).
+
 Le lot 3 en pose la base : relevé des fichiers à l'installation, mise à l'abri de ce qui a changé (les parties)
 avant tout retrait ou réinstallation. **Questions pour Seb** (avant de coder ce lot) : où ranger la sauvegarde
 (dossier au choix, disque externe, NAS, ou Firehouse lui-même ?) ; fréquence de l'automatique ; combien de

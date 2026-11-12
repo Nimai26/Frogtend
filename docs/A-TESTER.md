@@ -7,7 +7,7 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## BigPEmu : photos d'écran (0.192.0)
-- [ ] (❌ Seb 12/11 en 0.191.0 : pas rangée, même nom que la photo d'avant → 0.192.0) Bubsy, menu ▸ ⚙ Options du jeu ▸ 📷 Photo de l'écran, puis quitter : un message dit que la capture est rangée ;
+- [x] (✅ Seb 12/11 en 0.192.0 ; ❌ en 0.191.0 : pas rangée, même nom que la photo d'avant) Bubsy, menu ▸ ⚙ Options du jeu ▸ 📷 Photo de l'écran, puis quitter : un message dit que la capture est rangée ;
       📷 Mes captures la montre (Atari Jaguar ▸ Bubsy), image correcte (ni retournée, ni aux couleurs inversées).
 
 ## BigPEmu : rappel des triches avant de jouer (0.190.0)
