@@ -1114,7 +1114,7 @@ async function choisirEffetImage(id: number, programme: string) {
   if (!j) return;
   let r: Awaited<ReturnType<typeof api.effetsImage>>;
   try {
-    r = await api.effetsImage(programme);
+    r = await api.effetsImage(programme, id);
   } catch (e) {
     toast(`Impossible de lire les effets d’image : ${motifDuRefus(e)}`, 'erreur');
     return;
@@ -1130,11 +1130,13 @@ async function choisirEffetImage(id: number, programme: string) {
   }
   const duJeu = etat.profil.image.jeux[String(id)];
   const deLaConsole = etat.profil.image.consoles[j.plateforme];
+  const estRyubing = /(^|[\\/])ryujinx[^\\/]*\.exe$/i.test(programme);
   type Choix = 'console' | 'aucun' | string;
   const options: { valeur: Choix; libelle: string; detail?: string }[] = [
     { valeur: 'console', libelle: `🎮 Comme la console (${libelleEffet(deLaConsole)})`, detail: duJeu === undefined ? 'choix actuel' : undefined },
-    { valeur: 'aucun', libelle: '⬜ Aucun effet', detail: duJeu === 'aucun' ? 'choix actuel' : 'l’image telle que la console la donne' },
-    ...presents.map((e) => ({ valeur: e.id, libelle: `📺 ${EFFETS_IMAGE[e.id].libelle}`, detail: duJeu === e.id ? `choix actuel — ${EFFETS_IMAGE[e.id].detail}` : EFFETS_IMAGE[e.id].detail })),
+    { valeur: 'aucun', libelle: '⬜ Aucun effet', detail: duJeu === 'aucun' ? 'choix actuel' : estRyubing ? 'tes réglages d’image de Ryubing' : 'l’image telle que la console la donne' },
+    // Ryubing : des réglages d'image, pas des écrans de télé (pas de 📺).
+    ...presents.map((e) => ({ valeur: e.id, libelle: `${estRyubing ? '✨' : '📺'} ${EFFETS_IMAGE[e.id].libelle}`, detail: duJeu === e.id ? `choix actuel — ${EFFETS_IMAGE[e.id].detail}` : EFFETS_IMAGE[e.id].detail })),
   ];
   const c = await choisir<Choix>(`🖼 Effet d’image de « ${j.titre} »`, options, 'Appliqué au prochain lancement.');
   if (c === null) return;
@@ -1639,10 +1641,12 @@ export async function gererJeu(id: number) {
       libelle: '🕹 Émulateur',
       detail: `${e?.nom || e?.programme || ''}${etat.pc.emulateursJeux[String(id)] ? ' (propre à ce jeu)' : ' (comme la console)'}`,
     });
-    // Un jeu lancé par RetroArch ou BigPEmu : son effet d'image (télé d'époque, image adoucie… ; lot 4a, 11/11).
-    if (/(^|[\\/])(retroarch|bigpemu)[^\\/]*\.exe$/i.test(e?.programme ?? '')) {
+    // Un jeu lancé par RetroArch, BigPEmu ou Ryubing (`Ryujinx.exe`) : son effet d'image (télé d'époque, image
+    // adoucie… ; lot 4a, 11/11 ; Ryubing lot 5).
+    if (/(^|[\\/])(retroarch|bigpemu|ryujinx)[^\\/]*\.exe$/i.test(e?.programme ?? '')) {
       const v = effetImage(id, j.plateforme);
-      const origine = etat.profil.image.jeux[String(id)] !== undefined ? 'pour ce jeu' : v !== undefined ? 'comme la console' : 'télé d’époque, pixels nets…';
+      const exemples = /(^|[\\/])ryujinx[^\\/]*\.exe$/i.test(e?.programme ?? '') ? 'contours lissés, image plus nette…' : 'télé d’époque, pixels nets…';
+      const origine = etat.profil.image.jeux[String(id)] !== undefined ? 'pour ce jeu' : v !== undefined ? 'comme la console' : exemples;
       options.push({ valeur: 'effet', libelle: '🖼 Effet d’image', detail: `${libelleEffet(v)} (${origine})` });
     }
     // Un jeu PS3 lancé par RPCS3 : son image et sa fluidité (✅ Seb 19/10 : « shaders = les deux »).

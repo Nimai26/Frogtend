@@ -853,8 +853,8 @@ export const api = {
   jeuCompilationPs3: (id: number, emulateur?: string, version?: string) =>
     appeler<string | null>('jeu_compilation_ps3', { id, emulateur: emulateur ?? null, version: version ?? null }),
   /** Les effets d'image d'un RetroArch (lot 4a/4b). */
-  effetsImage: (programme: string) =>
-    appeler<{ impossible: string | null; effets: { id: string; present: boolean }[] }>('effets_image', { programme }),
+  effetsImage: (programme: string, jeu?: number) =>
+    appeler<{ impossible: string | null; effets: { id: string; present: boolean }[] }>('effets_image', { programme, jeu: jeu ?? null }),
   pleinEcranSuggestion: (id: number) => appeler<string | null>('jeu_plein_ecran_suggestion', { id }),
   jeuAntiTriche: (id: number) => appeler<VerificationFiger>('jeu_anti_triche', { id }),
   biosPoser: (plateforme: string, programme: string) => appeler<BilanBios>('bios_poser', { plateforme, programme }),

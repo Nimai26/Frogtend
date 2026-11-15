@@ -322,6 +322,12 @@ pub fn disposition_de_frogtend(id: &str, emulateur: &Path, profil: Option<&Path>
             let Some(p) = profil else { return true };
             !matches!(crate::bigpemu::joueur1(p), crate::bigpemu::Joueur1::Autre)
         }
+        // Ryubing : la manette que Frogtend a posée au joueur 1, sa disposition intacte (la racine de la personne est
+        // `Profils\<nom>\`) ; une manette réglée par la personne : rien de dessiné.
+        "ryubing" => {
+            let Some(p) = profil else { return true };
+            !matches!(crate::ryubing::joueur1_lu(p), crate::ryubing::Joueur1Lu::Autre)
+        }
         _ => true,
     }
 }

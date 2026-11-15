@@ -96,7 +96,8 @@ pub struct PartieEnCours {
     pub fps: Option<bool>,
     pub fps_au_lancement: bool,
     pub fps_en_direct: bool,
-    /// La famille d'Eden : les actions dont le raccourci est encore d'origine (lu au lancement).
+    /// La famille d'Eden : les actions dont le raccourci est encore d'origine (lu au lancement). Ryubing aussi : celles
+    /// dont la touche est en place chez la personne (`ryubing::actions_d_origine`).
     #[serde(skip)]
     pub eden_d_origine: Vec<crate::pilotage::Action>,
     /// BigPEmu : F16 liée à « Reload Image » (Recommencer).
@@ -725,7 +726,7 @@ pub fn action_de(nom: &str) -> Option<Action> {
 pub fn a_relancer(p: &PartieEnCours, e: &str) -> Vec<String> {
     let Some(avant) = &p.au_lancement else { return vec![] };
     let mut l = Vec::new();
-    if e == "bigpemu" && !p.effets.is_empty() && p.effet != avant.effet {
+    if matches!(e, "bigpemu" | "ryubing") && !p.effets.is_empty() && p.effet != avant.effet {
         l.push("effet d'image".to_string());
     }
     if fps_menu(p, e).is_some_and(|f| !f.en_direct) && p.fps != avant.fps {
@@ -769,7 +770,7 @@ pub fn etat(p: &PartieEnCours) -> EtatMenu {
         refus_etat: p.refus_etat,
         fps: fps_menu(p, e),
         message: None,
-        effets: (matches!(e, "retroarch" | "bigpemu") && !p.effets.is_empty()).then(|| EffetsMenu {
+        effets: (matches!(e, "retroarch" | "bigpemu" | "ryubing") && !p.effets.is_empty()).then(|| EffetsMenu {
             presents: p.effets.clone(),
             actuel: p.effet.clone(),
             de_la_personne: p.effet_de_la_personne,
@@ -799,6 +800,8 @@ fn etat_actions(p: &PartieEnCours, e: &str) -> Vec<&'static str> {
         .filter(|a| e != "bigpemu" || !matches!(a, crate::pilotage::Action::Reset) || p.reset_bigpemu)
         // Ses autres raccourcis : seulement ceux encore d'origine (`eden::actions_d_origine`).
         .filter(|a| matches!(a, crate::pilotage::Action::ImagesParSeconde) || !matches!(e, "eden" | "eglantine" | "lichii") || p.eden_d_origine.contains(a))
+        // Ryubing : seulement les touches en place chez la personne (`ryubing::actions_d_origine`, dans le même champ).
+        .filter(|a| e != "ryubing" || p.eden_d_origine.contains(a))
         // Le mode « hardcore » des succès : pas de sauvegarde rapide (RetroArch les refuserait).
         .filter(|a| !p.etats_interdits || !matches!(a, crate::pilotage::Action::SauverEtat | crate::pilotage::Action::ChargerEtat))
         // DOSBox Staging change de disque par sa propre configuration : gardé tel quel.
@@ -1352,6 +1355,28 @@ mod tests {
             etats_bigpemu: None,
             message: None,
         }
+    }
+
+    #[test]
+    fn ryubing_ses_touches_en_place_seulement_et_ses_effets_au_prochain_lancement() {
+        use crate::pilotage::Action::*;
+        let ryu = PartieEnCours { effets: crate::ryubing::effets_presents(), eden_d_origine: vec![Capture, AvanceRapide], ..partie(Some("ryubing")) };
+        let e = etat(&ryu);
+        assert_eq!(e.actions, vec!["rapide", "capture"], "le son coupé n'est pas proposé : sa touche n'est plus F2");
+        assert_eq!(etat(&PartieEnCours { eden_d_origine: vec![AvanceRapide, Capture, Muet], ..ryu.clone() }).actions, vec!["rapide", "capture", "muet"]);
+        assert!(etat(&PartieEnCours { eden_d_origine: vec![], ..ryu.clone() }).actions.is_empty());
+        // Ni sauvegardes rapides, ni Recommencer, ni images par seconde ; relancer, oui.
+        assert!(!e.actions.iter().any(|a| matches!(*a, "sauver" | "charger" | "reset" | "fps")));
+        assert!(e.relancer_possible && e.fps.is_none() && e.triches.is_none());
+        assert_eq!(e.effets.as_ref().map(|x| x.en_direct), Some(false));
+        // Sans effets posés (Ryubing ouvert au lancement…) : pas d'écran des effets.
+        assert!(etat(&PartieEnCours { effets: vec![], ..ryu.clone() }).effets.is_none());
+        // Un autre effet choisi en jeu : « Relancer pour appliquer » le voit.
+        let m = MenuJeu::default();
+        m.commencer(PartieEnCours { raccourcis_clavier: true, ..ryu });
+        assert!(etat(&m.partie().unwrap()).a_relancer.is_empty());
+        m.noter_effet(Some("ryubing:contours".into()));
+        assert_eq!(etat(&m.partie().unwrap()).a_relancer, vec!["effet d'image"]);
     }
 
     #[test]

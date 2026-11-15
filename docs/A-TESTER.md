@@ -6,6 +6,16 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Ryubing (0.202.0) — quand tu auras un jeu Switch à essayer
+- [ ] Nintendo Switch ▸ ⚙ choisir Ryubing : UN accord annonce Ryubing, les clés (prod.keys, title.keys) et le
+      firmware (~320 Mo) ; après : aucune fenêtre « Keys not found », Ryubing en français.
+- [ ] Un jeu : plein écran, la manette Xbox One marche tout de suite, pas de question en quittant ; le menu en jeu met en
+      pause.
+- [ ] Menu : 📷 photo (arrive dans 📷 Mes captures), 🔇 son, ⏩ avance rapide (F13), 🔄 Recommencer.
+- [ ] 🖼 effet d'image, puis 🔄 Relancer : le jeu repart avec l'effet.
+- [ ] Une partie sauvegardée dans le jeu, puis Options ▸ Sauvegarde : les parties de Ryubing partent (jamais les clés).
+- [ ] En streaming (Sunshine) : la manette n'est pas encore connue → au clavier (relevé à faire ensemble).
+
 ## Raccourcis en jeu (0.201.0)
 - [x] (✅ Seb 15/11) ⚙ Options ▸ ⚡ Raccourcis en jeu : la rubrique est là, avec tes réglages d'avant. Choisir « Vue + RB » pour charger
       est grisé (« déjà : ouvrir le menu »).

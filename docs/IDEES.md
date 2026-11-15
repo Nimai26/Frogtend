@@ -135,3 +135,8 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   (compilation des shaders, `Shader precache build` vu le 15/11), réglages graphiques. Ne rien changer chez Eglantine
   sans l'accord de Seb.
 
+- **Triches Switch pour Ryubing (lot 5, 15/11) — reporté : pas encore de source de triches Switch.** Ryubing lit
+  `<racine>\mods\contents\<jeu>\cheats\<BuildId>.txt` (format Atmosphère, entrées `[Nom]`) et `enabled.txt`
+  (ModLoader.cs L740-768) ; il écrit le BuildId de l'exécutable dans son journal (L730) et ignore un fichier qui ne
+  correspond pas. À faire quand Firehouse servira des triches Switch : poser au prochain lancement, parties à l'abri
+  avant (`menu_jeu::mettre_a_l_abri_fichiers`).

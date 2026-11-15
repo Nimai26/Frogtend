@@ -19,6 +19,8 @@
   import ListeSucces from '$lib/succes/ListeSucces.svelte';
   import SchemaManette from '$lib/manette/SchemaManette.svelte';
   import { EFFETS_IMAGE, libelleEffet } from '$lib/ludotheque/effetsImage';
+  /** Le nom des émulateurs dont un réglage d'image de la personne passe avant ceux de Frogtend. */
+  const NOMS_EMULATEURS: Record<string, string> = { retroarch: 'RetroArch', ryubing: 'Ryubing', bigpemu: 'BigPEmu' };
   import { emit } from '@tauri-apps/api/event';
   import type { InfosBoutons } from '$lib/manette/boutons';
   import type { ListeSucces as ListeSuccesDuJeu } from '$lib/succes/liste';
@@ -650,11 +652,12 @@
       {:else}
         <p class="muted">Choisis un effet pour ce jeu : il vaut dès ta prochaine partie (cet émulateur ne le change pas en cours de jeu).</p>
       {/if}
-      {#if menu.effets.de_la_personne}<p class="muted">Ton effet réglé dans RetroArch revient à la prochaine partie.</p>{/if}
+      {#if menu.effets.de_la_personne}<p class="muted">Ton réglage d’image fait dans {NOMS_EMULATEURS[menu.emulateur ?? ''] ?? 'l’émulateur'} passe avant : il est gardé à la prochaine partie.</p>{/if}
     </header>
     <div class="liste" bind:this={liste}>
       <button class="btn" aria-pressed={menu.effets.actuel === null} onclick={() => poserEffet('aucun')}>
         <span aria-hidden="true">{menu.effets.actuel === null && !menu.effets.de_la_personne ? '✅' : '⬜'}</span> Aucun effet
+        {#if menu.emulateur === 'ryubing'}<span class="muted">— tes réglages d’image de Ryubing</span>{/if}
       </button>
       {#each menu.effets.presents.filter((e) => EFFETS_IMAGE[e]) as e (e)}
         <button class="btn" aria-pressed={menu.effets.actuel === e} onclick={() => poserEffet(e)}>

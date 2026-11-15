@@ -1,5 +1,19 @@
 # Notes de version de Frogtend
 
+## 0.202.0 — 🎮 Ryubing, l'autre émulateur Switch, tout réglé
+
+- Ryubing (l'autre émulateur Switch, à côté d'Eden) s'installe sur accord depuis Firehouse, prêt à jouer sans rien
+  toucher : clés posées, firmware de la console posé par Frogtend (sans clic), en français, région Europe, plein écran,
+  pas de question en quittant, pas de recherche de mise à jour, ta manette Xbox au joueur 1.
+- Chaque personne a son propre Ryubing : ses parties, ses réglages, ses captures, ses caches. Les parties partent dans
+  ta sauvegarde chez Firehouse (jamais les clés) et reviennent sur un PC neuf, en bloc et sans rien écraser.
+- Menu en jeu : 📷 Photo de l'écran, 🔇 Son coupé, ⏩ Avance rapide, 🔄 Recommencer (le jeu se ferme et repart), et
+  🖼 effets d'image au prochain lancement (contours lissés, image adoucie, plus nette, pixels nets). Ton propre réglage
+  d'image fait dans Ryubing passe avant.
+- Pas de sauvegardes rapides (Ryubing n'en a pas) ; triches reportées (pas encore de source de triches Switch).
+- Une autre manette que la Xbox One (dont celle du streaming) : le jeu se joue au clavier pour l'instant, et Frogtend le
+  dit (elle sera ajoutée après un relevé).
+
 ## 0.201.0 — ⚡ Raccourcis en jeu, à la manette et au clavier
 
 - ⚙ Options ▸ **⚡ Raccourcis en jeu** (nouvelle rubrique, après Émulateurs) : tous les raccourcis de Frogtend pendant

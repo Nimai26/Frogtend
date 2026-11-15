@@ -87,6 +87,11 @@ pub fn touche(emulateur: &str, a: Action) -> Option<Touche> {
         ("bigpemu", Action::ChargerEtat) => Some(t("F14")),
         ("bigpemu", Action::Capture) => Some(t("F15")),
         ("bigpemu", Action::Reset) => Some(t("F16")),
+        // Ryubing : ses raccourcis d'origine (F8 capture, F2 son) et F13 que Frogtend lie à son avance rapide
+        // (`ryubing::RACCOURCIS_MENU` ; proposés seulement s'ils sont en place chez la personne).
+        ("ryubing", Action::Capture) => Some(t("F8")),
+        ("ryubing", Action::Muet) => Some(t("F2")),
+        ("ryubing", Action::AvanceRapide) => Some(t(crate::ryubing::TOUCHE_TURBO)),
         _ => None,
     }
 }
@@ -96,7 +101,7 @@ pub fn touche(emulateur: &str, a: Action) -> Option<Touche> {
 pub fn touches_envoyees() -> Vec<String> {
     use Action::*;
     let mut l = Vec::new();
-    for e in ["retroarch", "duckstation", "pcsx2", "dolphin", "dosbox-staging", "rpcs3", "eden", "bigpemu", "mame"] {
+    for e in ["retroarch", "duckstation", "pcsx2", "dolphin", "dosbox-staging", "rpcs3", "eden", "bigpemu", "mame", "ryubing"] {
         for a in [Reset, DisqueSuivant, SauverEtat, ChargerEtat, ImagesParSeconde, AvanceRapide, Capture, Muet] {
             if let Some(t) = touche(e, a) {
                 let mut s = String::new();
@@ -142,6 +147,10 @@ pub fn actions(emulateur: &str) -> Vec<Action> {
         // BigPEmu (✅ Seb 11/11 : tout ce que l'émulateur propose) : ses états et sa capture, par les touches de Frogtend.
         // Recommencer par « Reload Image » (F16), seulement si elle est en place (`menu_jeu::etat`).
         "bigpemu" => vec![Reset, SauverEtat, ChargerEtat, Capture],
+        // Ryubing (lot 5) : l'avance rapide, la capture, le son (chacun retiré si sa touche n'est pas en place,
+        // `menu_jeu::etat`). Ni sauvegardes rapides ni Recommencer : il n'en a pas (le menu relance la partie). Pas
+        // d'images par seconde : sa touche F4 montre toute son interface (ryubing.rs).
+        "ryubing" => vec![AvanceRapide, Capture, Muet],
         _ => vec![],
     }
 }
@@ -911,6 +920,21 @@ mod tests {
         }
         // Ryubing : sa pause à la perte du premier plan (`PauseEmulation`, posée une fois par personne).
         assert!(super::se_met_en_pause("ryubing") && !super::fige_au_menu("ryubing"));
+        // Et ses touches : F8 capture, F2 son (d'origine), F13 avance rapide (posée par Frogtend) — jamais prises comme
+        // raccourcis de Frogtend.
+        use super::Action::*;
+        assert_eq!(super::actions("ryubing"), vec![AvanceRapide, Capture, Muet]);
+        for (a, k) in [(Capture, "F8"), (Muet, "F2"), (AvanceRapide, "F13")] {
+            assert_eq!(super::touche("ryubing", a).map(|t| (t.touche, t.ctrl || t.alt || t.maj)), Some((k, false)), "{a:?}");
+            assert!(super::touches_envoyees().contains(&k.to_string()), "{k}");
+        }
+        for a in [Reset, SauverEtat, ChargerEtat, ImagesParSeconde, DisqueSuivant] {
+            assert_eq!(super::touche("ryubing", a), None, "{a:?}");
+        }
+        // Les touches de Ryubing sont celles du menu de Ryubing (une seule source).
+        for (a, _, k) in crate::ryubing::RACCOURCIS_MENU {
+            assert_eq!(super::touche("ryubing", *a).map(|t| t.touche), Some(*k));
+        }
         // Réglée seulement si le fichier le dit ; « pas de pause » choisi par la personne : jamais défait.
         let d = tempfile::tempdir().unwrap();
         assert!(!super::pause_reglee("eden", d.path()), "pas portable");

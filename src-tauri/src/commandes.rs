@@ -1632,6 +1632,8 @@ pub async fn jeu_jouer(
     let mut ligne_rpcs3: Option<String> = None;
     // BigPEmu : l'effet, les triches et les touches préparés avant le lancement (pour le menu en jeu).
     let mut lancement_bp: Option<crate::bigpemu::Lancement> = None;
+    // Ryubing : l'effet d'image posé avant le lancement (`None` : pas posé, le menu ne propose pas d'effets).
+    let mut effet_ryubing: Option<crate::ryubing::EffetPose> = None;
     // Les images par seconde (✅ Seb 08/11, choix par personne) : ce qui sera affiché, et de quoi le rendre après.
     let mut etat_fps = crate::images_par_seconde::EtatLancement::default();
     let emulateur = match (!de_boutique).then(|| emulateur_regle(&app, &plateforme, id, emulateur.as_deref())).flatten() {
@@ -1731,9 +1733,10 @@ pub async fn jeu_jouer(
             }
             // BigPEmu (✅ Seb 11/11 : tout ce qu'il propose, dans notre menu) : l'effet d'écran choisi, les triches
             // choisies dans le menu (le jeu à l'abri d'abord s'il en a de cochées : un échec, rien ne se lance).
-            if let (Some("bigpemu"), Some(d)) = (id_emulateur.as_deref(), dossier_emulateur.clone()) {
+            // Sans profil lisible : rien de préparé, le jeu se lance quand même.
+            let profil_bp = if id_emulateur.as_deref() == Some("bigpemu") { profil_ouvert(&noyau).await.ok().map(|p| p.nom) } else { None };
+            if let (Some("bigpemu"), Some(d), Some(profil)) = (id_emulateur.as_deref(), dossier_emulateur.clone(), profil_bp) {
                 let fichier = noyau.fichier_pour_l_emulateur(id, version.as_deref()).await.ok().flatten();
-                let profil = profil_ouvert(&noyau).await?.nom;
                 let choix = image.clone();
                 let quand = secondes_maintenant();
                 let l = tauri::async_runtime::spawn_blocking(move || {
@@ -1756,6 +1759,41 @@ pub async fn jeu_jouer(
                     noyau.journaliser(&format!("BigPEmu : triches cochées pour le jeu {id}, ses fichiers mis à l'abri avant"));
                 }
                 lancement_bp = Some(l);
+            }
+            // Ryubing (lot 5) : l'effet d'image choisi pour ce jeu ou sa console, posé maintenant (Ryubing fermé, lu à son
+            // démarrage) ; un refus est noté, le jeu se lance quand même avec ce qu'avait la personne.
+            let profil_ryu = if id_emulateur.as_deref() == Some("ryubing") { profil_ouvert(&noyau).await.ok().map(|p| p.nom) } else { None };
+            if let (Some("ryubing"), Some(d), Some(profil)) = (id_emulateur.as_deref(), dossier_emulateur.clone(), profil_ryu) {
+                let choix = image.clone();
+                // Le numéro du jeu (un .nsp : son nom ou son ticket) : ses réglages propres à lui passent devant.
+                let fichier = noyau.fichier_pour_l_emulateur(id, version.as_deref()).await.ok().flatten();
+                let r = tauri::async_runtime::spawn_blocking(move || {
+                    let d = std::path::PathBuf::from(d);
+                    let titre = fichier.as_deref().and_then(crate::contenus::id_switch);
+                    crate::ryubing::poser_effet(&d, &crate::ryubing::racine(&d, &profil), titre, choix.as_deref())
+                })
+                .await
+                .map_err(|_| Erreur::Disque("La préparation de Ryubing s'est arrêtée brutalement.".into()))?;
+                match r {
+                    Ok(e) => {
+                        if e.de_la_personne {
+                            effet_de_la_personne = true;
+                            noyau.journaliser(&format!("effet d'image du jeu {id} : celui réglé dans Ryubing est gardé"));
+                        }
+                        effet_ryubing = Some(e);
+                    }
+                    Err(e) => {
+                        noyau.journaliser(&format!("Ryubing : effet d'image du jeu {id} non posé ({e:?})"));
+                        // Dit à la personne (comme pour RetroArch) seulement s'il y avait un effet à poser.
+                        if image.as_deref().is_some_and(|c| c.starts_with(crate::ryubing::PREFIXE_EFFET)) {
+                            let m = match e {
+                                Erreur::Refus(m) => m,
+                                _ => "l'effet d'image n'a pas pu être posé ; le jeu se lance sans lui.".to_string(),
+                            };
+                            let _ = app.emit("effet-image", serde_json::json!({ "jeu": id, "message": m }));
+                        }
+                    }
+                }
             }
             Some((prog, ligne_c))
         }
@@ -1819,6 +1857,11 @@ pub async fn jeu_jouer(
     // (au démarrage, Eden réécrit tout son fichier), sans rien écrire.
     let eden_d_origine = match (id_emulateur.as_deref(), dossier_emulateur.as_deref()) {
         (Some("eden" | "eglantine" | "lichii"), Some(d)) => crate::eden::actions_d_origine(std::path::Path::new(d)),
+        // Ryubing : les touches en place dans le Config.json de la personne qui joue (lu après la préparation).
+        (Some("ryubing"), Some(d)) => match profil_ouvert(&noyau).await {
+            Ok(p) => crate::ryubing::actions_d_origine(std::path::Path::new(d), &crate::ryubing::racine(std::path::Path::new(d), &p.nom)),
+            Err(_) => vec![],
+        },
         _ => vec![],
     };
     let veilleur_captures = match (id_emulateur.as_deref(), dossier_emulateur.as_deref(), dossier_captures_regle(&app)) {
@@ -1959,6 +2002,10 @@ pub async fn jeu_jouer(
             l.triches.into_iter().map(|t| t.cle).collect(),
             Some(l.dossier_profil.to_string_lossy().to_string()),
         ),
+        // Ryubing : ses effets (des réglages de Ryubing) au prochain lancement, comme BigPEmu.
+        None if id_emulateur.as_deref() == Some("ryubing") && effet_ryubing.is_some() => {
+            (crate::ryubing::effets_presents(), effet_ryubing.clone().and_then(|e| e.effet), prep.triches, prep.abri_fait, None, vec![], None)
+        }
         None => (effets_ra, None, prep.triches, prep.abri_fait, None, vec![], None),
     };
     let a_recharger = app.state::<crate::menu_jeu::MenuJeu>().prendre_charger(id, id_emulateur.as_deref());
@@ -2835,7 +2882,7 @@ pub async fn menu_jeu_effet(app: AppHandle, effet: String) -> Resultat<()> {
     let _seule = menu.prendre_etat().ok_or_else(|| Erreur::Refus("Une autre action est en cours.".into()))?;
     // BigPEmu ne change pas d'effet en pleine partie : le choix est seulement noté (la fenêtre principale le garde
     // pour ce jeu ou sa console, `menu-effet-garder`) ; il vaut au prochain lancement. Le menu reste ouvert.
-    if p.emulateur.as_deref() == Some("bigpemu") {
+    if matches!(p.emulateur.as_deref(), Some("bigpemu" | "ryubing")) {
         menu.noter_effet((effet != "aucun").then(|| effet.clone()));
         return Ok(());
     }
@@ -3375,13 +3422,30 @@ pub struct EffetsImage {
 }
 
 #[tauri::command]
-pub fn effets_image(programme: String) -> EffetsImage {
+pub async fn effets_image(noyau: State<'_, Noyau>, programme: String, jeu: Option<i64>) -> Resultat<EffetsImage> {
     let d = std::path::Path::new(&programme).parent().map(|p| p.to_path_buf()).unwrap_or_default();
     // BigPEmu : ses propres effets d'écran (livrés avec lui, `bigpemu::EFFETS`).
     let nom = std::path::Path::new(&programme).file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+    // Ryubing : ses réglages d'image (`ryubing::EFFETS`), tous présents — sauf s'il n'a pas été installé par Frogtend,
+    // ou si ce jeu a ses propres réglages dans Ryubing (ils passent devant : l'effet ne s'y appliquerait pas).
+    if crate::ryubing::est_ryubing(&programme) {
+        let profil = profil_ouvert(&noyau).await?.nom;
+        let fichier = match jeu {
+            Some(j) => noyau.fichier_pour_l_emulateur(j, None).await.ok().flatten(),
+            None => None,
+        };
+        let r = tauri::async_runtime::spawn_blocking(move || {
+            let titre = fichier.as_deref().and_then(crate::contenus::id_switch);
+            crate::ryubing::effets_possibles(&d, &crate::ryubing::racine(&d, &profil), titre)
+        })
+        .await
+        .map_err(|_| Erreur::Disque("La lecture des effets d'image s'est arrêtée brutalement.".into()))?;
+        let effets = crate::ryubing::effets_presents().into_iter().map(|id| EffetImage { id, present: true }).collect();
+        return Ok(EffetsImage { impossible: r.err(), effets });
+    }
     if nom.starts_with("bigpemu") {
         let presents = crate::bigpemu::effets_presents(&d);
-        return EffetsImage {
+        return Ok(EffetsImage {
             impossible: None,
             effets: crate::bigpemu::EFFETS
                 .iter()
@@ -3390,15 +3454,15 @@ pub fn effets_image(programme: String) -> EffetsImage {
                     EffetImage { present: presents.contains(&id), id }
                 })
                 .collect(),
-        };
+        });
     }
-    EffetsImage {
+    Ok(EffetsImage {
         impossible: crate::emulateurs::effets_impossibles(&d),
         effets: crate::emulateurs::EFFETS_IMAGE
             .iter()
             .map(|(id, _, chemin)| EffetImage { id: id.to_string(), present: crate::emulateurs::fichier_effet(&d, chemin).is_some() })
             .collect(),
-    }
+    })
 }
 
 /// Ce que le cœur sait des boutons d'un jeu (lot 4d) : l'émulateur et son cœur, la manette du joueur (Xbox, ou
@@ -3417,6 +3481,9 @@ pub struct InfosBoutons {
     /// L'émulateur joue au clavier (Eden et sa famille : aucune manette Xbox branchée au lancement, ou le clavier choisi
     /// pour ce jeu) : le dessin de la manette serait faux.
     au_clavier: bool,
+    /// Ryubing : une manette branchée que Frogtend ne connaît pas encore pour lui (pas encore relevée) : le jeu se
+    /// jouera au clavier.
+    manette_pas_connue: bool,
     /// Dolphin, une Wii : la référence livrée de Wiimote en place dans le profil (« Wiimote + Nunchuk »…), s'il y en a une.
     wiimote: Option<&'static str>,
     clavier: Option<std::collections::BTreeMap<String, String>>,
@@ -3594,6 +3661,12 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
                 let j = crate::bigpemu::joueur1(&crate::emulateurs_profils::dossier_du_profil(d, &profil));
                 matches!(j, Joueur1::AuClavier | Joueur1::PasEncore) && crate::manettes::premiere_manette_xinput().is_none()
             }
+            // Ryubing : la manette n'est posée que pour celle déjà relevée (`ryubing::MANETTE_RELEVEE`), branchée au
+            // lancement ; sinon le joueur 1 reste au clavier. Pendant la partie, le fichier le dit.
+            (Some("ryubing"), Some(d)) => {
+                let au_clavier = crate::ryubing::joueur1_lu(&crate::ryubing::racine(d, &profil)) == crate::ryubing::Joueur1Lu::AuClavier;
+                au_clavier && (en_partie || crate::manettes::id_manette_xinput_ryubing().as_deref() != Some(crate::ryubing::MANETTE_RELEVEE))
+            }
             _ => false,
         };
         let famille = match crate::manettes::manette_branchee() {
@@ -3626,9 +3699,41 @@ pub async fn boutons_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: Option<
         (Some("mame"), Some(_)) => !par_l_emulateur || mame_autre_pilote,
         (Some("dosbox-staging"), Some(d)) => !par_l_emulateur || !d.join("dosbox-staging.conf").is_file() || plusieurs_manettes,
         (Some(e), Some(d)) if crate::emulateurs::famille_eden(e) => !crate::eden::portable(d),
+        // Ryubing : pas portable (ses réglages sont ailleurs), ou des réglages propres à un jeu (leur manette passe
+        // devant pour ce jeu, Migration.cs : `InputConfig` lu du fichier du jeu) — on ne sait pas lequel tourne.
+        (Some("ryubing"), Some(d)) => {
+            !crate::ryubing::portable(d) || profil_ouvert(&noyau).await.ok().is_none_or(|p| !crate::ryubing::configs_par_jeu(&crate::ryubing::racine(d, &p.nom)).is_empty())
+        }
         _ => sans_nom,
     };
-    Ok(Some(InfosBoutons { plateforme, emulateur, coeur, famille, personnalise, inconnue, au_clavier, wiimote, clavier: clavier.filter(|c| !c.is_empty()), raccourcis }))
+    // Ryubing : une manette XInput branchée qui n'est pas celle déjà relevée (045e:02ff) n'est jamais posée — le jeu se
+    // jouera au clavier (`ryubing::MANETTE_RELEVEE`). Joueur 1 au clavier : on le dit ainsi ; joueur 1 sur la manette de
+    // Frogtend : le lancement la retirera, « au clavier ».
+    let (mut au_clavier, mut manette_pas_connue) = (au_clavier, false);
+    if let (Some("ryubing"), Some(d), Ok(p)) = (emulateur.as_deref(), dossier.as_deref(), profil_ouvert(&noyau).await) {
+        let racine = crate::ryubing::racine(d, &p.nom);
+        let inconnue_branchee = tauri::async_runtime::spawn_blocking(|| crate::manettes::id_manette_xinput_ryubing().is_some_and(|m| m != crate::ryubing::MANETTE_RELEVEE))
+            .await
+            .unwrap_or(false);
+        match crate::ryubing::joueur1_lu(&racine) {
+            crate::ryubing::Joueur1Lu::AuClavier if inconnue_branchee => (au_clavier, manette_pas_connue) = (false, true),
+            crate::ryubing::Joueur1Lu::DeFrogtend if inconnue_branchee => au_clavier = true,
+            _ => {}
+        }
+    }
+    Ok(Some(InfosBoutons {
+        plateforme,
+        emulateur,
+        coeur,
+        famille,
+        personnalise: personnalise && !au_clavier && !manette_pas_connue,
+        inconnue,
+        au_clavier,
+        manette_pas_connue,
+        wiimote,
+        clavier: clavier.filter(|c| !c.is_empty()),
+        raccourcis,
+    }))
 }
 
 /// L'écran « Les boutons » du menu en jeu : la fenêtre s'agrandit (jusqu'à 1 100 × 820, 90 % de l'écran au plus) pour

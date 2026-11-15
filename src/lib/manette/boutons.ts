@@ -156,6 +156,10 @@ const EMULATEURS: Record<string, (plateforme: string, famille: Famille, wiimote:
   eden: () => ({ console: 'Switch', boutons: SWITCH_FROGTEND }),
   eglantine: () => ({ console: 'Switch 2', boutons: SWITCH_FROGTEND }),
   lichii: () => ({ console: 'Switch 2', boutons: SWITCH_FROGTEND }),
+  // Ryubing : la disposition d'origine de Ryubing pour une manette Xbox, que Frogtend pose (ryubing.rs, relevé du
+  // 15/11 : button_a = B, button_b = A… — par POSITION comme sur une Switch). Seulement sa manette à lui : le cœur dit
+  // « personnalisé » ou « au clavier » sinon.
+  ryubing: () => ({ console: 'Switch', boutons: SWITCH_FROGTEND }),
   // Cemu : la disposition d'origine de Cemu pour une manette XInput, que Frogtend écrit (cemu.rs
   // `DISPOSITION_XINPUT`) : par POSITION comme sur la Wii U, comme la Switch ; le bouton Xbox reste au menu de Frogtend.
   // Une manette PlayStation seule : Frogtend n'écrit rien pour elle (manettes.rs) → rien de dessiné.
@@ -269,6 +273,8 @@ export interface InfosBoutons {
   inconnue?: boolean;
   /** L'émulateur joue au clavier (Eden : aucune manette branchée au lancement, ou le clavier choisi pour ce jeu). */
   au_clavier?: boolean;
+  /** Ryubing : une manette branchée que Frogtend ne connaît pas encore pour lui (pas encore relevée) : au clavier. */
+  manette_pas_connue?: boolean;
   /** Le clavier a été choisi pour ce jeu dans « 🎮 Commandes » (fiche) : rien de dessiné, on dit pourquoi. */
   clavier_choisi?: boolean;
   /** Dolphin, une Wii : la référence livrée de Wiimote en place (« Wiimote + Nunchuk »…), sinon rien de dessiné. */
@@ -336,7 +342,7 @@ export interface Ligne {
 
 export type Schema =
   | { etat: 'connu'; console: string; lignes: Ligne[]; remarque?: string }
-  | { etat: 'personnalise' | 'inconnu' | 'jeu-pc' | 'au-clavier' | 'clavier-choisi'; console: string | null; lignes: [] };
+  | { etat: 'personnalise' | 'inconnu' | 'jeu-pc' | 'au-clavier' | 'clavier-choisi' | 'manette-pas-encore-connue'; console: string | null; lignes: [] };
 
 const cle = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -354,7 +360,7 @@ export interface ChoixCommandes {
 }
 
 /** Les émulateurs dont Frogtend rend le clavier d'origine quand « ⌨ Clavier et souris » est choisi pour un jeu. */
-const CLAVIER_RENDU = ['eden', 'eglantine', 'lichii', 'azahar', 'rpcs3'];
+const CLAVIER_RENDU = ['eden', 'eglantine', 'lichii', 'azahar', 'rpcs3', 'ryubing'];
 
 /** Sur la fiche d'un jeu : ce que le cœur a lu, complété par le choix de « 🎮 Commandes » (imposé au lancement) et la
  * correspondance manette → clavier d'un jeu PC. */
@@ -388,6 +394,8 @@ export function schema(infos: InfosBoutons): Schema {
   // Un émulateur que Frogtend ne sait pas lire (hors catalogue pendant une partie, MAME lancé par un autre lanceur…).
   if (infos.inconnue) return { etat: 'inconnu', console: null, lignes: [] };
   if (infos.clavier_choisi && infos.emulateur !== null) return { etat: 'clavier-choisi', console: null, lignes: [] };
+  // Ryubing : une manette branchée pas encore relevée par Frogtend n'est jamais posée — le jeu se jouera au clavier.
+  if (infos.manette_pas_connue && infos.emulateur !== null) return { etat: 'manette-pas-encore-connue', console: null, lignes: [] };
   if (infos.au_clavier && infos.emulateur !== null) return { etat: 'au-clavier', console: null, lignes: [] };
   if (infos.emulateur === null) {
     const c = infos.clavier;
@@ -412,6 +420,7 @@ export function schema(infos: InfosBoutons): Schema {
 export function sansDessin(s: Schema): string | null {
   if (s.etat === 'personnalise') return 'Tu as changé toi-même les boutons de ce jeu : Frogtend ne peut pas te les montrer.';
   if (s.etat === 'inconnu') return 'Frogtend ne connaît pas encore les boutons de cet émulateur.';
+  if (s.etat === 'manette-pas-encore-connue') return 'Ta manette n’est pas encore connue de Frogtend pour cet émulateur : ce jeu se jouera au clavier.';
   if (s.etat === 'au-clavier') return 'Ce jeu se joue au clavier. Pour jouer à la manette, branche-la avant de lancer le jeu.';
   if (s.etat === 'clavier-choisi') return 'Tu as choisi de jouer à ce jeu au clavier (⚙ Gérer le jeu ▸ 🎮 Commandes).';
   if (s.etat === 'jeu-pc')

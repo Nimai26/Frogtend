@@ -1,4 +1,4 @@
-// Les effets d'image de RetroArch (lot 4a) et de BigPEmu (préfixe `bigpemu:`)
+// Les effets d'image de RetroArch (lot 4a), de BigPEmu (préfixe `bigpemu:`) et de Ryubing (`ryubing:`)
 // ce que la personne lit. Les identifiants sont ceux du cœur
 // (`EFFETS_IMAGE`, src-tauri/src/emulateurs.rs) ; le cœur dit lesquels ce RetroArch a.
 
@@ -18,6 +18,11 @@ export const EFFETS_IMAGE: Record<string, { libelle: string; detail: string }> =
   'bigpemu:warping': { libelle: 'Écran bombé', detail: 'l’image courbée comme un écran à tube' },
   'bigpemu:xbr-lv2': { libelle: 'Contours lissés', detail: 'les bords des dessins sont arrondis' },
   'bigpemu:xbr-lv3-multipass': { libelle: 'Contours lissés (fort)', detail: 'plus lisse ; demande plus à la carte graphique' },
+  // Ryubing (Switch, lot 5) : ses réglages d'image (`ryubing::EFFETS` : anticrénelage et filtre d'agrandissement).
+  'ryubing:contours': { libelle: 'Contours lissés', detail: 'les bords en escalier des objets sont adoucis ; demande un peu plus à la carte graphique' },
+  'ryubing:adouci': { libelle: 'Image adoucie', detail: 'un lissage léger de toute l’image, presque gratuit' },
+  'ryubing:net': { libelle: 'Image plus nette', detail: 'l’image agrandie à la taille de l’écran reste nette' },
+  'ryubing:pixels': { libelle: 'Pixels nets', detail: 'aucun flou à l’agrandissement (pour les jeux en pixels)' },
 };
 
 /** Le nom d'un réglage d'effet (`undefined` ou `aucun` : aucun effet). */

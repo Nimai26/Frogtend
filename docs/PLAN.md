@@ -276,7 +276,7 @@ lot 1 fiche + clés de l'ALTERNATIVE (`portable\system\`, jamais celles d'Eden) 
 partie (French/fr_FR, show_confirm_exit false, PauseEmulation, update Off, Discord off ; Config.json écrit Ryubing
 FERMÉ, à l'abri avant, relu après) ; lot 3 une personne = ses données (voie A `-p <nom>` ou B `-r <dossier>`) ; lot 4
 sauvegarde Firehouse (⚠ parties indexées par LibHac : jamais partie par partie) ; lot 5 menu (capture F8, muet F2,
-turbo F13 posé, effets et triches au prochain lancement ; pas de sauvegardes rapides ni de Recommencer natif) ; lot 6
+turbo F13 posé, effets au prochain lancement ; triches REPORTÉES : pas encore de source de triches Switch ; pas de sauvegardes rapides ni de Recommencer natif) ; lot 6
 mises à jour et DLC (`updates.json`, `dlc.json`). ✅ Décisions de Seb (15/11) : relevé réel SANS jeu accordé (dossier d'essai D:	emp-tests-frogtend) ; firmware POSÉ PAR FROGTEND (Ryubing fermé, vérifié, sans clic) ; UN DOSSIER PAR PERSONNE (`-r`, voie B). ✅ Seb 15/11 : `games\` = CHACUN LE SIEN (pas de jonction ; caches recompilés pour chaque personne ; un `games\<id>\Config.json` de la personne n'est jamais écrit par Frogtend, la pause y est lue). Plus tard (lots 2-3 relus) : le recours quand une restauration Ryubing reste en attente (la personne a déjà des parties ici) ; les mods et amiibo par personne ; relever la manette de Sunshine et le Bluetooth (seule la manette Xbox One 045e:02ff en USB est posée).
 
 **PS4 et PS5 (Seb, 15/11 : « l'émulation PS4 et PS5 commence à bien fonctionner, nous allons donc devoir

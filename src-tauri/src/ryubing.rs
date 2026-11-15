@@ -351,6 +351,8 @@ pub struct ReglageConfig {
     pub clavier: bool,
     /// Une manette pas encore relevée était branchée : le clavier est gardé (à dire au journal).
     pub manette_inconnue: bool,
+    /// L'avance rapide a été liée à F13 (lot 5, une seule fois).
+    pub turbo: bool,
 }
 
 /// Ce que Frogtend fait du joueur 1.
@@ -421,6 +423,11 @@ pub fn regler_config(ryubing: &Path, racine: &Path, joueur1: Joueur1) -> Resulta
         }
         r.regle = true;
     }
+    // L'avance rapide du menu (lot 5) : `turbo_mode` lié à F13, une seule fois par personne, seulement s'il est encore
+    // « Unbound » et que F13 n'est à aucune autre action.
+    if !racine.join(MARQUE_TURBO).exists() {
+        r.turbo = poser_turbo(&mut v);
+    }
     // Le joueur 1 : la manette branchée (seulement celle déjà relevée), sinon le clavier d'origine remis à la place de
     // la manette que FROGTEND avait posée — jamais une manette réglée par la personne.
     let voulue = match joueur1 {
@@ -455,16 +462,8 @@ pub fn regler_config(ryubing: &Path, racine: &Path, joueur1: Joueur1) -> Resulta
 /// Écrit le Config.json réglé s'il a changé (à l'abri avant, relu après, celui d'avant remis s'il ne se relit pas),
 /// puis les marques.
 fn ecrire_si_change(ryubing: &Path, racine: &Path, f: &Path, avant: &str, v: Value, r: ReglageConfig, manette: Option<&str>) -> Resultat<ReglageConfig> {
-    if r.regle || r.manette || r.clavier {
-        let texte = serde_json::to_string_pretty(&v).map_err(|e| Erreur::Disque(format!("Config.json de Ryubing impossible à écrire ({e}).")))?;
-        crate::emulateurs_profils::mettre_a_l_abri(ryubing, f)?;
-        ecrire_texte(f, &texte)?;
-        // Vérifier le résultat : relu, valide, et ce qui a été écrit. Sinon le texte d'avant revient.
-        let relu = std::fs::read_to_string(f).unwrap_or_default();
-        if !config_valide(&relu) || serde_json::from_str::<Value>(&relu).ok().as_ref() != Some(&v) {
-            ecrire_texte(f, avant)?;
-            return Err(Erreur::Disque("Le Config.json de Ryubing ne se relisait pas après l'écriture : celui d'avant est remis.".into()));
-        }
+    if r.regle || r.manette || r.clavier || r.turbo {
+        ecrire_verifie(ryubing, f, avant, &v)?;
         if r.regle {
             std::fs::write(racine.join(MARQUE_REGLAGES), b"")?;
         }
@@ -475,7 +474,25 @@ fn ecrire_si_change(ryubing: &Path, racine: &Path, f: &Path, avant: &str, v: Val
             let _ = std::fs::remove_file(racine.join(MARQUE_MANETTE));
         }
     }
+    // Le turbo a été décidé (posé, ou laissé au choix de la personne) : plus jamais revu.
+    if !racine.join(MARQUE_TURBO).exists() {
+        std::fs::write(racine.join(MARQUE_TURBO), b"")?;
+    }
     Ok(r)
+}
+
+/// Réécrit le Config.json (`v`), Ryubing fermé : à l'abri avant, relu après (valide, et ce qui a été écrit) ; sinon le
+/// texte d'avant (`avant`) revient.
+fn ecrire_verifie(ryubing: &Path, f: &Path, avant: &str, v: &Value) -> Resultat<()> {
+    let texte = serde_json::to_string_pretty(v).map_err(|e| Erreur::Disque(format!("Config.json de Ryubing impossible à écrire ({e}).")))?;
+    crate::emulateurs_profils::mettre_a_l_abri(ryubing, f)?;
+    ecrire_texte(f, &texte)?;
+    let relu = std::fs::read_to_string(f).unwrap_or_default();
+    if !config_valide(&relu) || serde_json::from_str::<Value>(&relu).ok().as_ref() != Some(v) {
+        ecrire_texte(f, avant)?;
+        return Err(Erreur::Disque("Le Config.json de Ryubing ne se relisait pas après l'écriture : celui d'avant est remis.".into()));
+    }
+    Ok(())
 }
 
 /// La pause du menu est-elle réglée dans la racine de cette personne (`PauseEmulation`) ? Sinon (choix de la
@@ -850,6 +867,210 @@ pub fn preparer_partie(ryubing: &Path, racine: &Path, joueur1: Joueur1) -> Resul
     Ok(vec!["-r".into(), racine.to_string_lossy().to_string()])
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Lot 5 — le menu en jeu (✅ Seb : « tout ce que l'émulateur propose, dans notre menu »). Relu dans Ryubing 1.3.3 :
+// - ses raccourcis (`hotkeys` du Config.json, ConfigurationState.cs L261-276) : F1 vsync, F8 capture, F4 interface,
+//   F5 pause, F2 son, le reste « Unbound » ; lus SEULEMENT au premier plan (AppHost.cs L1247) — le menu de Frogtend
+//   rend la main au jeu avant d'envoyer la touche ; une chaîne de `if/else` (`GetHotkeyState` L1397-1445) : une touche
+//   prise par deux actions ne fait que la première ;
+// - jamais surchargés par un réglage propre à un jeu (Migration.cs L149 : « Get from global config only ») ;
+// - `turbo_mode` : une BASCULE tant que `turbo_mode_while_held` vaut false (L1306-1311) ; Frogtend le lie à F13
+//   (Key.cs : F13-F24 existent, AvaloniaKeyboardMappingHelper.cs) ;
+// - le son coupé (F2) n'est PAS enregistré (L1330-1341 : `Device.SetVolume` seulement) : rien à remettre ensuite ;
+// - F4 (`ShowUI`) montre la barre de menus ET la barre d'état (où sont les images par seconde) : ce n'est pas un
+//   compteur, la barre de menus prendrait la souris et l'image rétrécirait — pas proposé ;
+// - pas de sauvegardes rapides, pas de Recommencer (le menu relance la partie) ;
+// - les triches : REPORTÉES, pas encore de source de triches Switch (Ryubing lirait `<racine>\mods\contents\<jeu>\
+//   cheats\<BuildId>.txt` et `enabled.txt`, ModLoader.cs L740-768 ; il écrit le BuildId dans son journal, L730, et
+//   ignore un fichier qui ne correspond pas) — docs/IDEES.md ;
+// - les effets d'image : `anti_aliasing` et `scaling_filter` (Graphics, lus au démarrage) : au prochain lancement.
+// ---------------------------------------------------------------------------------------------------------------
+
+/// La touche que Frogtend lie à l'avance rapide (`turbo_mode`).
+pub const TOUCHE_TURBO: &str = "F13";
+/// « L'avance rapide a été décidée pour cette personne » (posée, ou laissée à son choix).
+const MARQUE_TURBO: &str = ".frogtend-ryubing-turbo";
+
+/// Les actions du menu par les raccourcis de Ryubing : (action, clé de `hotkeys`, touche attendue).
+pub const RACCOURCIS_MENU: &[(crate::pilotage::Action, &str, &str)] = &[
+    (crate::pilotage::Action::Capture, "screenshot", "F8"),
+    (crate::pilotage::Action::Muet, "toggle_mute", "F2"),
+    (crate::pilotage::Action::AvanceRapide, "turbo_mode", TOUCHE_TURBO),
+];
+
+/// La touche est-elle à cette action SEULEMENT (aucune autre action de `hotkeys` ne l'a) ?
+fn touche_seule(hotkeys: &Value, cle: &str, touche: &str) -> bool {
+    hotkeys[cle] == touche && hotkeys.as_object().is_some_and(|o| o.iter().filter(|(_, v)| v.as_str() == Some(touche)).count() == 1)
+}
+
+/// Lie l'avance rapide à F13 si elle est encore « Unbound », en bascule, et que F13 n'est à personne. Rend vrai si
+/// `v` a changé.
+fn poser_turbo(v: &mut Value) -> bool {
+    let h = &v["hotkeys"];
+    let libre = h["turbo_mode"] == "Unbound"
+        && h["turbo_mode_while_held"] == false
+        && h.as_object().is_some_and(|o| o.values().all(|x| x.as_str() != Some(TOUCHE_TURBO)));
+    if libre {
+        v["hotkeys"]["turbo_mode"] = Value::from(TOUCHE_TURBO);
+    }
+    libre
+}
+
+/// Les actions du menu possibles pour cette personne : celles dont la touche est la bonne, à elle seule (un choix de
+/// la personne n'est jamais deviné ; l'avance rapide seulement en bascule). Rien si Ryubing n'est pas portable ou si
+/// un Config.json à côté de Ryujinx.exe passe devant (la touche pourrait y faire autre chose).
+pub fn actions_d_origine(ryubing: &Path, racine: &Path) -> Vec<crate::pilotage::Action> {
+    if !portable(ryubing) || config_a_cote_du_programme(ryubing) {
+        return vec![];
+    }
+    let Some(v) = std::fs::read_to_string(config_de(racine)).ok().filter(|t| config_valide(t)).and_then(|t| serde_json::from_str::<Value>(&t).ok()) else {
+        return vec![];
+    };
+    let h = &v["hotkeys"];
+    RACCOURCIS_MENU
+        .iter()
+        .filter(|(a, cle, touche)| touche_seule(h, cle, touche) && (*a != crate::pilotage::Action::AvanceRapide || h["turbo_mode_while_held"] == false))
+        .map(|(a, _, _)| *a)
+        .collect()
+}
+
+/// Le préfixe des effets d'image de Ryubing dans les réglages du profil (`image`) : jamais confondus avec ceux de
+/// RetroArch ou de BigPEmu.
+pub const PREFIXE_EFFET: &str = "ryubing:";
+
+/// Les effets proposés : (identifiant, `anti_aliasing`, `scaling_filter`). Valeurs relues dans Ryubing 1.3.3
+/// (AntiAliasing : None, Fxaa, SmaaLow…SmaaUltra ; ScalingFilter : Bilinear, Nearest, Fsr, Area). Peu nombreux,
+/// compréhensibles : les noms français sont dans src/lib/ludotheque/effetsImage.ts.
+pub const EFFETS: &[(&str, &str, &str)] = &[
+    ("contours", "SmaaHigh", "Bilinear"),
+    ("adouci", "Fxaa", "Bilinear"),
+    ("net", "None", "Fsr"),
+    ("pixels", "None", "Nearest"),
+];
+
+/// La marque de l'effet posé par Frogtend : `{"pose": [aa, filtre]}`. Sans elle (ou si le Config.json dit autre
+/// chose), un réglage d'image autre que celui d'origine est le choix de la personne.
+const MARQUE_EFFET: &str = ".frogtend-ryubing-effet";
+
+/// Le réglage d'image d'origine de Ryubing (modèle relevé : `anti_aliasing` None, `scaling_filter` Bilinear) : « aucun
+/// effet ».
+const IMAGE_D_ORIGINE: (&str, &str) = ("None", "Bilinear");
+
+/// Les effets d'image sont-ils possibles pour ce jeu ? `Err(phrase)` sinon, dite telle quelle à la personne.
+/// `titre` : le numéro du jeu (lu dans un .nsp, `contenus::id_switch`) ; inconnu (.xci), le moindre réglage propre à
+/// un jeu suffit à refuser (Frogtend ne sait pas s'il est le sien).
+pub fn effets_possibles(ryubing: &Path, racine: &Path, titre: Option<u64>) -> Result<(), String> {
+    if !portable(ryubing) || config_a_cote_du_programme(ryubing) {
+        return Err("Ryubing n'a pas été installé par Frogtend : ses réglages d'image restent les siens.".into());
+    }
+    let par_jeu = configs_par_jeu(racine);
+    let le_sien = match titre {
+        // Le dossier du jeu est son numéro de base (ApplicationData.cs L104-106 : `Id & ~0x1FFF`, « x16 »).
+        Some(t) => par_jeu.iter().any(|j| j.eq_ignore_ascii_case(&format!("{:016x}", t & !0x1FFF))),
+        None => !par_jeu.is_empty(),
+    };
+    if le_sien {
+        return Err(match titre {
+            Some(_) => "Ce jeu a ses propres réglages dans Ryubing : l'effet d'image ne s'y applique pas.".into(),
+            None => "Des jeux ont leurs propres réglages dans Ryubing, et Frogtend ne sait pas si celui-ci en fait partie : l'effet d'image n'est pas proposé.".into(),
+        });
+    }
+    Ok(())
+}
+
+/// L'effet en place après `poser_effet`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EffetPose {
+    /// L'effet (identifiant du profil) que donne le réglage en place ; `None` : l'image d'origine, ou un réglage de la
+    /// personne qui n'est pas dans la liste.
+    pub effet: Option<String>,
+    /// Le réglage d'image fait par la personne dans Ryubing : il passe devant (jamais remplacé).
+    pub de_la_personne: bool,
+}
+
+fn id_d_effet(p: &(String, String)) -> Option<String> {
+    EFFETS.iter().find(|(_, aa, filtre)| (aa.to_string(), filtre.to_string()) == *p).map(|(e, _, _)| format!("{PREFIXE_EFFET}{e}"))
+}
+
+/// Les effets présents (tous : ce sont des réglages de Ryubing), en identifiants du profil.
+pub fn effets_presents() -> Vec<String> {
+    EFFETS.iter().map(|(e, _, _)| format!("{PREFIXE_EFFET}{e}")).collect()
+}
+
+/// Pose l'effet choisi avant le lancement, Ryubing FERMÉ (`aucun`, `ryubing:<effet>` ; `None` ou un effet d'un autre
+/// émulateur : pas de choix = l'image d'origine). Refusé (`Err`) si les effets ne sont pas possibles pour ce jeu
+/// (`effets_possibles`), si Ryubing est ouvert ou si la personne n'a pas encore de Config.json. Un réglage d'image
+/// qu'elle a fait elle-même dans Ryubing GAGNE (comme celui de RetroArch) : jamais remplacé. À l'abri avant, relu
+/// après.
+pub fn poser_effet(ryubing: &Path, racine: &Path, titre: Option<u64>, choix: Option<&str>) -> Resultat<EffetPose> {
+    effets_possibles(ryubing, racine, titre).map_err(Erreur::Refus)?;
+    if !crate::lancement::processus_du_dossier(ryubing).is_empty() {
+        return Err(Erreur::Refus("Ryubing est encore ouvert : l'effet d'image n'a pas pu être posé pour cette partie.".into()));
+    }
+    let f = config_de(racine);
+    let avant = std::fs::read_to_string(&f)
+        .ok()
+        .filter(|t| config_valide(t))
+        .ok_or_else(|| Erreur::Refus("Les réglages de Ryubing de cette personne ne se lisent pas : l'effet d'image n'est pas posé.".into()))?;
+    let mut v: Value = serde_json::from_str(&avant).map_err(|_| Erreur::Disque("Config.json de Ryubing illisible.".into()))?;
+    let paire = |v: &Value| (v["anti_aliasing"].as_str().unwrap_or("").to_string(), v["scaling_filter"].as_str().unwrap_or("").to_string());
+    let actuel = paire(&v);
+    let origine = (IMAGE_D_ORIGINE.0.to_string(), IMAGE_D_ORIGINE.1.to_string());
+    let marque_f = racine.join(MARQUE_EFFET);
+    let marque: Option<Value> = std::fs::read(&marque_f).ok().and_then(|o| serde_json::from_slice(&o).ok());
+    let pose = marque.as_ref().map(|m| (m["pose"][0].as_str().unwrap_or("").to_string(), m["pose"][1].as_str().unwrap_or("").to_string()));
+    let le_notre = pose.as_ref() == Some(&actuel);
+    // Changé dans Ryubing depuis (ou réglé avant Frogtend) : c'est son choix, il passe devant.
+    if !le_notre && actuel != origine {
+        let _ = std::fs::remove_file(&marque_f);
+        return Ok(EffetPose { effet: id_d_effet(&actuel), de_la_personne: true });
+    }
+    let voulu = match choix.and_then(|c| c.strip_prefix(PREFIXE_EFFET)).and_then(|c| EFFETS.iter().find(|(e, _, _)| *e == c)) {
+        Some((_, aa, filtre)) => (aa.to_string(), filtre.to_string()),
+        None => origine.clone(),
+    };
+    // La marque AVANT les réglages : un effet posé par Frogtend n'est jamais pris ensuite pour celui de la personne.
+    if voulu != origine {
+        std::fs::write(&marque_f, serde_json::json!({"pose": [voulu.0, voulu.1]}).to_string())?;
+    }
+    if voulu != actuel {
+        v["anti_aliasing"] = Value::from(voulu.0.clone());
+        v["scaling_filter"] = Value::from(voulu.1.clone());
+        ecrire_verifie(ryubing, &f, &avant, &v)?;
+    }
+    if voulu == origine {
+        let _ = std::fs::remove_file(&marque_f);
+    }
+    Ok(EffetPose { effet: id_d_effet(&voulu), de_la_personne: false })
+}
+
+/// Ce que montre le schéma « 🎮 Les touches » : le joueur 1 porte-t-il la manette posée par Frogtend, le clavier, ou
+/// autre chose (une manette réglée par la personne) ?
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Joueur1Lu {
+    DeFrogtend,
+    AuClavier,
+    Autre,
+}
+
+/// Le joueur 1 dans le Config.json de la personne (absent : il sera au clavier, puis réglé).
+pub fn joueur1_lu(racine: &Path) -> Joueur1Lu {
+    let Some(v) = std::fs::read_to_string(config_de(racine)).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) else { return Joueur1Lu::AuClavier };
+    let marque = std::fs::read_to_string(racine.join(MARQUE_MANETTE)).ok();
+    match v["input_config"].as_array().and_then(|l| l.iter().find(|e| e["player_index"] == "Player1")) {
+        Some(j) if j["backend"] == "WindowKeyboard" => Joueur1Lu::AuClavier,
+        // La manette de Frogtend, sa disposition intacte (le nom affiché peut changer : il ne compte pas).
+        Some(j)
+            if j["backend"] == "GamepadSDL2"
+                && marque.as_deref().is_some_and(|m| j["id"] == m.trim())
+                && ["left_joycon", "right_joycon", "left_joycon_stick", "right_joycon_stick"].iter().all(|k| j[*k] == bloc_manette("")[*k]) =>
+        {
+            Joueur1Lu::DeFrogtend
+        }
+        _ => Joueur1Lu::Autre,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1024,7 +1245,7 @@ mod tests {
         let (ryu, racine) = ryubing_installe(d.path());
         assert!(config_valide(MODELE_CONFIG), "le modèle relevé est lisible par Ryubing");
         let r = regler_config(&ryu, &racine, Joueur1::Rien).unwrap();
-        assert_eq!(r, ReglageConfig { pose: true, regle: true, ..Default::default() });
+        assert_eq!(r, ReglageConfig { pose: true, regle: true, turbo: true, ..Default::default() });
         let v = lire_config(&racine);
         // Complet : chaque champ du modèle est là (jamais un fichier minimal).
         let modele: Value = serde_json::from_str(MODELE_CONFIG).unwrap();
@@ -1314,5 +1535,155 @@ mod tests {
         let copie = config_a_envoyer(&v.to_string()).unwrap();
         assert!(!copie.contains("secret-ldn") && config_valide(&copie));
         assert!(config_a_envoyer("abîmé").is_none());
+    }
+
+    // --- Lot 5 ---
+
+    /// Les raccourcis du Config.json de la personne, modifiés par `f`.
+    fn changer_raccourcis(racine: &Path, f: impl Fn(&mut Value)) {
+        let mut v = lire_config(racine);
+        f(&mut v["hotkeys"]);
+        std::fs::write(config_de(racine), serde_json::to_string_pretty(&v).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn l_avance_rapide_est_liee_a_f13_une_fois_jamais_par_dessus_un_choix() {
+        use crate::pilotage::Action::*;
+        let d = tempfile::tempdir().unwrap();
+        let (ryu, seb) = ryubing_installe(d.path());
+        assert!(regler_config(&ryu, &seb, Joueur1::Rien).unwrap().turbo);
+        let h = &lire_config(&seb)["hotkeys"];
+        assert_eq!((h["turbo_mode"].as_str(), h["turbo_mode_while_held"].as_bool()), (Some("F13"), Some(false)), "une bascule");
+        assert_eq!(actions_d_origine(&ryu, &seb), vec![Capture, Muet, AvanceRapide]);
+        // La personne la remet à « Unbound » (ou ailleurs) : jamais reposée.
+        changer_raccourcis(&seb, |h| h["turbo_mode"] = "Unbound".into());
+        assert!(!regler_config(&ryu, &seb, Joueur1::Rien).unwrap().turbo);
+        assert_eq!(lire_config(&seb)["hotkeys"]["turbo_mode"], "Unbound");
+        assert_eq!(actions_d_origine(&ryu, &seb), vec![Capture, Muet]);
+        // F13 déjà à une autre action, ou l'avance rapide « tant qu'on appuie » : rien posé, rien proposé.
+        let lea = super::racine(&ryu, "Léa");
+        std::fs::create_dir_all(&lea).unwrap();
+        let mut v: Value = serde_json::from_str(MODELE_CONFIG).unwrap();
+        v["hotkeys"]["show_ui"] = "F13".into();
+        std::fs::write(config_de(&lea), v.to_string()).unwrap();
+        assert!(!regler_config(&ryu, &lea, Joueur1::Rien).unwrap().turbo);
+        assert_eq!(lire_config(&lea)["hotkeys"]["turbo_mode"], "Unbound");
+        let zoe = super::racine(&ryu, "Zoé");
+        std::fs::create_dir_all(&zoe).unwrap();
+        v["hotkeys"]["show_ui"] = "F4".into();
+        v["hotkeys"]["turbo_mode_while_held"] = true.into();
+        std::fs::write(config_de(&zoe), v.to_string()).unwrap();
+        assert!(!regler_config(&ryu, &zoe, Joueur1::Rien).unwrap().turbo);
+        changer_raccourcis(&zoe, |h| h["turbo_mode"] = "F13".into());
+        assert!(!actions_d_origine(&ryu, &zoe).contains(&AvanceRapide), "tant qu'on appuie : la touche envoyée ne ferait qu'un instant");
+    }
+
+    #[test]
+    fn une_action_n_est_proposee_que_si_sa_touche_est_la_bonne_et_a_elle_seule() {
+        use crate::pilotage::Action::*;
+        let d = tempfile::tempdir().unwrap();
+        let (ryu, seb) = ryubing_installe(d.path());
+        assert!(actions_d_origine(&ryu, &seb).is_empty(), "pas encore de réglages : rien");
+        regler_config(&ryu, &seb, Joueur1::Rien).unwrap();
+        changer_raccourcis(&seb, |h| h["screenshot"] = "F9".into());
+        assert_eq!(actions_d_origine(&ryu, &seb), vec![Muet, AvanceRapide], "capture déplacée par la personne : jamais devinée");
+        // Une autre action sur F2 (la synchro verticale, testée AVANT le son par Ryubing) : le son n'est plus proposé.
+        changer_raccourcis(&seb, |h| h["toggle_vsync_mode"] = "F2".into());
+        assert_eq!(actions_d_origine(&ryu, &seb), vec![AvanceRapide]);
+    }
+
+    #[test]
+    fn un_effet_d_image_se_pose_au_lancement_et_aucun_rend_celui_de_la_personne() {
+        let d = tempfile::tempdir().unwrap();
+        let (ryu, seb) = ryubing_installe(d.path());
+        assert!(poser_effet(&ryu, &seb, None, Some("ryubing:contours")).is_err(), "pas encore de réglages : refusé");
+        regler_config(&ryu, &seb, Joueur1::Rien).unwrap();
+        let paire = || {
+            let v = lire_config(&seb);
+            (v["anti_aliasing"].as_str().unwrap().to_string(), v["scaling_filter"].as_str().unwrap().to_string())
+        };
+        let p = |a: &str, b: &str| (a.to_string(), b.to_string());
+        let de_frogtend = |e: &str| EffetPose { effet: Some(e.to_string()), de_la_personne: false };
+        assert_eq!(paire(), p("None", "Bilinear"), "d'origine");
+        assert_eq!(poser_effet(&ryu, &seb, None, Some("ryubing:contours")).unwrap(), de_frogtend("ryubing:contours"));
+        assert_eq!(paire(), p("SmaaHigh", "Bilinear"));
+        assert!(config_valide(&std::fs::read_to_string(config_de(&seb)).unwrap()));
+        assert_eq!(poser_effet(&ryu, &seb, None, Some("ryubing:pixels")).unwrap(), de_frogtend("ryubing:pixels"));
+        assert_eq!(paire(), p("None", "Nearest"));
+        // « Aucun » (ou pas de choix, ou un effet d'un autre émulateur) : l'image d'origine revient.
+        assert_eq!(poser_effet(&ryu, &seb, None, Some("aucun")).unwrap(), EffetPose { effet: None, de_la_personne: false });
+        assert_eq!(paire(), p("None", "Bilinear"));
+        assert!(!seb.join(MARQUE_EFFET).exists());
+        poser_effet(&ryu, &seb, None, Some("ryubing:contours")).unwrap();
+        assert_eq!(poser_effet(&ryu, &seb, None, Some("bigpemu:crt-hyllian")).unwrap().effet, None);
+        assert_eq!(paire(), p("None", "Bilinear"));
+        // Son réglage à elle (fait dans Ryubing) GAGNE : jamais remplacé, dit « de la personne » ; égal à un des effets,
+        // il est reconnu (le menu ne dit pas « aucun » à tort).
+        let mut v = lire_config(&seb);
+        v["anti_aliasing"] = "Fxaa".into();
+        std::fs::write(config_de(&seb), serde_json::to_string_pretty(&v).unwrap()).unwrap();
+        assert_eq!(poser_effet(&ryu, &seb, None, Some("ryubing:pixels")).unwrap(), EffetPose { effet: Some("ryubing:adouci".into()), de_la_personne: true });
+        assert_eq!(paire(), p("Fxaa", "Bilinear"));
+        // Changé dans Ryubing pendant que l'effet de Frogtend était posé : c'est son choix, gardé.
+        v["anti_aliasing"] = "None".into();
+        std::fs::write(config_de(&seb), serde_json::to_string_pretty(&v).unwrap()).unwrap();
+        poser_effet(&ryu, &seb, None, Some("ryubing:contours")).unwrap();
+        let mut v = lire_config(&seb);
+        v["anti_aliasing"] = "SmaaUltra".into();
+        std::fs::write(config_de(&seb), serde_json::to_string_pretty(&v).unwrap()).unwrap();
+        assert_eq!(poser_effet(&ryu, &seb, None, None).unwrap(), EffetPose { effet: None, de_la_personne: true });
+        assert_eq!(paire(), p("SmaaUltra", "Bilinear"));
+        assert!(!seb.join(MARQUE_EFFET).exists());
+        // Un Config.json à côté du programme passe devant : refusé, dit simplement.
+        std::fs::write(ryu.join(FICHIER_CONFIG), MODELE_CONFIG).unwrap();
+        assert!(matches!(poser_effet(&ryu, &seb, None, Some("ryubing:net")), Err(Erreur::Refus(m)) if m.contains("pas été installé par Frogtend")));
+        assert!(actions_d_origine(&ryu, &seb).is_empty(), "sa touche pourrait y faire autre chose");
+        assert_eq!(paire(), p("SmaaUltra", "Bilinear"));
+    }
+
+    #[test]
+    fn un_jeu_qui_a_ses_propres_reglages_n_a_pas_d_effet_d_image() {
+        let d = tempfile::tempdir().unwrap();
+        let (ryu, seb) = ryubing_installe(d.path());
+        regler_config(&ryu, &seb, Joueur1::Rien).unwrap();
+        assert!(effets_possibles(&ryu, &seb, Some(0x0100000000010000)).is_ok());
+        let jeu = seb.join("games").join("0100000000010000");
+        std::fs::create_dir_all(&jeu).unwrap();
+        std::fs::write(jeu.join(FICHIER_CONFIG), MODELE_CONFIG).unwrap();
+        // CE jeu (son numéro lu dans le .nsp ; une mise à jour …800 mène au même jeu) : refusé, et dit.
+        let e = effets_possibles(&ryu, &seb, Some(0x0100000000010800)).unwrap_err();
+        assert!(e.contains("Ce jeu a ses propres réglages"), "{e}");
+        assert!(poser_effet(&ryu, &seb, Some(0x0100000000010000), Some("ryubing:contours")).is_err());
+        assert_eq!(lire_config(&seb)["anti_aliasing"], "None", "rien n'est posé");
+        // Un autre jeu : possible ; un jeu au numéro inconnu (.xci) : prudence, refusé.
+        assert!(effets_possibles(&ryu, &seb, Some(0x0100000000020000)).is_ok());
+        assert!(effets_possibles(&ryu, &seb, None).is_err());
+        // Ryubing pas installé par Frogtend (pas portable) : la phrase dite sur la fiche.
+        let main = d.path().join("ALaMain");
+        std::fs::create_dir_all(&main).unwrap();
+        assert_eq!(effets_possibles(&main, &seb, None).unwrap_err(), "Ryubing n'a pas été installé par Frogtend : ses réglages d'image restent les siens.");
+        assert!(actions_d_origine(&main, &seb).is_empty());
+    }
+
+    #[test]
+    fn le_schema_des_touches_suit_la_manette_de_frogtend_seulement() {
+        let d = tempfile::tempdir().unwrap();
+        let (ryu, seb) = ryubing_installe(d.path());
+        assert_eq!(joueur1_lu(&seb), Joueur1Lu::AuClavier, "pas encore réglé : il le sera au clavier");
+        regler_config(&ryu, &seb, Joueur1::Manette(MANETTE_RELEVEE)).unwrap();
+        assert_eq!(joueur1_lu(&seb), Joueur1Lu::DeFrogtend);
+        // Le nom affiché changé par Ryubing ne compte pas ; un bouton changé par la personne, si.
+        let mut v = lire_config(&seb);
+        v["input_config"][0]["name"] = "Xbox One Controller (0)".into();
+        std::fs::write(config_de(&seb), serde_json::to_string_pretty(&v).unwrap()).unwrap();
+        assert_eq!(joueur1_lu(&seb), Joueur1Lu::DeFrogtend);
+        v["input_config"][0]["right_joycon"]["button_a"] = "A".into();
+        std::fs::write(config_de(&seb), serde_json::to_string_pretty(&v).unwrap()).unwrap();
+        assert_eq!(joueur1_lu(&seb), Joueur1Lu::Autre);
+        assert!(!crate::manettes::disposition_de_frogtend("ryubing", &ryu, Some(&seb)));
+        let lea = super::racine(&ryu, "Léa");
+        regler_config(&ryu, &lea, Joueur1::Clavier).unwrap();
+        assert_eq!(joueur1_lu(&lea), Joueur1Lu::AuClavier);
+        assert!(crate::manettes::disposition_de_frogtend("ryubing", &ryu, Some(&lea)));
     }
 }

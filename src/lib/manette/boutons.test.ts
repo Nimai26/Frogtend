@@ -86,7 +86,7 @@ describe('les boutons de la manette d’origine', () => {
     expect(schema(infosDeLaFiche(gc, { mode: 'reference', genre: 'GCPad', reference: 'X' }, null)).etat).toBe('personnalise');
     expect(schema(infosDeLaFiche(gc, { mode: 'auto' }, null)).etat).toBe('connu');
     expect(schema(infosDeLaFiche(infos({ emulateur: 'pcsx2', coeur: null, plateforme: 'Sony Playstation 2' }), { mode: 'clavier' }, null)).etat).toBe('personnalise');
-    for (const e of ['eden', 'azahar', 'rpcs3']) {
+    for (const e of ['eden', 'azahar', 'rpcs3', 'ryubing']) {
       const s = schema(infosDeLaFiche(infos({ emulateur: e, coeur: null }), { mode: 'clavier' }, null));
       expect(s.etat).toBe('clavier-choisi');
       expect(sansDessin(s)).toContain('Commandes');
@@ -239,6 +239,17 @@ describe('les boutons de la manette d’origine', () => {
     expect(role(s2, 'a')).toBe('B');
     expect(role(s2, 'lt')).toBe('ZL');
     expect(role(schema(infos({ emulateur: 'eden', coeur: null, plateforme: 'Nintendo Switch' })), 'start')).toBe('+');
+    // Ryubing : la disposition qu'il prend pour une manette Xbox (posée par Frogtend), A↔B et X↔Y à la Nintendo.
+    const ryu = schema(infos({ emulateur: 'ryubing', coeur: null, plateforme: 'Nintendo Switch' }));
+    expect(ryu.console).toBe('Switch');
+    expect([role(ryu, 'a'), role(ryu, 'b'), role(ryu, 'x'), role(ryu, 'y'), role(ryu, 'select'), role(ryu, 'start')]).toEqual(['B', 'A', 'Y', 'X', '−', '+']);
+    expect(schema(infos({ emulateur: 'ryubing', coeur: null, personnalise: true })).etat).toBe('personnalise');
+    expect(schema(infos({ emulateur: 'ryubing', coeur: null, au_clavier: true })).etat).toBe('au-clavier');
+    // Une manette pas encore relevée pour Ryubing : jamais « branche-la » (elle l'est), le jeu se jouera au clavier.
+    const pasConnue = schema(infos({ emulateur: 'ryubing', coeur: null, manette_pas_connue: true }));
+    expect(pasConnue.etat).toBe('manette-pas-encore-connue');
+    expect(sansDessin(pasConnue)).toBe('Ta manette n’est pas encore connue de Frogtend pour cet émulateur : ce jeu se jouera au clavier.');
+    expect(sansDessin(pasConnue)).not.toContain('branche');
     const lichii = schema(infos({ emulateur: 'lichii', coeur: null, plateforme: 'Nintendo Switch 2' }));
     expect(lichii.console).toBe('Switch 2');
     expect(role(lichii, 'b')).toBe('A');
