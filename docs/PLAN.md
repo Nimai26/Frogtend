@@ -269,6 +269,12 @@ vraie sauvegarde, faite par Seb** (Options ▸ Sauvegarde ▸ 💾 Sauvegarder m
 À la restauration, Frogtend remet la configuration et les parties, puis propose de retélécharger les jeux de la
 liste (annoncé et chiffré d'abord : combien de jeux, combien de Go).
 
+**Quitter Eglantine et Lichii en sécurité (Seb, 15/11) :** « souvent le logiciel plante après la fermeture du jeu,
+donc peut-être attendre 5 secondes puis le tuer ». Aujourd'hui (`lancement::finir_la_partie`) : 10 s, puis arrêt
+seulement si l'émulateur n'a PLUS de fenêtre visible (une fenêtre figée peut écrire une sauvegarde : jamais touchée).
+À faire : pour la famille d'Eden, arrêt aussi d'une fenêtre restée figée après Quitter (sortie déjà acceptée par
+Eden : `confirmStop=1` refuse tant que le jeu écrit) ; avis de l'expert lancement d'abord (parties sacrées).
+
 **Les captures d'écran dans la sauvegarde (Seb, 12/11 : « il faut que les screens, comme les saves, soient
 sauvegardés par Firehouse et proposés à la restauration lors d'une nouvelle installation d'un user »).** À faire :
 vérifié le 12/11, elles n'y sont PAS (ni les images de 📷 Mes captures, ni l'index `captures.json` qui dit à quel
