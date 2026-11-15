@@ -1,5 +1,10 @@
 # Notes de version de Frogtend
 
+## 0.197.0 — La photo qu'on vient de prendre est tout de suite dans la galerie
+
+- 📷 Pendant une partie, 📷 Mes captures montre aussi la photo prise juste avant (il fallait parfois en prendre une
+  autre pour voir la précédente, vu par Seb avec Lichii).
+
 ## 0.196.0 — Switch 2 : Recommencer retiré
 
 - 🎮 Eden, Eglantine, Lichii : 🔄 Recommencer est retiré du menu en jeu. Le redémarrage d'Eglantine la faisait

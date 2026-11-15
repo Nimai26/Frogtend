@@ -6,6 +6,10 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Galerie à jour pendant la partie (0.197.0)
+- [ ] Lichii : 📷 Photo de l'écran, puis tout de suite 📷 Mes captures depuis le menu : la photo qu'on vient de prendre
+      y est (avant : il manquait toujours la dernière).
+
 ## Jaguar : Recommencer (0.195.0)
 - [ ] Bubsy (BigPEmu déjà lancé une fois) : le menu montre 🔄 Recommencer. ⚠ NON VÉRIFIÉ : « Reload Image » de BigPEmu
       recharge-t-il le jeu, ou ouvre-t-il une fenêtre de fichier ? (si une fenêtre s'ouvre : Échap, et dis-le-moi.)
@@ -14,7 +18,7 @@
 ## Switch 2 : le menu en jeu complété (0.194.0)
 - [x] (✅ Seb 15/11) Un jeu Eglantine (ou Lichii), menu en jeu ▸ ⚙ Options du jeu : on voit 📷 Photo de l'écran, 🔇 Son, ⏩ avance
       rapide (et le compteur d'images, comme avant).
-- [ ] 📷 Photo de l'écran : AUCUNE fenêtre « Enregistrer sous » ; en quittant, « capture rangée » ; 📷 Mes captures
+- [x] (✅ Seb 15/11, Lichii, 3 photos rangées) 📷 Photo de l'écran : AUCUNE fenêtre « Enregistrer sous » ; en quittant, « capture rangée » ; 📷 Mes captures
       la montre (Nintendo Switch 2 ▸ le jeu).
 - [x] (✅ Seb 15/11) 🔇 Son coupé : plus de son ; une 2e fois : il revient. Coupe-le, quitte, relance : le son est là.
 - [x] (✅ Seb 15/11) ⏩ Turbo : le jeu va plus vite ; une 2e fois : vitesse normale.

@@ -53,6 +53,12 @@ struct ProgresDemenagement {
     octets: u64,
 }
 
+/// Un passage du rangement des captures de la partie en cours (rend faux quand elle est finie).
+type PassageCaptures = std::sync::Arc<dyn Fn() -> bool + Send + Sync>;
+
+/// Celui de la partie en cours, pour que la galerie range d'abord la photo qui vient d'être prise.
+static PASSAGE_EN_COURS: std::sync::Mutex<Option<PassageCaptures>> = std::sync::Mutex::new(None);
+
 /// Un déplacement du dossier des captures est en cours : la galerie n'oublie alors aucune capture absente.
 static DEPLACEMENT_CAPTURES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
@@ -157,6 +163,13 @@ fn fiche_de_capture(noyau: &Noyau, s: &crate::noyau::Session, jeu: i64) -> Optio
 pub async fn captures_liste(app: AppHandle, noyau: State<'_, Noyau>, jeu: Option<i64>) -> Resultat<Vec<CaptureVue>> {
     let regle = dossier_captures_regle(&app);
     let deplacement = DEPLACEMENT_CAPTURES.load(std::sync::atomic::Ordering::SeqCst);
+    // Une partie en cours : ses nouvelles photos sont rangées d'abord (une photo prise à l'instant y est).
+    let passage = PASSAGE_EN_COURS.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    if let Some(p) = passage {
+        if !tauri::async_runtime::spawn_blocking(move || p()).await.unwrap_or(false) {
+            *PASSAGE_EN_COURS.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        }
+    }
     let profil = profil_ouvert(&noyau).await?.id;
     let s = noyau.session().await?;
     let fonds = crate::captures::fonds_choisis(&dossier_profil_de(&noyau, &profil));
@@ -2066,12 +2079,12 @@ pub async fn jeu_jouer(
     if let Some(v) = veilleur_captures.clone() {
         let (app3, total, fini3) = (app.clone(), captures_rangees.clone(), captures_finies.clone());
         let (profil_captures, titre_captures, plateforme_captures) = (profil_captures.clone(), titre_captures.clone(), plateforme_captures.clone());
-        std::thread::spawn(move || loop {
-            std::thread::sleep(std::time::Duration::from_secs(2));
+        // Un passage : rend faux quand la partie est finie (plus rien à ranger).
+        let passage: PassageCaptures = std::sync::Arc::new(move || {
             // Relu SOUS le verrou : après le dernier passage (`fini`), plus rien n'est rangé hors du compte annoncé.
-            let Ok(mut v) = v.lock() else { break };
+            let Ok(mut v) = v.lock() else { return false };
             if fini3.load(std::sync::atomic::Ordering::SeqCst) || !app3.state::<crate::menu_jeu::MenuJeu>().en_cours(numero) {
-                break;
+                return false;
             }
             let (places, abandons) = v.ranger();
             total.fetch_add(places.len(), std::sync::atomic::Ordering::SeqCst);
@@ -2081,6 +2094,16 @@ pub async fn jeu_jouer(
             }
             for a in abandons {
                 app3.state::<Noyau>().journaliser(&format!("captures d'écran : laissée à sa place, {a}"));
+            }
+            true
+        });
+        // La galerie ouverte pendant la partie fait aussi un passage (sinon la dernière photo, prise il y a moins de
+        // 2 s, n'y serait pas encore : le « décalage d'une » vu par Seb le 15/11 avec Lichii).
+        *PASSAGE_EN_COURS.lock().unwrap_or_else(|e| e.into_inner()) = Some(passage.clone());
+        std::thread::spawn(move || loop {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            if !passage() {
+                break;
             }
         });
     }
