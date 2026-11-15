@@ -110,3 +110,10 @@ envoyées par Frogtend : essai avec Seb avant de les dire sûres.
   focus_lost DoNothing, show_confirm_exit true, start_fullscreen false, raccourcis F1 vsync / F8 capture / F4 interface /
   F5 pause / F2 son (le reste « Unbound », turbo compris), joueur 1 = clavier (WindowKeyboard). Modèle gardé dans le
   scratchpad de la session (`ryubing-Config-origine.json`).
+- Manette (relevé avec Seb, manette Xbox One branchée, choisie à la main dans Options ▸ Settings ▸ Input — POUR LE
+  TEST SEULEMENT : Frogtend l'écrira seul) : `backend: GamepadSDL2`, `id: "0-00000003-045e-0000-ff02-000000007200"`,
+  `name: "Xbox One Controller (0)"`, `controller_type: ProController`, disposition d'origine de Ryubing (A↔B, X↔Y à la
+  Nintendo : button_a = B, button_b = A, button_x = Y, button_y = X ; ZL/ZR = gâchettes ; − = Back, + = Start), sticks
+  Left/Right, deadzone 0.1, gyroscope GamepadDriver, vibration coupée. L'identifiant porte vendeur 045e et produit 02ff
+  (même manette qu'Eden `guid_xinput`) → calculable pour la manette branchée ; manette virtuelle de Sunshine
+  (045e:028e) : non relevée. Modèle gardé (`ryubing-manette-xbox.json`). Clés retirées du dossier d'essai après.
