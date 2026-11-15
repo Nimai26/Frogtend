@@ -520,6 +520,17 @@ pub fn guid_manette_playstation(vues: &[crate::manettes_sdl::ManetteVue]) -> Opt
 /// `XInputGetCapabilitiesEx` (ordinal 108 de xinput1_4.dll, comme SDL : `SDL_xinputjoystick.c`) ; s'il manque, le
 /// repli de SDL (045e:02a1). `None` : aucune manette XInput branchée.
 pub fn guid_manette_xinput() -> Option<String> {
+    ids_manette_xinput().map(|(v, p, n, sous_type)| crate::eden::guid_xinput(v, p, n, sous_type))
+}
+
+/// Ryubing (SDL2, pilote RAWINPUT) : l'identifiant de la première manette XInput branchée, tel qu'il le note
+/// (`ryubing::id_manette`). `None` : aucune manette XInput branchée.
+pub fn id_manette_xinput_ryubing() -> Option<String> {
+    ids_manette_xinput().map(|(v, p, n, _)| crate::ryubing::id_manette(v, p, n))
+}
+
+/// La première manette XInput branchée : (fournisseur, produit, version, sous-type).
+fn ids_manette_xinput() -> Option<(u16, u16, u16, u8)> {
     #[cfg(windows)]
     {
         let i = premiere_manette_xinput()?;
@@ -546,7 +557,7 @@ pub fn guid_manette_xinput() -> Option<String> {
         let sous_type = if lu { c.caps[1] } else { 1 };
         let (v, p, n) = if lu && c.fournisseur != 0 && c.produit != 0 { (c.fournisseur, c.produit, c.version) } else { (0x045e, 0x02a1, 0) };
         let _ = (c.r1, c.r2);
-        Some(crate::eden::guid_xinput(v, p, n, sous_type))
+        Some((v, p, n, sous_type))
     }
     #[cfg(not(windows))]
     {

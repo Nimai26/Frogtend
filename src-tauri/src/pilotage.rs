@@ -149,7 +149,9 @@ pub fn actions(emulateur: &str) -> Vec<Action> {
 /// L'émulateur se met-il en pause quand il perd le premier plan (réglé par `preparer` ; RPCS3 par
 /// `commandes::preparer_emulateur`) ?
 pub fn se_met_en_pause(emulateur: &str) -> bool {
-    matches!(emulateur, "retroarch" | "duckstation" | "pcsx2" | "dolphin" | "ppsspp" | "dosbox-staging" | "rpcs3" | "mame" | "eden" | "eglantine" | "lichii" | "azahar")
+    // Ryubing : `focus_lost_action_type = PauseEmulation`, posé une fois par personne (ryubing::regler_config) ; un
+    // autre choix de la personne le fait figer pendant le menu (commandes.rs, `ryubing::pause_reglee`).
+    matches!(emulateur, "retroarch" | "duckstation" | "pcsx2" | "dolphin" | "ppsspp" | "dosbox-staging" | "rpcs3" | "mame" | "eden" | "eglantine" | "lichii" | "azahar" | "ryubing")
 }
 
 /// Les émulateurs SANS pause réglable (code source relu le 16/10 : Cemu, Xenia Canary, xemu, Vita3K — au mieux une
@@ -907,6 +909,8 @@ mod tests {
         for id in ["cemu", "xenia", "xemu", "vita3k"] {
             assert!(super::fige_au_menu(id) && !super::se_met_en_pause(id), "{id}");
         }
+        // Ryubing : sa pause à la perte du premier plan (`PauseEmulation`, posée une fois par personne).
+        assert!(super::se_met_en_pause("ryubing") && !super::fige_au_menu("ryubing"));
         // Réglée seulement si le fichier le dit ; « pas de pause » choisi par la personne : jamais défait.
         let d = tempfile::tempdir().unwrap();
         assert!(!super::pause_reglee("eden", d.path()), "pas portable");

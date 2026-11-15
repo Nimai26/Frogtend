@@ -1842,6 +1842,11 @@ pub async fn jeu_jouer(
         }
         _ => None,
     };
+    // Ryubing : la racine de la personne (`-r`) existe encore, JUSTE avant de lancer — sinon il jouerait en silence sur
+    // les données communes (AppDataManager.cs), avec les parties d'un autre.
+    if let (Some("ryubing"), Some((_, ligne))) = (id_emulateur.as_deref(), emulateur.as_ref()) {
+        crate::ryubing::verifier_la_racine(ligne)?;
+    }
     // Un jeu resté figé d'une partie précédente repart d'abord.
     crate::figer::degeler();
     // « Occupé » du lancement jusqu'à la fin du suivi de la partie (deux tâches) : jamais rattaché entre les deux.
@@ -1876,10 +1881,15 @@ pub async fn jeu_jouer(
     // Le menu en jeu : sa touche est active pendant la partie seulement.
     let dossier_jeu_pe = dossier_jeu.clone();
     // Figé pendant le menu : un émulateur sans pause réglable, ou Eden/Azahar dont la pause n'a pas pu être réglée.
-    let figer_emulateur = match (id_emulateur.as_deref(), dossier_emulateur.as_deref()) {
+    let mut figer_emulateur = match (id_emulateur.as_deref(), dossier_emulateur.as_deref()) {
         (Some(e), Some(d)) => crate::pilotage::fige_au_menu(e) || !crate::pilotage::pause_reglee(e, std::path::Path::new(d)),
         _ => false,
     };
+    // Ryubing : sa pause est dans le Config.json de la personne qui joue (sa racine) ; un autre choix → figé au menu.
+    if let (Some("ryubing"), Some(d)) = (id_emulateur.as_deref(), dossier_emulateur.as_deref()) {
+        let racine = profil_ouvert(&noyau).await.ok().map(|p| crate::ryubing::racine(std::path::Path::new(d), &p.nom));
+        figer_emulateur = !racine.is_some_and(|r| crate::ryubing::pause_reglee(&r));
+    }
     // « Disque suivant » seulement pour une liste de disques (une cartouche n'en a qu'un).
     let plusieurs_disques = par_emulateur
         && noyau.fichier_pour_l_emulateur(id, version.as_deref()).await.ok().flatten().is_some_and(|f| crate::menu_jeu::liste_de_disques(&f));
@@ -7466,6 +7476,31 @@ async fn preparer_emulateur(
             if id == "vita3k" && (!crate::vita3k::portable(&d) || !crate::lancement::processus_du_dossier(&d).is_empty()) {
                 v.push("Vita3K non réglé (pas en mode portable, ou déjà ouvert) : utilisateur et plein écran inchangés");
             }
+            // Ryubing : rien n'a pu être réglé, dit au journal (sinon il s'ouvrirait en anglais, au clavier, sans indice).
+            if id == "ryubing" && crate::ryubing::config_a_cote_du_programme(&d) {
+                v.push("un Config.json à côté de Ryujinx.exe passe devant celui de la personne : Ryubing n'est pas réglé (langue, manette, pause)");
+            }
+            if id == "ryubing" && !crate::ryubing::portable(&d) {
+                v.push("Ryubing n'est pas en mode portable : ni dossier par personne, ni réglages (ses données restent dans %APPDATA%)");
+            }
+            // Une manette pas encore relevée (Sunshine, Bluetooth…) : le clavier est gardé (un identifiant faux couperait
+            // tout). Et les réglages propres à un jeu de la personne passent devant les siens : Frogtend n'y écrit rien.
+            let mut notes_ryubing: Vec<String> = Vec::new();
+            if id == "ryubing" && crate::ryubing::portable(&d) {
+                if matches!(manette, crate::emulateurs_profils::Manette::Auto(_) | crate::emulateurs_profils::Manette::Imposee(_)) {
+                    if let Some(m) = crate::manettes::id_manette_xinput_ryubing().filter(|m| m != crate::ryubing::MANETTE_RELEVEE) {
+                        notes_ryubing.push(format!("manette {m} pas encore relevée : le joueur 1 garde le clavier"));
+                    }
+                }
+                let par_jeu = crate::ryubing::configs_par_jeu(&crate::ryubing::racine(&d, &n));
+                if !par_jeu.is_empty() {
+                    notes_ryubing.push(format!(
+                        "réglages propres à un jeu ({}) : ils remplacent ceux de la personne pour ce jeu, Frogtend n'y écrit rien (pause lue dedans)",
+                        par_jeu.join(", ")
+                    ));
+                }
+            }
+            v.extend(notes_ryubing.iter().map(String::as_str));
             // La reprise des parties d'avant Frogtend n'a pas abouti (retentée trois fois au plus).
             if crate::emulateurs_profils::reprise_en_attente(&d) {
                 v.push("une reprise des parties d'avant Frogtend n'a pas encore abouti sur cet émulateur");
@@ -7479,7 +7514,7 @@ async fn preparer_emulateur(
         .map_err(|_| Erreur::Disque("La préparation de l'émulateur s'est arrêtée brutalement.".into()))??;
     let (avant, alerte) = avant;
     if let Some(a) = alerte {
-        noyau.journaliser(&format!("RPCS3 : {a}"));
+        noyau.journaliser(&format!("{} : {a}", f.nom));
     }
     let mut complete: Vec<String> = avant.iter().map(|a| format!("\"{a}\"")).collect();
     // BigPEmu : jamais sans `-localdata`, l'image toujours en premier (bigpemu.rs).

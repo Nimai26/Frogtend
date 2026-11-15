@@ -776,6 +776,18 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             let _ = crate::eden::reprendre_parties_d_avant(emulateur, &u);
             Ok(vec!["-u".into(), u.index.to_string()])
         }
+        // Ryubing (Switch) : un dossier de données par personne (`-r`, ✅ Seb 15/11) — sa racine `Profils\<profil>\`,
+        // ses clés, le firmware et `games\` partagés, ses parties d'avant reprises, son Config.json réglé dès la
+        // première partie avec la manette XInput branchée (sauf le clavier choisi pour ce jeu). ryubing.rs.
+        "ryubing" => {
+            let id_manette = if matches!(manette, Manette::Clavier) { None } else { crate::manettes::id_manette_xinput_ryubing() };
+            let joueur1 = match (manette, id_manette.as_deref()) {
+                (Manette::Clavier, _) => crate::ryubing::Joueur1::Clavier,
+                (_, Some(id)) => crate::ryubing::Joueur1::Manette(id),
+                (_, None) => crate::ryubing::Joueur1::Rien,
+            };
+            crate::ryubing::preparer_partie(emulateur, p, joueur1)
+        }
         // Cemu : le compte Wii U de ce profil (créé s'il manque), passé par `-a` — un compte inconnu ferait jouer le
         // premier en silence (cemu.rs). Seulement Cemu portable et FERMÉ ; sinon (ou fichier de compte impossible à
         // écrire), Cemu part comme avant, jamais bloqué.
@@ -1913,6 +1925,20 @@ pub fn traces_hors_du_dossier(id: &str) -> Vec<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn ryubing_joue_dans_la_racine_de_la_personne() {
+        let d = tempfile::tempdir().unwrap();
+        let ryu = d.path().join("Ryubing");
+        std::fs::create_dir_all(ryu.join("portable").join("system")).unwrap();
+        std::fs::write(ryu.join("portable").join("system").join("prod.keys"), b"k").unwrap();
+        // Le clavier choisi pour ce jeu : aucune manette n'est cherchée ni posée.
+        let args = super::preparer("ryubing", &ryu, "Seb", &[], &super::Manette::Clavier).unwrap();
+        let racine = super::dossier_du_profil(&ryu, "Seb");
+        assert_eq!(args, vec!["-r".to_string(), racine.to_string_lossy().to_string()]);
+        assert!(racine.join("system").join("prod.keys").is_file() && racine.join("Config.json").is_file());
+        assert_eq!(crate::ryubing::config_de(&racine), racine.join("Config.json"));
+    }
+
     #[test]
     fn une_reprise_reste_a_faire_jusqu_a_sa_reussite_et_seulement_pour_son_profil() {
         let d = tempfile::tempdir().unwrap();

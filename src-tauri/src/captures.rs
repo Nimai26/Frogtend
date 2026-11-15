@@ -40,6 +40,9 @@ pub fn dossiers_de(emulateur: &str, dossier_emulateur: &Path, profil: Option<&Pa
         // BigPEmu : `UserData\game<empreinte>_screenNNNN.tga` (son message à l'écran, relevé de Seb le 12/11 ; nom
         // `game%016llX_screen%04i.tga` dans le programme 1.221), chez la personne qui joue.
         "bigpemu" => profil.map(|p| p.join(crate::bigpemu::DOSSIER_DONNEES)).into_iter().collect(),
+        // Ryubing : `<racine>\screenshots\<jeu>_<date>.png` (AppHost.cs L394-415, `AppDataManager.BaseDirPath`), la
+        // racine étant celle de la personne qui joue (`-r`, ryubing.rs).
+        "ryubing" => profil.map(|p| p.join("screenshots")).into_iter().collect(),
         _ => Vec::new(),
     }
 }
@@ -599,6 +602,10 @@ mod tests {
         assert_eq!(std::fs::read(&place).unwrap(), bmp);
         assert!(!src.exists());
         assert_eq!(dossiers_de("bigpemu", d.path(), Some(d.path()), None), vec![d.path().join("UserData")]);
+        // Ryubing : les captures de la racine de la personne qui joue (`-r`), jamais celles de `portable\`.
+        let p = crate::ryubing::racine(Path::new(r"E:\Emu\Ryubing"), "Seb");
+        assert_eq!(dossiers_de("ryubing", Path::new(r"E:\Emu\Ryubing"), Some(&p), None), vec![p.join("screenshots")]);
+        assert!(dossiers_de("ryubing", Path::new(r"E:\Emu\Ryubing"), None, None).is_empty());
     }
 
     #[test]

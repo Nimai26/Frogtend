@@ -719,6 +719,32 @@ impl Noyau {
             if !du_profil.is_dir() {
                 continue;
             }
+            // Ryubing : `Profils\<nom>\` est TOUTE sa racine de données (`-r`), avec des jonctions vers le firmware et
+            // les caches communs. Seuls partent ses parties, leur index, ses utilisateurs et ses réglages
+            // (`ryubing::a_sauvegarder`) — jamais les clés, le firmware ni les caches. Ouvert : rien de lui cette fois
+            // (une partie ou l'index peuvent être en cours d'écriture), ce qui est déjà chez Firehouse y reste.
+            if crate::ryubing::est_ryubing(programme) {
+                if !crate::lancement::processus_du_dossier(dossier).is_empty() {
+                    gardes_ouverts.push(format!("emulateurs/{nom_emulateur}/"));
+                    continue;
+                }
+                for r in crate::ryubing::fichiers_a_sauvegarder(&du_profil)?.into_iter().filter(|r| !crate::emulateurs_profils::porte_un_secret(r)) {
+                    let mut source = du_profil.join(&r);
+                    // Ses réglages partent par une COPIE sans le mot de passe du réseau local (jamais le fichier de la
+                    // personne modifié), rangée chez Frogtend, dans le dossier de CE profil ; illisibles, ils ne partent pas.
+                    if r == crate::ryubing::FICHIER_CONFIG {
+                        let Some(copie) = std::fs::read_to_string(&source).ok().and_then(|t| crate::ryubing::config_a_envoyer(&t)) else { continue };
+                        let f = self.dossier.join("profils").join(&profil.id).join("copies-sauvegarde").join(&nom_emulateur).join(&r);
+                        if std::fs::read_to_string(&f).ok().as_deref() != Some(copie.as_str()) {
+                            std::fs::create_dir_all(f.parent().unwrap_or(&self.dossier))?;
+                            std::fs::write(&f, &copie)?;
+                        }
+                        source = f;
+                    }
+                    parties.push(Element { source, relatif: format!("emulateurs/{nom_emulateur}/{r}") });
+                }
+                continue;
+            }
             // Sans les fichiers qui portent une connexion RetroAchievements (jeton) : ils restent sur ce PC.
             // Ni une sauvegarde de MAME en cours d'écriture (elle n'est gardée qu'une fois complète), ni une sauvegarde
             // rapide de BigPEmu mise de côté le temps d'une opération (remise en place au prochain lancement).
@@ -1095,6 +1121,60 @@ mod tests {
             vec!["emulateurs/Eden/.eden-utilisateur/save/0100000000010000/save.bin", "emulateurs/Eden/.eden-utilisateur/device/0100000000030000/commun.bin"]
         );
         assert_eq!(std::fs::read(&c.parties[0].source).unwrap(), b"zelda de Seb", "jamais les parties de Léa");
+    }
+
+    #[tokio::test]
+    async fn seules_les_parties_ryubing_de_la_racine_du_profil_partent() {
+        use crate::coffre::CoffreMemoire;
+        use crate::noyau::Connexion;
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, None).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        let ryu = d.path().join("Emulateurs").join("Ryubing");
+        let sys = ryu.join("portable").join("system");
+        std::fs::create_dir_all(&sys).unwrap();
+        std::fs::write(sys.join("prod.keys"), b"cles").unwrap();
+        let nca = crate::ryubing::dossier_firmware(&ryu).join("0123456789abcdef0123456789abcdef.nca");
+        std::fs::create_dir_all(&nca).unwrap();
+        std::fs::write(nca.join("00"), b"firmware").unwrap();
+        let programme = ryu.join("Ryujinx.exe").to_string_lossy().to_string();
+        for (qui, o) in [("Seb", &b"zelda de Seb"[..]), ("Léa", b"zelda de Lea")] {
+            let r = crate::ryubing::racine(&ryu, qui);
+            crate::ryubing::preparer_partie(&ryu, &r, crate::ryubing::Joueur1::Rien).unwrap();
+            let s = r.join("bis").join("user").join("save").join("0000000000000001").join("0");
+            std::fs::create_dir_all(&s).unwrap();
+            std::fs::write(s.join("partie.bin"), o).unwrap();
+            let i = r.join("bis").join("system").join("save").join("8000000000000000").join("0");
+            std::fs::create_dir_all(&i).unwrap();
+            std::fs::write(i.join("imkvdb.arc"), b"index").unwrap();
+            // Un cache de shaders (par la jonction `games\`, commun) : jamais sauvegardé.
+            std::fs::create_dir_all(r.join("games").join("0100000000010000")).unwrap();
+            std::fs::write(r.join("games").join("0100000000010000").join("cache.bin"), b"x").unwrap();
+        }
+        let c = n.contenu_sauvegarde(std::slice::from_ref(&programme)).await.unwrap();
+        let rel: Vec<_> = c.parties.iter().map(|e| e.relatif.as_str()).collect();
+        assert_eq!(
+            rel,
+            vec![
+                "emulateurs/Ryubing/bis/user/save/0000000000000001/0/partie.bin",
+                "emulateurs/Ryubing/bis/system/save/8000000000000000/0/imkvdb.arc",
+                "emulateurs/Ryubing/Config.json",
+                "emulateurs/Ryubing/.frogtend-ryubing-reglages",
+            ],
+            "ni clés, ni firmware, ni caches"
+        );
+        assert_eq!(std::fs::read(&c.parties[0].source).unwrap(), b"zelda de Seb", "jamais les parties de Léa");
+        // Ses réglages partent SANS le mot de passe du réseau local (une copie) ; son fichier reste tel quel.
+        let cfg = crate::ryubing::config_de(&crate::ryubing::racine(&ryu, "Seb"));
+        let avec = std::fs::read_to_string(&cfg).unwrap().replace("\"multiplayer_ldn_passphrase\": \"\"", "\"multiplayer_ldn_passphrase\": \"secret-ldn\"");
+        assert!(avec.contains("secret-ldn"));
+        std::fs::write(&cfg, &avec).unwrap();
+        let c = n.contenu_sauvegarde(std::slice::from_ref(&programme)).await.unwrap();
+        let e = c.parties.iter().find(|e| e.relatif == "emulateurs/Ryubing/Config.json").unwrap();
+        assert_ne!(e.source, cfg);
+        assert!(!std::fs::read_to_string(&e.source).unwrap().contains("secret-ldn"));
+        assert_eq!(std::fs::read_to_string(&cfg).unwrap(), avec);
     }
 
     #[tokio::test]

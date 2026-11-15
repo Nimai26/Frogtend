@@ -493,6 +493,34 @@ pub fn reposer_sauf(de: &Path, vers: &Path, ecraser: bool, sauf: &[&str], reglee
     Ok(r)
 }
 
+/// Ryubing (un dossier par personne, `-r`) : les parties de la sauvegarde (`de` : sa zone d'attente) reviennent dans la
+/// racine de la personne EN BLOC, parties et index ensemble (`ryubing::reposer_sauvegarde`), seulement si elle n'y a
+/// encore AUCUNE partie ; sinon tout reste en attente (gardé chez Firehouse) et c'est dit, une fois : deux index de
+/// parties ne se fusionnent jamais, et rien n'est proposé au remplacement partie par partie. Ryubing pas portable ou
+/// ouvert : elles attendent.
+fn reposer_ryubing(de: &Path, ryubing: &Path, profil: &str, reglees: &mut Reglees) -> Resultat<Reposes> {
+    let mut r = Reposes::default();
+    if !de.is_dir() || !crate::ryubing::portable(ryubing) || !crate::lancement::processus_du_dossier(ryubing).is_empty() {
+        return Ok(r);
+    }
+    let fichiers: Vec<String> = fichiers_de(de)?.into_iter().filter(|f| crate::ryubing::a_sauvegarder(f)).collect();
+    if fichiers.is_empty() {
+        return Ok(r);
+    }
+    let racine = crate::ryubing::racine(ryubing, profil);
+    // Déjà reposée (ou déjà dite en attente) et la copie n'a pas changé : plus retraitée.
+    let Some(e) = reglees.examiner(de, &racine, true, Some(&fichiers))? else { return Ok(r) };
+    const ETIQUETTE: &str = "Switch (Ryubing)";
+    if crate::ryubing::a_des_parties(&racine) {
+        r.conflits.push(format!("{ETIQUETTE} : des parties existent déjà ici, celles de la sauvegarde restent en attente (deux index de parties ne se mêlent jamais)"));
+        reglees.noter(de, "attente", &e, &racine, true, ETIQUETTE);
+        return Ok(r);
+    }
+    r.reposes += crate::ryubing::reposer_sauvegarde(ryubing, &racine, de)?;
+    reglees.noter(de, "reposee", &e, &racine, true, ETIQUETTE);
+    Ok(r)
+}
+
 impl Noyau {
     fn zone_restauration(&self, profil_id: &str) -> PathBuf {
         self.dossier.join("restauration").join(profil_id)
@@ -677,6 +705,13 @@ impl Noyau {
         for (programme, nom) in cles_en_attente(zone, programmes_emulateurs, anciens) {
             let Some(dossier) = Path::new(&programme).parent() else { continue };
             reglees.emulateur = dossier.to_path_buf();
+            // Ryubing : la racine de la personne revient EN BLOC (parties + index), jamais fichier par fichier.
+            if crate::ryubing::est_ryubing(&programme) {
+                let mut r = reposer_ryubing(&zone.join(&nom), dossier, &s.profil.nom, reglees)?;
+                r.conflits = r.conflits.into_iter().map(|f| format!("{nom}/{f}")).collect();
+                total.ajouter(r, true);
+                continue;
+            }
             let mut r = reposer_sauf(
                 &zone.join(&nom),
                 &crate::emulateurs_profils::dossier_du_profil(dossier, &s.profil.nom),
@@ -1060,6 +1095,52 @@ mod tests {
         let r = n.reposer_parties_emulateurs(&[programme]).await.unwrap();
         assert!(r.conflits.is_empty() && r.a_remplacer.is_empty());
         assert_eq!(std::fs::read(p.join("save.dat")).unwrap(), b"zelda plus loin");
+    }
+
+    #[tokio::test]
+    async fn les_parties_ryubing_reviennent_en_bloc_seulement_chez_qui_n_en_a_aucune() {
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(crate::coffre::CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, None).unwrap().id;
+        n.ouvrir(&id, None, &crate::noyau::Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        let zone = d.path().join("app").join("restauration").join(&id).join("parties").join("emulateurs").join("Ryubing");
+        let ecrire = |r: &str, o: &[u8]| {
+            std::fs::create_dir_all(zone.join(r).parent().unwrap()).unwrap();
+            std::fs::write(zone.join(r), o).unwrap();
+        };
+        ecrire("bis/user/save/0000000000000001/0/partie.bin", b"zelda");
+        ecrire("bis/system/save/8000000000000000/0/imkvdb.arc", b"index");
+        ecrire("system/Profiles.json", b"utilisateurs");
+        // Des réglages que Ryubing refuserait (ici sans `input_config`) : jamais reposés (le modèle sera posé).
+        ecrire("Config.json", b"{\"version\": 70}");
+        let ryu = d.path().join("Emulateurs").join("Ryubing");
+        let programme: String = ryu.join("Ryujinx.exe").to_string_lossy().into();
+        // Pas portable : rien n'est écrit, elles attendent.
+        std::fs::create_dir_all(&ryu).unwrap();
+        assert_eq!(n.reposer_parties_emulateurs(std::slice::from_ref(&programme)).await.unwrap().reposes, 0);
+        assert!(!ryu.join("Profils").exists());
+        // Portable, racine sans partie : tout revient d'un bloc (parties, index, utilisateurs, réglages).
+        std::fs::create_dir_all(ryu.join("portable")).unwrap();
+        let rep = n.reposer_parties_emulateurs(std::slice::from_ref(&programme)).await.unwrap();
+        assert_eq!((rep.reposes, rep.conflits.len()), (3, 0), "{rep:?}");
+        let racine = crate::ryubing::racine(&ryu, "Seb");
+        assert!(!crate::ryubing::config_de(&racine).exists());
+        let partie = racine.join("bis/user/save/0000000000000001/0/partie.bin");
+        assert_eq!(std::fs::read(&partie).unwrap(), b"zelda");
+        assert_eq!(std::fs::read(racine.join("bis/system/save/8000000000000000/0/imkvdb.arc")).unwrap(), b"index");
+        assert_eq!(std::fs::read(racine.join("system/Profiles.json")).unwrap(), b"utilisateurs");
+        // Il a rejoué ; une nouvelle sauvegarde restaurée arrive : jamais mêlée, tout attend, dit UNE fois, rien proposé
+        // au remplacement partie par partie.
+        std::fs::write(&partie, b"zelda plus loin").unwrap();
+        ecrire("bis/user/save/0000000000000002/0/autre.bin", b"autre");
+        let rep = n.reposer_parties_emulateurs(std::slice::from_ref(&programme)).await.unwrap();
+        assert_eq!((rep.reposes, rep.conflits.len(), rep.a_remplacer.len()), (0, 1, 0), "{rep:?}");
+        assert!(rep.conflits[0].starts_with("Ryubing/Switch (Ryubing)"), "{:?}", rep.conflits);
+        assert_eq!(std::fs::read(&partie).unwrap(), b"zelda plus loin");
+        assert!(!racine.join("bis/user/save/0000000000000002").exists());
+        assert!(zone.join("bis/user/save/0000000000000002/0/autre.bin").is_file(), "elle reste en attente");
+        let rep = n.reposer_parties_emulateurs(&[programme]).await.unwrap();
+        assert!(rep.conflits.is_empty(), "dit une seule fois");
     }
 
     #[tokio::test]
