@@ -270,6 +270,15 @@ vraie sauvegarde, faite par Seb** (Options ▸ Sauvegarde ▸ 💾 Sauvegarder m
 À la restauration, Frogtend remet la configuration et les parties, puis propose de retélécharger les jeux de la
 liste (annoncé et chiffré d'abord : combien de jeux, combien de Go).
 
+**Ryubing, la fiche complète (Seb, 15/11 : « le b »)** — plan de l'expert lancement (code de Ryubing 1.3.3 lu) :
+lot 0 relevé réel SANS jeu (Config.json v70 modèle, Profiles.json, arborescence, identifiant SDL2 de la manette) ;
+lot 1 fiche + clés de l'ALTERNATIVE (`portable\system\`, jamais celles d'Eden) + firmware ; lot 2 réglé dès la 1re
+partie (French/fr_FR, show_confirm_exit false, PauseEmulation, update Off, Discord off ; Config.json écrit Ryubing
+FERMÉ, à l'abri avant, relu après) ; lot 3 une personne = ses données (voie A `-p <nom>` ou B `-r <dossier>`) ; lot 4
+sauvegarde Firehouse (⚠ parties indexées par LibHac : jamais partie par partie) ; lot 5 menu (capture F8, muet F2,
+turbo F13 posé, effets et triches au prochain lancement ; pas de sauvegardes rapides ni de Recommencer natif) ; lot 6
+mises à jour et DLC (`updates.json`, `dlc.json`). Décisions de Seb demandées le 15/11 : relevé réel, firmware, voie A/B.
+
 **PS4 et PS5 (Seb, 15/11 : « l'émulation PS4 et PS5 commence à bien fonctionner, nous allons donc devoir
 l'intégrer ») :** à faire après les raccourcis réglables. D'abord une recherche dans les sources OFFICIELLES (quels
 émulateurs, leur état, leur ligne de commande, leurs dossiers, manettes, langue, sauvegardes, firmware et clés
