@@ -10,7 +10,7 @@
 - [ ] Super Mario World (RetroArch) : avancer un peu, menu ▸ changer l'effet d'image, puis 🔄 Relancer ▸ « Sauver puis
       relancer » : le jeu repart puis, quelques secondes après, revient tout seul à l'endroit sauvé (message
       « Chargement demandé : emplacement N » en bas de l'écran).
-- [ ] Bubsy (Jaguar, sans triche) : même chose, le jeu revient à l'endroit sauvé environ 3 s après son démarrage.
+- [x] (✅ Seb 15/11, 0.200.0) Bubsy (Jaguar, sans triche) : même chose, le jeu revient à l'endroit sauvé environ 3 s après son démarrage.
 - [x] (✅ Seb 15/11, 0.200.0) Bubsy avec une triche cochée : PAS de chargement tout seul ; en ouvrant le menu, il dit de faire 📂 Charger.
 
 ## Relancer pour appliquer (0.199.0)
