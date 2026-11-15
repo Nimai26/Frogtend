@@ -7,7 +7,7 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## Raccourcis en jeu (0.201.0)
-- [ ] ⚙ Options ▸ ⚡ Raccourcis en jeu : la rubrique est là, avec tes réglages d'avant. Choisir « Vue + RB » pour charger
+- [x] (✅ Seb 15/11) ⚙ Options ▸ ⚡ Raccourcis en jeu : la rubrique est là, avec tes réglages d'avant. Choisir « Vue + RB » pour charger
       est grisé (« déjà : ouvrir le menu »).
 - [ ] Bubsy : Ctrl + Maj + F5 sauve, Ctrl + Maj + F9 recharge (sans ouvrir le menu).
 - [ ] Changer la sauvegarde à la manette pour Vue + LB : en jeu, Vue + LB tenus ½ s sauve ; l'image « 🎮 Les touches »
@@ -28,7 +28,7 @@
 - [x] (✅ Seb 15/11, 0.200.0) Eglantine : menu ▸ 🔄 Recommencer ▸ « Relancer sans sauver » : le jeu se ferme et repart tout seul.
 
 ## Switch 2 : Quitter sans émulateur figé (0.198.0)
-- [x] (✅ Seb 15/11) Eglantine (ou Lichii) : ▶ Quitter ; si la fenêtre reste figée (« ne répond pas »), elle disparaît seule en 20
+- [x] (✅ Seb 15/11) Eglantine (ou Lichii) : ▶ Quitter ; si la fenêtre reste figée — vu en vrai le 15/11 à 11 h 06 (journal : « restait figé, 20 s sans répondre… 1 processus terminé ») après un Recommencer (« ne répond pas »), elle disparaît seule en 20
       à 30 s environ (le journal de Frogtend dit « quitter : l'émulateur restait figé… »). Relance le jeu : ta partie
       sauvegardée juste avant de quitter est bien là.
 
