@@ -7,7 +7,7 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## Switch 2 : Quitter sans émulateur figé (0.198.0)
-- [ ] Eglantine (ou Lichii) : ▶ Quitter ; si la fenêtre reste figée (« ne répond pas »), elle disparaît seule en 20
+- [x] (✅ Seb 15/11) Eglantine (ou Lichii) : ▶ Quitter ; si la fenêtre reste figée (« ne répond pas »), elle disparaît seule en 20
       à 30 s environ (le journal de Frogtend dit « quitter : l'émulateur restait figé… »). Relance le jeu : ta partie
       sauvegardée juste avant de quitter est bien là.
 
