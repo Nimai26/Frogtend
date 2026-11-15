@@ -12,12 +12,12 @@
       Avec une triche cochée, la question de Recommencer prévient que la petite fenêtre des triches reviendra.
 
 ## Switch 2 : le menu en jeu complété (0.194.0)
-- [ ] Un jeu Eglantine (ou Lichii), menu en jeu ▸ ⚙ Options du jeu : on voit 📷 Photo de l'écran, 🔇 Son, ⏩ avance
+- [x] (✅ Seb 15/11) Un jeu Eglantine (ou Lichii), menu en jeu ▸ ⚙ Options du jeu : on voit 📷 Photo de l'écran, 🔇 Son, ⏩ avance
       rapide (et le compteur d'images, comme avant).
 - [ ] 📷 Photo de l'écran : AUCUNE fenêtre « Enregistrer sous » ; en quittant, « capture rangée » ; 📷 Mes captures
       la montre (Nintendo Switch 2 ▸ le jeu).
-- [ ] 🔇 Son coupé : plus de son ; une 2e fois : il revient. Coupe-le, quitte, relance : le son est là.
-- [ ] ⏩ Turbo : le jeu va plus vite ; une 2e fois : vitesse normale.
+- [x] (✅ Seb 15/11) 🔇 Son coupé : plus de son ; une 2e fois : il revient. Coupe-le, quitte, relance : le son est là.
+- [x] (✅ Seb 15/11) ⏩ Turbo : le jeu va plus vite ; une 2e fois : vitesse normale.
 - [x] ❌ (Seb 15/11) 🔄 Recommencer : Eglantine a planté (journal coupé pendant son arrêt forcé) → retiré en 0.196.0.
 - [x] (✅ Seb 15/11 : « tout au même endroit dans Frogtend, c'est parfait ») Une photo prise par le JEU lui-même (l'album de la Switch) arrive dans le même dossier ; Frogtend
       la range aussi dans 📷 Mes captures, donc elle quitte l'album d'Eden. D'accord, ou faut-il laisser l'album ?
