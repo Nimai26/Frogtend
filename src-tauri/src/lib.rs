@@ -416,9 +416,9 @@ pub fn run() {
             // La touche du menu en jeu (armée seulement pendant une partie) ouvre le menu par-dessus le jeu.
             app.handle().plugin(
                 tauri_plugin_global_shortcut::Builder::new()
-                    .with_handler(|app, _raccourci, evenement| {
+                    .with_handler(|app, raccourci, evenement| {
                         if evenement.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                            commandes::ouvrir_menu(app);
+                            commandes::touche_globale(app, raccourci);
                         }
                     })
                     .build(),

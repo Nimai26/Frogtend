@@ -13,6 +13,7 @@
   import RetroAchievements from '$lib/options/RetroAchievements.svelte';
   import Nexus from '$lib/options/Nexus.svelte';
   import Emulateurs from '$lib/reglages/Emulateurs.svelte';
+  import Raccourcis from '$lib/reglages/Raccourcis.svelte';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { etat, reglerPc, reglerProfil, reinitialiserPc, reinitialiserProfil } from '$lib/etat.svelte';
@@ -108,6 +109,7 @@
     { groupe: 'Jeux', rubriques: [
       { id: 'emplacements', libelle: '📁 Emplacements' },
       { id: 'emulateurs', libelle: '🕹 Émulateurs' },
+      { id: 'raccourcis', libelle: '⚡ Raccourcis en jeu' },
       { id: 'captures', libelle: '📷 Captures d’écran' },
     ] },
     { groupe: 'Comptes', rubriques: [
@@ -356,6 +358,11 @@
         <span class="muted">Une sauvegarde automatique plus grosse attend que tu la lances toi-même (une connexion modeste mettrait longtemps).</span>
       </label>
     </div>
+  </section>
+    {:else if rubrique === 'raccourcis'}
+  <section class="panel">
+    <header>⚡ Raccourcis en jeu <span class="muted">— ce PC</span></header>
+    <div class="corps"><Raccourcis /></div>
   </section>
     {:else if rubrique === 'emulateurs'}
   <section class="panel">

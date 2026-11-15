@@ -263,6 +263,10 @@ describe('les boutons de la manette d’origine', () => {
     expect(l.map((x) => x.effet)).toEqual(['ouvrir ou fermer le menu de Frogtend', 'ouvrir le menu de Frogtend', 'ouvrir le menu de Frogtend', 'sauvegarde rapide', 'chargement rapide (la partie revient à la sauvegarde)']);
     expect(l[2].geste).toContain('Pause/Attn');
     expect(l[3].geste).toBe('Vue (⧉) + LT, tenus ½ seconde');
+    const regles = raccourcis(
+      infos({ raccourcis: { combinaison: 'Select + R1', bouton_xbox: false, touche: 'Pause', etats: true, sauver_manette: 'Select + L1', charger_manette: '', sauver_clavier: 'Ctrl+Shift+F5', charger_clavier: '' } }),
+    );
+    expect(regles.map((x) => x.geste)).toEqual(['Vue (⧉) + RB, tenus 1 seconde', 'Touche Pause/Attn du clavier', 'Vue (⧉) + LB, tenus ½ seconde', 'Touches Ctrl + Maj + F5 du clavier']);
     const sans = raccourcis(infos({ raccourcis: { combinaison: 'L3 + R3', bouton_xbox: false, touche: '', etats: false } }));
     expect(sans).toEqual([{ geste: 'L3 + R3, tenus 1 seconde', effet: 'ouvrir le menu de Frogtend' }]);
   });

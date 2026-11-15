@@ -102,8 +102,11 @@
     <h2>🕹 Pendant une partie</h2>
     <ul>
       <li>
-        La touche <strong>Pause/Attn</strong> (réglable dans <a href="/reglages?rubrique=emulateurs">⚙ Options ▸ Émulateurs</a>)
-        ouvre le menu de Frogtend par-dessus le jeu : reprendre, sauvegarde rapide, manuel, quitter…
+        D’origine, la touche <strong>Pause/Attn</strong>, le bouton Xbox ou Vue + RB tenus 1 s ouvrent le menu de Frogtend
+        par-dessus le jeu : reprendre, sauvegarde rapide, manuel, quitter… Sans ouvrir le menu, pour les jeux qui le
+        permettent : Vue + LT ou <strong>Ctrl + Maj + F5</strong> sauvent, Vue + RT ou <strong>Ctrl + Maj + F9</strong>
+        rechargent. Tout se règle dans
+        <a href="/reglages?rubrique=raccourcis">⚙ Options ▸ ⚡ Raccourcis en jeu</a>.
       </li>
       <li><strong>⚙ Gérer le jeu</strong> : changer d’émulateur pour ce jeu seulement, les commandes, ce qui lance le jeu.</li>
       <li>Les triches et les mods se trouvent par jeu ; avant de modder, Frogtend propose une copie du jeu.</li>

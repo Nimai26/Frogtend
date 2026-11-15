@@ -112,6 +112,7 @@ git 2.51, Node 24.11, pnpm 10.32, Rust 1.94 (stable, MSVC), Visual Studio Build 
 > certains émulateurs ». Référence : le menu de RetroArch (SNES) — sauvegarde/chargement rapides ET choix de
 > l'emplacement (0 à 9), effets, triches, capture.
 >
+> ✅ **Décision de Seb (15/11)** : au clavier, des touches par défaut pour sauver et charger : Ctrl + Maj + F5 et Ctrl + Maj + F9 (modifiables) ; rubrique « ⚡ Raccourcis en jeu » après Émulateurs.
 > ⚠ **Raccourcis réglables (Seb, 11/11) :** « ce sera cool que ce soit les réglages par défaut, mais qu'il y ait une
 > rubrique dans les options pour définir les raccourcis manette ET clavier, et qu'ils restent tout de même à jour dans
 > le menu des manettes ». → une rubrique des Réglages : les raccourcis de Frogtend (menu, sauvegarde et chargement

@@ -778,6 +778,13 @@ pub fn etat(p: &PartieEnCours) -> EtatMenu {
     }
 }
 
+/// Sauver ou charger au clavier est-il possible pour cette partie, d'après ce qui est connu AU LANCEMENT (MAME : son
+/// script ne dit qu'ensuite s'il tourne ; l'appui revérifie ce que le menu propose, `raccourci_etat`) ?
+pub fn etats_au_clavier(p: &PartieEnCours, a: crate::pilotage::Action) -> bool {
+    let e = p.emulateur.as_deref().unwrap_or("");
+    crate::pilotage::actions(e).contains(&a) && (p.raccourcis_clavier || e == "retroarch" || e == "mame") && !p.etats_interdits && e != "rpcs3"
+}
+
 /// Les actions proposées par le menu pour cette partie.
 fn etat_actions(p: &PartieEnCours, e: &str) -> Vec<&'static str> {
     crate::pilotage::actions(e)
@@ -1727,8 +1734,22 @@ mod tests {
     #[test]
     fn les_touches_proposees_dans_les_options_sont_comprises() {
         // Les choix de ⚙ Options ▸ Émulateurs (src/lib/reglages/Emulateurs.svelte).
-        for t in ["Pause", "ScrollLock", "Ctrl+Shift+M"] {
+        for t in ["Pause", "ScrollLock"] {
             assert!(t.parse::<tauri_plugin_global_shortcut::Shortcut>().is_ok(), "{t}");
+        }
+        // Celles de sauver / charger : comprises, et jamais une touche que Frogtend envoie lui-même.
+        for t in crate::commandes::TOUCHES_ETATS {
+            assert!(crate::commandes::touche_clavier_permise(t), "{t}");
+        }
+        assert!(!crate::commandes::touche_clavier_permise("Ctrl+Shift+M"), "le son coupé de RPCS3 (envoyé par Frogtend)");
+        assert!(!crate::commandes::touche_clavier_permise("F13"));
+        assert!(!crate::commandes::TOUCHES_MENU.contains(&"Ctrl+Shift+M"));
+        // MAME : les touches s'arment au lancement (avant que son script dise qu'il tourne) ; jamais pour un jeu PC.
+        assert!(etats_au_clavier(&partie(Some("mame")), crate::pilotage::Action::SauverEtat));
+        assert!(!etats_au_clavier(&partie(None), crate::pilotage::Action::SauverEtat));
+        assert!(!etats_au_clavier(&PartieEnCours { etats_interdits: true, ..partie(Some("retroarch")) }, crate::pilotage::Action::SauverEtat));
+        for e in crate::pilotage::touches_envoyees() {
+            assert!(e.parse::<tauri_plugin_global_shortcut::Shortcut>().is_ok(), "{e} se lit comme raccourci");
         }
     }
 

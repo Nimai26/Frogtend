@@ -184,6 +184,18 @@ pub fn fenetre_visible(pids: &[u32]) -> bool {
     }
 }
 
+/// Alt, Ctrl, Maj ou Windows tenus par la personne en ce moment ? (Hors Windows : non.)
+pub fn modificateur_tenu() -> bool {
+    #[cfg(windows)]
+    {
+        windows_impl::modificateur_tenu()
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
 #[cfg(windows)]
 mod windows_impl {
     use super::{couvre_l_ecran, Etat, Mode, TOUCHES};
@@ -231,7 +243,7 @@ mod windows_impl {
     }
 
     /// Alt, Ctrl, Maj, Windows tenus par la personne ? (Une touche envoyée alors changerait de sens : Alt+F4 ferme.)
-    fn modificateur_tenu() -> bool {
+    pub(super) fn modificateur_tenu() -> bool {
         [VK_MENU, VK_CONTROL, VK_SHIFT, VK_LWIN, VK_RWIN].iter().any(|v| unsafe { GetAsyncKeyState(v.0 as i32) } as u16 & 0x8000 != 0)
     }
 

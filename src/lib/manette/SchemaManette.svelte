@@ -85,7 +85,7 @@
       </button>
     {/each}
   </div>
-  <p class="muted">Ils se changent dans Frogtend, après la partie : ⚙ Options ▸ Émulateurs.</p>
+  <p class="muted">Ils se changent dans Frogtend, après la partie : ⚙ Options ▸ ⚡ Raccourcis en jeu.</p>
 </div>
 
 <style>

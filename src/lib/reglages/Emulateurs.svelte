@@ -14,7 +14,6 @@
   import { PLATEFORMES_CONNUES } from '$lib/ludotheque/categories';
   import { tele } from '$lib/ludotheque/telechargements.svelte';
   import { GENRES_MANETTE } from '$lib/ludotheque/commandes';
-  import { libererBoutonXbox } from '$lib/ludotheque/jeu.svelte';
 
   const e = $derived(Object.entries(etat.pc.emulateurs));
   let plateformes = $state<Plateforme[]>([]);
@@ -38,16 +37,8 @@
     traces = await api.emulateursTraces().catch(() => []);
   }
   /** La Game Bar de Windows prend-elle encore le bouton Xbox ? (Alors il n'ouvre pas le menu de Frogtend.) */
-  let gameBarPrend = $state<boolean | null>(null);
-  async function lireGameBar() {
-    gameBarPrend = await api.gameBarBouton().catch(() => null);
-  }
-  async function liberer() {
-    if (await libererBoutonXbox()) await lireGameBar();
-  }
 
   onMount(async () => {
-    lireGameBar();
     // Les jeux de ce PC (importés compris) et ceux du catalogue ; puis toutes les plateformes connues.
     const [pc, catalogue] = await Promise.all([api.plateformes(true).catch(() => []), api.plateformes(false).catch(() => [])]);
     plateformes = systemesProposes([...pc, ...catalogue], [...PLATEFORMES_CONNUES, ...Object.keys(etat.pc.emulateurs)]) as Plateforme[];
@@ -229,67 +220,8 @@
 
 <div class="emulateurs">
   <dl class="cx-kv">
-    <dt>Touche du menu en jeu</dt>
-    <dd>
-      <select
-        value={etat.pc.menuJeu.touche}
-        title="Pendant une partie, cette touche ouvre le menu de Frogtend par-dessus le jeu (reprendre, sauvegarde rapide, manuel, quitter…)."
-        onchange={(e) => reglerPc('menuJeu.touche', e.currentTarget.value)}
-      >
-        <option value="Pause">Pause/Attn</option>
-        <option value="ScrollLock">Arrêt défil</option>
-        <option value="Ctrl+Shift+M">Ctrl + Maj + M</option>
-      </select>
-    </dd>
-    <dt>Combinaison de la manette</dt>
-    <dd>
-      <select
-        value={etat.pc.menuJeu.manette ?? 'Select + R1'}
-        title="Pendant une partie, ces deux boutons tenus 1 seconde ouvrent le menu de Frogtend par-dessus le jeu. Choisis une combinaison que tes jeux n’utilisent pas. Prend effet à la prochaine partie."
-        onchange={(e) => reglerPc('menuJeu.manette', e.currentTarget.value)}
-      >
-        <option value="Select + R1">Select + R1 (View + RB), tenus 1 s</option>
-        <option value="Select + L1">Select + L1 (View + LB), tenus 1 s</option>
-        <option value="L3 + R3">L3 + R3 (clic des deux sticks), tenus 1 s</option>
-        <option value="Select + Start">Select + Start, tenus 1 s</option>
-      </select>
-    </dd>
-    <dt>Bouton Xbox</dt>
-    <dd>
-      <select
-        value={etat.pc.menuJeu.boutonXbox === false ? 'non' : 'oui'}
-        onchange={(e) => reglerPc('menuJeu.boutonXbox', e.currentTarget.value === 'oui')}
-      >
-        <option value="oui">ouvre et ferme le menu en jeu (appui court)</option>
-        <option value="non">n’ouvre pas le menu de Frogtend</option>
-      </select>
-      <p class="muted">
-        Un appui court sur le bouton du milieu de la manette (Xbox, PS ou Home) ouvre le menu de Frogtend pendant une partie, et le
-        referme. Il ne marche pas pour les jeux de console Xbox, Switch, Wii U, PSP et Vita (ni PS3 si tu as réglé toi-même la manette dans RPCS3) : leur émulateur se sert
-        de ce bouton. Si Steam l’utilise aussi, cela se règle dans Steam (rubrique Manette). Prend effet à la prochaine partie.
-      </p>
-      {#if gameBarPrend === true && etat.pc.menuJeu.boutonXbox !== false}
-        <p class="muted">
-          ⚠ La Game Bar de Windows utilise encore ce bouton : il n’ouvrira pas le menu.
-          <button class="btn" onclick={liberer}>🎮 Libérer le bouton Xbox</button>
-        </p>
-      {/if}
-    </dd>
-    <dt>Sauvegarde rapide à la manette</dt>
-    <dd>
-      <select
-        value={etat.pc.menuJeu.raccourcisEtats === false ? 'non' : 'oui'}
-        onchange={(e) => reglerPc('menuJeu.raccourcisEtats', e.currentTarget.value === 'oui')}
-      >
-        <option value="oui">Affichage (⧉) + LT = sauver, Affichage + RT = charger (tenus)</option>
-        <option value="non">pas de raccourci (seulement par le menu)</option>
-      </select>
-      <p class="muted">
-        Pendant une partie, sans ouvrir le menu : le bouton Affichage (⧉) et la gâchette gauche tenus une demi-seconde sauvent,
-        avec la gâchette droite tenus une seconde rechargent — dans l’emplacement choisi au menu en jeu (l’ancienne sauvegarde est
-        gardée à côté). Si un de tes jeux utilise déjà ces boutons ensemble, coupe-les ici. Prend effet à la prochaine partie.
-      </p>
-    </dd>
+    <dt>Raccourcis en jeu</dt>
+    <dd><a class="btn petit" href="/reglages?rubrique=raccourcis">⚡ Les régler (manette et clavier)</a></dd>
     <dt>Après « Quitter le jeu »</dt>
     <dd>
       <select

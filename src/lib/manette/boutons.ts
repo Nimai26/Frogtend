@@ -276,13 +276,23 @@ export interface InfosBoutons {
   /** Jeu PC : sa correspondance manette → clavier (bouton → touche). */
   clavier: Record<string, string> | null;
   /** Les raccourcis de Frogtend pendant une partie (réglages de ce PC). */
-  raccourcis: { combinaison: string; bouton_xbox: boolean; touche: string; etats: boolean };
+  raccourcis: {
+    combinaison: string;
+    bouton_xbox: boolean;
+    touche: string;
+    etats: boolean;
+    /** Les raccourcis réglés (vides : aucun ; absents : ceux d'origine). */
+    sauver_manette?: string;
+    charger_manette?: string;
+    sauver_clavier?: string;
+    charger_clavier?: string;
+  };
 }
 
 /** Une combinaison du réglage (« Select + R1 ») avec les noms de la manette du joueur (« Vue (⧉) + RB »). */
 export function nomCombinaison(c: string, famille: Famille): string {
   const n = NOMS[famille] ?? NOMS.xbox;
-  const parBouton: Record<string, string> = { Select: n.select, Start: n.start, R1: n.rb, L1: n.lb, L3: 'L3', R3: 'R3' };
+  const parBouton: Record<string, string> = { Select: n.select, Start: n.start, R1: n.rb, L1: n.lb, LT: n.lt, RT: n.rt, L3: 'L3', R3: 'R3' };
   return c
     .split('+')
     .map((x) => parBouton[x.trim()] ?? x.trim())
@@ -291,7 +301,11 @@ export function nomCombinaison(c: string, famille: Famille): string {
 
 /** Le nom d'une touche du réglage, pour la personne (« Pause » → « Pause/Attn »). */
 function nomTouche(t: string): string {
-  return ({ Pause: 'Pause/Attn', ScrollLock: 'Arrêt défil', 'Ctrl+Shift+M': 'Ctrl + Maj + M' } as Record<string, string>)[t] ?? t;
+  const noms: Record<string, string> = { Pause: 'Pause/Attn', ScrollLock: 'Arrêt défil', Shift: 'Maj' };
+  return t
+    .split('+')
+    .map((x) => noms[x.trim()] ?? x.trim())
+    .join(' + ');
 }
 
 /** Les raccourcis de Frogtend à montrer : (ce qu'on fait, ce que ça fait). */
@@ -303,8 +317,12 @@ export function raccourcis(infos: InfosBoutons): { geste: string; effet: string 
   l.push({ geste: `${nomCombinaison(r.combinaison, infos.famille)}, tenus 1 seconde`, effet: 'ouvrir le menu de Frogtend' });
   if (r.touche) l.push({ geste: `Touche ${nomTouche(r.touche)} du clavier`, effet: 'ouvrir le menu de Frogtend' });
   if (r.etats) {
-    l.push({ geste: `${n.select} + ${n.lt}, tenus ½ seconde`, effet: 'sauvegarde rapide' });
-    l.push({ geste: `${n.select} + ${n.rt}, tenus 1 seconde`, effet: 'chargement rapide (la partie revient à la sauvegarde)' });
+    const sm = r.sauver_manette ?? 'Select + LT';
+    const cm = r.charger_manette ?? 'Select + RT';
+    if (sm) l.push({ geste: `${nomCombinaison(sm, infos.famille)}, tenus ½ seconde`, effet: 'sauvegarde rapide' });
+    if (cm) l.push({ geste: `${nomCombinaison(cm, infos.famille)}, tenus 1 seconde`, effet: 'chargement rapide (la partie revient à la sauvegarde)' });
+    if (r.sauver_clavier) l.push({ geste: `Touches ${nomTouche(r.sauver_clavier)} du clavier`, effet: 'sauvegarde rapide' });
+    if (r.charger_clavier) l.push({ geste: `Touches ${nomTouche(r.charger_clavier)} du clavier`, effet: 'chargement rapide (la partie revient à la sauvegarde)' });
   }
   return l;
 }

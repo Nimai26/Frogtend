@@ -6,6 +6,13 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Raccourcis en jeu (0.201.0)
+- [ ] ⚙ Options ▸ ⚡ Raccourcis en jeu : la rubrique est là, avec tes réglages d'avant. Choisir « Vue + RB » pour charger
+      est grisé (« déjà : ouvrir le menu »).
+- [ ] Bubsy : Ctrl + Maj + F5 sauve, Ctrl + Maj + F9 recharge (sans ouvrir le menu).
+- [ ] Changer la sauvegarde à la manette pour Vue + LB : en jeu, Vue + LB tenus ½ s sauve ; l'image « 🎮 Les touches »
+      du menu le montre.
+
 ## Recharger après une relance (0.200.0)
 - [x] (sans objet, Seb 15/11) Super Mario World (RetroArch) : ses effets, triches et compteur s'appliquent EN DIRECT, donc jamais de ligne « Relancer » (rien n'attend le prochain lancement).
 - [x] (✅ Seb 15/11, 0.200.0) Bubsy (Jaguar, sans triche) : même chose, le jeu revient à l'endroit sauvé environ 3 s après son démarrage.

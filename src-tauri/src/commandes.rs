@@ -2231,33 +2231,145 @@ fn touche_menu(app: &AppHandle) -> String {
         .ok()
         .and_then(|s| s.get("reglages"))
         .and_then(|r| r["menuJeu"]["touche"].as_str().map(String::from))
-        .filter(|t| !t.trim().is_empty())
+        // Seulement une touche proposée : une ancienne « Ctrl+Shift+M » est le son coupé de RPCS3, que Frogtend envoie.
+        .filter(|t| TOUCHES_MENU.contains(&t.trim()))
         .unwrap_or_else(|| "Pause".into())
 }
+
+/// Les touches proposées pour ouvrir le menu en jeu.
+pub const TOUCHES_MENU: &[&str] = &["Pause", "ScrollLock"];
 
 /// Active (début de partie) ou retire (fin) la touche du menu en jeu. Hors partie, la touche reste aux autres.
 fn armer_touche_menu(app: &AppHandle, actif: bool) {
     use tauri_plugin_global_shortcut::GlobalShortcutExt;
-    let t = touche_menu(app);
     let gs = app.global_shortcut();
-    let r = if actif {
-        if gs.is_registered(t.as_str()) {
-            Ok(())
-        } else {
-            gs.register(t.as_str())
-        }
-    } else {
-        gs.unregister(t.as_str())
-    };
-    if let Err(e) = r {
-        app.state::<Noyau>().journaliser(&format!("touche du menu en jeu « {t} » : {e}"));
+    // Retirées : exactement celles armées au début (un réglage changé pendant la partie ne laisse rien derrière).
+    let armees: Vec<_> = std::mem::take(&mut *TOUCHES_ARMEES.lock().unwrap_or_else(|e| e.into_inner()));
+    for (s, _) in armees {
+        let _ = gs.unregister(s);
     }
+    if !actif {
+        return;
+    }
+    // Sauver / charger au clavier : seulement si le menu les propose pour ce jeu (sinon la touche serait volée au jeu
+    // pour rien).
+    let p = app.state::<crate::menu_jeu::MenuJeu>().partie();
+    let possible = |a: crate::pilotage::Action| p.as_ref().is_some_and(|p| crate::menu_jeu::etats_au_clavier(p, a));
+    let (sauver, charger) = touches_etats(app);
+    let mut voulues: Vec<(String, &'static str)> = vec![(touche_menu(app), "menu")];
+    if let Some(t) = sauver.filter(|_| possible(crate::pilotage::Action::SauverEtat)) {
+        voulues.push((t, "sauver"));
+    }
+    if let Some(t) = charger.filter(|_| possible(crate::pilotage::Action::ChargerEtat)) {
+        voulues.push((t, "charger"));
+    }
+    let mut l = Vec::new();
+    for (t, quoi) in voulues {
+        let r = t.parse::<tauri_plugin_global_shortcut::Shortcut>().map_err(|e| e.to_string()).and_then(|s| gs.register(s).map(|_| s).map_err(|e| e.to_string()));
+        match r {
+            Ok(s) => l.push((s, quoi)),
+            Err(e) => app.state::<Noyau>().journaliser(&format!("touche « {t} » ({quoi}) : {e}")),
+        }
+    }
+    *TOUCHES_ARMEES.lock().unwrap_or_else(|e| e.into_inner()) = l;
 }
 
 /// La combinaison de la manette qui ouvre le menu en jeu (`pc.json` ▸ `menuJeu.manette`, Select + R1 par défaut).
 /// Les raccourcis de sauvegarde rapide à la manette (`pc.json` ▸ `menuJeu.raccourcisEtats`, actifs d'office).
 fn raccourcis_etats(app: &AppHandle) -> bool {
     app.store("pc.json").ok().and_then(|s| s.get("reglages")).and_then(|r| r["menuJeu"]["raccourcisEtats"].as_bool()).unwrap_or(true)
+}
+
+/// Les raccourcis de sauvegarde et de chargement rapides à la manette (`pc.json` ▸ `menuJeu.sauverManette` /
+/// `chargerManette`, ✅ Seb 15/11) ; d'office Vue + LT / Vue + RT ; l'ancien interrupteur coupé (`raccourcisEtats` à
+/// false) : aucun.
+fn raccourcis_manette(app: &AppHandle) -> (Option<crate::osd_manette::Entree>, Option<crate::osd_manette::Entree>) {
+    let r = app.store("pc.json").ok().and_then(|s| s.get("reglages")).unwrap_or(Value::Null);
+    let lire = |cle: &str, defaut: &str| -> Option<crate::osd_manette::Entree> {
+        match r["menuJeu"][cle].as_str() {
+            Some(v) => crate::osd_manette::entree(v),
+            None if raccourcis_etats(app) => crate::osd_manette::entree(defaut),
+            None => None,
+        }
+    };
+    crate::osd_manette::raccourcis_regles(combinaison_menu(app), lire("sauverManette", "Select + LT"), lire("chargerManette", "Select + RT"))
+}
+
+/// Les touches du clavier de sauvegarde et de chargement rapides (`pc.json` ▸ `menuJeu.sauverClavier` /
+/// `chargerClavier`, ✅ Seb 15/11 : Ctrl + Maj + F5 et Ctrl + Maj + F9 d'office ; « aucune » : rien), jamais la touche
+/// du menu ni une touche que Frogtend envoie lui-même (`touche_clavier_permise`).
+fn touches_etats(app: &AppHandle) -> (Option<String>, Option<String>) {
+    let r = app.store("pc.json").ok().and_then(|s| s.get("reglages")).unwrap_or(Value::Null);
+    let lu = |t: &str| t.parse::<tauri_plugin_global_shortcut::Shortcut>().ok();
+    let menu = lu(&touche_menu(app));
+    // L'ancien interrupteur « pas de raccourci » coupé par la personne : pas de touche d'office non plus.
+    let d_office = raccourcis_etats(app);
+    let lire = |cle: &str, defaut: &str| -> Option<String> {
+        let v = match r["menuJeu"][cle].as_str() {
+            Some(v) => v.trim().to_string(),
+            None if d_office => defaut.to_string(),
+            None => return None,
+        };
+        (v != "aucune" && !v.is_empty() && lu(&v).is_some() && lu(&v) != menu && touche_clavier_permise(&v)).then_some(v)
+    };
+    let (s, c) = (lire("sauverClavier", TOUCHE_SAUVER), lire("chargerClavier", TOUCHE_CHARGER));
+    // Les deux sur la même touche (fichier abîmé) : aucune (jamais « sauver » à la place de « charger »).
+    if s.is_some() && s.as_deref().and_then(lu) == c.as_deref().and_then(lu) {
+        return (None, None);
+    }
+    (s, c)
+}
+
+/// Les touches d'office de sauvegarde et de chargement rapides au clavier (✅ Seb 15/11).
+pub const TOUCHE_SAUVER: &str = "Ctrl+Shift+F5";
+pub const TOUCHE_CHARGER: &str = "Ctrl+Shift+F9";
+
+/// Les touches proposées pour sauver ou charger (jamais F1 à F16, prises par les émulateurs ou envoyées par Frogtend,
+/// ni ce que Frogtend envoie lui-même : `pilotage::touche`).
+pub const TOUCHES_ETATS: &[&str] = &["Ctrl+Shift+F5", "Ctrl+Shift+F9", "Ctrl+Shift+F6", "Ctrl+Shift+F7", "Ctrl+Shift+F8", "Ctrl+Shift+S", "Ctrl+Shift+L"];
+
+/// Une touche permise pour un raccourci de Frogtend : comprise, et jamais une touche que Frogtend envoie à un émulateur
+/// (il se la volerait).
+pub fn touche_clavier_permise(t: &str) -> bool {
+    let Ok(r) = t.parse::<tauri_plugin_global_shortcut::Shortcut>() else { return false };
+    !crate::pilotage::touches_envoyees().iter().any(|e| e.parse::<tauri_plugin_global_shortcut::Shortcut>().is_ok_and(|x| x == r))
+}
+
+/// Les touches globales armées pour la partie en cours, avec ce qu'elles font : retirées EXACTEMENT à la fin (même si
+/// le réglage a changé entre-temps).
+static TOUCHES_ARMEES: std::sync::Mutex<Vec<(tauri_plugin_global_shortcut::Shortcut, &'static str)>> = std::sync::Mutex::new(Vec::new());
+
+/// Une touche globale reçue : ouvrir le menu, ou sauver / charger (menu fermé, jeu pas figé, action proposée).
+pub fn touche_globale(app: &AppHandle, s: &tauri_plugin_global_shortcut::Shortcut) {
+    let quoi = TOUCHES_ARMEES.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|(x, _)| x == s).map(|(_, q)| *q);
+    match quoi {
+        Some("sauver") | Some("charger") => {
+            let menu = app.state::<crate::menu_jeu::MenuJeu>();
+            if menu.ouvert.load(std::sync::atomic::Ordering::SeqCst) || crate::figer::est_fige() {
+                return;
+            }
+            let quoi = if quoi == Some("sauver") { "sauver" } else { "charger" };
+            let a = app.clone();
+            tauri::async_runtime::spawn(async move {
+                // Ctrl et Maj sont encore tenus : la touche envoyée changerait de sens (Dolphin : Maj+F15 = charger ;
+                // RPCS3 : Ctrl+Maj+S n'est plus Ctrl+S). Attendus relâchés, au plus 2 s, sinon rien.
+                let mut libre = false;
+                for _ in 0..40 {
+                    if !crate::plein_ecran::modificateur_tenu() {
+                        libre = true;
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+                if !libre {
+                    a.state::<Noyau>().journaliser(&format!("raccourci {quoi} au clavier : Ctrl ou Maj encore tenus après 2 s, rien envoyé"));
+                    return;
+                }
+                raccourci_etat(&a, quoi).await
+            });
+        }
+        _ => ouvrir_menu(app),
+    }
 }
 
 /// Le bouton Xbox ouvre le menu en jeu (`pc.json` ▸ `menuJeu.boutonXbox`, actif d'office ; ✅ Seb 28/10).
@@ -2320,7 +2432,8 @@ fn suivre_manette_menu(app: &AppHandle, numero: u64) {
     } else if guide && !crate::osd_manette::guide_lisible() {
         app.state::<Noyau>().journaliser("bouton Xbox : illisible sur ce PC pour les manettes Xbox (XInputGetStateEx absent)");
     }
-    let mut osd = crate::osd_manette::Osd::nouveau(combo).avec_raccourcis(raccourcis_etats(&app)).avec_guide(guide);
+    let (sauver_m, charger_m) = raccourcis_manette(&app);
+    let mut osd = crate::osd_manette::Osd::nouveau(combo).avec_etats(sauver_m, charger_m).avec_guide(guide);
     let mut lecteur = crate::osd_manette::Lecteur::default();
     let dossier_jeu = partie.as_ref().and_then(|p| p.dossier_jeu.clone()).map(std::path::PathBuf::from);
     let repeter = partie.as_ref().is_some_and(|p| p.repeter_touches);
@@ -2654,6 +2767,13 @@ pub async fn menu_jeu_action(app: AppHandle, noyau: State<'_, Noyau>, action: St
         }
         return r;
     }
+    // Sauver / charger par une touche (DuckStation, PCSX2, Dolphin) : jamais en même temps qu'un raccourci.
+    let menu_jeu = app.state::<crate::menu_jeu::MenuJeu>();
+    let _seule = if matches!(a, crate::pilotage::Action::SauverEtat | crate::pilotage::Action::ChargerEtat) {
+        Some(menu_jeu.prendre_etat().ok_or_else(|| Erreur::Refus("Une sauvegarde ou un chargement rapide est déjà en cours.".into()))?)
+    } else {
+        None
+    };
     let dossier = p.dossier_emulateur.clone();
     let muet_eden = a == crate::pilotage::Action::Muet && matches!(e.as_str(), "eden" | "eglantine" | "lichii");
     let r = tauri::async_runtime::spawn_blocking(move || crate::menu_jeu::agir(&e, &crate::lancement::processus_de_la_partie(p.pid), a))
@@ -2973,6 +3093,12 @@ async fn raccourci_etat(app: &AppHandle, quoi: &'static str) {
     } else if e == "bigpemu" && p.etats_bigpemu.is_some() {
         etat_bigpemu(app, p, a).await
     } else {
+        // RetroArch, RPCS3, BigPEmu, MAME prennent le verrou eux-mêmes ; ici aussi : jamais deux à la fois.
+        let menu = app.state::<crate::menu_jeu::MenuJeu>();
+        let Some(_seule) = menu.prendre_etat() else {
+            noyau.journaliser(&format!("raccourci {quoi} : une sauvegarde ou un chargement est déjà en cours"));
+            return;
+        };
         let pids = crate::lancement::processus_de_la_partie(p.pid);
         tauri::async_runtime::spawn_blocking(move || crate::menu_jeu::agir(&e, &pids, a))
             .await
@@ -3296,6 +3422,11 @@ pub struct RaccourcisFrogtend {
     bouton_xbox: bool,
     touche: String,
     etats: bool,
+    /// Les raccourcis réglés (`Select + LT`… ; vide : aucun) et les touches du clavier (vide : aucune).
+    sauver_manette: String,
+    charger_manette: String,
+    sauver_clavier: String,
+    charger_clavier: String,
 }
 
 fn raccourcis_frogtend(app: &AppHandle, moteur: crate::osd_manette::Moteur, etats_possibles: bool) -> RaccourcisFrogtend {
@@ -3306,12 +3437,17 @@ fn raccourcis_frogtend(app: &AppHandle, moteur: crate::osd_manette::Moteur, etat
         .and_then(|r| r["menuJeu"]["manette"].as_str().map(String::from))
         .filter(|c| !c.trim().is_empty())
         .unwrap_or_else(|| "Select + R1".into());
+    let (manette, clavier) = (raccourcis_manette(app), touches_etats(app));
     RaccourcisFrogtend {
         combinaison,
         // Annoncé seulement s'il marche vraiment sur ce PC (bouton lisible, Game Bar qui l'a lâché, émulateur permis).
         bouton_xbox: crate::osd_manette::guide_permis(crate::registre::bouton_game_bar(), bouton_xbox(app), moteur) && crate::osd_manette::guide_lisible(),
         touche: touche_menu(app),
-        etats: etats_possibles && raccourcis_etats(app),
+        etats: etats_possibles && (manette.0.is_some() || manette.1.is_some() || clavier.0.is_some() || clavier.1.is_some()),
+        sauver_manette: manette.0.filter(|_| etats_possibles).map(crate::osd_manette::nom_entree).unwrap_or_default().into(),
+        charger_manette: manette.1.filter(|_| etats_possibles).map(crate::osd_manette::nom_entree).unwrap_or_default().into(),
+        sauver_clavier: clavier.0.filter(|_| etats_possibles).unwrap_or_default(),
+        charger_clavier: clavier.1.filter(|_| etats_possibles).unwrap_or_default(),
     }
 }
 

@@ -65,6 +65,11 @@ export interface ReglagesPc {
     /** Le bouton Xbox (ou PS / Home) ouvre aussi le menu, d'un appui court ; menu ouvert, il rend la main au jeu (✅ Seb
      * 28/10, « en plus de Vue + RB »). Seulement si la Game Bar de Windows ne le prend pas. Lu à chaque partie. */
     boutonXbox: boolean;
+    /** Les raccourcis réglés (✅ Seb 15/11, ⚡ Raccourcis en jeu) : absents = ceux d'origine (`reglages/raccourcis.ts`). */
+    sauverManette?: string;
+    chargerManette?: string;
+    sauverClavier?: string;
+    chargerClavier?: string;
   };
   firehouse: {
     adresse: string;

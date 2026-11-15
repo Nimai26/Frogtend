@@ -1,5 +1,17 @@
 # Notes de version de Frogtend
 
+## 0.201.0 — ⚡ Raccourcis en jeu, à la manette et au clavier
+
+- ⚙ Options ▸ **⚡ Raccourcis en jeu** (nouvelle rubrique, après Émulateurs) : tous les raccourcis de Frogtend pendant
+  une partie, à la manette ET au clavier. Ceux d'avant restent par défaut. Un choix déjà pris par un autre raccourci est
+  grisé, et un bouton remet tout d'origine.
+- 🎮 Manette : la sauvegarde et le chargement rapides se choisissent (Vue + LT, LB, RB, RT, Menu, ou aucun).
+- ⌨ Clavier, nouveau : **Ctrl + Maj + F5** sauve, **Ctrl + Maj + F9** recharge, pendant la partie (pour les jeux dont
+  le menu sait sauver). Si tu avais coupé les raccourcis de sauvegarde, ils restent coupés.
+- L'image « 🎮 Les touches » du menu en jeu montre toujours ce qui est réglé.
+- Corrigé : Ctrl + Maj + M n'est plus proposé pour ouvrir le menu (c'est aussi le son coupé de la PS3) ; deux
+  sauvegardes rapides ne peuvent plus partir en même temps (DuckStation, PCSX2, Dolphin).
+
 ## 0.200.0 — Après « Sauver puis relancer », ta sauvegarde revient toute seule
 
 - 💾 Après « Sauver puis relancer » (RetroArch, MAME, Jaguar), Frogtend demande à recharger ta sauvegarde dès que le

@@ -62,6 +62,69 @@ pub enum Evenement {
     Raccourci(&'static str),
 }
 
+/// Le second bouton d'un raccourci de sauvegarde rapide, avec Vue (Select) : une gâchette ou un bouton (✅ Seb 15/11 :
+/// réglables, Vue + LT et Vue + RT par défaut).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Entree {
+    Lt,
+    Rt,
+    Bouton(u16),
+}
+
+impl Entree {
+    fn tenue(self, e: EtatManette) -> bool {
+        match self {
+            Entree::Lt => e.gt >= GACHETTE,
+            Entree::Rt => e.dt >= GACHETTE,
+            Entree::Bouton(m) => e.boutons & m == m,
+        }
+    }
+}
+
+/// Le réglage d'un raccourci (`pc.json` ▸ `menuJeu.sauverManette` / `chargerManette`) : « Select + LT », « Select + RT »,
+/// « Select + L1 », « Select + R1 », « Select + Start » ; « aucun » ou inconnu : `None`.
+pub fn entree(nom: &str) -> Option<Entree> {
+    match nom.trim() {
+        "Select + LT" => Some(Entree::Lt),
+        "Select + RT" => Some(Entree::Rt),
+        "Select + L1" => Some(Entree::Bouton(L1)),
+        "Select + R1" => Some(Entree::Bouton(R1)),
+        "Select + Start" => Some(Entree::Bouton(START)),
+        _ => None,
+    }
+}
+
+/// Le nom du réglage d'une entrée (l'inverse de `entree`).
+pub fn nom_entree(e: Entree) -> &'static str {
+    match e {
+        Entree::Lt => "Select + LT",
+        Entree::Rt => "Select + RT",
+        Entree::Bouton(m) if m == L1 => "Select + L1",
+        Entree::Bouton(m) if m == R1 => "Select + R1",
+        Entree::Bouton(_) => "Select + Start",
+    }
+}
+
+/// Un raccourci de sauvegarde est-il permis avec cette combinaison du menu ? Jamais la combinaison du menu elle-même
+/// (Vue + R1 avec « Select + R1 » : le raccourci partirait avant l'ouverture du menu).
+pub fn raccourci_permis(combinaison_menu: u16, e: Entree) -> bool {
+    match e {
+        Entree::Bouton(m) => SELECT | m != combinaison_menu,
+        _ => true,
+    }
+}
+
+/// Les deux raccourcis réglés, vérifiés : jamais la combinaison du menu, jamais les deux pareils (un réglage
+/// incohérent revient à Vue + LT / Vue + RT si eux sont permis, sinon rien).
+pub fn raccourcis_regles(combinaison_menu: u16, sauver: Option<Entree>, charger: Option<Entree>) -> (Option<Entree>, Option<Entree>) {
+    let ok = |e: Option<Entree>| e.filter(|e| raccourci_permis(combinaison_menu, *e));
+    let (s, c) = (ok(sauver), ok(charger));
+    if s.is_some() && s == c {
+        return (Some(Entree::Lt), Some(Entree::Rt));
+    }
+    (s, c)
+}
+
 /// Le maintien des raccourcis de sauvegarde rapide (charger plus long : on y perd la partie en cours).
 pub const MAINTIEN_SAUVER: Duration = Duration::from_millis(500);
 pub const MAINTIEN_CHARGER: Duration = Duration::from_millis(1000);
@@ -191,8 +254,9 @@ pub struct Osd {
     etait_ouvert: bool,
     /// A ou B enfoncés menu ouvert : ils agiront au relâchement.
     armes: u16,
-    /// Les raccourcis de sauvegarde rapide (réglage, actifs d'office) ; tenus depuis ; déjà déclenchés (à relâcher).
-    raccourcis: bool,
+    /// Les raccourcis de sauvegarde rapide (réglage : Vue + LT / Vue + RT d'office) ; tenus depuis ; déjà déclenchés.
+    sauver: Option<Entree>,
+    charger: Option<Entree>,
     sauver_depuis: Option<Instant>,
     charger_depuis: Option<Instant>,
     raccourci_fait: bool,
@@ -215,7 +279,8 @@ impl Osd {
             prochaine: None,
             etait_ouvert: false,
             armes: 0,
-            raccourcis: false,
+            sauver: None,
+            charger: None,
             sauver_depuis: None,
             charger_depuis: None,
             raccourci_fait: false,
@@ -233,8 +298,13 @@ impl Osd {
     }
 
     /// Avec les raccourcis de sauvegarde rapide (Vue + LT / Vue + RT tenus), menu fermé.
-    pub fn avec_raccourcis(mut self, oui: bool) -> Self {
-        self.raccourcis = oui;
+    pub fn avec_raccourcis(self, oui: bool) -> Self {
+        if oui { self.avec_etats(Some(Entree::Lt), Some(Entree::Rt)) } else { self.avec_etats(None, None) }
+    }
+
+    /// Avec ces raccourcis de sauvegarde et de chargement rapides (vérifiés : `raccourcis_regles`).
+    pub fn avec_etats(mut self, sauver: Option<Entree>, charger: Option<Entree>) -> Self {
+        (self.sauver, self.charger) = raccourcis_regles(self.combinaison, sauver, charger);
         self
     }
 
@@ -283,11 +353,13 @@ impl Osd {
                     }
                 }
             }
-            // Vue + une SEULE gâchette, tenues (jamais pendant la combinaison du menu) : sauver ou charger, une fois.
-            let vue = b & SELECT != 0 && !tenue && self.raccourcis;
-            let (lt, rt) = (e.gt >= GACHETTE, e.dt >= GACHETTE);
-            let sauver = vue && lt && !rt;
-            let charger = vue && rt && !lt;
+            // Vue + l'entrée de sauver (sans celle de charger), ou l'inverse, tenues (jamais pendant la combinaison du
+            // menu) : sauver ou charger, une fois.
+            let vue = b & SELECT != 0 && !tenue;
+            let s = self.sauver.is_some_and(|x| x.tenue(e));
+            let c = self.charger.is_some_and(|x| x.tenue(e));
+            let sauver = vue && s && !c;
+            let charger = vue && c && !s;
             if !sauver {
                 self.sauver_depuis = None;
             }
@@ -459,6 +531,53 @@ impl Lecteur {
         let _ = t;
         // Les autres manettes (PlayStation, Switch, 8BitDo…), lues par SDL3 dans son propre fil.
         crate::manettes_sdl::reunir(e, crate::manettes_sdl::etat())
+    }
+}
+
+#[cfg(test)]
+mod tests_raccourcis {
+    use super::*;
+
+    fn etat(boutons: u16, gt: u8, dt: u8) -> EtatManette {
+        EtatManette { boutons, gt, dt, ..Default::default() }
+    }
+
+    #[test]
+    fn les_raccourcis_reglables_boutons_ou_gachettes() {
+        let t0 = Instant::now();
+        let ms = |n| t0 + Duration::from_millis(n);
+        // Vue + LB pour sauver, Vue + RB pour charger, menu sur L3 + R3.
+        let mut o = Osd::nouveau(L3 | R3).avec_etats(entree("Select + L1"), entree("Select + R1"));
+        assert!(o.pas(etat(SELECT | L1, 0, 0), t0, false).is_empty());
+        assert_eq!(o.pas(etat(SELECT | L1, 0, 0), ms(500), false), vec![Evenement::Raccourci("sauver")]);
+        assert!(o.pas(etat(SELECT | L1, 0, 0), ms(900), false).is_empty(), "une fois");
+        o.pas(etat(0, 0, 0), ms(1000), false);
+        o.pas(etat(SELECT | R1, 0, 0), ms(1100), false);
+        assert!(o.pas(etat(SELECT | R1, 0, 0), ms(1700), false).is_empty(), "charger : 1 s");
+        assert_eq!(o.pas(etat(SELECT | R1, 0, 0), ms(2100), false), vec![Evenement::Raccourci("charger")]);
+        // Les deux tenus ensemble : ni l'un ni l'autre.
+        o.pas(etat(0, 0, 0), ms(2200), false);
+        o.pas(etat(SELECT | L1 | R1, 0, 0), ms(2300), false);
+        assert!(o.pas(etat(SELECT | L1 | R1, 0, 0), ms(4000), false).is_empty());
+        // Gâchettes d'office.
+        let mut g = Osd::nouveau(SELECT | R1).avec_raccourcis(true);
+        g.pas(etat(SELECT, 200, 0), t0, false);
+        assert_eq!(g.pas(etat(SELECT, 200, 0), ms(500), false), vec![Evenement::Raccourci("sauver")]);
+        assert!(Osd::nouveau(SELECT | R1).avec_raccourcis(false).pas(etat(SELECT, 200, 0), ms(5000), false).is_empty());
+    }
+
+    #[test]
+    fn un_raccourci_ne_prend_jamais_la_combinaison_du_menu() {
+        assert!(!raccourci_permis(SELECT | R1, Entree::Bouton(R1)));
+        assert!(!raccourci_permis(SELECT | L1, Entree::Bouton(L1)));
+        assert!(!raccourci_permis(SELECT | START, Entree::Bouton(START)));
+        assert!(raccourci_permis(SELECT | R1, Entree::Bouton(L1)));
+        assert!(raccourci_permis(SELECT | R1, Entree::Rt));
+        // Le menu sur Vue + R1 et « charger » réglé sur Vue + R1 : refusé (rien, plutôt qu'un menu qui ne s'ouvre plus).
+        assert_eq!(raccourcis_regles(SELECT | R1, Some(Entree::Lt), Some(Entree::Bouton(R1))), (Some(Entree::Lt), None));
+        // Les deux pareils (fichier abîmé) : ceux d'origine.
+        assert_eq!(raccourcis_regles(L3 | R3, Some(Entree::Bouton(L1)), Some(Entree::Bouton(L1))), (Some(Entree::Lt), Some(Entree::Rt)));
+        assert_eq!(entree("aucun"), None);
     }
 }
 

@@ -91,6 +91,32 @@ pub fn touche(emulateur: &str, a: Action) -> Option<Touche> {
     }
 }
 
+/// Toutes les touches que Frogtend envoie aux émulateurs (au format des raccourcis globaux) : jamais prises comme
+/// raccourci de Frogtend (il se volerait sa propre frappe).
+pub fn touches_envoyees() -> Vec<String> {
+    use Action::*;
+    let mut l = Vec::new();
+    for e in ["retroarch", "duckstation", "pcsx2", "dolphin", "dosbox-staging", "rpcs3", "eden", "bigpemu", "mame"] {
+        for a in [Reset, DisqueSuivant, SauverEtat, ChargerEtat, ImagesParSeconde, AvanceRapide, Capture, Muet] {
+            if let Some(t) = touche(e, a) {
+                let mut s = String::new();
+                if t.ctrl {
+                    s.push_str("Ctrl+");
+                }
+                if t.alt {
+                    s.push_str("Alt+");
+                }
+                if t.maj {
+                    s.push_str("Shift+");
+                }
+                s.push_str(t.touche);
+                l.push(s);
+            }
+        }
+    }
+    l
+}
+
 /// Ce que le menu peut faire dans cet émulateur (en plus de reprendre et de quitter, toujours possibles).
 pub fn actions(emulateur: &str) -> Vec<Action> {
     use Action::*;
