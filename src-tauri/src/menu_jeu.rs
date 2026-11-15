@@ -747,7 +747,7 @@ mod fenetres {
         }
     }
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetForegroundWindow, GetWindow, GetWindowThreadProcessId, IsIconic, IsWindowVisible, PostMessageW,
+        EnumWindows, GetForegroundWindow, GetWindow, GetWindowThreadProcessId, IsHungAppWindow, IsIconic, IsWindowVisible, PostMessageW,
         SetForegroundWindow, ShowWindow, GW_OWNER, SW_RESTORE, WM_CLOSE,
     };
 
@@ -768,6 +768,33 @@ mod fenetres {
     /// émulateur en pleine écriture d'une sauvegarde : on n'y touche pas — expert, 05/10.)
     pub fn abandonne(pid: u32) -> bool {
         du_processus(&[pid]).is_empty()
+    }
+
+    /// Les fenêtres visibles de ce processus, QUESTIONS COMPRISES (fenêtres à propriétaire) : `None` s'il n'en a
+    /// aucune, sinon `Some(toutes figées)` — une seule qui répond suffit pour ne rien toucher.
+    pub fn fenetres_figees(pid: u32) -> Option<bool> {
+        struct Ctx {
+            pid: u32,
+            vues: usize,
+            figees: usize,
+        }
+        unsafe extern "system" fn une(h: HWND, l: LPARAM) -> BOOL {
+            let ctx = &mut *(l.0 as *mut Ctx);
+            let mut pid = 0u32;
+            GetWindowThreadProcessId(h, Some(&mut pid));
+            if pid == ctx.pid && IsWindowVisible(h).as_bool() {
+                ctx.vues += 1;
+                if IsHungAppWindow(h).as_bool() {
+                    ctx.figees += 1;
+                }
+            }
+            BOOL(1)
+        }
+        let mut ctx = Ctx { pid, vues: 0, figees: 0 };
+        unsafe {
+            let _ = EnumWindows(Some(une), LPARAM(&mut ctx as *mut _ as isize));
+        }
+        (ctx.vues > 0).then_some(ctx.figees == ctx.vues)
     }
 
     /// La fenêtre au premier plan appartient-elle à Frogtend ?
@@ -977,6 +1004,19 @@ pub fn abandonne(pid: u32) -> bool {
     {
         let _ = pid;
         false
+    }
+}
+
+/// Les fenêtres de ce processus : aucune (`None`), ou toutes figées (`Some(true)`) ; hors Windows : `Some(false)`.
+pub fn fenetres_figees(pid: u32) -> Option<bool> {
+    #[cfg(windows)]
+    {
+        fenetres::fenetres_figees(pid)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = pid;
+        Some(false)
     }
 }
 

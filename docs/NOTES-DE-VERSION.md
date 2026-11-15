@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.198.0 — Switch 2 : Quitter ne laisse plus l'émulateur figé
+
+- 🎮 Eden, Eglantine, Lichii : quand l'émulateur reste figé (« ne répond pas ») après ▶ Quitter, Frogtend l'arrête
+  tout seul, au bout de 20 à 30 secondes. Seulement s'il est figé depuis 20 secondes ET n'écrit plus rien depuis
+  10 secondes (sa dernière sauvegarde a donc fini de s'écrire). S'il pose une question, Frogtend n'y touche pas.
+
 ## 0.197.0 — La photo qu'on vient de prendre est tout de suite dans la galerie
 
 - 📷 Pendant une partie, 📷 Mes captures montre aussi la photo prise juste avant (il fallait parfois en prendre une

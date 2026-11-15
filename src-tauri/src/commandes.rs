@@ -3545,6 +3545,7 @@ pub async fn menu_jeu_quitter(app: AppHandle) -> Resultat<usize> {
     let racine = p.pid;
     let dossier_emulateur = p.dossier_emulateur.clone();
     let dossier_jeu = p.dossier_jeu.clone();
+    let famille_eden = p.emulateur.as_deref().is_some_and(crate::emulateurs::famille_eden);
     let n = tauri::async_runtime::spawn_blocking(move || {
         // Un jeu PC (dont un jeu lancé par sa boutique, dont le premier programme a pu se fermer) : aussi les programmes
         // de SON dossier — jamais rien hors de lui.
@@ -3573,6 +3574,35 @@ pub async fn menu_jeu_quitter(app: AppHandle) -> Resultat<usize> {
             .unwrap_or(10)
             .clamp(3, 120);
         let app2 = app.clone();
+        if famille_eden {
+            // Eden et sa famille : arrêtée seulement figée depuis 20 s ET sans plus rien écrire (`finir_la_partie_eden`) ;
+            // au moins 5 s, au plus 5 min.
+            let minimum = std::time::Duration::from_secs(delai.max(5));
+            let app3 = app.clone();
+            std::thread::spawn(move || {
+                // Le menu rouvert pendant l'attente (Eden gelé par Frogtend, ou en pause derrière lui) : jamais compté.
+                let en_pause = move || crate::figer::est_fige() || app3.state::<crate::menu_jeu::MenuJeu>().ouvert.load(std::sync::atomic::Ordering::SeqCst);
+                let fin = crate::lancement::finir_la_partie_eden(
+                    racine,
+                    std::path::Path::new(&dossier),
+                    minimum,
+                    std::time::Duration::from_secs(300),
+                    crate::menu_jeu::fenetres_figees,
+                    en_pause,
+                );
+                let n = app2.state::<Noyau>();
+                match fin {
+                    crate::lancement::FinEden::Termine(termines, fige, ecrits) => n.journaliser(&format!(
+                        "quitter : l'émulateur restait figé ({fige} s sans répondre, {ecrits} octets écrits pendant l'attente, plus rien depuis 10 s) : {termines} processus terminé(s)"
+                    )),
+                    crate::lancement::FinEden::Laisse => {
+                        n.journaliser("quitter : l'émulateur est encore ouvert après 5 min (une fenêtre répondait, ou il écrivait encore) : laissé tel quel")
+                    }
+                    crate::lancement::FinEden::Ferme => {}
+                }
+            });
+            return Ok(n);
+        }
         std::thread::spawn(move || {
             let termines = crate::lancement::finir_la_partie(
                 racine,

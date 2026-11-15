@@ -6,6 +6,11 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Switch 2 : Quitter sans émulateur figé (0.198.0)
+- [ ] Eglantine (ou Lichii) : ▶ Quitter ; si la fenêtre reste figée (« ne répond pas »), elle disparaît seule en 20
+      à 30 s environ (le journal de Frogtend dit « quitter : l'émulateur restait figé… »). Relance le jeu : ta partie
+      sauvegardée juste avant de quitter est bien là.
+
 ## Galerie à jour pendant la partie (0.197.0)
 - [ ] Lichii : 📷 Photo de l'écran, puis tout de suite 📷 Mes captures depuis le menu : la photo qu'on vient de prendre
       y est (avant : il manquait toujours la dernière).

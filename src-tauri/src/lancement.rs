@@ -250,6 +250,155 @@ pub fn finir_la_partie(racine: u32, dossier_emulateur: &Path, delai: std::time::
     }
 }
 
+/// La famille d'Eden après « Quitter » (✅ Seb 15/11 : « souvent le logiciel plante après la fermeture du jeu ») : la
+/// fenêtre reste figée (« ne répond pas »). Expert lancement (15/11, code d'Eden) : pendant une fermeture NORMALE, la
+/// fenêtre est aussi figée (`emu_thread->wait()`), et la dernière sauvegarde du jeu peut encore partir sur le disque
+/// (tampons fermés dans `ShutdownMainProcess`). Donc terminé seulement si, en même temps : au moins `minimum` écoulé,
+/// TOUTES ses fenêtres (questions comprises) figées sans interruption depuis 20 s, et plus aucun octet écrit depuis
+/// 10 s. Une fenêtre qui répond (une question d'Eden) : jamais touché (✅ Seb 15/11).
+pub const FIGE_EDEN: std::time::Duration = std::time::Duration::from_secs(20);
+pub const MUET_EDEN: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// La décision, à chaque relevé. `fige` : depuis combien de temps toutes les fenêtres sont figées (`None` : une
+/// répond) ; `aucune_fenetre` : il n'en a plus (abandonné, comme les autres émulateurs) ; `muet` : depuis combien de
+/// temps il n'a rien écrit.
+pub fn eden_a_terminer(ecoule: std::time::Duration, minimum: std::time::Duration, fige: Option<std::time::Duration>, aucune_fenetre: bool, muet: std::time::Duration) -> bool {
+    if ecoule < minimum || muet < MUET_EDEN {
+        return false;
+    }
+    aucune_fenetre || fige.is_some_and(|f| f >= FIGE_EDEN)
+}
+
+/// Les octets écrits sur le disque par ces processus depuis leur démarrage (somme).
+pub fn octets_ecrits(pids: &[u32]) -> u64 {
+    let mut s = System::new();
+    s.refresh_processes(ProcessesToUpdate::All, true);
+    pids.iter().filter_map(|p| s.process(Pid::from_u32(*p))).map(|p| p.disk_usage().total_written_bytes).sum()
+}
+
+/// L'attente après « Quitter » de la famille d'Eden, relevé par relevé (pur : testé sans émulateur).
+#[derive(Debug, Default)]
+pub struct AttenteEden {
+    fige_depuis: Option<std::time::Duration>,
+    ecrits: Option<u64>,
+    dernier_ecrit: std::time::Duration,
+    pub premier: u64,
+}
+
+impl AttenteEden {
+    /// Un relevé à l'instant `t` (depuis le début de l'attente) : les octets écrits (cumul), l'état des fenêtres de
+    /// chaque processus (`None` : aucune ; `Some(toutes figées)`), et si Frogtend l'a mis en pause lui-même (menu
+    /// rouvert : gelé, il paraîtrait figé et muet). Rend `Some(secondes figées)` s'il faut le terminer.
+    pub fn pas(&mut self, t: std::time::Duration, ecrits: u64, etats: &[Option<bool>], en_pause: bool, minimum: std::time::Duration) -> Option<u64> {
+        if self.ecrits.is_none() {
+            self.premier = ecrits;
+        }
+        // Une écriture, ou une pause de Frogtend : tout recommence (jamais un émulateur que Frogtend a gelé).
+        if self.ecrits != Some(ecrits) || en_pause {
+            self.ecrits = Some(ecrits);
+            self.dernier_ecrit = t;
+        }
+        let aucune_fenetre = etats.iter().all(|e| e.is_none());
+        // Figé : toutes les fenêtres qui existent ne répondent plus (et il en reste au moins une).
+        let tout_fige = !aucune_fenetre && !en_pause && etats.iter().all(|e| e.is_none_or(|f| f));
+        if tout_fige {
+            self.fige_depuis.get_or_insert(t);
+        } else {
+            self.fige_depuis = None;
+        }
+        let fige = self.fige_depuis.map(|f| t.saturating_sub(f));
+        let muet = t.saturating_sub(self.dernier_ecrit);
+        eden_a_terminer(t, minimum, fige, aucune_fenetre && !en_pause, muet).then(|| fige.map(|f| f.as_secs()).unwrap_or(0))
+    }
+}
+
+/// Ce qu'a donné l'attente, pour le journal.
+#[derive(Debug, PartialEq)]
+pub enum FinEden {
+    /// Fermé de lui-même.
+    Ferme,
+    /// Terminé : (processus, secondes figées, octets écrits pendant l'attente).
+    Termine(usize, u64, u64),
+    /// Toujours là au plafond (une fenêtre répondait, ou il écrivait encore) : laissé tel quel.
+    Laisse,
+}
+
+/// Après « Quitter » de la famille d'Eden : relevé chaque seconde jusqu'à `plafond` (`AttenteEden::pas`).
+pub fn finir_la_partie_eden(
+    racine: u32,
+    dossier_emulateur: &Path,
+    minimum: std::time::Duration,
+    plafond: std::time::Duration,
+    fenetres: impl Fn(u32) -> Option<bool>,
+    en_pause: impl Fn() -> bool,
+) -> FinEden {
+    let debut = std::time::Instant::now();
+    let mut a = AttenteEden::default();
+    loop {
+        let restants = processus_dans(&processus_de_la_partie(racine), dossier_emulateur);
+        if restants.is_empty() {
+            return FinEden::Ferme;
+        }
+        if debut.elapsed() >= plafond {
+            return FinEden::Laisse;
+        }
+        let o = octets_ecrits(&restants);
+        let etats: Vec<Option<bool>> = restants.iter().map(|p| fenetres(*p)).collect();
+        if let Some(fige) = a.pas(debut.elapsed(), o, &etats, en_pause(), minimum) {
+            return FinEden::Termine(terminer(&restants), fige, o.saturating_sub(a.premier));
+        }
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
+}
+
+#[cfg(test)]
+mod tests_eden {
+    use super::*;
+    use std::time::Duration as D;
+
+    #[test]
+    fn eden_n_est_termine_que_fige_longtemps_et_muet() {
+        let s = D::from_secs;
+        // Une fenêtre répond (une question d'Eden) : jamais.
+        assert!(!eden_a_terminer(s(120), s(5), None, false, s(60)));
+        // Figé mais encore en train d'écrire (sa dernière sauvegarde) : non.
+        assert!(!eden_a_terminer(s(60), s(5), Some(s(40)), false, s(3)));
+        // Figé depuis peu (une fermeture normale lente) : non.
+        assert!(!eden_a_terminer(s(30), s(5), Some(s(15)), false, s(30)));
+        // Figé depuis 20 s et muet depuis 10 s : oui.
+        assert!(eden_a_terminer(s(25), s(5), Some(s(20)), false, s(10)));
+        // Plus aucune fenêtre : seulement muet depuis 10 s (donc jamais avant 10 s d'attente).
+        assert!(eden_a_terminer(s(12), s(5), None, true, s(10)));
+        assert!(!eden_a_terminer(s(12), s(5), None, true, s(2)), "encore en train d'écrire");
+    }
+
+    /// Rejoue une attente : à chaque seconde, (octets écrits, fenêtres, en pause) ; rend la seconde de l'arrêt.
+    fn rejouer(releves: impl Fn(u64) -> (u64, Vec<Option<bool>>, bool), jusqu_a: u64) -> Option<u64> {
+        let mut a = AttenteEden::default();
+        (0..=jusqu_a).find(|&t| {
+            let (o, f, p) = releves(t);
+            a.pas(D::from_secs(t), o, &f, p, D::from_secs(5)).is_some()
+        })
+    }
+
+    #[test]
+    fn l_attente_recommence_a_chaque_ecriture_reponse_ou_pause() {
+        let fige = vec![Some(true)];
+        // Figé dès le début, muet : arrêté à 20 s (figé depuis 20 s, muet depuis 20 s).
+        assert_eq!(rejouer(|_| (100, fige.clone(), false), 60), Some(20));
+        // Il écrit jusqu'à 30 s (sa dernière sauvegarde) : arrêté 10 s après, à 40 s.
+        assert_eq!(rejouer(|t| (100 + t.min(30), fige.clone(), false), 80), Some(40));
+        // Il répond un instant à 15 s : les 20 s figées recommencent à 16 s, arrêté à 36 s.
+        assert_eq!(rejouer(|t| (100, if t == 15 { vec![Some(false)] } else { fige.clone() }, false), 80), Some(36));
+        // Une question d'Eden ouverte (une fenêtre qui répond) : jamais.
+        assert_eq!(rejouer(|_| (100, vec![Some(true), Some(false)], false), 300), None);
+        // Gelé par le menu de Frogtend de 0 à 50 s : rien pendant la pause, arrêté 20 s après sa fin.
+        assert_eq!(rejouer(|t| (100, fige.clone(), t <= 50), 120), Some(71));
+        // Plus de fenêtre, muet : comme les autres émulateurs, à 10 s.
+        assert_eq!(rejouer(|_| (100, vec![None], false), 60), Some(10));
+    }
+}
+
 /// Suit les processus d'une partie.
 pub struct Suivi {
     systeme: System,
