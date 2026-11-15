@@ -269,7 +269,13 @@ vraie sauvegarde, faite par Seb** (Options ▸ Sauvegarde ▸ 💾 Sauvegarder m
 À la restauration, Frogtend remet la configuration et les parties, puis propose de retélécharger les jeux de la
 liste (annoncé et chiffré d'abord : combien de jeux, combien de Go).
 
-**Recharger après « Sauver puis relancer » (✅ Seb 15/11 : « oui quand cela est possible ») :** après une relance
+**PS4 et PS5 (Seb, 15/11 : « l'émulation PS4 et PS5 commence à bien fonctionner, nous allons donc devoir
+l'intégrer ») :** à faire après les raccourcis réglables. D'abord une recherche dans les sources OFFICIELLES (quels
+émulateurs, leur état, leur ligne de commande, leurs dossiers, manettes, langue, sauvegardes, firmware et clés
+demandés), puis, comme pour toute console : fiche servie par Firehouse (besoin d'API si elle manque), installation sur
+accord, réglage dès la première partie, menu en jeu complet et normalisé, sauvegardes chez Firehouse.
+
+✅ FAIT (0.200.0) : **Recharger après « Sauver puis relancer » (✅ Seb 15/11 : « oui quand cela est possible ») :** après une relance
 avec sauvegarde, Frogtend charge seul l'emplacement sauvé dès que le jeu est prêt (RetroArch, Jaguar, MAME) ; sinon,
 menu ▸ 📂 Charger. À faire après la 0.199.0 (avis de l'expert lancement : quand le jeu est-il « prêt » ? Jaguar :
 la fenêtre des triches au démarrage).
