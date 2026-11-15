@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.199.0 — 🔄 Relancer le jeu pour voir tes changements
+
+- 🎮 Un réglage qui ne vaut qu'à la prochaine partie (effet d'image ou triches d'un jeu Jaguar, compteur de fluidité
+  de la PS3…) : le menu en jeu propose « 🔄 Relancer le jeu pour voir tes changements ». Frogtend ferme le jeu et le
+  relance tout seul, comme tu l'avais lancé.
+- 💾 « Sauver puis relancer » quand l'émulateur le permet en sécurité (RetroArch, Jaguar, MAME) : la sauvegarde
+  rapide est vérifiée sur le disque avant de fermer.
+- 🔄 Recommencer pour les émulateurs qui n'en avaient pas (Switch, Switch 2, PSP, Wii U…) : le jeu se ferme et repart.
+- Si l'émulateur restait figé et que Frogtend a dû le fermer, il ne relance pas tout seul : il te le dit.
+
 ## 0.198.0 — Switch 2 : Quitter ne laisse plus l'émulateur figé
 
 - 🎮 Eden, Eglantine, Lichii : quand l'émulateur reste figé (« ne répond pas ») après ▶ Quitter, Frogtend l'arrête

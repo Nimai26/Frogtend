@@ -10,9 +10,21 @@ use serde::Serialize;
 use std::sync::Mutex;
 use std::time::Duration;
 
+/// Ce que valaient, au lancement, les réglages qui ne changent qu'à la partie suivante (effet de BigPEmu, compteur
+/// pas en direct, triches de BigPEmu) : le menu propose de relancer tant que l'un d'eux en diffère (✅ Seb 15/11).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Instantane {
+    pub effet: Option<String>,
+    pub fps: Option<bool>,
+    pub triches: Vec<bool>,
+}
+
 /// La partie en cours, pour le menu.
 #[derive(Clone, Debug, Serialize)]
 pub struct PartieEnCours {
+    /// Les réglages « au prochain lancement » tels qu'au lancement (posé par `commencer`).
+    #[serde(skip)]
+    pub au_lancement: Option<Instantane>,
     pub jeu: i64,
     pub titre: String,
     pub plateforme: String,
@@ -486,6 +498,9 @@ pub struct MenuJeu {
     pub ouvert: std::sync::atomic::AtomicBool,
     /// Une sauvegarde ou un chargement rapide en cours (voir `prendre_etat`).
     pub etat_en_cours: std::sync::atomic::AtomicBool,
+    /// « Relancer » demandé pour la partie `numero`, valable jusqu'à l'instant donné : la fin de CETTE partie porte
+    /// alors « relancer » (jamais un relancement surprise bien plus tard). Vidé à l'arrêt forcé d'un émulateur figé.
+    pub relance: Mutex<Option<(u64, std::time::Instant)>>,
 }
 
 /// Rendue à la fin de la sauvegarde ou du chargement, même après une erreur.
@@ -498,11 +513,28 @@ impl Drop for EtatEnCours<'_> {
 }
 
 impl MenuJeu {
+    /// À la fin de la partie `numero` : faut-il la relancer ? (La demande est prise une fois.)
+    pub fn prendre_relance(&self, numero: u64) -> bool {
+        let mut g = self.relance.lock().unwrap_or_else(|e| e.into_inner());
+        match *g {
+            Some((n, limite)) if n == numero => {
+                *g = None;
+                std::time::Instant::now() < limite
+            }
+            _ => false,
+        }
+    }
+    /// L'émulateur a dû être arrêté de force : pas de relancement automatique (la personne relance elle-même).
+    pub fn annuler_relance(&self) -> bool {
+        self.relance.lock().unwrap_or_else(|e| e.into_inner()).take().is_some()
+    }
     pub fn partie(&self) -> Option<PartieEnCours> {
         self.partie.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
     /// Retient la partie et rend son numéro.
-    pub fn commencer(&self, p: PartieEnCours) -> u64 {
+    pub fn commencer(&self, mut p: PartieEnCours) -> u64 {
+        p.au_lancement = Some(Instantane { effet: p.effet.clone(), fps: p.fps, triches: p.triches.iter().map(|t| t.active).collect() });
+        *self.relance.lock().unwrap_or_else(|e| e.into_inner()) = None;
         *self.partie.lock().unwrap_or_else(|e| e.into_inner()) = Some(p);
         self.numero.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1
     }
@@ -603,6 +635,13 @@ pub struct EtatMenu {
     pub titre: String,
     pub plateforme: String,
     pub emulateur: Option<String>,
+    /// Les réglages changés pendant la partie qui ne valent qu'au prochain lancement (vide : rien à relancer).
+    pub a_relancer: Vec<String>,
+    /// « Relancer » est possible : un émulateur que Frogtend quitte et relance (jamais un jeu PC).
+    pub relancer_possible: bool,
+    /// « Sauver puis relancer » : seulement là où Frogtend vérifie que la sauvegarde rapide est écrite avant de
+    /// quitter (RetroArch avec ses sauvegardes connues, BigPEmu avec ses emplacements, MAME).
+    pub sauver_avant: bool,
     /// Actions possibles en plus de reprendre et quitter : `reset`, `disque`, `sauver`, `charger` ; options du jeu :
     /// `fps`, `rapide`, `capture`, `muet` (`pilotage::actions`).
     pub actions: Vec<&'static str>,
@@ -661,39 +700,45 @@ pub fn action_de(nom: &str) -> Option<Action> {
     }
 }
 
+/// Ce qui ne vaudra qu'au prochain lancement et diffère de la partie en cours, en mots pour la personne.
+pub fn a_relancer(p: &PartieEnCours, e: &str) -> Vec<String> {
+    let Some(avant) = &p.au_lancement else { return vec![] };
+    let mut l = Vec::new();
+    if e == "bigpemu" && !p.effets.is_empty() && p.effet != avant.effet {
+        l.push("effet d'image".to_string());
+    }
+    if fps_menu(p, e).is_some_and(|f| !f.en_direct) && p.fps != avant.fps {
+        l.push("compteur de fluidité".to_string());
+    }
+    if e == "bigpemu" && p.empreinte.is_some() {
+        let n = p.triches.iter().zip(avant.triches.iter().chain(std::iter::repeat(&false))).filter(|(t, a)| t.active != **a).count();
+        if n > 0 {
+            l.push(format!("{n} triche{}", if n > 1 { "s" } else { "" }));
+        }
+    }
+    l
+}
+
 pub fn etat(p: &PartieEnCours) -> EtatMenu {
     let e = p.emulateur.as_deref().unwrap_or("");
+    let actions = etat_actions(p, e);
+    let sauver_avant = actions.contains(&"sauver")
+        && match e {
+            "bigpemu" => p.etats_bigpemu.is_some(),
+            "mame" => true,
+            "retroarch" => p.etats.is_some() && p.nom_rom.is_some(),
+            _ => false,
+        };
     EtatMenu {
+        a_relancer: a_relancer(p, e),
+        relancer_possible: p.emulateur.is_some(),
+        sauver_avant,
         fiche: None,
         jeu: p.jeu,
         titre: p.titre.clone(),
         plateforme: p.plateforme.clone(),
         emulateur: p.emulateur.clone(),
-        actions: crate::pilotage::actions(e)
-            .into_iter()
-            // Un jeu de MAME qui ne gère pas les sauvegardes d'état (dit par le script au démarrage) : ni sauver ni
-            // charger — une sauvegarde peu fiable serait une partie perdue (✅ Seb 19/10).
-            // Des touches qui n'arriveraient pas (Dolphin, raccourcis sur une manette) : rien à proposer.
-            .filter(|_| p.raccourcis_clavier || e == "retroarch" || e == "mame")
-            // La famille d'Eden : Ctrl+V seulement s'il est encore son raccourci d'origine.
-            .filter(|a| !matches!(a, crate::pilotage::Action::ImagesParSeconde) || !matches!(e, "eden" | "eglantine" | "lichii") || p.fps_en_direct)
-            // BigPEmu : Recommencer seulement si F16 est liée à « Reload Image » chez la personne.
-            .filter(|a| e != "bigpemu" || !matches!(a, crate::pilotage::Action::Reset) || p.reset_bigpemu)
-            // Ses autres raccourcis : seulement ceux encore d'origine (`eden::actions_d_origine`).
-            .filter(|a| matches!(a, crate::pilotage::Action::ImagesParSeconde) || !matches!(e, "eden" | "eglantine" | "lichii") || p.eden_d_origine.contains(a))
-            // Le mode « hardcore » des succès : pas de sauvegarde rapide (RetroArch les refuserait).
-            .filter(|a| !p.etats_interdits || !matches!(a, crate::pilotage::Action::SauverEtat | crate::pilotage::Action::ChargerEtat))
-            // DOSBox Staging change de disque par sa propre configuration : gardé tel quel.
-            .filter(|a| {
-                !matches!(a, crate::pilotage::Action::DisqueSuivant) || p.plusieurs_disques || e == "dosbox-staging" || SYSTEMES_A_FACES.contains(&p.plateforme.as_str())
-            })
-            .filter(|a| {
-                e != "mame"
-                    || !matches!(a, crate::pilotage::Action::SauverEtat | crate::pilotage::Action::ChargerEtat)
-                    || p.dossier_emulateur.as_deref().and_then(|d| crate::pilotage::jeu_mame(std::path::Path::new(d))).is_some_and(|(_, sauve)| sauve)
-            })
-            .map(nom_action)
-            .collect(),
+        actions,
         en_pause: crate::pilotage::se_met_en_pause(e) && !p.figer_emulateur,
         taodbox: false,
         emplacement: (matches!(e, "retroarch" | "mame") || (e == "bigpemu" && p.etats_bigpemu.is_some() && p.raccourcis_clavier)).then_some(p.emplacement),
@@ -710,6 +755,35 @@ pub fn etat(p: &PartieEnCours) -> EtatMenu {
             en_direct: e == "retroarch",
         }),
     }
+}
+
+/// Les actions proposées par le menu pour cette partie.
+fn etat_actions(p: &PartieEnCours, e: &str) -> Vec<&'static str> {
+    crate::pilotage::actions(e)
+        .into_iter()
+        // Un jeu de MAME qui ne gère pas les sauvegardes d'état (dit par le script au démarrage) : ni sauver ni
+        // charger — une sauvegarde peu fiable serait une partie perdue (✅ Seb 19/10).
+        // Des touches qui n'arriveraient pas (Dolphin, raccourcis sur une manette) : rien à proposer.
+        .filter(|_| p.raccourcis_clavier || e == "retroarch" || e == "mame")
+        // La famille d'Eden : Ctrl+V seulement s'il est encore son raccourci d'origine.
+        .filter(|a| !matches!(a, crate::pilotage::Action::ImagesParSeconde) || !matches!(e, "eden" | "eglantine" | "lichii") || p.fps_en_direct)
+        // BigPEmu : Recommencer seulement si F16 est liée à « Reload Image » chez la personne.
+        .filter(|a| e != "bigpemu" || !matches!(a, crate::pilotage::Action::Reset) || p.reset_bigpemu)
+        // Ses autres raccourcis : seulement ceux encore d'origine (`eden::actions_d_origine`).
+        .filter(|a| matches!(a, crate::pilotage::Action::ImagesParSeconde) || !matches!(e, "eden" | "eglantine" | "lichii") || p.eden_d_origine.contains(a))
+        // Le mode « hardcore » des succès : pas de sauvegarde rapide (RetroArch les refuserait).
+        .filter(|a| !p.etats_interdits || !matches!(a, crate::pilotage::Action::SauverEtat | crate::pilotage::Action::ChargerEtat))
+        // DOSBox Staging change de disque par sa propre configuration : gardé tel quel.
+        .filter(|a| {
+            !matches!(a, crate::pilotage::Action::DisqueSuivant) || p.plusieurs_disques || e == "dosbox-staging" || SYSTEMES_A_FACES.contains(&p.plateforme.as_str())
+        })
+        .filter(|a| {
+            e != "mame"
+                || !matches!(a, crate::pilotage::Action::SauverEtat | crate::pilotage::Action::ChargerEtat)
+                || p.dossier_emulateur.as_deref().and_then(|d| crate::pilotage::jeu_mame(std::path::Path::new(d))).is_some_and(|(_, sauve)| sauve)
+        })
+        .map(nom_action)
+        .collect()
 }
 
 /// L'entrée « Images par seconde » : en direct quand la bascule part tout de suite (RetroArch, MAME, Eden avec son
@@ -1181,6 +1255,7 @@ mod tests {
 
     fn partie(emulateur: Option<&str>) -> PartieEnCours {
         PartieEnCours {
+            au_lancement: None,
             jeu: 1,
             titre: "Jeu".into(),
             plateforme: "X".into(),
@@ -1246,6 +1321,41 @@ mod tests {
         // Un jeu CD (empreinte inconnue) : pas de triches ; touches pas posées : ni sauver, ni charger, ni capturer.
         assert_eq!(etat(&PartieEnCours { empreinte: None, ..bp.clone() }).triches, None);
         assert!(!etat(&bp).actions.contains(&"reset"), "sans F16 sur « Reload Image » : pas de Recommencer");
+        // Relancer : rien tant que rien ne diffère du lancement ; une triche cochée en jeu ou un autre effet : dit.
+        let m = MenuJeu::default();
+        m.commencer(PartieEnCours { raccourcis_clavier: true, ..bp.clone() });
+        let lance = m.partie().unwrap();
+        assert!(etat(&lance).a_relancer.is_empty() && etat(&lance).relancer_possible);
+        m.basculer_triche(0);
+        m.noter_effet(Some("bigpemu:crt-hyllian".into()));
+        let change = m.partie().unwrap();
+        assert_eq!(etat(&change).a_relancer, vec!["effet d'image", "1 triche"]);
+        m.basculer_triche(0);
+        assert_eq!(etat(&m.partie().unwrap()).a_relancer, vec!["effet d'image"], "décochée : plus à relancer");
+        assert!(!etat(&change).sauver_avant, "BigPEmu sans emplacements connus : pas de « sauver d'abord »");
+        // La demande de relance ne vaut que pour cette partie, une fois.
+        let n = m.numero.load(std::sync::atomic::Ordering::SeqCst);
+        *m.relance.lock().unwrap() = Some((n, std::time::Instant::now() + std::time::Duration::from_secs(60)));
+        assert!(!m.prendre_relance(n + 1));
+        assert!(m.prendre_relance(n));
+        assert!(!m.prendre_relance(n), "prise une seule fois");
+        *m.relance.lock().unwrap() = Some((n, std::time::Instant::now()));
+        assert!(!m.prendre_relance(n), "trop tard : pas de relancement surprise");
+        assert!(!etat(&partie(None)).relancer_possible, "un jeu PC ne se relance pas depuis le menu");
+        *m.relance.lock().unwrap() = Some((n, std::time::Instant::now() + std::time::Duration::from_secs(60)));
+        assert!(m.annuler_relance());
+        assert!(!m.prendre_relance(n), "arrêté de force : pas de relance");
+        // « Sauver d'abord » : seulement là où la sauvegarde est vérifiée.
+        let ra = PartieEnCours { etats: Some("E:/RA/states".into()), nom_rom: Some("Mario".into()), ..partie(Some("retroarch")) };
+        assert!(etat(&ra).sauver_avant);
+        assert!(!etat(&PartieEnCours { nom_rom: None, ..ra.clone() }).sauver_avant, "sauvegardes inconnues");
+        assert!(!etat(&PartieEnCours { etats_interdits: true, ..ra }).sauver_avant, "hardcore : pas de sauvegarde");
+        assert!(!etat(&PartieEnCours { raccourcis_clavier: true, ..partie(Some("duckstation")) }).sauver_avant, "touche sans vérification");
+        // Le compteur de la PS3 (au prochain lancement) changé en jeu.
+        let m2 = MenuJeu::default();
+        m2.commencer(PartieEnCours { fps: Some(false), fps_au_lancement: true, ..partie(Some("rpcs3")) });
+        m2.noter_fps(Some(true), false);
+        assert_eq!(etat(&m2.partie().unwrap()).a_relancer, vec!["compteur de fluidité"]);
         assert!(etat(&PartieEnCours { reset_bigpemu: true, ..bp.clone() }).actions.contains(&"reset"));
         assert!(etat(&PartieEnCours { raccourcis_clavier: false, ..bp }).actions.is_empty());
         assert!(etat(&PartieEnCours { triches: vec![t], ..partie(Some("retroarch")) }).triches_en_direct);

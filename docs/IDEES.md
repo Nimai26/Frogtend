@@ -125,3 +125,7 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
 - **lichii-updater.exe** (08/11) : à vérifier dans les sources de Lichii s'il se met à jour seul au démarrage (il
   écrirait hors de Frogtend, et la version notée serait fausse).
 - BigPEmu : relever l'empreinte des jeux Jaguar CD (cheat_codes.json les couvre, ReadMe l.28) pour proposer leurs triches dans le menu (noté 11/11, 0.187.0).
+
+- **Relancer puis recharger tout seul (15/11) — ✅ Seb 15/11 : « oui quand cela est possible » → PLAN** : après « 💾 Sauver puis relancer », le jeu repart du
+  début ; il faut aujourd'hui faire menu ▸ 📂 Charger. Frogtend pourrait charger seul l'emplacement sauvé dès que le jeu
+  est prêt (RetroArch, Jaguar, MAME). À décider par Seb.

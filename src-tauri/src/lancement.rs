@@ -331,6 +331,7 @@ pub fn finir_la_partie_eden(
     plafond: std::time::Duration,
     fenetres: impl Fn(u32) -> Option<bool>,
     en_pause: impl Fn() -> bool,
+    avant_d_arreter: impl Fn(),
 ) -> FinEden {
     let debut = std::time::Instant::now();
     let mut a = AttenteEden::default();
@@ -345,6 +346,7 @@ pub fn finir_la_partie_eden(
         let o = octets_ecrits(&restants);
         let etats: Vec<Option<bool>> = restants.iter().map(|p| fenetres(*p)).collect();
         if let Some(fige) = a.pas(debut.elapsed(), o, &etats, en_pause(), minimum) {
+            avant_d_arreter();
             return FinEden::Termine(terminer(&restants), fige, o.saturating_sub(a.premier));
         }
         std::thread::sleep(std::time::Duration::from_secs(1));

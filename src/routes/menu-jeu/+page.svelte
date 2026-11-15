@@ -13,7 +13,7 @@
   import type { Capture } from '$lib/captures/captures';
   import { documentsDuMenu, documentsMontres, libelleDocument, ouvrirDocument, texteChargement, type DocumentOuvert } from '$lib/ludotheque/documents';
   import { arreterDocument, suiviDocument } from '$lib/ludotheque/documentsProgres.svelte';
-  import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
+  import { annulerDessus, choisir, confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import { accordCheatEngine } from '$lib/mods/cheatengine';
   import ListeSucces from '$lib/succes/ListeSucces.svelte';
@@ -51,7 +51,8 @@
       if (menu?.effets && !menu.effets.en_direct) {
         menu = { ...menu, effets: { ...menu.effets, actuel: id === 'aucun' ? null : id } };
         await emit('menu-effet-garder', { jeu: menu.jeu, plateforme: menu.plateforme, effet: id, pour: 'jeu' });
-        toast(`🖼 C’est noté : « ${libelleEffet(id)} » pour ce jeu, dès ta prochaine partie.`, 'ok');
+        toast(`🖼 C’est noté : « ${libelleEffet(id)} » pour ce jeu, dès ta prochaine partie (ou 🔄 Relancer, en haut du menu).`, 'ok');
+        await relireRelance();
       }
     } catch (e) {
       toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
@@ -154,6 +155,8 @@
       }),
       // Le menu est caché par le cœur (le jeu s'est fermé, Alt+F4…) : rien ne doit continuer de jouer derrière.
       listen('menu-jeu-cache', () => {
+        // Une question restée ouverte ne doit jamais revenir dans le menu du jeu SUIVANT.
+        annulerDessus();
         visible = false;
         ouvert = null;
         documents = null;
@@ -230,6 +233,64 @@
     await action('sauver');
   }
 
+  /** Après un réglage qui ne vaut qu'au prochain lancement : la ligne « Relancer » suit ce qui attend (décocher ce
+   * qu'on vient de cocher la fait disparaître). */
+  async function relireRelance() {
+    const e = await api.menuJeuEtat().catch(() => null);
+    if (e && menu && e.jeu === menu.jeu) menu = { ...menu, a_relancer: e.a_relancer };
+  }
+
+  /** Relancer le jeu (✅ Seb 15/11) : pour voir tout de suite un changement, ou pour recommencer un jeu dont
+   * l'émulateur n'a pas de Recommencer. La sauvegarde rapide d'abord, seulement là où elle est vérifiée. */
+  let relanceEnCours = $state(false);
+
+  async function relancer(pourRecommencer = false) {
+    if (!menu || relanceEnCours) return;
+    const n = menu.emplacement;
+    const d = dateEmplacement(n);
+    const titre = pourRecommencer ? `🔄 Recommencer « ${menu.titre} » ?` : `🔄 Relancer « ${menu.titre} » ?`;
+    // Le jeu repart TOUJOURS du début (rien n'est rechargé seul) : dit clairement.
+    const debut = pourRecommencer
+      ? 'Le jeu se ferme et repart depuis le début (ça peut prendre une minute).'
+      : `Le jeu se ferme et repart depuis le début, avec tes changements (${menu.a_relancer.join(', ')}). Ça peut prendre une minute. Annuler : ils vaudront à ta prochaine partie.`;
+    let v: boolean | null;
+    if (menu.sauver_avant && a('sauver')) {
+      const ou = n !== null && n !== undefined ? `l’emplacement ${numero(n)}` : 'ta sauvegarde rapide';
+      // « Sauver puis relancer » en premier : un A réflexe sauve d'abord.
+      v = await choisir<boolean>(
+        titre,
+        [
+          {
+            valeur: true,
+            libelle: '💾 Sauver puis relancer',
+            detail: `dans ${ou}${d !== null ? ` (remplace celle du ${quand(d)}, gardée à côté)` : ''} ; pour y revenir ensuite : menu ▸ 📂 Charger`,
+          },
+          { valeur: false, libelle: '🔄 Relancer sans sauver', detail: 'ce que tu n’as pas sauvegardé dans le jeu sera perdu' },
+        ],
+        debut,
+      );
+    } else {
+      // Une seule voie, qui perd ce qui n'est pas sauvegardé : une vraie confirmation (Annuler choisi d'abord, comme Quitter).
+      v = (await confirmer(titre, {
+        message: `${debut}\n\nPense à sauvegarder ta partie dans le jeu avant : ce qui n’est pas sauvegardé sera perdu.`,
+        libelleValider: '🔄 Relancer sans sauver',
+        danger: true,
+      }))
+        ? false
+        : null;
+    }
+    if (v === null) return;
+    relanceEnCours = true;
+    try {
+      const k = await api.menuJeuRelancer(menu.jeu, v);
+      if (k === 0) toast('La fenêtre du jeu est introuvable : ferme-le toi-même.', 'alerte');
+    } catch (e) {
+      toast(`Impossible de relancer : ${motifDuRefus(e)}`, 'erreur');
+    } finally {
+      relanceEnCours = false;
+    }
+  }
+
   async function action(nom: string, question?: string) {
     if (question && !(await confirmer(question, { libelleValider: 'Oui' }))) return;
     try {
@@ -249,7 +310,8 @@
     try {
       await api.menuJeuFps(afficher);
       menu = { ...menu, fps: { ...f, affiche: afficher } };
-      toast(`📊 C’est noté : compteur ${afficher ? 'affiché' : 'caché'} dès ta prochaine partie.`, 'ok');
+      toast(`📊 C’est noté : compteur ${afficher ? 'affiché' : 'caché'} dès ta prochaine partie (ou 🔄 Relancer, en haut du menu).`, 'ok');
+      await relireRelance();
     } catch (e) {
       toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
     }
@@ -279,7 +341,8 @@
         if (!menu) return;
         const l = menu.triches?.map((x, k) => (k === i ? { ...x, active: !x.active } : x)) ?? null;
         menu = { ...menu, triches: l };
-        toast(`🎯 C’est noté : « ${t.titre} » ${t.active ? 'coupée' : 'cochée'} dès ta prochaine partie.`, 'ok');
+        toast(`🎯 C’est noté : « ${t.titre} » ${t.active ? 'coupée' : 'cochée'} dès ta prochaine partie (ou 🔄 Relancer, en haut du menu).`, 'ok');
+        await relireRelance();
       } catch (e) {
         toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
       } finally {
@@ -689,6 +752,12 @@
     </header>
     <div class="liste" bind:this={liste}>
       <button class="btn" onclick={reprendre}>▶ Reprendre</button>
+      {#if menu?.relancer_possible && menu.a_relancer.length}
+        <!-- Sous Reprendre (le premier choix reste Reprendre : un A réflexe ne relance rien). -->
+        <button class="btn" disabled={relanceEnCours} onclick={() => relancer()}>
+          🔄 Relancer le jeu pour voir tes changements <span class="muted">({menu.a_relancer.join(', ')})</span>
+        </button>
+      {/if}
       {#if (a('sauver') || a('charger')) && menu?.emplacement !== null && menu?.emplacement !== undefined}
         <!-- L'emplacement des sauvegardes rapides (1 à 10), choisi ici (✅ Seb 28/10) ; aussi celui des raccourcis Affichage + LT / RT. -->
         {@const d = dateEmplacement(menu.emplacement)}
@@ -754,6 +823,10 @@
         >
           🔄 Recommencer
         </button>
+      {/if}
+      {#if !a('reset') && menu?.relancer_possible}
+        <!-- Un émulateur sans Recommencer (Eden, PPSSPP…) : recommencer = fermer puis relancer (normalisé, ✅ Seb 15/11). -->
+        <button class="btn" disabled={relanceEnCours} onclick={() => relancer(true)}>🔄 Recommencer</button>
       {/if}
       <button class="btn" onclick={quitter}>⏹ Quitter le jeu</button>
     </div>

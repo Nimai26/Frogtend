@@ -269,6 +269,11 @@ vraie sauvegarde, faite par Seb** (Options ▸ Sauvegarde ▸ 💾 Sauvegarder m
 À la restauration, Frogtend remet la configuration et les parties, puis propose de retélécharger les jeux de la
 liste (annoncé et chiffré d'abord : combien de jeux, combien de Go).
 
+**Recharger après « Sauver puis relancer » (✅ Seb 15/11 : « oui quand cela est possible ») :** après une relance
+avec sauvegarde, Frogtend charge seul l'emplacement sauvé dès que le jeu est prêt (RetroArch, Jaguar, MAME) ; sinon,
+menu ▸ 📂 Charger. À faire après la 0.199.0 (avis de l'expert lancement : quand le jeu est-il « prêt » ? Jaguar :
+la fenêtre des triches au démarrage).
+
 **Quitter Eglantine et Lichii en sécurité (Seb, 15/11) :** « souvent le logiciel plante après la fermeture du jeu,
 donc peut-être attendre 5 secondes puis le tuer ». Aujourd'hui (`lancement::finir_la_partie`) : 10 s, puis arrêt
 seulement si l'émulateur n'a PLUS de fenêtre visible (une fenêtre figée peut écrire une sauvegarde : jamais touchée).

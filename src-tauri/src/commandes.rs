@@ -1550,7 +1550,8 @@ pub async fn lanceur_choisir(noyau: State<'_, Noyau>, id: i64, lanceur: crate::i
 #[serde(tag = "sorte", rename_all = "snake_case")]
 enum EvenementPartie {
     Debut { jeu: i64, carte_cedee: bool },
-    Fin { jeu: i64, secondes: u64 },
+    /// `relancer` : la personne a demandé « Relancer » (le même jeu repart aussitôt, ✅ Seb 15/11).
+    Fin { jeu: i64, secondes: u64, relancer: bool },
 }
 
 /// Le réglage « Commandes » d'un jeu, choisi par la personne (réglages de son profil).
@@ -1951,6 +1952,7 @@ pub async fn jeu_jouer(
         None => (effets_ra, None, prep.triches, prep.abri_fait, None, vec![], None),
     };
     let numero = app.state::<crate::menu_jeu::MenuJeu>().commencer(crate::menu_jeu::PartieEnCours {
+        au_lancement: None,
         etats_interdits: prep.etats_interdits,
         triches,
         triches_permises: !prep.etats_interdits,
@@ -2164,6 +2166,7 @@ pub async fn jeu_jouer(
                 }
             }
         }
+        let relancer = menu.prendre_relance(numero);
         if menu.en_cours(numero) {
             menu.finir(numero);
             armer_touche_menu(&app2, false);
@@ -2178,7 +2181,7 @@ pub async fn jeu_jouer(
         }
         match fin {
             Ok(fin) => {
-                let _ = app2.emit("partie", EvenementPartie::Fin { jeu: id, secondes: fin.secondes });
+                let _ = app2.emit("partie", EvenementPartie::Fin { jeu: id, secondes: fin.secondes, relancer });
             }
             Err(e) => noyau.journaliser(&format!("suivi de la partie du jeu {id} : {e:?}")),
         }
@@ -2866,9 +2869,12 @@ async fn etat_retroarch(app: &AppHandle, p: crate::menu_jeu::PartieEnCours, a: c
             for _ in 0..40 {
                 std::thread::sleep(std::time::Duration::from_millis(100));
                 change = tous().into_iter().find(|(f, em)| avant.iter().all(|(g, e2)| g != f || e2 != em)).map(|(f, _)| f);
-                if change.is_some() {
-                    // Le temps que RetroArch finisse d'écrire.
-                    std::thread::sleep(std::time::Duration::from_millis(300));
+                if let Some(f) = change.clone() {
+                    // Le temps que RetroArch finisse d'écrire : taille stable et fichier refermé (au plus 5 s). Pas
+                    // fini : « pas confirmée » (les copies restent à l'abri, et Relancer ne ferme pas le jeu dessus).
+                    if !crate::bigpemu::attendre_fichier(&f, std::time::Duration::from_secs(5)) {
+                        change = None;
+                    }
                     break;
                 }
             }
@@ -3579,6 +3585,7 @@ pub async fn menu_jeu_quitter(app: AppHandle) -> Resultat<usize> {
             // au moins 5 s, au plus 5 min.
             let minimum = std::time::Duration::from_secs(delai.max(5));
             let app3 = app.clone();
+            let app4 = app.clone();
             std::thread::spawn(move || {
                 // Le menu rouvert pendant l'attente (Eden gelé par Frogtend, ou en pause derrière lui) : jamais compté.
                 let en_pause = move || crate::figer::est_fige() || app3.state::<crate::menu_jeu::MenuJeu>().ouvert.load(std::sync::atomic::Ordering::SeqCst);
@@ -3589,6 +3596,11 @@ pub async fn menu_jeu_quitter(app: AppHandle) -> Resultat<usize> {
                     std::time::Duration::from_secs(300),
                     crate::menu_jeu::fenetres_figees,
                     en_pause,
+                    || {
+                        if app4.state::<crate::menu_jeu::MenuJeu>().annuler_relance() {
+                            let _ = app4.emit("menu-relance-annulee", ());
+                        }
+                    },
                 );
                 let n = app2.state::<Noyau>();
                 match fin {
@@ -3616,6 +3628,36 @@ pub async fn menu_jeu_quitter(app: AppHandle) -> Resultat<usize> {
         });
     }
     Ok(n)
+}
+
+/// « Relancer » (✅ Seb 15/11) : une sauvegarde rapide d'abord si demandée (seulement là où elle est vérifiée,
+/// `EtatMenu::sauver_avant`), puis Quitter ; la fin de CETTE partie portera « relancer » et la fenêtre principale
+/// relance le jeu tel qu'il avait été lancé. `jeu` : celui que le menu montre (une autre partie : refusé).
+#[tauri::command]
+pub async fn menu_jeu_relancer(app: AppHandle, noyau: State<'_, Noyau>, jeu: i64, sauver: bool) -> Resultat<usize> {
+    let menu = app.state::<crate::menu_jeu::MenuJeu>();
+    let numero = menu.numero.load(std::sync::atomic::Ordering::SeqCst);
+    let p = menu.partie().filter(|_| menu.en_cours(numero)).ok_or_else(|| Erreur::Introuvable("Aucune partie en cours.".into()))?;
+    if p.jeu != jeu {
+        return Err(Erreur::Refus("Ce n'est plus la même partie.".into()));
+    }
+    if p.emulateur.is_none() {
+        return Err(Erreur::Refus("Ce jeu ne se relance pas depuis le menu : quitte-le, puis relance-le.".into()));
+    }
+    if sauver {
+        if !crate::menu_jeu::etat(&p).sauver_avant {
+            return Err(Erreur::Refus("Cet émulateur ne permet pas de vérifier la sauvegarde avant de relancer.".into()));
+        }
+        menu_jeu_action(app.clone(), noyau.clone(), "sauver".into()).await?;
+    }
+    // La demande vaut pour CETTE partie, le temps de la fermer (au plus 6 min : l'arrêt de sécurité d'Eden en prend 5).
+    *menu.relance.lock().unwrap_or_else(|e| e.into_inner()) = Some((numero, std::time::Instant::now() + std::time::Duration::from_secs(360)));
+    noyau.journaliser(&format!("relancer : jeu {jeu}{}", if sauver { " (sauvegarde rapide faite)" } else { "" }));
+    let n = menu_jeu_quitter(app.clone()).await;
+    if !matches!(n, Ok(k) if k > 0) {
+        menu.annuler_relance();
+    }
+    n
 }
 
 /// La version lancée par défaut d'un jeu importé.

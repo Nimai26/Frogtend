@@ -38,7 +38,8 @@
     return () => clearTimeout(t);
   });
 
-  const montre = $derived(visible && jeu !== null && !masque);
+  // Une relance : montré tout de suite (la page dessous ne doit jamais redevenir cliquable entre les deux parties).
+  const montre = $derived((visible || partie.relance) && jeu !== null && !masque);
 
   $effect(() => {
     attenteLancement.montre = montre;
@@ -71,7 +72,11 @@
     <div class="carte panel">
       <div class="roue" aria-hidden="true"></div>
       <p class="titre">{titre}</p>
-      <p>se lance… Il prendra l’écran dès qu’il sera prêt.</p>
+      {#if partie.relance}
+        <p>🔄 se ferme puis repart… (ça peut prendre une minute). Il reprendra l’écran dès qu’il sera prêt.</p>
+      {:else}
+        <p>se lance… Il prendra l’écran dès qu’il sera prêt.</p>
+      {/if}
       <button class="btn" bind:this={bouton} onclick={masquer}>Revenir à Frogtend (le jeu continue de se lancer)</button>
     </div>
   </div>

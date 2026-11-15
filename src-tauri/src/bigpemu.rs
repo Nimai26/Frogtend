@@ -733,8 +733,8 @@ fn libre(f: &Path) -> bool {
     }
 }
 
-/// Le fichier existe, non vide, de taille stable entre deux regards, et fermé par BigPEmu.
-fn attendre_fichier(f: &Path, delai: std::time::Duration) -> bool {
+/// Le fichier existe, non vide, de taille stable entre deux regards, et refermé par l'émulateur (BigPEmu, RetroArch).
+pub(crate) fn attendre_fichier(f: &Path, delai: std::time::Duration) -> bool {
     let debut = std::time::Instant::now();
     let mut avant: Option<u64> = None;
     while debut.elapsed() < delai {

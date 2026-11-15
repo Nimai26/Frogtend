@@ -38,12 +38,51 @@ import { EFFETS_IMAGE, libelleEffet } from './effetsImage';
 import { proposerCopieAvantMod } from '$lib/mods/copieAvantMod';
 
 /** `affichee` : la fenêtre du jeu en cours est apparue (l'écran de lancement se cache, lot 4c). */
-export const partie = $state<{ enJeu: number | null; installation: number | null; lancement: number | null; affichee: boolean }>({
+export const partie = $state<{ enJeu: number | null; installation: number | null; lancement: number | null; affichee: boolean; relance: boolean }>({
   enJeu: null,
   installation: null,
   lancement: null,
   affichee: true,
+  /** « Relancer » en cours (✅ Seb 15/11) : le jeu se ferme puis repart ; l'écran de lancement reste. */
+  relance: false,
 });
+
+/** Le dernier lancement, tel qu'il est parti (carte e-Reader choisie comprise) : « Relancer » le refait à l'identique,
+ * sans reposer de question. */
+let dernierLancement: { id: number; emulateur?: string; version?: string; carte?: number } | null = null;
+
+/** Le début de la partie relancée a-t-il été vu ? */
+let relanceDemarree = false;
+
+/** Relance le jeu qui vient de se fermer à la demande de la personne (menu ▸ Relancer). */
+async function relancer(id: number) {
+  const l = dernierLancement;
+  partie.relance = true;
+  relanceDemarree = false;
+  try {
+    await rechargerJeuxDuPc();
+    if (!l || l.id !== id) throw new Error('lancement inconnu');
+    // Un jeu Jaguar à triche cochée : le rappel AVANT, le temps de le lire (comme à ▶ Jouer).
+    if (await api.bigpemuTrichesCochees(id).catch(() => false)) {
+      toast('🎯 Triches cochées : au démarrage, une petite fenêtre en anglais s’affiche. Attends quelques secondes, puis appuie sur A, puis sur B : le jeu démarre avec tes triches.', 'neutre');
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+    await jouer(l.id, l.emulateur, l.version, l.carte);
+  } catch {
+    // Le lancement inconnu (Frogtend redémarré entre-temps) : dit juste dessous.
+    toast('Le jeu n’a pas pu repartir : relance-le avec ▶ Jouer.', 'erreur');
+  } finally {
+    // Le début de la partie arrive par un événement, parfois juste après le retour du lancement.
+    if (!relanceDemarree) await new Promise((r) => setTimeout(r, 2000));
+    partie.relance = false;
+    // Pas reparti (refus, question à laquelle la personne a dit non, erreur déjà dite par le lancement) : la partie
+    // est finie pour de bon, et la sauvegarde automatique a lieu.
+    if (!relanceDemarree) {
+      if (partie.enJeu === id) partie.enJeu = null;
+      await apresUnePartie();
+    }
+  }
+}
 
 /** L'écran de lancement est montré : la page dessous est inerte (lot 4c). */
 export const attenteLancement = $state({ montre: false });
@@ -91,11 +130,22 @@ export async function suivreParties() {
     const n = e.payload.nombre;
     toast(`📷 ${n} capture${n > 1 ? 's' : ''} d’écran rangée${n > 1 ? 's' : ''} dans ton dossier des captures.`, 'ok');
   });
-  ecoute = await listen<{ sorte: 'debut' | 'fin'; jeu: number; secondes?: number; carte_cedee?: boolean }>('partie', async (e) => {
+  // Un émulateur resté figé a dû être arrêté de force : pas de relancement automatique.
+  await listen('menu-relance-annulee', () => {
+    toast('⚠ L’émulateur restait figé : Frogtend l’a fermé. Relance le jeu toi-même avec ▶ Jouer.', 'alerte');
+  });
+  ecoute = await listen<{ sorte: 'debut' | 'fin'; jeu: number; secondes?: number; carte_cedee?: boolean; relancer?: boolean }>('partie', async (e) => {
     if (e.payload.sorte === 'debut') {
       partie.affichee = false;
       partie.enJeu = e.payload.jeu;
-      if (e.payload.carte_cedee) toast('🎮 Session de jeu annoncée à Firehouse.', 'ok');
+      const relance = partie.relance;
+      relanceDemarree = true;
+      if (e.payload.carte_cedee && !relance) toast('🎮 Session de jeu annoncée à Firehouse.', 'ok');
+    } else if (e.payload.relancer) {
+      // « Relancer » : l'écran de lancement reste (la page dessous inerte), pas de « Partie terminée » ni de sauvegarde
+      // automatique entre les deux (elle aura lieu à la vraie fin).
+      partie.affichee = false;
+      void relancer(e.payload.jeu);
     } else {
       partie.enJeu = null;
       const titre = tele.jeux[e.payload.jeu]?.titre ?? 'le jeu';
@@ -548,6 +598,7 @@ async function jouerSansAttente(id: number, emulateur?: string, version?: string
       await firmwareVitaAvant(id, j?.plateforme, emulateur).catch(() => {});
       await prevenirPareFeu(id, j?.plateforme, emulateur);
       const pe = etat.profil.pleinEcran[String(id)];
+      dernierLancement = { id, emulateur, version, carte };
       await api.jouer(
         id,
         etat.profil.commandes[String(id)],
@@ -561,7 +612,7 @@ async function jouerSansAttente(id: number, emulateur?: string, version?: string
         effetImage(id, j?.plateforme),
         choixImagesParSeconde(etat.profil.imagesParSeconde),
       );
-      toast(`▶ « ${j?.titre ?? 'Le jeu'} » se lance…`);
+      if (!partie.relance) toast(`▶ « ${j?.titre ?? 'Le jeu'} » se lance…`);
       return;
     } catch (e) {
       if (estErreurCoeur(e) && e.sorte === 'reglage' && j) {

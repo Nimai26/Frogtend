@@ -588,6 +588,12 @@ export interface EtatSteam {
 
 /** Ce que montre le menu en jeu. */
 export interface EtatMenuJeu {
+  /** Les réglages changés en jeu qui ne valent qu'au prochain lancement (vide : rien à relancer). */
+  a_relancer: string[];
+  /** « Relancer » possible (un émulateur, jamais un jeu PC). */
+  relancer_possible: boolean;
+  /** « Sauver puis relancer » : seulement si la sauvegarde rapide est vérifiée avant de quitter. */
+  sauver_avant: boolean;
   jeu: number;
   titre: string;
   plateforme: string;
@@ -802,6 +808,9 @@ export const api = {
   /** La fenêtre du menu en jeu, agrandie pour l'écran des boutons (puis rendue à sa taille). */
   menuJeuAgrandir: (grand: boolean) => appeler<void>('menu_jeu_agrandir', { grand }),
   menuJeuQuitter: () => appeler<number>('menu_jeu_quitter'),
+  /** Relancer le jeu (✅ Seb 15/11) : une sauvegarde rapide d'abord si `sauver`, puis Quitter ; la fenêtre principale
+   * le relance à la fin de la partie. */
+  menuJeuRelancer: (jeu: number, sauver: boolean) => appeler<number>('menu_jeu_relancer', { jeu, sauver }),
   jouer: (
     id: number,
     commandes?: CommandesJeu,
