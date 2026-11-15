@@ -2636,5 +2636,11 @@ d'abord :
   lancement suivant ; captures depuis screenshot_path. Question à Seb : l'album Switch (photos du jeu) déplacé aussi.
 - 12/11 (0.195.0) : BigPEmu — Recommencer par F16 sur « Reload Image » (action 46). NON VÉRIFIÉ : rechargement direct
   ou sélecteur de fichier ; la question de Recommencer prévient du retour de la fenêtre des triches.
+- 15/11 (0.196.0 → 0.201.0), tous validés par Seb : Recommencer retiré d'Eden (F6 plantait Eglantine) puis remis en
+  « fermer et relancer » ; galerie à jour pendant la partie ; arrêt de sécurité d'Eden figé après Quitter (20 s figé +
+  10 s sans écrire ; vu en vrai) ; Relancer pour appliquer + Sauver puis relancer + rechargement automatique
+  (RetroArch GET_STATUS, MAME script, BigPEmu fenêtre + 3 s ; jamais avec la fenêtre des triches) ; ⚡ Raccourcis en jeu
+  réglables (manette et clavier, Ctrl+Maj+F5/F9 d'office). Décisions : Eglantine lente = l'émulateur, mis de côté ;
+  intégrer PS4 et PS5 (PLAN).
 - RESTE (ordre proposé) : DuckStation et PCSX2 (emplacements 1-10 Maj/Ctrl+F15…F24, capture, avance, muet ; essai F16-F24
   avec Seb d'abord), Dolphin (après essai), « Relancer pour appliquer », raccourcis réglables, Ryubing.

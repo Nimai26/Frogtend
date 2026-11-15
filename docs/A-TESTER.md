@@ -10,7 +10,7 @@
 - [x] (✅ Seb 15/11) ⚙ Options ▸ ⚡ Raccourcis en jeu : la rubrique est là, avec tes réglages d'avant. Choisir « Vue + RB » pour charger
       est grisé (« déjà : ouvrir le menu »).
 - [x] (✅ Seb 15/11) Bubsy : Ctrl + Maj + F5 sauve, Ctrl + Maj + F9 recharge (sans ouvrir le menu).
-- [ ] Changer la sauvegarde à la manette pour Vue + LB : en jeu, Vue + LB tenus ½ s sauve ; l'image « 🎮 Les touches »
+- [x] (✅ Seb 15/11) Changer la sauvegarde à la manette pour Vue + LB : en jeu, Vue + LB tenus ½ s sauve ; l'image « 🎮 Les touches »
       du menu le montre.
 
 ## Recharger après une relance (0.200.0)
