@@ -11,14 +11,14 @@
       relancer » : le jeu repart puis, quelques secondes après, revient tout seul à l'endroit sauvé (message
       « Chargement demandé : emplacement N » en bas de l'écran).
 - [ ] Bubsy (Jaguar, sans triche) : même chose, le jeu revient à l'endroit sauvé environ 3 s après son démarrage.
-- [ ] Bubsy avec une triche cochée : PAS de chargement tout seul ; en ouvrant le menu, il dit de faire 📂 Charger.
+- [x] (✅ Seb 15/11, 0.200.0) Bubsy avec une triche cochée : PAS de chargement tout seul ; en ouvrant le menu, il dit de faire 📂 Charger.
 
 ## Relancer pour appliquer (0.199.0)
-- [ ] Bubsy (Jaguar) : menu ▸ ⚙ Options ▸ effet d'image, en choisir un autre ; revenir au menu : la ligne
+- [x] (✅ Seb 15/11, 0.200.0) Bubsy (Jaguar) : menu ▸ ⚙ Options ▸ effet d'image, en choisir un autre ; revenir au menu : la ligne
       « 🔄 Relancer le jeu pour voir tes changements (effet d'image) » est sous ▶ Reprendre. La choisir ▸ « Sauver
       puis relancer » : le jeu se ferme, l'écran « se ferme puis repart… » reste, Bubsy repart avec le nouvel effet, et
       ta sauvegarde rapide est dans l'emplacement choisi.
-- [ ] Même chose avec une triche cochée : le rappel « attends, puis A, puis B » s'affiche avant que le jeu reparte.
+- [x] (✅ Seb 15/11, 0.200.0) Même chose avec une triche cochée : le rappel « attends, puis A, puis B » s'affiche avant que le jeu reparte.
 - [ ] Remettre l'effet d'avant : la ligne Relancer disparaît.
 - [ ] Eglantine : menu ▸ 🔄 Recommencer ▸ « Relancer sans sauver » : le jeu se ferme et repart tout seul.
 
