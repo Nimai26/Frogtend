@@ -1114,6 +1114,54 @@ mod tests {
         println!("installé : {r:?}");
     }
 
+    /// RÉEL (accord de Seb du 15/11, relevé sans jeu) : le paquet Ryubing HÉBERGÉ par Firehouse installé dans
+    /// `FROGTEND_SORTIE\Ryubing` (dossier d'essai) — empreinte vérifiée, structure du zip listée, `portable\` créé. Rien
+    /// n'est lancé ici.
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_SORTIE=<dossier> cargo test essai_ryubing_installe -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_ryubing_installe() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let sortie = std::path::PathBuf::from(std::env::var("FROGTEND_SORTIE").unwrap());
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let s = Source::Firehouse(crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap());
+        let p = s.paquet_emulateur("ryubing").await.unwrap();
+        std::fs::create_dir_all(&sortie).unwrap();
+        let paquet = sortie.join("ryubing.zip");
+        let route = p["url"].as_str().unwrap().strip_prefix(crate::firehouse::PREFIXE).unwrap().to_string();
+        s.telecharger_route(&route, &paquet, &|_, _| {}).await.unwrap();
+        let sha = crate::sauvegarde::empreinte(&paquet).unwrap();
+        println!("reçu {} octets ; sha256 conforme : {}", std::fs::metadata(&paquet).unwrap().len(), sha == p["sha256"].as_str().unwrap());
+        assert_eq!(sha, p["sha256"].as_str().unwrap());
+        let z = zip::ZipArchive::new(std::fs::File::open(&paquet).unwrap()).unwrap();
+        let noms: Vec<_> = z.file_names().filter(|n| n.matches('/').count() <= 1).map(String::from).collect();
+        println!("zip (premiers niveaux) : {noms:?}");
+        let r = crate::emulateurs::installer_paquet_decrit("Ryubing", &paquet, &sortie.join("Ryubing"), p["programme"].as_str(), Some(("dossier", "portable")), None).unwrap();
+        println!("installé : {r:?}");
+    }
+
+    /// RÉEL (accord de Seb du 15/11) : les clés de l'ALTERNATIVE Ryubing (contrat 1.41) posées dans le dossier d'ESSAI
+    /// `FROGTEND_SORTIE` (`portable\system\`), pour ouvrir Ryubing sans la fenêtre « Keys not found ». Jamais affichées.
+    #[tokio::test]
+    #[ignore]
+    async fn essai_ryubing_cles() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let sortie = std::path::PathBuf::from(std::env::var("FROGTEND_SORTIE").unwrap());
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let s = Source::Firehouse(crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap());
+        let e = s.emulateurs("Nintendo Switch").await.unwrap();
+        let alt = e["conseil"]["alternatives"].as_array().unwrap().iter().find(|a| a["emulateur"] == "ryubing").unwrap().clone();
+        for b in alt["bios"].as_array().unwrap().iter().filter(|b| b["type"] == "fichier") {
+            let cible = sortie.join(b["chemin"].as_str().unwrap().replace('/', "\\"));
+            std::fs::create_dir_all(cible.parent().unwrap()).unwrap();
+            let route = b["url"].as_str().unwrap().strip_prefix(crate::firehouse::PREFIXE).unwrap().to_string();
+            s.telecharger_route(&route, &cible, &|_, _| {}).await.unwrap();
+            println!("posé : {} ({} o)", b["chemin"], std::fs::metadata(&cible).unwrap().len());
+        }
+    }
+
     /// RÉEL, lecture seule (contrat 1.33) : `/mame/machines` et `/mame/romset`, copiés tels quels dans `FROGTEND_SORTIE`
     /// (plusieurs Mo). Rien d'autre n'est écrit, rien n'est téléchargé.
     /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_SORTIE=<dossier> cargo test essai_mame_133 -- --ignored --nocapture`

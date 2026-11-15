@@ -251,6 +251,22 @@ pub const CATALOGUE: &[Fiche] = &[
         portable: None,
         dossiers_habituels: &[],
     },
+    // Switch, l'alternative à Eden (✅ Seb 15/11, contrat 1.41) : Ryubing, la suite de Ryujinx (son programme garde
+    // le nom `Ryujinx.exe`), paquet hébergé par Firehouse (sha256). Un dossier « portable » à côté du programme = mode
+    // portable (AppDataManager.cs) ; ses clés dans `portable\system\`, son firmware posé par Frogtend (ryubing.rs).
+    // Sa ligne (CommandLineState.cs) : `-f` plein écran, `--hide-updates` sans bouton de mise à jour (Frogtend s'en
+    // charge) ; le jeu À LA FIN, seul — chez Ryubing, un argument inconnu devient le jeu (jamais `-g`, son moteur
+    // graphique, ni une ligne de LaunchBox).
+    Fiche {
+        id: "ryubing",
+        nom: "Ryubing",
+        alias: &["ryubing", "ryujinx"],
+        origine: Origine::Firehouse,
+        programme: "ryujinx.exe",
+        ligne: "-f --hide-updates",
+        portable: Some("portable/"),
+        dossiers_habituels: &[],
+    },
 ];
 
 /// La fiche d'un émulateur recommandé par Firehouse (d'après son nom).
@@ -1524,6 +1540,32 @@ mod tests {
     }
 
     #[test]
+    fn la_mise_a_jour_de_ryubing_remplace_le_programme_et_jamais_portable() {
+        // `garder` de `emulateur_installer_firehouse` pour Ryubing (relecture lancement 15/11).
+        let garder: &[&str] = &["portable", "Profils"];
+        let d = tempfile::tempdir().unwrap();
+        let dossier = d.path().join("Ryubing");
+        std::fs::create_dir_all(dossier.join("portable").join("system")).unwrap();
+        std::fs::write(dossier.join("portable").join("system").join("prod.keys"), "mes clés").unwrap();
+        std::fs::write(dossier.join("Ryujinx.exe"), "ancien").unwrap();
+        std::fs::write(dossier.join("ancienne.dll"), "vieille").unwrap();
+        // Un paquet qui porte `portable/` : refusé, rien ne bouge.
+        let piege = d.path().join("piege.zip");
+        zip_de(&piege, &[("publish/Ryujinx.exe", b"nouveau"), ("publish/portable/system/prod.keys", b"autres")]);
+        assert!(installer_paquet_decrit("Ryubing", &piege, &dossier, Some("Ryujinx.exe"), Some(("dossier", "portable")), Some(garder)).is_err());
+        assert_eq!(std::fs::read_to_string(dossier.join("Ryujinx.exe")).unwrap(), "ancien");
+        // Le vrai paquet (tout dans `publish/`) : la nouvelle version remplace, l'ancienne DLL part à l'abri, les clés restent.
+        let paquet = d.path().join("ryubing.zip");
+        zip_de(&paquet, &[("publish/Ryujinx.exe", b"nouveau"), ("publish/libs/x.dll", b"x")]);
+        installer_paquet_decrit("Ryubing", &paquet, &dossier, Some("Ryujinx.exe"), Some(("dossier", "portable")), Some(garder)).unwrap();
+        assert_eq!(std::fs::read_to_string(dossier.join("Ryujinx.exe")).unwrap(), "nouveau");
+        assert!(!dossier.join("ancienne.dll").exists(), "jamais d'anciennes DLL mêlées aux nouvelles");
+        assert_eq!(std::fs::read_to_string(dossier.join("portable").join("system").join("prod.keys")).unwrap(), "mes clés");
+        let abri = crate::installation::fichiers_de(&dossier.join(".frogtend-sauvegardes")).unwrap();
+        assert!(abri.iter().any(|f| f.ends_with("ancienne-version/ancienne.dll")), "{abri:?}");
+    }
+
+    #[test]
     fn les_profils_de_manette_du_depot_ne_gardent_que_windows_et_n_ecrasent_rien() {
         // La forme du zip servi par Firehouse (contrat 1.34) : un dossier racine, des systèmes de Windows et d'autres.
         let d = tempfile::tempdir().unwrap();
@@ -1579,6 +1621,14 @@ mod tests {
         ];
         assert!(fiche("bigpemu").unwrap().ligne.contains("-localdata"));
         assert_eq!(fiche_pour("BigPEmu").map(|f| f.id), Some("bigpemu"));
+        // Ryubing (contrat 1.41) : le DOSSIER `portable\` à côté de Ryujinx.exe (AppDataManager.cs), jamais `-g`.
+        let r = fiche("ryubing").unwrap();
+        assert_eq!(r.portable, Some("portable/"));
+        assert!(r.ligne.split_whitespace().all(|o| o == "-f" || o == "--hide-updates"), "chez Ryubing, un argument inconnu devient le jeu");
+        assert!(matches!(r.origine, Origine::Firehouse));
+        assert_eq!(fiche_pour("Ryubing").map(|f| f.id), Some("ryubing"));
+        assert_eq!(fiche_pour("Ryujinx").map(|f| f.id), Some("ryubing"), "le nom LaunchBox de Ryujinx mène à sa suite");
+        assert!("ryujinx.exe".starts_with(r.programme) && !famille_eden(r.id));
         for (id, portable) in attendu {
             assert_eq!(fiche(id).unwrap().portable, portable, "{id}");
         }

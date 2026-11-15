@@ -5,10 +5,10 @@
 import { listen } from '@tauri-apps/api/event';
 import { ajouter } from './choix';
 import { FAMILLE_EDEN, PAR_FIREHOUSE } from './versions';
-import { avecConseil, biosADireOuPoser, biosATelecharger, biosRetroArch, dossierParDefaut, estConseille, ligneDe, palier, poidsBios, versionAutre } from './pret';
+import { avecConseil, biosAAnnoncer, biosADireOuPoser, biosPour, biosRetroArch, dossierParDefaut, estConseille, firmwareSwitchServi, ligneDe, palier, poidsBios, versionAutre } from './pret';
 import { isTauri } from '@tauri-apps/api/core';
 import { proposerRemplacements } from '$lib/sauvegarde.svelte';
-import { api, taille, type BilanBios, type EmulateurInstalle, type EmulateurRecommande } from '$lib/api';
+import { api, taille, type BilanBios, type BiosConseil, type EmulateurInstalle, type EmulateurRecommande } from '$lib/api';
 import { choisir, confirmer, demander, fermerToast, informer, majProgres, toast, toastProgres } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat, reglerPc } from '$lib/etat.svelte';
@@ -484,6 +484,8 @@ export async function reglerEmulateur(plateforme: string): Promise<string | null
   let bios: string[] = [];
   let estRetroArch = false;
   let depuisConseil: string | undefined;
+  // Les fichiers système d'une ALTERNATIVE qui décrit les siens (contrat 1.41 : Ryubing), jamais ceux du conseil.
+  let biosAlternative: BiosConseil[] | null = null;
 
   if (c === 'autre') {
     programme = await parcourir({ titre: 'Programme de l’émulateur', extensions: ['exe'] });
@@ -501,8 +503,13 @@ export async function reglerEmulateur(plateforme: string): Promise<string | null
     bios = biosRetroArch(c.rec, conseil);
     estRetroArch = c.id === 'retroarch';
     const fiche = c.id ? await api.emulateurFiche(c.rec.nom).catch(() => null) : null;
-    ligne = ligneDe(c.rec, fiche?.ligne ?? '', conseil);
+    ligne = ligneDe(c.rec, fiche?.ligne ?? '', conseil, c.id);
     if (estConseille(c.rec, conseil)) depuisConseil = conseil!.maj_le;
+    else {
+      const b = biosPour(c.rec, conseil, c.id);
+      // La famille d'Eden reçoit ceux du conseil ailleurs (avant sa première partie) : inchangé.
+      if (b && b !== conseil?.bios) biosAlternative = b;
+    }
     if (c.installe) {
       programme = c.installe.programme;
       if (!c.installe.installe_le && c.id) await api.emulateurAdopter(c.id, programme).catch(() => {});
@@ -525,18 +532,30 @@ export async function reglerEmulateur(plateforme: string): Promise<string | null
     }
   }
 
-  // L'émulateur du conseil : ses fichiers système, posés par le cœur après UN accord chiffré (jamais sans le dire).
-  if (programme && depuisConseil && conseil && biosADireOuPoser(conseil.bios)) {
-    const servis = biosATelecharger(conseil.bios);
-    const poids = poidsBios(conseil.bios);
+  // L'émulateur du conseil (ou une alternative qui décrit les siens) : ses fichiers système, posés par le cœur après
+  // UN accord chiffré (jamais sans le dire).
+  const biosEmu = depuisConseil && conseil ? conseil.bios : biosAlternative;
+  if (programme && biosEmu && biosADireOuPoser(biosEmu)) {
+    // Les clés facultatives de l'alternative (title.keys) aussi : le cœur les pose, l'accord les nomme et les pèse.
+    const servis = biosAAnnoncer(biosEmu, !!biosAlternative);
+    const poids = poidsBios(biosEmu, !!biosAlternative);
+    // Ryubing : son firmware, posé par Frogtend (✅ Seb 15/11), dans le même accord (taille dite) — après les clés.
+    const firmware = biosAlternative && c !== 'autre' && c.id === 'ryubing' ? firmwareSwitchServi(biosAlternative) : undefined;
+    const fw = firmware ? ` Puis le logiciel système de la Switch${firmware.version ? ` (version ${firmware.version})` : ''}${firmware.taille ? `, ${taille(firmware.taille)}` : ''}, fourni par Firehouse, s’il manque.` : '';
     // Rien à télécharger (seulement des clés ou des fichiers à poser soi-même) : on le dit sans rien demander.
+    const demande = servis.length > 0;
     const oui =
-      !servis.length ||
+      !demande ||
       (await confirmer(`📀 Poser les fichiers système de ${nomAffiche(plateforme)} ?`, {
-        message: `Firehouse les fournit (${servis.map((b) => b.fichier).join(', ')}${poids ? `, ${taille(poids)}` : ''}) ; Frogtend les vérifie et les pose là où ${nom} les cherche. Un fichier déjà là n’est jamais remplacé.`,
+        message: `Firehouse les fournit (${servis.map((b) => b.fichier).join(', ')}${poids ? `, ${taille(poids)}` : ''}) ; Frogtend les vérifie et les pose là où ${nom} les cherche. Un fichier déjà là n’est jamais remplacé.${fw}`,
         libelleValider: '📀 Les poser',
       }));
     if (oui) await poserBios(plateforme, programme);
+    // Le firmware seulement après un oui DIT (jamais sans accord), et une fois les clés en place.
+    if (oui && demande && firmware) {
+      const e = await api.edenFirmware(programme).catch(() => null);
+      if (e?.portable && e.cles && !e.firmware) await installerFirmwareSwitch(programme);
+    }
   }
   if (estRetroArch && programme) {
     const n = await completerRetroArch(programme, ligne, bios, plateforme, nom);

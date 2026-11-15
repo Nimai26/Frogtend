@@ -10,8 +10,7 @@ import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat, reglerPc } from '$lib/etat.svelte';
 import { completerRetroArch, installationEmulateur, installerEmulateur, installerFirmwareSwitch, installerFirmwareVita, installerMicrologicielPs3, installerParFirehouse, poserBios, recommandationsParDefaut, reglerEmulateur } from './assistant.svelte';
 import { ajouter } from './choix';
-import { FAMILLE_EDEN } from './versions';
-import { avecConseil, biosADireOuPoser, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, fichiersDuConseil, firmwareSwitchServi, firmwaresVitaServis, ligneDe, MANETTE_REGLEE, messagePret, micrologicielServi, phraseVersionAutre, poidsBios, versionAutre, type Possible } from './pret';
+import { avecConseil, biosADireOuPoser, biosPour, biosRetroArch, clesFacultativesPour, choisirSeul, dossierParDefaut, estConseille, firmwareSwitchPosePar, firmwareSwitchServi, firmwaresVitaServis, ligneDe, MANETTE_REGLEE, messagePret, micrologicielServi, phraseVersionAutre, poidsBios, versionAutre, type Possible } from './pret';
 import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
 
 /** Les plateformes qui se jouent sans émulateur. */
@@ -79,7 +78,7 @@ async function preparer(plateforme: string, jeux: number): Promise<string | null
       // Firehouse sert le paquet de l'émulateur de SON conseil (contrat 1.8 : `/emulateurs/{id}/paquet`), même sans source dans la liste.
       parFirehouse: !f && !!rec.id && ((!!rec.telechargement && rec.telechargement.type !== 'page') || estConseille(rec, conseil)),
     };
-    lignes.set(rec, ligneDe(rec, f?.ligne ?? '', conseil));
+    lignes.set(rec, ligneDe(rec, f?.ligne ?? '', conseil, id));
     possibles.push(p);
   }
   const choix = choisirSeul(possibles, conseil);
@@ -96,6 +95,9 @@ async function preparer(plateforme: string, jeux: number): Promise<string | null
   // Celui du conseil, déjà sur le PC, mais pas dans la version attendue par les jeux de Firehouse (MAME) : on le dit.
   const installee = choix.programme ? installes.find((i) => i.programme === choix.programme)?.version : null;
   const autre = estConseille(choix.rec, conseil) ? versionAutre(installee, conseil) : null;
+  // Les fichiers système qui vont à CET émulateur : ceux du conseil, ou ceux de son alternative (contrat 1.41).
+  const bios = biosPour(choix.rec, conseil, choix.id);
+  const facultatives = clesFacultativesPour(choix.rec, conseil, choix.id);
   const oui = await confirmer(`🎮 Préparer ${nomAffiche(plateforme)} pour jouer ?`, {
     message: (autre && installee ? `${phraseVersionAutre(choix.nom, installee, autre)}\n\n` : '') + messagePret({
       plateforme: nomAffiche(plateforme),
@@ -106,7 +108,7 @@ async function preparer(plateforme: string, jeux: number): Promise<string | null
       dossier,
       dossierNouveau,
       conseil,
-      tailleBios: conseil && fichiersDuConseil(choix.rec, conseil) && poidsBios(conseil.bios) ? taille(poidsBios(conseil.bios)) : null,
+      tailleBios: bios && poidsBios(bios, facultatives) ? taille(poidsBios(bios, facultatives)) : null,
     }),
     libelleValider: choix.comment === 'deja' ? '🎮 C’est parti' : '🎮 Tout préparer',
   });
@@ -127,7 +129,7 @@ async function preparer(plateforme: string, jeux: number): Promise<string | null
   let nom = choix.nom;
   // Les fichiers système du conseil, posés et vérifiés par le cœur (compris dans l'accord) AVANT que RetroArch ne
   // vérifie ce qui lui manque.
-  if (conseil && fichiersDuConseil(choix.rec, conseil) && biosADireOuPoser(conseil.bios)) await poserBios(plateforme, programme);
+  if (bios && biosADireOuPoser(bios)) await poserBios(plateforme, programme);
   if (choix.id === 'retroarch') {
     const n = await completerRetroArch(programme, ligne, biosRetroArch(choix.rec, conseil), plateforme, nom, true);
     if (!n) return null;
@@ -172,13 +174,13 @@ async function preparer(plateforme: string, jeux: number): Promise<string | null
     }
   }
   // Vita3K : le firmware de la Vita servi par Firehouse, compris dans l'accord (sa taille y est dite).
-  if (choix.id === 'vita3k' && conseil && fichiersDuConseil(choix.rec, conseil) && firmwaresVitaServis(conseil.bios).length) {
+  if (choix.id === 'vita3k' && bios && firmwaresVitaServis(bios).length) {
     const manque = await api.vita3kFirmwareManquant(programme).catch(() => []);
     if (manque.length) await installerFirmwareVita(programme);
   }
-  // Eden : le firmware de Firehouse, compris dans l'accord, dès que les clés de la personne sont là (sinon, il sera
-  // proposé avant la première partie, une fois les clés posées).
-  if (choix.id && FAMILLE_EDEN.includes(choix.id) && conseil && fichiersDuConseil(choix.rec, conseil) && firmwareSwitchServi(conseil.bios)) {
+  // Eden (ou Ryubing) : le firmware de Firehouse, compris dans l'accord, dès que les clés de la personne sont là
+  // (sinon, il sera proposé avant la première partie, une fois les clés posées).
+  if (firmwareSwitchPosePar(choix.id) && bios && firmwareSwitchServi(bios)) {
     const e = await api.edenFirmware(programme).catch(() => null);
     if (e?.portable && e.cles && !e.firmware) await installerFirmwareSwitch(programme);
   }

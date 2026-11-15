@@ -50,6 +50,7 @@ pub mod registre;
 pub mod reconciliation;
 pub mod empreintes;
 pub mod eden;
+pub mod ryubing;
 pub mod cemu;
 pub mod vita3k;
 pub mod xemu;

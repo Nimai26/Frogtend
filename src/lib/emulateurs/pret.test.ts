@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Conseil } from '$lib/api';
-import { MANETTE_REGLEE, firmwaresVitaServis, moFirmwares, questionFirmwareVita, avecConseil, changementDeConseil, memeEmulateur, biosADire, biosRetroArch, choisirSeul, dossierParDefaut, estConseille, fichiersDuConseil, ligneDe, messagePret, micrologicielServi, firmwareSwitchServi, questionFirmwareSwitch, palier, poidsBios, versionAutre, versionDansNote, type Possible } from './pret';
+import { MANETTE_REGLEE, firmwaresVitaServis, moFirmwares, questionFirmwareVita, avecConseil, changementDeConseil, memeEmulateur, biosAAnnoncer, biosADire, biosPour, biosRetroArch, clesFacultativesPour, firmwareSwitchPosePar, choisirSeul, dossierParDefaut, estConseille, fichiersDuConseil, ligneDe, messagePret, micrologicielServi, firmwareSwitchServi, questionFirmwareSwitch, palier, poidsBios, versionAutre, versionDansNote, type Possible } from './pret';
 
 const rec = (nom: string, recommande: boolean, bios = '') => ({ nom, site: '', recommande, ligne_de_commande: '', extensions: [], bios });
 
@@ -343,5 +343,63 @@ describe('les clés et le firmware du conseil vont aussi à Lichii, alternative 
     expect(fichiersDuConseil(ligne('lichii'), { ...s2, alternatives: [] } as Conseil)).toBe(false);
     expect(fichiersDuConseil(ligne('mesen'), { ...s2, emulateur: 'retroarch', alternatives: [{ nom: 'Mesen', emulateur: 'mesen', coeur: null, quand: '', site: '' }] } as Conseil)).toBe(false);
     expect(fichiersDuConseil(ligne('lichii'), null)).toBe(false);
+  });
+});
+
+describe('Ryubing, alternative Switch : SES clés, SON firmware, SA ligne (contrat 1.41, 15/11)', () => {
+  const cle = (chemin: string, facultatif = false) =>
+    ({ fichier: chemin.split('/').pop()!, type: 'fichier', racine: 'dossier_emulateur', chemin, facultatif, coffre: false, disponible: true, sha1: 'a1', url: '/api/jeux/v1/bios/a1', taille: 10 }) as Conseil['bios'][number];
+  const fw = { fichier: 'firmware-switch.zip', type: 'installation', racine: 'installation_par_l_emulateur', disponible: true, sha1: 'f8', url: '/api/jeux/v1/bios/f8', taille: 336375526, version: '18.1.0', note: 'firmware 18.1.0' } as Conseil['bios'][number];
+  const biosRyu = [cle('portable/system/prod.keys'), cle('portable/system/title.keys', true), fw];
+  const sw = {
+    emulateur: 'eden', coeur: null, ligne_de_commande: '', maj_le: '', bios: [cle('user/keys/prod.keys')],
+    alternatives: [
+      { nom: 'Ryubing', emulateur: 'ryubing', coeur: null, quand: '', site: '', commande: '-f "%rom%"', bios: biosRyu },
+      { nom: 'Citron', emulateur: 'citron_neo', coeur: null, quand: '', site: '', commande: null, bios: null },
+    ],
+  } as unknown as Conseil;
+  const ryu = ligneLb('Ryubing', 'ryubing', false, '-g "%rom%"');
+
+  it('les fichiers de l’alternative, jamais ceux d’Eden ; null = aucun', () => {
+    expect(biosPour(ryu, sw)).toBe(biosRyu);
+    expect(fichiersDuConseil(ryu, sw)).toBe(true);
+    // La ligne LaunchBox « Ryujinx » mène à la fiche ryubing de Frogtend : les mêmes.
+    expect(biosPour(ligneLb('Ryujinx', 'ryujinx', false), sw, 'ryubing')).toBe(biosRyu);
+    expect(biosPour(ligneLb('Citron', 'citron_neo', false), sw)).toBeNull();
+    const sansBios = { ...sw, alternatives: [{ ...sw.alternatives[0], bios: undefined }] } as Conseil;
+    expect(biosPour(ryu, sansBios)).toBeNull();
+    expect(biosPour(ligneLb('Eden', 'eden', true), sw)).toBe(sw.bios);
+  });
+
+  it('sa ligne vient de l’alternative, avec les options de Frogtend qui y manquent ; jamais celle de LaunchBox', () => {
+    expect(ligneDe(ryu, '-f --hide-updates', sw)).toBe('-f --hide-updates "%rom%"');
+    // Sans commande servie : la ligne de Frogtend, jamais `-g` de LaunchBox (chez Ryubing, -g = moteur graphique).
+    const sansCommande = { ...sw, alternatives: [{ ...sw.alternatives[0], commande: null }] } as Conseil;
+    expect(ligneDe(ryu, '-f --hide-updates', sansCommande)).toBe('-f --hide-updates');
+    expect(ligneDe(ligneLb('Ryujinx', 'ryujinx', false, '-g "%rom%"'), '-f --hide-updates', null, 'ryubing')).toBe('-f --hide-updates');
+    // Un autre émulateur hors conseil : comme avant (la ligne LaunchBox).
+    expect(ligneDe(ligneLb('Mesen', 'mesen', false, '-x'), '', sw)).toBe('-x');
+  });
+
+  it('les clés facultatives servies sont annoncées et pesées pour l’alternative seulement', () => {
+    expect(biosAAnnoncer(biosRyu).map((b) => b.fichier)).toEqual(['prod.keys']);
+    expect(biosAAnnoncer(biosRyu, true).map((b) => b.fichier)).toEqual(['prod.keys', 'title.keys']);
+    expect(poidsBios(biosRyu)).toBe(10);
+    expect(poidsBios(biosRyu, true)).toBe(20);
+    // Jamais une clé au coffre, ni une non servie, ni un autre fichier facultatif.
+    const autres = [{ ...cle('a/title.keys', true), coffre: true }, { ...cle('a/b.keys', true), url: undefined }, cle('bios/x.bin', true)];
+    expect(biosAAnnoncer(autres, true)).toEqual([]);
+    expect(clesFacultativesPour(ryu, sw)).toBe(true);
+    expect(clesFacultativesPour(ligneLb('Eden', 'eden', true), sw)).toBe(false);
+  });
+
+  it('l’accord dit ses clés, son firmware et sa première partie plus longue', () => {
+    const choix = { rec: ryu, id: 'ryubing', nom: 'Ryubing', comment: 'frogtend' as const };
+    const m = messagePret({ plateforme: 'Nintendo Switch', jeux: 1, choix, taille: null, dossier: 'E:\Emulateurs', dossierNouveau: false, conseil: sw });
+    // title.keys (facultatif) est posé par le cœur pour l'alternative : nommé et pesé dans l'accord.
+    expect(m).toContain('(prod.keys, title.keys)');
+    expect(m).toContain('est installé aussi dès que tes clés sont dans Ryubing');
+    expect(m).toContain('La première partie de chaque jeu demande quelques minutes');
+    expect(firmwareSwitchPosePar('ryubing') && firmwareSwitchPosePar('eden') && !firmwareSwitchPosePar('cemu')).toBe(true);
   });
 });

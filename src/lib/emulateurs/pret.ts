@@ -26,27 +26,50 @@ export function estConseille(rec: EmulateurRecommande, conseil: Conseil | null |
   return !!conseil?.emulateur && rec.id === conseil.emulateur;
 }
 
-/** Les fichiers système du conseil (clés, firmware…) vont-ils aussi à cette ligne ? À l'émulateur du conseil, et à
- * une alternative de la famille d'Eden que Firehouse cite pour la même console (Lichii pour la Switch 2 : mêmes
- * dossiers, mêmes clés). Le pendant de `programme_pour_le_conseil` dans le cœur. */
-export function fichiersDuConseil(rec: EmulateurRecommande, conseil: Conseil | null | undefined): boolean {
-  if (estConseille(rec, conseil)) return true;
-  return (
-    !!conseil?.emulateur &&
-    !!rec.id &&
-    FAMILLE_EDEN.includes(conseil.emulateur) &&
-    FAMILLE_EDEN.includes(rec.id) &&
-    (conseil.alternatives ?? []).some((a) => a.emulateur === rec.id)
-  );
+/** L'alternative du conseil qui désigne cette ligne (par l'id des sources de Firehouse, ou par l'id de la fiche de
+ * Frogtend : la ligne LaunchBox « Ryujinx » mène à Ryubing), s'il y en a une. */
+export function alternativeDe(rec: EmulateurRecommande, conseil: Conseil | null | undefined, idFrogtend?: string | null): Conseil['alternatives'][number] | undefined {
+  if (!conseil?.emulateur || estConseille(rec, conseil)) return undefined;
+  const ids = [rec.id, idFrogtend].filter((x): x is string => !!x);
+  return (conseil.alternatives ?? []).find((a) => !!a.emulateur && ids.includes(a.emulateur));
 }
+
+/** Les fichiers système (clés, firmware…) qui vont à cette ligne, `null` : aucun. Ceux du conseil à son émulateur, et
+ * à une alternative de la famille d'Eden que Firehouse cite pour la même console (Lichii pour la Switch 2 : mêmes
+ * dossiers, mêmes clés) ; sinon ceux que l'ALTERNATIVE décrit elle-même (contrat 1.41 : Ryubing, `portable/system/`),
+ * jamais ceux du conseil (`bios` null = non décrits). Le pendant de `bios_pour_le_programme` dans le cœur. */
+export function biosPour(rec: EmulateurRecommande, conseil: Conseil | null | undefined, idFrogtend?: string | null): BiosConseil[] | null {
+  if (!conseil) return null;
+  if (estConseille(rec, conseil)) return conseil.bios;
+  const alt = alternativeDe(rec, conseil, idFrogtend);
+  if (!alt?.emulateur) return null;
+  if (FAMILLE_EDEN.includes(alt.emulateur)) return FAMILLE_EDEN.includes(conseil.emulateur) ? conseil.bios : null;
+  return Array.isArray(alt.bios) ? alt.bios : null;
+}
+
+/** Des fichiers système vont-ils à cette ligne (`biosPour`) ? */
+export function fichiersDuConseil(rec: EmulateurRecommande, conseil: Conseil | null | undefined, idFrogtend?: string | null): boolean {
+  return biosPour(rec, conseil, idFrogtend) !== null;
+}
+
+/** Les émulateurs dont la ligne LaunchBox n'est JAMAIS prise : chez Ryubing, un argument inconnu devient le chemin du
+ * jeu (CommandLineState.cs) ; sa ligne vient de son alternative (contrat 1.41), sinon de Frogtend. */
+const SANS_LIGNE_LAUNCHBOX = ['ryubing'];
 
 /**
  * La ligne de commande retenue (contrat 1.8). Pour l'émulateur du conseil : les options de Frogtend pour cet émulateur
  * (plein écran, sans interface…), puis la ligne DU CONSEIL (son cœur, `%rom%`) — JAMAIS celle de LaunchBox. Sinon (pas
  * de conseil, ou un autre émulateur choisi) : la ligne LaunchBox, sinon celle de Frogtend, comme avant.
  */
-export function ligneDe(rec: EmulateurRecommande, ligneFrogtend: string, conseil: Conseil | null | undefined): string {
-  if (!estConseille(rec, conseil)) return rec.ligne_de_commande || ligneFrogtend;
+export function ligneDe(rec: EmulateurRecommande, ligneFrogtend: string, conseil: Conseil | null | undefined, idFrogtend?: string | null): string {
+  if (!estConseille(rec, conseil)) {
+    // Une alternative qui donne SA ligne (contrat 1.41, `commande`) : elle, avec les options de Frogtend qui y
+    // manquent, juste avant le jeu. `null` : jamais celle du conseil.
+    const alt = alternativeDe(rec, conseil, idFrogtend)?.commande?.trim();
+    if (alt) return collee(alt, optionsAbsentes(alt, ligneFrogtend));
+    if ([rec.id, idFrogtend].some((x) => !!x && SANS_LIGNE_LAUNCHBOX.includes(x))) return ligneFrogtend;
+    return rec.ligne_de_commande || ligneFrogtend;
+  }
   const c = conseil!.ligne_de_commande.trim();
   // Contrat 1.16 : la ligne du conseil d'un émulateur AUTONOME est COMPLÈTE (plein écran, sans interface… vérifiés
   // dans ses sources) : elle seule, jamais doublée des options de Frogtend (`-b -e -b -e` pour Dolphin).
@@ -61,6 +84,12 @@ function collee(c: string, f: string): string {
   const i = c.search(/"?%rom%/i);
   if (i < 0) return [c, f].filter(Boolean).join(' ');
   return [c.slice(0, i).trim(), f, c.slice(i).trim()].filter(Boolean).join(' ');
+}
+
+/** Les options de Frogtend que la ligne `c` n'a pas déjà (« -f » de Ryubing n'est pas doublé). */
+function optionsAbsentes(c: string, f: string): string {
+  const deja = c.split(/\s+/);
+  return f.trim().split(/\s+/).filter((o) => !!o && !deja.includes(o)).join(' ');
 }
 
 /** Une ligne sans son `"%rom%"` final, pour comparer deux réglages (sans `%rom%`, le jeu va de toute façon à la fin).
@@ -140,7 +169,7 @@ export function dossierParDefaut(emplacementsJeux: string[], disque?: string | n
 export const MANETTE_REGLEE = ['retroarch', 'duckstation', 'pcsx2', 'dolphin', 'rpcs3', 'eden', 'eglantine', 'lichii', 'cemu', 'azahar'];
 
 /** Ceux qui préparent longuement la première partie de chaque jeu (compilation, une seule fois). */
-const PREMIERE_PARTIE_LONGUE = ['rpcs3', 'cemu', 'eden', 'eglantine', 'lichii', 'xenia', 'yuzu', 'suyu', 'ryujinx'];
+const PREMIERE_PARTIE_LONGUE = ['rpcs3', 'cemu', 'eden', 'eglantine', 'lichii', 'xenia', 'yuzu', 'suyu', 'ryubing'];
 
 /** Les fichiers système que Frogtend téléchargera (obligatoires, servis, ni clé ni firmware). */
 export function biosATelecharger(bios: BiosConseil[]): BiosConseil[] {
@@ -148,9 +177,27 @@ export function biosATelecharger(bios: BiosConseil[]): BiosConseil[] {
   return bios.filter((b) => !b.facultatif && !b.coffre && b.disponible && (b.type === 'fichier' || b.type === 'archive') && !!b.sha1 && !!b.url);
 }
 
+/** Une clé FACULTATIVE servie (`title.keys`), que le cœur pose avec les obligatoires pour une alternative (contrat
+ * 1.41 : Ryubing) — même critère que `bios::cle_facultative`. */
+export function cleFacultative(b: BiosConseil): boolean {
+  return !!b.facultatif && !b.coffre && b.type === 'fichier' && b.fichier.toLowerCase().endsWith('.keys') && !!b.disponible && !!b.sha1 && !!b.url;
+}
+
+/** Tout ce que Frogtend téléchargera, donc tout ce que l'accord doit nommer et peser : les obligatoires servis, et
+ * avec `avecFacultatives` (une alternative qui décrit ses fichiers) les clés facultatives servies. */
+export function biosAAnnoncer(bios: BiosConseil[], avecFacultatives = false): BiosConseil[] {
+  return [...biosATelecharger(bios), ...(avecFacultatives ? bios.filter(cleFacultative) : [])];
+}
+
+/** Les fichiers de cette ligne viennent-ils de SON alternative (les clés facultatives sont alors posées aussi) ? */
+export function clesFacultativesPour(rec: EmulateurRecommande, conseil: Conseil | null | undefined, idFrogtend?: string | null): boolean {
+  const b = biosPour(rec, conseil, idFrogtend);
+  return !!b && b !== conseil?.bios;
+}
+
 /** Leur poids (0 si Firehouse ne dit pas la taille : il ne sert qu'au texte). */
-export function poidsBios(bios: BiosConseil[]): number {
-  return biosATelecharger(bios).reduce((s, b) => s + (b.taille ?? 0), 0);
+export function poidsBios(bios: BiosConseil[], avecFacultatives = false): number {
+  return biosAAnnoncer(bios, avecFacultatives).reduce((s, b) => s + (b.taille ?? 0), 0);
 }
 
 /** Le conseil a-t-il quelque chose à dire ou à poser (fichiers servis, à poser soi-même, clés) ? */
@@ -256,9 +303,14 @@ export function questionFirmwareVita(f: BiosConseil[], debit: number | null, dur
 const moFirmware = (f: BiosConseil) => (f.taille ? `${Math.round(f.taille / 1048576)} Mo` : 'quelques centaines de Mo');
 
 /** La phrase de l'accord pour le firmware Switch (« le logiciel système de la Switch », pour tout le monde). */
-export function phraseFirmwareSwitch(f: BiosConseil): string {
+export function phraseFirmwareSwitch(f: BiosConseil, nom = 'Eden'): string {
   const v = versionDansNote(f.note);
-  return `S’il manque, le logiciel système de la Switch${v ? ` (version ${v})` : ''}, ${moFirmware(f)}, fourni par Firehouse, est installé aussi dès que tes clés sont dans Eden (jamais par-dessus celui qui serait déjà là).`;
+  return `S’il manque, le logiciel système de la Switch${v ? ` (version ${v})` : ''}, ${moFirmware(f)}, fourni par Firehouse, est installé aussi dès que tes clés sont dans ${nom} (jamais par-dessus celui qui serait déjà là).`;
+}
+
+/** Les émulateurs Switch dont Frogtend pose lui-même le firmware servi : la famille d'Eden, et Ryubing (✅ Seb 15/11). */
+export function firmwareSwitchPosePar(id: string | null | undefined): boolean {
+  return !!id && (FAMILLE_EDEN.includes(id) || id === 'ryubing');
 }
 
 /** La question avant une partie, quand il manque et que les clés sont là : taille, et durée au débit mesuré. */
@@ -272,13 +324,13 @@ export function questionFirmwareSwitch(f: BiosConseil, debit: number | null, dur
 
 /** Les fichiers système obligatoires d'un conseil, pour le dire dans l'accord : ceux que Firehouse fournit, et les
  * clés que personne ne peut fournir (jamais servies). Les firmwares à installer par l'émulateur sont dits à part. */
-export function biosADire(bios: BiosConseil[]): { fournis: string[]; aPoser: string[]; cles: string[] } {
+export function biosADire(bios: BiosConseil[], avecFacultatives = false): { fournis: string[]; aPoser: string[]; cles: string[] } {
   const obligatoires = bios.filter((b) => !b.facultatif && b.type !== 'installation');
   // Un motif (« *.bin ») n'est pas un nom de fichier : on dit sa note, sinon « fichiers système ».
   const nom = (b: BiosConseil) => (b.type === 'motif' ? b.note || 'fichiers système' : b.fichier);
   return {
     // Un motif n'est pas encore posé par Frogtend (aucun servi au 16/10) : jamais promis.
-    fournis: biosATelecharger(obligatoires).map(nom),
+    fournis: [...biosATelecharger(obligatoires), ...(avecFacultatives ? bios.filter(cleFacultative) : [])].map(nom),
     aPoser: obligatoires.filter((b) => !b.coffre && !biosATelecharger([b]).length).map(nom),
     cles: obligatoires.filter((b) => b.coffre).map((b) => b.fichier),
   };
@@ -309,22 +361,23 @@ export function messagePret(o: {
   if (choix.comment !== 'deja') lignes.push(`Dossier : ${o.dossier}\\${choix.nom}${o.dossierNouveau ? ' (le dossier des émulateurs, modifiable dans ⚙ Options ▸ Émulateurs)' : ''}`);
   if (choix.id === 'cemu') lignes.push('Ta manette Xbox est réglée pour toi (une manette PlayStation se règle dans Cemu).');
   else if (choix.id && MANETTE_REGLEE.includes(choix.id)) lignes.push('Ta manette (Xbox ou autre) est réglée pour toi.');
-  if (fichiersDuConseil(choix.rec, o.conseil)) {
-    const { fournis, aPoser, cles } = biosADire(o.conseil!.bios);
+  const bios = biosPour(choix.rec, o.conseil, choix.id);
+  if (bios) {
+    const { fournis, aPoser, cles } = biosADire(bios, clesFacultativesPour(choix.rec, o.conseil, choix.id));
     if (fournis.length) {
       lignes.push(
         `Il lui faut aussi ${fournis.length > 1 ? 'des fichiers système' : 'un fichier système'} (${fournis.join(', ')}) : Firehouse ${fournis.length > 1 ? 'les fournit' : 'le fournit'}, Frogtend ${fournis.length > 1 ? 'les pose' : 'le pose'} pour toi (vérifié${o.tailleBios ? `, ${o.tailleBios}` : ''}).`,
       );
     }
     if (aPoser.length) lignes.push(`Il lui faut aussi : ${aPoser.join(', ')} — Firehouse ne les a pas ; Frogtend te dira où les mettre.`);
-    const pup = micrologicielServi(o.conseil!.bios);
+    const pup = micrologicielServi(bios);
     if (pup && choix.id === 'rpcs3') {
       lignes.push(`S’il manque, le micrologiciel PS3 (${pup.taille ? `${Math.round(pup.taille / 1048576)} Mo` : 'quelques centaines de Mo'}), fourni par Firehouse, est installé aussi, sans aucune fenêtre.`);
     }
-    const vita = choix.id === 'vita3k' ? firmwaresVitaServis(o.conseil!.bios) : [];
+    const vita = choix.id === 'vita3k' ? firmwaresVitaServis(bios) : [];
     if (vita.length) lignes.push(`S’il manque, le logiciel système de la PS Vita (${moFirmwares(vita)}), fourni par Firehouse, est installé aussi par Vita3K, sans aucune fenêtre.`);
-    const fw = firmwareSwitchServi(o.conseil!.bios);
-    if (fw && choix.id && FAMILLE_EDEN.includes(choix.id)) lignes.push(phraseFirmwareSwitch(fw));
+    const fw = firmwareSwitchServi(bios);
+    if (fw && firmwareSwitchPosePar(choix.id)) lignes.push(phraseFirmwareSwitch(fw, choix.nom));
     if (cles.length) lignes.push(`Il te faudra aussi tes clés (${cles.join(', ')}) : personne ne peut les fournir, et sans elles les jeux ne démarrent pas.`);
   } else if (choix.rec.bios) {
     lignes.push(`Il lui faut aussi un fichier système (${choix.rec.bios}) : Firehouse le fournira ; en attendant, Frogtend te dira où le mettre.`);

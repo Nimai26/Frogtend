@@ -4,12 +4,12 @@
 import { listen } from '@tauri-apps/api/event';
 import { goto } from '$app/navigation';
 import { isTauri } from '@tauri-apps/api/core';
-import { api, duree, estErreurCoeur, taille, type ApercuNuage, type Candidat, type JeuPc, type ModInstalle, type PatchsPs3, type VerificationFiger } from '$lib/api';
+import { api, duree, estErreurCoeur, taille, type ApercuNuage, type Candidat, type JeuPc, type EmulateurRecommande, type ModInstalle, type PatchsPs3, type VerificationFiger } from '$lib/api';
 import { attendreTouche, choisir, confirmer, fermerToast, informer, majProgres, toast, toastProgres } from '$lib/dialogues/fenetres.svelte';
 import { dossierDe, messageConfirmation } from '$lib/decompression/decompression';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { completerRetroArch, installerFirmwareSwitch, installerFirmwareVita, poserBios, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
-import { avecConseil, biosADireOuPoser, biosRetroArch, changementDeConseil, estConseille, firmwareSwitchServi, poidsBios, questionFirmwareSwitch, questionFirmwareVita } from '$lib/emulateurs/pret';
+import { avecConseil, biosADireOuPoser, biosPour, biosRetroArch, changementDeConseil, estConseille, firmwareSwitchServi, poidsBios, questionFirmwareSwitch, questionFirmwareVita } from '$lib/emulateurs/pret';
 import { preparationEnCours, preparerPourJouer } from '$lib/emulateurs/pret.svelte';
 import { libelleValeur, REGLAGES_IMAGE, reglagesMontres } from '$lib/emulateurs/imagePs3';
 import { detailPatch, nomDuPatch, remarqueDuPatch, titreDuJeu } from '$lib/emulateurs/patchsPs3';
@@ -483,19 +483,24 @@ export async function gererLaCarte(id: number) {
 /** Les firmwares Switch déjà proposés pendant cette séance (un « non » ne revient pas à chaque partie). */
 const firmwaresProposes = new Set<string>();
 
-/** Avant une partie Switch (Eden) ou Switch 2 (Eglantine) : clés posées mais pas de firmware, et Firehouse le fournit
- * → proposé (taille dite) ; ou un firmware posé par Frogtend plus ancien que celui servi → mise à jour proposée
- * (contrat 1.38). Jamais bloquant : un souci ici n'empêche pas de lancer. */
+/** Avant une partie Switch (Eden, Ryubing) ou Switch 2 (Eglantine) : clés posées mais pas de firmware, et Firehouse le
+ * fournit → proposé (taille dite) ; ou un firmware posé par Frogtend plus ancien que celui servi → mise à jour proposée
+ * (contrat 1.38). Ryubing : SES clés et SON firmware, ceux de son alternative (contrat 1.41), jamais ceux d'Eden.
+ * Jamais bloquant : un souci ici n'empêche pas de lancer. */
 async function firmwareSwitchAvant(id: number, plateforme: string | undefined, emulateur?: string) {
   if (plateforme !== 'Nintendo Switch' && plateforme !== 'Nintendo Switch 2') return;
   const s = normaliser(etat.pc.emulateurs[plateforme]);
   const e = (emulateur && s.liste.find((x) => x.cle === emulateur)) || pourLeJeu(etat.pc.emulateurs, etat.pc.emulateursJeux, plateforme, id);
-  if (!e || !/(^|[\\/])(eden|eglantine|lichii)[^\\/]*\.exe$/i.test(e.programme) || firmwaresProposes.has(e.programme)) return;
+  if (!e || !/(^|[\\/])(eden|eglantine|lichii|ryujinx)[^\\/]*\.exe$/i.test(e.programme) || firmwaresProposes.has(e.programme)) return;
+  const ryubing = /(^|[\\/])ryujinx[^\\/]*\.exe$/i.test(e.programme);
+  if (ryubing && plateforme !== 'Nintendo Switch') return;
   let f = await api.edenFirmware(e.programme).catch(() => null);
   if (!f?.portable) return;
   const r = await auPlus(3000, api.emulateursRecommandes(plateforme));
+  // Les fichiers de CET émulateur : ceux du conseil (famille d'Eden), ou ceux de l'alternative Ryubing.
+  const bios = ryubing ? biosPour({ id: 'ryubing' } as EmulateurRecommande, r?.conseil, 'ryubing') : r?.conseil?.bios;
   // Les clés manquent et Firehouse les sert (contrat 1.38) : proposées d'abord (un seul accord).
-  if (!f.cles && r?.conseil?.bios.some((b) => /prod\.keys$/i.test(b.fichier) && b.disponible && !b.coffre)) {
+  if (!f.cles && bios?.some((b) => /prod\.keys$/i.test(b.fichier) && b.disponible && !b.coffre)) {
     firmwaresProposes.add(e.programme);
     const oui = await confirmer('🔑 Il manque tes clés de la console', {
       message: 'Firehouse les fournit : Frogtend les pose dans le dossier de l’émulateur. Sans elles, les jeux ne démarrent pas.',
@@ -511,7 +516,7 @@ async function firmwareSwitchAvant(id: number, plateforme: string | undefined, e
     }
   }
   if (!f.cles) return;
-  const servi = r?.conseil ? firmwareSwitchServi(r.conseil.bios) : undefined;
+  const servi = bios ? firmwareSwitchServi(bios) : undefined;
   if (!servi) return;
   const miseAJour = f.firmware && f.de_frogtend && !!servi.version && !!f.version && plusRecente(servi.version, f.version);
   if (f.firmware && !miseAJour) return;

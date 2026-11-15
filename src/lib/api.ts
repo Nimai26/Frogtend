@@ -286,7 +286,10 @@ export interface Conseil {
   /** SA ligne de commande (« -L "cores\snes9x_libretro.dll" "%rom%" ») ; depuis le contrat 1.16, COMPLÈTE aussi pour un
    * émulateur autonome (« -b -e "%rom%" »), avec `%rom%`, `%rom_nom%`, `%rom_dossier%` ; vide = non fournie. */
   ligne_de_commande: string;
-  alternatives: { nom: string; emulateur: string | null; coeur: string | null; quand: string; site: string; paquet?: PaquetCoeur | null }[];
+  /** Contrat 1.41 : une alternative décrit SES fichiers système (`bios`) et SA ligne (`commande`) ; `null` (ou
+   * absent) = non décrits : jamais ceux du conseil (Ryubing : ses clés vont dans `portable/system/`, pas dans le
+   * `user/keys/` d'Eden ; sa ligne `-f "%rom%"`, jamais `-g`). */
+  alternatives: { nom: string; emulateur: string | null; coeur: string | null; quand: string; site: string; paquet?: PaquetCoeur | null; bios?: BiosConseil[] | null; commande?: string | null }[];
   bios: BiosConseil[];
   paquet?: PaquetCoeur | null;
   version_attendue: string | null;
@@ -861,11 +864,13 @@ export const api = {
   vita3kFirmwareManquant: (programme: string) => appeler<BiosConseil[]>('vita3k_firmware_manquant', { programme }),
   /** Vita3K : installe ces fichiers (accord déjà donné) ; rend le nombre installé. */
   vita3kFirmwareServi: (programme: string) => appeler<number>('vita3k_firmware_servi', { programme }),
-  /** Eden : portable, clés posées (prod.keys), firmware déjà là. */
+  /** Eden (et sa famille) ou Ryubing (`portable\system\prod.keys`, `registered\`) : portable, clés posées (prod.keys),
+   * firmware déjà là. */
   edenFirmware: (programme: string) =>
     appeler<{ portable: boolean; cles: boolean; firmware: boolean; version: string | null; de_frogtend: boolean }>('eden_firmware', { programme }),
-  /** Le firmware Switch servi par Firehouse, posé dans un Eden fermé, portable, avec ses clés et SANS firmware (rend le
-   * nombre de fichiers posés ; progression : événement « emulateur », id « eden-firmware »). */
+  /** Le firmware Switch servi par Firehouse, posé dans un Eden (ou un Ryubing : celui de SON alternative, contrat 1.41)
+   * fermé, portable, avec ses clés et SANS firmware (rend le nombre de fichiers posés ; progression : événement
+   * « emulateur », id « eden-firmware »). */
   edenFirmwareServi: (programme: string, remplacer = false) => appeler<number>('eden_firmware_servi', { programme, remplacer }),
   choisirVersion: (id: number, chemin: string) => appeler<void>('jeu_choisir_version', { id, chemin }),
   referencesManette: (id: string) => appeler<ReferenceManette[]>('references_manette', { id }),

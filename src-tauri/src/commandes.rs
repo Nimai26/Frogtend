@@ -3999,6 +3999,9 @@ pub async fn emulateur_installer_firehouse(
     // BigPEmu : ses données sont un LIEN vers le profil de la dernière personne (`UserData\`) ; un paquet qui en
     // porterait serait copié AU TRAVERS : refusé avant toute copie, comme pour Eden (`deposer_archive`).
     let remplacer = remplacer || (id == "bigpemu" && deja_installe(&noyau, &id).is_some());
+    // Ryubing (lot 1, relecture lancement 15/11) : toutes ses données dans `portable\` ; la nouvelle version REMPLACE
+    // l'ancienne (ancien programme à l'abri, jamais de DLL mêlées), un paquet qui porterait `portable/` est refusé.
+    let remplacer = remplacer || (id == "ryubing" && deja_installe(&noyau, &id).is_some());
     let (pq, c, n, id_install) = (paquet.clone(), cible.clone(), nom.clone(), id.clone());
     let r = tauri::async_runtime::spawn_blocking(move || {
         let port = match (&portable.0, &portable.1) {
@@ -4006,7 +4009,11 @@ pub async fn emulateur_installer_firehouse(
             _ => None,
         };
         // `user\` : ses données ; `Profils\` : celles de Frogtend (qui est qui dans Eden : `.utilisateurs-frogtend`).
-        let garder: &[&str] = if id_install == "bigpemu" { &["UserData", "Profils"] } else { &["user", "Profils"] };
+        let garder: &[&str] = match id_install.as_str() {
+            "bigpemu" => &["UserData", "Profils"],
+            "ryubing" => &["portable", "Profils"],
+            _ => &["user", "Profils"],
+        };
         crate::emulateurs::installer_paquet_decrit(&n, &pq, &c, programme.as_deref(), port, remplacer.then_some(garder))
     })
     .await
@@ -6288,6 +6295,18 @@ pub struct EtatFirmwareEden {
 #[tauri::command]
 pub fn eden_firmware(programme: String) -> Resultat<EtatFirmwareEden> {
     let p = std::path::PathBuf::from(&programme);
+    // Ryubing, l'alternative Switch (contrat 1.41) : même question, SES dossiers (`portable\system\`, `registered\`).
+    if crate::ryubing::est_ryubing(&programme) && p.is_file() {
+        let d = p.parent().map(std::path::PathBuf::from).unwrap_or_default();
+        let note = crate::ryubing::note_firmware(&d);
+        return Ok(EtatFirmwareEden {
+            portable: crate::ryubing::portable(&d),
+            cles: crate::ryubing::cles_presentes(&d),
+            firmware: crate::ryubing::firmware_present(&d),
+            version: note.as_ref().and_then(|n| n.version.clone()),
+            de_frogtend: note.is_some(),
+        });
+    }
     if !crate::eden::est_eden(&programme) || !p.is_file() {
         return Err(Erreur::Refus("Ce n'est pas le programme d'Eden.".into()));
     }
@@ -6309,6 +6328,9 @@ pub fn eden_firmware(programme: String) -> Resultat<EtatFirmwareEden> {
 #[tauri::command]
 pub async fn eden_firmware_servi(app: AppHandle, noyau: State<'_, Noyau>, programme: String, remplacer: Option<bool>) -> Resultat<usize> {
     let p = std::path::PathBuf::from(&programme);
+    if crate::ryubing::est_ryubing(&programme) {
+        return ryubing_firmware_servi(&app, &noyau, programme, remplacer.unwrap_or(false)).await;
+    }
     if !crate::eden::est_eden(&programme) || !p.is_file() {
         return Err(Erreur::Refus("Ce n'est pas le programme d'Eden.".into()));
     }
@@ -6380,6 +6402,102 @@ pub async fn eden_firmware_servi(app: AppHandle, noyau: State<'_, Noyau>, progra
     let _ = std::fs::remove_dir(dossier.join(".telechargements"));
     if let Ok(n) = &r {
         noyau.journaliser(&format!("firmware posé dans {} : {n} fichier(s), version {}", programme, f.version.as_deref().unwrap_or("inconnue")));
+    }
+    r
+}
+
+/// La plateforme de Ryubing chez Firehouse (nom LaunchBox) : il est une alternative du conseil de la Switch.
+const PLATEFORME_SWITCH: &str = "Nintendo Switch";
+
+/// Le firmware Switch SERVI PAR FIREHOUSE pour l'alternative Ryubing (✅ Seb 15/11 : posé par Frogtend, sans clic ;
+/// contrat 1.41 : `alternatives[].bios` de la Switch, jamais ceux du conseil faits pour Eden). Sur le modèle d'Eden :
+/// Ryubing FERMÉ, portable, clés posées d'abord ; place vérifiée ; téléchargé avec reprise (événement « emulateur »,
+/// id « eden-firmware », le même suivi que pour Eden), SHA-1 vérifié, puis posé par Frogtend dans un `registered` vide
+/// (`ryubing::poser_firmware`, relu). Une mise à jour met l'ancien (de Frogtend) à l'abri et le remet si elle échoue.
+/// Un seul accord a été donné avant (sa taille annoncée). Rend le nombre de NCA posés.
+async fn ryubing_firmware_servi(app: &AppHandle, noyau: &Noyau, programme: String, remplacer: bool) -> Resultat<usize> {
+    let p = std::path::PathBuf::from(&programme);
+    if !p.is_file() {
+        return Err(Erreur::Refus("Ce n'est pas le programme de Ryubing.".into()));
+    }
+    exiger_programme_de_confiance(app, noyau, &p)?;
+    // Seulement un Ryubing installé par Frogtend (relecture lancement 15/11) : un Ryujinx réglé à la main a peut-être
+    // son firmware ailleurs, Frogtend n'y touche pas.
+    let de_frogtend = registre_emulateurs(noyau)
+        .tous()
+        .into_iter()
+        .any(|e| e.par_frogtend && e.programme.eq_ignore_ascii_case(&programme));
+    if !de_frogtend {
+        return Err(Erreur::Refus("Ce Ryubing n'a pas été installé par Frogtend : Frogtend n'y pose pas de firmware. Installe-le avec le logiciel système depuis Ryubing lui-même, ou réinstalle Ryubing par Frogtend.".into()));
+    }
+    let dossier = p.parent().map(std::path::PathBuf::from).unwrap_or_default();
+    // AVANT de télécharger 320 Mo : tout ce qui ferait refuser la pose.
+    if !crate::lancement::processus_du_dossier(&dossier).is_empty() {
+        return Err(Erreur::Refus("Ryubing est ouvert : ferme-le (ou quitte ta partie), puis recommence.".into()));
+    }
+    let _occupe = occuper_installation(dossier.parent().unwrap_or(&dossier), &dossier, "Ryubing")?;
+    if !crate::ryubing::portable(&dossier) {
+        return Err(Erreur::Refus("Ryubing n'est pas installé en mode portable : Frogtend n'écrit pas dans ses données de Windows.".into()));
+    }
+    if !crate::ryubing::cles_presentes(&dossier) {
+        return Err(Erreur::Refus("Tes clés (prod.keys) ne sont pas encore dans Ryubing : sans elles, il ne lit pas le firmware. Pose-les d'abord.".into()));
+    }
+    if crate::ryubing::firmware_present(&dossier) && !(remplacer && crate::ryubing::note_firmware(&dossier).is_some()) {
+        return Err(Erreur::Refus("Un firmware est déjà installé dans Ryubing : il est laissé tel quel.".into()));
+    }
+    let s = noyau.session().await?;
+    let v = s.source.emulateurs(PLATEFORME_SWITCH).await?;
+    let mut ignore = crate::bios::Bilan::default();
+    let bios = bios_pour_le_programme(&v["conseil"], PLATEFORME_SWITCH, &programme)
+        .filter(|(id, ..)| id == "ryubing")
+        .map(|(_, b, _)| crate::bios::lire_bios(b, &mut ignore))
+        .unwrap_or_default();
+    let f = crate::bios::firmware_servi(&bios)
+        .filter(|f| f.fichier.to_lowercase().ends_with(".zip"))
+        .cloned()
+        .ok_or_else(|| Erreur::Introuvable("Firehouse ne fournit pas (encore) le firmware Switch pour Ryubing.".into()))?;
+    // Le zip, puis ses fichiers extraits à côté : environ trois fois sa taille, par prudence.
+    if let (Some(t), Some(libre)) = (f.taille, crate::jeux_pc::place_libre(&dossier)) {
+        if libre < t.saturating_mul(3) {
+            return Err(Erreur::Disque(format!("Pas assez de place sur le disque de Ryubing : il faut environ {} Mo libres.", t.saturating_mul(3) / 1_048_576)));
+        }
+    }
+    let app2 = app.clone();
+    let progres = move |recus, total| {
+        let _ = app2.emit("emulateur", ProgresEmulateur { id: "eden-firmware".into(), recus, total });
+    };
+    let zip = crate::bios::telecharger_firmware(&s.source, &f, &dossier, &progres).await?;
+    // Ryubing a pu être ouvert pendant le téléchargement : revérifié juste avant de poser.
+    if !crate::lancement::processus_du_dossier(&dossier).is_empty() {
+        let _ = std::fs::remove_file(&zip);
+        return Err(Erreur::Refus("Ryubing a été ouvert pendant le téléchargement : ferme-le, puis recommence.".into()));
+    }
+    let (d, z) = (dossier.clone(), zip.clone());
+    let version = f.version.clone();
+    let r = tauri::async_runtime::spawn_blocking(move || {
+        // Revérifié au tout dernier moment, sur le même fil que la pose.
+        if !crate::lancement::processus_du_dossier(&d).is_empty() {
+            return Err(Erreur::Refus("Ryubing a été ouvert : ferme-le, puis recommence.".into()));
+        }
+        let abri = if remplacer && crate::ryubing::firmware_present(&d) { Some(crate::ryubing::mettre_firmware_a_l_abri(&d)?) } else { None };
+        let n = match crate::ryubing::poser_firmware(&d, &z) {
+            Ok(n) => n,
+            Err(e) => {
+                if let Some(a) = &abri {
+                    crate::ryubing::remettre_firmware(&d, a);
+                }
+                return Err(e);
+            }
+        };
+        crate::ryubing::noter_firmware(&d, version.as_deref())?;
+        Ok::<usize, Erreur>(n)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La pose du firmware s'est arrêtée brutalement.".into()))?;
+    let _ = std::fs::remove_file(&zip);
+    let _ = std::fs::remove_dir(dossier.join(".telechargements"));
+    if let Ok(n) = &r {
+        noyau.journaliser(&format!("firmware posé dans {programme} : {n} NCA, version {}", f.version.as_deref().unwrap_or("inconnue")));
     }
     r
 }
@@ -7030,19 +7148,21 @@ pub async fn bios_poser(app: AppHandle, noyau: State<'_, Noyau>, plateforme: Str
     let s = noyau.session().await?;
     let reponse = s.source.emulateurs(&plateforme).await?;
     let conseil = &reponse["conseil"];
-    let Some(id) = conseil["emulateur"].as_str() else { return Ok(Default::default()) };
+    let Some(id_conseil) = conseil["emulateur"].as_str() else { return Ok(Default::default()) };
     let dossier = std::path::Path::new(&programme).parent().map(std::path::PathBuf::from).unwrap_or_default();
-    if !programme_pour_le_conseil(conseil, &plateforme, &programme) {
-        noyau.journaliser(&format!("fichiers système de {plateforme} : rien posé (le programme n'est pas celui du conseil « {id} »)"));
+    // Ceux du conseil, ou ceux d'une ALTERNATIVE qui décrit les siens (contrat 1.41 : Ryubing), jamais les uns pour
+    // l'autre.
+    let Some((id, bios_decrits, cles_facultatives)) = bios_pour_le_programme(conseil, &plateforme, &programme) else {
+        noyau.journaliser(&format!("fichiers système de {plateforme} : rien posé (le programme n'est pas celui du conseil « {id_conseil} » ni d'une alternative qui décrit les siens)"));
         return Ok(Default::default());
-    }
+    };
     if !dossier.is_dir() {
         noyau.journaliser(&format!("fichiers système de {plateforme} : rien posé (dossier de l'émulateur introuvable)"));
         return Ok(Default::default());
     }
     let mut illisibles = crate::bios::Bilan::default();
-    let bios = crate::bios::lire_bios(&conseil["bios"], &mut illisibles);
-    let mut bilan = crate::bios::poser(&s.source, &bios, &dossier, id == "retroarch").await;
+    let bios = crate::bios::lire_bios(bios_decrits, &mut illisibles);
+    let mut bilan = crate::bios::poser_choisis(&s.source, &bios, &dossier, id == "retroarch", cles_facultatives).await;
     bilan.echecs.extend(illisibles.echecs);
     if id == "pcsx2" {
         if let Err(e) = crate::bios::regler_pcsx2(&dossier, &bios) {
@@ -7069,6 +7189,20 @@ pub fn programme_pour_le_conseil(conseil: &serde_json::Value, plateforme: &str, 
         && conseil["alternatives"].as_array().is_some_and(|l| {
             l.iter().filter_map(|a| a["emulateur"].as_str()).any(|a| crate::emulateurs::famille_eden(a) && programme_du_conseil(a, programme))
         })
+}
+
+/// Les fichiers système qui vont à ce programme, d'après le conseil relu : (id de l'émulateur, leur description,
+/// clés facultatives à poser aussi). Ceux du CONSEIL pour son émulateur et la famille d'Eden (`programme_pour_le_conseil`) ;
+/// sinon ceux d'une ALTERNATIVE qui décrit les siens (contrat 1.41 : `alternatives[].bios` ; Ryubing, avec son
+/// `title.keys` facultatif). `bios` null ou absent = non décrits : rien (jamais ceux du conseil, faits pour Eden).
+pub fn bios_pour_le_programme<'a>(conseil: &'a serde_json::Value, plateforme: &str, programme: &str) -> Option<(String, &'a serde_json::Value, bool)> {
+    if programme_pour_le_conseil(conseil, plateforme, programme) {
+        return Some((conseil["emulateur"].as_str()?.to_string(), &conseil["bios"], false));
+    }
+    let a = conseil["alternatives"].as_array()?.iter().find(|a| {
+        a["emulateur"].as_str().is_some_and(|e| !crate::emulateurs::famille_eden(e) && programme_du_conseil(e, programme))
+    })?;
+    a["bios"].is_array().then(|| (a["emulateur"].as_str().unwrap_or_default().to_string(), &a["bios"], true))
 }
 
 /// Le programme est-il celui de l'émulateur du conseil (id des sources de Firehouse : « retroarch », « pcsx2 »,
@@ -7366,10 +7500,20 @@ pub struct Traces {
 /// L'« effet pieuvre » : les dossiers que des émulateurs ont laissés dans le dossier utilisateur de Windows.
 #[tauri::command]
 pub fn emulateurs_traces() -> Vec<Traces> {
-    regrouper_traces(crate::emulateurs::CATALOGUE.iter().map(|f| {
+    let mut l = regrouper_traces(crate::emulateurs::CATALOGUE.iter().map(|f| {
         let d = crate::emulateurs_profils::traces_hors_du_dossier(f.id);
         (f.id, f.nom, d.iter().map(|p| p.to_string_lossy().to_string()).collect())
-    }))
+    }));
+    nuancer_traces(&mut l);
+    l
+}
+
+/// `%USERPROFILE%\.switch` (les clés d'un Ryubing non portable) sert aussi à d'autres outils Switch : seulement
+/// « peut-être » de Ryubing.
+fn nuancer_traces(l: &mut [Traces]) {
+    for t in l.iter_mut().filter(|t| t.id.starts_with("ryubing:") && t.dossiers.iter().any(|d| d.to_lowercase().ends_with("\\.switch") || d.to_lowercase().ends_with("/.switch"))) {
+        t.nom = format!("{} (peut-être : d'autres outils Switch se servent aussi de ce dossier)", t.nom);
+    }
 }
 
 /// Un dossier partagé par plusieurs émulateurs (Eden, Eglantine et Lichii écrivent tous dans `%APPDATA%\eden` hors
@@ -7389,6 +7533,16 @@ fn regrouper_traces<'a>(l: impl Iterator<Item = (&'a str, &'a str, Vec<String>)>
 
 #[cfg(test)]
 mod tests_en_installation {
+    #[test]
+    fn le_dossier_switch_n_est_que_peut_etre_de_ryubing() {
+        let mut l = super::regrouper_traces(
+            [("ryubing", "Ryubing", vec![r"C:\Users\x\AppData\Roaming\Ryujinx".to_string(), r"C:\Users\x\.switch".to_string()])].into_iter(),
+        );
+        super::nuancer_traces(&mut l);
+        assert_eq!(l[0].nom, "Ryubing");
+        assert!(l[1].nom.contains("peut-être"));
+    }
+
     #[test]
     fn aucun_jeu_ne_se_lance_depuis_un_emulateur_en_cours_de_mise_a_jour() {
         let d = tempfile::tempdir().unwrap();
@@ -7724,6 +7878,30 @@ mod tests {
         let ra = serde_json::json!({"emulateur": "retroarch", "alternatives": [{"nom": "Mesen", "emulateur": "mesen"}]});
         assert!(!super::programme_pour_le_conseil(&ra, "Nintendo Entertainment System", r"E:\Mesen\Mesen.exe"), "hors famille d'Eden : jamais");
         assert!(!super::programme_pour_le_conseil(&serde_json::json!({}), s2, lichii));
+    }
+
+    #[test]
+    fn ryubing_recoit_les_fichiers_de_son_alternative_jamais_ceux_d_eden() {
+        // La forme servie le 15/11 (contrat 1.41), abrégée.
+        let cles_eden = serde_json::json!([{"fichier": "prod.keys", "type": "fichier", "racine": "dossier_emulateur", "chemin": "user/keys/prod.keys"}]);
+        let cles_ryu = serde_json::json!([{"fichier": "prod.keys", "type": "fichier", "racine": "dossier_emulateur", "chemin": "portable/system/prod.keys"}]);
+        let c = serde_json::json!({"emulateur": "eden", "bios": cles_eden, "alternatives": [
+            {"nom": "Ryubing", "emulateur": "ryubing", "commande": "-f \"%rom%\"", "bios": cles_ryu},
+            {"nom": "Citron", "emulateur": "citron_neo", "bios": null}
+        ]});
+        let (sw, ryu) = ("Nintendo Switch", r"E:\Frogtend\Emulateurs\Ryubing\Ryujinx.exe");
+        let (id, b, facultatives) = super::bios_pour_le_programme(&c, sw, ryu).unwrap();
+        assert_eq!((id.as_str(), b, facultatives), ("ryubing", &cles_ryu, true), "les siens, avec title.keys");
+        let (id, b, facultatives) = super::bios_pour_le_programme(&c, sw, r"E:\Emu\Eden\eden.exe").unwrap();
+        assert_eq!((id.as_str(), b, facultatives), ("eden", &cles_eden, false), "Eden : inchangé");
+        // `bios` null (non décrits) ou absent : rien, jamais ceux du conseil.
+        assert!(super::bios_pour_le_programme(&c, sw, r"E:\Emu\Citron\citron_neo.exe").is_none());
+        let sans = serde_json::json!({"emulateur": "eden", "bios": cles_eden, "alternatives": [{"nom": "Ryubing", "emulateur": "ryubing"}]});
+        assert!(super::bios_pour_le_programme(&sans, sw, ryu).is_none());
+        assert!(!super::programme_pour_le_conseil(&c, sw, ryu), "Ryubing n'est pas de la famille d'Eden");
+        // Non cité : rien.
+        let seul = serde_json::json!({"emulateur": "eden", "bios": cles_eden, "alternatives": []});
+        assert!(super::bios_pour_le_programme(&seul, sw, ryu).is_none());
     }
 
     /// RÉEL, sur une COPIE de brouillon de RPCS3 (`FROGTEND_RPCS3_BROUILLON=<dossier avec rpcs3.exe>`) : le micrologiciel

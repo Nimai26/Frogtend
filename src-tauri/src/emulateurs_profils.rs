@@ -502,9 +502,10 @@ pub fn regler_succes(id: &str, emulateur: &Path, profil: &str, compte: Option<(&
 
 /// Les fichiers d'un profil d'émulateur qui portent une connexion RetroAchievements (jeton) : ils restent sur ce PC et
 /// ne partent JAMAIS dans la sauvegarde chez Firehouse. `relatif` : chemin sous `<émulateur>\Profils\<profil>`.
+/// Les clés de la console (`prod.keys`, `title.keys`… : Ryubing, Eden) non plus : ce sont celles de la personne.
 pub fn porte_un_secret(relatif: &str) -> bool {
     let r = relatif.replace('\\', "/").to_lowercase();
-    r == "frogtend.cfg" || r == "cheevos-duckstation.json" || r.ends_with("config/retroachievements.ini")
+    r == "frogtend.cfg" || r == "cheevos-duckstation.json" || r.ends_with("config/retroachievements.ini") || r.ends_with(".keys")
 }
 
 /// Un profil oublie son compte RetroAchievements (ou est supprimé) : sa connexion est retirée de cet émulateur.
@@ -1903,6 +1904,8 @@ pub fn traces_hors_du_dossier(id: &str) -> Vec<PathBuf> {
         "mgba" => vec![env("APPDATA").map(|a| a.join("mGBA"))],
         // BigPEmu sans `-localdata` (manuel officiel).
         "bigpemu" => vec![env("APPDATA").map(|a| a.join("BigPEmu"))],
+        // Ryubing sans `portable\` (AppDataManager.cs : `%APPDATA%\Ryujinx`, et ses clés dans `%USERPROFILE%\.switch`).
+        "ryubing" => vec![env("APPDATA").map(|a| a.join("Ryujinx")), env("USERPROFILE").map(|u| u.join(".switch"))],
         _ => vec![],
     };
     candidats.into_iter().flatten().filter(|p| p.is_dir()).collect()
@@ -2398,6 +2401,8 @@ mod tests {
         assert!(porte_un_secret("cheevos-duckstation.json"));
         assert!(porte_un_secret("User\\Config\\RetroAchievements.ini"));
         assert!(!porte_un_secret("saves/Mario.srm"));
+        // Les clés de la Switch (Ryubing : `system\prod.keys` dans ses données) : jamais sauvegardées.
+        assert!(porte_un_secret("portable\\system\\prod.keys") && porte_un_secret("system/Title.keys"));
         assert!(!porte_un_secret("memcards/Mcd001.ps2"));
     }
 

@@ -264,18 +264,39 @@ pub async fn poser_un(source: &Source, b: &BiosConseil, cible: &Path, dossier_em
 
 /// Une destination sous `user\` d'un émulateur qui n'a PAS de dossier `user\` (Eden ou Eglantine installés hors mode
 /// portable : leurs réglages et parties sont dans %APPDATA%) : la créer le ferait basculer en portable et lui ferait
-/// perdre de vue ses parties (relecture lancement 08/11, contrat 1.38 : les clés passent par `user/keys/`).
+/// perdre de vue ses parties (relecture lancement 08/11, contrat 1.38 : les clés passent par `user/keys/`). De même
+/// sous `portable\` (Ryubing, contrat 1.41 : ses clés vont dans `portable/system/` ; Cemu, Vita3K : même marqueur).
 pub fn basculerait_en_portable(cible: &Path, dossier_emulateur: &Path) -> bool {
-    let user = dossier_emulateur.join("user");
-    cible.starts_with(&user) && !user.is_dir()
+    // En minuscules (Windows ne distingue pas `Portable\` de `portable\`) : jamais contourné par une casse servie.
+    let bas = |p: &Path| PathBuf::from(p.to_string_lossy().to_lowercase());
+    ["user", "portable"].iter().any(|m| {
+        let d = dossier_emulateur.join(m);
+        bas(cible).starts_with(bas(&d)) && !d.is_dir()
+    })
+}
+
+/// Une clé FACULTATIVE servie (`title.keys`) : posée avec les obligatoires quand on le demande (l'alternative Ryubing,
+/// contrat 1.41), jamais une clé gardée au coffre.
+pub fn cle_facultative(b: &BiosConseil) -> bool {
+    b.facultatif && !b.coffre && b.sorte == "fichier" && b.fichier.to_lowercase().ends_with(".keys") && posable(b)
 }
 
 /// Pose les fichiers système obligatoires et servis d'un conseil pour l'émulateur installé dans `dossier_emulateur`
 /// (`retroarch` : vers son dossier `system`). Un échec n'arrête pas les autres ; tout est dit dans le bilan.
 pub async fn poser(source: &Source, bios: &[BiosConseil], dossier_emulateur: &Path, retroarch: bool) -> Bilan {
+    poser_choisis(source, bios, dossier_emulateur, retroarch, false).await
+}
+
+/// Comme `poser` ; avec `cles_facultatives`, les clés facultatives servies (`title.keys`, `cle_facultative`) sont
+/// posées aussi. Une clé facultative absente de Firehouse (404) n'est pas dite : rien ne manque.
+pub async fn poser_choisis(source: &Source, bios: &[BiosConseil], dossier_emulateur: &Path, retroarch: bool, cles_facultatives: bool) -> Bilan {
     let mut bilan = Bilan::default();
     let system = retroarch.then(|| crate::emulateurs::dossier_bios_retroarch(dossier_emulateur));
-    for b in trier(bios, &mut bilan) {
+    let mut a_poser = trier(bios, &mut bilan);
+    if cles_facultatives {
+        a_poser.extend(bios.iter().filter(|b| cle_facultative(b)).cloned());
+    }
+    for b in a_poser {
         let Some(cible) = destination(&b, dossier_emulateur, system.as_deref()) else {
             bilan.a_poser.push(b.fichier.clone());
             continue;
@@ -287,6 +308,7 @@ pub async fn poser(source: &Source, bios: &[BiosConseil], dossier_emulateur: &Pa
         match poser_un(source, &b, &cible, dossier_emulateur).await {
             Ok(true) => bilan.poses.push(b.fichier.clone()),
             Ok(false) => bilan.deja.push(b.fichier.clone()),
+            Err(Erreur::Introuvable(_)) if b.facultatif => {}
             // 404 = inconnu OU pas (encore) servi (contrat 1.9) : à poser soi-même, ce n'est pas une panne.
             Err(Erreur::Introuvable(_)) => bilan.a_poser.push(format!("{} (pas encore servi par Firehouse)", b.fichier)),
             Err(e) => bilan.echecs.push(format!("{} : {e}", b.fichier)),
@@ -542,6 +564,60 @@ mod tests {
         assert_eq!(lire_bios(&mal, &mut bilan).len(), 1);
         assert_eq!(bilan.echecs, ["b.bin : description illisible"]);
         assert!(lire_bios(&serde_json::Value::Null, &mut Bilan::default()).is_empty());
+    }
+
+    #[tokio::test]
+    async fn les_cles_de_ryubing_vont_dans_portable_system_et_jamais_ne_le_font_basculer() {
+        use httpmock::prelude::*;
+        let sha = |c: &[u8]| {
+            let mut h = Sha1::new();
+            h.update(c);
+            h.finalize().iter().map(|o| format!("{o:02x}")).collect::<String>()
+        };
+        let (prod, title) = (b"prod de test".to_vec(), b"title de test".to_vec());
+        let (sp, st) = (sha(&prod), sha(&title));
+        let serveur = MockServer::start();
+        let rp = serveur.mock(|w, r| {
+            w.method(GET).path(format!("/api/jeux/v1/bios/{sp}"));
+            r.status(200).body(prod.clone());
+        });
+        serveur.mock(|w, r| {
+            w.method(GET).path(format!("/api/jeux/v1/bios/{st}"));
+            r.status(200).body(title.clone());
+        });
+        let source = Source::Firehouse(crate::firehouse::Client::nouveau(&serveur.base_url(), "j").unwrap());
+        // La forme servie pour l'alternative Ryubing (contrat 1.41, 15/11).
+        let bios = lire_bios(
+            &json!([
+                {"fichier": "prod.keys", "type": "fichier", "racine": "dossier_emulateur", "chemin": "portable/system/prod.keys", "disponible": true, "sha1": sp, "url": format!("/api/jeux/v1/bios/{sp}")},
+                {"fichier": "title.keys", "type": "fichier", "racine": "dossier_emulateur", "chemin": "portable/system/title.keys", "facultatif": true, "disponible": true, "sha1": st, "url": format!("/api/jeux/v1/bios/{st}")},
+                {"fichier": "firmware-switch.zip", "type": "installation", "racine": "installation_par_l_emulateur", "version": "18.1.0", "taille": 336375526, "disponible": true, "sha1": "a".repeat(40), "url": "/api/jeux/v1/bios/x"}
+            ]),
+            &mut Bilan::default(),
+        );
+        let d = tempfile::tempdir().unwrap();
+        // Installé à la main (sans `portable\`) : rien n'est créé, rien téléchargé.
+        let main = d.path().join("ALaMain");
+        std::fs::create_dir_all(&main).unwrap();
+        let bilan = poser_choisis(&source, &bios, &main, false, true).await;
+        assert!(bilan.poses.is_empty() && bilan.a_poser.len() == 2, "{bilan:?}");
+        assert!(!main.join("portable").exists());
+        rp.assert_hits(0);
+        // Installé par Frogtend (`portable\` créé à l'installation) : les deux clés posées, le firmware à part.
+        let ryu = d.path().join("Ryubing");
+        std::fs::create_dir_all(ryu.join("portable")).unwrap();
+        let bilan = poser_choisis(&source, &bios, &ryu, false, true).await;
+        assert_eq!(bilan.poses, ["prod.keys", "title.keys"]);
+        assert_eq!(bilan.firmwares, ["firmware-switch.zip"]);
+        assert_eq!(std::fs::read(ryu.join("portable").join("system").join("prod.keys")).unwrap(), prod);
+        assert_eq!(std::fs::read(ryu.join("portable").join("system").join("title.keys")).unwrap(), title);
+        assert!(crate::ryubing::cles_presentes(&ryu));
+        // Sans le choix des clés facultatives (Eden, inchangé) : title.keys n'est pas posé.
+        let autre = d.path().join("Autre");
+        std::fs::create_dir_all(autre.join("portable")).unwrap();
+        assert_eq!(poser(&source, &bios, &autre, false).await.poses, ["prod.keys"]);
+        assert!(basculerait_en_portable(&main.join("portable").join("system").join("prod.keys"), &main));
+        assert!(basculerait_en_portable(&main.join("Portable").join("system").join("prod.keys"), &main), "quelle que soit la casse");
     }
 
     #[tokio::test]
