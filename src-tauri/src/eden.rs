@@ -877,8 +877,7 @@ pub const RACCOURCIS_MENU: &[(crate::pilotage::Action, &str, &str)] = &[
     (crate::pilotage::Action::Muet, "Audio%20Mute\\Unmute", "Ctrl+M"),
     // « Toggle Turbo Speed » (vitesse turbo réglée dans Eden) ; pas « Toggle Framerate Limit », sans plafond.
     (crate::pilotage::Action::AvanceRapide, "Toggle%20Turbo%20Speed", "Ctrl+Z"),
-    // « Restart Emulation » : `OnRestartGame`, sans question sauf jeu qui verrouille sa sortie (comme Quitter).
-    (crate::pilotage::Action::Reset, "Restart%20Emulation", "F6"),
+    // Pas « Restart Emulation » (F6) : il a fait planter Eglantine chez Seb (15/11).
 ];
 
 /// Les actions du menu dont le raccourci est encore celui d'origine (Eden portable seulement : sinon ses réglages
@@ -965,7 +964,7 @@ mod tests_reglages {
     fn le_menu_ne_propose_que_les_raccourcis_d_origine_et_la_capture_sans_question() {
         let d = eden_portable("[UI]\r\nScreenshots\\enable_screenshot_save_as\\default=true\r\nScreenshots\\enable_screenshot_save_as=true\r\nShortcuts\\Main%20Window\\Audio%20Mute\\Unmute\\KeySeq=Ctrl+M\r\nShortcuts\\Main%20Window\\Restart%20Emulation\\KeySeq=F7\r\n\r\n[Audio]\r\naudio_muted\\default=false\r\naudio_muted=true\r\n");
         use crate::pilotage::Action::*;
-        assert_eq!(actions_d_origine(d.path()), vec![Muet, AvanceRapide], "capture : « Enregistrer sous » encore là ; Reset changé en F7");
+        assert_eq!(actions_d_origine(d.path()), vec![Muet, AvanceRapide], "capture : « Enregistrer sous » encore là");
         assert!(captures_sans_question(d.path()).unwrap());
         assert_eq!(actions_d_origine(d.path()), vec![Capture, Muet, AvanceRapide]);
         assert!(!captures_sans_question(d.path()).unwrap(), "une seule fois");

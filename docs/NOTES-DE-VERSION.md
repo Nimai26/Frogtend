@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.196.0 — Switch 2 : Recommencer retiré
+
+- 🎮 Eden, Eglantine, Lichii : 🔄 Recommencer est retiré du menu en jeu. Le redémarrage d'Eglantine la faisait
+  planter. Pour recommencer : quitte le jeu et relance-le.
+- Photo de l'écran, Son coupé et Turbo restent, dans ⚙ Options du jeu.
+
 ## 0.195.0 — Jaguar : 🔄 Recommencer dans le menu en jeu
 
 - 🎮 Le menu en jeu de BigPEmu gagne 🔄 Recommencer, comme les autres consoles : Frogtend lie une touche (F16) à son

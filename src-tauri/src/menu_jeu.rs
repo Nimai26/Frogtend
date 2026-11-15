@@ -1226,7 +1226,7 @@ mod tests {
         assert_eq!(etat(&change).actions, Vec::<&str>::new(), "aucun raccourci d'origine connu : rien");
         use crate::pilotage::Action::*;
         let eden = PartieEnCours { eden_d_origine: vec![Capture, Muet, Reset], ..partie(Some("eglantine")) };
-        assert_eq!(etat(&eden).actions, vec!["reset", "capture", "muet"]);
+        assert_eq!(etat(&eden).actions, vec!["capture", "muet"], "jamais Recommencer : il plante Eglantine (15/11)");
         // RPCS3 : au prochain lancement seulement ; jamais une touche.
         let rpcs3 = PartieEnCours { fps: Some(false), fps_au_lancement: true, ..partie(Some("rpcs3")) };
         assert_eq!(etat(&rpcs3).fps, Some(FpsMenu { affiche: Some(false), en_direct: false }));

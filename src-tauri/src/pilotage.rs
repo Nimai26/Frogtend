@@ -81,7 +81,6 @@ pub fn touche(emulateur: &str, a: Action) -> Option<Touche> {
         ("eden" | "eglantine" | "lichii", Action::Capture) => Some(Touche { ctrl: true, ..t("P") }),
         ("eden" | "eglantine" | "lichii", Action::Muet) => Some(Touche { ctrl: true, ..t("M") }),
         ("eden" | "eglantine" | "lichii", Action::AvanceRapide) => Some(Touche { ctrl: true, ..t("Z") }),
-        ("eden" | "eglantine" | "lichii", Action::Reset) => Some(t("F6")),
         // BigPEmu : F13 / F14 / F15 que Frogtend lie à Save State / Load State / Screenshot (`bigpemu::RACCOURCIS`,
         // posées avant le lancement ; le menu ne les propose que si elles sont en place).
         ("bigpemu", Action::SauverEtat) => Some(t("F13")),
@@ -110,9 +109,10 @@ pub fn actions(emulateur: &str) -> Vec<Action> {
         // Pas d'avance rapide (✅ Seb 04/11) : Ctrl+F10 coupe la limite d'images, mais un jeu réglé sur la Vblank (Asura's
         // Wrath) ne va pas plus vite.
         "rpcs3" => vec![Capture, Muet],
-        // La famille d'Eden : le compteur d'images, la capture, le son, le turbo, recommencer (chacun retiré si son
-        // raccourci a été changé : `menu_jeu::etat`). Pas de sauvegardes rapides : Eden n'en a pas.
-        "eden" | "eglantine" | "lichii" => vec![Reset, ImagesParSeconde, AvanceRapide, Capture, Muet],
+        // La famille d'Eden : le compteur d'images, la capture, le son, le turbo (chacun retiré si son raccourci a été
+        // changé : `menu_jeu::etat`). Pas de sauvegardes rapides : Eden n'en a pas. Pas de Recommencer (❌ Seb 15/11 :
+        // « Restart Emulation » a fait planter Eglantine, journal coupé au milieu de son arrêt forcé).
+        "eden" | "eglantine" | "lichii" => vec![ImagesParSeconde, AvanceRapide, Capture, Muet],
         // BigPEmu (✅ Seb 11/11 : tout ce que l'émulateur propose) : ses états et sa capture, par les touches de Frogtend.
         // Recommencer par « Reload Image » (F16), seulement si elle est en place (`menu_jeu::etat`).
         "bigpemu" => vec![Reset, SauverEtat, ChargerEtat, Capture],
