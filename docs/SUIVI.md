@@ -2642,5 +2642,10 @@ d'abord :
   (RetroArch GET_STATUS, MAME script, BigPEmu fenêtre + 3 s ; jamais avec la fenêtre des triches) ; ⚡ Raccourcis en jeu
   réglables (manette et clavier, Ctrl+Maj+F5/F9 d'office). Décisions : Eglantine lente = l'émulateur, mis de côté ;
   intégrer PS4 et PS5 (PLAN).
+- 15/11 (0.202.0) : Ryubing complet (lots 1, 2, 3, 5 ; lot 6 mises à jour/DLC à faire) — relevé réel sans jeu (accord
+  de Seb, D:	emp-tests-frogtendyubing-releve : index des parties `bis\system\save\8000000000000000`, modèle
+  Config v70, manette Xbox One `0-00000003-045e-0000-ff02-000000007200`) ; décisions de Seb : firmware posé par Frogtend,
+  un dossier par personne (-r), games\ à chacun. PS4/PS5 : recherche faite, besoin 50 reçu par Firehouse (après son
+  chantier en cours). Non vérifié en vrai : tout Ryubing avec un jeu (Seb n'a pas de jeu Switch à essayer pour l'instant ?).
 - RESTE (ordre proposé) : DuckStation et PCSX2 (emplacements 1-10 Maj/Ctrl+F15…F24, capture, avance, muet ; essai F16-F24
   avec Seb d'abord), Dolphin (après essai), « Relancer pour appliquer », raccourcis réglables, Ryubing.
