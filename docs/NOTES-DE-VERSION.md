@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.200.0 — Après « Sauver puis relancer », ta sauvegarde revient toute seule
+
+- 💾 Après « Sauver puis relancer » (RetroArch, MAME, Jaguar), Frogtend demande à recharger ta sauvegarde dès que le
+  jeu est prêt : tu reprends là où tu étais, avec tes changements. Si tu ouvres le menu avant, ou si le jeu met plus
+  d'une minute à démarrer, rien n'est rechargé dans ton dos : le menu te dit de faire 📂 Charger.
+- Jeu Jaguar avec une triche cochée : sa petite fenêtre des triches attend au démarrage, donc Frogtend ne charge pas à
+  l'aveugle ; le menu te dit de faire 📂 Charger toi-même.
+- 🔄 Recommencer repart toujours du début.
+
 ## 0.199.0 — 🔄 Relancer le jeu pour voir tes changements
 
 - 🎮 Un réglage qui ne vaut qu'à la prochaine partie (effet d'image ou triches d'un jeu Jaguar, compteur de fluidité

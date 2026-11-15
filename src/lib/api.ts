@@ -810,7 +810,9 @@ export const api = {
   menuJeuQuitter: () => appeler<number>('menu_jeu_quitter'),
   /** Relancer le jeu (✅ Seb 15/11) : une sauvegarde rapide d'abord si `sauver`, puis Quitter ; la fenêtre principale
    * le relance à la fin de la partie. */
-  menuJeuRelancer: (jeu: number, sauver: boolean) => appeler<number>('menu_jeu_relancer', { jeu, sauver }),
+  menuJeuRelancer: (jeu: number, sauver: boolean, recharger: boolean) => appeler<number>('menu_jeu_relancer', { jeu, sauver, recharger }),
+  /** Plus aucun rechargement en attente (relance ratée, ou lancement à la main). */
+  menuJeuOublierRechargement: () => appeler<void>('menu_jeu_oublier_rechargement'),
   jouer: (
     id: number,
     commandes?: CommandesJeu,

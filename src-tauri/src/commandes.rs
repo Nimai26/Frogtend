@@ -1951,6 +1951,7 @@ pub async fn jeu_jouer(
         ),
         None => (effets_ra, None, prep.triches, prep.abri_fait, None, vec![], None),
     };
+    let a_recharger = app.state::<crate::menu_jeu::MenuJeu>().prendre_charger(id, id_emulateur.as_deref());
     let numero = app.state::<crate::menu_jeu::MenuJeu>().commencer(crate::menu_jeu::PartieEnCours {
         au_lancement: None,
         etats_interdits: prep.etats_interdits,
@@ -1980,7 +1981,8 @@ pub async fn jeu_jouer(
         fps_avant: etat_fps.avant,
         fps_pose: etat_fps.pose,
         raccourcis_clavier,
-        emplacement: 0,
+        // Après « Sauver puis relancer » : l'emplacement sauvé reste celui du menu (et celui qui est rechargé).
+        emplacement: a_recharger.as_ref().map(|c| c.emplacement).unwrap_or(0),
         emplacement_ra: 0,
         etats,
         nom_rom,
@@ -2072,6 +2074,10 @@ pub async fn jeu_jouer(
                 }
             });
         }
+    }
+    if let Some(c) = a_recharger {
+        let app5 = app.clone();
+        tauri::async_runtime::spawn(async move { recharger_apres_relance(&app5, numero, c, fenetre_triches_bp).await });
     }
     // Les captures rangées pendant la partie (toutes les 2 s, tant qu'elle est la partie en cours).
     let captures_rangees = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -2167,6 +2173,9 @@ pub async fn jeu_jouer(
             }
         }
         let relancer = menu.prendre_relance(numero);
+        if !relancer {
+            *menu.charger_apres.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        }
         if menu.en_cours(numero) {
             menu.finir(numero);
             armer_touche_menu(&app2, false);
@@ -2954,6 +2963,7 @@ async fn raccourci_etat(app: &AppHandle, quoi: &'static str) {
     let n = p.emplacement;
     let est_retroarch = e == "retroarch";
     let est_bigpemu = e == "bigpemu";
+    let e_mame = e == "mame";
     let r = if e == "mame" {
         action_mame(app, &noyau, p.dossier_emulateur.as_deref(), a, n).await
     } else if e == "retroarch" {
@@ -2980,12 +2990,75 @@ async fn raccourci_etat(app: &AppHandle, quoi: &'static str) {
     if est_retroarch {
         let _ = crate::menu_jeu::commande_retroarch(&format!("SHOW_MSG {message}"));
     }
-    // BigPEmu n'affiche pas les messages de Frogtend : un échec rouvre le menu (le jeu en pause), qui le dit.
-    if let (true, Err(err)) = (est_bigpemu, &r) {
+    // BigPEmu et MAME n'affichent pas les messages de Frogtend : un échec rouvre le menu (le jeu en pause), qui le dit.
+    if let (true, Err(err)) = (est_bigpemu || e_mame, &r) {
         app.state::<crate::menu_jeu::MenuJeu>().noter_message(format!("{err}"));
         let a2 = app.clone();
         let _ = app.run_on_main_thread(move || ouvrir_menu(&a2));
     }
+}
+
+/// Une relance qui n'a pas abouti (ou un lancement à la main) : aucun rechargement ne reste en attente.
+#[tauri::command]
+pub fn menu_jeu_oublier_rechargement(app: AppHandle) {
+    *app.state::<crate::menu_jeu::MenuJeu>().charger_apres.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+/// Après « Sauver puis relancer » (✅ Seb 15/11) : recharge l'emplacement sauvé dès que le jeu est PRÊT — RetroArch :
+/// `GET_STATUS` dit qu'un jeu tourne ; MAME : son script tourne ; BigPEmu : sa fenêtre répond, plus 3 s. Une seule
+/// fois, jamais en boucle ; même contenu exigé ; « demandé » seulement (RetroArch ne confirme pas). BigPEmu avec une
+/// triche cochée : sa fenêtre de triches attend la personne au démarrage, rien n'est envoyé à l'aveugle — dit.
+async fn recharger_apres_relance(app: &AppHandle, numero: u64, c: crate::menu_jeu::ChargerApres, fenetre_triches: bool) {
+    let noyau = app.state::<Noyau>();
+    let menu = app.state::<crate::menu_jeu::MenuJeu>();
+    let n = c.emplacement + 1;
+    if c.emulateur == "bigpemu" && fenetre_triches {
+        menu.noter_message(format!("🎯 Avec tes triches, Frogtend ne recharge pas tout seul : menu ▸ 📂 Charger (emplacement {n}) une fois le jeu lancé."));
+        noyau.journaliser("relancer : rechargement laissé à la personne (fenêtre de triches de BigPEmu)");
+        return;
+    }
+    let debut = std::time::Instant::now();
+    let pret = loop {
+        // Au plus 60 s : au-delà, la personne joue déjà (un chargement tardif effacerait ce qu'elle a fait).
+        if !menu.en_cours(numero) || debut.elapsed() > std::time::Duration::from_secs(60) {
+            break false;
+        }
+        let Some(p) = menu.partie() else { break false };
+        let ok = match c.emulateur.as_str() {
+            "retroarch" => tauri::async_runtime::spawn_blocking(crate::menu_jeu::statut_retroarch).await.ok().flatten().is_some_and(|s| crate::menu_jeu::jeu_en_cours_retroarch(&s)),
+            "mame" => p.dossier_emulateur.as_deref().is_some_and(|d| crate::pilotage::jeu_mame(std::path::Path::new(d)).is_some()),
+            "bigpemu" => crate::lancement::processus_de_la_partie(p.pid).into_iter().any(|x| crate::menu_jeu::fenetres_figees(x) == Some(false)),
+            _ => false,
+        };
+        if ok {
+            break true;
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    };
+    if !pret {
+        noyau.journaliser(&format!("relancer : jeu pas prêt à temps, emplacement {n} pas rechargé"));
+        return;
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(if c.emulateur == "bigpemu" { 3000 } else { 1500 })).await;
+    let Some(p) = menu.partie().filter(|_| menu.en_cours(numero)) else { return };
+    let meme = match c.emulateur.as_str() {
+        "retroarch" => p.nom_rom.as_deref() == Some(c.contenu.as_str()),
+        "bigpemu" => p.empreinte.as_deref() == Some(c.contenu.as_str()),
+        _ => true,
+    };
+    if !meme || p.emplacement != c.emplacement || !crate::menu_jeu::etat(&p).actions.contains(&"charger") {
+        noyau.journaliser(&format!("relancer : emplacement {n} pas rechargé (autre contenu, autre emplacement, ou chargement interdit : mode hardcore…)"));
+        menu.noter_message(format!("Ta sauvegarde n'a pas été rechargée : menu ▸ 📂 Charger (emplacement {n})."));
+        return;
+    }
+    // La personne a ouvert le menu entre-temps : rien n'est envoyé dans son dos, le menu le lui dit.
+    if menu.ouvert.load(std::sync::atomic::Ordering::SeqCst) {
+        noyau.journaliser(&format!("relancer : menu ouvert, emplacement {n} laissé à la personne"));
+        menu.noter_message(format!("Ta sauvegarde n'a pas été rechargée (menu ouvert) : 📂 Charger (emplacement {n})."));
+        return;
+    }
+    noyau.journaliser(&format!("relancer : rechargement de l'emplacement {n}"));
+    raccourci_etat(app, "charger").await;
 }
 
 /// Active ou coupe la triche `index` du jeu en cours (RetroArch, lot 3 ✅ Seb 28/10) : le menu se cache, le jeu
@@ -3634,7 +3707,7 @@ pub async fn menu_jeu_quitter(app: AppHandle) -> Resultat<usize> {
 /// `EtatMenu::sauver_avant`), puis Quitter ; la fin de CETTE partie portera « relancer » et la fenêtre principale
 /// relance le jeu tel qu'il avait été lancé. `jeu` : celui que le menu montre (une autre partie : refusé).
 #[tauri::command]
-pub async fn menu_jeu_relancer(app: AppHandle, noyau: State<'_, Noyau>, jeu: i64, sauver: bool) -> Resultat<usize> {
+pub async fn menu_jeu_relancer(app: AppHandle, noyau: State<'_, Noyau>, jeu: i64, sauver: bool, recharger: bool) -> Resultat<usize> {
     let menu = app.state::<crate::menu_jeu::MenuJeu>();
     let numero = menu.numero.load(std::sync::atomic::Ordering::SeqCst);
     let p = menu.partie().filter(|_| menu.en_cours(numero)).ok_or_else(|| Erreur::Introuvable("Aucune partie en cours.".into()))?;
@@ -3649,6 +3722,21 @@ pub async fn menu_jeu_relancer(app: AppHandle, noyau: State<'_, Noyau>, jeu: i64
             return Err(Erreur::Refus("Cet émulateur ne permet pas de vérifier la sauvegarde avant de relancer.".into()));
         }
         menu_jeu_action(app.clone(), noyau.clone(), "sauver".into()).await?;
+        // La sauvegarde a réussi : la partie relancée la recharge dès qu'elle est prête (jamais pour Recommencer).
+        if recharger {
+            let contenu = match p.emulateur.as_deref() {
+                Some("retroarch") => p.nom_rom.clone().unwrap_or_default(),
+                Some("bigpemu") => p.empreinte.clone().unwrap_or_default(),
+                _ => String::new(),
+            };
+            *menu.charger_apres.lock().unwrap_or_else(|e| e.into_inner()) = Some(crate::menu_jeu::ChargerApres {
+                jeu,
+                emulateur: p.emulateur.clone().unwrap_or_default(),
+                emplacement: p.emplacement,
+                contenu,
+                limite: std::time::Instant::now() + std::time::Duration::from_secs(360),
+            });
+        }
     }
     // La demande vaut pour CETTE partie, le temps de la fermer (au plus 6 min : l'arrêt de sécurité d'Eden en prend 5).
     *menu.relance.lock().unwrap_or_else(|e| e.into_inner()) = Some((numero, std::time::Instant::now() + std::time::Duration::from_secs(360)));

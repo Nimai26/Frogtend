@@ -78,6 +78,7 @@ async function relancer(id: number) {
     // Pas reparti (refus, question à laquelle la personne a dit non, erreur déjà dite par le lancement) : la partie
     // est finie pour de bon, et la sauvegarde automatique a lieu.
     if (!relanceDemarree) {
+      await api.menuJeuOublierRechargement().catch(() => {});
       if (partie.enJeu === id) partie.enJeu = null;
       await apresUnePartie();
     }
@@ -599,6 +600,8 @@ async function jouerSansAttente(id: number, emulateur?: string, version?: string
       await prevenirPareFeu(id, j?.plateforme, emulateur);
       const pe = etat.profil.pleinEcran[String(id)];
       dernierLancement = { id, emulateur, version, carte };
+      // Un lancement à la main ne recharge jamais une sauvegarde par surprise (seule une relance le fait).
+      if (!partie.relance) await api.menuJeuOublierRechargement().catch(() => {});
       await api.jouer(
         id,
         etat.profil.commandes[String(id)],

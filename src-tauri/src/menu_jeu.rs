@@ -501,6 +501,20 @@ pub struct MenuJeu {
     /// « Relancer » demandé pour la partie `numero`, valable jusqu'à l'instant donné : la fin de CETTE partie porte
     /// alors « relancer » (jamais un relancement surprise bien plus tard). Vidé à l'arrêt forcé d'un émulateur figé.
     pub relance: Mutex<Option<(u64, std::time::Instant)>>,
+    /// Après « Sauver puis relancer » (✅ Seb 15/11 : « oui quand cela est possible ») : l'emplacement à recharger dans la
+    /// partie relancée — même jeu, même émulateur, même contenu ; pris une seule fois, au plus tard à la limite.
+    pub charger_apres: Mutex<Option<ChargerApres>>,
+}
+
+/// Ce que la partie relancée doit recharger.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChargerApres {
+    pub jeu: i64,
+    pub emulateur: String,
+    pub emplacement: u8,
+    /// Ce qui a été sauvé : le nom du jeu chez RetroArch, l'empreinte chez BigPEmu (vide : MAME, vérifié par le jeu).
+    pub contenu: String,
+    pub limite: std::time::Instant,
 }
 
 /// Rendue à la fin de la sauvegarde ou du chargement, même après une erreur.
@@ -526,7 +540,14 @@ impl MenuJeu {
     }
     /// L'émulateur a dû être arrêté de force : pas de relancement automatique (la personne relance elle-même).
     pub fn annuler_relance(&self) -> bool {
+        *self.charger_apres.lock().unwrap_or_else(|e| e.into_inner()) = None;
         self.relance.lock().unwrap_or_else(|e| e.into_inner()).take().is_some()
+    }
+    /// Au lancement de `jeu` par `emulateur` : l'emplacement à recharger, s'il a été demandé pour lui (pris une fois ;
+    /// pour un autre jeu ou trop tard, oublié).
+    pub fn prendre_charger(&self, jeu: i64, emulateur: Option<&str>) -> Option<ChargerApres> {
+        let c = self.charger_apres.lock().unwrap_or_else(|e| e.into_inner()).take()?;
+        (c.jeu == jeu && Some(c.emulateur.as_str()) == emulateur && std::time::Instant::now() < c.limite).then_some(c)
     }
     pub fn partie(&self) -> Option<PartieEnCours> {
         self.partie.lock().unwrap_or_else(|e| e.into_inner()).clone()
@@ -793,6 +814,23 @@ fn fps_menu(p: &PartieEnCours, e: &str) -> Option<FpsMenu> {
         && (p.raccourcis_clavier || e == "retroarch" || e == "mame")
         && (!matches!(e, "eden" | "eglantine" | "lichii") || p.fps_en_direct);
     (en_direct || p.fps_au_lancement).then_some(FpsMenu { affiche: p.fps, en_direct })
+}
+
+/// RetroArch a-t-il un jeu en cours ? Sa commande `GET_STATUS` (command.c de la 1.22.2, `command_get_status`) répond
+/// « GET_STATUS PLAYING|PAUSED <système>,<jeu>,crc32=… » avec un jeu chargé, « GET_STATUS CONTENTLESS » sinon. `None` :
+/// pas de réponse.
+pub fn statut_retroarch() -> Option<String> {
+    let s = std::net::UdpSocket::bind("127.0.0.1:0").ok()?;
+    s.set_read_timeout(Some(std::time::Duration::from_millis(500))).ok()?;
+    s.send_to(b"GET_STATUS\n", ("127.0.0.1", crate::pilotage::PORT_RETROARCH)).ok()?;
+    let mut b = [0u8; 512];
+    let n = s.recv(&mut b).ok()?;
+    Some(String::from_utf8_lossy(&b[..n]).trim().to_string())
+}
+
+/// La réponse de `GET_STATUS` dit-elle qu'un jeu tourne ?
+pub fn jeu_en_cours_retroarch(statut: &str) -> bool {
+    statut.starts_with("GET_STATUS PLAYING") || statut.starts_with("GET_STATUS PAUSED")
 }
 
 /// Envoie une commande réseau à RetroArch (127.0.0.1, voir `pilotage::lignes_retroarch`).
@@ -1241,6 +1279,13 @@ pub fn quitter(emulateur: Option<&str>, pids: &[u32]) -> Resultat<usize> {
 #[cfg(test)]
 mod tests_reglages_recommandes {
     #[test]
+    fn le_statut_de_retroarch_dit_quand_le_jeu_tourne() {
+        assert!(super::jeu_en_cours_retroarch("GET_STATUS PLAYING super_nes,Super Mario World,crc32=b19ed489"));
+        assert!(super::jeu_en_cours_retroarch("GET_STATUS PAUSED super_nes,Super Mario World,crc32=b19ed489"));
+        assert!(!super::jeu_en_cours_retroarch("GET_STATUS CONTENTLESS"));
+    }
+
+    #[test]
     fn seule_la_fenetre_des_reglages_recommandes_est_reconnue() {
         assert!(super::est_reglages_recommandes("Recommended Ocarina of Time settings"));
         assert!(super::est_reglages_recommandes("Recommended Mario Kart World settings"));
@@ -1345,6 +1390,16 @@ mod tests {
         *m.relance.lock().unwrap() = Some((n, std::time::Instant::now() + std::time::Duration::from_secs(60)));
         assert!(m.annuler_relance());
         assert!(!m.prendre_relance(n), "arrêté de force : pas de relance");
+        // Le rechargement : seulement pour le même jeu et le même émulateur, une fois, avant la limite.
+        let c = ChargerApres { jeu: 1, emulateur: "retroarch".into(), emplacement: 3, contenu: "Mario".into(), limite: std::time::Instant::now() + std::time::Duration::from_secs(60) };
+        *m.charger_apres.lock().unwrap() = Some(c.clone());
+        assert_eq!(m.prendre_charger(2, Some("retroarch")), None, "un autre jeu : oublié");
+        assert_eq!(m.prendre_charger(1, Some("retroarch")), None, "déjà oublié");
+        *m.charger_apres.lock().unwrap() = Some(c.clone());
+        assert_eq!(m.prendre_charger(1, Some("retroarch")), Some(c.clone()));
+        *m.charger_apres.lock().unwrap() = Some(c);
+        m.annuler_relance();
+        assert_eq!(m.prendre_charger(1, Some("retroarch")), None, "arrêté de force : rien à recharger");
         // « Sauver d'abord » : seulement là où la sauvegarde est vérifiée.
         let ra = PartieEnCours { etats: Some("E:/RA/states".into()), nom_rom: Some("Mario".into()), ..partie(Some("retroarch")) };
         assert!(etat(&ra).sauver_avant);

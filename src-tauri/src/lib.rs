@@ -696,6 +696,7 @@ pub fn run() {
             commandes::restauration_reposer_emulateurs,
             commandes::restauration_reposer_captures,
             commandes::menu_jeu_relancer,
+            commandes::menu_jeu_oublier_rechargement,
             commandes::skin_personnel,
         ])
         .build(contexte)

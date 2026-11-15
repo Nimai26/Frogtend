@@ -17,7 +17,7 @@
 | **Jeu PC natif** | ❌ (voir § 3) | ❌ | fermer proprement | — | — | — |
 
 Détails et preuves :
-- **RetroArch** : `network_cmd_enable = true`, `network_cmd_port = 55355`, et **`network_cmd_bind_address =
+- **RetroArch** : `network_cmd_enable = true`, `network_cmd_port = 55355`, et **`network_cmd_bind_address (⚠ absent de RetroArch 1.22.2, relevé du code : le port écoute sur tout le réseau, voir pilotage.rs) =
   "127.0.0.1"`** (sinon il écoute sur tout le réseau : command.c:280-284). Datagramme texte, une commande par ligne ;
   `GET_STATUS` répond `PAUSED|PLAYING …` (command.c:1420-1454). Pas de commande « disque n° N » ni « triche n° N »
   (on avance l'index). Réglages passés par notre `--appendconfig` (déjà en place).

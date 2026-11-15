@@ -249,10 +249,12 @@
     const n = menu.emplacement;
     const d = dateEmplacement(n);
     const titre = pourRecommencer ? `🔄 Recommencer « ${menu.titre} » ?` : `🔄 Relancer « ${menu.titre} » ?`;
-    // Le jeu repart TOUJOURS du début (rien n'est rechargé seul) : dit clairement.
+    // Recommencer : toujours du début. Relancer avec une sauvegarde : rechargée seule dès que le jeu est prêt
+    // (✅ Seb 15/11), sauf jeu Jaguar avec triches (sa fenêtre de triches attend la personne).
+    const rechargeSeule = !pourRecommencer && !(menu.emulateur === 'bigpemu' && trichesActives > 0);
     const debut = pourRecommencer
       ? 'Le jeu se ferme et repart depuis le début (ça peut prendre une minute).'
-      : `Le jeu se ferme et repart depuis le début, avec tes changements (${menu.a_relancer.join(', ')}). Ça peut prendre une minute. Annuler : ils vaudront à ta prochaine partie.`;
+      : `Le jeu se ferme et repart avec tes changements (${menu.a_relancer.join(', ')}). Ça peut prendre une minute. Annuler : ils vaudront à ta prochaine partie.`;
     let v: boolean | null;
     if (menu.sauver_avant && a('sauver')) {
       const ou = n !== null && n !== undefined ? `l’emplacement ${numero(n)}` : 'ta sauvegarde rapide';
@@ -263,9 +265,9 @@
           {
             valeur: true,
             libelle: '💾 Sauver puis relancer',
-            detail: `dans ${ou}${d !== null ? ` (remplace celle du ${quand(d)}, gardée à côté)` : ''} ; pour y revenir ensuite : menu ▸ 📂 Charger`,
+            detail: `dans ${ou}${d !== null ? ` (remplace celle du ${quand(d)}, gardée à côté)` : ''} ; ${rechargeSeule ? 'Frogtend demande à la recharger dès que le jeu est prêt (sinon : menu ▸ 📂 Charger)' : 'pour y revenir ensuite : menu ▸ 📂 Charger'}`,
           },
-          { valeur: false, libelle: '🔄 Relancer sans sauver', detail: 'ce que tu n’as pas sauvegardé dans le jeu sera perdu' },
+          { valeur: false, libelle: '🔄 Relancer sans sauver', detail: 'le jeu repart du début ; ce que tu n’as pas sauvegardé sera perdu' },
         ],
         debut,
       );
@@ -282,7 +284,7 @@
     if (v === null) return;
     relanceEnCours = true;
     try {
-      const k = await api.menuJeuRelancer(menu.jeu, v);
+      const k = await api.menuJeuRelancer(menu.jeu, v, v && rechargeSeule);
       if (k === 0) toast('La fenêtre du jeu est introuvable : ferme-le toi-même.', 'alerte');
     } catch (e) {
       toast(`Impossible de relancer : ${motifDuRefus(e)}`, 'erreur');
