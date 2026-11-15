@@ -277,7 +277,7 @@ partie (French/fr_FR, show_confirm_exit false, PauseEmulation, update Off, Disco
 FERMÉ, à l'abri avant, relu après) ; lot 3 une personne = ses données (voie A `-p <nom>` ou B `-r <dossier>`) ; lot 4
 sauvegarde Firehouse (⚠ parties indexées par LibHac : jamais partie par partie) ; lot 5 menu (capture F8, muet F2,
 turbo F13 posé, effets et triches au prochain lancement ; pas de sauvegardes rapides ni de Recommencer natif) ; lot 6
-mises à jour et DLC (`updates.json`, `dlc.json`). Décisions de Seb demandées le 15/11 : relevé réel, firmware, voie A/B.
+mises à jour et DLC (`updates.json`, `dlc.json`). ✅ Décisions de Seb (15/11) : relevé réel SANS jeu accordé (dossier d'essai D:	emp-tests-frogtend) ; firmware POSÉ PAR FROGTEND (Ryubing fermé, vérifié, sans clic) ; UN DOSSIER PAR PERSONNE (`-r`, voie B).
 
 **PS4 et PS5 (Seb, 15/11 : « l'émulation PS4 et PS5 commence à bien fonctionner, nous allons donc devoir
 l'intégrer ») :** à faire après les raccourcis réglables. D'abord une recherche dans les sources OFFICIELLES (quels
