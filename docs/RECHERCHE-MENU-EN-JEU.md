@@ -95,3 +95,18 @@ Versions lues : DuckStation « latest » (bb4e9ac, 07/11/2026), PCSX2 v2.8.2, Do
 Plan retenu pour DuckStation et PCSX2 : Maj+F15…Maj+F24 = sauver 1…10, Ctrl+F15…Ctrl+F24 = charger 1…10, F15 capture,
 F16 avance rapide (bascule), F17 son coupé ; F13 Reset et F14 disque suivant inchangés. ⚠ F16 à F24 jamais essayées
 envoyées par Frogtend : essai avec Seb avant de les dire sûres.
+
+## Ryubing 1.3.3 — relevé réel SANS jeu (15/11/2026, accord de Seb, D:\temp-tests-frogtend\ryubing-releve)
+
+- Paquet Firehouse `ryujinx-1.3.3-win_x64.zip` (33 926 604 o, sha256 conforme) : tout dans `publish\` → aplati à
+  l'installation, `portable\` à côté de `Ryujinx.exe` = mode portable (rien dans %APPDATA%\Ryujinx, vérifié).
+- Premier démarrage SANS clés : fenêtre modale « RYU-0001: Keys not found » (capture de Seb) qui BLOQUE la fermeture
+  polie → les clés doivent être posées AVANT le tout premier lancement.
+- Créé : `portable\Config.json` (5 076 o, version 70), `system\Profiles.json` (RyuPlayer
+  `00000000000000010000000000000000`, image base64), `bis\system\save\8000000000000000\{0,1}\imkvdb.arc` (L'INDEX des
+  parties : par dossier de données → « un dossier par personne » garde un index cohérent), `games\`, `profiles\`,
+  `sdcard\`, `Logs\`.
+- Config d'origine : system_language AmericanEnglish, language_code en_US, discord true, update PromptAtStartup,
+  focus_lost DoNothing, show_confirm_exit true, start_fullscreen false, raccourcis F1 vsync / F8 capture / F4 interface /
+  F5 pause / F2 son (le reste « Unbound », turbo compris), joueur 1 = clavier (WindowKeyboard). Modèle gardé dans le
+  scratchpad de la session (`ryubing-Config-origine.json`).
