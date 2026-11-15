@@ -18,7 +18,7 @@
       ta sauvegarde rapide est dans l'emplacement choisi.
 - [x] (✅ Seb 15/11, 0.200.0) Même chose avec une triche cochée : le rappel « attends, puis A, puis B » s'affiche avant que le jeu reparte.
 - [ ] Remettre l'effet d'avant : la ligne Relancer disparaît.
-- [ ] Eglantine : menu ▸ 🔄 Recommencer ▸ « Relancer sans sauver » : le jeu se ferme et repart tout seul.
+- [x] (✅ Seb 15/11, 0.200.0) Eglantine : menu ▸ 🔄 Recommencer ▸ « Relancer sans sauver » : le jeu se ferme et repart tout seul.
 
 ## Switch 2 : Quitter sans émulateur figé (0.198.0)
 - [x] (✅ Seb 15/11) Eglantine (ou Lichii) : ▶ Quitter ; si la fenêtre reste figée (« ne répond pas »), elle disparaît seule en 20

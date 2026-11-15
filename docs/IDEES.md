@@ -129,3 +129,9 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
 - **Relancer puis recharger tout seul (15/11) — ✅ Seb 15/11 : « oui quand cela est possible » → PLAN** : après « 💾 Sauver puis relancer », le jeu repart du
   début ; il faut aujourd'hui faire menu ▸ 📂 Charger. Frogtend pourrait charger seul l'emplacement sauvé dès que le jeu
   est prêt (RetroArch, Jaguar, MAME). À décider par Seb.
+
+- **Zelda lent sous Eglantine (Seb, 15/11)** : « le jeu est toujours lent avec Eglantine (Zelda) ». À comprendre : lent
+  aussi lancé hors de Frogtend ? (sinon, un réglage posé par Frogtend : pause, turbo, compteur…) ; journal d'Eglantine
+  (compilation des shaders, `Shader precache build` vu le 15/11), réglages graphiques. Ne rien changer chez Eglantine
+  sans l'accord de Seb.
+
