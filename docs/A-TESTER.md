@@ -9,11 +9,11 @@
 ## Ryubing : mises à jour et DLC tout seuls (0.203.0)
 - [ ] Fiche de Zelda BotW ▸ 📦 Mises à jour et DLC : la mise à jour et les 2 DLC (Master Trials, Champions' Ballad)
       sont listés ✅ « utilisés à chaque partie », sans bouton d'accord.
-- [ ] ▶ Jouer par Ryubing : le jeu démarre en version 1.5.0 (écran titre, en bas à droite) ; le journal de Frogtend dit
+- [x] (✅ Seb 16/11 : écran titre « 1.6.0 » et « DLC Ver 3.0 » ; journal : « mise à jour … ; 2 DLC » ; updates.json et dlc.json relus) ▶ Jouer par Ryubing : le jeu démarre en version 1.5.0 (écran titre, en bas à droite) ; le journal de Frogtend dit
       « Ryubing : mises à jour et DLC du jeu … : mise à jour … ; 2 DLC ».
-- [ ] En jeu : les DLC sont là (ex. Master Trials : au réveil, quête « EX… » dans le journal des quêtes / objets
+- [x] (✅ Seb 16/11 : DLC Ver 3.0) En jeu : les DLC sont là (ex. Master Trials : au réveil, quête « EX… » dans le journal des quêtes / objets
       de la Grande Épreuve).
-- [ ] Dans Ryubing seul : retirer un DLC (Gérer les DLC), puis relancer par Frogtend : il reste retiré.
+- [ ] (⏳ attend le bouton « Ouvrir l'émulateur seul » : Ryubing lancé seul n'ouvre pas le dossier de la personne) Ryubing ouvert par Frogtend sans jeu : clic droit sur Zelda ▸ Gérer les DLC ▸ en retirer un ; relancer Zelda par Frogtend : il reste retiré.
 
 ## Ryubing : son, photo et avance rapide du menu (0.202.1)
 - [x] (✅ Seb 16/11, 0.202.1) Zelda BotW par Ryubing ▸ menu ▸ 🔇 Son : le son se coupe, et c'est le JEU qui revient devant (jamais la fenêtre
