@@ -7,10 +7,10 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## Ryubing : son, photo et avance rapide du menu (0.202.1)
-- [ ] Zelda BotW par Ryubing ▸ menu ▸ 🔇 Son : le son se coupe, et c'est le JEU qui revient devant (jamais la fenêtre
+- [x] (✅ Seb 16/11, 0.202.1) Zelda BotW par Ryubing ▸ menu ▸ 🔇 Son : le son se coupe, et c'est le JEU qui revient devant (jamais la fenêtre
       de Frogtend) ; recommencer : il revient.
-- [ ] ⏩ Avance rapide : le jeu va nettement plus vite ; recommencer : vitesse normale.
-- [ ] 📷 Photo : elle arrive dans 📷 Mes captures (si une action ne se fait pas, le menu ne le dit pas encore : le
+- [x] (✅ Seb 16/11, 0.202.1) ⏩ Avance rapide : le jeu va nettement plus vite ; recommencer : vitesse normale.
+- [x] (✅ Seb 16/11, 0.202.1 : la photo arrive bien par le menu) 📷 Photo : elle arrive dans 📷 Mes captures (si une action ne se fait pas, le menu ne le dit pas encore : le
       journal de Frogtend le note, « menu en jeu : action … non faite »). ⚠ Lancé seul, Ryubing 1.3.3 n'a écrit AUCUNE photo avec F8 (dossier
       `screenshots` créé, vide, rien au journal) : si elle n'arrive pas non plus par le menu, la photo sera retirée du
       menu de Ryubing (une fonction qui ne marche pas n'y reste pas).
@@ -21,7 +21,7 @@
 - [x] (✅ Seb 16/11) Un jeu : en français, la manette Xbox One marche tout de suite, pas de question en quittant ; le menu en jeu met en
       pause. Réglages relus dans `Profils\Sebastien\Config.json` (français, Europe, fr_FR, pause au premier plan perdu,
       Discord coupé, manette au joueur 1).
-- [ ] Menu : 📷 photo, 🔇 son, ⏩ avance rapide → ❌ en 0.202.0 (corrigé en 0.202.1, voir au-dessus) ; 🔄 Recommencer ✅
+- [x] Menu : 📷 photo, 🔇 son, ⏩ avance rapide → ❌ en 0.202.0 (corrigé en 0.202.1, voir au-dessus) ; 🔄 Recommencer ✅
       (Seb 16/11 : ferme et relance l'émulateur).
 - [ ] 🖼 effet d'image, puis 🔄 Relancer : le jeu repart avec l'effet.
 - [ ] Une partie sauvegardée dans le jeu, puis Options ▸ Sauvegarde : les parties de Ryubing partent (jamais les clés).
