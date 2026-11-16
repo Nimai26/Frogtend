@@ -51,6 +51,7 @@ pub mod reconciliation;
 pub mod empreintes;
 pub mod eden;
 pub mod ryubing;
+pub mod switch_nca;
 pub mod cemu;
 pub mod vita3k;
 pub mod xemu;

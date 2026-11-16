@@ -12,6 +12,8 @@ export interface ContenuVu {
   dossier?: string | null;
   /** Une mise à jour PS3 : sa version (« 01.05 », contrat 1.31), dans l'ordre d'installation. */
   version?: string | null;
+  /** Ryubing : pourquoi ce contenu trouvé n'est pas utilisé (la vraie cause, dite par le cœur). */
+  raison?: string | null;
 }
 
 /** Les mises à jour s'installent DANS L'ORDRE (la chaîne de Sony) : cocher une mise à jour coche aussi les précédentes
@@ -30,11 +32,31 @@ export function cochesCoherentes(contenus: ContenuVu[], coches: string[], id: st
 
 export interface ContenusDuJeu {
   etat: 'aucun' | 'emulateur' | 'ok';
-  systeme?: 'ps3' | 'switch' | 'wiiu';
+  /** `ryubing` (lot 6, Seb 16/11) : posés TOUT SEULS à chaque lancement — montrés, jamais d'accord demandé. */
+  systeme?: 'ps3' | 'switch' | 'wiiu' | 'ryubing';
   titre_id: string | null;
   contenus: ContenuVu[];
   /** Les fichiers servis comme contenus mais illisibles (en-tête abîmé) : dits, jamais écartés en silence. */
   ignores?: string[];
+  /** Ryubing : une phrase à dire (clés absentes, choix fait dans Ryubing gardé…). */
+  remarque?: string | null;
+}
+
+/** Ryubing : « 3 utilisé(s) à chaque partie, 1 non utilisé(s) ». */
+export function resumeAutomatique(l: ContenuVu[]): string {
+  const utilises = l.filter((c) => c.installe).length;
+  const autres = l.length - utilises;
+  return autres ? `${utilises} utilisé(s) à chaque partie, ${autres} non utilisé(s)` : `${utilises} utilisé(s) à chaque partie`;
+}
+
+/** Ryubing : pourquoi un contenu trouvé n'est pas utilisé — la cause dite par le cœur, jamais devinée ici. */
+export function raisonNonPose(c: ContenuVu): string {
+  return c.raison || 'pas utilisé';
+}
+
+/** Ryubing : la remarque du cœur, un paragraphe par ligne. */
+export function lignesRemarque(r: string | null | undefined): string[] {
+  return (r ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
 }
 
 const GENRES: Record<string, string> = { dlc: 'DLC', avatar: 'Avatar', theme: 'Thème', maj: 'Mise à jour', licence: 'Licence', autre: 'Contenu' };

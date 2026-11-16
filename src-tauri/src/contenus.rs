@@ -555,6 +555,21 @@ pub fn switch_du_jeu<'a>(l: &'a [ContenuSwitch], id_jeu: Option<u64>, titre: &st
         .collect()
 }
 
+/// Les clés d'Eden (`<eden>\user\keys\prod.keys`, mode portable), si elles sont là.
+pub fn cles_eden(eden: &Path) -> Option<PathBuf> {
+    Some(eden.join("user").join("keys").join("prod.keys")).filter(|f| f.is_file())
+}
+
+/// L'identifiant de base d'un jeu Switch : celui de son nom ou de son ticket, sinon celui LU dans ses en-têtes avec la
+/// clé de `cles` (`prod.keys`, switch_nca.rs) — un .xci ne le dit pas autrement. `None` : inconnu (le rattachement se
+/// fait alors par le titre, comme avant).
+pub fn id_du_jeu_switch(jeu: &Path, cles: Option<&Path>) -> Option<u64> {
+    id_switch(jeu).map(|i| classer_switch(i).1).or_else(|| {
+        let cle = crate::switch_nca::cle_entete(cles?)?;
+        crate::switch_nca::base_du_jeu(jeu, &cle)
+    })
+}
+
 /// La configuration d'Eden (mode portable : `<eden>\user\config\qt-config.ini`).
 pub fn ini_eden(eden: &Path) -> PathBuf {
     eden.join("user").join("config").join("qt-config.ini")
@@ -1203,6 +1218,31 @@ mod tests {
         assert!(est_un_contenu(&d.path().join("Dragon_Quest_Builders_2 v65536.nsp")), "une mise à jour n'est pas un jeu");
         std::fs::write(d.path().join("Jeu [0100AAAA00001000].nsp"), b"x").unwrap();
         assert!(!est_un_contenu(&d.path().join("Jeu [0100AAAA00001000].nsp")), "un jeu de base reste un jeu");
+    }
+
+    #[test]
+    fn un_xci_sans_identifiant_rattache_ses_dlc_par_ses_entetes() {
+        // Le cas de Zelda (relevé de l'expert) : un .xci sans identifiant, un DLC au nom sans le titre du jeu.
+        use crate::switch_nca::tests::{cle_de_test, nca, partition, xci, BASE};
+        let cle = cle_de_test();
+        let d = tempfile::tempdir().unwrap();
+        let jeu = d.path().join("The Legend of Zelda Breath of the Wild (v0).xci");
+        std::fs::write(&jeu, xci(&[("p.nca", nca(&cle, 0, BASE, 0)), ("m.cnmt.nca", nca(&cle, 1, BASE, 0))], 0)).unwrap();
+        let tik = format!("{:016X}0000000000000001.tik", BASE + 0x1001);
+        std::fs::write(d.path().join("T.L.O.Z.BOTW__DLC_Pack_1.nsp"), partition(&[("a.nca", nca(&cle, 5, BASE + 0x1001, 0)), (&tik, vec![0; 0x40])], false)).unwrap();
+        let o: String = (0..32u8).map(|i| format!("{:02x}", i.wrapping_mul(7).wrapping_add(3))).collect();
+        let cles = d.path().join("prod.keys");
+        std::fs::write(&cles, format!("header_key = {o}\n")).unwrap();
+        let l = chercher_switch(d.path());
+        assert_eq!(l.len(), 1);
+        let titre = "The Legend of Zelda: Breath of the Wild";
+        assert_eq!(id_du_jeu_switch(&jeu, Some(&cles)), Some(BASE));
+        assert_eq!(switch_du_jeu(&l, id_du_jeu_switch(&jeu, Some(&cles)), titre).len(), 1, "par l'identifiant lu");
+        // Sans clés : le titre, comme avant (et ici il ne correspond pas).
+        assert_eq!(id_du_jeu_switch(&jeu, None), None);
+        assert_eq!(switch_du_jeu(&l, None, titre).len(), 0);
+        // Un .nsp qui porte son identifiant dans son nom n'a pas besoin des clés.
+        assert_eq!(id_du_jeu_switch(Path::new("Jeu [01007EF00011E000].nsp"), None), Some(BASE));
     }
 
     #[test]

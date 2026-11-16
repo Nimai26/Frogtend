@@ -6,6 +6,15 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Ryubing : mises à jour et DLC tout seuls (0.203.0)
+- [ ] Fiche de Zelda BotW ▸ 📦 Mises à jour et DLC : la mise à jour et les 2 DLC (Master Trials, Champions' Ballad)
+      sont listés ✅ « utilisés à chaque partie », sans bouton d'accord.
+- [ ] ▶ Jouer par Ryubing : le jeu démarre en version 1.5.0 (écran titre, en bas à droite) ; le journal de Frogtend dit
+      « Ryubing : mises à jour et DLC du jeu … : mise à jour … ; 2 DLC ».
+- [ ] En jeu : les DLC sont là (ex. Master Trials : au réveil, quête « EX… » dans le journal des quêtes / objets
+      de la Grande Épreuve).
+- [ ] Dans Ryubing seul : retirer un DLC (Gérer les DLC), puis relancer par Frogtend : il reste retiré.
+
 ## Ryubing : son, photo et avance rapide du menu (0.202.1)
 - [x] (✅ Seb 16/11, 0.202.1) Zelda BotW par Ryubing ▸ menu ▸ 🔇 Son : le son se coupe, et c'est le JEU qui revient devant (jamais la fenêtre
       de Frogtend) ; recommencer : il revient.

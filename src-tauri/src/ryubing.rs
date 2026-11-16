@@ -1090,6 +1090,394 @@ pub fn joueur1_lu(racine: &Path) -> Joueur1Lu {
     }
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Lot 6 — mises à jour et DLC posés AUTOMATIQUEMENT (✅ Seb 16/11 : sans accord). Lancé par `-f`, Ryubing ne charge
+// pas sa bibliothèque (`autoload_dirs` ne sert à rien) : il lit seulement, dans `<racine>\games\<base en hexa
+// minuscule, 16 caractères>\` (Ryubing 1.3.3) :
+// - `updates.json` `{"selected": …, "paths": […]}` : la mise à jour `selected` si le fichier existe et porte bien ce
+//   jeu (NcaExtensions.cs L146-163) ; l'interface de Ryubing la reconnaît par égalité EXACTE avec un des `paths`
+//   (TitleUpdatesHelper.cs) ;
+// - `dlc.json` `[{"path": <conteneur>, "dlc_nca_list": [{"path": "/<nca>", "title_id": <décimal>, "is_enabled"}]}]`
+//   (PartitionFileSystemExtensions.cs L118-138) : seul le conteneur est vérifié ; un mauvais chemin de NCA ferait
+//   PLANTER le jeu, un mauvais identifiant cacherait le DLC — les deux sont LUS dans les en-têtes (switch_nca.rs).
+// Jamais par-dessus un choix de la personne : `.frogtend-ryubing-contenus.json` (dans sa racine) garde ce que Frogtend
+// a posé ; seul cela peut être remplacé ou retiré. Ryubing fermé, chaque fichier à l'abri avant, relu après.
+// ---------------------------------------------------------------------------------------------------------------
+
+/// La note de ce que Frogtend a posé dans `games\`, par jeu (base en hexa minuscule).
+const NOTE_CONTENUS: &str = ".frogtend-ryubing-contenus.json";
+
+#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+struct PoseParFrogtend {
+    /// La mise à jour que Frogtend a posée (choisie, ou seulement ajoutée à la liste quand la personne en a une autre).
+    #[serde(default)]
+    maj: Option<String>,
+    /// Les DLC posés par Frogtend et encore dans la liste de Ryubing.
+    #[serde(default)]
+    dlc: Vec<String>,
+    /// Les DLC posés par Frogtend puis RETIRÉS par la personne dans Ryubing : plus jamais reposés.
+    #[serde(default)]
+    dlc_refuses: Vec<String>,
+}
+
+/// Le `prod.keys` que Ryubing lira pour cette personne : celui de sa racine (copié par `copier_les_cles`), sinon celui
+/// de `portable\`.
+pub fn fichier_cles(ryubing: &Path, racine: &Path) -> Option<PathBuf> {
+    [racine.join("system").join("prod.keys"), donnees(ryubing).join("system").join("prod.keys")].into_iter().find(|f| f.is_file())
+}
+
+/// La clé des en-têtes de NCA de cette personne (jamais affichée).
+pub fn cle_entete(ryubing: &Path, racine: &Path) -> Option<crate::switch_nca::CleEntete> {
+    crate::switch_nca::cle_entete(&fichier_cles(ryubing, racine)?)
+}
+
+/// Le dossier de Ryubing pour un jeu (`<racine>\games\<base>`, hexa minuscule comme `ToString("x16")`).
+pub fn dossier_du_jeu(racine: &Path, base: u64) -> PathBuf {
+    racine.join("games").join(format!("{base:016x}"))
+}
+
+/// À qui est le choix de la mise à jour.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub enum ChoixMaj {
+    /// Celle de Frogtend (ou aucune trouvée).
+    #[default]
+    DeFrogtend,
+    /// La personne en a choisi une autre (ou « aucune ») dans Ryubing : gardé.
+    DeLaPersonne,
+    /// La personne a RETIRÉ de Ryubing celle que Frogtend avait posée : jamais remise.
+    RetireeParLaPersonne,
+}
+
+/// Ce qui est (ou sera) posé pour un jeu.
+#[derive(Debug, Default, Clone, PartialEq, serde::Serialize)]
+pub struct ContenusPoses {
+    /// La mise à jour posée et choisie par Frogtend (nom du fichier).
+    pub maj: Option<String>,
+    pub choix_maj: ChoixMaj,
+    /// Les DLC que Ryubing chargera (noms des fichiers).
+    pub dlc: Vec<String>,
+    /// Les DLC dans la liste de Ryubing mais coupés par la personne (`is_enabled` à false).
+    pub dlc_coupes: Vec<String>,
+    /// Les DLC posés par Frogtend puis retirés par la personne dans Ryubing : plus reposés.
+    pub dlc_retires: Vec<String>,
+    /// Un fichier a été écrit à ce lancement.
+    pub ecrit: bool,
+    /// Ce qui n'a pas pu être fait, en mots simples (dit au journal et sur la fiche ; le jeu se lance quand même).
+    pub erreurs: Vec<String>,
+}
+
+impl ContenusPoses {
+    /// Une phrase pour le journal (jamais de clé, jamais de numéro de version brut).
+    pub fn resume(&self) -> String {
+        let mut l = Vec::new();
+        match (&self.maj, self.choix_maj) {
+            (_, ChoixMaj::DeLaPersonne) => l.push("mise à jour choisie dans Ryubing gardée".to_string()),
+            (_, ChoixMaj::RetireeParLaPersonne) => l.push("mise à jour retirée dans Ryubing : pas remise".to_string()),
+            (Some(m), _) => l.push(format!("mise à jour « {m} »")),
+            (None, _) => l.push("aucune mise à jour".to_string()),
+        }
+        l.push(format!("{} DLC", self.dlc.len()));
+        if !self.dlc_coupes.is_empty() {
+            l.push(format!("{} DLC coupé(s) dans Ryubing", self.dlc_coupes.len()));
+        }
+        if !self.dlc_retires.is_empty() {
+            l.push(format!("{} DLC retiré(s) dans Ryubing", self.dlc_retires.len()));
+        }
+        l.extend(self.erreurs.iter().cloned());
+        l.join(" ; ")
+    }
+}
+
+fn nom_de(p: &Path) -> String {
+    p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
+}
+
+/// Écrit `o` à la place de `f` (provisoire puis renommage : jamais un fichier à moitié écrit).
+fn ecrire_octets(f: &Path, o: &[u8]) -> Resultat<()> {
+    if let Some(p) = f.parent() {
+        std::fs::create_dir_all(p)?;
+    }
+    let mut provisoire = f.as_os_str().to_owned();
+    provisoire.push(".frogtend");
+    let provisoire = PathBuf::from(provisoire);
+    std::fs::write(&provisoire, o)?;
+    std::fs::rename(&provisoire, f)?;
+    Ok(())
+}
+
+/// Un fichier JSON de Ryubing (`quoi` : ce qu'il est, en mots simples) : son contenu et ses octets d'origine ; `None`
+/// s'il n'existe pas ; illisible : refusé (jamais touché).
+fn lire_json(f: &Path, quoi: &str) -> Resultat<Option<(Value, Vec<u8>)>> {
+    match std::fs::read(f) {
+        Ok(o) => {
+            let v = std::str::from_utf8(&o).ok().and_then(|t| serde_json::from_str(t.trim_start_matches('\u{feff}')).ok());
+            v.map(|v| Some((v, o))).ok_or_else(|| Erreur::Refus(format!("{quoi} de Ryubing ne se lit pas : Frogtend n'y touche pas")))
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Écrit `v` à la place de `f` (à l'abri avant, relu après ; s'il ne se relit pas, les OCTETS d'origine reviennent, ou
+/// le fichier est retiré s'il n'existait pas).
+fn ecrire_json_verifie(ryubing: &Path, f: &Path, avant: Option<&[u8]>, v: &Value, quoi: &str) -> Resultat<()> {
+    let texte = serde_json::to_string_pretty(v).map_err(|e| Erreur::Disque(format!("{quoi} de Ryubing impossible à écrire ({e})")))?;
+    crate::emulateurs_profils::mettre_a_l_abri(ryubing, f)?;
+    ecrire_octets(f, texte.as_bytes())?;
+    if lire_json(f, quoi).ok().flatten().map(|(x, _)| x).as_ref() != Some(v) {
+        match avant {
+            Some(o) => ecrire_octets(f, o)?,
+            None => std::fs::remove_file(f)?,
+        }
+        return Err(Erreur::Disque(format!("{quoi} de Ryubing ne se relisait pas après l'écriture : remise comme avant")));
+    }
+    Ok(())
+}
+
+/// Le `updates.json` voulu. `notre` : la mise à jour trouvée par Frogtend ; `posee` : celle qu'il avait posée la fois
+/// d'avant ; `existe` : un fichier est-il là. Rend (le nouveau contenu s'il change, à qui est le choix).
+/// - la nôtre, déjà posée, n'est plus dans la liste de Ryubing : la personne l'a RETIRÉE, elle n'est jamais remise (une
+///   mise à jour nouvelle, différente, peut l'être) ;
+/// - un choix de la personne : un `selected` dont le fichier existe et que Frogtend n'a pas posé, ou `""` (Ryubing
+///   l'écrit quand on décoche tout) alors qu'une mise à jour existante est listée — gardé, la nôtre seulement ajoutée
+///   à la liste.
+pub fn updates_voulu(avant: Option<&Value>, notre: Option<&str>, posee: Option<&str>, existe: &dyn Fn(&str) -> bool) -> (Option<Value>, ChoixMaj) {
+    let meme = crate::contenus::meme_dossier;
+    let selected = avant.and_then(|v| v["selected"].as_str()).unwrap_or("").to_string();
+    let mut paths: Vec<String> = avant.and_then(|v| v["paths"].as_array()).map(|l| l.iter().filter_map(|p| p.as_str().map(String::from)).collect()).unwrap_or_default();
+    if avant.is_some() && posee.is_some_and(|p| notre.is_some_and(|n| meme(p, n)) && !paths.iter().any(|x| meme(x, p))) {
+        return (None, ChoixMaj::RetireeParLaPersonne);
+    }
+    let de_la_personne = match avant {
+        None => false,
+        Some(_) if selected.is_empty() => avant.is_some_and(|v| v["selected"].is_string()) && paths.iter().any(|p| existe(p)),
+        Some(_) => existe(&selected) && posee.is_none_or(|p| !meme(&selected, p)) && notre.is_none_or(|n| !meme(&selected, n)),
+    };
+    let choix = if de_la_personne { ChoixMaj::DeLaPersonne } else { ChoixMaj::DeFrogtend };
+    let Some(notre) = notre else { return (None, choix) };
+    // L'ancienne mise à jour de Frogtend, partie du disque : retirée de la liste (jamais celle de la personne).
+    paths.retain(|p| !(posee.is_some_and(|q| meme(p, q)) && !meme(p, notre) && !existe(p)));
+    if !paths.iter().any(|p| meme(p, notre)) {
+        paths.push(notre.to_string());
+    }
+    // Ryubing compare `selected` à `paths` à l'identique : la forme déjà dans la liste.
+    let notre_ecrit = paths.iter().find(|p| meme(p, notre)).cloned().unwrap_or_else(|| notre.to_string());
+    let mut v = avant.cloned().filter(Value::is_object).unwrap_or_else(|| serde_json::json!({}));
+    v["selected"] = Value::from(if de_la_personne { selected } else { notre_ecrit });
+    v["paths"] = Value::from(paths);
+    ((Some(&v) != avant).then_some(v), choix)
+}
+
+/// Le `dlc.json` voulu. `nos` : les DLC de ce jeu lus CE JOUR (conteneur, NCA PublicData) ; `poses` : les conteneurs
+/// que Frogtend avait posés ; `refuses` : ceux que la personne avait retirés. Rend (le nouveau contenu, les conteneurs de
+/// Frogtend dans la liste, les refusés) ; `Err` : le fichier n'est pas une liste.
+/// - une entrée de Frogtend dont le fichier a disparu, ou qui n'est plus lue ce jour comme un DLC de ce jeu (illisible,
+///   autre jeu, autre sorte), est retirée : Ryubing ouvrirait conteneur et NCA sans pardon (ContentManager.cs L205-234) ;
+/// - ses NCA sont relus à chaque fois, le choix `is_enabled` de la personne gardé par identifiant ;
+/// - un DLC de Frogtend ABSENT de la liste existante (le fichier, lui, est là) a été retiré par la personne : noté
+///   refusé, plus jamais reposé ;
+/// - les entrées de la personne ne sont jamais touchées.
+pub fn dlc_voulu(
+    avant: Option<&Value>,
+    nos: &[(String, Vec<(String, u64)>)],
+    poses: &[String],
+    refuses: &[String],
+    existe: &dyn Fn(&str) -> bool,
+) -> Result<(Value, Vec<String>, Vec<String>), ()> {
+    let meme = crate::contenus::meme_dossier;
+    let mut l: Vec<Value> = match avant {
+        None => vec![],
+        Some(Value::Array(a)) => a.clone(),
+        Some(_) => return Err(()),
+    };
+    let chemin = |c: &Value| c["path"].as_str().unwrap_or("").to_string();
+    let de_frogtend = |p: &str| poses.iter().any(|q| meme(p, q));
+    let lu_ce_jour = |p: &str| nos.iter().any(|(c, _)| meme(c, p));
+    l.retain(|c| {
+        let p = chemin(c);
+        !(de_frogtend(&p) && (!existe(&p) || !lu_ce_jour(&p)))
+    });
+    let liste = |ncas: &[(String, u64)], ancien: Option<&Value>| -> Value {
+        Value::from(
+            ncas.iter()
+                .map(|(p, t)| {
+                    let actif = ancien.and_then(|a| a["dlc_nca_list"].as_array()).and_then(|a| a.iter().find(|x| x["title_id"].as_u64() == Some(*t))).and_then(|x| x["is_enabled"].as_bool()).unwrap_or(true);
+                    serde_json::json!({ "path": p, "title_id": t, "is_enabled": actif })
+                })
+                .collect::<Vec<_>>(),
+        )
+    };
+    let mut note: Vec<String> = Vec::new();
+    let mut refuses: Vec<String> = refuses.to_vec();
+    for (c, ncas) in nos {
+        match l.iter().position(|x| meme(&chemin(x), c)) {
+            Some(i) if de_frogtend(&chemin(&l[i])) => {
+                let ancien = l[i].clone();
+                l[i]["dlc_nca_list"] = liste(ncas, Some(&ancien));
+                note.push(chemin(&l[i]));
+            }
+            Some(_) => {} // posé par la personne : son choix
+            None if refuses.iter().any(|r| meme(r, c)) => {}
+            // Posé par Frogtend, plus dans une liste qui existe : retiré par la personne.
+            None if avant.is_some() && de_frogtend(c) => refuses.push(c.clone()),
+            None => {
+                l.push(serde_json::json!({ "path": c, "dlc_nca_list": liste(ncas, None) }));
+                note.push(c.clone());
+            }
+        }
+    }
+    Ok((Value::from(l), note, refuses))
+}
+
+/// Pose (`ecrire`) ou montre seulement (`!ecrire`) les mises à jour et DLC d'un jeu (`c`, lus par switch_nca) dans la
+/// racine de la personne. Écrire : Ryubing fermé (il réécrirait ces fichiers). Un fichier illisible n'est jamais touché ;
+/// chaque problème est rendu dans `erreurs`, le reste est fait.
+pub fn poser_contenus(ryubing: &Path, racine: &Path, c: &crate::switch_nca::ContenusDuJeu, ecrire: bool) -> Resultat<ContenusPoses> {
+    if ecrire && !crate::lancement::processus_du_dossier(ryubing).is_empty() {
+        return Err(Erreur::Refus("Ryubing est ouvert : ses mises à jour et DLC ne sont pas touchés.".into()));
+    }
+    let meme = crate::contenus::meme_dossier;
+    let dossier = dossier_du_jeu(racine, c.base);
+    let f_note = racine.join(NOTE_CONTENUS);
+    let mut note: std::collections::BTreeMap<String, PoseParFrogtend> = std::fs::read(&f_note).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default();
+    let cle = format!("{:016x}", c.base);
+    let posee = note.get(&cle).cloned().unwrap_or_default();
+    let mut nouvelle = posee.clone();
+    let existe = |p: &str| Path::new(p).is_file();
+    let mut r = ContenusPoses::default();
+
+    // La mise à jour.
+    const MAJS: &str = "La liste des mises à jour";
+    let notre = c.maj.as_ref().map(|m| m.chemin.to_string_lossy().to_string());
+    let f_maj = dossier.join("updates.json");
+    match lire_json(&f_maj, MAJS) {
+        Err(e) => r.erreurs.push(format!("mise à jour non utilisée ({e})")),
+        Ok(avant) => {
+            let (av, octets) = avant.map_or((None, None), |(v, o)| (Some(v), Some(o)));
+            let (voulu, choix) = updates_voulu(av.as_ref(), notre.as_deref(), posee.maj.as_deref(), &existe);
+            r.choix_maj = choix;
+            let ok = match voulu.filter(|_| ecrire) {
+                Some(v) => {
+                    std::fs::create_dir_all(&dossier)?;
+                    match ecrire_json_verifie(ryubing, &f_maj, octets.as_deref(), &v, MAJS) {
+                        Ok(()) => {
+                            r.ecrit = true;
+                            true
+                        }
+                        Err(e) => {
+                            r.erreurs.push(format!("mise à jour non utilisée ({e})"));
+                            false
+                        }
+                    }
+                }
+                None => true,
+            };
+            if ok && choix == ChoixMaj::DeFrogtend {
+                r.maj = c.maj.as_ref().map(|m| nom_de(&m.chemin));
+            }
+            // Ajoutée à la liste (choisie ou non) : retenue comme la nôtre, pour voir si la personne la retire.
+            if ok && choix != ChoixMaj::RetireeParLaPersonne && notre.is_some() {
+                nouvelle.maj = notre.clone();
+            }
+        }
+    }
+
+    // Les DLC.
+    const DLCS: &str = "La liste des DLC";
+    let nos: Vec<(String, Vec<(String, u64)>)> = c
+        .dlc
+        .iter()
+        .filter_map(|d| match &d.sorte {
+            crate::switch_nca::Sorte::Dlc(n) => Some((d.chemin.to_string_lossy().to_string(), n.clone())),
+            _ => None,
+        })
+        .collect();
+    let f_dlc = dossier.join("dlc.json");
+    match lire_json(&f_dlc, DLCS) {
+        Err(e) => r.erreurs.push(format!("DLC non utilisés ({e})")),
+        Ok(avant) => {
+            let (av, octets) = avant.map_or((None, None), |(v, o)| (Some(v), Some(o)));
+            match dlc_voulu(av.as_ref(), &nos, &posee.dlc, &posee.dlc_refuses, &existe) {
+                Err(()) => r.erreurs.push("DLC non utilisés (la liste des DLC de Ryubing n'a pas la forme attendue : Frogtend n'y touche pas)".into()),
+                Ok((v, n, refuses)) => {
+                    let change = av.as_ref() != Some(&v) && !(av.is_none() && v.as_array().is_some_and(|a| a.is_empty()));
+                    let ok = if ecrire && change {
+                        std::fs::create_dir_all(&dossier)?;
+                        match ecrire_json_verifie(ryubing, &f_dlc, octets.as_deref(), &v, DLCS) {
+                            Ok(()) => {
+                                r.ecrit = true;
+                                true
+                            }
+                            Err(e) => {
+                                r.erreurs.push(format!("DLC non utilisés ({e})"));
+                                false
+                            }
+                        }
+                    } else {
+                        true
+                    };
+                    if ok {
+                        nouvelle.dlc = n;
+                        nouvelle.dlc_refuses = refuses.clone();
+                    }
+                    // L'état de chaque DLC trouvé, tel que Ryubing le verra.
+                    let liste = if ok { v } else { av.unwrap_or(Value::Null) };
+                    for (p, _) in &nos {
+                        let entree = liste.as_array().into_iter().flatten().find(|x| meme(x["path"].as_str().unwrap_or(""), p));
+                        let nom = nom_de(Path::new(p));
+                        match entree {
+                            Some(x) if x["dlc_nca_list"].as_array().is_some_and(|a| !a.is_empty() && a.iter().all(|n| n["is_enabled"] == false)) => r.dlc_coupes.push(nom),
+                            Some(_) => r.dlc.push(nom),
+                            None if refuses.iter().any(|q| meme(q, p)) => r.dlc_retires.push(nom),
+                            None => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if ecrire && nouvelle != posee {
+        if nouvelle == PoseParFrogtend::default() {
+            note.remove(&cle);
+        } else {
+            note.insert(cle, nouvelle);
+        }
+        ecrire_octets(&f_note, &serde_json::to_vec_pretty(&note).unwrap_or_default())?;
+    }
+    Ok(r)
+}
+
+/// Avant chaque partie Ryubing (`jeu` : le fichier lancé par `-f`) : lit le jeu et son dossier avec la clé de la
+/// personne, puis pose ses mises à jour et DLC. `None` : Ryubing pas portable, ou pas un jeu lisible (rien à poser).
+/// Un échec n'empêche JAMAIS de jouer : l'appelant le note au journal.
+pub fn preparer_contenus(ryubing: &Path, racine: &Path, jeu: &Path) -> Resultat<Option<ContenusPoses>> {
+    if !portable(ryubing) {
+        return Ok(None);
+    }
+    let cle = cle_entete(ryubing, racine).ok_or_else(|| Erreur::Refus("les clés de la console manquent : mises à jour et DLC non utilisés".into()))?;
+    let Some(c) = crate::switch_nca::contenus_pour(jeu, &cle)? else { return Ok(None) };
+    let mut r = poser_contenus(ryubing, racine, &c, true)?;
+    r.erreurs.extend(remarques_du_dossier(&c));
+    Ok(Some(r))
+}
+
+/// Ce que le dossier du jeu a de particulier, en mots simples : fichiers illisibles, extensions que Ryubing ne lirait
+/// pas, dossier trop grand pour être lu en entier.
+pub fn remarques_du_dossier(c: &crate::switch_nca::ContenusDuJeu) -> Vec<String> {
+    let mut l = Vec::new();
+    if !c.illisibles.is_empty() {
+        l.push(format!("{} fichier(s) du dossier illisible(s) : {}", c.illisibles.len(), c.illisibles.join(", ")));
+    }
+    for n in &c.mauvaise_extension {
+        l.push(format!("« {n} » n'est pas utilisé : Ryubing ne le lit que si son extension est en minuscules et correspond à son contenu (.nsp ou .xci)"));
+    }
+    if c.tronque {
+        l.push(format!("le dossier du jeu contient trop de fichiers : seuls les {} premiers ont été regardés", crate::switch_nca::MAX_VOISINS));
+    }
+    l
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1719,5 +2107,255 @@ mod tests {
         regler_config(&ryu, &lea, Joueur1::Clavier).unwrap();
         assert_eq!(joueur1_lu(&lea), Joueur1Lu::AuClavier);
         assert!(crate::manettes::disposition_de_frogtend("ryubing", &ryu, Some(&lea)));
+    }
+
+    // --- Lot 6 : mises à jour et DLC ---
+
+    /// Ryubing installé, la clé de TEST dans la racine de Seb, et le dossier de Zelda fabriqué (switch_nca.rs).
+    fn zelda_pret(d: &Path) -> (PathBuf, PathBuf, PathBuf) {
+        let (ryu, seb) = ryubing_installe(d);
+        preparer_racine(&ryu, &seb).unwrap();
+        let o: String = (0..32u8).map(|i| format!("{:02x}", i.wrapping_mul(7).wrapping_add(3))).collect();
+        std::fs::write(seb.join("system").join("prod.keys"), format!("header_key = {o}\n")).unwrap();
+        let jeux = d.join("Jeux");
+        std::fs::create_dir_all(&jeux).unwrap();
+        let jeu = crate::switch_nca::tests::dossier_de_zelda(&jeux);
+        (ryu, seb, jeu)
+    }
+
+    fn json(f: &Path) -> Value {
+        serde_json::from_str(&std::fs::read_to_string(f).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn la_maj_et_les_dlc_sont_poses_dans_la_forme_que_ryubing_lit() {
+        let d = tempfile::tempdir().unwrap();
+        let (ryu, seb, jeu) = zelda_pret(d.path());
+        let r = preparer_contenus(&ryu, &seb, &jeu).unwrap().unwrap();
+        // Le dossier : l'identifiant de base en hexa MINUSCULE (`ToString("x16")`), comme celui que Ryubing a créé chez Seb.
+        let dossier = seb.join("games").join("01007ef00011e000");
+        assert_eq!(dossier_du_jeu(&seb, crate::switch_nca::tests::BASE), dossier);
+        let maj = jeu.parent().unwrap().join("Zelda maj [v786432].nsp").to_string_lossy().to_string();
+        let u = json(&dossier.join("updates.json"));
+        assert_eq!(u, serde_json::json!({ "selected": maj, "paths": [maj] }), "la plus récente, jamais celle d'un autre jeu");
+        let l = json(&dossier.join("dlc.json"));
+        let p1 = jeu.parent().unwrap().join("DLC_Pack_1.nsp").to_string_lossy().to_string();
+        assert_eq!(l.as_array().unwrap().len(), 2);
+        assert_eq!(l[0], serde_json::json!({ "path": p1, "dlc_nca_list": [{ "path": "/a1.nca", "title_id": 0x0100_7EF0_0011_F001u64, "is_enabled": true }] }));
+        // L'identifiant écrit en DÉCIMAL (un nombre JSON, `ulong` de Ryubing), jamais en texte hexadécimal.
+        assert!(std::fs::read_to_string(dossier.join("dlc.json")).unwrap().contains(&format!("\"title_id\": {}", 0x0100_7EF0_0011_F001u64)));
+        assert_eq!((r.maj.as_deref(), r.dlc.len(), r.ecrit, r.choix_maj), (Some("Zelda maj [v786432].nsp"), 2, true, ChoixMaj::DeFrogtend));
+        assert!(r.resume().contains("Zelda maj [v786432].nsp") && r.resume().contains("2 DLC"), "{}", r.resume());
+        // La note de Frogtend : écrite par un fichier provisoire renommé, aucun provisoire laissé.
+        assert!(seb.join(NOTE_CONTENUS).is_file());
+        assert!(!std::fs::read_dir(&seb).unwrap().flatten().any(|e| e.file_name().to_string_lossy().ends_with(".frogtend")));
+        assert!(r.erreurs.iter().any(|e| e.contains("abime.nsp")), "un fichier illisible est dit");
+        // Relancé : rien ne change, rien n'est réécrit.
+        let r2 = preparer_contenus(&ryu, &seb, &jeu).unwrap().unwrap();
+        assert!(!r2.ecrit);
+        assert_eq!(json(&dossier.join("updates.json")), u);
+        // Une mise à jour plus récente arrive : elle remplace celle de Frogtend, l'ancienne reste dans la liste.
+        std::fs::copy(jeu.parent().unwrap().join("Zelda maj [v786432].nsp"), jeu.parent().unwrap().join("Zelda maj [v851968].nsp")).unwrap();
+        preparer_contenus(&ryu, &seb, &jeu).unwrap().unwrap();
+        let u = json(&dossier.join("updates.json"));
+        assert!(u["selected"].as_str().unwrap().ends_with("[v851968].nsp"));
+        assert_eq!(u["paths"].as_array().unwrap().len(), 2);
+        // Et l'ancien fichier a été mis à l'abri avant d'être remplacé.
+        assert!(crate::installation::fichiers_de(&ryu.join(".frogtend-sauvegardes")).unwrap().iter().any(|f| f.ends_with("updates.json")));
+    }
+
+    #[test]
+    fn le_choix_de_la_personne_dans_ryubing_n_est_jamais_ecrase() {
+        let d = tempfile::tempdir().unwrap();
+        let (ryu, seb, jeu) = zelda_pret(d.path());
+        let dossier = seb.join("games").join("01007ef00011e000");
+        std::fs::create_dir_all(&dossier).unwrap();
+        let vieille = jeu.parent().unwrap().join("Zelda vieille maj [v65536].nsp").to_string_lossy().to_string();
+        let p1 = jeu.parent().unwrap().join("DLC_Pack_1.nsp").to_string_lossy().to_string();
+        let disparu = d.path().join("Ailleurs").join("DLC perdu.nsp").to_string_lossy().to_string();
+        std::fs::write(dossier.join("updates.json"), serde_json::to_string(&serde_json::json!({ "selected": vieille, "paths": [vieille] })).unwrap()).unwrap();
+        // Le DLC 1 désactivé par la personne, et un DLC à elle dont le fichier a disparu.
+        let dlc_personne = serde_json::json!([
+            { "path": p1, "dlc_nca_list": [{ "path": "/a1.nca", "title_id": 1u64, "is_enabled": false }] },
+            { "path": disparu, "dlc_nca_list": [] }
+        ]);
+        std::fs::write(dossier.join("dlc.json"), serde_json::to_string(&dlc_personne).unwrap()).unwrap();
+        let r = preparer_contenus(&ryu, &seb, &jeu).unwrap().unwrap();
+        assert_eq!(r.choix_maj, ChoixMaj::DeLaPersonne);
+        assert_eq!(r.dlc_coupes, ["DLC_Pack_1.nsp"], "coupé par la personne : jamais montré comme utilisé");
+        assert_eq!(r.dlc, ["DLC_Pack_2.nsp"]);
+        let u = json(&dossier.join("updates.json"));
+        assert_eq!(u["selected"], vieille.as_str(), "sa mise à jour reste choisie");
+        assert_eq!(u["paths"].as_array().unwrap().len(), 2, "la nôtre est seulement proposée dans la liste");
+        let l = json(&dossier.join("dlc.json"));
+        assert_eq!(l[0], dlc_personne[0], "son DLC désactivé reste tel quel");
+        assert_eq!(l[1], dlc_personne[1], "son DLC disparu n'est jamais retiré par Frogtend");
+        assert!(l[2]["path"].as_str().unwrap().ends_with("DLC_Pack_2.nsp"));
+        // Le DLC 2 (posé par Frogtend) disparaît : seul lui est retiré.
+        std::fs::remove_file(jeu.parent().unwrap().join("DLC_Pack_2.nsp")).unwrap();
+        preparer_contenus(&ryu, &seb, &jeu).unwrap().unwrap();
+        let l = json(&dossier.join("dlc.json"));
+        assert_eq!(l.as_array().unwrap().len(), 2);
+        assert_eq!(l[1], dlc_personne[1]);
+        // « Aucune mise à jour » choisie dans Ryubing (`""`, la nôtre toujours listée) : gardé.
+        let notre = jeu.parent().unwrap().join("Zelda maj [v786432].nsp").to_string_lossy().to_string();
+        std::fs::write(dossier.join("updates.json"), serde_json::to_string(&serde_json::json!({ "selected": "", "paths": [vieille, notre] })).unwrap()).unwrap();
+        let r = preparer_contenus(&ryu, &seb, &jeu).unwrap().unwrap();
+        assert_eq!(r.choix_maj, ChoixMaj::DeLaPersonne);
+        assert_eq!(json(&dossier.join("updates.json"))["selected"], "");
+        // La nôtre retirée de la liste par la personne : retirée, jamais remise.
+        std::fs::write(dossier.join("updates.json"), serde_json::to_string(&serde_json::json!({ "selected": "", "paths": [vieille] })).unwrap()).unwrap();
+        assert_eq!(preparer_contenus(&ryu, &seb, &jeu).unwrap().unwrap().choix_maj, ChoixMaj::RetireeParLaPersonne);
+        assert_eq!(json(&dossier.join("updates.json"))["paths"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn un_dlc_retire_dans_ryubing_n_est_jamais_repose() {
+        let d = tempfile::tempdir().unwrap();
+        let (ryu, seb, jeu) = zelda_pret(d.path());
+        let dossier = seb.join("games").join("01007ef00011e000");
+        preparer_contenus(&ryu, &seb, &jeu).unwrap().unwrap();
+        // La personne retire le DLC 2 dans Ryubing (il réécrit la liste sans lui ; le fichier, lui, reste).
+        let mut l = json(&dossier.join("dlc.json"));
+        l.as_array_mut().unwrap().retain(|c| !c["path"].as_str().unwrap().ends_with("DLC_Pack_2.nsp"));
+        std::fs::write(dossier.join("dlc.json"), serde_json::to_string_pretty(&l).unwrap()).unwrap();
+        for _ in 0..2 {
+            let r = preparer_contenus(&ryu, &seb, &jeu).unwrap().unwrap();
+            assert_eq!((r.dlc.clone(), r.dlc_retires.clone()), (vec!["DLC_Pack_1.nsp".to_string()], vec!["DLC_Pack_2.nsp".to_string()]));
+            assert_eq!(json(&dossier.join("dlc.json")), l, "jamais remis, ni à ce lancement ni au suivant");
+        }
+        // Tout retiré (`[]`) : rien n'est remis.
+        std::fs::write(dossier.join("dlc.json"), b"[]").unwrap();
+        let r = preparer_contenus(&ryu, &seb, &jeu).unwrap().unwrap();
+        assert_eq!(r.dlc_retires.len(), 2);
+        assert_eq!(json(&dossier.join("dlc.json")), serde_json::json!([]));
+    }
+
+    #[test]
+    fn une_maj_retiree_dans_ryubing_n_est_jamais_remise_seule_une_nouvelle_l_est() {
+        let d = tempfile::tempdir().unwrap();
+        let (ryu, seb, jeu) = zelda_pret(d.path());
+        let dossier = seb.join("games").join("01007ef00011e000");
+        preparer_contenus(&ryu, &seb, &jeu).unwrap().unwrap();
+        // Tout décoché ET retiré dans Ryubing : `""` et une liste vide.
+        std::fs::write(dossier.join("updates.json"), br#"{"selected":"","paths":[]}"#).unwrap();
+        for _ in 0..2 {
+            let r = preparer_contenus(&ryu, &seb, &jeu).unwrap().unwrap();
+            assert_eq!(r.choix_maj, ChoixMaj::RetireeParLaPersonne);
+            assert_eq!(std::fs::read(dossier.join("updates.json")).unwrap(), br#"{"selected":"","paths":[]}"#);
+        }
+        // Retirée de la liste mais une autre choisie : pas remise non plus.
+        let vieille = jeu.parent().unwrap().join("Zelda vieille maj [v65536].nsp").to_string_lossy().to_string();
+        let a_elle = serde_json::json!({ "selected": vieille, "paths": [vieille] });
+        std::fs::write(dossier.join("updates.json"), serde_json::to_string(&a_elle).unwrap()).unwrap();
+        assert_eq!(preparer_contenus(&ryu, &seb, &jeu).unwrap().unwrap().choix_maj, ChoixMaj::RetireeParLaPersonne);
+        assert_eq!(json(&dossier.join("updates.json")), a_elle);
+        // Une mise à jour NOUVELLE arrive : elle, oui (ajoutée à la liste ; le choix de la personne reste).
+        std::fs::copy(jeu.parent().unwrap().join("Zelda maj [v786432].nsp"), jeu.parent().unwrap().join("Zelda maj [v851968].nsp")).unwrap();
+        let r = preparer_contenus(&ryu, &seb, &jeu).unwrap().unwrap();
+        assert_eq!(r.choix_maj, ChoixMaj::DeLaPersonne);
+        let u = json(&dossier.join("updates.json"));
+        assert_eq!(u["selected"], vieille.as_str());
+        assert!(u["paths"].as_array().unwrap().iter().any(|p| p.as_str().unwrap().ends_with("[v851968].nsp")));
+        // Sans choix de la personne (liste vidée par elle avant), une nouvelle est choisie.
+        std::fs::write(dossier.join("updates.json"), br#"{"selected":"","paths":[]}"#).unwrap();
+        std::fs::copy(jeu.parent().unwrap().join("Zelda maj [v786432].nsp"), jeu.parent().unwrap().join("Zelda maj [v917504].nsp")).unwrap();
+        let r = preparer_contenus(&ryu, &seb, &jeu).unwrap().unwrap();
+        assert_eq!(r.choix_maj, ChoixMaj::DeFrogtend);
+        assert!(json(&dossier.join("updates.json"))["selected"].as_str().unwrap().ends_with("[v917504].nsp"));
+    }
+
+    #[test]
+    fn un_dlc_de_frogtend_devenu_illisible_ou_d_un_autre_jeu_quitte_la_liste() {
+        use crate::switch_nca::tests::{cle_de_test, nca, partition};
+        let d = tempfile::tempdir().unwrap();
+        let (ryu, seb, jeu) = zelda_pret(d.path());
+        let dossier = seb.join("games").join("01007ef00011e000");
+        let p1 = jeu.parent().unwrap().join("DLC_Pack_1.nsp");
+        let p2 = jeu.parent().unwrap().join("DLC_Pack_2.nsp");
+        preparer_contenus(&ryu, &seb, &jeu).unwrap().unwrap();
+        // Le DLC 1 abîmé (illisible), le DLC 2 remplacé par le DLC d'un autre jeu : les deux entrées de Frogtend partent
+        // (Ryubing ouvrirait conteneur et NCA sans pardon).
+        std::fs::write(&p1, b"PFS0 abime").unwrap();
+        std::fs::write(&p2, partition(&[("z.nca", nca(&cle_de_test(), 5, 0x0100_AAAA_0000_1001, 0))], false)).unwrap();
+        let r = preparer_contenus(&ryu, &seb, &jeu).unwrap().unwrap();
+        assert!(r.dlc.is_empty());
+        assert_eq!(json(&dossier.join("dlc.json")), serde_json::json!([]));
+        assert!(r.erreurs.iter().any(|e| e.contains("DLC_Pack_1.nsp")), "l'illisible est dit : {:?}", r.erreurs);
+    }
+
+    #[test]
+    fn une_extension_que_ryubing_ne_lirait_pas_n_est_pas_posee_et_le_dit() {
+        let d = tempfile::tempdir().unwrap();
+        let (ryu, seb, jeu) = zelda_pret(d.path());
+        std::fs::rename(jeu.parent().unwrap().join("DLC_Pack_2.nsp"), jeu.parent().unwrap().join("DLC_Pack_2.NSP")).unwrap();
+        let r = preparer_contenus(&ryu, &seb, &jeu).unwrap().unwrap();
+        assert_eq!(r.dlc, ["DLC_Pack_1.nsp"]);
+        assert!(r.erreurs.iter().any(|e| e.contains("DLC_Pack_2.NSP") && e.contains("minuscules")), "{:?}", r.erreurs);
+        let l = json(&seb.join("games").join("01007ef00011e000").join("dlc.json"));
+        assert_eq!(l.as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn un_fichier_illisible_n_est_jamais_touche_et_le_reste_est_fait() {
+        let d = tempfile::tempdir().unwrap();
+        let (ryu, seb, jeu) = zelda_pret(d.path());
+        let dossier = seb.join("games").join("01007ef00011e000");
+        std::fs::create_dir_all(&dossier).unwrap();
+        std::fs::write(dossier.join("updates.json"), b"{abime").unwrap();
+        let r = preparer_contenus(&ryu, &seb, &jeu).unwrap().unwrap();
+        assert_eq!(std::fs::read(dossier.join("updates.json")).unwrap(), b"{abime");
+        assert!(r.erreurs.iter().any(|e| e.contains("mise à jour non utilisée")), "{:?}", r.erreurs);
+        assert_eq!(json(&dossier.join("dlc.json")).as_array().unwrap().len(), 2, "les DLC sont posés quand même");
+        // Un dlc.json qui n'est pas une liste : pas touché non plus.
+        std::fs::write(dossier.join("dlc.json"), b"{}").unwrap();
+        let r = preparer_contenus(&ryu, &seb, &jeu).unwrap().unwrap();
+        assert_eq!(std::fs::read(dossier.join("dlc.json")).unwrap(), b"{}");
+        assert!(r.erreurs.iter().any(|e| e.contains("forme attendue")));
+    }
+
+    #[test]
+    fn sans_cle_ou_sans_mode_portable_rien_n_est_pose() {
+        let d = tempfile::tempdir().unwrap();
+        let (ryu, seb, jeu) = zelda_pret(d.path());
+        // Le prod.keys de test sans `header_key` (ici, celui de portable\ aussi) : refusé, rien deviné.
+        std::fs::write(seb.join("system").join("prod.keys"), b"cles prod").unwrap();
+        assert!(matches!(preparer_contenus(&ryu, &seb, &jeu), Err(Erreur::Refus(_))));
+        assert!(!seb.join("games").join("01007ef00011e000").join("dlc.json").exists());
+        // Une mise à jour lancée comme jeu : pas un jeu, rien à poser.
+        let o: String = (0..32u8).map(|i| format!("{:02x}", i.wrapping_mul(7).wrapping_add(3))).collect();
+        std::fs::write(seb.join("system").join("prod.keys"), format!("header_key = {o}\n")).unwrap();
+        assert_eq!(preparer_contenus(&ryu, &seb, &jeu.parent().unwrap().join("Zelda maj [v786432].nsp")).unwrap(), None);
+        // Pas portable : ses données sont dans %APPDATA%, Frogtend n'y écrit jamais.
+        std::fs::remove_dir_all(ryu.join(DOSSIER_PORTABLE)).unwrap();
+        assert_eq!(preparer_contenus(&ryu, &seb, &jeu).unwrap(), None);
+    }
+
+    #[test]
+    fn les_nca_d_un_dlc_de_frogtend_sont_relus_et_le_choix_actif_garde() {
+        let existe = |_: &str| true;
+        let poses = vec!["D:\\J\\dlc.nsp".to_string()];
+        let avant = serde_json::json!([{ "path": "D:\\J\\dlc.nsp", "dlc_nca_list": [{ "path": "/vieux.nca", "title_id": 7u64, "is_enabled": false }] }]);
+        let nos = vec![("d:/j/DLC.nsp".to_string(), vec![("/neuf.nca".to_string(), 7u64), ("/autre.nca".to_string(), 8u64)])];
+        let (v, note, refuses) = dlc_voulu(Some(&avant), &nos, &poses, &[], &existe).unwrap();
+        assert!(refuses.is_empty());
+        assert_eq!(v.as_array().unwrap().len(), 1, "le même fichier (casse et barres différentes) n'est pas ajouté deux fois");
+        assert_eq!(v[0]["dlc_nca_list"][0], serde_json::json!({ "path": "/neuf.nca", "title_id": 7u64, "is_enabled": false }));
+        assert_eq!(v[0]["dlc_nca_list"][1]["is_enabled"], true);
+        assert_eq!(note, poses);
+        assert!(dlc_voulu(Some(&serde_json::json!({})), &nos, &poses, &[], &existe).is_err());
+        // Le dlc.json effacé en entier (pas un retrait fait dans Ryubing, qui écrit `[]`) : reposé.
+        let (v, _, refuses) = dlc_voulu(None, &nos, &poses, &[], &existe).unwrap();
+        assert_eq!((v.as_array().unwrap().len(), refuses.len()), (1, 0));
+        // Un refus noté reste un refus, même fichier effacé.
+        let (v, _, _) = dlc_voulu(None, &nos, &poses, &["D:\\J\\dlc.nsp".to_string()], &existe).unwrap();
+        assert_eq!(v, serde_json::json!([]));
+        // updates.json : `selected` écrit sous la forme DÉJÀ présente dans `paths` (Ryubing compare à l'identique).
+        let avant = serde_json::json!({ "selected": "", "paths": ["D:\\J\\Maj.nsp"] });
+        let (v, choix) = updates_voulu(Some(&avant), Some("d:/j/maj.nsp"), None, &|_: &str| false);
+        assert_eq!(choix, ChoixMaj::DeFrogtend, "« aucune » sans fichier existant n'est pas un choix");
+        assert_eq!(v.unwrap(), serde_json::json!({ "selected": "D:\\J\\Maj.nsp", "paths": ["D:\\J\\Maj.nsp"] }));
+        // Pas de mise à jour trouvée : rien n'est écrit.
+        assert_eq!(updates_voulu(None, None, None, &existe), (None, ChoixMaj::DeFrogtend));
     }
 }

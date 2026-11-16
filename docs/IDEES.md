@@ -1,5 +1,9 @@
 # Idées notées (à ne pas démarrer avant la fin du lot en cours)
 
+- **Arrêt d'une partie : reconnaître les programmes au dix-millionième de seconde** (expert lancement, 16/11) :
+  `processus_de_la_partie` / `descendants` (lancement.rs), qui choisissent ce que « Quitter » et l'arrêt de sécurité
+  d'Eden/Eglantine vont TERMINER, comparent encore l'heure de démarrage à la seconde (un numéro repris dans la même
+  seconde serait pris pour le jeu). `Suivi` est passé aux heures précises en 0.203.0 : faire de même ici.
 - **Micrologiciel PS3 : proposé comme une mise à jour** (Seb, 16/11) : le bouton « 💿 Micrologiciel PS3… » toujours
   affiché prête à confusion (on croit à une mise à jour en attente). Le remplacer par la même logique que les mises à
   jour d'émulateurs : au démarrage, si Firehouse sert une version plus récente que celle de RPCS3, le proposer (taille

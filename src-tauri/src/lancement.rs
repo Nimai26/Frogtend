@@ -401,28 +401,139 @@ mod tests_eden {
     }
 }
 
+/// Les heures du suivi sont en unités de 100 ns depuis 1970 (celles de Windows, `GetProcessTimes`) : à la SECONDE près
+/// (`start_time` de sysinfo), un numéro repris par un autre programme dans la même seconde passait pour le même
+/// processus, et un « enfant » né juste après la fermeture d'un processus de la partie passait pour le sien.
+const PAR_SECONDE: u64 = 10_000_000;
+
+fn maintenant_precis() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| (d.as_nanos() / 100) as u64).unwrap_or(0)
+}
+
+/// Deux heures de création désignent-elles le même processus ? Égales ; ou, quand l'une n'est connue qu'à la seconde
+/// (repli : Windows a refusé d'ouvrir le processus), dans la même seconde — jamais moins sûr que l'ancien suivi.
+fn meme_heure(a: u64, b: u64) -> bool {
+    a == b || flou(a, b)
+}
+
+/// Une heure en repli (connue à la seconde) est une seconde ronde : `secondes × 10⁷`. Une heure précise tombant pile sur
+/// une seconde ronde (une chance sur dix millions) est traitée comme un repli : jamais moins sûr que l'ancien suivi.
+fn repli(a: u64) -> bool {
+    a % PAR_SECONDE == 0
+}
+
+/// L'ordre de deux heures est-il indécidable ? L'une n'est connue qu'à la seconde, et les deux tombent dans la même
+/// seconde : on applique alors l'ancienne règle, à la seconde.
+fn flou(a: u64, b: u64) -> bool {
+    (repli(a) || repli(b)) && a / PAR_SECONDE == b / PAR_SECONDE
+}
+
+/// `a` n'est pas après `b` (à la seconde près si l'une est en repli, comme l'ancien `a <= b` en secondes).
+fn pas_apres(a: u64, b: u64) -> bool {
+    a <= b || flou(a, b)
+}
+
+/// `a` est strictement avant `b` (à la seconde près si l'une est en repli : même seconde = pas avant, comme l'ancien
+/// `a < b` en secondes).
+fn avant(a: u64, b: u64) -> bool {
+    a < b && !flou(a, b)
+}
+
+/// Une poignée Windows sur un processus de la partie, gardée tant qu'il vit : Windows ne redonne JAMAIS le numéro d'un
+/// processus dont une poignée est ouverte, et elle donne l'heure EXACTE de sa fermeture.
+#[cfg(windows)]
+struct Poignee(isize);
+
+// La poignée n'est qu'un nombre rendu par Windows, utilisable depuis n'importe quel fil (le suivi passe d'un fil à
+// l'autre dans `partie::suivre_partie`).
+#[cfg(windows)]
+unsafe impl Send for Poignee {}
+
+#[cfg(windows)]
+impl Poignee {
+    fn ouvrir(pid: u32) -> Option<Poignee> {
+        use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE};
+        if pid == 0 {
+            return None;
+        }
+        let h = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE, false, pid) }.ok()?;
+        Some(Poignee(h.0 as isize))
+    }
+
+    /// (création, fin) en 100 ns depuis 1970 ; la fin seulement si le processus est fermé.
+    fn heures(&self) -> Option<(u64, Option<u64>)> {
+        use windows::Win32::Foundation::{FILETIME, HANDLE, WAIT_OBJECT_0};
+        use windows::Win32::System::Threading::{GetProcessTimes, WaitForSingleObject};
+        // 1601 → 1970, en 100 ns.
+        const ECART: u64 = 116_444_736_000_000_000;
+        let h = HANDLE(self.0 as *mut core::ffi::c_void);
+        let (mut c, mut x, mut k, mut u) = (FILETIME::default(), FILETIME::default(), FILETIME::default(), FILETIME::default());
+        unsafe { GetProcessTimes(h, &mut c, &mut x, &mut k, &mut u) }.ok()?;
+        let en_100ns = |f: FILETIME| (((f.dwHighDateTime as u64) << 32) | f.dwLowDateTime as u64).saturating_sub(ECART);
+        let ferme = unsafe { WaitForSingleObject(h, 0) } == WAIT_OBJECT_0;
+        Some((en_100ns(c), ferme.then(|| en_100ns(x))))
+    }
+}
+
+#[cfg(windows)]
+impl Drop for Poignee {
+    fn drop(&mut self) {
+        let _ = unsafe { windows::Win32::Foundation::CloseHandle(windows::Win32::Foundation::HANDLE(self.0 as *mut core::ffi::c_void)) };
+    }
+}
+
+/// Hors de Windows : pas de poignée, les heures restent à la seconde (repli).
+#[cfg(not(windows))]
+struct Poignee;
+
+#[cfg(not(windows))]
+impl Poignee {
+    fn ouvrir(_pid: u32) -> Option<Poignee> {
+        None
+    }
+    fn heures(&self) -> Option<(u64, Option<u64>)> {
+        None
+    }
+}
+
+/// L'heure de création d'un processus du relevé (`secondes` : celle de sysinfo) : précise si Windows la donne ET
+/// qu'elle tombe dans la même seconde (sinon le numéro a changé de mains entre le relevé et la lecture) ; à la seconde
+/// sinon. `0` : inconnue.
+fn heure_creation(pid: Pid, secondes: u64) -> u64 {
+    if secondes == 0 {
+        return 0;
+    }
+    Poignee::ouvrir(pid.as_u32())
+        .and_then(|h| h.heures())
+        .map(|(c, _)| c)
+        .filter(|c| c / PAR_SECONDE == secondes)
+        .unwrap_or(secondes.saturating_mul(PAR_SECONDE))
+}
+
 /// Suit les processus d'une partie.
 pub struct Suivi {
     systeme: System,
     racine: Pid,
     /// Les dossiers « du jeu » : un processus dont le programme y est fait partie de la partie.
     dossiers: Vec<PathBuf>,
-    /// Tous les processus vus dans la partie (même si leur parent s'est fermé depuis), avec leur heure de démarrage :
-    /// Windows RÉUTILISE les numéros de processus, et un numéro repris par un autre programme (sous forte charge) ne
-    /// doit jamais faire croire la partie en cours. `0` : heure inconnue (déjà fermé au premier relevé).
+    /// Tous les processus vus dans la partie (même si leur parent s'est fermé depuis), avec leur heure de création
+    /// (100 ns) : Windows RÉUTILISE les numéros de processus, et un numéro repris par un autre programme (sous forte
+    /// charge) ne doit jamais faire croire la partie en cours. `0` : heure inconnue.
     vus: std::collections::HashMap<Pid, u64>,
-    /// Les processus de la partie vus FERMÉS, avec l'instant où on l'a vu : un processus fermé ne lance plus rien, donc
-    /// un « enfant » né après cet instant vient d'un autre programme qui a repris le numéro (rouge le 26/10 pendant une
-    /// livraison : la partie jamais finie, un programme d'un autre test adopté).
+    /// Les processus de la partie FERMÉS, avec l'heure de leur fermeture (exacte, lue sur leur poignée ; sinon l'instant
+    /// où on l'a vu) : un processus fermé ne lance plus rien, donc un « enfant » né après vient d'un autre programme qui
+    /// a repris le numéro (rouge le 26/10 et le 08/11 pendant une livraison : la partie jamais finie).
     morts: std::collections::HashMap<Pid, u64>,
+    /// Une poignée sur chaque processus de la partie encore vivant (voir [`Poignee`]).
+    poignees: std::collections::HashMap<Pid, Poignee>,
 }
 
-/// Ce processus (`numero`, démarré à `debut`) est-il un de ceux retenus ? Même numéro ET même heure de démarrage.
+/// Ce processus (`numero`, créé à `debut`) est-il un de ceux retenus ? Même numéro ET même heure de création.
 fn est_le_meme(vus: &std::collections::HashMap<Pid, u64>, numero: &Pid, debut: u64) -> bool {
-    vus.get(numero).is_some_and(|t| *t != 0 && *t == debut)
+    vus.get(numero).is_some_and(|t| *t != 0 && meme_heure(*t, debut))
 }
 
-/// Un processus démarré à `debut`, dont le parent porte le numéro `parent`, descend-il de la partie ? Le parent retenu
+/// Un processus créé à `debut`, dont le parent porte le numéro `parent`, descend-il de la partie ? Le parent retenu
 /// toujours vivant (même heure) : oui. Mort : oui si l'enfant est né après lui. Numéro repris par un autre programme
 /// (vivant, autre heure) : seulement si l'enfant est né AVANT ce nouveau venu (il vient donc de l'ancien).
 #[cfg(test)]
@@ -430,8 +541,8 @@ fn descend(vus: &std::collections::HashMap<Pid, u64>, parent: &Pid, debut: u64, 
     descend_avant(vus, &Default::default(), parent, debut, parent_vivant)
 }
 
-/// Comme [`descend`], en sachant quand chaque processus de la partie a été vu fermé (`morts`) : un parent fermé
-/// n'a pu donner que des enfants nés AVANT qu'on le voie fermé.
+/// Comme [`descend`], en sachant quand chaque processus de la partie s'est fermé (`morts`) : un parent fermé n'a pu
+/// donner que des enfants nés AVANT sa fermeture.
 fn descend_avant(
     vus: &std::collections::HashMap<Pid, u64>,
     morts: &std::collections::HashMap<Pid, u64>,
@@ -440,10 +551,12 @@ fn descend_avant(
     parent_vivant: Option<u64>,
 ) -> bool {
     let Some(t) = vus.get(parent).copied() else { return false };
+    // Toutes les comparaisons d'ordre tolèrent une heure en repli (à la seconde), comme `meme_heure`.
+    let avant_sa_fin = morts.get(parent).is_none_or(|m| pas_apres(debut, *m));
     match parent_vivant {
-        Some(v) if t != 0 && v == t => true,
-        Some(v) => debut < v && debut >= t,
-        None => debut >= t && morts.get(parent).is_none_or(|m| debut <= *m),
+        Some(v) if t != 0 && meme_heure(v, t) => avant_sa_fin,
+        Some(v) => avant(debut, v) && pas_apres(t, debut) && avant_sa_fin,
+        None => pas_apres(t, debut) && avant_sa_fin,
     }
 }
 
@@ -452,15 +565,25 @@ impl Suivi {
         let mut systeme = System::new();
         let r = Pid::from_u32(racine);
         systeme.refresh_processes(ProcessesToUpdate::Some(&[r]), true);
+        let mut poignees = std::collections::HashMap::new();
         // Le lanceur déjà fermé au premier relevé (un .bat qui lance le jeu puis rend la main, machine chargée) : son
         // heure est inconnue. Prendre alors l'instant du lancement (moins une marge) : un enfant de la partie est
         // forcément né après — jamais « 0 », qui ferait prendre pour un enfant tout vieux processus orphelin dont le
         // parent mort portait le même numéro (vu le 19/10 : partie jamais finie, test rouge pendant la livraison).
-        let debut = systeme.process(r).map(|p| p.start_time()).unwrap_or_else(|| {
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0).saturating_sub(5)
-        });
+        let debut = match systeme.process(r).map(|p| p.start_time()) {
+            Some(s) => {
+                // Sa poignée, prise tout de suite : son numéro ne sera plus redonné tant qu'on la garde.
+                let h = Poignee::ouvrir(racine);
+                let precise = h.as_ref().and_then(|h| h.heures()).map(|(c, _)| c).filter(|c| s != 0 && c / PAR_SECONDE == s);
+                if let (Some(_), Some(h)) = (precise, h) {
+                    poignees.insert(r, h);
+                }
+                precise.unwrap_or(s.saturating_mul(PAR_SECONDE))
+            }
+            None => maintenant_precis().saturating_sub(5 * PAR_SECONDE),
+        };
         let vus = std::collections::HashMap::from([(r, debut)]);
-        Suivi { systeme, racine: r, dossiers, vus, morts: Default::default() }
+        Suivi { systeme, racine: r, dossiers, vus, morts: Default::default(), poignees }
     }
 
     fn dans_un_dossier(&self, exe: Option<&Path>) -> bool {
@@ -479,15 +602,41 @@ impl Suivi {
     pub fn en_cours(&mut self) -> bool {
         self.systeme.refresh_processes(ProcessesToUpdate::All, true);
         let processus = self.systeme.processes();
-        // Ceux de la partie qui viennent de se fermer (ou dont le numéro est repris par un autre) : notés, avec l'instant.
-        let maintenant = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        // L'heure précise n'est lue (une ouverture du processus chez Windows) que pour ceux qui touchent à la partie,
+        // une fois par relevé.
+        let mut heures: std::collections::HashMap<Pid, u64> = Default::default();
+        // Ceux dont on tient la poignée : lus sur elle, sans rouvrir le processus. Encore ouverte = toujours lui (son
+        // numéro ne peut pas avoir été redonné) ; fermée = l'heure exacte de sa fin.
+        let mut fins: std::collections::HashMap<Pid, Option<u64>> = Default::default();
+        for (pid, h) in &self.poignees {
+            match h.heures() {
+                Some((_, None)) => {
+                    if let Some(t) = self.vus.get(pid) {
+                        heures.insert(*pid, *t);
+                    }
+                }
+                Some((_, Some(fin))) => {
+                    fins.insert(*pid, Some(fin));
+                }
+                None => {}
+            }
+        }
+        let mut heure = |pid: &Pid, p: &sysinfo::Process| *heures.entry(*pid).or_insert_with(|| heure_creation(*pid, p.start_time()));
+        // Ceux de la partie qui viennent de se fermer (ou dont le numéro est repris par un autre) : notés, avec l'heure
+        // exacte de leur fermeture quand on tenait leur poignée.
+        let maintenant = maintenant_precis();
         for (pid, t) in &self.vus {
-            if processus.get(pid).is_none_or(|p| p.start_time() != *t) {
-                self.morts.entry(*pid).or_insert(maintenant);
+            if self.morts.contains_key(pid) {
+                continue;
+            }
+            let ferme = fins.get(pid).copied().flatten();
+            if ferme.is_some() || processus.get(pid).is_none_or(|p| !meme_heure(heure(pid, p), *t)) {
+                self.morts.insert(*pid, ferme.unwrap_or(maintenant));
+                self.poignees.remove(pid);
             }
         }
         // Les descendants : on répète tant qu'on en découvre (petits-enfants…), en reconnaissant chacun à son numéro ET
-        // à son heure de démarrage.
+        // à son heure de création.
         loop {
             let avant = self.vus.len();
             for (pid, p) in processus {
@@ -495,9 +644,17 @@ impl Suivi {
                     continue;
                 }
                 let Some(parent) = p.parent() else { continue };
-                let parent_vivant = processus.get(&parent).map(|x| x.start_time());
-                if descend_avant(&self.vus, &self.morts, &parent, p.start_time(), parent_vivant) {
-                    self.vus.insert(*pid, p.start_time());
+                if !self.vus.contains_key(&parent) {
+                    continue;
+                }
+                let parent_vivant = processus.get(&parent).map(|x| heure(&parent, x));
+                let debut = heure(pid, p);
+                if descend_avant(&self.vus, &self.morts, &parent, debut, parent_vivant) {
+                    self.vus.insert(*pid, debut);
+                    // Sa poignée : seulement si c'est bien lui (même heure de création), sinon on s'en passe.
+                    if let Some(h) = Poignee::ouvrir(pid.as_u32()).filter(|h| h.heures().is_some_and(|(c, _)| c == debut)) {
+                        self.poignees.insert(*pid, h);
+                    }
                 }
             }
             if self.vus.len() == avant {
@@ -505,9 +662,9 @@ impl Suivi {
             }
         }
         let _ = self.racine;
-        processus
-            .iter()
-            .any(|(pid, p)| est_le_meme(&self.vus, pid, p.start_time()) || self.dans_un_dossier(p.exe()))
+        processus.iter().any(|(pid, p)| {
+            (self.vus.contains_key(pid) && !self.morts.contains_key(pid) && est_le_meme(&self.vus, pid, heure(pid, p))) || self.dans_un_dossier(p.exe())
+        })
     }
 }
 
@@ -555,39 +712,120 @@ mod tests {
         assert!(!s.dans_un_dossier(Some(Path::new(r"E:\autre\jeu.exe"))), "la racine d'un disque n'englobe rien");
     }
 
+    /// Une heure précise (100 ns) : `s` secondes et une fraction quelconque (jamais une seconde ronde, qui serait un repli).
+    fn h(s: u64, fraction: u64) -> u64 {
+        s * PAR_SECONDE + fraction
+    }
+
     #[test]
     fn un_numero_de_processus_repris_par_un_autre_programme_ne_compte_pas() {
         let p = |n: u32| Pid::from_u32(n);
-        let vus = std::collections::HashMap::from([(p(100), 1000u64), (p(200), 0)]);
+        let vus = std::collections::HashMap::from([(p(100), h(1000, 1)), (p(200), 0)]);
         // Le même processus (même numéro, même heure) : oui ; le numéro repris par un autre (autre heure) : non.
-        assert!(est_le_meme(&vus, &p(100), 1000));
-        assert!(!est_le_meme(&vus, &p(100), 1500), "numéro repris par un autre programme");
+        assert!(est_le_meme(&vus, &p(100), h(1000, 1)));
+        assert!(!est_le_meme(&vus, &p(100), h(1500, 1)), "numéro repris par un autre programme");
         assert!(!est_le_meme(&vus, &p(200), 0), "heure inconnue : jamais vivant");
         // Enfant d'un parent retenu encore vivant : oui.
-        assert!(descend(&vus, &p(100), 1001, Some(1000)));
+        assert!(descend(&vus, &p(100), h(1001, 1), Some(h(1000, 1))));
         // Parent mort (le .bat qui s'est fermé) : un enfant né après lui en descend.
-        assert!(descend(&vus, &p(100), 1001, None));
-        assert!(!descend(&vus, &p(100), 999, None), "né avant le parent : impossible");
+        assert!(descend(&vus, &p(100), h(1001, 1), None));
+        assert!(!descend(&vus, &p(100), h(999, 1), None), "né avant le parent : impossible");
         // Numéro du parent repris par un autre programme (né à 1500) : ses propres enfants ne sont pas de la partie.
-        assert!(!descend(&vus, &p(100), 1600, Some(1500)));
-        assert!(descend(&vus, &p(100), 1200, Some(1500)), "né avant le nouveau venu : de l'ancien parent");
-        assert!(!descend(&vus, &p(300), 1600, None), "parent inconnu");
-        // Le parent vu fermé à 1100 : un « enfant » né après (numéro repris par un programme vite refermé) n'est pas
+        assert!(!descend(&vus, &p(100), h(1600, 1), Some(h(1500, 1))));
+        assert!(descend(&vus, &p(100), h(1200, 1), Some(h(1500, 1))), "né avant le nouveau venu : de l'ancien parent");
+        assert!(!descend(&vus, &p(300), h(1600, 1), None), "parent inconnu");
+        // Le parent fermé à 1100 : un « enfant » né après (numéro repris par un programme vite refermé) n'est pas
         // de la partie ; né avant, si (lancé juste avant que le parent se ferme).
-        let morts = std::collections::HashMap::from([(p(100), 1100)]);
-        assert!(!descend_avant(&vus, &morts, &p(100), 1200, None));
-        assert!(descend_avant(&vus, &morts, &p(100), 1100, None));
+        let morts = std::collections::HashMap::from([(p(100), h(1100, 1))]);
+        assert!(!descend_avant(&vus, &morts, &p(100), h(1200, 1), None));
+        assert!(descend_avant(&vus, &morts, &p(100), h(1100, 1), None));
+        assert!(!descend_avant(&vus, &morts, &p(100), h(1200, 1), Some(h(1500, 1))), "repris ET né après sa fin");
+    }
+
+    #[test]
+    fn un_autre_processus_dans_la_meme_seconde_n_est_jamais_pris_pour_celui_de_la_partie() {
+        // Ce qu'un suivi à la seconde (`start_time`) ne pouvait pas voir : tout se passe dans la seconde 1000.
+        let p = |n: u32| Pid::from_u32(n);
+        let vus = std::collections::HashMap::from([(p(100), h(1000, 1_000_000))]);
+        // Le numéro 100 repris par un autre programme 0,8 s plus tard, même seconde : ce n'est plus la partie.
+        assert!(!est_le_meme(&vus, &p(100), h(1000, 9_000_000)));
+        // Ses enfants à lui (nés après lui) ne sont pas de la partie ; un enfant de l'ancien (né avant lui), si.
+        assert!(!descend(&vus, &p(100), h(1000, 9_500_000), Some(h(1000, 9_000_000))));
+        assert!(descend(&vus, &p(100), h(1000, 5_000_000), Some(h(1000, 9_000_000))));
+        // Le processus de la partie fermé à 1000,3 s : un « enfant » né à 1000,6 s (d'un programme qui a repris le
+        // numéro et s'est vite refermé) n'est pas de la partie ; né à 1000,2 s, si.
+        let morts = std::collections::HashMap::from([(p(100), h(1000, 3_000_000))]);
+        assert!(!descend_avant(&vus, &morts, &p(100), h(1000, 6_000_000), None));
+        assert!(descend_avant(&vus, &morts, &p(100), h(1000, 2_000_000), None));
+        // Une heure connue seulement à la seconde (Windows a refusé d'ouvrir le processus) : même seconde = même
+        // processus, comme avant (jamais moins sûr) ; deux heures précises différentes : jamais.
+        assert!(meme_heure(h(1000, 0), h(1000, 7_654_321)));
+        assert!(meme_heure(h(1000, 7_654_321), h(1000, 0)));
+        assert!(!meme_heure(h(1000, 0), h(1001, 1)));
+        assert!(!meme_heure(h(1000, 1), h(1000, 2)));
+    }
+
+    #[test]
+    fn une_heure_en_repli_garde_l_ancienne_regle_a_la_seconde_pour_l_ordre() {
+        let p = |n: u32| Pid::from_u32(n);
+        // Un enfant en repli (Windows a refusé de l'ouvrir : 1000,0) né dans la même seconde que son parent précis
+        // (1000,4) : il descend de lui, comme avec l'ancien suivi (le repli arrondit vers le bas).
+        let vus = std::collections::HashMap::from([(p(100), h(1000, 4_000_000))]);
+        assert!(descend(&vus, &p(100), h(1000, 0), None));
+        // L'inverse : un parent en repli (1000,0), un enfant précis de la même seconde.
+        let vus_repli = std::collections::HashMap::from([(p(100), h(1000, 0))]);
+        assert!(descend(&vus_repli, &p(100), h(1000, 2_000_000), None));
+        // Un parent fermé (fin précise à 1000,6) et un enfant en repli de la même seconde : de la partie.
+        let morts = std::collections::HashMap::from([(p(100), h(1000, 6_000_000))]);
+        assert!(descend_avant(&vus, &morts, &p(100), h(1000, 0), None));
+        // Numéro du parent (né à 999,4) repris par un programme précis (1000,5), enfant en repli de la même seconde que
+        // ce nouveau venu : ordre indécidable, l'ancienne règle s'applique (pas « né avant » lui) : jamais adopté.
+        let vus_999 = std::collections::HashMap::from([(p(100), h(999, 4_000_000))]);
+        assert!(!descend(&vus_999, &p(100), h(1000, 0), Some(h(1000, 5_000_000))));
+        assert!(descend(&vus_999, &p(100), h(999, 0), Some(h(1000, 5_000_000))), "repli, mais la seconde d'avant : de l'ancien");
+        // Un nouveau venu en repli dans la même seconde que le parent précis : indiscernable de lui (`meme_heure`),
+        // comme avec l'ancien suivi.
+        assert!(meme_heure(h(1000, 0), h(1000, 4_000_000)));
+        // Hors de la même seconde, l'ordre reste strict, repli ou pas.
+        assert!(!descend(&vus, &p(100), h(999, 0), None), "né la seconde d'avant le parent");
+        assert!(!descend_avant(&vus, &morts, &p(100), h(1001, 0), None), "né la seconde d'après sa fin");
+        // Deux heures précises de la même seconde : l'ordre exact décide.
+        assert!(!descend(&vus, &p(100), h(1000, 3_999_999), None));
+        assert!(pas_apres(h(1000, 0), h(1000, 1)) && pas_apres(h(1000, 1), h(1000, 0)) && !avant(h(1000, 0), h(1000, 1)));
+        assert!(avant(h(1000, 1), h(1000, 2)) && !pas_apres(h(1000, 2), h(1000, 1)));
+    }
+
+    #[test]
+    fn le_suivi_lit_l_heure_precise_et_la_fermeture_exacte_chez_windows() {
+        // Un vrai programme (~1 s) : son heure de création est la précise (dans la seconde donnée par sysinfo), et sa
+        // fermeture est l'heure exacte lue sur sa poignée — avant l'instant où le suivi l'a vue.
+        let mut enfant = std::process::Command::new("ping").args(["-n", "2", "127.0.0.1"]).stdout(std::process::Stdio::null()).spawn().unwrap();
+        let pid = enfant.id();
+        let mut s = Suivi::nouveau(pid, vec![]);
+        let mut sys = System::new();
+        sys.refresh_processes(ProcessesToUpdate::Some(&[Pid::from_u32(pid)]), true);
+        let secondes = sys.process(Pid::from_u32(pid)).map(|p| p.start_time()).unwrap();
+        let t = s.vus[&s.racine];
+        assert_eq!(t / PAR_SECONDE, secondes, "la même seconde que sysinfo");
+        #[cfg(windows)]
+        assert!(s.poignees.contains_key(&s.racine), "sa poignée est tenue (son numéro ne peut pas être redonné)");
+        let _ = enfant.wait();
+        assert!(!s.en_cours());
+        let vu = maintenant_precis();
+        let fin = s.morts[&s.racine];
+        assert!(fin > t && fin <= vu, "fermeture {fin} entre la création {t} et l'instant vu {vu}");
+        assert!(s.poignees.is_empty(), "la poignée est rendue à la fermeture");
     }
 
     #[test]
     fn un_lanceur_deja_ferme_n_adopte_jamais_un_vieil_orphelin() {
         // Le lanceur a fini avant le premier relevé (sous charge) : son heure n'est pas « 0 » mais l'instant du lancement.
         let s = Suivi::nouveau(u32::MAX - 7, vec![]);
-        let maintenant = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        let maintenant = maintenant_precis();
         let t = s.vus[&s.racine];
-        assert!(t > 0 && t + 10 >= maintenant && t <= maintenant, "{t} / {maintenant}");
+        assert!(t > 0 && t + 10 * PAR_SECONDE >= maintenant && t <= maintenant, "{t} / {maintenant}");
         // Un vieux processus orphelin (né il y a une heure) dont le parent mort portait ce numéro : pas de la partie.
-        assert!(!descend(&s.vus, &s.racine, maintenant - 3600, None));
+        assert!(!descend(&s.vus, &s.racine, maintenant - 3600 * PAR_SECONDE, None));
         // Un enfant né après le lancement : de la partie.
         assert!(descend(&s.vus, &s.racine, maintenant, None));
     }
@@ -698,7 +936,15 @@ mod tests {
         // programme ne vit que ~2 s, la limite ne sert qu'à voir que la fin est bien vue.
         let duree = attendre_fin(&mut s, Duration::from_secs(60));
         assert!(duree >= Duration::from_millis(1500), "suivi jusqu'à la fin du programme lancé ({duree:?})");
-        assert!(duree < Duration::from_secs(60), "la fin est bien vue");
+        // Rouge : on dit QUI tenait la partie (numéro, nom, heure de création, parent), pour analyser sans relancer.
+        let tiennent: Vec<String> = s
+            .systeme
+            .processes()
+            .iter()
+            .filter(|(pid, _)| s.vus.contains_key(*pid) && !s.morts.contains_key(*pid))
+            .map(|(pid, p)| format!("{pid} {:?} créé {} (suivi : {}) parent {:?}", p.name(), heure_creation(*pid, p.start_time()), s.vus[pid], p.parent()))
+            .collect();
+        assert!(duree < Duration::from_secs(60), "la fin est bien vue ; tenaient la partie : {tiennent:?}");
     }
 
     #[test]

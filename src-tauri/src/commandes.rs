@@ -832,6 +832,8 @@ pub struct ContenuVu {
     pub dossier: Option<String>,
     /// Une mise à jour PS3 : sa version (« 01.05 », contrat 1.31), dans l'ordre d'installation.
     pub version: Option<String>,
+    /// Ryubing : pourquoi ce contenu trouvé n'est pas utilisé (la vraie cause, en mots simples).
+    pub raison: Option<String>,
 }
 
 /// Les contenus additionnels d'un jeu du PC.
@@ -846,6 +848,8 @@ pub struct ContenusDuJeu {
     /// Les fichiers servis comme contenus mais illisibles (en-tête abîmé) : dits, jamais écartés en silence.
     #[serde(default)]
     pub ignores: Vec<String>,
+    /// `ryubing` : une phrase à dire (clés absentes, choix de la personne gardé…).
+    pub remarque: Option<String>,
 }
 
 /// Image et fluidité d'un jeu PS3 dans RPCS3 : son RPCS3 réglé (jamais reçu de l'interface) et son numéro (lu sur le
@@ -1217,8 +1221,9 @@ async fn contexte_switch(app: &AppHandle, noyau: &Noyau, id: i64) -> Resultat<Op
     // n'y verrait rien, et Frogtend écrirait un fichier inutile chez lui.
     let p = std::path::Path::new(&programme);
     if !p.file_name().is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case("eden.exe")) {
-        // Un RÉGLAGE à changer (pas un refus) : l'aperçu montre alors « Règle Eden… » au lieu de rien.
-        return Err(Erreur::Reglage("Frogtend sait donner les mises à jour et DLC à Eden seulement : choisis Eden comme émulateur de la Switch pour ce jeu.".into()));
+        // Un RÉGLAGE à changer (pas un refus) : l'aperçu montre alors « Règle Eden ou Ryubing… » au lieu de rien
+        // (Ryubing est traité avant, par `contenus_ryubing`).
+        return Err(Erreur::Reglage("Frogtend sait donner les mises à jour et DLC à Eden et à Ryubing seulement : choisis l'un d'eux comme émulateur de la Switch pour ce jeu.".into()));
     }
     let eden = p.parent().map(std::path::PathBuf::from).unwrap_or_default();
     let mut dossiers: Vec<std::path::PathBuf> = vec![std::path::PathBuf::from(&j.dossier)];
@@ -1232,17 +1237,124 @@ async fn contexte_switch(app: &AppHandle, noyau: &Noyau, id: i64) -> Resultat<Op
     dossiers.sort();
     dossiers.dedup();
     let titre = j.titre.clone();
+    let cles = crate::contenus::cles_eden(&eden);
     let l = tauri::async_runtime::spawn_blocking(move || {
         let mut l: Vec<crate::contenus::ContenuSwitch> = dossiers.iter().filter(|d| d.is_dir()).flat_map(|d| crate::contenus::chercher_switch(d)).collect();
         l.sort_by(|a, b| a.chemin.cmp(&b.chemin));
         l.dedup_by(|a, b| a.chemin == b.chemin);
-        // L'identifiant du jeu : celui de son fichier s'il le porte (un .xci ne le dit pas sans les clés de la console).
-        let id_jeu = fichier.as_deref().and_then(crate::contenus::id_switch).map(|i| crate::contenus::classer_switch(i).1);
+        // L'identifiant du jeu : celui de son fichier s'il le porte, sinon celui lu dans ses en-têtes avec les clés
+        // d'Eden (un .xci ne le dit pas autrement) ; sans clés, le titre, comme avant.
+        let id_jeu = fichier.as_deref().and_then(|f| crate::contenus::id_du_jeu_switch(f, cles.as_deref()));
         crate::contenus::switch_du_jeu(&l, id_jeu, &titre).into_iter().cloned().collect::<Vec<_>>()
     })
     .await
     .map_err(|_| Erreur::Disque("La recherche s'est arrêtée brutalement.".into()))?;
     Ok(Some((eden, l)))
+}
+
+/// Switch lancée par Ryubing (lot 6, ✅ Seb 16/11) : ce que Frogtend pose TOUT SEUL à chaque lancement (la mise à jour
+/// la plus récente et les DLC du dossier du jeu, lus dans leurs en-têtes), montré sans rien écrire. `None` : pas un jeu
+/// Switch lancé par Ryubing.
+async fn contenus_ryubing(app: &AppHandle, noyau: &Noyau, id: i64) -> Resultat<Option<ContenusDuJeu>> {
+    let j = noyau.jeu_visible(id).await?;
+    if !j.plateforme.eq_ignore_ascii_case("Nintendo Switch") {
+        return Ok(None);
+    }
+    let Some((programme, _)) = emulateur_regle(app, &j.plateforme, id, None) else { return Ok(None) };
+    if !crate::ryubing::est_ryubing(&programme) {
+        return Ok(None);
+    }
+    let d = std::path::Path::new(&programme).parent().map(std::path::PathBuf::from).unwrap_or_default();
+    let profil = profil_ouvert(noyau).await?.nom;
+    let fichier = noyau.fichier_pour_l_emulateur(id, None).await.ok().flatten();
+    let r = tauri::async_runtime::spawn_blocking(move || apercu_ryubing(&d, &profil, fichier.as_deref()))
+        .await
+        .map_err(|_| Erreur::Disque("La lecture s'est arrêtée brutalement.".into()))?;
+    Ok(Some(r))
+}
+
+/// L'aperçu des contenus Ryubing d'un jeu (`fichier` : celui que `-f` lancera) pour la personne `profil`. Rien n'est
+/// écrit. Jamais de numéro de version brut (v786432 n'est pas la « 1.5.0 » que montre la console) ; la vraie cause
+/// de chaque contenu non utilisé.
+fn apercu_ryubing(d: &std::path::Path, profil: &str, fichier: Option<&std::path::Path>) -> ContenusDuJeu {
+    use crate::ryubing::ChoixMaj;
+    let dire = |m: &str| ContenusDuJeu { etat: "ok".into(), systeme: "ryubing".into(), remarque: Some(m.into()), ..Default::default() };
+    if !crate::ryubing::portable(d) {
+        return dire("Ryubing n'a pas été installé par Frogtend : ses mises à jour et DLC se choisissent dans Ryubing.");
+    }
+    let racine = crate::ryubing::racine(d, profil);
+    let Some(f) = fichier else { return dire("Le fichier de ce jeu est introuvable : aucune mise à jour ni DLC n'est utilisé.") };
+    let Some(cle) = crate::ryubing::cle_entete(d, &racine) else {
+        return dire(
+            "Ryubing n'a pas encore les clés de la console. Lance ce jeu une fois (▶ Jouer) : Frogtend te proposera de les poser ; ses mises à jour et DLC seront ensuite utilisés tout seuls.",
+        );
+    };
+    let Ok(Some(c)) = crate::switch_nca::contenus_pour(f, &cle) else {
+        return dire("Frogtend n'arrive pas à lire le fichier de ce jeu : aucune mise à jour ni DLC n'est utilisé.");
+    };
+    let a = crate::ryubing::poser_contenus(d, &racine, &c, false).unwrap_or_default();
+    let vu = |m: &crate::switch_nca::ContenuLu, genre: &str, raison: Option<&str>| ContenuVu {
+        id: m.chemin.to_string_lossy().to_string(),
+        nom: crate::switch_nca::nom_a_montrer(&m.chemin),
+        genre: genre.into(),
+        taille: std::fs::metadata(&m.chemin).map(|x| x.len()).unwrap_or(0),
+        licence: false,
+        installe: raison.is_none(),
+        dossier: None,
+        version: None,
+        raison: raison.map(String::from),
+    };
+    let nom = |m: &crate::switch_nca::ContenuLu| m.chemin.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let mut contenus: Vec<ContenuVu> = c
+        .maj
+        .iter()
+        .map(|m| {
+            let raison = match a.choix_maj {
+                ChoixMaj::DeLaPersonne => Some("pas utilisée : une autre mise à jour (ou aucune) est choisie dans Ryubing"),
+                ChoixMaj::RetireeParLaPersonne => Some("pas utilisée : tu l'as retirée dans Ryubing"),
+                ChoixMaj::DeFrogtend if a.maj.is_none() => Some("pas utilisée : la liste des mises à jour de Ryubing ne se lit pas"),
+                ChoixMaj::DeFrogtend => None,
+            };
+            vu(m, "maj", raison)
+        })
+        .collect();
+    contenus.extend(c.majs_anciennes.iter().map(|m| vu(m, "maj", Some("pas utilisée : une plus récente est là"))));
+    contenus.extend(c.dlc.iter().map(|m| {
+        let n = nom(m);
+        let raison = if a.dlc.contains(&n) {
+            None
+        } else if a.dlc_coupes.contains(&n) {
+            Some("coupé par toi dans Ryubing")
+        } else if a.dlc_retires.contains(&n) {
+            Some("pas utilisé : tu l'as retiré dans Ryubing")
+        } else {
+            Some("pas utilisé : la liste des DLC de Ryubing ne se lit pas")
+        };
+        vu(m, "dlc", raison)
+    }));
+    // Ce qui est à dire : le choix de la personne gardé, les problèmes (jamais jetés), le dossier (hors fichiers
+    // illisibles, montrés à part).
+    let mut remarques: Vec<String> = Vec::new();
+    if a.choix_maj == ChoixMaj::DeLaPersonne {
+        remarques.push("La mise à jour choisie dans Ryubing est gardée : Frogtend ne la remplace pas.".into());
+    }
+    remarques.extend(a.erreurs.iter().cloned());
+    remarques.extend(crate::ryubing::remarques_du_dossier(&crate::switch_nca::ContenusDuJeu { illisibles: vec![], ..c.clone() }));
+    ContenusDuJeu {
+        etat: "ok".into(),
+        systeme: "ryubing".into(),
+        titre_id: Some(format!("{:016X}", c.base)),
+        contenus,
+        ignores: c.illisibles,
+        remarque: (!remarques.is_empty()).then(|| {
+            // Une phrase par ligne, chacune avec sa majuscule (l'interface en fait un paragraphe par ligne).
+            let majuscule = |s: &String| {
+                let mut c = s.chars();
+                c.next().map(|p| p.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+            };
+            remarques.iter().map(majuscule).collect::<Vec<_>>().join("\n")
+        }),
+    }
 }
 
 /// Les contenus additionnels (DLC, avatars…) d'un jeu, disponibles sur ce PC, et ce qui est déjà installé pour ce profil.
@@ -1264,6 +1376,7 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
             systeme: "wiiu".into(),
             titre_id: None,
             ignores: vec![],
+            remarque: None,
             contenus: titres
                 .into_iter()
                 .filter(|t| t.genre != "jeu")
@@ -1276,9 +1389,14 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
                     licence: false,
                     installe: true,
                     dossier: None,
+                    raison: None,
                 })
                 .collect(),
         });
+    }
+    // Ryubing (lot 6) : posés tout seuls au lancement, montrés seulement.
+    if let Some(r) = contenus_ryubing(&app, &noyau, id).await? {
+        return Ok(r);
     }
     match contexte_switch(&app, &noyau, id).await {
         Ok(Some((eden, l))) => {
@@ -1289,11 +1407,12 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
                 systeme: "switch".into(),
                 titre_id: None,
                 ignores: vec![],
+                remarque: None,
                 contenus: l
                     .into_iter()
                     .map(|c| {
                         let d = parent(&c.chemin);
-                        ContenuVu { version: None, installe: lus.iter().any(|x| crate::contenus::meme_dossier(x, &d)), licence: false, id: c.id, nom: c.nom, genre: c.genre, taille: c.taille, dossier: Some(d) }
+                        ContenuVu { version: None, installe: lus.iter().any(|x| crate::contenus::meme_dossier(x, &d)), licence: false, id: c.id, nom: c.nom, genre: c.genre, taille: c.taille, dossier: Some(d), raison: None }
                     })
                     .collect(),
             });
@@ -1315,6 +1434,7 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
         systeme: "ps3".into(),
         titre_id,
         ignores,
+        remarque: None,
         contenus: contenus
             .into_iter()
             .map(|c| ContenuVu {
@@ -1327,6 +1447,7 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
                 taille: c.taille,
                 version: c.version,
                 dossier: None,
+                raison: None,
             })
             .collect(),
     })
@@ -1792,6 +1913,24 @@ pub async fn jeu_jouer(
                             };
                             let _ = app.emit("effet-image", serde_json::json!({ "jeu": id, "message": m }));
                         }
+                    }
+                }
+            }
+            // Ryubing (lot 6, ✅ Seb 16/11 : automatique, sans accord) : la mise à jour la plus récente et les DLC du
+            // dossier du jeu, reconnus à leurs en-têtes, posés dans `games\<base>\` de la personne (Ryubing fermé). Un
+            // échec est noté au journal ; le jeu se lance toujours.
+            if let (Some("ryubing"), Some(d), Ok(p)) = (id_emulateur.as_deref(), dossier_emulateur.clone(), profil_ouvert(&noyau).await) {
+                if let Some(fichier) = noyau.fichier_pour_l_emulateur(id, version.as_deref()).await.ok().flatten() {
+                    let r = tauri::async_runtime::spawn_blocking(move || {
+                        let d = std::path::PathBuf::from(d);
+                        crate::ryubing::preparer_contenus(&d, &crate::ryubing::racine(&d, &p.nom), &fichier)
+                    })
+                    .await
+                    .map_err(|_| Erreur::Disque("La préparation de Ryubing s'est arrêtée brutalement.".into()))?;
+                    match r {
+                        Ok(Some(c)) => noyau.journaliser(&format!("Ryubing : mises à jour et DLC du jeu {id} : {}", c.resume())),
+                        Ok(None) => {}
+                        Err(e) => noyau.journaliser(&format!("Ryubing : mises à jour et DLC du jeu {id} non posés ({e})")),
                     }
                 }
             }
@@ -8024,6 +8163,57 @@ mod tests {
         let ra = serde_json::json!({"emulateur": "retroarch", "alternatives": [{"nom": "Mesen", "emulateur": "mesen"}]});
         assert!(!super::programme_pour_le_conseil(&ra, "Nintendo Entertainment System", r"E:\Mesen\Mesen.exe"), "hors famille d'Eden : jamais");
         assert!(!super::programme_pour_le_conseil(&serde_json::json!({}), s2, lichii));
+    }
+
+    #[test]
+    fn la_fiche_montre_ce_que_ryubing_recevra_sans_rien_ecrire() {
+        // Lot 6 : Ryubing portable, la clé de TEST dans la racine de Seb, le dossier de Zelda fabriqué (switch_nca.rs).
+        let d = tempfile::tempdir().unwrap();
+        let ryu = d.path().join("Ryubing");
+        std::fs::create_dir_all(ryu.join("portable")).unwrap();
+        let racine = crate::ryubing::racine(&ryu, "Seb");
+        std::fs::create_dir_all(racine.join("system")).unwrap();
+        let o: String = (0..32u8).map(|i| format!("{:02x}", i.wrapping_mul(7).wrapping_add(3))).collect();
+        let jeux = d.path().join("Jeux");
+        std::fs::create_dir_all(&jeux).unwrap();
+        let jeu = crate::switch_nca::tests::dossier_de_zelda(&jeux);
+        use super::apercu_ryubing;
+        // Sans clés : dit, rien de deviné.
+        let r = apercu_ryubing(&ryu, "Seb", Some(&jeu));
+        assert!(r.contenus.is_empty() && r.remarque.as_deref().is_some_and(|m| m.contains("clés")), "{:?}", r.remarque);
+        std::fs::write(racine.join("system").join("prod.keys"), format!("header_key = {o}\n")).unwrap();
+        let r = apercu_ryubing(&ryu, "Seb", Some(&jeu));
+        assert_eq!((r.etat.as_str(), r.systeme.as_str(), r.titre_id.as_deref()), ("ok", "ryubing", Some("01007EF00011E000")));
+        let vus: Vec<(&str, bool, Option<&str>)> = r.contenus.iter().map(|c| (c.genre.as_str(), c.installe, c.raison.as_deref())).collect();
+        assert_eq!(
+            vus,
+            [("maj", true, None), ("maj", false, Some("pas utilisée : une plus récente est là")), ("dlc", true, None), ("dlc", true, None)]
+        );
+        // Jamais un numéro de version brut montré (v786432 n'est pas la version que la console affiche).
+        assert!(r.contenus.iter().all(|c| c.version.is_none()));
+        assert_eq!(r.ignores, ["abime.nsp"]);
+        assert!(r.remarque.is_none());
+        assert!(!racine.join("games").exists(), "un aperçu n'écrit rien");
+        // Après une partie, la personne coupe le DLC 1 et retire la mise à jour dans Ryubing : dit tel quel.
+        crate::ryubing::preparer_racine(&ryu, &racine).unwrap();
+        std::fs::write(racine.join("system").join("prod.keys"), format!("header_key = {o}\n")).unwrap();
+        crate::ryubing::preparer_contenus(&ryu, &racine, &jeu).unwrap().unwrap();
+        let dossier = racine.join("games").join("01007ef00011e000");
+        let mut l: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dossier.join("dlc.json")).unwrap()).unwrap();
+        l[0]["dlc_nca_list"][0]["is_enabled"] = false.into();
+        std::fs::write(dossier.join("dlc.json"), l.to_string()).unwrap();
+        std::fs::write(dossier.join("updates.json"), br#"{"selected":"","paths":[]}"#).unwrap();
+        let r = apercu_ryubing(&ryu, "Seb", Some(&jeu));
+        let raisons: Vec<Option<&str>> = r.contenus.iter().map(|c| c.raison.as_deref()).collect();
+        assert_eq!(raisons, [Some("pas utilisée : tu l'as retirée dans Ryubing"), Some("pas utilisée : une plus récente est là"), Some("coupé par toi dans Ryubing"), None]);
+        // Un problème n'est jamais jeté : il est dit sur la fiche.
+        std::fs::write(dossier.join("dlc.json"), b"{abime").unwrap();
+        let r = apercu_ryubing(&ryu, "Seb", Some(&jeu));
+        assert!(r.remarque.as_deref().is_some_and(|m| m.contains("La liste des DLC de Ryubing ne se lit pas")), "{:?}", r.remarque);
+        assert!(r.contenus.iter().filter(|c| c.genre == "dlc").all(|c| c.raison.as_deref() == Some("pas utilisé : la liste des DLC de Ryubing ne se lit pas")));
+        // Pas installé par Frogtend (pas portable) : dit.
+        std::fs::remove_dir_all(ryu.join("portable")).unwrap();
+        assert!(apercu_ryubing(&ryu, "Seb", Some(&jeu)).remarque.is_some_and(|m| m.contains("pas été installé par Frogtend")));
     }
 
     #[test]

@@ -1,10 +1,11 @@
 <script lang="ts">
-  // 📦 Les contenus additionnels d'un jeu du PC (PS3 d'abord) : trouvés sur le disque, cochés par la personne,
-  // installés seulement après son oui (taille annoncée).
+  // 📦 Les contenus additionnels d'un jeu du PC : trouvés sur le disque. PS3 et Eden : cochés par la personne, installés
+  // seulement après son oui (taille annoncée). Ryubing (lot 6, Seb 16/11) : utilisés tout seuls à chaque partie —
+  // montrés ici, sans rien demander. Wii U : inclus dans le .wua.
   import { api, taille } from '$lib/api';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
-  import { cochesCoherentes, libelleGenre, nomCourt, resume, type ContenusDuJeu } from './contenus';
+  import { cochesCoherentes, libelleGenre, lignesRemarque, nomCourt, raisonNonPose, resume, resumeAutomatique, type ContenusDuJeu } from './contenus';
 
   let { id, titre }: { id: number; titre: string } = $props();
 
@@ -77,7 +78,41 @@
 </script>
 
 {#if donnees?.etat === 'emulateur'}
-  <p class="muted">📦 Règle {donnees.systeme === 'switch' ? 'Eden' : 'RPCS3'} (⚙ Options ▸ Émulateurs) pour gérer les mises à jour et DLC de ce jeu.</p>
+  <p class="muted">📦 Règle {donnees.systeme === 'switch' ? 'Eden ou Ryubing' : 'RPCS3'} (⚙ Options ▸ Émulateurs) pour gérer les mises à jour et DLC de ce jeu.</p>
+{:else if donnees?.etat === 'ok' && donnees.systeme === 'ryubing' && (donnees.contenus.length || donnees.ignores?.length || donnees.remarque)}
+  <!-- Ryubing (lot 6, Seb 16/11) : tout est utilisé seul au lancement — on montre, on ne demande rien. -->
+  <div class="contenus cx-block">
+    {#if donnees.contenus.length}
+      <button class="btn" aria-expanded={ouvert} onclick={() => (ouvert = !ouvert)}>
+        📦 Mises à jour et DLC : {resumeAutomatique(donnees.contenus)} {ouvert ? '▴' : '▾'}
+      </button>
+    {/if}
+    {#each lignesRemarque(donnees.remarque) as l (l)}<p class="muted">{l}</p>{/each}
+    {#if donnees.ignores?.length}
+      <p class="muted">
+        ⚠ {donnees.ignores.length} fichier(s) du dossier du jeu illisible(s), peut-être abîmé(s) au téléchargement : {donnees.ignores
+          .slice(0, 3)
+          .map((n) => nomCourt(n, titre))
+          .join(', ')}{donnees.ignores.length > 3 ? '…' : ''}. Pour les réparer : retire le jeu de ta ludothèque puis remets-le (ses parties sont gardées).
+      </p>
+    {/if}
+    {#if ouvert && donnees.contenus.length}
+      <p class="muted">Frogtend les donne à Ryubing tout seul, à chaque partie (rien n’est copié) : la mise à jour la plus récente et tous les DLC rangés à côté du jeu.</p>
+      <ul>
+        {#each donnees.contenus as c (c.id)}
+          <li>
+            {#if c.installe}
+              <span title="Utilisé par Ryubing à chaque partie">✅</span>
+            {:else}
+              <span title={raisonNonPose(c)}>—</span>
+            {/if}
+            <span class="nom">{nomCourt(c.nom, titre)}</span>
+            <span class="muted">{libelleGenre(c.genre)} · {taille(c.taille)}{c.installe ? '' : ` · ${raisonNonPose(c)}`}</span>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </div>
 {:else if donnees?.etat === 'ok' && (donnees.contenus.length || donnees.ignores?.length)}
   <div class="contenus cx-block">
     {#if donnees.ignores?.length}

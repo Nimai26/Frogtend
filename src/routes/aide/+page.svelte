@@ -78,11 +78,18 @@
     <h2>📦 Mises à jour et DLC</h2>
     <p>
       Dans le panneau d’un jeu installé, <strong>📦 Contenus additionnels</strong> montre ce que Frogtend a trouvé sur ton
-      disque pour ce jeu. <strong>Rien ne s’installe sans ton oui</strong> : tu coches, tu confirmes.
+      disque pour ce jeu. <strong>Rien ne s’installe sans ton oui</strong> : tu coches, tu confirmes (sauf avec Ryubing,
+      où tout se fait seul : voir plus bas).
     </p>
     <ul>
       <li><strong>PS3 (RPCS3)</strong> : les .pkg et leurs licences (.rap) s’installent par RPCS3, dans le compte de ton profil.</li>
       <li><strong>Switch (Eden)</strong> : rien n’est copié ; Frogtend ajoute le dossier à la liste qu’Eden lit. Ferme Eden avant.</li>
+      <li>
+        <strong>Switch (Ryubing)</strong>, quand Ryubing a été installé par Frogtend : <strong>tout se fait seul</strong>, à
+        chaque partie, sans rien te demander : la mise à jour la plus récente et les DLC rangés dans le dossier du jeu sont
+        donnés à Ryubing (rien n’est copié). Un DLC ou une mise à jour que tu retires ou coupes dans Ryubing reste comme tu
+        l’as laissé ; une autre mise à jour que tu y choisis est gardée.
+      </li>
       <li><strong>Wii U (Cemu)</strong> : un .wua contient déjà ses mises à jour et DLC ; Frogtend les montre, il n’y a rien à faire.</li>
       <li>À l’import, une mise à jour ou un DLC n’est jamais pris pour un jeu.</li>
     </ul>

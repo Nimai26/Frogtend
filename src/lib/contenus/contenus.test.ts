@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cochesCoherentes, libelleGenre, nomCourt, resume, type ContenuVu } from './contenus';
+import { cochesCoherentes, libelleGenre, lignesRemarque, nomCourt, raisonNonPose, resume, resumeAutomatique, type ContenuVu } from './contenus';
 
 describe('les contenus additionnels', () => {
   it('se présentent simplement', () => {
@@ -12,6 +12,22 @@ describe('les contenus additionnels', () => {
     const c = { id: 'a', nom: 'x', genre: 'dlc', taille: 1, licence: false, installe: false };
     expect(resume([c, { ...c, id: 'b', installe: true }])).toBe('2 disponible(s), 1 installé(s)');
     expect(resume([c])).toBe('1 disponible(s)');
+  });
+
+  it('Ryubing : se résument sans rien demander', () => {
+    const c: ContenuVu = { id: 'a', nom: 'x', genre: 'dlc', taille: 1, licence: false, installe: true };
+    const vieille: ContenuVu = { ...c, id: 'b', genre: 'maj', installe: false, version: 'v65536' };
+    expect(resumeAutomatique([c, { ...c, id: 'c' }])).toBe('2 utilisé(s) à chaque partie');
+    expect(resumeAutomatique([c, vieille])).toBe('1 utilisé(s) à chaque partie, 1 non utilisé(s)');
+    // La cause vient du cœur (forme réelle de `apercu_ryubing`), jamais devinée.
+    expect(raisonNonPose({ ...vieille, raison: 'pas utilisée : une plus récente est là' })).toBe('pas utilisée : une plus récente est là');
+    expect(raisonNonPose({ ...c, installe: false, raison: 'coupé par toi dans Ryubing' })).toBe('coupé par toi dans Ryubing');
+    expect(raisonNonPose({ ...c, installe: false, raison: null })).toBe('pas utilisé');
+    expect(lignesRemarque('La mise à jour choisie dans Ryubing est gardée.\nDLC non utilisés (…)\n')).toEqual([
+      'La mise à jour choisie dans Ryubing est gardée.',
+      'DLC non utilisés (…)',
+    ]);
+    expect(lignesRemarque(null)).toEqual([]);
   });
 
   it('cochent les mises à jour dans l’ordre de la chaîne', () => {

@@ -1,6 +1,6 @@
 [package]
 name = "frogtend"
-version = "0.202.1"
+version = "0.203.0"
 description = "Frogtend — la ludothèque de la maison, servie par Firehouse"
 authors = ["Nimai"]
 license = "Apache-2.0"
@@ -46,6 +46,9 @@ nod = "1.4"
 flate2 = "1"
 tauri-plugin-global-shortcut = "2"
 yaml-rust2 = "0.13.0"
+# Lire l'en-tête des NCA de la Switch (AES-128-XTS, switch_nca.rs) : déjà dans l'arbre des dépendances (par `nod`),
+# rien de plus à télécharger.
+aes = "0.8"
 
 [target.'cfg(windows)'.dependencies]
 # SDL3 compilé DANS le programme (décision de Seb, 30/09 : « SDL3 embarqué, aucune DLL ») : manettes PlayStation,

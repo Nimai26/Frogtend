@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.203.0 — 📦 Ryubing : mises à jour et DLC utilisés tout seuls
+
+- Avec Ryubing, la mise à jour la plus récente et les DLC rangés à côté d'un jeu Switch sont utilisés automatiquement,
+  à chaque partie, sans rien demander (ta décision du 16/11). Frogtend vérifie chaque fichier en lisant son contenu
+  (jamais d'après son nom) : seul ce qui appartient vraiment au jeu est utilisé.
+- Ce que tu retires ou coupes toi-même dans Ryubing reste comme tu l'as laissé.
+- La fiche du jeu (📦 Mises à jour et DLC) montre ce qui est utilisé, et pourquoi un fichier ne l'est pas.
+- Corrigé : les DLC de Zelda Breath of the Wild (fichiers « T.L.O.Z.BOTW… ») n'étaient pas reconnus comme ceux du jeu.
+- Plus sûr : Frogtend reconnaît les programmes d'une partie à leur heure de démarrage exacte (et plus à la seconde
+  près) ; un autre programme qui reprenait le même numéro ne peut plus faire croire que la partie continue.
+
 ## 0.202.1 — Ryubing : le son et la photo du menu partent vraiment
 
 - Corrigé : avec Ryubing, 🔇 Son et 📷 Photo du menu en jeu ne faisaient rien, sans le dire, et la fenêtre de Frogtend
