@@ -504,3 +504,24 @@ API. Ajouts COMPATIBLES au détail `/jeu/{id}` :
 Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a été RÉUNIE à celle du même jeu
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
 sont pas redirigées (une indication « fusionné dans N » serait un ajout 1.14 — à demander à Seb si gênant).
+
+### 1.42 (16/11, Firehouse 3.217.0, en service) — mises à jour et DLC Switch : ce que Firehouse a, et l'ENVOI (besoin 51)
+Reçu par message de la session Firehouse (détail : son `docs/frogtend/BRIEF-AGENT-FROGTEND.md` § « 1.42 », formes dans
+son EXEMPLES-API-JEUX-V1.md). Ajout compatible. Ouvert à tous les membres (décision de Seb). Jamais de clés, de
+sauvegardes ni de jeux de base par ici.
+1. `GET /api/jeux/v1/switch/{tid_base}/contenus` (title id du JEU DE BASE, 16 hex) → `{tid_base, jeu (media_id|null),
+   majs[], dlc[]}` ; chaque contenu : `tid, version` (la VRAIE, lue dans le méta-contenu avec les clés), `taille, sha256,
+   sha1, format (nsp|nsz), nom, fichier` (chemin à télécharger, `Range`). Une seule MAJ (la plus récente). Ticket
+   personnel jamais servi ; fiche cachée pour le jeton → rien. Marche aussi sans fiche. Au 16/11 : 11 MAJ, 10 DLC.
+2. Avant d'envoyer : TOUJOURS consulter la route 1 ; même MAJ (ou plus récente) ou même DLC déjà là → ne rien envoyer.
+3. `POST /api/jeux/v1/switch/envois {tid, role (maj|dlc), version, nom (.nsp|.nsz), taille, sha256 (fichier entier),
+   media_id?}` → `{deja_la: true, motif}` ou `{envoi, recu, taille, etat: "en_cours"}`. `media_id` facultatif si la route 1
+   donne `jeu` (sinon 404 « media_id nécessaire »). Même POST (même sha256) = reprise. 400 annonce fausse / jeu de base /
+   fiche pas Switch ; 404 fiche inconnue ou cachée ; 507 plafonds (32 Go par fichier, 100 Go d'envois en cours par personne).
+4. `PUT /api/jeux/v1/switch/envois/{id}` : morceaux de 8 Mo AU PLUS, `Content-Range: bytes début-fin/total` ; 409 `{recu}`
+   = reprendre à `recu` ; `HEAD` → `X-Recu`, `X-Etat` ; le dernier morceau rend `etat: "verification"`.
+5. `GET /api/jeux/v1/switch/envois/{id}` → `{etat: en_cours | verification | range | refuse | deja_la, motif, recu,
+   taille}` ; interroger toutes les ~10 s pendant « verification » (sha256, conteneur lu avec les clés : title id et rôle
+   conformes, ticket commun, version supérieure, jeu de base de la fiche). « range » = servi à tous aussitôt (route 1 et
+   `fichiers[]` de la fiche, rôle maj/dlc). Envoi sans nouvelles 7 jours = abandonné.
+Aucun essai réel d'envoi fait par Firehouse : le premier sera celui de Frogtend (à lui rapporter).
