@@ -828,8 +828,6 @@ pub struct ContenuVu {
     pub licence: bool,
     /// Installé (et sa licence posée dans le compte de CE profil s'il en a une) ; Switch : son dossier est lu par Eden.
     pub installe: bool,
-    /// Switch : le dossier qui sera ajouté à Eden (tout son contenu devient visible).
-    pub dossier: Option<String>,
     /// Une mise à jour PS3 : sa version (« 01.05 », contrat 1.31), dans l'ordre d'installation.
     pub version: Option<String>,
     /// Ryubing : pourquoi ce contenu trouvé n'est pas utilisé (la vraie cause, en mots simples).
@@ -841,7 +839,8 @@ pub struct ContenuVu {
 pub struct ContenusDuJeu {
     /// `aucun` (console pas encore gérée), `emulateur` (pas d'émulateur réglé), `ok`.
     pub etat: String,
-    /// `ps3` (RPCS3 installe chaque paquet) ou `switch` (Eden lit un dossier).
+    /// `ps3` (RPCS3 installe chaque paquet), `eden` et `ryubing` (donnés tout seuls au lancement, ✅ Seb 16/11), `wiiu`,
+    /// `switch` (aucun émulateur Switch utilisable réglé).
     pub systeme: String,
     pub titre_id: Option<String>,
     pub contenus: Vec<ContenuVu>,
@@ -1210,46 +1209,93 @@ async fn contexte_contenus(
     Ok(Some((rpcs3, compte, titre_id, contenus, vec![])))
 }
 
-/// Switch : les mises à jour et DLC d'un jeu trouvés sur ce PC, et l'Eden qui les lira.
-async fn contexte_switch(app: &AppHandle, noyau: &Noyau, id: i64) -> Resultat<Option<(std::path::PathBuf, Vec<crate::contenus::ContenuSwitch>)>> {
+/// Switch : les dossiers où chercher les mises à jour et DLC d'un jeu, en plus du dossier de son fichier (regardé en
+/// premier, avec ses sous-dossiers) : le dossier du jeu dans la ludothèque, son dossier d'installation et les
+/// emplacements réglés de la plateforme (⚙ Options ▸ 📁 Emplacements) — la même liste que l'aperçu d'avant le 16/11.
+/// Le rattachement se fait toujours par l'identifiant lu dans les en-têtes (switch_nca.rs), jamais par le titre.
+async fn dossiers_switch(app: &AppHandle, noyau: &Noyau, id: i64) -> Vec<std::path::PathBuf> {
+    let Ok(j) = noyau.jeu_visible(id).await else { return vec![] };
+    let mut dossiers: Vec<std::path::PathBuf> = vec![std::path::PathBuf::from(&j.dossier)];
+    if let Some(i) = &j.installation {
+        dossiers.push(std::path::PathBuf::from(&i.dossier));
+    }
+    let e = emplacements(app);
+    dossiers.extend(e.systemes.get(&j.plateforme).cloned().unwrap_or_default().into_iter().map(std::path::PathBuf::from));
+    dossiers.retain(|d| !d.as_os_str().is_empty());
+    dossiers.sort();
+    dossiers.dedup();
+    dossiers
+}
+
+/// Switch lancée par Eden (✅ Seb 16/11 : automatique) : ce que Frogtend donne TOUT SEUL à Eden à chaque lancement (le
+/// dossier du jeu, s'il contient sa mise à jour ou ses DLC), montré sans rien écrire. `None` : pas un jeu Switch ;
+/// `Err(Reglage)` : aucun émulateur Switch réglé, ou un autre qu'Eden et Ryubing (Ryubing est traité avant).
+async fn contenus_eden(app: &AppHandle, noyau: &Noyau, id: i64) -> Resultat<Option<ContenusDuJeu>> {
     let j = noyau.jeu_visible(id).await?;
     if !j.plateforme.eq_ignore_ascii_case("Nintendo Switch") {
         return Ok(None);
     }
     let Some((programme, _)) = emulateur_regle(app, &j.plateforme, id, None) else { return Err(Erreur::Reglage("Aucun Eden réglé pour la Switch.".into())) };
-    // Seul Eden lit une liste de dossiers de contenus (`qt-config.ini`) : un autre émulateur Switch (Ryubing, Citron…)
-    // n'y verrait rien, et Frogtend écrirait un fichier inutile chez lui.
+    // Seul Eden lit une liste de dossiers de contenus (`qt-config.ini`) : un autre émulateur Switch (Citron…) n'y
+    // verrait rien, et Frogtend écrirait un fichier inutile chez lui.
     let p = std::path::Path::new(&programme);
     if !p.file_name().is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case("eden.exe")) {
-        // Un RÉGLAGE à changer (pas un refus) : l'aperçu montre alors « Règle Eden ou Ryubing… » au lieu de rien
-        // (Ryubing est traité avant, par `contenus_ryubing`).
+        // Un RÉGLAGE à changer (pas un refus) : l'aperçu montre alors « Règle Eden ou Ryubing… » au lieu de rien.
         return Err(Erreur::Reglage("Frogtend sait donner les mises à jour et DLC à Eden et à Ryubing seulement : choisis l'un d'eux comme émulateur de la Switch pour ce jeu.".into()));
     }
     let eden = p.parent().map(std::path::PathBuf::from).unwrap_or_default();
-    let mut dossiers: Vec<std::path::PathBuf> = vec![std::path::PathBuf::from(&j.dossier)];
-    let mut fichier = None;
-    if let Some(i) = &j.installation {
-        dossiers.push(std::path::PathBuf::from(&i.dossier));
-        fichier = i.fichier_du_jeu.as_ref().map(|f| std::path::Path::new(&i.dossier).join(f));
+    let fichier = noyau.fichier_pour_l_emulateur(id, None).await.ok().flatten();
+    let donnees = noyau.dossier.clone();
+    let ailleurs = dossiers_switch(app, noyau, id).await;
+    let r = tauri::async_runtime::spawn_blocking(move || apercu_eden(&donnees, &eden, fichier.as_deref(), &ailleurs))
+        .await
+        .map_err(|_| Erreur::Disque("La lecture s'est arrêtée brutalement.".into()))?;
+    Ok(Some(r))
+}
+
+/// L'aperçu des contenus Eden d'un jeu (`fichier` : celui qu'Eden lancera ; `ailleurs` : les autres dossiers où
+/// chercher ; `donnees` : celles de Frogtend, pour la preuve des dossiers posés). Rien n'est écrit chez Eden (seul le
+/// cache des fichiers lus de Frogtend). Les mêmes mots que pour Ryubing.
+fn apercu_eden(donnees: &std::path::Path, eden: &std::path::Path, fichier: Option<&std::path::Path>, ailleurs: &[std::path::PathBuf]) -> ContenusDuJeu {
+    use crate::eden::LectureContenus;
+    let dire = |m: &str| ContenusDuJeu { etat: "ok".into(), systeme: "eden".into(), remarque: Some(m.into()), ..Default::default() };
+    let Some(f) = fichier else { return dire("Le fichier de ce jeu est introuvable : aucune mise à jour ni DLC n'est utilisé.") };
+    let c = match crate::eden::lire_contenus(eden, f, ailleurs) {
+        LectureContenus::Lus(c) => c,
+        LectureContenus::PasPortable => return dire("Eden n'a pas été installé par Frogtend : ses mises à jour et DLC se règlent dans Eden."),
+        LectureContenus::SansCles => {
+            return dire(
+                "Eden n'a pas encore les clés de la console. Lance ce jeu une fois (▶ Jouer) : Frogtend te proposera de les poser ; ses mises à jour et DLC seront ensuite utilisés tout seuls.",
+            )
+        }
+        LectureContenus::Illisible => return dire("Frogtend n'arrive pas à lire le fichier de ce jeu : aucune mise à jour ni DLC n'est utilisé."),
+    };
+    let plan = crate::eden::plan(donnees, eden, &std::fs::read_to_string(crate::contenus::ini_eden(eden)).unwrap_or_default(), &c);
+    // Un contenu dont le dossier (ou une copie) a été retiré d'Eden par la personne n'est pas utilisé.
+    let retire = |m: &crate::switch_nca::ContenuLu| plan.refuse(m);
+    let vu = |m: &crate::switch_nca::ContenuLu, genre: &str, raison: Option<&str>| ContenuVu {
+        id: m.chemin.to_string_lossy().to_string(),
+        nom: crate::switch_nca::nom_a_montrer(&m.chemin),
+        genre: genre.into(),
+        taille: std::fs::metadata(&m.chemin).map(|x| x.len()).unwrap_or(0),
+        licence: false,
+        installe: raison.is_none(),
+        version: None,
+        raison: raison.map(String::from),
+    };
+    let retire_maj = "pas utilisée : tu l'as retirée d'Eden";
+    let mut contenus: Vec<ContenuVu> = c.maj.iter().map(|m| vu(m, "maj", retire(m).then_some(retire_maj))).collect();
+    contenus.extend(c.majs_anciennes.iter().map(|m| vu(m, "maj", Some("pas utilisée : une plus récente est là"))));
+    contenus.extend(c.dlc.iter().map(|m| vu(m, "dlc", retire(m).then_some("pas utilisé : tu l'as retiré d'Eden"))));
+    let remarques = crate::eden::remarques_contenus(&c, &plan);
+    ContenusDuJeu {
+        etat: "ok".into(),
+        systeme: "eden".into(),
+        titre_id: Some(format!("{:016X}", c.base)),
+        contenus,
+        ignores: c.illisibles,
+        remarque: (!remarques.is_empty()).then(|| remarques.join("\n")),
     }
-    let e = emplacements(app);
-    dossiers.extend(e.systemes.get(&j.plateforme).cloned().unwrap_or_default().into_iter().map(std::path::PathBuf::from));
-    dossiers.sort();
-    dossiers.dedup();
-    let titre = j.titre.clone();
-    let cles = crate::contenus::cles_eden(&eden);
-    let l = tauri::async_runtime::spawn_blocking(move || {
-        let mut l: Vec<crate::contenus::ContenuSwitch> = dossiers.iter().filter(|d| d.is_dir()).flat_map(|d| crate::contenus::chercher_switch(d)).collect();
-        l.sort_by(|a, b| a.chemin.cmp(&b.chemin));
-        l.dedup_by(|a, b| a.chemin == b.chemin);
-        // L'identifiant du jeu : celui de son fichier s'il le porte, sinon celui lu dans ses en-têtes avec les clés
-        // d'Eden (un .xci ne le dit pas autrement) ; sans clés, le titre, comme avant.
-        let id_jeu = fichier.as_deref().and_then(|f| crate::contenus::id_du_jeu_switch(f, cles.as_deref()));
-        crate::contenus::switch_du_jeu(&l, id_jeu, &titre).into_iter().cloned().collect::<Vec<_>>()
-    })
-    .await
-    .map_err(|_| Erreur::Disque("La recherche s'est arrêtée brutalement.".into()))?;
-    Ok(Some((eden, l)))
 }
 
 /// Switch lancée par Ryubing (lot 6, ✅ Seb 16/11) : ce que Frogtend pose TOUT SEUL à chaque lancement (la mise à jour
@@ -1267,7 +1313,8 @@ async fn contenus_ryubing(app: &AppHandle, noyau: &Noyau, id: i64) -> Resultat<O
     let d = std::path::Path::new(&programme).parent().map(std::path::PathBuf::from).unwrap_or_default();
     let profil = profil_ouvert(noyau).await?.nom;
     let fichier = noyau.fichier_pour_l_emulateur(id, None).await.ok().flatten();
-    let r = tauri::async_runtime::spawn_blocking(move || apercu_ryubing(&d, &profil, fichier.as_deref()))
+    let ailleurs = dossiers_switch(app, noyau, id).await;
+    let r = tauri::async_runtime::spawn_blocking(move || apercu_ryubing(&d, &profil, fichier.as_deref(), &ailleurs))
         .await
         .map_err(|_| Erreur::Disque("La lecture s'est arrêtée brutalement.".into()))?;
     Ok(Some(r))
@@ -1276,7 +1323,7 @@ async fn contenus_ryubing(app: &AppHandle, noyau: &Noyau, id: i64) -> Resultat<O
 /// L'aperçu des contenus Ryubing d'un jeu (`fichier` : celui que `-f` lancera) pour la personne `profil`. Rien n'est
 /// écrit. Jamais de numéro de version brut (v786432 n'est pas la « 1.5.0 » que montre la console) ; la vraie cause
 /// de chaque contenu non utilisé.
-fn apercu_ryubing(d: &std::path::Path, profil: &str, fichier: Option<&std::path::Path>) -> ContenusDuJeu {
+fn apercu_ryubing(d: &std::path::Path, profil: &str, fichier: Option<&std::path::Path>, ailleurs: &[std::path::PathBuf]) -> ContenusDuJeu {
     use crate::ryubing::ChoixMaj;
     let dire = |m: &str| ContenusDuJeu { etat: "ok".into(), systeme: "ryubing".into(), remarque: Some(m.into()), ..Default::default() };
     if !crate::ryubing::portable(d) {
@@ -1289,7 +1336,7 @@ fn apercu_ryubing(d: &std::path::Path, profil: &str, fichier: Option<&std::path:
             "Ryubing n'a pas encore les clés de la console. Lance ce jeu une fois (▶ Jouer) : Frogtend te proposera de les poser ; ses mises à jour et DLC seront ensuite utilisés tout seuls.",
         );
     };
-    let Ok(Some(c)) = crate::switch_nca::contenus_pour(f, &cle) else {
+    let Ok(Some(c)) = crate::switch_nca::contenus_pour_dans(f, &cle, ailleurs, Some(&crate::ryubing::cache_contenus(d))) else {
         return dire("Frogtend n'arrive pas à lire le fichier de ce jeu : aucune mise à jour ni DLC n'est utilisé.");
     };
     let a = crate::ryubing::poser_contenus(d, &racine, &c, false).unwrap_or_default();
@@ -1300,7 +1347,6 @@ fn apercu_ryubing(d: &std::path::Path, profil: &str, fichier: Option<&std::path:
         taille: std::fs::metadata(&m.chemin).map(|x| x.len()).unwrap_or(0),
         licence: false,
         installe: raison.is_none(),
-        dossier: None,
         version: None,
         raison: raison.map(String::from),
     };
@@ -1388,7 +1434,6 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
                     taille: 0,
                     licence: false,
                     installe: true,
-                    dossier: None,
                     raison: None,
                 })
                 .collect(),
@@ -1398,25 +1443,9 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
     if let Some(r) = contenus_ryubing(&app, &noyau, id).await? {
         return Ok(r);
     }
-    match contexte_switch(&app, &noyau, id).await {
-        Ok(Some((eden, l))) => {
-            let lus = crate::contenus::dossiers_externes_eden(&std::fs::read_to_string(crate::contenus::ini_eden(&eden)).unwrap_or_default());
-            let parent = |c: &str| std::path::Path::new(c).parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
-            return Ok(ContenusDuJeu {
-                etat: "ok".into(),
-                systeme: "switch".into(),
-                titre_id: None,
-                ignores: vec![],
-                remarque: None,
-                contenus: l
-                    .into_iter()
-                    .map(|c| {
-                        let d = parent(&c.chemin);
-                        ContenuVu { version: None, installe: lus.iter().any(|x| crate::contenus::meme_dossier(x, &d)), licence: false, id: c.id, nom: c.nom, genre: c.genre, taille: c.taille, dossier: Some(d), raison: None }
-                    })
-                    .collect(),
-            });
-        }
+    // Eden (✅ Seb 16/11) : le dossier du jeu donné tout seul au lancement, montré seulement.
+    match contenus_eden(&app, &noyau, id).await {
+        Ok(Some(r)) => return Ok(r),
         Ok(None) => {}
         Err(Erreur::Reglage(_)) => return Ok(ContenusDuJeu { etat: "emulateur".into(), systeme: "switch".into(), ..Default::default() }),
         Err(e) => return Err(e),
@@ -1446,7 +1475,6 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
                 genre: c.genre,
                 taille: c.taille,
                 version: c.version,
-                dossier: None,
                 raison: None,
             })
             .collect(),
@@ -1515,51 +1543,6 @@ pub async fn decompresser_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) 
 /// (`--headless --installpkg`, qui se ferme seul), sa licence dans le compte RPCS3 de CE profil.
 #[tauri::command]
 pub async fn contenus_installer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, choisis: Vec<String>) -> Resultat<BilanContenus> {
-    // Switch : Eden lit les dossiers des contenus choisis (ajoutés à sa liste ; rien n'est copié).
-    if let Some((eden, l)) = contexte_switch(&app, &noyau, id).await? {
-        exiger_emulateur_pour_ecrire(&app, &noyau, &eden.join("eden.exe"))?;
-        // Eden en mode portable (son dossier `user` à côté de lui) : sinon il lit sa configuration ailleurs
-        // (`%APPDATA%\eden`) et la liste écrite ici ne servirait à rien, malgré une relecture « réussie ».
-        if !eden.join("user").is_dir() {
-            return Err(Erreur::Refus(
-                "Cet Eden range ses réglages hors de son dossier : Frogtend ne peut pas lui donner les contenus. Installe Eden par Frogtend (⚙ Options ▸ Émulateurs) pour qu'il le fasse.".into(),
-            ));
-        }
-        let dossiers: Vec<String> = {
-            let mut d: Vec<String> = l
-                .iter()
-                .filter(|c| choisis.contains(&c.id))
-                .filter_map(|c| std::path::Path::new(&c.chemin).parent().map(|p| p.to_string_lossy().to_string()))
-                .collect();
-            d.sort();
-            d.dedup();
-            d
-        };
-        // Eden ouvert réécrirait son fichier en quittant (la liste ajoutée disparaîtrait) : il doit être fermé.
-        if !crate::lancement::processus_du_dossier(&eden).is_empty() {
-            return Err(Erreur::Refus("Eden est ouvert : ferme-le (ou quitte ta partie), puis recommence.".into()));
-        }
-        // Les dossiers d'anciens jeux retirés qui attendaient qu'Eden soit fermé partent d'abord.
-        if let Err(e) = crate::contenus::ranger_dossiers_eden(&noyau.dossier, None, &|d| !crate::lancement::processus_du_dossier(d).is_empty()) {
-            noyau.journaliser(&format!("contenus Switch : liste d'Eden pas rangée ({e})"));
-        }
-        let ini = crate::contenus::ini_eden(&eden);
-        let texte = std::fs::read_to_string(&ini).unwrap_or_default();
-        let avant = crate::contenus::dossiers_externes_eden(&texte);
-        let apres = crate::contenus::ajouter_dossiers_eden(&texte, &dossiers);
-        crate::emulateurs_profils::remplacer_config(&eden, &ini, &apres)?;
-        // Vérifier le résultat : les dossiers sont bien dans la liste relue.
-        let relus = crate::contenus::dossiers_externes_eden(&std::fs::read_to_string(&ini).unwrap_or_default());
-        let manquants: Vec<(String, String)> =
-            dossiers.iter().filter(|d| !relus.iter().any(|r| crate::contenus::meme_dossier(r, d))).map(|d| (d.clone(), "pas enregistré dans Eden".to_string())).collect();
-        // La preuve de ce que Frogtend a posé (pour le retirer avec le jeu), seulement les dossiers bien relus.
-        let poses: Vec<String> = dossiers.iter().filter(|d| relus.iter().any(|r| crate::contenus::meme_dossier(r, d))).cloned().collect();
-        if let Err(e) = crate::contenus::noter_et_ecrire_eden(&noyau.dossier, &eden, &avant, &poses, id) {
-            noyau.journaliser(&format!("contenus Switch : preuve des dossiers non notée ({e})"));
-        }
-        noyau.journaliser(&format!("contenus Switch : {} dossier(s) ajouté(s) à Eden", dossiers.len() - manquants.len()));
-        return Ok(BilanContenus { deja: 0, installes: l.iter().filter(|c| choisis.contains(&c.id)).count() - manquants.len().min(choisis.len()), refuses: manquants });
-    }
     let (rpcs3, _, _, contenus, _) =
         contexte_contenus(&app, &noyau, id).await?.ok_or_else(|| Erreur::Refus("Ce jeu n'a pas de contenus gérés par Frogtend.".into()))?;
     let programme = emulateur_regle(&app, &noyau.registre().jeu(id)?.map(|j| j.plateforme).unwrap_or_default(), id, None)
@@ -1921,16 +1904,47 @@ pub async fn jeu_jouer(
             // échec est noté au journal ; le jeu se lance toujours.
             if let (Some("ryubing"), Some(d), Ok(p)) = (id_emulateur.as_deref(), dossier_emulateur.clone(), profil_ouvert(&noyau).await) {
                 if let Some(fichier) = noyau.fichier_pour_l_emulateur(id, version.as_deref()).await.ok().flatten() {
+                    let ailleurs = dossiers_switch(&app, &noyau, id).await;
                     let r = tauri::async_runtime::spawn_blocking(move || {
                         let d = std::path::PathBuf::from(d);
-                        crate::ryubing::preparer_contenus(&d, &crate::ryubing::racine(&d, &p.nom), &fichier)
+                        crate::ryubing::preparer_contenus_dans(&d, &crate::ryubing::racine(&d, &p.nom), &fichier, &ailleurs)
                     })
                     .await
                     .map_err(|_| Erreur::Disque("La préparation de Ryubing s'est arrêtée brutalement.".into()))?;
                     match r {
-                        Ok(Some(c)) => noyau.journaliser(&format!("Ryubing : mises à jour et DLC du jeu {id} : {}", c.resume())),
+                        Ok(Some(c)) => {
+                            for n in &c.notes {
+                                noyau.journaliser(&format!("Ryubing : jeu {id} : {n}"));
+                            }
+                            noyau.journaliser(&format!("Ryubing : mises à jour et DLC du jeu {id} : {}", c.resume()));
+                        }
                         Ok(None) => {}
                         Err(e) => noyau.journaliser(&format!("Ryubing : mises à jour et DLC du jeu {id} non posés ({e})")),
+                    }
+                }
+            }
+            // Eden (✅ Seb 16/11 : automatique partout, sans accord) : chaque dossier qui contient la mise à jour ou un
+            // DLC de CE jeu (dossier du jeu, sous-dossiers, installation, emplacements de la Switch ; lus dans leurs
+            // en-têtes avec les clés d'Eden), ajouté UNE fois à sa liste de contenus externes — Eden fermé (il réécrit ses réglages en quittant), fichier mis à l'abri, preuve notée.
+            // Un échec est noté au journal ; le jeu se lance toujours.
+            if let (Some("eden"), Some(d)) = (id_emulateur.as_deref(), dossier_emulateur.clone()) {
+                if let Some(fichier) = noyau.fichier_pour_l_emulateur(id, version.as_deref()).await.ok().flatten() {
+                    let donnees = noyau.dossier.clone();
+                    let ailleurs = dossiers_switch(&app, &noyau, id).await;
+                    let r = tauri::async_runtime::spawn_blocking(move || {
+                        crate::eden::preparer_contenus(&donnees, std::path::Path::new(&d), &fichier, &ailleurs, id, &|e| !crate::lancement::processus_du_dossier(e).is_empty())
+                    })
+                    .await
+                    .map_err(|_| Erreur::Disque("La préparation d'Eden s'est arrêtée brutalement.".into()))?;
+                    match r {
+                        Ok(Some(c)) => {
+                            for n in &c.notes {
+                                noyau.journaliser(&format!("Eden : contenus du jeu {id} : {n}"));
+                            }
+                            noyau.journaliser(&format!("Eden : mises à jour et DLC du jeu {id} : {}", c.resume()));
+                        }
+                        Ok(None) => {}
+                        Err(e) => noyau.journaliser(&format!("Eden : mises à jour et DLC du jeu {id} non donnés ({e})")),
                     }
                 }
             }
@@ -8179,10 +8193,10 @@ mod tests {
         let jeu = crate::switch_nca::tests::dossier_de_zelda(&jeux);
         use super::apercu_ryubing;
         // Sans clés : dit, rien de deviné.
-        let r = apercu_ryubing(&ryu, "Seb", Some(&jeu));
+        let r = apercu_ryubing(&ryu, "Seb", Some(&jeu), &[]);
         assert!(r.contenus.is_empty() && r.remarque.as_deref().is_some_and(|m| m.contains("clés")), "{:?}", r.remarque);
         std::fs::write(racine.join("system").join("prod.keys"), format!("header_key = {o}\n")).unwrap();
-        let r = apercu_ryubing(&ryu, "Seb", Some(&jeu));
+        let r = apercu_ryubing(&ryu, "Seb", Some(&jeu), &[]);
         assert_eq!((r.etat.as_str(), r.systeme.as_str(), r.titre_id.as_deref()), ("ok", "ryubing", Some("01007EF00011E000")));
         let vus: Vec<(&str, bool, Option<&str>)> = r.contenus.iter().map(|c| (c.genre.as_str(), c.installe, c.raison.as_deref())).collect();
         assert_eq!(
@@ -8203,17 +8217,58 @@ mod tests {
         l[0]["dlc_nca_list"][0]["is_enabled"] = false.into();
         std::fs::write(dossier.join("dlc.json"), l.to_string()).unwrap();
         std::fs::write(dossier.join("updates.json"), br#"{"selected":"","paths":[]}"#).unwrap();
-        let r = apercu_ryubing(&ryu, "Seb", Some(&jeu));
+        let r = apercu_ryubing(&ryu, "Seb", Some(&jeu), &[]);
         let raisons: Vec<Option<&str>> = r.contenus.iter().map(|c| c.raison.as_deref()).collect();
         assert_eq!(raisons, [Some("pas utilisée : tu l'as retirée dans Ryubing"), Some("pas utilisée : une plus récente est là"), Some("coupé par toi dans Ryubing"), None]);
         // Un problème n'est jamais jeté : il est dit sur la fiche.
         std::fs::write(dossier.join("dlc.json"), b"{abime").unwrap();
-        let r = apercu_ryubing(&ryu, "Seb", Some(&jeu));
+        let r = apercu_ryubing(&ryu, "Seb", Some(&jeu), &[]);
         assert!(r.remarque.as_deref().is_some_and(|m| m.contains("La liste des DLC de Ryubing ne se lit pas")), "{:?}", r.remarque);
         assert!(r.contenus.iter().filter(|c| c.genre == "dlc").all(|c| c.raison.as_deref() == Some("pas utilisé : la liste des DLC de Ryubing ne se lit pas")));
         // Pas installé par Frogtend (pas portable) : dit.
         std::fs::remove_dir_all(ryu.join("portable")).unwrap();
-        assert!(apercu_ryubing(&ryu, "Seb", Some(&jeu)).remarque.is_some_and(|m| m.contains("pas été installé par Frogtend")));
+        assert!(apercu_ryubing(&ryu, "Seb", Some(&jeu), &[]).remarque.is_some_and(|m| m.contains("pas été installé par Frogtend")));
+    }
+
+    #[test]
+    fn l_apercu_d_eden_montre_ce_qui_sera_donne_tout_seul_sans_rien_ecrire() {
+        use super::apercu_eden;
+        let d = tempfile::tempdir().unwrap();
+        let jeux = d.path().join("Jeux");
+        std::fs::create_dir_all(&jeux).unwrap();
+        let jeu = crate::switch_nca::tests::dossier_de_zelda(&jeux);
+        let eden = d.path().join("Eden");
+        std::fs::create_dir_all(eden.join("user").join("keys")).unwrap();
+        let donnees = d.path().join("donnees");
+        // Sans clés : dit, rien d'autre.
+        let r = apercu_eden(&donnees, &eden, Some(&jeu), &[]);
+        assert!(r.remarque.as_deref().is_some_and(|m| m.contains("pas encore les clés")) && r.contenus.is_empty(), "{:?}", r.remarque);
+        assert_eq!(r.systeme, "eden");
+        let o: String = (0..32u8).map(|i| format!("{:02x}", i.wrapping_mul(7).wrapping_add(3))).collect();
+        std::fs::write(eden.join("user").join("keys").join("prod.keys"), format!("header_key = {o}\n")).unwrap();
+        // Pas encore dans la liste : tout sera utilisé (sauf la vieille mise à jour), donné au prochain lancement.
+        let r = apercu_eden(&donnees, &eden, Some(&jeu), &[]);
+        let vus: Vec<(&str, Option<&str>)> = r.contenus.iter().map(|c| (c.genre.as_str(), c.raison.as_deref())).collect();
+        assert_eq!(vus, [("maj", None), ("maj", Some("pas utilisée : une plus récente est là")), ("dlc", None), ("dlc", None)]);
+        let m = r.remarque.clone().unwrap_or_default();
+        assert!(m.contains("prochain lancement") && m.contains("d'autres jeux"), "{m}");
+        assert_eq!(r.ignores, ["abime.nsp"]);
+        assert!(!crate::contenus::ini_eden(&eden).exists() && !donnees.exists(), "rien d'écrit");
+        // Posé au lancement : plus rien à annoncer, sauf les autres jeux du dossier.
+        crate::eden::preparer_contenus(&donnees, &eden, &jeu, &[], 3, &|_| false).unwrap();
+        let m = apercu_eden(&donnees, &eden, Some(&jeu), &[]).remarque.unwrap_or_default();
+        assert!(!m.contains("prochain lancement") && m.contains("d'autres jeux"), "{m}");
+        // Retiré par la personne dans Eden : dit, et chaque contenu dit pourquoi il n'est pas utilisé.
+        let ini = crate::contenus::ini_eden(&eden);
+        let t = std::fs::read_to_string(&ini).unwrap();
+        std::fs::write(&ini, crate::contenus::retirer_dossiers_eden(&t, &[jeux.to_string_lossy().to_string()])).unwrap();
+        let r = apercu_eden(&donnees, &eden, Some(&jeu), &[]);
+        assert!(r.contenus.iter().all(|c| !c.installe), "{:?}", r.contenus.iter().map(|c| &c.raison).collect::<Vec<_>>());
+        assert!(r.remarque.as_deref().is_some_and(|m| m.contains("Frogtend ne le remet pas")));
+        // Pas installé par Frogtend : dit.
+        std::fs::remove_dir_all(eden.join("user")).unwrap();
+        assert!(apercu_eden(&donnees, &eden, Some(&jeu), &[]).remarque.is_some_and(|m| m.contains("pas été installé par Frogtend")));
+        assert!(apercu_eden(&donnees, &eden, None, &[]).remarque.is_some_and(|m| m.contains("introuvable")));
     }
 
     #[test]

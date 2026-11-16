@@ -251,6 +251,17 @@ input[type="radio"],
 input[type="range"] {
   accent-color: var(--accent);
 }
+/* Une case ou un bouton radio garde SA taille : la règle des champs (`width: 100%`, hauteur d'une cible) en faisait,
+   dans une ligne flexible ou un panneau étroit, une case géante (capture de Seb, 16/11). Un composant peut encore
+   l'agrandir avec sa propre règle. */
+input[type="checkbox"],
+input[type="radio"] {
+  min-height: 0;
+  padding: 0;
+  inline-size: calc(18 * var(--u));
+  block-size: calc(18 * var(--u));
+  flex: 0 0 auto;
+}
 
 details > summary {
   min-height: calc(44 * var(--u));

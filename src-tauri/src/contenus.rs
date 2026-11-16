@@ -441,7 +441,8 @@ pub fn abriter_parties_ps3(rpcs3: &Path, numero: &str) -> Resultat<Option<(PathB
 // dossiers où Eden LIT les mises à jour et DLC, sans rien installer, rangée dans `[UI]` sous
 // `Paths\external_content_dirs\size` et `Paths\external_content_dirs\N\path` (relu le 18/10 dans `qt_config.cpp` :
 // le groupe `Paths` est ouvert DANS le groupe `UI` — la 0.68.1 et avant écrivaient à tort dans une section `[Paths]`).
-// « Installer » = ajouter le dossier à cette liste (avec l'accord de la personne) ; rien n'est copié. ---
+// Depuis le 16/11 (✅ Seb : « automatique » partout), chaque dossier où sont la mise à jour ou les DLC du jeu y est
+// ajouté TOUT SEUL au lancement (eden.rs, `preparer_contenus`) ; rien n'est copié. ---
 
 /// Un contenu Switch (mise à jour ou DLC) trouvé.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

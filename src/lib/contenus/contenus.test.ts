@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cochesCoherentes, libelleGenre, lignesRemarque, nomCourt, raisonNonPose, resume, resumeAutomatique, type ContenuVu } from './contenus';
+import { cochesCoherentes, emulateurAutomatique, libelleGenre, quelquesNoms, lignesRemarque, nomCourt, raisonNonPose, resume, resumeAutomatique, type ContenuVu } from './contenus';
 
 describe('les contenus additionnels', () => {
   it('se présentent simplement', () => {
@@ -28,6 +28,14 @@ describe('les contenus additionnels', () => {
       'DLC non utilisés (…)',
     ]);
     expect(lignesRemarque(null)).toEqual([]);
+    // Eden aussi (Seb 16/11 : automatique partout) ; la PS3 reste au choix de la personne, la Wii U incluse.
+    expect(emulateurAutomatique('ryubing')).toBe('Ryubing');
+    expect(emulateurAutomatique('eden')).toBe('Eden');
+    expect(emulateurAutomatique('ps3')).toBeNull();
+    expect(emulateurAutomatique('switch')).toBeNull();
+    expect(emulateurAutomatique(undefined)).toBeNull();
+    expect(quelquesNoms(['a', 'b'])).toBe('a, b');
+    expect(quelquesNoms(['1', '2', '3', '4', '5', '6', '7'])).toBe('1, 2, 3, 4, 5 et 2 autre(s)');
   });
 
   it('cochent les mises à jour dans l’ordre de la chaîne', () => {

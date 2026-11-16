@@ -1,11 +1,23 @@
 <script lang="ts">
-  // 📦 Les contenus additionnels d'un jeu du PC : trouvés sur le disque. PS3 et Eden : cochés par la personne, installés
-  // seulement après son oui (taille annoncée). Ryubing (lot 6, Seb 16/11) : utilisés tout seuls à chaque partie —
-  // montrés ici, sans rien demander. Wii U : inclus dans le .wua.
+  // 📦 Les contenus additionnels d'un jeu du PC : trouvés sur le disque. PS3 : cochés par la personne, installés
+  // seulement après son oui (taille annoncée). Switch, Ryubing et Eden (Seb 16/11 : « pour tout ce qui est update, DLC,
+  // on peut passer en automatique ») : utilisés tout seuls à chaque partie — montrés ici, sans rien demander. Wii U :
+  // inclus dans le .wua.
   import { api, taille } from '$lib/api';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
-  import { cochesCoherentes, libelleGenre, lignesRemarque, nomCourt, raisonNonPose, resume, resumeAutomatique, type ContenusDuJeu } from './contenus';
+  import {
+    cochesCoherentes,
+    emulateurAutomatique,
+    quelquesNoms,
+    libelleGenre,
+    lignesRemarque,
+    nomCourt,
+    raisonNonPose,
+    resume,
+    resumeAutomatique,
+    type ContenusDuJeu,
+  } from './contenus';
 
   let { id, titre }: { id: number; titre: string } = $props();
 
@@ -28,22 +40,11 @@
 
   const choisis = $derived(donnees?.contenus.filter((c) => coches.includes(c.id)) ?? []);
   const total = $derived(choisis.reduce((n, c) => n + c.taille, 0));
+  // Ryubing ou Eden : donnés tout seuls à chaque partie (aucune case, aucun accord).
+  const automatique = $derived(emulateurAutomatique(donnees?.systeme));
 
   async function installer() {
     if (!choisis.length) return;
-    if (donnees?.systeme === 'switch') {
-      const dossiers = [...new Set(choisis.map((c) => c.dossier).filter(Boolean))];
-      const ok = await confirmer(`📦 Rendre ces contenus disponibles dans Eden ?`, {
-        message: [
-          'Eden lira directement le(s) dossier(s) suivant(s) — rien n’est copié ni installé :',
-          ...dossiers.map((d) => `• ${d}`),
-          'Tout ce que contient ce dossier (mises à jour et DLC d’autres jeux aussi) devient visible dans Eden.',
-          'Ferme Eden avant : il réécrit ses réglages en se fermant.',
-        ].join('\n'),
-        libelleValider: 'Rendre disponible',
-      });
-      if (!ok) return;
-    } else {
     const oui = await confirmer(`📦 Installer ${choisis.length} contenu(s) pour « ${titre} » ?`, {
       message: [
         `${taille(total)} à installer par RPCS3 (il travaille sans fenêtre, puis se ferme).`,
@@ -57,7 +58,6 @@
       libelleValider: 'Installer',
     });
     if (!oui) return;
-    }
     enCours = true;
     try {
       const b = await api.contenusInstaller(id, choisis.map((c) => c.id));
@@ -79,8 +79,8 @@
 
 {#if donnees?.etat === 'emulateur'}
   <p class="muted">📦 Règle {donnees.systeme === 'switch' ? 'Eden ou Ryubing' : 'RPCS3'} (⚙ Options ▸ Émulateurs) pour gérer les mises à jour et DLC de ce jeu.</p>
-{:else if donnees?.etat === 'ok' && donnees.systeme === 'ryubing' && (donnees.contenus.length || donnees.ignores?.length || donnees.remarque)}
-  <!-- Ryubing (lot 6, Seb 16/11) : tout est utilisé seul au lancement — on montre, on ne demande rien. -->
+{:else if donnees?.etat === 'ok' && automatique && (donnees.contenus.length || donnees.ignores?.length || donnees.remarque)}
+  <!-- Ryubing et Eden (Seb 16/11) : tout est utilisé seul au lancement — on montre, on ne demande rien. -->
   <div class="contenus cx-block">
     {#if donnees.contenus.length}
       <button class="btn" aria-expanded={ouvert} onclick={() => (ouvert = !ouvert)}>
@@ -90,19 +90,18 @@
     {#each lignesRemarque(donnees.remarque) as l (l)}<p class="muted">{l}</p>{/each}
     {#if donnees.ignores?.length}
       <p class="muted">
-        ⚠ {donnees.ignores.length} fichier(s) du dossier du jeu illisible(s), peut-être abîmé(s) au téléchargement : {donnees.ignores
-          .slice(0, 3)
-          .map((n) => nomCourt(n, titre))
-          .join(', ')}{donnees.ignores.length > 3 ? '…' : ''}. Pour les réparer : retire le jeu de ta ludothèque puis remets-le (ses parties sont gardées).
+        ⚠ {donnees.ignores.length} fichier(s) illisible(s), peut-être abîmé(s) au téléchargement : {quelquesNoms(
+          donnees.ignores.map((n) => nomCourt(n, titre)),
+        )}. Pour les réparer : retire le jeu de ta ludothèque puis remets-le (ses parties sont gardées).
       </p>
     {/if}
     {#if ouvert && donnees.contenus.length}
-      <p class="muted">Frogtend les donne à Ryubing tout seul, à chaque partie (rien n’est copié) : la mise à jour la plus récente et tous les DLC rangés à côté du jeu.</p>
+      <p class="muted">Frogtend les donne à {automatique} tout seul, à chaque partie (rien n’est copié) : la mise à jour la plus récente et tous les DLC de ce jeu, rangés à côté de lui ou dans les emplacements de la Switch (⚙ Options ▸ 📁 Emplacements), reconnus à leur contenu.</p>
       <ul>
         {#each donnees.contenus as c (c.id)}
           <li>
             {#if c.installe}
-              <span title="Utilisé par Ryubing à chaque partie">✅</span>
+              <span title={`Utilisé par ${automatique} à chaque partie`}>✅</span>
             {:else}
               <span title={raisonNonPose(c)}>—</span>
             {/if}
@@ -117,9 +116,9 @@
   <div class="contenus cx-block">
     {#if donnees.ignores?.length}
       <p class="muted">
-        ⚠ {donnees.ignores.length} fichier(s) de contenus illisible(s), peut-être abîmé(s) au téléchargement : {donnees.ignores
-          .slice(0, 3)
-          .join(', ')}{donnees.ignores.length > 3 ? '…' : ''}. Pour les réparer : retire le jeu de ta ludothèque puis remets-le (ses parties sont gardées).
+        ⚠ {donnees.ignores.length} fichier(s) de contenus illisible(s), peut-être abîmé(s) au téléchargement : {quelquesNoms(
+          donnees.ignores,
+        )}. Pour les réparer : retire le jeu de ta ludothèque puis remets-le (ses parties sont gardées).
       </p>
     {/if}
     <button class="btn" onclick={() => (ouvert = !ouvert)}>📦 Contenus additionnels : {resume(donnees.contenus)} {ouvert ? '▴' : '▾'}</button>
@@ -134,16 +133,19 @@
           <li>
             {#if c.installe}
               <span title="Déjà installé pour ton profil">✅</span>
+              <span class="nom">{nomCourt(c.nom, titre)}</span>
             {:else}
-              <input
-                type="checkbox"
-                bind:group={coches}
-                value={c.id}
-                aria-label={`Choisir ${c.nom}`}
-                onchange={() => donnees && (coches = cochesCoherentes(donnees.contenus, coches, c.id))}
-              />
+              <!-- La case ET son nom : toute la ligne se clique (cible assez grande, souris comme manette). -->
+              <label class="choix">
+                <input
+                  type="checkbox"
+                  bind:group={coches}
+                  value={c.id}
+                  onchange={() => donnees && (coches = cochesCoherentes(donnees.contenus, coches, c.id))}
+                />
+                <span class="nom">{nomCourt(c.nom, titre)}</span>
+              </label>
             {/if}
-            <span class="nom">{nomCourt(c.nom, titre)}</span>
             <span class="muted">{libelleGenre(c.genre)} · {taille(c.taille)}{c.licence ? ' · licence' : ''}</span>
           </li>
         {/each}
@@ -180,6 +182,14 @@
   }
   .nom {
     flex: 1;
+  }
+  .choix {
+    display: flex;
+    flex: 1;
+    gap: calc(6 * var(--u));
+    align-items: center;
+    min-height: var(--cible-min);
+    cursor: pointer;
   }
   .actions {
     display: flex;

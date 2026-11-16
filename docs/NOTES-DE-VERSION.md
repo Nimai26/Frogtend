@@ -1,5 +1,17 @@
 # Notes de version de Frogtend
 
+## 0.204.0 — 📦 Eden aussi : mises à jour et DLC tout seuls
+
+- Avec Eden, la mise à jour et les DLC d'un jeu Switch sont maintenant donnés automatiquement au lancement, comme avec
+  Ryubing : plus de cases à cocher ni de bouton « Installer » pour la Switch. Ils sont cherchés à côté du jeu et dans
+  tes emplacements Switch (par exemple un dossier « Maj & DLC »), et reconnus à leur contenu, jamais à leur nom.
+- Un même DLC rangé à deux endroits ne compte qu'une fois ; ce que tu retires toi-même dans Eden ou Ryubing reste
+  retiré.
+- La lecture des emplacements reste rapide (1,5 s au plus par lancement, la suite au lancement suivant) ; sa durée est
+  notée dans le journal.
+- Corrigé : la case à cocher géante dans la fiche d'un jeu (et sur quatre autres écrans) ; la ligne entière d'un
+  contenu PS3 se coche en cliquant sur son nom.
+
 ## 0.203.0 — 📦 Ryubing : mises à jour et DLC utilisés tout seuls
 
 - Avec Ryubing, la mise à jour la plus récente et les DLC rangés à côté d'un jeu Switch sont utilisés automatiquement,

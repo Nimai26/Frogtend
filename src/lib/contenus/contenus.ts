@@ -8,11 +8,9 @@ export interface ContenuVu {
   taille: number;
   licence: boolean;
   installe: boolean;
-  /** Switch : le dossier qu'Eden lira (tout son contenu devient visible). */
-  dossier?: string | null;
   /** Une mise à jour PS3 : sa version (« 01.05 », contrat 1.31), dans l'ordre d'installation. */
   version?: string | null;
-  /** Ryubing : pourquoi ce contenu trouvé n'est pas utilisé (la vraie cause, dite par le cœur). */
+  /** Ryubing et Eden : pourquoi ce contenu trouvé n'est pas utilisé (la vraie cause, dite par le cœur). */
   raison?: string | null;
 }
 
@@ -32,29 +30,42 @@ export function cochesCoherentes(contenus: ContenuVu[], coches: string[], id: st
 
 export interface ContenusDuJeu {
   etat: 'aucun' | 'emulateur' | 'ok';
-  /** `ryubing` (lot 6, Seb 16/11) : posés TOUT SEULS à chaque lancement — montrés, jamais d'accord demandé. */
-  systeme?: 'ps3' | 'switch' | 'wiiu' | 'ryubing';
+  /** `ryubing` et `eden` (Seb 16/11 : « automatique » partout) : donnés TOUT SEULS à chaque lancement — montrés,
+   * jamais d'accord demandé. `switch` : aucun émulateur Switch utilisable réglé. */
+  systeme?: 'ps3' | 'switch' | 'wiiu' | 'ryubing' | 'eden';
   titre_id: string | null;
   contenus: ContenuVu[];
   /** Les fichiers servis comme contenus mais illisibles (en-tête abîmé) : dits, jamais écartés en silence. */
   ignores?: string[];
-  /** Ryubing : une phrase à dire (clés absentes, choix fait dans Ryubing gardé…). */
+  /** Ryubing et Eden : une phrase à dire (clés absentes, choix fait dans l'émulateur gardé…). */
   remarque?: string | null;
 }
 
-/** Ryubing : « 3 utilisé(s) à chaque partie, 1 non utilisé(s) ». */
+/** L'émulateur à qui Frogtend donne tout seul les mises à jour et DLC (Ryubing, Eden) ; `null` : choisis par la
+ * personne (PS3) ou inclus dans le jeu (Wii U). */
+export function emulateurAutomatique(systeme: ContenusDuJeu['systeme']): string | null {
+  return systeme === 'ryubing' ? 'Ryubing' : systeme === 'eden' ? 'Eden' : null;
+}
+
+/** Ryubing et Eden : « 3 utilisé(s) à chaque partie, 1 non utilisé(s) ». */
 export function resumeAutomatique(l: ContenuVu[]): string {
   const utilises = l.filter((c) => c.installe).length;
   const autres = l.length - utilises;
   return autres ? `${utilises} utilisé(s) à chaque partie, ${autres} non utilisé(s)` : `${utilises} utilisé(s) à chaque partie`;
 }
 
-/** Ryubing : pourquoi un contenu trouvé n'est pas utilisé — la cause dite par le cœur, jamais devinée ici. */
+/** Ryubing et Eden : pourquoi un contenu trouvé n'est pas utilisé — la cause dite par le cœur, jamais devinée ici. */
 export function raisonNonPose(c: ContenuVu): string {
   return c.raison || 'pas utilisé';
 }
 
-/** Ryubing : la remarque du cœur, un paragraphe par ligne. */
+/** Des noms à dire : au plus `n`, puis « et N autre(s) » (jamais une liste sans fin). */
+export function quelquesNoms(l: string[], n = 5): string {
+  const debut = l.slice(0, n).join(', ');
+  return l.length > n ? `${debut} et ${l.length - n} autre(s)` : debut;
+}
+
+/** Ryubing et Eden : la remarque du cœur, un paragraphe par ligne. */
 export function lignesRemarque(r: string | null | undefined): string[] {
   return (r ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
 }

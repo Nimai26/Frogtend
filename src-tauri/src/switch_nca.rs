@@ -274,8 +274,8 @@ pub fn dechiffrer_entete(cle: &CleEntete, bloc: &[u8]) -> Option<EnteteNca> {
     lire_entete_clair(&b)
 }
 
-/// Chiffre un en-tête comme Nintendo (NCA3 : chaque secteur porte son numéro) — pour fabriquer des NCA de test.
-#[cfg(test)]
+/// Chiffre un en-tête comme Nintendo (NCA3 : chaque secteur porte son numéro) — pour fabriquer des NCA de test, et
+/// pour l'empreinte de la clé du cache (`empreinte_cle`, jamais réversible).
 pub fn chiffrer_entete(cle: &CleEntete, clair: &[u8]) -> Vec<u8> {
     let mut b = clair.to_vec();
     for (i, s) in b.chunks_exact_mut(SECTEUR).enumerate() {
@@ -406,7 +406,7 @@ pub fn lire_contenu(chemin: &Path, cle: &CleEntete) -> Resultat<Option<ContenuLu
     Ok(lu(Sorte::Dlc(publiques.iter().map(|n| (n.chemin.clone(), n.entete.title_id)).collect()), b))
 }
 
-/// Ce qui va avec un jeu, trouvé dans le dossier de son fichier.
+/// Ce qui va avec un jeu, trouvé dans le dossier de son fichier (et, avec `contenus_pour_dans`, ailleurs).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ContenusDuJeu {
     pub base: u64,
@@ -415,64 +415,385 @@ pub struct ContenusDuJeu {
     /// Les autres mises à jour de ce jeu, plus anciennes (montrées, jamais posées).
     pub majs_anciennes: Vec<ContenuLu>,
     pub dlc: Vec<ContenuLu>,
-    /// Les conteneurs du dossier qui n'ont pas pu être lus (abîmés, autre clé) : leurs noms.
+    /// Les conteneurs regardés qui n'ont pas pu être lus (abîmés, autre clé) : leurs noms.
     pub illisibles: Vec<String>,
     /// Les mises à jour et DLC de CE jeu dont l'extension n'est pas celle, en minuscules, de leur forme (`.NSP`, un
     /// PFS0 nommé `.xci`…) : Ryubing ne les lirait pas, ils ne sont pas posés. Leurs noms.
     pub mauvaise_extension: Vec<String>,
-    /// Le dossier compte plus de conteneurs que ceux lus (`MAX_VOISINS`) : le dire.
+    /// Les copies en double d'une mise à jour (même version) ou d'un DLC (mêmes identifiants) déjà trouvés : une seule
+    /// sert, celle du dossier du jeu d'abord. Leurs noms (jamais un chemin).
+    pub doubles: Vec<String>,
+    /// Plafond de LECTURE atteint (`MAX_VOISINS` fichiers lus, ou `BUDGET` de temps) : la suite sera lue les fois
+    /// suivantes (grâce au cache).
     pub tronque: bool,
+    /// Plafond du PARCOURS atteint (profondeur, nombre de dossiers, de fichiers) : ce qui est au-delà n'est jamais lu.
+    pub parcours_incomplet: bool,
+    /// Les conteneurs lisibles des dossiers utiles qui sont à un AUTRE jeu (jeu, mise à jour ou DLC) : Eden lit tout un
+    /// dossier, il les verra aussi (à dire).
+    pub autres_jeux: usize,
+    /// Ce qu'a coûté la recherche (pour le journal).
+    pub lecture: Lecture,
 }
 
-/// Le jeu `jeu` (.xci ou .nsp) et, dans SON dossier (sans les sous-dossiers), sa mise à jour la plus récente et ses
-/// DLC — reconnus à l'identifiant lu dans leurs en-têtes, jamais à leur nom. `None` : le fichier n'est pas un jeu lisible
-/// avec cette clé.
+/// Ce qu'a coûté une recherche de contenus.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Lecture {
+    pub duree_ms: u64,
+    /// Fichiers lus sur le disque.
+    pub lus: usize,
+    /// Fichiers repris du cache, sans les relire.
+    pub en_cache: usize,
+    /// Le cache n'a pas pu s'écrire (à dire au journal).
+    pub erreur_cache: Option<String>,
+}
+
+impl Lecture {
+    /// « contenus Switch lus en 120 ms, 3 fichier(s) lu(s), 40 en cache ».
+    pub fn resume(&self) -> String {
+        let mut s = format!("contenus Switch lus en {} ms, {} fichier(s) lu(s), {} en cache", self.duree_ms, self.lus, self.en_cache);
+        if let Some(e) = &self.erreur_cache {
+            s += &format!(" ; cache non écrit ({e})");
+        }
+        s
+    }
+}
+
+/// Le jeu `jeu` (.xci ou .nsp) et, dans SON dossier : sa mise à jour la plus récente et ses DLC — reconnus à
+/// l'identifiant lu dans leurs en-têtes, jamais à leur nom. `None` : le fichier n'est pas un jeu lisible avec cette clé.
 pub fn contenus_pour(jeu: &Path, cle: &CleEntete) -> Resultat<Option<ContenusDuJeu>> {
+    contenus_pour_dans(jeu, cle, &[], None)
+}
+
+/// Profondeur des sous-dossiers regardés sous chaque dossier de recherche.
+pub const MAX_PROFONDEUR: usize = 4;
+/// Au plus ce nombre de dossiers parcourus PAR dossier de recherche (un grand emplacement n'en cache pas un autre).
+pub const MAX_DOSSIERS: usize = 2000;
+/// Au plus ce nombre de fichiers .nsp/.xci retenus avant toute lecture.
+const MAX_CANDIDATS: usize = 20_000;
+/// Au-delà de ce temps, plus aucun fichier n'est lu (la suite le sera la fois suivante) : le lancement reste rapide.
+pub const BUDGET: std::time::Duration = std::time::Duration::from_millis(1500);
+/// Un cache plus gros n'est pas lu (abîmé) : il est refait.
+const MAX_OCTETS_CACHE: u64 = 16 << 20;
+
+/// Un fichier à regarder : chemin, taille et date (prises dans l'entrée du dossier, sans autre accès au disque).
+struct Candidat {
+    chemin: PathBuf,
+    taille: u64,
+    secondes: u64,
+    nanos: u32,
+}
+
+/// Les .nsp et .xci à regarder : le dossier du jeu d'abord (et ses sous-dossiers), puis chaque dossier de `ailleurs`
+/// (dossier d'installation, emplacements réglés de la plateforme…), chacun avec ses sous-dossiers jusqu'à
+/// `MAX_PROFONDEUR`. L'extension est testée sur le nom avant tout accès au fichier ; les liens ne sont pas suivis.
+/// Rend aussi `true` si un plafond du parcours a été atteint.
+fn candidats(jeu: &Path, ailleurs: &[PathBuf]) -> (Vec<Candidat>, bool) {
+    let cle = |p: &Path| p.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
+    let mut vus_dossiers = std::collections::HashSet::new();
+    let mut vus_fichiers = std::collections::HashSet::new();
+    let mut l = Vec::new();
+    let mut incomplet = false;
+    let racines: Vec<PathBuf> = jeu.parent().map(Path::to_path_buf).into_iter().chain(ailleurs.iter().cloned()).collect();
+    'racines: for racine in racines {
+        // En largeur : les fichiers proches d'abord. Le plafond de dossiers compte pour CE dossier de recherche.
+        let mut parcourus = 0usize;
+        let mut file = std::collections::VecDeque::from([(racine, 0usize)]);
+        while let Some((d, profondeur)) = file.pop_front() {
+            if !vus_dossiers.insert(cle(&d)) {
+                continue;
+            }
+            parcourus += 1;
+            if parcourus > MAX_DOSSIERS {
+                incomplet = true;
+                break;
+            }
+            let Ok(entrees) = std::fs::read_dir(&d) else { continue };
+            let mut entrees: Vec<std::fs::DirEntry> = entrees.flatten().collect();
+            entrees.sort_by_key(|e| e.file_name());
+            for e in entrees {
+                let nom = e.file_name();
+                let ext_ok = Path::new(&nom).extension().is_some_and(|x| x.eq_ignore_ascii_case("nsp") || x.eq_ignore_ascii_case("xci"));
+                let Ok(t) = e.file_type() else { continue };
+                if t.is_dir() {
+                    if profondeur < MAX_PROFONDEUR {
+                        file.push_back((e.path(), profondeur + 1));
+                    } else {
+                        incomplet = true;
+                    }
+                } else if ext_ok && t.is_file() {
+                    let p = e.path();
+                    if cle(&p) != cle(jeu) && vus_fichiers.insert(cle(&p)) {
+                        if l.len() >= MAX_CANDIDATS {
+                            incomplet = true;
+                            break 'racines;
+                        }
+                        // Sous Windows, la taille et la date viennent avec l'entrée du dossier (aucune lecture de plus).
+                        let Ok(m) = e.metadata() else { continue };
+                        let (secondes, nanos) = date(&m);
+                        l.push(Candidat { chemin: p, taille: m.len(), secondes, nanos });
+                    }
+                }
+            }
+        }
+    }
+    (l, incomplet)
+}
+
+/// Ce qu'on garde d'un conteneur déjà lu (le cache) : sa sorte, son jeu, sa forme. `None` : rien de lisible avec la clé.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+struct LuEnCache {
+    sorte: SorteEnCache,
+    base: u64,
+    forme: FormeEnCache,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+enum SorteEnCache {
+    Jeu,
+    MiseAJour,
+    Dlc(Vec<(String, u64)>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+enum FormeEnCache {
+    Nsp,
+    Xci,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+struct EntreeCache {
+    taille: u64,
+    secondes: u64,
+    nanos: u32,
+    lu: Option<LuEnCache>,
+    /// Illisible (abîmé), inchangé depuis : pas relu, toujours dit.
+    #[serde(default)]
+    illisible: bool,
+}
+
+/// Le cache des conteneurs lus (fichier de Frogtend, dans le dossier de l'émulateur) : par chemin, la taille et la date
+/// du fichier ; une entrée ne sert que si les deux sont inchangées, et tout le cache est oublié si la clé change.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+struct Cache {
+    /// Une empreinte de la clé (un bloc nul chiffré) : jamais la clé.
+    cle: String,
+    fichiers: std::collections::BTreeMap<String, EntreeCache>,
+}
+
+/// Le cache ne garde jamais plus de ces entrées (les fichiers vus à la dernière recherche d'abord).
+const MAX_CACHE: usize = 5000;
+
+fn empreinte(cle: &CleEntete) -> String {
+    chiffrer_entete(cle, &[0u8; TAILLE_ENTETE])[..16].iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn date(m: &std::fs::Metadata) -> (u64, u32) {
+    m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| (d.as_secs(), d.subsec_nanos())).unwrap_or((0, 0))
+}
+
+fn vers_cache(c: &ContenuLu) -> LuEnCache {
+    LuEnCache {
+        sorte: match &c.sorte {
+            Sorte::Jeu => SorteEnCache::Jeu,
+            Sorte::MiseAJour => SorteEnCache::MiseAJour,
+            Sorte::Dlc(l) => SorteEnCache::Dlc(l.clone()),
+        },
+        base: c.base,
+        forme: match c.forme {
+            Forme::Nsp => FormeEnCache::Nsp,
+            Forme::Xci => FormeEnCache::Xci,
+        },
+    }
+}
+
+fn depuis_cache(p: &Path, l: &LuEnCache) -> ContenuLu {
+    ContenuLu {
+        chemin: p.to_path_buf(),
+        sorte: match &l.sorte {
+            SorteEnCache::Jeu => Sorte::Jeu,
+            SorteEnCache::MiseAJour => Sorte::MiseAJour,
+            SorteEnCache::Dlc(v) => Sorte::Dlc(v.clone()),
+        },
+        base: l.base,
+        version: p.file_name().and_then(|n| version_du_nom(&n.to_string_lossy())),
+        forme: match l.forme {
+            FormeEnCache::Nsp => Forme::Nsp,
+            FormeEnCache::Xci => Forme::Xci,
+        },
+    }
+}
+
+fn lire_cache(f: &Path) -> Cache {
+    if std::fs::metadata(f).map_or(true, |m| m.len() > MAX_OCTETS_CACHE) {
+        return Cache::default();
+    }
+    std::fs::read(f).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default()
+}
+
+impl ContenuLu {
+    /// Ce qui identifie ce contenu, quel que soit son fichier : une mise à jour par son jeu ET sa version (une autre
+    /// version est une autre mise à jour), un DLC par les identifiants de ses NCA. `None` : rien de sûr (une mise à
+    /// jour dont le nom ne dit pas la version).
+    pub fn identifiant(&self) -> Option<String> {
+        match &self.sorte {
+            Sorte::Jeu => None,
+            Sorte::MiseAJour => self.version.map(|v| format!("maj:{:016X}:v{v}", self.base)),
+            Sorte::Dlc(n) => Some(identifiant_dlc(n)),
+        }
+    }
+}
+
+/// L'identifiant d'un DLC d'après ses NCA PublicData (chemin, identifiant) : « dlc:<id>+<id>… », trié.
+pub fn identifiant_dlc(ncas: &[(String, u64)]) -> String {
+    let mut ids: Vec<u64> = ncas.iter().map(|(_, t)| *t).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    format!("dlc:{}", ids.iter().map(|t| format!("{t:016X}")).collect::<Vec<_>>().join("+"))
+}
+
+/// Comme `contenus_pour`, en cherchant aussi dans les sous-dossiers du dossier du jeu et dans `ailleurs` (bornés :
+/// `MAX_PROFONDEUR`, `MAX_DOSSIERS` par dossier). Au plus `MAX_VOISINS` conteneurs sont LUS sur le disque à chaque
+/// appel, et rien au-delà de `BUDGET` : ceux déjà lus et inchangés viennent du cache `cache` (s'il est donné), si bien
+/// que la suite est lue aux appels suivants. Le rattachement se fait TOUJOURS par l'identifiant lu dans les en-têtes,
+/// jamais par le nom ; un même contenu trouvé deux fois ne compte qu'une fois (le premier trouvé : le dossier du jeu
+/// d'abord), les autres copies sont dites dans `doubles`.
+pub fn contenus_pour_dans(jeu: &Path, cle: &CleEntete, ailleurs: &[PathBuf], cache: Option<&Path>) -> Resultat<Option<ContenusDuJeu>> {
+    let debut = std::time::Instant::now();
     let Some(lu) = lire_contenu(jeu, cle)? else { return Ok(None) };
     if lu.sorte != Sorte::Jeu {
         return Ok(None);
     }
     let mut r = ContenusDuJeu { base: lu.base, ..Default::default() };
-    let Some(dossier) = jeu.parent() else { return Ok(Some(r)) };
-    // L'extension d'abord (rien à lire sur le disque), puis la sorte d'entrée (pas de suivi de lien).
-    let mut voisins: Vec<PathBuf> = std::fs::read_dir(dossier)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter(|e| Path::new(&e.file_name()).extension().is_some_and(|x| x.eq_ignore_ascii_case("nsp") || x.eq_ignore_ascii_case("xci")))
-        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
-        .map(|e| e.path())
-        .filter(|p| p != jeu)
-        .collect();
-    voisins.sort();
-    r.tronque = voisins.len() > MAX_VOISINS;
-    voisins.truncate(MAX_VOISINS);
+    let (voisins, incomplet) = candidats(jeu, ailleurs);
+    r.parcours_incomplet = incomplet;
+    let empreinte = empreinte(cle);
+    let mut ancien: Cache = cache.map(lire_cache).unwrap_or_default();
+    let deja = ancien.clone();
+    if ancien.cle != empreinte {
+        ancien = Cache { cle: empreinte.clone(), ..Default::default() };
+    }
+    let mut neuf = Cache { cle: empreinte, ..Default::default() };
     let nom = |p: &Path| p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    let mut majs = Vec::new();
-    for p in voisins {
-        match lire_contenu(&p, cle) {
-            Ok(Some(c)) if c.base == r.base && c.sorte != Sorte::Jeu => {
+    let mut majs: Vec<ContenuLu> = Vec::new();
+    let mut vus: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // Les autres jeux, par dossier : seuls ceux des dossiers qui portent des contenus de CE jeu sont à dire.
+    let mut autres: Vec<PathBuf> = Vec::new();
+    for v in voisins {
+        let p = v.chemin;
+        let chemin = p.to_string_lossy().to_string();
+        let entree = |lu: Option<LuEnCache>, illisible: bool| EntreeCache { taille: v.taille, secondes: v.secondes, nanos: v.nanos, lu, illisible };
+        let lu = match ancien.fichiers.get(&chemin).filter(|e| e.taille == v.taille && e.secondes == v.secondes && e.nanos == v.nanos) {
+            Some(e) if e.illisible => {
+                r.lecture.en_cache += 1;
+                r.illisibles.push(nom(&p));
+                neuf.fichiers.insert(chemin, e.clone());
+                continue;
+            }
+            Some(e) => {
+                r.lecture.en_cache += 1;
+                e.lu.as_ref().map(|l| depuis_cache(&p, l))
+            }
+            None => {
+                if r.lecture.lus >= MAX_VOISINS || debut.elapsed() >= BUDGET {
+                    r.tronque = true;
+                    continue;
+                }
+                r.lecture.lus += 1;
+                match lire_contenu(&p, cle) {
+                    Ok(c) => c,
+                    Err(_) => {
+                        // Illisible : noté (taille et date) pour n'être pas relu tant qu'il ne change pas.
+                        r.illisibles.push(nom(&p));
+                        neuf.fichiers.insert(chemin, entree(None, true));
+                        continue;
+                    }
+                }
+            }
+        };
+        neuf.fichiers.insert(chemin, entree(lu.as_ref().map(vers_cache), false));
+        match lu {
+            Some(c) if c.base == r.base && c.sorte != Sorte::Jeu => {
                 // Ryubing lit d'après l'extension, casse comprise : seule l'extension exacte de sa forme est posée.
                 if p.extension().and_then(|x| x.to_str()) != Some(c.forme.extension()) {
                     r.mauvaise_extension.push(nom(&p));
                     continue;
+                }
+                // Une copie d'un contenu déjà trouvé (le dossier du jeu passe en premier) : une seule sert.
+                if let Some(id) = c.identifiant() {
+                    if !vus.insert(id) {
+                        r.doubles.push(nom(&p));
+                        continue;
+                    }
                 }
                 match c.sorte {
                     Sorte::MiseAJour => majs.push(c),
                     _ => r.dlc.push(c),
                 }
             }
-            Ok(_) => {}
-            Err(_) => r.illisibles.push(nom(&p)),
+            Some(c) if c.base != r.base => autres.extend(p.parent().map(Path::to_path_buf)),
+            _ => {}
         }
     }
-    // La plus récente d'abord ; à version égale (ou sans version), l'ordre des noms.
-    majs.sort_by(|a, b| b.version.cmp(&a.version).then(a.chemin.cmp(&b.chemin)));
+    if let Some(f) = cache {
+        // Les entrées d'avant sont gardées (un autre jeu, un autre emplacement) tant que le cache reste sous son plafond ;
+        // celles de cette recherche passent d'abord.
+        for (k, v) in ancien.fichiers {
+            if neuf.fichiers.len() >= MAX_CACHE {
+                break;
+            }
+            neuf.fichiers.entry(k).or_insert(v);
+        }
+        while neuf.fichiers.len() > MAX_CACHE {
+            neuf.fichiers.pop_last();
+        }
+        if neuf != deja {
+            if let Err(e) = ecrire_cache(f, &neuf) {
+                r.lecture.erreur_cache = Some(e.to_string());
+            }
+        }
+    }
+    // La plus récente d'abord ; à version égale (ou sans version), l'ordre de la recherche.
+    majs.sort_by(|a, b| b.version.cmp(&a.version));
     let mut majs = majs.into_iter();
     r.maj = majs.next();
     r.majs_anciennes = majs.collect();
+    let utiles = r.dossiers_utiles();
+    r.autres_jeux = autres.iter().filter(|d| utiles.iter().any(|u| u == *d)).count();
+    r.lecture.duree_ms = debut.elapsed().as_millis() as u64;
     Ok(Some(r))
 }
+
+/// Écrit à côté puis renomme : une coupure ne laisse jamais un cache à moitié écrit.
+fn ecrire_cache(f: &Path, c: &Cache) -> std::io::Result<()> {
+    let provisoire = f.with_extension("json.tmp");
+    std::fs::write(&provisoire, serde_json::to_vec(c).map_err(std::io::Error::other)?)?;
+    std::fs::rename(&provisoire, f)
+}
+
+impl ContenusDuJeu {
+    /// Les dossiers où se trouvent la mise à jour retenue et les DLC de ce jeu (dans l'ordre, sans doublon).
+    pub fn dossiers_utiles(&self) -> Vec<PathBuf> {
+        let mut l: Vec<PathBuf> = Vec::new();
+        for c in self.maj.iter().chain(self.dlc.iter()) {
+            if let Some(d) = c.chemin.parent() {
+                if !l.iter().any(|x| x == d) {
+                    l.push(d.to_path_buf());
+                }
+            }
+        }
+        l
+    }
+}
+
+/// Des noms de fichiers à dire : au plus 5, puis « et N autre(s) ».
+pub fn quelques_noms(l: &[String]) -> String {
+    let mut s = l.iter().take(5).cloned().collect::<Vec<_>>().join(", ");
+    if l.len() > 5 {
+        s += &format!(" et {} autre(s)", l.len() - 5);
+    }
+    s
+}
+
 /// L'identifiant de base d'un jeu lu dans ses en-têtes (`None` : pas de clé lisible, pas un jeu).
 pub fn base_du_jeu(jeu: &Path, cle: &CleEntete) -> Option<u64> {
     lire_contenu(jeu, cle).ok().flatten().filter(|c| c.sorte == Sorte::Jeu).map(|c| c.base)
@@ -677,7 +998,8 @@ pub mod tests {
 
     /// Le dossier de Zelda fabriqué dans la forme RELEVÉE sur les vrais fichiers (16/11) : le .xci porte le Meta du jeu
     /// ET celui d'une mise à jour ; une mise à jour .nsp a son Meta à +0x800 mais son Program à l'identifiant du jeu.
-    /// Deux mises à jour, deux DLC, un autre jeu nommé comme Zelda, un fichier abîmé, un DLC dans un sous-dossier.
+    /// Deux mises à jour, deux DLC, un autre jeu nommé comme Zelda, un fichier abîmé, le DLC d'un autre jeu dans un
+    /// sous-dossier.
     pub fn dossier_de_zelda(d: &Path) -> PathBuf {
         let cle = cle_de_test();
         let jeu = d.join("Zelda (v0).xci");
@@ -696,7 +1018,8 @@ pub mod tests {
         std::fs::write(d.join("Zelda maj [v999999].nsp"), partition(&[("z.cnmt.nca", nca(&cle, 1, autre + 0x800, 0)), ("z.nca", nca(&cle, 0, autre, 0))], false)).unwrap();
         std::fs::write(d.join("abime.nsp"), b"PFS0abime").unwrap();
         std::fs::create_dir(d.join("sous")).unwrap();
-        std::fs::write(d.join("sous").join("DLC_Pack_9.nsp"), partition(&[("c9.nca", nca(&cle, 5, BASE + 0x1009, 0))], false)).unwrap();
+        // Dans un sous-dossier (regardé depuis le 16/11), le DLC d'un AUTRE jeu : jamais pris.
+        std::fs::write(d.join("sous").join("DLC_Pack_9.nsp"), partition(&[("c9.nca", nca(&cle, 5, autre + 0x1009, 0))], false)).unwrap();
         jeu
     }
 
@@ -715,9 +1038,11 @@ pub mod tests {
                 ("DLC_Pack_1.nsp".to_string(), Sorte::Dlc(vec![("/a1.nca".into(), BASE + 0x1001)])),
                 ("DLC_Pack_2.nsp".to_string(), Sorte::Dlc(vec![("/b2.nca".into(), BASE + 0x1002)]))
             ],
-            "ni le DLC d'un autre jeu (même nom), ni un sous-dossier"
+            "jamais le DLC d'un autre jeu (même nom, ou dans un sous-dossier)"
         );
+        assert_eq!(r.dossiers_utiles(), [d.path().to_path_buf()]);
         assert_eq!(r.illisibles, ["abime.nsp"]);
+        assert_eq!(r.autres_jeux, 2, "le DLC et la mise à jour de l'autre jeu sont comptés (Eden lira tout le dossier)");
         // Une mise à jour donnée comme jeu : pas un jeu.
         assert_eq!(contenus_pour(&d.path().join("Zelda maj [v786432].nsp"), &cle_de_test()).unwrap(), None);
         // Sans la bonne clé : rien de deviné.
@@ -786,6 +1111,121 @@ pub mod tests {
         let r = contenus_pour(&jeu, &cle).unwrap().unwrap();
         assert!(r.tronque);
         assert_eq!(r.illisibles.len(), MAX_VOISINS);
+    }
+
+    #[test]
+    fn un_emplacement_separe_est_regarde_par_l_identifiant_avec_un_cache() {
+        // La forme de Seb (A-TESTER 0.41.0) : le jeu dans son dossier, ses mises à jour et DLC dans un emplacement à
+        // part de la plateforme, mêlés à ceux d'autres jeux, nommés n'importe comment.
+        let cle = cle_de_test();
+        let d = tempfile::tempdir().unwrap();
+        let jeux = d.path().join("Jeux").join("Fire Emblem");
+        let maj_dlc = d.path().join("Nintendo Switch Maj & DLC");
+        std::fs::create_dir_all(&jeux).unwrap();
+        std::fs::create_dir_all(maj_dlc.join("Fire Emblem")).unwrap();
+        let jeu = jeux.join("FE3H.xci");
+        std::fs::write(&jeu, xci(&[("m.cnmt.nca", nca(&cle, 1, BASE, 0))], 0)).unwrap();
+        std::fs::write(maj_dlc.join("sans rapport [v65536].nsp"), partition(&[("m.cnmt.nca", nca(&cle, 1, BASE + 0x800, 0))], false)).unwrap();
+        std::fs::write(maj_dlc.join("Fire Emblem").join("Cindered Shadows.nsp"), partition(&[("a.nca", nca(&cle, 5, BASE + 0x1001, 0))], false)).unwrap();
+        let autre = 0x0100_AAAA_0000_0000u64;
+        std::fs::write(maj_dlc.join("Fire Emblem Warriors DLC.nsp"), partition(&[("z.nca", nca(&cle, 5, autre + 0x1001, 0))], false)).unwrap();
+        // Sans l'emplacement : rien.
+        let r = contenus_pour(&jeu, &cle).unwrap().unwrap();
+        assert!(r.maj.is_none() && r.dlc.is_empty());
+        // Avec : trouvés par leurs en-têtes, chemins absolus ; l'autre jeu est compté dans le dossier qui sera lu.
+        let cache = d.path().join("cache.json");
+        let ailleurs = [maj_dlc.clone(), jeux.clone()];
+        let r = contenus_pour_dans(&jeu, &cle, &ailleurs, Some(&cache)).unwrap().unwrap();
+        assert_eq!(r.maj.as_ref().map(|m| m.chemin.clone()), Some(maj_dlc.join("sans rapport [v65536].nsp")));
+        assert_eq!(r.dlc.iter().map(|c| c.chemin.clone()).collect::<Vec<_>>(), [maj_dlc.join("Fire Emblem").join("Cindered Shadows.nsp")]);
+        assert_eq!(r.dossiers_utiles(), [maj_dlc.clone(), maj_dlc.join("Fire Emblem")]);
+        assert_eq!(r.autres_jeux, 1);
+        assert!(!r.tronque);
+        // Le cache : la clé n'y est jamais ; relu, il rend la même chose.
+        let texte = std::fs::read_to_string(&cache).unwrap();
+        assert!(texte.contains("Cindered Shadows") && !texte.contains("header_key"));
+        let r2 = contenus_pour_dans(&jeu, &cle, &ailleurs, Some(&cache)).unwrap().unwrap();
+        assert_eq!((r2.lecture.lus, r2.lecture.en_cache), (0, 3), "tout vient du cache");
+        assert_eq!((r2.maj, r2.dlc, r2.autres_jeux), (r.maj.clone(), r.dlc.clone(), r.autres_jeux));
+        // Un fichier changé (autre taille) est relu.
+        std::fs::write(maj_dlc.join("Fire Emblem").join("Cindered Shadows.nsp"), b"abime").unwrap();
+        let r3 = contenus_pour_dans(&jeu, &cle, &ailleurs, Some(&cache)).unwrap().unwrap();
+        assert!(r3.dlc.is_empty() && r3.illisibles == ["Cindered Shadows.nsp"]);
+        // Une autre clé : le cache entier est oublié (rien de lu avec elle).
+        assert_eq!(contenus_pour_dans(&jeu, &CleEntete::depuis(&[1u8; 32]), &ailleurs, Some(&cache)).unwrap(), None);
+    }
+
+    #[test]
+    fn un_contenu_en_double_ne_compte_qu_une_fois_celui_du_dossier_du_jeu_d_abord() {
+        let cle = cle_de_test();
+        let d = tempfile::tempdir().unwrap();
+        let (jeux, place) = (d.path().join("jeu"), d.path().join("place"));
+        std::fs::create_dir_all(&jeux).unwrap();
+        std::fs::create_dir_all(&place).unwrap();
+        let jeu = jeux.join("jeu.xci");
+        std::fs::write(&jeu, xci(&[("m.cnmt.nca", nca(&cle, 1, BASE, 0))], 0)).unwrap();
+        let dlc = partition(&[("a.nca", nca(&cle, 5, BASE + 0x1001, 0))], false);
+        let maj = partition(&[("m.cnmt.nca", nca(&cle, 1, BASE + 0x800, 0))], false);
+        // L'emplacement est trié avant le dossier du jeu par son nom : le dossier du jeu passe quand même d'abord.
+        std::fs::write(place.join("a DLC.nsp"), &dlc).unwrap();
+        std::fs::write(place.join("a maj [v65536].nsp"), &maj).unwrap();
+        std::fs::write(jeux.join("z DLC.nsp"), &dlc).unwrap();
+        std::fs::write(jeux.join("z maj [v65536].nsp"), &maj).unwrap();
+        // Une mise à jour plus récente, elle, n'est pas un double.
+        std::fs::write(place.join("b maj [v131072].nsp"), &maj).unwrap();
+        let cache = d.path().join("cache.json");
+        let r = contenus_pour_dans(&jeu, &cle, &[place.clone()], Some(&cache)).unwrap().unwrap();
+        assert_eq!(r.dlc.iter().map(|c| c.chemin.clone()).collect::<Vec<_>>(), [jeux.join("z DLC.nsp")]);
+        assert_eq!(r.maj.as_ref().map(|m| m.chemin.clone()), Some(place.join("b maj [v131072].nsp")));
+        assert_eq!(r.majs_anciennes.iter().map(|c| c.chemin.clone()).collect::<Vec<_>>(), [jeux.join("z maj [v65536].nsp")]);
+        assert_eq!(r.doubles, ["a DLC.nsp", "a maj [v65536].nsp"]);
+        // Un fichier illisible n'est pas relu tant qu'il ne change pas ; toujours dit.
+        std::fs::write(place.join("abime.nsp"), b"PFS0abime").unwrap();
+        let r = contenus_pour_dans(&jeu, &cle, &[place.clone()], Some(&cache)).unwrap().unwrap();
+        assert_eq!((r.lecture.lus, r.illisibles.clone()), (1, vec!["abime.nsp".to_string()]));
+        let r = contenus_pour_dans(&jeu, &cle, &[place.clone()], Some(&cache)).unwrap().unwrap();
+        assert_eq!((r.lecture.lus, r.illisibles.clone()), (0, vec!["abime.nsp".to_string()]));
+        assert!(r.lecture.resume().contains("0 fichier(s) lu(s)"));
+        assert_eq!(quelques_noms(&(0..7).map(|i| i.to_string()).collect::<Vec<_>>()), "0, 1, 2, 3, 4 et 2 autre(s)");
+    }
+
+    #[test]
+    fn un_parcours_trop_profond_est_dit_a_part() {
+        let cle = cle_de_test();
+        let d = tempfile::tempdir().unwrap();
+        let jeu = d.path().join("jeu.xci");
+        std::fs::write(&jeu, xci(&[("m.cnmt.nca", nca(&cle, 1, BASE, 0))], 0)).unwrap();
+        let mut profond = d.path().join("place");
+        for i in 0..=MAX_PROFONDEUR {
+            profond = profond.join(format!("n{i}"));
+        }
+        std::fs::create_dir_all(&profond).unwrap();
+        std::fs::write(profond.join("dlc.nsp"), partition(&[("a.nca", nca(&cle, 5, BASE + 0x1001, 0))], false)).unwrap();
+        let r = contenus_pour_dans(&jeu, &cle, &[d.path().join("place")], None).unwrap().unwrap();
+        assert!(r.parcours_incomplet && !r.tronque && r.dlc.is_empty());
+    }
+
+    #[test]
+    fn un_grand_emplacement_est_lu_par_tranches_grace_au_cache() {
+        let cle = cle_de_test();
+        let d = tempfile::tempdir().unwrap();
+        let jeux = d.path().join("jeu");
+        let place = d.path().join("place");
+        std::fs::create_dir_all(&jeux).unwrap();
+        std::fs::create_dir_all(&place).unwrap();
+        let jeu = jeux.join("jeu.xci");
+        std::fs::write(&jeu, xci(&[("m.cnmt.nca", nca(&cle, 1, BASE, 0))], 0)).unwrap();
+        let autre = 0x0100_AAAA_0000_0000u64;
+        for i in 0..MAX_VOISINS {
+            std::fs::write(place.join(format!("a{i:04}.nsp")), partition(&[("z.nca", nca(&cle, 5, autre + 0x1001, 0))], false)).unwrap();
+        }
+        // Le DLC du jeu, rangé APRÈS les 400 premiers : pas lu la première fois (dit), lu la suivante.
+        std::fs::write(place.join("z.nsp"), partition(&[("a.nca", nca(&cle, 5, BASE + 0x1001, 0))], false)).unwrap();
+        let cache = d.path().join("cache.json");
+        let r = contenus_pour_dans(&jeu, &cle, &[place.clone()], Some(&cache)).unwrap().unwrap();
+        assert!(r.tronque && r.dlc.is_empty());
+        let r = contenus_pour_dans(&jeu, &cle, &[place.clone()], Some(&cache)).unwrap().unwrap();
+        assert!(!r.tronque && r.dlc.len() == 1, "{r:?}");
     }
 
     #[test]
