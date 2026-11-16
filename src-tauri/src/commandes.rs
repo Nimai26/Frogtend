@@ -2790,6 +2790,8 @@ pub async fn menu_jeu_action(app: AppHandle, noyau: State<'_, Noyau>, action: St
         };
         if r.is_ok() {
             garder_fps(&app, None, true);
+        } else if let Err(err) = &r {
+            noyau.journaliser(&format!("menu en jeu : compteur d'images non basculé : {err:?}"));
         }
         return r;
     }
@@ -2836,6 +2838,10 @@ pub async fn menu_jeu_action(app: AppHandle, noyau: State<'_, Noyau>, action: St
     let r = tauri::async_runtime::spawn_blocking(move || crate::menu_jeu::agir(&e, &crate::lancement::processus_de_la_partie(p.pid), a))
         .await
         .map_err(|_| Erreur::Disque("L'action s'est arrêtée brutalement.".into()))?;
+    // Le menu est déjà caché : un échec ne se voit pas, il est au moins noté.
+    if let Err(err) = &r {
+        noyau.journaliser(&format!("menu en jeu : action « {action} » non faite : {err:?}"));
+    }
     // Eden enregistre le son coupé : il sera remis au prochain lancement (`eden::son_remis`).
     if r.is_ok() && muet_eden {
         if let Some(d) = dossier {

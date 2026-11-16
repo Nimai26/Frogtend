@@ -353,6 +353,8 @@ pub struct ReglageConfig {
     pub manette_inconnue: bool,
     /// L'avance rapide a été liée à F13 (lot 5, une seule fois).
     pub turbo: bool,
+    /// Sa vitesse (`tick_scalar`) était à 0 : mise à 200 (`poser_vitesse_turbo`).
+    pub vitesse: bool,
 }
 
 /// Ce que Frogtend fait du joueur 1.
@@ -428,6 +430,7 @@ pub fn regler_config(ryubing: &Path, racine: &Path, joueur1: Joueur1) -> Resulta
     if !racine.join(MARQUE_TURBO).exists() {
         r.turbo = poser_turbo(&mut v);
     }
+    r.vitesse = poser_vitesse_turbo(&mut v);
     // Le joueur 1 : la manette branchée (seulement celle déjà relevée), sinon le clavier d'origine remis à la place de
     // la manette que FROGTEND avait posée — jamais une manette réglée par la personne.
     let voulue = match joueur1 {
@@ -462,7 +465,7 @@ pub fn regler_config(ryubing: &Path, racine: &Path, joueur1: Joueur1) -> Resulta
 /// Écrit le Config.json réglé s'il a changé (à l'abri avant, relu après, celui d'avant remis s'il ne se relit pas),
 /// puis les marques.
 fn ecrire_si_change(ryubing: &Path, racine: &Path, f: &Path, avant: &str, v: Value, r: ReglageConfig, manette: Option<&str>) -> Resultat<ReglageConfig> {
-    if r.regle || r.manette || r.clavier || r.turbo {
+    if r.regle || r.manette || r.clavier || r.turbo || r.vitesse {
         ecrire_verifie(ryubing, f, avant, &v)?;
         if r.regle {
             std::fs::write(racine.join(MARQUE_REGLAGES), b"")?;
@@ -916,6 +919,18 @@ fn poser_turbo(v: &mut Value) -> bool {
     libre
 }
 
+/// La vitesse de l'avance rapide (`tick_scalar`, en %) : un Ryubing NEUF l'écrit à 0 (relevé du 16/11 ; seule sa
+/// migration 68 met 200 aux anciens Config.json, ConfigurationState.Migration.cs L467) ; à 0, `Switch::ToggleTurbo`
+/// ne peut rien accélérer. Mise à 200 (la valeur de Ryubing) quand l'avance rapide est sur F13 (celle du menu) ; une
+/// vitesse choisie par la personne (> 0) n'est jamais touchée. Rend vrai si `v` a changé.
+fn poser_vitesse_turbo(v: &mut Value) -> bool {
+    let a_regler = v["hotkeys"]["turbo_mode"] == TOUCHE_TURBO && v["tick_scalar"].as_f64().is_none_or(|x| x <= 0.0);
+    if a_regler {
+        v["tick_scalar"] = Value::from(200);
+    }
+    a_regler
+}
+
 /// Les actions du menu possibles pour cette personne : celles dont la touche est la bonne, à elle seule (un choix de
 /// la personne n'est jamais deviné ; l'avance rapide seulement en bascule). Rien si Ryubing n'est pas portable ou si
 /// un Config.json à côté de Ryujinx.exe passe devant (la touche pourrait y faire autre chose).
@@ -929,7 +944,11 @@ pub fn actions_d_origine(ryubing: &Path, racine: &Path) -> Vec<crate::pilotage::
     let h = &v["hotkeys"];
     RACCOURCIS_MENU
         .iter()
-        .filter(|(a, cle, touche)| touche_seule(h, cle, touche) && (*a != crate::pilotage::Action::AvanceRapide || h["turbo_mode_while_held"] == false))
+        .filter(|(a, cle, touche)| {
+            touche_seule(h, cle, touche)
+                && (*a != crate::pilotage::Action::AvanceRapide
+                    || (h["turbo_mode_while_held"] == false && v["tick_scalar"].as_f64().is_some_and(|x| x > 0.0)))
+        })
         .map(|(a, _, _)| *a)
         .collect()
 }
@@ -1245,7 +1264,7 @@ mod tests {
         let (ryu, racine) = ryubing_installe(d.path());
         assert!(config_valide(MODELE_CONFIG), "le modèle relevé est lisible par Ryubing");
         let r = regler_config(&ryu, &racine, Joueur1::Rien).unwrap();
-        assert_eq!(r, ReglageConfig { pose: true, regle: true, turbo: true, ..Default::default() });
+        assert_eq!(r, ReglageConfig { pose: true, regle: true, turbo: true, vitesse: true, ..Default::default() });
         let v = lire_config(&racine);
         // Complet : chaque champ du modèle est là (jamais un fichier minimal).
         let modele: Value = serde_json::from_str(MODELE_CONFIG).unwrap();
@@ -1555,6 +1574,21 @@ mod tests {
         let h = &lire_config(&seb)["hotkeys"];
         assert_eq!((h["turbo_mode"].as_str(), h["turbo_mode_while_held"].as_bool()), (Some("F13"), Some(false)), "une bascule");
         assert_eq!(actions_d_origine(&ryu, &seb), vec![Capture, Muet, AvanceRapide]);
+        // Sa vitesse : 0 dans un Ryubing neuf (rien n'accélérerait), 200 après Frogtend ; un choix (150) gardé.
+        assert_eq!(serde_json::from_str::<Value>(MODELE_CONFIG).unwrap()["tick_scalar"], 0);
+        assert_eq!(lire_config(&seb)["tick_scalar"], 200);
+        let mut v = lire_config(&seb);
+        v["tick_scalar"] = 150.into();
+        std::fs::write(config_de(&seb), serde_json::to_string_pretty(&v).unwrap()).unwrap();
+        assert!(!regler_config(&ryu, &seb, Joueur1::Rien).unwrap().vitesse);
+        assert_eq!(lire_config(&seb)["tick_scalar"], 150);
+        // Remise à 0 (un Ryubing qui la réécrit) : reposée à 200, même la marque du turbo posée ; à 0, jamais proposée.
+        let mut v = lire_config(&seb);
+        v["tick_scalar"] = 0.into();
+        std::fs::write(config_de(&seb), serde_json::to_string_pretty(&v).unwrap()).unwrap();
+        assert_eq!(actions_d_origine(&ryu, &seb), vec![Capture, Muet]);
+        assert!(regler_config(&ryu, &seb, Joueur1::Rien).unwrap().vitesse);
+        assert_eq!(lire_config(&seb)["tick_scalar"], 200);
         // La personne la remet à « Unbound » (ou ailleurs) : jamais reposée.
         changer_raccourcis(&seb, |h| h["turbo_mode"] = "Unbound".into());
         assert!(!regler_config(&ryu, &seb, Joueur1::Rien).unwrap().turbo);

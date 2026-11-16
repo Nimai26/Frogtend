@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.202.1 — Ryubing : le son et la photo du menu partent vraiment
+
+- Corrigé : avec Ryubing, 🔇 Son et 📷 Photo du menu en jeu ne faisaient rien, sans le dire, et la fenêtre de Frogtend
+  pouvait rester devant le jeu (qui restait en pause). Frogtend envoie maintenant toutes les touches de fonction, et
+  rend toujours la main au jeu, même quand une action ne peut pas se faire (l'échec est noté dans son journal).
+- Corrigé : ⏩ l'avance rapide de Ryubing n'accélérait rien (un Ryubing neuf règle sa vitesse à 0). Elle est mise à
+  2 fois plus vite ; une vitesse que tu as choisie toi-même dans Ryubing est gardée.
+
 ## 0.202.0 — 🎮 Ryubing, l'autre émulateur Switch, tout réglé
 
 - Ryubing (l'autre émulateur Switch, à côté d'Eden) s'installe sur accord depuis Firehouse, prêt à jouer sans rien

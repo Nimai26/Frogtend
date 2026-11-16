@@ -1068,17 +1068,35 @@ mod fenetres {
 
 /// Les codes de balayage (jeu 1) des touches envoyées.
 fn code(nom: &str) -> Option<(u16, bool)> {
+    // Toutes les touches de fonction (codes de balayage de Windows) : une touche absente d'ici n'est JAMAIS envoyée
+    // (Ryubing, 16/11 : F2 et F8 manquaient, son et photo du menu ne faisaient rien, sans le dire). Les lettres et
+    // chiffres passent par la disposition du clavier (`scan_de_vk`).
     Some(match nom {
+        "F1" => (0x3B, false),
+        "F2" => (0x3C, false),
+        "F3" => (0x3D, false),
+        "F4" => (0x3E, false),
+        "F5" => (0x3F, false),
+        "F6" => (0x40, false),
+        "F7" => (0x41, false),
+        "F8" => (0x42, false),
+        "F9" => (0x43, false),
+        "F10" => (0x44, false),
+        "F11" => (0x57, false),
+        "F12" => (0x58, false),
         "F13" => (0x64, false),
         "F14" => (0x65, false),
         "F15" => (0x66, false),
         "F16" => (0x67, false),
-        "F4" => (0x3E, false),
-        "F6" => (0x40, false),
+        "F17" => (0x68, false),
+        "F18" => (0x69, false),
+        "F19" => (0x6A, false),
+        "F20" => (0x6B, false),
+        "F21" => (0x6C, false),
+        "F22" => (0x6D, false),
+        "F23" => (0x6E, false),
+        "F24" => (0x76, false),
         "Home" => (0x47, true),
-        // RPCS3 : F10 et F12 (les lettres et chiffres passent par la disposition du clavier, `scan_lettre`).
-        "F10" => (0x44, false),
-        "F12" => (0x58, false),
         _ => return None,
     })
 }
@@ -1231,10 +1249,24 @@ pub fn agir(emulateur: &str, pids: &[u32], a: Action) -> Resultat<()> {
         std::thread::sleep(Duration::from_millis(150));
         return commande_retroarch(crate::pilotage::commande_retroarch(a));
     }
-    let t = crate::pilotage::touche(emulateur, a)
-        .ok_or_else(|| Erreur::Refus("Cet émulateur ne sait pas le faire depuis le menu.".into()))?;
+    // Le menu est déjà caché : un refus rend quand même la main au jeu (Ryubing, 16/11 : la fenêtre de Frogtend
+    // restait devant, et lui en pause).
+    let refus = |e: Erreur| -> Resultat<()> {
+        reprendre(pids);
+        Err(e)
+    };
+    let Some(t) = crate::pilotage::touche(emulateur, a) else {
+        return refus(Erreur::Refus("Cet émulateur ne sait pas le faire depuis le menu.".into()));
+    };
     let lettre = t.touche.len() == 1 && t.touche.chars().all(|c| c.is_ascii_alphanumeric());
-    let (scan, etendue) = if lettre { (0, false) } else { code(t.touche).ok_or_else(|| Erreur::Refus(format!("Touche inconnue : {}.", t.touche)))? };
+    let (scan, etendue) = if lettre {
+        (0, false)
+    } else {
+        match code(t.touche) {
+            Some(c) => c,
+            None => return refus(Erreur::Refus(format!("Touche inconnue : {}.", t.touche))),
+        }
+    };
     if !reprendre(pids) {
         return Err(Erreur::Introuvable("La fenêtre du jeu est introuvable.".into()));
     }
@@ -1306,6 +1338,25 @@ mod tests_reglages_recommandes {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn chaque_touche_envoyee_par_le_menu_est_connue() {
+        use crate::pilotage::Action::*;
+        let emulateurs = ["retroarch", "duckstation", "pcsx2", "dolphin", "dosbox-staging", "rpcs3", "eden", "eglantine", "lichii", "bigpemu", "mame", "ryubing", "ppsspp", "azahar"];
+        for e in emulateurs {
+            for a in [Reset, DisqueSuivant, SauverEtat, ChargerEtat, ImagesParSeconde, AvanceRapide, Capture, Muet] {
+                if let Some(t) = crate::pilotage::touche(e, a) {
+                    let lettre = t.touche.len() == 1 && t.touche.chars().all(|c| c.is_ascii_alphanumeric());
+                    assert!(lettre || super::code(t.touche).is_some(), "{e} {a:?} : touche {} inconnue du menu", t.touche);
+                }
+            }
+        }
+        // Les touches de fonction ont toutes un code distinct.
+        let mut vus = std::collections::HashSet::new();
+        for n in 1..=24 {
+            assert!(vus.insert(super::code(&format!("F{n}")).unwrap()), "F{n}");
+        }
+    }
+
     use super::*;
 
     fn partie(emulateur: Option<&str>) -> PartieEnCours {

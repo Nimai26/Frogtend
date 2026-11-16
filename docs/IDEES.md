@@ -1,5 +1,9 @@
 # Idées notées (à ne pas démarrer avant la fin du lot en cours)
 
+- **Micrologiciel PS3 : proposé comme une mise à jour** (Seb, 16/11) : le bouton « 💿 Micrologiciel PS3… » toujours
+  affiché prête à confusion (on croit à une mise à jour en attente). Le remplacer par la même logique que les mises à
+  jour d'émulateurs : au démarrage, si Firehouse sert une version plus récente que celle de RPCS3, le proposer (taille
+  dite) ; sinon un simple état « ✅ à jour (version …) ». Même idée pour le firmware Switch d'Eden/Ryubing et Vita3K.
 - **Profils de manette par jeu** (lot 5, Taodbox) : RetroArch a ses « remaps » par jeu, DuckStation et PCSX2 leurs
   réglages par jeu (`gamesettings\`), Dolphin ses profils (`Config\Profiles\GCPad\`).
 - **Dolphin et les manettes PlayStation** : Frogtend règle Dolphin sur XInput ; une manette PS4/PS5 n'y marche que

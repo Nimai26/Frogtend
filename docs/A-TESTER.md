@@ -6,14 +6,28 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
-## Ryubing (0.202.0) — quand tu auras un jeu Switch à essayer
-- [ ] Nintendo Switch ▸ ⚙ choisir Ryubing : UN accord annonce Ryubing, les clés (prod.keys, title.keys) et le
-      firmware (~320 Mo) ; après : aucune fenêtre « Keys not found », Ryubing en français.
-- [ ] Un jeu : plein écran, la manette Xbox One marche tout de suite, pas de question en quittant ; le menu en jeu met en
-      pause.
-- [ ] Menu : 📷 photo (arrive dans 📷 Mes captures), 🔇 son, ⏩ avance rapide (F13), 🔄 Recommencer.
+## Ryubing : son, photo et avance rapide du menu (0.202.1)
+- [ ] Zelda BotW par Ryubing ▸ menu ▸ 🔇 Son : le son se coupe, et c'est le JEU qui revient devant (jamais la fenêtre
+      de Frogtend) ; recommencer : il revient.
+- [ ] ⏩ Avance rapide : le jeu va nettement plus vite ; recommencer : vitesse normale.
+- [ ] 📷 Photo : elle arrive dans 📷 Mes captures (si une action ne se fait pas, le menu ne le dit pas encore : le
+      journal de Frogtend le note, « menu en jeu : action … non faite »). ⚠ Lancé seul, Ryubing 1.3.3 n'a écrit AUCUNE photo avec F8 (dossier
+      `screenshots` créé, vide, rien au journal) : si elle n'arrive pas non plus par le menu, la photo sera retirée du
+      menu de Ryubing (une fonction qui ne marche pas n'y reste pas).
+
+## Ryubing (0.202.0) — essayé avec Seb le 16/11 (Zelda Breath of the Wild)
+- [x] (✅ Seb 16/11) Nintendo Switch ▸ ➕ Ajouter Ryubing : UN accord (Ryubing, clés, firmware) ; après : aucune fenêtre
+      « Keys not found », clés et firmware 18.1.0 posés (relu : 229 NCA au bon format).
+- [x] (✅ Seb 16/11) Un jeu : en français, la manette Xbox One marche tout de suite, pas de question en quittant ; le menu en jeu met en
+      pause. Réglages relus dans `Profils\Sebastien\Config.json` (français, Europe, fr_FR, pause au premier plan perdu,
+      Discord coupé, manette au joueur 1).
+- [ ] Menu : 📷 photo, 🔇 son, ⏩ avance rapide → ❌ en 0.202.0 (corrigé en 0.202.1, voir au-dessus) ; 🔄 Recommencer ✅
+      (Seb 16/11 : ferme et relance l'émulateur).
 - [ ] 🖼 effet d'image, puis 🔄 Relancer : le jeu repart avec l'effet.
 - [ ] Une partie sauvegardée dans le jeu, puis Options ▸ Sauvegarde : les parties de Ryubing partent (jamais les clés).
+- [x] (✅ Seb 16/11) Eden en installation NEUVE (premier jeu Switch : Eden, le conseil de la maison, préparé seul) :
+      Zelda démarre (premier chargement long, ~1 min) ; l'ancien `AppData\Roaming\eden` mis à la Corbeille à la demande
+      de Seb (aucune partie dedans, seulement un account.sav de 320 octets).
 - [ ] En streaming (Sunshine) : la manette n'est pas encore connue → au clavier (relevé à faire ensemble).
 
 ## Raccourcis en jeu (0.201.0)
