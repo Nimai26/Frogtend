@@ -7,11 +7,12 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## Eden : mises à jour et DLC tout seuls (0.204.0)
-- [ ] Un jeu Switch lancé par Eden qui a une mise à jour ou des DLC (ex. Fire Emblem Three Houses, dont les contenus
+- [x] (✅ Seb 17/11) Un jeu Switch lancé par Eden qui a une mise à jour ou des DLC (ex. Fire Emblem Three Houses, dont les contenus
       sont dans `D:\LaunchBox\Games\Nintendo Switch Maj & DLC`) : sa fiche ▸ 📦 montre la liste ✅, sans case ni bouton.
-- [ ] ▶ Jouer : dans Eden, la colonne « Add-Ons » (ou l'écran titre) montre la mise à jour et les DLC.
-- [ ] Le lancement n'est pas plus lent ; le journal de Frogtend dit « contenus Switch lus en … ms ».
-- [ ] Une case à cocher ailleurs (📥 Importer, boutiques) : taille normale, la ligne se coche en cliquant sur son texte.
+      Journal relu : « 1 mise(s) à jour, 6 DLC », contenus lus en 0 ms (cache).
+- [x] (✅ Seb 17/11) ▶ Jouer : dans Eden, la colonne « Add-Ons » (ou l'écran titre) montre la mise à jour et les DLC.
+- [x] (✅ Seb 17/11) Le lancement n'est pas plus lent ; le journal de Frogtend dit « contenus Switch lus en … ms ».
+- [x] (✅ Seb 17/11) Une case à cocher ailleurs (📥 Importer, boutiques) : taille normale, la ligne se coche en cliquant sur son texte.
 
 ## Ryubing : mises à jour et DLC tout seuls (0.203.0)
 - [ ] Fiche de Zelda BotW ▸ 📦 Mises à jour et DLC : la mise à jour et les 2 DLC (Master Trials, Champions' Ballad)
