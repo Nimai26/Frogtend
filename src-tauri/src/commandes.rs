@@ -356,6 +356,8 @@ pub async fn profil_ouvrir(
             let _ = app2.emit("jeux-pc-changes", n);
         }
     });
+    // Les envois Switch déjà acceptés par cette personne et restés en file (Frogtend fermé, connexion coupée) reprennent.
+    lancer_envois_switch(&app);
     Ok(p)
 }
 
@@ -1291,7 +1293,9 @@ fn apercu_eden(donnees: &std::path::Path, eden: &std::path::Path, fichier: Optio
         let actif = id.as_deref().is_some_and(|i| choix.dlc_actif(i));
         contenu_switch_vu(m, "dlc", id, actif, dlc_allumes > 0, None)
     }));
+    contenus.extend(contenus_nsz_vus(&c));
     let mut remarques = crate::eden::remarques_contenus(&c);
+    remarques.extend(remarque_inaccessibles(&c));
     if abime.is_some() {
         remarques.insert(0, crate::contenus_switch::ABIME_SUR_LA_FICHE.into());
     }
@@ -1303,6 +1307,29 @@ fn apercu_eden(donnees: &std::path::Path, eden: &std::path::Path, fichier: Optio
         ignores: c.illisibles,
         remarque: (!remarques.is_empty()).then(|| remarques.join("\n")),
     }
+}
+
+/// Les mises à jour et DLC .nsz d'un jeu (✅ Seb 17/11) : montrés sur la fiche, sans interrupteur, avec la raison
+/// technique (aucun émulateur ne les lit) ; ils peuvent être envoyés à Firehouse.
+fn contenus_nsz_vus(c: &crate::switch_nca::ContenusDuJeu) -> Vec<ContenuVu> {
+    c.compresses
+        .iter()
+        .map(|m| {
+            let genre = if m.sorte == crate::switch_nca::Sorte::MiseAJour { "maj" } else { "dlc" };
+            contenu_switch_vu(m, genre, None, false, false, Some(crate::switch_nca::RAISON_NSZ))
+        })
+        .collect()
+}
+
+/// Les fichiers que le disque n'a pas laissé lire cette fois (utilisés par un autre programme) : dits, relus ensuite.
+fn remarque_inaccessibles(c: &crate::switch_nca::ContenusDuJeu) -> Option<String> {
+    (!c.inaccessibles.is_empty()).then(|| {
+        format!(
+            "{} fichier(s) utilisé(s) par un autre programme n'ont pas pu être lus cette fois ({}) : ils le seront à la prochaine ouverture.",
+            c.inaccessibles.len(),
+            crate::switch_nca::quelques_noms(&c.inaccessibles)
+        )
+    })
 }
 
 /// La clé d'un contenu Switch pour son interrupteur : « maj » pour une mise à jour, l'identifiant d'un DLC.
@@ -1396,8 +1423,10 @@ fn apercu_ryubing(donnees: &std::path::Path, d: &std::path::Path, profil: &str, 
         let raison = (actif && !utilise).then_some("Ryubing ne le prend pas pour l'instant");
         contenu_switch_vu(m, "dlc", id, actif, utilise, raison)
     }));
+    contenus.extend(contenus_nsz_vus(&c));
     // Ce qui est à dire : les problèmes (jamais jetés), le dossier (hors fichiers illisibles, montrés à part).
     let mut remarques: Vec<String> = Vec::new();
+    remarques.extend(remarque_inaccessibles(&c));
     if abime.is_some() {
         remarques.push(crate::contenus_switch::ABIME_SUR_LA_FICHE.into());
     }
@@ -1597,6 +1626,236 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
             })
             .collect(),
     })
+}
+
+// --- Lot 7 (✅ Seb 17/11) : envoyer à Firehouse les mises à jour et DLC Switch qu'il n'a pas (envois_switch.rs). Détecté
+// à l'ouverture du panneau 📦, en tâche de fond (jamais dans le lancement) ; envoyé après l'accord chiffré de la personne
+// sur la liste qu'elle a vue (ou tout seul si elle l'a choisi), un fichier à la fois, en pause pendant une partie. ---
+
+/// Les mises à jour et DLC Switch d'un jeu lus dans leurs en-têtes, et la clé qui les a lus (celle de l'émulateur
+/// réglé : Ryubing de la personne, ou Eden) — la même lecture que le panneau (le cache évite de tout relire). `None` :
+/// pas un jeu Switch, pas d'émulateur utilisable, pas de clés ou jeu illisible.
+async fn contenus_switch_lus(app: &AppHandle, noyau: &Noyau, id: i64) -> Option<(crate::switch_nca::ContenusDuJeu, crate::switch_nca::CleEntete)> {
+    let j = noyau.jeu_visible(id).await.ok()?;
+    if !j.plateforme.eq_ignore_ascii_case("Nintendo Switch") {
+        return None;
+    }
+    let (programme, _) = emulateur_regle(app, &j.plateforme, id, None)?;
+    let fichier = noyau.fichier_pour_l_emulateur(id, None).await.ok().flatten()?;
+    let ailleurs = dossiers_switch(app, noyau, id).await;
+    let p = std::path::PathBuf::from(&programme);
+    let d = p.parent().map(std::path::PathBuf::from)?;
+    if crate::ryubing::est_ryubing(&programme) {
+        let profil = profil_ouvert(noyau).await.ok()?.nom;
+        return tauri::async_runtime::spawn_blocking(move || {
+            if !crate::ryubing::portable(&d) {
+                return None;
+            }
+            let racine = crate::ryubing::racine(&d, &profil);
+            let cle = crate::ryubing::cle_entete(&d, &racine)?;
+            let c = crate::switch_nca::contenus_pour_dans(&fichier, &cle, &ailleurs, Some(&crate::ryubing::cache_contenus(&d))).ok().flatten()?;
+            Some((c, cle))
+        })
+        .await
+        .ok()
+        .flatten();
+    }
+    if p.file_name().is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case("eden.exe")) {
+        return tauri::async_runtime::spawn_blocking(move || {
+            let cle = crate::contenus::cles_eden(&d).and_then(|f| crate::switch_nca::cle_entete(&f))?;
+            match crate::eden::lire_contenus(&d, &fichier, &ailleurs) {
+                crate::eden::LectureContenus::Lus(c) => Some((c, cle)),
+                _ => None,
+            }
+        })
+        .await
+        .ok()
+        .flatten();
+    }
+    None
+}
+
+/// Le débit d'envoi est-il plafonné à la moitié du débit mesuré (réglage du PC `envoisFirehouse.debit`, la moitié par
+/// défaut ; « sans_limite » sinon) ?
+fn envois_plafonnes(app: &AppHandle) -> bool {
+    let r = app.store("pc.json").ok().and_then(|s| s.get("reglages")).unwrap_or(Value::Null);
+    r["envoisFirehouse"]["debit"].as_str() != Some("sans_limite")
+}
+
+/// Le compte Firehouse retenu pour une session (`username#grade` de `/moi`), s'il est connu.
+fn compte_de(s: &crate::noyau::Session) -> Option<String> {
+    s.verrou().meta("compte").ok().flatten()
+}
+
+/// Ce que l'envoi demande à l'application (envois_switch::Rythme) : pause pendant une partie, un lancement ou un
+/// émulateur ouvert seul (la même garde que les interrupteurs des contenus) ; arrêt si le profil change ou si la
+/// personne a demandé « ✋ Arrêter l'envoi ».
+struct RythmeApp {
+    app: AppHandle,
+    session: std::sync::Arc<crate::noyau::Session>,
+}
+
+impl crate::envois_switch::Rythme for RythmeApp {
+    fn occupe(&self) -> bool {
+        let n = self.app.state::<Noyau>();
+        self.app.state::<crate::menu_jeu::MenuJeu>().partie().is_some() || n.lancement_en_preparation() || n.emulateur_seul_nom().is_some()
+    }
+    fn arrete(&self) -> bool {
+        self.session.est_perimee() || self.app.state::<crate::envois_switch::Travail>().annuler.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    fn plafonne(&self) -> bool {
+        envois_plafonnes(&self.app)
+    }
+    async fn dormir(&self, d: std::time::Duration) {
+        tokio::time::sleep(d).await;
+    }
+    fn progres(&self, p: &crate::envois_switch::Progres) {
+        let p = crate::envois_switch::Progres { profil: self.session.profil.id.clone(), ..p.clone() };
+        *self.app.state::<crate::envois_switch::Travail>().progres.lock().unwrap_or_else(|e| e.into_inner()) = Some(p);
+    }
+    fn journaliser(&self, m: &str) {
+        self.app.state::<Noyau>().journaliser(m);
+    }
+    fn compte(&self) -> Option<String> {
+        compte_de(&self.session)
+    }
+}
+
+/// Lance le travail des envois du profil ouvert en arrière-plan (un seul à la fois : s'il tourne déjà, pour un autre
+/// profil peut-être, il sera relancé à sa fin ; rien si la file est vide).
+fn lancer_envois_switch(app: &AppHandle) {
+    let app2 = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let noyau = app2.state::<Noyau>();
+        let Ok(s) = noyau.session().await else { return };
+        let travail = app2.state::<crate::envois_switch::Travail>();
+        let profil = s.profil.id.clone();
+        if !travail.commencer(&profil) {
+            return;
+        }
+        let fin = match &s.source {
+            crate::source::Source::Firehouse(c) => {
+                let r = RythmeApp { app: app2.clone(), session: s.clone() };
+                crate::envois_switch::travailler(c, &s.dossier, crate::envois_switch::Bornes::default(), &r).await
+            }
+            crate::source::Source::Simulee => None,
+        };
+        if let Some(crate::envois_switch::Arret::Motif(m)) = &fin {
+            noyau.journaliser(&format!("envois Switch arrêtés : {m}"));
+        }
+        if travail.finir(&profil, fin) {
+            lancer_envois_switch(&app2);
+        }
+    });
+}
+
+/// L'examen d'un jeu : ce que Firehouse a (route 1), et ce que ce PC a de plus, envoyable. Rend aussi ce qu'il faut pour
+/// mettre les candidats en file (base, fiche possible).
+async fn examiner_envois(app: &AppHandle, noyau: &Noyau, id: i64) -> Resultat<(crate::envois_switch::Examen, Vec<crate::envois_switch::Candidat>, u64, Option<i64>)> {
+    use crate::envois_switch::Examen;
+    let rien = |etat: &str, motif: Option<String>, suivi: crate::envois_switch::Suivi| Ok((Examen { etat: etat.into(), motif, suivi, ..Default::default() }, vec![], 0, None));
+    let s = noyau.session().await?;
+    let travail = app.state::<crate::envois_switch::Travail>();
+    let suivi = crate::envois_switch::suivi_du_jeu(&s.dossier, &s.profil.id, id, &travail)?;
+    let client = match &s.source {
+        crate::source::Source::Firehouse(c) => c,
+        crate::source::Source::Simulee => return rien("simule", None, suivi),
+    };
+    let file = crate::envois_switch::lire(&s.dossier)?;
+    let compte = compte_de(&s);
+    if let Some(m) = file.interdit_pour(compte.as_deref()) {
+        return rien("interdit", Some(m), suivi);
+    }
+    if file.interdit.is_some() {
+        // Un autre compte, ou un autre grade : le refus d'avant ne vaut plus.
+        crate::envois_switch::modifier(&s.dossier, |l| {
+            l.interdit = None;
+            l.interdit_compte = None;
+        })?;
+    }
+    let j = noyau.jeu_visible(id).await?;
+    let Some((c, cle)) = contenus_switch_lus(app, noyau, id).await else { return rien("rien", None, suivi) };
+    if c.maj.is_none() && c.dlc.is_empty() && c.compresses.is_empty() {
+        return rien("rien", None, suivi);
+    }
+    // La route 1 ne coûte rien (contrat 1.42 ; pas d'ETag, besoin 52 réponse 8).
+    let servi: crate::envois_switch::CeQueFirehouseA = match client.obtenir_json(&crate::envois_switch::route_contenus(c.base)).await {
+        Ok(v) => v,
+        Err(Erreur::JetonRefuse(m)) => return Err(Erreur::JetonRefuse(m)),
+        // Une route inconnue (Firehouse d'avant le contrat 1.42) : rien n'est proposé.
+        Err(Erreur::Introuvable(_)) => return rien("rien", None, suivi),
+        Err(Erreur::Refus(_)) => return rien("interdit", Some("Ton compte Firehouse ne permet pas d'envoyer des mises à jour ou des DLC.".into()), suivi),
+        Err(_) => return rien("injoignable", None, suivi),
+    };
+    // Ce qui VIENT de Firehouse (les fichiers de la fiche installée : même chemin, même taille) ne repart jamais.
+    let importe = crate::import_local::est_importe(&j);
+    let venus: Vec<(std::path::PathBuf, u64)> = if importe { vec![] } else { j.fichiers.iter().map(|f| (std::path::Path::new(&j.dossier).join(&f.nom), f.taille)).collect() };
+    let file2 = file.clone();
+    let c2 = c.clone();
+    let tri = tauri::async_runtime::spawn_blocking(move || crate::envois_switch::trier(&c2, &cle, &servi, &venus, &|p: &std::path::Path| file2.contient(p), importe))
+        .await
+        .map_err(|_| Erreur::Disque("La lecture s'est arrêtée brutalement.".into()))?;
+    let examen = Examen::depuis(&tri, file.debit, envois_plafonnes(app), suivi);
+    Ok((examen, tri.a_envoyer, c.base, (!importe).then_some(j.id)))
+}
+
+/// À l'ouverture du panneau 📦 d'un jeu Switch : ce que Firehouse n'a pas (combien, combien de Go, combien de temps).
+/// Relance aussi les envois restés en file (un redémarrage, une connexion revenue).
+#[tauri::command]
+pub async fn envois_switch_examiner(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<crate::envois_switch::Examen> {
+    let (examen, _, _, _) = examiner_envois(&app, &noyau, id).await?;
+    if examen.etat == "ok" && examen.suivi.envois.iter().any(|e| !matches!(e.etat.as_str(), "range" | "deja_la" | "refuse" | "arrete")) {
+        lancer_envois_switch(&app);
+    }
+    Ok(examen)
+}
+
+/// La personne a dit oui (ou a choisi « tout seul ») à la liste qu'elle a VUE (`noms`, `total`) : les contenus que
+/// Firehouse n'a pas sont relus à l'instant (jamais une liste venue de l'interface) ; s'ils diffèrent de ce qu'elle a vu,
+/// refus (« la liste a changé » : l'interface redemande). Sinon, ils vont dans la file du profil et l'envoi commence en
+/// arrière-plan. Rend combien.
+#[tauri::command]
+pub async fn envois_switch_accepter(app: AppHandle, noyau: State<'_, Noyau>, id: i64, noms: Vec<String>, total: u64, auto: bool) -> Resultat<usize> {
+    let (examen, candidats, base, media) = examiner_envois(&app, &noyau, id).await?;
+    if examen.etat != "ok" {
+        return Err(Erreur::Refus(examen.motif.unwrap_or_else(|| "Rien ne peut être envoyé à Firehouse pour l'instant.".into())));
+    }
+    if !crate::envois_switch::meme_liste(&candidats, &noms, total) {
+        return Err(Erreur::Conflit("La liste des contenus à envoyer a changé : regarde-la de nouveau avant de dire oui.".into()));
+    }
+    let s = noyau.session().await?;
+    let dossier = s.dossier.clone();
+    let n = tauri::async_runtime::spawn_blocking(move || crate::envois_switch::ajouter(&dossier, id, base, media, &candidats))
+        .await
+        .map_err(|_| Erreur::Disque("L'enregistrement s'est arrêté brutalement.".into()))??;
+    noyau.journaliser(&format!("envois Switch du jeu {id} : {n} contenu(s) mis en file{}", if auto { " (envoi automatique choisi par la personne)" } else { " après l'accord de la personne" }));
+    lancer_envois_switch(&app);
+    Ok(n)
+}
+
+/// « ✋ Arrêter l'envoi » : les envois non finis de ce jeu sortent de la file (reproposables plus tard) ; si l'envoi en
+/// cours est à ce jeu, il s'arrête au prochain morceau. Rend combien.
+#[tauri::command]
+pub async fn envois_switch_annuler(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<usize> {
+    let s = noyau.session().await?;
+    let travail = app.state::<crate::envois_switch::Travail>();
+    // D'abord le drapeau (l'envoi en cours s'arrête), puis la file : il ne reprend jamais un fichier retiré.
+    if travail.en_cours_pour(&s.profil.id, id) {
+        travail.annuler.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+    let dossier = s.dossier.clone();
+    let n = tauri::async_runtime::spawn_blocking(move || crate::envois_switch::annuler(&dossier, id))
+        .await
+        .map_err(|_| Erreur::Disque("L'enregistrement s'est arrêté brutalement.".into()))??;
+    noyau.journaliser(&format!("envois Switch du jeu {id} : {n} envoi(s) arrêté(s) par la personne"));
+    Ok(n)
+}
+
+/// Où en sont les envois de ce jeu (rien n'est demandé à Firehouse) : relu par la fiche pendant un envoi.
+#[tauri::command]
+pub async fn envois_switch_suivi(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<crate::envois_switch::Suivi> {
+    let s = noyau.session().await?;
+    crate::envois_switch::suivi_du_jeu(&s.dossier, &s.profil.id, id, &app.state::<crate::envois_switch::Travail>())
 }
 
 /// Le bilan d'une installation de contenus.

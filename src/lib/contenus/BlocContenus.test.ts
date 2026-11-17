@@ -44,17 +44,47 @@ let reponse: object = EDEN;
 const choisir = vi.fn(async (..._a: unknown[]) => true);
 const installer = vi.fn(async (..._a: unknown[]) => ({ installes: 1, refuses: [] }));
 const contenusDuJeu = vi.fn(async () => structuredClone(reponse));
+// Lot 7 (envois à Firehouse) : d'office, rien à proposer.
+const RIEN = { etat: 'rien', motif: null, a_envoyer: [], total: 0, duree: null, plafonne: true, ecartes: [], deja_la: 0, suivi: { envois: [], en_cours: null, arret: null } };
+let examen: object = RIEN;
+let suiviReponse: object = RIEN.suivi;
+const examiner = vi.fn(async (..._a: unknown[]) => structuredClone(examen));
+const accepter = vi.fn(async (..._a: unknown[]) => 2);
+const suivre = vi.fn(async (..._a: unknown[]) => structuredClone(suiviReponse));
+const annuler = vi.fn(async (..._a: unknown[]) => 1);
 vi.mock('$lib/api', () => ({
   taille: (o: number) => `${o} o`,
+  duree: (s: number) => `${s} s`,
+  estErreurCoeur: (e: unknown) => typeof e === 'object' && e !== null && 'sorte' in e,
   api: {
     contenusDuJeu: () => contenusDuJeu(),
     contenusSwitchChoisir: (...a: unknown[]) => choisir(...a),
     contenusInstaller: (...a: unknown[]) => installer(...a),
+    envoisSwitchExaminer: (...a: unknown[]) => examiner(...a),
+    envoisSwitchAccepter: (...a: unknown[]) => accepter(...a),
+    envoisSwitchSuivi: (...a: unknown[]) => suivre(...a),
+    envoisSwitchAnnuler: (...a: unknown[]) => annuler(...a),
   },
 }));
 const confirmer = vi.fn(async (..._a: unknown[]) => true);
 const toast = vi.fn();
-vi.mock('$lib/dialogues/fenetres.svelte', () => ({ confirmer: (...a: unknown[]) => confirmer(...a), toast: (...a: unknown[]) => toast(...a) }));
+const choisirDialogue = vi.fn(async (..._a: unknown[]): Promise<unknown> => null);
+vi.mock('$lib/dialogues/fenetres.svelte', () => ({
+  confirmer: (...a: unknown[]) => confirmer(...a),
+  toast: (...a: unknown[]) => toast(...a),
+  choisir: (...a: unknown[]) => choisirDialogue(...a),
+}));
+// Les réglages du profil (« envoyer tout seul »).
+const profil = { envoisFirehouse: { auto: false } };
+const reglerProfil = vi.fn(async (..._a: unknown[]) => {});
+vi.mock('$lib/etat.svelte', () => ({
+  etat: {
+    get profil() {
+      return profil;
+    },
+  },
+  reglerProfil: (...a: unknown[]) => reglerProfil(...a),
+}));
 // Une partie ou un émulateur ouvert seul : la VRAIE règle de `lancementImpossible` (seul.ts), sur un état simulé.
 const partie = { enJeu: null as number | null, lancement: null as number | null };
 const seul = { ouvert: null as string | null, ouverture: null as number | null };
@@ -75,6 +105,17 @@ async function ouvrir() {
 
 beforeEach(() => {
   reponse = EDEN;
+  examen = RIEN;
+  suiviReponse = RIEN.suivi;
+  profil.envoisFirehouse.auto = false;
+  examiner.mockClear();
+  accepter.mockClear();
+  suivre.mockClear();
+  annuler.mockClear();
+  accepter.mockImplementation(async () => 2);
+  choisirDialogue.mockReset();
+  choisirDialogue.mockImplementation(async () => null);
+  reglerProfil.mockClear();
   installer.mockClear();
   contenusDuJeu.mockImplementation(async () => structuredClone(reponse));
   choisir.mockReset();
@@ -224,5 +265,232 @@ describe('le panneau des mises à jour et DLC Switch', () => {
     await fireEvent.click(installerBouton);
     await vi.waitFor(() => expect(installer).toHaveBeenCalledWith(7, ['EP0001-BLES01234_00-DLC1']));
     expect(confirmer).toHaveBeenCalledTimes(2);
+  });
+});
+
+// Lot 7 (Seb 17/11) : ce que Firehouse n'a pas, l'accord chiffré, puis où en est l'envoi.
+const PROPOSITION = {
+  etat: 'ok',
+  motif: null,
+  a_envoyer: [
+    { nom: 'Zelda maj [v786432].nsp', role: 'maj', taille: 3000 },
+    { nom: 'DLC 2.nsz', role: 'dlc', taille: 1000 },
+  ],
+  total: 4000,
+  duree: 120,
+  plafonne: true,
+  ecartes: [],
+  deja_la: 1,
+  suivi: { envois: [], en_cours: null, arret: null },
+};
+
+describe('l’envoi à Firehouse des contenus qu’il n’a pas', () => {
+  it('dit ce que Firehouse n’a pas ; l’accord est chiffré (combien, poids, durée) avec « à l’avenir, tout seul »', async () => {
+    examen = PROPOSITION;
+    render(BlocContenus, { id: 7, titre: 'Zelda' });
+    expect(await screen.findByText(/Firehouse n’a pas 2 contenus de ce jeu \(4000 o\)/)).toBeTruthy();
+    expect(examiner).toHaveBeenCalledWith(7);
+    choisirDialogue.mockImplementation(async () => 'non');
+    await fireEvent.click(screen.getByRole('button', { name: 'Les envoyer…' }));
+    await vi.waitFor(() => expect(choisirDialogue).toHaveBeenCalledTimes(1));
+    const [titreAccord, options, message] = choisirDialogue.mock.calls[0] as [string, { valeur: string; libelle: string }[], string];
+    expect(titreAccord).toBe('Firehouse n’a pas 2 contenus (4000 o, environ 120 s) : les lui envoyer ?');
+    expect(options.map((o) => o.valeur)).toEqual(['oui', 'auto', 'non']);
+    expect(options[1].libelle).toContain('à l’avenir envoyer tout seul');
+    expect(message).toContain('Zelda maj [v786432].nsp');
+    expect(message).toContain('la moitié de ta connexion');
+    expect(message).toContain('ni le jeu, ni tes clés, ni tes parties');
+    // « Pas maintenant » : rien ne part.
+    expect(accepter).not.toHaveBeenCalled();
+    // « Les envoyer » : la personne a dit oui, une fois.
+    choisirDialogue.mockImplementation(async () => 'oui');
+    await fireEvent.click(screen.getByRole('button', { name: 'Les envoyer…' }));
+    await vi.waitFor(() => expect(accepter).toHaveBeenCalledWith(7, ['Zelda maj [v786432].nsp', 'DLC 2.nsz'], 4000, false));
+    expect(reglerProfil).not.toHaveBeenCalled();
+  });
+
+  it('« à l’avenir, tout seul » est retenu pour le profil, puis plus rien n’est demandé', async () => {
+    examen = PROPOSITION;
+    render(BlocContenus, { id: 7, titre: 'Zelda' });
+    choisirDialogue.mockImplementation(async () => 'auto');
+    await fireEvent.click(await screen.findByRole('button', { name: 'Les envoyer…' }));
+    await vi.waitFor(() => expect(accepter).toHaveBeenCalledWith(7, ['Zelda maj [v786432].nsp', 'DLC 2.nsz'], 4000, true));
+    expect(reglerProfil).toHaveBeenCalledWith('envoisFirehouse.auto', true);
+    cleanup();
+    accepter.mockClear();
+    choisirDialogue.mockClear();
+    profil.envoisFirehouse.auto = true;
+    render(BlocContenus, { id: 7, titre: 'Zelda' });
+    await vi.waitFor(() => expect(accepter).toHaveBeenCalledWith(7, ['Zelda maj [v786432].nsp', 'DLC 2.nsz'], 4000, true));
+    expect(choisirDialogue).not.toHaveBeenCalled();
+  });
+
+  it('pendant l’envoi : fichier, pourcentage, débit, temps restant ; en pause pendant une partie', async () => {
+    const suiviEnvoi = {
+      envois: [{ nom: 'DLC 2.nsz', role: 'dlc', taille: 1000, recu: 420, etat: 'envoi', motif: null }],
+      en_cours: { jeu: 7, nom: 'DLC 2.nsz', etape: 'envoi', faits: 420, total: 1000, debit: 2048, restant: 30 },
+      arret: null,
+    };
+    examen = { ...RIEN, etat: 'ok', suivi: suiviEnvoi };
+    suiviReponse = suiviEnvoi;
+    render(BlocContenus, { id: 7, titre: 'Zelda' });
+    expect(await screen.findByText('📤 Envoi de « DLC 2.nsz » à Firehouse : 42 % · 2048 o/s · reste environ 30 s')).toBeTruthy();
+    cleanup();
+    const enPause = { ...suiviEnvoi, en_cours: { jeu: 7, nom: 'DLC 2.nsz', etape: 'pause', faits: 420, total: 1000 } };
+    examen = { ...RIEN, etat: 'ok', suivi: enPause };
+    suiviReponse = enPause;
+    render(BlocContenus, { id: 7, titre: 'Zelda' });
+    expect(await screen.findByText(/⏸ En pause pendant la partie/)).toBeTruthy();
+  });
+
+  it('après : « Firehouse l’a rangé », ou le refus avec le motif de Firehouse ; rien pour un compte sans droit', async () => {
+    examen = {
+      ...RIEN,
+      etat: 'ok',
+      suivi: {
+        envois: [
+          { nom: 'Zelda maj [v786432].nsp', role: 'maj', taille: 3000, recu: 3000, etat: 'range', motif: null },
+          { nom: 'DLC 1.nsp', role: 'dlc', taille: 10, recu: 10, etat: 'refuse', motif: 'ticket personnel (lié à une console ou un compte) : jamais servi à la famille' },
+        ],
+        en_cours: null,
+        arret: null,
+      },
+    };
+    render(BlocContenus, { id: 7, titre: 'Zelda' });
+    expect(await screen.findByText(/✅ Firehouse l’a rangé : « Zelda maj \[v786432\].nsp »/)).toBeTruthy();
+    expect(screen.getByText('⚠ Refusé par Firehouse : « DLC 1.nsp » : ticket personnel (lié à une console ou un compte) : jamais servi à la famille')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Les envoyer…' })).toBeNull();
+    cleanup();
+    examen = { ...PROPOSITION, etat: 'interdit', motif: 'Ton compte Firehouse ne permet pas d’envoyer.' };
+    render(BlocContenus, { id: 7, titre: 'Zelda' });
+    await vi.waitFor(() => expect(examiner).toHaveBeenCalled());
+    await tick();
+    expect(screen.queryByText(/Firehouse n’a pas/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Les envoyer…' })).toBeNull();
+  });
+
+  it('un double appui sur « Les envoyer… » n’ouvre qu’un accord', async () => {
+    examen = PROPOSITION;
+    let repondre: (v: unknown) => void = () => {};
+    choisirDialogue.mockImplementation(() => new Promise((r) => (repondre = r)));
+    render(BlocContenus, { id: 7, titre: 'Zelda' });
+    const b = await screen.findByRole('button', { name: 'Les envoyer…' });
+    await fireEvent.click(b);
+    await fireEvent.click(b);
+    await tick();
+    expect(choisirDialogue).toHaveBeenCalledTimes(1);
+    expect((b as HTMLButtonElement).disabled).toBe(true);
+    repondre('oui');
+    await vi.waitFor(() => expect(accepter).toHaveBeenCalledTimes(1));
+  });
+
+  it('un refus du cœur est dit et la proposition reste ; une liste changée est relue', async () => {
+    examen = PROPOSITION;
+    accepter.mockImplementation(async () => {
+      throw { sorte: 'reseau', motif: 'Impossible de joindre Firehouse.' };
+    });
+    choisirDialogue.mockImplementation(async () => 'oui');
+    render(BlocContenus, { id: 7, titre: 'Zelda' });
+    await fireEvent.click(await screen.findByRole('button', { name: 'Les envoyer…' }));
+    await vi.waitFor(() => expect(toast).toHaveBeenCalledWith(expect.stringContaining('Envoi impossible'), 'erreur'));
+    expect(screen.getByRole('button', { name: 'Les envoyer…' })).toBeTruthy();
+    // La liste a changé depuis qu'elle a été montrée : le cœur refuse (« conflit »), elle est relue.
+    accepter.mockImplementation(async () => {
+      throw { sorte: 'conflit', motif: 'La liste des contenus à envoyer a changé : regarde-la de nouveau avant de dire oui.' };
+    });
+    examiner.mockClear();
+    await fireEvent.click(screen.getByRole('button', { name: 'Les envoyer…' }));
+    await vi.waitFor(() => expect(examiner).toHaveBeenCalledTimes(1));
+    expect(toast).toHaveBeenCalledWith(expect.stringContaining('a changé'), 'alerte');
+  });
+
+  it('les contenus écartés sont dits simplement', async () => {
+    examen = { ...PROPOSITION, ecartes: [{ nom: 'perso.nsp', raison: 'ce fichier est lié à un compte ou une console' }] };
+    render(BlocContenus, { id: 7, titre: 'Zelda' });
+    expect(await screen.findByText('« perso.nsp » pas envoyé : ce fichier est lié à un compte ou une console')).toBeTruthy();
+  });
+
+  it('« ✋ Arrêter l’envoi » retire l’envoi en cours, puis la proposition revient', async () => {
+    const enRoute = {
+      envois: [{ nom: 'DLC 2.nsz', role: 'dlc', taille: 1000, recu: 420, etat: 'envoi', motif: null }],
+      en_cours: { jeu: 7, nom: 'DLC 2.nsz', etape: 'envoi', faits: 420, total: 1000, debit: null, restant: null },
+      arret: null,
+    };
+    examen = { ...RIEN, etat: 'ok', suivi: enRoute };
+    suiviReponse = enRoute;
+    render(BlocContenus, { id: 7, titre: 'Zelda' });
+    const b = await screen.findByRole('button', { name: '✋ Arrêter l’envoi' });
+    examen = PROPOSITION;
+    await fireEvent.click(b);
+    await vi.waitFor(() => expect(annuler).toHaveBeenCalledWith(7));
+    expect(await screen.findByRole('button', { name: 'Les envoyer…' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '✋ Arrêter l’envoi' })).toBeNull();
+  });
+
+  it('le lecteur d’écran n’entend que l’étape, pas le pourcentage', async () => {
+    const enRoute = {
+      envois: [],
+      en_cours: { jeu: 7, nom: 'DLC 2.nsz', etape: 'envoi', faits: 420, total: 1000, debit: null, restant: null },
+      arret: null,
+    };
+    examen = { ...RIEN, etat: 'ok', suivi: enRoute };
+    suiviReponse = enRoute;
+    const { container } = render(BlocContenus, { id: 7, titre: 'Zelda' });
+    await screen.findByText(/42 %/);
+    const vivants = [...container.querySelectorAll('[aria-live]')].map((n) => n.textContent ?? '');
+    expect(vivants.some((x) => x.includes('%'))).toBe(false);
+    expect(vivants).toContain('Envoi de « DLC 2.nsz » à Firehouse en cours.');
+  });
+
+  describe('la relecture toutes les 2 s', () => {
+    afterEach(() => vi.useRealTimers());
+    const avec = (suivi: object) => {
+      examen = { ...RIEN, etat: 'ok', suivi };
+      suiviReponse = suivi;
+    };
+    const enRoute = {
+      envois: [{ nom: 'DLC 2.nsz', role: 'dlc', taille: 1000, recu: 420, etat: 'envoi', motif: null }],
+      en_cours: { jeu: 7, nom: 'DLC 2.nsz', etape: 'envoi', faits: 420, total: 1000, debit: null, restant: null },
+      arret: null,
+    };
+
+    it('tourne pendant un envoi et s’arrête au démontage', async () => {
+      vi.useFakeTimers();
+      avec(enRoute);
+      const { unmount } = render(BlocContenus, { id: 7, titre: 'Zelda' });
+      await vi.waitFor(() => expect(screen.getByText(/42 %/)).toBeTruthy());
+      suivre.mockClear();
+      await vi.advanceTimersByTimeAsync(2100);
+      expect(suivre).toHaveBeenCalled();
+      unmount();
+      suivre.mockClear();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(suivre).not.toHaveBeenCalled();
+    });
+
+    it('ne tourne pas quand tout est fini, ni quand le travail s’est arrêté', async () => {
+      vi.useFakeTimers();
+      avec({ envois: [{ nom: 'a.nsp', role: 'maj', taille: 1, recu: 1, etat: 'range', motif: null }], en_cours: null, arret: null });
+      render(BlocContenus, { id: 7, titre: 'Zelda' });
+      await vi.waitFor(() => expect(screen.getByText(/Firehouse l’a rangé/)).toBeTruthy());
+      suivre.mockClear();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(suivre).not.toHaveBeenCalled();
+      cleanup();
+      avec({ envois: [{ nom: 'b.nsp', role: 'dlc', taille: 1, recu: 0, etat: 'attente', motif: null }], en_cours: null, arret: 'Firehouse n’est pas joignable pour l’instant.' });
+      render(BlocContenus, { id: 7, titre: 'Zelda' });
+      await vi.waitFor(() => expect(screen.getByText(/reprendra à la prochaine ouverture/)).toBeTruthy());
+      expect(screen.getByText(/⚠ Firehouse n’est pas joignable/)).toBeTruthy();
+      suivre.mockClear();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(suivre).not.toHaveBeenCalled();
+    });
+  });
+
+  it('PS3 : rien n’est demandé à Firehouse pour l’envoi', async () => {
+    reponse = PS3;
+    render(BlocContenus, { id: 7, titre: 'Asura' });
+    await screen.findByRole('button', { name: /Contenus additionnels/ });
+    expect(examiner).not.toHaveBeenCalled();
   });
 });

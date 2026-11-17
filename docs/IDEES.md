@@ -159,3 +159,4 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   - **Anti-triche** : RHI n'a qu'une liste de 8 jeux et avertit seulement → Frogtend devrait REFUSER par défaut s'il voit EasyAntiCheat, BattlEye, vgk… dans le dossier du jeu.
   - **Source** : RHI lit le HTML de reshade.me sans vérifier ni signature ni empreinte → Frogtend : Firehouse le sert (besoin d'API), sinon reshade.me avec signature Authenticode vérifiée, après accord avec la taille.
   - Plus loin : versions DLSS/Streamline par jeu (original gardé), OptiScaler, DXVK, profils du pilote NVIDIA (admin), paquets de shaders et préréglages, données PCGamingWiki (à faire passer par Firehouse).
+- **Eden et les .nsz** (17/11) : Eden v0.2.1 ne lit pas les NCZ (`registered_cache.cpp` `ScanDirectory` : nsp, xci) ; sa branche principale les lit déjà (sauf « solid NCZ ») → à la prochaine version publiée d'Eden, revérifier et lui donner les .nsz. Ryubing 1.3.3 ne les lit pas.

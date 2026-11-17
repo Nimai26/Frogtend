@@ -35,6 +35,7 @@ pub mod disque;
 pub mod documents;
 pub mod contenus;
 pub mod contenus_switch;
+pub mod envois_switch;
 pub mod listes_de_jeux;
 pub mod emulateur_seul;
 pub mod decompression;
@@ -403,6 +404,7 @@ pub fn run() {
             });
             app.manage(menu_jeu::MenuJeu::default());
             app.manage(nexus::Nexus::default());
+            app.manage(envois_switch::Travail::default());
             // La boîte aux lettres des liens nxm:// : l'interface est prévenue quand il en arrive (elle les relève
             // quand un profil est ouvert, hors partie et hors Taodbox).
             let h = app.handle().clone();
@@ -650,6 +652,10 @@ pub fn run() {
             commandes::dossier_retirer_si_vide,
             commandes::contenus_du_jeu,
             commandes::contenus_switch_choisir,
+            commandes::envois_switch_examiner,
+            commandes::envois_switch_accepter,
+            commandes::envois_switch_suivi,
+            commandes::envois_switch_annuler,
             commandes::contenus_installer,
             commandes::archive_du_jeu,
             commandes::decompresser_jeu,

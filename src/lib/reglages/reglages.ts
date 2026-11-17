@@ -71,6 +71,9 @@ export interface ReglagesPc {
     sauverClavier?: string;
     chargerClavier?: string;
   };
+  /** Les envois de mises à jour et DLC Switch à Firehouse (lot 7, ✅ Seb 17/11) : le débit montant utilisé, la moitié
+   * du débit mesuré d'office (la connexion reste utilisable), ou sans limite. Lu par le cœur à chaque morceau. */
+  envoisFirehouse: { debit: 'moitie' | 'sans_limite' };
   firehouse: {
     adresse: string;
     /** Mode simulé : des exemples, sans connexion à Firehouse (essais, démonstration, travail hors ligne). */
@@ -102,6 +105,9 @@ export interface ReglagesProfil {
   sauvegarde: {
     auto: 'apres_partie' | 'quotidienne' | 'manuelle';
   };
+  /** Les mises à jour et DLC Switch que Firehouse n'a pas (lot 7, ✅ Seb 17/11) : les lui envoyer TOUT SEUL, sans
+   * redemander (la case « À l'avenir, envoyer tout seul » de l'accord ; désactivable dans les options). */
+  envoisFirehouse: { auto: boolean };
   ludotheque: {
     /** Largeur d'une jaquette dans la grille, en pixels (à l'échelle 1). */
     tailleJaquette: number;
@@ -171,6 +177,7 @@ export const DEFAUTS_PC: ReglagesPc = {
   dossierPackMame: '',
   listeMame: '',
   menuJeu: { touche: 'Pause', manette: 'Select + R1', delaiQuitter: 10, raccourcisEtats: true, boutonXbox: true },
+  envoisFirehouse: { debit: 'moitie' },
   firehouse: { adresse: ADRESSE_FIREHOUSE_PAR_DEFAUT, simule: false },
   reunionsSuivies: [],
 };
@@ -178,6 +185,7 @@ export const DEFAUTS_PC: ReglagesPc = {
 export const DEFAUTS_PROFIL: ReglagesProfil = {
   apparence: { skin: null, echelle: 1, densite: 'aeree', animations: 'normales', fondVideo: true },
   sauvegarde: { auto: 'apres_partie' },
+  envoisFirehouse: { auto: false },
   ludotheque: {
     tailleJaquette: 170,
     visuel: 'jaquette',

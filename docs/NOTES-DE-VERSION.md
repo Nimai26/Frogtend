@@ -1,5 +1,20 @@
 # Notes de version de Frogtend
 
+## 0.207.0 — 📤 Partager avec la famille : les mises à jour et DLC Switch envoyés à Firehouse
+
+- Nouveau : dans le panneau 📦 d'un jeu Switch, Frogtend dit ce que Firehouse n'a pas encore (« 📤 Firehouse n'a pas
+  2 contenus de ce jeu (1,4 Go) ») et propose de les lui envoyer, pour qu'il les serve ensuite à toute la famille.
+  Rien ne part sans ton accord : combien de fichiers, leur poids et la durée estimée sont annoncés ; tu peux aussi
+  choisir « à l'avenir, envoyer tout seul » (⚙ Options ▸ 💾 Sauvegarde ▸ 📤 Partager avec la famille).
+- L'envoi se fait en arrière-plan, un fichier à la fois, avec la moitié de ta connexion d'office (réglable « sans
+  limite ») ; il se met en pause pendant une partie, reprend après une coupure ou un redémarrage, et « ✋ Arrêter
+  l'envoi » l'arrête à tout moment.
+- Jamais envoyés : le jeu lui-même, les clés, le logiciel de la console, tes parties, un fichier lié à un compte ou une
+  console, un fichier que Firehouse a déjà refusé. Aucun chemin de ton PC ni nom de profil ne part.
+- Nouveau : les mises à jour et DLC en forme compressée (.nsz) sont reconnus. Eden et Ryubing ne savent pas encore les
+  utiliser : ils sont montrés sur la fiche avec cette raison, et peuvent être envoyés à Firehouse.
+- Corrigé : un fichier ouvert par un autre programme pendant la lecture n'est plus noté « abîmé » pour toujours.
+
 ## 0.206.1 — 📦 Eden : le panneau dit ce qui se passe vraiment
 
 - Corrigé : avec Eden, un DLC éteint alors qu'un autre reste allumé est quand même utilisé (Eden ne sait couper que

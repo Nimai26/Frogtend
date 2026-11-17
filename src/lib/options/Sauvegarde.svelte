@@ -2,7 +2,7 @@
   // La sauvegarde du profil : ce qu'elle contient, où elle va, quand elle se fait.
   import { onMount } from 'svelte';
   import { api, taille, type ConflitRestaure } from '$lib/api';
-  import { etat, reglerProfil } from '$lib/etat.svelte';
+  import { etat, reglerPc, reglerProfil } from '$lib/etat.svelte';
   import { depuis } from '$lib/ludotheque/ludotheque.svelte';
   import { lireDerniereSauvegarde, proposerRemplacements, restaurer, sauvegarde, sauvegarder } from '$lib/sauvegarde.svelte';
 
@@ -47,6 +47,26 @@
     </label>
   </div>
 
+  <!-- Lot 7 (Seb 17/11) : les mises à jour et DLC Switch que Firehouse n'a pas, envoyés pour toute la famille. -->
+  <div class="cx-form-section">
+    <h3>📤 Partager avec la famille</h3>
+    <label class="choix">
+      <input
+        type="checkbox"
+        checked={!!etat.profil.envoisFirehouse?.auto}
+        onchange={(e) => reglerProfil('envoisFirehouse.auto', e.currentTarget.checked)}
+      />
+      <span>Envoyer tout seul à Firehouse les mises à jour et DLC Switch qu’il n’a pas (sans redemander)</span>
+    </label>
+    <label class="champ">
+      <span>Débit d’envoi à Firehouse</span>
+      <select value={etat.pc.envoisFirehouse?.debit ?? 'moitie'} onchange={(e) => reglerPc('envoisFirehouse.debit', e.currentTarget.value)}>
+        <option value="moitie">La moitié de ma connexion (conseillé : Internet reste rapide)</option>
+        <option value="sans_limite">Sans limite (plus rapide, mais Internet ralentit pendant l’envoi)</option>
+      </select>
+    </label>
+  </div>
+
   <div class="actions">
     <button class="btn primary" onclick={() => sauvegarder()} disabled={sauvegarde.enCours || etat.pc.firehouse.simule}>
       {sauvegarde.enCours ? 'Sauvegarde en cours…' : '💾 Sauvegarder maintenant'}
@@ -77,5 +97,12 @@
   .actions {
     display: flex;
     gap: calc(8 * var(--u));
+  }
+  .choix {
+    display: flex;
+    gap: calc(6 * var(--u));
+    align-items: center;
+    min-height: var(--cible-min);
+    cursor: pointer;
   }
 </style>

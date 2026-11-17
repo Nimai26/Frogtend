@@ -89,6 +89,50 @@ pub struct Brute {
     pub octets: Vec<u8>,
 }
 
+/// Un fichier à envoyer par morceaux (`PUT` + `Content-Range: bytes début-fin/total`), partagé par la sauvegarde
+/// (contrat 1.5) et les envois Switch (contrat 1.42).
+pub struct EnvoiParMorceaux<'a> {
+    pub route: &'a str,
+    pub source: &'a std::path::Path,
+    /// La taille annoncée (le `total` de chaque `Content-Range`).
+    pub total: u64,
+    /// Où reprendre (ce que Firehouse a déjà reçu).
+    pub depart: u64,
+    /// Les en-têtes en plus (`X-Contenu-Sha256` pour la sauvegarde ; aucun pour la Switch).
+    pub entetes: Vec<(&'static str, String)>,
+    /// Le nom à dire dans un message (jamais un chemin).
+    pub nom: &'a str,
+}
+
+/// Les règles propres à une route d'envoi par morceaux.
+pub struct ReglesMorceaux {
+    /// La réponse d'un morceau dit-elle que l'envoi est fini (`complet` pour la sauvegarde, `etat` hors « en_cours »
+    /// pour la Switch) ?
+    pub fini: fn(&serde_json::Value) -> bool,
+    /// Un 409 SANS `recu` : repartir de zéro une seule fois (sauvegarde : empreinte refusée au dernier morceau) ; sinon,
+    /// l'erreur est dite tout de suite (Switch : jamais de boucle).
+    pub zero_sans_recu: bool,
+}
+
+/// Le rythme d'un envoi par morceaux : la taille de chaque morceau, une attente avant (pause, débit plafonné), une
+/// vérification du fichier ; et ce qui est fait après chaque morceau reçu (progression, mesure du débit).
+#[allow(async_fn_in_trait)]
+pub trait Cadence {
+    /// Avant le morceau qui commence à `position` : rend sa taille (au plus 8 Mo). Une erreur arrête l'envoi.
+    async fn avant(&mut self, position: u64) -> Resultat<usize>;
+    /// Après un morceau accepté : `octets` envoyés en `duree`, Firehouse en est à `recu`.
+    fn apres(&mut self, _recu: u64, _octets: u64, _duree: Duration) {}
+}
+
+/// Une cadence fixe (la sauvegarde) : toujours la même taille de morceau, aucune attente.
+pub struct MorceauxFixes(pub usize);
+
+impl Cadence for MorceauxFixes {
+    async fn avant(&mut self, _position: u64) -> Resultat<usize> {
+        Ok(self.0)
+    }
+}
+
 /// Le début d'un téléchargement en flux.
 pub struct Flux {
     pub reponse: reqwest::Response,
@@ -315,6 +359,66 @@ impl Client {
         let recu = rep.headers().get("x-recu").and_then(|v| v.to_str().ok()).and_then(|v| v.parse().ok());
         let octets = rep.bytes().await.map_err(Self::erreur_reseau)?.to_vec();
         Ok(Brute { statut, recu, octets })
+    }
+
+    /// Envoie `e.source` par morceaux à partir de `e.depart` ; rend les octets envoyés et la dernière réponse (celle qui
+    /// dit « fini »). Un 409 `{recu}` fait reprendre là où Firehouse en est (3 fois au plus) ; un 409 sans `recu` suit
+    /// `regles.zero_sans_recu`. Toute autre réponse hors 2xx est traduite (`erreur_du_statut`).
+    pub async fn envoyer_par_morceaux(
+        &self,
+        e: &EnvoiParMorceaux<'_>,
+        regles: &ReglesMorceaux,
+        cadence: &mut impl Cadence,
+    ) -> Resultat<(u64, serde_json::Value)> {
+        use std::io::{Read, Seek, SeekFrom};
+        let total = e.total;
+        let mut position = e.depart.min(total);
+        let mut fichier = std::fs::File::open(e.source)?;
+        let mut envoyes = 0u64;
+        let mut conflits = 0;
+        loop {
+            let morceau = cadence.avant(position).await?.max(1) as u64;
+            let fin = (position + morceau).min(total);
+            let mut octets = vec![0u8; (fin - position) as usize];
+            fichier.seek(SeekFrom::Start(position))?;
+            fichier.read_exact(&mut octets)?;
+            let mut entetes: Vec<(&str, String)> = vec![("Content-Range", format!("bytes {position}-{}/{total}", fin.max(1) - 1))];
+            entetes.extend(e.entetes.iter().cloned());
+            entetes.push(("Content-Type", "application/octet-stream".into()));
+            let debut = std::time::Instant::now();
+            let b = self.brute(reqwest::Method::PUT, e.route, Some(octets), &entetes).await?;
+            let duree = debut.elapsed();
+            let v: serde_json::Value = serde_json::from_slice(&b.octets).unwrap_or(serde_json::Value::Null);
+            match b.statut {
+                200..=299 => {
+                    envoyes += fin - position;
+                    if (regles.fini)(&v) || fin == total {
+                        if !(regles.fini)(&v) {
+                            return Err(Erreur::Serveur(format!("Firehouse n'a pas confirmé « {} ».", e.nom)));
+                        }
+                        cadence.apres(fin, fin - position, duree);
+                        return Ok((envoyes, v));
+                    }
+                    let recu = v["recu"].as_u64().unwrap_or(fin).min(total);
+                    cadence.apres(recu, fin - position, duree);
+                    position = recu;
+                }
+                409 => {
+                    conflits += 1;
+                    match v["recu"].as_u64() {
+                        // Le morceau ne commençait pas là où Firehouse en est : on reprend là.
+                        Some(r) if conflits <= 3 => position = r.min(total),
+                        Some(_) => return Err(Erreur::Serveur(format!("L'envoi de « {} » ne se cale pas.", e.nom))),
+                        // Sauvegarde : empreinte différente au dernier morceau (le .part est effacé) : le fichier a
+                        // changé pendant l'envoi, ou il est arrivé abîmé. Un seul nouvel essai complet.
+                        None if regles.zero_sans_recu && conflits <= 1 => position = 0,
+                        None if regles.zero_sans_recu => return Err(Erreur::Conflit(format!("« {} » arrive abîmé chez Firehouse.", e.nom))),
+                        None => return Err(erreur_du_statut(409, &b.octets)),
+                    }
+                }
+                _ => return Err(erreur_du_statut(b.statut, &b.octets)),
+            }
+        }
     }
 
     /// `GET` d'une route JSON.

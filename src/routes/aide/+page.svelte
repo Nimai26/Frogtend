@@ -101,6 +101,19 @@
         Switch : s’il y a beaucoup de fichiers, la lecture se termine au fil des parties.
       </li>
       <li>À l’import, une mise à jour ou un DLC n’est jamais pris pour un jeu.</li>
+      <li>
+        <strong>📤 Partager avec la famille</strong> (Switch) : quand tu ouvres le panneau 📦 d’un jeu, Frogtend regarde ce
+        que Firehouse a déjà. Si ton PC a une mise à jour ou un DLC que Firehouse n’a pas, le panneau le dit (« Firehouse
+        n’a pas… ») avec le poids et la durée. Avec <strong>Les envoyer…</strong>, ils partent en arrière-plan, un à la
+        fois, en pause pendant tes parties, avec la moitié de ta connexion d’office. Firehouse les vérifie, puis les
+        donne à toute la famille. Seuls des mises à jour et des DLC partent : jamais le jeu lui-même, tes clés, le
+        logiciel de la console ni tes parties. <strong>✋ Arrêter l’envoi</strong> l’arrête à tout moment. Tu peux
+        choisir « envoyer tout seul » et régler le débit dans ⚙ Options ▸ 💾 Sauvegarde.
+      </li>
+      <li>
+        Certaines mises à jour ou DLC sont dans une forme <strong>compressée</strong> : la fiche les montre, ils peuvent
+        être envoyés à Firehouse, mais ni Eden ni Ryubing ne savent encore jouer avec. Garde la version normale pour jouer.
+      </li>
     </ul>
   </section>
 

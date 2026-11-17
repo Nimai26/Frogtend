@@ -3,9 +3,23 @@
   // seulement après son oui (taille annoncée). Switch, Ryubing et Eden (Seb 16/11 : « pour tout ce qui est update, DLC,
   // on peut passer en automatique ») : utilisés tout seuls à chaque partie ; depuis le 17/11, Frogtend est la source de
   // vérité — un interrupteur par contenu, allumé d'office, pour ce jeu et toute la maison. Wii U : inclus dans le .wua.
-  import { api, taille } from '$lib/api';
-  import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
+  import { api, estErreurCoeur, taille } from '$lib/api';
+  import { choisir, confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
+  import { etat, reglerProfil } from '$lib/etat.svelte';
+  import {
+    envoiArretable,
+    envoisEnRoute,
+    etapeAnnoncee,
+    ligneEcarte,
+    ligneEnvoi,
+    ligneProgres,
+    ligneProposition,
+    messageAccord,
+    titreAccord,
+    type ExamenEnvois,
+    type SuiviEnvois,
+  } from './envois';
   import { attenteEmulateurSeul, lancementImpossible } from '$lib/ludotheque/jeu.svelte';
   import {
     cochesCoherentes,
@@ -32,17 +46,123 @@
   let ouvert = $state(false);
   let coches = $state<string[]>([]);
   let enCours = $state(false);
+  // Lot 7 (Seb 17/11) : ce que Firehouse n'a pas (examiné en tâche de fond, jamais au lancement) et les envois en route.
+  let envois = $state<ExamenEnvois | null>(null);
+  let suivi = $state<SuiviEnvois | null>(null);
+  let accordEnCours = $state(false);
 
   async function charger(jeu: number) {
     donnees = await api.contenusDuJeu(jeu).catch(() => null);
     coches = [];
+    if (jeu === id && emulateurAutomatique(donnees?.systeme)) examinerEnvois(jeu);
+  }
+
+  /** En tâche de fond : le panneau est déjà affiché, la réponse de Firehouse vient ensuite (ou jamais, hors ligne). */
+  async function examinerEnvois(jeu: number) {
+    const e = await api.envoisSwitchExaminer(jeu).catch(() => null);
+    if (jeu !== id) return;
+    envois = e;
+    suivi = e?.suivi ?? null;
+    // « À l'avenir, envoyer tout seul » (choisi par la personne, désactivable dans les options) : pendant ce temps,
+    // le bouton attend (jamais deux accords).
+    if (e?.etat === 'ok' && e.a_envoyer.length && etat.profil.envoisFirehouse?.auto && !accordEnCours) {
+      accordEnCours = true;
+      try {
+        await accepter(jeu, true, e);
+      } finally {
+        accordEnCours = false;
+      }
+    }
+  }
+
+  /** Met en file la liste que la personne a VUE (`vu`) : si elle a changé entre-temps, le cœur refuse et on la relit. */
+  async function accepter(jeu: number, auto: boolean, vu: ExamenEnvois) {
+    try {
+      const n = await api.envoisSwitchAccepter(jeu, vu.a_envoyer.map((c) => c.nom), vu.total, auto);
+      if (auto && n) toast(`📤 ${n} contenu(s) (${taille(vu.total)}) partent tout seuls vers Firehouse, en arrière-plan.`);
+      if (jeu === id) {
+        envois = envois ? { ...envois, a_envoyer: [] } : envois;
+        suivi = await api.envoisSwitchSuivi(jeu).catch(() => suivi);
+      }
+    } catch (e) {
+      if (estErreurCoeur(e) && e.sorte === 'conflit') {
+        toast(`📤 ${motifDuRefus(e)}`, 'alerte');
+        if (jeu === id && !auto) {
+          const relu = await api.envoisSwitchExaminer(jeu).catch(() => null);
+          if (jeu === id && relu) {
+            envois = relu;
+            suivi = relu.suivi;
+          }
+        }
+        return;
+      }
+      // La proposition reste : la personne pourra réessayer.
+      toast(`Envoi impossible : ${motifDuRefus(e)}`, 'erreur');
+    }
+  }
+
+  /** L'accord, chiffré (combien, combien de Go, combien de temps), avec « à l'avenir, tout seul ». */
+  async function proposerEnvoi() {
+    if (!envois || accordEnCours) return;
+    accordEnCours = true;
+    const vu = envois;
+    try {
+      const choix = await choisir<'oui' | 'auto' | 'non'>(
+        titreAccord(vu),
+        [
+          { valeur: 'oui', libelle: '📤 Les envoyer' },
+          { valeur: 'auto', libelle: '📤 Les envoyer, et à l’avenir envoyer tout seul', detail: 'Sans redemander (désactivable dans ⚙ Options ▸ 💾 Sauvegarde)' },
+          { valeur: 'non', libelle: 'Pas maintenant' },
+        ],
+        messageAccord(vu),
+      );
+      if (choix !== 'oui' && choix !== 'auto') return;
+      if (choix === 'auto') await reglerProfil('envoisFirehouse.auto', true);
+      await accepter(id, choix === 'auto', vu);
+    } finally {
+      accordEnCours = false;
+    }
+  }
+
+  /** « ✋ Arrêter l'envoi » : les envois pas finis de ce jeu sont retirés (ils pourront être reproposés). */
+  let arretEnCours = $state(false);
+  async function arreterEnvoi() {
+    if (arretEnCours) return;
+    arretEnCours = true;
+    const jeu = id;
+    try {
+      await api.envoisSwitchAnnuler(jeu);
+      toast('✋ Envoi arrêté : rien d’autre ne part pour ce jeu.');
+      const relu = await api.envoisSwitchExaminer(jeu).catch(() => null);
+      if (jeu === id) {
+        envois = relu;
+        suivi = relu?.suivi ?? (await api.envoisSwitchSuivi(jeu).catch(() => null));
+      }
+    } catch (e) {
+      toast(`Impossible d’arrêter l’envoi : ${motifDuRefus(e)}`, 'erreur');
+    } finally {
+      arretEnCours = false;
+    }
   }
 
   $effect(() => {
     const jeu = id;
     donnees = null;
     ouvert = false;
+    envois = null;
+    suivi = null;
     charger(jeu);
+  });
+
+  // Pendant un envoi : relu toutes les 2 s (rien n'est demandé à Firehouse, seulement au cœur).
+  $effect(() => {
+    if (!envoisEnRoute(suivi)) return;
+    const jeu = id;
+    const minuterie = setInterval(async () => {
+      const s = await api.envoisSwitchSuivi(jeu).catch(() => null);
+      if (s && jeu === id) suivi = s;
+    }, 2000);
+    return () => clearInterval(minuterie);
   });
 
   const choisis = $derived(donnees?.contenus.filter((c) => coches.includes(c.id)) ?? []);
@@ -141,6 +261,27 @@
           donnees.ignores.map((n) => nomCourt(n, titre)),
         )}. Pour les réparer : retire le jeu de ta ludothèque puis remets-le (ses parties sont gardées).
       </p>
+    {/if}
+    <!-- Lot 7 (Seb 17/11) : ce que Firehouse n'a pas, l'accord, puis où en est l'envoi. -->
+    {#if ligneProposition(envois)}
+      <div class="actions envoi">
+        <span>{ligneProposition(envois)}</span>
+        <button class="btn petit" onclick={proposerEnvoi} disabled={accordEnCours}>Les envoyer…</button>
+      </div>
+    {/if}
+    {#each (envois?.etat === 'ok' ? envois.ecartes : []).slice(0, 5) as e, i (i)}<p class="muted">{ligneEcarte(e)}</p>{/each}
+    {#if envois?.etat === 'ok' && envois.ecartes.length > 5}<p class="muted">… et {envois.ecartes.length - 5} autre(s) pas envoyé(s).</p>{/if}
+    <!-- Le lecteur d'écran n'annonce que les changements d'ÉTAPE, jamais le pourcentage qui bouge toutes les 2 s. -->
+    <span class="annonce" aria-live="polite">{etapeAnnoncee(suivi?.en_cours)}</span>
+    {#if suivi?.en_cours}<p>{ligneProgres(suivi.en_cours)}</p>{/if}
+    {#each (suivi?.envois ?? []).filter((e) => !(suivi?.en_cours && e.nom === suivi.en_cours.nom)) as e, i (i)}
+      <p class="muted">{ligneEnvoi(e, !!suivi?.arret)}</p>
+    {/each}
+    {#if suivi?.arret}<p class="muted">⚠ {suivi.arret}</p>{/if}
+    {#if envoiArretable(suivi)}
+      <div class="actions">
+        <button class="btn petit" onclick={arreterEnvoi} disabled={arretEnCours}>✋ Arrêter l’envoi</button>
+      </div>
     {/if}
     {#if ouvert && donnees.contenus.length}
       <p class="muted">{PHRASE_CHOIX}</p>
@@ -258,6 +399,18 @@
     display: flex;
     gap: calc(6 * var(--u));
     flex-wrap: wrap;
+  }
+  .envoi {
+    align-items: center;
+  }
+  /* Lu par un lecteur d'écran, jamais affiché. */
+  .annonce {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   p {
     margin: 0;

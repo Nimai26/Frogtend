@@ -966,6 +966,15 @@ export const api = {
   /** Switch (✅ Seb 17/11) : allume ou éteint un contenu (`cle` : « maj » ou l'identifiant d'un DLC) pour toute la
    * maison. Rend vrai si un contenu utilisé vient d'être éteint (parties mises à l'abri avant la prochaine partie). */
   contenusSwitchChoisir: (idJeu: number, cle: string, actif: boolean) => appeler<boolean>('contenus_switch_choisir', { idJeu, cle, actif }),
+  /** Lot 7 (✅ Seb 17/11) : ce que Firehouse n'a pas parmi les mises à jour et DLC Switch de ce jeu (à l'ouverture du
+   * panneau 📦, en tâche de fond) ; l'accord de la personne ; où en sont les envois (rien n'est demandé à Firehouse). */
+  envoisSwitchExaminer: (id: number) => appeler<import('$lib/contenus/envois').ExamenEnvois>('envois_switch_examiner', { id }),
+  /** `noms` et `total` : la liste que la personne a VUE (le cœur refuse, sorte « conflit », si elle a changé). */
+  envoisSwitchAccepter: (id: number, noms: string[], total: number, auto: boolean) =>
+    appeler<number>('envois_switch_accepter', { id, noms, total, auto }),
+  /** « ✋ Arrêter l'envoi » : les envois pas finis de ce jeu sont retirés (reproposables) ; rend combien. */
+  envoisSwitchAnnuler: (id: number) => appeler<number>('envois_switch_annuler', { id }),
+  envoisSwitchSuivi: (id: number) => appeler<import('$lib/contenus/envois').SuiviEnvois>('envois_switch_suivi', { id }),
   contenusInstaller: (id: number, choisis: string[]) =>
     appeler<{ installes: number; deja?: number; refuses: [string, string][] }>('contenus_installer', { id, choisis }),
   /** Nexus Mods (lot 0.82.0) : la clé du profil (au coffre), les liens nxm:// reçus, l'installation après le oui. */

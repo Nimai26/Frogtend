@@ -6,6 +6,18 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 📤 Envoi des mises à jour et DLC Switch à Firehouse (0.207.0) — PREMIER ENVOI RÉEL, à faire ensemble
+- [ ] Un jeu Switch dont Firehouse n'a pas un contenu (ex. Fire Emblem Three Houses : mise à jour + 6 DLC rangés à
+      côté du jeu) ▸ panneau 📦 : la ligne « 📤 Firehouse n'a pas N contenus de ce jeu (X) » et « Les envoyer… ».
+      (Relever la réponse RÉELLE de la route 1 pour la doc : elle n'a pas encore de relevé.)
+- [ ] « Les envoyer… » : la fenêtre annonce le nombre, le poids et la durée ; choisir « Les envoyer ».
+- [ ] Pendant l'envoi : fichier, %, débit, temps restant ; lancer un jeu → « ⏸ En pause pendant la partie », puis
+      reprise après.
+- [ ] « ✋ Arrêter l'envoi » : il s'arrête ; « Les envoyer… » revient.
+- [ ] À la fin : « ✅ Firehouse l'a rangé » ; rouvrir la fiche : le contenu n'est plus proposé. Rapporter le résultat
+      à Firehouse (premier envoi réel du contrat 1.42).
+- [ ] Un profil MINEUR : aucune proposition d'envoi.
+
 ## Switch : le panneau d'Eden dit la vérité (0.206.1)
 - [x] (✅ Seb 17/11) Zelda (Eden) ▸ 📦, Pack 1 allumé et Pack 2 éteint : le Pack 2 dit « ⚠ Éteint, mais Eden l'utilise », l'en-tête
       « 3 utilisés (dont 1 éteint qu'Eden garde) ».

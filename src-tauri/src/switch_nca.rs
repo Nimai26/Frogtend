@@ -12,8 +12,16 @@
 //!   habituel ; magie `NCA3` en 0x200, type de contenu en 0x205 (Program, Meta, Control, Manual, Data, PublicData :
 //!   NcaStructs.cs), identifiant du titre en 0x210, petit-boutiste (NcaUtils/NcaHeader.cs).
 //!
+//! - un .nsz (✅ Seb 17/11 : format AJOUTÉ) est un PFS0 dont les gros NCA (Program, PublicData) sont des NCZ : relu
+//!   dans la source officielle de nsz (https://github.com/nicoboss/nsz, nsz/SolidCompressor.py et BlockCompressor.py :
+//!   `nspf.seek(0)` puis `f.write(nspf.read(INCOMPRESSIBLE_HEADER_SIZE))` avec `INCOMPRESSIBLE_HEADER_SIZE = 0x4000`,
+//!   suivi de `NCZSECTN` ; nsz/IndependentNczDecompressorConcise.py recopie ces 0x4000 octets TELS QUELS en tête du
+//!   NCA rendu) : les 0x4000 premiers octets d'un `.ncz` sont ceux du NCA d'origine, donc son en-tête CHIFFRÉ se lit
+//!   comme celui d'un `.nca`, sans rien décompresser. Le Meta (`.cnmt.nca`) n'est jamais compressé.
+//!
 //! Lecture seule et bornée : seules les tables et les 0xC00 octets de chaque NCA sont lus, jamais tout un fichier de
-//! 16 Go. La clé ne s'affiche ni ne se journalise jamais (`CleEntete` n'a pas d'affichage de son contenu).
+//! 16 Go. La clé ne s'affiche ni ne se journalise jamais (`CleEntete` n'a pas d'affichage de son contenu). Un fichier
+//! de la personne n'est jamais décompressé.
 
 use crate::erreurs::{Erreur, Resultat};
 use aes::cipher::generic_array::GenericArray;
@@ -42,7 +50,11 @@ pub struct Entree {
 fn lire_a(f: &mut std::fs::File, pos: u64, n: usize) -> Resultat<Vec<u8>> {
     let mut b = vec![0u8; n];
     f.seek(SeekFrom::Start(pos))?;
-    f.read_exact(&mut b).map_err(|_| Erreur::Disque("Conteneur Switch tronqué.".into()))?;
+    // Un fichier trop court est ABÎMÉ (un refus du format) ; toute autre erreur vient du disque (fichier verrouillé…).
+    f.read_exact(&mut b).map_err(|e| match e.kind() {
+        std::io::ErrorKind::UnexpectedEof => Erreur::Refus("Conteneur Switch tronqué.".into()),
+        _ => Erreur::from(e),
+    })?;
     Ok(b)
 }
 
@@ -94,7 +106,21 @@ fn table_partition(f: &mut std::fs::File, debut: u64, longueur: u64) -> Resultat
 pub enum Forme {
     Nsp,
     Xci,
+    /// Un PFS0 dont au moins un NCA est compressé en NCZ (un .nsz). Ni Ryubing 1.3.3 ni Eden 0.2.1 ne le lisent comme
+    /// mise à jour ou DLC (voir `RAISON_NSZ`) : montré, envoyé à Firehouse, jamais donné à un émulateur.
+    Nsz,
 }
+
+/// Pourquoi un .nsz n'est donné à aucun émulateur (relu le 17/11 dans les sources officielles) :
+/// - Ryubing 1.3.3 ne cherche que les `*.nca` d'un conteneur (src/Ryujinx/Systems/AppLibrary/ApplicationLibrary.cs
+///   `EnumerateEntries("/", "*.nca")`, src/Ryujinx.HLE/FileSystem/ContentManager.cs) et ne parcourt que les `.nsp` de
+///   ses dossiers (ApplicationLibrary.cs L950 et L1066) ; rien sur NCZ ni nsz dans le dépôt à l'étiquette 1.3.3
+///   (https://git.ryujinx.app/api/v1/repos/projects/Ryubing/raw/<chemin>?ref=1.3.3) ;
+/// - Eden v0.2.1 (la version publiée qu'installe Frogtend) ne parcourt que `nsp` et `xci` dans ses dossiers de contenus
+///   (src/core/file_sys/registered_cache.cpp `ExternalContentProvider::ScanDirectory`, ref v0.2.1 sur
+///   git.eden-emu.dev/eden-emu/eden) et n'a pas encore `src/core/crypto/ncz_decompressor.cpp` (ajouté après, sur la
+///   branche principale : nsz lu par une PROCHAINE version d'Eden, à revérifier quand elle sortira).
+pub const RAISON_NSZ: &str = "forme compressée (.nsz) : ni Eden ni Ryubing ne savent encore jouer avec";
 
 impl Forme {
     /// L'extension que Ryubing attend, EN MINUSCULES : il choisit la lecture d'après l'extension (tout ce qui n'est pas
@@ -104,6 +130,7 @@ impl Forme {
         match self {
             Forme::Nsp => "nsp",
             Forme::Xci => "xci",
+            Forme::Nsz => "nsz",
         }
     }
 }
@@ -294,10 +321,16 @@ pub struct NcaLu {
 /// La forme d'un conteneur, ses NCA dont l'en-tête se lit avec cette clé, et le nombre de ceux qui ne se lisent pas
 /// (Ryubing les ignore aussi, `TryOpenNca`).
 fn lire_ncas(chemin: &Path, cle: &CleEntete) -> Resultat<(Forme, Vec<NcaLu>, usize)> {
-    let (forme, l) = ouvrir(chemin)?;
+    let (mut forme, l) = ouvrir(chemin)?;
     let mut f = std::fs::File::open(chemin)?;
     let (mut lus, mut illisibles) = (Vec::new(), 0);
-    for e in l.iter().filter(|e| e.nom.to_ascii_lowercase().ends_with(".nca")) {
+    // Un NCZ (nsz) garde les 0x4000 premiers octets du NCA tels quels : son en-tête se lit pareil (voir l'en-tête du
+    // module). Un PFS0 qui en contient est un .nsz.
+    let est_ncz = |e: &Entree| e.nom.to_ascii_lowercase().ends_with(".ncz");
+    if forme == Forme::Nsp && l.iter().any(est_ncz) {
+        forme = Forme::Nsz;
+    }
+    for e in l.iter().filter(|e| e.nom.to_ascii_lowercase().ends_with(".nca") || est_ncz(e)) {
         if e.taille < TAILLE_ENTETE as u64 {
             illisibles += 1;
             continue;
@@ -415,8 +448,14 @@ pub struct ContenusDuJeu {
     /// Les autres mises à jour de ce jeu, plus anciennes (montrées, jamais posées).
     pub majs_anciennes: Vec<ContenuLu>,
     pub dlc: Vec<ContenuLu>,
+    /// Les mises à jour et DLC de CE jeu au format compressé .nsz (✅ Seb 17/11) : montrés et envoyables à Firehouse,
+    /// jamais donnés à un émulateur (`RAISON_NSZ`). Une copie .nsp du même contenu passe devant (il n'est pas repris ici).
+    pub compresses: Vec<ContenuLu>,
     /// Les conteneurs regardés qui n'ont pas pu être lus (abîmés, autre clé) : leurs noms.
     pub illisibles: Vec<String>,
+    /// Les conteneurs que le DISQUE n'a pas laissé lire cette fois (fichier utilisé par un autre programme…) : jamais
+    /// notés « illisibles » dans le cache, relus la fois suivante. Leurs noms.
+    pub inaccessibles: Vec<String>,
     /// Les mises à jour et DLC de CE jeu dont l'extension n'est pas celle, en minuscules, de leur forme (`.NSP`, un
     /// PFS0 nommé `.xci`…) : Ryubing ne les lirait pas, ils ne sont pas posés. Leurs noms.
     pub mauvaise_extension: Vec<String>,
@@ -512,7 +551,7 @@ fn candidats(jeu: &Path, ailleurs: &[PathBuf]) -> (Vec<Candidat>, bool) {
             entrees.sort_by_key(|e| e.file_name());
             for e in entrees {
                 let nom = e.file_name();
-                let ext_ok = Path::new(&nom).extension().is_some_and(|x| x.eq_ignore_ascii_case("nsp") || x.eq_ignore_ascii_case("xci"));
+                let ext_ok = Path::new(&nom).extension().is_some_and(|x| x.eq_ignore_ascii_case("nsp") || x.eq_ignore_ascii_case("xci") || x.eq_ignore_ascii_case("nsz"));
                 let Ok(t) = e.file_type() else { continue };
                 if t.is_dir() {
                     if profondeur < MAX_PROFONDEUR {
@@ -558,6 +597,7 @@ enum SorteEnCache {
 enum FormeEnCache {
     Nsp,
     Xci,
+    Nsz,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -575,10 +615,17 @@ struct EntreeCache {
 /// du fichier ; une entrée ne sert que si les deux sont inchangées, et tout le cache est oublié si la clé change.
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 struct Cache {
+    /// La forme du cache (`FORMAT_CACHE`) : un cache d'une autre forme est oublié tout entier.
+    #[serde(default)]
+    format: u32,
     /// Une empreinte de la clé (un bloc nul chiffré) : jamais la clé.
     cle: String,
     fichiers: std::collections::BTreeMap<String, EntreeCache>,
 }
+
+/// La forme actuelle du cache. 2 (17/11) : les .nsz lus (forme Nsz), et un fichier verrouillé n'y est plus jamais
+/// noté « illisible » — les caches d'avant (format absent = 0) peuvent garder l'un et l'autre à tort : oubliés.
+const FORMAT_CACHE: u32 = 2;
 
 /// Le cache ne garde jamais plus de ces entrées (les fichiers vus à la dernière recherche d'abord).
 const MAX_CACHE: usize = 5000;
@@ -602,6 +649,7 @@ fn vers_cache(c: &ContenuLu) -> LuEnCache {
         forme: match c.forme {
             Forme::Nsp => FormeEnCache::Nsp,
             Forme::Xci => FormeEnCache::Xci,
+            Forme::Nsz => FormeEnCache::Nsz,
         },
     }
 }
@@ -619,6 +667,7 @@ fn depuis_cache(p: &Path, l: &LuEnCache) -> ContenuLu {
         forme: match l.forme {
             FormeEnCache::Nsp => Forme::Nsp,
             FormeEnCache::Xci => Forme::Xci,
+            FormeEnCache::Nsz => Forme::Nsz,
         },
     }
 }
@@ -669,13 +718,14 @@ pub fn contenus_pour_dans(jeu: &Path, cle: &CleEntete, ailleurs: &[PathBuf], cac
     let empreinte = empreinte(cle);
     let mut ancien: Cache = cache.map(lire_cache).unwrap_or_default();
     let deja = ancien.clone();
-    if ancien.cle != empreinte {
-        ancien = Cache { cle: empreinte.clone(), ..Default::default() };
+    if ancien.cle != empreinte || ancien.format != FORMAT_CACHE {
+        ancien = Cache { format: FORMAT_CACHE, cle: empreinte.clone(), ..Default::default() };
     }
-    let mut neuf = Cache { cle: empreinte, ..Default::default() };
+    let mut neuf = Cache { format: FORMAT_CACHE, cle: empreinte, ..Default::default() };
     let nom = |p: &Path| p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     let mut majs: Vec<ContenuLu> = Vec::new();
     let mut vus: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut vus_nsz: std::collections::HashSet<String> = std::collections::HashSet::new();
     // Les autres jeux, par dossier : seuls ceux des dossiers qui portent des contenus de CE jeu sont à dire.
     let mut autres: Vec<PathBuf> = Vec::new();
     for v in voisins {
@@ -701,10 +751,18 @@ pub fn contenus_pour_dans(jeu: &Path, cle: &CleEntete, ailleurs: &[PathBuf], cac
                 r.lecture.lus += 1;
                 match lire_contenu(&p, cle) {
                     Ok(c) => c,
-                    Err(_) => {
-                        // Illisible : noté (taille et date) pour n'être pas relu tant qu'il ne change pas.
+                    Err(Erreur::Refus(_)) => {
+                        // Abîmé (son FORMAT est refusé) : noté (taille et date) pour n'être pas relu tant qu'il ne
+                        // change pas.
                         r.illisibles.push(nom(&p));
                         neuf.fichiers.insert(chemin, entree(None, true));
+                        continue;
+                    }
+                    Err(_) => {
+                        // Le DISQUE ne l'a pas laissé lire (fichier utilisé par un autre programme, erreur Windows 32…) :
+                        // rien n'est noté dans le cache, il sera relu la fois suivante ; la recherche n'est pas complète
+                        // (`complet`), sans passer pour « trop de fichiers » (`tronque`).
+                        r.inaccessibles.push(nom(&p));
                         continue;
                     }
                 }
@@ -714,8 +772,22 @@ pub fn contenus_pour_dans(jeu: &Path, cle: &CleEntete, ailleurs: &[PathBuf], cac
         match lu {
             Some(c) if c.base == r.base && c.sorte != Sorte::Jeu => {
                 // Ryubing lit d'après l'extension, casse comprise : seule l'extension exacte de sa forme est posée.
-                if p.extension().and_then(|x| x.to_str()) != Some(c.forme.extension()) {
+                // Un .nsz n'est donné à aucun émulateur : sa casse ne compte pas.
+                let ext = p.extension().and_then(|x| x.to_str()).unwrap_or_default();
+                let ext_ok = if c.forme == Forme::Nsz { ext.eq_ignore_ascii_case("nsz") } else { ext == c.forme.extension() };
+                if !ext_ok {
                     r.mauvaise_extension.push(nom(&p));
+                    continue;
+                }
+                // Un .nsz : à part (jamais donné à un émulateur), une seule copie par contenu.
+                if c.forme == Forme::Nsz {
+                    if let Some(id) = c.identifiant() {
+                        if !vus_nsz.insert(id) {
+                            r.doubles.push(nom(&p));
+                            continue;
+                        }
+                    }
+                    r.compresses.push(c);
                     continue;
                 }
                 // Une copie d'un contenu déjà trouvé (le dossier du jeu passe en premier) : une seule sert.
@@ -730,7 +802,8 @@ pub fn contenus_pour_dans(jeu: &Path, cle: &CleEntete, ailleurs: &[PathBuf], cac
                     _ => r.dlc.push(c),
                 }
             }
-            Some(c) if c.base != r.base => autres.extend(p.parent().map(Path::to_path_buf)),
+            // Un .nsz d'un autre jeu : Eden ne le lit pas, il ne compte pas.
+            Some(c) if c.base != r.base && c.forme != Forme::Nsz => autres.extend(p.parent().map(Path::to_path_buf)),
             _ => {}
         }
     }
@@ -757,6 +830,10 @@ pub fn contenus_pour_dans(jeu: &Path, cle: &CleEntete, ailleurs: &[PathBuf], cac
     let mut majs = majs.into_iter();
     r.maj = majs.next();
     r.majs_anciennes = majs.collect();
+    // Un contenu trouvé aussi en .nsp : c'est le .nsp qui sert, le .nsz n'est qu'une copie.
+    let (gardes, copies): (Vec<ContenuLu>, Vec<ContenuLu>) = std::mem::take(&mut r.compresses).into_iter().partition(|c| c.identifiant().is_none_or(|i| !vus.contains(&i)));
+    r.compresses = gardes;
+    r.doubles.extend(copies.iter().map(|c| nom(&c.chemin)));
     let utiles = r.dossiers_utiles();
     r.autres_jeux = autres.iter().filter(|d| utiles.iter().any(|u| u == *d)).count();
     r.lecture.duree_ms = debut.elapsed().as_millis() as u64;
@@ -774,7 +851,7 @@ impl ContenusDuJeu {
     /// La recherche a-t-elle tout regardé (aucun plafond de lecture ni de parcours atteint) ? Sinon, un DLC peut
     /// encore manquer : « tous les DLC » ne se décide pas.
     pub fn complet(&self) -> bool {
-        !self.tronque && !self.parcours_incomplet
+        !self.tronque && !self.parcours_incomplet && self.inaccessibles.is_empty()
     }
 
     /// Les dossiers où se trouvent la mise à jour retenue et les DLC de ce jeu (dans l'ordre, sans doublon).
@@ -798,6 +875,61 @@ pub fn quelques_noms(l: &[String]) -> String {
         s += &format!(" et {} autre(s)", l.len() - 5);
     }
     s
+}
+
+/// Le type de la clé de titre d'un ticket (`.tik`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ticket {
+    /// « Common » (nstool : « Generic ») : le même pour toutes les consoles, accepté par Firehouse.
+    Commun,
+    /// Tout autre type (« Personalized ») : lié à une console ou un compte, jamais envoyé.
+    Personnel,
+    /// Trop court ou de signature inconnue : dans le doute, jamais envoyé.
+    Illisible,
+}
+
+/// Lit le type de la clé de titre d'un ticket, d'après LibHac (src/LibHac/Tools/Es/Ticket.cs,
+/// https://git.ryujinx.app/api/v1/repos/projects/LibHac/raw/src/LibHac/Tools/Es/Ticket.cs?ref=master, relu le 17/11) :
+/// type de signature u32 en 0 (0x10000 RSA-4096 SHA-1, 0x10001 RSA-2048 SHA-1, 0x10002 ECDSA SHA-1, puis les mêmes en
+/// SHA-256 de 0x10003 à 0x10005) ; puis la signature et son bourrage (RSA-4096 : 0x200 + 0x3C ; RSA-2048 : 0x100 +
+/// 0x3C ; ECDSA : 0x3C + 0x40) ; les données commencent là : émetteur (0x40), bloc de la clé (0x100), version du
+/// format (1 octet, en +0x140), puis le TYPE de la clé en +0x141 (`TitleKeyType` : 0 Common, 1 Personalized).
+pub fn type_ticket(o: &[u8]) -> Ticket {
+    if o.len() < 4 {
+        return Ticket::Illisible;
+    }
+    let donnees = match u32_le(o, 0) {
+        0x10000 | 0x10003 => 4 + 0x200 + 0x3C,
+        0x10001 | 0x10004 => 4 + 0x100 + 0x3C,
+        0x10002 | 0x10005 => 4 + 0x3C + 0x40,
+        _ => return Ticket::Illisible,
+    };
+    match o.get(donnees + 0x141) {
+        None => Ticket::Illisible,
+        Some(0) => Ticket::Commun,
+        Some(_) => Ticket::Personnel,
+    }
+}
+
+/// Les tickets (`.tik`) de la table d'un .nsp ou .nsz, lus sans clé (au plus 0x600 octets chacun, comme LibHac).
+/// Aucun ticket : liste vide (Firehouse l'accepte).
+pub fn tickets(chemin: &Path) -> Resultat<Vec<Ticket>> {
+    let (_, l) = ouvrir(chemin)?;
+    let mut f = std::fs::File::open(chemin)?;
+    let mut r = Vec::new();
+    for e in l.iter().filter(|e| e.nom.to_ascii_lowercase().ends_with(".tik")) {
+        let n = e.taille.min(0x600) as usize;
+        r.push(type_ticket(&lire_a(&mut f, e.debut, n)?));
+    }
+    Ok(r)
+}
+
+/// Le nombre de méta-contenus d'un .nsp ou .nsz, lus dans les EN-TÊTES (type Meta), pas d'après les noms : Firehouse
+/// refuse un fichier qui en a plus d'un (besoin 52, réponse 3), mais seulement après l'avoir reçu en entier — il se
+/// compte donc avant.
+pub fn nombre_de_metas(chemin: &Path, cle: &CleEntete) -> Resultat<usize> {
+    let (_, l, _) = lire_ncas(chemin, cle)?;
+    Ok(l.iter().filter(|n| n.entete.type_contenu == TypeContenu::Meta).count())
 }
 
 /// L'identifiant de base d'un jeu lu dans ses en-têtes (`None` : pas de clé lisible, pas un jeu).
@@ -1232,6 +1364,123 @@ pub mod tests {
         assert!(r.tronque && r.dlc.is_empty());
         let r = contenus_pour_dans(&jeu, &cle, &[place.clone()], Some(&cache)).unwrap().unwrap();
         assert!(!r.tronque && r.dlc.len() == 1, "{r:?}");
+    }
+
+    /// Un NCZ de test, de la forme de la source officielle de nsz (SolidCompressor.py) : les 0x4000 premiers octets du
+    /// NCA tels quels (son en-tête CHIFFRÉ), puis `NCZSECTN` et des données « compressées ».
+    pub fn ncz(cle: &CleEntete, type_contenu: u8, title_id: u64) -> Vec<u8> {
+        let mut o = nca(cle, type_contenu, title_id, 0x4000 - TAILLE_ENTETE);
+        o.extend(b"NCZSECTN");
+        o.extend(1u64.to_le_bytes());
+        o.extend(std::iter::repeat_n(0x5A, 0x60));
+        o
+    }
+
+    #[test]
+    fn un_nsz_se_lit_sans_rien_decompresser_et_n_est_donne_a_aucun_emulateur() {
+        let cle = cle_de_test();
+        let d = tempfile::tempdir().unwrap();
+        let jeu = d.path().join("jeu.xci");
+        std::fs::write(&jeu, xci(&[("m.cnmt.nca", nca(&cle, 1, BASE, 0))], 0)).unwrap();
+        // Un DLC et une mise à jour .nsz : le Meta reste un .cnmt.nca (jamais compressé), le reste en NCZ.
+        let dlc = d.path().join("DLC 1 [v0].nsz");
+        std::fs::write(&dlc, partition(&[("a.cnmt.nca", nca(&cle, 1, BASE + 0x1001, 0)), ("a.ncz", ncz(&cle, 5, BASE + 0x1001))], false)).unwrap();
+        std::fs::write(d.path().join("maj [v131072].nsz"), partition(&[("m.cnmt.nca", nca(&cle, 1, BASE + 0x800, 0)), ("p.ncz", ncz(&cle, 0, BASE))], false)).unwrap();
+        let lu = lire_contenu(&dlc, &cle).unwrap().unwrap();
+        assert_eq!((lu.forme, lu.sorte.clone()), (Forme::Nsz, Sorte::Dlc(vec![("/a.ncz".into(), BASE + 0x1001)])));
+        let r = contenus_pour(&jeu, &cle).unwrap().unwrap();
+        assert!(r.maj.is_none() && r.dlc.is_empty(), "jamais donné à Eden ni à Ryubing : {r:?}");
+        let noms: Vec<String> = r.compresses.iter().map(|c| c.chemin.file_name().unwrap().to_string_lossy().to_string()).collect();
+        assert_eq!(noms, ["DLC 1 [v0].nsz", "maj [v131072].nsz"]);
+        assert!(r.illisibles.is_empty() && r.mauvaise_extension.is_empty());
+        // La même DLC aussi en .nsp : c'est le .nsp qui sert, le .nsz n'est qu'une copie.
+        std::fs::write(d.path().join("DLC 1.nsp"), partition(&[("a.cnmt.nca", nca(&cle, 1, BASE + 0x1001, 0)), ("a.nca", nca(&cle, 5, BASE + 0x1001, 0))], false)).unwrap();
+        let r = contenus_pour(&jeu, &cle).unwrap().unwrap();
+        assert_eq!(r.dlc.len(), 1);
+        assert_eq!(r.compresses.len(), 1, "seule la mise à jour .nsz reste à part");
+        assert!(r.doubles.contains(&"DLC 1 [v0].nsz".to_string()));
+        // Les méta-contenus se comptent dans la table (besoin 52, réponse 3).
+        assert_eq!(nombre_de_metas(&dlc, &cle).unwrap(), 1);
+        // Des méta-contenus comptés dans les EN-TÊTES, pas d'après les noms : un Meta mal nommé compte, un nom trompeur non.
+        let deux = d.path().join("deux.nsz");
+        std::fs::write(&deux, partition(&[("a.cnmt.nca", nca(&cle, 1, BASE + 0x1001, 0)), ("x.nca", nca(&cle, 1, BASE + 0x1002, 0)), ("faux.cnmt.ncz", ncz(&cle, 5, BASE + 0x1001))], false)).unwrap();
+        assert_eq!(nombre_de_metas(&deux, &cle).unwrap(), 2);
+        let aucun = d.path().join("aucun.nsp");
+        std::fs::write(&aucun, partition(&[("a.nca", nca(&cle, 5, BASE + 0x1003, 0))], false)).unwrap();
+        assert_eq!(nombre_de_metas(&aucun, &cle).unwrap(), 0);
+    }
+
+    #[test]
+    fn un_nsz_en_majuscules_est_lu_et_un_nsz_d_un_autre_jeu_ne_compte_pas() {
+        let cle = cle_de_test();
+        let d = tempfile::tempdir().unwrap();
+        let jeu = d.path().join("jeu.xci");
+        std::fs::write(&jeu, xci(&[("m.cnmt.nca", nca(&cle, 1, BASE, 0))], 0)).unwrap();
+        std::fs::write(d.path().join("DLC.NSZ"), partition(&[("a.cnmt.nca", nca(&cle, 1, BASE + 0x1001, 0)), ("a.ncz", ncz(&cle, 5, BASE + 0x1001))], false)).unwrap();
+        let autre = 0x0100_AAAA_0000_0000u64;
+        std::fs::write(d.path().join("autre.nsz"), partition(&[("a.cnmt.nca", nca(&cle, 1, autre + 0x1001, 0)), ("a.ncz", ncz(&cle, 5, autre + 0x1001))], false)).unwrap();
+        let r = contenus_pour(&jeu, &cle).unwrap().unwrap();
+        assert_eq!(r.compresses.len(), 1);
+        assert!(r.mauvaise_extension.is_empty());
+        assert_eq!(r.autres_jeux, 0, "Eden ne lit pas les .nsz : rien à dire");
+    }
+
+    #[test]
+    fn un_cache_d_une_ancienne_forme_est_oublie() {
+        let cle = cle_de_test();
+        let d = tempfile::tempdir().unwrap();
+        let jeu = d.path().join("jeu.xci");
+        std::fs::write(&jeu, xci(&[("m.cnmt.nca", nca(&cle, 1, BASE, 0))], 0)).unwrap();
+        let dlc = d.path().join("DLC.nsp");
+        std::fs::write(&dlc, partition(&[("a.nca", nca(&cle, 5, BASE + 0x1001, 0))], false)).unwrap();
+        // Un cache d'avant (sans `format`), de la même clé, qui notait ce DLC « illisible » (un fichier verrouillé ce
+        // jour-là) : il est oublié, le DLC est relu.
+        let m = std::fs::metadata(&dlc).unwrap();
+        let (s, n) = date(&m);
+        let ancien = serde_json::json!({
+            "cle": empreinte(&cle),
+            "fichiers": { dlc.to_string_lossy(): { "taille": m.len(), "secondes": s, "nanos": n, "lu": null, "illisible": true } }
+        });
+        let cache = d.path().join("cache.json");
+        std::fs::write(&cache, ancien.to_string()).unwrap();
+        let r = contenus_pour_dans(&jeu, &cle, &[], Some(&cache)).unwrap().unwrap();
+        assert!(r.illisibles.is_empty());
+        assert_eq!(r.dlc.len(), 1);
+        assert_eq!(r.lecture.en_cache, 0);
+        // Le cache réécrit porte la forme actuelle : relu la fois suivante.
+        let r = contenus_pour_dans(&jeu, &cle, &[], Some(&cache)).unwrap().unwrap();
+        assert_eq!((r.dlc.len(), r.lecture.en_cache), (1, 1));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn un_fichier_verrouille_n_est_jamais_note_illisible_dans_le_cache() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let cle = cle_de_test();
+        let d = tempfile::tempdir().unwrap();
+        let jeu = d.path().join("jeu.xci");
+        std::fs::write(&jeu, xci(&[("m.cnmt.nca", nca(&cle, 1, BASE, 0))], 0)).unwrap();
+        let dlc = d.path().join("DLC.nsp");
+        std::fs::write(&dlc, partition(&[("a.nca", nca(&cle, 5, BASE + 0x1001, 0))], false)).unwrap();
+        let cache = d.path().join("cache.json");
+        // Ouvert sans partage (un autre programme qui l'écrit) : Windows refuse de l'ouvrir (erreur 32).
+        let verrou = std::fs::OpenOptions::new().read(true).share_mode(0).open(&dlc).unwrap();
+        let r = contenus_pour_dans(&jeu, &cle, &[], Some(&cache)).unwrap().unwrap();
+        assert!(r.illisibles.is_empty(), "jamais « abîmé » pour un fichier verrouillé");
+        assert_eq!(r.inaccessibles, ["DLC.nsp"]);
+        assert!(!r.complet());
+        assert!(!r.tronque, "jamais « trop de fichiers » pour un fichier verrouillé");
+        drop(verrou);
+        // Relu dès que le disque le permet (rien d'« illisible » dans le cache).
+        let r = contenus_pour_dans(&jeu, &cle, &[], Some(&cache)).unwrap().unwrap();
+        assert_eq!(r.dlc.len(), 1);
+        assert!(r.inaccessibles.is_empty() && r.illisibles.is_empty());
+        // Un fichier vraiment ABÎMÉ, lui, est noté (pas relu tant qu'il ne change pas).
+        std::fs::write(d.path().join("abime.nsp"), b"PFS0").unwrap();
+        let r = contenus_pour_dans(&jeu, &cle, &[], Some(&cache)).unwrap().unwrap();
+        assert_eq!(r.illisibles, ["abime.nsp"]);
+        let r = contenus_pour_dans(&jeu, &cle, &[], Some(&cache)).unwrap().unwrap();
+        assert_eq!((r.illisibles.as_slice(), r.lecture.en_cache), (["abime.nsp".to_string()].as_slice(), 2));
     }
 
     #[test]

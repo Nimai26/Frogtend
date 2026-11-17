@@ -222,7 +222,6 @@ impl Destination for Api<'_> {
         if (200..300).contains(&b.statut) { Ok(()) } else { Err(Self::refus(&b)) }
     }
     async fn envoyer_fichier(&self, relatif: &str, source: &Path, sha: &str, taille: u64) -> Resultat<u64> {
-        use std::io::{Read, Seek, SeekFrom};
         let route = self.route_fichier(relatif);
         if taille == 0 {
             let b = self.client.brute(reqwest::Method::PUT, &route, Some(vec![]), &[("X-Contenu-Sha256", sha.into())]).await?;
@@ -230,48 +229,19 @@ impl Destination for Api<'_> {
         }
         // Reprise : ce que Firehouse a déjà reçu de ce fichier (`.part`).
         let deja = self.client.brute(reqwest::Method::HEAD, &route, None, &[]).await?;
-        let mut position = deja.recu.unwrap_or(0).min(taille);
-        let mut fichier = std::fs::File::open(source)?;
-        let mut envoyes = 0u64;
-        let mut conflits = 0;
-        loop {
-            let fin = (position + self.morceau as u64).min(taille);
-            let mut morceau = vec![0u8; (fin - position) as usize];
-            fichier.seek(SeekFrom::Start(position))?;
-            fichier.read_exact(&mut morceau)?;
-            let entetes = [
-                ("Content-Range", format!("bytes {position}-{}/{taille}", fin - 1)),
-                ("X-Contenu-Sha256", sha.to_string()),
-                ("Content-Type", "application/octet-stream".into()),
-            ];
-            let b = self.client.brute(reqwest::Method::PUT, &route, Some(morceau), &entetes).await?;
-            let v: Value = serde_json::from_slice(&b.octets).unwrap_or(Value::Null);
-            match b.statut {
-                200..=299 => {
-                    envoyes += fin - position;
-                    if v["complet"] == true || fin == taille {
-                        if v["complet"] != true {
-                            return Err(Erreur::Serveur(format!("Firehouse n'a pas confirmé « {relatif} ».")));
-                        }
-                        return Ok(envoyes);
-                    }
-                    position = v["recu"].as_u64().unwrap_or(fin);
-                }
-                409 => {
-                    conflits += 1;
-                    match v["recu"].as_u64() {
-                        // Le morceau ne commençait pas là où Firehouse en est : on reprend là.
-                        Some(r) if conflits <= 3 => position = r.min(taille),
-                        Some(_) => return Err(Erreur::Serveur(format!("L'envoi de « {relatif} » ne se cale pas."))),
-                        // Empreinte différente au dernier morceau (le .part est effacé) : le fichier a changé pendant
-                        // l'envoi, ou il est arrivé abîmé. Un seul nouvel essai complet.
-                        None if conflits <= 1 => position = 0,
-                        None => return Err(Erreur::Conflit(format!("« {relatif} » arrive abîmé chez Firehouse."))),
-                    }
-                }
-                _ => return Err(Self::refus(&b)),
-            }
-        }
+        // La boucle des morceaux est partagée avec les envois Switch (firehouse.rs) ; ici : morceaux fixes, le 409 sans
+        // `recu` fait repartir de zéro une seule fois, et la fin est dite par `complet`.
+        let envoi = crate::firehouse::EnvoiParMorceaux {
+            route: &route,
+            source,
+            total: taille,
+            depart: deja.recu.unwrap_or(0),
+            entetes: vec![("X-Contenu-Sha256", sha.to_string())],
+            nom: relatif,
+        };
+        let regles = crate::firehouse::ReglesMorceaux { fini: |v| v["complet"] == true, zero_sans_recu: true };
+        let (envoyes, _) = self.client.envoyer_par_morceaux(&envoi, &regles, &mut crate::firehouse::MorceauxFixes(self.morceau)).await?;
+        Ok(envoyes)
     }
     async fn supprimer_fichier(&self, relatif: &str) -> Resultat<()> {
         let b = self.client.brute(reqwest::Method::DELETE, &self.route_fichier(relatif), None, &[]).await?;
@@ -958,6 +928,28 @@ mod tests {
             assert_eq!(api.envoyer_fichier("x", &f, &sha, 10).await.unwrap(), 2);
             decale.assert();
             fin.assert();
+        }
+
+        #[tokio::test]
+        async fn un_envoi_qui_ne_se_cale_pas_apres_trois_reprises_est_dit() {
+            let s = MockServer::start();
+            let d = tempfile::tempdir().unwrap();
+            let f = d.path().join("x");
+            std::fs::write(&f, b"0123456789").unwrap();
+            s.mock(|w, t| {
+                w.method(HEAD).path(ROUTE);
+                t.status(200).header("X-Recu", "0");
+            });
+            // Firehouse répond toujours « reprends à 4 » : 3 reprises au plus, puis c'est dit (jamais de boucle).
+            let m = s.mock(|w, t| {
+                w.method(PUT).path(ROUTE);
+                t.status(409).json_body(serde_json::json!({"recu": 4}));
+            });
+            let c = client(&s);
+            let api = Api { client: &c, profil: "Sebastien".into(), pc: "VENKMAN".into(), morceau: 4 };
+            let r = api.envoyer_fichier("x", &f, "sha", 10).await;
+            assert!(matches!(&r, Err(Erreur::Serveur(m)) if m.contains("ne se cale pas")), "{r:?}");
+            m.assert_hits(4);
         }
 
         #[tokio::test]
