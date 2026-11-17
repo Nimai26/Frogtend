@@ -505,6 +505,11 @@ Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a 
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
 sont pas redirigées (une indication « fusionné dans N » serait un ajout 1.14 — à demander à Seb si gênant).
 
+### 1.43 (17/11, Firehouse 3.226.0, en service) — un fichier REFUSÉ n'est jamais renvoyé (besoin 52)
+Reçu par message de la session Firehouse (17/11), recopié tel quel :
+🚫 1.43 (17/11) — besoin 52 : un fichier REFUSÉ n'est jamais renvoyé (ajout compatible ; feu vert de Seb) — `POST /switch/envois` peut désormais répondre `{"ok": true, "deja_la": false, "refuse": true, "motif": "…"}` (HTTP 200) : CE fichier (même sha256, quel que soit l'envoyeur) a déjà été refusé pour une raison qui tient au fichier lui-même — ticket personnel, contenu ou jeu différent de l'annonce, plusieurs méta-contenus, conteneur illisible. Rien n'est créé, rien n'est à envoyer : dis le `motif` à l'utilisateur. Une raison passagère (abandon après 7 jours, empreinte d'un transfert raté, problème de clés chez Firehouse) ne compte pas : le POST crée alors un nouvel envoi, comme avant. Ordre des réponses du POST : `deja_la: true` d'abord, puis `refuse: true`, puis l'envoi.
+Réponse RÉELLE (base d'essai) : `{"ok": true, "deja_la": false, "refuse": true, "motif": "ticket personnel (lié à une console ou un compte) : jamais servi à la famille"}`. `version` de l'API = "1.43".
+
 ### 1.42 (16/11, Firehouse 3.217.0, en service) — mises à jour et DLC Switch : ce que Firehouse a, et l'ENVOI (besoin 51)
 Reçu par message de la session Firehouse (détail : son `docs/frogtend/BRIEF-AGENT-FROGTEND.md` § « 1.42 », formes dans
 son EXEMPLES-API-JEUX-V1.md). Ajout compatible. Ouvert à tous les membres (décision de Seb). Jamais de clés, de
