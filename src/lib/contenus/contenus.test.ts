@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cochesCoherentes, emulateurAutomatique, libelleGenre, quelquesNoms, lignesRemarque, nomCourt, raisonNonPose, resume, resumeAutomatique, type ContenuVu } from './contenus';
+import { cochesCoherentes, dlcEnPartieEden, emulateurAutomatique, libelleGenre, motifInterrupteursBloques, quelquesNoms, lignesRemarque, nomCourt, raisonNonPose, resume, resumeChoix, texteInterrupteur, type ContenuVu } from './contenus';
 
 describe('les contenus additionnels', () => {
   it('se présentent simplement', () => {
@@ -14,17 +14,36 @@ describe('les contenus additionnels', () => {
     expect(resume([c])).toBe('1 disponible(s)');
   });
 
-  it('Ryubing : se résument sans rien demander', () => {
-    const c: ContenuVu = { id: 'a', nom: 'x', genre: 'dlc', taille: 1, licence: false, installe: true };
-    const vieille: ContenuVu = { ...c, id: 'b', genre: 'maj', installe: false, version: 'v65536' };
-    expect(resumeAutomatique([c, { ...c, id: 'c' }])).toBe('2 utilisé(s) à chaque partie');
-    expect(resumeAutomatique([c, vieille])).toBe('1 utilisé(s) à chaque partie, 1 non utilisé(s)');
-    // La cause vient du cœur (forme réelle de `apercu_ryubing`), jamais devinée.
-    expect(raisonNonPose({ ...vieille, raison: 'pas utilisée : une plus récente est là' })).toBe('pas utilisée : une plus récente est là');
-    expect(raisonNonPose({ ...c, installe: false, raison: 'coupé par toi dans Ryubing' })).toBe('coupé par toi dans Ryubing');
+  it('Switch : les interrupteurs se résument (Seb 17/11)', () => {
+    // La forme réelle de `apercu_ryubing` / `apercu_eden` : `cle` et `actif` ; une vieille mise à jour n'a pas de clé.
+    const c: ContenuVu = { id: 'a', nom: 'x', genre: 'dlc', taille: 1, licence: false, installe: true, cle: 'dlc:01007EF00011F001', actif: true };
+    const vieille: ContenuVu = { ...c, id: 'b', genre: 'maj', installe: false, cle: null, actif: false, raison: 'pas utilisée : une plus récente est là' };
+    const eteint: ContenuVu = { ...c, id: 'd', cle: 'dlc:01007EF00011F002', actif: false, installe: false };
+    expect(resumeChoix([c, { ...c, id: 'c', cle: 'maj' }, { ...c, id: 'e', cle: 'dlc:3' }, vieille])).toBe('3 sur 3 utilisés');
+    expect(resumeChoix([c, { ...c, id: 'c', cle: 'maj' }, eteint])).toBe('2 utilisés, 1 éteint');
+    expect(resumeChoix([c])).toBe('1 sur 1 utilisé');
+    expect(resumeChoix([vieille])).toBe('aucun à choisir');
+    // Allumé mais pas pris par l'émulateur (cause technique) : jamais compté « utilisé », dit à part.
+    const enPanne: ContenuVu = { ...c, id: 'f', installe: false, raison: 'Ryubing ne le prend pas pour l’instant' };
+    expect(resumeChoix([c, enPanne])).toBe('1 utilisé, 1 allumé mais pas utilisé');
+    expect(resumeChoix([c, enPanne, eteint])).toBe('1 utilisé, 1 éteint, 1 allumé mais pas utilisé');
+    expect(texteInterrupteur(enPanne)).toBe('⚠ Allumé, pas utilisé');
+    expect(texteInterrupteur(c)).toBe('✅ Utilisé');
+    expect(texteInterrupteur(eteint)).toBe('⬜ Pas utilisé');
+    // Eden, DLC éteint mais encore utilisé (il les garde tous) : l'interrupteur dit le choix.
+    expect(texteInterrupteur({ ...eteint, installe: true })).toBe('⬜ Pas utilisé');
+    // Eden : la remarque seulement quand des DLC sont éteints EN PARTIE.
+    expect(dlcEnPartieEden('eden', [c, eteint])).toBe(true);
+    expect(dlcEnPartieEden('eden', [{ ...c, actif: false }, eteint])).toBe(false);
+    expect(dlcEnPartieEden('ryubing', [c, eteint])).toBe(false);
+    expect(motifInterrupteursBloques(null)).toContain('Une partie est en cours');
+    expect(motifInterrupteursBloques('🕹 Ryubing est ouvert : ferme-le pour jouer.')).toContain('Ryubing est ouvert');
+    // La cause technique vient du cœur, jamais devinée.
+    expect(raisonNonPose(vieille)).toBe('pas utilisée : une plus récente est là');
+    expect(raisonNonPose({ ...c, installe: false, raison: "Ryubing ne le prend pas pour l'instant" })).toBe("Ryubing ne le prend pas pour l'instant");
     expect(raisonNonPose({ ...c, installe: false, raison: null })).toBe('pas utilisé');
-    expect(lignesRemarque('La mise à jour choisie dans Ryubing est gardée.\nDLC non utilisés (…)\n')).toEqual([
-      'La mise à jour choisie dans Ryubing est gardée.',
+    expect(lignesRemarque('La liste des DLC de Ryubing ne se lit pas.\nDLC non utilisés (…)\n')).toEqual([
+      'La liste des DLC de Ryubing ne se lit pas.',
       'DLC non utilisés (…)',
     ]);
     expect(lignesRemarque(null)).toEqual([]);

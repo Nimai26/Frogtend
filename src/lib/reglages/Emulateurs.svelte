@@ -307,7 +307,7 @@
     Les émulateurs de chaque système, sur ce PC : autant que tu veux (par exemple plusieurs cœurs RetroArch), ⭐ celui
     par défaut. Un jeu peut en avoir un autre (⚙ Gérer le jeu ▸ 🕹 Émulateur), et « Jouer avec… » en choisit un pour une
     seule partie. « ▶ Ouvrir l’émulateur seul », sur la fiche d’un jeu, l’ouvre sans jeu, avec ton profil, pour régler
-    ses DLC, sa manette ou ses réglages ({nomsPrisEnCharge()} pour l’instant).
+    sa manette ou ses réglages ({nomsPrisEnCharge()} pour l’instant) ; les mises à jour et DLC Switch se choisissent dans le panneau 📦 du jeu.
     Frogtend propose tout seul le recommandé par Firehouse la première fois. Les jeux PC et MS-DOS n’en ont pas besoin.
   </p>
   {#if e.length === 0}

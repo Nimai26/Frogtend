@@ -771,6 +771,12 @@ fn ecrire_cache(f: &Path, c: &Cache) -> std::io::Result<()> {
 }
 
 impl ContenusDuJeu {
+    /// La recherche a-t-elle tout regardé (aucun plafond de lecture ni de parcours atteint) ? Sinon, un DLC peut
+    /// encore manquer : « tous les DLC » ne se décide pas.
+    pub fn complet(&self) -> bool {
+        !self.tronque && !self.parcours_incomplet
+    }
+
     /// Les dossiers où se trouvent la mise à jour retenue et les DLC de ce jeu (dans l'ordre, sans doublon).
     pub fn dossiers_utiles(&self) -> Vec<PathBuf> {
         let mut l: Vec<PathBuf> = Vec::new();

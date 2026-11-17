@@ -1419,6 +1419,11 @@ impl Noyau {
         self.emulateurs_seuls.lock().unwrap_or_else(|e| e.into_inner()).retain(|(x, _)| *x != c);
     }
 
+    /// Une partie se prépare (`commencer_lancement`) : ses réglages d'émulateur s'écrivent peut-être en ce moment.
+    pub(crate) fn lancement_en_preparation(&self) -> bool {
+        self.lancements.load(std::sync::atomic::Ordering::SeqCst) > 0
+    }
+
     /// Le nom de l'émulateur ouvert seul, s'il y en a un (l'interface le relit après un rechargement).
     pub(crate) fn emulateur_seul_nom(&self) -> Option<String> {
         self.emulateurs_seuls.lock().unwrap_or_else(|e| e.into_inner()).first().map(|(_, n)| n.clone())

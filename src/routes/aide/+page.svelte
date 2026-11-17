@@ -84,16 +84,17 @@
     <ul>
       <li><strong>PS3 (RPCS3)</strong> : les .pkg et leurs licences (.rap) s’installent par RPCS3, dans le compte de ton profil.</li>
       <li>
-        <strong>Switch (Eden)</strong>, quand Eden a été installé par Frogtend : <strong>tout se fait seul</strong>. Au
-        lancement, Frogtend trouve la mise à jour et les DLC du jeu (dans son dossier ou dans les emplacements de la
-        Switch) et donne leur dossier à Eden, sans rien copier. Ils valent pour tous les profils de ce PC. Ce que tu retires
-        dans Eden n’est jamais remis.
+        <strong>Switch (Eden et Ryubing)</strong>, quand l’émulateur a été installé par Frogtend : <strong>tout se fait
+        seul</strong>. À chaque partie, Frogtend trouve la mise à jour la plus récente et les DLC du jeu (dans son dossier
+        ou dans les emplacements de la Switch) et les donne à l’émulateur, sans rien copier.
       </li>
       <li>
-        <strong>Switch (Ryubing)</strong>, quand Ryubing a été installé par Frogtend : <strong>tout se fait seul</strong>, à
-        chaque partie, sans rien te demander : la mise à jour la plus récente et les DLC du jeu, rangés dans son dossier ou
-        dans les emplacements de la Switch, sont donnés à Ryubing (rien n’est copié). Un DLC ou une mise à jour que tu
-        retires ou coupes dans Ryubing reste comme tu l’as laissé ; une autre mise à jour que tu y choisis est gardée.
+        Switch : <strong>c’est Frogtend qui décide</strong>. Dans le panneau 📦 du jeu, chaque contenu a son interrupteur
+        (<strong>✅ Utilisé</strong> / <strong>⬜ Pas utilisé</strong>), allumé d’office. Ces choix valent pour ce jeu, avec
+        Eden comme avec Ryubing, pour toute la maison. À chaque partie, Frogtend les remet en place : un changement fait
+        dans l’émulateur ne compte pas. Eden ne sait couper que tous les DLC ensemble : avec lui, ils restent tous actifs
+        tant qu’un seul est allumé. Éteindre un contenu demande ta confirmation, et tes parties de ce jeu sont mises à
+        l’abri avant la partie suivante. Les choix attendent pendant une partie ou un émulateur ouvert seul.
       </li>
       <li><strong>Wii U (Cemu)</strong> : un .wua contient déjà ses mises à jour et DLC ; Frogtend les montre, il n’y a rien à faire.</li>
       <li>
@@ -126,7 +127,8 @@
       <li><strong>⚙ Gérer le jeu</strong> : changer d’émulateur pour ce jeu seulement, les commandes, ce qui lance le jeu.</li>
       <li>
         <strong>▶ Ouvrir l’émulateur seul</strong> (fiche du jeu, sur l’écran du PC) : l’émulateur s’ouvre sans jeu, avec
-        ton profil, pour régler ses DLC, sa manette ou ses réglages ; sa liste de jeux contient déjà tes emplacements.
+        ton profil, pour régler sa manette ou ses réglages ; sa liste de jeux contient déjà tes emplacements (les
+        mises à jour et DLC Switch, eux, se choisissent dans le panneau 📦 du jeu).
         Tant qu’il est ouvert, aucun jeu ne se lance ; à sa fermeture, tes parties sont sauvegardées comme après une
         partie (le temps passé n’est compté à aucun jeu).
       </li>

@@ -1,5 +1,5 @@
 // « ▶ Ouvrir l'émulateur seul » (✅ Seb 16-17/11) : un émulateur du système d'un jeu, ouvert SANS jeu, avec le profil
-// de la personne (ses parties, sa manette, sa liste de jeux), pour régler ses DLC, sa manette, ses réglages. Jamais en
+// de la personne (ses parties, sa manette, sa liste de jeux), pour régler sa manette, ses réglages (les mises à jour et DLC Switch se choisissent dans le panneau 📦). Jamais en
 // Taodbox (son interface se pilote à la souris). Un seul ouvrable : ouvert tout de suite ; plusieurs : le choix (⭐
 // celui du jeu). Pendant qu'il est ouvert, aucune partie ne se lance ; à sa fermeture, la sauvegarde automatique des
 // parties a lieu comme après une partie (aucun temps n'est compté à un jeu).
@@ -46,7 +46,7 @@ export async function ouvrirSeul(id: number, plateforme: string): Promise<boolea
         libelle: `${e.cle === actuel?.cle ? '⭐ ' : ''}${e.nom || e.programme}`,
         detail: e.cle === actuel?.cle ? 'celui d’habitude pour ce jeu' : undefined,
       })),
-      'Il s’ouvre avec ton profil, sans jeu : pour régler ses DLC, sa manette, ses réglages. Ferme-le pour rejouer.',
+      'Il s’ouvre avec ton profil, sans jeu : pour régler sa manette ou ses réglages ; les mises à jour et DLC Switch se choisissent dans le panneau 📦. Ferme-le pour rejouer.',
     );
     if (!cle) return false;
   }

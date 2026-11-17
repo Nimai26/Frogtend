@@ -34,6 +34,7 @@ pub mod succes;
 pub mod disque;
 pub mod documents;
 pub mod contenus;
+pub mod contenus_switch;
 pub mod listes_de_jeux;
 pub mod emulateur_seul;
 pub mod decompression;
@@ -648,6 +649,7 @@ pub fn run() {
             commandes::capture_fond,
             commandes::dossier_retirer_si_vide,
             commandes::contenus_du_jeu,
+            commandes::contenus_switch_choisir,
             commandes::contenus_installer,
             commandes::archive_du_jeu,
             commandes::decompresser_jeu,

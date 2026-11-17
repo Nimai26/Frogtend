@@ -6,14 +6,24 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Switch : interrupteurs des mises à jour et DLC (0.206.0)
+- [ ] Zelda BotW ▸ panneau 📦 : le DLC Pack 1 (décoché dans Ryubing le 17/11) est « ⬜ Pas utilisé », le Pack 2 et la
+      mise à jour « ✅ Utilisé » ; en-tête « 2 utilisés, 1 éteint ».
+- [ ] Rallumer le Pack 1 : il passe à « ✅ Utilisé » ; ▶ Jouer avec Ryubing : les deux DLC sont là.
+- [ ] Éteindre un DLC : une fenêtre de Frogtend prévient ; ▶ Jouer : le DLC n'est plus là (Ryubing) ; le journal dit
+      que les parties ont été mises à l'abri.
+- [ ] Même jeu avec Eden, un seul DLC éteint : la fiche dit qu'Eden les garde tous ; tous éteints : Eden n'en a plus.
+- [ ] Ouvrir Ryubing seul, recocher un DLC éteint dans « Manage DLC », fermer, ▶ Jouer : il est de nouveau retiré
+      (c'est le panneau qui décide).
+
 ## ▶ Ouvrir l'émulateur seul (0.205.0)
-- [ ] Zelda BotW ▸ fiche : sous « ▶ Jouer avec… », le bouton « ▶ Ouvrir l'émulateur seul… » ; il demande Eden ou
+- [x] (✅ Seb 17/11) Zelda BotW ▸ fiche : sous « ▶ Jouer avec… », le bouton « ▶ Ouvrir l'émulateur seul… » ; il demande Eden ou
       Ryubing (⭐ sur celui du jeu).
-- [ ] Ryubing : il s'ouvre en fenêtre (pas en plein écran), en français, et sa liste montre tes jeux Switch.
-- [ ] Clic droit sur Zelda ▸ « Manage DLC » : décocher un DLC, fermer Ryubing, ▶ Jouer : le DLC reste retiré en jeu
+- [x] (✅ Seb 17/11) Ryubing : il s'ouvre en fenêtre (pas en plein écran), en français, et sa liste montre tes jeux Switch.
+- [x] (✅ Seb 17/11, mais notre panneau restait coché → 0.206.0 : Frogtend décide) Clic droit sur Zelda ▸ « Manage DLC » : décocher un DLC, fermer Ryubing, ▶ Jouer : le DLC reste retiré en jeu
       (puis le recocher de la même façon).
 - [ ] Pendant qu'il est ouvert : ▶ Jouer grisé avec « 🕹 Ryubing est ouvert : ferme-le pour jouer ».
-- [ ] Eden seul : fenêtre, ta liste de jeux Switch (et les entrées SD / NAND toujours là).
+- [x] (✅ Seb 17/11) Eden seul : fenêtre, ta liste de jeux Switch (et les entrées SD / NAND toujours là).
 - [ ] Un jeu PS1 (DuckStation), PS2 (PCSX2) ou GameCube (Dolphin) : l'émulateur seul montre tes jeux ; un dossier
       que tu ajoutes dans sa liste est toujours là après une partie lancée par Frogtend. Dolphin : dis-moi s'il pose
       une question (mise à jour, statistiques) en s'ouvrant.

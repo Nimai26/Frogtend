@@ -1,22 +1,29 @@
 <script lang="ts">
   // 📦 Les contenus additionnels d'un jeu du PC : trouvés sur le disque. PS3 : cochés par la personne, installés
   // seulement après son oui (taille annoncée). Switch, Ryubing et Eden (Seb 16/11 : « pour tout ce qui est update, DLC,
-  // on peut passer en automatique ») : utilisés tout seuls à chaque partie — montrés ici, sans rien demander. Wii U :
-  // inclus dans le .wua.
+  // on peut passer en automatique ») : utilisés tout seuls à chaque partie ; depuis le 17/11, Frogtend est la source de
+  // vérité — un interrupteur par contenu, allumé d'office, pour ce jeu et toute la maison. Wii U : inclus dans le .wua.
   import { api, taille } from '$lib/api';
   import { confirmer, toast } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
+  import { attenteEmulateurSeul, lancementImpossible } from '$lib/ludotheque/jeu.svelte';
   import {
     cochesCoherentes,
+    dlcEnPartieEden,
     emulateurAutomatique,
+    motifInterrupteursBloques,
+    PHRASE_CHOIX,
     quelquesNoms,
     libelleGenre,
     lignesRemarque,
     nomCourt,
     raisonNonPose,
+    REMARQUE_EDEN,
     resume,
-    resumeAutomatique,
+    resumeChoix,
+    texteInterrupteur,
     type ContenusDuJeu,
+    type ContenuVu,
   } from './contenus';
 
   let { id, titre }: { id: number; titre: string } = $props();
@@ -40,8 +47,48 @@
 
   const choisis = $derived(donnees?.contenus.filter((c) => coches.includes(c.id)) ?? []);
   const total = $derived(choisis.reduce((n, c) => n + c.taille, 0));
-  // Ryubing ou Eden : donnés tout seuls à chaque partie (aucune case, aucun accord).
+  // Ryubing ou Eden : donnés tout seuls à chaque partie, d'après les interrupteurs de la maison.
   const automatique = $derived(emulateurAutomatique(donnees?.systeme));
+  // Pendant une partie ou un émulateur ouvert seul, les choix attendent (il réécrirait ses réglages par-dessus).
+  const bloque = $derived(lancementImpossible());
+  let basculement = $state<string | null>(null);
+
+  async function basculer(c: ContenuVu) {
+    // Pris AVANT la confirmation : un double appui n'ouvre jamais deux fenêtres ni deux enregistrements.
+    if (!c.cle || bloque || basculement) return;
+    basculement = c.cle;
+    const actif = !c.actif;
+    try {
+      if (!actif) {
+        const oui = await confirmer(`Éteindre « ${nomCourt(c.nom, titre)} » ?`, {
+          message: [
+            'Le jeu peut parfois refuser une partie faite avec ce contenu.',
+            'Frogtend met tes parties de ce jeu à l’abri avant la prochaine partie.',
+            'Ce choix vaut pour toute la maison, avec Eden comme avec Ryubing.',
+          ].join('\n'),
+          libelleValider: 'Éteindre',
+        });
+        if (!oui) return;
+      }
+      try {
+        await api.contenusSwitchChoisir(id, c.cle, actif);
+      } catch (e) {
+        toast(`Impossible d'enregistrer : ${motifDuRefus(e)}`, 'erreur');
+      }
+      await relire();
+    } finally {
+      basculement = null;
+    }
+  }
+
+  /** Relit la fiche après un choix ; en cas d'échec, l'ancienne liste reste (jamais un panneau vide). */
+  async function relire() {
+    try {
+      donnees = await api.contenusDuJeu(id);
+    } catch (e) {
+      toast(`Impossible de relire les mises à jour et DLC : ${motifDuRefus(e)}`, 'erreur');
+    }
+  }
 
   async function installer() {
     if (!choisis.length) return;
@@ -80,11 +127,11 @@
 {#if donnees?.etat === 'emulateur'}
   <p class="muted">📦 Règle {donnees.systeme === 'switch' ? 'Eden ou Ryubing' : 'RPCS3'} (⚙ Options ▸ Émulateurs) pour gérer les mises à jour et DLC de ce jeu.</p>
 {:else if donnees?.etat === 'ok' && automatique && (donnees.contenus.length || donnees.ignores?.length || donnees.remarque)}
-  <!-- Ryubing et Eden (Seb 16/11) : tout est utilisé seul au lancement — on montre, on ne demande rien. -->
+  <!-- Ryubing et Eden (Seb 16-17/11) : utilisés seuls au lancement, d'après un interrupteur par contenu (toute la maison). -->
   <div class="contenus cx-block">
     {#if donnees.contenus.length}
       <button class="btn" aria-expanded={ouvert} onclick={() => (ouvert = !ouvert)}>
-        📦 Mises à jour et DLC : {resumeAutomatique(donnees.contenus)} {ouvert ? '▴' : '▾'}
+        📦 Mises à jour et DLC : <span aria-live="polite">{resumeChoix(donnees.contenus)}</span> {ouvert ? '▴' : '▾'}
       </button>
     {/if}
     {#each lignesRemarque(donnees.remarque) as l (l)}<p class="muted">{l}</p>{/each}
@@ -96,17 +143,31 @@
       </p>
     {/if}
     {#if ouvert && donnees.contenus.length}
-      <p class="muted">Frogtend les donne à {automatique} tout seul, à chaque partie (rien n’est copié) : la mise à jour la plus récente et tous les DLC de ce jeu, rangés à côté de lui ou dans les emplacements de la Switch (⚙ Options ▸ 📁 Emplacements), reconnus à leur contenu.</p>
+      <p class="muted">{PHRASE_CHOIX}</p>
+      {#if dlcEnPartieEden(donnees.systeme, donnees.contenus)}<p class="muted">{REMARQUE_EDEN}</p>{/if}
+      {#if bloque}<p class="muted">{motifInterrupteursBloques(attenteEmulateurSeul())}</p>{/if}
       <ul>
         {#each donnees.contenus as c (c.id)}
           <li>
-            {#if c.installe}
-              <span title={`Utilisé par ${automatique} à chaque partie`}>✅</span>
+            {#if c.cle}
+              <!-- Un interrupteur : son texte dit l'état (jamais la couleur seule). -->
+              <!-- Celui qui s'enregistre garde le focus (aria-disabled) ; les AUTRES sont désactivés pendant ce temps. -->
+              <button
+                class="btn petit"
+                role="switch"
+                aria-checked={!!c.actif}
+                aria-label={nomCourt(c.nom, titre)}
+                aria-disabled={bloque || basculement !== null}
+                disabled={bloque || (basculement !== null && basculement !== c.cle)}
+                onclick={() => basculer(c)}
+              >
+                {texteInterrupteur(c)}
+              </button>
             {:else}
               <span title={raisonNonPose(c)}>—</span>
             {/if}
             <span class="nom">{nomCourt(c.nom, titre)}</span>
-            <span class="muted">{libelleGenre(c.genre)} · {taille(c.taille)}{c.installe ? '' : ` · ${raisonNonPose(c)}`}</span>
+            <span class="muted">{libelleGenre(c.genre)} · {taille(c.taille)}{c.raison ? ` · ${raisonNonPose(c)}` : ''}</span>
           </li>
         {/each}
       </ul>

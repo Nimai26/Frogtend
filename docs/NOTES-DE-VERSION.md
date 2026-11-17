@@ -1,5 +1,17 @@
 # Notes de version de Frogtend
 
+## 0.206.0 — 📦 Switch : c'est Frogtend qui choisit les mises à jour et DLC
+
+- Nouveau : dans le panneau 📦 d'un jeu Switch, chaque mise à jour et chaque DLC a son interrupteur (« ✅ Utilisé » /
+  « ⬜ Pas utilisé »), allumé d'office. Ton choix vaut pour ce jeu, avec Eden comme avec Ryubing, pour toute la
+  maison : à chaque partie, Frogtend le remet en place. Un changement fait dans l'émulateur ne compte plus.
+- Eden ne sait couper que tous les DLC ensemble : avec lui, ils restent tous actifs tant qu'un seul est allumé (la
+  fiche le dit).
+- Les retraits que tu avais déjà faits dans Ryubing ou Eden sont repris une fois : ils apparaissent éteints.
+- Prudence : en éteignant un contenu, Frogtend te prévient, puis met tes parties de ce jeu à l'abri avant la partie
+  suivante. Une mise à jour plus récente que tu aurais choisie dans Ryubing n'est jamais remplacée par une plus
+  ancienne.
+
 ## 0.205.0 — ▶ Ouvrir l'émulateur seul
 
 - Nouveau : sur la fiche d'un jeu et dans le panneau de la ludothèque, à côté de « ▶ Jouer avec… », le bouton

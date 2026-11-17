@@ -108,7 +108,7 @@
             <button class="btn grand" onclick={() => jouerAvec(idPc)} disabled={lancementImpossible() || libellePreparation(j.plateforme) !== null}>▶ Jouer avec…</button>
           {/if}
           {#if boutonEmulateurSeul(idPc, j.plateforme)}
-            <button class="btn grand" onclick={() => ouvrirEmulateurSeul(idPc)} disabled={lancementImpossible() || libellePreparation(j.plateforme) !== null} title="L’émulateur s’ouvre sans jeu, avec ton profil : pour régler ses DLC, sa manette, ses réglages">{libelleEmulateurSeul(idPc, j.plateforme)}</button>
+            <button class="btn grand" onclick={() => ouvrirEmulateurSeul(idPc)} disabled={lancementImpossible() || libellePreparation(j.plateforme) !== null} title="L’émulateur s’ouvre sans jeu, avec ton profil : pour régler sa manette ou ses réglages ; les mises à jour et DLC Switch se choisissent dans le panneau 📦">{libelleEmulateurSeul(idPc, j.plateforme)}</button>
           {/if}
           {#if attenteEmulateurSeul()}<p class="muted">{attenteEmulateurSeul()}</p>{/if}
           <RappelTriches id={idPc} />

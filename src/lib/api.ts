@@ -963,6 +963,9 @@ export const api = {
   archiveDuJeu: (id: number) => appeler<import('$lib/decompression/decompression').ArchiveDeJeu | null>('archive_du_jeu', { id }),
   decompresserJeu: (id: number) => appeler<string>('decompresser_jeu', { id }),
   contenusDuJeu: (id: number) => appeler<import('$lib/contenus/contenus').ContenusDuJeu>('contenus_du_jeu', { id }),
+  /** Switch (✅ Seb 17/11) : allume ou éteint un contenu (`cle` : « maj » ou l'identifiant d'un DLC) pour toute la
+   * maison. Rend vrai si un contenu utilisé vient d'être éteint (parties mises à l'abri avant la prochaine partie). */
+  contenusSwitchChoisir: (idJeu: number, cle: string, actif: boolean) => appeler<boolean>('contenus_switch_choisir', { idJeu, cle, actif }),
   contenusInstaller: (id: number, choisis: string[]) =>
     appeler<{ installes: number; deja?: number; refuses: [string, string][] }>('contenus_installer', { id, choisis }),
   /** Nexus Mods (lot 0.82.0) : la clé du profil (au coffre), les liens nxm:// reçus, l'installation après le oui. */

@@ -150,3 +150,4 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   avant (`menu_jeu::mettre_a_l_abri_fichiers`).
 - **Changer de profil pendant une partie** (relevé le 17/11, lot « émulateur seul ») : rien ne l'empêche aujourd'hui pendant une partie ordinaire (seul l'émulateur ouvert seul le bloque) ; la sauvegarde de fin de partie irait alors au mauvais profil. À trancher avec Seb.
 - **Ouvrir seul les autres émulateurs** (17/11) : RPCS3 (sans `--no-gui`), Azahar, PPSSPP, RetroArch (pas de liste de dossiers) ; plus tard MAME (`-rompath`), BigPEmu, Cemu.
+- **Eden ouvert seul** (17/11) : ne remet pas les choix de mises à jour et DLC en place (il faudrait relire les DLC de chaque jeu) ; seul le lancement d'un jeu le fait. Eglantine et Lichii (Switch 2) pas encore branchés sur les choix.

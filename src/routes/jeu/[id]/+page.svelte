@@ -319,7 +319,7 @@
             <button class="btn" onclick={() => jouerAvec(surPc.id)} disabled={lancementImpossible() || libellePreparation(surPc.plateforme) !== null}>▶ Jouer avec…</button>
           {/if}
           {#if boutonEmulateurSeul(surPc.id, surPc.plateforme)}
-            <button class="btn" onclick={() => ouvrirEmulateurSeul(surPc.id)} disabled={lancementImpossible() || libellePreparation(surPc.plateforme) !== null} title="L’émulateur s’ouvre sans jeu, avec ton profil : pour régler ses DLC, sa manette, ses réglages">{libelleEmulateurSeul(surPc.id, surPc.plateforme)}</button>
+            <button class="btn" onclick={() => ouvrirEmulateurSeul(surPc.id)} disabled={lancementImpossible() || libellePreparation(surPc.plateforme) !== null} title="L’émulateur s’ouvre sans jeu, avec ton profil : pour régler sa manette ou ses réglages ; les mises à jour et DLC Switch se choisissent dans le panneau 📦">{libelleEmulateurSeul(surPc.id, surPc.plateforme)}</button>
           {/if}
         {/if}
         {#if !surPc.d_un_autre}<button class="btn" onclick={() => gererJeu(surPc.id)} disabled={partie.enJeu === surPc.id}>⚙ Gérer le jeu</button>{/if}

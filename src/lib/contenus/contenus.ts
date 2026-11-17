@@ -10,8 +10,13 @@ export interface ContenuVu {
   installe: boolean;
   /** Une mise à jour PS3 : sa version (« 01.05 », contrat 1.31), dans l'ordre d'installation. */
   version?: string | null;
-  /** Ryubing et Eden : pourquoi ce contenu trouvé n'est pas utilisé (la vraie cause, dite par le cœur). */
+  /** Ryubing et Eden : pourquoi ce contenu trouvé n'est pas utilisé, quand la cause est TECHNIQUE (dite par le cœur). */
   raison?: string | null;
+  /** Switch (Seb 17/11) : la clé de son interrupteur (« maj » ou l'identifiant du DLC) ; absente : pas d'interrupteur
+   * (une vieille mise à jour, un contenu d'une autre console). */
+  cle?: string | null;
+  /** Switch : le choix de la maison (allumé d'office). */
+  actif?: boolean;
 }
 
 /** Les mises à jour s'installent DANS L'ORDRE (la chaîne de Sony) : cocher une mise à jour coche aussi les précédentes
@@ -47,11 +52,49 @@ export function emulateurAutomatique(systeme: ContenusDuJeu['systeme']): string 
   return systeme === 'ryubing' ? 'Ryubing' : systeme === 'eden' ? 'Eden' : null;
 }
 
-/** Ryubing et Eden : « 3 utilisé(s) à chaque partie, 1 non utilisé(s) ». */
-export function resumeAutomatique(l: ContenuVu[]): string {
-  const utilises = l.filter((c) => c.installe).length;
-  const autres = l.length - utilises;
-  return autres ? `${utilises} utilisé(s) à chaque partie, ${autres} non utilisé(s)` : `${utilises} utilisé(s) à chaque partie`;
+/** Switch (Seb 17/11) : les interrupteurs, résumés — « 3 sur 3 utilisés » ou « 2 utilisés, 1 éteint ». Seuls les
+ * contenus qui ont un interrupteur comptent (pas une vieille mise à jour). */
+export function resumeChoix(l: ContenuVu[]): string {
+  const avec = l.filter((c) => c.cle);
+  if (!avec.length) return 'aucun à choisir';
+  const s = (n: number) => (n > 1 ? 's' : '');
+  const utilises = avec.filter((c) => c.actif && c.installe).length;
+  const eteints = avec.filter((c) => !c.actif).length;
+  const enPanne = avec.filter((c) => allumePasUtilise(c)).length;
+  if (!eteints && !enPanne) return `${utilises} sur ${avec.length} utilisé${s(avec.length)}`;
+  const morceaux = [`${utilises} utilisé${s(utilises)}`];
+  if (eteints) morceaux.push(`${eteints} éteint${s(eteints)}`);
+  if (enPanne) morceaux.push(`${enPanne} allumé${s(enPanne)} mais pas utilisé${s(enPanne)}`);
+  return morceaux.join(', ');
+}
+
+/** Allumé, mais l'émulateur ne le prend pas (une cause technique, dite par le cœur). */
+export function allumePasUtilise(c: ContenuVu): boolean {
+  return !!c.cle && !!c.actif && !c.installe && !!c.raison;
+}
+
+/** Le texte d'un interrupteur (jamais la couleur seule). */
+export function texteInterrupteur(c: ContenuVu): string {
+  if (allumePasUtilise(c)) return '⚠ Allumé, pas utilisé';
+  return c.actif ? '✅ Utilisé' : '⬜ Pas utilisé';
+}
+
+/** Eden ne sait couper que TOUS les DLC ensemble : des DLC éteints, mais pas tous, restent actifs avec lui. */
+export function dlcEnPartieEden(systeme: ContenusDuJeu['systeme'], l: ContenuVu[]): boolean {
+  const dlc = l.filter((c) => c.genre === 'dlc' && c.cle);
+  return systeme === 'eden' && dlc.some((c) => c.actif) && dlc.some((c) => !c.actif);
+}
+
+/** La phrase unique du panneau (Seb 17/11). */
+export const PHRASE_CHOIX =
+  'Ces choix valent pour ce jeu, avec Eden comme avec Ryubing, pour toute la maison. À chaque partie, Frogtend les remet en place : un changement fait dans l’émulateur ne compte pas.';
+
+/** La remarque Eden quand des DLC sont éteints en partie. */
+export const REMARQUE_EDEN = 'Eden ne sait couper que tous les DLC ensemble : avec Eden, ils restent tous actifs tant qu’un seul est allumé.';
+
+/** Pourquoi les interrupteurs attendent : un émulateur ouvert seul (son motif), sinon une partie en cours. */
+export function motifInterrupteursBloques(attenteSeul: string | null): string {
+  return attenteSeul ?? '⏸ Une partie est en cours : tu pourras changer ces choix quand elle sera finie.';
 }
 
 /** Ryubing et Eden : pourquoi un contenu trouvé n'est pas utilisé — la cause dite par le cœur, jamais devinée ici. */

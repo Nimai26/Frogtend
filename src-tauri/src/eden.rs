@@ -961,7 +961,9 @@ fn marque_sortie(eden: &Path) -> PathBuf {
 // ses sous-dossiers, son dossier d'installation, les emplacements réglés de la Switch) est ajouté UNE fois à la liste
 // `external_content_dirs` d'Eden (contenus.rs). Les contenus sont reconnus à leurs en-têtes (switch_nca.rs, clés
 // d'Eden), jamais à leur nom. Rien n'est copié ; rien n'est jamais retiré de ce que la personne a ajouté. La liste
-// d'Eden est commune à tous les profils de ce PC. ---
+// d'Eden est commune à tous les profils de ce PC. Depuis le 17/11 (✅ Seb : Frogtend est la source de vérité), ce qui
+// est utilisé suit les interrupteurs de la fiche (`contenus_switch`), remis en place à chaque lancement dans
+// `[DisabledAddOns]` ; un dossier retiré dans Eden est redonné. ---
 
 /// Ce que Frogtend peut lire des contenus d'un jeu pour Eden, sans rien écrire chez Eden.
 #[derive(Debug, Clone, PartialEq)]
@@ -1005,14 +1007,20 @@ pub struct ContenusPrepares {
     pub dossiers: Vec<String>,
     /// Ceux ajoutés à la liste d'Eden à ce lancement.
     pub ajoutes: Vec<String>,
-    /// Ceux ajoutés par Frogtend puis retirés par la personne dans Eden : pas remis.
-    pub retires_par_la_personne: Vec<String>,
-    /// Les contenus pas donnés parce que la personne en a retiré une copie (par leur identifiant).
-    pub contenus_refuses: usize,
     pub maj: bool,
     pub dlc: usize,
-    /// Ce qui a été noté en chemin sans empêcher de jouer (rangement, preuve, coût de la recherche).
+    /// Ce qu'Eden a coupé pour ce jeu (`[DisabledAddOns]`) après ce lancement : la mise à jour, tous les DLC.
+    pub maj_coupee: bool,
+    pub dlc_coupes: bool,
+    /// Des DLC éteints dans Frogtend, mais pas tous : Eden les garde tous actifs (il ne sait couper que tous les DLC).
+    pub dlc_en_partie: bool,
+    /// `[DisabledAddOns]` a été réécrit à ce lancement.
+    pub coupures_ecrites: bool,
+    /// Ce qui a été noté en chemin sans empêcher de jouer (rangement, preuve, coût de la recherche, abri).
     pub notes: Vec<String>,
+    /// Les parties devaient être mises à l'abri avant cette partie et ne l'ont pas été (la raison) : RIEN n'a été
+    /// changé, la partie ne doit pas se lancer.
+    pub abri_impossible: Option<String>,
 }
 
 /// Le dossier est-il dans la liste d'Eden (`texte` : son qt-config.ini) ?
@@ -1020,114 +1028,256 @@ pub fn dossier_dans_la_liste(texte: &str, dossier: &str) -> bool {
     crate::contenus::dossiers_externes_eden(texte).iter().any(|d| crate::contenus::meme_dossier(d, dossier))
 }
 
-/// Où en est un dossier de contenus chez Eden.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EtatDossier {
-    /// Dans la liste d'Eden (ajouté par Frogtend ou par la personne) : Eden le lit.
-    DansLaListe,
-    /// Ajouté par Frogtend (la preuve le dit) puis retiré par la personne dans Eden : jamais remis.
-    RetireParLaPersonne,
-    /// Pas encore dans la liste : ajouté au prochain lancement.
-    AAjouter,
-}
-
-/// L'état du dossier `dossier` pour l'Eden `eden` (`texte` : son qt-config.ini ; `donnees` : celles de Frogtend).
-pub fn etat_du_dossier(donnees: &Path, eden: &Path, texte: &str, dossier: &str) -> EtatDossier {
-    if dossier_dans_la_liste(texte, dossier) {
-        return EtatDossier::DansLaListe;
-    }
-    // Une liste absente (réglages d'Eden remis à zéro, fichier recréé) n'est pas un retrait de la personne.
-    if crate::manettes::lire_ini(texte, "UI", "Paths\\external_content_dirs\\size").is_empty() {
-        return EtatDossier::AAjouter;
-    }
-    let pose = crate::contenus::lire_registre_eden(donnees)
-        .get(&eden.to_string_lossy().to_string())
-        .is_some_and(|e| e.keys().any(|d| crate::contenus::meme_dossier(d, dossier)));
-    if pose { EtatDossier::RetireParLaPersonne } else { EtatDossier::AAjouter }
-}
-
-/// Les contenus que la personne a refusés en retirant leur dossier d'Eden, par IDENTIFIANT (`ContenuLu::identifiant`) :
-/// une autre copie du même contenu, ailleurs, ne fait pas ajouter son dossier. Par Eden ; fichier des données de
-/// Frogtend.
-type RefusEden = std::collections::BTreeMap<String, std::collections::BTreeSet<String>>;
-
-fn chemin_refus(donnees: &Path) -> PathBuf {
-    donnees.join("eden-contenus-refuses.json")
-}
-
-fn lire_refus(donnees: &Path) -> RefusEden {
-    std::fs::read(chemin_refus(donnees)).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default()
-}
-
-fn ecrire_refus(donnees: &Path, r: &RefusEden) -> Resultat<()> {
-    std::fs::create_dir_all(donnees)?;
-    let provisoire = donnees.join("eden-contenus-refuses.json.tmp");
-    std::fs::write(&provisoire, serde_json::to_vec_pretty(r).unwrap_or_default())?;
-    std::fs::rename(&provisoire, chemin_refus(donnees))?;
-    Ok(())
-}
-
-/// Ce que Frogtend fera pour ce jeu chez Eden, calculé sans rien écrire.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct PlanEden {
-    /// Chaque dossier qui compte, avec son état : ceux retirés par la personne, et ceux qui portent au moins un contenu
-    /// pas refusé.
-    pub etats: Vec<(String, EtatDossier)>,
-    /// Les identifiants refusés (d'avant, et ceux des dossiers retirés trouvés maintenant).
-    pub refuses: std::collections::BTreeSet<String>,
-    /// De nouveaux refus sont à noter.
-    pub refus_nouveaux: bool,
-}
-
-impl PlanEden {
-    /// Ce contenu n'est pas donné à Eden : son dossier a été retiré, ou une copie du même contenu l'a été.
-    pub fn refuse(&self, m: &crate::switch_nca::ContenuLu) -> bool {
-        m.identifiant().is_some_and(|id| self.refuses.contains(&id)) || self.dossier_retire(m)
-    }
-
-    fn dossier_retire(&self, m: &crate::switch_nca::ContenuLu) -> bool {
-        let d = m.chemin.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
-        self.etats.iter().any(|(x, e)| *e == EtatDossier::RetireParLaPersonne && crate::contenus::meme_dossier(x, &d))
-    }
-}
-
-/// Le plan des dossiers de ce jeu pour Eden (`texte` : son qt-config.ini).
-pub fn plan(donnees: &Path, eden: &Path, texte: &str, c: &crate::switch_nca::ContenusDuJeu) -> PlanEden {
-    let mut p = PlanEden { refuses: lire_refus(donnees).remove(&eden.to_string_lossy().to_string()).unwrap_or_default(), ..Default::default() };
-    let tous: Vec<(String, EtatDossier)> =
-        c.dossiers_utiles().iter().map(|d| d.to_string_lossy().to_string()).map(|d| (d.clone(), etat_du_dossier(donnees, eden, texte, &d))).collect();
+/// Les dossiers de contenus de ce jeu (ceux qui portent sa mise à jour ou un de ses DLC) avec : sont-ils déjà dans la
+/// liste d'Eden ? (✅ Seb 17/11 : Frogtend est la source de vérité — un dossier retiré dans Eden est redonné ; ce qui
+/// est utilisé ou non se règle par `[DisabledAddOns]`.)
+pub fn dossiers_du_jeu(texte: &str, c: &crate::switch_nca::ContenusDuJeu) -> Vec<(String, bool)> {
     let contenus: Vec<&crate::switch_nca::ContenuLu> = c.maj.iter().chain(c.dlc.iter()).collect();
     let dans = |m: &crate::switch_nca::ContenuLu, d: &str| m.chemin.parent().is_some_and(|x| crate::contenus::meme_dossier(&x.to_string_lossy(), d));
-    // Un dossier retiré par la personne : ce qu'il porte est refusé, par identifiant.
-    for (d, e) in &tous {
-        if *e == EtatDossier::RetireParLaPersonne {
-            for m in contenus.iter().filter(|m| dans(m, d)) {
-                if let Some(id) = m.identifiant() {
-                    p.refus_nouveaux |= p.refuses.insert(id);
+    c.dossiers_utiles()
+        .iter()
+        .map(|d| d.to_string_lossy().to_string())
+        .filter(|d| contenus.iter().any(|m| dans(m, d)))
+        .map(|d| {
+            let deja = dossier_dans_la_liste(texte, &d);
+            (d, deja)
+        })
+        .collect()
+}
+
+// --- `[DisabledAddOns]` du qt-config.ini GLOBAL d'Eden (✅ Seb 17/11). Relu dans la source officielle d'Eden
+// (git.eden-emu.dev/eden-emu/eden, src/frontend_common/config.cpp) : `ReadDisabledAddOnValues` (l. 325-345) ouvre le
+// groupe « DisabledAddOns » (= la section), un tableau sans nom (`size`), et pour chaque élément i (1, 2…)
+// `i\title_id` lu par `ReadUnsignedIntegerSetting` (l. 755-780 : `std::stoull`, donc en DÉCIMAL, et la valeur d'origine
+// 0 tant que `i\title_id\default` n'est pas faux — le piège « \default »), puis le tableau `i\disabled` (`size`) de
+// chaînes `i\disabled\j\d` (`ReadStringSetting` : guillemets retirés, « // » → « / »). L'écriture
+// (`SaveDisabledAddOnValues`, l. 630-648) passe par `AdjustOutputString` (« \ » → « / », guillemets si un caractère
+// spécial). Ce qu'Eden fait des noms (src/core/file_sys/patch_manager.cpp) : « Update » coupe toute mise à jour
+// (l. 122-125, et l. 261-265 pour celle du NAND), « Update@<version> » une seule version (les autres, de la plus
+// récente à la plus ancienne, restent ; registered_cache.cpp `ListUpdateVersions`), « DLC » coupe TOUS les DLC du
+// jeu (l. 1074-1091 ; addon_content_manager.cpp l. 101-124 : `CountAddOnContent` rend 0). Il ne sait pas couper un
+// DLC seul. Les noms des mods sont gardés tels quels. ---
+
+/// Une valeur booléenne de QSettings/SimpleIni (`GetBoolValue` : vrai d'office).
+fn booleen_ini(v: Option<&String>, defaut: bool) -> bool {
+    match v.map(|s| s.trim().to_ascii_lowercase()) {
+        Some(s) if ["true", "yes", "on", "1"].contains(&s.as_str()) => true,
+        Some(s) if ["false", "no", "off", "0"].contains(&s.as_str()) => false,
+        _ => defaut,
+    }
+}
+
+/// `[DisabledAddOns]`, lu COMME EDEN le lit : (jeu, noms coupés), dans l'ordre ; un jeu en double garde sa dernière
+/// liste (`insert_or_assign`).
+pub fn lire_coupures(texte: &str) -> Vec<(u64, Vec<String>)> {
+    const S: &str = "DisabledAddOns";
+    let lire = |cle: &str| crate::manettes::lire_ini(texte, S, cle).into_iter().next();
+    let taille = |cle: &str| lire(cle).and_then(|v| v.trim().parse::<i64>().ok()).unwrap_or(0).clamp(0, 4096) as usize;
+    let mut l: Vec<(u64, Vec<String>)> = Vec::new();
+    for i in 1..=taille("size") {
+        let tid = if booleen_ini(lire(&format!("{i}\\title_id\\default")).as_ref(), true) {
+            0
+        } else {
+            lire(&format!("{i}\\title_id")).and_then(|v| v.trim().parse::<u64>().ok()).unwrap_or(0)
+        };
+        let mut noms = Vec::new();
+        for j in 1..=taille(&format!("{i}\\disabled\\size")) {
+            let v = if booleen_ini(lire(&format!("{i}\\disabled\\{j}\\d\\default")).as_ref(), true) {
+                String::new()
+            } else {
+                lire(&format!("{i}\\disabled\\{j}\\d")).unwrap_or_default().replace('"', "").replace("//", "/")
+            };
+            noms.push(v);
+        }
+        l.retain(|(t, _)| *t != tid);
+        l.push((tid, noms));
+    }
+    l
+}
+
+/// `[DisabledAddOns]` se comprend-il ? Une section qui a des lignes mais dont la lecture ne donne rien (`size`
+/// manquant), ou un jeu illisible (`title_id` lu 0 : valeur abîmée, `\default` manquant) : non — Frogtend ne la
+/// remplace pas (il effacerait ce qu'il ne comprend pas). Pas de section, ou une section vide : oui.
+pub fn coupures_lisibles(texte: &str) -> bool {
+    let mut dans = false;
+    let mut lignes = 0;
+    for l in texte.lines() {
+        let t = l.trim();
+        if t.starts_with('[') {
+            dans = t.eq_ignore_ascii_case("[DisabledAddOns]");
+        } else if dans && t.contains('=') {
+            lignes += 1;
+        }
+    }
+    let l = lire_coupures(texte);
+    let seulement_vide = lignes == 1 && crate::manettes::lire_ini(texte, "DisabledAddOns", "size").first().is_some_and(|s| s.trim() == "0");
+    lignes == 0 || seulement_vide || (!l.is_empty() && l.iter().all(|(t, _)| *t != 0))
+}
+
+/// Une chaîne telle qu'Eden l'écrit (`Config::AdjustOutputString`).
+fn chaine_eden(s: &str) -> String {
+    let mut v = s.replace('\\', "/");
+    if s.starts_with("//") {
+        v = format!("/{}", v.replace("//", "/"));
+    } else {
+        v = v.replace("//", "/");
+    }
+    const SPECIAUX: [char; 18] = ['!', '#', '$', '%', '^', '&', '*', '|', ';', '\'', '"', ',', '<', '>', '?', '`', '~', '='];
+    if v.contains(SPECIAUX) {
+        v = format!("\"{v}\"");
+    }
+    v
+}
+
+/// Réécrit TOUTE la section `[DisabledAddOns]` (`coupures` : chaque jeu et ses noms coupés), dans la forme qu'Eden
+/// écrit lui-même ; le reste du fichier est recopié tel quel. Une section absente est ajoutée à la fin (sauf s'il n'y
+/// a rien à y mettre).
+pub fn ecrire_coupures(texte: &str, coupures: &[(u64, Vec<String>)]) -> String {
+    let fin_ligne = if texte.contains("\r\n") || texte.is_empty() { "\r\n" } else { "\n" };
+    let mut section = String::from("[DisabledAddOns]");
+    section.push_str(fin_ligne);
+    let mut ligne = |c: String, v: String| {
+        section.push_str(&format!("{c}={v}{fin_ligne}"));
+    };
+    for (i, (tid, noms)) in coupures.iter().enumerate() {
+        let i = i + 1;
+        ligne(format!("{i}\\title_id\\default"), (*tid == 0).to_string());
+        ligne(format!("{i}\\title_id"), tid.to_string());
+        for (j, n) in noms.iter().enumerate() {
+            let j = j + 1;
+            ligne(format!("{i}\\disabled\\{j}\\d\\default"), n.is_empty().to_string());
+            ligne(format!("{i}\\disabled\\{j}\\d"), chaine_eden(n));
+        }
+        ligne(format!("{i}\\disabled\\size"), noms.len().to_string());
+    }
+    ligne("size".into(), coupures.len().to_string());
+    let mut sortie = String::with_capacity(texte.len() + section.len());
+    let mut dans = false;
+    let mut posee = false;
+    for l in texte.split_inclusive('\n') {
+        let nue = l.trim_end_matches(['\r', '\n']).trim();
+        if nue.starts_with('[') {
+            dans = nue.eq_ignore_ascii_case("[DisabledAddOns]");
+            if dans {
+                if !posee {
+                    sortie.push_str(&section);
+                    posee = true;
+                }
+                continue;
+            }
+        }
+        // Hors de la section : recopié tel quel ; dans la section, seules les lignes vides (la séparation avec la suivante).
+        if !dans || nue.is_empty() {
+            sortie.push_str(l);
+        }
+    }
+    if !posee && !coupures.is_empty() {
+        if !sortie.is_empty() && !sortie.ends_with('\n') {
+            sortie.push_str(fin_ligne);
+        }
+        if !sortie.is_empty() && !sortie.ends_with(&format!("{fin_ligne}{fin_ligne}")) {
+            sortie.push_str(fin_ligne);
+        }
+        sortie.push_str(&section);
+    }
+    sortie
+}
+
+/// Les noms coupés voulus pour un jeu (`actuels` : ceux d'Eden ; `maj` : (une mise à jour trouvée, allumée) ; `dlc` :
+/// (nombre de DLC trouvés, nombre d'allumés)). Mise à jour éteinte → « Update » ; allumée → ni « Update » ni
+/// « Update@… » (Eden prend alors la plus récente). « DLC » seulement si TOUS les DLC trouvés sont éteints. Une
+/// mise à jour ou des DLC que Frogtend n'a pas trouvés : rien n'est changé pour eux. Les mods (autres noms) restent.
+pub fn coupures_voulues(actuels: &[String], maj: Option<bool>, dlc: (usize, usize)) -> Vec<String> {
+    let mut l: Vec<String> = actuels.to_vec();
+    match maj {
+        Some(true) => l.retain(|n| n != "Update" && !n.starts_with("Update@")),
+        Some(false) if !l.iter().any(|n| n == "Update") => l.push("Update".into()),
+        _ => {}
+    }
+    let (trouves, allumes) = dlc;
+    if trouves > 0 {
+        let tous_eteints = allumes == 0;
+        if tous_eteints && !l.iter().any(|n| n == "DLC") {
+            l.push("DLC".into());
+        } else if !tous_eteints {
+            l.retain(|n| n != "DLC");
+        }
+    }
+    l
+}
+
+/// Le texte du qt-config.ini avec les coupures voulues pour ce jeu (`base`) ; `None` : rien à changer. Les autres jeux
+/// et leurs noms sont gardés ; une liste vide fait partir l'entrée du jeu.
+pub fn texte_avec_coupures(texte: &str, base: u64, maj: Option<bool>, dlc: (usize, usize)) -> Option<String> {
+    // Une section qu'Eden ne lirait pas comme Frogtend la comprend : jamais remplacée (`coupures_lisibles`).
+    if !coupures_lisibles(texte) {
+        return None;
+    }
+    let mut toutes = lire_coupures(texte);
+    let actuels = toutes.iter().find(|(t, _)| *t == base).map(|(_, l)| l.clone()).unwrap_or_default();
+    let voulus = coupures_voulues(&actuels, maj, dlc);
+    if voulus == actuels {
+        return None;
+    }
+    match toutes.iter().position(|(t, _)| *t == base) {
+        Some(i) if voulus.is_empty() => {
+            toutes.remove(i);
+        }
+        Some(i) => toutes[i].1 = voulus,
+        None => toutes.push((base, voulus)),
+    }
+    Some(ecrire_coupures(texte, &toutes))
+}
+
+/// Le cache de la liste de jeux d'Eden pour ce jeu (`user\cache\game_list\<TID>.pv.txt`) : Eden l'efface lui-même quand
+/// les coupures changent (configure_per_game_addons.cpp l. 126-129). Seulement ce fichier.
+pub fn cache_liste_du_jeu(eden: &Path, base: u64) -> PathBuf {
+    eden.join("user").join("cache").join("game_list").join(format!("{base:016X}.pv.txt"))
+}
+
+/// Ce qu'Eden fera des contenus trouvés avec ce choix : ((une mise à jour trouvée, allumée), (DLC trouvés, allumés)).
+pub fn etat_voulu(c: &crate::switch_nca::ContenusDuJeu, choix: &crate::contenus_switch::ChoixJeu) -> (Option<bool>, (usize, usize)) {
+    let ids = crate::ryubing::ids_dlc(c);
+    let allumes = ids.iter().filter(|id| choix.dlc_actif(id)).count();
+    // « Tous éteints » ne se décide que sur une recherche complète (un DLC pas encore lu pourrait être allumé) : sinon,
+    // rien n'est changé pour les DLC.
+    if allumes == 0 && !c.complet() {
+        return (c.maj.as_ref().map(|_| choix.maj), (0, 0));
+    }
+    (c.maj.as_ref().map(|_| choix.maj), (ids.len(), allumes))
+}
+
+/// Met à l'abri les parties de CE jeu chez Eden, pour CHAQUE utilisateur (`nand\user\save\0…0\<utilisateur>\<jeu>`,
+/// le nouvel emplacement `…\account\<utilisateur>\<jeu>` s'il existe, et les parties « Device » communes) : copiées
+/// dans `<Eden>\.frogtend-sauvegardes\<horodatage>-parties-<jeu>\`, relues. Jamais rien d'effacé.
+pub fn abriter_parties_du_jeu(eden: &Path, base: u64) -> Resultat<Option<(PathBuf, usize)>> {
+    let tid = format!("{base:016X}");
+    let mut dossiers: Vec<PathBuf> = vec![dossier_device(eden)];
+    for u in lire(&std::fs::read(fichier_profils(eden)).unwrap_or_default()) {
+        dossiers.extend(dossiers_parties(eden, &u.uuid).into_iter().map(|(_, d)| d));
+    }
+    let mut fichiers: Vec<String> = Vec::new();
+    for d in dossiers {
+        for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+            if !e.file_name().to_string_lossy().eq_ignore_ascii_case(&tid) || !e.file_type().is_ok_and(|t| t.is_dir()) {
+                continue;
+            }
+            for r in crate::installation::fichiers_de(&e.path())? {
+                if let Ok(rel) = e.path().join(&r).strip_prefix(eden) {
+                    fichiers.push(rel.to_string_lossy().to_string());
                 }
             }
         }
     }
-    p.etats = tous
-        .into_iter()
-        .filter(|(d, e)| *e == EtatDossier::RetireParLaPersonne || contenus.iter().any(|m| dans(m, d) && !m.identifiant().is_some_and(|id| p.refuses.contains(&id))))
-        .collect();
-    p
+    fichiers.sort();
+    fichiers.dedup();
+    crate::contenus_switch::copier_a_l_abri(eden, &fichiers, &eden.join(".frogtend-sauvegardes"), &format!("parties-{tid}"))
 }
 
-/// Ce qu'il faut dire des contenus, en mots simples (une phrase par élément) : le choix de la personne gardé, les
-/// dossiers donnés au prochain lancement (leur nom seulement), les autres jeux qu'Eden verra aussi, les fichiers pas
-/// utilisés, une recherche pas finie.
-pub fn remarques_contenus(c: &crate::switch_nca::ContenusDuJeu, p: &PlanEden) -> Vec<String> {
+/// Ce qu'il faut dire des contenus, en mots simples (une phrase par élément) : les autres jeux qu'Eden verra aussi, les
+/// fichiers pas utilisés, une recherche pas finie.
+pub fn remarques_contenus(c: &crate::switch_nca::ContenusDuJeu) -> Vec<String> {
     let mut l = Vec::new();
-    for (d, e) in &p.etats {
-        let n = nom_du_dossier(d);
-        match e {
-            EtatDossier::RetireParLaPersonne => l.push(format!("Tu as retiré le dossier « {n} » d'Eden : Frogtend ne le remet pas.")),
-            EtatDossier::AAjouter => l.push(format!("Le dossier « {n} » sera donné à Eden au prochain lancement, tout seul.")),
-            EtatDossier::DansLaListe => {}
-        }
-    }
     if c.autres_jeux > 0 {
         l.push(format!("Ces dossiers contiennent aussi {} fichier(s) d'autres jeux : Eden verra aussi leurs mises à jour et DLC.", c.autres_jeux));
     }
@@ -1141,18 +1291,26 @@ pub fn remarques_contenus(c: &crate::switch_nca::ContenusDuJeu, p: &PlanEden) ->
 
 /// Au lancement du jeu `id` (fichier `jeu` ; `ailleurs` : son dossier d'installation et les emplacements réglés de la
 /// Switch) par Eden FERMÉ (`ouvert` : un Eden tourne-t-il depuis ce dossier ? Il réécrit ses réglages en quittant) :
-/// ajoute à la liste d'Eden chaque dossier qui contient la mise à jour retenue ou un DLC de ce jeu et n'y est pas encore
-/// (fichier mis à l'abri avant, relu après, preuve notée dans `donnees` pour le retirer avec le jeu). Jamais un dossier
-/// que la personne a retiré après que Frogtend l'a posé, ni un dossier pour un contenu dont elle a retiré une copie.
-/// `Ok(None)` : rien à faire (Eden pas installé par Frogtend, jeu illisible). Une erreur : à noter au journal — le jeu
-/// se lance quand même.
+/// remet Eden d'accord avec le choix de Frogtend (`donnees` : ses données, où vit `contenus-switch.json`) —
+/// chaque dossier qui contient la mise à jour ou un DLC de ce jeu est dans la liste `external_content_dirs` (ajouté
+/// s'il manque, preuve notée pour le retirer avec le jeu), et `[DisabledAddOns]` coupe ce qui est éteint. Un fichier
+/// changé est mis à l'abri avant, relu après. Un contenu éteint depuis la dernière partie : les parties de ce jeu sont
+/// d'abord mises à l'abri. `Ok(None)` : rien à faire (Eden pas installé par Frogtend, jeu illisible). Une erreur : à
+/// noter au journal — le jeu se lance quand même (sauf `abri_impossible`).
 pub fn preparer_contenus(donnees: &Path, eden: &Path, jeu: &Path, ailleurs: &[PathBuf], id: i64, ouvert: &dyn Fn(&Path) -> bool) -> Resultat<Option<ContenusPrepares>> {
     let c = match lire_contenus(eden, jeu, ailleurs) {
         LectureContenus::Lus(c) => c,
         LectureContenus::SansCles => return Err(Erreur::Refus("les clés de la console manquent : mises à jour et DLC non utilisés".into())),
         LectureContenus::PasPortable | LectureContenus::Illisible => return Ok(None),
     };
-    let mut r = ContenusPrepares { maj: c.maj.is_some(), dlc: c.dlc.len(), ..Default::default() };
+    // Les retraits d'avant pas encore repris : rien n'est écrit (ce serait rallumer ce que la personne avait coupé).
+    if !crate::contenus_switch::migration_faite(donnees) {
+        return Err(Erreur::Refus("les choix des mises à jour et DLC ne sont pas encore repris : rien n'est changé dans Eden à cette partie".into()));
+    }
+    let (choix, abime) = crate::contenus_switch::choix_resolu(donnees, c.base, &crate::ryubing::ids_dlc(&c), c.complet());
+    let (maj_voulue, dlc_voulus) = etat_voulu(&c, &choix);
+    let mut r = ContenusPrepares { maj: c.maj.is_some(), dlc: c.dlc.len(), dlc_en_partie: dlc_voulus.1 > 0 && dlc_voulus.1 < dlc_voulus.0, ..Default::default() };
+    r.notes.extend(abime);
     r.notes.push(c.lecture.resume());
     let ini = crate::contenus::ini_eden(eden);
     let texte = match std::fs::read_to_string(&ini) {
@@ -1160,30 +1318,12 @@ pub fn preparer_contenus(donnees: &Path, eden: &Path, jeu: &Path, ailleurs: &[Pa
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => return Err(e.into()),
     };
-    let p = plan(donnees, eden, &texte, &c);
-    r.dossiers = p.etats.iter().map(|(d, _)| d.clone()).collect();
-    r.contenus_refuses = c.maj.iter().chain(c.dlc.iter()).filter(|m| p.refuse(m)).count();
-    if p.refus_nouveaux {
-        let mut tous = lire_refus(donnees);
-        tous.insert(eden.to_string_lossy().to_string(), p.refuses.clone());
-        if let Err(e) = ecrire_refus(donnees, &tous) {
-            r.notes.push(format!("refus de la personne non notés ({e})"));
-        }
-    }
-    if r.dossiers.is_empty() {
-        return Ok(Some(r));
-    }
-    let avant = crate::contenus::dossiers_externes_eden(&texte);
-    let mut a_ajouter = Vec::new();
-    let mut deja = Vec::new();
-    for (d, e) in &p.etats {
-        match e {
-            EtatDossier::RetireParLaPersonne => r.retires_par_la_personne.push(d.clone()),
-            EtatDossier::DansLaListe => deja.push(d.clone()),
-            EtatDossier::AAjouter => a_ajouter.push(d.clone()),
-        }
-    }
+    let dossiers = dossiers_du_jeu(&texte, &c);
+    r.dossiers = dossiers.iter().map(|(d, _)| d.clone()).collect();
+    let a_ajouter: Vec<String> = dossiers.iter().filter(|(_, deja)| !deja).map(|(d, _)| d.clone()).collect();
+    let deja: Vec<String> = dossiers.iter().filter(|(_, deja)| *deja).map(|(d, _)| d.clone()).collect();
     // Déjà lus par Eden. Posés par Frogtend pour un autre jeu : ce jeu s'en sert aussi (gardés tant qu'il est là).
+    let avant = crate::contenus::dossiers_externes_eden(&texte);
     let registre = crate::contenus::lire_registre_eden(donnees);
     let notes = registre.get(&eden.to_string_lossy().to_string());
     let a_noter: Vec<String> = deja
@@ -1195,25 +1335,73 @@ pub fn preparer_contenus(donnees: &Path, eden: &Path, jeu: &Path, ailleurs: &[Pa
             r.notes.push(format!("preuve des dossiers non notée ({e})"));
         }
     }
-    if a_ajouter.is_empty() {
+    if !coupures_lisibles(&texte) {
+        r.notes.push("la section [DisabledAddOns] d'Eden ne se lit pas comme prévu : Frogtend n'y touche pas (les choix ne sont pas remis en place)".into());
+    }
+    let coupures = texte_avec_coupures(&texte, c.base, maj_voulue, dlc_voulus);
+    let constater = |r: &mut ContenusPrepares, t: &str| {
+        let l = lire_coupures(t).into_iter().find(|(x, _)| *x == c.base).map(|(_, l)| l).unwrap_or_default();
+        r.maj_coupee = l.iter().any(|n| n == "Update");
+        r.dlc_coupes = l.iter().any(|n| n == "DLC");
+    };
+    if a_ajouter.is_empty() && coupures.is_none() {
+        constater(&mut r, &texte);
         return Ok(Some(r));
     }
     if ouvert(eden) {
-        return Err(Erreur::Refus("Eden est déjà ouvert : ses mises à jour et DLC seront ajoutés au prochain lancement, Eden fermé".into()));
+        return Err(Erreur::Refus("Eden est déjà ouvert : ses mises à jour et DLC seront remis en place au prochain lancement, Eden fermé".into()));
+    }
+    // Les parties d'abord, si un contenu vient d'être éteint (avant toute écriture : en cas d'échec, rien ne change).
+    let lieu = crate::contenus_switch::lieu("eden", eden);
+    if choix.abri_a_faire(&lieu) {
+        match abriter_parties_du_jeu(eden, c.base) {
+            Ok(a) => {
+                r.notes.push(match a {
+                    Some((d, n)) => format!("parties mises à l'abri avant la partie ({n} fichier(s), {})", d.display()),
+                    None => "aucune partie à mettre à l'abri".into(),
+                });
+                if let Err(e) = crate::contenus_switch::noter_abri_fait(donnees, c.base, &lieu) {
+                    r.notes.push(format!("abri des parties non noté ({e})"));
+                }
+            }
+            Err(e) => {
+                r.abri_impossible = Some(e.to_string());
+                return Ok(Some(r));
+            }
+        }
     }
     // Les dossiers d'anciens jeux retirés qui attendaient qu'Eden soit fermé partent d'abord.
-    if let Err(e) = crate::contenus::ranger_dossiers_eden(donnees, None, ouvert) {
-        r.notes.push(format!("liste d'Eden pas rangée ({e})"));
+    if !a_ajouter.is_empty() {
+        if let Err(e) = crate::contenus::ranger_dossiers_eden(donnees, None, ouvert) {
+            r.notes.push(format!("liste d'Eden pas rangée ({e})"));
+        }
     }
     // Relu : le rangement a pu changer le fichier.
     let texte = std::fs::read_to_string(&ini).unwrap_or(texte);
-    let apres = crate::contenus::ajouter_dossiers_eden(&texte, &a_ajouter);
+    let apres = if a_ajouter.is_empty() { texte.clone() } else { crate::contenus::ajouter_dossiers_eden(&texte, &a_ajouter) };
+    let apres = texte_avec_coupures(&apres, c.base, maj_voulue, dlc_voulus).unwrap_or(apres);
     crate::emulateurs_profils::remplacer_config(eden, &ini, &apres)?;
-    // Vérifier le résultat, pas le retour : chaque dossier est dans la liste relue.
+    // Vérifier le résultat, pas le retour : chaque dossier est dans la liste relue, les coupures sont celles voulues.
     let relu = std::fs::read_to_string(&ini).unwrap_or_default();
     r.ajoutes = a_ajouter.iter().filter(|d| dossier_dans_la_liste(&relu, d)).cloned().collect();
-    if let Err(e) = crate::contenus::noter_et_ecrire_eden(donnees, eden, &avant, &r.ajoutes, id) {
-        r.notes.push(format!("preuve des dossiers non notée ({e})"));
+    if !r.ajoutes.is_empty() {
+        if let Err(e) = crate::contenus::noter_et_ecrire_eden(donnees, eden, &avant, &r.ajoutes, id) {
+            r.notes.push(format!("preuve des dossiers non notée ({e})"));
+        }
+    }
+    constater(&mut r, &relu);
+    if texte_avec_coupures(&relu, c.base, maj_voulue, dlc_voulus).is_some() {
+        return Err(Erreur::Disque("les choix des mises à jour et DLC n'ont pas été enregistrés dans Eden".into()));
+    }
+    if coupures.is_some() {
+        r.coupures_ecrites = true;
+        // Eden recalcule la liste des contenus de ce jeu (comme il le fait lui-même après un changement).
+        let cache = cache_liste_du_jeu(eden, c.base);
+        if cache.is_file() {
+            if let Err(e) = std::fs::remove_file(&cache) {
+                r.notes.push(format!("cache de la liste de jeux d'Eden non effacé ({e})"));
+            }
+        }
     }
     if r.ajoutes.len() < a_ajouter.len() {
         return Err(Erreur::Disque("un dossier de contenus n'a pas été enregistré dans Eden".into()));
@@ -1224,24 +1412,58 @@ pub fn preparer_contenus(donnees: &Path, eden: &Path, jeu: &Path, ailleurs: &[Pa
 impl ContenusPrepares {
     /// Une ligne de journal : « 1 mise(s) à jour, 2 DLC ; 1 dossier(s) ajouté(s) à Eden : … ».
     pub fn resume(&self) -> String {
-        if self.dossiers.is_empty() && self.contenus_refuses == 0 {
+        if self.dossiers.is_empty() && !self.maj && self.dlc == 0 {
             return "aucune mise à jour ni DLC à donner".into();
         }
         let mut s = format!("{} mise(s) à jour, {} DLC", u8::from(self.maj), self.dlc);
         if !self.ajoutes.is_empty() {
             s += &format!(" ; dossier(s) ajouté(s) à Eden : {}", self.ajoutes.join(", "));
-        }
-        if !self.retires_par_la_personne.is_empty() {
-            s += &format!(" ; retiré(s) d'Eden par la personne, pas remis : {}", self.retires_par_la_personne.join(", "));
-        }
-        if self.contenus_refuses > 0 {
-            s += &format!(" ; {} contenu(s) retiré(s) par la personne, pas redonné(s)", self.contenus_refuses);
-        }
-        if self.ajoutes.is_empty() && self.retires_par_la_personne.is_empty() && self.contenus_refuses == 0 {
+        } else {
             s += " ; dossier(s) déjà lu(s) par Eden";
+        }
+        if self.maj_coupee {
+            s += " ; mise à jour coupée";
+        }
+        if self.dlc_coupes {
+            s += " ; DLC coupés";
+        } else if self.dlc_en_partie {
+            s += " ; DLC éteints en partie : Eden les garde tous";
+        }
+        if self.coupures_ecrites {
+            s += " ; choix écrits dans Eden";
         }
         s
     }
+}
+
+/// La migration (une fois, ✅ Seb 17/11) : les retraits d'avant le 17/11 chez cet Eden — les refus notés par Frogtend
+/// (`eden-contenus-refuses.json`, par identifiant) et `[DisabledAddOns]` (« Update » : mise à jour éteinte ; « DLC » :
+/// tous les DLC du jeu éteints). Rien n'est écrit ni effacé ici.
+pub fn retraits_d_avant(donnees: &Path, eden: &Path) -> Vec<(u64, crate::contenus_switch::Retrait, String)> {
+    use crate::contenus_switch::{Retrait, TOUS_LES_DLC};
+    let mut l = Vec::new();
+    let refus: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
+        std::fs::read(donnees.join("eden-contenus-refuses.json")).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default();
+    for id in refus.get(&eden.to_string_lossy().to_string()).into_iter().flatten() {
+        if let Some(b) = id.strip_prefix("maj:").and_then(|x| x.split(':').next()).and_then(|x| u64::from_str_radix(x, 16).ok()) {
+            l.push((crate::switch_nca::base(b), Retrait::Maj, "Eden : dossier retiré".to_string()));
+        } else if let Some(b) = id.strip_prefix("dlc:").and_then(|x| x.split('+').next()).and_then(|x| u64::from_str_radix(x, 16).ok()) {
+            l.push((crate::switch_nca::base(b), Retrait::Dlc(id.clone()), "Eden : dossier retiré".to_string()));
+        }
+    }
+    let texte = std::fs::read_to_string(crate::contenus::ini_eden(eden)).unwrap_or_default();
+    for (tid, noms) in lire_coupures(&texte) {
+        if tid == 0 {
+            continue;
+        }
+        if noms.iter().any(|n| n == "Update") {
+            l.push((tid, Retrait::Maj, "Eden : mise à jour décochée".to_string()));
+        }
+        if noms.iter().any(|n| n == "DLC") {
+            l.push((tid, Retrait::Dlc(TOUS_LES_DLC.into()), "Eden : DLC décochés".to_string()));
+        }
+    }
+    l
 }
 
 #[cfg(test)]
@@ -1268,7 +1490,7 @@ mod tests_contenus {
     }
 
     #[test]
-    fn le_dossier_du_jeu_est_ajoute_une_fois_avec_sa_preuve_et_retire_avec_le_jeu() {
+    fn le_dossier_du_jeu_est_ajoute_une_fois_avec_sa_preuve_et_redonne_s_il_est_retire() {
         let d = tempfile::tempdir().unwrap();
         let jeux = d.path().join("Jeux");
         std::fs::create_dir_all(&jeux).unwrap();
@@ -1280,7 +1502,7 @@ mod tests_contenus {
         let racine = jeux.to_string_lossy().to_string();
         let perso = r"E:/Mes DLC";
         let eden = eden_avec_cles(d.path(), Some(&format!("[UI]\r\nPaths\\external_content_dirs\\size=1\r\nPaths\\external_content_dirs\\1\\path={perso}\r\ntheme=dark\r\n")));
-        let donnees = d.path().join("donnees");
+        let donnees = crate::contenus_switch::donnees_migrees(&d.path().join("donnees"));
         let ferme = |_: &Path| false;
         // Eden ouvert : rien d'écrit, dit (le jeu se lance quand même : c'est à l'appelant).
         assert!(preparer_contenus(&donnees, &eden, &jeu, &[], 7, &|_| true).is_err());
@@ -1288,10 +1510,12 @@ mod tests_contenus {
         let r = preparer_contenus(&donnees, &eden, &jeu, &[], 7, &ferme).unwrap().unwrap();
         assert!(r.maj && r.dlc == 3, "{r:?}");
         assert_eq!(r.ajoutes, [racine.clone(), sous.clone()], "le dossier du jeu et le sous-dossier qui porte un DLC");
+        assert!(!r.coupures_ecrites && !r.maj_coupee && !r.dlc_coupes, "tout allumé : rien de coupé");
         let texte = lu(&eden);
         assert!(dossier_dans_la_liste(&texte, &racine) && dossier_dans_la_liste(&texte, &sous), "{texte}");
         assert!(dossier_dans_la_liste(&texte, perso), "le dossier de la personne est gardé : {texte}");
         assert!(texte.contains("theme=dark"), "le reste du fichier est gardé");
+        assert!(!texte.contains("DisabledAddOns"), "rien à couper : la section n'est pas créée");
         assert!(eden.join(".frogtend-sauvegardes").is_dir(), "le fichier d'avant est à l'abri");
         // La preuve : seulement les dossiers de Frogtend, pour ce jeu.
         let reg = crate::contenus::lire_registre_eden(&donnees);
@@ -1306,20 +1530,15 @@ mod tests_contenus {
         // Un autre jeu des mêmes dossiers s'en sert aussi.
         preparer_contenus(&donnees, &eden, &jeu, &[], 8, &ferme).unwrap();
         assert!(crate::contenus::lire_registre_eden(&donnees)[&eden.to_string_lossy().to_string()].values().all(|ids| ids == &vec![7, 8]));
-        // La personne retire le sous-dossier dans Eden : jamais remis, et dit.
+        // ✅ Seb 17/11 : la personne retire le sous-dossier dans Eden — ça ne compte plus, il est redonné.
         let ini = crate::contenus::ini_eden(&eden);
         std::fs::write(&ini, crate::contenus::retirer_dossiers_eden(&texte, std::slice::from_ref(&sous))).unwrap();
-        let retire = lu(&eden);
         let r = preparer_contenus(&donnees, &eden, &jeu, &[], 7, &ferme).unwrap().unwrap();
-        assert_eq!(r.retires_par_la_personne, [sous.clone()]);
-        assert!(r.ajoutes.is_empty());
-        assert_eq!(lu(&eden), retire, "rien de réécrit");
-        assert!(r.resume().contains("pas remis"));
-        // Des réglages d'Eden remis à zéro (plus de liste du tout) : ce n'est pas un retrait, le dossier revient.
-        assert_eq!(etat_du_dossier(&donnees, &eden, "[UI]\r\ntheme=dark\r\n", &sous), EtatDossier::AAjouter);
+        assert_eq!(r.ajoutes, [sous.clone()]);
+        assert!(dossier_dans_la_liste(&lu(&eden), &sous));
         let LectureContenus::Lus(c) = lire_contenus(&eden, &jeu, &[]) else { panic!() };
-        let dit = remarques_contenus(&c, &plan(&donnees, &eden, &lu(&eden), &c)).join("\n");
-        assert!(dit.contains("Frogtend ne le remet pas") && dit.contains("2 fichier(s) d'autres jeux"), "{dit}");
+        let dit = remarques_contenus(&c).join("\n");
+        assert!(dit.contains("2 fichier(s) d'autres jeux") && !dit.contains("prochain lancement"), "{dit}");
         // Le jeu retiré, ses dossiers encore là : rien ne part (emplacement partagé) ; jamais celui de la personne.
         crate::contenus::ranger_dossiers_eden(&donnees, Some(7), &ferme).unwrap();
         crate::contenus::ranger_dossiers_eden(&donnees, Some(8), &ferme).unwrap();
@@ -1345,7 +1564,7 @@ mod tests_contenus {
         std::fs::write(place.join("n'importe quel nom.nsp"), partition(&[("a.nca", nca(&cle, 5, BASE + 0x1001, 0))], false)).unwrap();
         std::fs::write(place.join("autre.nsp"), partition(&[("z.nca", nca(&cle, 5, 0x0100_AAAA_0000_1001, 0))], false)).unwrap();
         let eden = eden_avec_cles(d.path(), None);
-        let donnees = d.path().join("donnees");
+        let donnees = crate::contenus_switch::donnees_migrees(&d.path().join("donnees"));
         // Sans l'emplacement : rien à ajouter, rien d'écrit chez Eden.
         let r = preparer_contenus(&donnees, &eden, &jeu, &[], 1, &|_| false).unwrap().unwrap();
         assert!(r.dossiers.is_empty() && !crate::contenus::ini_eden(&eden).exists());
@@ -1367,42 +1586,204 @@ mod tests_contenus {
         assert_eq!(preparer_contenus(&donnees, &eden, &jeu, &[], 1, &|_| false).unwrap(), None);
     }
 
+    /// Un `[DisabledAddOns]` tel qu'Eden l'écrit (`SaveDisabledAddOnValues`) : un autre jeu avec un mod au nom spécial
+    /// (guillemets) et une version de mise à jour coupée.
+    const COUPURES_D_EDEN: &str = "[UI]\r\ntheme=dark\r\n\r\n[DisabledAddOns]\r\n1\\title_id\\default=false\r\n1\\title_id=72057594037927936\r\n1\\disabled\\1\\d\\default=false\r\n1\\disabled\\1\\d=\"60 fps, 4K\"\r\n1\\disabled\\2\\d\\default=false\r\n1\\disabled\\2\\d=Update@65536\r\n1\\disabled\\size=2\r\nsize=1\r\n\r\n[Renderer]\r\nbackend=1\r\n";
+
     #[test]
-    fn un_contenu_dont_la_copie_a_ete_retiree_ne_fait_jamais_ajouter_un_autre_dossier() {
-        // Le même DLC à deux endroits : A dans le dossier du jeu (préféré), B dans un emplacement.
+    fn les_coupures_se_lisent_et_s_ecrivent_dans_la_forme_d_eden() {
+        let l = lire_coupures(COUPURES_D_EDEN);
+        assert_eq!(l, vec![(0x0100_0000_0000_0000u64, vec!["60 fps, 4K".to_string(), "Update@65536".to_string()])]);
+        // Le piège « \default » : sans `\default=false`, Eden lit la valeur d'origine (0, chaîne vide).
+        assert_eq!(lire_coupures("[DisabledAddOns]\r\nsize=1\r\n1\\title_id=5\r\n1\\disabled\\size=1\r\n1\\disabled\\1\\d=DLC\r\n"), vec![(0, vec![String::new()])]);
+        // Réécrit à l'identique de ce qu'Eden écrit (même texte), le reste du fichier gardé.
+        assert_eq!(ecrire_coupures(COUPURES_D_EDEN, &l), COUPURES_D_EDEN);
+        // Un jeu ajouté : le titre en DÉCIMAL, « DLC » sans guillemets ; l'autre jeu et son mod gardés.
+        let t = texte_avec_coupures(COUPURES_D_EDEN, BASE, None, (2, 0)).unwrap();
+        assert!(t.contains(&format!("2\\title_id={}\r\n", BASE)) && t.contains("2\\title_id\\default=false\r\n"), "{t}");
+        assert!(t.contains("2\\disabled\\1\\d\\default=false\r\n2\\disabled\\1\\d=DLC\r\n2\\disabled\\size=1\r\n") && t.contains("size=2\r\n"), "{t}");
+        assert!(t.contains("1\\disabled\\1\\d=\"60 fps, 4K\"") && t.contains("[Renderer]\r\nbackend=1") && t.contains("theme=dark"), "{t}");
+        assert_eq!(lire_coupures(&t)[1], (BASE, vec!["DLC".to_string()]));
+        // Une section absente est ajoutée à la fin ; rien à couper : pas de section du tout.
+        let neuf = ecrire_coupures("[UI]\r\ntheme=dark\r\n", &[(BASE, vec!["Update".into()])]);
+        assert!(neuf.starts_with("[UI]\r\ntheme=dark\r\n\r\n[DisabledAddOns]\r\n"), "{neuf}");
+        assert_eq!(texte_avec_coupures("[UI]\r\ntheme=dark\r\n", BASE, Some(true), (2, 2)), None);
+        // Les règles : allumée → ni « Update » ni « Update@… » ; éteinte → « Update » ; DLC en partie → rien ; mods gardés.
+        let mods = vec!["Mod".to_string(), "Update@65536".to_string(), "DLC".to_string()];
+        assert_eq!(coupures_voulues(&mods, Some(true), (2, 1)), ["Mod"]);
+        assert_eq!(coupures_voulues(&mods, Some(false), (2, 0)), ["Mod", "Update@65536", "DLC", "Update"]);
+        assert_eq!(coupures_voulues(&["Mod".to_string()], None, (0, 0)), ["Mod"], "rien trouvé : rien changé");
+        assert_eq!(chaine_eden("a\\b//c"), "a/b/c");
+        assert_eq!(chaine_eden("x=y"), "\"x=y\"");
+    }
+
+    #[test]
+    fn les_choix_de_la_maison_deviennent_les_coupures_d_eden() {
+        use crate::contenus_switch::{choisir, lieu, noter_abri_fait, CLE_MAJ};
         let d = tempfile::tempdir().unwrap();
-        let cle = cle_de_test();
-        let (jeux, place) = (d.path().join("Jeux"), d.path().join("Place"));
+        let jeux = d.path().join("Jeux");
         std::fs::create_dir_all(&jeux).unwrap();
-        std::fs::create_dir_all(&place).unwrap();
-        let jeu = jeux.join("Jeu.xci");
-        std::fs::write(&jeu, xci(&[("m.cnmt.nca", nca(&cle, 1, BASE, 0))], 0)).unwrap();
-        let dlc = partition(&[("a.nca", nca(&cle, 5, BASE + 0x1001, 0))], false);
-        std::fs::write(jeux.join("DLC.nsp"), &dlc).unwrap();
-        std::fs::write(place.join("Copie du DLC.nsp"), &dlc).unwrap();
-        let eden = eden_avec_cles(d.path(), None);
-        let donnees = d.path().join("donnees");
+        let jeu = dossier_de_zelda(&jeux);
+        let eden = eden_avec_cles(d.path(), Some(COUPURES_D_EDEN));
+        let donnees = crate::contenus_switch::donnees_migrees(&d.path().join("donnees"));
         let ferme = |_: &Path| false;
-        let ailleurs = [place.clone()];
-        let r = preparer_contenus(&donnees, &eden, &jeu, &ailleurs, 1, &ferme).unwrap().unwrap();
-        assert_eq!(r.ajoutes, [jeux.to_string_lossy().to_string()], "une seule copie sert : celle du dossier du jeu");
-        // La personne retire le dossier du jeu dans Eden, puis le fichier A disparaît : B n'est jamais donné.
-        let ini = crate::contenus::ini_eden(&eden);
-        std::fs::write(&ini, crate::contenus::retirer_dossiers_eden(&lu(&eden), &[jeux.to_string_lossy().to_string()])).unwrap();
-        let r = preparer_contenus(&donnees, &eden, &jeu, &ailleurs, 1, &ferme).unwrap().unwrap();
-        assert_eq!(r.retires_par_la_personne, [jeux.to_string_lossy().to_string()]);
-        std::fs::remove_file(jeux.join("DLC.nsp")).unwrap();
+        let sans_abri = || noter_abri_fait(&donnees, BASE, &lieu("eden", &eden)).unwrap();
+        // La personne avait coupé la mise à jour de Zelda dans Eden (et une vieille version) : ça ne compte plus.
+        let t = texte_avec_coupures(&lu(&eden), BASE, Some(false), (0, 0)).unwrap().replace("2\\disabled\\size=1", "2\\disabled\\2\\d\\default=false\r\n2\\disabled\\2\\d=Update@65536\r\n2\\disabled\\size=2");
+        std::fs::write(crate::contenus::ini_eden(&eden), &t).unwrap();
+        let cache = cache_liste_du_jeu(&eden, BASE);
+        std::fs::create_dir_all(cache.parent().unwrap()).unwrap();
+        std::fs::write(&cache, b"cache").unwrap();
+        let autre_cache = cache.with_file_name("0100000000010000.pv.txt");
+        std::fs::write(&autre_cache, b"cache").unwrap();
+        let r = preparer_contenus(&donnees, &eden, &jeu, &[], 1, &ferme).unwrap().unwrap();
+        assert!(r.coupures_ecrites && !r.maj_coupee, "{r:?}");
+        assert!(!lire_coupures(&lu(&eden)).iter().any(|(t, _)| *t == BASE), "plus rien de coupé pour Zelda : {}", lu(&eden));
+        assert_eq!(lire_coupures(&lu(&eden))[0].1, ["60 fps, 4K", "Update@65536"], "l'autre jeu et ses noms gardés");
+        assert!(!cache.exists() && autre_cache.is_file(), "seul le cache de CE jeu est effacé");
+        // Un DLC sur deux éteint : Eden ne sait pas le couper seul — rien n'est coupé, et c'est dit.
+        choisir(&donnees, BASE, "dlc:01007EF00011F001", false).unwrap();
+        sans_abri();
         let avant = lu(&eden);
-        let r = preparer_contenus(&donnees, &eden, &jeu, &ailleurs, 1, &ferme).unwrap().unwrap();
-        assert!(r.ajoutes.is_empty() && r.dossiers.is_empty() && r.contenus_refuses == 1, "{r:?}");
-        assert!(r.resume().contains("pas redonné"));
-        assert_eq!(lu(&eden), avant, "rien d'écrit chez Eden");
-        assert!(!dossier_dans_la_liste(&avant, &place.to_string_lossy()));
-        // Les remarques ne montrent jamais un chemin complet.
-        let LectureContenus::Lus(c) = lire_contenus(&eden, &jeu, &ailleurs) else { panic!() };
-        let p = plan(&donnees, &eden, &avant, &c);
-        assert!(p.refuse(&c.dlc[0]));
-        assert!(!remarques_contenus(&c, &p).join(" ").contains(&*d.path().to_string_lossy()));
+        let r = preparer_contenus(&donnees, &eden, &jeu, &[], 1, &ferme).unwrap().unwrap();
+        assert!(r.dlc_en_partie && !r.dlc_coupes && !r.coupures_ecrites && lu(&eden) == avant, "{r:?}");
+        assert!(r.resume().contains("Eden les garde tous"), "{}", r.resume());
+        // Tous éteints (et la mise à jour) : « DLC » et « Update ». Eden ouvert : rien d'écrit, refusé.
+        choisir(&donnees, BASE, "dlc:01007EF00011F002", false).unwrap();
+        choisir(&donnees, BASE, CLE_MAJ, false).unwrap();
+        sans_abri();
+        assert!(preparer_contenus(&donnees, &eden, &jeu, &[], 1, &|_| true).is_err());
+        assert_eq!(lu(&eden), avant);
+        let r = preparer_contenus(&donnees, &eden, &jeu, &[], 1, &ferme).unwrap().unwrap();
+        assert!(r.dlc_coupes && r.maj_coupee && r.coupures_ecrites, "{r:?}");
+        let l = lire_coupures(&lu(&eden));
+        assert_eq!(l.iter().find(|(t, _)| *t == BASE).unwrap().1, ["Update", "DLC"]);
+        assert!(lu(&eden).contains(&format!("\\title_id={BASE}\r\n")), "le titre en décimal");
+        // Le DLC 1 rallumé : « DLC » part, « Update » reste.
+        choisir(&donnees, BASE, "dlc:01007EF00011F001", true).unwrap();
+        preparer_contenus(&donnees, &eden, &jeu, &[], 1, &ferme).unwrap().unwrap();
+        assert_eq!(lire_coupures(&lu(&eden)).iter().find(|(t, _)| *t == BASE).unwrap().1, ["Update"]);
+    }
+
+    #[test]
+    fn eteindre_met_les_parties_du_jeu_de_chaque_utilisateur_a_l_abri() {
+        let d = tempfile::tempdir().unwrap();
+        let jeux = d.path().join("Jeux");
+        std::fs::create_dir_all(&jeux).unwrap();
+        let jeu = dossier_de_zelda(&jeux);
+        let eden = eden_avec_cles(d.path(), None);
+        let donnees = crate::contenus_switch::donnees_migrees(&d.path().join("donnees"));
+        let seb = Utilisateur { uuid: [1; 16], nom: "Seb".into() };
+        let lea = Utilisateur { uuid: [2; 16], nom: "Lea".into() };
+        std::fs::create_dir_all(fichier_profils(&eden).parent().unwrap()).unwrap();
+        std::fs::write(fichier_profils(&eden), ecrire(&[seb.clone(), lea.clone()])).unwrap();
+        let tid = "01007EF00011E000";
+        for (u, contenu) in [(&seb, b"seb".as_slice()), (&lea, b"lea".as_slice())] {
+            let p = dossiers_parties(&eden, &u.uuid)[0].1.join(tid);
+            std::fs::create_dir_all(&p).unwrap();
+            std::fs::write(p.join("game_data.sav"), contenu).unwrap();
+        }
+        // Les parties d'un AUTRE jeu ne sont pas copiées.
+        let autre = dossiers_parties(&eden, &seb.uuid)[0].1.join("0100000000010000");
+        std::fs::create_dir_all(&autre).unwrap();
+        std::fs::write(autre.join("x.sav"), b"autre").unwrap();
+        crate::contenus_switch::choisir(&donnees, BASE, crate::contenus_switch::CLE_MAJ, false).unwrap();
+        let r = preparer_contenus(&donnees, &eden, &jeu, &[], 1, &|_| false).unwrap().unwrap();
+        assert!(r.abri_impossible.is_none() && r.maj_coupee, "{r:?}");
+        let abri = std::fs::read_dir(eden.join(".frogtend-sauvegardes")).unwrap().flatten().map(|e| e.path()).find(|p| p.to_string_lossy().contains("parties-01007EF00011E000")).unwrap();
+        let copies = crate::installation::fichiers_de(&abri).unwrap();
+        assert_eq!(copies.len(), 2, "{copies:?}");
+        for u in [&seb, &lea] {
+            let rel = dossiers_parties(&eden, &u.uuid)[0].1.join(tid).join("game_data.sav");
+            let rel = rel.strip_prefix(&eden).unwrap();
+            assert!(abri.join(rel).is_file(), "{}", rel.display());
+            assert!(eden.join(rel).is_file(), "jamais déplacée");
+        }
+        // Fait une fois : plus d'abri à la partie suivante.
+        assert!(!crate::contenus_switch::charger(&donnees).0.jeu(BASE).abri_a_faire(&crate::contenus_switch::lieu("eden", &eden)));
+    }
+
+    #[test]
+    fn sans_reprise_ou_sans_abri_rien_n_est_ecrit_chez_eden() {
+        let d = tempfile::tempdir().unwrap();
+        let jeux = d.path().join("Jeux");
+        std::fs::create_dir_all(&jeux).unwrap();
+        let jeu = dossier_de_zelda(&jeux);
+        let eden = eden_avec_cles(d.path(), Some(COUPURES_D_EDEN));
+        // La reprise des retraits d'avant pas faite : rien d'écrit (ni dossier, ni coupure).
+        let pas_migre = d.path().join("pas-migre");
+        assert!(matches!(preparer_contenus(&pas_migre, &eden, &jeu, &[], 1, &|_| false), Err(Erreur::Refus(m)) if m.contains("pas encore repris")));
+        assert_eq!(lu(&eden), COUPURES_D_EDEN);
+        // Abri impossible (un fichier à la place du dossier des abris) : rien d'écrit, toujours à faire.
+        let donnees = crate::contenus_switch::donnees_migrees(&d.path().join("donnees"));
+        crate::contenus_switch::choisir(&donnees, BASE, crate::contenus_switch::CLE_MAJ, false).unwrap();
+        let partie = dossier_device(&eden).join("01007EF00011E000");
+        std::fs::create_dir_all(&partie).unwrap();
+        std::fs::write(partie.join("p.sav"), b"partie").unwrap();
+        std::fs::write(eden.join(".frogtend-sauvegardes"), b"bloque").unwrap();
+        let r = preparer_contenus(&donnees, &eden, &jeu, &[], 1, &|_| false).unwrap().unwrap();
+        assert!(r.abri_impossible.is_some(), "{r:?}");
+        assert_eq!(lu(&eden), COUPURES_D_EDEN);
+        assert!(crate::contenus_switch::charger(&donnees).0.jeu(BASE).abri_a_faire(&crate::contenus_switch::lieu("eden", &eden)));
+    }
+
+    #[test]
+    fn une_section_incomprise_n_est_jamais_remplacee_et_tous_eteints_attend_une_recherche_complete() {
+        // `size` manquant, ou un `title_id` sans `\default=false` (lu 0 par Eden) : pas compris, pas remplacé.
+        let sans_size = "[DisabledAddOns]\r\n1\\title_id\\default=false\r\n1\\title_id=5\r\n";
+        assert!(!coupures_lisibles(sans_size));
+        assert_eq!(texte_avec_coupures(sans_size, BASE, Some(false), (0, 0)), None);
+        let sans_defaut = "[DisabledAddOns]\r\nsize=1\r\n1\\title_id=5\r\n1\\disabled\\size=0\r\n";
+        assert!(!coupures_lisibles(sans_defaut));
+        assert!(coupures_lisibles(COUPURES_D_EDEN) && coupures_lisibles("[UI]\r\nx=1\r\n") && coupures_lisibles("[DisabledAddOns]\r\nsize=0\r\n"));
+        // Une recherche pas finie : « tous les DLC éteints » ne se décide pas (rien de changé pour les DLC).
+        let dlc = |t: u64| crate::switch_nca::ContenuLu {
+            chemin: PathBuf::from(format!("D:\\{t}.nsp")),
+            sorte: crate::switch_nca::Sorte::Dlc(vec![("/a.nca".into(), t)]),
+            base: BASE,
+            version: None,
+            forme: crate::switch_nca::Forme::Nsp,
+        };
+        let mut c = crate::switch_nca::ContenusDuJeu { base: BASE, dlc: vec![dlc(BASE + 0x1001)], tronque: true, ..Default::default() };
+        let mut choix = crate::contenus_switch::ChoixJeu::default();
+        choix.dlc_eteints = vec!["dlc:01007EF00011F001".into()];
+        assert_eq!(etat_voulu(&c, &choix), (None, (0, 0)));
+        c.tronque = false;
+        assert_eq!(etat_voulu(&c, &choix), (None, (1, 0)));
+        // Un allumé suffit, même recherche pas finie : « DLC » peut partir.
+        c.parcours_incomplet = true;
+        assert_eq!(etat_voulu(&c, &crate::contenus_switch::ChoixJeu::default()), (None, (1, 1)));
+    }
+
+    #[test]
+    fn les_retraits_d_avant_d_eden_sont_retrouves_pour_la_migration() {
+        use crate::contenus_switch::{Retrait, TOUS_LES_DLC};
+        let d = tempfile::tempdir().unwrap();
+        let eden = eden_avec_cles(d.path(), Some(&ecrire_coupures("", &[(BASE, vec!["DLC".into(), "Update".into()]), (0x0100_0000_0001_0000, vec!["Mod".into()])])));
+        let donnees = d.path().join("donnees");
+        std::fs::create_dir_all(&donnees).unwrap();
+        let refus = serde_json::json!({ eden.to_string_lossy(): ["maj:0100AAAA00000000:v65536", "dlc:0100BBBB00001001+0100BBBB00001002"] });
+        std::fs::write(donnees.join("eden-contenus-refuses.json"), refus.to_string()).unwrap();
+        let l: Vec<(u64, Retrait)> = retraits_d_avant(&donnees, &eden).into_iter().map(|(b, r, _)| (b, r)).collect();
+        assert_eq!(
+            l,
+            vec![
+                (0x0100_BBBB_0000_0000, Retrait::Dlc("dlc:0100BBBB00001001+0100BBBB00001002".into())),
+                (0x0100_AAAA_0000_0000, Retrait::Maj),
+                (BASE, Retrait::Maj),
+                (BASE, Retrait::Dlc(TOUS_LES_DLC.into())),
+            ]
+        );
+        // Migrée puis lue : « tous les DLC » devient la liste des DLC trouvés, et Eden les coupe tous.
+        let jeux = d.path().join("Jeux");
+        std::fs::create_dir_all(&jeux).unwrap();
+        let jeu = dossier_de_zelda(&jeux);
+        crate::contenus_switch::migrer_depuis(&donnees, &crate::contenus_switch::Sources { ryubing: vec![], eden: vec![eden.clone()] }).unwrap();
+        let r = preparer_contenus(&donnees, &eden, &jeu, &[], 1, &|_| false).unwrap().unwrap();
+        assert!(r.dlc_coupes && r.maj_coupee, "{r:?}");
+        let c = crate::contenus_switch::charger(&donnees).0.jeu(BASE);
+        assert_eq!(c.dlc_eteints, ["dlc:01007EF00011F001", "dlc:01007EF00011F002"]);
+        assert!(donnees.join("eden-contenus-refuses.json").is_file(), "l'ancien fichier n'est jamais effacé");
     }
 }
 
