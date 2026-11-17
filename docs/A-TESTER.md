@@ -7,9 +7,9 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## Switch : le panneau d'Eden dit la vérité (0.206.1)
-- [ ] Zelda (Eden) ▸ 📦, Pack 1 allumé et Pack 2 éteint : le Pack 2 dit « ⚠ Éteint, mais Eden l'utilise », l'en-tête
+- [x] (✅ Seb 17/11) Zelda (Eden) ▸ 📦, Pack 1 allumé et Pack 2 éteint : le Pack 2 dit « ⚠ Éteint, mais Eden l'utilise », l'en-tête
       « 3 utilisés (dont 1 éteint qu'Eden garde) ».
-- [ ] Les deux DLC éteints : « ⬜ Pas utilisé » sur les deux ; ▶ Jouer avec Eden : plus de ligne « DLC Ver. » à
+- [x] (✅ Seb 17/11) Les deux DLC éteints : « ⬜ Pas utilisé » sur les deux ; ▶ Jouer avec Eden : plus de ligne « DLC Ver. » à
       l'écran titre.
 
 ## Switch : interrupteurs des mises à jour et DLC (0.206.0)
