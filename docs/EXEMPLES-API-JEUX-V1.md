@@ -1564,3 +1564,87 @@ nommé a son `paquet` (url, sha256, taille, version « 1.22.2 », source « stab
 - `titre=Sonic the Hedgehog&plateforme=Sega Genesis` → 8 codes RetroArch par titre (confiance 0.85), `fichier` sans
   `?rom=` (`fixtures/simule/triche-recherche-sonic.json`). `serial=BLES01227` → 0 code, 8 `patchs_rpcs3`.
 - Sans aucun critère → 400 « donne au moins un titre, une ROM, un numéro de série ou un steam_appid ».
+
+## Besoin 52 (17/11) — précisions sur les ENVOIS Switch (contrat 1.42)
+
+> Recopié TEL QUEL depuis docs/frogtend/EXEMPLES-API-JEUX-V1.md de Firehouse (message de la session Firehouse du 17/11),
+> sauf le renvoi de la réponse 1 (le relevé Fire Emblem de la route 1 est dans la doc de Firehouse, pas encore ici).
+
+### Réponses RÉELLES (le vrai code d'envoi, joué dans une base d'essai le 17/11 ; fichier de 20 octets, MAJ v131072)
+Les routes rendent ces corps tels quels. Une erreur est `{"detail": "…"}` ; le 409 ajoute `recu`. Un morceau de plus de
+8 Mo est refusé AVANT d'être lu : **413** `{"detail": "morceau trop gros (8 Mo au plus)"}`. Sans jeton ou sans le droit
+de la médiathèque : **401 / 403**.
+
+```
+POST nouveau → 200
+  {"ok": true, "deja_la": false, "envoi": 1, "recu": 0, "taille": 20, "etat": "en_cours"}
+POST même annonce (reprise) → 200
+  {"ok": true, "deja_la": false, "envoi": 1, "recu": 0, "taille": 20, "etat": "en_cours"}
+PUT intermédiaire (bytes 0-7/20) → 200
+  {"ok": true, "envoi": 1, "recu": 8, "taille": 20, "etat": "en_cours"}
+HEAD → 200 en-têtes
+  {"X-Recu": "8", "X-Etat": "en_cours"}
+GET état en_cours → 200
+  {"ok": true, "envoi": 1, "etat": "en_cours", "motif": null, "taille": 20, "recu": 8}
+PUT déjà reçu (bytes 0-7/20) → HTTP 409
+  {"detail": "reprendre à l'octet 8", "recu": 8}
+PUT total faux (bytes 8-9/99) → HTTP 400
+  {"detail": "le total annoncé (99) n'est pas la taille de l'envoi (20)"}
+PUT dernier (bytes 8-19/20) → 200
+  {"ok": true, "envoi": 1, "recu": 20, "taille": 20, "etat": "verification"}
+GET état verification → 200
+  {"ok": true, "envoi": 1, "etat": "verification", "motif": null, "taille": 20, "recu": 20}
+GET état range → 200
+  {"ok": true, "envoi": 1, "etat": "range", "motif": null, "taille": 20, "recu": 20}
+POST du même fichier après rangement → 200 (deja_la)
+  {"ok": true, "deja_la": true, "motif": "ce fichier est déjà servi par Firehouse"}
+POST MAJ pas plus récente → 200 (deja_la)
+  {"ok": true, "deja_la": true, "motif": "Firehouse sert déjà une mise à jour au moins aussi récente (v131072)"}
+GET état refuse (ticket personnel) → 200
+  {"ok": true, "envoi": 2, "etat": "refuse", "motif": "ticket personnel (lié à une console ou un compte) : jamais servi à la famille", "taille": 6, "recu": 6}
+POST du même fichier APRÈS refus → 200 (nouvel envoi)
+  {"ok": true, "deja_la": false, "envoi": 3, "recu": 0, "taille": 6, "etat": "en_cours"}
+POST tid invalide → HTTP 400
+  {"detail": "`tid` attendu : le title id Switch du contenu (16 caractères hexadécimaux, « 0100… »)"}
+POST version non entière → HTTP 400
+  {"detail": "`version`, `taille` et `media_id` sont des nombres entiers"}
+POST jeu inconnu sans media_id → HTTP 404
+  {"detail": "jeu de base inconnu de Firehouse : `media_id` (la fiche du jeu) est nécessaire"}
+GET envoi d'un autre / inconnu → HTTP 404
+  {"detail": "envoi inconnu"}
+POST fichier trop gros → HTTP 507
+  {"detail": "fichier trop gros : 0 Go au plus"}
+POST plafond par personne → HTTP 507
+  {"detail": "plafond de 0 Go d'envois en cours atteint pour cette personne"}
+```
+(les plafonds ont été mis à 0 pour l'essai : en vrai « 32 Go au plus » et « plafond de 100 Go »)
+
+### Réponses aux questions
+1. **Exemples** : ci-dessus. La route 1 (`GET /switch/<tid_base>/contenus`) : le relevé réel (Fire Emblem) est dans la
+   doc de Firehouse ; pas encore de relevé dans cette copie — à relever au premier essai réel.
+2. **`version`** : un **nombre entier**, la version brute du méta-contenu (CNMT), comme dans le nom `[v131072]` (= 2 << 16).
+   Un texte (« 1.2.0 ») est refusé (400). **Elle ne sert qu'au pré-contrôle « déjà là »** : pour une MAJ, si Firehouse
+   sert déjà une version ≥ celle annoncée → `deja_la` sans rien envoyer. **La décision finale lit la VRAIE version dans le
+   CNMT** : si elle diffère du nom, c'est elle qui compte (pas plus récente que la servie → l'envoi finit `deja_la`).
+   **DLC** : la version n'est pas comparée (un DLC est « déjà là » s'il est servi, quelle que soit sa version) — mets
+   celle du nom, ou **0** si tu ne la connais pas. **MAJ** : ne l'omets pas (0 = « déjà là » dès qu'une MAJ est servie).
+3. **DLC .nsp à plusieurs title id** : **refusé** à la vérification (« N méta-contenu(s) dans le fichier (un seul
+   attendu) »), après l'envoi complet. **Ne l'envoie pas** : compte les `*.cnmt.nca` / `*.cnmt.ncz` de la table PFS0 en
+   local ; plus d'un → ne pas envoyer (dis-le à Seb).
+4. **PUT** : **aucun en-tête d'empreinte** — seulement `Content-Range: bytes début-fin/total` (total = la `taille` du
+   POST). Le sha256 du fichier ENTIER est donné au POST et vérifié à la fin. Un PUT intermédiaire rend
+   `{ok, envoi, recu, taille, etat: "en_cours"}` ; le dernier `etat: "verification"`. Un PUT après la fin rend l'état
+   courant (sans rien écrire).
+5. **POST après `refuse`** : un **NOUVEL envoi** est créé (l'ancien reste `refuse`) — n'envoie donc PAS de nouveau un
+   fichier refusé (même sha256) : le refus se reproduirait. Après **7 jours sans morceau**, l'envoi passe `refuse`,
+   motif « abandonné (sans nouvelles) », fichier partiel effacé ; un POST ensuite = nouvel envoi depuis 0.
+6. **507** : le `detail` dit lequel — « fichier trop gros : 32 Go au plus » ou « plafond de 100 Go d'envois en cours
+   atteint pour cette personne » (en_cours + verification). **Aucune limite du NOMBRE d'envois simultanés**, seulement ce
+   total de 100 Go. Réglages `jeux.envois.fichier_go` / `jeux.envois.personne_go` (Seb peut les changer).
+7. **Grade mineur** : **non** — les routes d'envoi exigent le droit de la médiathèque (`media.view`), que le grade mineur
+   n'a pas → 403.
+8. **ETag sur la route 1** : **non**. Elle lit l'index (pas le disque) : l'appeler avant chaque envoi est sans coût.
+9. **Ticket PERSONNEL avant d'envoyer** : Firehouse ne peut le savoir qu'en lisant le fichier reçu. **Fais le même
+   contrôle en local** : `nstool -k prod.keys -t tik <le .tik extrait de la table PFS0>` → la ligne du chiffrement de la
+   clé de titre (« Title Key Format / Type ») : **Generic = commun (accepté)**, tout autre (Personalized) = personnel
+   (refusé). Pas de `.tik` du tout = accepté (« absent »). Ticket illisible = refusé.
