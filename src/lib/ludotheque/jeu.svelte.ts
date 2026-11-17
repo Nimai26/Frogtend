@@ -11,6 +11,8 @@ import { motifDuRefus } from '$lib/dialogues/messages';
 import { completerRetroArch, installerFirmwareSwitch, installerFirmwareVita, poserBios, reglerEmulateur } from '$lib/emulateurs/assistant.svelte';
 import { avecConseil, biosADireOuPoser, biosPour, biosRetroArch, changementDeConseil, estConseille, firmwareSwitchServi, poidsBios, questionFirmwareSwitch, questionFirmwareVita } from '$lib/emulateurs/pret';
 import { preparationEnCours, preparerPourJouer } from '$lib/emulateurs/pret.svelte';
+import { emulateurSeul, emulateursOuvrables, ouvrirSeul, suivreEmulateurSeul } from '$lib/emulateurs/seul.svelte';
+import { boutonSeulMontre, lancementImpossibleSelon, libelleSeul, raisonDAttente, refusDeJouer } from '$lib/emulateurs/seul';
 import { libelleValeur, REGLAGES_IMAGE, reglagesMontres } from '$lib/emulateurs/imagePs3';
 import { detailPatch, nomDuPatch, remarqueDuPatch, titreDuJeu } from '$lib/emulateurs/patchsPs3';
 import { adresseWeb, avertissements, fichierInstallable, pageNexus, raisonSansClic, type ModJeu } from '$lib/mods/mods';
@@ -93,6 +95,8 @@ let ecoute: (() => void) | null = null;
 /** Écoute les débuts et fins de partie (une seule fois). */
 export async function suivreParties() {
   if (ecoute || !isTauri()) return;
+  // L'émulateur ouvert seul : son ouverture et sa fermeture, à part des parties.
+  await suivreEmulateurSeul();
   // Un jeu en administrateur ne reçoit pas les touches de la manette : le dire (une fois par partie).
   await listen<{ message: string }>('clavier', (e) => toast(`🕹 ${e.payload.message}.`, 'alerte'));
   // « Garder » l'effet choisi dans le menu en jeu (lot 2) : c'est cette fenêtre qui tient les réglages du profil.
@@ -419,7 +423,7 @@ let gameBarDemandee = false;
 export async function proposerCouperGameBar() {
   // Jamais deux fois (l'effet du profil ouvert peut repasser avant la réponse), jamais pendant une partie (la fenêtre
   // serait derrière le jeu) : la question reviendra à la prochaine ouverture.
-  if (etat.pc.questionGameBar || gameBarDemandee || partie.enJeu !== null || partie.lancement !== null) return;
+  if (etat.pc.questionGameBar || gameBarDemandee || lancementImpossible()) return;
   gameBarDemandee = true;
   const ouvre = await api.gameBarBouton().catch(() => null);
   if (ouvre !== true) return;
@@ -548,6 +552,12 @@ async function firmwareVitaAvant(id: number, plateforme: string | undefined, emu
 
 /** `carte` : la carte e-Reader à lire (sa version) ; sans elle, Frogtend demande laquelle s'il y en a plusieurs. */
 export async function jouer(id: number, emulateur?: string, version?: string, carte?: number) {
+  // Un émulateur ouvert seul : il réécrirait ses réglages en quittant, aucune partie pendant ce temps (✅ Seb 17/11).
+  const refus = refusDeJouer(emulateurSeul);
+  if (refus) {
+    toast(refus, 'alerte');
+    return;
+  }
   // Un seul lancement à la fois (un jeu de boutique peut mettre plusieurs minutes à démarrer).
   if (partie.lancement !== null) return;
   partie.lancement = id;
@@ -805,7 +815,35 @@ export function emulateursDuJeu(plateforme: string) {
   return normaliser(etat.pc.emulateurs[plateforme]);
 }
 
-/** « ▶ Jouer avec… » : choisir, pour ce lancement seulement, parmi les émulateurs du système (ou en ajouter un). */
+/** Une partie, un lancement, ou un émulateur ouvert seul (ou qui s'ouvre) : ▶ Jouer et tout autre lancement attendent. */
+export function lancementImpossible(): boolean {
+  return lancementImpossibleSelon(partie, emulateurSeul);
+}
+
+/** « ▶ Ouvrir l'émulateur seul » est-il proposé pour ce jeu ? Un émulateur du système que Frogtend sait ouvrir sans
+ * jeu ; jamais pour un jeu PC lancé sans émulateur. */
+export function boutonEmulateurSeul(id: number, plateforme: string): boolean {
+  return boutonSeulMontre(jeuPcSansEmulateur(id), emulateursOuvrables(plateforme).length);
+}
+
+/** Le libellé du bouton « ▶ Ouvrir l'émulateur seul » (« … » quand il y a un choix). */
+export function libelleEmulateurSeul(id: number, plateforme: string): string {
+  return libelleSeul(id, emulateurSeul, emulateursOuvrables(plateforme).length);
+}
+
+/** Pourquoi ▶ Jouer attend (un émulateur ouvert seul), ou `null`. */
+export function attenteEmulateurSeul(): string | null {
+  return raisonDAttente(emulateurSeul);
+}
+
+/** « ▶ Ouvrir l'émulateur seul » : un émulateur du système de ce jeu, sans jeu, avec le profil de la personne
+ * (`$lib/emulateurs/seul.svelte`). */
+export async function ouvrirEmulateurSeul(id: number) {
+  const j = tele.jeux[id];
+  if (!j || lancementImpossible()) return;
+  await ouvrirSeul(id, j.plateforme);
+}
+
 /** Choisir une version (région) d'un jeu importé ; rend son chemin, `undefined` s'il n'y a pas le choix, `null` si
  * la personne renonce. */
 async function choisirUneVersion(j: JeuPc, titre: string, aide: string): Promise<string | null | undefined> {
@@ -823,6 +861,7 @@ async function choisirUneVersion(j: JeuPc, titre: string, aide: string): Promise
   );
 }
 
+/** « ▶ Jouer avec… » : choisir, pour ce lancement seulement, parmi les émulateurs du système (ou en ajouter un). */
 export async function jouerAvec(id: number) {
   const j = tele.jeux[id];
   if (!j) return;

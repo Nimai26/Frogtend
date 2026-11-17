@@ -4,7 +4,7 @@
   // l'écran. Rien s'il n'y a pas de triche cochée (ou pas BigPEmu).
   import { isTauri } from '@tauri-apps/api/core';
   import { api } from '$lib/api';
-  import { partie } from './jeu.svelte';
+  import { lancementImpossible } from './jeu.svelte';
 
   let { id }: { id: number } = $props();
   let cochees = $state(false);
@@ -13,7 +13,7 @@
     const n = id;
     cochees = false;
     // Relu à la fin d'une partie (une triche cochée dans le menu en jeu vaut pour la suivante).
-    if (!isTauri() || partie.enJeu !== null) return;
+    if (!isTauri() || lancementImpossible()) return;
     let vivant = true;
     api
       .bigpemuTrichesCochees(n)

@@ -8,7 +8,7 @@
   import { confirmer, informer, toast } from '$lib/dialogues/fenetres.svelte';
   import { creditImage, imageEntete } from '$lib/ludotheque/systemes';
   import { etat, sortirDuProfil } from '$lib/etat.svelte';
-  import { gererLaCarte, installer, jouerLaCarte, partie } from '$lib/ludotheque/jeu.svelte';
+  import { gererLaCarte, installer, jouerLaCarte, lancementImpossible, partie } from '$lib/ludotheque/jeu.svelte';
   import { groupeDe, originesJeuPc, unParGroupe } from '$lib/boutiques/copies';
   import IconesBoutiques from '$lib/boutiques/IconesBoutiques.svelte';
   import Jaquette from '$lib/ludotheque/Jaquette.svelte';
@@ -153,7 +153,7 @@
 
   async function jeu(j: JeuPc) {
     // Pas pendant « Gérer le jeu » (un réglage peut attendre sans fenêtre ouverte).
-    if (partie.enJeu !== null || partie.lancement !== null || enGestion || rappelEnCours) return;
+    if (lancementImpossible() || enGestion || rappelEnCours) return;
     if (!j.installation) {
       // Le jeu d'une autre personne : elle seule peut l'installer.
       if (j.d_un_autre || !(await installer(j.id))) return;
@@ -165,7 +165,7 @@
       if (await api.bigpemuTrichesCochees(j.id).catch(() => false)) {
         toast("🎯 Triches cochées : au démarrage, une petite fenêtre en anglais s’affiche. Attends quelques secondes, puis appuie sur A, puis sur B : le jeu démarre avec tes triches.", 'neutre');
         await new Promise((r) => setTimeout(r, 3000));
-        if (detruit || enGestion || fenetreOuverte() || partie.enJeu !== null || partie.lancement !== null) return;
+        if (detruit || enGestion || fenetreOuverte() || lancementImpossible()) return;
       }
     } finally {
       rappelEnCours = false;

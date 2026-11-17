@@ -14,6 +14,7 @@
   import { PLATEFORMES_CONNUES } from '$lib/ludotheque/categories';
   import { tele } from '$lib/ludotheque/telechargements.svelte';
   import { GENRES_MANETTE } from '$lib/ludotheque/commandes';
+  import { nomsPrisEnCharge } from '$lib/emulateurs/seul';
 
   const e = $derived(Object.entries(etat.pc.emulateurs));
   let plateformes = $state<Plateforme[]>([]);
@@ -305,8 +306,9 @@
   <p class="muted">
     Les émulateurs de chaque système, sur ce PC : autant que tu veux (par exemple plusieurs cœurs RetroArch), ⭐ celui
     par défaut. Un jeu peut en avoir un autre (⚙ Gérer le jeu ▸ 🕹 Émulateur), et « Jouer avec… » en choisit un pour une
-    seule partie. Frogtend propose tout seul le recommandé par Firehouse la première fois. Les jeux PC et MS-DOS n’en
-    ont pas besoin.
+    seule partie. « ▶ Ouvrir l’émulateur seul », sur la fiche d’un jeu, l’ouvre sans jeu, avec ton profil, pour régler
+    ses DLC, sa manette ou ses réglages ({nomsPrisEnCharge()} pour l’instant).
+    Frogtend propose tout seul le recommandé par Firehouse la première fois. Les jeux PC et MS-DOS n’en ont pas besoin.
   </p>
   {#if e.length === 0}
     <p class="muted">Aucun émulateur réglé pour l’instant.</p>

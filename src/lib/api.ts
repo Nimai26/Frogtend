@@ -842,6 +842,11 @@ export const api = {
       image: image ?? null,
       fps: fps ?? null,
     }),
+  /** « ▶ Ouvrir l'émulateur seul » (✅ Seb 17/11) : l'émulateur `cle` du système, ouvert sans jeu avec le profil de la
+   * personne ; rend son nom. Sa fermeture arrive par l'événement « emulateur-seul ». */
+  emulateurOuvrirSeul: (plateforme: string, cle: string) => appeler<string>('emulateur_ouvrir_seul', { plateforme, cle }),
+  /** Le nom de l'émulateur ouvert seul en ce moment (relu après un rechargement), ou `null`. */
+  emulateurSeulEtat: () => appeler<string | null>('emulateur_seul_etat'),
   /** Des parties à l'abri à remettre dans ce jeu réinstallé (lot 3). */
   /** Le mode compatible des sauvegardes rapides d'un jeu PS3 : [actif, réglé pour ce jeu] ; `null` : sans objet. */
   rpcs3EtatsCompatibles: (id: number) => appeler<[boolean, boolean] | null>('rpcs3_etats_compatibles', { id }),

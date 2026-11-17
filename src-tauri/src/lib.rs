@@ -34,6 +34,8 @@ pub mod succes;
 pub mod disque;
 pub mod documents;
 pub mod contenus;
+pub mod listes_de_jeux;
+pub mod emulateur_seul;
 pub mod decompression;
 pub mod demenagement;
 pub mod osd_manette;
@@ -539,6 +541,8 @@ pub fn run() {
             commandes::lancement_candidats,
             commandes::lanceur_choisir,
             commandes::jeu_jouer,
+            commandes::emulateur_ouvrir_seul,
+            commandes::emulateur_seul_etat,
             commandes::parties_abri,
             commandes::jeu_retirer,
             commandes::jeu_desinstaller_reste,

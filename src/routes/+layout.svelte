@@ -13,7 +13,7 @@
   import { demarrer, demarrerMenuJeu, etat } from '$lib/etat.svelte';
   import { verifierMiseAJour } from '$lib/mises-a-jour';
   import { arreterSuivi, suivreTelechargements } from '$lib/ludotheque/telechargements.svelte';
-  import { attenteLancement, partie, proposerCouperGameBar, suivreParties } from '$lib/ludotheque/jeu.svelte';
+  import { attenteLancement, lancementImpossible, partie, proposerCouperGameBar, suivreParties } from '$lib/ludotheque/jeu.svelte';
   import EcranLancement from '$lib/ludotheque/EcranLancement.svelte';
   import { listen } from '@tauri-apps/api/event';
   import { traiterLiensNexus } from '$lib/mods/nexus.svelte';
@@ -92,7 +92,7 @@
   });
   $effect(() => {
     void courrierNexus;
-    if (estMenuJeu || !etat.profilOuvert || enTaodbox || partie.enJeu !== null || partie.installation !== null) return;
+    if (estMenuJeu || !etat.profilOuvert || enTaodbox || lancementImpossible() || partie.installation !== null) return;
     untrack(() => traiterLiensNexus());
   });
 </script>

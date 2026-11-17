@@ -6,6 +6,18 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## ▶ Ouvrir l'émulateur seul (0.205.0)
+- [ ] Zelda BotW ▸ fiche : sous « ▶ Jouer avec… », le bouton « ▶ Ouvrir l'émulateur seul… » ; il demande Eden ou
+      Ryubing (⭐ sur celui du jeu).
+- [ ] Ryubing : il s'ouvre en fenêtre (pas en plein écran), en français, et sa liste montre tes jeux Switch.
+- [ ] Clic droit sur Zelda ▸ « Manage DLC » : décocher un DLC, fermer Ryubing, ▶ Jouer : le DLC reste retiré en jeu
+      (puis le recocher de la même façon).
+- [ ] Pendant qu'il est ouvert : ▶ Jouer grisé avec « 🕹 Ryubing est ouvert : ferme-le pour jouer ».
+- [ ] Eden seul : fenêtre, ta liste de jeux Switch (et les entrées SD / NAND toujours là).
+- [ ] Un jeu PS1 (DuckStation), PS2 (PCSX2) ou GameCube (Dolphin) : l'émulateur seul montre tes jeux ; un dossier
+      que tu ajoutes dans sa liste est toujours là après une partie lancée par Frogtend. Dolphin : dis-moi s'il pose
+      une question (mise à jour, statistiques) en s'ouvrant.
+
 ## Eden : mises à jour et DLC tout seuls (0.204.0)
 - [x] (✅ Seb 17/11) Un jeu Switch lancé par Eden qui a une mise à jour ou des DLC (ex. Fire Emblem Three Houses, dont les contenus
       sont dans `D:\LaunchBox\Games\Nintendo Switch Maj & DLC`) : sa fiche ▸ 📦 montre la liste ✅, sans case ni bouton.

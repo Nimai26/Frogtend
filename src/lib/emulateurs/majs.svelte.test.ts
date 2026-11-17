@@ -35,7 +35,12 @@ vi.mock('$lib/etat.svelte', () => ({
 let canape = false;
 vi.mock('$lib/taodbox/canape', () => ({ auCanape: () => canape }));
 const partie = { enJeu: null as number | null, lancement: null as number | null };
-vi.mock('$lib/ludotheque/jeu.svelte', () => ({ partie }));
+// Un émulateur ouvert seul (✅ Seb 17/11) : la VRAIE règle de `lancementImpossible` (seul.ts), sur un état simulé.
+const seul = { ouvert: null as string | null, ouverture: null as number | null };
+vi.mock('$lib/ludotheque/jeu.svelte', async () => {
+  const { lancementImpossibleSelon } = await import('./seul');
+  return { partie, lancementImpossible: () => lancementImpossibleSelon(partie, seul) };
+});
 const installer = vi.fn(async (id: string, _n: string, maj: boolean, o: { sansQuestion?: boolean }) => ({ id, maj, o }));
 vi.mock('./assistant.svelte', () => ({
   installationEmulateur: { id: null },
@@ -50,6 +55,7 @@ beforeEach(() => {
   horsLigne = false;
   canape = false;
   partie.enJeu = null;
+  seul.ouvert = null;
   pile.dialogues = [];
 });
 
@@ -92,6 +98,13 @@ describe('les mises à jour d’émulateurs au démarrage', () => {
     partie.enJeu = 12;
     await (await import('./majs.svelte')).emulateursAuDemarrage();
     expect(confirmer).not.toHaveBeenCalled();
+  });
+
+  it('un émulateur ouvert seul : pas de question (il serait remplacé pendant qu’il tourne)', async () => {
+    seul.ouvert = 'Eden';
+    await (await import('./majs.svelte')).emulateursAuDemarrage();
+    expect(confirmer).not.toHaveBeenCalled();
+    expect(installer).not.toHaveBeenCalled();
   });
 
   it('une autre question du démarrage est ouverte : elle passe d’abord, jamais deux fenêtres empilées', async () => {

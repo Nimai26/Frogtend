@@ -498,6 +498,51 @@ fn ecrire_verifie(ryubing: &Path, f: &Path, avant: &str, v: &Value) -> Resultat<
     Ok(())
 }
 
+/// La liste de jeux de la personne (`game_dirs` de SON Config.json : un tableau de chaînes, ConfigurationFileFormat.cs
+/// de Ryubing 1.3.3, relu le 17/11) complétée avec les emplacements de la Switch (`jeux`) qui existent — ajoutés à la
+/// fin, jamais à la place des siens, jamais remis s'ils les a retirés (listes_de_jeux.rs). Ryubing FERMÉ (il réécrit
+/// ses réglages en quittant : rien n'est écrit sinon) ; le fichier mis à l'abri avant, relu après. `autoload_dirs`
+/// n'est jamais touché. Un Config.json absent (pas encore réglé) : rien.
+pub fn completer_liste_de_jeux(ryubing: &Path, racine: &Path, jeux: &[String]) -> Resultat<crate::listes_de_jeux::Bilan> {
+    use crate::listes_de_jeux::{fusionner, noter, poses, Bilan};
+    if config_a_cote_du_programme(ryubing) {
+        return Err(Erreur::Refus("Un Config.json à côté de Ryujinx.exe passe devant celui de la personne : sa liste de jeux n'est pas touchée.".into()));
+    }
+    if !crate::lancement::processus_du_dossier(ryubing).is_empty() {
+        return Ok(Bilan { ouvert: true, ..Default::default() });
+    }
+    let f = config_de(racine);
+    let avant = match std::fs::read_to_string(&f) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Bilan::default()),
+        Err(e) => return Err(e.into()),
+    };
+    if !config_valide(&avant) {
+        return Err(Erreur::Refus("Le Config.json de cette personne ne se lit pas (ou vient d'un Ryubing plus récent) : il n'est pas touché.".into()));
+    }
+    let mut v: Value = serde_json::from_str(&avant).map_err(|_| Erreur::Disque("Config.json de Ryubing illisible.".into()))?;
+    let actuels: Vec<String> = v["game_dirs"].as_array().map(|l| l.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
+    // La note illisible : rien n'est touché (on ne saurait plus ce qui est à la personne).
+    let notes = poses(ryubing, &f)?;
+    let fu = fusionner(&actuels, jeux, &notes, &|d| Path::new(d).is_dir());
+    if !fu.ajoutes.is_empty() || !fu.a_retirer.is_empty() {
+        let mut l: Vec<Value> = v["game_dirs"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|x| !x.as_str().is_some_and(|s| fu.a_retirer.iter().any(|r| crate::contenus::meme_dossier(r, s))))
+            .collect();
+        l.extend(fu.ajoutes.iter().map(|a| Value::from(a.as_str())));
+        v["game_dirs"] = Value::Array(l);
+        ecrire_verifie(ryubing, &f, &avant, &v)?;
+    }
+    if fu.poses != notes {
+        noter(ryubing, &f, &fu.poses)?;
+    }
+    Ok(Bilan { ajoutes: fu.ajoutes, retires: fu.a_retirer, retires_par_la_personne: fu.retires_par_la_personne, ouvert: false })
+}
+
 /// La pause du menu est-elle réglée dans la racine de cette personne (`PauseEmulation`) ? Sinon (choix de la
 /// personne, fichier absent), Ryubing est figé pendant le menu.
 pub fn pause_reglee(racine: &Path) -> bool {
@@ -1866,6 +1911,42 @@ mod tests {
         std::fs::create_dir_all(&main).unwrap();
         assert!(preparer_partie(&main, &super::racine(&main, "Seb"), Joueur1::Rien).unwrap().is_empty());
         assert!(!main.join("Profils").exists() && !main.join("portable").exists());
+    }
+
+    #[test]
+    fn la_liste_de_jeux_de_la_personne_est_completee_jamais_remplacee() {
+        let d = tempfile::tempdir().unwrap();
+        let (ryu, racine) = ryubing_installe(d.path());
+        let switch = d.path().join("Jeux").join("Nintendo Switch");
+        std::fs::create_dir_all(&switch).unwrap();
+        let s = switch.to_string_lossy().to_string();
+        let absent = d.path().join("Absent").to_string_lossy().to_string();
+        let jeux = vec![s.clone(), absent];
+        // Par le vrai chemin d'une partie : `emulateurs_profils::preparer` (installation neuve, première partie).
+        crate::emulateurs_profils::preparer("ryubing", &ryu, "Seb", &jeux, &crate::emulateurs_profils::Manette::Clavier).unwrap();
+        assert_eq!(lire_config(&racine)["game_dirs"], serde_json::json!([s]));
+        assert_eq!(lire_config(&racine)["autoload_dirs"], serde_json::json!([]), "jamais touché");
+        // La personne ajoute le sien : gardé, et rien n'est rajouté.
+        let mut v = lire_config(&racine);
+        v["game_dirs"] = serde_json::json!(["C:/A moi", s]);
+        std::fs::write(config_de(&racine), serde_json::to_string_pretty(&v).unwrap()).unwrap();
+        let b = completer_liste_de_jeux(&ryu, &racine, &jeux).unwrap();
+        assert!(b.ajoutes.is_empty());
+        assert_eq!(lire_config(&racine)["game_dirs"], serde_json::json!(["C:/A moi", s]));
+        // Elle retire celui de Frogtend : jamais remis.
+        v["game_dirs"] = serde_json::json!(["C:/A moi"]);
+        std::fs::write(config_de(&racine), serde_json::to_string_pretty(&v).unwrap()).unwrap();
+        let b = completer_liste_de_jeux(&ryu, &racine, &jeux).unwrap();
+        assert_eq!(b.retires_par_la_personne, vec![s.clone()]);
+        assert_eq!(lire_config(&racine)["game_dirs"], serde_json::json!(["C:/A moi"]));
+        // Une autre personne a SA liste (son Config.json), remplie pour elle.
+        let lea = super::racine(&ryu, "Léa");
+        crate::emulateurs_profils::preparer("ryubing", &ryu, "Léa", &jeux, &crate::emulateurs_profils::Manette::Clavier).unwrap();
+        assert_eq!(lire_config(&lea)["game_dirs"], serde_json::json!([s]));
+        // Un Config.json d'un Ryubing plus récent : jamais touché.
+        std::fs::write(config_de(&lea), r#"{"version": 999, "game_dirs": []}"#).unwrap();
+        assert!(matches!(completer_liste_de_jeux(&ryu, &lea, &jeux), Err(Erreur::Refus(_))));
+        assert_eq!(std::fs::read_to_string(config_de(&lea)).unwrap(), r#"{"version": 999, "game_dirs": []}"#);
     }
 
     #[test]

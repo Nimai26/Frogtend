@@ -26,7 +26,7 @@
   import type { AvisVersion } from '$lib/ludotheque/versions';
   import { aCartes, cartesSurPc } from '$lib/ludotheque/cartes';
   import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
-  import { emulateursDuJeu, gererJeu, installer, jouer, jouerAvec, partie } from '$lib/ludotheque/jeu.svelte';
+  import { attenteEmulateurSeul, boutonEmulateurSeul, emulateursDuJeu, gererJeu, installer, jouer, jouerAvec, lancementImpossible, libelleEmulateurSeul, ouvrirEmulateurSeul, partie } from '$lib/ludotheque/jeu.svelte';
   import { libellePreparation } from '$lib/emulateurs/pret.svelte';
 
   let fiche = $state<Fiche | null>(null);
@@ -314,15 +314,19 @@
         {#if !surPc.installation}
           <button class="btn primary" onclick={() => installer(surPc.id)} disabled={partie.installation === surPc.id}>📦 Installer</button>
         {:else}
-          <button class="btn primary" onclick={() => jouer(surPc.id)} disabled={partie.enJeu !== null || partie.lancement !== null || libellePreparation(surPc.plateforme) !== null}>{libellePreparation(surPc.plateforme) ?? (partie.lancement === surPc.id ? 'Lancement…' : '▶ Jouer')}</button>
+          <button class="btn primary" onclick={() => jouer(surPc.id)} disabled={lancementImpossible() || libellePreparation(surPc.plateforme) !== null} title={attenteEmulateurSeul() ?? undefined}>{libellePreparation(surPc.plateforme) ?? (partie.lancement === surPc.id ? 'Lancement…' : '▶ Jouer')}</button>
           {#if emulateursDuJeu(surPc.plateforme).liste.length > 1 || (surPc.installation.versions?.length ?? 0) > 1}
-            <button class="btn" onclick={() => jouerAvec(surPc.id)} disabled={partie.enJeu !== null || partie.lancement !== null || libellePreparation(surPc.plateforme) !== null}>▶ Jouer avec…</button>
+            <button class="btn" onclick={() => jouerAvec(surPc.id)} disabled={lancementImpossible() || libellePreparation(surPc.plateforme) !== null}>▶ Jouer avec…</button>
+          {/if}
+          {#if boutonEmulateurSeul(surPc.id, surPc.plateforme)}
+            <button class="btn" onclick={() => ouvrirEmulateurSeul(surPc.id)} disabled={lancementImpossible() || libellePreparation(surPc.plateforme) !== null} title="L’émulateur s’ouvre sans jeu, avec ton profil : pour régler ses DLC, sa manette, ses réglages">{libelleEmulateurSeul(surPc.id, surPc.plateforme)}</button>
           {/if}
         {/if}
         {#if !surPc.d_un_autre}<button class="btn" onclick={() => gererJeu(surPc.id)} disabled={partie.enJeu === surPc.id}>⚙ Gérer le jeu</button>{/if}
         <a class="btn" href={`/assistant?jeu=${fiche.id}`}>💬 Demander à l’assistant</a>
         <a class="btn" href={`/triches?jeu=${surPc.id}`}>🎯 Triches et mods</a>
       </div>
+      {#if surPc.installation && attenteEmulateurSeul()}<p class="muted">{attenteEmulateurSeul()}</p>{/if}
       {#if surPc.installation}<RappelTriches id={surPc.id} />{/if}
     {/if}
 
@@ -467,7 +471,7 @@
                 {#if cartesSurPc(jeuSurPc(fiche.id)).includes(v.telechargement_id)}
                   <p class="muted">✅ Cette carte est sur ce PC.</p>
                   {#if jeuSurPc(fiche.id)?.installation}
-                    <button class="btn primary" onclick={() => fiche && jouer(fiche.id, undefined, undefined, v.telechargement_id)} disabled={partie.enJeu !== null}>▶ Lire cette carte</button>
+                    <button class="btn primary" onclick={() => fiche && jouer(fiche.id, undefined, undefined, v.telechargement_id)} disabled={lancementImpossible()}>▶ Lire cette carte</button>
                   {/if}
                   {#if cartesSurPc(jeuSurPc(fiche.id)).length > 1}
                     <button class="btn" onclick={() => fiche && retirerUneCarte(fiche.id, v.telechargement_id, v.nom)}>🗑 Retirer cette carte</button>

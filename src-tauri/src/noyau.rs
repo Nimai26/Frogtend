@@ -173,6 +173,12 @@ pub struct Noyau {
     /// temps (contrat 1.14 : la fin de partie compterait le temps sous un numéro qui n'existe plus).
     /// Un compteur par jeu : plusieurs gardes peuvent se chevaucher (lancement puis suivi de la partie).
     pub(crate) occupes: std::sync::Mutex<std::collections::HashMap<i64, u32>>,
+    /// Les émulateurs ouverts SEULS (« ▶ Ouvrir l'émulateur seul », ✅ Seb 17/11), par dossier normalisé : de leur
+    /// lancement à leur fermeture, aucune partie ne se lance et leurs réglages ne s'écrivent pas.
+    /// (dossier normalisé, nom affiché).
+    pub(crate) emulateurs_seuls: std::sync::Mutex<Vec<(String, String)>>,
+    /// Les lancements de partie en préparation (`jeu_jouer`, jusqu'à son retour) : aucun émulateur ne s'ouvre seul.
+    pub(crate) lancements: std::sync::atomic::AtomicUsize,
     /// Les désinstalleurs d'un jeu retiré qui restait installé ailleurs, proposés à la personne (dossier normalisé →
     /// quand) : lançables UNE fois, peu après, par `desinstaller_reste` (durcissement : jamais un chemin libre).
     pub(crate) desinstalleurs: std::sync::Mutex<std::collections::HashMap<String, std::time::Instant>>,
@@ -180,6 +186,15 @@ pub struct Noyau {
     /// chemin normalisé, quand). Une commande sensible n'accepte un chemin libre que s'il en vient (durcissement,
     /// étape 4) ; chacun ne sert qu'une fois, dans les 10 minutes.
     pub(crate) choix: std::sync::Mutex<Vec<(bool, String, std::time::Instant)>>,
+}
+
+/// Un lancement de partie en préparation tant que cette garde vit (`Noyau::commencer_lancement`).
+pub(crate) struct LancementEnCours<'a>(pub(crate) &'a Noyau);
+
+impl Drop for LancementEnCours<'_> {
+    fn drop(&mut self) {
+        self.0.lancements.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 /// Un jeu marqué « occupé » tant que cette garde vit.
@@ -212,6 +227,8 @@ impl Noyau {
             file_active: std::sync::atomic::AtomicBool::new(false),
             pause_mame: std::sync::atomic::AtomicBool::new(false),
             occupes: std::sync::Mutex::new(Default::default()),
+            emulateurs_seuls: std::sync::Mutex::new(Vec::new()),
+            lancements: std::sync::atomic::AtomicUsize::new(0),
             desinstalleurs: std::sync::Mutex::new(Default::default()),
             choix: std::sync::Mutex::new(Default::default()),
             abris: std::sync::Mutex::new(None),

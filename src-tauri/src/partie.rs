@@ -11,7 +11,7 @@ use crate::installation::{
 };
 use crate::jeux_pc::{Etat, Installation, JeuPc};
 use crate::lancement::{demarrer, Suivi};
-use crate::noyau::{maintenant, Noyau};
+use crate::noyau::{maintenant, LancementEnCours, Noyau};
 use serde::Serialize;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -1357,6 +1357,128 @@ impl Noyau {
         Ok(FinDePartie { jeu: id, secondes })
     }
 
+    // --- « ▶ Ouvrir l'émulateur seul » (✅ Seb 17/11) : un émulateur ouvert SANS jeu. Suivi comme une partie (session
+    // Firehouse, aucune partie lancée pendant ce temps), mais SANS jeu : pas de `media_id`, et le temps passé n'est
+    // compté à aucun jeu. ---
+
+    /// La clé d'un dossier d'émulateur (sans casse, « \ », sans barre finale).
+    fn cle_emulateur_seul(dossier: &Path) -> String {
+        dossier.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase()
+    }
+
+    /// Une partie commence à se lancer (`jeu_jouer`, de son début à son retour : la préparation peut être longue) :
+    /// refusé si un émulateur est ouvert seul ; tant que la garde vit, aucun émulateur ne s'ouvre seul. La vérification
+    /// et la marque se font sous le MÊME verrou que `marquer_emulateur_seul` : jamais les deux à la fois.
+    pub(crate) fn commencer_lancement(&self) -> Resultat<LancementEnCours<'_>> {
+        let l = self.emulateurs_seuls.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((_, nom)) = l.first() {
+            return Err(Erreur::Refus(format!("{nom} est ouvert seul : ferme-le d'abord, puis lance le jeu.")));
+        }
+        self.lancements.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(LancementEnCours(self))
+    }
+
+    /// Note l'émulateur de `dossier` (`nom`) ouvert seul. Refusé pendant une partie (`partie_en_cours`) ou un lancement
+    /// en préparation, et quand un émulateur est déjà ouvert seul (un à la fois).
+    pub(crate) fn marquer_emulateur_seul(&self, dossier: &Path, nom: &str, partie_en_cours: bool) -> Resultat<()> {
+        let c = Self::cle_emulateur_seul(dossier);
+        let mut l = self.emulateurs_seuls.lock().unwrap_or_else(|e| e.into_inner());
+        if partie_en_cours || self.lancements.load(std::sync::atomic::Ordering::SeqCst) > 0 {
+            return Err(Erreur::Refus("Une partie est en cours ou se lance : quitte le jeu, puis réessaie.".into()));
+        }
+        if l.iter().any(|(x, _)| *x == c) {
+            return Err(Erreur::Refus(format!("{nom} est déjà ouvert seul.")));
+        }
+        if let Some((_, autre)) = l.first() {
+            return Err(Erreur::Refus(format!("{autre} est déjà ouvert seul : ferme-le d'abord.")));
+        }
+        l.push((c, nom.to_string()));
+        Ok(())
+    }
+
+    /// Ouvre un émulateur seul sous son verrou : `lancer` (préparation puis démarrage) rend le numéro du processus ; un
+    /// échec rend le verrou aussitôt (jamais un émulateur « ouvert » pour rien).
+    pub(crate) async fn ouvrir_sous_verrou<F, Fut>(&self, dossier: &Path, nom: &str, partie_en_cours: bool, lancer: F) -> Resultat<u32>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Resultat<u32>>,
+    {
+        self.marquer_emulateur_seul(dossier, nom, partie_en_cours)?;
+        match lancer().await {
+            Ok(pid) => Ok(pid),
+            Err(e) => {
+                self.liberer_emulateur_seul(dossier);
+                Err(e)
+            }
+        }
+    }
+
+    /// L'émulateur de `dossier` est fermé.
+    pub(crate) fn liberer_emulateur_seul(&self, dossier: &Path) {
+        let c = Self::cle_emulateur_seul(dossier);
+        self.emulateurs_seuls.lock().unwrap_or_else(|e| e.into_inner()).retain(|(x, _)| *x != c);
+    }
+
+    /// Le nom de l'émulateur ouvert seul, s'il y en a un (l'interface le relit après un rechargement).
+    pub(crate) fn emulateur_seul_nom(&self) -> Option<String> {
+        self.emulateurs_seuls.lock().unwrap_or_else(|e| e.into_inner()).first().map(|(_, n)| n.clone())
+    }
+
+    /// Refusé pendant qu'un émulateur est ouvert seul (`quoi` : ce qui attend, « changer de profil »…) : il tourne avec
+    /// le profil de la personne et réécrira ses réglages en quittant.
+    pub(crate) fn refuser_si_emulateur_seul(&self, quoi: &str) -> Resultat<()> {
+        match self.emulateur_seul_nom() {
+            Some(nom) => Err(Erreur::Refus(format!("{nom} est ouvert avec ce profil : ferme-le d'abord, puis {quoi}."))),
+            None => Ok(()),
+        }
+    }
+
+    /// Ce programme est-il dans le dossier d'un émulateur ouvert seul (ses réglages ne s'écrivent pas) ?
+    pub(crate) fn emulateur_seul_dans(&self, programme: &Path) -> bool {
+        let p = Self::cle_emulateur_seul(programme);
+        self.emulateurs_seuls.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|(c, _)| p == *c || p.starts_with(&format!("{c}\\")))
+    }
+
+    /// Annonce une étape de session SANS jeu à Firehouse (la route accepte `media_id` absent). Un échec n'empêche
+    /// jamais d'ouvrir l'émulateur : il est noté, sans nouvel essai.
+    pub(crate) async fn annoncer_sans_jeu(&self, etat: &str) -> Option<Value> {
+        let s = self.session().await.ok()?;
+        match s.source.session(etat, None).await {
+            Ok(v) => Some(v),
+            Err(e) => {
+                self.journaliser(&format!("session « {etat} » (émulateur ouvert seul) : {e:?}"));
+                None
+            }
+        }
+    }
+
+    /// Suit un émulateur ouvert seul jusqu'à sa fermeture : « vivant » toutes les 10 min, « fin » à la sortie, SANS
+    /// compter le temps à aucun jeu. Rend la durée (secondes).
+    pub async fn suivre_emulateur_seul(&self, pid: u32, dossier: PathBuf) -> Resultat<u64> {
+        let debut = Instant::now();
+        let mut dernier_vivant = Instant::now();
+        let mut suivi = Suivi::nouveau(pid, vec![dossier]);
+        loop {
+            let (s, en_cours) = tokio::task::spawn_blocking(move || {
+                let r = suivi.en_cours();
+                (suivi, r)
+            })
+            .await
+            .map_err(|_| Erreur::Disque("Le suivi de l'émulateur s'est arrêté.".into()))?;
+            suivi = s;
+            if !en_cours {
+                break;
+            }
+            if dernier_vivant.elapsed() >= INTERVALLE_VIVANT {
+                self.annoncer_sans_jeu("vivant").await;
+                dernier_vivant = Instant::now();
+            }
+            tokio::time::sleep(INTERVALLE_SUIVI).await;
+        }
+        self.annoncer_sans_jeu("fin").await;
+        Ok(debut.elapsed().as_secs())
+    }
+
     /// Met à l'abri ce qui a changé dans le dossier du jeu depuis son installation (les parties, ses réglages) :
     /// une copie dans `sauvegardes/<jeu>/<date>/`. Les abris ne s'effacent jamais tout seuls.
     pub async fn mettre_a_l_abri(&self, id: i64) -> Resultat<Abri> {
@@ -2038,6 +2160,63 @@ mod tests {
         assert!(fin.secondes <= 30);
         let j = n.registre().jeu(110).unwrap().unwrap();
         assert!(j.derniere_partie.is_some());
+    }
+
+    /// « ▶ Ouvrir l'émulateur seul » : suivi jusqu'à sa fermeture, mais le temps n'est compté à AUCUN jeu.
+    #[tokio::test]
+    async fn un_emulateur_ouvert_seul_est_suivi_sans_compter_de_temps() {
+        let archive = zip(&[("JEU.BAT", b"@echo off\r\n")]);
+        let (d, n) = noyau_avec(&[("jeu.zip", &archive)], "Jeu — prêt à jouer").await;
+        n.installer(110, true).await.unwrap();
+        // Un faux émulateur : un .bat qui vit ~1 s, dans son propre dossier (jamais un vrai émulateur).
+        let emu = d.path().join("Emulateur");
+        std::fs::create_dir_all(&emu).unwrap();
+        std::fs::write(emu.join("emu.bat"), b"@echo off\r\nping -n 2 127.0.0.1 >nul\r\n").unwrap();
+        let l = crate::installation::Lanceur { programme: "cmd.exe".into(), arguments: vec!["/c".into(), emu.join("emu.bat").to_string_lossy().to_string()], dossier: emu.to_string_lossy().to_string() };
+        let pid = n.ouvrir_sous_verrou(&emu, "Eden", false, || async { crate::lancement::demarrer(&l) }).await.unwrap();
+        assert!(n.marquer_emulateur_seul(&emu, "Eden", false).is_err(), "jamais deux fois le même");
+        assert!(n.emulateur_seul_nom().is_some() && n.emulateur_seul_dans(&emu.join("emu.exe")) && !n.emulateur_seul_dans(&d.path().join("Autre").join("x.exe")));
+        assert_eq!(n.emulateur_seul_nom().as_deref(), Some("Eden"));
+        assert!(n.annoncer_sans_jeu("debut").await.is_some(), "en simulé, la session sans jeu est acceptée");
+        let secondes = n.suivre_emulateur_seul(pid, emu.clone()).await.unwrap();
+        assert!(secondes <= 30);
+        n.liberer_emulateur_seul(&emu);
+        assert!(!n.emulateur_seul_nom().is_some());
+        let j = n.registre().jeu(110).unwrap().unwrap();
+        assert!(j.derniere_partie.is_none(), "aucun temps compté au jeu");
+        assert!(n.registre().tous().unwrap().iter().all(|j| j.derniere_partie.is_none()));
+    }
+
+    /// Un émulateur ouvert seul et une partie ne se chevauchent jamais, dans un sens comme dans l'autre ; le profil ne
+    /// change pas pendant qu'il est ouvert ; un lancement raté rend le verrou.
+    #[tokio::test]
+    async fn emulateur_seul_et_partie_se_refusent_l_un_l_autre() {
+        let archive = zip(&[("JEU.BAT", b"@echo off\r\n")]);
+        let (d, n) = noyau_avec(&[("jeu.zip", &archive)], "Jeu — prêt à jouer").await;
+        let emu = d.path().join("Eden");
+        // Une partie en cours (menu en jeu) ou un lancement en préparation : l'émulateur ne s'ouvre pas seul.
+        assert!(matches!(n.marquer_emulateur_seul(&emu, "Eden", true), Err(Erreur::Refus(_))));
+        {
+            let _lancement = n.commencer_lancement().unwrap();
+            assert!(matches!(n.marquer_emulateur_seul(&emu, "Eden", false), Err(Erreur::Refus(_))), "jeu_jouer en préparation");
+        }
+        // La préparation finie (ou ratée) : il s'ouvre.
+        n.marquer_emulateur_seul(&emu, "Eden", false).unwrap();
+        // Ouvert seul : aucune partie ne commence à se lancer (jeu_jouer s'arrête là), ni un 2e émulateur.
+        match n.commencer_lancement() {
+            Err(Erreur::Refus(m)) => assert!(m.contains("Eden est ouvert seul")),
+            _ => panic!("une partie pendant l'émulateur ouvert seul"),
+        }
+        assert!(n.marquer_emulateur_seul(&d.path().join("Ryubing"), "Ryubing", false).is_err(), "un à la fois");
+        // Le profil ne se ferme ni ne change.
+        assert!(matches!(n.refuser_si_emulateur_seul("change de profil"), Err(Erreur::Refus(_))));
+        n.liberer_emulateur_seul(&emu);
+        assert!(n.refuser_si_emulateur_seul("change de profil").is_ok());
+        assert!(n.commencer_lancement().is_ok());
+        // La préparation de l'émulateur échoue : le verrou est rendu aussitôt.
+        let r = n.ouvrir_sous_verrou(&emu, "Eden", false, || async { Err::<u32, _>(Erreur::Disque("préparation ratée".into())) }).await;
+        assert!(matches!(r, Err(Erreur::Disque(_))));
+        assert!(!n.emulateur_seul_nom().is_some(), "verrou rendu");
     }
 
     #[tokio::test]

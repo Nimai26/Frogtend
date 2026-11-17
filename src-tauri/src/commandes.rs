@@ -344,6 +344,8 @@ pub async fn profil_ouvrir(
     id: String,
     pin: Option<String>,
 ) -> Resultat<ProfilVisible> {
+    // Un émulateur ouvert seul tourne avec le profil d'avant (✅ Seb 17/11) : on ne change pas de profil sous lui.
+    noyau.refuser_si_emulateur_seul("change de profil")?;
     let p = noyau.ouvrir(&id, pin.as_deref(), &connexion(&app)).await?;
     // Les jeux déjà arrivés qu'il n'y avait rien à « installer » (ROM, images disque) deviennent prêts à jouer, en
     // arrière-plan (registre, et parties restaurées qui les attendaient).
@@ -359,6 +361,7 @@ pub async fn profil_ouvrir(
 
 #[tauri::command]
 pub async fn profil_fermer(noyau: State<'_, Noyau>) -> Resultat<()> {
+    noyau.refuser_si_emulateur_seul("change de profil")?;
     noyau.fermer().await;
     Ok(())
 }
@@ -404,6 +407,7 @@ pub async fn profil_renommer(noyau: State<'_, Noyau>, nom: String) -> Resultat<P
 
 #[tauri::command]
 pub async fn profil_supprimer(app: AppHandle, noyau: State<'_, Noyau>, id: String, pin: Option<String>) -> Resultat<()> {
+    noyau.refuser_si_emulateur_seul("supprime le profil")?;
     let nom = noyau.profils.trouver(&id)?.nom;
     noyau.supprimer_profil(&id, pin.as_deref()).await?;
     app.state::<crate::nexus::Nexus>().oublier_profil(&id);
@@ -1720,6 +1724,10 @@ pub async fn jeu_jouer(
     image: Option<String>,
     fps: Option<bool>,
 ) -> Resultat<()> {
+    // Un émulateur ouvert seul (✅ Seb 17/11) : aucune partie pendant ce temps (il réécrirait ses réglages en quittant).
+    // Et tant que ce lancement se prépare (jusqu'au retour, la partie est alors celle du menu en jeu), aucun émulateur
+    // ne s'ouvre seul.
+    let _lancement = noyau.commencer_lancement()?;
     let jeu = noyau.registre().jeu(id)?;
     // Un jeu d'une boutique : lancé par elle, jamais par un émulateur (même si un émulateur est réglé pour « Windows »).
     let de_boutique = jeu.as_ref().and_then(|j| j.installation.as_ref()).is_some_and(|i| i.boutique.is_some());
@@ -2406,6 +2414,103 @@ pub async fn jeu_jouer(
         }
     });
     Ok(())
+}
+
+/// L'émulateur ouvert seul : son ouverture et sa fermeture (événement « emulateur-seul », à part des parties : pas
+/// d'écran de lancement, pas de « Partie terminée », aucun temps compté).
+#[derive(Clone, Serialize)]
+#[serde(tag = "sorte", rename_all = "snake_case")]
+enum EvenementEmulateurSeul {
+    Debut { nom: String, carte_cedee: bool },
+    Fin { nom: String, secondes: u64 },
+}
+
+/// « ▶ Ouvrir l'émulateur seul » (✅ Seb 16-17/11) : l'émulateur `cle` du système `plateforme`, ouvert SANS jeu, avec
+/// le profil de la personne (ses dossiers, sa manette, sa liste de jeux complétée), pour régler ses DLC, sa manette, ses
+/// réglages. Sans plein écran ni menu en jeu (sa ligne : emulateur_seul.rs). Suivi jusqu'à sa fermeture : session
+/// Firehouse sans jeu, aucune partie lancée pendant ce temps, aucun temps compté. Rend le nom de l'émulateur.
+#[tauri::command]
+pub async fn emulateur_ouvrir_seul(app: AppHandle, noyau: State<'_, Noyau>, plateforme: String, cle: String) -> Resultat<String> {
+    profil_ouvert(&noyau).await?;
+    let reglages = app.store("pc.json").ok().and_then(|s| s.get("reglages")).unwrap_or(Value::Null);
+    let e = crate::choix_emulateur::du_systeme(&reglages, &plateforme)
+        .0
+        .into_iter()
+        .find(|e| e.cle == cle)
+        .ok_or_else(|| Erreur::Introuvable("Cet émulateur n'est plus réglé pour ce système.".into()))?;
+    let id = crate::emulateur_seul::id_du_programme(&e.programme);
+    let nom = match (e.nom.trim(), id.and_then(crate::emulateurs::fiche)) {
+        (n, _) if !n.is_empty() => n.to_string(),
+        (_, Some(f)) => f.nom.to_string(),
+        _ => "Cet émulateur".to_string(),
+    };
+    let Some(id) = id.filter(|i| crate::emulateur_seul::pris_en_charge(i)) else {
+        return Err(Erreur::Refus(format!("Frogtend ne sait pas encore ouvrir {nom} seul, sans jeu. Lance-le par un jeu, avec ▶ Jouer.")));
+    };
+    let programme = std::path::PathBuf::from(&e.programme);
+    if !programme.is_file() {
+        return Err(Erreur::Refus(format!(
+            "Le programme de {nom} est introuvable ({}). Vérifie-le dans ⚙ Options ▸ Émulateurs.",
+            programme.display()
+        )));
+    }
+    if en_installation(&programme) {
+        return Err(Erreur::Refus(format!("{nom} est en train de se mettre à jour : attends la fin (la barre d'avancement), puis réessaie.")));
+    }
+    let dossier = programme.parent().map(std::path::PathBuf::from).unwrap_or_default();
+    // Déjà ouvert (par un jeu, ou à la main) : il réécrirait ses réglages en quittant, par-dessus ceux de la personne.
+    let d = dossier.clone();
+    let ouvert = tauri::async_runtime::spawn_blocking(move || !crate::lancement::processus_du_dossier(&d).is_empty()).await.unwrap_or(true);
+    if ouvert {
+        return Err(Erreur::Refus(format!("{nom} est déjà ouvert : ferme-le d'abord, puis réessaie.")));
+    }
+    // Le verrou (un émulateur seul à la fois, jamais pendant une partie ni pendant un lancement en préparation), rendu
+    // à sa fermeture ou aussitôt en cas d'échec.
+    let partie_en_cours = app.state::<crate::menu_jeu::MenuJeu>().partie().is_some();
+    let eden_portable = crate::emulateurs::famille_eden(id) && crate::eden::portable(&dossier);
+    let pid = noyau
+        .ouvrir_sous_verrou(&dossier, &nom, partie_en_cours, || async {
+            // Le profil de la personne, comme pour une partie, mais avec une ligne VIDE (aucun jeu, aucune option de la fiche).
+            let (_, ligne) = preparer_emulateur(&app, &noyau, &plateforme, &e.programme, "", &Commandes::default()).await?;
+            let arguments = crate::emulateur_seul::arguments_sans_jeu(id, &crate::installation::decouper(&ligne), eden_portable)
+                .ok_or_else(|| Erreur::Refus(format!("Frogtend ne sait pas encore ouvrir {nom} seul, sans jeu.")))?;
+            // Ryubing : la racine de la personne existe encore, JUSTE avant (sinon il ouvrirait les données communes).
+            if id == "ryubing" {
+                crate::ryubing::verifier_la_racine(&ligne)?;
+            }
+            let l = crate::installation::Lanceur { programme: e.programme.clone(), arguments, dossier: dossier.to_string_lossy().to_string() };
+            crate::lancement::demarrer(&l)
+        })
+        .await?;
+    noyau.journaliser(&format!("{nom} ouvert seul, sans jeu (système {plateforme})"));
+    let carte_cedee = noyau.annoncer_sans_jeu("debut").await.is_some_and(|r| r["session"].is_object());
+    let _ = app.emit("emulateur-seul", EvenementEmulateurSeul::Debut { nom: nom.clone(), carte_cedee });
+    let app2 = app.clone();
+    let nom2 = nom.clone();
+    tauri::async_runtime::spawn(async move {
+        let noyau = app2.state::<Noyau>();
+        let secondes = match noyau.suivre_emulateur_seul(pid, dossier.clone()).await {
+            Ok(s) => s,
+            Err(e) => {
+                noyau.journaliser(&format!("suivi de {nom2} ouvert seul : {e:?}"));
+                // La session ne reste jamais ouverte chez Firehouse (sinon ses travaux attendraient 30 min).
+                noyau.annoncer_sans_jeu("fin").await;
+                0
+            }
+        };
+        noyau.liberer_emulateur_seul(&dossier);
+        noyau.journaliser(&format!("{nom2} fermé (ouvert seul, {secondes} s, compté à aucun jeu)"));
+        // Toujours dit à l'interface (elle débloque ▶ Jouer et sauvegarde les parties).
+        let _ = app2.emit("emulateur-seul", EvenementEmulateurSeul::Fin { nom: nom2, secondes });
+    });
+    Ok(nom)
+}
+
+/// Le nom de l'émulateur ouvert seul, s'il y en a un : l'interface le relit à son démarrage (après un rechargement,
+/// ▶ Jouer reste bloqué tant qu'il est ouvert).
+#[tauri::command]
+pub fn emulateur_seul_etat(noyau: State<'_, Noyau>) -> Option<String> {
+    noyau.emulateur_seul_nom()
 }
 
 /// Garde à l'avance le fond et le logo des jeux du PC pour Taodbox hors ligne (lot Médias M4) : 50 jeux au plus par
@@ -7082,6 +7187,10 @@ pub async fn parcourir(
 /// manette, triches) : il doit être de confiance (réglé, au registre, détecté), ou venir d'être choisi par la personne
 /// (l'assistant pose les BIOS d'un émulateur montré à la main avant de l'enregistrer).
 fn exiger_emulateur_pour_ecrire(app: &AppHandle, noyau: &Noyau, programme: &std::path::Path) -> Resultat<()> {
+    // Ouvert seul (✅ Seb 17/11) : il réécrirait ses réglages en quittant, par-dessus ceux de Frogtend.
+    if noyau.emulateur_seul_dans(programme) {
+        return Err(Erreur::Refus("Cet émulateur est ouvert : ferme-le d'abord, puis recommence.".into()));
+    }
     if programme.is_file() && noyau.a_ete_choisi(false, programme) {
         return Ok(());
     }

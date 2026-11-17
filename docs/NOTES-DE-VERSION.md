@@ -1,5 +1,20 @@
 # Notes de version de Frogtend
 
+## 0.205.0 — ▶ Ouvrir l'émulateur seul
+
+- Nouveau : sur la fiche d'un jeu et dans le panneau de la ludothèque, à côté de « ▶ Jouer avec… », le bouton
+  « ▶ Ouvrir l'émulateur seul » ouvre l'émulateur SANS jeu, avec TON profil (tes réglages, tes parties, ta manette) et
+  sans plein écran : pour gérer les DLC, les manettes ou les réglages directement dans l'émulateur. Pour l'instant :
+  Ryubing, Eden, DuckStation, PCSX2 et Dolphin. Pas en Taodbox (l'interface d'un émulateur se pilote à la souris).
+- Sa liste de jeux est remplie avec tes emplacements de la console.
+- Pendant qu'il est ouvert, ▶ Jouer attend (« 🕹 … est ouvert : ferme-le pour jouer ») et on ne change pas de profil ;
+  Firehouse est prévenu pour laisser la carte graphique. Le temps passé n'est compté à aucun jeu ; à la fermeture, tes
+  parties sont sauvegardées comme après une partie.
+- Corrigé : DuckStation, PCSX2 et Dolphin remplaçaient leur liste de dossiers de jeux à chaque partie (un dossier que
+  tu y ajoutais disparaissait). Maintenant Frogtend n'ajoute que ce qui manque, garde tes dossiers, et ne remet jamais
+  un dossier que tu as retiré. Dolphin cherche aussi dans les sous-dossiers (un dossier par jeu), sauf si tu as réglé
+  ce point toi-même.
+
 ## 0.204.0 — 📦 Eden aussi : mises à jour et DLC tout seuls
 
 - Avec Eden, la mise à jour et les DLC d'un jeu Switch sont maintenant donnés automatiquement au lancement, comme avec

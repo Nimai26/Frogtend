@@ -148,3 +148,5 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   (ModLoader.cs L740-768) ; il écrit le BuildId de l'exécutable dans son journal (L730) et ignore un fichier qui ne
   correspond pas. À faire quand Firehouse servira des triches Switch : poser au prochain lancement, parties à l'abri
   avant (`menu_jeu::mettre_a_l_abri_fichiers`).
+- **Changer de profil pendant une partie** (relevé le 17/11, lot « émulateur seul ») : rien ne l'empêche aujourd'hui pendant une partie ordinaire (seul l'émulateur ouvert seul le bloque) ; la sauvegarde de fin de partie irait alors au mauvais profil. À trancher avec Seb.
+- **Ouvrir seul les autres émulateurs** (17/11) : RPCS3 (sans `--no-gui`), Azahar, PPSSPP, RetroArch (pas de liste de dossiers) ; plus tard MAME (`-rompath`), BigPEmu, Cemu.

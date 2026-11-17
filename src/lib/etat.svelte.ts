@@ -6,7 +6,7 @@ import { oublierToutes } from '$lib/assistant/conversations.svelte';
 import { oublierNomsCourts } from '$lib/ludotheque/nomsCourts.svelte';
 import { normaliserTous } from '$lib/emulateurs/choix';
 import instantane from '../../docs/charte/themes.instantane.json';
-import { api, type Profil } from './api';
+import { api, estErreurCoeur, type Profil } from './api';
 import { toast } from './dialogues/fenetres.svelte';
 import fixtureCommuns from './fixtures/communs.simule.json';
 import {
@@ -175,8 +175,16 @@ export async function entrerDansProfil(profil: Profil) {
 }
 
 /** Ferme le profil : plus rien de lui n'est affiché ni gardé en mémoire ici. */
-export async function sortirDuProfil() {
-  await api.fermerProfil().catch(() => {});
+export async function sortirDuProfil(): Promise<boolean> {
+  try {
+    await api.fermerProfil();
+  } catch (e) {
+    // Refusé par le cœur (un émulateur ouvert seul avec ce profil, ✅ Seb 17/11) : on reste dans le profil, on le dit.
+    if (estErreurCoeur(e) && e.sorte === 'refus') {
+      toast(`🕹 ${e.motif}`, 'alerte');
+      return false;
+    }
+  }
   oublierToutes();
   oublierNomsCourts();
   etat.profilOuvert = null;
@@ -184,6 +192,7 @@ export async function sortirDuProfil() {
   magasinProfil = null;
   etat.profil = structuredClone(DEFAUTS_PROFIL);
   appliquerApparence();
+  return true;
 }
 
 /** Remplace TOUS les réglages du profil (restauration d'une sauvegarde), complétés par les défauts. */

@@ -124,6 +124,12 @@
         <a href="/reglages?rubrique=raccourcis">⚙ Options ▸ ⚡ Raccourcis en jeu</a>.
       </li>
       <li><strong>⚙ Gérer le jeu</strong> : changer d’émulateur pour ce jeu seulement, les commandes, ce qui lance le jeu.</li>
+      <li>
+        <strong>▶ Ouvrir l’émulateur seul</strong> (fiche du jeu, sur l’écran du PC) : l’émulateur s’ouvre sans jeu, avec
+        ton profil, pour régler ses DLC, sa manette ou ses réglages ; sa liste de jeux contient déjà tes emplacements.
+        Tant qu’il est ouvert, aucun jeu ne se lance ; à sa fermeture, tes parties sont sauvegardées comme après une
+        partie (le temps passé n’est compté à aucun jeu).
+      </li>
       <li>Les triches et les mods se trouvent par jeu ; avant de modder, Frogtend propose une copie du jeu.</li>
       <li>
         Jeux Jaguar (BigPEmu) : les triches se cochent dans le menu en jeu (🎯 Triches) et valent dès la partie suivante.

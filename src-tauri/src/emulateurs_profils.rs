@@ -350,6 +350,21 @@ pub(crate) fn modifier_ini(emulateur: &Path, fichier: &Path, section: &str, vale
     Ok(())
 }
 
+/// La liste de jeux d'un émulateur complétée avec les emplacements de la plateforme (listes_de_jeux.rs : jamais un
+/// dossier de la personne retiré, jamais remis un dossier qu'elle a retiré, rien d'écrit s'il est ouvert). Un échec
+/// n'empêche jamais de jouer : il est seulement noté.
+fn completer_liste_de_jeux(emulateur: &Path, fichier: &Path, format: crate::listes_de_jeux::Format, jeux: &[String]) {
+    let ouvert = !crate::lancement::processus_du_dossier(emulateur).is_empty();
+    match crate::listes_de_jeux::completer(emulateur, fichier, format, jeux, ouvert) {
+        Ok(b) => {
+            if let Some(r) = b.resume() {
+                eprintln!("{format:?} : {r}");
+            }
+        }
+        Err(e) => eprintln!("{format:?} : liste de jeux non complétée ({e:?})"),
+    }
+}
+
 fn creer(dossiers: &[&Path]) -> Resultat<()> {
     for d in dossiers {
         std::fs::create_dir_all(d)?;
@@ -627,7 +642,7 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             let ini = emulateur.join("settings.ini");
             modifier_ini(emulateur, &ini, "MemoryCards", &[("Directory", vec![texte(&cartes)])])?;
             modifier_ini(emulateur, &ini, "Folders", &[("SaveStates", vec![texte(&etats)]), ("Cheats", vec![texte(&triches)])])?;
-            modifier_ini(emulateur, &ini, "GameList", &[("RecursivePaths", jeux.to_vec())])?;
+            completer_liste_de_jeux(emulateur, &ini, crate::listes_de_jeux::Format::DuckStation, jeux);
             regler_manette(id, emulateur, None, manette)?;
             crate::manettes::retirer_menu_manette(emulateur, &ini)?;
             Ok(vec![])
@@ -646,7 +661,7 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
                     ("Cheats", vec![texte(&triches)]),
                 ],
             )?;
-            modifier_ini(emulateur, &ini, "GameList", &[("RecursivePaths", jeux.to_vec())])?;
+            completer_liste_de_jeux(emulateur, &ini, crate::listes_de_jeux::Format::Pcsx2, jeux);
             regler_manette(id, emulateur, None, manette)?;
             crate::manettes::retirer_menu_manette(emulateur, &ini)?;
             Ok(vec![])
@@ -654,12 +669,7 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
         "dolphin" => {
             let utilisateur = p.join("User");
             let ini = utilisateur.join("Config").join("Dolphin.ini");
-            let mut v: Vec<(String, Vec<String>)> = vec![("ISOPaths".into(), vec![jeux.len().to_string()])];
-            for (i, j) in jeux.iter().enumerate() {
-                v.push((format!("ISOPath{i}"), vec![j.clone()]));
-            }
-            let refs: Vec<(&str, Vec<String>)> = v.iter().map(|(c, vs)| (c.as_str(), vs.clone())).collect();
-            modifier_ini(emulateur, &ini, "General", &refs)?;
+            completer_liste_de_jeux(emulateur, &ini, crate::listes_de_jeux::Format::Dolphin, jeux);
             // Un jeu GameCube en plusieurs disques (.m3u) : Dolphin change de disque seul quand le jeu le demande
             // (« Change Discs Automatically »). Posé seulement si la personne n'a rien réglé : jamais son choix défait.
             if crate::manettes::lire_ini(&std::fs::read_to_string(&ini).unwrap_or_default(), "Core", "AutoDiscChange").is_empty() {
@@ -770,6 +780,8 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
             // La photo de l'écran du menu sans « Enregistrer sous », et le son coupé par le menu la fois d'avant remis.
             let _ = crate::eden::captures_sans_question(emulateur);
             let _ = crate::eden::son_remis(emulateur);
+            // Sa liste de jeux (commune à la maison) : les emplacements de la Switch AJOUTÉS (listes_de_jeux.rs).
+            completer_liste_de_jeux(emulateur, &crate::contenus::ini_eden(emulateur), crate::listes_de_jeux::Format::Eden, jeux);
             let u = crate::eden::utilisateur_du_profil(emulateur, profil_de(p))?;
             // Les parties d'avant Frogtend : copiées chez la première personne qui joue. Un échec ne touche à rien
             // (elles restent où elles étaient) et n'empêche pas de jouer.
@@ -786,7 +798,20 @@ fn preparer_dossiers(id: &str, emulateur: &Path, p: &Path, jeux: &[String], mane
                 (_, Some(id)) => crate::ryubing::Joueur1::Manette(id),
                 (_, None) => crate::ryubing::Joueur1::Rien,
             };
-            crate::ryubing::preparer_partie(emulateur, p, joueur1)
+            let args = crate::ryubing::preparer_partie(emulateur, p, joueur1)?;
+            // Sa liste de jeux (dans le Config.json de la personne) : les emplacements de la Switch AJOUTÉS, jamais à la
+            // place des siens. Un échec n'empêche jamais de jouer.
+            if !args.is_empty() {
+                match crate::ryubing::completer_liste_de_jeux(emulateur, p, jeux) {
+                    Ok(b) => {
+                        if let Some(r) = b.resume() {
+                            eprintln!("Ryubing : {r}");
+                        }
+                    }
+                    Err(e) => eprintln!("Ryubing : liste de jeux non complétée ({e:?})"),
+                }
+            }
+            Ok(args)
         }
         // Cemu : le compte Wii U de ce profil (créé s'il manque), passé par `-a` — un compte inconnu ferait jouer le
         // premier en silence (cemu.rs). Seulement Cemu portable et FERMÉ ; sinon (ou fichier de compte impossible à
@@ -2236,7 +2261,9 @@ mod tests {
         assert!(a.contains("SaveStates = E:\\P\\etats"));
         assert!(a.contains("Covers = covers") && a.contains("Language = fr"));
         let b = ecrire_ini(&a, "GameList", &[("RecursivePaths", vec!["E:\\Jeux".into()])]);
-        assert_eq!(b.matches("RecursivePaths").count(), 1, "la liste est remplacée");
+        // L'outil de bas niveau remplace toutes les valeurs d'une clé : les LISTES DE JEUX n'y passent jamais directement
+        // (listes_de_jeux.rs les complète, voir `les_listes_de_jeux_de_la_personne_sont_gardees_a_chaque_partie`).
+        assert_eq!(b.matches("RecursivePaths").count(), 1, "les valeurs données remplacent celles de la clé");
         assert!(b.contains("RecursivePaths = E:\\Jeux"));
         let c = ecrire_ini("", "MemoryCards", &[("Directory", vec!["E:\\m".into()])]);
         assert_eq!(c, "[MemoryCards]\r\nDirectory = E:\\m\r\n");
@@ -2448,12 +2475,15 @@ mod tests {
     fn deux_profils_ont_des_parties_separees_dans_duckstation_et_la_configuration_est_mise_a_l_abri() {
         let d = tempfile::tempdir().unwrap();
         std::fs::write(d.path().join("settings.ini"), "[Main]\r\nSettingsVersion = 3\r\n").unwrap();
-        preparer("duckstation", d.path(), "Seb", &["E:\\Jeux\\PS1".into()], &Manette::Auto(None)).unwrap();
+        let ps1 = d.path().join("Jeux").join("PS1");
+        std::fs::create_dir_all(&ps1).unwrap();
+        let jeux = vec![ps1.to_string_lossy().to_string()];
+        preparer("duckstation", d.path(), "Seb", &jeux, &Manette::Auto(None)).unwrap();
         let ini = std::fs::read_to_string(d.path().join("settings.ini")).unwrap();
         assert!(ini.contains("SettingsVersion = 3"), "le reste est gardé");
         assert!(ini.contains(&format!("Directory = {}", d.path().join("Profils").join("Seb").join("memcards").display())));
-        assert!(ini.contains("RecursivePaths = E:\\Jeux\\PS1"));
-        preparer("duckstation", d.path(), "Léa", &["E:\\Jeux\\PS1".into()], &Manette::Auto(None)).unwrap();
+        assert!(ini.contains(&format!("RecursivePaths = {}", ps1.display())));
+        preparer("duckstation", d.path(), "Léa", &jeux, &Manette::Auto(None)).unwrap();
         let ini = std::fs::read_to_string(d.path().join("settings.ini")).unwrap();
         assert!(ini.contains("Léa") && !ini.contains("\\Seb\\"));
         // La configuration d'origine a été copiée à l'abri.
@@ -2464,21 +2494,68 @@ mod tests {
     #[test]
     fn pcsx2_et_dolphin() {
         let d = tempfile::tempdir().unwrap();
-        preparer("pcsx2", d.path(), "Seb", &["E:\\Jeux\\PS2".into()], &Manette::Auto(None)).unwrap();
+        let dossier = |n: &str| {
+            let p = d.path().join("Jeux").join(n);
+            std::fs::create_dir_all(&p).unwrap();
+            p.to_string_lossy().to_string()
+        };
+        let (ps2, gc, gc2) = (dossier("PS2"), dossier("GC"), dossier("GC2"));
+        preparer("pcsx2", d.path(), "Seb", std::slice::from_ref(&ps2), &Manette::Auto(None)).unwrap();
         let ini = std::fs::read_to_string(d.path().join("inis").join("PCSX2.ini")).unwrap();
-        assert!(ini.contains("[Folders]") && ini.contains("MemoryCards = ") && ini.contains("RecursivePaths = E:\\Jeux\\PS2"));
+        assert!(ini.contains("[Folders]") && ini.contains("MemoryCards = ") && ini.contains(&format!("RecursivePaths = {ps2}")));
 
-        let args = preparer("dolphin", d.path(), "Seb", &["E:\\Jeux\\GC".into(), "F:\\GC".into()], &Manette::Auto(None)).unwrap();
+        let args = preparer("dolphin", d.path(), "Seb", &[gc.clone(), gc2.clone()], &Manette::Auto(None)).unwrap();
         assert_eq!(args[0], "-u");
         let ini = std::fs::read_to_string(PathBuf::from(&args[1]).join("Config").join("Dolphin.ini")).unwrap();
-        assert!(ini.contains("ISOPaths = 2") && ini.contains("ISOPath1 = F:\\GC"));
+        assert!(ini.contains("ISOPaths = 2") && ini.contains(&format!("ISOPath1 = {gc2}")));
         // Les jeux en plusieurs disques : Dolphin change de disque seul…
         assert_eq!(crate::manettes::lire_ini(&ini, "Core", "AutoDiscChange"), vec!["True"]);
         // … sauf si la personne l'a désactivé : son choix est gardé.
         let f = PathBuf::from(&args[1]).join("Config").join("Dolphin.ini");
         std::fs::write(&f, ini.replace("AutoDiscChange = True", "AutoDiscChange = False")).unwrap();
-        preparer("dolphin", d.path(), "Seb", &["E:\\Jeux\\GC".into()], &Manette::Auto(None)).unwrap();
+        preparer("dolphin", d.path(), "Seb", std::slice::from_ref(&gc), &Manette::Auto(None)).unwrap();
         assert_eq!(crate::manettes::lire_ini(&std::fs::read_to_string(&f).unwrap(), "Core", "AutoDiscChange"), vec!["False"]);
+    }
+
+    /// Le défaut corrigé le 17/11 : DuckStation, PCSX2 et Dolphin perdaient à chaque partie les dossiers de jeux ajoutés
+    /// par la personne (la liste était REMPLACÉE). Par le vrai chemin d'une partie (`preparer`).
+    #[test]
+    fn les_listes_de_jeux_de_la_personne_sont_gardees_a_chaque_partie() {
+        use crate::listes_de_jeux::{lire, Format};
+        let d = tempfile::tempdir().unwrap();
+        let jeux = d.path().join("Jeux");
+        std::fs::create_dir_all(&jeux).unwrap();
+        let j = jeux.to_string_lossy().to_string();
+        let a_moi = "C:\\A moi".to_string();
+        // DuckStation et PCSX2 : un dossier de la personne déjà là.
+        for (id, ini, format) in [("duckstation", d.path().join("settings.ini"), Format::DuckStation), ("pcsx2", d.path().join("inis").join("PCSX2.ini"), Format::Pcsx2)] {
+            std::fs::create_dir_all(ini.parent().unwrap()).unwrap();
+            std::fs::write(&ini, format!("[Main]\r\nSetupWizardIncomplete = false\r\n[UI]\r\nSettingsVersion = 1\r\n\r\n[GameList]\r\nRecursivePaths = {a_moi}\r\n")).unwrap();
+            preparer(id, d.path(), "Seb", std::slice::from_ref(&j), &Manette::Clavier).unwrap();
+            assert_eq!(lire(format, &std::fs::read_to_string(&ini).unwrap()), vec![a_moi.clone(), j.clone()], "{id}");
+            // Une 2e partie : rien ne disparaît, rien en double.
+            preparer(id, d.path(), "Seb", std::slice::from_ref(&j), &Manette::Clavier).unwrap();
+            assert_eq!(lire(format, &std::fs::read_to_string(&ini).unwrap()), vec![a_moi.clone(), j.clone()], "{id}");
+        }
+        // Dolphin : la liste de la personne (dans SON dossier utilisateur).
+        let f = dossier_du_profil(d.path(), "Seb").join("User").join("Config").join("Dolphin.ini");
+        std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+        std::fs::write(&f, format!("[General]\r\nISOPaths = 1\r\nISOPath0 = {a_moi}\r\n")).unwrap();
+        preparer("dolphin", d.path(), "Seb", std::slice::from_ref(&j), &Manette::Clavier).unwrap();
+        assert_eq!(lire(Format::Dolphin, &std::fs::read_to_string(&f).unwrap()), vec![a_moi.clone(), j.clone()]);
+        // La personne retire celui de Frogtend : jamais remis.
+        std::fs::write(&f, format!("[General]\r\nISOPaths = 1\r\nISOPath0 = {a_moi}\r\n")).unwrap();
+        preparer("dolphin", d.path(), "Seb", std::slice::from_ref(&j), &Manette::Clavier).unwrap();
+        assert_eq!(lire(Format::Dolphin, &std::fs::read_to_string(&f).unwrap()), vec![a_moi.clone()]);
+        // Eden portable, installation neuve (pas encore de qt-config.ini) : ses entrées spéciales, puis l'emplacement.
+        let eden = d.path().join("Eden");
+        std::fs::create_dir_all(eden.join("user")).unwrap();
+        preparer("eden", &eden, "Seb", std::slice::from_ref(&j), &Manette::Clavier).unwrap();
+        let ini = crate::contenus::ini_eden(&eden);
+        let attendu = vec!["SDMC".to_string(), "UserNAND".into(), "SysNAND".into(), j.replace('\\', "/")];
+        assert_eq!(lire(Format::Eden, &std::fs::read_to_string(&ini).unwrap()), attendu);
+        preparer("eden", &eden, "Léa", std::slice::from_ref(&j), &Manette::Clavier).unwrap();
+        assert_eq!(lire(Format::Eden, &std::fs::read_to_string(&ini).unwrap()), attendu, "commune à la maison, jamais en double");
     }
 
     #[test]

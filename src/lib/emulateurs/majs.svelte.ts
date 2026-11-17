@@ -6,7 +6,7 @@ import { api, taille, type EmulateurInstalle } from '$lib/api';
 import { confirmer, pile, toast } from '$lib/dialogues/fenetres.svelte';
 import { etat, reglerPc } from '$lib/etat.svelte';
 import { auCanape } from '$lib/taodbox/canape';
-import { partie } from '$lib/ludotheque/jeu.svelte';
+import { lancementImpossible } from '$lib/ludotheque/jeu.svelte';
 import { installationEmulateur, installerEmulateur } from './assistant.svelte';
 import { miseAJourDisponible } from './versions';
 
@@ -71,7 +71,8 @@ export async function emulateursAuDemarrage() {
   if (!l.length) return;
   // Les autres questions du démarrage d'abord (sauvegardes, Game Bar, Frogtend) : jamais deux fenêtres empilées.
   for (let i = 0; pile.dialogues.length && i < 1200; i++) await new Promise((r) => setTimeout(r, 500));
-  if (pile.dialogues.length || auCanape() || partie.enJeu !== null || partie.lancement !== null) return;
+  // Ni pendant une partie, ni pendant qu'un émulateur est ouvert seul (il serait remplacé pendant qu'il tourne).
+  if (pile.dialogues.length || auCanape() || lancementImpossible()) return;
   const total = l.reduce((s, m) => s + (m.taille ?? 0), 0);
   const oui = await confirmer(`⬆ ${l.length === 1 ? 'Un émulateur a' : `${l.length} émulateurs ont`} une nouvelle version`, {
     message: [

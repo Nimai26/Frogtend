@@ -53,8 +53,9 @@
     ]);
     if (c === 'profil') goto('/reglages?rubrique=profil');
     if (c === 'changer') {
+      // Refusé (un émulateur ouvert seul avec ce profil) : on reste là, la raison est dite.
+      if (!(await sortirDuProfil())) return;
       viderLudotheque();
-      await sortirDuProfil();
       goto('/');
     }
   }
