@@ -52,17 +52,23 @@ export function emulateurAutomatique(systeme: ContenusDuJeu['systeme']): string 
   return systeme === 'ryubing' ? 'Ryubing' : systeme === 'eden' ? 'Eden' : null;
 }
 
-/** Switch (Seb 17/11) : les interrupteurs, résumés — « 3 sur 3 utilisés » ou « 2 utilisés, 1 éteint ». Seuls les
- * contenus qui ont un interrupteur comptent (pas une vieille mise à jour). */
-export function resumeChoix(l: ContenuVu[]): string {
+/** Switch (Seb 17/11) : les interrupteurs, résumés — « 3 sur 3 utilisés », « 2 utilisés, 1 éteint » ou, avec Eden,
+ * « 3 utilisés (dont 1 éteint qu’Eden garde) ». Seuls les contenus qui ont un interrupteur comptent (pas une vieille
+ * mise à jour). */
+export function resumeChoix(l: ContenuVu[], systeme?: ContenusDuJeu['systeme']): string {
   const avec = l.filter((c) => c.cle);
   if (!avec.length) return 'aucun à choisir';
   const s = (n: number) => (n > 1 ? 's' : '');
-  const utilises = avec.filter((c) => c.actif && c.installe).length;
-  const eteints = avec.filter((c) => !c.actif).length;
+  // « Utilisé » = ce que l'émulateur prend VRAIMENT (Eden garde un DLC éteint tant qu'un autre est allumé).
+  const garde = (c: ContenuVu) => eteintMaisUtilise(c, systeme, l);
+  const eteintsUtilises = avec.filter(garde).length;
+  const utilises = avec.filter((c) => (c.actif && c.installe) || garde(c)).length;
+  const eteints = avec.filter((c) => !c.actif && !garde(c)).length;
   const enPanne = avec.filter((c) => allumePasUtilise(c)).length;
-  if (!eteints && !enPanne) return `${utilises} sur ${avec.length} utilisé${s(avec.length)}`;
-  const morceaux = [`${utilises} utilisé${s(utilises)}`];
+  if (!eteints && !enPanne && !eteintsUtilises) return `${utilises} sur ${avec.length} utilisé${s(avec.length)}`;
+  const morceaux = [
+    `${utilises} utilisé${s(utilises)}` + (eteintsUtilises ? ` (dont ${eteintsUtilises} éteint${s(eteintsUtilises)} qu’Eden garde)` : ''),
+  ];
   if (eteints) morceaux.push(`${eteints} éteint${s(eteints)}`);
   if (enPanne) morceaux.push(`${enPanne} allumé${s(enPanne)} mais pas utilisé${s(enPanne)}`);
   return morceaux.join(', ');
@@ -73,9 +79,17 @@ export function allumePasUtilise(c: ContenuVu): boolean {
   return !!c.cle && !!c.actif && !c.installe && !!c.raison;
 }
 
+/** Un DLC éteint qu'Eden utilise quand même : il ne sait couper que TOUS les DLC ensemble, donc il les garde tant
+ * qu'un seul est allumé (Seb 17/11 : le panneau dit ce qui se passe vraiment). Même règle que `dlcEnPartieEden` :
+ * tous éteints, Eden les coupe (jamais « Eden l'utilise » alors). Jamais pour Ryubing, qui coupe un DLC précis. */
+export function eteintMaisUtilise(c: ContenuVu, systeme: ContenusDuJeu['systeme'], l: ContenuVu[]): boolean {
+  return c.genre === 'dlc' && !!c.cle && !c.actif && dlcEnPartieEden(systeme, l);
+}
+
 /** Le texte d'un interrupteur (jamais la couleur seule). */
-export function texteInterrupteur(c: ContenuVu): string {
+export function texteInterrupteur(c: ContenuVu, systeme?: ContenusDuJeu['systeme'], l: ContenuVu[] = []): string {
   if (allumePasUtilise(c)) return '⚠ Allumé, pas utilisé';
+  if (eteintMaisUtilise(c, systeme, l)) return '⚠ Éteint, mais Eden l’utilise';
   return c.actif ? '✅ Utilisé' : '⬜ Pas utilisé';
 }
 

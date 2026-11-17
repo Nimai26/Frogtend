@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.206.1 — 📦 Eden : le panneau dit ce qui se passe vraiment
+
+- Corrigé : avec Eden, un DLC éteint alors qu'un autre reste allumé est quand même utilisé (Eden ne sait couper que
+  tous les DLC ensemble). Le panneau affichait « Pas utilisé » ; il dit maintenant « ⚠ Éteint, mais Eden l'utilise »,
+  et l'en-tête « 3 utilisés (dont 1 éteint qu'Eden garde) ». Avec Ryubing, rien ne change.
+
 ## 0.206.0 — 📦 Switch : c'est Frogtend qui choisit les mises à jour et DLC
 
 - Nouveau : dans le panneau 📦 d'un jeu Switch, chaque mise à jour et chaque DLC a son interrupteur (« ✅ Utilisé » /

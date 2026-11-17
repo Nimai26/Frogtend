@@ -30,8 +30,21 @@ describe('les contenus additionnels', () => {
     expect(texteInterrupteur(enPanne)).toBe('⚠ Allumé, pas utilisé');
     expect(texteInterrupteur(c)).toBe('✅ Utilisé');
     expect(texteInterrupteur(eteint)).toBe('⬜ Pas utilisé');
-    // Eden, DLC éteint mais encore utilisé (il les garde tous) : l'interrupteur dit le choix.
-    expect(texteInterrupteur({ ...eteint, installe: true })).toBe('⬜ Pas utilisé');
+    // Eden, DLC éteint mais encore utilisé (il les garde tous ; Seb 17/11) : le panneau dit ce qui se passe vraiment.
+    const maj: ContenuVu = { ...c, cle: 'maj', id: 'm', genre: 'maj' };
+    const eden = [maj, c, eteint];
+    expect(texteInterrupteur(eteint, 'eden', eden)).toBe('⚠ Éteint, mais Eden l’utilise');
+    expect(resumeChoix(eden, 'eden')).toBe('3 utilisés (dont 1 éteint qu’Eden garde)');
+    // La même liste avec Ryubing (il coupe un DLC précis) : jamais le texte d'Eden.
+    expect(texteInterrupteur(eteint, 'ryubing', eden)).toBe('⬜ Pas utilisé');
+    expect(resumeChoix(eden, 'ryubing')).toBe('2 utilisés, 1 éteint');
+    // Tous éteints : Eden les coupe, jamais « Eden l'utilise » — même si le cœur, lecture incomplète, dit installe.
+    const tous = [maj, { ...c, actif: false, installe: true }, { ...eteint, installe: true }];
+    expect(texteInterrupteur(tous[1], 'eden', tous)).toBe('⬜ Pas utilisé');
+    expect(resumeChoix(tous, 'eden')).toBe('1 utilisé, 2 éteints');
+    // Mise à jour éteinte + DLC gardé par Eden : lisible.
+    const mixte = [{ ...maj, actif: false, installe: false }, c, eteint];
+    expect(resumeChoix(mixte, 'eden')).toBe('2 utilisés (dont 1 éteint qu’Eden garde), 1 éteint');
     // Eden : la remarque seulement quand des DLC sont éteints EN PARTIE.
     expect(dlcEnPartieEden('eden', [c, eteint])).toBe(true);
     expect(dlcEnPartieEden('eden', [{ ...c, actif: false }, eteint])).toBe(false);

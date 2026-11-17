@@ -6,11 +6,17 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## Switch : le panneau d'Eden dit la vérité (0.206.1)
+- [ ] Zelda (Eden) ▸ 📦, Pack 1 allumé et Pack 2 éteint : le Pack 2 dit « ⚠ Éteint, mais Eden l'utilise », l'en-tête
+      « 3 utilisés (dont 1 éteint qu'Eden garde) ».
+- [ ] Les deux DLC éteints : « ⬜ Pas utilisé » sur les deux ; ▶ Jouer avec Eden : plus de ligne « DLC Ver. » à
+      l'écran titre.
+
 ## Switch : interrupteurs des mises à jour et DLC (0.206.0)
-- [ ] Zelda BotW ▸ panneau 📦 : le DLC Pack 1 (décoché dans Ryubing le 17/11) est « ⬜ Pas utilisé », le Pack 2 et la
+- [x] (✅ Seb 17/11) Zelda BotW ▸ panneau 📦 : le DLC Pack 1 (décoché dans Ryubing le 17/11) est « ⬜ Pas utilisé », le Pack 2 et la
       mise à jour « ✅ Utilisé » ; en-tête « 2 utilisés, 1 éteint ».
-- [ ] Rallumer le Pack 1 : il passe à « ✅ Utilisé » ; ▶ Jouer avec Ryubing : les deux DLC sont là.
-- [ ] Éteindre un DLC : une fenêtre de Frogtend prévient ; ▶ Jouer : le DLC n'est plus là (Ryubing) ; le journal dit
+- [x] (✅ Seb 17/11) Rallumer le Pack 1 : il passe à « ✅ Utilisé » ; ▶ Jouer avec Ryubing : les deux DLC sont là.
+- [x] (✅ Seb 17/11 ; Zelda : ses deux DLC ne marchent qu'ensemble, voir IDEES) Éteindre un DLC : une fenêtre de Frogtend prévient ; ▶ Jouer : le DLC n'est plus là (Ryubing) ; le journal dit
       que les parties ont été mises à l'abri.
 - [ ] Même jeu avec Eden, un seul DLC éteint : la fiche dit qu'Eden les garde tous ; tous éteints : Eden n'en a plus.
 - [ ] Ouvrir Ryubing seul, recocher un DLC éteint dans « Manage DLC », fermer, ▶ Jouer : il est de nouveau retiré

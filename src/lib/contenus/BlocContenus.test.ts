@@ -91,11 +91,12 @@ afterEach(() => cleanup());
 describe('le panneau des mises à jour et DLC Switch', () => {
   it('montre un interrupteur par contenu, le résumé et la remarque d’Eden', async () => {
     const entete = await ouvrir();
-    expect(entete.textContent).toContain('2 utilisés, 1 éteint');
+    // Eden garde le DLC éteint tant qu'un autre est allumé : le panneau le dit (Seb 17/11).
+    expect(entete.textContent).toContain('3 utilisés (dont 1 éteint qu’Eden garde)');
     const inter = screen.getAllByRole('switch');
     expect(inter).toHaveLength(3);
     expect(inter.map((b) => b.getAttribute('aria-checked'))).toEqual(['true', 'true', 'false']);
-    expect(inter[2].textContent).toContain('⬜ Pas utilisé');
+    expect(inter[2].textContent).toContain('⚠ Éteint, mais Eden l’utilise');
     expect(inter[0].textContent).toContain('✅ Utilisé');
     expect(screen.getByText(/pour toute la maison/)).toBeTruthy();
     expect(screen.getByText(/Eden ne sait couper que tous les DLC ensemble/)).toBeTruthy();

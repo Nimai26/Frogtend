@@ -131,7 +131,7 @@
   <div class="contenus cx-block">
     {#if donnees.contenus.length}
       <button class="btn" aria-expanded={ouvert} onclick={() => (ouvert = !ouvert)}>
-        📦 Mises à jour et DLC : <span aria-live="polite">{resumeChoix(donnees.contenus)}</span> {ouvert ? '▴' : '▾'}
+        📦 Mises à jour et DLC : <span aria-live="polite">{resumeChoix(donnees.contenus, donnees.systeme)}</span> {ouvert ? '▴' : '▾'}
       </button>
     {/if}
     {#each lignesRemarque(donnees.remarque) as l (l)}<p class="muted">{l}</p>{/each}
@@ -157,11 +157,13 @@
                 role="switch"
                 aria-checked={!!c.actif}
                 aria-label={nomCourt(c.nom, titre)}
+                aria-describedby={`etat-${c.cle}`}
                 aria-disabled={bloque || basculement !== null}
                 disabled={bloque || (basculement !== null && basculement !== c.cle)}
                 onclick={() => basculer(c)}
               >
-                {texteInterrupteur(c)}
+                <!-- Le texte de l'état, lu aussi par un lecteur d'écran (aria-label ne porte que le nom). -->
+                <span id={`etat-${c.cle}`}>{texteInterrupteur(c, donnees.systeme, donnees.contenus)}</span>
               </button>
             {:else}
               <span title={raisonNonPose(c)}>—</span>
