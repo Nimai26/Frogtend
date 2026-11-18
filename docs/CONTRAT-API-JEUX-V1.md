@@ -505,6 +505,23 @@ Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a 
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
 sont pas redirigées (une indication « fusionné dans N » serait un ajout 1.14 — à demander à Seb si gênant).
 
+### 1.46 (18/11, Firehouse 3.239.0, en service) — la fiche de chaque mod Switch, écrite par l'IA
+Reçu par message de la session Firehouse (18/11) ; forme complète : son BRIEF-AGENT-FROGTEND.md § « 1.46 ». Par mod :
+`description` (français ; priorité admin > IA > source ; sans texte, l'IA le dit), `type` technique | contenu |
+cosmetique | triche | autre, `interet` 1 à 5 (5 = technique utile à tous ; 1-2 = un skin parmi des centaines),
+`public` tous | ado | adulte — un mod « adulte » n'est servi qu'à un jeton ADMIN (absent de la liste, archive 404 pour
+les autres). Tous null tant que la fiche n'est pas écrite (jusqu'à 3 000 par nuit, ~14 000 mods). Décision de Seb : un
+mod TECHNIQUE noté 4 ou 5 est validé d'office la nuit ; retiré aussitôt s'il s'avère incompatible.
+⚠ Côté Frogtend : les mods rangés sont communs à la maison (dossier du jeu) → un mod « adulte » téléchargé par un admin
+ne doit JAMAIS être montré ni posé pour un autre profil (brief § 2). Règle retenue : « réservé » couvre tout public
+autre que « tous » ou « ado » EXPLICITES — `null` (fiche pas encore écrite, mod rangé avant la 1.46), valeur inconnue,
+« adulte », et tout mod déjà vu « adulte » une fois (même reclassé depuis). Un mod rangé réservé n'est montré et posé
+que si la dernière liste de CE profil (fraîche, ou son cache hors ligne) le contient — et, pour un mod « adulte » ou
+déjà vu « adulte », seulement si elle le contient AVEC `public: "adulte"` (une entrée `null` ou « tous » d'un cache
+plus ancien ne suffit pas). Sinon il est écarté (jamais effacé), jamais nommé au journal ni dans ce qui est commun ;
+dans Eden (commun à la maison) il porte un nom de dossier neutre « Mod <clé> » et il est COUPÉ pour les autres profils ;
+s'il ne peut pas l'être, la partie ne se lance pas.
+
 ### 1.45 (18/11, Firehouse 3.238.0, en service) — chaque mod Switch porte son PLAN D'INSTALLATION (à EXÉCUTER)
 Reçu par message de la session Firehouse (18/11) ; forme complète dans son BRIEF-AGENT-FROGTEND.md § « 1.45 ». Consigne
 de Seb citée par Firehouse (18/11, à confirmer avec Seb côté Frogtend) : « permettre à ceux qui n'y connaissent rien de

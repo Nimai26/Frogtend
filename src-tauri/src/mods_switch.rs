@@ -160,7 +160,17 @@ pub struct ModServi {
     pub touche_sauvegardes: Option<bool>,
     pub contenu: ContenuMod,
     pub fichier: FichierServi,
+    /// Contrat 1.46 (la fiche écrite par l'IA de Firehouse ; tout est `None` tant qu'elle n'est pas écrite) : la sorte
+    /// (`technique`, `contenu`, `cosmetique`, `triche`, `autre`), l'intérêt (1 à 5) et le public (`tous`, `ado`,
+    /// `adulte` — un mod « adulte » n'est servi qu'à un jeton admin).
+    #[serde(rename = "type")]
+    pub type_mod: Option<String>,
+    pub interet: Option<u8>,
+    pub public: Option<String>,
 }
+
+/// Le public « adulte » (contrat 1.46) : servi seulement à un jeton ADMIN.
+pub const PUBLIC_ADULTE: &str = "adulte";
 
 impl ModServi {
     /// Un mod lu dans la réponse ; `None` si sa clé n'a pas la forme du contrat (il est alors écarté).
@@ -190,6 +200,9 @@ impl ModServi {
             touche_sauvegardes: v["touche_sauvegardes"].as_bool(),
             contenu: ContenuMod { exefs: c["exefs"].as_bool().unwrap_or(false), romfs: c["romfs"].as_bool().unwrap_or(false), cheats: c["cheats"].as_bool().unwrap_or(false) },
             fichier: FichierServi { url: texte(&f["url"]), taille: entier(&f["taille"]).unwrap_or(0), sha256: texte(&f["sha256"]).to_ascii_lowercase() },
+            type_mod: texte_ou_rien(&v["type"]).map(|t| t.to_lowercase()),
+            interet: entier(&v["interet"]).filter(|n| (1..=5).contains(n)).map(|n| n as u8),
+            public: texte_ou_rien(&v["public"]).map(|t| t.to_lowercase()),
         })
     }
 }
@@ -389,10 +402,13 @@ pub fn compatibilite(versions: &Versions, compatible: Option<bool>, raison: Opti
 
 // --- Le rangement à côté du jeu ---
 
+/// Le dossier des mods Switch rangés par Frogtend, dans le dossier Frogtend du jeu.
+pub const DOSSIER_MODS: &str = "mods-switch";
+
 /// Le dossier des mods Switch d'un jeu : `<dossier Frogtend du jeu>\mods-switch\<TID>\` (pas `mods\`, celui des mods
 /// PC). `frogtend` : `locale::dossier_frogtend(&jeu)`.
 pub fn dossier_stock(frogtend: &Path, tid_base: u64) -> PathBuf {
-    frogtend.join("mods-switch").join(format!("{tid_base:016X}"))
+    frogtend.join(DOSSIER_MODS).join(format!("{tid_base:016X}"))
 }
 
 /// Un fichier rangé (relatif au dossier du mod, séparateur `/`).
@@ -432,6 +448,63 @@ pub struct ManifesteMod {
     pub contenu: ContenuMod,
     pub range_le: String,
     pub fichiers: Vec<FichierRange>,
+    /// Contrat 1.46 : la fiche de Firehouse (pour la montrer hors ligne), et le public.
+    #[serde(default)]
+    pub description: String,
+    #[serde(default, rename = "type")]
+    pub type_mod: Option<String>,
+    #[serde(default)]
+    pub interet: Option<u8>,
+    #[serde(default)]
+    pub public: Option<String>,
+    /// Firehouse a dit « adulte » au moins une fois pour ce mod : tant que sa fiche dit `null`, il reste réservé.
+    #[serde(default)]
+    pub adulte_vu: bool,
+}
+
+impl ManifesteMod {
+    /// Un mod RÉSERVÉ (✅ brief § 2, contrat 1.46 ; relecture des experts) : tout mod dont le public n'est pas
+    /// EXPLICITEMENT « tous » ou « ado » — « adulte », fiche pas (encore) écrite (`null`, rangé avant la 1.46 ou avant
+    /// sa fiche), valeur inconnue. Les mods rangés sont communs à la maison : un mod réservé n'est montré et posé que
+    /// pour un profil dont la DERNIÈRE liste reçue le contient (la liste fraîche, ou son cache hors ligne), et n'est
+    /// jamais nommé dans ce qui est commun (journal, suivi, Eden).
+    pub fn reserve(&self) -> bool {
+        !public_pour_tous(self.public.as_deref())
+    }
+
+    /// Un mod à TAIRE dans ce qui est commun (journal, raisons partagées, noms de dossier d'Eden) : réservé, ou déjà vu
+    /// « adulte » une fois (même reclassé depuis).
+    pub fn a_taire(&self) -> bool {
+        self.reserve() || self.adulte_vu
+    }
+}
+
+/// Un public qu'on peut montrer à tout profil : « tous » ou « ado » (contrat 1.46), rien d'autre.
+pub fn public_pour_tous(p: Option<&str>) -> bool {
+    matches!(p, Some("tous" | "ado"))
+}
+
+/// Les mods rangés que CE profil peut voir et poser (`liste` : sa dernière liste reçue ; `None` : il n'en a pas) : ceux
+/// de sa liste, plus ceux dont le public est « tous » ou « ado ». Tout autre (« adulte », `null`, inconnu) absent de sa
+/// liste est ÉCARTÉ (jamais effacé : le profil qui le reçoit le retrouve tel quel).
+pub fn visibles(rangs: Vec<ManifesteMod>, liste: Option<&ListeMods>) -> Vec<ManifesteMod> {
+    rangs.into_iter().filter(|r| visible_pour(r, liste)).collect()
+}
+
+/// Ce mod rangé est-il visible pour le profil dont `liste` est la dernière liste ? Un mod « adulte » (ou déjà vu
+/// « adulte ») n'est visible que si sa liste le contient AVEC `public: "adulte"` : une entrée `null` ou « tous » d'un
+/// cache plus ancien (servie avant la classification de la nuit) ne suffit jamais.
+fn visible_pour(r: &ManifesteMod, liste: Option<&ListeMods>) -> bool {
+    let entree = liste.and_then(|l| l.mods.iter().find(|m| m.cle == r.cle));
+    if r.adulte_vu || r.public.as_deref() == Some(PUBLIC_ADULTE) {
+        return entree.is_some_and(|m| m.public.as_deref() == Some(PUBLIC_ADULTE));
+    }
+    !r.reserve() || entree.is_some()
+}
+
+/// La dernière liste de mods reçue par un profil pour ce jeu (son cache, dans le dossier de SA session).
+pub fn liste_du_profil(dossier_session: &Path, tid_base: u64) -> Option<ListeMods> {
+    lire_cache(dossier_session, tid_base).map(|c| lire_reponse(&c.reponse))
 }
 
 fn manifeste_de(stock: &Path, cle: &str) -> PathBuf {
@@ -642,6 +715,12 @@ pub fn ranger_avec(stock: &Path, archive: &Path, m: &ModServi, servie: Option<&V
         contenu: m.contenu.clone(),
         range_le: crate::noyau::maintenant(),
         fichiers,
+        description: m.description.clone(),
+        type_mod: m.type_mod.clone(),
+        interet: m.interet,
+        public: m.public.clone(),
+        // « Adulte » une fois : retenu pour toujours (une révision suivante sans fiche reste réservée).
+        adulte_vu: m.public.as_deref() == Some(PUBLIC_ADULTE) || ranges(stock).iter().any(|x| x.cle == m.cle && x.adulte_vu),
     };
     // La nouvelle révision est vérifiée sur le disque AVANT tout échange (relue : chemins, tailles, empreintes).
     if !dossier_conforme(&nouveau, &man.fichiers) {
@@ -724,6 +803,11 @@ pub fn rafraichir(stock: &Path, liste: &ListeMods) -> usize {
         r.conflits = m.conflits.clone();
         r.reglage_requis = m.reglage_requis.clone();
         r.touche_sauvegardes = m.touche_sauvegardes;
+        r.description = m.description.clone();
+        r.type_mod = m.type_mod.clone();
+        r.interet = m.interet;
+        r.public = m.public.clone();
+        r.adulte_vu |= m.public.as_deref() == Some(PUBLIC_ADULTE);
         if r == avant {
             continue;
         }
@@ -1014,7 +1098,42 @@ pub struct Voulu {
     pub source: PathBuf,
     /// Allumé, compatible, sans réglage requis ni conflit : à poser. Sinon, à retirer s'il était posé (et intact).
     pub poser: bool,
+    /// Un mod réservé (`ManifesteMod::reserve`) : son nom n'est jamais dit au journal ni dans les raisons communes
+    /// (seulement dans `BilanMods::reservees`, montrées au profil qui le voit).
+    pub reserve: bool,
+    /// Réservé ET absent de la dernière liste du profil qui lance : jamais posé pour lui.
+    pub masque: bool,
+    /// L'émulateur est commun à la maison (Eden) : un mod réservé y prend un nom de dossier NEUTRE (« Mod <clé> »), et
+    /// un mod masqué y est COUPÉ (`[DisabledAddOns]`) plutôt que retiré (ni recopie à chaque alternance de profils, ni
+    /// nom visible).
+    pub commun: bool,
 }
+
+/// Le nom à dire d'un mod réservé (jamais son vrai nom au journal).
+pub const MOD_RESERVE: &str = "un mod réservé";
+/// Le nom d'un mod servi tel qu'on peut le dire dans ce qui est commun à tous les profils (suivi, journal) : seulement
+/// si son public est « tous » ou « ado » — et jamais si sa version rangée a déjà été « adulte » (`adulte_vu`, une
+/// révision servie avec `public: null` d'un mod classé « adulte »).
+pub fn nom_a_dire(m: &ModServi, rangs: &[ManifesteMod]) -> String {
+    let deja_adulte = rangs.iter().any(|r| r.cle == m.cle && (r.adulte_vu || r.reserve()));
+    if public_pour_tous(m.public.as_deref()) && !deja_adulte {
+        m.nom.clone()
+    } else {
+        MOD_RESERVE.into()
+    }
+}
+
+/// Le nom d'un mod rangé tel qu'on peut le dire dans ce qui est commun (journal) : jamais celui d'un mod réservé.
+pub fn nom_range_a_dire(m: &ManifesteMod) -> String {
+    if m.a_taire() {
+        MOD_RESERVE.into()
+    } else {
+        m.nom.clone()
+    }
+}
+
+/// Le nom à dire d'un mod qui n'est plus rangé (on ne sait plus s'il était réservé : jamais nommé non plus).
+pub const MOD_RETIRE: &str = "un mod retiré de ce PC";
 
 /// L'état d'un mod de Frogtend dans un émulateur après la mise d'accord.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -1044,6 +1163,8 @@ pub struct BilanMods {
     pub inchange: bool,
     /// Les parties ont été mises à l'abri avant de changer les mods (dit au journal).
     pub abrite: bool,
+    /// Les raisons qui nomment un mod RÉSERVÉ (clé, raison) : jamais au journal, sur la fiche du seul profil qui le voit.
+    pub reservees: Vec<(String, String)>,
 }
 
 impl BilanMods {
@@ -1078,14 +1199,28 @@ pub enum Etape {
     Basculer { cle: String, actif: bool },
     /// La note parle d'un dossier qui n'est plus là : la ligne part.
     Oublier { cle: String, nom: String },
+    /// Un mod réservé posé AVANT les noms neutres sous son vrai nom, dans un émulateur commun : son dossier intact est
+    /// renommé en « Mod <clé> » (même contenu : rien à recopier), la note et les coupures suivent.
+    Renommer { cle: String, ancien: String, nouveau: String },
+}
+
+/// Le nom de dossier neutre d'un mod réservé dans un émulateur commun.
+pub fn nom_neutre(cle: &str) -> String {
+    format!("Mod {cle}")
+}
+
+/// Ce nom de dossier est-il déjà le nom neutre de ce mod (« Mod <clé> », ou « Mod <clé> (2) ») ?
+fn est_nom_neutre(nom: &str, cle: &str) -> bool {
+    let n = nom_neutre(cle);
+    nom == n || nom.strip_prefix(&n).is_some_and(|reste| reste.starts_with(" (") && reste.ends_with(')'))
 }
 
 /// Le plan de mise d'accord d'un dossier de mods (rien n'est écrit).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Plan {
     pub etapes: Vec<Etape>,
-    /// Les dossiers modifiés par la personne, gardés (la raison).
-    pub gardes: Vec<String>,
+    /// Les dossiers modifiés par la personne, gardés : (clé, raison).
+    pub gardes: Vec<(String, String)>,
     /// Ce qu'il faudra copier, en octets.
     pub a_copier: u64,
 }
@@ -1101,45 +1236,69 @@ impl Plan {
 pub fn planifier(dossier_jeu: &Path, voulus: &[Voulu], note: &BTreeMap<String, PoseNotee>) -> Plan {
     let mut p = Plan::default();
     let a_poser: Vec<&Voulu> = voulus.iter().filter(|v| v.poser).collect();
+    let mut noms_pris: Vec<String> = note.values().map(|n| n.dossier.to_lowercase()).collect();
+    // Un mod réservé dans un émulateur commun, posé sous son VRAI nom (avant les noms neutres) : renommé, s'il est
+    // intact (un dossier modifié par la personne n'est jamais touché). Rend le nom à utiliser ensuite.
+    let renommer = |p: &mut Plan, v: &Voulu, n: &PoseNotee, noms_pris: &mut Vec<String>| -> String {
+        let d = dossier_jeu.join(&n.dossier);
+        if !(v.commun && v.reserve) || est_nom_neutre(&n.dossier, &v.m.cle) || !d.exists() || !pose_intacte(&d, n) {
+            return n.dossier.clone();
+        }
+        let nouveau = nom_libre(&nom_neutre(&v.m.cle), &|x: &str| dossier_jeu.join(x).exists() || noms_pris.contains(&x.to_lowercase()));
+        noms_pris.push(nouveau.to_lowercase());
+        p.etapes.push(Etape::Renommer { cle: v.m.cle.clone(), ancien: n.dossier.clone(), nouveau: nouveau.clone() });
+        nouveau
+    };
     for (cle, n) in note {
         if a_poser.iter().any(|v| v.m.cle == *cle) {
             continue;
         }
         let d = dossier_jeu.join(&n.dossier);
+        // Masqué pour ce profil dans un émulateur commun : coupé, jamais retiré ni recopié (son dossier, intact ou
+        // modifié, reste à sa place pour le profil qui le voit).
+        if let Some(v) = voulus.iter().find(|v| v.m.cle == *cle && v.masque && v.commun) {
+            renommer(&mut p, v, n, &mut noms_pris);
+            if d.exists() && n.actif {
+                p.etapes.push(Etape::Basculer { cle: cle.clone(), actif: false });
+            }
+            continue;
+        }
         if !d.exists() {
             p.etapes.push(Etape::Oublier { cle: cle.clone(), nom: n.dossier.clone() });
         } else if pose_intacte(&d, n) {
             p.etapes.push(Etape::Retirer { cle: cle.clone(), nom: n.dossier.clone() });
         } else {
-            p.gardes.push(format!("le dossier « {} » a été modifié : Frogtend le garde (coupé dans l'émulateur)", n.dossier));
+            p.gardes.push((cle.clone(), format!("le dossier « {} » a été modifié : Frogtend le garde (coupé dans l'émulateur)", n.dossier)));
             if n.actif {
                 p.etapes.push(Etape::Basculer { cle: cle.clone(), actif: false });
             }
         }
     }
-    let mut noms_pris: Vec<String> = note.values().map(|n| n.dossier.to_lowercase()).collect();
     for v in a_poser {
         let taille: u64 = v.m.fichiers.iter().map(|f| f.taille).sum();
         match note.get(&v.m.cle) {
             Some(n) => {
+                let nom = renommer(&mut p, v, n, &mut noms_pris);
                 let d = dossier_jeu.join(&n.dossier);
                 if !d.exists() {
                     p.etapes.push(Etape::Poser { cle: v.m.cle.clone(), nom: n.dossier.clone() });
                     p.a_copier = p.a_copier.saturating_add(taille);
                 } else if !pose_intacte(&d, n) {
-                    p.gardes.push(format!("le dossier « {} » a été modifié : Frogtend ne l'écrase pas", n.dossier));
+                    p.gardes.push((v.m.cle.clone(), format!("le dossier « {} » a été modifié : Frogtend ne l'écrase pas", n.dossier)));
                     if !n.actif {
                         p.etapes.push(Etape::Basculer { cle: v.m.cle.clone(), actif: true });
                     }
                 } else if n.revision != v.m.revision || !n.sha256.eq_ignore_ascii_case(&v.m.sha256) {
-                    p.etapes.push(Etape::Remplacer { cle: v.m.cle.clone(), nom: n.dossier.clone() });
+                    p.etapes.push(Etape::Remplacer { cle: v.m.cle.clone(), nom });
                     p.a_copier = p.a_copier.saturating_add(taille);
                 } else if !n.actif {
                     p.etapes.push(Etape::Basculer { cle: v.m.cle.clone(), actif: true });
                 }
             }
             None => {
-                let nom = nom_libre(&nom_de_dossier(&v.m.nom, &v.m.cle), &|x: &str| dossier_jeu.join(x).exists() || noms_pris.contains(&x.to_lowercase()));
+                // Un mod réservé dans un émulateur commun : un nom NEUTRE, jamais tiré de son vrai nom.
+                let voulu = if v.commun && v.reserve { nom_neutre(&v.m.cle) } else { nom_de_dossier(&v.m.nom, &v.m.cle) };
+                let nom = nom_libre(&voulu, &|x: &str| dossier_jeu.join(x).exists() || noms_pris.contains(&x.to_lowercase()));
                 noms_pris.push(nom.to_lowercase());
                 p.etapes.push(Etape::Poser { cle: v.m.cle.clone(), nom });
                 p.a_copier = p.a_copier.saturating_add(taille);
@@ -1174,7 +1333,25 @@ pub fn synchroniser(dossier_jeu: &Path, voulus: &[Voulu], abri_demande: bool, ab
         return Ok(b);
     };
     let plan = planifier(dossier_jeu, voulus, &note);
-    b.raisons.extend(plan.gardes.iter().cloned());
+    // Un mod qu'on peut nommer : connu du rangement et pas réservé. Sinon (réservé, ou retiré du rangement) son nom ne
+    // va jamais au journal : « un mod réservé », et ses raisons à part (`reservees`).
+    let nomme = |cle: &str| voulus.iter().any(|v| v.m.cle == cle && !v.reserve);
+    let etiquette = |cle: &str, nom: &str| -> String {
+        if nomme(cle) {
+            nom.to_string()
+        } else if voulus.iter().any(|v| v.m.cle == cle) {
+            MOD_RESERVE.into()
+        } else {
+            MOD_RETIRE.into()
+        }
+    };
+    for (cle, r) in &plan.gardes {
+        if nomme(cle) {
+            b.raisons.push(r.clone());
+        } else {
+            b.reservees.push((cle.clone(), r.clone()));
+        }
+    }
     if plan.change() || abri_demande {
         if let Err(e) = abriter() {
             b.raisons.push(format!("tes parties n'ont pas pu être mises à l'abri ({e}) : les mods ne sont pas changés, la partie se lance avec ceux d'avant"));
@@ -1202,8 +1379,22 @@ pub fn synchroniser(dossier_jeu: &Path, voulus: &[Voulu], abri_demande: bool, ab
                 std::fs::remove_dir_all(&d)?;
                 note.remove(&cle);
                 ecrire_note(dossier_jeu, &note)?;
-                b.retires.push(nom.clone());
+                b.retires.push(etiquette(&cle, &nom));
                 b.partis.push((nom, d));
+            }
+            Etape::Renommer { cle, ancien, nouveau } => {
+                let (de, vers) = (dossier_jeu.join(&ancien), dossier_jeu.join(&nouveau));
+                std::fs::rename(&de, &vers)?;
+                if let Some(n) = note.get_mut(&cle) {
+                    n.dossier = nouveau;
+                    // La date et la taille de chaque fichier ne changent pas avec un renommage ; relu quand même.
+                    if let Ok(r) = releve(&vers) {
+                        n.fichiers = r;
+                    }
+                }
+                ecrire_note(dossier_jeu, &note)?;
+                // L'ancien nom sort de l'émulateur (mods.json, `[DisabledAddOns]`).
+                b.partis.push((ancien, de));
             }
             Etape::Basculer { cle, actif } => {
                 if let Some(n) = note.get_mut(&cle) {
@@ -1217,7 +1408,12 @@ pub fn synchroniser(dossier_jeu: &Path, voulus: &[Voulu], abri_demande: bool, ab
                 let tmp = match copier_mod(&v.source, dossier_jeu, &cle) {
                     Ok(t) => t,
                     Err(e) => {
-                        b.raisons.push(format!("« {} » pas posé ({e})", v.m.nom));
+                        let r = format!("« {} » pas posé ({e})", v.m.nom);
+                        if v.reserve {
+                            b.reservees.push((cle.clone(), r));
+                        } else {
+                            b.raisons.push(r);
+                        }
                         continue;
                     }
                 };
@@ -1241,7 +1437,7 @@ pub fn synchroniser(dossier_jeu: &Path, voulus: &[Voulu], abri_demande: bool, ab
                 let r = releve(&d)?;
                 note.insert(cle.clone(), PoseNotee { dossier: nom.clone(), revision: v.m.revision, sha256: v.m.sha256.clone(), actif: true, fichiers: r });
                 ecrire_note(dossier_jeu, &note)?;
-                b.poses.push(nom);
+                b.poses.push(etiquette(&cle, &nom));
             }
         }
     }
@@ -1263,28 +1459,50 @@ fn sous_dossier_existant(parent: &Path, nom: &str) -> PathBuf {
 /// Les mods voulus d'un jeu, d'après le rangement (`stock`), le choix de la maison et la mise à jour utilisée. Les
 /// raisons de ne pas poser (grisé, réglage requis, conflit avec un mod allumé) vont dans `raisons`.
 pub fn voulus(stock: &Path, choix: &crate::contenus_switch::ChoixJeu, utilisee: Option<u32>, raisons: &mut Vec<String>) -> Vec<Voulu> {
-    let rangs = ranges(stock);
-    rangs
-        .iter()
+    voulus_pour(stock, choix, utilisee, None, raisons, &mut Vec::new())
+}
+
+/// `voulus` pour le profil dont `liste` est la dernière liste reçue : un mod réservé qu'elle ne contient pas n'est
+/// JAMAIS posé (retiré de l'émulateur s'il y était, comme un mod éteint), jamais nommé, et ne compte pour aucun conflit.
+/// Les raisons qui nomment un mod réservé visible vont dans `reservees` (clé, raison), jamais dans `raisons`.
+pub fn voulus_pour(
+    stock: &Path,
+    choix: &crate::contenus_switch::ChoixJeu,
+    utilisee: Option<u32>,
+    liste: Option<&ListeMods>,
+    raisons: &mut Vec<String>,
+    reservees: &mut Vec<(String, String)>,
+) -> Vec<Voulu> {
+    let tous = ranges(stock);
+    let vus = visibles(tous.clone(), liste);
+    tous.iter()
         .map(|m| {
-            let allume = choix.mod_actif(&m.cle);
+            let visible = vus.iter().any(|v| v.cle == m.cle);
+            let allume = visible && choix.mod_actif(&m.cle);
             let c = compatibilite(&m.versions, m.compatible, m.raison.as_deref(), m.version_servie.as_ref(), utilisee);
+            let mut dire = |cle: &str, reserve: bool, t: String| {
+                if reserve {
+                    reservees.push((cle.to_string(), t));
+                } else {
+                    raisons.push(t);
+                }
+            };
             let mut poser = allume;
             if allume && c.grise() {
-                raisons.push(format!("« {} » pas posé : {}", m.nom, c.raison.clone().unwrap_or_default()));
+                dire(&m.cle, m.a_taire(), format!("« {} » pas posé : {}", m.nom, c.raison.clone().unwrap_or_default()));
                 poser = false;
             }
             if allume && !m.reglage_requis.is_empty() {
-                raisons.push(format!("« {} » pas posé : réglage d'émulateur requis : {}", m.nom, m.reglage_requis));
+                dire(&m.cle, m.a_taire(), format!("« {} » pas posé : réglage d'émulateur requis : {}", m.nom, m.reglage_requis));
                 poser = false;
             }
             if allume {
-                if let Some(b) = rangs.iter().find(|b| b.cle != m.cle && choix.mod_actif(&b.cle) && (m.conflits.contains(&b.cle) || b.conflits.contains(&m.cle))) {
-                    raisons.push(format!("« {} » pas posé : il ne va pas avec « {} », allumé aussi (éteins l'un des deux)", m.nom, b.nom));
+                if let Some(b) = vus.iter().find(|b| b.cle != m.cle && choix.mod_actif(&b.cle) && (m.conflits.contains(&b.cle) || b.conflits.contains(&m.cle))) {
+                    dire(&m.cle, m.a_taire() || b.a_taire(), format!("« {} » pas posé : il ne va pas avec « {} », allumé aussi (éteins l'un des deux)", m.nom, b.nom));
                     poser = false;
                 }
             }
-            Voulu { source: stock.join(&m.cle), m: m.clone(), poser }
+            Voulu { source: stock.join(&m.cle), m: m.clone(), poser, reserve: m.a_taire(), masque: !visible, commun: false }
         })
         .collect()
 }
@@ -1295,16 +1513,37 @@ pub struct DernierePose {
     pub quand: String,
     pub emulateur: String,
     pub raisons: Vec<String>,
+    /// Les raisons qui nomment un mod RÉSERVÉ (clé, raison) : montrées seulement au profil qui voit ce mod (ajoutées
+    /// alors à `raisons` par `pour_le_profil`), jamais envoyées telles quelles à l'interface.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reservees: Vec<(String, String)>,
+}
+
+impl DernierePose {
+    /// Ce que CE profil peut lire de la dernière pose (`liste` : sa dernière liste reçue).
+    pub fn pour_le_profil(mut self, liste: Option<&ListeMods>) -> Self {
+        for (cle, r) in std::mem::take(&mut self.reservees) {
+            if liste.is_some_and(|l| l.mods.iter().any(|m| m.cle == cle)) {
+                self.raisons.push(r);
+            }
+        }
+        self
+    }
 }
 
 const FICHIER_DERNIERE_POSE: &str = ".derniere-pose.json";
 
 /// Note ce que la pose a dit (seulement si le rangement existe : rien n'est créé pour un jeu sans mods).
 pub fn noter_derniere_pose(stock: &Path, emulateur: &str, raisons: &[String]) {
+    noter_derniere_pose_avec(stock, emulateur, raisons, &[]);
+}
+
+/// `noter_derniere_pose`, avec les raisons qui nomment un mod réservé (gardées à part, par clé).
+pub fn noter_derniere_pose_avec(stock: &Path, emulateur: &str, raisons: &[String], reservees: &[(String, String)]) {
     if !stock.is_dir() {
         return;
     }
-    let d = DernierePose { quand: crate::noyau::maintenant(), emulateur: emulateur.into(), raisons: raisons.to_vec() };
+    let d = DernierePose { quand: crate::noyau::maintenant(), emulateur: emulateur.into(), raisons: raisons.to_vec(), reservees: reservees.to_vec() };
     if let Ok(o) = serde_json::to_vec_pretty(&d) {
         let tmp = stock.join(format!("{FICHIER_DERNIERE_POSE}.tmp"));
         if std::fs::write(&tmp, o).is_ok() {
@@ -1322,11 +1561,25 @@ pub fn base_du_fichier(fichier: &Path) -> Option<u64> {
 /// Ce que dit la fiche quand le jeu n'a pas pu être reconnu au lancement.
 pub const RAISON_SANS_TITRE: &str = "Frogtend n'a pas reconnu ce jeu à son lancement : ses mods n'ont pas été remis à jour dans l'émulateur (ceux d'avant restent en place).";
 
+/// Les rangements de mods d'un jeu (`frogtend` : son dossier Frogtend) : (title id de base, dossier).
+pub fn rangements_du_jeu(frogtend: &Path) -> Vec<(u64, PathBuf)> {
+    std::fs::read_dir(frogtend.join(DOSSIER_MODS))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .filter_map(|e| {
+            let nom = e.file_name().to_string_lossy().to_string();
+            (nom.len() == 16).then(|| u64::from_str_radix(&nom, 16).ok()).flatten().map(|b| (b, e.path()))
+        })
+        .collect()
+}
+
 /// Note `raison` comme dernière pose dans CHAQUE rangement de mods du jeu (`frogtend` : son dossier Frogtend) — quand
 /// on ne sait pas lequel est le bon. Rend combien.
 pub fn noter_raison_partout(frogtend: &Path, emulateur: &str, raison: &str) -> usize {
     let mut n = 0;
-    for e in std::fs::read_dir(frogtend.join("mods-switch")).into_iter().flatten().flatten() {
+    for e in std::fs::read_dir(frogtend.join(DOSSIER_MODS)).into_iter().flatten().flatten() {
         let nom = e.file_name().to_string_lossy().to_string();
         if e.file_type().is_ok_and(|t| t.is_dir()) && nom.len() == 16 && nom.chars().all(|c| c.is_ascii_hexdigit()) {
             noter_derniere_pose(&e.path(), emulateur, &[raison.to_string()]);
@@ -1348,14 +1601,20 @@ pub fn derniere_pose(stock: &Path) -> Option<DernierePose> {
 /// (`<racine>\mods\contents\<tid>\<nom>\`, copiés) et dans `games\<tid>\mods.json` (les entrées de la personne
 /// gardées). Ryubing non portable ou ouvert : rien (raison). Parties mises à l'abri avant tout changement.
 pub fn poser_ryubing(donnees: &Path, ryubing: &Path, racine: &Path, base: u64, stock: &Path, utilisee: Option<u32>) -> Resultat<BilanMods> {
-    let r = poser_ryubing_dans(donnees, ryubing, racine, base, stock, utilisee);
+    poser_ryubing_pour(donnees, ryubing, racine, base, stock, utilisee, None)
+}
+
+/// `poser_ryubing` pour le profil qui lance (`liste` : SA dernière liste reçue, `liste_du_profil`) : un mod réservé
+/// qu'elle ne contient pas n'est jamais posé (retiré s'il l'était), ni nommé.
+pub fn poser_ryubing_pour(donnees: &Path, ryubing: &Path, racine: &Path, base: u64, stock: &Path, utilisee: Option<u32>, liste: Option<&ListeMods>) -> Resultat<BilanMods> {
+    let r = poser_ryubing_dans(donnees, ryubing, racine, base, stock, utilisee, liste);
     if let Ok(b) = &r {
-        noter_derniere_pose(stock, "Ryubing", &b.raisons);
+        noter_derniere_pose_avec(stock, "Ryubing", &b.raisons, &b.reservees);
     }
     r
 }
 
-fn poser_ryubing_dans(donnees: &Path, ryubing: &Path, racine: &Path, base: u64, stock: &Path, utilisee: Option<u32>) -> Resultat<BilanMods> {
+fn poser_ryubing_dans(donnees: &Path, ryubing: &Path, racine: &Path, base: u64, stock: &Path, utilisee: Option<u32>, liste: Option<&ListeMods>) -> Resultat<BilanMods> {
     let mut b = BilanMods::default();
     // Le chemin du mod dans mods.json doit être la chaîne EXACTE que Ryubing compose : `GetFullPath(-r)` + « \mods »
     // (texte de Ryubing) + les noms de `contents` et du dossier du jeu TELS QU'ILS SONT SUR LE DISQUE (Ryubing les
@@ -1376,8 +1635,8 @@ fn poser_ryubing_dans(donnees: &Path, ryubing: &Path, racine: &Path, base: u64, 
     }
     let choix = crate::contenus_switch::charger(donnees).0.jeu(base);
     let lieu = crate::contenus_switch::lieu("ryubing", &racine);
-    let mut raisons = Vec::new();
-    let v = voulus(stock, &choix, utilisee, &mut raisons);
+    let (mut raisons, mut reservees) = (Vec::new(), Vec::new());
+    let v = voulus_pour(stock, &choix, utilisee, liste, &mut raisons, &mut reservees);
     let abriter = || -> Resultat<()> {
         crate::ryubing::abriter_parties(ryubing, &racine, &format!("{base:016X}"))?;
         let _ = crate::contenus_switch::noter_abri_fait(donnees, base, &lieu);
@@ -1385,6 +1644,7 @@ fn poser_ryubing_dans(donnees: &Path, ryubing: &Path, racine: &Path, base: u64, 
     };
     let mut r = synchroniser(&dossier_jeu, &v, choix.abri_a_faire(&lieu), &abriter)?;
     r.raisons.splice(0..0, raisons);
+    r.reservees.splice(0..0, reservees);
     if r.inchange {
         return Ok(r);
     }
@@ -1400,14 +1660,20 @@ fn poser_ryubing_dans(donnees: &Path, ryubing: &Path, racine: &Path, base: u64, 
 /// `[DisabledAddOns]` (par nom de dossier ; les coupures de la personne gardées). Eden ouvert, dossier des mods réglé
 /// hors d'Eden : rien (raison). Parties mises à l'abri avant tout changement. Jamais de qt-config.ini créé.
 pub fn poser_eden(donnees: &Path, eden: &Path, base: u64, stock: &Path, utilisee: Option<u32>, ouvert: bool) -> Resultat<BilanMods> {
-    let r = poser_eden_dans(donnees, eden, base, stock, utilisee, ouvert);
+    poser_eden_pour(donnees, eden, base, stock, utilisee, ouvert, None)
+}
+
+/// `poser_eden` pour le profil qui lance (`liste` : SA dernière liste reçue) : un mod réservé qu'elle ne contient pas
+/// n'est jamais posé (retiré s'il l'était — Eden est commun à la maison), ni nommé.
+pub fn poser_eden_pour(donnees: &Path, eden: &Path, base: u64, stock: &Path, utilisee: Option<u32>, ouvert: bool, liste: Option<&ListeMods>) -> Resultat<BilanMods> {
+    let r = poser_eden_dans(donnees, eden, base, stock, utilisee, ouvert, liste);
     if let Ok(b) = &r {
-        noter_derniere_pose(stock, "Eden", &b.raisons);
+        noter_derniere_pose_avec(stock, "Eden", &b.raisons, &b.reservees);
     }
     r
 }
 
-fn poser_eden_dans(donnees: &Path, eden: &Path, base: u64, stock: &Path, utilisee: Option<u32>, ouvert: bool) -> Resultat<BilanMods> {
+fn poser_eden_dans(donnees: &Path, eden: &Path, base: u64, stock: &Path, utilisee: Option<u32>, ouvert: bool, liste: Option<&ListeMods>) -> Resultat<BilanMods> {
     let mut b = BilanMods::default();
     let Some(load) = crate::eden::dossier_load(eden) else {
         b.raisons.push("le dossier des mods d'Eden est réglé hors du dossier d'Eden : les mods n'y sont pas posés".into());
@@ -1435,8 +1701,12 @@ fn poser_eden_dans(donnees: &Path, eden: &Path, base: u64, stock: &Path, utilise
     }
     let choix = crate::contenus_switch::charger(donnees).0.jeu(base);
     let lieu = crate::contenus_switch::lieu("eden", eden);
-    let mut raisons = Vec::new();
-    let v = voulus(stock, &choix, utilisee, &mut raisons);
+    let (mut raisons, mut reservees) = (Vec::new(), Vec::new());
+    let mut v = voulus_pour(stock, &choix, utilisee, liste, &mut raisons, &mut reservees);
+    // Eden est commun à la maison : noms neutres pour un mod réservé, et un mod masqué est coupé, pas retiré.
+    for x in &mut v {
+        x.commun = true;
+    }
     let abriter = || -> Resultat<()> {
         crate::eden::abriter_parties_du_jeu(eden, base)?;
         let _ = crate::contenus_switch::noter_abri_fait(donnees, base, &lieu);
@@ -1444,6 +1714,7 @@ fn poser_eden_dans(donnees: &Path, eden: &Path, base: u64, stock: &Path, utilise
     };
     let mut r = synchroniser(&dossier_jeu, &v, choix.abri_a_faire(&lieu), &abriter)?;
     r.raisons.splice(0..0, raisons);
+    r.reservees.splice(0..0, reservees);
     if r.inchange {
         return Ok(r);
     }
@@ -1471,6 +1742,70 @@ fn poser_eden_dans(donnees: &Path, eden: &Path, base: u64, stock: &Path, utilise
         }
     }
     Ok(r)
+}
+
+// --- Le contrôle avant de lancer : aucun mod d'un autre profil ne doit rester chargé ---
+
+/// Le message (neutre : jamais le nom du mod) quand un mod réservé d'un autre profil reste chargé.
+pub fn message_masque_en_place(emulateur: &str) -> String {
+    format!(
+        "Un mod d'un autre profil est encore en place dans {emulateur} : Frogtend n'a pas pu le couper (émulateur ouvert, parties pas mises à l'abri, place ou réglages manquants). La partie ne se lance pas ; ferme {emulateur} puis réessaie, ou lance-la depuis le profil qui l'a installé."
+    )
+}
+
+/// Les clés des mods rangés que ce profil ne voit pas (`liste` : sa dernière liste reçue).
+fn cles_masquees(stock: &Path, liste: Option<&ListeMods>) -> Vec<String> {
+    let tous = ranges(stock);
+    let vus = visibles(tous.clone(), liste);
+    tous.into_iter().filter(|m| !vus.iter().any(|v| v.cle == m.cle)).map(|m| m.cle).collect()
+}
+
+/// Un mod masqué (`masques`) est-il encore CHARGÉ dans le dossier des mods d'un jeu (`coupe` : ce dossier est-il coupé
+/// dans l'émulateur ?) ? Une note illisible alors qu'il y a des mods masqués : dans le doute, oui.
+fn masque_charge(dossier_jeu: &Path, masques: &[String], coupe: &dyn Fn(&str) -> bool, emulateur: &str) -> Option<String> {
+    if masques.is_empty() {
+        return None;
+    }
+    let Some(note) = lire_note(dossier_jeu) else { return dossier_jeu.exists().then(|| message_note_illisible(emulateur)) };
+    note.iter()
+        .any(|(cle, n)| masques.contains(cle) && dossier_jeu.join(&n.dossier).exists() && !coupe(&n.dossier))
+        .then(|| message_masque_en_place(emulateur))
+}
+
+/// Le message quand la note des mods posés ne se lit plus (dans le doute, la partie ne part pas).
+pub fn message_note_illisible(emulateur: &str) -> String {
+    format!(
+        "Frogtend ne sait plus quels mods sont en place pour ce jeu dans {emulateur} (sa note est illisible) : par prudence, la partie ne se lance pas. Lance le jeu depuis le profil qui a installé ses mods, ou demande de l'aide."
+    )
+}
+
+/// APRÈS la pose Ryubing (quelle qu'en soit l'issue) : un mod qu'un autre profil a reçu est-il encore chargé dans la
+/// racine de la personne qui lance (`liste` : SA dernière liste) ? `Some(message)` : la partie ne doit pas partir.
+pub fn verifier_masques_ryubing(racine: &Path, base: u64, stock: &Path, liste: Option<&ListeMods>) -> Option<String> {
+    let racine = PathBuf::from(racine.to_string_lossy().replace('/', "\\"));
+    let contents = sous_dossier_existant(&racine.join("mods"), "contents");
+    let dossier_jeu = sous_dossier_existant(&contents, &format!("{base:016x}"));
+    let masques = cles_masquees(stock, liste);
+    let mj: Option<Value> = std::fs::read(crate::ryubing::fichier_mods_json(&racine, base)).ok().and_then(|o| serde_json::from_slice(&o).ok());
+    let coupe = |nom: &str| {
+        let chemin = dossier_jeu.join(nom).to_string_lossy().to_string();
+        mj.as_ref().is_some_and(|v| v["mods"].as_array().into_iter().flatten().any(|e| e["path"].as_str() == Some(chemin.as_str()) && e["enabled"] == false))
+    };
+    masque_charge(&dossier_jeu, &masques, &coupe, "Ryubing")
+}
+
+/// APRÈS la pose Eden (quelle qu'en soit l'issue : Eden ouvert, abri impossible, place, erreur) : un mod qu'un autre
+/// profil a reçu est-il encore chargé dans Eden, commun à la maison (pas coupé par `[DisabledAddOns]` ; sans
+/// qt-config.ini, rien ne peut l'être) ? `Some(message)` : la partie ne doit pas partir.
+pub fn verifier_masques_eden(eden: &Path, base: u64, stock: &Path, liste: Option<&ListeMods>) -> Option<String> {
+    let Some(load) = crate::eden::dossier_load(eden) else { return None };
+    let dossier_jeu = sous_dossier_existant(&load, &format!("{base:016X}"));
+    let masques = cles_masquees(stock, liste);
+    let coupes: Vec<String> = std::fs::read_to_string(crate::contenus::ini_eden(eden))
+        .ok()
+        .map(|t| crate::eden::lire_coupures(&t).into_iter().find(|(x, _)| *x == base).map(|(_, l)| l).unwrap_or_default())
+        .unwrap_or_default();
+    masque_charge(&dossier_jeu, &masques, &|nom| coupes.iter().any(|c| c == nom), "Eden")
 }
 
 // --- Le travail en arrière-plan (téléchargements) ---
@@ -1588,6 +1923,11 @@ pub struct ModVu {
     pub emulateurs_essayes: Vec<String>,
     /// Firehouse le sert-il encore (sinon : seulement rangé sur ce PC) ?
     pub servi: bool,
+    /// Contrat 1.46 : la sorte du mod (`technique`, `contenu`, `cosmetique`, `triche`, `autre`) et son intérêt (1 à 5),
+    /// `null` tant que Firehouse n'a pas écrit sa fiche.
+    #[serde(rename = "type")]
+    pub type_mod: Option<String>,
+    pub interet: Option<u8>,
 }
 
 /// La liste vue sur la fiche.
@@ -1640,14 +1980,19 @@ pub fn liste_vue(lecture: &Lecture, rangs: &[ManifesteMod], choix: &crate::conte
             contenu: m.contenu.clone(),
             emulateurs_essayes: m.emulateurs_essayes.clone(),
             servi: true,
+            type_mod: m.type_mod.clone(),
+            interet: m.interet,
         });
     }
-    for r in rangs.iter().filter(|r| !lecture.liste.mods.iter().any(|m| m.cle == r.cle)) {
+    // Un mod rangé RÉSERVÉ (« adulte ») que la liste de CE profil ne contient pas : écarté, jamais montré (pas même
+    // « plus servi »). Il reste rangé pour le profil qui le voit.
+    let vus = visibles(rangs.to_vec(), Some(&lecture.liste));
+    for r in vus.iter().filter(|r| !lecture.liste.mods.iter().any(|m| m.cle == r.cle)) {
         let c = compatibilite(&r.versions, r.compatible, r.raison.as_deref(), r.version_servie.as_ref(), utilisee);
         mods.push(ModVu {
             cle: r.cle.clone(),
             nom: r.nom.clone(),
-            description: String::new(),
+            description: r.description.clone(),
             auteur: String::new(),
             licence: String::new(),
             source: String::new(),
@@ -1665,8 +2010,12 @@ pub fn liste_vue(lecture: &Lecture, rangs: &[ManifesteMod], choix: &crate::conte
             contenu: r.contenu.clone(),
             emulateurs_essayes: vec![],
             servi: false,
+            type_mod: r.type_mod.clone(),
+            interet: r.interet,
         });
     }
+    // Les plus intéressants d'abord (`interet` décroissant, sans fiche en dernier), puis par nom.
+    trier_par_interet(&mut mods);
     ListeVue {
         etat: lecture.etat.clone(),
         vue_le: lecture.vue_le.clone(),
@@ -1679,15 +2028,32 @@ pub fn liste_vue(lecture: &Lecture, rangs: &[ManifesteMod], choix: &crate::conte
     }
 }
 
+/// Trie la liste vue : `interet` décroissant (sans fiche en dernier), puis par nom (sans casse).
+pub fn trier_par_interet(mods: &mut [ModVu]) {
+    mods.sort_by(|a, b| b.interet.unwrap_or(0).cmp(&a.interet.unwrap_or(0)).then_with(|| a.nom.to_lowercase().cmp(&b.nom.to_lowercase())));
+}
+
 /// Allumer `cle` est-il refusé par un conflit avec un mod rangé ALLUMÉ (dans un sens ou dans l'autre) ? `sauf` : le
 /// mod que la personne a accepté d'éteindre en même temps. Rend le motif lisible.
 pub fn conflit(rangs: &[ManifesteMod], choix: &crate::contenus_switch::ChoixJeu, cle: &str, sauf: Option<&str>) -> Option<String> {
-    let a = rangs.iter().find(|m| m.cle == cle)?;
-    rangs
-        .iter()
+    let vus: Vec<String> = rangs.iter().map(|m| m.cle.clone()).collect();
+    conflit_pour(rangs, &vus, choix, cle, sauf)
+}
+
+/// `conflit` vérifié sur TOUS les mods rangés (`tous`), y compris ceux que ce profil ne voit pas (`vus` : les clés
+/// qu'il voit) : contre un mod qu'il ne voit pas, le motif est NEUTRE (jamais son nom).
+pub fn conflit_pour(tous: &[ManifesteMod], vus: &[String], choix: &crate::contenus_switch::ChoixJeu, cle: &str, sauf: Option<&str>) -> Option<String> {
+    let a = tous.iter().find(|m| m.cle == cle)?;
+    tous.iter()
         .filter(|b| b.cle != cle && Some(b.cle.as_str()) != sauf && choix.mod_actif(&b.cle))
         .find(|b| a.conflits.contains(&b.cle) || b.conflits.contains(&a.cle))
-        .map(|b| format!("« {} » ne va pas avec « {} », déjà allumé : il faut l'éteindre pour allumer celui-ci.", a.nom, b.nom))
+        .map(|b| {
+            if vus.contains(&b.cle) {
+                format!("« {} » ne va pas avec « {} », déjà allumé : il faut l'éteindre pour allumer celui-ci.", a.nom, b.nom)
+            } else {
+                format!("« {} » ne va pas avec un autre mod allumé sur ce PC : il ne peut pas être allumé pour l'instant.", a.nom)
+            }
+        })
 }
 
 #[cfg(test)]

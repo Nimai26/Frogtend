@@ -1346,6 +1346,8 @@ impl Noyau {
                 break;
             }
             if dernier_vivant.elapsed() >= INTERVALLE_VIVANT {
+                // Ce qui garde la partie en cours, au journal (pour comprendre une partie qui ne finit pas).
+                self.journaliser(&format!("partie du jeu {id} toujours en cours ({} s) : {}", debut.elapsed().as_secs(), suivi.vivants().join(", ")));
                 self.annoncer(id, "vivant").await;
                 dernier_vivant = Instant::now();
             }

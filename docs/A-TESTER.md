@@ -6,6 +6,15 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🧩 Fiches des mods, confidentialité, noms des DLC (0.209.0)
+- [ ] Fire Emblem ▸ 📦 : les DLC s'appellent « Additional Quests », « New Attire »… ; la mise à jour « Version 1.2.0 » ;
+      plus de message « dossiers trop profonds ».
+- [ ] Zelda ▸ 🧩 Mods : descriptions en français, « ⭐ Recommandé » sur les plus utiles (quand Firehouse a écrit leurs
+      fiches).
+- [ ] Zelda avec Eden, 1080p allumé : le journal dit que son dossier est renommé (nom neutre « Mod … ») ; le correctif
+      est toujours appliqué en jeu.
+- [ ] Rejouer sans rien changer : le journal ne fait pas de nouvelle copie des parties.
+
 ## 🧩 Mods Switch (0.208.0) — d'abord valider les mods de Zelda dans Firehouse
 - [x] (✅ Seb 18/11 : 4 mods) Zelda BotW ▸ panneau 📦 : la partie « 🧩 Mods : … » apparaît sous les mises à jour et DLC, avec les mods validés
       (nom, auteur, licence, description). (Relever la réponse RÉELLE de la route 1.44 pour la doc.)

@@ -13,6 +13,9 @@ import {
   aUnInterrupteur,
   blocModsVisible,
   cibleDuFocus,
+  libelleType,
+  ligneSorte,
+  recommande,
   clesVues,
   conflitAvec,
   dateVue,
@@ -65,6 +68,8 @@ function mod(x: Partial<ModSwitchVu> = {}): ModSwitchVu {
     contenu: { exefs: true, romfs: false, cheats: false },
     emulateurs_essayes: ['Ryubing'],
     servi: true,
+    type: null,
+    interet: null,
     ...x,
   };
 }
@@ -314,5 +319,28 @@ describe('relecture finale (18/11)', () => {
     expect(cibleDuFocus(lignes, 'c', ordre, entete)?.textContent).toBe('C');
     // Une ligne retirée, rien d'actif après elle : l'en-tête (jamais une ligne `tabindex="-1"`).
     expect(cibleDuFocus(lignes.slice(0, 2), 'x', ['x', 'a', 'b'], entete)).toBe(entete);
+  });
+});
+
+describe('la fiche de chaque mod (contrat 1.46)', () => {
+  it('la sorte se dit en mots simples ; sans fiche, rien', () => {
+    expect(libelleType('technique')).toBe('amélioration technique');
+    expect(libelleType('contenu')).toBe('contenu');
+    expect(libelleType('cosmetique')).toBe('apparence');
+    expect(libelleType('triche')).toBe('triche');
+    expect(libelleType('autre')).toBe('autre');
+    expect(libelleType('inconnu-demain')).toBe('autre');
+    expect(libelleType(null)).toBeNull();
+  });
+
+  it('« ⭐ Recommandé » à partir de 4 sur 5', () => {
+    expect(recommande(mod({ interet: 4 }))).toBe(true);
+    expect(recommande(mod({ interet: 5 }))).toBe(true);
+    expect(recommande(mod({ interet: 3 }))).toBe(false);
+    expect(recommande(mod({ interet: null }))).toBe(false);
+    expect(ligneSorte(mod({ interet: 5, type: 'technique' }))).toBe('⭐ Recommandé · amélioration technique');
+    expect(ligneSorte(mod({ interet: 2, type: 'cosmetique' }))).toBe('apparence');
+    expect(ligneSorte(mod({ interet: 4, type: null }))).toBe('⭐ Recommandé');
+    expect(ligneSorte(mod())).toBeNull();
   });
 });

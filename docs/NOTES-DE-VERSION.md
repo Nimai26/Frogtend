@@ -1,5 +1,22 @@
 # Notes de version de Frogtend
 
+## 0.209.0 — 🧩 Les fiches des mods Switch, et des noms de DLC lisibles
+
+- Nouveau : chaque mod Switch montre sa description en français, sa sorte (amélioration technique, contenu, apparence,
+  triche) et « ⭐ Recommandé » pour les plus utiles ; la liste commence par eux.
+- Confidentialité : un mod réservé aux adultes, téléchargé par un admin, n'existe que pour les profils à qui Firehouse le
+  sert — jamais montré, jamais nommé au journal, jamais utilisé en jeu pour les autres (dans Eden, commun à la maison, il
+  est coupé et porte un nom neutre ; s'il ne peut pas l'être, la partie ne se lance pas). Par prudence, un mod dont
+  Firehouse n'a pas encore écrit la fiche est traité de la même façon.
+- Corrigé : les DLC Switch portent leur vrai nom (« Additional Quests », « New Attire »… au lieu du titre du jeu partout),
+  et la mise à jour s'appelle « Version 1.2.0 ».
+- Corrigé : « certains dossiers sont trop profonds » ne s'affiche plus pour tous les jeux Switch dès qu'un mod est
+  téléchargé.
+- Tes parties : la mise à l'abri n'en refait plus une copie quand elles n'ont pas changé depuis la précédente (comparées
+  octet par octet) — le disque ne se remplit plus à chaque changement de profil.
+- Pour comprendre une partie qui resterait « en cours » : le journal dit, toutes les 10 minutes, quels programmes la
+  gardent ouverte.
+
 ## 0.208.1 — Fin de partie plus sûre, et mieux notée
 
 - Corrigé : l'annonce de fin de partie à Firehouse ne peut plus retenir la fin d'une partie (au plus 90 s) ; la partie

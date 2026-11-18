@@ -6,6 +6,18 @@ describe('les contenus additionnels', () => {
     expect(nomCourt('Asuras Wrath - Episode 11.5 (Europe) (EnJaFrDeEsIt) (DLC)', "Asura's Wrath")).toBe('Episode 11.5');
     expect(nomCourt('God of War - Ascension - Achilles (Europe) (Avatar)', 'God of War - Ascension')).toBe('Ascension - Achilles');
     expect(nomCourt('Thème libre', 'Autre jeu')).toBe('Thème libre');
+    // Switch : ce qui distingue un DLC est entre crochets (Seb 18/11 : tous portaient « Fire Emblem Three Houses »).
+    const fe = 'Fire Emblem: Three Houses';
+    expect(nomCourt('Fire Emblem Three Houses [Additional Quests][010055D009F79004][US][v196608].nsp', fe)).toBe('Additional Quests');
+    expect(nomCourt('Fire Emblem Three Houses [Side Story Cindered Shadows][010055D009F79001][US][v196608]', fe)).toBe('Side Story Cindered Shadows');
+    expect(nomCourt('Fire Emblem Three Houses [v1.2.0][v327680] (nsw2u).nsp', fe)).toBe('Version 1.2.0');
+    expect(nomCourt('The Legend of Zelda Breath of the Wild [01007EF00011E800][v786432](nsw2u).nsp', 'The Legend of Zelda: Breath of the Wild')).toBe('The Legend of Zelda Breath of the Wild');
+    expect(nomCourt('Jeu [Quests][US]', 'Jeu')).toBe('Quests');
+    expect(nomCourt('Jeu [EnJaFr][switch-xci.com]', 'Jeu')).toBe('Jeu');
+    // Les parenthèses (PS3, Wii U) ne sont jamais prises pour le nom du DLC.
+    expect(nomCourt('Jeu (Europe)', 'Jeu')).toBe('Jeu');
+    expect(nomCourt('Jeu (Europe) (EnFrDe) (DLC)', 'Jeu')).toBe('Jeu');
+    expect(nomCourt('Jeu (Pack Bonus) (Europe)', 'Jeu')).toBe('Jeu');
     expect(libelleGenre('avatar')).toBe('Avatar');
     expect(libelleGenre('licence')).toBe('Licence');
     expect(libelleGenre('inconnu')).toBe('Contenu');

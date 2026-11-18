@@ -685,6 +685,10 @@ export interface ModSwitchVu {
   emulateurs_essayes: string[];
   /** Faux : rangé sur ce PC, Firehouse ne le sert plus. */
   servi: boolean;
+  /** Contrat 1.46 (fiche écrite par l'IA de Firehouse ; `null` tant qu'elle n'est pas écrite) : la sorte du mod. */
+  type: 'technique' | 'contenu' | 'cosmetique' | 'triche' | 'autre' | null;
+  /** 1 à 5 (5 : utile à tous) ; la liste arrive triée du plus intéressant au moins intéressant. */
+  interet: number | null;
 }
 
 /** La liste des mods Switch d'un jeu. `etat` : ok | hors_ligne (`vue_le` : date de la dernière liste lue) | injoignable | rien. */

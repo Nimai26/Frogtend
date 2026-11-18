@@ -1961,7 +1961,8 @@ pub async fn mods_switch_lister(app: AppHandle, noyau: State<'_, Noyau>, id: i64
     .unwrap_or_default();
     let choix = crate::contenus_switch::charger(&noyau.dossier).0.jeu(cx.base);
     let mut vue = crate::mods_switch::liste_vue(&lecture, &rangs, &choix, cx.utilisee, cx.base);
-    vue.derniere_pose = derniere;
+    // Les raisons qui nomment un mod réservé : seulement si CE profil le voit.
+    vue.derniere_pose = derniere.map(|d| d.pour_le_profil(Some(&lecture.liste)));
     Ok(vue)
 }
 
@@ -2052,8 +2053,11 @@ pub async fn mods_switch_telecharger(app: AppHandle, noyau: State<'_, Noyau>, id
                 travail.modifier(id, |x| x.arret = Some("le profil a changé".into()));
                 break;
             }
+            // Le suivi est commun à tous les profils, le journal aussi : un mod réservé (« adulte ») n'y est jamais nommé.
+            let deja = crate::mods_switch::ranges(&stock);
+            let nom_dit = crate::mods_switch::nom_a_dire(&m, &deja);
             travail.modifier(id, |x| {
-                x.en_cours = Some(m.nom.clone());
+                x.en_cours = Some(nom_dit.clone());
                 x.recus = 0;
                 x.total = m.fichier.taille;
             });
@@ -2071,15 +2075,15 @@ pub async fn mods_switch_telecharger(app: AppHandle, noyau: State<'_, Noyau>, id
                     let eteint = !crate::contenus_switch::charger(&noyau.dossier).0.jeu(base).mod_actif(&r.cle);
                     noyau.journaliser(&format!(
                         "mods Switch du jeu {id} : « {} » (révision {}) installé{} ; parties à mettre à l'abri avant la prochaine partie",
-                        r.nom,
+                        nom_dit,
                         r.revision,
                         if eteint { ", éteint (un mod allumé ne va pas avec lui, ou il était éteint)" } else { "" }
                     ));
                 }
                 Err(e) => {
                     let jeton = matches!(e, Erreur::JetonRefuse(_));
-                    noyau.journaliser(&format!("mods Switch du jeu {id} : « {} » pas installé ({e})", m.nom));
-                    travail.modifier(id, |x| x.erreurs.push(format!("{} : {e}", m.nom)));
+                    noyau.journaliser(&format!("mods Switch du jeu {id} : « {nom_dit} » pas installé ({e})"));
+                    travail.modifier(id, |x| x.erreurs.push(format!("{nom_dit} : {e}")));
                     if jeton {
                         break;
                     }
@@ -2110,9 +2114,19 @@ pub async fn mods_switch_choisir(app: AppHandle, noyau: State<'_, Noyau>, id: i6
     profil_ouvert(&noyau).await?;
     mods_switch_permis(&app, &noyau)?;
     let cx = contexte_mods_switch(&app, &noyau, id).await?.ok_or_else(|| Erreur::Refus("Les mods de ce jeu ne se lisent pas : rien n'est changé.".into()))?;
-    let stock = cx.stock.clone();
-    let rangs = tauri::async_runtime::spawn_blocking(move || crate::mods_switch::ranges(&stock)).await.unwrap_or_default();
+    // Seuls les mods que CE profil peut voir (un mod réservé absent de sa dernière liste n'existe pas pour lui).
+    let (stock, session) = (cx.stock.clone(), noyau.session().await?.dossier.clone());
+    let base_cx = cx.base;
+    let (tous, rangs) = tauri::async_runtime::spawn_blocking(move || {
+        let tous = crate::mods_switch::ranges(&stock);
+        let vus = crate::mods_switch::visibles(tous.clone(), crate::mods_switch::liste_du_profil(&session, base_cx).as_ref());
+        (tous, vus)
+    })
+    .await
+    .unwrap_or_default();
     let nom = |c: &str| rangs.iter().find(|m| m.cle == c).map(|m| m.nom.clone());
+    // Le journal est commun à la maison : un mod réservé n'y est jamais nommé.
+    let nom_journal = |c: &str| rangs.iter().find(|m| m.cle == c).map(crate::mods_switch::nom_range_a_dire);
     let Some(nom_a) = nom(&cle) else { return Err(Erreur::Refus("Ce mod n'est pas installé sur ce PC : relis la fiche.".into())) };
     let eteindre = eteindre.filter(|b| *b != cle);
     if let Some(b) = &eteindre {
@@ -2123,7 +2137,9 @@ pub async fn mods_switch_choisir(app: AppHandle, noyau: State<'_, Noyau>, id: i6
     let donnees = noyau.dossier.clone();
     let choix = crate::contenus_switch::charger(&donnees).0.jeu(cx.base);
     if allume {
-        if let Some(m) = crate::mods_switch::conflit(&rangs, &choix, &cle, eteindre.as_deref()) {
+        // Sur TOUS les mods rangés (un mod qu'il ne voit pas peut être allumé pour la maison) ; motif neutre alors.
+        let vus: Vec<String> = rangs.iter().map(|m| m.cle.clone()).collect();
+        if let Some(m) = crate::mods_switch::conflit_pour(&tous, &vus, &choix, &cle, eteindre.as_deref()) {
             return Err(Erreur::Refus(m));
         }
     }
@@ -2137,10 +2153,12 @@ pub async fn mods_switch_choisir(app: AppHandle, noyau: State<'_, Noyau>, id: i6
     let change = tauri::async_runtime::spawn_blocking(move || crate::contenus_switch::choisir_mods(&donnees, base, &changements))
         .await
         .map_err(|_| Erreur::Disque("L'enregistrement s'est arrêté brutalement.".into()))??;
+    let _ = nom_a;
     noyau.journaliser(&format!(
-        "mods Switch du jeu {id} : « {nom_a} » {}{}{}",
+        "mods Switch du jeu {id} : « {} » {}{}{}",
+        nom_journal(&cle).unwrap_or_default(),
         if allume { "allumé" } else { "éteint" },
-        eteindre.as_deref().and_then(nom).map(|b| format!(", « {b} » éteint")).unwrap_or_default(),
+        eteindre.as_deref().and_then(nom_journal).map(|b| format!(", « {b} » éteint")).unwrap_or_default(),
         if change { " ; parties à mettre à l'abri avant la prochaine partie" } else { "" }
     ));
     Ok(change)
@@ -2158,7 +2176,13 @@ pub async fn mods_switch_retirer(app: AppHandle, noyau: State<'_, Noyau>, id: i6
     }
     let cx = contexte_mods_switch(&app, &noyau, id).await?.ok_or_else(|| Erreur::Refus("Les mods de ce jeu ne se lisent pas : rien n'est retiré.".into()))?;
     let (stock, donnees, base, c) = (cx.stock.clone(), noyau.dossier.clone(), cx.base, cle.clone());
+    let session = noyau.session().await?.dossier.clone();
     tauri::async_runtime::spawn_blocking(move || -> Resultat<()> {
+        // Un mod réservé que CE profil ne voit pas : « pas installé » (jamais retiré par lui).
+        let vus = crate::mods_switch::visibles(crate::mods_switch::ranges(&stock), crate::mods_switch::liste_du_profil(&session, base).as_ref());
+        if !vus.iter().any(|m| m.cle == c) {
+            return Err(Erreur::Introuvable("Ce mod n'est pas installé.".into()));
+        }
         crate::mods_switch::retirer(&stock, &c)?;
         crate::contenus_switch::noter_changement_de_mod(&donnees, base, Some(&c))
     })
@@ -2176,58 +2200,95 @@ enum ModsPour {
 
 /// Au LANCEMENT, quand les mises à jour et DLC n'ont pas pu être préparés : les mods sont quand même remis d'accord
 /// (un mod éteint ne reste jamais chargé), avec une version de mise à jour INCONNUE et le title id tiré du nom (ou du
-/// ticket) du fichier. Sans title id : rien n'est posé, et la raison va sur la fiche.
-async fn poser_mods_switch_sans_contenus(noyau: &Noyau, id: i64, pour: ModsPour, fichier: std::path::PathBuf) {
+/// ticket) du fichier. Sans title id : rien n'est posé, la raison va sur la fiche — et si un mod d'un autre profil
+/// reste chargé dans l'émulateur (n'importe quel rangement du jeu), la partie ne part pas (`Err`).
+async fn poser_mods_switch_sans_contenus(noyau: &Noyau, id: i64, pour: ModsPour, fichier: std::path::PathBuf) -> Resultat<()> {
     let base = tauri::async_runtime::spawn_blocking(move || crate::mods_switch::base_du_fichier(&fichier)).await.ok().flatten();
-    match base {
-        Some(b) => poser_mods_switch(noyau, id, pour, b, None).await,
-        None => {
-            let Ok(j) = noyau.jeu_visible(id).await else { return };
-            if j.dossier.is_empty() || !std::path::Path::new(&j.dossier).is_absolute() {
-                return;
-            }
-            let nom = match pour {
-                ModsPour::Ryubing { .. } => "Ryubing",
-                ModsPour::Eden { .. } => "Eden",
-            };
-            let frogtend = crate::locale::dossier_frogtend(&j);
-            let n = crate::mods_switch::noter_raison_partout(&frogtend, nom, crate::mods_switch::RAISON_SANS_TITRE);
-            if n > 0 {
-                noyau.journaliser(&format!("{nom} : mods Switch du jeu {id} pas remis d'accord (jeu pas reconnu)"));
-            }
+    if let Some(b) = base {
+        return poser_mods_switch(noyau, id, pour, b, None).await;
+    }
+    let Ok(j) = noyau.jeu_visible(id).await else { return Ok(()) };
+    if j.dossier.is_empty() || !std::path::Path::new(&j.dossier).is_absolute() {
+        return Ok(());
+    }
+    let nom = match pour {
+        ModsPour::Ryubing { .. } => "Ryubing",
+        ModsPour::Eden { .. } => "Eden",
+    };
+    let frogtend = crate::locale::dossier_frogtend(&j);
+    let n = crate::mods_switch::noter_raison_partout(&frogtend, nom, crate::mods_switch::RAISON_SANS_TITRE);
+    if n > 0 {
+        noyau.journaliser(&format!("{nom} : mods Switch du jeu {id} pas remis d'accord (jeu pas reconnu)"));
+    }
+    // Le contrôle, sur chaque rangement du jeu (on ne sait pas lequel est le bon).
+    let session = noyau.session().await.ok().map(|s| s.dossier.clone());
+    for (b, stock) in crate::mods_switch::rangements_du_jeu(&frogtend) {
+        let liste = session.as_deref().and_then(|d| crate::mods_switch::liste_du_profil(d, b));
+        let refus = match &pour {
+            ModsPour::Ryubing { racine, .. } => crate::mods_switch::verifier_masques_ryubing(racine, b, &stock, liste.as_ref()),
+            ModsPour::Eden { dossier } => crate::mods_switch::verifier_masques_eden(dossier, b, &stock, liste.as_ref()),
+        };
+        if let Some(m) = refus {
+            noyau.journaliser(&format!("{nom} : jeu {id} pas lancé : un mod d'un autre profil reste en place"));
+            return Err(Erreur::Refus(m));
         }
     }
+    Ok(())
 }
 
 /// Au LANCEMENT (après l'abri et `poser_contenus`) : met les mods de Frogtend d'accord dans l'émulateur. Un échec est
-/// noté au journal ; le jeu se lance toujours (rien n'a changé pour les mods dans ce cas).
-async fn poser_mods_switch(noyau: &Noyau, id: i64, pour: ModsPour, base: u64, utilisee: Option<u32>) {
-    let Ok(j) = noyau.jeu_visible(id).await else { return };
+/// noté au journal et le jeu se lance avec la pose d'avant — SAUF si un mod qu'un autre profil a reçu (« adulte »…)
+/// reste chargé pour le profil qui lance : alors `Err` (message neutre), la partie ne part pas (brief § 2). Jamais de
+/// retrait forcé sans abri.
+async fn poser_mods_switch(noyau: &Noyau, id: i64, pour: ModsPour, base: u64, utilisee: Option<u32>) -> Resultat<()> {
+    let Ok(j) = noyau.jeu_visible(id).await else { return Ok(()) };
     if j.dossier.is_empty() || !std::path::Path::new(&j.dossier).is_absolute() {
-        return;
+        return Ok(());
     }
     let stock = crate::mods_switch::dossier_stock(&crate::locale::dossier_frogtend(&j), base);
     let donnees = noyau.dossier.clone();
+    // La dernière liste reçue par le profil QUI LANCE (son cache) : un mod réservé qu'elle ne contient pas n'est ni
+    // posé ni nommé (brief § 2). Sans session : aucune liste, aucun mod réservé.
+    let session = noyau.session().await.ok().map(|s| s.dossier.clone());
+    let liste = session.as_deref().and_then(|d| crate::mods_switch::liste_du_profil(d, base));
     let (nom, r) = match pour {
-        ModsPour::Ryubing { dossier, racine } => (
-            "Ryubing",
-            tauri::async_runtime::spawn_blocking(move || crate::mods_switch::poser_ryubing(&donnees, &dossier, &racine, base, &stock, utilisee)).await,
-        ),
-        ModsPour::Eden { dossier } => (
-            "Eden",
-            tauri::async_runtime::spawn_blocking(move || {
-                let ouvert = !crate::lancement::processus_du_dossier(&dossier).is_empty();
-                crate::mods_switch::poser_eden(&donnees, &dossier, base, &stock, utilisee, ouvert)
+        ModsPour::Ryubing { dossier, racine } => {
+            let (s, l) = (stock.clone(), liste.clone());
+            let r = tauri::async_runtime::spawn_blocking(move || {
+                let r = crate::mods_switch::poser_ryubing_pour(&donnees, &dossier, &racine, base, &s, utilisee, l.as_ref());
+                (r, crate::mods_switch::verifier_masques_ryubing(&racine, base, &s, l.as_ref()))
             })
-            .await,
-        ),
+            .await;
+            ("Ryubing", r)
+        }
+        ModsPour::Eden { dossier } => {
+            let (s, l) = (stock.clone(), liste.clone());
+            let r = tauri::async_runtime::spawn_blocking(move || {
+                let ouvert = !crate::lancement::processus_du_dossier(&dossier).is_empty();
+                let r = crate::mods_switch::poser_eden_pour(&donnees, &dossier, base, &s, utilisee, ouvert, l.as_ref());
+                (r, crate::mods_switch::verifier_masques_eden(&dossier, base, &s, l.as_ref()))
+            })
+            .await;
+            ("Eden", r)
+        }
+    };
+    let Ok((r, refus)) = r else {
+        // La pose s'est arrêtée brutalement : on ne sait pas ce qui est en place. S'il existe un mod que ce profil ne
+        // voit pas, dans le doute, la partie ne part pas.
+        noyau.journaliser(&format!("{nom} : la pose des mods Switch du jeu {id} s'est arrêtée brutalement"));
+        let masque = crate::mods_switch::ranges(&stock).len() > crate::mods_switch::visibles(crate::mods_switch::ranges(&stock), liste.as_ref()).len();
+        return if masque { Err(Erreur::Refus(crate::mods_switch::message_masque_en_place(nom))) } else { Ok(()) };
     };
     match r {
-        Ok(Ok(b)) if b == crate::mods_switch::BilanMods::default() => {}
-        Ok(Ok(b)) => noyau.journaliser(&format!("{nom} : mods Switch du jeu {id} : {}", b.resume())),
-        Ok(Err(e)) => noyau.journaliser(&format!("{nom} : mods Switch du jeu {id} non posés ({e})")),
-        Err(_) => noyau.journaliser(&format!("{nom} : la pose des mods Switch du jeu {id} s'est arrêtée brutalement")),
+        Ok(b) if b == crate::mods_switch::BilanMods::default() => {}
+        Ok(b) => noyau.journaliser(&format!("{nom} : mods Switch du jeu {id} : {}", b.resume())),
+        Err(e) => noyau.journaliser(&format!("{nom} : mods Switch du jeu {id} non posés ({e})")),
     }
+    if let Some(m) = refus {
+        noyau.journaliser(&format!("{nom} : jeu {id} pas lancé : un mod d'un autre profil reste en place"));
+        return Err(Erreur::Refus(m));
+    }
+    Ok(())
 }
 
 /// Le bilan d'une installation de contenus.
@@ -2692,14 +2753,14 @@ pub async fn jeu_jouer(
                             noyau.journaliser(&format!("Ryubing : mises à jour et DLC du jeu {id} : {}", c.resume()));
                             // Les mods Switch (✅ Seb 18/11) : APRÈS l'abri et les mises à jour, d'après la mise à jour
                             // réellement utilisée.
-                            poser_mods_switch(&noyau, id, ModsPour::Ryubing { dossier: d_mods, racine: racine_mods }, c.base, c.maj_utilisee).await;
+                            poser_mods_switch(&noyau, id, ModsPour::Ryubing { dossier: d_mods, racine: racine_mods }, c.base, c.maj_utilisee).await?;
                         }
                         // Les mises à jour et DLC ne se préparent pas (clés, choix pas repris, jeu illisible) : les mods
                         // sont QUAND MÊME remis d'accord (un mod éteint ne doit pas rester chargé), version inconnue.
-                        Ok(None) => poser_mods_switch_sans_contenus(&noyau, id, ModsPour::Ryubing { dossier: d_mods, racine: racine_mods }, fichier_mods).await,
+                        Ok(None) => poser_mods_switch_sans_contenus(&noyau, id, ModsPour::Ryubing { dossier: d_mods, racine: racine_mods }, fichier_mods).await?,
                         Err(e) => {
                             noyau.journaliser(&format!("Ryubing : mises à jour et DLC du jeu {id} non posés ({e})"));
-                            poser_mods_switch_sans_contenus(&noyau, id, ModsPour::Ryubing { dossier: d_mods, racine: racine_mods }, fichier_mods).await;
+                            poser_mods_switch_sans_contenus(&noyau, id, ModsPour::Ryubing { dossier: d_mods, racine: racine_mods }, fichier_mods).await?;
                         }
                     }
                 }
@@ -2739,14 +2800,14 @@ pub async fn jeu_jouer(
                             // Les mods Switch (✅ Seb 18/11) : après l'abri et les mises à jour (une mise à jour coupée
                             // dans Eden : le jeu d'origine).
                             let utilisee = if c.maj_coupee { Some(0) } else { c.maj_utilisee };
-                            poser_mods_switch(&noyau, id, ModsPour::Eden { dossier: std::path::PathBuf::from(&d_eden) }, c.base, utilisee).await;
+                            poser_mods_switch(&noyau, id, ModsPour::Eden { dossier: std::path::PathBuf::from(&d_eden) }, c.base, utilisee).await?;
                         }
                         // Mises à jour et DLC pas préparés : les mods sont quand même remis d'accord, version inconnue
                         // (« Eden est ouvert » : `poser_eden` ne change rien et le dit).
-                        Ok(None) => poser_mods_switch_sans_contenus(&noyau, id, ModsPour::Eden { dossier: std::path::PathBuf::from(&d_eden) }, fichier_mods).await,
+                        Ok(None) => poser_mods_switch_sans_contenus(&noyau, id, ModsPour::Eden { dossier: std::path::PathBuf::from(&d_eden) }, fichier_mods).await?,
                         Err(e) => {
                             noyau.journaliser(&format!("Eden : mises à jour et DLC du jeu {id} non donnés ({e})"));
-                            poser_mods_switch_sans_contenus(&noyau, id, ModsPour::Eden { dossier: std::path::PathBuf::from(&d_eden) }, fichier_mods).await;
+                            poser_mods_switch_sans_contenus(&noyau, id, ModsPour::Eden { dossier: std::path::PathBuf::from(&d_eden) }, fichier_mods).await?;
                         }
                     }
                 }

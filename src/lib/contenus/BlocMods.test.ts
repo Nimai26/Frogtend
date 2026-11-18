@@ -27,6 +27,8 @@ function mod(x: Mod = {}): Mod {
     contenu: { exefs: true, romfs: false, cheats: false },
     emulateurs_essayes: ['Ryubing'],
     servi: true,
+    type: null,
+    interet: null,
     ...x,
   };
 }
@@ -335,6 +337,20 @@ describe('le bloc des mods Switch', () => {
     await ouvrir();
     expect(screen.getByText(/vue le 18\/11 à 14:05/)).toBeTruthy();
     expect((screen.getByRole('button', { name: /Télécharger/ }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('la fiche de Firehouse se lit : description, « ⭐ Recommandé », la sorte en mots simples', async () => {
+    reponse = liste([
+      mod({ cle: 'a-000000000001', nom: 'A', description: 'Le jeu s’affiche en 1080p.', interet: 5, type: 'technique' }),
+      mod({ cle: 'b-000000000001', nom: 'B', description: 'Un nouveau costume.', interet: 2, type: 'cosmetique' }),
+      mod({ cle: 'c-000000000001', nom: 'C', description: '', interet: null, type: null }),
+    ]);
+    await ouvrir();
+    expect(screen.getByText('Le jeu s’affiche en 1080p.')).toBeTruthy();
+    expect(screen.getByText('⭐ Recommandé · amélioration technique')).toBeTruthy();
+    expect(screen.getByText('apparence')).toBeTruthy();
+    expect(screen.queryAllByText(/Recommandé/).length).toBe(1);
+    expect(document.body.textContent).not.toContain('cosmetique');
   });
 
   it('une description longue se replie, « Lire plus » la déplie', async () => {

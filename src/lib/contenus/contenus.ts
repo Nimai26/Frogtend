@@ -134,13 +134,31 @@ export function libelleGenre(g: string): string {
 }
 
 /** Le nom affiché : sans le titre du jeu répété ni les étiquettes de région. */
-export function nomCourt(nom: string, titreDuJeu: string): string {
+export function nomCourt(nomComplet: string, titreDuJeu: string): string {
+  // L'extension d'un fichier Switch ne dit rien à la personne.
+  const nom = nomComplet.replace(/\.(?:nsp|nsz|xci|xcz)$/i, '');
   const sansEtiquettes = nom.replace(/\s*[([][^)\]]*[)\]]/g, '').trim();
   const parties = sansEtiquettes.split(' - ');
   const simple = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, '');
   if (parties.length > 1 && simple(titreDuJeu).startsWith(simple(parties[0]))) return parties.slice(1).join(' - ');
+  // Une Switch range ce qui distingue un DLC ENTRE CROCHETS (« Fire Emblem Three Houses [Additional Quests][0100…][US]
+  // [v196608] ») : sans eux, tous les DLC portaient le titre du jeu (Seb 18/11). Le premier crochet parlant est gardé ;
+  // jamais un numéro de titre, une région, une version brute ou une étiquette de site.
+  if (!sansEtiquettes || simple(titreDuJeu).startsWith(simple(sansEtiquettes))) {
+    // Seulement les étiquettes entre CROCHETS (le style Switch) : jamais une parenthèse (« Jeu (Europe) » d'un DLC PS3 ou
+    // Wii U ne devient pas « Europe »).
+    const etiquettes = [...nom.matchAll(/\[([^\]]*)\]/g)].map((m) => m[1].trim());
+    const parlante = etiquettes.find((e) => /[a-z]/i.test(e) && !ETIQUETTE_TECHNIQUE.test(e));
+    if (parlante) return parlante;
+    const version = etiquettes.find((e) => /^v?\d+(\.\d+){1,3}$/i.test(e));
+    if (version) return `Version ${version.replace(/^v/i, '')}`;
+  }
   return sansEtiquettes;
 }
+
+/** Une étiquette entre crochets qui ne dit rien à la personne : numéro de titre, région, langues, version brute, site. */
+const ETIQUETTES_TECHNIQUES = [/^[0-9a-f]{16}$/i, /^v\d+(?:\.\d+)*$/i, /^[A-Z]{2,3}$/, /^(?:[A-Z][a-z]){2,}$/, /^(?:nsw2u|update|upd|dlc|base|eshop)$/i, /\.(?:com|net|org)\b/i];
+const ETIQUETTE_TECHNIQUE = { test: (e: string) => ETIQUETTES_TECHNIQUES.some((r) => r.test(e)) };
 
 /** Ce qu'on dit en résumé : « 7 disponibles, 2 installés ». */
 export function resume(l: ContenuVu[]): string {

@@ -526,6 +526,8 @@ pub struct Suivi {
     morts: std::collections::HashMap<Pid, u64>,
     /// Une poignée sur chaque processus de la partie encore vivant (voir [`Poignee`]).
     poignees: std::collections::HashMap<Pid, Poignee>,
+    /// Ce qui gardait la partie en cours au dernier relevé (voir [`Suivi::vivants`]).
+    derniers_vivants: Vec<String>,
 }
 
 /// Ce processus (`numero`, créé à `debut`) est-il un de ceux retenus ? Même numéro ET même heure de création.
@@ -583,7 +585,7 @@ impl Suivi {
             None => maintenant_precis().saturating_sub(5 * PAR_SECONDE),
         };
         let vus = std::collections::HashMap::from([(r, debut)]);
-        Suivi { systeme, racine: r, dossiers, vus, morts: Default::default(), poignees }
+        Suivi { systeme, racine: r, dossiers, vus, morts: Default::default(), poignees, derniers_vivants: Vec::new() }
     }
 
     fn dans_un_dossier(&self, exe: Option<&Path>) -> bool {
@@ -662,9 +664,21 @@ impl Suivi {
             }
         }
         let _ = self.racine;
-        processus.iter().any(|(pid, p)| {
-            (self.vus.contains_key(pid) && !self.morts.contains_key(pid) && est_le_meme(&self.vus, pid, heure(pid, p))) || self.dans_un_dossier(p.exe())
-        })
+        self.derniers_vivants.clear();
+        for (pid, p) in processus {
+            let descendant = self.vus.contains_key(pid) && !self.morts.contains_key(pid) && est_le_meme(&self.vus, pid, heure(pid, p));
+            if descendant || self.dans_un_dossier(p.exe()) {
+                let pourquoi = if descendant { "lancé par la partie" } else { "dans le dossier du jeu" };
+                self.derniers_vivants.push(format!("{} ({}, {pourquoi})", p.name().to_string_lossy(), pid.as_u32()));
+            }
+        }
+        !self.derniers_vivants.is_empty()
+    }
+
+    /// Les programmes qui faisaient la partie « en cours » au dernier relevé (nom, numéro, pourquoi) : pour le journal,
+    /// quand une partie dure (Seb 18/11 : une partie restée « en cours » après la fermeture d'Eden).
+    pub fn vivants(&self) -> &[String] {
+        &self.derniers_vivants
     }
 }
 

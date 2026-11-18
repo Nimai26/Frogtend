@@ -27,6 +27,7 @@
     ligneAuteur,
     ligneEtatListe,
     ligneProgresMods,
+    ligneSorte,
     lignesDernierePose,
     lignesFinMods,
     mentions,
@@ -400,6 +401,7 @@
               {/if}
             </span>
             <div class="details">
+              {#if ligneSorte(m)}<p class="sorte">{ligneSorte(m)}</p>{/if}
               <p class="muted">{ligneAuteur(m)}</p>
               {#if m.description.trim()}
                 <p class="description" class:replie={descriptionLongue(m.description) && !lu(m.cle)} id={ident('desc', m)}>{m.description}</p>
@@ -485,6 +487,9 @@
   .description {
     overflow-wrap: anywhere;
     white-space: pre-line;
+  }
+  .sorte {
+    font-weight: 600;
   }
   .replie {
     display: -webkit-box;

@@ -38,7 +38,7 @@ fn mod_json(cle: &str, revision: u64, archive: &[u8]) -> Value {
         "source": "https://github.com/…", "licence": "aucune", "valide_le": "2026-11-18T10:00:00",
         "versions": [{"build_id": "8E9978D50BDD20B4C8395A106C27FFDE", "version_brute": 786432, "version_affichee": "1.6.0"}],
         "versions_annoncees": ["1.6.0"], "compatible": true, "raison": "", "emulateurs_essayes": [], "reglage_requis": "",
-        "conflits": [], "touche_sauvegardes": false, "contenu": {"exefs": true, "romfs": false, "cheats": false},
+        "conflits": [], "touche_sauvegardes": false, "contenu": {"exefs": true, "romfs": false, "cheats": false}, "public": "tous",
         "fichier": {"url": format!("/api/jeux/v1/switch/mods/{cle}/archive"), "taille": archive.len(), "sha256": sha(archive)},
         "inconnu_demain": {"x": 1}
     })
@@ -421,6 +421,11 @@ fn un_conflit_refuse_d_allumer_sauf_si_l_autre_s_eteint_en_meme_temps() {
         contenu: ContenuMod::default(),
         range_le: String::new(),
         fichiers: vec![],
+        description: String::new(),
+        type_mod: None,
+        interet: None,
+        public: None,
+        adulte_vu: false,
     };
     let rangs = vec![man(CLE, "1080p", &[CLE2]), man(CLE2, "Haute résolution", &[])];
     let mut choix = crate::contenus_switch::ChoixJeu::default();
@@ -725,7 +730,8 @@ fn la_pose_eden_copie_les_mods_et_garde_les_coupures_de_la_personne() {
     // Retiré du rangement : la copie intacte part de chez Eden.
     retirer(&stock, CLE).unwrap();
     let b = poser_eden(&donnees, &eden, BASE, &stock, None, false).unwrap();
-    assert_eq!(b.retires, vec!["1080p".to_string()]);
+    // Plus rangé : on ne sait plus s'il était réservé, il n'est plus nommé au journal.
+    assert_eq!(b.retires, vec![MOD_RETIRE.to_string()]);
     assert!(!load.join("1080p").exists());
 }
 
@@ -1234,4 +1240,448 @@ fn f5_les_refus_montres_a_la_personne_sont_sans_jargon() {
             assert!(!m.contains(mot), "« {mot} » dans : {m}");
         }
     }
+}
+
+// --- Contrat 1.46 : la fiche de chaque mod, et le public « adulte » (brief § 2) ---
+
+const ADULTE: &str = "adulte-00000000000a";
+
+#[test]
+fn c146_la_fiche_se_lit_avec_ses_null() {
+    let a = zip_octets(&[("romfs/a.bin", b"x")], false);
+    let mut avec = mod_json(CLE, 1, &a);
+    avec["description"] = json!("Le jeu s'affiche en 1080p.");
+    avec["type"] = json!("Technique");
+    avec["interet"] = json!(5);
+    avec["public"] = json!("tous");
+    let mut sans = mod_json(CLE2, 1, &a);
+    for k in ["description", "type", "interet", "public"] {
+        sans[k] = Value::Null;
+    }
+    let mut faux = mod_json("autre-aaaaaaaaaaaa", 1, &a);
+    faux["interet"] = json!(9);
+    faux["type"] = json!(3);
+    let l = lire_reponse(&json!({"mods": [avec, sans, faux]}));
+    assert_eq!((l.mods[0].type_mod.as_deref(), l.mods[0].interet, l.mods[0].public.as_deref()), (Some("technique"), Some(5), Some("tous")));
+    assert_eq!(l.mods[0].description, "Le jeu s'affiche en 1080p.");
+    assert_eq!((l.mods[1].type_mod.clone(), l.mods[1].interet, l.mods[1].public.clone(), l.mods[1].description.as_str()), (None, None, None, ""));
+    assert_eq!((l.mods[2].type_mod.clone(), l.mods[2].interet), (None, None), "hors des valeurs du contrat : ignoré");
+}
+
+#[test]
+fn c146_la_liste_vue_trie_par_interet_puis_par_nom() {
+    let a = zip_octets(&[("romfs/a.bin", b"x")], false);
+    let m = |cle: &str, nom: &str, interet: Value| {
+        let mut v = mod_json(cle, 1, &a);
+        v["nom"] = json!(nom);
+        v["interet"] = interet;
+        v
+    };
+    let lecture = Lecture {
+        etat: "ok".into(),
+        vue_le: None,
+        liste: lire_reponse(&json!({"mods": [
+            m("a-000000000001", "zèbre", Value::Null), m("b-000000000001", "Beta", json!(2)), m("c-000000000001", "alpha", json!(5)),
+            m("d-000000000001", "Alpha bis", json!(2)), m("e-000000000001", "Aa", Value::Null)
+        ]})),
+    };
+    let vue = liste_vue(&lecture, &[], &crate::contenus_switch::ChoixJeu::default(), None, BASE);
+    let noms: Vec<&str> = vue.mods.iter().map(|m| m.nom.as_str()).collect();
+    assert_eq!(noms, ["alpha", "Alpha bis", "Beta", "Aa", "zèbre"]);
+    assert_eq!((vue.mods[0].interet, vue.mods[0].type_mod.as_deref()), (Some(5), None));
+    // La forme JSON vue par l'interface : `type` et `interet`.
+    let j = serde_json::to_value(&vue.mods[0]).unwrap();
+    assert_eq!((j["interet"].clone(), j["type"].clone()), (json!(5), Value::Null));
+}
+
+/// Un mod « adulte » rangé par un profil ADMIN, à côté d'un mod pour tous (1080p).
+fn rangement_avec_adulte(d: &Path) -> (PathBuf, ListeMods, ListeMods) {
+    let stock = dossier_stock(&d.join("Jeu").join("Frogtend"), BASE);
+    let a = zip_octets(&[("romfs/a.bin", b"un")], false);
+    let fa = d.join("a.zip");
+    std::fs::write(&fa, &a).unwrap();
+    let mut tous = mod_json(CLE, 1, &a);
+    tous["versions"] = json!("toutes");
+    tous["public"] = json!("tous");
+    ranger(&stock, &fa, &ModServi::depuis(&tous).unwrap(), None).unwrap();
+    let b = zip_octets(&[("romfs/b.bin", b"secret")], false);
+    let fb = d.join("b.zip");
+    std::fs::write(&fb, &b).unwrap();
+    let mut adulte = mod_json(ADULTE, 1, &b);
+    adulte["nom"] = json!("Nom Secret");
+    adulte["versions"] = json!("toutes");
+    adulte["public"] = json!("adulte");
+    ranger(&stock, &fb, &ModServi::depuis(&adulte).unwrap(), None).unwrap();
+    let liste_admin = lire_reponse(&json!({"mods": [tous.clone(), adulte]}));
+    let liste_autre = lire_reponse(&json!({"mods": [tous]}));
+    (stock, liste_admin, liste_autre)
+}
+
+#[test]
+fn c146_un_mod_adulte_n_existe_que_pour_le_profil_qui_le_recoit() {
+    let d = tempfile::tempdir().unwrap();
+    let (stock, admin, autre) = rangement_avec_adulte(d.path());
+    let rangs = ranges(&stock);
+    let r = rangs.iter().find(|m| m.cle == ADULTE).unwrap();
+    assert!(r.reserve() && r.adulte_vu && r.public.as_deref() == Some("adulte"));
+    let choix = crate::contenus_switch::ChoixJeu::default();
+    let vue = |l: &ListeMods, etat: &str| liste_vue(&Lecture { etat: etat.into(), vue_le: None, liste: l.clone() }, &rangs, &choix, None, BASE);
+    // Profil A (admin) : montré.
+    assert!(vue(&admin, "ok").mods.iter().any(|m| m.cle == ADULTE));
+    // Profil B : ni montré, ni en « plus servi » ; hors ligne avec son cache, ou injoignable sans rien, pareil.
+    for (l, e) in [(&autre, "ok"), (&autre, "hors_ligne"), (&ListeMods::default(), "injoignable")] {
+        let v = vue(l, e);
+        assert!(!v.mods.iter().any(|m| m.cle == ADULTE || m.nom.contains("Secret")), "{e}");
+        assert!(v.mods.iter().any(|m| m.cle == CLE), "le mod pour tous reste montré ({e})");
+    }
+    // Le suivi des téléchargements et le journal (communs à la maison) ne le nomment jamais.
+    let servi_adulte = admin.mods.iter().find(|m| m.cle == ADULTE).unwrap();
+    assert_eq!(nom_a_dire(servi_adulte, &rangs), MOD_RESERVE);
+    assert_eq!(nom_a_dire(&admin.mods[0], &rangs), "1080p");
+    // Une nouvelle révision servie SANS fiche (`public: null`) d'un mod déjà « adulte » : jamais nommée non plus.
+    let mut sans_fiche = servi_adulte.clone();
+    sans_fiche.public = None;
+    assert_eq!(nom_a_dire(&sans_fiche, &rangs), MOD_RESERVE);
+    // Et même « tous » : le mod rangé a été « adulte » une fois.
+    sans_fiche.public = Some("tous".into());
+    assert_eq!(nom_a_dire(&sans_fiche, &rangs), MOD_RESERVE);
+    // Le nom d'un mod rangé, pour le journal (choix d'un interrupteur).
+    assert_eq!(nom_range_a_dire(rangs.iter().find(|m| m.cle == ADULTE).unwrap()), MOD_RESERVE);
+    assert_eq!(nom_range_a_dire(rangs.iter().find(|m| m.cle == CLE).unwrap()), "1080p");
+    // Écarté, jamais effacé.
+    assert!(stock.join(ADULTE).is_dir());
+    assert_eq!(visibles(rangs.clone(), None).len(), 1);
+    assert_eq!(visibles(rangs.clone(), Some(&admin)).len(), 2);
+}
+
+#[test]
+fn c146_fiche_redevenue_null_apres_adulte_reste_reservee() {
+    let d = tempfile::tempdir().unwrap();
+    let (stock, _admin, _autre) = rangement_avec_adulte(d.path());
+    // La fiche est réécrite à null (Firehouse la refait) : rafraîchie par la liste de l'admin, le mod reste réservé.
+    let b = zip_octets(&[("romfs/b.bin", b"secret")], false);
+    let mut nul = mod_json(ADULTE, 1, &b);
+    nul["public"] = Value::Null;
+    nul["versions"] = json!("toutes");
+    assert_eq!(rafraichir(&stock, &lire_reponse(&json!({"mods": [nul]}))), 1);
+    let r = ranges(&stock).into_iter().find(|m| m.cle == ADULTE).unwrap();
+    assert_eq!(r.public, None);
+    assert!(r.reserve(), "« adulte » une fois : réservé tant que la fiche est vide");
+    // Sans fiche (`null`), même jamais « adulte » : réservé tant que Firehouse ne dit pas « tous » ou « ado »
+    // (relecture des experts : un mod rangé avant sa fiche, puis classé « adulte », ne fuit jamais).
+    let jamais = ranges(&stock).into_iter().find(|m| m.cle == CLE).unwrap();
+    assert!(ManifesteMod { public: None, ..jamais.clone() }.reserve());
+    assert!(ManifesteMod { public: Some("inconnu".into()), ..jamais.clone() }.reserve());
+    assert!(!ManifesteMod { public: Some("ado".into()), ..jamais.clone() }.reserve());
+    assert!(!jamais.reserve(), "« tous »");
+}
+
+#[test]
+fn c146_a_la_pose_le_profil_b_ne_recoit_ni_ne_lit_le_mod_adulte_puis_a_le_retrouve() {
+    let d = tempfile::tempdir().unwrap();
+    let donnees = d.path().join("donnees");
+    let (stock, admin, autre) = rangement_avec_adulte(d.path());
+    let eden = d.path().join("Eden");
+    let config = eden.join("user").join("config");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(config.join("qt-config.ini"), "[UI]\r\ntheme=dark\r\n").unwrap();
+    let load = eden.join("user").join("load").join("01007EF00011E000");
+    let neutre = format!("Mod {ADULTE}");
+    let coupes = || crate::eden::lire_coupures(&std::fs::read_to_string(config.join("qt-config.ini")).unwrap()).into_iter().find(|(b, _)| *b == BASE).map(|(_, l)| l).unwrap_or_default();
+    // A (admin) lance : les deux mods sont posés ; dans Eden (commun), le mod réservé a un nom NEUTRE.
+    let b = poser_eden_pour(&donnees, &eden, BASE, &stock, None, false, Some(&admin)).unwrap();
+    assert_eq!(b.poses.len(), 2, "{b:?}");
+    assert!(load.join(&neutre).join("romfs").join("b.bin").is_file());
+    assert!(!load.join("Nom Secret").exists(), "jamais son vrai nom dans Eden");
+    assert!(b.poses.contains(&MOD_RESERVE.to_string()) && !b.resume().contains("Secret"), "même pour l'admin, jamais nommé au journal");
+    assert_eq!(verifier_masques_eden(&eden, BASE, &stock, Some(&admin)), None);
+    // B lance : le mod réservé est COUPÉ (pas recopié, pas retiré), sous son nom neutre ; jamais nommé.
+    let b = poser_eden_pour(&donnees, &eden, BASE, &stock, None, false, Some(&autre)).unwrap();
+    assert!(load.join(&neutre).join("romfs").join("b.bin").is_file(), "gardé en place pour l'admin");
+    assert!(b.poses.is_empty() && b.retires.is_empty(), "{b:?}");
+    assert!(coupes().contains(&neutre));
+    let journal = b.resume();
+    assert!(!journal.contains("Secret") && !journal.contains(ADULTE), "{journal}");
+    assert_eq!(verifier_masques_eden(&eden, BASE, &stock, Some(&autre)), None, "coupé : B peut jouer");
+    let p = derniere_pose(&stock).unwrap().pour_le_profil(Some(&autre));
+    assert!(!serde_json::to_string(&p).unwrap().contains("Secret"));
+    // Ryubing : la racine de B ne le reçoit jamais.
+    let ryu = d.path().join("Ryubing");
+    std::fs::create_dir_all(ryu.join("portable")).unwrap();
+    let racine_b = crate::ryubing::racine(&ryu, "Soeur");
+    poser_ryubing_pour(&donnees, &ryu, &racine_b, BASE, &stock, None, Some(&autre)).unwrap();
+    let tid_b = racine_b.join("mods").join("contents").join("01007ef00011e000");
+    assert!(tid_b.join("1080p").exists() && std::fs::read_dir(&tid_b).unwrap().flatten().filter(|e| e.path().is_dir()).count() == 1);
+    let mj = std::fs::read_to_string(crate::ryubing::fichier_mods_json(&racine_b, BASE)).unwrap();
+    assert!(!mj.contains("Secret") && !mj.contains(ADULTE));
+    assert_eq!(verifier_masques_ryubing(&racine_b, BASE, &stock, Some(&autre)), None);
+    // Retour de A : rallumé (pas recopié), tel quel.
+    let b = poser_eden_pour(&donnees, &eden, BASE, &stock, None, false, Some(&admin)).unwrap();
+    assert!(b.poses.is_empty(), "{b:?}");
+    assert!(!coupes().contains(&neutre));
+    assert_eq!(std::fs::read(load.join(&neutre).join("romfs").join("b.bin")).unwrap(), b"secret");
+}
+
+#[test]
+fn x2_un_mod_range_sans_fiche_puis_absent_de_la_liste_de_b_est_ecarte() {
+    let d = tempfile::tempdir().unwrap();
+    let stock = dossier_stock(&d.path().join("Jeu").join("Frogtend"), BASE);
+    let a = zip_octets(&[("romfs/a.bin", b"x")], false);
+    let f = d.path().join("a.zip");
+    std::fs::write(&f, &a).unwrap();
+    // Rangé AVANT sa fiche (ou avant la 1.46) : `public` null.
+    let mut v = mod_json(CLE, 1, &a);
+    v["public"] = Value::Null;
+    v["versions"] = json!("toutes");
+    ranger(&stock, &f, &ModServi::depuis(&v).unwrap(), None).unwrap();
+    let rangs = ranges(&stock);
+    let liste_b = lire_reponse(&json!({"mods": []}));
+    assert!(visibles(rangs.clone(), Some(&liste_b)).is_empty(), "absent de la liste de B : écarté");
+    assert!(visibles(rangs.clone(), None).is_empty());
+    assert_eq!(visibles(rangs.clone(), Some(&lire_reponse(&json!({"mods": [v]})))).len(), 1, "présent dans sa liste : gardé");
+    let vue = liste_vue(&Lecture { etat: "ok".into(), vue_le: None, liste: liste_b.clone() }, &rangs, &crate::contenus_switch::ChoixJeu::default(), None, BASE);
+    assert!(vue.mods.is_empty());
+    // Jamais posé pour B.
+    let ryu = d.path().join("Ryubing");
+    std::fs::create_dir_all(ryu.join("portable")).unwrap();
+    let racine = crate::ryubing::racine(&ryu, "B");
+    let b = poser_ryubing_pour(&d.path().join("donnees"), &ryu, &racine, BASE, &stock, None, Some(&liste_b)).unwrap();
+    assert!(b.poses.is_empty());
+    assert!(stock.join(CLE).is_dir(), "jamais effacé");
+}
+
+#[test]
+fn x3_un_mod_d_un_autre_profil_encore_charge_refuse_le_lancement() {
+    let d = tempfile::tempdir().unwrap();
+    let donnees = d.path().join("donnees");
+    let (stock, admin, autre) = rangement_avec_adulte(d.path());
+    let eden = d.path().join("Eden");
+    let config = eden.join("user").join("config");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(config.join("qt-config.ini"), "[UI]\r\ntheme=dark\r\n").unwrap();
+    poser_eden_pour(&donnees, &eden, BASE, &stock, None, false, Some(&admin)).unwrap();
+    // Eden ouvert quand B lance : rien n'est changé → le mod réservé reste chargé → refus, message neutre.
+    let b = poser_eden_pour(&donnees, &eden, BASE, &stock, None, true, Some(&autre)).unwrap();
+    assert!(b.raisons[0].contains("Eden est ouvert"));
+    let m = verifier_masques_eden(&eden, BASE, &stock, Some(&autre)).unwrap();
+    assert!(m.contains("Un mod d'un autre profil est encore en place dans Eden") && !m.contains("Secret") && !m.contains(ADULTE));
+    // Sans qt-config.ini (impossible de couper) : refus aussi, et jamais de fichier créé.
+    std::fs::remove_file(config.join("qt-config.ini")).unwrap();
+    poser_eden_pour(&donnees, &eden, BASE, &stock, None, false, Some(&autre)).unwrap();
+    assert!(!config.join("qt-config.ini").exists());
+    assert!(verifier_masques_eden(&eden, BASE, &stock, Some(&autre)).is_some());
+    // L'admin, lui, peut jouer.
+    assert_eq!(verifier_masques_eden(&eden, BASE, &stock, Some(&admin)), None);
+    // Abri impossible chez Ryubing : le mod réservé posé pour l'admin dans SA racine, puis B... (racine de B : rien à
+    // couper). Une racine où un mod masqué est posé et pas coupé : refus.
+    let ryu = d.path().join("Ryubing");
+    std::fs::create_dir_all(ryu.join("portable")).unwrap();
+    let racine = crate::ryubing::racine(&ryu, "Partagee");
+    poser_ryubing_pour(&donnees, &ryu, &racine, BASE, &stock, None, Some(&admin)).unwrap();
+    std::fs::write(ryu.join(".frogtend-sauvegardes"), b"x").unwrap();
+    let save = racine.join("bis").join("user").join("save").join("0000000000000001");
+    std::fs::create_dir_all(&save).unwrap();
+    std::fs::write(save.join("p"), b"p").unwrap();
+    let b = poser_ryubing_pour(&donnees, &ryu, &racine, BASE, &stock, None, Some(&autre)).unwrap();
+    assert!(b.inchange, "abri impossible : rien ne bouge");
+    assert!(verifier_masques_ryubing(&racine, BASE, &stock, Some(&autre)).unwrap().contains("Ryubing"));
+}
+
+#[test]
+fn x6_les_conflits_se_verifient_sur_tous_les_mods_sans_nommer_un_mod_cache() {
+    let d = tempfile::tempdir().unwrap();
+    let (stock, _admin, autre) = rangement_avec_adulte(d.path());
+    // Le mod pour tous (1080p) ne va pas avec le mod réservé, allumé pour la maison.
+    let f = stock.join(format!("{CLE}.json"));
+    let mut m: Value = serde_json::from_slice(&std::fs::read(&f).unwrap()).unwrap();
+    m["conflits"] = json!([ADULTE]);
+    std::fs::write(&f, serde_json::to_vec(&m).unwrap()).unwrap();
+    let tous = ranges(&stock);
+    let vus: Vec<String> = visibles(tous.clone(), Some(&autre)).iter().map(|m| m.cle.clone()).collect();
+    let choix = crate::contenus_switch::ChoixJeu::default();
+    let motif = conflit_pour(&tous, &vus, &choix, CLE, None).unwrap();
+    assert!(motif.contains("un autre mod allumé sur ce PC") && !motif.contains("Secret"), "{motif}");
+    // Pour l'admin, qui le voit : nommé.
+    let tous_vus: Vec<String> = tous.iter().map(|m| m.cle.clone()).collect();
+    assert!(conflit_pour(&tous, &tous_vus, &choix, CLE, None).unwrap().contains("Nom Secret"));
+}
+
+#[test]
+fn x7_un_mod_reserve_modifie_et_garde_est_coupe_pour_un_autre_profil_sans_rien_nommer() {
+    let d = tempfile::tempdir().unwrap();
+    let donnees = d.path().join("donnees");
+    let (stock, admin, autre) = rangement_avec_adulte(d.path());
+    let eden = d.path().join("Eden");
+    let config = eden.join("user").join("config");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(config.join("qt-config.ini"), "[UI]\r\ntheme=dark\r\n").unwrap();
+    poser_eden_pour(&donnees, &eden, BASE, &stock, None, false, Some(&admin)).unwrap();
+    let neutre = format!("Mod {ADULTE}");
+    let load = eden.join("user").join("load").join("01007EF00011E000");
+    std::fs::write(load.join(&neutre).join("romfs").join("b.bin"), b"retouche").unwrap();
+    let b = poser_eden_pour(&donnees, &eden, BASE, &stock, None, false, Some(&autre)).unwrap();
+    let texte = std::fs::read_to_string(config.join("qt-config.ini")).unwrap();
+    assert!(crate::eden::lire_coupures(&texte).iter().any(|(x, l)| *x == BASE && l.contains(&neutre)));
+    assert!(load.join(&neutre).join("romfs").join("b.bin").is_file(), "jamais effacé");
+    assert!(!b.resume().contains("Secret") && b.raisons.iter().all(|r| !r.contains("Secret")));
+    assert_eq!(verifier_masques_eden(&eden, BASE, &stock, Some(&autre)), None);
+}
+
+#[test]
+fn c146_les_raisons_qui_nomment_un_mod_reserve_ne_vont_qu_au_profil_qui_le_voit() {
+    let d = tempfile::tempdir().unwrap();
+    let donnees = d.path().join("donnees");
+    let (stock, admin, autre) = rangement_avec_adulte(d.path());
+    // Le mod adulte demande un réglage : la raison le nomme → gardée à part.
+    let f = stock.join(format!("{ADULTE}.json"));
+    let mut m: Value = serde_json::from_slice(&std::fs::read(&f).unwrap()).unwrap();
+    m["reglage_requis"] = json!("60 Hz");
+    std::fs::write(&f, serde_json::to_vec(&m).unwrap()).unwrap();
+    let eden = d.path().join("Eden");
+    std::fs::create_dir_all(eden.join("user")).unwrap();
+    let b = poser_eden_pour(&donnees, &eden, BASE, &stock, None, false, Some(&admin)).unwrap();
+    assert!(b.raisons.iter().all(|r| !r.contains("Secret")));
+    assert!(b.reservees.iter().any(|(c, r)| c == ADULTE && r.contains("Nom Secret")));
+    let brut = derniere_pose(&stock).unwrap();
+    assert!(brut.raisons.iter().all(|r| !r.contains("Secret")));
+    assert!(brut.clone().pour_le_profil(Some(&admin)).raisons.iter().any(|r| r.contains("Nom Secret")), "l'admin la lit");
+    let pour_b = brut.pour_le_profil(Some(&autre));
+    assert!(pour_b.raisons.iter().all(|r| !r.contains("Secret")) && pour_b.reservees.is_empty());
+}
+
+// --- Dernière relecture (contrat 1.46) ---
+
+#[test]
+fn y1_un_cache_perime_ne_laisse_jamais_passer_un_mod_devenu_adulte() {
+    let d = tempfile::tempdir().unwrap();
+    let (stock, admin, _autre) = rangement_avec_adulte(d.path());
+    let rangs = ranges(&stock);
+    // Le cache de l'enfant date d'AVANT la classification de la nuit : le mod y est, avec `null` ou « tous ».
+    let b = admin.mods.iter().find(|m| m.cle == ADULTE).unwrap().clone();
+    for public in [None, Some("tous".to_string()), Some("ado".to_string())] {
+        let mut ancien = b.clone();
+        ancien.public = public.clone();
+        let cache = ListeMods { mods: vec![admin.mods[0].clone(), ancien], ..Default::default() };
+        assert!(!visibles(rangs.clone(), Some(&cache)).iter().any(|m| m.cle == ADULTE), "{public:?}");
+    }
+    // La liste de l'admin le dit « adulte » : visible.
+    assert!(visibles(rangs.clone(), Some(&admin)).iter().any(|m| m.cle == ADULTE));
+    // Reclassé « tous » par Firehouse, mais déjà vu « adulte » : seule une entrée « adulte » le montre encore.
+    let f = stock.join(format!("{ADULTE}.json"));
+    let mut m: Value = serde_json::from_slice(&std::fs::read(&f).unwrap()).unwrap();
+    m["public"] = json!("tous");
+    std::fs::write(&f, serde_json::to_vec(&m).unwrap()).unwrap();
+    let rangs = ranges(&stock);
+    assert!(!visibles(rangs.clone(), None).iter().any(|m| m.cle == ADULTE));
+    // Un mod JAMAIS « adulte », sans fiche, présent dans le cache avec `null` : visible (il a été servi à ce profil).
+    let a = zip_octets(&[("romfs/c.bin", b"c")], false);
+    let fc = d.path().join("c.zip");
+    std::fs::write(&fc, &a).unwrap();
+    let mut sans = mod_json("sansfiche-0000000000cc", 1, &a);
+    sans["public"] = Value::Null;
+    ranger(&stock, &fc, &ModServi::depuis(&sans).unwrap(), None).unwrap();
+    let cache = lire_reponse(&json!({"mods": [sans]}));
+    assert!(visibles(ranges(&stock), Some(&cache)).iter().any(|m| m.cle == "sansfiche-0000000000cc"));
+}
+
+#[test]
+fn y2_un_ancien_dossier_au_vrai_nom_d_un_mod_reserve_est_renomme_dans_eden() {
+    let d = tempfile::tempdir().unwrap();
+    let donnees = d.path().join("donnees");
+    let stock = dossier_stock(&d.path().join("Jeu").join("Frogtend"), BASE);
+    let a = zip_octets(&[("romfs/a.bin", b"un")], false);
+    let fa = d.path().join("a.zip");
+    std::fs::write(&fa, &a).unwrap();
+    let mut v = mod_json(CLE, 1, &a);
+    v["versions"] = json!("toutes");
+    ranger(&stock, &fa, &ModServi::depuis(&v).unwrap(), None).unwrap();
+    let eden = d.path().join("Eden");
+    let config = eden.join("user").join("config");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(config.join("qt-config.ini"), "[UI]\r\ntheme=dark\r\n").unwrap();
+    let load = eden.join("user").join("load").join("01007EF00011E000");
+    // Posé « pour tous » sous son vrai nom (comme le 1080p de Seb avant cette version).
+    poser_eden(&donnees, &eden, BASE, &stock, None, false).unwrap();
+    assert!(load.join("1080p").is_dir());
+    // Sa fiche est réécrite : `null` → réservé. Le profil qui le voit (sa liste le contient) lance.
+    let f = stock.join(format!("{CLE}.json"));
+    let mut m: Value = serde_json::from_slice(&std::fs::read(&f).unwrap()).unwrap();
+    m["public"] = Value::Null;
+    std::fs::write(&f, serde_json::to_vec(&m).unwrap()).unwrap();
+    let mut entree = v.clone();
+    entree["public"] = Value::Null;
+    let sa_liste = lire_reponse(&json!({"mods": [entree]}));
+    let abris = || std::fs::read_dir(eden.join(".frogtend-sauvegardes")).map(|l| l.count()).unwrap_or(0);
+    let save = eden.join("user").join("nand").join("user").join("save").join("0000000000000000");
+    std::fs::create_dir_all(&save).unwrap();
+    let b = poser_eden_pour(&donnees, &eden, BASE, &stock, None, false, Some(&sa_liste)).unwrap();
+    let neutre = nom_neutre(CLE);
+    assert!(load.join(&neutre).join("romfs").join("a.bin").is_file() && !load.join("1080p").exists(), "{b:?}");
+    assert!(b.abrite, "l'abri des parties se fait avant le renommage");
+    let note = lire_note(&load).unwrap();
+    assert_eq!(note[CLE].dossier, neutre);
+    let _ = abris;
+    // Une coupure ancienne au vrai nom (posée pour un autre profil) part aussi.
+    let texte = std::fs::read_to_string(config.join("qt-config.ini")).unwrap();
+    assert!(!crate::eden::lire_coupures(&texte).iter().any(|(_, l)| l.iter().any(|n| n == "1080p")));
+    // Pour un profil qui ne le voit pas : coupé sous le nom neutre, jamais sous son vrai nom.
+    poser_eden_pour(&donnees, &eden, BASE, &stock, None, false, None).unwrap();
+    let texte = std::fs::read_to_string(config.join("qt-config.ini")).unwrap();
+    let coupes = crate::eden::lire_coupures(&texte).into_iter().find(|(x, _)| *x == BASE).map(|(_, l)| l).unwrap_or_default();
+    assert!(coupes.contains(&neutre) && !coupes.iter().any(|n| n == "1080p"), "{coupes:?}");
+}
+
+#[test]
+fn y2_masque_et_au_vrai_nom_il_est_renomme_puis_coupe() {
+    let d = tempfile::tempdir().unwrap();
+    let donnees = d.path().join("donnees");
+    let stock = dossier_stock(&d.path().join("Jeu").join("Frogtend"), BASE);
+    let a = zip_octets(&[("romfs/a.bin", b"un")], false);
+    let fa = d.path().join("a.zip");
+    std::fs::write(&fa, &a).unwrap();
+    let mut v = mod_json(CLE, 1, &a);
+    v["versions"] = json!("toutes");
+    ranger(&stock, &fa, &ModServi::depuis(&v).unwrap(), None).unwrap();
+    let eden = d.path().join("Eden");
+    let config = eden.join("user").join("config");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(config.join("qt-config.ini"), "[UI]\r\ntheme=dark\r\n").unwrap();
+    poser_eden(&donnees, &eden, BASE, &stock, None, false).unwrap();
+    // Classé « adulte » : pour un profil sans liste, renommé (intact) puis coupé, et B peut jouer.
+    let f = stock.join(format!("{CLE}.json"));
+    let mut m: Value = serde_json::from_slice(&std::fs::read(&f).unwrap()).unwrap();
+    m["public"] = json!("adulte");
+    m["adulte_vu"] = json!(true);
+    std::fs::write(&f, serde_json::to_vec(&m).unwrap()).unwrap();
+    let b = poser_eden_pour(&donnees, &eden, BASE, &stock, None, false, None).unwrap();
+    let load = eden.join("user").join("load").join("01007EF00011E000");
+    assert!(load.join(nom_neutre(CLE)).is_dir() && !load.join("1080p").exists(), "{b:?}");
+    assert!(!b.resume().contains("1080p"));
+    assert_eq!(verifier_masques_eden(&eden, BASE, &stock, None), None);
+    let texte = std::fs::read_to_string(config.join("qt-config.ini")).unwrap();
+    assert!(crate::eden::lire_coupures(&texte).iter().any(|(x, l)| *x == BASE && l.contains(&nom_neutre(CLE))));
+}
+
+#[test]
+fn y5_les_raisons_d_un_mod_deja_vu_adulte_sont_tues_et_une_note_illisible_se_dit_simplement() {
+    let d = tempfile::tempdir().unwrap();
+    let (stock, admin, _autre) = rangement_avec_adulte(d.path());
+    // Reclassé « tous » mais déjà vu « adulte », avec un réglage requis : sa raison va à part (jamais au journal).
+    let f = stock.join(format!("{ADULTE}.json"));
+    let mut m: Value = serde_json::from_slice(&std::fs::read(&f).unwrap()).unwrap();
+    m["public"] = json!("tous");
+    m["reglage_requis"] = json!("60 Hz");
+    std::fs::write(&f, serde_json::to_vec(&m).unwrap()).unwrap();
+    let (mut raisons, mut reservees) = (Vec::new(), Vec::new());
+    let v = voulus_pour(&stock, &crate::contenus_switch::ChoixJeu::default(), None, Some(&admin), &mut raisons, &mut reservees);
+    assert!(raisons.iter().all(|r| !r.contains("Secret")));
+    assert!(reservees.iter().any(|(c, r)| c == ADULTE && r.contains("Nom Secret")));
+    assert!(v.iter().find(|x| x.m.cle == ADULTE).unwrap().reserve);
+    // Une note illisible alors qu'un mod est masqué : la partie ne part pas, avec un message simple.
+    let eden = d.path().join("Eden");
+    let load = eden.join("user").join("load").join("01007EF00011E000");
+    std::fs::create_dir_all(&load).unwrap();
+    std::fs::write(load.join(NOTE_POSE), b"{abime").unwrap();
+    let msg = verifier_masques_eden(&eden, BASE, &stock, None).unwrap();
+    assert!(msg.starts_with("Frogtend ne sait plus quels mods sont en place pour ce jeu"), "{msg}");
 }

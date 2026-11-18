@@ -554,6 +554,17 @@ fn candidats(jeu: &Path, ailleurs: &[PathBuf]) -> (Vec<Candidat>, bool) {
                 let ext_ok = Path::new(&nom).extension().is_some_and(|x| x.eq_ignore_ascii_case("nsp") || x.eq_ignore_ascii_case("xci") || x.eq_ignore_ascii_case("nsz"));
                 let Ok(t) = e.file_type() else { continue };
                 if t.is_dir() {
+                    // Les mods Switch rangés par Frogtend (`…\Frogtend\mods-switch\<TID>\<clé>\exefs`) : jamais une mise
+                    // à jour ni un DLC, et assez profonds pour faire croire la recherche incomplète (vu le 18/11).
+                    // Seulement celui de Frogtend : parent `Frogtend`, ou grand-parent pour un jeu importé
+                    // (`…\Frogtend\<titre>\mods-switch`, locale::dossier_frogtend) ; un `mods-switch` de la personne
+                    // ailleurs est parcouru comme les autres.
+                    let p = e.path();
+                    let est_frogtend = |d: Option<&Path>| d.and_then(|d| d.file_name()).is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case("frogtend"));
+                    let parent = p.parent();
+                    if nom.eq_ignore_ascii_case(crate::mods_switch::DOSSIER_MODS) && (est_frogtend(parent) || est_frogtend(parent.and_then(Path::parent))) {
+                        continue;
+                    }
                     if profondeur < MAX_PROFONDEUR {
                         file.push_back((e.path(), profondeur + 1));
                     } else {
@@ -1341,6 +1352,37 @@ pub mod tests {
         std::fs::write(profond.join("dlc.nsp"), partition(&[("a.nca", nca(&cle, 5, BASE + 0x1001, 0))], false)).unwrap();
         let r = contenus_pour_dans(&jeu, &cle, &[d.path().join("place")], None).unwrap().unwrap();
         assert!(r.parcours_incomplet && !r.tronque && r.dlc.is_empty());
+    }
+
+    #[test]
+    fn les_mods_ranges_par_frogtend_ne_rendent_jamais_la_recherche_incomplete() {
+        // Vu chez Seb le 18/11 : `Zelda\Frogtend\mods-switch\<TID>\<clé>\exefs` (6 niveaux sous l'emplacement de la
+        // plateforme) faisait dire « dossiers trop profonds » à TOUS les jeux Switch.
+        let cle = cle_de_test();
+        let d = tempfile::tempdir().unwrap();
+        let place = d.path().join("Switch");
+        let jeu = place.join("Fire Emblem").join("jeu.xci");
+        std::fs::create_dir_all(jeu.parent().unwrap()).unwrap();
+        std::fs::write(&jeu, xci(&[("m.cnmt.nca", nca(&cle, 1, BASE, 0))], 0)).unwrap();
+        let mods = place.join("Zelda").join("Frogtend").join(crate::mods_switch::DOSSIER_MODS).join("01007EF00011E000").join("cle-0123456789ab").join("exefs");
+        std::fs::create_dir_all(&mods).unwrap();
+        std::fs::write(mods.join("1.6.0.pchtxt"), b"x").unwrap();
+        // Un jeu importé : `…\Frogtend\<titre>\mods-switch` (locale::dossier_frogtend) ; sauté aussi.
+        let importe = place.join("Lot").join("Frogtend").join("Zelda").join(crate::mods_switch::DOSSIER_MODS).join("01007EF00011E000").join("cle-0123456789ab").join("exefs");
+        std::fs::create_dir_all(&importe).unwrap();
+        std::fs::write(importe.join("1.6.0.pchtxt"), b"x").unwrap();
+        // Un DLC voisin du jeu est toujours trouvé.
+        let dlc = place.join("Fire Emblem").join("dlc.nsp");
+        std::fs::write(&dlc, partition(&[("d1.nca", nca(&cle, 5, BASE + 0x1001, 0)), ("d.cnmt.nca", nca(&cle, 1, BASE + 0x1001, 0))], false)).unwrap();
+        let r = contenus_pour_dans(&jeu, &cle, &[place.clone()], None).unwrap().unwrap();
+        assert!(!r.parcours_incomplet, "le dossier des mods n'est pas parcouru");
+        assert_eq!(r.dlc.len(), 1, "le DLC voisin est trouvé");
+        // Un dossier `mods-switch` de la PERSONNE, hors de Frogtend : parcouru comme les autres (son DLC est trouvé).
+        let sien = place.join("Fire Emblem").join(crate::mods_switch::DOSSIER_MODS);
+        std::fs::create_dir_all(&sien).unwrap();
+        std::fs::write(sien.join("dlc2.nsp"), partition(&[("e1.nca", nca(&cle, 5, BASE + 0x1002, 0)), ("e.cnmt.nca", nca(&cle, 1, BASE + 0x1002, 0))], false)).unwrap();
+        let r = contenus_pour_dans(&jeu, &cle, &[place], None).unwrap().unwrap();
+        assert_eq!(r.dlc.len(), 2, "le dossier `mods-switch` de la personne est parcouru");
     }
 
     #[test]

@@ -97,6 +97,30 @@ export function mentions(m: ModSwitchVu): string[] {
   return l;
 }
 
+/** La sorte du mod en mots simples (contrat 1.46) ; `null` sans fiche. Une sorte inconnue se dit « autre ». */
+export function libelleType(t: string | null | undefined): string | null {
+  if (!t) return null;
+  const mots: Record<string, string> = {
+    technique: 'amélioration technique',
+    contenu: 'contenu',
+    cosmetique: 'apparence',
+    triche: 'triche',
+    autre: 'autre',
+  };
+  return mots[t.toLowerCase()] ?? 'autre';
+}
+
+/** « ⭐ Recommandé » : un intérêt de 4 ou 5 sur 5. */
+export function recommande(m: Pick<ModSwitchVu, 'interet'>): boolean {
+  return (m.interet ?? 0) >= 4;
+}
+
+/** La ligne « ⭐ Recommandé · amélioration technique » sous le nom ; `null` s'il n'y a rien à dire. */
+export function ligneSorte(m: Pick<ModSwitchVu, 'interet' | 'type'>): string | null {
+  const l = [recommande(m) ? '⭐ Recommandé' : null, libelleType(m.type)].filter((x): x is string => !!x);
+  return l.length ? l.join(' · ') : null;
+}
+
 /** Une description assez longue pour être repliée à deux lignes (avec « Lire plus »). */
 export function descriptionLongue(d: string): boolean {
   return d.trim().length > 120 || d.trim().includes('\n');

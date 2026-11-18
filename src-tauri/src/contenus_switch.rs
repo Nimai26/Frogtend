@@ -371,6 +371,54 @@ pub fn lieu(sorte: &str, dossier: &Path) -> String {
     format!("{sorte}:{}", dossier.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase())
 }
 
+/// Le plus récent abri de CES parties : `<horodatage>-<nom>` (ou `<horodatage>_<n>-<nom>` quand deux abris naissent
+/// la même seconde). Le reste du nom, après le préfixe d'horodatage, doit valoir EXACTEMENT `nom` : l'abri du profil
+/// « Seb » n'est jamais confondu avec celui de « Seb-Marie » ou de « Seb-2 ».
+fn dernier_abri(parent: &Path, nom: &str) -> Option<PathBuf> {
+    std::fs::read_dir(parent)
+        .ok()?
+        .flatten()
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .filter_map(|e| {
+            let n = e.file_name().to_string_lossy().to_string();
+            let (prefixe, reste) = n.split_once('-')?;
+            if reste != nom {
+                return None;
+            }
+            let (h, rang) = match prefixe.split_once('_') {
+                Some((h, r)) => (h, r.parse::<u64>().ok()?),
+                None => (prefixe, 1),
+            };
+            let h = (!h.is_empty() && h.chars().all(|c| c.is_ascii_digit())).then(|| h.parse::<u64>().ok()).flatten()?;
+            Some(((h, rang), e.path()))
+        })
+        .max_by_key(|(k, _)| *k)
+        .map(|(_, p)| p)
+}
+
+/// L'abri `abri` contient-il exactement `fichiers` de `base` — mêmes chemins, tailles, dates de modification ET même
+/// CONTENU (un émulateur peut réécrire une partie sans changer sa taille ni sa date) ? Au moindre doute (lecture
+/// impossible), non : une copie complète est refaite.
+fn abri_identique(base: &Path, fichiers: &[String], abri: &Path) -> bool {
+    let Ok(mut l) = crate::installation::fichiers_de(abri) else { return false };
+    let norme = |s: &str| s.replace('\\', "/");
+    l.iter_mut().for_each(|x| *x = norme(x));
+    l.sort();
+    let mut attendus: Vec<String> = fichiers.iter().map(|f| norme(f)).collect();
+    attendus.sort();
+    attendus.dedup();
+    let meta = |p: &Path| std::fs::metadata(p).ok().map(|m| (m.len(), m.modified().ok()));
+    let meme_contenu = |a: &Path, b: &Path| match (std::fs::read(a), std::fs::read(b)) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => false,
+    };
+    l == attendus
+        && fichiers.iter().all(|r| {
+            let (a, b) = (meta(&base.join(r)), meta(&abri.join(r)));
+            a.is_some() && a == b && a.is_some_and(|(_, d)| d.is_some()) && meme_contenu(&base.join(r), &abri.join(r))
+        })
+}
+
 /// Copie `fichiers` (relatifs à `base`) dans un abri neuf `<parent>\<horodatage>-<nom>` (jamais par-dessus un abri
 /// existant), puis relit chaque copie (même taille). Aucun abri s'il n'y a aucun fichier. Rien n'est jamais déplacé ni
 /// effacé.
@@ -378,11 +426,21 @@ pub fn copier_a_l_abri(base: &Path, fichiers: &[String], parent: &Path, nom: &st
     if fichiers.is_empty() {
         return Ok(None);
     }
-    let nom = format!("{}-{nom}", crate::noyau::maintenant());
-    let mut abri = parent.join(&nom);
+    // Rien n'a changé depuis le DERNIER abri de ces parties (mêmes chemins, tailles et dates : une copie garde la date
+    // de l'original) : pas de nouvelle copie (le disque ne se remplit pas à chaque alternance de profils), l'abri
+    // précédent est rendu.
+    if let Some(prec) = dernier_abri(parent, nom) {
+        if abri_identique(base, fichiers, &prec) {
+            return Ok(Some((prec, fichiers.len())));
+        }
+    }
+    // `<horodatage>-<nom>`, ou `<horodatage>_<n>-<nom>` la même seconde (le nom reste entier à la fin : voir
+    // `dernier_abri`).
+    let h = crate::noyau::maintenant();
+    let mut abri = parent.join(format!("{h}-{nom}"));
     let mut n = 2;
     while abri.exists() {
-        abri = parent.join(format!("{nom}-{n}"));
+        abri = parent.join(format!("{h}_{n}-{nom}"));
         n += 1;
     }
     crate::installation::copier(base, fichiers, &abri)?;
@@ -605,8 +663,58 @@ mod tests {
         assert_eq!(n, 1);
         assert_eq!(std::fs::read(abri.join("a").join("partie.bin")).unwrap(), b"partie");
         assert!(base.join("a").join("partie.bin").is_file(), "jamais déplacée");
+        // Rien n'a changé depuis : pas de nouvelle copie, l'abri précédent est rendu (le disque ne se remplit pas).
+        let (meme, _) = copier_a_l_abri(&base, &["a/partie.bin".to_string()], &parent, "parties-X").unwrap().unwrap();
+        assert_eq!(meme, abri);
+        assert_eq!(std::fs::read_dir(&parent).unwrap().count(), 1);
+        // La partie a changé : un abri NEUF, jamais par-dessus l'ancien (qui garde l'ancienne partie).
+        std::fs::write(base.join("a").join("partie.bin"), b"partie 2").unwrap();
         let (abri2, _) = copier_a_l_abri(&base, &["a/partie.bin".to_string()], &parent, "parties-X").unwrap().unwrap();
         assert_ne!(abri, abri2, "jamais par-dessus un abri existant");
+        assert_eq!(std::fs::read(abri.join("a").join("partie.bin")).unwrap(), b"partie");
+        // Comparé au DERNIER abri (abri2), qui est à jour : rien de recopié.
+        let (encore, _) = copier_a_l_abri(&base, &["a/partie.bin".to_string()], &parent, "parties-X").unwrap().unwrap();
+        assert_eq!(encore, abri2);
+        // Un fichier en plus : nouvel abri.
+        std::fs::write(base.join("a").join("autre.bin"), b"x").unwrap();
+        let (abri3, n) = copier_a_l_abri(&base, &["a/partie.bin".to_string(), "a/autre.bin".to_string()], &parent, "parties-X").unwrap().unwrap();
+        assert!(abri3 != abri2 && n == 2);
+        // Une partie réécrite par l'émulateur SANS changer sa taille ni sa date : le contenu est comparé, nouvel abri.
+        let p = base.join("a").join("partie.bin");
+        let date = std::fs::metadata(&p).unwrap().modified().unwrap();
+        std::fs::write(&p, b"PARTIE 2").unwrap();
+        std::fs::OpenOptions::new().write(true).open(&p).unwrap().set_modified(date).unwrap();
+        assert_eq!(std::fs::metadata(&p).unwrap().modified().unwrap(), date);
+        let (abri4, _) = copier_a_l_abri(&base, &["a/partie.bin".to_string(), "a/autre.bin".to_string()], &parent, "parties-X").unwrap().unwrap();
+        assert_ne!(abri4, abri3, "même taille, même date, autre contenu : recopié");
+        assert_eq!(std::fs::read(abri4.join("a").join("partie.bin")).unwrap(), b"PARTIE 2");
+        // Un autre jeu (autre nom) n'est jamais comparé à ces abris.
+        let (autre, _) = copier_a_l_abri(&base, &["a/autre.bin".to_string()], &parent, "parties-Y").unwrap().unwrap();
+        assert!(autre.file_name().unwrap().to_string_lossy().ends_with("-parties-Y"));
         assert_eq!(copier_a_l_abri(&base, &[], &parent, "x").unwrap(), None);
+    }
+
+    #[test]
+    fn l_abri_d_un_profil_n_est_jamais_compare_a_celui_d_un_profil_au_nom_voisin() {
+        let d = tempfile::tempdir().unwrap();
+        let parent = d.path().join(".frogtend-sauvegardes");
+        let (seb, marie) = (d.path().join("Seb"), d.path().join("Seb-Marie"));
+        for r in [&seb, &marie] {
+            std::fs::create_dir_all(r.join("save")).unwrap();
+            std::fs::write(r.join("save").join("p.bin"), b"meme").unwrap();
+        }
+        let f = ["save/p.bin".to_string()];
+        let (a_marie, _) = copier_a_l_abri(&marie, &f, &parent, "parties-JEU-Seb-Marie").unwrap().unwrap();
+        // Seb, dont le nom est le DÉBUT de celui de Marie : jamais l'abri de Marie, toujours le sien.
+        assert_eq!(dernier_abri(&parent, "parties-JEU-Seb"), None);
+        let (a_seb, _) = copier_a_l_abri(&seb, &f, &parent, "parties-JEU-Seb").unwrap().unwrap();
+        assert_ne!(a_seb, a_marie);
+        assert_eq!(dernier_abri(&parent, "parties-JEU-Seb"), Some(a_seb.clone()));
+        assert_eq!(dernier_abri(&parent, "parties-JEU-Seb-Marie"), Some(a_marie.clone()));
+        // Deux abris de Seb la même seconde (`<horodatage>_2-…`) : le plus récent est celui-là.
+        std::fs::write(seb.join("save").join("p.bin"), b"autre").unwrap();
+        let (a_seb2, _) = copier_a_l_abri(&seb, &f, &parent, "parties-JEU-Seb").unwrap().unwrap();
+        assert_eq!(dernier_abri(&parent, "parties-JEU-Seb"), Some(a_seb2.clone()));
+        assert!(a_seb2.file_name().unwrap().to_string_lossy().ends_with("-parties-JEU-Seb"));
     }
 }
