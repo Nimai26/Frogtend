@@ -13,7 +13,8 @@
 - [x] (✅ 18/11 : journal Ryubing « Matching IPSwitch patch '1.6.0.pchtxt' in '1080p' », patch appliqué) Le mod a un interrupteur « ✅ Allumé » ; ▶ Jouer avec Ryubing : le journal dit les parties mises à l'abri, et le
       mod est en place (Ryubing ▸ clic droit sur Zelda ▸ Gérer les mods : coché).
 - [x] (✅ 18/11 : journal Eden « Patching NSO for name=main, build_id=8E9978D5… », 1080p ; parties à l'abri) Même chose avec Eden.
-- [ ] Éteindre le mod ▸ ▶ Jouer : il n'est plus utilisé (dans l'émulateur : décoché).
+- [x] (✅ 18/11, Eden : patch plus appliqué, dossier retiré, parties à l'abri) Éteindre le mod ▸ ▶ Jouer : il n'est plus utilisé (dans l'émulateur : décoché).
+- [ ] (0.208.1) ⚠ 18/11 : après « Quitter » (menu Frogtend) d'Eden, la partie est restée « en cours » (rien au journal, temps pas compté). Refaire : éteindre/rallumer un mod ▸ Eden ▸ Quitter par le menu → « Partie terminée » ; sinon, m'envoyer les dernières lignes du journal.
 - [ ] Taodbox : Y sur Zelda ▸ « 🧩 Mises à jour, DLC et mods » : tout se fait à la croix, A, B ; en revenant, la
       sélection est toujours sur Zelda.
 - [ ] Le panneau 📦 de Fire Emblem : les noms des DLC ne sont plus coupés sur trois lignes.

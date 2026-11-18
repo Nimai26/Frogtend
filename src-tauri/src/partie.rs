@@ -1351,9 +1351,16 @@ impl Noyau {
             }
             tokio::time::sleep(INTERVALLE_SUIVI).await;
         }
-        self.annoncer(id, "fin").await;
         let secondes = debut.elapsed().as_secs();
+        // Des repères au journal (Seb 18/11 : une partie restée « en cours » après la fermeture d'Eden, sans trace).
+        self.journaliser(&format!("partie du jeu {id} : plus aucun programme de la partie ({secondes} s)"));
+        // L'annonce de fin ne retient jamais la fin de la partie plus de 90 s (Firehouse lent ou injoignable : la
+        // session expire seule au bout de 30 min).
+        if tokio::time::timeout(Duration::from_secs(90), self.annoncer(id, "fin")).await.is_err() {
+            self.journaliser(&format!("session « fin » du jeu {id} : pas de réponse en 90 s, la partie se termine quand même"));
+        }
         self.registre().compter_partie(id, secondes, &maintenant())?;
+        self.journaliser(&format!("partie du jeu {id} terminée et comptée"));
         Ok(FinDePartie { jeu: id, secondes })
     }
 

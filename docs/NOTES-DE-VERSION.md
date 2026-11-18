@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.208.1 — Fin de partie plus sûre, et mieux notée
+
+- Corrigé : l'annonce de fin de partie à Firehouse ne peut plus retenir la fin d'une partie (au plus 90 s) ; la partie
+  se termine toujours.
+- Le journal note maintenant chaque étape de la fin d'une partie, et la mise à l'abri des parties faite avant de
+  changer les mods Switch (pour comprendre une partie restée « en cours », vue le 18/11 avec Eden).
+
 ## 0.208.0 — 🧩 Les mods Switch, choisis par Firehouse, réglables jusque dans le canapé
 
 - Nouveau : dans le panneau 📦 d'un jeu Switch, une partie « 🧩 Mods » montre les mods que Firehouse propose pour ce

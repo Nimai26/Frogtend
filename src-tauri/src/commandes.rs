@@ -3204,6 +3204,7 @@ pub async fn jeu_jouer(
         match fin {
             Ok(fin) => {
                 let _ = app2.emit("partie", EvenementPartie::Fin { jeu: id, secondes: fin.secondes, relancer });
+                noyau.journaliser(&format!("partie du jeu {id} : fin annoncée à l'écran{}", if relancer { " (relance demandée)" } else { "" }));
             }
             Err(e) => noyau.journaliser(&format!("suivi de la partie du jeu {id} : {e:?}")),
         }

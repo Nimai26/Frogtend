@@ -794,8 +794,11 @@ fn b2_un_mod_qui_devient_posable_sans_changement_de_choix_met_d_abord_les_partie
     let b = poser_ryubing(&donnees, &ryu, &racine, BASE, &stock, Some(786432)).unwrap();
     assert_eq!(b.poses, vec!["1080p".to_string()]);
     assert_eq!(abris(&ryu), 1, "parties à l'abri avant la pose");
+    // L'abri est dit au journal (essai de Seb 18/11 : il manquait).
+    assert!(b.abrite && b.resume().starts_with("parties mises à l'abri avant"), "{}", b.resume());
     // Rien ne change ensuite : pas de nouvel abri.
-    poser_ryubing(&donnees, &ryu, &racine, BASE, &stock, Some(786432)).unwrap();
+    let b = poser_ryubing(&donnees, &ryu, &racine, BASE, &stock, Some(786432)).unwrap();
+    assert!(!b.abrite && !b.resume().contains("abri"), "{}", b.resume());
     assert_eq!(abris(&ryu), 1);
 }
 

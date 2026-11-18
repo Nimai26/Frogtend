@@ -1042,11 +1042,16 @@ pub struct BilanMods {
     /// Rien n'a été changé dans les dossiers (abri impossible, place insuffisante, note illisible) : la pose d'avant
     /// reste ; l'émulateur n'est pas touché non plus.
     pub inchange: bool,
+    /// Les parties ont été mises à l'abri avant de changer les mods (dit au journal).
+    pub abrite: bool,
 }
 
 impl BilanMods {
     pub fn resume(&self) -> String {
         let mut l = Vec::new();
+        if self.abrite {
+            l.push("parties mises à l'abri avant".to_string());
+        }
         if !self.poses.is_empty() {
             l.push(format!("posé(s) : {}", self.poses.join(", ")));
         }
@@ -1177,6 +1182,7 @@ pub fn synchroniser(dossier_jeu: &Path, voulus: &[Voulu], abri_demande: bool, ab
             b.presents = presents(dossier_jeu, &note);
             return Ok(b);
         }
+        b.abrite = true;
     }
     if plan.a_copier > 0 && place_pour(dossier_jeu).is_some_and(|l| l < plan.a_copier.saturating_add(MARGE)) {
         b.raisons.push("il n'y a pas assez de place sur le disque de l'émulateur pour poser les mods : rien n'est changé".into());
