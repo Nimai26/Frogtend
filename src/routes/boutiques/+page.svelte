@@ -7,6 +7,8 @@
   import { connexion, connexionEpic, connexionPlaystation, gratuits, lireGratuits, obtenir, obtenirTout, recolterPsPlus, recuperer } from '$lib/boutiques/gratuits.svelte';
   import { etat, reglerProfil } from '$lib/etat.svelte';
   import { importerSteam, lireSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
+  import { boutiquesPc, lireEtatsPc, relireMaintenant } from '$lib/boutiques/boutiques-pc.svelte';
+  import { ligneEtat } from '$lib/boutiques/jeu-boutique';
 
   let filtre = $state('');
   let seulementInstalles = $state(false);
@@ -14,6 +16,7 @@
     lireSteam();
     lireGalaxy();
     lireGratuits();
+    lireEtatsPc();
   });
 
   // GOG Galaxy : filtre par boutique d'origine. Les jeux Steam y sont masqués par défaut si Steam est importé à part.
@@ -36,7 +39,7 @@
 <div class="boutiques">
   <header>
     <h1>🛒 Mes boutiques</h1>
-    <p class="muted">Les jeux de tes comptes : Steam (par son API), et GOG Galaxy qui regroupe GOG, Epic, Xbox, Ubisoft, EA… Ils restent dans ton Frogtend.</p>
+    <p class="muted">Les jeux installés de tes boutiques (Steam, Epic, GOG, Ubisoft, Amazon, Xbox, Battle.net) entrent seuls dans ta ludothèque. Ils restent dans ton Frogtend.</p>
   </header>
 
   <section class="cx-block">
@@ -44,7 +47,12 @@
       <h2>🎁 Jeux offerts</h2>
       <span class="muted">Epic Games, cette semaine</span>
       <span class="espace"></span>
-      <button class="btn" onclick={connexionEpic}>🔑 Se connecter à Epic</button>
+      {#if etat.profil.gratuits.connectes.epic}
+        <span class="tag ok">✅ Connecté à Epic</span>
+        <button class="btn petit" onclick={connexionEpic}>Changer de compte</button>
+      {:else}
+        <button class="btn" onclick={connexionEpic}>🔑 Se connecter à Epic</button>
+      {/if}
       <button class="btn primary" onclick={() => obtenirTout()} disabled={gratuits.enCours !== null}>🎁 Tout obtenir</button>
     </div>
     <label class="auto">
@@ -66,7 +74,7 @@
             <span class="nom">{j.titre}</span>
             <span class="muted">jusqu’au {new Date(j.fin).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}</span>
             {#if j.obtenu}
-              <span class="tag ok">✅ Obtenu</span>
+              <span class="tag ok">✅ Dans ta bibliothèque</span>
             {:else}
               <button class="btn petit primary" onclick={() => obtenir(j)} disabled={gratuits.enCours !== null}>
                 {gratuits.enCours === j.slug ? 'En cours…' : '🎁 Obtenir'}
@@ -83,7 +91,12 @@
       <h3>🎮 PlayStation Plus</h3>
       <span class="muted">les jeux du mois, ajoutés à ton compte PlayStation (pas à la ludothèque)</span>
       <span class="espace"></span>
-      <button class="btn" onclick={connexionPlaystation}>🔑 Se connecter à PlayStation</button>
+      {#if etat.profil.gratuits.connectes.psplus}
+        <span class="tag ok">✅ Connecté à PlayStation</span>
+        <button class="btn petit" onclick={connexionPlaystation}>Changer de compte</button>
+      {:else}
+        <button class="btn" onclick={connexionPlaystation}>🔑 Se connecter à PlayStation</button>
+      {/if}
       <button class="btn primary" onclick={() => recolterPsPlus()} disabled={gratuits.psplusEnCours}>
         {gratuits.psplusEnCours ? 'En cours… (quelques minutes)' : '🎮 Ajouter les jeux du mois'}
       </button>
@@ -102,7 +115,12 @@
         <h3>{o.nom}</h3>
         <span class="muted">{o.detail}</span>
         <span class="espace"></span>
-        <button class="btn" onclick={() => connexion(o.b)}>🔑 Se connecter</button>
+        {#if etat.profil.gratuits.connectes[o.b]}
+          <span class="tag ok">✅ Connecté</span>
+          <button class="btn petit" onclick={() => connexion(o.b)}>Changer de compte</button>
+        {:else}
+          <button class="btn" onclick={() => connexion(o.b)}>🔑 Se connecter</button>
+        {/if}
         <button class="btn primary" onclick={() => recuperer(o.b)} disabled={gratuits.boutique !== null}>
           {gratuits.boutique === o.b ? 'En cours…' : '🎁 Récupérer'}
         </button>
@@ -116,77 +134,117 @@
 
   <section class="cx-block">
     <div class="tete">
-      <h2>Steam</h2>
-      <span class="muted">{steam.etat?.compte ? `compte ${steam.etat.compte}` : 'compte pas encore réglé'}</span>
+      <h2>🎮 Mes jeux installés</h2>
+      <span class="muted">ils entrent seuls dans ta ludothèque, relus à chaque ouverture de ton profil</span>
       <span class="espace"></span>
-      <button class="btn primary" onclick={importerSteam} disabled={steam.enCours}>
-        {steam.enCours ? 'Import…' : steam.jeux.length ? '🔄 Mettre à jour' : '⬇ Importer mes jeux Steam'}
-      </button>
+      <button class="btn primary" onclick={relireMaintenant} disabled={boutiquesPc.enCours}>{boutiquesPc.enCours ? 'Lecture…' : '🔄 Relire maintenant'}</button>
     </div>
-
-    {#if steam.jeux.length}
-      <div class="outils">
-        <input type="search" bind:value={filtre} placeholder="Chercher un jeu" aria-label="Chercher un jeu Steam" />
-        <label><input type="checkbox" bind:checked={seulementInstalles} /> installés sur ce PC</label>
-        <span class="muted">{affiches.length} / {steam.jeux.length}</span>
-      </div>
-      <div class="grille">
-        {#each affiches as j (j.id)}
-          <button
-            class="carte"
-            title={j.installe ? `▶ Jouer à « ${j.nom} » (Steam)` : `⬇ Installer « ${j.nom} » (Steam)`}
-            onclick={() => ouvrirDansSteam(j, j.installe ? 'jouer' : 'installer')}
-          >
-            <span class="image">
-              <span class="remplacement">{j.nom}</span>
-              <img src={adresseImageBoutique('steam', j.id)} alt="" loading="lazy" onerror={(e) => ((e.currentTarget as HTMLElement).hidden = true)} />
-            </span>
-            <span class="nom">{j.nom}</span>
-            <span class="muted">{j.installe ? '✅ installé · ▶ Jouer' : '⬇ Installer'}{j.minutes ? ` · ${duree(j.minutes * 60)}` : ''}</span>
-          </button>
-        {/each}
-      </div>
-    {:else if !steam.enCours}
-      <p class="muted">Aucun jeu Steam importé pour l’instant.</p>
+    {#if !etat.profil.boutiquesPc.auto}
+      <p class="muted">⚠ L’ajout tout seul est coupé pour ton profil (⚙ Options ▸ Comptes ▸ Mes jeux installés).</p>
     {/if}
+    <ul class="etats">
+      {#each boutiquesPc.etats as e (e.boutique)}
+        <li class:absent={!e.lu}>{ligneEtat(e)}</li>
+      {:else}
+        <li class="muted">{boutiquesPc.erreur ?? 'Lecture des boutiques de ce PC…'}</li>
+      {/each}
+    </ul>
   </section>
 
-  <section class="cx-block">
-    <div class="tete">
-      <h2>GOG Galaxy</h2>
-      <span class="muted">{galaxy.installe ? 'GOG et les boutiques que tu y as reliées' : '⚠ GOG Galaxy n’est pas trouvé sur ce PC'}</span>
-      <span class="espace"></span>
-      <button class="btn primary" onclick={importerGalaxy} disabled={galaxy.enCours || !galaxy.installe}>
-        {galaxy.enCours ? 'Lecture…' : galaxy.jeux.length ? '🔄 Mettre à jour' : '⬇ Lire mes jeux GOG Galaxy'}
-      </button>
-    </div>
-    {#if galaxy.jeux.length}
-      <div class="outils">
-        <input type="search" bind:value={filtre} placeholder="Chercher un jeu" aria-label="Chercher un jeu" />
-        <select bind:value={boutiqueGalaxy} aria-label="Boutique">
-          <option value="tout">Toutes les boutiques</option>
-          {#each plateformesGalaxy as p (p)}<option value={p}>{nomPlateforme(p)}</option>{/each}
-        </select>
-        <label><input type="checkbox" bind:checked={seulementInstalles} /> installés sur ce PC</label>
-        <span class="muted">{affichesGalaxy.length} / {galaxy.jeux.length}</span>
+  <details class="cx-block secours">
+    <summary>🛟 Secours : ma clé Steam et GOG Galaxy</summary>
+    <p class="muted">Tes jeux installés entrent déjà seuls. Ces deux voies restent là pour voir aussi les jeux que tu possèdes sans les avoir installés.</p>
+    <section class="cx-block">
+      <div class="tete">
+        <h2>Steam</h2>
+        <span class="muted">{steam.etat?.compte ? `compte ${steam.etat.compte}` : 'compte pas encore réglé'}</span>
+        <span class="espace"></span>
+        <button class="btn primary" onclick={importerSteam} disabled={steam.enCours}>
+          {steam.enCours ? 'Import…' : steam.jeux.length ? '🔄 Mettre à jour' : '⬇ Importer mes jeux Steam'}
+        </button>
       </div>
-      <div class="grille">
-        {#each affichesGalaxy as j (j.id)}
-          <button class="carte" title={`Ouvrir « ${j.nom} » dans GOG Galaxy`} onclick={() => ouvrirDansGalaxy(j)}>
-            <span class="image">
-              <span class="remplacement">{j.nom}</span>
-              {#if j.image}<img src={adresseImageParUrl(j.image)} alt="" loading="lazy" onerror={(e) => ((e.currentTarget as HTMLElement).hidden = true)} />{/if}
-            </span>
-            <span class="nom">{j.nom}</span>
-            <span class="muted">{nomPlateforme(j.plateforme ?? '')}{j.installe ? ' · ✅ installé' : ''}{j.minutes ? ` · ${duree(j.minutes * 60)}` : ''}</span>
-          </button>
-        {/each}
+
+      {#if steam.jeux.length}
+        <div class="outils">
+          <input type="search" bind:value={filtre} placeholder="Chercher un jeu" aria-label="Chercher un jeu Steam" />
+          <label><input type="checkbox" bind:checked={seulementInstalles} /> installés sur ce PC</label>
+          <span class="muted">{affiches.length} / {steam.jeux.length}</span>
+        </div>
+        <div class="grille">
+          {#each affiches as j (j.id)}
+            <button
+              class="carte"
+              title={j.installe ? `▶ Jouer à « ${j.nom} » (Steam)` : `⬇ Installer « ${j.nom} » (Steam)`}
+              onclick={() => ouvrirDansSteam(j, j.installe ? 'jouer' : 'installer')}
+            >
+              <span class="image">
+                <span class="remplacement">{j.nom}</span>
+                <img src={adresseImageBoutique('steam', j.id)} alt="" loading="lazy" onerror={(e) => ((e.currentTarget as HTMLElement).hidden = true)} />
+              </span>
+              <span class="nom">{j.nom}</span>
+              <span class="muted">{j.installe ? '✅ installé · ▶ Jouer' : '⬇ Installer'}{j.minutes ? ` · ${duree(j.minutes * 60)}` : ''}</span>
+            </button>
+          {/each}
+        </div>
+      {:else if !steam.enCours}
+        <p class="muted">Aucun jeu Steam importé pour l’instant.</p>
+      {/if}
+    </section>
+
+    <section class="cx-block">
+      <div class="tete">
+        <h2>GOG Galaxy</h2>
+        <span class="muted">{galaxy.installe ? 'GOG et les boutiques que tu y as reliées' : '⚠ GOG Galaxy n’est pas trouvé sur ce PC'}</span>
+        <span class="espace"></span>
+        <button class="btn primary" onclick={importerGalaxy} disabled={galaxy.enCours || !galaxy.installe}>
+          {galaxy.enCours ? 'Lecture…' : galaxy.jeux.length ? '🔄 Mettre à jour' : '⬇ Lire mes jeux GOG Galaxy'}
+        </button>
       </div>
-    {/if}
-  </section>
+      {#if galaxy.jeux.length}
+        <div class="outils">
+          <input type="search" bind:value={filtre} placeholder="Chercher un jeu" aria-label="Chercher un jeu" />
+          <select bind:value={boutiqueGalaxy} aria-label="Boutique">
+            <option value="tout">Toutes les boutiques</option>
+            {#each plateformesGalaxy as p (p)}<option value={p}>{nomPlateforme(p)}</option>{/each}
+          </select>
+          <label><input type="checkbox" bind:checked={seulementInstalles} /> installés sur ce PC</label>
+          <span class="muted">{affichesGalaxy.length} / {galaxy.jeux.length}</span>
+        </div>
+        <div class="grille">
+          {#each affichesGalaxy as j (j.id)}
+            <button class="carte" title={`Ouvrir « ${j.nom} » dans GOG Galaxy`} onclick={() => ouvrirDansGalaxy(j)}>
+              <span class="image">
+                <span class="remplacement">{j.nom}</span>
+                {#if j.image}<img src={adresseImageParUrl(j.image)} alt="" loading="lazy" onerror={(e) => ((e.currentTarget as HTMLElement).hidden = true)} />{/if}
+              </span>
+              <span class="nom">{j.nom}</span>
+              <span class="muted">{nomPlateforme(j.plateforme ?? '')}{j.installe ? ' · ✅ installé' : ''}{j.minutes ? ` · ${duree(j.minutes * 60)}` : ''}</span>
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </section>
+  </details>
 </div>
 
 <style>
+  .etats {
+    margin: 0;
+    padding-left: calc(18 * var(--u));
+    display: grid;
+    gap: calc(4 * var(--u));
+  }
+  .etats .absent {
+    color: var(--dim);
+  }
+  .secours > summary {
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .secours[open] {
+    display: grid;
+    gap: calc(14 * var(--u));
+  }
   .boutiques {
     display: grid;
     gap: calc(14 * var(--u));

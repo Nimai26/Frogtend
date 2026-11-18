@@ -4,12 +4,13 @@
   import { goto } from '$app/navigation';
   import { onDestroy, onMount, tick, untrack } from 'svelte';
   import { isTauri } from '@tauri-apps/api/core';
-  import { adresseImageSysteme, api, type FicheSysteme, type JeuPc } from '$lib/api';
+  import { adresseImageSysteme, api, type FicheSysteme, type JeuBoutique, type JeuPc } from '$lib/api';
   import { confirmer, informer, toast } from '$lib/dialogues/fenetres.svelte';
   import { creditImage, imageEntete } from '$lib/ludotheque/systemes';
   import { etat, sortirDuProfil } from '$lib/etat.svelte';
   import { gererLaCarte, installer, jouerLaCarte, lancementImpossible, partie } from '$lib/ludotheque/jeu.svelte';
-  import { groupeDe, originesJeuPc, unParGroupe } from '$lib/boutiques/copies';
+  import { cartesBoutiqueTaodbox, groupeDe, originesJeuPc, unParGroupe, type CarteBoutiqueTaodbox } from '$lib/boutiques/copies';
+  import { boutiqueDesinstallee, estBattlenet, MESSAGE_BATTLENET } from '$lib/boutiques/jeu-boutique';
   import IconesBoutiques from '$lib/boutiques/IconesBoutiques.svelte';
   import Jaquette from '$lib/ludotheque/Jaquette.svelte';
   import { jeuSurPc, rechargerJeuxDuPc, tele } from '$lib/ludotheque/telechargements.svelte';
@@ -37,6 +38,8 @@
     unParGroupe(
       Object.values(tele.jeux)
         .filter((j: JeuPc) => j.etat === 'telecharge')
+        // Un jeu de boutique désinstallé hors de Frogtend (ligne gardée pour son temps de jeu) : pas au canapé.
+        .filter((j: JeuPc) => !boutiqueDesinstallee(j))
         // Un jeu, une carte (contrat 1.21) : un import relié ne compte qu'une fois par fiche (le même que la ludothèque).
         .filter((j: JeuPc) => !(j.id < 0 && j.fiche) || jeuSurPc(j.fiche)?.id === j.id)
         .sort((a, b) => (b.derniere_partie ?? '').localeCompare(a.derniere_partie ?? '') || a.titre.localeCompare(b.titre)),
@@ -46,6 +49,11 @@
   // Triées sur le nom MONTRÉ ; la clé reste le nom LaunchBox (le filtre compare `j.plateforme`).
   const consoles = $derived([...new Set(jeux.map((j) => j.plateforme))].sort((a, b) => nomAffiche(a).localeCompare(nomAffiche(b), 'fr')));
   const affiches = $derived(console_ ? jeux.filter((j) => j.plateforme === console_) : jeux);
+  /** Les jeux installés que Steam ou GOG Galaxy montrent sans être des jeux du PC (lot A : dans la grille principale,
+   * avec leur pastille ; sous « Tout » et « Windows »). */
+  const cartesBoutique = $derived(
+    console_ === null || console_ === 'Windows' ? cartesBoutiqueTaodbox(steam.jeux, galaxy.jeux, Object.values(tele.jeux)) : [],
+  );
 
 
   // Le fond et le logo du jeu choisi (lot Médias, M3, règle dans `$lib/taodbox/fond`) : une seule image de chaque à la
@@ -127,13 +135,14 @@
     console_ = c;
   }
 
-  /** Les jeux Steam installés sur ce PC, jouables depuis le canapé (Steam les lance). */
-  // Ceux dont le dossier est connu sont des jeux du PC : dans la grille principale, jamais en double ici.
-  const steamInstalles = $derived(steam.jeux.filter((j) => j.installe && !j.dossier));
-
-  /** Les jeux installés lus dans GOG Galaxy (hors Steam, déjà montré à part). */
-  // Un jeu GOG avec son dossier est un jeu du PC (A6a) : déjà dans la grille, jamais deux fois.
-  const galaxyInstalles = $derived(galaxy.jeux.filter((j) => j.installe && j.plateforme !== 'steam' && !(j.plateforme === 'gog' && j.dossier)));
+  /** Jouer à un jeu que seule sa boutique connaît (Steam, GOG Galaxy) : son lanceur s'ouvre, un seul toast dit comment
+   * revenir à Frogtend. */
+  async function jeuDeBoutique(c: CarteBoutiqueTaodbox) {
+    if (lancementImpossible()) return;
+    toast(`Le lanceur ${c.par === 'galaxy' ? 'GOG Galaxy' : 'Steam'} s’ouvre ; s’il demande la souris, appuie sur ⊞/Guide pour revenir à Frogtend.`, 'neutre');
+    if (c.par === 'steam') await ouvrirDansSteam({ id: c.cle.slice('steam_'.length), nom: c.nom } as JeuBoutique, 'jouer');
+    else await ouvrirDansGalaxy({ id: c.cle, nom: c.nom } as JeuBoutique);
+  }
 
   onMount(async () => {
     // Les jeux Steam installés deviennent des jeux du PC à la lecture : la grille est relue ensuite.
@@ -159,6 +168,11 @@
   async function jeu(j: JeuPc) {
     // Pas pendant « Gérer le jeu » (un réglage peut attendre sans fenêtre ouverte).
     if (lancementImpossible() || enGestion || rappelEnCours) return;
+    // Battle.net : aucun lancement prouvé (lot A), on le dit au lieu d'échouer.
+    if (estBattlenet(j)) {
+      toast(MESSAGE_BATTLENET, 'alerte');
+      return;
+    }
     if (!j.installation) {
       // Le jeu d'une autre personne : elle seule peut l'installer.
       if (j.d_un_autre || !(await installer(j.id))) return;
@@ -305,7 +319,7 @@
     </div>
   {/if}
 
-  {#if affiches.length === 0}
+  {#if affiches.length === 0 && cartesBoutique.length === 0}
     <p class="vide">Aucun jeu sur ce PC pour l’instant. Ajoute-en depuis le bureau (Catalogue Firehouse).</p>
   {:else}
     <div class="grille">
@@ -320,33 +334,19 @@
           <Jaquette id={j.fiche ?? j.id} titre={j.titre} plateforme={j.plateforme} largeur={180} visuel={etat.profil.ludotheque.visuel} />
           <span class="titre">{j.titre_fiche ?? j.titre}</span>
           <IconesBoutiques grand origines={originesJeuPc(j, groupeDe(j.id, groupes), (x) => tele.jeux[x]?.installation?.boutique?.source)} />
-          <span class="etat">{partie.enJeu !== null && groupeDe(j.id, groupes).includes(partie.enJeu) ? '▶ En cours' : j.installation ? '' : '📦 À installer'}</span>
+          <span class="etat">{partie.enJeu !== null && groupeDe(j.id, groupes).includes(partie.enJeu) ? '▶ En cours' : estBattlenet(j) ? 'ouvre-le depuis Battle.net' : j.installation ? '' : '📦 À installer'}</span>
         </button>
       {/each}
-    </div>
-  {/if}
-
-  {#if steamInstalles.length && (console_ === null || console_ === 'Steam')}
-    <h2 class="section">Steam</h2>
-    <div class="grille">
-      {#each steamInstalles as j (j.id)}
-        <button class="carte" onclick={() => ouvrirDansSteam(j, 'jouer')} title={j.nom}>
-          <span class="image-steam"><img src={adresseImageBoutique('steam', j.id)} alt="" loading="lazy" /></span>
-          <span class="titre">{j.nom}</span>
-          <span class="etat">Steam</span>
-        </button>
-      {/each}
-    </div>
-  {/if}
-
-  {#if galaxyInstalles.length && console_ === null}
-    <h2 class="section">GOG Galaxy</h2>
-    <div class="grille">
-      {#each galaxyInstalles as j (j.id)}
-        <button class="carte" onclick={() => ouvrirDansGalaxy(j)} title={j.nom}>
-          <span class="image-steam">{#if j.image}<img src={adresseImageParUrl(j.image)} alt="" loading="lazy" />{/if}</span>
-          <span class="titre">{j.nom}</span>
-          <span class="etat">GOG Galaxy</span>
+      <!-- Lot A : les jeux installés que seule leur boutique connaît, dans la MÊME grille, avec leur pastille. -->
+      {#each cartesBoutique as c (c.cle)}
+        <button class="carte" data-boutique={c.cle} onclick={() => jeuDeBoutique(c)} disabled={partie.enJeu !== null} title={c.nom}>
+          <span class="image-steam">
+            {#if c.par === 'steam'}<img src={adresseImageBoutique('steam', c.cle.slice('steam_'.length))} alt="" loading="lazy" />
+            {:else if c.image}<img src={adresseImageParUrl(c.image)} alt="" loading="lazy" />{/if}
+          </span>
+          <span class="titre">{c.nom}</span>
+          <IconesBoutiques grand origines={[c.boutique]} />
+          <span class="etat"></span>
         </button>
       {/each}
     </div>
@@ -527,10 +527,6 @@
   .etat {
     color: var(--dim);
     min-height: 1.2em;
-  }
-  .section {
-    margin: 0;
-    font-size: calc(18 * var(--u));
   }
   .image-steam {
     aspect-ratio: 2 / 3;

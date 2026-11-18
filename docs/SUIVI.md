@@ -21,6 +21,14 @@
   - EN ATTENTE de Seb : confirmer la consigne transmise par Firehouse (« Frogtend installe tout seul mods, triches,
     ReShade, comprend le langage simple » ; plans d'installation du contrat 1.45, pas encore lus par Frogtend).
   - ✅ Seb 18/11 : PROCHAIN CHANTIER = les jeux PC, import AUTOMATIQUE des boutiques (Epic, GOG, Steam, Amazon…).
+  - ⚠ 18/11 (Firehouse 3.244.2) : GROS mod Switch servi — « Textures HD 4K (pack complet) » BotW, `maison-e0da2c22d544`,
+    19 556 531 677 o, sha256 2492ae6a…, 3 677 fichiers romfs + un .pchtxt 1.6.0, plan : regler_emulateur tous « disposition
+    mémoire étendue 8 Go » puis poser_mod (`reglage_requis` rempli). AVANT l'essai de Seb, côté Frogtend : (1) `reglage_requis`
+    non vide = JAMAIS posé aujourd'hui → il faut savoir poser ce réglage (Ryubing : taille de la mémoire du Config.json ;
+    Eden : `[Core] memory_layout_mode` — clés et valeurs à relever dans leurs sources) avec l'accord et la configuration
+    sauvegardée ; (2) la place : archive 19,6 + rangé 19,6 + copie Eden 19,6 + une copie Ryubing PAR personne 19,6 Go
+    (disques différents : pas de lien dur) → à annoncer dans l'accord, et la durée de la première copie au lancement ;
+    (3) vérifier la chaîne sur 19,6 Go (zip64, empreinte, extraction en flux, reprise). Ne PAS proposer l'essai avant.
     Découpage accepté (lots A à E, détail dans PLAN.md « IMPORT AUTOMATIQUE ») ; EN COURS : lot A. Essai de la
     récupération Epic (Knightica, offert jusqu'au 19/11) proposé à Seb.
 - **✅ Seb 30/10 soir : « Oui go ! » — enchaîner en autonomie, une version par point, avis des experts avant chacun** :

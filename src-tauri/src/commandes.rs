@@ -5866,45 +5866,193 @@ pub async fn boutique_steam_oublier(noyau: State<'_, Noyau>) -> Resultat<()> {
     crate::boutiques::ecrire(&dossier_profil_de(&noyau, &p.id), None)
 }
 
-/// Les jeux Steam du profil, avec ce qui est installé sur CE PC (relu à chaque fois).
+/// Les jeux Steam du profil (liste de son compte, s'il est relié) ET ceux installés sur CE PC (relus à chaque fois :
+/// lot A, un profil SANS clé d'API voit ses jeux Steam installés).
 #[tauri::command]
 pub async fn boutique_steam_jeux(noyau: State<'_, Noyau>) -> Resultat<Vec<crate::boutiques::JeuBoutique>> {
-    let p = profil_ouvert(&noyau).await?;
-    let mut l = crate::boutiques::lire(&dossier_profil_de(&noyau, &p.id)).map(|c| c.jeux).unwrap_or_default();
-    if let Some(d) = crate::boutiques::dossier_steam() {
-        // Installés (sur le disque, même si une mise à jour attend ; jamais pendant le 1er téléchargement), avec leur
-        // dossier et s'ils sont prêts à lancer.
-        let installes = crate::boutiques::installes_steam_dossiers(&d);
-        for j in &mut l {
-            let i = installes.get(&j.id);
-            j.dossier = i.map(|i| i.dossier.to_string_lossy().into_owned());
-            j.pret = i.map(|i| i.pret);
-            j.installe = i.is_some();
-        }
-        // Les installés deviennent des jeux du PC (lancés par Steam, parties suivies) ; les désinstallés en sortent.
-        let installes_pc: std::collections::BTreeSet<String> = installes.keys().cloned().collect();
-        match noyau.synchroniser_steam(&l, &installes_pc) {
-            Ok((a, r)) if a + r > 0 => noyau.journaliser(&format!("jeux Steam du PC : {a} ajouté(s), {r} retiré(s)")),
-            Ok(_) => {}
-            Err(e) => noyau.journaliser(&format!("jeux Steam du PC : {e:?}")),
-        }
-        // L'état « installé » de la ludothèque du profil suit le disque (filtre « Installés », bouton Steam).
-        if !l.is_empty() {
-            if let Err(e) = noyau.ranger_boutique("steam", &l).await {
-                noyau.journaliser(&format!("ludothèque Steam : {e:?}"));
-            }
+    // Une relecture à la fois ; la session est prise AU DÉBUT (un profil changé entre-temps ne reçoit rien).
+    let _un_seul = RELECTURE.lock().await;
+    let s = noyau.session().await?;
+    let api = crate::boutiques::lire(&dossier_profil_de(&noyau, &s.profil.id)).map(|c| c.jeux).unwrap_or_default();
+    let locaux = tauri::async_runtime::spawn_blocking(|| crate::boutiques_pc::lire_steam(crate::boutiques::dossier_steam().as_deref()))
+        .await
+        .map_err(|_| Erreur::Disque("La lecture de Steam s'est arrêtée brutalement.".into()))?;
+    let Some(locaux) = locaux else { return Ok(api) };
+    let relie = !api.is_empty();
+    let l = crate::boutiques_pc::fusion_steam(api, &locaux);
+    synchroniser_registre(&noyau, "steam", &locaux);
+    // L'état « installé » de la ludothèque du profil suit le disque (filtre « Installés », bouton Steam). Sans compte
+    // relié, les cartes ne sont rangées que par l'import automatique (`boutiques_relire_pc`), si le profil l'a gardé.
+    if relie {
+        if let Err(e) = noyau.ranger_installes(&s, "steam", &l) {
+            noyau.journaliser(&format!("ludothèque Steam : {e:?}"));
         }
     }
-    // Les jeux Epic installés (A6d) : lus à l'ouverture du profil, comme Steam.
-    synchroniser_epic(&noyau).await;
     Ok(l)
+}
+
+/// Les jeux installés d'une boutique deviennent des jeux du PC (lancés par la boutique, parties suivies) ; un jeu
+/// désinstallé n'en sort que si son dossier a disparu, sans temps de jeu (`synchroniser_boutique`). Un échec est noté.
+fn synchroniser_registre(noyau: &Noyau, boutique: &str, installes: &[crate::boutiques::JeuBoutique]) {
+    let prefixe = format!("{boutique}_");
+    let pc: std::collections::BTreeSet<String> =
+        installes.iter().filter(|j| j.installe).map(|j| if boutique == "steam" { j.id.clone() } else { j.id.strip_prefix(&prefixe).unwrap_or(&j.id).to_string() }).collect();
+    match noyau.synchroniser_boutique(boutique, installes, &pc) {
+        Ok((a, r)) if a + r > 0 => noyau.journaliser(&format!("jeux {} du PC : {a} ajouté(s), {r} retiré(s)", crate::boutiques_pc::nom_boutique(boutique))),
+        Ok(_) => {}
+        Err(e) => noyau.journaliser(&format!("jeux {} du PC : synchronisation impossible ({e})", crate::boutiques_pc::nom_boutique(boutique))),
+    }
+}
+
+/// Une boutique telle que ce PC la voit (page 🛒 Boutiques ; import automatique).
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct EtatBoutiquePc {
+    pub boutique: String,
+    pub nom: String,
+    /// Le lanceur est là (Jouer et Installer possibles).
+    pub lanceur: bool,
+    /// Ses jeux installés ont pu être lus.
+    pub lu: bool,
+    pub installes: usize,
+}
+
+/// Ce que la relecture du PC a donné : l'état de chaque boutique et les jeux NOUVEAUX dans la ludothèque du profil.
+#[derive(Serialize, Clone, Debug, Default)]
+pub struct ReleveBoutiques {
+    pub boutiques: Vec<EtatBoutiquePc>,
+    /// (boutique, nombre de jeux nouveaux), seulement les boutiques qui en ont.
+    pub nouveaux: Vec<(String, usize)>,
+}
+
+/// Une seule relecture à la fois (deux profils ouverts coup sur coup, un import Galaxy pendant le démarrage…).
+static RELECTURE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Lit les boutiques demandées sur CE PC (en tâche de fond), fait la partie « registre du PC » UNE fois, puis range
+/// les cartes du profil ouvert. Un lanceur absent ou illisible ne touche à rien (jamais « zéro jeu »).
+pub(crate) async fn relire_pc(noyau: &Noyau, seulement: &[&str]) -> Resultat<ReleveBoutiques> {
+    let _un_seul = RELECTURE.lock().await;
+    // La session AU DÉBUT : un profil changé pendant la lecture ne reçoit rien (ses cartes, ni la liste Steam d'un autre).
+    let s = noyau.session().await?;
+    let travail = noyau.dossier.join("travail").join("boutiques-pc");
+    let boutiques: Vec<&'static str> = crate::boutiques_pc::BOUTIQUES_PC.iter().copied().filter(|b| seulement.contains(b)).collect();
+    let (lecture, lanceurs) = tauri::async_runtime::spawn_blocking(move || {
+        let l = crate::boutiques_pc::lire_seulement(&boutiques, &travail);
+        let _ = std::fs::remove_dir_all(&travail);
+        let lanceurs: Vec<bool> = l.iter().map(|(b, _)| crate::boutiques_pc::lanceur_present(b)).collect();
+        (l, lanceurs)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La lecture des boutiques de ce PC s'est arrêtée brutalement.".into()))?;
+    let mut r = ReleveBoutiques::default();
+    for ((b, l), lanceur) in lecture.into_iter().zip(lanceurs) {
+        let mut etat = EtatBoutiquePc { boutique: b.into(), nom: crate::boutiques_pc::nom_boutique(b).into(), lanceur, lu: l.is_some(), installes: 0 };
+        let Some(installes) = l else {
+            r.boutiques.push(etat);
+            continue;
+        };
+        etat.installes = installes.len();
+        synchroniser_registre(noyau, b, &installes);
+        // Steam : la liste du compte du profil (s'il est relié) garde ses jeux pas installés.
+        let cartes = if b == "steam" {
+            crate::boutiques_pc::fusion_steam(crate::boutiques::lire(&dossier_profil_de(noyau, &s.profil.id)).map(|c| c.jeux).unwrap_or_default(), &installes)
+        } else {
+            installes
+        };
+        match noyau.ranger_installes(&s, b, &cartes) {
+            Ok(n) if !n.is_empty() => r.nouveaux.push((b.into(), n.len())),
+            Ok(_) => {}
+            Err(e) => noyau.journaliser(&format!("ludothèque {} : {e:?}", crate::boutiques_pc::nom_boutique(b))),
+        }
+        r.boutiques.push(etat);
+    }
+    let total: usize = r.nouveaux.iter().map(|(_, n)| n).sum();
+    if total > 0 {
+        noyau.journaliser(&format!("import automatique : {total} jeu(x) nouveau(x) pour le profil {} ({:?})", s.profil.id, r.nouveaux));
+    }
+    Ok(r)
+}
+
+/// Import automatique (lot A, Seb 18/11) : à l'ouverture d'un profil, les jeux INSTALLÉS de toutes les boutiques de
+/// ce PC entrent seuls dans sa ludothèque. Appelé sans attendre par l'interface (jamais un ralentissement).
+#[tauri::command]
+pub async fn boutiques_relire_pc(noyau: State<'_, Noyau>) -> Resultat<ReleveBoutiques> {
+    relire_pc(&noyau, &crate::boutiques_pc::BOUTIQUES_PC).await
+}
+
+/// L'état des boutiques de ce PC (lecture seule, rien n'est rangé) : la page 🛒 Boutiques.
+#[tauri::command]
+pub async fn boutiques_etat_pc(noyau: State<'_, Noyau>) -> Resultat<Vec<EtatBoutiquePc>> {
+    // Le même verrou que la relecture : jamais deux copies de bases dans le même dossier de travail.
+    let _un_seul = RELECTURE.lock().await;
+    let travail = noyau.dossier.join("travail").join("boutiques-etat");
+    tauri::async_runtime::spawn_blocking(move || {
+        let l = crate::boutiques_pc::lire_tout(&travail);
+        let _ = std::fs::remove_dir_all(&travail);
+        l.into_iter()
+            .map(|(b, l)| EtatBoutiquePc {
+                boutique: b.into(),
+                nom: crate::boutiques_pc::nom_boutique(b).into(),
+                lanceur: crate::boutiques_pc::lanceur_present(b),
+                lu: l.is_some(),
+                installes: l.map_or(0, |l| l.len()),
+            })
+            .collect()
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La lecture des boutiques de ce PC s'est arrêtée brutalement.".into()))
+}
+
+/// L'adresse officielle pour jouer à un jeu de boutique ou l'installer (clé de la carte : l'appid Steam, sinon
+/// « <boutique>_<clé> »), le lanceur VÉRIFIÉ d'abord : un lanceur absent est dit, jamais un échec en silence.
+pub(crate) fn adresse_carte(boutique: &str, cle_carte: &str, action: crate::boutiques_pc::Action) -> Resultat<String> {
+    adresse_carte_selon(boutique, cle_carte, action, crate::boutiques_pc::lanceur_present)
+}
+
+/// `adresse_carte`, la présence du lanceur donnée (pour les tests : jamais le PC de Seb).
+fn adresse_carte_selon(boutique: &str, cle_carte: &str, action: crate::boutiques_pc::Action, lanceur_present: impl Fn(&str) -> bool) -> Resultat<String> {
+    use crate::boutiques_pc::{adresse, message_lanceur_absent, Action};
+    let cle = cle_carte.strip_prefix(&format!("{boutique}_")).unwrap_or(cle_carte);
+    if !lanceur_present(boutique) {
+        return Err(Erreur::Refus(message_lanceur_absent(boutique)));
+    }
+    let url = match (boutique, action) {
+        ("epic", Action::Jouer) => crate::boutiques::installes_epic_du_pc().and_then(|l| l.into_iter().find(|j| j.app == cle)).map(|j| crate::boutiques::adresse_epic(&j)),
+        ("xboxone", Action::Jouer) => crate::boutiques_pc::application_xbox(cle).and_then(|a| adresse(boutique, cle, action, Some(&a))),
+        ("gog", Action::Installer) if !crate::boutiques_pc::galaxy_present() => return Err(Erreur::Refus(message_lanceur_absent("gog"))),
+        ("gog", Action::Jouer) => None,
+        _ => adresse(boutique, cle, action, None),
+    };
+    url.ok_or_else(|| {
+        Erreur::Refus(match (boutique, action) {
+            ("battlenet", _) => message_lanceur_absent("battlenet"),
+            (_, Action::Jouer) => format!("{} ne voit plus ce jeu installé : ouvre-le ou répare-le depuis {}.", crate::boutiques_pc::nom_boutique(boutique), crate::boutiques_pc::nom_boutique(boutique)),
+            _ => format!("Frogtend ne sait pas installer ce jeu : installe-le depuis {}.", crate::boutiques_pc::nom_boutique(boutique)),
+        })
+    })
+}
+
+/// Jouer à un jeu de boutique ou l'installer, par SON lanceur (Epic, Ubisoft, Amazon, Xbox, GOG Galaxy…).
+#[tauri::command]
+pub async fn boutique_ouvrir(boutique: String, cle: String, action: String) -> Resultat<()> {
+    let action = match action.as_str() {
+        "jouer" => crate::boutiques_pc::Action::Jouer,
+        "installer" => crate::boutiques_pc::Action::Installer,
+        _ => return Err(Erreur::Refus("Action inconnue.".into())),
+    };
+    let b = boutique.clone();
+    let url = tauri::async_runtime::spawn_blocking(move || adresse_carte(&b, &cle, action))
+        .await
+        .map_err(|_| Erreur::Disque("La lecture du lanceur s'est arrêtée brutalement.".into()))??;
+    tauri_plugin_opener::open_url(&url, None::<&str>).map_err(|_| Erreur::Disque(format!("{} ne s'ouvre pas.", crate::boutiques_pc::nom_boutique(&boutique))))
 }
 
 /// Importe (ou met à jour) la liste des jeux Steam possédés. Le compte doit être réglé (sinon : `Refus`, et
 /// l'interface ouvre le réglage d'abord, règle de Seb).
 #[tauri::command]
 pub async fn boutique_steam_importer(noyau: State<'_, Noyau>) -> Resultat<Vec<crate::boutiques::JeuBoutique>> {
-    let p = profil_ouvert(&noyau).await?;
+    // La session AU DÉBUT : la liste importée ne va qu'au profil qui l'a demandée.
+    let s = noyau.session().await?;
+    let p = s.profil.clone();
     let dossier = dossier_profil_de(&noyau, &p.id);
     let mut c = crate::boutiques::lire(&dossier).filter(|c| !c.steamid.is_empty()).ok_or_else(|| Erreur::Refus("Compte Steam pas encore réglé.".into()))?;
     let cle = noyau.coffre.lire(&crate::boutiques::nom_secret(&p.id, "steam"))?.ok_or_else(|| Erreur::Refus("Compte Steam pas encore réglé.".into()))?;
@@ -5914,7 +6062,7 @@ pub async fn boutique_steam_importer(noyau: State<'_, Noyau>) -> Resultat<Vec<cr
     noyau.journaliser(&format!("import Steam : {} jeu(x) pour le profil {}", c.jeux.len(), p.id));
     let jeux = boutique_steam_jeux(noyau.clone()).await?;
     // Dans la ludothèque, avec les autres jeux (plateforme Windows).
-    noyau.ranger_boutique("steam", &jeux).await?;
+    noyau.ranger_installes(&s, "steam", &jeux)?;
     Ok(jeux)
 }
 
@@ -5943,8 +6091,10 @@ pub async fn gratuits_liste(noyau: State<'_, Noyau>) -> Resultat<Vec<Offert>> {
 
 const FENETRE_EPIC: &str = "boutique-epic";
 
-/// La fenêtre de la boutique Epic, avec le navigateur PROPRE AU PROFIL (sa connexion Epic y reste).
-fn fenetre_epic(app: &AppHandle, dossier_profil: &std::path::Path, adresse: &str, visible: bool) -> Resultat<tauri::WebviewWindow> {
+/// La fenêtre de connexion à Epic, avec le navigateur PROPRE AU PROFIL (sa connexion Epic y reste). Le script d'Epic
+/// y tourne en mode connexion (aucun clic) : quand la boutique montre le compte connecté, l'interface l'apprend par
+/// l'événement `gratuits-connecte` ({boutique, profil}).
+fn fenetre_epic(app: &AppHandle, dossier_profil: &std::path::Path, profil: &str, adresse: &str) -> Resultat<tauri::WebviewWindow> {
     if let Some(w) = app.get_webview_window(FENETRE_EPIC) {
         let _ = w.close();
         std::thread::sleep(std::time::Duration::from_millis(300));
@@ -5954,8 +6104,21 @@ fn fenetre_epic(app: &AppHandle, dossier_profil: &std::path::Path, adresse: &str
         .title("Epic Games — Frogtend")
         .inner_size(1100.0, 800.0)
         .center()
-        .visible(visible)
         .data_directory(crate::gratuits::dossier_navigateur(dossier_profil))
+        .on_new_window(crate::gratuits::fenetre_de_connexion)
+        .on_page_load(|w, charge| {
+            if matches!(charge.event(), tauri::webview::PageLoadEvent::Finished) {
+                let _ = w.eval(crate::gratuits::script_epic_connexion());
+            }
+        })
+        .on_document_title_changed({
+            let (app, profil) = (app.clone(), profil.to_string());
+            move |_, titre| {
+                if crate::gratuits::lire_titre(&titre) == Some(crate::gratuits::Obtention::Connecte) {
+                    let _ = app.emit("gratuits-connecte", serde_json::json!({"boutique": "epic", "profil": profil}));
+                }
+            }
+        })
         .build()
         .map_err(|e| Erreur::Disque(format!("La fenêtre d'Epic ne s'ouvre pas ({e}).")))
 }
@@ -5964,7 +6127,7 @@ fn fenetre_epic(app: &AppHandle, dossier_profil: &std::path::Path, adresse: &str
 #[tauri::command]
 pub async fn gratuits_connexion_epic(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<()> {
     let p = profil_ouvert(&noyau).await?;
-    let w = fenetre_epic(&app, &dossier_profil_de(&noyau, &p.id), "https://www.epicgames.com/id/login?redirectUrl=https%3A%2F%2Fstore.epicgames.com%2Fen-US%2F", true)?;
+    let w = fenetre_epic(&app, &dossier_profil_de(&noyau, &p.id), &p.id, "https://www.epicgames.com/id/login?redirectUrl=https%3A%2F%2Fstore.epicgames.com%2Fen-US%2F")?;
     let _ = w.set_focus();
     Ok(())
 }
@@ -5992,6 +6155,7 @@ pub async fn gratuits_obtenir_epic(app: AppHandle, noyau: State<'_, Noyau>, slug
         .center()
         .visible(false)
         .data_directory(crate::gratuits::dossier_navigateur(&dossier))
+        .on_new_window(crate::gratuits::fenetre_d_automatisation)
         .on_page_load(|w, charge| {
             if matches!(charge.event(), tauri::webview::PageLoadEvent::Finished) {
                 let _ = w.eval(crate::gratuits::SCRIPT_EPIC);
@@ -6250,6 +6414,7 @@ pub async fn gratuits_connexion(app: AppHandle, noyau: State<'_, Noyau>, boutiqu
         .inner_size(1280.0, 860.0)
         .center()
         .data_directory(crate::gratuits::dossier_navigateur(&dossier_profil_de(&noyau, &p.id)))
+        .on_new_window(crate::gratuits::fenetre_de_connexion)
         .build()
         .map_err(|e| Erreur::Disque(format!("La fenêtre ne s'ouvre pas ({e}).")))?;
     let _ = w.set_focus();
@@ -6277,6 +6442,7 @@ pub async fn gratuits_recuperer(app: AppHandle, noyau: State<'_, Noyau>, boutiqu
         .center()
         .visible(false)
         .data_directory(crate::gratuits::dossier_navigateur(&dossier))
+        .on_new_window(crate::gratuits::fenetre_d_automatisation)
         .on_page_load(move |w, charge| {
             if matches!(charge.event(), tauri::webview::PageLoadEvent::Finished) {
                 let _ = w.eval(script);
@@ -6320,6 +6486,7 @@ pub async fn gratuits_connexion_playstation(app: AppHandle, noyau: State<'_, Noy
         .inner_size(1100.0, 800.0)
         .center()
         .data_directory(crate::gratuits::dossier_navigateur(&dossier_profil_de(&noyau, &p.id)))
+        .on_new_window(crate::gratuits::fenetre_de_connexion)
         .build()
         .map_err(|e| Erreur::Disque(format!("La fenêtre de PlayStation ne s'ouvre pas ({e}).")))?;
     let _ = w.set_focus();
@@ -6347,6 +6514,7 @@ pub async fn gratuits_psplus(app: AppHandle, noyau: State<'_, Noyau>) -> Resulta
         .center()
         .visible(false)
         .data_directory(crate::gratuits::dossier_navigateur(&dossier))
+        .on_new_window(crate::gratuits::fenetre_d_automatisation)
         .on_page_load(|w, charge| {
             if matches!(charge.event(), tauri::webview::PageLoadEvent::Finished) {
                 let _ = w.eval(crate::gratuits::SCRIPT_PSPLUS);
@@ -6403,35 +6571,11 @@ pub async fn boutique_galaxy_jeux(noyau: State<'_, Noyau>) -> Resultat<Vec<crate
     Ok(l)
 }
 
-/// Les jeux Epic installés sur CE PC (manifestes de l'Epic Games Launcher, lecture seule) deviennent des jeux du PC
-/// (A6d) : lancés par Epic et suivis comme Steam ; une carte dans la ludothèque si GOG Galaxy ne la montre pas déjà.
+/// Les jeux Epic installés sur CE PC (lot A : la relecture commune) : après un import de GOG Galaxy, ses cartes Epic
+/// suivent de nouveau l'état lu chez Epic.
 async fn synchroniser_epic(noyau: &Noyau) {
-    let Some(d) = crate::boutiques::dossier_manifestes_epic() else { return };
-    let Ok(installes) = tauri::async_runtime::spawn_blocking(move || crate::boutiques::installes_epic(&d)).await else { return };
-    let jeux: Vec<crate::boutiques::JeuBoutique> = installes
-        .iter()
-        .map(|e| crate::boutiques::JeuBoutique {
-            id: format!("epic_{}", e.app),
-            nom: e.nom.clone(),
-            minutes: 0,
-            derniere: 0,
-            installe: true,
-            plateforme: "epic".into(),
-            image: None,
-            dossier: Some(e.dossier.to_string_lossy().into_owned()),
-            pret: Some(true),
-            succes: None,
-            releases: vec![],
-        })
-        .collect();
-    let pc: std::collections::BTreeSet<String> = installes.iter().map(|e| e.app.clone()).collect();
-    match noyau.synchroniser_boutique("epic", &jeux, &pc) {
-        Ok((a, r)) if a + r > 0 => noyau.journaliser(&format!("jeux Epic du PC : {a} ajouté(s), {r} retiré(s)")),
-        Ok(_) => {}
-        Err(e) => noyau.journaliser(&format!("jeux Epic du PC : synchronisation impossible ({e})")),
-    }
-    if let Err(e) = noyau.ranger_boutique("epic", &jeux).await {
-        noyau.journaliser(&format!("ludothèque Epic : {e:?}"));
+    if let Err(e) = relire_pc(noyau, &["epic"]).await {
+        noyau.journaliser(&format!("jeux Epic du PC : {e:?}"));
     }
 }
 
@@ -9019,6 +9163,21 @@ pub async fn restauration_conflits(noyau: State<'_, Noyau>) -> Resultat<Vec<crat
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn jouer_ou_installer_un_jeu_de_boutique_dit_le_lanceur_absent_et_valide_la_cle() {
+        use crate::boutiques_pc::Action;
+        let la = |_: &str| true;
+        let absent = |_: &str| false;
+        assert_eq!(super::adresse_carte_selon("uplay", "uplay_46", Action::Jouer, la).unwrap(), "uplay://launch/46", "la clé de la carte perd son préfixe");
+        assert_eq!(super::adresse_carte_selon("amazon", "amazon_amzn1.adg.product.1", Action::Installer, la).unwrap(), "amazon-games://install/amzn1.adg.product.1");
+        assert_eq!(super::adresse_carte_selon("steam", "620", Action::Installer, la).unwrap(), "steam://install/620");
+        let e = super::adresse_carte_selon("uplay", "uplay_46", Action::Jouer, absent).unwrap_err().to_string();
+        assert!(e.contains("Ce jeu a besoin du lanceur Ubisoft Connect, absent de ce PC"), "{e}");
+        assert!(super::adresse_carte_selon("uplay", "uplay_4/6", Action::Jouer, la).is_err(), "clé douteuse : rien n'est ouvert");
+        let e = super::adresse_carte_selon("battlenet", "battlenet_wow", Action::Jouer, la).unwrap_err().to_string();
+        assert!(e.contains("Battle.net"), "pas de lancement deviné : {e}");
+    }
+
     #[test]
     fn un_dossier_de_jeux_n_est_jamais_une_racine_ni_documents() {
         let r = super::refus_dossier_jeux(std::path::Path::new(r"D:\")).unwrap();

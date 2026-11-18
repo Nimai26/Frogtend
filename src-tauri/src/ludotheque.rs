@@ -708,7 +708,7 @@ impl Cache {
         // A6c : les copies d'un même jeu (toutes sources de boutique confondues) sont réunies de nouveau.
         {
             let tous: Vec<JeuResume> = tx
-                .prepare("SELECT brut FROM jeux WHERE id < 0 AND json_extract(brut, '$.source') IN ('steam', 'galaxy', 'epic')")?
+                .prepare("SELECT brut FROM jeux WHERE id < 0 AND json_extract(brut, '$.source') IN ('steam', 'galaxy', 'epic', 'gog', 'uplay', 'amazon', 'xboxone', 'battlenet')")?
                 .query_map([], |r| r.get::<_, String>(0))?
                 .filter_map(|b| b.ok().and_then(|b| serde_json::from_str(&b).ok()))
                 .collect();
@@ -780,6 +780,13 @@ impl Cache {
     pub fn ids_de_source(&self, source: &str) -> Resultat<std::collections::BTreeSet<i64>> {
         let mut st = self.db.prepare("SELECT id FROM jeux WHERE id < 0 AND json_extract(brut, '$.source') = ?1")?;
         let l = st.query_map([source], |r| r.get::<_, i64>(0))?.flatten().collect();
+        Ok(l)
+    }
+
+    /// Les cartes d'une source de boutique (import automatique : celles d'un jeu désinstallé restent, « pas installé »).
+    pub fn jeux_de_source(&self, source: &str) -> Resultat<Vec<JeuResume>> {
+        let mut st = self.db.prepare("SELECT brut FROM jeux WHERE id < 0 AND json_extract(brut, '$.source') = ?1")?;
+        let l = st.query_map([source], |r| r.get::<_, String>(0))?.filter_map(|b| b.ok().and_then(|b| serde_json::from_str(&b).ok())).collect();
         Ok(l)
     }
 
@@ -1127,6 +1134,22 @@ pub(crate) mod tests {
         assert_eq!(c.jeu(id_boutique("gog", "1")).unwrap().unwrap().installe, Some(false), "jamais une autre boutique");
         c.marquer_installes_galaxy("epic", &Default::default()).unwrap();
         assert_eq!(c.jeu(id_boutique("epic", "Fangtooth")).unwrap().unwrap().installe, Some(false), "désinstallé chez Epic");
+    }
+
+    #[test]
+    fn les_cartes_d_une_source_se_relisent_et_les_nouvelles_sources_sont_reunies() {
+        let mut c = cache_exemple();
+        c.remplacer_boutique("uplay", &[jeu_de_boutique("uplay", "uplay", "46", "Far Cry 3", true)]).unwrap();
+        c.remplacer_boutique("gog", &[jeu_de_boutique("gog", "gog", "1", "Jeu G", true)]).unwrap();
+        let l = c.jeux_de_source("uplay").unwrap();
+        assert_eq!(l.iter().map(|j| j.titre.as_str()).collect::<Vec<_>>(), ["Far Cry 3"]);
+        assert!(c.jeux_de_source("amazon").unwrap().is_empty());
+        // Une carte GOG lue sur le PC est réunie avec la copie Steam que Galaxy relie (A6c).
+        let mut s = jeu_de_boutique("galaxy", "steam", "9", "Jeu G", false);
+        s.releases = Some(vec!["steam_9".into(), "gog_1".into()]);
+        c.remplacer_boutique("galaxy", &[s]).unwrap();
+        let g = c.jeu(id_boutique("gog", "1")).unwrap().unwrap();
+        assert!(g.maitre.is_some(), "la carte GOG du PC fait partie de la réunion");
     }
 
     /// Les plateformes sans l'entrée brute gardée (comparées champ par champ).

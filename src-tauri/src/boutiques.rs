@@ -156,10 +156,17 @@ pub async fn jeux_possedes(base: &str, cle: &str, steamid: &str) -> Resultat<Vec
     Ok(l)
 }
 
-/// Une forme comparable d'un chemin Windows (« / » ou « \ », majuscules, séparateur final) : le registre donne
-/// `d:/launchbox/games/steam` et le vdf `D:\LaunchBox\Games\Steam` pour le MÊME dossier (relevé sur Venkman, 20/10).
-fn cle_chemin(p: &Path) -> String {
-    p.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase()
+/// Une forme comparable d'un chemin Windows (« / » ou « \ », majuscules, séparateur final, préfixe `\\?\`) : le
+/// registre donne `d:/launchbox/games/steam` et le vdf `D:\LaunchBox\Games\Steam` pour le MÊME dossier (relevé sur
+/// Venkman, 20/10) ; Ubisoft écrit ses dossiers avec des « / ». Un chemin réseau garde ses deux « \ » de tête.
+pub(crate) fn cle_chemin(p: &Path) -> String {
+    let t = p.to_string_lossy().replace('/', "\\");
+    let t = if let Some(r) = t.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{r}")
+    } else {
+        t.strip_prefix(r"\\?\").map(String::from).unwrap_or(t)
+    };
+    t.trim_end_matches('\\').to_lowercase()
 }
 
 /// Les bibliothèques Steam de ce PC (`libraryfolders.vdf`, lignes `"path" "D:\\SteamLibrary"`), chacune une fois.
@@ -188,6 +195,8 @@ pub struct ManifesteSteam {
     pub etat: u64,
     /// La version installée (`buildid` ; jamais `TargetBuildID`, celle qu'une mise à jour visera) — facultative.
     pub buildid: Option<String>,
+    /// Le nom du jeu (`name`), quand le manifeste le donne.
+    pub nom: Option<String>,
 }
 
 /// Lit les clés simples d'un manifeste Steam (format texte de Valve : `"clé"  "valeur"`, une par ligne).
@@ -203,6 +212,7 @@ pub fn lire_manifeste_steam(texte: &str) -> Option<ManifesteSteam> {
         installdir: valeur("installdir")?,
         etat: valeur("StateFlags")?.parse().ok()?,
         buildid: valeur("buildid").filter(|b| !b.is_empty() && b.chars().all(|c| c.is_ascii_digit())),
+        nom: valeur("name").map(|n| n.trim().to_string()).filter(|n| !n.is_empty()),
     })
 }
 
@@ -230,6 +240,8 @@ pub struct InstalleSteam {
     pub buildid: Option<String>,
     /// Steam le dit en cours (« AppRunning », 64) : rien n'y est posé ni retiré.
     pub lance: bool,
+    /// Le nom du jeu, d'après son manifeste.
+    pub nom: Option<String>,
 }
 
 /// Les jeux Steam installés sur ce PC, avec leur dossier : `<bibliothèque>\steamapps\common\<installdir>`, où
@@ -249,7 +261,7 @@ pub fn installes_steam_dossiers(dossier_steam: &Path) -> std::collections::BTree
             }
             let dossier = b.join("steamapps").join("common").join(&m.installdir);
             if dossier.is_dir() {
-                s.insert(m.appid, InstalleSteam { dossier, pret: steam_pret(m.etat), lance: m.etat & 64 != 0, buildid: m.buildid });
+                s.insert(m.appid, InstalleSteam { dossier, pret: steam_pret(m.etat), lance: m.etat & 64 != 0, buildid: m.buildid, nom: m.nom });
             }
         }
     }
@@ -258,13 +270,11 @@ pub fn installes_steam_dossiers(dossier_steam: &Path) -> std::collections::BTree
 
 
 /// Le dossier de Steam sur ce PC (registre `HKCU\Software\Valve\Steam`, valeur `SteamPath`, LU par l'API de Windows :
-/// un chemin accentué reste juste), sinon son dossier habituel.
+/// un chemin accentué reste juste). Jamais un dossier supposé (lot A, 18/11 : rien ne se suppose sur le PC) : sans
+/// cette valeur, Steam est absent.
 pub fn dossier_steam() -> Option<PathBuf> {
     let lu = crate::registre::lire_texte_hkcu(r"Software\Valve\Steam", "SteamPath").map(|v| PathBuf::from(v.trim().replace('/', "\\")));
-    lu.filter(|p| p.is_dir()).or_else(|| {
-        let p = PathBuf::from(r"C:\Program Files (x86)\Steam");
-        p.is_dir().then_some(p)
-    })
+    lu.filter(|p| p.is_dir())
 }
 
 fn fichier(dossier_profil: &Path) -> PathBuf {
@@ -653,10 +663,58 @@ pub fn fiche_galaxy(storage: &Path, travail: &Path, cle: &str) -> Resultat<Optio
     lire().map_err(|e| Erreur::Disque(format!("La base de GOG Galaxy est illisible ({e}).")))
 }
 
-/// Le dossier des manifestes de l'Epic Games Launcher (`%ProgramData%\Epic\EpicGamesLauncher\Data\Manifests`).
+/// Le dossier des données de l'Epic Games Launcher, tel qu'Epic l'écrit dans le registre (`HKLM\SOFTWARE\Epic
+/// Games\EpicGamesLauncher`, valeur `AppDataPath` ; relevé du 18/11 : `C:\ProgramData\Epic\EpicGamesLauncher\Data\`).
+/// Jamais un chemin supposé.
+pub fn dossier_donnees_epic() -> Option<PathBuf> {
+    let v = crate::registre::valeurs(crate::registre::Racine::Machine, r"SOFTWARE\Epic Games\EpicGamesLauncher")?;
+    let p = PathBuf::from(v.get("AppDataPath")?.trim().trim_end_matches(['\\', '/']));
+    (!p.as_os_str().is_empty() && p.is_dir()).then_some(p)
+}
+
+/// Le dossier des manifestes de l'Epic Games Launcher (`<AppDataPath>\Manifests`).
 pub fn dossier_manifestes_epic() -> Option<PathBuf> {
-    let d = PathBuf::from(std::env::var_os("ProgramData")?).join("Epic").join("EpicGamesLauncher").join("Data").join("Manifests");
+    let d = dossier_donnees_epic()?.join("Manifests");
     d.is_dir().then_some(d)
+}
+
+/// `LauncherInstalled.dat`, la liste des installations que tient le lanceur, à côté de ses données
+/// (`<…>\Epic\EpicGamesLauncher\Data` → `<…>\Epic\UnrealEngineLauncher\LauncherInstalled.dat`, relevé du 18/11).
+pub fn liste_installations_epic(donnees: &Path) -> Option<PathBuf> {
+    let f = donnees.parent()?.parent()?.join("UnrealEngineLauncher").join("LauncherInstalled.dat");
+    f.is_file().then_some(f)
+}
+
+/// Les dossiers que `LauncherInstalled.dat` donne (AppName → InstallLocation). Le manifeste d'un jeu peut garder un
+/// ancien dossier (jeu déplacé) : cette liste sert alors de repli (méthode de Playnite, relue le 18/11).
+pub fn lire_installations_epic(texte: &str) -> std::collections::BTreeMap<String, String> {
+    let v: Value = serde_json::from_str(texte).unwrap_or(Value::Null);
+    v["InstallationList"]
+        .as_array()
+        .map(|l| {
+            l.iter()
+                .filter_map(|a| Some((a["AppName"].as_str().filter(|x| id_epic_sur(x))?.to_string(), a["InstallLocation"].as_str().filter(|x| !x.trim().is_empty())?.to_string())))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Le repli de `LauncherInstalled.dat` à côté des données `donnees` (vide s'il manque ou s'il est illisible).
+pub fn repli_epic(donnees: &Path) -> std::collections::BTreeMap<String, String> {
+    liste_installations_epic(donnees)
+        .filter(|f| std::fs::metadata(f).is_ok_and(|m| m.len() <= 4 * 1024 * 1024))
+        .and_then(|f| std::fs::read(f).ok())
+        .map(|o| lire_installations_epic(&String::from_utf8_lossy(&o)))
+        .unwrap_or_default()
+}
+
+/// Les jeux Epic installés sur CE PC, d'après le registre (AppDataPath), ses manifestes et `LauncherInstalled.dat` ;
+/// `None` : le lanceur n'est pas là, ou ses manifestes ne se lisent pas (jamais « zéro jeu » dans ce cas).
+pub fn installes_epic_du_pc() -> Option<Vec<JeuEpic>> {
+    let donnees = dossier_donnees_epic()?;
+    let manifestes = donnees.join("Manifests");
+    std::fs::read_dir(&manifestes).ok()?;
+    Some(installes_epic(&manifestes, &repli_epic(&donnees)))
 }
 
 /// Un jeu installé par l'Epic Games Launcher (son manifeste `.item`, lu en LECTURE SEULE) : (AppName, namespace,
@@ -672,11 +730,16 @@ pub struct JeuEpic {
 }
 
 /// Un identifiant Epic sûr (lettres, chiffres, quelques signes ; jamais un séparateur de chemin ou d'adresse).
-fn id_epic_sur(s: &str) -> bool {
+pub(crate) fn id_epic_sur(s: &str) -> bool {
     !s.is_empty() && s.len() <= 128 && s.chars().all(|c| c.is_ascii_alphanumeric() || "_-.".contains(c))
 }
 
 pub fn lire_manifeste_epic(texte: &str) -> Option<JeuEpic> {
+    lire_manifeste_epic_avec(texte, &Default::default())
+}
+
+/// `lire_manifeste_epic`, avec le repli de `LauncherInstalled.dat` quand le dossier du manifeste n'existe plus.
+pub fn lire_manifeste_epic_avec(texte: &str, repli: &std::collections::BTreeMap<String, String>) -> Option<JeuEpic> {
     let v: Value = serde_json::from_str(texte).ok()?;
     let app = v["AppName"].as_str().filter(|a| id_epic_sur(a))?;
     let jeu = v["AppCategories"].as_array().is_some_and(|l| l.iter().any(|c| c.as_str() == Some("games")));
@@ -684,7 +747,11 @@ pub fn lire_manifeste_epic(texte: &str) -> Option<JeuEpic> {
     if !jeu || dlc || v["bIsIncompleteInstall"].as_bool() != Some(false) || v["LaunchExecutable"].as_str().unwrap_or("").is_empty() {
         return None;
     }
-    let dossier = PathBuf::from(v["InstallLocation"].as_str().filter(|d| !d.is_empty())?);
+    let manifeste = v["InstallLocation"].as_str().filter(|d| !d.is_empty()).map(PathBuf::from);
+    let dossier = match manifeste {
+        Some(d) if d.is_dir() => d,
+        autre => repli.get(app).map(PathBuf::from).filter(|d| d.is_dir()).or(autre)?,
+    };
     Some(JeuEpic {
         app: app.to_string(),
         namespace: v["CatalogNamespace"].as_str().filter(|a| id_epic_sur(a))?.to_string(),
@@ -694,14 +761,14 @@ pub fn lire_manifeste_epic(texte: &str) -> Option<JeuEpic> {
     })
 }
 
-/// Les jeux Epic installés sur CE PC (dossier présent).
-pub fn installes_epic(manifestes: &Path) -> Vec<JeuEpic> {
+/// Les jeux Epic installés sur CE PC (dossier présent). `repli` : `lire_installations_epic`.
+pub fn installes_epic(manifestes: &Path, repli: &std::collections::BTreeMap<String, String>) -> Vec<JeuEpic> {
     let mut l: Vec<JeuEpic> = std::fs::read_dir(manifestes)
         .into_iter()
         .flatten()
         .flatten()
         .filter(|e| e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("item")) && e.metadata().is_ok_and(|m| m.is_file() && m.len() <= 4 * 1024 * 1024))
-        .filter_map(|e| std::fs::read(e.path()).ok().and_then(|o| lire_manifeste_epic(&String::from_utf8_lossy(&o))))
+        .filter_map(|e| std::fs::read(e.path()).ok().and_then(|o| lire_manifeste_epic_avec(&String::from_utf8_lossy(&o), repli)))
         .filter(|j| j.dossier.is_dir())
         .collect();
     l.sort_by(|a, b| a.nom.to_lowercase().cmp(&b.nom.to_lowercase()));
@@ -1110,6 +1177,47 @@ mod tests {
         assert!(lire_manifeste_epic(&avec("6ef17d9f63c143ea88a4a4bcbcf1e91c", "x/../y")).is_none(), "identifiant douteux");
     }
 
+    #[test]
+    fn epic_reprend_le_dossier_de_launcher_installed_quand_le_manifeste_a_un_ancien_dossier() {
+        let d = tempfile::tempdir().unwrap();
+        // Les données comme Epic les range (relevé du 18/11) : <…>\Epic\EpicGamesLauncher\Data et, à côté,
+        // <…>\Epic\UnrealEngineLauncher\LauncherInstalled.dat.
+        let donnees = d.path().join("Epic").join("EpicGamesLauncher").join("Data");
+        std::fs::create_dir_all(donnees.join("Manifests")).unwrap();
+        std::fs::create_dir_all(d.path().join("Epic").join("UnrealEngineLauncher")).unwrap();
+        let nouveau = d.path().join("Jeux").join("Terra");
+        std::fs::create_dir_all(&nouveau).unwrap();
+        let dat = serde_json::json!({"InstallationList": [
+            {"InstallLocation": nouveau.to_string_lossy(), "NamespaceId": "ns", "ItemId": "it", "AppName": "Terra"},
+            {"InstallLocation": "D:\\unreal\\UE_5.7", "AppName": "UE_5.7"},
+            {"InstallLocation": "x", "AppName": "a/../b"}]});
+        std::fs::write(d.path().join("Epic/UnrealEngineLauncher/LauncherInstalled.dat"), dat.to_string()).unwrap();
+        assert_eq!(liste_installations_epic(&donnees), Some(d.path().join("Epic/UnrealEngineLauncher/LauncherInstalled.dat")));
+        let repli = repli_epic(&donnees);
+        assert_eq!(repli.len(), 2, "un AppName douteux est écarté");
+        let manifeste = |dossier: &str| {
+            serde_json::json!({"bIsIncompleteInstall": false, "AppName": "Terra", "DisplayName": "TerraScape", "InstallLocation": dossier,
+                "LaunchExecutable": "x.exe", "CatalogNamespace": "ns", "CatalogItemId": "it", "AppCategories": ["games"], "MainGameAppName": ""})
+            .to_string()
+        };
+        std::fs::write(donnees.join("Manifests/A.item"), manifeste(r"Z:\Ancien\Terra")).unwrap();
+        let l = installes_epic(&donnees.join("Manifests"), &repli);
+        assert_eq!(l.len(), 1);
+        assert_eq!(l[0].dossier, nouveau, "le dossier de LauncherInstalled.dat remplace un dossier disparu");
+        assert!(installes_epic(&donnees.join("Manifests"), &Default::default()).is_empty(), "sans repli : dossier absent, rien");
+        assert!(lire_installations_epic("pas du json").is_empty());
+    }
+
+    #[test]
+    fn un_chemin_se_compare_sous_toutes_ses_formes() {
+        assert_eq!(cle_chemin(Path::new("D:/Jeux/Far Cry/")), r"d:\jeux\far cry");
+        assert_eq!(cle_chemin(Path::new(r"\\?\D:\Jeux")), r"d:\jeux");
+        assert_eq!(cle_chemin(Path::new(r"\\?\UNC\Egon\Jeux\X")), r"\\egon\jeux\x", "un chemin réseau long");
+        assert_eq!(cle_chemin(Path::new("//Egon/Jeux/X")), r"\\egon\jeux\x");
+        let m = lire_manifeste_steam("\"appid\" \"620\"\n\"name\" \"Portal 2\"\n\"StateFlags\" \"4\"\n\"installdir\" \"Portal 2\"").unwrap();
+        assert_eq!(m.nom.as_deref(), Some("Portal 2"));
+    }
+
     /// RÉEL, lecture seule (lot D) : la fiche d'un jeu d'après la vraie base de Galaxy (copie effacée ensuite).
     /// `FROGTEND_GALAXY_JEU=gog_1209025141 cargo test essai_fiche_galaxy -- --ignored --nocapture`
     #[test]
@@ -1127,8 +1235,7 @@ mod tests {
     #[test]
     #[ignore]
     fn essai_jeux_epic() {
-        let d = dossier_manifestes_epic().expect("Epic");
-        for j in installes_epic(&d) {
+        for j in installes_epic_du_pc().expect("Epic") {
             println!("{} → {} ({})", j.nom, adresse_epic(&j), j.dossier.display());
         }
     }

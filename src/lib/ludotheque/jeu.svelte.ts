@@ -21,6 +21,7 @@ import { avecProgres } from '$lib/mods/progres.svelte';
 import { accordModSteam } from '$lib/mods/cheatengine';
 import { groupeDe, libelleCopie } from '$lib/boutiques/copies';
 import { nomPlateforme } from '$lib/boutiques/galaxy.svelte';
+import { messageLancementBoutique, nomBoutique as nomDeBoutique } from '$lib/boutiques/jeu-boutique';
 import { ouvrirPageWeb } from '$lib/web';
 import { estRetroArch, normaliser, pourLeJeu } from '$lib/emulateurs/choix';
 import { etat, reglerPc, reglerProfil } from '$lib/etat.svelte';
@@ -564,10 +565,11 @@ export async function jouer(id: number, emulateur?: string, version?: string, ca
   partie.lancement = id;
   // Un jeu de boutique : sa boutique le prépare (mise à jour…), on le dit tout de suite.
   const b = tele.jeux[id]?.installation?.boutique;
-  const nomBoutique = b?.source === 'gog' ? 'GOG Galaxy' : b?.source === 'epic' ? 'Epic Games' : 'Steam';
-  const attente = b
-    ? toast(`▶ ${nomBoutique} lance « ${tele.jeux[id]?.titre ?? 'le jeu'} »… S’il fait une mise à jour, ça peut prendre quelques minutes.`, 'neutre', { jusquaFermeture: true })
-    : null;
+  // Le nom tiré de la boutique (lot A : Ubisoft, Amazon, Xbox… aussi), jamais écrit en dur.
+  const nomBoutique = nomDeBoutique(b?.source);
+  // UN seul toast ; au canapé (Taodbox), il dit aussi comment revenir si le lanceur prend la main.
+  const auCanape = typeof document !== 'undefined' && document.documentElement.hasAttribute('data-taodbox');
+  const attente = b ? toast(messageLancementBoutique(nomBoutique, tele.jeux[id]?.titre ?? 'le jeu', auCanape), 'neutre', { jusquaFermeture: true }) : null;
   try {
     await jouerSansAttente(id, emulateur, version, carte);
   } finally {

@@ -10,6 +10,7 @@
   import Captures from '$lib/options/Captures.svelte';
   import Steam from '$lib/options/Steam.svelte';
   import Galaxy from '$lib/options/Galaxy.svelte';
+  import BoutiquesPc from '$lib/options/BoutiquesPc.svelte';
   import RetroAchievements from '$lib/options/RetroAchievements.svelte';
   import Nexus from '$lib/options/Nexus.svelte';
   import Emulateurs from '$lib/reglages/Emulateurs.svelte';
@@ -113,6 +114,7 @@
       { id: 'captures', libelle: '📷 Captures d’écran' },
     ] },
     { groupe: 'Comptes', rubriques: [
+      { id: 'jeux-installes', libelle: '🛒 Mes jeux installés' },
       { id: 'steam', libelle: '🎮 Steam' },
       { id: 'galaxy', libelle: '🟣 GOG Galaxy (lier les comptes)' },
       { id: 'retroachievements', libelle: '🏆 RetroAchievements' },
@@ -409,6 +411,8 @@
       <Captures />
     {:else if rubrique === 'steam'}
       <Steam />
+    {:else if rubrique === 'jeux-installes'}
+      <BoutiquesPc />
     {:else if rubrique === 'galaxy'}
       <Galaxy />
     {:else if rubrique === 'retroachievements'}

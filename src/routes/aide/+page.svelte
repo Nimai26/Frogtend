@@ -32,6 +32,7 @@
         <li><a href="/importer?source={s.id}">{s.icone} {s.libelle}</a> — {s.resume}{s.voie === 'bientot' ? ' (prochain lot)' : ''}</li>
       {/each}
     </ul>
+    <p>Les jeux INSTALLÉS de tes boutiques (Steam, Epic, GOG, Ubisoft Connect, Amazon Games, Xbox, Battle.net) entrent seuls dans ta ludothèque, à chaque ouverture de ton profil, sans compte ni clé (<a href="/reglages?rubrique=jeux-installes">⚙ Options ▸ Comptes ▸ Mes jeux installés</a>).</p>
     <p>Les jeux importés des boutiques rejoignent ta ludothèque, rubrique Windows ; les filtres « Boutique » et « Installés » les retrouvent. Ils restent dans ton Frogtend et ne remontent jamais dans Firehouse.</p>
   </section>
 
@@ -39,9 +40,9 @@
     <h2>🟣 GOG Galaxy : toutes tes boutiques d’un coup</h2>
     {#each explicationGalaxy() as p (p)}<p>{p}</p>{/each}
     <p>
-      Pourquoi passer par Galaxy ? Epic, Amazon, EA, Ubisoft et Xbox n’offrent pas d’API ouverte pour lire ta liste de
-      jeux. Galaxy a des accords (« intégrations ») avec elles : c’est la voie la plus sûre, et ton mot de passe ne passe
-      jamais par Frogtend. Steam, lui, a une API : tu peux importer par ton compte Steam OU par Galaxy.
+      Pourquoi Galaxy, en plus ? Tes jeux installés entrent déjà seuls ; Galaxy sert de secours pour voir AUSSI les
+      jeux que tu possèdes sans les avoir installés (Epic, Amazon, EA, Ubisoft, Xbox n’offrent pas d’API ouverte pour
+      lire ta liste). Ton mot de passe ne passe jamais par Frogtend. Steam, lui, a une API : ta clé Steam fait pareil.
     </p>
     <p>Réglages : <a href="/reglages?rubrique=galaxy">⚙ Options ▸ Comptes ▸ GOG Galaxy</a>.</p>
   </section>

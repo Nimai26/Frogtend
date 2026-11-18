@@ -1158,11 +1158,20 @@ impl Noyau {
             let appid = j.installation.as_ref().and_then(|i| i.boutique.as_ref()).filter(|b| b.source == source).map(|b| b.cle.clone());
             if let Some(appid) = appid {
                 // Seulement s'il n'est plus installé ET que son dossier a disparu (une bibliothèque Steam illisible un
-                // moment, un disque débranché, ne retire rien), sans temps de jeu, et jamais pendant une partie.
-                let dossier_present = j.installation.as_ref().is_some_and(|i| Path::new(&i.dossier).is_dir());
-                if !installes_pc.contains(&appid) && !dossier_present && j.temps_jeu == 0 && !self.utilise(j.id) {
+                // moment ne retire rien), et jamais pendant une partie. Un disque débranché (ou un partage réseau
+                // absent) : « inconnu », pas « disparu » — rien ne bouge.
+                let dossier = j.installation.as_ref().map(|i| i.dossier.clone()).unwrap_or_default();
+                let dossier_present = Path::new(&dossier).is_dir();
+                if installes_pc.contains(&appid) || dossier_present || !disque_present(Path::new(&dossier)) || self.utilise(j.id) {
+                    continue;
+                }
+                if j.temps_jeu == 0 {
                     registre.retirer(j.id)?;
                     retires += 1;
+                } else {
+                    // Désinstallé hors de Frogtend, avec du temps de jeu : la ligne reste (le temps n'est jamais perdu),
+                    // mais elle n'est plus jouable (lot A : Taodbox ne la montre plus ; la carte propose d'installer).
+                    registre.changer_installation(j.id, None)?;
                 }
             }
         }
@@ -1179,7 +1188,9 @@ impl Noyau {
                 extraits: vec![],
             };
             match registre.jeu(id)? {
-                Some(j) if j.installation.as_ref() == Some(&installation) => {}
+                Some(j) if j.installation.as_ref().is_some_and(|i| meme_installation(i, &installation)) => {}
+                // Jamais pendant une partie (le registre du jeu en cours ne bouge pas).
+                Some(_) if self.utilise(id) => {}
                 Some(_) => registre.changer_installation(id, Some(&installation))?,
                 None => {
                     registre.ajouter(&crate::jeux_pc::JeuPc {
@@ -1214,12 +1225,88 @@ impl Noyau {
     pub async fn ranger_boutique(&self, source: &str, jeux: &[crate::boutiques::JeuBoutique]) -> Resultat<usize> {
         let s = self.session().await?;
         let mut c = s.verrou_vivant()?;
-        let steam_a_part = source == "galaxy" && c.sources_boutiques()?.iter().any(|x| x == "steam");
-        // Epic (A6d) : une carte seulement pour un jeu que GOG Galaxy ne montre pas déjà (même id) ; celles de Galaxy
-        // suivent l'état « installé » lu chez Epic à l'instant.
-        let deja_galaxy = if source == "epic" {
-            let ids: std::collections::BTreeSet<i64> = jeux.iter().filter_map(|j| j.id.strip_prefix("epic_")).map(|a| crate::ludotheque::id_boutique("epic", a)).collect();
-            c.marquer_installes_galaxy("epic", &ids)?;
+        ranger_dans(&mut c, source, jeux)
+    }
+
+    /// Import automatique (lot A, Seb 18/11) : range les jeux INSTALLÉS d'une boutique, lus sur ce PC, dans la
+    /// ludothèque du profil ouvert. Une carte déjà là dont le jeu n'est plus installé RESTE, « pas installé » (jamais
+    /// retirée : son temps de jeu est gardé). Tout se fait sous UN verrou du cache. Rend les ids des cartes NOUVELLES
+    /// (absentes de la ludothèque avant), pour le toast.
+    /// `s` : la session prise AU DÉBUT de la relecture (un profil changé entre-temps : rien n'est écrit, chez personne).
+    pub fn ranger_installes(&self, s: &Session, source: &str, installes: &[crate::boutiques::JeuBoutique]) -> Resultat<Vec<i64>> {
+        let mut c = s.verrou_vivant()?;
+        let avant = c.jeux_de_source(source)?;
+        let l = fusion_installes(source, installes, &avant);
+        let mut nouveaux = vec![];
+        for j in installes.iter().filter(|j| j.installe) {
+            let id = id_carte(source, j);
+            if !c.contient(id)? {
+                nouveaux.push(id);
+            }
+        }
+        ranger_dans(&mut c, source, &l)?;
+        Ok(nouveaux)
+    }
+}
+
+/// Le disque (ou le partage réseau) d'un chemin est-il là ? Absent : on ne sait rien du dossier (débranché).
+pub(crate) fn disque_present(p: &Path) -> bool {
+    p.is_absolute() && p.ancestors().last().is_some_and(|r| r.is_dir())
+}
+
+/// Deux installations de boutique identiques, le dossier comparé sous une seule forme (Galaxy et le registre de GOG
+/// n'écrivent pas le même dossier pareil : sans cela, il basculerait à chaque relecture).
+pub(crate) fn meme_installation(a: &crate::jeux_pc::Installation, b: &crate::jeux_pc::Installation) -> bool {
+    let mut x = a.clone();
+    x.dossier = b.dossier.clone();
+    x == *b && crate::boutiques::cle_chemin(Path::new(&a.dossier)) == crate::boutiques::cle_chemin(Path::new(&b.dossier))
+}
+
+/// L'id de la carte d'un jeu de boutique (Steam : l'appid ; les autres : « <boutique>_<clé> »).
+pub(crate) fn id_carte(source: &str, j: &crate::boutiques::JeuBoutique) -> i64 {
+    if source == "steam" {
+        crate::ludotheque::id_boutique("steam", &j.id)
+    } else {
+        let (b, c) = j.id.split_once('_').unwrap_or(("autre", &j.id));
+        crate::ludotheque::id_boutique(b, c)
+    }
+}
+
+/// Les jeux installés lus à l'instant, PLUS les cartes déjà rangées de cette source qui n'y sont plus (désinstallées
+/// hors de Frogtend) : gardées, « pas installé », avec leur nom, leur image et leur temps de jeu.
+pub(crate) fn fusion_installes(source: &str, installes: &[crate::boutiques::JeuBoutique], avant: &[JeuResume]) -> Vec<crate::boutiques::JeuBoutique> {
+    let mut l = installes.to_vec();
+    let presents: std::collections::BTreeSet<i64> = installes.iter().map(|j| id_carte(source, j)).collect();
+    for c in avant.iter().filter(|c| !presents.contains(&c.id)) {
+        let Some(cle) = c.cle_boutique.clone().filter(|k| !k.is_empty()) else { continue };
+        let minutes = c.propre.and_then(|p| p.1).or(c.minutes).unwrap_or(0);
+        l.push(crate::boutiques::JeuBoutique {
+            id: cle,
+            nom: c.titre.clone(),
+            minutes,
+            derniere: 0,
+            installe: false,
+            plateforme: c.boutique.clone().unwrap_or_default(),
+            image: c.image.clone(),
+            dossier: None,
+            pret: None,
+            succes: c.succes,
+            releases: c.releases.clone().unwrap_or_default(),
+        });
+    }
+    l
+}
+
+/// Le corps de `ranger_boutique`, sous le verrou du cache déjà pris.
+fn ranger_dans(c: &mut crate::ludotheque::Cache, source: &str, jeux: &[crate::boutiques::JeuBoutique]) -> Resultat<usize> {
+    {
+        // Galaxy : une carte Steam qu'une source Steam montre déjà (même id) n'est pas reprise (Steam prime).
+        let steam_a_part: std::collections::BTreeSet<i64> = if source == "galaxy" { c.ids_de_source("steam")? } else { Default::default() };
+        // Les sources lues sur le PC (Epic A6d, puis toutes au lot A) : une carte seulement pour un jeu que GOG Galaxy
+        // ne montre pas déjà (même id) ; celles de Galaxy suivent l'état « installé » lu chez la boutique à l'instant.
+        let deja_galaxy = if source != "steam" && source != "galaxy" {
+            let ids: std::collections::BTreeSet<i64> = jeux.iter().filter(|j| j.installe).map(|j| id_carte(source, j)).collect();
+            c.marquer_installes_galaxy(source, &ids)?;
             c.ids_de_source("galaxy")?
         } else {
             Default::default()
@@ -1234,7 +1321,7 @@ impl Noyau {
                     let (b, c) = j.id.split_once('_').unwrap_or(("autre", &j.id));
                     (b.to_string(), c.to_string())
                 };
-                if steam_a_part && boutique == "steam" {
+                if boutique == "steam" && steam_a_part.contains(&crate::ludotheque::id_boutique(&boutique, &cle)) {
                     return None;
                 }
                 if deja_galaxy.contains(&crate::ludotheque::id_boutique(&boutique, &cle)) {
@@ -1261,7 +1348,9 @@ impl Noyau {
             .collect();
         c.remplacer_boutique(source, &resumes)
     }
+}
 
+impl Noyau {
     pub async fn jaquette(&self, id: i64, largeur: Option<u32>) -> Resultat<Option<Image>> {
         let s = self.session().await?;
         let Some(jeu) = s.verrou().jeu(id)? else {
@@ -1733,6 +1822,146 @@ mod tests {
         assert!(e.contains("abris de parties") && e.contains("Emplacements"), "{e}");
         n.regler_abris(Some(d.path().join("Abris")));
         assert_eq!(n.dossier_abris().unwrap(), d.path().join("Abris"));
+    }
+
+    /// Import automatique (lot A) : les jeux installés entrent seuls ; un jeu désinstallé hors de Frogtend RESTE (« pas
+    /// installé ») ; un jeu que GOG Galaxy montre déjà n'a pas de deuxième carte ; seules les cartes NOUVELLES comptent.
+    #[tokio::test]
+    async fn les_jeux_installes_entrent_seuls_et_ne_disparaissent_jamais() {
+        let (_d, n) = noyau();
+        let id = n.creer_profil("Seb", Some("1234"), None).unwrap().id;
+        n.ouvrir(&id, Some("1234"), &SIMULE).await.unwrap();
+        let jeu = |id: &str, nom: &str| crate::boutiques::JeuBoutique {
+            id: id.into(),
+            nom: nom.into(),
+            minutes: 0,
+            derniere: 0,
+            installe: true,
+            plateforme: id.split('_').next().unwrap().into(),
+            image: None,
+            dossier: Some(r"D:\Jeux\X".into()),
+            pret: Some(true),
+            succes: None,
+            releases: vec![],
+        };
+        let fc3 = jeu("uplay_46", "Far Cry 3");
+        let s = n.session().await.unwrap();
+        let nouveaux = n.ranger_installes(&s, "uplay", &[fc3.clone(), jeu("uplay_47", "Anno")]).unwrap();
+        assert_eq!(nouveaux.len(), 2);
+        assert_eq!(n.ranger_installes(&s, "uplay", &[fc3.clone(), jeu("uplay_47", "Anno")]).unwrap(), Vec::<i64>::new(), "rien de nouveau");
+        // Anno désinstallé hors de Frogtend : sa carte reste, « pas installé ».
+        assert!(n.ranger_installes(&s, "uplay", &[fc3]).unwrap().is_empty());
+        let anno = s.verrou().jeu(crate::ludotheque::id_boutique("uplay", "47")).unwrap().unwrap();
+        assert_eq!((anno.titre.as_str(), anno.installe), ("Anno", Some(false)));
+        assert_eq!(anno.source.as_deref(), Some("uplay"));
+        // Galaxy montre déjà un jeu Epic : pas de deuxième carte, et la sienne suit l'état lu chez Epic.
+        s.verrou()
+            .remplacer_boutique(
+                "galaxy",
+                &[JeuResume { id: crate::ludotheque::id_boutique("epic", "Fortnite"), titre: "Fortnite".into(), source: Some("galaxy".into()), boutique: Some("epic".into()), cle_boutique: Some("epic_Fortnite".into()), installe: Some(false), ..Default::default() }],
+            )
+            .unwrap();
+        let nouveaux = n.ranger_installes(&s, "epic", &[jeu("epic_Fortnite", "Fortnite")]).unwrap();
+        assert!(nouveaux.is_empty(), "Galaxy le montrait déjà : pas nouveau");
+        let f = s.verrou().jeu(crate::ludotheque::id_boutique("epic", "Fortnite")).unwrap().unwrap();
+        assert_eq!((f.source.as_deref(), f.installe), (Some("galaxy"), Some(true)), "une seule carte, celle de Galaxy, installée");
+        // L'id d'une carte : l'appid pour Steam ; « boutique_clé » sinon (une clé Xbox contient elle-même un « _ »).
+        assert_eq!(id_carte("steam", &jeu("620", "Portal 2")), crate::ludotheque::id_boutique("steam", "620"));
+        assert_eq!(id_carte("xboxone", &jeu("xboxone_Microsoft.MinecraftUWP_8wekyb3d8bbwe", "Minecraft")), crate::ludotheque::id_boutique("xboxone", "Microsoft.MinecraftUWP_8wekyb3d8bbwe"));
+    }
+
+    /// BLOQUANT des experts (18/11) : la session est prise AU DÉBUT ; un profil changé pendant la relecture ne reçoit
+    /// rien (ni l'ancien, qui n'est plus ouvert).
+    #[tokio::test]
+    async fn un_profil_change_pendant_la_relecture_ne_recoit_pas_les_cartes_de_l_autre() {
+        let (_d, n) = noyau();
+        let a = n.creer_profil("A", Some("1234"), None).unwrap().id;
+        let b = n.creer_profil("B", Some("5678"), None).unwrap().id;
+        n.ouvrir(&a, Some("1234"), &SIMULE).await.unwrap();
+        let sa = n.session().await.unwrap();
+        n.ouvrir(&b, Some("5678"), &SIMULE).await.unwrap();
+        let j = crate::boutiques::JeuBoutique { id: "uplay_46".into(), nom: "Far Cry 3".into(), minutes: 0, derniere: 0, installe: true, plateforme: "uplay".into(), image: None, dossier: None, pret: None, succes: None, releases: vec![] };
+        assert!(n.ranger_installes(&sa, "uplay", &[j]).is_err(), "session de A périmée : rien n'est écrit");
+        let sb = n.session().await.unwrap();
+        assert_eq!(sb.profil.id, b);
+        assert!(!sb.verrou().contient(crate::ludotheque::id_boutique("uplay", "46")).unwrap(), "rien chez B");
+    }
+
+    #[test]
+    fn un_jeu_desinstalle_avec_du_temps_n_est_plus_jouable_et_un_disque_absent_ne_change_rien() {
+        let (d, n) = noyau();
+        let dossier = d.path().join("Ubisoft").join("Far Cry 3");
+        std::fs::create_dir_all(&dossier).unwrap();
+        let jeu = |dossier: &std::path::Path| crate::boutiques::JeuBoutique {
+            id: "uplay_46".into(),
+            nom: "Far Cry 3".into(),
+            minutes: 0,
+            derniere: 0,
+            installe: true,
+            plateforme: "uplay".into(),
+            image: None,
+            dossier: Some(dossier.to_string_lossy().into_owned()),
+            pret: None,
+            succes: None,
+            releases: vec![],
+        };
+        let pc: std::collections::BTreeSet<String> = ["46".to_string()].into();
+        n.synchroniser_boutique("uplay", &[jeu(&dossier)], &pc).unwrap();
+        let id = crate::ludotheque::id_boutique("uplay", "46");
+        // Le même dossier écrit autrement (« / », majuscules) : aucune bascule.
+        let autre_forme = std::path::PathBuf::from(dossier.to_string_lossy().replace('\\', "/").to_uppercase());
+        n.synchroniser_boutique("uplay", &[jeu(&autre_forme)], &pc).unwrap();
+        assert_eq!(n.registre().jeu(id).unwrap().unwrap().installation.unwrap().dossier, dossier.to_string_lossy(), "pas réécrit");
+        n.registre().compter_partie(id, 60, "x").unwrap();
+        // Désinstallé par Ubisoft (dossier parti), avec du temps de jeu : la ligne reste, plus jouable.
+        std::fs::remove_dir_all(&dossier).unwrap();
+        let vide = std::collections::BTreeSet::new();
+        assert_eq!(n.synchroniser_boutique("uplay", &[], &vide).unwrap(), (0, 0));
+        let j = n.registre().jeu(id).unwrap().unwrap();
+        assert!(j.installation.is_none() && j.temps_jeu == 60, "gardée, temps compris, sans installation");
+        // Réinstallé : de nouveau jouable.
+        std::fs::create_dir_all(&dossier).unwrap();
+        n.synchroniser_boutique("uplay", &[jeu(&dossier)], &pc).unwrap();
+        assert!(n.registre().jeu(id).unwrap().unwrap().installation.is_some());
+        // Un disque absent (lecteur débranché) : ni retrait, ni changement.
+        // Une lettre de lecteur absente de CE PC (jamais un serveur réseau : son délai d'attente ralentirait le test).
+        let lettre = ('D'..='Z').rev().find(|l| !std::path::Path::new(&format!(r"{l}:\")).exists()).expect("une lettre libre");
+        let absent = std::path::PathBuf::from(format!(r"{lettre}:\Jeux\Anno"));
+        assert!(!disque_present(&absent) && disque_present(d.path()));
+        let j2 = crate::boutiques::JeuBoutique { id: "uplay_47".into(), ..jeu(&dossier) };
+        let pc2: std::collections::BTreeSet<String> = ["47".to_string()].into();
+        let d47 = d.path().join("Anno");
+        std::fs::create_dir_all(&d47).unwrap();
+        n.synchroniser_boutique("uplay", &[crate::boutiques::JeuBoutique { dossier: Some(d47.to_string_lossy().into_owned()), ..j2 }], &pc2).unwrap();
+        let id47 = crate::ludotheque::id_boutique("uplay", "47");
+        let mut i = n.registre().jeu(id47).unwrap().unwrap().installation.unwrap();
+        i.dossier = absent.to_string_lossy().into_owned();
+        n.registre().changer_installation(id47, Some(&i)).unwrap();
+        n.synchroniser_boutique("uplay", &[], &vide).unwrap();
+        assert!(n.registre().jeu(id47).unwrap().unwrap().installation.is_some(), "disque absent : « inconnu », rien ne bouge");
+    }
+
+    #[test]
+    fn une_carte_desinstallee_garde_son_nom_son_image_et_son_temps() {
+        let avant = vec![JeuResume {
+            id: crate::ludotheque::id_boutique("gog", "1"),
+            titre: "Cyberpunk 2077".into(),
+            source: Some("gog".into()),
+            boutique: Some("gog".into()),
+            cle_boutique: Some("gog_1".into()),
+            installe: Some(true),
+            image: Some("https://images.gog.com/a.webp".into()),
+            minutes: Some(999),
+            propre: Some((Some(true), Some(92))),
+            ..Default::default()
+        }];
+        let l = fusion_installes("gog", &[], &avant);
+        assert_eq!(l.len(), 1);
+        assert_eq!((l[0].id.as_str(), l[0].nom.as_str(), l[0].installe, l[0].minutes), ("gog_1", "Cyberpunk 2077", false, 92), "le temps PROPRE à la copie");
+        assert_eq!(l[0].image.as_deref(), Some("https://images.gog.com/a.webp"));
+        // Toujours installé : la lecture du PC fait foi, pas de doublon.
+        let lu = crate::boutiques::JeuBoutique { id: "gog_1".into(), nom: "Cyberpunk 2077".into(), minutes: 0, derniere: 0, installe: true, plateforme: "gog".into(), image: None, dossier: None, pret: None, succes: None, releases: vec![] };
+        assert_eq!(fusion_installes("gog", &[lu], &avant).len(), 1);
     }
 
     #[tokio::test]

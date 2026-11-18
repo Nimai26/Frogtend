@@ -142,7 +142,13 @@ export interface ReglagesProfil {
     /** Prime Gaming : récupérer tout seul les jeux offerts aux membres Prime, une fois par semaine. */
     prime: boolean;
     primeDernier: number;
+    /** Le compte de chaque boutique vu connecté (18/11) : vrai après une connexion repérée ou un passage réussi,
+     * faux quand un passage a demandé de se connecter. Il décide « 🔑 Se connecter » ou « ✅ Connecté ». */
+    connectes: { epic: boolean; gog: boolean; prime: boolean; psplus: boolean };
   };
+  /** L'import automatique (lot A, ✅ Seb 18/11) : les jeux INSTALLÉS des boutiques de ce PC entrent seuls dans la
+   * ludothèque, relus à chaque ouverture du profil (coché d'office ; ⚙ Options ▸ Comptes). */
+  boutiquesPc: { auto: boolean };
   /** Les commandes choisies jeu par jeu (identifiant du jeu → choix). Absent : automatique. */
   commandes: Record<string, CommandesJeu>;
   /** Les jeux PC figés pendant le menu en jeu (identifiants ; Seb, 05/10 : option par jeu, désactivée d'office). */
@@ -200,7 +206,8 @@ export const DEFAUTS_PROFIL: ReglagesProfil = {
     plateformesMasquees: [],
     fondsTaodbox: true,
   },
-  gratuits: { auto: false, derniere: 0, psplus: false, psplusDernier: 0, gog: false, gogDernier: 0, prime: false, primeDernier: 0 },
+  gratuits: { auto: false, derniere: 0, psplus: false, psplusDernier: 0, gog: false, gogDernier: 0, prime: false, primeDernier: 0, connectes: { epic: false, gog: false, prime: false, psplus: false } },
+  boutiquesPc: { auto: true },
   commandes: {},
   figer: [],
   pleinEcran: {},

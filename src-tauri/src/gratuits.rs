@@ -119,6 +119,9 @@ pub enum Obtention {
     Deja,
     Connexion,
     Captcha,
+    /// Fenêtre de connexion : la boutique montre le compte connecté.
+    Connecte,
+    /// `<étape> | <textes des boutons visibles>` (l'étape où le script s'est arrêté).
     Erreur(String),
 }
 
@@ -129,8 +132,15 @@ pub fn lire_titre(titre: &str) -> Option<Obtention> {
         "DEJA" => Obtention::Deja,
         "CONNEXION" => Obtention::Connexion,
         "CAPTCHA" => Obtention::Captcha,
+        "CONNECTE" => Obtention::Connecte,
         autre => Obtention::Erreur(autre.strip_prefix("ERREUR:").unwrap_or(autre).to_string()),
     })
+}
+
+/// Le script de la fenêtre « Se connecter à Epic » : le même, en mode connexion (il ne clique sur RIEN et dit
+/// seulement « CONNECTE » quand la boutique montre le compte connecté).
+pub fn script_epic_connexion() -> String {
+    format!("window.__frogtendMode = 'connexion';\n{SCRIPT_EPIC}")
 }
 
 /// Le bilan d'un passage sur les jeux PS Plus.
@@ -191,6 +201,38 @@ pub fn lire_titre_recolte(titre: &str) -> Option<Recolte> {
     Some(serde_json::from_str::<Recolte>(j).unwrap_or(Recolte { etat: "erreur".into(), motif: Some(j.chars().take(120).collect()), ..Default::default() }))
 }
 
+/// Les sites d'IDENTITÉ qu'une fenêtre de connexion peut ouvrir (connexion par Google, Apple, Microsoft, Steam, la
+/// boutique elle-même…), en HTTPS seulement (revue des experts, 18/11 : jamais « tout site en https »).
+pub fn site_d_identite(url: &tauri::Url) -> bool {
+    if url.scheme() != "https" {
+        return false;
+    }
+    let Some(h) = url.host_str().map(|h| h.trim_end_matches('.').to_ascii_lowercase()) else { return false };
+    let sous = |d: &str| h == d || h.ends_with(&format!(".{d}"));
+    const EXACTS: [&str; 5] = ["accounts.google.com", "appleid.apple.com", "login.live.com", "login.microsoftonline.com", "steamcommunity.com"];
+    const DOMAINES: [&str; 10] = ["epicgames.com", "playstation.com", "sony.com", "gog.com", "facebook.com", "xbox.com", "nintendo.com", "disney.com", "lego.com", "amazon.com"];
+    // Amazon : ses sites nationaux (`*.amazon.<pays>`), jamais un « amazon » au milieu d'un autre domaine.
+    const AMAZON: [&str; 14] = ["fr", "de", "it", "es", "nl", "se", "pl", "ca", "co.uk", "co.jp", "com.au", "com.br", "com.be", "com.mx"];
+    EXACTS.contains(&h.as_str()) || DOMAINES.iter().any(|d| sous(d)) || AMAZON.iter().any(|p| sous(&format!("amazon.{p}")))
+}
+
+/// Les fenêtres que la page d'une boutique ouvre elle-même dans une fenêtre de CONNEXION (connexion par Google, Apple,
+/// Steam, Xbox… : une petite fenêtre à part) : permises seulement vers un site d'identité, avec le même navigateur
+/// que la fenêtre de la boutique (sa connexion y reste). Sans elles, le bouton « Google » de la page d'Epic ne faisait
+/// rien (Seb, 18/11).
+pub fn fenetre_de_connexion<R: tauri::Runtime>(url: tauri::Url, _f: tauri::webview::NewWindowFeatures) -> tauri::webview::NewWindowResponse<R> {
+    if site_d_identite(&url) {
+        tauri::webview::NewWindowResponse::Allow
+    } else {
+        tauri::webview::NewWindowResponse::Deny
+    }
+}
+
+/// Les fenêtres INVISIBLES d'automatisation (obtenir, récupérer, PS Plus) : aucune fenêtre nouvelle, jamais.
+pub fn fenetre_d_automatisation<R: tauri::Runtime>(_url: tauri::Url, _f: tauri::webview::NewWindowFeatures) -> tauri::webview::NewWindowResponse<R> {
+    tauri::webview::NewWindowResponse::Deny
+}
+
 /// Le dossier du navigateur d'un profil pour les boutiques (sa connexion Epic y reste).
 pub fn dossier_navigateur(dossier_profil: &Path) -> PathBuf {
     dossier_profil.join("navigateur")
@@ -220,6 +262,45 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn une_fenetre_de_connexion_n_ouvre_que_les_sites_d_identite_en_https() {
+        let ok = |u: &str| site_d_identite(&tauri::Url::parse(u).unwrap());
+        for u in [
+            "https://accounts.google.com/o/oauth2/auth?x=1",
+            "https://appleid.apple.com/auth/authorize",
+            "https://login.live.com/oauth20_authorize.srf",
+            "https://login.microsoftonline.com/common",
+            "https://steamcommunity.com/openid/login",
+            "https://www.epicgames.com/id/login",
+            "https://my.account.sony.com/",
+            "https://www.playstation.com/",
+            "https://login.gog.com/auth",
+            "https://www.facebook.com/dialog/oauth",
+            "https://login.xbox.com/",
+            "https://accounts.nintendo.com/",
+            "https://login.disney.com/",
+            "https://lego.com/",
+            "https://identity.lego.com/",
+            "https://www.amazon.com/ap/signin",
+            "https://www.amazon.fr/ap/signin",
+            "https://www.amazon.co.uk/ap/signin",
+        ] {
+            assert!(ok(u), "{u}");
+        }
+        for u in [
+            "http://accounts.google.com/",
+            "https://google.com/",
+            "https://evil-epicgames.com/",
+            "https://epicgames.com.evil.net/",
+            "https://amazon.evil.com/",
+            "https://www.amazon.fr.evil.net/",
+            "https://exemple.com/",
+            "https://store.steampowered.com.evil/",
+        ] {
+            assert!(!ok(u), "{u}");
+        }
+    }
+
+    #[test]
     fn seuls_les_jeux_gratuits_en_ce_moment_sont_retenus() {
         let v = json!({"data": {"Catalog": {"searchStore": {"elements": [
             {"title": "System Shock 2", "price": {"totalPrice": {"discountPrice": 0}},
@@ -247,6 +328,26 @@ mod tests {
         assert_eq!(lire_titre("FROGTEND:ERREUR:délai dépassé"), Some(Obtention::Erreur("délai dépassé".into())));
         assert_eq!(lire_titre("Epic Games Store"), None);
         assert!(SCRIPT_EPIC.contains("purchase-cta-button") && SCRIPT_EPIC.contains("FROGTEND:"));
+        // Nouvelle boutique (18/11) : DEJA, CONNECTE, et l'étape de l'erreur avec les boutons vus.
+        assert_eq!(lire_titre("FROGTEND:DEJA"), Some(Obtention::Deja));
+        assert_eq!(lire_titre("FROGTEND:CONNEXION"), Some(Obtention::Connexion));
+        assert_eq!(lire_titre("FROGTEND:CONNECTE"), Some(Obtention::Connecte));
+        assert_eq!(
+            lire_titre("FROGTEND:ERREUR:pas de bouton d'achat | wishlist ; share"),
+            Some(Obtention::Erreur("pas de bouton d'achat | wishlist ; share".into()))
+        );
+        assert_eq!(serde_json::to_value(Obtention::Connecte).unwrap(), json!({"etat": "connecte"}));
+        assert_eq!(serde_json::to_value(Obtention::Erreur("pas de commande | x".into())).unwrap(), json!({"etat": "erreur", "motif": "pas de commande | x"}));
+        // Le mode connexion ne clique sur rien : il est posé AVANT le script.
+        assert!(script_epic_connexion().starts_with("window.__frogtendMode = 'connexion';") && script_epic_connexion().ends_with(SCRIPT_EPIC));
+    }
+
+    #[test]
+    fn le_script_epic_ne_clique_que_par_sa_garde() {
+        // Tous les clics passent par `cliquer`, qui refuse un bouton payant ; seule exception, la case du contrat.
+        let s = SCRIPT_EPIC.replace("\r\n", "\n");
+        assert_eq!(s.matches(".click()").count(), 2, "e.click() dans `cliquer`, c.click() pour la case du contrat");
+        assert!(s.contains("if (payant(texte(e))) throw") && s.contains("c.click();"));
     }
 
     #[test]

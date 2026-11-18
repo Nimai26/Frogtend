@@ -172,13 +172,15 @@ fn a_terminer(pids: &[u32], jamais: &HashSet<u32>) -> Vec<u32> {
 /// l'explorateur ni la boutique, hors du dossier. Un seul relevé des processus.
 /// Ce programme précis est-il ouvert (son exécutable, pas un autre rangé dans le même dossier) ?
 pub fn programme_ouvert(programme: &Path) -> bool {
-    let cle = programme.to_string_lossy().to_lowercase().replace('/', "\\");
+    // Sous la même forme que les dossiers (« / », `\?\`, lecteur réseau mappé).
+    let mut reseau = Lecteurs::default();
+    let cle = forme_comparable(programme, &mut reseau);
     if cle.is_empty() {
         return false;
     }
     let mut s = System::new();
     s.refresh_processes(ProcessesToUpdate::All, true);
-    s.processes().values().any(|p| p.exe().is_some_and(|e| e.to_string_lossy().to_lowercase().replace('/', "\\") == cle))
+    s.processes().values().any(|p| p.exe().is_some_and(|e| forme_comparable(e, &mut reseau) == cle))
 }
 
 pub fn processus_du_dossier(dossier: &Path) -> Vec<u32> {
@@ -187,15 +189,58 @@ pub fn processus_du_dossier(dossier: &Path) -> Vec<u32> {
     }
     let mut s = System::new();
     s.refresh_processes(ProcessesToUpdate::All, true);
-    let d = format!("{}\\", dossier.to_string_lossy().trim_end_matches(['\\', '/']).to_lowercase());
+    // Lot A (18/11) : Ubisoft écrit ses dossiers avec des « / » ; un jeu peut être sur un lecteur réseau mappé (le
+    // programme vu sous « Z:\… » ou sous « \\serveur\partage\… ») : tout est comparé sous UNE forme.
+    let mut reseau = Lecteurs::default();
+    let d = format!("{}\\", forme_comparable(dossier, &mut reseau));
     let mut v: Vec<u32> = s
         .processes()
         .iter()
-        .filter(|(_, p)| p.exe().is_some_and(|e| e.to_string_lossy().to_lowercase().replace('/', "\\").starts_with(&d)))
+        .filter(|(_, p)| p.exe().is_some_and(|e| format!("{}\\", forme_comparable(e, &mut reseau)).starts_with(&d)))
         .map(|(pid, _)| pid.as_u32())
         .collect();
     v.sort_unstable();
     v
+}
+
+/// Les lecteurs réseau mappés déjà demandés à Windows (lettre → chemin réseau, `None` : lecteur local).
+type Lecteurs = std::collections::BTreeMap<char, Option<String>>;
+
+/// Une forme comparable d'un chemin (`boutiques::cle_chemin` : « / », majuscules, `\\?\`), où un lecteur réseau mappé
+/// est remplacé par son chemin réseau (« z:\jeux » → « \\egon\partage\jeux »).
+pub(crate) fn forme_comparable(p: &Path, reseau: &mut Lecteurs) -> String {
+    let c = crate::boutiques::cle_chemin(p);
+    let b = c.as_bytes();
+    if b.len() >= 2 && b[1] == b':' && b[0].is_ascii_alphabetic() {
+        let lettre = b[0] as char;
+        let unc = reseau.entry(lettre).or_insert_with(|| chemin_reseau_du_lecteur(lettre)).clone();
+        if let Some(u) = unc {
+            return format!("{}{}", u, &c[2..]);
+        }
+    }
+    c
+}
+
+/// Le chemin réseau d'un lecteur mappé (« Z: » → « \\egon\partage »), en minuscules ; `None` : un lecteur local.
+#[cfg(windows)]
+fn chemin_reseau_du_lecteur(lettre: char) -> Option<String> {
+    use windows::core::{HSTRING, PWSTR};
+    use windows::Win32::NetworkManagement::WNet::WNetGetConnectionW;
+    let mut tampon = vec![0u16; 1024];
+    let mut n = tampon.len() as u32;
+    // SAFETY: lecture seule ; le tampon a la taille annoncée.
+    let r = unsafe { WNetGetConnectionW(&HSTRING::from(format!("{lettre}:")), Some(PWSTR(tampon.as_mut_ptr())), &mut n) };
+    if r.0 != 0 {
+        return None;
+    }
+    let fin = tampon.iter().position(|x| *x == 0).unwrap_or(tampon.len());
+    let u = String::from_utf16_lossy(&tampon[..fin]);
+    (u.starts_with(r"\\") || u.starts_with("//")).then(|| crate::boutiques::cle_chemin(Path::new(&u)))
+}
+
+#[cfg(not(windows))]
+fn chemin_reseau_du_lecteur(_: char) -> Option<String> {
+    None
 }
 
 /// Termine ces processus (ceux d'UNE partie, que la personne a demandé de quitter et qui ne se sont pas fermés
@@ -217,13 +262,14 @@ pub fn processus_dans(pids: &[u32], dossier: &Path) -> Vec<u32> {
     if dossier.parent().is_none() || dossier.as_os_str().is_empty() {
         return vec![];
     }
-    let d = format!("{}\\", dossier.to_string_lossy().trim_end_matches(['\\', '/']).to_lowercase());
+    let mut reseau = Lecteurs::default();
+    let d = format!("{}\\", forme_comparable(dossier, &mut reseau));
     pids.iter()
         .copied()
         .filter(|p| {
             s.process(Pid::from_u32(*p))
                 .and_then(|x| x.exe())
-                .is_some_and(|e| e.to_string_lossy().to_lowercase().replace('/', "\\").starts_with(&d))
+                .is_some_and(|e| format!("{}\\", forme_comparable(e, &mut reseau)).starts_with(&d))
         })
         .collect()
 }
@@ -924,9 +970,31 @@ mod tests {
         assert!(!processus_du_dossier(&dossier).contains(&std::process::id()), "jamais Frogtend (hors du dossier)");
         assert!(processus_du_dossier(std::path::Path::new("C:\\")).is_empty());
         assert!(processus_du_dossier(&voisin).is_empty());
+        // Lot A : un dossier écrit avec des « / » (Ubisoft) ou un « / » final est le même dossier.
+        let avec_obliques = PathBuf::from(format!("{}/", dossier.to_string_lossy().replace('\\', "/")));
+        assert!(processus_du_dossier(&avec_obliques).contains(&pid2), "« / » d'Ubisoft");
+        assert!(processus_dans(&[pid2], &avec_obliques).contains(&pid2));
         let _ = enfant.kill();
         let _ = enfant2.kill();
         let _ = (enfant.wait(), enfant2.wait());
+    }
+
+    #[test]
+    fn un_chemin_se_compare_sous_une_seule_forme_lecteur_reseau_compris() {
+        let mut l = Lecteurs::default();
+        // Un lecteur réseau mappé (simulé) : « Z: » est « \\egon\jeux ».
+        l.insert('z', Some(r"\\egon\jeux".into()));
+        l.insert('d', None);
+        assert_eq!(forme_comparable(std::path::Path::new("Z:/Ubisoft/Far Cry 3/"), &mut l), r"\\egon\jeux\ubisoft\far cry 3");
+        assert_eq!(forme_comparable(std::path::Path::new(r"\\?\UNC\Egon\Jeux\Ubisoft\Far Cry 3\fc3.exe"), &mut l), r"\\egon\jeux\ubisoft\far cry 3\fc3.exe");
+        assert_eq!(forme_comparable(std::path::Path::new(r"\\?\D:\Jeux"), &mut l), r"d:\jeux");
+        // `programme_ouvert` compare sous la même forme : le programme des tests, écrit avec des « / », est vu ouvert.
+        let moi = std::env::current_exe().unwrap();
+        assert!(programme_ouvert(&PathBuf::from(moi.to_string_lossy().replace('\\', "/").to_uppercase())));
+        assert!(!programme_ouvert(&moi.with_file_name("frogtend-absent-xyz.exe")));
+        // Un lecteur jamais vu est demandé à Windows une seule fois (ici : un lecteur local ou absent).
+        let _ = forme_comparable(std::path::Path::new(r"Q:\x"), &mut l);
+        assert!(l.contains_key(&'q'));
     }
 
     #[test]

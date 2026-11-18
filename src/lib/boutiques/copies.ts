@@ -56,7 +56,50 @@ export function nomOrigine(o: string): string {
   );
 }
 
+/** « Vient de Steam et d’Epic » : l'élision devant une voyelle (Epic, Ubisoft, Amazon, EA…). */
+export function venantDe(noms: string[]): string {
+  const de = (n: string) => (/^[aeiouyéèêàâîïôûAEIOUYÉÈÊÀÂÎÏÔÛ]/.test(n) ? `d’${n}` : `de ${n}`);
+  return `Vient ${noms.map(de).join(' et ')}`;
+}
+
 /** Ce qu'on montre pour choisir une copie : « ▶ Steam », « 12 h jouées ». */
 export function libelleCopie(c: CopieInstallee, nom: (b: string) => string, duree: (s: number) => string): { libelle: string; detail: string } {
   return { libelle: `▶ ${nom(c.boutique)}`, detail: c.temps_jeu > 0 ? `${duree(c.temps_jeu)} jouées par Frogtend` : 'jamais lancé par Frogtend' };
+}
+
+/** Un jeu installé qu'une boutique montre sans être un jeu du PC (Taodbox : dans la grille principale, avec sa
+ * pastille ; lot A, Seb 18/11). */
+export interface CarteBoutiqueTaodbox {
+  /** `steam_620`, `epic_Fortnite`… (unique). */
+  cle: string;
+  nom: string;
+  /** L'origine pour la pastille (`steam`, `epic`, `uplay`…). */
+  boutique: string;
+  /** Par quoi l'ouvrir : Steam (appid) ou GOG Galaxy (clé Galaxy). */
+  par: 'steam' | 'galaxy';
+  image: string | null;
+}
+
+/** Les jeux installés de Steam et de GOG Galaxy qui ne sont PAS déjà des jeux du PC (même boutique et même clé) : une
+ * carte chacun, jamais deux fois le même jeu. Steam d'abord. */
+export function cartesBoutiqueTaodbox(
+  steamJeux: { id: string; nom: string; installe: boolean }[],
+  galaxyJeux: { id: string; nom: string; installe: boolean; plateforme?: string | null; image?: string | null }[],
+  jeuxPc: { installation?: { boutique?: { source: string; cle: string } | null } | null }[],
+): CarteBoutiqueTaodbox[] {
+  const duPc = new Set(jeuxPc.map((j) => j.installation?.boutique).filter((b) => !!b).map((b) => `${b!.source}_${b!.cle}`));
+  const r: CarteBoutiqueTaodbox[] = [];
+  const vus = new Set<string>();
+  for (const j of steamJeux.filter((x) => x.installe)) {
+    const cle = `steam_${j.id}`;
+    if (duPc.has(cle) || vus.has(cle)) continue;
+    vus.add(cle);
+    r.push({ cle, nom: j.nom, boutique: 'steam', par: 'steam', image: null });
+  }
+  for (const j of galaxyJeux.filter((x) => x.installe)) {
+    if (duPc.has(j.id) || vus.has(j.id)) continue;
+    vus.add(j.id);
+    r.push({ cle: j.id, nom: j.nom, boutique: j.plateforme || j.id.split('_')[0], par: 'galaxy', image: j.image ?? null });
+  }
+  return r;
 }

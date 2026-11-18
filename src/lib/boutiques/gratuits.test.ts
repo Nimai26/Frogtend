@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { messageObtention, messagePsPlus, messageRecolte } from './gratuits.svelte';
+import { connexionApres, messageObtention, messagePsPlus, messageRecolte } from './gratuits.svelte';
 
 describe('messageObtention', () => {
   it('dit clairement ce qui s’est passé', () => {
@@ -8,6 +8,21 @@ describe('messageObtention', () => {
     expect(messageObtention('Jeu', { etat: 'connexion' }).texte).toContain('Connecte-toi');
     expect(messageObtention('Jeu', { etat: 'captcha' }).texte).toContain('vérification');
     expect(messageObtention('Jeu', { etat: 'erreur', motif: 'délai dépassé' }).texte).toContain('délai dépassé');
+  });
+
+  it('montre l’étape de l’erreur, pas la liste des boutons (elle va au journal)', () => {
+    const t = messageObtention('Jeu', { etat: 'erreur', motif: "pas de bouton d'achat | wishlist ; share" }).texte;
+    expect(t).toContain("(pas de bouton d'achat)");
+    expect(t).not.toContain('wishlist');
+    expect(messageObtention('Jeu', { etat: 'erreur' }).texte).toContain('raison inconnue');
+  });
+
+  it('déduit du résultat si le compte de la boutique est connecté', () => {
+    for (const e of ['obtenu', 'deja', 'connecte', 'faite', 'aucun', 'pas_abonne']) expect(connexionApres(e)).toBe(true);
+    expect(connexionApres('connexion')).toBe(false);
+    // Une erreur ou un captcha ne disent rien du compte : l'état connu est gardé.
+    expect(connexionApres('erreur')).toBeNull();
+    expect(connexionApres('captcha')).toBeNull();
   });
 
   it('résume un passage sur GOG ou Prime Gaming', () => {

@@ -1,14 +1,14 @@
 <script lang="ts">
   // 🏷 D'où vient un jeu (Seb, 21/10) : une petite pastille par origine (Steam, GOG, Epic…, Firehouse, Disque),
   // plusieurs si la carte réunit plusieurs copies. Du texte (jamais un logo de marque copié), aux couleurs du thème.
-  import { nomOrigine } from './copies';
+  import { nomOrigine, venantDe } from './copies';
 
   let { origines, grand = false }: { origines: string[]; grand?: boolean } = $props();
   const noms = $derived(origines.map(nomOrigine));
 </script>
 
 {#if noms.length}
-  <span class="origines" class:grand role="img" aria-label={`Vient de ${noms.join(' et ')}`} title={`Vient de ${noms.join(' et ')}`}>
+  <span class="origines" class:grand role="img" aria-label={venantDe(noms)} title={venantDe(noms)}>
     {#each noms as n (n)}<span class="pastille">{n}</span>{/each}
   </span>
 {/if}

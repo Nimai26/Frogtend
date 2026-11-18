@@ -8,6 +8,7 @@ pub mod bios;
 pub mod images_par_seconde;
 pub mod captures;
 pub mod boutiques;
+pub mod boutiques_pc;
 pub mod cheatengine;
 pub mod choix_emulateur;
 pub mod clavier;
@@ -694,6 +695,9 @@ pub fn run() {
             commandes::boutique_steam_jeux,
             commandes::boutique_steam_importer,
             commandes::boutique_steam_ouvrir,
+            commandes::boutiques_relire_pc,
+            commandes::boutiques_etat_pc,
+            commandes::boutique_ouvrir,
             commandes::triche_installer,
             commandes::jeu_taille_installation,
             commandes::jeu_copie_avant_mod,

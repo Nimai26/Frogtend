@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { groupeDe, libelleCopie, nomOrigine, originesCarte, originesJeuPc, unParGroupe } from './copies';
+import { cartesBoutiqueTaodbox, venantDe, groupeDe, libelleCopie, nomOrigine, originesCarte, originesJeuPc, unParGroupe } from './copies';
 
 describe('Un jeu sur plusieurs boutiques = une carte (A6c)', () => {
   const groupes = [[-1, -2], [-5, -6, -7]];
@@ -23,5 +23,32 @@ describe('Un jeu sur plusieurs boutiques = une carte (A6c)', () => {
   it('présente une copie pour le choix avant de lancer', () => {
     const l = libelleCopie({ id: -2, boutique: 'gog', temps_jeu: 0 }, (b) => b.toUpperCase(), (s) => `${s} s`);
     expect(l).toEqual({ libelle: '▶ GOG', detail: 'jamais lancé par Frogtend' });
+  });
+});
+
+describe('Taodbox : les jeux installés des boutiques dans la grille principale', () => {
+  it('une carte par jeu, jamais un jeu déjà sur le PC, avec sa boutique pour la pastille', () => {
+    const steam = [{ id: '620', nom: 'Portal 2', installe: true }, { id: '400', nom: 'Portal', installe: true }, { id: '1', nom: 'Pas là', installe: false }];
+    const galaxy = [
+      { id: 'steam_620', nom: 'Portal 2', installe: true, plateforme: 'steam' },
+      { id: 'epic_Fortnite', nom: 'Fortnite', installe: true, plateforme: 'epic', image: 'https://images.gog.com/f.webp' },
+      { id: 'gog_1', nom: 'Cyberpunk', installe: true, plateforme: 'gog' },
+    ];
+    const pc = [{ installation: { boutique: { source: 'steam', cle: '400' } } }, { installation: { boutique: { source: 'gog', cle: '1' } } }, { installation: null }];
+    const l = cartesBoutiqueTaodbox(steam, galaxy, pc);
+    expect(l.map((c) => [c.cle, c.boutique, c.par])).toEqual([
+      ['steam_620', 'steam', 'steam'],
+      ['epic_Fortnite', 'epic', 'galaxy'],
+    ]);
+    expect(l[1].image).toBe('https://images.gog.com/f.webp');
+    expect(cartesBoutiqueTaodbox([], [], [])).toEqual([]);
+  });
+});
+
+describe('la pastille d’origine', () => {
+  it('élide devant une voyelle', () => {
+    expect(venantDe(['Ubisoft'])).toBe('Vient d’Ubisoft');
+    expect(venantDe(['Steam', 'Epic'])).toBe('Vient de Steam et d’Epic');
+    expect(venantDe(['Amazon', 'GOG'])).toBe('Vient d’Amazon et de GOG');
   });
 });

@@ -6,6 +6,28 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🎮 Tes jeux installés entrent seuls (import automatique, lot A) et jeux offerts d'Epic
+- [ ] Ouvrir ton profil, sans rien toucher : un seul message « 🎮 … nouveaux jeux trouvés sur ce PC (…) » ; dans Ma
+      ludothèque (Windows), filtre Boutique : **Steam 10** (Age of Empires IV, Batman Arkham Knight, Ghostbusters, GTA V
+      Legacy, Mega Man Legacy Collection, MiniRoyale, Resident Evil Village, TerraTech Legion Demo, Disney Afternoon,
+      XCOM 2), **Epic 1** (TerraScape), **GOG 2** (Cyberpunk 2077, Horizon Zero Dawn Complete Edition), **Xbox 3**
+      (Minecraft for Windows, Minecraft Launcher, Minecraft: Java Edition). Aucun « Steamworks Common Redistributables ».
+- [ ] Fermer puis rouvrir ton profil : AUCUN nouveau message (rien de nouveau), et l'ouverture n'est pas plus lente.
+- [ ] 🛒 Boutiques : une ligne par boutique (« Epic Games : 1 jeu sur ce PC, relus au démarrage », « Amazon Games :
+      lanceur absent »…) ; la clé Steam et GOG Galaxy sont dans « 🛟 Secours », replié.
+- [ ] ⚙ Options ▸ Comptes ▸ « 🛒 Mes jeux installés » : la case est cochée ; la décocher puis rouvrir le profil : plus de
+      message, rien n'est ajouté.
+- [ ] Minecraft for Windows ▸ ▶ Jouer : il s'ouvre ; à sa fermeture, « Partie terminée » et du temps de jeu compté (suivi
+      de la partie par son dossier, jamais essayé avant).
+- [ ] Cyberpunk 2077 ▸ ▶ Jouer (par GOG Galaxy) : le jeu démarre et la partie est suivie.
+- [ ] Taodbox : les jeux Steam et Galaxy sont DANS la grille, avec leur pastille (« Steam », « Epic »…), plus de rangées
+      à part ; au lancement d'un jeu de boutique, UN seul message, qui dit « appuie sur ⊞/Guide pour revenir à Frogtend ».
+- [ ] 🛒 Boutiques ▸ 🎁 Jeux offerts : Knightica affiche « ✅ Dans ta bibliothèque » (plus de « délai dépassé »).
+- [ ] « 🔑 Se connecter à Epic » : la fenêtre s'ouvre ; dès que tu es connecté, Frogtend dit « ✅ Connecté à Epic » ; pour
+      GOG, Prime et PlayStation, « ✅ Connecté » apparaît après un premier passage (Récupérer / Ajouter les jeux du mois).
+- [ ] Dans la fenêtre d'Epic, « Se connecter avec Google » : la petite fenêtre de Google s'ouvre et la connexion
+      aboutit (seuls les sites de connexion connus peuvent s'ouvrir ; un autre lien ne fait rien).
+
 ## 📊 Compteur d'images, DLC en français, console de Ryubing (0.210.0)
 - [ ] Zelda avec Ryubing : plus de fenêtre noire de console au lancement.
 - [x] (✅ Seb 18/11) Fire Emblem ▸ 📦 : « Histoire additionnelle - Ombres embrasées », « Nouvelles tenues »… et « Mise à jour 1.2.0 ».

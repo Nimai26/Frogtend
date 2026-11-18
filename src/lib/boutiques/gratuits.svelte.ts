@@ -1,9 +1,12 @@
 // Les jeux offerts (lot 9). Décision de Seb (02/10) : Frogtend essaie de les obtenir TOUT SEUL ; si ça bloque
 // (connexion, captcha, page changée), la page de la boutique s'affiche et on finit soi-même. Epic pour commencer.
+import { isTauri } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { api, type JeuOffert, type Recolte, type RecoltePsPlus } from '$lib/api';
 import { toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat, reglerProfil } from '$lib/etat.svelte';
+import { toujoursLeMeme } from './jeu-boutique';
 
 export const gratuits = $state<{ liste: JeuOffert[]; enCours: string | null; psplusEnCours: boolean; boutique: 'gog' | 'prime' | null }>({
   liste: [],
@@ -13,6 +16,25 @@ export const gratuits = $state<{ liste: JeuOffert[]; enCours: string | null; psp
 });
 
 const NOMS = { gog: 'GOG', prime: 'Prime Gaming' } as const;
+
+/** Les boutiques dont Frogtend retient si le compte est connecté (par profil). */
+export type BoutiqueOfferte = 'epic' | 'gog' | 'prime' | 'psplus';
+
+/** Ce qu'un résultat dit du compte (pur, testé) : vrai = vu connecté (le passage a pu lire la bibliothèque), faux = il
+ * faut se connecter, null = on ne sait pas (erreur, captcha : on garde l'état connu). */
+export function connexionApres(etatResultat: string): boolean | null {
+  if (['obtenu', 'deja', 'connecte', 'faite', 'aucun', 'pas_abonne'].includes(etatResultat)) return true;
+  if (etatResultat === 'connexion') return false;
+  return null;
+}
+
+/** Retient, pour le profil ouvert, ce qu'un résultat dit du compte de la boutique. `profil` : celui d'AVANT l'attente ;
+ * un autre profil ouvert entre-temps ne reçoit rien (revue des experts, 18/11). */
+async function noterConnexion(b: BoutiqueOfferte, etatResultat: string, profil: string | null | undefined) {
+  if (!toujoursLeMeme(profil, etat.profilOuvert?.id)) return;
+  const v = connexionApres(etatResultat);
+  if (v !== null && etat.profil.gratuits.connectes[b] !== v) await reglerProfil(`gratuits.connectes.${b}`, v);
+}
 
 /** Le message d'un passage sur GOG ou Prime Gaming (pur, testé). */
 export function messageRecolte(b: 'gog' | 'prime', r: Recolte): { texte: string; ton: 'ok' | 'alerte' | 'erreur' } {
@@ -48,8 +70,11 @@ export async function connexion(b: 'gog' | 'prime') {
 export async function recuperer(b: 'gog' | 'prime', discret = false) {
   if (gratuits.boutique) return;
   gratuits.boutique = b;
+  const profil = etat.profilOuvert?.id;
   try {
-    const m = messageRecolte(b, await api.gratuitsRecuperer(b));
+    const r = await api.gratuitsRecuperer(b);
+    await noterConnexion(b, r.etat, profil);
+    const m = messageRecolte(b, r);
     if (!discret || m.ton !== 'ok' || m.texte.includes('récupéré')) toast(m.texte, m.ton);
   } catch (e) {
     toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
@@ -67,8 +92,23 @@ export async function lireGratuits() {
   gratuits.liste = await api.gratuitsListe().catch(() => []);
 }
 
+/** L'écoute de la fenêtre de connexion à Epic (une seule à la fois). */
+let arreterEcouteEpic: (() => void) | null = null;
+
 export async function connexionEpic() {
   try {
+    // La fenêtre dit quand la boutique montre le compte connecté (événement du cœur, pour CE profil seulement).
+    arreterEcouteEpic?.();
+    arreterEcouteEpic = null;
+    const profil = etat.profilOuvert?.id;
+    if (isTauri() && profil)
+      arreterEcouteEpic = await listen<{ boutique: string; profil: string }>('gratuits-connecte', (e) => {
+        if (e.payload.boutique !== 'epic' || e.payload.profil !== profil || etat.profilOuvert?.id !== profil) return;
+        arreterEcouteEpic?.();
+        arreterEcouteEpic = null;
+        void noterConnexion('epic', 'connecte', profil);
+        toast('✅ Connecté à Epic : tu peux fermer la fenêtre.');
+      });
     await api.gratuitsConnexionEpic();
     toast('🔑 Connecte-toi à Epic dans la fenêtre qui s’ouvre, puis ferme-la. Frogtend ne voit jamais ton mot de passe.');
   } catch (e) {
@@ -88,7 +128,8 @@ export function messageObtention(titre: string, r: { etat: string; motif?: strin
     case 'captcha':
       return { texte: `🧩 Epic demande une vérification pour « ${titre} » : fais-la dans la fenêtre, puis clique « Place Order ».`, ton: 'alerte' };
     default:
-      return { texte: `⚠ « ${titre} » n’a pas pu être obtenu tout seul (${r.motif ?? 'raison inconnue'}) : finis dans la fenêtre ouverte.`, ton: 'alerte' };
+      // Le motif du script est « <étape> | <boutons vus> » : la personne ne lit que l'étape, le journal garde le reste.
+      return { texte: `⚠ « ${titre} » n’a pas pu être obtenu tout seul (${r.motif?.split(' | ')[0] || 'raison inconnue'}) : finis dans la fenêtre ouverte.`, ton: 'alerte' };
   }
 }
 
@@ -119,8 +160,11 @@ export function messagePsPlus(r: RecoltePsPlus): { texte: string; ton: 'ok' | 'a
 export async function recolterPsPlus(discret = false) {
   if (gratuits.psplusEnCours) return;
   gratuits.psplusEnCours = true;
+  const profil = etat.profilOuvert?.id;
   try {
-    const m = messagePsPlus(await api.gratuitsPsPlus());
+    const r = await api.gratuitsPsPlus();
+    await noterConnexion('psplus', r.etat, profil);
+    const m = messagePsPlus(r);
     if (!discret || m.ton !== 'ok' || m.texte.includes('ajouté')) toast(m.texte, m.ton);
   } catch (e) {
     toast(`Impossible : ${motifDuRefus(e)}`, 'erreur');
@@ -132,8 +176,10 @@ export async function recolterPsPlus(discret = false) {
 /** Obtenir un jeu offert. Rend vrai si c'est fait (ou déjà fait). */
 export async function obtenir(j: JeuOffert, discret = false): Promise<boolean> {
   gratuits.enCours = j.slug;
+  const profil = etat.profilOuvert?.id;
   try {
     const r = await api.gratuitsObtenirEpic(j.slug);
+    await noterConnexion('epic', r.etat, profil);
     const m = messageObtention(j.titre, r);
     if (!discret || m.ton !== 'ok') toast(m.texte, m.ton);
     if (r.etat === 'obtenu' || r.etat === 'deja') {

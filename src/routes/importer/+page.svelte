@@ -9,13 +9,19 @@
   import { compterParGalaxy, explicationGalaxy, source, SOURCES } from '$lib/import/sources';
   import ImportLocal from '$lib/import/ImportLocal.svelte';
   import Rapprocher from '$lib/import/Rapprocher.svelte';
+  import { boutiquesPc, lireEtatsPc } from '$lib/boutiques/boutiques-pc.svelte';
+  import { ligneEtat } from '$lib/boutiques/jeu-boutique';
+  import { etat } from '$lib/etat.svelte';
 
   onMount(() => {
     lireSteam();
     lireGalaxy();
+    lireEtatsPc();
   });
 
   const s = $derived(source(page.url.searchParams.get('source')) ?? SOURCES[0]);
+  /** L'état de la boutique choisie sur ce PC (voie « auto »). */
+  const etatPc = $derived(boutiquesPc.etats.find((e) => e.boutique === s.boutique));
   const choisir = (id: string) => goto(`/importer?source=${id}`, { replaceState: true, noScroll: true, keepFocus: true });
   const nbGalaxy = $derived(compterParGalaxy(s, galaxy.jeux));
   const nomBoutique = $derived(s.libelle.replace(/^Jeux /, ''));
@@ -37,7 +43,7 @@
     <h1>{s.icone} {s.libelle}</h1>
     <p>{s.resume}</p>
 
-    {#if s.voie === 'steam'}
+    {#snippet parSteam()}
       <section class="cx-block">
         <h2>Par ton compte Steam (conseillé)</h2>
         <dl class="cx-kv">
@@ -57,7 +63,8 @@
         <h2>Ou par GOG Galaxy</h2>
         <p class="muted">Si ton compte Steam est relié dans GOG Galaxy, ses jeux arrivent aussi par là, sans clé d’API ({nbGalaxy} jeu(x) Steam lus dans Galaxy).</p>
       </section>
-    {:else if s.voie === 'galaxy'}
+    {/snippet}
+    {#snippet parGalaxy()}
       <section class="cx-block">
         <h2>Par GOG Galaxy</h2>
         {#each explicationGalaxy(nomBoutique) as p (p)}<p>{p}</p>{/each}
@@ -81,6 +88,24 @@
         </div>
         <p class="muted">La lecture prend TOUTES les boutiques reliées dans Galaxy d’un coup ; dans la ludothèque, le filtre « Boutique » les sépare.</p>
       </section>
+    {/snippet}
+
+    {#if s.voie === 'auto'}
+      <section class="cx-block">
+        <h2>Tes jeux installés entrent seuls</h2>
+        <p>À chaque ouverture de ton profil, Frogtend range dans ta ludothèque les jeux que {nomBoutique} a installés sur ce PC. Rien à relier, aucune clé à donner. Jouer et Installer passent par son lanceur.</p>
+        <p class="muted">{etatPc ? ligneEtat(etatPc) : 'Lecture de ce PC…'}</p>
+        {#if !etat.profil.boutiquesPc.auto}<p class="muted">⚠ L’ajout tout seul est coupé pour ton profil.</p>{/if}
+        <div class="actions"><a class="btn" href="/reglages?rubrique=jeux-installes">⚙ Options ▸ Comptes ▸ Mes jeux installés</a></div>
+      </section>
+      <details class="cx-block">
+        <summary>🛟 Secours : voir aussi les jeux que tu possèdes sans les avoir installés</summary>
+        {#if s.secours === 'steam'}{@render parSteam()}{:else}{@render parGalaxy()}{/if}
+      </details>
+    {:else if s.voie === 'steam'}
+      {@render parSteam()}
+    {:else if s.voie === 'galaxy'}
+      {@render parGalaxy()}
     {:else if s.voie === 'rapprocher'}
       <Rapprocher />
     {:else if s.voie === 'local'}

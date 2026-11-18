@@ -1,5 +1,19 @@
 # Notes de version de Frogtend
 
+## 0.211.0 — 🛒 Tes jeux PC installés entrent tout seuls
+
+- Nouveau : à chaque ouverture de ton profil, Frogtend retrouve tout seul les jeux INSTALLÉS sur ce PC par Steam, Epic,
+  GOG (même sans GOG Galaxy), Ubisoft Connect, Amazon Games, Xbox et Battle.net — sans clé d'API ni compte à relier. Un
+  seul message, et seulement s'il y a du nouveau. Jouer et Installer passent par le lanceur de la boutique. Un jeu
+  désinstallé ne disparaît pas : il reste, « pas installé », avec son temps de jeu. Désactivable : ⚙ Options ▸ Comptes
+  ▸ 🛒 Mes jeux installés.
+- 🛒 Boutiques : une ligne par boutique (jeux trouvés, ou lanceur absent) ; GOG Galaxy et la clé Steam restent en
+  secours. Taodbox : les jeux des boutiques sont dans la grille principale ; un jeu pas installé n'y est plus proposé.
+- Jeux offerts d'Epic : un jeu déjà dans ta bibliothèque est reconnu (« ✅ Dans ta bibliothèque ») ; « ✅ Connecté » au
+  lieu de « Se connecter » ; la connexion par Google (ou Apple, Xbox…) marche dans la fenêtre d'Epic. Prudence : le jeu
+  n'est commandé que si le total affiché vaut exactement 0 €.
+- Corrigé : une partie lancée par une boutique dont le chemin s'écrit avec des « / » (Ubisoft) est bien suivie.
+
 ## 0.210.0 — 📊 Les images par seconde pour plus d'émulateurs, les DLC en français
 
 - Nouveau : « Compteur de fluidité » dans le menu en jeu (bouton Xbox) aussi pour DuckStation, PCSX2, Dolphin, PPSSPP,

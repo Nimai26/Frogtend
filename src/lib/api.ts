@@ -73,7 +73,8 @@ export interface JeuResume {
   /** Les visuels du jeu par type, avec leurs dimensions d'origine (contrat 1.6) ; absent = pas encore relu. */
   images?: Record<string, { largeur?: number | null; hauteur?: number | null }> | null;
   // Jeux des boutiques de la personne (lot 9 : id négatif, plateforme « Windows »).
-  source?: 'steam' | 'galaxy' | 'local';
+  // Lot A (18/11) : aussi les boutiques lues sur ce PC (`epic`, `gog`, `uplay`, `amazon`, `xboxone`, `battlenet`).
+  source?: 'steam' | 'galaxy' | 'local' | 'epic' | 'gog' | 'uplay' | 'amazon' | 'xboxone' | 'battlenet';
   /** Succès (obtenus, total) d'un jeu de boutique, quand la source les donne (GOG Galaxy). */
   succes?: [number, number] | null;
   boutique?: string;
@@ -589,6 +590,23 @@ export interface EtatSteam {
   steam_installe: boolean;
 }
 
+/** Une boutique telle que ce PC la voit (import automatique, lot A). */
+export interface EtatBoutiquePc {
+  boutique: string;
+  nom: string;
+  /** Le lanceur est là (Jouer, Installer). */
+  lanceur: boolean;
+  /** Ses jeux installés ont pu être lus. */
+  lu: boolean;
+  installes: number;
+}
+
+/** La relecture des boutiques de ce PC à l'ouverture d'un profil : (boutique, nombre de jeux NOUVEAUX). */
+export interface ReleveBoutiques {
+  boutiques: EtatBoutiquePc[];
+  nouveaux: [string, number][];
+}
+
 /** Ce que montre le menu en jeu. */
 export interface EtatMenuJeu {
   /** Les réglages changés en jeu qui ne valent qu'au prochain lancement (vide : rien à relancer). */
@@ -988,6 +1006,12 @@ export const api = {
   steamJeux: () => appeler<JeuBoutique[]>('boutique_steam_jeux'),
   steamImporter: () => appeler<JeuBoutique[]>('boutique_steam_importer'),
   steamOuvrir: (appid: string, action: 'jouer' | 'installer' | 'verifier') => appeler<void>('boutique_steam_ouvrir', { appid, action }),
+  /** Import automatique (lot A) : relit les jeux installés de toutes les boutiques de ce PC et les range. */
+  boutiquesRelirePc: () => appeler<ReleveBoutiques>('boutiques_relire_pc'),
+  /** L'état des boutiques de ce PC (lecture seule). */
+  boutiquesEtatPc: () => appeler<EtatBoutiquePc[]>('boutiques_etat_pc'),
+  /** Jouer à un jeu de boutique ou l'installer, par SON lanceur (clé de la carte). */
+  boutiqueOuvrir: (boutique: string, cle: string, action: 'jouer' | 'installer') => appeler<void>('boutique_ouvrir', { boutique, cle, action }),
   /** `accepte` : la personne a dit oui à l'avertissement de `cheatengineRisque` (jeu en ligne ou inconnu). */
   cheatengineLancer: (programme: string, table?: string, brancher = false, accepte = false) =>
     appeler<void>('cheatengine_lancer', { programme, table: table ?? null, brancher, accepte }),

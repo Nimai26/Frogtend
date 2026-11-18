@@ -167,22 +167,18 @@ pub(crate) fn adresse_boutique(b: &crate::jeux_pc::LancementBoutique) -> Option<
     match b.source.as_str() {
         "steam" if !b.cle.is_empty() && b.cle.len() <= 12 && b.cle.chars().all(|c| c.is_ascii_digit()) => Some(format!("steam://rungameid/{}", b.cle)),
         // Epic (A6d) : son manifeste relu à l'instant (namespace et item ne sont pas gardés au registre).
-        "epic" => crate::boutiques::dossier_manifestes_epic()
-            .map(|d| crate::boutiques::installes_epic(&d))
-            .and_then(|l| l.into_iter().find(|j| j.app == b.cle))
-            .map(|j| crate::boutiques::adresse_epic(&j)),
+        "epic" => crate::boutiques::installes_epic_du_pc().and_then(|l| l.into_iter().find(|j| j.app == b.cle)).map(|j| crate::boutiques::adresse_epic(&j)),
+        // Lot A (18/11) : Ubisoft, Amazon (adresses officielles, clé validée).
+        "uplay" | "amazon" => crate::boutiques_pc::adresse(&b.source, &b.cle, crate::boutiques_pc::Action::Jouer, None),
+        // Xbox : l'application du paquet relue à l'instant (`shell:AppsFolder\<famille>!<application>`).
+        "xboxone" => crate::boutiques_pc::application_xbox(&b.cle).and_then(|a| crate::boutiques_pc::adresse("xboxone", &b.cle, crate::boutiques_pc::Action::Jouer, Some(&a))),
         _ => None,
     }
 }
 
 /// Le nom d'une boutique pour les messages.
 pub(crate) fn nom_boutique(source: &str) -> &'static str {
-    match source {
-        "steam" => "Steam",
-        "gog" => "GOG Galaxy",
-        "epic" => "Epic Games",
-        _ => "sa boutique",
-    }
+    crate::boutiques_pc::nom_boutique(source)
 }
 
 /// GOG (A6, ✅ Seb 21/10 : PAR GALAXY, pour son nuage, ses succès et son temps de jeu) : `GalaxyClient.exe
@@ -220,10 +216,35 @@ async fn lancer_par_la_boutique(b: &crate::jeux_pc::LancementBoutique, dossier: 
     if !crate::lancement::processus_du_dossier(dossier).is_empty() {
         return Err(Erreur::Refus("Ce jeu tourne déjà.".into()));
     }
-    if let Some(adresse) = adresse_boutique(b) {
+    // Lot A : un lanceur absent est DIT (jamais un ▶ Jouer qui échoue en silence) ; GOG se lance aussi sans Galaxy.
+    let source_b = b.source.clone();
+    if b.source != "gog" && !tokio::task::spawn_blocking(move || crate::boutiques_pc::lanceur_present(&source_b)).await.unwrap_or(false) {
+        return Err(Erreur::Refus(crate::boutiques_pc::message_lanceur_absent(&b.source)));
+    }
+    let (b2, d2) = (b.clone(), dossier.to_path_buf());
+    let adresse = tokio::task::spawn_blocking(move || adresse_boutique(&b2)).await.unwrap_or(None);
+    let galaxy = if b.source == "gog" { commande_galaxy(&b.cle, dossier) } else { None };
+    if let Some(adresse) = adresse {
         tauri_plugin_opener::open_url(&adresse, None::<&str>).map_err(|_| Erreur::Disque(format!("{nom} ne s'ouvre pas : est-il installé ?")))?;
+    } else if b.source == "gog" && galaxy.is_none() {
+        // Sans GOG Galaxy (lot A) : le programme que GOG note dans le registre, lancé directement (dans le dossier du
+        // jeu, jamais un autre), sans console ni shell.
+        let p = crate::boutiques_pc::entree_gog(&b.cle)
+            .and_then(|v| crate::boutiques_pc::programme_gog(&v))
+            .filter(|p| crate::boutiques::cle_chemin(&p.exe).starts_with(&format!("{}\\", crate::boutiques::cle_chemin(&d2))))
+            .ok_or_else(|| Erreur::Refus("GOG ne note plus ce jeu sur ce PC : réinstalle-le (ou ouvre-le depuis son dossier).".into()))?;
+        let mut c = std::process::Command::new(&p.exe);
+        c.current_dir(&p.dossier_travail);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            if !p.arguments.is_empty() {
+                c.raw_arg(&p.arguments);
+            }
+        }
+        c.spawn().map_err(|_| Erreur::Disque("Le jeu GOG ne démarre pas.".into()))?;
     } else if b.source == "gog" {
-        let (client, args) = commande_galaxy(&b.cle, dossier).ok_or_else(|| Erreur::Refus("GOG Galaxy est introuvable sur ce PC : installe-le (ou ouvre le jeu depuis lui).".into()))?;
+        let (client, args) = galaxy.ok_or_else(|| Erreur::Refus("GOG Galaxy est introuvable sur ce PC : installe-le (ou ouvre le jeu depuis lui).".into()))?;
         // Le client de Galaxy, sans console et sans shell ; il reste ouvert après le jeu (c'est le sien).
         let mut c = std::process::Command::new(&client);
         // La forme des forums (`/path="D:\…"`), écrite telle quelle : Rust citerait l'argument entier
@@ -242,8 +263,13 @@ async fn lancer_par_la_boutique(b: &crate::jeux_pc::LancementBoutique, dossier: 
     } else if b.source == "epic" {
         // Le manifeste d'Epic n'est plus là (jeu désinstallé par Epic, dossier resté) : le dire, jamais deviner.
         return Err(Erreur::Refus("Epic ne voit plus ce jeu installé : réinstalle-le ou répare-le depuis l'Epic Games Launcher.".into()));
+    } else if b.source == "battlenet" {
+        // Aucune adresse de Battle.net prouvée par une source lue (lot A) : pas de lancement deviné.
+        return Err(Erreur::Refus(crate::boutiques_pc::message_lanceur_absent("battlenet")));
+    } else if b.source == "xboxone" {
+        return Err(Erreur::Refus("Windows ne voit plus ce jeu Xbox installé : réinstalle-le depuis l'application Xbox.".into()));
     } else {
-        return Err(Erreur::Refus("Frogtend ne sait pas encore lancer un jeu de cette boutique : ouvre-le depuis elle.".into()));
+        return Err(Erreur::Refus(format!("{nom} ne voit plus ce jeu installé : ouvre-le ou répare-le depuis {nom}.")));
     }
     let d = dossier.to_path_buf();
     tokio::task::spawn_blocking(move || {
@@ -1952,7 +1978,12 @@ mod tests {
     fn la_commande_de_galaxy_refuse_un_identifiant_douteux() {
         assert_eq!(commande_galaxy("12;calc", Path::new("C:\\Jeux")), None);
         assert_eq!(commande_galaxy("", Path::new("C:\\Jeux")), None);
-        assert_eq!(nom_boutique("gog"), "GOG Galaxy");
+        // Lot A : GOG se lance aussi sans Galaxy ; le nom vient de la boutique (Ubisoft, Amazon… aussi).
+        assert_eq!(nom_boutique("gog"), "GOG");
+        assert_eq!(nom_boutique("uplay"), "Ubisoft Connect");
+        assert_eq!(adresse_boutique(&crate::jeux_pc::LancementBoutique { source: "uplay".into(), cle: "46".into() }).as_deref(), Some("uplay://launch/46"));
+        assert_eq!(adresse_boutique(&crate::jeux_pc::LancementBoutique { source: "amazon".into(), cle: "x/../y".into() }), None);
+        assert_eq!(adresse_boutique(&crate::jeux_pc::LancementBoutique { source: "battlenet".into(), cle: "wow".into() }), None, "Battle.net : rien de deviné");
     }
 
     /// RÉEL, lecture seule (A6) : la commande qui lancerait un jeu GOG de ce PC par Galaxy (rien n'est lancé).

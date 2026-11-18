@@ -1,8 +1,9 @@
 // Le menu « Importer » (Seb, 02/10) : la MÊME liste que LaunchBox, dans le même ordre. Chaque entrée dit par quelle
-// voie Frogtend la sert : l'API Steam, GOG Galaxy (qui regroupe les boutiques que la personne y a reliées), un
-// import local (jeux déjà sur le disque), ou « bientôt » (pas encore livré : on le dit au lieu de faire semblant).
+// voie Frogtend la sert : « auto » (lot A, Seb 18/11 : les jeux INSTALLÉS de la boutique entrent seuls, à chaque
+// ouverture du profil, sans compte ni clé), l'API Steam, GOG Galaxy (qui regroupe les boutiques que la personne y a
+// reliées), un import local (jeux déjà sur le disque), ou « bientôt » (pas encore livré : on le dit).
 
-export type Voie = 'steam' | 'galaxy' | 'local' | 'rapprocher' | 'bientot';
+export type Voie = 'auto' | 'steam' | 'galaxy' | 'local' | 'rapprocher' | 'bientot';
 
 export interface SourceImport {
   id: string;
@@ -11,6 +12,10 @@ export interface SourceImport {
   voie: Voie;
   /** Les préfixes de plateforme de GOG Galaxy qui correspondent à cette boutique (voie « galaxy »). */
   galaxy?: string[];
+  /** Voie « auto » : la boutique lue sur ce PC (`steam`, `epic`, `uplay`…). */
+  boutique?: string;
+  /** Voie « auto » : le secours pour voir aussi les jeux possédés non installés (clé Steam, ou GOG Galaxy). */
+  secours?: 'steam' | 'galaxy';
   /** Ce que fait l'import, en une phrase. */
   resume: string;
 }
@@ -25,16 +30,17 @@ export const SOURCES: SourceImport[] = [
   },
   { id: 'dos', libelle: 'Jeux MS-DOS', icone: '🖥', voie: 'local', resume: 'Ajouter des jeux MS-DOS déjà présents sur le disque, lancés par DOSBox.' },
   { id: 'mame', libelle: 'MAME Arcade Full Set', icone: '🕹', voie: 'local', resume: 'Ajouter un ensemble complet de ROM MAME, en écartant les clones et les jeux non jouables.' },
-  { id: 'amazon', libelle: 'Amazon Games', icone: '📦', voie: 'galaxy', galaxy: ['amazon'], resume: 'Les jeux de ton compte Amazon (Prime Gaming), par GOG Galaxy.' },
+  { id: 'amazon', libelle: 'Amazon Games', icone: '📦', voie: 'auto', boutique: 'amazon', secours: 'galaxy', galaxy: ['amazon'], resume: 'Tes jeux installés par Amazon Games entrent seuls dans ta ludothèque.' },
   { id: 'ea', libelle: 'EA', icone: '🅴', voie: 'galaxy', galaxy: ['origin', 'ea'], resume: 'Les jeux de ton compte EA (EA app, ex-Origin), par GOG Galaxy.' },
-  { id: 'epic', libelle: 'Jeux Epic Games', icone: '⚫', voie: 'galaxy', galaxy: ['epic'], resume: 'Les jeux de ton compte Epic Games, par GOG Galaxy.' },
-  { id: 'gog', libelle: 'Jeux GOG', icone: '🟣', voie: 'galaxy', galaxy: ['gog'], resume: 'Les jeux de ton compte GOG, par GOG Galaxy.' },
-  { id: 'steam', libelle: 'Jeux Steam', icone: '🎮', voie: 'steam', galaxy: ['steam'], resume: 'Les jeux de ton compte Steam, par l’API officielle de Steam (ou par GOG Galaxy).' },
-  { id: 'ubisoft', libelle: 'Uplay / Ubisoft Connect', icone: '🌀', voie: 'galaxy', galaxy: ['uplay'], resume: 'Les jeux de ton compte Ubisoft Connect, par GOG Galaxy.' },
+  { id: 'epic', libelle: 'Jeux Epic Games', icone: '⚫', voie: 'auto', boutique: 'epic', secours: 'galaxy', galaxy: ['epic'], resume: 'Tes jeux installés par Epic Games entrent seuls dans ta ludothèque.' },
+  { id: 'gog', libelle: 'Jeux GOG', icone: '🟣', voie: 'auto', boutique: 'gog', secours: 'galaxy', galaxy: ['gog'], resume: 'Tes jeux GOG installés entrent seuls dans ta ludothèque, même sans GOG Galaxy.' },
+  { id: 'steam', libelle: 'Jeux Steam', icone: '🎮', voie: 'auto', boutique: 'steam', secours: 'steam', galaxy: ['steam'], resume: 'Tes jeux installés par Steam entrent seuls dans ta ludothèque, sans clé d’API.' },
+  { id: 'ubisoft', libelle: 'Uplay / Ubisoft Connect', icone: '🌀', voie: 'auto', boutique: 'uplay', secours: 'galaxy', galaxy: ['uplay'], resume: 'Tes jeux installés par Ubisoft Connect entrent seuls dans ta ludothèque.' },
   { id: 'windows', libelle: 'Jeux Windows', icone: '🪟', voie: 'local', resume: 'Ajouter un jeu Windows installé à la main, en choisissant son programme (.exe).' },
-  { id: 'xbox', libelle: 'Jeux Xbox / Microsoft Store', icone: '🟢', voie: 'galaxy', galaxy: ['xboxone', 'xbox'], resume: 'Les jeux de ton compte Xbox / Microsoft Store (et du Game Pass PC), par GOG Galaxy.' },
+  { id: 'xbox', libelle: 'Jeux Xbox / Microsoft Store', icone: '🟢', voie: 'auto', boutique: 'xboxone', secours: 'galaxy', galaxy: ['xboxone', 'xbox'], resume: 'Tes jeux installés par l’application Xbox ou le Microsoft Store (Game Pass PC compris) entrent seuls dans ta ludothèque.' },
   { id: 'manuel', libelle: 'Ajouter un jeu manuellement', icone: '✏', voie: 'local', resume: 'Créer une fiche à la main : titre, plateforme, programme ou fichier à lancer.' },
   { id: 'installer-dos', libelle: 'Installer un jeu DOS', icone: '📀', voie: 'local', resume: 'Installer un jeu DOS depuis son disque ou son archive, dans DOSBox, puis l’ajouter.' },
+  { id: 'battlenet', libelle: 'Jeux Battle.net', icone: '🔵', voie: 'auto', boutique: 'battlenet', secours: 'galaxy', galaxy: ['battlenet'], resume: 'Tes jeux installés par Battle.net entrent seuls dans ta ludothèque (à lancer depuis Battle.net pour l’instant).' },
   {
     id: 'rapprocher',
     libelle: 'Reconnaître mes jeux importés',

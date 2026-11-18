@@ -13,7 +13,8 @@
   import { annuler, jeuSurPc, mettreDansLaLudotheque, mettreEnPause, reprendre } from './telechargements.svelte';
   import { attenteEmulateurSeul, boutonEmulateurSeul, emulateursDuJeu, gererLaCarte, installer, jouerAvec, jouerLaCarte, lancementImpossible, libelleEmulateurSeul, ouvrirEmulateurSeul, partie } from './jeu.svelte';
   import { libellePreparation } from '$lib/emulateurs/pret.svelte';
-  import { estJeuDeBoutique, ouvrirJeuDeBoutique } from '$lib/boutiques/jeu-boutique';
+  import { estJeuDeBoutique, libelleOuverture } from '$lib/boutiques/jeu-boutique';
+  import { messageLanceur, ouvrirParLaBoutique } from '$lib/boutiques/boutiques-pc.svelte';
   import { nomPlateforme } from '$lib/boutiques/galaxy.svelte';
   import BlocSucces from '$lib/succes/BlocSucces.svelte';
   import RappelTriches from './RappelTriches.svelte';
@@ -32,6 +33,9 @@
   const enJeuIci = $derived(partie.enJeu !== null && (partie.enJeu === idPc || !!j?.copies?.some((c) => c.id === partie.enJeu)));
   const plateforme = $derived(ludo.plateformes.find((p) => p.nom === ludo.plateforme));
   const catalogue = $derived(ludo.espace === 'catalogue');
+  /** Un jeu de boutique désinstallé hors de Frogtend (lot A) : sa ligne du PC peut rester (temps de jeu gardé), mais
+   * il se réinstalle par sa boutique, jamais « Jouer ». */
+  const boutiquePasInstalle = $derived(!!j && estJeuDeBoutique(j) && j.installe === false);
   let ajout = $state(false);
 
   async function ajouter() {
@@ -82,12 +86,16 @@
     {/if}
 
     <div class="actions">
-      {#if estJeuDeBoutique(j) && !surPc}
-        <!-- Un jeu de tes boutiques pas encore sur ce PC (ou que Frogtend ne sait pas encore lancer) : Steam ou GOG
-             Galaxy s'en chargent. Installé par Steam, c'est un jeu du PC : Jouer passe par Frogtend (partie suivie). -->
-        <button class="btn primary grand" onclick={() => j && ouvrirJeuDeBoutique(j)}>
-          {j.installe ? '▶ Jouer' : '⬇ Installer'} <span class="muted">({j.source === 'steam' ? 'Steam' : 'GOG Galaxy'})</span>
-        </button>
+      {#if estJeuDeBoutique(j) && (!surPc || boutiquePasInstalle)}
+        <!-- Un jeu de tes boutiques pas encore sur ce PC (ou que Frogtend ne sait pas encore lancer) : SA boutique s'en
+             charge. Installé, c'est un jeu du PC : Jouer passe par Frogtend (partie suivie). -->
+        {#if messageLanceur(j)}
+          <p class="tag sur-pc">{messageLanceur(j)}</p>
+        {:else}
+          <button class="btn primary grand" onclick={() => j && ouvrirParLaBoutique(j)}>
+            {j.installe ? '▶ Jouer' : '⬇ Installer'} <span class="muted">({libelleOuverture(j)})</span>
+          </button>
+        {/if}
       {:else if catalogue && !surPc}
         <button class="btn primary grand" onclick={ajouter} disabled={ajout}>
           {ajout ? 'Préparation…' : '➕ Mettre dans ma ludothèque'}
@@ -95,13 +103,15 @@
       {:else if catalogue && surPc}
         <p class="tag ok sur-pc">{surPc.id < 0 ? '✅ Déjà sur ce PC (un fichier importé du disque)' : '✅ Dans ta ludothèque'}</p>
       {/if}
-      {#if !catalogue && surPc?.etat === 'telecharge'}
+      {#if !catalogue && surPc?.etat === 'telecharge' && !boutiquePasInstalle}
         {#if enJeuIci}
           <p class="tag ok sur-pc">🎮 Partie en cours…</p>
         {:else if partie.installation === idPc}
           <button class="btn primary grand" disabled>📦 Installation…</button>
         {:else if !surPc.installation}
           <button class="btn primary grand" onclick={() => installer(idPc)} disabled={!!surPc.d_un_autre} title={surPc.d_un_autre ? 'Seule la personne qui l’a importé peut l’installer' : undefined}>📦 Installer</button>
+        {:else if estJeuDeBoutique(j) && messageLanceur(j)}
+          <p class="tag sur-pc">{messageLanceur(j)}</p>
         {:else}
           <button class="btn primary grand" onclick={() => jouerLaCarte(idPc)} disabled={lancementImpossible() || libellePreparation(j.plateforme) !== null} title={attenteEmulateurSeul() ?? undefined}>{libellePreparation(j.plateforme) ?? (partie.lancement === idPc ? 'Lancement…' : '▶ Jouer')}</button>
           {#if emulateursDuJeu(j.plateforme).liste.length > 1 || (surPc.installation.versions?.length ?? 0) > 1}

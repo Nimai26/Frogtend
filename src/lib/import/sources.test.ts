@@ -3,9 +3,10 @@ import { compterParGalaxy, explicationGalaxy, source, SOURCES } from './sources'
 
 describe('le menu Importer', () => {
   it('reprend la liste de LaunchBox, dans le même ordre', () => {
-    // Les 13 entrées de LaunchBox d'abord (règle de Seb), puis celle propre à Frogtend (contrat 1.21).
+    // Les 13 entrées de LaunchBox d'abord (règle de Seb), puis Battle.net (lot A) et celle propre à Frogtend (contrat 1.21).
     expect(SOURCES.at(-1)?.libelle).toBe('Reconnaître mes jeux importés');
-    expect(SOURCES.slice(0, -1).map((s) => s.libelle)).toEqual([
+    expect(SOURCES.at(-2)?.libelle).toBe('Jeux Battle.net');
+    expect(SOURCES.slice(0, -2).map((s) => s.libelle)).toEqual([
       'Fichiers ROM',
       'Jeux MS-DOS',
       'MAME Arcade Full Set',
@@ -23,9 +24,17 @@ describe('le menu Importer', () => {
     expect(new Set(SOURCES.map((s) => s.id)).size).toBe(SOURCES.length);
   });
 
-  it('passe par GOG Galaxy pour les boutiques sans API ouverte', () => {
-    for (const id of ['amazon', 'ea', 'epic', 'gog', 'ubisoft', 'xbox']) expect(source(id)?.voie).toBe('galaxy');
-    expect(source('steam')?.voie).toBe('steam');
+  it('fait entrer seuls les jeux installés des boutiques (lot A), Galaxy et la clé Steam restant en secours', () => {
+    const boutiques: Record<string, string> = { amazon: 'amazon', epic: 'epic', gog: 'gog', steam: 'steam', ubisoft: 'uplay', xbox: 'xboxone', battlenet: 'battlenet' };
+    for (const [id, b] of Object.entries(boutiques)) {
+      expect(source(id)?.voie).toBe('auto');
+      expect(source(id)?.boutique).toBe(b);
+      expect(source(id)?.resume).not.toContain('par GOG Galaxy');
+    }
+    expect(source('steam')?.secours).toBe('steam');
+    expect(source('epic')?.secours).toBe('galaxy');
+    // EA : pas encore lisible sur le PC (lot E) ; GOG Galaxy reste sa voie.
+    expect(source('ea')?.voie).toBe('galaxy');
     for (const id of ['rom', 'dos', 'mame', 'windows', 'manuel', 'installer-dos']) expect(source(id)?.voie).toBe('local');
     expect(source('inconnue')).toBeUndefined();
   });

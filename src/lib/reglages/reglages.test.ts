@@ -18,6 +18,11 @@ describe('les défauts', () => {
   it('suivent le skin choisi dans Firehouse', () => {
     expect(DEFAUTS_PROFIL.apparence.skin).toBeNull();
   });
+  it('ajoutent tout seuls les jeux installés des boutiques (coché d’office, lot A) ; un ancien profil aussi', () => {
+    expect(DEFAUTS_PROFIL.boutiquesPc.auto).toBe(true);
+    expect(completer(DEFAUTS_PROFIL, { gratuits: { auto: true } }).boutiquesPc.auto).toBe(true);
+    expect(completer(DEFAUTS_PROFIL, { boutiquesPc: { auto: false } }).boutiquesPc.auto).toBe(false);
+  });
 });
 
 describe('completer', () => {
