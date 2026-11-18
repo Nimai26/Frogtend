@@ -180,7 +180,61 @@ pub fn programme_ouvert(programme: &Path) -> bool {
     }
     let mut s = System::new();
     s.refresh_processes(ProcessesToUpdate::All, true);
-    s.processes().values().any(|p| p.exe().is_some_and(|e| forme_comparable(e, &mut reseau) == cle))
+    s.processes().iter().any(|(pid, p)| programme_du_processus(pid.as_u32(), p).is_some_and(|e| forme_comparable(&e, &mut reseau) == cle))
+}
+
+/// Le programme d'un processus. sysinfo le lit par `GetModuleFileNameExW`, qui exige un accès que Windows refuse aux
+/// jeux protégés (Xbox / Microsoft Store dans `WindowsApps`, vu le 18/11 avec Minecraft : chemin VIDE, partie jamais
+/// vue). Repli : `QueryFullProcessImageNameW` avec le seul droit `PROCESS_QUERY_LIMITED_INFORMATION` (comme clavier.rs).
+pub(crate) fn programme_du_processus(pid: u32, p: &sysinfo::Process) -> Option<PathBuf> {
+    if let Some(e) = p.exe().filter(|e| !e.as_os_str().is_empty()) {
+        return Some(e.to_path_buf());
+    }
+    programme_par_windows(pid)
+}
+
+#[cfg(windows)]
+fn programme_par_windows(pid: u32) -> Option<PathBuf> {
+    use windows::core::PWSTR;
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION};
+    if pid == 0 {
+        return None;
+    }
+    unsafe {
+        let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+        let mut b = [0u16; 1024];
+        let mut n = b.len() as u32;
+        let ok = QueryFullProcessImageNameW(h, PROCESS_NAME_WIN32, PWSTR(b.as_mut_ptr()), &mut n).is_ok();
+        let _ = CloseHandle(h);
+        (ok && n > 0).then(|| PathBuf::from(String::from_utf16_lossy(&b[..n as usize])))
+    }
+}
+
+#[cfg(not(windows))]
+fn programme_par_windows(_pid: u32) -> Option<PathBuf> {
+    None
+}
+
+/// Le dossier d'un jeu ET le dossier où il mène vraiment s'il passe par des renvois (jonctions) : un jeu Xbox est
+/// annoncé dans `C:\Program Files\WindowsApps\…`, qui renvoie à `D:\WindowsApps\…`, qui renvoie au dossier `Content` où
+/// son programme tourne (vu le 18/11 avec Minecraft : partie jamais vue). Jamais la racine d'un disque.
+pub(crate) fn formes_du_dossier(dossier: &Path) -> Vec<PathBuf> {
+    let mut l = vec![dossier.to_path_buf()];
+    // Jamais un chemin relatif (résolu depuis le dossier de Frogtend : il se trouverait lui-même) ; jamais un chemin
+    // réseau ni un lecteur réseau mappé (la résolution pourrait bloquer des secondes sur un serveur absent).
+    let texte = dossier.to_string_lossy();
+    let lettre = texte.chars().next().filter(|c| c.is_ascii_alphabetic() && texte.get(1..2) == Some(":"));
+    if !dossier.is_absolute() || texte.starts_with(r"\\") || texte.starts_with("//") || lettre.is_some_and(|c| chemin_reseau_du_lecteur(c).is_some()) {
+        return l;
+    }
+    if let Ok(vrai) = std::fs::canonicalize(dossier) {
+        let vrai = PathBuf::from(vrai.to_string_lossy().trim_start_matches(r"\\?\").to_string());
+        if vrai.parent().is_some() && !vrai.as_os_str().is_empty() && crate::boutiques::cle_chemin(&vrai) != crate::boutiques::cle_chemin(dossier) {
+            l.push(vrai);
+        }
+    }
+    l
 }
 
 pub fn processus_du_dossier(dossier: &Path) -> Vec<u32> {
@@ -192,11 +246,16 @@ pub fn processus_du_dossier(dossier: &Path) -> Vec<u32> {
     // Lot A (18/11) : Ubisoft écrit ses dossiers avec des « / » ; un jeu peut être sur un lecteur réseau mappé (le
     // programme vu sous « Z:\… » ou sous « \\serveur\partage\… ») : tout est comparé sous UNE forme.
     let mut reseau = Lecteurs::default();
-    let d = format!("{}\\", forme_comparable(dossier, &mut reseau));
+    let formes: Vec<String> = formes_du_dossier(dossier).iter().map(|d| format!("{}\\", forme_comparable(d, &mut reseau))).collect();
     let mut v: Vec<u32> = s
         .processes()
         .iter()
-        .filter(|(_, p)| p.exe().is_some_and(|e| format!("{}\\", forme_comparable(e, &mut reseau)).starts_with(&d)))
+        .filter(|(pid, p)| {
+            programme_du_processus(pid.as_u32(), p).is_some_and(|e| {
+                let e = format!("{}\\", forme_comparable(&e, &mut reseau));
+                formes.iter().any(|d| e.starts_with(d))
+            })
+        })
         .map(|(pid, _)| pid.as_u32())
         .collect();
     v.sort_unstable();
@@ -263,13 +322,15 @@ pub fn processus_dans(pids: &[u32], dossier: &Path) -> Vec<u32> {
         return vec![];
     }
     let mut reseau = Lecteurs::default();
-    let d = format!("{}\\", forme_comparable(dossier, &mut reseau));
+    // Le dossier ET le vrai dossier derrière ses renvois (jeu Xbox) ; le programme lu même d'un processus protégé.
+    let formes: Vec<String> = formes_du_dossier(dossier).iter().map(|d| format!("{}\\", forme_comparable(d, &mut reseau))).collect();
     pids.iter()
         .copied()
         .filter(|p| {
-            s.process(Pid::from_u32(*p))
-                .and_then(|x| x.exe())
-                .is_some_and(|e| format!("{}\\", forme_comparable(e, &mut reseau)).starts_with(&d))
+            s.process(Pid::from_u32(*p)).and_then(|x| programme_du_processus(*p, x)).is_some_and(|e| {
+                let e = format!("{}\\", forme_comparable(&e, &mut reseau));
+                formes.iter().any(|d| e.starts_with(d))
+            })
         })
         .collect()
 }
@@ -631,6 +692,8 @@ impl Suivi {
             None => maintenant_precis().saturating_sub(5 * PAR_SECONDE),
         };
         let vus = std::collections::HashMap::from([(r, debut)]);
+        // Les renvois suivis (jeu Xbox : le vrai dossier du programme, voir `formes_du_dossier`).
+        let dossiers: Vec<PathBuf> = dossiers.iter().flat_map(|d| formes_du_dossier(d)).collect();
         Suivi { systeme, racine: r, dossiers, vus, morts: Default::default(), poignees, derniers_vivants: Vec::new() }
     }
 
@@ -713,7 +776,7 @@ impl Suivi {
         self.derniers_vivants.clear();
         for (pid, p) in processus {
             let descendant = self.vus.contains_key(pid) && !self.morts.contains_key(pid) && est_le_meme(&self.vus, pid, heure(pid, p));
-            if descendant || self.dans_un_dossier(p.exe()) {
+            if descendant || self.dans_un_dossier(programme_du_processus(pid.as_u32(), p).as_deref()) {
                 let pourquoi = if descendant { "lancé par la partie" } else { "dans le dossier du jeu" };
                 self.derniers_vivants.push(format!("{} ({}, {pourquoi})", p.name().to_string_lossy(), pid.as_u32()));
             }
@@ -731,6 +794,43 @@ impl Suivi {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn un_dossier_par_jonction_mene_au_vrai_dossier_du_programme() {
+        // Le cas des jeux Xbox (Minecraft, 18/11) : le dossier annoncé est une jonction vers le dossier du programme.
+        let d = tempfile::tempdir().unwrap();
+        let vrai = d.path().join("Content");
+        std::fs::create_dir_all(&vrai).unwrap();
+        let lien = d.path().join("WindowsApps-paquet");
+        let ok = std::process::Command::new("cmd").args(["/c", "mklink", "/J"]).arg(&lien).arg(&vrai).output().is_ok_and(|o| o.status.success());
+        assert!(ok, "jonction créée");
+        let f = formes_du_dossier(&lien);
+        assert_eq!(f.len(), 2, "{f:?}");
+        assert_eq!(crate::boutiques::cle_chemin(&f[1]), crate::boutiques::cle_chemin(Path::new(std::fs::canonicalize(&vrai).unwrap().to_string_lossy().trim_start_matches(r"\\?\"))));
+        // Un dossier ordinaire : une seule forme. Un chemin relatif n'est jamais résolu (relecture lancement, 18/11).
+        assert_eq!(formes_du_dossier(&vrai).len(), 1);
+        assert_eq!(formes_du_dossier(Path::new("Jeux")), vec![PathBuf::from("Jeux")]);
+        assert_eq!(formes_du_dossier(Path::new(r"\\serveur\partage\jeu")).len(), 1);
+        std::fs::remove_dir(&lien).unwrap();
+    }
+
+    /// Relevé réel, à la main : `FROGTEND_DOSSIER_JEU=<dossier> cargo test --lib -- --ignored releve_processus_du_dossier`
+    /// (lecture seule : dit quels processus Frogtend voit dans ce dossier, ex. un jeu Xbox dans WindowsApps).
+    #[test]
+    #[ignore]
+    fn releve_processus_du_dossier() {
+        let d = std::env::var("FROGTEND_DOSSIER_JEU").expect("FROGTEND_DOSSIER_JEU");
+        println!("processus vus dans {d} : {:?}", processus_du_dossier(Path::new(&d)));
+        println!("dossier résolu : {:?}", std::fs::canonicalize(&d));
+        if let Ok(pid) = std::env::var("FROGTEND_PID") {
+            let pid: u32 = pid.parse().unwrap();
+            let mut s = System::new();
+            s.refresh_processes(ProcessesToUpdate::All, true);
+            let p = s.process(Pid::from_u32(pid));
+            println!("sysinfo voit le processus : {} ; exe : {:?}", p.is_some(), p.and_then(|p| p.exe()));
+            println!("Windows (accès léger) : {:?}", programme_par_windows(pid));
+        }
+    }
     use std::time::{Duration, Instant};
 
     #[test]

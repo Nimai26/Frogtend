@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.211.1 — Les jeux Xbox suivis, et le message des nouveaux jeux
+
+- Corrigé : un jeu Xbox / Microsoft Store (Minecraft…) se lançait, mais Frogtend ne le voyait pas (« Lancement… » sans
+  fin, menu en jeu inactif) : son dossier annoncé n'est qu'un renvoi vers le vrai dossier du jeu, que Frogtend suit
+  maintenant jusqu'au bout.
+- Corrigé : le message « 🎮 N nouveaux jeux trouvés sur ce PC » s'affiche bien, et la barre des systèmes (le nombre de
+  jeux Windows) se met à jour après l'import.
+
 ## 0.211.0 — 🛒 Tes jeux PC installés entrent tout seuls
 
 - Nouveau : à chaque ouverture de ton profil, Frogtend retrouve tout seul les jeux INSTALLÉS sur ce PC par Steam, Epic,

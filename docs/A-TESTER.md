@@ -17,7 +17,7 @@
       lanceur absent »…) ; la clé Steam et GOG Galaxy sont dans « 🛟 Secours », replié.
 - [ ] ⚙ Options ▸ Comptes ▸ « 🛒 Mes jeux installés » : la case est cochée ; la décocher puis rouvrir le profil : plus de
       message, rien n'est ajouté.
-- [ ] Minecraft for Windows ▸ ▶ Jouer : il s'ouvre ; à sa fermeture, « Partie terminée » et du temps de jeu compté (suivi
+- [ ] (0.211.1 ; ✗ en 0.211.0 : lancé mais jamais vu — dossier WindowsApps = jonction vers D:\LaunchBox\Games\Windows\Minecraft for Windows\Content) Minecraft for Windows ▸ ▶ Jouer : il s'ouvre ; à sa fermeture, « Partie terminée » et du temps de jeu compté (suivi
       de la partie par son dossier, jamais essayé avant).
 - [ ] Cyberpunk 2077 ▸ ▶ Jouer (par GOG Galaxy) : le jeu démarre et la partie est suivie.
 - [ ] Taodbox : les jeux Steam et Galaxy sont DANS la grille, avec leur pastille (« Steam », « Epic »…), plus de rangées
