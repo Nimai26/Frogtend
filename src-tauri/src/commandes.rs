@@ -1858,6 +1858,378 @@ pub async fn envois_switch_suivi(app: AppHandle, noyau: State<'_, Noyau>, id: i6
     crate::envois_switch::suivi_du_jeu(&s.dossier, &s.profil.id, id, &app.state::<crate::envois_switch::Travail>())
 }
 
+// --- Les mods Switch servis par Firehouse (contrat 1.44, ✅ Seb 18/11 ; mods_switch.rs). Lus à l'ouverture du panneau,
+// téléchargés après l'accord chiffré de la personne (ou tout seuls pour une nouvelle révision si elle l'a choisi), un
+// interrupteur par mod pour toute la maison, posés dans l'émulateur au LANCEMENT seulement. ---
+
+/// Le title id de base d'un jeu Switch et la version brute de la mise à jour que l'émulateur réglé utilisera (même
+/// lecture que le panneau 📦, rien n'est écrit chez l'émulateur). `None` : pas d'émulateur lisible, pas de clés.
+async fn base_et_maj_switch(app: &AppHandle, noyau: &Noyau, id: i64) -> Option<(u64, Option<u32>)> {
+    let j = noyau.jeu_visible(id).await.ok()?;
+    let (programme, _) = emulateur_regle(app, &j.plateforme, id, None)?;
+    let fichier = noyau.fichier_pour_l_emulateur(id, None).await.ok().flatten()?;
+    let ailleurs = dossiers_switch(app, noyau, id).await;
+    let d = std::path::Path::new(&programme).parent().map(std::path::PathBuf::from)?;
+    let donnees = noyau.dossier.clone();
+    if crate::ryubing::est_ryubing(&programme) {
+        let profil = profil_ouvert(noyau).await.ok()?.nom;
+        return tauri::async_runtime::spawn_blocking(move || {
+            if !crate::ryubing::portable(&d) {
+                return None;
+            }
+            let racine = crate::ryubing::racine(&d, &profil);
+            let cle = crate::ryubing::cle_entete(&d, &racine)?;
+            let c = crate::switch_nca::contenus_pour_dans(&fichier, &cle, &ailleurs, Some(&crate::ryubing::cache_contenus(&d))).ok().flatten()?;
+            let (choix, _) = crate::contenus_switch::choix_resolu(&donnees, c.base, &crate::ryubing::ids_dlc(&c), c.complet());
+            let a = crate::ryubing::poser_contenus(&d, &racine, &c, &choix, false).ok();
+            Some((c.base, a.and_then(|a| a.maj_utilisee)))
+        })
+        .await
+        .ok()
+        .flatten();
+    }
+    if d.join("eden.exe").is_file() || std::path::Path::new(&programme).file_name().is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case("eden.exe")) {
+        return tauri::async_runtime::spawn_blocking(move || match crate::eden::lire_contenus(&d, &fichier, &ailleurs) {
+            crate::eden::LectureContenus::Lus(c) => {
+                let (choix, _) = crate::contenus_switch::choix_resolu(&donnees, c.base, &crate::ryubing::ids_dlc(&c), c.complet());
+                Some((c.base, crate::eden::maj_utilisee(&c, &choix)))
+            }
+            _ => None,
+        })
+        .await
+        .ok()
+        .flatten();
+    }
+    None
+}
+
+/// Ce qu'il faut pour les mods d'un jeu Switch : son title id de base, le dossier où ils sont rangés, la version de la
+/// mise à jour utilisée (`None` : inconnue). `None` : pas un jeu Switch installé lisible.
+struct ContexteMods {
+    base: u64,
+    stock: std::path::PathBuf,
+    utilisee: Option<u32>,
+}
+
+async fn contexte_mods_switch(app: &AppHandle, noyau: &Noyau, id: i64) -> Resultat<Option<ContexteMods>> {
+    let j = noyau.jeu_visible(id).await?;
+    if !j.plateforme.eq_ignore_ascii_case("Nintendo Switch") || j.dossier.is_empty() || !std::path::Path::new(&j.dossier).is_absolute() {
+        return Ok(None);
+    }
+    let frogtend = crate::locale::dossier_frogtend(&j);
+    let (base, utilisee) = match base_et_maj_switch(app, noyau, id).await {
+        Some(x) => x,
+        None => {
+            // Sans clés ni émulateur lisible : le title id du nom (ou du ticket) du fichier ; la version reste inconnue.
+            let f = noyau.fichier_pour_l_emulateur(id, None).await.ok().flatten();
+            let t = tauri::async_runtime::spawn_blocking(move || f.as_deref().and_then(crate::contenus::id_switch)).await.ok().flatten();
+            match t {
+                Some(t) => (crate::switch_nca::base(t), None),
+                None => return Ok(None),
+            }
+        }
+    };
+    Ok(Some(ContexteMods { base, stock: crate::mods_switch::dossier_stock(&frogtend, base), utilisee }))
+}
+
+/// Les mods Switch d'un jeu (à l'ouverture du panneau) : ce que Firehouse sert (ou la dernière liste lue, hors ligne)
+/// et ce qui est rangé sur ce PC, avec pour chacun son état, sa compatibilité avec la mise à jour choisie et son
+/// interrupteur.
+#[tauri::command]
+pub async fn mods_switch_lister(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<crate::mods_switch::ListeVue> {
+    profil_ouvert(&noyau).await?;
+    let Some(cx) = contexte_mods_switch(&app, &noyau, id).await? else {
+        return Ok(crate::mods_switch::ListeVue { etat: "rien".into(), ..Default::default() });
+    };
+    let s = noyau.session().await?;
+    let (s2, s3) = (s.clone(), s.clone());
+    // Le cache s'écrit par la session, sous son verrou (jamais après un changement de jeton).
+    let garder = move |f: &std::path::Path, o: &[u8]| s3.garder_fichier(f, o).map(|_| ());
+    let lecture = crate::mods_switch::lire(&s.source, &s.dossier, cx.base, &move || s2.est_perimee(), &garder).await?;
+    if lecture.liste.ecartes > 0 {
+        noyau.journaliser(&format!("mods Switch du jeu {id} : {} mod(s) de Firehouse écarté(s) (clé hors contrat ou en double)", lecture.liste.ecartes));
+    }
+    let (stock, liste, frais) = (cx.stock.clone(), lecture.liste.clone(), lecture.etat == "ok");
+    let (rangs, derniere) = tauri::async_runtime::spawn_blocking(move || {
+        // Le dernier avis de Firehouse sur une révision rangée (compatibilité, conflits…) : retenu pour la pose.
+        if frais {
+            crate::mods_switch::rafraichir(&stock, &liste);
+        }
+        (crate::mods_switch::ranges(&stock), crate::mods_switch::derniere_pose(&stock))
+    })
+    .await
+    .unwrap_or_default();
+    let choix = crate::contenus_switch::charger(&noyau.dossier).0.jeu(cx.base);
+    let mut vue = crate::mods_switch::liste_vue(&lecture, &rangs, &choix, cx.utilisee, cx.base);
+    vue.derniere_pose = derniere;
+    Ok(vue)
+}
+
+/// Un mod que la personne a VU avant de dire oui (sa clé, sa révision, sa taille, l'empreinte de son archive).
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModAccorde {
+    pub cle: String,
+    pub revision: u64,
+    pub taille: u64,
+    pub sha256: String,
+}
+
+/// La garde des mods : refusé pendant une partie, un lancement, un émulateur ouvert seul.
+fn mods_switch_permis(app: &AppHandle, noyau: &Noyau) -> Resultat<()> {
+    choix_switch_permis(app.state::<crate::menu_jeu::MenuJeu>().partie().is_some() || noyau.lancement_en_preparation(), noyau.emulateur_seul_nom())
+}
+
+/// Les mods VUS par la personne sont-ils exactement ceux que Firehouse sert à l'instant (clé, révision, taille,
+/// empreinte ; total exact) ? Rend les mods servis correspondants, sinon « la liste a changé ».
+pub fn mods_accordes(servis: &[crate::mods_switch::ModServi], vus: &[ModAccorde], total: u64) -> Resultat<Vec<crate::mods_switch::ModServi>> {
+    let change = || Erreur::Conflit("La liste des mods a changé : regarde-la de nouveau avant de dire oui.".into());
+    let mut a_faire: Vec<crate::mods_switch::ModServi> = Vec::new();
+    let mut somme: u64 = 0;
+    for v in vus {
+        let m = servis
+            .iter()
+            .find(|m| m.cle == v.cle && m.revision == v.revision && m.fichier.taille == v.taille && m.fichier.sha256.eq_ignore_ascii_case(&v.sha256))
+            .ok_or_else(change)?;
+        if a_faire.iter().any(|x| x.cle == m.cle) {
+            return Err(change());
+        }
+        // Une adresse qui n'est pas celle de Firehouse : refusée avant tout appel.
+        crate::mods_switch::route_archive(&m.fichier.url, &m.cle)?;
+        somme = somme.checked_add(m.fichier.taille).ok_or_else(change)?;
+        a_faire.push(m.clone());
+    }
+    if somme != total {
+        return Err(change());
+    }
+    Ok(a_faire)
+}
+
+/// La personne a dit oui à la liste qu'elle a VUE (`cles_vues` : clé, révision, taille, sha256 ; `total` en octets) — ou
+/// a choisi « mettre à jour tout seul » (`auto`, noté au journal ; le réglage vit dans son profil, `modsSwitch.auto`).
+/// La liste est relue chez Firehouse à l'instant (jamais une liste venue de l'interface) : si elle diffère, refus
+/// (« la liste a changé »). Sinon les mods sont téléchargés puis rangés en arrière-plan, un à la fois (suivi par
+/// `mods_switch_suivi`) ; un seul téléchargement par jeu, tous profils confondus (le rangement est commun). Jamais
+/// pendant une partie. Rend combien.
+#[tauri::command]
+pub async fn mods_switch_telecharger(app: AppHandle, noyau: State<'_, Noyau>, id: i64, cles_vues: Vec<ModAccorde>, total: u64, auto: bool) -> Resultat<usize> {
+    profil_ouvert(&noyau).await?;
+    mods_switch_permis(&app, &noyau)?;
+    let cx = contexte_mods_switch(&app, &noyau, id).await?.ok_or_else(|| Erreur::Refus("Les mods de ce jeu ne se lisent pas : rien n'est téléchargé.".into()))?;
+    let s = noyau.session().await?;
+    let (s2, s3) = (s.clone(), s.clone());
+    // Le cache s'écrit par la session, sous son verrou (jamais après un changement de jeton).
+    let garder = move |f: &std::path::Path, o: &[u8]| s3.garder_fichier(f, o).map(|_| ());
+    let lecture = crate::mods_switch::lire(&s.source, &s.dossier, cx.base, &move || s2.est_perimee(), &garder).await?;
+    if lecture.etat != "ok" {
+        return Err(Erreur::Reseau("Firehouse n'est pas joignable : les mods ne peuvent pas être téléchargés pour l'instant.".into()));
+    }
+    if cles_vues.is_empty() {
+        return Err(Erreur::Refus("Aucun mod n'est choisi.".into()));
+    }
+    let a_faire = mods_accordes(&lecture.liste.mods, &cles_vues, total)?;
+    let travail = app.state::<crate::mods_switch::Travail>();
+    if !travail.commencer(id, a_faire.len()) {
+        return Err(Erreur::Refus("Des mods de ce jeu sont déjà en train d'arriver.".into()));
+    }
+    let n = a_faire.len();
+    noyau.journaliser(&format!(
+        "mods Switch du jeu {id} : {n} mod(s) à télécharger ({total} octets){}",
+        if auto { " (mise à jour automatique choisie par la personne)" } else { " après l'accord de la personne" }
+    ));
+    let app2 = app.clone();
+    let servie = lecture.liste.version_servie.clone();
+    let (base, stock) = (cx.base, cx.stock.clone());
+    tauri::async_runtime::spawn(async move {
+        let noyau = app2.state::<Noyau>();
+        let travail = app2.state::<crate::mods_switch::Travail>();
+        let occupe = || app2.state::<crate::menu_jeu::MenuJeu>().partie().is_some() || noyau.lancement_en_preparation() || noyau.emulateur_seul_nom().is_some();
+        for m in a_faire {
+            if occupe() {
+                travail.modifier(id, |x| x.arret = Some("une partie a commencé : les mods qui restent seront proposés de nouveau ensuite".into()));
+                break;
+            }
+            if s.est_perimee() {
+                travail.modifier(id, |x| x.arret = Some("le profil a changé".into()));
+                break;
+            }
+            travail.modifier(id, |x| {
+                x.en_cours = Some(m.nom.clone());
+                x.recus = 0;
+                x.total = m.fichier.taille;
+            });
+            let app3 = app2.clone();
+            let progres = move |recus: u64, _total: Option<u64>| {
+                app3.state::<crate::mods_switch::Travail>().modifier(id, |x| x.recus = recus);
+            };
+            // Avant l'échange des dossiers : le changement de mod est noté (abri des parties), et un mod NOUVEAU en
+            // conflit avec un mod allumé arrive éteint.
+            let (donnees, stock2) = (noyau.dossier.clone(), stock.clone());
+            let avant = Box::new(move |r: &crate::mods_switch::ManifesteMod| crate::mods_switch::noter_arrivee(&donnees, &stock2, base, r).map(|_| ()));
+            match crate::mods_switch::telecharger_et_ranger(&s.source, &stock, &m, servie.as_ref(), &progres, avant).await {
+                Ok(r) => {
+                    travail.modifier(id, |x| x.faits += 1);
+                    let eteint = !crate::contenus_switch::charger(&noyau.dossier).0.jeu(base).mod_actif(&r.cle);
+                    noyau.journaliser(&format!(
+                        "mods Switch du jeu {id} : « {} » (révision {}) installé{} ; parties à mettre à l'abri avant la prochaine partie",
+                        r.nom,
+                        r.revision,
+                        if eteint { ", éteint (un mod allumé ne va pas avec lui, ou il était éteint)" } else { "" }
+                    ));
+                }
+                Err(e) => {
+                    let jeton = matches!(e, Erreur::JetonRefuse(_));
+                    noyau.journaliser(&format!("mods Switch du jeu {id} : « {} » pas installé ({e})", m.nom));
+                    travail.modifier(id, |x| x.erreurs.push(format!("{} : {e}", m.nom)));
+                    if jeton {
+                        break;
+                    }
+                }
+            }
+        }
+        travail.modifier(id, |x| {
+            x.actif = false;
+            x.en_cours = None;
+        });
+    });
+    Ok(n)
+}
+
+/// Où en sont les téléchargements de mods de ce jeu (rien n'est demandé à Firehouse ; le même pour tous les profils).
+#[tauri::command]
+pub async fn mods_switch_suivi(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<crate::mods_switch::Suivi> {
+    profil_ouvert(&noyau).await?;
+    Ok(app.state::<crate::mods_switch::Travail>().suivi(id))
+}
+
+/// Allume ou éteint un mod rangé (pour toute la maison, Eden comme Ryubing). Allumer un mod en conflit avec un mod
+/// allumé est refusé avec un motif lisible, sauf si la personne a accepté d'éteindre l'autre (`eteindre` : sa clé) —
+/// les deux changent alors d'un coup. Refusé pendant une partie ou un émulateur ouvert seul. Rend vrai si quelque
+/// chose a changé (les parties de ce jeu seront mises à l'abri avant sa prochaine partie).
+#[tauri::command]
+pub async fn mods_switch_choisir(app: AppHandle, noyau: State<'_, Noyau>, id: i64, cle: String, allume: bool, eteindre: Option<String>) -> Resultat<bool> {
+    profil_ouvert(&noyau).await?;
+    mods_switch_permis(&app, &noyau)?;
+    let cx = contexte_mods_switch(&app, &noyau, id).await?.ok_or_else(|| Erreur::Refus("Les mods de ce jeu ne se lisent pas : rien n'est changé.".into()))?;
+    let stock = cx.stock.clone();
+    let rangs = tauri::async_runtime::spawn_blocking(move || crate::mods_switch::ranges(&stock)).await.unwrap_or_default();
+    let nom = |c: &str| rangs.iter().find(|m| m.cle == c).map(|m| m.nom.clone());
+    let Some(nom_a) = nom(&cle) else { return Err(Erreur::Refus("Ce mod n'est pas installé sur ce PC : relis la fiche.".into())) };
+    let eteindre = eteindre.filter(|b| *b != cle);
+    if let Some(b) = &eteindre {
+        if nom(b).is_none() {
+            return Err(Erreur::Refus("L'autre mod n'est pas installé sur ce PC : relis la fiche.".into()));
+        }
+    }
+    let donnees = noyau.dossier.clone();
+    let choix = crate::contenus_switch::charger(&donnees).0.jeu(cx.base);
+    if allume {
+        if let Some(m) = crate::mods_switch::conflit(&rangs, &choix, &cle, eteindre.as_deref()) {
+            return Err(Erreur::Refus(m));
+        }
+    }
+    let mut changements = vec![(cle.clone(), allume)];
+    if let Some(b) = &eteindre {
+        changements.push((b.clone(), false));
+    }
+    // Revérifié juste avant d'écrire (une partie a pu commencer entre-temps).
+    mods_switch_permis(&app, &noyau)?;
+    let base = cx.base;
+    let change = tauri::async_runtime::spawn_blocking(move || crate::contenus_switch::choisir_mods(&donnees, base, &changements))
+        .await
+        .map_err(|_| Erreur::Disque("L'enregistrement s'est arrêté brutalement.".into()))??;
+    noyau.journaliser(&format!(
+        "mods Switch du jeu {id} : « {nom_a} » {}{}{}",
+        if allume { "allumé" } else { "éteint" },
+        eteindre.as_deref().and_then(nom).map(|b| format!(", « {b} » éteint")).unwrap_or_default(),
+        if change { " ; parties à mettre à l'abri avant la prochaine partie" } else { "" }
+    ));
+    Ok(change)
+}
+
+/// Retire un mod rangé de ce PC (à la demande de la personne) : seulement s'il est inchangé ; ses copies dans les
+/// émulateurs partent à la partie suivante. Refusé pendant une partie ou un téléchargement de mods de ce jeu.
+#[tauri::command]
+pub async fn mods_switch_retirer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, cle: String) -> Resultat<()> {
+    profil_ouvert(&noyau).await?;
+    mods_switch_permis(&app, &noyau)?;
+    // Tout téléchargement de mods de ce jeu, quel que soit le profil (le rangement est commun à la maison).
+    if app.state::<crate::mods_switch::Travail>().actif(id) {
+        return Err(Erreur::Refus("Des mods de ce jeu sont en train d'arriver : attends la fin.".into()));
+    }
+    let cx = contexte_mods_switch(&app, &noyau, id).await?.ok_or_else(|| Erreur::Refus("Les mods de ce jeu ne se lisent pas : rien n'est retiré.".into()))?;
+    let (stock, donnees, base, c) = (cx.stock.clone(), noyau.dossier.clone(), cx.base, cle.clone());
+    tauri::async_runtime::spawn_blocking(move || -> Resultat<()> {
+        crate::mods_switch::retirer(&stock, &c)?;
+        crate::contenus_switch::noter_changement_de_mod(&donnees, base, Some(&c))
+    })
+    .await
+    .map_err(|_| Erreur::Disque("Le retrait s'est arrêté brutalement.".into()))??;
+    noyau.journaliser(&format!("mods Switch du jeu {id} : mod {cle} retiré de ce PC à la demande de la personne ; parties à mettre à l'abri avant la prochaine partie"));
+    Ok(())
+}
+
+/// L'émulateur où poser les mods au lancement.
+enum ModsPour {
+    Ryubing { dossier: std::path::PathBuf, racine: std::path::PathBuf },
+    Eden { dossier: std::path::PathBuf },
+}
+
+/// Au LANCEMENT, quand les mises à jour et DLC n'ont pas pu être préparés : les mods sont quand même remis d'accord
+/// (un mod éteint ne reste jamais chargé), avec une version de mise à jour INCONNUE et le title id tiré du nom (ou du
+/// ticket) du fichier. Sans title id : rien n'est posé, et la raison va sur la fiche.
+async fn poser_mods_switch_sans_contenus(noyau: &Noyau, id: i64, pour: ModsPour, fichier: std::path::PathBuf) {
+    let base = tauri::async_runtime::spawn_blocking(move || crate::mods_switch::base_du_fichier(&fichier)).await.ok().flatten();
+    match base {
+        Some(b) => poser_mods_switch(noyau, id, pour, b, None).await,
+        None => {
+            let Ok(j) = noyau.jeu_visible(id).await else { return };
+            if j.dossier.is_empty() || !std::path::Path::new(&j.dossier).is_absolute() {
+                return;
+            }
+            let nom = match pour {
+                ModsPour::Ryubing { .. } => "Ryubing",
+                ModsPour::Eden { .. } => "Eden",
+            };
+            let frogtend = crate::locale::dossier_frogtend(&j);
+            let n = crate::mods_switch::noter_raison_partout(&frogtend, nom, crate::mods_switch::RAISON_SANS_TITRE);
+            if n > 0 {
+                noyau.journaliser(&format!("{nom} : mods Switch du jeu {id} pas remis d'accord (jeu pas reconnu)"));
+            }
+        }
+    }
+}
+
+/// Au LANCEMENT (après l'abri et `poser_contenus`) : met les mods de Frogtend d'accord dans l'émulateur. Un échec est
+/// noté au journal ; le jeu se lance toujours (rien n'a changé pour les mods dans ce cas).
+async fn poser_mods_switch(noyau: &Noyau, id: i64, pour: ModsPour, base: u64, utilisee: Option<u32>) {
+    let Ok(j) = noyau.jeu_visible(id).await else { return };
+    if j.dossier.is_empty() || !std::path::Path::new(&j.dossier).is_absolute() {
+        return;
+    }
+    let stock = crate::mods_switch::dossier_stock(&crate::locale::dossier_frogtend(&j), base);
+    let donnees = noyau.dossier.clone();
+    let (nom, r) = match pour {
+        ModsPour::Ryubing { dossier, racine } => (
+            "Ryubing",
+            tauri::async_runtime::spawn_blocking(move || crate::mods_switch::poser_ryubing(&donnees, &dossier, &racine, base, &stock, utilisee)).await,
+        ),
+        ModsPour::Eden { dossier } => (
+            "Eden",
+            tauri::async_runtime::spawn_blocking(move || {
+                let ouvert = !crate::lancement::processus_du_dossier(&dossier).is_empty();
+                crate::mods_switch::poser_eden(&donnees, &dossier, base, &stock, utilisee, ouvert)
+            })
+            .await,
+        ),
+    };
+    match r {
+        Ok(Ok(b)) if b == crate::mods_switch::BilanMods::default() => {}
+        Ok(Ok(b)) => noyau.journaliser(&format!("{nom} : mods Switch du jeu {id} : {}", b.resume())),
+        Ok(Err(e)) => noyau.journaliser(&format!("{nom} : mods Switch du jeu {id} non posés ({e})")),
+        Err(_) => noyau.journaliser(&format!("{nom} : la pose des mods Switch du jeu {id} s'est arrêtée brutalement")),
+    }
+}
+
 /// Le bilan d'une installation de contenus.
 #[derive(Serialize, Default)]
 pub struct BilanContenus {
@@ -2101,6 +2473,11 @@ pub async fn jeu_jouer(
     // Et tant que ce lancement se prépare (jusqu'au retour, la partie est alors celle du menu en jeu), aucun émulateur
     // ne s'ouvre seul.
     let _lancement = noyau.commencer_lancement()?;
+    // Mods Switch : jamais de partie pendant qu'un mod de CE jeu arrive (tous profils confondus) — la pose lirait un
+    // rangement en train de changer. Refusé (pas d'attente : un téléchargement peut durer), avec un message clair.
+    if app.state::<crate::mods_switch::Travail>().actif(id) {
+        return Err(Erreur::Refus(crate::mods_switch::PARTIE_PENDANT_TELECHARGEMENT.into()));
+    }
     let jeu = noyau.registre().jeu(id)?;
     // Un jeu d'une boutique : lancé par elle, jamais par un émulateur (même si un émulateur est réglé pour « Windows »).
     let de_boutique = jeu.as_ref().and_then(|j| j.installation.as_ref()).is_some_and(|i| i.boutique.is_some());
@@ -2290,6 +2667,9 @@ pub async fn jeu_jouer(
                     assurer_migration_switch(&app, &noyau).await;
                     let ailleurs = dossiers_switch(&app, &noyau, id).await;
                     let donnees = noyau.dossier.clone();
+                    let d_mods = std::path::PathBuf::from(&d);
+                    let racine_mods = crate::ryubing::racine(&d_mods, &p.nom);
+                    let fichier_mods = fichier.clone();
                     let r = tauri::async_runtime::spawn_blocking(move || {
                         let d = std::path::PathBuf::from(d);
                         crate::ryubing::preparer_contenus_dans(&donnees, &d, &crate::ryubing::racine(&d, &p.nom), &fichier, &ailleurs)
@@ -2310,9 +2690,17 @@ pub async fn jeu_jouer(
                                 noyau.journaliser(&format!("Ryubing : jeu {id} : {n}"));
                             }
                             noyau.journaliser(&format!("Ryubing : mises à jour et DLC du jeu {id} : {}", c.resume()));
+                            // Les mods Switch (✅ Seb 18/11) : APRÈS l'abri et les mises à jour, d'après la mise à jour
+                            // réellement utilisée.
+                            poser_mods_switch(&noyau, id, ModsPour::Ryubing { dossier: d_mods, racine: racine_mods }, c.base, c.maj_utilisee).await;
                         }
-                        Ok(None) => {}
-                        Err(e) => noyau.journaliser(&format!("Ryubing : mises à jour et DLC du jeu {id} non posés ({e})")),
+                        // Les mises à jour et DLC ne se préparent pas (clés, choix pas repris, jeu illisible) : les mods
+                        // sont QUAND MÊME remis d'accord (un mod éteint ne doit pas rester chargé), version inconnue.
+                        Ok(None) => poser_mods_switch_sans_contenus(&noyau, id, ModsPour::Ryubing { dossier: d_mods, racine: racine_mods }, fichier_mods).await,
+                        Err(e) => {
+                            noyau.journaliser(&format!("Ryubing : mises à jour et DLC du jeu {id} non posés ({e})"));
+                            poser_mods_switch_sans_contenus(&noyau, id, ModsPour::Ryubing { dossier: d_mods, racine: racine_mods }, fichier_mods).await;
+                        }
                     }
                 }
             }
@@ -2327,6 +2715,8 @@ pub async fn jeu_jouer(
                     assurer_migration_switch(&app, &noyau).await;
                     let donnees = noyau.dossier.clone();
                     let ailleurs = dossiers_switch(&app, &noyau, id).await;
+                    let d_eden = d.clone();
+                    let fichier_mods = fichier.clone();
                     let r = tauri::async_runtime::spawn_blocking(move || {
                         crate::eden::preparer_contenus(&donnees, std::path::Path::new(&d), &fichier, &ailleurs, id, &|e| !crate::lancement::processus_du_dossier(e).is_empty())
                     })
@@ -2346,9 +2736,18 @@ pub async fn jeu_jouer(
                                 noyau.journaliser(&format!("Eden : contenus du jeu {id} : {n}"));
                             }
                             noyau.journaliser(&format!("Eden : mises à jour et DLC du jeu {id} : {}", c.resume()));
+                            // Les mods Switch (✅ Seb 18/11) : après l'abri et les mises à jour (une mise à jour coupée
+                            // dans Eden : le jeu d'origine).
+                            let utilisee = if c.maj_coupee { Some(0) } else { c.maj_utilisee };
+                            poser_mods_switch(&noyau, id, ModsPour::Eden { dossier: std::path::PathBuf::from(&d_eden) }, c.base, utilisee).await;
                         }
-                        Ok(None) => {}
-                        Err(e) => noyau.journaliser(&format!("Eden : mises à jour et DLC du jeu {id} non donnés ({e})")),
+                        // Mises à jour et DLC pas préparés : les mods sont quand même remis d'accord, version inconnue
+                        // (« Eden est ouvert » : `poser_eden` ne change rien et le dit).
+                        Ok(None) => poser_mods_switch_sans_contenus(&noyau, id, ModsPour::Eden { dossier: std::path::PathBuf::from(&d_eden) }, fichier_mods).await,
+                        Err(e) => {
+                            noyau.journaliser(&format!("Eden : mises à jour et DLC du jeu {id} non donnés ({e})"));
+                            poser_mods_switch_sans_contenus(&noyau, id, ModsPour::Eden { dossier: std::path::PathBuf::from(&d_eden) }, fichier_mods).await;
+                        }
                     }
                 }
             }

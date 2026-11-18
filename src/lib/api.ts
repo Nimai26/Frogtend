@@ -658,6 +658,61 @@ export interface Reposes {
   a_remplacer: ConflitRestaure[];
 }
 
+/** Mods Switch (contrat 1.44, ✅ Seb 18/11) : un mod vu sur la fiche (`mods_switch_lister`). */
+export interface ModSwitchVu {
+  cle: string;
+  nom: string;
+  description: string;
+  auteur: string;
+  licence: string;
+  source: string;
+  revision: number;
+  revision_rangee: number | null;
+  etat: 'pas_telecharge' | 'telecharge' | 'revision_dispo' | 'incompatible';
+  /** `pas_verifie` : jamais grisé ; `incompatible` : grisé, `raison` à montrer, jamais posé. */
+  compat: 'compatible' | 'pas_verifie' | 'incompatible';
+  raison: string | null;
+  allume: boolean;
+  /** Taille de l'archive servie, en octets (à montrer avant l'accord). */
+  taille: number;
+  /** L'empreinte de l'archive : rendue telle quelle dans l'accord (le cœur refuse si le contenu a changé). */
+  sha256: string;
+  conflits: string[];
+  /** Non vide : jamais posé seul (« réglage d'émulateur requis »). */
+  reglage_requis: string;
+  touche_sauvegardes: boolean | null;
+  contenu: { exefs: boolean; romfs: boolean; cheats: boolean };
+  emulateurs_essayes: string[];
+  /** Faux : rangé sur ce PC, Firehouse ne le sert plus. */
+  servi: boolean;
+}
+
+/** La liste des mods Switch d'un jeu. `etat` : ok | hors_ligne (`vue_le` : date de la dernière liste lue) | injoignable | rien. */
+export interface ModsSwitch {
+  etat: 'ok' | 'hors_ligne' | 'injoignable' | 'rien';
+  vue_le: string | null;
+  tid_base: string | null;
+  version_servie: { version: number | null; version_affichee: string | null; build_id: string | null } | null;
+  version_connue: boolean;
+  mods: ModSwitchVu[];
+  remarque: string | null;
+  /** Ce que la dernière pose dans un émulateur a dit (`quand` : secondes depuis 1970 ; une raison par mod pas posé ou
+   * par souci), ou `null`. */
+  derniere_pose: { quand: string; emulateur: string; raisons: string[] } | null;
+}
+
+/** Où en sont les téléchargements de mods Switch d'un jeu. */
+export interface SuiviModsSwitch {
+  actif: boolean;
+  en_cours: string | null;
+  recus: number;
+  total: number;
+  faits: number;
+  a_faire: number;
+  erreurs: string[];
+  arret: string | null;
+}
+
 export const api = {
   profils: () => appeler<Profil[]>('profils_lister'),
   creerProfil: (nom: string, pin: string | null, jeton: string | null) =>
@@ -975,6 +1030,18 @@ export const api = {
   /** « ✋ Arrêter l'envoi » : les envois pas finis de ce jeu sont retirés (reproposables) ; rend combien. */
   envoisSwitchAnnuler: (id: number) => appeler<number>('envois_switch_annuler', { id }),
   envoisSwitchSuivi: (id: number) => appeler<import('$lib/contenus/envois').SuiviEnvois>('envois_switch_suivi', { id }),
+  /** Mods Switch (contrat 1.44, ✅ Seb 18/11) : la liste (servis + rangés, compatibilité avec la mise à jour choisie). */
+  modsSwitchLister: (id: number) => appeler<ModsSwitch>('mods_switch_lister', { id }),
+  /** Après l'accord chiffré (ou « mettre à jour tout seul » : `auto`, réglage du profil `modsSwitch.auto`) : la liste
+   * VUE (`clesVues`, `total` en octets) ; le cœur refuse (sorte « conflit ») si elle a changé. Rend combien. */
+  modsSwitchTelecharger: (id: number, clesVues: { cle: string; revision: number; taille: number; sha256: string }[], total: number, auto: boolean) =>
+    appeler<number>('mods_switch_telecharger', { id, clesVues, total, auto }),
+  modsSwitchSuivi: (id: number) => appeler<SuiviModsSwitch>('mods_switch_suivi', { id }),
+  /** Allume / éteint un mod pour toute la maison ; `eteindre` : l'autre mod en conflit, éteint d'un coup (après la
+   * confirmation de la personne). Refus lisible (sorte « refus ») si un conflit n'est pas réglé. Rend vrai si changé. */
+  modsSwitchChoisir: (id: number, cle: string, allume: boolean, eteindre: string | null = null) =>
+    appeler<boolean>('mods_switch_choisir', { id, cle, allume, eteindre }),
+  modsSwitchRetirer: (id: number, cle: string) => appeler<void>('mods_switch_retirer', { id, cle }),
   contenusInstaller: (id: number, choisis: string[]) =>
     appeler<{ installes: number; deja?: number; refuses: [string, string][] }>('contenus_installer', { id, choisis }),
   /** Nexus Mods (lot 0.82.0) : la clé du profil (au coffre), les liens nxm:// reçus, l'installation après le oui. */

@@ -1215,6 +1215,29 @@ pub struct ContenusPoses {
     /// Les parties devaient être mises à l'abri avant cette partie et ne l'ont pas été (la raison) : RIEN n'a été
     /// changé, la partie ne doit pas se lancer.
     pub abri_impossible: Option<String>,
+    /// La version BRUTE de la mise à jour que Ryubing utilisera : `Some(0)` sans mise à jour, `None` si elle n'est pas
+    /// connue (liste illisible, nom sans version). Sert à griser un mod (✅ Seb 18/11, choix 3a).
+    pub maj_utilisee: Option<u32>,
+    /// Le jeu de base lu (title id de base), pour poser ses mods ensuite.
+    pub base: u64,
+}
+
+/// La version de la mise à jour choisie dans `updates.json` (`v` : son contenu, `None` : pas de fichier) : aucune
+/// (`selected` vide ou absent) → 0 ; celle de Frogtend (`notre`) → `version_notre` ; une autre → la version de son nom.
+pub fn version_selectionnee(v: Option<&Value>, notre: Option<&str>, version_notre: Option<u32>) -> Option<u32> {
+    let Some(v) = v else { return Some(0) };
+    let selected = match &v["selected"] {
+        Value::Null => return Some(0),
+        Value::String(s) => s.as_str(),
+        _ => return None,
+    };
+    if selected.is_empty() {
+        return Some(0);
+    }
+    if notre.is_some_and(|n| crate::contenus::meme_dossier(n, selected)) {
+        return version_notre;
+    }
+    crate::switch_nca::version_du_nom(&nom_de(Path::new(selected)))
 }
 
 impl ContenusPoses {
@@ -1415,7 +1438,7 @@ pub fn poser_contenus(ryubing: &Path, racine: &Path, c: &crate::switch_nca::Cont
     let posee = note.get(&cle).cloned().unwrap_or_default();
     let mut nouvelle = posee.clone();
     let existe = |p: &str| Path::new(p).is_file();
-    let mut r = ContenusPoses { maj_eteinte: c.maj.is_some() && !choix.maj, ..Default::default() };
+    let mut r = ContenusPoses { maj_eteinte: c.maj.is_some() && !choix.maj, base: c.base, ..Default::default() };
 
     // La mise à jour.
     const MAJS: &str = "La liste des mises à jour";
@@ -1427,6 +1450,7 @@ pub fn poser_contenus(ryubing: &Path, racine: &Path, c: &crate::switch_nca::Cont
             let (av, octets) = avant.map_or((None, None), |(v, o)| (Some(v), Some(o)));
             let (voulu, gardee) = updates_voulu(av.as_ref(), notre.as_deref(), posee.maj.as_deref(), choix.maj, &existe);
             r.maj_gardee = gardee.as_deref().map(|g| nom_de(Path::new(g)));
+            let voulu_vu = voulu.clone();
             let ok = match voulu.filter(|_| ecrire) {
                 Some(v) => {
                     std::fs::create_dir_all(&dossier)?;
@@ -1443,6 +1467,9 @@ pub fn poser_contenus(ryubing: &Path, racine: &Path, c: &crate::switch_nca::Cont
                 }
                 None => true,
             };
+            // La mise à jour que Ryubing utilisera vraiment (`selected` de updates.json), pour griser un mod.
+            let effectif = if ok { voulu_vu.or(av.clone()) } else { av.clone() };
+            r.maj_utilisee = version_selectionnee(effectif.as_ref(), notre.as_deref(), c.maj.as_ref().and_then(|m| m.version));
             if ok && choix.maj {
                 if r.maj_gardee.is_none() {
                     r.maj = c.maj.as_ref().map(|m| nom_de(&m.chemin));
@@ -1524,6 +1551,58 @@ pub fn poser_contenus(ryubing: &Path, racine: &Path, c: &crate::switch_nca::Cont
     Ok(r)
 }
 
+/// La liste des mods d'un jeu chez Ryubing (`games\<tid x16>\mods.json`, ModLoader.cs `QueryApplicationDir`).
+pub fn fichier_mods_json(racine: &Path, base: u64) -> PathBuf {
+    dossier_du_jeu(racine, base).join("mods.json")
+}
+
+/// Le contenu voulu de mods.json (`avant` : son contenu, `None` sans fichier) : chaque mod de Frogtend (`nos` : (nom,
+/// chemin COMPLET exact du dossier, utilisé)) reçoit son entrée `{name, path, enabled}` (snake_case : JsonHelper de
+/// Ryubing) ; les entrées de nos dossiers partis (`partis` : leurs chemins) sont retirées ; celles de la personne restent
+/// telles quelles et à leur place. `Err` : une forme inattendue (Frogtend n'y touche pas). `Ok(None)` : rien à changer.
+pub fn mods_json_voulu(avant: Option<&Value>, nos: &[(String, String, bool)], partis: &[String]) -> std::result::Result<Option<Value>, ()> {
+    let meme = crate::contenus::meme_dossier;
+    let mut v = match avant {
+        None => serde_json::json!({ "mods": [] }),
+        Some(x) if x.is_object() => x.clone(),
+        Some(_) => return Err(()),
+    };
+    if v.get("mods").is_none_or(Value::is_null) {
+        v["mods"] = Value::Array(vec![]);
+    }
+    let Some(l) = v["mods"].as_array_mut() else { return Err(()) };
+    if l.iter().any(|e| !e.is_object()) {
+        return Err(());
+    }
+    let chemin = |e: &Value| e["path"].as_str().unwrap_or("").to_string();
+    l.retain(|e| !partis.iter().any(|p| meme(&chemin(e), p)) || nos.iter().any(|(_, c, _)| meme(&chemin(e), c)));
+    for (nom, c, actif) in nos {
+        match l.iter_mut().find(|e| meme(&chemin(e), c)) {
+            Some(e) => {
+                e["name"] = Value::from(nom.clone());
+                e["path"] = Value::from(c.clone());
+                e["enabled"] = Value::from(*actif);
+            }
+            None => l.push(serde_json::json!({ "name": nom, "path": c, "enabled": actif })),
+        }
+    }
+    let vide = avant.is_none() && l.is_empty();
+    Ok((!vide && avant != Some(&v)).then_some(v))
+}
+
+/// Écrit la liste des mods de Frogtend dans `games\<tid>\mods.json` de la personne (mis à l'abri avant, relu après).
+/// Rend vrai si le fichier a été écrit.
+pub fn poser_mods_json(ryubing: &Path, racine: &Path, base: u64, nos: &[(String, String, bool)], partis: &[String]) -> Resultat<bool> {
+    const QUOI: &str = "La liste des mods";
+    let f = fichier_mods_json(racine, base);
+    let (av, octets) = lire_json(&f, QUOI)?.map_or((None, None), |(v, o)| (Some(v), Some(o)));
+    let voulu = mods_json_voulu(av.as_ref(), nos, partis).map_err(|()| Erreur::Refus(format!("{QUOI} de Ryubing n'a pas la forme attendue : Frogtend n'y touche pas")))?;
+    let Some(v) = voulu else { return Ok(false) };
+    std::fs::create_dir_all(dossier_du_jeu(racine, base))?;
+    ecrire_json_verifie(ryubing, &f, octets.as_deref(), &v, QUOI)?;
+    Ok(true)
+}
+
 /// Avant chaque partie Ryubing (`jeu` : le fichier lancé par `-f`) : lit le jeu et son dossier avec la clé de la
 /// personne, puis pose ses mises à jour et DLC d'après le choix de Frogtend (`donnees` : ses données). `None` :
 /// Ryubing pas portable, ou pas un jeu lisible (rien à poser). Un échec n'empêche JAMAIS de jouer : l'appelant le note
@@ -1579,10 +1658,11 @@ pub fn preparer_contenus_dans(donnees: &Path, ryubing: &Path, racine: &Path, jeu
                     notes.push(format!("abri des parties non noté ({e})"));
                 }
             }
-            Err(e) => return Ok(Some(ContenusPoses { abri_impossible: Some(e.to_string()), notes, ..Default::default() })),
+            Err(e) => return Ok(Some(ContenusPoses { abri_impossible: Some(e.to_string()), notes, base: c.base, ..Default::default() })),
         }
     }
     let mut r = poser_contenus(ryubing, racine, &c, &choix, true)?;
+    r.base = c.base;
     r.erreurs.extend(remarques_du_dossier(&c));
     r.notes.extend(notes);
     r.notes.push(c.lecture.resume());

@@ -511,6 +511,22 @@ impl Source {
         Ok(recus)
     }
 
+    /// Les mods Switch validés d'un jeu (contrat 1.44, `GET /switch/{tid_base}/mods`). En mode simulé : une réponse
+    /// tirée de la FORME du contrat (pas d'un exemple réel : il n'y en a pas encore).
+    pub async fn mods_switch(&self, tid_base: u64) -> Resultat<Value> {
+        match self {
+            // Lu à part de `obtenir_json` : une réponse illisible n'est PAS une panne de Firehouse (jamais « hors ligne »).
+            Source::Firehouse(c) => match c.obtenir(&crate::mods_switch::route_mods(tid_base), None).await? {
+                crate::firehouse::Reponse::Corps { octets, .. } => serde_json::from_slice::<Value>(&octets)
+                    .ok()
+                    .filter(Value::is_object)
+                    .ok_or_else(|| Erreur::Refus("Firehouse a envoyé une liste de mods illisible : rien n'est montré.".into())),
+                crate::firehouse::Reponse::NonModifie => Err(Erreur::Refus("Firehouse a envoyé une réponse inattendue pour les mods.".into())),
+            },
+            Source::Simulee => Ok(crate::mods_switch::reponse_simulee(tid_base)),
+        }
+    }
+
     /// Tous les visuels d'un jeu (contrat 1.6, galerie) : `{medias_empreinte, medias: [...]}`. En mode simulé : aucun
     /// (comme un jeu dont les images ne sont pas encore rapatriées).
     pub async fn medias(&self, id: i64) -> Resultat<Value> {

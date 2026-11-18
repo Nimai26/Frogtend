@@ -1,5 +1,20 @@
 # Notes de version de Frogtend
 
+## 0.208.0 — 🧩 Les mods Switch, choisis par Firehouse, réglables jusque dans le canapé
+
+- Nouveau : dans le panneau 📦 d'un jeu Switch, une partie « 🧩 Mods » montre les mods que Firehouse propose pour ce
+  jeu (validés par un admin) : ce qu'ils font, leur auteur, leur licence. « ⬇ Télécharger (X Mo) » après ton accord ;
+  ensuite, un interrupteur par mod, pour ce jeu et toute la maison, avec Ryubing comme avec Eden.
+- Un mod qui ne va pas avec la version de ton jeu est grisé, avec la raison : il n'est jamais mis en place. Deux mods
+  qui ne vont pas ensemble ne s'allument jamais ensemble.
+- Prudence : avant la première partie qui change quoi que ce soit aux mods, tes parties de ce jeu sont mises à l'abri ;
+  si c'est impossible, rien ne change et la fiche dit pourquoi. Un jeu attend que ses mods aient fini d'arriver.
+- Quand Firehouse a une nouvelle version d'un mod, Frogtend la propose (« Mettre à jour ») ; tu peux choisir « à
+  l'avenir, tout seul ».
+- Nouveau dans Taodbox : Y sur un jeu Switch ▸ « 🧩 Mises à jour, DLC et mods » — tout se règle à la manette, depuis le
+  canapé. En revenant, tu retombes sur le jeu que tu réglais.
+- Corrigé : dans le panneau 📦, les noms longs ne sont plus coupés sur trois lignes à côté des interrupteurs.
+
 ## 0.207.0 — 📤 Partager avec la famille : les mises à jour et DLC Switch envoyés à Firehouse
 
 - Nouveau : dans le panneau 📦 d'un jeu Switch, Frogtend dit ce que Firehouse n'a pas encore (« 📤 Firehouse n'a pas

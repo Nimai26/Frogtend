@@ -20,9 +20,12 @@
   import { galaxy, lireGalaxy, ouvrirDansGalaxy } from '$lib/boutiques/galaxy.svelte';
   import { adresseImageParUrl, adresseFondDuJeu, adresseLogoDuJeu } from '$lib/api';
   import { apresRepos, assezGrandPourUnFond, idDuFocus } from '$lib/taodbox/fond';
+  import { consoleValide, oublierPlace, reprendrePlace, retenirPlace, selecteurCarte } from '$lib/taodbox/retour';
 
   let lanceParSunshine = $state(false);
-  let console_ = $state<string | null>(null);
+  // Au retour d'un écran ouvert par « Gérer le jeu » (Réglages, Succès, Boutons) : la même console, la même carte.
+  const place = reprendrePlace();
+  let console_ = $state<string | null>(place?.console ?? null);
 
   // Les jeux possédés sur plusieurs boutiques (A6c) : une seule carte, Frogtend demande laquelle lancer.
   let groupes = $state<number[][]>([]);
@@ -139,8 +142,10 @@
     // Les noms courts des consoles (« Mega Drive »), lus dans le cache du profil (hors ligne aussi).
     chargerNomsCourts();
     lanceParSunshine = isTauri() ? await api.taodboxLance().catch(() => false) : false;
+    // Une console qui n'a plus de jeu sur ce PC : « Tout ».
+    if (console_ !== null && consoleValide(place, consoles) === null) console_ = null;
     await tick();
-    selectionner(document.querySelector<HTMLElement>('.taodbox .carte'));
+    selectionner(document.querySelector<HTMLElement>(selecteurCarte(place)) ?? document.querySelector<HTMLElement>('.taodbox .carte'));
   });
   onDestroy(() => {
     detruit = true;
@@ -181,10 +186,13 @@
     e.preventDefault();
     if (enGestion || partie.enJeu !== null || fenetreOuverte() || j.d_un_autre) return;
     enGestion = true;
+    // « Gérer » peut mener à un autre écran : la place est retenue pour le retour (oubliée si on reste ici).
+    retenirPlace({ id: j.id, console: console_ });
     try {
       await gererLaCarte(j.id);
     } finally {
       enGestion = false;
+      if (!detruit) oublierPlace();
     }
     await tick();
     const carte = document.querySelector<HTMLElement>(`.taodbox .carte[data-id="${j.id}"]`);

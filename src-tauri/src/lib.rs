@@ -47,6 +47,7 @@ pub mod noyau;
 pub mod partie;
 pub mod pilotage;
 pub mod mods;
+pub mod mods_switch;
 pub mod nexus;
 pub mod nuage_steam;
 pub mod sept_z;
@@ -405,6 +406,7 @@ pub fn run() {
             app.manage(menu_jeu::MenuJeu::default());
             app.manage(nexus::Nexus::default());
             app.manage(envois_switch::Travail::default());
+            app.manage(mods_switch::Travail::default());
             // La boîte aux lettres des liens nxm:// : l'interface est prévenue quand il en arrive (elle les relève
             // quand un profil est ouvert, hors partie et hors Taodbox).
             let h = app.handle().clone();
@@ -656,6 +658,11 @@ pub fn run() {
             commandes::envois_switch_accepter,
             commandes::envois_switch_suivi,
             commandes::envois_switch_annuler,
+            commandes::mods_switch_lister,
+            commandes::mods_switch_telecharger,
+            commandes::mods_switch_suivi,
+            commandes::mods_switch_choisir,
+            commandes::mods_switch_retirer,
             commandes::contenus_installer,
             commandes::archive_du_jeu,
             commandes::decompresser_jeu,

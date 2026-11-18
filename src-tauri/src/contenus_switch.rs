@@ -55,12 +55,28 @@ pub struct ChoixJeu {
     pub origine: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub abri: Option<AbriEnAttente>,
+    /// Les mods Switch éteints (clés « mod:<clé du mod> », ✅ Seb 18/11) : un mod téléchargé est allumé sans rien noter.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mods_eteints: Vec<String>,
 }
 
 impl Default for ChoixJeu {
     fn default() -> Self {
-        ChoixJeu { maj: true, dlc_eteints: vec![], origine: BTreeMap::new(), abri: None }
+        ChoixJeu { maj: true, dlc_eteints: vec![], origine: BTreeMap::new(), abri: None, mods_eteints: vec![] }
     }
+}
+
+/// Le préfixe de la clé d'un mod Switch dans les choix (« mod:<clé du mod> »).
+pub const PREFIXE_MOD: &str = "mod:";
+
+/// La clé d'un mod servi par Firehouse est-elle de la forme du contrat 1.44 (« <source>-<12 hex> ») ?
+pub fn cle_de_mod_valide(cle: &str) -> bool {
+    let Some((source, hexa)) = cle.rsplit_once('-') else { return false };
+    cle.len() <= 120
+        && !source.is_empty()
+        && source.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
+        && hexa.len() == 12
+        && hexa.chars().all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
 }
 
 impl ChoixJeu {
@@ -73,6 +89,8 @@ impl ChoixJeu {
     pub fn actif(&self, cle: &str) -> bool {
         if cle == CLE_MAJ {
             self.maj
+        } else if cle.starts_with(PREFIXE_MOD) {
+            !self.mods_eteints.iter().any(|m| m == cle)
         } else {
             self.dlc_actif(cle)
         }
@@ -86,7 +104,12 @@ impl ChoixJeu {
     /// Rien à noter : tout allumé, aucun abri en attente, aucune origine (un jeu repris par la migration reste noté :
     /// « Ouvrir Ryubing seul » remet alors aussi ses DLC rallumés à `is_enabled: true`).
     fn par_defaut(&self) -> bool {
-        self.maj && self.dlc_eteints.is_empty() && self.abri.is_none() && self.origine.is_empty()
+        self.maj && self.dlc_eteints.is_empty() && self.abri.is_none() && self.origine.is_empty() && self.mods_eteints.is_empty()
+    }
+
+    /// Le mod Switch de clé `cle` (sans le préfixe) est-il allumé ?
+    pub fn mod_actif(&self, cle: &str) -> bool {
+        self.actif(&format!("{PREFIXE_MOD}{cle}"))
     }
 }
 
@@ -212,6 +235,10 @@ pub fn migration_faite(donnees: &Path) -> bool {
 /// Change le choix d'un contenu (`cle` : « maj » ou l'identifiant d'un DLC). Rend vrai si un contenu jusque-là
 /// ALLUMÉ vient d'être éteint : les parties de ce jeu sont alors à mettre à l'abri avant sa prochaine partie.
 pub fn choisir(donnees: &Path, base: u64, cle: &str, actif: bool) -> Resultat<bool> {
+    // Un mod Switch : TOUT changement met les parties à l'abri (avis des experts, 18/11).
+    if let Some(m) = cle.strip_prefix(PREFIXE_MOD) {
+        return choisir_mods(donnees, base, &[(m.to_string(), actif)]);
+    }
     if cle != CLE_MAJ && (!cle.starts_with("dlc:") || cle == TOUS_LES_DLC) {
         return Err(Erreur::Refus("Ce contenu n'est pas reconnu.".into()));
     }
@@ -238,6 +265,61 @@ pub fn choisir(donnees: &Path, base: u64, cle: &str, actif: bool) -> Resultat<bo
     tous.poser(base, c);
     ecrire(donnees, &tous)?;
     Ok(eteint)
+}
+
+/// Change d'un coup le choix de plusieurs mods Switch d'un jeu (`changements` : (clé du mod, allumé) ; « allumer A et
+/// éteindre B » ne passe jamais par un état intermédiaire). Rend vrai si quelque chose a changé : les parties de ce
+/// jeu sont alors à mettre à l'abri avant sa prochaine partie (TOUT changement de mod, allumé comme éteint).
+pub fn choisir_mods(donnees: &Path, base: u64, changements: &[(String, bool)]) -> Resultat<bool> {
+    if changements.iter().any(|(c, _)| !cle_de_mod_valide(c)) {
+        return Err(Erreur::Refus("Ce mod n'est pas reconnu.".into()));
+    }
+    let _v = verrou();
+    let mut tous = match lire(donnees) {
+        Lecture::Lu(c) => c,
+        _ => Choix::default(),
+    };
+    let mut c = tous.jeu(base);
+    let mut change = false;
+    for (m, actif) in changements {
+        let cle = format!("{PREFIXE_MOD}{m}");
+        if c.actif(&cle) == *actif {
+            continue;
+        }
+        change = true;
+        if *actif {
+            c.mods_eteints.retain(|x| *x != cle);
+        } else {
+            c.mods_eteints.push(cle);
+            c.mods_eteints.sort();
+        }
+    }
+    if !change {
+        return Ok(false);
+    }
+    c.abri = Some(AbriEnAttente { depuis: crate::noyau::maintenant(), faits: vec![] });
+    tous.poser(base, c);
+    ecrire(donnees, &tous)?;
+    Ok(true)
+}
+
+/// Un mod de ce jeu a changé sans que son interrupteur bouge (premier téléchargement, nouvelle révision, retrait) :
+/// les parties sont à mettre à l'abri avant la prochaine partie. `oublier` : la clé du mod retiré (son « éteint »
+/// n'a plus de sens).
+pub fn noter_changement_de_mod(donnees: &Path, base: u64, oublier: Option<&str>) -> Resultat<()> {
+    let _v = verrou();
+    let mut tous = match lire(donnees) {
+        Lecture::Lu(c) => c,
+        _ => Choix::default(),
+    };
+    let mut c = tous.jeu(base);
+    if let Some(m) = oublier {
+        let cle = format!("{PREFIXE_MOD}{m}");
+        c.mods_eteints.retain(|x| *x != cle);
+    }
+    c.abri = Some(AbriEnAttente { depuis: crate::noyau::maintenant(), faits: vec![] });
+    tous.poser(base, c);
+    ecrire(donnees, &tous)
 }
 
 /// Le choix d'un jeu dont on vient de lire les DLC (`ids` : leurs identifiants ; `complet` : la recherche a tout

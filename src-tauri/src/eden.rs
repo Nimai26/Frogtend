@@ -236,6 +236,22 @@ pub fn dossier_nand(eden: &Path) -> Option<PathBuf> {
     dans_eden.then(|| PathBuf::from(v.replace('/', "\\")))
 }
 
+/// Le dossier des mods d'Eden (`load_directory` de `[Data%20Storage]`, `user\load` par défaut ; les mods d'un jeu
+/// vivent dans `<load>\<TID 16 HEX>\<nom du mod>\`, file_sys/patch_manager.cpp). Un réglage qui sortirait du dossier
+/// d'Eden est refusé (`None`) : Frogtend n'y pose rien.
+pub fn dossier_load(eden: &Path) -> Option<PathBuf> {
+    let defaut = eden.join("user").join("load");
+    let regle = std::fs::read_to_string(eden.join("user").join("config").join("qt-config.ini"))
+        .ok()
+        .and_then(|t| t.lines().find_map(|l| l.trim().strip_prefix("load_directory=").map(|v| v.trim().trim_matches('"').to_string())))
+        .filter(|v| !v.is_empty());
+    let Some(v) = regle else { return Some(defaut) };
+    let norme = |p: &Path| p.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
+    // Jamais un « .. » qui ressortirait du dossier d'Eden après l'avoir nommé.
+    let dans_eden = !v.contains("..") && norme(Path::new(&v)).starts_with(&format!("{}\\", norme(eden)));
+    dans_eden.then(|| PathBuf::from(v.replace('/', "\\").trim_end_matches('\\')))
+}
+
 /// Le dossier du firmware (les .nca du système) : `<nand>\system\Contents\registered` (file_sys/bis_factory.cpp L19-31).
 pub fn dossier_firmware(eden: &Path) -> Option<PathBuf> {
     dossier_nand(eden).map(|n| n.join("system").join("Contents").join("registered"))
@@ -1021,6 +1037,20 @@ pub struct ContenusPrepares {
     /// Les parties devaient être mises à l'abri avant cette partie et ne l'ont pas été (la raison) : RIEN n'a été
     /// changé, la partie ne doit pas se lancer.
     pub abri_impossible: Option<String>,
+    /// Le jeu de base lu (title id de base), pour poser ses mods ensuite.
+    pub base: u64,
+    /// La version BRUTE de la mise à jour qu'Eden utilisera : `Some(0)` sans mise à jour (coupée), `None` si elle
+    /// n'est pas connue (aucune trouvée par Frogtend : Eden peut en avoir une dans sa NAND). Sert à griser un mod.
+    pub maj_utilisee: Option<u32>,
+}
+
+/// La version brute de la mise à jour qu'Eden utilisera pour ce choix (voir `ContenusPrepares::maj_utilisee`).
+pub fn maj_utilisee(c: &crate::switch_nca::ContenusDuJeu, choix: &crate::contenus_switch::ChoixJeu) -> Option<u32> {
+    match &c.maj {
+        Some(_) if !choix.maj => Some(0),
+        Some(m) => m.version,
+        None => None,
+    }
 }
 
 /// Le dossier est-il dans la liste d'Eden (`texte` : son qt-config.ini) ?
@@ -1188,7 +1218,21 @@ pub fn ecrire_coupures(texte: &str, coupures: &[(u64, Vec<String>)]) -> String {
 /// « Update@… » (Eden prend alors la plus récente). « DLC » seulement si TOUS les DLC trouvés sont éteints. Une
 /// mise à jour ou des DLC que Frogtend n'a pas trouvés : rien n'est changé pour eux. Les mods (autres noms) restent.
 pub fn coupures_voulues(actuels: &[String], maj: Option<bool>, dlc: (usize, usize)) -> Vec<String> {
+    coupures_voulues_avec_mods(actuels, maj, dlc, &[])
+}
+
+/// `coupures_voulues`, étendue aux mods de FROGTEND (✅ Seb 18/11) : `mods` = (nom du dossier posé par Frogtend dans
+/// `load\<TID>\`, allumé). Allumé → son nom sort de la liste ; éteint → il y entre. Les noms des mods de la personne
+/// (absents de `mods`) ne bougent jamais.
+pub fn coupures_voulues_avec_mods(actuels: &[String], maj: Option<bool>, dlc: (usize, usize), mods: &[(String, bool)]) -> Vec<String> {
     let mut l: Vec<String> = actuels.to_vec();
+    for (nom, actif) in mods {
+        if *actif {
+            l.retain(|n| n != nom);
+        } else if !l.iter().any(|n| n == nom) {
+            l.push(nom.clone());
+        }
+    }
     match maj {
         Some(true) => l.retain(|n| n != "Update" && !n.starts_with("Update@")),
         Some(false) if !l.iter().any(|n| n == "Update") => l.push("Update".into()),
@@ -1209,13 +1253,18 @@ pub fn coupures_voulues(actuels: &[String], maj: Option<bool>, dlc: (usize, usiz
 /// Le texte du qt-config.ini avec les coupures voulues pour ce jeu (`base`) ; `None` : rien à changer. Les autres jeux
 /// et leurs noms sont gardés ; une liste vide fait partir l'entrée du jeu.
 pub fn texte_avec_coupures(texte: &str, base: u64, maj: Option<bool>, dlc: (usize, usize)) -> Option<String> {
+    texte_avec_coupures_et_mods(texte, base, maj, dlc, &[])
+}
+
+/// `texte_avec_coupures`, avec les mods de Frogtend (`coupures_voulues_avec_mods`).
+pub fn texte_avec_coupures_et_mods(texte: &str, base: u64, maj: Option<bool>, dlc: (usize, usize), mods: &[(String, bool)]) -> Option<String> {
     // Une section qu'Eden ne lirait pas comme Frogtend la comprend : jamais remplacée (`coupures_lisibles`).
     if !coupures_lisibles(texte) {
         return None;
     }
     let mut toutes = lire_coupures(texte);
     let actuels = toutes.iter().find(|(t, _)| *t == base).map(|(_, l)| l.clone()).unwrap_or_default();
-    let voulus = coupures_voulues(&actuels, maj, dlc);
+    let voulus = coupures_voulues_avec_mods(&actuels, maj, dlc, mods);
     if voulus == actuels {
         return None;
     }
@@ -1309,7 +1358,14 @@ pub fn preparer_contenus(donnees: &Path, eden: &Path, jeu: &Path, ailleurs: &[Pa
     }
     let (choix, abime) = crate::contenus_switch::choix_resolu(donnees, c.base, &crate::ryubing::ids_dlc(&c), c.complet());
     let (maj_voulue, dlc_voulus) = etat_voulu(&c, &choix);
-    let mut r = ContenusPrepares { maj: c.maj.is_some(), dlc: c.dlc.len(), dlc_en_partie: dlc_voulus.1 > 0 && dlc_voulus.1 < dlc_voulus.0, ..Default::default() };
+    let mut r = ContenusPrepares {
+        maj: c.maj.is_some(),
+        dlc: c.dlc.len(),
+        dlc_en_partie: dlc_voulus.1 > 0 && dlc_voulus.1 < dlc_voulus.0,
+        base: c.base,
+        maj_utilisee: maj_utilisee(&c, &choix),
+        ..Default::default()
+    };
     r.notes.extend(abime);
     r.notes.push(c.lecture.resume());
     let ini = crate::contenus::ini_eden(eden);

@@ -64,6 +64,14 @@ vi.mock('$lib/api', () => ({
     envoisSwitchAccepter: (...a: unknown[]) => accepter(...a),
     envoisSwitchSuivi: (...a: unknown[]) => suivre(...a),
     envoisSwitchAnnuler: (...a: unknown[]) => annuler(...a),
+    // Les mods Switch (BlocMods, inclus pour un jeu Switch) : un mod posé.
+    modsSwitchLister: async () => ({
+      etat: 'ok', vue_le: null, tid_base: '01007EF00011E000', version_servie: null, version_connue: true, remarque: null,
+      mods: [{ cle: 'a-000000000001', nom: 'Clean UI', description: '', auteur: 'X', licence: 'MIT', source: '', revision: 1, revision_rangee: 1,
+        etat: 'telecharge', compat: 'compatible', raison: null, allume: true, taille: 1, conflits: [], reglage_requis: '', touche_sauvegardes: false,
+        contenu: { exefs: false, romfs: true, cheats: false }, emulateurs_essayes: ['Eden'], servi: true }],
+    }),
+    modsSwitchSuivi: async () => ({ actif: false, en_cours: null, recus: 0, total: 0, faits: 0, a_faire: 0, erreurs: [], arret: null }),
   },
 }));
 const confirmer = vi.fn(async (..._a: unknown[]) => true);
@@ -92,6 +100,8 @@ vi.mock('$lib/ludotheque/jeu.svelte', async () => {
   const s = await import('$lib/emulateurs/seul');
   return { lancementImpossible: () => s.lancementImpossibleSelon(partie, seul), attenteEmulateurSeul: () => s.raisonDAttente(seul) };
 });
+
+vi.mock('$lib/ludotheque/telechargements.svelte', () => ({ debitConnu: () => null }));
 
 import BlocContenus from './BlocContenus.svelte';
 
@@ -130,6 +140,54 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('le panneau des mises à jour et DLC Switch', () => {
+  it('panneau étroit : le nom AVANT l’interrupteur, le détail dessous sur toute la largeur', async () => {
+    await ouvrir();
+    const li = screen.getAllByRole('switch')[0].closest('li')!;
+    expect(li.closest('ul')?.classList.contains('grille')).toBe(true);
+    expect(li.firstElementChild?.classList.contains('nom')).toBe(true);
+    expect(li.lastElementChild?.classList.contains('detail')).toBe(true);
+  });
+
+  it('un jeu Switch montre aussi ses mods ; un autre jeu jamais', async () => {
+    render(BlocContenus, { id: 7, titre: 'Zelda', plateforme: 'Nintendo Switch' });
+    expect(await screen.findByRole('button', { name: /Mods : 1 allumé sur 1/ })).toBeTruthy();
+    cleanup();
+    render(BlocContenus, { id: 7, titre: 'Zelda', plateforme: 'Sony Playstation 3' });
+    await screen.findByRole('button', { name: /Mises à jour et DLC/ });
+    expect(screen.queryByRole('button', { name: /Mods :/ })).toBeNull();
+  });
+
+  it('« vide » (Réglages du jeu, « Rien à régler ») : seulement une fois lu, et seulement sans rien à montrer', async () => {
+    const vus: boolean[] = [];
+    const props = (p: object) => ({
+      id: 7,
+      titre: 'Zelda',
+      ...p,
+      get vide() {
+        return false;
+      },
+      set vide(v: boolean) {
+        vus.push(v);
+      },
+    });
+    reponse = { etat: 'aucun', titre_id: null, contenus: [] };
+    render(BlocContenus, props({}));
+    await vi.waitFor(() => expect(vus.at(-1)).toBe(true));
+    cleanup();
+    vus.length = 0;
+    reponse = EDEN;
+    render(BlocContenus, props({}));
+    await screen.findByRole('button', { name: /Mises à jour et DLC/ });
+    expect(vus.includes(true)).toBe(false);
+  });
+
+  it('déplié d’office (Taodbox) : les interrupteurs sans rien appuyer', async () => {
+    render(BlocContenus, { id: 7, titre: 'Zelda', deplie: true });
+    await screen.findByRole('button', { name: /Mises à jour et DLC/ });
+    await tick();
+    expect(screen.getAllByRole('switch')).toHaveLength(3);
+  });
+
   it('montre un interrupteur par contenu, le résumé et la remarque d’Eden', async () => {
     const entete = await ouvrir();
     // Eden garde le DLC éteint tant qu'un autre est allumé : le panneau le dit (Seb 17/11).

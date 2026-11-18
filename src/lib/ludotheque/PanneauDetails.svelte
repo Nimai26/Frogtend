@@ -155,7 +155,7 @@
     {#if !catalogue && surPc?.installation}<BlocDecompression id={idPc} titre={j.titre} />{/if}
     {#if !catalogue && estJeuDeBoutique(j) && j.source !== 'local'}<FicheBoutique jeu={j} />{/if}
     {#if !catalogue}<BlocSucces jeu={j} surPc={!!surPc?.installation} idPc={idPc} />{/if}
-    {#if !catalogue && surPc?.installation}<BlocContenus id={idPc} titre={j.titre} />{/if}
+    {#if !catalogue && surPc?.installation}<BlocContenus id={idPc} titre={j.titre} plateforme={surPc.plateforme ?? j.plateforme} />{/if}
     <!-- Un jeu importé de ton disque, sans fiche : son résumé trouvé dans la base de Firehouse (contrat 1.32). -->
     {#if j.id < 0 && j.source === 'local'}<ResumeBase jeu={j.id} genresConnus={j.genres.length > 0} />{/if}
     {#if j.genres.length}

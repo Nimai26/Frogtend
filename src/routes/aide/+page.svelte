@@ -9,6 +9,7 @@
     ['versions', '📀 Versions'],
     ['succes', '🏆 Succès'],
     ['contenus', '📦 Mises à jour et DLC'],
+    ['mods-switch', '🧩 Mods Switch'],
     ['offerts', '🎁 Jeux offerts'],
     ['jouer', '🕹 En jeu'],
     ['taodbox', '🛋 Taodbox'],
@@ -113,6 +114,39 @@
       <li>
         Certaines mises à jour ou DLC sont dans une forme <strong>compressée</strong> : la fiche les montre, ils peuvent
         être envoyés à Firehouse, mais ni Eden ni Ryubing ne savent encore jouer avec. Garde la version normale pour jouer.
+      </li>
+    </ul>
+  </section>
+
+  <section class="cx-block" id="mods-switch">
+    <h2>🧩 Mods Switch</h2>
+    <p>
+      Pour certains jeux Switch, Firehouse propose des <strong>mods</strong> (image plus fine, interface plus propre…),
+      choisis et validés par un admin de Firehouse. Ils se trouvent sous les mises à jour et DLC, dans le panneau du
+      jeu (bouton <strong>🧩 Mods</strong>).
+    </p>
+    <ul>
+      <li><strong>⬇ Télécharger</strong> : Frogtend dit d’abord le poids et le temps ; rien ne part sans ton accord.</li>
+      <li>
+        Ensuite, un <strong>interrupteur</strong> par mod : allumé ou éteint, pour ce jeu, avec Eden comme avec Ryubing,
+        pour toute la maison. Frogtend le met en place à chaque partie ; une case cochée dans l’émulateur ne compte pas.
+      </li>
+      <li>Deux mods qui ne vont pas ensemble : en allumer un éteint l’autre, après ta confirmation.</li>
+      <li>À chaque changement de mod, tes parties de ce jeu sont mises à l’abri avant la partie suivante.</li>
+      <li>
+        <strong>⛔ Ne va pas avec ta version</strong> : ce mod est fait pour une autre version du jeu ; il reste visible,
+        avec la raison, mais il n’est jamais mis en place.
+      </li>
+      <li>
+        Une nouvelle version d’un mod est proposée (<strong>⬇ Mettre à jour</strong>) ; tu peux choisir « à l’avenir,
+        mettre à jour tout seul », désactivable dans ⚙ Options ▸ 💾 Sauvegarde (au canapé : en haut de « Réglages du
+        jeu »).
+      </li>
+      <li>Pendant qu’un mod arrive, le jeu attend : il se lance dès que ses mods sont installés.</li>
+      <li>
+        Au canapé (Taodbox) : sur un jeu Switch, appuie sur <strong>Y</strong> puis choisis
+        <strong>🧩 Mises à jour, DLC et mods</strong> ; tout se règle à la manette (A pour allumer ou éteindre, B pour
+        revenir).
       </li>
     </ul>
   </section>

@@ -332,6 +332,12 @@ fn brutes(archive: &Path) -> Resultat<Vec<Brute>> {
 
 /// Les fichiers d'une archive de mod (zip ou 7z), refusée EN ENTIER au premier chemin dangereux ; plafond de taille.
 pub fn lister(archive: &Path) -> Resultat<Vec<Entree>> {
+    lister_plafonne(archive, DECOMPRESSE_MAX)
+}
+
+/// `lister`, avec un plafond de taille décompressée choisi par l'appelant (un mod Switch : la taille annoncée par
+/// Firehouse, son archive n'étant jamais compressée).
+pub fn lister_plafonne(archive: &Path, plafond: u64) -> Resultat<Vec<Entree>> {
     let mut l: Vec<Entree> = Vec::new();
     let mut vus = std::collections::HashSet::new();
     let mut total = 0u64;
@@ -353,7 +359,7 @@ pub fn lister(archive: &Path) -> Resultat<Vec<Entree>> {
             return Err(dangereux());
         }
         total = total.saturating_add(e.taille);
-        if total > DECOMPRESSE_MAX {
+        if total > plafond {
             return Err(Erreur::Refus("L'archive du mod est démesurée une fois décompressée : rien n'est installé.".into()));
         }
         l.push(Entree { chemin, taille: e.taille });

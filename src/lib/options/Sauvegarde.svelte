@@ -58,6 +58,15 @@
       />
       <span>Envoyer tout seul à Firehouse les mises à jour et DLC Switch qu’il n’a pas (sans redemander)</span>
     </label>
+    <!-- Mods Switch (✅ Seb 18/11, choix 1a) : la case « À l'avenir, mettre à jour tout seul » de l'accord. -->
+    <label class="choix">
+      <input
+        type="checkbox"
+        checked={!!etat.profil.modsSwitch?.auto}
+        onchange={(e) => reglerProfil('modsSwitch.auto', e.currentTarget.checked)}
+      />
+      <span>🧩 Mettre à jour tout seul les mods Switch déjà téléchargés quand Firehouse en a une nouvelle version (sans redemander)</span>
+    </label>
     <label class="champ">
       <span>Débit d’envoi à Firehouse</span>
       <select value={etat.pc.envoisFirehouse?.debit ?? 'moitie'} onchange={(e) => reglerPc('envoisFirehouse.debit', e.currentTarget.value)}>

@@ -445,7 +445,8 @@ impl Noyau {
         for f in ["mame-machines.json", "mame-machines.etag"] {
             let _ = std::fs::remove_file(dossier.join(f));
         }
-        for sous in ["jaquettes", "visuels", "systemes", "base"] {
+        // `mods-switch` : les listes de mods Switch reçues par l'ancien jeton (contrat 1.44, cache hors ligne).
+        for sous in ["jaquettes", "visuels", "systemes", "base", "mods-switch"] {
             let d = dossier.join(sous);
             if std::fs::symlink_metadata(&d).is_ok_and(|m| m.is_dir()) {
                 if let Err(e) = std::fs::remove_dir_all(&d) {
@@ -2538,7 +2539,7 @@ mod tests {
         assert_eq!(n.profils.trouver(&id).unwrap().compte.as_deref(), Some("seb#admin"), "retenu aussi dans le profil");
         assert!(n.est_admin().await);
         let remplir = || {
-            for r in ["jaquettes/1-400-j1.img", "visuels/1/fond-1000-f1.img", "systemes/0123abcd/fond-1000-f1.img", "documents/1/documents.json", "documents/1/3.pdf", "derniere-sauvegarde.json"] {
+            for r in ["jaquettes/1-400-j1.img", "visuels/1/fond-1000-f1.img", "systemes/0123abcd/fond-1000-f1.img", "documents/1/documents.json", "documents/1/3.pdf", "derniere-sauvegarde.json", "mods-switch/01007EF00011E000.json"] {
                 std::fs::create_dir_all(p.join(r).parent().unwrap()).unwrap();
                 std::fs::write(p.join(r), b"x").unwrap();
             }
@@ -2560,10 +2561,18 @@ mod tests {
         assert!(!n.est_admin().await, "Léa, mineure : pas admin");
         assert!(!p.join("jaquettes").exists() && !p.join("visuels").exists() && !p.join("derniere-sauvegarde.json").exists());
         assert!(!p.join("systemes").exists(), "les images des systèmes reçues pour l'ancien compte partent aussi");
+        assert!(!p.join("mods-switch").exists(), "la liste des mods Switch reçue par l'ancien jeton part aussi");
         assert!(!p.join("documents/1/documents.json").exists());
         assert!(p.join("documents/1/3.pdf").exists());
         assert!(vieille.verrou_vivant().is_err(), "une synchronisation en cours avec l'ancien jeton n'écrit plus rien");
         assert!(matches!(vieille.garder_fichier(&p.join("jaquettes/1-400-j1.img"), b"x"), Err(Erreur::Perimee(_))));
+        // La liste des mods Switch reçue par l'ancien jeton : refusée par `garder_fichier` (sous le verrou), même si la
+        // vérification d'avant l'a laissée passer.
+        let v2 = vieille.clone();
+        let garder = move |f: &std::path::Path, o: &[u8]| v2.garder_fichier(f, o).map(|_| ());
+        let lu = crate::mods_switch::lire(&vieille.source, &p, 0x0100_7EF0_0011_E000, &|| false, &garder).await;
+        assert!(matches!(lu, Err(Erreur::Perimee(_))), "{lu:?}");
+        assert!(!p.join("mods-switch").exists());
         assert!(!p.join("jaquettes").exists());
         drop((session, vieille));
 

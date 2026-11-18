@@ -6,6 +6,18 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🧩 Mods Switch (0.208.0) — d'abord valider les mods de Zelda dans Firehouse
+- [ ] Zelda BotW ▸ panneau 📦 : la partie « 🧩 Mods : … » apparaît sous les mises à jour et DLC, avec les mods validés
+      (nom, auteur, licence, description). (Relever la réponse RÉELLE de la route 1.44 pour la doc.)
+- [ ] « ⬇ Télécharger » un mod (ex. 1080p) : la fenêtre annonce la taille ; oui → % visible, puis « 🧩 1 mod prêt ».
+- [ ] Le mod a un interrupteur « ✅ Allumé » ; ▶ Jouer avec Ryubing : le journal dit les parties mises à l'abri, et le
+      mod est en place (Ryubing ▸ clic droit sur Zelda ▸ Gérer les mods : coché).
+- [ ] Même chose avec Eden.
+- [ ] Éteindre le mod ▸ ▶ Jouer : il n'est plus utilisé (dans l'émulateur : décoché).
+- [ ] Taodbox : Y sur Zelda ▸ « 🧩 Mises à jour, DLC et mods » : tout se fait à la croix, A, B ; en revenant, la
+      sélection est toujours sur Zelda.
+- [ ] Le panneau 📦 de Fire Emblem : les noms des DLC ne sont plus coupés sur trois lignes.
+
 ## 📤 Envoi des mises à jour et DLC Switch à Firehouse (0.207.0) — PREMIER ENVOI RÉEL, à faire ensemble
 - [x] (✅ Seb 18/11) Fire Emblem et Zelda : AUCUNE ligne 📤, et c'est juste — leur mise à jour et leurs DLC font partie
       de la version servie par Firehouse (il les a déjà ; ce qui vient de Firehouse ne repart jamais).

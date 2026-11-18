@@ -1,0 +1,116 @@
+<script lang="ts">
+  // ⚙ Réglages du jeu, au canapé (✅ Seb 18/11 : « Il faut pouvoir faire des réglages depuis le canapé voyons ») : les
+  // interrupteurs des mises à jour et DLC Switch et les mods, entièrement à la manette (croix, A = basculer / valider,
+  // B = retour). `?jeu=<id>&titre=…` ; sous /taodbox, le mode canapé (échelle ×2, manette, plein écran) reste actif.
+  // Les MÊMES blocs que le panneau du bureau (BlocContenus, BlocMods) : mêmes règles, mêmes fenêtres maison.
+  import { page } from '$app/state';
+  import { tick } from 'svelte';
+  import BlocContenus from '$lib/contenus/BlocContenus.svelte';
+  import { etat, reglerProfil } from '$lib/etat.svelte';
+  import { tele } from '$lib/ludotheque/telechargements.svelte';
+  import { fenetreOuverte, selectionner } from '$lib/taodbox/manette.svelte';
+
+  const jeu = $derived(Number(page.url.searchParams.get('jeu')));
+  const titre = $derived(page.url.searchParams.get('titre') ?? tele.jeux[jeu]?.titre ?? '');
+  // Un jeu inconnu de ce PC : aucune plateforme (jamais « Switch » par défaut : rien n'est lu pour un autre jeu).
+  const plateforme = $derived(tele.jeux[jeu]?.plateforme);
+  const connu = $derived(Number.isFinite(jeu) && jeu !== 0);
+  const auto = $derived(!!etat.profil.modsSwitch?.auto);
+  let vide = $state(false);
+  let enregistrement = $state(false);
+  let page_ = $state<HTMLElement | null>(null);
+
+  // Le focus part sur « ← Retour » : la croix descend ensuite vers les interrupteurs (jamais un écran sans focus).
+  $effect(() => {
+    void jeu;
+    tick().then(() => selectionner(page_?.querySelector<HTMLButtonElement>('button')));
+  });
+
+  /** « Mettre à jour tout seul les mods » : le réglage du profil, défait d'ici aussi (pas d'options à la souris au
+   * canapé). */
+  async function basculerAuto() {
+    if (enregistrement) return;
+    enregistrement = true;
+    try {
+      await reglerProfil('modsSwitch.auto', !auto);
+    } finally {
+      enregistrement = false;
+    }
+  }
+
+  /** Échap (ou B à la manette) : revenir à la grille, sauf si une fenêtre maison est ouverte (elle se ferme d'abord). */
+  function touche(e: KeyboardEvent) {
+    if (e.key !== 'Escape' || fenetreOuverte()) return;
+    e.preventDefault();
+    history.back();
+  }
+</script>
+
+<svelte:window onkeydown={touche} />
+
+<div class="page-reglages" bind:this={page_}>
+  <header>
+    <button class="btn" onclick={() => history.back()}>← Retour</button>
+    <h1>⚙ Réglages du jeu{titre ? ` — ${titre}` : ''}</h1>
+  </header>
+  {#if connu}
+    {#if plateforme === 'Nintendo Switch'}
+      <div class="auto">
+        <span id="auto-libelle">🧩 Mettre à jour tout seul les mods déjà téléchargés (pour tous tes jeux)</span>
+        <button
+          class="btn"
+          role="switch"
+          aria-checked={auto}
+          aria-labelledby="auto-libelle"
+          aria-describedby="auto-etat"
+          aria-disabled={enregistrement}
+          onclick={basculerAuto}
+        >
+          <span id="auto-etat">{auto ? '✅ Oui' : '⬜ Non : Frogtend demande'}</span>
+        </button>
+      </div>
+    {/if}
+    <BlocContenus id={jeu} {titre} {plateforme} deplie bind:vide />
+    {#if vide}<p class="muted">Rien à régler pour ce jeu : il n’a ni mise à jour, ni DLC, ni mod.</p>{/if}
+  {:else}
+    <p class="muted">Ce jeu n’est pas sur ce PC.</p>
+  {/if}
+  <footer class="aide">🎮 Croix pour choisir · A pour allumer, éteindre ou valider · B pour revenir</footer>
+</div>
+
+<style>
+  /* Marge de sécurité de la télé (charte § 7) ; la page défile, la manette suit le focus. */
+  .page-reglages {
+    display: grid;
+    gap: calc(14 * var(--u));
+    padding: 5vh 5vw;
+    max-width: calc(900 * var(--u));
+    margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
+    align-content: start;
+    overflow: auto;
+    height: 100vh;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: calc(14 * var(--u));
+    flex-wrap: wrap;
+  }
+  h1 {
+    margin: 0;
+    font-size: calc(22 * var(--u));
+    overflow-wrap: anywhere;
+  }
+  .auto {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: calc(10 * var(--u));
+    align-items: center;
+  }
+  .aide {
+    color: var(--dim);
+    text-align: center;
+  }
+</style>

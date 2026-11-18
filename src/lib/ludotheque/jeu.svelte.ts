@@ -35,6 +35,7 @@ import { plusRecente } from '$lib/emulateurs/versions';
 import { libellePleinEcran, TOUCHES_PLEIN_ECRAN } from './plein-ecran';
 import { BOUTONS, detailTouche, libelleClavier, memes, nettoyer, PREREGLAGES, toucheDepuisEvenement, TOUCHES, type Correspondance } from './clavier';
 import { auCanape, seulementAuBureau } from '$lib/taodbox/canape';
+import { messageModsEnRoute, refusModsEnRoute } from '$lib/contenus/mods';
 import { nomAffiche } from './ludotheque.svelte';
 import { EFFETS_IMAGE, libelleEffet } from './effetsImage';
 import { proposerCopieAvantMod } from '$lib/mods/copieAvantMod';
@@ -650,6 +651,10 @@ async function jouerSansAttente(id: number, emulateur?: string, version?: string
       } else if (estErreurCoeur(e) && e.sorte === 'prevenir') {
         // Refusé avant de lancer, avec ce qu'il faut faire : expliqué dans une fenêtre, pas un message qui passe.
         await informer(`▶ « ${j?.titre ?? 'Le jeu'} » ne peut pas encore se lancer`, e.motif);
+        return;
+      } else if (estErreurCoeur(e) && refusModsEnRoute(e)) {
+        // Des mods de ce jeu arrivent (✅ Seb 18/11) : une attente, pas une panne ; au canapé, où la suivre.
+        toast(messageModsEnRoute(e.motif, auCanape()), 'alerte');
         return;
       } else {
         toast(`Impossible de lancer le jeu : ${motifDuRefus(e)}`, 'erreur');
@@ -1653,7 +1658,7 @@ export async function gererJeu(id: number) {
   const j = tele.jeux[id];
   // Le jeu importé par une AUTRE personne de ce PC : elle seule le gère (✅ Seb 20/10).
   if (!j || j.d_un_autre) return;
-  type Action = 'jouerAvec' | 'autreVersion' | 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'etats' | 'effet' | 'patchs' | 'mods' | 'triches' | 'succes' | 'boutons' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'delier' | 'retirer';
+  type Action = 'jouerAvec' | 'autreVersion' | 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'etats' | 'effet' | 'patchs' | 'mods' | 'triches' | 'succes' | 'boutons' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'delier' | 'retirer' | 'reglagesSwitch';
   const options: { valeur: Action; libelle: string; detail?: string }[] = [];
   if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
   // Un jeu d'une boutique (Steam) : c'est elle qui le lance, l'installe et le désinstalle ; Frogtend n'écrit rien dans
@@ -1708,6 +1713,10 @@ export async function gererJeu(id: number) {
   const avecClavier = Object.values(nettoyer(etat.profil.clavier[String(id)]) ?? {}).some(Boolean);
   if ((j.installation || j.etat === 'telecharge') && (!pcSansEmulateur || avecClavier))
     options.push({ valeur: 'boutons', libelle: '🗺 Voir les boutons', detail: pcSansEmulateur ? 'ta manette et le clavier — pour ce jeu' : 'ta manette et celle d’origine — pour ce jeu' });
+  // Au canapé, un jeu Switch : ses mises à jour, DLC et mods se règlent à la manette (✅ Seb 18/11 : « Il faut pouvoir
+  // faire des réglages depuis le canapé voyons ») ; au bureau, c'est le panneau du jeu.
+  if (auCanape() && j.installation && j.plateforme === 'Nintendo Switch')
+    options.push({ valeur: 'reglagesSwitch', libelle: '🧩 Mises à jour, DLC et mods', detail: 'les allumer ou les éteindre — pour toute la maison' });
   if (pcSansEmulateur) {
     // Ses mods (contrat 1.19 ; ✅ Seb 19/10) — d'une boutique, Steam seulement (lot B3, ✅ Seb 21/10).
     if (!deBoutique || j.installation?.boutique?.source === 'steam') options.push({ valeur: 'mods', libelle: '🧩 Mods', detail: 'ajouter ou retirer des mods — pour ce jeu' });
@@ -1770,6 +1779,7 @@ export async function gererJeu(id: number) {
     // Au canapé, sous /taodbox : le mode canapé (manette, plein écran) reste actif. Le jeu DU PC : son jeu Steam, ou
     // RetroAchievements pour un jeu d'émulateur (le cœur choisit).
     await goto(`${auCanape() ? '/taodbox' : ''}/succes?jeu=${id}&titre=${encodeURIComponent(j.titre)}`);
+  else if (c === 'reglagesSwitch') await goto(`/taodbox/reglages?jeu=${id}&titre=${encodeURIComponent(j.titre)}`);
   else if (c === 'boutons') await goto(`${auCanape() ? '/taodbox' : ''}/boutons?jeu=${id}&titre=${encodeURIComponent(j.titre)}`);
   else if (c === 'commandes') await choisirCommandes(id);
   else if (c === 'figer') await choisirFiger(id);

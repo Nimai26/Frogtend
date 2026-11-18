@@ -108,6 +108,9 @@ export interface ReglagesProfil {
   /** Les mises à jour et DLC Switch que Firehouse n'a pas (lot 7, ✅ Seb 17/11) : les lui envoyer TOUT SEUL, sans
    * redemander (la case « À l'avenir, envoyer tout seul » de l'accord ; désactivable dans les options). */
   envoisFirehouse: { auto: boolean };
+  /** Les mods Switch servis par Firehouse (✅ Seb 18/11, choix 1a) : une NOUVELLE RÉVISION d'un mod déjà installé se
+   * télécharge TOUTE SEULE, sans redemander (la case « À l'avenir, mettre à jour tout seul » ; désactivable). */
+  modsSwitch: { auto: boolean };
   ludotheque: {
     /** Largeur d'une jaquette dans la grille, en pixels (à l'échelle 1). */
     tailleJaquette: number;
@@ -186,6 +189,7 @@ export const DEFAUTS_PROFIL: ReglagesProfil = {
   apparence: { skin: null, echelle: 1, densite: 'aeree', animations: 'normales', fondVideo: true },
   sauvegarde: { auto: 'apres_partie' },
   envoisFirehouse: { auto: false },
+  modsSwitch: { auto: false },
   ludotheque: {
     tailleJaquette: 170,
     visuel: 'jaquette',

@@ -39,8 +39,20 @@
     type ContenusDuJeu,
     type ContenuVu,
   } from './contenus';
+  import BlocMods from './BlocMods.svelte';
 
-  let { id, titre }: { id: number; titre: string } = $props();
+  // `plateforme` : un jeu Switch montre aussi ses mods (🧩, ✅ Seb 18/11). `deplie` : la liste ouverte d'office (Taodbox,
+  // « Réglages du jeu » : rien à déplier à la manette avant de régler).
+  // `vide` (lu par l'écran « Réglages du jeu ») : tout est lu, et ni contenus ni mods ne se montrent.
+  let {
+    id,
+    titre,
+    plateforme,
+    deplie = false,
+    vide = $bindable(false),
+  }: { id: number; titre: string; plateforme?: string; deplie?: boolean; vide?: boolean } = $props();
+  let contenusLus = $state(false);
+  let etatMods = $state<'attente' | 'vide' | 'visible'>('attente');
 
   let donnees = $state<ContenusDuJeu | null>(null);
   let ouvert = $state(false);
@@ -53,6 +65,7 @@
 
   async function charger(jeu: number) {
     donnees = await api.contenusDuJeu(jeu).catch(() => null);
+    if (jeu === id) contenusLus = true;
     coches = [];
     if (jeu === id && emulateurAutomatique(donnees?.systeme)) examinerEnvois(jeu);
   }
@@ -148,7 +161,8 @@
   $effect(() => {
     const jeu = id;
     donnees = null;
-    ouvert = false;
+    contenusLus = false;
+    ouvert = deplie;
     envois = null;
     suivi = null;
     charger(jeu);
@@ -163,6 +177,18 @@
       if (s && jeu === id) suivi = s;
     }, 2000);
     return () => clearInterval(minuterie);
+  });
+
+  // Ce que montre le bloc des contenus (mêmes conditions que le gabarit, plus bas).
+  const contenusVisibles = $derived(
+    donnees?.etat === 'emulateur' ||
+      (donnees?.etat === 'ok' &&
+        (emulateurAutomatique(donnees.systeme)
+          ? !!(donnees.contenus.length || donnees.ignores?.length || donnees.remarque)
+          : !!(donnees.contenus.length || donnees.ignores?.length))),
+  );
+  $effect(() => {
+    vide = contenusLus && !contenusVisibles && (plateforme !== 'Nintendo Switch' || etatMods === 'vide');
   });
 
   const choisis = $derived(donnees?.contenus.filter((c) => coches.includes(c.id)) ?? []);
@@ -287,9 +313,12 @@
       <p class="muted">{PHRASE_CHOIX}</p>
       {#if dlcEnPartieEden(donnees.systeme, donnees.contenus)}<p class="muted">{REMARQUE_EDEN}</p>{/if}
       {#if bloque}<p class="muted">{motifInterrupteursBloques(attenteEmulateurSeul())}</p>{/if}
-      <ul>
+      <ul class="grille">
         {#each donnees.contenus as c (c.id)}
           <li>
+            <!-- Panneau étroit : le nom prend la place, l'interrupteur à droite, le détail dessous sur toute la largeur
+                 (capture de Seb, 18/11 : « Fire Emblem Three Houses » coupé sur 3 lignes à côté de l'interrupteur). -->
+            <span class="nom">{nomCourt(c.nom, titre)}</span>
             {#if c.cle}
               <!-- Un interrupteur : son texte dit l'état (jamais la couleur seule). -->
               <!-- Celui qui s'enregistre garde le focus (aria-disabled) ; les AUTRES sont désactivés pendant ce temps. -->
@@ -307,10 +336,10 @@
                 <span id={`etat-${c.cle}`}>{texteInterrupteur(c, donnees.systeme, donnees.contenus)}</span>
               </button>
             {:else}
-              <span title={raisonNonPose(c)}>—</span>
+              <!-- Pas d'interrupteur : la raison est écrite dans le détail, dessous (jamais un title seul). -->
+              <span aria-hidden="true">—</span>
             {/if}
-            <span class="nom">{nomCourt(c.nom, titre)}</span>
-            <span class="muted">{libelleGenre(c.genre)} · {taille(c.taille)}{c.raison ? ` · ${raisonNonPose(c)}` : ''}</span>
+            <span class="muted detail">{libelleGenre(c.genre)} · {taille(c.taille)}{c.raison ? ` · ${raisonNonPose(c)}` : ''}</span>
           </li>
         {/each}
       </ul>
@@ -363,6 +392,7 @@
     {/if}
   </div>
 {/if}
+{#if plateforme === 'Nintendo Switch'}<BlocMods {id} {titre} {deplie} bind:etatBloc={etatMods} />{/if}
 
 <style>
   .contenus {
@@ -386,6 +416,16 @@
   }
   .nom {
     flex: 1;
+    overflow-wrap: anywhere;
+  }
+  /* Switch, panneau étroit (~300 u utiles) : nom | interrupteur, puis le détail sur toute la largeur. */
+  .grille li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: calc(2 * var(--u)) calc(8 * var(--u));
+  }
+  .grille .detail {
+    grid-column: 1 / -1;
   }
   .choix {
     display: flex;
