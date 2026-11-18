@@ -505,6 +505,36 @@ Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a 
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
 sont pas redirigées (une indication « fusionné dans N » serait un ajout 1.14 — à demander à Seb si gênant).
 
+### 1.44 (18/11, Firehouse 3.234.0, en service) — les MODS SWITCH servis par Firehouse (besoin 53)
+Reçu par message de la session Firehouse (18/11) ; forme complète dans son `docs/frogtend/BRIEF-AGENT-FROGTEND.md`
+§ « 1.44 ». Exemple RÉEL BotW à venir, quand Seb aura validé les mods à l'écran (la validation vaut accord de
+téléchargement chez Firehouse). Décisions de Seb : un admin valide chaque mod UNE fois ; ensuite servi à TOUS (mineurs
+compris), mises à jour suivies sans nouvelle validation.
+1. `GET /api/jeux/v1/switch/{tid_base}/mods` → `{ok, tid_base, version_servie: {version, version_affichee, build_id} |
+   null, mods: [...]}`. Seuls les mods VALIDÉS, pour tout membre. 400 tid mauvais ; 404 si une fiche de ce jeu est
+   cachée pour ce jeton. Par mod :
+   - identité : `cle` (stable, « <source>-<12 hex> »), `nom`, `revision` (monte quand le contenu change),
+     `description`, `auteur` ;
+   - origine : `source` (page épinglée au commit), `licence` (« aucune » possible), `valide_le` ;
+   - `versions` : `[{build_id, version_brute, version_affichee}]` OU la chaîne `"toutes"` (romfs seul) ;
+     `version_brute`/`version_affichee` remplies quand la signature est celle de la MAJ servie ; `versions_annoncees` =
+     ce que dit la source ;
+   - `compatible` : `true | false | null` + `raison` — false = GRISÉ ; null = inconnu, ne PAS griser ;
+   - `emulateurs_essayes []`, `reglage_requis ""`, `conflits [clés]`, `touche_sauvegardes true|false|null`,
+     `contenu {exefs, romfs, cheats}` ;
+   - `fichier {url, taille, sha256}`.
+2. `GET|HEAD /api/jeux/v1/switch/mods/{cle}/archive` : ZIP NON compressé, racine = UN dossier de mod (`exefs/`,
+   `romfs/`, `cheats/`), `Range` → 206, `ETag` = sha256.
+3. Compatibilité jugée par Firehouse sur les signatures RÉELLES lues par NSTool dans la MAJ servie (`ModuleId` de main,
+   rtld, sdk, subsdk*) ; `build_id` rendus en 32 hex quand la fin n'est que des zéros.
+Relevé réel annoncé, BotW : `version_servie = {version: 786432, version_affichee: "1.6.0", build_id:
+"8E9978D50BDD20B4C8395A106C27FFDE"}`. Mods trouvés, EN ATTENTE de validation : Wollnashorn (1080p, Anisotropic Fix,
+Disable FXAA), masagrator (ZeldaHighRes-1.6.0, ZeldaBOTW_TripleBuffer), yuzu-mod-archive (Clean UI). PAS de 60 i/s
+pour BotW 1.6.0 (liens theboy181 morts ; jeu accéléré à 60 i/s sans correctif d'après ses issues).
+`emulateurs_essayes` vide tant que personne n'a essayé : Firehouse attend nos retours d'essai (Ryubing, Eden).
+⚠ Côté Frogtend : la compatibilité est jugée sur la MAJ SERVIE ; la MAJ réellement utilisée sur le PC peut différer
+(interrupteur éteint, MAJ locale plus récente) → Frogtend juge aussi d'après la MAJ qu'il pose.
+
 ### 1.43 (17/11, Firehouse 3.226.0, en service) — un fichier REFUSÉ n'est jamais renvoyé (besoin 52)
 Reçu par message de la session Firehouse (17/11), recopié tel quel :
 🚫 1.43 (17/11) — besoin 52 : un fichier REFUSÉ n'est jamais renvoyé (ajout compatible ; feu vert de Seb) — `POST /switch/envois` peut désormais répondre `{"ok": true, "deja_la": false, "refuse": true, "motif": "…"}` (HTTP 200) : CE fichier (même sha256, quel que soit l'envoyeur) a déjà été refusé pour une raison qui tient au fichier lui-même — ticket personnel, contenu ou jeu différent de l'annonce, plusieurs méta-contenus, conteneur illisible. Rien n'est créé, rien n'est à envoyer : dis le `motif` à l'utilisateur. Une raison passagère (abandon après 7 jours, empreinte d'un transfert raté, problème de clés chez Firehouse) ne compte pas : le POST crée alors un nouvel envoi, comme avant. Ordre des réponses du POST : `deja_la: true` d'abord, puis `refuse: true`, puis l'envoi.
