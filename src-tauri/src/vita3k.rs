@@ -556,7 +556,7 @@ fn liste_yaml(texte: &str, cle: &str) -> Vec<i64> {
 
 /// Remplace la ligne de premier niveau `cle:` de ce texte YAML par `ligne` (ajoutée à la fin si elle manque), en
 /// gardant les fins de ligne du fichier.
-fn remplacer_ligne(t: &str, cle: &str, ligne: &str) -> String {
+pub(crate) fn remplacer_ligne(t: &str, cle: &str, ligne: &str) -> String {
     let debut = format!("{cle}:");
     if t.lines().any(|l| l.starts_with(debut.as_str())) {
         let fin = if t.contains("\r\n") { "\r\n" } else { "\n" };
@@ -567,6 +567,15 @@ fn remplacer_ligne(t: &str, cle: &str, ligne: &str) -> String {
         r
     } else {
         let fin = if t.contains("\r\n") { "\r\n" } else { "\n" };
+        // Vita3K finit son fichier par la marque de fin de document `...` (YAML::EndDoc, config.cpp `serialize_config`)
+        // et ne lit que le premier document (`YAML::Load`) : une clé ajoutée APRÈS serait ignorée. Elle va donc avant.
+        let mut debut = 0;
+        for l in t.split_inclusive('\n') {
+            if l.trim_end_matches(['\r', '\n']) == "..." {
+                return format!("{}{ligne}{fin}{}", &t[..debut], &t[debut..]);
+            }
+            debut += l.len();
+        }
         format!("{t}{}{ligne}{fin}", if t.is_empty() || t.ends_with('\n') { "" } else { fin })
     }
 }

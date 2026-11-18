@@ -52,6 +52,9 @@ const examiner = vi.fn(async (..._a: unknown[]) => structuredClone(examen));
 const accepter = vi.fn(async (..._a: unknown[]) => 2);
 const suivre = vi.fn(async (..._a: unknown[]) => structuredClone(suiviReponse));
 const annuler = vi.fn(async (..._a: unknown[]) => 1);
+// Contrat 1.47 : les noms français (d'office : rien de connu).
+let nomsReponse: object = { par_cle: {}, par_id: {} };
+const noms = vi.fn(async (..._a: unknown[]) => structuredClone(nomsReponse));
 vi.mock('$lib/api', () => ({
   taille: (o: number) => `${o} o`,
   duree: (s: number) => `${s} s`,
@@ -64,6 +67,7 @@ vi.mock('$lib/api', () => ({
     envoisSwitchAccepter: (...a: unknown[]) => accepter(...a),
     envoisSwitchSuivi: (...a: unknown[]) => suivre(...a),
     envoisSwitchAnnuler: (...a: unknown[]) => annuler(...a),
+    contenusSwitchNoms: (...a: unknown[]) => noms(...a),
     // Les mods Switch (BlocMods, inclus pour un jeu Switch) : un mod posé.
     modsSwitchLister: async () => ({
       etat: 'ok', vue_le: null, tid_base: '01007EF00011E000', version_servie: null, version_connue: true, remarque: null,
@@ -115,6 +119,9 @@ async function ouvrir() {
 
 beforeEach(() => {
   reponse = EDEN;
+  nomsReponse = { par_cle: {}, par_id: {} };
+  noms.mockReset();
+  noms.mockImplementation(async () => structuredClone(nomsReponse));
   examen = RIEN;
   suiviReponse = RIEN.suivi;
   profil.envoisFirehouse.auto = false;
@@ -550,5 +557,49 @@ describe('l’envoi à Firehouse des contenus qu’il n’a pas', () => {
     render(BlocContenus, { id: 7, titre: 'Asura' });
     await screen.findByRole('button', { name: /Contenus additionnels/ });
     expect(examiner).not.toHaveBeenCalled();
+  });
+});
+
+describe('les noms français des DLC et mises à jour Switch (contrat 1.47)', () => {
+  it('le nom français remplace celui du fichier : ligne, interrupteur et fenêtre « Éteindre »', async () => {
+    nomsReponse = {
+      par_cle: { maj: 'Mise à jour 1.2.0', 'dlc:01007EF00011F001': 'Nouvelles tenues' },
+      par_id: { 'E:\\Zelda vieille.nsp': 'Mise à jour (version 65536)' },
+    };
+    await ouvrir();
+    await vi.waitFor(() => expect(screen.getByRole('switch', { name: 'Nouvelles tenues' })).toBeTruthy());
+    expect(noms).toHaveBeenCalledWith(7);
+    expect(screen.getByRole('switch', { name: 'Mise à jour 1.2.0' })).toBeTruthy();
+    expect(screen.getByText('Mise à jour (version 65536)')).toBeTruthy();
+    // Inconnu de Firehouse : le nom du fichier, comme avant.
+    expect(screen.getByRole('switch', { name: 'DLC Pack 2' })).toBeTruthy();
+    await fireEvent.click(screen.getByRole('switch', { name: 'Nouvelles tenues' }));
+    await vi.waitFor(() => expect(confirmer).toHaveBeenCalled());
+    expect(confirmer.mock.calls[0][0]).toBe('Éteindre « Nouvelles tenues » ?');
+  });
+
+  it('le panneau s’affiche d’abord avec les noms des fichiers ; sans réponse, ils restent', async () => {
+    let finir: (v: object) => void = () => {};
+    noms.mockImplementation(() => new Promise((r) => (finir = r)));
+    await ouvrir();
+    expect(screen.getByRole('switch', { name: 'DLC Pack 1' })).toBeTruthy();
+    finir({ par_cle: { 'dlc:01007EF00011F001': 'Nouvelles tenues' }, par_id: {} });
+    await vi.waitFor(() => expect(screen.getByRole('switch', { name: 'Nouvelles tenues' })).toBeTruthy());
+    cleanup();
+    noms.mockImplementation(async () => {
+      throw { sorte: 'reseau', motif: 'injoignable' };
+    });
+    await ouvrir();
+    await tick();
+    expect(screen.getByRole('switch', { name: 'DLC Pack 1' })).toBeTruthy();
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it('PS3 : jamais demandés', async () => {
+    reponse = PS3;
+    render(BlocContenus, { id: 7, titre: 'Asura' });
+    await screen.findByRole('button', { name: /Contenus additionnels/ });
+    await tick();
+    expect(noms).not.toHaveBeenCalled();
   });
 });

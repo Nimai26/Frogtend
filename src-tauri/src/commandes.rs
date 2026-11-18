@@ -1632,6 +1632,26 @@ pub async fn contenus_du_jeu(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -
 // à l'ouverture du panneau 📦, en tâche de fond (jamais dans le lancement) ; envoyé après l'accord chiffré de la personne
 // sur la liste qu'elle a vue (ou tout seul si elle l'a choisi), un fichier à la fois, en pause pendant une partie. ---
 
+/// Contrat 1.47 : les noms FRANÇAIS des mises à jour et DLC Switch d'un jeu (`nom_fr` de Firehouse, sinon son nom
+/// d'origine), par clé d'interrupteur (« maj », « dlc:… ») et par fichier (`id` du contenu). Lu en tâche de fond par le
+/// panneau 📦 (il s'affiche d'abord avec les noms des fichiers) ; hors ligne, la dernière correspondance reçue par CE
+/// profil. Rien de connu : des listes vides (l'interface garde les noms des fichiers).
+#[tauri::command]
+pub async fn contenus_switch_noms(app: AppHandle, noyau: State<'_, Noyau>, id: i64) -> Resultat<crate::noms_switch::NomsContenus> {
+    profil_ouvert(&noyau).await?;
+    let Some((c, _)) = contenus_switch_lus(&app, &noyau, id).await else { return Ok(Default::default()) };
+    let s = noyau.session().await?;
+    let s2 = s.clone();
+    // Gardé par la session, sous son verrou : jamais ce qu'un ancien jeton a reçu.
+    let garder = move |f: &std::path::Path, o: &[u8]| s2.garder_fichier(f, o).map(|_| ());
+    let connus = crate::noms_switch::lire(&s.source, &s.dossier, c.base, &garder).await?;
+    // Le profil a changé pendant la lecture (le cache hors ligne était celui de l'ANCIEN profil) : rien n'est rendu.
+    if s.est_perimee() {
+        return Err(Erreur::Perimee("Le profil a changé pendant la lecture des noms : rien n'est montré.".into()));
+    }
+    Ok(crate::noms_switch::noms(&connus, &c))
+}
+
 /// Les mises à jour et DLC Switch d'un jeu lus dans leurs en-têtes, et la clé qui les a lus (celle de l'émulateur
 /// réglé : Ryubing de la personne, ou Eden) — la même lecture que le panneau (le cache évite de tout relire). `None` :
 /// pas un jeu Switch, pas d'émulateur utilisable, pas de clés ou jeu illisible.
@@ -2596,11 +2616,22 @@ pub async fn jeu_jouer(
                 } else {
                     None
                 };
-                let r = tauri::async_runtime::spawn_blocking(move || crate::images_par_seconde::au_lancement_de_la_partie(&ide, std::path::Path::new(&d), &profil, fps, ps3.as_deref()))
-                    .await
-                    .map_err(|_| Erreur::Disque("La préparation du compteur d'images s'est arrêtée brutalement.".into()))?;
+                let ligne_fps = ligne_c.clone();
+                let r = tauri::async_runtime::spawn_blocking(move || {
+                    crate::images_par_seconde::au_lancement_de_la_partie(&ide, std::path::Path::new(&d), &profil, fps, ps3.as_deref(), &ligne_fps)
+                })
+                .await
+                .map_err(|_| Erreur::Disque("La préparation du compteur d'images s'est arrêtée brutalement.".into()))?;
                 if let Some(m) = &r.erreur {
                     noyau.journaliser(&format!("images par seconde du jeu {id} : non posées ({m})"));
+                }
+                if let Some(m) = &r.raison {
+                    noyau.journaliser(&format!("images par seconde du jeu {id} : {m}"));
+                }
+                // Dolphin : le choix sur la ligne de commande (`-C …`, jamais enregistré par lui), devant le reste.
+                if !r.arguments.is_empty() {
+                    let a: Vec<String> = r.arguments.iter().map(|a| format!("\"{a}\"")).collect();
+                    ligne_c = format!("{} {ligne_c}", a.join(" "));
                 }
                 etat_fps = r;
             }

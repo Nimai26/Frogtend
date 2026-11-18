@@ -48,6 +48,7 @@ pub mod partie;
 pub mod pilotage;
 pub mod mods;
 pub mod mods_switch;
+pub mod noms_switch;
 pub mod nexus;
 pub mod nuage_steam;
 pub mod sept_z;
@@ -663,6 +664,7 @@ pub fn run() {
             commandes::mods_switch_suivi,
             commandes::mods_switch_choisir,
             commandes::mods_switch_retirer,
+            commandes::contenus_switch_noms,
             commandes::contenus_installer,
             commandes::archive_du_jeu,
             commandes::decompresser_jeu,

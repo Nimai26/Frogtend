@@ -1,5 +1,17 @@
 # Notes de version de Frogtend
 
+## 0.210.0 — 📊 Les images par seconde pour plus d'émulateurs, les DLC en français
+
+- Nouveau : « Compteur de fluidité » dans le menu en jeu (bouton Xbox) aussi pour DuckStation, PCSX2, Dolphin, PPSSPP,
+  Cemu et Vita3K. Ton choix vaut pour tous tes jeux, à partir de la partie suivante (aucun de ces émulateurs ne sait le
+  changer pendant le jeu). Impossible chez Ryubing, Azahar, xemu, Xenia, mGBA, DOSBox et BigPEmu : leur compteur n'existe
+  pas dans l'image du jeu (barre d'état cachée en plein écran, titre de fenêtre…) ; la couche de performances de la
+  carte graphique (NVIDIA : Alt+R) marche partout.
+- Nouveau : les mises à jour et DLC Switch portent leur nom FRANÇAIS officiel (« Nouvelles tenues », « Quêtes
+  additionnelles », « Mise à jour 1.2.0 »…), donné par Firehouse ; sinon leur nom d'origine.
+- Ryubing : la fenêtre noire de la console ne s'ouvre plus au lancement d'un jeu (cachée une fois pour chaque personne ;
+  rallumée dans Ryubing, elle reste rallumée).
+
 ## 0.209.0 — 🧩 Les fiches des mods Switch, et des noms de DLC lisibles
 
 - Nouveau : chaque mod Switch montre sa description en français, sa sorte (amélioration technique, contenu, apparence,

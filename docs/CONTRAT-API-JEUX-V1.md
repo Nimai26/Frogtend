@@ -505,6 +505,19 @@ Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a 
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
 sont pas redirigées (une indication « fusionné dans N » serait un ajout 1.14 — à demander à Seb si gênant).
 
+### 1.47 (18/11, Firehouse 3.242.0, en service) — les NOMS FRANÇAIS des DLC et MAJ Switch (besoin 54)
+Reçu par message de la session Firehouse ; détail : son BRIEF § « 1.47 » et EXEMPLES (réponse réelle Fire Emblem).
+`GET /switch/{tid_base}/contenus` gagne :
+- `connus` : TOUS les DLC et MAJ connus du jeu, servis ou non (titledb, eShop français) : `{tid, type: dlc|maj, nom_fr
+  (officiel ; null s'il n'existe pas), nom (langue d'origine), version (MAJ : brute ; DLC : 0), version_affichee (MAJ lue
+  par Firehouse), publiee_le (MAJ)}`. Une MAJ : `nom_fr` « Mise à jour 1.2.0 » (version affichée connue) sinon « Mise à
+  jour (version N) ». `connus` VIDE si une fiche du jeu est cachée à ce jeton.
+- `nom_fr` et `titre` (nom d'origine) sur chaque contenu SERVI de `majs[]` et `dlc[]`.
+Réel, Fire Emblem Three Houses (010055d009f78000) : 9001 « Histoire additionnelle - Ombres embrasées » (Side Story:
+Cindered Shadows) ; 9002 « Nouvelles tenues » ; 9003 « Nouvelles escarmouches » ; 9004 « Quêtes additionnelles » ; 9005
+« Nouveaux objets » ; 9006 « Uniforme de l'Académie des officiers (Byleth) » ; MAJ servie 010055d009f78800 v327680 :
+« Mise à jour 1.2.0 ». Couverture : 31 018 titres, 29 200 avec un nom français ; titledb relu tous les 30 jours.
+
 ### 1.46 (18/11, Firehouse 3.239.0, en service) — la fiche de chaque mod Switch, écrite par l'IA
 Reçu par message de la session Firehouse (18/11) ; forme complète : son BRIEF-AGENT-FROGTEND.md § « 1.46 ». Par mod :
 `description` (français ; priorité admin > IA > source ; sans texte, l'IA le dit), `type` technique | contenu |

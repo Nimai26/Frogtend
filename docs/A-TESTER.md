@@ -6,6 +6,12 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 📊 Compteur d'images, DLC en français, console de Ryubing (0.210.0)
+- [ ] Zelda avec Ryubing : plus de fenêtre noire de console au lancement.
+- [ ] Fire Emblem ▸ 📦 : « Histoire additionnelle - Ombres embrasées », « Nouvelles tenues »… et « Mise à jour 1.2.0 ».
+- [ ] Un jeu PS1 (DuckStation) ou PS2 (PCSX2) : bouton Xbox ▸ « Compteur de fluidité » ▸ l'afficher ; quitter puis
+      relancer : le compteur est à l'écran ; le cacher de même.
+
 ## 🧩 Fiches des mods, confidentialité, noms des DLC (0.209.0)
 - [x] (✅ Seb 18/11 ; noms en français demandés à Firehouse, besoin 54) Fire Emblem ▸ 📦 : les DLC s'appellent « Additional Quests », « New Attire »… ; la mise à jour « Version 1.2.0 » ;
       plus de message « dossiers trop profonds ».

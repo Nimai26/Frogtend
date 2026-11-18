@@ -93,3 +93,16 @@ describe('les contenus additionnels', () => {
     expect(cochesCoherentes(l, ['dlc'], 'dlc')).toEqual(['dlc']);
   });
 });
+
+describe('le nom montré (contrat 1.47)', () => {
+  it('le nom français s’il est connu (par fichier, puis par clé), sinon le nom du fichier', async () => {
+    const { nomMontre } = await import('./contenus');
+    const c = { id: 'D:/FE/FE [Outfits][010055D009F79002].nsp', nom: 'Fire Emblem Three Houses [Outfits][010055D009F79002]', cle: 'dlc:010055D009F79002' };
+    const fe = 'Fire Emblem: Three Houses';
+    expect(nomMontre(c, fe, { par_cle: { 'dlc:010055D009F79002': 'Nouvelles tenues' }, par_id: {} })).toBe('Nouvelles tenues');
+    expect(nomMontre(c, fe, { par_cle: { 'dlc:010055D009F79002': 'X' }, par_id: { [c.id]: 'Par fichier' } })).toBe('Par fichier');
+    expect(nomMontre(c, fe, { par_cle: { 'dlc:010055D009F79002': '  ' }, par_id: {} })).toBe('Outfits');
+    expect(nomMontre(c, fe, null)).toBe('Outfits');
+    expect(nomMontre({ ...c, cle: null }, fe, { par_cle: { 'dlc:010055D009F79002': 'Nouvelles tenues' }, par_id: {} })).toBe('Outfits');
+  });
+});

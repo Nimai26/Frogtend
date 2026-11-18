@@ -31,6 +31,7 @@
     libelleGenre,
     lignesRemarque,
     nomCourt,
+    nomMontre,
     raisonNonPose,
     REMARQUE_EDEN,
     resume,
@@ -38,6 +39,7 @@
     texteInterrupteur,
     type ContenusDuJeu,
     type ContenuVu,
+    type NomsContenus,
   } from './contenus';
   import BlocMods from './BlocMods.svelte';
 
@@ -62,13 +64,27 @@
   let envois = $state<ExamenEnvois | null>(null);
   let suivi = $state<SuiviEnvois | null>(null);
   let accordEnCours = $state(false);
+  // Contrat 1.47 : les noms français des DLC et MAJ Switch, lus en tâche de fond (le panneau s'affiche d'abord avec
+  // les noms des fichiers).
+  let noms = $state<NomsContenus | null>(null);
 
   async function charger(jeu: number) {
     donnees = await api.contenusDuJeu(jeu).catch(() => null);
     if (jeu === id) contenusLus = true;
     coches = [];
-    if (jeu === id && emulateurAutomatique(donnees?.systeme)) examinerEnvois(jeu);
+    if (jeu === id && emulateurAutomatique(donnees?.systeme)) {
+      examinerEnvois(jeu);
+      lireNoms(jeu);
+    }
   }
+
+  async function lireNoms(jeu: number) {
+    const n = await api.contenusSwitchNoms(jeu).catch(() => null);
+    if (n && jeu === id) noms = n;
+  }
+
+  /** Le nom montré : le nom français de Firehouse s'il est connu, sinon celui du fichier. */
+  const nomDe = (c: ContenuVu) => nomMontre(c, titre, noms);
 
   /** En tâche de fond : le panneau est déjà affiché, la réponse de Firehouse vient ensuite (ou jamais, hors ligne). */
   async function examinerEnvois(jeu: number) {
@@ -165,6 +181,7 @@
     ouvert = deplie;
     envois = null;
     suivi = null;
+    noms = null;
     charger(jeu);
   });
 
@@ -206,7 +223,7 @@
     const actif = !c.actif;
     try {
       if (!actif) {
-        const oui = await confirmer(`Éteindre « ${nomCourt(c.nom, titre)} » ?`, {
+        const oui = await confirmer(`Éteindre « ${nomDe(c)} » ?`, {
           message: [
             'Le jeu peut parfois refuser une partie faite avec ce contenu.',
             'Frogtend met tes parties de ce jeu à l’abri avant la prochaine partie.',
@@ -318,7 +335,7 @@
           <li>
             <!-- Panneau étroit : le nom prend la place, l'interrupteur à droite, le détail dessous sur toute la largeur
                  (capture de Seb, 18/11 : « Fire Emblem Three Houses » coupé sur 3 lignes à côté de l'interrupteur). -->
-            <span class="nom">{nomCourt(c.nom, titre)}</span>
+            <span class="nom">{nomDe(c)}</span>
             {#if c.cle}
               <!-- Un interrupteur : son texte dit l'état (jamais la couleur seule). -->
               <!-- Celui qui s'enregistre garde le focus (aria-disabled) ; les AUTRES sont désactivés pendant ce temps. -->
@@ -326,7 +343,7 @@
                 class="btn petit"
                 role="switch"
                 aria-checked={!!c.actif}
-                aria-label={nomCourt(c.nom, titre)}
+                aria-label={nomDe(c)}
                 aria-describedby={`etat-${c.cle}`}
                 aria-disabled={bloque || basculement !== null}
                 disabled={bloque || (basculement !== null && basculement !== c.cle)}

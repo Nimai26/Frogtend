@@ -133,6 +133,20 @@ export function libelleGenre(g: string): string {
   return GENRES[g] ?? 'Contenu';
 }
 
+/** Contrat 1.47 : les noms FRANÇAIS des DLC et mises à jour Switch (Firehouse), par clé d'interrupteur (« maj »,
+ * « dlc:… ») et par fichier (`id` du contenu). */
+export interface NomsContenus {
+  par_cle: Record<string, string>;
+  par_id: Record<string, string>;
+}
+
+/** Le nom montré d'un contenu : le nom français de Firehouse (ou son nom d'origine) s'il est connu, sinon le nom tiré du
+ * fichier (`nomCourt`). */
+export function nomMontre(c: Pick<ContenuVu, 'id' | 'nom' | 'cle'>, titreDuJeu: string, noms: NomsContenus | null | undefined): string {
+  const connu = noms?.par_id[c.id] ?? (c.cle ? noms?.par_cle[c.cle] : undefined);
+  return connu?.trim() ? connu.trim() : nomCourt(c.nom, titreDuJeu);
+}
+
 /** Le nom affiché : sans le titre du jeu répété ni les étiquettes de région. */
 export function nomCourt(nomComplet: string, titreDuJeu: string): string {
   // L'extension d'un fichier Switch ne dit rien à la personne.

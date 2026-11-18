@@ -1519,9 +1519,17 @@ mod tests {
         let rpcs3 = PartieEnCours { fps: Some(false), fps_au_lancement: true, ..partie(Some("rpcs3")) };
         assert_eq!(etat(&rpcs3).fps, Some(FpsMenu { affiche: Some(false), en_direct: false }));
         assert!(!etat(&rpcs3).actions.contains(&"fps"));
-        // Un jeu PC, Cemu : pas d'entrée.
+        // DuckStation, PCSX2, Dolphin, PPSSPP, Cemu, Vita3K (18/11) : au prochain lancement, jamais une touche (même avec
+        // les raccourcis de Frogtend en place : leur « ToggleOSD » n'a pas de touche d'origine).
+        for e in ["duckstation", "pcsx2", "dolphin", "ppsspp", "cemu", "vita3k"] {
+            let p = PartieEnCours { fps: Some(true), fps_au_lancement: true, raccourcis_clavier: true, ..partie(Some(e)) };
+            assert_eq!(etat(&p).fps, Some(FpsMenu { affiche: Some(true), en_direct: false }), "{e}");
+            assert!(!etat(&p).actions.contains(&"fps"), "{e}");
+        }
+        // Un jeu PC, un émulateur pas réglable ou pas portable (le lancement n'a rien posé) : pas d'entrée.
         assert_eq!(etat(&partie(None)).fps, None);
         assert_eq!(etat(&partie(Some("cemu"))).fps, None);
+        assert_eq!(etat(&partie(Some("ryubing"))).fps, None);
         // La bascule : l'état connu s'inverse ; un choix pour la prochaine partie est pris tel quel.
         let m = MenuJeu::default();
         m.commencer(ra);

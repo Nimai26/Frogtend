@@ -1025,6 +1025,8 @@ export const api = {
   /** Switch (✅ Seb 17/11) : allume ou éteint un contenu (`cle` : « maj » ou l'identifiant d'un DLC) pour toute la
    * maison. Rend vrai si un contenu utilisé vient d'être éteint (parties mises à l'abri avant la prochaine partie). */
   contenusSwitchChoisir: (idJeu: number, cle: string, actif: boolean) => appeler<boolean>('contenus_switch_choisir', { idJeu, cle, actif }),
+  /** Contrat 1.47 : les noms français des DLC et MAJ Switch (en tâche de fond ; hors ligne, le cache du profil). */
+  contenusSwitchNoms: (id: number) => appeler<import('$lib/contenus/contenus').NomsContenus>('contenus_switch_noms', { id }),
   /** Lot 7 (✅ Seb 17/11) : ce que Firehouse n'a pas parmi les mises à jour et DLC Switch de ce jeu (à l'ouverture du
    * panneau 📦, en tâche de fond) ; l'accord de la personne ; où en sont les envois (rien n'est demandé à Firehouse). */
   envoisSwitchExaminer: (id: number) => appeler<import('$lib/contenus/envois').ExamenEnvois>('envois_switch_examiner', { id }),

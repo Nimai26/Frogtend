@@ -353,6 +353,8 @@ pub struct ReglageConfig {
     pub manette_inconnue: bool,
     /// L'avance rapide a été liée à F13 (lot 5, une seule fois).
     pub turbo: bool,
+    /// La fenêtre de la console a été cachée (`show_console`).
+    pub console: bool,
     /// Sa vitesse (`tick_scalar`) était à 0 : mise à 200 (`poser_vitesse_turbo`).
     pub vitesse: bool,
 }
@@ -431,6 +433,12 @@ pub fn regler_config(ryubing: &Path, racine: &Path, joueur1: Joueur1) -> Resulta
         r.turbo = poser_turbo(&mut v);
     }
     r.vitesse = poser_vitesse_turbo(&mut v);
+    // La fenêtre noire de la console (journal) cachée, une fois par personne (Seb 18/11 : « c'est moche quand on lance
+    // un jeu et ça peut faire peur à ceux qui n'y connaissent rien ») ; rallumée ensuite par la personne : gardée.
+    if !racine.join(MARQUE_CONSOLE).exists() && v["show_console"] != Value::Bool(false) {
+        v["show_console"] = Value::Bool(false);
+        r.console = true;
+    }
     // Le joueur 1 : la manette branchée (seulement celle déjà relevée), sinon le clavier d'origine remis à la place de
     // la manette que FROGTEND avait posée — jamais une manette réglée par la personne.
     let voulue = match joueur1 {
@@ -465,7 +473,7 @@ pub fn regler_config(ryubing: &Path, racine: &Path, joueur1: Joueur1) -> Resulta
 /// Écrit le Config.json réglé s'il a changé (à l'abri avant, relu après, celui d'avant remis s'il ne se relit pas),
 /// puis les marques.
 fn ecrire_si_change(ryubing: &Path, racine: &Path, f: &Path, avant: &str, v: Value, r: ReglageConfig, manette: Option<&str>) -> Resultat<ReglageConfig> {
-    if r.regle || r.manette || r.clavier || r.turbo || r.vitesse {
+    if r.regle || r.manette || r.clavier || r.turbo || r.vitesse || r.console {
         ecrire_verifie(ryubing, f, avant, &v)?;
         if r.regle {
             std::fs::write(racine.join(MARQUE_REGLAGES), b"")?;
@@ -480,6 +488,10 @@ fn ecrire_si_change(ryubing: &Path, racine: &Path, f: &Path, avant: &str, v: Val
     // Le turbo a été décidé (posé, ou laissé au choix de la personne) : plus jamais revu.
     if !racine.join(MARQUE_TURBO).exists() {
         std::fs::write(racine.join(MARQUE_TURBO), b"")?;
+    }
+    // La console : décidée une fois (cachée, ou déjà cachée par la personne), plus jamais revue.
+    if !racine.join(MARQUE_CONSOLE).exists() {
+        std::fs::write(racine.join(MARQUE_CONSOLE), b"")?;
     }
     Ok(r)
 }
@@ -938,6 +950,8 @@ pub fn preparer_partie(ryubing: &Path, racine: &Path, joueur1: Joueur1) -> Resul
 pub const TOUCHE_TURBO: &str = "F13";
 /// « L'avance rapide a été décidée pour cette personne » (posée, ou laissée à son choix).
 const MARQUE_TURBO: &str = ".frogtend-ryubing-turbo";
+/// « La fenêtre de la console a été cachée pour cette personne » (dans sa racine).
+const MARQUE_CONSOLE: &str = ".frogtend-ryubing-console";
 
 /// Les actions du menu par les raccourcis de Ryubing : (action, clé de `hotkeys`, touche attendue).
 pub const RACCOURCIS_MENU: &[(crate::pilotage::Action, &str, &str)] = &[
@@ -1977,7 +1991,7 @@ mod tests {
         let (ryu, racine) = ryubing_installe(d.path());
         assert!(config_valide(MODELE_CONFIG), "le modèle relevé est lisible par Ryubing");
         let r = regler_config(&ryu, &racine, Joueur1::Rien).unwrap();
-        assert_eq!(r, ReglageConfig { pose: true, regle: true, turbo: true, vitesse: true, ..Default::default() });
+        assert_eq!(r, ReglageConfig { pose: true, regle: true, turbo: true, vitesse: true, console: true, ..Default::default() });
         let v = lire_config(&racine);
         // Complet : chaque champ du modèle est là (jamais un fichier minimal).
         let modele: Value = serde_json::from_str(MODELE_CONFIG).unwrap();
@@ -1989,12 +2003,15 @@ mod tests {
             assert_eq!(v[cle], attendu, "{cle}");
         }
         assert_eq!(v["start_fullscreen"], false, "le plein écran vient de `-f`, jamais du fichier");
+        assert_eq!(v["show_console"], false, "la fenêtre de la console est cachée (Seb 18/11)");
         assert_eq!(v["input_config"][0]["backend"], "WindowKeyboard", "sans manette branchée : le clavier reste");
         assert!(racine.join(MARQUE_REGLAGES).exists());
         // La personne choisit l'allemand et la question de sortie : jamais défait ensuite.
         let mut perso = v.clone();
         perso["system_language"] = "German".into();
         perso["show_confirm_exit"] = true.into();
+        // … et rallume la console : gardée.
+        perso["show_console"] = true.into();
         std::fs::write(config_de(&racine), serde_json::to_string_pretty(&perso).unwrap()).unwrap();
         assert_eq!(regler_config(&ryu, &racine, Joueur1::Rien).unwrap(), ReglageConfig::default());
         assert_eq!(lire_config(&racine), perso);
@@ -2003,6 +2020,26 @@ mod tests {
         assert!(regler_config(&ryu, &lea, Joueur1::Rien).unwrap().regle);
         assert_eq!(lire_config(&lea)["system_language"], "French");
         assert_eq!(lire_config(&racine)["system_language"], "German");
+    }
+
+    #[test]
+    fn la_console_est_cachee_une_fois_meme_pour_une_personne_deja_reglee() {
+        // Seb (18/11) : ceux qui étaient déjà réglés avant reçoivent la console cachée une fois, puis leur choix compte.
+        let d = tempfile::tempdir().unwrap();
+        let (ryu, racine) = ryubing_installe(d.path());
+        regler_config(&ryu, &racine, Joueur1::Rien).unwrap();
+        let mut v = lire_config(&racine);
+        v["show_console"] = true.into();
+        std::fs::write(config_de(&racine), serde_json::to_string_pretty(&v).unwrap()).unwrap();
+        std::fs::remove_file(racine.join(MARQUE_CONSOLE)).unwrap();
+        assert!(regler_config(&ryu, &racine, Joueur1::Rien).unwrap().console);
+        assert_eq!(lire_config(&racine)["show_console"], false);
+        // Rallumée ensuite par la personne : plus jamais touchée.
+        let mut v = lire_config(&racine);
+        v["show_console"] = true.into();
+        std::fs::write(config_de(&racine), serde_json::to_string_pretty(&v).unwrap()).unwrap();
+        assert!(!regler_config(&ryu, &racine, Joueur1::Rien).unwrap().console);
+        assert_eq!(lire_config(&racine)["show_console"], true);
     }
 
     #[test]
