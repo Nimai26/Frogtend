@@ -734,7 +734,12 @@ format non documenté → tolérant) et Ubisoft par son cache `configurations` ;
 (fenêtre, jeton au coffre, jamais de mot de passe dans Frogtend) pour Steam (remplace la clé d'API) puis GOG ; **Lot D** :
 même connexion pour Amazon, Xbox, Battle.net — ✅ Seb 18/11 (choix 2 : « oui bien sûr ») : Frogtend PEUT se présenter
 comme le lanceur officiel (identifiant client du lanceur, API non publiques, comme Playnite) ; **Lot E** : EA plus tard
-(fichier `IS` illisible ; GOG Galaxy reste le secours). L'import par Galaxy et la clé Steam restent possibles.
+(fichier `IS` illisible ; GOG Galaxy reste le secours). L'import par Galaxy et la clé Steam restent possibles. ✅ Seb 18/11 (après la relecture du lot B) : (1) les jeux POSSÉDÉS lus sur ce PC (compte Epic/Ubisoft connecté sur
+Windows) n'entrent dans un profil qu'après SON ACCORD, demandé UNE fois (« Ajouter les N jeux du compte Epic connecté sur ce
+PC à ta ludothèque ? » ; non = jamais pour lui, changeable dans les Options) — les jeux INSTALLÉS restent pour tous ; (2) un
+jeu possédé qui disparaît du catalogue (changement de compte…) est TOUJOURS GARDÉ, « pas installé » ; (3) Taodbox MONTRE
+aussi les jeux possédés pas installés, et l'installation se LANCE depuis le canapé (par le lanceur de la boutique ; sa
+fenêtre de confirmation peut demander la souris : le dire au moment du lancement).
 
 ### Prochains lots (décisions de Seb, 02/10)
 
