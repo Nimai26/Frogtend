@@ -7,8 +7,10 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## 📤 Envoi des mises à jour et DLC Switch à Firehouse (0.207.0) — PREMIER ENVOI RÉEL, à faire ensemble
-- [ ] Un jeu Switch dont Firehouse n'a pas un contenu (ex. Fire Emblem Three Houses : mise à jour + 6 DLC rangés à
-      côté du jeu) ▸ panneau 📦 : la ligne « 📤 Firehouse n'a pas N contenus de ce jeu (X) » et « Les envoyer… ».
+- [x] (✅ Seb 18/11) Fire Emblem et Zelda : AUCUNE ligne 📤, et c'est juste — leur mise à jour et leurs DLC font partie
+      de la version servie par Firehouse (il les a déjà ; ce qui vient de Firehouse ne repart jamais).
+- [ ] Un jeu Switch dont Firehouse n'a pas un contenu (une mise à jour ou un DLC que TU as posé à côté du jeu, absent
+      de Firehouse) ▸ panneau 📦 : la ligne « 📤 Firehouse n'a pas N contenus de ce jeu (X) » et « Les envoyer… ».
       (Relever la réponse RÉELLE de la route 1 pour la doc : elle n'a pas encore de relevé.)
 - [ ] « Les envoyer… » : la fenêtre annonce le nombre, le poids et la durée ; choisir « Les envoyer ».
 - [ ] Pendant l'envoi : fichier, %, débit, temps restant ; lancer un jeu → « ⏸ En pause pendant la partie », puis
