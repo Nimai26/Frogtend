@@ -1,6 +1,6 @@
 [package]
 name = "frogtend"
-version = "0.211.1"
+version = "0.212.0"
 description = "Frogtend — la ludothèque de la maison, servie par Firehouse"
 authors = ["Nimai"]
 license = "Apache-2.0"
@@ -46,6 +46,8 @@ nod = "1.4"
 flate2 = "1"
 tauri-plugin-global-shortcut = "2"
 yaml-rust2 = "0.13.0"
+# Réduire les jaquettes des boutiques à la largeur affichée avant de les garder (lot B : 500 jeux Epic).
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 # Lire l'en-tête des NCA de la Switch (AES-128-XTS, switch_nca.rs) : déjà dans l'arbre des dépendances (par `nod`),
 # rien de plus à télécharger.
 aes = "0.8"

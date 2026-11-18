@@ -3,7 +3,7 @@
   // seuls dans la ludothèque de CE profil, relus à chaque ouverture (coché d'office, comme `gratuits.auto`).
   import { onMount } from 'svelte';
   import { etat, reglerProfil } from '$lib/etat.svelte';
-  import { boutiquesPc, lireEtatsPc } from '$lib/boutiques/boutiques-pc.svelte';
+  import { boutiquesPc, choisirPossedes, lireEtatsPc } from '$lib/boutiques/boutiques-pc.svelte';
   import { ligneEtat } from '$lib/boutiques/jeu-boutique';
 
   onMount(lireEtatsPc);
@@ -17,6 +17,14 @@
   <p class="muted">
     À chaque ouverture de ton profil, Frogtend regarde les jeux installés sur ce PC par Steam, Epic, GOG, Ubisoft Connect, Amazon Games,
     Xbox et Battle.net, et les range dans ta ludothèque. Sans compte à relier ni clé à donner. Jouer et Installer passent par le lanceur de la boutique.
+  </p>
+  <label class="auto">
+    <input type="checkbox" checked={etat.profil.boutiquesPc.possedes === 'oui'} disabled={boutiquesPc.enCours} onchange={(e) => choisirPossedes(e.currentTarget.checked)} />
+    Ajouter aussi les jeux de mes comptes (pas installés)
+  </label>
+  <p class="muted">
+    Les jeux du compte Epic Games ou Ubisoft Connect ouvert sur ce PC, même pas installés, prêts à être installés avec ⬇ Installer. Décoché : ceux
+    que tu n’as jamais installés ni joués quittent ta ludothèque.
   </p>
   <ul>
     {#each boutiquesPc.etats as e (e.boutique)}<li>{ligneEtat(e)}</li>{/each}

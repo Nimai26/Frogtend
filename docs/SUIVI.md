@@ -29,7 +29,7 @@
     sauvegardée ; (2) la place : archive 19,6 + rangé 19,6 + copie Eden 19,6 + une copie Ryubing PAR personne 19,6 Go
     (disques différents : pas de lien dur) → à annoncer dans l'accord, et la durée de la première copie au lancement ;
     (3) vérifier la chaîne sur 19,6 Go (zip64, empreinte, extraction en flux, reprise). Ne PAS proposer l'essai avant.
-    Découpage accepté (lots A à E, détail dans PLAN.md « IMPORT AUTOMATIQUE ») ; EN COURS : lot A. Essai de la
+    Découpage accepté (lots A à E, détail dans PLAN.md « IMPORT AUTOMATIQUE ») ; lot A LIVRÉ (0.211.0/0.211.1, validé : TerraScape, Minecraft) ; lot B LIVRÉ en 0.212.0 (à essayer) ; ENSUITE lot C (connexion officielle Steam puis GOG). Essai de la
     récupération Epic (Knightica, offert jusqu'au 19/11) proposé à Seb.
 - **✅ Seb 30/10 soir : « Oui go ! » — enchaîner en autonomie, une version par point, avis des experts avant chacun** :
   (1) FAIT en 0.149.0 (relevé des sources RPCS3 ; relecture lancement : B1 disque plein → jeu relancé du début ⇒ place

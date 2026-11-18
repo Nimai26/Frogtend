@@ -9,8 +9,10 @@
   import { creditImage, imageEntete } from '$lib/ludotheque/systemes';
   import { etat, sortirDuProfil } from '$lib/etat.svelte';
   import { gererLaCarte, installer, jouerLaCarte, lancementImpossible, partie } from '$lib/ludotheque/jeu.svelte';
-  import { cartesBoutiqueTaodbox, groupeDe, originesJeuPc, unParGroupe, type CarteBoutiqueTaodbox } from '$lib/boutiques/copies';
-  import { boutiqueDesinstallee, estBattlenet, MESSAGE_BATTLENET } from '$lib/boutiques/jeu-boutique';
+  import { cartesAInstallerTaodbox, cartesBoutiqueTaodbox, groupeDe, originesJeuPc, unParGroupe, type CarteAInstallerTaodbox, type CarteBoutiqueTaodbox } from '$lib/boutiques/copies';
+  import { boutiqueSansInstallation, estBattlenet, imageCarteAInstaller, messageInstallationCanape, MESSAGE_BATTLENET } from '$lib/boutiques/jeu-boutique';
+  import { motifDuRefus } from '$lib/dialogues/messages';
+  import type { JeuResume } from '$lib/api';
   import IconesBoutiques from '$lib/boutiques/IconesBoutiques.svelte';
   import Jaquette from '$lib/ludotheque/Jaquette.svelte';
   import { jeuSurPc, rechargerJeuxDuPc, tele } from '$lib/ludotheque/telechargements.svelte';
@@ -38,8 +40,9 @@
     unParGroupe(
       Object.values(tele.jeux)
         .filter((j: JeuPc) => j.etat === 'telecharge')
-        // Un jeu de boutique désinstallé hors de Frogtend (ligne gardée pour son temps de jeu) : pas au canapé.
-        .filter((j: JeuPc) => !boutiqueDesinstallee(j))
+        // Un jeu de boutique sans installation (ligne gardée pour son temps de jeu) : jamais une carte jouable ; sa carte
+        // « à installer » vient de la ludothèque (`aInstaller`, lot B).
+        .filter((j: JeuPc) => !boutiqueSansInstallation(j))
         // Un jeu, une carte (contrat 1.21) : un import relié ne compte qu'une fois par fiche (le même que la ludothèque).
         .filter((j: JeuPc) => !(j.id < 0 && j.fiche) || jeuSurPc(j.fiche)?.id === j.id)
         .sort((a, b) => (b.derniere_partie ?? '').localeCompare(a.derniere_partie ?? '') || a.titre.localeCompare(b.titre)),
@@ -54,6 +57,24 @@
   const cartesBoutique = $derived(
     console_ === null || console_ === 'Windows' ? cartesBoutiqueTaodbox(steam.jeux, galaxy.jeux, Object.values(tele.jeux)) : [],
   );
+  /** Lot B (✅ Seb 18/11) : les jeux des boutiques PAS installés (possédés, ou désinstallés), avec leur pastille
+   * « à installer » ; A ouvre l'installation par le lanceur de la boutique, jamais une partie. Sous « Tout » et
+   * « Windows ». */
+  let cartesLudotheque = $state<JeuResume[]>([]);
+  const aInstaller = $derived(
+    console_ === null || console_ === 'Windows' ? cartesAInstallerTaodbox(cartesLudotheque, Object.values(tele.jeux)) : [],
+  );
+  /** Les cartes pas installées de la ludothèque (1 000 par page). */
+  async function lireAInstaller() {
+    const l: JeuResume[] = [];
+    for (let decalage = 0; decalage < 20_000; decalage += 1000) {
+      const page = await api.lister({ ludotheque: true, installe: false, limite: 1000, decalage }).catch(() => null);
+      if (!page) return;
+      l.push(...page.jeux);
+      if (page.jeux.length < 1000) break;
+    }
+    cartesLudotheque = l;
+  }
 
 
   // Le fond et le logo du jeu choisi (lot Médias, M3, règle dans `$lib/taodbox/fond`) : une seule image de chaque à la
@@ -144,9 +165,22 @@
     else await ouvrirDansGalaxy({ id: c.cle, nom: c.nom } as JeuBoutique);
   }
 
+  /** A sur une carte « à installer » : la fenêtre d'installation de la boutique s'ouvre (le même moyen qu'au bureau).
+   * Le jeu devient jouable à la relecture suivante des boutiques (ouverture du profil). */
+  async function installerParLaBoutique(c: CarteAInstallerTaodbox) {
+    if (lancementImpossible()) return;
+    toast(messageInstallationCanape(c.boutique), 'neutre');
+    try {
+      await api.boutiqueOuvrir(c.boutique, c.cle, 'installer');
+    } catch (e) {
+      toast(motifDuRefus(e), 'erreur');
+    }
+  }
+
   onMount(async () => {
     // Les jeux Steam installés deviennent des jeux du PC à la lecture : la grille est relue ensuite.
     lireSteam().then(rechargerJeuxDuPc);
+    lireAInstaller();
     lireGalaxy();
     // Les noms courts des consoles (« Mega Drive »), lus dans le cache du profil (hors ligne aussi).
     chargerNomsCourts();
@@ -319,7 +353,7 @@
     </div>
   {/if}
 
-  {#if affiches.length === 0 && cartesBoutique.length === 0}
+  {#if affiches.length === 0 && cartesBoutique.length === 0 && aInstaller.length === 0}
     <p class="vide">Aucun jeu sur ce PC pour l’instant. Ajoute-en depuis le bureau (Catalogue Firehouse).</p>
   {:else}
     <div class="grille">
@@ -343,6 +377,19 @@
           <span class="image-steam">
             {#if c.par === 'steam'}<img src={adresseImageBoutique('steam', c.cle.slice('steam_'.length))} alt="" loading="lazy" />
             {:else if c.image}<img src={adresseImageParUrl(c.image)} alt="" loading="lazy" />{/if}
+          </span>
+          <span class="titre">{c.nom}</span>
+          <IconesBoutiques grand origines={[c.boutique]} />
+          <span class="etat"></span>
+        </button>
+      {/each}
+      <!-- Lot B : les jeux à installer, APRÈS les jeux jouables ; A ouvre l'installation, jamais une partie. -->
+      {#each aInstaller as c (c.cle)}
+        <button class="carte a-installer" data-id={c.id} onclick={() => installerParLaBoutique(c)} disabled={partie.enJeu !== null} title={c.nom}>
+          <span class="image-steam">
+            <!-- La jaquette RÉDUITE par le cœur (400 px, gardée réduite) : jamais l'original de la boutique. -->
+            {#if imageCarteAInstaller(c)}<img src={imageCarteAInstaller(c)} alt="" loading="lazy" onerror={(e) => ((e.currentTarget as HTMLElement).hidden = true)} />{/if}
+            <span class="pastille-installer">⬇ À installer</span>
           </span>
           <span class="titre">{c.nom}</span>
           <IconesBoutiques grand origines={[c.boutique]} />
@@ -538,6 +585,24 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+  /* Lot B : la pastille « à installer », bien visible sur la jaquette (couleurs du skin seulement). */
+  .a-installer .image-steam {
+    position: relative;
+  }
+  .a-installer img {
+    opacity: 0.75;
+  }
+  .pastille-installer {
+    position: absolute;
+    inset-inline: calc(8 * var(--u));
+    bottom: calc(8 * var(--u));
+    padding: calc(6 * var(--u)) calc(10 * var(--u));
+    border-radius: calc(6 * var(--u));
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: 700;
+    text-align: center;
   }
   .vide {
     color: var(--dim);

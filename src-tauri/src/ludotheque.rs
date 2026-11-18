@@ -169,6 +169,17 @@ fn rang_boutique(b: &str) -> u8 {
 /// Réunit les copies d'un même jeu (A6c) : `jeux` = les jeux de boutique de la ludothèque, rendus avec leurs champs de
 /// réunion recalculés (seuls les groupes d'au moins deux copies sont touchés). Galaxy fait foi pour « même jeu » (jamais
 /// le titre : Seb, 21/10).
+/// Une carte telle qu'avant toute réunion des copies (ses valeurs propres remises) : pour comparer deux rangements.
+pub(crate) fn sans_reunion(mut j: JeuResume) -> JeuResume {
+    if let Some((installe, minutes)) = j.propre.take() {
+        j.installe = installe;
+        j.minutes = minutes;
+    }
+    j.copies = None;
+    j.maitre = None;
+    j
+}
+
 pub fn regrouper(mut jeux: Vec<JeuResume>) -> Vec<JeuResume> {
     // Les valeurs propres d'abord (une réunion précédente est défaite).
     for j in &mut jeux {
@@ -684,8 +695,23 @@ impl Cache {
         Ok(l)
     }
 
-    /// Remplace les jeux d'une source de boutique (`steam`, `galaxy`) dans la ludothèque.
+    /// Remplace les jeux d'une source de boutique (`steam`, `galaxy`) dans la ludothèque, puis réunit les copies.
     pub fn remplacer_boutique(&mut self, source: &str, jeux: &[JeuResume]) -> Resultat<usize> {
+        self.remplacer_boutique_sans_reunir(source, jeux)?;
+        self.reunir_copies()?;
+        Ok(jeux.len())
+    }
+
+    /// Remplace les cartes d'une source SANS réunir les copies (la relecture des boutiques les réunit UNE fois, à la
+    /// fin). Rien n'est écrit si les cartes sont les mêmes qu'avant (une relecture sans nouveauté ne coûte qu'une
+    /// lecture). Rend `true` si quelque chose a été écrit.
+    pub fn remplacer_boutique_sans_reunir(&mut self, source: &str, jeux: &[JeuResume]) -> Resultat<bool> {
+        let comparable = |j: JeuResume| serde_json::to_value(sans_reunion(j)).unwrap_or_default();
+        let avant: BTreeMap<i64, serde_json::Value> = self.jeux_de_source(source)?.into_iter().map(|j| (j.id, comparable(j))).collect();
+        let apres: BTreeMap<i64, serde_json::Value> = jeux.iter().filter(|j| j.id < 0).map(|j| (j.id, comparable(j.clone()))).collect();
+        if avant == apres {
+            return Ok(false);
+        }
         let tx = self.db.transaction()?;
         tx.execute("DELETE FROM jeux WHERE id < 0 AND json_extract(brut, '$.source') = ?1", [source])?;
         {
@@ -705,20 +731,33 @@ impl Cache {
                 ])?;
             }
         }
-        // A6c : les copies d'un même jeu (toutes sources de boutique confondues) sont réunies de nouveau.
+        tx.commit()?;
+        Ok(true)
+    }
+
+    /// A6c : les copies d'un même jeu (toutes sources de boutique confondues) sont réunies de nouveau. Seules les cartes
+    /// qui changent sont réécrites. Rend leur nombre.
+    pub fn reunir_copies(&mut self) -> Resultat<usize> {
+        let tx = self.db.transaction()?;
+        let mut ecrites = 0;
         {
-            let tous: Vec<JeuResume> = tx
+            let lues: Vec<(String, JeuResume)> = tx
                 .prepare("SELECT brut FROM jeux WHERE id < 0 AND json_extract(brut, '$.source') IN ('steam', 'galaxy', 'epic', 'gog', 'uplay', 'amazon', 'xboxone', 'battlenet')")?
                 .query_map([], |r| r.get::<_, String>(0))?
-                .filter_map(|b| b.ok().and_then(|b| serde_json::from_str(&b).ok()))
+                .filter_map(|b| b.ok().and_then(|b| serde_json::from_str::<JeuResume>(&b).ok().map(|j| (b, j))))
                 .collect();
+            let avant: BTreeMap<i64, String> = lues.iter().map(|(b, j)| (j.id, b.clone())).collect();
             let mut maj = tx.prepare("UPDATE jeux SET brut = ?2 WHERE id = ?1")?;
-            for j in regrouper(tous) {
-                maj.execute(params![j.id, serde_json::to_string(&j).unwrap()])?;
+            for j in regrouper(lues.into_iter().map(|(_, j)| j).collect()) {
+                let brut = serde_json::to_string(&j).unwrap();
+                if avant.get(&j.id) != Some(&brut) {
+                    maj.execute(params![j.id, brut])?;
+                    ecrites += 1;
+                }
             }
         }
         tx.commit()?;
-        Ok(jeux.len())
+        Ok(ecrites)
     }
 
     /// Ajoute (ou met à jour) des jeux importés du disque (`source` = « local », id négatif), sans toucher aux autres.
@@ -745,6 +784,32 @@ impl Cache {
         Ok(jeux.len())
     }
 
+    /// Le nombre de lignes écrites depuis l'ouverture (tests : « une relecture sans nouveauté n'écrit rien »).
+    #[cfg(test)]
+    pub fn total_changements(&self) -> u64 {
+        self.db.total_changes()
+    }
+
+    /// Retire des cartes de jeux POSSÉDÉS (Epic, Ubisoft) de la ludothèque seulement. Revérifié AU MOMENT de supprimer :
+    /// la source, « pas installé », sans temps de jeu, non réunie (une carte qui a changé entre-temps reste). Rend le
+    /// nombre retiré.
+    pub fn retirer_possedes_non_installes(&mut self, ids: &[i64]) -> Resultat<usize> {
+        let tx = self.db.transaction()?;
+        let mut n = 0;
+        {
+            let mut st = tx.prepare(
+                "DELETE FROM jeux WHERE id = ?1 AND id < 0 AND json_extract(brut, '$.source') IN ('epic', 'uplay')
+                 AND COALESCE(json_extract(brut, '$.installe'), 0) = 0 AND COALESCE(json_extract(brut, '$.minutes'), 0) = 0
+                 AND json_extract(brut, '$.copies') IS NULL AND json_extract(brut, '$.maitre') IS NULL",
+            )?;
+            for id in ids {
+                n += st.execute([id])?;
+            }
+        }
+        tx.commit()?;
+        Ok(n)
+    }
+
     /// Retire une ligne de jeu importé (id négatif) : la ludothèque seulement, jamais le disque.
     pub fn retirer_local(&self, id: i64) -> Resultat<()> {
         self.db.execute("DELETE FROM jeux WHERE id = ?1 AND id < 0 AND json_extract(brut, '$.source') = 'local'", [id])?;
@@ -765,10 +830,15 @@ impl Cache {
             for mut j in lignes {
                 let oui = Some(installes.contains(&j.id));
                 // Une carte réunie garde sa valeur propre à part (`regrouper` la reprend).
-                match j.propre.as_mut() {
-                    Some(p) => p.0 = oui,
-                    None => j.installe = oui,
+                let actuel = match j.propre.as_mut() {
+                    Some(p) => &mut p.0,
+                    None => &mut j.installe,
+                };
+                // Rien n'est réécrit si l'état n'a pas changé (une relecture sans nouveauté n'écrit rien).
+                if *actuel == oui {
+                    continue;
                 }
+                *actuel = oui;
                 maj.execute(params![j.id, serde_json::to_string(&j).unwrap()])?;
             }
         }

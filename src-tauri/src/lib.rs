@@ -696,6 +696,7 @@ pub fn run() {
             commandes::boutique_steam_importer,
             commandes::boutique_steam_ouvrir,
             commandes::boutiques_relire_pc,
+            commandes::boutiques_retirer_possedes,
             commandes::boutiques_etat_pc,
             commandes::boutique_ouvrir,
             commandes::triche_installer,

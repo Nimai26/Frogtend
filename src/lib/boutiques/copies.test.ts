@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cartesBoutiqueTaodbox, venantDe, groupeDe, libelleCopie, nomOrigine, originesCarte, originesJeuPc, unParGroupe } from './copies';
+import { cartesAInstallerTaodbox, cartesBoutiqueTaodbox, venantDe, groupeDe, libelleCopie, nomOrigine, originesCarte, originesJeuPc, unParGroupe } from './copies';
 
 describe('Un jeu sur plusieurs boutiques = une carte (A6c)', () => {
   const groupes = [[-1, -2], [-5, -6, -7]];
@@ -50,5 +50,28 @@ describe('la pastille d’origine', () => {
     expect(venantDe(['Ubisoft'])).toBe('Vient d’Ubisoft');
     expect(venantDe(['Steam', 'Epic'])).toBe('Vient de Steam et d’Epic');
     expect(venantDe(['Amazon', 'GOG'])).toBe('Vient d’Amazon et de GOG');
+  });
+});
+
+describe('Taodbox : les jeux à installer (lot B, ✅ Seb 18/11)', () => {
+  const carte = (id: number, titre: string, boutique: string, cle: string, installe: boolean, source = boutique) => ({ id, titre, source, boutique, cle_boutique: cle, installe, image: null });
+  it('montre les jeux des comptes pas installés, jamais un installé, un jeu du PC, Steam, Galaxy ni Battle.net', () => {
+    const l = cartesAInstallerTaodbox(
+      [
+        carte(-1, 'Borderlands 3', 'epic', 'epic_Catnip', false),
+        carte(-2, 'TerraScape', 'epic', 'epic_6ef1', true),
+        carte(-3, 'Assassin’s Creed III', 'uplay', 'uplay_54', false),
+        carte(-4, 'Far Cry 3', 'uplay', 'uplay_46', false),
+        carte(-5, 'Portal 2', 'steam', '620', false),
+        carte(-6, 'Cyberpunk 2077', 'gog', 'gog_1423049311', false, 'galaxy'),
+        carte(-7, 'World of Warcraft', 'battlenet', 'battlenet_wow', false),
+        carte(110, 'Dune', 'epic', 'epic_x', false),
+        carte(-1, 'Borderlands 3', 'epic', 'epic_Catnip', false),
+      ],
+      // Far Cry 3 est déjà un jeu du PC (ligne gardée) : pas de deuxième carte.
+      [{ installation: { boutique: { source: 'uplay', cle: '46' } } }, { installation: null }],
+    );
+    expect(l.map((c) => c.cle)).toEqual(['uplay_54', 'epic_Catnip']);
+    expect(l[1]).toEqual({ id: -1, cle: 'epic_Catnip', nom: 'Borderlands 3', boutique: 'epic', image: null });
   });
 });

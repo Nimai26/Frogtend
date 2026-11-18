@@ -147,8 +147,10 @@ export interface ReglagesProfil {
     connectes: { epic: boolean; gog: boolean; prime: boolean; psplus: boolean };
   };
   /** L'import automatique (lot A, ✅ Seb 18/11) : les jeux INSTALLÉS des boutiques de ce PC entrent seuls dans la
-   * ludothèque, relus à chaque ouverture du profil (coché d'office ; ⚙ Options ▸ Comptes). */
-  boutiquesPc: { auto: boolean };
+   * ludothèque, relus à chaque ouverture du profil (coché d'office ; ⚙ Options ▸ Comptes). `possedes` (lot B, ✅ Seb
+   * 18/11) : les jeux POSSÉDÉS des comptes ouverts sur ce PC n'entrent qu'avec l'accord du profil, demandé une fois :
+   * `''` jamais demandé, `'oui'`, `'non'`. */
+  boutiquesPc: { auto: boolean; possedes: '' | 'oui' | 'non' };
   /** Les commandes choisies jeu par jeu (identifiant du jeu → choix). Absent : automatique. */
   commandes: Record<string, CommandesJeu>;
   /** Les jeux PC figés pendant le menu en jeu (identifiants ; Seb, 05/10 : option par jeu, désactivée d'office). */
@@ -207,7 +209,7 @@ export const DEFAUTS_PROFIL: ReglagesProfil = {
     fondsTaodbox: true,
   },
   gratuits: { auto: false, derniere: 0, psplus: false, psplusDernier: 0, gog: false, gogDernier: 0, prime: false, primeDernier: 0, connectes: { epic: false, gog: false, prime: false, psplus: false } },
-  boutiquesPc: { auto: true },
+  boutiquesPc: { auto: true, possedes: '' },
   commandes: {},
   figer: [],
   pleinEcran: {},

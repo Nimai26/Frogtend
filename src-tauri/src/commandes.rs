@@ -5914,14 +5914,31 @@ pub struct EtatBoutiquePc {
     /// Ses jeux installés ont pu être lus.
     pub lu: bool,
     pub installes: usize,
+    /// Ses jeux POSSÉDÉS (installés compris), lus sans connexion (lot B) ; `None` : boutique sans cette lecture, ou
+    /// cache absent ou illisible.
+    pub possedes: Option<usize>,
 }
 
 /// Ce que la relecture du PC a donné : l'état de chaque boutique et les jeux NOUVEAUX dans la ludothèque du profil.
 #[derive(Serialize, Clone, Debug, Default)]
 pub struct ReleveBoutiques {
     pub boutiques: Vec<EtatBoutiquePc>,
-    /// (boutique, nombre de jeux nouveaux), seulement les boutiques qui en ont.
-    pub nouveaux: Vec<(String, usize)>,
+    /// (boutique, nombre de jeux nouveaux, dont installés), seulement les boutiques qui en ont.
+    pub nouveaux: Vec<(String, usize, usize)>,
+}
+
+/// Lit sur CE PC les jeux installés ET possédés des boutiques demandées (lecture seule ; `travail` : copies de bases,
+/// effacées ensuite), et la présence de leurs lanceurs.
+fn lire_pc_complet(boutiques: &[&'static str], travail: &std::path::Path) -> Vec<(&'static str, Option<Vec<crate::boutiques::JeuBoutique>>, Option<Vec<crate::boutiques::JeuBoutique>>, bool)> {
+    let l = crate::boutiques_pc::lire_seulement(boutiques, travail);
+    let _ = std::fs::remove_dir_all(travail);
+    let mut possedes = crate::boutiques_pc::lire_possedes(boutiques);
+    l.into_iter()
+        .map(|(b, i)| {
+            let p = possedes.iter_mut().find(|(x, _)| *x == b).and_then(|(_, p)| p.take());
+            (b, i, p, crate::boutiques_pc::lanceur_present(b))
+        })
+        .collect()
 }
 
 /// Une seule relecture à la fois (deux profils ouverts coup sur coup, un import Galaxy pendant le démarrage…).
@@ -5929,54 +5946,85 @@ static RELECTURE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 /// Lit les boutiques demandées sur CE PC (en tâche de fond), fait la partie « registre du PC » UNE fois, puis range
 /// les cartes du profil ouvert. Un lanceur absent ou illisible ne touche à rien (jamais « zéro jeu »).
-pub(crate) async fn relire_pc(noyau: &Noyau, seulement: &[&str]) -> Resultat<ReleveBoutiques> {
+/// `possedes` : le profil a ACCEPTÉ que les jeux possédés des comptes ouverts sur ce PC entrent chez lui (✅ Seb 18/11 :
+/// demandé une fois par profil) ; sinon seuls les jeux installés sont rangés (les possédés sont seulement comptés).
+pub(crate) async fn relire_pc(noyau: &Noyau, seulement: &[&str], possedes: bool) -> Resultat<ReleveBoutiques> {
     let _un_seul = RELECTURE.lock().await;
     // La session AU DÉBUT : un profil changé pendant la lecture ne reçoit rien (ses cartes, ni la liste Steam d'un autre).
     let s = noyau.session().await?;
     let travail = noyau.dossier.join("travail").join("boutiques-pc");
     let boutiques: Vec<&'static str> = crate::boutiques_pc::BOUTIQUES_PC.iter().copied().filter(|b| seulement.contains(b)).collect();
-    let (lecture, lanceurs) = tauri::async_runtime::spawn_blocking(move || {
-        let l = crate::boutiques_pc::lire_seulement(&boutiques, &travail);
-        let _ = std::fs::remove_dir_all(&travail);
-        let lanceurs: Vec<bool> = l.iter().map(|(b, _)| crate::boutiques_pc::lanceur_present(b)).collect();
-        (l, lanceurs)
-    })
-    .await
-    .map_err(|_| Erreur::Disque("La lecture des boutiques de ce PC s'est arrêtée brutalement.".into()))?;
+    let lecture = tauri::async_runtime::spawn_blocking(move || lire_pc_complet(&boutiques, &travail))
+        .await
+        .map_err(|_| Erreur::Disque("La lecture des boutiques de ce PC s'est arrêtée brutalement.".into()))?;
+    let accepte = possedes;
     let mut r = ReleveBoutiques::default();
-    for ((b, l), lanceur) in lecture.into_iter().zip(lanceurs) {
-        let mut etat = EtatBoutiquePc { boutique: b.into(), nom: crate::boutiques_pc::nom_boutique(b).into(), lanceur, lu: l.is_some(), installes: 0 };
+    for (b, l, possedes, lanceur) in lecture {
+        let mut etat =
+            EtatBoutiquePc { boutique: b.into(), nom: crate::boutiques_pc::nom_boutique(b).into(), lanceur, lu: l.is_some(), installes: 0, possedes: possedes.as_ref().map(Vec::len) };
         let Some(installes) = l else {
+            // Jeux installés illisibles : rien ne bouge (même les possédés : leur état serait faux).
             r.boutiques.push(etat);
             continue;
         };
         etat.installes = installes.len();
         synchroniser_registre(noyau, b, &installes);
-        // Steam : la liste du compte du profil (s'il est relié) garde ses jeux pas installés.
+        // Steam : la liste du compte du profil (s'il est relié) garde ses jeux pas installés ; Epic et Ubisoft : leurs
+        // jeux possédés (lot B), une seule carte pour un jeu installé ET possédé.
         let cartes = if b == "steam" {
             crate::boutiques_pc::fusion_steam(crate::boutiques::lire(&dossier_profil_de(noyau, &s.profil.id)).map(|c| c.jeux).unwrap_or_default(), &installes)
         } else {
-            installes
+            cartes_pc(installes, possedes, accepte)
         };
-        match noyau.ranger_installes(&s, b, &cartes) {
-            Ok(n) if !n.is_empty() => r.nouveaux.push((b.into(), n.len())),
+        match noyau.ranger_installes_sans_reunir(&s, b, &cartes) {
+            Ok(n) if !n.is_empty() => r.nouveaux.push((b.into(), n.len(), nouveaux_installes(b, &cartes, &n))),
             Ok(_) => {}
             Err(e) => noyau.journaliser(&format!("ludothèque {} : {e:?}", crate::boutiques_pc::nom_boutique(b))),
         }
         r.boutiques.push(etat);
     }
-    let total: usize = r.nouveaux.iter().map(|(_, n)| n).sum();
+    // Les copies d'un même jeu réunies UNE fois, pour toutes les boutiques (seules les cartes qui changent s'écrivent).
+    if let Err(e) = noyau.reunir_copies(&s) {
+        noyau.journaliser(&format!("ludothèque : réunion des copies impossible ({e:?})"));
+    }
+    let total: usize = r.nouveaux.iter().map(|(_, n, _)| n).sum();
     if total > 0 {
         noyau.journaliser(&format!("import automatique : {total} jeu(x) nouveau(x) pour le profil {} ({:?})", s.profil.id, r.nouveaux));
     }
     Ok(r)
 }
 
+/// Parmi les cartes NOUVELLES (`nouveaux`, leurs ids), combien sont des jeux installés (le toast : « Epic 497 dont 1
+/// installé »).
+/// Les cartes d'une boutique (sauf Steam) : ses jeux installés, plus ses jeux possédés SI le profil l'a accepté.
+pub(crate) fn cartes_pc(installes: Vec<crate::boutiques::JeuBoutique>, possedes: Option<Vec<crate::boutiques::JeuBoutique>>, accepte: bool) -> Vec<crate::boutiques::JeuBoutique> {
+    crate::boutiques_pc::fusion_possedes(Some(installes), possedes.filter(|_| accepte)).unwrap_or_default()
+}
+
+pub(crate) fn nouveaux_installes(boutique: &str, cartes: &[crate::boutiques::JeuBoutique], nouveaux: &[i64]) -> usize {
+    let installes: std::collections::BTreeSet<i64> = cartes.iter().filter(|j| j.installe).map(|j| crate::noyau::id_carte(boutique, j)).collect();
+    nouveaux.iter().filter(|id| installes.contains(id)).count()
+}
+
 /// Import automatique (lot A, Seb 18/11) : à l'ouverture d'un profil, les jeux INSTALLÉS de toutes les boutiques de
 /// ce PC entrent seuls dans sa ludothèque. Appelé sans attendre par l'interface (jamais un ralentissement).
 #[tauri::command]
-pub async fn boutiques_relire_pc(noyau: State<'_, Noyau>) -> Resultat<ReleveBoutiques> {
-    relire_pc(&noyau, &crate::boutiques_pc::BOUTIQUES_PC).await
+/// `possedes` : le profil a accepté ses jeux possédés (lot B) ; absent : non.
+pub async fn boutiques_relire_pc(noyau: State<'_, Noyau>, possedes: Option<bool>) -> Resultat<ReleveBoutiques> {
+    relire_pc(&noyau, &crate::boutiques_pc::BOUTIQUES_PC, possedes.unwrap_or(false)).await
+}
+
+/// Le profil REFUSE ses jeux possédés (✅ Seb 18/11) : ses cartes possédées sont retirées, seulement celles qui ne sont
+/// pas installées, sans temps de jeu et sans ligne au registre du PC (jamais une carte jouée). Rend leur nombre.
+#[tauri::command]
+pub async fn boutiques_retirer_possedes(noyau: State<'_, Noyau>) -> Resultat<usize> {
+    let _un_seul = RELECTURE.lock().await;
+    let s = noyau.session().await?;
+    let n = noyau.retirer_possedes(&s, &crate::boutiques_pc::BOUTIQUES_POSSEDES)?;
+    if n > 0 {
+        noyau.journaliser(&format!("jeux possédés refusés : {n} carte(s) retirée(s) pour le profil {}", s.profil.id));
+    }
+    Ok(n)
 }
 
 /// L'état des boutiques de ce PC (lecture seule, rien n'est rangé) : la page 🛒 Boutiques.
@@ -5986,15 +6034,15 @@ pub async fn boutiques_etat_pc(noyau: State<'_, Noyau>) -> Resultat<Vec<EtatBout
     let _un_seul = RELECTURE.lock().await;
     let travail = noyau.dossier.join("travail").join("boutiques-etat");
     tauri::async_runtime::spawn_blocking(move || {
-        let l = crate::boutiques_pc::lire_tout(&travail);
-        let _ = std::fs::remove_dir_all(&travail);
-        l.into_iter()
-            .map(|(b, l)| EtatBoutiquePc {
+        lire_pc_complet(&crate::boutiques_pc::BOUTIQUES_PC, &travail)
+            .into_iter()
+            .map(|(b, l, p, lanceur)| EtatBoutiquePc {
                 boutique: b.into(),
                 nom: crate::boutiques_pc::nom_boutique(b).into(),
-                lanceur: crate::boutiques_pc::lanceur_present(b),
+                lanceur,
                 lu: l.is_some(),
                 installes: l.map_or(0, |l| l.len()),
+                possedes: p.map(|p| p.len()),
             })
             .collect()
     })
@@ -6574,7 +6622,7 @@ pub async fn boutique_galaxy_jeux(noyau: State<'_, Noyau>) -> Resultat<Vec<crate
 /// Les jeux Epic installés sur CE PC (lot A : la relecture commune) : après un import de GOG Galaxy, ses cartes Epic
 /// suivent de nouveau l'état lu chez Epic.
 async fn synchroniser_epic(noyau: &Noyau) {
-    if let Err(e) = relire_pc(noyau, &["epic"]).await {
+    if let Err(e) = relire_pc(noyau, &["epic"], false).await {
         noyau.journaliser(&format!("jeux Epic du PC : {e:?}"));
     }
 }

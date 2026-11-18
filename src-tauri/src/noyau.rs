@@ -1225,26 +1225,78 @@ impl Noyau {
     pub async fn ranger_boutique(&self, source: &str, jeux: &[crate::boutiques::JeuBoutique]) -> Resultat<usize> {
         let s = self.session().await?;
         let mut c = s.verrou_vivant()?;
-        ranger_dans(&mut c, source, jeux)
+        ranger_dans(&mut c, source, jeux, true)
     }
 
     /// Import automatique (lot A, Seb 18/11) : range les jeux INSTALLÉS d'une boutique, lus sur ce PC, dans la
-    /// ludothèque du profil ouvert. Une carte déjà là dont le jeu n'est plus installé RESTE, « pas installé » (jamais
-    /// retirée : son temps de jeu est gardé). Tout se fait sous UN verrou du cache. Rend les ids des cartes NOUVELLES
-    /// (absentes de la ludothèque avant), pour le toast.
+    /// ludothèque du profil ouvert, et ses jeux POSSÉDÉS pas installés (lot B : Epic, Ubisoft ; `installe: false`).
+    /// Une carte déjà là dont le jeu n'est plus installé RESTE, « pas installé » (jamais retirée : son temps de jeu est
+    /// gardé). Tout se fait sous UN verrou du cache. Rend les ids des cartes NOUVELLES (absentes de la ludothèque
+    /// avant, installées ou non), pour le toast.
     /// `s` : la session prise AU DÉBUT de la relecture (un profil changé entre-temps : rien n'est écrit, chez personne).
     pub fn ranger_installes(&self, s: &Session, source: &str, installes: &[crate::boutiques::JeuBoutique]) -> Resultat<Vec<i64>> {
+        self.ranger_installes_avec(s, source, installes, true)
+    }
+
+    /// `ranger_installes` SANS réunir les copies : la relecture des boutiques range ses 8 sources, puis réunit UNE fois
+    /// (`reunir_copies`). Des cartes identiques à celles déjà rangées ne sont pas réécrites.
+    pub fn ranger_installes_sans_reunir(&self, s: &Session, source: &str, installes: &[crate::boutiques::JeuBoutique]) -> Resultat<Vec<i64>> {
+        self.ranger_installes_avec(s, source, installes, false)
+    }
+
+    /// Réunit les copies d'un même jeu dans la ludothèque de la session `s` (à la fin d'une relecture) ; seules les
+    /// cartes qui changent sont réécrites. Rend leur nombre.
+    pub fn reunir_copies(&self, s: &Session) -> Resultat<usize> {
+        s.verrou_vivant()?.reunir_copies()
+    }
+
+    /// Le profil refuse ses jeux possédés (lot B) : retire de SA ludothèque les cartes de ces sources qui ne sont pas
+    /// installées, sans temps de jeu, et sans ligne au registre du PC (un jeu installé ou joué n'est jamais retiré ; une
+    /// carte réunie à une autre copie non plus). Rend leur nombre.
+    pub fn retirer_possedes(&self, s: &Session, sources: &[&str]) -> Resultat<usize> {
+        let mut candidats = vec![];
+        {
+            // Le verrou du cache est rendu AVANT de lire le registre (jamais deux verrous tenus ensemble).
+            let c = s.verrou_vivant()?;
+            for source in sources {
+                for j in c.jeux_de_source(source)? {
+                    // Réunie à une autre copie (elle en porte la liste, ou une AUTRE carte la rattache, Galaxy par
+                    // exemple) : jamais retirée. Vu AVANT `sans_reunion`, qui efface ces marques.
+                    if j.copies.is_some() || j.maitre.is_some() {
+                        continue;
+                    }
+                    let j = crate::ludotheque::sans_reunion(j);
+                    if j.installe != Some(true) && j.minutes.unwrap_or(0) == 0 && j.releases.as_ref().is_none_or(|r| r.len() <= 1) {
+                        candidats.push(j.id);
+                    }
+                }
+            }
+        }
+        let mut ids = vec![];
+        for id in candidats {
+            let lu = self.registre().jeu(id)?;
+            if lu.is_none() {
+                ids.push(id);
+            }
+        }
+        let mut c = s.verrou_vivant()?;
+        let n = c.retirer_possedes_non_installes(&ids)?;
+        c.reunir_copies()?;
+        Ok(n)
+    }
+
+    fn ranger_installes_avec(&self, s: &Session, source: &str, installes: &[crate::boutiques::JeuBoutique], reunir: bool) -> Resultat<Vec<i64>> {
         let mut c = s.verrou_vivant()?;
         let avant = c.jeux_de_source(source)?;
         let l = fusion_installes(source, installes, &avant);
         let mut nouveaux = vec![];
-        for j in installes.iter().filter(|j| j.installe) {
+        for j in installes {
             let id = id_carte(source, j);
             if !c.contient(id)? {
                 nouveaux.push(id);
             }
         }
-        ranger_dans(&mut c, source, &l)?;
+        ranger_dans(&mut c, source, &l, reunir)?;
         Ok(nouveaux)
     }
 }
@@ -1276,6 +1328,14 @@ pub(crate) fn id_carte(source: &str, j: &crate::boutiques::JeuBoutique) -> i64 {
 /// hors de Frogtend) : gardées, « pas installé », avec leur nom, leur image et leur temps de jeu.
 pub(crate) fn fusion_installes(source: &str, installes: &[crate::boutiques::JeuBoutique], avant: &[JeuResume]) -> Vec<crate::boutiques::JeuBoutique> {
     let mut l = installes.to_vec();
+    // Un titre du catalogue peut-être abîmé (Epic, lot B) ne remplace jamais celui d'une carte déjà rangée (le titre
+    // juste du manifeste, lu quand le jeu était installé).
+    for j in l.iter_mut().filter(|j| j.titre_douteux) {
+        let id = id_carte(source, j);
+        if let Some(c) = avant.iter().find(|c| c.id == id && !c.titre.trim().is_empty()) {
+            j.nom = c.titre.clone();
+        }
+    }
     let presents: std::collections::BTreeSet<i64> = installes.iter().map(|j| id_carte(source, j)).collect();
     for c in avant.iter().filter(|c| !presents.contains(&c.id)) {
         let Some(cle) = c.cle_boutique.clone().filter(|k| !k.is_empty()) else { continue };
@@ -1292,13 +1352,15 @@ pub(crate) fn fusion_installes(source: &str, installes: &[crate::boutiques::JeuB
             pret: None,
             succes: c.succes,
             releases: c.releases.clone().unwrap_or_default(),
+            titre_douteux: false,
         });
     }
     l
 }
 
 /// Le corps de `ranger_boutique`, sous le verrou du cache déjà pris.
-fn ranger_dans(c: &mut crate::ludotheque::Cache, source: &str, jeux: &[crate::boutiques::JeuBoutique]) -> Resultat<usize> {
+/// `reunir` : réunir les copies tout de suite (sinon l'appelant le fait une fois, à la fin).
+fn ranger_dans(c: &mut crate::ludotheque::Cache, source: &str, jeux: &[crate::boutiques::JeuBoutique], reunir: bool) -> Resultat<usize> {
     {
         // Galaxy : une carte Steam qu'une source Steam montre déjà (même id) n'est pas reprise (Steam prime).
         let steam_a_part: std::collections::BTreeSet<i64> = if source == "galaxy" { c.ids_de_source("steam")? } else { Default::default() };
@@ -1346,7 +1408,11 @@ fn ranger_dans(c: &mut crate::ludotheque::Cache, source: &str, jeux: &[crate::bo
                 })
             })
             .collect();
-        c.remplacer_boutique(source, &resumes)
+        c.remplacer_boutique_sans_reunir(source, &resumes)?;
+        if reunir {
+            c.reunir_copies()?;
+        }
+        Ok(resumes.len())
     }
 }
 
@@ -1360,7 +1426,11 @@ impl Noyau {
         if id < 0 {
             let cache = self.dossier.join("images-boutiques");
             let octets = match (&jeu.image, jeu.boutique.as_deref(), jeu.cle_boutique.as_deref()) {
-                (Some(url), _, _) => crate::boutiques::image_par_adresse(&cache, url).await,
+                // Réduite à la largeur affichée AVANT d'être gardée (comme les miniatures des autres jaquettes).
+                (Some(url), _, _) => match largeur {
+                    Some(l) => crate::boutiques::image_reduite(&cache, url, l.clamp(100, 1000).div_ceil(100) * 100).await,
+                    None => crate::boutiques::image_par_adresse(&cache, url).await,
+                },
                 (None, Some("steam"), Some(cle)) => crate::boutiques::image_steam(&cache, cle.trim_start_matches("steam_")).await,
                 _ => None,
             };
@@ -1762,6 +1832,7 @@ mod tests {
             pret: Some(true),
             succes: None,
             releases: vec![],
+            titre_douteux: false,
         };
         let l = vec![jeu("400", true, Some(&steam)), jeu("620", false, None)];
         let pc: std::collections::BTreeSet<String> = ["400".to_string()].into();
@@ -1843,6 +1914,7 @@ mod tests {
             pret: Some(true),
             succes: None,
             releases: vec![],
+            titre_douteux: false,
         };
         let fc3 = jeu("uplay_46", "Far Cry 3");
         let s = n.session().await.unwrap();
@@ -1870,6 +1942,203 @@ mod tests {
         assert_eq!(id_carte("xboxone", &jeu("xboxone_Microsoft.MinecraftUWP_8wekyb3d8bbwe", "Minecraft")), crate::ludotheque::id_boutique("xboxone", "Microsoft.MinecraftUWP_8wekyb3d8bbwe"));
     }
 
+    /// Lot B : les jeux POSSÉDÉS entrent avec les installés, « pas installé » ; un jeu installé ET possédé n'a qu'une
+    /// carte ; un jeu possédé qui s'installe passe « installé » à la relecture suivante ; le filtre les distingue.
+    #[tokio::test]
+    async fn les_jeux_possedes_entrent_pas_installes_et_ne_font_qu_une_carte_avec_l_installe() {
+        let (_d, n) = noyau();
+        let id = n.creer_profil("Seb", Some("1234"), None).unwrap().id;
+        n.ouvrir(&id, Some("1234"), &SIMULE).await.unwrap();
+        let s = n.session().await.unwrap();
+        let jeu = |cle: &str, nom: &str, installe: bool| crate::boutiques::JeuBoutique {
+            id: format!("epic_{cle}"),
+            nom: nom.into(),
+            minutes: 0,
+            derniere: 0,
+            installe,
+            plateforme: "epic".into(),
+            image: (!installe).then(|| format!("https://cdn1.epicgames.com/item/ns/{cle}")),
+            dossier: installe.then(|| r"D:\Jeux\X".into()),
+            pret: installe.then_some(true),
+            succes: None,
+            releases: vec![],
+            titre_douteux: false,
+        };
+        let installes = crate::boutiques_pc::lire_epic(Some(vec![crate::boutiques::JeuEpic { app: "6ef1".into(), namespace: "n".into(), item: "i".into(), nom: "TerraScape".into(), dossier: PathBuf::from(r"D:\J") }]));
+        let possedes = Some(vec![jeu("6ef1", "TerraScape", false), jeu("Catnip", "Borderlands 3", false)]);
+        let cartes = crate::boutiques_pc::fusion_possedes(installes, possedes).unwrap();
+        let nouveaux = n.ranger_installes(&s, "epic", &cartes).unwrap();
+        assert_eq!(nouveaux.len(), 2, "les possédés comptent aussi");
+        assert_eq!(crate::commandes::nouveaux_installes("epic", &cartes, &nouveaux), 1, "dont 1 installé");
+        let carte = |cle: &str| s.verrou().jeu(crate::ludotheque::id_boutique("epic", cle)).unwrap().unwrap();
+        let t = carte("6ef1");
+        assert_eq!((t.installe, t.image.as_deref()), (Some(true), Some("https://cdn1.epicgames.com/item/ns/6ef1")), "une carte, installée, avec la jaquette du catalogue");
+        assert_eq!(carte("Catnip").installe, Some(false));
+        assert_eq!(s.verrou().jeux_de_source("epic").unwrap().len(), 2, "TerraScape une seule fois");
+        // Le filtre « Installés / Pas installés ».
+        let filtre = |i: bool| s.verrou().lister(&crate::ludotheque::Filtre { installe: Some(i), boutique: Some("epic".into()), ..Default::default() }, Some(&[]), &[]).unwrap().jeux.iter().map(|j| j.titre.clone()).collect::<Vec<_>>();
+        assert_eq!((filtre(true), filtre(false)), (vec!["TerraScape".to_string()], vec!["Borderlands 3".to_string()]));
+        // Borderlands 3 s'installe : à la relecture suivante, il passe « installé », sans nouvelle carte.
+        let mut b3 = jeu("Catnip", "Borderlands 3", true);
+        b3.image = None;
+        let cartes = crate::boutiques_pc::fusion_possedes(Some(vec![cartes.iter().find(|j| j.installe).unwrap().clone(), b3]), Some(vec![jeu("Catnip", "Borderlands 3", false)])).unwrap();
+        assert!(n.ranger_installes(&s, "epic", &cartes).unwrap().is_empty());
+        assert_eq!(carte("Catnip").installe, Some(true));
+        assert!(carte("Catnip").image.is_some(), "la jaquette du catalogue reste");
+    }
+
+    fn possede_epic(cle: &str, nom: &str) -> crate::boutiques::JeuBoutique {
+        crate::boutiques::JeuBoutique {
+            id: format!("epic_{cle}"),
+            nom: nom.into(),
+            minutes: 0,
+            derniere: 0,
+            installe: false,
+            plateforme: "epic".into(),
+            image: None,
+            dossier: None,
+            pret: None,
+            succes: None,
+            releases: vec![],
+            titre_douteux: false,
+        }
+    }
+
+    /// Relecture : le titre juste d'une carte déjà rangée (manifeste, jeu installé) n'est jamais remplacé par un titre
+    /// douteux du catalogue quand le jeu est désinstallé ; un jeu possédé qui disparaît du catalogue reste (B).
+    #[tokio::test]
+    async fn un_titre_douteux_ne_remplace_jamais_le_titre_juste_et_un_possede_disparu_reste() {
+        let (_d, n) = noyau();
+        let id = n.creer_profil("Seb", Some("1234"), None).unwrap().id;
+        n.ouvrir(&id, Some("1234"), &SIMULE).await.unwrap();
+        let s = n.session().await.unwrap();
+        let mut sims = possede_epic("Sims", "Les Sims™ 4");
+        sims.installe = true;
+        n.ranger_installes(&s, "epic", &[sims, possede_epic("Golf", "WHAT THE GOLF?")]).unwrap();
+        // Désinstallé : le catalogue dit « Les Sims? 4 » (douteux).
+        let mut abime = possede_epic("Sims", "Les Sims? 4");
+        abime.titre_douteux = true;
+        n.ranger_installes(&s, "epic", &[abime.clone()]).unwrap();
+        let carte = |cle: &str| s.verrou().jeu(crate::ludotheque::id_boutique("epic", cle)).unwrap().unwrap();
+        assert_eq!((carte("Sims").titre.as_str(), carte("Sims").installe), ("Les Sims™ 4", Some(false)), "le titre juste reste");
+        // B : « WHAT THE GOLF? » a disparu du catalogue (autre compte) : sa carte reste, « pas installé ».
+        assert_eq!((carte("Golf").titre.as_str(), carte("Golf").installe), ("WHAT THE GOLF?", Some(false)));
+        // Un titre NON douteux (renommé chez Epic) est repris.
+        n.ranger_installes(&s, "epic", &[possede_epic("Sims", "The Sims 4")]).unwrap();
+        assert_eq!(carte("Sims").titre, "The Sims 4");
+    }
+
+    /// Une relecture sans nouveauté n'écrit RIEN ; la réunion des copies n'écrit que ce qui change.
+    #[tokio::test]
+    async fn une_relecture_sans_nouveaute_n_ecrit_rien() {
+        let (_d, n) = noyau();
+        let id = n.creer_profil("Seb", Some("1234"), None).unwrap().id;
+        n.ouvrir(&id, Some("1234"), &SIMULE).await.unwrap();
+        let s = n.session().await.unwrap();
+        let cartes = vec![possede_epic("A", "Jeu A"), possede_epic("B", "Jeu B")];
+        n.ranger_installes_sans_reunir(&s, "epic", &cartes).unwrap();
+        n.reunir_copies(&s).unwrap();
+        let ecritures = || s.verrou().total_changements();
+        let avant = ecritures();
+        assert!(n.ranger_installes_sans_reunir(&s, "epic", &cartes).unwrap().is_empty());
+        assert_eq!(n.reunir_copies(&s).unwrap(), 0, "rien à réunir de nouveau");
+        assert_eq!(ecritures(), avant, "aucune ligne écrite");
+        // Une carte qui change : écrite.
+        n.ranger_installes_sans_reunir(&s, "epic", &[possede_epic("A", "Jeu A (nouveau nom)"), possede_epic("B", "Jeu B")]).unwrap();
+        assert!(ecritures() > avant);
+    }
+
+    /// ✅ Seb 18/11 (A) : les possédés n'entrent qu'avec l'accord du profil ; refusés, les cartes possédées jamais
+    /// installées et jamais jouées sont retirées, jamais une carte installée, jouée ou au registre du PC.
+    #[tokio::test]
+    async fn les_possedes_n_entrent_qu_avec_l_accord_et_un_refus_ne_retire_que_les_jamais_joues() {
+        let installe = {
+            let mut j = possede_epic("T", "TerraScape");
+            j.installe = true;
+            j.dossier = Some(r"D:\J".into());
+            j
+        };
+        let possedes = Some(vec![possede_epic("T", "TerraScape"), possede_epic("B3", "Borderlands 3")]);
+        assert_eq!(crate::commandes::cartes_pc(vec![installe.clone()], possedes.clone(), false).len(), 1, "sans accord : les installés seuls");
+        assert_eq!(crate::commandes::cartes_pc(vec![installe.clone()], possedes, true).len(), 2, "avec accord : les possédés aussi");
+        let (_d, n) = noyau();
+        let id = n.creer_profil("Seb", Some("1234"), None).unwrap().id;
+        n.ouvrir(&id, Some("1234"), &SIMULE).await.unwrap();
+        let s = n.session().await.unwrap();
+        let mut joue = possede_epic("J", "Joué");
+        joue.minutes = 30;
+        n.ranger_installes(&s, "epic", &[installe, possede_epic("B3", "Borderlands 3"), joue]).unwrap();
+        n.ranger_installes(&s, "uplay", &[crate::boutiques::JeuBoutique { id: "uplay_54".into(), plateforme: "uplay".into(), ..possede_epic("x", "Assassin's Creed III") }]).unwrap();
+        assert_eq!(n.retirer_possedes(&s, &crate::boutiques_pc::BOUTIQUES_POSSEDES).unwrap(), 2, "Borderlands 3 et AC3");
+        let la = |b: &str, c: &str| s.verrou().contient(crate::ludotheque::id_boutique(b, c)).unwrap();
+        assert!(la("epic", "T") && la("epic", "J"), "l'installé et le joué restent");
+        assert!(!la("epic", "B3") && !la("uplay", "54"));
+    }
+
+    /// Un refus ne retire jamais une carte possédée qu'une AUTRE carte rattache (Galaxy) ; et la suppression revérifie
+    /// la source et l'état au moment de supprimer.
+    #[tokio::test]
+    async fn un_refus_ne_retire_jamais_une_carte_reunie_ni_une_carte_qui_a_change() {
+        let (_d, n) = noyau();
+        let id = n.creer_profil("Seb", Some("1234"), None).unwrap().id;
+        n.ouvrir(&id, Some("1234"), &SIMULE).await.unwrap();
+        let s = n.session().await.unwrap();
+        n.ranger_installes(&s, "epic", &[possede_epic("B3", "Borderlands 3"), possede_epic("Seul", "Jeu seul")]).unwrap();
+        // GOG Galaxy relie SA copie à la carte Epic (la liste est sur la carte de Galaxy, pas sur celle d'Epic).
+        s.verrou()
+            .remplacer_boutique(
+                "galaxy",
+                &[JeuResume {
+                    id: crate::ludotheque::id_boutique("gog", "1"),
+                    titre: "Borderlands 3".into(),
+                    source: Some("galaxy".into()),
+                    boutique: Some("gog".into()),
+                    cle_boutique: Some("gog_1".into()),
+                    installe: Some(false),
+                    releases: Some(vec!["gog_1".into(), "epic_B3".into()]),
+                    ..Default::default()
+                }],
+            )
+            .unwrap();
+        let b3 = crate::ludotheque::id_boutique("epic", "B3");
+        assert!(s.verrou().jeu(b3).unwrap().unwrap().maitre.is_some(), "réunie par la liste de Galaxy");
+        assert_eq!(n.retirer_possedes(&s, &crate::boutiques_pc::BOUTIQUES_POSSEDES).unwrap(), 1, "le jeu seul seulement");
+        assert!(s.verrou().contient(b3).unwrap());
+        // La suppression revérifie : une carte installée, d'une autre source, ou de Galaxy n'est jamais retirée.
+        let mut installe = possede_epic("I", "Installé");
+        installe.installe = true;
+        n.ranger_installes(&s, "epic", &[installe]).unwrap();
+        n.ranger_installes(&s, "uplay", &[crate::boutiques::JeuBoutique { id: "uplay_9".into(), plateforme: "uplay".into(), ..possede_epic("x", "Ubi") }]).unwrap();
+        let ids = [crate::ludotheque::id_boutique("epic", "I"), crate::ludotheque::id_boutique("gog", "1"), crate::ludotheque::id_boutique("uplay", "9")];
+        assert_eq!(s.verrou().retirer_possedes_non_installes(&ids).unwrap(), 1, "seulement la carte Ubisoft pas installée");
+        assert!(s.verrou().contient(ids[0]).unwrap() && s.verrou().contient(ids[1]).unwrap());
+    }
+
+    /// RÉEL, LECTURE SEULE : le coût du rangement des jeux possédés d'Epic (catalogue lu EN PLACE, ludothèque dans un
+    /// dossier temporaire). La 1re fois = ce que coûtait CHAQUE ouverture avant (tout effacé, réécrit et réuni) ; la 2e
+    /// = une ouverture sans nouveauté aujourd'hui.
+    /// `cargo test --lib essai_rangement_possedes -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn essai_rangement_possedes() {
+        let d = tempfile::tempdir().unwrap();
+        let mut c = crate::ludotheque::Cache::ouvrir(&d.path().join("ludotheque.db")).unwrap();
+        let t = std::time::Instant::now();
+        let l = crate::boutiques_pc::possedes_epic(crate::boutiques_pc::catalogue_epic().as_deref()).expect("catalogue Epic");
+        println!("lecture du catalogue : {} jeux en {:?}", l.len(), t.elapsed());
+        for tour in 1..=3 {
+            let t = std::time::Instant::now();
+            ranger_dans(&mut c, "epic", &l, false).unwrap();
+            let r = c.reunir_copies().unwrap();
+            println!("rangement n° {tour} : {:?} ({r} carte(s) réécrite(s) par la réunion)", t.elapsed());
+        }
+        // L'ancienne façon, à chaque ouverture : tout effacé et réinséré, puis toutes les cartes réécrites.
+        let t = std::time::Instant::now();
+        c.remplacer_boutique_sans_reunir("epic", &[]).unwrap();
+        ranger_dans(&mut c, "epic", &l, true).unwrap();
+        println!("ancienne façon (effacer, réécrire, réunir) : {:?}", t.elapsed());
+    }
+
     /// BLOQUANT des experts (18/11) : la session est prise AU DÉBUT ; un profil changé pendant la relecture ne reçoit
     /// rien (ni l'ancien, qui n'est plus ouvert).
     #[tokio::test]
@@ -1880,7 +2149,7 @@ mod tests {
         n.ouvrir(&a, Some("1234"), &SIMULE).await.unwrap();
         let sa = n.session().await.unwrap();
         n.ouvrir(&b, Some("5678"), &SIMULE).await.unwrap();
-        let j = crate::boutiques::JeuBoutique { id: "uplay_46".into(), nom: "Far Cry 3".into(), minutes: 0, derniere: 0, installe: true, plateforme: "uplay".into(), image: None, dossier: None, pret: None, succes: None, releases: vec![] };
+        let j = crate::boutiques::JeuBoutique { id: "uplay_46".into(), nom: "Far Cry 3".into(), minutes: 0, derniere: 0, installe: true, plateforme: "uplay".into(), image: None, dossier: None, pret: None, succes: None, releases: vec![], titre_douteux: false };
         assert!(n.ranger_installes(&sa, "uplay", &[j]).is_err(), "session de A périmée : rien n'est écrit");
         let sb = n.session().await.unwrap();
         assert_eq!(sb.profil.id, b);
@@ -1904,6 +2173,7 @@ mod tests {
             pret: None,
             succes: None,
             releases: vec![],
+            titre_douteux: false,
         };
         let pc: std::collections::BTreeSet<String> = ["46".to_string()].into();
         n.synchroniser_boutique("uplay", &[jeu(&dossier)], &pc).unwrap();
@@ -1960,7 +2230,7 @@ mod tests {
         assert_eq!((l[0].id.as_str(), l[0].nom.as_str(), l[0].installe, l[0].minutes), ("gog_1", "Cyberpunk 2077", false, 92), "le temps PROPRE à la copie");
         assert_eq!(l[0].image.as_deref(), Some("https://images.gog.com/a.webp"));
         // Toujours installé : la lecture du PC fait foi, pas de doublon.
-        let lu = crate::boutiques::JeuBoutique { id: "gog_1".into(), nom: "Cyberpunk 2077".into(), minutes: 0, derniere: 0, installe: true, plateforme: "gog".into(), image: None, dossier: None, pret: None, succes: None, releases: vec![] };
+        let lu = crate::boutiques::JeuBoutique { id: "gog_1".into(), nom: "Cyberpunk 2077".into(), minutes: 0, derniere: 0, installe: true, plateforme: "gog".into(), image: None, dossier: None, pret: None, succes: None, releases: vec![], titre_douteux: false };
         assert_eq!(fusion_installes("gog", &[lu], &avant).len(), 1);
     }
 

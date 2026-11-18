@@ -71,6 +71,7 @@ fn jeu(boutique: &str, cle: &str, nom: &str, dossier: &Path) -> JeuBoutique {
         pret: Some(true),
         succes: None,
         releases: vec![],
+        titre_douteux: false,
     }
 }
 
@@ -444,6 +445,429 @@ pub fn lire_battlenet(desinstall: &[(String, Valeurs)]) -> Option<Vec<JeuBoutiqu
     Some(ranger(l))
 }
 
+// ───────────────────────────── Jeux POSSÉDÉS (lot B) ─────────────────────────────
+//
+// Les jeux possédés mais pas installés, lus SANS connexion dans les caches que les lanceurs tiennent eux-mêmes
+// (relevé du 18/11 chez Seb, en lecture seule ; ✅ Seb 18/11 : « ça me semble probable », format non documenté →
+// lecture tolérante). Un cache absent, trop gros ou illisible rend `None`, jamais « zéro jeu ».
+
+/// Le plafond d'un cache lu pour les jeux possédés (Epic : 1,9 Mo chez Seb ; Ubisoft : 36 Ko).
+pub const PLAFOND_CACHE: u64 = 16 * 1024 * 1024;
+
+/// Les boutiques dont Frogtend lit les jeux possédés sans connexion.
+pub const BOUTIQUES_POSSEDES: [&str; 2] = ["epic", "uplay"];
+
+/// Un fichier lu en entier s'il ne dépasse pas `plafond` (jamais un fichier démesuré en mémoire).
+fn lire_plafonne(f: &Path, plafond: u64) -> Option<Vec<u8>> {
+    let m = std::fs::metadata(f).ok()?;
+    if !m.is_file() || m.len() > plafond {
+        return None;
+    }
+    let o = std::fs::read(f).ok()?;
+    (o.len() as u64 <= plafond).then_some(o)
+}
+
+/// Un jeu POSSÉDÉ, pas installé (même clé que le jeu installé de la même boutique : une seule carte).
+fn possede(boutique: &str, cle: &str, nom: &str, image: Option<String>) -> JeuBoutique {
+    let mut j = jeu(boutique, cle, nom, Path::new(""));
+    j.installe = false;
+    j.dossier = None;
+    j.pret = None;
+    j.image = image;
+    j
+}
+
+/// Décode du base64 standard (« A-Z a-z 0-9 + / », « = » à la fin, blancs ignorés). `None` : un autre signe, ou une
+/// longueur impossible.
+pub fn base64(texte: &[u8]) -> Option<Vec<u8>> {
+    let val = |c: u8| -> Option<u32> {
+        match c {
+            b'A'..=b'Z' => Some((c - b'A') as u32),
+            b'a'..=b'z' => Some((c - b'a') as u32 + 26),
+            b'0'..=b'9' => Some((c - b'0') as u32 + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    };
+    let mut sortie = Vec::with_capacity(texte.len() / 4 * 3);
+    let (mut acc, mut n, mut fin) = (0u32, 0u8, false);
+    for &c in texte {
+        if c.is_ascii_whitespace() {
+            continue;
+        }
+        if c == b'=' {
+            fin = true;
+            continue;
+        }
+        if fin {
+            return None; // des signes après le « = » final
+        }
+        acc = (acc << 6) | val(c)?;
+        n += 1;
+        if n == 4 {
+            sortie.extend_from_slice(&[(acc >> 16) as u8, (acc >> 8) as u8, acc as u8]);
+            acc = 0;
+            n = 0;
+        }
+    }
+    match n {
+        0 => {}
+        2 => sortie.push((acc >> 4) as u8),
+        3 => sortie.extend_from_slice(&[(acc >> 10) as u8, (acc >> 2) as u8]),
+        _ => return None,
+    }
+    Some(sortie)
+}
+
+// ── Epic : `<AppDataPath>\Catalog\catcache.bin` ──
+
+/// Les images d'un jeu du catalogue Epic, par ordre de préférence (la boîte en hauteur d'abord).
+pub const IMAGES_EPIC: [&str; 3] = ["DieselGameBoxTall", "DieselGameBox", "Thumbnail"];
+
+/// Les catégories du catalogue Epic qui ne sont jamais un jeu (relevé du 18/11 : extensions, bonus numériques,
+/// logiciels, moteurs, greffons, versions de test).
+const CATEGORIES_PAS_JEU: [&str; 6] = ["addons", "digitalextras", "software", "engines", "plugins", "testing"];
+
+/// Un titre qui n'est pas un jeu à jouer : démo, bande-son, bêta ou test public, éditeur, artbook… (relevé du 18/11 :
+/// « Q.U.B.E. 2 Soundtrack », « Mortal Shell Tech Beta », « KillingFloor2Beta », « Chivalry 2 - Public Testing »,
+/// « Football Manager 2024 Pre-game editor »). Mots entiers seulement (« DEMON'S TILT » reste un jeu).
+pub fn titre_pas_un_jeu(titre: &str) -> bool {
+    const MOTS: [&str; 10] = ["demo", "soundtrack", "ost", "beta", "playtest", "testing", "editor", "artbook", "wallpaper", "benchmark"];
+    let b = titre.to_lowercase();
+    b.split(|c: char| !c.is_alphanumeric()).any(|m| MOTS.contains(&m)) || b.trim_end().ends_with("beta") || b.contains("art book") || b.contains("dedicated server")
+}
+
+/// Le titre d'un jeu du catalogue Epic, réparé. Relevé du 18/11 : `catcache.bin` est écrit en ASCII, chaque signe hors
+/// ASCII y devient « ? » (33 titres sur 500 chez Seb : « Les Sims? 4 », « PAYDAY?2 », « Dragon?Age?: Inquisition -
+/// ?dition Jeu de l'ann?e »). Réparé SEULEMENT quand c'est sûr : collé à une lettre des deux côtés, une espace
+/// insécable perdue redevient une espace (« PAYDAY?2 », « Dragon?Age ») et « Jorel?s » prend son apostrophe ; une
+/// marque perdue juste avant « : , ; ) » disparaît (« Dishonored?: ») ; « ?dition » redevient « Édition » ; « ? » seul
+/// entre deux espaces redevient un tiret ; des « ? » seuls à la fin, après une espace, disparaissent (émoji perdu). Un
+/// « ? » en fin de mot (suivi d'une espace ou en fin de titre) RESTE : c'est peut-être un vrai (« WHAT THE GOLF? »,
+/// « Why? Simulator »). Une lettre accentuée perdue au milieu d'un mot (« ann?e ») ne se devine pas : « ? » reste.
+/// Un titre de plus de 300 signes est rendu tel quel (jamais un long calcul).
+pub fn reparer_titre_epic(t: &str) -> String {
+    const PLAFOND_TITRE: usize = 300;
+    let c: Vec<char> = t.chars().take(PLAFOND_TITRE + 1).collect();
+    if c.len() > PLAFOND_TITRE {
+        return t.to_string();
+    }
+    // Le début de la suite de « ? » qui termine le titre (calculé UNE fois) ; enlevée seulement si elle suit une espace.
+    let mut fin = c.len();
+    while fin > 0 && c[fin - 1] == '?' {
+        fin -= 1;
+    }
+    let fin_perdue = fin < c.len() && fin > 0 && c[fin - 1] == ' ';
+    let mot = |x: Option<char>| x.is_some_and(char::is_alphanumeric);
+    let mut s = String::with_capacity(t.len());
+    for i in 0..c.len() {
+        if c[i] != '?' {
+            s.push(c[i]);
+            continue;
+        }
+        let (av, ap) = (i.checked_sub(1).map(|k| c[k]), c.get(i + 1).copied());
+        if i >= fin && fin_perdue {
+            // « RAWMEN: Food Fighter Arena ?? » : des signes perdus (émoji).
+        } else if !mot(av) && c.get(i + 1..i + 7).is_some_and(|x| x.iter().copied().eq("dition".chars())) {
+            s.push('É');
+        } else if mot(av) && mot(ap) {
+            let ap = ap.unwrap_or(' ');
+            if ap.is_ascii_digit() || (av.is_some_and(char::is_lowercase) && ap.is_uppercase()) {
+                s.push(' ');
+            } else if ap == 's' && !mot(c.get(i + 2).copied()) {
+                s.push('\'');
+            } else {
+                s.push('?'); // une lettre accentuée perdue : jamais devinée
+            }
+        } else if av == Some(' ') && ap == Some(' ') {
+            s.push('–');
+        } else if mot(av) && matches!(ap, Some(':' | ',' | ';' | ')')) {
+            // Une marque perdue (« Dishonored?: », « Star Wars?: »).
+        } else {
+            s.push('?');
+        }
+    }
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Un jeu du catalogue Epic, s'il en est un : catégorie `games`, pas un DLC (`mainGameItem.id` rempli), pas une
+/// extension ni un outil, une version Windows avec son `appId` (= l'AppName du manifeste : la clé du jeu installé).
+fn jeu_du_catalogue_epic(e: &serde_json::Value) -> Option<JeuBoutique> {
+    let cats: Vec<&str> = e["categories"].as_array()?.iter().filter_map(|c| c["path"].as_str()).collect();
+    let pas_jeu = |c: &&str| CATEGORIES_PAS_JEU.iter().any(|x| *c == *x || c.starts_with(&format!("{x}/")));
+    if !cats.contains(&"games") || cats.iter().any(pas_jeu) {
+        return None;
+    }
+    if e["mainGameItem"]["id"].as_str().is_some_and(|m| !m.trim().is_empty()) || e["mainGameItem"].as_str().is_some_and(|m| !m.trim().is_empty()) {
+        return None; // un DLC (il dépend d'un autre jeu)
+    }
+    let titre = e["title"].as_str()?.trim();
+    if titre.is_empty() || titre_pas_un_jeu(titre) {
+        return None;
+    }
+    // Une version pour Windows (sans plateforme dite : on la garde) ; jamais une version iOS ou Android seule.
+    let windows = |r: &serde_json::Value| r["platform"].as_array().is_none_or(|p| p.is_empty() || p.iter().any(|x| matches!(x.as_str(), Some("Windows" | "Win32"))));
+    let app = e["releaseInfo"].as_array()?.iter().filter(|r| windows(r)).find_map(|r| r["appId"].as_str().filter(|a| cle_sure(a)))?;
+    let images = e["keyImages"].as_array();
+    let image = IMAGES_EPIC.iter().find_map(|t| {
+        images?.iter().filter(|i| i["type"].as_str() == Some(t)).find_map(|i| i["url"].as_str().filter(|u| crate::boutiques::image_autorisee(u)).map(String::from))
+    });
+    let repare = reparer_titre_epic(titre);
+    let mut j = possede("epic", app, &repare, image);
+    j.titre_douteux = repare != titre || repare.contains('?');
+    Some(j)
+}
+
+/// Les jeux possédés d'après le contenu de `catcache.bin` (du JSON encodé en base64 : une liste d'objets du catalogue).
+/// `None` : fichier illisible (pas du base64, pas une liste JSON).
+pub fn lire_catalogue_epic(octets: &[u8]) -> Option<Vec<JeuBoutique>> {
+    let json = base64(octets)?;
+    let v: serde_json::Value = serde_json::from_slice(&json).ok()?;
+    Some(ranger(v.as_array()?.iter().filter_map(jeu_du_catalogue_epic).collect()))
+}
+
+/// Le cache du catalogue de l'Epic Games Launcher (`<AppDataPath>\Catalog\catcache.bin`), s'il existe.
+pub fn catalogue_epic() -> Option<PathBuf> {
+    let f = crate::boutiques::dossier_donnees_epic()?.join("Catalog").join("catcache.bin");
+    f.is_file().then_some(f)
+}
+
+/// Les jeux Epic possédés (lecture seule, taille plafonnée). `None` : pas de cache, trop gros, ou illisible.
+pub fn possedes_epic(fichier: Option<&Path>) -> Option<Vec<JeuBoutique>> {
+    lire_catalogue_epic(&lire_plafonne(fichier?, PLAFOND_CACHE)?)
+}
+
+// ── Ubisoft : `<cache>\configuration\configurations` et `<cache>\ownership\<compte>` ──
+//
+// Méthode (relevé du 18/11 chez Seb, et celle de Playnite, relue sans recopier son code) : `configurations` est une
+// suite de messages protobuf {1 : numéro du produit, 3 : sa configuration en YAML} ; Playnite prend pour « possédé »
+// tout produit qui a un `start_game`. Ce cache garde AUSSI des produits que le compte n'a pas (chez Seb : 23
+// produits, 4 jeux). La possession se lit donc dans `ownership\<compte>` : 4 octets, une signature de 256 octets, la
+// longueur (u32 petit-boutiste), puis un protobuf {1 : un produit possédé (1 : son numéro, …), 2 : un numéro possédé}.
+// Le produit y porte aussi sa clé de produit : Frogtend ne lit QUE les numéros, jamais la clé.
+
+/// Le début de l'adresse des images d'Ubisoft Connect (CDN public, celui du lanceur).
+pub const IMAGES_UBISOFT: &str = "https://ubistatic3-a.akamaihd.net/orbit/uplay_launcher_3_0/assets/";
+
+/// Un champ protobuf : un entier, ou des octets (texte, message, liste compacte).
+enum Champ<'a> {
+    Entier(u64),
+    Octets(&'a [u8]),
+}
+
+fn varint(o: &[u8], i: &mut usize) -> Option<u64> {
+    let mut r = 0u64;
+    for k in 0..10 {
+        let c = *o.get(*i)?;
+        *i += 1;
+        r |= ((c & 0x7f) as u64) << (7 * k);
+        if c < 0x80 {
+            return Some(r);
+        }
+    }
+    None
+}
+
+/// Les champs d'un message protobuf. `None` : message abîmé (type inconnu, longueur qui déborde).
+fn champs(o: &[u8]) -> Option<Vec<(u64, Champ<'_>)>> {
+    let (mut i, mut l) = (0usize, vec![]);
+    while i < o.len() {
+        let k = varint(o, &mut i)?;
+        let n = k >> 3;
+        if n == 0 {
+            return None;
+        }
+        let v = match k & 7 {
+            0 => Champ::Entier(varint(o, &mut i)?),
+            1 | 5 => {
+                let fin = i.checked_add(if k & 7 == 1 { 8 } else { 4 })?;
+                let v = Champ::Octets(o.get(i..fin)?);
+                i = fin;
+                v
+            }
+            2 => {
+                let lg = usize::try_from(varint(o, &mut i)?).ok()?;
+                let fin = i.checked_add(lg)?;
+                let v = Champ::Octets(o.get(i..fin)?);
+                i = fin;
+                v
+            }
+            _ => return None,
+        };
+        l.push((n, v));
+    }
+    Some(l)
+}
+
+/// Les numéros des produits possédés, lus dans un fichier `ownership` (jamais la clé de produit). `None` : fichier
+/// abîmé (longueur annoncée fausse, protobuf illisible) ou sans aucun produit.
+pub fn lire_possession_ubisoft(o: &[u8]) -> Option<std::collections::BTreeSet<u64>> {
+    let longueur = u32::from_le_bytes(o.get(260..264)?.try_into().ok()?) as usize;
+    let donnees = o.get(264..)?;
+    if longueur == 0 || donnees.len() != longueur {
+        return None;
+    }
+    let mut l = std::collections::BTreeSet::new();
+    for (n, v) in champs(donnees)? {
+        match (n, v) {
+            (1, Champ::Octets(p)) => {
+                // Seulement le champ 1 (le numéro) : les autres (dont la clé de produit) ne sont jamais lus.
+                if let Some((_, Champ::Entier(id))) = champs(p)?.into_iter().find(|(m, _)| *m == 1) {
+                    l.insert(id);
+                }
+            }
+            (2, Champ::Entier(id)) => {
+                l.insert(id);
+            }
+            // Une liste « compacte » (forme protobuf possible) : une suite d'entiers.
+            (2, Champ::Octets(p)) => {
+                let mut i = 0;
+                while i < p.len() {
+                    l.insert(varint(p, &mut i)?);
+                }
+            }
+            _ => {}
+        }
+    }
+    (!l.is_empty()).then_some(l)
+}
+
+/// Un texte YAML simple (le nom d'un produit peut être un nombre).
+fn yaml_texte(y: &yaml_rust2::Yaml) -> Option<String> {
+    match y {
+        yaml_rust2::Yaml::String(s) => Some(s.clone()),
+        yaml_rust2::Yaml::Integer(i) => Some(i.to_string()),
+        yaml_rust2::Yaml::Real(r) => Some(r.clone()),
+        _ => None,
+    }
+}
+
+/// Un « oui » YAML (`yes`, `true`).
+fn yaml_oui(y: &yaml_rust2::Yaml) -> bool {
+    match y {
+        yaml_rust2::Yaml::Boolean(b) => *b,
+        yaml_rust2::Yaml::String(s) => matches!(s.to_lowercase().as_str(), "yes" | "true" | "on"),
+        _ => false,
+    }
+}
+
+/// Un nom de fichier d'image du lanceur (« da1733d5….jpg ») : sûr dans une adresse.
+fn image_ubisoft_sure(f: &str) -> bool {
+    let b = f.to_lowercase();
+    f.len() <= 128 && cle_sure(f) && [".jpg", ".jpeg", ".png", ".webp"].iter().any(|x| b.ends_with(x))
+}
+
+/// Les jeux possédés d'après `configurations` et les numéros possédés : un produit possédé qui a un `start_game`, qui
+/// n'est ni un contenu additionnel (`is_ulc`, ou cité dans les `addons` d'un autre), ni vendu par une autre boutique
+/// (`third_party_platform`). Le nom et l'image passent par `localizations.default` quand ce sont des clés (« l1 »,
+/// « THUMBIMAGE »). `None` : fichier illisible.
+pub fn lire_configurations_ubisoft(o: &[u8], possedes: &std::collections::BTreeSet<u64>) -> Option<Vec<JeuBoutique>> {
+    let mut produits = vec![];
+    for (n, v) in champs(o)? {
+        let (1, Champ::Octets(p)) = (n, v) else { continue };
+        let (mut id, mut yaml) = (None, None);
+        for (m, w) in champs(p)? {
+            match (m, w) {
+                (1, Champ::Entier(x)) => id = Some(x),
+                (3, Champ::Octets(y)) => yaml = Some(String::from_utf8_lossy(y).into_owned()),
+                _ => {}
+            }
+        }
+        // Une configuration YAML illisible : ce produit seulement est laissé.
+        if let (Some(id), Some(y)) = (id, yaml) {
+            if let Some(d) = yaml_rust2::YamlLoader::load_from_str(&y).ok().and_then(|d| d.into_iter().next()) {
+                produits.push((id, d));
+            }
+        }
+    }
+    if produits.is_empty() {
+        return None;
+    }
+    let addons: std::collections::BTreeSet<i64> = produits.iter().flat_map(|(_, d)| d["root"]["addons"].as_vec().into_iter().flatten().filter_map(|a| a["id"].as_i64())).collect();
+    let l = produits
+        .iter()
+        .filter(|(id, d)| {
+            let r = &d["root"];
+            possedes.contains(id) && r["start_game"].as_hash().is_some() && !yaml_oui(&r["is_ulc"]) && r["third_party_platform"].is_badvalue() && !i64::try_from(*id).is_ok_and(|i| addons.contains(&i))
+        })
+        .filter_map(|(id, d)| {
+            let r = &d["root"];
+            let loc = &d["localizations"]["default"];
+            let traduit = |cle: &yaml_rust2::Yaml| yaml_texte(cle).map(|c| loc[c.as_str()].as_str().map(String::from).unwrap_or(c)).filter(|t| !t.trim().is_empty());
+            let nom = traduit(&r["name"]).or_else(|| traduit(&r["installer"]["game_identifier"]))?;
+            let image = traduit(&r["thumb_image"]).filter(|f| image_ubisoft_sure(f)).map(|f| format!("{IMAGES_UBISOFT}{f}"));
+            Some(possede("uplay", &id.to_string(), &nom, image))
+        })
+        .collect();
+    Some(ranger(l))
+}
+
+/// Le dossier `cache` d'Ubisoft Connect : à côté du lanceur (`InstallDir` du registre, relevé du 18/11), sinon dans
+/// `%LOCALAPPDATA%\Ubisoft Game Launcher` (Playnite) ; seulement s'il a son `configuration\configurations`.
+pub fn cache_ubisoft(lanceur: Option<&Valeurs>) -> Option<PathBuf> {
+    let mut l = vec![];
+    if let Some(d) = lanceur.and_then(|v| v.get("InstallDir")).map(|d| d.trim().replace('/', "\\")).filter(|d| !d.is_empty()) {
+        l.push(PathBuf::from(d.trim_end_matches('\\')).join("cache"));
+    }
+    if let Some(a) = std::env::var_os("LOCALAPPDATA") {
+        l.push(PathBuf::from(a).join("Ubisoft Game Launcher").join("cache"));
+    }
+    l.into_iter().find(|c| c.join("configuration").join("configurations").is_file())
+}
+
+/// Les jeux Ubisoft possédés (lecture seule). La possession est celle du DERNIER compte connecté (le fichier
+/// `ownership` le plus récent). `None` : pas de cache, trop gros, ou illisible.
+pub fn possedes_ubisoft(cache: Option<&Path>) -> Option<Vec<JeuBoutique>> {
+    let cache = cache?;
+    let config = lire_plafonne(&cache.join("configuration").join("configurations"), PLAFOND_CACHE)?;
+    let compte = std::fs::read_dir(cache.join("ownership"))
+        .ok()?
+        .flatten()
+        .filter_map(|e| {
+            let m = e.metadata().ok().filter(|m| m.is_file() && m.len() <= 4 * 1024 * 1024)?;
+            Some((m.modified().ok(), e.path()))
+        })
+        .max()?
+        .1;
+    let possedes = lire_possession_ubisoft(&lire_plafonne(&compte, 4 * 1024 * 1024)?)?;
+    lire_configurations_ubisoft(&config, &possedes)
+}
+
+/// Lit les jeux possédés des boutiques demandées (seulement celles de `BOUTIQUES_POSSEDES`).
+pub fn lire_possedes(boutiques: &[&str]) -> Lecture {
+    BOUTIQUES_POSSEDES
+        .iter()
+        .filter(|b| boutiques.contains(b))
+        .map(|b| {
+            let l = match *b {
+                "epic" => possedes_epic(catalogue_epic().as_deref()),
+                "uplay" => possedes_ubisoft(cache_ubisoft(valeurs(Racine::Machine, CLE_UBISOFT).as_ref()).as_deref()),
+                _ => None,
+            };
+            (*b, l)
+        })
+        .collect()
+}
+
+/// Les cartes d'une boutique : ses jeux installés, PLUS ses jeux possédés qui ne le sont pas. Même clé = une seule
+/// carte, installée (elle reçoit l'image du catalogue si elle n'en avait pas). `None` : jeux installés illisibles —
+/// rien ne bouge, même si le catalogue se lit (l'état « installé » des cartes serait faux).
+pub fn fusion_possedes(installes: Option<Vec<JeuBoutique>>, possedes: Option<Vec<JeuBoutique>>) -> Option<Vec<JeuBoutique>> {
+    let mut l = installes?;
+    for p in possedes.unwrap_or_default() {
+        match l.iter_mut().find(|j| j.id == p.id) {
+            Some(j) => {
+                if j.image.is_none() {
+                    j.image = p.image;
+                }
+            }
+            None => l.push(p),
+        }
+    }
+    Some(ranger(l))
+}
+
 // ───────────────────────────── Tout le PC ─────────────────────────────
 
 /// Ce qu'une lecture du PC a donné, boutique par boutique (`None` : lanceur absent ou illisible).
@@ -765,6 +1189,264 @@ mod tests {
         assert!(message_lanceur_absent("uplay").contains("Ubisoft Connect, absent de ce PC"));
     }
 
+    #[test]
+    fn le_base64_se_decode_et_refuse_le_reste() {
+        assert_eq!(base64(b"SGVsbG8=").unwrap(), b"Hello");
+        assert_eq!(base64(b"SGVsbG8h").unwrap(), b"Hello!");
+        assert_eq!(base64(b"SGVs\r\nbG8=").unwrap(), b"Hello", "les retours à la ligne sont ignorés");
+        assert_eq!(base64(b"SGk").unwrap(), b"Hi", "sans le « = » final");
+        assert_eq!(base64(b"").unwrap(), b"");
+        assert!(base64(b"SGVs*G8=").is_none(), "un signe étranger");
+        assert!(base64(b"S").is_none(), "une longueur impossible");
+        assert!(base64(b"SG==SG").is_none(), "des signes après la fin");
+    }
+
+    /// Un catalogue Epic inventé, de la forme relevée le 18/11 chez Seb (`catcache.bin` : une liste JSON en base64).
+    fn catalogue_epic_invente() -> Vec<u8> {
+        let entree = |id: &str, titre: &str, cats: &[&str], main: &str, app: &str, plat: &[&str], images: &[(&str, &str)]| {
+            serde_json::json!({
+                "id": id, "namespace": "ns", "title": titre,
+                "categories": cats.iter().map(|c| serde_json::json!({"name": "", "path": c})).collect::<Vec<_>>(),
+                "mainGameItem": {"namespace": if main.is_empty() { "" } else { "ns" }, "id": main},
+                "releaseInfo": [{"appId": app, "compatibleApps": [], "platform": plat}],
+                "keyImages": images.iter().map(|(t, u)| serde_json::json!({"type": t, "url": u})).collect::<Vec<_>>(),
+                "customAttributes": {"FolderName": {"type": "STRING", "value": "x"}}, "dlcItemList": []
+            })
+        };
+        let tall = "https://cdn1.epicgames.com/item/ns/TerraScape_1200x1600-abc";
+        let l = serde_json::json!([
+            entree("e6eb", "TerraScape", &["games", "applications"], "", "6ef17d9f63c143ea88a4a4bcbcf1e91c", &["Windows"], &[("DieselGameBox", "https://cdn1.epicgames.com/item/ns/large"), ("DieselGameBoxTall", tall)]),
+            entree("1", "Borderlands 3™", &["public", "games", "applications"], "", "Catnip", &["Windows", "Mac"], &[("Thumbnail", "https://cdn1.epicgames.com/item/ns/thumb")]),
+            entree("2", "Un DLC", &["games", "applications"], "4fe75bbc", "DlcApp", &["Windows"], &[]),
+            entree("3", "Unreal Engine", &["engines", "engines/ue5"], "", "UE_5.7", &["Windows"], &[]),
+            entree("4", "Twinmotion Audience", &["audience", "public"], "", "Twin", &["Windows"], &[]),
+            entree("5", "Death Stranding Content", &["public", "games", "applications", "digitalextras"], "", "DSC", &["Windows"], &[]),
+            entree("6", "Q.U.B.E. 2 Soundtrack", &["games", "applications"], "", "QubeOst", &["Windows"], &[]),
+            entree("7", "Mortal Shell Tech Beta", &["games", "applications"], "", "MSBeta", &["Windows"], &[]),
+            entree("8", "KillingFloor2Beta", &["games", "applications"], "", "KF2B", &["Windows"], &[]),
+            entree("9", "Teacup", &["games", "applications"], "", "TeacupIos", &["iOS"], &[]),
+            entree("10", "DEMON'S TILT", &["games", "applications"], "", "Tilt", &["Windows"], &[("DieselGameBoxTall", "https://autre-hote.com/x.png")]),
+            entree("11", "Douteux", &["games", "applications"], "", "a/../b", &["Windows"], &[]),
+            entree("12", "Ark Map Pack", &["games", "addons"], "", "ArkMap", &["Windows"], &[]),
+        ]);
+        // Comme Epic : du base64 SANS retour à la ligne.
+        let t = serde_json::to_vec(&l).unwrap();
+        const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut s = vec![];
+        for c in t.chunks(3) {
+            let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+            for k in 0..4 {
+                s.push(if k <= c.len() { A[(n >> (18 - 6 * k) & 63) as usize] } else { b'=' });
+            }
+        }
+        s
+    }
+
+    #[test]
+    fn epic_lit_ses_jeux_possedes_dans_le_catalogue_et_ecarte_le_reste() {
+        let l = lire_catalogue_epic(&catalogue_epic_invente()).unwrap();
+        assert_eq!(
+            l.iter().map(|j| (j.id.as_str(), j.nom.as_str())).collect::<Vec<_>>(),
+            [("epic_Catnip", "Borderlands 3"), ("epic_Tilt", "DEMON'S TILT"), ("epic_6ef17d9f63c143ea88a4a4bcbcf1e91c", "TerraScape")],
+            "DLC, moteur, audience, bonus, bande-son, bêtas, iOS seul, clé douteuse et extension écartés"
+        );
+        assert!(l.iter().all(|j| !j.installe && j.dossier.is_none() && j.plateforme == "epic"));
+        let t = l.iter().find(|j| j.nom == "TerraScape").unwrap();
+        assert_eq!(t.image.as_deref(), Some("https://cdn1.epicgames.com/item/ns/TerraScape_1200x1600-abc"), "la boîte en hauteur d'abord");
+        assert_eq!(l[0].image.as_deref(), Some("https://cdn1.epicgames.com/item/ns/thumb"), "sinon la vignette");
+        assert_eq!(l[1].image, None, "un hôte non autorisé : pas d'image");
+        // Un fichier abîmé : None, jamais « zéro jeu ».
+        assert!(lire_catalogue_epic(b"pas du base64 !").is_none());
+        assert!(lire_catalogue_epic(b"e30=").is_none(), "un objet JSON, pas une liste");
+        let mut coupe = catalogue_epic_invente();
+        coupe.truncate(coupe.len() / 2 / 4 * 4);
+        assert!(lire_catalogue_epic(&coupe).is_none(), "un JSON coupé");
+        assert_eq!(lire_catalogue_epic(b"W10=").unwrap(), vec![], "[] : une liste vide est vraie");
+        assert!(titre_pas_un_jeu("Football Manager 2024 Pre-game editor") && titre_pas_un_jeu("Chivalry 2 - Public Testing") && !titre_pas_un_jeu("Ghostrunner"));
+    }
+
+    #[test]
+    fn les_titres_abimes_du_catalogue_epic_sont_repares_sans_rien_inventer() {
+        // Les titres RÉELS du relevé du 18/11 (Epic écrit « ? » à la place de chaque signe hors ASCII).
+        for (abime, repare) in [
+            // Un « ? » en fin de mot reste : il est peut-être vrai.
+            ("WHAT THE GOLF?", "WHAT THE GOLF?"),
+            ("Why? Simulator", "Why? Simulator"),
+            ("Les Sims? 4", "Les Sims? 4"),
+            ("Rocket League?", "Rocket League?"),
+            ("PAYDAY?2", "PAYDAY 2"),
+            ("Dishonored?: Death of the Outsider?", "Dishonored: Death of the Outsider?"),
+            ("LEGO? Star Wars?: The Skywalker Saga", "LEGO? Star Wars: The Skywalker Saga"),
+            ("Dragon?Age?: Inquisition - ?dition Jeu de l'ann?e", "Dragon Age: Inquisition - Édition Jeu de l'ann?e"),
+            ("Monument?Valley?II", "Monument Valley II"),
+            ("Trine?2: Complete Story", "Trine 2: Complete Story"),
+            ("Jorel?s Brother and The Most Important Game of the Galaxy", "Jorel's Brother and The Most Important Game of the Galaxy"),
+            ("Firestone ? Idle Clicker Online RPG", "Firestone – Idle Clicker Online RPG"),
+            ("RAWMEN: Food Fighter Arena ??", "RAWMEN: Food Fighter Arena"),
+            ("Ogu et la For?t secr?te", "Ogu et la For?t secr?te"),
+            ("Le D?tective du c?t? Obscur", "Le D?tective du c?t? Obscur"),
+            ("Borderlands 3", "Borderlands 3"),
+        ] {
+            assert_eq!(reparer_titre_epic(abime), repare, "{abime}");
+        }
+        // Plafond : au-delà de 300 signes, le titre brut (jamais un long calcul).
+        let long = "a?".repeat(200);
+        assert_eq!(reparer_titre_epic(&long), long);
+        let limite = format!("{}?2", "a".repeat(298));
+        assert_eq!(reparer_titre_epic(&limite), format!("{} 2", "a".repeat(298)), "300 signes : encore réparé");
+        // Un titre abîmé ou réparé est marqué « douteux » (la carte déjà rangée garde le sien).
+        let l = lire_catalogue_epic(&catalogue_epic_invente()).unwrap();
+        assert!(l.iter().all(|j| !j.titre_douteux), "aucun titre abîmé dans ce catalogue");
+        let entree = |t: &str| serde_json::json!({"title": t, "categories": [{"path": "games"}], "mainGameItem": {"id": ""}, "releaseInfo": [{"appId": "A", "platform": ["Windows"]}]});
+        assert!(jeu_du_catalogue_epic(&entree("PAYDAY?2")).unwrap().titre_douteux, "réparé");
+        assert!(jeu_du_catalogue_epic(&entree("WHAT THE GOLF?")).unwrap().titre_douteux, "un « ? » reste");
+        assert!(!jeu_du_catalogue_epic(&entree("Borderlands 3")).unwrap().titre_douteux);
+    }
+
+    #[test]
+    fn le_catalogue_epic_se_lit_sur_le_disque_avec_un_plafond() {
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("catcache.bin");
+        std::fs::write(&f, catalogue_epic_invente()).unwrap();
+        assert_eq!(possedes_epic(Some(&f)).unwrap().len(), 3);
+        assert!(possedes_epic(None).is_none());
+        assert!(possedes_epic(Some(&d.path().join("absent"))).is_none());
+        // Au-delà du plafond : rien n'est lu (fichier creux, aucune place prise).
+        let gros = d.path().join("gros.bin");
+        std::fs::File::create(&gros).unwrap().set_len(PLAFOND_CACHE + 1).unwrap();
+        assert!(possedes_epic(Some(&gros)).is_none());
+    }
+
+    /// Un message protobuf : (numéro du champ, entier ou octets).
+    fn pb(champs: &[(u64, Result<u64, Vec<u8>>)]) -> Vec<u8> {
+        let v = |mut x: u64, o: &mut Vec<u8>| loop {
+            let b = (x & 0x7f) as u8;
+            x >>= 7;
+            if x == 0 {
+                o.push(b);
+                break;
+            }
+            o.push(b | 0x80);
+        };
+        let mut o = vec![];
+        for (n, c) in champs {
+            match c {
+                Ok(e) => {
+                    v(n << 3, &mut o);
+                    v(*e, &mut o);
+                }
+                Err(b) => {
+                    v(n << 3 | 2, &mut o);
+                    v(b.len() as u64, &mut o);
+                    o.extend_from_slice(b);
+                }
+            }
+        }
+        o
+    }
+
+    /// Un fichier `ownership` inventé, de la forme relevée chez Seb (en-tête, signature, longueur, protobuf ; la clé de
+    /// produit est INVENTÉE).
+    fn possession_inventee(ids_produits: &[u64], ids: &[u64]) -> Vec<u8> {
+        let mut c: Vec<(u64, Result<u64, Vec<u8>>)> = ids_produits.iter().map(|i| (1, Err(pb(&[(1, Ok(*i)), (2, Ok(*i)), (4, Err(b"AAAA-BBBB-CCCC-DDDD".to_vec()))])))).collect();
+        c.extend(ids.iter().map(|i| (2, Ok(*i))));
+        let d = pb(&c);
+        let mut o = vec![0, 1, 0, 0];
+        o.extend(std::iter::repeat_n(0x5a, 256));
+        o.extend((d.len() as u32).to_le_bytes());
+        o.extend(d);
+        o
+    }
+
+    fn configuration(id: u64, yaml: &str) -> (u64, Result<u64, Vec<u8>>) {
+        (1, Err(pb(&[(1, Ok(id)), (2, Ok(id)), (3, Err(yaml.as_bytes().to_vec()))])))
+    }
+
+    #[test]
+    fn ubisoft_lit_ses_jeux_possedes_et_seulement_ceux_du_compte() {
+        let possedes = lire_possession_ubisoft(&possession_inventee(&[54, 95], &[54, 95, 116, 3499])).unwrap();
+        assert_eq!(possedes.into_iter().collect::<Vec<_>>(), [54, 95, 116, 3499]);
+        // La forme réelle (Assassin's Creed III, relevé du 18/11), réduite : nom et image par `localizations`.
+        let ac3 = "version: 2.0\nroot:\n  name: l1\n  thumb_image: THUMBIMAGE\n  start_game:\n    online:\n      executables:\n        - path:\n            relative: AC3SP.exe\n  addons:\n    - id: 116\n      name: RELATED_GAMENAME_116\nlocalizations:\n  default:\n    l1: Assassin's Creed® III\n    THUMBIMAGE: da1733d50f6fbcf5b344d23ebb1ed52c.jpg\n";
+        let sc = "version: 2.0\nroot:\n  name: \"Tom Clancy's Splinter Cell Chaos Theory®\"\n  thumb_image: 5afce18505053ddcecd8f0cbfc8041e8.jpg\n  start_game:\n    offline:\n      executables: []\n";
+        let dlc = "version: 2.0\nroot:\n  name: Le DLC\n  start_game:\n    offline: {}\n";
+        let ulc = "version: 2.0\nroot:\n  is_ulc: yes\n  name: Contenu\n  start_game:\n    offline: {}\n";
+        let tiers = "version: 2.0\nroot:\n  name: Acheté sur Steam\n  third_party_platform:\n    name: steam\n  start_game:\n    offline: {}\n";
+        let pas_jeu = "version: 2.0\nroot:\n  name: 30th Anniversary\n";
+        let pas_a_moi = "version: 2.0\nroot:\n  name: Trackmania\n  start_game:\n    offline: {}\n";
+        let config = pb(&[
+            configuration(54, ac3),
+            configuration(95, sc),
+            configuration(116, dlc),
+            configuration(17254, ulc),
+            configuration(3499, pas_jeu),
+            configuration(400, tiers),
+            configuration(5595, pas_a_moi),
+            configuration(7, ":\n  - [abîmé"),
+        ]);
+        let mut a_moi = lire_possession_ubisoft(&possession_inventee(&[54, 95, 116, 400, 17254], &[3499])).unwrap();
+        let l = lire_configurations_ubisoft(&config, &a_moi).unwrap();
+        assert_eq!(l.iter().map(|j| (j.id.as_str(), j.nom.as_str())).collect::<Vec<_>>(), [("uplay_54", "Assassin's Creed III"), ("uplay_95", "Tom Clancy's Splinter Cell Chaos Theory")]);
+        assert_eq!(l[0].image.as_deref(), Some("https://ubistatic3-a.akamaihd.net/orbit/uplay_launcher_3_0/assets/da1733d50f6fbcf5b344d23ebb1ed52c.jpg"));
+        assert!(l.iter().all(|j| !j.installe && j.dossier.is_none()));
+        assert!(l.iter().all(|j| crate::boutiques::image_autorisee(j.image.as_deref().unwrap())));
+        // Trackmania est dans le cache, pas dans la possession : jamais une carte.
+        a_moi.insert(5595);
+        assert_eq!(lire_configurations_ubisoft(&config, &a_moi).unwrap().len(), 3);
+        // Fichiers abîmés : None.
+        assert!(lire_configurations_ubisoft(&[0xff, 0xff], &a_moi).is_none());
+        assert!(lire_configurations_ubisoft(&[], &a_moi).is_none(), "aucun produit");
+        let mut p = possession_inventee(&[54], &[]);
+        p.pop();
+        assert!(lire_possession_ubisoft(&p).is_none(), "longueur annoncée fausse");
+        assert!(lire_possession_ubisoft(&p[..100]).is_none(), "fichier coupé");
+        assert!(lire_possession_ubisoft(&possession_inventee(&[], &[])).is_none(), "aucun produit possédé");
+        assert!(!image_ubisoft_sure("../x.jpg") && !image_ubisoft_sure("x.exe") && image_ubisoft_sure("abc.png"));
+    }
+
+    #[test]
+    fn ubisoft_lit_le_compte_le_plus_recent_dans_son_cache() {
+        let d = tempfile::tempdir().unwrap();
+        let cache = d.path().join("Ubisoft Game Launcher").join("cache");
+        std::fs::create_dir_all(cache.join("configuration")).unwrap();
+        std::fs::create_dir_all(cache.join("ownership")).unwrap();
+        let jeu = |nom: &str| format!("root:\n  name: {nom}\n  start_game:\n    offline: {{}}\n");
+        std::fs::write(cache.join("configuration").join("configurations"), pb(&[configuration(54, &jeu("AC3")), configuration(95, &jeu("SC"))])).unwrap();
+        std::fs::write(cache.join("ownership").join("ancien"), possession_inventee(&[54], &[])).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        std::fs::write(cache.join("ownership").join("recent"), possession_inventee(&[95], &[])).unwrap();
+        let l = possedes_ubisoft(Some(&cache)).unwrap();
+        assert_eq!(l.iter().map(|j| j.id.as_str()).collect::<Vec<_>>(), ["uplay_95"], "le dernier compte connecté");
+        // Le cache se trouve à côté du lanceur (InstallDir du registre, avec des « / »).
+        let lanceur = valeurs(&[("InstallDir", &format!("{}/", d.path().join("Ubisoft Game Launcher").to_string_lossy().replace('\\', "/")))]);
+        assert_eq!(cache_ubisoft(Some(&lanceur)), Some(cache.clone()));
+        std::fs::remove_dir_all(cache.join("ownership")).unwrap();
+        assert!(possedes_ubisoft(Some(&cache)).is_none(), "sans possession : rien (jamais tout le cache)");
+        assert!(possedes_ubisoft(None).is_none());
+    }
+
+    #[test]
+    fn un_jeu_installe_et_possede_ne_fait_qu_une_carte() {
+        // Lot A : TerraScape installé (clé = AppName du manifeste) ; lot B : le même dans le catalogue (appId).
+        let installe = lire_epic(Some(vec![crate::boutiques::JeuEpic {
+            app: "6ef17d9f63c143ea88a4a4bcbcf1e91c".into(),
+            namespace: "bfb8".into(),
+            item: "e6eb".into(),
+            nom: "TerraScape".into(),
+            dossier: PathBuf::from(r"D:\Jeux\TerraScape"),
+        }]));
+        let possedes = lire_catalogue_epic(&catalogue_epic_invente());
+        let l = fusion_possedes(installe.clone(), possedes.clone()).unwrap();
+        assert_eq!(l.len(), 3, "TerraScape une seule fois");
+        let t = l.iter().find(|j| j.nom == "TerraScape").unwrap();
+        assert!(t.installe && t.dossier.as_deref() == Some(r"D:\Jeux\TerraScape"), "la carte installée gagne");
+        assert!(t.image.as_deref().is_some_and(|u| u.contains("1200x1600")), "et reçoit la jaquette du catalogue");
+        assert_eq!(l.iter().filter(|j| j.installe).count(), 1);
+        // Catalogue illisible : les jeux installés seuls. Jeux installés illisibles : rien (jamais un état faux).
+        assert_eq!(fusion_possedes(installe, None).unwrap().len(), 1);
+        assert!(fusion_possedes(None, possedes).is_none());
+    }
+
     /// RÉEL, LECTURE SEULE : ce que les lecteurs trouvent sur ce PC (copies effacées ensuite ; rien n'est lancé).
     /// `cargo test --lib essai_boutiques_pc -- --ignored --nocapture`
     #[test]
@@ -785,6 +1467,35 @@ mod tests {
         }
         println!("lu en {:?}", debut.elapsed());
         assert!(std::fs::read_dir(d.path()).unwrap().next().is_none(), "aucune copie ne reste");
+    }
+
+    /// RÉEL, LECTURE SEULE : les jeux POSSÉDÉS (lot B), lus EN PLACE, sans aucune copie (le fichier `ownership`
+    /// d'Ubisoft porte les clés de produit : jamais copié ; seuls les numéros sont lus, rien n'est affiché d'autre).
+    /// `cargo test --lib essai_possedes -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn essai_possedes() {
+        let debut = std::time::Instant::now();
+        let l = possedes_epic(catalogue_epic().as_deref()).expect("catalogue Epic");
+        println!("Epic : {} jeux possédés (lu en {:?})", l.len(), debut.elapsed());
+        for j in l.iter().step_by((l.len() / 10).max(1)).take(10) {
+            println!("   {} [{}] image : {}", j.nom, j.id, j.image.is_some());
+        }
+        println!("   sans image : {}", l.iter().filter(|j| j.image.is_none()).count());
+        println!("   titres encore abîmés : {:?}", l.iter().filter(|j| j.nom.contains('?')).map(|j| &j.nom).collect::<Vec<_>>());
+        let installes = lire_epic(crate::boutiques::installes_epic_du_pc()).unwrap_or_default();
+        let f = fusion_possedes(Some(installes.clone()), Some(l)).unwrap();
+        println!("Epic : {} installé(s) {:?} → {} carte(s), {} installée(s)", installes.len(), installes.iter().map(|j| &j.id).collect::<Vec<_>>(), f.len(), f.iter().filter(|j| j.installe).count());
+        let ubi = cache_ubisoft(crate::registre::valeurs(Racine::Machine, CLE_UBISOFT).as_ref());
+        match possedes_ubisoft(ubi.as_deref()) {
+            Some(l) => {
+                println!("Ubisoft : {} jeu(x) possédé(s)", l.len());
+                for j in &l {
+                    println!("   {} [{}] image : {:?}", j.nom, j.id, j.image);
+                }
+            }
+            None => println!("Ubisoft : cache absent ou illisible"),
+        }
     }
 
     /// RÉEL, LECTURE SEULE : les clés lues sur le PC tombent-elles sur celles de GOG Galaxy (même carte) ? La base de

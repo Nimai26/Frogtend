@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.212.0 — 🛒 Les jeux de tes comptes Epic et Ubisoft, même pas installés
+
+- Nouveau : Frogtend retrouve aussi les jeux que tu POSSÈDES sur Epic Games et Ubisoft Connect (d'après ce que leurs
+  lanceurs gardent sur ce PC), sans connexion. Ils viennent du compte ouvert sur ce PC : chaque profil choisit UNE fois
+  s'il les veut dans sa ludothèque (changeable dans ⚙ Options ▸ Comptes ▸ 🛒 Mes jeux installés). Ils arrivent
+  « pas installés », avec ⬇ Installer par la boutique ; un jeu qui disparaît d'un compte reste dans ta ludothèque.
+- Taodbox : les jeux à installer sont dans la grille (pastille « ⬇ À installer ») ; A lance l'installation par la
+  boutique, dont la fenêtre peut demander la souris (⊞/Guide pour revenir à Frogtend).
+- Les jaquettes des boutiques sont gardées en petite taille (plus de grandes images qui remplissent le disque).
+- À savoir : le lanceur Epic écrit certains titres sans leurs signes (« Les Sims? 4 ») ; Frogtend en répare la plupart.
+
 ## 0.211.1 — Les jeux Xbox suivis, et le message des nouveaux jeux
 
 - Corrigé : un jeu Xbox / Microsoft Store (Minecraft…) se lançait, mais Frogtend ne le voyait pas (« Lancement… » sans

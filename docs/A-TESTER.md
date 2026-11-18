@@ -6,6 +6,15 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🛒 Jeux de tes comptes Epic et Ubisoft (0.212.0, lot B)
+- [ ] Ouvrir ton profil : une fenêtre demande « Ajouter les 500 jeux du compte Epic Games connecté sur ce PC (et 4
+      d'Ubisoft) à ta ludothèque ? » ; Oui → un message « 🎮 … jeux de tes comptes … ajoutés » ; la barre Windows passe à
+      environ 520 ; filtre « Pas installés » : Epic et Ubisoft (Assassin's Creed III, Splinter Cell…).
+- [ ] Un jeu Epic pas installé ▸ ⬇ Installer : Epic ouvre sa fenêtre d'installation.
+- [ ] Taodbox : les jeux à installer avec la pastille « ⬇ À installer » ; A ouvre l'installation (message ⊞/Guide).
+- [ ] 🛒 Boutiques : « Epic Games : 500 jeux dans ton compte, dont 1 installé ».
+- [ ] Les titres : en survolant la liste, peu de « ? » (21 attendus, ex. « Les Sims? 4 »).
+
 ## 🎮 Tes jeux installés entrent seuls (import automatique, lot A) et jeux offerts d'Epic
 - [~] (Seb 18/11, 0.211.0 : les 15 jeux SONT entrés — Steam 10, GOG 2, Xbox 3, TerraScape déjà là — MAIS aucun message et la barre de gauche restait à « 2 jeux Windows » : corrigé dans la version suivante, message d'abord puis grille ET barre relues) Ouvrir ton profil, sans rien toucher : un seul message « 🎮 … nouveaux jeux trouvés sur ce PC (…) » ; dans Ma
       ludothèque (Windows), filtre Boutique : **Steam 10** (Age of Empires IV, Batman Arkham Knight, Ghostbusters, GTA V

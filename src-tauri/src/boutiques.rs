@@ -54,6 +54,10 @@ pub struct JeuBoutique {
     /// n'en montrer qu'une carte (A6c, Seb 21/10).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub releases: Vec<String>,
+    /// Le titre est peut-être abîmé (catalogue Epic écrit en ASCII : un « ? » restant, ou un titre réparé) : une carte
+    /// déjà rangée garde alors le sien (le titre juste du manifeste, lu quand le jeu était installé).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub titre_douteux: bool,
 }
 
 /// Ce que Frogtend garde d'une boutique pour un profil (`profils\<id>\boutiques.json`), sans aucun secret.
@@ -149,6 +153,7 @@ pub async fn jeux_possedes(base: &str, cle: &str, steamid: &str) -> Resultat<Vec
                 pret: None,
                 succes: None,
                 releases: vec![],
+                titre_douteux: false,
             })
         })
         .collect();
@@ -413,7 +418,7 @@ pub fn lire_galaxy(storage: &Path, travail: &Path) -> Resultat<Vec<JeuBoutique>>
                     .filter(|x| x.len() <= 128 && x.contains('_') && x.chars().all(|c| c.is_ascii_graphic()))
                     .map(String::from)
                     .collect();
-                Ok(JeuBoutique { id: cle.clone(), nom, minutes, derniere, installe, plateforme: prefixe.to_string(), image, dossier, pret: None, succes, releases })
+                Ok(JeuBoutique { id: cle.clone(), nom, minutes, derniere, installe, plateforme: prefixe.to_string(), image, dossier, pret: None, succes, releases, titre_douteux: false })
             })?
             .flatten()
             .collect::<Vec<_>>();
@@ -810,6 +815,8 @@ pub fn image_autorisee(url: &str) -> bool {
     url.starts_with("https://images.gog.com/")
         || url.starts_with("https://cdn.akamai.steamstatic.com/")
         || url.starts_with("https://cdn1.epicgames.com/")
+        // Les jaquettes des jeux Ubisoft possédés (lot B de l'import automatique, CDN public du lanceur).
+        || url.starts_with("https://ubistatic3-a.akamaihd.net/orbit/uplay_launcher_3_0/assets/")
         // Les images de la fiche d'un jeu Steam (lot D : fond, captures ; relevé du 21/10).
         || url.starts_with("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/")
         // Les badges des succès de RetroAchievements (lot C3).
@@ -826,14 +833,93 @@ pub async fn image_par_adresse(cache: &Path, url: &str) -> Option<Vec<u8>> {
     if let Ok(o) = std::fs::read(&f) {
         return Some(o);
     }
-    let r = client().ok()?.get(url).send().await.ok()?;
-    if !r.status().is_success() {
-        return None;
-    }
-    let o = r.bytes().await.ok()?.to_vec();
+    let o = telecharger_plafonne(url, PLAFOND_IMAGE).await?;
     let _ = std::fs::create_dir_all(f.parent()?);
     let _ = std::fs::write(&f, &o);
     Some(o)
+}
+
+/// Le plafond d'une image de boutique téléchargée (une boîte Epic fait quelques centaines de Ko).
+pub const PLAFOND_IMAGE: usize = 20 * 1024 * 1024;
+
+/// Une image publique de boutique RÉDUITE à `largeur` pixels avant d'être gardée (`<cache>\images\<empreinte>-<largeur>`) :
+/// l'original n'est jamais gardé (500 boîtes Epic de 1 200 × 1 600). Une image déjà assez petite est gardée telle quelle ;
+/// une image illisible est rendue sans être gardée. Un original gardé avant ce lot sert de source (rien à retélécharger).
+pub async fn image_reduite(cache: &Path, url: &str, largeur: u32) -> Option<Vec<u8>> {
+    if !image_autorisee(url) {
+        return None;
+    }
+    use sha2::{Digest, Sha256};
+    let empreinte = format!("{:x}", Sha256::digest(url.as_bytes()));
+    let dossier = cache.join("images");
+    let f = dossier.join(format!("{empreinte}-{largeur}"));
+    if let Ok(o) = std::fs::read(&f) {
+        return Some(o);
+    }
+    let original = match std::fs::read(dossier.join(&empreinte)) {
+        Ok(o) => o,
+        Err(_) => {
+            telecharger_plafonne(url, PLAFOND_IMAGE).await?
+        }
+    };
+    let source = original.clone();
+    let reduite = tokio::task::spawn_blocking(move || reduire_image(&source, largeur)).await.ok()?;
+    let a_garder = match reduite {
+        Some(Reduction::Reduite(o)) => o,
+        Some(Reduction::DejaPetite) => original,
+        None => return Some(original), // illisible pour Frogtend : montrée, jamais gardée
+    };
+    let _ = std::fs::create_dir_all(&dossier);
+    let _ = std::fs::write(&f, &a_garder);
+    Some(a_garder)
+}
+
+/// Télécharge une adresse, morceau par morceau, et ABANDONNE dès que `plafond` octets sont dépassés (annoncés par
+/// l'en-tête de longueur, ou reçus, même sans en-tête) : jamais une réponse démesurée en mémoire. `None` : échec,
+/// statut d'erreur ou plafond dépassé.
+pub async fn telecharger_plafonne(url: &str, plafond: usize) -> Option<Vec<u8>> {
+    let mut r = client().ok()?.get(url).send().await.ok()?;
+    if !r.status().is_success() || r.content_length().is_some_and(|l| l > plafond as u64) {
+        return None;
+    }
+    let mut o = Vec::new();
+    while let Some(morceau) = r.chunk().await.ok()? {
+        if o.len() + morceau.len() > plafond {
+            return None;
+        }
+        o.extend_from_slice(&morceau);
+    }
+    Some(o)
+}
+
+/// Ce que donne la réduction d'une image.
+#[derive(Debug, PartialEq)]
+pub enum Reduction {
+    /// L'image réduite, en JPEG.
+    Reduite(Vec<u8>),
+    /// L'image n'est pas plus large que demandé : elle reste telle quelle.
+    DejaPetite,
+}
+
+/// Réduit une image (JPEG, PNG, WebP) à `largeur` pixels, proportions gardées, en JPEG. `None` : image illisible ou
+/// démesurée (plafonds de taille et de mémoire : jamais une image piégée qui remplit la mémoire).
+pub fn reduire_image(o: &[u8], largeur: u32) -> Option<Reduction> {
+    let mut lecteur = image::ImageReader::new(std::io::Cursor::new(o)).with_guessed_format().ok()?;
+    let mut limites = image::Limits::default();
+    limites.max_image_width = Some(10_000);
+    limites.max_image_height = Some(10_000);
+    limites.max_alloc = Some(256 * 1024 * 1024);
+    lecteur.limits(limites);
+    let img = lecteur.decode().ok()?;
+    let largeur = largeur.max(1);
+    if img.width() <= largeur {
+        return Some(Reduction::DejaPetite);
+    }
+    let hauteur = ((img.height() as u64 * largeur as u64) / img.width() as u64).max(1) as u32;
+    let r = img.resize_exact(largeur, hauteur, image::imageops::FilterType::Triangle).to_rgb8();
+    let mut sortie = vec![];
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut sortie, 85).encode_image(&r).ok()?;
+    Some(Reduction::Reduite(sortie))
 }
 
 /// Les images officielles d'un jeu Steam (CDN public de Steam, sans clé) : la jaquette en hauteur, sinon la bannière.
@@ -1045,6 +1131,123 @@ mod tests {
         println!("images epic : {}", v.chars().take(500).collect::<String>());
     }
 
+    /// Une image PNG inventée de `l` × `h` pixels.
+    fn png(l: u32, h: u32) -> Vec<u8> {
+        let img = image::RgbImage::from_pixel(l, h, image::Rgb([200, 30, 30]));
+        let mut o = std::io::Cursor::new(vec![]);
+        img.write_to(&mut o, image::ImageFormat::Png).unwrap();
+        o.into_inner()
+    }
+
+    #[test]
+    fn une_jaquette_de_boutique_est_reduite_a_la_largeur_demandee() {
+        let Some(Reduction::Reduite(o)) = reduire_image(&png(1200, 1600), 300) else { panic!("réduite") };
+        let r = image::load_from_memory(&o).unwrap();
+        assert_eq!((r.width(), r.height()), (300, 400), "proportions gardées");
+        assert_eq!(image::guess_format(&o).unwrap(), image::ImageFormat::Jpeg);
+        assert_eq!(reduire_image(&png(200, 300), 300), Some(Reduction::DejaPetite), "jamais agrandie");
+        assert_eq!(reduire_image(b"pas une image", 300), None);
+        // Une image annoncée démesurée (en-tête PNG de 100 000 × 100 000) : refusée sans tout décoder.
+        let mut piege = png(1, 1);
+        piege[16..20].copy_from_slice(&100_000u32.to_be_bytes());
+        piege[20..24].copy_from_slice(&100_000u32.to_be_bytes());
+        assert_eq!(reduire_image(&piege, 300), None);
+    }
+
+    /// Un petit serveur qui répond en morceaux (`Transfer-Encoding: chunked`), SANS en-tête de longueur.
+    fn serveur_en_morceaux(morceaux: usize, taille: usize) -> String {
+        use std::io::{Read, Write};
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let adresse = format!("http://{}/image", l.local_addr().unwrap());
+        std::thread::spawn(move || {
+            if let Ok((mut c, _)) = l.accept() {
+                let mut tampon = [0u8; 4096];
+                let _ = c.read(&mut tampon);
+                let _ = c.write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n");
+                for _ in 0..morceaux {
+                    if c.write_all(format!("{taille:x}\r\n").as_bytes()).is_err() || c.write_all(&vec![b'x'; taille]).is_err() || c.write_all(b"\r\n").is_err() {
+                        return; // le client a abandonné : c'est attendu
+                    }
+                }
+                let _ = c.write_all(b"0\r\n\r\n");
+            }
+        });
+        adresse
+    }
+
+    #[tokio::test]
+    async fn un_telechargement_d_image_s_arrete_des_le_plafond_meme_sans_longueur_annoncee() {
+        // 10 morceaux de 1 000 octets, sans en-tête de longueur.
+        assert_eq!(telecharger_plafonne(&serveur_en_morceaux(10, 1000), 20_000).await.map(|o| o.len()), Some(10_000));
+        assert_eq!(telecharger_plafonne(&serveur_en_morceaux(10, 1000), 9_999).await, None, "plafond dépassé en route");
+        // Avec un en-tête de longueur trop grand : refusé avant de lire.
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/grande");
+            t.status(200).body(vec![b'y'; 5000]);
+        });
+        assert_eq!(telecharger_plafonne(&s.url("/grande"), 4999).await, None);
+        assert_eq!(telecharger_plafonne(&s.url("/grande"), 5000).await.map(|o| o.len()), Some(5000));
+    }
+
+    /// `panic = "abort"` en version livrée : une image piégée ne doit JAMAIS faire paniquer le décodage (Frogtend se
+    /// fermerait). Des images JPEG, PNG et WebP abîmées octet par octet et coupées partout : `None` ou une réduction,
+    /// jamais une panique (un test qui panique échoue).
+    #[test]
+    fn une_image_abimee_ou_coupee_ne_fait_jamais_paniquer_le_decodage() {
+        let source = image::RgbImage::from_fn(64, 48, |x, y| image::Rgb([(x * 4) as u8, (y * 5) as u8, ((x + y) * 2) as u8]));
+        let mut essais = 0;
+        for format in [image::ImageFormat::Jpeg, image::ImageFormat::Png, image::ImageFormat::WebP] {
+            let mut o = std::io::Cursor::new(vec![]);
+            source.write_to(&mut o, format).unwrap();
+            let o = o.into_inner();
+            assert!(matches!(reduire_image(&o, 32), Some(Reduction::Reduite(_))), "{format:?} intacte");
+            // Coupée à chaque longueur.
+            for n in 0..o.len() {
+                let _ = reduire_image(&o[..n], 32);
+                essais += 1;
+            }
+            // Chaque octet changé (plusieurs valeurs), un à la fois.
+            let mut graine: u32 = 0x1234_5678;
+            for i in 0..o.len() {
+                for _ in 0..4 {
+                    graine = graine.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                    let mut a = o.clone();
+                    a[i] = (graine >> 24) as u8;
+                    let _ = reduire_image(&a, 32);
+                    essais += 1;
+                }
+            }
+            // Des dimensions annoncées démesurées dans l'en-tête.
+            let mut a = o.clone();
+            for k in (0..a.len().min(64)).step_by(2) {
+                a[k] = 0xff;
+                let _ = reduire_image(&a, 32);
+                essais += 1;
+            }
+        }
+        assert!(essais > 1000, "{essais} images piégées essayées");
+    }
+
+    #[tokio::test]
+    async fn la_jaquette_reduite_est_gardee_et_jamais_l_original_telecharge() {
+        use sha2::{Digest, Sha256};
+        let d = tempfile::tempdir().unwrap();
+        let url = "https://cdn1.epicgames.com/item/ns/boite";
+        let empreinte = format!("{:x}", Sha256::digest(url.as_bytes()));
+        // Un original gardé avant ce lot : il sert de source, sans réseau.
+        std::fs::create_dir_all(d.path().join("images")).unwrap();
+        std::fs::write(d.path().join("images").join(&empreinte), png(1200, 1600)).unwrap();
+        let o = image_reduite(d.path(), url, 400).await.unwrap();
+        assert_eq!(image::load_from_memory(&o).unwrap().width(), 400);
+        let gardee = d.path().join("images").join(format!("{empreinte}-400"));
+        assert_eq!(std::fs::read(&gardee).unwrap(), o, "la réduite est gardée");
+        // La suivante vient du cache.
+        std::fs::remove_file(d.path().join("images").join(&empreinte)).unwrap();
+        assert_eq!(image_reduite(d.path(), url, 400).await.unwrap(), o);
+        assert!(image_reduite(d.path(), "https://exemple.com/x.png", 400).await.is_none(), "hôte non autorisé");
+    }
+
     #[test]
     fn galaxy_dates_plateformes_et_images_autorisees() {
         assert_eq!(date_en_secondes("1970-01-01 00:00:00"), Some(0));
@@ -1055,6 +1258,8 @@ mod tests {
         assert!(image_autorisee("https://images.gog.com/x_glx_vertical_cover.webp?namespace=gamesdb"));
         assert!(!image_autorisee("https://exemple.com/x.png"));
         assert!(!image_autorisee("http://images.gog.com/x.png"), "https seulement");
+        assert!(image_autorisee("https://ubistatic3-a.akamaihd.net/orbit/uplay_launcher_3_0/assets/da1733d50f6fbcf5b344d23ebb1ed52c.jpg"));
+        assert!(!image_autorisee("https://ubistatic3-a.akamaihd.net/autre/x.jpg"), "seulement les images du lanceur");
     }
 
     /// Une petite base « façon Galaxy » : les DLC et jeux cachés sont écartés, les installés repérés.

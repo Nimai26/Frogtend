@@ -599,12 +599,15 @@ export interface EtatBoutiquePc {
   /** Ses jeux installés ont pu être lus. */
   lu: boolean;
   installes: number;
+  /** Ses jeux POSSÉDÉS, installés compris (lot B : Epic, Ubisoft) ; `null` : pas lus pour cette boutique. */
+  possedes?: number | null;
 }
 
-/** La relecture des boutiques de ce PC à l'ouverture d'un profil : (boutique, nombre de jeux NOUVEAUX). */
+/** La relecture des boutiques de ce PC à l'ouverture d'un profil : (boutique, nombre de jeux NOUVEAUX, dont
+ * installés). */
 export interface ReleveBoutiques {
   boutiques: EtatBoutiquePc[];
-  nouveaux: [string, number][];
+  nouveaux: [string, number, number][];
 }
 
 /** Ce que montre le menu en jeu. */
@@ -1007,7 +1010,10 @@ export const api = {
   steamImporter: () => appeler<JeuBoutique[]>('boutique_steam_importer'),
   steamOuvrir: (appid: string, action: 'jouer' | 'installer' | 'verifier') => appeler<void>('boutique_steam_ouvrir', { appid, action }),
   /** Import automatique (lot A) : relit les jeux installés de toutes les boutiques de ce PC et les range. */
-  boutiquesRelirePc: () => appeler<ReleveBoutiques>('boutiques_relire_pc'),
+  /** `possedes` : le profil a accepté ses jeux possédés (lot B) ; sinon seuls les jeux installés sont rangés. */
+  boutiquesRelirePc: (possedes = false) => appeler<ReleveBoutiques>('boutiques_relire_pc', { possedes }),
+  /** Le profil refuse ses jeux possédés : leurs cartes jamais installées ni jouées sont retirées (rend leur nombre). */
+  boutiquesRetirerPossedes: () => appeler<number>('boutiques_retirer_possedes'),
   /** L'état des boutiques de ce PC (lecture seule). */
   boutiquesEtatPc: () => appeler<EtatBoutiquePc[]>('boutiques_etat_pc'),
   /** Jouer à un jeu de boutique ou l'installer, par SON lanceur (clé de la carte). */

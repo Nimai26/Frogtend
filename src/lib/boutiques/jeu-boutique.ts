@@ -1,6 +1,6 @@
 // Un jeu de boutique dans la ludothèque (lot 9, id négatif) : jouer ou installer passe par SA boutique — Steam, Epic,
 // GOG, Ubisoft Connect, Amazon Games, Xbox (import automatique, lot A du 18/11), ou GOG Galaxy pour les jeux qu'il relie.
-import { api, type JeuResume } from '$lib/api';
+import { adresseJaquette, api, type JeuResume } from '$lib/api';
 
 /** Les boutiques proposées dans le filtre de la ludothèque. */
 export const BOUTIQUES: { valeur: string; libelle: string }[] = [
@@ -56,22 +56,66 @@ export async function ouvrirJeuDeBoutique(j: JeuResume) {
   else await api.boutiqueOuvrir(m.boutique, m.cle, action);
 }
 
-/** Le toast regroupé des jeux NOUVEAUX trouvés sur ce PC (« 🎮 3 nouveaux jeux trouvés sur ce PC (Epic 2, Ubisoft
- * 1) ») ; `null` s'il n'y en a aucun. */
-export function messageNouveaux(nouveaux: [string, number][]): string | null {
-  const l = nouveaux.filter(([, n]) => n > 0);
-  const total = l.reduce((s, [, n]) => s + n, 0);
-  if (!total) return null;
-  const court = (b: string) => ({ epic: 'Epic', uplay: 'Ubisoft', amazon: 'Amazon', xboxone: 'Xbox' } as Record<string, string>)[b] ?? nomBoutique(b);
-  const detail = l.map(([b, n]) => `${court(b)} ${n}`).join(', ');
-  return total === 1 ? `🎮 1 nouveau jeu trouvé sur ce PC (${detail})` : `🎮 ${total} nouveaux jeux trouvés sur ce PC (${detail})`;
+/** Le nom court d'une boutique dans un message (« Epic », « Ubisoft »…). */
+function nomCourt(b: string): string {
+  return ({ epic: 'Epic', uplay: 'Ubisoft', amazon: 'Amazon', xboxone: 'Xbox' } as Record<string, string>)[b] ?? nomBoutique(b);
 }
 
-/** La ligne d'état d'une boutique sur ce PC (page 🛒 Boutiques). */
-export function ligneEtat(e: { nom: string; lanceur: boolean; lu: boolean; installes: number }): string {
-  if (!e.lu) return e.lanceur ? `${e.nom} : jeux illisibles pour l’instant` : `${e.nom} : lanceur absent`;
-  const jeux = e.installes === 0 ? 'aucun jeu installé' : e.installes === 1 ? '1 jeu sur ce PC' : `${e.installes} jeux sur ce PC`;
-  return `${e.nom} : ${jeux}, relus au démarrage${e.lanceur ? '' : ' (lanceur absent : pour jouer, réinstalle-le)'}`;
+/** « Epic », « Epic et Ubisoft », « Epic, GOG et Ubisoft ». */
+function enumerer(noms: string[]): string {
+  return noms.length <= 1 ? (noms[0] ?? '') : `${noms.slice(0, -1).join(', ')} et ${noms[noms.length - 1]}`;
+}
+
+/** Le toast regroupé des jeux NOUVEAUX dans la ludothèque ; `null` s'il n'y en a aucun. Chaque entrée : (boutique,
+ * nouveaux, dont installés). Seulement des jeux installés (lot A) : « 🎮 3 nouveaux jeux trouvés sur ce PC (Epic 2,
+ * Ubisoft 1) ». Avec des jeux des comptes (lot B), des mots pour un novice : « 🎮 498 jeux de tes comptes Epic et
+ * Ubisoft ajoutés à ta ludothèque (1 déjà installé). Les autres s'installent avec ⬇ Installer. » */
+export function messageNouveaux(nouveaux: [string, number, number?][]): string | null {
+  const l = nouveaux.filter(([, n]) => n > 0).map(([b, n, i]) => ({ b, n, i: Math.min(n, Math.max(0, i ?? n)) }));
+  const total = l.reduce((s, x) => s + x.n, 0);
+  if (!total) return null;
+  const installes = l.reduce((s, x) => s + x.i, 0);
+  if (installes === total) {
+    const detail = l.map((x) => `${nomCourt(x.b)} ${x.n}`).join(', ');
+    return total === 1 ? `🎮 1 nouveau jeu trouvé sur ce PC (${detail})` : `🎮 ${total} nouveaux jeux trouvés sur ce PC (${detail})`;
+  }
+  const comptes = enumerer(l.filter((x) => x.i < x.n).map((x) => nomCourt(x.b)));
+  const debut = total === 1 ? `🎮 1 jeu de ton compte ${comptes} ajouté à ta ludothèque` : `🎮 ${total} jeux de tes comptes ${comptes} ajoutés à ta ludothèque`;
+  if (installes === 0) return `${debut}. ${total === 1 ? 'Il s’installe' : 'Ils s’installent'} avec ⬇ Installer.`;
+  return `${debut} (${installes} déjà installé${installes > 1 ? 's' : ''}). Les autres s’installent avec ⬇ Installer.`;
+}
+
+/** La ligne d'état d'une boutique sur ce PC (page 🛒 Boutiques), sans mot technique. */
+export function ligneEtat(e: { nom: string; lanceur: boolean; lu: boolean; installes: number; possedes?: number | null }): string {
+  if (!e.lu) return e.lanceur ? `${e.nom} : jeux illisibles pour l’instant` : `${e.nom} n’est pas installé sur ce PC`;
+  const possedes = typeof e.possedes === 'number' ? e.possedes : null;
+  const installes = e.installes === 0 ? 'aucun' : String(e.installes);
+  const jeux =
+    possedes !== null
+      ? // Lot B : « Epic Games : 500 jeux dans ton compte, dont 1 installé ».
+        `${possedes === 1 ? '1 jeu' : `${possedes} jeux`} dans ton compte, dont ${installes} installé${e.installes > 1 ? 's' : ''}`
+      : e.installes === 0
+        ? 'aucun jeu installé'
+        : e.installes === 1
+          ? '1 jeu sur ce PC'
+          : `${e.installes} jeux sur ce PC`;
+  return `${e.nom} : ${jeux}, mis à jour à chaque ouverture${e.lanceur ? '' : ` (${e.nom} n’est plus installé sur ce PC : pour jouer, réinstalle-le)`}`;
+}
+
+/** La question posée UNE fois par profil (✅ Seb 18/11) avant d'ajouter les jeux possédés des comptes ouverts sur ce
+ * PC : « Ajouter les 500 jeux du compte Epic Games connecté sur ce PC (et 4 d'Ubisoft Connect) à ta ludothèque ? » ;
+ * `null` s'il n'y a aucun jeu possédé. */
+export function questionPossedes(etats: { nom: string; possedes?: number | null; installes: number }[]): { titre: string; message: string } | null {
+  const l = etats.filter((e) => typeof e.possedes === 'number' && e.possedes > 0) as { nom: string; possedes: number }[];
+  if (!l.length) return null;
+  const jeux = (n: number) => (n === 1 ? 'le jeu' : `les ${n} jeux`);
+  const de = (nom: string) => (/^[aeiouyéèêàâîïôûAEIOUYÉÈÊÀÂÎÏÔÛ]/.test(nom) ? `d’${nom}` : `de ${nom}`);
+  const [premier, ...autres] = l;
+  const suite = autres.length ? ` (et ${autres.map((e) => `${e.possedes} ${de(e.nom)}`).join(', ')})` : '';
+  return {
+    titre: `Ajouter ${jeux(premier.possedes)} du compte ${premier.nom} connecté sur ce PC${suite} à ta ludothèque ?`,
+    message: 'Ils viennent du compte de la boutique ouvert sur ce PC. Ils seront marqués « à installer » ; tu pourras changer d’avis dans ⚙ Options ▸ Comptes ▸ 🛒 Mes jeux installés.',
+  };
 }
 
 /** Le profil est-il toujours celui d'avant une attente ? (Sinon : rien n'est fait, ni écrit, ni montré.) */
@@ -88,10 +132,24 @@ export function estBattlenet(j: { boutique?: string | null; source?: string | nu
 /** Le message pour un jeu Battle.net (au bureau et dans Taodbox). */
 export const MESSAGE_BATTLENET = 'Frogtend ne sait pas encore lancer un jeu Battle.net : ouvre-le depuis Battle.net.';
 
-/** Une ligne du PC d'un jeu de boutique désinstallé hors de Frogtend (gardée pour son temps de jeu, sans installation) :
- * jamais montrée jouable dans Taodbox. */
-export function boutiqueDesinstallee(j: { id: number; installation?: unknown; ajoute_par?: string }): boolean {
+/** Une ligne du PC d'un jeu de boutique SANS installation (désinstallé hors de Frogtend, gardé pour son temps de jeu) :
+ * jamais une carte jouable dans Taodbox. Sa carte « à installer » vient de la ludothèque, comme celle d'un jeu possédé
+ * jamais installé (`cartesAInstallerTaodbox`, lot B). */
+export function boutiqueSansInstallation(j: { id: number; installation?: unknown; ajoute_par?: string }): boolean {
   return j.id < 0 && !j.installation && ['steam', 'epic', 'gog', 'uplay', 'amazon', 'xboxone', 'battlenet'].includes(j.ajoute_par ?? '');
+}
+
+/** La jaquette d'une carte « à installer » de Taodbox : RÉDUITE par le cœur à 400 px (et gardée réduite), jamais
+ * l'image d'origine de la boutique (500 boîtes Epic de 1 200 × 1 600) ; `null` sans image. */
+export function imageCarteAInstaller(c: { id: number; image: string | null }): string | null {
+  return c.image ? adresseJaquette(c.id, 400) : null;
+}
+
+/** Le message quand Taodbox ouvre l'installation d'un jeu par sa boutique (lot B, ✅ Seb 18/11). */
+export function messageInstallationCanape(boutique: string): string {
+  const nom = nomBoutique(boutique);
+  const de = /^[aeiouyéèêàâîïôûAEIOUYÉÈÊÀÂÎÏÔÛ]/.test(nom) ? `d’${nom}` : `de ${nom}`;
+  return `La fenêtre d’installation ${de} s’ouvre : valide-la (elle peut demander la souris ; ⊞/Guide pour revenir à Frogtend).`;
 }
 
 /** LE toast du lancement d'un jeu de boutique (un seul, lot A) : au canapé, il dit aussi comment revenir à Frogtend
