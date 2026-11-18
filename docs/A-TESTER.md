@@ -7,10 +7,10 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## 🧩 Mods Switch (0.208.0) — d'abord valider les mods de Zelda dans Firehouse
-- [ ] Zelda BotW ▸ panneau 📦 : la partie « 🧩 Mods : … » apparaît sous les mises à jour et DLC, avec les mods validés
+- [x] (✅ Seb 18/11 : 4 mods) Zelda BotW ▸ panneau 📦 : la partie « 🧩 Mods : … » apparaît sous les mises à jour et DLC, avec les mods validés
       (nom, auteur, licence, description). (Relever la réponse RÉELLE de la route 1.44 pour la doc.)
-- [ ] « ⬇ Télécharger » un mod (ex. 1080p) : la fenêtre annonce la taille ; oui → % visible, puis « 🧩 1 mod prêt ».
-- [ ] Le mod a un interrupteur « ✅ Allumé » ; ▶ Jouer avec Ryubing : le journal dit les parties mises à l'abri, et le
+- [x] (✅ Seb 18/11, rangé et vérifié sur le disque) « ⬇ Télécharger » un mod (ex. 1080p) : la fenêtre annonce la taille ; oui → % visible, puis « 🧩 1 mod prêt ».
+- [x] (✅ 18/11 : journal Ryubing « Matching IPSwitch patch '1.6.0.pchtxt' in '1080p' », patch appliqué) Le mod a un interrupteur « ✅ Allumé » ; ▶ Jouer avec Ryubing : le journal dit les parties mises à l'abri, et le
       mod est en place (Ryubing ▸ clic droit sur Zelda ▸ Gérer les mods : coché).
 - [ ] Même chose avec Eden.
 - [ ] Éteindre le mod ▸ ▶ Jouer : il n'est plus utilisé (dans l'émulateur : décoché).

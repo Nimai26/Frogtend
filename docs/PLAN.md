@@ -144,6 +144,10 @@ git 2.51, Node 24.11, pnpm 10.32, Rust 1.94 (stable, MSVC), Visual Studio Build 
 > 0.171.0 : RetroArch, MAME (bascule), Eden/Eglantine/Lichii (clé au lancement + Ctrl+V), RPCS3 (au prochain lancement).
 > RESTE : DuckStation, PCSX2, Dolphin (clés à relire dans leur code), MAME au lancement (témoin), RPCS3 par jeu
 > (custom_configs).
+> ⚠ **Seb, 18/11 (à l'essai des mods Switch sous Ryubing : « notre menu n'a pas l'option pour afficher / cacher les
+> FPS ») : TOUS les émulateurs, quand c'est possible, doivent l'avoir — comme toutes les autres options du menu.**
+> Manquent au moins : **Ryubing**, DuckStation, PCSX2, Dolphin, et à relever pour chaque autre fiche (BigPEmu, Azahar,
+> PPSSPP, Cemu, xemu, DOSBox…). Prochain lot après les mods Switch ; ce qui est impossible se dit à Seb avec la raison.
 
 ## Les lots
 
