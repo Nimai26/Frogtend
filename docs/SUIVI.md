@@ -7,6 +7,20 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- **📍 Point du 18/11 (soir) — où nous en sommes** :
+  - LIVRÉ et en ligne : 0.207.0 (envoi des MAJ/DLC Switch à Firehouse), 0.208.0/0.208.1 (mods Switch servis par
+    Firehouse, contrat 1.44 ; réglages Switch dans Taodbox), 0.209.0 (fiches des mods 1.46, mods « adulte » réservés,
+    noms des DLC tirés des crochets, abri sans copie inutile), 0.210.0 (compteur d'images pour DuckStation, PCSX2,
+    Dolphin, PPSSPP, Cemu, Vita3K ; noms FRANÇAIS des DLC, contrat 1.47 ; console de Ryubing cachée).
+  - VALIDÉ par Seb le 18/11 : mod 1080p sous Ryubing et Eden (téléchargé, posé, retiré, abri) ; réglages Switch dans
+    Taodbox à la manette ; noms des DLC (crochets puis français).
+  - À ESSAYER (A-TESTER) : premier envoi réel à Firehouse (il faut un contenu que Firehouse n'a pas) ; nom neutre du
+    1080p dans Eden et abri sans recopie (0.209.0) ; compteur d'images PS1/PS2 (0.210.0) ; UltraCam et ses conflits.
+  - À SURVEILLER (IDEES) : partie restée « en cours » (vue 2 fois, repères au journal) ; mise à jour 0.210.0 bloquée
+    par un Frogtend relancé pendant l'installation (cause non prouvée).
+  - EN ATTENTE de Seb : confirmer la consigne transmise par Firehouse (« Frogtend installe tout seul mods, triches,
+    ReShade, comprend le langage simple » ; plans d'installation du contrat 1.45, pas encore lus par Frogtend).
+  - ✅ Seb 18/11 : PROCHAIN CHANTIER = les jeux PC, import AUTOMATIQUE des boutiques (Epic, GOG, Steam, Amazon…).
 - **✅ Seb 30/10 soir : « Oui go ! » — enchaîner en autonomie, une version par point, avis des experts avant chacun** :
   (1) FAIT en 0.149.0 (relevé des sources RPCS3 ; relecture lancement : B1 disque plein → jeu relancé du début ⇒ place
   vérifiée ; AZERTY ⇒ lettres par la disposition du clavier ; états communs à la maison ⇒ seulement ceux du profil ;
@@ -2643,7 +2657,8 @@ d'abord :
   réglables (manette et clavier, Ctrl+Maj+F5/F9 d'office). Décisions : Eglantine lente = l'émulateur, mis de côté ;
   intégrer PS4 et PS5 (PLAN).
 - 15/11 (0.202.0) : Ryubing complet (lots 1, 2, 3, 5 ; lot 6 mises à jour/DLC à faire) — relevé réel sans jeu (accord
-  de Seb, D:	emp-tests-frogtendyubing-releve : index des parties `bis\system\save\8000000000000000`, modèle
+  de Seb, D:	emp-tests-frogtend
+yubing-releve : index des parties `bis\system\save\8000000000000000`, modèle
   Config v70, manette Xbox One `0-00000003-045e-0000-ff02-000000007200`) ; décisions de Seb : firmware posé par Frogtend,
   un dossier par personne (-r), games\ à chacun. PS4/PS5 : recherche faite, besoin 50 reçu par Firehouse (après son
   chantier en cours). Non vérifié en vrai : tout Ryubing avec un jeu (Seb n'a pas de jeu Switch à essayer pour l'instant ?).
