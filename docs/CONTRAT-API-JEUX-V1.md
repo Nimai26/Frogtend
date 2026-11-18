@@ -505,6 +505,35 @@ Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a 
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
 sont pas redirigées (une indication « fusionné dans N » serait un ajout 1.14 — à demander à Seb si gênant).
 
+### 1.45 (18/11, Firehouse 3.238.0, en service) — chaque mod Switch porte son PLAN D'INSTALLATION (à EXÉCUTER)
+Reçu par message de la session Firehouse (18/11) ; forme complète dans son BRIEF-AGENT-FROGTEND.md § « 1.45 ». Consigne
+de Seb citée par Firehouse (18/11, à confirmer avec Seb côté Frogtend) : « permettre à ceux qui n'y connaissent rien de
+bénéficier des mods, des triches, des améliorations comme ReShade, sans avoir à rien configurer. Frogtend fait tout tout
+seul et comprend les demandes en langage simple […] On ne veut pas que l'IA fournisse des instructions simples (sauf en
+dernier recours) mais que l'IA FASSE l'installation de tout. »
+Ajouts à chaque mod de `GET /switch/{tid}/mods` :
+- `instructions {texte, source}` : texte d'origine (page GameBanana, README) — pour l'IA si un cas sort du plan ;
+- `requis [{nom, lien, cle}]` : prérequis ; `cle` non nulle = Firehouse sert ce prérequis (installer SON archive d'abord) ;
+- `variante {nom, version, description}` : la variante GameBanana servie ;
+- `plan` (null tant que l'IA de Firehouse ne l'a pas écrit) : `actions[]`, dans l'ordre, liste FERMÉE :
+  `installer_prerequis {nom, lien, type: mod|outil|firmware|emulateur, cle}` ; `poser_mod` (toujours une fois) ;
+  `regler_emulateur {emulateur: ryubing|eden|tous, reglage, valeur, raison}` (texte libre : à traduire en clé de
+  configuration) ; `desactiver_mod {nom, cle, raison}` ; `a_la_main {texte, raison}` (dernier recours, la SEULE chose à
+  montrer) ; plus `resume_fr`, `mots_cles`, `ignores [{nom, raison}]` (ex. Atmosphère, inutile en émulation),
+  `emulateurs_testes`, `touche_sauvegardes`, `certitude haute|moyenne|basse`, `a_la_main` (nombre), `modele`, `le`.
+- Nouvelle source GameBanana (`gamebanana-…`, licence propre à chaque mod) ; .bnp (BCML) et mods NSFW jamais servis.
+Exemple RÉEL BotW, mod « 1080p » (wollnashorn-9027f4987dc8) : compatible true ; fichier 366 o, sha256 206f648f… ;
+`requis []` ; `variante null` ; `plan = {"resume_fr": "Le jeu s'affiche en 1080p au lieu de 900p quand la console est
+dans son dock, l'image est donc plus nette.", "mots_cles": ["1080p", "plus net", "meilleure résolution", "image plus
+claire", "docked"], "actions": [{"action": "poser_mod"}], "ignores": [{"nom": "Anisotropic Filtering Fix", "raison":
+"mod séparé, non inclus ici"}, {"nom": "Disable FXAA", "raison": "mod séparé, seulement recommandé avec le 1080p, non
+inclus ici"}], "emulateurs_testes": [], "touche_sauvegardes": null, "certitude": "haute", "a_la_main": 0, "modele":
+"deepseek-direct/deepseek-flash", "le": "2026-11-18T12:00:53"}`. Servis le 18/11 pour BotW : 1080p, Anisotropic Fix,
+Disable FXAA, ZeldaHighRes-1.6.0.
+⚠ Côté Frogtend (0.208.1) : rien de 1.45 n'est encore lu ; la forme 1.44 continue de marcher (champs ignorés). Un
+`regler_emulateur` en texte libre ne sera JAMAIS appliqué à l'aveugle : traduction vers une liste fermée de réglages
+connus de Frogtend, après l'accord de la personne, configuration sauvegardée avant (brief § 4).
+
 ### 1.44 (18/11, Firehouse 3.234.0, en service) — les MODS SWITCH servis par Firehouse (besoin 53)
 Reçu par message de la session Firehouse (18/11) ; forme complète dans son `docs/frogtend/BRIEF-AGENT-FROGTEND.md`
 § « 1.44 ». Exemple RÉEL BotW à venir, quand Seb aura validé les mods à l'écran (la validation vaut accord de
