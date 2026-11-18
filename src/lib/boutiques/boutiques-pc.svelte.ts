@@ -6,7 +6,7 @@ import { toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat } from '$lib/etat.svelte';
 import { partie } from '$lib/ludotheque/jeu.svelte';
-import { rechargerListe } from '$lib/ludotheque/ludotheque.svelte';
+import { rechargerListe, rechargerPlateformes } from '$lib/ludotheque/ludotheque.svelte';
 import { suivreTelechargements } from '$lib/ludotheque/telechargements.svelte';
 import { messageNouveaux, moyenDOuverture, nomBoutique, ouvrirJeuDeBoutique, toujoursLeMeme, estBattlenet, MESSAGE_BATTLENET } from './jeu-boutique';
 import type { JeuResume } from '$lib/api';
@@ -49,9 +49,10 @@ export async function boutiquesAuDemarrage() {
     suivreTelechargements();
     const m = messageNouveaux(r.nouveaux);
     if (m) {
-      await rechargerListe();
-      // Rien pendant une partie (le toast attendrait par-dessus le jeu).
+      // Le message D'ABORD (Seb 18/11 : 15 jeux ajoutés, aucun message : une relecture de la grille en échec
+      // l'empêchait), puis la grille ET la barre des systèmes (son compteur « Windows » restait à 2).
       if (partie.enJeu === null) toast(m);
+      await rafraichirLudotheque();
     }
   } catch {
     // Profil fermé entre-temps, lecture impossible : la ludothèque reste comme elle était.
@@ -70,6 +71,12 @@ export async function lireEtatsPc() {
   }
 }
 
+/** La grille et la barre des systèmes relues après un import (un échec ne cache jamais le message déjà montré). */
+async function rafraichirLudotheque() {
+  await rechargerListe().catch(() => {});
+  await rechargerPlateformes().catch(() => {});
+}
+
 /** « 🔄 Relire maintenant » (page 🛒 Boutiques) : comme à l'ouverture du profil, avec un toast même sans nouveauté. */
 export async function relireMaintenant() {
   const profil = etat.profilOuvert?.id;
@@ -81,8 +88,8 @@ export async function relireMaintenant() {
     boutiquesPc.erreur = null;
     suivreTelechargements();
     const m = messageNouveaux(r.nouveaux);
-    if (m) await rechargerListe();
     toast(m ?? 'Rien de nouveau : tes jeux installés sont déjà dans ta ludothèque.');
+    if (m) await rafraichirLudotheque();
   } catch (e) {
     boutiquesPc.erreur = `Lecture des boutiques impossible : ${motifDuRefus(e)}`;
     toast(boutiquesPc.erreur, 'erreur');

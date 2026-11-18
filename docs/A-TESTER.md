@@ -7,7 +7,7 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## 🎮 Tes jeux installés entrent seuls (import automatique, lot A) et jeux offerts d'Epic
-- [ ] Ouvrir ton profil, sans rien toucher : un seul message « 🎮 … nouveaux jeux trouvés sur ce PC (…) » ; dans Ma
+- [~] (Seb 18/11, 0.211.0 : les 15 jeux SONT entrés — Steam 10, GOG 2, Xbox 3, TerraScape déjà là — MAIS aucun message et la barre de gauche restait à « 2 jeux Windows » : corrigé dans la version suivante, message d'abord puis grille ET barre relues) Ouvrir ton profil, sans rien toucher : un seul message « 🎮 … nouveaux jeux trouvés sur ce PC (…) » ; dans Ma
       ludothèque (Windows), filtre Boutique : **Steam 10** (Age of Empires IV, Batman Arkham Knight, Ghostbusters, GTA V
       Legacy, Mega Man Legacy Collection, MiniRoyale, Resident Evil Village, TerraTech Legion Demo, Disney Afternoon,
       XCOM 2), **Epic 1** (TerraScape), **GOG 2** (Cyberpunk 2077, Horizon Zero Dawn Complete Edition), **Xbox 3**
@@ -809,7 +809,7 @@ Dans cet ordre, chaque étape prépare la suivante ; le détail de chacune est p
 - [ ] Faire défiler vite la grille au clavier : la fiche n'arrive que sur la carte où l'on s'arrête.
 
 ## Jeux Epic lancés par Epic (0.95.0) — À ESSAYER AVEC MOI
-- [ ] Ludothèque : TerraScape a sa carte (pastille « Epic ») ; ▶ Jouer : « Epic Games lance… », Epic s'ouvre et le
+- [x] (✅ Seb 18/11 : lancé par Epic, menu en jeu de Frogtend, quitté par lui, fin comptée 38 s) Ludothèque : TerraScape a sa carte (pastille « Epic ») ; ▶ Jouer : « Epic Games lance… », Epic s'ouvre et le
       jeu démarre ; menu en jeu, « Quitter », temps de jeu.
 - [ ] En Taodbox : TerraScape est dans la grille.
 
