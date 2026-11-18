@@ -7,7 +7,7 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## 🧩 Fiches des mods, confidentialité, noms des DLC (0.209.0)
-- [ ] Fire Emblem ▸ 📦 : les DLC s'appellent « Additional Quests », « New Attire »… ; la mise à jour « Version 1.2.0 » ;
+- [x] (✅ Seb 18/11 ; noms en français demandés à Firehouse, besoin 54) Fire Emblem ▸ 📦 : les DLC s'appellent « Additional Quests », « New Attire »… ; la mise à jour « Version 1.2.0 » ;
       plus de message « dossiers trop profonds ».
 - [ ] Zelda ▸ 🧩 Mods : descriptions en français, « ⭐ Recommandé » sur les plus utiles (quand Firehouse a écrit leurs
       fiches).
