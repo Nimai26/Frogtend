@@ -723,6 +723,19 @@ import (réglage demandé d'abord s'il manque), liste filtrable, installés sur 
 quoi changer. Supprimer un profil retire aussi sa clé Steam. **0.21.0** : jaquettes officielles de Steam (protocole `boutique://`, cache sur ce PC), grille, et section Steam dans
 Taodbox. **Reste** : mêler ces jeux à la ludothèque principale, puis Epic, GOG, Amazon, EA, Ubisoft, Xbox (étude de LaunchBox d'abord), et les jeux gratuits.
 
+**✅ Seb 18/11 — IMPORT AUTOMATIQUE des jeux PC des boutiques** (sans clé d'API ni GOG Galaxy à installer/relier ;
+étude en lecture seule du 18/11 sur Venkman + méthode de Playnite, sans recopier son code) : découpage ACCEPTÉ
+(choix 1) — **Lot A** : jeux INSTALLÉS de toutes les boutiques (Steam `libraryfolders.vdf`/`appmanifest` ; Epic
+`Manifests\*.item` + `LauncherInstalled.dat` ; GOG registre `GOG.com\Games` ; Ubisoft `Launcher\Installs` ; Amazon
+`GameInstallInfo.sqlite` ; Xbox paquets AppX à `MicrosoftGame.config` ; Battle.net `product.db`), relus À CHAQUE
+DÉMARRAGE, Jouer/Installer par les protocoles officiels ; **Lot B** : jeux POSSÉDÉS sans connexion — Epic par
+`Data\Catalog\catcache.bin` (510 jeux chez Seb contre 43 par Galaxy ; ✅ Seb 18/11 : « ça me semble probable »,
+format non documenté → tolérant) et Ubisoft par son cache `configurations` ; **Lot C** : connexion par la PAGE OFFICIELLE
+(fenêtre, jeton au coffre, jamais de mot de passe dans Frogtend) pour Steam (remplace la clé d'API) puis GOG ; **Lot D** :
+même connexion pour Amazon, Xbox, Battle.net — ✅ Seb 18/11 (choix 2 : « oui bien sûr ») : Frogtend PEUT se présenter
+comme le lanceur officiel (identifiant client du lanceur, API non publiques, comme Playnite) ; **Lot E** : EA plus tard
+(fichier `IS` illisible ; GOG Galaxy reste le secours). L'import par Galaxy et la clé Steam restent possibles.
+
 ### Prochains lots (décisions de Seb, 02/10)
 
 **D. Les DLC et contenus additionnels (Seb, 03/10)** : « la gestion de ce genre de chose, DLC et autres, doit pouvoir

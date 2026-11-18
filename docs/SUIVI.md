@@ -21,6 +21,8 @@
   - EN ATTENTE de Seb : confirmer la consigne transmise par Firehouse (« Frogtend installe tout seul mods, triches,
     ReShade, comprend le langage simple » ; plans d'installation du contrat 1.45, pas encore lus par Frogtend).
   - ✅ Seb 18/11 : PROCHAIN CHANTIER = les jeux PC, import AUTOMATIQUE des boutiques (Epic, GOG, Steam, Amazon…).
+    Découpage accepté (lots A à E, détail dans PLAN.md « IMPORT AUTOMATIQUE ») ; EN COURS : lot A. Essai de la
+    récupération Epic (Knightica, offert jusqu'au 19/11) proposé à Seb.
 - **✅ Seb 30/10 soir : « Oui go ! » — enchaîner en autonomie, une version par point, avis des experts avant chacun** :
   (1) FAIT en 0.149.0 (relevé des sources RPCS3 ; relecture lancement : B1 disque plein → jeu relancé du début ⇒ place
   vérifiée ; AZERTY ⇒ lettres par la disposition du clavier ; états communs à la maison ⇒ seulement ceux du profil ;
