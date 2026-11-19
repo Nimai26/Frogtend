@@ -6,10 +6,15 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🏷 Les icônes des boutiques (0.213.0)
+- [ ] Ma ludothèque (Windows) : les pastilles montrent l'icône de Steam, Epic, GOG, Ubisoft, EA au lieu du nom ; Xbox et
+      Disque gardent leur nom ; en survolant, « Vient de Steam ».
+- [ ] Le panneau des détails d'un jeu, et Taodbox (coin de la jaquette) : icônes lisibles, ni floues ni minuscules.
+
 ## 🔍 Taodbox à la bonne taille (0.212.1, puis 0.212.2)
-- [ ] (Seb 19/11, 0.212.1 : deux rangées, mais jaquettes minuscules, ~75 px, 16 par ligne ; en 0.212.2 : la boutique dans le coin, mais images encore ~82 px, 3 rangées, et le bouton Taille écrasé par la règle des deux rangées ; 0.212.3 : 115/140/180 px selon le bouton — « c'est pas mal », mais le cadre orange coupé en bas, corrigé en 0.212.4) Ouvrir Taodbox (écran 1080p) : environ 9 jaquettes par ligne en Moyenne, presque deux rangées visibles, la pastille
+- [x] (Seb 19/11, 0.212.4 : « Nickel » ; 0.212.1 : deux rangées, mais jaquettes minuscules, ~75 px, 16 par ligne ; en 0.212.2 : la boutique dans le coin, mais images encore ~82 px, 3 rangées, et le bouton Taille écrasé par la règle des deux rangées ; 0.212.3 : 115/140/180 px selon le bouton — « c'est pas mal », mais le cadre orange coupé en bas, corrigé en 0.212.4) Ouvrir Taodbox (écran 1080p) : environ 9 jaquettes par ligne en Moyenne, presque deux rangées visibles, la pastille
       « ⬇ À installer » lisible en entier, la barre des consoles sur une ligne si elle tient.
-- [ ] « 🔍 Taille : Moyenne » en haut : A → Grande → Petite → Moyenne, tout change aussitôt ; le choix est gardé après
+- [x] (Seb 19/11 : « j'aime les trois », selon l'écran ; Petite d'office ensuite) « 🔍 Taille : Moyenne » en haut : A → Grande → Petite → Moyenne, tout change aussitôt ; le choix est gardé après
       avoir quitté Taodbox ; le même réglage dans ⚙ Options ▸ Apparence.
 - [ ] Le menu en jeu (Pause) dans Taodbox : lisible, ni minuscule ni énorme.
 

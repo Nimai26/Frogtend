@@ -972,7 +972,9 @@ avec… » propose les versions (pour cette partie), ⚙ Gérer le jeu ▸ 📀 
 **Icônes des boutiques sur les pastilles** (✅ Seb 19/11, « les deux ») : à la place du texte « Steam », « Epic »… sur
 les pastilles des jeux, une petite icône : (1) celle du lanceur INSTALLÉ sur ce PC, lue par Windows dans son programme
 (rien n'est embarqué dans Frogtend, jamais un logo de marque copié) ; (2) en secours, celle servie par Firehouse
-(BESOINS-API n° 55) ; (3) le texte en dernier recours. Après l'essai de taille de Taodbox (0.212.2).
+(BESOINS-API n° 55) ; (3) le texte en dernier recours. ✅ Fait en 0.213.0 pour (1) et (3) (module
+`icones_lanceurs.rs` : Steam, Epic, GOG, Ubisoft, EA relevés sur Venkman ; Amazon et Battle.net non essayés) ; (2) attend
+Firehouse (point d'entrée `iconeFirehouse` dans `src/lib/boutiques/icones.svelte.ts`).
 
 ## Personnalisation (« beaucoup d'éléments modifiables »)
 

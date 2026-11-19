@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.213.0 — 🏷 Les icônes des boutiques
+
+- Nouveau : sur les jeux, la pastille de la boutique (Steam, Epic, GOG, Ubisoft, EA…) montre maintenant la petite icône
+  du lanceur installé sur ce PC, prise par Windows dans le lanceur lui-même (Frogtend n'embarque aucun logo). Sans
+  lanceur (ou pour Xbox, Firehouse, Disque), le nom reste écrit. Plus tard, Firehouse pourra servir les icônes
+  manquantes (demande transmise).
+- Taodbox : la taille « Petite » est celle d'office (les trois restent au choix avec le bouton « 🔍 Taille »).
+
 ## 0.212.4 — 🔍 Taodbox : le cadre de sélection en entier
 
 - Corrigé : dans Taodbox, le cadre orange du jeu choisi était coupé en bas de la grille ; il se voit maintenant en

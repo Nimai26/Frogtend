@@ -999,6 +999,8 @@ export const api = {
   gratuitsConnexionPlaystation: () => appeler<void>('gratuits_connexion_playstation'),
   gratuitsPsPlus: () => appeler<RecoltePsPlus>('gratuits_psplus'),
   gratuitsObtenirEpic: (slug: string) => appeler<{ etat: string; motif?: string }>('gratuits_obtenir_epic', { slug }),
+  /** L'icône du lanceur d'une boutique installé sur ce PC (`data:image/png;base64,…`), `null` : la pastille garde son texte. */
+  boutiqueIcone: (boutique: string) => appeler<string | null>('boutique_icone', { boutique }),
   galaxyEtat: () => appeler<{ galaxy_installe: boolean; nb_jeux: number; maj_le: string | null }>('boutique_galaxy_etat'),
   galaxyJeux: () => appeler<JeuBoutique[]>('boutique_galaxy_jeux'),
   galaxyImporter: () => appeler<JeuBoutique[]>('boutique_galaxy_importer'),

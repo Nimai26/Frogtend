@@ -392,7 +392,7 @@
           disabled={partie.enJeu !== null && !groupeDe(j.id, groupes).includes(partie.enJeu)} title={j.titre}>
           <span class="visuel">
             <Jaquette id={j.fiche ?? j.id} titre={j.titre} plateforme={j.plateforme} largeur={largeurCarte} visuel={etat.profil.ludotheque.visuel} />
-            <span class="coin"><IconesBoutiques origines={originesJeuPc(j, groupeDe(j.id, groupes), (x) => tele.jeux[x]?.installation?.boutique?.source)} /></span>
+            <span class="coin"><IconesBoutiques grand origines={originesJeuPc(j, groupeDe(j.id, groupes), (x) => tele.jeux[x]?.installation?.boutique?.source)} /></span>
           </span>
           <span class="titre">{j.titre_fiche ?? j.titre}</span>
           <!-- Une ligne d'état seulement quand elle dit quelque chose : la place va à la jaquette (Seb 19/11). -->
@@ -405,7 +405,7 @@
           <span class="image-steam">
             {#if c.par === 'steam'}<img src={adresseImageBoutique('steam', c.cle.slice('steam_'.length))} alt="" loading="lazy" />
             {:else if c.image}<img src={adresseImageParUrl(c.image)} alt="" loading="lazy" />{/if}
-            <span class="coin"><IconesBoutiques origines={[c.boutique]} /></span>
+            <span class="coin"><IconesBoutiques grand origines={[c.boutique]} /></span>
           </span>
           <span class="titre">{c.nom}</span>
         </button>
@@ -416,7 +416,7 @@
           <span class="image-steam">
             <!-- La jaquette RÉDUITE par le cœur (400 px, gardée réduite) : jamais l'original de la boutique. -->
             {#if imageCarteAInstaller(c)}<img src={imageCarteAInstaller(c)} alt="" loading="lazy" onerror={(e) => ((e.currentTarget as HTMLElement).hidden = true)} />{/if}
-            <span class="coin"><IconesBoutiques origines={[c.boutique]} /></span>
+            <span class="coin"><IconesBoutiques grand origines={[c.boutique]} /></span>
             <span class="pastille-installer">⬇ À installer</span>
           </span>
           <span class="titre">{c.nom}</span>

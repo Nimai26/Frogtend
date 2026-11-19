@@ -29,6 +29,7 @@ pub mod manettes_sdl;
 pub mod medias;
 pub mod locale;
 pub mod gratuits;
+pub mod icones_lanceurs;
 pub mod import_local;
 pub mod mame;
 pub mod succes;
@@ -685,6 +686,7 @@ pub fn run() {
             commandes::import_installer_dos,
             commandes::import_arguments_jeu_dos,
             commandes::import_ajouter,
+            icones_lanceurs::boutique_icone,
             commandes::boutique_galaxy_etat,
             commandes::boutique_galaxy_jeux,
             commandes::boutique_galaxy_importer,

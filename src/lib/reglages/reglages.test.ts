@@ -141,19 +141,19 @@ describe('le compteur d’images par seconde, choix par personne (✅ Seb 08/11)
 });
 
 describe('la taille de Taodbox (Seb 19/11 : « tout est beaucoup trop gros »)', () => {
-  it('est « moyenne » d’office, et pour un ancien profil', () => {
-    expect(DEFAUTS_PROFIL.apparence.tailleTaodbox).toBe('moyenne');
-    expect(completer(DEFAUTS_PROFIL, { apparence: { echelle: 1.2 } }).apparence.tailleTaodbox).toBe('moyenne');
+  it('est « petite » d’office (Seb 19/11), et pour un ancien profil', () => {
+    expect(DEFAUTS_PROFIL.apparence.tailleTaodbox).toBe('petite');
+    expect(completer(DEFAUTS_PROFIL, { apparence: { echelle: 1.2 } }).apparence.tailleTaodbox).toBe('petite');
   });
-  it('une valeur inconnue (fichier abîmé, autre version) donne « moyenne »', () => {
-    expect(tailleTaodbox('enorme')).toBe('moyenne');
-    expect(tailleTaodbox(undefined)).toBe('moyenne');
+  it('une valeur inconnue (fichier abîmé, autre version) donne « petite »', () => {
+    expect(tailleTaodbox('enorme')).toBe('petite');
+    expect(tailleTaodbox(undefined)).toBe('petite');
     expect(tailleTaodbox('grande')).toBe('grande');
   });
   it('le bouton de Taodbox passe à la suivante, en boucle', () => {
     expect(tailleTaodboxSuivante('petite')).toBe('moyenne');
     expect(tailleTaodboxSuivante('moyenne')).toBe('grande');
     expect(tailleTaodboxSuivante('grande')).toBe('petite');
-    expect(tailleTaodboxSuivante('???')).toBe('grande');
+    expect(tailleTaodboxSuivante('???')).toBe('moyenne');
   });
 });

@@ -197,7 +197,7 @@ export const DEFAUTS_PC: ReglagesPc = {
 };
 
 export const DEFAUTS_PROFIL: ReglagesProfil = {
-  apparence: { skin: null, echelle: 1, densite: 'aeree', animations: 'normales', fondVideo: true, tailleTaodbox: 'moyenne' },
+  apparence: { skin: null, echelle: 1, densite: 'aeree', animations: 'normales', fondVideo: true, tailleTaodbox: 'petite' },
   sauvegarde: { auto: 'apres_partie' },
   envoisFirehouse: { auto: false },
   modsSwitch: { auto: false },
@@ -235,9 +235,9 @@ export type TailleTaodbox = 'petite' | 'moyenne' | 'grande';
 export const TAILLES_TAODBOX: readonly TailleTaodbox[] = ['petite', 'moyenne', 'grande'];
 export const LIBELLES_TAILLE_TAODBOX: Record<TailleTaodbox, string> = { petite: 'Petite', moyenne: 'Moyenne', grande: 'Grande' };
 
-/** Une taille de Taodbox lue sur le disque : une valeur inconnue (fichier abîmé, autre version) donne « moyenne ». */
+/** Une taille de Taodbox lue sur le disque : une valeur inconnue donne « petite », la taille d'office (✅ Seb 19/11). */
 export function tailleTaodbox(v: unknown): TailleTaodbox {
-  return TAILLES_TAODBOX.includes(v as TailleTaodbox) ? (v as TailleTaodbox) : 'moyenne';
+  return TAILLES_TAODBOX.includes(v as TailleTaodbox) ? (v as TailleTaodbox) : 'petite';
 }
 
 /** La taille suivante, en boucle (le bouton de Taodbox, un appui de A à chaque fois). */
