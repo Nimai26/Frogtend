@@ -741,6 +741,15 @@ jeu possédé qui disparaît du catalogue (changement de compte…) est TOUJOURS
 aussi les jeux possédés pas installés, et l'installation se LANCE depuis le canapé (par le lanceur de la boutique ; sa
 fenêtre de confirmation peut demander la souris : le dire au moment du lancement).
 
+**✅ Seb 19/11 — LOT C, découpage et règle** (étude en lecture seule du 19/11, méthode de Playnite relue sans recopier) :
+**C1** connexion Steam par sa page officielle (fenêtre avec le navigateur PROPRE AU PROFIL, Steam Guard sur la vraie
+page, « ✅ Connecté » quand `#application_config` dit `logged_in`, seul le `steamid` gardé) ; **C2** import des jeux
+Steam POSSÉDÉS (fenêtre cachée, `webapi_token` relu à chaque fois et JAMAIS écrit ni journalisé, `IPlayerService/
+GetOwnedGames`) ; la clé d'API reste en secours ; **C3** « Oublier ma connexion Steam » et messages clairs (page
+changée, trop de demandes, profil privé) ; **C4** connexion et import GOG par les cookies du profil (sans Galaxy) ;
+C5 (OAuth de Galaxy) seulement si besoin. **Règle** : SE CONNECTER VAUT ACCORD — les jeux possédés du compte connecté
+entrent dans la ludothèque du profil, « pas installés », et RESTENT même après une déconnexion. Une livraison par étape.
+
 ### Prochains lots (décisions de Seb, 02/10)
 
 **D. Les DLC et contenus additionnels (Seb, 03/10)** : « la gestion de ce genre de chose, DLC et autres, doit pouvoir
