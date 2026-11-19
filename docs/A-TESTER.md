@@ -7,7 +7,7 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## 🛒 Jeux de tes comptes Epic et Ubisoft (0.212.0, lot B)
-- [ ] Ouvrir ton profil : une fenêtre demande « Ajouter les 500 jeux du compte Epic Games connecté sur ce PC (et 4
+- [x] (Seb 19/11 : 520, tout bon) Ouvrir ton profil : une fenêtre demande « Ajouter les 500 jeux du compte Epic Games connecté sur ce PC (et 4
       d'Ubisoft) à ta ludothèque ? » ; Oui → un message « 🎮 … jeux de tes comptes … ajoutés » ; la barre Windows passe à
       environ 520 ; filtre « Pas installés » : Epic et Ubisoft (Assassin's Creed III, Splinter Cell…).
 - [ ] Un jeu Epic pas installé ▸ ⬇ Installer : Epic ouvre sa fenêtre d'installation.
