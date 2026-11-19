@@ -3,6 +3,20 @@
 - **Taodbox : refaire toute l'interface pour la version définitive** (Seb, 19/11 : « c'est un prototype l'ui de
   Taodbox, il faudra complètement la revoir en version définitive pour la rendre plus belle »). En attendant (0.212.1),
   seule la taille est corrigée : jaquettes d'après l'écran, réglage « Taille de Taodbox ».
+  **La direction voulue par Seb** (19/11, deux captures d'un thème de Big Box en exemple, à s'en INSPIRER sans rien
+  recopier : ni images, ni logos, ni mise en page à l'identique) :
+  - **choix du système** : une roue VERTICALE de logos de systèmes (à gauche), le système choisi agrandi au centre de la
+    roue, flèches haut/bas ; derrière, un **fond propre au système** (la console, ses manettes, une vieille télé) et son
+    année de sortie ;
+  - **choix du jeu** : une roue verticale des LOGOS des jeux (à droite), la fiche courte du jeu choisi (genres, mode de
+    jeu, état), sa jaquette, son résumé ; le fond change avec le système ;
+  - **des vidéos qui jouent DANS les écrans du décor** : la vidéo du système ou du jeu est placée dans la télé dessinée
+    sur le fond, pour qu'on ait l'impression que le jeu tourne dans cette télé. Il faut donc, pour chaque fond, la
+    position de son « écran » (un rectangle, voire un coin incliné) ;
+  - à prévoir : d'où viennent les fonds de systèmes, les vidéos de systèmes et de jeux et les logos (Firehouse :
+    médias EmuMovies/LaunchBox, contrat 1.6 — vérifier ce qui est déjà servi, sinon une demande dans BESOINS-API) ;
+    le poids des vidéos (cache, mode hors ligne) ; la fluidité à la manette avec des milliers de jeux ; la charte de
+    Firehouse et ses skins (aucune couleur en dur) ; tout réglable au canapé.
 - **Epic : ouvrir directement la fenêtre d'installation** (essai de Seb, 19/11) : `apps/<AppName>?action=install`
   ouvre la bibliothèque d'Epic filtrée sur le jeu (un clic de plus sur « Installer ») ; essayer la forme longue
   `apps/<namespace>%3A<item>%3A<app>?action=install` (celle du lancement), à vérifier avec Seb.
