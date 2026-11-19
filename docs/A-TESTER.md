@@ -24,7 +24,7 @@
       d'Ubisoft) à ta ludothèque ? » ; Oui → un message « 🎮 … jeux de tes comptes … ajoutés » ; la barre Windows passe à
       environ 520 ; filtre « Pas installés » : Epic et Ubisoft (Assassin's Creed III, Splinter Cell…).
 - [x] (Seb 19/11 : Epic s'ouvre sur SA bibliothèque filtrée sur le jeu, « Installer » à un clic — noté dans IDEES) Un jeu Epic pas installé ▸ ⬇ Installer : Epic ouvre sa fenêtre d'installation.
-- [ ] Taodbox : les jeux à installer avec la pastille « ⬇ À installer » ; A ouvre l'installation (message ⊞/Guide).
+- [x] (Seb 19/11 : la fenêtre d'installation d'Epic s'ouvre ; clavier et souris pour la valider, « on fera avec ») Taodbox : les jeux à installer avec la pastille « ⬇ À installer » ; A ouvre l'installation (message ⊞/Guide).
 - [ ] 🛒 Boutiques : « Epic Games : 500 jeux dans ton compte, dont 1 installé ».
 - [ ] Les titres : en survolant la liste, peu de « ? » (21 attendus, ex. « Les Sims? 4 »).
 
