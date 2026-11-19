@@ -6,7 +6,7 @@
   import { galaxy, importerGalaxy, lireGalaxy, nomPlateforme, ouvrirDansGalaxy } from '$lib/boutiques/galaxy.svelte';
   import { connexion, connexionEpic, connexionPlaystation, gratuits, lireGratuits, obtenir, obtenirTout, recolterPsPlus, recuperer } from '$lib/boutiques/gratuits.svelte';
   import { etat, reglerProfil } from '$lib/etat.svelte';
-  import { importerSteam, lireSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
+  import { connecteASteam, connexionSteam, importerSteam, libelleCompteSecours, lireSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
   import { boutiquesPc, lireEtatsPc, relireMaintenant } from '$lib/boutiques/boutiques-pc.svelte';
   import { ligneEtat } from '$lib/boutiques/jeu-boutique';
 
@@ -149,6 +149,19 @@
         <li class="muted">{boutiquesPc.erreur ?? 'Lecture des boutiques de ce PC…'}</li>
       {/each}
     </ul>
+
+    <!-- Lot C1 : la connexion à Steam par sa page officielle (clavier et souris : pas dans Taodbox). -->
+    <div class="tete psplus">
+      <h3>🎮 Mon compte Steam</h3>
+      <span class="muted">sur sa page officielle ; ton mot de passe reste chez Steam</span>
+      <span class="espace"></span>
+      {#if connecteASteam(steam.etat)}
+        <span class="tag ok">✅ Connecté à Steam</span>
+        <button class="btn petit" onclick={connexionSteam} disabled={steam.connexionEnCours}>Changer de compte / se reconnecter</button>
+      {:else}
+        <button class="btn" onclick={connexionSteam} disabled={steam.connexionEnCours}>{steam.connexionEnCours ? 'Ouverture…' : '🔑 Se connecter à Steam'}</button>
+      {/if}
+    </div>
   </section>
 
   <details class="cx-block secours">
@@ -157,7 +170,7 @@
     <section class="cx-block">
       <div class="tete">
         <h2>Steam</h2>
-        <span class="muted">{steam.etat?.compte ? `compte ${steam.etat.compte}` : 'compte pas encore réglé'}</span>
+        <span class="muted">{libelleCompteSecours(steam.etat)}</span>
         <span class="espace"></span>
         <button class="btn primary" onclick={importerSteam} disabled={steam.enCours}>
           {steam.enCours ? 'Import…' : steam.jeux.length ? '🔄 Mettre à jour' : '⬇ Importer mes jeux Steam'}

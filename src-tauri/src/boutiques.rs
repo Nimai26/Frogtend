@@ -69,6 +69,64 @@ pub struct CompteBoutique {
     pub steamid: String,
     pub maj_le: String,
     pub jeux: Vec<JeuBoutique>,
+    /// Steam (lot C1) : quand la personne s'est connectée par la page officielle (vide = jamais, ou compte réglé à la
+    /// main avec la clé d'API). Seul le `steamid` est gardé de cette connexion, jamais un jeton ni un cookie.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub connecte_le: String,
+    /// Steam : le compte pour lequel la clé d'API a été vérifiée (`boutique_steam_regler`). Vide dans un fichier
+    /// d'avant le lot C1 : c'est alors `steamid`, tant qu'aucune connexion par la page ne l'a changé.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub steamid_cle: String,
+}
+
+/// Le profil s'est-il connecté à Steam par la page officielle (et son `steamid` est-il bon) ?
+pub fn connecte_par_la_page(c: &CompteBoutique) -> bool {
+    !c.connecte_le.is_empty() && crate::gratuits::steamid_valide(&c.steamid)
+}
+
+/// Le compte Steam de la clé d'API rangée ; vide = inconnu.
+pub fn steamid_de_la_cle(c: &CompteBoutique) -> &str {
+    if !c.steamid_cle.is_empty() {
+        &c.steamid_cle
+    } else if c.connecte_le.is_empty() {
+        &c.steamid
+    } else {
+        ""
+    }
+}
+
+/// La clé d'API rangée est-elle celle d'un AUTRE compte que celui connecté par la page ? L'import par la clé est alors
+/// refusé (jamais la clé de A avec le compte de B) ; la clé n'est pas effacée pour autant.
+pub fn cle_d_un_autre_compte(c: &CompteBoutique) -> bool {
+    let k = steamid_de_la_cle(c);
+    !k.is_empty() && k != c.steamid
+}
+
+/// Retient la connexion à Steam par sa page officielle : le `steamid` (déjà vérifié) et l'heure, relus et écrits sous
+/// le verrou. Un AUTRE compte que celui déjà enregistré : l'ancienne liste importée ne vaut plus pour lui (comme
+/// `boutique_steam_regler`) ; le compte de la clé d'API est gardé à part pour ne jamais les mélanger.
+pub fn noter_connexion_steam(dossier_profil: &Path, steamid: &str, quand: &str) -> Resultat<()> {
+    if !crate::gratuits::steamid_valide(steamid) {
+        return Err(Erreur::Refus("Identifiant Steam invalide.".into()));
+    }
+    modifier_source(dossier_profil, "steam", |c| {
+        let mut c = c.unwrap_or_default();
+        if c.steamid_cle.is_empty() {
+            c.steamid_cle = steamid_de_la_cle(&c).to_string();
+        }
+        if c.steamid != steamid {
+            c.jeux.clear();
+            c.maj_le.clear();
+            c.compte = steamid.to_string();
+        }
+        if c.compte.is_empty() {
+            c.compte = steamid.to_string();
+        }
+        c.steamid = steamid.to_string();
+        c.connecte_le = quand.to_string();
+        Ok(Some(c))
+    })
+    .map(|_| ())
 }
 
 /// Le nom du secret d'une boutique dans le coffre.
@@ -302,10 +360,43 @@ pub fn lire_source(dossier_profil: &Path, source: &str) -> Option<CompteBoutique
 }
 
 pub fn ecrire_source(dossier_profil: &Path, source: &str, c: Option<&CompteBoutique>) -> Resultat<()> {
-    let f = fichier(dossier_profil);
-    let mut v: Value = std::fs::read(&f).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_else(|| serde_json::json!({}));
-    match c {
-        Some(c) => v[source] = serde_json::to_value(c).unwrap_or(Value::Null),
+    modifier_source(dossier_profil, source, |_| Ok(c.cloned())).map(|_| ())
+}
+
+/// Un seul changement de `boutiques.json` à la fois (tous profils confondus : un verrou commun, plus simple et plus
+/// sûr qu'un verrou par profil ; les écritures sont rares et courtes). La connexion à Steam (rappel de sa fenêtre) et
+/// un import (qui attend le réseau) ne se défont donc plus l'un l'autre : chacun relit sous le verrou juste avant
+/// d'écrire (revue de l'expert, 19/11).
+static VERROU_BOUTIQUES: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Le contenu entier de `boutiques.json` : `{}` s'il n'existe pas encore ; une ERREUR s'il existe mais ne se lit pas
+/// (il n'est alors jamais remplacé : les autres sources — Galaxy, RetroAchievements, Nexus — y vivent aussi).
+fn lire_tout(f: &Path) -> Resultat<Value> {
+    match std::fs::read(f) {
+        Ok(o) => match serde_json::from_slice::<Value>(&o) {
+            Ok(v) if v.is_object() => Ok(v),
+            _ => Err(Erreur::Disque("Le fichier des comptes des boutiques de ce profil est illisible : Frogtend ne l'écrase pas.".into())),
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(serde_json::json!({})),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Change UNE source de `boutiques.json` sous le verrou : relit le fichier, passe l'état actuel de la source à `f`, et
+/// écrit ce qu'elle rend (`None` = retirer la source) par un fichier provisoire renommé ensuite (une coupure en pleine
+/// écriture ne laisse jamais un fichier à moitié écrit). Rend ce qui a été écrit.
+pub fn modifier_source(
+    dossier_profil: &Path,
+    source: &str,
+    f: impl FnOnce(Option<CompteBoutique>) -> Resultat<Option<CompteBoutique>>,
+) -> Resultat<Option<CompteBoutique>> {
+    let _verrou = VERROU_BOUTIQUES.lock().unwrap_or_else(|e| e.into_inner());
+    let chemin = fichier(dossier_profil);
+    let mut v = lire_tout(&chemin)?;
+    let avant = serde_json::from_value(v[source].clone()).ok();
+    let apres = f(avant)?;
+    match &apres {
+        Some(c) => v[source] = serde_json::to_value(c).map_err(|_| Erreur::Disque("Compte de boutique impossible à écrire.".into()))?,
         None => {
             if let Some(o) = v.as_object_mut() {
                 o.remove(source);
@@ -313,8 +404,14 @@ pub fn ecrire_source(dossier_profil: &Path, source: &str, c: Option<&CompteBouti
         }
     }
     std::fs::create_dir_all(dossier_profil)?;
-    std::fs::write(f, serde_json::to_vec_pretty(&v).unwrap_or_default())?;
-    Ok(())
+    let provisoire = dossier_profil.join("boutiques.json.provisoire");
+    let octets = serde_json::to_vec_pretty(&v).map_err(|_| Erreur::Disque("Compte de boutique impossible à écrire.".into()))?;
+    std::fs::write(&provisoire, octets)?;
+    if let Err(e) = std::fs::rename(&provisoire, &chemin) {
+        let _ = std::fs::remove_file(&provisoire);
+        return Err(e.into());
+    }
+    Ok(apres)
 }
 
 pub const API_STEAM: &str = API;
@@ -1473,11 +1570,112 @@ mod tests {
     #[test]
     fn le_compte_s_enregistre_sans_secret_et_s_oublie() {
         let d = tempfile::tempdir().unwrap();
-        let c = CompteBoutique { compte: "Seb".into(), steamid: "1".into(), maj_le: "0".into(), jeux: vec![] };
+        let c = CompteBoutique { compte: "Seb".into(), steamid: "1".into(), maj_le: "0".into(), jeux: vec![], ..Default::default() };
         ecrire(d.path(), Some(&c)).unwrap();
         assert_eq!(lire(d.path()), Some(c));
         assert!(!std::fs::read_to_string(d.path().join("boutiques.json")).unwrap().to_lowercase().contains("key"));
         ecrire(d.path(), None).unwrap();
         assert_eq!(lire(d.path()), None);
+    }
+
+    #[test]
+    fn la_cle_d_api_et_le_compte_connecte_ne_se_melangent_jamais() {
+        let (a, b) = ("76561197960287930", "76561198000000000");
+        // Fichier d'avant C1 réglé avec la clé : la clé est celle du steamid.
+        let ancien = CompteBoutique { steamid: a.into(), ..Default::default() };
+        assert_eq!(steamid_de_la_cle(&ancien), a);
+        assert!(!cle_d_un_autre_compte(&ancien));
+        // Connecté par la page, sans clé connue : rien à refuser.
+        assert!(!cle_d_un_autre_compte(&CompteBoutique { steamid: b.into(), connecte_le: "t".into(), ..Default::default() }));
+        // Clé de A, connecté à B : refusé ; connecté à A : permis.
+        assert!(cle_d_un_autre_compte(&CompteBoutique { steamid: b.into(), connecte_le: "t".into(), steamid_cle: a.into(), ..Default::default() }));
+        assert!(!cle_d_un_autre_compte(&CompteBoutique { steamid: a.into(), connecte_le: "t".into(), steamid_cle: a.into(), ..Default::default() }));
+    }
+
+    #[test]
+    fn un_fichier_des_comptes_illisible_n_est_jamais_ecrase() {
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("boutiques.json");
+        for abime in [&b"{pas du json"[..], b"[1, 2]", b"\"texte\""] {
+            std::fs::write(&f, abime).unwrap();
+            assert!(noter_connexion_steam(d.path(), "76561197960287930", "t").is_err());
+            assert!(ecrire_source(d.path(), "galaxy", None).is_err());
+            assert_eq!(std::fs::read(&f).unwrap(), abime, "le fichier abîmé est resté tel quel");
+        }
+    }
+
+    #[test]
+    fn une_ecriture_garde_les_autres_sources_et_ne_laisse_pas_de_fichier_provisoire() {
+        let d = tempfile::tempdir().unwrap();
+        ecrire_source(d.path(), "galaxy", Some(&CompteBoutique { compte: "GOG Galaxy".into(), ..Default::default() })).unwrap();
+        ecrire_source(d.path(), "retroachievements", Some(&CompteBoutique { compte: "seb".into(), ..Default::default() })).unwrap();
+        noter_connexion_steam(d.path(), "76561197960287930", "t").unwrap();
+        assert_eq!(lire_source(d.path(), "galaxy").unwrap().compte, "GOG Galaxy");
+        assert_eq!(lire_source(d.path(), "retroachievements").unwrap().compte, "seb");
+        assert!(!d.path().join("boutiques.json.provisoire").exists());
+        // Une modification refusée n'écrit rien.
+        let avant = std::fs::read(d.path().join("boutiques.json")).unwrap();
+        assert!(modifier_source(d.path(), "steam", |_| Err(Erreur::Refus("non".into()))).is_err());
+        assert_eq!(std::fs::read(d.path().join("boutiques.json")).unwrap(), avant);
+    }
+
+    #[test]
+    fn deux_modifications_en_meme_temps_ne_se_defont_pas() {
+        let d = tempfile::tempdir().unwrap();
+        let chemin = d.path().to_path_buf();
+        // Chaque fil relit, attend un peu (comme un import qui attend le réseau), puis ajoute sa source.
+        let fils: Vec<_> = (0..8)
+            .map(|i| {
+                let chemin = chemin.clone();
+                std::thread::spawn(move || {
+                    modifier_source(&chemin, &format!("source{i}"), |_| {
+                        std::thread::sleep(std::time::Duration::from_millis(20));
+                        Ok(Some(CompteBoutique { compte: format!("c{i}"), ..Default::default() }))
+                    })
+                    .unwrap();
+                })
+            })
+            .collect();
+        for f in fils {
+            f.join().unwrap();
+        }
+        for i in 0..8 {
+            assert_eq!(lire_source(&chemin, &format!("source{i}")).unwrap().compte, format!("c{i}"));
+        }
+    }
+
+    #[test]
+    fn la_connexion_steam_ne_garde_que_le_steamid() {
+        let d = tempfile::tempdir().unwrap();
+        let id = "76561197960287930";
+        // Rien avant : le compte est créé avec le seul steamid.
+        noter_connexion_steam(d.path(), id, "2026-11-19T12:00:00").unwrap();
+        let c = lire(d.path()).unwrap();
+        assert_eq!((c.steamid.as_str(), c.compte.as_str(), c.connecte_le.as_str()), (id, id, "2026-11-19T12:00:00"));
+        assert!(connecte_par_la_page(&c));
+        // Un compte réglé à la main (clé d'API) n'est pas « connecté par la page ».
+        assert!(!connecte_par_la_page(&CompteBoutique { steamid: id.into(), ..Default::default() }));
+        assert!(!connecte_par_la_page(&CompteBoutique { steamid: "1".into(), connecte_le: "t".into(), ..Default::default() }));
+        let brut = std::fs::read_to_string(d.path().join("boutiques.json")).unwrap();
+        assert!(!brut.contains("token") && !brut.contains("cookie"), "{brut}");
+        // Le même compte, déjà importé avec la clé : la liste et le nom donné restent.
+        let jeu: JeuBoutique = serde_json::from_value(serde_json::json!({"id": "620", "nom": "Portal 2", "minutes": 0, "derniere": 0})).unwrap();
+        ecrire(d.path(), Some(&CompteBoutique { compte: "NimaiTakahashi".into(), steamid: id.into(), maj_le: "x".into(), jeux: vec![jeu.clone()], ..Default::default() })).unwrap();
+        noter_connexion_steam(d.path(), id, "t2").unwrap();
+        let c = lire(d.path()).unwrap();
+        assert_eq!((c.compte.as_str(), c.jeux.len(), c.connecte_le.as_str()), ("NimaiTakahashi", 1, "t2"));
+        // Un AUTRE compte : l'ancienne liste ne vaut plus.
+        noter_connexion_steam(d.path(), "76561198000000000", "t3").unwrap();
+        let c = lire(d.path()).unwrap();
+        assert_eq!((c.steamid.as_str(), c.compte.as_str(), c.jeux.len()), ("76561198000000000", "76561198000000000", 0));
+        // Un steamid invalide n'écrit rien.
+        assert!(noter_connexion_steam(d.path(), "123", "t4").is_err());
+        assert_eq!(lire(d.path()).unwrap().connecte_le, "t3");
+        // Le compte de la clé est gardé à part : la clé de 7656119796… n'ira jamais avec le compte 7656119800….
+        assert_eq!(c.steamid_cle, id);
+        assert!(cle_d_un_autre_compte(&c));
+        // Un ancien fichier (sans `connecte_le`) se lit toujours.
+        std::fs::write(d.path().join("boutiques.json"), r#"{"steam":{"compte":"a","steamid":"1","maj_le":"","jeux":[]}}"#).unwrap();
+        assert_eq!(lire(d.path()).unwrap().connecte_le, "");
     }
 }

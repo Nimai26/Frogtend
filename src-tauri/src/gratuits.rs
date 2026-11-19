@@ -206,6 +206,61 @@ pub fn lire_titre_recolte(titre: &str) -> Option<Recolte> {
     Some(serde_json::from_str::<Recolte>(j).unwrap_or(Recolte { etat: "erreur".into(), motif: Some(j.chars().take(120).collect()), ..Default::default() }))
 }
 
+/// Le script de la fenêtre de connexion à Steam (lot C1) : il dit seulement si la boutique montre un compte connecté,
+/// et son `steamid` (jamais le jeton de la page).
+pub const SCRIPT_STEAM: &str = include_str!("../ressources/gratuits/steam.js");
+
+/// La page officielle de connexion à Steam ; après la connexion, Steam ramène à la boutique (`/explore/`).
+pub const CONNEXION_STEAM: &str = "https://store.steampowered.com/login/?redir=explore%2F";
+
+/// Les seuls hôtes où la fenêtre de connexion à Steam peut aller (revue de l'expert, 19/11) : la boutique (page de
+/// connexion et code Steam Guard y sont), le service de connexion, l'aide (mot de passe oublié, Steam Guard perdu) et
+/// la communauté (connexion par l'application Steam). Tout autre lien est refusé.
+const HOTES_STEAM: [&str; 4] = ["store.steampowered.com", "login.steampowered.com", "help.steampowered.com", "steamcommunity.com"];
+
+/// La fenêtre de connexion à Steam peut-elle aller à cette adresse ? HTTPS, port normal, hôte EXACT de `HOTES_STEAM`.
+pub fn navigation_steam(url: &tauri::Url) -> bool {
+    url.scheme() == "https"
+        && url.port().is_none()
+        && url.username().is_empty()
+        && url.host_str().is_some_and(|h| HOTES_STEAM.contains(&h.to_ascii_lowercase().as_str()))
+}
+
+/// Est-ce une page de la boutique Steam elle-même (seule origine dont le titre « FROGTEND:STEAM » est cru) ?
+pub fn page_de_la_boutique_steam(url: &tauri::Url) -> bool {
+    url.scheme() == "https" && url.port().is_none() && url.username().is_empty() && url.host_str().is_some_and(|h| h.eq_ignore_ascii_case("store.steampowered.com"))
+}
+
+/// Un identifiant Steam 64 bits d'une personne : 17 chiffres, dans la plage des comptes individuels
+/// (76561197960265728 et au-delà, univers « public »). Tout le reste est refusé.
+pub fn steamid_valide(s: &str) -> bool {
+    s.len() == 17 && s.bytes().all(|c| c.is_ascii_digit()) && s.starts_with("7656119") && s.parse::<u64>().is_ok_and(|n| n >= 76_561_197_960_265_728)
+}
+
+/// Ce que le script de Steam a vu sur la page.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ConnexionSteam {
+    Connecte(String),
+    PasConnecte,
+}
+
+/// Lit le titre posé par `steam.js` : `None` si ce n'est pas le sien, ou si le `steamid` n'est pas valide (le script
+/// n'est jamais cru sur parole).
+pub fn lire_titre_steam(titre: &str) -> Option<ConnexionSteam> {
+    #[derive(Deserialize)]
+    struct Vu {
+        connecte: bool,
+        #[serde(default)]
+        steamid: String,
+    }
+    let v: Vu = serde_json::from_str(titre.strip_prefix("FROGTEND:STEAM:")?).ok()?;
+    match v.connecte {
+        true if steamid_valide(&v.steamid) => Some(ConnexionSteam::Connecte(v.steamid)),
+        true => None,
+        false => Some(ConnexionSteam::PasConnecte),
+    }
+}
+
 /// Les sites d'IDENTITÉ qu'une fenêtre de connexion peut ouvrir (connexion par Google, Apple, Microsoft, Steam, la
 /// boutique elle-même…), en HTTPS seulement (revue des experts, 18/11 : jamais « tout site en https »).
 pub fn site_d_identite(url: &tauri::Url) -> bool {
@@ -214,7 +269,17 @@ pub fn site_d_identite(url: &tauri::Url) -> bool {
     }
     let Some(h) = url.host_str().map(|h| h.trim_end_matches('.').to_ascii_lowercase()) else { return false };
     let sous = |d: &str| h == d || h.ends_with(&format!(".{d}"));
-    const EXACTS: [&str; 5] = ["accounts.google.com", "appleid.apple.com", "login.live.com", "login.microsoftonline.com", "steamcommunity.com"];
+    // Steam (lot C1) : sa boutique, sa page de connexion et son aide (Steam Guard, compte perdu) ; rien d'autre.
+    const EXACTS: [&str; 8] = [
+        "accounts.google.com",
+        "appleid.apple.com",
+        "login.live.com",
+        "login.microsoftonline.com",
+        "steamcommunity.com",
+        "store.steampowered.com",
+        "login.steampowered.com",
+        "help.steampowered.com",
+    ];
     const DOMAINES: [&str; 10] = ["epicgames.com", "playstation.com", "sony.com", "gog.com", "facebook.com", "xbox.com", "nintendo.com", "disney.com", "lego.com", "amazon.com"];
     // Amazon : ses sites nationaux (`*.amazon.<pays>`), jamais un « amazon » au milieu d'un autre domaine.
     const AMAZON: [&str; 14] = ["fr", "de", "it", "es", "nl", "se", "pl", "ca", "co.uk", "co.jp", "com.au", "com.br", "com.be", "com.mx"];
@@ -300,9 +365,91 @@ mod tests {
             "https://www.amazon.fr.evil.net/",
             "https://exemple.com/",
             "https://store.steampowered.com.evil/",
+            "http://store.steampowered.com/login/",
+            "https://steampowered.com/",
+            "https://api.steampowered.com/",
+            "https://evil.store.steampowered.com/",
+            "https://evilsteampowered.com/",
         ] {
             assert!(!ok(u), "{u}");
         }
+    }
+
+    #[test]
+    fn la_connexion_steam_ouvre_la_boutique_et_ses_pages_d_identite_seulement() {
+        let ok = |u: &str| site_d_identite(&tauri::Url::parse(u).unwrap());
+        assert!(ok(CONNEXION_STEAM));
+        for u in ["https://store.steampowered.com/explore/", "https://login.steampowered.com/jwt/finalizelogin", "https://help.steampowered.com/fr/wizard/HelpWithLogin", "https://steamcommunity.com/login/home/"] {
+            assert!(ok(u), "{u}");
+        }
+    }
+
+    #[test]
+    fn la_fenetre_steam_ne_navigue_que_vers_les_pages_de_connexion_de_steam() {
+        let ok = |u: &str| navigation_steam(&tauri::Url::parse(u).unwrap());
+        assert!(ok(CONNEXION_STEAM));
+        for u in [
+            "https://store.steampowered.com/explore/",
+            "https://STORE.steampowered.com/login/",
+            "https://login.steampowered.com/jwt/finalizelogin",
+            "https://help.steampowered.com/fr/wizard/HelpWithLoginInfo",
+            "https://steamcommunity.com/login/home/",
+        ] {
+            assert!(ok(u), "{u}");
+        }
+        for u in [
+            "http://store.steampowered.com/login/",
+            "https://store.steampowered.com.evil.example/",
+            "https://evil.store.steampowered.com/",
+            "https://steampowered.com/",
+            "https://api.steampowered.com/",
+            "https://checkout.steampowered.com/",
+            "https://www.valvesoftware.com/fr/privacy-policy",
+            "https://store.steampowered.com:8443/",
+            "https://seb@store.steampowered.com/",
+            "https://accounts.google.com/",
+            "file:///C:/Windows/",
+        ] {
+            assert!(!ok(u), "{u}");
+        }
+    }
+
+    #[test]
+    fn seule_la_boutique_steam_est_crue_quand_elle_dit_connecte() {
+        let ok = |u: &str| page_de_la_boutique_steam(&tauri::Url::parse(u).unwrap());
+        assert!(ok("https://store.steampowered.com/explore/"));
+        assert!(ok(CONNEXION_STEAM));
+        for u in ["https://steamcommunity.com/", "https://help.steampowered.com/", "http://store.steampowered.com/", "https://store.steampowered.com.evil.example/", "https://store.steampowered.com:444/"] {
+            assert!(!ok(u), "{u}");
+        }
+    }
+
+    #[test]
+    fn un_steamid_valide_a_17_chiffres_d_un_compte_individuel() {
+        assert!(steamid_valide("76561197960287930"));
+        assert!(steamid_valide("76561198000000000"));
+        for s in ["", "7656119796028793", "765611979602879301", "7656119796028793x", "76561197960265727", "12345678901234567", " 76561197960287930", "-6561197960287930"] {
+            assert!(!steamid_valide(s), "{s:?}");
+        }
+    }
+
+    #[test]
+    fn le_titre_du_script_steam_se_lit_et_se_reverifie() {
+        assert_eq!(lire_titre_steam(r#"FROGTEND:STEAM:{"connecte":true,"steamid":"76561197960287930"}"#), Some(ConnexionSteam::Connecte("76561197960287930".into())));
+        assert_eq!(lire_titre_steam(r#"FROGTEND:STEAM:{"connecte":false}"#), Some(ConnexionSteam::PasConnecte));
+        // Un steamid douteux, un titre d'une autre page ou d'un autre script : rien.
+        assert_eq!(lire_titre_steam(r#"FROGTEND:STEAM:{"connecte":true,"steamid":"123"}"#), None);
+        assert_eq!(lire_titre_steam(r#"FROGTEND:STEAM:{"connecte":true}"#), None);
+        assert_eq!(lire_titre_steam("FROGTEND:STEAM:{pas du json"), None);
+        assert_eq!(lire_titre_steam("FROGTEND:CONNECTE"), None);
+        assert_eq!(lire_titre_steam("Bienvenue sur Steam"), None);
+    }
+
+    #[test]
+    fn le_script_steam_ne_lit_ni_jeton_ni_cookie() {
+        assert!(!SCRIPT_STEAM.contains("getAttribute('data-store_user_config"));
+        assert!(!SCRIPT_STEAM.contains("document.cookie"));
+        assert!(SCRIPT_STEAM.contains("data-userinfo"));
     }
 
     #[test]

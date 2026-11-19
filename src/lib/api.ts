@@ -588,6 +588,10 @@ export interface EtatSteam {
   nb_jeux: number;
   maj_le: string | null;
   steam_installe: boolean;
+  /** Connecté par la page officielle de Steam (lot C1) : son steamid est connu. */
+  connecte: boolean;
+  /** La clé d'API rangée est celle d'un AUTRE compte que celui connecté (l'import par la clé est refusé). */
+  cle_autre_compte: boolean;
 }
 
 /** Une boutique telle que ce PC la voit (import automatique, lot A). */
@@ -1010,6 +1014,7 @@ export const api = {
   steamEtat: () => appeler<EtatSteam>('boutique_steam_etat'),
   steamRegler: (compte: string, cle?: string) => appeler<EtatSteam>('boutique_steam_regler', { compte, cle: cle ?? null }),
   steamOublier: () => appeler<void>('boutique_steam_oublier'),
+  steamConnexion: () => appeler<void>('boutique_steam_connexion'),
   steamJeux: () => appeler<JeuBoutique[]>('boutique_steam_jeux'),
   steamImporter: () => appeler<JeuBoutique[]>('boutique_steam_importer'),
   steamOuvrir: (appid: string, action: 'jouer' | 'installer' | 'verifier') => appeler<void>('boutique_steam_ouvrir', { appid, action }),

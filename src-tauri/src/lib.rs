@@ -641,6 +641,7 @@ pub fn run() {
             commandes::nuage_steam_abriter,
             commandes::gratuits_liste,
             commandes::gratuits_connexion_epic,
+            commandes::boutique_steam_connexion,
             commandes::gratuits_obtenir_epic,
             commandes::gratuits_connexion_playstation,
             commandes::gratuits_psplus,

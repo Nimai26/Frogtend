@@ -5369,6 +5369,10 @@ pub struct EtatSteam {
     pub maj_le: Option<String>,
     /// Steam est-il installé sur ce PC (pour jouer et installer) ?
     pub steam_installe: bool,
+    /// Connecté par la page officielle de Steam (lot C1) : son `steamid` est connu.
+    pub connecte: bool,
+    /// La clé d'API rangée est celle d'un AUTRE compte que celui connecté (l'import par la clé est refusé).
+    pub cle_autre_compte: bool,
 }
 
 async fn profil_ouvert(noyau: &Noyau) -> Resultat<ProfilVisible> {
@@ -5390,6 +5394,8 @@ pub async fn boutique_steam_etat(noyau: State<'_, Noyau>) -> Resultat<EtatSteam>
         nb_jeux: c.as_ref().map_or(0, |c| c.jeux.len()),
         maj_le: c.as_ref().map(|c| c.maj_le.clone()).filter(|m| !m.is_empty()),
         steam_installe: crate::boutiques::dossier_steam().is_some(),
+        connecte: c.as_ref().is_some_and(crate::boutiques::connecte_par_la_page),
+        cle_autre_compte: cle && c.as_ref().is_some_and(crate::boutiques::cle_d_un_autre_compte),
     })
 }
 
@@ -5407,13 +5413,18 @@ pub async fn boutique_steam_regler(noyau: State<'_, Noyau>, compte: String, cle:
     let steamid = crate::boutiques::steamid(crate::boutiques::API_STEAM, &cle, &compte).await?;
     noyau.coffre.ranger(&secret, &cle)?;
     let dossier = dossier_profil_de(&noyau, &p.id);
-    let mut c = crate::boutiques::lire(&dossier).unwrap_or_default();
-    if c.steamid != steamid {
-        c.jeux.clear(); // un autre compte : l'ancienne liste ne vaut plus
-    }
-    c.compte = compte.trim().to_string();
-    c.steamid = steamid;
-    crate::boutiques::ecrire(&dossier, Some(&c))?;
+    // Relu et écrit sous le verrou : une connexion par la page pendant l'attente du réseau n'est pas défaite en silence.
+    crate::boutiques::modifier_source(&dossier, "steam", |c| {
+        let mut c = c.unwrap_or_default();
+        if c.steamid != steamid {
+            c.jeux.clear(); // un autre compte : l'ancienne liste ne vaut plus
+            c.connecte_le.clear(); // ni la connexion par la page (elle était celle de l'autre compte)
+        }
+        c.compte = compte.trim().to_string();
+        c.steamid = steamid.clone();
+        c.steamid_cle = steamid;
+        Ok(Some(c))
+    })?;
     noyau.journaliser(&format!("compte Steam réglé pour le profil {}", p.id));
     boutique_steam_etat(noyau).await
 }
@@ -6094,6 +6105,10 @@ pub async fn boutique_ouvrir(boutique: String, cle: String, action: String) -> R
     tauri_plugin_opener::open_url(&url, None::<&str>).map_err(|_| Erreur::Disque(format!("{} ne s'ouvre pas.", crate::boutiques_pc::nom_boutique(&boutique))))
 }
 
+/// Le refus d'un import par une clé d'API d'un autre compte que celui connecté par la page.
+const MOTIF_CLE_AUTRE_COMPTE: &str =
+    "Ta clé d'API Steam est celle d'un autre compte que celui connecté : règle-la à nouveau pour ce compte (Secours), ou reconnecte-toi avec le bon compte.";
+
 /// Importe (ou met à jour) la liste des jeux Steam possédés. Le compte doit être réglé (sinon : `Refus`, et
 /// l'interface ouvre le réglage d'abord, règle de Seb).
 #[tauri::command]
@@ -6102,12 +6117,24 @@ pub async fn boutique_steam_importer(noyau: State<'_, Noyau>) -> Resultat<Vec<cr
     let s = noyau.session().await?;
     let p = s.profil.clone();
     let dossier = dossier_profil_de(&noyau, &p.id);
-    let mut c = crate::boutiques::lire(&dossier).filter(|c| !c.steamid.is_empty()).ok_or_else(|| Erreur::Refus("Compte Steam pas encore réglé.".into()))?;
+    let c = crate::boutiques::lire(&dossier).filter(|c| !c.steamid.is_empty()).ok_or_else(|| Erreur::Refus("Compte Steam pas encore réglé.".into()))?;
     let cle = noyau.coffre.lire(&crate::boutiques::nom_secret(&p.id, "steam"))?.ok_or_else(|| Erreur::Refus("Compte Steam pas encore réglé.".into()))?;
-    c.jeux = crate::boutiques::jeux_possedes(crate::boutiques::API_STEAM, &cle, &c.steamid).await?;
-    c.maj_le = crate::noyau::maintenant();
-    crate::boutiques::ecrire(&dossier, Some(&c))?;
-    noyau.journaliser(&format!("import Steam : {} jeu(x) pour le profil {}", c.jeux.len(), p.id));
+    // Jamais la clé d'un compte avec le steamid d'un autre (connexion par la page à un autre compte) : la clé reste.
+    if crate::boutiques::cle_d_un_autre_compte(&c) {
+        return Err(Erreur::Refus(MOTIF_CLE_AUTRE_COMPTE.into()));
+    }
+    let steamid = c.steamid.clone();
+    let jeux = crate::boutiques::jeux_possedes(crate::boutiques::API_STEAM, &cle, &steamid).await?;
+    // Relu sous le verrou juste avant d'écrire : un compte changé pendant l'attente ne reçoit pas cette liste.
+    let ecrit = crate::boutiques::modifier_source(&dossier, "steam", |c| {
+        let mut c = c
+            .filter(|c| c.steamid == steamid && !crate::boutiques::cle_d_un_autre_compte(c))
+            .ok_or_else(|| Erreur::Refus("Le compte Steam a changé pendant l'import : relance-le.".into()))?;
+        c.jeux = jeux;
+        c.maj_le = crate::noyau::maintenant();
+        Ok(Some(c))
+    })?;
+    noyau.journaliser(&format!("import Steam : {} jeu(x) pour le profil {}", ecrit.map_or(0, |c| c.jeux.len()), p.id));
     let jeux = boutique_steam_jeux(noyau.clone()).await?;
     // Dans la ludothèque, avec les autres jeux (plateforme Windows).
     noyau.ranger_installes(&s, "steam", &jeux)?;
@@ -6185,6 +6212,82 @@ fn fenetre_epic(app: &AppHandle, dossier_profil: &std::path::Path, profil: &str,
 pub async fn gratuits_connexion_epic(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<()> {
     let p = profil_ouvert(&noyau).await?;
     let w = fenetre_epic(&app, &dossier_profil_de(&noyau, &p.id), &p.id, "https://www.epicgames.com/id/login?redirectUrl=https%3A%2F%2Fstore.epicgames.com%2Fen-US%2F")?;
+    let _ = w.set_focus();
+    Ok(())
+}
+
+const FENETRE_STEAM: &str = "boutique-steam";
+
+/// Se connecter à Steam par sa page OFFICIELLE (lot C1, décision de Seb du 19/11), avec le navigateur PROPRE AU PROFIL
+/// (sa connexion Steam y reste ; Steam Guard se fait sur la vraie page). Frogtend ne voit ni le mot de passe ni les
+/// cookies : à chaque page de la boutique, `steam.js` dit seulement si un compte est connecté et son `steamid`
+/// (revérifié ici). Une fois connecté : le `steamid` est rangé dans `boutiques.json` du profil (jamais d'autre donnée),
+/// l'interface l'apprend par l'événement `steam-connecte` ({profil, ok}) et la fenêtre se ferme.
+#[tauri::command]
+pub async fn boutique_steam_connexion(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<()> {
+    let p = profil_ouvert(&noyau).await?;
+    let dossier = dossier_profil_de(&noyau, &p.id);
+    if let Some(w) = app.get_webview_window(FENETRE_STEAM) {
+        let _ = w.close();
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    }
+    let url = tauri::Url::parse(crate::gratuits::CONNEXION_STEAM).map_err(|_| Erreur::Refus("Adresse Steam invalide.".into()))?;
+    // Une seule annonce par fenêtre (chaque page de la boutique redit « connecté »).
+    let fait = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let w = tauri::WebviewWindowBuilder::new(&app, FENETRE_STEAM, tauri::WebviewUrl::External(url))
+        .title("Steam — Frogtend")
+        .inner_size(1100.0, 800.0)
+        .center()
+        .data_directory(crate::gratuits::dossier_navigateur(&dossier))
+        .on_new_window(crate::gratuits::fenetre_de_connexion)
+        // Seulement les pages de connexion de Steam : tout autre lien est refusé (revue de l'expert, 19/11).
+        // Un refus est noté au journal avec le SEUL nom du site (jamais l'adresse entière, qui peut porter un jeton) :
+        // si Steam Guard a besoin d'un autre site, le premier essai le dira.
+        .on_navigation({
+            let app = app.clone();
+            move |u| {
+                let ok = crate::gratuits::navigation_steam(u);
+                if !ok {
+                    app.state::<Noyau>().journaliser(&format!("connexion Steam : page refusée sur « {} »", u.host_str().unwrap_or("?")));
+                }
+                ok
+            }
+        })
+        .on_page_load(|w, charge| {
+            if matches!(charge.event(), tauri::webview::PageLoadEvent::Finished) && w.url().is_ok_and(|u| crate::gratuits::page_de_la_boutique_steam(&u)) {
+                let _ = w.eval(crate::gratuits::SCRIPT_STEAM);
+            }
+        })
+        .on_document_title_changed({
+            let (app, profil) = (app.clone(), p.id.clone());
+            move |w, titre| {
+                // Le titre n'est cru que sur la boutique Steam elle-même (n'importe quelle page peut écrire ce titre).
+                if !w.url().is_ok_and(|u| crate::gratuits::page_de_la_boutique_steam(&u)) {
+                    return;
+                }
+                let Some(crate::gratuits::ConnexionSteam::Connecte(steamid)) = crate::gratuits::lire_titre_steam(&titre) else { return };
+                if fait.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                    return;
+                }
+                let r = crate::boutiques::noter_connexion_steam(&dossier, &steamid, &crate::noyau::maintenant());
+                if let Some(noyau) = app.try_state::<Noyau>() {
+                    // Jamais le steamid ni rien de la page dans le journal : seulement le fait.
+                    noyau.journaliser(&match &r {
+                        Ok(()) => format!("connexion Steam : compte relié pour le profil {profil}"),
+                        Err(e) => format!("connexion Steam : compte pas enregistré pour le profil {profil} ({e:?})"),
+                    });
+                }
+                let _ = app.emit("steam-connecte", serde_json::json!({"profil": profil, "ok": r.is_ok()}));
+                if r.is_ok() {
+                    // Fermée hors de ce rappel (il vient de la fenêtre elle-même).
+                    tauri::async_runtime::spawn(async move {
+                        let _ = w.close();
+                    });
+                }
+            }
+        })
+        .build()
+        .map_err(|e| Erreur::Disque(format!("La fenêtre de Steam ne s'ouvre pas ({e}).")))?;
     let _ = w.set_focus();
     Ok(())
 }
@@ -6463,7 +6566,7 @@ pub async fn gratuits_connexion(app: AppHandle, noyau: State<'_, Noyau>, boutiqu
     let etiquette = format!("boutique-{boutique}");
     if let Some(w) = app.get_webview_window(&etiquette) {
         let _ = w.close();
-        std::thread::sleep(std::time::Duration::from_millis(300));
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     }
     let url = tauri::Url::parse(page).map_err(|_| Erreur::Refus("Adresse invalide.".into()))?;
     let w = tauri::WebviewWindowBuilder::new(&app, &etiquette, tauri::WebviewUrl::External(url))
@@ -6666,7 +6769,7 @@ pub async fn boutique_galaxy_importer(noyau: State<'_, Noyau>) -> Resultat<Vec<c
     // La copie de la base ne reste pas, même si la lecture a échoué : elle contient les données du compte.
     let _ = std::fs::remove_dir_all(&travail);
     let jeux = jeux??;
-    let c = crate::boutiques::CompteBoutique { compte: "GOG Galaxy".into(), steamid: String::new(), maj_le: crate::noyau::maintenant(), jeux };
+    let c = crate::boutiques::CompteBoutique { compte: "GOG Galaxy".into(), steamid: String::new(), maj_le: crate::noyau::maintenant(), jeux, ..Default::default() };
     crate::boutiques::ecrire_source(&dossier_profil_de(&noyau, &p.id), "galaxy", Some(&c))?;
     noyau.journaliser(&format!("import GOG Galaxy : {} jeu(x) pour le profil {}", c.jeux.len(), p.id));
     noyau.ranger_boutique("galaxy", &c.jeux).await?;

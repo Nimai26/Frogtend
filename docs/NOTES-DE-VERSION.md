@@ -1,5 +1,15 @@
 # Notes de version de Frogtend
 
+## 0.214.0 — 🔑 Se connecter à Steam par sa vraie page (lot C1)
+
+- Nouveau : dans 🛒 Boutiques ▸ Mes jeux installés, « 🔑 Se connecter à Steam » ouvre la vraie page de connexion de
+  Steam (avec Steam Guard). Ton mot de passe ne passe jamais par Frogtend ; seul ton numéro de compte Steam est gardé.
+  Une fois connecté : « ✅ Connecté à Steam ». La liste de tes jeux possédés viendra à l'étape suivante (C2).
+- La fenêtre de connexion ne peut aller QUE sur les pages de Steam ; le fichier des boutiques de ton profil est écrit
+  de façon sûre (jamais à moitié, jamais écrasé s'il est illisible).
+- La clé d'API Steam reste possible en secours ; si elle appartient à un autre compte que celui connecté, Frogtend le
+  dit au lieu de mélanger les deux.
+
 ## 0.213.2 — 🎁 Un jeu offert déjà à toi n'est plus « à obtenir »
 
 - Corrigé : dans 🛒 Boutiques ▸ Jeux offerts, un jeu Epic que tu as DÉJÀ (Knightica) proposait encore « Obtenir ». Il

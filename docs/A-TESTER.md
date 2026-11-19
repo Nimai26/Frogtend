@@ -6,6 +6,13 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🔑 Connexion à Steam par sa vraie page (0.214.0, lot C1)
+- [ ] 🛒 Boutiques ▸ Mes jeux installés ▸ « 🔑 Se connecter à Steam » : la page de Steam s'ouvre ; connexion (code
+      Steam Guard si demandé) ; la fenêtre se ferme seule et « ✅ Connecté à Steam » s'affiche. Si une page reste
+      bloquée, le journal dit « connexion Steam : page refusée sur « … » ».
+- [ ] Fermer puis rouvrir 🛒 Boutiques (et Frogtend) : toujours « ✅ Connecté à Steam » ; le bloc Secours ne dit plus
+      « compte pas encore réglé ».
+
 ## 🎁 Jeux offerts déjà possédés (0.213.2)
 - [x] (Seb 19/11 : « C'est bon ») 🛒 Boutiques ▸ Jeux offerts : Knightica (et tout jeu offert déjà dans ton compte Epic) montre « ✅ Dans ta
       bibliothèque », plus de bouton « Obtenir ».
