@@ -575,16 +575,19 @@
     overflow: auto;
     display: grid;
     /* Des cartes de largeur FIXE, réglées par le bouton « Taille » (le facteur de --u) : l'IMAGE fait 95 u (140 px en
-       1080p, Moyenne) ; une rangée entière tient toujours (titre et marges : environ 90 u). La carte = l'image + sa
+       1080p, Moyenne) ; une rangée entière tient toujours (titre et marges : environ 110 u). La carte = l'image + sa
        marge intérieure et sa bordure (2 × 8 u). Essais de Seb 19/11 : 360 px « trop gros », puis 82 px trop petit
        (la règle « deux rangées entières » écrasait le bouton Taille). */
-    --image: max(calc(60 * var(--u)), min(calc(95 * var(--u)), calc((100cqh - 90 * var(--u)) * 2 / 3)));
+    --image: max(calc(60 * var(--u)), min(calc(95 * var(--u)), calc((100cqh - 110 * var(--u)) * 2 / 3)));
     --carte: calc(var(--image) + 16 * var(--u));
     grid-template-columns: repeat(auto-fill, var(--carte));
     justify-content: center;
     gap: calc(18 * var(--u));
     align-content: start;
-    padding: calc(8 * var(--u));
+    /* Le cadre de sélection dépasse la carte (contour 4 u à 4 u d'écart, et l'agrandissement de 5 %) : la grille
+       garde assez de marge pour ne jamais le couper, et le défilement à la manette la respecte (essai de Seb 19/11). */
+    padding: calc(16 * var(--u));
+    scroll-padding: calc(16 * var(--u));
   }
   .carte {
     display: grid;

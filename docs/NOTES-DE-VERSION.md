@@ -1,5 +1,10 @@
 # Notes de version de Frogtend
 
+## 0.212.4 — 🔍 Taodbox : le cadre de sélection en entier
+
+- Corrigé : dans Taodbox, le cadre orange du jeu choisi était coupé en bas de la grille ; il se voit maintenant en
+  entier, et la grille défile en le gardant visible.
+
 ## 0.212.3 — 🔍 Taodbox : le bouton Taille compte vraiment
 
 - Corrigé : les jaquettes de Taodbox restaient petites (environ 80 px), et le bouton « 🔍 Taille » ne changeait
