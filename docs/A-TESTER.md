@@ -7,7 +7,7 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## 🎁 Jeux offerts déjà possédés (0.213.2)
-- [ ] 🛒 Boutiques ▸ Jeux offerts : Knightica (et tout jeu offert déjà dans ton compte Epic) montre « ✅ Dans ta
+- [x] (Seb 19/11 : « C'est bon ») 🛒 Boutiques ▸ Jeux offerts : Knightica (et tout jeu offert déjà dans ton compte Epic) montre « ✅ Dans ta
       bibliothèque », plus de bouton « Obtenir ».
 
 ## 🏷 Les icônes des boutiques (0.213.0)
