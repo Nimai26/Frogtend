@@ -6124,14 +6124,23 @@ pub struct Offert {
 
 /// Les jeux offerts en ce moment (Epic : liste publique, sans compte).
 #[tauri::command]
-pub async fn gratuits_liste(noyau: State<'_, Noyau>) -> Resultat<Vec<Offert>> {
+pub async fn gratuits_liste(noyau: State<'_, Noyau>, possedes: Option<bool>) -> Resultat<Vec<Offert>> {
     let p = profil_ouvert(&noyau).await?;
     let obtenus = crate::gratuits::lire_obtenus(&dossier_profil_de(&noyau, &p.id));
     let l = crate::gratuits::offerts_epic().await?;
+    // Un jeu déjà dans le compte Epic de CE PC (catalogue du lanceur, lecture seule) : « obtenu » sans rien cliquer
+    // (Seb 19/11). Ce compte est celui du LANCEUR : seulement si le profil a accepté « les jeux de mes comptes » (lot B),
+    // sinon un autre membre de la famille verrait « obtenu » pour un jeu qu'il n'a pas.
+    let possedes = if possedes.unwrap_or(false) {
+        tokio::task::spawn_blocking(|| crate::boutiques_pc::espaces_possedes_epic(crate::boutiques_pc::catalogue_epic().as_deref())).await.ok().flatten().unwrap_or_default()
+    } else {
+        Default::default()
+    };
     Ok(l
         .into_iter()
         .map(|j| {
-            let obtenu = obtenus.jeux.iter().any(|(b, s, _)| *b == j.boutique && *s == j.slug);
+            let obtenu = obtenus.jeux.iter().any(|(b, s, _)| *b == j.boutique && *s == j.slug)
+                || (j.boutique == "epic" && !j.namespace.is_empty() && possedes.contains(&j.namespace));
             Offert { jeu: j, obtenu }
         })
         .collect())

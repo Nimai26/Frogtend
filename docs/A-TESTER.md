@@ -6,6 +6,10 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🎁 Jeux offerts déjà possédés (0.213.2)
+- [ ] 🛒 Boutiques ▸ Jeux offerts : Knightica (et tout jeu offert déjà dans ton compte Epic) montre « ✅ Dans ta
+      bibliothèque », plus de bouton « Obtenir ».
+
 ## 🏷 Les icônes des boutiques (0.213.0)
 - [x] (Seb 19/11 : « Nickel ») Ma ludothèque (Windows) : les pastilles montrent l'icône de Steam, Epic, GOG, Ubisoft, EA au lieu du nom ; Xbox et
       Disque gardent leur nom ; en survolant, « Vient de Steam ».
@@ -25,7 +29,7 @@
       environ 520 ; filtre « Pas installés » : Epic et Ubisoft (Assassin's Creed III, Splinter Cell…).
 - [x] (Seb 19/11 : Epic s'ouvre sur SA bibliothèque filtrée sur le jeu, « Installer » à un clic — noté dans IDEES) Un jeu Epic pas installé ▸ ⬇ Installer : Epic ouvre sa fenêtre d'installation.
 - [x] (Seb 19/11 : la fenêtre d'installation d'Epic s'ouvre ; clavier et souris pour la valider, « on fera avec ») Taodbox : les jeux à installer avec la pastille « ⬇ À installer » ; A ouvre l'installation (message ⊞/Guide).
-- [ ] 🛒 Boutiques : « Epic Games : 500 jeux dans ton compte, dont 1 installé ».
+- [x] (Seb 19/11, vu) 🛒 Boutiques : « Epic Games : 500 jeux dans ton compte, dont 1 installé ».
 - [ ] Les titres : en survolant la liste, peu de « ? » (21 attendus, ex. « Les Sims? 4 »).
 
 ## 🎮 Tes jeux installés entrent seuls (import automatique, lot A) et jeux offerts d'Epic

@@ -992,7 +992,9 @@ export const api = {
     appeler<EmulateurInstalle>('emulateur_adopter', { id, programme, nom: nom ?? null, version: version ?? null }),
   emulateurInstallerFirehouse: (id: string, nom: string, dossier: string) =>
     appeler<InstallationFirehouse>('emulateur_installer_firehouse', { id, nom, dossier }),
-  gratuitsListe: () => appeler<JeuOffert[]>('gratuits_liste'),
+  /** `possedes` : le profil a accepté les jeux de ses comptes (lot B) ; un jeu offert déjà dans le compte Epic du
+   * lanceur est alors « obtenu » sans clic. */
+  gratuitsListe: (possedes = false) => appeler<JeuOffert[]>('gratuits_liste', { possedes }),
   gratuitsConnexionEpic: () => appeler<void>('gratuits_connexion_epic'),
   gratuitsConnexion: (boutique: 'gog' | 'prime') => appeler<void>('gratuits_connexion', { boutique }),
   gratuitsRecuperer: (boutique: 'gog' | 'prime') => appeler<Recolte>('gratuits_recuperer', { boutique }),

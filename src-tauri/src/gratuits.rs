@@ -38,6 +38,10 @@ pub struct JeuOffert {
     /// Fin de l'offre (texte ISO).
     pub fin: String,
     pub image: Option<String>,
+    /// L'espace de noms Epic du jeu (le même que dans le catalogue du lanceur : un jeu offert déjà possédé y est
+    /// reconnu sans rien cliquer, Seb 19/11). Vide s'il manque.
+    #[serde(default)]
+    pub namespace: String,
 }
 
 /// Les jeux GRATUITS en ce moment dans la réponse publique d'Epic (`now` : date ISO, pour comparer).
@@ -72,6 +76,7 @@ pub fn lire_offerts_epic(v: &Value, now: &str) -> Vec<JeuOffert> {
             slug,
             fin: o["endDate"].as_str().unwrap_or("").into(),
             image,
+            namespace: e["namespace"].as_str().filter(|n| !n.is_empty() && n.len() <= 64 && n.chars().all(|c| c.is_ascii_alphanumeric())).unwrap_or("").into(),
         });
     }
     l
@@ -305,6 +310,7 @@ mod tests {
         let v = json!({"data": {"Catalog": {"searchStore": {"elements": [
             {"title": "System Shock 2", "price": {"totalPrice": {"discountPrice": 0}},
              "promotions": {"promotionalOffers": [{"promotionalOffers": [{"startDate": "2026-10-01T15:00:00.000Z", "endDate": "2026-10-08T15:00:00.000Z"}]}]},
+             "namespace": "02d659f31e1c43a78c43fd9fd9edc089",
              "catalogNs": {"mappings": [{"pageSlug": "system-shock-2-25th-anniversary-remaster-cb94d9"}]},
              "keyImages": [{"type": "Thumbnail", "url": "a"}, {"type": "OfferImageTall", "url": "b"}]},
             {"title": "Payant", "price": {"totalPrice": {"discountPrice": 1999}}},
@@ -318,6 +324,7 @@ mod tests {
         assert_eq!(l.len(), 1);
         assert_eq!(l[0].slug, "system-shock-2-25th-anniversary-remaster-cb94d9");
         assert_eq!(l[0].image.as_deref(), Some("b"));
+        assert_eq!(l[0].namespace, "02d659f31e1c43a78c43fd9fd9edc089", "l'espace de noms, pour reconnaître un jeu déjà possédé");
         assert!(lire_offerts_epic(&v, "2026-10-09T00:00:00.000Z").is_empty(), "offre terminée");
     }
 

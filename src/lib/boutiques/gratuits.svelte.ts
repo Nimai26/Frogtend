@@ -89,7 +89,9 @@ const JOUR_S = 24 * 3600;
 const SEMAINE_S = 7 * JOUR_S;
 
 export async function lireGratuits() {
-  gratuits.liste = await api.gratuitsListe().catch(() => []);
+  // Le compte Epic du lanceur n'est reconnu comme celui du profil que s'il a accepté « les jeux de mes comptes »
+  // (lot B) : un autre membre de la famille, avec SON compte Epic, ne voit jamais « obtenu » à tort.
+  gratuits.liste = await api.gratuitsListe(etat.profil.boutiquesPc.possedes === 'oui').catch(() => []);
 }
 
 /** L'écoute de la fenêtre de connexion à Epic (une seule à la fois). */

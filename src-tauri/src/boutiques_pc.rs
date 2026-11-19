@@ -638,6 +638,25 @@ pub fn possedes_epic(fichier: Option<&Path>) -> Option<Vec<JeuBoutique>> {
     lire_catalogue_epic(&lire_plafonne(fichier?, PLAFOND_CACHE)?)
 }
 
+/// Les espaces de noms des JEUX Epic possédés (mêmes règles que `jeu_du_catalogue_epic` : jamais un DLC, une
+/// extension, un outil) : un jeu offert dont l'espace y figure est déjà dans le compte (Seb 19/11 : Knightica restait
+/// « Obtenir »). `None` : catalogue absent ou illisible (rien n'est alors supposé).
+pub fn espaces_lus_epic(octets: &[u8]) -> Option<std::collections::HashSet<String>> {
+    let v: serde_json::Value = serde_json::from_slice(&base64(octets)?).ok()?;
+    Some(
+        v.as_array()?
+            .iter()
+            .filter(|e| jeu_du_catalogue_epic(e).is_some())
+            .filter_map(|e| e["namespace"].as_str().filter(|n| !n.is_empty()).map(String::from))
+            .collect(),
+    )
+}
+
+/// `espaces_lus_epic` sur le catalogue de ce PC (lecture seule, taille plafonnée).
+pub fn espaces_possedes_epic(fichier: Option<&Path>) -> Option<std::collections::HashSet<String>> {
+    espaces_lus_epic(&lire_plafonne(fichier?, PLAFOND_CACHE)?)
+}
+
 // ── Ubisoft : `<cache>\configuration\configurations` et `<cache>\ownership\<compte>` ──
 //
 // Méthode (relevé du 18/11 chez Seb, et celle de Playnite, relue sans recopier son code) : `configurations` est une
@@ -1240,6 +1259,15 @@ mod tests {
             }
         }
         s
+    }
+
+    #[test]
+    fn epic_dit_les_espaces_des_jeux_possedes_pour_reconnaitre_un_jeu_offert() {
+        let e = espaces_lus_epic(&catalogue_epic_invente()).unwrap();
+        assert_eq!(e.into_iter().collect::<Vec<_>>(), ["ns"], "les jeux du catalogue inventé sont tous dans « ns »");
+        assert!(espaces_lus_epic(b"pas du base64 !").is_none(), "illisible : rien n'est supposé");
+        assert!(espaces_lus_epic(b"W10=").unwrap().is_empty(), "une liste vide : aucun jeu possédé");
+        assert!(espaces_possedes_epic(None).is_none());
     }
 
     #[test]

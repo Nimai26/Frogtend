@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.213.2 — 🎁 Un jeu offert déjà à toi n'est plus « à obtenir »
+
+- Corrigé : dans 🛒 Boutiques ▸ Jeux offerts, un jeu Epic que tu as DÉJÀ (Knightica) proposait encore « Obtenir ». Il
+  est maintenant marqué « ✅ Dans ta bibliothèque » tout seul, d'après le compte Epic de ce PC — seulement si ton profil
+  a accepté « les jeux de mes comptes » (un autre membre de la famille, avec son propre compte Epic, n'est pas
+  concerné).
+
 ## 0.213.1 — 🏷 Les icônes de Firehouse et du Disque
 
 - Nouveau : les jeux venus de Firehouse portent son logo, et ceux importés du disque une petite icône de disque dur
