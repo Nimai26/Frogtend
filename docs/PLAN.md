@@ -974,7 +974,14 @@ les pastilles des jeux, une petite icône : (1) celle du lanceur INSTALLÉ sur c
 (rien n'est embarqué dans Frogtend, jamais un logo de marque copié) ; (2) en secours, celle servie par Firehouse
 (BESOINS-API n° 55) ; (3) le texte en dernier recours. ✅ Fait en 0.213.0 pour (1) et (3) (module
 `icones_lanceurs.rs` : Steam, Epic, GOG, Ubisoft, EA relevés sur Venkman ; Amazon et Battle.net non essayés) ; (2) attend
-Firehouse (point d'entrée `iconeFirehouse` dans `src/lib/boutiques/icones.svelte.ts`).
+Firehouse (point d'entrée `iconeFirehouse` dans `src/lib/boutiques/icones.svelte.ts`). ✅ Seb 19/11 : le DISQUE a une icône dessinée par
+Frogtend (un disque dur, couleur du thème) ; FIREHOUSE a son logo (celui que Seb utilise, une marque d'un tiers) :
+EXCEPTION décidée par Seb (« si Sony veut nous faire un procès on avisera, c'est ma décision ») — livré dans
+l'application ET gardé dans le dépôt (`static/icones/firehouse.png`, 64 px ; l'original `docs/logo/FireHouse.png`) —
+Seb 19/11 : « je me fiche qu'il soit dans le dépôt », l'application n'est pas destinée au public, ne sert à rien sans
+Firehouse, et le dépôt repassera en privé à la fin du développement ; absent d'une fabrication, la pastille écrit
+« Firehouse ». Cette exception
+ne vaut que pour ce logo : la règle « jamais un logo de marque copié » reste pour tout le reste.
 
 ## Personnalisation (« beaucoup d'éléments modifiables »)
 

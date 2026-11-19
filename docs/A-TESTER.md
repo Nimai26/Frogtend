@@ -10,6 +10,7 @@
 - [ ] Ma ludothèque (Windows) : les pastilles montrent l'icône de Steam, Epic, GOG, Ubisoft, EA au lieu du nom ; Xbox et
       Disque gardent leur nom ; en survolant, « Vient de Steam ».
 - [ ] Le panneau des détails d'un jeu, et Taodbox (coin de la jaquette) : icônes lisibles, ni floues ni minuscules.
+- [ ] (0.213.1) Un jeu de Firehouse : le logo de Firehouse ; un jeu importé du disque : l'icône du disque dur.
 
 ## 🔍 Taodbox à la bonne taille (0.212.1, puis 0.212.2)
 - [x] (Seb 19/11, 0.212.4 : « Nickel » ; 0.212.1 : deux rangées, mais jaquettes minuscules, ~75 px, 16 par ligne ; en 0.212.2 : la boutique dans le coin, mais images encore ~82 px, 3 rangées, et le bouton Taille écrasé par la règle des deux rangées ; 0.212.3 : 115/140/180 px selon le bouton — « c'est pas mal », mais le cadre orange coupé en bas, corrigé en 0.212.4) Ouvrir Taodbox (écran 1080p) : environ 9 jaquettes par ligne en Moyenne, presque deux rangées visibles, la pastille

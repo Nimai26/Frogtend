@@ -9,6 +9,9 @@
   const pastilles = $derived(origines.map((o) => ({ o, nom: nomOrigine(o), icone: iconeDe(o) })));
   const libelle = $derived(venantDe(pastilles.map((p) => p.nom)));
 
+  /** Le logo de Firehouse n'a pas pu être lu (fabrication sans lui) : le texte à la place. */
+  let firehouseAbsent = $state(false);
+
   $effect(() => {
     for (const o of origines) demanderIcone(o);
   });
@@ -17,7 +20,16 @@
 {#if pastilles.length}
   <span class="origines" class:grand role="img" aria-label={libelle} title={libelle}>
     {#each pastilles as p (p.o)}
-      {#if p.icone}<span class="pastille avec-icone"><img src={p.icone} alt="" draggable="false" /></span>{:else}<span class="pastille">{p.nom}</span>{/if}
+      {#if p.icone}<span class="pastille avec-icone"><img src={p.icone} alt="" draggable="false" /></span>
+      {:else if p.o === 'firehouse' && !firehouseAbsent}
+        <!-- Le logo de Firehouse (Seb 19/11, son choix, gardé dans le dépôt) ;
+             absent, le nom écrit revient. -->
+        <span class="pastille avec-icone"><img src="/icones/firehouse.png" alt="" draggable="false" onerror={() => (firehouseAbsent = true)} /></span>
+      {:else if p.o === 'disque'}
+        <!-- Un jeu importé du disque (Seb 19/11) : un disque dur DESSINÉ par Frogtend (aucune marque), à la couleur du
+             texte du thème. -->
+        <span class="pastille avec-icone"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2" /><line x1="3" y1="13" x2="21" y2="13" /><circle cx="17" cy="15.5" r="0.6" fill="currentColor" /><line x1="6.5" y1="15.5" x2="11" y2="15.5" /></svg></span>
+      {:else}<span class="pastille">{p.nom}</span>{/if}
     {/each}
   </span>
 {/if}
@@ -46,7 +58,8 @@
     align-items: center;
     padding: calc(1 * var(--u)) calc(2 * var(--u));
   }
-  .avec-icone img {
+  .avec-icone img,
+  .avec-icone svg {
     display: block;
     width: calc(12 * var(--u));
     height: calc(12 * var(--u));
@@ -59,7 +72,8 @@
   .grand .avec-icone {
     padding: calc(2 * var(--u)) calc(3 * var(--u));
   }
-  .grand .avec-icone img {
+  .grand .avec-icone img,
+  .grand .avec-icone svg {
     width: calc(16 * var(--u));
     height: calc(16 * var(--u));
   }

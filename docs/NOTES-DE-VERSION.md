@@ -1,5 +1,10 @@
 # Notes de version de Frogtend
 
+## 0.213.1 — 🏷 Les icônes de Firehouse et du Disque
+
+- Nouveau : les jeux venus de Firehouse portent son logo, et ceux importés du disque une petite icône de disque dur
+  (aux couleurs du thème), au lieu des mots « Firehouse » et « Disque ».
+
 ## 0.213.0 — 🏷 Les icônes des boutiques
 
 - Nouveau : sur les jeux, la pastille de la boutique (Steam, Epic, GOG, Ubisoft, EA…) montre maintenant la petite icône
