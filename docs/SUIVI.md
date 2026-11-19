@@ -7,6 +7,16 @@
 
 ## 🔨 En cours / à faire (sans attendre Seb)
 
+- **📍 Point du 19/11 — où nous en sommes** :
+  - LIVRÉ et VALIDÉ par Seb : 0.212.0 (lot B : 500 jeux Epic + 4 Ubisoft possédés, accord une fois ; installation depuis
+    Taodbox ; titres réparés, seul « Les Sims? 4 » vu) ; 0.212.1 → 0.212.4 (Taodbox à la bonne taille : tailles d'après
+    l'écran, bouton « 🔍 Taille » Petite/Moyenne/Grande, Petite d'office ; cadre de sélection entier) ; 0.213.0/0.213.1
+    (icônes des boutiques lues dans les lanceurs installés ; logo de Firehouse, décision de Seb ; disque dur dessiné) ;
+    0.213.2 (jeu offert Epic déjà possédé reconnu sans clic).
+  - LOT B TERMINÉ. Prochain : **LOT C** (connexion par la page officielle de Steam, qui remplace la clé d'API, puis GOG).
+  - NOTÉ pour plus tard (IDEES) : la Taodbox définitive (roues de systèmes et de jeux, fonds par système, vidéos dans
+    les écrans du décor) ; Epic : ouvrir directement la fenêtre d'installation ; icônes servies par Firehouse (BESOINS 55).
+
 - **📍 Point du 18/11 (soir) — où nous en sommes** :
   - LIVRÉ et en ligne : 0.207.0 (envoi des MAJ/DLC Switch à Firehouse), 0.208.0/0.208.1 (mods Switch servis par
     Firehouse, contrat 1.44 ; réglages Switch dans Taodbox), 0.209.0 (fiches des mods 1.46, mods « adulte » réservés,

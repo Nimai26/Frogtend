@@ -30,7 +30,7 @@
 - [x] (Seb 19/11 : Epic s'ouvre sur SA bibliothèque filtrée sur le jeu, « Installer » à un clic — noté dans IDEES) Un jeu Epic pas installé ▸ ⬇ Installer : Epic ouvre sa fenêtre d'installation.
 - [x] (Seb 19/11 : la fenêtre d'installation d'Epic s'ouvre ; clavier et souris pour la valider, « on fera avec ») Taodbox : les jeux à installer avec la pastille « ⬇ À installer » ; A ouvre l'installation (message ⊞/Guide).
 - [x] (Seb 19/11, vu) 🛒 Boutiques : « Epic Games : 500 jeux dans ton compte, dont 1 installé ».
-- [ ] Les titres : en survolant la liste, peu de « ? » (21 attendus, ex. « Les Sims? 4 »).
+- [x] (Seb 19/11 : seul « Les Sims » vu) Les titres : en survolant la liste, peu de « ? » (21 attendus, ex. « Les Sims? 4 »).
 
 ## 🎮 Tes jeux installés entrent seuls (import automatique, lot A) et jeux offerts d'Epic
 - [~] (Seb 18/11, 0.211.0 : les 15 jeux SONT entrés — Steam 10, GOG 2, Xbox 3, TerraScape déjà là — MAIS aucun message et la barre de gauche restait à « 2 jeux Windows » : corrigé dans la version suivante, message d'abord puis grille ET barre relues) Ouvrir ton profil, sans rien toucher : un seul message « 🎮 … nouveaux jeux trouvés sur ce PC (…) » ; dans Ma
