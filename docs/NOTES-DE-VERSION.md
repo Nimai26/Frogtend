@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.212.2 — 🔍 Taodbox : des jaquettes ni trop grandes ni trop petites
+
+- Corrigé : en 0.212.1, les jaquettes de Taodbox étaient devenues minuscules. Elles sont plus grandes : la boutique
+  d'origine (Steam, Epic…) est maintenant dans le coin de la jaquette, la ligne d'état n'apparaît que si elle dit
+  quelque chose, et le bandeau du haut est plus fin. La pastille « ⬇ À installer » tient sur une ligne.
+
 ## 0.212.1 — 🔍 Taodbox à la bonne taille
 
 - Corrigé : dans Taodbox, tout était beaucoup trop gros sur un écran 1080p (4 jaquettes par ligne, qui dépassaient le

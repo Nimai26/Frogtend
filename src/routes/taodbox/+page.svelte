@@ -97,8 +97,8 @@
   const hauteurDeLEcran = () => (typeof screen !== 'undefined' && screen.height > 0 ? screen.height : 1080);
   let hauteurEcran = $state(hauteurDeLEcran());
   /** La largeur d'une carte en pixels CSS, sans la taille du texte (`Jaquette` l'ajoute) : la même que `--carte`
-   * (97 u au plus, 1 u = 0,139 % de la hauteur de l'écran) ; l'image demandée au cœur suit donc la vraie place. */
-  const largeurCarte = $derived(Math.round(97 * 0.00139 * hauteurEcran * FACTEURS_TAILLE[taille]));
+   * (110 u au plus, 1 u = 0,139 % de la hauteur de l'écran) ; l'image demandée au cœur suit donc la vraie place. */
+  const largeurCarte = $derived(Math.round(110 * 0.00139 * hauteurEcran * FACTEURS_TAILLE[taille]));
   let changementTaille = $state(false);
   async function changerTaille() {
     if (changementTaille) return;
@@ -382,6 +382,7 @@
   {:else}
     <div class="zone-grille"><div class="grille">
       {#each affiches as j (j.id)}
+        {@const etatCarte = partie.enJeu !== null && groupeDe(j.id, groupes).includes(partie.enJeu) ? '▶ En cours' : estBattlenet(j) ? 'ouvre-le depuis Battle.net' : j.installation ? '' : '📦 À installer'}
         <button
           class="carte"
           data-id={j.id}
@@ -389,10 +390,13 @@
           oncontextmenu={(e) => gerer(j, e)}
           onkeydown={(e) => e.key === 'ContextMenu' && gerer(j, e)}
           disabled={partie.enJeu !== null && !groupeDe(j.id, groupes).includes(partie.enJeu)} title={j.titre}>
-          <Jaquette id={j.fiche ?? j.id} titre={j.titre} plateforme={j.plateforme} largeur={largeurCarte} visuel={etat.profil.ludotheque.visuel} />
+          <span class="visuel">
+            <Jaquette id={j.fiche ?? j.id} titre={j.titre} plateforme={j.plateforme} largeur={largeurCarte} visuel={etat.profil.ludotheque.visuel} />
+            <span class="coin"><IconesBoutiques origines={originesJeuPc(j, groupeDe(j.id, groupes), (x) => tele.jeux[x]?.installation?.boutique?.source)} /></span>
+          </span>
           <span class="titre">{j.titre_fiche ?? j.titre}</span>
-          <IconesBoutiques grand origines={originesJeuPc(j, groupeDe(j.id, groupes), (x) => tele.jeux[x]?.installation?.boutique?.source)} />
-          <span class="etat">{partie.enJeu !== null && groupeDe(j.id, groupes).includes(partie.enJeu) ? '▶ En cours' : estBattlenet(j) ? 'ouvre-le depuis Battle.net' : j.installation ? '' : '📦 À installer'}</span>
+          <!-- Une ligne d'état seulement quand elle dit quelque chose : la place va à la jaquette (Seb 19/11). -->
+          {#if etatCarte}<span class="etat">{etatCarte}</span>{/if}
         </button>
       {/each}
       <!-- Lot A : les jeux installés que seule leur boutique connaît, dans la MÊME grille, avec leur pastille. -->
@@ -401,10 +405,9 @@
           <span class="image-steam">
             {#if c.par === 'steam'}<img src={adresseImageBoutique('steam', c.cle.slice('steam_'.length))} alt="" loading="lazy" />
             {:else if c.image}<img src={adresseImageParUrl(c.image)} alt="" loading="lazy" />{/if}
+            <span class="coin"><IconesBoutiques origines={[c.boutique]} /></span>
           </span>
           <span class="titre">{c.nom}</span>
-          <IconesBoutiques grand origines={[c.boutique]} />
-          <span class="etat"></span>
         </button>
       {/each}
       <!-- Lot B : les jeux à installer, APRÈS les jeux jouables ; A ouvre l'installation, jamais une partie. -->
@@ -413,11 +416,10 @@
           <span class="image-steam">
             <!-- La jaquette RÉDUITE par le cœur (400 px, gardée réduite) : jamais l'original de la boutique. -->
             {#if imageCarteAInstaller(c)}<img src={imageCarteAInstaller(c)} alt="" loading="lazy" onerror={(e) => ((e.currentTarget as HTMLElement).hidden = true)} />{/if}
+            <span class="coin"><IconesBoutiques origines={[c.boutique]} /></span>
             <span class="pastille-installer">⬇ À installer</span>
           </span>
           <span class="titre">{c.nom}</span>
-          <IconesBoutiques grand origines={[c.boutique]} />
-          <span class="etat"></span>
         </button>
       {/each}
     </div></div>
@@ -487,7 +489,8 @@
   }
   .bandeau {
     flex: none;
-    height: min(18vh, calc(110 * var(--u)));
+    /* 80 u (120 px en 1080p) : la place va d'abord aux jaquettes (Seb 19/11). */
+    height: min(18vh, calc(80 * var(--u)));
     display: flex;
     align-items: center;
     gap: calc(16 * var(--u));
@@ -571,10 +574,10 @@
     box-sizing: border-box;
     overflow: auto;
     display: grid;
-    /* Des cartes de largeur FIXE (Seb 19/11 : « les jaquettes des jeux sont trop grandes ») : 97 u au plus, et moins
-       si deux rangées ENTIÈRES (jaquette 2/3 + environ 125 u de titre, pastilles, marges) ne tiennent pas dans la
+    /* Des cartes de largeur FIXE (Seb 19/11 : « les jaquettes des jeux sont trop grandes », puis trop petites à 50 u) : 70 à 110 u, et moins
+       si deux rangées ENTIÈRES (jaquette 2/3 + environ 68 u : titre, marges, écart) ne tiennent pas dans la
        place restante ; jamais étirées sur toute la largeur. */
-    --carte: max(calc(50 * var(--u)), min(calc(97 * var(--u)), calc((50cqh - 125 * var(--u)) * 2 / 3)));
+    --carte: max(calc(70 * var(--u)), min(calc(110 * var(--u)), calc((50cqh - 68 * var(--u)) * 2 / 3)));
     grid-template-columns: repeat(auto-fill, var(--carte));
     justify-content: center;
     gap: calc(18 * var(--u));
@@ -602,6 +605,7 @@
     transform: scale(1.05);
   }
   .titre {
+    font-size: calc(13 * var(--u));
     font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -611,7 +615,20 @@
     color: var(--dim);
     min-height: 1.2em;
   }
+  /* La jaquette et, dans son coin, d'où vient le jeu (Steam, Epic…) : plus de ligne à part sous le titre. */
+  .visuel {
+    position: relative;
+    display: block;
+  }
+  .coin {
+    position: absolute;
+    top: calc(4 * var(--u));
+    left: calc(4 * var(--u));
+    max-width: calc(100% - 8 * var(--u));
+    pointer-events: none;
+  }
   .image-steam {
+    position: relative;
     aspect-ratio: 2 / 3;
     border-radius: calc(6 * var(--u));
     overflow: hidden;
@@ -623,22 +640,23 @@
     object-fit: cover;
   }
   /* Lot B : la pastille « à installer », bien visible sur la jaquette (couleurs du skin seulement). */
-  .a-installer .image-steam {
-    position: relative;
-  }
   .a-installer img {
     opacity: 0.75;
   }
   .pastille-installer {
     position: absolute;
-    inset-inline: calc(8 * var(--u));
-    bottom: calc(8 * var(--u));
-    padding: calc(6 * var(--u)) calc(10 * var(--u));
+    inset-inline: calc(4 * var(--u));
+    bottom: calc(4 * var(--u));
+    padding: calc(3 * var(--u)) calc(4 * var(--u));
     border-radius: calc(6 * var(--u));
     background: var(--accent);
     color: var(--on-accent);
+    font-size: calc(11 * var(--u));
     font-weight: 700;
     text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .vide {
     color: var(--dim);

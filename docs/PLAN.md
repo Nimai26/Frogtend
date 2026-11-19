@@ -969,6 +969,11 @@ importés jamais en double (y compris ceux importés un par un en 0.27–0.30). 
 avec… » propose les versions (pour cette partie), ⚙ Gérer le jeu ▸ 📀 Version la change d'habitude. Essai réel
 (lecture seule) : E:\Games\NES, 1 086 fichiers → 828 fiches.
 
+**Icônes des boutiques sur les pastilles** (✅ Seb 19/11, « les deux ») : à la place du texte « Steam », « Epic »… sur
+les pastilles des jeux, une petite icône : (1) celle du lanceur INSTALLÉ sur ce PC, lue par Windows dans son programme
+(rien n'est embarqué dans Frogtend, jamais un logo de marque copié) ; (2) en secours, celle servie par Firehouse
+(BESOINS-API n° 55) ; (3) le texte en dernier recours. Après l'essai de taille de Taodbox (0.212.2).
+
 ## Personnalisation (« beaucoup d'éléments modifiables »)
 
 Les couleurs appartiennent aux skins : on ne crée jamais de couleur hors de ceux de Firehouse. Tout le reste se règle

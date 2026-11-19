@@ -6,8 +6,8 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
-## 🔍 Taodbox à la bonne taille (0.212.1)
-- [ ] Ouvrir Taodbox (écran 1080p) : bien plus de jaquettes par ligne, au moins deux rangées ENTIÈRES visibles (titre et
+## 🔍 Taodbox à la bonne taille (0.212.1, puis 0.212.2)
+- [ ] (Seb 19/11, 0.212.1 : deux rangées, mais jaquettes minuscules, ~75 px, 16 par ligne ; corrigé en 0.212.2 : la boutique dans le coin de la jaquette, 105 à 165 px) Ouvrir Taodbox (écran 1080p) : bien plus de jaquettes par ligne, au moins deux rangées ENTIÈRES visibles (titre et
       pastille compris), la barre des consoles sur une ligne si elle tient.
 - [ ] « 🔍 Taille : Moyenne » en haut : A → Grande → Petite → Moyenne, tout change aussitôt ; le choix est gardé après
       avoir quitté Taodbox ; le même réglage dans ⚙ Options ▸ Apparence.
