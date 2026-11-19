@@ -15,6 +15,7 @@ import {
   DEFAUTS_PROFIL,
   ecrire,
   reinitialiser,
+  tailleTaodbox,
   type ReglagesPc,
   type ReglagesProfil,
 } from './reglages/reglages';
@@ -87,6 +88,8 @@ export function appliquerApparence() {
   const racine = document.documentElement;
   racine.style.setProperty('--echelle', String(a.echelle));
   racine.dataset.densite = a.densite;
+  // Taodbox : `--u` y dépend de la hauteur de l'écran et de cette taille (base.css).
+  racine.dataset.tailleTaodbox = tailleTaodbox(a.tailleTaodbox);
   racine.dataset.animations = a.animations;
 }
 

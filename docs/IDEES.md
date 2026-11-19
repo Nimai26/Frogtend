@@ -1,5 +1,11 @@
 # Idées notées (à ne pas démarrer avant la fin du lot en cours)
 
+- **Taodbox : refaire toute l'interface pour la version définitive** (Seb, 19/11 : « c'est un prototype l'ui de
+  Taodbox, il faudra complètement la revoir en version définitive pour la rendre plus belle »). En attendant (0.212.1),
+  seule la taille est corrigée : jaquettes d'après l'écran, réglage « Taille de Taodbox ».
+- **Epic : ouvrir directement la fenêtre d'installation** (essai de Seb, 19/11) : `apps/<AppName>?action=install`
+  ouvre la bibliothèque d'Epic filtrée sur le jeu (un clic de plus sur « Installer ») ; essayer la forme longue
+  `apps/<namespace>%3A<item>%3A<app>?action=install` (celle du lancement), à vérifier avec Seb.
 - **Arrêt d'une partie : reconnaître les programmes au dix-millionième de seconde** (expert lancement, 16/11) :
   `processus_de_la_partie` / `descendants` (lancement.rs), qui choisissent ce que « Quitter » et l'arrêt de sécurité
   d'Eden/Eglantine vont TERMINER, comparent encore l'heure de démarrage à la seconde (un numéro repris dans la même

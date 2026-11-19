@@ -25,6 +25,7 @@
   import type { InfosBoutons } from '$lib/manette/boutons';
   import type { ListeSucces as ListeSuccesDuJeu } from '$lib/succes/liste';
   import { appliquerManette, arreterManette, demarrerManette, fenetreOuverte, prendreLaMain, selectionner } from '$lib/taodbox/manette.svelte';
+  import { poserModeCanape } from '$lib/taodbox/canape';
   import type { Commande } from '$lib/taodbox/navigation';
 
   let menu = $state<EtatMenuJeu | null>(null);
@@ -119,9 +120,9 @@
     selectionner(liste?.querySelector<HTMLButtonElement>('button'));
   }
 
-  /** En Taodbox, le menu est à l'échelle de la télé (×2, plein écran). */
+  /** En Taodbox, le menu est à l'échelle de la télé (tailles d'après la hauteur de l'écran, comme la grille). */
   function modeTaodbox(actif: boolean) {
-    document.documentElement.toggleAttribute('data-taodbox', actif);
+    poserModeCanape(actif);
   }
 
   /** Les flèches du clavier ; la MANETTE vient du cœur (événement `menu-manette`) : la Gamepad API ne répond pas dans

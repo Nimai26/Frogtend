@@ -6,11 +6,18 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🔍 Taodbox à la bonne taille (0.212.1)
+- [ ] Ouvrir Taodbox (écran 1080p) : bien plus de jaquettes par ligne, au moins deux rangées ENTIÈRES visibles (titre et
+      pastille compris), la barre des consoles sur une ligne si elle tient.
+- [ ] « 🔍 Taille : Moyenne » en haut : A → Grande → Petite → Moyenne, tout change aussitôt ; le choix est gardé après
+      avoir quitté Taodbox ; le même réglage dans ⚙ Options ▸ Apparence.
+- [ ] Le menu en jeu (Pause) dans Taodbox : lisible, ni minuscule ni énorme.
+
 ## 🛒 Jeux de tes comptes Epic et Ubisoft (0.212.0, lot B)
 - [x] (Seb 19/11 : 520, tout bon) Ouvrir ton profil : une fenêtre demande « Ajouter les 500 jeux du compte Epic Games connecté sur ce PC (et 4
       d'Ubisoft) à ta ludothèque ? » ; Oui → un message « 🎮 … jeux de tes comptes … ajoutés » ; la barre Windows passe à
       environ 520 ; filtre « Pas installés » : Epic et Ubisoft (Assassin's Creed III, Splinter Cell…).
-- [ ] Un jeu Epic pas installé ▸ ⬇ Installer : Epic ouvre sa fenêtre d'installation.
+- [x] (Seb 19/11 : Epic s'ouvre sur SA bibliothèque filtrée sur le jeu, « Installer » à un clic — noté dans IDEES) Un jeu Epic pas installé ▸ ⬇ Installer : Epic ouvre sa fenêtre d'installation.
 - [ ] Taodbox : les jeux à installer avec la pastille « ⬇ À installer » ; A ouvre l'installation (message ⊞/Guide).
 - [ ] 🛒 Boutiques : « Epic Games : 500 jeux dans ton compte, dont 1 installé ».
 - [ ] Les titres : en survolant la liste, peu de « ? » (21 attendus, ex. « Les Sims? 4 »).

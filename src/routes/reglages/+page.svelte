@@ -24,6 +24,9 @@
     DEFAUTS_PC,
     ECHELLE_MAX,
     ECHELLE_MIN,
+    LIBELLES_TAILLE_TAODBOX,
+    TAILLES_TAODBOX,
+    tailleTaodbox,
     TAILLE_JAQUETTE_MAX,
     TAILLE_JAQUETTE_MIN,
     verifierAdresse,
@@ -199,6 +202,12 @@
             value={a.echelle}
             onchange={(e) => reglerProfil('apparence.echelle', Number(e.currentTarget.value))}
           />
+        </label>
+        <label class="champ">
+          <span>Taille de Taodbox (mode canapé)</span>
+          <select value={tailleTaodbox(a.tailleTaodbox)} onchange={(e) => reglerProfil('apparence.tailleTaodbox', e.currentTarget.value)}>
+            {#each TAILLES_TAODBOX as t (t)}<option value={t}>{LIBELLES_TAILLE_TAODBOX[t]}</option>{/each}
+          </select>
         </label>
         <label class="champ">
           <span>Animations</span>

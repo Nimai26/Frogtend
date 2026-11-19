@@ -1,13 +1,15 @@
 <script lang="ts">
   // Taodbox (lot 5) : le mode canapé. Les jeux de CE PC en grandes jaquettes, par console ; tout se fait à la manette
-  // (croix, A, B) ou aux flèches. L'échelle ×2, le focus fort et la marge de la télé viennent de la charte (§ 7).
+  // (croix, A, B) ou aux flèches. Les tailles d'après l'écran, le focus fort et la marge de la télé viennent de la charte (§ 7).
   import { goto } from '$app/navigation';
   import { onDestroy, onMount, tick, untrack } from 'svelte';
   import { isTauri } from '@tauri-apps/api/core';
   import { adresseImageSysteme, api, type FicheSysteme, type JeuBoutique, type JeuPc } from '$lib/api';
   import { confirmer, informer, toast } from '$lib/dialogues/fenetres.svelte';
   import { creditImage, imageEntete } from '$lib/ludotheque/systemes';
-  import { etat, sortirDuProfil } from '$lib/etat.svelte';
+  import { etat, reglerProfil, sortirDuProfil } from '$lib/etat.svelte';
+  import { poserModeCanape } from '$lib/taodbox/canape';
+  import { LIBELLES_TAILLE_TAODBOX, tailleTaodbox, tailleTaodboxSuivante } from '$lib/reglages/reglages';
   import { gererLaCarte, installer, jouerLaCarte, lancementImpossible, partie } from '$lib/ludotheque/jeu.svelte';
   import { cartesAInstallerTaodbox, cartesBoutiqueTaodbox, groupeDe, originesJeuPc, unParGroupe, type CarteAInstallerTaodbox, type CarteBoutiqueTaodbox } from '$lib/boutiques/copies';
   import { boutiqueSansInstallation, estBattlenet, imageCarteAInstaller, messageInstallationCanape, MESSAGE_BATTLENET } from '$lib/boutiques/jeu-boutique';
@@ -86,6 +88,27 @@
   let logoAbsent = $state(false);
   const repos = apresRepos<number | null>((id) => choisirFond(id));
   const avecFonds = $derived(etat.profil.ludotheque.fondsTaodbox);
+
+  /** La taille de Taodbox (Seb 19/11 : « tout est beaucoup trop gros ») : A sur le bouton passe à la suivante, tout de
+   * suite à l'écran (réglage du profil, aussi au bureau dans ⚙ Options ▸ Apparence). */
+  const taille = $derived(tailleTaodbox(etat.profil.apparence.tailleTaodbox));
+  const FACTEURS_TAILLE = { petite: 0.8, moyenne: 1, grande: 1.25 } as const;
+  // La hauteur de l'écran (celle de `--hauteur-ecran`, canape.ts), relue si la fenêtre change d'écran.
+  const hauteurDeLEcran = () => (typeof screen !== 'undefined' && screen.height > 0 ? screen.height : 1080);
+  let hauteurEcran = $state(hauteurDeLEcran());
+  /** La largeur d'une carte en pixels CSS, sans la taille du texte (`Jaquette` l'ajoute) : la même que `--carte`
+   * (97 u au plus, 1 u = 0,139 % de la hauteur de l'écran) ; l'image demandée au cœur suit donc la vraie place. */
+  const largeurCarte = $derived(Math.round(97 * 0.00139 * hauteurEcran * FACTEURS_TAILLE[taille]));
+  let changementTaille = $state(false);
+  async function changerTaille() {
+    if (changementTaille) return;
+    changementTaille = true;
+    try {
+      await reglerProfil('apparence.tailleTaodbox', tailleTaodboxSuivante(taille));
+    } finally {
+      changementTaille = false;
+    }
+  }
   // Un jeu sorti de la liste (autre console, jeu retiré) ne garde jamais son fond.
   const choisi = $derived(fondId === null ? null : (affiches.find((j) => j.id === fondId) ?? null));
 
@@ -260,7 +283,7 @@
 
 <!-- Jamais le menu natif de la page (Précédent, Actualiser…) : la touche Menu ≣ le donne au relâchement, quand le focus
      est déjà dans la fenêtre « Gérer » ; le clic droit sur une carte ouvre « Gérer ». -->
-<svelte:window oncontextmenu={(e) => e.preventDefault()} />
+<svelte:window oncontextmenu={(e) => e.preventDefault()} onresize={() => { poserModeCanape(true); hauteurEcran = hauteurDeLEcran(); }} />
 
 <div class="taodbox" class:avec-fond={voile} onfocusin={surFocus}>
   {#if avecFonds && console_ && fondSysteme}
@@ -301,6 +324,7 @@
     <h1>Taodbox</h1>
     <span class="qui">{etat.profilOuvert?.nom}</span>
     <span class="espace"></span>
+    <button class="btn" onclick={changerTaille} aria-disabled={changementTaille} title="Changer la taille de Taodbox">🔍 Taille : {LIBELLES_TAILLE_TAODBOX[taille]}</button>
     <button class="btn" onclick={() => sortirDuProfil()}>👥 Changer de joueur</button>
     {#if lanceParSunshine}
       <button class="btn" onclick={quitter}>⏻ Quitter</button>
@@ -356,7 +380,7 @@
   {#if affiches.length === 0 && cartesBoutique.length === 0 && aInstaller.length === 0}
     <p class="vide">Aucun jeu sur ce PC pour l’instant. Ajoute-en depuis le bureau (Catalogue Firehouse).</p>
   {:else}
-    <div class="grille">
+    <div class="zone-grille"><div class="grille">
       {#each affiches as j (j.id)}
         <button
           class="carte"
@@ -365,7 +389,7 @@
           oncontextmenu={(e) => gerer(j, e)}
           onkeydown={(e) => e.key === 'ContextMenu' && gerer(j, e)}
           disabled={partie.enJeu !== null && !groupeDe(j.id, groupes).includes(partie.enJeu)} title={j.titre}>
-          <Jaquette id={j.fiche ?? j.id} titre={j.titre} plateforme={j.plateforme} largeur={180} visuel={etat.profil.ludotheque.visuel} />
+          <Jaquette id={j.fiche ?? j.id} titre={j.titre} plateforme={j.plateforme} largeur={largeurCarte} visuel={etat.profil.ludotheque.visuel} />
           <span class="titre">{j.titre_fiche ?? j.titre}</span>
           <IconesBoutiques grand origines={originesJeuPc(j, groupeDe(j.id, groupes), (x) => tele.jeux[x]?.installation?.boutique?.source)} />
           <span class="etat">{partie.enJeu !== null && groupeDe(j.id, groupes).includes(partie.enJeu) ? '▶ En cours' : estBattlenet(j) ? 'ouvre-le depuis Battle.net' : j.installation ? '' : '📦 À installer'}</span>
@@ -396,7 +420,7 @@
           <span class="etat"></span>
         </button>
       {/each}
-    </div>
+    </div></div>
   {/if}
 
   <footer class="aide">
@@ -536,11 +560,23 @@
     background: color-mix(in srgb, var(--accent) 20%, transparent);
     border-color: var(--accent);
   }
-  .grille {
+  /* La place restante sous le bandeau : un conteneur, pour que la largeur des cartes suive SA hauteur (cqh). */
+  .zone-grille {
     flex: 1;
+    min-height: 0;
+    container-type: size;
+  }
+  .grille {
+    height: 100%;
+    box-sizing: border-box;
     overflow: auto;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(calc(180 * var(--u)), 1fr));
+    /* Des cartes de largeur FIXE (Seb 19/11 : « les jaquettes des jeux sont trop grandes ») : 97 u au plus, et moins
+       si deux rangées ENTIÈRES (jaquette 2/3 + environ 125 u de titre, pastilles, marges) ne tiennent pas dans la
+       place restante ; jamais étirées sur toute la largeur. */
+    --carte: max(calc(50 * var(--u)), min(calc(97 * var(--u)), calc((50cqh - 125 * var(--u)) * 2 / 3)));
+    grid-template-columns: repeat(auto-fill, var(--carte));
+    justify-content: center;
     gap: calc(18 * var(--u));
     align-content: start;
     padding: calc(8 * var(--u));

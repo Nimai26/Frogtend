@@ -100,6 +100,9 @@ export interface ReglagesProfil {
     animations: 'normales' | 'reduites';
     /** Le fond vidéo du skin `firehouse`. */
     fondVideo: boolean;
+    /** La taille de Taodbox (Seb 19/11 : « tout est beaucoup trop gros ») : tout y est calculé d'après la hauteur de
+     * l'écran, puis ×0,8 (petite), ×1 (moyenne) ou ×1,25 (grande). Réglable à la manette dans Taodbox. */
+    tailleTaodbox: TailleTaodbox;
   };
   /** La sauvegarde du profil chez Firehouse. */
   sauvegarde: {
@@ -194,7 +197,7 @@ export const DEFAUTS_PC: ReglagesPc = {
 };
 
 export const DEFAUTS_PROFIL: ReglagesProfil = {
-  apparence: { skin: null, echelle: 1, densite: 'aeree', animations: 'normales', fondVideo: true },
+  apparence: { skin: null, echelle: 1, densite: 'aeree', animations: 'normales', fondVideo: true, tailleTaodbox: 'moyenne' },
   sauvegarde: { auto: 'apres_partie' },
   envoisFirehouse: { auto: false },
   modsSwitch: { auto: false },
@@ -227,6 +230,21 @@ export function choixImagesParSeconde(v: unknown): boolean | undefined {
 
 export const TAILLE_JAQUETTE_MIN = 110;
 export const TAILLE_JAQUETTE_MAX = 320;
+
+export type TailleTaodbox = 'petite' | 'moyenne' | 'grande';
+export const TAILLES_TAODBOX: readonly TailleTaodbox[] = ['petite', 'moyenne', 'grande'];
+export const LIBELLES_TAILLE_TAODBOX: Record<TailleTaodbox, string> = { petite: 'Petite', moyenne: 'Moyenne', grande: 'Grande' };
+
+/** Une taille de Taodbox lue sur le disque : une valeur inconnue (fichier abîmé, autre version) donne « moyenne ». */
+export function tailleTaodbox(v: unknown): TailleTaodbox {
+  return TAILLES_TAODBOX.includes(v as TailleTaodbox) ? (v as TailleTaodbox) : 'moyenne';
+}
+
+/** La taille suivante, en boucle (le bouton de Taodbox, un appui de A à chaque fois). */
+export function tailleTaodboxSuivante(v: unknown): TailleTaodbox {
+  const i = TAILLES_TAODBOX.indexOf(tailleTaodbox(v));
+  return TAILLES_TAODBOX[(i + 1) % TAILLES_TAODBOX.length];
+}
 
 export const ECHELLE_MIN = 0.75;
 export const ECHELLE_MAX = 2.5;

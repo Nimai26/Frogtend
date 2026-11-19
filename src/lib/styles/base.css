@@ -297,7 +297,17 @@ details[open] > summary::before { content: "▾"; }
   .cx-form-section { grid-template-columns: 1fr; }
 }
 
-/* Taodbox (charte § 7) : toutes les tailles ×2 pour être lues à 3 m, focus fort partout. */
+/* Taodbox (charte § 7) : des tailles lisibles à 3 m, focus fort partout. Elles suivent la HAUTEUR de l'écran (Seb
+   19/11 : le ×2 fixe était « beaucoup trop gros » en 1080p) : 1 u = 1,5 px en 1080p, 3 px en 4K, puis la taille
+   choisie dans Taodbox (petite ×0,8, grande ×1,25 ; réglage du profil) et la taille du texte du profil. */
 :root[data-taodbox] {
-  --u: calc(2px * var(--echelle));
+  --taille-taodbox: 1;
+  /* --hauteur-ecran : posée en entrant en Taodbox (canape.ts) ; la fenêtre à défaut. */
+  --u: calc(var(--hauteur-ecran, 100vh) * 0.00139 * var(--taille-taodbox) * var(--echelle));
+}
+:root[data-taodbox][data-taille-taodbox="petite"] {
+  --taille-taodbox: 0.8;
+}
+:root[data-taodbox][data-taille-taodbox="grande"] {
+  --taille-taodbox: 1.25;
 }

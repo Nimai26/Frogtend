@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.212.1 — 🔍 Taodbox à la bonne taille
+
+- Corrigé : dans Taodbox, tout était beaucoup trop gros sur un écran 1080p (4 jaquettes par ligne, qui dépassaient le
+  bas de l'écran). Les tailles suivent maintenant la hauteur de l'écran : plus de jeux par ligne, et au moins deux
+  rangées entières visibles, titre compris. Le menu en jeu suit la même taille.
+- Nouveau : le bouton « 🔍 Taille : Moyenne » en haut de Taodbox (A pour passer à Petite, Moyenne ou Grande, tout de
+  suite à l'écran). Aussi dans ⚙ Options ▸ Apparence. « Grande » pour une télé regardée de loin.
+
 ## 0.212.0 — 🛒 Les jeux de tes comptes Epic et Ubisoft, même pas installés
 
 - Nouveau : Frogtend retrouve aussi les jeux que tu POSSÈDES sur Epic Games et Ubisoft Connect (d'après ce que leurs

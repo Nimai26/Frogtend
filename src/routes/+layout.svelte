@@ -5,6 +5,7 @@
   import { page } from '$app/state';
   import { api } from '$lib/api';
   import { arreterManette, demarrerManette } from '$lib/taodbox/manette.svelte';
+  import { poserModeCanape } from '$lib/taodbox/canape';
   import { isTauri } from '@tauri-apps/api/core';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { adresseFond } from '$lib/api';
@@ -53,7 +54,7 @@
   $effect(() => {
     if (estMenuJeu) return;
     const actif = enTaodbox;
-    document.documentElement.toggleAttribute('data-taodbox', actif);
+    poserModeCanape(actif);
     if (actif) demarrerManette();
     else arreterManette();
     if (isTauri()) getCurrentWindow().setFullscreen(actif).catch(() => {});
