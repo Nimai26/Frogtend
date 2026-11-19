@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.212.3 — 🔍 Taodbox : le bouton Taille compte vraiment
+
+- Corrigé : les jaquettes de Taodbox restaient petites (environ 80 px), et le bouton « 🔍 Taille » ne changeait
+  presque rien. La taille vient maintenant de ce bouton : environ 115 px de large en Petite, 140 en Moyenne, 180 en
+  Grande (écran 1080p) ; une rangée entière tient toujours, la grille défile avec la manette.
+
 ## 0.212.2 — 🔍 Taodbox : des jaquettes ni trop grandes ni trop petites
 
 - Corrigé : en 0.212.1, les jaquettes de Taodbox étaient devenues minuscules. Elles sont plus grandes : la boutique

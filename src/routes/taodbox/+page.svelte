@@ -97,8 +97,8 @@
   const hauteurDeLEcran = () => (typeof screen !== 'undefined' && screen.height > 0 ? screen.height : 1080);
   let hauteurEcran = $state(hauteurDeLEcran());
   /** La largeur d'une carte en pixels CSS, sans la taille du texte (`Jaquette` l'ajoute) : la même que `--carte`
-   * (110 u au plus, 1 u = 0,139 % de la hauteur de l'écran) ; l'image demandée au cœur suit donc la vraie place. */
-  const largeurCarte = $derived(Math.round(110 * 0.00139 * hauteurEcran * FACTEURS_TAILLE[taille]));
+   * (l'image : 95 u au plus, 1 u = 0,139 % de la hauteur de l'écran) ; l'image demandée au cœur suit donc la vraie place. */
+  const largeurCarte = $derived(Math.round(95 * 0.00139 * hauteurEcran * FACTEURS_TAILLE[taille]));
   let changementTaille = $state(false);
   async function changerTaille() {
     if (changementTaille) return;
@@ -574,10 +574,12 @@
     box-sizing: border-box;
     overflow: auto;
     display: grid;
-    /* Des cartes de largeur FIXE (Seb 19/11 : « les jaquettes des jeux sont trop grandes », puis trop petites à 50 u) : 70 à 110 u, et moins
-       si deux rangées ENTIÈRES (jaquette 2/3 + environ 68 u : titre, marges, écart) ne tiennent pas dans la
-       place restante ; jamais étirées sur toute la largeur. */
-    --carte: max(calc(70 * var(--u)), min(calc(110 * var(--u)), calc((50cqh - 68 * var(--u)) * 2 / 3)));
+    /* Des cartes de largeur FIXE, réglées par le bouton « Taille » (le facteur de --u) : l'IMAGE fait 95 u (140 px en
+       1080p, Moyenne) ; une rangée entière tient toujours (titre et marges : environ 90 u). La carte = l'image + sa
+       marge intérieure et sa bordure (2 × 8 u). Essais de Seb 19/11 : 360 px « trop gros », puis 82 px trop petit
+       (la règle « deux rangées entières » écrasait le bouton Taille). */
+    --image: max(calc(60 * var(--u)), min(calc(95 * var(--u)), calc((100cqh - 90 * var(--u)) * 2 / 3)));
+    --carte: calc(var(--image) + 16 * var(--u));
     grid-template-columns: repeat(auto-fill, var(--carte));
     justify-content: center;
     gap: calc(18 * var(--u));

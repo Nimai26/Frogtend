@@ -7,8 +7,8 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## 🔍 Taodbox à la bonne taille (0.212.1, puis 0.212.2)
-- [ ] (Seb 19/11, 0.212.1 : deux rangées, mais jaquettes minuscules, ~75 px, 16 par ligne ; corrigé en 0.212.2 : la boutique dans le coin de la jaquette, 105 à 165 px) Ouvrir Taodbox (écran 1080p) : bien plus de jaquettes par ligne, au moins deux rangées ENTIÈRES visibles (titre et
-      pastille compris), la barre des consoles sur une ligne si elle tient.
+- [ ] (Seb 19/11, 0.212.1 : deux rangées, mais jaquettes minuscules, ~75 px, 16 par ligne ; en 0.212.2 : la boutique dans le coin, mais images encore ~82 px, 3 rangées, et le bouton Taille écrasé par la règle des deux rangées ; corrigé en 0.212.3 : 115/140/180 px selon le bouton) Ouvrir Taodbox (écran 1080p) : environ 9 jaquettes par ligne en Moyenne, presque deux rangées visibles, la pastille
+      « ⬇ À installer » lisible en entier, la barre des consoles sur une ligne si elle tient.
 - [ ] « 🔍 Taille : Moyenne » en haut : A → Grande → Petite → Moyenne, tout change aussitôt ; le choix est gardé après
       avoir quitté Taodbox ; le même réglage dans ⚙ Options ▸ Apparence.
 - [ ] Le menu en jeu (Pause) dans Taodbox : lisible, ni minuscule ni énorme.
