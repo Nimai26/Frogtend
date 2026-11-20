@@ -284,34 +284,62 @@ pub fn cookies_de_la_boutique_steam(cookies: &[(String, String, Option<String>)]
 /// Aucune redirection n'est suivie (les cookies ne partent jamais ailleurs). Pas de jeton, redirection vers la
 /// connexion, 401 ou 403 : `MOTIF_RECONNECTER`. Les erreurs ne contiennent jamais l'adresse, les cookies ni le jeton.
 pub async fn jeton_par_cookies(base: &str, cookies: &CookiesSteam) -> Resultat<String> {
-    let client = reqwest::Client::builder()
+    jeton_par_cookies_etape(base, cookies).await.0
+}
+
+/// Comme `jeton_par_cookies`, avec l'ÉTAPE atteinte, pour le journal (0.215.1) : un statut ou un mot, JAMAIS une valeur
+/// (ni cookie, ni jeton, ni adresse).
+pub async fn jeton_par_cookies_etape(base: &str, cookies: &CookiesSteam) -> (Resultat<String>, String) {
+    let client = match reqwest::Client::builder()
         .user_agent("Frogtend")
         .timeout(std::time::Duration::from_secs(30))
         .redirect(reqwest::redirect::Policy::none())
         .build()
-        .map_err(|_| Erreur::Reseau("Connexion impossible.".into()))?;
-    let r = client
-        .get(format!("{base}/pointssummary/ajaxgetasyncconfig"))
-        .header(reqwest::header::COOKIE, cookies.0.as_str())
-        .send()
-        .await
-        .map_err(|e| Erreur::Reseau(format!("Steam ne répond pas ({}).", e.without_url())))?;
+    {
+        Ok(c) => c,
+        Err(_) => return (Err(Erreur::Reseau("Connexion impossible.".into())), "client impossible".into()),
+    };
+    let r = match client.get(format!("{base}/pointssummary/ajaxgetasyncconfig")).header(reqwest::header::COOKIE, cookies.0.as_str()).send().await {
+        Ok(r) => r,
+        Err(e) => return (Err(Erreur::Reseau(format!("Steam ne répond pas ({}).", e.without_url()))), "pas de réponse".into()),
+    };
     let illisible = || Erreur::Serveur("Steam a changé sa page : Frogtend ne sait plus y lire tes jeux. En attendant, la clé d'API (🛟 Secours) reste possible.".into());
-    match r.status().as_u16() {
+    let statut = r.status().as_u16();
+    match statut {
         200 => {}
-        300..=399 | 401 | 403 => return Err(Erreur::Refus(MOTIF_RECONNECTER.into())),
-        c => return Err(erreur_de_statut(c, MOTIF_RECONNECTER)),
+        300..=399 | 401 | 403 => return (Err(Erreur::Refus(MOTIF_RECONNECTER.into())), format!("statut {statut} (refus ou renvoi vers la connexion)")),
+        c => return (Err(erreur_de_statut(c, MOTIF_RECONNECTER)), format!("statut {c}")),
     }
-    let v: Value = r.json().await.map_err(|_| illisible())?;
+    let v: Value = match r.json().await {
+        Ok(v) => v,
+        Err(_) => return (Err(illisible()), "statut 200, réponse pas en JSON".into()),
+    };
     if !v.is_object() {
-        return Err(illisible());
+        return (Err(illisible()), "statut 200, réponse inattendue".into());
     }
     match &v["data"]["webapi_token"] {
-        Value::String(j) if crate::gratuits::forme_de_jwt(j) => Ok(j.clone()),
-        Value::String(j) if !j.is_empty() => Err(illisible()),
-        Value::String(_) | Value::Null => Err(Erreur::Refus(MOTIF_RECONNECTER.into())),
-        _ => Err(illisible()),
+        Value::String(j) if crate::gratuits::forme_de_jwt(j) => (Ok(j.clone()), "jeton reçu".into()),
+        Value::String(j) if !j.is_empty() => (Err(illisible()), "statut 200, jeton de forme inattendue".into()),
+        Value::String(_) | Value::Null => {
+            (Err(Erreur::Refus(MOTIF_RECONNECTER.into())), format!("statut 200, pas de jeton (success = {})", v["success"]))
+        }
+        _ => (Err(illisible()), "statut 200, jeton de type inattendu".into()),
     }
+}
+
+/// Le résumé des cookies lus, pour le journal (0.215.1) : leur NOMBRE par domaine et la présence du cookie de connexion,
+/// jamais une valeur ni un autre nom.
+pub fn resume_cookies_steam(cookies: &[(String, String, Option<String>)], page_chargee: bool) -> String {
+    let boutique = |d: &Option<String>| d.as_deref().is_some_and(|d| d.trim_start_matches('.').eq_ignore_ascii_case("store.steampowered.com"));
+    let de_la_boutique = cookies.iter().filter(|(_, _, d)| boutique(d)).count();
+    let connexion = cookies.iter().any(|(n, _, d)| n == "steamLoginSecure" && boutique(d));
+    format!(
+        "boutique {}, {} cookie(s) lu(s) dont {} de la boutique, cookie de connexion {}",
+        if page_chargee { "chargée" } else { "PAS chargée en 20 s" },
+        cookies.len(),
+        de_la_boutique,
+        if connexion { "présent" } else { "ABSENT" }
+    )
 }
 
 /// Lot C2 : les jeux possédés avec le JETON d'accès du compte connecté par la page (`access_token`, à la place de la
@@ -1929,6 +1957,19 @@ mod tests {
             }
         }
         s
+    }
+
+    #[test]
+    fn le_resume_des_cookies_ne_montre_aucune_valeur() {
+        let l = vec![
+            ("steamLoginSecure".to_string(), "SECRET123".to_string(), Some("store.steampowered.com".to_string())),
+            ("browserid".to_string(), "AUTRE456".to_string(), Some(".store.steampowered.com".to_string())),
+            ("steamLoginSecure".to_string(), "SECRET789".to_string(), Some("steamcommunity.com".to_string())),
+        ];
+        let r = resume_cookies_steam(&l, true);
+        assert_eq!(r, "boutique chargée, 3 cookie(s) lu(s) dont 2 de la boutique, cookie de connexion présent");
+        assert!(!r.contains("SECRET") && !r.contains("AUTRE") && !r.contains("browserid"));
+        assert!(resume_cookies_steam(&l[1..], false).ends_with("cookie de connexion ABSENT"));
     }
 
     fn jwt(charge: Value) -> String {

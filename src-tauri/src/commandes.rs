@@ -6253,7 +6253,7 @@ const FENETRE_STEAM_JETON: &str = "boutique-steam-jeton";
 /// principal ou dans une commande synchrone — documentation de tauri 2.12) ; le cœur demande ensuite le jeton à la
 /// boutique avec ces seuls cookies. Rien ne passe par le titre d'une page (Chromium garde les titres dans son
 /// historique, sur le disque). Cookies et jeton ne vivent qu'en mémoire : jamais écrits, journalisés ni rendus.
-async fn lire_jeton_steam(app: &AppHandle, dossier: &std::path::Path) -> Resultat<String> {
+async fn lire_jeton_steam(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path) -> Resultat<String> {
     // Un profil sans navigateur ne s'est jamais connecté par la page : sa connexion ne vaut pas.
     if !crate::gratuits::dossier_navigateur(dossier).is_dir() {
         return Err(Erreur::Refus(crate::boutiques::MOTIF_RECONNECTER.into()));
@@ -6273,38 +6273,45 @@ async fn lire_jeton_steam(app: &AppHandle, dossier: &std::path::Path) -> Resulta
     }
     let (envoi, reception) = std::sync::mpsc::channel::<()>();
     let envoi = std::sync::Mutex::new(envoi);
-    let vide = tauri::Url::parse("about:blank").map_err(|_| Erreur::Refus("Adresse invalide.".into()))?;
-    let w = tauri::WebviewWindowBuilder::new(app, FENETRE_STEAM_JETON, tauri::WebviewUrl::External(vide))
+    // La VRAIE page de la boutique (0.215.1, Seb 20/11 : « connexion expirée » 4 h après la connexion) : son
+    // `steamLoginSecure` est un jeton court que la page renouvelle elle-même (cookie `steamRefresh_steam`) ; une page
+    // vide ne le renouvelait pas. Aucun script, aucun clic ; navigation limitée aux pages de Steam.
+    let boutique = tauri::Url::parse("https://store.steampowered.com/").map_err(|_| Erreur::Refus("Adresse Steam invalide.".into()))?;
+    let w = tauri::WebviewWindowBuilder::new(app, FENETRE_STEAM_JETON, tauri::WebviewUrl::External(boutique.clone()))
         .title("Steam — Frogtend")
-        .inner_size(400.0, 300.0)
+        .inner_size(1000.0, 700.0)
         .visible(false)
         .focused(false)
         .skip_taskbar(true)
         .data_directory(crate::gratuits::dossier_navigateur(dossier))
         .on_new_window(crate::gratuits::fenetre_d_automatisation)
-        // Aucune page : la fenêtre ne sert qu'à ouvrir le magasin de cookies du profil.
-        .on_navigation(|u| u.scheme() == "about")
-        .on_page_load(move |_, charge| {
-            if matches!(charge.event(), tauri::webview::PageLoadEvent::Finished) {
+        .on_navigation(|u| crate::gratuits::navigation_steam(u))
+        .on_page_load(move |w, charge| {
+            if matches!(charge.event(), tauri::webview::PageLoadEvent::Finished) && w.url().is_ok_and(|u| crate::gratuits::page_de_la_boutique_steam(&u)) {
                 let _ = envoi.lock().map(|e| e.send(()));
             }
         })
         .build()
         .map_err(|e| Erreur::Disque(format!("La lecture de ton compte Steam ne s'ouvre pas ({e}).")))?;
-    // Le navigateur prêt (10 s au plus), puis les cookies lus dans un fil à part.
-    let _ = tauri::async_runtime::spawn_blocking(move || reception.recv_timeout(std::time::Duration::from_secs(10))).await;
-    let boutique = tauri::Url::parse("https://store.steampowered.com/").map_err(|_| Erreur::Refus("Adresse Steam invalide.".into()))?;
+    // La boutique chargée (20 s au plus), un instant pour son renouvellement, puis les cookies lus dans un fil à part.
+    let chargee = tauri::async_runtime::spawn_blocking(move || reception.recv_timeout(std::time::Duration::from_secs(20)).is_ok()).await.unwrap_or(false);
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     let w2 = w.clone();
     let lus = tauri::async_runtime::spawn_blocking(move || w2.cookies_for_url(boutique)).await;
     let _ = w.close();
     let Ok(Ok(lus)) = lus else {
+        noyau.journaliser("import Steam (connexion) : cookies illisibles");
         return Err(Erreur::Disque("Frogtend n'a pas pu lire ta connexion à Steam : réessaie dans un moment.".into()));
     };
     let triplets: Vec<(String, String, Option<String>)> = lus.iter().map(|c| (c.name().to_string(), c.value().to_string(), c.domain().map(str::to_string))).collect();
     drop(lus);
+    // Le diagnostic : des NOMS et des domaines seulement, jamais une valeur.
+    noyau.journaliser(&format!("import Steam (connexion) : {}", crate::boutiques::resume_cookies_steam(&triplets, chargee)));
     let cookies = crate::boutiques::cookies_de_la_boutique_steam(&triplets).ok_or_else(|| Erreur::Refus(crate::boutiques::MOTIF_RECONNECTER.into()))?;
     drop(triplets);
-    crate::boutiques::jeton_par_cookies(crate::boutiques::BOUTIQUE_STEAM, &cookies).await
+    let (r, etape) = crate::boutiques::jeton_par_cookies_etape(crate::boutiques::BOUTIQUE_STEAM, &cookies).await;
+    noyau.journaliser(&format!("import Steam (connexion) : demande du jeton : {etape}"));
+    r
 }
 
 /// Lot C2 (décision de Seb du 20/11) : importe les jeux Steam POSSÉDÉS du compte connecté par la page, SANS clé d'API.
@@ -6322,7 +6329,7 @@ pub async fn boutique_steam_importer_connecte(app: AppHandle, noyau: State<'_, N
         .ok_or_else(|| Erreur::Refus("Tu n'es pas connecté à Steam : dans 🛒 Boutiques, « Se connecter à Steam ».".into()))?;
     let steamid = c.steamid.clone();
     menage_avant_import(&noyau, &p.id).await?;
-    let jeux = match importer_par_jeton(&app, &dossier, &steamid).await {
+    let jeux = match importer_par_jeton(&app, &noyau, &dossier, &steamid).await {
         Ok(j) => j,
         Err(Erreur::Refus(m)) if m == crate::boutiques::MOTIF_RECONNECTER => {
             noyau.journaliser(&format!("import Steam (connexion) : connexion expirée pour le profil {}", p.id));
@@ -6346,11 +6353,18 @@ pub async fn boutique_steam_importer_connecte(app: AppHandle, noyau: State<'_, N
 }
 
 /// Le jeton lu, vérifié, puis la liste demandée à Steam ; le jeton est oublié en sortant (jamais écrit ni journalisé).
-async fn importer_par_jeton(app: &AppHandle, dossier: &std::path::Path, steamid: &str) -> Resultat<Vec<crate::boutiques::JeuBoutique>> {
-    let jeton = lire_jeton_steam(app, dossier).await?;
+async fn importer_par_jeton(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path, steamid: &str) -> Resultat<Vec<crate::boutiques::JeuBoutique>> {
+    let jeton = lire_jeton_steam(app, noyau, dossier).await?;
     let maintenant = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    crate::boutiques::verifier_jeton_steam(&jeton, steamid, maintenant)?;
-    crate::boutiques::jeux_possedes_par_jeton(crate::boutiques::API_STEAM, &jeton, steamid).await
+    if let Err(e) = crate::boutiques::verifier_jeton_steam(&jeton, steamid, maintenant) {
+        noyau.journaliser("import Steam (connexion) : jeton refusé par Frogtend (autre compte, expiré ou illisible)");
+        return Err(e);
+    }
+    let r = crate::boutiques::jeux_possedes_par_jeton(crate::boutiques::API_STEAM, &jeton, steamid).await;
+    if r.is_err() {
+        noyau.journaliser("import Steam (connexion) : la liste des jeux a été refusée par Steam");
+    }
+    r
 }
 
 /// Parmi les cartes nouvelles (`nouveaux`), celles dont le jeu est installé sur ce PC.

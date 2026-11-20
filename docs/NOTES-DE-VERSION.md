@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.215.1 — 🎮 Steam : « connexion expirée » à tort
+
+- Corrigé (à confirmer) : l'import des jeux Steam disait « connexion expirée » alors que tu venais de te connecter.
+  Frogtend ouvre maintenant la vraie page de la boutique Steam (cachée, sans rien cliquer) pour que Steam renouvelle
+  ta connexion, avant de lire tes jeux.
+- Le journal dit à quelle étape ça bloque (sans jamais aucun mot de passe, cookie ni jeton).
+
 ## 0.215.0 — 🎮 Tous tes jeux Steam dans ta ludothèque (lot C2)
 
 - Nouveau : une fois connecté à Steam, TOUS les jeux de ton compte entrent dans ta ludothèque, même ceux qui ne sont
