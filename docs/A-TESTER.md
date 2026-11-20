@@ -7,8 +7,10 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## 🎁 Epic reconnu connecté sans se reconnecter (0.214.1)
-- [ ] Ouvrir 🛒 Boutiques : en une vingtaine de secondes, « 🔑 Se connecter à Epic » devient « ✅ Connecté à Epic »
-      sans rien faire ni voir de fenêtre ; le journal dit « vérification du compte Epic : connecté ».
+- [x] La vérification dit le VRAI état : le 20/11, « pas connecté » était juste (session Epic expirée, Epic demandait
+      un clic sur « Ravis de vous retrouver ») ; reconnecté par « 🔑 Se connecter à Epic » : « ✅ Connecté à Epic ».
+- [ ] Fermer complètement Frogtend, le rouvrir, 🛒 Boutiques, attendre ~20 s : toujours « ✅ Connecté à Epic »
+      (la session d'Epic survit à la fermeture).
 
 ## 🔑 Connexion à Steam par sa vraie page (0.214.0, lot C1)
 - [x] 🛒 Boutiques ▸ Mes jeux installés ▸ « 🔑 Se connecter à Steam » : la page de Steam s'ouvre ; connexion (code
