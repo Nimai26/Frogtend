@@ -158,26 +158,28 @@
 
   const cadreAchat = () => document.querySelector('#webPurchaseContainer iframe, iframe[src*="/purchase"]');
   const merci = () => documents().some((d) => /thanks? (you )?for your order/.test(net(d.body && d.body.textContent)));
-  // Le total de la commande (0 attendu) : dans le cadre d'achat, ou la fenêtre qui porte « Place Order » (ou « Add to
-  // library », nouvel achat du 20/11). `null` : pas
-  // trouvé (et alors on ne commande PAS : jamais « pas vu = gratuit »).
+  // Le total de la commande (0 attendu) : dans le cadre d'achat, ou la fenêtre qui porte le bouton. `null` : pas trouvé
+  // (et alors on ne commande PAS : jamais « pas vu = gratuit »).
+  const zoneCommande = (b) => (b.ownerDocument !== document ? b.ownerDocument.body : b.closest('[role="dialog"], form'));
   const totalCommande = (b) => {
-    const zone = b.ownerDocument !== document ? b.ownerDocument.body : b.closest('[role="dialog"], form');
+    const t = net(zoneCommande(b) && zoneCommande(b).textContent);
     // TOUS les « Total » (jamais « Subtotal » : la lettre avant est exclue) ; le plus grand compte. Un seul total
     // payant suffit à refuser (« Subtotal 0 € » puis « Total 4,99 € » n'est jamais pris pour gratuit).
-    const montants = [...net(zone && zone.textContent).matchAll(/(?:^|[^a-z])total[^0-9€$£]{0,20}((?:[€$£]\s*)?\d+(?:[.,]\d+)?)/g)]
+    const montants = [...t.matchAll(/(?:^|[^a-z])total[^0-9€$£]{0,20}((?:[€$£]\s*)?\d+(?:[.,]\d+)?)/g)]
       .map((m) => parseFloat(m[1].replace(/[^\d.,]/g, '').replace(',', '.')));
     if (montants.length) return montants.some((v) => !Number.isFinite(v)) ? null : Math.max(...montants);
-    // Nouvel achat d'Epic (20/11) : pas de « Total », mais « This is free » et le prix du jeu (« €0.00 »). Gratuit
-    // seulement si Epic l'écrit ET que TOUS les prix de la fenêtre sont nuls (un seul prix non nul : refusé).
-    const t = net(zone && zone.textContent);
-    if (!/(?:^|[^a-z])this is free(?![a-z])/.test(t)) return null;
-    const prix = [...t.matchAll(/(?:[€$£¥]\s*(\d+(?:[.,]\d+)?))|(?:(\d+(?:[.,]\d+)?)\s*[€$£¥])/g)].map((m) =>
-      parseFloat((m[1] || m[2]).replace(',', '.')),
-    );
-    if (!prix.length || prix.some((v) => !Number.isFinite(v))) return null;
-    return Math.max(...prix);
+    // Nouvel achat d'Epic (20/11) : ni « Total » ni moyen de paiement ; le bouton « Add to library » et la phrase
+    // d'Epic « This is free » DISENT que c'est gratuit (un achat payant passe par « Place Order »). Le prix d'origine
+    // (19,50 € barré, Mark of the Deep) peut rester dans la fenêtre : il ne compte pas.
+    if (/\badd to library\b/.test(texte(b)) && /(?:^|[^a-z])this is free(?![a-z])/.test(t)) return 0;
+    return null;
   };
+  // Les prix vus dans la fenêtre de commande (pour le journal seulement, 6 au plus).
+  const prixVus = (b) =>
+    [...net(zoneCommande(b) && zoneCommande(b).textContent).matchAll(/(?:total[^0-9€$£]{0,20})?(?:[€$£]\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*[€$£])/g)]
+      .map((m) => m[0])
+      .slice(0, 6)
+      .join(', ') || 'aucun';
 
   const surveillerConnexion = async () => {
     if (location.hostname !== 'store.epicgames.com') return;
@@ -280,7 +282,7 @@
     if (commande !== 'fini') {
       const total = totalCommande(commande);
       if (total === null) return echec('total introuvable');
-      if (total !== 0) return echec('commande payante refusée');
+      if (total !== 0) return echec('commande payante refusée', 'montants vus : ' + prixVus(commande));
       cliquer(commande);
       // Comptes européens : « I Agree » après la commande.
       attendre(() => cliquables().find((b) => texte(b).includes('i agree') && visible(b)), 10000)

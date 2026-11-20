@@ -192,12 +192,21 @@ describe('epic.js', () => {
     expect(document.title).toBe('FROGTEND:OBTENU');
   });
 
-  it('nouvel achat : un prix non nul dans la fenêtre, ou pas de « This is free » : refusé, rien cliqué', async () => {
-    const r1 = await nouvelAchat('<p>€19.50</p><p>€0.00</p><h2>This is free.</h2>');
-    expect(r1.commandes).toBe(0);
-    expect(document.title.startsWith('FROGTEND:ERREUR:commande payante refusée')).toBe(true);
-    const r2 = await nouvelAchat('<p>€0.00</p>');
-    expect(r2.commandes).toBe(0);
+  it('nouvel achat : le prix d’origine barré reste dans la fenêtre (Mark of the Deep, 0.214.3) : « This is free » décide', async () => {
+    const r = await nouvelAchat('<s>€19.50</s><p>€0.00</p><h2>This is free. Add it to your library to get started.</h2>');
+    expect(r.commandes).toBe(1);
+    expect(document.title).toBe('FROGTEND:OBTENU');
+  });
+
+  it('nouvel achat : un « Total » non nul refuse tout, et le journal dit les montants vus', async () => {
+    const r = await nouvelAchat('<p>Total €4.99</p><h2>This is free.</h2>');
+    expect(r.commandes).toBe(0);
+    expect(document.title.startsWith('FROGTEND:ERREUR:commande payante refusée | montants vus : total €4.99')).toBe(true);
+  });
+
+  it('nouvel achat sans « This is free » : total introuvable, rien cliqué', async () => {
+    const r = await nouvelAchat('<p>€0.00</p>');
+    expect(r.commandes).toBe(0);
     expect(document.title.startsWith('FROGTEND:ERREUR:total introuvable')).toBe(true);
   });
 

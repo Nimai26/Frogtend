@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.214.4 — 🎁 « Add to library » d'Epic, pour de bon
+
+- Corrigé : la commande de Mark of the Deep était encore refusée, parce que le prix d'origine (19,50 €) reste écrit dans
+  la fenêtre. Pour « Add to library », c'est maintenant la phrase d'Epic « This is free » qui décide (un achat payant
+  passe toujours par « Place Order » et un moyen de paiement). Un « Total » non nul fait toujours tout refuser, et le
+  journal dit les montants vus quand une commande est refusée.
+
 ## 0.214.3 — 🎁 La nouvelle page de commande d'Epic
 
 - Corrigé : après « Get », Epic montre maintenant une nouvelle fenêtre « This is free… Add to library ». Frogtend la
