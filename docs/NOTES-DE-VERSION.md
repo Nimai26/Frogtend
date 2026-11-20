@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.214.2 — 🎁 Obtenir un jeu offert d'Epic, et prévenu quand la connexion expire
+
+- Corrigé : « Obtenir » sur Mark of the Deep s'arrêtait sur « pas gratuit » et montrait la page sans cliquer « Get ».
+  Frogtend voyait un prix (le prix barré, ou un contenu additionnel payant) avant que le bouton « Get » n'apparaisse.
+  Il attend maintenant que la page soit complète, ignore les autres produits (éditions, contenus additionnels), et ne
+  clique toujours JAMAIS sur un bouton payant.
+
+- Nouveau : si ta connexion à Epic expire (Epic la coupe de temps en temps), Frogtend te le dit à l'ouverture de ton
+  profil ou de 🛒 Boutiques : « Ta connexion à Epic a expiré… ». Un clic sur « Se connecter à Epic », puis sur ton
+  compte, suffit en général. Seuls les profils déjà connectés à Epic sont vérifiés.
+
 ## 0.214.1 — 🎁 Epic reconnu connecté
 
 - Corrigé : dans 🛒 Boutiques, Epic proposait encore « 🔑 Se connecter à Epic » alors que tu l'étais déjà (connexion

@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { connexionApres, messageObtention, messagePsPlus, messageRecolte } from './gratuits.svelte';
+import { connexionApres, messageObtention, messagePsPlus, messageRecolte, sessionEpicPerdue } from './gratuits.svelte';
+
+describe('sessionEpicPerdue (Seb 20/11 : prévenir quand la session Epic expire)', () => {
+  it('seulement si le compte était connecté et que la vérification le trouve déconnecté', () => {
+    expect(sessionEpicPerdue(true, false)).toBe(true);
+    expect(sessionEpicPerdue(true, true)).toBe(false);
+    expect(sessionEpicPerdue(true, null)).toBe(false);
+    expect(sessionEpicPerdue(false, false)).toBe(false);
+  });
+});
 
 describe('messageObtention', () => {
   it('dit clairement ce qui s’est passé', () => {

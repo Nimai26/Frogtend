@@ -68,7 +68,9 @@
     return null;
   };
   // Un bouton posé sur la carte d'un AUTRE jeu (carrousel, « vous aimerez aussi ») : un lien vers une autre page /p/.
-  const slugDe = (href) => (String(href || '').match(/\/p\/([^/?#]+)/) || [])[1] || null;
+  // Les pages d'un produit : /p/ (jeu), /bundles/ (éditions), /product/ (ancien chemin) — une carte vers l'une d'elles
+  // qui n'est pas le jeu affiché est un AUTRE produit (Mark of the Deep, 20/11 : un contenu payant sur la page).
+  const slugDe = (href) => (String(href || '').match(/\/(?:p|bundles|product)\/([^/?#]+)/) || [])[1] || null;
   const autreJeu = (e) => {
     const ici = slugDe(location.pathname);
     for (let n = e; n && n.nodeType === 1; n = n.parentElement) {
@@ -196,8 +198,16 @@
     }
     // 1. Le bouton d'achat, ou un signe clair que le compte n'est pas connecté (8 s sans bouton suffisent).
     let nonDepuis = 0;
+    // « Payant » ne se conclut qu'après 5 s sans « Get » : la page se remplit en plusieurs fois, et un prix (barré, ou
+    // d'un contenu additionnel) peut paraître avant le bouton du jeu offert (Mark of the Deep, 20/11).
+    let payantDepuis = 0;
     const trouver = () => {
       const a = achat();
+      if (a && a.sorte === 'payant') {
+        payantDepuis = payantDepuis || Date.now();
+        return Date.now() - payantDepuis >= 5000 ? a : null;
+      }
+      payantDepuis = 0;
       if (a) return a;
       if (compte() === 'non') {
         nonDepuis = nonDepuis || Date.now();
@@ -214,7 +224,7 @@
     if (a && a.sorte === 'deja') return dire('DEJA');
     if (!a) return compte() === 'non' ? dire('CONNEXION') : echec("pas de bouton d'achat");
     if (a.sorte === 'connexion' || compte() === 'non') return dire('CONNEXION');
-    if (a.sorte === 'payant') return echec('pas gratuit');
+    if (a.sorte === 'payant') return echec('pas gratuit', 'vu « ' + texte(a.b).slice(0, 30) + ' »');
     const bouton = a.b;
 
     // 2. Une page d'âge (« Continue ») peut précéder ; puis « Get ».

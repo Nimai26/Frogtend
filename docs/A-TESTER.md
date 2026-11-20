@@ -9,8 +9,12 @@
 ## 🎁 Epic reconnu connecté sans se reconnecter (0.214.1)
 - [x] La vérification dit le VRAI état : le 20/11, « pas connecté » était juste (session Epic expirée, Epic demandait
       un clic sur « Ravis de vous retrouver ») ; reconnecté par « 🔑 Se connecter à Epic » : « ✅ Connecté à Epic ».
-- [ ] Fermer complètement Frogtend, le rouvrir, 🛒 Boutiques, attendre ~20 s : toujours « ✅ Connecté à Epic »
-      (la session d'Epic survit à la fermeture).
+- [x] Fermer complètement Frogtend, le rouvrir, 🛒 Boutiques, attendre ~20 s : toujours « ✅ Connecté à Epic »
+      (la session d'Epic survit à la fermeture). (validé par Seb le 20/11)
+- [ ] 🎁 Mark of the Deep ▸ « Obtenir » : rien ne s'affiche, puis « 🎁 « Mark of the Deep » est à toi ! » et
+      « ✅ Dans ta bibliothèque » (premier vrai essai d'obtention automatique).
+- [ ] (0.214.2, quand la session Epic expirera un jour) : à l'ouverture du profil, le message « Ta connexion à Epic a
+      expiré… » s'affiche ; « Se connecter à Epic » puis un clic sur le compte la rétablit.
 
 ## 🔑 Connexion à Steam par sa vraie page (0.214.0, lot C1)
 - [x] 🛒 Boutiques ▸ Mes jeux installés ▸ « 🔑 Se connecter à Steam » : la page de Steam s'ouvre ; connexion (code

@@ -103,12 +103,22 @@ const epicVerifie = new Set<string>();
 export async function verifierEpic() {
   const profil = etat.profilOuvert?.id;
   if (!isTauri() || etat.pc.firehouse.simule || !profil || epicVerifie.has(profil)) return;
+  const avant = etat.profil.gratuits.connectes.epic;
   const vu = await api.gratuitsVerifierEpic().catch(() => null);
   if (vu === null) return; // pas sûr, ou pas le moment : on réessaiera à la prochaine ouverture de la page
   // La personne se connecte (fenêtre ouverte) ou un jeu s'obtient pendant l'attente : leur résultat, plus récent, compte.
   if (arreterEcouteEpic !== null || gratuits.enCours !== null) return;
   epicVerifie.add(profil);
   await noterConnexion('epic', vu ? 'connecte' : 'connexion', profil);
+  // Seb 20/11 : une session Epic perdue se DIT (sinon les jeux offerts ne s'obtiennent plus, sans que la personne sache
+  // pourquoi). Epic se souvient du compte : un clic suffit en général.
+  if (sessionEpicPerdue(avant, vu) && toujoursLeMeme(profil, etat.profilOuvert?.id))
+    toast('🔑 Ta connexion à Epic a expiré : dans 🛒 Boutiques, clique « Se connecter à Epic » (en général, un clic sur ton compte suffit).', 'alerte');
+}
+
+/** Vrai quand la vérification trouve déconnecté un compte Epic qui était connecté (pur, testé). */
+export function sessionEpicPerdue(avant: boolean, vu: boolean | null): boolean {
+  return avant && vu === false;
 }
 
 /** L'écoute de la fenêtre de connexion à Epic (une seule à la fois). */
@@ -230,6 +240,8 @@ export async function obtenirTout(discret = false) {
 export async function gratuitsAuDemarrage() {
   if (etat.pc.firehouse.simule) return;
   const g = etat.profil.gratuits;
+  // Un profil déjà connecté à Epic : sa session est revérifiée à l'ouverture, pour le prévenir si elle a expiré.
+  if (g.connectes.epic) await verifierEpic();
   const maintenant = Math.floor(Date.now() / 1000);
   if (g.auto && maintenant - (g.derniere ?? 0) >= JOUR_S) {
     await reglerProfil('gratuits.derniere', maintenant);

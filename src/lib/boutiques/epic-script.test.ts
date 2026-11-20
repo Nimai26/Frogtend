@@ -111,11 +111,25 @@ describe('epic.js', () => {
     expect(titre).toBe('FROGTEND:CONNEXION');
   });
 
-  it('ne clique jamais sur un bouton payant', async () => {
-    const t1 = await essayer(`${AVATAR}<button id="p">Buy Now</button>`, 2000);
-    expect(t1.startsWith('FROGTEND:ERREUR:pas gratuit | ')).toBe(true);
-    const t2 = await essayer(`${AVATAR}<button id="p" data-testid="purchase-cta-button">€19.99</button>`, 2000);
+  it('ne clique jamais sur un bouton payant, et dit lequel', async () => {
+    const t1 = await essayer(`${AVATAR}<button id="p">Buy Now</button>`, 6000);
+    expect(t1.startsWith('FROGTEND:ERREUR:pas gratuit | vu « buy now »')).toBe(true);
+    const t2 = await essayer(`${AVATAR}<button id="p" data-testid="purchase-cta-button">€19.99</button>`, 6000);
     expect(t2.startsWith('FROGTEND:ERREUR:pas gratuit')).toBe(true);
+  });
+
+  it('un prix vu AVANT « Get » (page qui se remplit, Mark of the Deep 20/11) : pas de conclusion, « Get » est pris', async () => {
+    await essayer(`${AVATAR}<a href="#">-100% €19.50* Free</a>`, 2000);
+    expect(document.title).toBe('Knightica');
+    document.body.insertAdjacentHTML('beforeend', '<button id="g">Get</button>');
+    const get = compterClics('#g');
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(get.n).toBe(1);
+  });
+
+  it('un contenu additionnel payant (/bundles/) n’est pas le jeu : ignoré', async () => {
+    const titre = await essayer(`${AVATAR}<a href="/en-US/bundles/mark-of-the-deep-deluxe"><button>Buy Now €24.99</button></a>`, 31000);
+    expect(titre.startsWith("FROGTEND:ERREUR:pas de bouton d'achat")).toBe(true);
   });
 
   it('dit l’étape et les boutons visibles, en 200 caractères au plus', async () => {
