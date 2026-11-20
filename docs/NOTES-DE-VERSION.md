@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.215.2 — 🎮 Steam : lire ses jeux autrement
+
+- Corrigé (à confirmer) : Steam refusait la demande faite par Frogtend lui-même (journal : « statut 302 »). C'est
+  maintenant la page de la boutique, dans ton navigateur Frogtend, qui donne le jeton de ton compte, comme Steam le
+  fait pour lui-même. Le jeton n'est toujours ni gardé, ni écrit, ni noté.
+
 ## 0.215.1 — 🎮 Steam : « connexion expirée » à tort
 
 - Corrigé (à confirmer) : l'import des jeux Steam disait « connexion expirée » alors que tu venais de te connecter.

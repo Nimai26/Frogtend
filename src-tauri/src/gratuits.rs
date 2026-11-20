@@ -241,6 +241,43 @@ pub fn lire_titre_recolte(titre: &str) -> Option<Recolte> {
 /// et son `steamid` (jamais le jeton de la page).
 pub const SCRIPT_STEAM: &str = include_str!("../ressources/gratuits/steam.js");
 
+/// Le script de la fenêtre cachée qui lit le jeton d'accès Steam (lot C2, 0.215.2) : voir `lire_remise_steam`.
+pub const SCRIPT_STEAM_JETON: &str = include_str!("../ressources/gratuits/steam-jeton.js");
+
+/// Ce que la page de la boutique remet au cœur par une navigation (annulée) vers `https://frogtend.invalid/…`.
+#[derive(PartialEq)]
+pub enum RemiseSteam {
+    Jeton(String),
+    /// Pas de jeton : l'étape, en quelques mots sûrs (lettres, chiffres, tirets), pour le journal.
+    Absent(String),
+}
+
+impl std::fmt::Debug for RemiseSteam {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RemiseSteam::Jeton(_) => f.write_str("Jeton(<caché>)"),
+            RemiseSteam::Absent(e) => write!(f, "Absent({e})"),
+        }
+    }
+}
+
+/// Une navigation vers `https://frogtend.invalid/steam-jeton#<jwt>` ou `…/steam-absent#<étape>` : la remise de la page
+/// (que l'appelant ANNULE). Toute autre adresse : None (navigation ordinaire). Un jeton sans la forme d'un JWT : Absent.
+pub fn lire_remise_steam(url: &tauri::Url) -> Option<RemiseSteam> {
+    if url.scheme() != "https" || url.host_str() != Some("frogtend.invalid") {
+        return None;
+    }
+    let fragment = url.fragment().unwrap_or("");
+    Some(match url.path() {
+        "/steam-jeton" if forme_de_jwt(fragment) => RemiseSteam::Jeton(fragment.to_string()),
+        "/steam-jeton" => RemiseSteam::Absent("jeton-de-forme-inattendue".into()),
+        _ => {
+            let etape: String = fragment.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(60).collect();
+            RemiseSteam::Absent(if etape.is_empty() { "sans-detail".into() } else { etape })
+        }
+    })
+}
+
 /// La page officielle de connexion à Steam ; après la connexion, Steam ramène à la boutique (`/explore/`).
 pub const CONNEXION_STEAM: &str = "https://store.steampowered.com/login/?redir=explore%2F";
 
@@ -504,6 +541,21 @@ mod tests {
         assert!(!SCRIPT_STEAM.contains("getAttribute('data-store_user_config"));
         assert!(!SCRIPT_STEAM.contains("document.cookie"));
         assert!(SCRIPT_STEAM.contains("data-userinfo"));
+    }
+
+    #[test]
+    fn la_remise_de_la_page_steam_se_lit_et_ne_montre_jamais_le_jeton() {
+        let u = |s: &str| tauri::Url::parse(s).unwrap();
+        assert_eq!(lire_remise_steam(&u("https://frogtend.invalid/steam-jeton#aaa.bbb.ccc")), Some(RemiseSteam::Jeton("aaa.bbb.ccc".into())));
+        assert_eq!(lire_remise_steam(&u("https://frogtend.invalid/steam-jeton#pas-un-jwt")), Some(RemiseSteam::Absent("jeton-de-forme-inattendue".into())));
+        assert_eq!(lire_remise_steam(&u("https://frogtend.invalid/steam-absent#statut-302-redirige-pas-json")), Some(RemiseSteam::Absent("statut-302-redirige-pas-json".into())));
+        assert_eq!(lire_remise_steam(&u("https://frogtend.invalid/steam-absent#<script>")), Some(RemiseSteam::Absent("3Cscript3E".into())));
+        assert_eq!(lire_remise_steam(&u("https://frogtend.invalid/steam-absent")), Some(RemiseSteam::Absent("sans-detail".into())));
+        // Une autre adresse : navigation ordinaire (jamais prise pour une remise).
+        assert_eq!(lire_remise_steam(&u("https://store.steampowered.com/steam-jeton#aaa.bbb.ccc")), None);
+        assert_eq!(lire_remise_steam(&u("http://frogtend.invalid/steam-jeton#aaa.bbb.ccc")), None);
+        assert_eq!(format!("{:?}", RemiseSteam::Jeton("aaa.bbb.ccc".into())), "Jeton(<caché>)");
+        assert!(SCRIPT_STEAM_JETON.contains("location.replace") && !SCRIPT_STEAM_JETON.contains("document.cookie") && !SCRIPT_STEAM_JETON.contains("document.title"));
     }
 
     #[test]
