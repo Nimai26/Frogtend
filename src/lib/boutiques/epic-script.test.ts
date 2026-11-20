@@ -163,6 +163,54 @@ describe('epic.js', () => {
     expect(document.title).toBe('FROGTEND:OBTENU');
   });
 
+  /** « Get » ouvre le NOUVEL achat d'Epic (20/11) : « Add to library », un hCaptcha invisible, le contenu donné. */
+  async function nouvelAchat(contenu: string) {
+    await essayer(`${AVATAR}<button id="g">Get</button>`);
+    const get = document.getElementById('g')!;
+    const r = { commandes: 0 };
+    get.addEventListener('click', () => {
+      const conteneur = document.createElement('div');
+      conteneur.id = 'webPurchaseContainer';
+      const cadre = document.createElement('iframe');
+      conteneur.appendChild(cadre);
+      document.body.appendChild(conteneur);
+      const d = cadre.contentDocument!;
+      d.body.innerHTML = `<iframe title="Widget containing checkbox for hCaptcha security challenge"></iframe>${contenu}<button id="c">Add to library</button>`;
+      d.getElementById('c')!.addEventListener('click', () => {
+        r.commandes++;
+        conteneur.remove();
+        get.textContent = 'In Library';
+      });
+    });
+    await vi.advanceTimersByTimeAsync(5000);
+    return r;
+  }
+
+  it('nouvel achat (Mark of the Deep, 20/11) : hCaptcha invisible ignoré, « Add to library » à 0 € cliqué', async () => {
+    const r = await nouvelAchat('<p>Mark of the Deep</p><p>€0.00</p><h2>This is free. Add it to your library to get started.</h2>');
+    expect(r.commandes).toBe(1);
+    expect(document.title).toBe('FROGTEND:OBTENU');
+  });
+
+  it('nouvel achat : un prix non nul dans la fenêtre, ou pas de « This is free » : refusé, rien cliqué', async () => {
+    const r1 = await nouvelAchat('<p>€19.50</p><p>€0.00</p><h2>This is free.</h2>');
+    expect(r1.commandes).toBe(0);
+    expect(document.title.startsWith('FROGTEND:ERREUR:commande payante refusée')).toBe(true);
+    const r2 = await nouvelAchat('<p>€0.00</p>');
+    expect(r2.commandes).toBe(0);
+    expect(document.title.startsWith('FROGTEND:ERREUR:total introuvable')).toBe(true);
+  });
+
+  it('un captcha VRAIMENT affiché (taille réelle) arrête tout : CAPTCHA', async () => {
+    const espion = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 400, height: 500 } as DOMRect);
+    try {
+      const titre = await essayer(`${AVATAR}<iframe title="Main content of the hCaptcha challenge"></iframe><button>Get</button>`, 1000);
+      expect(titre).toBe('FROGTEND:CAPTCHA');
+    } finally {
+      espion.mockRestore();
+    }
+  });
+
   it('refuse une commande dont le total n’est pas nul', async () => {
     await essayer(`${AVATAR}<button id="g">Get</button>`);
     const get = document.getElementById('g')!;

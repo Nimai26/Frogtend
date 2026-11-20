@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.214.3 — 🎁 La nouvelle page de commande d'Epic
+
+- Corrigé : après « Get », Epic montre maintenant une nouvelle fenêtre « This is free… Add to library ». Frogtend la
+  prenait pour une vérification humaine (elle contient un contrôle invisible qui ne demande rien) et s'arrêtait.
+  Il reconnaît désormais « Add to library » et le clique seulement si Epic écrit « This is free » et que tous les prix
+  affichés sont à 0 €. Seule une vraie vérification affichée à l'écran l'arrête encore.
+
 ## 0.214.2 — 🎁 Obtenir un jeu offert d'Epic, et prévenu quand la connexion expire
 
 - Corrigé : « Obtenir » sur Mark of the Deep s'arrêtait sur « pas gratuit » et montrait la page sans cliquer « Get ».

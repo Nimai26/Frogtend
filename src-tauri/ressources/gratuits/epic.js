@@ -110,8 +110,16 @@
     return null;
   };
 
+  // Un captcha VRAIMENT affiché (visible, de taille réelle) : le nouvel achat d'Epic porte un hCaptcha INVISIBLE qui ne
+  // demande rien (Mark of the Deep, 20/11) ; seul le défi montré arrête le script.
+  const grand = (e) => {
+    const r = e.getBoundingClientRect();
+    return r.width >= 50 && r.height >= 50;
+  };
   const captcha = () =>
-    documents().some((d) => !!d.querySelector('iframe[src*="hcaptcha"], iframe[title*="hCaptcha"], .h_captcha_challenge'));
+    documents().some((d) =>
+      [...d.querySelectorAll('iframe[src*="hcaptcha"], iframe[title*="hCaptcha"], .h_captcha_challenge')].some((e) => visible(e) && grand(e)),
+    );
   // Attend qu'une condition rende quelque chose (null au bout de `ms`) ; s'arrête net sur un captcha.
   const attendre = (f, ms) =>
     new Promise((ok, ko) => {
@@ -150,7 +158,8 @@
 
   const cadreAchat = () => document.querySelector('#webPurchaseContainer iframe, iframe[src*="/purchase"]');
   const merci = () => documents().some((d) => /thanks? (you )?for your order/.test(net(d.body && d.body.textContent)));
-  // Le total de la commande (0 attendu) : dans le cadre d'achat, ou la fenêtre qui porte « Place Order ». `null` : pas
+  // Le total de la commande (0 attendu) : dans le cadre d'achat, ou la fenêtre qui porte « Place Order » (ou « Add to
+  // library », nouvel achat du 20/11). `null` : pas
   // trouvé (et alors on ne commande PAS : jamais « pas vu = gratuit »).
   const totalCommande = (b) => {
     const zone = b.ownerDocument !== document ? b.ownerDocument.body : b.closest('[role="dialog"], form');
@@ -158,8 +167,16 @@
     // payant suffit à refuser (« Subtotal 0 € » puis « Total 4,99 € » n'est jamais pris pour gratuit).
     const montants = [...net(zone && zone.textContent).matchAll(/(?:^|[^a-z])total[^0-9€$£]{0,20}((?:[€$£]\s*)?\d+(?:[.,]\d+)?)/g)]
       .map((m) => parseFloat(m[1].replace(/[^\d.,]/g, '').replace(',', '.')));
-    if (!montants.length || montants.some((v) => !Number.isFinite(v))) return null;
-    return Math.max(...montants);
+    if (montants.length) return montants.some((v) => !Number.isFinite(v)) ? null : Math.max(...montants);
+    // Nouvel achat d'Epic (20/11) : pas de « Total », mais « This is free » et le prix du jeu (« €0.00 »). Gratuit
+    // seulement si Epic l'écrit ET que TOUS les prix de la fenêtre sont nuls (un seul prix non nul : refusé).
+    const t = net(zone && zone.textContent);
+    if (!/(?:^|[^a-z])this is free(?![a-z])/.test(t)) return null;
+    const prix = [...t.matchAll(/(?:[€$£¥]\s*(\d+(?:[.,]\d+)?))|(?:(\d+(?:[.,]\d+)?)\s*[€$£¥])/g)].map((m) =>
+      parseFloat((m[1] || m[2]).replace(',', '.')),
+    );
+    if (!prix.length || prix.some((v) => !Number.isFinite(v))) return null;
+    return Math.max(...prix);
   };
 
   const surveillerConnexion = async () => {
@@ -253,7 +270,7 @@
       if (fini()) return 'fini';
       for (const d of documents()) {
         const b = [...d.querySelectorAll('button')].find(
-          (x) => texte(x).includes('place order') && !x.disabled && !x.querySelector('.payment-loading--loading') && visible(x),
+          (x) => /\b(place order|add to library)\b/.test(texte(x)) && !x.disabled && !x.querySelector('.payment-loading--loading') && visible(x),
         );
         if (b) return b;
       }

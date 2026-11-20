@@ -614,6 +614,8 @@ connecte elle-même (pages officielles, Frogtend ne voit pas le mot de passe), p
 captcha apparaît, la fenêtre se montre. La liste des jeux offerts d'Epic est publique (sans compte).
 **Décision de Seb (02/10)** : on essaie **B (récupération automatique)** ; en cas d'échec, **A** (Frogtend montre les jeux
 offerts de la semaine et ouvre la page officielle ; la personne clique « Obtenir »).
+**Décision de Seb (20/11)** : l'obtention automatique est ouverte à TOUS les profils, mineurs compris, tant que le jeu
+est gratuit (« peu importe ») — même si « Add to library » d'Epic vaut déclaration d'avoir plus de 18 ans.
 **✅ 0.24.0 (Epic)** : liste publique (`freeGamesPromotions`, vérifiée le 02/10 : System Shock 2 25th Anniversary
 Remaster et BURIED STARS jusqu'au 08/10) ; « 🔑 Se connecter à Epic » (page officielle, navigateur PROPRE AU PROFIL dans
 `profils\<id>\navigateur`) ; « 🎁 Obtenir » ouvre la page `/en-US/p/<slug>` CACHÉE, le script `ressources/gratuits/
