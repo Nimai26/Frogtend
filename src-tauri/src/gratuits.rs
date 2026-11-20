@@ -292,6 +292,12 @@ pub fn lire_titre_steam(titre: &str) -> Option<ConnexionSteam> {
     }
 }
 
+/// Un jeton a-t-il la forme d'un JWT (trois morceaux en base64url, taille raisonnable) ?
+pub fn forme_de_jwt(j: &str) -> bool {
+    let morceaux: Vec<&str> = j.split('.').collect();
+    j.len() <= 8192 && morceaux.len() == 3 && morceaux.iter().all(|m| !m.is_empty() && m.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_'))
+}
+
 /// Les sites d'IDENTITÉ qu'une fenêtre de connexion peut ouvrir (connexion par Google, Apple, Microsoft, Steam, la
 /// boutique elle-même…), en HTTPS seulement (revue des experts, 18/11 : jamais « tout site en https »).
 pub fn site_d_identite(url: &tauri::Url) -> bool {
@@ -498,6 +504,14 @@ mod tests {
         assert!(!SCRIPT_STEAM.contains("getAttribute('data-store_user_config"));
         assert!(!SCRIPT_STEAM.contains("document.cookie"));
         assert!(SCRIPT_STEAM.contains("data-userinfo"));
+    }
+
+    #[test]
+    fn un_jeton_a_la_forme_d_un_jwt_ou_il_est_refuse() {
+        assert!(forme_de_jwt("eyJhbGciOiJFZERTQSJ9.eyJzdWIiOiI3NjU2MTE5Nzk2MDI4NzkzMCJ9.c2lnbmF0dXJl"));
+        for douteux in ["", "abc", "a.b", "a.b.c.d", "a..c", "a.b.c d", "a.b.<script>", "a".repeat(9000).as_str()] {
+            assert!(!forme_de_jwt(douteux), "{douteux:.20}");
+        }
     }
 
     #[test]

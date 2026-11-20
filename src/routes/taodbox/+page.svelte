@@ -64,8 +64,20 @@
    * « Windows ». */
   let cartesLudotheque = $state<JeuResume[]>([]);
   const aInstaller = $derived(
-    console_ === null || console_ === 'Windows' ? cartesAInstallerTaodbox(cartesLudotheque, Object.values(tele.jeux)) : [],
+    console_ === null || console_ === 'Windows'
+      ? // Un jeu Steam que Steam dit installé (carte jouable ci-dessus) n'a jamais aussi sa carte « à installer » (lot C2).
+        cartesAInstallerTaodbox(cartesLudotheque, Object.values(tele.jeux)).filter((c) => !cartesBoutique.some((b) => b.cle === c.cle))
+      : [],
   );
+  // Lot C2 : après chaque import Steam terminé (à l'ouverture de Frogtend, par exemple), les cartes « à installer »
+  // sont relues (le premier passage est celui de onMount).
+  let importsVus = steam.imports;
+  $effect(() => {
+    const n = steam.imports;
+    if (n === importsVus) return;
+    importsVus = n;
+    untrack(() => void lireAInstaller());
+  });
   /** Les cartes pas installées de la ludothèque (1 000 par page). */
   async function lireAInstaller() {
     const l: JeuResume[] = [];
@@ -414,7 +426,7 @@
       {#each aInstaller as c (c.cle)}
         <button class="carte a-installer" data-id={c.id} onclick={() => installerParLaBoutique(c)} disabled={partie.enJeu !== null} title={c.nom}>
           <span class="image-steam">
-            <!-- La jaquette RÉDUITE par le cœur (400 px, gardée réduite) : jamais l'original de la boutique. -->
+            <!-- La jaquette RÉDUITE par le cœur (400 px, gardée réduite), Steam compris (d'après son appid) : jamais l'original de la boutique. -->
             {#if imageCarteAInstaller(c)}<img src={imageCarteAInstaller(c)} alt="" loading="lazy" onerror={(e) => ((e.currentTarget as HTMLElement).hidden = true)} />{/if}
             <span class="coin"><IconesBoutiques grand origines={[c.boutique]} /></span>
             <span class="pastille-installer">⬇ À installer</span>

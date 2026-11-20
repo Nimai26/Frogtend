@@ -22,6 +22,7 @@
   import { auDemarrage } from '$lib/sauvegarde.svelte';
   import { gratuitsAuDemarrage } from '$lib/boutiques/gratuits.svelte';
   import { boutiquesAuDemarrage } from '$lib/boutiques/boutiques-pc.svelte';
+  import { steamAuDemarrage } from '$lib/boutiques/steam.svelte';
   import { emulateursAuDemarrage } from '$lib/emulateurs/majs.svelte';
   import { ecouterQuestionsRacine } from '$lib/mods/racine';
 
@@ -72,6 +73,9 @@
       // Les jeux INSTALLÉS des boutiques de ce PC entrent seuls dans la ludothèque (lot A, Seb 18/11), en tâche de
       // fond : jamais attendu par l'ouverture du profil.
       untrack(() => void boutiquesAuDemarrage());
+      // Lot C2 (Seb 20/11) : les jeux Steam POSSÉDÉS du compte connecté par la page, relus à chaque ouverture, en
+      // tâche de fond et sans message sauf nouveaux jeux ou connexion expirée.
+      untrack(() => void steamAuDemarrage().catch(() => {}));
       untrack(() => gratuitsAuDemarrage());
       // Les émulateurs installés par Frogtend qui ont une nouvelle version : proposés, une fois par jour (Seb, 08/11).
       untrack(() => void emulateursAuDemarrage().catch(() => {}));

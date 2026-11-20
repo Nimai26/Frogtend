@@ -5389,7 +5389,7 @@ pub async fn boutique_steam_etat(noyau: State<'_, Noyau>) -> Resultat<EtatSteam>
     let c = crate::boutiques::lire(&dossier_profil_de(&noyau, &p.id));
     let cle = noyau.coffre.lire(&crate::boutiques::nom_secret(&p.id, "steam"))?.is_some();
     Ok(EtatSteam {
-        compte: c.as_ref().map(|c| c.compte.clone()),
+        compte: c.as_ref().map(|c| c.compte.clone()).filter(|c| !c.is_empty()),
         cle_enregistree: cle,
         nb_jeux: c.as_ref().map_or(0, |c| c.jeux.len()),
         maj_le: c.as_ref().map(|c| c.maj_le.clone()).filter(|m| !m.is_empty()),
@@ -5414,8 +5414,15 @@ pub async fn boutique_steam_regler(noyau: State<'_, Noyau>, compte: String, cle:
     noyau.coffre.ranger(&secret, &cle)?;
     let dossier = dossier_profil_de(&noyau, &p.id);
     // Relu et écrit sous le verrou : une connexion par la page pendant l'attente du réseau n'est pas défaite en silence.
+    let mut change = false;
     crate::boutiques::modifier_source(&dossier, "steam", |c| {
         let mut c = c.unwrap_or_default();
+        let avant = crate::boutiques::compte_steam_d_avant(&c).to_string();
+        change = !avant.is_empty() && avant != steamid;
+        if change {
+            c.menage_ancien_compte = true; // fait juste après, ou à la prochaine ouverture du profil
+        }
+        c.steamid_precedent.clear();
         if c.steamid != steamid {
             c.jeux.clear(); // un autre compte : l'ancienne liste ne vaut plus
             c.connecte_le.clear(); // ni la connexion par la page (elle était celle de l'autre compte)
@@ -5426,6 +5433,10 @@ pub async fn boutique_steam_regler(noyau: State<'_, Noyau>, compte: String, cle:
         Ok(Some(c))
     })?;
     noyau.journaliser(&format!("compte Steam réglé pour le profil {}", p.id));
+    // Un AUTRE compte (Seb 20/11) : les jeux de l'ancien jamais installés ni joués quittent la ludothèque.
+    if change {
+        menage_ancien_compte_steam(&noyau, &p.id).await;
+    }
     boutique_steam_etat(noyau).await
 }
 
@@ -5868,13 +5879,23 @@ pub async fn nuage_steam_abriter(noyau: State<'_, Noyau>, id: i64, accepte: bool
     Ok(crate::partie::Abri { dossier: fin.to_string_lossy().into(), fichiers: n, octets, reste_installe: None })
 }
 
-/// Oublie le compte Steam du profil : la clé quitte le coffre, la liste importée est retirée.
+/// Oublie le compte Steam du profil : la clé quitte le coffre et le compte (steamid, connexion, liste importée) quitte
+/// `boutiques.json` (seul `steamid_precedent` reste, pour voir un changement de compte ensuite). Les CARTES de la ludothèque restent toutes (décision de Seb du 20/11 : se connecter vaut accord,
+/// et les jeux restent même après une déconnexion ; avant, toutes les cartes Steam étaient effacées).
 #[tauri::command]
 pub async fn boutique_steam_oublier(noyau: State<'_, Noyau>) -> Resultat<()> {
     let p = profil_ouvert(&noyau).await?;
-    noyau.coffre.oublier(&crate::boutiques::nom_secret(&p.id, "steam"))?;
-    noyau.ranger_boutique("steam", &[]).await?;
-    crate::boutiques::ecrire(&dossier_profil_de(&noyau, &p.id), None)
+    oublier_compte_steam(&noyau, &p.id)
+}
+
+/// Le corps de `boutique_steam_oublier` (testé) : jamais une carte de la ludothèque n'est touchée.
+pub(crate) fn oublier_compte_steam(noyau: &Noyau, profil: &str) -> Resultat<()> {
+    noyau.coffre.oublier(&crate::boutiques::nom_secret(profil, "steam"))?;
+    // Seul le compte d'avant reste (ni clé, ni connexion, ni liste) : une connexion à un AUTRE compte ensuite est bien
+    // un changement de compte (Seb 20/11).
+    crate::boutiques::modifier_source(&dossier_profil_de(noyau, profil), "steam", |c| Ok(crate::boutiques::compte_oublie(c)))?;
+    noyau.journaliser(&format!("compte Steam oublié pour le profil {profil} (ses jeux restent dans la ludothèque)"));
+    Ok(())
 }
 
 /// Les jeux Steam du profil (liste de son compte, s'il est relié) ET ceux installés sur CE PC (relus à chaque fois :
@@ -6124,6 +6145,7 @@ pub async fn boutique_steam_importer(noyau: State<'_, Noyau>) -> Resultat<Vec<cr
         return Err(Erreur::Refus(MOTIF_CLE_AUTRE_COMPTE.into()));
     }
     let steamid = c.steamid.clone();
+    menage_avant_import(&noyau, &p.id).await?;
     let jeux = crate::boutiques::jeux_possedes(crate::boutiques::API_STEAM, &cle, &steamid).await?;
     // Relu sous le verrou juste avant d'écrire : un compte changé pendant l'attente ne reçoit pas cette liste.
     let ecrit = crate::boutiques::modifier_source(&dossier, "steam", |c| {
@@ -6134,11 +6156,206 @@ pub async fn boutique_steam_importer(noyau: State<'_, Noyau>) -> Resultat<Vec<cr
         c.maj_le = crate::noyau::maintenant();
         Ok(Some(c))
     })?;
-    noyau.journaliser(&format!("import Steam : {} jeu(x) pour le profil {}", ecrit.map_or(0, |c| c.jeux.len()), p.id));
-    let jeux = boutique_steam_jeux(noyau.clone()).await?;
-    // Dans la ludothèque, avec les autres jeux (plateforme Windows).
-    noyau.ranger_installes(&s, "steam", &jeux)?;
+    noyau.journaliser(&format!("import Steam : {} jeu(x) pour le profil {}", ecrit.as_ref().map_or(0, |c| c.jeux.len()), p.id));
+    let (jeux, _) = ranger_steam_importe(&noyau, &s, ecrit.map(|c| c.jeux).unwrap_or_default()).await?;
     Ok(jeux)
+}
+
+/// Range la liste Steam importée dans la ludothèque de la session `s` (prise au DÉBUT de l'import), avec les jeux
+/// installés lus sur ce PC si Steam y est (une carte par jeu, « installé » d'après le disque), sinon la liste seule :
+/// les jeux possédés entrent même sans Steam sur ce PC. Rend la liste rangée et les ids des cartes NOUVELLES.
+async fn ranger_steam_importe(noyau: &Noyau, s: &crate::noyau::Session, api: Vec<crate::boutiques::JeuBoutique>) -> Resultat<(Vec<crate::boutiques::JeuBoutique>, Vec<i64>)> {
+    // Jamais en même temps qu'une relecture des boutiques du PC.
+    let _un_seul = RELECTURE.lock().await;
+    let locaux = tauri::async_runtime::spawn_blocking(|| crate::boutiques_pc::lire_steam(crate::boutiques::dossier_steam().as_deref()))
+        .await
+        .map_err(|_| Erreur::Disque("La lecture de Steam s'est arrêtée brutalement.".into()))?;
+    let l = match locaux {
+        Some(locaux) => {
+            synchroniser_registre(noyau, "steam", &locaux);
+            crate::boutiques_pc::fusion_steam(api, &locaux)
+        }
+        None => api,
+    };
+    // Dans la ludothèque, avec les autres jeux (plateforme Windows).
+    let nouveaux = noyau.ranger_installes(s, "steam", &l)?;
+    Ok((l, nouveaux))
+}
+
+/// Ce qu'un import Steam par la connexion a donné (lot C2).
+#[derive(Serialize, Clone, Debug, Default, PartialEq)]
+pub struct ImportSteam {
+    /// La connexion du profil à Steam ne vaut plus (pas de jeton, jeton refusé ou expiré) : rien n'a changé, l'interface
+    /// dit « reconnecte-toi ». Les jeux déjà importés restent.
+    pub reconnecter: bool,
+    /// Les jeux possédés du compte.
+    pub total: usize,
+    /// Les cartes NOUVELLES dans la ludothèque, et combien sont installées.
+    pub nouveaux: usize,
+    pub nouveaux_installes: usize,
+}
+
+/// Changement de compte Steam sur `profil` (décision de Seb du 20/11) : ses cartes Steam de l'ancien compte jamais
+/// installées ni jouées quittent sa ludothèque. Le ménage est noté EN ATTENTE dans `boutiques.json` au moment du
+/// changement (`menage_ancien_compte`) et effacé seulement une fois fait : si un autre profil est ouvert entre-temps, il
+/// se fait à la prochaine ouverture de CE profil (avant tout import, sinon les jeux du nouveau compte partiraient
+/// aussi). Un échec est noté, jamais montré : les cartes restent, rien n'est perdu. Rend vrai s'il ne reste rien à faire.
+pub(crate) async fn menage_ancien_compte_steam(noyau: &Noyau, profil: &str) -> bool {
+    // Jamais en même temps qu'une relecture des boutiques ni qu'un rangement d'import.
+    let _un_seul = RELECTURE.lock().await;
+    let dossier = dossier_profil_de(noyau, profil);
+    if !crate::boutiques::lire(&dossier).is_some_and(|c| c.menage_ancien_compte) {
+        return true;
+    }
+    let s = match noyau.session().await {
+        Ok(s) if s.profil.id == profil => s,
+        _ => {
+            noyau.journaliser(&format!("changement de compte Steam : ménage en attente pour le profil {profil} (fait à sa prochaine ouverture)"));
+            return false;
+        }
+    };
+    match noyau.retirer_ancien_compte_steam(&s) {
+        Ok(n) => {
+            noyau.journaliser(&format!("changement de compte Steam : {n} carte(s) de l'ancien compte retirée(s) pour le profil {profil}"));
+            let fait = crate::boutiques::modifier_source(&dossier, "steam", |c| {
+                Ok(c.map(|mut c| {
+                    c.menage_ancien_compte = false;
+                    c
+                }))
+            });
+            if let Err(e) = &fait {
+                noyau.journaliser(&format!("changement de compte Steam : ménage fait mais pas noté pour le profil {profil} ({e})"));
+            }
+            fait.is_ok()
+        }
+        Err(e) => {
+            noyau.journaliser(&format!("changement de compte Steam : cartes de l'ancien compte gardées pour le profil {profil} ({e})"));
+            false
+        }
+    }
+}
+
+/// Avant un import Steam : le ménage d'un changement de compte en attente doit être fait (sinon les jeux du NOUVEAU
+/// compte, rangés ensuite, seraient retirés avec ceux de l'ancien).
+async fn menage_avant_import(noyau: &Noyau, profil: &str) -> Resultat<()> {
+    if menage_ancien_compte_steam(noyau, profil).await {
+        Ok(())
+    } else {
+        Err(Erreur::Disque("Frogtend n'a pas fini de ranger les jeux de ton ancien compte Steam : réessaie dans un moment.".into()))
+    }
+}
+
+const FENETRE_STEAM_JETON: &str = "boutique-steam-jeton";
+
+/// Le jeton d'accès Steam du compte connecté dans le navigateur DU PROFIL (lot C2, revue du 20/11) : une fenêtre
+/// CACHÉE, sans focus et sans page (`about:blank`), ouvre ce navigateur le temps de lire ses cookies de
+/// `store.steampowered.com` (`cookies_for_url`, dans un fil à part : sous Windows, l'appel se bloque sur le fil
+/// principal ou dans une commande synchrone — documentation de tauri 2.12) ; le cœur demande ensuite le jeton à la
+/// boutique avec ces seuls cookies. Rien ne passe par le titre d'une page (Chromium garde les titres dans son
+/// historique, sur le disque). Cookies et jeton ne vivent qu'en mémoire : jamais écrits, journalisés ni rendus.
+async fn lire_jeton_steam(app: &AppHandle, dossier: &std::path::Path) -> Resultat<String> {
+    // Un profil sans navigateur ne s'est jamais connecté par la page : sa connexion ne vaut pas.
+    if !crate::gratuits::dossier_navigateur(dossier).is_dir() {
+        return Err(Erreur::Refus(crate::boutiques::MOTIF_RECONNECTER.into()));
+    }
+    // Juste après « Connecté », la fenêtre de connexion se ferme d'elle-même : on la laisse finir (2 s au plus).
+    for _ in 0..10 {
+        if app.get_webview_window(FENETRE_STEAM).is_none() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+    if app.get_webview_window(FENETRE_STEAM).is_some() {
+        return Err(Erreur::Refus("Termine d'abord la connexion à Steam dans sa fenêtre, puis réessaie.".into()));
+    }
+    if app.get_webview_window(FENETRE_STEAM_JETON).is_some() {
+        return Err(Erreur::Refus("La lecture de ton compte Steam est déjà en cours : attends qu'elle finisse.".into()));
+    }
+    let (envoi, reception) = std::sync::mpsc::channel::<()>();
+    let envoi = std::sync::Mutex::new(envoi);
+    let vide = tauri::Url::parse("about:blank").map_err(|_| Erreur::Refus("Adresse invalide.".into()))?;
+    let w = tauri::WebviewWindowBuilder::new(app, FENETRE_STEAM_JETON, tauri::WebviewUrl::External(vide))
+        .title("Steam — Frogtend")
+        .inner_size(400.0, 300.0)
+        .visible(false)
+        .focused(false)
+        .skip_taskbar(true)
+        .data_directory(crate::gratuits::dossier_navigateur(dossier))
+        .on_new_window(crate::gratuits::fenetre_d_automatisation)
+        // Aucune page : la fenêtre ne sert qu'à ouvrir le magasin de cookies du profil.
+        .on_navigation(|u| u.scheme() == "about")
+        .on_page_load(move |_, charge| {
+            if matches!(charge.event(), tauri::webview::PageLoadEvent::Finished) {
+                let _ = envoi.lock().map(|e| e.send(()));
+            }
+        })
+        .build()
+        .map_err(|e| Erreur::Disque(format!("La lecture de ton compte Steam ne s'ouvre pas ({e}).")))?;
+    // Le navigateur prêt (10 s au plus), puis les cookies lus dans un fil à part.
+    let _ = tauri::async_runtime::spawn_blocking(move || reception.recv_timeout(std::time::Duration::from_secs(10))).await;
+    let boutique = tauri::Url::parse("https://store.steampowered.com/").map_err(|_| Erreur::Refus("Adresse Steam invalide.".into()))?;
+    let w2 = w.clone();
+    let lus = tauri::async_runtime::spawn_blocking(move || w2.cookies_for_url(boutique)).await;
+    let _ = w.close();
+    let Ok(Ok(lus)) = lus else {
+        return Err(Erreur::Disque("Frogtend n'a pas pu lire ta connexion à Steam : réessaie dans un moment.".into()));
+    };
+    let triplets: Vec<(String, String, Option<String>)> = lus.iter().map(|c| (c.name().to_string(), c.value().to_string(), c.domain().map(str::to_string))).collect();
+    drop(lus);
+    let cookies = crate::boutiques::cookies_de_la_boutique_steam(&triplets).ok_or_else(|| Erreur::Refus(crate::boutiques::MOTIF_RECONNECTER.into()))?;
+    drop(triplets);
+    crate::boutiques::jeton_par_cookies(crate::boutiques::BOUTIQUE_STEAM, &cookies).await
+}
+
+/// Lot C2 (décision de Seb du 20/11) : importe les jeux Steam POSSÉDÉS du compte connecté par la page, SANS clé d'API.
+/// Le jeton d'accès est relu à chaque fois dans le navigateur du profil, vérifié (son `sub` = le `steamid` rangé), puis
+/// oublié. La liste est écrite sous le verrou (compte inchangé exigé) et rangée aussitôt dans la ludothèque.
+/// Connexion expirée : `reconnecter`, rien ne change (les jeux déjà importés restent).
+#[tauri::command]
+pub async fn boutique_steam_importer_connecte(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<ImportSteam> {
+    // La session AU DÉBUT : la liste importée ne va qu'au profil qui l'a demandée.
+    let s = noyau.session().await?;
+    let p = s.profil.clone();
+    let dossier = dossier_profil_de(&noyau, &p.id);
+    let c = crate::boutiques::lire(&dossier)
+        .filter(crate::boutiques::connecte_par_la_page)
+        .ok_or_else(|| Erreur::Refus("Tu n'es pas connecté à Steam : dans 🛒 Boutiques, « Se connecter à Steam ».".into()))?;
+    let steamid = c.steamid.clone();
+    menage_avant_import(&noyau, &p.id).await?;
+    let jeux = match importer_par_jeton(&app, &dossier, &steamid).await {
+        Ok(j) => j,
+        Err(Erreur::Refus(m)) if m == crate::boutiques::MOTIF_RECONNECTER => {
+            noyau.journaliser(&format!("import Steam (connexion) : connexion expirée pour le profil {}", p.id));
+            return Ok(ImportSteam { reconnecter: true, ..Default::default() });
+        }
+        Err(e) => return Err(e),
+    };
+    // Relu sous le verrou juste avant d'écrire : un compte changé pendant l'attente ne reçoit pas cette liste.
+    let ecrit = crate::boutiques::modifier_source(&dossier, "steam", |c| {
+        let mut c = c
+            .filter(|c| c.steamid == steamid && crate::boutiques::connecte_par_la_page(c))
+            .ok_or_else(|| Erreur::Refus("Le compte Steam a changé pendant l'import : relance-le.".into()))?;
+        c.jeux = jeux;
+        c.maj_le = crate::noyau::maintenant();
+        Ok(Some(c))
+    })?;
+    let total = ecrit.as_ref().map_or(0, |c| c.jeux.len());
+    noyau.journaliser(&format!("import Steam (connexion) : {total} jeu(x) pour le profil {}", p.id));
+    let (l, nouveaux) = ranger_steam_importe(&noyau, &s, ecrit.map(|c| c.jeux).unwrap_or_default()).await?;
+    Ok(ImportSteam { reconnecter: false, total, nouveaux_installes: compter_installes(&l, &nouveaux), nouveaux: nouveaux.len() })
+}
+
+/// Le jeton lu, vérifié, puis la liste demandée à Steam ; le jeton est oublié en sortant (jamais écrit ni journalisé).
+async fn importer_par_jeton(app: &AppHandle, dossier: &std::path::Path, steamid: &str) -> Resultat<Vec<crate::boutiques::JeuBoutique>> {
+    let jeton = lire_jeton_steam(app, dossier).await?;
+    let maintenant = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    crate::boutiques::verifier_jeton_steam(&jeton, steamid, maintenant)?;
+    crate::boutiques::jeux_possedes_par_jeton(crate::boutiques::API_STEAM, &jeton, steamid).await
+}
+
+/// Parmi les cartes nouvelles (`nouveaux`), celles dont le jeu est installé sur ce PC.
+fn compter_installes(l: &[crate::boutiques::JeuBoutique], nouveaux: &[i64]) -> usize {
+    l.iter().filter(|j| j.installe && nouveaux.contains(&crate::noyau::id_carte("steam", j))).count()
 }
 
 /// Un jeu offert en ce moment, et s'il est déjà obtenu par ce profil.
@@ -6330,17 +6547,23 @@ pub async fn boutique_steam_connexion(app: AppHandle, noyau: State<'_, Noyau>) -
                 if let Some(noyau) = app.try_state::<Noyau>() {
                     // Jamais le steamid ni rien de la page dans le journal : seulement le fait.
                     noyau.journaliser(&match &r {
-                        Ok(()) => format!("connexion Steam : compte relié pour le profil {profil}"),
+                        Ok(false) => format!("connexion Steam : compte relié pour le profil {profil}"),
+                        Ok(true) => format!("connexion Steam : AUTRE compte relié pour le profil {profil}"),
                         Err(e) => format!("connexion Steam : compte pas enregistré pour le profil {profil} ({e:?})"),
                     });
                 }
-                let _ = app.emit("steam-connecte", serde_json::json!({"profil": profil, "ok": r.is_ok()}));
-                if r.is_ok() {
-                    // Fermée hors de ce rappel (il vient de la fenêtre elle-même).
-                    tauri::async_runtime::spawn(async move {
+                let (app, profil) = (app.clone(), profil.clone());
+                // Hors de ce rappel (il vient de la fenêtre elle-même) : le ménage d'un changement de compte, PUIS
+                // l'annonce (l'interface lance l'import juste après), puis la fermeture.
+                tauri::async_runtime::spawn(async move {
+                    if r.is_ok() {
+                        menage_ancien_compte_steam(&app.state::<Noyau>(), &profil).await;
+                    }
+                    let _ = app.emit("steam-connecte", serde_json::json!({"profil": profil, "ok": r.is_ok()}));
+                    if r.is_ok() {
                         let _ = w.close();
-                    });
-                }
+                    }
+                });
             }
         })
         .build()

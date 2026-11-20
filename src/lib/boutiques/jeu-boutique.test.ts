@@ -36,8 +36,8 @@ describe('jeux de boutique', () => {
     expect(messageNouveaux([['gog', 1]])).toBe('🎮 1 nouveau jeu trouvé sur ce PC (GOG 1)'); // sans le 3e nombre : installés
     // Lot B : des jeux des comptes, des mots pour un novice.
     expect(messageNouveaux([['epic', 497, 1], ['uplay', 1, 0]])).toBe('🎮 498 jeux de tes comptes Epic et Ubisoft ajoutés à ta ludothèque (1 déjà installé). Les autres s’installent avec ⬇ Installer.');
-    expect(messageNouveaux([['epic', 500, 3]])).toBe('🎮 500 jeux de tes comptes Epic ajoutés à ta ludothèque (3 déjà installés). Les autres s’installent avec ⬇ Installer.');
-    expect(messageNouveaux([['uplay', 4, 0]])).toBe('🎮 4 jeux de tes comptes Ubisoft ajoutés à ta ludothèque. Ils s’installent avec ⬇ Installer.');
+    expect(messageNouveaux([['epic', 500, 3]])).toBe('🎮 500 jeux de ton compte Epic ajoutés à ta ludothèque (3 déjà installés). Les autres s’installent avec ⬇ Installer.');
+    expect(messageNouveaux([['uplay', 4, 0]])).toBe('🎮 4 jeux de ton compte Ubisoft ajoutés à ta ludothèque. Ils s’installent avec ⬇ Installer.');
     expect(messageNouveaux([['uplay', 1, 0]])).toBe('🎮 1 jeu de ton compte Ubisoft ajouté à ta ludothèque. Il s’installe avec ⬇ Installer.');
     // Une boutique aux seuls jeux installés n'est pas nommée parmi les comptes.
     expect(messageNouveaux([['steam', 2, 2], ['epic', 3, 0], ['uplay', 1, 0]])).toBe('🎮 6 jeux de tes comptes Epic et Ubisoft ajoutés à ta ludothèque (2 déjà installés). Les autres s’installent avec ⬇ Installer.');
@@ -52,6 +52,9 @@ describe('jeux de boutique', () => {
     expect(a).toContain('400');
     expect(a).not.toContain('epicgames');
     expect(imageCarteAInstaller({ id: -42, image: null })).toBeNull();
+    // Steam (lot C2) : la jaquette de son appid, servie par le cœur depuis son cache.
+    expect(imageCarteAInstaller({ id: -7, image: null, boutique: 'steam' })).toBe(imageCarteAInstaller({ id: -7, image: 'x' }));
+    expect(imageCarteAInstaller({ id: -7, image: null, boutique: 'steam' })).toContain('400');
   });
 
   it('préviennent au canapé que la fenêtre d’installation de la boutique s’ouvre', () => {

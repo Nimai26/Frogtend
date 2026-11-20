@@ -2,22 +2,194 @@
 // réglé (règle de Seb, comme LaunchBox). La clé d'API ne s'affiche jamais : on dit seulement si elle est enregistrée.
 import { isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { api, type EtatSteam, type JeuBoutique } from '$lib/api';
-import { confirmer, demander, informer, toast } from '$lib/dialogues/fenetres.svelte';
+import { api, type EtatSteam, type ImportSteam, type JeuBoutique } from '$lib/api';
+import { confirmer, demander, fermerToast, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat } from '$lib/etat.svelte';
-import { toujoursLeMeme } from './jeu-boutique';
+import { partie } from '$lib/ludotheque/jeu.svelte';
+import { rafraichirLudotheque } from './boutiques-pc.svelte';
+import { messageNouveaux, toujoursLeMeme } from './jeu-boutique';
 
 export const PAGE_CLE_STEAM = 'https://steamcommunity.com/dev/apikey';
 
-export const steam = $state<{ etat: EtatSteam | null; jeux: JeuBoutique[]; enCours: boolean; connexionEnCours: boolean }>({
+export const steam = $state<{
+  etat: EtatSteam | null;
+  jeux: JeuBoutique[];
+  enCours: boolean;
+  connexionEnCours: boolean;
+  erreur: string | null;
+  expire: boolean;
+  erreurProfil: string | null;
+  profilImport: string | null;
+  imports: number;
+}>({
   etat: null,
   jeux: [],
+  // Un import par la connexion tourne (pour `profilImport` : voir `importSteamEnCours`).
   enCours: false,
   connexionEnCours: false,
+  // La dernière erreur d'import (ligne d'état du bloc « Mon compte Steam ») et la connexion expirée, pour le profil
+  // `erreurProfil` seulement ; `null` / faux après un import réussi.
+  erreur: null,
+  expire: false,
+  erreurProfil: null,
+  profilImport: null,
+  // Le nombre d'imports Steam terminés (Taodbox relit alors ses cartes « à installer »).
+  imports: 0,
 });
 
+/** Un import Steam tourne-t-il pour le profil OUVERT ? (Celui d'un autre profil ne bloque jamais ses boutons.) */
+export function importSteamEnCours(): boolean {
+  return steam.enCours && steam.profilImport === (etat.profilOuvert?.id ?? null);
+}
+
+/** La connexion du profil ouvert à Steam a-t-elle expiré (dernier import) ? */
+export function connexionSteamExpiree(): boolean {
+  return steam.expire && steam.erreurProfil === (etat.profilOuvert?.id ?? null);
+}
+
+/** La connexion du profil à Steam a expiré (lot C2) : dit sans alarmer, les jeux déjà importés restent. */
+export const MESSAGE_STEAM_EXPIRE = '🔑 Ta connexion à Steam a expiré : dans 🛒 Boutiques, reconnecte-toi.';
+
+/** Le message d'une connexion expirée selon l'écran (pur, testé) : « dans 🛒 Boutiques » seulement hors de cette page,
+ * et « au bureau » depuis Taodbox (la connexion demande la souris). */
+export function messageSteamExpire(chemin: string): string {
+  if (chemin.startsWith('/taodbox')) return '🔑 Ta connexion à Steam a expiré : au bureau, dans 🛒 Boutiques, reconnecte-toi.';
+  if (chemin.startsWith('/boutiques')) return '🔑 Ta connexion à Steam a expiré : reconnecte-toi (bouton « 🔑 Me reconnecter à Steam »).';
+  return MESSAGE_STEAM_EXPIRE;
+}
+
+/** L'écran où l'on est (pour les messages). */
+function cheminActuel(): string {
+  try {
+    return typeof location === 'undefined' ? '' : location.pathname;
+  } catch {
+    return '';
+  }
+}
+
+/** Ce qu'un import Steam par la connexion fait dire (pur, testé). À la main : toujours un message (« Rien de nouveau »
+ * compris) ; à l'ouverture de Frogtend (discret) : seulement des jeux nouveaux ou une connexion expirée. */
+export function annonceImportSteam(r: ImportSteam, aLaMain: boolean, chemin = ''): { texte: string; ton?: 'alerte' } | null {
+  if (r.reconnecter) return { texte: messageSteamExpire(chemin), ton: 'alerte' };
+  const m = messageNouveaux([['steam', r.nouveaux, r.nouveaux_installes]]);
+  if (m) return { texte: m };
+  return aLaMain ? { texte: 'Rien de nouveau : tes jeux Steam sont déjà dans ta ludothèque.' } : null;
+}
+
+/** La connexion expirée est-elle à dire AUJOURD'HUI à ce profil, à l'ouverture de Frogtend ? Une fois par jour
+ * (la ligne d'état reste visible) ; retenu dans ce navigateur seulement, sans rien de secret. Sans stockage : dit. */
+export function direExpireAujourdhui(profil: string, jour: string, stockage: Pick<Storage, 'getItem' | 'setItem'> | null): boolean {
+  const cle = `frogtend.steamExpire.${profil}`;
+  try {
+    if (stockage?.getItem(cle) === jour) return false;
+    stockage?.setItem(cle, jour);
+  } catch {
+    // Stockage refusé : dit, comme sans stockage.
+  }
+  return true;
+}
+
+function stockageLocal(): Storage | null {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/** La manière de lancer un import : à la main (bouton), juste après la connexion, ou à l'ouverture de Frogtend. */
+export type ModeImportSteam = 'main' | 'connexion' | 'discret';
+
+/** L'import en cours (une seule promesse à la fois) et le profil pour lequel il tourne. */
+let courant: { profil: string | null; promesse: Promise<boolean> } | null = null;
+
+/** Met à jour les jeux Steam POSSÉDÉS du compte connecté par la page (lot C2), sans clé d'API : à la main (bouton,
+ * juste après la connexion) avec un message d'attente qui reste jusqu'à la fin, ou discrètement à l'ouverture de
+ * Frogtend. Un import déjà en cours : le discret du même profil le rejoint ; les autres attendent sa fin PUIS relancent.
+ * Le profil changé pendant l'attente : silence. La grille est relue après chaque import. Rend vrai si la liste a été
+ * mise à jour. */
+export async function mettreAJourSteam(mode: ModeImportSteam = 'main'): Promise<boolean> {
+  const profil = etat.profilOuvert?.id ?? null;
+  if (courant) {
+    if (mode === 'discret' && courant.profil === profil) return courant.promesse;
+    await courant.promesse.catch(() => false);
+    return mettreAJourSteam(mode);
+  }
+  const promesse = importerConnecte(mode, profil);
+  courant = { profil, promesse };
+  try {
+    return await promesse;
+  } finally {
+    if (courant?.promesse === promesse) courant = null;
+  }
+}
+
+async function importerConnecte(mode: ModeImportSteam, profil: string | null): Promise<boolean> {
+  // À l'ouverture : revérifié juste avant d'ouvrir la fenêtre cachée (une partie a pu commencer entre-temps).
+  if (mode === 'discret' && partie.enJeu !== null) return false;
+  const aLaMain = mode !== 'discret';
+  steam.enCours = true;
+  steam.profilImport = profil;
+  const attente = aLaMain
+    ? toast(mode === 'connexion' ? '✅ Connecté à Steam. ⏳ Lecture de tes jeux…' : '⏳ Lecture de tes jeux Steam… (jusqu’à une minute)', undefined, { jusquaFermeture: true })
+    : null;
+  try {
+    const r = await api.steamImporterConnecte();
+    if (!toujoursLeMeme(profil, etat.profilOuvert?.id)) return false;
+    steam.erreurProfil = profil;
+    steam.expire = r.reconnecter;
+    steam.erreur = r.reconnecter ? messageSteamExpire('/boutiques') : null;
+    if (attente !== null) fermerToast(attente);
+    const a = annonceImportSteam(r, aLaMain, cheminActuel());
+    // Jamais un message par-dessus une partie (à l'ouverture de Frogtend) ; la connexion expirée, une fois par jour.
+    const dire = a && (aLaMain || (partie.enJeu === null && (!r.reconnecter || direExpireAujourdhui(profil ?? '', new Date().toISOString().slice(0, 10), stockageLocal()))));
+    if (dire) toast(a.texte, a.ton);
+    if (r.reconnecter) return false;
+    steam.imports++;
+    await rafraichirLudotheque();
+    await lireSteam();
+    return true;
+  } catch (err) {
+    if (!toujoursLeMeme(profil, etat.profilOuvert?.id)) return false;
+    steam.erreurProfil = profil;
+    steam.expire = false;
+    steam.erreur = `Mise à jour de tes jeux Steam impossible : ${motifDuRefus(err)}`;
+    if (aLaMain) toast(steam.erreur, 'erreur');
+    return false;
+  } finally {
+    if (attente !== null) fermerToast(attente);
+    if (steam.profilImport === profil) {
+      steam.enCours = false;
+      steam.profilImport = null;
+    }
+  }
+}
+
+/** Oublie l'état d'import d'un AUTRE profil que celui ouvert (`toujours` : même le sien, nouvelle ouverture). */
+function oublierEtatImport(toujours: boolean) {
+  if (toujours || steam.erreurProfil !== (etat.profilOuvert?.id ?? null)) {
+    steam.erreur = null;
+    steam.expire = false;
+    steam.erreurProfil = null;
+  }
+}
+
+/** À chaque ouverture de Frogtend (décision de Seb du 20/11), en tâche de fond : si le profil est connecté à Steam par
+ * la page, ses jeux possédés sont relus. Jamais pendant une partie. Une erreur reste dans la ligne d'état du bloc
+ * Steam, sans toast (seule une connexion expirée est dite, une fois par jour). */
+export async function steamAuDemarrage() {
+  oublierEtatImport(true);
+  if (partie.enJeu !== null) return;
+  const profil = etat.profilOuvert?.id;
+  const e = await api.steamEtat().catch(() => null);
+  if (!connecteASteam(e) || !toujoursLeMeme(profil, etat.profilOuvert?.id)) return;
+  steam.etat = e;
+  await mettreAJourSteam('discret');
+}
+
 export async function lireSteam() {
+  oublierEtatImport(false);
   steam.etat = await api.steamEtat().catch(() => null);
   steam.jeux = await api.steamJeux().catch(() => []);
 }
@@ -72,8 +244,11 @@ async function ecouter(profil: string): Promise<boolean> {
       toast(`Connecté à Steam, mais l’état n’a pas pu être relu (${motifDuRefus(err)}) : rouvre cette page.`, 'alerte');
       return;
     }
-    if (connecteASteam(steam.etat)) toast('✅ Connecté à Steam.');
-    else toast('⚠ Steam a dit « connecté », mais Frogtend ne le voit pas : réessaie.', 'alerte');
+    if (connecteASteam(steam.etat)) {
+      // Lot C2 : les jeux du compte entrent tout de suite (se connecter vaut accord, Seb 19/11) ; un seul message
+      // « ✅ Connecté à Steam. ⏳ Lecture de tes jeux… ».
+      await mettreAJourSteam('connexion');
+    } else toast('⚠ Steam a dit « connecté », mais Frogtend ne le voit pas : réessaie.', 'alerte');
   });
   return true;
 }
@@ -131,31 +306,49 @@ export async function reglerSteam(): Promise<boolean> {
   }
 }
 
-/** Importer la liste des jeux Steam : si le compte n'est pas réglé, on le règle d'abord. */
+/** Importer la liste des jeux Steam. Connecté par la page (lot C2) : sans clé d'API, jamais demandée. Sinon (secours)
+ * par la clé : si le compte n'est pas réglé, on le règle d'abord. */
 export async function importerSteam(): Promise<boolean> {
   let e = await api.steamEtat().catch(() => null);
+  if (connecteASteam(e)) {
+    steam.etat = e;
+    return mettreAJourSteam('main');
+  }
   if (!e?.compte || !e.cle_enregistree) {
     await informer('🎮 Ton compte Steam d’abord', 'Pour importer tes jeux Steam, Frogtend a besoin de ton compte et de ta clé d’API Steam. On les règle maintenant (tu les retrouveras dans ⚙ Options ▸ Comptes ▸ Steam).');
     if (!(await reglerSteam())) return false;
     e = steam.etat;
   }
+  if (importSteamEnCours()) return false;
+  const profil = etat.profilOuvert?.id ?? null;
   steam.enCours = true;
+  steam.profilImport = profil;
   try {
     steam.jeux = await api.steamImporter();
     steam.etat = await api.steamEtat().catch(() => steam.etat);
+    steam.erreur = null;
+    steam.erreurProfil = profil;
     toast(`✅ ${steam.jeux.length} jeu(x) Steam dans ta liste.`);
+    steam.imports++;
+    // La grille et la barre des systèmes suivent (les cartes viennent d'être rangées par le cœur).
+    await rafraichirLudotheque();
     return true;
   } catch (err) {
-    toast(`Import Steam impossible : ${motifDuRefus(err)}`, 'erreur');
+    steam.erreur = `Import Steam impossible : ${motifDuRefus(err)}`;
+    steam.erreurProfil = profil;
+    toast(steam.erreur, 'erreur');
     return false;
   } finally {
-    steam.enCours = false;
+    if (steam.profilImport === profil) {
+      steam.enCours = false;
+      steam.profilImport = null;
+    }
   }
 }
 
 export async function oublierSteam() {
   const oui = await confirmer('Oublier ton compte Steam ?', {
-    message: 'Ta clé quitte le coffre de Windows et la liste de tes jeux Steam est retirée de Frogtend. Rien ne change chez Steam ni dans tes jeux installés.',
+    message: 'Frogtend oublie ton compte Steam (et ta clé d’API, si tu en avais une). Tes jeux Steam restent dans ta ludothèque ; rien ne change chez Steam ni dans tes jeux installés.',
     libelleValider: 'Oublier',
     danger: true,
   });

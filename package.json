@@ -1,6 +1,6 @@
 {
   "name": "frogtend",
-  "version": "0.214.6",
+  "version": "0.215.0",
   "description": "Frogtend — la ludothèque de la maison, servie par Firehouse",
   "type": "module",
   "private": true,

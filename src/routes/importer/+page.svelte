@@ -5,7 +5,7 @@
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { galaxy, importerGalaxy, lireGalaxy } from '$lib/boutiques/galaxy.svelte';
-  import { importerSteam, lireSteam, steam } from '$lib/boutiques/steam.svelte';
+  import { importerSteam, importSteamEnCours, lireSteam, steam } from '$lib/boutiques/steam.svelte';
   import { compterParGalaxy, explicationGalaxy, source, SOURCES } from '$lib/import/sources';
   import ImportLocal from '$lib/import/ImportLocal.svelte';
   import Rapprocher from '$lib/import/Rapprocher.svelte';
@@ -53,8 +53,8 @@
           <dd>{steam.jeux.length}</dd>
         </dl>
         <div class="actions">
-          <button class="btn primary" onclick={importerSteam} disabled={steam.enCours}>
-            {steam.enCours ? 'Import…' : '⬇ Importer mes jeux Steam'}
+          <button class="btn primary" onclick={importerSteam} disabled={importSteamEnCours()}>
+            {importSteamEnCours() ? 'Import…' : '⬇ Importer mes jeux Steam'}
           </button>
           <a class="btn" href="/reglages?rubrique=steam">⚙ Options ▸ Comptes ▸ Steam</a>
         </div>

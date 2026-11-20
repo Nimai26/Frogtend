@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cartesAInstallerTaodbox, cartesBoutiqueTaodbox, venantDe, groupeDe, libelleCopie, nomOrigine, originesCarte, originesJeuPc, unParGroupe } from './copies';
+import { cartesAInstallerTaodbox, cartesBoutiqueTaodbox, INSTALLABLES_AU_CANAPE, venantDe, groupeDe, libelleCopie, nomOrigine, originesCarte, originesJeuPc, unParGroupe } from './copies';
 
 describe('Un jeu sur plusieurs boutiques = une carte (A6c)', () => {
   const groupes = [[-1, -2], [-5, -6, -7]];
@@ -55,7 +55,7 @@ describe('la pastille d’origine', () => {
 
 describe('Taodbox : les jeux à installer (lot B, ✅ Seb 18/11)', () => {
   const carte = (id: number, titre: string, boutique: string, cle: string, installe: boolean, source = boutique) => ({ id, titre, source, boutique, cle_boutique: cle, installe, image: null });
-  it('montre les jeux des comptes pas installés, jamais un installé, un jeu du PC, Steam, Galaxy ni Battle.net', () => {
+  it('montre les jeux des comptes pas installés (Steam compris), jamais un installé, un jeu du PC, Galaxy ni Battle.net', () => {
     const l = cartesAInstallerTaodbox(
       [
         carte(-1, 'Borderlands 3', 'epic', 'epic_Catnip', false),
@@ -71,7 +71,25 @@ describe('Taodbox : les jeux à installer (lot B, ✅ Seb 18/11)', () => {
       // Far Cry 3 est déjà un jeu du PC (ligne gardée) : pas de deuxième carte.
       [{ installation: { boutique: { source: 'uplay', cle: '46' } } }, { installation: null }],
     );
-    expect(l.map((c) => c.cle)).toEqual(['uplay_54', 'epic_Catnip']);
+    expect(l.map((c) => c.cle)).toEqual(['uplay_54', 'epic_Catnip', 'steam_620']);
     expect(l[1]).toEqual({ id: -1, cle: 'epic_Catnip', nom: 'Borderlands 3', boutique: 'epic', image: null });
+  });
+
+  it('lot C2 : les jeux Steam possédés pas installés sont « à installer », une fois, jamais s’ils sont déjà du PC', () => {
+    const l = cartesAInstallerTaodbox(
+      [
+        carte(-5, 'Portal 2', 'steam', '620', false),
+        carte(-5, 'Portal 2', 'steam', '620', false),
+        carte(-8, 'Half-Life', 'steam', '70', false),
+        carte(-9, 'Portal', 'steam', '400', true),
+        // Une copie Steam vue par GOG Galaxy : la carte de Galaxy, jamais celle-ci.
+        carte(-10, 'Half-Life 2', 'steam', 'steam_220', false, 'galaxy'),
+      ],
+      // Half-Life est déjà un jeu du PC (ligne gardée pour son temps de jeu) : pas de deuxième carte.
+      [{ installation: { boutique: { source: 'steam', cle: '70' } } }],
+    );
+    expect(l).toEqual([{ id: -5, cle: 'steam_620', nom: 'Portal 2', boutique: 'steam', image: null }]);
+    expect(INSTALLABLES_AU_CANAPE).toContain('steam');
+    expect(INSTALLABLES_AU_CANAPE).not.toContain('battlenet');
   });
 });

@@ -751,6 +751,14 @@ GetOwnedGames`) ; la clé d'API reste en secours ; **C3** « Oublier ma connexio
 changée, trop de demandes, profil privé) ; **C4** connexion et import GOG par les cookies du profil (sans Galaxy) ;
 C5 (OAuth de Galaxy) seulement si besoin. **Règle** : SE CONNECTER VAUT ACCORD — les jeux possédés du compte connecté
 entrent dans la ludothèque du profil, « pas installés », et RESTENT même après une déconnexion. Une livraison par étape.
+**Seb 20/11 — C2** : les jeux Steam possédés se récupèrent À L'OUVERTURE DE FROGTEND (en arrière-plan) et À LA MAIN
+depuis l'interface (« 🔄 Mettre à jour mes jeux Steam »), plus une fois juste après la connexion. Le `webapi_token` dure
+environ un jour : il n'est JAMAIS gardé, il est relu à chaque import grâce à la connexion du navigateur du profil ; si
+cette connexion expire, Frogtend le dit (« reconnecte-toi ») et les jeux déjà importés restent. Le jeton doit être
+celui du compte connecté (son `sub` = le `steamid` rangé), sinon refus. Taodbox montre aussi ces jeux « à installer ».
+**Seb 20/11 — changement de compte Steam sur un profil** : les jeux de l'ANCIEN compte jamais installés ni joués
+quittent la ludothèque ; ceux installés, joués ou réunis à une autre copie restent. « Oublier ma connexion » n'efface
+AUCUNE carte (revue de l'expert du lancement : `boutique_steam_oublier` vidait toutes les cartes Steam).
 
 ### Prochains lots (décisions de Seb, 02/10)
 

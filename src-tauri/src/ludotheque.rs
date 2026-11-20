@@ -790,7 +790,7 @@ impl Cache {
         self.db.total_changes()
     }
 
-    /// Retire des cartes de jeux POSSÉDÉS (Epic, Ubisoft) de la ludothèque seulement. Revérifié AU MOMENT de supprimer :
+    /// Retire des cartes de jeux POSSÉDÉS (Epic, Ubisoft ; Steam : ancien compte, C2) de la ludothèque seulement. Revérifié AU MOMENT de supprimer :
     /// la source, « pas installé », sans temps de jeu, non réunie (une carte qui a changé entre-temps reste). Rend le
     /// nombre retiré.
     pub fn retirer_possedes_non_installes(&mut self, ids: &[i64]) -> Resultat<usize> {
@@ -798,7 +798,7 @@ impl Cache {
         let mut n = 0;
         {
             let mut st = tx.prepare(
-                "DELETE FROM jeux WHERE id = ?1 AND id < 0 AND json_extract(brut, '$.source') IN ('epic', 'uplay')
+                "DELETE FROM jeux WHERE id = ?1 AND id < 0 AND json_extract(brut, '$.source') IN ('epic', 'uplay', 'steam')
                  AND COALESCE(json_extract(brut, '$.installe'), 0) = 0 AND COALESCE(json_extract(brut, '$.minutes'), 0) = 0
                  AND json_extract(brut, '$.copies') IS NULL AND json_extract(brut, '$.maitre') IS NULL",
             )?;

@@ -121,7 +121,7 @@ export async function lireEtatsPc() {
 }
 
 /** La grille et la barre des systèmes relues après un import (un échec ne cache jamais le message déjà montré). */
-async function rafraichirLudotheque() {
+export async function rafraichirLudotheque() {
   await rechargerListe().catch(() => {});
   await rechargerPlateformes().catch(() => {});
 }

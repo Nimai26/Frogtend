@@ -117,9 +117,16 @@ export interface CarteAInstallerTaodbox {
   image: string | null;
 }
 
-/** Les boutiques qui savent installer un jeu par leur lanceur depuis Frogtend (`boutique_ouvrir`). Steam et GOG Galaxy
- * ont leurs propres cartes ; Battle.net n'a aucune adresse prouvée. */
-const INSTALLABLES_AU_CANAPE = ['epic', 'uplay', 'gog', 'amazon', 'xboxone'];
+/** Les boutiques qui savent installer un jeu par leur lanceur depuis Frogtend (`boutique_ouvrir`). Steam (lot C2 : ses
+ * jeux possédés pas installés, `steam://install/<appid>`) ; GOG Galaxy a ses propres cartes ; Battle.net n'a aucune
+ * adresse prouvée. */
+export const INSTALLABLES_AU_CANAPE = ['steam', 'epic', 'uplay', 'gog', 'amazon', 'xboxone'];
+
+/** La clé de la carte « à installer », comme les autres boutiques la portent (`epic_<AppName>`) : une carte Steam garde
+ * l'appid seul dans la ludothèque, elle devient `steam_<appid>` (le cœur retire ce préfixe pour l'installer). */
+function cleAInstaller(c: { boutique?: string | null; cle_boutique?: string | null }): string {
+  return c.boutique === 'steam' ? `steam_${c.cle_boutique}` : c.cle_boutique!;
+}
 
 /** Les cartes « à installer » de Taodbox : les cartes de la ludothèque d'une boutique installable, pas installées, et
  * qui ne sont pas déjà des jeux du PC (même boutique et même clé). Triées par nom. */
@@ -131,7 +138,7 @@ export function cartesAInstallerTaodbox(
   const vus = new Set<string>();
   return cartes
     .filter((c) => c.id < 0 && c.installe === false && !!c.cle_boutique && !!c.boutique && c.source === c.boutique && INSTALLABLES_AU_CANAPE.includes(c.boutique))
-    .filter((c) => !duPc.has(c.cle_boutique!) && !vus.has(c.cle_boutique!) && !!vus.add(c.cle_boutique!))
-    .map((c) => ({ id: c.id, cle: c.cle_boutique!, nom: c.titre, boutique: c.boutique!, image: c.image ?? null }))
+    .map((c) => ({ id: c.id, cle: cleAInstaller(c), nom: c.titre, boutique: c.boutique!, image: c.image ?? null }))
+    .filter((c) => !duPc.has(c.cle) && !vus.has(c.cle) && !!vus.add(c.cle))
     .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
 }

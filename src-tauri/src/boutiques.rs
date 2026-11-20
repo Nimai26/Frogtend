@@ -77,6 +77,31 @@ pub struct CompteBoutique {
     /// d'avant le lot C1 : c'est alors `steamid`, tant qu'aucune connexion par la page ne l'a changé.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub steamid_cle: String,
+    /// Steam : le compte d'avant un « Oublier ma connexion » (sans clé ni connexion), pour que la connexion d'un AUTRE
+    /// compte ensuite soit bien vue comme un changement de compte (Seb 20/11). Vidé à la connexion suivante.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub steamid_precedent: String,
+    /// Steam : le ménage d'un changement de compte n'a pas pu se faire (profil changé entre-temps) ; il est fait à la
+    /// prochaine ouverture du profil, avant tout import.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub menage_ancien_compte: bool,
+}
+
+/// Ce qui reste d'un compte Steam oublié : seulement le compte précédent (ni clé, ni connexion, ni liste). `None` s'il
+/// n'y en avait aucun.
+pub fn compte_oublie(c: Option<CompteBoutique>) -> Option<CompteBoutique> {
+    let c = c?;
+    let precedent = if c.steamid.is_empty() { c.steamid_precedent } else { c.steamid };
+    (!precedent.is_empty()).then(|| CompteBoutique { steamid_precedent: precedent, menage_ancien_compte: c.menage_ancien_compte, ..Default::default() })
+}
+
+/// Le compte Steam qui comptait AVANT (le rangé, sinon celui d'avant un oubli) : vide = aucun.
+pub fn compte_steam_d_avant(c: &CompteBoutique) -> &str {
+    if c.steamid.is_empty() {
+        &c.steamid_precedent
+    } else {
+        &c.steamid
+    }
 }
 
 /// Le profil s'est-il connecté à Steam par la page officielle (et son `steamid` est-il bon) ?
@@ -105,15 +130,26 @@ pub fn cle_d_un_autre_compte(c: &CompteBoutique) -> bool {
 /// Retient la connexion à Steam par sa page officielle : le `steamid` (déjà vérifié) et l'heure, relus et écrits sous
 /// le verrou. Un AUTRE compte que celui déjà enregistré : l'ancienne liste importée ne vaut plus pour lui (comme
 /// `boutique_steam_regler`) ; le compte de la clé d'API est gardé à part pour ne jamais les mélanger.
-pub fn noter_connexion_steam(dossier_profil: &Path, steamid: &str, quand: &str) -> Resultat<()> {
+/// Rend vrai quand un AUTRE compte était déjà enregistré (changement de compte : l'appelant retire alors de la
+/// ludothèque les cartes de l'ancien compte jamais installées ni jouées, décision de Seb du 20/11).
+pub fn noter_connexion_steam(dossier_profil: &Path, steamid: &str, quand: &str) -> Resultat<bool> {
     if !crate::gratuits::steamid_valide(steamid) {
         return Err(Erreur::Refus("Identifiant Steam invalide.".into()));
     }
+    let mut change = false;
     modifier_source(dossier_profil, "steam", |c| {
         let mut c = c.unwrap_or_default();
         if c.steamid_cle.is_empty() {
             c.steamid_cle = steamid_de_la_cle(&c).to_string();
         }
+        // L'ancien compte : celui rangé, ou celui d'avant un « Oublier » (Seb 20/11). Le ménage est noté EN ATTENTE ici,
+        // sous le verrou, et effacé seulement quand il est fait (`menage_ancien_compte`).
+        let avant = compte_steam_d_avant(&c).to_string();
+        change = !avant.is_empty() && avant != steamid;
+        if change {
+            c.menage_ancien_compte = true;
+        }
+        c.steamid_precedent.clear();
         if c.steamid != steamid {
             c.jeux.clear();
             c.maj_le.clear();
@@ -125,8 +161,8 @@ pub fn noter_connexion_steam(dossier_profil: &Path, steamid: &str, quand: &str) 
         c.steamid = steamid.to_string();
         c.connecte_le = quand.to_string();
         Ok(Some(c))
-    })
-    .map(|_| ())
+    })?;
+    Ok(change)
 }
 
 /// Le nom du secret d'une boutique dans le coffre.
@@ -154,8 +190,9 @@ fn client() -> Resultat<reqwest::Client> {
         .map_err(|_| Erreur::Reseau("Connexion impossible.".into()))
 }
 
-/// Une requête à l'API Steam. Les erreurs ne contiennent JAMAIS l'adresse (elle porte la clé).
-async fn appeler(base: &str, chemin: &str, parametres: &[(&str, &str)]) -> Resultat<Value> {
+/// Une requête à l'API Steam : la réponse lue (200), ou le code d'un autre statut. Les erreurs ne contiennent JAMAIS
+/// l'adresse (elle porte la clé ou le jeton).
+async fn requete(base: &str, chemin: &str, parametres: &[(&str, &str)]) -> Resultat<Result<Value, u16>> {
     let r = client()?
         .get(format!("{base}{chemin}"))
         .query(parametres)
@@ -163,11 +200,25 @@ async fn appeler(base: &str, chemin: &str, parametres: &[(&str, &str)]) -> Resul
         .await
         .map_err(|e| Erreur::Reseau(format!("Steam ne répond pas ({}).", e.without_url())))?;
     match r.status().as_u16() {
-        200 => r.json().await.map_err(|_| Erreur::Serveur("Réponse de Steam illisible.".into())),
-        401 | 403 => Err(Erreur::Refus("Steam refuse la clé d'API : vérifie-la (ou crée-en une nouvelle).".into())),
-        429 => Err(Erreur::Refus("Steam demande d'attendre un peu avant de réessayer.".into())),
-        c => Err(Erreur::Serveur(format!("Steam a répondu une erreur (code {c})."))),
+        200 => r.json().await.map(Ok).map_err(|_| Erreur::Serveur("Réponse de Steam illisible.".into())),
+        c => Ok(Err(c)),
     }
+}
+
+const MOTIF_ATTENDRE: &str = "Steam demande d'attendre un peu avant de réessayer.";
+
+/// Le message d'un statut d'erreur de Steam ; `refus` : celui d'un 401 ou d'un 403.
+fn erreur_de_statut(code: u16, refus: &str) -> Erreur {
+    match code {
+        401 | 403 => Erreur::Refus(refus.into()),
+        429 => Erreur::Refus(MOTIF_ATTENDRE.into()),
+        c => Erreur::Serveur(format!("Steam a répondu une erreur (code {c}).")),
+    }
+}
+
+/// Une requête à l'API Steam avec la clé d'API.
+async fn appeler(base: &str, chemin: &str, parametres: &[(&str, &str)]) -> Resultat<Value> {
+    requete(base, chemin, parametres).await?.map_err(|c| erreur_de_statut(c, "Steam refuse la clé d'API : vérifie-la (ou crée-en une nouvelle)."))
 }
 
 /// L'identifiant Steam 64 bits d'un compte (URL personnalisée résolue par Steam).
@@ -191,10 +242,165 @@ pub async fn jeux_possedes(base: &str, cle: &str, steamid: &str) -> Resultat<Vec
         &[("key", cle), ("steamid", steamid), ("include_appinfo", "1"), ("include_played_free_games", "1"), ("format", "json")],
     )
     .await?;
+    lire_jeux_possedes(&v, "Steam ne montre aucun jeu : dans Steam ▸ Profil ▸ Modifier ▸ Confidentialité, mets « Détails du jeu » sur Public.")
+}
+
+/// Le refus quand la connexion du profil à Steam ne vaut plus (pas de jeton, jeton refusé ou expiré) : l'interface le
+/// reconnaît pour dire « reconnecte-toi » sans alarmer.
+pub const MOTIF_RECONNECTER: &str = "Steam ne te reconnaît plus : reconnecte-toi à Steam dans 🛒 Boutiques.";
+
+/// La boutique Steam, où elle donne le jeton d'accès du compte connecté (`/pointssummary/ajaxgetasyncconfig`).
+pub const BOUTIQUE_STEAM: &str = "https://store.steampowered.com";
+
+/// L'en-tête `Cookie` formé des seuls cookies de la boutique Steam du navigateur du profil. Il ne vit qu'en mémoire, le
+/// temps de lire le jeton ; son `Debug` ne montre RIEN (journal, erreur).
+pub struct CookiesSteam(String);
+
+impl std::fmt::Debug for CookiesSteam {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("CookiesSteam(<cachés>)")
+    }
+}
+
+/// Forme l'en-tête `Cookie` à partir des cookies lus (nom, valeur, domaine) : seulement ceux du domaine EXACT
+/// `store.steampowered.com` (avec ou sans point de tête), aux noms et valeurs sûrs (jamais « ; », espace ni saut de
+/// ligne). `None` sans le cookie de connexion `steamLoginSecure` : la personne n'est pas (ou plus) connectée.
+pub fn cookies_de_la_boutique_steam(cookies: &[(String, String, Option<String>)]) -> Option<CookiesSteam> {
+    let sur = |t: &str| !t.is_empty() && t.len() <= 4096 && t.bytes().all(|c| c.is_ascii_graphic() && c != b';' && c != b',');
+    let gardes: Vec<&(String, String, Option<String>)> = cookies
+        .iter()
+        .filter(|(n, v, d)| {
+            d.as_deref().is_some_and(|d| d.trim_start_matches('.').eq_ignore_ascii_case("store.steampowered.com")) && sur(n) && !n.contains('=') && sur(v)
+        })
+        .collect();
+    if !gardes.iter().any(|(n, _, _)| n == "steamLoginSecure") {
+        return None;
+    }
+    Some(CookiesSteam(gardes.iter().map(|(n, v, _)| format!("{n}={v}")).collect::<Vec<_>>().join("; ")))
+}
+
+/// Lot C2 : le jeton d'accès (`webapi_token`) du compte connecté, demandé à la boutique Steam DEPUIS LE CŒUR avec les
+/// cookies du profil (jamais par une page : un titre de page finit dans l'historique du navigateur, sur le disque).
+/// Aucune redirection n'est suivie (les cookies ne partent jamais ailleurs). Pas de jeton, redirection vers la
+/// connexion, 401 ou 403 : `MOTIF_RECONNECTER`. Les erreurs ne contiennent jamais l'adresse, les cookies ni le jeton.
+pub async fn jeton_par_cookies(base: &str, cookies: &CookiesSteam) -> Resultat<String> {
+    let client = reqwest::Client::builder()
+        .user_agent("Frogtend")
+        .timeout(std::time::Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|_| Erreur::Reseau("Connexion impossible.".into()))?;
+    let r = client
+        .get(format!("{base}/pointssummary/ajaxgetasyncconfig"))
+        .header(reqwest::header::COOKIE, cookies.0.as_str())
+        .send()
+        .await
+        .map_err(|e| Erreur::Reseau(format!("Steam ne répond pas ({}).", e.without_url())))?;
+    let illisible = || Erreur::Serveur("Steam a changé sa page : Frogtend ne sait plus y lire tes jeux. En attendant, la clé d'API (🛟 Secours) reste possible.".into());
+    match r.status().as_u16() {
+        200 => {}
+        300..=399 | 401 | 403 => return Err(Erreur::Refus(MOTIF_RECONNECTER.into())),
+        c => return Err(erreur_de_statut(c, MOTIF_RECONNECTER)),
+    }
+    let v: Value = r.json().await.map_err(|_| illisible())?;
+    if !v.is_object() {
+        return Err(illisible());
+    }
+    match &v["data"]["webapi_token"] {
+        Value::String(j) if crate::gratuits::forme_de_jwt(j) => Ok(j.clone()),
+        Value::String(j) if !j.is_empty() => Err(illisible()),
+        Value::String(_) | Value::Null => Err(Erreur::Refus(MOTIF_RECONNECTER.into())),
+        _ => Err(illisible()),
+    }
+}
+
+/// Lot C2 : les jeux possédés avec le JETON d'accès du compte connecté par la page (`access_token`, à la place de la
+/// clé d'API). Le jeton n'est jamais gardé, ni écrit, ni journalisé ; les erreurs ne contiennent jamais l'adresse.
+/// 429 : UNE seule nouvelle tentative, après quelques secondes (jamais de boucle).
+pub async fn jeux_possedes_par_jeton(base: &str, jeton: &str, steamid: &str) -> Resultat<Vec<JeuBoutique>> {
+    jeux_possedes_par_jeton_apres(base, jeton, steamid, std::time::Duration::from_secs(5)).await
+}
+
+async fn jeux_possedes_par_jeton_apres(base: &str, jeton: &str, steamid: &str, attente: std::time::Duration) -> Resultat<Vec<JeuBoutique>> {
+    let parametres =
+        [("access_token", jeton), ("steamid", steamid), ("include_appinfo", "1"), ("include_played_free_games", "1"), ("format", "json")];
+    let mut r = requete(base, "/IPlayerService/GetOwnedGames/v1/", &parametres).await?;
+    if r == Err(429) {
+        tokio::time::sleep(attente).await;
+        r = requete(base, "/IPlayerService/GetOwnedGames/v1/", &parametres).await?;
+    }
+    let v = r.map_err(|c| erreur_de_statut(c, MOTIF_RECONNECTER))?;
+    lire_jeux_possedes(&v, "Steam n'a pas rendu la liste de tes jeux : réessaie dans un moment (ou reconnecte-toi à Steam).")
+}
+
+/// Le JWT de Steam vaut-il pour CE compte ? La charge (2ᵉ morceau, base64url) est lue SANS vérifier la signature (Steam
+/// la vérifie lui-même) : son `sub` doit être le `steamid` rangé (et valide) ; un `exp` passé (secondes) le dit
+/// expiré. Le jeton n'apparaît jamais dans le message.
+pub fn verifier_jeton_steam(jeton: &str, steamid: &str, maintenant: u64) -> Resultat<()> {
+    let autre = || Erreur::Refus("Le compte Steam ouvert n'est pas celui connecté à Frogtend : reconnecte-toi avec le bon compte.".into());
+    if !crate::gratuits::forme_de_jwt(jeton) || !crate::gratuits::steamid_valide(steamid) {
+        return Err(Erreur::Refus("Steam a rendu une réponse inattendue : réessaie dans un moment.".into()));
+    }
+    let charge = jeton.split('.').nth(1).and_then(base64url).and_then(|o| serde_json::from_slice::<Value>(&o).ok());
+    let Some(charge) = charge.filter(Value::is_object) else {
+        return Err(Erreur::Refus("Steam a rendu une réponse inattendue : réessaie dans un moment.".into()));
+    };
+    // `sub` est un texte chez Steam ; un nombre est accepté s'il dit la même chose.
+    let sub = match &charge["sub"] {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => n.to_string(),
+        _ => return Err(autre()),
+    };
+    if sub != steamid {
+        return Err(autre());
+    }
+    if charge["exp"].as_u64().is_some_and(|e| e <= maintenant) {
+        return Err(Erreur::Refus(MOTIF_RECONNECTER.into()));
+    }
+    Ok(())
+}
+
+/// Décode du base64url (sans remplissage, ou avec) ; `None` si un caractère n'en est pas.
+fn base64url(s: &str) -> Option<Vec<u8>> {
+    let s = s.trim_end_matches('=');
+    let valeur = |c: u8| -> Option<u32> {
+        Some(match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'-' | b'+' => 62,
+            b'_' | b'/' => 63,
+            _ => return None,
+        } as u32)
+    };
+    if s.len() % 4 == 1 {
+        return None;
+    }
+    let mut o = Vec::with_capacity(s.len() * 3 / 4);
+    for bloc in s.as_bytes().chunks(4) {
+        let mut n = 0u32;
+        for (i, c) in bloc.iter().enumerate() {
+            n |= valeur(*c)? << (18 - 6 * i);
+        }
+        o.push((n >> 16) as u8);
+        if bloc.len() > 2 {
+            o.push((n >> 8) as u8);
+        }
+        if bloc.len() > 3 {
+            o.push(n as u8);
+        }
+    }
+    Some(o)
+}
+
+/// Lit la réponse de `GetOwnedGames` ; `sans_liste` : le message quand Steam ne donne pas de liste. Un compte SANS
+/// aucun jeu (`game_count` 0) rend une liste vide.
+fn lire_jeux_possedes(v: &Value, sans_liste: &str) -> Resultat<Vec<JeuBoutique>> {
     let Some(jeux) = v["response"]["games"].as_array() else {
-        return Err(Erreur::Refus(
-            "Steam ne montre aucun jeu : dans Steam ▸ Profil ▸ Modifier ▸ Confidentialité, mets « Détails du jeu » sur Public.".into(),
-        ));
+        if v["response"]["game_count"].as_u64() == Some(0) {
+            return Ok(vec![]);
+        }
+        return Err(Erreur::Refus(sans_liste.into()));
     };
     let mut l: Vec<JeuBoutique> = jeux
         .iter()
@@ -1028,6 +1234,27 @@ pub fn adresses_image_steam(appid: &str) -> [String; 2] {
 }
 
 /// La jaquette d'un jeu Steam, gardée en cache sur ce PC (`<cache>\steam\<appid>.jpg`) ; `None` si Steam n'en a pas.
+/// La jaquette Steam d'un appid RÉDUITE à `largeur` (cartes « à installer » de Taodbox, lot C2 : des centaines de
+/// jeux possédés), gardée réduite à côté de l'originale ; jamais agrandie. Une image illisible est montrée telle quelle.
+pub async fn image_steam_reduite(cache: &Path, appid: &str, largeur: u32) -> Option<Vec<u8>> {
+    if appid.is_empty() || !appid.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let f = cache.join("steam").join(format!("{appid}-{largeur}.jpg"));
+    if let Ok(o) = std::fs::read(&f) {
+        return Some(o);
+    }
+    let original = image_steam(cache, appid).await?;
+    let source = original.clone();
+    match tokio::task::spawn_blocking(move || reduire_image(&source, largeur)).await.ok()? {
+        Some(Reduction::Reduite(o)) => {
+            let _ = std::fs::write(&f, &o);
+            Some(o)
+        }
+        _ => Some(original),
+    }
+}
+
 pub async fn image_steam(cache: &Path, appid: &str) -> Option<Vec<u8>> {
     if appid.is_empty() || !appid.chars().all(|c| c.is_ascii_digit()) {
         return None;
@@ -1234,6 +1461,18 @@ mod tests {
         let mut o = std::io::Cursor::new(vec![]);
         img.write_to(&mut o, image::ImageFormat::Png).unwrap();
         o.into_inner()
+    }
+
+    #[tokio::test]
+    async fn la_jaquette_steam_reduite_vient_du_cache_et_reste_reduite() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join("steam")).unwrap();
+        std::fs::write(d.path().join("steam").join("620.jpg"), png(600, 900)).unwrap();
+        let o = image_steam_reduite(d.path(), "620", 400).await.unwrap();
+        let r = image::load_from_memory(&o).unwrap();
+        assert_eq!((r.width(), r.height()), (400, 600));
+        assert_eq!(std::fs::read(d.path().join("steam").join("620-400.jpg")).unwrap(), o, "gardée réduite");
+        assert!(image_steam_reduite(d.path(), "../620", 400).await.is_none());
     }
 
     #[test]
@@ -1649,7 +1888,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let id = "76561197960287930";
         // Rien avant : le compte est créé avec le seul steamid.
-        noter_connexion_steam(d.path(), id, "2026-11-19T12:00:00").unwrap();
+        assert!(!noter_connexion_steam(d.path(), id, "2026-11-19T12:00:00").unwrap(), "première connexion : pas un changement de compte");
         let c = lire(d.path()).unwrap();
         assert_eq!((c.steamid.as_str(), c.compte.as_str(), c.connecte_le.as_str()), (id, id, "2026-11-19T12:00:00"));
         assert!(connecte_par_la_page(&c));
@@ -1661,11 +1900,11 @@ mod tests {
         // Le même compte, déjà importé avec la clé : la liste et le nom donné restent.
         let jeu: JeuBoutique = serde_json::from_value(serde_json::json!({"id": "620", "nom": "Portal 2", "minutes": 0, "derniere": 0})).unwrap();
         ecrire(d.path(), Some(&CompteBoutique { compte: "NimaiTakahashi".into(), steamid: id.into(), maj_le: "x".into(), jeux: vec![jeu.clone()], ..Default::default() })).unwrap();
-        noter_connexion_steam(d.path(), id, "t2").unwrap();
+        assert!(!noter_connexion_steam(d.path(), id, "t2").unwrap(), "le même compte");
         let c = lire(d.path()).unwrap();
         assert_eq!((c.compte.as_str(), c.jeux.len(), c.connecte_le.as_str()), ("NimaiTakahashi", 1, "t2"));
         // Un AUTRE compte : l'ancienne liste ne vaut plus.
-        noter_connexion_steam(d.path(), "76561198000000000", "t3").unwrap();
+        assert!(noter_connexion_steam(d.path(), "76561198000000000", "t3").unwrap(), "un autre compte : changement");
         let c = lire(d.path()).unwrap();
         assert_eq!((c.steamid.as_str(), c.compte.as_str(), c.jeux.len()), ("76561198000000000", "76561198000000000", 0));
         // Un steamid invalide n'écrit rien.
@@ -1677,5 +1916,216 @@ mod tests {
         // Un ancien fichier (sans `connecte_le`) se lit toujours.
         std::fs::write(d.path().join("boutiques.json"), r#"{"steam":{"compte":"a","steamid":"1","maj_le":"","jeux":[]}}"#).unwrap();
         assert_eq!(lire(d.path()).unwrap().connecte_le, "");
+    }
+
+    /// Encode en base64url sans remplissage (pour fabriquer des JWT de test).
+    fn en_base64url(o: &[u8]) -> String {
+        const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        let mut s = String::new();
+        for b in o.chunks(3) {
+            let n = (b[0] as u32) << 16 | (*b.get(1).unwrap_or(&0) as u32) << 8 | *b.get(2).unwrap_or(&0) as u32;
+            for i in 0..=b.len() {
+                s.push(A[((n >> (18 - 6 * i)) & 63) as usize] as char);
+            }
+        }
+        s
+    }
+
+    fn jwt(charge: Value) -> String {
+        format!("{}.{}.{}", en_base64url(br#"{"typ":"JWT","alg":"EdDSA"}"#), en_base64url(charge.to_string().as_bytes()), en_base64url(b"signature"))
+    }
+
+    #[test]
+    fn le_base64url_se_decode_avec_ou_sans_remplissage() {
+        for t in [&b""[..], b"f", b"fo", b"foo", b"foob", b"fooba", b"foobar", &[0xfb, 0xff, 0xfe]] {
+            assert_eq!(base64url(&en_base64url(t)).as_deref(), Some(t));
+        }
+        assert_eq!(base64url("Zm9vYg==").as_deref(), Some(&b"foob"[..]));
+        assert_eq!(base64url("Zm9v!g"), None);
+        assert_eq!(base64url("Z"), None);
+    }
+
+    #[test]
+    fn le_jeton_steam_doit_etre_celui_du_compte_connecte() {
+        let (a, b) = ("76561197960287930", "76561198000000000");
+        let maintenant = 1_800_000_000;
+        // Forme réelle de la charge d'un jeton de la boutique (valeurs inventées).
+        let bon = jwt(json!({"iss": "r:0F1B", "sub": a, "aud": ["web:store"], "exp": maintenant + 3600, "nbf": 1, "iat": 1, "per": 0}));
+        assert!(verifier_jeton_steam(&bon, a, maintenant).is_ok());
+        // Un autre compte : refusé, avec un message clair, jamais le jeton.
+        let e = format!("{:?}", verifier_jeton_steam(&bon, b, maintenant).unwrap_err());
+        assert!(e.contains("n'est pas celui connecté") && !e.contains(&bon), "{e}");
+        // `sub` en nombre : accepté s'il dit le même compte ; absent : refusé.
+        assert!(verifier_jeton_steam(&jwt(json!({"sub": 76561197960287930u64})), a, maintenant).is_ok());
+        assert!(verifier_jeton_steam(&jwt(json!({"aud": ["web:store"]})), a, maintenant).is_err());
+        // Expiré : « reconnecte-toi ».
+        let vieux = jwt(json!({"sub": a, "exp": maintenant - 1}));
+        assert_eq!(verifier_jeton_steam(&vieux, a, maintenant), Err(Erreur::Refus(MOTIF_RECONNECTER.into())));
+        // Steamid rangé douteux, jeton sans la forme d'un JWT, charge illisible : refusés.
+        assert!(verifier_jeton_steam(&bon, "123", maintenant).is_err());
+        assert!(verifier_jeton_steam("pas.un-jwt", a, maintenant).is_err());
+        assert!(verifier_jeton_steam(&format!("aaa.{}.ccc", en_base64url(b"[1,2]")), a, maintenant).is_err());
+        assert!(verifier_jeton_steam("aaa.!!!.ccc", a, maintenant).is_err());
+    }
+
+    #[tokio::test]
+    async fn les_jeux_possedes_se_lisent_avec_le_jeton_sans_jamais_le_montrer() {
+        let (id, jeton) = ("76561197960287930", "aaa.JETON-SECRET.ccc");
+        let m = MockServer::start();
+        let j = m.mock(|w, t| {
+            w.method(GET)
+                .path("/IPlayerService/GetOwnedGames/v1/")
+                .query_param("access_token", jeton)
+                .query_param("steamid", id)
+                .query_param("include_appinfo", "1")
+                .query_param("include_played_free_games", "1");
+            t.status(200).json_body(json!({"response": {"game_count": 2, "games": [
+                {"appid": 620, "name": "Portal 2", "playtime_forever": 300},
+                {"appid": 400, "name": "Portal"}]}}));
+        });
+        let l = jeux_possedes_par_jeton(&m.base_url(), jeton, id).await.unwrap();
+        assert_eq!(l.iter().map(|x| x.id.as_str()).collect::<Vec<_>>(), ["400", "620"]);
+        assert!(l.iter().all(|x| !x.installe));
+        j.assert();
+
+        // Jeton refusé (401, 403) : « reconnecte-toi », sans le jeton.
+        for code in [401, 403] {
+            let m = MockServer::start();
+            m.mock(|w, t| {
+                w.method(GET).path("/IPlayerService/GetOwnedGames/v1/");
+                t.status(code);
+            });
+            let e = jeux_possedes_par_jeton(&m.base_url(), jeton, id).await.unwrap_err();
+            assert_eq!(e, Erreur::Refus(MOTIF_RECONNECTER.into()));
+        }
+        // Pas de liste : un message clair ; un compte sans jeu : une liste vide.
+        let m = MockServer::start();
+        m.mock(|w, t| {
+            w.method(GET).path("/IPlayerService/GetOwnedGames/v1/");
+            t.status(200).json_body(json!({"response": {}}));
+        });
+        let e = format!("{:?}", jeux_possedes_par_jeton(&m.base_url(), jeton, id).await.unwrap_err());
+        assert!(e.contains("pas rendu la liste") && !e.contains("JETON"), "{e}");
+        let m = MockServer::start();
+        m.mock(|w, t| {
+            w.method(GET).path("/IPlayerService/GetOwnedGames/v1/");
+            t.status(200).json_body(json!({"response": {"game_count": 0}}));
+        });
+        assert!(jeux_possedes_par_jeton(&m.base_url(), jeton, id).await.unwrap().is_empty());
+        // Réseau coupé : l'erreur ne contient jamais l'adresse (elle porte le jeton).
+        let e = format!("{:?}", jeux_possedes_par_jeton("http://127.0.0.1:9", jeton, id).await.unwrap_err());
+        assert!(!e.contains("JETON") && !e.contains("access_token"), "{e}");
+    }
+
+    fn cookie(n: &str, v: &str, d: Option<&str>) -> (String, String, Option<String>) {
+        (n.into(), v.into(), d.map(String::from))
+    }
+
+    #[test]
+    fn seuls_les_cookies_de_la_boutique_steam_partent_et_jamais_dans_un_journal() {
+        let l = [
+            cookie("steamLoginSecure", "76561197960287930%7C%7CeyJ.SECRET", Some("store.steampowered.com")),
+            cookie("sessionid", "abc123", Some(".store.steampowered.com")),
+            cookie("steamCountry", "FR%7Cx", Some("steampowered.com")),
+            cookie("steamLoginSecure", "AUTRE", Some("steamcommunity.com")),
+            cookie("browserid", "1", None),
+            cookie("mauvais", "a;b", Some("store.steampowered.com")),
+            cookie("espace", "a b", Some("store.steampowered.com")),
+        ];
+        let c = cookies_de_la_boutique_steam(&l).unwrap();
+        assert_eq!(c.0, "steamLoginSecure=76561197960287930%7C%7CeyJ.SECRET; sessionid=abc123");
+        assert_eq!(format!("{c:?}"), "CookiesSteam(<cachés>)");
+        // Sans cookie de connexion de la boutique : pas connecté.
+        assert!(cookies_de_la_boutique_steam(&l[1..]).is_none());
+        assert!(cookies_de_la_boutique_steam(&[]).is_none());
+        assert!(cookies_de_la_boutique_steam(&[cookie("steamLoginSecure", "", Some("store.steampowered.com"))]).is_none());
+    }
+
+    #[tokio::test]
+    async fn le_jeton_se_demande_avec_les_cookies_et_ne_se_montre_jamais() {
+        let jwt = "eyJhbGciOiJFZERTQSJ9.eyJzdWIiOiI3NjU2MTE5Nzk2MDI4NzkzMCJ9.c2lnbmF0dXJl";
+        let cookies = CookiesSteam("steamLoginSecure=SECRET-COOKIE; sessionid=s".into());
+        let m = MockServer::start();
+        let j = m.mock(|w, t| {
+            w.method(GET).path("/pointssummary/ajaxgetasyncconfig").header("cookie", "steamLoginSecure=SECRET-COOKIE; sessionid=s");
+            t.status(200).json_body(json!({"success": 1, "data": {"webapi_token": jwt}}));
+        });
+        assert_eq!(jeton_par_cookies(&m.base_url(), &cookies).await.unwrap(), jwt);
+        j.assert();
+        // Les réponses qui disent « pas connecté » : reconnecter.
+        let reconnecter = Erreur::Refus(MOTIF_RECONNECTER.into());
+        for (code, corps) in [(200, json!({"success": 1, "data": {}})), (200, json!({"success": 1, "data": {"webapi_token": ""}})), (200, json!({"success": 21})), (401, json!({})), (403, json!({}))] {
+            let m = MockServer::start();
+            m.mock(|w, t| {
+                w.method(GET).path("/pointssummary/ajaxgetasyncconfig");
+                t.status(code).json_body(corps.clone());
+            });
+            assert_eq!(jeton_par_cookies(&m.base_url(), &cookies).await.unwrap_err(), reconnecter, "{code} {corps}");
+        }
+        // Une redirection (vers la connexion) n'est JAMAIS suivie : les cookies ne partent pas ailleurs.
+        let m = MockServer::start();
+        let ailleurs = m.mock(|w, t| {
+            w.method(GET).path("/login");
+            t.status(200).json_body(json!({"success": 1, "data": {"webapi_token": jwt}}));
+        });
+        m.mock(|w, t| {
+            w.method(GET).path("/pointssummary/ajaxgetasyncconfig");
+            t.status(302).header("Location", "/login");
+        });
+        assert_eq!(jeton_par_cookies(&m.base_url(), &cookies).await.unwrap_err(), reconnecter);
+        ailleurs.assert_hits(0);
+        // Page changée : illisible, sans cookie ni jeton dans le message.
+        for corps in ["<html>page</html>", r#"{"success":1,"data":{"webapi_token":"pas un jwt"}}"#, "[1,2]"] {
+            let m = MockServer::start();
+            m.mock(|w, t| {
+                w.method(GET).path("/pointssummary/ajaxgetasyncconfig");
+                t.status(200).body(corps);
+            });
+            let e = format!("{:?}", jeton_par_cookies(&m.base_url(), &cookies).await.unwrap_err());
+            assert!(e.contains("Steam a changé sa page") && !e.contains("SECRET"), "{e}");
+        }
+        // Réseau coupé : ni l'adresse, ni les cookies.
+        let e = format!("{:?}", jeton_par_cookies("http://127.0.0.1:9", &cookies).await.unwrap_err());
+        assert!(!e.contains("SECRET") && !e.contains("ajaxgetasyncconfig"), "{e}");
+    }
+
+    #[test]
+    fn oublier_garde_le_compte_d_avant_pour_voir_un_changement_de_compte() {
+        let d = tempfile::tempdir().unwrap();
+        let (a, b) = ("76561197960287930", "76561198000000000");
+        noter_connexion_steam(d.path(), a, "t1").unwrap();
+        // « Oublier » : seul le compte d'avant reste, sans clé, connexion ni liste.
+        modifier_source(d.path(), "steam", |c| Ok(compte_oublie(c))).unwrap();
+        let c = lire(d.path()).unwrap();
+        assert_eq!(c, CompteBoutique { steamid_precedent: a.into(), ..Default::default() });
+        assert!(!connecte_par_la_page(&c));
+        // Oublier deux fois de suite garde le même compte d'avant ; rien à oublier : rien d'écrit.
+        modifier_source(d.path(), "steam", |c| Ok(compte_oublie(c))).unwrap();
+        assert_eq!(lire(d.path()).unwrap().steamid_precedent, a);
+        assert_eq!(compte_oublie(None), None);
+        assert_eq!(compte_oublie(Some(CompteBoutique::default())), None);
+        // Le même compte se reconnecte : pas un changement.
+        assert!(!noter_connexion_steam(d.path(), a, "t2").unwrap());
+        let c = lire(d.path()).unwrap();
+        assert!(c.steamid_precedent.is_empty() && !c.menage_ancien_compte);
+        // Oublier puis un AUTRE compte : changement, ménage noté en attente.
+        modifier_source(d.path(), "steam", |c| Ok(compte_oublie(c))).unwrap();
+        assert!(noter_connexion_steam(d.path(), b, "t3").unwrap());
+        let c = lire(d.path()).unwrap();
+        assert_eq!((c.steamid.as_str(), c.steamid_precedent.as_str(), c.menage_ancien_compte), (b, "", true));
+    }
+
+    #[tokio::test]
+    async fn trop_de_demandes_une_seule_nouvelle_tentative() {
+        let (id, jeton) = ("76561197960287930", "aaa.bbb.ccc");
+        // Toujours 429 : deux appels en tout, puis « attendre ».
+        let m = MockServer::start();
+        let toujours = m.mock(|w, t| {
+            w.method(GET).path("/IPlayerService/GetOwnedGames/v1/");
+            t.status(429);
+        });
+        let e = jeux_possedes_par_jeton_apres(&m.base_url(), jeton, id, std::time::Duration::from_millis(10)).await.unwrap_err();
+        assert_eq!(e, Erreur::Refus(MOTIF_ATTENDRE.into()));
+        toujours.assert_hits(2);
     }
 }

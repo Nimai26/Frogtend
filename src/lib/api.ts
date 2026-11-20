@@ -594,6 +594,16 @@ export interface EtatSteam {
   cle_autre_compte: boolean;
 }
 
+/** Ce qu'un import Steam par la connexion a donné (lot C2) ; le jeton d'accès ne quitte jamais le cœur. */
+export interface ImportSteam {
+  /** La connexion à Steam ne vaut plus : « reconnecte-toi » (les jeux déjà importés restent). */
+  reconnecter: boolean;
+  total: number;
+  /** Les cartes nouvelles dans la ludothèque, et combien sont installées. */
+  nouveaux: number;
+  nouveaux_installes: number;
+}
+
 /** Une boutique telle que ce PC la voit (import automatique, lot A). */
 export interface EtatBoutiquePc {
   boutique: string;
@@ -1019,6 +1029,8 @@ export const api = {
   steamConnexion: () => appeler<void>('boutique_steam_connexion'),
   steamJeux: () => appeler<JeuBoutique[]>('boutique_steam_jeux'),
   steamImporter: () => appeler<JeuBoutique[]>('boutique_steam_importer'),
+  /** Lot C2 : les jeux possédés du compte connecté par la page, sans clé d'API. */
+  steamImporterConnecte: () => appeler<ImportSteam>('boutique_steam_importer_connecte'),
   steamOuvrir: (appid: string, action: 'jouer' | 'installer' | 'verifier') => appeler<void>('boutique_steam_ouvrir', { appid, action }),
   /** Import automatique (lot A) : relit les jeux installés de toutes les boutiques de ce PC et les range. */
   /** `possedes` : le profil a accepté ses jeux possédés (lot B) ; sinon seuls les jeux installés sont rangés. */

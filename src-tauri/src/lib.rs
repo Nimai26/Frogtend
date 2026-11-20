@@ -698,6 +698,7 @@ pub fn run() {
             commandes::boutique_steam_oublier,
             commandes::boutique_steam_jeux,
             commandes::boutique_steam_importer,
+            commandes::boutique_steam_importer_connecte,
             commandes::boutique_steam_ouvrir,
             commandes::boutiques_relire_pc,
             commandes::boutiques_retirer_possedes,

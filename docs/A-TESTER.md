@@ -6,6 +6,16 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🎮 Tous les jeux Steam possédés (0.215.0, lot C2)
+- [ ] Au premier lancement après la mise à jour (déjà connecté à Steam) : en quelques secondes, un message « 🎮 N jeux de
+      ton compte Steam ajoutés à ta ludothèque » ; la grille montre des jeux Steam « pas installés ». Si « 🔑 Connexion
+      expirée » apparaît alors que tu es connecté : le journal (« import Steam ») et une capture.
+- [ ] 🛒 Boutiques ▸ « 🔄 Mettre à jour mes jeux Steam » : « Rien de nouveau » (ou les nouveaux).
+- [ ] Un jeu Steam pas installé ▸ « ⬇ Installer » : Steam ouvre sa fenêtre d'installation (rien n'est installé sans toi).
+- [ ] Taodbox : les jeux Steam pas installés sont « à installer », sans doublon avec les installés ; les jaquettes
+      s'affichent.
+- [ ] Fermer et rouvrir Frogtend : pas de nouveau message (rien de nouveau), les jeux sont toujours là.
+
 ## 🎁 Epic reconnu connecté sans se reconnecter (0.214.1)
 - [x] La vérification dit le VRAI état : le 20/11, « pas connecté » était juste (session Epic expirée, Epic demandait
       un clic sur « Ravis de vous retrouver ») ; reconnecté par « 🔑 Se connecter à Epic » : « ✅ Connecté à Epic ».

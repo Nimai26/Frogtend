@@ -6,7 +6,7 @@
   import { galaxy, importerGalaxy, lireGalaxy, nomPlateforme, ouvrirDansGalaxy } from '$lib/boutiques/galaxy.svelte';
   import { connexion, connexionEpic, verifierEpic, connexionPlaystation, gratuits, lireGratuits, obtenir, obtenirTout, recolterPsPlus, recuperer } from '$lib/boutiques/gratuits.svelte';
   import { etat, reglerProfil } from '$lib/etat.svelte';
-  import { connecteASteam, connexionSteam, importerSteam, libelleCompteSecours, lireSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
+  import { connecteASteam, connexionSteam, connexionSteamExpiree, importerSteam, importSteamEnCours, libelleCompteSecours, lireSteam, mettreAJourSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
   import { boutiquesPc, lireEtatsPc, relireMaintenant } from '$lib/boutiques/boutiques-pc.svelte';
   import { ligneEtat } from '$lib/boutiques/jeu-boutique';
 
@@ -31,6 +31,9 @@
         j.nom.toLowerCase().includes(filtre.trim().toLowerCase()),
     ),
   );
+
+  // La dernière erreur d'import Steam, seulement celle du profil ouvert.
+  const erreurSteam = $derived(steam.erreurProfil === (etat.profilOuvert?.id ?? null) ? steam.erreur : null);
 
   const affiches = $derived(
     steam.jeux.filter((j) => (!seulementInstalles || j.installe) && j.nom.toLowerCase().includes(filtre.trim().toLowerCase())),
@@ -156,25 +159,42 @@
       <h3>🎮 Mon compte Steam</h3>
       <span class="muted">sur sa page officielle ; ton mot de passe reste chez Steam</span>
       <span class="espace"></span>
-      {#if connecteASteam(steam.etat)}
+      {#if connecteASteam(steam.etat) && connexionSteamExpiree()}
+        <!-- Lot C2 : la connexion du navigateur du profil a expiré ; les jeux déjà importés restent. -->
+        <span class="tag warn">🔑 Connexion expirée</span>
+        <button class="btn primary" onclick={connexionSteam} disabled={steam.connexionEnCours}>{steam.connexionEnCours ? 'Ouverture…' : '🔑 Me reconnecter à Steam'}</button>
+      {:else if connecteASteam(steam.etat)}
         <span class="tag ok">✅ Connecté à Steam</span>
+        <!-- Lot C2 : les jeux possédés du compte, sans clé d'API (aussi relus à chaque ouverture de Frogtend). Le bouton
+             garde le focus pendant la lecture (aria-disabled, et le gardien ignore le clic). -->
+        <button class="btn primary" aria-disabled={importSteamEnCours()} onclick={() => !importSteamEnCours() && mettreAJourSteam('main')}>
+          {importSteamEnCours() ? 'Lecture…' : '🔄 Mettre à jour mes jeux Steam'}
+        </button>
         <button class="btn petit" onclick={connexionSteam} disabled={steam.connexionEnCours}>Changer de compte / se reconnecter</button>
       {:else}
         <button class="btn" onclick={connexionSteam} disabled={steam.connexionEnCours}>{steam.connexionEnCours ? 'Ouverture…' : '🔑 Se connecter à Steam'}</button>
       {/if}
     </div>
+    {#if connecteASteam(steam.etat)}
+      <!-- La dernière erreur d'import reste affichée ici (une erreur au démarrage ne fait pas de message). -->
+      <p class="muted ligne-steam" class:alerte={!!erreurSteam} role="status">
+        {erreurSteam ??
+          (steam.etat?.nb_jeux ? `${steam.etat.nb_jeux} jeu(x) de ton compte Steam dans ta ludothèque, relus à chaque ouverture de Frogtend.` : 'Tes jeux Steam sont relus à chaque ouverture de Frogtend.')}
+      </p>
+    {/if}
   </section>
 
   <details class="cx-block secours">
     <summary>🛟 Secours : ma clé Steam et GOG Galaxy</summary>
-    <p class="muted">Tes jeux installés entrent déjà seuls. Ces deux voies restent là pour voir aussi les jeux que tu possèdes sans les avoir installés.</p>
+    <p class="muted">Si la connexion à Steam ne marche pas, ta clé d’API Steam reste possible (⚙ Options ▸ Comptes ▸ Steam) ; GOG Galaxy montre aussi les jeux de tes comptes qu’il relie. Tes jeux installés, eux, entrent toujours seuls.</p>
     <section class="cx-block">
       <div class="tete">
         <h2>Steam</h2>
         <span class="muted">{libelleCompteSecours(steam.etat)}</span>
         <span class="espace"></span>
-        <button class="btn primary" onclick={importerSteam} disabled={steam.enCours}>
-          {steam.enCours ? 'Import…' : steam.jeux.length ? '🔄 Mettre à jour' : '⬇ Importer mes jeux Steam'}
+        <!-- Connecté par la page : le même import sans clé (jamais la clé demandée à un novice connecté). -->
+        <button class="btn primary" onclick={importerSteam} disabled={importSteamEnCours()}>
+          {importSteamEnCours() ? 'Import…' : steam.jeux.length ? '🔄 Mettre à jour' : '⬇ Importer mes jeux Steam'}
         </button>
       </div>
 
@@ -200,7 +220,7 @@
             </button>
           {/each}
         </div>
-      {:else if !steam.enCours}
+      {:else if !importSteamEnCours()}
         <p class="muted">Aucun jeu Steam importé pour l’instant.</p>
       {/if}
     </section>
@@ -250,6 +270,12 @@
   }
   .etats .absent {
     color: var(--dim);
+  }
+  .ligne-steam {
+    margin: 0;
+  }
+  .ligne-steam.alerte {
+    color: var(--warn-texte);
   }
   .secours > summary {
     cursor: pointer;

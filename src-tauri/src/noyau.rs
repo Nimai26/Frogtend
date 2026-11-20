@@ -1285,6 +1285,13 @@ impl Noyau {
         Ok(n)
     }
 
+    /// Changement de compte Steam sur un profil (décision de Seb du 20/11) : les cartes Steam de l'ancien compte jamais
+    /// installées ni jouées quittent la ludothèque ; celles installées, jouées, au registre du PC ou réunies à une
+    /// autre copie restent (mêmes règles que `retirer_possedes`). Rend leur nombre.
+    pub fn retirer_ancien_compte_steam(&self, s: &Session) -> Resultat<usize> {
+        self.retirer_possedes(s, &["steam"])
+    }
+
     fn ranger_installes_avec(&self, s: &Session, source: &str, installes: &[crate::boutiques::JeuBoutique], reunir: bool) -> Resultat<Vec<i64>> {
         let mut c = s.verrou_vivant()?;
         let avant = c.jeux_de_source(source)?;
@@ -1431,7 +1438,11 @@ impl Noyau {
                     Some(l) => crate::boutiques::image_reduite(&cache, url, l.clamp(100, 1000).div_ceil(100) * 100).await,
                     None => crate::boutiques::image_par_adresse(&cache, url).await,
                 },
-                (None, Some("steam"), Some(cle)) => crate::boutiques::image_steam(&cache, cle.trim_start_matches("steam_")).await,
+                // Steam : réduite aussi quand une largeur est demandée (cartes « à installer » de Taodbox, lot C2).
+                (None, Some("steam"), Some(cle)) => match largeur {
+                    Some(l) => crate::boutiques::image_steam_reduite(&cache, cle.trim_start_matches("steam_"), l.clamp(100, 1000).div_ceil(100) * 100).await,
+                    None => crate::boutiques::image_steam(&cache, cle.trim_start_matches("steam_")).await,
+                },
                 _ => None,
             };
             drop(s);
@@ -2002,6 +2013,96 @@ mod tests {
             releases: vec![],
             titre_douteux: false,
         }
+    }
+
+    /// ✅ Seb 20/11 : un changement de compte Steam retire les cartes de l'ancien compte jamais installées ni jouées ;
+    /// les installées, jouées ou réunies restent, et aucune carte d'une autre source n'est touchée.
+    #[tokio::test]
+    async fn un_changement_de_compte_steam_ne_retire_que_les_jeux_jamais_installes_ni_joues() {
+        let (_d, n) = noyau();
+        let id = n.creer_profil("Seb", Some("1234"), None).unwrap().id;
+        n.ouvrir(&id, Some("1234"), &SIMULE).await.unwrap();
+        let s = n.session().await.unwrap();
+        let steam = |appid: &str, nom: &str| crate::boutiques::JeuBoutique { id: appid.into(), plateforme: String::new(), ..possede_epic("x", nom) };
+        let mut installe = steam("620", "Portal 2");
+        installe.installe = true;
+        let mut joue = steam("400", "Portal");
+        joue.minutes = 12;
+        n.ranger_installes(&s, "steam", &[installe, joue, steam("70", "Half-Life"), steam("220", "Half-Life 2"), steam("10", "Counter-Strike")]).unwrap();
+        // Un jeu Epic possédé, jamais joué : d'une autre source, jamais touché.
+        n.ranger_installes(&s, "epic", &[possede_epic("B3", "Borderlands 3")]).unwrap();
+        // GOG Galaxy relie SA copie à Half-Life 2 : réunie, elle reste.
+        s.verrou()
+            .remplacer_boutique(
+                "galaxy",
+                &[JeuResume {
+                    id: crate::ludotheque::id_boutique("gog", "2"),
+                    titre: "Half-Life 2".into(),
+                    source: Some("galaxy".into()),
+                    boutique: Some("gog".into()),
+                    cle_boutique: Some("gog_2".into()),
+                    installe: Some(false),
+                    releases: Some(vec!["gog_2".into(), "steam_220".into()]),
+                    ..Default::default()
+                }],
+            )
+            .unwrap();
+        assert_eq!(n.retirer_ancien_compte_steam(&s).unwrap(), 2, "Half-Life et Counter-Strike");
+        let la = |b: &str, c: &str| s.verrou().contient(crate::ludotheque::id_boutique(b, c)).unwrap();
+        assert!(la("steam", "620") && la("steam", "400") && la("steam", "220"), "l'installé, le joué et le réuni restent");
+        assert!(!la("steam", "70") && !la("steam", "10"));
+        assert!(la("epic", "B3") && la("gog", "2"), "les autres sources ne bougent pas");
+    }
+
+    /// Le ménage d'un changement de compte Steam, quand un AUTRE profil est ouvert entre-temps : rien chez personne, il
+    /// reste en attente et se fait à la prochaine ouverture du bon profil.
+    #[tokio::test]
+    async fn le_menage_d_un_changement_de_compte_attend_le_bon_profil() {
+        let (d, n) = noyau();
+        let seb = n.creer_profil("Seb", Some("1234"), None).unwrap().id;
+        let lea = n.creer_profil("Léa", Some("5678"), None).unwrap().id;
+        let steam = |appid: &str, nom: &str| crate::boutiques::JeuBoutique { id: appid.into(), plateforme: String::new(), ..possede_epic("x", nom) };
+        let dossier = d.path().join("profils").join(&seb);
+        n.ouvrir(&seb, Some("1234"), &SIMULE).await.unwrap();
+        let s = n.session().await.unwrap();
+        n.ranger_installes(&s, "steam", &[steam("70", "Half-Life")]).unwrap();
+        crate::boutiques::noter_connexion_steam(&dossier, "76561197960287930", "t1").unwrap();
+        // Rien en attente : rien à faire.
+        assert!(crate::commandes::menage_ancien_compte_steam(&n, &seb).await);
+        assert!(crate::boutiques::noter_connexion_steam(&dossier, "76561198000000000", "t2").unwrap());
+        drop(s);
+        // Léa est ouverte : le ménage de Seb attend.
+        n.ouvrir(&lea, Some("5678"), &SIMULE).await.unwrap();
+        assert!(!crate::commandes::menage_ancien_compte_steam(&n, &seb).await);
+        assert!(crate::boutiques::lire(&dossier).unwrap().menage_ancien_compte);
+        // Seb rouvert : fait, puis effacé.
+        n.ouvrir(&seb, Some("1234"), &SIMULE).await.unwrap();
+        let s = n.session().await.unwrap();
+        assert!(s.verrou().contient(crate::ludotheque::id_boutique("steam", "70")).unwrap());
+        assert!(crate::commandes::menage_ancien_compte_steam(&n, &seb).await);
+        assert!(!s.verrou().contient(crate::ludotheque::id_boutique("steam", "70")).unwrap());
+        assert!(!crate::boutiques::lire(&dossier).unwrap().menage_ancien_compte);
+    }
+
+    /// « Oublier ma connexion Steam » oublie le compte et la clé, JAMAIS les cartes de la ludothèque (Seb 20/11).
+    #[tokio::test]
+    async fn oublier_le_compte_steam_garde_toutes_les_cartes() {
+        let (d, n) = noyau();
+        let id = n.creer_profil("Seb", Some("1234"), None).unwrap().id;
+        n.ouvrir(&id, Some("1234"), &SIMULE).await.unwrap();
+        let s = n.session().await.unwrap();
+        let steam = |appid: &str, nom: &str| crate::boutiques::JeuBoutique { id: appid.into(), plateforme: String::new(), ..possede_epic("x", nom) };
+        n.ranger_installes(&s, "steam", &[steam("70", "Half-Life"), steam("620", "Portal 2")]).unwrap();
+        let dossier = d.path().join("profils").join(&id);
+        crate::boutiques::noter_connexion_steam(&dossier, "76561197960287930", "t").unwrap();
+        n.coffre.ranger(&crate::boutiques::nom_secret(&id, "steam"), "0123456789abcdef0123456789abcdef").unwrap();
+        crate::commandes::oublier_compte_steam(&n, &id).unwrap();
+        let c = crate::boutiques::lire(&dossier).unwrap();
+        assert!(c.steamid.is_empty() && c.connecte_le.is_empty() && c.jeux.is_empty(), "le compte est oublié");
+        assert_eq!(c.steamid_precedent, "76561197960287930", "seul le compte d'avant reste");
+        assert_eq!(n.coffre.lire(&crate::boutiques::nom_secret(&id, "steam")).unwrap(), None, "la clé aussi");
+        let la = |c: &str| s.verrou().contient(crate::ludotheque::id_boutique("steam", c)).unwrap();
+        assert!(la("70") && la("620"), "les cartes restent");
     }
 
     /// Relecture : le titre juste d'une carte déjà rangée (manifeste, jeu installé) n'est jamais remplacé par un titre

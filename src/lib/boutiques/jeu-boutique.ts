@@ -80,7 +80,10 @@ export function messageNouveaux(nouveaux: [string, number, number?][]): string |
     return total === 1 ? `🎮 1 nouveau jeu trouvé sur ce PC (${detail})` : `🎮 ${total} nouveaux jeux trouvés sur ce PC (${detail})`;
   }
   const comptes = enumerer(l.filter((x) => x.i < x.n).map((x) => nomCourt(x.b)));
-  const debut = total === 1 ? `🎮 1 jeu de ton compte ${comptes} ajouté à ta ludothèque` : `🎮 ${total} jeux de tes comptes ${comptes} ajoutés à ta ludothèque`;
+  // « de ton compte Steam » quand une seule boutique est concernée, « de tes comptes Epic et Ubisoft » sinon.
+  const nbComptes = l.filter((x) => x.i < x.n).length;
+  const de = nbComptes === 1 ? `de ton compte ${comptes}` : `de tes comptes ${comptes}`;
+  const debut = total === 1 ? `🎮 1 jeu ${de} ajouté à ta ludothèque` : `🎮 ${total} jeux ${de} ajoutés à ta ludothèque`;
   if (installes === 0) return `${debut}. ${total === 1 ? 'Il s’installe' : 'Ils s’installent'} avec ⬇ Installer.`;
   return `${debut} (${installes} déjà installé${installes > 1 ? 's' : ''}). Les autres s’installent avec ⬇ Installer.`;
 }
@@ -140,9 +143,10 @@ export function boutiqueSansInstallation(j: { id: number; installation?: unknown
 }
 
 /** La jaquette d'une carte « à installer » de Taodbox : RÉDUITE par le cœur à 400 px (et gardée réduite), jamais
- * l'image d'origine de la boutique (500 boîtes Epic de 1 200 × 1 600) ; `null` sans image. */
-export function imageCarteAInstaller(c: { id: number; image: string | null }): string | null {
-  return c.image ? adresseJaquette(c.id, 400) : null;
+ * l'image d'origine de la boutique (500 boîtes Epic de 1 200 × 1 600) ; `null` sans image. Steam (lot C2) : sa carte n'a
+ * pas d'adresse d'image, le cœur réduit la jaquette de son appid de la même façon. */
+export function imageCarteAInstaller(c: { id: number; image: string | null; boutique?: string }): string | null {
+  return c.image || c.boutique === 'steam' ? adresseJaquette(c.id, 400) : null;
 }
 
 /** Le message quand Taodbox ouvre l'installation d'un jeu par sa boutique (lot B, ✅ Seb 18/11). */

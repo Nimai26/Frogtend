@@ -1,5 +1,19 @@
 # Notes de version de Frogtend
 
+## 0.215.0 — 🎮 Tous tes jeux Steam dans ta ludothèque (lot C2)
+
+- Nouveau : une fois connecté à Steam, TOUS les jeux de ton compte entrent dans ta ludothèque, même ceux qui ne sont
+  pas installés (« ⬇ Installer » ouvre Steam). Sans clé d'API, et même si ton profil Steam est privé.
+- Quand : juste après la connexion, à chaque ouverture de Frogtend (discrètement : un message seulement s'il y a de
+  nouveaux jeux), et à la main avec « 🔄 Mettre à jour mes jeux Steam » dans 🛒 Boutiques.
+- Taodbox : tes jeux Steam pas installés y apparaissent « à installer ».
+- Si ta connexion à Steam expire, Frogtend le dit (« 🔑 Connexion expirée », bouton « Me reconnecter à Steam ») ; tes
+  jeux déjà importés restent.
+- « Oublier ma connexion Steam » ne retire plus aucun jeu de ta ludothèque. Si un profil se connecte à un AUTRE compte
+  Steam, les jeux de l'ancien compte jamais installés ni joués s'en vont ; les autres restent (ta décision).
+- Sécurité : le jeton de Steam n'est jamais gardé (relu à chaque fois par Frogtend lui-même, jamais écrit ni noté), et il
+  doit appartenir au compte connecté.
+
 ## 0.214.6 — 🎁 La fenêtre du droit de rétractation d'Epic
 
 - Corrigé : après « Add to library », Epic ouvre une fenêtre « droit de rétractation » (« I Accept » / « J'accepte »).
