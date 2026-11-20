@@ -158,7 +158,13 @@
   const echec = (etape, detail) => dire('ERREUR:' + etape + ' | ' + (detail ? detail + ' ; ' : '') + resume());
 
   const cadreAchat = () => document.querySelector('#webPurchaseContainer iframe, iframe[src*="/purchase"]');
-  const merci = () => documents().some((d) => /thanks? (you )?for your order/.test(net(d.body && d.body.textContent)));
+  // Le remerciement VISIBLE seulement (`innerText` : le texte affiché ; un modèle caché de la page ne compte pas).
+  const merci = () =>
+    documents().some((d) => /thanks? (you )?for your order|merci pour votre commande/.test(net(d.body && (d.body.innerText ?? d.body.textContent))));
+  // Le bouton de la commande gratuite, en anglais ou en français (Seb, 20/11).
+  const AJOUTER = /(?:^|[^a-z])(add to library|ajouter à la bibliothèque)(?![a-z])/;
+  // Le bouton de la fenêtre du droit de rétractation (comptes européens), en anglais ou en français ; jamais « Annuler ».
+  const ACCORD = /^(i agree|i accept|accept|agree|j['’]accepte|accepter)$/;
   // Le total de la commande (0 attendu) : dans le cadre d'achat, ou la fenêtre qui porte le bouton. `null` : pas trouvé
   // (et alors on ne commande PAS : jamais « pas vu = gratuit »).
   const zoneCommande = (b) => (b.ownerDocument !== document ? b.ownerDocument.body : b.closest('[role="dialog"], form'));
@@ -172,7 +178,8 @@
     // Nouvel achat d'Epic (20/11) : ni « Total » ni moyen de paiement ; le bouton « Add to library » et la phrase
     // d'Epic « This is free » DISENT que c'est gratuit (un achat payant passe par « Place Order »). Le prix d'origine
     // (19,50 € barré, Mark of the Deep) peut rester dans la fenêtre : il ne compte pas.
-    if (/\badd to library\b/.test(texte(b)) && /(?:^|[^a-z])this is free(?![a-z])/.test(t)) return 0;
+    // La même fenêtre en français (Seb, 20/11) : « Ajouter à la bibliothèque », « C'est gratuit. Ajoutez cela… ».
+    if (AJOUTER.test(texte(b)) && /(?:^|[^a-z])(this is free|c['’]est gratuit)(?![a-z])/.test(t)) return 0;
     return null;
   };
   // Les prix vus dans la fenêtre de commande (pour le journal seulement, 6 au plus).
@@ -287,7 +294,7 @@
       if (fini()) return 'fini';
       for (const d of documents()) {
         const b = [...d.querySelectorAll('button')].find(
-          (x) => /\b(place order|add to library)\b/.test(texte(x)) && !x.disabled && !x.querySelector('.payment-loading--loading') && visible(x),
+          (x) => (/\bplace order\b/.test(texte(x)) || AJOUTER.test(texte(x))) && !x.disabled && !x.querySelector('.payment-loading--loading') && visible(x),
         );
         if (b) return b;
       }
@@ -299,12 +306,23 @@
       if (total === null) return echec('total introuvable');
       if (total !== 0) return echec('commande payante refusée', 'montants vus : ' + prixVus(commande));
       cliquer(commande);
-      // Comptes européens : « I Agree » après la commande.
-      attendre(() => cliquables().find((b) => texte(b).includes('i agree') && visible(b)), 10000)
-        .then((b) => b && cliquer(b))
-        .catch(() => {});
-      // 4. La confirmation : le bouton passe à « In Library », ou Epic remercie pour la commande.
-      if (!(await attendre(() => (fini() || merci() ? 'ok' : null), 60000))) return echec('pas de confirmation');
+      // 4. Comptes européens : la fenêtre du droit de rétractation suit la commande (« I Accept », « I Agree », « J'accepte »
+      //    — Seb, 20/11 : sans ce clic la commande n'aboutit pas). Elle est cliquée UNE fois, dès qu'elle paraît ; puis la
+      //    confirmation : le bouton passe à « In Library », ou Epic remercie pour la commande (la page rechargée le
+      //    prouvera ensuite).
+      let accepte = false;
+      const confirme = await attendre(() => {
+        if (!accepte) {
+          const b = cliquables().find((x) => ACCORD.test(texte(x)) && !x.disabled && visible(x));
+          if (b) {
+            accepte = true;
+            cliquer(b);
+            return null;
+          }
+        }
+        return fini() || merci() ? 'ok' : null;
+      }, 60000);
+      if (!confirme) return echec('pas de confirmation', accepte ? 'accord cliqué' : 'aucun accord vu');
     }
     dire('OBTENU');
   };

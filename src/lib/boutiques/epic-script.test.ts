@@ -237,6 +237,45 @@ describe('epic.js', () => {
     expect(document.title.startsWith('FROGTEND:ERREUR:total introuvable')).toBe(true);
   });
 
+  /** Le nouvel achat AVEC la fenêtre du droit de rétractation (Seb 20/11) : la commande n'aboutit qu'après l'accord. */
+  async function achatAvecAccord(bouton: string, phrase: string, accord: string) {
+    await essayer(`${AVATAR}<button id="g">Get</button>`);
+    const get = document.getElementById('g')!;
+    const r = { commandes: 0, annule: 0 };
+    get.addEventListener('click', () => {
+      const conteneur = document.createElement('div');
+      conteneur.id = 'webPurchaseContainer';
+      const cadre = document.createElement('iframe');
+      conteneur.appendChild(cadre);
+      document.body.appendChild(conteneur);
+      const d = cadre.contentDocument!;
+      d.body.innerHTML = `<p>0,00 €</p><h2>${phrase}</h2><button id="c">${bouton}</button>`;
+      d.getElementById('c')!.addEventListener('click', () => {
+        d.body.insertAdjacentHTML('beforeend', `<div role="dialog"><button id="n">Annuler</button><button id="a">${accord}</button></div>`);
+        d.getElementById('n')!.addEventListener('click', () => r.annule++);
+        d.getElementById('a')!.addEventListener('click', () => {
+          r.commandes++;
+          conteneur.remove();
+          get.textContent = 'In Library';
+        });
+      });
+    });
+    await vi.advanceTimersByTimeAsync(6000);
+    return r;
+  }
+
+  it('la fenêtre du droit de rétractation (« I Accept ») est acceptée, jamais annulée', async () => {
+    const r = await achatAvecAccord('Add to library', 'This is free. Add it to your library to get started.', 'I Accept');
+    expect(r).toEqual({ commandes: 1, annule: 0 });
+    expect(document.title).toBe('FROGTEND:OBTENU');
+  });
+
+  it('la commande en français : « Ajouter à la bibliothèque », « C’est gratuit », « J’accepte »', async () => {
+    const r = await achatAvecAccord('Ajouter à la bibliothèque', 'C’est gratuit. Ajoutez cela à votre bibliothèque pour commencer.', 'J’accepte');
+    expect(r).toEqual({ commandes: 1, annule: 0 });
+    expect(document.title).toBe('FROGTEND:OBTENU');
+  });
+
   it('un captcha VRAIMENT affiché (taille réelle) arrête tout : CAPTCHA', async () => {
     const espion = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 400, height: 500 } as DOMRect);
     try {

@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.214.6 — 🎁 La fenêtre du droit de rétractation d'Epic
+
+- Corrigé : après « Add to library », Epic ouvre une fenêtre « droit de rétractation » (« I Accept » / « J'accepte »).
+  Frogtend ne la cliquait pas, et la commande n'aboutissait jamais. Il l'accepte maintenant (jamais « Annuler »).
+- La page de commande d'Epic est aussi reconnue en français (« Ajouter à la bibliothèque », « C'est gratuit… »).
+- Le remerciement d'Epic ne compte que s'il est vraiment affiché, et « à toi » demande toujours la preuve d'Epic.
+
 ## 0.214.5 — 🎁 « À toi » seulement avec la preuve d'Epic
 
 - Corrigé (important) : la 0.214.4 a dit « Mark of the Deep est à toi ! » alors que le jeu n'était PAS dans ta
