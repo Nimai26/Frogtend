@@ -11,8 +11,9 @@
       un clic sur « Ravis de vous retrouver ») ; reconnecté par « 🔑 Se connecter à Epic » : « ✅ Connecté à Epic ».
 - [x] Fermer complètement Frogtend, le rouvrir, 🛒 Boutiques, attendre ~20 s : toujours « ✅ Connecté à Epic »
       (la session d'Epic survit à la fermeture). (validé par Seb le 20/11)
-- [ ] 🎁 Mark of the Deep ▸ « Obtenir » : rien ne s'affiche, puis « 🎁 « Mark of the Deep » est à toi ! » et
-      « ✅ Dans ta bibliothèque » (premier vrai essai d'obtention automatique).
+- [ ] 🎁 Mark of the Deep ▸ « Obtenir » (0.214.5) : soit « à toi ! » ET le jeu est vraiment dans la bibliothèque Epic,
+      soit la page du jeu s'affiche avec un message « pas pu être obtenu tout seul » (JAMAIS « à toi » sans le jeu).
+      0.214.4 : faux « à toi » (corrigé).
 - [ ] (0.214.2, quand la session Epic expirera un jour) : à l'ouverture du profil, le message « Ta connexion à Epic a
       expiré… » s'affiche ; « Se connecter à Epic » puis un clic sur le compte la rétablit.
 

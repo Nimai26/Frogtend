@@ -154,6 +154,22 @@ pub fn script_epic_verification() -> String {
     format!("window.__frogtendMode = 'verification';\n{SCRIPT_EPIC}")
 }
 
+/// Le script du CONTRÔLE après une commande (Seb 20/11) : la page du jeu rechargée dit « DEJA » (In Library) ou une
+/// erreur ; aucun clic.
+pub fn script_epic_controle() -> String {
+    format!("window.__frogtendMode = 'controle';\n{SCRIPT_EPIC}")
+}
+
+/// Le verdict après une commande : « obtenu » SEULEMENT si la page rechargée montre le jeu dans la bibliothèque ;
+/// sinon l'erreur dite par la page, ou « pas de preuve » (jamais « pas vu = obtenu »).
+pub fn apres_controle(preuve: Option<Obtention>) -> Obtention {
+    match preuve {
+        Some(Obtention::Deja) => Obtention::Obtenu,
+        Some(Obtention::Erreur(m)) => Obtention::Erreur(m),
+        _ => Obtention::Erreur("pas de preuve d'Epic que le jeu est dans ta bibliothèque".into()),
+    }
+}
+
 /// Ce qu'une vérification a appris du compte Epic : vrai = connecté, faux = pas connecté, None = pas sûr.
 pub fn compte_epic_vu(o: &Obtention) -> Option<bool> {
     match o {
@@ -329,15 +345,32 @@ pub struct Obtenus {
     pub jeux: Vec<(String, String, String)>, // (boutique, slug, date)
     #[serde(default)]
     pub derniere_verification: String,
+    /// 2 depuis la 0.214.5 : les « obtenus » Epic sont prouvés par la page du jeu rechargée.
+    #[serde(default)]
+    pub version: u32,
+}
+
+/// La publication de la 0.214.4 (horodatage du commit) : ses « obtenus » Epic venaient d'une confirmation FAUSSE (Mark
+/// of the Deep, 20/11 : « à toi » alors qu'Epic proposait encore « Obtenir »).
+const PUBLICATION_0_214_4: u64 = 1_795_188_192;
+
+/// Retire les « obtenus » Epic sans preuve (notés depuis la 0.214.4, avant la version 2 du fichier) : le jeu redevient
+/// « à obtenir », et un nouvel essai le prouve. Rien d'autre n'est touché.
+pub fn sans_obtenus_douteux(mut o: Obtenus) -> Obtenus {
+    if o.version < 2 {
+        o.jeux.retain(|(b, _, date)| b != "epic" || date.parse::<u64>().map_or(true, |d| d < PUBLICATION_0_214_4));
+    }
+    o
 }
 
 pub fn lire_obtenus(dossier_profil: &Path) -> Obtenus {
-    std::fs::read(dossier_profil.join("gratuits.json")).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default()
+    sans_obtenus_douteux(std::fs::read(dossier_profil.join("gratuits.json")).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default())
 }
 
 pub fn ecrire_obtenus(dossier_profil: &Path, o: &Obtenus) -> Resultat<()> {
     std::fs::create_dir_all(dossier_profil)?;
-    std::fs::write(dossier_profil.join("gratuits.json"), serde_json::to_vec_pretty(o).unwrap_or_default())?;
+    let o = Obtenus { version: 2, ..o.clone() };
+    std::fs::write(dossier_profil.join("gratuits.json"), serde_json::to_vec_pretty(&o).unwrap_or_default())?;
     Ok(())
 }
 
@@ -488,6 +521,35 @@ mod tests {
         assert_eq!(l[0].image.as_deref(), Some("b"));
         assert_eq!(l[0].namespace, "02d659f31e1c43a78c43fd9fd9edc089", "l'espace de noms, pour reconnaître un jeu déjà possédé");
         assert!(lire_offerts_epic(&v, "2026-10-09T00:00:00.000Z").is_empty(), "offre terminée");
+    }
+
+    #[test]
+    fn obtenu_seulement_avec_la_preuve_d_epic() {
+        assert_eq!(apres_controle(Some(Obtention::Deja)), Obtention::Obtenu);
+        assert!(matches!(apres_controle(None), Obtention::Erreur(_)));
+        assert!(matches!(apres_controle(Some(Obtention::Obtenu)), Obtention::Erreur(_)), "un nouvel OBTENU n'est pas une preuve");
+        assert_eq!(apres_controle(Some(Obtention::Erreur("x".into()))), Obtention::Erreur("x".into()));
+        assert!(script_epic_controle().starts_with("window.__frogtendMode = 'controle';"));
+    }
+
+    #[test]
+    fn les_obtenus_epic_de_la_0_214_4_sont_retires() {
+        let o = Obtenus {
+            jeux: vec![
+                ("epic".into(), "mark-of-the-deep-f7dc08".into(), "1795188632".into()),
+                ("epic".into(), "ancien".into(), "1795000000".into()),
+                ("gog".into(), "recent".into(), "1795188632".into()),
+            ],
+            ..Default::default()
+        };
+        let l = sans_obtenus_douteux(o.clone());
+        assert_eq!(l.jeux.iter().map(|j| j.1.as_str()).collect::<Vec<_>>(), vec!["ancien", "recent"]);
+        // Version 2 (écrite depuis la 0.214.5) : rien n'est retiré.
+        assert_eq!(sans_obtenus_douteux(Obtenus { version: 2, ..o.clone() }).jeux.len(), 3);
+        let d = std::env::temp_dir().join(format!("frogtend-obtenus-{}", std::process::id()));
+        ecrire_obtenus(&d, &l).unwrap();
+        assert_eq!(lire_obtenus(&d).version, 2);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

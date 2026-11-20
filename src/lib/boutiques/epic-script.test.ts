@@ -9,12 +9,13 @@ const dom = (globalThis as unknown as { jsdom: { reconfigure(o: { url: string })
 const fenetre = window as unknown as Record<string, unknown>;
 
 /** Monte une page de la boutique, lance le script, et laisse passer `ms` millisecondes. */
-async function essayer(html: string, ms = 0, options: { connexion?: boolean; verification?: boolean; url?: string } = {}) {
+async function essayer(html: string, ms = 0, options: { connexion?: boolean; verification?: boolean; controle?: boolean; url?: string } = {}) {
   dom.reconfigure({ url: options.url ?? 'https://store.epicgames.com/en-US/p/knightica-3be45c' });
   document.title = 'Knightica';
   document.body.innerHTML = html;
   delete fenetre.__frogtend;
-  if (options.verification) fenetre.__frogtendMode = 'verification';
+  if (options.controle) fenetre.__frogtendMode = 'controle';
+  else if (options.verification) fenetre.__frogtendMode = 'verification';
   else if (options.connexion) fenetre.__frogtendMode = 'connexion';
   else delete fenetre.__frogtendMode;
   new Function(SCRIPT)();
@@ -79,6 +80,32 @@ describe('epic.js en mode vérification (page cachée de 🛒 Boutiques, 20/11)'
   it('un captcha : ne dit rien (ni CAPTCHA ni ERREUR)', async () => {
     const titre = await essayer('<iframe title="hCaptcha"></iframe>', 1000, ACCUEIL);
     expect(titre).toBe('Knightica');
+  });
+});
+
+describe('epic.js en mode contrôle (page du jeu rechargée après la commande, Seb 20/11)', () => {
+  it('« In Library » : DEJA (la preuve), sans rien cliquer', async () => {
+    expect(await essayer(`${AVATAR}<button>In Library</button>`, 1000, { controle: true })).toBe('FROGTEND:DEJA');
+  });
+
+  it('« Get » toujours là : ERREUR, jamais OBTENU, et « Get » n’est pas cliqué', async () => {
+    await essayer(`${AVATAR}<button id="g">Get</button>`, 0, { controle: true });
+    const get = compterClics('#g');
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(document.title.startsWith("FROGTEND:ERREUR:pas dans ta bibliothèque d'après Epic")).toBe(true);
+    expect(get.n).toBe(0);
+  });
+
+  it('« Get » d’abord puis « In Library » (page qui se met à jour) : DEJA', async () => {
+    await essayer(`${AVATAR}<button id="g">Get</button>`, 1000, { controle: true });
+    document.getElementById('g')!.textContent = 'In Library';
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(document.title).toBe('FROGTEND:DEJA');
+  });
+
+  it('rien de clair en 30 s : ERREUR', async () => {
+    const titre = await essayer(`${AVATAR}<main>chargement</main>`, 31000, { controle: true });
+    expect(titre.startsWith("FROGTEND:ERREUR:pas dans ta bibliothèque d'après Epic")).toBe(true);
   });
 });
 

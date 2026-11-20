@@ -6366,16 +6366,26 @@ pub async fn gratuits_obtenir_epic(app: AppHandle, noyau: State<'_, Noyau>, slug
         std::thread::sleep(std::time::Duration::from_millis(300));
     }
     let url = tauri::Url::parse(&format!("https://store.epicgames.com/en-US/p/{slug}")).map_err(|_| Erreur::Refus("Adresse Epic invalide.".into()))?;
-    let w = tauri::WebviewWindowBuilder::new(&app, FENETRE_EPIC, tauri::WebviewUrl::External(url))
+    // Après une commande, la page du jeu est RECHARGÉE en mode contrôle : seule « In Library » vaut « obtenu » (Seb 20/11 :
+    // « à toi » affiché alors qu'Epic proposait encore « Obtenir »).
+    let controle = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let w = tauri::WebviewWindowBuilder::new(&app, FENETRE_EPIC, tauri::WebviewUrl::External(url.clone()))
         .title("Epic Games — Frogtend")
         .inner_size(1100.0, 800.0)
         .center()
         .visible(false)
         .data_directory(crate::gratuits::dossier_navigateur(&dossier))
         .on_new_window(crate::gratuits::fenetre_d_automatisation)
-        .on_page_load(|w, charge| {
-            if matches!(charge.event(), tauri::webview::PageLoadEvent::Finished) {
-                let _ = w.eval(crate::gratuits::SCRIPT_EPIC);
+        .on_page_load({
+            let controle = controle.clone();
+            move |w, charge| {
+                if matches!(charge.event(), tauri::webview::PageLoadEvent::Finished) {
+                    if controle.load(std::sync::atomic::Ordering::SeqCst) {
+                        let _ = w.eval(crate::gratuits::script_epic_controle());
+                    } else {
+                        let _ = w.eval(crate::gratuits::SCRIPT_EPIC);
+                    }
+                }
             }
         })
         .on_document_title_changed(move |_, titre| {
@@ -6385,10 +6395,27 @@ pub async fn gratuits_obtenir_epic(app: AppHandle, noyau: State<'_, Noyau>, slug
         })
         .build()
         .map_err(|e| Erreur::Disque(format!("La fenêtre d'Epic ne s'ouvre pas ({e}).")))?;
-    let r = tauri::async_runtime::spawn_blocking(move || reception.recv_timeout(std::time::Duration::from_secs(150)))
-        .await
-        .map_err(|_| Erreur::Disque("L'attente s'est arrêtée brutalement.".into()))?
-        .unwrap_or(crate::gratuits::Obtention::Erreur("aucune réponse de la page (délai dépassé)".into()));
+    let (reception, r) = tauri::async_runtime::spawn_blocking(move || {
+        let r = reception.recv_timeout(std::time::Duration::from_secs(150));
+        (reception, r)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("L'attente s'est arrêtée brutalement.".into()))?;
+    let mut r = r.unwrap_or(crate::gratuits::Obtention::Erreur("aucune réponse de la page (délai dépassé)".into()));
+    if r == crate::gratuits::Obtention::Obtenu {
+        // La preuve : la page du jeu rechargée doit montrer « In Library ».
+        while reception.try_recv().is_ok() {}
+        controle.store(true, std::sync::atomic::Ordering::SeqCst);
+        let preuve = if w.navigate(url).is_ok() {
+            tauri::async_runtime::spawn_blocking(move || reception.recv_timeout(std::time::Duration::from_secs(60)).ok())
+                .await
+                .ok()
+                .flatten()
+        } else {
+            None
+        };
+        r = crate::gratuits::apres_controle(preuve);
+    }
     match &r {
         crate::gratuits::Obtention::Obtenu | crate::gratuits::Obtention::Deja => {
             let _ = w.close();

@@ -18,6 +18,7 @@
   window.__frogtend = true;
   const modeConnexion = window.__frogtendMode === 'connexion';
   const modeVerification = window.__frogtendMode === 'verification';
+  const modeControle = window.__frogtendMode === 'controle';
   const dire = (m) => {
     document.title = ('FROGTEND:' + m).slice(0, 200);
   };
@@ -209,6 +210,20 @@
     else if (r === 'non') dire('CONNEXION');
   };
 
+  // Mode contrôle (Seb 20/11 : « à toi » affiché alors que le jeu n'était PAS dans la bibliothèque) : la page du jeu,
+  // RECHARGÉE après la commande, est la seule preuve. « In Library » : DEJA ; « Get » toujours là (relu 5 s plus tard) :
+  // ERREUR « pas dans ta bibliothèque » ; rien de clair en 30 s : ERREUR aussi (jamais « pas vu = obtenu »).
+  const controler = async () => {
+    if (location.hostname !== 'store.epicgames.com') return echec('page inattendue', location.hostname);
+    let a = await attendre(() => achat(), 30000);
+    if (a && a.sorte !== 'deja') {
+      await pause(5000);
+      a = achat() || a;
+    }
+    if (a && a.sorte === 'deja') return dire('DEJA');
+    return echec("pas dans ta bibliothèque d'après Epic");
+  };
+
   const obtenir = async () => {
     if (location.hostname !== 'store.epicgames.com') {
       // Epic a renvoyé vers sa page de connexion : pas connecté.
@@ -296,7 +311,7 @@
 
   (async () => {
     try {
-      await (modeVerification ? verifierCompte() : modeConnexion ? surveillerConnexion() : obtenir());
+      await (modeVerification ? verifierCompte() : modeControle ? controler() : modeConnexion ? surveillerConnexion() : obtenir());
     } catch (e) {
       // En mode vérification, rien n'est sûr : rien à dire (l'état connu est gardé).
       if (modeVerification) return;

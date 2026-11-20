@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.214.5 — 🎁 « À toi » seulement avec la preuve d'Epic
+
+- Corrigé (important) : la 0.214.4 a dit « Mark of the Deep est à toi ! » alors que le jeu n'était PAS dans ta
+  bibliothèque Epic. Désormais, après la commande, Frogtend recharge la page du jeu et ne dit « à toi » que si Epic
+  y montre « In Library ». Sinon, la page s'affiche et tu finis toi-même.
+- Le faux « obtenu » noté par la 0.214.4 est retiré tout seul : Mark of the Deep redevient « à obtenir ».
+
 ## 0.214.4 — 🎁 « Add to library » d'Epic, pour de bon
 
 - Corrigé : la commande de Mark of the Deep était encore refusée, parce que le prix d'origine (19,50 €) reste écrit dans
