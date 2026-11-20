@@ -1000,6 +1000,8 @@ export const api = {
    * lanceur est alors « obtenu » sans clic. */
   gratuitsListe: (possedes = false) => appeler<JeuOffert[]>('gratuits_liste', { possedes }),
   gratuitsConnexionEpic: () => appeler<void>('gratuits_connexion_epic'),
+  /** Le vrai état du compte Epic du profil (page cachée) : vrai, faux, ou null si pas sûr. */
+  gratuitsVerifierEpic: () => appeler<boolean | null>('gratuits_verifier_epic'),
   gratuitsConnexion: (boutique: 'gog' | 'prime') => appeler<void>('gratuits_connexion', { boutique }),
   gratuitsRecuperer: (boutique: 'gog' | 'prime') => appeler<Recolte>('gratuits_recuperer', { boutique }),
   gratuitsConnexionPlaystation: () => appeler<void>('gratuits_connexion_playstation'),

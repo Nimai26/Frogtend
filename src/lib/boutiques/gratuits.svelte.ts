@@ -94,6 +94,23 @@ export async function lireGratuits() {
   gratuits.liste = await api.gratuitsListe(etat.profil.boutiquesPc.possedes === 'oui').catch(() => []);
 }
 
+/** Les profils dont le compte Epic a déjà été revérifié depuis l'ouverture de Frogtend (une fois suffit). */
+const epicVerifie = new Set<string>();
+
+/** Revérifie le VRAI état du compte Epic du profil ouvert (page cachée, aucun clic), une fois par ouverture de
+ * Frogtend : « connecté » ne repose plus seulement sur un souvenir (Seb 20/11 : connecté avant que Frogtend sache le
+ * retenir, il voyait encore « Se connecter »). Rien de sûr : l'état connu est gardé. */
+export async function verifierEpic() {
+  const profil = etat.profilOuvert?.id;
+  if (!isTauri() || etat.pc.firehouse.simule || !profil || epicVerifie.has(profil)) return;
+  const vu = await api.gratuitsVerifierEpic().catch(() => null);
+  if (vu === null) return; // pas sûr, ou pas le moment : on réessaiera à la prochaine ouverture de la page
+  // La personne se connecte (fenêtre ouverte) ou un jeu s'obtient pendant l'attente : leur résultat, plus récent, compte.
+  if (arreterEcouteEpic !== null || gratuits.enCours !== null) return;
+  epicVerifie.add(profil);
+  await noterConnexion('epic', vu ? 'connecte' : 'connexion', profil);
+}
+
 /** L'écoute de la fenêtre de connexion à Epic (une seule à la fois). */
 let arreterEcouteEpic: (() => void) | null = null;
 

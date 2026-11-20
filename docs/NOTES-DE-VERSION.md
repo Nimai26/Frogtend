@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.214.1 — 🎁 Epic reconnu connecté
+
+- Corrigé : dans 🛒 Boutiques, Epic proposait encore « 🔑 Se connecter à Epic » alors que tu l'étais déjà (connexion
+  faite avant que Frogtend sache la retenir). Maintenant, à l'ouverture de 🛒 Boutiques, Frogtend regarde discrètement
+  la boutique d'Epic (sans rien cliquer, sans fenêtre visible) et affiche le vrai état : « ✅ Connecté à Epic » ou
+  « Se connecter ». S'il n'est pas sûr, il garde ce qu'il savait.
+
 ## 0.214.0 — 🔑 Se connecter à Steam par sa vraie page (lot C1)
 
 - Nouveau : dans 🛒 Boutiques ▸ Mes jeux installés, « 🔑 Se connecter à Steam » ouvre la vraie page de connexion de

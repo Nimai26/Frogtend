@@ -6216,6 +6216,63 @@ pub async fn gratuits_connexion_epic(app: AppHandle, noyau: State<'_, Noyau>) ->
     Ok(())
 }
 
+const FENETRE_EPIC_VERIFICATION: &str = "boutique-epic-verification";
+
+/// Le VRAI état du compte Epic du profil (Seb 20/11 : connecté le 18/11 avant que Frogtend sache le retenir, il voyait
+/// encore « Se connecter ») : la boutique s'ouvre CACHÉE avec le navigateur du profil, le script ne clique sur rien et
+/// dit seulement « connecté » ou « pas connecté ». Vrai / faux, ou None si la page n'a rien dit de sûr (30 s au plus)
+/// ou si une fenêtre d'Epic est déjà ouverte (la personne s'y connecte : on ne la dérange pas). La fenêtre n'est
+/// jamais montrée et se ferme toujours.
+#[tauri::command]
+pub async fn gratuits_verifier_epic(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<Option<bool>> {
+    let p = profil_ouvert(&noyau).await?;
+    if app.get_webview_window(FENETRE_EPIC).is_some() || app.get_webview_window(FENETRE_EPIC_VERIFICATION).is_some() {
+        return Ok(None);
+    }
+    let dossier = dossier_profil_de(&noyau, &p.id);
+    // Un profil qui n'a jamais ouvert de page de boutique n'a pas de navigateur : il n'est donc pas connecté à Epic, et
+    // Epic n'est pas contacté sans un geste de la personne (revue du 20/11).
+    if !crate::gratuits::dossier_navigateur(&dossier).is_dir() {
+        return Ok(None);
+    }
+    let (envoi, reception) = std::sync::mpsc::channel::<crate::gratuits::Obtention>();
+    let envoi = std::sync::Mutex::new(envoi);
+    let url = tauri::Url::parse("https://store.epicgames.com/en-US/").map_err(|_| Erreur::Refus("Adresse Epic invalide.".into()))?;
+    let w = tauri::WebviewWindowBuilder::new(&app, FENETRE_EPIC_VERIFICATION, tauri::WebviewUrl::External(url))
+        .title("Epic Games — Frogtend")
+        .inner_size(1100.0, 800.0)
+        .visible(false)
+        .data_directory(crate::gratuits::dossier_navigateur(&dossier))
+        .on_new_window(crate::gratuits::fenetre_d_automatisation)
+        .on_page_load(|w, charge| {
+            if matches!(charge.event(), tauri::webview::PageLoadEvent::Finished) {
+                let _ = w.eval(crate::gratuits::script_epic_verification());
+            }
+        })
+        .on_document_title_changed(move |_, titre| {
+            if let Some(r) = crate::gratuits::lire_titre(&titre) {
+                let _ = envoi.lock().map(|e| e.send(r));
+            }
+        })
+        .build()
+        .map_err(|e| Erreur::Disque(format!("La vérification d'Epic ne s'ouvre pas ({e}).")))?;
+    let r = tauri::async_runtime::spawn_blocking(move || reception.recv_timeout(std::time::Duration::from_secs(30)).ok())
+        .await
+        .unwrap_or(None);
+    let _ = w.close();
+    // La fenêtre « Se connecter » ou une obtention s'est ouverte pendant l'attente : leur résultat, plus récent, compte.
+    let vu = if app.get_webview_window(FENETRE_EPIC).is_some() { None } else { r.as_ref().and_then(crate::gratuits::compte_epic_vu) };
+    noyau.journaliser(&format!(
+        "vérification du compte Epic : {}",
+        match vu {
+            Some(true) => "connecté",
+            Some(false) => "pas connecté",
+            None => "pas sûr (état connu gardé)",
+        }
+    ));
+    Ok(vu)
+}
+
 const FENETRE_STEAM: &str = "boutique-steam";
 
 /// Se connecter à Steam par sa page OFFICIELLE (lot C1, décision de Seb du 19/11), avec le navigateur PROPRE AU PROFIL

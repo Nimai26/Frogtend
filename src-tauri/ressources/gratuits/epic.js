@@ -11,10 +11,13 @@
 // passent par `cliquer`, qui le refuse.
 // Mode connexion (`window.__frogtendMode = 'connexion'`, fenêtre « Se connecter ») : aucun clic ; il dit seulement
 // « CONNECTE » quand la boutique montre le compte connecté.
+// Mode vérification (`window.__frogtendMode = 'verification'`, page CACHÉE ouverte avec 🛒 Boutiques, Seb 20/11) :
+// aucun clic ; il dit « CONNECTE » ou « CONNEXION » selon ce que la boutique montre, et rien s'il n'est pas sûr.
 (function () {
   if (window.__frogtend) return;
   window.__frogtend = true;
   const modeConnexion = window.__frogtendMode === 'connexion';
+  const modeVerification = window.__frogtendMode === 'verification';
   const dire = (m) => {
     document.title = ('FROGTEND:' + m).slice(0, 200);
   };
@@ -162,6 +165,29 @@
     if (await attendre(() => (compte() === 'oui' ? 'oui' : null), 120000)) dire('CONNECTE');
   };
 
+  // Le vrai état du compte, sans rien cliquer. « Non » n'est cru que si Epic le DIT (`egs-navigation
+  // isloggedin="false"` pendant 8 s) ou renvoie vers sa page de connexion : le seul texte « Sign In » peut être
+  // passager sur une ligne lente (revue du 20/11), il ne décide rien. Pas sûr au bout de 20 s : rien n'est dit.
+  const verifierCompte = async () => {
+    if (location.hostname !== 'store.epicgames.com') {
+      if (/(^|\.)epicgames\.com$/.test(location.hostname) && /^\/id\/login/.test(location.pathname)) dire('CONNEXION');
+      return;
+    }
+    const ditNon = () => {
+      const nav = document.querySelector('egs-navigation');
+      return !!nav && nav.getAttribute('isloggedin') === 'false';
+    };
+    let nonDepuis = 0;
+    const r = await attendre(() => {
+      if (compte() === 'oui') return 'oui';
+      if (!ditNon()) return (nonDepuis = 0), null;
+      nonDepuis = nonDepuis || Date.now();
+      return Date.now() - nonDepuis >= 8000 ? 'non' : null;
+    }, 20000);
+    if (r === 'oui') dire('CONNECTE');
+    else if (r === 'non') dire('CONNEXION');
+  };
+
   const obtenir = async () => {
     if (location.hostname !== 'store.epicgames.com') {
       // Epic a renvoyé vers sa page de connexion : pas connecté.
@@ -241,8 +267,10 @@
 
   (async () => {
     try {
-      await (modeConnexion ? surveillerConnexion() : obtenir());
+      await (modeVerification ? verifierCompte() : modeConnexion ? surveillerConnexion() : obtenir());
     } catch (e) {
+      // En mode vérification, rien n'est sûr : rien à dire (l'état connu est gardé).
+      if (modeVerification) return;
       // En mode connexion, la personne résout elle-même la vérification : rien à dire.
       if (e === 'captcha') return modeConnexion ? undefined : dire('CAPTCHA');
       if (e && e.etape) return echec(e.etape);

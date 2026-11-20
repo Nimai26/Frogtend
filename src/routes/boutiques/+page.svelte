@@ -4,7 +4,7 @@
   import { onMount } from 'svelte';
   import { adresseImageBoutique, adresseImageParUrl, duree, type JeuBoutique } from '$lib/api';
   import { galaxy, importerGalaxy, lireGalaxy, nomPlateforme, ouvrirDansGalaxy } from '$lib/boutiques/galaxy.svelte';
-  import { connexion, connexionEpic, connexionPlaystation, gratuits, lireGratuits, obtenir, obtenirTout, recolterPsPlus, recuperer } from '$lib/boutiques/gratuits.svelte';
+  import { connexion, connexionEpic, verifierEpic, connexionPlaystation, gratuits, lireGratuits, obtenir, obtenirTout, recolterPsPlus, recuperer } from '$lib/boutiques/gratuits.svelte';
   import { etat, reglerProfil } from '$lib/etat.svelte';
   import { connecteASteam, connexionSteam, importerSteam, libelleCompteSecours, lireSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
   import { boutiquesPc, lireEtatsPc, relireMaintenant } from '$lib/boutiques/boutiques-pc.svelte';
@@ -16,6 +16,7 @@
     lireSteam();
     lireGalaxy();
     lireGratuits();
+    verifierEpic();
     lireEtatsPc();
   });
 

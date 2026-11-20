@@ -148,6 +148,21 @@ pub fn script_epic_connexion() -> String {
     format!("window.__frogtendMode = 'connexion';\n{SCRIPT_EPIC}")
 }
 
+/// Le script de la vérification CACHÉE du compte Epic (à l'ouverture de 🛒 Boutiques, Seb 20/11) : aucun clic ; il dit
+/// « CONNECTE » ou « CONNEXION », rien s'il n'est pas sûr.
+pub fn script_epic_verification() -> String {
+    format!("window.__frogtendMode = 'verification';\n{SCRIPT_EPIC}")
+}
+
+/// Ce qu'une vérification a appris du compte Epic : vrai = connecté, faux = pas connecté, None = pas sûr.
+pub fn compte_epic_vu(o: &Obtention) -> Option<bool> {
+    match o {
+        Obtention::Connecte => Some(true),
+        Obtention::Connexion => Some(false),
+        _ => None,
+    }
+}
+
 /// Le bilan d'un passage sur les jeux PS Plus.
 #[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(tag = "etat", rename_all = "snake_case")]
@@ -473,6 +488,15 @@ mod tests {
         assert_eq!(l[0].image.as_deref(), Some("b"));
         assert_eq!(l[0].namespace, "02d659f31e1c43a78c43fd9fd9edc089", "l'espace de noms, pour reconnaître un jeu déjà possédé");
         assert!(lire_offerts_epic(&v, "2026-10-09T00:00:00.000Z").is_empty(), "offre terminée");
+    }
+
+    #[test]
+    fn la_verification_epic_ne_retient_que_connecte_ou_connexion() {
+        assert_eq!(compte_epic_vu(&Obtention::Connecte), Some(true));
+        assert_eq!(compte_epic_vu(&Obtention::Connexion), Some(false));
+        assert_eq!(compte_epic_vu(&Obtention::Captcha), None);
+        assert_eq!(compte_epic_vu(&Obtention::Erreur("x".into())), None);
+        assert!(script_epic_verification().starts_with("window.__frogtendMode = 'verification';"));
     }
 
     #[test]

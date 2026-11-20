@@ -6,10 +6,14 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🎁 Epic reconnu connecté sans se reconnecter (0.214.1)
+- [ ] Ouvrir 🛒 Boutiques : en une vingtaine de secondes, « 🔑 Se connecter à Epic » devient « ✅ Connecté à Epic »
+      sans rien faire ni voir de fenêtre ; le journal dit « vérification du compte Epic : connecté ».
+
 ## 🔑 Connexion à Steam par sa vraie page (0.214.0, lot C1)
-- [ ] 🛒 Boutiques ▸ Mes jeux installés ▸ « 🔑 Se connecter à Steam » : la page de Steam s'ouvre ; connexion (code
+- [x] 🛒 Boutiques ▸ Mes jeux installés ▸ « 🔑 Se connecter à Steam » : la page de Steam s'ouvre ; connexion (code
       Steam Guard si demandé) ; la fenêtre se ferme seule et « ✅ Connecté à Steam » s'affiche. Si une page reste
-      bloquée, le journal dit « connexion Steam : page refusée sur « … » ».
+      bloquée, le journal dit « connexion Steam : page refusée sur « … » ». (validé par Seb le 20/11)
 - [ ] Fermer puis rouvrir 🛒 Boutiques (et Frogtend) : toujours « ✅ Connecté à Steam » ; le bloc Secours ne dit plus
       « compte pas encore réglé ».
 

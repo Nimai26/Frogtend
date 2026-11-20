@@ -9,12 +9,13 @@ const dom = (globalThis as unknown as { jsdom: { reconfigure(o: { url: string })
 const fenetre = window as unknown as Record<string, unknown>;
 
 /** Monte une page de la boutique, lance le script, et laisse passer `ms` millisecondes. */
-async function essayer(html: string, ms = 0, options: { connexion?: boolean; url?: string } = {}) {
+async function essayer(html: string, ms = 0, options: { connexion?: boolean; verification?: boolean; url?: string } = {}) {
   dom.reconfigure({ url: options.url ?? 'https://store.epicgames.com/en-US/p/knightica-3be45c' });
   document.title = 'Knightica';
   document.body.innerHTML = html;
   delete fenetre.__frogtend;
-  if (options.connexion) fenetre.__frogtendMode = 'connexion';
+  if (options.verification) fenetre.__frogtendMode = 'verification';
+  else if (options.connexion) fenetre.__frogtendMode = 'connexion';
   else delete fenetre.__frogtendMode;
   new Function(SCRIPT)();
   await vi.advanceTimersByTimeAsync(ms);
@@ -33,6 +34,53 @@ const AVATAR = '<header><button data-testid="avatar" aria-label="Account menu">N
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
+
+describe('epic.js en mode vérification (page cachée de 🛒 Boutiques, 20/11)', () => {
+  const ACCUEIL = { verification: true, url: 'https://store.epicgames.com/en-US/' };
+
+  it('compte connecté : CONNECTE, sans rien cliquer', async () => {
+    await essayer(`${AVATAR}<button id="g">Get</button>`, 0, ACCUEIL);
+    const get = compterClics('#g');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(document.title).toBe('FROGTEND:CONNECTE');
+    expect(get.n).toBe(0);
+  });
+
+  it('Epic dit « pas connecté » (isloggedin="false") pendant 8 s : CONNEXION, pas avant', async () => {
+    await essayer('<egs-navigation isloggedin="false"></egs-navigation>', 5000, ACCUEIL);
+    expect(document.title).toBe('Knightica');
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(document.title).toBe('FROGTEND:CONNEXION');
+  });
+
+  it('le seul texte « Sign In » ne décide rien (ligne lente) : ne dit rien', async () => {
+    const titre = await essayer('<a href="https://www.epicgames.com/id/login">Sign In</a>', 25000, ACCUEIL);
+    expect(titre).toBe('Knightica');
+  });
+
+  it('« Sign In » passager puis l’avatar (page qui se remplit) : CONNECTE', async () => {
+    await essayer('<a id="s" href="https://www.epicgames.com/id/login">Sign In</a>', 1500, ACCUEIL);
+    document.body.innerHTML = AVATAR;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(document.title).toBe('FROGTEND:CONNECTE');
+  });
+
+  it('rien de sûr au bout de 20 s : ne dit rien', async () => {
+    const titre = await essayer('<main>chargement</main>', 25000, ACCUEIL);
+    expect(titre).toBe('Knightica');
+  });
+
+  it('renvoyé vers la page de connexion d’Epic : CONNEXION ; un autre site : rien', async () => {
+    expect(await essayer('<form></form>', 0, { verification: true, url: 'https://www.epicgames.com/id/login?redirectUrl=x' })).toBe('FROGTEND:CONNEXION');
+    expect(await essayer('<form></form>', 25000, { verification: true, url: 'https://exemple.fr/' })).toBe('Knightica');
+    expect(await essayer('<form></form>', 25000, { verification: true, url: 'https://www.epicgames.com/id/autre' })).toBe('Knightica');
+  });
+
+  it('un captcha : ne dit rien (ni CAPTCHA ni ERREUR)', async () => {
+    const titre = await essayer('<iframe title="hCaptcha"></iframe>', 1000, ACCUEIL);
+    expect(titre).toBe('Knightica');
+  });
+});
 
 describe('epic.js', () => {
   it('voit « In Library » sur la nouvelle boutique (Knightica, 18/11) : DEJA, sans rien cliquer', async () => {
