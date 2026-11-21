@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.217.3 — 🟣 GOG : sonder la bibliothèque de GOG Galaxy
+
+- En cours : les 72 numéros en plus vus la dernière fois sont surtout des licences « Amazon Prime / Luna ». GOG Galaxy
+  (197 jeux) lit SA bibliothèque, pas la liste du site (88). Cette version essaie de lire cette bibliothèque avec ta
+  connexion GOG et note dans le journal combien de jeux elle contient et de quel type. Le jeton de ta session reste en
+  mémoire le temps de la lecture : jamais écrit ni noté. Rien ne change dans ta ludothèque.
+
 ## 0.217.2 — 🟣 GOG : chercher la liste complète
 
 - En cours : la liste de gog.com utilisée jusqu'ici n'annonce que 88 jeux (GOG Galaxy en montre 197). Cette version

@@ -179,6 +179,17 @@
           .join('--') + '--total-' + jeux.size + '--' + sondes,
       );
       await pause(400);
+      // 0.217.3 (SONDE) : le jeton d'accès de la session, lu par la page sur menu.gog.com (que GOG ouvre à www.gog.com),
+      // remis au cœur pour lire la bibliothèque de GOG Galaxy. Rien d'autre de la réponse n'est lu.
+      try {
+        const r = await fetch('https://menu.gog.com/v1/account/basic', { credentials: 'include', cache: 'no-store' });
+        const v = r.ok ? await r.json() : null;
+        const t = v && typeof v.accessToken === 'string' ? v.accessToken : '';
+        remettre('gog-jeton', /^[A-Za-z0-9._-]{20,4000}$/.test(t) ? t : 'absent');
+      } catch (e) {
+        remettre('gog-jeton', 'absent');
+      }
+      await pause(400);
       // 3. La remise par morceaux, demandés un à un par le cœur.
       const liste = [...jeux.values()];
       const n = Math.max(1, Math.ceil(liste.length / PAR_MORCEAU));

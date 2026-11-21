@@ -6570,6 +6570,84 @@ const DELAI_GOG_PLAFOND: std::time::Duration = std::time::Duration::from_secs(60
 /// la vraie boutique ; son script (`gog-jeux.js`) demande la liste à GOG (mêmes cookies, même navigateur) et la remet
 /// par des navigations vers frogtend.invalid, interceptées et annulées : le compte, puis les morceaux que le cœur
 /// demande un à un. Rend `None` si le compte n'est pas connecté (« reconnecte-toi »). Rien du compte n'est journalisé.
+/// 0.217.3 — SONDE (journal seulement) : la bibliothèque de GOG Galaxy (`galaxy-library.gog.com/users/<id>/releases`,
+/// avec le jeton de la session) et, pour quelques jeux absents de la liste du site, leur fiche dans la base publique
+/// `gamesdb.gog.com`. Des nombres, des plateformes et des titres de jeux (pas de données de compte). Jamais une erreur.
+async fn sonder_bibliotheque_galaxy(noyau: &Noyau, compte: &str, jeton: &crate::gratuits::JetonGog, lus: &[crate::gratuits::JeuGogLu]) {
+    let Ok(client) = reqwest::Client::builder().user_agent("Frogtend").timeout(std::time::Duration::from_secs(30)).redirect(reqwest::redirect::Policy::none()).build() else {
+        return;
+    };
+    let connus: std::collections::HashSet<&str> = lus.iter().map(|j| j.id.as_str()).collect();
+    let mut plateformes: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    let mut hors_liste: Vec<String> = Vec::new();
+    let mut total = 0usize;
+    let mut jeton_page: Option<String> = None;
+    let mut cles = String::new();
+    for page in 0..30 {
+        let mut adresse = format!("https://galaxy-library.gog.com/users/{compte}/releases");
+        if let Some(t) = &jeton_page {
+            let sur: String = t.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '=' | '.')).collect();
+            adresse.push_str(&format!("?page_token={sur}"));
+        }
+        let r = match client.get(&adresse).bearer_auth(&jeton.0).send().await {
+            Ok(r) => r,
+            Err(_) => {
+                noyau.journaliser("import GOG (sonde Galaxy) : bibliothèque injoignable");
+                return;
+            }
+        };
+        let statut = r.status().as_u16();
+        if statut != 200 {
+            noyau.journaliser(&format!("import GOG (sonde Galaxy) : bibliothèque, statut {statut} (page {page})"));
+            return;
+        }
+        let Ok(v) = r.json::<Value>().await else {
+            noyau.journaliser("import GOG (sonde Galaxy) : bibliothèque illisible");
+            return;
+        };
+        if page == 0 {
+            cles = v.as_object().map(|o| o.keys().cloned().collect::<Vec<_>>().join(",")).unwrap_or_default();
+        }
+        for it in v["items"].as_array().into_iter().flatten() {
+            total += 1;
+            let p = it["platform_id"].as_str().unwrap_or("?").to_string();
+            if p == "gog" {
+                let id = it["external_id"].as_str().map(str::to_string).or_else(|| it["external_id"].as_u64().map(|n| n.to_string())).unwrap_or_default();
+                if !id.is_empty() && !connus.contains(id.as_str()) {
+                    hors_liste.push(id);
+                }
+            }
+            *plateformes.entry(p).or_default() += 1;
+        }
+        jeton_page = v["next_page_token"].as_str().filter(|t| !t.is_empty()).map(str::to_string);
+        if jeton_page.is_none() {
+            break;
+        }
+    }
+    let pl: Vec<String> = plateformes.iter().map(|(p, n)| format!("{p} {n}")).collect();
+    noyau.journaliser(&format!(
+        "import GOG (sonde Galaxy) : bibliothèque lue, {total} élément(s) [{cles}] ; plateformes : {} ; gog hors de la liste du site : {}",
+        pl.join(", "),
+        hors_liste.len()
+    ));
+    // Quelques-uns des jeux absents de la liste du site, d'après la base publique de GOG (type et titre).
+    let mut types: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    let mut exemples = Vec::new();
+    for id in hors_liste.iter().take(40) {
+        let Ok(r) = client.get(format!("https://gamesdb.gog.com/platforms/gog/external_releases/{id}")).send().await else { continue };
+        let Ok(v) = r.json::<Value>().await else { continue };
+        let t = v["type"].as_str().unwrap_or("?").to_string();
+        let titre: String = v["title"]["*"].as_str().unwrap_or("?").chars().take(60).collect();
+        if exemples.len() < 25 {
+            exemples.push(format!("{t}: {titre}"));
+        }
+        *types.entry(t).or_default() += 1;
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    }
+    let ty: Vec<String> = types.iter().map(|(t, n)| format!("{t} {n}")).collect();
+    noyau.journaliser(&format!("import GOG (sonde Galaxy) : base publique, types des absents (40 au plus) : {} ; exemples : {}", ty.join(", "), exemples.join(" | ")));
+}
+
 async fn lire_jeux_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path) -> Resultat<Option<(String, Vec<crate::gratuits::JeuGogLu>)>> {
     // Un profil sans navigateur ne s'est jamais connecté à GOG par Frogtend.
     if !crate::gratuits::dossier_navigateur(dossier).is_dir() {
@@ -6614,19 +6692,19 @@ async fn lire_jeux_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path
         loop {
             // Le délai repart à chaque nouvelle de la page, dans la limite du plafond.
             let reste = fin.saturating_duration_since(std::time::Instant::now()).min(DELAI_GOG_SANS_NOUVELLE);
-            let Ok(remise) = reception.recv_timeout(reste) else { return (None, r.recus(), r.bilan()) };
+            let Ok(remise) = reception.recv_timeout(reste) else { return (None, r.recus(), r.bilan(), r.prendre_jeton()) };
             match r.recevoir(remise) {
                 crate::gratuits::SuiteGog::Demander(k) => {
                     let _ = page_js.eval(&format!("window.__frogtendGog && window.__frogtendGog({k})"));
                 }
                 crate::gratuits::SuiteGog::Attendre => {}
-                s => return (Some(s), r.recus(), r.bilan()),
+                s => return (Some(s), r.recus(), r.bilan(), r.prendre_jeton()),
             }
         }
     })
     .await;
     let _ = w.close();
-    let (suite, recus, bilan) = suite.map_err(|_| Erreur::Disque("La lecture de ton compte GOG s'est arrêtée brutalement.".into()))?;
+    let (suite, recus, bilan, (jeton, jeton_illisible)) = suite.map_err(|_| Erreur::Disque("La lecture de ton compte GOG s'est arrêtée brutalement.".into()))?;
     // 0.217.1 (Seb 21/11 : deux jeux de son compte manquaient) : ce que GOG a envoyé et ce qui a été écarté.
     if let Some(b) = bilan {
         noyau.journaliser(&format!("import GOG (connexion) : bilan de la page ({b})"));
@@ -6634,6 +6712,12 @@ async fn lire_jeux_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path
     match suite {
         Some(crate::gratuits::SuiteGog::Fini(compte, jeux)) => {
             noyau.journaliser(&format!("import GOG (connexion) : liste lue par la page ({recus} morceau(x), {} jeu(x))", jeux.len()));
+            // 0.217.3 : SONDE de la bibliothèque de GOG Galaxy (Seb 21/11 : 197 jeux dans Galaxy, 88 dans la liste du site).
+            // Journal seulement ; rien n'est rangé ; le jeton n'est jamais écrit.
+            match jeton {
+                Some(j) => sonder_bibliotheque_galaxy(noyau, &compte, &j, &jeux).await,
+                None => noyau.journaliser(&format!("import GOG (sonde Galaxy) : pas de jeton ({})", if jeton_illisible { "forme inattendue" } else { "non remis par la page" })),
+            }
             Ok(Some((compte, jeux)))
         }
         Some(crate::gratuits::SuiteGog::Absent(etape)) => {
