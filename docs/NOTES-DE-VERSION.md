@@ -1,5 +1,13 @@
 # Notes de version de Frogtend
 
+## 0.218.1 — 🟣 GOG : la connexion façon Galaxy depuis « Mettre à jour »
+
+- Corrigé : chez Seb, GOG demandait de confirmer la connexion façon Galaxy, mais sa page ne pouvait s'afficher que juste
+  après « Se connecter à GOG » ; « 🔄 Mettre à jour mes jeux GOG » abandonnait donc en silence et gardait 88 jeux.
+  Maintenant, ce bouton ouvre aussi la page de GOG quand elle est nécessaire (jamais à l'ouverture de Frogtend ni
+  pendant une partie). Une fois connecté, les lectures suivantes se font seules.
+- La ligne « liste partielle » de 🛒 Boutiques dit quoi faire.
+
 ## 0.218.0 — 🟣 GOG : tous tes jeux, comme dans GOG Galaxy (lot C5)
 
 - Nouveau : Frogtend se connecte à GOG comme GOG Galaxy. Il voit donc les MÊMES jeux que Galaxy (chez Seb : environ

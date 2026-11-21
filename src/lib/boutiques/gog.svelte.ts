@@ -90,7 +90,7 @@ export const MESSAGE_GOG_ATTENTE = '⏳ Lecture de tes jeux GOG… (jusqu’à q
 
 /** La ligne d'état quand la bibliothèque de GOG Galaxy n'a pas pu être lue en entier (pas une erreur : rien n'est
  * perdu). */
-export const MESSAGE_GOG_PARTIEL = 'Liste partielle de GOG pour l’instant, nouvel essai à la prochaine lecture.';
+export const MESSAGE_GOG_PARTIEL = 'Liste partielle de GOG pour l’instant : clique « 🔄 Mettre à jour mes jeux GOG » (GOG peut te demander de confirmer ta connexion).';
 
 /** La ligne d'état « liste partielle » vaut-elle pour le profil ouvert ? */
 export function listeGogPartielle(): boolean {
@@ -190,8 +190,10 @@ async function importerConnecte(mode: ModeImportGog, profil: string | null): Pro
   gratuits.lectureGog = true;
   const attente = aLaMain ? toast(MESSAGE_GOG_ATTENTE, undefined, { jusquaFermeture: true }) : null;
   try {
-    // La page de connexion façon Galaxy ne peut s'afficher que juste après « Se connecter », jamais pendant une partie.
-    const r = await api.gogImporterConnecte(mode === 'connexion' && partie.enJeu === null);
+    // La page de connexion façon Galaxy peut s'afficher quand la personne est là (« Se connecter » ou « 🔄 Mettre à jour
+    // mes jeux GOG » — Seb 21/11 : sinon la lecture à la main abandonnait en silence), jamais en lecture discrète ni
+    // pendant une partie.
+    const r = await api.gogImporterConnecte(mode !== 'discret' && partie.enJeu === null);
     if (!toujoursLeMeme(profil, etat.profilOuvert?.id)) return false;
     // Un seul état de connexion GOG (jeu offert et jeux du compte) : ce que la lecture a vu le met à jour.
     await noterConnexion('gog', r.reconnecter ? 'connexion' : 'connecte', profil);

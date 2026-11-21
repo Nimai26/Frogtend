@@ -280,12 +280,12 @@ describe('lecture des jeux du compte GOG', () => {
     expect(rafraichir).not.toHaveBeenCalled();
   });
 
-  it('lot C5 : la page de connexion façon Galaxy ne peut s’afficher que juste après « Se connecter à GOG »', async () => {
+  it('lot C5 : la page de connexion façon Galaxy peut s’afficher quand la personne est là (connexion, à la main), jamais en discret', async () => {
     montres.length = 0;
     await mettreAJourGog('discret');
     await mettreAJourGog('main');
     await mettreAJourGog('connexion');
-    expect(montres).toEqual([false, false, true]);
+    expect(montres).toEqual([false, true, true]);
   });
 
   it('lot C5 : jamais la page de connexion pendant une partie ; « liste partielle » dite sans alarmer', async () => {
