@@ -775,6 +775,14 @@ par la page (fenêtre cachée sur www.gog.com, étiquette à part, remise par mo
 comme pour Steam), bloc « 🟣 Mon compte GOG » unique (jeu offert + jeux du compte), import après connexion / à
 l'ouverture / à la main, Taodbox relit ; **C4b** changement de compte et « Oublier » (cookies gog.com seulement) ;
 **C4c** installer Galaxy après accord.
+**21/11 — C4a essayé par Seb : 88 jeux lus, GOG Galaxy en montre 197.** Sondes (0.217.1-3) : la liste du site
+(`getFilteredProducts`) annonce 88 ; `/user/data/games` donne 160 numéros (72 en plus, surtout des licences « Amazon
+Prime / Luna », type `spam` dans gamesdb) ; la bibliothèque de Galaxy (`galaxy-library.gog.com/users/<id>/releases`)
+REFUSE le jeton du site (403). **Décision de Seb (21/11) : C5 « connexion façon Galaxy »** — OAuth de GOG avec
+l'identifiant public de GOG Galaxy (méthode de Heroic, Playnite, Lutris), dans la fenêtre officielle et le navigateur
+du profil (silencieuse si la session GOG est ouverte) ; jeton de renouvellement dans le coffre de Windows, jamais écrit
+ni journalisé ; lecture de la bibliothèque de Galaxy + base publique gamesdb pour titres, types et jaquettes. Marche
+sur tous les PC, Galaxy installé ou non. D'abord une sonde (types réels des 197), puis le rangement.
 
 ### Prochains lots (décisions de Seb, 02/10)
 
