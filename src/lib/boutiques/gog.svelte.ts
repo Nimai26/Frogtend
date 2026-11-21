@@ -24,6 +24,7 @@ export const gog = $state<{
   erreurProfil: string | null;
   profilImport: string | null;
   imports: number;
+  partiel: boolean;
 }>({
   etat: null,
   // Une lecture tourne (pour `profilImport` : voir `importGogEnCours`).
@@ -38,6 +39,8 @@ export const gog = $state<{
   profilImport: null,
   // Le nombre de lectures GOG terminées (Taodbox relit alors ses cartes « à installer »).
   imports: 0,
+  // Lot C5 : la dernière lecture (du profil `erreurProfil`) n'a pas pu lire la bibliothèque de GOG Galaxy en entier.
+  partiel: false,
 });
 
 /** Une lecture GOG tourne-t-elle pour le profil OUVERT ? (Celle d'un autre profil ne bloque jamais ses boutons.) */
@@ -80,6 +83,18 @@ export function messageGogPasConnecte(connu: boolean): string {
  * nouveaux le dit (pur, testé). */
 export function sansGalaxy(texte: string): string {
   return texte.replace(/Il s’installe avec ⬇ Installer\.$/, 'Installe GOG Galaxy pour l’installer.').replace(/(Ils|Les autres) s’installent avec ⬇ Installer\.$/, 'Installe GOG Galaxy pour les installer.');
+}
+
+/** Le message d'attente d'une lecture (lot C5 : la première fois, Frogtend lit la fiche de chaque jeu). */
+export const MESSAGE_GOG_ATTENTE = '⏳ Lecture de tes jeux GOG… (jusqu’à quelques minutes la première fois)';
+
+/** La ligne d'état quand la bibliothèque de GOG Galaxy n'a pas pu être lue en entier (pas une erreur : rien n'est
+ * perdu). */
+export const MESSAGE_GOG_PARTIEL = 'Liste partielle de GOG pour l’instant, nouvel essai à la prochaine lecture.';
+
+/** La ligne d'état « liste partielle » vaut-elle pour le profil ouvert ? */
+export function listeGogPartielle(): boolean {
+  return gog.partiel && gog.erreurProfil === (etat.profilOuvert?.id ?? null);
 }
 
 /** La manière de lancer une lecture : à la main (bouton), juste après la connexion, ou à l'ouverture de Frogtend. */
@@ -173,9 +188,10 @@ async function importerConnecte(mode: ModeImportGog, profil: string | null): Pro
   gog.enCours = true;
   gog.profilImport = profil;
   gratuits.lectureGog = true;
-  const attente = aLaMain ? toast(mode === 'connexion' ? '⏳ Lecture de tes jeux GOG…' : '⏳ Lecture de tes jeux GOG… (jusqu’à une minute)', undefined, { jusquaFermeture: true }) : null;
+  const attente = aLaMain ? toast(MESSAGE_GOG_ATTENTE, undefined, { jusquaFermeture: true }) : null;
   try {
-    const r = await api.gogImporterConnecte();
+    // La page de connexion façon Galaxy ne peut s'afficher que juste après « Se connecter », jamais pendant une partie.
+    const r = await api.gogImporterConnecte(mode === 'connexion' && partie.enJeu === null);
     if (!toujoursLeMeme(profil, etat.profilOuvert?.id)) return false;
     // Un seul état de connexion GOG (jeu offert et jeux du compte) : ce que la lecture a vu le met à jour.
     await noterConnexion('gog', r.reconnecter ? 'connexion' : 'connecte', profil);
@@ -183,6 +199,7 @@ async function importerConnecte(mode: ModeImportGog, profil: string | null): Pro
     if (attente !== null) fermerToast(attente);
     await conclure(r, mode, profil, connuAvant);
     if (r.reconnecter) return false;
+    gog.partiel = r.bibliotheque_galaxy === false;
     gog.imports++;
     await rafraichirLudotheque();
     await lireGog();
@@ -210,6 +227,7 @@ function oublierEtatImport(toujours: boolean) {
     gog.erreur = null;
     gog.expire = false;
     gog.erreurProfil = null;
+    gog.partiel = false;
   }
 }
 
@@ -241,6 +259,9 @@ export function fermeturePourMoi(p: { boutique?: unknown; profil?: unknown } | n
   return !!p && p.boutique === 'gog' && typeof p.profil === 'string' && toujoursLeMeme(p.profil, ouvert);
 }
 
+/** Le message quand la fenêtre de connexion façon Galaxy s'affiche (GOG demande de se connecter). */
+export const MESSAGE_GOG_FENETRE = '🔑 Connecte-toi à GOG dans sa fenêtre (elle vient de s’ouvrir) : tes jeux arriveront ensuite.';
+
 /** L'écoute des fenêtres de GOG fermées par la personne (connexion, ou jeu offert qui demandait de se connecter) : une
  * seule, pour toute la vie de Frogtend ; à chaque fermeture, les jeux du compte sont lus (se connecter vaut accord). */
 let arreterEcoute: (() => void) | null = null;
@@ -251,11 +272,20 @@ async function ecouterFermetures(): Promise<boolean> {
   if (!isTauri()) return false;
   if (arreterEcoute) return false;
   if (ecouteEnPreparation) return ecouteEnPreparation.then(() => false);
-  ecouteEnPreparation = listen<{ boutique: string; profil: string }>('gratuits-ferme', (e) => {
-    if (fermeturePourMoi(e.payload, etat.profilOuvert?.id)) void mettreAJourGog('connexion');
-  })
-    .then((f) => {
-      arreterEcoute = f;
+  ecouteEnPreparation = Promise.all([
+    listen<{ boutique: string; profil: string }>('gratuits-ferme', (e) => {
+      if (fermeturePourMoi(e.payload, etat.profilOuvert?.id)) void mettreAJourGog('connexion');
+    }),
+    // Lot C5 : GOG demande de se connecter dans la fenêtre de la connexion façon Galaxy, qui vient de s'afficher.
+    listen<{ profil: string }>('gog-connexion-montree', (e) => {
+      if (fermeturePourMoi({ boutique: 'gog', profil: e.payload?.profil }, etat.profilOuvert?.id)) toast(MESSAGE_GOG_FENETRE, 'alerte');
+    }),
+  ])
+    .then(([a, b]) => {
+      arreterEcoute = () => {
+        a();
+        b();
+      };
       return true;
     })
     .catch(() => false)

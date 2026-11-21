@@ -13,6 +13,7 @@ const gratuitsFaux = { boutique: null as string | null, lectureGog: false, gogDe
 let etatGog: EtatGog = { connu: true, nb_jeux: 3, maj_le: null };
 const importer = vi.fn(async (): Promise<ImportGog> => ({ reconnecter: false, total: 3, nouveaux: 0, nouveaux_installes: 0, galaxy: true }));
 const lectureVue: boolean[] = [];
+const montres: boolean[] = [];
 const toast = vi.fn((..._a: unknown[]) => 7);
 const fermerToast = vi.fn();
 const rafraichir = vi.fn(async () => {});
@@ -20,7 +21,7 @@ const noter = vi.fn(async (_b: string, e: string) => {
   etatFaux.profil.gratuits.connectes.gog = e !== 'connexion';
 });
 
-vi.mock('$lib/api', () => ({ api: { gogEtat: async () => etatGog, gogImporterConnecte: () => importer() } }));
+vi.mock('$lib/api', () => ({ api: { gogEtat: async () => etatGog, gogImporterConnecte: (montrer?: boolean) => { montres.push(!!montrer); return importer(); } } }));
 vi.mock('$lib/dialogues/fenetres.svelte', () => ({ toast: (...a: unknown[]) => toast(...a), fermerToast: (id: number) => fermerToast(id) }));
 vi.mock('$lib/dialogues/messages', () => ({ motifDuRefus: () => 'GOG ne répond pas' }));
 vi.mock('$lib/etat.svelte', () => ({ etat: etatFaux }));
@@ -37,13 +38,15 @@ const {
   gogAuDemarrage,
   gogOccupe,
   importGogEnCours,
+  MESSAGE_GOG_ATTENTE,
   MESSAGE_GOG_EXPIRE,
+  listeGogPartielle,
   messageGogPasConnecte,
   mettreAJourGog,
   sansGalaxy,
 } = await import('./gog.svelte');
 
-const rien: ImportGog = { reconnecter: false, total: 3, nouveaux: 0, nouveaux_installes: 0, galaxy: true };
+const rien: ImportGog = { reconnecter: false, total: 3, nouveaux: 0, nouveaux_installes: 0, galaxy: true, bibliotheque_galaxy: true };
 const expire: ImportGog = { reconnecter: true, total: 0, nouveaux: 0, nouveaux_installes: 0, galaxy: true };
 
 describe('les messages de GOG (purs)', () => {
@@ -183,7 +186,7 @@ describe('lecture des jeux du compte GOG', () => {
     gog.etat = etatGog;
     importer.mockResolvedValueOnce(expire);
     expect(await mettreAJourGog('connexion')).toBe(false);
-    expect(toast.mock.calls[0][0]).toBe('⏳ Lecture de tes jeux GOG…');
+    expect(toast.mock.calls[0][0]).toBe(MESSAGE_GOG_ATTENTE);
     expect(toast).toHaveBeenLastCalledWith(messageGogPasConnecte(false), 'alerte');
     expect(connexionGogExpiree()).toBe(false);
     toast.mockClear();
@@ -275,6 +278,28 @@ describe('lecture des jeux du compte GOG', () => {
     expect(noter).not.toHaveBeenCalled();
     expect(gog.erreur).toBeNull();
     expect(rafraichir).not.toHaveBeenCalled();
+  });
+
+  it('lot C5 : la page de connexion façon Galaxy ne peut s’afficher que juste après « Se connecter à GOG »', async () => {
+    montres.length = 0;
+    await mettreAJourGog('discret');
+    await mettreAJourGog('main');
+    await mettreAJourGog('connexion');
+    expect(montres).toEqual([false, false, true]);
+  });
+
+  it('lot C5 : jamais la page de connexion pendant une partie ; « liste partielle » dite sans alarmer', async () => {
+    montres.length = 0;
+    partieFausse.enJeu = 110;
+    await mettreAJourGog('connexion');
+    expect(montres).toEqual([false]);
+    partieFausse.enJeu = null;
+    importer.mockResolvedValueOnce({ ...rien, bibliotheque_galaxy: false });
+    await mettreAJourGog('discret');
+    expect(listeGogPartielle()).toBe(true);
+    expect(toast).not.toHaveBeenCalledWith(expect.stringContaining('partielle'), expect.anything());
+    await mettreAJourGog('discret');
+    expect(listeGogPartielle()).toBe(false);
   });
 
   it('à la main : un message d’attente qui reste, refermé, puis « Rien de nouveau »', async () => {

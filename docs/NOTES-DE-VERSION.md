@@ -1,5 +1,20 @@
 # Notes de version de Frogtend
 
+## 0.218.0 — 🟣 GOG : tous tes jeux, comme dans GOG Galaxy (lot C5)
+
+- Nouveau : Frogtend se connecte à GOG comme GOG Galaxy. Il voit donc les MÊMES jeux que Galaxy (chez Seb : environ
+  197 au lieu de 88), par exemple Horizon Zero Dawn et Cyberpunk 2077, même si GOG Galaxy n'est pas installé sur ce PC.
+- Si tu es déjà connecté à GOG dans Frogtend, il n'y a rien à faire : ça se fait tout seul, sans fenêtre (la première
+  fois, jusqu'à quelques minutes : Frogtend lit la fiche de chaque jeu). Sinon, « 🔑 Se connecter à GOG » : la page
+  officielle de GOG s'ouvre, comme avant ; si GOG te redemande de te connecter, sa fenêtre s'affiche et Frogtend te le dit.
+- Les jaquettes des jeux GOG sont maintenant les vraies jaquettes (verticales), comme dans Galaxy.
+- Les licences offertes par Amazon Prime / Luna, les DLC et les anciennes éditions remplacées ne font pas de carte à
+  part (comme dans Galaxy) ; un jeu n'a qu'une seule carte.
+- Ta connexion est gardée dans le coffre de Windows, jamais dans un fichier ; Frogtend ne voit jamais ton mot de passe.
+- Un jeu que la page « Mes jeux » de gog.com montre reste toujours dans ta ludothèque.
+- Si GOG ne répond pas (ou seulement en partie), Frogtend garde tous les jeux déjà connus : aucun jeu ne disparaît, et
+  🛒 Boutiques dit « liste partielle de GOG pour l'instant » ; il réessaie à la lecture suivante.
+
 ## 0.217.3 — 🟣 GOG : sonder la bibliothèque de GOG Galaxy
 
 - En cours : les 72 numéros en plus vus la dernière fois sont surtout des licences « Amazon Prime / Luna ». GOG Galaxy

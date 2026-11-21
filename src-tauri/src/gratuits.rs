@@ -360,19 +360,6 @@ pub enum RemiseGog {
     Progres(usize),
     /// Le bilan de la lecture (0.217.1, pour le journal) : des nombres et des numéros de jeux écartés, jamais le compte.
     Bilan(String),
-    /// 0.217.3 (sonde) : le jeton d'accès de la session GOG, lu par la page ; `None` : forme inattendue. Il ne vit qu'en
-    /// mémoire (jamais écrit, journalisé ni rendu), le temps de lire la bibliothèque de Galaxy.
-    Jeton(Option<JetonGog>),
-}
-
-/// Le jeton d'accès GOG : son `Debug` ne montre RIEN.
-#[derive(Clone, PartialEq)]
-pub struct JetonGog(pub String);
-
-impl std::fmt::Debug for JetonGog {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("JetonGog(<caché>)")
-    }
 }
 
 impl std::fmt::Debug for RemiseGog {
@@ -384,7 +371,6 @@ impl std::fmt::Debug for RemiseGog {
             RemiseGog::Absent(e) => write!(f, "Absent({e})"),
             RemiseGog::Progres(n) => write!(f, "Progres({n})"),
             RemiseGog::Bilan(b) => write!(f, "Bilan({b})"),
-            RemiseGog::Jeton(j) => write!(f, "Jeton({})", if j.is_some() { "<caché>" } else { "illisible" }),
         }
     }
 }
@@ -433,10 +419,6 @@ pub fn lire_remise_gog(url: &tauri::Url) -> Option<RemiseGog> {
         "/gog-compte" if numero_gog(fragment) => RemiseGog::Compte(fragment.to_string()),
         "/gog-compte" => RemiseGog::Absent("compte-de-forme-inattendue".into()),
         "/gog-progres" => RemiseGog::Progres(fragment.parse().unwrap_or(0)),
-        "/gog-jeton" => RemiseGog::Jeton(
-            (fragment.len() >= 20 && fragment.len() <= 4000 && fragment.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b'-')))
-                .then(|| JetonGog(fragment.to_string())),
-        ),
         "/gog-bilan" => RemiseGog::Bilan(fragment.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(900).collect()),
         "/gog-jeux" => match lire_morceau_gog(fragment) {
             Some((k, n, jeux)) => RemiseGog::Morceau { k, n, jeux },
@@ -457,8 +439,6 @@ pub struct ReceptionGog {
     recus: usize,
     jeux: Vec<JeuGogLu>,
     bilan: Option<String>,
-    jeton: Option<JetonGog>,
-    jeton_illisible: bool,
 }
 
 /// Ce que le cœur fait après une remise.
@@ -483,11 +463,6 @@ impl ReceptionGog {
             // Le bilan arrive juste avant le compte : gardé pour le journal, il ne change rien à la suite.
             RemiseGog::Bilan(b) => {
                 self.bilan = Some(b);
-                SuiteGog::Attendre
-            }
-            RemiseGog::Jeton(j) => {
-                self.jeton_illisible = j.is_none();
-                self.jeton = j;
                 SuiteGog::Attendre
             }
             // La page avance encore (avant le compte) ; une fois les morceaux commencés, c'est une page rechargée.
@@ -529,11 +504,6 @@ impl ReceptionGog {
     /// Le nombre de morceaux reçus (journal).
     pub fn recus(&self) -> usize {
         self.recus
-    }
-
-    /// Le jeton remis par la page (sonde 0.217.3), retiré de la réception ; et s'il était illisible.
-    pub fn prendre_jeton(&mut self) -> (Option<JetonGog>, bool) {
-        (self.jeton.take(), self.jeton_illisible)
     }
 
     /// Le bilan de lecture remis par la page (journal), s'il est arrivé.
@@ -1048,15 +1018,7 @@ mod tests {
         let b = lire_remise_gog(&tauri::Url::parse("https://frogtend.invalid/gog-bilan#visibles-pages-1-gardes-88<x>").unwrap()).unwrap();
         assert_eq!(r.recevoir(b), SuiteGog::Attendre);
         assert_eq!(r.bilan().as_deref(), Some("visibles-pages-1-gardes-883Cx3E"));
-        // Le jeton (sonde 0.217.3) : gardé en mémoire sans rien changer à la suite ; son Debug ne montre rien.
-        let j = lire_remise_gog(&tauri::Url::parse("https://frogtend.invalid/gog-jeton#abcdefghij.KLMNOPQRST_uvwxyz-0123").unwrap()).unwrap();
-        assert!(!format!("{j:?}").contains("abcdef"));
-        assert_eq!(r.recevoir(j), SuiteGog::Attendre);
         assert_eq!(r.recevoir(RemiseGog::Compte("42".into())), SuiteGog::Demander(0));
-        let (jeton, illisible) = r.prendre_jeton();
-        assert_eq!(jeton.map(|j| j.0.len()), Some(33));
-        assert!(!illisible);
-        assert_eq!(lire_remise_gog(&tauri::Url::parse("https://frogtend.invalid/gog-jeton#court").unwrap()), Some(RemiseGog::Jeton(None)));
         // Un compte sans aucun jeu : un seul morceau vide.
         let mut r = ReceptionGog::default();
         r.recevoir(RemiseGog::Compte("42".into()));

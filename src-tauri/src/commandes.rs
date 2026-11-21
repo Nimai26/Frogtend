@@ -6552,6 +6552,9 @@ pub struct ImportGog {
     pub nouveaux_installes: usize,
     /// GOG Galaxy est installé sur ce PC.
     pub galaxy: bool,
+    /// Lot C5 : la bibliothèque de GOG Galaxy a été lue en entier (sinon : la liste du site et les jeux déjà rangés,
+    /// nouvel essai à la prochaine lecture).
+    pub bibliotheque_galaxy: bool,
 }
 
 /// L'étiquette de la fenêtre CACHÉE qui lit les jeux du compte GOG : à elle seule (jamais `boutique-gog`, que la
@@ -6570,84 +6573,6 @@ const DELAI_GOG_PLAFOND: std::time::Duration = std::time::Duration::from_secs(60
 /// la vraie boutique ; son script (`gog-jeux.js`) demande la liste à GOG (mêmes cookies, même navigateur) et la remet
 /// par des navigations vers frogtend.invalid, interceptées et annulées : le compte, puis les morceaux que le cœur
 /// demande un à un. Rend `None` si le compte n'est pas connecté (« reconnecte-toi »). Rien du compte n'est journalisé.
-/// 0.217.3 — SONDE (journal seulement) : la bibliothèque de GOG Galaxy (`galaxy-library.gog.com/users/<id>/releases`,
-/// avec le jeton de la session) et, pour quelques jeux absents de la liste du site, leur fiche dans la base publique
-/// `gamesdb.gog.com`. Des nombres, des plateformes et des titres de jeux (pas de données de compte). Jamais une erreur.
-async fn sonder_bibliotheque_galaxy(noyau: &Noyau, compte: &str, jeton: &crate::gratuits::JetonGog, lus: &[crate::gratuits::JeuGogLu]) {
-    let Ok(client) = reqwest::Client::builder().user_agent("Frogtend").timeout(std::time::Duration::from_secs(30)).redirect(reqwest::redirect::Policy::none()).build() else {
-        return;
-    };
-    let connus: std::collections::HashSet<&str> = lus.iter().map(|j| j.id.as_str()).collect();
-    let mut plateformes: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
-    let mut hors_liste: Vec<String> = Vec::new();
-    let mut total = 0usize;
-    let mut jeton_page: Option<String> = None;
-    let mut cles = String::new();
-    for page in 0..30 {
-        let mut adresse = format!("https://galaxy-library.gog.com/users/{compte}/releases");
-        if let Some(t) = &jeton_page {
-            let sur: String = t.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '=' | '.')).collect();
-            adresse.push_str(&format!("?page_token={sur}"));
-        }
-        let r = match client.get(&adresse).bearer_auth(&jeton.0).send().await {
-            Ok(r) => r,
-            Err(_) => {
-                noyau.journaliser("import GOG (sonde Galaxy) : bibliothèque injoignable");
-                return;
-            }
-        };
-        let statut = r.status().as_u16();
-        if statut != 200 {
-            noyau.journaliser(&format!("import GOG (sonde Galaxy) : bibliothèque, statut {statut} (page {page})"));
-            return;
-        }
-        let Ok(v) = r.json::<Value>().await else {
-            noyau.journaliser("import GOG (sonde Galaxy) : bibliothèque illisible");
-            return;
-        };
-        if page == 0 {
-            cles = v.as_object().map(|o| o.keys().cloned().collect::<Vec<_>>().join(",")).unwrap_or_default();
-        }
-        for it in v["items"].as_array().into_iter().flatten() {
-            total += 1;
-            let p = it["platform_id"].as_str().unwrap_or("?").to_string();
-            if p == "gog" {
-                let id = it["external_id"].as_str().map(str::to_string).or_else(|| it["external_id"].as_u64().map(|n| n.to_string())).unwrap_or_default();
-                if !id.is_empty() && !connus.contains(id.as_str()) {
-                    hors_liste.push(id);
-                }
-            }
-            *plateformes.entry(p).or_default() += 1;
-        }
-        jeton_page = v["next_page_token"].as_str().filter(|t| !t.is_empty()).map(str::to_string);
-        if jeton_page.is_none() {
-            break;
-        }
-    }
-    let pl: Vec<String> = plateformes.iter().map(|(p, n)| format!("{p} {n}")).collect();
-    noyau.journaliser(&format!(
-        "import GOG (sonde Galaxy) : bibliothèque lue, {total} élément(s) [{cles}] ; plateformes : {} ; gog hors de la liste du site : {}",
-        pl.join(", "),
-        hors_liste.len()
-    ));
-    // Quelques-uns des jeux absents de la liste du site, d'après la base publique de GOG (type et titre).
-    let mut types: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
-    let mut exemples = Vec::new();
-    for id in hors_liste.iter().take(40) {
-        let Ok(r) = client.get(format!("https://gamesdb.gog.com/platforms/gog/external_releases/{id}")).send().await else { continue };
-        let Ok(v) = r.json::<Value>().await else { continue };
-        let t = v["type"].as_str().unwrap_or("?").to_string();
-        let titre: String = v["title"]["*"].as_str().unwrap_or("?").chars().take(60).collect();
-        if exemples.len() < 25 {
-            exemples.push(format!("{t}: {titre}"));
-        }
-        *types.entry(t).or_default() += 1;
-        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
-    }
-    let ty: Vec<String> = types.iter().map(|(t, n)| format!("{t} {n}")).collect();
-    noyau.journaliser(&format!("import GOG (sonde Galaxy) : base publique, types des absents (40 au plus) : {} ; exemples : {}", ty.join(", "), exemples.join(" | ")));
-}
-
 async fn lire_jeux_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path) -> Resultat<Option<(String, Vec<crate::gratuits::JeuGogLu>)>> {
     // Un profil sans navigateur ne s'est jamais connecté à GOG par Frogtend.
     if !crate::gratuits::dossier_navigateur(dossier).is_dir() {
@@ -6692,19 +6617,19 @@ async fn lire_jeux_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path
         loop {
             // Le délai repart à chaque nouvelle de la page, dans la limite du plafond.
             let reste = fin.saturating_duration_since(std::time::Instant::now()).min(DELAI_GOG_SANS_NOUVELLE);
-            let Ok(remise) = reception.recv_timeout(reste) else { return (None, r.recus(), r.bilan(), r.prendre_jeton()) };
+            let Ok(remise) = reception.recv_timeout(reste) else { return (None, r.recus(), r.bilan()) };
             match r.recevoir(remise) {
                 crate::gratuits::SuiteGog::Demander(k) => {
                     let _ = page_js.eval(&format!("window.__frogtendGog && window.__frogtendGog({k})"));
                 }
                 crate::gratuits::SuiteGog::Attendre => {}
-                s => return (Some(s), r.recus(), r.bilan(), r.prendre_jeton()),
+                s => return (Some(s), r.recus(), r.bilan()),
             }
         }
     })
     .await;
     let _ = w.close();
-    let (suite, recus, bilan, (jeton, jeton_illisible)) = suite.map_err(|_| Erreur::Disque("La lecture de ton compte GOG s'est arrêtée brutalement.".into()))?;
+    let (suite, recus, bilan) = suite.map_err(|_| Erreur::Disque("La lecture de ton compte GOG s'est arrêtée brutalement.".into()))?;
     // 0.217.1 (Seb 21/11 : deux jeux de son compte manquaient) : ce que GOG a envoyé et ce qui a été écarté.
     if let Some(b) = bilan {
         noyau.journaliser(&format!("import GOG (connexion) : bilan de la page ({b})"));
@@ -6712,12 +6637,6 @@ async fn lire_jeux_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path
     match suite {
         Some(crate::gratuits::SuiteGog::Fini(compte, jeux)) => {
             noyau.journaliser(&format!("import GOG (connexion) : liste lue par la page ({recus} morceau(x), {} jeu(x))", jeux.len()));
-            // 0.217.3 : SONDE de la bibliothèque de GOG Galaxy (Seb 21/11 : 197 jeux dans Galaxy, 88 dans la liste du site).
-            // Journal seulement ; rien n'est rangé ; le jeton n'est jamais écrit.
-            match jeton {
-                Some(j) => sonder_bibliotheque_galaxy(noyau, &compte, &j, &jeux).await,
-                None => noyau.journaliser(&format!("import GOG (sonde Galaxy) : pas de jeton ({})", if jeton_illisible { "forme inattendue" } else { "non remis par la page" })),
-            }
             Ok(Some((compte, jeux)))
         }
         Some(crate::gratuits::SuiteGog::Absent(etape)) => {
@@ -6742,13 +6661,274 @@ async fn lire_jeux_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path
     }
 }
 
+// ───────────────────────────── GOG : connexion façon Galaxy (lot C5) ─────────────────────────────
+
+/// La fenêtre de la connexion façon Galaxy (cachée ; montrée seulement si la personne doit se connecter).
+const FENETRE_GOG_GALAXY: &str = "boutique-gog-galaxy";
+/// Le nom du jeton de renouvellement de GOG au coffre de Windows, par profil.
+fn secret_gog(profil: &str) -> String {
+    crate::boutiques::nom_secret(profil, crate::gog_galaxy::SECRET)
+}
+
+/// Ce que la fenêtre de connexion façon Galaxy voit.
+enum VuConnexionGog {
+    Retour(crate::gog_galaxy::RetourConnexion),
+    /// GOG affiche sa page de connexion (pas de session ouverte).
+    PageDeConnexion,
+    /// La personne a fermé la fenêtre montrée.
+    Fermee,
+}
+
+/// Le code de la connexion façon Galaxy, par la page OFFICIELLE de GOG dans le navigateur DU PROFIL (sa session GOG y
+/// est déjà : redirection silencieuse). La redirection finale (`…/on_login_success?code=…`) est interceptée et ANNULÉE :
+/// rien n'est chargé. Sans session : en lecture discrète (`montrer` faux), rien n'est montré (`None`, « reconnecte-toi ») ;
+/// sinon la fenêtre s'affiche pour que la personne se connecte (5 minutes au plus). Le code ne vit qu'en mémoire.
+async fn code_connexion_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path, montrer: bool) -> Resultat<Option<crate::gog_galaxy::CodeGog>> {
+    if !crate::gratuits::dossier_navigateur(dossier).is_dir() {
+        return Ok(None);
+    }
+    if app.get_webview_window(FENETRE_GOG_GALAXY).is_some() {
+        return Err(Erreur::Refus("La connexion à GOG est déjà en cours : attends qu'elle finisse.".into()));
+    }
+    if app.get_webview_window(FENETRE_GOG).is_some() {
+        return Err(Erreur::Refus("Termine d'abord ce qui se passe dans la fenêtre de GOG (connexion ou jeu offert), puis réessaie.".into()));
+    }
+    let (envoi, reception) = std::sync::mpsc::channel::<VuConnexionGog>();
+    let (envoi_nav, envoi_page, envoi_fin) = (std::sync::Mutex::new(envoi.clone()), std::sync::Mutex::new(envoi.clone()), std::sync::Mutex::new(envoi));
+    let url = tauri::Url::parse(&crate::gog_galaxy::adresse_connexion()).map_err(|_| Erreur::Refus("Adresse GOG invalide.".into()))?;
+    let w = tauri::WebviewWindowBuilder::new(app, FENETRE_GOG_GALAXY, tauri::WebviewUrl::External(url))
+        .title("Connexion à GOG — Frogtend")
+        .inner_size(1000.0, 760.0)
+        .center()
+        .visible(false)
+        .focused(false)
+        .skip_taskbar(true)
+        .data_directory(crate::gratuits::dossier_navigateur(dossier))
+        .on_new_window(if montrer { crate::gog_galaxy::fenetre_de_fournisseur } else { crate::gratuits::fenetre_d_automatisation })
+        .on_navigation(move |u| {
+            if let Some(r) = crate::gog_galaxy::lire_retour_connexion(u) {
+                let _ = envoi_nav.lock().map(|e| e.send(VuConnexionGog::Retour(r)));
+                return false;
+            }
+            crate::gog_galaxy::navigation_connexion(u, montrer)
+        })
+        .on_page_load(move |w, charge| {
+            if matches!(charge.event(), tauri::webview::PageLoadEvent::Finished) && w.url().is_ok_and(|u| crate::gog_galaxy::page_de_connexion_affichee(&u)) {
+                let _ = envoi_page.lock().map(|e| e.send(VuConnexionGog::PageDeConnexion));
+            }
+        })
+        .build()
+        .map_err(|e| Erreur::Disque(format!("La connexion à GOG ne s'ouvre pas ({e}).")))?;
+    w.on_window_event(move |e| {
+        if matches!(e, tauri::WindowEvent::Destroyed) {
+            let _ = envoi_fin.lock().map(|e| e.send(VuConnexionGog::Fermee));
+        }
+    });
+    let fenetre = w.clone();
+    let (annonce, profil) = (app.clone(), dossier.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
+    let vu = tauri::async_runtime::spawn_blocking(move || {
+        let mut fin = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        let mut montree = false;
+        loop {
+            let reste = fin.saturating_duration_since(std::time::Instant::now());
+            match reception.recv_timeout(reste) {
+                Ok(VuConnexionGog::Retour(r)) => return Ok(r),
+                // Une page de GOG s'est affichée : peut-être un relais qui redirige encore lui-même ; 4 s de grâce, puis
+                // « pas de session » (rien n'est montré en lecture discrète).
+                Ok(VuConnexionGog::PageDeConnexion) if !montrer => {
+                    if !montree {
+                        montree = true;
+                        fin = fin.min(std::time::Instant::now() + std::time::Duration::from_secs(4));
+                    }
+                }
+                Ok(VuConnexionGog::PageDeConnexion) => {
+                    if !montree {
+                        montree = true;
+                        fin = std::time::Instant::now() + std::time::Duration::from_secs(300);
+                        let _ = fenetre.set_skip_taskbar(false);
+                        let _ = fenetre.show();
+                        let _ = fenetre.unminimize();
+                        let _ = fenetre.set_focus();
+                        let _ = annonce.emit("gog-connexion-montree", serde_json::json!({"profil": profil}));
+                    }
+                }
+                Ok(VuConnexionGog::Fermee) => return Err("fenetre-fermee"),
+                Err(_) => return Err(if montree && !montrer { "page-de-connexion" } else { "delai-depasse" }),
+            }
+        }
+    })
+    .await;
+    let _ = w.close();
+    let vu = vu.map_err(|_| Erreur::Disque("La connexion à GOG s'est arrêtée brutalement.".into()))?;
+    match vu {
+        Ok(crate::gog_galaxy::RetourConnexion::Code(c)) => Ok(Some(c)),
+        Ok(crate::gog_galaxy::RetourConnexion::SansCode(etape)) => {
+            noyau.journaliser(&format!("import GOG (connexion façon Galaxy) : pas de code ({etape})"));
+            Ok(None)
+        }
+        Err(etape) => {
+            noyau.journaliser(&format!("import GOG (connexion façon Galaxy) : pas de code ({etape})"));
+            Ok(None)
+        }
+    }
+}
+
+/// Le jeton d'accès de la connexion façon Galaxy pour le compte `compte` (celui que la page de GOG montre connecté) :
+/// renouvelé avec le jeton rangé au coffre, sinon par la connexion silencieuse. Le nouveau jeton de renouvellement va
+/// au coffre ; le jeton d'accès ne vit qu'en mémoire. `None` : pas de connexion façon Galaxy (la raison est au journal,
+/// sans aucun jeton).
+async fn jeton_acces_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path, profil: &str, compte: &str, montrer: bool) -> Option<String> {
+    let secret = secret_gog(profil);
+    let ranger = |j: &crate::gog_galaxy::JetonsGog| {
+        if noyau.coffre.ranger(&secret, &j.renouvellement).is_err() {
+            noyau.journaliser("import GOG (connexion façon Galaxy) : le coffre de Windows refuse le jeton (connexion refaite à la prochaine lecture)");
+            let _ = noyau.coffre.oublier(&secret);
+        }
+    };
+    match noyau.coffre.lire(&secret) {
+        Ok(Some(r)) => match crate::gog_galaxy::jetons_renouveles(crate::gog_galaxy::AUTH, &r).await {
+            Ok(j) if crate::gog_galaxy::verifier_compte(&j, compte).is_ok() => {
+                ranger(&j);
+                return Some(j.acces);
+            }
+            Ok(_) => {
+                noyau.journaliser("import GOG (connexion façon Galaxy) : le jeton rangé est celui d'un autre compte : oublié");
+                let _ = noyau.coffre.oublier(&secret);
+            }
+            Err(Erreur::Refus(_)) => {
+                noyau.journaliser("import GOG (connexion façon Galaxy) : jeton rangé refusé par GOG : oublié, connexion refaite");
+                let _ = noyau.coffre.oublier(&secret);
+            }
+            Err(_) => {
+                noyau.journaliser("import GOG (connexion façon Galaxy) : renouvellement impossible pour l'instant (réseau ou GOG)");
+                return None;
+            }
+        },
+        Ok(None) => {}
+        Err(_) => {
+            noyau.journaliser("import GOG (connexion façon Galaxy) : coffre de Windows illisible : connexion refaite");
+            let _ = noyau.coffre.oublier(&secret);
+        }
+    }
+    let code = match code_connexion_gog(app, noyau, dossier, montrer).await {
+        Ok(Some(c)) => c,
+        Ok(None) => return None,
+        Err(e) => {
+            noyau.journaliser(&format!("import GOG (connexion façon Galaxy) : {e}"));
+            return None;
+        }
+    };
+    match crate::gog_galaxy::jetons_par_code(crate::gog_galaxy::AUTH, &code).await {
+        Ok(j) if crate::gog_galaxy::verifier_compte(&j, compte).is_ok() => {
+            noyau.journaliser("import GOG (connexion façon Galaxy) : connecté");
+            ranger(&j);
+            Some(j.acces)
+        }
+        Ok(_) => {
+            noyau.journaliser("import GOG (connexion façon Galaxy) : la connexion est celle d'un autre compte que celui de gog.com : refusée");
+            None
+        }
+        Err(e) => {
+            noyau.journaliser(&format!("import GOG (connexion façon Galaxy) : échange du code refusé ({e})"));
+            None
+        }
+    }
+}
+
+/// Ce que la bibliothèque de Galaxy a donné, résolu par la base publique (lot C5).
+struct BibliothequeResolue {
+    jeux: Vec<crate::boutiques::JeuBoutique>,
+    fiches: std::collections::BTreeMap<String, crate::gog_galaxy::FicheGog>,
+}
+
+/// Le plafond de temps des fiches d'une lecture (la suite à la lecture d'après : rien n'est perdu).
+const DELAI_FICHES_GOG: std::time::Duration = std::time::Duration::from_secs(180);
+/// Après tant d'échecs de suite, la base publique est en panne : on s'arrête (la suite à la lecture d'après).
+const ECHECS_FICHES_GOG_MAX: usize = 10;
+
+/// Lit la bibliothèque de Galaxy du compte et résout ses jeux (titre, type, jaquette) par la base publique de GOG, sans
+/// redemander les fiches déjà en cache ; une fiche en échec ne fait jamais disparaître un jeu ; 429 : on s'arrête en
+/// gardant ce qui est résolu. `None` : bibliothèque illisible (la liste du site sert alors seule). Journal : des
+/// nombres, les types et les titres des jeux écartés (pas de données de compte).
+async fn bibliotheque_gog(
+    app: &AppHandle,
+    noyau: &Noyau,
+    dossier: &std::path::Path,
+    profil: &str,
+    compte: &str,
+    montrer: bool,
+    page: &[crate::boutiques::JeuBoutique],
+) -> Option<BibliothequeResolue> {
+    let acces = jeton_acces_gog(app, noyau, dossier, profil, compte, montrer).await?;
+    let bib = match crate::gog_galaxy::lire_bibliotheque(crate::gog_galaxy::BIBLIOTHEQUE, compte, &acces).await {
+        Ok(b) => b,
+        Err(e) => {
+            if matches!(e, Erreur::Refus(_)) {
+                // Le jeton ne vaut plus : la prochaine lecture refait la connexion.
+                let _ = noyau.coffre.oublier(&secret_gog(profil));
+            }
+            noyau.journaliser(&format!("import GOG (bibliothèque Galaxy) : illisible ({e}) ; la liste du site sert seule"));
+            return None;
+        }
+    };
+    drop(acces);
+    let avant = crate::boutiques::lire_source(dossier, "gog").unwrap_or_default();
+    let mut fiches = avant.fiches_gog.clone();
+    let maintenant = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let a_demander = crate::gog_galaxy::fiches_a_demander(&bib.ids, &fiches, maintenant);
+    let mut demandees = 0;
+    // Un seul client pour toutes les fiches ; au plus 3 minutes ; arrêt après 10 échecs de suite ; 429 : arrêt
+    // jusqu'à la prochaine lecture (sans attendre ici). Un jeu sans fiche est gardé (`choisir`).
+    let client = crate::gog_galaxy::client().ok();
+    let debut = std::time::Instant::now();
+    let mut echecs_de_suite = 0;
+    for (i, id) in a_demander.iter().enumerate() {
+        let Some(c) = &client else { break };
+        if debut.elapsed() > DELAI_FICHES_GOG {
+            noyau.journaliser(&format!("import GOG (bibliothèque Galaxy) : {demandees} fiche(s) lue(s) en {} s ; la suite à la prochaine lecture", DELAI_FICHES_GOG.as_secs()));
+            break;
+        }
+        if i > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(crate::gog_galaxy::PAUSE_FICHES_MS)).await;
+        }
+        demandees += 1;
+        match crate::gog_galaxy::fiche(c, crate::gog_galaxy::GAMESDB, id, maintenant).await {
+            Ok(f) => {
+                echecs_de_suite = 0;
+                fiches.insert(id.clone(), f);
+            }
+            Err(crate::gog_galaxy::EchecFiche::TropDeDemandes) => {
+                noyau.journaliser(&format!("import GOG (bibliothèque Galaxy) : la base publique demande d'attendre après {demandees} fiche(s) ; la suite à la prochaine lecture"));
+                break;
+            }
+            Err(crate::gog_galaxy::EchecFiche::Autre) => {
+                noyau.journaliser(&format!("import GOG (bibliothèque Galaxy) : fiche du jeu n° {id} illisible (jeu gardé)"));
+                echecs_de_suite += 1;
+                if echecs_de_suite >= ECHECS_FICHES_GOG_MAX {
+                    noyau.journaliser("import GOG (bibliothèque Galaxy) : la base publique ne répond plus ; la suite à la prochaine lecture");
+                    break;
+                }
+            }
+        }
+    }
+    let (jeux, bilan) = crate::gog_galaxy::choisir(&bib.ids, &fiches, page, &avant.jeux);
+    noyau.journaliser(&format!("import GOG (bibliothèque Galaxy) : {}", crate::gog_galaxy::texte_bilan(&bib, &bilan, demandees, jeux.len())));
+    // Le cache ne garde que les fiches des jeux de la bibliothèque (jamais une liste qui grossit sans fin).
+    let gardees: std::collections::BTreeSet<&String> = bib.ids.iter().collect();
+    fiches.retain(|k, _| gardees.contains(k));
+    Some(BibliothequeResolue { jeux, fiches })
+}
+
 /// Lot C4a (décisions de Seb du 21/11) : importe les jeux POSSÉDÉS du compte GOG connecté dans le navigateur du profil
 /// (la connexion faite pour le jeu offert vaut accord), jeux cachés compris, sans GOG Galaxy. La liste est écrite sous
 /// le verrou (compte rangé inchangé pendant la lecture exigé), puis rangée aussitôt dans la ludothèque, « pas
 /// installée » sauf si le registre de GOG la dit installée sur ce PC. Pas connecté : `reconnecter`, rien ne change (les
 /// jeux déjà importés restent).
 #[tauri::command]
-pub async fn boutique_gog_importer_connecte(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<ImportGog> {
+/// Lot C5 : puis la bibliothèque de GOG Galaxy (connexion façon Galaxy), qui fait foi pour les jeux qu'elle connaît ; la
+/// liste du site reste le garde-fou. `montrer` : juste après « Se connecter à GOG », la page de connexion façon Galaxy
+/// peut s'afficher si GOG la demande (jamais en lecture discrète).
+pub async fn boutique_gog_importer_connecte(app: AppHandle, noyau: State<'_, Noyau>, montrer: Option<bool>) -> Resultat<ImportGog> {
     // La session AU DÉBUT : la liste lue ne va qu'au profil qui l'a demandée.
     let s = noyau.session().await?;
     let p = s.profil.clone();
@@ -6758,11 +6938,25 @@ pub async fn boutique_gog_importer_connecte(app: AppHandle, noyau: State<'_, Noy
         noyau.journaliser(&format!("import GOG (connexion) : pas connecté à GOG pour le profil {}", p.id));
         return Ok(ImportGog { reconnecter: true, ..Default::default() });
     };
-    let jeux = crate::boutiques::jeux_du_compte_gog(&lus);
+    let page = crate::boutiques::jeux_du_compte_gog(&lus);
+    // Lot C5 : la bibliothèque de Galaxy, si la connexion façon Galaxy marche ; sinon la liste du site seule.
+    let biblio = bibliotheque_gog(&app, &noyau, &dossier, &p.id, &compte, montrer.unwrap_or(false), &page).await;
+    // Sans bibliothèque lue en entier : la liste du site PLUS les jeux GOG déjà rangés (jamais une liste qui rétrécit).
+    let bibliotheque_galaxy = biblio.is_some();
+    let (jeux, fiches) = match biblio {
+        Some(b) => (b.jeux, Some(b.fiches)),
+        None => {
+            let ranges = crate::boutiques::lire_source(&dossier, "gog").map(|c| c.jeux).unwrap_or_default();
+            (crate::gog_galaxy::union_sans_bibliotheque(page, &ranges), None)
+        }
+    };
     let quand = crate::noyau::maintenant();
     let mut change = false;
     let ecrit = crate::boutiques::modifier_source(&dossier, "gog", |c| {
-        let (c, ch) = crate::boutiques::appliquer_import_gog(c, &avant, &compte, jeux, &quand)?;
+        let (mut c, ch) = crate::boutiques::appliquer_import_gog(c, &avant, &compte, jeux, &quand)?;
+        if let Some(f) = fiches {
+            c.fiches_gog = f;
+        }
         change = ch;
         Ok(Some(c))
     })?;
@@ -6774,7 +6968,7 @@ pub async fn boutique_gog_importer_connecte(app: AppHandle, noyau: State<'_, Noy
     noyau.journaliser(&format!("import GOG (connexion) : {total} jeu(x) pour le profil {}", p.id));
     let (l, nouveaux) = ranger_gog_importe(&noyau, &s, &dossier).await?;
     let galaxy = tauri::async_runtime::spawn_blocking(crate::boutiques_pc::galaxy_present).await.unwrap_or(false);
-    Ok(ImportGog { reconnecter: false, total, nouveaux_installes: nouveaux_installes("gog", &l, &nouveaux), nouveaux: nouveaux.len(), galaxy })
+    Ok(ImportGog { reconnecter: false, total, nouveaux_installes: nouveaux_installes("gog", &l, &nouveaux), nouveaux: nouveaux.len(), galaxy, bibliotheque_galaxy })
 }
 
 /// Range la liste du compte GOG (déjà écrite) dans la ludothèque de la session `s` (prise au DÉBUT de l'import), avec
@@ -7352,7 +7546,7 @@ fn annoncer_fermeture_gog(app: &AppHandle, w: &tauri::WebviewWindow, profil: &st
 /// GOG : jamais une fenêtre de connexion ou de jeu offert pendant la lecture des jeux du compte (même compte, même
 /// navigateur).
 fn refuser_pendant_lecture_gog(app: &AppHandle, boutique: &str) -> Resultat<()> {
-    if boutique == "gog" && app.get_webview_window(FENETRE_GOG_JEUX).is_some() {
+    if boutique == "gog" && (app.get_webview_window(FENETRE_GOG_JEUX).is_some() || app.get_webview_window(FENETRE_GOG_GALAXY).is_some()) {
         return Err(Erreur::Refus("Frogtend lit tes jeux GOG en ce moment : attends la fin (moins d'une minute en général), puis réessaie.".into()));
     }
     Ok(())

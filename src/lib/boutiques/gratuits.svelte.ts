@@ -70,6 +70,11 @@ export function messageRecolte(b: 'gog' | 'prime', r: Recolte): { texte: string;
 }
 
 export async function connexion(b: 'gog' | 'prime') {
+  // Lot C5 : jamais pendant une lecture des jeux GOG (même compte, même navigateur), comme `recuperer`.
+  if (b === 'gog' && gratuits.lectureGog) {
+    toast('⏳ Frogtend lit tes jeux GOG : réessaie dans un moment.', 'alerte');
+    return;
+  }
   try {
     await api.gratuitsConnexion(b);
     toast(`🔑 Connecte-toi à ${NOMS[b]} dans la fenêtre qui s’ouvre, puis ferme-la. Frogtend ne voit jamais ton mot de passe.`);

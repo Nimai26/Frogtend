@@ -9,7 +9,7 @@
   import { connecteASteam, connexionSteam, connexionSteamExpiree, importerSteam, importSteamEnCours, libelleCompteSecours, lireSteam, mettreAJourSteam, oublierSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
   import { boutiquesPc, lireEtatsPc, relireMaintenant } from '$lib/boutiques/boutiques-pc.svelte';
   import { ligneEtat } from '$lib/boutiques/jeu-boutique';
-  import { connecteAGog, connexionGog, connexionGogExpiree, gog, gogOccupe, importGogEnCours, lireGog, mettreAJourGog } from '$lib/boutiques/gog.svelte';
+  import { connecteAGog, connexionGog, connexionGogExpiree, gog, gogOccupe, importGogEnCours, lireGog, listeGogPartielle, MESSAGE_GOG_PARTIEL, mettreAJourGog } from '$lib/boutiques/gog.svelte';
 
   let filtre = $state('');
   let seulementInstalles = $state(false);
@@ -205,7 +205,8 @@
       <!-- La dernière erreur de lecture reste affichée ici (une erreur au démarrage ne fait pas de message). -->
       <p class="muted ligne-steam" class:alerte={!!erreurGog} role="status">
         {erreurGog ??
-          (gog.etat?.nb_jeux ? `${gog.etat.nb_jeux} jeu(x) de ton compte GOG dans ta ludothèque, relus à chaque ouverture de Frogtend.` : 'Tes jeux GOG sont relus à chaque ouverture de Frogtend.')}
+          ((gog.etat?.nb_jeux ? `${gog.etat.nb_jeux} jeu(x) de ton compte GOG dans ta ludothèque, relus à chaque ouverture de Frogtend.` : 'Tes jeux GOG sont relus à chaque ouverture de Frogtend.') +
+            (listeGogPartielle() ? ` ${MESSAGE_GOG_PARTIEL}` : ''))}
       </p>
     {/if}
     <div class="tete sous-ligne">

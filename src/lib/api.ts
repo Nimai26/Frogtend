@@ -615,6 +615,8 @@ export interface ImportSteam {
 export interface ImportGog extends ImportSteam {
   /** GOG Galaxy est installé sur ce PC (sans lui, « ⬇ Installer » ne peut rien pour l'instant). */
   galaxy: boolean;
+  /** Lot C5 : la bibliothèque de GOG Galaxy a été lue en entier (sinon : liste partielle, nouvel essai plus tard). */
+  bibliotheque_galaxy?: boolean;
 }
 
 /** Ce que Frogtend sait du compte GOG du profil (lot C4a). */
@@ -1056,7 +1058,8 @@ export const api = {
   /** Lot C4a : ce que Frogtend sait du compte GOG du profil (sans rien du compte). */
   gogEtat: () => appeler<EtatGog>('boutique_gog_etat'),
   /** Lot C4a : les jeux possédés du compte GOG connecté dans le navigateur du profil (jeux cachés compris). */
-  gogImporterConnecte: () => appeler<ImportGog>('boutique_gog_importer_connecte'),
+  /** Lot C5 : `montrer` (juste après « Se connecter à GOG ») : la page de connexion façon Galaxy peut s'afficher. */
+  gogImporterConnecte: (montrer = false) => appeler<ImportGog>('boutique_gog_importer_connecte', { montrer }),
   /** Import automatique (lot A) : relit les jeux installés de toutes les boutiques de ce PC et les range. */
   /** `possedes` : le profil a accepté ses jeux possédés (lot B) ; sinon seuls les jeux installés sont rangés. */
   boutiquesRelirePc: (possedes = false) => appeler<ReleveBoutiques>('boutiques_relire_pc', { possedes }),

@@ -141,54 +141,13 @@
           if (v.products.length > 0 && lisibles === 0) throw new Arret('page-changee');
         }
       }
-      // 0.217.2 (Seb 21/11 : 197 jeux dans GOG Galaxy, 88 annoncés par la liste) : SONDES de diagnostic, des nombres
-      // seulement — la liste des numéros possédés (`/user/data/games`), la liste sans filtre de type, les films, et si
-      // la fiche publique d'un jeu se lit depuis cette page (api.gog.com). Jamais d'échec à cause d'une sonde.
-      const sonder = async () => {
-        const morceaux = [];
-        const essai = async (nom, adresse, lire, options) => {
-          try {
-            const r = await fetch(adresse, options || { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } });
-            if (!r.ok) return morceaux.push(nom + '-statut-' + r.status);
-            const v = await r.json();
-            morceaux.push(nom + '-' + lire(v));
-          } catch (e) {
-            morceaux.push(nom + '-erreur');
-          }
-        };
-        await essai('possedes', '/user/data/games', (v) => {
-          const o = v && Array.isArray(v.owned) ? v.owned.map((x) => String(x).replace(/[^0-9]/g, '')).filter(Boolean) : null;
-          if (!o) return 'forme-inconnue';
-          const hors = o.filter((id) => !jeux.has(id));
-          return o.length + '-hors-liste-' + hors.length + '-exemples-' + (hors.slice(0, 12).join('-') || 'aucun');
-        });
-        await pause(250);
-        await essai('sans-type', '/account/getFilteredProducts?page=1', (v) => 'annonces-' + Number(v && v.totalProducts));
-        await pause(250);
-        await essai('films', '/account/getFilteredProducts?mediaType=2&page=1', (v) => 'annonces-' + Number(v && v.totalProducts));
-        await pause(250);
-        await essai('fiche-publique', 'https://api.gog.com/products?ids=1207658924', (v) => (Array.isArray(v) ? 'liste-' + v.length : 'objet'), { credentials: 'omit', cache: 'no-store' });
-        return morceaux.join('--');
-      };
-      const sondes = await sonder();
       // Le bilan d'abord, puis une pause (deux remises ne se suivent jamais de trop près).
       remettre(
         'gog-bilan',
         bilan
           .map((b, i) => (i === 0 ? 'visibles' : 'caches') + '-pages-' + b.pages + '-annonces-' + b.annonces + '-lignes-' + b.lignes + '-gardes-' + b.gardes + '-illisibles-' + b.illisibles + '-nonjeux-' + (b.nonJeux.join('-') || 'aucun'))
-          .join('--') + '--total-' + jeux.size + '--' + sondes,
+          .join('--') + '--total-' + jeux.size,
       );
-      await pause(400);
-      // 0.217.3 (SONDE) : le jeton d'accès de la session, lu par la page sur menu.gog.com (que GOG ouvre à www.gog.com),
-      // remis au cœur pour lire la bibliothèque de GOG Galaxy. Rien d'autre de la réponse n'est lu.
-      try {
-        const r = await fetch('https://menu.gog.com/v1/account/basic', { credentials: 'include', cache: 'no-store' });
-        const v = r.ok ? await r.json() : null;
-        const t = v && typeof v.accessToken === 'string' ? v.accessToken : '';
-        remettre('gog-jeton', /^[A-Za-z0-9._-]{20,4000}$/.test(t) ? t : 'absent');
-      } catch (e) {
-        remettre('gog-jeton', 'absent');
-      }
       await pause(400);
       // 3. La remise par morceaux, demandés un à un par le cœur.
       const liste = [...jeux.values()];

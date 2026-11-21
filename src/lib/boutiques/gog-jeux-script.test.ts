@@ -9,7 +9,6 @@ const SCRIPT = readFileSync(resolve(process.cwd(), 'src-tauri/ressources/gratuit
 const dom = (globalThis as unknown as { jsdom: { reconfigure(o: { url: string }): void } }).jsdom;
 const fenetre = window as unknown as Record<string, unknown>;
 
-const SONDES = ['/user/data/games', '/account/getFilteredProducts?page=1', '/account/getFilteredProducts?mediaType=2&page=1', 'https://api.gog.com/products?ids=1207658924', 'https://menu.gog.com/v1/account/basic'];
 type Reponse = { status: number; json?: unknown } | 'erreur';
 /** Un produit de la liste de GOG. */
 const produit = (id: number | string, title: string, autre: Record<string, unknown> = {}) => ({ id, title, image: `//images-1.gog-statics.com/img${id}`, isGame: true, isMovie: false, ...autre });
@@ -34,18 +33,15 @@ async function essayer(repondre: (adresse: string) => Reponse, attendues = 1) {
   const demandees: string[] = [];
   // Le bilan (0.217.1, pour le journal) est mis à part : il ne change rien au protocole.
   const bilans: string[] = [];
-  // Le jeton de la sonde (0.217.3) aussi.
-  const jetons: string[] = [];
-  fenetre.__remettre = (u: string) =>
-    u.startsWith('https://frogtend.invalid/gog-bilan#') ? bilans.push(u) : u.startsWith('https://frogtend.invalid/gog-jeton#') ? jetons.push(u) : remis.push(u);
+  fenetre.__remettre = (u: string) => (u.startsWith('https://frogtend.invalid/gog-bilan#') ? bilans.push(u) : remis.push(u));
   vi.useFakeTimers({ toFake: ['setTimeout'] });
   vi.stubGlobal(
     'fetch',
     vi.fn(async (adresse: string, options: RequestInit) => {
-      // Les sondes de diagnostic (0.217.2) ne comptent pas dans les adresses de la lecture.
-      if (!SONDES.includes(adresse)) demandees.push(adresse);
-      // Les cookies de GOG ne partent jamais ailleurs que sur www.gog.com (la sonde de la fiche publique : sans cookies).
-      expect(options.credentials).toBe(adresse.startsWith('https://menu.gog.com/') ? 'include' : adresse.startsWith('https://') ? 'omit' : 'same-origin');
+      demandees.push(adresse);
+      // Lot C5 : plus aucune sonde ; la page ne parle qu'à www.gog.com, avec ses cookies.
+      expect(adresse.startsWith('/')).toBe(true);
+      expect(options.credentials).toBe('same-origin');
       const r = repondre(adresse);
       if (r === 'erreur') throw new Error('réseau');
       return {
@@ -64,7 +60,7 @@ async function essayer(repondre: (adresse: string) => Reponse, attendues = 1) {
     expect(remis.length).toBe(attendues);
   });
   vi.useRealTimers();
-  return { remis, demandees, bilans, jetons };
+  return { remis, demandees, bilans };
 }
 
 /** Demande au script le morceau k (comme le cœur) et rend la remise. */
@@ -83,27 +79,13 @@ describe('gog-jeux.js', () => {
     const { remis, bilans } = await essayer((a) => {
       if (a === '/userData.json') return connecte();
       if (a.includes('hiddenFlag=0')) return { status: 200, json: { totalPages: 1, totalProducts: 3, products: [produit(1, 'Un'), produit(2, 'Deux', { isGame: false }), { id: 3 }] } };
-      if (a === '/user/data/games') return { status: 200, json: { owned: [1, 2, 7, 8] } };
-      if (a === '/account/getFilteredProducts?page=1') return { status: 200, json: { totalProducts: 9 } };
-      if (a.startsWith('https://api.gog.com/')) return { status: 200, json: [{ id: 1207658924 }] };
       return { status: 200, json: { totalPages: 0, totalProducts: 0, products: [] } };
     });
     expect(remis[0]).toBe('https://frogtend.invalid/gog-compte#48628349957132247');
     expect(bilans).toEqual([
-      'https://frogtend.invalid/gog-bilan#visibles-pages-1-annonces-3-lignes-3-gardes-1-illisibles-1-nonjeux-2--caches-pages-1-annonces-0-lignes-0-gardes-0-illisibles-0-nonjeux-aucun--total-1--possedes-4-hors-liste-3-exemples-2-7-8--sans-type-annonces-9--films-annonces-0--fiche-publique-liste-1',
+      'https://frogtend.invalid/gog-bilan#visibles-pages-1-annonces-3-lignes-3-gardes-1-illisibles-1-nonjeux-2--caches-pages-1-annonces-0-lignes-0-gardes-0-illisibles-0-nonjeux-aucun--total-1',
     ]);
     expect(bilans[0]).not.toContain('48628349957132247');
-  });
-
-  it('sonde 0.217.3 : le jeton de menu.gog.com est remis tel quel s’il a une forme sûre, sinon « absent »', async () => {
-    const avec = await essayer((a) => {
-      if (a === '/userData.json') return connecte();
-      if (a === 'https://menu.gog.com/v1/account/basic') return { status: 200, json: { accessToken: 'abcdefghij.KLMNOPQRST_uvwxyz-0123', email: 'x@y.fr' } };
-      return page(0, []);
-    });
-    expect(avec.jetons).toEqual(['https://frogtend.invalid/gog-jeton#abcdefghij.KLMNOPQRST_uvwxyz-0123']);
-    const sans = await essayer((a) => (a === '/userData.json' ? connecte() : a.startsWith('https://menu') ? { status: 401 } : page(0, [])));
-    expect(sans.jetons).toEqual(['https://frogtend.invalid/gog-jeton#absent']);
   });
 
   it('connecté : le compte d’abord (chiffres seulement), puis les morceaux DEMANDÉS un à un, jeux cachés compris', async () => {

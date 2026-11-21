@@ -6,6 +6,26 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🟣 GOG comme dans GOG Galaxy (0.218.0, lot C5)
+- [ ] 1. Ouvrir Frogtend (déjà connecté à GOG) : dans les minutes qui suivent (la première fois, Frogtend lit la fiche
+      de chaque jeu : jusqu'à ~3 minutes ; s'il n'a pas fini, il continue à l'ouverture suivante), un message « 🎮 N jeux
+      de ton compte GOG ajoutés… » ; AUCUNE fenêtre ne s'ouvre.
+- [ ] 2. Ma ludothèque, filtre GOG : environ **197 jeux** (le nombre de GOG Galaxy, filtre GOG.com, possédés) ; dis-moi
+      le nombre exact.
+- [ ] 3. **Horizon Zero Dawn** et **Cyberpunk 2077** sont là, une seule carte chacun, avec leur jaquette VERTICALE
+      (comme dans Galaxy) ; aucun « … - Amazon Prime » ni DLC en carte à part.
+- [ ] 4. Pas de doublon avec tes jeux GOG installés ; ceux-ci restent « installés ».
+- [ ] 5. 🛒 Boutiques ▸ « 🔄 Mettre à jour mes jeux GOG » : « Rien de nouveau ». Fermer et rouvrir Frogtend : pas de
+      message.
+- [ ] 6. Le journal (« import GOG (bibliothèque Galaxy) ») : envoie-moi la ligne entière (types, gardés, écartés et
+      leurs titres) pour la comparer avec les 197 de Galaxy. Il ne contient ni ton compte ni aucun jeton.
+- [ ] 7. Si « connexion façon Galaxy : pas de code » apparaît au journal : « 🔑 Me reconnecter » dans 🛒 Boutiques, te
+      connecter, fermer la fenêtre ; si GOG te redemande de te connecter, sa fenêtre s'affiche au premier plan avec le
+      message « 🔑 Connecte-toi à GOG dans sa fenêtre… » : t'y connecter (Google, Discord, Steam ou Xbox marchent aussi).
+- [ ] 8. Les 88 jeux de la page « Mes jeux » de gog.com sont TOUS dans la ludothèque (aucun n'est retiré par Frogtend).
+- [ ] 9. Si la ligne du bloc GOG dit « Liste partielle de GOG pour l'instant… » : rouvrir Frogtend plus tard ; aucun jeu
+      ne doit avoir disparu entre-temps.
+
 ## 🟣 Tous les jeux GOG du compte (0.217.0, lot C4a)
 > Avant : sur gog.com (connecté), note le nombre de jeux de « Mes jeux » (jeux cachés compris : ils entrent aussi).
 - [x] (validé par Seb le 21/11 : pas connecté au départ, donc rien à l'ouverture — normal ; après « Se connecter à GOG » et fermeture de la fenêtre : « 88 jeux ajoutés ») 1. Au premier lancement après la mise à jour (déjà connecté à GOG pour le jeu offert) : après la récupération

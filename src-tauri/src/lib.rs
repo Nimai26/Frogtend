@@ -29,6 +29,7 @@ pub mod manettes_sdl;
 pub mod medias;
 pub mod locale;
 pub mod gratuits;
+pub mod gog_galaxy;
 pub mod icones_lanceurs;
 pub mod import_local;
 pub mod mame;

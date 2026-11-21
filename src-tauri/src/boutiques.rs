@@ -94,6 +94,10 @@ pub struct CompteBoutique {
     /// lot C4b) ; aucune carte n'est retirée au lot C4a.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub id_compte_precedent: String,
+    /// GOG (lot C5) : les fiches de la base publique de GOG déjà lues, par numéro de jeu (titre, type, jaquette ; un
+    /// numéro introuvable aussi) : jamais redemandées. Rien du compte.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub fiches_gog: std::collections::BTreeMap<String, crate::gog_galaxy::FicheGog>,
 }
 
 /// Ce qui reste d'un compte Steam oublié : seulement le compte précédent (ni clé, ni connexion, ni liste). `None` s'il
