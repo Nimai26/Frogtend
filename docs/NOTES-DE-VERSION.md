@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.215.3 — 🛋 Taodbox : « À installer » lisible
+
+- Corrigé : en taille Grande, la pastille des jeux à installer était coupée (« À in… »). Elle s'adapte maintenant à
+  la largeur de la jaquette et se lit en entier.
+- Confirmé par Seb le 21/11 : les 142 jeux de son compte Steam sont dans la ludothèque, et « ⬇ Installer » ouvre
+  Steam.
+
 ## 0.215.2 — 🎮 Steam : lire ses jeux autrement
 
 - Corrigé (à confirmer) : Steam refusait la demande faite par Frogtend lui-même (journal : « statut 302 »). C'est

@@ -650,6 +650,8 @@
     border-radius: calc(6 * var(--u));
     overflow: hidden;
     background: color-mix(in srgb, var(--ink) 8%, transparent);
+    /* La pastille « à installer » se règle sur la largeur de la jaquette (Seb 21/11 : « À in… » coupé en Grande). */
+    container-type: inline-size;
   }
   .image-steam img {
     width: 100%;
@@ -662,13 +664,14 @@
   }
   .pastille-installer {
     position: absolute;
-    inset-inline: calc(4 * var(--u));
-    bottom: calc(4 * var(--u));
-    padding: calc(3 * var(--u)) calc(4 * var(--u));
+    inset-inline: min(calc(4 * var(--u)), 3cqi);
+    bottom: min(calc(4 * var(--u)), 3cqi);
+    padding: min(calc(3 * var(--u)), 2cqi) min(calc(4 * var(--u)), 2cqi);
     border-radius: calc(6 * var(--u));
     background: var(--accent);
     color: var(--on-accent);
-    font-size: calc(11 * var(--u));
+    /* Jamais plus grand que la jaquette ne le permet : « ⬇ À installer » tient en entier à toutes les tailles. */
+    font-size: min(calc(11 * var(--u)), 9cqi);
     font-weight: 700;
     text-align: center;
     white-space: nowrap;
