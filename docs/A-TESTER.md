@@ -11,8 +11,8 @@
       bloc affiche « 🔑 Se connecter à Steam » ; tes 142 jeux Steam sont TOUJOURS dans la ludothèque.
 - [x] (validé par Seb le 21/11 : formulaire de connexion affiché, reconnecté) Puis « 🔑 Se connecter à Steam » : la page de Steam demande un compte (formulaire de connexion), elle ne te
       reconnecte PAS toute seule. Te reconnecter avec ton compte : « ✅ Connecté à Steam », aucun jeu perdu.
-- [ ] Epic n'a pas bougé : toujours « ✅ Connecté à Epic ».
-- [ ] (0.216.1) 🛒 Boutiques : « 🎮 Mon compte Steam » est sous Prime Gaming, avec les autres comptes (plus sous « Mes
+- [x] (validé par Seb le 21/11) Epic n'a pas bougé : toujours « ✅ Connecté à Epic ».
+- [x] (validé par Seb le 21/11) (0.216.1) 🛒 Boutiques : « 🎮 Mon compte Steam » est sous Prime Gaming, avec les autres comptes (plus sous « Mes
       jeux installés ») ; ses boutons marchent comme avant.
 - [ ] (si tu as un deuxième compte Steam, plus tard) se connecter avec : ses jeux arrivent, les jeux jamais installés
       ni joués de l'ancien compte partent, les installés/joués restent.
