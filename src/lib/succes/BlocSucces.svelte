@@ -4,6 +4,7 @@
   import { goto } from '$app/navigation';
   import { api, type JeuResume } from '$lib/api';
   import { resumeRetro, type SuccesRetro } from './succes.svelte';
+  import { succesGalaxy } from '$lib/boutiques/jeu-boutique';
 
   /** `idPc` : le numéro du jeu SUR CE PC (un jeu importé relié montre sa fiche, son fichier est sous son numéro local). */
   let { jeu, surPc, idPc }: { jeu: JeuResume; surPc: boolean; idPc?: number } = $props();
@@ -38,6 +39,7 @@
   });
 
   const resume = $derived(ra ? resumeRetro(ra) : null);
+  const galaxy = $derived(succesGalaxy(jeu));
 
   /** La liste en détail (lot C). */
   function voir(source: 'steam' | 'galaxy', cle: string) {
@@ -45,12 +47,13 @@
   }
 </script>
 
-{#if jeu.source === 'galaxy' && jeu.succes}
+{#if galaxy}
+  <!-- Lot C4a : aussi pour une carte GOG (compte ou PC), qui passe avant Galaxy et reprend ses succès. -->
   <div class="succes cx-block">
     <strong>🏆 Succès <span class="muted">(GOG Galaxy)</span></strong>
-    <span>{jeu.succes[0]} / {jeu.succes[1]} obtenus</span>
-    <div class="bar"><span style="width: {Math.round((jeu.succes[0] / jeu.succes[1]) * 100)}%"></span></div>
-    {#if jeu.cle_boutique}<button class="btn petit" onclick={() => voir('galaxy', jeu.cle_boutique ?? '')}>🏆 Voir les succès</button>{/if}
+    <span>{galaxy.obtenus} / {galaxy.total} obtenus</span>
+    <div class="bar"><span style="width: {Math.round((galaxy.obtenus / galaxy.total) * 100)}%"></span></div>
+    {#if galaxy.cle}<button class="btn petit" onclick={() => voir('galaxy', galaxy.cle ?? '')}>🏆 Voir les succès</button>{/if}
   </div>
 {:else if steam}
   <div class="succes cx-block">

@@ -6137,6 +6137,10 @@ pub(crate) async fn relire_pc(noyau: &Noyau, seulement: &[&str], possedes: bool)
         // jeux possédés (lot B), une seule carte pour un jeu installé ET possédé.
         let cartes = if b == "steam" {
             crate::boutiques_pc::fusion_steam(crate::boutiques::lire(&dossier_profil_de(noyau, &s.profil.id)).map(|c| c.jeux).unwrap_or_default(), &installes)
+        } else if b == "gog" {
+            // Lot C4a : la liste du compte GOG du profil (lue par la page, si elle l'a été) garde ses jeux pas installés,
+            // complétée par ce que GOG Galaxy en sait. Le registre du PC, lui, n'a reçu que les jeux installés (plus haut).
+            cartes_gog(&dossier_profil_de(noyau, &s.profil.id), &installes)
         } else {
             cartes_pc(installes, possedes, accepte)
         };
@@ -6161,6 +6165,14 @@ pub(crate) async fn relire_pc(noyau: &Noyau, seulement: &[&str], possedes: bool)
 /// Parmi les cartes NOUVELLES (`nouveaux`, leurs ids), combien sont des jeux installés (le toast : « Epic 497 dont 1
 /// installé »).
 /// Les cartes d'une boutique (sauf Steam) : ses jeux installés, plus ses jeux possédés SI le profil l'a accepté.
+/// Les cartes GOG d'un profil (lot C4a) : la liste de son compte GOG et ses jeux GOG installés sur ce PC, complétés par
+/// la liste de GOG Galaxy du profil (`boutiques_pc::fusion_gog`).
+pub(crate) fn cartes_gog(dossier_profil: &std::path::Path, installes: &[crate::boutiques::JeuBoutique]) -> Vec<crate::boutiques::JeuBoutique> {
+    let compte = crate::boutiques::lire_source(dossier_profil, "gog").map(|c| c.jeux).unwrap_or_default();
+    let galaxy = crate::boutiques::lire_source(dossier_profil, "galaxy").map(|c| c.jeux).unwrap_or_default();
+    crate::boutiques_pc::fusion_gog(compte, installes, &galaxy)
+}
+
 pub(crate) fn cartes_pc(installes: Vec<crate::boutiques::JeuBoutique>, possedes: Option<Vec<crate::boutiques::JeuBoutique>>, accepte: bool) -> Vec<crate::boutiques::JeuBoutique> {
     crate::boutiques_pc::fusion_possedes(Some(installes), possedes.filter(|_| accepte)).unwrap_or_default()
 }
@@ -6505,6 +6517,210 @@ async fn importer_par_jeton(app: &AppHandle, noyau: &Noyau, dossier: &std::path:
 /// Parmi les cartes nouvelles (`nouveaux`), celles dont le jeu est installé sur ce PC.
 fn compter_installes(l: &[crate::boutiques::JeuBoutique], nouveaux: &[i64]) -> usize {
     l.iter().filter(|j| j.installe && nouveaux.contains(&crate::noyau::id_carte("steam", j))).count()
+}
+
+// ───────────────────────────── GOG : les jeux du compte (lot C4a) ─────────────────────────────
+
+/// Ce que Frogtend sait du compte GOG du profil (lot C4a), sans rien du compte lui-même (ni numéro, ni nom).
+#[derive(Serialize, Clone, Debug, Default, PartialEq)]
+pub struct EtatGog {
+    /// Une lecture des jeux du compte a déjà réussi pour ce profil.
+    pub connu: bool,
+    /// Les jeux du compte gardés (dernière lecture).
+    pub nb_jeux: usize,
+    pub maj_le: Option<String>,
+}
+
+#[tauri::command]
+pub async fn boutique_gog_etat(noyau: State<'_, Noyau>) -> Resultat<EtatGog> {
+    let p = profil_ouvert(&noyau).await?;
+    let c = crate::boutiques::lire_source(&dossier_profil_de(&noyau, &p.id), "gog");
+    Ok(EtatGog {
+        connu: c.as_ref().is_some_and(|c| crate::gratuits::numero_gog(&c.id_compte)),
+        nb_jeux: c.as_ref().map_or(0, |c| c.jeux.len()),
+        maj_le: c.and_then(|c| Some(c.maj_le).filter(|m| !m.is_empty())),
+    })
+}
+
+/// Ce qu'une lecture des jeux du compte GOG a donné (lot C4a) : la forme de Steam, plus la présence de GOG Galaxy
+/// (sans lui, « ⬇ Installer » ne peut rien : le message le dit).
+#[derive(Serialize, Clone, Debug, Default, PartialEq)]
+pub struct ImportGog {
+    pub reconnecter: bool,
+    pub total: usize,
+    pub nouveaux: usize,
+    pub nouveaux_installes: usize,
+    /// GOG Galaxy est installé sur ce PC.
+    pub galaxy: bool,
+}
+
+/// L'étiquette de la fenêtre CACHÉE qui lit les jeux du compte GOG : à elle seule (jamais `boutique-gog`, que la
+/// connexion et la récupération du jeu offert ferment).
+const FENETRE_GOG_JEUX: &str = "boutique-gog-jeux";
+/// La fenêtre de connexion à GOG et de récupération du jeu offert (`gratuits_connexion`, `gratuits_recuperer`).
+const FENETRE_GOG: &str = "boutique-gog";
+/// Le délai SANS NOUVELLE de la page GOG (chargement, puis toutes les 5 pages lues, puis chaque morceau) : au-delà,
+/// la lecture échoue. Le script dit qu'il avance toutes les 5 pages (quelques secondes).
+const DELAI_GOG_SANS_NOUVELLE: std::time::Duration = std::time::Duration::from_secs(60);
+/// Le plafond d'une lecture GOG entière : 2 × 100 pages au plus (plafond du script), 250 ms de pause entre deux, puis
+/// 400 morceaux au plus — bien moins de 10 minutes même lentement.
+const DELAI_GOG_PLAFOND: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// Lit les jeux du compte GOG connecté dans le navigateur DU PROFIL (lot C4a) : une fenêtre CACHÉE, sans focus, ouvre
+/// la vraie boutique ; son script (`gog-jeux.js`) demande la liste à GOG (mêmes cookies, même navigateur) et la remet
+/// par des navigations vers frogtend.invalid, interceptées et annulées : le compte, puis les morceaux que le cœur
+/// demande un à un. Rend `None` si le compte n'est pas connecté (« reconnecte-toi »). Rien du compte n'est journalisé.
+async fn lire_jeux_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path) -> Resultat<Option<(String, Vec<crate::gratuits::JeuGogLu>)>> {
+    // Un profil sans navigateur ne s'est jamais connecté à GOG par Frogtend.
+    if !crate::gratuits::dossier_navigateur(dossier).is_dir() {
+        return Ok(None);
+    }
+    if app.get_webview_window(FENETRE_GOG).is_some() {
+        return Err(Erreur::Refus("Termine d'abord ce qui se passe dans la fenêtre de GOG (connexion ou jeu offert), puis réessaie.".into()));
+    }
+    if app.get_webview_window(FENETRE_GOG_JEUX).is_some() {
+        return Err(Erreur::Refus("La lecture de tes jeux GOG est déjà en cours : attends qu'elle finisse.".into()));
+    }
+    let (envoi, reception) = std::sync::mpsc::channel::<crate::gratuits::RemiseGog>();
+    let envoi = std::sync::Mutex::new(envoi);
+    let page = tauri::Url::parse(crate::gratuits::PAGE_GOG).map_err(|_| Erreur::Refus("Adresse GOG invalide.".into()))?;
+    let w = tauri::WebviewWindowBuilder::new(app, FENETRE_GOG_JEUX, tauri::WebviewUrl::External(page))
+        .title("GOG — Frogtend")
+        .inner_size(1000.0, 700.0)
+        .visible(false)
+        .focused(false)
+        .skip_taskbar(true)
+        .data_directory(crate::gratuits::dossier_navigateur(dossier))
+        .on_new_window(crate::gratuits::fenetre_d_automatisation)
+        .on_navigation(move |u| {
+            if let Some(r) = crate::gratuits::lire_remise_gog(u) {
+                let _ = envoi.lock().map(|e| e.send(r));
+                return false;
+            }
+            crate::gratuits::navigation_gog(u)
+        })
+        .on_page_load(|w, charge| {
+            if matches!(charge.event(), tauri::webview::PageLoadEvent::Finished) && w.url().is_ok_and(|u| crate::gratuits::navigation_gog(&u)) {
+                let _ = w.eval(crate::gratuits::SCRIPT_GOG_JEUX);
+            }
+        })
+        .build()
+        .map_err(|e| Erreur::Disque(format!("La lecture de ton compte GOG ne s'ouvre pas ({e}).")))?;
+    // Les remises, une à une, jusqu'à la fin ou au délai : chaque morceau reçu, le suivant est demandé à la page.
+    let page_js = w.clone();
+    let suite = tauri::async_runtime::spawn_blocking(move || {
+        let fin = std::time::Instant::now() + DELAI_GOG_PLAFOND;
+        let mut r = crate::gratuits::ReceptionGog::default();
+        loop {
+            // Le délai repart à chaque nouvelle de la page, dans la limite du plafond.
+            let reste = fin.saturating_duration_since(std::time::Instant::now()).min(DELAI_GOG_SANS_NOUVELLE);
+            let Ok(remise) = reception.recv_timeout(reste) else { return (None, r.recus()) };
+            match r.recevoir(remise) {
+                crate::gratuits::SuiteGog::Demander(k) => {
+                    let _ = page_js.eval(&format!("window.__frogtendGog && window.__frogtendGog({k})"));
+                }
+                crate::gratuits::SuiteGog::Attendre => {}
+                s => return (Some(s), r.recus()),
+            }
+        }
+    })
+    .await;
+    let _ = w.close();
+    let (suite, recus) = suite.map_err(|_| Erreur::Disque("La lecture de ton compte GOG s'est arrêtée brutalement.".into()))?;
+    match suite {
+        Some(crate::gratuits::SuiteGog::Fini(compte, jeux)) => {
+            noyau.journaliser(&format!("import GOG (connexion) : liste lue par la page ({recus} morceau(x), {} jeu(x))", jeux.len()));
+            Ok(Some((compte, jeux)))
+        }
+        Some(crate::gratuits::SuiteGog::Absent(etape)) => {
+            noyau.journaliser(&format!("import GOG (connexion) : pas de liste ({etape})"));
+            match crate::gratuits::erreur_sans_jeux_gog(&etape) {
+                None => Ok(None),
+                Some(e) => Err(e),
+            }
+        }
+        Some(crate::gratuits::SuiteGog::Echec(etape)) => {
+            noyau.journaliser(&format!("import GOG (connexion) : remise refusée par Frogtend ({etape}, {recus} morceau(x) reçu(s)) ; rien n'est écrit"));
+            Err(Erreur::Serveur(crate::gratuits::MOTIF_GOG_INHABITUEL.into()))
+        }
+        Some(crate::gratuits::SuiteGog::Demander(_) | crate::gratuits::SuiteGog::Attendre) | None => {
+            noyau.journaliser(&format!(
+                "import GOG (connexion) : la boutique s'est tue plus de {} s (ou plus de {} s en tout) ({recus} morceau(x) reçu(s)) ; rien n'est écrit",
+                DELAI_GOG_SANS_NOUVELLE.as_secs(),
+                DELAI_GOG_PLAFOND.as_secs()
+            ));
+            Err(Erreur::Reseau("GOG n'a pas répondu à temps : réessaie dans un moment.".into()))
+        }
+    }
+}
+
+/// Lot C4a (décisions de Seb du 21/11) : importe les jeux POSSÉDÉS du compte GOG connecté dans le navigateur du profil
+/// (la connexion faite pour le jeu offert vaut accord), jeux cachés compris, sans GOG Galaxy. La liste est écrite sous
+/// le verrou (compte rangé inchangé pendant la lecture exigé), puis rangée aussitôt dans la ludothèque, « pas
+/// installée » sauf si le registre de GOG la dit installée sur ce PC. Pas connecté : `reconnecter`, rien ne change (les
+/// jeux déjà importés restent).
+#[tauri::command]
+pub async fn boutique_gog_importer_connecte(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<ImportGog> {
+    // La session AU DÉBUT : la liste lue ne va qu'au profil qui l'a demandée.
+    let s = noyau.session().await?;
+    let p = s.profil.clone();
+    let dossier = dossier_profil_de(&noyau, &p.id);
+    let avant = crate::boutiques::lire_source(&dossier, "gog").map(|c| c.id_compte).unwrap_or_default();
+    let Some((compte, lus)) = lire_jeux_gog(&app, &noyau, &dossier).await? else {
+        noyau.journaliser(&format!("import GOG (connexion) : pas connecté à GOG pour le profil {}", p.id));
+        return Ok(ImportGog { reconnecter: true, ..Default::default() });
+    };
+    let jeux = crate::boutiques::jeux_du_compte_gog(&lus);
+    let quand = crate::noyau::maintenant();
+    let mut change = false;
+    let ecrit = crate::boutiques::modifier_source(&dossier, "gog", |c| {
+        let (c, ch) = crate::boutiques::appliquer_import_gog(c, &avant, &compte, jeux, &quand)?;
+        change = ch;
+        Ok(Some(c))
+    })?;
+    if change {
+        // Lot C4b : le ménage d'un changement de compte n'est pas encore fait ; l'ancien compte est seulement noté.
+        noyau.journaliser(&format!("import GOG (connexion) : un autre compte GOG que le précédent pour le profil {} (l'ancien est noté, aucune carte retirée)", p.id));
+    }
+    let total = ecrit.as_ref().map_or(0, |c| c.jeux.len());
+    noyau.journaliser(&format!("import GOG (connexion) : {total} jeu(x) pour le profil {}", p.id));
+    let (l, nouveaux) = ranger_gog_importe(&noyau, &s, &dossier).await?;
+    let galaxy = tauri::async_runtime::spawn_blocking(crate::boutiques_pc::galaxy_present).await.unwrap_or(false);
+    Ok(ImportGog { reconnecter: false, total, nouveaux_installes: nouveaux_installes("gog", &l, &nouveaux), nouveaux: nouveaux.len(), galaxy })
+}
+
+/// Range la liste du compte GOG (déjà écrite) dans la ludothèque de la session `s` (prise au DÉBUT de l'import), avec
+/// les jeux GOG installés lus sur ce PC (une carte par jeu) : le registre du PC ne reçoit que les jeux INSTALLÉS (jamais
+/// la liste du compte). Rend les cartes rangées et les ids des NOUVELLES.
+async fn ranger_gog_importe(noyau: &Noyau, s: &crate::noyau::Session, dossier: &std::path::Path) -> Resultat<(Vec<crate::boutiques::JeuBoutique>, Vec<i64>)> {
+    // Jamais en même temps qu'une relecture des boutiques du PC.
+    let _un_seul = RELECTURE.lock().await;
+    let travail = noyau.dossier.join("travail").join("boutiques-pc-gog");
+    let installes = tauri::async_runtime::spawn_blocking(move || {
+        let l = crate::boutiques_pc::lire_seulement(&["gog"], &travail);
+        let _ = std::fs::remove_dir_all(&travail);
+        l.into_iter().next().and_then(|(_, i)| i)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La lecture de GOG s'est arrêtée brutalement.".into()))?;
+    let installes = match installes {
+        Some(i) => {
+            synchroniser_registre(noyau, "gog", &i);
+            i
+        }
+        // Registre de GOG illisible (ou jamais écrit sur ce PC) : on ne sait rien de ce qui est installé. Un jeu déjà
+        // rangé « installé » le RESTE (jamais un jeu installé qui passe « pas installé » sur une lecture ratée) ; le
+        // registre du PC ne bouge pas.
+        None => {
+            let c = s.verrou();
+            let mut cartes = c.jeux_de_source("gog")?;
+            cartes.extend(c.jeux_de_source("galaxy")?.into_iter().filter(|j| j.boutique.as_deref() == Some("gog")));
+            crate::noyau::installes_gog_deja_ranges(&cartes)
+        }
+    };
+    let l = cartes_gog(dossier, &installes);
+    let nouveaux = noyau.ranger_installes(s, "gog", &l)?;
+    Ok((l, nouveaux))
 }
 
 /// Un jeu offert en ce moment, et s'il est déjà obtenu par ce profil.
@@ -7016,15 +7232,55 @@ pub async fn import_ajouter(app: AppHandle, noyau: State<'_, Noyau>, jeux: Vec<c
     Ok(bilan)
 }
 
+/// Le drapeau « fermée par Frogtend » de la fenêtre `boutique-gog` OUVERTE qui annonce sa fermeture (connexion, ou
+/// récupération du jeu offert affichée pour que la personne finisse). Chaque fenêtre a SON drapeau (capturé dans son
+/// gestionnaire) : une fenêtre que Frogtend ferme lui-même (rouverte, remplacée) n'annonce jamais rien, et un drapeau
+/// resté levé ne touche jamais une autre fenêtre.
+static DRAPEAU_FENETRE_GOG: std::sync::Mutex<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>> = std::sync::Mutex::new(None);
+
+/// Ferme une fenêtre de boutique (jeux offerts, connexion) PAR FROGTEND : pour GOG, sa fermeture n'est pas annoncée.
+fn fermer_par_frogtend(boutique: &str, w: &tauri::WebviewWindow) {
+    if boutique == "gog" {
+        if let Some(d) = DRAPEAU_FENETRE_GOG.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            d.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    let _ = w.close();
+}
+
+/// Lot C4a : quand la PERSONNE ferme cette fenêtre de GOG (connexion, ou jeu offert qui demandait de se connecter),
+/// l'interface lit les jeux du compte (se connecter vaut accord), par l'événement `gratuits-ferme` {boutique, profil}.
+fn annoncer_fermeture_gog(app: &AppHandle, w: &tauri::WebviewWindow, profil: &str) {
+    let drapeau = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    *DRAPEAU_FENETRE_GOG.lock().unwrap_or_else(|e| e.into_inner()) = Some(drapeau.clone());
+    let (a, profil) = (app.clone(), profil.to_string());
+    w.on_window_event(move |e| {
+        if matches!(e, tauri::WindowEvent::Destroyed) && !drapeau.load(std::sync::atomic::Ordering::SeqCst) {
+            let _ = a.emit("gratuits-ferme", serde_json::json!({"boutique": "gog", "profil": profil}));
+        }
+    });
+}
+
+/// GOG : jamais une fenêtre de connexion ou de jeu offert pendant la lecture des jeux du compte (même compte, même
+/// navigateur).
+fn refuser_pendant_lecture_gog(app: &AppHandle, boutique: &str) -> Resultat<()> {
+    if boutique == "gog" && app.get_webview_window(FENETRE_GOG_JEUX).is_some() {
+        return Err(Erreur::Refus("Frogtend lit tes jeux GOG en ce moment : attends la fin (moins d'une minute en général), puis réessaie.".into()));
+    }
+    Ok(())
+}
+
 /// Se connecter à GOG ou à Prime Gaming, une fois : la page officielle s'ouvre (navigateur PROPRE AU PROFIL) ;
 /// Frogtend ne voit jamais le mot de passe.
 #[tauri::command]
 pub async fn gratuits_connexion(app: AppHandle, noyau: State<'_, Noyau>, boutique: String) -> Resultat<()> {
     let (page, _, _) = crate::gratuits::boutique_offerte(&boutique).ok_or_else(|| Erreur::Refus("Boutique inconnue.".into()))?;
     let p = profil_ouvert(&noyau).await?;
+    refuser_pendant_lecture_gog(&app, &boutique)?;
     let etiquette = format!("boutique-{boutique}");
     if let Some(w) = app.get_webview_window(&etiquette) {
-        let _ = w.close();
+        // Fermée par Frogtend (rouverte) : pas une fin de connexion à annoncer.
+        fermer_par_frogtend(&boutique, &w);
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     }
     let url = tauri::Url::parse(page).map_err(|_| Erreur::Refus("Adresse invalide.".into()))?;
@@ -7036,6 +7292,10 @@ pub async fn gratuits_connexion(app: AppHandle, noyau: State<'_, Noyau>, boutiqu
         .on_new_window(crate::gratuits::fenetre_de_connexion)
         .build()
         .map_err(|e| Erreur::Disque(format!("La fenêtre ne s'ouvre pas ({e}).")))?;
+    // Lot C4a : la fenêtre de connexion fermée par la personne, l'interface lit les jeux du compte GOG.
+    if boutique == "gog" {
+        annoncer_fermeture_gog(&app, &w, &p.id);
+    }
     let _ = w.set_focus();
     Ok(())
 }
@@ -7047,11 +7307,13 @@ pub async fn gratuits_recuperer(app: AppHandle, noyau: State<'_, Noyau>, boutiqu
     let (_, page, script) = crate::gratuits::boutique_offerte(&boutique).ok_or_else(|| Erreur::Refus("Boutique inconnue.".into()))?;
     let p = profil_ouvert(&noyau).await?;
     let dossier = dossier_profil_de(&noyau, &p.id);
+    refuser_pendant_lecture_gog(&app, &boutique)?;
     let etiquette = format!("boutique-{boutique}");
     let (envoi, reception) = std::sync::mpsc::channel::<crate::gratuits::Recolte>();
     let envoi = std::sync::Mutex::new(envoi);
     if let Some(w) = app.get_webview_window(&etiquette) {
-        let _ = w.close();
+        // Fermée par Frogtend (la récupération prend la place) : pas une fin de connexion à annoncer.
+        fermer_par_frogtend(&boutique, &w);
         std::thread::sleep(std::time::Duration::from_millis(300));
     }
     let url = tauri::Url::parse(page).map_err(|_| Erreur::Refus("Adresse invalide.".into()))?;
@@ -7081,6 +7343,11 @@ pub async fn gratuits_recuperer(app: AppHandle, noyau: State<'_, Noyau>, boutiqu
     if (r.etat == "faite" && r.a_finir == 0) || r.etat == "aucun" || r.etat == "pas_abonne" {
         let _ = w.close();
     } else {
+        // Lot C4a : la personne finit dans cette fenêtre (connexion à GOG, souvent) : à sa fermeture, les jeux du compte
+        // GOG sont lus, comme après la fenêtre de connexion.
+        if boutique == "gog" {
+            annoncer_fermeture_gog(&app, &w, &p.id);
+        }
         let _ = w.show();
         let _ = w.set_focus();
     }

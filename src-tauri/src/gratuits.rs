@@ -325,6 +325,200 @@ pub fn page_de_la_boutique_steam(url: &tauri::Url) -> bool {
     url.scheme() == "https" && url.port().is_none() && url.username().is_empty() && url.host_str().is_some_and(|h| h.eq_ignore_ascii_case("store.steampowered.com"))
 }
 
+// ───────────────────────────── GOG : les jeux du compte (lot C4a) ─────────────────────────────
+
+/// Le script de la fenêtre CACHÉE qui lit les jeux du compte GOG connecté dans le navigateur du profil (lot C4a) :
+/// voir `lire_remise_gog`.
+pub const SCRIPT_GOG_JEUX: &str = include_str!("../ressources/gratuits/gog-jeux.js");
+
+/// La page où la fenêtre cachée lit les jeux GOG (la même boutique que la connexion et le jeu offert).
+pub const PAGE_GOG: &str = "https://www.gog.com/en";
+
+/// Le plus grand nombre de morceaux accepté pour une liste (50 jeux par morceau : 20 000 jeux, bien au-delà d'un vrai
+/// compte ; le script plafonne de son côté à 100 pages de 100 jeux, jeux cachés compris).
+pub const MORCEAUX_GOG_MAX: usize = 400;
+
+/// Un jeu du compte GOG tel que la page le remet : seulement son numéro (chiffres), son titre et l'adresse brute de son
+/// image (normalisée ensuite par `boutiques::image_gog`). Rien d'autre n'est jamais remis.
+#[derive(Clone, Debug, PartialEq)]
+pub struct JeuGogLu {
+    pub id: String,
+    pub titre: String,
+    pub image: String,
+}
+
+/// Ce que la page de GOG remet au cœur par une navigation (annulée) vers `https://frogtend.invalid/…`.
+#[derive(PartialEq)]
+pub enum RemiseGog {
+    /// Le compte connecté (`userId`, chiffres seulement).
+    Compte(String),
+    /// Le morceau `k` sur `n` de la liste des jeux.
+    Morceau { k: usize, n: usize, jeux: Vec<JeuGogLu> },
+    /// Pas de liste : l'étape, en quelques mots sûrs (lettres, chiffres, tirets), pour le journal et le message.
+    Absent(String),
+    /// La page avance (le nombre de pages déjà demandées à GOG) : le délai sans nouvelle repart de zéro.
+    Progres(usize),
+}
+
+impl std::fmt::Debug for RemiseGog {
+    // Le numéro du compte ne s'écrit jamais (journal, message d'un test) ; d'un morceau, seulement sa place et sa taille.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RemiseGog::Compte(_) => f.write_str("Compte(<caché>)"),
+            RemiseGog::Morceau { k, n, jeux } => write!(f, "Morceau({k}/{n}, {} jeu(x))", jeux.len()),
+            RemiseGog::Absent(e) => write!(f, "Absent({e})"),
+            RemiseGog::Progres(n) => write!(f, "Progres({n})"),
+        }
+    }
+}
+
+/// Un numéro GOG (compte ou jeu) : des chiffres seulement, 1 à 20.
+pub fn numero_gog(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 20 && s.bytes().all(|c| c.is_ascii_digit())
+}
+
+/// Lit un morceau de la liste (`<k>/<n>/<JSON en base64url>`, le JSON étant `[[id, titre, image], …]`). Tout morceau
+/// d'une forme inattendue est refusé EN ENTIER (`None`) : un id qui n'est pas un numéro, un titre vide, un champ en trop
+/// ou en moins veulent dire que la page a changé — jamais une liste devinée.
+fn lire_morceau_gog(fragment: &str) -> Option<(usize, usize, Vec<JeuGogLu>)> {
+    let mut parts = fragment.splitn(3, '/');
+    let k: usize = parts.next()?.parse().ok()?;
+    let n: usize = parts.next()?.parse().ok()?;
+    if n == 0 || n > MORCEAUX_GOG_MAX || k >= n {
+        return None;
+    }
+    let brut = crate::boutiques::base64url(parts.next()?)?;
+    let v: Value = serde_json::from_slice(&brut).ok()?;
+    let l = v.as_array()?;
+    if l.len() > 100 {
+        return None;
+    }
+    let mut jeux = Vec::with_capacity(l.len());
+    for j in l {
+        let a = j.as_array().filter(|a| a.len() == 3)?;
+        let id = a[0].as_str().filter(|s| numero_gog(s))?;
+        let titre = a[1].as_str().map(str::trim).filter(|t| !t.is_empty() && t.chars().count() <= 300)?;
+        let image = a[2].as_str().filter(|i| i.len() <= 300)?;
+        jeux.push(JeuGogLu { id: id.to_string(), titre: titre.to_string(), image: image.to_string() });
+    }
+    Some((k, n, jeux))
+}
+
+/// Une navigation vers `https://frogtend.invalid/gog-compte#<userId>`, `…/gog-jeux#<k>/<n>/<données>` ou
+/// `…/gog-absent#<étape>` : la remise de la page (que l'appelant ANNULE). Toute autre adresse : `None` (navigation
+/// ordinaire). Une remise de forme inattendue : `Absent` (jamais une valeur devinée).
+pub fn lire_remise_gog(url: &tauri::Url) -> Option<RemiseGog> {
+    if url.scheme() != "https" || url.host_str() != Some("frogtend.invalid") || url.port().is_some() {
+        return None;
+    }
+    let fragment = url.fragment().unwrap_or("");
+    Some(match url.path() {
+        "/gog-compte" if numero_gog(fragment) => RemiseGog::Compte(fragment.to_string()),
+        "/gog-compte" => RemiseGog::Absent("compte-de-forme-inattendue".into()),
+        "/gog-progres" => RemiseGog::Progres(fragment.parse().unwrap_or(0)),
+        "/gog-jeux" => match lire_morceau_gog(fragment) {
+            Some((k, n, jeux)) => RemiseGog::Morceau { k, n, jeux },
+            None => RemiseGog::Absent("morceau-de-forme-inattendue".into()),
+        },
+        _ => {
+            let etape: String = fragment.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(60).collect();
+            RemiseGog::Absent(if etape.is_empty() { "sans-detail".into() } else { etape })
+        }
+    })
+}
+
+/// Où en est la réception d'une liste GOG (pur, testé) : le compte d'abord, puis les morceaux 0, 1, … n-1 DANS L'ORDRE.
+#[derive(Default)]
+pub struct ReceptionGog {
+    compte: Option<String>,
+    n: Option<usize>,
+    recus: usize,
+    jeux: Vec<JeuGogLu>,
+}
+
+/// Ce que le cœur fait après une remise.
+#[derive(Debug, PartialEq)]
+pub enum SuiteGog {
+    /// Demander à la page le morceau `k`.
+    Demander(usize),
+    /// Rien à faire : attendre la suite (la page avance).
+    Attendre,
+    /// Tout est reçu : (compte, jeux sans doublon).
+    Fini(String, Vec<JeuGogLu>),
+    /// La page dit pourquoi elle n'a rien (étape sûre).
+    Absent(String),
+    /// La remise ne suit pas le protocole (morceau manquant, désordre, compte absent) : échec, rien n'est écrit.
+    Echec(String),
+}
+
+impl ReceptionGog {
+    pub fn recevoir(&mut self, r: RemiseGog) -> SuiteGog {
+        match r {
+            RemiseGog::Absent(e) => SuiteGog::Absent(e),
+            // La page avance encore (avant le compte) ; une fois les morceaux commencés, c'est une page rechargée.
+            RemiseGog::Progres(_) if self.recus == 0 => SuiteGog::Attendre,
+            RemiseGog::Progres(_) => SuiteGog::Echec("page-rechargee-pendant-la-remise".into()),
+            RemiseGog::Compte(c) if self.compte.is_none() => {
+                self.compte = Some(c);
+                SuiteGog::Demander(0)
+            }
+            // La page www.gog.com s'est rechargée avant le premier morceau : son script, relancé, redonne le MÊME compte ;
+            // le morceau 0 lui est redemandé (la liste de la page d'avant est oubliée avec elle).
+            RemiseGog::Compte(c) if self.compte.as_ref() == Some(&c) && self.recus == 0 => SuiteGog::Demander(0),
+            RemiseGog::Compte(c) if self.compte.as_ref() == Some(&c) => SuiteGog::Echec("page-rechargee-pendant-la-remise".into()),
+            RemiseGog::Compte(_) => SuiteGog::Echec("autre-compte-pendant-la-lecture".into()),
+            RemiseGog::Morceau { .. } if self.compte.is_none() => SuiteGog::Echec("morceau-avant-le-compte".into()),
+            RemiseGog::Morceau { k, n, jeux } => {
+                if self.n.is_some_and(|m| m != n) {
+                    return SuiteGog::Echec("nombre-de-morceaux-change".into());
+                }
+                if k != self.recus {
+                    return SuiteGog::Echec("morceau-dans-le-desordre".into());
+                }
+                self.n = Some(n);
+                self.recus += 1;
+                for j in jeux {
+                    if !self.jeux.iter().any(|x| x.id == j.id) {
+                        self.jeux.push(j);
+                    }
+                }
+                if self.recus == n {
+                    SuiteGog::Fini(self.compte.clone().unwrap_or_default(), std::mem::take(&mut self.jeux))
+                } else {
+                    SuiteGog::Demander(self.recus)
+                }
+            }
+        }
+    }
+
+    /// Le nombre de morceaux reçus (journal).
+    pub fn recus(&self) -> usize {
+        self.recus
+    }
+}
+
+/// Le message d'une lecture GOG sans liste, d'après l'étape remise (pur, testé). `None` : le compte n'est pas connecté
+/// (« reconnecte-toi », dit par l'appelant). Seule la page qui DIT « pas connecté » mène à « reconnecte-toi ».
+pub fn erreur_sans_jeux_gog(etape: &str) -> Option<crate::erreurs::Erreur> {
+    use crate::erreurs::Erreur;
+    match etape {
+        "deconnecte" => None,
+        "trop-de-demandes" => Some(Erreur::Reseau("GOG demande d'attendre un peu avant de réessayer : réessaie dans un moment. Tes jeux restent dans ta ludothèque.".into())),
+        "erreur-reseau" => Some(Erreur::Reseau("GOG n'a pas répondu : vérifie ta connexion à Internet, puis réessaie.".into())),
+        _ => Some(Erreur::Serveur(MOTIF_GOG_INHABITUEL.into())),
+    }
+}
+
+/// GOG ne répond pas comme d'habitude (page changée, maintenance) : pas « reconnecte-toi ».
+pub const MOTIF_GOG_INHABITUEL: &str =
+    "GOG ne répond pas comme d'habitude (maintenance ou page changée) : réessaie plus tard. Tes jeux restent dans ta ludothèque.";
+
+/// La fenêtre cachée de lecture des jeux GOG peut-elle aller à cette adresse ? HTTPS, port normal, sans identifiant,
+/// hôte EXACT www.gog.com (jamais un sous-domaine, ni « www.gog.com.autre »).
+pub fn navigation_gog(url: &tauri::Url) -> bool {
+    url.scheme() == "https" && url.port().is_none() && url.username().is_empty() && url.password().is_none() && url.host_str().is_some_and(|h| h.eq_ignore_ascii_case("www.gog.com"))
+}
+
 /// Un identifiant Steam 64 bits d'une personne : 17 chiffres, dans la plage des comptes individuels
 /// (76561197960265728 et au-delà, univers « public »). Tout le reste est refusé.
 pub fn steamid_valide(s: &str) -> bool {
@@ -729,6 +923,152 @@ mod tests {
         assert!(SCRIPT_GOG.contains("location.hostname !== 'www.gog.com'") && SCRIPT_GOG.contains("'/giveaway/claim'"));
         assert!(SCRIPT_PRIME.contains("location.hostname !== 'gaming.amazon.com'"));
         assert!(boutique_offerte("prime").is_some() && boutique_offerte("epic").is_none());
+    }
+
+    /// Encode en base64url sans remplissage (comme `gog-jeux.js`).
+    fn b64(o: &[u8]) -> String {
+        const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        let mut s = String::new();
+        for bloc in o.chunks(3) {
+            let n = (bloc[0] as u32) << 16 | (*bloc.get(1).unwrap_or(&0) as u32) << 8 | *bloc.get(2).unwrap_or(&0) as u32;
+            for i in 0..=bloc.len() {
+                s.push(A[(n >> (18 - 6 * i) & 63) as usize] as char);
+            }
+        }
+        s
+    }
+
+    fn morceau(k: usize, n: usize, jeux: serde_json::Value) -> tauri::Url {
+        tauri::Url::parse(&format!("https://frogtend.invalid/gog-jeux#{k}/{n}/{}", b64(jeux.to_string().as_bytes()))).unwrap()
+    }
+
+    #[test]
+    fn la_remise_de_gog_est_lue_strictement() {
+        let u = |s: &str| tauri::Url::parse(s).unwrap();
+        assert_eq!(lire_remise_gog(&u("https://frogtend.invalid/gog-compte#48628349957132247")), Some(RemiseGog::Compte("48628349957132247".into())));
+        assert_eq!(lire_remise_gog(&u("https://frogtend.invalid/gog-compte#abc")), Some(RemiseGog::Absent("compte-de-forme-inattendue".into())));
+        assert_eq!(lire_remise_gog(&u("https://frogtend.invalid/gog-compte")), Some(RemiseGog::Absent("compte-de-forme-inattendue".into())));
+        // Un morceau juste : titres accentués gardés (UTF-8), espaces retirés.
+        let m = lire_remise_gog(&morceau(0, 2, json!([["1207658924", " Unreal Tournament™ ", "//images-1.gog-statics.com/abc"], ["2", "Été", ""]])));
+        assert_eq!(
+            m,
+            Some(RemiseGog::Morceau {
+                k: 0,
+                n: 2,
+                jeux: vec![
+                    JeuGogLu { id: "1207658924".into(), titre: "Unreal Tournament™".into(), image: "//images-1.gog-statics.com/abc".into() },
+                    JeuGogLu { id: "2".into(), titre: "Été".into(), image: String::new() }
+                ]
+            })
+        );
+        // Une forme inattendue : tout le morceau est refusé (jamais une liste devinée).
+        let refuse = Some(RemiseGog::Absent("morceau-de-forme-inattendue".into()));
+        assert_eq!(lire_remise_gog(&morceau(0, 1, json!([["12a", "Jeu", ""]]))), refuse, "id non numérique");
+        assert_eq!(lire_remise_gog(&morceau(0, 1, json!([[12, "Jeu", ""]]))), refuse, "id qui n'est pas un texte");
+        assert_eq!(lire_remise_gog(&morceau(0, 1, json!([["12", "  ", ""]]))), refuse, "titre vide");
+        assert_eq!(lire_remise_gog(&morceau(0, 1, json!([["12", "Jeu"]]))), refuse, "champ manquant");
+        assert_eq!(lire_remise_gog(&morceau(0, 1, json!({"jeux": []}))), refuse, "pas une liste");
+        assert_eq!(lire_remise_gog(&morceau(1, 1, json!([]))), refuse, "k >= n");
+        assert_eq!(lire_remise_gog(&morceau(0, 0, json!([]))), refuse, "n = 0");
+        assert_eq!(lire_remise_gog(&morceau(0, MORCEAUX_GOG_MAX + 1, json!([]))), refuse, "trop de morceaux");
+        assert_eq!(lire_remise_gog(&u("https://frogtend.invalid/gog-jeux#0/1/%%%")), refuse, "pas du base64");
+        assert_eq!(lire_remise_gog(&u("https://frogtend.invalid/gog-jeux#x/1/W10")), refuse);
+        // Les étapes d'échec : seulement des caractères sûrs.
+        assert_eq!(lire_remise_gog(&u("https://frogtend.invalid/gog-absent#deconnecte")), Some(RemiseGog::Absent("deconnecte".into())));
+        assert_eq!(lire_remise_gog(&u("https://frogtend.invalid/gog-absent#<script>")), Some(RemiseGog::Absent("3Cscript3E".into())));
+        assert_eq!(lire_remise_gog(&u("https://frogtend.invalid/gog-absent")), Some(RemiseGog::Absent("sans-detail".into())));
+        assert_eq!(lire_remise_gog(&u("https://frogtend.invalid/gog-progres#15")), Some(RemiseGog::Progres(15)));
+        assert_eq!(lire_remise_gog(&u("https://frogtend.invalid/gog-progres#x")), Some(RemiseGog::Progres(0)));
+        // Pas une remise : navigation ordinaire.
+        assert_eq!(lire_remise_gog(&u("https://www.gog.com/gog-compte#123")), None);
+        assert_eq!(lire_remise_gog(&u("http://frogtend.invalid/gog-compte#123")), None);
+        assert_eq!(lire_remise_gog(&u("https://frogtend.invalid:8443/gog-compte#123")), None);
+        // Le numéro du compte ne s'écrit jamais (journal, message d'un test).
+        assert_eq!(format!("{:?}", RemiseGog::Compte("48628349957132247".into())), "Compte(<caché>)");
+        assert!(!format!("{:?}", lire_remise_gog(&morceau(0, 1, json!([["5", "Secret de titre", ""]])))).contains("Secret"));
+    }
+
+    #[test]
+    fn la_liste_gog_est_recue_en_entier_et_dans_l_ordre() {
+        let jeu = |id: &str| JeuGogLu { id: id.into(), titre: format!("Jeu {id}"), image: String::new() };
+        let m = |k, n, ids: &[&str]| RemiseGog::Morceau { k, n, jeux: ids.iter().map(|i| jeu(i)).collect() };
+        // Le compte, puis les morceaux demandés un à un ; un jeu en double (visible ET caché) n'est gardé qu'une fois.
+        let mut r = ReceptionGog::default();
+        assert_eq!(r.recevoir(RemiseGog::Compte("42".into())), SuiteGog::Demander(0));
+        assert_eq!(r.recevoir(m(0, 3, &["1", "2"])), SuiteGog::Demander(1));
+        assert_eq!(r.recevoir(m(1, 3, &["3", "2"])), SuiteGog::Demander(2));
+        assert_eq!(r.recevoir(m(2, 3, &["4"])), SuiteGog::Fini("42".into(), vec![jeu("1"), jeu("2"), jeu("3"), jeu("4")]));
+        // Un compte sans aucun jeu : un seul morceau vide.
+        let mut r = ReceptionGog::default();
+        r.recevoir(RemiseGog::Compte("42".into()));
+        assert_eq!(r.recevoir(m(0, 1, &[])), SuiteGog::Fini("42".into(), vec![]));
+        // Morceau manquant ou dans le désordre, nombre de morceaux qui change, morceau avant le compte : échec.
+        let mut r = ReceptionGog::default();
+        r.recevoir(RemiseGog::Compte("42".into()));
+        r.recevoir(m(0, 3, &["1"]));
+        assert_eq!(r.recevoir(m(2, 3, &["3"])), SuiteGog::Echec("morceau-dans-le-desordre".into()));
+        let mut r = ReceptionGog::default();
+        r.recevoir(RemiseGog::Compte("42".into()));
+        assert_eq!(r.recevoir(m(1, 2, &["1"])), SuiteGog::Echec("morceau-dans-le-desordre".into()));
+        let mut r = ReceptionGog::default();
+        r.recevoir(RemiseGog::Compte("42".into()));
+        r.recevoir(m(0, 3, &["1"]));
+        assert_eq!(r.recevoir(m(1, 2, &["2"])), SuiteGog::Echec("nombre-de-morceaux-change".into()));
+        let mut r = ReceptionGog::default();
+        assert_eq!(r.recevoir(m(0, 1, &["1"])), SuiteGog::Echec("morceau-avant-le-compte".into()));
+        let mut r = ReceptionGog::default();
+        r.recevoir(RemiseGog::Compte("42".into()));
+        assert_eq!(r.recevoir(RemiseGog::Compte("43".into())), SuiteGog::Echec("autre-compte-pendant-la-lecture".into()));
+        // La page rechargée avant le premier morceau : le même compte redonné, le morceau 0 redemandé, puis tout suit.
+        let mut r = ReceptionGog::default();
+        assert_eq!(r.recevoir(RemiseGog::Progres(5)), SuiteGog::Attendre);
+        r.recevoir(RemiseGog::Compte("42".into()));
+        assert_eq!(r.recevoir(RemiseGog::Progres(5)), SuiteGog::Attendre, "le script relancé avance");
+        assert_eq!(r.recevoir(RemiseGog::Compte("42".into())), SuiteGog::Demander(0));
+        assert_eq!(r.recevoir(m(0, 1, &["1"])), SuiteGog::Fini("42".into(), vec![jeu("1")]));
+        // Rechargée APRÈS un morceau : échec clair (jamais deux listes mêlées).
+        let mut r = ReceptionGog::default();
+        r.recevoir(RemiseGog::Compte("42".into()));
+        r.recevoir(m(0, 2, &["1"]));
+        assert_eq!(r.recevoir(RemiseGog::Compte("42".into())), SuiteGog::Echec("page-rechargee-pendant-la-remise".into()));
+        let mut r = ReceptionGog::default();
+        r.recevoir(RemiseGog::Compte("42".into()));
+        r.recevoir(m(0, 2, &["1"]));
+        assert_eq!(r.recevoir(RemiseGog::Progres(5)), SuiteGog::Echec("page-rechargee-pendant-la-remise".into()));
+        // La page dit pourquoi elle n'a rien : remis tel quel.
+        assert_eq!(ReceptionGog::default().recevoir(RemiseGog::Absent("deconnecte".into())), SuiteGog::Absent("deconnecte".into()));
+    }
+
+    #[test]
+    fn une_lecture_gog_sans_liste_dit_le_bon_message() {
+        use crate::erreurs::Erreur;
+        assert!(erreur_sans_jeux_gog("deconnecte").is_none(), "seule la page qui dit « pas connecté » mène à « reconnecte-toi »");
+        assert!(matches!(erreur_sans_jeux_gog("trop-de-demandes"), Some(Erreur::Reseau(m)) if m.contains("attendre")));
+        assert!(matches!(erreur_sans_jeux_gog("erreur-reseau"), Some(Erreur::Reseau(m)) if m.contains("Internet")));
+        for e in ["page-changee", "statut-500", "pas-json", "sans-detail", "compte-de-forme-inattendue"] {
+            assert!(matches!(erreur_sans_jeux_gog(e), Some(Erreur::Serveur(m)) if m == MOTIF_GOG_INHABITUEL), "{e}");
+        }
+    }
+
+    #[test]
+    fn la_fenetre_cachee_de_gog_ne_va_que_sur_www_gog_com() {
+        let ok = |s: &str| navigation_gog(&tauri::Url::parse(s).unwrap());
+        assert!(ok("https://www.gog.com/en") && ok("https://www.gog.com/account/getFilteredProducts?page=1") && ok("https://WWW.GOG.COM/"));
+        for piege in [
+            "http://www.gog.com/en",
+            "https://www.gog.com:8443/en",
+            "https://www.gog.com.evil.example/",
+            "https://evil.example/www.gog.com",
+            "https://gog.com/",
+            "https://login.gog.com/auth",
+            "https://moi@www.gog.com/",
+            "https://frogtend.invalid/gog-compte#1",
+        ] {
+            assert!(!ok(piege), "{piege}");
+        }
+        // Le script n'agit que sur la page officielle et ne parle qu'à la boutique elle-même.
+        assert!(SCRIPT_GOG_JEUX.contains("location.hostname !== 'www.gog.com'") && SCRIPT_GOG_JEUX.contains("credentials: 'same-origin'"));
+        assert!(navigation_gog(&tauri::Url::parse(PAGE_GOG).unwrap()));
     }
 
     #[test]

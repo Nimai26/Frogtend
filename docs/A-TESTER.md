@@ -6,6 +6,34 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🟣 Tous les jeux GOG du compte (0.217.0, lot C4a)
+> Avant : sur gog.com (connecté), note le nombre de jeux de « Mes jeux » (jeux cachés compris : ils entrent aussi).
+- [ ] 1. Au premier lancement après la mise à jour (déjà connecté à GOG pour le jeu offert) : après la récupération
+      du jeu offert (si elle est cochée), un message « 🎮 N jeux de ton compte GOG ajoutés à ta ludothèque » ; N =
+      le nombre de gog.com moins les jeux que GOG Galaxy montrait déjà. Si rien n'arrive : le journal (« import GOG »)
+      et une capture.
+- [ ] 2. 🛒 Boutiques ▸ « 🟣 Mon compte GOG » (juste sous Steam) : « ✅ Connecté à GOG » ; la ligne dit « N jeu(x) de
+      ton compte GOG dans ta ludothèque » ; N = le nombre de gog.com (jeux cachés compris). Prime Gaming garde son
+      propre bloc au-dessus, GOG n'y est plus.
+- [ ] 3. « 🔄 Mettre à jour mes jeux GOG » : « ⏳ Lecture de tes jeux GOG… » puis « Rien de nouveau : tes jeux GOG
+      sont déjà dans ta ludothèque. »
+- [ ] 4. Ma ludothèque, filtre GOG : les jeux GOG pas installés sont là, avec leur jaquette (une vignette de GOG si
+      Galaxy n'en avait pas) ; AUCUN jeu en double avec ceux de GOG Galaxy ; un jeu GOG installé est « installé ».
+- [ ] 5. Un jeu GOG pas installé ▸ « ⬇ Installer » : GOG Galaxy s'ouvre sur le jeu (sans Galaxy : un message le dit,
+      et le message des jeux nouveaux finit par « Installe GOG Galaxy pour les installer »).
+- [ ] 6. Taodbox : les jeux GOG pas installés sont « ⬇ À installer », jaquettes visibles, sans doublon avec les
+      installés.
+- [ ] 7. « 🎁 Récupérer » (jeu offert) marche comme avant ; pendant « Lecture… », il attend (grisé, sans perdre le
+      focus).
+- [ ] 7 bis. Tes 2 jeux GOG installés : leur fiche (panneau des détails) montre TOUJOURS « 🏆 Succès (GOG Galaxy) »
+      avec leur nombre, et « 🏆 Voir les succès » ouvre la liste ; leur titre est celui de GOG Galaxy (sans ™).
+- [ ] 8. Fermer et rouvrir Frogtend : pas de message (rien de nouveau), les jeux sont toujours là.
+- [ ] 9. Connexion expirée (pour l'essayer : « Me reconnecter », te déconnecter sur gog.com dans la fenêtre, la
+      fermer) : message « 🔑 GOG ne te montre pas connecté : clique « 🔑 Me reconnecter à GOG »… » ; le bloc montre « 🔑 Connexion
+      expirée » et « 🔑 Me reconnecter à GOG » ; tes jeux GOG restent dans la ludothèque. Fermer et rouvrir Frogtend :
+      « 🔑 Ta connexion à GOG a expiré… » une fois ; rouvrir encore le même jour : plus de message. Te reconnecter
+      puis fermer la fenêtre : « ✅ Connecté à GOG. Rien de nouveau… ».
+
 ## 🎮 Steam : oublier et changer de compte (0.216.0, lot C3)
 - [x] (validé par Seb le 21/11, 0.216.0) 🛒 Boutiques ▸ Mon compte Steam ▸ « Oublier ce compte » ▸ « Oublier » : message « ✅ Compte Steam oublié… » ; le
       bloc affiche « 🔑 Se connecter à Steam » ; tes 142 jeux Steam sont TOUJOURS dans la ludothèque.

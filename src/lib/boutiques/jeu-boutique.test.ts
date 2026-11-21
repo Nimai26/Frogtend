@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { JeuResume } from '$lib/api';
-import { messageLancementBoutique, boutiqueSansInstallation, estBattlenet, MESSAGE_BATTLENET, toujoursLeMeme, BOUTIQUES, estJeuDeBoutique, libelleOuverture, ligneEtat, messageNouveaux, moyenDOuverture, nomBoutique, questionPossedes, messageInstallationCanape, imageCarteAInstaller } from './jeu-boutique';
+import { messageLancementBoutique, boutiqueSansInstallation, estBattlenet, MESSAGE_BATTLENET, toujoursLeMeme, BOUTIQUES, estJeuDeBoutique, libelleOuverture, ligneEtat, messageNouveaux, moyenDOuverture, nomBoutique, questionPossedes, messageInstallationCanape, imageCarteAInstaller, succesGalaxy } from './jeu-boutique';
 
 const jeu = (o: Partial<JeuResume>): JeuResume =>
   ({ id: -5, titre: 'X', annee: null, plateforme: 'Windows', genres: [], developpeur: null, editeur: null, statut: 'boutique', ...o }) as JeuResume;
@@ -113,5 +113,15 @@ describe('jeux de boutique', () => {
   it('n’annoncent le lancement qu’en UN toast, avec le retour par ⊞/Guide au canapé', () => {
     expect(messageLancementBoutique('Epic Games', 'TerraScape', false)).toBe('▶ Epic Games lance « TerraScape »… S’il fait une mise à jour, ça peut prendre quelques minutes.');
     expect(messageLancementBoutique('Epic Games', 'TerraScape', true)).toContain('appuie sur ⊞/Guide pour revenir à Frogtend');
+  });
+});
+
+describe('succès de GOG Galaxy (lot C4a)', () => {
+  it('une carte GOG (compte ou PC) montre les succès que Galaxy connaît, comme une carte Galaxy', () => {
+    expect(succesGalaxy({ source: 'gog', succes: [3, 10], cle_boutique: 'gog_1' })).toEqual({ obtenus: 3, total: 10, cle: 'gog_1' });
+    expect(succesGalaxy({ source: 'galaxy', succes: [1, 2], cle_boutique: 'steam_620' })).toEqual({ obtenus: 1, total: 2, cle: 'steam_620' });
+    expect(succesGalaxy({ source: 'gog', succes: null, cle_boutique: 'gog_1' })).toBeNull();
+    expect(succesGalaxy({ source: 'gog', succes: [0, 0], cle_boutique: 'gog_1' })).toBeNull();
+    expect(succesGalaxy({ source: 'steam', succes: [3, 10], cle_boutique: '620' })).toBeNull();
   });
 });

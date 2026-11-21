@@ -610,6 +610,21 @@ export interface ImportSteam {
   nouveaux_installes: number;
 }
 
+/** Ce qu'une lecture des jeux du compte GOG a donné (lot C4a) : la même forme que Steam ; rien du compte ne quitte le
+ * cœur (ni numéro, ni nom, ni cookie). */
+export interface ImportGog extends ImportSteam {
+  /** GOG Galaxy est installé sur ce PC (sans lui, « ⬇ Installer » ne peut rien pour l'instant). */
+  galaxy: boolean;
+}
+
+/** Ce que Frogtend sait du compte GOG du profil (lot C4a). */
+export interface EtatGog {
+  /** Une lecture des jeux du compte a déjà réussi pour ce profil. */
+  connu: boolean;
+  nb_jeux: number;
+  maj_le: string | null;
+}
+
 /** Une boutique telle que ce PC la voit (import automatique, lot A). */
 export interface EtatBoutiquePc {
   boutique: string;
@@ -1038,6 +1053,10 @@ export const api = {
   /** Lot C2 : les jeux possédés du compte connecté par la page, sans clé d'API. */
   steamImporterConnecte: () => appeler<ImportSteam>('boutique_steam_importer_connecte'),
   steamOuvrir: (appid: string, action: 'jouer' | 'installer' | 'verifier') => appeler<void>('boutique_steam_ouvrir', { appid, action }),
+  /** Lot C4a : ce que Frogtend sait du compte GOG du profil (sans rien du compte). */
+  gogEtat: () => appeler<EtatGog>('boutique_gog_etat'),
+  /** Lot C4a : les jeux possédés du compte GOG connecté dans le navigateur du profil (jeux cachés compris). */
+  gogImporterConnecte: () => appeler<ImportGog>('boutique_gog_importer_connecte'),
   /** Import automatique (lot A) : relit les jeux installés de toutes les boutiques de ce PC et les range. */
   /** `possedes` : le profil a accepté ses jeux possédés (lot B) ; sinon seuls les jeux installés sont rangés. */
   boutiquesRelirePc: (possedes = false) => appeler<ReleveBoutiques>('boutiques_relire_pc', { possedes }),

@@ -1365,18 +1365,56 @@ pub(crate) fn fusion_installes(source: &str, installes: &[crate::boutiques::JeuB
     l
 }
 
+/// Lot C4a : les jeux GOG que la ludothèque montre déjà INSTALLÉS (cartes « gog », ou de Galaxy pour GOG), quand le
+/// registre de GOG ne se lit pas : ils gardent leur état « installé » (jamais basculés « pas installé » sur une lecture
+/// ratée). Une carte réunie à d'autres copies compte par sa valeur propre.
+pub(crate) fn installes_gog_deja_ranges(cartes: &[JeuResume]) -> Vec<crate::boutiques::JeuBoutique> {
+    cartes
+        .iter()
+        .cloned()
+        .map(crate::ludotheque::sans_reunion)
+        .filter(|j| j.installe == Some(true))
+        .filter_map(|j| {
+            let cle = j.cle_boutique.clone().filter(|k| k.strip_prefix("gog_").is_some_and(crate::gratuits::numero_gog))?;
+            Some(crate::boutiques::JeuBoutique {
+                id: cle,
+                nom: j.titre.clone(),
+                minutes: j.minutes.unwrap_or(0),
+                derniere: 0,
+                installe: true,
+                plateforme: "gog".into(),
+                image: j.image.clone(),
+                dossier: None,
+                pret: None,
+                succes: j.succes,
+                releases: j.releases.clone().unwrap_or_default(),
+                titre_douteux: false,
+            })
+        })
+        .collect()
+}
+
 /// Le corps de `ranger_boutique`, sous le verrou du cache déjà pris.
 /// `reunir` : réunir les copies tout de suite (sinon l'appelant le fait une fois, à la fin).
 fn ranger_dans(c: &mut crate::ludotheque::Cache, source: &str, jeux: &[crate::boutiques::JeuBoutique], reunir: bool) -> Resultat<usize> {
     {
         // Galaxy : une carte Steam qu'une source Steam montre déjà (même id) n'est pas reprise (Steam prime).
         let steam_a_part: std::collections::BTreeSet<i64> = if source == "galaxy" { c.ids_de_source("steam")? } else { Default::default() };
+        // Lot C4a : de même, une carte GOG que la source « gog » montre déjà (jeux du compte GOG et jeux GOG installés,
+        // même id « gog_<id> ») n'est pas reprise par Galaxy : la source « gog » passe AVANT Galaxy, comme Steam (sinon
+        // ses cartes resteraient « galaxy » et jamais « à installer » au canapé).
+        let gog_a_part: std::collections::BTreeSet<i64> = if source == "galaxy" { c.ids_de_source("gog")? } else { Default::default() };
         // Les sources lues sur le PC (Epic A6d, puis toutes au lot A) : une carte seulement pour un jeu que GOG Galaxy
         // ne montre pas déjà (même id) ; celles de Galaxy suivent l'état « installé » lu chez la boutique à l'instant.
+        // GOG (lot C4a) n'est jamais écarté ainsi : il passe avant Galaxy (`gog_a_part`).
         let deja_galaxy = if source != "steam" && source != "galaxy" {
             let ids: std::collections::BTreeSet<i64> = jeux.iter().filter(|j| j.installe).map(|j| id_carte(source, j)).collect();
             c.marquer_installes_galaxy(source, &ids)?;
-            c.ids_de_source("galaxy")?
+            if source == "gog" {
+                Default::default()
+            } else {
+                c.ids_de_source("galaxy")?
+            }
         } else {
             Default::default()
         };
@@ -1391,6 +1429,9 @@ fn ranger_dans(c: &mut crate::ludotheque::Cache, source: &str, jeux: &[crate::bo
                     (b.to_string(), c.to_string())
                 };
                 if boutique == "steam" && steam_a_part.contains(&crate::ludotheque::id_boutique(&boutique, &cle)) {
+                    return None;
+                }
+                if boutique == "gog" && gog_a_part.contains(&crate::ludotheque::id_boutique(&boutique, &cle)) {
                     return None;
                 }
                 if deja_galaxy.contains(&crate::ludotheque::id_boutique(&boutique, &cle)) {
@@ -1951,6 +1992,74 @@ mod tests {
         // L'id d'une carte : l'appid pour Steam ; « boutique_clé » sinon (une clé Xbox contient elle-même un « _ »).
         assert_eq!(id_carte("steam", &jeu("620", "Portal 2")), crate::ludotheque::id_boutique("steam", "620"));
         assert_eq!(id_carte("xboxone", &jeu("xboxone_Microsoft.MinecraftUWP_8wekyb3d8bbwe", "Minecraft")), crate::ludotheque::id_boutique("xboxone", "Microsoft.MinecraftUWP_8wekyb3d8bbwe"));
+    }
+
+    /// Lot C4a : les jeux du compte GOG (source « gog ») passent AVANT GOG Galaxy, comme Steam : une seule carte par jeu
+    /// (même id `gog_<id>`), celle de la source « gog » (« à installer » au canapé) ; les nouveaux sont comptés d'après ce
+    /// qui est vraiment rangé ; une carte jouée qui n'est plus dans la liste reste.
+    #[tokio::test]
+    async fn les_jeux_du_compte_gog_passent_avant_galaxy_sans_doublon() {
+        let (_d, n) = noyau();
+        let id = n.creer_profil("Seb", Some("1234"), None).unwrap().id;
+        n.ouvrir(&id, Some("1234"), &SIMULE).await.unwrap();
+        let s = n.session().await.unwrap();
+        let gog = |cle: &str, nom: &str, installe: bool| crate::boutiques::JeuBoutique {
+            id: format!("gog_{cle}"),
+            nom: nom.into(),
+            minutes: 0,
+            derniere: 0,
+            installe,
+            plateforme: "gog".into(),
+            image: None,
+            dossier: None,
+            pret: None,
+            succes: None,
+            releases: vec![],
+            titre_douteux: false,
+        };
+        let id_gog = |cle: &str| crate::ludotheque::id_boutique("gog", cle);
+        // Galaxy montrait déjà deux jeux GOG (dont un joué 90 min) et un jeu Steam.
+        let mut joue = gog("2", "Beta", false);
+        joue.minutes = 90;
+        let mut steam_galaxy = gog("620", "Portal 2", false);
+        steam_galaxy.id = "steam_620".into();
+        n.ranger_boutique("galaxy", &[gog("1", "Alpha", false), joue, steam_galaxy.clone()]).await.unwrap();
+        // Le compte GOG : Alpha et Beta (déjà là par Galaxy : pas nouveaux), Gamma et Delta (nouveaux, Delta installé).
+        let compte = [gog("1", "Alpha", false), gog("2", "Beta", false), gog("3", "Gamma", false), gog("4", "Delta", true)];
+        let nouveaux = n.ranger_installes(&s, "gog", &compte).unwrap();
+        assert_eq!(nouveaux.len(), 2, "seuls Gamma et Delta sont nouveaux");
+        let installes: Vec<crate::boutiques::JeuBoutique> = compte.to_vec();
+        assert_eq!(crate::commandes::nouveaux_installes("gog", &installes, &nouveaux), 1, "Delta seul installé");
+        // Une seule carte par jeu, celle de la source « gog » ; Portal 2 reste à Galaxy.
+        let c = s.verrou();
+        for cle in ["1", "2", "3", "4"] {
+            let j = c.jeu(id_gog(cle)).unwrap().unwrap();
+            assert_eq!((j.source.as_deref(), j.boutique.as_deref()), (Some("gog"), Some("gog")), "{cle}");
+        }
+        assert_eq!(c.ids_de_source("gog").unwrap().len(), 4);
+        assert_eq!(c.ids_de_source("galaxy").unwrap().len(), 1);
+        drop(c);
+        // Galaxy relu ensuite : il ne reprend pas les cartes GOG que la source « gog » montre (pas de doublon, pas de bascule).
+        n.ranger_boutique("galaxy", &[gog("1", "Alpha", false), gog("2", "Beta", false), steam_galaxy]).await.unwrap();
+        let c = s.verrou();
+        assert_eq!(c.jeu(id_gog("1")).unwrap().unwrap().source.as_deref(), Some("gog"));
+        assert_eq!(c.ids_de_source("galaxy").unwrap().len(), 1, "seul Portal 2 reste à Galaxy");
+        drop(c);
+        // Une relecture sans nouveauté : rien de nouveau ; un jeu qui n'est plus dans la liste garde sa carte.
+        assert!(n.ranger_installes(&s, "gog", &compte).unwrap().is_empty());
+        assert!(n.ranger_installes(&s, "gog", &compte[..1]).unwrap().is_empty());
+        assert_eq!(s.verrou().ids_de_source("gog").unwrap().len(), 4, "les cartes restent (se connecter vaut accord)");
+        // Registre de GOG illisible à la lecture suivante : Delta, rangé installé, le RESTE (jamais basculé « pas
+        // installé » sur une lecture ratée) ; les autres restent « pas installés ».
+        n.ranger_installes(&s, "gog", &compte).unwrap();
+        let cartes = s.verrou().jeux_de_source("gog").unwrap();
+        let deja = installes_gog_deja_ranges(&cartes);
+        assert_eq!(deja.iter().map(|j| j.id.as_str()).collect::<Vec<_>>(), ["gog_4"]);
+        let l = crate::boutiques_pc::fusion_gog(compte.iter().map(|j| crate::boutiques::JeuBoutique { installe: false, ..j.clone() }).collect(), &deja, &[]);
+        assert!(n.ranger_installes(&s, "gog", &l).unwrap().is_empty());
+        let c = s.verrou();
+        assert_eq!(c.jeu(id_gog("4")).unwrap().unwrap().installe, Some(true), "Delta toujours installé");
+        assert_eq!(c.jeu(id_gog("3")).unwrap().unwrap().installe, Some(false));
     }
 
     /// Lot B : les jeux POSSÉDÉS entrent avec les installés, « pas installé » ; un jeu installé ET possédé n'a qu'une

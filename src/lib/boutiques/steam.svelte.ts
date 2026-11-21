@@ -8,7 +8,8 @@ import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat } from '$lib/etat.svelte';
 import { partie } from '$lib/ludotheque/jeu.svelte';
 import { rafraichirLudotheque } from './boutiques-pc.svelte';
-import { messageNouveaux, toujoursLeMeme } from './jeu-boutique';
+import { annonceImport, aujourdhui, cheminActuel, direUneFoisParJour, messageExpire, stockageLocal } from './import-compte';
+import { toujoursLeMeme } from './jeu-boutique';
 
 export const PAGE_CLE_STEAM = 'https://steamcommunity.com/dev/apikey';
 
@@ -52,53 +53,24 @@ export function connexionSteamExpiree(): boolean {
 }
 
 /** La connexion du profil à Steam a expiré (lot C2) : dit sans alarmer, les jeux déjà importés restent. */
-export const MESSAGE_STEAM_EXPIRE = '🔑 Ta connexion à Steam a expiré : dans 🛒 Boutiques, reconnecte-toi.';
+export const MESSAGE_STEAM_EXPIRE = messageExpire('Steam', '');
 
 /** Le message d'une connexion expirée selon l'écran (pur, testé) : « dans 🛒 Boutiques » seulement hors de cette page,
- * et « au bureau » depuis Taodbox (la connexion demande la souris). */
+ * et « au bureau » depuis Taodbox (la connexion demande la souris). Commun avec GOG (`import-compte`). */
 export function messageSteamExpire(chemin: string): string {
-  if (chemin.startsWith('/taodbox')) return '🔑 Ta connexion à Steam a expiré : au bureau, dans 🛒 Boutiques, reconnecte-toi.';
-  if (chemin.startsWith('/boutiques')) return '🔑 Ta connexion à Steam a expiré : reconnecte-toi (bouton « 🔑 Me reconnecter à Steam »).';
-  return MESSAGE_STEAM_EXPIRE;
-}
-
-/** L'écran où l'on est (pour les messages). */
-function cheminActuel(): string {
-  try {
-    return typeof location === 'undefined' ? '' : location.pathname;
-  } catch {
-    return '';
-  }
+  return messageExpire('Steam', chemin);
 }
 
 /** Ce qu'un import Steam par la connexion fait dire (pur, testé). À la main : toujours un message (« Rien de nouveau »
  * compris) ; à l'ouverture de Frogtend (discret) : seulement des jeux nouveaux ou une connexion expirée. */
 export function annonceImportSteam(r: ImportSteam, aLaMain: boolean, chemin = ''): { texte: string; ton?: 'alerte' } | null {
-  if (r.reconnecter) return { texte: messageSteamExpire(chemin), ton: 'alerte' };
-  const m = messageNouveaux([['steam', r.nouveaux, r.nouveaux_installes]]);
-  if (m) return { texte: m };
-  return aLaMain ? { texte: 'Rien de nouveau : tes jeux Steam sont déjà dans ta ludothèque.' } : null;
+  return annonceImport('steam', 'Steam', r, aLaMain, chemin);
 }
 
 /** La connexion expirée est-elle à dire AUJOURD'HUI à ce profil, à l'ouverture de Frogtend ? Une fois par jour
  * (la ligne d'état reste visible) ; retenu dans ce navigateur seulement, sans rien de secret. Sans stockage : dit. */
 export function direExpireAujourdhui(profil: string, jour: string, stockage: Pick<Storage, 'getItem' | 'setItem'> | null): boolean {
-  const cle = `frogtend.steamExpire.${profil}`;
-  try {
-    if (stockage?.getItem(cle) === jour) return false;
-    stockage?.setItem(cle, jour);
-  } catch {
-    // Stockage refusé : dit, comme sans stockage.
-  }
-  return true;
-}
-
-function stockageLocal(): Storage | null {
-  try {
-    return typeof localStorage === 'undefined' ? null : localStorage;
-  } catch {
-    return null;
-  }
+  return direUneFoisParJour(`frogtend.steamExpire.${profil}`, jour, stockage);
 }
 
 /** La manière de lancer un import : à la main (bouton), juste après la connexion, ou à l'ouverture de Frogtend. */
@@ -146,7 +118,7 @@ async function importerConnecte(mode: ModeImportSteam, profil: string | null): P
     if (attente !== null) fermerToast(attente);
     const a = annonceImportSteam(r, aLaMain, cheminActuel());
     // Jamais un message par-dessus une partie (à l'ouverture de Frogtend) ; la connexion expirée, une fois par jour.
-    const dire = a && (aLaMain || (partie.enJeu === null && (!r.reconnecter || direExpireAujourdhui(profil ?? '', new Date().toISOString().slice(0, 10), stockageLocal()))));
+    const dire = a && (aLaMain || (partie.enJeu === null && (!r.reconnecter || direExpireAujourdhui(profil ?? '', aujourdhui(), stockageLocal()))));
     if (dire) toast(a.texte, a.ton);
     if (r.reconnecter) return false;
     steam.imports++;

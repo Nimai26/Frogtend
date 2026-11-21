@@ -1,5 +1,25 @@
 # Notes de version de Frogtend
 
+## 0.217.0 — 🟣 Tous tes jeux GOG dans ta ludothèque (lot C4a)
+
+- Nouveau : une fois connecté à GOG dans Frogtend (la connexion faite pour le jeu offert compte aussi), TOUS les jeux
+  de ton compte GOG entrent dans ta ludothèque, même ceux qui ne sont pas installés, et même ceux que tu as cachés sur
+  gog.com. Ils sont marqués « pas installés » ; « ⬇ Installer » passe par GOG Galaxy. Pas besoin de GOG Galaxy pour
+  les voir (sans lui, le message le dit : « installe GOG Galaxy pour les installer »).
+- Tes jeux GOG sont relus tout seuls à chaque ouverture de Frogtend, sans message sauf s'il y a des jeux nouveaux. À
+  la main : 🛒 Boutiques ▸ 🟣 Mon compte GOG ▸ « 🔄 Mettre à jour mes jeux GOG ». Juste après la connexion (quand tu
+  fermes la fenêtre de GOG, celle de la connexion ou celle du jeu offert qui te demandait de te connecter), tes jeux
+  sont lus aussitôt.
+- Si ta connexion à GOG a expiré, Frogtend le dit (une fois par jour, jamais pendant une partie) ; tes jeux restent
+  dans ta ludothèque.
+- Un seul bloc « 🟣 Mon compte GOG » dans 🛒 Boutiques, juste sous celui de Steam : la connexion, tes jeux, puis le jeu
+  offert du moment (« 🎁 Récupérer », comme avant).
+- Un jeu que GOG Galaxy montrait déjà n'apparaît qu'une fois, avec le titre, le temps de jeu et les succès que Galaxy
+  connaît. Taodbox montre aussi ces jeux « à installer ».
+- Un jeu GOG installé reste « installé » même si Frogtend n'arrive pas à relire les jeux GOG de ce PC un jour.
+- Frogtend ne garde que le numéro de ton compte GOG : jamais ton mot de passe, ton nom, ton adresse e-mail ni un
+  cookie.
+
 ## 0.216.1 — 🛒 Boutiques : Steam avec les autres comptes
 
 - Changé (demandé par Seb) : « Mon compte Steam » est maintenant avec Epic, PlayStation Plus, GOG et Prime Gaming,

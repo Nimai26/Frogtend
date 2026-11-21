@@ -8,11 +8,23 @@ import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat, reglerProfil } from '$lib/etat.svelte';
 import { toujoursLeMeme } from './jeu-boutique';
 
-export const gratuits = $state<{ liste: JeuOffert[]; enCours: string | null; psplusEnCours: boolean; boutique: 'gog' | 'prime' | null }>({
+export const gratuits = $state<{
+  liste: JeuOffert[];
+  enCours: string | null;
+  psplusEnCours: boolean;
+  boutique: 'gog' | 'prime' | null;
+  lectureGog: boolean;
+  gogDeconnecte: boolean;
+}>({
   liste: [],
   enCours: null,
   psplusEnCours: false,
   boutique: null,
+  // Lot C4a : une lecture des jeux du compte GOG tourne (`gog.svelte.ts`) : jamais de récupération GOG en même temps
+  // (même compte, même navigateur). Ici plutôt que dans `gog.svelte.ts`, qui importe ce module (pas d'import circulaire).
+  lectureGog: false,
+  // La dernière récupération GOG a trouvé le compte déconnecté (sa fenêtre s'est affichée pour se connecter).
+  gogDeconnecte: false,
 });
 
 const NOMS = { gog: 'GOG', prime: 'Prime Gaming' } as const;
@@ -30,7 +42,7 @@ export function connexionApres(etatResultat: string): boolean | null {
 
 /** Retient, pour le profil ouvert, ce qu'un résultat dit du compte de la boutique. `profil` : celui d'AVANT l'attente ;
  * un autre profil ouvert entre-temps ne reçoit rien (revue des experts, 18/11). */
-async function noterConnexion(b: BoutiqueOfferte, etatResultat: string, profil: string | null | undefined) {
+export async function noterConnexion(b: BoutiqueOfferte, etatResultat: string, profil: string | null | undefined) {
   if (!toujoursLeMeme(profil, etat.profilOuvert?.id)) return;
   const v = connexionApres(etatResultat);
   if (v !== null && etat.profil.gratuits.connectes[b] !== v) await reglerProfil(`gratuits.connectes.${b}`, v);
@@ -69,10 +81,15 @@ export async function connexion(b: 'gog' | 'prime') {
 /** Récupérer les jeux offerts de GOG ou de Prime Gaming. */
 export async function recuperer(b: 'gog' | 'prime', discret = false) {
   if (gratuits.boutique) return;
+  if (b === 'gog' && gratuits.lectureGog) {
+    if (!discret) toast('⏳ Frogtend lit tes jeux GOG : réessaie dans un moment.', 'alerte');
+    return;
+  }
   gratuits.boutique = b;
   const profil = etat.profilOuvert?.id;
   try {
     const r = await api.gratuitsRecuperer(b);
+    if (b === 'gog') gratuits.gogDeconnecte = r.etat === 'connexion';
     await noterConnexion(b, r.etat, profil);
     const m = messageRecolte(b, r);
     if (!discret || m.ton !== 'ok' || m.texte.includes('récupéré')) toast(m.texte, m.ton);

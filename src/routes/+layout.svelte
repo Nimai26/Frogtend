@@ -23,6 +23,7 @@
   import { gratuitsAuDemarrage } from '$lib/boutiques/gratuits.svelte';
   import { boutiquesAuDemarrage } from '$lib/boutiques/boutiques-pc.svelte';
   import { steamAuDemarrage } from '$lib/boutiques/steam.svelte';
+  import { gogAuDemarrage } from '$lib/boutiques/gog.svelte';
   import { emulateursAuDemarrage } from '$lib/emulateurs/majs.svelte';
   import { ecouterQuestionsRacine } from '$lib/mods/racine';
 
@@ -76,7 +77,16 @@
       // Lot C2 (Seb 20/11) : les jeux Steam POSSÉDÉS du compte connecté par la page, relus à chaque ouverture, en
       // tâche de fond et sans message sauf nouveaux jeux ou connexion expirée.
       untrack(() => void steamAuDemarrage().catch(() => {}));
-      untrack(() => gratuitsAuDemarrage());
+      // Lot C4a : les jeux du compte GOG, relus APRÈS la récupération du jeu offert (jamais les deux en même temps :
+      // même compte, même fenêtre de GOG), discrètement, jamais pendant une partie.
+      // Le profil est pris MAINTENANT : si un autre est ouvert d'ici là, la lecture n'a pas lieu (et ne touche à rien).
+      untrack(() => {
+        const profil = etat.profilOuvert?.id;
+        void gratuitsAuDemarrage()
+          .catch(() => {})
+          .then(() => gogAuDemarrage(profil))
+          .catch(() => {});
+      });
       // Les émulateurs installés par Frogtend qui ont une nouvelle version : proposés, une fois par jour (Seb, 08/11).
       untrack(() => void emulateursAuDemarrage().catch(() => {}));
     } else {

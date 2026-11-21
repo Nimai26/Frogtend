@@ -9,11 +9,13 @@
   import { connecteASteam, connexionSteam, connexionSteamExpiree, importerSteam, importSteamEnCours, libelleCompteSecours, lireSteam, mettreAJourSteam, oublierSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
   import { boutiquesPc, lireEtatsPc, relireMaintenant } from '$lib/boutiques/boutiques-pc.svelte';
   import { ligneEtat } from '$lib/boutiques/jeu-boutique';
+  import { connecteAGog, connexionGog, connexionGogExpiree, gog, gogOccupe, importGogEnCours, lireGog, mettreAJourGog } from '$lib/boutiques/gog.svelte';
 
   let filtre = $state('');
   let seulementInstalles = $state(false);
   onMount(() => {
     lireSteam();
+    lireGog();
     lireGalaxy();
     lireGratuits();
     verifierEpic();
@@ -34,6 +36,8 @@
 
   // La dernière erreur d'import Steam, seulement celle du profil ouvert.
   const erreurSteam = $derived(steam.erreurProfil === (etat.profilOuvert?.id ?? null) ? steam.erreur : null);
+  // De même pour GOG (lot C4a).
+  const erreurGog = $derived(gog.erreurProfil === (etat.profilOuvert?.id ?? null) ? gog.erreur : null);
 
   const affiches = $derived(
     steam.jeux.filter((j) => (!seulementInstalles || j.installe) && j.nom.toLowerCase().includes(filtre.trim().toLowerCase())),
@@ -114,7 +118,8 @@
       J’ai PS Plus : les ajouter tout seul (une fois par semaine, à l’ouverture de mon profil). Frogtend ne clique que sur « Ajouter à la bibliothèque » : il ne peut rien acheter.
     </label>
 
-    {#each [{ b: 'gog' as const, nom: '🟣 GOG', detail: 'le jeu offert du moment, ajouté à ton compte GOG', auto: 'Les récupérer tout seul (une fois par jour). Note : GOG t’inscrit à sa lettre d’information quand tu prends un jeu offert ; Frogtend ne change pas tes réglages de compte.' }, { b: 'prime' as const, nom: '📦 Prime Gaming', detail: 'les jeux offerts aux membres Amazon Prime', auto: 'Les récupérer tout seul (une fois par semaine). Les offres d’autres boutiques (code GOG, compte Epic à relier) s’ouvrent pour que tu finisses.' }] as o (o.b)}
+    <!-- Lot C4a : GOG a son propre bloc « Mon compte GOG » (jeu offert + jeux du compte), plus bas. -->
+    {#each [{ b: 'prime' as const, nom: '📦 Prime Gaming', detail: 'les jeux offerts aux membres Amazon Prime', auto: 'Les récupérer tout seul (une fois par semaine). Les offres d’autres boutiques (code GOG, compte Epic à relier) s’ouvrent pour que tu finisses.' }] as o (o.b)}
       <div class="tete psplus">
         <h3>{o.nom}</h3>
         <span class="muted">{o.detail}</span>
@@ -171,6 +176,50 @@
           (steam.etat?.nb_jeux ? `${steam.etat.nb_jeux} jeu(x) de ton compte Steam dans ta ludothèque, relus à chaque ouverture de Frogtend.` : 'Tes jeux Steam sont relus à chaque ouverture de Frogtend.')}
       </p>
     {/if}
+
+    <!-- Lot C4a (Seb 21/11) : UN bloc GOG — la connexion (la même pour le jeu offert et pour les jeux du compte), les jeux
+         du compte (relus à chaque ouverture de Frogtend, à la main, et juste après la connexion), puis le jeu offert.
+         Clavier et souris : pas dans Taodbox. Le bouton de mise à jour garde le focus pendant la lecture (aria-disabled,
+         et le gardien ignore le clic). -->
+    <div class="tete psplus">
+      <h3>🟣 Mon compte GOG</h3>
+      <span class="muted">sur sa page officielle ; ton mot de passe reste chez GOG</span>
+      <span class="espace"></span>
+      <!-- Les boutons GOG gardent le focus quand ils attendent (aria-disabled ; le gardien est dans connexionGog et dans
+           les onclick) : une lecture, la récupération du jeu offert ou l'ouverture de la fenêtre. -->
+      {#if connexionGogExpiree()}
+        <span class="tag warn">🔑 Connexion expirée</span>
+        <button class="btn primary" aria-disabled={gogOccupe()} onclick={connexionGog}>{gog.connexionEnCours ? 'Ouverture…' : '🔑 Me reconnecter à GOG'}</button>
+      {:else if connecteAGog()}
+        <span class="tag ok">✅ Connecté à GOG</span>
+        <button class="btn primary" aria-disabled={gogOccupe()} onclick={() => !gogOccupe() && mettreAJourGog('main')}>
+          {importGogEnCours() ? 'Lecture…' : '🔄 Mettre à jour mes jeux GOG'}
+        </button>
+        <!-- « Changer de compte » viendra avec le lot C4b. -->
+        <button class="btn petit" aria-disabled={gogOccupe()} onclick={connexionGog}>Me reconnecter</button>
+      {:else}
+        <button class="btn" aria-disabled={gogOccupe()} onclick={connexionGog}>{gog.connexionEnCours ? 'Ouverture…' : '🔑 Se connecter à GOG'}</button>
+      {/if}
+    </div>
+    {#if connecteAGog() || connexionGogExpiree() || erreurGog}
+      <!-- La dernière erreur de lecture reste affichée ici (une erreur au démarrage ne fait pas de message). -->
+      <p class="muted ligne-steam" class:alerte={!!erreurGog} role="status">
+        {erreurGog ??
+          (gog.etat?.nb_jeux ? `${gog.etat.nb_jeux} jeu(x) de ton compte GOG dans ta ludothèque, relus à chaque ouverture de Frogtend.` : 'Tes jeux GOG sont relus à chaque ouverture de Frogtend.')}
+      </p>
+    {/if}
+    <div class="tete sous-ligne">
+      <span>🎁 Jeu offert du moment</span>
+      <span class="muted">ajouté à ton compte GOG</span>
+      <span class="espace"></span>
+      <button class="btn primary" aria-disabled={gratuits.boutique !== null || gogOccupe()} onclick={() => gratuits.boutique === null && !gogOccupe() && recuperer('gog')}>
+        {gratuits.boutique === 'gog' ? 'En cours…' : '🎁 Récupérer'}
+      </button>
+    </div>
+    <label class="auto">
+      <input type="checkbox" checked={etat.profil.gratuits.gog} onchange={(e) => reglerProfil('gratuits.gog', e.currentTarget.checked)} />
+      Les récupérer tout seul (une fois par jour). Note : GOG t’inscrit à sa lettre d’information quand tu prends un jeu offert ; Frogtend ne change pas tes réglages de compte.
+    </label>
   </section>
 
   <section class="cx-block">
@@ -281,6 +330,15 @@
   }
   .ligne-steam {
     margin: 0;
+  }
+  .sous-ligne {
+    margin-top: calc(8 * var(--u));
+  }
+  /* Un bouton qui attend (aria-disabled, pour garder le focus au clavier et à la manette) a l'air désactivé, comme
+     `.btn:disabled` (base.css) ; Steam et GOG. */
+  .boutiques :global(.btn[aria-disabled='true']) {
+    opacity: 0.45;
+    cursor: default;
   }
   .ligne-steam.alerte {
     color: var(--warn-texte);

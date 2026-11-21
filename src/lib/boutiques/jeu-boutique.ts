@@ -46,6 +46,14 @@ export function libelleOuverture(j: JeuResume): string {
   return nomBoutique(m.boutique);
 }
 
+/** Les succès d'une carte que GOG Galaxy connaît (pur, testé) : une carte Galaxy, ou une carte GOG du compte ou du PC
+ * (lot C4a : elle passe avant Galaxy et reprend ses succès) ; le détail se lit toujours chez Galaxy, sous la clé de la
+ * carte (« gog_123 »). `null` : pas de succès Galaxy à montrer. */
+export function succesGalaxy(j: Pick<JeuResume, 'source' | 'succes' | 'cle_boutique'>): { obtenus: number; total: number; cle: string | null } | null {
+  if ((j.source !== 'galaxy' && j.source !== 'gog') || !j.succes || !j.succes[1]) return null;
+  return { obtenus: j.succes[0], total: j.succes[1], cle: j.cle_boutique || null };
+}
+
 /** Jouer (installé) ou installer, par la boutique. */
 export async function ouvrirJeuDeBoutique(j: JeuResume) {
   const m = moyenDOuverture(j);

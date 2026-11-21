@@ -85,6 +85,15 @@ pub struct CompteBoutique {
     /// prochaine ouverture du profil, avant tout import.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub menage_ancien_compte: bool,
+    /// GOG (lot C4a, source « gog ») : le numéro du compte (`userId`, chiffres seulement) connecté dans le navigateur du
+    /// profil, relu à chaque lecture de ses jeux. Rien d'autre du compte n'est gardé (ni nom, ni e-mail, ni jeton). Les
+    /// champs `steamid*` ne servent pas à GOG ; `connecte_le` y dit la dernière lecture réussie.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub id_compte: String,
+    /// GOG : le compte d'avant, quand une lecture a trouvé un AUTRE compte connecté (pour le changement de compte du
+    /// lot C4b) ; aucune carte n'est retirée au lot C4a.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub id_compte_precedent: String,
 }
 
 /// Ce qui reste d'un compte Steam oublié : seulement le compte précédent (ni clé, ni connexion, ni liste). `None` s'il
@@ -424,7 +433,7 @@ pub fn verifier_jeton_steam(jeton: &str, steamid: &str, maintenant: u64) -> Resu
 }
 
 /// Décode du base64url (sans remplissage, ou avec) ; `None` si un caractère n'en est pas.
-fn base64url(s: &str) -> Option<Vec<u8>> {
+pub(crate) fn base64url(s: &str) -> Option<Vec<u8>> {
     let s = s.trim_end_matches('=');
     let valeur = |c: u8| -> Option<u32> {
         Some(match c {
@@ -1187,6 +1196,102 @@ pub fn image_autorisee(url: &str) -> bool {
         || url.starts_with("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/")
         // Les badges des succès de RetroAchievements (lot C3).
         || url.starts_with("https://media.retroachievements.org/Badge/")
+        // Les jaquettes des jeux du compte GOG (lot C4a), seulement sous la forme rendue par `image_gog`.
+        || image_gog_permise(url)
+}
+
+/// Les hôtes d'images de la liste des jeux du compte GOG (« images-1.gog-statics.com »… ; lot C4a, forme supposée, pas
+/// vérifiée sur un vrai compte) : un hôte EXACT de cette liste, jamais « gog-statics.com » au milieu d'un autre nom.
+const HOTES_IMAGES_GOG: [&str; 5] = ["images.gog-statics.com", "images-1.gog-statics.com", "images-2.gog-statics.com", "images-3.gog-statics.com", "images-4.gog-statics.com"];
+
+/// Le suffixe ajouté à l'empreinte d'une image GOG sans extension : la vignette de 392 pixels de large que la page
+/// « Mes jeux » de gog.com utilise (forme supposée, pas vérifiée ; une image absente laisse le titre sur la carte).
+pub const SUFFIXE_IMAGE_GOG: &str = "_392.jpg";
+
+/// Une adresse d'image GOG telle que `image_gog` la rend : https, hôte exact, une empreinte (lettres et chiffres) puis
+/// au plus un suffixe sûr (« _392.jpg », « .png »…), rien d'autre (ni dossier, ni paramètre).
+fn image_gog_permise(url: &str) -> bool {
+    let Some(reste) = url.strip_prefix("https://") else { return false };
+    let Some((hote, chemin)) = reste.split_once('/') else { return false };
+    HOTES_IMAGES_GOG.contains(&hote) && fichier_image_gog(chemin)
+}
+
+/// `<empreinte>[_<forme>].<jpg|png|webp>` : l'empreinte de 16 à 128 lettres et chiffres.
+fn fichier_image_gog(f: &str) -> bool {
+    let Some((nom, ext)) = f.rsplit_once('.') else { return false };
+    let (empreinte, forme) = nom.split_once('_').unwrap_or((nom, ""));
+    ["jpg", "png", "webp"].contains(&ext)
+        && (16..=128).contains(&empreinte.len())
+        && empreinte.bytes().all(|c| c.is_ascii_alphanumeric())
+        && forme.len() <= 40
+        && forme.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
+}
+
+/// Normalise l'image d'un jeu du compte GOG (lot C4a) : « //images-1.gog-statics.com/<empreinte> » (forme supposée)
+/// devient « https://images-1.gog-statics.com/<empreinte>_392.jpg » ; une adresse qui a déjà son extension est gardée
+/// si elle est sûre. Une forme inconnue : `None` (une carte sans image plutôt qu'une adresse non autorisée).
+pub fn image_gog(brut: &str) -> Option<String> {
+    let b = brut.trim();
+    let reste = b.strip_prefix("https://").or_else(|| b.strip_prefix("//"))?;
+    let (hote, chemin) = reste.split_once('/')?;
+    let hote = hote.to_ascii_lowercase();
+    if !HOTES_IMAGES_GOG.contains(&hote.as_str()) {
+        return None;
+    }
+    let url = if chemin.contains('.') { format!("https://{hote}/{chemin}") } else { format!("https://{hote}/{chemin}{SUFFIXE_IMAGE_GOG}") };
+    image_gog_permise(&url).then_some(url)
+}
+
+/// Les jeux du compte GOG remis par la page (lot C4a) mis en forme pour la ludothèque : `gog_<id>` (le même id de carte
+/// que GOG Galaxy et le registre : jamais deux cartes pour un jeu), titre sans ™, image normalisée, « pas installé »
+/// (l'état installé vient du PC, `boutiques_pc::fusion_gog`).
+pub fn jeux_du_compte_gog(lus: &[crate::gratuits::JeuGogLu]) -> Vec<JeuBoutique> {
+    let mut vus = BTreeSet::new();
+    lus.iter()
+        .filter(|j| crate::gratuits::numero_gog(&j.id) && vus.insert(j.id.clone()))
+        .map(|j| {
+            let nom = crate::boutiques_pc::sans_marques(&j.titre);
+            JeuBoutique {
+                id: format!("gog_{}", j.id),
+                nom: if nom.is_empty() { j.id.clone() } else { nom },
+                minutes: 0,
+                derniere: 0,
+                installe: false,
+                plateforme: "gog".into(),
+                image: image_gog(&j.image),
+                dossier: None,
+                pret: None,
+                succes: None,
+                releases: vec![],
+                titre_douteux: false,
+            }
+        })
+        .collect()
+}
+
+/// Range la liste du compte GOG lue à l'instant dans la source « gog » de `boutiques.json` (pur, appelé sous le verrou
+/// par `modifier_source`, testé). `avant` : le compte rangé AVANT la lecture ; s'il a changé entre-temps (une autre
+/// lecture a écrit), refus : rien n'est mélangé. Un AUTRE compte que celui rangé : l'ancien est noté
+/// (`id_compte_precedent`) pour le changement de compte (lot C4b) ; aucune carte n'est retirée ici. Rend le compte écrit
+/// et vrai si le compte a changé.
+pub fn appliquer_import_gog(c: Option<CompteBoutique>, avant: &str, id_compte: &str, jeux: Vec<JeuBoutique>, quand: &str) -> Resultat<(CompteBoutique, bool)> {
+    if !crate::gratuits::numero_gog(id_compte) {
+        return Err(Erreur::Refus("Compte GOG illisible.".into()));
+    }
+    let mut c = c.unwrap_or_default();
+    if c.id_compte != avant {
+        return Err(Erreur::Refus("Le compte GOG a changé pendant la lecture : relance-la.".into()));
+    }
+    let change = !c.id_compte.is_empty() && c.id_compte != id_compte;
+    if change {
+        c.id_compte_precedent = std::mem::take(&mut c.id_compte);
+    }
+    c.id_compte = id_compte.to_string();
+    c.compte = "GOG".into();
+    c.jeux = jeux;
+    c.maj_le = quand.to_string();
+    c.connecte_le = quand.to_string();
+    Ok((c, change))
 }
 
 /// Une image publique de boutique (hôte autorisé), gardée en cache sous son empreinte.
@@ -1659,6 +1764,75 @@ mod tests {
         assert!(!image_autorisee("http://images.gog.com/x.png"), "https seulement");
         assert!(image_autorisee("https://ubistatic3-a.akamaihd.net/orbit/uplay_launcher_3_0/assets/da1733d50f6fbcf5b344d23ebb1ed52c.jpg"));
         assert!(!image_autorisee("https://ubistatic3-a.akamaihd.net/autre/x.jpg"), "seulement les images du lanceur");
+    }
+
+    #[test]
+    fn les_images_du_compte_gog_sont_normalisees_vers_une_adresse_autorisee() {
+        let e = "1e8a5a1fb0e6d4d4bfa4f6fbd1b8e8d2c3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8";
+        // La forme supposée de la liste : sans protocole ni extension → https et la vignette de 392 pixels.
+        let u = image_gog(&format!("//images-1.gog-statics.com/{e}")).unwrap();
+        assert_eq!(u, format!("https://images-1.gog-statics.com/{e}_392.jpg"));
+        assert!(image_autorisee(&u), "l'adresse rendue passe la porte des images");
+        assert_eq!(image_gog(&format!("https://IMAGES-4.gog-statics.com/{e}")).as_deref(), Some(format!("https://images-4.gog-statics.com/{e}_392.jpg").as_str()));
+        // Une extension déjà là : gardée si elle est sûre.
+        assert_eq!(image_gog(&format!("//images.gog-statics.com/{e}_product_tile_256.webp")).as_deref(), Some(format!("https://images.gog-statics.com/{e}_product_tile_256.webp").as_str()));
+        // Formes inconnues ou pièges : pas d'image plutôt qu'une adresse non autorisée.
+        for piege in [
+            String::new(),
+            format!("http://images-1.gog-statics.com/{e}"),
+            format!("//images-1.gog-statics.com.evil.example/{e}"),
+            format!("//evil.example/images-1.gog-statics.com/{e}"),
+            format!("//images-9.gog-statics.com/{e}"),
+            format!("//images-1.gog-statics.com/dossier/{e}"),
+            format!("//images-1.gog-statics.com/{e}.jpg?x=1"),
+            format!("//images-1.gog-statics.com/{e}.svg"),
+            "//images-1.gog-statics.com/court".into(),
+            format!("//images-1.gog-statics.com:8443/{e}"),
+            format!("javascript://images-1.gog-statics.com/{e}"),
+        ] {
+            assert_eq!(image_gog(&piege), None, "{piege}");
+        }
+        assert!(!image_autorisee(&format!("https://images-1.gog-statics.com/{e}_392.jpg/../x")));
+        assert!(!image_autorisee(&format!("https://images-1.gog-statics.com.evil.example/{e}_392.jpg")));
+    }
+
+    #[test]
+    fn les_jeux_du_compte_gog_se_rangent_sans_doublon_ni_marque() {
+        let lu = |id: &str, t: &str, i: &str| crate::gratuits::JeuGogLu { id: id.into(), titre: t.into(), image: i.into() };
+        let l = jeux_du_compte_gog(&[lu("1207658924", "Unreal Tournament™ GOTY", "//images-1.gog-statics.com/1e8a5a1fb0e6d4d4bfa4"), lu("1207658924", "Doublon", ""), lu("5", "™", "x")]);
+        assert_eq!(l.len(), 2);
+        assert_eq!((l[0].id.as_str(), l[0].nom.as_str(), l[0].installe, l[0].plateforme.as_str()), ("gog_1207658924", "Unreal Tournament GOTY", false, "gog"));
+        assert_eq!(l[0].image.as_deref(), Some("https://images-1.gog-statics.com/1e8a5a1fb0e6d4d4bfa4_392.jpg"));
+        assert_eq!((l[1].nom.as_str(), l[1].image.as_ref()), ("5", None), "titre vidé par les marques : le numéro ; image inconnue : aucune");
+    }
+
+    #[test]
+    fn la_liste_du_compte_gog_s_ecrit_sans_melanger_deux_comptes() {
+        let j = |id: &str| JeuBoutique { id: id.into(), nom: id.into(), minutes: 0, derniere: 0, installe: false, plateforme: "gog".into(), image: None, dossier: None, pret: None, succes: None, releases: vec![], titre_douteux: false };
+        // Première lecture.
+        let (c, change) = appliquer_import_gog(None, "", "42", vec![j("gog_1")], "t1").unwrap();
+        assert!(!change);
+        assert_eq!((c.id_compte.as_str(), c.jeux.len(), c.maj_le.as_str(), c.id_compte_precedent.as_str()), ("42", 1, "t1", ""));
+        // Le même compte : la liste est remplacée.
+        let (c, change) = appliquer_import_gog(Some(c), "42", "42", vec![j("gog_1"), j("gog_2")], "t2").unwrap();
+        assert!(!change && c.jeux.len() == 2);
+        // Un autre compte : l'ancien est noté pour le lot C4b, la liste est celle du nouveau seulement.
+        let (c, change) = appliquer_import_gog(Some(c), "42", "77", vec![j("gog_9")], "t3").unwrap();
+        assert!(change);
+        assert_eq!((c.id_compte.as_str(), c.id_compte_precedent.as_str(), c.jeux.len()), ("77", "42", 1));
+        // Le compte rangé a changé PENDANT la lecture : refus, rien n'est mélangé.
+        assert!(appliquer_import_gog(Some(c.clone()), "42", "42", vec![], "t4").is_err());
+        assert!(appliquer_import_gog(Some(c), "77", "pas-un-numero", vec![], "t4").is_err());
+        // Écrit dans boutiques.json sous « gog », à côté de Steam (jamais mélangé avec lui).
+        let d = tempfile::tempdir().unwrap();
+        ecrire(d.path(), Some(&CompteBoutique { steamid: "76561197960287930".into(), ..Default::default() })).unwrap();
+        modifier_source(d.path(), "gog", |c| appliquer_import_gog(c, "", "42", vec![j("gog_1")], "t").map(|(c, _)| Some(c))).unwrap();
+        assert_eq!(lire_source(d.path(), "gog").unwrap().id_compte, "42");
+        assert_eq!(lire(d.path()).unwrap().steamid, "76561197960287930");
+        assert!(lire(d.path()).unwrap().id_compte.is_empty());
+        // Un fichier d'avant le lot C4a se lit toujours (champs absents).
+        std::fs::write(d.path().join("boutiques.json"), r#"{"steam":{"compte":"x","steamid":"1","maj_le":"","jeux":[]}}"#).unwrap();
+        assert_eq!(lire(d.path()).unwrap().id_compte, "");
     }
 
     /// Une petite base « façon Galaxy » : les DLC et jeux cachés sont écartés, les installés repérés.

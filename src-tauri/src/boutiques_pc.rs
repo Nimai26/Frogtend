@@ -127,6 +127,46 @@ pub fn fusion_steam(api: Vec<JeuBoutique>, locaux: &[JeuBoutique]) -> Vec<JeuBou
     l
 }
 
+/// Les jeux GOG d'un profil (lot C4a, sur le modèle de `fusion_steam`) : la liste de son COMPTE (lue par la page, peut
+/// être vide), avec l'état « installé » lu sur ce PC (registre de GOG), PLUS les jeux installés que la liste n'a pas.
+/// Les ids sont ceux de GOG Galaxy (`gog_<id>`) : une seule carte par jeu. Ce que GOG Galaxy sait du même jeu (liste
+/// `galaxy` du profil, si elle a été lue) complète la carte : copies sur d'autres boutiques (réunion des copies),
+/// titre, temps de jeu, succès et jaquette verticale — la carte du compte passe AVANT celle de Galaxy (`noyau::ranger_dans`),
+/// elle ne doit rien perdre de ce que Galaxy montrait.
+pub fn fusion_gog(compte: Vec<JeuBoutique>, installes: &[JeuBoutique], galaxy: &[JeuBoutique]) -> Vec<JeuBoutique> {
+    let mut l = compte;
+    for j in &mut l {
+        let i = installes.iter().find(|x| x.id == j.id);
+        j.dossier = i.and_then(|i| i.dossier.clone());
+        j.pret = i.and_then(|i| i.pret);
+        j.installe = i.is_some();
+    }
+    for x in installes {
+        if !l.iter().any(|j| j.id == x.id) {
+            l.push(x.clone());
+        }
+    }
+    for j in &mut l {
+        let Some(g) = galaxy.iter().find(|g| g.id == j.id) else { continue };
+        // Le titre de Galaxy d'abord (sans ™), s'il en a un vrai (Galaxy met sa clé « gog_… » quand il n'en a pas).
+        let titre = sans_marques(&g.nom);
+        if !titre.is_empty() && g.nom != g.id {
+            j.nom = titre;
+        }
+        if j.releases.is_empty() {
+            j.releases = g.releases.clone();
+        }
+        j.succes = j.succes.or(g.succes);
+        j.minutes = j.minutes.max(g.minutes);
+        j.derniere = j.derniere.max(g.derniere);
+        // La jaquette verticale de Galaxy (images.gog.com) plutôt que la vignette horizontale de la liste du compte.
+        if g.image.as_deref().is_some_and(crate::boutiques::image_autorisee) {
+            j.image = g.image.clone();
+        }
+    }
+    ranger(l)
+}
+
 // ───────────────────────────── Epic ─────────────────────────────
 
 /// Les jeux Epic installés (`boutiques::installes_epic_du_pc`), mis en forme.
@@ -1044,6 +1084,42 @@ mod tests {
         assert_eq!(l.iter().map(|j| (j.id.as_str(), j.installe)).collect::<Vec<_>>(), [("400", true), ("500", false), ("620", true)]);
         assert_eq!((l[0].minutes, l[0].dossier.as_deref()), (30, Some(r"D:\S\Portal")), "le temps du compte est gardé");
         assert_eq!(fusion_steam(vec![], &locaux).len(), 2, "sans clé d'API : les jeux installés");
+    }
+
+    #[test]
+    fn la_liste_gog_du_compte_recoit_les_installes_et_ce_que_galaxy_sait() {
+        let du_compte = |id: &str, nom: &str| {
+            let mut j = jeu("gog", id, nom, Path::new("x"));
+            j.installe = false;
+            j.dossier = None;
+            j.pret = None;
+            j.image = Some(format!("https://images-1.gog-statics.com/1e8a5a1fb0e6d4d4bfa4{id}_392.jpg"));
+            j
+        };
+        let compte = vec![du_compte("1", "Alpha"), du_compte("2", "Beta"), du_compte("2", "Beta")];
+        // Installés sur ce PC (registre) : le jeu 2 du compte, et le jeu 3 qui n'est pas dans la liste (autre compte).
+        let installes = vec![jeu("gog", "2", "Beta", Path::new(r"D:\G\Beta")), jeu("gog", "3", "Gamma", Path::new(r"D:\G\Gamma"))];
+        // GOG Galaxy connaît le jeu 1 : ses copies, son temps, ses succès et sa jaquette verticale sont repris.
+        let mut g1 = du_compte("1", "Alpha™ (Galaxy)");
+        g1.releases = vec!["gog_1".into(), "steam_620".into()];
+        g1.minutes = 90;
+        g1.succes = Some((3, 10));
+        g1.image = Some("https://images.gog.com/abc_glx_vertical_cover.webp".into());
+        let mut g2 = du_compte("2", "Beta");
+        g2.image = Some("https://exemple.com/piege.jpg".into());
+        let l = fusion_gog(compte, &installes, &[g1, g2]);
+        assert_eq!(l.iter().map(|j| (j.id.as_str(), j.installe)).collect::<Vec<_>>(), [("gog_1", false), ("gog_2", true), ("gog_3", true)], "une carte par jeu");
+        assert_eq!(l[0].nom, "Alpha (Galaxy)", "le titre de Galaxy d'abord, sans ™");
+        assert_eq!(l[1].nom, "Beta", "sans Galaxy : celui du compte");
+        let mut sans_titre = du_compte("2", "x");
+        sans_titre.nom = "gog_2".into();
+        assert_eq!(fusion_gog(vec![du_compte("2", "Beta")], &[], &[sans_titre])[0].nom, "Beta", "la clé de Galaxy n'est pas un titre");
+        assert_eq!((l[0].minutes, l[0].succes, l[0].releases.len()), (90, Some((3, 10)), 2));
+        assert_eq!(l[0].image.as_deref(), Some("https://images.gog.com/abc_glx_vertical_cover.webp"));
+        assert_eq!(l[1].dossier.as_deref(), Some(r"D:\G\Beta"));
+        assert!(l[1].image.as_deref().is_some_and(|i| i.contains("gog-statics")), "une image de Galaxy non autorisée ne remplace rien");
+        // Sans compte (liste vide) : les jeux installés seuls, comme avant le lot C4a.
+        assert_eq!(fusion_gog(vec![], &installes, &[]).len(), 2);
     }
 
     #[test]

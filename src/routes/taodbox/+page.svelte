@@ -22,6 +22,7 @@
   import { fenetreOuverte, selectionner, taodbox } from '$lib/taodbox/manette.svelte';
   import { adresseImageBoutique } from '$lib/api';
   import { lireSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
+  import { gog } from '$lib/boutiques/gog.svelte';
   import { galaxy, lireGalaxy, ouvrirDansGalaxy } from '$lib/boutiques/galaxy.svelte';
   import { adresseImageParUrl, adresseFondDuJeu, adresseLogoDuJeu } from '$lib/api';
   import { apresRepos, assezGrandPourUnFond, idDuFocus } from '$lib/taodbox/fond';
@@ -70,10 +71,10 @@
       : [],
   );
   // Lot C2 : après chaque import Steam terminé (à l'ouverture de Frogtend, par exemple), les cartes « à installer »
-  // sont relues (le premier passage est celui de onMount).
-  let importsVus = steam.imports;
+  // sont relues (le premier passage est celui de onMount) ; lot C4a : de même après chaque lecture des jeux GOG.
+  let importsVus = steam.imports + gog.imports;
   $effect(() => {
-    const n = steam.imports;
+    const n = steam.imports + gog.imports;
     if (n === importsVus) return;
     importsVus = n;
     untrack(() => void lireAInstaller());
