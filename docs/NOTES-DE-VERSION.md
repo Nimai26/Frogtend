@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.218.2 — 🟣 GOG : ton compte reconnu par la connexion façon Galaxy
+
+- Corrigé : après ta reconnexion, Frogtend refusait la connexion façon Galaxy en la croyant « d'un autre compte ». GOG
+  donne en fait deux numéros au même compte (celui du site et celui de Galaxy) ; Frogtend comparait les mauvais. Il
+  compare maintenant le bon, et lit ta bibliothèque avec le numéro Galaxy.
+
 ## 0.218.1 — 🟣 GOG : la connexion façon Galaxy depuis « Mettre à jour »
 
 - Corrigé : chez Seb, GOG demandait de confirmer la connexion façon Galaxy, mais sa page ne pouvait s'afficher que juste

@@ -375,6 +375,14 @@ impl std::fmt::Debug for RemiseGog {
     }
 }
 
+/// Le compte remis par la page (0.218.2) : (numéro du site, numéro Galaxy) ; sans numéro Galaxy, le même deux fois.
+pub fn separer_compte_gog(remis: &str) -> (String, String) {
+    match remis.split_once('-') {
+        Some((site, galaxy)) => (site.to_string(), galaxy.to_string()),
+        None => (remis.to_string(), remis.to_string()),
+    }
+}
+
 /// Un numéro GOG (compte ou jeu) : des chiffres seulement, 1 à 20.
 pub fn numero_gog(s: &str) -> bool {
     !s.is_empty() && s.len() <= 20 && s.bytes().all(|c| c.is_ascii_digit())
@@ -416,7 +424,8 @@ pub fn lire_remise_gog(url: &tauri::Url) -> Option<RemiseGog> {
     }
     let fragment = url.fragment().unwrap_or("");
     Some(match url.path() {
-        "/gog-compte" if numero_gog(fragment) => RemiseGog::Compte(fragment.to_string()),
+        // « <userId> » ou « <userId>-<galaxyUserId> » (0.218.2) : des chiffres seulement.
+        "/gog-compte" if fragment.split('-').count() <= 2 && fragment.split('-').all(numero_gog) => RemiseGog::Compte(fragment.to_string()),
         "/gog-compte" => RemiseGog::Absent("compte-de-forme-inattendue".into()),
         "/gog-progres" => RemiseGog::Progres(fragment.parse().unwrap_or(0)),
         "/gog-bilan" => RemiseGog::Bilan(fragment.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(900).collect()),
@@ -1001,6 +1010,16 @@ mod tests {
         // Le numéro du compte ne s'écrit jamais (journal, message d'un test).
         assert_eq!(format!("{:?}", RemiseGog::Compte("48628349957132247".into())), "Compte(<caché>)");
         assert!(!format!("{:?}", lire_remise_gog(&morceau(0, 1, json!([["5", "Secret de titre", ""]])))).contains("Secret"));
+    }
+
+    #[test]
+    fn le_compte_gog_peut_porter_son_numero_galaxy() {
+        let u = |s: &str| lire_remise_gog(&tauri::Url::parse(s).unwrap());
+        assert_eq!(u("https://frogtend.invalid/gog-compte#123-48628349957132247"), Some(RemiseGog::Compte("123-48628349957132247".into())));
+        assert_eq!(u("https://frogtend.invalid/gog-compte#123-"), Some(RemiseGog::Absent("compte-de-forme-inattendue".into())));
+        assert_eq!(u("https://frogtend.invalid/gog-compte#1-2-3"), Some(RemiseGog::Absent("compte-de-forme-inattendue".into())));
+        assert_eq!(separer_compte_gog("123-456"), ("123".to_string(), "456".to_string()));
+        assert_eq!(separer_compte_gog("123"), ("123".to_string(), "123".to_string()));
     }
 
     #[test]

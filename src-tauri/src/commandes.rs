@@ -6934,13 +6934,16 @@ pub async fn boutique_gog_importer_connecte(app: AppHandle, noyau: State<'_, Noy
     let p = s.profil.clone();
     let dossier = dossier_profil_de(&noyau, &p.id);
     let avant = crate::boutiques::lire_source(&dossier, "gog").map(|c| c.id_compte).unwrap_or_default();
-    let Some((compte, lus)) = lire_jeux_gog(&app, &noyau, &dossier).await? else {
+    let Some((remis, lus)) = lire_jeux_gog(&app, &noyau, &dossier).await? else {
         noyau.journaliser(&format!("import GOG (connexion) : pas connecté à GOG pour le profil {}", p.id));
         return Ok(ImportGog { reconnecter: true, ..Default::default() });
     };
+    // 0.218.2 : le numéro du SITE reste celui du compte rangé ; la connexion façon Galaxy et sa bibliothèque utilisent
+    // le numéro GALAXY du même compte (Seb 21/11 : « autre compte » à tort).
+    let (compte, compte_galaxy) = crate::gratuits::separer_compte_gog(&remis);
     let page = crate::boutiques::jeux_du_compte_gog(&lus);
     // Lot C5 : la bibliothèque de Galaxy, si la connexion façon Galaxy marche ; sinon la liste du site seule.
-    let biblio = bibliotheque_gog(&app, &noyau, &dossier, &p.id, &compte, montrer.unwrap_or(false), &page).await;
+    let biblio = bibliotheque_gog(&app, &noyau, &dossier, &p.id, &compte_galaxy, montrer.unwrap_or(false), &page).await;
     // Sans bibliothèque lue en entier : la liste du site PLUS les jeux GOG déjà rangés (jamais une liste qui rétrécit).
     let bibliotheque_galaxy = biblio.is_some();
     let (jeux, fiches) = match biblio {

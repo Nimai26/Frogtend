@@ -91,6 +91,10 @@
       const userId = connecte ? String(u.userId == null ? '' : u.userId).replace(/[^0-9]/g, '') : '';
       if (!connecte) return absent('deconnecte');
       if (!userId || userId.length > 20) return absent('compte-illisible');
+      // 0.218.2 (Seb 21/11) : la connexion façon Galaxy rend le numéro GALAXY du compte (`galaxyUserId`), différent du
+      // `userId` du site : les deux sont remis (« <userId>-<galaxyUserId> ») pour que le cœur vérifie le bon.
+      const galaxyId = connecte ? String(u.galaxyUserId == null ? '' : u.galaxyUserId).replace(/[^0-9]/g, '') : '';
+      const compte = galaxyId && galaxyId.length <= 20 && galaxyId !== userId ? userId + '-' + galaxyId : userId;
       // 2. Toutes les pages, jeux visibles PUIS jeux cachés ; un jeu vu deux fois n'est gardé qu'une fois.
       const jeux = new Map();
       let demandes = 0;
@@ -156,7 +160,7 @@
         if (!Number.isInteger(k) || k < 0 || k >= n) return;
         remettre('gog-jeux', k + '/' + n + '/' + encoder(JSON.stringify(liste.slice(k * PAR_MORCEAU, (k + 1) * PAR_MORCEAU))));
       };
-      remettre('gog-compte', userId);
+      remettre('gog-compte', compte);
     } catch (e) {
       absent(e instanceof Arret ? e.etape : 'erreur-script');
     }
