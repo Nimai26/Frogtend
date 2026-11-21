@@ -7,10 +7,10 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## 🎮 Tous les jeux Steam possédés (0.215.0, lot C2)
-- [ ] Au premier lancement après la mise à jour (déjà connecté à Steam) : en quelques secondes, un message « 🎮 N jeux de
+- [x] (validé par Seb le 21/11 avec la 0.215.2 : 142 jeux dans la ludothèque) Au premier lancement après la mise à jour (déjà connecté à Steam) : en quelques secondes, un message « 🎮 N jeux de
       ton compte Steam ajoutés à ta ludothèque » ; la grille montre des jeux Steam « pas installés ». Si « 🔑 Connexion
       expirée » apparaît alors que tu es connecté : le journal (« import Steam ») et une capture.
-- [ ] 🛒 Boutiques ▸ « 🔄 Mettre à jour mes jeux Steam » : « Rien de nouveau » (ou les nouveaux).
+- [x] (validé par Seb le 21/11 : « rien de nouveau », 142 jeux) 🛒 Boutiques ▸ « 🔄 Mettre à jour mes jeux Steam » : « Rien de nouveau » (ou les nouveaux).
 - [ ] Un jeu Steam pas installé ▸ « ⬇ Installer » : Steam ouvre sa fenêtre d'installation (rien n'est installé sans toi).
 - [ ] Taodbox : les jeux Steam pas installés sont « à installer », sans doublon avec les installés ; les jaquettes
       s'affichent.
