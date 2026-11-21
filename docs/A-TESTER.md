@@ -11,7 +11,7 @@
       ton compte Steam ajoutés à ta ludothèque » ; la grille montre des jeux Steam « pas installés ». Si « 🔑 Connexion
       expirée » apparaît alors que tu es connecté : le journal (« import Steam ») et une capture.
 - [x] (validé par Seb le 21/11 : « rien de nouveau », 142 jeux) 🛒 Boutiques ▸ « 🔄 Mettre à jour mes jeux Steam » : « Rien de nouveau » (ou les nouveaux).
-- [ ] Un jeu Steam pas installé ▸ « ⬇ Installer » : Steam ouvre sa fenêtre d'installation (rien n'est installé sans toi).
+- [x] (validé par Seb le 21/11 ; un « Pas de connexion Internet » venait du client Steam lui-même, réglé en relançant Steam) Un jeu Steam pas installé ▸ « ⬇ Installer » : Steam ouvre sa fenêtre d'installation (rien n'est installé sans toi).
 - [ ] Taodbox : les jeux Steam pas installés sont « à installer », sans doublon avec les installés ; les jaquettes
       s'affichent.
 - [ ] Fermer et rouvrir Frogtend : pas de nouveau message (rien de nouveau), les jeux sont toujours là.
@@ -24,7 +24,7 @@
 - [x] (validé par Seb le 20/11 avec la 0.214.6 : obtenu tout seul, vraiment dans la bibliothèque) 🎁 Mark of the Deep ▸ « Obtenir » (0.214.5) : soit « à toi ! » ET le jeu est vraiment dans la bibliothèque Epic,
       soit la page du jeu s'affiche avec un message « pas pu être obtenu tout seul » (JAMAIS « à toi » sans le jeu).
       0.214.4 : faux « à toi » (corrigé).
-- [ ] (0.214.2, quand la session Epic expirera un jour) : à l'ouverture du profil, le message « Ta connexion à Epic a
+- [x] (validé par Seb le 21/11 : Frogtend l'a prévenu, reconnecté) (0.214.2, quand la session Epic expirera un jour) : à l'ouverture du profil, le message « Ta connexion à Epic a
       expiré… » s'affiche ; « Se connecter à Epic » puis un clic sur le compte la rétablit.
 
 ## 🔑 Connexion à Steam par sa vraie page (0.214.0, lot C1)
