@@ -763,6 +763,8 @@ AUCUNE carte (revue de l'expert du lancement : `boutique_steam_oublier` vidait t
 déconnecte AUSSI Steam du navigateur du profil — seuls les cookies des domaines Steam, jamais le dossier ni les autres
 boutiques (Epic, PlayStation y vivent) ; la déconnexion n'est dite que PROUVÉE par relecture ; « reconnecte-toi »
 seulement si la page dit le compte déconnecté, sinon « page changée » / « réponse inhabituelle ».
+**Seb 21/11 (interface)** : le bloc « Mon compte Steam » va AVEC les autres comptes (Epic, PS Plus, GOG, Prime Gaming)
+dans 🛒 Boutiques, pas isolé sous « Mes jeux installés ».
 
 ### Prochains lots (décisions de Seb, 02/10)
 

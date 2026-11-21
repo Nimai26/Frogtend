@@ -7,7 +7,7 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## 🎮 Steam : oublier et changer de compte (0.216.0, lot C3)
-- [ ] 🛒 Boutiques ▸ Mon compte Steam ▸ « Oublier ce compte » ▸ « Oublier » : message « ✅ Compte Steam oublié… » ; le
+- [x] (validé par Seb le 21/11, 0.216.0) 🛒 Boutiques ▸ Mon compte Steam ▸ « Oublier ce compte » ▸ « Oublier » : message « ✅ Compte Steam oublié… » ; le
       bloc affiche « 🔑 Se connecter à Steam » ; tes 142 jeux Steam sont TOUJOURS dans la ludothèque.
 - [ ] Puis « 🔑 Se connecter à Steam » : la page de Steam demande un compte (formulaire de connexion), elle ne te
       reconnecte PAS toute seule. Te reconnecter avec ton compte : « ✅ Connecté à Steam », aucun jeu perdu.
