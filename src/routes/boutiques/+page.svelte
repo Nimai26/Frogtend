@@ -134,26 +134,8 @@
         {o.auto}
       </label>
     {/each}
-  </section>
 
-  <section class="cx-block">
-    <div class="tete">
-      <h2>🎮 Mes jeux installés</h2>
-      <span class="muted">ils entrent seuls dans ta ludothèque, relus à chaque ouverture de ton profil</span>
-      <span class="espace"></span>
-      <button class="btn primary" onclick={relireMaintenant} disabled={boutiquesPc.enCours}>{boutiquesPc.enCours ? 'Lecture…' : '🔄 Relire maintenant'}</button>
-    </div>
-    {#if !etat.profil.boutiquesPc.auto}
-      <p class="muted">⚠ L’ajout tout seul est coupé pour ton profil (⚙ Options ▸ Comptes ▸ Mes jeux installés).</p>
-    {/if}
-    <ul class="etats">
-      {#each boutiquesPc.etats as e (e.boutique)}
-        <li class:absent={!e.lu}>{ligneEtat(e)}</li>
-      {:else}
-        <li class="muted">{boutiquesPc.erreur ?? 'Lecture des boutiques de ce PC…'}</li>
-      {/each}
-    </ul>
-
+    <!-- Seb 21/11 : le compte Steam AVEC les autres comptes (Epic, PS Plus, GOG, Prime), pas sous « Mes jeux installés ». -->
     <!-- Lot C3 : oublier le compte ET le déconnecter du navigateur du profil (pour en changer) ; les jeux restent. Le
          bouton garde le focus pendant l'oubli (aria-disabled ; le gardien est dans oublierSteam). -->
     {#snippet boutonOublierSteam()}
@@ -189,6 +171,25 @@
           (steam.etat?.nb_jeux ? `${steam.etat.nb_jeux} jeu(x) de ton compte Steam dans ta ludothèque, relus à chaque ouverture de Frogtend.` : 'Tes jeux Steam sont relus à chaque ouverture de Frogtend.')}
       </p>
     {/if}
+  </section>
+
+  <section class="cx-block">
+    <div class="tete">
+      <h2>🎮 Mes jeux installés</h2>
+      <span class="muted">ils entrent seuls dans ta ludothèque, relus à chaque ouverture de ton profil</span>
+      <span class="espace"></span>
+      <button class="btn primary" onclick={relireMaintenant} disabled={boutiquesPc.enCours}>{boutiquesPc.enCours ? 'Lecture…' : '🔄 Relire maintenant'}</button>
+    </div>
+    {#if !etat.profil.boutiquesPc.auto}
+      <p class="muted">⚠ L’ajout tout seul est coupé pour ton profil (⚙ Options ▸ Comptes ▸ Mes jeux installés).</p>
+    {/if}
+    <ul class="etats">
+      {#each boutiquesPc.etats as e (e.boutique)}
+        <li class:absent={!e.lu}>{ligneEtat(e)}</li>
+      {:else}
+        <li class="muted">{boutiquesPc.erreur ?? 'Lecture des boutiques de ce PC…'}</li>
+      {/each}
+    </ul>
   </section>
 
   <details class="cx-block secours">

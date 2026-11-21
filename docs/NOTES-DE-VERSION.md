@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.216.1 — 🛒 Boutiques : Steam avec les autres comptes
+
+- Changé (demandé par Seb) : « Mon compte Steam » est maintenant avec Epic, PlayStation Plus, GOG et Prime Gaming,
+  au lieu d'être isolé sous « Mes jeux installés ».
+- Confirmé par Seb le 21/11 : « Oublier ce compte » puis « Se connecter à Steam » redemande bien un compte.
+
 ## 0.216.0 — 🎮 Steam : changer de compte (lot C3)
 
 - Nouveau : « Oublier ce compte » est aussi dans 🛒 Boutiques ▸ Mon compte Steam. Il oublie ton compte ET te
