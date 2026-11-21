@@ -12,8 +12,8 @@
       expirée » apparaît alors que tu es connecté : le journal (« import Steam ») et une capture.
 - [x] (validé par Seb le 21/11 : « rien de nouveau », 142 jeux) 🛒 Boutiques ▸ « 🔄 Mettre à jour mes jeux Steam » : « Rien de nouveau » (ou les nouveaux).
 - [x] (validé par Seb le 21/11 ; un « Pas de connexion Internet » venait du client Steam lui-même, réglé en relançant Steam) Un jeu Steam pas installé ▸ « ⬇ Installer » : Steam ouvre sa fenêtre d'installation (rien n'est installé sans toi).
-- [ ] (0.215.3) Taodbox, taille Grande : la pastille dit « ⬇ À installer » en entier (avant : « À in… »).
-- [ ] Taodbox : les jeux Steam pas installés sont « à installer », sans doublon avec les installés ; les jaquettes
+- [x] (validé par Seb le 21/11) (0.215.3) Taodbox, taille Grande : la pastille dit « ⬇ À installer » en entier (avant : « À in… »).
+- [x] (validé par Seb le 21/11) Taodbox : les jeux Steam pas installés sont « à installer », sans doublon avec les installés ; les jaquettes
       s'affichent.
 - [ ] Fermer et rouvrir Frogtend : pas de nouveau message (rien de nouveau), les jeux sont toujours là.
 
