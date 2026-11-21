@@ -765,6 +765,16 @@ boutiques (Epic, PlayStation y vivent) ; la déconnexion n'est dite que PROUVÉE
 seulement si la page dit le compte déconnecté, sinon « page changée » / « réponse inhabituelle ».
 **Seb 21/11 (interface)** : le bloc « Mon compte Steam » va AVEC les autres comptes (Epic, PS Plus, GOG, Prime Gaming)
 dans 🛒 Boutiques, pas isolé sous « Mes jeux installés ».
+**✅ 21/11 — C3 validé par Seb (0.216.1). C4 GOG, décisions de Seb (21/11)** : (1) la connexion GOG déjà faite pour
+les jeux offerts VAUT ACCORD (même navigateur du profil) : les jeux du compte entrent à l'ouverture suivante, avec le
+message habituel ; (2) les jeux CACHÉS sur gog.com entrent AUSSI (tous les jeux possédés) ; (3) sans GOG Galaxy,
+« ⬇ Installer » PROPOSE d'installer Galaxy depuis sa source officielle (taille et durée dites, rien sans un oui), puis
+Galaxy installe le jeu — Frogtend ne télécharge jamais le jeu lui-même. Découpage (avis des experts) : **C4a** lecture
+par la page (fenêtre cachée sur www.gog.com, étiquette à part, remise par morceaux numérotés demandés par le cœur),
+`userId` gardé, `fusion_gog` dans la relecture du PC (même id `gog_<id>` que Galaxy, le compte passe avant Galaxy
+comme pour Steam), bloc « 🟣 Mon compte GOG » unique (jeu offert + jeux du compte), import après connexion / à
+l'ouverture / à la main, Taodbox relit ; **C4b** changement de compte et « Oublier » (cookies gog.com seulement) ;
+**C4c** installer Galaxy après accord.
 
 ### Prochains lots (décisions de Seb, 02/10)
 
