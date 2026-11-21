@@ -8,7 +8,7 @@
 
 ## 🟣 Tous les jeux GOG du compte (0.217.0, lot C4a)
 > Avant : sur gog.com (connecté), note le nombre de jeux de « Mes jeux » (jeux cachés compris : ils entrent aussi).
-- [ ] 1. Au premier lancement après la mise à jour (déjà connecté à GOG pour le jeu offert) : après la récupération
+- [x] (validé par Seb le 21/11 : pas connecté au départ, donc rien à l'ouverture — normal ; après « Se connecter à GOG » et fermeture de la fenêtre : « 88 jeux ajoutés ») 1. Au premier lancement après la mise à jour (déjà connecté à GOG pour le jeu offert) : après la récupération
       du jeu offert (si elle est cochée), un message « 🎮 N jeux de ton compte GOG ajoutés à ta ludothèque » ; N =
       le nombre de gog.com moins les jeux que GOG Galaxy montrait déjà. Si rien n'arrive : le journal (« import GOG »)
       et une capture.
