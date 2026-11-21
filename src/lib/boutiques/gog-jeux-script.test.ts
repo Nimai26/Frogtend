@@ -31,7 +31,9 @@ async function essayer(repondre: (adresse: string) => Reponse, attendues = 1) {
   delete fenetre.__frogtendGog;
   const remis: string[] = [];
   const demandees: string[] = [];
-  fenetre.__remettre = (u: string) => remis.push(u);
+  // Le bilan (0.217.1, pour le journal) est mis à part : il ne change rien au protocole.
+  const bilans: string[] = [];
+  fenetre.__remettre = (u: string) => (u.startsWith('https://frogtend.invalid/gog-bilan#') ? bilans.push(u) : remis.push(u));
   vi.useFakeTimers({ toFake: ['setTimeout'] });
   vi.stubGlobal(
     'fetch',
@@ -56,7 +58,7 @@ async function essayer(repondre: (adresse: string) => Reponse, attendues = 1) {
     expect(remis.length).toBe(attendues);
   });
   vi.useRealTimers();
-  return { remis, demandees };
+  return { remis, demandees, bilans };
 }
 
 /** Demande au script le morceau k (comme le cœur) et rend la remise. */
@@ -71,6 +73,19 @@ afterEach(() => {
 });
 
 describe('gog-jeux.js', () => {
+  it('le bilan dit ce que GOG a annoncé, gardé et écarté (numéros seulement), jamais le compte', async () => {
+    const { remis, bilans } = await essayer((a) => {
+      if (a === '/userData.json') return connecte();
+      if (a.includes('hiddenFlag=0')) return { status: 200, json: { totalPages: 1, totalProducts: 3, products: [produit(1, 'Un'), produit(2, 'Deux', { isGame: false }), { id: 3 }] } };
+      return { status: 200, json: { totalPages: 0, totalProducts: 0, products: [] } };
+    });
+    expect(remis[0]).toBe('https://frogtend.invalid/gog-compte#48628349957132247');
+    expect(bilans).toEqual([
+      'https://frogtend.invalid/gog-bilan#visibles-pages-1-annonces-3-lignes-3-gardes-1-illisibles-1-nonjeux-2--caches-pages-1-annonces-0-lignes-0-gardes-0-illisibles-0-nonjeux-aucun--total-1',
+    ]);
+    expect(bilans[0]).not.toContain('48628349957132247');
+  });
+
   it('connecté : le compte d’abord (chiffres seulement), puis les morceaux DEMANDÉS un à un, jeux cachés compris', async () => {
     const visibles = Array.from({ length: 60 }, (_, i) => produit(1000 + i, `Jeu ${i}`));
     const { remis, demandees } = await essayer((a) => {

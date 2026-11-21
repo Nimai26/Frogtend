@@ -358,6 +358,8 @@ pub enum RemiseGog {
     Absent(String),
     /// La page avance (le nombre de pages déjà demandées à GOG) : le délai sans nouvelle repart de zéro.
     Progres(usize),
+    /// Le bilan de la lecture (0.217.1, pour le journal) : des nombres et des numéros de jeux écartés, jamais le compte.
+    Bilan(String),
 }
 
 impl std::fmt::Debug for RemiseGog {
@@ -368,6 +370,7 @@ impl std::fmt::Debug for RemiseGog {
             RemiseGog::Morceau { k, n, jeux } => write!(f, "Morceau({k}/{n}, {} jeu(x))", jeux.len()),
             RemiseGog::Absent(e) => write!(f, "Absent({e})"),
             RemiseGog::Progres(n) => write!(f, "Progres({n})"),
+            RemiseGog::Bilan(b) => write!(f, "Bilan({b})"),
         }
     }
 }
@@ -416,6 +419,7 @@ pub fn lire_remise_gog(url: &tauri::Url) -> Option<RemiseGog> {
         "/gog-compte" if numero_gog(fragment) => RemiseGog::Compte(fragment.to_string()),
         "/gog-compte" => RemiseGog::Absent("compte-de-forme-inattendue".into()),
         "/gog-progres" => RemiseGog::Progres(fragment.parse().unwrap_or(0)),
+        "/gog-bilan" => RemiseGog::Bilan(fragment.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(400).collect()),
         "/gog-jeux" => match lire_morceau_gog(fragment) {
             Some((k, n, jeux)) => RemiseGog::Morceau { k, n, jeux },
             None => RemiseGog::Absent("morceau-de-forme-inattendue".into()),
@@ -434,6 +438,7 @@ pub struct ReceptionGog {
     n: Option<usize>,
     recus: usize,
     jeux: Vec<JeuGogLu>,
+    bilan: Option<String>,
 }
 
 /// Ce que le cœur fait après une remise.
@@ -455,6 +460,11 @@ impl ReceptionGog {
     pub fn recevoir(&mut self, r: RemiseGog) -> SuiteGog {
         match r {
             RemiseGog::Absent(e) => SuiteGog::Absent(e),
+            // Le bilan arrive juste avant le compte : gardé pour le journal, il ne change rien à la suite.
+            RemiseGog::Bilan(b) => {
+                self.bilan = Some(b);
+                SuiteGog::Attendre
+            }
             // La page avance encore (avant le compte) ; une fois les morceaux commencés, c'est une page rechargée.
             RemiseGog::Progres(_) if self.recus == 0 => SuiteGog::Attendre,
             RemiseGog::Progres(_) => SuiteGog::Echec("page-rechargee-pendant-la-remise".into()),
@@ -494,6 +504,11 @@ impl ReceptionGog {
     /// Le nombre de morceaux reçus (journal).
     pub fn recus(&self) -> usize {
         self.recus
+    }
+
+    /// Le bilan de lecture remis par la page (journal), s'il est arrivé.
+    pub fn bilan(&self) -> Option<String> {
+        self.bilan.clone()
     }
 }
 
@@ -998,6 +1013,12 @@ mod tests {
         assert_eq!(r.recevoir(m(0, 3, &["1", "2"])), SuiteGog::Demander(1));
         assert_eq!(r.recevoir(m(1, 3, &["3", "2"])), SuiteGog::Demander(2));
         assert_eq!(r.recevoir(m(2, 3, &["4"])), SuiteGog::Fini("42".into(), vec![jeu("1"), jeu("2"), jeu("3"), jeu("4")]));
+        // Le bilan (0.217.1) : gardé pour le journal, sans rien changer à la suite ; filtré à des caractères sûrs.
+        let mut r = ReceptionGog::default();
+        let b = lire_remise_gog(&tauri::Url::parse("https://frogtend.invalid/gog-bilan#visibles-pages-1-gardes-88<x>").unwrap()).unwrap();
+        assert_eq!(r.recevoir(b), SuiteGog::Attendre);
+        assert_eq!(r.bilan().as_deref(), Some("visibles-pages-1-gardes-883Cx3E"));
+        assert_eq!(r.recevoir(RemiseGog::Compte("42".into())), SuiteGog::Demander(0));
         // Un compte sans aucun jeu : un seul morceau vide.
         let mut r = ReceptionGog::default();
         r.recevoir(RemiseGog::Compte("42".into()));

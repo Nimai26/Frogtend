@@ -6614,19 +6614,23 @@ async fn lire_jeux_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path
         loop {
             // Le délai repart à chaque nouvelle de la page, dans la limite du plafond.
             let reste = fin.saturating_duration_since(std::time::Instant::now()).min(DELAI_GOG_SANS_NOUVELLE);
-            let Ok(remise) = reception.recv_timeout(reste) else { return (None, r.recus()) };
+            let Ok(remise) = reception.recv_timeout(reste) else { return (None, r.recus(), r.bilan()) };
             match r.recevoir(remise) {
                 crate::gratuits::SuiteGog::Demander(k) => {
                     let _ = page_js.eval(&format!("window.__frogtendGog && window.__frogtendGog({k})"));
                 }
                 crate::gratuits::SuiteGog::Attendre => {}
-                s => return (Some(s), r.recus()),
+                s => return (Some(s), r.recus(), r.bilan()),
             }
         }
     })
     .await;
     let _ = w.close();
-    let (suite, recus) = suite.map_err(|_| Erreur::Disque("La lecture de ton compte GOG s'est arrêtée brutalement.".into()))?;
+    let (suite, recus, bilan) = suite.map_err(|_| Erreur::Disque("La lecture de ton compte GOG s'est arrêtée brutalement.".into()))?;
+    // 0.217.1 (Seb 21/11 : deux jeux de son compte manquaient) : ce que GOG a envoyé et ce qui a été écarté.
+    if let Some(b) = bilan {
+        noyau.journaliser(&format!("import GOG (connexion) : bilan de la page ({b})"));
+    }
     match suite {
         Some(crate::gratuits::SuiteGog::Fini(compte, jeux)) => {
             noyau.journaliser(&format!("import GOG (connexion) : liste lue par la page ({recus} morceau(x), {} jeu(x))", jeux.len()));

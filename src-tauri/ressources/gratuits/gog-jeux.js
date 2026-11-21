@@ -94,8 +94,13 @@
       // 2. Toutes les pages, jeux visibles PUIS jeux cachés ; un jeu vu deux fois n'est gardé qu'une fois.
       const jeux = new Map();
       let demandes = 0;
+      // 0.217.1 (Seb 21/11 : deux jeux de son compte manquaient) : le bilan de chaque passe, pour le journal — des
+      // nombres et les numéros des lignes écartées, jamais le compte.
+      const bilan = [];
       for (const cache of [0, 1]) {
         let total = 1;
+        const b = { pages: 0, annonces: -1, lignes: 0, gardes: 0, nonJeux: [], illisibles: 0 };
+        bilan.push(b);
         for (let page = 1; page <= total; page++) {
           if (demandes > 0) {
             // Toutes les 5 pages, la page dit au cœur qu'elle avance (son délai sans nouvelle repart) ; toujours AVANT une
@@ -111,18 +116,39 @@
           if (page === 1) {
             if (t > PLAFOND_PAGES) throw new Arret('trop-de-pages');
             total = t;
+            const annonce = Number(v.totalProducts);
+            if (Number.isInteger(annonce) && annonce >= 0) b.annonces = annonce;
           }
+          b.pages++;
           let lisibles = 0;
           for (const p of v.products) {
+            b.lignes++;
             const j = garder(p);
-            if (j === undefined) continue;
+            if (j === undefined) {
+              b.illisibles++;
+              continue;
+            }
             lisibles++;
-            if (j !== null && !jeux.has(j[0])) jeux.set(j[0], j);
+            if (j === null) {
+              const id = p && (typeof p.id === 'number' || typeof p.id === 'string') ? String(p.id).replace(/[^0-9]/g, '') : '';
+              if (id && b.nonJeux.length < 15) b.nonJeux.push(id);
+              continue;
+            }
+            b.gardes++;
+            if (!jeux.has(j[0])) jeux.set(j[0], j);
           }
           // Des lignes, mais aucune lisible : la page a changé (jamais « zéro jeu » sur une page qu'on ne comprend plus).
           if (v.products.length > 0 && lisibles === 0) throw new Arret('page-changee');
         }
       }
+      // Le bilan d'abord, puis une pause (deux remises ne se suivent jamais de trop près).
+      remettre(
+        'gog-bilan',
+        bilan
+          .map((b, i) => (i === 0 ? 'visibles' : 'caches') + '-pages-' + b.pages + '-annonces-' + b.annonces + '-lignes-' + b.lignes + '-gardes-' + b.gardes + '-illisibles-' + b.illisibles + '-nonjeux-' + (b.nonJeux.join('-') || 'aucun'))
+          .join('--') + '--total-' + jeux.size,
+      );
+      await pause(400);
       // 3. La remise par morceaux, demandés un à un par le cœur.
       const liste = [...jeux.values()];
       const n = Math.max(1, Math.ceil(liste.length / PAR_MORCEAU));

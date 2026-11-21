@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.217.1 — 🟣 GOG : comprendre les jeux qui manquent
+
+- En cours : Seb a 197 jeux GOG, Frogtend n'en a lu que 88. Cette version écrit dans le journal le bilan de chaque
+  lecture (combien de jeux GOG annonce, combien de pages, quels numéros de jeux ont été écartés), pour trouver la cause.
+  Jamais ton compte, ton nom ni un cookie.
+
 ## 0.217.0 — 🟣 Tous tes jeux GOG dans ta ludothèque (lot C4a)
 
 - Nouveau : une fois connecté à GOG dans Frogtend (la connexion faite pour le jeu offert compte aussi), TOUS les jeux
