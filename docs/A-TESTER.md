@@ -15,7 +15,7 @@
 - [x] (validé par Seb le 21/11) (0.215.3) Taodbox, taille Grande : la pastille dit « ⬇ À installer » en entier (avant : « À in… »).
 - [x] (validé par Seb le 21/11) Taodbox : les jeux Steam pas installés sont « à installer », sans doublon avec les installés ; les jaquettes
       s'affichent.
-- [ ] Fermer et rouvrir Frogtend : pas de nouveau message (rien de nouveau), les jeux sont toujours là.
+- [x] (validé par Seb le 21/11) Fermer et rouvrir Frogtend : pas de nouveau message (rien de nouveau), les jeux sont toujours là.
 
 ## 🎁 Epic reconnu connecté sans se reconnecter (0.214.1)
 - [x] La vérification dit le VRAI état : le 20/11, « pas connecté » était juste (session Epic expirée, Epic demandait
