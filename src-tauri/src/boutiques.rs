@@ -252,6 +252,41 @@ pub const MOTIF_RECONNECTER: &str = "Steam ne te reconnaît plus : reconnecte-to
 /// La boutique Steam, où elle donne le jeton d'accès du compte connecté (`/pointssummary/ajaxgetasyncconfig`).
 pub const BOUTIQUE_STEAM: &str = "https://store.steampowered.com";
 
+/// Lot C3 (« Oublier ma connexion Steam ») : un domaine de cookie appartient-il à Steam ? Suffixe EXACT
+/// (`steampowered.com`, `steamcommunity.com` et leurs sous-domaines, point de tête ou non), jamais un « contient » :
+/// `evilsteampowered.com` n'est pas Steam. Le navigateur du profil sert aussi à Epic et PlayStation : seul ce filtre
+/// décide de ce qui s'efface.
+pub fn domaine_steam(domaine: &str) -> bool {
+    let d = domaine.trim_start_matches('.').to_ascii_lowercase();
+    ["steampowered.com", "steamcommunity.com"].iter().any(|s| d == *s || d.ends_with(&format!(".{s}")))
+}
+
+/// Un cookie qui porte la connexion Steam : `steamLoginSecure` (jeton court) ou `steamRefresh_*` (celui qui le
+/// renouvelle en silence — revue de l'expert du lancement, 21/11).
+pub fn cookie_de_connexion_steam(nom: &str) -> bool {
+    nom == "steamLoginSecure" || nom.starts_with("steamRefresh_")
+}
+
+/// Un cookie du navigateur, SANS sa valeur (lot C3 : on n'a besoin que de quoi l'effacer et le compter).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CookieSansValeur {
+    pub nom: String,
+    pub domaine: String,
+    pub chemin: String,
+}
+
+/// La preuve de la déconnexion : plus AUCUN cookie de connexion Steam, sur aucun domaine Steam.
+pub fn connexion_steam_effacee(cookies: &[CookieSansValeur]) -> bool {
+    !cookies.iter().any(|c| domaine_steam(&c.domaine) && cookie_de_connexion_steam(&c.nom))
+}
+
+/// Pour le journal : combien de cookies Steam, dont combien de connexion. Jamais un nom de compte ni une valeur.
+pub fn resume_cookies_steam_restants(cookies: &[CookieSansValeur]) -> String {
+    let steam: Vec<&CookieSansValeur> = cookies.iter().filter(|c| domaine_steam(&c.domaine)).collect();
+    let connexion = steam.iter().filter(|c| cookie_de_connexion_steam(&c.nom)).count();
+    format!("{} cookie(s) Steam, dont {connexion} de connexion", steam.len())
+}
+
 /// L'en-tête `Cookie` formé des seuls cookies de la boutique Steam du navigateur du profil. Il ne vit qu'en mémoire, le
 /// temps de lire le jeton ; son `Debug` ne montre RIEN (journal, erreur).
 pub struct CookiesSteam(String);
@@ -1970,6 +2005,35 @@ mod tests {
         assert_eq!(r, "boutique chargée, 3 cookie(s) lu(s) dont 2 de la boutique, cookie de connexion présent");
         assert!(!r.contains("SECRET") && !r.contains("AUTRE") && !r.contains("browserid"));
         assert!(resume_cookies_steam(&l[1..], false).ends_with("cookie de connexion ABSENT"));
+    }
+
+    fn ck(nom: &str, domaine: &str) -> CookieSansValeur {
+        CookieSansValeur { nom: nom.into(), domaine: domaine.into(), chemin: "/".into() }
+    }
+
+    #[test]
+    fn seuls_les_domaines_de_steam_sont_reconnus() {
+        for d in [".steampowered.com", "steampowered.com", "store.steampowered.com", "login.steampowered.com", ".steamcommunity.com", "STEAMCOMMUNITY.COM"] {
+            assert!(domaine_steam(d), "{d}");
+        }
+        for d in ["", ".", "epicgames.com", ".epicgames.com", "gog.com", "evilsteampowered.com", "steampowered.com.evil.fr", "playstation.com"] {
+            assert!(!domaine_steam(d), "{d}");
+        }
+    }
+
+    #[test]
+    fn la_deconnexion_steam_se_prouve_sans_aucun_cookie_de_connexion() {
+        assert!(cookie_de_connexion_steam("steamLoginSecure") && cookie_de_connexion_steam("steamRefresh_steam"));
+        assert!(!cookie_de_connexion_steam("sessionid") && !cookie_de_connexion_steam("browserid"));
+        // Il reste des cookies Steam ordinaires et la connexion Epic : la déconnexion Steam est prouvée.
+        let propre = [ck("sessionid", "store.steampowered.com"), ck("EPIC_SSO", ".epicgames.com"), ck("steamLoginSecure", "evilsteampowered.com")];
+        assert!(connexion_steam_effacee(&propre));
+        assert!(connexion_steam_effacee(&[]));
+        // Un seul cookie de connexion qui reste, sur n'importe quel domaine Steam : pas prouvé.
+        assert!(!connexion_steam_effacee(&[ck("steamRefresh_steam", "login.steampowered.com")]));
+        assert!(!connexion_steam_effacee(&[ck("steamLoginSecure", ".steamcommunity.com")]));
+        let r = resume_cookies_steam_restants(&[ck("sessionid", "store.steampowered.com"), ck("steamLoginSecure", ".steampowered.com"), ck("EPIC_SSO", ".epicgames.com")]);
+        assert_eq!(r, "2 cookie(s) Steam, dont 1 de connexion");
     }
 
     fn jwt(charge: Value) -> String {

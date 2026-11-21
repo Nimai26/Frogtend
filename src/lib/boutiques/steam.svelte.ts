@@ -2,7 +2,7 @@
 // réglé (règle de Seb, comme LaunchBox). La clé d'API ne s'affiche jamais : on dit seulement si elle est enregistrée.
 import { isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { api, type EtatSteam, type ImportSteam, type JeuBoutique } from '$lib/api';
+import { api, type EtatSteam, type ImportSteam, type JeuBoutique, type OubliSteam } from '$lib/api';
 import { confirmer, demander, fermerToast, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat } from '$lib/etat.svelte';
@@ -17,6 +17,7 @@ export const steam = $state<{
   jeux: JeuBoutique[];
   enCours: boolean;
   connexionEnCours: boolean;
+  oubliEnCours: boolean;
   erreur: string | null;
   expire: boolean;
   erreurProfil: string | null;
@@ -28,6 +29,8 @@ export const steam = $state<{
   // Un import par la connexion tourne (pour `profilImport` : voir `importSteamEnCours`).
   enCours: false,
   connexionEnCours: false,
+  // « Oublier ma connexion Steam » en cours (lot C3 : la déconnexion du navigateur prend quelques secondes).
+  oubliEnCours: false,
   // La dernière erreur d'import (ligne d'état du bloc « Mon compte Steam ») et la connexion expirée, pour le profil
   // `erreurProfil` seulement ; `null` / faux après un import réussi.
   erreur: null,
@@ -346,19 +349,45 @@ export async function importerSteam(): Promise<boolean> {
   }
 }
 
+/** Le message de fin de « Oublier » (lot C3, pur, testé) : le compte est TOUJOURS oublié ; la déconnexion de Steam
+ * dans Frogtend n'est dite sûre que prouvée par le cœur. */
+export function messageOubliSteam(r: OubliSteam): { texte: string; ton?: 'alerte' } {
+  if (r.navigateur_deconnecte) return { texte: '✅ Compte Steam oublié. Tu peux te connecter avec un autre compte dans 🛒 Boutiques.' };
+  return {
+    texte: 'Compte Steam oublié. La déconnexion de Steam dans Frogtend n’est pas sûre : à ta prochaine connexion, si Steam affiche encore l’ancien compte, clique sur « Se déconnecter » en haut à droite de sa page.',
+    ton: 'alerte',
+  };
+}
+
 export async function oublierSteam() {
+  if (steam.oubliEnCours) return;
   const oui = await confirmer('Oublier ton compte Steam ?', {
-    message: 'Frogtend oublie ton compte Steam (et ta clé d’API, si tu en avais une). Tes jeux Steam restent dans ta ludothèque ; rien ne change chez Steam ni dans tes jeux installés.',
+    message:
+      'Frogtend oublie ton compte Steam (et ta clé d’API, si tu en avais une) et te déconnecte de Steam dans Frogtend (pas dans l’application Steam). Tes jeux restent dans ta ludothèque, et tes jeux installés ne bougent pas. Ensuite, tu pourras te connecter avec un autre compte.',
     libelleValider: 'Oublier',
     danger: true,
   });
   if (!oui) return;
+  const profil = etat.profilOuvert?.id ?? '';
+  steam.oubliEnCours = true;
   try {
-    await api.steamOublier();
+    const r = await api.steamOublier();
+    // Plus de « connexion expirée » ni d'erreur d'import qui survivrait à l'oubli, ni de rappel du jour retenu.
+    oublierEtatImport(true);
+    try {
+      stockageLocal()?.removeItem(`frogtend.steamExpire.${profil}`);
+    } catch {
+      // Stockage refusé : rien à retirer.
+    }
     await lireSteam();
-    toast('Compte Steam oublié.');
+    // Taodbox relit ses cartes (les jeux restent ; leur état peut changer).
+    steam.imports++;
+    const m = messageOubliSteam(r);
+    toast(m.texte, m.ton);
   } catch (err) {
     toast(`Impossible : ${motifDuRefus(err)}`, 'erreur');
+  } finally {
+    steam.oubliEnCours = false;
   }
 }
 

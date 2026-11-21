@@ -6,7 +6,7 @@
   import { galaxy, importerGalaxy, lireGalaxy, nomPlateforme, ouvrirDansGalaxy } from '$lib/boutiques/galaxy.svelte';
   import { connexion, connexionEpic, verifierEpic, connexionPlaystation, gratuits, lireGratuits, obtenir, obtenirTout, recolterPsPlus, recuperer } from '$lib/boutiques/gratuits.svelte';
   import { etat, reglerProfil } from '$lib/etat.svelte';
-  import { connecteASteam, connexionSteam, connexionSteamExpiree, importerSteam, importSteamEnCours, libelleCompteSecours, lireSteam, mettreAJourSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
+  import { connecteASteam, connexionSteam, connexionSteamExpiree, importerSteam, importSteamEnCours, libelleCompteSecours, lireSteam, mettreAJourSteam, oublierSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
   import { boutiquesPc, lireEtatsPc, relireMaintenant } from '$lib/boutiques/boutiques-pc.svelte';
   import { ligneEtat } from '$lib/boutiques/jeu-boutique';
 
@@ -154,6 +154,11 @@
       {/each}
     </ul>
 
+    <!-- Lot C3 : oublier le compte ET le déconnecter du navigateur du profil (pour en changer) ; les jeux restent. Le
+         bouton garde le focus pendant l'oubli (aria-disabled ; le gardien est dans oublierSteam). -->
+    {#snippet boutonOublierSteam()}
+      <button class="btn petit" aria-disabled={steam.oubliEnCours} onclick={oublierSteam}>{steam.oubliEnCours ? 'Déconnexion…' : 'Oublier ce compte'}</button>
+    {/snippet}
     <!-- Lot C1 : la connexion à Steam par sa page officielle (clavier et souris : pas dans Taodbox). -->
     <div class="tete psplus">
       <h3>🎮 Mon compte Steam</h3>
@@ -162,7 +167,8 @@
       {#if connecteASteam(steam.etat) && connexionSteamExpiree()}
         <!-- Lot C2 : la connexion du navigateur du profil a expiré ; les jeux déjà importés restent. -->
         <span class="tag warn">🔑 Connexion expirée</span>
-        <button class="btn primary" onclick={connexionSteam} disabled={steam.connexionEnCours}>{steam.connexionEnCours ? 'Ouverture…' : '🔑 Me reconnecter à Steam'}</button>
+        <button class="btn primary" onclick={connexionSteam} disabled={steam.connexionEnCours || steam.oubliEnCours}>{steam.connexionEnCours ? 'Ouverture…' : '🔑 Me reconnecter à Steam'}</button>
+        {@render boutonOublierSteam()}
       {:else if connecteASteam(steam.etat)}
         <span class="tag ok">✅ Connecté à Steam</span>
         <!-- Lot C2 : les jeux possédés du compte, sans clé d'API (aussi relus à chaque ouverture de Frogtend). Le bouton
@@ -170,9 +176,10 @@
         <button class="btn primary" aria-disabled={importSteamEnCours()} onclick={() => !importSteamEnCours() && mettreAJourSteam('main')}>
           {importSteamEnCours() ? 'Lecture…' : '🔄 Mettre à jour mes jeux Steam'}
         </button>
-        <button class="btn petit" onclick={connexionSteam} disabled={steam.connexionEnCours}>Changer de compte / se reconnecter</button>
+        <button class="btn petit" onclick={connexionSteam} disabled={steam.connexionEnCours || steam.oubliEnCours}>Changer de compte / se reconnecter</button>
+        {@render boutonOublierSteam()}
       {:else}
-        <button class="btn" onclick={connexionSteam} disabled={steam.connexionEnCours}>{steam.connexionEnCours ? 'Ouverture…' : '🔑 Se connecter à Steam'}</button>
+        <button class="btn" onclick={connexionSteam} disabled={steam.connexionEnCours || steam.oubliEnCours}>{steam.connexionEnCours ? 'Ouverture…' : '🔑 Se connecter à Steam'}</button>
       {/if}
     </div>
     {#if connecteASteam(steam.etat)}

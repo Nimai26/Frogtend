@@ -34,7 +34,17 @@ vi.mock('$lib/etat.svelte', () => ({ etat: etatFaux }));
 vi.mock('$lib/ludotheque/jeu.svelte', () => ({ partie: partieFausse }));
 vi.mock('./boutiques-pc.svelte', () => ({ rafraichirLudotheque: () => rafraichir() }));
 
-const { connexionSteamExpiree, importerSteam, importSteamEnCours, mettreAJourSteam, steam, steamAuDemarrage, MESSAGE_STEAM_EXPIRE } = await import('./steam.svelte');
+const { connexionSteamExpiree, importerSteam, importSteamEnCours, messageOubliSteam, mettreAJourSteam, steam, steamAuDemarrage, MESSAGE_STEAM_EXPIRE } = await import('./steam.svelte');
+
+describe('oublier le compte Steam (lot C3)', () => {
+  it('déconnexion prouvée : message simple ; pas prouvée : alerte qui dit quoi faire, le compte restant oublié', () => {
+    expect(messageOubliSteam({ navigateur_deconnecte: true })).toEqual({ texte: '✅ Compte Steam oublié. Tu peux te connecter avec un autre compte dans 🛒 Boutiques.' });
+    const m = messageOubliSteam({ navigateur_deconnecte: false });
+    expect(m.ton).toBe('alerte');
+    expect(m.texte).toMatch(/^Compte Steam oublié\./);
+    expect(m.texte).toContain('« Se déconnecter »');
+  });
+});
 
 describe('import Steam par la connexion', () => {
   beforeEach(() => {

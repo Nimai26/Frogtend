@@ -759,6 +759,10 @@ celui du compte connecté (son `sub` = le `steamid` rangé), sinon refus. Taodbo
 **Seb 20/11 — changement de compte Steam sur un profil** : les jeux de l'ANCIEN compte jamais installés ni joués
 quittent la ludothèque ; ceux installés, joués ou réunis à une autre copie restent. « Oublier ma connexion » n'efface
 AUCUNE carte (revue de l'expert du lancement : `boutique_steam_oublier` vidait toutes les cartes Steam).
+**21/11 — C2 validé par Seb (142 jeux, 0.215.3). C3 (« oui » de Seb)** : « Oublier ce compte » (aussi dans 🛒 Boutiques)
+déconnecte AUSSI Steam du navigateur du profil — seuls les cookies des domaines Steam, jamais le dossier ni les autres
+boutiques (Epic, PlayStation y vivent) ; la déconnexion n'est dite que PROUVÉE par relecture ; « reconnecte-toi »
+seulement si la page dit le compte déconnecté, sinon « page changée » / « réponse inhabituelle ».
 
 ### Prochains lots (décisions de Seb, 02/10)
 

@@ -6,6 +6,15 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🎮 Steam : oublier et changer de compte (0.216.0, lot C3)
+- [ ] 🛒 Boutiques ▸ Mon compte Steam ▸ « Oublier ce compte » ▸ « Oublier » : message « ✅ Compte Steam oublié… » ; le
+      bloc affiche « 🔑 Se connecter à Steam » ; tes 142 jeux Steam sont TOUJOURS dans la ludothèque.
+- [ ] Puis « 🔑 Se connecter à Steam » : la page de Steam demande un compte (formulaire de connexion), elle ne te
+      reconnecte PAS toute seule. Te reconnecter avec ton compte : « ✅ Connecté à Steam », aucun jeu perdu.
+- [ ] Epic n'a pas bougé : toujours « ✅ Connecté à Epic ».
+- [ ] (si tu as un deuxième compte Steam, plus tard) se connecter avec : ses jeux arrivent, les jeux jamais installés
+      ni joués de l'ancien compte partent, les installés/joués restent.
+
 ## 🎮 Tous les jeux Steam possédés (0.215.0, lot C2)
 - [x] (validé par Seb le 21/11 avec la 0.215.2 : 142 jeux dans la ludothèque) Au premier lancement après la mise à jour (déjà connecté à Steam) : en quelques secondes, un message « 🎮 N jeux de
       ton compte Steam ajoutés à ta ludothèque » ; la grille montre des jeux Steam « pas installés ». Si « 🔑 Connexion

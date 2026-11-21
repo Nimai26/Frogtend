@@ -35,6 +35,22 @@
       return null;
     }
   };
+  // 0.216.0 (lot C3) : ce que la page dit du compte, pour distinguer « reconnecte-toi » d'une page qui a changé.
+  //   'connecte' / 'deconnecte' : la page le dit ; 'sans-configuration' : la page n'a plus sa configuration (page
+  //   changée, maintenance, vérification…).
+  const etatDuCompte = () => {
+    try {
+      const el = document.getElementById('application_config');
+      if (!el) return 'sans-configuration';
+      const brut = el.getAttribute('data-userinfo');
+      if (!brut) return 'sans-configuration';
+      const u = JSON.parse(brut);
+      return u && u.logged_in === true ? 'connecte' : 'deconnecte';
+    } catch (e) {
+      return 'sans-configuration';
+    }
+  };
+  const compte = etatDuCompte();
   const t = depuisLaPage();
   if (t) return remettre('steam-jeton', t);
   // 2. Sinon, demandé à la boutique PAR LA PAGE (mêmes cookies, même navigateur que Steam lui-même).
@@ -49,7 +65,7 @@
       const t2 = j && j.data && j.data.webapi_token;
       if (typeof t2 === 'string' && FORME.test(t2)) return remettre('steam-jeton', t2);
       const succes = j ? '-success-' + String(j.success).replace(/[^0-9a-z]/gi, '') : '-pas-json';
-      remettre('steam-absent', 'statut-' + r.status + (r.redirected ? '-redirige' : '') + succes);
+      remettre('steam-absent', compte + '-statut-' + r.status + (r.redirected ? '-redirige' : '') + succes);
     })
-    .catch(() => remettre('steam-absent', 'erreur-reseau'));
+    .catch(() => remettre('steam-absent', compte + '-erreur-reseau'));
 })();

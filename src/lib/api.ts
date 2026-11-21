@@ -594,6 +594,12 @@ export interface EtatSteam {
   cle_autre_compte: boolean;
 }
 
+/** Ce que « Oublier ma connexion Steam » a fait (lot C3) : le compte est toujours oublié ; la déconnexion de Steam
+ * dans le navigateur du profil n'est vraie que prouvée par le cœur. */
+export interface OubliSteam {
+  navigateur_deconnecte: boolean;
+}
+
 /** Ce qu'un import Steam par la connexion a donné (lot C2) ; le jeton d'accès ne quitte jamais le cœur. */
 export interface ImportSteam {
   /** La connexion à Steam ne vaut plus : « reconnecte-toi » (les jeux déjà importés restent). */
@@ -1025,7 +1031,7 @@ export const api = {
   galaxyOuvrir: (cle: string) => appeler<void>('boutique_galaxy_ouvrir', { cle }),
   steamEtat: () => appeler<EtatSteam>('boutique_steam_etat'),
   steamRegler: (compte: string, cle?: string) => appeler<EtatSteam>('boutique_steam_regler', { compte, cle: cle ?? null }),
-  steamOublier: () => appeler<void>('boutique_steam_oublier'),
+  steamOublier: () => appeler<OubliSteam>('boutique_steam_oublier'),
   steamConnexion: () => appeler<void>('boutique_steam_connexion'),
   steamJeux: () => appeler<JeuBoutique[]>('boutique_steam_jeux'),
   steamImporter: () => appeler<JeuBoutique[]>('boutique_steam_importer'),

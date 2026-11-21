@@ -5883,10 +5883,142 @@ pub async fn nuage_steam_abriter(noyau: State<'_, Noyau>, id: i64, accepte: bool
 /// `boutiques.json` (seul `steamid_precedent` reste, pour voir un changement de compte ensuite). Les CARTES de la ludothèque restent toutes (décision de Seb du 20/11 : se connecter vaut accord,
 /// et les jeux restent même après une déconnexion ; avant, toutes les cartes Steam étaient effacées).
 #[tauri::command]
-pub async fn boutique_steam_oublier(noyau: State<'_, Noyau>) -> Resultat<()> {
+pub async fn boutique_steam_oublier(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<OubliSteam> {
     let p = profil_ouvert(&noyau).await?;
-    oublier_compte_steam(&noyau, &p.id)
+    // Les refus D'ABORD (lot C3) : rien n'est oublié si la déconnexion du navigateur ne peut pas même commencer.
+    if app.get_webview_window(FENETRE_STEAM).is_some() {
+        return Err(Erreur::Refus("Ferme d'abord la fenêtre de connexion à Steam, puis réessaie.".into()));
+    }
+    // Une lecture du compte en cours (import à l'ouverture) : on attend qu'elle finisse (30 s au plus, sa propre limite).
+    for _ in 0..160 {
+        if app.get_webview_window(FENETRE_STEAM_JETON).is_none() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+    if app.get_webview_window(FENETRE_STEAM_JETON).is_some() {
+        return Err(Erreur::Refus("Frogtend lit ton compte Steam en ce moment : attends quelques secondes, puis réessaie.".into()));
+    }
+    // Pendant l'oubli, aucune connexion ne s'ouvre (elle annoncerait l'ancien compte, encore dans les cookies).
+    if OUBLI_STEAM_EN_COURS.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return Err(Erreur::Refus("L'oubli de ton compte Steam est déjà en cours.".into()));
+    }
+    struct Fin;
+    impl Drop for Fin {
+        fn drop(&mut self) {
+            OUBLI_STEAM_EN_COURS.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    let _fin = Fin;
+    oublier_compte_steam(&noyau, &p.id)?;
+    // Puis le navigateur du profil : seuls les cookies de Steam (Epic et PlayStation y restent connectés).
+    let navigateur_deconnecte = match deconnecter_navigateur_steam(&app, &noyau, &dossier_profil_de(&noyau, &p.id)).await {
+        Ok(v) => v,
+        Err(e) => {
+            noyau.journaliser(&format!("oubli Steam : déconnexion du navigateur impossible ({e})"));
+            false
+        }
+    };
+    Ok(OubliSteam { navigateur_deconnecte })
 }
+
+/// Lot C3 : un oubli de compte Steam efface les cookies en ce moment (`boutique_steam_connexion` refuse alors).
+static OUBLI_STEAM_EN_COURS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Ce que « Oublier ma connexion Steam » a fait (lot C3) : le compte est TOUJOURS oublié côté Frogtend ; la
+/// déconnexion du navigateur du profil n'est vraie que PROUVÉE (relue : plus aucun cookie de connexion Steam).
+#[derive(Debug, Serialize, PartialEq)]
+pub struct OubliSteam {
+    pub navigateur_deconnecte: bool,
+}
+
+/// Lot C3 : efface les SEULS cookies de Steam du navigateur du profil (`domaine_steam`), pour qu'une connexion suivante
+/// demande vraiment un compte. Jamais le dossier entier ni `clear_all_browsing_data` : Epic et PlayStation y vivent.
+/// Une fenêtre CACHÉE sur `about:blank` (la boutique renouvellerait sa connexion pendant l'effacement), sous l'étiquette
+/// de la lecture du jeton (Tauri refuse une seconde fenêtre de même étiquette : jamais les deux à la fois). L'effacement
+/// passe par le gestionnaire de cookies de WebView2 (le `delete_cookie` de tauri perd le point de tête du domaine) et
+/// n'attend pas de réponse : seule la RELECTURE prouve (3 passes au plus). Jamais une valeur lue, journalisée ni rendue.
+async fn deconnecter_navigateur_steam(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path) -> Resultat<bool> {
+    use crate::boutiques::{connexion_steam_effacee, domaine_steam, resume_cookies_steam_restants, CookieSansValeur};
+    // Pas de navigateur : rien à effacer (et ouvrir une fenêtre le CRÉERAIT).
+    if !crate::gratuits::dossier_navigateur(dossier).is_dir() {
+        noyau.journaliser("oubli Steam : pas de navigateur pour ce profil, rien à effacer");
+        return Ok(true);
+    }
+    let vide = tauri::Url::parse("about:blank").map_err(|_| Erreur::Refus("Adresse invalide.".into()))?;
+    let w = tauri::WebviewWindowBuilder::new(app, FENETRE_STEAM_JETON, tauri::WebviewUrl::External(vide))
+        .title("Steam — Frogtend")
+        .inner_size(400.0, 300.0)
+        .visible(false)
+        .focused(false)
+        .skip_taskbar(true)
+        .data_directory(crate::gratuits::dossier_navigateur(dossier))
+        .on_new_window(crate::gratuits::fenetre_d_automatisation)
+        .on_navigation(|u| u.as_str() == "about:blank")
+        .build()
+        .map_err(|_| Erreur::Refus("Frogtend lit ton compte Steam en ce moment : attends quelques secondes, puis réessaie.".into()))?;
+    // `cookies()` se bloque sur le fil principal sous Windows (documentation de tauri 2.12) : dans un fil à part.
+    let lire = |w: tauri::WebviewWindow| async move {
+        tauri::async_runtime::spawn_blocking(move || {
+            w.cookies().map(|l| {
+                l.iter()
+                    .map(|c| CookieSansValeur {
+                        nom: c.name().to_string(),
+                        domaine: c.domain().unwrap_or("").to_string(),
+                        chemin: c.path().filter(|p| p.starts_with('/')).unwrap_or("/").to_string(),
+                    })
+                    .collect::<Vec<_>>()
+            })
+        })
+        .await
+        .ok()
+        .and_then(|r| r.ok())
+    };
+    let mut prouve = false;
+    let mut resume = "cookies illisibles".to_string();
+    for passe in 0..4 {
+        let Some(lus) = lire(w.clone()).await else { break };
+        resume = resume_cookies_steam_restants(&lus);
+        if connexion_steam_effacee(&lus) {
+            prouve = true;
+            break;
+        }
+        if passe == 3 {
+            break;
+        }
+        let a_effacer: Vec<CookieSansValeur> = lus.into_iter().filter(|c| domaine_steam(&c.domaine)).collect();
+        let _ = w.with_webview(move |pw| effacer_cookies_webview2(&pw, &a_effacer));
+        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+    }
+    let _ = w.close();
+    noyau.journaliser(&format!("oubli Steam : navigateur {} ({resume} restant)", if prouve { "déconnecté de Steam" } else { "PAS déconnecté de Steam" }));
+    Ok(prouve)
+}
+
+/// Efface ces cookies par le gestionnaire de cookies de WebView2 (fil principal, appelé par `with_webview`) : par nom
+/// et adresse (couvre `x.com` et `.x.com`), puis par nom, domaine et chemin exacts, avec et sans point de tête.
+#[cfg(windows)]
+fn effacer_cookies_webview2(pw: &tauri::webview::PlatformWebview, cookies: &[crate::boutiques::CookieSansValeur]) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2_2;
+    use windows_core_wv2::{Interface, HSTRING};
+    // SAFETY : appels COM sur le fil principal de la WebView (garanti par `with_webview`), sur des interfaces valides.
+    unsafe {
+        let Ok(coeur) = pw.controller().CoreWebView2() else { return };
+        let Ok(c2) = coeur.cast::<ICoreWebView2_2>() else { return };
+        let Ok(gestionnaire) = c2.CookieManager() else { return };
+        for c in cookies {
+            let nom = HSTRING::from(c.nom.as_str());
+            let chemin = HSTRING::from(c.chemin.as_str());
+            let hote = c.domaine.trim_start_matches('.');
+            let _ = gestionnaire.DeleteCookies(&nom, &HSTRING::from(format!("https://{hote}{}", c.chemin)));
+            let _ = gestionnaire.DeleteCookiesWithDomainAndPath(&nom, &HSTRING::from(hote), &chemin);
+            let _ = gestionnaire.DeleteCookiesWithDomainAndPath(&nom, &HSTRING::from(format!(".{hote}")), &chemin);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn effacer_cookies_webview2(_pw: &tauri::webview::PlatformWebview, _cookies: &[crate::boutiques::CookieSansValeur]) {}
 
 /// Le corps de `boutique_steam_oublier` (testé) : jamais une carte de la ludothèque n'est touchée.
 pub(crate) fn oublier_compte_steam(noyau: &Noyau, profil: &str) -> Resultat<()> {
@@ -6247,12 +6379,11 @@ async fn menage_avant_import(noyau: &Noyau, profil: &str) -> Resultat<()> {
 
 const FENETRE_STEAM_JETON: &str = "boutique-steam-jeton";
 
-/// Le jeton d'accès Steam du compte connecté dans le navigateur DU PROFIL (lot C2, revue du 20/11) : une fenêtre
-/// CACHÉE, sans focus et sans page (`about:blank`), ouvre ce navigateur le temps de lire ses cookies de
-/// `store.steampowered.com` (`cookies_for_url`, dans un fil à part : sous Windows, l'appel se bloque sur le fil
-/// principal ou dans une commande synchrone — documentation de tauri 2.12) ; le cœur demande ensuite le jeton à la
-/// boutique avec ces seuls cookies. Rien ne passe par le titre d'une page (Chromium garde les titres dans son
-/// historique, sur le disque). Cookies et jeton ne vivent qu'en mémoire : jamais écrits, journalisés ni rendus.
+/// Le jeton d'accès Steam du compte connecté dans le navigateur DU PROFIL (lot C2) : une fenêtre CACHÉE, sans focus,
+/// ouvre la vraie boutique ; son script (`steam-jeton.js`) y lit le jeton et le remet par une navigation vers
+/// frogtend.invalid, interceptée et annulée (0.215.2). Sans jeton, l'étape remise choisit le message (lot C3 :
+/// « reconnecte-toi », page changée ou réponse inhabituelle). Le jeton ne vit qu'en mémoire : jamais écrit, journalisé
+/// ni rendu, jamais dans un titre.
 async fn lire_jeton_steam(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path) -> Resultat<String> {
     // Un profil sans navigateur ne s'est jamais connecté par la page : sa connexion ne vaut pas.
     if !crate::gratuits::dossier_navigateur(dossier).is_dir() {
@@ -6308,7 +6439,8 @@ async fn lire_jeton_steam(app: &AppHandle, noyau: &Noyau, dossier: &std::path::P
         }
         Some(crate::gratuits::RemiseSteam::Absent(etape)) => {
             noyau.journaliser(&format!("import Steam (connexion) : pas de jeton ({etape})"));
-            Err(Erreur::Refus(crate::boutiques::MOTIF_RECONNECTER.into()))
+            // Lot C3 : « reconnecte-toi » seulement quand c'est le bon conseil (page changée, maintenance : autre message).
+            Err(crate::gratuits::erreur_sans_jeton_steam(&etape))
         }
         None => {
             noyau.journaliser("import Steam (connexion) : la boutique n'a rien remis en 30 s");
@@ -6517,6 +6649,9 @@ const FENETRE_STEAM: &str = "boutique-steam";
 #[tauri::command]
 pub async fn boutique_steam_connexion(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<()> {
     let p = profil_ouvert(&noyau).await?;
+    if OUBLI_STEAM_EN_COURS.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(Erreur::Refus("Frogtend finit d'oublier ton compte Steam : réessaie dans quelques secondes.".into()));
+    }
     let dossier = dossier_profil_de(&noyau, &p.id);
     if let Some(w) = app.get_webview_window(FENETRE_STEAM) {
         let _ = w.close();

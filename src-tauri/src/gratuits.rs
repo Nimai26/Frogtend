@@ -261,6 +261,32 @@ impl std::fmt::Debug for RemiseSteam {
     }
 }
 
+/// Lot C3 : la page de Steam dit que le compte est connecté, mais Frogtend n'y trouve plus le jeton.
+pub const MOTIF_PAGE_STEAM_CHANGEE: &str =
+    "Steam a changé sa page : Frogtend n'arrive plus à lire tes jeux pour l'instant. Tes jeux restent dans ta ludothèque ; une mise à jour de Frogtend réglera ça.";
+/// Lot C3 : la page de Steam n'a plus sa configuration (page changée, maintenance ou vérification) : pas « reconnecte-toi ».
+pub const MOTIF_STEAM_INHABITUEL: &str =
+    "Steam ne répond pas comme d'habitude (maintenance ou page changée) : réessaie plus tard. Tes jeux restent dans ta ludothèque.";
+
+/// L'erreur d'un import Steam SANS jeton, d'après l'étape remise par la page (`steam-jeton.js`, pur, testé) :
+/// « reconnecte-toi » seulement quand la page dit le compte déconnecté (ou que Steam refuse) ; la page dit le compte
+/// connecté et répond normalement mais sans jeton : la page a changé ; plus de configuration du tout : réponse inhabituelle.
+pub fn erreur_sans_jeton_steam(etape: &str) -> crate::erreurs::Erreur {
+    use crate::erreurs::Erreur;
+    if etape.ends_with("-erreur-reseau") {
+        return Erreur::Reseau("Steam n'a pas répondu : vérifie ta connexion à Internet, puis réessaie.".into());
+    }
+    // Steam répond normalement (succès 1, ou pas du JSON), SANS redirection : la page a changé. Un succès 21 (« non
+    // connecté » chez Steam) ou une redirection : « reconnecte-toi » reste le bon conseil.
+    if etape == "connecte-statut-200-success-1" || etape == "connecte-statut-200-pas-json" {
+        return Erreur::Serveur(MOTIF_PAGE_STEAM_CHANGEE.into());
+    }
+    if etape.starts_with("sans-configuration") {
+        return Erreur::Serveur(MOTIF_STEAM_INHABITUEL.into());
+    }
+    Erreur::Refus(crate::boutiques::MOTIF_RECONNECTER.into())
+}
+
 /// Une navigation vers `https://frogtend.invalid/steam-jeton#<jwt>` ou `…/steam-absent#<étape>` : la remise de la page
 /// (que l'appelant ANNULE). Toute autre adresse : None (navigation ordinaire). Un jeton sans la forme d'un JWT : Absent.
 pub fn lire_remise_steam(url: &tauri::Url) -> Option<RemiseSteam> {
@@ -541,6 +567,24 @@ mod tests {
         assert!(!SCRIPT_STEAM.contains("getAttribute('data-store_user_config"));
         assert!(!SCRIPT_STEAM.contains("document.cookie"));
         assert!(SCRIPT_STEAM.contains("data-userinfo"));
+    }
+
+    #[test]
+    fn l_etape_sans_jeton_donne_le_bon_message() {
+        use crate::erreurs::Erreur;
+        let reco = Erreur::Refus(crate::boutiques::MOTIF_RECONNECTER.into());
+        assert_eq!(erreur_sans_jeton_steam("deconnecte-statut-302-redirige-pas-json"), reco);
+        assert_eq!(erreur_sans_jeton_steam("deconnecte-statut-200-success-21"), reco);
+        assert_eq!(erreur_sans_jeton_steam("connecte-statut-401-pas-json"), reco);
+        assert_eq!(erreur_sans_jeton_steam("jeton-de-forme-inattendue"), reco);
+        assert_eq!(erreur_sans_jeton_steam("sans-detail"), reco);
+        assert_eq!(erreur_sans_jeton_steam("connecte-statut-200-success-1"), Erreur::Serveur(MOTIF_PAGE_STEAM_CHANGEE.into()));
+        assert_eq!(erreur_sans_jeton_steam("connecte-statut-200-pas-json"), Erreur::Serveur(MOTIF_PAGE_STEAM_CHANGEE.into()));
+        assert_eq!(erreur_sans_jeton_steam("connecte-statut-200-success-21"), reco);
+        assert_eq!(erreur_sans_jeton_steam("connecte-statut-200-redirige-pas-json"), reco);
+        assert_eq!(erreur_sans_jeton_steam("sans-configuration-statut-200-pas-json"), Erreur::Serveur(MOTIF_STEAM_INHABITUEL.into()));
+        assert!(matches!(erreur_sans_jeton_steam("connecte-erreur-reseau"), Erreur::Reseau(_)));
+        assert!(matches!(erreur_sans_jeton_steam("sans-configuration-erreur-reseau"), Erreur::Reseau(_)));
     }
 
     #[test]

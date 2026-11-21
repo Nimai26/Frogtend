@@ -33,7 +33,7 @@
     <!-- Connecté par la page : la clé n'est pas utile, son lien n'est pas proposé à un novice. -->
     {#if !e?.connecte}<button class="btn" onclick={ouvrirPageCle}>🌐 Créer ma clé d’API (site de Steam)</button>{/if}
     <button class="btn" onclick={importerSteam} disabled={importSteamEnCours()}>{importSteamEnCours() ? 'Import…' : '🔄 Importer mes jeux'}</button>
-    {#if e?.compte || e?.cle_enregistree}<button class="btn danger" onclick={oublierSteam}>Oublier ce compte</button>{/if}
+    {#if e?.compte || e?.cle_enregistree}<button class="btn danger" aria-disabled={steam.oubliEnCours} onclick={oublierSteam}>{steam.oubliEnCours ? 'Déconnexion…' : 'Oublier ce compte'}</button>{/if}
   </div>
 </div>
 

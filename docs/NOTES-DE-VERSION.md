@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.216.0 — 🎮 Steam : changer de compte (lot C3)
+
+- Nouveau : « Oublier ce compte » est aussi dans 🛒 Boutiques ▸ Mon compte Steam. Il oublie ton compte ET te
+  déconnecte de Steam dans Frogtend (pas dans l'application Steam) : à la connexion suivante, Steam demande vraiment
+  un compte, tu peux en prendre un autre. Tes jeux restent dans ta ludothèque ; ta connexion à Epic ne bouge pas.
+- Si Frogtend n'a pas pu vérifier la déconnexion, il le dit et explique quoi faire sur la page de Steam.
+- Messages plus justes : « reconnecte-toi » seulement quand Steam dit que tu n'es plus connecté. Si Steam a changé sa
+  page ou est en maintenance, Frogtend le dit au lieu de te faire te reconnecter pour rien.
+
 ## 0.215.3 — 🛋 Taodbox : « À installer » lisible
 
 - Corrigé : en taille Grande, la pastille des jeux à installer était coupée (« À in… »). Elle s'adapte maintenant à
