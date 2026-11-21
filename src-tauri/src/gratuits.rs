@@ -419,7 +419,7 @@ pub fn lire_remise_gog(url: &tauri::Url) -> Option<RemiseGog> {
         "/gog-compte" if numero_gog(fragment) => RemiseGog::Compte(fragment.to_string()),
         "/gog-compte" => RemiseGog::Absent("compte-de-forme-inattendue".into()),
         "/gog-progres" => RemiseGog::Progres(fragment.parse().unwrap_or(0)),
-        "/gog-bilan" => RemiseGog::Bilan(fragment.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(400).collect()),
+        "/gog-bilan" => RemiseGog::Bilan(fragment.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(900).collect()),
         "/gog-jeux" => match lire_morceau_gog(fragment) {
             Some((k, n, jeux)) => RemiseGog::Morceau { k, n, jeux },
             None => RemiseGog::Absent("morceau-de-forme-inattendue".into()),

@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.217.2 — 🟣 GOG : chercher la liste complète
+
+- En cours : la liste de gog.com utilisée jusqu'ici n'annonce que 88 jeux (GOG Galaxy en montre 197). Cette version
+  interroge, en plus, la liste complète des jeux possédés de GOG et note dans le journal seulement des nombres, pour
+  choisir la bonne source. Rien ne change dans ta ludothèque.
+
 ## 0.217.1 — 🟣 GOG : comprendre les jeux qui manquent
 
 - En cours : Seb a 197 jeux GOG, Frogtend n'en a lu que 88. Cette version écrit dans le journal le bilan de chaque

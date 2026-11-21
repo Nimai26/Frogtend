@@ -9,6 +9,7 @@ const SCRIPT = readFileSync(resolve(process.cwd(), 'src-tauri/ressources/gratuit
 const dom = (globalThis as unknown as { jsdom: { reconfigure(o: { url: string }): void } }).jsdom;
 const fenetre = window as unknown as Record<string, unknown>;
 
+const SONDES = ['/user/data/games', '/account/getFilteredProducts?page=1', '/account/getFilteredProducts?mediaType=2&page=1', 'https://api.gog.com/products?ids=1207658924'];
 type Reponse = { status: number; json?: unknown } | 'erreur';
 /** Un produit de la liste de GOG. */
 const produit = (id: number | string, title: string, autre: Record<string, unknown> = {}) => ({ id, title, image: `//images-1.gog-statics.com/img${id}`, isGame: true, isMovie: false, ...autre });
@@ -38,8 +39,10 @@ async function essayer(repondre: (adresse: string) => Reponse, attendues = 1) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (adresse: string, options: RequestInit) => {
-      demandees.push(adresse);
-      expect(options.credentials).toBe('same-origin');
+      // Les sondes de diagnostic (0.217.2) ne comptent pas dans les adresses de la lecture.
+      if (!SONDES.includes(adresse)) demandees.push(adresse);
+      // Les cookies de GOG ne partent jamais ailleurs que sur www.gog.com (la sonde de la fiche publique : sans cookies).
+      expect(options.credentials).toBe(adresse.startsWith('https://') ? 'omit' : 'same-origin');
       const r = repondre(adresse);
       if (r === 'erreur') throw new Error('réseau');
       return {
@@ -77,11 +80,14 @@ describe('gog-jeux.js', () => {
     const { remis, bilans } = await essayer((a) => {
       if (a === '/userData.json') return connecte();
       if (a.includes('hiddenFlag=0')) return { status: 200, json: { totalPages: 1, totalProducts: 3, products: [produit(1, 'Un'), produit(2, 'Deux', { isGame: false }), { id: 3 }] } };
+      if (a === '/user/data/games') return { status: 200, json: { owned: [1, 2, 7, 8] } };
+      if (a === '/account/getFilteredProducts?page=1') return { status: 200, json: { totalProducts: 9 } };
+      if (a.startsWith('https://api.gog.com/')) return { status: 200, json: [{ id: 1207658924 }] };
       return { status: 200, json: { totalPages: 0, totalProducts: 0, products: [] } };
     });
     expect(remis[0]).toBe('https://frogtend.invalid/gog-compte#48628349957132247');
     expect(bilans).toEqual([
-      'https://frogtend.invalid/gog-bilan#visibles-pages-1-annonces-3-lignes-3-gardes-1-illisibles-1-nonjeux-2--caches-pages-1-annonces-0-lignes-0-gardes-0-illisibles-0-nonjeux-aucun--total-1',
+      'https://frogtend.invalid/gog-bilan#visibles-pages-1-annonces-3-lignes-3-gardes-1-illisibles-1-nonjeux-2--caches-pages-1-annonces-0-lignes-0-gardes-0-illisibles-0-nonjeux-aucun--total-1--possedes-4-hors-liste-3-exemples-2-7-8--sans-type-annonces-9--films-annonces-0--fiche-publique-liste-1',
     ]);
     expect(bilans[0]).not.toContain('48628349957132247');
   });
