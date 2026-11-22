@@ -206,3 +206,8 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
 
 - **Éditeur de sauvegardes** (Seb 22/11 : « la partie éditeur de save prévue dans Frogtend ») : s'appuiera sur les
   emplacements de parties relevés par le lot S (par jeu : dossier, fichiers, moteur). À concevoir avec Seb après le S.
+
+- **Titres Epic abîmés** (vu le 22/11 pendant le relevé S0) : dans la ludothèque de Seb, « Hogwarts Legacy: L'H?ritage de
+  Poudlard » est rangé avec un « ? » à la place du « é » (titre du catalogue Epic mal décodé ; le code connaît déjà les
+  « titres douteux » d'Epic). Chercher d'où vient la mauvaise conversion et relire ces titres ; ils partent aussi chez
+  Firehouse dans les recherches par titre.
