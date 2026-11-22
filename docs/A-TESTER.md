@@ -10,11 +10,11 @@
 - [x] (validé par Seb le 22/11 ; vérifié sur le disque : 189 fichiers, 253 Mo, fiche sans chemin du PC ni nom d utilisateur) 1. Fiche de Cyberpunk ▸ 📁 ▸ 🛟 « Mettre mes parties à l'abri » : « Frogtend compte tes parties… », puis l'annonce
       (N fichiers, taille, « rangées dans ton profil »), puis après ton oui « Copie en cours… » et un abri daté dans
       « 🛟 Mes abris ».
-- [ ] 2. Recommencer tout de suite : « Déjà à l'abri », aucune nouvelle date dans la liste.
-- [ ] 3. Jeu lancé (ou fermé il y a moins d'une minute), puis 🛟 : refus clair ; une minute après la fermeture : ça passe.
-- [ ] 4. Taodbox ▸ même jeu ▸ 📁 : la croix atteint 🛟, A ouvre la fenêtre, B annule sans rien copier, A sur « Mettre à
+- [x] (validé par Seb le 22/11) 2. Recommencer tout de suite : « Déjà à l'abri », aucune nouvelle date dans la liste.
+- [x] (validé par Seb le 22/11 : refus pendant le jeu ; après la fermeture, il a fallu attendre un peu plus) 3. Jeu lancé (ou fermé il y a moins d'une minute), puis 🛟 : refus clair ; une minute après la fermeture : ça passe.
+- [x] (validé par Seb le 22/11) 4. Taodbox ▸ même jeu ▸ 📁 : la croix atteint 🛟, A ouvre la fenêtre, B annule sans rien copier, A sur « Mettre à
       l'abri » copie.
-- [ ] 5. Age of Empires IV (parties sous OneDrive) ▸ 🛟 : annonce correcte ; des fichiers « en ligne seulement » sont
+- [ ] (22/11 : 9 fichiers seulement dans OneDrive, « Rien à mettre à l'abri » ; Seb : proposer de les rapatrier → 0.221.1) 5. Age of Empires IV (parties sous OneDrive) ▸ 🛟 : annonce correcte ; des fichiers « en ligne seulement » sont
       signalés et non copiés.
 - [ ] 6. Un jeu Steam déjà mis à l'abri avant cette version ▸ 📁 : l'ancien abri porte « Frogtend ne sait plus d'où
       venaient N de ces fichiers… ».

@@ -870,6 +870,10 @@ une régression de la sauvegarde entre profils : chaque profil envoie SA derniè
 fiche part chez Firehouse en jeux/<id>/emplacements/fiche.json). À régler au S5 : le sel des empreintes d'identifiant
 vit dans les données du profil (sur un autre PC, ré-énumérer) ; un parent qui échoue à la COPIE fait perdre cette
 fois-là les emplacements qu'il contient (seul l'échec au plan est géré).
+**Décision de Seb (22/11, essai d'Age of Empires IV : 9 fichiers, 180 Mo seulement dans OneDrive) : PROPOSER DE LES
+RAPATRIER.** Quand des parties ne sont que dans le nuage (OneDrive « en ligne seulement »), la fenêtre d'abri propose
+« Télécharger depuis OneDrive puis mettre à l'abri » avec la taille annoncée ; rien sans le oui de la personne ;
+jamais automatiquement. « 📁 Où sont mes parties » dit aussi tout de suite que ces fichiers sont dans le nuage.
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
 « Connecte-toi… dans la fenêtre qui s'ouvre » laisse croire que rien ne se passe ou que c'est raté. Voulu : une petite
