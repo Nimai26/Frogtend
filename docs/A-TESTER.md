@@ -13,11 +13,11 @@
 - [x] (validé par Seb le 22/11 en 0.220.1 ; en 0.220.0 « Users\(UserID)\Savegames » était affiché) 3. Un jeu qui range ses parties dans Documents\My Games (sous OneDrive, ex. Age of Empires IV) : le dossier et ses
       fichiers sont comptés (pas « vide »).
 - [ ] 4. Refermer puis rouvrir la fiche : la section revient tout de suite.
-- [ ] 5. Un jeu Epic installé (TerraScape) : ses dossiers LocalLow\Bitfall Studios\TerraScape.
-- [ ] 6. Un jeu inconnu de Firehouse : la phrase « Firehouse ne connaît pas encore… ».
-- [ ] 7. Un jeu d'émulateur (SNES…) : aucune section « 📁 Où sont mes parties ».
-- [ ] 8. Taodbox ▸ un jeu PC ▸ ⚙ Gérer ▸ « 📁 Où sont mes parties » : la croix passe d'une ligne à l'autre, B revient.
-- [ ] 9. Changer de profil et ouvrir la même fiche : l'autre profil n'a rien hérité.
+- [x] (validé par Seb le 22/11 : 3 dossiers, 1 fichier .save trouvé sans avoir joué) 5. Un jeu Epic installé (TerraScape) : ses dossiers LocalLow\Bitfall Studios\TerraScape.
+- [x] (validé par Seb le 22/11 : Palindrome Syndrome) 6. Un jeu inconnu de Firehouse : la phrase « Firehouse ne connaît pas encore… ».
+- [x] (validé par Seb le 22/11) 7. Un jeu d'émulateur (SNES…) : aucune section « 📁 Où sont mes parties ».
+- [x] (validé par Seb le 22/11) 8. Taodbox ▸ un jeu PC ▸ ⚙ Gérer ▸ « 📁 Où sont mes parties » : la croix passe d'une ligne à l'autre, B revient.
+- [ ] (sauté le 22/11 : pas d'autre profil sous la main ; couvert par les tests « deux profils ») 9. Changer de profil et ouvrir la même fiche : l'autre profil n'a rien hérité.
 
 ## 🟣 Plusieurs comptes GOG (0.219.0, lot C4b)
 - [x] (validé par Seb le 22/11 : pseudo lu, 88 jeux, « celui du jeu offert », ligne « Galaxy sur un autre compte ») 1. 🛒 Boutiques ▸ 🟣 Mon compte GOG : ton compte actuel est une ligne (pseudo ou « Compte GOG 1 », environ 88
