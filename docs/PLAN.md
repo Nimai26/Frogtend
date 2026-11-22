@@ -805,8 +805,14 @@ lanceurs.** Chez Seb, « ▶ Jouer » sur Cyberpunk passait par GOG Galaxy (`run
 (REDprelauncher, tâche « principale » du `goggame-<id>.info`), écran noir avant le jeu. Pour GOG (sans DRM) : lancer la
 tâche de catégorie « game » du `goggame-<id>.info` (Cyberpunk : `bin\x64\Cyberpunk2077.exe`), avec ses arguments et
 son dossier de travail ; Galaxy seulement en secours si aucune tâche « game » n'est lisible. Contrepartie : pas de
-synchronisation des sauvegardes dans le nuage de GOG ni des succès de Galaxy — les sauvegardes locales restent
-protégées par la copie de Frogtend. Intégré au **nouveau C4c** (installer et lancer les jeux GOG sans Galaxy).
+synchronisation des sauvegardes dans le nuage de GOG ni des succès de Galaxy. ⚠ Vérifié le 22/11 (expert lancement) :
+la sauvegarde vers Firehouse n'emporte AUJOURD'HUI PAS les parties d'un jeu GOG rangées hors du dossier du jeu
+(`Saved Games`, Documents, AppData) — seul le nuage Steam y passe (`plan_nuage`, `nuage_steam::emplacements` filtré sur
+« Steam »). **Le C4c doit donc d'abord faire partir les parties des jeux GOG chez Firehouse** : emplacements servis par
+Firehouse (`sauvegardes`, d'après PCGamingWiki) avec la plateforme « Windows » sans exiger Steam, gardés en cache pour
+le hors ligne, mise à l'abri dans `abris/<id>/` après chaque partie et avant toute réinstallation, mise à jour ou
+retrait, restauration vers le bon dossier sur un nouveau PC. Intégré au **nouveau C4c** (installer et lancer les jeux
+GOG sans Galaxy).
 Steam et les jeux Epic protégés exigent leur lanceur : la règle ne s'y applique pas telle quelle (IDEES.md).
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
