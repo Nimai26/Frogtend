@@ -199,3 +199,7 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   titre, décision du 21/10). Quand Galaxy ne le fait pas : bouton « 🔗 Réunir avec… » dans le panneau du jeu (choisir
   l'autre carte), et « Séparer » pour défaire une réunion fausse (Galaxy comprise). Retenu par profil, jamais effacé par
   une relecture ; aussi à la manette dans Taodbox (règle des réglages au canapé). À faire APRÈS le lot C4.
+
+- **Lancer sans lanceur, au-delà de GOG** (Seb 22/11 : « comme LaunchBox, on ne passe pas par les launchers ») : pour
+  Epic, Ubisoft, Amazon, Xbox, voir jeu par jeu ce qui se lance directement sans protection (Epic : jeux sans EOS ni
+  DRM ; Steam : la plupart exigent Steam). À étudier sur documentation avant tout essai.
