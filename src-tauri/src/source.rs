@@ -1434,6 +1434,56 @@ mod tests {
         }
     }
 
+    /// RÉEL, lecture seule chez Firehouse — lot S0 (accord de Seb du 22/11) : pour un échantillon de jeux de boutique
+    /// (fichier `FROGTEND_TITRES` : « boutique\tclé\ttitre » par ligne, 80 au plus), demande `/triche/recherche` par le
+    /// TITRE et la plateforme Windows, et compte ce que `sauvegardes` dit (absent / null / [] / emplacements, et les `os`).
+    /// UNE demande toutes les 5 s au plus (Firehouse 22/11 : chaque recherche pas en cache part chez PCGamingWiki, qui
+    /// a refusé à 400 ms d'écart). Les réponses vont dans `FROGTEND_SORTIE`.
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_TITRES=<fichier> FROGTEND_SORTIE=<dossier> cargo test essai_sauvegardes_s0 -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_sauvegardes_s0() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let sortie = std::path::PathBuf::from(std::env::var("FROGTEND_SORTIE").unwrap());
+        let titres = std::fs::read_to_string(std::env::var("FROGTEND_TITRES").unwrap()).unwrap();
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        let mut bilan: std::collections::BTreeMap<String, std::collections::BTreeMap<String, usize>> = Default::default();
+        let mut os_vus: std::collections::BTreeMap<String, usize> = Default::default();
+        for (n, ligne) in titres.lines().take(80).enumerate() {
+            let mut morceaux = ligne.splitn(3, '\t');
+            let (Some(boutique), Some(_cle), Some(titre)) = (morceaux.next(), morceaux.next(), morceaux.next()) else { continue };
+            let u = tauri::Url::parse_with_params("https://x.invalid/triche/recherche", &[("titre", titre), ("plateforme", "Windows")]).unwrap();
+            let route = format!("/triche/recherche?{}", u.query().unwrap_or_default());
+            let issue = match c.obtenir(&route, None).await {
+                Ok(crate::firehouse::Reponse::Corps { octets, .. }) => {
+                    std::fs::write(sortie.join(format!("{n:02}-{boutique}.json")), &octets).unwrap();
+                    let v: serde_json::Value = serde_json::from_slice(&octets).unwrap_or_default();
+                    match v.get("sauvegardes") {
+                        None => "champ absent".to_string(),
+                        Some(serde_json::Value::Null) => "null (pas encore lu)".to_string(),
+                        Some(serde_json::Value::Array(a)) if a.is_empty() => "[] (rien)".to_string(),
+                        Some(serde_json::Value::Array(a)) => {
+                            for e in a {
+                                *os_vus.entry(e["os"].as_str().unwrap_or("?").to_string()).or_default() += 1;
+                            }
+                            "emplacements".to_string()
+                        }
+                        Some(_) => "forme inconnue".to_string(),
+                    }
+                }
+                Ok(_) => "304".to_string(),
+                Err(e) => format!("erreur {e:?}").chars().take(60).collect(),
+            };
+            println!("{n:02} {boutique:5} {titre} → {issue}");
+            *bilan.entry(boutique.to_string()).or_default().entry(issue).or_default() += 1;
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
+        println!("== bilan : {bilan:?}");
+        println!("== os vus : {os_vus:?}");
+    }
+
     /// RÉEL, lecture seule chez Firehouse (contrat 1.18) : la forme exacte des réponses des patchs RPCS3, pour écrire
     /// les réponses simulées d'après la vraie vie. Rien n'est écrit sur le disque ; le jeton ne s'affiche jamais.
     /// `FROGTEND_PROFIL_ESSAI=<id> cargo test essai_patchs_rpcs3 -- --ignored --nocapture`

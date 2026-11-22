@@ -813,6 +813,7 @@ Firehouse (`sauvegardes`, d'après PCGamingWiki) avec la plateforme « Windows �
 le hors ligne, mise à l'abri dans `abris/<id>/` après chaque partie et avant toute réinstallation, mise à jour ou
 retrait, restauration vers le bon dossier sur un nouveau PC. Intégré au **nouveau C4c** (installer et lancer les jeux
 GOG sans Galaxy).
+Steam et les jeux Epic protégés exigent leur lanceur : la règle ne s'y applique pas telle quelle (IDEES.md).
 **Décision de Seb (22/11) : c'est un DÉFAUT — les parties de TOUS les jeux PC, de TOUTES les boutiques (Steam hors
 nuage compris, Epic, GOG, Ubisoft, Amazon, Xbox, jeux importés du disque), partent chez Firehouse, « y compris les jeux
 pénibles qui cachent leurs parties dans Mes documents, AppData, etc. »** Lot **S** (sauvegardes de tous les jeux PC),
@@ -849,7 +850,15 @@ Unreal, Godot) après lecture des documentations officielles, et test « une par
 un mineur » ; **S7** rattrapage des parties jouées hors de Frogtend. Piège : plusieurs profils Frogtend sur un même
 compte Windows partagent `%APPDATA%` → un abri appartient au profil qui a lancé la partie (fichiers modifiés après son
 départ), un abri sans propriétaire n'est jamais envoyé sans demander.
-Steam et les jeux Epic protégés exigent leur lanceur : la règle ne s'y applique pas telle quelle (IDEES.md).
+**S0 fait le 22/11 (accord de Seb, lecture seule, essai `essai_sauvegardes_s0`)** : 40 jeux GOG et 40 jeux Epic de Seb
+demandés à `/triche/recherche` par le TITRE et la plateforme Windows (400 ms entre deux). GOG : 33 avec emplacements,
+1 `[]`, 6 `null` (pas encore lus) ; Epic : 16 avec emplacements, 1 `[]`, 23 `null`. Valeurs de `os` vues : Windows
+48, Linux 10, OS X 10, Microsoft Store 8, DOS 3, Epic Games Store 1, Epic Games Launcher 1, GOG.com 1, Steam 1.
+Cyberpunk : `%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077` (dossier), le bon (réponse rangée en fixture
+`src-tauri/fixtures/triche-cyberpunk-sauvegardes.json`). Compte transmis à Firehouse. Besoin 56 REÇU par Firehouse. ⚠ Firehouse (22/11) : ce rythme (~2 demandes/s) a fait
+refuser PCGamingWiki (Cloudflare, 429) depuis 13:56 → les `null` NE VEULENT RIEN DIRE (« PCGamingWiki muet »).
+Relevé à refaire après 30 min au moins, à UNE demande toutes les 5 s au plus (essai corrigé) ; Firehouse ajoute un
+frein sur ses appels à PCGamingWiki dans la livraison du besoin 56.
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
 « Connecte-toi… dans la fenêtre qui s'ouvre » laisse croire que rien ne se passe ou que c'est raté. Voulu : une petite

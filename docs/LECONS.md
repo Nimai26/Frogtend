@@ -409,3 +409,7 @@ action acceptée qui ne fait rien le DIT (journal + fenêtre) ; et chaque émula
 - **16/11 — Le NCA Program d'une mise à jour Switch porte l'identifiant du JEU** (…000) ; seul son NCA Meta porte +0x800. Classer par les Meta (jeu, puis mise à jour, puis DLC), jamais par le nom de fichier.
 - **16/11 — `cargo test --lib` ne prouve pas que la version livrée compile.** Une fonction marquée `#[cfg(test)]` (`switch_nca::chiffrer_entete`) servait aussi au code réel (empreinte du cache) : tous les tests verts, mais `npm run livrer` a échoué à la compilation. Un agent qui ne lance que `cargo test --lib` doit aussi lancer `cargo build` (ou `cargo check` sans tests) avant de rendre son travail.
 - **Jamais `cargo test -- --ignored` avec un filtre large (18/11)** : `--ignored essai_` a lancé 112 essais réels (dont des frappes clavier envoyées à la fenêtre au premier plan et des téléchargements d'émulateurs dans un dossier temporaire) — sans l'accord de Seb. Un essai ignoré se lance SEUL, par son nom EXACT (`-- --ignored --exact chemin::nom`), après avoir lu ce qu'il fait ; à rappeler dans chaque consigne donnée à un agent.
+- **22/11 — Un relevé « en lecture seule » chez Firehouse n'est pas sans effet.** Chaque `/triche/recherche` pas encore
+  en cache part chez PCGamingWiki : 80 demandes à 400 ms d'écart ont fait refuser Firehouse par Cloudflare (429), et
+  les résultats (`null`) étaient faux. Avant un relevé réel, demander à Firehouse ce que la route déclenche derrière et
+  le rythme supportable ; par défaut, UNE demande toutes les 5 s au plus.
