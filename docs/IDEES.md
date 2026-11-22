@@ -212,6 +212,12 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   « titres douteux » d'Epic). Chercher d'où vient la mauvaise conversion et relire ces titres ; ils partent aussi chez
   Firehouse dans les recherches par titre.
 
+- **Affiches des jeux Steam installés sans image** (vu le 22/11 : TerraTech Legion Demo, appid 3729960) : les deux
+  adresses du CDN de Steam (library_600x900.jpg, header.jpg) n'ont rien donné, mais le client Steam a déjà l'image en
+  local : `<Steam>\appcache\librarycache\<appid>\<empreinte>\library_600x900.jpg` (aussi library_header.jpg). Lire d'abord
+  ce cache (lecture seule, taille plafonnée, hors ligne), puis le CDN ; journaliser l'échec du CDN (sans adresse
+  sensible). Enquête : `Noyau::jaquette` (noyau.rs), `image_steam` (boutiques.rs).
+
 - **Les RECOMPILATIONS (« recomps ») dans Frogtend** (Seb 22/11 : « il faut à tout prix », vu sur recomplauncher.com).
   Une recomp = un jeu de console reconstruit en programme PC natif (Zelda 64: Recompiled, Ship of Harkinian, Starship,
   SpaghettiKart, Banjo: Recompiled…), publié par son auteur sur GitHub, qui a besoin de la ROM ou de l'image ORIGINALE.
