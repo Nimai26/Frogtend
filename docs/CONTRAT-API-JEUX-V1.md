@@ -505,6 +505,23 @@ Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a 
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
 sont pas redirigées (une indication « fusionné dans N » serait un ajout 1.14 — à demander à Seb si gênant).
 
+### 1.49 (22/11, Firehouse 3.305.0, en service depuis 15:48) — chemins justes par système, dossiers génériques écartés
+Reçu par message de la session Firehouse (22/11) ; détail : son BRIEF-AGENT-FROGTEND.md § journal « 1.49 ».
+1. Le SYSTÈME d'abord : un chemin Linux ou Mac (y compris sans `os` mais visiblement Linux/Mac : `Library/Application
+   Support`, `.config/`, `.local/share`, `$XDG_…`) est servi en « Linux » / « Mac » avec `~/…`, jamais sous « Steam ».
+2. « Steam », « Microsoft Store »… SEULEMENT pour un chemin propre à la boutique (`<Steam>`, `<racine de la boutique>`,
+   `<identifiant Steam>` / `<identifiant utilisateur>`, `\Packages\<PFN>\`) ; tout autre chemin Windows → `os: "Windows"`
+   (valable pour toute boutique) avec `releve_sur` (la boutique du relevé : information seulement, ne pas filtrer dessus) ;
+   `boutique` non nul seulement pour un chemin propre à une boutique. Vérifié par Firehouse : TerraScape → 3 `Windows`
+   (`%USERPROFILE%\AppData\LocalLow\Bitfall Studios\TerraScape\…`, `releve_sur: "steam"`, `boutique: null`), 3 `Linux`, 3 `Mac`.
+3. `dossier` : liste FERMÉE `dossiers_ignores` et `dossier_longueur_min` (4) dans `/sauvegardes/references` ; un dossier dont
+   le jeu reconnu ne partage aucun mot significatif avec le `titre` envoyé est écarté ; écarté → on passe au titre,
+   `reconnu_par` le dit, `emplacements_source.dossier_ecarte` donne la raison (« nom de dossier générique », « ne
+   correspond pas au titre »). Toujours envoyer le `titre` avec le `dossier` ; jamais `dossier` pour Xbox.
+4. `<racine de la boutique>` = le `<root>` de Ludusavi : le dossier QUI CONTIENT le dossier du jeu, pour les boutiques autres
+   que Steam ; pour Steam, jamais écrit (`<Steam>` = dossier d'installation de Steam, `<dossier du jeu>` =
+   `…\steamapps\common\<jeu>`).
+
 ### 1.48 (22/11, Firehouse 3.302.0, en service depuis 14:48) — les EMPLACEMENTS DE PARTIES de tous les jeux PC (besoin 56)
 Reçu par message de la session Firehouse (22/11) ; forme complète : son BRIEF-AGENT-FROGTEND.md § journal « 1.48 », réponses
 réelles : son EXEMPLES-API-JEUX-V1.md § « 1.48 » (pas encore recopiées ici : à relever par un essai en lecture seule).
