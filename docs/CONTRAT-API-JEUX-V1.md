@@ -505,6 +505,20 @@ Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a 
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
 sont pas redirigées (une indication « fusionné dans N » serait un ajout 1.14 — à demander à Seb si gênant).
 
+### 1.50 (22/11, Firehouse 3.306.0, en service depuis 16:56) — repères en texte libre dans les chemins de parties
+Reçu par message de la session Firehouse (22/11, après le cas Age of Empires IV de Seb) ; détail : son BRIEF § journal « 1.50 ».
+1. Ramenés aux jetons fermés : « (UserID) », « [user id] », « <user-id> », « [User] », « (uid) », « (ProfileID) »… →
+   `<identifiant utilisateur>` (→ `<identifiant Steam>` pour un compte Steam / un jeu relevé sur Steam) ; « (SteamID) »,
+   « [SteamID64] »… → `<identifiant Steam>` ; « [username] » → `%USERNAME%`. Age of Empires IV (1466860) :
+   `%USERPROFILE%\Documents\My Games\Age of Empires IV\Users\<identifiant Steam>\Savegames` (le dossier réel chez Seb porte
+   le SteamID64, 17 chiffres — pas l'identifiant court de `userdata`).
+2. Un chemin qui garde un morceau ILLISIBLE (entièrement entre () [] {}, ou un `<…>` / `%MOT%` hors liste fermée) est RETIRÉ
+   de la réponse. Un vrai nom qui CONTIENT des parenthèses ou un « % » reste (« Program Files (x86) », « Dead Space (2023) »,
+   « 200% Mixed Juice! »). Coquille « <winLocalAppData>Low » corrigée en `%USERPROFILE%\AppData\LocalLow`.
+3. Mesure sur l'index : 235 jeux avaient des repères ; après 1.50, 10 chemins ramenés, 37 retirés (29 jeux), plus aucun
+   jeton hors liste fermée. ⚠ Un jeton peut être À L'INTÉRIEUR d'un nom (« Steam_<identifiant Steam> »,
+   « <identifiant Steam>.sav ») : le remplacer dans le nom.
+
 ### 1.49 (22/11, Firehouse 3.305.0, en service depuis 15:48) — chemins justes par système, dossiers génériques écartés
 Reçu par message de la session Firehouse (22/11) ; détail : son BRIEF-AGENT-FROGTEND.md § journal « 1.49 ».
 1. Le SYSTÈME d'abord : un chemin Linux ou Mac (y compris sans `os` mais visiblement Linux/Mac : `Library/Application
