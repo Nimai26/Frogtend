@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.220.1 — 📁 Où sont mes parties : les dossiers rangés par numéro de compte
+
+- Corrigé : chez Seb, Age of Empires IV montrait « …\Users\(UserID)\Savegames », un repère que la source n'avait pas
+  remplacé (corrigé aussi chez Firehouse, contrat 1.50). Frogtend ne prend plus jamais un repère entre parenthèses ou
+  crochets pour un nom de dossier, et trouve maintenant les dossiers rangés par numéro de compte Steam (le numéro long
+  de 17 chiffres comme le court), en ne gardant que celui de TON compte quand il le reconnaît.
+- Les fiches déjà vues sont relues une fois, pour profiter des corrections de Firehouse.
+- L'abri des parties Steam ne prend jamais le dossier d'un autre compte Steam.
+
 ## 0.220.0 — 📁 Où sont mes parties (lot S, étape 1)
 
 - Nouveau : pour chaque jeu PC, quelle que soit sa boutique (Steam, GOG, Epic, Xbox, Ubisoft, Amazon, jeux importés

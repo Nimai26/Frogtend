@@ -25,8 +25,9 @@ pub const NOM_FICHIER: &str = "emplacements-parties.json";
 
 /// La forme du fichier ; un fichier d'une forme plus récente n'est jamais réécrit par cette version. Un fichier plus
 /// ancien se LIT (rien n'est perdu) et ses jeux sont redemandés à la prochaine ouverture de leur fiche : 2 = après le
-/// contrat 1.48 (les réponses rangées en 1 sont relues une fois la correction 1.49 de Firehouse servie).
-pub const VERSION: u32 = 2;
+/// contrat 1.48 (les réponses rangées en 1 sont relues une fois la correction 1.49 de Firehouse servie) ; 3 = après le
+/// contrat 1.50 (repères bruts « (UserID) » ramenés aux jetons fermés, 0.220.1).
+pub const VERSION: u32 = 3;
 
 /// Un jeu que Firehouse a décrit (emplacements, ou « aucun ») n'est redemandé qu'au bout de 30 jours.
 pub const DELAI_LU: u64 = 30 * 24 * 3600;
@@ -1043,8 +1044,34 @@ mod tests {
         assert!(a_redemander(Some(e), 21), "relu à la prochaine ouverture de sa fiche");
         modifier(d.path(), |c| appliquer(c, -7, gog(), &json!({"sauvegardes": null}), &refs_148(), "30")).unwrap();
         let relu: Value = serde_json::from_slice(&std::fs::read(fichier(d.path())).unwrap()).unwrap();
-        assert_eq!(relu["version"], 2);
+        assert_eq!(relu["version"], VERSION);
         assert_eq!(relu["jeux"]["-7"]["emplacements"].as_array().unwrap().len(), 1, "un null n'efface rien");
+    }
+
+    /// 0.220.1 : un cache de la forme 2 (avant le contrat 1.50 : « Users\(UserID)\Savegames » d'Age of Empires IV) se
+    /// lit en entier, ses jeux sont redemandés une fois, et il n'est réécrit qu'en forme 3.
+    #[test]
+    fn un_cache_de_la_forme_2_est_relu_apres_le_contrat_1_50() {
+        assert_eq!(VERSION, 3);
+        let d = tempfile::tempdir().unwrap();
+        let v2 = json!({"version": 2, "jeux": {"-5": {"id": -5, "firehouse": "lu", "lu_le": "20", "demande_le": "20", "emplacements": [
+            {"chemin": r"%USERPROFILE%\Documents\My Games\Age of Empires IV\Users\(UserID)\Savegames", "nature": "dossier", "os": "Windows", "origine": "firehouse", "nuage_boutique": false, "lu_le": "20"}]}}});
+        std::fs::write(fichier(d.path()), serde_json::to_vec(&v2).unwrap()).unwrap();
+        let c = lire(d.path()).unwrap();
+        let e = c.jeu(-5).unwrap();
+        assert_eq!((e.emplacements.len(), e.demande_le.as_deref()), (1, None), "lu en entier, redemandé");
+        assert!(a_redemander(Some(e), 21));
+        // Jamais écrasé sans être lu : le fichier reste tel quel tant que rien ne change.
+        modifier(d.path(), |_| ()).unwrap();
+        let brut: Value = serde_json::from_slice(&std::fs::read(fichier(d.path())).unwrap()).unwrap();
+        assert_eq!(brut, v2);
+        // La réponse 1.50 remplace l'emplacement d'origine Firehouse ; le fichier passe en forme 3.
+        let r = json!({"emplacements_source": {"source": "ludusavi", "reconnu_par": "steam_appid", "indisponible": false},
+            "sauvegardes": [{"os": "Windows", "chemin": r"%USERPROFILE%\Documents\My Games\Age of Empires IV\Users\<identifiant Steam>\Savegames", "nature": "dossier", "boutique": null}]});
+        modifier(d.path(), |c| appliquer(c, -5, None, &r, &refs_148(), "30")).unwrap();
+        let relu: Value = serde_json::from_slice(&std::fs::read(fichier(d.path())).unwrap()).unwrap();
+        assert_eq!(relu["version"], 3);
+        assert!(relu["jeux"]["-5"]["emplacements"][0]["chemin"].as_str().unwrap().contains("<identifiant Steam>"));
     }
 
     /// Correctif 10 : un jeu que le profil ne voit plus perd ce qui venait de Firehouse, jamais les choix de la personne.

@@ -7,9 +7,9 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## 📁 Où sont mes parties (0.220.0, lot S1)
-- [ ] 1. Fiche de Cyberpunk 2077 ▸ « 📁 Où sont mes parties » : le dossier Saved Games\CD Projekt Red\Cyberpunk 2077,
+- [x] (validé par Seb le 22/11) 1. Fiche de Cyberpunk 2077 ▸ « 📁 Où sont mes parties » : le dossier Saved Games\CD Projekt Red\Cyberpunk 2077,
       ses fichiers et leur taille, « d'après Firehouse ».
-- [ ] 2. « 📂 Ouvrir le dossier » : l'Explorateur s'ouvre sur ce dossier.
+- [x] (validé par Seb le 22/11) 2. « 📂 Ouvrir le dossier » : l'Explorateur s'ouvre sur ce dossier.
 - [ ] 3. Un jeu qui range ses parties dans Documents\My Games (sous OneDrive, ex. Age of Empires IV) : le dossier et ses
       fichiers sont comptés (pas « vide »).
 - [ ] 4. Refermer puis rouvrir la fiche : la section revient tout de suite.

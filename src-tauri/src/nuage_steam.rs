@@ -438,8 +438,15 @@ fn bibliotheque_steam(jeu: &Path) -> Option<PathBuf> {
     (nom(common).as_deref() == Some("common") && nom(steamapps).as_deref() == Some("steamapps")).then(|| steamapps.parent().map(Path::to_path_buf)).flatten()
 }
 
+/// Un morceau de chemin qui n'est qu'un repère entre parenthèses, crochets ou accolades (« (UserID) », « [id] »,
+/// « {{p|uid}} ») : la source ne l'a pas remplacé par un jeton connu. Pur, testé.
+pub(crate) fn repere_non_remplace(morceau: &str) -> bool {
+    let m = morceau.trim();
+    m.len() >= 3 && ((m.starts_with('(') && m.ends_with(')')) || (m.starts_with('[') && m.ends_with(']')) || (m.starts_with('{') && m.ends_with('}')))
+}
+
 /// Un emplacement de Firehouse rendu en vrai dossier de CE PC, ou `None` (jeton inconnu, racine perdue, registre,
-/// joker, chemin d'un autre système). Jamais deviné : seuls les jetons connus du contrat 1.25.
+/// joker, chemin d'un autre système, repère non remplacé). Jamais deviné : seuls les jetons connus du contrat 1.25.
 pub fn resoudre(chemin: &str, ctx: &Contexte) -> Option<PathBuf> {
     let c = chemin.trim().replace('/', "\\");
     if c.is_empty() || c.starts_with('\\') || c.starts_with('~') || c.to_uppercase().starts_with("HKEY") || c.contains('*') || c.contains('?') {
@@ -499,6 +506,13 @@ pub fn resoudre(chemin: &str, ctx: &Contexte) -> Option<PathBuf> {
     if r.contains('%') || r.contains('<') || r.contains('>') {
         return None;
     }
+    // 0.220.1 (Seb 22/11, Age of Empires IV : « …\Users\(UserID)\Savegames » servi tel quel) : un morceau du chemin
+    // ENTIÈREMENT entre parenthèses, crochets ou accolades est un repère que la source n'a pas remplacé (« (UserID) »,
+    // « [user id] », « {{p|uid}} ») — jamais pris pour un nom de dossier. Vu AVANT de poser les valeurs des jetons, pour
+    // ne jamais refuser un vrai nom de dossier du jeu.
+    if r.split(['\\', '/']).any(repere_non_remplace) {
+        return None;
+    }
     for (k, v) in valeurs.iter().enumerate() {
         r = r.replace(&marque(k), v);
     }
@@ -518,30 +532,67 @@ const PROFILS_MAX: usize = 32;
 /// du chemin. `None` : illisible.
 fn bases(base: &str, ctx: &Contexte) -> Option<Vec<PathBuf>> {
     let bas = base.to_ascii_lowercase();
+    // Un jeton d'énumération : `<identifiant utilisateur>`, ou `<identifiant Steam>` HORS de `<Steam>\userdata\` (là,
+    // c'est le compte connu, posé par `resoudre`). Ailleurs (le profil Rockstar de GTA V, le `Users\<SteamID64>` d'Age
+    // of Empires IV), on n'écrit jamais un numéro : on prend les sous-dossiers qui existent.
     let jeton = ["<identifiant utilisateur>", "<identifiant steam>"]
         .into_iter()
-        .filter_map(|j| bas.find(j).map(|i| (i, j.len())))
-        .find(|(i, _)| !bas[..*i].ends_with("\\userdata\\"));
-    let Some((i, n)) = jeton else { return resoudre(base, ctx).map(|p| vec![p]) };
-    let parent = resoudre(base[..i].trim_end_matches('\\'), ctx)?;
-    let reste = base[i + n..].trim_matches('\\');
-    // Le reste ne doit plus porter d'identifiant ni de jeton : un seul niveau énuméré.
-    if reste.contains(['<', '>', '%']) {
+        .filter_map(|j| bas.find(j).map(|i| (i, j.len(), j == "<identifiant steam>")))
+        .find(|(i, _, _)| !bas[..*i].ends_with("\\userdata\\"));
+    let Some((i, n, steam)) = jeton else { return resoudre(base, ctx).map(|p| vec![p]) };
+    // Le jeton peut être À L'INTÉRIEUR d'un nom (« Steam_<identifiant Steam> ») : le morceau devient un motif
+    // préfixe + n'importe quoi + suffixe, comparé aux noms des sous-dossiers.
+    let debut = base[..i].rfind('\\').map_or(0, |k| k + 1);
+    let fin = base[i + n..].find('\\').map_or(base.len(), |k| i + n + k);
+    let (prefixe, suffixe) = (&base[debut..i], &base[i + n..fin]);
+    let parent = resoudre(base[..debut].trim_end_matches('\\'), ctx)?;
+    let reste = base[fin..].trim_matches('\\');
+    // Plus aucun jeton ni joker autour, ni dans la suite : un seul niveau énuméré, jamais deviné.
+    if reste.contains(['<', '>', '%']) || prefixe.contains(['<', '>', '%', '*', '?']) || suffixe.contains(['<', '>', '%', '*', '?']) {
         return None;
     }
     let Ok(l) = std::fs::read_dir(&parent) else { return Some(vec![]) };
-    let mut v: Vec<PathBuf> = l
+    let motif = format!("{prefixe}*{suffixe}");
+    let mut trouves: Vec<(String, PathBuf)> = l
         .flatten()
         // `is_dir` est faux pour un lien ou une jonction (jamais suivis) ; un dossier OneDrive, lui, est gardé.
         .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
-        .map(|e| if reste.is_empty() { e.path() } else { e.path().join(reste) })
-        .filter(|p| !p.components().any(|c| matches!(c, std::path::Component::ParentDir)))
+        .filter_map(|e| {
+            let nom = e.file_name().to_string_lossy().to_string();
+            (repond(&nom, &motif) && nom.chars().count() > prefixe.chars().count() + suffixe.chars().count()).then(|| {
+                // La partie qui remplace le jeton (pour reconnaître le compte Steam).
+                let id = nom.chars().skip(prefixe.chars().count()).take(nom.chars().count() - prefixe.chars().count() - suffixe.chars().count()).collect::<String>();
+                (id, if reste.is_empty() { e.path() } else { e.path().join(reste) })
+            })
+        })
+        .filter(|(_, p)| !p.components().any(|c| matches!(c, std::path::Component::ParentDir)))
         .collect();
+    if steam {
+        trouves = comptes_steam_du_profil(trouves, ctx.compte.as_deref());
+    }
+    let mut v: Vec<PathBuf> = trouves.into_iter().map(|(_, p)| p).collect();
     if v.len() > PROFILS_MAX {
         return None;
     }
     v.sort();
     Some(v)
+}
+
+/// Les sous-dossiers d'un `<identifiant Steam>` hors de `userdata` (identifiant, dossier) gardés pour le compte Steam
+/// du profil (`compte` : l'identifiant COURT de `userdata`) : jamais le dossier d'un AUTRE compte Steam — un SteamID64
+/// (17 chiffres, `7656119…`) qui n'est pas le sien est écarté ; s'il en reste un qui porte son identifiant (court ou
+/// SteamID64), seulement celui-là ; sinon (compte inconnu, noms qui ne sont pas des comptes), toute la liste, que la
+/// fiche montre ligne par ligne.
+fn comptes_steam_du_profil(trouves: Vec<(String, PathBuf)>, compte: Option<&str>) -> Vec<(String, PathBuf)> {
+    let Some(court) = compte.and_then(|c| c.trim().parse::<u64>().ok()) else { return trouves };
+    let long = (court + BASE_STEAMID).to_string();
+    let court = court.to_string();
+    let steamid64 = |s: &str| s.len() == 17 && s.starts_with("7656119") && s.bytes().all(|b| b.is_ascii_digit());
+    let siens: Vec<_> = trouves.iter().filter(|(id, _)| *id == court || *id == long).cloned().collect();
+    if !siens.is_empty() {
+        return siens;
+    }
+    trouves.into_iter().filter(|(id, _)| !steamid64(id)).collect()
 }
 
 /// Un emplacement de parties résolu : un dossier (sous-dossiers compris), ou seulement ses fichiers qui répondent à
@@ -623,7 +674,12 @@ pub fn candidats(chemin: &str, nature: Option<&str>, ctx: &Contexte) -> (Vec<Emp
         "dossier" => (c.clone(), None),
         _ => return (vec![], 1),
     };
-    if filtre.as_deref().is_some_and(|f| f.is_empty() || f.contains(['/', '\\', ':'])) {
+    // Un jeton d'énumération dans le NOM du fichier (« <identifiant Steam>.sav ») : n'importe quoi à sa place (un motif) ;
+    // tout autre jeton dans un nom de fichier : refusé, jamais deviné.
+    // Un nom fait du SEUL jeton : n'importe quel fichier du dossier, peut-être d'un autre compte — refusé.
+    let seul_jeton = filtre.as_deref().is_some_and(|f| ["<identifiant utilisateur>", "<identifiant steam>"].contains(&f.trim().to_ascii_lowercase().as_str()));
+    let filtre = filtre.map(|f| remplacer_sans_casse(&remplacer_sans_casse(&f, "<identifiant utilisateur>", "*"), "<identifiant steam>", "*"));
+    if seul_jeton || filtre.as_deref().is_some_and(|f| f.is_empty() || f.contains(['/', '\\', ':', '<', '>', '%'])) {
         return (vec![], 1);
     }
     let Some(bases) = bases(&base, ctx) else { return (vec![], 1) };
@@ -637,6 +693,19 @@ pub fn candidats(chemin: &str, nature: Option<&str>, ctx: &Contexte) -> (Vec<Emp
         }
     }
     (l, illisibles)
+}
+
+/// Remplace chaque occurrence de `jeton` (en minuscules ASCII) sans tenir compte des majuscules.
+fn remplacer_sans_casse(texte: &str, jeton: &str, par: &str) -> String {
+    let mut r = String::new();
+    let mut reste = texte;
+    while let Some(i) = reste.to_ascii_lowercase().find(jeton) {
+        r.push_str(&reste[..i]);
+        r.push_str(par);
+        reste = &reste[i + jeton.len()..];
+    }
+    r.push_str(reste);
+    r
 }
 
 /// Les emplacements de parties d'un jeu Steam d'après Firehouse (`sauvegardes` : seulement « Windows » et « Steam »,
@@ -916,6 +985,66 @@ mod tests {
         assert_eq!(bases(r"<Steam>\userdata\<identifiant Steam>\271590\remote", &ctx), Some(vec![d.path().join(r"Steam\userdata\42\271590\remote")]));
         // Deux identifiants : jamais deviné.
         assert_eq!(bases(r"%USERPROFILE%\Documents\<identifiant utilisateur>\<identifiant Steam>", &ctx), None);
+        // 0.220.1 : `Profiles\<identifiant Steam>` énumère les dossiers existants (jamais un numéro écrit).
+        assert_eq!(bases(r"%USERPROFILE%\Documents\Rockstar Games\GTA V\Profiles\<identifiant Steam>", &ctx), Some(vec![profils.join("A1B2C3D4"), profils.join("E5F6")]));
+    }
+
+    /// 0.220.1 (Seb 22/11, contrat 1.50) : Age of Empires IV range ses parties sous `Users\<SteamID64>\Savegames`,
+    /// alors que `userdata` porte l'identifiant COURT du compte. Hors de `userdata`, on énumère ; le dossier du compte
+    /// du profil (court ou SteamID64) est préféré ; un autre SteamID64 n'est JAMAIS pris (l'abri Steam y compris).
+    #[test]
+    fn age_of_empires_iv_trouve_le_dossier_steamid64_du_compte() {
+        let d = tempfile::tempdir().unwrap();
+        let docs = d.path().join("Docs");
+        let users = docs.join("My Games").join("Age of Empires IV").join("Users");
+        let sien = (39_734_272u64 + BASE_STEAMID).to_string(); // 76561198000000000
+        assert_eq!(sien, "76561198000000000");
+        for u in [sien.as_str(), "76561198111111111"] {
+            std::fs::create_dir_all(users.join(u).join("Savegames")).unwrap();
+            std::fs::write(users.join(u).join("Savegames").join("partie.aoe4save"), b"p").unwrap();
+        }
+        let chemin = r"%USERPROFILE%\Documents\My Games\Age of Empires IV\Users\<identifiant Steam>\Savegames";
+        let avec = |compte: Option<&str>| Contexte { jeu: None, steam: None, compte: compte.map(String::from), windows: vec![("Documents", docs.clone())], boutique: Some("steam".into()) };
+        // Le compte du profil connu (identifiant court de `userdata`) : seulement SON dossier.
+        assert_eq!(bases(chemin, &avec(Some("39734272"))), Some(vec![users.join(&sien).join("Savegames")]));
+        // Un compte connu qui n'a pas de dossier ici : les autres SteamID64 sont écartés (jamais le dossier d'un autre).
+        assert_eq!(bases(chemin, &avec(Some("12345"))), Some(vec![]));
+        // Compte inconnu : la liste, que la fiche montre ligne par ligne.
+        assert_eq!(bases(chemin, &avec(None)).unwrap().len(), 2);
+        // Par l'abri Steam (`emplacements`) : le même choix.
+        let s = serde_json::json!([{"os": "Windows", "chemin": chemin, "nature": "dossier", "boutique": null}]);
+        let (l, illisibles) = emplacements(&s, &avec(Some("39734272")));
+        assert_eq!((l.iter().map(|e| e.dossier.clone()).collect::<Vec<_>>(), illisibles), (vec![users.join(&sien).join("Savegames")], 0));
+        // Des noms qui ne sont pas des comptes Steam (un profil propre au jeu) restent pris quand rien ne correspond.
+        assert_eq!(comptes_steam_du_profil(vec![("A1B2".into(), PathBuf::from("a")), ("76561198111111111".into(), PathBuf::from("b"))], Some("42")), vec![("A1B2".to_string(), PathBuf::from("a"))]);
+    }
+
+    /// 0.220.1 : un jeton À L'INTÉRIEUR d'un nom — « Steam_<identifiant Steam> » (dossier) et « <identifiant Steam>.sav »
+    /// (fichier) — devient un motif ; un nom fait du seul jeton, ou deux jetons, sont refusés.
+    #[test]
+    fn un_jeton_dans_un_nom_devient_un_motif() {
+        let d = tempfile::tempdir().unwrap();
+        let docs = d.path().join("Docs");
+        let jeu = docs.join("Jeu");
+        for n in ["Steam_76561198000000000", "Steam_42", "Autre_1", "steam_"] {
+            std::fs::create_dir_all(jeu.join(n)).unwrap();
+        }
+        std::fs::write(jeu.join("76561198000000000.sav"), b"p").unwrap();
+        std::fs::write(jeu.join("notes.txt"), b"x").unwrap();
+        let ctx = Contexte { jeu: None, steam: None, compte: None, windows: vec![("Documents", docs.clone())], boutique: None };
+        // Dossier : préfixe + n'importe quoi (au moins un caractère) + suffixe.
+        assert_eq!(bases(r"%USERPROFILE%\Documents\Jeu\Steam_<identifiant Steam>\saves", &ctx), Some(vec![jeu.join("Steam_42").join("saves"), jeu.join("Steam_76561198000000000").join("saves")]));
+        assert_eq!(bases(r"%USERPROFILE%\Documents\Jeu\Steam_<identifiant Steam>_<identifiant utilisateur>", &ctx), None, "deux jetons : jamais deviné");
+        // Fichier : le nom devient un motif.
+        let (l, n) = candidats(r"%USERPROFILE%\Documents\Jeu\<identifiant Steam>.sav", Some("fichier"), &ctx);
+        assert_eq!((l, n), (vec![Emplacement { dossier: jeu.clone(), filtre: Some("*.sav".into()) }], 0));
+        assert!(repond("76561198000000000.sav", "*.sav") && !repond("notes.txt", "*.sav"));
+        // Le seul jeton comme nom de fichier, ou un autre jeton dans le nom : refusé.
+        assert_eq!(candidats(r"%USERPROFILE%\Documents\Jeu\<identifiant Steam>", Some("fichier"), &ctx).1, 1);
+        assert_eq!(candidats(r"%USERPROFILE%\Documents\Jeu\<nom du jeu GameMaker>.sav", Some("fichier"), &ctx).1, 1);
+        // Avec le compte connu, le dossier qui porte son SteamID64 est préféré.
+        let c = Contexte { compte: Some("39734272".into()), ..ctx };
+        assert_eq!(bases(r"%USERPROFILE%\Documents\Jeu\Steam_<identifiant Steam>", &c), Some(vec![jeu.join("Steam_76561198000000000")]));
     }
 
     #[test]
@@ -933,6 +1062,15 @@ mod tests {
         for douteux in [r"\Rockstar Games\GTA V\Profiles\", "~/Library/Application Support/x/", r"%APPDATA%\x\*.sav", r"HKEY_CURRENT_USER\Software\x", r"<inconnu>\x", r"%X%\y"] {
             assert_eq!(resoudre(douteux, &ctx), None, "{douteux}");
         }
+        // 0.220.1 (Seb 22/11, Age of Empires IV) : un repère que la source n'a pas remplacé n'est jamais un dossier.
+        for repere in [r"%USERPROFILE%\Documents\My Games\Age of Empires IV\Users\(UserID)\Savegames", r"%APPDATA%\x\[user id]\saves", r"%APPDATA%\x\{{p|uid}}\saves"] {
+            assert_eq!(resoudre(repere, &ctx), None, "{repere}");
+        }
+        assert!(!repere_non_remplace("Program Files (x86)") && !repere_non_remplace("()") && !repere_non_remplace("Jeu (2019)"));
+        assert!(repere_non_remplace("(UserID)") && repere_non_remplace(" [id] ") && repere_non_remplace("{{p|uid}}"));
+        // Un vrai nom du dossier du jeu entre parenthèses n'est pas refusé (vu avant de poser les jetons).
+        let ctx_jeu = Contexte { jeu: Some(d.path().join("(Jeu)")), steam: None, compte: None, windows: vec![], boutique: None };
+        assert_eq!(resoudre(r"<dossier du jeu>\saves", &ctx_jeu), Some(d.path().join(r"(Jeu)\saves")));
         // La réponse réelle de XCOM 2 : seulement « Windows » (et « Steam »), dossiers existants.
         let v: serde_json::Value = serde_json::json!([
             {"os": "Windows", "chemin": r"%USERPROFILE%\Documents\My Games\XCOM2\XComGame\SaveData\", "steam_userdata": false, "nuage": null},
