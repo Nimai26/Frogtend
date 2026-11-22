@@ -11,7 +11,7 @@
       jeux, « celui du jeu offert ») ; AUCUN numéro affiché.
 - [x] (validé par Seb le 22/11 : compte Hotmail ajouté, 207 jeux lus, 295 en tout ; Google pas encore essayé) 2. « ➕ Ajouter un compte GOG », te connecter avec le compte de GOG Galaxy (Google). Si Google refuse : le message
       « définis un mot de passe sur gog.com » apparaît.
-- [ ] 3. (0.219.1 : plus aucune carte « Jeu GOG <numéro> » ; le compte Galaxy compte 197 jeux comme GOG Galaxy) Après l'ajout : « ✅ Compte GOG « … » ajouté », environ 197 jeux ; Cyberpunk et Horizon avec leur jaquette, une
+- [x] (validé par Seb le 22/11 en 0.219.2 : plus de carte à numéro, 197 jeux sur le compte Galaxy, jaquettes) 3. (0.219.1 : plus aucune carte « Jeu GOG <numéro> » ; le compte Galaxy compte 197 jeux comme GOG Galaxy) Après l'ajout : « ✅ Compte GOG « … » ajouté », environ 197 jeux ; Cyberpunk et Horizon avec leur jaquette, une
       seule carte chacun ; la ligne « GOG Galaxy est ouvert sur un autre compte » disparaît.
 - [ ] 4. Ajouter le même compte une 2e fois : « Ce compte GOG est déjà dans Frogtend ».
 - [ ] 5. « 🔄 Mettre à jour mes jeux GOG » : UN seul message ; fermer et rouvrir Frogtend : aucune fausse « connexion
