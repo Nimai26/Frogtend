@@ -9,10 +9,12 @@ import {
   jeuDeLAdresse,
   libelleOrigine,
   messageAnnonce,
+  messageChoix,
   messageDeja,
   messageRien,
   montres,
   noteAbri,
+  optionsAbri,
   ouvrable,
   texteAutresEndroits,
   texteContenuAbri,
@@ -38,6 +40,7 @@ const cyberpunk: EmplacementVu = {
   lisible: true,
   existe: true,
   fichiers: 12,
+  en_ligne: 0,
   octets: 3 * 1024 * 1024,
   trop: false,
   illisible: false,
@@ -138,7 +141,7 @@ describe('📁 Où sont mes parties', () => {
 });
 
 describe('🛟 Mettre mes parties à l’abri (lot S2) : les textes', () => {
-  const apercu = { fichiers: 12, octets: 3 * 1024 * 1024, emplacements: 2, echecs: [], en_ligne_seulement: 0, deja: false, gros: false, profil: 'Léa' };
+  const apercu = { fichiers: 12, octets: 3 * 1024 * 1024, emplacements: 2, echecs: [], en_ligne_seulement: 0, octets_en_ligne: 0, deja: false, gros: false, gros_avec_nuage: false, profil: 'Léa' };
 
   it('le bouton : seulement un emplacement lisible ici avec des fichiers comptés', () => {
     expect(abritable(vues({}))).toBe(true);
@@ -164,12 +167,12 @@ describe('🛟 Mettre mes parties à l’abri (lot S2) : les textes', () => {
   });
 
   it('le compte rendu, après', () => {
-    expect(texteFait({ date: null, fichiers: 0, octets: 0, emplacements: 0, echecs: [], en_ligne_seulement: 0, deja: true })).toBe('✅ Déjà à l’abri : rien n’a changé depuis ton dernier abri.');
-    expect(texteFait({ date: '1', fichiers: 2, octets: 7, emplacements: 1, echecs: [], en_ligne_seulement: 1, deja: false })).toBe(
+    expect(texteFait({ date: null, fichiers: 0, octets: 0, emplacements: 0, echecs: [], en_ligne_seulement: 0, telecharges: 0, deja: true })).toBe('✅ Déjà à l’abri : rien n’a changé depuis ton dernier abri.');
+    expect(texteFait({ date: '1', fichiers: 2, octets: 7, emplacements: 1, echecs: [], en_ligne_seulement: 1, telecharges: 0, deja: false })).toBe(
       '✅ 2 fichiers de parties (7 o) mis à l’abri dans ton profil. 1 fichier est seulement dans ton nuage (OneDrive…), pas sur ce PC : pas copié.',
     );
     // Un endroit en échec : « ⚠ » en tête, et jamais un chemin complet dans un toast qui s'efface seul.
-    const echec = texteFait({ date: '1', fichiers: 2, octets: 7, emplacements: 1, echecs: [{ dossier: 'C:\\Users\\Léa\\Jeu', raison: 'r' }], en_ligne_seulement: 0, deja: false });
+    const echec = texteFait({ date: '1', fichiers: 2, octets: 7, emplacements: 1, echecs: [{ dossier: 'C:\\Users\\Léa\\Jeu', raison: 'r' }], en_ligne_seulement: 0, telecharges: 0, deja: false });
     expect(echec.startsWith('⚠ 2 fichiers de parties')).toBe(true);
     expect(echec).toContain('1 endroit n’a pas pu être copié');
     expect(echec).not.toContain('Léa');
@@ -189,5 +192,34 @@ describe('🛟 Mettre mes parties à l’abri (lot S2) : les textes', () => {
     expect(noteAbri({ ...a, sans_origine: 1 })).toBe('Frogtend ne sait plus d’où venait 1 de ces fichiers : il est gardé, mais il faudra le remettre à la main.');
     expect(noteAbri({ ...a, sans_origine: 4 })).toBe('Frogtend ne sait plus d’où venaient 4 de ces fichiers : ils sont gardés, mais il faudra les remettre à la main.');
     expect(noteAbri({ ...a, echecs: 2 })).toBe('2 endroits n’avaient pas pu être copiés.');
+  });
+});
+
+describe('☁ Les parties seulement dans OneDrive (Seb, 22/11)', () => {
+  const apercu = { fichiers: 0, octets: 0, emplacements: 1, echecs: [], en_ligne_seulement: 9, octets_en_ligne: 188_950_000, deja: false, gros: false, gros_avec_nuage: false, profil: 'Seb' };
+
+  it('la fiche dit tout de suite ce qui n’est pas sur ce PC', () => {
+    expect(contenu({ ...cyberpunk, fichiers: 9, octets: 188_950_000, en_ligne: 9 })).toBe('9 fichiers · 180,2 Mo — dans ton nuage OneDrive, pas sur ce PC');
+    expect(contenu({ ...cyberpunk, fichiers: 9, octets: 188_950_000, en_ligne: 4 })).toBe('9 fichiers · 180,2 Mo — dont 4 dans ton nuage OneDrive');
+    expect(contenu({ ...cyberpunk, en_ligne: 0 })).not.toContain('OneDrive');
+  });
+
+  it('le choix : télécharger (nombre et taille), « sans eux » seulement s’il y a aussi des fichiers sur ce PC', () => {
+    const seul = optionsAbri(apercu);
+    expect(seul.map((o) => o.valeur)).toEqual(['telecharger']);
+    expect(seul[0].libelle).toBe('☁ Télécharger depuis OneDrive puis mettre à l’abri');
+    expect(seul[0].detail).toBe('9 fichiers · 180,2 Mo à télécharger');
+    const deux = optionsAbri({ ...apercu, fichiers: 2, octets: 7, gros_avec_nuage: true });
+    expect(deux.map((o) => o.valeur)).toEqual(['telecharger', 'local']);
+    expect(deux[0].detail).toContain('plus de 2 Go');
+    expect(deux[1].libelle).toBe('🛟 Mettre à l’abri sans eux');
+    const m = messageChoix(apercu);
+    expect(m).toContain('9 fichiers (180,2 Mo) sont seulement dans ton nuage OneDrive, pas sur ce PC.');
+    expect(m).toContain('ils resteront ensuite sur ce PC');
+    expect(m).toContain('ton profil « Seb »');
+  });
+
+  it('le compte rendu dit combien ont été téléchargés', () => {
+    expect(texteFait({ date: '1', fichiers: 9, octets: 7, emplacements: 1, echecs: [], en_ligne_seulement: 0, telecharges: 9, deja: false })).toBe('✅ 9 fichiers de parties (7 o) mis à l’abri dans ton profil (dont 9 téléchargés depuis OneDrive).');
   });
 });

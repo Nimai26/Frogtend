@@ -1363,6 +1363,15 @@ pub(crate) fn fusion_installes(source: &str, installes: &[crate::boutiques::JeuB
             j.nom = c.titre.clone();
         }
     }
+    // 0.221.1 (Seb 22/11 : TerraScape perdait son affiche) : une relecture des seuls jeux installés (Epic relu par GOG
+    // Galaxy sans le catalogue des possédés, commandes.rs `synchroniser_epic`) n'a pas d'image ; la carte déjà rangée
+    // garde alors la sienne (jamais une image effacée par une lecture qui n'en sait rien).
+    for j in l.iter_mut().filter(|j| j.image.is_none()) {
+        let id = id_carte(source, j);
+        if let Some(img) = avant.iter().find(|c| c.id == id).and_then(|c| c.image.clone()).filter(|i| !i.is_empty()) {
+            j.image = Some(img);
+        }
+    }
     let presents: std::collections::BTreeSet<i64> = installes.iter().map(|j| id_carte(source, j)).collect();
     for c in avant.iter().filter(|c| !presents.contains(&c.id)) {
         let Some(cle) = c.cle_boutique.clone().filter(|k| !k.is_empty()) else { continue };
@@ -2463,6 +2472,40 @@ mod tests {
         n.registre().changer_installation(id47, Some(&i)).unwrap();
         n.synchroniser_boutique("uplay", &[], &vide).unwrap();
         assert!(n.registre().jeu(id47).unwrap().unwrap().installation.is_some(), "disque absent : « inconnu », rien ne bouge");
+    }
+
+    /// 0.221.1 (Seb 22/11, TerraScape) : une relecture des seuls installés (sans catalogue, donc sans image) ne fait
+    /// jamais perdre l'image d'une carte installée déjà rangée ; une image lue à l'instant reste prioritaire.
+    #[test]
+    fn une_carte_installee_relue_sans_image_garde_la_sienne() {
+        let avant = vec![JeuResume {
+            id: crate::ludotheque::id_boutique("epic", "6ef17d9f"),
+            titre: "TerraScape".into(),
+            source: Some("epic".into()),
+            boutique: Some("epic".into()),
+            cle_boutique: Some("epic_6ef17d9f".into()),
+            installe: Some(true),
+            image: Some("https://cdn1.epicgames.com/terrascape.png".into()),
+            ..Default::default()
+        }];
+        let lu = crate::boutiques::JeuBoutique {
+            id: "epic_6ef17d9f".into(),
+            nom: "TerraScape".into(),
+            minutes: 0,
+            derniere: 0,
+            installe: true,
+            plateforme: "epic".into(),
+            image: None,
+            dossier: Some(r"D:\Jeux\TerraScape".into()),
+            pret: None,
+            succes: None,
+            releases: vec![],
+            titre_douteux: false,
+        };
+        let l = fusion_installes("epic", std::slice::from_ref(&lu), &avant);
+        assert_eq!((l.len(), l[0].image.as_deref(), l[0].installe), (1, Some("https://cdn1.epicgames.com/terrascape.png"), true));
+        let neuve = crate::boutiques::JeuBoutique { image: Some("https://cdn1.epicgames.com/nouvelle.png".into()), ..lu };
+        assert_eq!(fusion_installes("epic", &[neuve], &avant)[0].image.as_deref(), Some("https://cdn1.epicgames.com/nouvelle.png"));
     }
 
     #[test]

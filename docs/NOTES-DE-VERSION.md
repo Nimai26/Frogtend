@@ -1,5 +1,14 @@
 # Notes de version de Frogtend
 
+## 0.221.1 — ☁ Parties dans OneDrive, et l'affiche de TerraScape
+
+- Nouveau : des parties seulement dans ton nuage OneDrive ? « 🛟 Mettre mes parties à l'abri » propose de les
+  télécharger d'abord (nombre de fichiers et taille annoncés, progression affichée), puis les met à l'abri ; ou de
+  mettre à l'abri sans elles. Rien ne se télécharge sans ton oui. « 📁 Où sont mes parties » dit maintenant quand des
+  fichiers sont seulement dans ton nuage.
+- Corrigé : TerraScape (et tout jeu Epic installé) perdait son affiche à chaque ouverture de Taodbox ou de la page
+  Boutiques, puis la retrouvait à l'ouverture du profil. Une carte garde désormais son image.
+
 ## 0.221.0 — 🛟 Mettre mes parties à l'abri (lot S, étape 2)
 
 - Nouveau : « 🛟 Mettre mes parties à l'abri » dans « 📁 Où sont mes parties », pour tout jeu PC, aussi dans Taodbox à

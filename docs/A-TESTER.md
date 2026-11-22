@@ -6,6 +6,14 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## ☁ Parties dans OneDrive et affiches (0.221.1)
+- [ ] 1. Fiche d'Age of Empires IV ▸ 📁 : « 9 fichiers · 180,2 Mo — dans ton nuage OneDrive, pas sur ce PC ».
+- [ ] 2. 🛟 : la fenêtre propose « ☁ Télécharger depuis OneDrive puis mettre à l'abri (9 fichiers · 180,2 Mo) » et
+      « Annuler » ; choisir Télécharger : « Téléchargement depuis OneDrive… N/9 », puis « … (dont 9 téléchargés depuis
+      OneDrive) » et un abri daté ; la ligne 📁 ne dit plus « dans ton nuage ».
+- [ ] 3. Ouvrir Taodbox puis revenir à la ludothèque : TerraScape garde son affiche (après une ouverture du profil
+      pour qu'elle revienne une première fois).
+
 ## 🛟 Mettre mes parties à l'abri (0.221.0, lot S2)
 - [x] (validé par Seb le 22/11 ; vérifié sur le disque : 189 fichiers, 253 Mo, fiche sans chemin du PC ni nom d utilisateur) 1. Fiche de Cyberpunk ▸ 📁 ▸ 🛟 « Mettre mes parties à l'abri » : « Frogtend compte tes parties… », puis l'annonce
       (N fichiers, taille, « rangées dans ton profil »), puis après ton oui « Copie en cours… » et un abri daté dans

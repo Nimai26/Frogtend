@@ -7,17 +7,21 @@
   // valide, B annule), annoncé avant (nombre de fichiers, taille, profil propriétaire), puis la liste des abris du
   // profil. Rien n'est envoyé chez Firehouse ni remis ici.
   import { api, type AbriVu, type PartiesVues } from '$lib/api';
-  import { confirmer, fermerToast, informer, toast, toastProgres } from '$lib/dialogues/fenetres.svelte';
+  import { listen } from '@tauri-apps/api/event';
+  import type { ProgresAbri } from '$lib/api';
+  import { choisir, confirmer, fermerToast, informer, majProgres, toast, toastProgres } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
   import {
     abritable,
     contenu,
     libelleOrigine,
     messageAnnonce,
+    messageChoix,
     messageDeja,
     messageRien,
     montres,
     noteAbri,
+    optionsAbri,
     ouvrable,
     texteAutresEndroits,
     texteContenuAbri,
@@ -100,17 +104,32 @@
           else toast('✅ Déjà à l’abri : rien n’a changé depuis ton dernier abri.', 'ok');
           return;
         }
-        if (a.fichiers === 0) {
+        // Des fichiers seulement dans OneDrive (Seb, 22/11) : proposer de les télécharger d'abord — jamais sans ce
+        // choix (« Annuler » est toujours là).
+        let rapatrier = false;
+        if (a.en_ligne_seulement > 0) {
+          const c = await choisir('🛟 Mettre mes parties à l’abri ?', optionsAbri(a), messageChoix(a));
+          if (!c) return;
+          rapatrier = c === 'telecharger';
+        } else if (a.fichiers === 0) {
           await informer('🛟 Rien à mettre à l’abri', messageRien(a));
           return;
+        } else if (!(await confirmer('🛟 Mettre mes parties à l’abri ?', { message: messageAnnonce(a), libelleValider: 'Mettre à l’abri' }))) {
+          return;
         }
-        const oui = await confirmer('🛟 Mettre mes parties à l’abri ?', { message: messageAnnonce(a), libelleValider: 'Mettre à l’abri' });
-        if (!oui) return;
         etape = 'copie';
         // Visible jusqu'à la fin, même si on quitte la page (au canapé aussi).
-        const attente = toastProgres('🛟 Copie de tes parties en cours…');
+        const attente = toastProgres(rapatrier ? '☁ Téléchargement depuis OneDrive…' : '🛟 Copie de tes parties en cours…');
+        let arreter: (() => void) | null = null;
         try {
-          const r = await api.partiesAbriter(n, a.gros);
+          if (rapatrier) {
+            arreter = await listen<ProgresAbri>('parties-abri-progres', (e) => {
+              const { jeu, faits, total } = e.payload;
+              if (jeu !== n) return;
+              majProgres(attente, { etape: `Téléchargement depuis OneDrive… ${faits}/${total}`, chiffres: '', pourcent: total ? Math.round((100 * faits) / total) : 0 });
+            });
+          }
+          const r = await api.partiesAbriter(n, rapatrier ? a.gros_avec_nuage : a.gros, rapatrier);
           toast(texteFait(r), r.echecs.length || r.en_ligne_seulement ? 'alerte' : 'ok');
           await relireAbris(n);
           return;
@@ -118,6 +137,7 @@
           if (essai === 0 && aConfirmer(e)) continue;
           throw e;
         } finally {
+          arreter?.();
           fermerToast(attente);
         }
       }

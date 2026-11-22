@@ -9028,12 +9028,18 @@ pub struct ApercuAbriParties {
     /// Les emplacements qui seront copiés.
     pub emplacements: usize,
     pub echecs: Vec<EchecAbriVu>,
-    /// Fichiers OneDrive « en ligne seulement » : jamais lus, pas copiés.
+    /// Fichiers OneDrive « en ligne seulement » : jamais lus pour l'aperçu ; copiés seulement si la personne choisit
+    /// de les télécharger (Seb, 22/11).
     pub en_ligne_seulement: usize,
-    /// Le dernier abri de ce profil contient déjà exactement ces fichiers.
+    /// Leur taille (annoncée par OneDrive) : ce qu'il faudrait télécharger.
+    pub octets_en_ligne: u64,
+    /// Le dernier abri de ce profil contient déjà exactement ces fichiers (jamais quand il y a des fichiers en ligne :
+    /// le choix de les télécharger reste proposé).
     pub deja: bool,
-    /// Plus de `nuage_steam::GROS` en tout : la personne confirme.
+    /// Plus de `nuage_steam::GROS` en tout (sans les fichiers en ligne) : la personne confirme.
     pub gros: bool,
+    /// Plus de `nuage_steam::GROS` en tout AVEC les fichiers en ligne.
+    pub gros_avec_nuage: bool,
     /// Le NOM du profil propriétaire de l'abri (celui de la session) : « ces parties seront rangées dans ton profil ».
     pub profil: String,
 }
@@ -9048,7 +9054,17 @@ pub struct AbriPartiesFait {
     pub emplacements: usize,
     pub echecs: Vec<EchecAbriVu>,
     pub en_ligne_seulement: usize,
+    /// Fichiers téléchargés depuis OneDrive puis mis à l'abri.
+    pub telecharges: usize,
     pub deja: bool,
+}
+
+/// De quoi rapatrier les fichiers « en ligne seulement » (après le oui de la personne) : la lecture, le délai d'attente
+/// par fichier, la progression (fichiers rapatriés, total). Remplacés dans les tests.
+pub(crate) struct OutilsRapatriement {
+    pub lecteur: std::sync::Arc<dyn Fn(&std::path::Path, &std::path::Path) -> std::io::Result<()> + Send + Sync>,
+    pub delai: fn(u64) -> std::time::Duration,
+    pub progres: std::sync::Arc<dyn Fn(usize, usize) + Send + Sync>,
 }
 
 /// Le jeu prêt pour un abri : son profil (celui de la session), ses emplacements NON résolus, de quoi les résoudre, ses
@@ -9155,23 +9171,28 @@ async fn apercu_abri_parties(
     }
     let (plan, profil, sources) = planifier_abri_parties(p, windows).await?;
     refus_ecriture_recente(&plan)?;
-    let deja = crate::abri_parties::deja_a_l_abri(&sources, &profil.id, &plan);
+    let deja = plan.fichiers_en_ligne() == 0 && crate::abri_parties::deja_a_l_abri(&sources, &profil.id, &plan);
     Ok(ApercuAbriParties {
         fichiers: plan.fichiers(),
         octets: plan.octets(),
         emplacements: plan.bons().count(),
         echecs: echecs_vus(&plan),
-        en_ligne_seulement: plan.en_ligne_seulement,
+        en_ligne_seulement: plan.fichiers_en_ligne(),
+        octets_en_ligne: plan.octets_en_ligne(),
         deja,
         gros: plan.octets() > crate::nuage_steam::GROS,
+        gros_avec_nuage: plan.octets() + plan.octets_en_ligne() > crate::nuage_steam::GROS,
         profil: profil.nom,
     })
 }
 
+/// `rapatrier` : la personne a choisi « Télécharger depuis OneDrive puis mettre à l'abri » ; sans lui, un fichier
+/// « en ligne seulement » n'est jamais lu.
 async fn abriter_parties(
     noyau: &Noyau,
     id: i64,
     accepte: bool,
+    rapatrier: Option<OutilsRapatriement>,
     windows: impl FnOnce() -> Vec<(&'static str, std::path::PathBuf)> + Send + 'static,
 ) -> Resultat<AbriPartiesFait> {
     let abris = noyau.dossier_abris()?;
@@ -9189,33 +9210,52 @@ async fn abriter_parties(
     if plan.emplacements.is_empty() {
         return Err(Erreur::Refus("Frogtend ne trouve aucune partie de ce jeu sur ce PC (aux endroits de « 📁 Où sont mes parties »).".into()));
     }
-    let vu = |plan: &crate::abri_parties::PlanAbri, date: Option<String>, deja: bool| AbriPartiesFait {
+    let vu = |plan: &crate::abri_parties::PlanAbri, date: Option<String>, deja: bool, telecharges: usize| AbriPartiesFait {
         date,
         fichiers: plan.fichiers(),
         octets: plan.octets(),
-        emplacements: plan.bons().count(),
+        emplacements: plan.bons().filter(|e| !e.fichiers.is_empty()).count(),
         echecs: echecs_vus(plan),
         en_ligne_seulement: plan.en_ligne_seulement,
+        telecharges,
         deja,
     };
-    if plan.fichiers() > 0 && crate::abri_parties::deja_a_l_abri(&sources, &profil.id, &plan) {
-        return Ok(vu(&plan, None, true));
+    // Rapatrier : le plafond de 2 Go par endroit compte AUSSI les fichiers en ligne (ils vont être copiés).
+    if rapatrier.is_some() {
+        plan.preparer_rapatriement(crate::nuage_steam::EMPLACEMENT_MAX);
     }
-    if plan.octets() > crate::nuage_steam::GROS && !accepte {
+    let rapatries = if rapatrier.is_some() { plan.fichiers_en_ligne() } else { 0 };
+    if rapatries == 0 && plan.fichiers() == 0 && plan.fichiers_en_ligne() > 0 {
+        return Err(Erreur::Refus("Ces parties sont seulement dans ton nuage OneDrive : choisis de les télécharger d'abord.".into()));
+    }
+    if rapatries == 0 && plan.fichiers() > 0 && crate::abri_parties::deja_a_l_abri(&sources, &profil.id, &plan) {
+        return Ok(vu(&plan, None, true, 0));
+    }
+    let total = plan.octets() + if rapatrier.is_some() { plan.octets_en_ligne() } else { 0 };
+    if total > crate::nuage_steam::GROS && !accepte {
         return Err(Erreur::Refus("Ces parties sont très grosses : confirme d'abord.".into()));
     }
     let quand = crate::noyau::maintenant();
     let (r, plan) = tauri::async_runtime::spawn_blocking(move || {
-        let r = crate::abri_parties::abriter(&mut plan, &abris, id, &quand, &profil.id).map(|_| quand);
+        let r = match &rapatrier {
+            Some(o) => {
+                let rap = crate::abri_parties::Rapatriement { lecteur: o.lecteur.clone(), delai: &o.delai, progres: &*o.progres };
+                crate::abri_parties::abriter(&mut plan, &abris, id, &quand, &profil.id, Some(&rap))
+            }
+            None => crate::abri_parties::abriter(&mut plan, &abris, id, &quand, &profil.id, None),
+        }
+        .map(|_| quand);
         (r, plan)
     })
     .await
     .map_err(|_| Erreur::Disque("La mise à l'abri s'est arrêtée brutalement.".into()))?;
     let (n, k, e, o) = (plan.fichiers(), plan.bons().count(), plan.echecs(), plan.en_ligne_seulement);
+    // Rapatriés : ceux qui étaient en ligne et sont maintenant dans l'abri (les emplacements en échec n'en ont plus).
+    let telecharges = plan.rapatries;
     match r {
         Ok(date) => {
-            noyau.journaliser(&format!("jeu {id} : {n} fichier(s) de parties mis à l'abri à la main ({k} emplacement(s), {e} en échec, {o} en ligne seulement)"));
-            Ok(vu(&plan, Some(date), false))
+            noyau.journaliser(&format!("jeu {id} : {n} fichier(s) de parties mis à l'abri à la main ({k} emplacement(s), {e} en échec, {o} en ligne seulement, {telecharges} téléchargé(s) depuis le nuage)"));
+            Ok(vu(&plan, Some(date), false, telecharges))
         }
         Err(x) => {
             noyau.journaliser(&format!("jeu {id} : mise à l'abri à la main impossible ({e} emplacement(s) en échec)"));
@@ -9247,11 +9287,27 @@ pub async fn parties_abri_apercu(noyau: State<'_, Noyau>, id: i64) -> Resultat<A
     apercu_abri_parties(&noyau, id, crate::nuage_steam::dossiers_windows).await
 }
 
+/// La progression d'un rapatriement depuis OneDrive (`parties-abri-progres`).
+#[derive(Clone, Serialize)]
+struct ProgresAbri {
+    jeu: i64,
+    faits: usize,
+    total: usize,
+}
+
 /// 🛟 Met les parties d'un jeu PC à l'abri, pour le profil ouvert (`accepte` : la personne a confirmé une très grosse
-/// copie). Refusé pendant une partie.
+/// copie ; `rapatrier` : elle a choisi de télécharger d'abord les fichiers « en ligne seulement » de OneDrive). Refusé
+/// pendant une partie.
 #[tauri::command]
-pub async fn parties_abriter(noyau: State<'_, Noyau>, id: i64, accepte: bool) -> Resultat<AbriPartiesFait> {
-    abriter_parties(&noyau, id, accepte, crate::nuage_steam::dossiers_windows).await
+pub async fn parties_abriter(app: AppHandle, noyau: State<'_, Noyau>, id: i64, accepte: bool, rapatrier: Option<bool>) -> Resultat<AbriPartiesFait> {
+    let outils = rapatrier.unwrap_or(false).then(|| OutilsRapatriement {
+        lecteur: std::sync::Arc::new(|a: &std::path::Path, b: &std::path::Path| crate::abri_parties::lire_en_entier(a, b)),
+        delai: crate::abri_parties::delai_de_telechargement,
+        progres: std::sync::Arc::new(move |faits, total| {
+            let _ = app.emit("parties-abri-progres", ProgresAbri { jeu: id, faits, total });
+        }),
+    });
+    abriter_parties(&noyau, id, accepte, outils, crate::nuage_steam::dossiers_windows).await
 }
 
 /// Les abris de parties d'un jeu PC, pour le profil ouvert (lecture seule).
@@ -12693,20 +12749,20 @@ mod tests_parties {
             autre => panic!("un refus attendu : {autre:?}"),
         };
         assert!(refus(super::apercu_abri_parties(&n, 900, windows.clone()).await.map(|_| ())).contains("occupé"));
-        assert!(refus(super::abriter_parties(&n, 900, false, windows.clone()).await.map(|_| ())).contains("occupé"));
+        assert!(refus(super::abriter_parties(&n, 900, false, None, windows.clone()).await.map(|_| ())).contains("occupé"));
         n.liberer(900);
         // Une mise à l'abri de ce jeu déjà en cours : dit à part.
         let en_cours = super::AbriEnCours::prendre(&n, 900).unwrap();
-        assert!(refus(super::abriter_parties(&n, 900, false, windows.clone()).await.map(|_| ())).contains("déjà en cours"));
+        assert!(refus(super::abriter_parties(&n, 900, false, None, windows.clone()).await.map(|_| ())).contains("déjà en cours"));
         drop(en_cours);
         // Correctif 4 : une partie écrite il y a moins d'une minute (le jeu tourne peut-être hors de Frogtend, sans
         // dossier connu ici : une carte de boutique) — refusé dès l'annonce, rien de copié.
         std::fs::write(&sav, b"partie!").unwrap();
         assert!(refus(super::apercu_abri_parties(&n, 900, windows.clone()).await.map(|_| ())).contains("encore écrire ses parties"));
-        assert!(refus(super::abriter_parties(&n, 900, false, windows.clone()).await.map(|_| ())).contains("encore écrire ses parties"));
+        assert!(refus(super::abriter_parties(&n, 900, false, None, windows.clone()).await.map(|_| ())).contains("encore écrire ses parties"));
         vieillir(&sav);
         assert!(!abris.join("900").exists());
-        let fait = super::abriter_parties(&n, 900, false, windows.clone()).await.unwrap();
+        let fait = super::abriter_parties(&n, 900, false, None, windows.clone()).await.unwrap();
         let date = fait.date.clone().unwrap();
         assert_eq!((fait.fichiers, fait.octets, fait.deja), (1, 7, false));
         let cle = crate::abri_parties::cle_chemin(r"%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077", "dossier");
@@ -12716,7 +12772,7 @@ mod tests_parties {
         assert!(!n.utilise(900), "plus occupé après l'abri");
         // Rien de neuf : pas de copie.
         assert!(super::apercu_abri_parties(&n, 900, windows.clone()).await.unwrap().deja);
-        let encore = super::abriter_parties(&n, 900, false, windows.clone()).await.unwrap();
+        let encore = super::abriter_parties(&n, 900, false, None, windows.clone()).await.unwrap();
         assert_eq!((encore.date, encore.deja), (None, true));
         assert_eq!(std::fs::read_dir(abris.join("900")).unwrap().count(), 2, "un abri et sa fiche, rien de plus");
         // La liste : l'abri de Seb.
@@ -12725,7 +12781,7 @@ mod tests_parties {
         // Un jeu d'émulateur, un jeu caché : refusés.
         assert!(super::abris_des_parties(&n, 110).await.is_err());
         assert!(matches!(super::abris_des_parties(&n, 777).await, Err(crate::erreurs::Erreur::Introuvable(_))));
-        assert!(matches!(super::abriter_parties(&n, 777, false, windows.clone()).await, Err(crate::erreurs::Erreur::Introuvable(_))));
+        assert!(matches!(super::abriter_parties(&n, 777, false, None, windows.clone()).await, Err(crate::erreurs::Erreur::Introuvable(_))));
 
         // Léa, sur le même compte Windows : l'abri de Seb n'est jamais montré ; le sien lui appartient.
         let p2 = ouvrir(&n, &s, "Léa").await;
@@ -12735,7 +12791,7 @@ mod tests_parties {
         assert_eq!((a.deja, a.profil.as_str()), (false, "Léa"), "l'abri de Seb ne compte pas pour Léa");
         // Une seconde plus tard au moins : deux abris n'ont jamais le même nom.
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        let fait2 = super::abriter_parties(&n, 900, false, windows.clone()).await.unwrap();
+        let fait2 = super::abriter_parties(&n, 900, false, None, windows.clone()).await.unwrap();
         assert_eq!(crate::abri_parties::lire_fiche(&abris.join("900").join(fait2.date.as_ref().unwrap())).unwrap().profil, p2);
         assert_eq!(super::abris_des_parties(&n, 900).await.unwrap().iter().map(|x| x.date.clone()).collect::<Vec<_>>(), [fait2.date.clone().unwrap()]);
 
@@ -12745,6 +12801,66 @@ mod tests_parties {
         for interdit in ["Saved Games", "Cyberpunk", "CD Projekt", "USERPROFILE", "Abris", &cle] {
             assert!(!journal.contains(interdit), "« {interdit} » au journal : {journal}");
         }
+    }
+
+    /// Seb 22/11 (Age of Empires IV : 9 fichiers seulement dans OneDrive) : l'annonce les compte sans les lire ; sans
+    /// le choix « Télécharger depuis OneDrive », rien n'est lu ni copié ; avec lui, ils sont rapatriés et mis à l'abri.
+    #[tokio::test]
+    #[cfg(windows)]
+    async fn les_parties_seulement_dans_onedrive_ne_se_telechargent_qu_apres_le_choix() {
+        use windows::Win32::Storage::FileSystem::{SetFileAttributesW, FILE_ATTRIBUTE_ARCHIVE, FILE_ATTRIBUTE_OFFLINE};
+        let (s, reponse) = serveur();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/900/triche");
+            t.status(200).header("content-type", "application/json").body(reponse.clone());
+        });
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let parties = d.path().join("Saved Games");
+        let cp = parties.join("CD Projekt Red").join("Cyberpunk 2077");
+        std::fs::create_dir_all(&cp).unwrap();
+        let sav = cp.join("ManualSave-0.dat");
+        std::fs::write(&sav, b"partie!").unwrap();
+        std::fs::OpenOptions::new().write(true).open(&sav).unwrap().set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(3600)).unwrap();
+        let h = windows::core::HSTRING::from(sav.as_os_str());
+        if unsafe { SetFileAttributesW(&h, FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_ARCHIVE) }.is_err() {
+            eprintln!("attribut « hors ligne » impossible à poser ici : test sauté");
+            return;
+        }
+        let w = parties.clone();
+        let windows = move || vec![("Parties-enregistrees", w.clone())];
+        ouvrir(&n, &s, "Seb").await;
+        let v = super::parties_du_jeu(&n, 900, true, windows.clone()).await.unwrap();
+        assert_eq!((v.emplacements[0].fichiers, v.emplacements[0].en_ligne), (1, 1), "« dans ton nuage OneDrive, pas sur ce PC »");
+        let abris = d.path().join("Abris");
+        n.regler_abris(Some(abris.clone()));
+        let a = super::apercu_abri_parties(&n, 900, windows.clone()).await.unwrap();
+        assert_eq!((a.fichiers, a.en_ligne_seulement, a.octets_en_ligne, a.deja, a.gros_avec_nuage), (0, 1, 7, false, false));
+        // Sans le choix : rien de lu, rien de copié.
+        let lus = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let refus = super::abriter_parties(&n, 900, false, None, windows.clone()).await;
+        assert!(matches!(&refus, Err(crate::erreurs::Erreur::Refus(m)) if m.contains("seulement dans ton nuage OneDrive")), "{refus:?}");
+        assert!(!abris.join("900").exists());
+        // Avec : lu en entier (compté), copié, la progression dite.
+        let (l2, etapes) = (lus.clone(), std::sync::Arc::new(std::sync::Mutex::new(Vec::new())));
+        let e2 = etapes.clone();
+        let outils = super::OutilsRapatriement {
+            lecteur: std::sync::Arc::new(move |a: &std::path::Path, b: &std::path::Path| {
+                l2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                crate::abri_parties::lire_en_entier(a, b)
+            }),
+            delai: |_| std::time::Duration::from_secs(30),
+            progres: std::sync::Arc::new(move |f, t| e2.lock().unwrap().push((f, t))),
+        };
+        let fait = super::abriter_parties(&n, 900, false, Some(outils), windows.clone()).await.unwrap();
+        assert_eq!((fait.fichiers, fait.telecharges, fait.en_ligne_seulement), (1, 1, 0));
+        assert_eq!(lus.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(*etapes.lock().unwrap(), [(0, 1), (1, 1)]);
+        let cle = crate::abri_parties::cle_chemin(r"%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077", "dossier");
+        assert_eq!(std::fs::read(abris.join("900").join(fait.date.unwrap()).join("emplacements").join(cle).join("ManualSave-0.dat")).unwrap(), b"partie!");
+        let journal = std::fs::read_to_string(n.dossier.join("journal.txt")).unwrap();
+        assert!(journal.contains("1 téléchargé(s) depuis le nuage") && !journal.contains("Saved Games"), "{journal}");
+        let _ = unsafe { SetFileAttributesW(&h, FILE_ATTRIBUTE_ARCHIVE) };
     }
 
     #[test]

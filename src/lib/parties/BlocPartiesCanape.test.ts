@@ -15,15 +15,17 @@ const VUES = {
   source: 'ludusavi',
   reconnu_par: 'gog_id',
   autres_systemes: [],
-  emplacements: [{ n: 0, dossier: DOSSIER, filtre: null, nature: 'dossier', origine: 'firehouse', os: 'Windows', source: 'ludusavi', nuage_boutique: false, lisible: true, existe: true, fichiers: 2, octets: 7, trop: false, illisible: false }],
+  emplacements: [{ n: 0, dossier: DOSSIER, filtre: null, nature: 'dossier', origine: 'firehouse', os: 'Windows', source: 'ludusavi', nuage_boutique: false, lisible: true, existe: true, fichiers: 2, octets: 7, en_ligne: 0, trop: false, illisible: false }],
 };
-const abriter = vi.fn(async (..._a: unknown[]) => ({ date: '1763800000', fichiers: 2, octets: 7, emplacements: 1, echecs: [], en_ligne_seulement: 0, deja: false }));
+const abriter = vi.fn(async (..._a: unknown[]) => ({ date: '1763800000', fichiers: 2, octets: 7, emplacements: 1, echecs: [], en_ligne_seulement: 0, telecharges: 0, deja: false }));
+let enLigne = 0;
+vi.mock('@tauri-apps/api/event', () => ({ listen: async () => () => {} }));
 vi.mock('$lib/api', () => ({
   taille: (o: number) => `${o} o`,
   api: {
     partiesEmplacements: async () => structuredClone(VUES),
     partiesOuvrirDossier: async () => {},
-    partiesAbriApercu: async () => ({ fichiers: 2, octets: 7, emplacements: 1, echecs: [], en_ligne_seulement: 0, deja: false, gros: false, profil: 'Léa' }),
+    partiesAbriApercu: async () => ({ fichiers: 2, octets: 7, emplacements: 1, echecs: [], en_ligne_seulement: enLigne, octets_en_ligne: enLigne * 100, deja: false, gros: false, gros_avec_nuage: false, profil: 'Léa' }),
     partiesAbriter: (...a: unknown[]) => abriter(...a),
     partiesAbris: async () => [],
   },
@@ -44,7 +46,10 @@ async function attendre() {
   }
 }
 
-beforeEach(() => abriter.mockClear());
+beforeEach(() => {
+  abriter.mockClear();
+  enLigne = 0;
+});
 afterEach(() => {
   cleanup();
   pile.dialogues.length = 0;
@@ -68,7 +73,7 @@ describe('🛟 au canapé, tout à la manette', () => {
     expect(document.activeElement?.textContent?.trim()).toBe('Mettre à l’abri');
     appliquer('valider');
     await attendre();
-    expect(abriter).toHaveBeenCalledWith(-7, false);
+    expect(abriter).toHaveBeenCalledWith(-7, false, false);
     expect(fenetreOuverte()).toBe(false);
     expect(natif).not.toHaveBeenCalled();
   });
@@ -80,6 +85,37 @@ describe('🛟 au canapé, tout à la manette', () => {
     appliquer('valider');
     await attendre();
     expect(fenetreOuverte()).toBe(true);
+    appliquer('retour');
+    await attendre();
+    expect(fenetreOuverte()).toBe(false);
+    expect(abriter).not.toHaveBeenCalled();
+  });
+});
+
+describe('☁ au canapé : le choix OneDrive à la manette', () => {
+  it('la croix va sur « Télécharger depuis OneDrive », A le choisit ; B annule sans rien', async () => {
+    enLigne = 9;
+    render(Dialogues);
+    render(BlocParties, { id: -7, canape: true });
+    selectionner(await screen.findByRole('button', { name: /Mettre mes parties à l’abri/ }));
+    appliquer('valider');
+    await attendre();
+    expect(fenetreOuverte()).toBe(true);
+    const fenetre = screen.getByRole('dialog');
+    expect(fenetre.textContent).toContain('seulement dans ton nuage OneDrive');
+    const choix = screen.getByRole('button', { name: /Télécharger depuis OneDrive puis mettre à l’abri/ });
+    expect(screen.getByRole('button', { name: /Mettre à l’abri sans eux/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Annuler' })).toBeTruthy();
+    selectionner(choix);
+    appliquer('valider');
+    await attendre();
+    expect(abriter).toHaveBeenCalledWith(-7, false, true);
+    expect(fenetreOuverte()).toBe(false);
+    // B : rien n'est copié ni téléchargé.
+    abriter.mockClear();
+    selectionner(screen.getByRole('button', { name: /Mettre mes parties à l’abri/ }));
+    appliquer('valider');
+    await attendre();
     appliquer('retour');
     await attendre();
     expect(fenetreOuverte()).toBe(false);

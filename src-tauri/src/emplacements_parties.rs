@@ -514,6 +514,10 @@ pub struct EmplacementVu {
     pub existe: bool,
     pub fichiers: u64,
     pub octets: u64,
+    /// Parmi `fichiers`, ceux qui sont seulement dans le nuage (OneDrive « en ligne seulement ») : pas sur ce PC
+    /// (jamais lus pour être comptés : leur taille est celle que OneDrive annonce).
+    #[serde(default)]
+    pub en_ligne: u64,
     /// Trop de fichiers, de dossiers, ou trop profond pour un dossier de parties : pas comptés.
     pub trop: bool,
     /// Le dossier existe mais ne se lit pas (droits…) : pas compté.
@@ -527,6 +531,7 @@ struct Mesure {
     existe: bool,
     fichiers: u64,
     octets: u64,
+    en_ligne: u64,
     trop: bool,
     illisible: bool,
 }
@@ -540,10 +545,15 @@ fn mesurer(e: &crate::nuage_steam::Emplacement, compter: bool) -> Mesure {
     if !compter {
         return Mesure { existe: true, ..Default::default() };
     }
-    let taille = |p: &Path| std::fs::symlink_metadata(p).map(|m| m.len()).unwrap_or(0);
+    // (taille, en ligne seulement) d'un fichier, sans le lire.
+    let vu = |p: &Path| std::fs::symlink_metadata(p).map(|m| (m.len(), crate::nuage_steam::en_ligne_seulement(&m))).unwrap_or((0, false));
+    let compter = |l: Vec<PathBuf>| {
+        let v: Vec<(u64, bool)> = l.iter().map(|p| vu(p)).collect();
+        Mesure { existe: true, fichiers: v.len() as u64, octets: v.iter().map(|x| x.0).sum(), en_ligne: v.iter().filter(|x| x.1).count() as u64, ..Default::default() }
+    };
     match &e.filtre {
         None => match crate::nuage_steam::parcourir(&e.dossier) {
-            Ok(l) => Mesure { existe: true, fichiers: l.len() as u64, octets: l.iter().map(|r| taille(&e.dossier.join(r))).sum(), ..Default::default() },
+            Ok(l) => compter(l.iter().map(|r| e.dossier.join(r)).collect()),
             Err(crate::nuage_steam::Arret::Trop) => Mesure { existe: true, trop: true, ..Default::default() },
             Err(crate::nuage_steam::Arret::Illisible) => Mesure { existe: true, illisible: true, ..Default::default() },
         },
@@ -555,7 +565,7 @@ fn mesurer(e: &crate::nuage_steam::Emplacement, compter: bool) -> Mesure {
                     .filter(|x| crate::nuage_steam::repond(&x.file_name().to_string_lossy(), f))
                     .map(|x| x.path())
                     .collect();
-                Mesure { existe: true, fichiers: l.len() as u64, octets: l.iter().map(|p| taille(p)).sum(), ..Default::default() }
+                compter(l)
             }
             Err(_) => Mesure { existe: true, illisible: true, ..Default::default() },
         },
@@ -580,6 +590,7 @@ pub fn resoudre(e: &PartiesJeu, ctx: &Contexte, compter: bool) -> Vec<Emplacemen
             existe: m.existe,
             fichiers: m.fichiers,
             octets: m.octets,
+            en_ligne: m.en_ligne,
             trop: m.trop,
             illisible: m.illisible,
         };
@@ -1175,5 +1186,32 @@ mod tests {
         assert_eq!(c.jeu(1).unwrap().dossier_ecarte.as_ref().unwrap()["dossier"], "Game");
         appliquer(&mut c, 2, gog(), &fixture("triche-cyberpunk-148-reel.json"), &refs_148(), "1");
         assert_eq!(c.jeu(2).unwrap().dossier_ecarte, None);
+    }
+
+    /// Seb 22/11 (Age of Empires IV sous OneDrive) : « 📁 Où sont mes parties » compte les fichiers « en ligne
+    /// seulement » à part, sans jamais les lire.
+    #[test]
+    fn les_fichiers_en_ligne_seulement_sont_comptes_a_part() {
+        let d = tempfile::tempdir().unwrap();
+        let docs = d.path().join("OneDrive").join("Documents");
+        let saves = docs.join("My Games").join("Jeu");
+        std::fs::create_dir_all(&saves).unwrap();
+        std::fs::write(saves.join("a.sav"), b"aaaa").unwrap();
+        std::fs::write(saves.join("b.sav"), b"bb").unwrap();
+        let ctx = Contexte { jeu: None, steam: None, compte: None, windows: vec![("Documents", docs.clone())], boutique: None };
+        let e = PartiesJeu { id: 1, emplacements: vec![EmplacementPartie { chemin: r"%USERPROFILE%\Documents\My Games\Jeu".into(), nature: "dossier".into(), os: "Windows".into(), origine: "firehouse".into(), ..Default::default() }], ..Default::default() };
+        assert_eq!(resoudre(&e, &ctx, true)[0].en_ligne, 0);
+        #[cfg(windows)]
+        {
+            use windows::Win32::Storage::FileSystem::{SetFileAttributesW, FILE_ATTRIBUTE_ARCHIVE, FILE_ATTRIBUTE_OFFLINE};
+            let f = windows::core::HSTRING::from(saves.join("a.sav").as_os_str());
+            if unsafe { SetFileAttributesW(&f, FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_ARCHIVE) }.is_err() {
+                eprintln!("attribut « hors ligne » impossible à poser ici : test sauté");
+                return;
+            }
+            let v = resoudre(&e, &ctx, true).remove(0);
+            assert_eq!((v.fichiers, v.octets, v.en_ligne), (2, 6, 1));
+            let _ = unsafe { SetFileAttributesW(&f, FILE_ATTRIBUTE_ARCHIVE) };
+        }
     }
 }

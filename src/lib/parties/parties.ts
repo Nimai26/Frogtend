@@ -92,7 +92,11 @@ export function contenu(e: EmplacementVu): string {
   if (e.illisible) return 'Le dossier est là, mais Frogtend ne peut pas le lire.';
   if (e.trop) return 'Trop de fichiers pour un dossier de parties : pas comptés.';
   if (!e.fichiers) return 'Le dossier est là, mais vide.';
-  return `${e.fichiers.toLocaleString('fr-FR')} fichier${e.fichiers > 1 ? 's' : ''} · ${taille(e.octets)}`;
+  const base = `${e.fichiers.toLocaleString('fr-FR')} fichier${e.fichiers > 1 ? 's' : ''} · ${taille(e.octets)}`;
+  // Seb 22/11 (Age of Empires IV) : dire tout de suite ce qui n'est pas sur ce PC.
+  if ((e.en_ligne ?? 0) >= e.fichiers) return `${base} — dans ton nuage OneDrive, pas sur ce PC`;
+  if (e.en_ligne) return `${base} — dont ${e.en_ligne.toLocaleString('fr-FR')} dans ton nuage OneDrive`;
+  return base;
 }
 
 /** Les fichiers visés, quand ce n'est pas un dossier entier. */
@@ -150,6 +154,31 @@ export function messageAnnonce(a: ApercuAbriParties): string {
     .join('\n');
 }
 
+/** Le choix proposé quand des fichiers sont seulement dans OneDrive (Seb, 22/11) : les télécharger puis tout mettre à
+ * l'abri, ou (s'il y a aussi des fichiers sur ce PC) mettre à l'abri sans eux. « Annuler » est toujours là. */
+export function optionsAbri(a: ApercuAbriParties): { valeur: 'telecharger' | 'local'; libelle: string; detail?: string }[] {
+  const l: { valeur: 'telecharger' | 'local'; libelle: string; detail?: string }[] = [
+    {
+      valeur: 'telecharger',
+      libelle: '☁ Télécharger depuis OneDrive puis mettre à l’abri',
+      detail: `${fichiers(a.en_ligne_seulement)} · ${taille(a.octets_en_ligne)} à télécharger${a.gros_avec_nuage ? ' (plus de 2 Go en tout : la copie peut être longue)' : ''}`,
+    },
+  ];
+  if (a.fichiers > 0) l.push({ valeur: 'local', libelle: '🛟 Mettre à l’abri sans eux', detail: `${fichiers(a.fichiers)} · ${taille(a.octets)} déjà sur ce PC` });
+  return l;
+}
+
+/** Le message de ce choix. */
+export function messageChoix(a: ApercuAbriParties): string {
+  return [
+    `${fichiers(a.en_ligne_seulement)} (${taille(a.octets_en_ligne)}) ${a.en_ligne_seulement > 1 ? 'sont' : 'est'} seulement dans ton nuage OneDrive, pas sur ce PC.`,
+    'Pour les mettre à l’abri, Frogtend doit d’abord les télécharger ; ils resteront ensuite sur ce PC, comme quand tu les ouvres.',
+    `Ces parties seront rangées dans ton profil « ${a.profil} ».`,
+    ...lignesEchecs(a.echecs),
+    'Ferme le jeu avant : ses parties ne doivent pas changer pendant la copie.',
+  ].join('\n');
+}
+
 /** Rien à copier (tous les endroits en échec, ou vides) : pourquoi. */
 export function messageRien(a: ApercuAbriParties): string {
   return ['Frogtend n’a trouvé aucune partie à copier pour ce jeu sur ce PC.', ligneEnLigne(a.en_ligne_seulement), ...lignesEchecs(a.echecs)].filter(Boolean).join('\n');
@@ -169,7 +198,8 @@ export function texteFait(r: AbriPartiesFait): string {
   const n = r.echecs.length;
   const echecs = n ? `${n === 1 ? '1 endroit n’a' : `${n} endroits n’ont`} pas pu être copié${n > 1 ? 's' : ''} (ouvre « 🛟 Mettre mes parties à l’abri » à nouveau pour voir pourquoi).` : null;
   const reste = [echecs, ligneEnLigne(r.en_ligne_seulement)].filter(Boolean);
-  return [`${n ? '⚠' : '✅'} ${fichiers(r.fichiers)} de parties (${taille(r.octets)}) mis à l’abri dans ton profil.`, ...reste].join(' ');
+  const nuage = r.telecharges ? ` (dont ${r.telecharges.toLocaleString('fr-FR')} téléchargé${r.telecharges > 1 ? 's' : ''} depuis OneDrive)` : '';
+  return [`${n ? '⚠' : '✅'} ${fichiers(r.fichiers)} de parties (${taille(r.octets)}) mis à l’abri dans ton profil${nuage}.`, ...reste].join(' ');
 }
 
 /** La date d'un abri (secondes depuis 1970), en français. */

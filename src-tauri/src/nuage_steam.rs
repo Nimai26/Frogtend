@@ -777,8 +777,11 @@ pub fn ajouter_emplacements(plan: &mut Plan, emplacements: &[Emplacement], sel: 
         }
         plan.octets += e.octets;
         plan.hors_nuage += e.fichiers.len();
+        // Un emplacement dont tout est « en ligne seulement » : rien de copié, pas dans la fiche.
+        if !e.fichiers.is_empty() {
+            plan.abrites.push(e.abrite);
+        }
         plan.fichiers.extend(e.fichiers);
-        plan.abrites.push(e.abrite);
     }
     plan.fichiers.sort_by(|a, b| a.relatif.cmp(&b.relatif));
 }

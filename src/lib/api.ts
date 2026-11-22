@@ -377,6 +377,8 @@ export interface EmplacementVu {
   existe: boolean;
   fichiers: number;
   octets: number;
+  /** Parmi `fichiers`, ceux qui sont seulement dans le nuage (OneDrive « en ligne seulement »), pas sur ce PC. */
+  en_ligne: number;
   /** Trop de fichiers, de dossiers, ou trop profond pour un dossier de parties : pas comptés. */
   trop: boolean;
   /** Le dossier existe mais ne se lit pas : pas compté. */
@@ -414,12 +416,17 @@ export interface ApercuAbriParties {
   /** Les emplacements qui seront copiés. */
   emplacements: number;
   echecs: EchecAbriVu[];
-  /** Fichiers OneDrive « en ligne seulement » : jamais lus, pas copiés. */
+  /** Fichiers OneDrive « en ligne seulement » : jamais lus pour l'annonce ; copiés seulement si la personne choisit
+   * de les télécharger. */
   en_ligne_seulement: number;
-  /** Le dernier abri de ce profil contient déjà exactement ces fichiers. */
+  /** Leur taille : ce qu'il faudrait télécharger. */
+  octets_en_ligne: number;
+  /** Le dernier abri de ce profil contient déjà exactement ces fichiers (jamais quand il y en a en ligne). */
   deja: boolean;
-  /** Plus de 2 Go : la personne confirme. */
+  /** Plus de 2 Go sans les fichiers en ligne : la personne confirme. */
   gros: boolean;
+  /** Plus de 2 Go AVEC les fichiers en ligne. */
+  gros_avec_nuage: boolean;
   /** Le nom du profil qui sera propriétaire de l'abri (celui ouvert). */
   profil: string;
 }
@@ -433,7 +440,16 @@ export interface AbriPartiesFait {
   emplacements: number;
   echecs: EchecAbriVu[];
   en_ligne_seulement: number;
+  /** Fichiers téléchargés depuis OneDrive puis mis à l'abri. */
+  telecharges: number;
   deja: boolean;
+}
+
+/** La progression d'un téléchargement depuis OneDrive pendant un abri (`parties-abri-progres`). */
+export interface ProgresAbri {
+  jeu: number;
+  faits: number;
+  total: number;
 }
 
 /** Un abri des parties d'un jeu (`parties_abris`, lot S2) : seulement ceux du profil ouvert, et les anciens sans
@@ -1252,8 +1268,9 @@ export const api = {
   partiesOuvrirDossier: (id: number, dossier: string) => appeler<void>('parties_ouvrir_dossier', { id, dossier }),
   /** 🛟 Ce que « Mettre mes parties à l'abri » copierait (lot S2 ; lecture seule). */
   partiesAbriApercu: (id: number) => appeler<ApercuAbriParties>('parties_abri_apercu', { id }),
-  /** 🛟 Met les parties d'un jeu PC à l'abri pour le profil ouvert (`accepte` : très grosse copie confirmée). */
-  partiesAbriter: (id: number, accepte = false) => appeler<AbriPartiesFait>('parties_abriter', { id, accepte }),
+  /** 🛟 Met les parties d'un jeu PC à l'abri pour le profil ouvert (`accepte` : très grosse copie confirmée ;
+   * `rapatrier` : la personne a choisi de télécharger d'abord les fichiers « en ligne seulement » de OneDrive). */
+  partiesAbriter: (id: number, accepte = false, rapatrier = false) => appeler<AbriPartiesFait>('parties_abriter', { id, accepte, rapatrier }),
   /** Les abris de parties d'un jeu PC, pour le profil ouvert. */
   partiesAbris: (id: number) => appeler<AbriVu[]>('parties_abris', { id }),
   /** Le risque de brancher Cheat Engine sur ce jeu (Seb, 21/10 : anti-triche = refus ; en ligne ou inconnu = avertir). */

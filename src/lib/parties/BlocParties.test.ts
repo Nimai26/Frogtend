@@ -16,7 +16,7 @@ const LU = {
   reconnu_par: 'gog_id',
   autres_systemes: ['Mac', 'Microsoft Store'],
   emplacements: [
-    { n: 0, dossier: DOSSIER, filtre: null, nature: 'dossier', origine: 'firehouse', os: 'Windows', source: 'ludusavi', nuage_boutique: false, lisible: true, existe: true, fichiers: 2, octets: 7, trop: false, illisible: false },
+    { n: 0, dossier: DOSSIER, filtre: null, nature: 'dossier', origine: 'firehouse', os: 'Windows', source: 'ludusavi', nuage_boutique: false, lisible: true, existe: true, fichiers: 2, octets: 7, en_ligne: 0, trop: false, illisible: false },
     { n: 1, dossier: null, filtre: null, nature: 'dossier', origine: 'firehouse', os: 'Windows', source: null, nuage_boutique: false, lisible: false, existe: false, fichiers: 0, octets: 0, trop: false, illisible: false },
     { n: 2, dossier: 'C:\\Users\\Léa\\AppData\\Local\\Jeu', filtre: null, nature: 'dossier', origine: 'firehouse', os: 'Windows', source: 'ludusavi', nuage_boutique: false, lisible: true, existe: false, fichiers: 0, octets: 0, trop: false, illisible: false },
   ],
@@ -26,10 +26,10 @@ const emplacements = vi.fn(async (..._a: unknown[]) => structuredClone(reponse))
 let finOuverture: () => void = () => {};
 const ouvrirDossier = vi.fn((..._a: unknown[]) => new Promise<void>((r) => (finOuverture = r)));
 // Lot S2 : les formes RÉELLES de `parties_abri_apercu`, `parties_abriter`, `parties_abris` (commandes.rs).
-const APERCU = { fichiers: 2, octets: 7, emplacements: 1, echecs: [], en_ligne_seulement: 0, deja: false, gros: false, profil: 'Léa' };
+const APERCU = { fichiers: 2, octets: 7, emplacements: 1, echecs: [], en_ligne_seulement: 0, octets_en_ligne: 0, deja: false, gros: false, gros_avec_nuage: false, profil: 'Léa' };
 let apercu: object = APERCU;
 const abriApercu = vi.fn(async (..._a: unknown[]) => structuredClone(apercu));
-const abriter = vi.fn(async (..._a: unknown[]) => ({ date: '1763800000', fichiers: 2, octets: 7, emplacements: 1, echecs: [], en_ligne_seulement: 0, deja: false }));
+const abriter = vi.fn(async (..._a: unknown[]) => ({ date: '1763800000', fichiers: 2, octets: 7, emplacements: 1, echecs: [], en_ligne_seulement: 0, telecharges: 0, deja: false }));
 const ABRI = { date: '1763800000', fichiers: 2, octets: 7, sorte: 'emplacements', a_moi: true, echecs: 0, en_ligne_seulement: 0, sans_origine: 0 };
 let listeAbris: object[] = [];
 const abrisLus = vi.fn(async (..._a: unknown[]) => structuredClone(listeAbris));
@@ -49,12 +49,19 @@ const confirmer = vi.fn(async (..._a: unknown[]) => reponseConfirmer);
 const informer = vi.fn(async (..._a: unknown[]) => {});
 const toastProgres = vi.fn((..._a: unknown[]) => 42);
 const fermerToast = vi.fn();
+let reponseChoisir: string | null = 'telecharger';
+const choisir = vi.fn(async (..._a: unknown[]) => reponseChoisir);
+const majProgres = vi.fn();
+const ecoute = vi.fn(async (..._a: unknown[]) => () => {});
+vi.mock('@tauri-apps/api/event', () => ({ listen: (...a: unknown[]) => ecoute(...a) }));
 vi.mock('$lib/dialogues/fenetres.svelte', () => ({
   toast: (...a: unknown[]) => toast(...a),
   confirmer: (...a: unknown[]) => confirmer(...a),
   informer: (...a: unknown[]) => informer(...a),
   toastProgres: (...a: unknown[]) => toastProgres(...a),
   fermerToast: (...a: unknown[]) => fermerToast(...a),
+  choisir: (...a: unknown[]) => choisir(...a),
+  majProgres: (...a: unknown[]) => majProgres(...a),
 }));
 
 import BlocParties from './BlocParties.svelte';
@@ -74,6 +81,10 @@ beforeEach(() => {
   informer.mockClear();
   toastProgres.mockClear();
   fermerToast.mockClear();
+  choisir.mockClear();
+  majProgres.mockClear();
+  ecoute.mockClear();
+  reponseChoisir = 'telecharger';
 });
 afterEach(() => cleanup());
 
@@ -177,7 +188,9 @@ describe('🛟 Mettre mes parties à l’abri (lot S2)', () => {
     expect(options.message).toContain('2 fichiers · 7 o');
     expect(options.message).toContain('Ces parties seront rangées dans ton profil « Léa ».');
     expect(options.libelleValider).toBe('Mettre à l’abri');
-    expect(abriter).toHaveBeenCalledWith(-7, false);
+    expect(abriter).toHaveBeenCalledWith(-7, false, false);
+    expect(choisir).not.toHaveBeenCalled();
+    expect(ecoute).not.toHaveBeenCalled();
     // La copie se voit jusqu'à la fin (même si on quitte la page), puis se ferme.
     expect(toastProgres).toHaveBeenCalledTimes(1);
     expect(fermerToast).toHaveBeenCalledWith(42);
@@ -273,5 +286,53 @@ describe('🛟 corrections de la revue (lot S2)', () => {
     listeAbris = [ABRI, { ...ABRI }];
     render(BlocParties, { id: -7 });
     expect((await screen.findAllByText('mis à l’abri à la main · dans ton profil')).length).toBe(2);
+  });
+});
+
+describe('☁ Les parties seulement dans OneDrive (Seb, 22/11)', () => {
+  const NUAGE = { ...APERCU, fichiers: 0, octets: 0, en_ligne_seulement: 9, octets_en_ligne: 188_900_000 };
+
+  it('le choix n’apparaît que s’il y a des fichiers en ligne seulement ; télécharger seulement après le oui', async () => {
+    apercu = NUAGE;
+    render(BlocParties, { id: -7 });
+    await fireEvent.click(await screen.findByRole('button', { name: /Mettre mes parties à l’abri/ }));
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(confirmer).not.toHaveBeenCalled();
+    expect(choisir).toHaveBeenCalledTimes(1);
+    const [titre, options, message] = choisir.mock.calls[0] as [string, { valeur: string; libelle: string; detail: string }[], string];
+    expect(titre).toBe('🛟 Mettre mes parties à l’abri ?');
+    expect(options.map((o) => o.valeur)).toEqual(['telecharger']); // pas de « sans eux » sans fichier sur ce PC
+    expect(message).toContain('seulement dans ton nuage OneDrive');
+    expect(abriter).toHaveBeenCalledWith(-7, false, true);
+    // La progression « Téléchargement depuis OneDrive… N/M » est écoutée pendant la copie.
+    expect(ecoute.mock.calls[0][0]).toBe('parties-abri-progres');
+    const surProgres = ecoute.mock.calls[0][1] as (e: { payload: { jeu: number; faits: number; total: number } }) => void;
+    surProgres({ payload: { jeu: -7, faits: 3, total: 9 } });
+    surProgres({ payload: { jeu: 5, faits: 1, total: 1 } });
+    expect(majProgres).toHaveBeenCalledTimes(1);
+    expect(majProgres).toHaveBeenCalledWith(42, { etape: 'Téléchargement depuis OneDrive… 3/9', chiffres: '', pourcent: 33 });
+  });
+
+  it('« sans eux » : rien n’est téléchargé ; « Annuler » : rien du tout', async () => {
+    apercu = { ...NUAGE, fichiers: 2, octets: 7 };
+    reponseChoisir = 'local';
+    render(BlocParties, { id: -7 });
+    const b = await screen.findByRole('button', { name: /Mettre mes parties à l’abri/ });
+    await fireEvent.click(b);
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    expect((choisir.mock.calls[0][1] as { valeur: string }[]).map((o) => o.valeur)).toEqual(['telecharger', 'local']);
+    expect(abriter).toHaveBeenCalledWith(-7, false, false);
+    expect(ecoute).not.toHaveBeenCalled();
+    reponseChoisir = null;
+    abriter.mockClear();
+    await fireEvent.click(b);
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(abriter).not.toHaveBeenCalled();
+  });
+
+  it('la ligne de l’emplacement dit qu’il est dans le nuage', async () => {
+    reponse = { ...LU, emplacements: [{ ...LU.emplacements[0], fichiers: 9, octets: 7, en_ligne: 9 }] };
+    render(BlocParties, { id: -7 });
+    expect(await screen.findByText('9 fichiers · 7 o — dans ton nuage OneDrive, pas sur ce PC')).toBeTruthy();
   });
 });

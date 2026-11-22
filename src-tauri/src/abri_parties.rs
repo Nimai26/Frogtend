@@ -14,8 +14,11 @@
 //!   (recopiée une fois si elle a changé), puis le dossier est renommé. Un emplacement en échec (fichier verrouillé,
 //!   trop gros, illisible) est retiré de l'abri et dit ; les autres passent. Rien de neuf depuis le dernier abri du même
 //!   profil : pas de copie.
-//! - Un fichier OneDrive « en ligne seulement » n'est jamais lu (il serait téléchargé) : sauté et compté (et pas
-//!   compté dans le plafond de 2 Go).
+//! - Un fichier OneDrive « en ligne seulement » n'est jamais lu sans l'accord de la personne (le lire le fait
+//!   télécharger par OneDrive) : sauté et compté (hors du plafond de 2 Go). Avec son oui (Seb, 22/11 : « proposer de
+//!   les rapatrier »), il est lu en entier pendant la copie (`Rapatriement`) — Windows le télécharge alors et le garde
+//!   sur le PC, comme quand on l'ouvre —, avec un délai d'attente par fichier ; un échec de OneDrive fait échouer cet
+//!   endroit seulement.
 //! - `emplacements/` et `nuage-steam/` ne sont « réservés » (jamais posés dans le dossier du jeu, envoyés à part) que
 //!   dans un abri qui le dit (`reservees`) : un jeu dont le dossier a un sous-dossier `emplacements` reste un jeu.
 //! - Les abris ne s'effacent jamais ; un ancien abri (sans fiche) se lit tel quel, il n'est jamais réécrit.
@@ -179,6 +182,8 @@ pub enum Echec {
     Copie,
     /// Un fichier a changé pendant la copie.
     Change,
+    /// OneDrive n'a pas rendu un fichier « en ligne seulement » (pas connecté, refusé, trop long).
+    OneDrive,
 }
 
 impl Echec {
@@ -190,6 +195,7 @@ impl Echec {
             Echec::Verrouille => "un fichier ne se lit pas (le jeu ou un autre programme l’utilise peut-être)",
             Echec::Copie => "un fichier n’a pas pu être copié (le jeu ou un autre programme l’utilise peut-être)",
             Echec::Change => "un fichier a changé pendant la copie : réessaie dans un moment",
+            Echec::OneDrive => "OneDrive n’a pas pu télécharger ce fichier : vérifie que OneDrive est connecté",
         }
     }
 }
@@ -203,6 +209,39 @@ pub struct PlanEmplacement {
     pub fichiers: Vec<AMettre>,
     pub octets: u64,
     pub echec: Option<Echec>,
+    /// Ses fichiers « en ligne seulement » (OneDrive…) : JAMAIS lus ici (seulement par `abriter` avec un `Rapatriement`).
+    pub en_ligne: Vec<EnLigne>,
+}
+
+/// Un fichier « en ligne seulement » : sa place, son chemin dans l'abri, sa taille (annoncée par OneDrive).
+#[derive(Debug, Clone)]
+pub struct EnLigne {
+    pub source: PathBuf,
+    pub relatif: String,
+    pub taille: u64,
+}
+
+/// Rapatrier les fichiers « en ligne seulement » pendant la copie (après le oui de la personne).
+pub struct Rapatriement<'a> {
+    /// Copie `source` vers `cible` en LISANT la source en entier (c'est la lecture qui fait télécharger OneDrive).
+    pub lecteur: std::sync::Arc<dyn Fn(&Path, &Path) -> std::io::Result<()> + Send + Sync>,
+    /// Le délai d'attente d'un fichier de cette taille.
+    pub delai: &'a (dyn Fn(u64) -> std::time::Duration + Sync),
+    /// (fichiers rapatriés, total) : avant chaque fichier, et à la fin.
+    pub progres: &'a (dyn Fn(usize, usize) + Sync),
+}
+
+/// La lecture de la vraie vie : la source lue en entier (OneDrive la télécharge), écrite dans `cible`.
+pub fn lire_en_entier(source: &Path, cible: &Path) -> std::io::Result<()> {
+    let mut a = std::fs::File::open(source)?;
+    let mut b = std::fs::File::create(cible)?;
+    std::io::copy(&mut a, &mut b)?;
+    b.sync_all()
+}
+
+/// Le délai d'attente de la vraie vie : 2 minutes, plus une seconde par 256 Kio (une connexion lente).
+pub fn delai_de_telechargement(taille: u64) -> std::time::Duration {
+    std::time::Duration::from_secs(120 + taille / (256 * 1024))
 }
 
 /// Ce que Frogtend mettrait à l'abri.
@@ -214,6 +253,8 @@ pub struct PlanAbri {
     pub en_ligne_seulement: usize,
     /// La plus récente écriture d'un fichier à copier (le jeu écrit-il encore ?).
     pub ecrit_le: Option<std::time::SystemTime>,
+    /// Fichiers rapatriés depuis le nuage et copiés dans l'abri (emplacements réussis seulement).
+    pub rapatries: usize,
 }
 
 impl PlanAbri {
@@ -229,6 +270,26 @@ impl PlanAbri {
     }
     pub fn echecs(&self) -> usize {
         self.emplacements.len() - self.bons().count()
+    }
+    /// La taille des fichiers « en ligne seulement » des emplacements qui passent (à télécharger, s'il le faut).
+    pub fn octets_en_ligne(&self) -> u64 {
+        self.bons().flat_map(|e| e.en_ligne.iter()).map(|f| f.taille).sum()
+    }
+    /// Le nombre de fichiers « en ligne seulement » des emplacements qui passent.
+    pub fn fichiers_en_ligne(&self) -> usize {
+        self.bons().map(|e| e.en_ligne.len()).sum()
+    }
+    /// Avant de rapatrier : le plafond par emplacement compte AUSSI ses fichiers en ligne (ils vont être copiés).
+    pub fn preparer_rapatriement(&mut self, max: u64) {
+        for e in self.emplacements.iter_mut().filter(|e| e.echec.is_none()) {
+            if e.octets + e.en_ligne.iter().map(|f| f.taille).sum::<u64>() > max {
+                e.echec = Some(Echec::TropGros);
+                e.fichiers.clear();
+                e.en_ligne.clear();
+                e.octets = 0;
+            }
+        }
+        self.en_ligne_seulement = self.fichiers_en_ligne();
     }
     /// Un fichier à copier a été écrit il y a moins de `delai` : le jeu écrit peut-être encore ses parties.
     pub fn ecrit_recemment(&self, maintenant: std::time::SystemTime, delai: std::time::Duration) -> bool {
@@ -271,6 +332,7 @@ fn planifier_jusqua(lieux: &[Emplacement], deja: &BTreeSet<String>, sel: &str, m
             fichiers: Vec::new(),
             octets: 0,
             echec: None,
+            en_ligne: Vec::new(),
         };
         let relatifs: std::result::Result<Vec<String>, Echec> = match &e.filtre {
             None => crate::nuage_steam::parcourir(&e.dossier).map_err(|a| match a {
@@ -326,10 +388,14 @@ fn planifier_jusqua(lieux: &[Emplacement], deja: &BTreeSet<String>, sel: &str, m
             continue;
         }
         plan.en_ligne_seulement += en_ligne.len();
+        pe.en_ligne = en_ligne.into_iter().map(|(p, r, m)| EnLigne { relatif: format!("{PREFIXE}{nom}/{}", r.replace('\\', "/")), source: p, taille: m.len() }).collect();
         if e.filtre.is_none() {
             reussis.push(moi);
         }
-        if pe.fichiers.is_empty() {
+        for f in &pe.en_ligne {
+            vus.insert(normal(&f.source));
+        }
+        if pe.fichiers.is_empty() && pe.en_ligne.is_empty() {
             continue;
         }
         if let Some(t) = ecrit_le {
@@ -455,33 +521,97 @@ fn provisoire(abris: &Path, id: i64, quand: &str) -> PathBuf {
     abris.join(".frogtend-en-cours").join(format!("main-{id}-{quand}-{}-{n}", std::process::id()))
 }
 
+/// Rapatrie UN fichier « en ligne seulement » : lu en entier par `r.lecteur` dans `attente` (hors du dossier
+/// provisoire de l'abri : une lecture abandonnée au bout du délai ne peut jamais y écrire), relu pour son SHA1 dans le
+/// même fil, puis comparé à la copie et posé dans `cible`.
+fn rapatrier_un(f: &EnLigne, attente: &Path, cible: &Path, r: &Rapatriement) -> std::result::Result<AMettre, Echec> {
+    let (lecteur, source, copie) = (r.lecteur.clone(), f.source.clone(), attente.to_path_buf());
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let lu = lecteur(&source, &copie).and_then(|_| crate::nuage_steam::sha1(&source));
+        let _ = tx.send(lu);
+    });
+    let sha_source = match rx.recv_timeout((r.delai)(f.taille)) {
+        Ok(Ok(s)) => s,
+        _ => return Err(Echec::OneDrive),
+    };
+    let sha = crate::nuage_steam::sha1(attente).map_err(|_| Echec::Copie)?;
+    if sha != sha_source {
+        return Err(Echec::Change);
+    }
+    if let Some(p) = cible.parent() {
+        std::fs::create_dir_all(p).map_err(|_| Echec::Copie)?;
+    }
+    std::fs::rename(attente, cible).map_err(|_| Echec::Copie)?;
+    let taille = std::fs::metadata(cible).map(|m| m.len()).map_err(|_| Echec::Copie)?;
+    Ok(AMettre { source: f.source.clone(), relatif: f.relatif.clone(), taille, sha })
+}
+
 /// Copie le plan dans un nouvel abri `<abris>/<id>/<quand>/` (lot S2), par un dossier provisoire hors des abris lus.
 /// Refusé sans assez de place sur le disque des abris. Un emplacement dont un fichier ne se copie pas (ou change) est
 /// retiré de l'abri (son `echec` est posé dans le plan) ; si aucun ne passe, rien n'est fait. Rend le dossier de l'abri.
-pub fn abriter(plan: &mut PlanAbri, abris: &Path, id: i64, quand: &str, profil: &str) -> Resultat<PathBuf> {
+/// `rapatriement` (seulement après le oui de la personne, et `preparer_rapatriement`) : les fichiers « en ligne
+/// seulement » sont téléchargés et copiés aussi ; sinon ils ne sont jamais lus.
+pub fn abriter(plan: &mut PlanAbri, abris: &Path, id: i64, quand: &str, profil: &str, rapatriement: Option<&Rapatriement>) -> Resultat<PathBuf> {
     let fin = abris.join(id.to_string()).join(quand);
     if fin.exists() || fichier_fiche(&fin).is_some_and(|f| f.exists()) {
         return Err(Erreur::Refus("Un abri de ce jeu vient d'être fait : réessaie dans une seconde.".into()));
     }
     std::fs::create_dir_all(abris)?;
-    if crate::jeux_pc::place_libre(abris).is_some_and(|l| l < plan.octets().saturating_add(crate::jeux_pc::MARGE_LIBRE)) {
+    let a_copier = plan.octets() + if rapatriement.is_some() { plan.octets_en_ligne() } else { 0 };
+    if crate::jeux_pc::place_libre(abris).is_some_and(|l| l < a_copier.saturating_add(crate::jeux_pc::MARGE_LIBRE)) {
         return Err(Erreur::Refus("Pas assez de place sur le disque des abris pour copier ces parties.".into()));
     }
     let tmp = provisoire(abris, id, quand);
     let r = (|| -> Resultat<()> {
         std::fs::create_dir_all(&tmp)?;
+        let total = if rapatriement.is_some() { plan.fichiers_en_ligne() } else { 0 };
+        let (mut faits, mut essais, mut rapatries) = (0usize, 0usize, 0usize);
+        let attente = tmp.with_file_name(format!("{}-nuage", tmp.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
         for e in plan.emplacements.iter_mut().filter(|e| e.echec.is_none()) {
-            if let Err(x) = copier_emplacement(e, &tmp) {
+            let mut r = copier_emplacement(e, &tmp);
+            let mut de_cet_endroit = 0usize;
+            if let (Ok(()), Some(rap)) = (&r, rapatriement) {
+                std::fs::create_dir_all(&attente)?;
+                for f in std::mem::take(&mut e.en_ligne) {
+                    (rap.progres)(faits, total);
+                    essais += 1;
+                    let essai = rapatrier_un(&f, &attente.join(essais.to_string()), &tmp.join(&f.relatif), rap);
+                    faits += 1;
+                    match essai {
+                        Ok(a) => {
+                            e.octets += a.taille;
+                            e.fichiers.push(a);
+                            de_cet_endroit += 1;
+                        }
+                        Err(x) => {
+                            r = Err(x);
+                            break;
+                        }
+                    }
+                }
+            }
+            if let Err(x) = r {
                 // Le dossier de CET emplacement dans le provisoire (le nôtre) : retiré, les autres restent.
                 let _ = std::fs::remove_dir_all(tmp.join(PREFIXE.trim_end_matches('/')).join(&e.abrite.cle));
                 e.echec = Some(x);
+                e.en_ligne.clear();
+            } else {
+                rapatries += de_cet_endroit;
             }
         }
+        if let Some(rap) = rapatriement {
+            (rap.progres)(faits, total);
+        }
+        // Seulement le nôtre (son nom le dit) ; une lecture abandonnée peut le tenir encore : laissé alors.
+        let _ = std::fs::remove_dir_all(&attente);
+        plan.en_ligne_seulement = plan.fichiers_en_ligne();
+        plan.rapatries = rapatries;
         if plan.fichiers() == 0 {
             return Err(Erreur::Refus("Aucune partie n'a pu être copiée : rien n'est mis à l'abri.".into()));
         }
         let fichiers: Vec<AMettre> = plan.bons().flat_map(|e| e.fichiers.iter().cloned()).collect();
-        let fiche = FicheAbri::nouvelle(SORTE_EMPLACEMENTS, profil, plan.bons().map(|e| e.abrite.clone()).collect(), &fichiers, plan.en_ligne_seulement, plan.echecs());
+        let fiche = FicheAbri::nouvelle(SORTE_EMPLACEMENTS, profil, plan.bons().filter(|e| !e.fichiers.is_empty()).map(|e| e.abrite.clone()).collect(), &fichiers, plan.en_ligne_seulement, plan.echecs());
         if let Some(p) = fin.parent() {
             std::fs::create_dir_all(p)?;
         }
@@ -673,7 +803,7 @@ mod tests {
         let mut plan = planifier(&l, &BTreeSet::new());
         assert_eq!((plan.emplacements.len(), plan.fichiers(), plan.octets(), plan.echecs()), (2, 3, 12, 0));
         let abris = d.path().join("Abris");
-        let fin = abriter(&mut plan, &abris, -7, "1000", "profil-lea").unwrap();
+        let fin = abriter(&mut plan, &abris, -7, "1000", "profil-lea", None).unwrap();
         assert_eq!(fin, abris.join("-7").join("1000"));
         let cle = cle_chemin(r"%USERPROFILE%\Saved Games\Jeu", "dossier");
         assert_eq!(std::fs::read(fin.join("emplacements").join(&cle).join("Slot1").join("partie.sav")).unwrap(), b"partie1");
@@ -712,17 +842,17 @@ mod tests {
         let sources = vec![abris.join("-7")];
         let mut plan = planifier(&l, &BTreeSet::new());
         assert!(!deja_a_l_abri(&sources, "p1", &plan), "aucun abri encore");
-        abriter(&mut plan, &abris, -7, "1000", "p1").unwrap();
+        abriter(&mut plan, &abris, -7, "1000", "p1", None).unwrap();
         let plan = planifier(&l, &BTreeSet::new());
         assert!(deja_a_l_abri(&sources, "p1", &plan), "rien n'a changé");
         assert!(!deja_a_l_abri(&sources, "p2", &plan), "l'abri d'un autre profil ne compte pas");
         std::fs::write(saves.join("Slot1").join("partie.sav"), b"partie2").unwrap();
         let mut plan = planifier(&l, &BTreeSet::new());
         assert!(!deja_a_l_abri(&sources, "p1", &plan), "une partie a changé");
-        abriter(&mut plan, &abris, -7, "1001", "p1").unwrap();
+        abriter(&mut plan, &abris, -7, "1001", "p1", None).unwrap();
         assert!(deja_a_l_abri(&sources, "p1", &planifier(&l, &BTreeSet::new())));
         // Le même instant : jamais écrasé.
-        assert!(matches!(abriter(&mut planifier(&l, &BTreeSet::new()), &abris, -7, "1001", "p1"), Err(Erreur::Refus(_))));
+        assert!(matches!(abriter(&mut planifier(&l, &BTreeSet::new()), &abris, -7, "1001", "p1", None), Err(Erreur::Refus(_))));
         assert_eq!(std::fs::read(abris.join("-7").join("1000").join("emplacements").join(cle_chemin(r"%USERPROFILE%\Saved Games\Jeu", "dossier")).join("Slot1").join("partie.sav")).unwrap(), b"partie1", "l'ancien abri reste tel quel");
     }
 
@@ -739,7 +869,7 @@ mod tests {
             let e = plan.emplacements.iter().find(|e| e.echec.is_some()).unwrap();
             assert_eq!((e.echec, e.dossier.clone(), e.fichiers.len()), (Some(Echec::Verrouille), low.clone(), 0));
             let abris = d.path().join("Abris");
-            let fin = abriter(&mut plan, &abris, -7, "1000", "p1").unwrap();
+            let fin = abriter(&mut plan, &abris, -7, "1000", "p1", None).unwrap();
             let f = lire_fiche(&fin).unwrap();
             assert_eq!((f.emplacements.len(), f.echecs, f.fichiers.len(), f.complet), (1, 1, 2, false), "seulement le dossier qui se lit");
             assert!(!fin.join("emplacements").join(cle_chemin(r"%USERPROFILE%\AppData\LocalLow\Studio\*.save", "motif")).exists());
@@ -755,7 +885,7 @@ mod tests {
         let mut plan = planifier(&l, &BTreeSet::new());
         let i = plan.emplacements.iter().position(|e| e.dossier == low).unwrap();
         plan.emplacements[i].fichiers[0].sha = sha_de(b"autre chose");
-        let fin = abriter(&mut plan, &abris, -7, "1000", "p1").unwrap();
+        let fin = abriter(&mut plan, &abris, -7, "1000", "p1", None).unwrap();
         assert_eq!(plan.emplacements[i].echec, Some(Echec::Change));
         assert_eq!(lire_fiche(&fin).unwrap().fichiers.len(), 2);
         // Aucun emplacement ne passe : rien n'est fait (ni abri, ni fiche, ni provisoire).
@@ -765,11 +895,11 @@ mod tests {
                 f.sha = "0".repeat(40);
             }
         }
-        assert!(matches!(abriter(&mut plan, &abris, -7, "2000", "p1"), Err(Erreur::Refus(_))));
+        assert!(matches!(abriter(&mut plan, &abris, -7, "2000", "p1", None), Err(Erreur::Refus(_))));
         assert!(!abris.join("-7").join("2000").exists() && !abris.join("-7").join("2000.json").exists());
         assert!(!abris.join(".frogtend-en-cours").exists());
         // Rien à copier du tout : refusé aussi.
-        assert!(abriter(&mut PlanAbri::default(), &abris, -7, "3000", "p1").is_err());
+        assert!(abriter(&mut PlanAbri::default(), &abris, -7, "3000", "p1", None).is_err());
         assert!(!abris.join("-7").join("3000").exists());
     }
 
@@ -831,7 +961,7 @@ mod tests {
             .collect();
         let mut plan = planifier(&l, &BTreeSet::new());
         assert_eq!(plan.fichiers(), 2, "un emplacement par profil du jeu");
-        let fin = abriter(&mut plan, &d.path().join("Abris"), 5, "1", "p1").unwrap();
+        let fin = abriter(&mut plan, &d.path().join("Abris"), 5, "1", "p1", None).unwrap();
         let brut = std::fs::read_to_string(fichier_fiche(&fin).unwrap()).unwrap();
         assert!(!brut.contains("76561198000000000") && !brut.contains("A1B2") && !brut.contains(SEL), "jamais le numéro d'un compte ni le sel : {brut}");
         let f = lire_fiche(&fin).unwrap();
@@ -865,7 +995,9 @@ mod tests {
             let plan = planifier(&l, &BTreeSet::new());
             assert_eq!((plan.en_ligne_seulement, plan.fichiers(), plan.echecs()), (2, 2, 0), "jamais lu, jamais un échec");
             let petit = planifier_jusqua(&l, &BTreeSet::new(), SEL, 10);
-            assert_eq!(petit.emplacements.iter().filter(|e| e.dossier == low).count(), 0, "le motif n'a rien sur le PC : rien à copier, pas un échec");
+            // Le motif n'a rien sur le PC : rien à copier sans le oui, jamais un échec ; gardé pour proposer de télécharger.
+            let motif = petit.emplacements.iter().find(|e| e.dossier == low).unwrap();
+            assert_eq!((motif.echec, motif.fichiers.len(), motif.en_ligne.len()), (None, 0, 2));
             assert_eq!(petit.echecs(), 0);
             let _ = unsafe { SetFileAttributesW(&f, FILE_ATTRIBUTE_ARCHIVE) };
             let _ = unsafe { SetFileAttributesW(&g, FILE_ATTRIBUTE_ARCHIVE) };
@@ -961,8 +1093,8 @@ mod tests {
         let (d, _, _, l) = pc();
         let abris = d.path().join("Abris");
         let du_jeu = abris.join("-7");
-        abriter(&mut planifier(&l, &BTreeSet::new()), &abris, -7, "1000", "p1").unwrap();
-        abriter(&mut planifier(&l, &BTreeSet::new()), &abris, -7, "1001", "p2").unwrap();
+        abriter(&mut planifier(&l, &BTreeSet::new()), &abris, -7, "1000", "p1", None).unwrap();
+        abriter(&mut planifier(&l, &BTreeSet::new()), &abris, -7, "1001", "p2", None).unwrap();
         // Un abri d'avant un retrait (lot 3 : fiche « version du jeu », sans `version_fiche`).
         std::fs::create_dir_all(du_jeu.join("900").join("SAVE")).unwrap();
         std::fs::write(du_jeu.join("900").join("SAVE").join("1.sav"), b"12345").unwrap();
@@ -999,5 +1131,110 @@ mod tests {
         }
         assert!(!du_jeu.join("800.json").exists(), "aucune fiche ajoutée à un ancien abri");
         assert!(!fait_a_la_main(&du_jeu.join("900")) && !fait_a_la_main(&du_jeu.join("800")) && fait_a_la_main(&du_jeu.join("1000")));
+    }
+
+    /// Pose (ou retire) l'attribut « hors ligne » : le fichier compte alors « en ligne seulement » (il reste lisible
+    /// dans le test, comme un fichier OneDrive que la lecture ferait télécharger). `false` : impossible ici.
+    #[cfg(windows)]
+    fn en_ligne(f: &Path, oui: bool) -> bool {
+        use windows::Win32::Storage::FileSystem::{SetFileAttributesW, FILE_ATTRIBUTE_ARCHIVE, FILE_ATTRIBUTE_OFFLINE};
+        let h = windows::core::HSTRING::from(f.as_os_str());
+        unsafe { SetFileAttributesW(&h, if oui { FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_ARCHIVE } else { FILE_ATTRIBUTE_ARCHIVE }) }.is_ok()
+    }
+
+    fn outils(lecteur: std::sync::Arc<dyn Fn(&Path, &Path) -> std::io::Result<()> + Send + Sync>, delai: std::time::Duration) -> (std::sync::Arc<dyn Fn(&Path, &Path) -> std::io::Result<()> + Send + Sync>, impl Fn(u64) -> std::time::Duration + Sync, std::sync::Arc<std::sync::Mutex<Vec<(usize, usize)>>>) {
+        (lecteur, move |_| delai, std::sync::Arc::new(std::sync::Mutex::new(Vec::new())))
+    }
+
+    /// Seb 22/11 (Age of Empires IV, 9 fichiers seulement dans OneDrive) : rien n'est lu sans le oui ; avec lui, chaque
+    /// fichier est lu en entier pendant la copie, vérifié au SHA1, et la progression est dite.
+    #[test]
+    #[cfg(windows)]
+    fn les_fichiers_en_ligne_ne_sont_lus_qu_apres_le_oui_puis_rapatries() {
+        let (d, saves, low, l) = pc();
+        if !en_ligne(&low.join("a.save"), true) {
+            eprintln!("attribut « hors ligne » impossible à poser ici : test sauté");
+            return;
+        }
+        // Rien n'est ouvert pendant le plan : le fichier tenu sans partage ne fait échouer personne.
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            let _tenu = std::fs::OpenOptions::new().read(true).share_mode(0).open(low.join("a.save")).unwrap();
+            let plan = planifier(&l, &BTreeSet::new());
+            assert_eq!((plan.echecs(), plan.fichiers_en_ligne(), plan.octets_en_ligne()), (0, 1, 2), "jamais lu pour le compter");
+            // Sans le oui : copié sans lui, compté « en ligne seulement ».
+            let mut sans = plan.clone();
+            let fin = abriter(&mut sans, &d.path().join("Abris"), -7, "1000", "p1", None).unwrap();
+            let f = lire_fiche(&fin).unwrap();
+            assert_eq!((f.fichiers.len(), f.en_ligne_seulement, f.complet, f.emplacements.len()), (2, 1, false, 1), "l'endroit tout en ligne n'est pas dans la fiche");
+        }
+        // Avec le oui : lu en entier (ici, la vraie lecture), copié, vérifié, compté.
+        let (lecteur, delai, vus) = outils(std::sync::Arc::new(|a: &Path, b: &Path| lire_en_entier(a, b)), std::time::Duration::from_secs(30));
+        let v = vus.clone();
+        let progres = move |a: usize, b: usize| v.lock().unwrap().push((a, b));
+        let rap = Rapatriement { lecteur, delai: &delai, progres: &progres };
+        let mut plan = planifier(&l, &BTreeSet::new());
+        plan.preparer_rapatriement(crate::nuage_steam::EMPLACEMENT_MAX);
+        let fin = abriter(&mut plan, &d.path().join("Abris"), -7, "2000", "p1", Some(&rap)).unwrap();
+        let cle = cle_chemin(r"%USERPROFILE%\AppData\LocalLow\Studio\*.save", "motif");
+        assert_eq!(std::fs::read(fin.join("emplacements").join(&cle).join("a.save")).unwrap(), b"aa");
+        let f = lire_fiche(&fin).unwrap();
+        assert_eq!((f.fichiers.len(), f.en_ligne_seulement, f.complet, plan.rapatries), (3, 0, true, 1));
+        assert_eq!(f.fichiers.iter().find(|x| x.relatif.ends_with("a.save")).unwrap().sha, sha_de(b"aa"));
+        assert_eq!(*vus.lock().unwrap(), [(0, 1), (1, 1)], "« Téléchargement depuis OneDrive… N/M »");
+        assert!(!d.path().join("Abris").join(".frogtend-en-cours").exists(), "rien de provisoire laissé");
+        let _ = (saves, en_ligne(&low.join("a.save"), false));
+    }
+
+    /// OneDrive pas connecté, ou trop long : CET endroit échoue (raison claire), les autres passent ; jamais bloqué.
+    #[test]
+    #[cfg(windows)]
+    fn un_telechargement_rate_ou_trop_long_fait_echouer_son_endroit_seulement() {
+        let (d, _saves, low, l) = pc();
+        if !en_ligne(&low.join("a.save"), true) {
+            eprintln!("attribut « hors ligne » impossible à poser ici : test sauté");
+            return;
+        }
+        let rien = |_: usize, _: usize| {};
+        for (nom, lecteur) in [
+            ("refus", std::sync::Arc::new(|_: &Path, _: &Path| Err(std::io::Error::other("OneDrive n'est pas connecté"))) as std::sync::Arc<dyn Fn(&Path, &Path) -> std::io::Result<()> + Send + Sync>),
+            ("trop long", std::sync::Arc::new(|_: &Path, _: &Path| {
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                Ok(())
+            })),
+        ] {
+            let delai = |_: u64| std::time::Duration::from_millis(200);
+            let rap = Rapatriement { lecteur, delai: &delai, progres: &rien };
+            let mut plan = planifier(&l, &BTreeSet::new());
+            plan.preparer_rapatriement(crate::nuage_steam::EMPLACEMENT_MAX);
+            let debut = std::time::Instant::now();
+            let fin = abriter(&mut plan, &d.path().join("Abris"), -7, if nom == "refus" { "1000" } else { "1001" }, "p1", Some(&rap)).unwrap();
+            assert!(debut.elapsed() < std::time::Duration::from_secs(2), "{nom} : jamais bloqué");
+            let e = plan.emplacements.iter().find(|e| e.dossier == low).unwrap();
+            assert_eq!(e.echec, Some(Echec::OneDrive), "{nom}");
+            assert!(Echec::OneDrive.texte().contains("vérifie que OneDrive est connecté"));
+            let f = lire_fiche(&fin).unwrap();
+            assert_eq!((f.fichiers.len(), f.echecs), (2, 1), "{nom} : le dossier passe");
+            assert!(!fin.join("emplacements").join(cle_chemin(r"%USERPROFILE%\AppData\LocalLow\Studio\*.save", "motif")).exists());
+        }
+        let _ = en_ligne(&low.join("a.save"), false);
+    }
+
+    /// Le plafond de 2 Go par endroit compte les fichiers à télécharger dès qu'on choisit de les rapatrier.
+    #[test]
+    #[cfg(windows)]
+    fn le_plafond_compte_les_fichiers_a_telecharger() {
+        let (_d, _saves, low, l) = pc();
+        std::fs::write(low.join("b.save"), vec![0u8; 64]).unwrap();
+        if !en_ligne(&low.join("b.save"), true) {
+            eprintln!("attribut « hors ligne » impossible à poser ici : test sauté");
+            return;
+        }
+        let mut plan = planifier_jusqua(&l, &BTreeSet::new(), SEL, 20);
+        assert_eq!(plan.echecs(), 0, "sans rapatrier : le fichier en ligne ne compte pas");
+        plan.preparer_rapatriement(20);
+        let e = plan.emplacements.iter().find(|e| e.dossier == low).unwrap();
+        assert_eq!((e.echec, plan.fichiers_en_ligne()), (Some(Echec::TropGros), 0));
+        let _ = en_ligne(&low.join("b.save"), false);
     }
 }
