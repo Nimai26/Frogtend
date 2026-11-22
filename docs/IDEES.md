@@ -203,3 +203,6 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
 - **Lancer sans lanceur, au-delà de GOG** (Seb 22/11 : « comme LaunchBox, on ne passe pas par les launchers ») : pour
   Epic, Ubisoft, Amazon, Xbox, voir jeu par jeu ce qui se lance directement sans protection (Epic : jeux sans EOS ni
   DRM ; Steam : la plupart exigent Steam). À étudier sur documentation avant tout essai.
+
+- **Éditeur de sauvegardes** (Seb 22/11 : « la partie éditeur de save prévue dans Frogtend ») : s'appuiera sur les
+  emplacements de parties relevés par le lot S (par jeu : dossier, fichiers, moteur). À concevoir avec Seb après le S.

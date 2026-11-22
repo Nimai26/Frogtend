@@ -821,6 +821,12 @@ chaque jeu PC de la ludothèque quelle que soit sa boutique (plateforme « Windo
 après chaque partie et avant réinstallation / mise à jour / retrait, envoi par la sauvegarde existante, restauration
 au bon endroit sur un autre PC. Un jeu dont Firehouse ne connaît pas les emplacements : le dire (besoin d'API si
 nécessaire), jamais deviner en copiant tout un dossier Documents.
+**Précisions de Seb (22/11)** : (1) les JEUX POUR ADULTES servis par Firehouse (F95zone, admins seulement) sont
+concernés aussi — souvent des moteurs que PCGamingWiki ne connaît pas (Ren'Py, RPG Maker, Unity…) : il faudra savoir
+où ils rangent leurs parties (règles par moteur, documentation officielle de chaque moteur) ; leurs parties ne vont
+qu'au profil admin qui y joue (jamais montrées, mises en cache ni journalisées pour un autre profil). (2) Savoir où sont
+les parties de chaque jeu est la base de **l'éditeur de sauvegardes prévu dans Frogtend** : le lot S doit ranger ces
+emplacements de façon réutilisable (par jeu : dossier, fichiers, moteur), pas seulement pour la copie.
 Steam et les jeux Epic protégés exigent leur lanceur : la règle ne s'y applique pas telle quelle (IDEES.md).
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
