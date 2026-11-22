@@ -798,7 +798,7 @@ impl Cache {
         let mut n = 0;
         {
             let mut st = tx.prepare(
-                "DELETE FROM jeux WHERE id = ?1 AND id < 0 AND json_extract(brut, '$.source') IN ('epic', 'uplay', 'steam')
+                "DELETE FROM jeux WHERE id = ?1 AND id < 0 AND json_extract(brut, '$.source') IN ('epic', 'uplay', 'steam', 'gog')
                  AND COALESCE(json_extract(brut, '$.installe'), 0) = 0 AND COALESCE(json_extract(brut, '$.minutes'), 0) = 0
                  AND json_extract(brut, '$.copies') IS NULL AND json_extract(brut, '$.maitre') IS NULL",
             )?;

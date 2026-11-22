@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.219.2 — 🟣 GOG : les cartes « Jeu GOG 1234… » partent vraiment
+
+- Corrigé : en 0.219.1, ton compte affichait bien 197 jeux, mais les 10 cartes à numéro restaient dans la ludothèque
+  (Frogtend garde toujours une carte déjà rangée). Maintenant, une carte GOG que GOG classe à coup sûr comme pas un jeu
+  (code de réduction, extension, paquet, avatar) est retirée à la mise à jour, seulement si elle n'est ni installée,
+  ni jouée, ni réunie à une autre copie.
+
 ## 0.219.1 — 🟣 GOG : plus de cartes « Jeu GOG 1234… »
 
 - Corrigé : chez Seb, après l'ajout du compte de GOG Galaxy, 11 cartes n'avaient qu'un numéro (« Jeu GOG 1182612231 »).

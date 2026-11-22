@@ -1531,6 +1531,18 @@ fn fichier_image_gog(f: &str) -> bool {
         && forme.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
 }
 
+/// 0.219.1 : les cartes GOG à retirer (id de carte) — les numéros dont la fiche en cache est classée PAS un jeu
+/// (`raison_ecart`) et qui ne sont pas dans la liste gardée `gardes` (pur, testé). Une fiche introuvable ou en échec
+/// n'est jamais visée.
+pub fn cartes_gog_ecartees(c: &CompteBoutique, gardes: &[JeuBoutique]) -> BTreeSet<i64> {
+    let gardes: BTreeSet<&str> = gardes.iter().filter_map(|j| j.id.strip_prefix("gog_")).collect();
+    c.fiches_gog
+        .iter()
+        .filter(|(id, f)| !gardes.contains(id.as_str()) && crate::gog_galaxy::raison_ecart(f).is_some())
+        .map(|(id, _)| crate::ludotheque::id_boutique("gog", id))
+        .collect()
+}
+
 /// Normalise l'image d'un jeu du compte GOG (lot C4a) : « //images-1.gog-statics.com/<empreinte> » (forme supposée)
 /// devient « https://images-1.gog-statics.com/<empreinte>_392.jpg » ; une adresse qui a déjà son extension est gardée
 /// si elle est sûre. Une forme inconnue : `None` (une carte sans image plutôt qu'une adresse non autorisée).
@@ -1895,6 +1907,23 @@ pub async fn image_steam(cache: &Path, appid: &str) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 0.219.1 : seules les fiches classées PAS un jeu, hors de la liste gardée, font retirer une carte.
+    #[test]
+    fn les_cartes_gog_ecartees_viennent_des_fiches_classees() {
+        use crate::gog_galaxy::FicheGog;
+        let mut c = CompteBoutique::default();
+        let fiche = |genre: &str| FicheGog { titre: "T".into(), genre: genre.into(), genre_du_jeu: genre.into(), visible: Some(true), lu_le: 1, ..Default::default() };
+        c.fiches_gog.insert("1".into(), fiche("dlc"));
+        c.fiches_gog.insert("2".into(), fiche("inconnu"));
+        c.fiches_gog.insert("3".into(), fiche("game"));
+        c.fiches_gog.insert("4".into(), FicheGog { introuvable: true, ..Default::default() });
+        c.fiches_gog.insert("5".into(), fiche("spam"));
+        let garde = JeuBoutique { id: "gog_5".into(), nom: "Montré par le site".into(), minutes: 0, derniere: 0, installe: false, plateforme: "gog".into(), image: None, dossier: None, pret: None, succes: None, releases: vec![], titre_douteux: false };
+        let e = cartes_gog_ecartees(&c, &[garde]);
+        let id = |n: &str| crate::ludotheque::id_boutique("gog", n);
+        assert_eq!(e, [id("1"), id("2")].into_iter().collect());
+    }
     use httpmock::prelude::*;
     use serde_json::json;
 

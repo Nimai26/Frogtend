@@ -1259,6 +1259,21 @@ impl Noyau {
     /// installées, sans temps de jeu, et sans ligne au registre du PC (un jeu installé ou joué n'est jamais retiré ; une
     /// carte réunie à une autre copie non plus). Rend leur nombre.
     pub fn retirer_possedes(&self, s: &Session, sources: &[&str]) -> Resultat<usize> {
+        self.retirer_possedes_si(s, sources, |_| true)
+    }
+
+    /// 0.219.1 (Seb 22/11 : 10 cartes « Jeu GOG <numéro> » restaient après le bon tri) : retire les cartes « gog » que
+    /// GOG a classées à coup sûr comme PAS des jeux (`ids` : codes de réduction, DLC, paquets…), avec les mêmes
+    /// garde-fous que `retirer_possedes` (jamais une carte installée, jouée, au registre du PC ou réunie). Rend leur
+    /// nombre.
+    pub fn retirer_cartes_gog_ecartees(&self, s: &Session, ids: &std::collections::BTreeSet<i64>) -> Resultat<usize> {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        self.retirer_possedes_si(s, &["gog"], |id| ids.contains(&id))
+    }
+
+    fn retirer_possedes_si(&self, s: &Session, sources: &[&str], viser: impl Fn(i64) -> bool) -> Resultat<usize> {
         let mut candidats = vec![];
         {
             // Le verrou du cache est rendu AVANT de lire le registre (jamais deux verrous tenus ensemble).
@@ -1267,7 +1282,7 @@ impl Noyau {
                 for j in c.jeux_de_source(source)? {
                     // Réunie à une autre copie (elle en porte la liste, ou une AUTRE carte la rattache, Galaxy par
                     // exemple) : jamais retirée. Vu AVANT `sans_reunion`, qui efface ces marques.
-                    if j.copies.is_some() || j.maitre.is_some() {
+                    if j.copies.is_some() || j.maitre.is_some() || !viser(j.id) {
                         continue;
                     }
                     let j = crate::ludotheque::sans_reunion(j);
@@ -2288,6 +2303,30 @@ mod tests {
         let la = |b: &str, c: &str| s.verrou().contient(crate::ludotheque::id_boutique(b, c)).unwrap();
         assert!(la("epic", "T") && la("epic", "J"), "l'installé et le joué restent");
         assert!(!la("epic", "B3") && !la("uplay", "54"));
+    }
+
+    /// 0.219.1 (Seb 22/11) : les cartes GOG classées PAS des jeux partent ; jamais une installée, jouée ou d'une autre
+    /// source, ni une carte hors de la liste visée.
+    #[tokio::test]
+    async fn les_cartes_gog_qui_ne_sont_pas_des_jeux_partent_seules() {
+        let (_d, n) = noyau();
+        let id = n.creer_profil("Seb", Some("1234"), None).unwrap().id;
+        n.ouvrir(&id, Some("1234"), &SIMULE).await.unwrap();
+        let s = n.session().await.unwrap();
+        let gog = |cle: &str, nom: &str| crate::boutiques::JeuBoutique { id: format!("gog_{cle}"), plateforme: "gog".into(), ..possede_epic("x", nom) };
+        let mut installe = gog("3", "REDmod installé");
+        installe.installe = true;
+        let mut joue = gog("4", "Joué");
+        joue.minutes = 5;
+        n.ranger_installes(&s, "gog", &[gog("1", "Jeu GOG 1"), gog("2", "Vrai jeu"), installe, joue]).unwrap();
+        n.ranger_installes(&s, "epic", &[possede_epic("1", "Epic")]).unwrap();
+        let carte = |b: &str, c: &str| crate::ludotheque::id_boutique(b, c);
+        let vises: std::collections::BTreeSet<i64> = [carte("gog", "1"), carte("gog", "3"), carte("gog", "4"), carte("epic", "1")].into();
+        assert_eq!(n.retirer_cartes_gog_ecartees(&s, &vises).unwrap(), 1, "seulement la carte GOG jamais installée ni jouée");
+        let la = |b: &str, c: &str| s.verrou().contient(carte(b, c)).unwrap();
+        assert!(!la("gog", "1"));
+        assert!(la("gog", "2") && la("gog", "3") && la("gog", "4") && la("epic", "1"));
+        assert_eq!(n.retirer_cartes_gog_ecartees(&s, &Default::default()).unwrap(), 0);
     }
 
     /// Un refus ne retire jamais une carte possédée qu'une AUTRE carte rattache (Galaxy) ; et la suppression revérifie

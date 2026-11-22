@@ -7714,6 +7714,16 @@ async fn ranger_gog_importe(noyau: &Noyau, s: &crate::noyau::Session, dossier: &
     };
     let l = cartes_gog(dossier, &installes);
     let nouveaux = noyau.ranger_installes(s, "gog", &l)?;
+    // 0.219.1 : les cartes déjà rangées que GOG classe maintenant comme PAS des jeux partent (garde-fous de
+    // `retirer_cartes_gog_ecartees`) ; jamais une carte de la liste gardée.
+    if let Some(c) = crate::boutiques::lire_source(dossier, "gog") {
+        let ecartees = crate::boutiques::cartes_gog_ecartees(&c, &l);
+        match noyau.retirer_cartes_gog_ecartees(s, &ecartees) {
+            Ok(0) => {}
+            Ok(n) => noyau.journaliser(&format!("import GOG : {n} carte(s) qui ne sont pas des jeux retirée(s) de la ludothèque (profil {})", s.profil.id)),
+            Err(_) => noyau.journaliser("import GOG : le retrait des cartes qui ne sont pas des jeux a échoué (rien de retiré)"),
+        }
+    }
     Ok((l, nouveaux))
 }
 
