@@ -19,7 +19,7 @@
 - [x] (validé par Seb le 22/11 : avertissement sur Brigador ; A Plague Tale, du compte Galaxy, ouvre Galaxy sans avertir) 6. « ⬇ Installer » un jeu du compte Hotmail : fenêtre « Installer avec GOG Galaxy ? » ; « Annuler » ne fait rien ;
       même essai à la manette dans Taodbox.
 - [ ] 7. « ▶ Jouer » un jeu installé du compte Galaxy : il se lance comme avant, par Galaxy.
-- [ ] 8. « Oublier » le compte ajouté : confirmation, message, le focus va sur « ➕ Ajouter » ; les jeux restent ; puis
+- [x] (validé par Seb le 22/11 : oubli puis ajout de nouveau ; demande : une fenêtre d'attente pendant la lecture) 8. « Oublier » le compte ajouté : confirmation, message, le focus va sur « ➕ Ajouter » ; les jeux restent ; puis
       le rajouter.
 - [ ] 9. Le journal (« import GOG ») : aucun pseudo, aucun jeton, aucun numéro de compte ; plus de dossier
       `navigateurs-gogjout-…` dans le profil.

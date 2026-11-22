@@ -808,6 +808,11 @@ son dossier de travail ; Galaxy seulement en secours si aucune tâche « game »
 synchronisation des sauvegardes dans le nuage de GOG ni des succès de Galaxy — les sauvegardes locales restent
 protégées par la copie de Frogtend. Intégré au **nouveau C4c** (installer et lancer les jeux GOG sans Galaxy).
 Steam et les jeux Epic protégés exigent leur lanceur : la règle ne s'y applique pas telle quelle (IDEES.md).
+**Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
+Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
+« Connecte-toi… dans la fenêtre qui s'ouvre » laisse croire que rien ne se passe ou que c'est raté. Voulu : une petite
+fenêtre maison BLOQUANTE (« ⏳ Lecture de tes jeux GOG… »), avec un bouton « Annuler » qui arrête vraiment l'opération,
+pour l'ajout d'un compte et la mise à jour à la main. Intégré au nouveau C4c.
 
 ### Prochains lots (décisions de Seb, 02/10)
 
