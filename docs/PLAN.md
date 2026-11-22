@@ -783,6 +783,16 @@ l'identifiant public de GOG Galaxy (méthode de Heroic, Playnite, Lutris), dans 
 du profil (silencieuse si la session GOG est ouverte) ; jeton de renouvellement dans le coffre de Windows, jamais écrit
 ni journalisé ; lecture de la bibliothèque de Galaxy + base publique gamesdb pour titres, types et jaquettes. Marche
 sur tous les PC, Galaxy installé ou non. D'abord une sonde (types réels des 197), puis le rangement.
+**22/11 — 0.218.2 essayée : la connexion façon Galaxy MARCHE (160 licences lues, 88 jeux + 72 licences Amazon
+« spam » invisibles, écartées à raison).** La cause des 197 : une COPIE de la base de GOG Galaxy
+(`C:\ProgramData\GOG.com\Galaxy\storage\galaxy-2.0.db`) montre que Galaxy est connecté à un AUTRE compte GOG
+(197 jeux possédés, visibles, hors DLC, dont Cyberpunk et Horizon ; aucun jeu en commun avec les 160). Seb ne le
+savait pas : un compte lié à Google, l'autre à une adresse Hotmail (celui de Frogtend reçoit les jeux Prime).
+**Décision de Seb (22/11) : « les deux comptes »** — Frogtend accepte PLUSIEURS comptes GOG par profil, chacun
+avec sa connexion et son jeton de renouvellement (coffre de Windows), et réunit leurs jeux dans la ludothèque
+(un jeu possédé deux fois = une seule carte) ; « ➕ Ajouter un compte GOG » et « Oublier ce compte » par compte.
+Intégré au lot **C4b** (qui portait déjà le changement de compte et « Oublier »). Idée à vérifier sur la
+documentation : Frogtend pourrait DIRE qu'un autre compte est ouvert dans Galaxy (lire sa base en lecture seule).
 
 ### Prochains lots (décisions de Seb, 02/10)
 
