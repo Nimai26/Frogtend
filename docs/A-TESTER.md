@@ -7,7 +7,7 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## 🛟 Mettre mes parties à l'abri (0.221.0, lot S2)
-- [ ] 1. Fiche de Cyberpunk ▸ 📁 ▸ 🛟 « Mettre mes parties à l'abri » : « Frogtend compte tes parties… », puis l'annonce
+- [x] (validé par Seb le 22/11 ; vérifié sur le disque : 189 fichiers, 253 Mo, fiche sans chemin du PC ni nom d utilisateur) 1. Fiche de Cyberpunk ▸ 📁 ▸ 🛟 « Mettre mes parties à l'abri » : « Frogtend compte tes parties… », puis l'annonce
       (N fichiers, taille, « rangées dans ton profil »), puis après ton oui « Copie en cours… » et un abri daté dans
       « 🛟 Mes abris ».
 - [ ] 2. Recommencer tout de suite : « Déjà à l'abri », aucune nouvelle date dans la liste.
