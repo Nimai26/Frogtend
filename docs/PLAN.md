@@ -874,6 +874,13 @@ pour l'ajout d'un compte et la mise à jour à la main. Intégré au nouveau C4c
 **Ordre en cours (Seb, 22/11)** : lot **S** (S1 livré en 0.220.0-0.220.1 ; puis S2 à S7) → lot **R** (recompilations,
 ci-dessous) → **C4c** (installer et lancer les jeux GOG sans Galaxy, fenêtre d'attente GOG).
 
+**Dépôt GitHub bientôt PRIVÉ (Seb, 22/11).** ⚠ AVANT de le passer en privé : la mise à jour en un clic de Frogtend lit
+`https://github.com/Nimai26/Frogtend/releases/latest/download/latest.json` (src-tauri/tauri.conf.json, `endpoints`) et
+télécharge l'installeur sur les releases du même dépôt. Un dépôt privé rend ces adresses inaccessibles sans compte : plus
+aucune mise à jour chez la famille (règle « mise à jour simple »). Choisir d'abord un autre point de distribution (par
+exemple un dépôt PUBLIC qui ne contient que les releases, ou Firehouse qui sert les mises à jour — besoin d'API),
+livrer une version qui le lit, attendre qu'elle soit installée partout, puis seulement passer le dépôt en privé.
+
 **R. Les RECOMPILATIONS (« recomps ») dans Frogtend (Seb, 22/11 : « il faut à tout prix »)** — vu sur
 recomplauncher.com (RecompLauncher, GPL v3, Tauri, github.com/elripalda/RecompLauncher ; détail dans IDEES.md). Une recomp
 est un jeu de console reconstruit en programme PC natif (Zelda 64: Recompiled, Ship of Harkinian, Starship,
