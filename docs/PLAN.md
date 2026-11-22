@@ -827,6 +827,28 @@ où ils rangent leurs parties (règles par moteur, documentation officielle de c
 qu'au profil admin qui y joue (jamais montrées, mises en cache ni journalisées pour un autre profil). (2) Savoir où sont
 les parties de chaque jeu est la base de **l'éditeur de sauvegardes prévu dans Frogtend** : le lot S doit ranger ces
 emplacements de façon réutilisable (par jeu : dossier, fichiers, moteur), pas seulement pour la copie.
+**Lot S — plan des experts lancement et contrat (22/11, avant codage).** Constats : Firehouse ne reconnaît un jeu que
+par fiche ou par `titre/plateforme/rom/serial/steam_appid` (aucun identifiant GOG/Epic/Ubisoft/Amazon/Xbox) → besoin
+d'API 56 ; ⚠ DÉFAUT DÉJÀ PRÉSENT : les parties Steam « hors nuage » mises à l'abri ne sont PAS restaurables (chemin
+d'origine non gardé, `nuage_steam.rs:238-239`, `:578-581` ; remise sautée, `partie.rs:74-75`) ; les abris sont ceux du
+PC, pas du profil (seul Steam filtre par compte) ; une erreur sur un seul fichier arrête toute la sauvegarde
+(`sauvegarde.rs:278`) ; le quota Firehouse (100 Go par personne) n'est jamais lu. Règles : emplacements rangés PAR
+PROFIL (`profils/<id>/emplacements-parties.json` : chemin NON résolu avec jetons, nature, origine
+firehouse/moteur/manifeste, preuve, moteur, `lu_le`) — jamais dans un dossier commun (un chemin révèle le titre d'un
+jeu réservé aux admins) ; chaque abri a sa fiche (profil propriétaire, chemins non résolus, SHA1) sous un préfixe
+propre (`jeux/<id>/emplacements/<n°>/…`) ; envoi DEPUIS l'abri ; restauration avec `reposer_sauf` (jamais écraser une
+partie différente : conflit proposé), JAMAIS `reposer_parties_du_jeu` (écrase) ; registre refusé dans S ; journal :
+l'id et le code seulement, jamais un chemin ni un titre ; un fichier en échec est sauté et compté (sauf 401/507).
+Sous-lots, chacun livré et essayé seul : **S0** relevé réel en lecture seule (titres GOG/Epic de Seb demandés à
+`/triche/recherche`, combien se résolvent ; fixture) ; **S1** modèle + cache par profil + « 📁 Où sont mes parties »
+sur la fiche (aussi dans Taodbox) ; **S2** abri à la main pour tout jeu PC + correction du défaut Steam hors nuage ;
+**S3** abri automatique après une partie (temps de calme, jamais pendant que le jeu écrit) et avant réinstallation /
+mise à jour / retrait / mod ; **S4** envoi chez Firehouse filtré par propriétaire, quota lu et annoncé ; **S5**
+restauration au bon endroit avec conflits, aussi à la manette ; **S6** règles par moteur (Ren'Py, RPG Maker, Unity,
+Unreal, Godot) après lecture des documentations officielles, et test « une partie de jeu admin n'apparaît jamais pour
+un mineur » ; **S7** rattrapage des parties jouées hors de Frogtend. Piège : plusieurs profils Frogtend sur un même
+compte Windows partagent `%APPDATA%` → un abri appartient au profil qui a lancé la partie (fichiers modifiés après son
+départ), un abri sans propriétaire n'est jamais envoyé sans demander.
 Steam et les jeux Epic protégés exigent leur lanceur : la règle ne s'y applique pas telle quelle (IDEES.md).
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
