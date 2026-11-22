@@ -871,6 +871,24 @@ pour l'ajout d'un compte et la mise à jour à la main. Intégré au nouveau C4c
 
 ### Prochains lots (décisions de Seb, 02/10)
 
+**Ordre en cours (Seb, 22/11)** : lot **S** (S1 livré en 0.220.0-0.220.1 ; puis S2 à S7) → lot **R** (recompilations,
+ci-dessous) → **C4c** (installer et lancer les jeux GOG sans Galaxy, fenêtre d'attente GOG).
+
+**R. Les RECOMPILATIONS (« recomps ») dans Frogtend (Seb, 22/11 : « il faut à tout prix »)** — vu sur
+recomplauncher.com (RecompLauncher, GPL v3, Tauri, github.com/elripalda/RecompLauncher ; détail dans IDEES.md). Une recomp
+est un jeu de console reconstruit en programme PC natif (Zelda 64: Recompiled, Ship of Harkinian, Starship,
+SpaghettiKart, Banjo: Recompiled…), publié par son auteur sur GitHub, qui exige la ROM ou le disque ORIGINAL. Dans
+Frogtend : un « émulateur » de plus pour un jeu dont Firehouse sert la ROM (le jeu vient toujours de Firehouse ; le
+programme vient du GitHub officiel de son auteur, après accord et taille annoncée) ; « ▶ Jouer en version PC
+(recompilée) » sur la fiche ; vérification de la ROM (`dumps` du format `recomplauncher.json`) ; parties par le lot S
+(champ `saves`) ; Taodbox par `RECOMPLAUNCHER_MODE=bigpicture` ; manette réglée dès la 1re partie (`config`) ; liste des
+recomps demandée à Firehouse (besoin d'API à écrire au début du lot). **Décision de Seb (22/11) sur le code de
+RecompLauncher** : usage privé et familial — on peut examiner son code et en reprendre des parties si cela fait gagner du
+temps, en l'adaptant à Frogtend. ⚠ À garder en tête (dit à Seb le 22/11) : la GPL v3 n'impose rien pour un usage privé,
+mais Frogtend est distribué (dépôt GitHub PUBLIC Nimai26/Frogtend, installé chez la famille) : du code GPL repris
+obligerait Frogtend entier à suivre la GPL (sources publiées sous GPL, mention des auteurs). Chaque reprise est notée
+(fichier d'origine, commit, auteur) pour pouvoir s'y conformer.
+
 **D. Les DLC et contenus additionnels (Seb, 03/10)** : « la gestion de ce genre de chose, DLC et autres, doit pouvoir
 être **détectée, gérée, proposée et installée si l'utilisateur est d'accord** ». Règle générale, pour toutes les
 consoles (DLC, mises à jour, avatars, thèmes…), jamais d'installation sans un oui. ⚠ Précision de Seb : l'accord est
