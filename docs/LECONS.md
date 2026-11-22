@@ -413,3 +413,4 @@ action acceptée qui ne fait rien le DIT (journal + fenêtre) ; et chaque émula
   en cache part chez PCGamingWiki : 80 demandes à 400 ms d'écart ont fait refuser Firehouse par Cloudflare (429), et
   les résultats (`null`) étaient faux. Avant un relevé réel, demander à Firehouse ce que la route déclenche derrière et
   le rythme supportable ; par défaut, UNE demande toutes les 5 s au plus.
+- **22/11 — Jamais d’accents graves dans un texte passé au terminal entre guillemets doubles.** Deux fois le même jour, des noms entre accents graves (runGame, start, inputs…) ont été EXÉCUTÉS comme des commandes ; « start » a pu ouvrir une fenêtre chez Seb. Tout texte de documentation s’écrit avec l’outil d’édition, ou dans un script écrit avec Write puis lancé par python -I.

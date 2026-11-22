@@ -211,3 +211,17 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   Poudlard » est rangé avec un « ? » à la place du « é » (titre du catalogue Epic mal décodé ; le code connaît déjà les
   « titres douteux » d'Epic). Chercher d'où vient la mauvaise conversion et relire ces titres ; ils partent aussi chez
   Firehouse dans les recherches par titre.
+
+- **Les RECOMPILATIONS (« recomps ») dans Frogtend** (Seb 22/11 : « il faut à tout prix », vu sur recomplauncher.com).
+  Une recomp = un jeu de console reconstruit en programme PC natif (Zelda 64: Recompiled, Ship of Harkinian, Starship,
+  SpaghettiKart, Banjo: Recompiled…), publié par son auteur sur GitHub, qui a besoin de la ROM ou de l'image ORIGINALE.
+  RecompLauncher (GPL v3, Tauri, github.com/elripalda/RecompLauncher) ne fournit aucun jeu ; son format ouvert
+  `recomplauncher.json` (docs/DEVELOPERS.md) décrit tout : `inputs` (fichier attendu, `dumps` name/size/crc32 pour le
+  vérifier), `start` (programme, arguments, env), `prepare`, `saves` (jetons {install} {data} {local} {documents}…),
+  `config` / `settings`, Big Picture par `RECOMPLAUNCHER_MODE` / `RECOMPLAUNCHER_PAD`. Idée d'intégration : une recomp
+  est un « émulateur » de plus pour un jeu dont Firehouse sert déjà la ROM (le jeu vient toujours de Firehouse ; le
+  programme vient du GitHub officiel de son auteur, après accord et taille annoncée, comme un émulateur) ; « ▶ Jouer
+  en version PC (recompilée) » à côté de l'émulateur ; vérification de la ROM par `dumps` ; parties via `saves`
+  (lot S) ; Taodbox par `RECOMPLAUNCHER_MODE=bigpicture` ; manette réglée dès la 1re partie par `config`. Catalogue :
+  à demander à Firehouse (un seul cerveau) plutôt que de lire le site ; ne JAMAIS copier le code GPL de RecompLauncher,
+  seulement lire son format documenté. À faire après le lot S (et le C4c), avec l'avis des experts.
