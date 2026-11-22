@@ -7046,7 +7046,7 @@ async fn bibliotheque_gog(
             tokio::time::sleep(std::time::Duration::from_millis(crate::gog_galaxy::PAUSE_FICHES_MS)).await;
         }
         demandees += 1;
-        match crate::gog_galaxy::fiche(c, crate::gog_galaxy::GAMESDB, id, maintenant).await {
+        match crate::gog_galaxy::fiche(c, crate::gog_galaxy::GAMESDB, crate::gog_galaxy::PRODUITS, id, maintenant).await {
             Ok(f) => {
                 echecs_de_suite = 0;
                 fiches.insert(id.clone(), f);

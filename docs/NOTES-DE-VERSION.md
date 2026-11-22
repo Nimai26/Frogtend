@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.219.1 — 🟣 GOG : plus de cartes « Jeu GOG 1234… »
+
+- Corrigé : chez Seb, après l'ajout du compte de GOG Galaxy, 11 cartes n'avaient qu'un numéro (« Jeu GOG 1182612231 »).
+  La base de fiches de GOG ne les connaissait pas ; Frogtend demande maintenant aussi au catalogue public de GOG ce que
+  c'est. Les codes de réduction, extensions (DLC), avatars et paquets Amazon ne font plus de carte ; un vrai jeu
+  (Dragons of Flame) prend son nom et sa vignette. Résultat attendu : le même nombre de jeux que dans GOG Galaxy.
+
 ## 0.219.0 — 🟣 GOG : plusieurs comptes par profil (lot C4b)
 
 - Nouveau : tu avais deux comptes GOG sans le savoir, celui de GOG Galaxy (Cyberpunk, Horizon…) et celui de Frogtend

@@ -7,11 +7,11 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## 🟣 Plusieurs comptes GOG (0.219.0, lot C4b)
-- [ ] 1. 🛒 Boutiques ▸ 🟣 Mon compte GOG : ton compte actuel est une ligne (pseudo ou « Compte GOG 1 », environ 88
+- [x] (validé par Seb le 22/11 : pseudo lu, 88 jeux, « celui du jeu offert », ligne « Galaxy sur un autre compte ») 1. 🛒 Boutiques ▸ 🟣 Mon compte GOG : ton compte actuel est une ligne (pseudo ou « Compte GOG 1 », environ 88
       jeux, « celui du jeu offert ») ; AUCUN numéro affiché.
-- [ ] 2. « ➕ Ajouter un compte GOG », te connecter avec le compte de GOG Galaxy (Google). Si Google refuse : le message
+- [x] (validé par Seb le 22/11 : compte Hotmail ajouté, 207 jeux lus, 295 en tout ; Google pas encore essayé) 2. « ➕ Ajouter un compte GOG », te connecter avec le compte de GOG Galaxy (Google). Si Google refuse : le message
       « définis un mot de passe sur gog.com » apparaît.
-- [ ] 3. Après l'ajout : « ✅ Compte GOG « … » ajouté », environ 197 jeux ; Cyberpunk et Horizon avec leur jaquette, une
+- [ ] 3. (0.219.1 : plus aucune carte « Jeu GOG <numéro> » ; le compte Galaxy compte 197 jeux comme GOG Galaxy) Après l'ajout : « ✅ Compte GOG « … » ajouté », environ 197 jeux ; Cyberpunk et Horizon avec leur jaquette, une
       seule carte chacun ; la ligne « GOG Galaxy est ouvert sur un autre compte » disparaît.
 - [ ] 4. Ajouter le même compte une 2e fois : « Ce compte GOG est déjà dans Frogtend ».
 - [ ] 5. « 🔄 Mettre à jour mes jeux GOG » : UN seul message ; fermer et rouvrir Frogtend : aucune fausse « connexion

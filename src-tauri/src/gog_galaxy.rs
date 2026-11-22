@@ -331,6 +331,10 @@ pub struct FicheGog {
     /// La base ne connaissait pas ce numéro (404) : le jeu est GARDÉ comme une fiche en échec.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub introuvable: bool,
+    /// 0.219.1 : la fiche du CATALOGUE public (`api.gog.com/products/<id>`) a été demandée après un 404 de gamesdb.
+    /// Une fiche `introuvable` d'avant (sans ce drapeau) est redemandée tout de suite.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub produit_essaye: bool,
     /// Quand la fiche a été demandée (secondes depuis 1970) ; 0 : inconnu (redemandée).
     #[serde(default)]
     pub lu_le: u64,
@@ -369,6 +373,37 @@ pub fn lire_fiche(v: &Value) -> Option<FicheGog> {
         visible: g["visible_in_library"].as_bool(),
         image,
         introuvable: false,
+        produit_essaye: false,
+        lu_le: 0,
+    })
+}
+
+/// Le catalogue public de GOG (sans jeton ni cookie), interrogé quand gamesdb ne connaît pas un numéro.
+pub const PRODUITS: &str = "https://api.gog.com";
+
+/// Lit une fiche de `api.gog.com/products/<id>` (formes relevées le 22/11 sur 1321890219 « game », 1597316373 « dlc »,
+/// 1662043288 « pack ») : `game_type` et `title`, et la vignette `images.logo2x` (« //images-N.gog-statics.com/
+/// <empreinte>_glx_logo_2x.jpg » → l'empreinte au format des vignettes du site). « game » est visible ; « dlc » et
+/// « pack » suivent `raison_ecart` (écartés). `None` : forme inconnue.
+pub fn lire_produit(v: &Value) -> Option<FicheGog> {
+    let genre = v["game_type"].as_str().filter(|t| !t.is_empty())?.to_string();
+    let titre = crate::boutiques_pc::sans_marques(v["title"].as_str()?);
+    if titre.is_empty() {
+        return None;
+    }
+    let image = v["images"]["logo2x"].as_str().or(v["images"]["logo"].as_str()).and_then(|l| {
+        let base = l.split_once('_').map(|(b, _)| b).unwrap_or(l);
+        crate::boutiques::image_gog(base)
+    });
+    Some(FicheGog {
+        titre: titre.chars().take(300).collect(),
+        visible: (genre == "game").then_some(true),
+        genre_du_jeu: genre.clone(),
+        genre,
+        jeu: String::new(),
+        image,
+        introuvable: false,
+        produit_essaye: true,
         lu_le: 0,
     })
 }
@@ -382,19 +417,34 @@ pub enum EchecFiche {
     Autre,
 }
 
-/// La fiche publique d'un jeu (sans jeton ni cookie), datée `maintenant`. Un 404 donne une fiche `introuvable`.
-pub async fn fiche(client: &reqwest::Client, base: &str, id: &str, maintenant: u64) -> Result<FicheGog, EchecFiche> {
+/// La fiche publique d'un jeu (sans jeton ni cookie), datée `maintenant`. Un 404 de gamesdb fait demander le catalogue
+/// (`produits`, 0.219.1 : chez Seb, 11 numéros inconnus de gamesdb — codes de réduction, DLC, avatar, paquets Amazon et
+/// un vrai jeu). Le catalogue dit le type ; s'il ne connaît pas non plus le numéro (404), ce n'est pas un jeu vendu :
+/// type « inconnu » (écarté, sauf si le site le montre). Toute autre réponse du catalogue : fiche `introuvable` (gardée).
+pub async fn fiche(client: &reqwest::Client, base: &str, produits: &str, id: &str, maintenant: u64) -> Result<FicheGog, EchecFiche> {
     if !crate::gratuits::numero_gog(id) {
         return Err(EchecFiche::Autre);
     }
     let r = client.get(format!("{base}/platforms/gog/external_releases/{id}")).send().await.map_err(|_| EchecFiche::Autre)?;
     let f = match r.status().as_u16() {
         200 => r.json::<Value>().await.ok().as_ref().and_then(lire_fiche).ok_or(EchecFiche::Autre)?,
-        404 => FicheGog { introuvable: true, ..Default::default() },
+        404 => fiche_du_catalogue(client, produits, id).await?,
         429 => return Err(EchecFiche::TropDeDemandes),
         _ => return Err(EchecFiche::Autre),
     };
     Ok(FicheGog { lu_le: maintenant, ..f })
+}
+
+/// Après un 404 de gamesdb : la fiche du catalogue public (voir `fiche`).
+async fn fiche_du_catalogue(client: &reqwest::Client, produits: &str, id: &str) -> Result<FicheGog, EchecFiche> {
+    let introuvable = FicheGog { introuvable: true, produit_essaye: true, ..Default::default() };
+    let Ok(r) = client.get(format!("{produits}/products/{id}")).send().await else { return Ok(introuvable) };
+    Ok(match r.status().as_u16() {
+        200 => r.json::<Value>().await.ok().as_ref().and_then(lire_produit).unwrap_or(introuvable),
+        404 => FicheGog { genre: "inconnu".into(), produit_essaye: true, ..Default::default() },
+        429 => return Err(EchecFiche::TropDeDemandes),
+        _ => introuvable,
+    })
 }
 
 /// La règle de Frogtend (lot C5) pour un jeu qui ne vient QUE de la bibliothèque de Galaxy (un jeu que la liste du site
@@ -577,7 +627,8 @@ pub fn fiches_a_demander(ids: &[String], cache: &BTreeMap<String, FicheGog>, mai
             None => true,
             Some(f) => {
                 let valable = if f.introuvable { FICHE_INTROUVABLE_VALABLE_S } else { FICHE_LUE_VALABLE_S };
-                f.lu_le == 0 || maintenant.saturating_sub(f.lu_le) > valable
+                // Une fiche introuvable d'avant la 0.219.1 n'a jamais vu le catalogue : redemandée tout de suite.
+                f.lu_le == 0 || (f.introuvable && !f.produit_essaye) || maintenant.saturating_sub(f.lu_le) > valable
             }
         })
         .take(FICHES_PAR_LECTURE_MAX)
@@ -809,16 +860,61 @@ mod tests {
             t.status(500);
         })
         .await;
+        // 0.219.1 : le catalogue, demandé après un 404 de gamesdb (sans jeton ni cookie lui non plus).
+        let produit = s
+            .mock_async(|w, t| {
+                w.method(GET).path("/products/1").matches(|r| r.headers.as_ref().is_none_or(|h| !h.iter().any(|(k, _)| k.eq_ignore_ascii_case("authorization") || k.eq_ignore_ascii_case("cookie"))));
+                t.status(200).json_body(json!({"id": 1, "title": "Dragons of Flame™", "game_type": "game", "images": {"logo2x": "//images-4.gog-statics.com/0afee7037efb6aaa_glx_logo_2x.jpg"}}));
+            })
+            .await;
+        for (n, statut) in [("4", 404u16), ("5", 503), ("6", 429)] {
+            s.mock_async(|w, t| {
+                w.method(GET).path(format!("/platforms/gog/external_releases/{n}"));
+                t.status(404);
+            })
+            .await;
+            s.mock_async(|w, t| {
+                w.method(GET).path(format!("/products/{n}"));
+                t.status(statut).json_body(json!({"error": "Product not found"}));
+            })
+            .await;
+        }
         // Un seul client pour toutes les fiches.
         let c = client().unwrap();
-        let h = fiche(&c, &s.base_url(), "1209025141", 1000).await.unwrap();
+        let b = s.base_url();
+        let h = fiche(&c, &b, &b, "1209025141", 1000).await.unwrap();
         assert_eq!((h.titre.as_str(), h.lu_le), ("Horizon Zero Dawn: Complete Edition", 1000));
         ok.assert_async().await;
-        let i = fiche(&c, &s.base_url(), "1", 1000).await.unwrap();
-        assert!(i.introuvable && i.lu_le == 1000);
-        assert_eq!(fiche(&c, &s.base_url(), "2", 1000).await, Err(EchecFiche::TropDeDemandes));
-        assert_eq!(fiche(&c, &s.base_url(), "3", 1000).await, Err(EchecFiche::Autre));
-        assert_eq!(fiche(&c, &s.base_url(), "../x", 1000).await, Err(EchecFiche::Autre));
+        // Inconnu de gamesdb, « game » au catalogue : un vrai jeu, gardé, avec sa vignette.
+        let i = fiche(&c, &b, &b, "1", 1000).await.unwrap();
+        produit.assert_async().await;
+        assert_eq!((i.titre.as_str(), i.genre.as_str(), i.visible, i.introuvable, i.produit_essaye, i.lu_le), ("Dragons of Flame", "game", Some(true), false, true, 1000));
+        assert_eq!(i.image.as_deref(), Some("https://images-4.gog-statics.com/0afee7037efb6aaa_392.jpg"));
+        assert_eq!(raison_ecart(&i), None);
+        // Inconnu des deux : pas un jeu vendu (code de réduction, avatar) → écarté.
+        let x = fiche(&c, &b, &b, "4", 1000).await.unwrap();
+        assert_eq!((x.genre.as_str(), x.introuvable, x.produit_essaye), ("inconnu", false, true));
+        assert!(raison_ecart(&x).is_some());
+        // Catalogue en panne : introuvable, gardé (jamais un jeu perdu sur une panne).
+        let p = fiche(&c, &b, &b, "5", 1000).await.unwrap();
+        assert!(p.introuvable && p.produit_essaye && raison_ecart(&p).is_none());
+        assert_eq!(fiche(&c, &b, &b, "6", 1000).await, Err(EchecFiche::TropDeDemandes));
+        assert_eq!(fiche(&c, &b, &b, "2", 1000).await, Err(EchecFiche::TropDeDemandes));
+        assert_eq!(fiche(&c, &b, &b, "3", 1000).await, Err(EchecFiche::Autre));
+        assert_eq!(fiche(&c, &b, &b, "../x", 1000).await, Err(EchecFiche::Autre));
+    }
+
+    #[test]
+    fn le_catalogue_dit_le_type_des_inconnus_de_gamesdb() {
+        let dlc = lire_produit(&json!({"title": "Cyberpunk 2077 REDmod", "game_type": "dlc", "images": {"logo2x": "//images-3.gog-statics.com/c6cd014ca0a27aaa_glx_logo_2x.jpg"}})).unwrap();
+        assert_eq!(raison_ecart(&dlc), Some("dlc"));
+        let pack = lire_produit(&json!({"title": "The Falconeer - Amazon Prime", "game_type": "pack"})).unwrap();
+        assert_eq!((raison_ecart(&pack), pack.image), (Some("pack"), None));
+        // Forme inconnue : rien (jamais un faux jeu).
+        assert!(lire_produit(&json!({"title": "X"})).is_none());
+        assert!(lire_produit(&json!({"game_type": "game", "title": ""})).is_none());
+        // Une image d'un autre hôte n'est jamais prise.
+        assert_eq!(lire_produit(&json!({"title": "Y", "game_type": "game", "images": {"logo2x": "//exemple.com/abc_glx_logo_2x.jpg"}})).unwrap().image, None);
     }
 
     /// Lot C4b : le pseudo public d'un compte (forme de « gogapidocs »), sans jeton ni cookie ; au moindre doute, rien.
@@ -853,7 +949,7 @@ mod tests {
     }
 
     fn f(titre: &str, genre: &str, genre_du_jeu: &str, jeu: &str, visible: Option<bool>) -> FicheGog {
-        FicheGog { titre: titre.into(), genre: genre.into(), genre_du_jeu: genre_du_jeu.into(), jeu: jeu.into(), visible, image: Some(format!("https://images.gog.com/{jeu}")), introuvable: false, lu_le: 1 }
+        FicheGog { titre: titre.into(), genre: genre.into(), genre_du_jeu: genre_du_jeu.into(), jeu: jeu.into(), visible, image: Some(format!("https://images.gog.com/{jeu}")), introuvable: false, produit_essaye: false, lu_le: 1 }
     }
 
     fn jb(id: &str, nom: &str) -> JeuBoutique {
@@ -941,6 +1037,8 @@ mod tests {
         cache.insert("4".to_string(), FicheGog { introuvable: true, lu_le: maintenant - 8 * jour, ..Default::default() });
         cache.insert("5".to_string(), FicheGog { lu_le: maintenant - 61 * jour, ..f("B", "game", "game", "8", Some(true)) });
         cache.insert("6".to_string(), FicheGog { lu_le: 0, ..f("C", "game", "game", "7", Some(true)) });
+        assert_eq!(fiches_a_demander(&biblio, &cache, maintenant), ids(&["2", "3", "4", "5", "6"]), "3 : introuvable d'avant la 0.219.1, jamais vu le catalogue");
+        cache.get_mut("3").unwrap().produit_essaye = true;
         assert_eq!(fiches_a_demander(&biblio, &cache, maintenant), ids(&["2", "4", "5", "6"]));
         // Le cache se range dans boutiques.json et se relit (un ancien cache sans date se lit aussi).
         let v = serde_json::to_value(&cache).unwrap();
