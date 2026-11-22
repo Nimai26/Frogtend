@@ -13,10 +13,10 @@
       « définis un mot de passe sur gog.com » apparaît.
 - [x] (validé par Seb le 22/11 en 0.219.2 : plus de carte à numéro, 197 jeux sur le compte Galaxy, jaquettes) 3. (0.219.1 : plus aucune carte « Jeu GOG <numéro> » ; le compte Galaxy compte 197 jeux comme GOG Galaxy) Après l'ajout : « ✅ Compte GOG « … » ajouté », environ 197 jeux ; Cyberpunk et Horizon avec leur jaquette, une
       seule carte chacun ; la ligne « GOG Galaxy est ouvert sur un autre compte » disparaît.
-- [ ] 4. Ajouter le même compte une 2e fois : « Ce compte GOG est déjà dans Frogtend ».
-- [ ] 5. « 🔄 Mettre à jour mes jeux GOG » : UN seul message ; fermer et rouvrir Frogtend : aucune fausse « connexion
+- [x] (validé par Seb le 22/11) 4. Ajouter le même compte une 2e fois : « Ce compte GOG est déjà dans Frogtend ».
+- [x] (validé par Seb le 22/11 : « Rien de nouveau », 2 comptes lus, 285 jeux ; rien à la réouverture) 5. « 🔄 Mettre à jour mes jeux GOG » : UN seul message ; fermer et rouvrir Frogtend : aucune fausse « connexion
       expirée ».
-- [ ] 6. « ⬇ Installer » un jeu du compte Hotmail : fenêtre « Installer avec GOG Galaxy ? » ; « Annuler » ne fait rien ;
+- [x] (validé par Seb le 22/11 : avertissement sur Brigador ; A Plague Tale, du compte Galaxy, ouvre Galaxy sans avertir) 6. « ⬇ Installer » un jeu du compte Hotmail : fenêtre « Installer avec GOG Galaxy ? » ; « Annuler » ne fait rien ;
       même essai à la manette dans Taodbox.
 - [ ] 7. « ▶ Jouer » un jeu installé du compte Galaxy : il se lance comme avant, par Galaxy.
 - [ ] 8. « Oublier » le compte ajouté : confirmation, message, le focus va sur « ➕ Ajouter » ; les jeux restent ; puis

@@ -793,6 +793,13 @@ avec sa connexion et son jeton de renouvellement (coffre de Windows), et réunit
 (un jeu possédé deux fois = une seule carte) ; « ➕ Ajouter un compte GOG » et « Oublier ce compte » par compte.
 Intégré au lot **C4b** (qui portait déjà le changement de compte et « Oublier »). Idée à vérifier sur la
 documentation : Frogtend pourrait DIRE qu'un autre compte est ouvert dans Galaxy (lire sa base en lecture seule).
+**22/11 — C4b livré (0.219.0-0.219.2) et essayé par Seb** : 2 comptes, 88 + 197 = 285 jeux, cartes « non-jeux »
+retirées, garde du compte en double et avertissement d'installation validés. **Décision de Seb (22/11) : EXCEPTION
+GOG à la règle « les jeux ne viennent que de Firehouse »** — pour un jeu GOG d'un compte connecté, Frogtend peut
+TÉLÉCHARGER L'INSTALLEUR OFFICIEL depuis GOG (jeux sans DRM, connexion façon Galaxy du compte qui le possède) et
+l'installer lui-même, toujours après l'accord de la personne (taille et durée annoncées, reprise des
+téléchargements). Contrepartie dite à l'écran : pas de sauvegardes dans le nuage ni de succès de GOG Galaxy pour un jeu
+installé ainsi. Ce lot **remplace le C4c** (« proposer d'installer Galaxy »). L'exception vaut pour GOG seulement.
 
 ### Prochains lots (décisions de Seb, 02/10)
 
