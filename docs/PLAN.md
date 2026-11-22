@@ -801,9 +801,9 @@ l'installer lui-même, toujours après l'accord de la personne (taille et durée
 téléchargements). Contrepartie dite à l'écran : pas de sauvegardes dans le nuage ni de succès de GOG Galaxy pour un jeu
 installé ainsi. Ce lot **remplace le C4c** (« proposer d'installer Galaxy »). L'exception vaut pour GOG seulement.
 **Décision de Seb (22/11, essai de Cyberpunk) : LANCER LES JEUX DIRECTEMENT, COMME LAUNCHBOX, sans passer par les
-lanceurs.** Chez Seb, « ▶ Jouer » sur Cyberpunk passait par GOG Galaxy () puis le lanceur de CD Projekt
-(REDprelauncher, tâche « principale » du ), écran noir avant le jeu. Pour GOG (sans DRM) : lancer la
-tâche de catégorie « game » du  (Cyberpunk : ), avec ses arguments et
+lanceurs.** Chez Seb, « ▶ Jouer » sur Cyberpunk passait par GOG Galaxy (`runGame`) puis le lanceur de CD Projekt
+(REDprelauncher, tâche « principale » du `goggame-<id>.info`), écran noir avant le jeu. Pour GOG (sans DRM) : lancer la
+tâche de catégorie « game » du `goggame-<id>.info` (Cyberpunk : `bin\x64\Cyberpunk2077.exe`), avec ses arguments et
 son dossier de travail ; Galaxy seulement en secours si aucune tâche « game » n'est lisible. Contrepartie : pas de
 synchronisation des sauvegardes dans le nuage de GOG ni des succès de Galaxy — les sauvegardes locales restent
 protégées par la copie de Frogtend. Intégré au **nouveau C4c** (installer et lancer les jeux GOG sans Galaxy).
