@@ -37,7 +37,9 @@ pub struct Preparation {
 }
 
 /// Un abri de parties : où, combien.
-/// Les dates des abris FINIS d'un dossier d'abris de jeu (noms tout en chiffres ; un `.en-cours` n'en est pas un).
+/// Les dates des abris FINIS d'un dossier d'abris de jeu (noms tout en chiffres ; un `.en-cours` n'en est pas un). Un
+/// abri fait à la main (lot S2 : ses parties ne sont pas dans le dossier du jeu) n'en est pas un ici : il ne fait jamais
+/// reposer la question de la réinstallation.
 fn dates_d_abri(du_jeu: &Path) -> Vec<String> {
     std::fs::read_dir(du_jeu)
         .into_iter()
@@ -46,6 +48,7 @@ fn dates_d_abri(du_jeu: &Path) -> Vec<String> {
         .filter(|e| e.path().is_dir())
         .map(|e| e.file_name().to_string_lossy().to_string())
         .filter(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_digit()))
+        .filter(|d| !crate::abri_parties::fait_a_la_main(&du_jeu.join(d)))
         .collect()
 }
 
@@ -70,9 +73,13 @@ fn plan_abri(j: &JeuPc, i: &Installation, sources: &[PathBuf], manifeste: &Path)
             let fiche: serde_json::Value = std::fs::read(du_jeu.join(format!("{date}.json"))).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default();
             let version = fiche["version"].as_i64();
             let dossier = du_jeu.join(&date);
+            // Les parties du nuage Steam se rendent par Steam ; les emplacements HORS du dossier du jeu (lot S2) seront
+            // remis à leur place (lot S5) — seulement quand l'abri le dit (un dossier `emplacements` du jeu reste un
+            // dossier du jeu).
+            let reservees = crate::abri_parties::reservees(&dossier);
             for r in crate::installation::fichiers_de(&dossier)? {
-                if r.starts_with("nuage-steam/") {
-                    continue; // les parties du nuage Steam se rendent par Steam
+                if reservees.ecarte(&r) {
+                    continue;
                 }
                 let plus_ancien = plus_recents.get(&r).is_some_and(|(dt, ..)| dt.as_str() >= date.as_str());
                 if !plus_ancien {
@@ -1565,9 +1572,19 @@ impl Noyau {
                 return Err(Erreur::Disque(format!("La copie de « {r} » a échoué : le jeu n'est pas retiré.")));
             }
         }
+        // Lot S2 : la fiche dit aussi le profil propriétaire (celui de la session) et chaque fichier (taille, SHA1) ;
+        // `version` (la version du jeu) reste lue comme avant par la remise des parties.
+        let mut faits = Vec::new();
+        for r in &changes {
+            let c = provisoire.join(r);
+            let taille = std::fs::metadata(&c).map(|m| m.len()).unwrap_or(0);
+            faits.push(crate::nuage_steam::AMettre { source: c.clone(), relatif: r.clone(), taille, sha: crate::nuage_steam::sha1(&c)? });
+        }
         std::fs::rename(&provisoire, &abri)?;
-        // La fiche de l'abri, À CÔTÉ (jamais dedans : elle partirait comme une partie) : la version du jeu, complet.
-        let fiche = serde_json::json!({ "version": j.version, "complet": true, "fichiers": changes.len(), "octets": octets });
+        // La fiche de l'abri, À CÔTÉ (jamais dedans : elle partirait comme une partie).
+        let profil = self.actif().await.map(|p| p.id).unwrap_or_default();
+        let mut fiche = crate::abri_parties::FicheAbri::nouvelle(crate::abri_parties::SORTE_JEU, &profil, vec![], &faits, 0, 0);
+        fiche.version = Some(j.version);
         if let Err(e) = std::fs::write(du_jeu.join(format!("{date}.json")), serde_json::to_vec_pretty(&fiche).unwrap_or_default()) {
             // Sans fiche, seuls les fichiers absents reviendront un jour : noté.
             self.journaliser(&format!("jeu {id} : fiche de l'abri non écrite ({e})"));
@@ -1603,7 +1620,7 @@ impl Noyau {
     }
 
     /// Les dossiers d'abris de ce jeu (et de ses anciens numéros), dans tous les dossiers d'abris à lire.
-    fn sources_abri(&self, id: i64) -> Resultat<Vec<PathBuf>> {
+    pub(crate) fn sources_abri(&self, id: i64) -> Resultat<Vec<PathBuf>> {
         let mut numeros: Vec<i64> = self.registre().reunions()?.into_iter().filter(|(_, n)| *n == id).map(|(a, _)| a).collect();
         numeros.push(id);
         Ok(self.dossiers_abris_a_lire().iter().flat_map(|d| numeros.iter().map(move |n| d.join(n.to_string()))).collect())
@@ -2327,6 +2344,9 @@ mod tests {
         // Le nuage Steam n'est jamais remis.
         std::fs::create_dir_all(a.join("nuage-steam").join("x")).unwrap();
         std::fs::write(a.join("nuage-steam").join("x").join("abri.json"), b"{}").unwrap();
+        // Lot S2 : la fiche de cet abri dit son profil (celui de la session) et la version du jeu, lue comme avant.
+        let f = crate::abri_parties::lire_fiche(&a).unwrap();
+        assert_eq!((f.sorte.as_str(), f.profil.is_empty(), f.version, f.fichiers.len(), f.complet), (crate::abri_parties::SORTE_JEU, false, Some(n.registre().jeu(110).unwrap().unwrap().version), 2, true));
         // Tout est déjà identique : rien à remettre.
         assert!(n.abri_a_reposer(110).await.unwrap().is_none());
         // La partie a disparu (réinstallation) ; le réglage a été joué depuis : seule la partie revient.
@@ -2341,6 +2361,13 @@ mod tests {
         assert!(a.join("SAVES").join("PARTIE1.SAV").is_file(), "l'abri reste");
         // Une fois répondu pour cet abri, la question ne revient pas.
         std::fs::remove_file(installe.join("SAVES").join("PARTIE1.SAV")).unwrap();
+        assert!(n.abri_a_reposer(110).await.unwrap().is_none());
+        // Un abri fait À LA MAIN plus récent (lot S2, sa fiche le dit) ne la fait pas revenir non plus.
+        let main = a.parent().unwrap().join("9999999999");
+        std::fs::create_dir_all(main.join("emplacements").join("0a1b2c3d")).unwrap();
+        std::fs::write(main.join("emplacements").join("0a1b2c3d").join("x.sav"), b"x").unwrap();
+        let fiche = crate::abri_parties::FicheAbri::nouvelle(crate::abri_parties::SORTE_EMPLACEMENTS, "p1", vec![], &[], 0, 0);
+        std::fs::write(a.parent().unwrap().join("9999999999.json"), serde_json::to_vec(&fiche).unwrap()).unwrap();
         assert!(n.abri_a_reposer(110).await.unwrap().is_none());
     }
 

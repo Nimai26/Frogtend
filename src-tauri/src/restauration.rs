@@ -932,8 +932,26 @@ impl Noyau {
             if !attente.is_dir() {
                 continue;
             }
-            let x = reposer(&attente, dossier, true)?;
-            std::fs::remove_dir_all(&attente)?;
+            // Lot S2 : les parties rangées HORS du dossier du jeu (`emplacements/`, avec leur fiche) et celles du nuage
+            // Steam (`nuage-steam/`) ne sont jamais posées dans le dossier du jeu : elles restent en attente (remises à
+            // leur place au lot S5). Seulement quand la sauvegarde le dit (`reservees`).
+            let reservees = crate::abri_parties::reservees(&attente).dossiers();
+            let x = reposer_sauf(&attente, dossier, true, &reservees, &mut Reglees::sans_suivi())?;
+            if reservees.is_empty() {
+                std::fs::remove_dir_all(&attente)?;
+            } else {
+                for e in std::fs::read_dir(&attente)?.flatten() {
+                    let nom = e.file_name().to_string_lossy().to_string();
+                    if reservees.contains(&nom.as_str()) {
+                        continue;
+                    }
+                    if e.file_type().is_ok_and(|t| t.is_dir()) {
+                        std::fs::remove_dir_all(e.path())?;
+                    } else {
+                        std::fs::remove_file(e.path())?;
+                    }
+                }
+            }
             r.reposes += x.reposes;
             r.deja_la += x.deja_la;
             r.conflits.extend(x.conflits);
@@ -1501,5 +1519,38 @@ mod tests {
         let liste = lister(&c).await.unwrap();
         assert!(!liste.iter().any(|s| s.profil == p && s.pc == m), "plus rien de l'essai chez Firehouse");
         println!("vérifié : l'essai n'apparaît plus dans GET /sauvegarde");
+    }
+
+    /// Lot S2 (revue du 22/11, correctifs 3 et 8) : les parties d’un jeu restaurées depuis Firehouse ne posent JAMAIS
+    /// `emplacements/` (avec sa fiche) ni `nuage-steam/` (avec sa liste) dans le dossier du jeu : ils restent en attente.
+    /// Sans fiche ni liste, un sous-dossier `emplacements` est un dossier du jeu.
+    #[test]
+    fn les_emplacements_restaures_ne_vont_jamais_dans_le_dossier_du_jeu() {
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(crate::coffre::CoffreMemoire::default())).unwrap();
+        let attente = d.path().join("app").join("restauration").join("p1").join("parties").join("jeux").join("110");
+        let ecrire = |r: &str, o: &[u8]| {
+            let f = attente.join(r);
+            std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+            std::fs::write(f, o).unwrap();
+        };
+        ecrire("SAVE/a.sav", b"a");
+        ecrire("emplacements/0a1b2c3d/save_1", b"s");
+        ecrire(crate::abri_parties::FICHE_ENVOYEE, &serde_json::to_vec(&crate::abri_parties::FicheAbri::nouvelle("nuage-steam", "p1", vec![], &[], 0, 0)).unwrap());
+        ecrire("nuage-steam/m1/abri.json", b"[]");
+        ecrire("nuage-steam/m1/remote/campaign", b"c");
+        let jeu = d.path().join("Jeu");
+        std::fs::create_dir_all(&jeu).unwrap();
+        let r = n.reposer_parties_du_jeu("p1", 110, &[], &jeu).unwrap();
+        assert_eq!(r.reposes, 1);
+        assert!(jeu.join("SAVE").join("a.sav").is_file());
+        assert!(!jeu.join("emplacements").exists() && !jeu.join("nuage-steam").exists(), "jamais dans le dossier du jeu");
+        assert!(attente.join("emplacements").join("0a1b2c3d").join("save_1").is_file() && attente.join("nuage-steam").join("m1").join("remote").join("campaign").is_file(), "restent en attente");
+        assert!(!attente.join("SAVE").exists(), "ce qui est reposé quitte l’attente");
+        // Sans fiche : un dossier du jeu comme un autre.
+        std::fs::remove_dir_all(&attente).unwrap();
+        ecrire("emplacements/carte.dat", b"x");
+        assert_eq!(n.reposer_parties_du_jeu("p1", 110, &[], &jeu).unwrap().reposes, 1);
+        assert!(jeu.join("emplacements").join("carte.dat").is_file() && !attente.exists());
     }
 }

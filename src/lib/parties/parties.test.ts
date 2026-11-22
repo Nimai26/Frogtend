@@ -2,7 +2,29 @@
 // (commandes.rs, `PartiesVues` ; emplacement de Cyberpunk 2077 du relevé 1.48 du 22/11).
 import { describe, expect, it } from 'vitest';
 import type { EmplacementVu, PartiesVues } from '$lib/api';
-import { aDesEmplacements, contenu, jeuDeLAdresse, libelleOrigine, montres, ouvrable, texteAutresEndroits, texteEtat, texteFiltre, texteNuage, texteSource, titreOrigine } from './parties';
+import {
+  aDesEmplacements,
+  abritable,
+  contenu,
+  jeuDeLAdresse,
+  libelleOrigine,
+  messageAnnonce,
+  messageDeja,
+  messageRien,
+  montres,
+  noteAbri,
+  ouvrable,
+  texteAutresEndroits,
+  texteContenuAbri,
+  texteDate,
+  texteEtat,
+  texteFait,
+  texteFiltre,
+  texteNuage,
+  texteSorteAbri,
+  texteSource,
+  titreOrigine,
+} from './parties';
 
 const cyberpunk: EmplacementVu = {
   n: 0,
@@ -112,5 +134,60 @@ describe('📁 Où sont mes parties', () => {
     expect(texteFiltre({ ...cyberpunk, nature: 'fichier', filtre: 'save.dat' })).toBe('seulement le fichier « save.dat »');
     expect(texteNuage(cyberpunk)).toBeNull();
     expect(texteNuage({ ...cyberpunk, nuage_boutique: true })).toBe('aussi gardé dans le nuage de la boutique');
+  });
+});
+
+describe('🛟 Mettre mes parties à l’abri (lot S2) : les textes', () => {
+  const apercu = { fichiers: 12, octets: 3 * 1024 * 1024, emplacements: 2, echecs: [], en_ligne_seulement: 0, deja: false, gros: false, profil: 'Léa' };
+
+  it('le bouton : seulement un emplacement lisible ici avec des fichiers comptés', () => {
+    expect(abritable(vues({}))).toBe(true);
+    expect(abritable(vues({ emplacements: [{ ...cyberpunk, fichiers: 0 }] }))).toBe(false);
+    expect(abritable(vues({ emplacements: [{ ...cyberpunk, trop: true }] }))).toBe(false);
+    expect(abritable(vues({ emplacements: [{ ...cyberpunk, illisible: true }] }))).toBe(false);
+    expect(abritable(vues({ emplacements: [{ ...cyberpunk, existe: false }] }))).toBe(false);
+    expect(abritable(vues({ emplacements: [{ ...cyberpunk, lisible: false }] }))).toBe(false);
+  });
+
+  it('l’annonce dit combien, quelle taille, et le profil propriétaire', () => {
+    const m = messageAnnonce(apercu);
+    expect(m).toContain('12 fichiers · 3 Mo (2 endroits)');
+    expect(m).toContain('Ces parties seront rangées dans ton profil « Léa ».');
+    expect(m).not.toContain('2 Go');
+    const tout = messageAnnonce({ ...apercu, fichiers: 1, emplacements: 1, gros: true, en_ligne_seulement: 3, echecs: [{ dossier: 'C:\\X', raison: 'un fichier ne se lit pas' }] });
+    expect(tout).toContain('1 fichier · ');
+    expect(tout).not.toContain('endroits');
+    expect(tout).toContain('plus de 2 Go');
+    expect(tout).toContain('3 fichiers sont seulement dans ton nuage (OneDrive…)');
+    expect(tout).toContain('⚠ C:\\X : un fichier ne se lit pas.');
+    expect(messageRien({ ...apercu, fichiers: 0, echecs: [{ dossier: 'D', raison: 'r' }] })).toContain('⚠ D : r.');
+  });
+
+  it('le compte rendu, après', () => {
+    expect(texteFait({ date: null, fichiers: 0, octets: 0, emplacements: 0, echecs: [], en_ligne_seulement: 0, deja: true })).toBe('✅ Déjà à l’abri : rien n’a changé depuis ton dernier abri.');
+    expect(texteFait({ date: '1', fichiers: 2, octets: 7, emplacements: 1, echecs: [], en_ligne_seulement: 1, deja: false })).toBe(
+      '✅ 2 fichiers de parties (7 o) mis à l’abri dans ton profil. 1 fichier est seulement dans ton nuage (OneDrive…), pas sur ce PC : pas copié.',
+    );
+    // Un endroit en échec : « ⚠ » en tête, et jamais un chemin complet dans un toast qui s'efface seul.
+    const echec = texteFait({ date: '1', fichiers: 2, octets: 7, emplacements: 1, echecs: [{ dossier: 'C:\\Users\\Léa\\Jeu', raison: 'r' }], en_ligne_seulement: 0, deja: false });
+    expect(echec.startsWith('⚠ 2 fichiers de parties')).toBe(true);
+    expect(echec).toContain('1 endroit n’a pas pu être copié');
+    expect(echec).not.toContain('Léa');
+    expect(messageDeja({ ...apercu, deja: true })).toBeNull();
+    expect(messageDeja({ ...apercu, deja: true, en_ligne_seulement: 1 })).toContain('1 fichier est seulement dans ton nuage');
+  });
+
+  it('un abri de la liste', () => {
+    const a = { date: '1763800000', fichiers: 2, octets: 7, sorte: 'emplacements', a_moi: true, echecs: 0, en_ligne_seulement: 0, sans_origine: 0 };
+    expect(texteDate('1763800000')).toContain('2025');
+    expect(texteDate('abc')).toBe('date inconnue');
+    expect(texteContenuAbri(a)).toBe('2 fichiers · 7 o');
+    expect(texteSorteAbri(a)).toBe('mis à l’abri à la main · dans ton profil');
+    expect(texteSorteAbri({ ...a, sorte: 'retrait', a_moi: false })).toBe('mis à l’abri par Frogtend (avant un mod, une réinstallation ou un retrait) · ancien abri, sans propriétaire connu');
+    expect(texteSorteAbri({ ...a, sorte: 'jeu' })).toBe('mis à l’abri par Frogtend (avant un mod, une réinstallation ou un retrait) · dans ton profil');
+    expect(noteAbri(a)).toBeNull();
+    expect(noteAbri({ ...a, sans_origine: 1 })).toBe('Frogtend ne sait plus d’où venait 1 de ces fichiers : il est gardé, mais il faudra le remettre à la main.');
+    expect(noteAbri({ ...a, sans_origine: 4 })).toBe('Frogtend ne sait plus d’où venaient 4 de ces fichiers : ils sont gardés, mais il faudra les remettre à la main.');
+    expect(noteAbri({ ...a, echecs: 2 })).toBe('2 endroits n’avaient pas pu être copiés.');
   });
 });

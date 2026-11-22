@@ -549,12 +549,20 @@ impl Noyau {
         // primant fichier par fichier (une partie présente seulement dans l'ancien abri ne sort jamais de la sauvegarde).
         let reunions: std::collections::HashMap<i64, i64> = self.registre().reunions()?.into_iter().collect();
         let mut plus_recente: std::collections::BTreeMap<i64, (u64, PathBuf)> = std::collections::BTreeMap::new();
+        // Lot S2 : TOUS les abris de chaque jeu, pour en tirer les emplacements de ce profil (`emplacements_a_envoyer`).
+        let mut tous_les_abris: std::collections::BTreeMap<i64, Vec<(u64, PathBuf)>> = std::collections::BTreeMap::new();
         for racine in self.dossiers_abris_a_lire() {
             let Ok(jeux) = std::fs::read_dir(&racine) else { continue };
             for d in jeux.flatten().map(|e| e.path()).filter(|p| p.is_dir()) {
                 let Some(id) = d.file_name().and_then(|n| n.to_str()).and_then(|n| n.parse::<i64>().ok()) else { continue };
                 for date in std::fs::read_dir(&d).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_dir()) {
+                    // Lot S2 : un abri fait à la main n'est pas envoyé ici (l'envoi filtré par propriétaire, c'est le
+                    // lot S4) et ne cache jamais l'abri d'avant (la seule copie d'un jeu retiré, parfois).
+                    if crate::abri_parties::fait_a_la_main(&date) {
+                        continue;
+                    }
                     let quand = date.file_name().and_then(|n| n.to_str()).and_then(|n| n.parse::<u64>().ok()).unwrap_or(0);
+                    tous_les_abris.entry(id).or_default().push((quand, date.clone()));
                     if plus_recente.get(&id).is_none_or(|(q, _)| quand > *q) {
                         plus_recente.insert(id, (quand, date));
                     }
@@ -581,11 +589,15 @@ impl Noyau {
         let d_un_autre_compte = |r: &str| {
             r.strip_prefix("nuage-steam/").and_then(|x| x.split('/').next()).is_some_and(|m| marque_steam.as_deref().is_some_and(|s| s != m))
         };
+        let ids: Vec<i64> = par_jeu.keys().copied().collect();
         for (id, mut abris) in par_jeu {
             abris.sort_by(|a, b| b.0.cmp(&a.0));
             for (_, recente) in abris {
+                // `emplacements/` et `nuage-steam/` ne sont à part que dans un abri qui le dit (un jeu dont le dossier a
+                // un sous-dossier `emplacements` reste un jeu) ; les emplacements partent plus bas, par profil.
+                let reservees = crate::abri_parties::reservees(&recente);
                 for r in fichiers_de(&recente)? {
-                    if d_un_autre_compte(&r) {
+                    if (reservees.nuage && d_un_autre_compte(&r)) || (reservees.emplacements && r.starts_with(crate::abri_parties::PREFIXE)) {
                         continue;
                     }
                     let relatif = format!("jeux/{id}/{r}");
@@ -594,6 +606,29 @@ impl Noyau {
                     }
                 }
             }
+        }
+        // Lot S2 : les parties d'un jeu Steam prises hors du nuage (`emplacements/`) ne partent qu'avec le profil
+        // propriétaire de l'abri, chaque emplacement depuis le plus récent de SES abris qui le contient (l'abri plus
+        // récent d'un autre profil, ou un abri où il manque, ne le fait jamais sortir de sa sauvegarde) ; avec elles, la
+        // fiche fusionnée (`jeux/<id>/emplacements/fiche.json` : chemins NON résolus, pour les remettre au lot S5).
+        let fiches = self.dossier.join("profils").join(&profil.id).join("fiches-abris");
+        for id in ids {
+            let abris: Vec<(u64, PathBuf)> = tous_les_abris.iter().filter(|(a, _)| reunions.get(*a).copied().unwrap_or(**a) == id).flat_map(|(_, l)| l.iter().cloned()).collect();
+            let (fichiers, fiche) = crate::abri_parties::emplacements_a_envoyer(&abris, &profil.id);
+            let Some(fiche) = fiche else { continue };
+            for (source, r) in fichiers {
+                let relatif = format!("jeux/{id}/{r}");
+                if !parties.iter().any(|e| e.relatif == relatif) {
+                    parties.push(Element { source, relatif });
+                }
+            }
+            std::fs::create_dir_all(&fiches)?;
+            let f = fiches.join(format!("{id}.json"));
+            let octets = serde_json::to_vec_pretty(&fiche).map_err(|_| Erreur::Disque("La fiche des emplacements est impossible à écrire.".into()))?;
+            if std::fs::read(&f).ok().as_deref() != Some(octets.as_slice()) {
+                std::fs::write(&f, &octets)?;
+            }
+            parties.push(Element { source: f, relatif: format!("jeux/{id}/{}", crate::abri_parties::FICHE_ENVOYEE) });
         }
 
         // Les parties du profil dans chaque émulateur.
@@ -1388,5 +1423,103 @@ mod tests {
         let c = n.contenu_sauvegarde(&[]).await.unwrap();
         assert_eq!(c.parties.len(), 1);
         assert_eq!(std::fs::read(&c.parties[0].source).unwrap(), b"encore");
+    }
+
+    /// Lot S2 : un abri fait À LA MAIN n'est pas envoyé par la sauvegarde du profil (lot S4) et ne cache pas l'abri
+    /// d'avant ; les parties d'un jeu Steam prises hors du nuage (`emplacements/`) ne partent qu'avec le profil
+    /// propriétaire de l'abri.
+    #[tokio::test]
+    async fn un_abri_fait_a_la_main_ne_part_pas_et_les_emplacements_suivent_leur_profil() {
+        use crate::abri_parties::{FicheAbri, SORTE_EMPLACEMENTS, SORTE_NUAGE_STEAM};
+        use crate::coffre::CoffreMemoire;
+        use crate::noyau::Connexion;
+        let d = tempfile::tempdir().unwrap();
+        let app = d.path().join("app");
+        let n = Noyau::nouveau(&app, Box::new(CoffreMemoire::default())).unwrap();
+        let seb = n.creer_profil("Seb", None, None).unwrap().id;
+        let lea = n.creer_profil("Léa", None, None).unwrap().id;
+        n.regler_abris(Some(d.path().join("Abris")));
+        let du_jeu = d.path().join("Abris").join("110");
+        let poser = |date: &str, fichiers: &[(&str, &[u8])], fiche: Option<FicheAbri>| {
+            for (r, o) in fichiers {
+                let f = du_jeu.join(date).join(r);
+                std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+                std::fs::write(f, o).unwrap();
+            }
+            if let Some(x) = fiche {
+                std::fs::write(du_jeu.join(format!("{date}.json")), serde_json::to_vec(&x).unwrap()).unwrap();
+            }
+        };
+        // L'abri du retrait (lot 3), puis un abri à la main plus récent.
+        poser("1790000000", &[("C/DUNECD/DUNE37S0.SAV", b"retrait")], None);
+        poser("1790000100", &[("emplacements/0a1b2c3d/x.sav", b"main")], Some(FicheAbri::nouvelle(SORTE_EMPLACEMENTS, &seb, vec![], &[], 0, 0)));
+        n.ouvrir(&seb, None, &Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        let c = n.contenu_sauvegarde(&[]).await.unwrap();
+        assert_eq!(c.parties.iter().map(|e| e.relatif.as_str()).collect::<Vec<_>>(), ["jeux/110/C/DUNECD/DUNE37S0.SAV"], "l'abri du retrait part toujours, jamais celui fait à la main");
+        // Un abri d'un jeu Steam au format du lot S2 : sa fiche dit ses emplacements (clé, chemin NON résolu).
+        let steam = |date: &str, profil: &str, emplacements: &[(&str, &[u8])]| {
+            let mut l: Vec<(String, &[u8])> = vec![("nuage-steam/m1/remote/campaign".into(), b"c")];
+            let mut fichiers = Vec::new();
+            let mut abrites = Vec::new();
+            for (cle, o) in emplacements {
+                let r = format!("emplacements/{cle}/save_1");
+                fichiers.push(crate::nuage_steam::AMettre { source: PathBuf::new(), relatif: r.clone(), taille: o.len() as u64, sha: String::new() });
+                abrites.push(crate::abri_parties::EmplacementAbrite { cle: cle.to_string(), chemin: format!(r"%APPDATA%\Jeu\{cle}"), nature: "dossier".into(), filtre: None, identifiant: None });
+                l.push((r, o));
+            }
+            std::fs::create_dir_all(du_jeu.join(date).join("nuage-steam").join("m1")).unwrap();
+            std::fs::write(du_jeu.join(date).join("nuage-steam").join("m1").join("abri.json"), b"[]").unwrap();
+            let refs: Vec<(&str, &[u8])> = l.iter().map(|(r, o)| (r.as_str(), *o)).collect();
+            poser(date, &refs, Some(FicheAbri::nouvelle(SORTE_NUAGE_STEAM, profil, abrites, &fichiers, 0, 0)));
+        };
+        steam("1790000200", &seb, &[("0a1b2c3d", b"seb-1"), ("eeeeeeee", b"seb-2")]);
+        let envoyes = |c: &Contenu| {
+            let mut r: Vec<(String, Vec<u8>)> = c.parties.iter().filter(|e| !e.relatif.ends_with("abri.json")).map(|e| (e.relatif.clone(), std::fs::read(&e.source).unwrap())).collect();
+            r.sort();
+            r
+        };
+        let c = n.contenu_sauvegarde(&[]).await.unwrap();
+        let r = envoyes(&c);
+        assert_eq!(r.iter().map(|(x, _)| x.as_str()).collect::<Vec<_>>(), ["jeux/110/emplacements/0a1b2c3d/save_1", "jeux/110/emplacements/eeeeeeee/save_1", "jeux/110/emplacements/fiche.json", "jeux/110/nuage-steam/m1/remote/campaign"]);
+        // Correctif 6 : la fiche voyage avec eux, sans aucun chemin du PC ni nom d'utilisateur.
+        let fiche: FicheAbri = serde_json::from_slice(&r[2].1).unwrap();
+        assert_eq!((fiche.profil.as_str(), fiche.emplacements.len()), (seb.as_str(), 2));
+        assert!(!String::from_utf8_lossy(&r[2].1).contains(&*d.path().to_string_lossy().replace('\\', "\\\\")));
+        // Correctif 2 : un abri plus récent de Seb où « eeeeeeee » manque (verrouillé, hors ligne, trop gros avant un
+        // mod) ne fait pas sortir sa copie précédente.
+        steam("1790000300", &seb, &[("0a1b2c3d", b"seb-1b")]);
+        let r = envoyes(&n.contenu_sauvegarde(&[]).await.unwrap());
+        assert_eq!(r[0], ("jeux/110/emplacements/0a1b2c3d/save_1".to_string(), b"seb-1b".to_vec()));
+        assert_eq!(r[1], ("jeux/110/emplacements/eeeeeeee/save_1".to_string(), b"seb-2".to_vec()));
+        // Correctif 1 : un abri encore plus récent de LÉA (même compte Steam) ne fait jamais sortir ceux de Seb.
+        steam("1790000400", &lea, &[("0a1b2c3d", b"lea")]);
+        let r = envoyes(&n.contenu_sauvegarde(&[]).await.unwrap());
+        assert_eq!(r.iter().filter(|(x, _)| x.contains("/emplacements/") && !x.ends_with("fiche.json")).map(|(_, o)| o.clone()).collect::<Vec<_>>(), [b"seb-1b".to_vec(), b"seb-2".to_vec()]);
+        n.ouvrir(&lea, None, &Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        let r = envoyes(&n.contenu_sauvegarde(&[]).await.unwrap());
+        assert_eq!(r.iter().filter(|(x, _)| x.contains("/emplacements/") && !x.ends_with("fiche.json")).map(|(_, o)| o.clone()).collect::<Vec<_>>(), [b"lea".to_vec()], "jamais les parties d'un autre profil");
+        assert!(r.iter().any(|(x, _)| x == "jeux/110/nuage-steam/m1/remote/campaign"));
+    }
+
+    /// Correctif 3 (revue du 22/11) : un jeu dont le dossier a un sous-dossier `emplacements` (un abri sans fiche S2)
+    /// part tel quel, comme avant.
+    #[tokio::test]
+    async fn un_dossier_emplacements_du_jeu_reste_une_partie_du_jeu() {
+        use crate::coffre::CoffreMemoire;
+        use crate::noyau::Connexion;
+        let d = tempfile::tempdir().unwrap();
+        let app = d.path().join("app");
+        let n = Noyau::nouveau(&app, Box::new(CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, None).unwrap().id;
+        n.regler_abris(Some(d.path().join("Abris")));
+        let a = d.path().join("Abris").join("110").join("1790000000").join("emplacements");
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::write(a.join("carte.dat"), b"x").unwrap();
+        n.ouvrir(&id, None, &Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        let c = n.contenu_sauvegarde(&[]).await.unwrap();
+        assert_eq!(c.parties.iter().map(|e| e.relatif.as_str()).collect::<Vec<_>>(), ["jeux/110/emplacements/carte.dat"]);
     }
 }

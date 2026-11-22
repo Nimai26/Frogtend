@@ -1,5 +1,21 @@
 # Notes de version de Frogtend
 
+## 0.221.0 — 🛟 Mettre mes parties à l'abri (lot S, étape 2)
+
+- Nouveau : « 🛟 Mettre mes parties à l'abri » dans « 📁 Où sont mes parties », pour tout jeu PC, aussi dans Taodbox à
+  la manette. Frogtend compte d'abord tes parties (rien n'est copié avant ton accord), annonce combien de fichiers et
+  quelle taille, dit dans quel profil elles seront rangées, puis copie et vérifie chaque fichier. Si rien n'a changé
+  depuis ta dernière copie, il ne recopie rien — mais il te dit toujours ce qu'il n'a jamais pu copier.
+- Un endroit qui ne peut pas être copié (fichier utilisé, dossier trop gros) est signalé, les autres sont quand même
+  mis à l'abri. Les fichiers OneDrive « en ligne seulement » ne sont jamais téléchargés pour l'occasion. Refusé tant
+  que le jeu tourne, ou si ses parties ont été écrites il y a moins d'une minute.
+- La liste « 🛟 Mes abris » montre tes copies de ce jeu (date, fichiers, taille). Les copies des autres profils n'y
+  apparaissent jamais.
+- Jeux Steam : les parties prises hors du nuage de Steam gardent désormais leur endroit d'origine, pour pouvoir être
+  remises plus tard. Chacun garde sa dernière copie à lui dans sa sauvegarde chez Firehouse, même si un autre profil
+  joue au même jeu ; une copie incomplète ne fait jamais disparaître la précédente.
+- Les copies faites par Frogtend avant un mod, une réinstallation ou un retrait sont maintenant notées à ton profil.
+
 ## 0.220.1 — 📁 Où sont mes parties : les dossiers rangés par numéro de compte
 
 - Corrigé : chez Seb, Age of Empires IV montrait « …\Users\(UserID)\Savegames », un repère que la source n'avait pas

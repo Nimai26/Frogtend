@@ -400,6 +400,59 @@ export interface PartiesVues {
   emplacements: EmplacementVu[];
 }
 
+/** Un emplacement de parties qui ne sera pas (ou n'a pas été) copié dans l'abri (lot S2) : son dossier sur ce PC, la
+ * raison. */
+export interface EchecAbriVu {
+  dossier: string;
+  raison: string;
+}
+
+/** Ce que « 🛟 Mettre mes parties à l'abri » copierait (`parties_abri_apercu`, lot S2), annoncé avant. */
+export interface ApercuAbriParties {
+  fichiers: number;
+  octets: number;
+  /** Les emplacements qui seront copiés. */
+  emplacements: number;
+  echecs: EchecAbriVu[];
+  /** Fichiers OneDrive « en ligne seulement » : jamais lus, pas copiés. */
+  en_ligne_seulement: number;
+  /** Le dernier abri de ce profil contient déjà exactement ces fichiers. */
+  deja: boolean;
+  /** Plus de 2 Go : la personne confirme. */
+  gros: boolean;
+  /** Le nom du profil qui sera propriétaire de l'abri (celui ouvert). */
+  profil: string;
+}
+
+/** Ce que « 🛟 Mettre mes parties à l'abri » a fait (`parties_abriter`, lot S2). */
+export interface AbriPartiesFait {
+  /** La date de l'abri (secondes) ; `null` : rien de neuf, pas de copie. */
+  date: string | null;
+  fichiers: number;
+  octets: number;
+  emplacements: number;
+  echecs: EchecAbriVu[];
+  en_ligne_seulement: number;
+  deja: boolean;
+}
+
+/** Un abri des parties d'un jeu (`parties_abris`, lot S2) : seulement ceux du profil ouvert, et les anciens sans
+ * propriétaire connu. */
+export interface AbriVu {
+  /** Secondes depuis 1970. */
+  date: string;
+  fichiers: number;
+  octets: number;
+  /** `emplacements` (fait à la main), `nuage-steam` (parties d'un jeu Steam), `retrait` (avant un retrait). */
+  sorte: string;
+  /** Fait par ce profil ; `false` : un ancien abri, sans propriétaire connu. */
+  a_moi: boolean;
+  echecs: number;
+  en_ligne_seulement: number;
+  /** Fichiers d'un ancien abri Steam pris hors du nuage, dont le chemin d'origine n'a pas été gardé. */
+  sans_origine: number;
+}
+
 /** Le risque de brancher Cheat Engine sur un jeu (`cheatengine_risque`). */
 export interface RisqueTriche {
   anti_triche: string | null;
@@ -1197,6 +1250,12 @@ export const api = {
   partiesEmplacements: (id: number) => appeler<PartiesVues>('parties_emplacements', { id }),
   /** Ouvre dans l'Explorateur un dossier de parties EXISTANT de ce jeu (le cœur revérifie). */
   partiesOuvrirDossier: (id: number, dossier: string) => appeler<void>('parties_ouvrir_dossier', { id, dossier }),
+  /** 🛟 Ce que « Mettre mes parties à l'abri » copierait (lot S2 ; lecture seule). */
+  partiesAbriApercu: (id: number) => appeler<ApercuAbriParties>('parties_abri_apercu', { id }),
+  /** 🛟 Met les parties d'un jeu PC à l'abri pour le profil ouvert (`accepte` : très grosse copie confirmée). */
+  partiesAbriter: (id: number, accepte = false) => appeler<AbriPartiesFait>('parties_abriter', { id, accepte }),
+  /** Les abris de parties d'un jeu PC, pour le profil ouvert. */
+  partiesAbris: (id: number) => appeler<AbriVu[]>('parties_abris', { id }),
   /** Le risque de brancher Cheat Engine sur ce jeu (Seb, 21/10 : anti-triche = refus ; en ligne ou inconnu = avertir). */
   cheatengineRisque: (id: number) => appeler<RisqueTriche>('cheatengine_risque', { id }),
   jeuTriches: (id: number) => appeler<TrichesJeu>('jeu_triches', { id }),

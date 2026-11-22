@@ -55,6 +55,7 @@ pub mod mods_switch;
 pub mod noms_switch;
 pub mod nexus;
 pub mod nuage_steam;
+pub mod abri_parties;
 pub mod sept_z;
 pub mod registre;
 pub mod reconciliation;
@@ -639,6 +640,9 @@ pub fn run() {
             commandes::nuage_steam_apercu,
             commandes::parties_emplacements,
             commandes::parties_ouvrir_dossier,
+            commandes::parties_abri_apercu,
+            commandes::parties_abriter,
+            commandes::parties_abris,
             commandes::succes_liste,
             commandes::succes_jeu,
             commandes::boutique_fiche,

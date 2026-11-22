@@ -5811,6 +5811,8 @@ async fn plan_nuage(noyau: &Noyau, id: i64) -> Resultat<(crate::nuage_steam::Pla
     };
     let jeu = j.installation.as_ref().map(|i| std::path::PathBuf::from(&i.dossier));
     let m = marque.clone();
+    // Lot S2 : le sel du profil, mêlé à l'empreinte d'un sous-dossier énuméré (jamais un numéro de compte retrouvable).
+    let sel = crate::abri_parties::sel_du_profil(&dossier_profil_de(noyau, &p.id))?;
     let plan = tauri::async_runtime::spawn_blocking(move || -> Resultat<Option<crate::nuage_steam::Plan>> {
         let windows = crate::nuage_steam::dossiers_windows();
         let nuage = crate::nuage_steam::planifier(&app, &m, &windows)?;
@@ -5821,7 +5823,7 @@ async fn plan_nuage(noyau: &Noyau, id: i64) -> Resultat<(crate::nuage_steam::Pla
         }
         let mut plan = nuage.unwrap_or_default();
         plan.emplacements_illisibles = illisibles;
-        crate::nuage_steam::ajouter_emplacements(&mut plan, &m, &dossiers);
+        crate::nuage_steam::ajouter_emplacements(&mut plan, &dossiers, &sel);
         Ok(Some(plan))
     })
     .await
@@ -5836,7 +5838,8 @@ pub async fn nuage_steam_apercu(noyau: State<'_, Noyau>, id: i64) -> Resultat<Ap
     // Sans dossier des abris, rien ne pourrait être copié : dit dès l'aperçu.
     let abris = noyau.dossier_abris()?;
     let (plan, marque) = plan_nuage(&noyau, id).await?;
-    let deja = crate::nuage_steam::deja_a_l_abri(&abris.join(id.to_string()), &marque, &plan);
+    let profil = profil_ouvert(&noyau).await?.id;
+    let deja = crate::nuage_steam::deja_a_l_abri(&abris.join(id.to_string()), &marque, &plan, &profil);
     Ok(ApercuNuage {
         fichiers: plan.fichiers.len(),
         octets: plan.octets,
@@ -5872,7 +5875,9 @@ pub async fn nuage_steam_abriter(noyau: State<'_, Noyau>, id: i64, accepte: bool
     let abris = noyau.dossier_abris()?;
     let quand = crate::noyau::maintenant();
     let (n, octets) = (plan.fichiers.len(), plan.octets);
-    let fin = tauri::async_runtime::spawn_blocking(move || crate::nuage_steam::abriter(&plan, &marque, &abris, id, &quand))
+    // Lot S2 : la fiche de l'abri dit le profil propriétaire (celui de la session).
+    let profil = profil_ouvert(&noyau).await?.id;
+    let fin = tauri::async_runtime::spawn_blocking(move || crate::nuage_steam::abriter(&plan, &marque, &abris, id, &quand, &profil))
         .await
         .map_err(|_| Erreur::Disque("La mise à l'abri s'est arrêtée brutalement.".into()))??;
     noyau.journaliser(&format!("jeu {id} : {n} fichier(s) du nuage Steam mis à l'abri"));
@@ -8838,6 +8843,69 @@ async fn parties_du_jeu(
     use crate::emplacements_parties as ep;
     let s = noyau.session().await?;
     let dp = dossier_profil_de(noyau, &s.profil.id);
+    let JeuDesParties { carte, boutique, dossier_jeu } = jeu_des_parties(noyau, &s, &dp, id)?;
+    let (mut hors_ligne, mut motif, mut jeton_refuse) = (false, None, false);
+    let cle_session = (dp.clone(), std::sync::Arc::as_ptr(&s) as usize);
+    if JETON_REFUSE_PARTIES.lock().unwrap_or_else(|e| e.into_inner()).contains(&cle_session) {
+        jeton_refuse = true;
+    }
+    let maintenant = crate::noyau::maintenant();
+    let t: u64 = maintenant.parse().unwrap_or(0);
+    let vieux = ep::a_redemander(ep::lire(&dp)?.jeu(id), t);
+    if demander && vieux && !jeton_refuse {
+        if let Some(_demande) = DemandeParties::prendre((dp.clone(), id)) {
+            let ou = match &carte {
+                None => criteres_jeu_importe(noyau, id).await?,
+                Some(_) if id > 0 => OuChercher::Fiche(id),
+                // Pas installé : pas de dossier à envoyer ; l'identifiant de sa boutique, le titre et la plateforme.
+                Some(c) => {
+                    let mut l = vec![("titre", c.titre.clone()), ("plateforme", c.plateforme.clone())];
+                    l.extend(ids_de_boutique(boutique.as_ref().map(|b| (b.source.as_str(), b.cle.as_str()))));
+                    OuChercher::Recherche(l)
+                }
+            };
+            match triches_avec(&s.source, &ou).await {
+                Ok(v) => {
+                    // Les références seulement après une réponse (hors ligne : une seule attente).
+                    let refs = references_parties(noyau, &s.source, t).await;
+                    // Reçu pour CE profil : jamais rangé si la session a changé entre-temps (autre profil, autre jeton).
+                    let _vivante = s.verrou_vivant()?;
+                    ep::modifier(&dp, |c| ep::appliquer(c, id, boutique.clone(), &v, &refs, &maintenant))?;
+                    noyau.journaliser(&format!("jeu {id} : emplacements de parties demandés à Firehouse"));
+                }
+                Err(Erreur::Reseau(_)) => hors_ligne = true,
+                Err(Erreur::JetonRefuse(_)) => {
+                    jeton_refuse = true;
+                    JETON_REFUSE_PARTIES.lock().unwrap_or_else(|e| e.into_inner()).insert(cle_session);
+                }
+                Err(e @ Erreur::Perimee(_)) => return Err(e),
+                Err(e) => motif = Some(e.to_string()),
+            }
+        }
+    }
+    let entree = ep::lire(&dp)?.jeu(id).cloned().unwrap_or(ep::PartiesJeu { id, boutique: boutique.clone(), ..Default::default() });
+    let (firehouse, lu_le, moteur, source, reconnu_par) = (entree.firehouse, entree.lu_le.clone(), entree.moteur.clone(), entree.source.clone(), entree.reconnu_par.clone());
+    let autres_systemes = entree.autres_systemes.clone();
+    let ctx = contexte_des_parties(&dp, boutique.as_ref(), dossier_jeu);
+    let emplacements = tauri::async_runtime::spawn_blocking(move || ep::resoudre(&entree, &ctx(windows()), demander))
+        .await
+        .map_err(|_| Erreur::Disque("La lecture des parties s'est arrêtée brutalement.".into()))?;
+    Ok(PartiesVues { firehouse, lu_le, hors_ligne, motif, jeton_refuse, moteur, source, reconnu_par, autres_systemes, emplacements })
+}
+
+/// Le jeu d'un « 📁 Où sont mes parties », pour le profil de la session : sa carte (pas sur ce PC), sa boutique et son
+/// dossier sur ce PC.
+struct JeuDesParties {
+    carte: Option<crate::ludotheque::JeuResume>,
+    boutique: Option<crate::emplacements_parties::BoutiqueJeu>,
+    dossier_jeu: Option<std::path::PathBuf>,
+}
+
+/// Le jeu PC `id` tel que ce profil le voit (lot S1) : refusé s'il ne le voit pas (ou plus : son entrée quitte alors le
+/// cache, comme celle de tout jeu qu'il ne voit plus) ou si ce n'est pas un jeu PC. Le jeu du PC (installé, importé),
+/// sinon la carte de la ludothèque (un jeu de boutique pas installé, un jeu de Firehouse pas encore sur ce PC).
+fn jeu_des_parties(noyau: &Noyau, s: &crate::noyau::Session, dp: &std::path::Path, id: i64) -> Resultat<JeuDesParties> {
+    use crate::emplacements_parties as ep;
     // Les jeux que ce profil ne voit plus (grade changé), d'après la ludothèque de CETTE session.
     let nettoyer = || -> Resultat<()> {
         let gardes: Vec<i64> = ep::lire(&dp).map(|c| c.jeux.values().map(|e| e.id).collect()).unwrap_or_default();
@@ -8882,62 +8950,21 @@ async fn parties_du_jeu(
         ),
         (None, None) => (None, None),
     };
-    let (mut hors_ligne, mut motif, mut jeton_refuse) = (false, None, false);
-    let cle_session = (dp.clone(), std::sync::Arc::as_ptr(&s) as usize);
-    if JETON_REFUSE_PARTIES.lock().unwrap_or_else(|e| e.into_inner()).contains(&cle_session) {
-        jeton_refuse = true;
-    }
-    let maintenant = crate::noyau::maintenant();
-    let t: u64 = maintenant.parse().unwrap_or(0);
-    let vieux = ep::a_redemander(ep::lire(&dp)?.jeu(id), t);
-    if demander && vieux && !jeton_refuse {
-        if let Some(_demande) = DemandeParties::prendre((dp.clone(), id)) {
-            let ou = match &carte {
-                None => criteres_jeu_importe(noyau, id).await?,
-                Some(_) if id > 0 => OuChercher::Fiche(id),
-                // Pas installé : pas de dossier à envoyer ; l'identifiant de sa boutique, le titre et la plateforme.
-                Some(c) => {
-                    let mut l = vec![("titre", c.titre.clone()), ("plateforme", c.plateforme.clone())];
-                    l.extend(ids_de_boutique(boutique.as_ref().map(|b| (b.source.as_str(), b.cle.as_str()))));
-                    OuChercher::Recherche(l)
-                }
-            };
-            match triches_avec(&s.source, &ou).await {
-                Ok(v) => {
-                    // Les références seulement après une réponse (hors ligne : une seule attente).
-                    let refs = references_parties(noyau, &s.source, t).await;
-                    // Reçu pour CE profil : jamais rangé si la session a changé entre-temps (autre profil, autre jeton).
-                    let _vivante = s.verrou_vivant()?;
-                    ep::modifier(&dp, |c| ep::appliquer(c, id, boutique.clone(), &v, &refs, &maintenant))?;
-                    noyau.journaliser(&format!("jeu {id} : emplacements de parties demandés à Firehouse"));
-                }
-                Err(Erreur::Reseau(_)) => hors_ligne = true,
-                Err(Erreur::JetonRefuse(_)) => {
-                    jeton_refuse = true;
-                    JETON_REFUSE_PARTIES.lock().unwrap_or_else(|e| e.into_inner()).insert(cle_session);
-                }
-                Err(e @ Erreur::Perimee(_)) => return Err(e),
-                Err(e) => motif = Some(e.to_string()),
-            }
-        }
-    }
-    let entree = ep::lire(&dp)?.jeu(id).cloned().unwrap_or(ep::PartiesJeu { id, boutique: boutique.clone(), ..Default::default() });
-    let compte = boutique
-        .as_ref()
-        .filter(|b| b.source == "steam")
-        .and_then(|_| crate::boutiques::lire(&dp))
-        .and_then(|c| crate::nuage_steam::compte(&c.steamid));
-    let steam = boutique.as_ref().filter(|b| b.source == "steam").and_then(|_| crate::boutiques::dossier_steam());
-    let (firehouse, lu_le, moteur, source, reconnu_par) = (entree.firehouse, entree.lu_le.clone(), entree.moteur.clone(), entree.source.clone(), entree.reconnu_par.clone());
-    let autres_systemes = entree.autres_systemes.clone();
-    let source_boutique = boutique.as_ref().map(|b| b.source.clone());
-    let emplacements = tauri::async_runtime::spawn_blocking(move || {
-        let ctx = crate::nuage_steam::Contexte { jeu: dossier_jeu, steam, compte, windows: windows(), boutique: source_boutique };
-        ep::resoudre(&entree, &ctx, demander)
-    })
-    .await
-    .map_err(|_| Erreur::Disque("La lecture des parties s'est arrêtée brutalement.".into()))?;
-    Ok(PartiesVues { firehouse, lu_le, hors_ligne, motif, jeton_refuse, moteur, source, reconnu_par, autres_systemes, emplacements })
+    Ok(JeuDesParties { carte, boutique, dossier_jeu })
+}
+
+/// De quoi résoudre les emplacements d'un jeu sur ce PC (`windows` : les dossiers de Windows, lus à part) : le compte
+/// Steam du profil et le dossier de Steam, seulement pour un jeu Steam.
+fn contexte_des_parties(
+    dp: &std::path::Path,
+    boutique: Option<&crate::emplacements_parties::BoutiqueJeu>,
+    dossier_jeu: Option<std::path::PathBuf>,
+) -> impl FnOnce(Vec<(&'static str, std::path::PathBuf)>) -> crate::nuage_steam::Contexte + Send + 'static {
+    let steam_jeu = boutique.filter(|b| b.source == "steam");
+    let compte = steam_jeu.and_then(|_| crate::boutiques::lire(dp)).and_then(|c| crate::nuage_steam::compte(&c.steamid));
+    let steam = steam_jeu.and_then(|_| crate::boutiques::dossier_steam());
+    let source_boutique = boutique.map(|b| b.source.clone());
+    move |windows| crate::nuage_steam::Contexte { jeu: dossier_jeu, steam, compte, windows, boutique: source_boutique }
 }
 
 /// Les listes fermées des emplacements (contrat 1.48 `/sauvegardes/references`), gardées en COMMUN sur ce PC
@@ -8979,6 +9006,258 @@ pub async fn parties_ouvrir_dossier(app: AppHandle, noyau: State<'_, Noyau>, id:
     let d = dossier_de_parties_permis(&vues, &dossier).ok_or_else(|| Erreur::Refus("Ce dossier n'est pas (ou plus) un emplacement de parties de ce jeu sur ce PC.".into()))?;
     use tauri_plugin_opener::OpenerExt;
     app.opener().open_path(d.to_string_lossy(), None::<&str>).map_err(|e| Erreur::Refus(format!("Impossible d'ouvrir le dossier : {e}")))
+}
+
+// --- 🛟 Mettre mes parties à l'abri (lot S2, 22/11) : à la main, depuis « 📁 Où sont mes parties », aux emplacements
+// rangés pour le profil (`emplacements_parties`) ; l'abri et sa fiche : `abri_parties`. Le profil propriétaire est
+// celui de la session. Rien n'est envoyé chez Firehouse (lot S4), rien n'est remis (lot S5). Journal : le numéro du jeu
+// et des nombres, jamais un chemin ni un titre. ---
+
+/// Un emplacement qui ne sera pas (ou n'a pas été) copié, pour l'écran (son dossier sur ce PC et la raison).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct EchecAbriVu {
+    pub dossier: String,
+    pub raison: String,
+}
+
+/// Ce que « 🛟 Mettre mes parties à l'abri » copierait, annoncé avant.
+#[derive(Debug, Clone, Serialize)]
+pub struct ApercuAbriParties {
+    pub fichiers: usize,
+    pub octets: u64,
+    /// Les emplacements qui seront copiés.
+    pub emplacements: usize,
+    pub echecs: Vec<EchecAbriVu>,
+    /// Fichiers OneDrive « en ligne seulement » : jamais lus, pas copiés.
+    pub en_ligne_seulement: usize,
+    /// Le dernier abri de ce profil contient déjà exactement ces fichiers.
+    pub deja: bool,
+    /// Plus de `nuage_steam::GROS` en tout : la personne confirme.
+    pub gros: bool,
+    /// Le NOM du profil propriétaire de l'abri (celui de la session) : « ces parties seront rangées dans ton profil ».
+    pub profil: String,
+}
+
+/// Ce que « 🛟 Mettre mes parties à l'abri » a fait.
+#[derive(Debug, Clone, Serialize)]
+pub struct AbriPartiesFait {
+    /// La date de l'abri (secondes) ; `None` : rien de neuf, pas de copie.
+    pub date: Option<String>,
+    pub fichiers: usize,
+    pub octets: u64,
+    pub emplacements: usize,
+    pub echecs: Vec<EchecAbriVu>,
+    pub en_ligne_seulement: usize,
+    pub deja: bool,
+}
+
+/// Le jeu prêt pour un abri : son profil (celui de la session), ses emplacements NON résolus, de quoi les résoudre, ses
+/// dossiers d'abris (et ceux de ses anciens numéros).
+struct PourAbriParties {
+    profil: ProfilVisible,
+    entree: crate::emplacements_parties::PartiesJeu,
+    contexte: Box<dyn FnOnce(Vec<(&'static str, std::path::PathBuf)>) -> crate::nuage_steam::Contexte + Send>,
+    sources: Vec<std::path::PathBuf>,
+    dossier_jeu: Option<std::path::PathBuf>,
+    /// Le sel du profil (`abri_parties::sel_du_profil`).
+    sel: String,
+}
+
+/// Le jeu PC `id` du profil de la session, d'après le cache seul (jamais une demande à Firehouse) : mêmes refus que
+/// « 📁 Où sont mes parties » (pas visible, pas un jeu PC).
+async fn preparer_abri_parties(noyau: &Noyau, id: i64) -> Resultat<PourAbriParties> {
+    use crate::emplacements_parties as ep;
+    let s = noyau.session().await?;
+    let dp = dossier_profil_de(noyau, &s.profil.id);
+    let JeuDesParties { boutique, dossier_jeu, .. } = jeu_des_parties(noyau, &s, &dp, id)?;
+    let entree = ep::lire(&dp)?.jeu(id).cloned().unwrap_or(ep::PartiesJeu { id, ..Default::default() });
+    let contexte = Box::new(contexte_des_parties(&dp, boutique.as_ref(), dossier_jeu.clone()));
+    let sel = crate::abri_parties::sel_du_profil(&dp)?;
+    Ok(PourAbriParties { profil: s.profil.clone(), entree, contexte, sources: noyau.sources_abri(id)?, dossier_jeu, sel })
+}
+
+/// Le plan de l'abri (lecture seule : chaque fichier lu une fois pour son SHA1).
+async fn planifier_abri_parties(
+    p: PourAbriParties,
+    windows: impl FnOnce() -> Vec<(&'static str, std::path::PathBuf)> + Send + 'static,
+) -> Resultat<(crate::abri_parties::PlanAbri, ProfilVisible, Vec<std::path::PathBuf>)> {
+    let PourAbriParties { profil, entree, contexte, sources, sel, .. } = p;
+    let plan = tauri::async_runtime::spawn_blocking(move || {
+        let ctx = contexte(windows());
+        let lieux: Vec<crate::nuage_steam::Emplacement> = entree.emplacements.iter().flat_map(|x| crate::nuage_steam::candidats(&x.chemin, Some(&x.nature), &ctx).0).collect();
+        crate::abri_parties::planifier(&lieux, &Default::default(), &sel)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La lecture des parties s'est arrêtée brutalement.".into()))?;
+    Ok((plan, profil, sources))
+}
+
+fn echecs_vus(plan: &crate::abri_parties::PlanAbri) -> Vec<EchecAbriVu> {
+    plan.emplacements.iter().filter_map(|e| e.echec.map(|x| EchecAbriVu { dossier: e.dossier.to_string_lossy().into(), raison: x.texte().into() })).collect()
+}
+
+/// Les mises à l'abri à la main en cours (dossier des données, jeu) : « déjà en cours » se dit à part d'une partie.
+static ABRIS_EN_COURS: std::sync::Mutex<std::collections::BTreeSet<(std::path::PathBuf, i64)>> = std::sync::Mutex::new(std::collections::BTreeSet::new());
+
+/// Une mise à l'abri en cours, rendue à la fin (même sur une erreur).
+struct AbriEnCours((std::path::PathBuf, i64));
+
+impl AbriEnCours {
+    fn prendre(noyau: &Noyau, id: i64) -> Option<Self> {
+        let cle = (noyau.dossier.clone(), id);
+        ABRIS_EN_COURS.lock().unwrap_or_else(|e| e.into_inner()).insert(cle.clone()).then_some(AbriEnCours(cle))
+    }
+}
+
+impl Drop for AbriEnCours {
+    fn drop(&mut self) {
+        ABRIS_EN_COURS.lock().unwrap_or_else(|e| e.into_inner()).remove(&self.0);
+    }
+}
+
+/// Le jeu n'est pas prêt pour un abri : une mise à l'abri de ce jeu en cours ; occupé par Frogtend (partie,
+/// téléchargement, installation) ; un programme de son dossier tourne (lancé par sa boutique). Ses parties changeraient
+/// pendant la copie.
+fn refus_jeu_en_cours(noyau: &Noyau, id: i64, dossier_jeu: Option<&std::path::Path>) -> Option<Erreur> {
+    if ABRIS_EN_COURS.lock().unwrap_or_else(|e| e.into_inner()).contains(&(noyau.dossier.clone(), id)) {
+        return Some(Erreur::Refus("Une mise à l'abri de ce jeu est déjà en cours : attends qu'elle finisse.".into()));
+    }
+    if noyau.utilise(id) {
+        return Some(Erreur::Refus("Ce jeu est occupé (partie, téléchargement ou installation en cours) : réessaie après.".into()));
+    }
+    if dossier_jeu.is_some_and(|d| d.is_dir() && !crate::lancement::processus_du_dossier(d).is_empty()) {
+        return Some(Erreur::Refus("Le jeu est en cours : quitte-le d'abord, pour que ses parties ne changent pas pendant la copie.".into()));
+    }
+    None
+}
+
+/// Un fichier à copier écrit il y a moins d'une minute : le jeu (lancé hors de Frogtend, peut-être sans dossier connu
+/// ici : une carte de boutique) écrit encore ses parties.
+const ECRITURE_RECENTE: std::time::Duration = std::time::Duration::from_secs(60);
+
+fn refus_ecriture_recente(plan: &crate::abri_parties::PlanAbri) -> Resultat<()> {
+    if plan.ecrit_recemment(std::time::SystemTime::now(), ECRITURE_RECENTE) {
+        return Err(Erreur::Refus("Le jeu semble encore écrire ses parties : réessaie dans une minute.".into()));
+    }
+    Ok(())
+}
+
+async fn apercu_abri_parties(
+    noyau: &Noyau,
+    id: i64,
+    windows: impl FnOnce() -> Vec<(&'static str, std::path::PathBuf)> + Send + 'static,
+) -> Resultat<ApercuAbriParties> {
+    // Sans dossier des abris, rien ne pourrait être copié : dit dès l'aperçu ; le jeu en cours aussi.
+    noyau.dossier_abris()?;
+    let p = preparer_abri_parties(noyau, id).await?;
+    if let Some(e) = refus_jeu_en_cours(noyau, id, p.dossier_jeu.as_deref()) {
+        return Err(e);
+    }
+    let (plan, profil, sources) = planifier_abri_parties(p, windows).await?;
+    refus_ecriture_recente(&plan)?;
+    let deja = crate::abri_parties::deja_a_l_abri(&sources, &profil.id, &plan);
+    Ok(ApercuAbriParties {
+        fichiers: plan.fichiers(),
+        octets: plan.octets(),
+        emplacements: plan.bons().count(),
+        echecs: echecs_vus(&plan),
+        en_ligne_seulement: plan.en_ligne_seulement,
+        deja,
+        gros: plan.octets() > crate::nuage_steam::GROS,
+        profil: profil.nom,
+    })
+}
+
+async fn abriter_parties(
+    noyau: &Noyau,
+    id: i64,
+    accepte: bool,
+    windows: impl FnOnce() -> Vec<(&'static str, std::path::PathBuf)> + Send + 'static,
+) -> Resultat<AbriPartiesFait> {
+    let abris = noyau.dossier_abris()?;
+    let p = preparer_abri_parties(noyau, id).await?;
+    if let Some(e) = refus_jeu_en_cours(noyau, id, p.dossier_jeu.as_deref()) {
+        return Err(e);
+    }
+    let Some(_en_cours) = AbriEnCours::prendre(noyau, id) else {
+        return Err(Erreur::Refus("Une mise à l'abri de ce jeu est déjà en cours : attends qu'elle finisse.".into()));
+    };
+    let _occupe = noyau.occuper(id);
+    // Le plan est refait ici, jamais repris de l'interface.
+    let (mut plan, profil, sources) = planifier_abri_parties(p, windows).await?;
+    refus_ecriture_recente(&plan)?;
+    if plan.emplacements.is_empty() {
+        return Err(Erreur::Refus("Frogtend ne trouve aucune partie de ce jeu sur ce PC (aux endroits de « 📁 Où sont mes parties »).".into()));
+    }
+    let vu = |plan: &crate::abri_parties::PlanAbri, date: Option<String>, deja: bool| AbriPartiesFait {
+        date,
+        fichiers: plan.fichiers(),
+        octets: plan.octets(),
+        emplacements: plan.bons().count(),
+        echecs: echecs_vus(plan),
+        en_ligne_seulement: plan.en_ligne_seulement,
+        deja,
+    };
+    if plan.fichiers() > 0 && crate::abri_parties::deja_a_l_abri(&sources, &profil.id, &plan) {
+        return Ok(vu(&plan, None, true));
+    }
+    if plan.octets() > crate::nuage_steam::GROS && !accepte {
+        return Err(Erreur::Refus("Ces parties sont très grosses : confirme d'abord.".into()));
+    }
+    let quand = crate::noyau::maintenant();
+    let (r, plan) = tauri::async_runtime::spawn_blocking(move || {
+        let r = crate::abri_parties::abriter(&mut plan, &abris, id, &quand, &profil.id).map(|_| quand);
+        (r, plan)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La mise à l'abri s'est arrêtée brutalement.".into()))?;
+    let (n, k, e, o) = (plan.fichiers(), plan.bons().count(), plan.echecs(), plan.en_ligne_seulement);
+    match r {
+        Ok(date) => {
+            noyau.journaliser(&format!("jeu {id} : {n} fichier(s) de parties mis à l'abri à la main ({k} emplacement(s), {e} en échec, {o} en ligne seulement)"));
+            Ok(vu(&plan, Some(date), false))
+        }
+        Err(x) => {
+            noyau.journaliser(&format!("jeu {id} : mise à l'abri à la main impossible ({e} emplacement(s) en échec)"));
+            // Chaque raison d'échec est dite (sans chemin : un message qui s'efface seul).
+            let mut raisons: Vec<String> = echecs_vus(&plan).into_iter().map(|v| v.raison).collect();
+            raisons.dedup();
+            Err(if raisons.is_empty() { x } else { Erreur::Refus(format!("Rien n'est mis à l'abri : {}.", raisons.join(" ; "))) })
+        }
+    }
+}
+
+/// Les abris de ce jeu montrés au profil de la session : les siens, et les anciens sans propriétaire connu (jamais
+/// celui d'un autre profil ; un jeu qu'il ne voit pas : refusé, rien n'est compté).
+async fn abris_des_parties(noyau: &Noyau, id: i64) -> Resultat<Vec<crate::abri_parties::AbriVu>> {
+    let s = noyau.session().await?;
+    let dp = dossier_profil_de(noyau, &s.profil.id);
+    jeu_des_parties(noyau, &s, &dp, id)?;
+    let sources = noyau.sources_abri(id)?;
+    let marque = crate::boutiques::lire(&dp).and_then(|c| crate::nuage_steam::compte(&c.steamid)).map(|c| crate::nuage_steam::marque(&c));
+    let profil = s.profil.id.clone();
+    tauri::async_runtime::spawn_blocking(move || crate::abri_parties::lister(&sources, &profil, marque.as_deref()))
+        .await
+        .map_err(|_| Erreur::Disque("La lecture des abris s'est arrêtée brutalement.".into()))
+}
+
+/// 🛟 Ce que « Mettre mes parties à l'abri » copierait (annoncé avant ; lecture seule).
+#[tauri::command]
+pub async fn parties_abri_apercu(noyau: State<'_, Noyau>, id: i64) -> Resultat<ApercuAbriParties> {
+    apercu_abri_parties(&noyau, id, crate::nuage_steam::dossiers_windows).await
+}
+
+/// 🛟 Met les parties d'un jeu PC à l'abri, pour le profil ouvert (`accepte` : la personne a confirmé une très grosse
+/// copie). Refusé pendant une partie.
+#[tauri::command]
+pub async fn parties_abriter(noyau: State<'_, Noyau>, id: i64, accepte: bool) -> Resultat<AbriPartiesFait> {
+    abriter_parties(&noyau, id, accepte, crate::nuage_steam::dossiers_windows).await
+}
+
+/// Les abris de parties d'un jeu PC, pour le profil ouvert (lecture seule).
+#[tauri::command]
+pub async fn parties_abris(noyau: State<'_, Noyau>, id: i64) -> Resultat<Vec<crate::abri_parties::AbriVu>> {
+    abris_des_parties(&noyau, id).await
 }
 
 // --- Mods GitHub (contrat 1.19 ; ✅ Seb 19/10, lot 0.81.0) : le mod et son fichier sont REPRIS de la liste de
@@ -9072,16 +9351,19 @@ async fn abriter_avant_mod(noyau: &Noyau, id: i64) -> Resultat<()> {
     };
     // Avant un mod, jamais une très grosse copie sans question : au-delà de `GROS`, les parties du nuage seulement.
     if plan.octets > crate::nuage_steam::GROS {
-        plan.fichiers.retain(|f| !f.relatif.contains("/hors-nuage/"));
+        // Lot S2 : les parties hors du nuage sont rangées sous `emplacements/` (avant : `…/hors-nuage/`).
+        plan.fichiers.retain(|f| !f.relatif.starts_with(crate::abri_parties::PREFIXE));
+        plan.abrites.clear();
         plan.octets = plan.fichiers.iter().map(|f| f.taille).sum();
         noyau.journaliser(&format!("jeu {id} : parties hors du nuage trop grosses pour être copiées avant le mod (abri du nuage seulement)"));
     }
     let abris = noyau.dossier_abris()?;
-    if plan.fichiers.is_empty() || crate::nuage_steam::deja_a_l_abri(&abris.join(id.to_string()), &marque, &plan) {
+    let profil = profil_ouvert(noyau).await?.id;
+    if plan.fichiers.is_empty() || crate::nuage_steam::deja_a_l_abri(&abris.join(id.to_string()), &marque, &plan, &profil) {
         return Ok(());
     }
     let quand = crate::noyau::maintenant();
-    tauri::async_runtime::spawn_blocking(move || crate::nuage_steam::abriter(&plan, &marque, &abris, id, &quand))
+    tauri::async_runtime::spawn_blocking(move || crate::nuage_steam::abriter(&plan, &marque, &abris, id, &quand, &profil))
         .await
         .map_err(|_| Erreur::Disque("La mise à l'abri s'est arrêtée brutalement.".into()))??;
     Ok(())
@@ -12369,6 +12651,98 @@ mod tests_parties {
         let journal = std::fs::read_to_string(n.dossier.join("journal.txt")).unwrap();
         assert!(journal.contains("jeu 900 : emplacements de parties"), "{journal}");
         for interdit in ["Saved Games", "Cyberpunk", "CD Projekt", "USERPROFILE"] {
+            assert!(!journal.contains(interdit), "« {interdit} » au journal : {journal}");
+        }
+    }
+
+    /// Lot S2 : « 🛟 Mettre mes parties à l'abri » par le chemin réel — annonce, abri au profil de la session, rien de
+    /// neuf : pas de copie, jeu en cours : refus, liste par profil, journal sans chemin ni titre.
+    #[tokio::test]
+    async fn mettre_mes_parties_a_l_abri_par_profil() {
+        let (s, reponse) = serveur();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/900/triche");
+            t.status(200).header("content-type", "application/json").body(reponse.clone());
+        });
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let parties = d.path().join("Saved Games");
+        let cp = parties.join("CD Projekt Red").join("Cyberpunk 2077");
+        std::fs::create_dir_all(cp.join("ManualSave-0")).unwrap();
+        let sav = cp.join("ManualSave-0").join("sav.dat");
+        std::fs::write(&sav, b"partie!").unwrap();
+        // Une partie écrite il y a une heure (le jeu n'écrit plus).
+        let vieillir = |f: &std::path::Path| std::fs::OpenOptions::new().write(true).open(f).unwrap().set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(3600)).unwrap();
+        vieillir(&sav);
+        let w = parties.clone();
+        let windows = move || vec![("Parties-enregistrees", w.clone())];
+        let p1 = ouvrir(&n, &s, "Seb").await;
+        super::parties_du_jeu(&n, 900, true, windows.clone()).await.unwrap();
+        // Sans dossier des abris réglé : dit dès l'annonce.
+        assert!(matches!(super::apercu_abri_parties(&n, 900, windows.clone()).await, Err(crate::erreurs::Erreur::Reglage(_))));
+        let abris = d.path().join("Abris");
+        n.regler_abris(Some(abris.clone()));
+        let a = super::apercu_abri_parties(&n, 900, windows.clone()).await.unwrap();
+        assert_eq!((a.fichiers, a.octets, a.emplacements, a.deja, a.gros, a.profil.as_str()), (1, 7, 1, false, false, "Seb"));
+        assert!(a.echecs.is_empty());
+        assert!(!abris.join("900").exists(), "l'annonce ne copie rien");
+        // Le jeu est occupé (partie lancée par Frogtend…) : refusé dès l'annonce, et à la copie ; rien de copié.
+        n.marquer_occupe(900);
+        let refus = |r: crate::erreurs::Resultat<()>| match r {
+            Err(crate::erreurs::Erreur::Refus(m)) => m,
+            autre => panic!("un refus attendu : {autre:?}"),
+        };
+        assert!(refus(super::apercu_abri_parties(&n, 900, windows.clone()).await.map(|_| ())).contains("occupé"));
+        assert!(refus(super::abriter_parties(&n, 900, false, windows.clone()).await.map(|_| ())).contains("occupé"));
+        n.liberer(900);
+        // Une mise à l'abri de ce jeu déjà en cours : dit à part.
+        let en_cours = super::AbriEnCours::prendre(&n, 900).unwrap();
+        assert!(refus(super::abriter_parties(&n, 900, false, windows.clone()).await.map(|_| ())).contains("déjà en cours"));
+        drop(en_cours);
+        // Correctif 4 : une partie écrite il y a moins d'une minute (le jeu tourne peut-être hors de Frogtend, sans
+        // dossier connu ici : une carte de boutique) — refusé dès l'annonce, rien de copié.
+        std::fs::write(&sav, b"partie!").unwrap();
+        assert!(refus(super::apercu_abri_parties(&n, 900, windows.clone()).await.map(|_| ())).contains("encore écrire ses parties"));
+        assert!(refus(super::abriter_parties(&n, 900, false, windows.clone()).await.map(|_| ())).contains("encore écrire ses parties"));
+        vieillir(&sav);
+        assert!(!abris.join("900").exists());
+        let fait = super::abriter_parties(&n, 900, false, windows.clone()).await.unwrap();
+        let date = fait.date.clone().unwrap();
+        assert_eq!((fait.fichiers, fait.octets, fait.deja), (1, 7, false));
+        let cle = crate::abri_parties::cle_chemin(r"%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077", "dossier");
+        assert_eq!(std::fs::read(abris.join("900").join(&date).join("emplacements").join(&cle).join("ManualSave-0").join("sav.dat")).unwrap(), b"partie!");
+        let fiche = crate::abri_parties::lire_fiche(&abris.join("900").join(&date)).unwrap();
+        assert_eq!(fiche.profil, p1, "le profil de la session");
+        assert!(!n.utilise(900), "plus occupé après l'abri");
+        // Rien de neuf : pas de copie.
+        assert!(super::apercu_abri_parties(&n, 900, windows.clone()).await.unwrap().deja);
+        let encore = super::abriter_parties(&n, 900, false, windows.clone()).await.unwrap();
+        assert_eq!((encore.date, encore.deja), (None, true));
+        assert_eq!(std::fs::read_dir(abris.join("900")).unwrap().count(), 2, "un abri et sa fiche, rien de plus");
+        // La liste : l'abri de Seb.
+        let l = super::abris_des_parties(&n, 900).await.unwrap();
+        assert_eq!(l.iter().map(|x| (x.date.as_str(), x.a_moi, x.fichiers)).collect::<Vec<_>>(), [(date.as_str(), true, 1)]);
+        // Un jeu d'émulateur, un jeu caché : refusés.
+        assert!(super::abris_des_parties(&n, 110).await.is_err());
+        assert!(matches!(super::abris_des_parties(&n, 777).await, Err(crate::erreurs::Erreur::Introuvable(_))));
+        assert!(matches!(super::abriter_parties(&n, 777, false, windows.clone()).await, Err(crate::erreurs::Erreur::Introuvable(_))));
+
+        // Léa, sur le même compte Windows : l'abri de Seb n'est jamais montré ; le sien lui appartient.
+        let p2 = ouvrir(&n, &s, "Léa").await;
+        assert!(super::abris_des_parties(&n, 900).await.unwrap().is_empty(), "jamais l'abri d'un autre profil");
+        super::parties_du_jeu(&n, 900, true, windows.clone()).await.unwrap();
+        let a = super::apercu_abri_parties(&n, 900, windows.clone()).await.unwrap();
+        assert_eq!((a.deja, a.profil.as_str()), (false, "Léa"), "l'abri de Seb ne compte pas pour Léa");
+        // Une seconde plus tard au moins : deux abris n'ont jamais le même nom.
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        let fait2 = super::abriter_parties(&n, 900, false, windows.clone()).await.unwrap();
+        assert_eq!(crate::abri_parties::lire_fiche(&abris.join("900").join(fait2.date.as_ref().unwrap())).unwrap().profil, p2);
+        assert_eq!(super::abris_des_parties(&n, 900).await.unwrap().iter().map(|x| x.date.clone()).collect::<Vec<_>>(), [fait2.date.clone().unwrap()]);
+
+        // Le journal : des numéros et des nombres, jamais un chemin ni un titre.
+        let journal = std::fs::read_to_string(n.dossier.join("journal.txt")).unwrap();
+        assert!(journal.contains("jeu 900 : 1 fichier(s) de parties mis à l'abri à la main"), "{journal}");
+        for interdit in ["Saved Games", "Cyberpunk", "CD Projekt", "USERPROFILE", "Abris", &cle] {
             assert!(!journal.contains(interdit), "« {interdit} » au journal : {journal}");
         }
     }

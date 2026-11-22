@@ -863,6 +863,13 @@ frein sur ses appels à PCGamingWiki dans la livraison du besoin 56.
 xbox_pfn, dossier vérifié par le titre, références fermées) ; relevé réel : GOG 39/41, Epic 33/40 ; relu par les trois
 experts (18 corrections, dont les dossiers OneDrive jamais parcourus — essai réel : 166 fichiers vus dans
 Documents\My Games\Age of Empires IV sous OneDrive —, une course entre profils, des racines interdites).
+**S2 livré en 0.221.0 (22/11)** : abri À LA MAIN de tout jeu PC (module abri_parties.rs : clé du chemin NON résolu,
+fiche à côté de l'abri avec profil propriétaire et SHA1, tout ou rien, refus si le jeu tourne ou a écrit depuis moins
+de 60 s) ; défaut Steam hors nuage corrigé pour les nouveaux abris ; relu par les trois experts (15 corrections, dont
+une régression de la sauvegarde entre profils : chaque profil envoie SA dernière copie, fusion par emplacement, et la
+fiche part chez Firehouse en jeux/<id>/emplacements/fiche.json). À régler au S5 : le sel des empreintes d'identifiant
+vit dans les données du profil (sur un autre PC, ré-énumérer) ; un parent qui échoue à la COPIE fait perdre cette
+fois-là les emplacements qu'il contient (seul l'échec au plan est géré).
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
 « Connecte-toi… dans la fenêtre qui s'ouvre » laisse croire que rien ne se passe ou que c'est raté. Voulu : une petite

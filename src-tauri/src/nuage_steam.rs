@@ -229,7 +229,7 @@ pub fn dossiers_windows() -> Vec<(&'static str, PathBuf)> {
 }
 
 /// Un fichier « en ligne seulement » (OneDrive…) : le lire le téléchargerait.
-fn en_ligne_seulement(m: &std::fs::Metadata) -> bool {
+pub(crate) fn en_ligne_seulement(m: &std::fs::Metadata) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
@@ -244,7 +244,7 @@ fn en_ligne_seulement(m: &std::fs::Metadata) -> bool {
 }
 
 /// Le SHA1 d'un fichier, lu par morceaux (jamais en entier en mémoire).
-fn sha1(f: &Path) -> std::io::Result<String> {
+pub(crate) fn sha1(f: &Path) -> std::io::Result<String> {
     use sha1::{Digest, Sha1};
     let mut r = std::fs::File::open(f)?;
     let mut h = Sha1::new();
@@ -286,6 +286,9 @@ pub struct Plan {
     pub hors_nuage: usize,
     /// Emplacements donnés par Firehouse que Frogtend ne sait pas lire (racine perdue, jeton inconnu…).
     pub emplacements_illisibles: usize,
+    /// Lot S2 : les emplacements hors du nuage pris dans le plan (chemin NON résolu), pour la fiche de l'abri.
+    #[serde(skip)]
+    pub abrites: Vec<crate::abri_parties::EmplacementAbrite>,
 }
 
 /// Ce qu'on trouve au chemin d'un fichier décrit par Steam, dans un dossier.
@@ -530,7 +533,13 @@ const PROFILS_MAX: usize = 32;
 /// Les dossiers d'un emplacement : un seul, ou — quand l'identifiant de l'utilisateur est HORS de `userdata` (le
 /// profil propre au jeu, inconnu) — chaque vrai sous-dossier (sans lien) du dossier qui le précède, suivi de la fin
 /// du chemin. `None` : illisible.
+#[cfg(test)]
 fn bases(base: &str, ctx: &Contexte) -> Option<Vec<PathBuf>> {
+    bases_et_identifiants(base, ctx).map(|l| l.into_iter().map(|(p, _)| p).collect())
+}
+
+/// `bases`, avec pour chaque dossier le nom pris à la place du jeton d'énumération (`None` : pas d'énumération).
+fn bases_et_identifiants(base: &str, ctx: &Contexte) -> Option<Vec<(PathBuf, Option<String>)>> {
     let bas = base.to_ascii_lowercase();
     // Un jeton d'énumération : `<identifiant utilisateur>`, ou `<identifiant Steam>` HORS de `<Steam>\userdata\` (là,
     // c'est le compte connu, posé par `resoudre`). Ailleurs (le profil Rockstar de GTA V, le `Users\<SteamID64>` d'Age
@@ -539,7 +548,7 @@ fn bases(base: &str, ctx: &Contexte) -> Option<Vec<PathBuf>> {
         .into_iter()
         .filter_map(|j| bas.find(j).map(|i| (i, j.len(), j == "<identifiant steam>")))
         .find(|(i, _, _)| !bas[..*i].ends_with("\\userdata\\"));
-    let Some((i, n, steam)) = jeton else { return resoudre(base, ctx).map(|p| vec![p]) };
+    let Some((i, n, steam)) = jeton else { return resoudre(base, ctx).map(|p| vec![(p, None)]) };
     // Le jeton peut être À L'INTÉRIEUR d'un nom (« Steam_<identifiant Steam> ») : le morceau devient un motif
     // préfixe + n'importe quoi + suffixe, comparé aux noms des sous-dossiers.
     let debut = base[..i].rfind('\\').map_or(0, |k| k + 1);
@@ -570,7 +579,7 @@ fn bases(base: &str, ctx: &Contexte) -> Option<Vec<PathBuf>> {
     if steam {
         trouves = comptes_steam_du_profil(trouves, ctx.compte.as_deref());
     }
-    let mut v: Vec<PathBuf> = trouves.into_iter().map(|(_, p)| p).collect();
+    let mut v: Vec<(PathBuf, Option<String>)> = trouves.into_iter().map(|(id, p)| (p, Some(id))).collect();
     if v.len() > PROFILS_MAX {
         return None;
     }
@@ -597,10 +606,18 @@ fn comptes_steam_du_profil(trouves: Vec<(String, PathBuf)>, compte: Option<&str>
 
 /// Un emplacement de parties résolu : un dossier (sous-dossiers compris), ou seulement ses fichiers qui répondent à
 /// `filtre` (contrat 1.26 `nature` : `fichier` = un nom exact, `motif` = un nom avec * ou ?).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Emplacement {
     pub dossier: PathBuf,
     pub filtre: Option<String>,
+    /// Le chemin NON résolu d'où il vient (jetons du contrat 1.25) : c'est lui qui va dans la fiche d'un abri (lot S2),
+    /// jamais `dossier` (qui contient le nom de l'utilisateur).
+    pub chemin: String,
+    /// `dossier`, `fichier` ou `motif`.
+    pub nature: String,
+    /// Le nom du sous-dossier pris à la place de `<identifiant utilisateur>` / `<identifiant Steam>` (hors de
+    /// `userdata`), quand il a fallu énumérer : seule son EMPREINTE va dans un abri.
+    pub identifiant: Option<String>,
 }
 
 /// Un nom de fichier qui répond à un motif (`*`, `?`), sans tenir compte des majuscules (comme Windows).
@@ -669,7 +686,8 @@ pub fn nature_de(chemin: &str, nature: Option<&str>) -> String {
 pub fn candidats(chemin: &str, nature: Option<&str>, ctx: &Contexte) -> (Vec<Emplacement>, usize) {
     let c = chemin.trim().replace('/', "\\");
     let dernier = c.trim_end_matches('\\').rsplit('\\').next().unwrap_or("").to_string();
-    let (base, filtre) = match nature_de(&c, nature).as_str() {
+    let la_nature = nature_de(&c, nature);
+    let (base, filtre) = match la_nature.as_str() {
         "fichier" | "motif" => (c.trim_end_matches('\\').rsplit_once('\\').map(|(b, _)| b.to_string()).unwrap_or_default(), Some(dernier)),
         "dossier" => (c.clone(), None),
         _ => return (vec![], 1),
@@ -682,14 +700,14 @@ pub fn candidats(chemin: &str, nature: Option<&str>, ctx: &Contexte) -> (Vec<Emp
     if seul_jeton || filtre.as_deref().is_some_and(|f| f.is_empty() || f.contains(['/', '\\', ':', '<', '>', '%'])) {
         return (vec![], 1);
     }
-    let Some(bases) = bases(&base, ctx) else { return (vec![], 1) };
+    let Some(bases) = bases_et_identifiants(&base, ctx) else { return (vec![], 1) };
     let mut l = Vec::new();
     let mut illisibles = 0;
-    for p in bases {
+    for (p, identifiant) in bases {
         if est_une_racine(&p, ctx) && filtre.is_none() {
             illisibles += 1;
         } else {
-            l.push(Emplacement { dossier: p, filtre: filtre.clone() });
+            l.push(Emplacement { dossier: p, filtre: filtre.clone(), chemin: chemin.trim().to_string(), nature: la_nature.clone(), identifiant });
         }
     }
     (l, illisibles)
@@ -722,7 +740,7 @@ pub fn emplacements(sauvegardes: &serde_json::Value, ctx: &Contexte) -> (Vec<Emp
         illisibles += n;
         for e in vus {
             // Un dossier absent : pas (encore) de parties à cet endroit.
-            if e.dossier.is_dir() && !l.contains(&e) {
+            if e.dossier.is_dir() && !l.iter().any(|x| x.dossier == e.dossier && x.filtre == e.filtre) {
                 l.push(e);
             }
         }
@@ -741,57 +759,26 @@ pub fn emplacements(sauvegardes: &serde_json::Value, ctx: &Contexte) -> (Vec<Emp
 pub const EMPLACEMENT_MAX: u64 = 2 << 30;
 
 /// Ajoute au plan les fichiers de ces emplacements (hors nuage), sans lien ni jonction ; un fichier déjà dans le plan
-/// (le nuage le couvre) n'est pas pris deux fois. Un emplacement trop gros ou illisible ne gêne jamais les autres.
-pub fn ajouter_emplacements(plan: &mut Plan, marque: &str, emplacements: &[Emplacement]) {
-    let normal = |p: &Path| p.to_string_lossy().replace('/', "\\").to_lowercase();
-    let deja: std::collections::BTreeSet<String> = plan.fichiers.iter().map(|f| normal(&f.source)).collect();
-    for e in emplacements {
-        // Une clé stable (le chemin), pour que « déjà à l'abri » ne change pas quand un autre emplacement apparaît.
-        let cle: String = {
-            use sha1::{Digest, Sha1};
-            Sha1::digest(normal(&e.dossier).as_bytes()).iter().take(4).map(|b| format!("{b:02x}")).collect()
-        };
-        let nom: String = e.dossier.file_name().map(|x| x.to_string_lossy().to_string()).unwrap_or_else(|| "parties".into()).chars().map(|c| if c.is_alphanumeric() || " -_.".contains(c) { c } else { '_' }).collect();
-        let relatifs: Vec<String> = match &e.filtre {
-            None => match fichiers_sans_lien(&e.dossier) {
-                Ok(l) => l,
-                Err(_) => {
-                    plan.emplacements_illisibles += 1;
-                    continue;
-                }
-            },
-            Some(f) => std::fs::read_dir(&e.dossier)
-                .into_iter()
-                .flatten()
-                .flatten()
-                .filter(|x| x.file_type().is_ok_and(|t| t.is_file()))
-                .map(|x| x.file_name().to_string_lossy().to_string())
-                .filter(|n| repond(n, f))
-                .collect(),
-        };
-        // La taille d'abord (rien n'est lu au-delà du plafond).
-        let a_prendre: Vec<(PathBuf, String, std::fs::Metadata)> = relatifs
-            .into_iter()
-            .filter_map(|r| {
-                let p = e.dossier.join(&r);
-                let m = std::fs::symlink_metadata(&p).ok()?;
-                (m.is_file() && !deja.contains(&normal(&p))).then_some((p, r, m))
-            })
-            .collect();
-        if a_prendre.iter().map(|(_, _, m)| m.len()).sum::<u64>() > EMPLACEMENT_MAX {
+/// (le nuage le couvre) n'est pas pris deux fois. Un emplacement trop gros, illisible ou dont un fichier est verrouillé
+/// ne gêne jamais les autres (compté illisible).
+///
+/// Lot S2 (22/11) : rangés au NOUVEAU format, `emplacements/<clé du chemin NON résolu>/…`, avec la fiche de l'abri
+/// (`abri_parties`) — avant, `nuage-steam/<marque>/hors-nuage/<4 octets du SHA1 du chemin LOCAL>-<nom>/…`, sans le
+/// chemin d'origine : impossibles à remettre en place (ces anciens abris restent lisibles, jamais réécrits).
+/// `sel` : celui du profil (`abri_parties::sel_du_profil`), mêlé à l'empreinte d'un sous-dossier énuméré.
+pub fn ajouter_emplacements(plan: &mut Plan, emplacements: &[Emplacement], sel: &str) {
+    let deja: std::collections::BTreeSet<String> = plan.fichiers.iter().map(|f| crate::abri_parties::normal(&f.source)).collect();
+    let p = crate::abri_parties::planifier(emplacements, &deja, sel);
+    plan.en_ligne_seulement += p.en_ligne_seulement;
+    for e in p.emplacements {
+        if e.echec.is_some() {
             plan.emplacements_illisibles += 1;
             continue;
         }
-        for (p, r, m) in a_prendre {
-            if en_ligne_seulement(&m) {
-                plan.en_ligne_seulement += 1;
-                continue;
-            }
-            let Ok(sha) = sha1(&p) else { continue };
-            plan.octets += m.len();
-            plan.hors_nuage += 1;
-            plan.fichiers.push(AMettre { source: p, relatif: format!("nuage-steam/{marque}/hors-nuage/{cle}-{nom}/{}", r.replace('\\', "/")), taille: m.len(), sha });
-        }
+        plan.octets += e.octets;
+        plan.hors_nuage += e.fichiers.len();
+        plan.fichiers.extend(e.fichiers);
+        plan.abrites.push(e.abrite);
     }
     plan.fichiers.sort_by(|a, b| a.relatif.cmp(&b.relatif));
 }
@@ -801,8 +788,10 @@ fn liste(marque: &str) -> String {
     format!("nuage-steam/{marque}/abri.json")
 }
 
-/// Le plus récent abri de ce jeu POUR CE COMPTE contient-il déjà exactement ces fichiers (chemins et SHA1) ?
-pub fn deja_a_l_abri(abris_du_jeu: &Path, marque: &str, plan: &Plan) -> bool {
+/// Le plus récent abri de ce jeu POUR CE COMPTE contient-il déjà exactement ces fichiers (chemins et SHA1) ? Quand le
+/// plan a des emplacements hors du nuage (lot S2), seulement un abri de CE profil (`profil`, sa fiche le dit) : les
+/// parties AppData sont communes aux profils d'un compte Windows, mais l'abri de Léa n'est jamais celui de Seb.
+pub fn deja_a_l_abri(abris_du_jeu: &Path, marque: &str, plan: &Plan, profil: &str) -> bool {
     let mut dates: Vec<(u64, PathBuf)> = std::fs::read_dir(abris_du_jeu)
         .into_iter()
         .flatten()
@@ -810,7 +799,9 @@ pub fn deja_a_l_abri(abris_du_jeu: &Path, marque: &str, plan: &Plan) -> bool {
         .filter_map(|e| e.file_name().to_str().and_then(|n| n.parse::<u64>().ok()).map(|n| (n, e.path())))
         .collect();
     dates.sort_by(|a, b| b.0.cmp(&a.0));
-    let Some(o) = dates.iter().find_map(|(_, d)| std::fs::read(d.join(liste(marque))).ok()) else { return false };
+    let hors_nuage = plan.fichiers.iter().any(|f| f.relatif.starts_with(crate::abri_parties::PREFIXE));
+    let a_lui = |d: &Path| !hors_nuage || crate::abri_parties::lire_fiche(d).is_some_and(|f| f.profil == profil);
+    let Some(o) = dates.iter().filter(|(_, d)| a_lui(d)).find_map(|(_, d)| std::fs::read(d.join(liste(marque))).ok()) else { return false };
     let Ok(avant) = serde_json::from_slice::<Vec<AMettre>>(&o) else { return false };
     let cle = |l: &[AMettre]| l.iter().map(|f| (f.relatif.to_lowercase(), f.sha.clone())).collect::<std::collections::BTreeSet<_>>();
     cle(&avant) == cle(&plan.fichiers)
@@ -819,7 +810,9 @@ pub fn deja_a_l_abri(abris_du_jeu: &Path, marque: &str, plan: &Plan) -> bool {
 /// Copie le plan dans un nouvel abri `<abris>/<id>/<quand>/`, en passant par un dossier provisoire hors des abris
 /// lus (un abri à moitié fait n'est jamais pris pour une sauvegarde). Chaque copie est vérifiée par son SHA1 ; un
 /// fichier qui change pendant la copie (Steam synchronise) est recopié une fois, sinon tout est refusé.
-pub fn abriter(plan: &Plan, marque: &str, abris: &Path, id: i64, quand: &str) -> Resultat<PathBuf> {
+/// Lot S2 : la fiche de l'abri (`<quand>.json`, à côté) dit le profil propriétaire (`profil`, celui de la session) et
+/// les emplacements hors du nuage (chemins NON résolus) ; elle est écrite avant que l'abri prenne son nom.
+pub fn abriter(plan: &Plan, marque: &str, abris: &Path, id: i64, quand: &str, profil: &str) -> Resultat<PathBuf> {
     let fin = abris.join(id.to_string()).join(quand);
     if fin.exists() {
         return Err(Erreur::Refus("Un abri de ce jeu vient d'être fait : réessaie dans une seconde.".into()));
@@ -857,8 +850,8 @@ pub fn abriter(plan: &Plan, marque: &str, abris: &Path, id: i64, quand: &str) ->
         if let Some(p) = fin.parent() {
             std::fs::create_dir_all(p)?;
         }
-        std::fs::rename(&tmp, &fin)?;
-        Ok(())
+        let fiche = crate::abri_parties::FicheAbri::nouvelle(crate::abri_parties::SORTE_NUAGE_STEAM, profil, plan.abrites.clone(), &plan.fichiers, plan.en_ligne_seulement, plan.emplacements_illisibles);
+        crate::abri_parties::poser_avec_fiche(&tmp, &fin, &fiche)
     })();
     if r.is_err() {
         // Le dossier provisoire est le nôtre (son nom le dit) : rien d'autre n'est touché.
@@ -938,15 +931,71 @@ mod tests {
 
         // L'abri : tout y est, vérifié ; un second abri identique n'est pas utile.
         let abris = d.path().join("Abris");
-        let fin = abriter(&p, "m1", &abris, -7, "100").unwrap();
+        let fin = abriter(&p, "m1", &abris, -7, "100", "p1").unwrap();
         assert_eq!(std::fs::read(fin.join("nuage-steam/m1/Documents/my games/Jeu/SaveData/save_1")).unwrap(), b"abc");
         assert!(!abris.join(".frogtend-en-cours").exists());
-        assert!(deja_a_l_abri(&abris.join("-7"), "m1", &p));
+        assert!(deja_a_l_abri(&abris.join("-7"), "m1", &p, "p1"));
         std::fs::write(app.join("remote/campaign"), b"54321").unwrap();
         let p2 = planifier(&app, "m1", &windows).unwrap().unwrap();
-        assert!(!deja_a_l_abri(&abris.join("-7"), "m1", &p2), "une partie a changé");
+        assert!(!deja_a_l_abri(&abris.join("-7"), "m1", &p2, "p1"), "une partie a changé");
         // La source n'a jamais été touchée.
         assert_eq!(std::fs::read(docs.join("my games/Jeu/SaveData/save_1")).unwrap(), b"abc");
+    }
+
+    /// Lot S2 : un NOUVEL abri Steam range les parties hors du nuage sous `emplacements/<clé du chemin NON résolu>/` avec
+    /// sa fiche (profil, chemin d'origine) ; un ANCIEN abri (`hors-nuage/`, sans chemin d'origine) reste lisible, n'est
+    /// jamais réécrit, et « déjà à l'abri » le lit encore.
+    #[test]
+    fn le_nouvel_abri_steam_hors_nuage_garde_son_chemin_et_l_ancien_reste_tel_quel() {
+        let d = tempfile::tempdir().unwrap();
+        let docs = d.path().join("OneDrive").join("Documents");
+        let saves = docs.join("My Games").join("XCOM2").join("XComGame").join("SaveData");
+        std::fs::create_dir_all(&saves).unwrap();
+        std::fs::write(saves.join("save_1"), b"partie").unwrap();
+        let ctx = Contexte { jeu: None, steam: None, compte: None, windows: vec![("Documents", docs.clone())], boutique: Some("steam".into()) };
+        let chemin = r"%USERPROFILE%\Documents\My Games\XCOM2\XComGame\SaveData\";
+        let (l, _) = emplacements(&serde_json::json!([{"os": "Windows", "chemin": chemin, "nature": "dossier"}]), &ctx);
+        let mut plan = Plan::default();
+        ajouter_emplacements(&mut plan, &l, "sel");
+        let abris = d.path().join("Abris");
+        // L'ancien abri, d'avant le lot S2 : sa liste dit les anciens chemins.
+        let ancien = abris.join("-7").join("50");
+        let vieux = ancien.join("nuage-steam").join("m1").join("hors-nuage").join("abcd1234-SaveData").join("save_1");
+        std::fs::create_dir_all(vieux.parent().unwrap()).unwrap();
+        std::fs::write(&vieux, b"partie").unwrap();
+        let liste_ancienne = serde_json::to_vec(&[AMettre { source: PathBuf::new(), relatif: "nuage-steam/m1/hors-nuage/abcd1234-SaveData/save_1".into(), taille: 6, sha: sha_de(b"partie") }]).unwrap();
+        std::fs::write(ancien.join("nuage-steam").join("m1").join("abri.json"), &liste_ancienne).unwrap();
+        assert!(!deja_a_l_abri(&abris.join("-7"), "m1", &plan, "profil-seb"), "les chemins ont changé de forme : un nouvel abri");
+        let fin = abriter(&plan, "m1", &abris, -7, "100", "profil-seb").unwrap();
+        let cle = crate::abri_parties::cle_chemin(chemin, "dossier");
+        assert_eq!(std::fs::read(fin.join("emplacements").join(&cle).join("save_1")).unwrap(), b"partie");
+        assert!(!fin.join("nuage-steam").join("m1").join("hors-nuage").exists());
+        let f = crate::abri_parties::lire_fiche(&fin).unwrap();
+        assert_eq!((f.sorte.as_str(), f.profil.as_str(), f.fichiers.len()), (crate::abri_parties::SORTE_NUAGE_STEAM, "profil-seb", 1));
+        assert_eq!(f.emplacements.iter().map(|e| (e.cle.as_str(), e.chemin.as_str())).collect::<Vec<_>>(), [(cle.as_str(), chemin)]);
+        assert!(!std::fs::read_to_string(abris.join("-7").join("100.json")).unwrap().contains("OneDrive"), "jamais le chemin de ce PC");
+        assert!(deja_a_l_abri(&abris.join("-7"), "m1", &plan, "profil-seb"));
+        // Correctif 1 (revue du 22/11) : pour Léa, l'abri de Seb ne vaut pas (elle a ses propres parties hors du nuage).
+        assert!(!deja_a_l_abri(&abris.join("-7"), "m1", &plan, "profil-lea"));
+        // Un plan sans emplacement hors du nuage : le compte Steam suffit, comme avant.
+        let mut nuage = plan.clone();
+        nuage.fichiers.retain(|f| !f.relatif.starts_with("emplacements/"));
+        nuage.abrites.clear();
+        let _ = abriter(&nuage, "m1", &abris, -7, "101", "profil-seb").unwrap();
+        assert!(deja_a_l_abri(&abris.join("-7"), "m1", &nuage, "profil-lea"));
+        // L'ancien : intact, sans fiche ajoutée, toujours listé (son chemin d'origine est inconnu).
+        assert_eq!(std::fs::read(&vieux).unwrap(), b"partie");
+        assert_eq!(std::fs::read(ancien.join("nuage-steam").join("m1").join("abri.json")).unwrap(), liste_ancienne);
+        assert!(!abris.join("-7").join("50.json").exists());
+        let vus = crate::abri_parties::lister(&[abris.join("-7")], "profil-seb", Some("m1"));
+        assert_eq!(vus.iter().map(|a| (a.date.as_str(), a.a_moi, a.sans_origine)).collect::<Vec<_>>(), [("101", true, 0), ("100", true, 0), ("50", false, 1)]);
+        // Correctif 7 : la fiche dit le vrai nombre d'emplacements en échec ; « complet » seulement sans aucun.
+        assert!(f.complet && f.echecs == 0);
+        let mut manque = plan.clone();
+        manque.emplacements_illisibles = 1;
+        let fin = abriter(&manque, "m1", &abris, -7, "102", "profil-seb").unwrap();
+        let f = crate::abri_parties::lire_fiche(&fin).unwrap();
+        assert_eq!((f.echecs, f.complet), (1, false));
     }
 
     #[test]
@@ -956,7 +1005,7 @@ mod tests {
         std::fs::write(&s, b"neuf").unwrap();
         let plan = Plan { fichiers: vec![AMettre { source: s, relatif: "nuage-steam/remote/s".into(), taille: 4, sha: sha_de(b"ancien") }], octets: 4, ..Default::default() };
         let abris = d.path().join("Abris");
-        assert!(abriter(&plan, "m1", &abris, -7, "100").is_err());
+        assert!(abriter(&plan, "m1", &abris, -7, "100", "p1").is_err());
         assert!(!abris.join("-7").exists() && !abris.join(".frogtend-en-cours").exists());
     }
 
@@ -1037,7 +1086,8 @@ mod tests {
         assert_eq!(bases(r"%USERPROFILE%\Documents\Jeu\Steam_<identifiant Steam>_<identifiant utilisateur>", &ctx), None, "deux jetons : jamais deviné");
         // Fichier : le nom devient un motif.
         let (l, n) = candidats(r"%USERPROFILE%\Documents\Jeu\<identifiant Steam>.sav", Some("fichier"), &ctx);
-        assert_eq!((l, n), (vec![Emplacement { dossier: jeu.clone(), filtre: Some("*.sav".into()) }], 0));
+        assert_eq!((l.iter().map(|e| (e.dossier.clone(), e.filtre.clone(), e.nature.as_str(), e.identifiant.clone())).collect::<Vec<_>>(), n), (vec![(jeu.clone(), Some("*.sav".to_string()), "fichier", None)], 0));
+        assert_eq!(l[0].chemin, r"%USERPROFILE%\Documents\Jeu\<identifiant Steam>.sav", "le chemin NON résolu suit l'emplacement");
         assert!(repond("76561198000000000.sav", "*.sav") && !repond("notes.txt", "*.sav"));
         // Le seul jeton comme nom de fichier, ou un autre jeton dans le nom : refusé.
         assert_eq!(candidats(r"%USERPROFILE%\Documents\Jeu\<identifiant Steam>", Some("fichier"), &ctx).1, 1);
@@ -1083,9 +1133,13 @@ mod tests {
         std::fs::write(saves.join("save_2"), b"nuage").unwrap();
         let mut plan = Plan::default();
         plan.fichiers.push(AMettre { source: PathBuf::from(format!("{}/save_2", saves.to_string_lossy())), relatif: "nuage-steam/m1/Documents/x".into(), taille: 5, sha: String::new() });
-        ajouter_emplacements(&mut plan, "m1", &l);
+        ajouter_emplacements(&mut plan, &l, "sel");
         assert_eq!((plan.hors_nuage, plan.octets), (1, 6));
-        assert!(plan.fichiers.iter().any(|f| f.relatif.starts_with("nuage-steam/m1/hors-nuage/") && f.relatif.ends_with("-SaveData/save_1")));
+        // Lot S2 : au nouveau format, sous la clé du chemin NON résolu (jamais celui de ce PC), avec son emplacement.
+        let cle = crate::abri_parties::cle_chemin(r"%USERPROFILE%\Documents\My Games\XCOM2\XComGame\SaveData\", "dossier");
+        assert!(plan.fichiers.iter().any(|f| f.relatif == format!("emplacements/{cle}/save_1")), "{:?}", plan.fichiers);
+        assert!(!plan.fichiers.iter().any(|f| f.relatif.contains("hors-nuage")));
+        assert_eq!(plan.abrites.iter().map(|a| (a.cle.as_str(), a.chemin.as_str())).collect::<Vec<_>>(), [(cle.as_str(), r"%USERPROFILE%\Documents\My Games\XCOM2\XComGame\SaveData\")]);
         // Une RACINE (le dossier du jeu entier, Mes documents…) n'est jamais un emplacement : illisible.
         std::fs::create_dir_all(d.path().join("Jeu")).unwrap();
         let racines = serde_json::json!([
@@ -1105,7 +1159,7 @@ mod tests {
         let seul = serde_json::json!([{"os": "Windows", "chemin": r"%USERPROFILE%\Documents\My Games\XCOM2\XComGame\SaveData\save_*"}]);
         let (l, _) = emplacements(&seul, &ctx);
         let mut p = Plan::default();
-        ajouter_emplacements(&mut p, "m1", &l);
+        ajouter_emplacements(&mut p, &l, "sel");
         assert_eq!(p.hors_nuage, 2, "save_1 et save_2, jamais profil.ini");
         assert!(repond("SAVE_12.sav", "save_*.sav") && !repond("profil.ini", "save_*") && repond("a1", "a?"));
     }
@@ -1244,9 +1298,9 @@ mod tests {
         // L'abri complet, dans un dossier temporaire (effacé à la fin) : chaque copie vérifiée par son SHA1.
         if let Some(p) = &p {
             let t = tempfile::tempdir().unwrap();
-            let fin = abriter(p, "essai", t.path(), -1, "1").unwrap();
+            let fin = abriter(p, "essai", t.path(), -1, "1", "essai").unwrap();
             let copies = crate::installation::fichiers_de(&fin).unwrap().len();
-            println!("abri d'essai : {copies} fichiers (liste comprise), déjà à l'abri ensuite : {}", deja_a_l_abri(&t.path().join("-1"), "essai", p));
+            println!("abri d'essai : {copies} fichiers (liste comprise), déjà à l'abri ensuite : {}", deja_a_l_abri(&t.path().join("-1"), "essai", p, "essai"));
         }
         match p {
             None => println!("{app} : rien dans le nuage"),

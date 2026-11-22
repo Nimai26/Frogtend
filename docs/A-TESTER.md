@@ -6,6 +6,19 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🛟 Mettre mes parties à l'abri (0.221.0, lot S2)
+- [ ] 1. Fiche de Cyberpunk ▸ 📁 ▸ 🛟 « Mettre mes parties à l'abri » : « Frogtend compte tes parties… », puis l'annonce
+      (N fichiers, taille, « rangées dans ton profil »), puis après ton oui « Copie en cours… » et un abri daté dans
+      « 🛟 Mes abris ».
+- [ ] 2. Recommencer tout de suite : « Déjà à l'abri », aucune nouvelle date dans la liste.
+- [ ] 3. Jeu lancé (ou fermé il y a moins d'une minute), puis 🛟 : refus clair ; une minute après la fermeture : ça passe.
+- [ ] 4. Taodbox ▸ même jeu ▸ 📁 : la croix atteint 🛟, A ouvre la fenêtre, B annule sans rien copier, A sur « Mettre à
+      l'abri » copie.
+- [ ] 5. Age of Empires IV (parties sous OneDrive) ▸ 🛟 : annonce correcte ; des fichiers « en ligne seulement » sont
+      signalés et non copiés.
+- [ ] 6. Un jeu Steam déjà mis à l'abri avant cette version ▸ 📁 : l'ancien abri porte « Frogtend ne sait plus d'où
+      venaient N de ces fichiers… ».
+
 ## 📁 Où sont mes parties (0.220.0, lot S1)
 - [x] (validé par Seb le 22/11) 1. Fiche de Cyberpunk 2077 ▸ « 📁 Où sont mes parties » : le dossier Saved Games\CD Projekt Red\Cyberpunk 2077,
       ses fichiers et leur taille, « d'après Firehouse ».

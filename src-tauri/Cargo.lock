@@ -1601,7 +1601,7 @@ dependencies = [
 
 [[package]]
 name = "frogtend"
-version = "0.220.1"
+version = "0.221.0"
 dependencies = [
  "aes",
  "argon2",

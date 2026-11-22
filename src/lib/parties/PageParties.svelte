@@ -1,6 +1,7 @@
 <script lang="ts">
   // 📁 Où sont mes parties d'un jeu PC (lot S1) : `?jeu=<id>&titre=…` ; servie par `/parties` (bureau) et
-  // `/taodbox/parties` (canapé : l'adresse garde le mode Taodbox, sa manette et son plein écran ; lecture seule).
+  // `/taodbox/parties` (canapé : l'adresse garde le mode Taodbox, sa manette et son plein écran). Lot S2 : « 🛟 Mettre
+  // mes parties à l'abri » s'y fait aussi, à la manette.
   import { page } from '$app/state';
   import { tick } from 'svelte';
   import { auCanape } from '$lib/taodbox/canape';
@@ -14,7 +15,7 @@
   const canape = auCanape();
   let retour = $state<HTMLButtonElement | null>(null);
 
-  // Au canapé : la sélection sur « Retour » (la page se lit, rien d'autre ne s'y fait).
+  // Au canapé : la sélection sur « Retour » d’abord (la croix descend vers la liste et le bouton 🛟).
   $effect(() => {
     if (canape && retour) void tick().then(() => selectionner(retour));
   });
