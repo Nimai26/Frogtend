@@ -880,6 +880,9 @@ télécharge l'installeur sur les releases du même dépôt. Un dépôt privé r
 aucune mise à jour chez la famille (règle « mise à jour simple »). Choisir d'abord un autre point de distribution (par
 exemple un dépôt PUBLIC qui ne contient que les releases, ou Firehouse qui sert les mises à jour — besoin d'API),
 livrer une version qui le lit, attendre qu'elle soit installée partout, puis seulement passer le dépôt en privé.
+**Décision de Seb (22/11) : c'est FIREHOUSE qui livrera les mises à jour ET le téléchargement du logiciel complet**
+(premier installeur). Plus tard : écrire le besoin d'API (latest.json signé, installeur, reprise), adapter
+`endpoints`, livrer, attendre que la famille soit à jour, puis dépôt privé.
 
 **R. Les RECOMPILATIONS (« recomps ») dans Frogtend (Seb, 22/11 : « il faut à tout prix »)** — vu sur
 recomplauncher.com (RecompLauncher, GPL v3, Tauri, github.com/elripalda/RecompLauncher ; détail dans IDEES.md). Une recomp
