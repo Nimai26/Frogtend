@@ -18,10 +18,10 @@
       expirée ».
 - [x] (validé par Seb le 22/11 : avertissement sur Brigador ; A Plague Tale, du compte Galaxy, ouvre Galaxy sans avertir) 6. « ⬇ Installer » un jeu du compte Hotmail : fenêtre « Installer avec GOG Galaxy ? » ; « Annuler » ne fait rien ;
       même essai à la manette dans Taodbox.
-- [ ] 7. « ▶ Jouer » un jeu installé du compte Galaxy : il se lance comme avant, par Galaxy.
+- [ ] (22/11 : Cyberpunk lancé par Galaxy PUIS le lanceur de CD Projekt, écran noir ; Seb veut le lancement direct → nouveau C4c) 7. « ▶ Jouer » un jeu installé du compte Galaxy : il se lance comme avant, par Galaxy.
 - [x] (validé par Seb le 22/11 : oubli puis ajout de nouveau ; demande : une fenêtre d'attente pendant la lecture) 8. « Oublier » le compte ajouté : confirmation, message, le focus va sur « ➕ Ajouter » ; les jeux restent ; puis
       le rajouter.
-- [ ] 9. Le journal (« import GOG ») : aucun pseudo, aucun jeton, aucun numéro de compte ; plus de dossier
+- [x] (vérifié le 22/11 sur le journal de Seb : aucun pseudo, numéro de compte ni jeton ; dossier navigateurs-gog vide) 9. Le journal (« import GOG ») : aucun pseudo, aucun jeton, aucun numéro de compte ; plus de dossier
       `navigateurs-gogjout-…` dans le profil.
 
 ## 🟣 GOG comme dans GOG Galaxy (0.218.0, lot C5)

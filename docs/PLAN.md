@@ -813,6 +813,14 @@ Firehouse (`sauvegardes`, d'après PCGamingWiki) avec la plateforme « Windows �
 le hors ligne, mise à l'abri dans `abris/<id>/` après chaque partie et avant toute réinstallation, mise à jour ou
 retrait, restauration vers le bon dossier sur un nouveau PC. Intégré au **nouveau C4c** (installer et lancer les jeux
 GOG sans Galaxy).
+**Décision de Seb (22/11) : c'est un DÉFAUT — les parties de TOUS les jeux PC, de TOUTES les boutiques (Steam hors
+nuage compris, Epic, GOG, Ubisoft, Amazon, Xbox, jeux importés du disque), partent chez Firehouse, « y compris les jeux
+pénibles qui cachent leurs parties dans Mes documents, AppData, etc. »** Lot **S** (sauvegardes de tous les jeux PC),
+à faire AVANT le C4c (les parties sont sacrées) : emplacements servis par Firehouse (`sauvegardes`, PCGamingWiki) pour
+chaque jeu PC de la ludothèque quelle que soit sa boutique (plateforme « Windows »), cache hors ligne, mise à l'abri
+après chaque partie et avant réinstallation / mise à jour / retrait, envoi par la sauvegarde existante, restauration
+au bon endroit sur un autre PC. Un jeu dont Firehouse ne connaît pas les emplacements : le dire (besoin d'API si
+nécessaire), jamais deviner en copiant tout un dossier Documents.
 Steam et les jeux Epic protégés exigent leur lanceur : la règle ne s'y applique pas telle quelle (IDEES.md).
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
