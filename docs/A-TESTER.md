@@ -6,6 +6,19 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 📁 Où sont mes parties (0.220.0, lot S1)
+- [ ] 1. Fiche de Cyberpunk 2077 ▸ « 📁 Où sont mes parties » : le dossier Saved Games\CD Projekt Red\Cyberpunk 2077,
+      ses fichiers et leur taille, « d'après Firehouse ».
+- [ ] 2. « 📂 Ouvrir le dossier » : l'Explorateur s'ouvre sur ce dossier.
+- [ ] 3. Un jeu qui range ses parties dans Documents\My Games (sous OneDrive, ex. Age of Empires IV) : le dossier et ses
+      fichiers sont comptés (pas « vide »).
+- [ ] 4. Refermer puis rouvrir la fiche : la section revient tout de suite.
+- [ ] 5. Un jeu Epic installé (TerraScape) : ses dossiers LocalLow\Bitfall Studios\TerraScape.
+- [ ] 6. Un jeu inconnu de Firehouse : la phrase « Firehouse ne connaît pas encore… ».
+- [ ] 7. Un jeu d'émulateur (SNES…) : aucune section « 📁 Où sont mes parties ».
+- [ ] 8. Taodbox ▸ un jeu PC ▸ ⚙ Gérer ▸ « 📁 Où sont mes parties » : la croix passe d'une ligne à l'autre, B revient.
+- [ ] 9. Changer de profil et ouvrir la même fiche : l'autre profil n'a rien hérité.
+
 ## 🟣 Plusieurs comptes GOG (0.219.0, lot C4b)
 - [x] (validé par Seb le 22/11 : pseudo lu, 88 jeux, « celui du jeu offert », ligne « Galaxy sur un autre compte ») 1. 🛒 Boutiques ▸ 🟣 Mon compte GOG : ton compte actuel est une ligne (pseudo ou « Compte GOG 1 », environ 88
       jeux, « celui du jeu offert ») ; AUCUN numéro affiché.

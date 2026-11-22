@@ -15,6 +15,7 @@ pub mod clavier;
 pub mod coffre;
 pub mod emulateurs;
 pub mod emulateurs_profils;
+pub mod emplacements_parties;
 pub mod commandes;
 pub mod erreurs;
 pub mod figer;
@@ -636,6 +637,8 @@ pub fn run() {
             commandes::cheatengine_lancer,
             commandes::cheatengine_risque,
             commandes::nuage_steam_apercu,
+            commandes::parties_emplacements,
+            commandes::parties_ouvrir_dossier,
             commandes::succes_liste,
             commandes::succes_jeu,
             commandes::boutique_fiche,

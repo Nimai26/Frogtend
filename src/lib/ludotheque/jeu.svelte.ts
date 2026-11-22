@@ -40,6 +40,7 @@ import { messageModsEnRoute, refusModsEnRoute } from '$lib/contenus/mods';
 import { nomAffiche } from './ludotheque.svelte';
 import { EFFETS_IMAGE, libelleEffet } from './effetsImage';
 import { proposerCopieAvantMod } from '$lib/mods/copieAvantMod';
+import { aDesEmplacements } from '$lib/parties/parties';
 
 /** `affichee` : la fenêtre du jeu en cours est apparue (l'écran de lancement se cache, lot 4c). */
 export const partie = $state<{ enJeu: number | null; installation: number | null; lancement: number | null; affichee: boolean; relance: boolean }>({
@@ -1660,7 +1661,7 @@ export async function gererJeu(id: number) {
   const j = tele.jeux[id];
   // Le jeu importé par une AUTRE personne de ce PC : elle seule le gère (✅ Seb 20/10).
   if (!j || j.d_un_autre) return;
-  type Action = 'jouerAvec' | 'autreVersion' | 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'etats' | 'effet' | 'patchs' | 'mods' | 'triches' | 'succes' | 'boutons' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'delier' | 'retirer' | 'reglagesSwitch';
+  type Action = 'jouerAvec' | 'autreVersion' | 'installer' | 'lanceur' | 'version' | 'emulateur' | 'image' | 'etats' | 'effet' | 'patchs' | 'mods' | 'triches' | 'succes' | 'boutons' | 'commandes' | 'figer' | 'pleinEcran' | 'clavier' | 'abri' | 'parties' | 'delier' | 'retirer' | 'reglagesSwitch';
   const options: { valeur: Action; libelle: string; detail?: string }[] = [];
   if (j.etat === 'telecharge' && !j.installation) options.push({ valeur: 'installer', libelle: '📦 Installer le jeu' });
   // Un jeu d'une boutique (Steam) : c'est elle qui le lance, l'installe et le désinstalle ; Frogtend n'écrit rien dans
@@ -1749,6 +1750,9 @@ export async function gererJeu(id: number) {
   // Un jeu Steam : ses parties que Steam garde pour son nuage (lot B2, lecture seule chez Steam).
   if (j.installation?.boutique?.source === 'steam')
     options.push({ valeur: 'abri', libelle: '💾 Mettre mes parties à l’abri', detail: 'une copie de ses parties (nuage de Steam et dossiers du jeu)' });
+  // Où sont ses parties (lot S1 ; au bureau ET au canapé, lecture seule) : un jeu PC, quelle que soit sa boutique.
+  if (aDesEmplacements(j.plateforme))
+    options.push({ valeur: 'parties', libelle: '📁 Où sont mes parties', detail: 'les dossiers où ce jeu range ses parties sur ce PC' });
   // Un jeu importé relié à une fiche de Firehouse (contrat 1.21) : le lien se défait d'ici aussi.
   if (estImporte(j) && j.fiche)
     options.push({ valeur: 'delier', libelle: '🔗 Ce n’est pas ce jeu (ne plus relier)', detail: 'ton fichier ne bouge pas : il perd seulement la fiche de Firehouse' });
@@ -1782,6 +1786,7 @@ export async function gererJeu(id: number) {
     // RetroAchievements pour un jeu d'émulateur (le cœur choisit).
     await goto(`${auCanape() ? '/taodbox' : ''}/succes?jeu=${id}&titre=${encodeURIComponent(j.titre)}`);
   else if (c === 'reglagesSwitch') await goto(`/taodbox/reglages?jeu=${id}&titre=${encodeURIComponent(j.titre)}`);
+  else if (c === 'parties') await goto(`${auCanape() ? '/taodbox' : ''}/parties?jeu=${id}&titre=${encodeURIComponent(j.titre)}`);
   else if (c === 'boutons') await goto(`${auCanape() ? '/taodbox' : ''}/boutons?jeu=${id}&titre=${encodeURIComponent(j.titre)}`);
   else if (c === 'commandes') await choisirCommandes(id);
   else if (c === 'figer') await choisirFiger(id);

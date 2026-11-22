@@ -28,6 +28,8 @@
   import { nomAffiche } from '$lib/ludotheque/ludotheque.svelte';
   import { attenteEmulateurSeul, boutonEmulateurSeul, emulateursDuJeu, gererJeu, installer, jouer, jouerAvec, lancementImpossible, libelleEmulateurSeul, ouvrirEmulateurSeul, partie } from '$lib/ludotheque/jeu.svelte';
   import { libellePreparation } from '$lib/emulateurs/pret.svelte';
+  import BlocParties from '$lib/parties/BlocParties.svelte';
+  import { aDesEmplacements } from '$lib/parties/parties';
 
   let fiche = $state<Fiche | null>(null);
   // Les infos du jeu (contrat 1.15) : celles de la fiche lue en ligne, ou relues en direct pour un jeu du PC.
@@ -432,6 +434,21 @@
             </div>
             <button class="btn" onclick={() => (annexe = null)}>Fermer</button>
           </article>
+        {/if}
+      </section>
+    {/if}
+
+    {#if aDesEmplacements(fiche.plateforme)}
+      <!-- Un jeu PC (lot S1) : où il range ses parties sur ce PC (fiche ouverte = Firehouse demandé, au plus tous les
+           30 jours). -->
+      <section class="cx-block">
+        <h3>📁 Où sont mes parties</h3>
+        <!-- Seulement une fois les jeux du PC lus : sinon une première demande partirait pour la fiche, puis une autre
+             pour le jeu du PC qui lui est relié. -->
+        {#if tele.charge}
+          <BlocParties id={jeuSurPc(fiche.id)?.id ?? fiche.id} />
+        {:else}
+          <p class="muted">⏳ Frogtend cherche où sont tes parties…</p>
         {/if}
       </section>
     {/if}

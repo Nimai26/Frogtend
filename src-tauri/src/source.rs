@@ -586,6 +586,15 @@ impl Source {
         self.telecharger_controle(&format!("/jeu/{id}/document/{doc}"), cible, sha256, types, progres).await
     }
 
+    /// Contrat 1.48 : les listes FERMÉES des emplacements de parties (`os` et la boutique de chacun, `jetons`, `natures`,
+    /// `moteurs`, `reconnaissance`), identiques pour tous les grades. Mode simulé : `null` (la liste de secours sert).
+    pub async fn sauvegardes_references(&self) -> Resultat<Value> {
+        match self {
+            Source::Firehouse(c) => c.obtenir_json("/sauvegardes/references").await,
+            Source::Simulee => Ok(Value::Null),
+        }
+    }
+
     /// Les triches et mods connus d'un jeu (contrat 13). Route pas encore servie (404) : listes vides.
     pub async fn triches(&self, media_id: i64) -> Resultat<Value> {
         let vide = json!({"codes": [], "cheat_engine": [], "mods": [], "maj_le": null});
@@ -1391,7 +1400,7 @@ mod tests {
             let v: serde_json::Value = c.obtenir_json(&format!("/triche/recherche?steam_appid={}&plateforme=Windows", appid.trim())).await.unwrap();
             println!("== {appid} : sauvegardes = {}", v["sauvegardes"]);
             let jeu = steam.as_ref().and_then(|s| crate::boutiques::installes_steam_dossiers(s).get(appid.trim()).map(|i| i.dossier.clone()));
-            let ctx = crate::nuage_steam::Contexte { jeu, steam: steam.clone(), compte: None, windows: crate::nuage_steam::dossiers_windows() };
+            let ctx = crate::nuage_steam::Contexte { jeu, steam: steam.clone(), compte: None, windows: crate::nuage_steam::dossiers_windows(), boutique: Some("steam".into()) };
             let (l, illisibles) = crate::nuage_steam::emplacements(&v["sauvegardes"], &ctx);
             for e in &l {
                 println!("   → {} {:?}", e.dossier.display(), e.filtre);
@@ -1437,8 +1446,9 @@ mod tests {
     /// RÉEL, lecture seule chez Firehouse — lot S0 (accord de Seb du 22/11) : pour un échantillon de jeux de boutique
     /// (fichier `FROGTEND_TITRES` : « boutique\tclé\ttitre » par ligne, 80 au plus), demande `/triche/recherche` par le
     /// TITRE et la plateforme Windows, et compte ce que `sauvegardes` dit (absent / null / [] / emplacements, et les `os`).
-    /// UNE demande toutes les 5 s au plus (Firehouse 22/11 : chaque recherche pas en cache part chez PCGamingWiki, qui
-    /// a refusé à 400 ms d'écart). Les réponses vont dans `FROGTEND_SORTIE`.
+    /// Contrat 1.48 (22/11) : index local Ludusavi chez Firehouse ; une demande toutes les 2 s (avant, chez PCGamingWiki,
+    /// 400 ms d'écart avaient fait refuser Firehouse). Lignes « boutique\tclé\ttitre[\tdossier] » : `gog_id` pour GOG,
+    /// `dossier` (nom seul) s'il est connu. Les réponses et les références vont dans `FROGTEND_SORTIE`.
     /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_TITRES=<fichier> FROGTEND_SORTIE=<dossier> cargo test essai_sauvegardes_s0 -- --ignored --nocapture`
     #[tokio::test]
     #[ignore]
@@ -1451,16 +1461,29 @@ mod tests {
         let c = crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
         let mut bilan: std::collections::BTreeMap<String, std::collections::BTreeMap<String, usize>> = Default::default();
         let mut os_vus: std::collections::BTreeMap<String, usize> = Default::default();
+        // Contrat 1.48 : les références (listes fermées), une fois.
+        if let Ok(crate::firehouse::Reponse::Corps { octets, .. }) = c.obtenir("/sauvegardes/references", None).await {
+            std::fs::write(sortie.join("references.json"), &octets).unwrap();
+            println!("== références : {} octets", octets.len());
+        }
+        // Lignes « boutique\tclé\ttitre[\tdossier] » ; contrat 1.48 : gog_id pour GOG, dossier (nom seul) s'il est connu.
         for (n, ligne) in titres.lines().take(80).enumerate() {
-            let mut morceaux = ligne.splitn(3, '\t');
-            let (Some(boutique), Some(_cle), Some(titre)) = (morceaux.next(), morceaux.next(), morceaux.next()) else { continue };
-            let u = tauri::Url::parse_with_params("https://x.invalid/triche/recherche", &[("titre", titre), ("plateforme", "Windows")]).unwrap();
+            let morceaux: Vec<&str> = ligne.split('\t').collect();
+            let (Some(boutique), Some(cle), Some(titre)) = (morceaux.first().copied(), morceaux.get(1).copied(), morceaux.get(2).copied()) else { continue };
+            let mut params = vec![("titre", titre.to_string()), ("plateforme", "Windows".to_string())];
+            if boutique == "gog" {
+                params.push(("gog_id", cle.trim_start_matches("gog_").to_string()));
+            }
+            if let Some(d) = morceaux.get(3).filter(|d| !d.is_empty()) {
+                params.push(("dossier", d.to_string()));
+            }
+            let u = tauri::Url::parse_with_params("https://x.invalid/triche/recherche", &params).unwrap();
             let route = format!("/triche/recherche?{}", u.query().unwrap_or_default());
             let issue = match c.obtenir(&route, None).await {
                 Ok(crate::firehouse::Reponse::Corps { octets, .. }) => {
                     std::fs::write(sortie.join(format!("{n:02}-{boutique}.json")), &octets).unwrap();
                     let v: serde_json::Value = serde_json::from_slice(&octets).unwrap_or_default();
-                    match v.get("sauvegardes") {
+                    let etat = match v.get("sauvegardes") {
                         None => "champ absent".to_string(),
                         Some(serde_json::Value::Null) => "null (pas encore lu)".to_string(),
                         Some(serde_json::Value::Array(a)) if a.is_empty() => "[] (rien)".to_string(),
@@ -1471,14 +1494,15 @@ mod tests {
                             "emplacements".to_string()
                         }
                         Some(_) => "forme inconnue".to_string(),
-                    }
+                    };
+                    format!("{etat} [{}]", v["emplacements_source"]["reconnu_par"].as_str().unwrap_or("-"))
                 }
                 Ok(_) => "304".to_string(),
                 Err(e) => format!("erreur {e:?}").chars().take(60).collect(),
             };
             println!("{n:02} {boutique:5} {titre} → {issue}");
-            *bilan.entry(boutique.to_string()).or_default().entry(issue).or_default() += 1;
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            *bilan.entry(boutique.to_string()).or_default().entry(issue.split(" [").next().unwrap_or_default().to_string()).or_default() += 1;
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         }
         println!("== bilan : {bilan:?}");
         println!("== os vus : {os_vus:?}");

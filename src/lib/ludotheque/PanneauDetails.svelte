@@ -23,6 +23,7 @@
   import IconesBoutiques from '$lib/boutiques/IconesBoutiques.svelte';
   import FicheBoutique from '$lib/boutiques/FicheBoutique.svelte';
   import { originesCarte } from '$lib/boutiques/copies';
+  import { aDesEmplacements } from '$lib/parties/parties';
 
   const j = $derived(ludo.selection);
   // Un jeu réuni (A6c) : sa copie sur ce PC peut être une autre que la carte (la carte Steam, la copie GOG installée).
@@ -132,6 +133,11 @@
       {#if j.id > 0}<button class="btn grand" onclick={() => goto(`/jeu/${j.id}`)}>📄 Voir la fiche</button>{/if}
       {#if surPc && (surPc.installation || surPc.etat === 'telecharge')}
         <button class="btn grand" onclick={() => goto(`/boutons?jeu=${idPc}&titre=${encodeURIComponent(j.titre)}`)}>🗺 Les boutons</button>
+      {/if}
+      <!-- Un jeu PC (lot S1) : où il range ses parties sur ce PC. Firehouse n'est demandé qu'au clic (jamais en
+           parcourant la grille : chaque demande part chez PCGamingWiki). -->
+      {#if aDesEmplacements(j.plateforme) && !surPc?.d_un_autre}
+        <button class="btn grand" onclick={() => j && goto(`/parties?jeu=${idPc}&titre=${encodeURIComponent(j.titre)}`)}>📁 Où sont mes parties</button>
       {/if}
     </div>
 

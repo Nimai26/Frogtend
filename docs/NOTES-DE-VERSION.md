@@ -1,5 +1,21 @@
 # Notes de version de Frogtend
 
+## 0.220.0 — 📁 Où sont mes parties (lot S, étape 1)
+
+- Nouveau : pour chaque jeu PC, quelle que soit sa boutique (Steam, GOG, Epic, Xbox, Ubisoft, Amazon, jeux importés
+  ou de Firehouse), la fiche du jeu montre « 📁 Où sont mes parties » : les dossiers où le jeu range ses parties sur ce
+  PC, combien de fichiers et quelle taille, et un bouton pour ouvrir le dossier. Aussi dans Taodbox (⚙ Gérer), en
+  lecture seule, à la manette.
+- L'information vient de Firehouse, qui reconnaît maintenant chaque jeu par le numéro de sa boutique (GOG), son
+  identifiant (Xbox) ou le nom de son dossier d'installation (Epic, Ubisoft, Amazon), toujours vérifié avec son titre.
+  Quand Firehouse ne connaît pas un jeu, Frogtend le dit au lieu de deviner. Firehouse n'est interrogé qu'à
+  l'ouverture de la fiche d'un jeu, au plus une fois par mois, et chaque personne garde sa propre liste.
+- Rien n'est copié pour l'instant : c'est la base des prochaines étapes (mise à l'abri, envoi chez Firehouse,
+  restauration, futur éditeur de sauvegardes).
+- Corrigé : les dossiers rangés dans OneDrive (Documents redirigé) étaient pris pour des raccourcis et jamais lus ;
+  la mise à l'abri des parties Steam hors nuage les manquait aussi.
+- Les triches, mods et avis anti-triche des jeux de boutique et importés profitent de la même reconnaissance.
+
 ## 0.219.2 — 🟣 GOG : les cartes « Jeu GOG 1234… » partent vraiment
 
 - Corrigé : en 0.219.1, ton compte affichait bien 197 jeux, mais les 10 cartes à numéro restaient dans la ludothèque

@@ -39,7 +39,9 @@ export const tele = $state<{
   parFiche: Record<number, JeuPc & { debit?: number }>;
   /** Les versions ajoutées en route, par jeu puis par version (événements de la file). */
   versions: Record<number, Record<number, VersionEnRoute>>;
-}>({ jeux: {}, parFiche: {}, versions: {} });
+  /** Les jeux du PC ont été lus au moins une fois pour ce profil (sinon `jeuSurPc` ne sait pas encore). */
+  charge: boolean;
+}>({ jeux: {}, parFiche: {}, versions: {}, charge: false });
 
 /** Le jeu du PC d'une ligne de la ludothèque : par son numéro, sinon le jeu importé relié à cette fiche (✅ Seb
  * 20/10 : celui de ce profil d'abord, sinon le plus ancien). */
@@ -71,6 +73,7 @@ export async function rechargerJeuxDuPc() {
     tele.jeux = {};
     tele.parFiche = {};
   }
+  tele.charge = true;
 }
 
 let ecoute: (() => void) | null = null;
@@ -153,6 +156,7 @@ export function arreterSuivi() {
   ecouteArrives = null;
   tele.jeux = {};
   tele.versions = {};
+  tele.charge = false;
 }
 
 /** Libellé lisible de la nature d'une version. */

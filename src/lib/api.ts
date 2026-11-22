@@ -357,6 +357,49 @@ export interface ApercuNuage {
   gros: boolean;
 }
 
+/** Un emplacement de parties d'un jeu PC tel qu'il est sur CE PC (`parties_emplacements`, lot S1). */
+export interface EmplacementVu {
+  /** Son rang dans le cache du profil. */
+  n: number;
+  /** Le dossier résolu sur ce PC (à l'écran seulement) ; `null` : rien à montrer. */
+  dossier: string | null;
+  /** Seulement les fichiers de ce nom ou de ce motif. */
+  filtre: string | null;
+  nature: 'dossier' | 'fichier' | 'motif' | string;
+  /** `firehouse` (PCGamingWiki), `moteur`, `manifeste`, `personne`. */
+  origine: string;
+  os: string;
+  /** La source de Firehouse (contrat 1.48 : `ludusavi`, `pcgamingwiki`) ; `null` avant la 1.48. */
+  source: string | null;
+  nuage_boutique: boolean;
+  /** Frogtend sait lire ce chemin sur ce PC. */
+  lisible: boolean;
+  existe: boolean;
+  fichiers: number;
+  octets: number;
+  /** Trop de fichiers, de dossiers, ou trop profond pour un dossier de parties : pas comptés. */
+  trop: boolean;
+  /** Le dossier existe mais ne se lit pas : pas compté. */
+  illisible: boolean;
+}
+
+/** « 📁 Où sont mes parties » d'un jeu PC (`parties_emplacements`, lot S1). */
+export interface PartiesVues {
+  firehouse: 'inconnu' | 'vide' | 'lu';
+  lu_le: string | null;
+  hors_ligne: boolean;
+  motif: string | null;
+  /** Le jeton de ce profil a été refusé : plus de demande pendant cette session. */
+  jeton_refuse: boolean;
+  moteur: { nom: string; preuve: string } | null;
+  /** D'où Firehouse le tient et par quoi il a reconnu le jeu (contrat 1.48). */
+  source: string | null;
+  reconnu_par: string | null;
+  /** Les systèmes dont Firehouse connaît des emplacements qui ne valent pas pour ce jeu (« Steam » pour un jeu Epic). */
+  autres_systemes: string[];
+  emplacements: EmplacementVu[];
+}
+
 /** Le risque de brancher Cheat Engine sur un jeu (`cheatengine_risque`). */
 export interface RisqueTriche {
   anti_triche: string | null;
@@ -1149,6 +1192,11 @@ export const api = {
   nuageSteamApercu: (id: number) => appeler<ApercuNuage>('nuage_steam_apercu', { id }),
   /** Les met à l'abri (`accepte` : la personne a confirmé une très grosse copie). */
   nuageSteamAbriter: (id: number, accepte = false) => appeler<{ dossier: string; fichiers: number; octets: number }>('nuage_steam_abriter', { id, accepte }),
+  /** 📁 Où sont mes parties (lot S1) : les emplacements de parties d'un jeu PC, résolus sur ce PC (lecture seule ;
+   * Firehouse n'est redemandé qu'au bout de 30 jours). */
+  partiesEmplacements: (id: number) => appeler<PartiesVues>('parties_emplacements', { id }),
+  /** Ouvre dans l'Explorateur un dossier de parties EXISTANT de ce jeu (le cœur revérifie). */
+  partiesOuvrirDossier: (id: number, dossier: string) => appeler<void>('parties_ouvrir_dossier', { id, dossier }),
   /** Le risque de brancher Cheat Engine sur ce jeu (Seb, 21/10 : anti-triche = refus ; en ligne ou inconnu = avertir). */
   cheatengineRisque: (id: number) => appeler<RisqueTriche>('cheatengine_risque', { id }),
   jeuTriches: (id: number) => appeler<TrichesJeu>('jeu_triches', { id }),

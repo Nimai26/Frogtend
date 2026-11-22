@@ -859,6 +859,10 @@ Cyberpunk : `%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077` (dossier),
 refuser PCGamingWiki (Cloudflare, 429) depuis 13:56 → les `null` NE VEULENT RIEN DIRE (« PCGamingWiki muet »).
 Relevé à refaire après 30 min au moins, à UNE demande toutes les 5 s au plus (essai corrigé) ; Firehouse ajoute un
 frein sur ses appels à PCGamingWiki dans la livraison du besoin 56.
+**S1 livré en 0.220.0 (22/11)** : contrats 1.48 et 1.49 servis par Firehouse le jour même (index Ludusavi, gog_id,
+xbox_pfn, dossier vérifié par le titre, références fermées) ; relevé réel : GOG 39/41, Epic 33/40 ; relu par les trois
+experts (18 corrections, dont les dossiers OneDrive jamais parcourus — essai réel : 166 fichiers vus dans
+Documents\My Games\Age of Empires IV sous OneDrive —, une course entre profils, des racines interdites).
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
 « Connecte-toi… dans la fenêtre qui s'ouvre » laisse croire que rien ne se passe ou que c'est raté. Voulu : une petite

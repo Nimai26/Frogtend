@@ -5814,7 +5814,7 @@ async fn plan_nuage(noyau: &Noyau, id: i64) -> Resultat<(crate::nuage_steam::Pla
     let plan = tauri::async_runtime::spawn_blocking(move || -> Resultat<Option<crate::nuage_steam::Plan>> {
         let windows = crate::nuage_steam::dossiers_windows();
         let nuage = crate::nuage_steam::planifier(&app, &m, &windows)?;
-        let ctx = crate::nuage_steam::Contexte { jeu, steam: Some(steam), compte: Some(compte), windows };
+        let ctx = crate::nuage_steam::Contexte { jeu, steam: Some(steam), compte: Some(compte), windows, boutique: Some("steam".into()) };
         let (dossiers, illisibles) = crate::nuage_steam::emplacements(&sauvegardes, &ctx);
         if nuage.is_none() && dossiers.is_empty() {
             return Ok(None);
@@ -8649,21 +8649,56 @@ async fn criteres_jeu_importe(noyau: &Noyau, id: i64) -> Resultat<OuChercher> {
     };
     // Un numéro PS3 suffit ; un « EBOOT.BIN » (jeu PS3 en dossier) ne dit rien du jeu : pas envoyé.
     let rom = if !serial.is_empty() || rom.eq_ignore_ascii_case("EBOOT.BIN") { String::new() } else { rom };
-    // Un jeu Steam (lot B, 21/10) : son numéro Steam, que Firehouse sait lire (contrat 1.19).
-    let steam_appid = j
-        .installation
-        .as_ref()
-        .and_then(|i| i.boutique.as_ref())
-        .filter(|b| b.source == "steam" && !b.cle.is_empty() && b.cle.bytes().all(|c| c.is_ascii_digit()))
-        .map(|b| b.cle.clone())
-        .unwrap_or_default();
-    Ok(OuChercher::Recherche(vec![
-        ("titre", j.titre),
-        ("plateforme", j.plateforme),
-        ("rom", rom),
-        ("serial", serial),
-        ("steam_appid", steam_appid),
-    ]))
+    // Un jeu de boutique : son identifiant chez elle (Steam : contrat 1.19 ; GOG, Xbox… : contrat 1.48).
+    let b = j.installation.as_ref().and_then(|i| i.boutique.as_ref());
+    let mut c = vec![("titre", j.titre.clone()), ("plateforme", j.plateforme.clone()), ("rom", rom), ("serial", serial)];
+    c.extend(ids_de_boutique(b.map(|b| (b.source.as_str(), b.cle.as_str()))));
+    // Contrat 1.48 : le NOM du dossier d'installation d'un jeu PC (jamais son chemin) — c'est lui qui reconnaît un jeu
+    // Epic, Ubisoft, Amazon ou EA ; envoyé quand il est connu, AVEC le titre (qui rattrape une coïncidence). Jamais pour
+    // Xbox (le PFN suffit), ni un nom trop courant (« Game », « Win64 »…, le dossier des jeux réglé dans Frogtend).
+    if j.plateforme == "Windows" {
+        c.push(("dossier", dossier_a_envoyer(noyau, b.map(|b| b.source.as_str()), j.installation.as_ref().map(|i| i.dossier.as_str())).unwrap_or_default()));
+    }
+    Ok(OuChercher::Recherche(c))
+}
+
+/// Le `dossier` à envoyer à `/triche/recherche` (contrat 1.48/1.49), ou `None`.
+fn dossier_a_envoyer(noyau: &Noyau, boutique: Option<&str>, chemin: Option<&str>) -> Option<String> {
+    if matches!(boutique, Some("xboxone" | "xbox")) {
+        return None;
+    }
+    let nom = nom_de_dossier(chemin?)?;
+    let refs = crate::emplacements_parties::references_gardees(&noyau.dossier).map(|(_, r)| r).unwrap_or_default();
+    crate::emplacements_parties::dossier_reconnaissable(&nom, &refs, &noms_dossiers_jeux(&noyau.dossier)).then_some(nom)
+}
+
+/// Les NOMS des dossiers de jeux réglés dans Frogtend (`pc.json` ▸ `reglages.emplacements`, lu sans l'écrire).
+fn noms_dossiers_jeux(donnees: &std::path::Path) -> Vec<String> {
+    let Some(v) = std::fs::read(donnees.join("pc.json")).ok().and_then(|o| serde_json::from_slice::<Value>(&o).ok()) else { return vec![] };
+    let Ok(e) = serde_json::from_value::<Emplacements>(v["reglages"]["emplacements"].clone()) else { return vec![] };
+    e.defaut.iter().chain(e.systemes.values().flatten()).filter_map(|d| nom_de_dossier(d)).collect()
+}
+
+/// L'identifiant d'un jeu de boutique pour `/triche/recherche` (contrat 1.48 : `steam_appid`, `gog_id`, `xbox_pfn` ;
+/// `epic_appname`, `uplay_id`, `amazon_id` acceptés, pas encore indexés). Rien pour une clé douteuse.
+fn ids_de_boutique(b: Option<(&str, &str)>) -> Vec<(&'static str, String)> {
+    let Some((source, cle)) = b.map(|(s, c)| (s, c.trim())).filter(|(_, c)| !c.is_empty() && c.len() <= 200) else { return vec![] };
+    let chiffres = cle.bytes().all(|c| c.is_ascii_digit());
+    let nom = match source {
+        "steam" if chiffres => "steam_appid",
+        "gog" if chiffres => "gog_id",
+        "xboxone" | "xbox" => "xbox_pfn",
+        "epic" => "epic_appname",
+        "uplay" if chiffres => "uplay_id",
+        "amazon" => "amazon_id",
+        _ => return vec![],
+    };
+    vec![(nom, cle.to_string())]
+}
+
+/// Le NOM du dernier dossier d'un chemin d'installation (contrat 1.48 `dossier`), jamais le chemin lui-même.
+fn nom_de_dossier(chemin: &str) -> Option<String> {
+    std::path::Path::new(chemin.trim().trim_end_matches(['\\', '/'])).file_name().map(|n| n.to_string_lossy().to_string()).filter(|n| !n.is_empty())
 }
 
 /// Ce que risque un compte si Cheat Engine se branche sur ce jeu (Seb, 21/10) : un anti-triche connu = refus ; un jeu
@@ -8740,6 +8775,210 @@ async fn triches_avec(source: &crate::source::Source, criteres: &OuChercher) -> 
 pub async fn jeu_triches(noyau: State<'_, Noyau>, id: i64) -> Resultat<Value> {
     let criteres = criteres_jeu_importe(&noyau, id).await?;
     triches_avec(&noyau.session().await?.source, &criteres).await
+}
+
+// --- 📁 Où sont mes parties (lot S1, 22/11) : les emplacements de parties d'un jeu PC, rangés PAR PROFIL
+// (`emplacements_parties`), lecture seule. Firehouse n'est demandé qu'à l'ouverture de la fiche d'UN jeu, au plus une
+// fois tous les 30 jours (jamais une boucle sur la ludothèque : chaque recherche part chez PCGamingWiki). ---
+
+/// Ce que l'écran « 📁 Où sont mes parties » montre d'un jeu PC (les dossiers résolus : à l'écran seulement).
+#[derive(Debug, Clone, Serialize)]
+pub struct PartiesVues {
+    pub firehouse: crate::emplacements_parties::EtatFirehouse,
+    pub lu_le: Option<String>,
+    /// Firehouse injoignable : ce qui était gardé sert.
+    pub hors_ligne: bool,
+    /// Firehouse n'a pas pu répondre (motif lisible) : ce qui était gardé sert.
+    pub motif: Option<String>,
+    /// Le jeton de ce profil a été refusé (401) : plus de demande pendant cette session.
+    pub jeton_refuse: bool,
+    pub moteur: Option<crate::emplacements_parties::Moteur>,
+    /// D'où Firehouse le tient (contrat 1.48 : `ludusavi`, `pcgamingwiki`) et par quoi il a reconnu le jeu.
+    pub source: Option<String>,
+    pub reconnu_par: Option<String>,
+    /// Les systèmes dont Firehouse connaît des emplacements qui ne valent pas pour ce jeu (« Steam » pour un jeu Epic).
+    pub autres_systemes: Vec<String>,
+    pub emplacements: Vec<crate::emplacements_parties::EmplacementVu>,
+}
+
+/// Les demandes en cours (dossier du profil, jeu) : deux ouvertures rapprochées de la même fiche n'en font qu'une.
+static DEMANDES_PARTIES: std::sync::Mutex<std::collections::BTreeSet<(std::path::PathBuf, i64)>> = std::sync::Mutex::new(std::collections::BTreeSet::new());
+
+/// Une demande en cours, rendue à la fin (même sur une erreur).
+struct DemandeParties((std::path::PathBuf, i64));
+
+impl DemandeParties {
+    fn prendre(cle: (std::path::PathBuf, i64)) -> Option<Self> {
+        DEMANDES_PARTIES.lock().unwrap_or_else(|e| e.into_inner()).insert(cle.clone()).then_some(DemandeParties(cle))
+    }
+}
+
+impl Drop for DemandeParties {
+    fn drop(&mut self) {
+        DEMANDES_PARTIES.lock().unwrap_or_else(|e| e.into_inner()).remove(&self.0);
+    }
+}
+
+/// Les sessions (dossier du profil, session) dont le jeton a été refusé (401) en demandant des emplacements : plus
+/// aucune demande pendant cette session (jamais une à chaque ouverture de fiche) ; une nouvelle session réessaie.
+static JETON_REFUSE_PARTIES: std::sync::Mutex<std::collections::BTreeSet<(std::path::PathBuf, usize)>> = std::sync::Mutex::new(std::collections::BTreeSet::new());
+
+/// Les emplacements de parties d'un jeu PC du profil ouvert, résolus sur ce PC. `demander` : Firehouse est demandé si
+/// le cache est trop vieux (ouverture de la fiche) ; sinon, le cache seul, sans recompter les fichiers (« Ouvrir le
+/// dossier »). `windows` : les dossiers de Windows de ce PC (`nuage_steam::dossiers_windows`, remplacé dans les
+/// tests). Le profil est CELUI DE LA SESSION (jamais lu à part : une réponse reçue avec le jeton d'un profil n'est
+/// rangée que chez lui). Un jeu que le profil ne voit pas (ou plus) perd ce qui venait de Firehouse ; le journal ne
+/// reçoit que le numéro du jeu.
+async fn parties_du_jeu(
+    noyau: &Noyau,
+    id: i64,
+    demander: bool,
+    windows: impl FnOnce() -> Vec<(&'static str, std::path::PathBuf)> + Send + 'static,
+) -> Resultat<PartiesVues> {
+    use crate::emplacements_parties as ep;
+    let s = noyau.session().await?;
+    let dp = dossier_profil_de(noyau, &s.profil.id);
+    // Les jeux que ce profil ne voit plus (grade changé), d'après la ludothèque de CETTE session.
+    let nettoyer = || -> Resultat<()> {
+        let gardes: Vec<i64> = ep::lire(&dp).map(|c| c.jeux.values().map(|e| e.id).collect()).unwrap_or_default();
+        let caches: std::collections::BTreeSet<i64> = {
+            let v = s.verrou();
+            gardes.into_iter().filter(|i| !v.visible_ou_reuni(*i).unwrap_or(true)).collect()
+        };
+        if !caches.is_empty() {
+            ep::modifier(&dp, |c| ep::retirer_si(c, |i| !caches.contains(&i)))?;
+        }
+        Ok(())
+    };
+    let visible = s.verrou().visible_ou_reuni(id)?;
+    if !visible {
+        nettoyer()?;
+        return Err(Erreur::Introuvable("Ce jeu n'est pas dans ta ludothèque.".into()));
+    }
+    // Le jeu : celui du PC (installé, importé), sinon la carte de la ludothèque (un jeu de boutique pas installé, un
+    // jeu de Firehouse pas encore sur ce PC). La plateforme d'abord : un jeu d'émulateur ne lit rien de plus.
+    let du_pc = noyau.registre().jeu(id)?;
+    let carte = match &du_pc {
+        Some(_) => None,
+        None => Some(s.verrou().jeu(id)?.ok_or_else(|| Erreur::Introuvable("Ce jeu n'est pas dans ta ludothèque.".into()))?),
+    };
+    let plateforme = du_pc.as_ref().map(|j| j.plateforme.clone()).or_else(|| carte.as_ref().map(|c| c.plateforme.clone())).unwrap_or_default();
+    if plateforme != "Windows" {
+        return Err(Erreur::Refus("Ce n'est pas un jeu PC : ses parties sont gardées par son émulateur.".into()));
+    }
+    nettoyer()?;
+    let (boutique, dossier_jeu) = match (&du_pc, &carte) {
+        (Some(j), _) => (
+            j.installation.as_ref().and_then(|i| i.boutique.as_ref()).map(|b| ep::BoutiqueJeu { source: b.source.clone(), cle: b.cle.clone() }),
+            j.installation.as_ref().map(|i| std::path::PathBuf::from(&i.dossier)),
+        ),
+        (None, Some(c)) => (
+            c.boutique
+                .clone()
+                .filter(|b| !b.is_empty() && b != "local")
+                .zip(c.cle_boutique.clone().filter(|k| !k.is_empty()))
+                .map(|(source, cle)| ep::BoutiqueJeu { source, cle }),
+            None,
+        ),
+        (None, None) => (None, None),
+    };
+    let (mut hors_ligne, mut motif, mut jeton_refuse) = (false, None, false);
+    let cle_session = (dp.clone(), std::sync::Arc::as_ptr(&s) as usize);
+    if JETON_REFUSE_PARTIES.lock().unwrap_or_else(|e| e.into_inner()).contains(&cle_session) {
+        jeton_refuse = true;
+    }
+    let maintenant = crate::noyau::maintenant();
+    let t: u64 = maintenant.parse().unwrap_or(0);
+    let vieux = ep::a_redemander(ep::lire(&dp)?.jeu(id), t);
+    if demander && vieux && !jeton_refuse {
+        if let Some(_demande) = DemandeParties::prendre((dp.clone(), id)) {
+            let ou = match &carte {
+                None => criteres_jeu_importe(noyau, id).await?,
+                Some(_) if id > 0 => OuChercher::Fiche(id),
+                // Pas installé : pas de dossier à envoyer ; l'identifiant de sa boutique, le titre et la plateforme.
+                Some(c) => {
+                    let mut l = vec![("titre", c.titre.clone()), ("plateforme", c.plateforme.clone())];
+                    l.extend(ids_de_boutique(boutique.as_ref().map(|b| (b.source.as_str(), b.cle.as_str()))));
+                    OuChercher::Recherche(l)
+                }
+            };
+            match triches_avec(&s.source, &ou).await {
+                Ok(v) => {
+                    // Les références seulement après une réponse (hors ligne : une seule attente).
+                    let refs = references_parties(noyau, &s.source, t).await;
+                    // Reçu pour CE profil : jamais rangé si la session a changé entre-temps (autre profil, autre jeton).
+                    let _vivante = s.verrou_vivant()?;
+                    ep::modifier(&dp, |c| ep::appliquer(c, id, boutique.clone(), &v, &refs, &maintenant))?;
+                    noyau.journaliser(&format!("jeu {id} : emplacements de parties demandés à Firehouse"));
+                }
+                Err(Erreur::Reseau(_)) => hors_ligne = true,
+                Err(Erreur::JetonRefuse(_)) => {
+                    jeton_refuse = true;
+                    JETON_REFUSE_PARTIES.lock().unwrap_or_else(|e| e.into_inner()).insert(cle_session);
+                }
+                Err(e @ Erreur::Perimee(_)) => return Err(e),
+                Err(e) => motif = Some(e.to_string()),
+            }
+        }
+    }
+    let entree = ep::lire(&dp)?.jeu(id).cloned().unwrap_or(ep::PartiesJeu { id, boutique: boutique.clone(), ..Default::default() });
+    let compte = boutique
+        .as_ref()
+        .filter(|b| b.source == "steam")
+        .and_then(|_| crate::boutiques::lire(&dp))
+        .and_then(|c| crate::nuage_steam::compte(&c.steamid));
+    let steam = boutique.as_ref().filter(|b| b.source == "steam").and_then(|_| crate::boutiques::dossier_steam());
+    let (firehouse, lu_le, moteur, source, reconnu_par) = (entree.firehouse, entree.lu_le.clone(), entree.moteur.clone(), entree.source.clone(), entree.reconnu_par.clone());
+    let autres_systemes = entree.autres_systemes.clone();
+    let source_boutique = boutique.as_ref().map(|b| b.source.clone());
+    let emplacements = tauri::async_runtime::spawn_blocking(move || {
+        let ctx = crate::nuage_steam::Contexte { jeu: dossier_jeu, steam, compte, windows: windows(), boutique: source_boutique };
+        ep::resoudre(&entree, &ctx, demander)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La lecture des parties s'est arrêtée brutalement.".into()))?;
+    Ok(PartiesVues { firehouse, lu_le, hors_ligne, motif, jeton_refuse, moteur, source, reconnu_par, autres_systemes, emplacements })
+}
+
+/// Les listes fermées des emplacements (contrat 1.48 `/sauvegardes/references`), gardées en COMMUN sur ce PC
+/// (identiques pour tous les grades) et relues au plus une fois par semaine ; injoignables : celles gardées, sinon la
+/// liste de secours (c'est la route qui fait foi).
+async fn references_parties(noyau: &Noyau, source: &crate::source::Source, maintenant: u64) -> crate::emplacements_parties::References {
+    use crate::emplacements_parties as ep;
+    let gardees = ep::references_gardees(&noyau.dossier);
+    if let Some((le, r)) = &gardees {
+        if maintenant.saturating_sub(*le) < ep::DELAI_REFERENCES {
+            return r.clone();
+        }
+    }
+    if let Ok(v) = source.sauvegardes_references().await {
+        if let Some(r) = ep::lire_references(&v) {
+            let _ = ep::garder_references(&noyau.dossier, &v, &maintenant.to_string());
+            return r;
+        }
+    }
+    gardees.map(|(_, r)| r).unwrap_or_else(ep::references_de_secours)
+}
+
+/// 📁 Où sont mes parties : les emplacements de parties d'un jeu PC (Firehouse demandé si le cache a plus de 30 jours).
+#[tauri::command]
+pub async fn parties_emplacements(noyau: State<'_, Noyau>, id: i64) -> Resultat<PartiesVues> {
+    parties_du_jeu(&noyau, id, true, crate::nuage_steam::dossiers_windows).await
+}
+
+/// Le dossier à ouvrir, s'il est bien un emplacement EXISTANT de ce jeu, d'après le cache seul (jamais une adresse
+/// reprise telle quelle de l'interface).
+fn dossier_de_parties_permis(vues: &PartiesVues, dossier: &str) -> Option<std::path::PathBuf> {
+    vues.emplacements.iter().find(|v| v.existe && v.dossier.as_deref() == Some(dossier)).and_then(|v| v.dossier.as_ref()).map(std::path::PathBuf::from)
+}
+
+/// Ouvre dans l'Explorateur un dossier de parties d'un jeu (bureau seulement).
+#[tauri::command]
+pub async fn parties_ouvrir_dossier(app: AppHandle, noyau: State<'_, Noyau>, id: i64, dossier: String) -> Resultat<()> {
+    let vues = parties_du_jeu(&noyau, id, false, crate::nuage_steam::dossiers_windows).await?;
+    let d = dossier_de_parties_permis(&vues, &dossier).ok_or_else(|| Erreur::Refus("Ce dossier n'est pas (ou plus) un emplacement de parties de ce jeu sur ce PC.".into()))?;
+    use tauri_plugin_opener::OpenerExt;
+    app.opener().open_path(d.to_string_lossy(), None::<&str>).map_err(|e| Erreur::Refus(format!("Impossible d'ouvrir le dossier : {e}")))
 }
 
 // --- Mods GitHub (contrat 1.19 ; ✅ Seb 19/10, lot 0.81.0) : le mod et son fichier sont REPRIS de la liste de
@@ -12033,4 +12272,293 @@ pub async fn rapprochement_defaire(noyau: State<'_, Noyau>, jeu: i64) -> Resulta
         return Err(Erreur::Introuvable("Ce jeu importé n'est pas visible pour ce profil.".into()));
     }
     noyau.registre().oublier_correspondance(jeu)
+}
+
+#[cfg(test)]
+mod tests_parties {
+    //! Lot S1 : « 📁 Où sont mes parties », par le chemin réel (profil ouvert, session, Firehouse simulé).
+    use crate::coffre::CoffreMemoire;
+    use crate::emplacements_parties as ep;
+    use crate::noyau::{Connexion, Noyau};
+    use httpmock::prelude::*;
+    use serde_json::json;
+
+    /// Un Firehouse simulé : Cyberpunk 2077 (Windows, fiche 900) et Dune (MS-DOS) ; `/jeu/900/triche` rend la VRAIE
+    /// réponse du relevé S0 (22/11).
+    fn serveur() -> (MockServer, String) {
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "Windows", "jeux": 1}, {"nom": "MS-DOS", "jeux": 1}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [
+                {"id": 900, "titre": "Cyberpunk 2077", "plateforme": "Windows"},
+                {"id": 110, "titre": "Dune", "plateforme": "MS-DOS"}]}));
+        });
+        let reponse = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/triche-cyberpunk-sauvegardes.json")).unwrap();
+        (s, reponse)
+    }
+
+    async fn ouvrir(n: &Noyau, s: &MockServer, nom: &str) -> String {
+        let id = n.creer_profil(nom, None, Some("j")).unwrap().id;
+        n.ouvrir(&id, None, &Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        id
+    }
+
+    #[tokio::test]
+    async fn ou_sont_mes_parties_par_profil_sans_relecture_et_sans_chemin_au_journal() {
+        let (s, reponse) = serveur();
+        let triche = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/900/triche");
+            t.status(200).header("content-type", "application/json").body(reponse.clone());
+        });
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        // « Parties enregistrées » de ce PC simulé : Cyberpunk y a une partie (jamais le vrai dossier de Seb).
+        let parties = d.path().join("Saved Games");
+        let cp = parties.join("CD Projekt Red").join("Cyberpunk 2077");
+        std::fs::create_dir_all(&cp).unwrap();
+        std::fs::write(cp.join("ManualSave-0.dat"), b"partie!").unwrap();
+        let w = parties.clone();
+        let windows = move || vec![("Parties-enregistrees", w.clone())];
+
+        let p1 = ouvrir(&n, &s, "Seb").await;
+        let v = super::parties_du_jeu(&n, 900, true, windows.clone()).await.unwrap();
+        assert_eq!(v.firehouse, ep::EtatFirehouse::Lu);
+        assert!(!v.hors_ligne && v.motif.is_none());
+        assert_eq!(v.emplacements.len(), 1, "Windows seulement : ni OS X, ni Microsoft Store (pas un jeu Xbox)");
+        let e = &v.emplacements[0];
+        assert_eq!(e.dossier.as_deref(), Some(cp.to_string_lossy().as_ref()));
+        assert_eq!((e.existe, e.fichiers, e.octets, e.origine.as_str()), (true, 1, 7, "firehouse"));
+        triche.assert_hits(1);
+        // Rangé NON résolu, dans le dossier du profil.
+        let f1 = n.dossier.join("profils").join(&p1).join("emplacements-parties.json");
+        let brut = std::fs::read_to_string(&f1).unwrap();
+        assert!(brut.contains(r#"%USERPROFILE%\\Saved Games\\CD Projekt Red\\Cyberpunk 2077"#), "{brut}");
+        assert!(!brut.contains(&*parties.to_string_lossy().replace('\\', "\\\\")), "jamais le chemin résolu");
+        // Rouvert le même jour : pas de nouvelle demande (30 jours), le cache sert.
+        let v2 = super::parties_du_jeu(&n, 900, true, windows.clone()).await.unwrap();
+        assert_eq!(v2.emplacements, v.emplacements);
+        triche.assert_hits(1);
+        // Un jeu d'émulateur : refusé, rien demandé.
+        assert!(matches!(super::parties_du_jeu(&n, 110, true, windows.clone()).await, Err(crate::erreurs::Erreur::Refus(_))));
+        // Un jeu que le profil ne voit pas (ou plus) : refusé, et son entrée quitte le cache.
+        ep::modifier(&f1.parent().unwrap().to_path_buf(), |c| ep::appliquer(c, 777, None, &json!({"sauvegardes": []}), &ep::references_de_secours(), "1")).unwrap();
+        assert!(matches!(super::parties_du_jeu(&n, 777, true, windows.clone()).await, Err(crate::erreurs::Erreur::Introuvable(_))));
+        assert!(ep::lire(f1.parent().unwrap()).unwrap().jeu(777).is_none());
+        assert!(ep::lire(f1.parent().unwrap()).unwrap().jeu(900).is_some(), "un jeu visible reste");
+        // Le bouton « Ouvrir le dossier » n'ouvre qu'un emplacement existant de CE jeu.
+        assert_eq!(super::dossier_de_parties_permis(&v, &cp.to_string_lossy()), Some(cp.clone()));
+        assert_eq!(super::dossier_de_parties_permis(&v, r"C:\Windows"), None);
+
+        // Un autre profil : son propre cache, vide tant qu'il n'a pas ouvert la fiche ; jamais celui de Seb.
+        let p2 = ouvrir(&n, &s, "Léa").await;
+        let f2 = n.dossier.join("profils").join(&p2).join("emplacements-parties.json");
+        assert!(!f2.exists());
+        let avant = std::fs::read(&f1).unwrap();
+        super::parties_du_jeu(&n, 900, true, windows.clone()).await.unwrap();
+        triche.assert_hits(2);
+        assert!(f2.exists() && f1.exists() && f1 != f2);
+        // Correctif 1 : la réponse lue avec le jeton de Léa n'est rangée que chez elle (le profil vient de la session).
+        assert_eq!(std::fs::read(&f1).unwrap(), avant, "rien d'écrit chez Seb");
+
+        // Le journal : le numéro du jeu, jamais un chemin ni un titre.
+        let journal = std::fs::read_to_string(n.dossier.join("journal.txt")).unwrap();
+        assert!(journal.contains("jeu 900 : emplacements de parties"), "{journal}");
+        for interdit in ["Saved Games", "Cyberpunk", "CD Projekt", "USERPROFILE"] {
+            assert!(!journal.contains(interdit), "« {interdit} » au journal : {journal}");
+        }
+    }
+
+    #[test]
+    fn la_recherche_envoie_l_identifiant_de_la_boutique_et_le_nom_du_dossier() {
+        assert_eq!(super::ids_de_boutique(Some(("gog", "1423049311"))), [("gog_id", "1423049311".to_string())]);
+        assert_eq!(super::ids_de_boutique(Some(("steam", "1091500"))), [("steam_appid", "1091500".to_string())]);
+        assert_eq!(super::ids_de_boutique(Some(("xboxone", "CDPROJEKTSA.Cyberpunk2077_0xkrdv0gjmk28")))[0].0, "xbox_pfn");
+        assert_eq!(super::ids_de_boutique(Some(("epic", "Ginger")))[0].0, "epic_appname");
+        assert_eq!(super::ids_de_boutique(Some(("uplay", "46")))[0].0, "uplay_id");
+        assert_eq!(super::ids_de_boutique(Some(("amazon", "amzn1.adg.product.x")))[0].0, "amazon_id");
+        assert!(super::ids_de_boutique(Some(("gog", "pas un numéro"))).is_empty());
+        assert!(super::ids_de_boutique(Some(("battlenet", "wow"))).is_empty());
+        assert!(super::ids_de_boutique(None).is_empty());
+        assert_eq!(super::nom_de_dossier(r"E:\GOG Games\Cyberpunk 2077\").as_deref(), Some("Cyberpunk 2077"), "le nom, jamais le chemin");
+        assert_eq!(super::nom_de_dossier(r"C:\Program Files\Epic Games\Hades").as_deref(), Some("Hades"));
+        assert_eq!(super::nom_de_dossier(""), None);
+    }
+
+    /// Contrat 1.48 (réponses RÉELLES du 22/11) : un jeu GOG installé est demandé par son `gog_id`, le nom de son dossier,
+    /// son titre et Windows ; les références sont lues une fois et gardées en COMMUN.
+    #[tokio::test]
+    async fn un_jeu_gog_installe_est_reconnu_par_son_numero_et_son_dossier() {
+        let (s, _) = serveur();
+        let lire = |f: &str| -> serde_json::Value { serde_json::from_str(&std::fs::read_to_string(format!("{}/fixtures/{f}", env!("CARGO_MANIFEST_DIR"))).unwrap()).unwrap() };
+        let refs = lire("sauvegardes-references-148-reel.json");
+        let reponse = lire("triche-cyberpunk-148-reel.json");
+        let route_refs = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/sauvegardes/references");
+            t.status(200).json_body(refs.clone());
+        });
+        let recherche = s.mock(|w, t| {
+            w.method(GET)
+                .path("/api/jeux/v1/triche/recherche")
+                .query_param("gog_id", "1423049311")
+                .query_param("dossier", "Cyberpunk 2077")
+                .query_param("titre", "Cyberpunk 2077")
+                .query_param("plateforme", "Windows");
+            t.status(200).json_body(reponse.clone());
+        });
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let p1 = ouvrir(&n, &s, "Seb").await;
+        // La carte GOG de la ludothèque, et le jeu installé par Galaxy (son dossier : jamais touché).
+        let id = crate::ludotheque::id_boutique("gog", "1423049311");
+        let carte = crate::ludotheque::JeuResume { id, titre: "Cyberpunk 2077".into(), plateforme: "Windows".into(), source: Some("galaxy".into()), boutique: Some("gog".into()), cle_boutique: Some("1423049311".into()), installe: Some(true), ..Default::default() };
+        n.session().await.unwrap().verrou_vivant().unwrap().remplacer_boutique("galaxy", &[carte]).unwrap();
+        let dossier = d.path().join("GOG Games").join("Cyberpunk 2077");
+        std::fs::create_dir_all(&dossier).unwrap();
+        let installation = crate::jeux_pc::Installation {
+            dossier: dossier.to_string_lossy().into(),
+            methode: crate::installation::Methode::Aucune,
+            lanceur: None,
+            fichier_du_jeu: None,
+            installe_le: String::new(),
+            versions: vec![],
+            boutique: Some(crate::jeux_pc::LancementBoutique { source: "gog".into(), cle: "1423049311".into() }),
+            extraits: vec![],
+        };
+        // Comme `synchroniser_boutique` : la ligne, puis son installation.
+        n.registre()
+            .ajouter(&crate::jeux_pc::JeuPc {
+                id,
+                version: crate::import_local::VERSION_IMPORTEE,
+                titre: "Cyberpunk 2077".into(),
+                plateforme: "Windows".into(),
+                dossier: d.path().join("app").join("boutiques").to_string_lossy().into(),
+                etat: crate::jeux_pc::Etat::Telecharge,
+                total: 0,
+                fichiers: vec![],
+                message: None,
+                ajoute_le: "1".into(),
+                ajoute_par: "galaxy".into(),
+                installation: None,
+                temps_jeu: 0,
+                derniere_partie: None,
+            })
+            .unwrap();
+        n.registre().changer_installation(id, Some(&installation)).unwrap();
+        let v = super::parties_du_jeu(&n, id, true, Vec::new).await.unwrap();
+        recherche.assert_hits(1);
+        route_refs.assert_hits(1);
+        assert_eq!((v.firehouse, v.source.as_deref(), v.reconnu_par.as_deref()), (ep::EtatFirehouse::Lu, Some("ludusavi"), Some("gog_id")));
+        assert_eq!(v.emplacements.len(), 1, "Windows seulement : ni Xbox, ni registre, ni os inconnu, ni OS X");
+        assert_eq!(v.emplacements[0].source.as_deref(), Some("ludusavi"));
+        let e = ep::lire(&n.dossier.join("profils").join(&p1)).unwrap().jeu(id).cloned().unwrap();
+        assert_eq!(e.boutique, Some(ep::BoutiqueJeu { source: "gog".into(), cle: "1423049311".into() }));
+        // Les références : en commun sur ce PC (rien d'un jeu), pas relues par un autre profil dans la semaine.
+        assert!(n.dossier.join("sauvegardes-references.json").exists());
+        let _p2 = ouvrir(&n, &s, "Léa").await;
+        n.session().await.unwrap().verrou_vivant().unwrap().remplacer_boutique("galaxy", &[crate::ludotheque::JeuResume { id, titre: "Cyberpunk 2077".into(), plateforme: "Windows".into(), source: Some("galaxy".into()), boutique: Some("gog".into()), cle_boutique: Some("1423049311".into()), installe: Some(true), ..Default::default() }]).unwrap();
+        super::parties_du_jeu(&n, id, true, Vec::new).await.unwrap();
+        recherche.assert_hits(2);
+        route_refs.assert_hits(1);
+    }
+
+    /// Correctif 7 : un jeton refusé (401) est dit, et plus aucune demande ne part pendant cette session ; un jeu
+    /// d'émulateur ne demande rien (correctif 9).
+    #[tokio::test]
+    async fn un_jeton_refuse_n_est_plus_redemande_pendant_la_session() {
+        let (s, _) = serveur();
+        let refuse = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/900/triche");
+            t.status(401).json_body(serde_json::json!({"ok": false, "erreur": "jeton révoqué"}));
+        });
+        let refs = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/sauvegardes/references");
+            t.status(200).json_body(serde_json::json!({"ok": true, "os": {"Windows": ""}}));
+        });
+        let dune = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/110/triche");
+            t.status(200).json_body(serde_json::json!({"ok": true}));
+        });
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        ouvrir(&n, &s, "Seb").await;
+        let v = super::parties_du_jeu(&n, 900, true, Vec::new).await.unwrap();
+        assert!(v.jeton_refuse);
+        assert_eq!(v.firehouse, ep::EtatFirehouse::Inconnu);
+        let v = super::parties_du_jeu(&n, 900, true, Vec::new).await.unwrap();
+        assert!(v.jeton_refuse);
+        refuse.assert_hits(1);
+        refs.assert_hits(0);
+        assert!(super::parties_du_jeu(&n, 110, true, Vec::new).await.is_err());
+        dune.assert_hits(0);
+    }
+
+    /// Correctif 5 : le `dossier` envoyé à Firehouse — jamais pour Xbox, jamais un nom trop courant, une racine de
+    /// disque ni le dossier des jeux réglé dans Frogtend (`pc.json`).
+    #[test]
+    fn le_dossier_envoye_ne_peut_pas_faire_reconnaitre_un_autre_jeu() {
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(d.path(), Box::new(CoffreMemoire::default())).unwrap();
+        let envoi = |b: Option<&str>, c: &str| super::dossier_a_envoyer(&n, b, Some(c));
+        assert_eq!(envoi(Some("epic"), r"C:\Program Files\Epic Games\Hades").as_deref(), Some("Hades"));
+        assert_eq!(envoi(Some("gog"), r"E:\GOG Games\Cyberpunk 2077\").as_deref(), Some("Cyberpunk 2077"));
+        assert_eq!(envoi(Some("xboxone"), r"C:\XboxGames\Hades\Content"), None, "Xbox : le PFN suffit");
+        assert_eq!(envoi(Some("xboxone"), r"C:\XboxGames\Hades"), None);
+        assert_eq!(envoi(Some("epic"), r"C:\XboxGames\Jeu\Content"), None, "un nom trop courant");
+        assert_eq!(envoi(Some("uplay"), r"D:\Jeux\Win64"), None);
+        assert_eq!(envoi(None, r"D:\"), None, "une racine de disque");
+        assert_eq!(super::dossier_a_envoyer(&n, Some("epic"), None), None);
+        // Le dossier des jeux réglé dans Frogtend (lu dans `pc.json`, jamais écrit).
+        std::fs::write(d.path().join("pc.json"), serde_json::to_vec(&serde_json::json!({"reglages": {"emplacements": {"defaut": [r"E:\Mes jeux PC"], "systemes": {"Windows": [r"F:\Ludo"]}}}})).unwrap()).unwrap();
+        assert_eq!(super::noms_dossiers_jeux(d.path()), ["Mes jeux PC", "Ludo"]);
+        assert_eq!(envoi(None, r"E:\Mes jeux PC"), None);
+        assert_eq!(envoi(None, r"F:\Ludo"), None);
+        assert_eq!(envoi(None, r"F:\Ludo\Hades").as_deref(), Some("Hades"));
+    }
+
+    #[tokio::test]
+    async fn firehouse_en_panne_ou_muet_le_cache_sert() {
+        let (s, reponse) = serveur();
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let p = ouvrir(&n, &s, "Seb").await;
+        let dp = n.dossier.join("profils").join(&p);
+        // Ce que le profil savait, lu il y a 31 jours : à redemander.
+        let vieux = (crate::noyau::maintenant().parse::<u64>().unwrap() - 31 * 24 * 3600).to_string();
+        let r: serde_json::Value = serde_json::from_str(&reponse).unwrap();
+        ep::modifier(&dp, |c| ep::appliquer(c, 900, None, &r, &ep::references_de_secours(), &vieux)).unwrap();
+        let windows = || Vec::new();
+        // Correctif 8 : les références ne sont lues qu'après une réponse de Firehouse.
+        let refs = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/sauvegardes/references");
+            t.status(200).json_body(serde_json::json!({"ok": true, "os": {"Windows": "tout jeu Windows"}}));
+        });
+        // Firehouse en panne (500) : le motif est dit, le cache sert.
+        let mut panne = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/900/triche");
+            t.status(500);
+        });
+        let v = super::parties_du_jeu(&n, 900, true, windows).await.unwrap();
+        assert_eq!(v.firehouse, ep::EtatFirehouse::Lu);
+        assert!(v.motif.is_some());
+        assert_eq!(v.emplacements.len(), 1);
+        assert_eq!(ep::lire(&dp).unwrap().jeu(900).unwrap().demande_le.as_deref(), Some(vieux.as_str()), "rien noté : redemandé la prochaine fois");
+        panne.assert_hits(1);
+        refs.assert_hits(0);
+        panne.delete();
+        // Firehouse muet (`sauvegardes: null`, PCGamingWiki refusé) : rien n'est effacé.
+        let muet = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/900/triche");
+            t.status(200).json_body(json!({"ok": true, "codes": [], "sauvegardes": null}));
+        });
+        let v = super::parties_du_jeu(&n, 900, true, windows).await.unwrap();
+        muet.assert_hits(1);
+        assert_eq!((v.firehouse, v.emplacements.len()), (ep::EtatFirehouse::Lu, 1));
+        // Le cache, sans aucun dossier de Windows connu : l'emplacement est dit illisible sur ce PC, jamais deviné.
+        assert!(!v.emplacements[0].lisible && v.emplacements[0].dossier.is_none());
+    }
 }

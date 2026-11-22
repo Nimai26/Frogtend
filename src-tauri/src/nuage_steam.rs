@@ -36,26 +36,60 @@ pub fn marque(compte: &str) -> String {
 /// Au plus ces fichiers dans `remote\` (un dossier plus gros n'est pas celui des parties d'un jeu).
 const REMOTE_MAX: usize = 20_000;
 
+/// Au plus ces dossiers, et cette profondeur, sous un emplacement de parties (au-delà : pas un dossier de parties).
+const DOSSIERS_MAX: usize = 5_000;
+const PROFONDEUR_MAX: usize = 12;
+
+/// Pourquoi un parcours s'est arrêté.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Arret {
+    /// Trop de fichiers, de dossiers, ou trop profond : ce n'est pas un dossier de parties.
+    Trop,
+    /// Un dossier ne se lit pas (droits, disque…).
+    Illisible,
+}
+
+/// Un lien à NE JAMAIS suivre, d'après les attributs et l'étiquette de point de reparse de Windows : un lien symbolique
+/// (IO_REPARSE_TAG_SYMLINK 0xA000000C), une jonction (IO_REPARSE_TAG_MOUNT_POINT 0xA0000003) et tout autre « substitut
+/// de nom » (bit 0x20000000). Un fichier ou dossier de OneDrive / Cloud Files (étiquettes 0x9000xxxx) n'est PAS un lien :
+/// il se parcourt (sans jamais lire un fichier « en ligne seulement »). C'est exactement la règle de la bibliothèque
+/// standard (`FileType::new`, library/std/src/sys/fs/windows.rs : `is_symlink` = point de reparse ET substitut de nom),
+/// qui sert donc au parcours ; cette fonction la fige dans les tests (la bibliothèque ne donne pas l'étiquette).
+#[cfg(test)]
+pub(crate) fn lien_selon_etiquette(attributs: u32, etiquette: u32) -> bool {
+    const POINT_DE_REPARSE: u32 = 0x400;
+    const SUBSTITUT_DE_NOM: u32 = 0x2000_0000;
+    attributs & POINT_DE_REPARSE != 0 && etiquette & SUBSTITUT_DE_NOM != 0
+}
+
 /// Les fichiers sous `racine` (chemins relatifs en `/`), SANS jamais suivre un lien ni une jonction (un lien dans
-/// `remote\` ferait lire un disque entier) ; au-delà de `REMOTE_MAX`, refus.
-fn fichiers_sans_lien(racine: &Path) -> Resultat<Vec<String>> {
+/// `remote\` ferait lire un disque entier) ; les dossiers OneDrive se parcourent. Bornes : `REMOTE_MAX` fichiers,
+/// `DOSSIERS_MAX` dossiers, `PROFONDEUR_MAX` niveaux.
+pub(crate) fn parcourir(racine: &Path) -> std::result::Result<Vec<String>, Arret> {
     let mut l = Vec::new();
-    let mut pile = vec![racine.to_path_buf()];
-    while let Some(d) = pile.pop() {
-        for e in std::fs::read_dir(&d)?.flatten() {
+    let mut pile = vec![(racine.to_path_buf(), 0usize)];
+    let mut dossiers = 0usize;
+    while let Some((d, niveau)) = pile.pop() {
+        let entrees = std::fs::read_dir(&d).map_err(|_| Arret::Illisible)?;
+        for e in entrees.flatten() {
             let p = e.path();
             let Ok(m) = std::fs::symlink_metadata(&p) else { continue };
-            if m.file_type().is_symlink() || point_de_reparse(&m) {
+            // `is_dir` / `is_file` sont faux pour un lien ou une jonction (substitut de nom) : jamais suivis.
+            if m.file_type().is_symlink() {
                 continue;
             }
             if m.is_dir() {
-                pile.push(p);
+                dossiers += 1;
+                if dossiers > DOSSIERS_MAX || niveau + 1 > PROFONDEUR_MAX {
+                    return Err(Arret::Trop);
+                }
+                pile.push((p, niveau + 1));
             } else if m.is_file() {
                 if let Ok(r) = p.strip_prefix(racine) {
                     l.push(r.to_string_lossy().replace('\\', "/"));
                 }
                 if l.len() > REMOTE_MAX {
-                    return Err(Erreur::Refus("Ce dossier contient trop de fichiers pour être celui des parties : rien n'en est copié.".into()));
+                    return Err(Arret::Trop);
                 }
             }
         }
@@ -64,19 +98,12 @@ fn fichiers_sans_lien(racine: &Path) -> Resultat<Vec<String>> {
     Ok(l)
 }
 
-/// Une jonction, un lien ou un fichier géré par un service (OneDrive…) : FILE_ATTRIBUTE_REPARSE_POINT.
-fn point_de_reparse(m: &std::fs::Metadata) -> bool {
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        // Un fichier OneDrive porte aussi cet attribut : seuls les DOSSIERS qui l'ont sont écartés.
-        m.is_dir() && m.file_attributes() & 0x400 != 0
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = m;
-        false
-    }
+/// `parcourir`, avec les messages de l'abri.
+pub(crate) fn fichiers_sans_lien(racine: &Path) -> Resultat<Vec<String>> {
+    parcourir(racine).map_err(|a| match a {
+        Arret::Trop => Erreur::Refus("Ce dossier contient trop de fichiers pour être celui des parties : rien n'en est copié.".into()),
+        Arret::Illisible => Erreur::Disque("Un dossier de parties ne se lit pas sur ce PC.".into()),
+    })
 }
 
 /// Un fichier décrit par `remotecache.vdf`.
@@ -387,6 +414,28 @@ pub struct Contexte {
     pub compte: Option<String>,
     /// Les dossiers de Windows lus dans le registre (`dossiers_windows`) : « Mes documents » peut être chez OneDrive.
     pub windows: Vec<(&'static str, PathBuf)>,
+    /// La boutique du jeu (`steam`, `gog`, `epic`…) ; `None` : un jeu de Firehouse ou importé du disque.
+    /// `<racine de la boutique>` n'est résolue que pour un jeu de boutique AUTRE que Steam (Firehouse, 22/11 : pour Steam
+    /// il écrit `<Steam>`).
+    pub boutique: Option<String>,
+}
+
+impl Contexte {
+    /// Le dossier qui CONTIENT le dossier du jeu (le `<root>` de Ludusavi), pour un jeu de boutique autre que Steam ;
+    /// jamais la racine d'un disque.
+    fn racine_de_la_boutique(&self) -> Option<PathBuf> {
+        self.boutique.as_deref().filter(|b| !b.is_empty() && *b != "steam")?;
+        let p = self.jeu.as_ref()?.parent()?;
+        p.components().any(|c| matches!(c, std::path::Component::Normal(_))).then(|| p.to_path_buf())
+    }
+}
+
+/// La bibliothèque Steam d'un jeu rangé dans `<bibliothèque>\steamapps\common\<jeu>` ; sinon `None` (jamais deviné).
+fn bibliotheque_steam(jeu: &Path) -> Option<PathBuf> {
+    let common = jeu.parent()?;
+    let steamapps = common.parent()?;
+    let nom = |p: &Path| p.file_name().map(|n| n.to_string_lossy().to_lowercase());
+    (nom(common).as_deref() == Some("common") && nom(steamapps).as_deref() == Some("steamapps")).then(|| steamapps.parent().map(Path::to_path_buf)).flatten()
 }
 
 /// Un emplacement de Firehouse rendu en vrai dossier de CE PC, ou `None` (jeton inconnu, racine perdue, registre,
@@ -411,26 +460,49 @@ pub fn resoudre(chemin: &str, ctx: &Contexte) -> Option<PathBuf> {
         ("%ALLUSERSPROFILE%", env("ALLUSERSPROFILE")),
         ("%PUBLIC%", env("PUBLIC")),
         ("%USERNAME%", env("USERNAME")),
+        // Contrat 1.48 : les autres variables de Windows servies.
+        ("%WINDIR%", env("SystemRoot").or_else(|| env("windir"))),
+        ("%PROGRAMFILES%", env("ProgramFiles")),
+        ("%TEMP%", env("TEMP")),
+        // Contrat 1.48 : le NOM du dossier du jeu, et le dossier qui le contient (là où sa boutique installe ses jeux).
+        ("<nom du dossier du jeu>", ctx.jeu.as_ref().and_then(|d| d.file_name()).map(|n| n.to_string_lossy().to_string())),
+        ("<racine de la boutique>", ctx.racine_de_la_boutique().map(|d| d.to_string_lossy().to_string())),
+        // Une bibliothèque Steam : seulement pour un jeu rangé dans `<bibliothèque>\steamapps\common\<jeu>`.
+        ("<SteamLibrary>", ctx.jeu.as_ref().and_then(|d| bibliotheque_steam(d)).map(|d| d.to_string_lossy().to_string())),
         ("<dossier du jeu>", ctx.jeu.as_ref().map(|d| d.to_string_lossy().to_string())),
         ("<Steam>", ctx.steam.as_ref().map(|d| d.to_string_lossy().to_string())),
         ("<identifiant Steam>", ctx.compte.clone()),
     ];
+    // Chaque occurrence d'un jeton devient d'abord une MARQUE (jamais dans un chemin) ; un jeton resté dans le texte
+    // d'origine est inconnu ; les valeurs (qui peuvent porter un « % », un nom de dossier de jeu…) ne sont posées qu'à
+    // la fin, donc jamais relues comme un jeton.
+    let marque = |k: usize| format!("\u{1}{k}\u{1}");
     let mut r = c;
+    let mut valeurs: Vec<String> = Vec::new();
     for (jeton, valeur) in jetons {
-        // En minuscules ASCII seulement : les positions restent celles du texte d'origine (accents compris).
-        let bas = r.to_ascii_lowercase();
-        if let Some(i) = bas.find(&jeton.to_ascii_lowercase()) {
+        let j = jeton.to_ascii_lowercase();
+        loop {
+            // En minuscules ASCII seulement : les positions restent celles du texte d'origine (accents compris).
+            let bas = r.to_ascii_lowercase();
+            let Some(i) = bas.find(&j) else { break };
             // Le compte Steam seulement SOUS `userdata` : ailleurs (le profil Rockstar de GTA V…), c'est l'identifiant
             // propre au jeu, inconnu (Firehouse, 21/10) — `emplacements` énumère alors les sous-dossiers.
             if jeton == "<identifiant Steam>" && !bas[..i].ends_with("\\userdata\\") {
                 return None;
             }
-            let v = valeur?;
-            r = format!("{}{}{}", &r[..i], v.trim_end_matches('\\'), &r[i + jeton.len()..]);
+            let v = valeur.clone()?;
+            valeurs.push(v.trim_end_matches('\\').to_string());
+            r = format!("{}{}{}", &r[..i], marque(valeurs.len() - 1), &r[i + jeton.len()..]);
         }
     }
     // Un jeton resté inconnu (« <jeton> », « %X% ») : jamais deviné.
     if r.contains('%') || r.contains('<') || r.contains('>') {
+        return None;
+    }
+    for (k, v) in valeurs.iter().enumerate() {
+        r = r.replace(&marque(k), v);
+    }
+    if r.contains('\u{1}') {
         return None;
     }
     let p = PathBuf::from(r.trim_end_matches('\\'));
@@ -460,8 +532,8 @@ fn bases(base: &str, ctx: &Contexte) -> Option<Vec<PathBuf>> {
     let Ok(l) = std::fs::read_dir(&parent) else { return Some(vec![]) };
     let mut v: Vec<PathBuf> = l
         .flatten()
+        // `is_dir` est faux pour un lien ou une jonction (jamais suivis) ; un dossier OneDrive, lui, est gardé.
         .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
-        .filter(|e| !crate::garde::lien_entre(&parent, &e.path()))
         .map(|e| if reste.is_empty() { e.path() } else { e.path().join(reste) })
         .filter(|p| !p.components().any(|c| matches!(c, std::path::Component::ParentDir)))
         .collect();
@@ -481,7 +553,7 @@ pub struct Emplacement {
 }
 
 /// Un nom de fichier qui répond à un motif (`*`, `?`), sans tenir compte des majuscules (comme Windows).
-fn repond(nom: &str, motif: &str) -> bool {
+pub(crate) fn repond(nom: &str, motif: &str) -> bool {
     fn m(n: &[char], p: &[char]) -> bool {
         match (p.first(), n.first()) {
             (None, None) => true,
@@ -495,15 +567,76 @@ fn repond(nom: &str, motif: &str) -> bool {
     m(&n, &p)
 }
 
-/// Une RACINE (dossier du jeu, de Steam, de Windows, de l'utilisateur, d'un disque) : jamais un emplacement de
-/// parties (elle ferait copier un disque entier) — comptée comme illisible.
+/// Une RACINE (dossier du jeu, le dossier qui le contient, de Steam et de ses bibliothèques, de Windows, de
+/// l'utilisateur, d'AppData, le dossier temporaire, un disque) : jamais un emplacement de parties ENTIER (elle ferait
+/// copier d'autres jeux, voire un disque) — comptée comme illisible ; seul un chemin qui descend plus bas est accepté.
 fn est_une_racine(p: &Path, ctx: &Contexte) -> bool {
     let cle = |x: &Path| x.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
     let c = cle(p);
-    let env = ["USERPROFILE", "ProgramData", "ALLUSERSPROFILE", "PUBLIC", "LOCALAPPDATA", "APPDATA", "SystemRoot", "ProgramFiles", "ProgramFiles(x86)"];
-    p.components().count() <= 2
-        || ctx.jeu.iter().chain(ctx.steam.iter()).chain(ctx.windows.iter().map(|(_, d)| d)).any(|r| cle(r) == c)
-        || env.iter().filter_map(|v| std::env::var_os(v)).any(|r| cle(Path::new(&r)) == c)
+    if !p.components().any(|x| matches!(x, std::path::Component::Normal(_))) || p.components().count() <= 2 {
+        return true;
+    }
+    let mut racines: Vec<PathBuf> = ctx.windows.iter().map(|(_, d)| d.clone()).collect();
+    if let Some(j) = &ctx.jeu {
+        racines.push(j.clone());
+        // Le dossier qui contient le jeu (là où sa boutique range ses jeux) et, pour un jeu Steam, sa bibliothèque.
+        racines.extend(j.parent().map(Path::to_path_buf));
+        if let Some(lib) = bibliotheque_steam(j) {
+            racines.extend([lib.join("steamapps"), lib.join("steamapps").join("common"), lib]);
+        }
+    }
+    if let Some(s) = &ctx.steam {
+        racines.extend([s.join("steamapps"), s.join("steamapps").join("common"), s.join("userdata"), s.clone()]);
+    }
+    let env = ["USERPROFILE", "ProgramData", "ALLUSERSPROFILE", "PUBLIC", "LOCALAPPDATA", "APPDATA", "SystemRoot", "windir", "ProgramFiles", "ProgramFiles(x86)", "TEMP", "TMP"];
+    racines.extend(env.iter().filter_map(std::env::var_os).map(PathBuf::from));
+    if let Some(u) = std::env::var_os("USERPROFILE").map(PathBuf::from) {
+        let a = u.join("AppData");
+        racines.extend([a.join("Local"), a.join("LocalLow"), a.join("Roaming"), a]);
+    }
+    racines.iter().any(|r| cle(r) == c)
+}
+
+/// La nature d'un emplacement (contrat 1.26 : `dossier`, `fichier`, `motif`), sinon déduite du chemin comme Firehouse
+/// la décrit (un nom avec * ou ? : motif ; un nom avec un point, sans « \ » final : fichier ; sinon dossier).
+pub fn nature_de(chemin: &str, nature: Option<&str>) -> String {
+    let c = chemin.trim().replace('/', "\\");
+    let dernier = c.trim_end_matches('\\').rsplit('\\').next().unwrap_or("");
+    nature.map(String::from).unwrap_or_else(|| {
+        if dernier.contains('*') || dernier.contains('?') {
+            "motif".into()
+        } else if !c.ends_with('\\') && dernier.contains('.') {
+            "fichier".into()
+        } else {
+            "dossier".into()
+        }
+    })
+}
+
+/// Les dossiers de CE PC que vise UN emplacement de Firehouse (chemin NON résolu), qu'ils existent ou non, avec leur
+/// filtre : (candidats, nombre d'illisibles — jeton inconnu, nature inconnue, nom de fichier douteux, racine).
+pub fn candidats(chemin: &str, nature: Option<&str>, ctx: &Contexte) -> (Vec<Emplacement>, usize) {
+    let c = chemin.trim().replace('/', "\\");
+    let dernier = c.trim_end_matches('\\').rsplit('\\').next().unwrap_or("").to_string();
+    let (base, filtre) = match nature_de(&c, nature).as_str() {
+        "fichier" | "motif" => (c.trim_end_matches('\\').rsplit_once('\\').map(|(b, _)| b.to_string()).unwrap_or_default(), Some(dernier)),
+        "dossier" => (c.clone(), None),
+        _ => return (vec![], 1),
+    };
+    if filtre.as_deref().is_some_and(|f| f.is_empty() || f.contains(['/', '\\', ':'])) {
+        return (vec![], 1);
+    }
+    let Some(bases) = bases(&base, ctx) else { return (vec![], 1) };
+    let mut l = Vec::new();
+    let mut illisibles = 0;
+    for p in bases {
+        if est_une_racine(&p, ctx) && filtre.is_none() {
+            illisibles += 1;
+        } else {
+            l.push(Emplacement { dossier: p, filtre: filtre.clone() });
+        }
+    }
+    (l, illisibles)
 }
 
 /// Les emplacements de parties d'un jeu Steam d'après Firehouse (`sauvegardes` : seulement « Windows » et « Steam »,
@@ -511,48 +644,18 @@ fn est_une_racine(p: &Path, ctx: &Contexte) -> bool {
 pub fn emplacements(sauvegardes: &serde_json::Value, ctx: &Contexte) -> (Vec<Emplacement>, usize) {
     let mut l: Vec<Emplacement> = Vec::new();
     let mut illisibles = 0;
-    for s in sauvegardes.as_array().into_iter().flatten() {
-        if !matches!(s["os"].as_str(), Some("Windows") | Some("Steam")) {
-            continue;
-        }
-        let Some(chemin) = s["chemin"].as_str() else { continue };
-        let c = chemin.trim().replace('/', "\\");
-        let dernier = c.trim_end_matches('\\').rsplit('\\').next().unwrap_or("").to_string();
-        // La nature (contrat 1.26), sinon déduite comme Firehouse la décrit.
-        let nature = s["nature"].as_str().map(String::from).unwrap_or_else(|| {
-            if dernier.contains('*') || dernier.contains('?') {
-                "motif".into()
-            } else if !c.ends_with('\\') && dernier.contains('.') {
-                "fichier".into()
-            } else {
-                "dossier".into()
+    // Le même filtre que « 📁 Où sont mes parties » (lot S1) : Windows et Steam, jamais une ligne d'une autre boutique,
+    // un `os` inconnu, le registre, ni un chemin de Mac ou de Linux servi en « Steam » (contrat 1.48).
+    let refs = crate::emplacements_parties::references_de_secours();
+    let gardes = crate::emplacements_parties::depuis_firehouse(sauvegardes, Some("steam"), &refs, None, "").unwrap_or_default();
+    for s in gardes {
+        let (vus, n) = candidats(&s.chemin, Some(&s.nature), ctx);
+        illisibles += n;
+        for e in vus {
+            // Un dossier absent : pas (encore) de parties à cet endroit.
+            if e.dossier.is_dir() && !l.contains(&e) {
+                l.push(e);
             }
-        });
-        let (base, filtre) = match nature.as_str() {
-            "fichier" | "motif" => (c.trim_end_matches('\\').rsplit_once('\\').map(|(b, _)| b.to_string()).unwrap_or_default(), Some(dernier)),
-            "dossier" => (c.clone(), None),
-            _ => {
-                illisibles += 1;
-                continue;
-            }
-        };
-        if filtre.as_deref().is_some_and(|f| f.is_empty() || f.contains(['/', '\\', ':'])) {
-            illisibles += 1;
-            continue;
-        }
-        let Some(candidats) = bases(&base, ctx) else {
-            illisibles += 1;
-            continue;
-        };
-        for p in candidats {
-            if est_une_racine(&p, ctx) && filtre.is_none() {
-                illisibles += 1;
-            } else if p.is_dir() {
-                let e = Emplacement { dossier: p, filtre: filtre.clone() };
-                if !l.contains(&e) {
-                    l.push(e);
-                }
-            } // sinon : pas (encore) de parties à cet endroit
         }
     }
     // Un dossier entier DANS un autre déjà pris : une seule fois.
@@ -799,7 +902,7 @@ mod tests {
             std::fs::write(profils.join(p).join("SGTA50000"), b"partie").unwrap();
         }
         std::fs::write(profils.join("pas-un-dossier.txt"), b"x").unwrap();
-        let ctx = Contexte { jeu: None, steam: Some(d.path().join("Steam")), compte: Some("42".into()), windows: vec![("Documents", docs.clone())] };
+        let ctx = Contexte { jeu: None, steam: Some(d.path().join("Steam")), compte: Some("42".into()), windows: vec![("Documents", docs.clone())], boutique: None };
         assert_eq!(resoudre(r"%USERPROFILE%\Documents\Rockstar Games\GTA V\Profiles\<identifiant Steam>", &ctx), None, "jamais le compte Steam");
         let s = serde_json::json!([
             {"os": "Windows", "chemin": r"%USERPROFILE%\Documents\Rockstar Games\GTA V\Profiles\<identifiant Steam>", "nature": "dossier"},
@@ -822,7 +925,7 @@ mod tests {
         let saves = docs.join("My Games").join("XCOM2").join("XComGame").join("SaveData");
         std::fs::create_dir_all(&saves).unwrap();
         std::fs::write(saves.join("save_1"), b"partie").unwrap();
-        let ctx = Contexte { jeu: Some(d.path().join("Jeu")), steam: Some(d.path().join("Steam")), compte: Some("42".into()), windows: vec![("Documents", docs.clone())] };
+        let ctx = Contexte { jeu: Some(d.path().join("Jeu")), steam: Some(d.path().join("Steam")), compte: Some("42".into()), windows: vec![("Documents", docs.clone())], boutique: None };
         // Mes documents par le registre (OneDrive chez Seb), jamais « %USERPROFILE%\Documents » écrit en dur.
         assert_eq!(resoudre(r"%USERPROFILE%\Documents\My Games\XCOM2\XComGame\SaveData\", &ctx), Some(saves.clone()));
         assert_eq!(resoudre(r"<Steam>\userdata\<identifiant Steam>\489830\remote\", &ctx), Some(d.path().join(r"Steam\userdata\42\489830\remote")));
@@ -875,7 +978,7 @@ mod tests {
     #[ignore]
     fn essai_emplacements() {
         let v: serde_json::Value = serde_json::from_slice(&std::fs::read(std::env::var("FROGTEND_TRICHE_JSON").unwrap()).unwrap()).unwrap();
-        let ctx = Contexte { jeu: None, steam: crate::boutiques::dossier_steam(), compte: None, windows: dossiers_windows() };
+        let ctx = Contexte { jeu: None, steam: crate::boutiques::dossier_steam(), compte: None, windows: dossiers_windows(), boutique: Some("steam".into()) };
         let (d, illisibles) = emplacements(&v["sauvegardes"], &ctx);
         for x in &d {
             println!("dossier : {} {:?} ({} fichiers)", x.dossier.display(), x.filtre, fichiers_sans_lien(&x.dossier).map(|l| l.len()).unwrap_or(0));
@@ -887,6 +990,105 @@ mod tests {
     fn un_jeu_sans_nuage_n_a_pas_de_plan() {
         let d = tempfile::tempdir().unwrap();
         assert!(planifier(d.path(), "m1", &[]).unwrap().is_none());
+    }
+
+    #[test]
+    #[ignore]
+    fn essai_onedrive_en_lecture_seule() {
+        // Revue des experts (22/11) : un dossier OneDrive (sous-dossiers « Directory, ReparsePoint ») se parcourt ; rien
+        // n'est lu ni copié, aucun fichier « en ligne seulement » n'est ouvert (seuls des noms et des tailles).
+        // `FROGTEND_ONEDRIVE` : le dossier à regarder (par exemple C:\Users\<nom>\OneDrive\Documents).
+        let d = PathBuf::from(std::env::var("FROGTEND_ONEDRIVE").unwrap());
+        let r = parcourir(&d);
+        match &r {
+            Ok(l) => println!("{} fichier(s) vus sous le dossier OneDrive (aucun ouvert)", l.len()),
+            Err(a) => println!("arrêt : {a:?}"),
+        }
+        for e in std::fs::read_dir(&d).unwrap().flatten().take(10) {
+            let m = std::fs::symlink_metadata(e.path()).unwrap();
+            println!("dossier={} lien={}", m.is_dir(), m.file_type().is_symlink());
+        }
+    }
+
+    /// Revue des experts (22/11) : seuls les liens et les jonctions sont écartés (substitut de nom), jamais un dossier
+    /// ou un fichier OneDrive / Cloud Files.
+    #[test]
+    fn seuls_les_liens_et_les_jonctions_sont_ecartes() {
+        const REPARSE: u32 = 0x400;
+        const DOSSIER: u32 = 0x10;
+        assert!(lien_selon_etiquette(REPARSE | DOSSIER, 0xA000_000C), "lien symbolique");
+        assert!(lien_selon_etiquette(REPARSE | DOSSIER, 0xA000_0003), "jonction");
+        assert!(lien_selon_etiquette(REPARSE, 0xA000_000C), "lien vers un fichier");
+        for onedrive in [0x9000_001A, 0x9000_101A, 0x9000_601A, 0x9000_A01A] {
+            assert!(!lien_selon_etiquette(REPARSE | DOSSIER, onedrive), "OneDrive / Cloud Files {onedrive:#x}");
+        }
+        assert!(!lien_selon_etiquette(DOSSIER, 0), "un dossier ordinaire");
+        assert!(!lien_selon_etiquette(DOSSIER, 0xA000_000C), "sans l'attribut, l'étiquette ne compte pas");
+    }
+
+    /// Une jonction sous un emplacement n'est jamais suivie (l'abri Steam reste sûr), un vrai sous-dossier, si.
+    #[test]
+    fn une_jonction_n_est_jamais_suivie() {
+        let d = tempfile::tempdir().unwrap();
+        let racine = d.path().join("Parties");
+        let ailleurs = d.path().join("Ailleurs");
+        std::fs::create_dir_all(racine.join("vrai")).unwrap();
+        std::fs::create_dir_all(&ailleurs).unwrap();
+        std::fs::write(racine.join("vrai").join("a.sav"), b"a").unwrap();
+        std::fs::write(ailleurs.join("secret.txt"), b"x").unwrap();
+        let ok = std::process::Command::new("cmd").args(["/C", "mklink", "/J"]).arg(racine.join("lien")).arg(&ailleurs).output().is_ok_and(|o| o.status.success());
+        if !ok {
+            eprintln!("jonction impossible à créer ici : test sauté");
+            return;
+        }
+        assert_eq!(parcourir(&racine).unwrap(), ["vrai/a.sav"]);
+        // Et `<identifiant utilisateur>` n'énumère pas la jonction.
+        let ctx = Contexte { jeu: None, steam: None, compte: None, windows: vec![("Documents", d.path().to_path_buf())], boutique: None };
+        let b = bases(r"%USERPROFILE%\Documents\Parties\<identifiant utilisateur>", &ctx).unwrap();
+        assert_eq!(b, [racine.join("vrai")]);
+    }
+
+    /// Revue des experts (22/11), correctif 11 : l'abri Steam prend le même filtre que le S1 — jamais une ligne d'une
+    /// autre boutique, un `os` inconnu, le registre, ni un chemin de Mac ou de Linux servi en « Steam ».
+    #[test]
+    fn l_abri_steam_ecarte_les_lignes_d_une_autre_boutique() {
+        let d = tempfile::tempdir().unwrap();
+        let docs = d.path().join("Docs");
+        for s in ["Xbox", "Ancien", "Bon", ".config"] {
+            std::fs::create_dir_all(docs.join("Jeu").join(s)).unwrap();
+        }
+        let ctx = Contexte { jeu: None, steam: None, compte: None, windows: vec![("Documents", docs.clone())], boutique: Some("steam".into()) };
+        let s = serde_json::json!([
+            {"os": "Microsoft Store", "chemin": r"%USERPROFILE%\Documents\Jeu\Xbox", "nature": "dossier", "boutique": "microsoft"},
+            {"os": "Windows", "chemin": r"%USERPROFILE%\Documents\Jeu\Xbox", "nature": "dossier", "boutique": "microsoft"},
+            {"os": "Windows Store", "os_inconnu": true, "chemin": r"%USERPROFILE%\Documents\Jeu\Ancien", "nature": "dossier"},
+            {"os": "Windows", "chemin": r"HKEY_CURRENT_USER\Software\Jeu", "nature": "registre"},
+            {"os": "Steam", "chemin": r"%USERPROFILE%\.config\Jeu", "nature": "dossier", "boutique": "steam"},
+            {"os": "Steam", "chemin": r"%USERPROFILE%\Documents\Jeu\Bon", "nature": "dossier", "boutique": "steam"}
+        ]);
+        let (l, illisibles) = emplacements(&s, &ctx);
+        assert_eq!(l.iter().map(|e| e.dossier.clone()).collect::<Vec<_>>(), [docs.join("Jeu").join("Bon")]);
+        assert_eq!(illisibles, 0, "écartées, pas « illisibles »");
+    }
+
+    /// Les bornes du parcours : trop de dossiers, ou trop profond.
+    #[test]
+    fn le_parcours_est_borne() {
+        let d = tempfile::tempdir().unwrap();
+        let large = d.path().join("Large");
+        for i in 0..=DOSSIERS_MAX {
+            std::fs::create_dir_all(large.join(format!("d{i}"))).unwrap();
+        }
+        assert_eq!(parcourir(&large), Err(Arret::Trop));
+        let mut p = d.path().join("Profond");
+        for i in 0..PROFONDEUR_MAX {
+            p = p.join(format!("n{i}"));
+        }
+        std::fs::create_dir_all(&p).unwrap();
+        std::fs::write(p.join("x.sav"), b"x").unwrap();
+        assert_eq!(parcourir(&d.path().join("Profond")).unwrap().len(), 1, "12 niveaux : permis");
+        std::fs::create_dir_all(p.join("trop")).unwrap();
+        assert_eq!(parcourir(&d.path().join("Profond")), Err(Arret::Trop));
     }
 
     /// RÉEL, lecture seule : le plan d'un jeu Steam de ce PC (rien n'est copié ; aucun chemin ni compte affiché).

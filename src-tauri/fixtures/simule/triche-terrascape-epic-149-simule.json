@@ -1,0 +1,17 @@
+{
+  "_note": "SIMULÉ — contrat 1.49 annoncé par Firehouse (22/11, pas encore en service) : la réponse réelle 1.48 de TerraScape (triche-terrascape-epic-148-reel.json) telle que la règle 1.49 la rendra (chemins Mac en « Mac », chemins Windows communs en « Windows » avec `releve_sur`, `boutique` null). À remplacer par un relevé réel.",
+  "ok": true,
+  "codes": [],
+  "cheat_engine": [],
+  "mods": [],
+  "emplacements_source": {"source": "ludusavi", "reconnu_par": "dossier", "source_url": "https://www.pcgamingwiki.com/wiki/TerraScape", "lu_le": "2026-11-22T14:52:38", "nom": "TerraScape", "indisponible": false},
+  "moteur": null,
+  "emplacements_moteur": null,
+  "sauvegardes": [
+    {"os": "Linux", "chemin": "~/.config/unity3d/Bitfall Studios/TerraScape/*.save", "nature": "motif", "steam_userdata": false, "nuage": null, "boutique": null, "releve_sur": "steam", "etiquettes": ["save"]},
+    {"os": "Windows", "chemin": "%USERPROFILE%\\AppData\\LocalLow\\Bitfall Studios\\TerraScape\\*.save", "nature": "motif", "steam_userdata": false, "nuage": null, "boutique": null, "releve_sur": "steam", "etiquettes": ["save"]},
+    {"os": "Windows", "chemin": "%USERPROFILE%\\AppData\\LocalLow\\Bitfall Studios\\TerraScape\\saves\\*.save", "nature": "motif", "steam_userdata": false, "nuage": null, "boutique": null, "releve_sur": "steam", "etiquettes": ["save"]},
+    {"os": "Windows", "chemin": "%USERPROFILE%\\AppData\\LocalLow\\Bitfall Studios\\TerraScape\\savesMP\\*.save", "nature": "motif", "steam_userdata": false, "nuage": null, "boutique": null, "releve_sur": "steam", "etiquettes": ["save"]},
+    {"os": "Mac", "chemin": "~/Library/Application Support/Bitfall Studios/TerraScape/*.save", "nature": "motif", "steam_userdata": false, "nuage": null, "boutique": null, "releve_sur": "steam", "etiquettes": ["save"]}
+  ]
+}
