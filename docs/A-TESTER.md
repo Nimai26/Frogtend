@@ -10,7 +10,7 @@
 - [x] (validé par Seb le 22/11) 1. Fiche de Cyberpunk 2077 ▸ « 📁 Où sont mes parties » : le dossier Saved Games\CD Projekt Red\Cyberpunk 2077,
       ses fichiers et leur taille, « d'après Firehouse ».
 - [x] (validé par Seb le 22/11) 2. « 📂 Ouvrir le dossier » : l'Explorateur s'ouvre sur ce dossier.
-- [ ] 3. Un jeu qui range ses parties dans Documents\My Games (sous OneDrive, ex. Age of Empires IV) : le dossier et ses
+- [x] (validé par Seb le 22/11 en 0.220.1 ; en 0.220.0 « Users\(UserID)\Savegames » était affiché) 3. Un jeu qui range ses parties dans Documents\My Games (sous OneDrive, ex. Age of Empires IV) : le dossier et ses
       fichiers sont comptés (pas « vide »).
 - [ ] 4. Refermer puis rouvrir la fiche : la section revient tout de suite.
 - [ ] 5. Un jeu Epic installé (TerraScape) : ses dossiers LocalLow\Bitfall Studios\TerraScape.
