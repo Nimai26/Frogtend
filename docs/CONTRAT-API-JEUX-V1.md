@@ -505,6 +505,33 @@ Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a 
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
 sont pas redirigées (une indication « fusionné dans N » serait un ajout 1.14 — à demander à Seb si gênant).
 
+### 1.48 (22/11, Firehouse 3.302.0, en service depuis 14:48) — les EMPLACEMENTS DE PARTIES de tous les jeux PC (besoin 56)
+Reçu par message de la session Firehouse (22/11) ; forme complète : son BRIEF-AGENT-FROGTEND.md § journal « 1.48 », réponses
+réelles : son EXEMPLES-API-JEUX-V1.md § « 1.48 » (pas encore recopiées ici : à relever par un essai en lecture seule).
+1. `GET /triche/recherche` accepte en plus de `steam_appid` / `titre` : `gog_id`, `xbox_pfn`, `dossier` (le NOM du dossier
+   d'installation, sans chemin), `moteur`. `epic_appname`, `uplay_id`, `amazon_id` sont acceptés mais AUCUNE source ne les
+   indexe → envoyer TOUJOURS `dossier` (c'est lui qui reconnaît un jeu Epic / Ubisoft / Amazon / EA). Ordre de
+   reconnaissance : steam_appid → gog_id → xbox_pfn → dossier → titre exact UNIQUE ; un dossier ou un titre partagé par
+   plusieurs jeux ne reconnaît rien. Nouveau bloc `emplacements_source` `{source: ludusavi | pcgamingwiki | null,
+   reconnu_par, nom, source_url, lu_le, indisponible}` ; **`indisponible: true` = INCONNU, jamais « rien à sauvegarder »**.
+   Source : un index LOCAL du manifeste Ludusavi (53 567 jeux, relu chaque jour à 05:45, accord de Seb) — les recherches
+   de sauvegardes ne partent plus chez PCGamingWiki (les mods y vont encore, freinés côté Firehouse : 1 requête / 3 s pour
+   toute la maison, 15 min de pause après un refus).
+2. `GET /api/jeux/v1/sauvegardes/references` sert les listes FERMÉES : `os` (11 valeurs, et à quel jeu chacune s'applique :
+   prendre `Windows` + celles de SA boutique), `jetons` (avec leur sens), `natures`, `moteurs`, l'ordre de `reconnaissance`.
+   Les libellés PCGamingWiki sont ramenés à la liste (`os_inconnu: true` sinon : à ignorer). Chaque entrée de
+   `sauvegardes` gagne `boutique` et `etiquettes`.
+3. `moteur` + `emplacements_moteur` `{moteur, moteur_nom, sauvegardes, nom_a_lire, source_url, certitude: officielle |
+   secondaire, note}` ; 13 moteurs avec les fichiers qui les reconnaissent (règles SteamDB). `/jeu/{id}/triche` donne le
+   moteur du préfixe F95 quand il est connu (« RPGM » → `null` : à Frogtend de distinguer MV / MZ / VX Ace par les
+   fichiers).
+4. Grade : la recherche et les références sont identiques pour tous ; `/jeu/{id}/triche` suit la fiche (404).
+5. Registre : `nature: "registre"` (nouvelle valeur), jamais un fichier — à IGNORER pour l'instant (plus tard : `reg export`).
+6. Documents de sauvegarde : liste fermée + motif `manifeste-<clé du jeu>.json` (minuscules, chiffres, `. _ -`, 80 car.
+   au plus, 5 Mo chacun) ; `/moi ▸ sauvegarde` gagne `documents_motif` et `document_max_octets` ; `GET /sauvegarde` donne
+   `manifestes_jeux` par profil / PC.
+Corrigé au passage côté Firehouse : la forme longue `{{Path|…}}` de PCGamingWiki effaçait la racine du chemin.
+
 ### 1.47 (18/11, Firehouse 3.242.0, en service) — les NOMS FRANÇAIS des DLC et MAJ Switch (besoin 54)
 Reçu par message de la session Firehouse ; détail : son BRIEF § « 1.47 » et EXEMPLES (réponse réelle Fire Emblem).
 `GET /switch/{tid_base}/contenus` gagne :
