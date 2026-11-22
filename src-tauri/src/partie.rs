@@ -211,7 +211,10 @@ fn racine_du_dossier(pids: &[u32]) -> Option<u32> {
 
 /// Demande à la boutique de lancer le jeu, puis attend qu'un programme apparaisse DANS son dossier (jamais le client de
 /// la boutique, hors du dossier) : c'est lui que la partie suit (menu en jeu, quitter, manette → clavier).
-async fn lancer_par_la_boutique(b: &crate::jeux_pc::LancementBoutique, dossier: &Path) -> Resultat<u32> {
+/// `hors_galaxy` (lot C4b) : un jeu GOG dont on SAIT (base de Galaxy relue à l'instant, `jeu_gog_hors_galaxy_relu`)
+/// qu'il est seulement sur un autre compte que celui ouvert dans GOG Galaxy se lance par le registre (Galaxy ne le
+/// lancerait pas) ; dans le doute, toujours par Galaxy (son nuage garde les sauvegardes).
+async fn lancer_par_la_boutique(b: &crate::jeux_pc::LancementBoutique, dossier: &Path, hors_galaxy: bool) -> Resultat<u32> {
     let nom = nom_boutique(&b.source);
     if !crate::lancement::processus_du_dossier(dossier).is_empty() {
         return Err(Erreur::Refus("Ce jeu tourne déjà.".into()));
@@ -223,7 +226,7 @@ async fn lancer_par_la_boutique(b: &crate::jeux_pc::LancementBoutique, dossier: 
     }
     let (b2, d2) = (b.clone(), dossier.to_path_buf());
     let adresse = tokio::task::spawn_blocking(move || adresse_boutique(&b2)).await.unwrap_or(None);
-    let galaxy = if b.source == "gog" { commande_galaxy(&b.cle, dossier) } else { None };
+    let galaxy = if b.source == "gog" && !hors_galaxy { commande_galaxy(&b.cle, dossier) } else { None };
     if let Some(adresse) = adresse {
         tauri_plugin_opener::open_url(&adresse, None::<&str>).map_err(|_| Erreur::Disque(format!("{nom} ne s'ouvre pas : est-il installé ?")))?;
     } else if b.source == "gog" && galaxy.is_none() {
@@ -232,7 +235,14 @@ async fn lancer_par_la_boutique(b: &crate::jeux_pc::LancementBoutique, dossier: 
         let p = crate::boutiques_pc::entree_gog(&b.cle)
             .and_then(|v| crate::boutiques_pc::programme_gog(&v))
             .filter(|p| crate::boutiques::cle_chemin(&p.exe).starts_with(&format!("{}\\", crate::boutiques::cle_chemin(&d2))))
-            .ok_or_else(|| Erreur::Refus("GOG ne note plus ce jeu sur ce PC : réinstalle-le (ou ouvre-le depuis son dossier).".into()))?;
+            .ok_or_else(|| {
+                Erreur::Refus(if hors_galaxy {
+                    // Lot C4b : un jeu de l'autre compte GOG, que GOG ne note pas installé sur ce PC.
+                    "GOG ne note pas ce jeu comme installé sur ce PC : installe-le d'abord avec GOG Galaxy, connecté au compte qui le possède.".into()
+                } else {
+                    "GOG ne note plus ce jeu sur ce PC : réinstalle-le (ou ouvre-le depuis son dossier).".into()
+                })
+            })?;
         let mut c = std::process::Command::new(&p.exe);
         c.current_dir(&p.dossier_travail);
         #[cfg(windows)]
@@ -1149,7 +1159,11 @@ impl Noyau {
         self.pause_mame.store(false, std::sync::atomic::Ordering::SeqCst);
         // Un jeu d'une boutique : lancé PAR elle (mises à jour, sauvegardes dans le nuage, compte), puis suivi.
         if let Some(b) = &i.boutique {
-            let pid = lancer_par_la_boutique(b, Path::new(&i.dossier)).await?;
+            let hors_galaxy = match (b.source == "gog", self.actif().await) {
+                (true, Some(p)) => crate::commandes::jeu_gog_hors_galaxy_relu(&self.dossier.join("profils").join(&p.id), self.dossier.join("travail").join("galaxy-lancer"), &b.cle).await.is_some(),
+                _ => false,
+            };
+            let pid = lancer_par_la_boutique(b, Path::new(&i.dossier), hors_galaxy).await?;
             let reponse = self.annoncer(id, "debut").await;
             return Ok((pid, vec![PathBuf::from(&i.dossier)], reponse.is_some_and(|r| r["session"].is_object())));
         }

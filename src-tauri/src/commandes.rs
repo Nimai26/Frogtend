@@ -6167,8 +6167,9 @@ pub(crate) async fn relire_pc(noyau: &Noyau, seulement: &[&str], possedes: bool)
 /// Les cartes d'une boutique (sauf Steam) : ses jeux installés, plus ses jeux possédés SI le profil l'a accepté.
 /// Les cartes GOG d'un profil (lot C4a) : la liste de son compte GOG et ses jeux GOG installés sur ce PC, complétés par
 /// la liste de GOG Galaxy du profil (`boutiques_pc::fusion_gog`).
+/// Lot C4b : les jeux de TOUS les comptes GOG du profil, réunis (une carte par jeu) avant la fusion avec le PC.
 pub(crate) fn cartes_gog(dossier_profil: &std::path::Path, installes: &[crate::boutiques::JeuBoutique]) -> Vec<crate::boutiques::JeuBoutique> {
-    let compte = crate::boutiques::lire_source(dossier_profil, "gog").map(|c| c.jeux).unwrap_or_default();
+    let compte = crate::boutiques::lire_source(dossier_profil, "gog").map(|c| crate::boutiques::jeux_gog_reunis(&crate::boutiques::comptes_gog_lus(&c))).unwrap_or_default();
     let galaxy = crate::boutiques::lire_source(dossier_profil, "galaxy").map(|c| c.jeux).unwrap_or_default();
     crate::boutiques_pc::fusion_gog(compte, installes, &galaxy)
 }
@@ -6253,6 +6254,47 @@ fn adresse_carte_selon(boutique: &str, cle_carte: &str, action: crate::boutiques
             _ => format!("Frogtend ne sait pas installer ce jeu : installe-le depuis {}.", crate::boutiques_pc::nom_boutique(boutique)),
         })
     })
+}
+
+/// Lot C4b : l'AVERTISSEMENT (jamais un refus : la personne peut ouvrir Galaxy quand même) quand GOG Galaxy est ouvert
+/// sur un autre compte que celui qui possède ce jeu (`cle` : numéro du jeu ; `galaxy` : relu à l'instant) ; `None` : on
+/// ne le sait pas, ou Galaxy l'a (installation habituelle). Pur, testé.
+pub(crate) fn avertissement_installation_hors_galaxy(comptes: &[crate::boutiques::CompteGog], galaxy: &crate::boutiques::CompteGalaxyPc, cle: &str) -> Option<String> {
+    let (nom, numero) = crate::boutiques::compte_hors_galaxy(comptes, galaxy, cle)?;
+    Some(format!(
+        "Ce jeu est sur ton autre compte GOG « {} ». GOG Galaxy semble ouvert sur un autre compte : pour l'installer, change de compte dans Galaxy.",
+        crate::boutiques::nom_compte_gog(&nom, numero)
+    ))
+}
+
+/// Les comptes GOG d'un profil ont-ils tous leur numéro Galaxy, et ce jeu est-il à l'un d'eux ? Sinon, inutile de lire
+/// la base de Galaxy (la réponse serait « on ne sait pas »).
+pub(crate) fn question_galaxy_utile(comptes: &[crate::boutiques::CompteGog], cle: &str) -> bool {
+    let id = format!("gog_{cle}");
+    !comptes.is_empty() && comptes.iter().all(|c| !c.id_galaxy.is_empty()) && comptes.iter().any(|c| c.jeux.iter().any(|j| j.id == id))
+}
+
+/// Lot C4b : relit À L'INSTANT le compte ouvert dans GOG Galaxy (copie de sa base, effacée ensuite) et dit si ce jeu GOG
+/// est seulement sur un autre compte du profil : `Some((message, nom))`, sinon `None` (dans le doute aussi).
+pub(crate) async fn jeu_gog_hors_galaxy_relu(dossier_profil: &std::path::Path, travail: std::path::PathBuf, cle: &str) -> Option<String> {
+    let comptes = crate::boutiques::lire_source(dossier_profil, "gog").map(|c| crate::boutiques::comptes_gog_lus(&c)).unwrap_or_default();
+    if !question_galaxy_utile(&comptes, cle) {
+        return None;
+    }
+    let galaxy = tauri::async_runtime::spawn_blocking(move || crate::boutiques::dossier_galaxy().and_then(|s| crate::boutiques::compte_galaxy_du_pc(&s, &travail))).await.ok().flatten()?;
+    avertissement_installation_hors_galaxy(&comptes, &galaxy, cle)
+}
+
+/// Lot C4b : avant « ⬇ Installer » un jeu GOG, l'avertissement à montrer (fenêtre maison : « Ouvrir quand même dans GOG
+/// Galaxy » / « Annuler ») ; `None` : rien à dire.
+#[tauri::command]
+pub async fn boutique_gog_avertissement_installation(noyau: State<'_, Noyau>, cle: String) -> Resultat<Option<String>> {
+    let p = profil_ouvert(&noyau).await?;
+    let cle = cle.strip_prefix("gog_").unwrap_or(&cle).to_string();
+    if !crate::gratuits::numero_gog(&cle) {
+        return Ok(None);
+    }
+    Ok(jeu_gog_hors_galaxy_relu(&dossier_profil_de(&noyau, &p.id), noyau.dossier.join("travail").join("galaxy-installer"), &cle).await)
 }
 
 /// Jouer à un jeu de boutique ou l'installer, par SON lanceur (Epic, Ubisoft, Amazon, Xbox, GOG Galaxy…).
@@ -6521,25 +6563,72 @@ fn compter_installes(l: &[crate::boutiques::JeuBoutique], nouveaux: &[i64]) -> u
 
 // ───────────────────────────── GOG : les jeux du compte (lot C4a) ─────────────────────────────
 
-/// Ce que Frogtend sait du compte GOG du profil (lot C4a), sans rien du compte lui-même (ni numéro, ni nom).
+/// Un compte GOG du profil, pour l'interface (lot C4b) : sa clé (pour « Oublier »), son pseudo (vide : « Compte GOG
+/// n »), jamais un jeton.
 #[derive(Serialize, Clone, Debug, Default, PartialEq)]
-pub struct EtatGog {
-    /// Une lecture des jeux du compte a déjà réussi pour ce profil.
-    pub connu: bool,
-    /// Les jeux du compte gardés (dernière lecture).
+pub struct EtatCompteGog {
+    pub cle: String,
+    pub nom: String,
+    /// Le compte de la session gog.com du navigateur du profil (celui du jeu offert).
+    pub profil: bool,
+    /// Le n de « Compte GOG n » (sans pseudo), rangé.
+    pub numero: u32,
     pub nb_jeux: usize,
     pub maj_le: Option<String>,
+    /// Un compte ajouté dont la connexion est perdue (aucun jeton au coffre) : « ➕ Ajouter un compte GOG » le reconnecte.
+    pub reconnecter: bool,
+}
+
+/// Ce que Frogtend sait des comptes GOG du profil (lots C4a, C4b).
+#[derive(Serialize, Clone, Debug, Default, PartialEq)]
+pub struct EtatGog {
+    /// Le compte de la session gog.com du navigateur du profil a déjà été lu.
+    pub connu: bool,
+    /// Les jeux de tous les comptes réunis (une carte par jeu).
+    pub nb_jeux: usize,
+    pub maj_le: Option<String>,
+    /// Lot C4b : tous les comptes, le compte `Profil` d'abord.
+    pub comptes: Vec<EtatCompteGog>,
+    /// Lot C4b : GOG Galaxy est ouvert sur un autre compte que tous ceux de Frogtend (seulement si c'est sûr).
+    pub galaxy_autre_compte: bool,
+    /// Lot C4b : le compte du navigateur a été oublié ; sa session n'est plus relue avant « 🔑 Se connecter à GOG ».
+    pub navigateur_oublie: bool,
+}
+
+/// L'état des comptes GOG (pur sauf le coffre, testé) : `a_un_secret` dit si un compte ajouté a encore son jeton.
+pub(crate) fn etat_gog(c: Option<&crate::boutiques::CompteBoutique>, a_un_secret: impl Fn(&str) -> bool) -> EtatGog {
+    use crate::boutiques::NavigateurGog;
+    let mut comptes = c.map(crate::boutiques::comptes_gog_lus).unwrap_or_default();
+    comptes.sort_by_key(|x| x.navigateur != NavigateurGog::Profil);
+    let reunis = crate::boutiques::jeux_gog_reunis(&comptes);
+    EtatGog {
+        connu: comptes.iter().any(|x| x.navigateur == NavigateurGog::Profil && crate::gratuits::numero_gog(&x.id_site)),
+        nb_jeux: reunis.len(),
+        maj_le: comptes.iter().map(|x| x.maj_le.clone()).filter(|m| !m.is_empty()).max(),
+        // Le compte de Galaxy relu à la dernière lecture des comptes GOG (une ligne d'information, jamais un refus).
+        galaxy_autre_compte: crate::boutiques::galaxy_sur_un_autre_compte(&comptes, c.map_or("", |c| c.compte_galaxy_pc.as_str())),
+        navigateur_oublie: c.is_some_and(|c| c.navigateur_gog_oublie),
+        comptes: comptes
+            .iter()
+            .map(|x| EtatCompteGog {
+                cle: x.cle(),
+                nom: x.nom.clone(),
+                profil: x.navigateur == NavigateurGog::Profil,
+                numero: x.numero,
+                nb_jeux: x.jeux.len(),
+                maj_le: Some(x.maj_le.clone()).filter(|m| !m.is_empty()),
+                reconnecter: x.navigateur == NavigateurGog::Ajoute && (x.id_galaxy.is_empty() || !a_un_secret(&x.id_galaxy)),
+            })
+            .collect(),
+    }
 }
 
 #[tauri::command]
 pub async fn boutique_gog_etat(noyau: State<'_, Noyau>) -> Resultat<EtatGog> {
     let p = profil_ouvert(&noyau).await?;
-    let c = crate::boutiques::lire_source(&dossier_profil_de(&noyau, &p.id), "gog");
-    Ok(EtatGog {
-        connu: c.as_ref().is_some_and(|c| crate::gratuits::numero_gog(&c.id_compte)),
-        nb_jeux: c.as_ref().map_or(0, |c| c.jeux.len()),
-        maj_le: c.and_then(|c| Some(c.maj_le).filter(|m| !m.is_empty())),
-    })
+    let dossier = dossier_profil_de(&noyau, &p.id);
+    let c = crate::boutiques::lire_source(&dossier, "gog");
+    Ok(etat_gog(c.as_ref(), |id| noyau.coffre.lire(&crate::boutiques::secret_gog_ajoute(&p.id, id)).is_ok_and(|s| s.is_some())))
 }
 
 /// Ce qu'une lecture des jeux du compte GOG a donné (lot C4a) : la forme de Steam, plus la présence de GOG Galaxy
@@ -6555,6 +6644,25 @@ pub struct ImportGog {
     /// Lot C5 : la bibliothèque de GOG Galaxy a été lue en entier (sinon : la liste du site et les jeux déjà rangés,
     /// nouvel essai à la prochaine lecture).
     pub bibliotheque_galaxy: bool,
+    /// Lot C4b : ce que la lecture a donné pour chaque compte AJOUTÉ (le compte `Profil` : les champs ci-dessus).
+    pub comptes: Vec<ResultatCompteGog>,
+    /// Lot C4b : la lecture du compte `Profil` a échoué (message), alors que des comptes ajoutés ont pu être lus.
+    pub erreur: Option<String>,
+    /// Lot C4b : combien de comptes ont été lus (0 : rien n'a été lu, l'interface n'annonce pas « Rien de nouveau »).
+    pub lus: usize,
+}
+
+/// Ce que la lecture d'un compte GOG ajouté a donné (lot C4b), sans aucun jeton.
+#[derive(Serialize, Clone, Debug, Default, PartialEq)]
+pub struct ResultatCompteGog {
+    pub cle: String,
+    pub nom: String,
+    /// Le n de « Compte GOG n » (sans pseudo), rangé.
+    pub numero: u32,
+    /// Sa connexion est perdue (jeton refusé ou absent) : « ➕ Ajouter un compte GOG » le reconnecte.
+    pub reconnecter: bool,
+    /// Sa bibliothèque n'a pas pu être lue (réseau, GOG) : ses jeux déjà rangés restent, nouvel essai plus tard.
+    pub partiel: bool,
 }
 
 /// L'étiquette de la fenêtre CACHÉE qui lit les jeux du compte GOG : à elle seule (jamais `boutique-gog`, que la
@@ -6665,10 +6773,21 @@ async fn lire_jeux_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path
 
 /// La fenêtre de la connexion façon Galaxy (cachée ; montrée seulement si la personne doit se connecter).
 const FENETRE_GOG_GALAXY: &str = "boutique-gog-galaxy";
-/// Le nom du jeton de renouvellement de GOG au coffre de Windows, par profil.
+/// Lot C4b : la fenêtre « ➕ Ajouter un compte GOG » (montrée tout de suite, navigation privée, dossier temporaire propre
+/// à l'ajout, effacé ensuite).
+const FENETRE_GOG_AJOUT: &str = "boutique-gog-ajout";
+/// Le nom du jeton de renouvellement du compte GOG `Profil` au coffre de Windows (les comptes ajoutés :
+/// `boutiques::secret_gog_ajoute`).
 fn secret_gog(profil: &str) -> String {
     crate::boutiques::nom_secret(profil, crate::gog_galaxy::SECRET)
 }
+
+/// Lot C4b : une seule opération sur les comptes GOG à la fois (lecture de tous les comptes, ajout, oubli). Les
+/// lectures se suivent ; un ajout ou un oubli pendant une lecture est refusé (jamais deux écritures croisées, jamais
+/// deux fenêtres de connexion).
+static COMPTES_GOG: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+const MOTIF_GOG_OCCUPE: &str = "Frogtend lit tes comptes GOG en ce moment : attends qu'il finisse, puis réessaie.";
 
 /// Ce que la fenêtre de connexion façon Galaxy voit.
 enum VuConnexionGog {
@@ -6677,38 +6796,58 @@ enum VuConnexionGog {
     PageDeConnexion,
     /// La personne a fermé la fenêtre montrée.
     Fermee,
+    /// Lot C4b : Google refuse la connexion dans cette fenêtre (navigateur intégré).
+    RefusGoogle,
 }
 
-/// Le code de la connexion façon Galaxy, par la page OFFICIELLE de GOG dans le navigateur DU PROFIL (sa session GOG y
-/// est déjà : redirection silencieuse). La redirection finale (`…/on_login_success?code=…`) est interceptée et ANNULÉE :
-/// rien n'est chargé. Sans session : en lecture discrète (`montrer` faux), rien n'est montré (`None`, « reconnecte-toi ») ;
+/// Comment ouvrir la fenêtre de la connexion façon Galaxy.
+struct FenetreGog {
+    etiquette: &'static str,
+    /// Le dossier du navigateur : celui du profil (compte `Profil`), ou le dossier temporaire d'un ajout.
+    donnees: std::path::PathBuf,
+    /// La personne peut avoir à se connecter : la fenêtre s'affiche si GOG le demande.
+    montrer: bool,
+    /// Lot C4b : un ajout de compte (fenêtre montrée tout de suite, navigation privée, aucun compte attendu).
+    ajout: bool,
+    /// Le pseudo du compte attendu, pour le message de l'interface (jamais au journal ; vide : inconnu).
+    attendu: String,
+}
+
+/// Le code de la connexion façon Galaxy, par la page OFFICIELLE de GOG. Compte `Profil` : dans le navigateur DU PROFIL
+/// (sa session GOG y est déjà : redirection silencieuse). Ajout (lot C4b) : une fenêtre montrée, en navigation privée,
+/// dans un dossier temporaire. La redirection finale (`…/on_login_success?code=…`) est interceptée et ANNULÉE : rien
+/// n'est chargé. Sans session : en lecture discrète (`montrer` faux), rien n'est montré (`None`, « reconnecte-toi ») ;
 /// sinon la fenêtre s'affiche pour que la personne se connecte (5 minutes au plus). Le code ne vit qu'en mémoire.
-async fn code_connexion_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path, montrer: bool) -> Resultat<Option<crate::gog_galaxy::CodeGog>> {
-    if !crate::gratuits::dossier_navigateur(dossier).is_dir() {
+async fn code_connexion_gog(app: &AppHandle, noyau: &Noyau, profil: &str, f: FenetreGog) -> Resultat<Option<crate::gog_galaxy::CodeGog>> {
+    if !f.ajout && !f.donnees.is_dir() {
         return Ok(None);
     }
-    if app.get_webview_window(FENETRE_GOG_GALAXY).is_some() {
+    if app.get_webview_window(FENETRE_GOG_GALAXY).is_some() || app.get_webview_window(FENETRE_GOG_AJOUT).is_some() {
         return Err(Erreur::Refus("La connexion à GOG est déjà en cours : attends qu'elle finisse.".into()));
     }
     if app.get_webview_window(FENETRE_GOG).is_some() {
         return Err(Erreur::Refus("Termine d'abord ce qui se passe dans la fenêtre de GOG (connexion ou jeu offert), puis réessaie.".into()));
     }
+    let (ajout, montrer) = (f.ajout, f.montrer || f.ajout);
     let (envoi, reception) = std::sync::mpsc::channel::<VuConnexionGog>();
     let (envoi_nav, envoi_page, envoi_fin) = (std::sync::Mutex::new(envoi.clone()), std::sync::Mutex::new(envoi.clone()), std::sync::Mutex::new(envoi));
     let url = tauri::Url::parse(&crate::gog_galaxy::adresse_connexion()).map_err(|_| Erreur::Refus("Adresse GOG invalide.".into()))?;
-    let w = tauri::WebviewWindowBuilder::new(app, FENETRE_GOG_GALAXY, tauri::WebviewUrl::External(url))
-        .title("Connexion à GOG — Frogtend")
+    let mut b = tauri::WebviewWindowBuilder::new(app, f.etiquette, tauri::WebviewUrl::External(url))
+        .title(if ajout { "Ajouter un compte GOG — Frogtend" } else { "Connexion à GOG — Frogtend" })
         .inner_size(1000.0, 760.0)
         .center()
-        .visible(false)
-        .focused(false)
-        .skip_taskbar(true)
-        .data_directory(crate::gratuits::dossier_navigateur(dossier))
+        .visible(ajout)
+        .focused(ajout)
+        .skip_taskbar(!ajout)
+        .data_directory(f.donnees.clone())
         .on_new_window(if montrer { crate::gog_galaxy::fenetre_de_fournisseur } else { crate::gratuits::fenetre_d_automatisation })
         .on_navigation(move |u| {
             if let Some(r) = crate::gog_galaxy::lire_retour_connexion(u) {
                 let _ = envoi_nav.lock().map(|e| e.send(VuConnexionGog::Retour(r)));
                 return false;
+            }
+            if crate::gog_galaxy::refus_google(u) {
+                let _ = envoi_nav.lock().map(|e| e.send(VuConnexionGog::RefusGoogle));
             }
             crate::gog_galaxy::navigation_connexion(u, montrer)
         })
@@ -6716,23 +6855,34 @@ async fn code_connexion_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path:
             if matches!(charge.event(), tauri::webview::PageLoadEvent::Finished) && w.url().is_ok_and(|u| crate::gog_galaxy::page_de_connexion_affichee(&u)) {
                 let _ = envoi_page.lock().map(|e| e.send(VuConnexionGog::PageDeConnexion));
             }
-        })
-        .build()
-        .map_err(|e| Erreur::Disque(format!("La connexion à GOG ne s'ouvre pas ({e}).")))?;
+        });
+    if ajout {
+        // Navigation privée : rien du compte ajouté ne reste dans un navigateur (le jeton de renouvellement suffit).
+        b = b.incognito(true);
+    }
+    let w = b.build().map_err(|e| Erreur::Disque(format!("La connexion à GOG ne s'ouvre pas ({e}).")))?;
     w.on_window_event(move |e| {
         if matches!(e, tauri::WindowEvent::Destroyed) {
             let _ = envoi_fin.lock().map(|e| e.send(VuConnexionGog::Fermee));
         }
     });
     let fenetre = w.clone();
-    let (annonce, profil) = (app.clone(), dossier.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
+    let (annonce, profil, attendu) = (app.clone(), profil.to_string(), f.attendu.clone());
     let vu = tauri::async_runtime::spawn_blocking(move || {
-        let mut fin = std::time::Instant::now() + std::time::Duration::from_secs(30);
-        let mut montree = false;
+        let mut fin = std::time::Instant::now() + std::time::Duration::from_secs(if ajout { 300 } else { 30 });
+        let mut montree = ajout;
+        let mut google_dit = false;
         loop {
             let reste = fin.saturating_duration_since(std::time::Instant::now());
             match reception.recv_timeout(reste) {
                 Ok(VuConnexionGog::Retour(r)) => return Ok(r),
+                Ok(VuConnexionGog::RefusGoogle) => {
+                    // Dit une fois ; la fenêtre reste ouverte (la personne peut se connecter par adresse et mot de passe).
+                    if !google_dit {
+                        google_dit = true;
+                        let _ = annonce.emit("gog-google-refuse", serde_json::json!({"profil": profil}));
+                    }
+                }
                 // Une page de GOG s'est affichée : peut-être un relais qui redirige encore lui-même ; 4 s de grâce, puis
                 // « pas de session » (rien n'est montré en lecture discrète).
                 Ok(VuConnexionGog::PageDeConnexion) if !montrer => {
@@ -6749,7 +6899,7 @@ async fn code_connexion_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path:
                         let _ = fenetre.show();
                         let _ = fenetre.unminimize();
                         let _ = fenetre.set_focus();
-                        let _ = annonce.emit("gog-connexion-montree", serde_json::json!({"profil": profil}));
+                        let _ = annonce.emit("gog-connexion-montree", serde_json::json!({"profil": profil, "compte": attendu}));
                     }
                 }
                 Ok(VuConnexionGog::Fermee) => return Err("fenetre-fermee"),
@@ -6773,19 +6923,19 @@ async fn code_connexion_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path:
     }
 }
 
-/// Le jeton d'accès de la connexion façon Galaxy pour le compte `compte` (celui que la page de GOG montre connecté) :
-/// renouvelé avec le jeton rangé au coffre, sinon par la connexion silencieuse. Le nouveau jeton de renouvellement va
-/// au coffre ; le jeton d'accès ne vit qu'en mémoire. `None` : pas de connexion façon Galaxy (la raison est au journal,
-/// sans aucun jeton).
-async fn jeton_acces_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path, profil: &str, compte: &str, montrer: bool) -> Option<String> {
-    let secret = secret_gog(profil);
+/// Le jeton d'accès de la connexion façon Galaxy pour le compte `compte` (son numéro Galaxy), renouvelé avec le jeton
+/// rangé au coffre sous `secret`. `connexion` : `Some((montrer, pseudo attendu))` pour le compte `Profil` (sans jeton
+/// valable, la connexion silencieuse par sa session gog.com) ; `None` pour un compte ajouté (seul son jeton le relit :
+/// jamais la session du navigateur du profil, qui est celle d'un autre compte). Le nouveau jeton de renouvellement va au
+/// coffre ; le jeton d'accès ne vit qu'en mémoire. `None` : pas de connexion (la raison au journal, sans aucun jeton).
+async fn jeton_acces_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path, profil: &str, secret: &str, compte: &str, connexion: Option<(bool, String)>) -> Option<String> {
     let ranger = |j: &crate::gog_galaxy::JetonsGog| {
-        if noyau.coffre.ranger(&secret, &j.renouvellement).is_err() {
+        if noyau.coffre.ranger(secret, &j.renouvellement).is_err() {
             noyau.journaliser("import GOG (connexion façon Galaxy) : le coffre de Windows refuse le jeton (connexion refaite à la prochaine lecture)");
-            let _ = noyau.coffre.oublier(&secret);
+            let _ = noyau.coffre.oublier(secret);
         }
     };
-    match noyau.coffre.lire(&secret) {
+    match noyau.coffre.lire(secret) {
         Ok(Some(r)) => match crate::gog_galaxy::jetons_renouveles(crate::gog_galaxy::AUTH, &r).await {
             Ok(j) if crate::gog_galaxy::verifier_compte(&j, compte).is_ok() => {
                 ranger(&j);
@@ -6793,11 +6943,11 @@ async fn jeton_acces_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Pa
             }
             Ok(_) => {
                 noyau.journaliser("import GOG (connexion façon Galaxy) : le jeton rangé est celui d'un autre compte : oublié");
-                let _ = noyau.coffre.oublier(&secret);
+                let _ = noyau.coffre.oublier(secret);
             }
             Err(Erreur::Refus(_)) => {
                 noyau.journaliser("import GOG (connexion façon Galaxy) : jeton rangé refusé par GOG : oublié, connexion refaite");
-                let _ = noyau.coffre.oublier(&secret);
+                let _ = noyau.coffre.oublier(secret);
             }
             Err(_) => {
                 noyau.journaliser("import GOG (connexion façon Galaxy) : renouvellement impossible pour l'instant (réseau ou GOG)");
@@ -6807,10 +6957,12 @@ async fn jeton_acces_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Pa
         Ok(None) => {}
         Err(_) => {
             noyau.journaliser("import GOG (connexion façon Galaxy) : coffre de Windows illisible : connexion refaite");
-            let _ = noyau.coffre.oublier(&secret);
+            let _ = noyau.coffre.oublier(secret);
         }
     }
-    let code = match code_connexion_gog(app, noyau, dossier, montrer).await {
+    let (montrer, attendu) = connexion?;
+    let f = FenetreGog { etiquette: FENETRE_GOG_GALAXY, donnees: crate::gratuits::dossier_navigateur(dossier), montrer, ajout: false, attendu };
+    let code = match code_connexion_gog(app, noyau, profil, f).await {
         Ok(Some(c)) => c,
         Ok(None) => return None,
         Err(e) => {
@@ -6835,10 +6987,13 @@ async fn jeton_acces_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Pa
     }
 }
 
-/// Ce que la bibliothèque de Galaxy a donné, résolu par la base publique (lot C5).
+/// Ce que la bibliothèque de Galaxy d'UN compte a donné, résolu par la base publique (lot C5).
 struct BibliothequeResolue {
     jeux: Vec<crate::boutiques::JeuBoutique>,
+    /// Le cache commun des fiches, complété (il est fondu sous le verrou : `boutiques::fusionner_fiches_gog`).
     fiches: std::collections::BTreeMap<String, crate::gog_galaxy::FicheGog>,
+    /// Les numéros de la bibliothèque lue (écartés compris).
+    ids: Vec<String>,
 }
 
 /// Le plafond de temps des fiches d'une lecture (la suite à la lecture d'après : rien n'est perdu).
@@ -6846,34 +7001,33 @@ const DELAI_FICHES_GOG: std::time::Duration = std::time::Duration::from_secs(180
 /// Après tant d'échecs de suite, la base publique est en panne : on s'arrête (la suite à la lecture d'après).
 const ECHECS_FICHES_GOG_MAX: usize = 10;
 
-/// Lit la bibliothèque de Galaxy du compte et résout ses jeux (titre, type, jaquette) par la base publique de GOG, sans
-/// redemander les fiches déjà en cache ; une fiche en échec ne fait jamais disparaître un jeu ; 429 : on s'arrête en
-/// gardant ce qui est résolu. `None` : bibliothèque illisible (la liste du site sert alors seule). Journal : des
-/// nombres, les types et les titres des jeux écartés (pas de données de compte).
+/// Lit la bibliothèque de Galaxy du compte `compte` (numéro Galaxy, jeton d'accès `acces`) et résout ses jeux (titre,
+/// type, jaquette) par la base publique de GOG, sans redemander les fiches déjà en cache ; une fiche en échec ne fait
+/// jamais disparaître un jeu ; 429 : on s'arrête en gardant ce qui est résolu. `ranges` : les jeux DE CE COMPTE déjà
+/// rangés ; `page` : la liste du site (compte `Profil` seulement). `None` : bibliothèque illisible (un jeton refusé est
+/// oublié : celui de `secret`, le compte lu). Journal : des nombres, les types et les titres des jeux écartés.
 async fn bibliotheque_gog(
-    app: &AppHandle,
     noyau: &Noyau,
     dossier: &std::path::Path,
-    profil: &str,
+    secret: &str,
     compte: &str,
-    montrer: bool,
+    acces: String,
     page: &[crate::boutiques::JeuBoutique],
+    ranges: &[crate::boutiques::JeuBoutique],
 ) -> Option<BibliothequeResolue> {
-    let acces = jeton_acces_gog(app, noyau, dossier, profil, compte, montrer).await?;
     let bib = match crate::gog_galaxy::lire_bibliotheque(crate::gog_galaxy::BIBLIOTHEQUE, compte, &acces).await {
         Ok(b) => b,
         Err(e) => {
             if matches!(e, Erreur::Refus(_)) {
-                // Le jeton ne vaut plus : la prochaine lecture refait la connexion.
-                let _ = noyau.coffre.oublier(&secret_gog(profil));
+                // Le jeton ne vaut plus : la prochaine lecture refait la connexion (celle de CE compte seulement).
+                let _ = noyau.coffre.oublier(secret);
             }
-            noyau.journaliser(&format!("import GOG (bibliothèque Galaxy) : illisible ({e}) ; la liste du site sert seule"));
+            noyau.journaliser(&format!("import GOG (bibliothèque Galaxy) : illisible ({e}) ; les jeux déjà rangés restent"));
             return None;
         }
     };
     drop(acces);
-    let avant = crate::boutiques::lire_source(dossier, "gog").unwrap_or_default();
-    let mut fiches = avant.fiches_gog.clone();
+    let mut fiches = crate::boutiques::lire_source(dossier, "gog").map(|c| c.fiches_gog).unwrap_or_default();
     let maintenant = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     let a_demander = crate::gog_galaxy::fiches_a_demander(&bib.ids, &fiches, maintenant);
     let mut demandees = 0;
@@ -6911,67 +7065,622 @@ async fn bibliotheque_gog(
             }
         }
     }
-    let (jeux, bilan) = crate::gog_galaxy::choisir(&bib.ids, &fiches, page, &avant.jeux);
+    let (jeux, bilan) = crate::gog_galaxy::choisir(&bib.ids, &fiches, page, ranges);
     noyau.journaliser(&format!("import GOG (bibliothèque Galaxy) : {}", crate::gog_galaxy::texte_bilan(&bib, &bilan, demandees, jeux.len())));
-    // Le cache ne garde que les fiches des jeux de la bibliothèque (jamais une liste qui grossit sans fin).
-    let gardees: std::collections::BTreeSet<&String> = bib.ids.iter().collect();
-    fiches.retain(|k, _| gardees.contains(k));
-    Some(BibliothequeResolue { jeux, fiches })
+    Some(BibliothequeResolue { jeux, fiches, ids: bib.ids })
+}
+
+/// Le pseudo public d'un compte (numéro Galaxy) ; `None` si inconnu ou illisible.
+async fn pseudo_gog(id_galaxy: &str) -> Option<String> {
+    if id_galaxy.is_empty() {
+        return None;
+    }
+    crate::gog_galaxy::pseudo(crate::gog_galaxy::UTILISATEURS, id_galaxy).await
+}
+
+//// Lot C4b : le nom PROVISOIRE du jeton du nouveau compte du navigateur pendant un changement de compte (et celui d'un
+/// compte qu'on ajoute) : le jeton n'arrive sous son vrai nom qu'APRÈS l'écriture de la liste.
+fn secret_gog_provisoire(profil: &str, quoi: &str) -> String {
+    crate::boutiques::nom_secret(profil, &format!("{}#provisoire-{quoi}", crate::gog_galaxy::SECRET))
+}
+
+/// Range un jeton sous `nom` seulement si ce nom est LIBRE (jamais un `#<numéro>` existant écrasé). Rend vrai si le nom
+/// porte un jeton à la fin (le sien d'avant, ou celui-ci).
+fn ranger_si_libre(noyau: &Noyau, nom: &str, jeton: &str) -> bool {
+    match noyau.coffre.lire(nom) {
+        Ok(Some(_)) => true,
+        Ok(None) => noyau.coffre.ranger(nom, jeton).is_ok(),
+        Err(_) => false,
+    }
+}
+
+/// Lot C4b (revue) : avant un changement de compte du navigateur, le jeton rangé sous le nom du compte `Profil` est mis
+/// à l'abri sous le nom de SON VRAI compte, retrouvé par GOG lui-même (renouvellement → `user_id`) : jamais déduit de
+/// la liste (une lecture interrompue puis rejouée y laisserait le jeton d'un autre compte). Le nom existant n'est
+/// jamais écrasé. Rend le numéro Galaxy de ce compte (`None` : pas de jeton, ou jeton refusé par GOG, alors oublié).
+/// GOG injoignable : erreur (rien n'est changé, le changement de compte attendra la lecture suivante).
+async fn abriter_jeton_profil(noyau: &Noyau, profil: &str, auth: &str) -> Resultat<Option<String>> {
+    let principal = secret_gog(profil);
+    let Ok(Some(r)) = noyau.coffre.lire(&principal) else { return Ok(None) };
+    match crate::gog_galaxy::jetons_renouveles(auth, &r).await {
+        Ok(j) => {
+            // Le jeton renouvelé remplace l'ancien sous le nom principal (même compte), puis sa copie sous son vrai nom.
+            let _ = noyau.coffre.ranger(&principal, &j.renouvellement);
+            if !ranger_si_libre(noyau, &crate::boutiques::secret_gog_ajoute(profil, &j.user_id), &j.renouvellement) {
+                noyau.journaliser("import GOG (changement de compte) : le coffre de Windows refuse le jeton de l'ancien compte (à reconnecter)");
+            }
+            Ok(Some(j.user_id))
+        }
+        Err(Erreur::Refus(_)) => {
+            noyau.journaliser("import GOG (changement de compte) : le jeton de l'ancien compte est refusé par GOG : oublié");
+            let _ = noyau.coffre.oublier(&principal);
+            Ok(None)
+        }
+        Err(_) => Err(Erreur::Reseau("GOG ne répond pas pour l'instant : le changement de compte GOG attendra la prochaine mise à jour.".into())),
+    }
+}
+
+/// Après l'écriture de la liste (lot C4b, revue) : le jeton PROVISOIRE du nouveau compte du navigateur (`provisoire`,
+/// changement de compte) prend le nom principal ; le nom du compte « ajouté » fondu (`fondu`) est oublié, son jeton
+/// servant d'abord au nom principal s'il n'y en a pas (même compte ajouté en double). Testé.
+fn poser_jetons_apres_ecriture(noyau: &Noyau, profil: &str, provisoire: Option<&str>, fondu: Option<&str>) {
+    let principal = secret_gog(profil);
+    if let Some(secret) = provisoire {
+        let fait = match noyau.coffre.lire(secret).ok().flatten() {
+            Some(t) => noyau.coffre.ranger(&principal, &t),
+            None => noyau.coffre.oublier(&principal),
+        };
+        if fait.is_err() {
+            noyau.journaliser("import GOG (changement de compte) : le coffre de Windows refuse le jeton du nouveau compte (connexion refaite à la prochaine lecture)");
+            let _ = noyau.coffre.oublier(&principal);
+        }
+        let _ = noyau.coffre.oublier(secret);
+    }
+    if let Some(id) = fondu {
+        let nom_fondu = crate::boutiques::secret_gog_ajoute(profil, id);
+        // Le compte fondu sans changement de compte (même compte, ajouté en double) : son jeton sert au nom principal
+        // s'il n'y en a pas ; puis un seul jeton par compte.
+        if provisoire.is_none() && !noyau.coffre.lire(&principal).is_ok_and(|s| s.is_some()) {
+            if let Ok(Some(t)) = noyau.coffre.lire(&nom_fondu) {
+                let _ = noyau.coffre.ranger(&principal, &t);
+            }
+        }
+        if noyau.coffre.oublier(&nom_fondu).is_err() {
+            noyau.journaliser("import GOG (changement de compte) : l'ancien nom du jeton n'a pas pu être retiré du coffre");
+        }
+    }
+}
+
+/// Lit le compte GOG `Profil` (la session gog.com du navigateur du profil) : la liste du site, puis sa bibliothèque de
+/// Galaxy, et les range (seuls SES jeux changent). `Ok(None)` : pas connecté (« reconnecte-toi »). Rend si la
+/// bibliothèque de Galaxy a été lue en entier.
+///
+/// Changement de compte du navigateur (revue du lot C4b) : 1. le jeton du nom principal est mis à l'abri sous le nom de
+/// son vrai compte (`abriter_jeton_profil`) ; 2. le nouveau compte est lu avec un jeton sous un nom PROVISOIRE (celui du
+/// compte ajouté fondu y est copié) ; 3. la liste est écrite ; 4. SEULEMENT ensuite le jeton provisoire prend le nom
+/// principal et le nom du compte fondu est oublié. Une lecture interrompue à n'importe quelle étape se rejoue sans perte.
+async fn importer_compte_gog_profil(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path, profil: &str, comptes: &[crate::boutiques::CompteGog], montrer: bool) -> Resultat<Option<bool>> {
+    use crate::boutiques::NavigateurGog;
+    let ancien = comptes.iter().find(|x| x.navigateur == NavigateurGog::Profil);
+    let avant = ancien.map(|x| x.id_site.clone()).unwrap_or_default();
+    let Some((remis, lus)) = lire_jeux_gog(app, noyau, dossier).await? else {
+        noyau.journaliser(&format!("import GOG (connexion) : pas connecté à GOG pour le profil {profil}"));
+        return Ok(None);
+    };
+    // 0.218.2 : le numéro du SITE est celui du compte rangé ; la connexion façon Galaxy et sa bibliothèque utilisent le
+    // numéro GALAXY du même compte (Seb 21/11 : « autre compte » à tort).
+    let (site, galaxy) = crate::gratuits::separer_compte_gog(&remis);
+    let page = crate::boutiques::jeux_du_compte_gog(&lus);
+    let principal = secret_gog(profil);
+    let change = ancien.is_some_and(|a| a.id_site != site);
+    let fondu = comptes.iter().find(|x| x.navigateur == NavigateurGog::Ajoute && ((!x.id_galaxy.is_empty() && x.id_galaxy == galaxy) || (x.id_galaxy.is_empty() && x.id_site == site)));
+    let mut ancien_id_galaxy = None;
+    let secret = if change {
+        let proprietaire = abriter_jeton_profil(noyau, profil, crate::gog_galaxy::AUTH).await?;
+        // Le jeton mis à l'abri est celui de l'ANCIEN compte seulement s'il n'est pas celui du nouveau (lecture rejouée).
+        ancien_id_galaxy = proprietaire.filter(|p| *p != galaxy);
+        let provisoire = secret_gog_provisoire(profil, "navigateur");
+        let jeton_fondu = fondu.filter(|f| !f.id_galaxy.is_empty()).and_then(|f| noyau.coffre.lire(&crate::boutiques::secret_gog_ajoute(profil, &f.id_galaxy)).ok().flatten());
+        let _ = match jeton_fondu {
+            Some(t) => noyau.coffre.ranger(&provisoire, &t),
+            None => noyau.coffre.oublier(&provisoire),
+        };
+        provisoire
+    } else {
+        principal.clone()
+    };
+    let ce_compte = if change { fondu } else { ancien };
+    let ranges: Vec<crate::boutiques::JeuBoutique> = ce_compte.map(|x| x.jeux.clone()).unwrap_or_default();
+    let attendu = ce_compte.map(|x| x.nom.clone()).unwrap_or_default();
+    let acces = jeton_acces_gog(app, noyau, dossier, profil, &secret, &galaxy, Some((montrer, attendu))).await;
+    // Le numéro Galaxy n'est retenu que s'il est sûr : remis par la page, ou vérifié par la connexion façon Galaxy.
+    let galaxy_sur = galaxy != site || acces.is_some();
+    let biblio = match acces {
+        Some(a) => bibliotheque_gog(noyau, dossier, &secret, &galaxy, a, &page, &ranges).await,
+        None => None,
+    };
+    let lue = biblio.is_some();
+    // Sans bibliothèque lue en entier : la liste du site PLUS les jeux déjà rangés de CE compte (jamais une liste qui
+    // rétrécit ; les autres comptes ne sont pas touchés).
+    let (jeux, fiches, ids) = match biblio {
+        Some(b) => (b.jeux, Some(b.fiches), Some(b.ids)),
+        None => (crate::gog_galaxy::union_sans_bibliotheque(page, &ranges), None, None),
+    };
+    let id_galaxy = if galaxy_sur { galaxy } else { String::new() };
+    let nom = pseudo_gog(&id_galaxy).await;
+    let lu = crate::boutiques::LectureCompteGog { id_site: site, id_galaxy, nom, jeux, ids_lus: ids, ancien_id_galaxy };
+    let quand = crate::noyau::maintenant();
+    let mut ch = crate::boutiques::ChangementGog::default();
+    let ecrit = crate::boutiques::modifier_source(dossier, "gog", |c| {
+        let (mut c, x) = crate::boutiques::appliquer_import_gog_profil(c, &avant, &lu, &quand)?;
+        if let Some(f) = fiches {
+            crate::boutiques::fusionner_fiches_gog(&mut c, f);
+        }
+        ch = x;
+        Ok(Some(c))
+    });
+    let ecrit = match ecrit {
+        Ok(e) => e,
+        Err(e) => {
+            // Rien n'est écrit : le jeton provisoire part, le nom principal n'a pas bougé (lecture rejouable).
+            if change {
+                let _ = noyau.coffre.oublier(&secret);
+            }
+            return Err(e);
+        }
+    };
+    // La liste est écrite : chaque jeton prend son vrai nom.
+    poser_jetons_apres_ecriture(noyau, profil, change.then_some(secret.as_str()), ch.fondu.as_deref());
+    if ch.ancien_profil.is_some() {
+        noyau.journaliser(&format!("import GOG (connexion) : le navigateur du profil {profil} montre un autre compte GOG ; l'ancien reste, comme compte ajouté (aucune carte retirée)"));
+    }
+    let n = ecrit.as_ref().and_then(|c| c.comptes_gog.iter().find(|x| x.navigateur == NavigateurGog::Profil)).map_or(0, |x| x.jeux.len());
+    noyau.journaliser(&format!("import GOG (connexion) : {n} jeu(x) pour le compte du navigateur du profil {profil}"));
+    Ok(Some(lue))
+}
+
+// Relit un compte GOG AJOUTÉ par son seul jeton de renouvellement (jamais la session du navigateur du profil) et range
+/// SES jeux. Une lecture ratée ne touche à rien (ses jeux déjà rangés restent).
+async fn importer_compte_gog_ajoute(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path, profil: &str, x: &crate::boutiques::CompteGog) -> ResultatCompteGog {
+    let mut res = ResultatCompteGog { cle: x.cle(), nom: x.nom.clone(), numero: x.numero, ..Default::default() };
+    if x.id_galaxy.is_empty() {
+        res.reconnecter = true;
+        return res;
+    }
+    let secret = crate::boutiques::secret_gog_ajoute(profil, &x.id_galaxy);
+    let perdu = |noyau: &Noyau| !noyau.coffre.lire(&secret).is_ok_and(|s| s.is_some());
+    let Some(acces) = jeton_acces_gog(app, noyau, dossier, profil, &secret, &x.id_galaxy, None).await else {
+        res.reconnecter = perdu(noyau);
+        res.partiel = !res.reconnecter;
+        noyau.journaliser(&format!("import GOG (compte ajouté) : pas de connexion ({})", if res.reconnecter { "à reconnecter" } else { "nouvel essai plus tard" }));
+        return res;
+    };
+    let Some(b) = bibliotheque_gog(noyau, dossier, &secret, &x.id_galaxy, acces, &[], &x.jeux).await else {
+        res.reconnecter = perdu(noyau);
+        res.partiel = !res.reconnecter;
+        return res;
+    };
+    let nom = pseudo_gog(&x.id_galaxy).await;
+    if let Some(n) = &nom {
+        res.nom = n.clone();
+    }
+    let n = b.jeux.len();
+    let lu = crate::boutiques::LectureCompteGog { id_site: String::new(), id_galaxy: x.id_galaxy.clone(), nom, jeux: b.jeux, ids_lus: Some(b.ids), ancien_id_galaxy: None };
+    let quand = crate::noyau::maintenant();
+    let fiches = b.fiches;
+    match crate::boutiques::modifier_source(dossier, "gog", |c| {
+        let mut c = crate::boutiques::appliquer_import_gog_ajoute(c, &lu, &quand)?;
+        crate::boutiques::fusionner_fiches_gog(&mut c, fiches);
+        Ok(Some(c))
+    }) {
+        Ok(_) => noyau.journaliser(&format!("import GOG (compte ajouté) : {n} jeu(x)")),
+        Err(e) => {
+            noyau.journaliser(&format!("import GOG (compte ajouté) : rien n'est écrit ({e})"));
+            res.partiel = true;
+        }
+    }
+    res
 }
 
 /// Lot C4a (décisions de Seb du 21/11) : importe les jeux POSSÉDÉS du compte GOG connecté dans le navigateur du profil
-/// (la connexion faite pour le jeu offert vaut accord), jeux cachés compris, sans GOG Galaxy. La liste est écrite sous
-/// le verrou (compte rangé inchangé pendant la lecture exigé), puis rangée aussitôt dans la ludothèque, « pas
-/// installée » sauf si le registre de GOG la dit installée sur ce PC. Pas connecté : `reconnecter`, rien ne change (les
-/// jeux déjà importés restent).
+/// (la connexion faite pour le jeu offert vaut accord), jeux cachés compris, sans GOG Galaxy. Lot C5 : puis la
+/// bibliothèque de GOG Galaxy (connexion façon Galaxy), qui fait foi pour les jeux qu'elle connaît ; la liste du site
+/// reste le garde-fou. `montrer` : juste après « Se connecter à GOG », la page de connexion façon Galaxy peut
+/// s'afficher si GOG la demande (jamais en lecture discrète). Lot C4b : puis chaque compte AJOUTÉ, l'un après l'autre,
+/// par son seul jeton ; la lecture ratée d'un compte ne touche jamais les autres. Tout est rangé UNE fois à la fin.
 #[tauri::command]
-/// Lot C5 : puis la bibliothèque de GOG Galaxy (connexion façon Galaxy), qui fait foi pour les jeux qu'elle connaît ; la
-/// liste du site reste le garde-fou. `montrer` : juste après « Se connecter à GOG », la page de connexion façon Galaxy
-/// peut s'afficher si GOG la demande (jamais en lecture discrète).
-pub async fn boutique_gog_importer_connecte(app: AppHandle, noyau: State<'_, Noyau>, montrer: Option<bool>) -> Resultat<ImportGog> {
+pub async fn boutique_gog_importer_connecte(app: AppHandle, noyau: State<'_, Noyau>, montrer: Option<bool>, reconnexion: Option<bool>) -> Resultat<ImportGog> {
+    // Une lecture de tous les comptes à la fois (les suivantes attendent son tour).
+    let _un_seul = COMPTES_GOG.lock().await;
     // La session AU DÉBUT : la liste lue ne va qu'au profil qui l'a demandée.
     let s = noyau.session().await?;
     let p = s.profil.clone();
     let dossier = dossier_profil_de(&noyau, &p.id);
-    let avant = crate::boutiques::lire_source(&dossier, "gog").map(|c| c.id_compte).unwrap_or_default();
-    let Some((remis, lus)) = lire_jeux_gog(&app, &noyau, &dossier).await? else {
-        noyau.journaliser(&format!("import GOG (connexion) : pas connecté à GOG pour le profil {}", p.id));
-        return Ok(ImportGog { reconnecter: true, ..Default::default() });
-    };
-    // 0.218.2 : le numéro du SITE reste celui du compte rangé ; la connexion façon Galaxy et sa bibliothèque utilisent
-    // le numéro GALAXY du même compte (Seb 21/11 : « autre compte » à tort).
-    let (compte, compte_galaxy) = crate::gratuits::separer_compte_gog(&remis);
-    let page = crate::boutiques::jeux_du_compte_gog(&lus);
-    // Lot C5 : la bibliothèque de Galaxy, si la connexion façon Galaxy marche ; sinon la liste du site seule.
-    let biblio = bibliotheque_gog(&app, &noyau, &dossier, &p.id, &compte_galaxy, montrer.unwrap_or(false), &page).await;
-    // Sans bibliothèque lue en entier : la liste du site PLUS les jeux GOG déjà rangés (jamais une liste qui rétrécit).
-    let bibliotheque_galaxy = biblio.is_some();
-    let (jeux, fiches) = match biblio {
-        Some(b) => (b.jeux, Some(b.fiches)),
-        None => {
-            let ranges = crate::boutiques::lire_source(&dossier, "gog").map(|c| c.jeux).unwrap_or_default();
-            (crate::gog_galaxy::union_sans_bibliotheque(page, &ranges), None)
+    let comptes = |d: &std::path::Path| crate::boutiques::lire_source(d, "gog").map(|c| crate::boutiques::comptes_gog_lus(&c)).unwrap_or_default();
+    let mut r = ImportGog::default();
+    let mut lus = 0usize;
+    let mut echec = None;
+    // Lot C4b (revue) : le compte du navigateur a été OUBLIÉ : sa session n'est plus relue, sauf juste après que la
+    // personne s'est reconnectée elle-même (`reconnexion` : sa fenêtre de connexion vient de se fermer).
+    let oublie = crate::boutiques::lire_source(&dossier, "gog").is_some_and(|c| c.navigateur_gog_oublie);
+    if oublie && reconnexion != Some(true) {
+        noyau.journaliser(&format!("import GOG (connexion) : compte du navigateur oublié pour le profil {} : sa session n'est pas relue", p.id));
+    } else {
+        match importer_compte_gog_profil(&app, &noyau, &dossier, &p.id, &comptes(&dossier), montrer.unwrap_or(false)).await {
+            Ok(Some(b)) => {
+                lus += 1;
+                r.bibliotheque_galaxy = b;
+            }
+            Ok(None) => r.reconnecter = true,
+            Err(e) => {
+                r.erreur = Some(e.to_string());
+                echec = Some(e);
+            }
         }
-    };
-    let quand = crate::noyau::maintenant();
-    let mut change = false;
-    let ecrit = crate::boutiques::modifier_source(&dossier, "gog", |c| {
-        let (mut c, ch) = crate::boutiques::appliquer_import_gog(c, &avant, &compte, jeux, &quand)?;
-        if let Some(f) = fiches {
-            c.fiches_gog = f;
-        }
-        change = ch;
-        Ok(Some(c))
-    })?;
-    if change {
-        // Lot C4b : le ménage d'un changement de compte n'est pas encore fait ; l'ancien compte est seulement noté.
-        noyau.journaliser(&format!("import GOG (connexion) : un autre compte GOG que le précédent pour le profil {} (l'ancien est noté, aucune carte retirée)", p.id));
     }
-    let total = ecrit.as_ref().map_or(0, |c| c.jeux.len());
-    noyau.journaliser(&format!("import GOG (connexion) : {total} jeu(x) pour le profil {}", p.id));
+    // Les comptes ajoutés, relus APRÈS l'écriture du compte `Profil` (un changement de compte a pu en créer un).
+    for x in comptes(&dossier).into_iter().filter(|x| x.navigateur == crate::boutiques::NavigateurGog::Ajoute) {
+        let res = importer_compte_gog_ajoute(&app, &noyau, &dossier, &p.id, &x).await;
+        if !res.reconnecter && !res.partiel {
+            lus += 1;
+        }
+        r.comptes.push(res);
+    }
+    if let Some(e) = echec {
+        if r.comptes.is_empty() {
+            return Err(e);
+        }
+    }
+    r.lus = lus;
+    if lus == 0 {
+        return Ok(r);
+    }
+    // Le compte ouvert dans GOG Galaxy sur ce PC (copie de sa base, effacée ensuite), relu à chaque lecture réussie.
+    noter_compte_galaxy_du_pc(&noyau, &dossier).await;
+    let total = crate::boutiques::jeux_gog_reunis(&comptes(&dossier)).len();
+    noyau.journaliser(&format!("import GOG : {total} jeu(x) réunis pour le profil {} ({} compte(s) lu(s))", p.id, lus));
+    let (l, nouveaux) = ranger_gog_importe(&noyau, &s, &dossier).await?;
+    r.total = total;
+    r.nouveaux_installes = nouveaux_installes("gog", &l, &nouveaux);
+    r.nouveaux = nouveaux.len();
+    r.galaxy = tauri::async_runtime::spawn_blocking(crate::boutiques_pc::galaxy_present).await.unwrap_or(false);
+    Ok(r)
+}
+
+/// Lot C4b : relit le compte ouvert dans GOG Galaxy sur ce PC et le note dans la source « gog » du profil (vide s'il
+/// n'est pas sûr). Une écriture ratée ne gêne rien (la ligne « Galaxy sur un autre compte » attendra).
+async fn noter_compte_galaxy_du_pc(noyau: &Noyau, dossier: &std::path::Path) {
+    let travail = noyau.dossier.join("travail").join("galaxy-compte");
+    let compte = tauri::async_runtime::spawn_blocking(move || crate::boutiques::dossier_galaxy().and_then(|s| crate::boutiques::compte_galaxy_du_pc(&s, &travail))).await.ok().flatten().map(|g| g.compte).unwrap_or_default();
+    let r = crate::boutiques::modifier_source(dossier, "gog", |c| {
+        let Some(mut c) = c else { return Ok(None) };
+        c.compte_galaxy_pc = compte;
+        Ok(Some(c))
+    });
+    if let Err(e) = r {
+        noyau.journaliser(&format!("import GOG : compte de GOG Galaxy pas noté ({e})"));
+    }
+}
+
+// ───────────────────────────── GOG : ajouter et oublier un compte (lot C4b) ─────────────────────────────
+
+/// Ce que « ➕ Ajouter un compte GOG » a donné (lot C4b). `fait` faux : fenêtre fermée sans connexion (rien n'a changé).
+#[derive(Serialize, Clone, Debug, Default, PartialEq)]
+pub struct AjoutGog {
+    pub fait: bool,
+    pub cle: String,
+    /// Le pseudo GOG (vide : l'interface dit « Compte GOG n », `numero`).
+    pub nom: String,
+    pub numero: u32,
+    /// C'est le seul compte GOG du profil (le message ne dit pas « ton autre compte »).
+    pub premier: bool,
+    /// Un compte déjà là dont la connexion était perdue : reconnecté.
+    pub reconnexion: bool,
+    /// Ses jeux (bibliothèque de Galaxy) ; `partiel` : pas lue en entier pour l'instant.
+    pub jeux: usize,
+    pub partiel: bool,
+    pub nouveaux: usize,
+    pub nouveaux_installes: usize,
+    pub galaxy: bool,
+}
+
+/// Le dossier des navigateurs temporaires des ajouts de comptes GOG d'un profil.
+fn racine_ajouts_gog(dossier_profil: &std::path::Path) -> std::path::PathBuf {
+    dossier_profil.join("navigateurs-gog")
+}
+
+/// Un nom de dossier d'ajout : « ajout-<chiffres> ».
+fn nom_d_ajout_gog(n: &str) -> bool {
+    n.strip_prefix("ajout-").is_some_and(|h| !h.is_empty() && h.len() <= 30 && h.bytes().all(|c| c.is_ascii_digit()))
+}
+
+/// Un point d'analyse (lien symbolique, jonction) : jamais suivi ni effacé à travers.
+fn point_d_analyse(m: &std::fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if m.file_attributes() & 0x400 != 0 {
+            return true;
+        }
+    }
+    m.file_type().is_symlink()
+}
+
+/// Efface le dossier temporaire d'un ajout de compte GOG, AVEC PREUVE (testé) : un nom « ajout-<chiffres> », pas un
+/// point d'analyse (ni lui ni sa racine), son chemin canonisé directement SOUS `<profil>/navigateurs-gog/` ; puis
+/// relu : absent. `Ok` : effacé (ou déjà absent). Sinon la raison (WebView2 tient encore des fichiers…) : rien n'est
+/// forcé, la prochaine ouverture d'un ajout réessaie.
+pub(crate) fn effacer_ajout_gog(racine: &std::path::Path, d: &std::path::Path) -> Result<(), &'static str> {
+    if !d.file_name().and_then(|n| n.to_str()).is_some_and(nom_d_ajout_gog) {
+        return Err("nom-inattendu");
+    }
+    let m = match std::fs::symlink_metadata(d) {
+        Ok(m) => m,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(_) => return Err("illisible"),
+    };
+    if point_d_analyse(&m) || std::fs::symlink_metadata(racine).map_or(true, |r| point_d_analyse(&r)) || !m.is_dir() {
+        return Err("point-d-analyse");
+    }
+    let (Ok(rc), Ok(dc)) = (std::fs::canonicalize(racine), std::fs::canonicalize(d)) else { return Err("illisible") };
+    if dc.parent() != Some(rc.as_path()) {
+        return Err("hors-du-dossier");
+    }
+    let _ = std::fs::remove_dir_all(&dc);
+    if std::fs::symlink_metadata(d).is_ok() {
+        return Err("verrouille");
+    }
+    Ok(())
+}
+
+/// Efface les dossiers d'ajouts restés d'une fois précédente (WebView2 les tenait encore) ; jamais pendant un ajout.
+fn effacer_restes_ajouts_gog(noyau: &Noyau, racine: &std::path::Path) {
+    let Ok(l) = std::fs::read_dir(racine) else { return };
+    let (mut faits, mut restes) = (0, 0);
+    for e in l.flatten() {
+        if e.file_name().to_str().is_some_and(nom_d_ajout_gog) {
+            match effacer_ajout_gog(racine, &e.path()) {
+                Ok(()) => faits += 1,
+                Err(_) => restes += 1,
+            }
+        }
+    }
+    if faits + restes > 0 {
+        noyau.journaliser(&format!("ajout de compte GOG : {faits} dossier(s) temporaire(s) d'avant effacé(s), {restes} encore tenu(s)"));
+    }
+}
+
+/// Lot C4b (Seb 22/11) : « ➕ Ajouter un compte GOG ». La page officielle de connexion de GOG s'ouvre, MONTRÉE, en
+/// navigation privée, dans un dossier temporaire (rien n'est gardé : le jeton de renouvellement suffit ; dossier effacé
+/// avec preuve dès la fenêtre fermée). Le compte obtenu ne doit pas être déjà là (« Ce compte GOG est déjà dans
+/// Frogtend »), sauf un compte ajouté dont la connexion était perdue (reconnecté). Puis sa bibliothèque de Galaxy est
+/// lue et ses jeux entrent dans la ludothèque (se connecter vaut accord). Rien du compte n'est journalisé.
+#[tauri::command]
+pub async fn boutique_gog_ajouter_compte(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<AjoutGog> {
+    let Ok(_un_seul) = COMPTES_GOG.try_lock() else { return Err(Erreur::Refus(MOTIF_GOG_OCCUPE.into())) };
+    if app.get_webview_window(FENETRE_GOG_JEUX).is_some() {
+        return Err(Erreur::Refus(MOTIF_GOG_OCCUPE.into()));
+    }
+    let s = noyau.session().await?;
+    let p = s.profil.clone();
+    let dossier = dossier_profil_de(&noyau, &p.id);
+    let racine = racine_ajouts_gog(&dossier);
+    effacer_restes_ajouts_gog(&noyau, &racine);
+    let horodatage = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+    let donnees = racine.join(format!("ajout-{horodatage}"));
+    std::fs::create_dir_all(&donnees)?;
+    let f = FenetreGog { etiquette: FENETRE_GOG_AJOUT, donnees: donnees.clone(), montrer: true, ajout: true, attendu: String::new() };
+    let code = code_connexion_gog(&app, &noyau, &p.id, f).await;
+    // La fenêtre est fermée : son dossier part (WebView2 peut le tenir encore un instant : quelques essais).
+    let mut efface = Err("pas-essaye");
+    for _ in 0..8 {
+        efface = effacer_ajout_gog(&racine, &donnees);
+        if efface.is_ok() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+    if let Err(raison) = efface {
+        noyau.journaliser(&format!("ajout de compte GOG : dossier temporaire pas encore effacé ({raison}) ; nouvel essai au prochain ajout"));
+    }
+    let Some(code) = code? else {
+        noyau.journaliser("ajout de compte GOG : fenêtre fermée sans connexion");
+        return Ok(AjoutGog::default());
+    };
+    let j = crate::gog_galaxy::jetons_par_code(crate::gog_galaxy::AUTH, &code).await?;
+    drop(code);
+    let id = j.user_id.clone();
+    let comptes = crate::boutiques::lire_source(&dossier, "gog").map(|c| crate::boutiques::comptes_gog_lus(&c)).unwrap_or_default();
+    let secret = crate::boutiques::secret_gog_ajoute(&p.id, &id);
+    let existant = comptes.iter().find(|x| x.id_galaxy == id);
+    let reconnexion = match existant {
+        Some(x) if x.navigateur == crate::boutiques::NavigateurGog::Ajoute && !noyau.coffre.lire(&secret).is_ok_and(|s| s.is_some()) => true,
+        Some(_) => return Err(Erreur::Refus(crate::boutiques::MOTIF_GOG_DEJA_LA.into())),
+        None => false,
+    };
+    // Revue du lot C4b : le jeton vit sous un nom PROVISOIRE tant que la liste n'est pas écrite (jamais un `#<numéro>`
+    // existant écrasé, jamais un jeton rangé pour un compte qui n'est pas dans la liste).
+    let provisoire = secret_gog_provisoire(&p.id, "ajout");
+    noyau.coffre.ranger(&provisoire, &j.renouvellement).map_err(|_| Erreur::Coffre("Le coffre de Windows refuse la connexion de ce compte GOG : réessaie.".into()))?;
+    let ranges = existant.map(|x| x.jeux.clone()).unwrap_or_default();
+    let biblio = bibliotheque_gog(&noyau, &dossier, &provisoire, &id, j.acces, &[], &ranges).await;
+    let nom = pseudo_gog(&id).await;
+    let partiel = biblio.is_none();
+    let (jeux, fiches, ids) = match biblio {
+        Some(b) => (b.jeux, Some(b.fiches), Some(b.ids)),
+        None => (ranges, None, None),
+    };
+    let lu = crate::boutiques::LectureCompteGog { id_site: String::new(), id_galaxy: id.clone(), nom, jeux, ids_lus: ids, ancien_id_galaxy: None };
+    let quand = crate::noyau::maintenant();
+    let ecrit = crate::boutiques::modifier_source(&dossier, "gog", |c| {
+        let mut c = crate::boutiques::ajouter_compte_gog(c, &lu, reconnexion, &quand)?;
+        if let Some(f) = fiches {
+            crate::boutiques::fusionner_fiches_gog(&mut c, f);
+        }
+        Ok(Some(c))
+    });
+    let ecrit = match ecrit {
+        Ok(e) => e,
+        Err(e) => {
+            // Rien n'est écrit : le jeton provisoire part.
+            let _ = noyau.coffre.oublier(&provisoire);
+            return Err(e);
+        }
+    };
+    // La liste est écrite : le jeton prend son vrai nom (libre par construction), puis le nom provisoire part. Un jeton
+    // refusé pendant la lecture (oublié sous le nom provisoire) : le compte est « à reconnecter ».
+    if let Ok(Some(t)) = noyau.coffre.lire(&provisoire) {
+        if !ranger_si_libre(&noyau, &secret, &t) {
+            noyau.journaliser("ajout de compte GOG : le coffre de Windows refuse le jeton (compte à reconnecter)");
+        }
+    }
+    let _ = noyau.coffre.oublier(&provisoire);
+    let comptes = ecrit.map(|c| c.comptes_gog).unwrap_or_default();
+    let x = comptes.iter().find(|x| x.id_galaxy == id).cloned().unwrap_or_default();
+    let premier = comptes.len() == 1;
+    noyau.journaliser(&format!(
+        "ajout de compte GOG pour le profil {} : {} ({} jeu(x){})",
+        p.id,
+        if reconnexion { "reconnecté" } else { "ajouté" },
+        x.jeux.len(),
+        if partiel { ", bibliothèque pas lue en entier" } else { "" }
+    ));
+    noter_compte_galaxy_du_pc(&noyau, &dossier).await;
     let (l, nouveaux) = ranger_gog_importe(&noyau, &s, &dossier).await?;
     let galaxy = tauri::async_runtime::spawn_blocking(crate::boutiques_pc::galaxy_present).await.unwrap_or(false);
-    Ok(ImportGog { reconnecter: false, total, nouveaux_installes: nouveaux_installes("gog", &l, &nouveaux), nouveaux: nouveaux.len(), galaxy, bibliotheque_galaxy })
+    Ok(AjoutGog {
+        fait: true,
+        cle: x.cle(),
+        nom: x.nom.clone(),
+        numero: x.numero,
+        premier,
+        reconnexion,
+        jeux: x.jeux.len(),
+        partiel,
+        nouveaux: nouveaux.len(),
+        nouveaux_installes: nouveaux_installes("gog", &l, &nouveaux),
+        galaxy,
+    })
+}
+
+// Ce que « Oublier ce compte » GOG a fait (lot C4b) : le compte est TOUJOURS retiré de la liste ; son jeton n'est dit
+/// oublié que si le coffre l'a retiré ; le compte `Profil` : déconnexion du navigateur du profil (cookies gog.com
+/// seulement), dite seulement PROUVÉE par relecture.
+#[derive(Serialize, Clone, Debug, Default, PartialEq)]
+pub struct OubliGog {
+    pub profil: bool,
+    pub secret_oublie: bool,
+    pub navigateur_deconnecte: bool,
+}
+
+/// Lot C4b : « Oublier ce compte » GOG. La liste est réécrite D'ABORD (le compte n'est plus lu), PUIS son jeton quitte le
+/// coffre ; le compte `Profil` : puis les seuls cookies de gog.com du navigateur du profil (Epic, Amazon, PlayStation y
+/// vivent : jamais tout le navigateur). Les cartes de la ludothèque et les jeux installés ne bougent pas.
+#[tauri::command]
+pub async fn boutique_gog_oublier_compte(app: AppHandle, noyau: State<'_, Noyau>, cle: String) -> Resultat<OubliGog> {
+    if cle.is_empty() || cle.len() > 40 || !cle.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err(Erreur::Refus("Compte GOG invalide.".into()));
+    }
+    let Ok(_un_seul) = COMPTES_GOG.try_lock() else { return Err(Erreur::Refus(MOTIF_GOG_OCCUPE.into())) };
+    let p = profil_ouvert(&noyau).await?;
+    let dossier = dossier_profil_de(&noyau, &p.id);
+    let comptes = crate::boutiques::lire_source(&dossier, "gog").map(|c| crate::boutiques::comptes_gog_lus(&c)).unwrap_or_default();
+    let x = comptes.iter().find(|x| x.cle() == cle).ok_or_else(|| Erreur::Introuvable("Ce compte GOG n'est plus dans Frogtend.".into()))?;
+    // Les refus D'ABORD : le compte `Profil` ne s'oublie pas pendant qu'une fenêtre de GOG tient son navigateur.
+    if x.navigateur == crate::boutiques::NavigateurGog::Profil && [FENETRE_GOG, FENETRE_GOG_JEUX, FENETRE_GOG_GALAXY].iter().any(|e| app.get_webview_window(e).is_some()) {
+        return Err(Erreur::Refus("Termine d'abord ce qui se passe dans la fenêtre de GOG (connexion ou jeu offert), puis réessaie.".into()));
+    }
+    let mut oublie = None;
+    crate::boutiques::modifier_source(&dossier, "gog", |c| {
+        let (c, x) = crate::boutiques::oublier_compte_gog(c, &cle)?;
+        oublie = Some(x);
+        Ok(Some(c))
+    })?;
+    let x = oublie.ok_or_else(|| Erreur::Introuvable("Ce compte GOG n'est plus dans Frogtend.".into()))?;
+    let profil = x.navigateur == crate::boutiques::NavigateurGog::Profil;
+    let secret_oublie = if !profil && x.id_galaxy.is_empty() { true } else { noyau.coffre.oublier(&crate::boutiques::secret_compte_gog(&p.id, x.navigateur, &x.id_galaxy)).is_ok() };
+    noyau.journaliser(&format!(
+        "compte GOG oublié pour le profil {} ({}) ; jeton {} ; ses jeux restent dans la ludothèque",
+        p.id,
+        if profil { "compte du navigateur" } else { "compte ajouté" },
+        if secret_oublie { "retiré du coffre" } else { "PAS retiré du coffre" }
+    ));
+    let mut r = OubliGog { profil, secret_oublie, navigateur_deconnecte: false };
+    if profil {
+        r.navigateur_deconnecte = match deconnecter_navigateur_gog(&app, &noyau, &dossier).await {
+            Ok(v) => v,
+            Err(e) => {
+                noyau.journaliser(&format!("oubli GOG : déconnexion du navigateur impossible ({e})"));
+                false
+            }
+        };
+    }
+    Ok(r)
+}
+
+/// Lot C4b : efface les SEULS cookies de gog.com du navigateur du profil (`boutiques::domaine_gog`), pour que la
+/// session suivante demande vraiment un compte. Jamais le dossier entier ni `clear_all_browsing_data` : Epic, Amazon et
+/// PlayStation y vivent. Une fenêtre CACHÉE sur `about:blank`, sous l'étiquette de la lecture des jeux GOG (jamais les
+/// deux à la fois) ; seule la RELECTURE prouve (plus aucun cookie gog.com, 3 passes au plus). Jamais une valeur lue,
+/// journalisée ni rendue.
+async fn deconnecter_navigateur_gog(app: &AppHandle, noyau: &Noyau, dossier: &std::path::Path) -> Resultat<bool> {
+    use crate::boutiques::{domaine_gog, CookieSansValeur};
+    if !crate::gratuits::dossier_navigateur(dossier).is_dir() {
+        noyau.journaliser("oubli GOG : pas de navigateur pour ce profil, rien à effacer");
+        return Ok(true);
+    }
+    let vide = tauri::Url::parse("about:blank").map_err(|_| Erreur::Refus("Adresse invalide.".into()))?;
+    let w = tauri::WebviewWindowBuilder::new(app, FENETRE_GOG_JEUX, tauri::WebviewUrl::External(vide))
+        .title("GOG — Frogtend")
+        .inner_size(400.0, 300.0)
+        .visible(false)
+        .focused(false)
+        .skip_taskbar(true)
+        .data_directory(crate::gratuits::dossier_navigateur(dossier))
+        .on_new_window(crate::gratuits::fenetre_d_automatisation)
+        .on_navigation(|u| u.as_str() == "about:blank")
+        .build()
+        .map_err(|_| Erreur::Refus("La déconnexion de GOG dans Frogtend n'a pas pu commencer (une fenêtre de GOG est encore ouverte).".into()))?;
+    // `cookies()` se bloque sur le fil principal sous Windows (documentation de tauri 2.12) : dans un fil à part.
+    let lire = |w: tauri::WebviewWindow| async move {
+        tauri::async_runtime::spawn_blocking(move || {
+            w.cookies().map(|l| {
+                l.iter()
+                    .map(|c| CookieSansValeur {
+                        nom: c.name().to_string(),
+                        domaine: c.domain().unwrap_or("").to_string(),
+                        chemin: c.path().filter(|p| p.starts_with('/')).unwrap_or("/").to_string(),
+                    })
+                    .collect::<Vec<_>>()
+            })
+        })
+        .await
+        .ok()
+        .and_then(|r| r.ok())
+    };
+    let mut prouve = false;
+    let mut restants = None;
+    for passe in 0..4 {
+        let Some(lus) = lire(w.clone()).await else { break };
+        let a_effacer: Vec<CookieSansValeur> = lus.into_iter().filter(|c| domaine_gog(&c.domaine)).collect();
+        restants = Some(a_effacer.len());
+        if a_effacer.is_empty() {
+            prouve = true;
+            break;
+        }
+        if passe == 3 {
+            break;
+        }
+        let _ = w.with_webview(move |pw| effacer_cookies_webview2(&pw, &a_effacer));
+        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+    }
+    let _ = w.close();
+    noyau.journaliser(&format!(
+        "oubli GOG : navigateur {} ({} cookie(s) gog.com restant(s))",
+        if prouve { "déconnecté de GOG" } else { "PAS déconnecté de GOG" },
+        restants.map_or("illisibles".to_string(), |n| n.to_string())
+    ));
+    Ok(prouve)
 }
 
 /// Range la liste du compte GOG (déjà écrite) dans la ludothèque de la session `s` (prise au DÉBUT de l'import), avec
@@ -7774,13 +8483,15 @@ pub async fn boutique_galaxy_importer(noyau: State<'_, Noyau>) -> Resultat<Vec<c
     let storage = crate::boutiques::dossier_galaxy().ok_or_else(|| Erreur::Introuvable("GOG Galaxy n'est pas installé sur ce PC (ou n'a jamais été ouvert).".into()))?;
     let travail = noyau.dossier.join("travail").join("galaxy");
     let t2 = travail.clone();
-    let jeux = tauri::async_runtime::spawn_blocking(move || crate::boutiques::lire_galaxy(&storage, &t2))
+    let jeux = tauri::async_runtime::spawn_blocking(move || crate::boutiques::lire_galaxy_et_compte(&storage, &t2))
         .await
         .map_err(|_| Erreur::Disque("La lecture de GOG Galaxy s'est arrêtée brutalement.".into()));
     // La copie de la base ne reste pas, même si la lecture a échoué : elle contient les données du compte.
     let _ = std::fs::remove_dir_all(&travail);
-    let jeux = jeux??;
-    let c = crate::boutiques::CompteBoutique { compte: "GOG Galaxy".into(), steamid: String::new(), maj_le: crate::noyau::maintenant(), jeux, ..Default::default() };
+    let (jeux, compte) = jeux??;
+    // Lot C4b : le compte ouvert dans Galaxy (seulement s'il est sûr : un seul compte dans sa base), pour dire quand il
+    // n'est aucun des comptes GOG de Frogtend.
+    let c = crate::boutiques::CompteBoutique { compte: "GOG Galaxy".into(), steamid: String::new(), maj_le: crate::noyau::maintenant(), jeux, id_compte: compte.unwrap_or_default(), ..Default::default() };
     crate::boutiques::ecrire_source(&dossier_profil_de(&noyau, &p.id), "galaxy", Some(&c))?;
     noyau.journaliser(&format!("import GOG Galaxy : {} jeu(x) pour le profil {}", c.jeux.len(), p.id));
     noyau.ranger_boutique("galaxy", &c.jeux).await?;
@@ -10334,6 +11045,213 @@ pub async fn restauration_conflits(noyau: State<'_, Noyau>) -> Resultat<Vec<crat
 
 #[cfg(test)]
 mod tests {
+    use crate::boutiques::{ajouter_compte_gog, appliquer_import_gog_profil, ecrire_source, JeuBoutique, LectureCompteGog};
+
+    fn jg(id: &str) -> JeuBoutique {
+        JeuBoutique { id: id.into(), nom: id.into(), minutes: 0, derniere: 0, installe: false, plateforme: "gog".into(), image: None, dossier: None, pret: None, succes: None, releases: vec![], titre_douteux: false }
+    }
+
+    /// Un profil de test avec deux comptes GOG : le compte Profil (« 4200 », jeux 1 et 2) et un compte ajouté (« 7700 »,
+    /// « Seb », jeux 2 et 9).
+    fn deux_comptes_gog(d: &std::path::Path) -> crate::boutiques::CompteBoutique {
+        let lu = |site: &str, galaxy: &str, nom: Option<&str>, jeux: &[&str]| LectureCompteGog {
+            id_site: site.into(),
+            id_galaxy: galaxy.into(),
+            nom: nom.map(String::from),
+            jeux: jeux.iter().map(|i| jg(i)).collect(),
+            ids_lus: None,
+            ancien_id_galaxy: None,
+        };
+        let (c, _) = appliquer_import_gog_profil(None, "", &lu("42", "4200", None, &["gog_1", "gog_2"]), "2026-11-22T10:00:00").unwrap();
+        let c = ajouter_compte_gog(Some(c), &lu("", "7700", Some("Seb"), &["gog_2", "gog_9"]), false, "2026-11-22T11:00:00").unwrap();
+        ecrire_source(d, "gog", Some(&c)).unwrap();
+        c
+    }
+
+    /// Lot C4b : l'état des comptes (le compte Profil d'abord, total réuni, compte ajouté sans jeton « à reconnecter »).
+    #[test]
+    fn l_etat_gog_liste_les_comptes_sans_numero_affiche() {
+        let d = tempfile::tempdir().unwrap();
+        let c = deux_comptes_gog(d.path());
+        let e = super::etat_gog(Some(&c), |id| id == "7700");
+        assert!(e.connu);
+        assert_eq!(e.nb_jeux, 3, "le jeu commun ne compte qu'une fois");
+        assert_eq!(e.maj_le.as_deref(), Some("2026-11-22T11:00:00"));
+        assert_eq!(e.comptes.iter().map(|x| (x.cle.as_str(), x.nom.as_str(), x.profil, x.nb_jeux, x.reconnecter)).collect::<Vec<_>>(), [("4200", "", true, 2), ("7700", "Seb", false, 2)].map(|(a, b, c, d)| (a, b, c, d, false)));
+        assert!(super::etat_gog(Some(&c), |_| false).comptes[1].reconnecter, "jeton absent : à reconnecter");
+        assert!(!super::etat_gog(Some(&c), |_| false).comptes[0].reconnecter, "le compte Profil se reconnecte par sa session");
+        assert!(!e.galaxy_autre_compte);
+        let mut g = c.clone();
+        g.compte_galaxy_pc = "123".into();
+        assert!(super::etat_gog(Some(&g), |_| true).galaxy_autre_compte, "Galaxy sur un compte inconnu de Frogtend");
+        g.compte_galaxy_pc = "7700".into();
+        assert!(!super::etat_gog(Some(&g), |_| true).galaxy_autre_compte);
+        let vide = super::etat_gog(None, |_| true);
+        assert!(!vide.connu && vide.comptes.is_empty() && vide.nb_jeux == 0);
+    }
+
+    /// Lot C4b : les cartes GOG réunissent les comptes ; un jeu installé reste même s'il n'est à aucun compte.
+    #[test]
+    fn les_cartes_gog_reunissent_tous_les_comptes() {
+        let d = tempfile::tempdir().unwrap();
+        deux_comptes_gog(d.path());
+        let mut installe = jg("gog_55");
+        installe.installe = true;
+        let l = super::cartes_gog(d.path(), &[installe]);
+        let mut ids: Vec<&str> = l.iter().map(|j| j.id.as_str()).collect();
+        ids.sort();
+        assert_eq!(ids, ["gog_1", "gog_2", "gog_55", "gog_9"]);
+    }
+
+    /// Lot C4b : un jeu du seul compte ajouté, quand Galaxy est sur le compte Profil, ne s'installe pas par Galaxy (le
+    /// message nomme le compte) et se lance par le registre ; au moindre doute, le chemin habituel.
+    #[test]
+    fn un_jeu_d_un_autre_compte_que_celui_de_galaxy_est_dit() {
+        let d = tempfile::tempdir().unwrap();
+        let c = deux_comptes_gog(d.path());
+        let comptes = crate::boutiques::comptes_gog_lus(&c);
+        let g = |compte: &str, cles: &[&str]| crate::boutiques::CompteGalaxyPc { compte: compte.into(), cles: cles.iter().map(|c| c.to_string()).collect() };
+        assert_eq!(super::avertissement_installation_hors_galaxy(&comptes, &g("", &[]), "9"), None, "compte de Galaxy inconnu : rien d'affirmé");
+        let m = super::avertissement_installation_hors_galaxy(&comptes, &g("4200", &["gog_1", "gog_2"]), "9").unwrap();
+        assert_eq!(m, "Ce jeu est sur ton autre compte GOG « Seb ». GOG Galaxy semble ouvert sur un autre compte : pour l'installer, change de compte dans Galaxy.");
+        assert!(!m.contains("7700"), "jamais le numéro");
+        assert_eq!(super::avertissement_installation_hors_galaxy(&comptes, &g("4200", &[]), "2"), None, "jeu des deux comptes : Galaxy l'a");
+        assert_eq!(super::avertissement_installation_hors_galaxy(&comptes, &g("4200", &[]), "1"), None);
+        assert_eq!(super::avertissement_installation_hors_galaxy(&comptes, &g("4200", &["gog_9"]), "9"), None, "la bibliothèque complète de Galaxy l'a (jeu caché)");
+        // Galaxy sur le compte ajouté : un jeu du compte Profil (sans pseudo) est nommé par son numéro rangé.
+        assert!(super::avertissement_installation_hors_galaxy(&comptes, &g("7700", &[]), "1").unwrap().contains("« Compte GOG 1 »"));
+        // La base de Galaxy n'est relue que si la question a un sens (tous les numéros Galaxy connus, jeu d'un compte).
+        assert!(super::question_galaxy_utile(&comptes, "9"));
+        assert!(!super::question_galaxy_utile(&comptes, "12345"));
+        let mut sans = comptes.clone();
+        sans[1].id_galaxy.clear();
+        assert!(!super::question_galaxy_utile(&sans, "9"));
+        assert!(!super::question_galaxy_utile(&[], "9"));
+    }
+
+    fn noyau_memoire() -> (tempfile::TempDir, crate::noyau::Noyau) {
+        let d = tempfile::tempdir().unwrap();
+        let n = crate::noyau::Noyau::nouveau(d.path(), Box::new(crate::coffre::CoffreMemoire::default())).unwrap();
+        (d, n)
+    }
+
+    /// Revue du lot C4b : avant un changement de compte, le jeton du nom principal est mis à l'abri sous le nom de SON
+    /// compte, retrouvé par GOG (jamais déduit de la liste) ; un nom existant n'est jamais écrasé ; GOG injoignable :
+    /// rien ne bouge.
+    #[tokio::test]
+    async fn le_jeton_du_navigateur_est_mis_a_l_abri_sous_son_vrai_compte() {
+        use httpmock::prelude::*;
+        let (_d, n) = noyau_memoire();
+        let principal = crate::boutiques::nom_secret("p1", crate::gog_galaxy::SECRET);
+        let s = MockServer::start_async().await;
+        s.mock_async(|w, t| {
+            w.method(GET).path("/token").query_param("refresh_token", "JETON-A");
+            t.status(200).json_body(serde_json::json!({"access_token": "X", "refresh_token": "JETON-A2", "user_id": "4200"}));
+        })
+        .await;
+        s.mock_async(|w, t| {
+            w.method(GET).path("/token").query_param("refresh_token", "MORT");
+            t.status(401);
+        })
+        .await;
+        s.mock_async(|w, t| {
+            w.method(GET).path("/token").query_param("refresh_token", "PANNE");
+            t.status(500);
+        })
+        .await;
+        n.coffre.ranger(&principal, "JETON-A").unwrap();
+        assert_eq!(super::abriter_jeton_profil(&n, "p1", &s.base_url()).await.unwrap().as_deref(), Some("4200"));
+        assert_eq!(n.coffre.lire(&crate::boutiques::secret_gog_ajoute("p1", "4200")).unwrap().as_deref(), Some("JETON-A2"));
+        assert_eq!(n.coffre.lire(&principal).unwrap().as_deref(), Some("JETON-A2"));
+        // Un nom `#4200` déjà là n'est jamais écrasé.
+        n.coffre.ranger(&crate::boutiques::secret_gog_ajoute("p1", "4200"), "DEJA").unwrap();
+        n.coffre.ranger(&principal, "JETON-A").unwrap();
+        super::abriter_jeton_profil(&n, "p1", &s.base_url()).await.unwrap();
+        assert_eq!(n.coffre.lire(&crate::boutiques::secret_gog_ajoute("p1", "4200")).unwrap().as_deref(), Some("DEJA"));
+        // GOG injoignable : erreur, le jeton reste tel quel.
+        n.coffre.ranger(&principal, "PANNE").unwrap();
+        assert!(super::abriter_jeton_profil(&n, "p1", &s.base_url()).await.is_err());
+        assert_eq!(n.coffre.lire(&principal).unwrap().as_deref(), Some("PANNE"));
+        // Jeton refusé par GOG : il ne vaut plus rien, oublié.
+        n.coffre.ranger(&principal, "MORT").unwrap();
+        assert_eq!(super::abriter_jeton_profil(&n, "p1", &s.base_url()).await.unwrap(), None);
+        assert_eq!(n.coffre.lire(&principal).unwrap(), None);
+        // Sans jeton : rien.
+        assert_eq!(super::abriter_jeton_profil(&n, "p1", &s.base_url()).await.unwrap(), None);
+    }
+
+    /// Revue du lot C4b : après l'écriture de la liste seulement, le jeton provisoire prend le nom principal et le nom du
+    /// compte fondu est oublié ; un compte ajouté en double donne son jeton au nom principal s'il n'en a pas.
+    #[test]
+    fn les_jetons_prennent_leur_nom_apres_l_ecriture_seulement() {
+        let (_d, n) = noyau_memoire();
+        let principal = crate::boutiques::nom_secret("p1", crate::gog_galaxy::SECRET);
+        let provisoire = super::secret_gog_provisoire("p1", "navigateur");
+        let b = crate::boutiques::secret_gog_ajoute("p1", "7700");
+        n.coffre.ranger(&principal, "A").unwrap();
+        n.coffre.ranger(&provisoire, "B").unwrap();
+        n.coffre.ranger(&b, "B").unwrap();
+        super::poser_jetons_apres_ecriture(&n, "p1", Some(&provisoire), Some("7700"));
+        assert_eq!(n.coffre.lire(&principal).unwrap().as_deref(), Some("B"));
+        assert_eq!(n.coffre.lire(&provisoire).unwrap(), None);
+        assert_eq!(n.coffre.lire(&b).unwrap(), None, "un seul jeton par compte");
+        // Le nouveau compte n'a pas de jeton : le nom principal (celui de l'ancien, déjà à l'abri) est vidé.
+        super::poser_jetons_apres_ecriture(&n, "p1", Some(&provisoire), None);
+        assert_eq!(n.coffre.lire(&principal).unwrap(), None);
+        // Même compte ajouté en double, nom principal vide : son jeton y passe.
+        n.coffre.ranger(&b, "B2").unwrap();
+        super::poser_jetons_apres_ecriture(&n, "p1", None, Some("7700"));
+        assert_eq!(n.coffre.lire(&principal).unwrap().as_deref(), Some("B2"));
+        assert_eq!(n.coffre.lire(&b).unwrap(), None);
+        // Nom principal déjà là : jamais écrasé par le double.
+        n.coffre.ranger(&b, "B3").unwrap();
+        super::poser_jetons_apres_ecriture(&n, "p1", None, Some("7700"));
+        assert_eq!(n.coffre.lire(&principal).unwrap().as_deref(), Some("B2"));
+        assert!(super::ranger_si_libre(&n, &principal, "Z") && n.coffre.lire(&principal).unwrap().as_deref() == Some("B2"));
+    }
+
+    /// Lot C4b : le dossier temporaire d'un ajout ne s'efface qu'avec preuve (nom, place, pas de lien).
+    #[test]
+    fn le_dossier_d_un_ajout_gog_s_efface_seulement_avec_preuve() {
+        let d = tempfile::tempdir().unwrap();
+        let racine = super::racine_ajouts_gog(d.path());
+        let ajout = racine.join("ajout-1795400000000");
+        std::fs::create_dir_all(ajout.join("EBWebView").join("Default")).unwrap();
+        std::fs::write(ajout.join("EBWebView").join("Default").join("Cookies"), b"x").unwrap();
+        assert_eq!(super::effacer_ajout_gog(&racine, &ajout), Ok(()));
+        assert!(!ajout.exists());
+        assert_eq!(super::effacer_ajout_gog(&racine, &ajout), Ok(()), "déjà absent");
+        // Un autre nom, ou un dossier hors de la racine : jamais.
+        let autre = racine.join("navigateur");
+        std::fs::create_dir_all(&autre).unwrap();
+        assert_eq!(super::effacer_ajout_gog(&racine, &autre), Err("nom-inattendu"));
+        let dehors = d.path().join("ajout-12");
+        std::fs::create_dir_all(&dehors).unwrap();
+        assert_eq!(super::effacer_ajout_gog(&racine, &dehors), Err("hors-du-dossier"));
+        assert!(autre.exists() && dehors.exists());
+        assert!(!super::nom_d_ajout_gog("ajout-") && !super::nom_d_ajout_gog("ajout-1a") && super::nom_d_ajout_gog("ajout-1"));
+    }
+
+    /// Lot C4b : une jonction nommée « ajout-… » vers un autre dossier n'est jamais suivie (le dossier visé reste).
+    #[cfg(windows)]
+    #[test]
+    fn une_jonction_d_ajout_gog_n_est_jamais_suivie() {
+        let d = tempfile::tempdir().unwrap();
+        let racine = super::racine_ajouts_gog(d.path());
+        std::fs::create_dir_all(&racine).unwrap();
+        let cible = d.path().join("precieux");
+        std::fs::create_dir_all(&cible).unwrap();
+        std::fs::write(cible.join("sauvegarde.sav"), b"x").unwrap();
+        let jonction = racine.join("ajout-7");
+        let ok = std::process::Command::new("cmd").args(["/C", "mklink", "/J"]).arg(&jonction).arg(&cible).output().is_ok_and(|o| o.status.success());
+        if !ok {
+            return;
+        }
+        assert_eq!(super::effacer_ajout_gog(&racine, &jonction), Err("point-d-analyse"));
+        assert!(cible.join("sauvegarde.sav").is_file());
+        let _ = std::fs::remove_dir(&jonction);
+    }
+
     #[test]
     fn jouer_ou_installer_un_jeu_de_boutique_dit_le_lanceur_absent_et_valide_la_cle() {
         use crate::boutiques_pc::Action;

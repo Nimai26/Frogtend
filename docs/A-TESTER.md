@@ -6,6 +6,24 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🟣 Plusieurs comptes GOG (0.219.0, lot C4b)
+- [ ] 1. 🛒 Boutiques ▸ 🟣 Mon compte GOG : ton compte actuel est une ligne (pseudo ou « Compte GOG 1 », environ 88
+      jeux, « celui du jeu offert ») ; AUCUN numéro affiché.
+- [ ] 2. « ➕ Ajouter un compte GOG », te connecter avec le compte de GOG Galaxy (Google). Si Google refuse : le message
+      « définis un mot de passe sur gog.com » apparaît.
+- [ ] 3. Après l'ajout : « ✅ Compte GOG « … » ajouté », environ 197 jeux ; Cyberpunk et Horizon avec leur jaquette, une
+      seule carte chacun ; la ligne « GOG Galaxy est ouvert sur un autre compte » disparaît.
+- [ ] 4. Ajouter le même compte une 2e fois : « Ce compte GOG est déjà dans Frogtend ».
+- [ ] 5. « 🔄 Mettre à jour mes jeux GOG » : UN seul message ; fermer et rouvrir Frogtend : aucune fausse « connexion
+      expirée ».
+- [ ] 6. « ⬇ Installer » un jeu du compte Hotmail : fenêtre « Installer avec GOG Galaxy ? » ; « Annuler » ne fait rien ;
+      même essai à la manette dans Taodbox.
+- [ ] 7. « ▶ Jouer » un jeu installé du compte Galaxy : il se lance comme avant, par Galaxy.
+- [ ] 8. « Oublier » le compte ajouté : confirmation, message, le focus va sur « ➕ Ajouter » ; les jeux restent ; puis
+      le rajouter.
+- [ ] 9. Le journal (« import GOG ») : aucun pseudo, aucun jeton, aucun numéro de compte ; plus de dossier
+      `navigateurs-gogjout-…` dans le profil.
+
 ## 🟣 GOG comme dans GOG Galaxy (0.218.0, lot C5)
 - [ ] 1. Ouvrir Frogtend (déjà connecté à GOG) : dans les minutes qui suivent (la première fois, Frogtend lit la fiche
       de chaque jeu : jusqu'à ~3 minutes ; s'il n'a pas fini, il continue à l'ouverture suivante), un message « 🎮 N jeux

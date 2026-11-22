@@ -532,6 +532,11 @@ impl Noyau {
             self.coffre.oublier(&crate::boutiques::nom_secret(id, boutique))?;
         }
         let dossier = self.dossier_profil(id);
+        // Lot C4b : les jetons des comptes GOG ajoutés, lus dans sa liste AVANT que son dossier parte.
+        let comptes = crate::boutiques::lire_source(&dossier, "gog").map(|c| crate::boutiques::comptes_gog_lus(&c)).unwrap_or_default();
+        for c in comptes.iter().filter(|c| !c.id_galaxy.is_empty()) {
+            self.coffre.oublier(&crate::boutiques::secret_gog_ajoute(id, &c.id_galaxy))?;
+        }
         // Vérifier ce qu'on supprime : uniquement le dossier de CE profil, sous le dossier de l'application.
         if dossier.starts_with(self.dossier.join("profils")) && dossier.is_dir() {
             std::fs::remove_dir_all(&dossier)?;
@@ -2647,15 +2652,21 @@ mod tests {
             n.synchroniser(|_, _| {}).await.unwrap();
         }
         // Les clés de ses comptes (Steam, RetroAchievements) partent avec lui ; celles de Léa restent.
-        for b in ["steam", "retroachievements", "retroachievements-jeton", "nexus", "gog-renouvellement"] {
+        for b in ["steam", "retroachievements", "retroachievements-jeton", "nexus", "gog-renouvellement", "gog-renouvellement#7700"] {
             n.coffre.ranger(&crate::boutiques::nom_secret(&seb, b), "cle").unwrap();
             n.coffre.ranger(&crate::boutiques::nom_secret(&lea, b), "cle").unwrap();
         }
+        // Lot C4b : un compte GOG ajouté chez Seb (son jeton `#7700`) part aussi ; celui de Léa reste.
+        for (p, site) in [(&seb, "42"), (&lea, "43")] {
+            let (c, _) = crate::boutiques::appliquer_import_gog_profil(None, "", &crate::boutiques::LectureCompteGog { id_site: site.into(), id_galaxy: format!("{site}00"), ..Default::default() }, "t").unwrap();
+            let c = crate::boutiques::ajouter_compte_gog(Some(c), &crate::boutiques::LectureCompteGog { id_galaxy: "7700".into(), ..Default::default() }, false, "t").unwrap();
+            crate::boutiques::ecrire_source(&d.path().join("profils").join(p), "gog", Some(&c)).unwrap();
+        }
         assert!(n.supprimer_profil(&seb, Some("0000")).await.is_err());
         n.supprimer_profil(&seb, Some("1234")).await.unwrap();
-        for b in ["steam", "retroachievements", "retroachievements-jeton", "nexus", "gog-renouvellement"] {
-            assert!(n.coffre.lire(&crate::boutiques::nom_secret(&seb, b)).unwrap().is_none());
-            assert!(n.coffre.lire(&crate::boutiques::nom_secret(&lea, b)).unwrap().is_some());
+        for b in ["steam", "retroachievements", "retroachievements-jeton", "nexus", "gog-renouvellement", "gog-renouvellement#7700"] {
+            assert!(n.coffre.lire(&crate::boutiques::nom_secret(&seb, b)).unwrap().is_none(), "{b}");
+            assert!(n.coffre.lire(&crate::boutiques::nom_secret(&lea, b)).unwrap().is_some(), "{b}");
         }
         assert!(!d.path().join("profils").join(&seb).exists());
         assert!(d.path().join("profils").join(&lea).join("simule").join("ludotheque.db").exists());

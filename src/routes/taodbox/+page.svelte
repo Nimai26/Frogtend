@@ -23,6 +23,7 @@
   import { adresseImageBoutique } from '$lib/api';
   import { lireSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
   import { gog } from '$lib/boutiques/gog.svelte';
+  import { confirmerInstallationGog } from '$lib/boutiques/installation-gog';
   import { galaxy, lireGalaxy, ouvrirDansGalaxy } from '$lib/boutiques/galaxy.svelte';
   import { adresseImageParUrl, adresseFondDuJeu, adresseLogoDuJeu } from '$lib/api';
   import { apresRepos, assezGrandPourUnFond, idDuFocus } from '$lib/taodbox/fond';
@@ -205,6 +206,8 @@
    * Le jeu devient jouable à la relecture suivante des boutiques (ouverture du profil). */
   async function installerParLaBoutique(c: CarteAInstallerTaodbox) {
     if (lancementImpossible()) return;
+    // Lot C4b : un jeu d'un autre compte GOG que celui ouvert dans Galaxy : averti avant (fenêtre maison, manette).
+    if (c.boutique === 'gog' && !(await confirmerInstallationGog(c.cle))) return;
     toast(messageInstallationCanape(c.boutique), 'neutre');
     try {
       await api.boutiqueOuvrir(c.boutique, c.cle, 'installer');

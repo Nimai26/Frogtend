@@ -1,7 +1,7 @@
 <script lang="ts">
   // « Mes boutiques » (lot 9) : les jeux possédés sur les comptes de la personne (Steam d'abord). Ils restent dans son
   // Frogtend et ne remontent jamais dans Firehouse. Jouer et installer passent par la boutique elle-même.
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { adresseImageBoutique, adresseImageParUrl, duree, type JeuBoutique } from '$lib/api';
   import { galaxy, importerGalaxy, lireGalaxy, nomPlateforme, ouvrirDansGalaxy } from '$lib/boutiques/galaxy.svelte';
   import { connexion, connexionEpic, verifierEpic, connexionPlaystation, gratuits, lireGratuits, obtenir, obtenirTout, recolterPsPlus, recuperer } from '$lib/boutiques/gratuits.svelte';
@@ -9,7 +9,37 @@
   import { connecteASteam, connexionSteam, connexionSteamExpiree, importerSteam, importSteamEnCours, libelleCompteSecours, lireSteam, mettreAJourSteam, oublierSteam, ouvrirDansSteam, steam } from '$lib/boutiques/steam.svelte';
   import { boutiquesPc, lireEtatsPc, relireMaintenant } from '$lib/boutiques/boutiques-pc.svelte';
   import { ligneEtat } from '$lib/boutiques/jeu-boutique';
-  import { connecteAGog, connexionGog, connexionGogExpiree, gog, gogOccupe, importGogEnCours, lireGog, listeGogPartielle, MESSAGE_GOG_PARTIEL, mettreAJourGog } from '$lib/boutiques/gog.svelte';
+  import {
+    ajouterCompteGog,
+    connecteAGog,
+    connexionGog,
+    connexionGogExpiree,
+    gog,
+    gogOccupe,
+    importGogEnCours,
+    comptesGogAffiches,
+    etatLectureCompteGog,
+    ligneCompteGog,
+    nombreDeJeux,
+    lireGog,
+    listeGogPartielle,
+    MESSAGE_GALAXY_AUTRE_COMPTE,
+    MESSAGE_GOG_PARTIEL,
+    mettreAJourGog,
+    oublierCompteGog,
+  } from '$lib/boutiques/gog.svelte';
+  import type { CompteGogEtat } from '$lib/api';
+
+  // Lot C4b : les comptes GOG du profil (celui du navigateur d'abord) ; après un oubli, le focus va à « ➕ Ajouter un
+  // compte GOG » (la ligne disparaît).
+  // (Seulement ceux du profil ouvert : jamais l'état lu pour un autre profil.)
+  const comptesGog = $derived(comptesGogAffiches());
+  let boutonAjouterGog = $state<HTMLButtonElement | null>(null);
+  async function oublierGog(c: CompteGogEtat, i: number) {
+    if (!(await oublierCompteGog(c, i))) return;
+    await tick();
+    boutonAjouterGog?.focus();
+  }
 
   let filtre = $state('');
   let seulementInstalles = $state(false);
@@ -182,7 +212,7 @@
          Clavier et souris : pas dans Taodbox. Le bouton de mise à jour garde le focus pendant la lecture (aria-disabled,
          et le gardien ignore le clic). -->
     <div class="tete psplus">
-      <h3>🟣 Mon compte GOG</h3>
+      <h3>🟣 {comptesGog.length > 1 ? 'Mes comptes GOG' : 'Mon compte GOG'}</h3>
       <span class="muted">sur sa page officielle ; ton mot de passe reste chez GOG</span>
       <span class="espace"></span>
       <!-- Les boutons GOG gardent le focus quand ils attendent (aria-disabled ; le gardien est dans connexionGog et dans
@@ -192,22 +222,61 @@
         <button class="btn primary" aria-disabled={gogOccupe()} onclick={connexionGog}>{gog.connexionEnCours ? 'Ouverture…' : '🔑 Me reconnecter à GOG'}</button>
       {:else if connecteAGog()}
         <span class="tag ok">✅ Connecté à GOG</span>
-        <button class="btn primary" aria-disabled={gogOccupe()} onclick={() => !gogOccupe() && mettreAJourGog('main')}>
-          {importGogEnCours() ? 'Lecture…' : '🔄 Mettre à jour mes jeux GOG'}
-        </button>
-        <!-- « Changer de compte » viendra avec le lot C4b. -->
-        <button class="btn petit" aria-disabled={gogOccupe()} onclick={connexionGog}>Me reconnecter</button>
       {:else}
         <button class="btn" aria-disabled={gogOccupe()} onclick={connexionGog}>{gog.connexionEnCours ? 'Ouverture…' : '🔑 Se connecter à GOG'}</button>
       {/if}
+      {#if connecteAGog() || comptesGog.length}
+        <!-- Lot C4b : relit TOUS les comptes GOG du profil, l'un après l'autre. -->
+        <button class="btn primary" aria-disabled={gogOccupe()} onclick={() => !gogOccupe() && mettreAJourGog('main')}>
+          {importGogEnCours() ? 'Lecture…' : '🔄 Mettre à jour mes jeux GOG'}
+        </button>
+      {/if}
+      {#if connecteAGog() && !connexionGogExpiree()}
+        <button class="btn petit" aria-disabled={gogOccupe()} onclick={connexionGog}>Me reconnecter</button>
+      {/if}
     </div>
-    {#if connecteAGog() || connexionGogExpiree() || erreurGog}
-      <!-- La dernière erreur de lecture reste affichée ici (une erreur au démarrage ne fait pas de message). -->
+    {#if comptesGog.length}
+      <!-- Lot C4b (Seb 22/11 : « les deux comptes ») : chaque compte, son pseudo (jamais son numéro), ses jeux, et
+           « Oublier ». Les boutons gardent le focus quand ils attendent (aria-disabled ; le gardien est dans
+           oublierCompteGog). -->
+      <ul class="etats comptes-gog" aria-label="Mes comptes GOG">
+        {#each comptesGog as c, i (c.cle)}
+          <li>
+            <span>{ligneCompteGog(c, i)}</span>
+            {#if c.profil}<span class="tag">celui du jeu offert</span>{/if}
+            {#if c.reconnecter || etatLectureCompteGog(c.cle)?.expire}
+              <span class="tag warn">🔑 Connexion perdue : « ➕ Ajouter un compte GOG » la refait</span>
+            {:else if etatLectureCompteGog(c.cle)?.partiel}
+              <span class="muted">liste partielle pour l’instant</span>
+            {/if}
+            <span class="espace"></span>
+            <button class="btn petit" aria-disabled={gogOccupe()} onclick={() => oublierGog(c, i)}>{gog.oubliEnCours === c.cle ? 'Oubli…' : 'Oublier'}</button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+    {#if connecteAGog() || connexionGogExpiree() || erreurGog || comptesGog.length}
+      <!-- La dernière erreur de lecture reste affichée ici (une erreur au démarrage ne fait pas de message). Un seul
+           « status » pour le bloc. -->
       <p class="muted ligne-steam" class:alerte={!!erreurGog} role="status">
         {erreurGog ??
-          ((gog.etat?.nb_jeux ? `${gog.etat.nb_jeux} jeu(x) de ton compte GOG dans ta ludothèque, relus à chaque ouverture de Frogtend.` : 'Tes jeux GOG sont relus à chaque ouverture de Frogtend.') +
-            (listeGogPartielle() ? ` ${MESSAGE_GOG_PARTIEL}` : ''))}
+          ((gog.etat?.nb_jeux
+            ? `${nombreDeJeux(gog.etat.nb_jeux)} de ${comptesGog.length > 1 ? 'tes comptes' : 'ton compte'} GOG dans ta ludothèque, relus à chaque ouverture de Frogtend.`
+            : 'Tes jeux GOG sont relus à chaque ouverture de Frogtend.') + (listeGogPartielle() ? ` ${MESSAGE_GOG_PARTIEL}` : ''))}
       </p>
+    {/if}
+    <!-- Sans aucun compte GOG : seulement « 🔑 Se connecter à GOG » (plus haut), pas « ➕ Ajouter ». -->
+    {#if comptesGog.length || connecteAGog()}
+    <div class="tete sous-ligne">
+      {#if gog.etat?.galaxy_autre_compte && comptesGog.length}
+        <!-- Lot C4b : seulement quand c'est sûr (un seul compte dans la base de Galaxy, aucun de Frogtend). -->
+        <span class="muted">{MESSAGE_GALAXY_AUTRE_COMPTE}</span>
+      {/if}
+      <span class="espace"></span>
+      <button class="btn" bind:this={boutonAjouterGog} aria-disabled={gogOccupe()} onclick={() => !gogOccupe() && ajouterCompteGog()}>
+        {gog.ajoutEnCours ? 'Connexion…' : '➕ Ajouter un compte GOG'}
+      </button>
+    </div>
     {/if}
     <div class="tete sous-ligne">
       <span>🎁 Jeu offert du moment</span>
@@ -331,6 +400,13 @@
   }
   .ligne-steam {
     margin: 0;
+  }
+  /* Lot C4b : une ligne par compte GOG (nom, étiquettes, puis « Oublier » à droite). */
+  .comptes-gog li {
+    display: flex;
+    align-items: center;
+    gap: calc(8 * var(--u));
+    flex-wrap: wrap;
   }
   .sous-ligne {
     margin-top: calc(8 * var(--u));

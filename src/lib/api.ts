@@ -617,14 +617,80 @@ export interface ImportGog extends ImportSteam {
   galaxy: boolean;
   /** Lot C5 : la bibliothèque de GOG Galaxy a été lue en entier (sinon : liste partielle, nouvel essai plus tard). */
   bibliotheque_galaxy?: boolean;
+  /** Lot C4b : ce que la lecture a donné pour chaque compte AJOUTÉ (le compte du navigateur : les champs ci-dessus). */
+  comptes?: ResultatCompteGog[];
+  /** Lot C4b : la lecture du compte du navigateur a échoué (message), alors que des comptes ajoutés ont été lus. */
+  erreur?: string | null;
+  /** Lot C4b : combien de comptes ont été lus (0 : rien n'a été lu). */
+  lus?: number;
 }
 
-/** Ce que Frogtend sait du compte GOG du profil (lot C4a). */
-export interface EtatGog {
-  /** Une lecture des jeux du compte a déjà réussi pour ce profil. */
-  connu: boolean;
+/** Ce que la lecture d'un compte GOG ajouté a donné (lot C4b). */
+export interface ResultatCompteGog {
+  cle: string;
+  /** Le pseudo GOG (vide : « Compte GOG n »). */
+  nom: string;
+  /** Le n de « Compte GOG n », rangé. */
+  numero?: number;
+  /** Sa connexion est perdue : « ➕ Ajouter un compte GOG » le reconnecte. */
+  reconnecter: boolean;
+  /** Sa bibliothèque n'a pas pu être lue pour l'instant (ses jeux restent). */
+  partiel: boolean;
+}
+
+/** Un compte GOG du profil (lot C4b) : jamais son numéro à l'écran (le pseudo, sinon « Compte GOG n »). */
+export interface CompteGogEtat {
+  cle: string;
+  nom: string;
+  /** Le compte de la session gog.com de Frogtend (celui du jeu offert). */
+  profil: boolean;
+  /** Le n de « Compte GOG n », rangé. */
+  numero?: number;
   nb_jeux: number;
   maj_le: string | null;
+  /** Un compte ajouté dont la connexion est perdue. */
+  reconnecter: boolean;
+}
+
+/** Ce que Frogtend sait des comptes GOG du profil (lots C4a, C4b). */
+export interface EtatGog {
+  /** Le compte du navigateur du profil a déjà été lu. */
+  connu: boolean;
+  /** Les jeux de tous les comptes réunis (une carte par jeu). */
+  nb_jeux: number;
+  maj_le: string | null;
+  /** Lot C4b : tous les comptes, celui du navigateur d'abord. */
+  comptes?: CompteGogEtat[];
+  /** Lot C4b : GOG Galaxy est ouvert sur un autre compte que ceux de Frogtend (seulement si c'est sûr). */
+  galaxy_autre_compte?: boolean;
+  /** Lot C4b : le compte du navigateur a été oublié (sa session n'est plus relue avant « 🔑 Se connecter à GOG »). */
+  navigateur_oublie?: boolean;
+}
+
+/** Ce que « ➕ Ajouter un compte GOG » a donné (lot C4b) ; `fait` faux : fenêtre fermée sans connexion. */
+export interface AjoutGog {
+  fait: boolean;
+  cle: string;
+  nom: string;
+  numero: number;
+  /** C'est le seul compte GOG du profil. */
+  premier: boolean;
+  reconnexion: boolean;
+  jeux: number;
+  partiel: boolean;
+  nouveaux: number;
+  nouveaux_installes: number;
+  galaxy: boolean;
+}
+
+/** Ce que « Oublier ce compte » GOG a fait (lot C4b). */
+export interface OubliGog {
+  /** C'était le compte du navigateur du profil. */
+  profil: boolean;
+  /** Sa connexion a bien quitté le coffre de Windows. */
+  secret_oublie: boolean;
+  /** Compte du navigateur : déconnexion de GOG dans Frogtend PROUVÉE. */
+  navigateur_deconnecte: boolean;
 }
 
 /** Une boutique telle que ce PC la voit (import automatique, lot A). */
@@ -1059,7 +1125,14 @@ export const api = {
   gogEtat: () => appeler<EtatGog>('boutique_gog_etat'),
   /** Lot C4a : les jeux possédés du compte GOG connecté dans le navigateur du profil (jeux cachés compris). */
   /** Lot C5 : `montrer` (juste après « Se connecter à GOG ») : la page de connexion façon Galaxy peut s'afficher. */
-  gogImporterConnecte: (montrer = false) => appeler<ImportGog>('boutique_gog_importer_connecte', { montrer }),
+  /** Lot C4b : `reconnexion` : la personne vient de se connecter elle-même (un compte du navigateur oublié est relu). */
+  gogImporterConnecte: (montrer = false, reconnexion = false) => appeler<ImportGog>('boutique_gog_importer_connecte', { montrer, reconnexion }),
+  /** Lot C4b : avant d'installer un jeu GOG, l'avertissement « GOG Galaxy est sur un autre compte » (ou `null`). */
+  gogAvertissementInstallation: (cle: string) => appeler<string | null>('boutique_gog_avertissement_installation', { cle }),
+  /** Lot C4b : « ➕ Ajouter un compte GOG » (fenêtre de connexion de GOG, montrée, navigation privée). */
+  gogAjouterCompte: () => appeler<AjoutGog>('boutique_gog_ajouter_compte'),
+  /** Lot C4b : « Oublier ce compte » GOG (ses jeux restent dans la ludothèque). */
+  gogOublierCompte: (cle: string) => appeler<OubliGog>('boutique_gog_oublier_compte', { cle }),
   /** Import automatique (lot A) : relit les jeux installés de toutes les boutiques de ce PC et les range. */
   /** `possedes` : le profil a accepté ses jeux possédés (lot B) ; sinon seuls les jeux installés sont rangés. */
   boutiquesRelirePc: (possedes = false) => appeler<ReleveBoutiques>('boutiques_relire_pc', { possedes }),

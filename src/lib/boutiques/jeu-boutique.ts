@@ -1,6 +1,7 @@
 // Un jeu de boutique dans la ludothèque (lot 9, id négatif) : jouer ou installer passe par SA boutique — Steam, Epic,
 // GOG, Ubisoft Connect, Amazon Games, Xbox (import automatique, lot A du 18/11), ou GOG Galaxy pour les jeux qu'il relie.
 import { adresseJaquette, api, type JeuResume } from '$lib/api';
+import { confirmerInstallationGog } from './installation-gog';
 
 /** Les boutiques proposées dans le filtre de la ludothèque. */
 export const BOUTIQUES: { valeur: string; libelle: string }[] = [
@@ -61,7 +62,11 @@ export async function ouvrirJeuDeBoutique(j: JeuResume) {
   const action = j.installe ? 'jouer' : 'installer';
   if (m.par === 'steam') await api.steamOuvrir(m.appid, action);
   else if (m.par === 'galaxy') await api.galaxyOuvrir(m.cle);
-  else await api.boutiqueOuvrir(m.boutique, m.cle, action);
+  else {
+    // Lot C4b : un jeu d'un autre compte GOG que celui ouvert dans Galaxy : averti avant (jamais interdit).
+    if (m.boutique === 'gog' && action === 'installer' && !(await confirmerInstallationGog(m.cle))) return;
+    await api.boutiqueOuvrir(m.boutique, m.cle, action);
+  }
 }
 
 /** Le nom court d'une boutique dans un message (« Epic », « Ubisoft »…). */

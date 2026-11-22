@@ -98,6 +98,252 @@ pub struct CompteBoutique {
     /// numéro introuvable aussi) : jamais redemandées. Rien du compte.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub fiches_gog: std::collections::BTreeMap<String, crate::gog_galaxy::FicheGog>,
+    /// GOG (lot C4b, Seb 22/11 : « les deux comptes ») : TOUS les comptes GOG du profil, chacun avec SES jeux. Un seul
+    /// compte `Profil` (celui de la session gog.com du navigateur du profil, qui reçoit aussi le jeu offert) ; les autres
+    /// sont « ajoutés » (connexion façon Galaxy seule, jeton de renouvellement au coffre). Vide dans un fichier d'avant
+    /// la 0.219 : `comptes_gog_lus` le reconstruit depuis `id_compte` et `jeux` (gardés une version de plus, pour un
+    /// retour arrière possible : ils suivent le compte `Profil`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub comptes_gog: Vec<CompteGog>,
+    /// GOG (lot C4b) : le compte ouvert dans GOG Galaxy sur ce PC, relu à chaque lecture des comptes GOG (seulement s'il
+    /// est sûr : un seul compte dans la base de Galaxy) ; vide : inconnu.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub compte_galaxy_pc: String,
+    /// GOG (lot C4b) : le compte du navigateur du profil a été OUBLIÉ ; sa session gog.com n'est plus relue (ni à
+    /// l'ouverture, ni à la main) tant que la personne ne s'est pas reconnectée elle-même (« 🔑 Se connecter à GOG »).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub navigateur_gog_oublie: bool,
+}
+
+/// D'où vient la connexion d'un compte GOG (lot C4b).
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum NavigateurGog {
+    /// La session gog.com du navigateur du profil (jeu offert, liste du site, connexion façon Galaxy silencieuse).
+    #[default]
+    Profil,
+    /// Un compte ajouté par « ➕ Ajouter un compte GOG » : seul son jeton de renouvellement (coffre) le relit.
+    Ajoute,
+}
+
+/// Un compte GOG d'un profil (lot C4b), sans aucun secret.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct CompteGog {
+    /// Le numéro du compte sur le site (`userId` de gog.com) ; vide pour un compte ajouté (le site n'est pas lu).
+    #[serde(default)]
+    pub id_site: String,
+    /// Le numéro Galaxy du compte (`galaxyUserId`, celui de la connexion façon Galaxy) : son IDENTITÉ. Vide pour un
+    /// compte repris d'un fichier d'avant la 0.219, rempli à sa lecture suivante.
+    #[serde(default)]
+    pub id_galaxy: String,
+    /// Le pseudo GOG (public, `users.gog.com`) ; peut être vide (l'interface dit alors « Compte GOG n »). Jamais au journal.
+    #[serde(default)]
+    pub nom: String,
+    #[serde(default)]
+    pub jeux: Vec<JeuBoutique>,
+    #[serde(default)]
+    pub maj_le: String,
+    #[serde(default)]
+    pub connecte_le: String,
+    #[serde(default)]
+    pub navigateur: NavigateurGog,
+    /// Les numéros de jeux de la dernière bibliothèque de Galaxy lue pour ce compte (écartés compris) : le cache commun
+    /// des fiches (`fiches_gog`) garde ceux de TOUS les comptes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ids_lus: Vec<String>,
+    /// Le numéro du « Compte GOG n » affiché sans pseudo : attribué à l'arrivée du compte et rangé (jamais sa place dans
+    /// la liste, qui change quand un compte est oublié).
+    #[serde(default)]
+    pub numero: u32,
+}
+
+impl CompteGog {
+    /// La clé du compte pour l'interface et les commandes (son numéro Galaxy, sinon « site-<numéro du site> »). Jamais
+    /// affichée : l'interface montre le pseudo, sinon « Compte GOG n ».
+    pub fn cle(&self) -> String {
+        if self.id_galaxy.is_empty() {
+            format!("site-{}", self.id_site)
+        } else {
+            self.id_galaxy.clone()
+        }
+    }
+}
+
+/// Le nom du secret (coffre de Windows) du jeton de renouvellement d'un compte GOG : celui du compte `Profil` reste
+/// `<profil>#gog-renouvellement` (comme avant la 0.219) ; un compte ajouté : `<profil>#gog-renouvellement#<id_galaxy>`.
+pub fn secret_compte_gog(profil: &str, navigateur: NavigateurGog, id_galaxy: &str) -> String {
+    match navigateur {
+        NavigateurGog::Profil => nom_secret(profil, crate::gog_galaxy::SECRET),
+        NavigateurGog::Ajoute => secret_gog_ajoute(profil, id_galaxy),
+    }
+}
+
+/// Le secret d'un compte GOG AJOUTÉ (son numéro Galaxy).
+pub fn secret_gog_ajoute(profil: &str, id_galaxy: &str) -> String {
+    nom_secret(profil, &format!("{}#{id_galaxy}", crate::gog_galaxy::SECRET))
+}
+
+/// Les comptes GOG d'une source « gog » (lot C4b) : `comptes_gog`, ou, dans un fichier d'avant la 0.219 (`comptes_gog`
+/// vide, `id_compte` rempli), un compte `Profil` repris de `id_compte` et `jeux` (son numéro Galaxy sera rempli à la
+/// lecture suivante). Pur, testé.
+pub fn comptes_gog_lus(c: &CompteBoutique) -> Vec<CompteGog> {
+    if !c.comptes_gog.is_empty() || !crate::gratuits::numero_gog(&c.id_compte) {
+        return c.comptes_gog.clone();
+    }
+    vec![CompteGog {
+        id_site: c.id_compte.clone(),
+        id_galaxy: String::new(),
+        nom: String::new(),
+        jeux: c.jeux.clone(),
+        maj_le: c.maj_le.clone(),
+        connecte_le: c.connecte_le.clone(),
+        navigateur: NavigateurGog::Profil,
+        ids_lus: vec![],
+        numero: 1,
+    }]
+}
+
+/// Range `comptes` dans la source et garde les anciens champs (`id_compte`, `jeux`, `maj_le`, `connecte_le`) en
+/// accord avec le compte `Profil`, pour un retour arrière d'une version.
+pub fn poser_comptes_gog(c: &mut CompteBoutique, mut comptes: Vec<CompteGog>) {
+    // Un compte sans numéro « Compte GOG n » en reçoit un, jamais déjà pris (les autres gardent le leur).
+    let mut suivant = comptes.iter().map(|x| x.numero).max().unwrap_or(0);
+    for x in comptes.iter_mut().filter(|x| x.numero == 0) {
+        suivant += 1;
+        x.numero = suivant;
+    }
+    let profil = comptes.iter().find(|x| x.navigateur == NavigateurGog::Profil);
+    match profil {
+        Some(p) if crate::gratuits::numero_gog(&p.id_site) => {
+            c.id_compte = p.id_site.clone();
+            c.jeux = p.jeux.clone();
+            c.maj_le = p.maj_le.clone();
+            c.connecte_le = p.connecte_le.clone();
+        }
+        _ => {
+            if !c.id_compte.is_empty() {
+                c.id_compte_precedent = std::mem::take(&mut c.id_compte);
+            }
+            c.jeux.clear();
+        }
+    }
+    c.compte = "GOG".into();
+    c.comptes_gog = comptes;
+}
+
+/// Les jeux de TOUS les comptes GOG réunis (lot C4b) : une seule carte par jeu (même id `gog_<n>`), le compte `Profil`
+/// d'abord ; minutes et dernière partie au plus grand ; copies, image et titre du premier qui en a. Pur, testé.
+pub fn jeux_gog_reunis(comptes: &[CompteGog]) -> Vec<JeuBoutique> {
+    let mut ordre: Vec<&CompteGog> = comptes.iter().filter(|c| c.navigateur == NavigateurGog::Profil).collect();
+    ordre.extend(comptes.iter().filter(|c| c.navigateur != NavigateurGog::Profil));
+    let mut l: Vec<JeuBoutique> = Vec::new();
+    let mut place: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for c in ordre {
+        for j in &c.jeux {
+            match place.get(&j.id) {
+                Some(&i) => {
+                    let x = &mut l[i];
+                    x.minutes = x.minutes.max(j.minutes);
+                    x.derniere = x.derniere.max(j.derniere);
+                    if x.releases.is_empty() {
+                        x.releases = j.releases.clone();
+                    }
+                    if x.image.is_none() {
+                        x.image = j.image.clone();
+                    }
+                    if x.nom.trim().is_empty() || x.nom == x.id || x.nom.starts_with("Jeu GOG ") {
+                        x.nom = j.nom.clone();
+                    }
+                }
+                None => {
+                    place.insert(j.id.clone(), l.len());
+                    l.push(j.clone());
+                }
+            }
+        }
+    }
+    l
+}
+
+/// Ce que la base de GOG Galaxy de CE PC dit de son compte (lot C4b), relu au moment même (installer, lancer) : le
+/// compte ouvert (un seul compte dans sa base) et TOUTES les clés de sa bibliothèque (`LibraryReleases`, jeux cachés et
+/// DLC compris : jamais un « absent » conclu d'une liste filtrée).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CompteGalaxyPc {
+    pub compte: String,
+    pub cles: BTreeSet<String>,
+}
+
+/// Le compte GOG (son nom, possiblement vide, et son numéro « Compte GOG n ») qui possède ce jeu SANS que le compte
+/// ouvert dans GOG Galaxy le possède (lot C4b) : `cle` = numéro du jeu GOG ; `galaxy` : relu à l'instant
+/// (`compte_galaxy_du_pc`). `None` dans le doute : compte de Galaxy inconnu, un compte du profil au numéro Galaxy
+/// inconnu, jeu d'aucun compte, ou jeu présent dans la bibliothèque complète de Galaxy. Pur, testé.
+pub fn compte_hors_galaxy(comptes: &[CompteGog], galaxy: &CompteGalaxyPc, cle: &str) -> Option<(String, u32)> {
+    if !crate::gratuits::numero_gog(&galaxy.compte) || !crate::gratuits::numero_gog(cle) || comptes.iter().any(|c| c.id_galaxy.is_empty()) {
+        return None;
+    }
+    let id = format!("gog_{cle}");
+    if galaxy.cles.contains(&id) {
+        return None;
+    }
+    let possesseurs: Vec<&CompteGog> = comptes.iter().filter(|c| c.jeux.iter().any(|j| j.id == id)).collect();
+    if possesseurs.is_empty() || possesseurs.iter().any(|c| c.id_galaxy == galaxy.compte) {
+        return None;
+    }
+    Some((possesseurs[0].nom.clone(), possesseurs[0].numero))
+}
+
+/// Le nom d'un compte GOG pour les messages : son pseudo, sinon « Compte GOG n » (`numero`, attribué à son arrivée et
+/// rangé : jamais sa place dans la liste, jamais son numéro de compte).
+pub fn nom_compte_gog(nom: &str, numero: u32) -> String {
+    if nom.trim().is_empty() {
+        format!("Compte GOG {}", numero.max(1))
+    } else {
+        nom.to_string()
+    }
+}
+
+/// GOG Galaxy est-il ouvert sur un AUTRE compte que tous ceux de Frogtend (lot C4b) ? Seulement si on le sait : le
+/// compte de Galaxy connu (un seul compte dans sa base), au moins un compte de Frogtend, TOUS au numéro Galaxy connu,
+/// et aucun qui corresponde. Pur, testé.
+pub fn galaxy_sur_un_autre_compte(comptes: &[CompteGog], compte_galaxy: &str) -> bool {
+    if !crate::gratuits::numero_gog(compte_galaxy) || comptes.is_empty() || comptes.iter().any(|c| c.id_galaxy.is_empty()) {
+        return false;
+    }
+    !comptes.iter().any(|c| c.id_galaxy == compte_galaxy)
+}
+
+/// Le compte ouvert dans GOG Galaxy sur ce PC et toutes les clés de sa bibliothèque (lot C4b), relus sur une COPIE de
+/// sa base (jamais l'original ; une ancienne copie retirée d'abord), effacée ensuite (elle contient les données du
+/// compte) ; la place vérifiée avant. `None` : Galaxy absent, base illisible, ou compte pas sûr (rien d'affirmé).
+pub fn compte_galaxy_du_pc(storage: &Path, travail: &Path) -> Option<CompteGalaxyPc> {
+    struct Efface<'a>(&'a Path);
+    impl Drop for Efface<'_> {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(self.0);
+        }
+    }
+    let _efface = Efface(travail);
+    let fichiers = ["galaxy-2.0.db", "galaxy-2.0.db-wal", "galaxy-2.0.db-shm"];
+    let besoin: u64 = fichiers.iter().filter_map(|f| std::fs::metadata(storage.join(f)).ok()).map(|m| m.len()).sum::<u64>() + (64 << 20);
+    std::fs::create_dir_all(travail).ok()?;
+    if crate::jeux_pc::place_libre(travail).is_some_and(|l| l < besoin) {
+        return None;
+    }
+    for f in fichiers {
+        let (src, dst) = (storage.join(f), travail.join(f));
+        // Jamais un vieux journal (-wal, -shm) d'une copie d'avant mêlé à la base copiée maintenant.
+        let _ = std::fs::remove_file(&dst);
+        if src.is_file() {
+            std::fs::copy(&src, &dst).ok()?;
+        }
+    }
+    let c = rusqlite::Connection::open(travail.join("galaxy-2.0.db")).ok()?;
+    let compte = compte_unique_galaxy(&c).ok().flatten()?;
+    let u: i64 = compte.parse().ok()?;
+    let mut q = c.prepare("SELECT releaseKey FROM LibraryReleases WHERE userId = ?1").ok()?;
+    let cles: BTreeSet<String> = q.query_map([u], |r| r.get::<_, String>(0)).ok()?.flatten().collect();
+    Some(CompteGalaxyPc { compte, cles })
 }
 
 /// Ce qui reste d'un compte Steam oublié : seulement le compte précédent (ni clé, ni connexion, ni liste). `None` s'il
@@ -272,6 +518,13 @@ pub const BOUTIQUE_STEAM: &str = "https://store.steampowered.com";
 pub fn domaine_steam(domaine: &str) -> bool {
     let d = domaine.trim_start_matches('.').to_ascii_lowercase();
     ["steampowered.com", "steamcommunity.com"].iter().any(|s| d == *s || d.ends_with(&format!(".{s}")))
+}
+
+/// Un domaine de GOG (lot C4b : « Oublier » le compte GOG du navigateur du profil) : `gog.com` et ses sous-domaines,
+/// point de tête ou non, jamais un « contient » (`evilgog.com` n'est pas GOG). Seul ce filtre décide de ce qui s'efface.
+pub fn domaine_gog(domaine: &str) -> bool {
+    let d = domaine.trim_start_matches('.').to_ascii_lowercase();
+    d == "gog.com" || d.ends_with(".gog.com")
 }
 
 /// Un cookie qui porte la connexion Steam : `steamLoginSecure` (jeton court) ou `steamRefresh_*` (celui qui le
@@ -675,7 +928,12 @@ pub fn modifier_source(
     let _verrou = VERROU_BOUTIQUES.lock().unwrap_or_else(|e| e.into_inner());
     let chemin = fichier(dossier_profil);
     let mut v = lire_tout(&chemin)?;
-    let avant = serde_json::from_value(v[source].clone()).ok();
+    // Une source présente mais illisible (écrite par une version plus récente, par exemple) n'est JAMAIS remplacée par
+    // une source vide : ses comptes et ses fiches seraient perdus (revue du lot C4b).
+    let avant = match &v[source] {
+        Value::Null => None,
+        brut => Some(serde_json::from_value(brut.clone()).map_err(|_| Erreur::Disque("Les comptes de cette boutique sont écrits sous une forme que cette version de Frogtend ne lit pas : elle ne les écrase pas (mets Frogtend à jour).".into()))?),
+    };
     let apres = f(avant)?;
     match &apres {
         Some(c) => v[source] = serde_json::to_value(c).map_err(|_| Erreur::Disque("Compte de boutique impossible à écrire.".into()))?,
@@ -727,8 +985,33 @@ pub fn nom_plateforme(prefixe: &str) -> &'static str {
 
 /// Lit les jeux de GOG Galaxy (copie de la base dans `travail`).
 pub fn lire_galaxy(storage: &Path, travail: &Path) -> Resultat<Vec<JeuBoutique>> {
+    lire_galaxy_et_compte(storage, travail).map(|(l, _)| l)
+}
+
+/// Les comptes de la base de Galaxy qui ont des jeux (`LibraryReleases.userId`) : UN seul → c'est le compte ouvert dans
+/// GOG Galaxy (lot C4b) ; plusieurs ou aucun → `None` (on n'affirme rien). Pur sur une connexion ouverte, testé.
+fn compte_unique_galaxy(c: &rusqlite::Connection) -> rusqlite::Result<Option<String>> {
+    let mut q = c.prepare("SELECT userId, COUNT(*) FROM LibraryReleases GROUP BY userId")?;
+    let lignes: Vec<(Option<i64>, i64)> = q.query_map([], |r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, i64>(1)?)))?.flatten().filter(|(_, n)| *n > 0).collect();
+    // Des jeux sans compte (userId vide ou 0) : on ne sait pas à qui ils sont, rien n'est affirmé (et rien n'est filtré).
+    if lignes.iter().any(|(u, _)| u.is_none_or(|u| u <= 0)) {
+        return Ok(None);
+    }
+    let comptes: Vec<String> = lignes.iter().filter_map(|(u, _)| u.map(|u| u.to_string())).collect();
+    Ok(if comptes.len() == 1 { comptes.into_iter().next() } else { None })
+}
+
+/// Lit les jeux de GOG Galaxy (copie de la base dans `travail`) et le compte qui y est ouvert, s'il est sûr (lot C4b :
+/// la base peut garder les jeux de plusieurs comptes ; un seul compte → seuls SES jeux sont lus).
+pub fn lire_galaxy_et_compte(storage: &Path, travail: &Path) -> Resultat<(Vec<JeuBoutique>, Option<String>)> {
     std::fs::create_dir_all(travail)?;
-    for f in ["galaxy-2.0.db", "galaxy-2.0.db-wal", "galaxy-2.0.db-shm"] {
+    let fichiers = ["galaxy-2.0.db", "galaxy-2.0.db-wal", "galaxy-2.0.db-shm"];
+    // La place : la base et son journal, plus une marge (jamais un disque rempli par une copie de lecture).
+    let besoin: u64 = fichiers.iter().filter_map(|f| std::fs::metadata(storage.join(f)).ok()).map(|m| m.len()).sum::<u64>() + (64 << 20);
+    if crate::jeux_pc::place_libre(travail).is_some_and(|l| l < besoin) {
+        return Err(Erreur::Disque("Pas assez de place sur le disque des données de Frogtend pour lire GOG Galaxy.".into()));
+    }
+    for f in fichiers {
         let src = storage.join(f);
         let dst = travail.join(f);
         let _ = std::fs::remove_file(&dst);
@@ -736,16 +1019,33 @@ pub fn lire_galaxy(storage: &Path, travail: &Path) -> Resultat<Vec<JeuBoutique>>
             std::fs::copy(&src, &dst)?;
         }
     }
-    let lire = || -> rusqlite::Result<Vec<JeuBoutique>> {
+    let lire = || -> rusqlite::Result<(Vec<JeuBoutique>, Option<String>)> {
         let c = rusqlite::Connection::open(travail.join("galaxy-2.0.db"))?;
+        // Jamais un échec de la lecture des jeux à cause de cette question (comportement d'avant : tout est lu).
+        let compte = compte_unique_galaxy(&c).ok().flatten();
         let piece = |t: &str| format!("(SELECT g.value FROM GamePieces g JOIN GamePieceTypes y ON y.id = g.gamePieceTypeId WHERE g.releaseKey = l.releaseKey AND y.type = '{t}' LIMIT 1)");
+        // Un seul compte connu : ses jeux seulement (le numéro est un entier relu de la base, jamais un texte venu d'ailleurs).
+        // Les temps de jeu et dernières parties aussi : ceux d'un ancien compte de Galaxy ne comptent pas.
+        let u = compte.as_deref().and_then(|u| u.parse::<i64>().ok());
+        // (Seulement si la table a bien la colonne : jamais une lecture qui casse sur une base d'une autre version.)
+        let a_colonne = |table: &str| -> bool {
+            c.query_row(&format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = 'userId'"), [], |r| r.get::<_, i64>(0)).is_ok_and(|n| n > 0)
+        };
+        let (filtre, filtre_t, filtre_d) = match u {
+            Some(u) => (
+                format!(" AND l.userId = {u}"),
+                if a_colonne("GameTimes") { format!(" AND t.userId = {u}") } else { String::new() },
+                if a_colonne("LastPlayedDates") { format!(" AND d.userId = {u}") } else { String::new() },
+            ),
+            None => Default::default(),
+        };
         let sql = format!(
             "SELECT DISTINCT l.releaseKey, {}, {}, {},
-                    (SELECT MAX(t.minutesInGame) FROM GameTimes t WHERE t.releaseKey = l.releaseKey),
-                    (SELECT MAX(d.lastPlayedDate) FROM LastPlayedDates d WHERE d.gameReleaseKey = l.releaseKey),
+                    (SELECT MAX(t.minutesInGame) FROM GameTimes t WHERE t.releaseKey = l.releaseKey{filtre_t}),
+                    (SELECT MAX(d.lastPlayedDate) FROM LastPlayedDates d WHERE d.gameReleaseKey = l.releaseKey{filtre_d}),
                     {}
              FROM LibraryReleases l LEFT JOIN ReleaseProperties p ON p.releaseKey = l.releaseKey
-             WHERE COALESCE(p.isDlc, 0) = 0 AND COALESCE(p.isVisibleInLibrary, 1) = 1",
+             WHERE COALESCE(p.isDlc, 0) = 0 AND COALESCE(p.isVisibleInLibrary, 1) = 1{filtre}",
             piece("originalTitle"),
             piece("title"),
             piece("originalImages"),
@@ -801,11 +1101,11 @@ pub fn lire_galaxy(storage: &Path, travail: &Path) -> Resultat<Vec<JeuBoutique>>
             })?
             .flatten()
             .collect::<Vec<_>>();
-        Ok(l)
+        Ok((l, compte))
     };
-    let mut l = lire().map_err(|e| Erreur::Disque(format!("La base de GOG Galaxy est illisible ({e}).")))?;
+    let (mut l, compte) = lire().map_err(|e| Erreur::Disque(format!("La base de GOG Galaxy est illisible ({e}).")))?;
     l.sort_by(|a, b| a.nom.to_lowercase().cmp(&b.nom.to_lowercase()));
-    Ok(l)
+    Ok((l, compte))
 }
 
 /// Les succès en détail d'UN jeu de GOG Galaxy (`cle` : sa clé Galaxy, « gog_… », « steam_620 »…), en LECTURE SEULE
@@ -1273,29 +1573,171 @@ pub fn jeux_du_compte_gog(lus: &[crate::gratuits::JeuGogLu]) -> Vec<JeuBoutique>
         .collect()
 }
 
-/// Range la liste du compte GOG lue à l'instant dans la source « gog » de `boutiques.json` (pur, appelé sous le verrou
-/// par `modifier_source`, testé). `avant` : le compte rangé AVANT la lecture ; s'il a changé entre-temps (une autre
-/// lecture a écrit), refus : rien n'est mélangé. Un AUTRE compte que celui rangé : l'ancien est noté
-/// (`id_compte_precedent`) pour le changement de compte (lot C4b) ; aucune carte n'est retirée ici. Rend le compte écrit
-/// et vrai si le compte a changé.
-pub fn appliquer_import_gog(c: Option<CompteBoutique>, avant: &str, id_compte: &str, jeux: Vec<JeuBoutique>, quand: &str) -> Resultat<(CompteBoutique, bool)> {
-    if !crate::gratuits::numero_gog(id_compte) {
+/// Le refus d'ajouter un compte GOG déjà dans Frogtend (lot C4b).
+pub const MOTIF_GOG_DEJA_LA: &str = "Ce compte GOG est déjà dans Frogtend.";
+
+/// Ce qu'une lecture a donné pour UN compte GOG (lot C4b).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LectureCompteGog {
+    pub id_site: String,
+    pub id_galaxy: String,
+    /// Le pseudo lu (`None` : pas lu cette fois, l'ancien reste).
+    pub nom: Option<String>,
+    pub jeux: Vec<JeuBoutique>,
+    /// Les numéros de la bibliothèque de Galaxy lue (`None` : pas lue en entier, les anciens restent).
+    pub ids_lus: Option<Vec<String>>,
+    /// Changement de compte du navigateur du profil : le numéro Galaxy de l'ANCIEN compte `Profil`, retrouvé par son
+    /// jeton (un compte repris d'un fichier 0.218 ne l'avait pas) ; il lui est donné s'il n'en avait pas.
+    pub ancien_id_galaxy: Option<String>,
+}
+
+/// Ce que la lecture du compte `Profil` a changé dans la liste des comptes (lot C4b).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ChangementGog {
+    /// La session gog.com du navigateur du profil montre un AUTRE compte que le compte `Profil` rangé : l'ancien
+    /// (numéro Galaxy, possiblement vide) est devenu « ajouté » (jamais retiré sans demande).
+    pub ancien_profil: Option<String>,
+    /// Un compte « ajouté » était ce compte-là : il est fondu dans l'entrée `Profil` ; son secret (`#<numéro>`) est à
+    /// oublier APRÈS l'écriture (un seul secret par compte).
+    pub fondu: Option<String>,
+}
+
+fn appliquer_lecture(x: &mut CompteGog, lu: &LectureCompteGog, quand: &str) {
+    if !lu.id_galaxy.is_empty() {
+        x.id_galaxy = lu.id_galaxy.clone();
+    }
+    if let Some(n) = &lu.nom {
+        x.nom = n.clone();
+    }
+    if let Some(i) = &lu.ids_lus {
+        x.ids_lus = i.clone();
+    }
+    x.jeux = lu.jeux.clone();
+    x.maj_le = quand.to_string();
+    x.connecte_le = quand.to_string();
+}
+
+/// Range la lecture du compte `Profil` (celui de la session gog.com du navigateur du profil) dans la source « gog »
+/// (pur, appelé sous le verrou par `modifier_source`, testé). `avant` : le numéro du site du compte `Profil` rangé AVANT
+/// la lecture ; s'il a changé entre-temps, refus (rien n'est mélangé). Seuls les jeux DE CE COMPTE changent ; les autres
+/// comptes ne bougent pas. Un autre compte que le compte `Profil` rangé : l'ancien devient « ajouté » (gardé avec ses
+/// jeux) ; un compte « ajouté » qui est ce compte-là est fondu dans l'entrée `Profil`.
+pub fn appliquer_import_gog_profil(c: Option<CompteBoutique>, avant: &str, lu: &LectureCompteGog, quand: &str) -> Resultat<(CompteBoutique, ChangementGog)> {
+    if !crate::gratuits::numero_gog(&lu.id_site) || !(lu.id_galaxy.is_empty() || crate::gratuits::numero_gog(&lu.id_galaxy)) {
         return Err(Erreur::Refus("Compte GOG illisible.".into()));
     }
     let mut c = c.unwrap_or_default();
-    if c.id_compte != avant {
+    let mut comptes = comptes_gog_lus(&c);
+    let ip = comptes.iter().position(|x| x.navigateur == NavigateurGog::Profil);
+    let range = ip.map(|i| comptes[i].id_site.clone()).unwrap_or_default();
+    if range != avant {
         return Err(Erreur::Refus("Le compte GOG a changé pendant la lecture : relance-la.".into()));
     }
-    let change = !c.id_compte.is_empty() && c.id_compte != id_compte;
-    if change {
-        c.id_compte_precedent = std::mem::take(&mut c.id_compte);
+    let mut ch = ChangementGog::default();
+    // Un compte « ajouté » qui est ce même compte : même numéro Galaxy, ou (ancien compte `Profil` d'un fichier 0.218,
+    // au numéro Galaxy inconnu) même numéro du site : fondu.
+    let doublon = comptes.iter().position(|x| {
+        x.navigateur == NavigateurGog::Ajoute && ((!lu.id_galaxy.is_empty() && x.id_galaxy == lu.id_galaxy) || (x.id_galaxy.is_empty() && !x.id_site.is_empty() && x.id_site == lu.id_site))
+    });
+    let mut fondu: Option<CompteGog> = None;
+    if let Some(d) = doublon {
+        let x = comptes.remove(d);
+        ch.fondu = Some(x.id_galaxy.clone()).filter(|i| !i.is_empty());
+        fondu = Some(x);
     }
-    c.id_compte = id_compte.to_string();
-    c.compte = "GOG".into();
-    c.jeux = jeux;
-    c.maj_le = quand.to_string();
-    c.connecte_le = quand.to_string();
-    Ok((c, change))
+    c.navigateur_gog_oublie = false;
+    let ip = comptes.iter().position(|x| x.navigateur == NavigateurGog::Profil);
+    match ip {
+        Some(i) if comptes[i].id_site == lu.id_site => appliquer_lecture(&mut comptes[i], lu, quand),
+        _ => {
+            if let Some(i) = ip {
+                comptes[i].navigateur = NavigateurGog::Ajoute;
+                if comptes[i].id_galaxy.is_empty() {
+                    if let Some(a) = lu.ancien_id_galaxy.as_ref().filter(|a| crate::gratuits::numero_gog(a) && **a != lu.id_galaxy) {
+                        comptes[i].id_galaxy = a.clone();
+                    }
+                }
+                ch.ancien_profil = Some(comptes[i].id_galaxy.clone());
+            }
+            let mut x = fondu.unwrap_or_default();
+            x.navigateur = NavigateurGog::Profil;
+            x.id_site = lu.id_site.clone();
+            appliquer_lecture(&mut x, lu, quand);
+            comptes.insert(0, x);
+        }
+    }
+    poser_comptes_gog(&mut c, comptes);
+    Ok((c, ch))
+}
+
+/// Range la lecture d'un compte « ajouté » (pur, testé) : seuls SES jeux changent. Un compte oublié pendant la lecture :
+/// refus (rien n'est écrit).
+pub fn appliquer_import_gog_ajoute(c: Option<CompteBoutique>, lu: &LectureCompteGog, quand: &str) -> Resultat<CompteBoutique> {
+    let mut c = c.unwrap_or_default();
+    let mut comptes = comptes_gog_lus(&c);
+    let x = comptes
+        .iter_mut()
+        .find(|x| x.navigateur == NavigateurGog::Ajoute && !x.id_galaxy.is_empty() && x.id_galaxy == lu.id_galaxy)
+        .ok_or_else(|| Erreur::Refus("Ce compte GOG a été oublié pendant la lecture : rien n'est changé.".into()))?;
+    appliquer_lecture(x, lu, quand);
+    poser_comptes_gog(&mut c, comptes);
+    Ok(c)
+}
+
+/// Ajoute un compte GOG (pur, testé). Déjà là : refus (« Ce compte GOG est déjà dans Frogtend »), sauf un compte
+/// « ajouté » dont la connexion était perdue (`reconnexion` : aucun secret au coffre), qui est alors relu.
+pub fn ajouter_compte_gog(c: Option<CompteBoutique>, lu: &LectureCompteGog, reconnexion: bool, quand: &str) -> Resultat<CompteBoutique> {
+    if !crate::gratuits::numero_gog(&lu.id_galaxy) {
+        return Err(Erreur::Refus("Compte GOG illisible.".into()));
+    }
+    let mut c = c.unwrap_or_default();
+    let mut comptes = comptes_gog_lus(&c);
+    match comptes.iter_mut().find(|x| x.id_galaxy == lu.id_galaxy) {
+        Some(x) if x.navigateur == NavigateurGog::Ajoute && reconnexion => appliquer_lecture(x, lu, quand),
+        Some(_) => return Err(Erreur::Refus(MOTIF_GOG_DEJA_LA.into())),
+        None => {
+            let mut x = CompteGog { navigateur: NavigateurGog::Ajoute, ..Default::default() };
+            appliquer_lecture(&mut x, lu, quand);
+            comptes.push(x);
+        }
+    }
+    poser_comptes_gog(&mut c, comptes);
+    Ok(c)
+}
+
+/// Retire un compte GOG de la liste (pur, testé) : rend la source écrite et le compte retiré. Aucune carte de la
+/// ludothèque n'est touchée (comme « Oublier » de Steam) ; le cache public des fiches reste.
+pub fn oublier_compte_gog(c: Option<CompteBoutique>, cle: &str) -> Resultat<(CompteBoutique, CompteGog)> {
+    let mut c = c.unwrap_or_default();
+    let mut comptes = comptes_gog_lus(&c);
+    let i = comptes.iter().position(|x| x.cle() == cle).ok_or_else(|| Erreur::Introuvable("Ce compte GOG n'est plus dans Frogtend.".into()))?;
+    let x = comptes.remove(i);
+    if x.navigateur == NavigateurGog::Profil {
+        // Sa session gog.com n'est plus relue tant que la personne ne se reconnecte pas elle-même.
+        c.navigateur_gog_oublie = true;
+    }
+    poser_comptes_gog(&mut c, comptes);
+    let gardees = fiches_gardees(&c.comptes_gog);
+    c.fiches_gog.retain(|k, _| gardees.contains(k));
+    Ok((c, x))
+}
+
+/// Les numéros de jeux dont le cache commun des fiches publiques garde la fiche : ceux de la dernière bibliothèque lue
+/// de CHAQUE compte, et ceux de ses jeux (jamais la lecture d'un compte qui vide les fiches d'un autre). Pur, testé.
+pub fn fiches_gardees(comptes: &[CompteGog]) -> BTreeSet<String> {
+    let mut s = BTreeSet::new();
+    for c in comptes {
+        s.extend(c.ids_lus.iter().cloned());
+        s.extend(c.jeux.iter().filter_map(|j| j.id.strip_prefix("gog_")).map(String::from));
+    }
+    s
+}
+
+/// Ajoute au cache commun les fiches lues à l'instant, puis ne garde que celles de tous les comptes (`fiches_gardees`).
+pub fn fusionner_fiches_gog(c: &mut CompteBoutique, nouvelles: std::collections::BTreeMap<String, crate::gog_galaxy::FicheGog>) {
+    c.fiches_gog.extend(nouvelles);
+    let gardees = fiches_gardees(&c.comptes_gog);
+    c.fiches_gog.retain(|k, _| gardees.contains(k));
 }
 
 /// Une image publique de boutique (hôte autorisé), gardée en cache sous son empreinte.
@@ -1812,31 +2254,306 @@ mod tests {
 
     #[test]
     fn la_liste_du_compte_gog_s_ecrit_sans_melanger_deux_comptes() {
-        let j = |id: &str| JeuBoutique { id: id.into(), nom: id.into(), minutes: 0, derniere: 0, installe: false, plateforme: "gog".into(), image: None, dossier: None, pret: None, succes: None, releases: vec![], titre_douteux: false };
+        let j = |id: &str| jg(id, id);
         // Première lecture.
-        let (c, change) = appliquer_import_gog(None, "", "42", vec![j("gog_1")], "t1").unwrap();
-        assert!(!change);
+        let (c, ch) = appliquer_import_gog_profil(None, "", &lu("42", "4200", &["gog_1"]), "t1").unwrap();
+        assert_eq!(ch, ChangementGog::default());
         assert_eq!((c.id_compte.as_str(), c.jeux.len(), c.maj_le.as_str(), c.id_compte_precedent.as_str()), ("42", 1, "t1", ""));
-        // Le même compte : la liste est remplacée.
-        let (c, change) = appliquer_import_gog(Some(c), "42", "42", vec![j("gog_1"), j("gog_2")], "t2").unwrap();
-        assert!(!change && c.jeux.len() == 2);
-        // Un autre compte : l'ancien est noté pour le lot C4b, la liste est celle du nouveau seulement.
-        let (c, change) = appliquer_import_gog(Some(c), "42", "77", vec![j("gog_9")], "t3").unwrap();
-        assert!(change);
-        assert_eq!((c.id_compte.as_str(), c.id_compte_precedent.as_str(), c.jeux.len()), ("77", "42", 1));
+        assert_eq!((c.comptes_gog.len(), c.comptes_gog[0].id_galaxy.as_str(), c.comptes_gog[0].navigateur), (1, "4200", NavigateurGog::Profil));
+        // Le même compte : SA liste est remplacée.
+        let (c, ch) = appliquer_import_gog_profil(Some(c), "42", &lu("42", "4200", &["gog_1", "gog_2"]), "t2").unwrap();
+        assert!(ch == ChangementGog::default() && c.jeux.len() == 2);
+        // Un autre compte dans le navigateur du profil : l'ancien devient « ajouté » (gardé, avec ses jeux).
+        let (c, ch) = appliquer_import_gog_profil(Some(c), "42", &lu("77", "7700", &["gog_9"]), "t3").unwrap();
+        assert_eq!(ch.ancien_profil.as_deref(), Some("4200"));
+        assert_eq!((c.id_compte.as_str(), c.jeux.len()), ("77", 1));
+        assert_eq!(c.comptes_gog.iter().map(|x| (x.id_galaxy.as_str(), x.navigateur, x.jeux.len())).collect::<Vec<_>>(), [("7700", NavigateurGog::Profil, 1), ("4200", NavigateurGog::Ajoute, 2)]);
         // Le compte rangé a changé PENDANT la lecture : refus, rien n'est mélangé.
-        assert!(appliquer_import_gog(Some(c.clone()), "42", "42", vec![], "t4").is_err());
-        assert!(appliquer_import_gog(Some(c), "77", "pas-un-numero", vec![], "t4").is_err());
+        assert!(appliquer_import_gog_profil(Some(c.clone()), "42", &lu("42", "4200", &[]), "t4").is_err());
+        assert!(appliquer_import_gog_profil(Some(c), "77", &lu("pas-un-numero", "", &[]), "t4").is_err());
         // Écrit dans boutiques.json sous « gog », à côté de Steam (jamais mélangé avec lui).
         let d = tempfile::tempdir().unwrap();
         ecrire(d.path(), Some(&CompteBoutique { steamid: "76561197960287930".into(), ..Default::default() })).unwrap();
-        modifier_source(d.path(), "gog", |c| appliquer_import_gog(c, "", "42", vec![j("gog_1")], "t").map(|(c, _)| Some(c))).unwrap();
+        modifier_source(d.path(), "gog", |c| appliquer_import_gog_profil(c, "", &LectureCompteGog { jeux: vec![j("gog_1")], ..lu("42", "", &[]) }, "t").map(|(c, _)| Some(c))).unwrap();
         assert_eq!(lire_source(d.path(), "gog").unwrap().id_compte, "42");
         assert_eq!(lire(d.path()).unwrap().steamid, "76561197960287930");
         assert!(lire(d.path()).unwrap().id_compte.is_empty());
         // Un fichier d'avant le lot C4a se lit toujours (champs absents).
         std::fs::write(d.path().join("boutiques.json"), r#"{"steam":{"compte":"x","steamid":"1","maj_le":"","jeux":[]}}"#).unwrap();
         assert_eq!(lire(d.path()).unwrap().id_compte, "");
+    }
+
+    fn jg(id: &str, nom: &str) -> JeuBoutique {
+        JeuBoutique { id: id.into(), nom: nom.into(), minutes: 0, derniere: 0, installe: false, plateforme: "gog".into(), image: None, dossier: None, pret: None, succes: None, releases: vec![], titre_douteux: false }
+    }
+
+    fn lu(site: &str, galaxy: &str, jeux: &[&str]) -> LectureCompteGog {
+        LectureCompteGog { id_site: site.into(), id_galaxy: galaxy.into(), nom: None, jeux: jeux.iter().map(|i| jg(i, i)).collect(), ids_lus: None, ancien_id_galaxy: None }
+    }
+
+    fn jeux_de(n: std::ops::Range<u32>, prefixe: u32) -> Vec<JeuBoutique> {
+        n.map(|i| jg(&format!("gog_{}", prefixe + i), &format!("Jeu {i}"))).collect()
+    }
+
+    /// Lot C4b : un `boutiques.json` écrit par la 0.218 (un seul compte : `id_compte` et `jeux`) se lit comme un compte
+    /// `Profil`, et la lecture suivante du même compte remplit son numéro Galaxy sans rien perdre.
+    #[test]
+    fn un_fichier_de_la_0_218_devient_un_compte_profil() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(
+            d.path().join("boutiques.json"),
+            r#"{"steam":{"compte":"x","steamid":"1","maj_le":"","jeux":[]},
+                "gog":{"compte":"GOG","steamid":"","maj_le":"t0","jeux":[{"id":"gog_1","nom":"Un","minutes":0,"derniere":0}],"connecte_le":"t0","id_compte":"42",
+                       "fiches_gog":{"1":{"titre":"Un","genre":"game","lu_le":5}}}}"#,
+        )
+        .unwrap();
+        let c = lire_source(d.path(), "gog").unwrap();
+        assert!(c.comptes_gog.is_empty(), "rien n'est réécrit à la seule lecture");
+        let comptes = comptes_gog_lus(&c);
+        assert_eq!(comptes.len(), 1);
+        assert_eq!((comptes[0].id_site.as_str(), comptes[0].id_galaxy.as_str(), comptes[0].navigateur, comptes[0].jeux.len(), comptes[0].maj_le.as_str()), ("42", "", NavigateurGog::Profil, 1, "t0"));
+        assert_eq!(comptes[0].cle(), "site-42");
+        // La lecture suivante du même compte : numéro Galaxy rempli, anciens champs gardés en accord (retour arrière).
+        modifier_source(d.path(), "gog", |c| appliquer_import_gog_profil(c, "42", &lu("42", "4200", &["gog_1", "gog_2"]), "t1").map(|(c, _)| Some(c))).unwrap();
+        let c = lire_source(d.path(), "gog").unwrap();
+        assert_eq!((c.comptes_gog.len(), c.comptes_gog[0].id_galaxy.as_str(), c.id_compte.as_str(), c.jeux.len()), (1, "4200", "42", 2));
+        assert_eq!(c.fiches_gog.len(), 1, "le cache des fiches reste");
+        assert_eq!(lire(d.path()).unwrap().steamid, "1", "Steam n'est pas touché");
+        // Un fichier sans compte GOG : aucun compte inventé.
+        assert!(comptes_gog_lus(&CompteBoutique::default()).is_empty());
+    }
+
+    /// Lot C4b : 88 jeux d'un compte + 197 d'un autre, sans jeu commun puis avec un jeu commun (une seule carte).
+    #[test]
+    fn les_jeux_de_deux_comptes_se_reunissent_une_carte_par_jeu() {
+        let a = CompteGog { id_galaxy: "1".into(), jeux: jeux_de(0..88, 1000), navigateur: NavigateurGog::Profil, ..Default::default() };
+        let mut b = CompteGog { id_galaxy: "2".into(), jeux: jeux_de(0..197, 5000), navigateur: NavigateurGog::Ajoute, ..Default::default() };
+        assert_eq!(jeux_gog_reunis(&[a.clone(), b.clone()]).len(), 285);
+        // Un jeu en commun (Cyberpunk chez les deux) : une carte, minutes et dernière partie au plus grand, l'image du
+        // premier qui en a une, le compte Profil d'abord même rangé en second.
+        let mut commun_a = jg("gog_1423049311", "Cyberpunk 2077");
+        commun_a.minutes = 10;
+        let mut commun_b = jg("gog_1423049311", "Cyberpunk 2077");
+        commun_b.minutes = 92;
+        commun_b.derniere = 7;
+        commun_b.image = Some("https://images.gog.com/a.webp".into());
+        commun_b.releases = vec!["steam_1091500".into()];
+        let mut a2 = a.clone();
+        a2.jeux.push(commun_a);
+        b.jeux.push(commun_b);
+        let l = jeux_gog_reunis(&[b, a2]);
+        assert_eq!(l.len(), 286);
+        assert_eq!(l[0].id, "gog_1000", "le compte Profil d'abord");
+        let c: Vec<&JeuBoutique> = l.iter().filter(|j| j.id == "gog_1423049311").collect();
+        assert_eq!(c.len(), 1);
+        assert_eq!((c[0].minutes, c[0].derniere, c[0].image.as_deref(), c[0].releases.len()), (92, 7, Some("https://images.gog.com/a.webp"), 1));
+    }
+
+    /// Lot C4b : la lecture d'un compte ne touche jamais les jeux d'un autre ; une lecture partielle ne change rien.
+    #[test]
+    fn la_lecture_d_un_compte_ne_touche_pas_les_autres() {
+        let (c, _) = appliquer_import_gog_profil(None, "", &lu("42", "4200", &["gog_1"]), "t1").unwrap();
+        let c = ajouter_compte_gog(Some(c), &LectureCompteGog { nom: Some("Seb".into()), ..lu("", "7700", &["gog_9", "gog_8"]) }, false, "t2").unwrap();
+        // Le compte ajouté relu : seuls ses jeux changent.
+        let c = appliquer_import_gog_ajoute(Some(c), &lu("", "7700", &["gog_9"]), "t3").unwrap();
+        assert_eq!(c.comptes_gog.iter().map(|x| x.jeux.len()).collect::<Vec<_>>(), [1, 1]);
+        assert_eq!(c.comptes_gog[1].nom, "Seb", "le pseudo reste quand il n'est pas relu");
+        // Le compte Profil relu : le compte ajouté garde les siens.
+        let (c, _) = appliquer_import_gog_profil(Some(c), "42", &lu("42", "4200", &["gog_1", "gog_2", "gog_3"]), "t4").unwrap();
+        assert_eq!(c.comptes_gog.iter().map(|x| x.jeux.len()).collect::<Vec<_>>(), [3, 1]);
+        assert_eq!(c.jeux.len(), 3, "les anciens champs suivent le compte Profil seulement");
+        // Un compte oublié pendant sa lecture : refus.
+        assert!(appliquer_import_gog_ajoute(Some(c), &lu("", "9999", &[]), "t5").is_err());
+    }
+
+    /// Lot C4b : un compte déjà là ne s'ajoute pas deux fois ; un compte ajouté sans connexion se reconnecte.
+    #[test]
+    fn un_compte_deja_connu_ne_s_ajoute_pas() {
+        let (c, _) = appliquer_import_gog_profil(None, "", &lu("42", "4200", &["gog_1"]), "t1").unwrap();
+        let e = ajouter_compte_gog(Some(c.clone()), &lu("", "4200", &[]), true, "t2").unwrap_err();
+        assert!(matches!(e, Erreur::Refus(ref m) if m == MOTIF_GOG_DEJA_LA), "le compte Profil");
+        let c = ajouter_compte_gog(Some(c), &lu("", "7700", &["gog_9"]), false, "t2").unwrap();
+        assert!(matches!(ajouter_compte_gog(Some(c.clone()), &lu("", "7700", &[]), false, "t3"), Err(Erreur::Refus(_))));
+        // Reconnexion d'un compte ajouté dont la connexion était perdue : relu, jamais en double.
+        let c = ajouter_compte_gog(Some(c), &lu("", "7700", &["gog_9", "gog_8"]), true, "t3").unwrap();
+        assert_eq!((c.comptes_gog.len(), c.comptes_gog[1].jeux.len()), (2, 2));
+        assert!(ajouter_compte_gog(None, &lu("", "pas-un-numero", &[]), false, "t").is_err());
+    }
+
+    /// Lot C4b : la session du navigateur du profil passe sur un compte déjà « ajouté » : une seule entrée Profil, et
+    /// l'ancien compte Profil devient « ajouté ».
+    #[test]
+    fn le_navigateur_du_profil_passe_sur_un_compte_ajoute() {
+        let (c, _) = appliquer_import_gog_profil(None, "", &lu("42", "4200", &["gog_1"]), "t1").unwrap();
+        let c = ajouter_compte_gog(Some(c), &LectureCompteGog { nom: Some("Seb".into()), ..lu("", "7700", &["gog_9"]) }, false, "t2").unwrap();
+        let (c, ch) = appliquer_import_gog_profil(Some(c), "42", &lu("77", "7700", &["gog_9", "gog_8"]), "t3").unwrap();
+        assert_eq!(ch, ChangementGog { ancien_profil: Some("4200".into()), fondu: Some("7700".into()) });
+        assert_eq!(
+            c.comptes_gog.iter().map(|x| (x.id_galaxy.as_str(), x.id_site.as_str(), x.navigateur, x.nom.as_str())).collect::<Vec<_>>(),
+            [("7700", "77", NavigateurGog::Profil, "Seb"), ("4200", "42", NavigateurGog::Ajoute, "")]
+        );
+        assert_eq!(c.comptes_gog.iter().filter(|x| x.navigateur == NavigateurGog::Profil).count(), 1);
+        // Un compte ajouté AVANT que le numéro Galaxy du compte Profil soit connu : fondu à la lecture suivante.
+        let (c, _) = appliquer_import_gog_profil(None, "", &lu("42", "", &["gog_1"]), "t1").unwrap();
+        let c = ajouter_compte_gog(Some(c), &lu("", "4200", &["gog_1"]), false, "t2").unwrap();
+        let (c, ch) = appliquer_import_gog_profil(Some(c), "42", &lu("42", "4200", &["gog_1"]), "t3").unwrap();
+        assert_eq!((ch.ancien_profil, ch.fondu.as_deref(), c.comptes_gog.len()), (None, Some("4200"), 1));
+    }
+
+    /// Lot C4b : « Oublier B » retire le compte, garde les autres et les fiches de leurs jeux ; un jeu de B installé reste
+    /// une carte (il vient du PC, `boutiques_pc::fusion_gog`).
+    #[test]
+    fn oublier_un_compte_garde_les_autres_et_les_jeux_installes() {
+        let (c, _) = appliquer_import_gog_profil(None, "", &lu("42", "4200", &["gog_1"]), "t1").unwrap();
+        let mut c = ajouter_compte_gog(Some(c), &LectureCompteGog { ids_lus: Some(vec!["9".into(), "10".into()]), ..lu("", "7700", &["gog_9"]) }, false, "t2").unwrap();
+        fusionner_fiches_gog(&mut c, [("1", "Un"), ("9", "Neuf"), ("10", "Licence"), ("55", "Vieux")].into_iter().map(|(k, t)| (k.to_string(), crate::gog_galaxy::FicheGog { titre: t.into(), ..Default::default() })).collect());
+        assert_eq!(c.fiches_gog.keys().map(String::as_str).collect::<Vec<_>>(), ["1", "10", "9"], "les fiches des deux comptes, pas celles d'aucun");
+        let (c, oublie) = oublier_compte_gog(Some(c), "7700").unwrap();
+        assert_eq!((oublie.id_galaxy.as_str(), oublie.navigateur), ("7700", NavigateurGog::Ajoute));
+        assert_eq!(c.comptes_gog.len(), 1);
+        assert_eq!(c.fiches_gog.keys().map(String::as_str).collect::<Vec<_>>(), ["1"]);
+        assert!(oublier_compte_gog(Some(c.clone()), "7700").is_err(), "déjà oublié");
+        // Le jeu de B installé sur ce PC reste une carte après l'oubli.
+        let mut installe = jg("gog_9", "Neuf");
+        installe.installe = true;
+        let l = crate::boutiques_pc::fusion_gog(jeux_gog_reunis(&c.comptes_gog), &[installe], &[]);
+        assert!(l.iter().any(|j| j.id == "gog_9" && j.installe));
+        // Oublier le compte Profil : les anciens champs se vident (le numéro va dans `id_compte_precedent`).
+        let (c, _) = oublier_compte_gog(Some(c), "4200").unwrap();
+        assert_eq!((c.id_compte.as_str(), c.id_compte_precedent.as_str(), c.jeux.len(), c.comptes_gog.len()), ("", "42", 0, 0));
+        assert!(comptes_gog_lus(&c).is_empty(), "jamais recréé depuis les anciens champs");
+    }
+
+    /// Lot C4b : les noms des secrets — le compte Profil garde l'ancien, un compte ajouté a le sien.
+    #[test]
+    fn chaque_compte_gog_a_son_secret() {
+        assert_eq!(secret_compte_gog("p1", NavigateurGog::Profil, "4200"), "p1#gog-renouvellement");
+        assert_eq!(secret_compte_gog("p1", NavigateurGog::Ajoute, "7700"), "p1#gog-renouvellement#7700");
+        assert_eq!(nom_compte_gog("", 2), "Compte GOG 2", "son numéro rangé, pas sa place");
+        assert_eq!(nom_compte_gog("", 0), "Compte GOG 1");
+        assert_eq!(nom_compte_gog("Seb", 1), "Seb");
+    }
+
+    /// Lot C4b : le compte de GOG Galaxy ne s'affirme que s'il est sûr.
+    #[test]
+    fn galaxy_sur_un_autre_compte_seulement_si_on_le_sait() {
+        let a = CompteGog { id_galaxy: "4200".into(), jeux: vec![jg("gog_1", "Un")], navigateur: NavigateurGog::Profil, numero: 1, ..Default::default() };
+        let b = CompteGog { id_galaxy: "7700".into(), nom: "Seb".into(), jeux: vec![jg("gog_9", "Neuf")], navigateur: NavigateurGog::Ajoute, numero: 2, ..Default::default() };
+        let sans_numero = CompteGog { id_site: "42".into(), jeux: vec![jg("gog_5", "Cinq")], navigateur: NavigateurGog::Ajoute, ..Default::default() };
+        assert!(!galaxy_sur_un_autre_compte(&[a.clone()], ""), "compte de Galaxy inconnu");
+        assert!(!galaxy_sur_un_autre_compte(&[], "7700"), "aucun compte chez Frogtend");
+        assert!(!galaxy_sur_un_autre_compte(&[a.clone(), sans_numero.clone()], "7700"), "un compte au numéro Galaxy inconnu : dans le doute, rien");
+        assert!(galaxy_sur_un_autre_compte(&[a.clone()], "7700"));
+        assert!(!galaxy_sur_un_autre_compte(&[a.clone(), b.clone()], "7700"));
+        let g = |compte: &str, cles: &[&str]| CompteGalaxyPc { compte: compte.into(), cles: cles.iter().map(|c| c.to_string()).collect() };
+        // Un jeu du compte Profil quand Galaxy est sur le compte ajouté : on sait qu'il n'est pas chez Galaxy.
+        assert_eq!(compte_hors_galaxy(&[a.clone(), b.clone()], &g("7700", &["gog_9"]), "1"), Some((String::new(), 1)));
+        assert_eq!(compte_hors_galaxy(&[a.clone(), b.clone()], &g("7700", &[]), "9"), None, "un compte de Galaxy le possède");
+        // La bibliothèque COMPLÈTE de Galaxy (jeux cachés compris) a le jeu : jamais « hors Galaxy ».
+        assert_eq!(compte_hors_galaxy(&[a.clone()], &g("7700", &["gog_1"]), "1"), None);
+        assert_eq!(compte_hors_galaxy(&[a.clone(), b.clone()], &g("4200", &["gog_1"]), "9"), Some(("Seb".into(), 2)));
+        assert_eq!(compte_hors_galaxy(&[a.clone(), b.clone()], &g("", &[]), "9"), None, "compte de Galaxy inconnu");
+        assert_eq!(compte_hors_galaxy(&[a.clone(), b.clone()], &g("7700", &[]), "12345"), None, "jeu d'aucun compte");
+        assert_eq!(compte_hors_galaxy(&[a, b, sans_numero], &g("4200", &[]), "9"), None, "un compte au numéro Galaxy inconnu : rien d'affirmé");
+    }
+
+    /// Lot C4b : la base de Galaxy garde les jeux de DEUX comptes → rien d'affirmé, tout est lu ; UN compte → ses jeux.
+    #[test]
+    fn la_base_de_galaxy_se_filtre_sur_son_compte_s_il_est_seul() {
+        let base = |lignes: &str| {
+            let d = tempfile::tempdir().unwrap();
+            let stock = d.path().join("storage");
+            std::fs::create_dir_all(&stock).unwrap();
+            let c = rusqlite::Connection::open(stock.join("galaxy-2.0.db")).unwrap();
+            c.execute_batch(&format!(
+                "CREATE TABLE LibraryReleases(id INTEGER, userId INTEGER, releaseKey TEXT);
+                 CREATE TABLE ReleaseProperties(releaseKey TEXT, isDlc INTEGER, isVisibleInLibrary INTEGER, gameId TEXT);
+                 CREATE TABLE GamePieceTypes(id INTEGER, type TEXT);
+                 CREATE TABLE GamePieces(releaseKey TEXT, gamePieceTypeId INTEGER, userId INTEGER, value TEXT, languageId INTEGER);
+                 CREATE TABLE GameTimes(userId INTEGER, releaseKey TEXT, minutesInGame INTEGER);
+                 CREATE TABLE LastPlayedDates(userId INTEGER, gameReleaseKey TEXT, lastPlayedDate TEXT);
+                 CREATE TABLE InstalledBaseProducts(productId INTEGER, installationPath TEXT);
+                 CREATE TABLE InstalledExternalProducts(id INTEGER, platformId INTEGER, productId TEXT);
+                 {lignes}"
+            ))
+            .unwrap();
+            drop(c);
+            let r = lire_galaxy_et_compte(&stock, &d.path().join("copie")).unwrap();
+            (d, r)
+        };
+        let (_d, (l, compte)) = base("INSERT INTO LibraryReleases VALUES (1, 48628349957132247, 'gog_10'), (2, 48628349957132247, 'gog_11');");
+        assert_eq!((l.len(), compte.as_deref()), (2, Some("48628349957132247")));
+        let (_d, (l, compte)) = base("INSERT INTO LibraryReleases VALUES (1, 5, 'gog_10'), (2, 6, 'gog_11'), (3, 6, 'gog_12');");
+        assert_eq!((l.len(), compte), (3, None), "deux comptes : rien d'affirmé, comportement d'avant");
+        let (_d, (l, compte)) = base("");
+        assert_eq!((l.len(), compte), (0, None));
+        // Des jeux sans compte (userId vide ou 0) à côté d'un compte : rien d'affirmé, rien de filtré.
+        let (_d, (l, compte)) = base("INSERT INTO LibraryReleases VALUES (1, 5, 'gog_10'), (2, NULL, 'gog_11'), (3, 0, 'gog_12');");
+        assert_eq!((l.len(), compte), (3, None));
+        // La relecture du compte de Galaxy (installer, lancer) : TOUTES ses clés, jeux cachés et DLC compris ; une vieille
+        // copie de son journal (-wal) n'est jamais mêlée.
+        let d = tempfile::tempdir().unwrap();
+        let stock = d.path().join("storage");
+        std::fs::create_dir_all(&stock).unwrap();
+        let c = rusqlite::Connection::open(stock.join("galaxy-2.0.db")).unwrap();
+        c.execute_batch(
+            "CREATE TABLE LibraryReleases(id INTEGER, userId INTEGER, releaseKey TEXT);
+             CREATE TABLE ReleaseProperties(releaseKey TEXT, isDlc INTEGER, isVisibleInLibrary INTEGER, gameId TEXT);
+             INSERT INTO LibraryReleases VALUES (1, 7700, 'gog_10'), (2, 7700, 'gog_11');
+             INSERT INTO ReleaseProperties VALUES ('gog_11', 0, 0, '');",
+        )
+        .unwrap();
+        drop(c);
+        let travail = d.path().join("copie");
+        std::fs::create_dir_all(&travail).unwrap();
+        std::fs::write(travail.join("galaxy-2.0.db-wal"), b"vieux journal").unwrap();
+        let g = compte_galaxy_du_pc(&stock, &travail).unwrap();
+        assert_eq!(g.compte, "7700");
+        assert_eq!(g.cles.iter().map(String::as_str).collect::<Vec<_>>(), ["gog_10", "gog_11"], "le jeu caché compte aussi");
+        assert!(!travail.exists(), "la copie est effacée");
+        // Une base sans la table : rien d'affirmé, et la lecture des jeux ne casse pas pour autant.
+        let stock2 = d.path().join("vide");
+        std::fs::create_dir_all(&stock2).unwrap();
+        rusqlite::Connection::open(stock2.join("galaxy-2.0.db")).unwrap().execute_batch("CREATE TABLE Autre(x INTEGER);").unwrap();
+        assert_eq!(compte_galaxy_du_pc(&stock2, &d.path().join("copie2")), None);
+    }
+
+    /// Revue du lot C4b : une source « gog » écrite sous une forme que cette version ne lit pas n'est jamais écrasée.
+    #[test]
+    fn une_source_illisible_n_est_jamais_remplacee() {
+        let d = tempfile::tempdir().unwrap();
+        let brut = r#"{"gog":{"compte":"GOG","steamid":"","maj_le":"","jeux":[],"comptes_gog":[{"id_galaxy":"1","navigateur":"futur"}]},"steam":{"compte":"x","steamid":"1","maj_le":"","jeux":[]}}"#;
+        std::fs::write(d.path().join("boutiques.json"), brut).unwrap();
+        assert!(modifier_source(d.path(), "gog", |_| Ok(Some(CompteBoutique::default()))).is_err());
+        assert_eq!(std::fs::read_to_string(d.path().join("boutiques.json")).unwrap(), brut, "rien n'a bougé");
+        // Les autres sources s'écrivent toujours.
+        modifier_source(d.path(), "steam", |c| Ok(c)).unwrap();
+        assert!(std::fs::read_to_string(d.path().join("boutiques.json")).unwrap().contains("\"futur\""));
+    }
+
+    /// Revue du lot C4b : un fichier 0.218 (compte Profil sans numéro Galaxy) puis un changement de compte : l'ancien
+    /// reçoit le numéro retrouvé par son jeton ; revenu dans le navigateur, il est fondu (jamais un doublon éternel) ;
+    /// les numéros « Compte GOG n » restent stables.
+    #[test]
+    fn un_compte_de_la_0_218_change_de_compte_sans_doublon() {
+        let c = CompteBoutique { compte: "GOG".into(), id_compte: "42".into(), jeux: vec![jg("gog_1", "Un")], ..Default::default() };
+        let (c, ch) = appliquer_import_gog_profil(Some(c), "42", &LectureCompteGog { ancien_id_galaxy: Some("4200".into()), ..lu("77", "7700", &["gog_9"]) }, "t1").unwrap();
+        assert_eq!(ch.ancien_profil.as_deref(), Some("4200"));
+        assert_eq!(c.comptes_gog.iter().map(|x| (x.id_galaxy.as_str(), x.navigateur, x.numero)).collect::<Vec<_>>(), [("7700", NavigateurGog::Profil, 2), ("4200", NavigateurGog::Ajoute, 1)]);
+        // Sans numéro retrouvé (GOG injoignable n'arrive pas ici ; jeton absent) : l'ancien reste « site-42 »…
+        let c0 = CompteBoutique { compte: "GOG".into(), id_compte: "42".into(), jeux: vec![jg("gog_1", "Un")], ..Default::default() };
+        let (c0, _) = appliquer_import_gog_profil(Some(c0), "42", &lu("77", "7700", &["gog_9"]), "t1").unwrap();
+        assert_eq!(c0.comptes_gog[1].cle(), "site-42");
+        // … et revenu dans le navigateur, il est fondu par le numéro du site.
+        let (c0, ch) = appliquer_import_gog_profil(Some(c0), "77", &lu("42", "4200", &["gog_1"]), "t2").unwrap();
+        assert_eq!(ch.fondu, None, "aucun jeton à oublier pour un compte sans numéro Galaxy");
+        assert_eq!(c0.comptes_gog.iter().map(|x| (x.id_galaxy.as_str(), x.navigateur, x.numero)).collect::<Vec<_>>(), [("4200", NavigateurGog::Profil, 1), ("7700", NavigateurGog::Ajoute, 2)]);
+        // Le numéro « Compte GOG n » d'un compte oublié n'est pas repris par les autres.
+        let (c0, _) = oublier_compte_gog(Some(c0), "4200").unwrap();
+        assert_eq!(c0.comptes_gog[0].numero, 2);
+        assert!(c0.navigateur_gog_oublie, "le compte du navigateur oublié est noté");
+        let (c0, _) = appliquer_import_gog_profil(Some(c0), "", &lu("42", "4200", &[]), "t3").unwrap();
+        assert!(!c0.navigateur_gog_oublie, "une lecture du navigateur (après reconnexion) le retire");
     }
 
     /// Une petite base « façon Galaxy » : les DLC et jeux cachés sont écartés, les installés repérés.
@@ -2196,6 +2913,17 @@ mod tests {
         }
         for d in ["", ".", "epicgames.com", ".epicgames.com", "gog.com", "evilsteampowered.com", "steampowered.com.evil.fr", "playstation.com"] {
             assert!(!domaine_steam(d), "{d}");
+        }
+    }
+
+    /// Lot C4b : seuls les cookies de gog.com s'effacent (Epic, Amazon, PlayStation partagent le navigateur du profil).
+    #[test]
+    fn seuls_les_domaines_de_gog_sont_reconnus() {
+        for d in [".gog.com", "gog.com", "www.gog.com", "login.gog.com", ".auth.gog.com", "WWW.GOG.COM"] {
+            assert!(domaine_gog(d), "{d}");
+        }
+        for d in ["", ".", "evilgog.com", "gog.com.evil.fr", "epicgames.com", "gog-statics.com", "amazon.com", "playstation.com"] {
+            assert!(!domaine_gog(d), "{d}");
         }
     }
 

@@ -264,6 +264,44 @@ pub async fn lire_bibliotheque(base: &str, user_id: &str, acces: &str) -> Result
     Err(Erreur::Serveur("La bibliothèque de GOG est trop longue pour être lue en entier.".into()))
 }
 
+/// Le profil public d'un compte GOG (lot C4b) : `users.gog.com/users/<numéro Galaxy>` rend `{id, username, created_date,
+/// avatar, is_employee}` sans jeton (documentation de la communauté, « gogapidocs », section Galaxy ; PAS vérifié sur un
+/// vrai compte). Seul `username` est lu.
+pub const UTILISATEURS: &str = "https://users.gog.com";
+
+/// Le pseudo d'une réponse de `users.gog.com` : `username`, sans caractère de contrôle, 40 caractères au plus ; `None`
+/// s'il manque, est vide, ou si la réponse parle d'un autre compte (`id` différent quand il est donné).
+pub fn lire_pseudo(v: &Value, id_galaxy: &str) -> Option<String> {
+    let id = v["id"].as_str().map(str::to_string).or_else(|| v["id"].as_u64().map(|n| n.to_string()));
+    if id.is_some_and(|i| i != id_galaxy) {
+        return None;
+    }
+    let p: String = v["username"].as_str()?.chars().filter(|c| !c.is_control()).collect::<String>().trim().chars().take(40).collect();
+    (!p.is_empty()).then_some(p)
+}
+
+/// Le pseudo public d'un compte GOG (sans jeton ni cookie) ; `None` au moindre doute (l'interface dit alors « Compte
+/// GOG n »). Jamais journalisé.
+pub async fn pseudo(base: &str, id_galaxy: &str) -> Option<String> {
+    if !crate::gratuits::numero_gog(id_galaxy) {
+        return None;
+    }
+    let r = client().ok()?.get(format!("{base}/users/{id_galaxy}")).send().await.ok()?;
+    if r.status().as_u16() != 200 {
+        return None;
+    }
+    lire_pseudo(&r.json::<Value>().await.ok()?, id_galaxy)
+}
+
+/// Google refuse-t-il la connexion dans cette fenêtre (navigateur intégré : `disallowed_useragent`, page « rejected »
+/// ou erreur OAuth de Google) ? Seulement sur `accounts.google.com` (lot C4b ; formes d'après les messages d'erreur
+/// publics de Google, PAS vérifiées sur un vrai compte).
+pub fn refus_google(url: &tauri::Url) -> bool {
+    url.scheme() == "https"
+        && url.host_str().is_some_and(|h| h.eq_ignore_ascii_case("accounts.google.com"))
+        && (url.as_str().to_ascii_lowercase().contains("disallowed_useragent") || url.path().contains("/signin/rejected") || url.path().contains("/oauth/error"))
+}
+
 /// Une fiche lue est redemandée après ce délai (titre ou jaquette changés chez GOG).
 pub const FICHE_LUE_VALABLE_S: u64 = 60 * 86_400;
 /// Une fiche INTROUVABLE (404) est redemandée après ce délai (la base de GOG se complète).
@@ -781,6 +819,37 @@ mod tests {
         assert_eq!(fiche(&c, &s.base_url(), "2", 1000).await, Err(EchecFiche::TropDeDemandes));
         assert_eq!(fiche(&c, &s.base_url(), "3", 1000).await, Err(EchecFiche::Autre));
         assert_eq!(fiche(&c, &s.base_url(), "../x", 1000).await, Err(EchecFiche::Autre));
+    }
+
+    /// Lot C4b : le pseudo public d'un compte (forme de « gogapidocs »), sans jeton ni cookie ; au moindre doute, rien.
+    #[tokio::test]
+    async fn le_pseudo_se_lit_sur_le_profil_public_sans_jeton() {
+        assert_eq!(lire_pseudo(&json!({"id": "48628349957132247", "username": " Yepoleb ", "is_employee": false}), "48628349957132247").as_deref(), Some("Yepoleb"));
+        assert_eq!(lire_pseudo(&json!({"id": "1", "username": "Autre"}), "48628349957132247"), None, "un autre compte");
+        assert_eq!(lire_pseudo(&json!({"username": "   "}), "1"), None);
+        assert_eq!(lire_pseudo(&json!({"username": "a\u{7}b"}), "1").as_deref(), Some("ab"));
+        assert_eq!(lire_pseudo(&json!({"username": "x".repeat(100)}), "1").map(|p| p.chars().count()), Some(40));
+        let s = MockServer::start_async().await;
+        let m = s
+            .mock_async(|w, t| {
+                w.method(GET).path("/users/48628349957132247").matches(|r| r.headers.as_ref().is_none_or(|h| !h.iter().any(|(k, _)| k.eq_ignore_ascii_case("authorization") || k.eq_ignore_ascii_case("cookie"))));
+                t.status(200).json_body(json!({"id": "48628349957132247", "username": "Yepoleb"}));
+            })
+            .await;
+        assert_eq!(pseudo(&s.base_url(), "48628349957132247").await.as_deref(), Some("Yepoleb"));
+        m.assert_async().await;
+        assert_eq!(pseudo(&s.base_url(), "5").await, None, "404 : rien");
+        assert_eq!(pseudo(&s.base_url(), "../x").await, None);
+    }
+
+    #[test]
+    fn le_refus_de_google_se_reconnait() {
+        for ok in ["https://accounts.google.com/signin/oauth/error?authError=Cg9kaXNhbGxvd2VkX3VzZXJhZ2VudA", "https://accounts.google.com/x?error=disallowed_useragent", "https://accounts.google.com/signin/rejected"] {
+            assert!(refus_google(&u(ok)), "{ok}");
+        }
+        for non in ["https://accounts.google.com/o/oauth2/auth", "https://evil.example/disallowed_useragent", "http://accounts.google.com/signin/rejected"] {
+            assert!(!refus_google(&u(non)), "{non}");
+        }
     }
 
     fn f(titre: &str, genre: &str, genre_du_jeu: &str, jeu: &str, visible: Option<bool>) -> FicheGog {

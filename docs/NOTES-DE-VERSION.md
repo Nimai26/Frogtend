@@ -1,5 +1,23 @@
 # Notes de version de Frogtend
 
+## 0.219.0 — 🟣 GOG : plusieurs comptes par profil (lot C4b)
+
+- Nouveau : tu avais deux comptes GOG sans le savoir, celui de GOG Galaxy (Cyberpunk, Horizon…) et celui de Frogtend
+  (les jeux Prime). Dans 🛒 Boutiques, « ➕ Ajouter un compte GOG » ouvre la page de connexion de GOG : les jeux des
+  comptes sont réunis dans ta ludothèque, avec une seule carte pour un jeu que tu as deux fois.
+- Chaque compte a sa ligne (ton pseudo GOG, ou « Compte GOG 1, 2… » ; jamais ton numéro) et son bouton « Oublier » :
+  Frogtend ne lit plus ce compte et oublie sa connexion ; tes jeux restent dans la ludothèque, les jeux installés ne
+  bougent pas. « 🔄 Mettre à jour mes jeux GOG » relit tous les comptes, avec un seul message à la fin.
+- Frogtend te dit quand GOG Galaxy est ouvert sur un autre compte. Pour installer un jeu de l'autre compte, il te
+  prévient avant d'ouvrir Galaxy (« Ouvrir quand même » ou « Annuler »). Un jeu installé de l'autre compte se lance
+  directement, seulement quand Frogtend en est sûr ; dans le doute, il passe toujours par Galaxy (sauvegardes dans le
+  nuage).
+- Compte lié à Google : si Google refuse la fenêtre de connexion, Frogtend te dit de définir un mot de passe sur gog.com
+  et de te connecter avec ton adresse et ce mot de passe.
+- Corrigé : sur un PC où deux personnes utilisent GOG Galaxy, leurs jeux ne se mélangent plus.
+- ⚠ Revenir à la 0.218 ferait perdre la liste des comptes GOG ajoutés : les jeux restent dans la ludothèque, mais il
+  faudrait rajouter ces comptes.
+
 ## 0.218.2 — 🟣 GOG : ton compte reconnu par la connexion façon Galaxy
 
 - Corrigé : après ta reconnexion, Frogtend refusait la connexion façon Galaxy en la croyant « d'un autre compte ». GOG
