@@ -14,7 +14,7 @@
       HH:MM, après une partie », et un abri 🏁 dans « 🛟 Mes abris ».
 - [x] (validé par Seb le 23/11) 3. Relancer Cyberpunk et quitter SANS sauvegarder : aucun message, aucun nouvel abri.
 - [x] (validé par Seb le 23/11) 4. Pendant que le jeu tourne : « 👥 Changer de joueur » est refusé avec un message clair.
-- [ ] 5. Taodbox ▸ un jeu PC ▸ ⚙ : l'interrupteur se règle à la manette ; l'éteindre, jouer, quitter : aucun abri ;
+- [x] (validé par Seb le 23/11) 5. Taodbox ▸ un jeu PC ▸ ⚙ : l'interrupteur se règle à la manette ; l'éteindre, jouer, quitter : aucun abri ;
       le rallumer.
 - [ ] 6. Un jeu PC qui a un mod (ou un mod à installer) : ajouter/retirer un mod ▸ « 🛟 Tes parties d'abord… » puis le
       mod ; un abri 🛠 « avant un changement de mod » apparaît.
