@@ -11,7 +11,7 @@
 - [x] 2. 🛟 : la fenêtre propose « ☁ Télécharger depuis OneDrive puis mettre à l'abri (9 fichiers · 180,2 Mo) » et
       « Annuler » ; choisir Télécharger : « Téléchargement depuis OneDrive… N/9 », puis « … (dont 9 téléchargés depuis
       OneDrive) » et un abri daté ; la ligne 📁 ne dit plus « dans ton nuage ».
-- [ ] 3. Ouvrir Taodbox puis revenir à la ludothèque : TerraScape garde son affiche (après une ouverture du profil
+- [x] 3. Ouvrir Taodbox puis revenir à la ludothèque : TerraScape garde son affiche (après une ouverture du profil
       pour qu'elle revienne une première fois).
 
 ## 🛟 Mettre mes parties à l'abri (0.221.0, lot S2)
@@ -22,7 +22,7 @@
 - [x] (validé par Seb le 22/11 : refus pendant le jeu ; après la fermeture, il a fallu attendre un peu plus) 3. Jeu lancé (ou fermé il y a moins d'une minute), puis 🛟 : refus clair ; une minute après la fermeture : ça passe.
 - [x] (validé par Seb le 22/11) 4. Taodbox ▸ même jeu ▸ 📁 : la croix atteint 🛟, A ouvre la fenêtre, B annule sans rien copier, A sur « Mettre à
       l'abri » copie.
-- [ ] (22/11 : 9 fichiers seulement dans OneDrive, « Rien à mettre à l'abri » ; Seb : proposer de les rapatrier → 0.221.1) 5. Age of Empires IV (parties sous OneDrive) ▸ 🛟 : annonce correcte ; des fichiers « en ligne seulement » sont
+- [x] (validé par Seb le 23/11 en 0.221.1 : rapatriement proposé, 9/9 téléchargés, abri daté) (22/11 : 9 fichiers seulement dans OneDrive, « Rien à mettre à l'abri » ; Seb : proposer de les rapatrier → 0.221.1) 5. Age of Empires IV (parties sous OneDrive) ▸ 🛟 : annonce correcte ; des fichiers « en ligne seulement » sont
       signalés et non copiés.
 - [ ] 6. Un jeu Steam déjà mis à l'abri avant cette version ▸ 📁 : l'ancien abri porte « Frogtend ne sait plus d'où
       venaient N de ces fichiers… ».
