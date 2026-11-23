@@ -874,6 +874,22 @@ fois-là les emplacements qu'il contient (seul l'échec au plan est géré).
 RAPATRIER.** Quand des parties ne sont que dans le nuage (OneDrive « en ligne seulement »), la fenêtre d'abri propose
 « Télécharger depuis OneDrive puis mettre à l'abri » avec la taille annoncée ; rien sans le oui de la personne ;
 jamais automatiquement. « 📁 Où sont mes parties » dit aussi tout de suite que ces fichiers sont dans le nuage.
+**Lot S3 — décisions de Seb (23/11, après l'avis des experts lancement et interface)** : (1) si l'abri d'avant
+retrait / réinstallation / mise à jour / mod ÉCHOUE, la fenêtre maison propose PARTOUT « 🔁 Réessayer », « Continuer
+sans abri » (seconde confirmation, focus sur Annuler) et « Annuler » ; l'option OneDrive (télécharger puis réessayer)
+quand c'est la cause ; (2) après une partie, attendre le CALME (au moins 60 s sans écriture, aucun programme du dossier
+du jeu) jusqu'à 10 MINUTES au plus, puis abandonner sans bruit inutile et réessayer à la partie suivante (repère « abri
+à faire » par profil, id et date seulement) ; (3) INTERDIRE de changer de profil Frogtend pendant qu'un jeu tourne (comme
+pour l'émulateur ouvert seul) ; (4) l'abri APRÈS UNE PARTIE se coupe par un interrupteur du profil, ALLUMÉ d'office, dans
+Options ▸ Sauvegarde ET dans les réglages de Taodbox ; l'abri AVANT un retrait / une réinstallation / un mod ne se coupe
+jamais. Règles des experts retenues : fiche de sorte `emplacements` gardée, avec un champ `declencheur` (main,
+apres_partie, avant_retrait, avant_reinstallation, avant_mise_a_jour, avant_mod) — jamais une nouvelle sorte (la remise
+d'après réinstallation poserait `emplacements/` dans le jeu) ; en automatique jamais de téléchargement OneDrive ni de
+copie au-delà de 2 Go sans question (signalé, ligne persistante sur la fiche) ; « rien de neuf » = aucun abri et aucun
+message ; un abri réussi = un toast court, et « 🛟 Dernier abri : … » sur la fiche ; abri avant le désinstalleur au
+retrait, avant l'installeur à la réinstallation, et pour les mods de jeux non-Steam et Steam (cache S1, hors ligne) ;
+aucun abri effacé (rétention = idée à part) ; le relevé du calme par dates et tailles seulement, jamais un SHA1 en
+boucle. Les abris automatiques ne partent chez Firehouse qu'au S4.
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
 « Connecte-toi… dans la fenêtre qui s'ouvre » laisse croire que rien ne se passe ou que c'est raté. Voulu : une petite
