@@ -24,7 +24,7 @@
       l'abri » copie.
 - [x] (validé par Seb le 23/11 en 0.221.1 : rapatriement proposé, 9/9 téléchargés, abri daté) (22/11 : 9 fichiers seulement dans OneDrive, « Rien à mettre à l'abri » ; Seb : proposer de les rapatrier → 0.221.1) 5. Age of Empires IV (parties sous OneDrive) ▸ 🛟 : annonce correcte ; des fichiers « en ligne seulement » sont
       signalés et non copiés.
-- [ ] 6. Un jeu Steam déjà mis à l'abri avant cette version ▸ 📁 : l'ancien abri porte « Frogtend ne sait plus d'où
+- [ ] (sauté le 23/11 : aucun ancien abri Steam sur Venkman, seuls Dune et les abris du 22/11 ; couvert par les tests) 6. Un jeu Steam déjà mis à l'abri avant cette version ▸ 📁 : l'ancien abri porte « Frogtend ne sait plus d'où
       venaient N de ces fichiers… ».
 
 ## 📁 Où sont mes parties (0.220.0, lot S1)
