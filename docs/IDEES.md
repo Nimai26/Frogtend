@@ -231,3 +231,4 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   (lot S) ; Taodbox par `RECOMPLAUNCHER_MODE=bigpicture` ; manette réglée dès la 1re partie par `config`. Catalogue :
   à demander à Firehouse (un seul cerveau) plutôt que de lire le site ; ne JAMAIS copier le code GPL de RecompLauncher,
   seulement lire son format documenté. À faire après le lot S (et le C4c), avec l'avis des experts.
+- (23/11, essai S4) Options ▸ Sauvegarde : afficher « moins de 1 % » au lieu de « 0 % » quand la place utilisée est faible mais pas nulle (29,3 Mo sur 100 Go).

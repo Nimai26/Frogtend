@@ -7,7 +7,7 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## ☁ Parties des jeux PC chez Firehouse (0.223.0, lot S4)
-- [ ] 1. Options ▸ Sauvegarde : « Place chez Firehouse » montre environ 30,7 Mo sur 100 Go, « pour tous tes profils et
+- [x] 1. Options ▸ Sauvegarde : « Place chez Firehouse » montre environ 30,7 Mo sur 100 Go, « pour tous tes profils et
       tous tes PC ».
 - [ ] 2. « 💾 Sauvegarder maintenant » : une fenêtre demande « Envoyer … de parties à Firehouse ? » avec environ
       435 Mo et le nombre de fichiers, et la place chez Firehouse ; « Envoyer ».
