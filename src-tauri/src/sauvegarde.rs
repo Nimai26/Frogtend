@@ -311,8 +311,8 @@ pub trait Destination {
     /// `Some(vrai)` si la destination sait que ce fichier est bien là à cette taille ; `None` si elle ne peut pas le
     /// dire à peu de frais (on fait alors confiance au manifeste).
     fn present(&self, relatif: &str, taille: u64) -> Option<bool>;
-    /// Lot S4 : un document de l'espace du PROFIL (pas de ce PC) — le sel des empreintes (`abris-sel.txt`, contrat
-    /// 1.51 : sous le PC réservé `_profil`).
+    /// Lot S4 : un document de l'espace du PROFIL (pas de ce PC) — le sel des empreintes (rangé ici dans `abris-sel.txt`,
+    /// envoyé en document `abris-sel.json` sous le PC réservé `_profil`, contrat 1.51).
     async fn ecrire_document_profil(&self, nom: &str, v: &Value) -> Resultat<()>;
     /// Lot S4 : la place utilisée et le plafond de la personne ; `None` : inconnus (rien n'est vérifié).
     async fn place(&self) -> Resultat<Option<Place>>;
@@ -475,8 +475,8 @@ impl Destination for Api<'_> {
         }
         // Reprise : ce que Firehouse a déjà reçu de ce fichier (`.part`).
         let deja = self.client.brute(reqwest::Method::HEAD, &route, None, &[]).await?;
-        // Contrat 1.51 : un fichier déjà COMPLET chez Firehouse, de la même empreinte, n'est pas renvoyé. (En 1.50, le
-        // HEAD d'un fichier complet répond `X-Recu: 0` : indiscernable, il repart en entier — sans dommage.)
+        // Contrat 1.51 : un fichier déjà COMPLET chez Firehouse, de la même empreinte, n'est pas renvoyé (`X-Complet: 1`
+        // et `X-Sha256`). Une empreinte différente : il repart en entier et remplace l'ancien.
         if deja.complet && deja.sha256.as_deref() == Some(sha) {
             return Ok(0);
         }
@@ -551,9 +551,6 @@ pub struct Preparation<'a> {
     /// Les octets qui partiront VRAIMENT, et combien de fichiers.
     pub a_envoyer: u64,
     pub fichiers_a_envoyer: usize,
-    /// La taille (ancienne) des fichiers remplacés : Firehouse compte l'ancien ET le nouveau pendant l'envoi (contrat
-    /// 1.50) — une marge à prévoir.
-    pub remplaces: u64,
     /// La taille de toutes les parties.
     pub total: u64,
 }
@@ -567,10 +564,6 @@ enum Lu {
     Pret(u64, String),
 }
 
-/// Lot S4 (contrat 1.50) : Firehouse compte l'ancien fichier ET son `.part` pendant un remplacement — la place à
-/// prévoir compte donc aussi les fichiers remplacés. À retirer quand la 1.51 sera servie (elle ne compte plus deux fois).
-pub const MARGE_REMPLACES: bool = true;
-
 /// Ce qui manquerait de place chez Firehouse pour cet envoi (0 : assez, ou place inconnue) — LE calcul de la place,
 /// pour l'envoi comme pour l'estimation.
 pub fn manque(p: &Preparation, place: Option<Place>) -> u64 {
@@ -579,8 +572,9 @@ pub fn manque(p: &Preparation, place: Option<Place>) -> u64 {
         return 0;
     }
     let libre = place.quota.saturating_sub(place.utilise);
-    let besoin = p.a_envoyer.saturating_add(if MARGE_REMPLACES { p.remplaces } else { 0 });
-    besoin.saturating_sub(libre)
+    // Contrat 1.51 : l'ancien fichier est déduit pendant tout l'envoi de son remplaçant (plus de double compte). Le
+    // calcul reste prudent (la place rendue par les fichiers remplacés n'est pas comptée) ; le 507 chiffré tranche.
+    p.a_envoyer.saturating_sub(libre)
 }
 
 /// Le manifeste tiendra-t-il chez Firehouse (5 Mo par document) ? Vérifié AVANT d'envoyer quoi que ce soit (lot S4).
@@ -608,7 +602,7 @@ pub fn verifier_manifeste(m: &ManifesteParties) -> Resultat<()> {
 /// hors du fil asynchrone. Rien n'est envoyé.
 pub async fn preparer<'a>(d: &impl Destination, contenu: &'a Contenu, cache: &mut CacheEmpreintes) -> Resultat<Preparation<'a>> {
     let ancien = lire_manifeste(d, false).await?;
-    let mut p = Preparation { lignes: Vec::new(), illisibles: BTreeSet::new(), ancien, a_envoyer: 0, fichiers_a_envoyer: 0, remplaces: 0, total: 0 };
+    let mut p = Preparation { lignes: Vec::new(), illisibles: BTreeSet::new(), ancien, a_envoyer: 0, fichiers_a_envoyer: 0, total: 0 };
     let travaux: Vec<(PathBuf, Option<Vec<u8>>)> = contenu.parties.iter().map(|e| (e.source.clone(), contenu.en_memoire.get(&e.source).cloned())).collect();
     let mut c = std::mem::take(cache);
     let (lus, c) = tokio::task::spawn_blocking(move || {
@@ -648,7 +642,6 @@ pub async fn preparer<'a>(d: &impl Destination, contenu: &'a Contenu, cache: &mu
         if !deja {
             p.a_envoyer += taille;
             p.fichiers_a_envoyer += 1;
-            p.remplaces += ancienne.map(|l| l.1).unwrap_or(0);
         }
         p.total += taille;
         p.lignes.push(Ligne { e, sha, taille, deja });
@@ -2422,11 +2415,11 @@ mod tests_s4 {
             r => panic!("{r:?}"),
         }
         assert!(f.fichiers.lock().unwrap().is_empty() && f.docs.lock().unwrap().is_empty(), "rien envoyé, rien écrit");
-        // Assez de place : il part. Remplacé ensuite : l'ancien compte aussi (marge, contrat 1.50).
+        // Assez de place : il part. Remplacé ensuite : contrat 1.51, l'ancien n'est plus compté deux fois (plus de marge).
         let f = Fausse { place: Some(Place { utilise: 0, quota: 1500 }), ..Default::default() };
         envoyer(&f, &c, "PC", "t").await.unwrap();
         std::fs::write(&a, [1u8; 1000]).unwrap();
-        assert!(matches!(envoyer(&f, &c, "PC", "t").await, Err(Erreur::Plein { manque_octets: Some(500), .. })));
+        assert_eq!(envoyer(&f, &c, "PC", "t").await.unwrap().envoyes, 1);
         // Rien à envoyer : jamais refusé, même plein.
         let f2 = Fausse { place: Some(Place { utilise: 100, quota: 100 }), ..Default::default() };
         assert!(envoyer(&f2, &contenu(vec![]), "PC", "t").await.is_ok());

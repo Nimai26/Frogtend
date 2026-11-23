@@ -6,6 +6,17 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## ☁ Parties des jeux PC chez Firehouse (0.223.0, lot S4)
+- [ ] 1. Options ▸ Sauvegarde : « Place chez Firehouse » montre environ 30,7 Mo sur 100 Go, « pour tous tes profils et
+      tous tes PC ».
+- [ ] 2. « 💾 Sauvegarder maintenant » : une fenêtre demande « Envoyer … de parties à Firehouse ? » avec environ
+      435 Mo et le nombre de fichiers, et la place chez Firehouse ; « Envoyer ».
+- [ ] 3. À la fin : « ✅ Sauvegardé : N fichier(s) envoyé(s)… » ; la place a monté d'environ 435 Mo ; ni « À
+      réessayer » ni « Clé du profil » dans Options ▸ Sauvegarde.
+- [ ] 4. « 💾 Sauvegarder maintenant » une seconde fois : vite fini, « rien n'avait changé ».
+- [ ] 5. Jouer un peu à Cyberpunk, sauvegarder en jeu, quitter : l'abri se fait, puis la sauvegarde automatique
+      n'envoie que la nouvelle partie, sans rien demander.
+
 ## 🛟 Abri automatique des parties (0.222.0, lot S3)
 - [x] (validé par Seb le 23/11) 1. Options ▸ Sauvegarde : l'interrupteur « 🛟 Mettre mes parties à l'abri sur ce PC après chaque partie (pour
       tous tes jeux PC) » est allumé.

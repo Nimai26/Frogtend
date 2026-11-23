@@ -1,5 +1,21 @@
 # Notes de version de Frogtend
 
+## 0.223.0 — ☁ Les parties de tous tes jeux PC chez Firehouse
+
+- Nouveau : la sauvegarde envoie maintenant chez Firehouse les parties de TOUS tes jeux PC mises à l'abri (à la main
+  ou après une partie), pas seulement celles des émulateurs. Après un reformatage ou sur un autre PC, elles pourront
+  revenir (la restauration arrive au prochain lot).
+- Seuls les fichiers qui ont changé repartent : la première fois est la plus longue, les suivantes sont rapides.
+- Avant d'envoyer, Frogtend vérifie la place qu'il te reste chez Firehouse et te dit ce qui manque, au lieu d'échouer
+  au milieu. Options ▸ Sauvegarde montre la place utilisée (pour tous tes profils et tous tes PC).
+- Un fichier qui ne peut pas partir (verrouillé, abîmé en route…) n'arrête plus tout : il est compté, dit, et
+  réessayé à la prochaine sauvegarde ; sa copie déjà chez Firehouse reste.
+- Des parties restées seulement dans OneDrive ne sont jamais téléchargées pour l'envoi : leurs anciennes copies
+  restent chez Firehouse.
+- L'envoi se met en pause pendant que tu joues, et la sauvegarde d'après une partie attend la fin de l'abri.
+- Une sauvegarde automatique plus grosse que ton seuil (200 Mo d'office) n'envoie rien : elle te demande de la lancer
+  toi-même.
+
 ## 0.222.0 — 🛟 Tes parties mises à l'abri toutes seules
 
 - Nouveau : après chaque partie d'un jeu PC, Frogtend attend que le jeu ait fini d'écrire (jusqu'à 10 minutes), puis

@@ -921,6 +921,11 @@ experts contrat et lancement (1 bloquant corrigé : sel envoyé sous le mauvais 
 un abri `jeu`/`nuage-steam` d'un autre profil faisait reculer ou retirer la copie de ce profil → protégé par `gardes`).
 Comptage local (essai `essai_abris_s4`, lecture seule) : 3 jeux, 203 fichiers, 434,8 Mo au premier envoi. À la mise en
 service de la 1.51 : retirer `MARGE_REMPLACES`, construire et livrer, premier envoi avec l'accord de Seb.
+**S4 livré en 0.223.0 (23/11)** : Firehouse a annoncé la 1.51 en service (3.316.0) ; formes comparées au code, aucun
+écart ; la marge du double compte (`MARGE_REMPLACES`) est retirée (calcul de place prudent : la place rendue par un
+fichier remplacé n'est pas comptée, le 507 chiffré tranche). Le premier envoi réel (environ 435 Mo, 203 fichiers,
+3 jeux) se fait à la main, avec l'accord de Seb (son seuil de 200 Mo remet toute sauvegarde automatique plus grosse à
+plus tard).
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
 « Connecte-toi… dans la fenêtre qui s'ouvre » laisse croire que rien ne se passe ou que c'est raté. Voulu : une petite
