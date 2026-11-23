@@ -9,7 +9,7 @@
 ## 🛟 Abri automatique des parties (0.222.0, lot S3)
 - [x] (validé par Seb le 23/11) 1. Options ▸ Sauvegarde : l'interrupteur « 🛟 Mettre mes parties à l'abri sur ce PC après chaque partie (pour
       tous tes jeux PC) » est allumé.
-- [ ] 2. Jouer quelques minutes à Cyberpunk (sauvegarder en jeu), quitter, attendre 1 à 2 minutes : un court message
+- [x] (validé par Seb le 23/11 ; vérifié sur le disque : fiche emplacements/apres_partie, complète, 192 fichiers, sans nom d utilisateur) 2. Jouer quelques minutes à Cyberpunk (sauvegarder en jeu), quitter, attendre 1 à 2 minutes : un court message
       « 🛟 Tes parties de « Cyberpunk 2077 » sont à l'abri. » ; sur la fiche ▸ 📁 : « 🛟 Dernier abri : aujourd'hui à
       HH:MM, après une partie », et un abri 🏁 dans « 🛟 Mes abris ».
 - [ ] 3. Relancer Cyberpunk et quitter SANS sauvegarder : aucun message, aucun nouvel abri.
