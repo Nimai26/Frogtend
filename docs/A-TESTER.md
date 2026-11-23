@@ -18,7 +18,7 @@
       le rallumer.
 - [ ] (reporté le 23/11 : les mods PC (0.81 à 0.89) n'ont jamais été essayés avec Seb ; à faire avec la séance « Mods dans les jeux Steam » ; couvert par les tests) 6. Un jeu PC qui a un mod (ou un mod à installer) : ajouter/retirer un mod ▸ « 🛟 Tes parties d'abord… » puis le
       mod ; un abri 🛠 « avant un changement de mod » apparaît.
-- [ ] 7. Age of Empires IV, parties remises « en ligne seulement » par OneDrive : après une partie, pas de
+- [x] (validé par Seb le 23/11) 7. Age of Empires IV, parties remises « en ligne seulement » par OneDrive : après une partie, pas de
       téléchargement ; une ligne sur la fiche dit que des fichiers sont dans ton nuage (le message, une seule fois).
 
 ## ☁ Parties dans OneDrive et affiches (0.221.1)
