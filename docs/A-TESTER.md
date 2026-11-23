@@ -7,8 +7,8 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## ☁ Parties dans OneDrive et affiches (0.221.1)
-- [ ] 1. Fiche d'Age of Empires IV ▸ 📁 : « 9 fichiers · 180,2 Mo — dans ton nuage OneDrive, pas sur ce PC ».
-- [ ] 2. 🛟 : la fenêtre propose « ☁ Télécharger depuis OneDrive puis mettre à l'abri (9 fichiers · 180,2 Mo) » et
+- [x] 1. Fiche d'Age of Empires IV ▸ 📁 : « 9 fichiers · 180,2 Mo — dans ton nuage OneDrive, pas sur ce PC ».
+- [x] 2. 🛟 : la fenêtre propose « ☁ Télécharger depuis OneDrive puis mettre à l'abri (9 fichiers · 180,2 Mo) » et
       « Annuler » ; choisir Télécharger : « Téléchargement depuis OneDrive… N/9 », puis « … (dont 9 téléchargés depuis
       OneDrive) » et un abri daté ; la ligne 📁 ne dit plus « dans ton nuage ».
 - [ ] 3. Ouvrir Taodbox puis revenir à la ludothèque : TerraScape garde son affiche (après une ouverture du profil
