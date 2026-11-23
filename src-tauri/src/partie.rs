@@ -38,8 +38,8 @@ pub struct Preparation {
 
 /// Un abri de parties : où, combien.
 /// Les dates des abris FINIS d'un dossier d'abris de jeu (noms tout en chiffres ; un `.en-cours` n'en est pas un). Un
-/// abri fait à la main (lot S2 : ses parties ne sont pas dans le dossier du jeu) n'en est pas un ici : il ne fait jamais
-/// reposer la question de la réinstallation.
+/// abri de sorte `emplacements` (lots S2/S3, à la main ou automatique : ses parties ne sont pas dans le dossier du jeu)
+/// n'en est pas un ici : il ne fait jamais reposer la question de la réinstallation.
 fn dates_d_abri(du_jeu: &Path) -> Vec<String> {
     std::fs::read_dir(du_jeu)
         .into_iter()
@@ -48,7 +48,7 @@ fn dates_d_abri(du_jeu: &Path) -> Vec<String> {
         .filter(|e| e.path().is_dir())
         .map(|e| e.file_name().to_string_lossy().to_string())
         .filter(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_digit()))
-        .filter(|d| !crate::abri_parties::fait_a_la_main(&du_jeu.join(d)))
+        .filter(|d| !crate::abri_parties::sorte_emplacements(&du_jeu.join(d)))
         .collect()
 }
 

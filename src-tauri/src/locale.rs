@@ -193,6 +193,11 @@ impl Noyau {
     /// Les jeux du PC que le profil ouvert a le droit de voir (ceux de son catalogue), avec leur progression.
     pub async fn jeux_du_pc(&self) -> Resultat<Vec<JeuPcVu>> {
         let s = self.session().await?;
+        self.jeux_du_pc_de(&s)
+    }
+
+    /// `jeux_du_pc` pour une session déjà lue (lot S4 : la sauvegarde ne lit la session qu'une fois).
+    pub fn jeux_du_pc_de(&self, s: &crate::noyau::Session) -> Resultat<Vec<JeuPcVu>> {
         let tous = self.registre().tous()?;
         // Les jeux importés reliés à une fiche que ce profil voit (lu AVANT de prendre le verrou du cache).
         let reliees = self.reliees(&s)?;

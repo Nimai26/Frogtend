@@ -4,7 +4,7 @@
 
 import { listen } from '@tauri-apps/api/event';
 import { isTauri } from '@tauri-apps/api/core';
-import { api, taille, type ConflitRestaure } from '$lib/api';
+import { api, estErreurCoeur, taille, type ConflitRestaure } from '$lib/api';
 import { choisir, confirmer, informer, toast } from '$lib/dialogues/fenetres.svelte';
 import { motifDuRefus } from '$lib/dialogues/messages';
 import { etat, reglerPc, remplacerReglagesProfil } from '$lib/etat.svelte';
@@ -13,7 +13,7 @@ import { depuis } from '$lib/ludotheque/ludotheque.svelte';
 import { rechargerJeuxDuPc, tele } from '$lib/ludotheque/telechargements.svelte';
 import { proposerDossierJeux } from '$lib/ludotheque/dossierJeux';
 import { aCartes } from '$lib/ludotheque/cartes';
-import { aAnnoncer, dossierDesAbris, dossierDesCopies } from './sauvegardeTaille';
+import { aAnnoncer, dossierDesAbris, dossierDesCopies, placeManquante } from './sauvegardeTaille';
 
 export interface BilanSauvegarde {
   envoyes: number;
@@ -27,20 +27,85 @@ export interface BilanSauvegarde {
   dossier: string;
   /** Jeux dont les parties restent seulement sur ce PC (ce profil ne les voit pas chez Firehouse) — jamais nommés. */
   non_envoyes?: number;
+  /** Lot S4 : fichiers qui n'ont pas pu partir cette fois (leur copie déjà chez Firehouse reste) ; Frogtend réessaiera. */
+  sautes?: number;
+  /** Lot S4 : le sel des empreintes du profil attend que Firehouse l'accepte (réessayé à la prochaine sauvegarde). */
+  sel_en_attente?: boolean;
 }
 
 /** Une sauvegarde quotidienne est refaite au-delà de ce délai. */
 const JOUR_S = 24 * 3600;
 
+/** Lot S4 : après une partie, la sauvegarde attend la fin de l'abri automatique des parties, 15 minutes au plus. */
+export const ATTENTE_ABRIS_MS = 15 * 60 * 1000;
+
+/** Le début du refus du cœur quand une sauvegarde est déjà en cours (`sauvegarde.rs`, `DEJA_EN_COURS`). */
+export const DEJA_EN_COURS = 'Une sauvegarde est déjà en cours sur ce PC';
+/** Le début du refus d'une sauvegarde automatique trop grosse (`sauvegarde.rs`, `GROSSE_AUTO`) : rien n'est envoyé. */
+export const GROSSE_AUTO = 'Sauvegarde automatique remise à plus tard';
+
 export const sauvegarde = $state<{
   enCours: boolean;
   derniere: BilanSauvegarde | null;
   restauration: { faits: number; total: number } | null;
+  /** Lot S4 : une sauvegarde demandée pendant une autre : refaite juste après (jamais abandonnée en silence). */
+  aRefaire: boolean;
+  /** Lot S4 : une partie est en cours (l'envoi du cœur se met alors en pause, et l'interface le dit). */
+  partieEnCours: boolean;
 }>({
   enCours: false,
   derniere: null,
   restauration: null,
+  aRefaire: false,
+  partieEnCours: false,
 });
+
+/** Lot S4 : l'événement `parties-abris-finis` du cœur (l'abri d'après la partie de ce jeu est traité). */
+export interface AbrisFinis {
+  profil: string;
+  jeu: number;
+  faits: number;
+}
+
+/** Les attentes en cours, par jeu : le profil attendu et de quoi les finir. */
+const attentesAbris = new Map<number, { profil: string; finir: (vu: boolean) => void }[]>();
+let abrisEcoutes = false;
+
+/** Écoute `parties-abris-finis` (une seule fois), AVANT les fins de partie : l'événement ne se perd jamais. */
+export async function suivreAbrisFinis() {
+  if (abrisEcoutes || !isTauri()) return;
+  abrisEcoutes = true;
+  await listen<AbrisFinis>('parties-abris-finis', (e) => recevoirAbrisFinis(e.payload));
+  // Lot S4 : le cœur a fini une sauvegarde (son verrou est rendu).
+  await listen('sauvegarde-finie', () => recevoirSauvegardeFinie());
+}
+
+/** Un `parties-abris-finis` reçu : finit les attentes de ce jeu pour ce profil (profil vide : le cœur ne le savait
+ * pas, toutes les attentes de ce jeu). */
+export function recevoirAbrisFinis(p: AbrisFinis) {
+  for (const a of [...(attentesAbris.get(p.jeu) ?? [])]) {
+    if (p.profil === '' || a.profil === p.profil) a.finir(true);
+  }
+}
+
+/** Commence à attendre la fin de l'abri d'après la partie de `jeu` pour `profil` (à appeler DÈS la fin de partie
+ * reçue). Rend `true` quand il est fini, `false` au bout de `delaiMs`. */
+export function attendreAbrisFinis(profil: string, jeu: number, delaiMs = ATTENTE_ABRIS_MS): Promise<boolean> {
+  return new Promise((resolve) => {
+    const a = {
+      profil,
+      finir: (vu: boolean) => {
+        clearTimeout(minuteur);
+        const l = (attentesAbris.get(jeu) ?? []).filter((x) => x !== a);
+        if (l.length) attentesAbris.set(jeu, l);
+        else attentesAbris.delete(jeu);
+        resolve(vu);
+      },
+    };
+    const minuteur = setTimeout(() => a.finir(false), delaiMs);
+    attentesAbris.set(jeu, [...(attentesAbris.get(jeu) ?? []), a]);
+  });
+}
 
 export async function lireDerniereSauvegarde() {
   sauvegarde.derniere = await api.derniereSauvegarde().catch(() => null);
@@ -83,31 +148,42 @@ let grosseRemise = false;
 /** Sauvegarde maintenant. `discrete` : pas de message si tout va bien. `ecarter` : remplacer une sauvegarde existante
  * non restaurée (choix explicite de la personne). */
 export async function sauvegarder(discrete = false, ecarter = false): Promise<boolean> {
-  if (sauvegarde.enCours || etat.pc.firehouse.simule) return false;
+  if (etat.pc.firehouse.simule) return false;
+  if (sauvegarde.enCours) {
+    // Lot S4 : demandée pendant une autre (une fin de partie pendant une sauvegarde) : refaite juste après.
+    sauvegarde.aRefaire = true;
+    return false;
+  }
   sauvegarde.enCours = true;
   try {
     // Une grosse sauvegarde (une première sauvegarde PS3 ou Xbox : des centaines de Mo) est ANNONCÉE avant d'envoyer :
     // demandée à la main, remise à plus tard en automatique. Une estimation impossible n'empêche rien.
     // Après « remplacer une sauvegarde » (`ecarter`), la taille a déjà été acceptée : jamais redemandée.
-    const est = ecarter ? null : await api.sauvegardeEstimer().catch(() => null);
+    // Lot S4 : une sauvegarde AUTOMATIQUE ne fait pas d'estimation séparée (tout serait lu deux fois) : le cœur vérifie
+    // lui-même la place et le plafond (`plafondAuto`) avant d'envoyer quoi que ce soit.
+    const seuil = (etat.pc.seuilSauvegardeMo ?? 200) * 1024 * 1024;
+    const est = ecarter || discrete ? null : await api.sauvegardeEstimer().catch(() => null);
     const gros = est ? aAnnoncer(est, etat.pc.seuilSauvegardeMo ?? 200) : null;
-    if (gros !== null && discrete) {
-      // Dit une fois par ouverture de Frogtend, pas après chaque partie.
-      if (!grosseRemise) {
-        grosseRemise = true;
-        toast(`💾 Sauvegarde automatique remise à plus tard : au moins ${taille(gros)} de parties à envoyer. Lance-la toi-même (💾 Sauvegarder) quand ta connexion le permet.`, 'alerte');
-      }
+    // Pas assez de place chez Firehouse (le calcul du cœur) : dit clairement, rien n'est envoyé.
+    const manque = est ? placeManquante(est) : 0;
+    if (manque > 0) {
+      toast(`💾 Sauvegarde non faite : il manque ${taille(manque)} chez Firehouse (${placeTexte(est!)}). Libère de la place ou demande plus d’espace à Seb.`, 'erreur');
       return false;
     }
     if (gros !== null) {
-      const oui = await confirmer(`💾 Envoyer au moins ${taille(gros)} de parties à Firehouse ?`, {
-        message: `Tes parties ont beaucoup grossi depuis la dernière sauvegarde${est?.precedent == null ? ' (c’est la première depuis ce PC)' : ''}. Sur une connexion modeste, l’envoi peut prendre du temps ; tu peux continuer à utiliser Frogtend pendant ce temps.`,
+      // Lot S4 : ce qui partira VRAIMENT (contre la dernière sauvegarde de Firehouse), et la place qu'il y a.
+      const combien = est?.a_envoyer != null ? `${est.fichiers_a_envoyer ?? '?'} fichier(s), ${taille(gros)}` : `au moins ${taille(gros)}`;
+      const place = est && placeTexte(est) ? `\n\nPlace chez Firehouse : ${placeTexte(est)}.` : '';
+      const oui = await confirmer(`💾 Envoyer ${est?.a_envoyer != null ? taille(gros) : `au moins ${taille(gros)}`} de parties à Firehouse ?`, {
+        message: `À envoyer : ${combien}. Tes parties ont beaucoup grossi depuis la dernière sauvegarde${est?.precedent == null ? ' (c’est la première depuis ce PC)' : ''}. Sur une connexion modeste, l’envoi peut prendre du temps ; tu peux continuer à utiliser Frogtend pendant ce temps (il se met en pause pendant tes parties).${place}`,
         libelleValider: 'Envoyer',
       });
       if (!oui) return false;
     }
-    const b = await api.sauvegarder(ecarter);
+    const b = await api.sauvegarder(ecarter, discrete && !ecarter ? seuil : null);
     sauvegarde.derniere = b;
+    // Lot S4 : des fichiers qui n'ont pas pu partir sont TOUJOURS dits (même en automatique), sans jamais les nommer.
+    const sautes = b.sautes ? ` ⚠ ${b.sautes} fichier(s) n’ont pas pu partir cette fois : Frogtend réessaiera à la prochaine sauvegarde.` : '';
     if (!discrete) {
       const seulsIci = b.non_envoyes
         ? ` Les parties de ${b.non_envoyes} jeu(x) que ce profil ne voit pas restent seulement sur ce PC.`
@@ -115,12 +191,34 @@ export async function sauvegarder(discrete = false, ecarter = false): Promise<bo
       toast(
         (b.envoyes
           ? `✅ Sauvegardé : ${b.envoyes} fichier(s) envoyé(s), ${b.inchanges} déjà à jour (${b.fichiers} en tout).`
-          : `✅ Sauvegarde à jour : ${b.fichiers} fichier(s) de parties, rien n’avait changé.`) + seulsIci,
+          : `✅ Sauvegarde à jour : ${b.fichiers} fichier(s) de parties, rien n’avait changé.`) + seulsIci + sautes,
+        b.sautes ? 'alerte' : undefined,
       );
+    } else if (b.sautes) {
+      toast(`💾 Sauvegarde automatique faite.${sautes}`, 'alerte');
     }
     return true;
   } catch (e) {
     const motif = motifDuRefus(e);
+    // Lot S4 : déjà en cours côté cœur (une autre fenêtre, une sauvegarde lancée ailleurs) : refaite quand le cœur dit
+    // `sauvegarde-finie` (60 s au plus) — jamais une relance immédiate, qui tournerait en boucle.
+    if (motif.startsWith(DEJA_EN_COURS)) {
+      relancerApresLeCoeur();
+      return false;
+    }
+    // Lot S4 : une grosse sauvegarde automatique (le cœur n'a rien envoyé) : dite une fois par ouverture de Frogtend.
+    if (motif.startsWith(GROSSE_AUTO)) {
+      if (!grosseRemise) {
+        grosseRemise = true;
+        toast(`💾 ${motif} Lance-la toi-même (💾 Sauvegarder) quand ta connexion le permet.`, 'alerte');
+      }
+      return false;
+    }
+    // Lot S4 : l'espace chez Firehouse est plein (reconnu par sa sorte, jamais par son texte) : toujours dit.
+    if (estErreurCoeur(e) && e.sorte === 'plein') {
+      toast(`💾 ${discrete ? 'Sauvegarde automatique non faite' : 'Sauvegarde non faite'} : ${motif}`, discrete ? 'alerte' : 'erreur');
+      return false;
+    }
     if (motif.includes(A_REPRENDRE)) {
       void proposerReprise(motif, discrete);
       return false;
@@ -133,12 +231,49 @@ export async function sauvegarder(discrete = false, ecarter = false): Promise<bo
     return false;
   } finally {
     sauvegarde.enCours = false;
+    // Lot S4 : celle demandée pendant celle-ci part maintenant (discrète : elle ne redemande rien).
+    if (sauvegarde.aRefaire) {
+      sauvegarde.aRefaire = false;
+      void sauvegarder(true);
+    }
   }
 }
 
-/** Après une partie : sauvegarde si le profil l'a choisi. */
-export async function apresUnePartie() {
-  if (etat.profil.sauvegarde.auto === 'apres_partie') await sauvegarder(true);
+/** Lot S4 : le plafond de l'attente d'une sauvegarde refusée « déjà en cours » (si `sauvegarde-finie` ne vient pas). */
+export const PLAFOND_RELANCE_MS = 60_000;
+let relanceCoeur: ReturnType<typeof setTimeout> | null = null;
+
+/** Une seule attente à la fois : la sauvegarde repart à `sauvegarde-finie`, ou au bout du plafond. */
+function relancerApresLeCoeur() {
+  if (relanceCoeur) return;
+  relanceCoeur = setTimeout(() => {
+    relanceCoeur = null;
+    void sauvegarder(true);
+  }, PLAFOND_RELANCE_MS);
+}
+
+/** `sauvegarde-finie` (le cœur a rendu son verrou) : la sauvegarde en attente repart tout de suite. */
+export function recevoirSauvegardeFinie() {
+  if (!relanceCoeur) return;
+  clearTimeout(relanceCoeur);
+  relanceCoeur = null;
+  void sauvegarder(true);
+}
+
+/** « 29,3 Mo sur 100 Go » (la place chez Firehouse, tous profils et PC de la personne), ou '' si inconnue. */
+export function placeTexte(p: { utilise?: number | null; quota?: number | null }): string {
+  return p.utilise != null && p.quota != null ? `${taille(p.utilise)} sur ${taille(p.quota)}` : '';
+}
+
+/** Après une partie : sauvegarde si le profil l'a choisi. Lot S4 : quand un abri automatique des parties suit la
+ * partie (`abriApres`), la sauvegarde attend qu'il soit fini (`attente`, commencée dès la fin de partie reçue ; 15 min
+ * au plus) pour l'envoyer aussitôt ; si le profil a changé entre-temps, rien n'est envoyé. */
+export async function apresUnePartie(fin?: { jeu: number; abriApres?: boolean; attente?: Promise<boolean> }) {
+  const profil = etat.profilOuvert?.id ?? '';
+  if (etat.profil.sauvegarde.auto !== 'apres_partie') return;
+  if (fin?.abriApres) await (fin.attente ?? attendreAbrisFinis(profil, fin.jeu));
+  if ((etat.profilOuvert?.id ?? '') !== profil) return;
+  await sauvegarder(true);
 }
 
 /** À l'ouverture du profil : propose une restauration (profil jamais sauvegardé d'ici, sauvegarde à son nom), puis

@@ -1648,3 +1648,20 @@ POST plafond par personne → HTTP 507
    contrôle en local** : `nstool -k prod.keys -t tik <le .tik extrait de la table PFS0>` → la ligne du chiffrement de la
    clé de titre (« Title Key Format / Type ») : **Generic = commun (accepté)**, tout autre (Personalized) = personnel
    (refusé). Pas de `.tik` du tout = accepté (« absent »). Ticket illisible = refusé.
+
+## Sauvegarde : relevés réels du lot S4 (23/11, contrat 1.50, lecture seule, essai `essai_quota_s4`)
+
+Fixtures (`src-tauri/fixtures/`), copiées telles quelles depuis la réponse de Firehouse :
+- `sauvegarde-liste-150-reel.json` : `GET /api/jeux/v1/sauvegarde` (jeton de Seb) — `utilise_octets` = tout le dossier de
+  la personne (tous profils et PC, documents et `.part` compris), `quota_octets` à la racine.
+- `moi-sauvegarde-150-reel.json` : `GET /api/jeux/v1/moi ▸ sauvegarde`.
+
+Formes SIMULÉES d'après les réponses de Firehouse au besoin 57 (`src-tauri/fixtures/simule/`) :
+- `sauvegarde-507-150-simule.json` (1.50 : `{detail}` sans chiffres) ; `sauvegarde-507-151-simule.json` (1.51 :
+  `{detail, utilise_octets, quota_octets, manque_octets}`) ;
+- `sauvegarde-liste-151-simule.json` : l'espace du profil sous le PC réservé `_profil` (`reserve: true`), à ignorer comme PC.
+- Sel (1.51) : `PUT /sauvegarde/{profil}/_profil/document/abris-sel.json` corps `{"sel": "<hex>"}` → 200
+  `{ok, nom, octets}` ; absent → 404 `{"detail": "document absent"}` ; nom inconnu → 400.
+- `.part` entier : 1.50 → 409 `{recu: total}` (impasse) ; 1.51 → tout morceau finalise si l'empreinte colle (200
+  `{ok, recu, total, complet: true}`), sinon `.part` effacé et 409 `{recu: 0}` ; HEAD 1.51 : `X-Recu` = total et
+  `X-Complet: 0`, puis `X-Complet: 1` (+ `X-Total`, `X-Sha256`) une fois le fichier en place.

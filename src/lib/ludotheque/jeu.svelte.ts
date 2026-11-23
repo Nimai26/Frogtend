@@ -27,7 +27,7 @@ import { estRetroArch, normaliser, pourLeJeu } from '$lib/emulateurs/choix';
 import { etat, reglerPc, reglerProfil } from '$lib/etat.svelte';
 import { choixImagesParSeconde, type CommandesJeu } from '$lib/reglages/reglages';
 import { GENRES_MANETTE, libelleCommandes } from './commandes';
-import { apresUnePartie } from '$lib/sauvegarde.svelte';
+import { apresUnePartie, attendreAbrisFinis, sauvegarde, suivreAbrisFinis } from '$lib/sauvegarde.svelte';
 import { ludo, rechargerListe, rechargerPlateformes } from './ludotheque.svelte';
 import { debitConnu, mettreDansLaLudotheque, rechargerJeuxDuPc, tele } from './telechargements.svelte';
 import { aCartes, choixDeCartes } from './cartes';
@@ -143,7 +143,11 @@ export async function suivreParties() {
   await listen('menu-relance-annulee', () => {
     toast('⚠ L’émulateur restait figé : Frogtend l’a fermé. Relance le jeu toi-même avec ▶ Jouer.', 'alerte');
   });
-  ecoute = await listen<{ sorte: 'debut' | 'fin'; jeu: number; secondes?: number; carte_cedee?: boolean; relancer?: boolean }>('partie', async (e) => {
+  // Lot S4 : la fin de l'abri automatique d'après une partie, écoutée AVANT les fins de partie (jamais perdue).
+  await suivreAbrisFinis();
+  ecoute = await listen<{ sorte: 'debut' | 'fin'; jeu: number; secondes?: number; carte_cedee?: boolean; relancer?: boolean; abri_apres?: boolean }>('partie', async (e) => {
+    // Lot S4 : la sauvegarde se met en pause pendant la partie (et le dit).
+    sauvegarde.partieEnCours = e.payload.sorte === 'debut';
     if (e.payload.sorte === 'debut') {
       partie.affichee = false;
       partie.enJeu = e.payload.jeu;
@@ -157,10 +161,14 @@ export async function suivreParties() {
       void relancer(e.payload.jeu);
     } else {
       partie.enJeu = null;
+      // Lot S4 : l'abri des parties qui suit (jeu PC) est attendu dès maintenant, avant toute attente (l'événement
+      // de sa fin peut arriver très vite) ; la sauvegarde automatique part après lui.
+      const abriApres = !!e.payload.abri_apres;
+      const attente = abriApres ? attendreAbrisFinis(etat.profilOuvert?.id ?? '', e.payload.jeu) : undefined;
       const titre = tele.jeux[e.payload.jeu]?.titre ?? 'le jeu';
       toast(`🏁 Partie de « ${titre} » terminée (${duree(e.payload.secondes ?? 0)}).`);
       await rechargerJeuxDuPc();
-      await apresUnePartie();
+      await apresUnePartie({ jeu: e.payload.jeu, abriApres, attente });
     }
   });
 }

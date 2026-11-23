@@ -70,6 +70,19 @@ pub enum Erreur {
     /// `cause` : `onedrive`, `trop_gros` ou `echec` ; `operation` : le déclencheur (`avant_retrait`…). Jamais un chemin.
     #[error("{motif}")]
     AbriImpossible { motif: String, cause: String, operation: String, fichiers_en_ligne: usize, octets_en_ligne: u64, octets: u64 },
+    /// Lot S4 (23/11) : l'espace de la personne chez Firehouse est plein (507, ou la place libre vérifiée AVANT
+    /// d'envoyer). `manque_octets` : ce qui manque, quand Firehouse le dit (contrat 1.51) ou que Frogtend l'a calculé.
+    /// Reconnu par sa SORTE, jamais par son texte.
+    #[error("{motif}")]
+    Plein { motif: String, manque_octets: Option<u64> },
+}
+
+/// Une taille lisible (« 1,2 Go », « 30,7 Mo », « 512 Ko ») pour un message.
+pub fn taille_lisible(o: u64) -> String {
+    const KO: f64 = 1024.0;
+    let f = o as f64;
+    let (v, u) = if f >= KO * KO * KO { (f / (KO * KO * KO), "Go") } else if f >= KO * KO { (f / (KO * KO), "Mo") } else if f >= KO { (f / KO, "Ko") } else { return format!("{o} octets") };
+    format!("{v:.1} {u}").replace('.', ",")
 }
 
 impl Serialize for Erreur {
@@ -94,6 +107,7 @@ impl Serialize for Erreur {
             Erreur::Prevenir(_) => "prevenir",
             Erreur::CartoucheAbsente { .. } => "cartouche_absente",
             Erreur::AbriImpossible { .. } => "abri_impossible",
+            Erreur::Plein { .. } => "plein",
         };
         let mut m = s.serialize_map(None)?;
         m.serialize_entry("sorte", sorte)?;
@@ -110,6 +124,9 @@ impl Serialize for Erreur {
             m.serialize_entry("fichiers_en_ligne", fichiers_en_ligne)?;
             m.serialize_entry("octets_en_ligne", octets_en_ligne)?;
             m.serialize_entry("octets", octets)?;
+        }
+        if let Erreur::Plein { manque_octets: Some(n), .. } = self {
+            m.serialize_entry("manque_octets", n)?;
         }
         m.end()
     }
@@ -134,6 +151,17 @@ mod tests_forme {
             v,
             serde_json::json!({"sorte": "abri_impossible", "motif": "dans le nuage", "cause": "onedrive", "operation": "avant_retrait", "fichiers_en_ligne": 9, "octets_en_ligne": 180, "octets": 0})
         );
+        let v = serde_json::to_value(Erreur::Plein { motif: "plein".into(), manque_octets: Some(5) }).unwrap();
+        assert_eq!(v, serde_json::json!({"sorte": "plein", "motif": "plein", "manque_octets": 5}));
+        let v = serde_json::to_value(Erreur::Plein { motif: "plein".into(), manque_octets: None }).unwrap();
+        assert_eq!(v, serde_json::json!({"sorte": "plein", "motif": "plein"}));
+    }
+
+    #[test]
+    fn une_taille_se_lit_en_francais() {
+        assert_eq!(taille_lisible(30_746_015), "29,3 Mo");
+        assert_eq!(taille_lisible(107_374_182_400), "100,0 Go");
+        assert_eq!(taille_lisible(512), "512 octets");
     }
 }
 

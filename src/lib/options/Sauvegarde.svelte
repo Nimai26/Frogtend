@@ -4,18 +4,35 @@
   import { api, taille, type ConflitRestaure } from '$lib/api';
   import { etat, reglerPc, reglerProfil } from '$lib/etat.svelte';
   import { depuis } from '$lib/ludotheque/ludotheque.svelte';
-  import { lireDerniereSauvegarde, proposerRemplacements, restaurer, sauvegarde, sauvegarder } from '$lib/sauvegarde.svelte';
+  import { lireDerniereSauvegarde, placeTexte, proposerRemplacements, restaurer, sauvegarde, sauvegarder } from '$lib/sauvegarde.svelte';
+  import { libelleSauvegarde } from '$lib/sauvegardeTaille';
 
   // Les parties restaurées encore en double : une proposition fermée sans répondre se retrouve ici.
   let enDouble = $state<ConflitRestaure[]>([]);
   const relireDoubles = async () => {
     enDouble = await api.restaurationConflits().catch(() => []);
   };
+  // Lot S4 : la place chez Firehouse (tous profils et PC de la personne) ; inconnue hors ligne ou en mode simulé.
+  let place = $state<{ utilise: number; quota: number } | null>(null);
+  const relirePlace = async () => {
+    place = etat.pc.firehouse.simule ? null : await api.sauvegardePlace().catch(() => null);
+  };
   onMount(() => {
     lireDerniereSauvegarde();
     relireDoubles();
+    relirePlace();
   });
   const d = $derived(sauvegarde.derniere);
+  // Relue après chaque sauvegarde (elle a pu changer la place utilisée).
+  let vue = '';
+  $effect(() => {
+    const date = sauvegarde.derniere?.date ?? '';
+    if (date && date !== vue) {
+      vue = date;
+      relirePlace();
+    }
+  });
+  const pourcent = $derived(place && place.quota > 0 ? Math.min(100, Math.round((place.utilise / place.quota) * 100)) : 0);
 </script>
 
 <div class="sauvegarde">
@@ -34,7 +51,29 @@
         jamais depuis ce PC
       {/if}
     </dd>
+    {#if d?.sautes}
+      <dt>À réessayer</dt>
+      <dd>⚠ {d.sautes} fichier(s) n’ont pas pu partir la dernière fois : Frogtend réessaiera à la prochaine sauvegarde.</dd>
+    {/if}
+    {#if d?.sel_en_attente}
+      <!-- Lot S4 : le sel du profil (sa « clé ») attend que Firehouse l'accepte ; jamais sa valeur. -->
+      <dt>Clé du profil</dt>
+      <dd class="muted">La clé de ton profil n’est pas encore chez Firehouse : Frogtend réessaiera à la prochaine sauvegarde.</dd>
+    {/if}
+    <dt>Place chez Firehouse</dt>
+    <dd>
+      {#if place}
+        {placeTexte(place)} ({pourcent} %) — pour tous tes profils et tous tes PC
+      {:else}
+        inconnue pour l’instant (Firehouse n’a pas pu être lu)
+      {/if}
+    </dd>
   </dl>
+  {#if place}
+    <div class="jauge" role="meter" aria-label="Place utilisée chez Firehouse" aria-valuemin="0" aria-valuemax="100" aria-valuenow={pourcent}>
+      <div class="rempli" style:width="{pourcent}%"></div>
+    </div>
+  {/if}
 
   <div class="cx-form-section">
     <label class="champ">
@@ -88,7 +127,7 @@
 
   <div class="actions">
     <button class="btn primary" onclick={() => sauvegarder()} disabled={sauvegarde.enCours || etat.pc.firehouse.simule}>
-      {sauvegarde.enCours ? 'Sauvegarde en cours…' : '💾 Sauvegarder maintenant'}
+      {libelleSauvegarde(sauvegarde.enCours, sauvegarde.partieEnCours)}
     </button>
     <button class="btn" onclick={() => restaurer()} disabled={sauvegarde.restauration !== null || etat.pc.firehouse.simule}>
       {sauvegarde.restauration
@@ -123,5 +162,17 @@
     align-items: center;
     min-height: var(--cible-min);
     cursor: pointer;
+  }
+  /* Lot S4 : la jauge de la place chez Firehouse (couleurs du thème, aucune en dur). */
+  .jauge {
+    height: calc(8 * var(--u));
+    border-radius: calc(4 * var(--u));
+    background: var(--bg2);
+    border: 1px solid var(--line);
+    overflow: hidden;
+  }
+  .rempli {
+    height: 100%;
+    background: var(--accent);
   }
 </style>

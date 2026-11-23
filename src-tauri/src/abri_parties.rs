@@ -43,8 +43,12 @@ pub const PREFIXE: &str = "emplacements/";
 /// La fiche des emplacements envoyée chez Firehouse avec eux (`jeux/<id>/emplacements/fiche.json`, pour le lot S5) :
 /// jamais posée dans le dossier du jeu.
 pub const FICHE_ENVOYEE: &str = "emplacements/fiche.json";
-/// Le sel secret du profil (dans SES données, jamais envoyé).
+/// Le sel secret du profil, dans SES données (jamais réécrit une fois créé). Lot S4 (Seb, 23/11) : il est AUSSI rangé
+/// chez Firehouse, dans l'espace du profil (`NOM_SEL_ENVOYE`), pour restaurer sur un autre PC — jamais au journal.
 pub const NOM_SEL: &str = "abris-sel.txt";
+/// Le nom du document du sel chez Firehouse (contrat 1.51 : tout document est du JSON, `{"sel": "<hex>"}`, sous le PC
+/// réservé `_profil`).
+pub const NOM_SEL_ENVOYE: &str = "abris-sel.json";
 
 /// Ce qui a fait faire un abri de sorte `emplacements` (lot S3, 23/11) : une fiche d'avant le lot S3 n'en a pas, elle
 /// vaut « main ». JAMAIS une nouvelle sorte (la remise d'après une réinstallation poserait `emplacements/` dans le jeu).
@@ -67,7 +71,7 @@ fn declencheur_main() -> String {
 }
 
 /// Un emplacement de parties tel qu'il est rangé dans la fiche d'un abri.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct EmplacementAbrite {
     /// Le nom de son dossier dans l'abri (`emplacements/<cle>/`).
     pub cle: String,
@@ -81,6 +85,20 @@ pub struct EmplacementAbrite {
     /// L'empreinte salée du sous-dossier pris à la place de `<identifiant …>` (jamais son nom).
     #[serde(default)]
     pub identifiant: Option<String>,
+    /// Lot S4 : ses fichiers « en ligne seulement » (OneDrive) NON copiés dans cet abri. `None` : une fiche d'avant
+    /// le lot S4, qui ne le disait pas par emplacement (seulement `FicheAbri::en_ligne_seulement`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub en_ligne: Option<usize>,
+    /// Lot S4, fiche ENVOYÉE seulement (`emplacements_a_envoyer`) : la date de l'abri d'où vient cet emplacement.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub date: String,
+    /// Lot S4, fiche envoyée : le déclencheur de cet abri (`DECLENCHEURS`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub declencheur: String,
+    /// Lot S4, fiche envoyée (Seb, 23/11) : des fichiers de cet emplacement n'étaient que dans OneDrive — ses fichiers
+    /// sont RÉUNIS avec ceux de sa copie précédente (le plus récent gagne, fichier par fichier).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub partiel: bool,
 }
 
 /// Un fichier d'un abri (chemin dans l'abri, `/`).
@@ -119,6 +137,16 @@ pub struct FicheAbri {
     /// Ce qui a fait faire l'abri (lot S3 : `DECLENCHEURS`) ; absent (fiche plus ancienne) : « main ».
     #[serde(default = "declencheur_main")]
     pub declencheur: String,
+    /// Lot S4, fiche ENVOYÉE seulement : la boutique du jeu (pour le lot S5, sur un autre PC), quand il en vient une.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub boutique: Option<BoutiqueDuJeu>,
+}
+
+/// La boutique d'un jeu (`steam`, `gog`, `epic`…) et sa clé chez elle (l'appid pour Steam).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BoutiqueDuJeu {
+    pub source: String,
+    pub cle: String,
 }
 
 impl FicheAbri {
@@ -135,6 +163,7 @@ impl FicheAbri {
             octets: fichiers.iter().map(|f| f.taille).sum(),
             en_ligne_seulement,
             echecs,
+            boutique: None,
         }
     }
 }
@@ -279,6 +308,8 @@ pub struct PlanAbri {
     pub ecrit_le: Option<std::time::SystemTime>,
     /// Fichiers rapatriés depuis le nuage et copiés dans l'abri (emplacements réussis seulement).
     pub rapatries: usize,
+    /// Lot S4 : la boutique du jeu, notée dans la fiche de l'abri quand il est fait (pour un jeu retiré ensuite).
+    pub boutique: Option<BoutiqueDuJeu>,
 }
 
 impl PlanAbri {
@@ -351,7 +382,15 @@ fn planifier_jusqua(lieux: &[Emplacement], deja: &BTreeSet<String>, sel: &str, m
             continue;
         }
         let mut pe = PlanEmplacement {
-            abrite: EmplacementAbrite { cle: nom.clone(), chemin: e.chemin.clone(), nature: e.nature.clone(), filtre: e.filtre.clone(), identifiant: e.identifiant.as_deref().map(|i| empreinte_identifiant(i, sel)) },
+            abrite: EmplacementAbrite {
+                cle: nom.clone(),
+                chemin: e.chemin.clone(),
+                nature: e.nature.clone(),
+                filtre: e.filtre.clone(),
+                identifiant: e.identifiant.as_deref().map(|i| empreinte_identifiant(i, sel)),
+                en_ligne: Some(0),
+                ..Default::default()
+            },
             dossier: e.dossier.clone(),
             fichiers: Vec::new(),
             octets: 0,
@@ -413,6 +452,8 @@ fn planifier_jusqua(lieux: &[Emplacement], deja: &BTreeSet<String>, sel: &str, m
         }
         plan.en_ligne_seulement += en_ligne.len();
         pe.en_ligne = en_ligne.into_iter().map(|(p, r, m)| EnLigne { relatif: format!("{PREFIXE}{nom}/{}", r.replace('\\', "/")), source: p, taille: m.len() }).collect();
+        // Lot S4 : dit dans la fiche, emplacement par emplacement (sa copie envoyée réunira alors l'ancienne).
+        pe.abrite.en_ligne = Some(pe.en_ligne.len());
         if e.filtre.is_none() {
             reussis.push(moi);
         }
@@ -469,9 +510,11 @@ pub fn lire_fiche(dossier_abri: &Path) -> Option<FicheAbri> {
     serde_json::from_slice::<FicheAbri>(&o).ok().filter(|f| f.version_fiche >= 1)
 }
 
-/// Un abri fait à la main (lot S2) : jamais pris pour l'abri d'un retrait ni d'une réinstallation, ni envoyé par la
-/// sauvegarde du profil (lot S4).
-pub fn fait_a_la_main(dossier_abri: &Path) -> bool {
+/// Un abri de sorte `emplacements` (à la main, après une partie, avant un retrait ou un mod… : lots S2 et S3) : ses
+/// parties ne sont pas dans le dossier du jeu — jamais pris pour l'abri d'un retrait ni d'une réinstallation (la remise
+/// poserait `emplacements/` dans le jeu). Il part chez Firehouse par `emplacements_a_envoyer` (lot S4), avec son
+/// propriétaire seulement.
+pub fn sorte_emplacements(dossier_abri: &Path) -> bool {
     lire_fiche(dossier_abri).is_some_and(|f| f.sorte == SORTE_EMPLACEMENTS)
 }
 
@@ -665,8 +708,15 @@ pub(crate) fn abriter_avec_place(
             return Err(Erreur::Refus("Aucune partie n'a pu être copiée : rien n'est mis à l'abri.".into()));
         }
         let fichiers: Vec<AMettre> = plan.bons().flat_map(|e| e.fichiers.iter().cloned()).collect();
-        let mut fiche = FicheAbri::nouvelle(SORTE_EMPLACEMENTS, profil, plan.bons().filter(|e| !e.fichiers.is_empty()).map(|e| e.abrite.clone()).collect(), &fichiers, plan.en_ligne_seulement, plan.echecs());
+        // Lot S4 : chaque emplacement dit combien de ses fichiers sont restés dans le nuage (rapatriés : aucun).
+        let abrites = plan
+            .bons()
+            .filter(|e| !e.fichiers.is_empty())
+            .map(|e| EmplacementAbrite { en_ligne: Some(e.en_ligne.len()), ..e.abrite.clone() })
+            .collect();
+        let mut fiche = FicheAbri::nouvelle(SORTE_EMPLACEMENTS, profil, abrites, &fichiers, plan.en_ligne_seulement, plan.echecs());
         fiche.declencheur = declencheur.into();
+        fiche.boutique = plan.boutique.clone();
         if let Some(p) = fin.parent() {
             std::fs::create_dir_all(p)?;
         }
@@ -707,40 +757,92 @@ pub fn deja_a_l_abri(sources: &[PathBuf], profil: &str, plan: &PlanAbri) -> bool
     avant == plan.cles()
 }
 
-/// Les parties `emplacements/` des abris Steam (sorte `nuage-steam`) de CE profil à envoyer avec sa sauvegarde :
-/// chaque emplacement est pris dans le plus récent de SES abris qui le contient (un emplacement absent du dernier abri
-/// — fichier verrouillé, hors ligne, trop gros avant un mod — se prend dans le précédent : sa copie déjà envoyée ne sort
-/// jamais de la sauvegarde). `abris` : tous les abris du jeu (dossiers datés, de tous les numéros du jeu). Rend les
-/// fichiers (source, chemin dans l'abri) et la fiche fusionnée (sans aucun chemin du PC), ou rien.
+/// Des fichiers de cet emplacement n'étaient que dans OneDrive dans cet abri : le détail de l'emplacement le dit (lot
+/// S4) ; une fiche plus ancienne ne le disait que pour tout l'abri (`en_ligne_seulement`) — tous ses emplacements
+/// comptent alors comme partiels (rien n'est perdu à réunir).
+fn partiel(e: &EmplacementAbrite, f: &FicheAbri) -> bool {
+    match e.en_ligne {
+        Some(n) => n > 0,
+        None => f.en_ligne_seulement > 0,
+    }
+}
+
+/// Les parties `emplacements/` de CE profil à envoyer avec sa sauvegarde (lot S4, Seb 23/11 : TOUS les abris de sorte
+/// `emplacements` — à la main, après une partie, avant un retrait ou un mod — et ceux des jeux Steam, `nuage-steam`),
+/// jamais celles d'un autre profil. Chaque emplacement (par sa clé) vient du plus récent de SES abris qui le contient :
+/// un emplacement absent du dernier abri (fichier verrouillé, hors ligne, trop gros avant un mod) se prend dans le
+/// précédent ; un emplacement PARTIEL (des fichiers restés dans OneDrive) est RÉUNI avec ses copies précédentes, le
+/// plus récent gagnant fichier par fichier, jusqu'à une copie complète (Seb, 23/11 : une partie effacée par le jeu peut
+/// alors revenir à la restauration). `abris` : tous les abris du jeu (dossiers datés, de tous les numéros du jeu).
+/// Rend les fichiers (source, chemin dans l'abri) et la fiche fusionnée (sans aucun chemin du PC), DÉTERMINISTE : triée
+/// par clé et par chemin, sans aucune date du moment (rien ne change, rien n'est renvoyé).
 pub fn emplacements_a_envoyer(abris: &[(u64, PathBuf)], profil: &str) -> (Vec<(PathBuf, String)>, Option<FicheAbri>) {
-    let mut a: Vec<(u64, &PathBuf, FicheAbri)> = abris.iter().filter_map(|(q, d)| lire_fiche(d).map(|f| (*q, d, f))).filter(|(_, _, f)| f.sorte == SORTE_NUAGE_STEAM && f.profil == profil).collect();
-    a.sort_by(|x, y| y.0.cmp(&x.0));
+    let mut a: Vec<(u64, &PathBuf, FicheAbri)> = abris
+        .iter()
+        .filter_map(|(q, d)| lire_fiche(d).map(|f| (*q, d, f)))
+        .filter(|(_, _, f)| (f.sorte == SORTE_NUAGE_STEAM || f.sorte == SORTE_EMPLACEMENTS) && f.profil == profil)
+        .collect();
+    // Du plus récent au plus ancien ; deux abris de la même seconde (deux dossiers d'abris) : toujours le même ordre.
+    a.sort_by(|x, y| y.0.cmp(&x.0).then_with(|| x.1.cmp(y.1)));
+    let cles: BTreeSet<String> = a.iter().flat_map(|(_, _, f)| f.emplacements.iter().map(|e| e.cle.clone())).collect();
     let mut pris: Vec<EmplacementAbrite> = Vec::new();
     let mut fichiers: Vec<FichierAbrite> = Vec::new();
     let mut sources: Vec<(PathBuf, String)> = Vec::new();
-    for (_, d, f) in &a {
-        for e in &f.emplacements {
-            if pris.iter().any(|p| p.cle == e.cle) {
+    for cle in cles {
+        let prefixe = format!("{PREFIXE}{cle}/");
+        let mut base: Option<EmplacementAbrite> = None;
+        // Par chemin sans tenir compte des majuscules (comme Windows) : le plus récent est pris le premier.
+        let mut siens: std::collections::BTreeMap<String, (PathBuf, FichierAbrite)> = std::collections::BTreeMap::new();
+        for (q, d, f) in &a {
+            let Some(e) = f.emplacements.iter().find(|e| e.cle == cle) else { continue };
+            let presents: Vec<&FichierAbrite> = f.fichiers.iter().filter(|x| x.relatif.starts_with(&prefixe) && d.join(&x.relatif).is_file()).collect();
+            if presents.is_empty() {
                 continue;
             }
-            let prefixe = format!("{PREFIXE}{}/", e.cle);
-            let siens: Vec<&FichierAbrite> = f.fichiers.iter().filter(|x| x.relatif.starts_with(&prefixe) && d.join(&x.relatif).is_file()).collect();
-            if siens.is_empty() {
-                continue;
+            for x in presents {
+                siens.entry(x.relatif.to_lowercase()).or_insert_with(|| (d.join(&x.relatif), x.clone()));
             }
-            pris.push(e.clone());
-            for x in siens {
-                sources.push((d.join(&x.relatif), x.relatif.clone()));
-                fichiers.push(x.clone());
+            let p = partiel(e, f);
+            if base.is_none() {
+                base = Some(EmplacementAbrite { date: q.to_string(), declencheur: f.declencheur.clone(), partiel: p, ..e.clone() });
             }
+            // Une copie complète : les plus anciennes n'ajoutent plus rien.
+            if !p {
+                break;
+            }
+        }
+        let Some(base) = base else { continue };
+        pris.push(base);
+        for (_, (source, x)) in siens {
+            sources.push((source, x.relatif.clone()));
+            fichiers.push(x);
         }
     }
     if pris.is_empty() {
         return (vec![], None);
     }
     let octets = fichiers.iter().map(|x| x.taille).sum();
-    let fiche = FicheAbri { version_fiche: VERSION_FICHE, sorte: SORTE_NUAGE_STEAM.into(), profil: profil.into(), complet: true, version: None, emplacements: pris, fichiers, octets, en_ligne_seulement: 0, echecs: 0, declencheur: declencheur_main() };
+    let fiche = FicheAbri {
+        version_fiche: VERSION_FICHE,
+        sorte: SORTE_EMPLACEMENTS.into(),
+        profil: profil.into(),
+        complet: !pris.iter().any(|e| e.partiel),
+        version: None,
+        emplacements: pris,
+        fichiers,
+        octets,
+        en_ligne_seulement: 0,
+        echecs: 0,
+        declencheur: declencheur_main(),
+        // La boutique notée par l'abri le plus récent qui la connaît.
+        boutique: a.iter().find_map(|(_, _, f)| f.boutique.clone()),
+    };
     (sources, Some(fiche))
+}
+
+/// Le profil propriétaire d'un abri, quand sa fiche (lot S2 et après) le dit.
+pub fn proprietaire(dossier_abri: &Path) -> Option<String> {
+    lire_fiche(dossier_abri).map(|f| f.profil).filter(|p| !p.is_empty())
 }
 
 /// Un abri d'un jeu, montré dans « 📁 Où sont mes parties » (seulement ceux du profil ouvert, et les anciens sans
@@ -1222,7 +1324,7 @@ mod tests_s3 {
         assert_eq!((fiche.sorte.as_str(), fiche.declencheur.as_str()), (SORTE_EMPLACEMENTS, DECLENCHEUR_AVANT_REINSTALLATION));
         // Régression : jamais pris pour un abri du dossier du jeu (la remise d'après réinstallation l'écarte), et ses
         // `emplacements/` sont réservés (jamais posés dans le jeu).
-        assert!(fait_a_la_main(&fin));
+        assert!(sorte_emplacements(&fin));
         assert!(reservees(&fin).emplacements);
         let vu = lister(&[abris.join("900")], "p1", None);
         assert_eq!(vu[0].declencheur, DECLENCHEUR_AVANT_REINSTALLATION);
@@ -1298,7 +1400,7 @@ mod tests {
         assert_eq!(f.emplacements.iter().map(|e| (e.chemin.as_str(), e.nature.as_str(), e.filtre.as_deref())).collect::<Vec<_>>(), [(r"%USERPROFILE%\Saved Games\Jeu", "dossier", None), (r"%USERPROFILE%\AppData\LocalLow\Studio\*.save", "motif", Some("*.save"))]);
         let p = f.fichiers.iter().find(|x| x.relatif.ends_with("Slot1/partie.sav")).unwrap();
         assert_eq!((p.taille, p.sha.as_str()), (7, sha_de(b"partie1").as_str()));
-        assert!(fait_a_la_main(&fin));
+        assert!(sorte_emplacements(&fin));
         // Les parties n'ont pas bougé.
         assert_eq!(std::fs::read(saves.join("profil.ini")).unwrap(), b"ini");
         assert_eq!(std::fs::read(low.join("a.save")).unwrap(), b"aa");
@@ -1543,7 +1645,7 @@ mod tests {
                 std::fs::create_dir_all(dir.join("emplacements").join(cle)).unwrap();
                 std::fs::write(dir.join(&r), o).unwrap();
                 fichiers.push(AMettre { source: PathBuf::new(), relatif: r, taille: o.len() as u64, sha: sha_de(o) });
-                abrites.push(EmplacementAbrite { cle: cle.to_string(), chemin: format!(r"%APPDATA%\{cle}"), nature: "dossier".into(), filtre: None, identifiant: None });
+                abrites.push(EmplacementAbrite { cle: cle.to_string(), chemin: format!(r"%APPDATA%\{cle}"), nature: "dossier".into(), filtre: None, identifiant: None, ..Default::default() });
             }
             std::fs::write(du_jeu.join(format!("{date}.json")), serde_json::to_vec(&FicheAbri::nouvelle(SORTE_NUAGE_STEAM, profil, abrites, &fichiers, 0, 0)).unwrap()).unwrap();
             (date.parse::<u64>().unwrap(), dir)
@@ -1565,6 +1667,105 @@ mod tests {
         let (l, _) = emplacements_a_envoyer(&tous, "lea");
         assert_eq!(l.iter().map(|(_, r)| r.as_str()).collect::<Vec<_>>(), ["emplacements/aaaa/save", "emplacements/cccc/save"]);
         assert_eq!(emplacements_a_envoyer(&tous, "zoe"), (vec![], None));
+    }
+
+    /// Lot S4 : pose un abri (sorte, profil, déclencheur) : (clé, fichier, octets) ; `en_ligne` par emplacement
+    /// (`None` : une fiche d'avant le lot S4) et pour tout l'abri.
+    #[allow(clippy::too_many_arguments)]
+    fn poser_s4(du_jeu: &Path, date: &str, sorte: &str, profil: &str, fichiers: &[(&str, &str, &[u8])], en_ligne: Option<usize>, en_ligne_abri: usize) -> (u64, PathBuf) {
+        let dir = du_jeu.join(date);
+        let mut mettre = Vec::new();
+        let mut lieux: Vec<EmplacementAbrite> = Vec::new();
+        for (cle, nom, o) in fichiers {
+            let r = format!("emplacements/{cle}/{nom}");
+            std::fs::create_dir_all(dir.join("emplacements").join(cle)).unwrap();
+            std::fs::write(dir.join(&r), o).unwrap();
+            mettre.push(AMettre { source: PathBuf::new(), relatif: r, taille: o.len() as u64, sha: sha_de(o) });
+            if !lieux.iter().any(|l| l.cle == *cle) {
+                lieux.push(EmplacementAbrite { cle: cle.to_string(), chemin: format!(r"%APPDATA%\{cle}"), nature: "dossier".into(), en_ligne, ..Default::default() });
+            }
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(du_jeu.join(format!("{date}.json")), serde_json::to_vec(&FicheAbri::nouvelle(sorte, profil, lieux, &mettre, en_ligne_abri, 0)).unwrap()).unwrap();
+        (date.parse::<u64>().unwrap(), dir)
+    }
+
+    fn lus(f: &[(PathBuf, String)]) -> Vec<(String, Vec<u8>)> {
+        f.iter().map(|(s, r)| (r.clone(), std::fs::read(s).unwrap())).collect()
+    }
+
+    /// Lot S4 : les abris de sorte `emplacements` (à la main, après une partie…) partent avec leur propriétaire, mêlés
+    /// à ceux d'un jeu Steam par leur clé (le plus récent gagne) ; jamais ceux d'un autre profil ; la fiche envoyée
+    /// est de sorte `emplacements`, triée, identique d'un appel à l'autre.
+    #[test]
+    fn les_abris_emplacements_partent_avec_leur_profil_meles_au_nuage_steam_par_cle() {
+        let d = tempfile::tempdir().unwrap();
+        let du_jeu = d.path().join("110");
+        let a1 = poser_s4(&du_jeu, "100", SORTE_NUAGE_STEAM, "seb", &[("kkkk", "save", b"steam-100")], Some(0), 0);
+        let a2 = poser_s4(&du_jeu, "200", SORTE_EMPLACEMENTS, "seb", &[("kkkk", "save", b"main-200"), ("aaaa", "x", b"x-200")], Some(0), 0);
+        let a3 = poser_s4(&du_jeu, "300", SORTE_EMPLACEMENTS, "lea", &[("kkkk", "save", b"lea-300")], Some(0), 0);
+        let tous = [a3.clone(), a1.clone(), a2.clone()];
+        let (f, fiche) = emplacements_a_envoyer(&tous, "seb");
+        assert_eq!(lus(&f), [("emplacements/aaaa/x".to_string(), b"x-200".to_vec()), ("emplacements/kkkk/save".to_string(), b"main-200".to_vec())], "triés par clé ; l'abri de Léa ne fait rien sortir");
+        let fiche = fiche.unwrap();
+        assert_eq!((fiche.sorte.as_str(), fiche.complet), (SORTE_EMPLACEMENTS, true));
+        assert_eq!(fiche.emplacements.iter().map(|e| (e.cle.as_str(), e.date.as_str())).collect::<Vec<_>>(), [("aaaa", "200"), ("kkkk", "200")]);
+        // Déterministe : même ordre d'entrée ou non, même fiche, octet pour octet.
+        let (_, autre) = emplacements_a_envoyer(&[a2.clone(), a1.clone(), a3.clone()], "seb");
+        assert_eq!(serde_json::to_vec(&autre.unwrap()).unwrap(), serde_json::to_vec(&fiche).unwrap());
+        // Un abri Steam plus récent du même profil, même clé : c'est lui qui part.
+        let a4 = poser_s4(&du_jeu, "400", SORTE_NUAGE_STEAM, "seb", &[("kkkk", "save", b"steam-400")], Some(0), 0);
+        let (f, _) = emplacements_a_envoyer(&[a1, a2, a3, a4], "seb");
+        assert_eq!(lus(&f)[1], ("emplacements/kkkk/save".to_string(), b"steam-400".to_vec()));
+        // Léa : seulement les siens.
+        let (f, _) = emplacements_a_envoyer(&tous, "lea");
+        assert_eq!(lus(&f), [("emplacements/kkkk/save".to_string(), b"lea-300".to_vec())]);
+    }
+
+    /// Seb (23/11) : un emplacement dont des fichiers ne sont que dans OneDrive garde leurs anciennes copies (réunion
+    /// avec la copie précédente, le plus récent gagnant fichier par fichier, `partiel`) ; une fiche d'avant le lot S4
+    /// (sans le détail par emplacement) qui dit des fichiers en ligne : même réunion.
+    #[test]
+    fn un_emplacement_partiel_onedrive_garde_les_anciennes_copies() {
+        let d = tempfile::tempdir().unwrap();
+        let du_jeu = d.path().join("110");
+        let a0 = poser_s4(&du_jeu, "50", SORTE_EMPLACEMENTS, "seb", &[("kkkk", "vieux.sav", b"v-50")], Some(0), 0);
+        let a1 = poser_s4(&du_jeu, "100", SORTE_EMPLACEMENTS, "seb", &[("kkkk", "a.sav", b"a-100"), ("kkkk", "b.sav", b"b-100")], Some(0), 0);
+        // b.sav n'est plus que dans OneDrive : pas copié cette fois.
+        let a2 = poser_s4(&du_jeu, "200", SORTE_EMPLACEMENTS, "seb", &[("kkkk", "a.sav", b"a-200")], Some(1), 1);
+        let (f, fiche) = emplacements_a_envoyer(&[a0.clone(), a1.clone(), a2.clone()], "seb");
+        assert_eq!(lus(&f), [("emplacements/kkkk/a.sav".to_string(), b"a-200".to_vec()), ("emplacements/kkkk/b.sav".to_string(), b"b-100".to_vec())], "réuni jusqu'à la copie complète (100), pas au-delà");
+        let fiche = fiche.unwrap();
+        assert!(fiche.emplacements[0].partiel && !fiche.complet);
+        assert_eq!(fiche.emplacements[0].en_ligne, Some(1));
+        // Une copie complète plus récente : plus rien de réuni.
+        let a3 = poser_s4(&du_jeu, "300", SORTE_EMPLACEMENTS, "seb", &[("kkkk", "a.sav", b"a-300")], Some(0), 0);
+        let (f, fiche) = emplacements_a_envoyer(&[a0.clone(), a1.clone(), a2.clone(), a3], "seb");
+        assert_eq!(lus(&f), [("emplacements/kkkk/a.sav".to_string(), b"a-300".to_vec())]);
+        assert!(!fiche.unwrap().emplacements[0].partiel);
+        // Une fiche ANCIENNE (sans détail) qui disait 1 fichier en ligne : tous ses emplacements sont réunis.
+        let du_vieux = d.path().join("111");
+        let v1 = poser_s4(&du_vieux, "100", SORTE_NUAGE_STEAM, "seb", &[("kkkk", "a.sav", b"a-100"), ("kkkk", "b.sav", b"b-100")], None, 0);
+        let v2 = poser_s4(&du_vieux, "200", SORTE_NUAGE_STEAM, "seb", &[("kkkk", "a.sav", b"a-200")], None, 1);
+        let (f, fiche) = emplacements_a_envoyer(&[v1, v2], "seb");
+        assert_eq!(lus(&f).len(), 2);
+        assert!(fiche.unwrap().emplacements[0].partiel);
+        // Un abri fait par le plan : chaque emplacement dit ses fichiers restés en ligne (Some(0) sinon).
+        assert!(serde_json::to_string(&FicheAbri::nouvelle(SORTE_EMPLACEMENTS, "p", vec![EmplacementAbrite::default()], &[], 0, 0)).unwrap().find("\"partiel\"").is_none(), "rien d'ajouté aux fiches des abris");
+    }
+
+    /// M5 (lot S4) : la boutique du jeu est notée dans la fiche dès l'abri, et la fiche envoyée la reprend (un jeu
+    /// retiré ensuite n'est plus dans le registre).
+    #[test]
+    fn la_boutique_est_notee_des_l_abri_et_reprise_a_l_envoi() {
+        let (d, _, _, l) = pc();
+        let abris = d.path().join("Abris");
+        let mut plan = planifier(&l, &BTreeSet::new());
+        plan.boutique = Some(BoutiqueDuJeu { source: "gog".into(), cle: "1207658924".into() });
+        let fin = abriter(&mut plan, &abris, -7, "1000", "p1", None).unwrap();
+        assert_eq!(lire_fiche(&fin).unwrap().boutique, plan.boutique);
+        let (_, fiche) = emplacements_a_envoyer(&[(1000, fin)], "p1");
+        assert_eq!(fiche.unwrap().boutique, Some(BoutiqueDuJeu { source: "gog".into(), cle: "1207658924".into() }));
     }
 
     #[test]
@@ -1609,7 +1810,7 @@ mod tests {
             assert_eq!(std::fs::read(du_jeu.join("800").join(&r)).unwrap(), o, "{r}");
         }
         assert!(!du_jeu.join("800.json").exists(), "aucune fiche ajoutée à un ancien abri");
-        assert!(!fait_a_la_main(&du_jeu.join("900")) && !fait_a_la_main(&du_jeu.join("800")) && fait_a_la_main(&du_jeu.join("1000")));
+        assert!(!sorte_emplacements(&du_jeu.join("900")) && !sorte_emplacements(&du_jeu.join("800")) && sorte_emplacements(&du_jeu.join("1000")));
     }
 
     /// Pose (ou retire) l'attribut « hors ligne » : le fichier compte alors « en ligne seulement » (il reste lisible
@@ -1646,6 +1847,8 @@ mod tests {
             let fin = abriter(&mut sans, &d.path().join("Abris"), -7, "1000", "p1", None).unwrap();
             let f = lire_fiche(&fin).unwrap();
             assert_eq!((f.fichiers.len(), f.en_ligne_seulement, f.complet, f.emplacements.len()), (2, 1, false, 1), "l'endroit tout en ligne n'est pas dans la fiche");
+            // Lot S4 : chaque emplacement de la fiche dit ses fichiers restés dans le nuage (ici aucun).
+            assert!(f.emplacements.iter().all(|e| e.en_ligne == Some(0)), "{:?}", f.emplacements);
         }
         // Avec le oui : lu en entier (ici, la vraie lecture), copié, vérifié, compté.
         let (lecteur, delai, vus) = outils(std::sync::Arc::new(|a: &Path, b: &Path| lire_en_entier(a, b)), std::time::Duration::from_secs(30));
@@ -1659,6 +1862,7 @@ mod tests {
         assert_eq!(std::fs::read(fin.join("emplacements").join(&cle).join("a.save")).unwrap(), b"aa");
         let f = lire_fiche(&fin).unwrap();
         assert_eq!((f.fichiers.len(), f.en_ligne_seulement, f.complet, plan.rapatries), (3, 0, true, 1));
+        assert!(f.emplacements.iter().all(|e| e.en_ligne == Some(0)), "rapatriés : plus rien en ligne");
         assert_eq!(f.fichiers.iter().find(|x| x.relatif.ends_with("a.save")).unwrap().sha, sha_de(b"aa"));
         assert_eq!(*vus.lock().unwrap(), [(0, 1), (1, 1)], "« Téléchargement depuis OneDrive… N/M »");
         assert!(!d.path().join("Abris").join(".frogtend-en-cours").exists(), "rien de provisoire laissé");

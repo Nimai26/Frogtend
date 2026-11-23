@@ -741,6 +741,7 @@ pub fn run() {
             commandes::emulateurs_traces,
             commandes::sauvegarde_lancer,
             commandes::sauvegarde_estimer,
+            commandes::sauvegarde_place,
             commandes::sauvegarde_derniere,
             commandes::restauration_liste,
             commandes::restauration_preparer,

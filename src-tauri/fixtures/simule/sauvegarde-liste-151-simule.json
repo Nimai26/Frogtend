@@ -1,0 +1,23 @@
+{
+  "_source": "1.51 simulé (réponse de Firehouse au besoin 57, 23/11) : l'espace du profil sous le PC réservé « _profil », marqué reserve: true, à ignorer comme PC.",
+  "ok": true,
+  "profils": [
+    {
+      "profil": "Sebastien",
+      "pc": "VENKMAN",
+      "derniere": {"date": "1795000000", "pc": "VENKMAN", "fichiers": 412, "taille": 30500000},
+      "octets": 30746015,
+      "manifestes_jeux": []
+    },
+    {
+      "profil": "Sebastien",
+      "pc": "_profil",
+      "reserve": true,
+      "derniere": null,
+      "octets": 45,
+      "manifestes_jeux": []
+    }
+  ],
+  "utilise_octets": 30746060,
+  "quota_octets": 107374182400
+}

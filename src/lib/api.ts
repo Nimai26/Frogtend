@@ -642,8 +642,12 @@ export interface ErreurCoeur {
     /** Une carte e-Reader dont la cartouche (`cartouche`) n'est pas sur ce PC : proposer de l'y mettre. */
     | 'cartouche_absente'
     /** Lot S3 : les parties n'ont pas pu être mises à l'abri AVANT l'opération (qui ne s'est pas faite). */
-    | 'abri_impossible';
+    | 'abri_impossible'
+    /** Lot S4 : l'espace de la personne chez Firehouse est plein (507, ou place vérifiée avant d'envoyer). */
+    | 'plein';
   motif: string;
+  /** Pour `plein` : ce qui manque (octets), quand c'est connu. */
+  manque_octets?: number;
   /** Pour `fusionne` (contrat 1.14) : la fiche où celle-ci a été réunie. */
   nouveau?: number;
   /** Pour `cartouche_absente` : la fiche de la cartouche e-Reader qui lit la carte. */
@@ -1065,10 +1069,16 @@ export const api = {
   identificationChoisir: (jeu: number, launchboxId: number) => appeler<void>('identification_choisir', { jeu, launchboxId }),
   identificationEcarter: (jeu: number) => appeler<void>('identification_ecarter', { jeu }),
   ficheBase: (jeu: number) => appeler<import('$lib/import/identification').FicheBase | null>('jeu_fiche_base', { jeu }),
-  /** Ce qu'une sauvegarde enverrait : taille de toutes les parties, et celle de la dernière sauvegarde. */
-  sauvegardeEstimer: () => appeler<{ total: number; precedent: number | null }>('sauvegarde_estimer'),
+  /** Ce qu'une sauvegarde enverrait : taille de toutes les parties, celle de la dernière sauvegarde ; lot S4 : ce qui
+   * partira vraiment, la place utilisée et le plafond chez Firehouse (`null` : pas lus). Rien n'est écrit. */
+  sauvegardeEstimer: () => appeler<import('./sauvegardeTaille').EstimationSauvegarde>('sauvegarde_estimer'),
+  /** Lot S4 : la place utilisée chez Firehouse (tous profils et PC de la personne) et le plafond ; `null` : inconnus. */
+  sauvegardePlace: () => appeler<{ utilise: number; quota: number } | null>('sauvegarde_place'),
   /** `ecarter` : la personne a choisi de REMPLACER une sauvegarde existante qu'elle n'a pas restaurée. */
-  sauvegarder: (ecarter = false) => appeler<import('./sauvegarde.svelte').BilanSauvegarde>('sauvegarde_lancer', { ecarter }),
+  /** Lot S4 : `plafondAuto` (une sauvegarde automatique) : au-delà de ces octets à envoyer vraiment, le cœur n'envoie
+   * rien (refus « remise à plus tard ») — il vérifie aussi lui-même la place chez Firehouse. */
+  sauvegarder: (ecarter = false, plafondAuto: number | null = null) =>
+    appeler<import('./sauvegarde.svelte').BilanSauvegarde>('sauvegarde_lancer', { ecarter, plafondAuto }),
   derniereSauvegarde: () => appeler<import('./sauvegarde.svelte').BilanSauvegarde | null>('sauvegarde_derniere'),
   restaurationListe: () =>
     appeler<{ profil: string; pc: string; derniere: { date?: string; fichiers?: number; taille?: number } | null; octets: number; a_moi: boolean }[]>(

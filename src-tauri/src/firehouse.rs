@@ -86,6 +86,9 @@ pub struct Brute {
     pub statut: u16,
     /// L'en-tête `X-Recu` (octets déjà reçus d'un envoi par morceaux), s'il y est.
     pub recu: Option<u64>,
+    /// Contrat 1.51 (`HEAD …/fichier` d'un fichier déjà COMPLET) : `X-Complet: 1` et son `X-Sha256`.
+    pub complet: bool,
+    pub sha256: Option<String>,
     pub octets: Vec<u8>,
 }
 
@@ -172,9 +175,18 @@ pub fn erreur_du_statut(code: u16, corps: &[u8]) -> Erreur {
         503 => Erreur::Serveur("Firehouse est occupé (maintenance en cours). Réessaie dans une minute.".into()),
         // 502 : une source extérieure ne répond pas ; Firehouse dit laquelle et, si possible, quelle page ouvrir.
         502 => Erreur::Serveur(motif.unwrap_or_else(|| "Une source extérieure ne répond pas. Réessaie plus tard.".into())),
-        507 => Erreur::Refus(
-            "Ton espace de sauvegarde chez Firehouse est plein. Libère de la place ou demande plus d'espace à Seb.".into(),
-        ),
+        // Lot S4 : une sorte à part (jamais reconnue par son texte). Contrat 1.50 : `{detail}` sans chiffres ; 1.51 :
+        // `{detail, utilise_octets, quota_octets, manque_octets}` — les chiffres lus s'ils sont là.
+        507 => {
+            let manque = serde_json::from_slice::<serde_json::Value>(corps).ok().and_then(|v| v["manque_octets"].as_u64()).filter(|n| *n > 0);
+            Erreur::Plein {
+                motif: match manque {
+                    Some(n) => format!("Il manque {} chez Firehouse : ton espace est plein. Libère de la place ou demande plus d'espace à Seb.", crate::erreurs::taille_lisible(n)),
+                    None => "Ton espace chez Firehouse est plein. Libère de la place ou demande plus d'espace à Seb.".into(),
+                },
+                manque_octets: manque,
+            }
+        }
         404 => Erreur::Introuvable("Firehouse ne connaît pas ce jeu (ou il ne t'est pas visible).".into()),
         // 410 (contrat 1.14) : la fiche a été RÉUNIE à une autre. En attendant le rattachement, comme un 404 (le contrat
         // le permet), avec le texte de Firehouse — et surtout JAMAIS un `.part` effacé.
@@ -357,8 +369,10 @@ impl Client {
         let rep = self.envoyer(req).await?;
         let statut = rep.status().as_u16();
         let recu = rep.headers().get("x-recu").and_then(|v| v.to_str().ok()).and_then(|v| v.parse().ok());
+        let complet = rep.headers().get("x-complet").and_then(|v| v.to_str().ok()).is_some_and(|v| v.trim() == "1");
+        let sha256 = rep.headers().get("x-sha256").and_then(|v| v.to_str().ok()).map(|v| v.trim().to_ascii_lowercase());
         let octets = rep.bytes().await.map_err(Self::erreur_reseau)?.to_vec();
-        Ok(Brute { statut, recu, octets })
+        Ok(Brute { statut, recu, complet, sha256, octets })
     }
 
     /// Envoie `e.source` par morceaux à partir de `e.depart` ; rend les octets envoyés et la dernière réponse (celle qui
@@ -373,15 +387,28 @@ impl Client {
         use std::io::{Read, Seek, SeekFrom};
         let total = e.total;
         let mut position = e.depart.min(total);
-        let mut fichier = std::fs::File::open(e.source)?;
+        // Ouvert APRÈS la première attente de la cadence (lot S4 : une pause pendant une partie ne tient jamais le
+        // fichier ouvert).
+        let mut fichier: Option<std::fs::File> = None;
         let mut envoyes = 0u64;
         let mut conflits = 0;
+        // Lot S4 : le dernier morceau renvoyé une fois pour un `.part` déjà entier, et la reprise à zéro faite une fois.
+        let (mut dernier_renvoye, mut zero_fait) = (false, false);
         loop {
             let morceau = cadence.avant(position).await?.max(1) as u64;
+            // Jamais un morceau vide (`Content-Range` sans octet) : Firehouse a déjà tout (`.part` entier) → le DERNIER
+            // morceau est renvoyé (contrat 1.51 : il finalise si l'empreinte colle).
+            if total > 0 && position >= total {
+                position = (total - 1) / morceau * morceau;
+            }
             let fin = (position + morceau).min(total);
             let mut octets = vec![0u8; (fin - position) as usize];
-            fichier.seek(SeekFrom::Start(position))?;
-            fichier.read_exact(&mut octets)?;
+            if fichier.is_none() {
+                fichier = Some(std::fs::File::open(e.source)?);
+            }
+            let f = fichier.as_mut().expect("ouvert juste avant");
+            f.seek(SeekFrom::Start(position))?;
+            f.read_exact(&mut octets)?;
             let mut entetes: Vec<(&str, String)> = vec![("Content-Range", format!("bytes {position}-{}/{total}", fin.max(1) - 1))];
             entetes.extend(e.entetes.iter().cloned());
             entetes.push(("Content-Type", "application/octet-stream".into()));
@@ -394,7 +421,8 @@ impl Client {
                     envoyes += fin - position;
                     if (regles.fini)(&v) || fin == total {
                         if !(regles.fini)(&v) {
-                            return Err(Erreur::Serveur(format!("Firehouse n'a pas confirmé « {} ».", e.nom)));
+                            // Lot S4 : propre à CE fichier (sauté et compté), jamais l'arrêt de toute une sauvegarde.
+                            return Err(Erreur::Conflit(format!("Firehouse n'a pas confirmé « {} ».", e.nom)));
                         }
                         cadence.apres(fin, fin - position, duree);
                         return Ok((envoyes, v));
@@ -406,9 +434,27 @@ impl Client {
                 409 => {
                     conflits += 1;
                     match v["recu"].as_u64() {
+                        // Lot S4 : un `.part` déjà ENTIER (`recu` = total) : le dernier morceau, renvoyé UNE fois (la 1.51 le
+                        // finalise) ; encore 409 (la 1.50 ne sait pas finir) : ce fichier est sauté, jamais une boucle.
+                        Some(r) if total > 0 && r >= total => {
+                            if dernier_renvoye {
+                                return Err(Erreur::Conflit(format!("Firehouse ne finit pas l'envoi de « {} » : il sera réessayé plus tard.", e.nom)));
+                            }
+                            dernier_renvoye = true;
+                            position = total;
+                        }
+                        // 1.51 : empreinte refusée sur un `.part` entier (effacé) : de zéro, une seule fois.
+                        Some(0) if position > 0 => {
+                            if zero_fait {
+                                return Err(Erreur::Conflit(format!("« {} » arrive abîmé chez Firehouse.", e.nom)));
+                            }
+                            zero_fait = true;
+                            position = 0;
+                        }
                         // Le morceau ne commençait pas là où Firehouse en est : on reprend là.
                         Some(r) if conflits <= 3 => position = r.min(total),
-                        Some(_) => return Err(Erreur::Serveur(format!("L'envoi de « {} » ne se cale pas.", e.nom))),
+                        // Lot S4 : propre à CE fichier (sauté et compté), jamais l'arrêt de toute une sauvegarde.
+                        Some(_) => return Err(Erreur::Conflit(format!("L'envoi de « {} » ne se cale pas.", e.nom))),
                         // Sauvegarde : empreinte différente au dernier morceau (le .part est effacé) : le fichier a
                         // changé pendant l'envoi, ou il est arrivé abîmé. Un seul nouvel essai complet.
                         None if regles.zero_sans_recu && conflits <= 1 => position = 0,
@@ -525,7 +571,8 @@ mod tests {
             erreur_du_statut(502, r#"{"detail":"la forge ne répond pas — installation manuelle : ouvrir https://ryujinx.app/download"}"#.as_bytes()),
             Erreur::Serveur(m) if m.contains("https://ryujinx.app/download")
         ));
-        assert!(matches!(erreur_du_statut(507, b""), Erreur::Refus(m) if m.contains("plein")));
+        // Lot S4 : une sorte à part, jamais reconnue par son texte.
+        assert!(matches!(erreur_du_statut(507, b""), Erreur::Plein { motif, manque_octets: None } if motif.contains("plein")));
         assert!(matches!(erreur_du_statut(503, b""), Erreur::Serveur(m) if m.contains("minute")));
         assert!(matches!(erreur_du_statut(413, b""), Erreur::Refus(_)));
     }
@@ -642,5 +689,50 @@ mod tests {
         let c = Client::nouveau("http://127.0.0.1:9", "j").unwrap();
         let e = c.obtenir_json::<serde_json::Value>("/plateformes").await.unwrap_err();
         assert!(matches!(e, Erreur::Reseau(_)), "{e:?}");
+    }
+
+    /// Lot S4 (M1) : le fichier n'est ouvert qu'APRÈS la première attente de la cadence (une pause pendant une partie
+    /// ne le tient jamais ouvert). Preuve : il n'existe qu'une fois l'attente finie.
+    #[tokio::test]
+    async fn le_fichier_n_est_ouvert_qu_apres_la_pause() {
+        struct Cree(std::path::PathBuf);
+        impl Cadence for Cree {
+            async fn avant(&mut self, _position: u64) -> Resultat<usize> {
+                if !self.0.exists() {
+                    std::fs::write(&self.0, b"abcd").unwrap();
+                }
+                Ok(4)
+            }
+        }
+        let s = MockServer::start();
+        let m = s.mock(|w, t| {
+            w.method(PUT).path("/api/jeux/v1/x").body("abcd");
+            t.status(200).json_body(serde_json::json!({"complet": true}));
+        });
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("pas-encore-la.sav");
+        let c = Client::nouveau(&s.base_url(), "j").unwrap();
+        let e = EnvoiParMorceaux { route: "/x", source: &f, total: 4, depart: 0, entetes: vec![], nom: "un fichier" };
+        let r = ReglesMorceaux { fini: |v| v["complet"] == true, zero_sans_recu: true };
+        c.envoyer_par_morceaux(&e, &r, &mut Cree(f.clone())).await.unwrap();
+        m.assert();
+    }
+
+    /// Lot S4 (I3) : « ne se cale pas » et « n'a pas confirmé » sont propres à UN fichier (Conflit), jamais un arrêt.
+    #[tokio::test]
+    async fn un_envoi_qui_ne_se_cale_pas_ou_non_confirme_est_un_conflit() {
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(PUT).path("/api/jeux/v1/nc");
+            t.status(200).json_body(serde_json::json!({"ok": true}));
+        });
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("x");
+        std::fs::write(&f, b"abcd").unwrap();
+        let c = Client::nouveau(&s.base_url(), "j").unwrap();
+        let e = EnvoiParMorceaux { route: "/nc", source: &f, total: 4, depart: 0, entetes: vec![], nom: "un fichier" };
+        let r = ReglesMorceaux { fini: |v| v["complet"] == true, zero_sans_recu: true };
+        let x = c.envoyer_par_morceaux(&e, &r, &mut MorceauxFixes(4)).await;
+        assert!(matches!(&x, Err(Erreur::Conflit(m)) if m.contains("n'a pas confirmé")), "{x:?}");
     }
 }

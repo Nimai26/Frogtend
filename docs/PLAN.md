@@ -916,6 +916,11 @@ manifestes par jeu (`manifeste-<clé>.json`) si le manifeste approche 5 Mo ; sha
 change jamais) ; place libre vérifiée AVANT l'envoi (quota − utilisé) et annoncée ; pause de l'envoi pendant une partie
 (`Cadence`) ; le journal commun ne reçoit plus aucun chemin relatif (id, nombres et classe d'erreur seulement) ; le
 compteur « N jeux non envoyés » ne compte que les jeux de CE profil ; les abris de sorte `jeu` filtrés par propriétaire.
+**S4 codé le 23/11, NON LIVRÉ (décision de Seb : attendre que Firehouse annonce la 1.51 en service)** : relu par les
+experts contrat et lancement (1 bloquant corrigé : sel envoyé sous le mauvais nom → `abris-sel.json` ; un important :
+un abri `jeu`/`nuage-steam` d'un autre profil faisait reculer ou retirer la copie de ce profil → protégé par `gardes`).
+Comptage local (essai `essai_abris_s4`, lecture seule) : 3 jeux, 203 fichiers, 434,8 Mo au premier envoi. À la mise en
+service de la 1.51 : retirer `MARGE_REMPLACES`, construire et livrer, premier envoi avec l'accord de Seb.
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
 « Connecte-toi… dans la fenêtre qui s'ouvre » laisse croire que rien ne se passe ou que c'est raté. Voulu : une petite

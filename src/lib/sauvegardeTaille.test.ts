@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aAnnoncer, dossierDesAbris, dossierDesCopies } from './sauvegardeTaille';
+import { aAnnoncer, dossierDesAbris, dossierDesCopies, libelleSauvegarde, placeManquante } from './sauvegardeTaille';
 
 describe('les dossiers des parties en double', () => {
   it('donne le dossier commun des copies et celui de l’abri, jamais un chemin coupé au hasard', () => {
@@ -23,5 +23,23 @@ describe('la taille d’une sauvegarde', () => {
     expect(aAnnoncer({ total: 1424 * MO, precedent: 1024 * MO }, 200)).toBe(400 * MO);
     // Une sauvegarde qui a maigri : rien.
     expect(aAnnoncer({ total: 10 * MO, precedent: 900 * MO }, 200)).toBeNull();
+  });
+
+  it('lot S4 : annonce ce qui partira VRAIMENT quand Firehouse l’a dit, et la place qui manquerait', () => {
+    // 1 Go de parties, déjà presque tout chez Firehouse : seuls 300 Mo partent vraiment.
+    expect(aAnnoncer({ total: 1024 * MO, precedent: null, a_envoyer: 300 * MO }, 200)).toBe(300 * MO);
+    expect(aAnnoncer({ total: 1024 * MO, precedent: null, a_envoyer: 0 }, 200)).toBeNull();
+    // Inconnu (hors ligne) : comme avant.
+    expect(aAnnoncer({ total: 300 * MO, precedent: null, a_envoyer: null }, 200)).toBe(300 * MO);
+    // La place qui manque est celle du cœur (une seule règle), jamais recalculée ici.
+    expect(placeManquante({ total: 0, precedent: null, utilise: 900, quota: 1000, manque: 200 })).toBe(200);
+    expect(placeManquante({ total: 0, precedent: null, utilise: 999, quota: 1000, manque: 0 })).toBe(0);
+    expect(placeManquante({ total: 0, precedent: null })).toBe(0);
+  });
+
+  it('lot S4 : le bouton dit la pause pendant une partie', () => {
+    expect(libelleSauvegarde(false, true)).toBe('💾 Sauvegarder maintenant');
+    expect(libelleSauvegarde(true, false)).toBe('Sauvegarde en cours…');
+    expect(libelleSauvegarde(true, true)).toBe('⏸ Sauvegarde en pause pendant ta partie…');
   });
 });

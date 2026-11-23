@@ -1,0 +1,1 @@
+{"api":"/api/jeux/v1/sauvegarde","document_max_octets":5242880,"documents":["configuration.json","bibliotheque.json","manifeste.json","derniere-sauvegarde.json"],"documents_motif":"manifeste-<clé du jeu>.json","morceau_max":8388608,"quota_octets":107374182400}

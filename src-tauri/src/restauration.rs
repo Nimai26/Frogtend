@@ -238,6 +238,8 @@ pub async fn lister(client: &Client) -> Resultat<Vec<SauvegardeDisponible>> {
         .cloned()
         .unwrap_or_default()
         .iter()
+        // Contrat 1.51 : l'espace du PROFIL (PC réservé `_profil`, `reserve: true`) n'est jamais une sauvegarde d'un PC.
+        .filter(|p| p["reserve"] != true && p["pc"].as_str() != Some(crate::sauvegarde::PC_PROFIL))
         .filter_map(|p| {
             Some(SauvegardeDisponible {
                 profil: p["profil"].as_str()?.into(),
@@ -559,8 +561,20 @@ impl Noyau {
         };
         let configuration = document("configuration.json").await?;
         let bibliotheque = document("bibliotheque.json").await?;
-        let manifeste: ManifesteParties = serde_json::from_value(document("manifeste.json").await?)
+        let mut manifeste: ManifesteParties = serde_json::from_value(document("manifeste.json").await?)
             .map_err(|_| Erreur::Serveur("Le manifeste de la sauvegarde est illisible.".into()))?;
+        // Lot S4 : un gros manifeste est rangé par jeu (`manifeste-<clé>.json`) ; un ancien n'en a pas (liste vide).
+        for cle in std::mem::take(&mut manifeste.manifestes_jeux) {
+            let route = format!("{base}/document/{}", crate::sauvegarde::nom_manifeste_jeu(&cle));
+            let lu = c.obtenir_json::<Value>(&route).await.map_err(|e| match e {
+                // Un document à part absent : ce n'est pas un jeu inconnu, c'est la sauvegarde qui est incomplète.
+                Erreur::Introuvable(_) => Erreur::Serveur("Une partie du manifeste manque chez Firehouse : la sauvegarde n'est pas complète.".into()),
+                autre => autre,
+            })?;
+            let jeu: ManifesteParties = serde_json::from_value(lu)
+                .map_err(|_| Erreur::Serveur("Le manifeste de la sauvegarde est illisible.".into()))?;
+            manifeste.fichiers.extend(jeu.fichiers);
+        }
 
         // La liste des jeux restaurés, gardée sur le PC : une sauvegarde suivante la garde tant qu'ils ne sont pas remis.
         // Et les réglages : ils disent où étaient les émulateurs de l'ancien PC (pour leur rendre leurs parties).
@@ -647,7 +661,8 @@ impl Noyau {
                 let place = match crate::captures::poser_restauree(image, &cible.join(&systeme).join(&dossier_jeu), &nom, quand, &reprendre) {
                     Ok(p) => p,
                     Err(e) => {
-                        self.journaliser(&format!("capture restaurée laissée en attente ({}) : {e}", image.display()));
+                        // Jamais un chemin ni un titre au journal commun (lot S4) : le numéro du jeu et la classe.
+                        self.journaliser(&format!("capture restaurée du jeu {jeu} laissée en attente (code {})", e.raw_os_error().map(|c| c.to_string()).unwrap_or_else(|| format!("{:?}", e.kind()))));
                         continue;
                     }
                 };
@@ -910,7 +925,7 @@ impl Noyau {
             x.abri = abri.to_string_lossy().into();
         }
         ecrire_reglees(&attente, &reglees)?;
-        self.journaliser(&format!("restauration : partie remplacée par la copie restaurée ({}), l'ancienne à l'abri", e.etiquette));
+        self.journaliser("restauration : une partie remplacée par la copie restaurée, l'ancienne à l'abri"); // jamais son étiquette (un titre) au journal
         Ok(abri.to_string_lossy().into())
     }
 
@@ -1394,6 +1409,75 @@ mod tests {
         assert!(matches!(n.preparer_restauration("Seb", "PC", &|_, _| {}).await, Err(Erreur::Conflit(_))));
     }
 
+    /// Lot S4 : un gros manifeste rangé par jeu (`manifeste-<clé>.json`) se restaure en entier ; l'espace du profil
+    /// (PC réservé `_profil`, contrat 1.51) n'est jamais proposé comme une sauvegarde.
+    #[tokio::test]
+    async fn un_manifeste_range_par_jeu_se_restaure_et_l_espace_du_profil_n_est_pas_un_pc() {
+        let s = MockServer::start();
+        let base = "/api/jeux/v1/sauvegarde/Seb/PC";
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("x");
+        std::fs::write(&f, b"partie").unwrap();
+        let sha = empreinte(&f).unwrap();
+        for (nom, corps) in [
+            ("configuration.json", json!({})),
+            ("bibliotheque.json", json!({"jeux": []})),
+            ("manifeste.json", json!({"fichiers": {"emulateurs/RetroArch/saves/a.srm": [sha, 6]}, "manifestes_jeux": ["jeu-110"]})),
+            ("manifeste-jeu-110.json", json!({"fichiers": {"jeux/110/C/DUNE.SAV": [sha, 6]}})),
+        ] {
+            s.mock(|w, t| {
+                w.method(GET).path(format!("{base}/document/{nom}"));
+                t.status(200).json_body(corps.clone());
+            });
+        }
+        s.mock(|w, t| {
+            w.method(GET).path(format!("{base}/fichier"));
+            t.status(200).body(b"partie");
+        });
+        let simule: Value = serde_json::from_slice(include_bytes!("../fixtures/simule/sauvegarde-liste-151-simule.json")).unwrap();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/sauvegarde");
+            t.status(200).json_body(simule.clone());
+        });
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(crate::coffre::CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
+        n.ouvrir(&id, None, &crate::noyau::Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
+        let r = n.preparer_restauration("Seb", "PC", &|_, _| {}).await.unwrap();
+        assert_eq!(r.fichiers, 2, "les lignes du document à part comprises");
+        assert!(d.path().join("app").join("restauration").join(&id).join("parties").join("jeux").join("110").join("C").join("DUNE.SAV").is_file());
+        let l = n.sauvegardes_disponibles().await.unwrap();
+        assert_eq!(l.iter().map(|x| x.pc.as_str()).collect::<Vec<_>>(), ["VENKMAN"], "jamais le PC réservé « _profil »");
+    }
+
+    /// Un document à part du manifeste qui manque : « une partie du manifeste manque », jamais « jeu inconnu ».
+    #[tokio::test]
+    async fn un_document_du_manifeste_qui_manque_est_dit_clairement() {
+        let s = MockServer::start();
+        let base = "/api/jeux/v1/sauvegarde/Seb/PC";
+        for (nom, corps) in [
+            ("configuration.json", json!({})),
+            ("bibliotheque.json", json!({"jeux": []})),
+            ("manifeste.json", json!({"fichiers": {}, "manifestes_jeux": ["jeu-110"]})),
+        ] {
+            s.mock(|w, t| {
+                w.method(GET).path(format!("{base}/document/{nom}"));
+                t.status(200).json_body(corps.clone());
+            });
+        }
+        s.mock(|w, t| {
+            w.method(GET).path(format!("{base}/document/manifeste-jeu-110.json"));
+            t.status(404).json_body(json!({"detail": "document absent"}));
+        });
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(d.path(), Box::new(crate::coffre::CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
+        n.ouvrir(&id, None, &crate::noyau::Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
+        match n.preparer_restauration("Seb", "PC", &|_, _| {}).await {
+            Err(Erreur::Serveur(m)) => assert!(m.contains("manifeste manque"), "{m}"),
+            r => panic!("{:?}", r.map(|x| x.fichiers)),
+        }
+    }
+
     /// Relit (LECTURE SEULE) les sauvegardes du compte sur le vrai Firehouse : liste, puis les documents d'un couple.
     /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_COUPLE=Profil/PC cargo test essai_lire_sauvegarde -- --ignored --nocapture`
     #[tokio::test]
@@ -1452,8 +1536,8 @@ mod tests {
             std::fs::write(&f, o).unwrap();
             parties.push(Element { source: f, relatif: r.to_string() });
         }
-        let contenu = Contenu { configuration: json!({"essai": true}), bibliotheque: json!({"jeux": []}), parties, gardes: vec![] };
-        let api = Api { client: &c, profil: p.into(), pc: m.into(), morceau: MORCEAU };
+        let contenu = Contenu { configuration: json!({"essai": true}), bibliotheque: json!({"jeux": []}), parties, ..Default::default() };
+        let api = Api { client: &c, profil: p.into(), pc: m.into(), morceau: MORCEAU, pause: None };
 
         // 1. Envoi complet.
         let b = envoyer(&api, &contenu, m, "Firehouse").await.expect("1er envoi");
