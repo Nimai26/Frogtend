@@ -16,7 +16,7 @@
 - [x] (validé par Seb le 23/11) 4. Pendant que le jeu tourne : « 👥 Changer de joueur » est refusé avec un message clair.
 - [x] (validé par Seb le 23/11) 5. Taodbox ▸ un jeu PC ▸ ⚙ : l'interrupteur se règle à la manette ; l'éteindre, jouer, quitter : aucun abri ;
       le rallumer.
-- [ ] 6. Un jeu PC qui a un mod (ou un mod à installer) : ajouter/retirer un mod ▸ « 🛟 Tes parties d'abord… » puis le
+- [ ] (reporté le 23/11 : les mods PC (0.81 à 0.89) n'ont jamais été essayés avec Seb ; à faire avec la séance « Mods dans les jeux Steam » ; couvert par les tests) 6. Un jeu PC qui a un mod (ou un mod à installer) : ajouter/retirer un mod ▸ « 🛟 Tes parties d'abord… » puis le
       mod ; un abri 🛠 « avant un changement de mod » apparaît.
 - [ ] 7. Age of Empires IV, parties remises « en ligne seulement » par OneDrive : après une partie, pas de
       téléchargement ; une ligne sur la fiche dit que des fichiers sont dans ton nuage (le message, une seule fois).
