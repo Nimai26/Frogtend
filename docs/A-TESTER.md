@@ -7,7 +7,7 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## 🛟 Abri automatique des parties (0.222.0, lot S3)
-- [ ] 1. Options ▸ Sauvegarde : l'interrupteur « 🛟 Mettre mes parties à l'abri sur ce PC après chaque partie (pour
+- [x] (validé par Seb le 23/11) 1. Options ▸ Sauvegarde : l'interrupteur « 🛟 Mettre mes parties à l'abri sur ce PC après chaque partie (pour
       tous tes jeux PC) » est allumé.
 - [ ] 2. Jouer quelques minutes à Cyberpunk (sauvegarder en jeu), quitter, attendre 1 à 2 minutes : un court message
       « 🛟 Tes parties de « Cyberpunk 2077 » sont à l'abri. » ; sur la fiche ▸ 📁 : « 🛟 Dernier abri : aujourd'hui à
