@@ -65,6 +65,7 @@ vi.mock('$lib/dialogues/fenetres.svelte', () => ({
 }));
 
 import BlocParties from './BlocParties.svelte';
+import { recevoirAbriAuto, remettreAZeroAbrisAuto } from '$lib/parties/abriAuto.svelte';
 
 beforeEach(() => {
   reponse = LU;
@@ -86,7 +87,10 @@ beforeEach(() => {
   ecoute.mockClear();
   reponseChoisir = 'telecharger';
 });
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  remettreAZeroAbrisAuto();
+});
 
 describe('📁 Où sont mes parties (section)', () => {
   it('montre le dossier de ce PC, ce qu’il contient, « d’après Firehouse », et ouvre le dossier au bureau', async () => {
@@ -196,7 +200,7 @@ describe('🛟 Mettre mes parties à l’abri (lot S2)', () => {
     expect(fermerToast).toHaveBeenCalledWith(42);
     expect(toast.mock.calls[0][0]).toContain('2 fichiers de parties (7 o) mis à l’abri dans ton profil');
     expect(await screen.findByText('🛟 Mes abris')).toBeTruthy();
-    expect(screen.getByText('mis à l’abri à la main · dans ton profil')).toBeTruthy();
+    expect(screen.getByText('🖐 mis à l’abri à la main · dans ton profil')).toBeTruthy();
   });
 
   it('un non ne copie rien ; « déjà à l’abri » ne demande rien', async () => {
@@ -285,7 +289,7 @@ describe('🛟 corrections de la revue (lot S2)', () => {
   it('deux abris de la même date et de la même sorte : tous les deux montrés', async () => {
     listeAbris = [ABRI, { ...ABRI }];
     render(BlocParties, { id: -7 });
-    expect((await screen.findAllByText('mis à l’abri à la main · dans ton profil')).length).toBe(2);
+    expect((await screen.findAllByText('🖐 mis à l’abri à la main · dans ton profil')).length).toBe(2);
   });
 });
 
@@ -334,5 +338,67 @@ describe('☁ Les parties seulement dans OneDrive (Seb, 22/11)', () => {
     reponse = { ...LU, emplacements: [{ ...LU.emplacements[0], fichiers: 9, octets: 7, en_ligne: 9 }] };
     render(BlocParties, { id: -7 });
     expect(await screen.findByText('9 fichiers · 7 o — dans ton nuage OneDrive, pas sur ce PC')).toBeTruthy();
+  });
+});
+
+describe('🛟 Lot S3 : l’abri automatique sur la fiche', () => {
+  const BILAN = { jeu: -7, profil: 'p1', declencheur: 'apres_partie', etat: 'fait', fichiers: 1, octets: 7, en_ligne: 0, octets_en_ligne: 0, echecs: 0, motif: null } as const;
+
+  it('la liste est RELUE à chaque abri automatique ; « 🛟 Dernier abri : … » vient du plus récent', async () => {
+    const maintenant = Math.floor(Date.now() / 1000);
+    listeAbris = [{ ...ABRI, date: String(maintenant), declencheur: 'apres_partie' }];
+    render(BlocParties, { id: -7 });
+    expect(await screen.findByText(/^🛟 Dernier abri : aujourd’hui à \d\d:\d\d, après une partie$/)).toBeTruthy();
+    expect(screen.getByText('🏁 après une partie · dans ton profil')).toBeTruthy();
+    const avant = abrisLus.mock.calls.length;
+    recevoirAbriAuto({ ...BILAN }, 'p1', () => 'Jeu');
+    await tick();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(abrisLus.mock.calls.length).toBe(avant + 1);
+  });
+
+  it('un abri automatique raté : une ligne qui RESTE, dans la zone annoncée', async () => {
+    render(BlocParties, { id: -7 });
+    await screen.findByText(DOSSIER);
+    recevoirAbriAuto({ ...BILAN, etat: 'attente_depassee' }, 'p1', () => 'Jeu');
+    await tick();
+    const ligne = await screen.findByText('⏳ Dernier abri automatique : le jeu écrivait encore ses parties. Frogtend réessaiera après ta prochaine partie.');
+    expect(ligne.closest('[aria-live]')).toBeTruthy();
+    // Réussi ensuite : la ligne part.
+    recevoirAbriAuto({ ...BILAN }, 'p1', () => 'Jeu');
+    await tick();
+    expect(screen.queryByText(/Dernier abri automatique/)).toBeNull();
+  });
+
+  it('une liste longue : 5 abris, le dernier « avant … », le total, et « Voir les N plus anciens »', async () => {
+    listeAbris = [
+      ...Array.from({ length: 6 }, (_, i) => ({ ...ABRI, date: String(1763800000 - i), declencheur: 'apres_partie' })),
+      { ...ABRI, date: '1763700000', declencheur: 'avant_retrait' },
+      { ...ABRI, date: '1763600000', declencheur: 'apres_partie' },
+    ];
+    render(BlocParties, { id: -7 });
+    await screen.findByText(/^8 abris · /);
+    const section = screen.getByRole('region', { name: 'Mes abris de parties' });
+    expect(section.querySelectorAll('li').length).toBe(6);
+    expect(screen.getByText('🛠 avant de retirer le jeu · dans ton profil')).toBeTruthy();
+    const voir = screen.getByRole('button', { name: 'Voir les 2 plus anciens' });
+    await fireEvent.click(voir);
+    expect(section.querySelectorAll('li').length).toBe(8);
+    expect(screen.queryByRole('button', { name: /plus ancien/ })).toBeNull();
+  });
+});
+
+describe('🛟 Lot S3 : corrections de la relecture', () => {
+  it('« Voir les N plus anciens » : le focus va sur le premier abri nouvellement montré (jamais perdu)', async () => {
+    listeAbris = Array.from({ length: 8 }, (_, i) => ({ ...ABRI, date: String(1763800000 - i), declencheur: 'apres_partie' }));
+    render(BlocParties, { id: -7 });
+    const voir = await screen.findByRole('button', { name: 'Voir les 3 plus anciens' });
+    voir.focus();
+    await fireEvent.click(voir);
+    await tick();
+    const section = screen.getByRole('region', { name: 'Mes abris de parties' });
+    const li = section.querySelectorAll('li');
+    expect(li.length).toBe(8);
+    expect(document.activeElement).toBe(li[5]);
   });
 });

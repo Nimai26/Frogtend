@@ -52,6 +52,32 @@ fn dates_d_abri(du_jeu: &Path) -> Vec<String> {
         .collect()
 }
 
+/// Les dossiers de données dont le profil change en ce moment (lot S3, M13 : voir `Noyau::changer_de_profil`).
+static PROFILS_EN_CHANGEMENT: std::sync::Mutex<std::collections::BTreeSet<PathBuf>> = std::sync::Mutex::new(std::collections::BTreeSet::new());
+
+/// Un changement de profil en cours : aucun lancement ne commence tant qu'elle vit.
+pub(crate) struct ChangementDeProfil<'a>(&'a Noyau);
+
+impl Drop for ChangementDeProfil<'_> {
+    fn drop(&mut self) {
+        PROFILS_EN_CHANGEMENT.lock().unwrap_or_else(|e| e.into_inner()).remove(&self.0.dossier);
+    }
+}
+
+/// La première date (secondes) à partir de `depuis` qu'aucun abri de ce jeu n'a prise (ni l'abri, ni son provisoire, ni
+/// sa fiche).
+fn date_libre(du_jeu: &Path, depuis: &str) -> String {
+    let mut n: u64 = depuis.parse().unwrap_or(0);
+    loop {
+        let d = n.to_string();
+        let pris = du_jeu.join(&d).exists() || du_jeu.join(format!("{d}.en-cours")).exists() || du_jeu.join(format!("{d}.json")).exists();
+        if !pris {
+            return d;
+        }
+        n += 1;
+    }
+}
+
 /// Un programme ou une bibliothèque (d'une ancienne version, il casserait le jeu) : jamais remis d'une autre version.
 fn est_programme(r: &str) -> bool {
     let r = r.to_ascii_lowercase();
@@ -744,6 +770,13 @@ impl Noyau {
         let journal = self.dossier_medias(id).join("installation.log");
         std::fs::create_dir_all(self.dossier_medias(id))?;
 
+        // Lot S3 (Seb, 23/11) : une RÉINSTALLATION (le jeu est déjà installé) — ses parties rangées hors de son dossier
+        // d'abord à l'abri, avant l'installeur ; un échec l'arrête, sauf « continuer sans abri » choisi par la personne.
+        // (Une forme `archive` déjà là est refusée plus bas sans rien toucher : pas d'abri pour rien.)
+        let refusee_plus_bas = version_archive.is_some() && matches!(p.methode, Methode::Archive { .. }) && std::fs::read_dir(&dest).is_ok_and(|mut l| l.next().is_some());
+        if j.installation.is_some() && !refusee_plus_bas {
+            crate::commandes::abri_avant(self, id, crate::abri_parties::DECLENCHEUR_AVANT_REINSTALLATION, true).await?;
+        }
         let mut fichier_du_jeu = None;
         let mut extraits = Vec::new();
         let mut nouveaux: Vec<PathBuf> = Vec::new();
@@ -1430,7 +1463,14 @@ impl Noyau {
         if let Some((_, nom)) = l.first() {
             return Err(Erreur::Refus(format!("{nom} est ouvert seul : ferme-le d'abord, puis lance le jeu.")));
         }
+        // Lot S3 (M13) : sous le MÊME verrou que le changement de profil — jamais un lancement qui se glisse pendant
+        // qu'un profil s'ouvre ou se ferme.
+        let changements = PROFILS_EN_CHANGEMENT.lock().unwrap_or_else(|e| e.into_inner());
+        if changements.contains(&self.dossier) {
+            return Err(Erreur::Refus("Le profil est en train de changer : réessaie dans un instant.".into()));
+        }
         self.lancements.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        drop(changements);
         Ok(LancementEnCours(self))
     }
 
@@ -1492,6 +1532,21 @@ impl Noyau {
             Some(nom) => Err(Erreur::Refus(format!("{nom} est ouvert avec ce profil : ferme-le d'abord, puis {quoi}."))),
             None => Ok(()),
         }
+    }
+
+    /// Le changement de profil (ouvrir, fermer) : refusé pendant qu'un jeu tourne ou se lance (Seb, 23/11 : comme pour
+    /// l'émulateur ouvert seul) — `partie_en_cours` : le menu en jeu suit une partie. Ses parties appartiennent au profil
+    /// qui joue : changer de profil sous lui les rangerait chez un autre. Tant que la garde vit, aucun lancement ne
+    /// commence (M13 : vérifié et noté sous le même verrou que `commencer_lancement`).
+    pub(crate) fn changer_de_profil(&self, partie_en_cours: bool, quoi: &str) -> Resultat<ChangementDeProfil<'_>> {
+        let mut changements = PROFILS_EN_CHANGEMENT.lock().unwrap_or_else(|e| e.into_inner());
+        if partie_en_cours || self.lancement_en_preparation() {
+            return Err(Erreur::Refus(format!("Un jeu est en cours avec ce profil : quitte-le d'abord, puis {quoi}.")));
+        }
+        if !changements.insert(self.dossier.clone()) {
+            return Err(Erreur::Refus("Le profil est déjà en train de changer : réessaie dans un instant.".into()));
+        }
+        Ok(ChangementDeProfil(self))
     }
 
     /// Ce programme est-il dans le dossier d'un émulateur ouvert seul (ses réglages ne s'écrivent pas) ?
@@ -1558,8 +1613,10 @@ impl Noyau {
         if changes.is_empty() {
             return Ok(Abri::default());
         }
-        let date = maintenant();
         let du_jeu = self.dossier_abris()?.join(id.to_string());
+        // Lot S3 : un abri de ce jeu a déjà pris cette seconde (l'abri des parties juste avant, un essai répété) : la
+        // seconde suivante libre (jamais un renommage sur un dossier existant, erreur 145).
+        let date = date_libre(&du_jeu, &maintenant());
         let abri = du_jeu.join(&date);
         // Copié à côté puis renommé : un abri à moitié fait n'a jamais le nom d'un abri (lot 3, avis lancement 30/10).
         let provisoire = du_jeu.join(format!("{date}.en-cours"));
@@ -1701,13 +1758,19 @@ impl Noyau {
         if !matches!(j.etat, Etat::Telecharge) {
             return Err(Erreur::Refus("Ce jeu est en cours de téléchargement : annule plutôt le téléchargement.".into()));
         }
-        // Une autre version de ce jeu en route : arrêtée d'abord (la file ne la reprend plus) ; ses `.part` partent
-        // avec le reste.
-        self.arreter_versions(id).await?;
         // Un jeu d'une boutique : c'est elle qui le désinstalle ; Frogtend ne retire pas sa ligne (son temps de jeu).
         if j.installation.as_ref().is_some_and(|i| i.boutique.is_some()) {
             return Err(Erreur::Refus("Ce jeu est installé par sa boutique : désinstalle-le depuis elle.".into()));
         }
+        // Lot S3 (Seb, 23/11) : les parties rangées HORS du dossier du jeu, à l'abri AVANT tout le reste (arrêt des
+        // versions en route, désinstalleur qui peut les effacer) ; un échec arrête le retrait sans RIEN avoir changé,
+        // sauf « continuer sans abri » choisi par la personne. Un jeu importé n'est jamais effacé : pas d'abri.
+        if !crate::import_local::est_importe(&j) {
+            crate::commandes::abri_avant(self, id, crate::abri_parties::DECLENCHEUR_AVANT_RETRAIT, true).await?;
+        }
+        // Une autre version de ce jeu en route : arrêtée d'abord (la file ne la reprend plus) ; ses `.part` partent
+        // avec le reste.
+        self.arreter_versions(id).await?;
         let mut abri = if j.installation.is_some() {
             self.mettre_a_l_abri(id).await?
         } else {
@@ -2293,6 +2356,122 @@ mod tests {
         let r = n.ouvrir_sous_verrou(&emu, "Eden", false, || async { Err::<u32, _>(Erreur::Disque("préparation ratée".into())) }).await;
         assert!(matches!(r, Err(Erreur::Disque(_))));
         assert!(!n.emulateur_seul_nom().is_some(), "verrou rendu");
+    }
+
+    /// Lot S3 (M12) : un abri du dossier du jeu prend la seconde suivante libre (jamais un renommage sur un abri déjà là).
+    #[test]
+    fn un_abri_prend_la_seconde_suivante_libre() {
+        let d = tempfile::tempdir().unwrap();
+        assert_eq!(super::date_libre(d.path(), "1790000000"), "1790000000");
+        std::fs::create_dir_all(d.path().join("1790000000")).unwrap();
+        std::fs::create_dir_all(d.path().join("1790000001.en-cours")).unwrap();
+        std::fs::write(d.path().join("1790000002.json"), b"{}").unwrap();
+        assert_eq!(super::date_libre(d.path(), "1790000000"), "1790000003");
+    }
+
+    /// Lot S3 (Seb, 23/11) : jamais de changement de profil pendant qu'un jeu tourne ou se lance.
+    #[tokio::test]
+    async fn on_ne_change_pas_de_profil_pendant_une_partie() {
+        let (_d, n) = noyau_avec(&[("dune.zip", &zip(&[("DUNE.EXE", b"MZ")]))], "Jeu — prêt à jouer").await;
+        match n.changer_de_profil(true, "change de profil") {
+            Err(Erreur::Refus(m)) => assert!(m.contains("Un jeu est en cours") && m.contains("change de profil"), "{m}"),
+            _ => panic!("un refus attendu"),
+        }
+        assert!(n.changer_de_profil(false, "change de profil").is_ok());
+        // Une partie qui se lance (jeu_jouer en cours de préparation) : refusé aussi.
+        let lancement = n.commencer_lancement().unwrap();
+        assert!(matches!(n.changer_de_profil(false, "change de profil"), Err(Erreur::Refus(_))));
+        drop(lancement);
+        // M13 : pendant un changement de profil, aucun lancement ne commence ; après, si.
+        let changement = n.changer_de_profil(false, "change de profil").unwrap();
+        assert!(matches!(n.commencer_lancement(), Err(Erreur::Refus(m)) if m.contains("en train de changer")));
+        assert!(n.changer_de_profil(false, "change de profil").is_err(), "un changement à la fois");
+        drop(changement);
+        assert!(n.commencer_lancement().is_ok());
+    }
+
+    /// Lot S3 : Dune installé devient un jeu PC (Windows), avec une partie dans `SAVES` de son dossier, cet
+    /// emplacement connu du profil, et le dossier des abris réglé. Rend (dossier installé, la partie, les abris).
+    async fn jeu_pc_installe(d: &tempfile::TempDir, n: &Noyau) -> (PathBuf, PathBuf, PathBuf) {
+        let i = n.installer(110, true).await.unwrap();
+        let mut j = n.registre().jeu(110).unwrap().unwrap();
+        n.registre().retirer(110).unwrap();
+        j.plateforme = "Windows".into();
+        let installation = j.installation.take();
+        n.registre().ajouter(&j).unwrap();
+        n.registre().changer_installation(110, installation.as_ref()).unwrap();
+        let profil = n.actif().await.unwrap().id;
+        crate::commandes::tests_abri_auto::connaitre_saves(n, &profil, 110);
+        let installe = PathBuf::from(&i.dossier);
+        std::fs::create_dir_all(installe.join("SAVES")).unwrap();
+        let sav = installe.join("SAVES").join("PARTIE1.SAV");
+        std::fs::write(&sav, b"partie").unwrap();
+        crate::commandes::tests_abri_auto::vieillir(&sav);
+        let abris = d.path().join("Abris");
+        n.regler_abris(Some(abris.clone()));
+        (installe, sav, abris)
+    }
+
+    /// Les abris de sorte `emplacements` (lot S2/S3) du jeu 110 : (déclencheur, contenu de la partie).
+    fn abris_emplacements(abris: &Path) -> Vec<(String, Vec<u8>)> {
+        let mut l: Vec<(String, Vec<u8>)> = std::fs::read_dir(abris.join("110"))
+            .unwrap()
+            .flatten()
+            .filter(|e| e.path().is_dir())
+            .filter_map(|e| crate::abri_parties::lire_fiche(&e.path()).filter(|f| f.sorte == crate::abri_parties::SORTE_EMPLACEMENTS).map(|f| (e.path(), f)))
+            .map(|(p, f)| (f.declencheur.clone(), std::fs::read(p.join(&f.fichiers[0].relatif)).unwrap()))
+            .collect();
+        l.sort();
+        l
+    }
+
+    #[tokio::test]
+    async fn s3_les_parties_sont_a_l_abri_avant_le_desinstalleur_et_un_abri_impossible_ne_retire_rien() {
+        let (d, n) = noyau_avec(&[("dune.zip", &zip(&[("DUNE.EXE", b"MZ")]))], "Jeu — prêt à jouer").await;
+        let (installe, sav, abris) = jeu_pc_installe(&d, &n).await;
+        // Un faux désinstalleur (pas un vrai programme : Windows refuse de le lancer, le retrait continue).
+        std::fs::write(installe.join("unins000.exe"), b"pas un programme").unwrap();
+        // La partie vient d'être écrite : l'abri est impossible, RIEN n'est retiré.
+        std::fs::write(&sav, b"toute neuve").unwrap();
+        match n.retirer_du_pc(110).await {
+            Err(Erreur::AbriImpossible { operation, cause, .. }) => assert_eq!((operation.as_str(), cause.as_str()), ("avant_retrait", "echec")),
+            autre => panic!("{autre:?}"),
+        }
+        assert!(sav.is_file() && installe.join("unins000.exe").is_file() && n.registre().jeu(110).unwrap().is_some(), "rien retiré");
+        // M11 : l'abri des parties passe AVANT tout le reste — pas même l'abri du dossier du jeu n'a été fait.
+        assert!(!abris.join("110").exists(), "rien d'autre n'a été touché");
+        assert!(!n.utilise(110));
+        // Le calme revenu : l'abri d'abord, puis le retrait (le dossier du jeu part, la partie reste dans l'abri).
+        crate::commandes::tests_abri_auto::vieillir(&sav);
+        // Aussitôt (M12) : l'abri des parties vient de prendre cette seconde, celui du dossier du jeu prend la suivante.
+        n.retirer_du_pc(110).await.unwrap();
+        assert!(!installe.exists() && n.registre().jeu(110).unwrap().is_none());
+        assert_eq!(abris_emplacements(&abris), [("avant_retrait".to_string(), b"toute neuve".to_vec())]);
+    }
+
+    #[tokio::test]
+    async fn s3_continuer_sans_abri_retire_le_jeu_seulement_apres_ce_choix() {
+        let (d, n) = noyau_avec(&[("dune.zip", &zip(&[("DUNE.EXE", b"MZ")]))], "Jeu — prêt à jouer").await;
+        let (installe, sav, abris) = jeu_pc_installe(&d, &n).await;
+        std::fs::write(&sav, b"toute neuve").unwrap();
+        assert!(matches!(n.retirer_du_pc(110).await, Err(Erreur::AbriImpossible { .. })));
+        crate::commandes::accorder_sans_abri(&n, 110, crate::abri_parties::DECLENCHEUR_AVANT_RETRAIT).await.unwrap();
+        n.retirer_du_pc(110).await.unwrap();
+        assert!(!installe.exists());
+        assert!(abris_emplacements(&abris).is_empty(), "sans abri des parties, comme choisi");
+    }
+
+    #[tokio::test]
+    async fn s3_une_reinstallation_met_d_abord_les_parties_a_l_abri() {
+        let (d, n) = noyau_avec(&[("dune.zip", &zip(&[("DUNE.EXE", b"MZ")]))], "Jeu — prêt à jouer").await;
+        let (_installe, sav, abris) = jeu_pc_installe(&d, &n).await;
+        // Impossible (partie écrite à l'instant) : rien n'est réinstallé.
+        std::fs::write(&sav, b"neuve").unwrap();
+        assert!(matches!(n.installer(110, true).await, Err(Erreur::AbriImpossible { ref operation, .. }) if operation == "avant_reinstallation"));
+        assert_eq!(std::fs::read(&sav).unwrap(), b"neuve");
+        crate::commandes::tests_abri_auto::vieillir(&sav);
+        n.installer(110, true).await.unwrap();
+        assert_eq!(abris_emplacements(&abris), [("avant_reinstallation".to_string(), b"neuve".to_vec())]);
     }
 
     #[tokio::test]

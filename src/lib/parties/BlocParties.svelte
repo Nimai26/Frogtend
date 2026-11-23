@@ -6,14 +6,22 @@
   // Lot S2 : « 🛟 Mettre mes parties à l'abri » (au bureau ET au canapé : la confirmation est une fenêtre maison, A
   // valide, B annule), annoncé avant (nombre de fichiers, taille, profil propriétaire), puis la liste des abris du
   // profil. Rien n'est envoyé chez Firehouse ni remis ici.
+  // Lot S3 : « 🛟 Dernier abri : … », la liste RELUE à chaque abri automatique (événement), une ligne qui reste quand
+  // le dernier abri automatique n'a pas pu tout copier, et une liste longue repliée (5 plus récents + le dernier de
+  // chaque « avant … »).
   import { api, type AbriVu, type PartiesVues } from '$lib/api';
   import { listen } from '@tauri-apps/api/event';
   import type { ProgresAbri } from '$lib/api';
   import { choisir, confirmer, fermerToast, informer, majProgres, toast, toastProgres } from '$lib/dialogues/fenetres.svelte';
   import { motifDuRefus } from '$lib/dialogues/messages';
+  import { tick } from 'svelte';
+  import { abrisAuto, chargerLigneGardee, signalerAbri } from '$lib/parties/abriAuto.svelte';
+  import { selectionner } from '$lib/taodbox/manette.svelte';
   import {
+    abrisAMontrer,
     abritable,
     contenu,
+    ligneAbriAuto,
     libelleOrigine,
     messageAnnonce,
     messageChoix,
@@ -26,12 +34,14 @@
     texteAutresEndroits,
     texteContenuAbri,
     texteDate,
+    texteDernierAbri,
     texteEtat,
     texteFait,
     texteFiltre,
     texteNuage,
     texteSorteAbri,
     texteSource,
+    texteTotalAbris,
     titreOrigine,
   } from './parties';
 
@@ -45,6 +55,14 @@
   /** Où en est la mise à l'abri (gardien : une seule à la fois) : `compte` pendant l'annonce (rien n'est copié avant le
    * oui), `copie` après. */
   let etape = $state<null | 'compte' | 'copie'>(null);
+  /** La liste longue dépliée (« Voir les N plus anciens »). */
+  let tous = $state(false);
+  let sectionAbris = $state<HTMLElement | null>(null);
+  const vus = $derived(abris ? abrisAMontrer(abris, tous) : { montres: [], caches: 0 });
+  /** Le dernier abri automatique de CE jeu, s'il n'a pas pu tout copier (la ligne qui reste). */
+  const ligneAuto = $derived(ligneAbriAuto(abrisAuto.derniers[id]));
+  const dernier = $derived(texteDernierAbri(abris));
+  const total = $derived(texteTotalAbris(abris));
 
   $effect(() => {
     const n = id;
@@ -59,8 +77,33 @@
       .catch((e) => {
         if (n === id) erreur = motifDuRefus(e);
       });
+    tous = false;
     void relireAbris(n);
+    // M6 : la ligne d'un abri automatique raté, gardée par le cœur (elle survit au redémarrage).
+    void chargerLigneGardee(n);
   });
+
+  // Un abri automatique vient d'être fait (ou n'a pas pu l'être) : la liste est relue.
+  let versionVue = abrisAuto.version;
+  $effect(() => {
+    const v = abrisAuto.version;
+    if (v === versionVue) return;
+    versionVue = v;
+    void relireAbris(id);
+  });
+
+  /** « Voir les N plus anciens » : le bouton disparaît, le focus va sur le premier abri nouvellement montré (jamais un
+   * focus perdu, au clavier comme à la manette). */
+  async function voirTous() {
+    const avant = new Set(vus.montres);
+    const i = (abris ?? []).findIndex((a) => !avant.has(a));
+    tous = true;
+    await tick();
+    const li = sectionAbris?.querySelectorAll<HTMLElement>('li')[Math.max(i, 0)];
+    if (!li) return;
+    if (canape) selectionner(li);
+    else li.focus();
+  }
 
   async function relireAbris(n: number) {
     try {
@@ -131,6 +174,8 @@
           }
           const r = await api.partiesAbriter(n, rapatrier ? a.gros_avec_nuage : a.gros, rapatrier);
           toast(texteFait(r), r.echecs.length || r.en_ligne_seulement ? 'alerte' : 'ok');
+          // Fait à la main : la ligne d'un abri automatique raté ne vaut plus.
+          if (r.date && !r.echecs.length && !r.en_ligne_seulement) signalerAbri(n);
           await relireAbris(n);
           return;
         } catch (e) {
@@ -160,6 +205,7 @@
       {#if texteSource(vues)}<p class="tag warn">{texteSource(vues)}</p>{/if}
       {#if texteEtat(vues)}<p class="muted">{texteEtat(vues)}</p>{/if}
     {/if}
+    {#if ligneAuto}<p class="tag warn ligne-auto">{ligneAuto}</p>{/if}
   </div>
   {#if vues && montres(vues).length}
     <ul class="liste">
@@ -197,10 +243,12 @@
     </div>
   {/if}
   {#if abris && abris.length}
-    <section class="abris" aria-label="Mes abris de parties">
+    <section class="abris" aria-label="Mes abris de parties" bind:this={sectionAbris}>
       <h3>🛟 Mes abris</h3>
+      {#if dernier}<p class="dernier">{dernier}</p>{/if}
+      {#if total}<p class="muted">{total}</p>{/if}
       <ul class="liste">
-        {#each abris as a, i (a.date + a.sorte + i)}
+        {#each vus.montres as a, i (a.date + a.sorte + i)}
           {@const note = noteAbri(a)}
           {#if canape}
             <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -211,7 +259,7 @@
               {#if note}<span class="muted detail">{note}</span>{/if}
             </li>
           {:else}
-            <li class="emplacement abri">
+            <li class="emplacement abri" tabindex="-1">
               <span class="contenu">{texteDate(a.date)}</span>
               <span>{texteContenuAbri(a)}</span>
               <span class="muted detail">{texteSorteAbri(a)}</span>
@@ -220,6 +268,11 @@
           {/if}
         {/each}
       </ul>
+      {#if vus.caches > 0}
+        <div class="actions">
+          <button class="btn" onclick={voirTous}>Voir les {vus.caches.toLocaleString('fr-FR')} plus ancien{vus.caches > 1 ? 's' : ''}</button>
+        </div>
+      {/if}
     </section>
   {/if}
 </div>
@@ -278,6 +331,9 @@
   .abris {
     display: grid;
     gap: calc(8 * var(--u));
+  }
+  .dernier {
+    font-weight: 600;
   }
   .abris h3 {
     margin: calc(6 * var(--u)) 0 0;

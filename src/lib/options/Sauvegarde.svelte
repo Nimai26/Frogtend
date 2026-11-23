@@ -45,6 +45,16 @@
         <option value="manuelle">Jamais : seulement quand je le demande</option>
       </select>
     </label>
+    <!-- Lot S3 (Seb 23/11) : l'abri des parties des jeux PC sur CE PC, après chaque partie (allumé d'office). L'abri
+         avant un retrait, une réinstallation ou un mod ne se coupe jamais. -->
+    <label class="choix">
+      <input
+        type="checkbox"
+        checked={etat.profil.parties?.abriApresPartie !== false}
+        onchange={(e) => reglerProfil('parties.abriApresPartie', e.currentTarget.checked)}
+      />
+      <span>🛟 Mettre mes parties à l’abri sur ce PC après chaque partie (pour tous tes jeux PC)</span>
+    </label>
   </div>
 
   <!-- Lot 7 (Seb 17/11) : les mises à jour et DLC Switch que Firehouse n'a pas, envoyés pour toute la famille. -->

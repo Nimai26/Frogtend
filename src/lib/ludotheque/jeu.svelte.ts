@@ -41,6 +41,7 @@ import { nomAffiche } from './ludotheque.svelte';
 import { EFFETS_IMAGE, libelleEffet } from './effetsImage';
 import { proposerCopieAvantMod } from '$lib/mods/copieAvantMod';
 import { aDesEmplacements } from '$lib/parties/parties';
+import { avecAbriAvant } from '$lib/parties/abriAvant';
 
 /** `affichee` : la fenêtre du jeu en cours est apparue (l'écran de lancement se cache, lot 4c). */
 export const partie = $state<{ enJeu: number | null; installation: number | null; lancement: number | null; affichee: boolean; relance: boolean }>({
@@ -224,13 +225,31 @@ export async function installer(id: number): Promise<boolean> {
   // Le programme est-il déjà choisi (jeu PC en archive : Firehouse dit lequel lancer, contrat 1.23) ?
   let lanceurDonne = false;
   try {
-    if (p.methode.sorte === 'archive') {
-      // Un jeu en archive : la décompression montre son avancement (un gros jeu prend des minutes).
-      lanceurDonne = !!(await avecProgres(`📦 Installation de « ${p.titre} »`, false, (suivi) => api.installer(id, automatique, suivi)))?.lanceur;
-    } else {
-      if (p.methode.sorte !== 'aucune') toast(`📦 Installation de « ${p.titre} »… (ça peut prendre quelques minutes)`);
-      lanceurDonne = !!(await api.installer(id, automatique))?.lanceur;
+    // Lot S3 : une réinstallation met d'abord les parties à l'abri ; si c'est impossible, la personne choisit
+    // (réessayer, OneDrive, continuer sans abri, annuler) — `undefined` : annulé, rien n'a été installé.
+    const reinstallation = !!tele.jeux[id]?.installation;
+    // L'abri à part d'abord (« 🛟 Tes parties d'abord… »), puis l'installation et son message (une seule fois).
+    const avant = { jeuPc: reinstallation && aDesEmplacements(tele.jeux[id]?.plateforme) };
+    let dit = false;
+    const fait =
+      p.methode.sorte === 'archive'
+        ? // Un jeu en archive : la décompression montre son avancement (un gros jeu prend des minutes).
+          await avecAbriAvant(id, 'avant_reinstallation', () => avecProgres(`📦 Installation de « ${p.titre} »`, false, (suivi) => api.installer(id, automatique, suivi)), avant)
+        : await avecAbriAvant(
+            id,
+            'avant_reinstallation',
+            () => {
+              if (p.methode.sorte !== 'aucune' && !dit) toast(`📦 Installation de « ${p.titre} »… (ça peut prendre quelques minutes)`);
+              dit = true;
+              return api.installer(id, automatique);
+            },
+            avant,
+          );
+    if (fait === undefined) {
+      partie.installation = null;
+      return false;
     }
+    lanceurDonne = !!fait?.lanceur;
   } catch (e) {
     partie.installation = null;
     if (estErreurCoeur(e) && e.motif.includes("rien n'est dans")) {
@@ -705,7 +724,7 @@ export async function mettreALAbri(id: number) {
   try {
     const a = await api.mettreALAbri(id);
     if (a.fichiers === 0) toast('Rien de nouveau à mettre à l’abri : aucune partie n’a changé depuis l’installation.');
-    else toast(`✅ ${a.fichiers} fichier(s) de parties (${taille(a.octets)}) mis à l’abri dans ${a.dossier}.`);
+    else toast(`✅ ${a.fichiers} fichier(s) de parties (${taille(a.octets)}) mis à l’abri.`);
   } catch (e) {
     toast(`Échec de la mise à l’abri : ${motifDuRefus(e)}`, 'erreur');
   }
@@ -777,7 +796,7 @@ export async function retirer(j: JeuPc) {
   }
   const oui = await confirmer(`🗑 Retirer « ${j.titre} » de ce PC ?`, {
     message: [
-      `Tes parties seront d’abord mises à l’abri (copie gardée par Frogtend). Si la copie échoue, rien n’est retiré.`,
+      `Tes parties seront d’abord mises à l’abri (copie gardée par Frogtend). Si la copie échoue, Frogtend te demande quoi faire.`,
       ``,
       `Partira : l’installation${j.installation ? ` (${j.installation.dossier})` : ''}, les fichiers téléchargés (${taille(j.total)}), la fiche et les documents gardés.`,
       `Restera : les copies de tes parties, et tout fichier que tu aurais mis toi-même dans le dossier du jeu.`,
@@ -789,12 +808,10 @@ export async function retirer(j: JeuPc) {
   });
   if (!oui) return;
   try {
-    const a = await api.retirer(j.id);
-    toast(
-      a.fichiers
-        ? `✅ « ${j.titre} » retiré. ${a.fichiers} fichier(s) de parties à l’abri dans ${a.dossier}.`
-        : `✅ « ${j.titre} » retiré du PC.`,
-    );
+    // Lot S3 : les parties rangées hors du dossier du jeu, à l'abri d'abord ; si c'est impossible, la personne choisit.
+    const a = await avecAbriAvant(j.id, 'avant_retrait', () => api.retirer(j.id), { jeuPc: aDesEmplacements(j.plateforme) });
+    if (a === undefined) return;
+    toast(a.fichiers ? `✅ « ${j.titre} » retiré. ${a.fichiers} fichier(s) de parties à l’abri.` : `✅ « ${j.titre} » retiré du PC.`);
     if (ludo.selection?.id === j.id) ludo.selection = null;
     await apresChangement();
     // Installé ailleurs que dans son dossier Frogtend : il reste installé. Son désinstalleur n'est lancé qu'après un oui
@@ -1533,7 +1550,8 @@ export async function choisirMods(id: number) {
         : 'Les fichiers d’origine du jeu sont remis en place. Un fichier du mod que tu as modifié est gardé (et copié de côté).';
       if (!(await confirmer(`🧩 Retirer « ${c.m.mod_nom} » ?`, { message, libelleValider: 'Retirer' }))) continue;
       try {
-        const r = await api.modDesinstaller(id, c.m.cle);
+        const r = await avecAbriAvant(id, 'avant_mod', () => api.modDesinstaller(id, c.m.cle), { jeuPc: aDesEmplacements(tele.jeux[id]?.plateforme) });
+        if (r === undefined) continue;
         toast(
           `🧩 « ${c.m.mod_nom} » retiré${r.gardes.length ? ` ; gardé(s) car modifié(s) : ${r.gardes.join(', ')}` : ''}${r.laisses_a_la_boutique.length ? ` ; laissé(s) à Steam (sa mise à jour) : ${r.laisses_a_la_boutique.join(', ')}` : ''}.`,
         );
@@ -1637,7 +1655,10 @@ export async function choisirMods(id: number) {
     if (!(await confirmer(`🧩 Installer « ${m.nom} » ?`, { message, libelleValider: '⬇ Télécharger et installer' }))) continue;
     if (!(await proposerCopieAvantMod(id))) continue;
     try {
-      const b = await avecProgres(`Installation de « ${m.nom} » (ne ferme pas Frogtend)`, false, (suivi) => api.modInstaller(id, m.nom, f.nom, programme, suivi, risque));
+      const b = await avecAbriAvant(id, 'avant_mod', () => avecProgres(`Installation de « ${m.nom} » (ne ferme pas Frogtend)`, false, (suivi) => api.modInstaller(id, m.nom, f.nom, programme, suivi, risque)), {
+        jeuPc: aDesEmplacements(tele.jeux[id]?.plateforme),
+      });
+      if (b === undefined) continue;
       toast(`🧩 « ${m.nom} » installé : ${b.ajoutes} fichier(s) ajouté(s), ${b.remplaces} remplacé(s) (gardés de côté).`);
     } catch (e) {
       toast(`Refusé : ${motifDuRefus(e)}`, 'erreur');
@@ -1720,6 +1741,13 @@ export async function gererJeu(id: number) {
   // faire des réglages depuis le canapé voyons ») ; au bureau, c'est le panneau du jeu.
   if (auCanape() && j.installation && j.plateforme === 'Nintendo Switch')
     options.push({ valeur: 'reglagesSwitch', libelle: '🧩 Mises à jour, DLC et mods', detail: 'les allumer ou les éteindre — pour toute la maison' });
+  // Lot S3 (Seb 23/11) : au canapé, un jeu PC — l'abri de ses parties après chaque partie se règle à la manette.
+  if (auCanape() && aDesEmplacements(j.plateforme))
+    options.push({
+      valeur: 'reglagesSwitch',
+      libelle: '⚙ Réglages du jeu',
+      detail: `🛟 mettre mes parties à l’abri après chaque partie (pour tous tes jeux PC) : ${etat.profil.parties?.abriApresPartie !== false ? 'oui' : 'non'}`,
+    });
   if (pcSansEmulateur) {
     // Ses mods (contrat 1.19 ; ✅ Seb 19/10) — d'une boutique, Steam seulement (lot B3, ✅ Seb 21/10).
     if (!deBoutique || j.installation?.boutique?.source === 'steam') options.push({ valeur: 'mods', libelle: '🧩 Mods', detail: 'ajouter ou retirer des mods — pour ce jeu' });
@@ -1740,7 +1768,7 @@ export async function gererJeu(id: number) {
     });
   }
   if (j.installation && !deBoutique)
-    options.push({ valeur: 'abri', libelle: '💾 Mettre mes parties à l’abri', detail: 'une copie de ce qui a changé depuis l’installation' });
+    options.push({ valeur: 'abri', libelle: '🛟 Mettre mes parties à l’abri', detail: 'une copie de ce qui a changé depuis l’installation' });
   // Ses succès en détail (lot C ; au bureau ET au canapé, ✅ Seb 21/10) : un jeu Steam, ou un jeu d'émulateur
   // (RetroAchievements, lot C3).
   const ra = !!j.installation && !pcSansEmulateur ? await api.raEtat().catch(() => null) : null;
@@ -1749,7 +1777,7 @@ export async function gererJeu(id: number) {
     options.push({ valeur: 'succes', libelle: '🏆 Succès', detail: 'la liste, obtenus et à obtenir' });
   // Un jeu Steam : ses parties que Steam garde pour son nuage (lot B2, lecture seule chez Steam).
   if (j.installation?.boutique?.source === 'steam')
-    options.push({ valeur: 'abri', libelle: '💾 Mettre mes parties à l’abri', detail: 'une copie de ses parties (nuage de Steam et dossiers du jeu)' });
+    options.push({ valeur: 'abri', libelle: '🛟 Mettre mes parties à l’abri', detail: 'une copie de ses parties (nuage de Steam et dossiers du jeu)' });
   // Où sont ses parties (lot S1 ; au bureau ET au canapé, lecture seule) : un jeu PC, quelle que soit sa boutique.
   if (aDesEmplacements(j.plateforme))
     options.push({ valeur: 'parties', libelle: '📁 Où sont mes parties', detail: 'les dossiers où ce jeu range ses parties sur ce PC' });

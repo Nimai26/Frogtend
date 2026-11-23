@@ -13,7 +13,7 @@
   import Dialogues from '$lib/dialogues/Dialogues.svelte';
   import { demarrer, demarrerMenuJeu, etat } from '$lib/etat.svelte';
   import { verifierMiseAJour } from '$lib/mises-a-jour';
-  import { arreterSuivi, suivreTelechargements } from '$lib/ludotheque/telechargements.svelte';
+  import { arreterSuivi, suivreTelechargements, tele } from '$lib/ludotheque/telechargements.svelte';
   import { attenteLancement, lancementImpossible, partie, proposerCouperGameBar, suivreParties } from '$lib/ludotheque/jeu.svelte';
   import EcranLancement from '$lib/ludotheque/EcranLancement.svelte';
   import { listen } from '@tauri-apps/api/event';
@@ -26,6 +26,7 @@
   import { gogAuDemarrage } from '$lib/boutiques/gog.svelte';
   import { emulateursAuDemarrage } from '$lib/emulateurs/majs.svelte';
   import { ecouterQuestionsRacine } from '$lib/mods/racine';
+  import { ecouterAbrisAuto } from '$lib/parties/abriAuto.svelte';
 
   let { children } = $props();
 
@@ -45,6 +46,9 @@
       return;
     }
     await demarrer();
+    // Lot S3 : les abris automatiques des parties, écoutés dès le montage (un abri repris à l'ouverture d'un profil
+    // arrive avant toute partie) ; filtrés sur le profil ouvert.
+    void ecouterAbrisAuto(() => etat.profilOuvert?.id, (jeu) => tele.jeux[jeu]?.titre ?? 'ce jeu');
     // Lancé en Taodbox (`--taodbox`, par exemple depuis Sunshine) : directement le mode canapé.
     if (isTauri() && (await api.taodboxLance().catch(() => false))) await goto('/taodbox');
     // Vérification discrète : on ne propose que s'il y a une nouvelle version, jamais d'installation sans accord.

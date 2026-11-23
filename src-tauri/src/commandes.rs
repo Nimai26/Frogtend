@@ -346,7 +346,12 @@ pub async fn profil_ouvrir(
 ) -> Resultat<ProfilVisible> {
     // Un émulateur ouvert seul tourne avec le profil d'avant (✅ Seb 17/11) : on ne change pas de profil sous lui.
     noyau.refuser_si_emulateur_seul("change de profil")?;
+    // Un jeu en cours (Seb, 23/11) : ses parties appartiennent au profil qui joue — on ne change pas de profil sous lui.
+    let changement = noyau.changer_de_profil(partie_suivie(&app), "change de profil")?;
+    // Les accords « continuer sans abri » / « abri déjà fait » de l'autre profil ne valent plus (I3).
+    oublier_accords_abri(&noyau);
     let p = noyau.ouvrir(&id, pin.as_deref(), &connexion(&app)).await?;
+    drop(changement);
     // Les jeux déjà arrivés qu'il n'y avait rien à « installer » (ROM, images disque) deviennent prêts à jouer, en
     // arrière-plan (registre, et parties restaurées qui les attendaient).
     let app2 = app.clone();
@@ -358,12 +363,21 @@ pub async fn profil_ouvrir(
     });
     // Les envois Switch déjà acceptés par cette personne et restés en file (Frogtend fermé, connexion coupée) reprennent.
     lancer_envois_switch(&app);
+    // Lot S3 : les abris « à faire » de ce profil (une attente dépassée, un échec) sont repris.
+    lancer_abris_apres_partie(&app, None, p.id.clone());
     Ok(p)
 }
 
+/// Une partie est-elle suivie en ce moment (le menu en jeu la tient, de son lancement à sa fin) ?
+fn partie_suivie(app: &AppHandle) -> bool {
+    app.state::<crate::menu_jeu::MenuJeu>().partie().is_some()
+}
+
 #[tauri::command]
-pub async fn profil_fermer(noyau: State<'_, Noyau>) -> Resultat<()> {
+pub async fn profil_fermer(app: AppHandle, noyau: State<'_, Noyau>) -> Resultat<()> {
     noyau.refuser_si_emulateur_seul("change de profil")?;
+    let _changement = noyau.changer_de_profil(partie_suivie(&app), "change de profil")?;
+    oublier_accords_abri(&noyau);
     noyau.fermer().await;
     Ok(())
 }
@@ -410,6 +424,9 @@ pub async fn profil_renommer(noyau: State<'_, Noyau>, nom: String) -> Resultat<P
 #[tauri::command]
 pub async fn profil_supprimer(app: AppHandle, noyau: State<'_, Noyau>, id: String, pin: Option<String>) -> Resultat<()> {
     noyau.refuser_si_emulateur_seul("supprime le profil")?;
+    // M14 : supprimer un AUTRE profil que celui qui joue reste permis pendant une partie.
+    let actif = noyau.actif().await.is_some_and(|p| p.id == id);
+    let _changement = if actif { Some(noyau.changer_de_profil(partie_suivie(&app), "supprime le profil")?) } else { None };
     let nom = noyau.profils.trouver(&id)?.nom;
     noyau.supprimer_profil(&id, pin.as_deref()).await?;
     app.state::<crate::nexus::Nexus>().oublier_profil(&id);
@@ -3299,6 +3316,12 @@ pub async fn jeu_jouer(
                 noyau.journaliser(&format!("partie du jeu {id} : fin annoncée à l'écran{}", if relancer { " (relance demandée)" } else { "" }));
             }
             Err(e) => noyau.journaliser(&format!("suivi de la partie du jeu {id} : {e:?}")),
+        }
+        // Lot S3 (Seb, 23/11) : les parties d'un jeu PC à l'abri après la partie, pour le profil QUI JOUAIT (le
+        // réglage de ce profil ; jamais pendant une relance demandée : le jeu repart aussitôt). Même un suivi qui a
+        // mal fini (M8) : le jeu a pu écrire ses parties.
+        if !relancer && plateforme_captures == "Windows" {
+            lancer_abris_apres_partie(&app2, Some(id), profil_captures.clone());
         }
     });
     Ok(())
@@ -9187,7 +9210,8 @@ async fn apercu_abri_parties(
 }
 
 /// `rapatrier` : la personne a choisi « Télécharger depuis OneDrive puis mettre à l'abri » ; sans lui, un fichier
-/// « en ligne seulement » n'est jamais lu.
+/// « en ligne seulement » n'est jamais lu. (Les tests passent par elle ; la commande dit son déclencheur.)
+#[cfg(test)]
 async fn abriter_parties(
     noyau: &Noyau,
     id: i64,
@@ -9195,6 +9219,20 @@ async fn abriter_parties(
     rapatrier: Option<OutilsRapatriement>,
     windows: impl FnOnce() -> Vec<(&'static str, std::path::PathBuf)> + Send + 'static,
 ) -> Resultat<AbriPartiesFait> {
+    abriter_parties_par(noyau, id, accepte, rapatrier, crate::abri_parties::DECLENCHEUR_MAIN, windows).await
+}
+
+/// Comme `abriter_parties`, en disant ce qui a fait faire l'abri : « Télécharger depuis OneDrive puis réessayer » ou
+/// « mettre à l'abri quand même » d'une opération dont l'abri avait échoué (lot S3) le range sous son opération.
+async fn abriter_parties_par(
+    noyau: &Noyau,
+    id: i64,
+    accepte: bool,
+    rapatrier: Option<OutilsRapatriement>,
+    declencheur: &str,
+    windows: impl FnOnce() -> Vec<(&'static str, std::path::PathBuf)> + Send + 'static,
+) -> Resultat<AbriPartiesFait> {
+    let declencheur = crate::abri_parties::DECLENCHEURS.iter().copied().find(|d| *d == declencheur).unwrap_or(crate::abri_parties::DECLENCHEUR_MAIN);
     let abris = noyau.dossier_abris()?;
     let p = preparer_abri_parties(noyau, id).await?;
     if let Some(e) = refus_jeu_en_cours(noyau, id, p.dossier_jeu.as_deref()) {
@@ -9229,20 +9267,23 @@ async fn abriter_parties(
         return Err(Erreur::Refus("Ces parties sont seulement dans ton nuage OneDrive : choisis de les télécharger d'abord.".into()));
     }
     if rapatries == 0 && plan.fichiers() > 0 && crate::abri_parties::deja_a_l_abri(&sources, &profil.id, &plan) {
-        return Ok(vu(&plan, None, true, 0));
+        let f = vu(&plan, None, true, 0);
+        noter_abri_fait_pour(noyau, &profil.id, id, declencheur, &f);
+        return Ok(f);
     }
     let total = plan.octets() + if rapatrier.is_some() { plan.octets_en_ligne() } else { 0 };
     if total > crate::nuage_steam::GROS && !accepte {
         return Err(Erreur::Refus("Ces parties sont très grosses : confirme d'abord.".into()));
     }
     let quand = crate::noyau::maintenant();
+    let profil_id = profil.id.clone();
     let (r, plan) = tauri::async_runtime::spawn_blocking(move || {
         let r = match &rapatrier {
             Some(o) => {
                 let rap = crate::abri_parties::Rapatriement { lecteur: o.lecteur.clone(), delai: &o.delai, progres: &*o.progres };
-                crate::abri_parties::abriter(&mut plan, &abris, id, &quand, &profil.id, Some(&rap))
+                crate::abri_parties::abriter_par(&mut plan, &abris, id, &quand, &profil.id, declencheur, Some(&rap))
             }
-            None => crate::abri_parties::abriter(&mut plan, &abris, id, &quand, &profil.id, None),
+            None => crate::abri_parties::abriter_par(&mut plan, &abris, id, &quand, &profil.id, declencheur, None),
         }
         .map(|_| quand);
         (r, plan)
@@ -9255,7 +9296,9 @@ async fn abriter_parties(
     match r {
         Ok(date) => {
             noyau.journaliser(&format!("jeu {id} : {n} fichier(s) de parties mis à l'abri à la main ({k} emplacement(s), {e} en échec, {o} en ligne seulement, {telecharges} téléchargé(s) depuis le nuage)"));
-            Ok(vu(&plan, Some(date), false, telecharges))
+            let f = vu(&plan, Some(date), false, telecharges);
+            noter_abri_fait_pour(noyau, &profil_id, id, declencheur, &f);
+            Ok(f)
         }
         Err(x) => {
             noyau.journaliser(&format!("jeu {id} : mise à l'abri à la main impossible ({e} emplacement(s) en échec)"));
@@ -9265,6 +9308,671 @@ async fn abriter_parties(
             Err(if raisons.is_empty() { x } else { Erreur::Refus(format!("Rien n'est mis à l'abri : {}.", raisons.join(" ; "))) })
         }
     }
+}
+
+// --- Lot S3 (23/11, décisions de Seb) : la mise à l'abri AUTOMATIQUE des parties d'un jeu PC, après une partie et
+// avant un retrait, une réinstallation, une mise à jour ou un mod. Même abri que le lot S2 (sorte `emplacements`), avec
+// son déclencheur ; le profil propriétaire est DONNÉ (celui qui jouait, ou celui de la session) ; jamais de
+// téléchargement OneDrive, jamais plus de 2 Go sans question ; aucun abri n'est jamais effacé. Journal et événements :
+// le numéro du jeu, celui du profil et des nombres, jamais un titre ni un chemin. ---
+
+/// Ce qu'a fait un abri automatique.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EtatAbriAuto {
+    /// La copie commence (après une partie : l'interface montre l'attente si elle dure).
+    EnCours,
+    Fait,
+    /// Le dernier abri de ce profil contient déjà exactement ces fichiers : aucun abri.
+    RienDeNeuf,
+    /// Firehouse a dit que ce jeu ne range aucune partie connue pour ce PC (ou aucune partie sur ce PC) : pas un échec.
+    Aucun,
+    /// Frogtend ne sait pas (encore) où ce jeu range ses parties (jamais demandé, hors ligne, Firehouse ne sait pas).
+    Inconnu,
+    /// Des fichiers seulement dans OneDrive : jamais téléchargés ici (ceux du PC sont copiés).
+    EnLigne,
+    /// Plus de 2 Go : rien n'est copié sans question.
+    TropGros,
+    Echec,
+    /// Après une partie : le calme n'est pas venu en 10 minutes ; le repère « abri à faire » reste.
+    AttenteDepassee,
+}
+
+impl EtatAbriAuto {
+    fn nom(self) -> &'static str {
+        match self {
+            EtatAbriAuto::EnCours => "en_cours",
+            EtatAbriAuto::Fait => "fait",
+            EtatAbriAuto::RienDeNeuf => "rien_de_neuf",
+            EtatAbriAuto::Aucun => "aucun",
+            EtatAbriAuto::Inconnu => "inconnu",
+            EtatAbriAuto::EnLigne => "en_ligne",
+            EtatAbriAuto::TropGros => "trop_gros",
+            EtatAbriAuto::Echec => "echec",
+            EtatAbriAuto::AttenteDepassee => "attente_depassee",
+        }
+    }
+    fn depuis(nom: &str) -> Option<Self> {
+        [
+            EtatAbriAuto::EnCours,
+            EtatAbriAuto::Fait,
+            EtatAbriAuto::RienDeNeuf,
+            EtatAbriAuto::Aucun,
+            EtatAbriAuto::Inconnu,
+            EtatAbriAuto::EnLigne,
+            EtatAbriAuto::TropGros,
+            EtatAbriAuto::Echec,
+            EtatAbriAuto::AttenteDepassee,
+        ]
+        .into_iter()
+        .find(|e| e.nom() == nom)
+    }
+    /// Un état qui mérite une ligne sur la fiche du jeu (gardée jusqu'au prochain abri réussi).
+    fn probleme(self) -> bool {
+        matches!(self, EtatAbriAuto::Inconnu | EtatAbriAuto::EnLigne | EtatAbriAuto::TropGros | EtatAbriAuto::Echec | EtatAbriAuto::AttenteDepassee)
+    }
+}
+
+/// Le compte rendu d'un abri automatique (événement `parties-abri-auto`) : des numéros et des nombres ; `motif` (un
+/// échec) ne contient jamais un chemin ni un titre (`motif_sans_chemin`).
+#[derive(Debug, Clone, Serialize)]
+pub struct BilanAbriAuto {
+    pub jeu: i64,
+    pub profil: String,
+    pub declencheur: String,
+    pub etat: EtatAbriAuto,
+    pub fichiers: usize,
+    pub octets: u64,
+    pub en_ligne: usize,
+    pub octets_en_ligne: u64,
+    pub echecs: usize,
+    pub motif: Option<String>,
+}
+
+impl BilanAbriAuto {
+    fn nouveau(id: i64, profil: &str, declencheur: &str, etat: EtatAbriAuto) -> Self {
+        BilanAbriAuto { jeu: id, profil: profil.into(), declencheur: declencheur.into(), etat, fichiers: 0, octets: 0, en_ligne: 0, octets_en_ligne: 0, echecs: 0, motif: None }
+    }
+    fn echec(id: i64, profil: &str, declencheur: &str, motif: String) -> Self {
+        BilanAbriAuto { motif: Some(motif), ..Self::nouveau(id, profil, declencheur, EtatAbriAuto::Echec) }
+    }
+}
+
+/// Le motif d'une erreur, dit sans jamais un chemin (M9) : une erreur de réglage (le dossier des abris refusé cite son
+/// chemin) ou de disque a un texte fixe ; un refus de Frogtend (ses propres mots, sans chemin) passe tel quel.
+fn motif_sans_chemin(e: &Erreur) -> String {
+    match e {
+        Erreur::Reglage(_) => "Le dossier des abris de parties n'est pas réglé, ou ne convient pas : choisis-le dans ⚙ Options ▸ Emplacements.".into(),
+        Erreur::Disque(_) => "Frogtend n'a pas pu lire ou écrire sur le disque (un fichier utilisé par un autre programme, un disque débranché ?).".into(),
+        Erreur::Refus(m) | Erreur::Prevenir(m) => m.clone(),
+        Erreur::Reseau(_) | Erreur::Serveur(_) => "Firehouse n'a pas pu répondre.".into(),
+        _ => "Frogtend n'a pas pu préparer l'abri.".into(),
+    }
+}
+
+/// Le jeu d'un abri automatique, pour un profil DONNÉ (jamais la session : après une partie, la personne qui jouait).
+struct PourAbriAuto {
+    lieux_non_resolus: Vec<crate::emplacements_parties::EmplacementPartie>,
+    contexte: Box<dyn FnOnce(Vec<(&'static str, std::path::PathBuf)>) -> crate::nuage_steam::Contexte + Send>,
+    sources: Vec<std::path::PathBuf>,
+    dossier_jeu: Option<std::path::PathBuf>,
+    sel: String,
+}
+
+/// Ce que Frogtend sait des parties d'un jeu pour un abri automatique.
+enum Pour {
+    Connu(PourAbriAuto),
+    /// Pas un jeu PC, ou Firehouse ne connaît aucun emplacement pour ce PC : rien à faire, pas un échec.
+    Aucun,
+    /// Rien de connu (jamais demandé, hors ligne, Firehouse ne sait pas) : jamais « rien à faire » en silence (B1).
+    Inconnu,
+}
+
+/// Les emplacements connus de ce jeu PC pour ce profil. B1 : une entrée absente ou trop vieille est d'abord demandée à
+/// Firehouse (comme « 📁 Où sont mes parties »), seulement quand ce profil est celui de la session (la réponse n'est
+/// rangée que chez lui) ; hors ligne, le cache seul. « Entrée absente » (inconnu) n'est pas « liste vide » (aucun).
+async fn pour_abri_auto(
+    noyau: &Noyau,
+    profil: &str,
+    dossier_profil: &std::path::Path,
+    id: i64,
+    windows: impl Fn() -> Vec<(&'static str, std::path::PathBuf)> + Send + Sync + Clone + 'static,
+) -> Resultat<Pour> {
+    use crate::emplacements_parties as ep;
+    let j = noyau.registre().jeu(id)?;
+    if j.as_ref().is_some_and(|j| j.plateforme != "Windows") {
+        return Ok(Pour::Aucun);
+    }
+    let t: u64 = crate::noyau::maintenant().parse().unwrap_or(0);
+    let mut entree = ep::lire(dossier_profil)?.jeu(id).cloned();
+    if ep::a_redemander(entree.as_ref(), t) {
+        let de_la_session = noyau.session().await.ok().is_some_and(|s| s.profil.id == profil);
+        if de_la_session {
+            if parties_du_jeu(noyau, id, true, windows.clone()).await.is_err() {
+                noyau.journaliser(&format!("jeu {id} : emplacements de parties non relus avant l'abri (le cache seul)"));
+            }
+            entree = ep::lire(dossier_profil)?.jeu(id).cloned();
+        }
+    }
+    let Some(entree) = entree else { return Ok(Pour::Inconnu) };
+    if entree.emplacements.is_empty() {
+        return Ok(if entree.firehouse == ep::EtatFirehouse::Inconnu { Pour::Inconnu } else { Pour::Aucun });
+    }
+    let installation = j.as_ref().and_then(|j| j.installation.as_ref());
+    let boutique = installation.and_then(|i| i.boutique.as_ref()).map(|b| ep::BoutiqueJeu { source: b.source.clone(), cle: b.cle.clone() }).or(entree.boutique.clone());
+    let dossier_jeu = installation.map(|i| std::path::PathBuf::from(&i.dossier));
+    let contexte = Box::new(contexte_des_parties(dossier_profil, boutique.as_ref(), dossier_jeu.clone()));
+    let sel = crate::abri_parties::sel_du_profil(dossier_profil)?;
+    Ok(Pour::Connu(PourAbriAuto { lieux_non_resolus: entree.emplacements, contexte, sources: noyau.sources_abri(id)?, dossier_jeu, sel }))
+}
+
+/// Les emplacements résolus sur ce PC (`windows` : les dossiers de Windows).
+fn lieux_resolus(
+    lieux: &[crate::emplacements_parties::EmplacementPartie],
+    contexte: Box<dyn FnOnce(Vec<(&'static str, std::path::PathBuf)>) -> crate::nuage_steam::Contexte + Send>,
+    windows: Vec<(&'static str, std::path::PathBuf)>,
+) -> Vec<crate::nuage_steam::Emplacement> {
+    let ctx = contexte(windows);
+    lieux.iter().flat_map(|x| crate::nuage_steam::candidats(&x.chemin, Some(&x.nature), &ctx).0).collect()
+}
+
+/// Ce que demande un abri automatique.
+pub(crate) struct DemandeAbriAuto {
+    pub id: i64,
+    /// Le profil propriétaire de l'abri, et son dossier.
+    pub profil: String,
+    pub dossier_profil: std::path::PathBuf,
+    /// De `abri_parties::DECLENCHEURS`.
+    pub declencheur: &'static str,
+    /// L'appelant tient déjà `occuper(id)` (retrait, installation, mod) : `noyau.utilise` ne vaut pas refus.
+    pub deja_occupe: bool,
+}
+
+/// Un abri automatique : `Err` seulement quand le jeu n'est pas libre (occupé, un programme de son dossier tourne, un
+/// abri de ce jeu déjà en cours) ; tout le reste est dans le compte rendu. `annoncer` reçoit `EnCours` juste avant la
+/// copie. Un seul nouvel essai si un fichier change pendant la copie (ou si un abri vient de prendre la même seconde).
+pub(crate) async fn abriter_auto(
+    noyau: &Noyau,
+    d: &DemandeAbriAuto,
+    windows: impl Fn() -> Vec<(&'static str, std::path::PathBuf)> + Send + Sync + Clone + 'static,
+    annoncer: &(dyn Fn(&BilanAbriAuto) + Send + Sync),
+) -> Resultat<BilanAbriAuto> {
+    use crate::abri_parties::{self as ap, Echec};
+    let (id, profil, declencheur) = (d.id, d.profil.as_str(), d.declencheur);
+    let bilan = |etat| BilanAbriAuto::nouveau(id, profil, declencheur, etat);
+    let p = match pour_abri_auto(noyau, profil, &d.dossier_profil, id, windows.clone()).await {
+        Ok(Pour::Connu(p)) => p,
+        Ok(Pour::Aucun) => return Ok(bilan(EtatAbriAuto::Aucun)),
+        Ok(Pour::Inconnu) => return Ok(bilan(EtatAbriAuto::Inconnu)),
+        Err(e) => return Ok(BilanAbriAuto::echec(id, profil, declencheur, motif_sans_chemin(&e))),
+    };
+    // Le jeu n'est pas libre : ses parties changeraient pendant la copie.
+    if ABRIS_EN_COURS.lock().unwrap_or_else(|e| e.into_inner()).contains(&(noyau.dossier.clone(), id)) {
+        return Err(Erreur::Refus("Une mise à l'abri de ce jeu est déjà en cours : attends qu'elle finisse.".into()));
+    }
+    if !d.deja_occupe && noyau.utilise(id) {
+        return Err(Erreur::Refus("Ce jeu est occupé (partie, téléchargement ou installation en cours) : réessaie après.".into()));
+    }
+    if p.dossier_jeu.as_deref().is_some_and(|d| d.is_dir() && !crate::lancement::processus_du_dossier(d).is_empty()) {
+        return Err(Erreur::Refus("Le jeu est en cours : quitte-le d'abord, pour que ses parties ne changent pas pendant la copie.".into()));
+    }
+    let abris = match noyau.dossier_abris() {
+        Ok(a) => a,
+        Err(e) => return Ok(BilanAbriAuto::echec(id, profil, declencheur, motif_sans_chemin(&e))),
+    };
+    let PourAbriAuto { lieux_non_resolus, contexte, sources, sel, .. } = p;
+    let w = windows.clone();
+    let (lieux, releve) = tauri::async_runtime::spawn_blocking(move || {
+        let lieux = lieux_resolus(&lieux_non_resolus, contexte, w());
+        let r = ap::relever(&lieux);
+        (lieux, r)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La lecture des parties s'est arrêtée brutalement.".into()))?;
+    // Le relevé léger d'abord (tailles seulement) : au-delà de 2 Go, rien n'est lu (pas un SHA1) ni copié. Un endroit
+    // illisible ou trop grand (I2) n'est jamais pris pour « aucune partie » : `planifier` dira pourquoi.
+    let avec_releve = |etat| BilanAbriAuto { fichiers: releve.sur_le_pc(), octets: releve.octets, en_ligne: releve.en_ligne, octets_en_ligne: releve.octets_en_ligne, ..bilan(etat) };
+    if releve.fichiers.is_empty() && releve.arrets == 0 {
+        return Ok(bilan(EtatAbriAuto::Aucun));
+    }
+    if releve.octets > crate::nuage_steam::GROS {
+        noyau.journaliser(&format!("jeu {id} : parties trop grosses pour un abri automatique ({declencheur}) : rien de copié"));
+        return Ok(avec_releve(EtatAbriAuto::TropGros));
+    }
+    if releve.arrets == 0 && releve.sur_le_pc() == 0 {
+        noyau.journaliser(&format!("jeu {id} : {} fichier(s) de parties seulement dans le nuage : rien de copié ({declencheur})", releve.en_ligne));
+        return Ok(avec_releve(EtatAbriAuto::EnLigne));
+    }
+    let Some(_en_cours) = AbriEnCours::prendre(noyau, id) else {
+        return Err(Erreur::Refus("Une mise à l'abri de ce jeu est déjà en cours : attends qu'elle finisse.".into()));
+    };
+    let _occupe = (!d.deja_occupe).then(|| noyau.occuper(id));
+    let mut essai = 0;
+    loop {
+        let (l, s) = (lieux.clone(), sel.clone());
+        let mut plan = tauri::async_runtime::spawn_blocking(move || ap::planifier(&l, &Default::default(), &s))
+            .await
+            .map_err(|_| Erreur::Disque("La lecture des parties s'est arrêtée brutalement.".into()))?;
+        let fait = |plan: &ap::PlanAbri, etat| BilanAbriAuto {
+            fichiers: plan.fichiers(),
+            octets: plan.octets(),
+            en_ligne: plan.fichiers_en_ligne(),
+            octets_en_ligne: plan.octets_en_ligne(),
+            echecs: plan.echecs(),
+            ..bilan(etat)
+        };
+        // Ce qui reste à dire une fois le possible copié : trop gros, un endroit en échec, des fichiers dans le nuage.
+        let reste = |plan: &ap::PlanAbri| {
+            if plan.emplacements.iter().any(|e| e.echec == Some(Echec::TropGros)) {
+                Some(EtatAbriAuto::TropGros)
+            } else if plan.echecs() > 0 {
+                Some(EtatAbriAuto::Echec)
+            } else if plan.fichiers_en_ligne() > 0 {
+                Some(EtatAbriAuto::EnLigne)
+            } else {
+                None
+            }
+        };
+        let motif_echecs = |plan: &ap::PlanAbri| {
+            let mut l: Vec<&str> = plan.emplacements.iter().filter_map(|e| e.echec.map(|x| x.texte())).collect();
+            l.dedup();
+            (!l.is_empty()).then(|| l.join(" ; "))
+        };
+        // Après une partie, le calme est déjà vérifié (deux relevés identiques) : une date d'écriture dans le futur
+        // (horloge changée) ne bloque jamais l'abri (M7). Avant une opération : jamais pendant que le jeu écrit.
+        if declencheur != ap::DECLENCHEUR_APRES_PARTIE && plan.ecrit_recemment(std::time::SystemTime::now(), ECRITURE_RECENTE) {
+            return Ok(BilanAbriAuto { motif: Some("Le jeu semble encore écrire ses parties : réessaie dans une minute.".into()), ..fait(&plan, EtatAbriAuto::Echec) });
+        }
+        if plan.octets() > crate::nuage_steam::GROS {
+            return Ok(fait(&plan, EtatAbriAuto::TropGros));
+        }
+        if plan.fichiers() == 0 {
+            let etat = reste(&plan).unwrap_or(EtatAbriAuto::Aucun);
+            return Ok(BilanAbriAuto { motif: motif_echecs(&plan), ..fait(&plan, etat) });
+        }
+        if ap::deja_a_l_abri(&sources, profil, &plan) {
+            // Rien de neuf : aucun abri ; ce qui n'a pas pu être lu reste dit.
+            let etat = reste(&plan).unwrap_or(EtatAbriAuto::RienDeNeuf);
+            return Ok(BilanAbriAuto { fichiers: 0, octets: 0, motif: motif_echecs(&plan), ..fait(&plan, etat) });
+        }
+        annoncer(&fait(&plan, EtatAbriAuto::EnCours));
+        let (a, q, pr, dc) = (abris.clone(), crate::noyau::maintenant(), profil.to_string(), declencheur);
+        let (r, plan) = tauri::async_runtime::spawn_blocking(move || {
+            let r = ap::abriter_par(&mut plan, &a, id, &q, &pr, dc, None);
+            (r, plan)
+        })
+        .await
+        .map_err(|_| Erreur::Disque("La mise à l'abri s'est arrêtée brutalement.".into()))?;
+        let change = plan.emplacements.iter().any(|e| e.echec == Some(Echec::Change));
+        let meme_seconde = matches!(&r, Err(Erreur::Refus(m)) if m.contains("réessaie dans une seconde"));
+        if essai == 0 && (change || meme_seconde) {
+            essai += 1;
+            if meme_seconde {
+                tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+            }
+            continue;
+        }
+        let (n, k, e, o) = (plan.fichiers(), plan.bons().count(), plan.echecs(), plan.fichiers_en_ligne());
+        return Ok(match r {
+            Ok(_) => {
+                noyau.journaliser(&format!("jeu {id} : {n} fichier(s) de parties mis à l'abri automatiquement ({declencheur} ; {k} emplacement(s), {e} en échec, {o} en ligne seulement)"));
+                BilanAbriAuto { motif: motif_echecs(&plan), ..fait(&plan, reste(&plan).unwrap_or(EtatAbriAuto::Fait)) }
+            }
+            Err(x) => {
+                noyau.journaliser(&format!("jeu {id} : abri automatique impossible ({declencheur} ; {e} emplacement(s) en échec)"));
+                BilanAbriAuto { motif: Some(motif_echecs(&plan).unwrap_or_else(|| motif_sans_chemin(&x))), fichiers: 0, octets: 0, ..fait(&plan, EtatAbriAuto::Echec) }
+            }
+        });
+    }
+}
+
+/// I4 : un abri à la main rangé sous une opération (« quand même », « télécharger depuis OneDrive puis réessayer »),
+/// COMPLET (aucun endroit en échec, rien resté dans le nuage) : la prochaine opération de ce profil sur ce jeu, dans la
+/// minute, ne le refait pas.
+fn noter_abri_fait_pour(noyau: &Noyau, profil: &str, id: i64, declencheur: &str, f: &AbriPartiesFait) {
+    if declencheur.starts_with("avant_") && f.echecs.is_empty() && f.en_ligne_seulement == 0 && (f.date.is_some() || f.deja) {
+        noter_accord(&ABRI_DEJA_FAIT, noyau, profil, id, declencheur);
+    }
+}
+
+/// Un accord à usage unique (dossier des données, profil, jeu, opération, quand).
+type Accord = (std::path::PathBuf, String, i64, String, std::time::Instant);
+
+/// Un accord ne vaut qu'une minute (I3).
+const DUREE_ACCORD: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Les « continuer sans abri » choisis par la personne (après la seconde confirmation).
+static SANS_ABRI: std::sync::Mutex<Vec<Accord>> = std::sync::Mutex::new(Vec::new());
+/// Les abris faits à la main depuis la fenêtre d'échec (« quand même », « télécharger depuis OneDrive »), complets : la
+/// prochaine opération n'a pas à les refaire (I4 : sinon « plus de 2 Go » tournait en rond).
+static ABRI_DEJA_FAIT: std::sync::Mutex<Vec<Accord>> = std::sync::Mutex::new(Vec::new());
+
+fn noter_accord(l: &std::sync::Mutex<Vec<Accord>>, noyau: &Noyau, profil: &str, id: i64, operation: &str) {
+    let mut l = l.lock().unwrap_or_else(|e| e.into_inner());
+    l.retain(|a| a.4.elapsed() < DUREE_ACCORD);
+    l.push((noyau.dossier.clone(), profil.to_string(), id, operation.to_string(), std::time::Instant::now()));
+}
+
+/// Consomme l'accord de CE profil pour CE jeu et CETTE opération (une seule fois, dans la minute).
+fn consommer_accord(l: &std::sync::Mutex<Vec<Accord>>, noyau: &Noyau, profil: &str, id: i64, operation: &str) -> bool {
+    let mut l = l.lock().unwrap_or_else(|e| e.into_inner());
+    l.retain(|a| a.4.elapsed() < DUREE_ACCORD);
+    match l.iter().position(|a| a.0 == noyau.dossier && a.1 == profil && a.2 == id && a.3 == operation) {
+        Some(i) => {
+            l.remove(i);
+            true
+        }
+        None => false,
+    }
+}
+
+/// Un accord de CE profil existe-t-il (sans le consommer) ?
+fn a_accord(l: &std::sync::Mutex<Vec<Accord>>, noyau: &Noyau, profil: &str, id: i64, operation: &str) -> bool {
+    let l = l.lock().unwrap_or_else(|e| e.into_inner());
+    l.iter().any(|a| a.4.elapsed() < DUREE_ACCORD && a.0 == noyau.dossier && a.1 == profil && a.2 == id && a.3 == operation)
+}
+
+/// 🛟 L'abri des parties d'AVANT une opération, fait À PART juste avant elle (l'interface montre « Tes parties
+/// d'abord… », puis l'opération et sa propre progression). Réussi : l'opération qui suit (même profil, même jeu, dans la
+/// minute) ne le refait pas. Un « continuer sans abri » choisi est laissé à l'opération (c'est elle qui le consomme).
+/// Échec : `Erreur::AbriImpossible`, comme dans l'opération.
+#[tauri::command]
+pub async fn parties_abri_avant(noyau: State<'_, Noyau>, id: i64, operation: String) -> Resultat<()> {
+    abri_avant_a_part(&noyau, id, &operation, crate::nuage_steam::dossiers_windows).await
+}
+
+pub(crate) async fn abri_avant_a_part(
+    noyau: &Noyau,
+    id: i64,
+    operation: &str,
+    windows: impl Fn() -> Vec<(&'static str, std::path::PathBuf)> + Send + Sync + Clone + 'static,
+) -> Resultat<()> {
+    let Some(op) = crate::abri_parties::DECLENCHEURS.iter().copied().find(|d| *d == operation && d.starts_with("avant_")) else {
+        return Err(Erreur::Refus("Opération inconnue.".into()));
+    };
+    let profil = noyau.session().await?.profil.id.clone();
+    if a_accord(&SANS_ABRI, noyau, &profil, id, op) {
+        return Ok(());
+    }
+    abri_avant_avec(noyau, id, op, false, windows).await?;
+    noter_accord(&ABRI_DEJA_FAIT, noyau, &profil, id, op);
+    Ok(())
+}
+
+/// Un profil s'ouvre ou se ferme : aucun accord d'un autre profil ne reste (I3).
+pub(crate) fn oublier_accords_abri(noyau: &Noyau) {
+    for l in [&SANS_ABRI, &ABRI_DEJA_FAIT] {
+        l.lock().unwrap_or_else(|e| e.into_inner()).retain(|a| a.0 != noyau.dossier);
+    }
+}
+
+/// « Continuer sans abri » de la session pour cette opération (consommé).
+async fn consommer_sans_abri(noyau: &Noyau, id: i64, operation: &str) -> bool {
+    let Ok(s) = noyau.session().await else { return false };
+    consommer_accord(&SANS_ABRI, noyau, &s.profil.id, id, operation)
+}
+
+/// « Continuer sans abri » (Seb, 23/11), choisi APRÈS une seconde confirmation dans l'interface : la prochaine
+/// opération `operation` sur ce jeu, par ce profil (dans la minute, une seule fois), se fait sans mettre ses parties à
+/// l'abri.
+#[tauri::command]
+pub async fn parties_continuer_sans_abri(noyau: State<'_, Noyau>, id: i64, operation: String) -> Resultat<()> {
+    accorder_sans_abri(&noyau, id, &operation).await
+}
+
+pub(crate) async fn accorder_sans_abri(noyau: &Noyau, id: i64, operation: &str) -> Resultat<()> {
+    if !operation.starts_with("avant_") || !crate::abri_parties::declencheur_connu(operation) {
+        return Err(Erreur::Refus("Opération inconnue.".into()));
+    }
+    let profil = noyau.session().await?.profil.id.clone();
+    noter_accord(&SANS_ABRI, noyau, &profil, id, operation);
+    noyau.journaliser(&format!("jeu {id} : la personne choisit de continuer sans abri ({operation})"));
+    Ok(())
+}
+
+/// L'événement des abris automatiques, une fois l'application démarrée (rien dans les tests).
+static EMETTEUR_ABRIS: std::sync::OnceLock<AppHandle> = std::sync::OnceLock::new();
+
+/// Branché au démarrage : les abris faits avant une opération (dans le cœur, sans fenêtre) le disent aussi.
+pub(crate) fn brancher_abris_auto(app: &AppHandle) {
+    let _ = EMETTEUR_ABRIS.set(app.clone());
+}
+
+fn emettre_abri(b: &BilanAbriAuto) {
+    if let Some(app) = EMETTEUR_ABRIS.get() {
+        let _ = app.emit("parties-abri-auto", b.clone());
+    }
+}
+
+/// M6 : le dernier état d'un abri après une partie, gardé dans les données du profil (id, état, date et des nombres ;
+/// jamais un titre ni un chemin) pour que la ligne de la fiche survive au redémarrage. Un abri réussi (ou rien de
+/// neuf, ou aucun emplacement) l'efface.
+fn garder_etat(dossier_profil: &std::path::Path, b: &BilanAbriAuto) {
+    let r = if b.etat.probleme() {
+        if b.declencheur != crate::abri_parties::DECLENCHEUR_APRES_PARTIE {
+            return;
+        }
+        crate::abri_parties::noter_etat_auto(dossier_profil, b.jeu, &crate::abri_parties::EtatNote { etat: b.etat.nom().into(), date: crate::noyau::maintenant(), en_ligne: b.en_ligne, octets_en_ligne: b.octets_en_ligne })
+    } else if matches!(b.etat, EtatAbriAuto::Fait | EtatAbriAuto::RienDeNeuf | EtatAbriAuto::Aucun) {
+        crate::abri_parties::retirer_etat_auto(dossier_profil, b.jeu)
+    } else {
+        Ok(())
+    };
+    let _ = r;
+}
+
+/// La ligne gardée de la fiche d'un jeu (M6), pour le profil de la session ; `None` : rien à dire.
+#[tauri::command]
+pub async fn parties_abri_auto_etat(noyau: State<'_, Noyau>, id: i64) -> Resultat<Option<BilanAbriAuto>> {
+    etat_garde(&noyau, id).await
+}
+
+async fn etat_garde(noyau: &Noyau, id: i64) -> Resultat<Option<BilanAbriAuto>> {
+    let s = noyau.session().await?;
+    let dp = dossier_profil_de(noyau, &s.profil.id);
+    Ok(crate::abri_parties::etat_auto(&dp, id).and_then(|n| {
+        let etat = EtatAbriAuto::depuis(&n.etat).filter(|e| e.probleme())?;
+        Some(BilanAbriAuto { en_ligne: n.en_ligne, octets_en_ligne: n.octets_en_ligne, ..BilanAbriAuto::nouveau(id, &s.profil.id, crate::abri_parties::DECLENCHEUR_APRES_PARTIE, etat) })
+    }))
+}
+
+/// L'abri des parties AVANT une opération (retrait, réinstallation, mise à jour, mod), pour le profil de la session.
+/// Il ne se coupe jamais (Seb, 23/11) ; s'il échoue, l'opération ne se fait pas : `Erreur::AbriImpossible`, que
+/// l'interface traduit en choix (Réessayer, OneDrive, Continuer sans abri, Annuler). « Aucun emplacement » n'est pas un
+/// échec ; « Frogtend ne sait pas où ce jeu range ses parties » en est un (B1 : jamais une opération sans abri en
+/// silence). `deja_occupe` : l'appelant tient `occuper(id)`.
+pub(crate) async fn abri_avant(noyau: &Noyau, id: i64, declencheur: &'static str, deja_occupe: bool) -> Resultat<()> {
+    abri_avant_avec(noyau, id, declencheur, deja_occupe, crate::nuage_steam::dossiers_windows).await
+}
+
+pub(crate) async fn abri_avant_avec(
+    noyau: &Noyau,
+    id: i64,
+    declencheur: &'static str,
+    deja_occupe: bool,
+    windows: impl Fn() -> Vec<(&'static str, std::path::PathBuf)> + Send + Sync + Clone + 'static,
+) -> Resultat<()> {
+    // Pas un jeu PC (un jeu d'émulateur garde ses parties chez son émulateur) : rien à faire, sans même une session.
+    if noyau.registre().jeu(id)?.is_some_and(|j| j.plateforme != "Windows") {
+        return Ok(());
+    }
+    let s = noyau.session().await?;
+    let (profil, dp) = (s.profil.id.clone(), dossier_profil_de(noyau, &s.profil.id));
+    drop(s);
+    if consommer_accord(&SANS_ABRI, noyau, &profil, id, declencheur) {
+        noyau.journaliser(&format!("jeu {id} : {declencheur} sans abri des parties (choix de la personne)"));
+        return Ok(());
+    }
+    if consommer_accord(&ABRI_DEJA_FAIT, noyau, &profil, id, declencheur) {
+        noyau.journaliser(&format!("jeu {id} : {declencheur} après un abri fait à l'instant depuis la fenêtre d'échec"));
+        return Ok(());
+    }
+    let d = DemandeAbriAuto { id, profil, dossier_profil: dp.clone(), declencheur, deja_occupe };
+    let impossible = |cause: &str, motif: String, b: Option<&BilanAbriAuto>| Erreur::AbriImpossible {
+        motif,
+        cause: cause.into(),
+        operation: declencheur.into(),
+        fichiers_en_ligne: b.map_or(0, |b| b.en_ligne),
+        octets_en_ligne: b.map_or(0, |b| b.octets_en_ligne),
+        octets: b.map_or(0, |b| b.octets),
+    };
+    let b = match abriter_auto(noyau, &d, windows, &|_| {}).await {
+        Ok(b) => b,
+        Err(e) => return Err(impossible("echec", format!("Frogtend n'a pas pu mettre tes parties à l'abri : {}", motif_sans_chemin(&e)), None)),
+    };
+    garder_etat(&dp, &b);
+    match b.etat {
+        EtatAbriAuto::Fait | EtatAbriAuto::RienDeNeuf => {
+            // L'interface relit la liste des abris et efface une ligne d'échec.
+            emettre_abri(&b);
+            Ok(())
+        }
+        EtatAbriAuto::Aucun | EtatAbriAuto::EnCours => Ok(()),
+        EtatAbriAuto::Inconnu => Err(impossible(
+            "inconnu",
+            "Frogtend ne sait pas encore où ce jeu range ses parties (Firehouse ne l'a pas encore dit, ou il n'a pas pu lui demander) : il ne peut pas les mettre à l'abri.".into(),
+            Some(&b),
+        )),
+        EtatAbriAuto::EnLigne => {
+            let n = b.en_ligne;
+            Err(impossible(
+                "onedrive",
+                format!(
+                    "{n} fichier{} de tes parties {} seulement dans ton nuage OneDrive ({}) : Frogtend ne les a pas mis à l'abri.",
+                    if n > 1 { "s" } else { "" },
+                    if n > 1 { "sont" } else { "est" },
+                    taille_en_mots(b.octets_en_ligne)
+                ),
+                Some(&b),
+            ))
+        }
+        EtatAbriAuto::TropGros => Err(impossible("trop_gros", "Tes parties de ce jeu font plus de 2 Go : Frogtend ne les copie pas sans te le demander.".into(), Some(&b))),
+        EtatAbriAuto::Echec | EtatAbriAuto::AttenteDepassee => Err(impossible(
+            "echec",
+            format!("Frogtend n'a pas pu mettre tes parties à l'abri : {}", b.motif.clone().unwrap_or_else(|| "raison inconnue.".into())),
+            Some(&b),
+        )),
+    }
+}
+
+/// Une taille dite simplement (« 180 Mo », « 2,4 Go »).
+fn taille_en_mots(octets: u64) -> String {
+    const MO: u64 = 1024 * 1024;
+    if octets >= 1024 * MO {
+        format!("{:.1} Go", octets as f64 / (1024 * MO) as f64).replace('.', ",")
+    } else {
+        format!("{} Mo", octets.div_ceil(MO).max(1))
+    }
+}
+
+/// L'abri après une partie est-il allumé pour ce profil (`parties.abriApresPartie` de ses réglages, allumé d'office) ?
+fn abri_apres_partie_allume(dossier: &std::path::Path, profil: &str) -> bool {
+    let v: Value = std::fs::read(dossier.join("profils").join(format!("{profil}.json"))).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or(Value::Null);
+    v["reglages"]["parties"]["abriApresPartie"].as_bool() != Some(false)
+}
+
+/// L'abri APRÈS une partie (Seb, 23/11), pour le profil QUI JOUAIT : repère « abri à faire » d'abord, puis l'attente du
+/// calme (10 minutes au plus), puis UN abri. Le repère part après un abri réussi, « rien de neuf », ou un état qu'un
+/// nouvel essai ne changerait pas (aucun emplacement, trop gros, dans le nuage) ; il reste après un échec, une attente
+/// dépassée, un emplacement inconnu ou une nouvelle partie (repris à la prochaine fin de partie, ou à l'ouverture du
+/// profil). `emettre` reçoit chaque étape dite à l'interface (« rien de neuf » compris : la liste se relit ; jamais
+/// « aucun »).
+pub(crate) async fn abri_apres_partie_avec(
+    noyau: &Noyau,
+    id: i64,
+    profil: &str,
+    delais: crate::abri_parties::Delais,
+    windows: impl Fn() -> Vec<(&'static str, std::path::PathBuf)> + Send + Sync + Clone + 'static,
+    processus: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
+    emettre: &(dyn Fn(&BilanAbriAuto) + Send + Sync),
+) -> Option<BilanAbriAuto> {
+    use crate::abri_parties as ap;
+    let declencheur = ap::DECLENCHEUR_APRES_PARTIE;
+    if profil.is_empty() || !abri_apres_partie_allume(&noyau.dossier, profil) {
+        return None;
+    }
+    let dp = dossier_profil_de(noyau, profil);
+    let signaler = |b: BilanAbriAuto| {
+        garder_etat(&dp, &b);
+        emettre(&b);
+        Some(b)
+    };
+    let p = match pour_abri_auto(noyau, profil, &dp, id, windows.clone()).await {
+        Ok(Pour::Connu(p)) => p,
+        Ok(Pour::Aucun) => {
+            let _ = ap::retirer_a_faire(&dp, id);
+            let _ = ap::retirer_etat_auto(&dp, id);
+            return None;
+        }
+        // Inconnu (I5/B1) ou illisible : le repère reste, l'interface le dit.
+        Ok(Pour::Inconnu) => {
+            let _ = ap::noter_a_faire(&dp, id, &crate::noyau::maintenant());
+            return signaler(BilanAbriAuto::nouveau(id, profil, declencheur, EtatAbriAuto::Inconnu));
+        }
+        Err(e) => {
+            let _ = ap::noter_a_faire(&dp, id, &crate::noyau::maintenant());
+            return signaler(BilanAbriAuto::echec(id, profil, declencheur, motif_sans_chemin(&e)));
+        }
+    };
+    if let Err(e) = ap::noter_a_faire(&dp, id, &crate::noyau::maintenant()) {
+        noyau.journaliser(&format!("jeu {id} : repère « abri à faire » non noté ({})", motif_sans_chemin(&e)));
+    }
+    let PourAbriAuto { lieux_non_resolus, contexte, dossier_jeu, .. } = p;
+    let w = windows.clone();
+    let lieux = tauri::async_runtime::spawn_blocking(move || lieux_resolus(&lieux_non_resolus, contexte, w())).await.unwrap_or_default();
+    let processus = processus.unwrap_or_else(|| std::sync::Arc::new(move || dossier_jeu.as_deref().is_some_and(|d| d.is_dir() && !crate::lancement::processus_du_dossier(d).is_empty())));
+    match ap::attendre_calme(delais, lieux, processus, || noyau.utilise(id)).await {
+        ap::FinAttente::Calme(_) => {}
+        ap::FinAttente::Reprise => {
+            noyau.journaliser(&format!("jeu {id} : abri après la partie remis à plus tard (le jeu est repris)"));
+            return None;
+        }
+        ap::FinAttente::Depassee => {
+            noyau.journaliser(&format!("jeu {id} : abri après la partie abandonné (pas de calme en {} s) ; repère gardé", delais.plafond.as_secs()));
+            return signaler(BilanAbriAuto::nouveau(id, profil, declencheur, EtatAbriAuto::AttenteDepassee));
+        }
+    }
+    let d = DemandeAbriAuto { id, profil: profil.to_string(), dossier_profil: dp.clone(), declencheur, deja_occupe: false };
+    let b = match abriter_auto(noyau, &d, windows, emettre).await {
+        Ok(b) => b,
+        // Repris entre-temps (▶ Jouer…) : l'abri attendra la fin de cette partie-là.
+        Err(_) if noyau.utilise(id) => return None,
+        Err(e) => BilanAbriAuto::echec(id, profil, declencheur, motif_sans_chemin(&e)),
+    };
+    match b.etat {
+        EtatAbriAuto::Echec | EtatAbriAuto::AttenteDepassee | EtatAbriAuto::Inconnu | EtatAbriAuto::EnCours => {}
+        _ => {
+            if let Err(e) = ap::retirer_a_faire(&dp, id) {
+                noyau.journaliser(&format!("jeu {id} : repère « abri à faire » non retiré ({})", motif_sans_chemin(&e)));
+            }
+        }
+    }
+    if b.etat == EtatAbriAuto::Aucun {
+        garder_etat(&dp, &b);
+        return Some(b);
+    }
+    signaler(b)
+}
+
+/// Après une partie (ou à l'ouverture du profil) : l'abri de ce jeu, puis ceux restés « à faire » pour ce profil.
+pub(crate) fn lancer_abris_apres_partie(app: &AppHandle, id: Option<i64>, profil: String) {
+    if profil.is_empty() {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let noyau = app.state::<Noyau>();
+        let dp = dossier_profil_de(&noyau, &profil);
+        let mut jeux: Vec<i64> = id.into_iter().collect();
+        jeux.extend(crate::abri_parties::a_faire(&dp).into_iter().filter(|x| Some(*x) != id));
+        for j in jeux {
+            // Un jeu en cours (une autre partie) : il aura sa propre fin de partie.
+            if Some(j) != id && noyau.utilise(j) {
+                continue;
+            }
+            abri_apres_partie_avec(&noyau, j, &profil, crate::abri_parties::DELAIS_APRES_PARTIE, crate::nuage_steam::dossiers_windows, None, &emettre_abri).await;
+        }
+    });
 }
 
 /// Les abris de ce jeu montrés au profil de la session : les siens, et les anciens sans propriétaire connu (jamais
@@ -9299,7 +10007,7 @@ struct ProgresAbri {
 /// copie ; `rapatrier` : elle a choisi de télécharger d'abord les fichiers « en ligne seulement » de OneDrive). Refusé
 /// pendant une partie.
 #[tauri::command]
-pub async fn parties_abriter(app: AppHandle, noyau: State<'_, Noyau>, id: i64, accepte: bool, rapatrier: Option<bool>) -> Resultat<AbriPartiesFait> {
+pub async fn parties_abriter(app: AppHandle, noyau: State<'_, Noyau>, id: i64, accepte: bool, rapatrier: Option<bool>, declencheur: Option<String>) -> Resultat<AbriPartiesFait> {
     let outils = rapatrier.unwrap_or(false).then(|| OutilsRapatriement {
         lecteur: std::sync::Arc::new(|a: &std::path::Path, b: &std::path::Path| crate::abri_parties::lire_en_entier(a, b)),
         delai: crate::abri_parties::delai_de_telechargement,
@@ -9307,7 +10015,8 @@ pub async fn parties_abriter(app: AppHandle, noyau: State<'_, Noyau>, id: i64, a
             let _ = app.emit("parties-abri-progres", ProgresAbri { jeu: id, faits, total });
         }),
     });
-    abriter_parties(&noyau, id, accepte, outils, crate::nuage_steam::dossiers_windows).await
+    let declencheur = declencheur.unwrap_or_default();
+    abriter_parties_par(&noyau, id, accepte, outils, &declencheur, crate::nuage_steam::dossiers_windows).await
 }
 
 /// Les abris de parties d'un jeu PC, pour le profil ouvert (lecture seule).
@@ -9419,9 +10128,42 @@ async fn abriter_avant_mod(noyau: &Noyau, id: i64) -> Resultat<()> {
         return Ok(());
     }
     let quand = crate::noyau::maintenant();
-    tauri::async_runtime::spawn_blocking(move || crate::nuage_steam::abriter(&plan, &marque, &abris, id, &quand, &profil))
+    let r = tauri::async_runtime::spawn_blocking(move || crate::nuage_steam::abriter(&plan, &marque, &abris, id, &quand, &profil))
         .await
-        .map_err(|_| Erreur::Disque("La mise à l'abri s'est arrêtée brutalement.".into()))??;
+        .map_err(|_| Erreur::Disque("La mise à l'abri s'est arrêtée brutalement.".into()))?;
+    // Lot S3 : un abri qui échoue n'est jamais passé en silence — le mod ne se fait pas, la personne choisit.
+    if let Err(e) = r {
+        noyau.journaliser(&format!("jeu {id} : parties du nuage Steam non mises à l'abri avant le mod"));
+        return Err(Erreur::AbriImpossible {
+            motif: format!("Frogtend n'a pas pu mettre tes parties Steam à l'abri : {e}"),
+            cause: "echec".into(),
+            operation: crate::abri_parties::DECLENCHEUR_AVANT_MOD.into(),
+            fichiers_en_ligne: 0,
+            octets_en_ligne: 0,
+            octets: 0,
+        });
+    }
+    Ok(())
+}
+
+/// Avant de poser ou de retirer un mod : le dossier du jeu (un jeu de Firehouse) ou les parties du nuage Steam (un jeu
+/// Steam), puis (lot S3) les parties rangées HORS du dossier du jeu — emplacements du lot S1, d'après le cache (marche
+/// hors ligne). Un abri de parties qui échoue arrête le mod (`Erreur::AbriImpossible`), sauf « continuer sans abri »
+/// choisi par la personne (alors seules les parties sont laissées ; le dossier d'un jeu de Firehouse est gardé comme
+/// toujours).
+async fn abriter_tout_avant_mod(noyau: &Noyau, id: i64, steam: bool) -> Resultat<()> {
+    let sans_abri = consommer_sans_abri(noyau, id, crate::abri_parties::DECLENCHEUR_AVANT_MOD).await;
+    if sans_abri {
+        noyau.journaliser(&format!("jeu {id} : mod sans abri des parties (choix de la personne)"));
+    }
+    if !steam {
+        noyau.mettre_a_l_abri(id).await?;
+    } else if !sans_abri {
+        abriter_avant_mod(noyau, id).await?;
+    }
+    if !sans_abri {
+        abri_avant(noyau, id, crate::abri_parties::DECLENCHEUR_AVANT_MOD, true).await?;
+    }
     Ok(())
 }
 
@@ -9626,11 +10368,7 @@ pub async fn mod_installer(
     let sous = if programme { dossier_du_programme(&j, &dossier)? } else { f.dossier.clone() };
     // Occupé dès maintenant : ni une partie ni un second clic ne passent entre la vérification et la pose.
     let _occupe = noyau.occuper(id);
-    if steam.is_some() {
-        abriter_avant_mod(&noyau, id).await?;
-    } else {
-        noyau.mettre_a_l_abri(id).await?;
-    }
+    abriter_tout_avant_mod(&noyau, id, steam.is_some()).await?;
     let archive = garde.join("telechargements").join(f.nom_telechargement());
     let suivi = suivi_mod(&app, suivi);
     let s2 = suivi.clone();
@@ -9677,11 +10415,7 @@ pub async fn mod_desinstaller(noyau: State<'_, Noyau>, id: i64, cle: String) -> 
     let PourMod { j, dossier, garde, steam } = jeu_pour_un_mod(&noyau, id).await?;
     // Occupé dès maintenant : ni une partie ni un second clic ne passent entre la vérification et la pose.
     let _occupe = noyau.occuper(id);
-    if steam.is_some() {
-        abriter_avant_mod(&noyau, id).await?;
-    } else {
-        noyau.mettre_a_l_abri(id).await?;
-    }
+    abriter_tout_avant_mod(&noyau, id, steam.is_some()).await?;
     // Steam a mis le jeu à jour depuis la pose : un fichier qui n'est plus celui du mod est le sien.
     let apres_maj = match (&steam, crate::mods::installes_dans(&garde).into_iter().find(|m| m.cle == cle).and_then(|m| m.steam_buildid)) {
         (Some(Some(actuel)), Some(pose)) => *actuel != pose,
@@ -9862,11 +10596,7 @@ pub async fn nexus_installer(app: AppHandle, noyau: State<'_, Noyau>, n: u32, pr
     if plafond > crate::mods::DECOMPRESSE_MAX {
         return Err(Erreur::Refus("Ce fichier de Nexus est trop gros pour être installé d'un clic.".into()));
     }
-    if steam.is_some() {
-        abriter_avant_mod(&noyau, id).await?;
-    } else {
-        noyau.mettre_a_l_abri(id).await?;
-    }
+    abriter_tout_avant_mod(&noyau, id, steam.is_some()).await?;
     let adresses = crate::nexus::adresses(crate::nexus::API, &r.lien, &cle).await?;
     let archive = garde.join("telechargements").join(format!("nexus-{}-{}.archive", r.lien.mod_id, r.lien.fichier_id));
     let client = crate::nexus::client_telechargement()?;
@@ -12863,6 +13593,35 @@ mod tests_parties {
         let _ = unsafe { SetFileAttributesW(&h, FILE_ATTRIBUTE_ARCHIVE) };
     }
 
+    /// Lot S3, B1 : un jeu dont la fiche n'a jamais été ouverte (retrait au canapé…) — avant l'opération, Frogtend
+    /// demande d'abord à Firehouse où sont ses parties, puis les met à l'abri (jamais « rien à faire » en silence).
+    #[tokio::test]
+    async fn avant_une_operation_les_emplacements_jamais_demandes_le_sont_d_abord() {
+        let (s, reponse) = serveur();
+        let triche = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/900/triche");
+            t.status(200).header("content-type", "application/json").body(reponse.clone());
+        });
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let parties = d.path().join("Saved Games");
+        let cp = parties.join("CD Projekt Red").join("Cyberpunk 2077");
+        std::fs::create_dir_all(&cp).unwrap();
+        let sav = cp.join("ManualSave-0.dat");
+        std::fs::write(&sav, b"partie!").unwrap();
+        std::fs::OpenOptions::new().write(true).open(&sav).unwrap().set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(3600)).unwrap();
+        let w = parties.clone();
+        let windows = move || vec![("Parties-enregistrees", w.clone())];
+        let p = ouvrir(&n, &s, "Seb").await;
+        let abris = d.path().join("Abris");
+        n.regler_abris(Some(abris.clone()));
+        assert!(ep::lire(&n.dossier.join("profils").join(&p)).unwrap().jeu(900).is_none(), "jamais demandé");
+        super::abri_avant_avec(&n, 900, crate::abri_parties::DECLENCHEUR_AVANT_RETRAIT, false, windows.clone()).await.unwrap();
+        triche.assert_hits(1);
+        let l = crate::abri_parties::lister(&[abris.join("900")], &p, None);
+        assert_eq!((l.len(), l[0].declencheur.as_str(), l[0].fichiers), (1, "avant_retrait", 1));
+    }
+
     #[test]
     fn la_recherche_envoie_l_identifiant_de_la_boutique_et_le_nom_du_dossier() {
         assert_eq!(super::ids_de_boutique(Some(("gog", "1423049311"))), [("gog_id", "1423049311".to_string())]);
@@ -13050,5 +13809,442 @@ mod tests_parties {
         assert_eq!((v.firehouse, v.emplacements.len()), (ep::EtatFirehouse::Lu, 1));
         // Le cache, sans aucun dossier de Windows connu : l'emplacement est dit illisible sur ce PC, jamais deviné.
         assert!(!v.emplacements[0].lisible && v.emplacements[0].dossier.is_none());
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests_abri_auto {
+    //! Lot S3 (23/11) : l'abri AUTOMATIQUE par le chemin réel (profil, registre, cache du lot S1, dossier des abris),
+    //! avec des durées courtes. Tout dans des dossiers temporaires.
+    use super::{BilanAbriAuto, EtatAbriAuto};
+    use crate::abri_parties as ap;
+    use crate::coffre::CoffreMemoire;
+    use crate::emplacements_parties as ep;
+    use crate::erreurs::Erreur;
+    use crate::noyau::{Connexion, Noyau};
+    use serde_json::json;
+    use std::path::{Path, PathBuf};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    pub(crate) const COURT: ap::Delais = ap::Delais { pas: Duration::from_millis(30), calme: Duration::from_millis(300), plafond: Duration::from_millis(1200) };
+
+    pub(crate) fn vieillir(f: &Path) {
+        std::fs::OpenOptions::new().write(true).open(f).unwrap().set_modified(std::time::SystemTime::now() - Duration::from_secs(3600)).unwrap();
+    }
+
+    /// Aucun dossier de Windows : seul `<dossier du jeu>` se résout (jamais un vrai dossier de Seb).
+    pub(crate) fn sans_windows() -> Vec<(&'static str, PathBuf)> {
+        vec![]
+    }
+
+    /// Range dans le cache du profil l'emplacement `<dossier du jeu>\SAVES` du jeu `id` (comme une réponse de Firehouse).
+    pub(crate) fn connaitre_saves(n: &Noyau, profil: &str, id: i64) {
+        let dp = n.dossier.join("profils").join(profil);
+        // Demandé à l'instant (jamais « à redemander » : aucun appel à Firehouse pendant le test).
+        let quand = crate::noyau::maintenant();
+        ep::modifier(&dp, |c| ep::appliquer(c, id, None, &json!({"sauvegardes": [{"os": "Windows", "chemin": r"<dossier du jeu>\SAVES"}]}), &ep::references_de_secours(), &quand)).unwrap();
+        assert_eq!(ep::lire(&dp).unwrap().jeu(id).unwrap().emplacements.len(), 1);
+    }
+
+    /// Un PC simulé : le profil « Seb » ouvert, un jeu PC (110, Windows) installé dans un dossier temporaire avec une
+    /// partie vieille d'une heure dans `SAVES`, son emplacement connu, le dossier des abris réglé.
+    async fn pc() -> (tempfile::TempDir, Noyau, String, PathBuf, PathBuf) {
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let profil = n.creer_profil("Seb", None, None).unwrap().id;
+        n.ouvrir(&profil, None, &Connexion { adresse: String::new(), simule: true }).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        let jeu = d.path().join("Jeux").join("Windows").join("Jeu secret");
+        let installe = jeu.join("Jeu");
+        std::fs::create_dir_all(installe.join("SAVES")).unwrap();
+        let sav = installe.join("SAVES").join("partie.sav");
+        std::fs::write(&sav, b"partie!").unwrap();
+        vieillir(&sav);
+        n.registre()
+            .ajouter(&crate::jeux_pc::JeuPc {
+                id: 110,
+                version: 200,
+                titre: "Jeu secret".into(),
+                plateforme: "Windows".into(),
+                dossier: jeu.to_string_lossy().into(),
+                etat: crate::jeux_pc::Etat::Telecharge,
+                total: 0,
+                fichiers: vec![],
+                message: None,
+                ajoute_le: "1".into(),
+                ajoute_par: profil.clone(),
+                installation: None,
+                temps_jeu: 0,
+                derniere_partie: None,
+            })
+            .unwrap();
+        let i = crate::jeux_pc::Installation {
+            dossier: installe.to_string_lossy().into(),
+            methode: crate::installation::Methode::Aucune,
+            lanceur: None,
+            fichier_du_jeu: None,
+            installe_le: "1".into(),
+            versions: vec![],
+            boutique: None,
+            extraits: vec![],
+        };
+        n.registre().changer_installation(110, Some(&i)).unwrap();
+        connaitre_saves(&n, &profil, 110);
+        let abris = d.path().join("Abris");
+        n.regler_abris(Some(abris.clone()));
+        (d, n, profil, sav, abris)
+    }
+
+    fn abris_finis(abris: &Path) -> Vec<String> {
+        let mut l: Vec<String> = std::fs::read_dir(abris.join("110"))
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter(|e| e.path().is_dir())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.bytes().all(|b| b.is_ascii_digit()))
+            .collect();
+        l.sort();
+        l
+    }
+
+    /// Les événements émis (pour vérifier qu'ils ne disent jamais un titre ni un chemin).
+    fn recepteur() -> (Arc<Mutex<Vec<BilanAbriAuto>>>, impl Fn(&BilanAbriAuto) + Send + Sync) {
+        let l = Arc::new(Mutex::new(Vec::new()));
+        let l2 = l.clone();
+        (l, move |b: &BilanAbriAuto| l2.lock().unwrap().push(b.clone()))
+    }
+
+    fn sans_chemin_ni_titre(texte: &str, d: &Path) {
+        for interdit in ["Jeu secret", "SAVES", "partie.sav", &*d.to_string_lossy(), "Abris"] {
+            assert!(!texte.contains(interdit), "« {interdit} » dans : {texte}");
+        }
+    }
+
+    #[tokio::test]
+    async fn apres_une_partie_l_abri_attend_le_calme_puis_rien_de_neuf_ne_fait_aucun_abri() {
+        let (d, n, profil, sav, abris) = pc().await;
+        let (recus, emettre) = recepteur();
+        let b = super::abri_apres_partie_avec(&n, 110, &profil, COURT, sans_windows, Some(Arc::new(|| false)), &emettre).await.unwrap();
+        assert_eq!((b.etat, b.fichiers, b.octets), (EtatAbriAuto::Fait, 1, 7));
+        let l = abris_finis(&abris);
+        assert_eq!(l.len(), 1);
+        let fiche = ap::lire_fiche(&abris.join("110").join(&l[0])).unwrap();
+        assert_eq!((fiche.sorte.as_str(), fiche.declencheur.as_str(), fiche.profil.as_str()), (ap::SORTE_EMPLACEMENTS, ap::DECLENCHEUR_APRES_PARTIE, profil.as_str()));
+        let dp = n.dossier.join("profils").join(&profil);
+        assert!(ap::a_faire(&dp).is_empty(), "repère retiré après la réussite");
+        assert!(!n.utilise(110), "plus occupé après l'abri");
+        // « En cours » puis « fait » ; jamais un titre ni un chemin dans un événement.
+        let etats: Vec<EtatAbriAuto> = recus.lock().unwrap().iter().map(|b| b.etat).collect();
+        assert_eq!(etats, [EtatAbriAuto::EnCours, EtatAbriAuto::Fait]);
+        sans_chemin_ni_titre(&serde_json::to_string(&*recus.lock().unwrap()).unwrap(), d.path());
+        // Rien de neuf : aucun abri ; l'événement part quand même (l'interface relit la liste, efface une ligne
+        // d'échec) mais elle ne dit rien.
+        recus.lock().unwrap().clear();
+        let b = super::abri_apres_partie_avec(&n, 110, &profil, COURT, sans_windows, Some(Arc::new(|| false)), &emettre).await.unwrap();
+        assert_eq!(b.etat, EtatAbriAuto::RienDeNeuf);
+        assert_eq!(abris_finis(&abris).len(), 1, "aucun nouveau dossier");
+        assert_eq!(recus.lock().unwrap().iter().map(|b| b.etat).collect::<Vec<_>>(), [EtatAbriAuto::RienDeNeuf]);
+        // Une partie changée : un second abri (le premier reste : aucun abri n'est jamais effacé).
+        std::fs::write(&sav, b"partie 2").unwrap();
+        vieillir(&sav);
+        std::thread::sleep(Duration::from_millis(1100));
+        assert_eq!(super::abri_apres_partie_avec(&n, 110, &profil, COURT, sans_windows, Some(Arc::new(|| false)), &emettre).await.unwrap().etat, EtatAbriAuto::Fait);
+        assert_eq!(abris_finis(&abris).len(), 2);
+        // Le journal : des numéros et des nombres.
+        let journal = std::fs::read_to_string(n.dossier.join("journal.txt")).unwrap();
+        assert!(journal.contains("jeu 110 : 1 fichier(s) de parties mis à l'abri automatiquement (apres_partie"), "{journal}");
+        sans_chemin_ni_titre(&journal, d.path());
+        // Le réglage du profil éteint : rien du tout.
+        std::fs::write(n.dossier.join("profils").join(format!("{profil}.json")), br#"{"reglages": {"parties": {"abriApresPartie": false}}}"#).unwrap();
+        std::fs::write(&sav, b"partie 3").unwrap();
+        vieillir(&sav);
+        assert!(super::abri_apres_partie_avec(&n, 110, &profil, COURT, sans_windows, Some(Arc::new(|| false)), &emettre).await.is_none());
+        assert_eq!(abris_finis(&abris).len(), 2);
+    }
+
+    #[tokio::test]
+    async fn sans_calme_en_dix_minutes_aucun_abri_et_le_repere_reste() {
+        let (_d, n, profil, sav, abris) = pc().await;
+        let fini = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (f2, fini2) = (sav.clone(), fini.clone());
+        // Le jeu (ou un programme resté ouvert) réécrit sa partie toutes les 100 ms.
+        let ecrivain = std::thread::spawn(move || {
+            let mut k = 0u32;
+            while !fini2.load(std::sync::atomic::Ordering::SeqCst) {
+                k += 1;
+                std::fs::write(&f2, k.to_string()).unwrap();
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        });
+        let (recus, emettre) = recepteur();
+        let b = super::abri_apres_partie_avec(&n, 110, &profil, COURT, sans_windows, Some(Arc::new(|| false)), &emettre).await.unwrap();
+        fini.store(true, std::sync::atomic::Ordering::SeqCst);
+        ecrivain.join().unwrap();
+        assert_eq!(b.etat, EtatAbriAuto::AttenteDepassee);
+        assert!(abris_finis(&abris).is_empty(), "aucun abri pendant que le jeu écrit");
+        assert_eq!(ap::a_faire(&n.dossier.join("profils").join(&profil)), [110], "repère gardé");
+        assert_eq!(recus.lock().unwrap().iter().map(|b| b.etat).collect::<Vec<_>>(), [EtatAbriAuto::AttenteDepassee]);
+        // Un programme du dossier du jeu toujours ouvert : pareil.
+        vieillir(&sav);
+        let b = super::abri_apres_partie_avec(&n, 110, &profil, COURT, sans_windows, Some(Arc::new(|| true)), &emettre).await.unwrap();
+        assert_eq!(b.etat, EtatAbriAuto::AttenteDepassee);
+        assert!(abris_finis(&abris).is_empty());
+        // ▶ Jouer pendant l'attente : abandon sans bruit, repère gardé (la fin de cette partie-là s'en chargera).
+        n.marquer_occupe(110);
+        recus.lock().unwrap().clear();
+        assert!(super::abri_apres_partie_avec(&n, 110, &profil, COURT, sans_windows, Some(Arc::new(|| false)), &emettre).await.is_none());
+        n.liberer(110);
+        assert!(recus.lock().unwrap().is_empty());
+        assert_eq!(ap::a_faire(&n.dossier.join("profils").join(&profil)), [110]);
+        // Le calme revenu : l'abri se fait, le repère part.
+        assert_eq!(super::abri_apres_partie_avec(&n, 110, &profil, COURT, sans_windows, Some(Arc::new(|| false)), &emettre).await.unwrap().etat, EtatAbriAuto::Fait);
+        assert!(ap::a_faire(&n.dossier.join("profils").join(&profil)).is_empty());
+    }
+
+    #[tokio::test]
+    async fn plus_de_deux_go_en_automatique_rien_n_est_lu_ni_copie() {
+        let (_d, n, profil, sav, abris) = pc().await;
+        let gros = sav.with_file_name("monde.dat");
+        std::fs::File::create(&gros).unwrap().set_len(crate::nuage_steam::GROS + 1).unwrap();
+        vieillir(&gros);
+        let (_recus, emettre) = recepteur();
+        let b = super::abri_apres_partie_avec(&n, 110, &profil, COURT, sans_windows, Some(Arc::new(|| false)), &emettre).await.unwrap();
+        assert_eq!(b.etat, EtatAbriAuto::TropGros);
+        assert!(b.octets > crate::nuage_steam::GROS);
+        assert!(abris_finis(&abris).is_empty() && !abris.join(".frogtend-en-cours").exists(), "rien de copié");
+        // Avant un retrait : l'opération ne se fait pas, la personne choisit (cause « trop_gros »).
+        match super::abri_avant_avec(&n, 110, ap::DECLENCHEUR_AVANT_RETRAIT, false, sans_windows).await {
+            Err(Erreur::AbriImpossible { cause, operation, .. }) => assert_eq!((cause.as_str(), operation.as_str()), ("trop_gros", "avant_retrait")),
+            autre => panic!("{autre:?}"),
+        }
+        let _ = std::fs::remove_file(&gros);
+    }
+
+    #[tokio::test]
+    async fn avant_une_operation_un_abri_impossible_l_arrete_sauf_continuer_sans_abri() {
+        let (d, n, _profil, sav, abris) = pc().await;
+        // Une partie écrite à l'instant (le jeu vient de se fermer) : l'abri refuse, l'opération ne se fait pas.
+        std::fs::write(&sav, b"toute neuve").unwrap();
+        let e = super::abri_avant_avec(&n, 110, ap::DECLENCHEUR_AVANT_MOD, false, sans_windows).await.unwrap_err();
+        match &e {
+            Erreur::AbriImpossible { cause, operation, motif, .. } => {
+                assert_eq!((cause.as_str(), operation.as_str()), ("echec", "avant_mod"));
+                assert!(motif.contains("encore écrire"), "{motif}");
+                sans_chemin_ni_titre(motif, d.path());
+            }
+            autre => panic!("{autre:?}"),
+        }
+        assert!(abris_finis(&abris).is_empty());
+        // « Continuer sans abri » (après la seconde confirmation) : une fois, pour CETTE opération seulement.
+        assert!(super::accorder_sans_abri(&n, 110, "main").await.is_err(), "jamais pour un abri à la main");
+        super::accorder_sans_abri(&n, 110, ap::DECLENCHEUR_AVANT_MOD).await.unwrap();
+        assert!(matches!(super::abri_avant_avec(&n, 110, ap::DECLENCHEUR_AVANT_RETRAIT, false, sans_windows).await, Err(Erreur::AbriImpossible { .. })), "une autre opération");
+        assert!(super::abri_avant_avec(&n, 110, ap::DECLENCHEUR_AVANT_MOD, false, sans_windows).await.is_ok());
+        assert!(matches!(super::abri_avant_avec(&n, 110, ap::DECLENCHEUR_AVANT_MOD, false, sans_windows).await, Err(Erreur::AbriImpossible { .. })), "une seule fois");
+        // Le calme revenu : l'abri se fait, l'opération passe.
+        vieillir(&sav);
+        super::abri_avant_avec(&n, 110, ap::DECLENCHEUR_AVANT_MOD, false, sans_windows).await.unwrap();
+        let l = abris_finis(&abris);
+        assert_eq!(ap::lire_fiche(&abris.join("110").join(&l[0])).unwrap().declencheur, ap::DECLENCHEUR_AVANT_MOD);
+        // Firehouse a dit « aucun emplacement pour ce PC » : pas un échec.
+        let dp = n.dossier.join("profils").join(&_profil);
+        let quand = crate::noyau::maintenant();
+        ep::modifier(&dp, |c| ep::retirer_si(c, |i| i != 110)).unwrap();
+        ep::modifier(&dp, |c| ep::appliquer(c, 110, None, &json!({"sauvegardes": []}), &ep::references_de_secours(), &quand)).unwrap();
+        assert!(super::abri_avant_avec(&n, 110, ap::DECLENCHEUR_AVANT_RETRAIT, false, sans_windows).await.is_ok());
+        // B1 : rien de connu (jamais demandé ; Firehouse simulé ne dit rien) : JAMAIS une opération sans abri en silence.
+        ep::modifier(&dp, |c| ep::retirer_si(c, |i| i != 110)).unwrap();
+        match super::abri_avant_avec(&n, 110, ap::DECLENCHEUR_AVANT_RETRAIT, false, sans_windows).await {
+            Err(Erreur::AbriImpossible { cause, motif, .. }) => {
+                assert_eq!(cause, "inconnu");
+                assert!(motif.contains("ne sait pas encore où ce jeu range ses parties"), "{motif}");
+            }
+            autre => panic!("{autre:?}"),
+        }
+        // Le jeu tourne (Frogtend le suit) et l'appelant ne le tient pas : refusé, jamais copié pendant la partie.
+        connaitre_saves(&n, &_profil, 110);
+        std::fs::write(&sav, b"autre").unwrap();
+        vieillir(&sav);
+        n.marquer_occupe(110);
+        assert!(matches!(super::abri_avant_avec(&n, 110, ap::DECLENCHEUR_AVANT_RETRAIT, false, sans_windows).await, Err(Erreur::AbriImpossible { .. })));
+        // L'appelant le tient lui-même (retrait, installation, mod) : l'abri se fait.
+        super::abri_avant_avec(&n, 110, ap::DECLENCHEUR_AVANT_RETRAIT, true, sans_windows).await.unwrap();
+        n.liberer(110);
+        assert_eq!(abris_finis(&abris).len(), 2);
+    }
+
+    /// Corrections de la relecture (lot S3) — I2 : un endroit trop grand pour un dossier de parties.
+    #[tokio::test]
+    async fn un_endroit_illisible_ou_trop_grand_n_est_jamais_pris_pour_aucune_partie() {
+        let (_d, n, _profil, sav, _abris) = pc().await;
+        // Plus profond qu'un dossier de parties (14 niveaux) : le parcours s'arrête.
+        std::fs::remove_file(&sav).unwrap();
+        let mut p = sav.parent().unwrap().to_path_buf();
+        for i in 0..14 {
+            p = p.join(format!("n{i}"));
+        }
+        std::fs::create_dir_all(&p).unwrap();
+        std::fs::write(p.join("x.sav"), b"x").unwrap();
+        vieillir(&p.join("x.sav"));
+        match super::abri_avant_avec(&n, 110, ap::DECLENCHEUR_AVANT_RETRAIT, false, sans_windows).await {
+            Err(Erreur::AbriImpossible { cause, .. }) => assert_eq!(cause, "echec"),
+            autre => panic!("{autre:?}"),
+        }
+    }
+
+    /// L'abri fait À PART juste avant l'opération (l'interface montre « Tes parties d'abord… ») : l'opération qui suit ne
+    /// le refait pas ; un « continuer sans abri » reste à l'opération.
+    #[tokio::test]
+    async fn l_abri_fait_a_part_avant_l_operation_n_est_pas_refait_par_elle() {
+        let (_d, n, _profil, sav, abris) = pc().await;
+        let op = ap::DECLENCHEUR_AVANT_MOD;
+        assert!(super::abri_avant_a_part(&n, 110, "main", sans_windows).await.is_err(), "seulement une opération « avant »");
+        super::abri_avant_a_part(&n, 110, op, sans_windows).await.unwrap();
+        assert_eq!(abris_finis(&abris).len(), 1);
+        // Une partie changée entre-temps : l'opération qui suit (dans la minute) ne refait pas d'abri.
+        std::fs::write(&sav, b"changee").unwrap();
+        vieillir(&sav);
+        super::abri_avant_avec(&n, 110, op, true, sans_windows).await.unwrap();
+        assert_eq!(abris_finis(&abris).len(), 1);
+        // « Continuer sans abri » : l'abri à part passe sans le consommer, l'opération le consomme.
+        std::fs::write(&sav, b"toute neuve").unwrap();
+        super::accorder_sans_abri(&n, 110, op).await.unwrap();
+        super::abri_avant_a_part(&n, 110, op, sans_windows).await.unwrap();
+        super::abri_avant_avec(&n, 110, op, true, sans_windows).await.unwrap();
+        assert!(super::abri_avant_avec(&n, 110, op, true, sans_windows).await.is_err(), "consommé par l'opération");
+    }
+
+    /// I3 : un accord « continuer sans abri » vaut pour son profil, une minute, et part au changement de profil.
+    #[tokio::test]
+    async fn un_accord_ne_vaut_que_pour_son_profil_une_minute_et_part_au_changement_de_profil() {
+        let (_d, n, profil, sav, _abris) = pc().await;
+        std::fs::write(&sav, b"toute neuve").unwrap();
+        let op = ap::DECLENCHEUR_AVANT_RETRAIT;
+        super::noter_accord(&super::SANS_ABRI, &n, "autre-profil", 110, op);
+        assert!(super::abri_avant_avec(&n, 110, op, false, sans_windows).await.is_err(), "celui d'un autre profil");
+        super::SANS_ABRI.lock().unwrap().push((n.dossier.clone(), profil.clone(), 110, op.into(), std::time::Instant::now() - Duration::from_secs(61)));
+        assert!(super::abri_avant_avec(&n, 110, op, false, sans_windows).await.is_err(), "trop vieux");
+        super::accorder_sans_abri(&n, 110, op).await.unwrap();
+        super::oublier_accords_abri(&n);
+        assert!(super::abri_avant_avec(&n, 110, op, false, sans_windows).await.is_err(), "parti au changement de profil");
+        super::accorder_sans_abri(&n, 110, op).await.unwrap();
+        assert!(super::abri_avant_avec(&n, 110, op, false, sans_windows).await.is_ok());
+    }
+
+    /// I4 : « Les mettre à l'abri quand même » (plus de 2 Go) depuis la fenêtre d'échec : l'opération passe ensuite,
+    /// une seule fois (avant : elle tournait en rond).
+    #[tokio::test]
+    async fn un_abri_fait_depuis_la_fenetre_d_echec_laisse_passer_l_operation_une_fois() {
+        let (_d, n, _profil, sav, abris) = pc().await;
+        let gros = sav.with_file_name("monde.dat");
+        std::fs::File::create(&gros).unwrap().set_len(crate::nuage_steam::GROS + 1).unwrap();
+        vieillir(&gros);
+        let op = ap::DECLENCHEUR_AVANT_RETRAIT;
+        assert!(matches!(super::abri_avant_avec(&n, 110, op, false, sans_windows).await, Err(Erreur::AbriImpossible { ref cause, .. }) if cause == "trop_gros"));
+        // (Pas de copie de 2 Go dans un test : l'abri « quand même » est fait sans le gros fichier, complet.)
+        std::fs::remove_file(&gros).unwrap();
+        let f = super::abriter_parties_par(&n, 110, true, None, op, sans_windows).await.unwrap();
+        assert!(f.date.is_some());
+        assert_eq!(abris_finis(&abris).len(), 1);
+        std::fs::File::create(&gros).unwrap().set_len(crate::nuage_steam::GROS + 1).unwrap();
+        vieillir(&gros);
+        assert!(super::abri_avant_avec(&n, 110, op, false, sans_windows).await.is_ok(), "l'abri vient d'être fait");
+        assert!(super::abri_avant_avec(&n, 110, op, false, sans_windows).await.is_err(), "une seule fois");
+        let _ = std::fs::remove_file(&gros);
+    }
+
+    /// M6 et I5 : le dernier problème d'un abri après une partie est gardé (il survit au redémarrage) ; un cache
+    /// illisible garde le repère et le dit.
+    #[tokio::test]
+    async fn le_dernier_probleme_est_garde_et_un_cache_illisible_garde_le_repere() {
+        let (_d, n, profil, sav, _abris) = pc().await;
+        let gros = sav.with_file_name("monde.dat");
+        std::fs::File::create(&gros).unwrap().set_len(crate::nuage_steam::GROS + 1).unwrap();
+        vieillir(&gros);
+        let (_recus, emettre) = recepteur();
+        super::abri_apres_partie_avec(&n, 110, &profil, COURT, sans_windows, Some(Arc::new(|| false)), &emettre).await.unwrap();
+        let garde = super::etat_garde(&n, 110).await.unwrap().unwrap();
+        assert_eq!(garde.etat, EtatAbriAuto::TropGros);
+        let brut = std::fs::read_to_string(n.dossier.join("profils").join(&profil).join(ap::NOM_ETATS)).unwrap();
+        assert!(!brut.contains("Jeu secret") && !brut.contains("SAVES"), "{brut}");
+        std::fs::remove_file(&gros).unwrap();
+        assert_eq!(super::abri_apres_partie_avec(&n, 110, &profil, COURT, sans_windows, Some(Arc::new(|| false)), &emettre).await.unwrap().etat, EtatAbriAuto::Fait);
+        assert!(super::etat_garde(&n, 110).await.unwrap().is_none(), "réussi : plus rien à dire");
+        let dp = n.dossier.join("profils").join(&profil);
+        std::fs::write(dp.join("emplacements-parties.json"), b"{ pas du json").unwrap();
+        let b = super::abri_apres_partie_avec(&n, 110, &profil, COURT, sans_windows, Some(Arc::new(|| false)), &emettre).await.unwrap();
+        assert_eq!(b.etat, EtatAbriAuto::Echec);
+        assert_eq!(ap::a_faire(&dp), [110]);
+    }
+
+    /// B1 après une partie : rien de connu — le repère reste, un état dédié est dit.
+    #[tokio::test]
+    async fn apres_une_partie_un_jeu_inconnu_garde_le_repere() {
+        let (_d, n, profil, _sav, abris) = pc().await;
+        let dp = n.dossier.join("profils").join(&profil);
+        ep::modifier(&dp, |c| ep::retirer_si(c, |i| i != 110)).unwrap();
+        let (recus, emettre) = recepteur();
+        let b = super::abri_apres_partie_avec(&n, 110, &profil, COURT, sans_windows, Some(Arc::new(|| false)), &emettre).await.unwrap();
+        assert_eq!(b.etat, EtatAbriAuto::Inconnu);
+        assert_eq!(ap::a_faire(&dp), [110]);
+        assert_eq!(recus.lock().unwrap().iter().map(|b| b.etat).collect::<Vec<_>>(), [EtatAbriAuto::Inconnu]);
+        assert!(abris_finis(&abris).is_empty());
+    }
+
+    /// M9 : un motif d'erreur (événement, fenêtre) ne dit jamais un chemin.
+    #[test]
+    fn un_motif_d_erreur_ne_dit_jamais_un_chemin() {
+        let chemin = "D:/Jeux/Jeu secret/SAVES";
+        for e in [Erreur::Reglage(format!("Ce dossier ne convient pas : {chemin}")), Erreur::Disque(format!("Introuvable : {chemin}")), Erreur::Reseau(chemin.into())] {
+            let m = super::motif_sans_chemin(&e);
+            assert!(!m.contains("Jeux") && !m.contains("SAVES"), "{m}");
+        }
+        assert_eq!(super::motif_sans_chemin(&Erreur::Refus("Plus assez de place.".into())), "Plus assez de place.");
+    }
+
+    /// Un abri pris à la même seconde (l'abri du dossier du jeu, au retrait) : un seul nouvel essai, une seconde après.
+    #[tokio::test]
+    async fn un_abri_de_la_meme_seconde_fait_reessayer_une_fois() {
+        let (_d, n, profil, _sav, abris) = pc().await;
+        let occupe = abris.join("110").join(crate::noyau::maintenant());
+        std::fs::create_dir_all(&occupe).unwrap();
+        let d = super::DemandeAbriAuto { id: 110, profil: profil.clone(), dossier_profil: n.dossier.join("profils").join(&profil), declencheur: ap::DECLENCHEUR_AVANT_RETRAIT, deja_occupe: false };
+        let b = super::abriter_auto(&n, &d, sans_windows, &|_| {}).await.unwrap();
+        assert_eq!(b.etat, EtatAbriAuto::Fait);
+        assert!(std::fs::read_dir(&occupe).unwrap().next().is_none(), "le dossier déjà là n'est jamais touché");
+    }
+
+    /// Un mod d'un jeu Steam, hors ligne et sans Steam sur ce PC : les emplacements du lot S1 (cache) sont mis à l'abri.
+    #[tokio::test]
+    async fn avant_un_mod_steam_hors_ligne_les_emplacements_du_cache_sont_a_l_abri() {
+        let (_d, n, _profil, _sav, abris) = pc().await;
+        super::abriter_tout_avant_mod(&n, 110, true).await.unwrap();
+        let l = abris_finis(&abris);
+        assert_eq!(l.len(), 1);
+        assert_eq!(ap::lire_fiche(&abris.join("110").join(&l[0])).unwrap().declencheur, ap::DECLENCHEUR_AVANT_MOD);
+    }
+
+    /// Des parties seulement dans OneDrive : jamais téléchargées en automatique ; avant une opération, la cause est dite.
+    #[tokio::test]
+    #[cfg(windows)]
+    async fn des_parties_seulement_dans_onedrive_ne_sont_jamais_lues_en_automatique() {
+        use windows::Win32::Storage::FileSystem::{SetFileAttributesW, FILE_ATTRIBUTE_ARCHIVE, FILE_ATTRIBUTE_OFFLINE};
+        let (_d, n, profil, sav, abris) = pc().await;
+        let h = windows::core::HSTRING::from(sav.as_os_str());
+        if unsafe { SetFileAttributesW(&h, FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_ARCHIVE) }.is_err() {
+            eprintln!("attribut « hors ligne » impossible à poser ici : test sauté");
+            return;
+        }
+        let (_recus, emettre) = recepteur();
+        let b = super::abri_apres_partie_avec(&n, 110, &profil, COURT, sans_windows, Some(Arc::new(|| false)), &emettre).await.unwrap();
+        assert_eq!((b.etat, b.en_ligne, b.octets_en_ligne), (EtatAbriAuto::EnLigne, 1, 7));
+        assert!(abris_finis(&abris).is_empty());
+        match super::abri_avant_avec(&n, 110, ap::DECLENCHEUR_AVANT_REINSTALLATION, false, sans_windows).await {
+            Err(Erreur::AbriImpossible { cause, fichiers_en_ligne, octets_en_ligne, .. }) => assert_eq!((cause.as_str(), fichiers_en_ligne, octets_en_ligne), ("onedrive", 1, 7)),
+            autre => panic!("{autre:?}"),
+        }
+        let _ = unsafe { SetFileAttributesW(&h, FILE_ATTRIBUTE_ARCHIVE) };
     }
 }

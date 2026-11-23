@@ -8,6 +8,7 @@
   import BlocContenus from '$lib/contenus/BlocContenus.svelte';
   import { etat, reglerProfil } from '$lib/etat.svelte';
   import { tele } from '$lib/ludotheque/telechargements.svelte';
+  import { aDesEmplacements } from '$lib/parties/parties';
   import { fenetreOuverte, selectionner } from '$lib/taodbox/manette.svelte';
 
   const jeu = $derived(Number(page.url.searchParams.get('jeu')));
@@ -16,6 +17,9 @@
   const plateforme = $derived(tele.jeux[jeu]?.plateforme);
   const connu = $derived(Number.isFinite(jeu) && jeu !== 0);
   const auto = $derived(!!etat.profil.modsSwitch?.auto);
+  // Lot S3 (Seb 23/11) : l'abri des parties après chaque partie, réglable aussi au canapé (un jeu PC seulement).
+  const jeuPc = $derived(aDesEmplacements(plateforme));
+  const abriApres = $derived(etat.profil.parties?.abriApresPartie !== false);
   let vide = $state(false);
   let enregistrement = $state(false);
   let page_ = $state<HTMLElement | null>(null);
@@ -33,6 +37,17 @@
     enregistrement = true;
     try {
       await reglerProfil('modsSwitch.auto', !auto);
+    } finally {
+      enregistrement = false;
+    }
+  }
+
+  /** « Mettre mes parties à l'abri après chaque partie » : le réglage du profil (pour tous ses jeux PC). */
+  async function basculerAbri() {
+    if (enregistrement) return;
+    enregistrement = true;
+    try {
+      await reglerProfil('parties.abriApresPartie', !abriApres);
     } finally {
       enregistrement = false;
     }
@@ -70,8 +85,24 @@
         </button>
       </div>
     {/if}
+    {#if jeuPc}
+      <div class="auto">
+        <span id="abri-libelle">🛟 Mettre mes parties à l’abri sur ce PC après chaque partie (pour tous tes jeux PC)</span>
+        <button
+          class="btn"
+          role="switch"
+          aria-checked={abriApres}
+          aria-labelledby="abri-libelle"
+          aria-describedby="abri-etat"
+          aria-disabled={enregistrement}
+          onclick={basculerAbri}
+        >
+          <span id="abri-etat">{abriApres ? '✅ Oui (conseillé)' : '⬜ Non'}</span>
+        </button>
+      </div>
+    {/if}
     <BlocContenus id={jeu} {titre} {plateforme} deplie bind:vide />
-    {#if vide}<p class="muted">Rien à régler pour ce jeu : il n’a ni mise à jour, ni DLC, ni mod.</p>{/if}
+    {#if vide && !jeuPc}<p class="muted">Rien à régler pour ce jeu : il n’a ni mise à jour, ni DLC, ni mod.</p>{/if}
   {:else}
     <p class="muted">Ce jeu n’est pas sur ce PC.</p>
   {/if}

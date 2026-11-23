@@ -108,6 +108,10 @@ export interface ReglagesProfil {
   sauvegarde: {
     auto: 'apres_partie' | 'quotidienne' | 'manuelle';
   };
+  /** Les parties des jeux PC (lot S3, Seb 23/11) : `abriApresPartie` — les mettre à l'abri sur ce PC après chaque
+   * partie (allumé d'office ; lu aussi par le cœur dans ce fichier). L'abri AVANT un retrait, une réinstallation ou un
+   * mod ne se coupe jamais. */
+  parties: { abriApresPartie: boolean };
   /** Les mises à jour et DLC Switch que Firehouse n'a pas (lot 7, ✅ Seb 17/11) : les lui envoyer TOUT SEUL, sans
    * redemander (la case « À l'avenir, envoyer tout seul » de l'accord ; désactivable dans les options). */
   envoisFirehouse: { auto: boolean };
@@ -199,6 +203,7 @@ export const DEFAUTS_PC: ReglagesPc = {
 export const DEFAUTS_PROFIL: ReglagesProfil = {
   apparence: { skin: null, echelle: 1, densite: 'aeree', animations: 'normales', fondVideo: true, tailleTaodbox: 'petite' },
   sauvegarde: { auto: 'apres_partie' },
+  parties: { abriApresPartie: true },
   envoisFirehouse: { auto: false },
   modsSwitch: { auto: false },
   ludotheque: {

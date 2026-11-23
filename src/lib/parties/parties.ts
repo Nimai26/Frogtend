@@ -1,7 +1,17 @@
 // 📁 Où sont mes parties (lot S1, 22/11) : les textes de l'écran, d'après la réponse du cœur (`parties_emplacements`).
 // Lot S2 : les textes de « 🛟 Mettre mes parties à l'abri » et de la liste des abris (`parties_abri_apercu`,
 // `parties_abriter`, `parties_abris`).
-import { taille, type AbriPartiesFait, type AbriVu, type ApercuAbriParties, type EchecAbriVu, type EmplacementVu, type PartiesVues } from '$lib/api';
+import {
+  taille,
+  type AbriPartiesFait,
+  type AbriVu,
+  type ApercuAbriParties,
+  type BilanAbriAuto,
+  type EchecAbriVu,
+  type EmplacementVu,
+  type ErreurCoeur,
+  type PartiesVues,
+} from '$lib/api';
 
 /** Un jeu PC (LaunchBox : « Windows ») : seuls ceux-là ont un « 📁 Où sont mes parties » (un jeu d'émulateur garde ses
  * parties chez son émulateur). */
@@ -214,11 +224,38 @@ export function texteContenuAbri(a: AbriVu): string {
   return `${fichiers(a.fichiers)} · ${taille(a.octets)}`;
 }
 
+/** Ce qui a fait faire un abri des emplacements (lot S3) : un repère (🖐 à la main, 🏁 après une partie, 🛠 avant une
+ * opération) et ses mots. Inconnu ou absent (abri d'avant le lot S3) : « à la main ». */
+export function texteDeclencheur(d: string | null | undefined): { repere: string; texte: string } {
+  switch (d) {
+    case 'apres_partie':
+      return { repere: '🏁', texte: 'après une partie' };
+    case 'avant_reinstallation':
+      return { repere: '🛠', texte: 'avant une réinstallation' };
+    case 'avant_mise_a_jour':
+      return { repere: '🛠', texte: 'avant une mise à jour' };
+    case 'avant_retrait':
+      return { repere: '🛠', texte: 'avant de retirer le jeu' };
+    case 'avant_mod':
+      return { repere: '🛠', texte: 'avant un changement de mod' };
+    // Absent (un abri d'avant le lot S3) ou « main » : fait à la main.
+    case undefined:
+    case null:
+    case '':
+    case 'main':
+      return { repere: '🖐', texte: 'mis à l’abri à la main' };
+    // Un déclencheur d'une version plus récente de Frogtend : jamais dit « à la main ».
+    default:
+      return { repere: '🛟', texte: 'mis à l’abri par Frogtend' };
+  }
+}
+
 /** D'où vient un abri, et à qui il est. */
 export function texteSorteAbri(a: AbriVu): string {
+  const d = texteDeclencheur(a.declencheur);
   const sorte =
     a.sorte === 'emplacements'
-      ? 'mis à l’abri à la main'
+      ? `${d.repere} ${d.texte}`
       : a.sorte === 'nuage-steam'
         ? 'parties d’un jeu Steam'
         : a.sorte === 'jeu' || a.sorte === 'retrait'
@@ -237,4 +274,156 @@ export function noteAbri(a: AbriVu): string | null {
     ligneEnLigne(a.en_ligne_seulement),
   ].filter(Boolean);
   return l.length ? l.join(' ') : null;
+}
+
+// --- Lot S3 (23/11) : l'abri AUTOMATIQUE (après une partie, avant une opération) ---
+
+/** « aujourd’hui à 21:14 », « hier à 08:05 », sinon « le 21 novembre à 21:14 » (`maintenant` : pour les tests). */
+export function texteQuand(date: string, maintenant: Date = new Date()): string {
+  const n = Number(date);
+  if (!Number.isFinite(n) || n <= 0) return 'à une date inconnue';
+  const d = new Date(n * 1000);
+  const heure = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const jour = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const ecart = Math.round((jour(maintenant) - jour(d)) / 86_400_000);
+  if (ecart === 0) return `aujourd’hui à ${heure}`;
+  if (ecart === 1) return `hier à ${heure}`;
+  return `le ${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: d.getFullYear() === maintenant.getFullYear() ? undefined : 'numeric' })} à ${heure}`;
+}
+
+/** « 🛟 Dernier abri : aujourd’hui à 21:14, après une partie » — le plus récent abri de CE profil (`null` : aucun). */
+export function texteDernierAbri(abris: AbriVu[] | undefined, maintenant: Date = new Date()): string | null {
+  const a = abris?.find((x) => x.a_moi);
+  if (!a) return null;
+  const d = texteDeclencheur(a.declencheur);
+  const quoi =
+    a.sorte === 'emplacements'
+      ? d.repere === '🖐'
+        ? 'fait à la main'
+        : d.texte
+      : a.sorte === 'nuage-steam'
+        ? 'avec le nuage de Steam'
+        : 'par Frogtend (avant un mod, une réinstallation ou un retrait)';
+  return `🛟 Dernier abri : ${texteQuand(a.date, maintenant)}, ${quoi}`;
+}
+
+/** Combien d'abris sont montrés d'office. */
+export const ABRIS_MONTRES = 5;
+
+/** Une liste longue (lot S3 : un abri après chaque partie) : les 5 plus récents, plus le dernier de chaque sorte
+ * « avant … » s'il est plus ancien (c'est lui qu'on chercherait après un retrait ou un mod) ; `tous` : toute la liste.
+ * Rend aussi le nombre d'abris cachés. L'ordre (du plus récent au plus ancien) est gardé. */
+export function abrisAMontrer(liste: AbriVu[], tous = false): { montres: AbriVu[]; caches: number } {
+  if (tous || liste.length <= ABRIS_MONTRES) return { montres: liste, caches: 0 };
+  const garder = new Set<number>(liste.slice(0, ABRIS_MONTRES).map((_, i) => i));
+  const vus = new Set<string>();
+  liste.forEach((a, i) => {
+    const d = a.sorte === 'emplacements' ? (a.declencheur ?? '') : '';
+    if (!d.startsWith('avant_') || vus.has(d)) return;
+    vus.add(d);
+    garder.add(i);
+  });
+  const montres = liste.filter((_, i) => garder.has(i));
+  return { montres, caches: liste.length - montres.length };
+}
+
+/** « 23 abris · 1,2 Go » (`null` : aucun). */
+export function texteTotalAbris(liste: AbriVu[] | undefined): string | null {
+  if (!liste?.length) return null;
+  const octets = liste.reduce((s, a) => s + a.octets, 0);
+  return `${liste.length.toLocaleString('fr-FR')} abri${liste.length > 1 ? 's' : ''} · ${taille(octets)}`;
+}
+
+/** Les états d'un abri automatique qui méritent d'être dits (un toast, puis une ligne sur la fiche du jeu). */
+export function estProblemeAbriAuto(b: BilanAbriAuto): boolean {
+  return b.etat === 'en_ligne' || b.etat === 'trop_gros' || b.etat === 'echec' || b.etat === 'attente_depassee' || b.etat === 'inconnu';
+}
+
+/** Un motif qui donne une consigne (« réessaie dans une minute ») : après une partie, c'est Frogtend qui réessaie. */
+function donneUneConsigne(m: string): boolean {
+  return /réessaie|ferme|quitte|choisis|vérifie|attends/i.test(m);
+}
+
+/** Le toast d'un abri APRÈS UNE PARTIE (`null` : rien à dire — rien de neuf, aucun emplacement, en cours). Sans
+ * chiffres ni chemin pour une réussite ; sans faire peur pour un problème (les parties sont toujours dans le jeu). */
+export function texteToastAbriAuto(b: BilanAbriAuto, titre: string): string | null {
+  const t = `« ${titre} »`;
+  switch (b.etat) {
+    case 'fait':
+      return `🛟 Tes parties de ${t} sont à l’abri.`;
+    case 'en_ligne':
+      return `☁ Des parties de ${t} sont seulement dans ton nuage OneDrive : Frogtend ne les télécharge pas tout seul. Ouvre « 📁 Où sont mes parties » pour les mettre à l’abri.`;
+    case 'trop_gros':
+      return `🛟 Les parties de ${t} font plus de 2 Go : Frogtend ne les copie pas tout seul. Ouvre « 📁 Où sont mes parties » pour les mettre à l’abri.`;
+    case 'echec':
+      return `🛟 Frogtend n’a pas pu mettre les parties de ${t} à l’abri cette fois (elles sont toujours dans le jeu). Il réessaiera après ta prochaine partie.`;
+    // Attente dépassée, emplacement inconnu : sans bruit (Seb, 23/11) — la ligne de la fiche suffit.
+    default:
+      return null;
+  }
+}
+
+/** La ligne qui RESTE sur la fiche du jeu après un abri automatique qui n'a pas pu tout copier (`null` : rien). */
+export function ligneAbriAuto(b: BilanAbriAuto | null | undefined): string | null {
+  if (!b || !estProblemeAbriAuto(b)) return null;
+  switch (b.etat) {
+    case 'en_ligne':
+      return `☁ Dernier abri automatique : ${fichiers(b.en_ligne)} (${taille(b.octets_en_ligne)}) seulement dans ton nuage OneDrive, pas copié${b.en_ligne > 1 ? 's' : ''}. « 🛟 Mettre mes parties à l’abri » propose de les télécharger.`;
+    case 'trop_gros':
+      return `⚠ Dernier abri automatique : plus de 2 Go de parties, rien de copié sans ton accord. « 🛟 Mettre mes parties à l’abri » te le demandera.`;
+    case 'attente_depassee':
+      return '⏳ Dernier abri automatique : le jeu écrivait encore ses parties. Frogtend réessaiera après ta prochaine partie.';
+    case 'inconnu':
+      return '❔ Dernier abri automatique : Frogtend ne sait pas encore où ce jeu range ses parties. Il redemandera à Firehouse après ta prochaine partie.';
+    default: {
+      // Une consigne (« réessaie dans une minute ») n'est pas recopiée : c'est Frogtend qui réessaiera.
+      const m = b.motif && !donneUneConsigne(b.motif) ? ` : ${b.motif.replace(/[.\s]+$/, '')}` : '';
+      return `⚠ Dernier abri automatique impossible${m}. Frogtend réessaiera après ta prochaine partie.`;
+    }
+  }
+}
+
+/** L'opération qu'un abri impossible a arrêtée, en mots. */
+export function texteOperation(op: string | null | undefined): string {
+  switch (op) {
+    case 'avant_retrait':
+      return 'le retrait du jeu';
+    case 'avant_reinstallation':
+      return 'la réinstallation';
+    case 'avant_mise_a_jour':
+      return 'la mise à jour';
+    case 'avant_mod':
+      return 'le changement de mod';
+    default:
+      return 'l’opération';
+  }
+}
+
+/** Ce qu'on peut faire quand l'abri d'AVANT une opération a échoué (Seb, 23/11), dans cet ordre : Réessayer ;
+ * Télécharger depuis OneDrive (quand c'est la cause, taille annoncée) ou les copier quand même (plus de 2 Go) ;
+ * Continuer sans abri. « Annuler » est toujours là (la fenêtre de choix l'ajoute). */
+export type ChoixAbriImpossible = 'reessayer' | 'onedrive' | 'quand_meme' | 'sans_abri';
+
+export function optionsAbriImpossible(e: ErreurCoeur): { valeur: ChoixAbriImpossible; libelle: string; detail?: string }[] {
+  const l: { valeur: ChoixAbriImpossible; libelle: string; detail?: string }[] = [];
+  // L'option qui règle la cause d'abord (elle reçoit le focus), puis « Réessayer ».
+  if (e.cause === 'onedrive' && (e.fichiers_en_ligne ?? 0) > 0)
+    l.push({ valeur: 'onedrive', libelle: '☁ Télécharger depuis OneDrive puis réessayer', detail: `${fichiers(e.fichiers_en_ligne ?? 0)} · ${taille(e.octets_en_ligne ?? 0)} à télécharger` });
+  if (e.cause === 'trop_gros') l.push({ valeur: 'quand_meme', libelle: '🛟 Les mettre à l’abri quand même', detail: `${taille(e.octets ?? 0)} : la copie peut être longue` });
+  const detail =
+    e.cause === 'echec' ? 'si le jeu est ouvert, quitte-le d’abord' : e.cause === 'inconnu' ? 'Frogtend redemande à Firehouse où sont tes parties' : undefined;
+  l.push({ valeur: 'reessayer', libelle: '🔁 Réessayer', detail });
+  l.push({ valeur: 'sans_abri', libelle: 'Continuer sans abri', detail: `${texteOperation(e.operation)} sans copier tes parties d’abord` });
+  return l;
+}
+
+/** Le message de cette fenêtre. */
+export function messageAbriImpossible(e: ErreurCoeur): string {
+  return [e.motif, `Rien n’a été fait : ${texteOperation(e.operation)} attend que tes parties soient à l’abri.`].join('\n\n');
+}
+
+/** La seconde confirmation de « Continuer sans abri ». */
+export function messageSansAbri(e: ErreurCoeur): string {
+  const op = texteOperation(e.operation);
+  return `Tes parties de ce jeu ne seront pas copiées avant ${op}. Si ${op} les efface ou les abîme, Frogtend ne pourra pas te les rendre.`;
 }

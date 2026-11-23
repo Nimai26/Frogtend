@@ -467,6 +467,26 @@ export interface AbriVu {
   en_ligne_seulement: number;
   /** Fichiers d'un ancien abri Steam pris hors du nuage, dont le chemin d'origine n'a pas été gardé. */
   sans_origine: number;
+  /** Lot S3 : ce qui a fait faire un abri de sorte `emplacements` (`main`, `apres_partie`, `avant_retrait`,
+   * `avant_reinstallation`, `avant_mise_a_jour`, `avant_mod`) ; vide pour les autres sortes (et absent avant le S3). */
+  declencheur?: string;
+}
+
+/** Ce qu'a fait un abri AUTOMATIQUE des parties d'un jeu PC (lot S3, événement `parties-abri-auto`) : des numéros et
+ * des nombres, jamais un titre ni un chemin. */
+export interface BilanAbriAuto {
+  jeu: number;
+  /** L'identifiant du profil propriétaire (celui qui jouait) : l'interface l'ignore si ce n'est plus le sien. */
+  profil: string;
+  declencheur: string;
+  etat: 'en_cours' | 'fait' | 'rien_de_neuf' | 'aucun' | 'inconnu' | 'en_ligne' | 'trop_gros' | 'echec' | 'attente_depassee';
+  fichiers: number;
+  octets: number;
+  en_ligne: number;
+  octets_en_ligne: number;
+  echecs: number;
+  /** Pourquoi, pour un échec (sans chemin ni titre). */
+  motif: string | null;
 }
 
 /** Le risque de brancher Cheat Engine sur un jeu (`cheatengine_risque`). */
@@ -620,12 +640,23 @@ export interface ErreurCoeur {
     /** Refusé avant d'agir : le motif s'explique dans une fenêtre (image Xbox que xemu ne lit pas…). */
     | 'prevenir'
     /** Une carte e-Reader dont la cartouche (`cartouche`) n'est pas sur ce PC : proposer de l'y mettre. */
-    | 'cartouche_absente';
+    | 'cartouche_absente'
+    /** Lot S3 : les parties n'ont pas pu être mises à l'abri AVANT l'opération (qui ne s'est pas faite). */
+    | 'abri_impossible';
   motif: string;
   /** Pour `fusionne` (contrat 1.14) : la fiche où celle-ci a été réunie. */
   nouveau?: number;
   /** Pour `cartouche_absente` : la fiche de la cartouche e-Reader qui lit la carte. */
   cartouche?: number;
+  /** Pour `abri_impossible` : `onedrive`, `trop_gros`, `inconnu` (Frogtend ne sait pas encore où sont les parties) ou
+   * `echec`. */
+  cause?: 'onedrive' | 'trop_gros' | 'inconnu' | 'echec';
+  /** Pour `abri_impossible` : l'opération arrêtée (`avant_retrait`, `avant_reinstallation`, `avant_mise_a_jour`,
+   * `avant_mod`). */
+  operation?: string;
+  fichiers_en_ligne?: number;
+  octets_en_ligne?: number;
+  octets?: number;
 }
 
 export function estErreurCoeur(e: unknown): e is ErreurCoeur {
@@ -1270,7 +1301,15 @@ export const api = {
   partiesAbriApercu: (id: number) => appeler<ApercuAbriParties>('parties_abri_apercu', { id }),
   /** 🛟 Met les parties d'un jeu PC à l'abri pour le profil ouvert (`accepte` : très grosse copie confirmée ;
    * `rapatrier` : la personne a choisi de télécharger d'abord les fichiers « en ligne seulement » de OneDrive). */
-  partiesAbriter: (id: number, accepte = false, rapatrier = false) => appeler<AbriPartiesFait>('parties_abriter', { id, accepte, rapatrier }),
+  partiesAbriter: (id: number, accepte = false, rapatrier = false, declencheur: string | null = null) =>
+    appeler<AbriPartiesFait>('parties_abriter', { id, accepte, rapatrier, declencheur }),
+  /** Lot S3 : « Continuer sans abri » (après la seconde confirmation) — la prochaine `operation` sur ce jeu, dans les
+   * 10 minutes et une seule fois, se fait sans mettre ses parties à l'abri. */
+  partiesContinuerSansAbri: (id: number, operation: string) => appeler<void>('parties_continuer_sans_abri', { id, operation }),
+  /** Lot S3 : l'abri des parties d'AVANT `operation`, fait à part juste avant elle (l'opération ne le refait pas). */
+  partiesAbriAvant: (id: number, operation: string) => appeler<void>('parties_abri_avant', { id, operation }),
+  /** Lot S3 : le dernier problème gardé de l'abri après une partie de ce jeu (la ligne de la fiche), ou `null`. */
+  partiesAbriAutoEtat: (id: number) => appeler<BilanAbriAuto | null>('parties_abri_auto_etat', { id }),
   /** Les abris de parties d'un jeu PC, pour le profil ouvert. */
   partiesAbris: (id: number) => appeler<AbriVu[]>('parties_abris', { id }),
   /** Le risque de brancher Cheat Engine sur ce jeu (Seb, 21/10 : anti-triche = refus ; en ligne ou inconnu = avertir). */

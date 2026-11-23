@@ -8,6 +8,9 @@ import { ouvrirPageWeb } from '$lib/web';
 import { avecProgres } from './progres.svelte';
 import { accordModSteam } from './cheatengine';
 import { proposerCopieAvantMod } from './copieAvantMod';
+import { avecAbriAvant } from '$lib/parties/abriAvant';
+import { aDesEmplacements } from '$lib/parties/parties';
+import { tele } from '$lib/ludotheque/telechargements.svelte';
 
 /** La page de Nexus où se trouve la clé d'API personnelle (à vérifier à l'essai de Seb). */
 export const PAGE_CLE_NEXUS = 'https://next.nexusmods.com/settings/api-keys';
@@ -229,7 +232,14 @@ async function traiterUnLien(l: LienNexus): Promise<void> {
     return;
   }
   try {
-    const b = await avecProgres(`Installation de « ${infos.mod_nom} » (ne ferme pas Frogtend)`, true, (suivi) => api.nexusInstaller(l.n, programme, suivi, risque));
+    // Lot S3 : les parties d'abord à l'abri ; si c'est impossible, la personne choisit (annulé : rien d'installé).
+    const b = await avecAbriAvant(infos.jeu_id, 'avant_mod', () => avecProgres(`Installation de « ${infos.mod_nom} » (ne ferme pas Frogtend)`, true, (suivi) => api.nexusInstaller(l.n, programme, suivi, risque)), {
+      jeuPc: aDesEmplacements(tele.jeux[infos.jeu_id]?.plateforme),
+    });
+    if (b === undefined) {
+      await oublier();
+      return;
+    }
     toast(`🧩 « ${infos.mod_nom} » installé : ${b.ajoutes} fichier(s) ajouté(s), ${b.remplaces} remplacé(s) (gardés de côté).`);
   } catch (err) {
     // Pour réessayer : recliquer sur le site (la clé du lien ne sert qu'une fois).

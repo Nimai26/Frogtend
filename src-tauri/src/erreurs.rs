@@ -64,6 +64,12 @@ pub enum Erreur {
     /// propose de l'y mettre (téléchargement, après un oui).
     #[error("{motif}")]
     CartoucheAbsente { motif: String, cartouche: i64 },
+    /// Lot S3 (23/11) : les parties n'ont pas pu être mises à l'abri AVANT un retrait, une réinstallation, une mise à
+    /// jour ou un mod — l'opération ne s'est PAS faite. L'interface propose (Seb, 23/11) : Réessayer, Continuer sans abri
+    /// (seconde confirmation), Annuler, et « Télécharger depuis OneDrive puis réessayer » quand c'est la cause.
+    /// `cause` : `onedrive`, `trop_gros` ou `echec` ; `operation` : le déclencheur (`avant_retrait`…). Jamais un chemin.
+    #[error("{motif}")]
+    AbriImpossible { motif: String, cause: String, operation: String, fichiers_en_ligne: usize, octets_en_ligne: u64, octets: u64 },
 }
 
 impl Serialize for Erreur {
@@ -87,6 +93,7 @@ impl Serialize for Erreur {
             Erreur::Perimee(_) => "perimee",
             Erreur::Prevenir(_) => "prevenir",
             Erreur::CartoucheAbsente { .. } => "cartouche_absente",
+            Erreur::AbriImpossible { .. } => "abri_impossible",
         };
         let mut m = s.serialize_map(None)?;
         m.serialize_entry("sorte", sorte)?;
@@ -96,6 +103,13 @@ impl Serialize for Erreur {
         }
         if let Erreur::CartoucheAbsente { cartouche, .. } = self {
             m.serialize_entry("cartouche", cartouche)?;
+        }
+        if let Erreur::AbriImpossible { cause, operation, fichiers_en_ligne, octets_en_ligne, octets, .. } = self {
+            m.serialize_entry("cause", cause)?;
+            m.serialize_entry("operation", operation)?;
+            m.serialize_entry("fichiers_en_ligne", fichiers_en_ligne)?;
+            m.serialize_entry("octets_en_ligne", octets_en_ligne)?;
+            m.serialize_entry("octets", octets)?;
         }
         m.end()
     }
@@ -115,6 +129,11 @@ mod tests_forme {
         assert_eq!(v, serde_json::json!({"sorte": "fusionne", "motif": "réuni à la fiche 324", "nouveau": 324}));
         let v = serde_json::to_value(Erreur::Prevenir("à convertir".into())).unwrap();
         assert_eq!(v, serde_json::json!({"sorte": "prevenir", "motif": "à convertir"}));
+        let v = serde_json::to_value(Erreur::AbriImpossible { motif: "dans le nuage".into(), cause: "onedrive".into(), operation: "avant_retrait".into(), fichiers_en_ligne: 9, octets_en_ligne: 180, octets: 0 }).unwrap();
+        assert_eq!(
+            v,
+            serde_json::json!({"sorte": "abri_impossible", "motif": "dans le nuage", "cause": "onedrive", "operation": "avant_retrait", "fichiers_en_ligne": 9, "octets_en_ligne": 180, "octets": 0})
+        );
     }
 }
 

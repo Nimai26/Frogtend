@@ -388,6 +388,8 @@ pub fn run() {
             // de leur jeu (copie vérifiée). Un disque absent : ce sera pour un prochain démarrage.
             // Le dossier des abris de parties (réglage du PC) ; les abris de l'ancien emplacement y sont rangés.
             n.regler_abris(commandes::dossier_abris_regle(app.handle()));
+            // Lot S3 : les abris faits avant une opération le disent aussi à l'interface.
+            commandes::brancher_abris_auto(app.handle());
             n.regler_abris_anciens(commandes::anciens_dossiers_abris(app.handle()));
             // Un jeu laissé figé par un Frogtend arrêté brutalement repart (d'après la note du menu en jeu).
             let relances = figer::initialiser(dossier.join("menu-fige.txt"));
@@ -643,6 +645,9 @@ pub fn run() {
             commandes::parties_abri_apercu,
             commandes::parties_abriter,
             commandes::parties_abris,
+            commandes::parties_continuer_sans_abri,
+            commandes::parties_abri_auto_etat,
+            commandes::parties_abri_avant,
             commandes::succes_liste,
             commandes::succes_jeu,
             commandes::boutique_fiche,

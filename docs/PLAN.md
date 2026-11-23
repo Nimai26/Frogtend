@@ -890,6 +890,13 @@ message ; un abri réussi = un toast court, et « 🛟 Dernier abri : … » sur
 retrait, avant l'installeur à la réinstallation, et pour les mods de jeux non-Steam et Steam (cache S1, hors ligne) ;
 aucun abri effacé (rétention = idée à part) ; le relevé du calme par dates et tailles seulement, jamais un SHA1 en
 boucle. Les abris automatiques ne partent chez Firehouse qu'au S4.
+**S3 livré en 0.222.0 (23/11)** : abri automatique après une partie (attente du calme, repère « abri à faire » et
+dernier état par profil), avant retrait / réinstallation / mod (abri à part, fenêtre Réessayer / Continuer sans abri /
+Annuler, accord sans abri par profil et pour une minute), changement de profil interdit pendant une partie,
+interrupteur bureau + Taodbox ; relu par les experts lancement et interface (1 bloquant corrigé : sans cache S1 l'abri
+d'avant passait en silence → Frogtend demande d'abord à Firehouse, sinon cause « inconnu » ; plus 9 importants et les
+mineurs). Reste : `avant_mise_a_jour` défini mais non branché (aucun parcours de mise à jour distinct de la
+réinstallation pour un jeu PC) ; après un redémarrage, la ligne d'échec revient sans sa raison.
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
 « Connecte-toi… dans la fenêtre qui s'ouvre » laisse croire que rien ne se passe ou que c'est raté. Voulu : une petite

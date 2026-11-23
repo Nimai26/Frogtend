@@ -46,6 +46,26 @@ pub const FICHE_ENVOYEE: &str = "emplacements/fiche.json";
 /// Le sel secret du profil (dans SES données, jamais envoyé).
 pub const NOM_SEL: &str = "abris-sel.txt";
 
+/// Ce qui a fait faire un abri de sorte `emplacements` (lot S3, 23/11) : une fiche d'avant le lot S3 n'en a pas, elle
+/// vaut « main ». JAMAIS une nouvelle sorte (la remise d'après une réinstallation poserait `emplacements/` dans le jeu).
+pub const DECLENCHEUR_MAIN: &str = "main";
+pub const DECLENCHEUR_APRES_PARTIE: &str = "apres_partie";
+pub const DECLENCHEUR_AVANT_RETRAIT: &str = "avant_retrait";
+pub const DECLENCHEUR_AVANT_REINSTALLATION: &str = "avant_reinstallation";
+pub const DECLENCHEUR_AVANT_MISE_A_JOUR: &str = "avant_mise_a_jour";
+pub const DECLENCHEUR_AVANT_MOD: &str = "avant_mod";
+/// La liste fermée des déclencheurs.
+pub const DECLENCHEURS: [&str; 6] = [DECLENCHEUR_MAIN, DECLENCHEUR_APRES_PARTIE, DECLENCHEUR_AVANT_RETRAIT, DECLENCHEUR_AVANT_REINSTALLATION, DECLENCHEUR_AVANT_MISE_A_JOUR, DECLENCHEUR_AVANT_MOD];
+
+/// Un déclencheur de la liste fermée.
+pub fn declencheur_connu(d: &str) -> bool {
+    DECLENCHEURS.contains(&d)
+}
+
+fn declencheur_main() -> String {
+    DECLENCHEUR_MAIN.into()
+}
+
 /// Un emplacement de parties tel qu'il est rangé dans la fiche d'un abri.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EmplacementAbrite {
@@ -96,12 +116,16 @@ pub struct FicheAbri {
     /// Emplacements en échec cette fois (pas dans l'abri).
     #[serde(default)]
     pub echecs: usize,
+    /// Ce qui a fait faire l'abri (lot S3 : `DECLENCHEURS`) ; absent (fiche plus ancienne) : « main ».
+    #[serde(default = "declencheur_main")]
+    pub declencheur: String,
 }
 
 impl FicheAbri {
     pub fn nouvelle(sorte: &str, profil: &str, emplacements: Vec<EmplacementAbrite>, fichiers: &[AMettre], en_ligne_seulement: usize, echecs: usize) -> Self {
         FicheAbri {
             version_fiche: VERSION_FICHE,
+            declencheur: declencheur_main(),
             sorte: sorte.into(),
             profil: profil.into(),
             complet: echecs == 0 && en_ligne_seulement == 0,
@@ -553,15 +577,45 @@ fn rapatrier_un(f: &EnLigne, attente: &Path, cible: &Path, r: &Rapatriement) -> 
 /// `rapatriement` (seulement après le oui de la personne, et `preparer_rapatriement`) : les fichiers « en ligne
 /// seulement » sont téléchargés et copiés aussi ; sinon ils ne sont jamais lus.
 pub fn abriter(plan: &mut PlanAbri, abris: &Path, id: i64, quand: &str, profil: &str, rapatriement: Option<&Rapatriement>) -> Resultat<PathBuf> {
+    abriter_par(plan, abris, id, quand, profil, DECLENCHEUR_MAIN, rapatriement)
+}
+
+/// Le message d'un disque des abris trop plein : ce qu'il faut de place (copie + 1 Go de marge pour Windows), en Mo.
+pub fn texte_place(il_faut: u64) -> String {
+    format!("Plus assez de place sur le disque des abris (il faut {} Mo) : rien n'est mis à l'abri.", il_faut.div_ceil(1024 * 1024))
+}
+
+/// Comme `abriter`, en disant ce qui a fait faire l'abri (`declencheur`, de `DECLENCHEURS` ; inconnu : « main »).
+/// La place se vérifie AVANT de rien copier : sans assez de place, rien n'est écrit (pas même un dossier provisoire).
+pub fn abriter_par(plan: &mut PlanAbri, abris: &Path, id: i64, quand: &str, profil: &str, declencheur: &str, rapatriement: Option<&Rapatriement>) -> Resultat<PathBuf> {
+    abriter_avec_place(plan, abris, id, quand, profil, declencheur, rapatriement, &|p| crate::jeux_pc::place_libre(p))
+}
+
+/// `place` : la place libre d'un disque (remplacée dans les tests).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn abriter_avec_place(
+    plan: &mut PlanAbri,
+    abris: &Path,
+    id: i64,
+    quand: &str,
+    profil: &str,
+    declencheur: &str,
+    rapatriement: Option<&Rapatriement>,
+    place: &dyn Fn(&Path) -> Option<u64>,
+) -> Resultat<PathBuf> {
+    let declencheur = if declencheur_connu(declencheur) { declencheur } else { DECLENCHEUR_MAIN };
     let fin = abris.join(id.to_string()).join(quand);
     if fin.exists() || fichier_fiche(&fin).is_some_and(|f| f.exists()) {
         return Err(Erreur::Refus("Un abri de ce jeu vient d'être fait : réessaie dans une seconde.".into()));
     }
-    std::fs::create_dir_all(abris)?;
     let a_copier = plan.octets() + if rapatriement.is_some() { plan.octets_en_ligne() } else { 0 };
-    if crate::jeux_pc::place_libre(abris).is_some_and(|l| l < a_copier.saturating_add(crate::jeux_pc::MARGE_LIBRE)) {
-        return Err(Erreur::Refus("Pas assez de place sur le disque des abris pour copier ces parties.".into()));
+    let il_faut = a_copier.saturating_add(crate::jeux_pc::MARGE_LIBRE);
+    // Le disque du dossier des abris, ou du premier parent qui existe (rien n'est créé avant d'avoir vérifié).
+    let disque = abris.ancestors().find(|p| p.exists()).unwrap_or(abris);
+    if place(disque).is_some_and(|l| l < il_faut) {
+        return Err(Erreur::Refus(texte_place(il_faut)));
     }
+    std::fs::create_dir_all(abris)?;
     let tmp = provisoire(abris, id, quand);
     let r = (|| -> Resultat<()> {
         std::fs::create_dir_all(&tmp)?;
@@ -611,7 +665,8 @@ pub fn abriter(plan: &mut PlanAbri, abris: &Path, id: i64, quand: &str, profil: 
             return Err(Erreur::Refus("Aucune partie n'a pu être copiée : rien n'est mis à l'abri.".into()));
         }
         let fichiers: Vec<AMettre> = plan.bons().flat_map(|e| e.fichiers.iter().cloned()).collect();
-        let fiche = FicheAbri::nouvelle(SORTE_EMPLACEMENTS, profil, plan.bons().filter(|e| !e.fichiers.is_empty()).map(|e| e.abrite.clone()).collect(), &fichiers, plan.en_ligne_seulement, plan.echecs());
+        let mut fiche = FicheAbri::nouvelle(SORTE_EMPLACEMENTS, profil, plan.bons().filter(|e| !e.fichiers.is_empty()).map(|e| e.abrite.clone()).collect(), &fichiers, plan.en_ligne_seulement, plan.echecs());
+        fiche.declencheur = declencheur.into();
         if let Some(p) = fin.parent() {
             std::fs::create_dir_all(p)?;
         }
@@ -684,7 +739,7 @@ pub fn emplacements_a_envoyer(abris: &[(u64, PathBuf)], profil: &str) -> (Vec<(P
         return (vec![], None);
     }
     let octets = fichiers.iter().map(|x| x.taille).sum();
-    let fiche = FicheAbri { version_fiche: VERSION_FICHE, sorte: SORTE_NUAGE_STEAM.into(), profil: profil.into(), complet: true, version: None, emplacements: pris, fichiers, octets, en_ligne_seulement: 0, echecs: 0 };
+    let fiche = FicheAbri { version_fiche: VERSION_FICHE, sorte: SORTE_NUAGE_STEAM.into(), profil: profil.into(), complet: true, version: None, emplacements: pris, fichiers, octets, en_ligne_seulement: 0, echecs: 0, declencheur: declencheur_main() };
     (sources, Some(fiche))
 }
 
@@ -707,6 +762,8 @@ pub struct AbriVu {
     /// Fichiers d'un ancien abri Steam pris hors du nuage, dont le chemin d'origine n'a pas été gardé (avant le lot S2) :
     /// ils restent lisibles, Frogtend ne sait pas où les remettre.
     pub sans_origine: usize,
+    /// Ce qui a fait faire un abri de sorte `emplacements` (lot S3 : `DECLENCHEURS`) ; vide pour les autres sortes.
+    pub declencheur: String,
 }
 
 /// La liste Frogtend d'un ancien abri Steam (`nuage-steam/<marque>/abri.json`) : pas une partie.
@@ -727,7 +784,8 @@ pub fn lister(sources: &[PathBuf], profil: &str, marque_steam: Option<&str>) -> 
                 if f.profil != profil {
                     continue;
                 }
-                l.push((q, AbriVu { date, fichiers: f.fichiers.len(), octets: f.octets, sorte: f.sorte, a_moi: true, echecs: f.echecs, en_ligne_seulement: f.en_ligne_seulement, sans_origine: 0 }));
+                let declencheur = if f.sorte == SORTE_EMPLACEMENTS { f.declencheur.clone() } else { String::new() };
+                l.push((q, AbriVu { date, fichiers: f.fichiers.len(), octets: f.octets, sorte: f.sorte, a_moi: true, echecs: f.echecs, en_ligne_seulement: f.en_ligne_seulement, sans_origine: 0, declencheur }));
                 continue;
             }
             // Un ancien abri : ses fichiers, tels quels (jamais réécrit).
@@ -749,11 +807,432 @@ pub fn lister(sources: &[PathBuf], profil: &str, marque_steam: Option<&str>) -> 
             let octets = parties.iter().map(|r| std::fs::symlink_metadata(d.join(r)).map(|m| m.len()).unwrap_or(0)).sum();
             let sans_origine = parties.iter().filter(|r| r.starts_with("nuage-steam/") && r.split('/').nth(2) == Some("hors-nuage")).count();
             let sorte = if steam { SORTE_NUAGE_STEAM } else { "retrait" };
-            l.push((q, AbriVu { date, fichiers: parties.len(), octets, sorte: sorte.into(), a_moi: false, echecs: 0, en_ligne_seulement: 0, sans_origine }));
+            l.push((q, AbriVu { date, fichiers: parties.len(), octets, sorte: sorte.into(), a_moi: false, echecs: 0, en_ligne_seulement: 0, sans_origine, declencheur: String::new() }));
         }
     }
     l.sort_by(|a, b| b.0.cmp(&a.0));
     l.into_iter().map(|(_, a)| a).collect()
+}
+
+// --- Lot S3 (23/11) : l'abri AUTOMATIQUE après une partie — le relevé léger, l'attente du calme, le repère « abri à
+// faire ». Jamais un fichier lu pour attendre (tailles et dates seulement), jamais un SHA1 en boucle. ---
+
+/// Le relevé LÉGER d'emplacements de parties : la taille et la date de chaque fichier, par ses métadonnées seulement
+/// (`symlink_metadata`, jamais un lien suivi) — aucun fichier n'est ouvert, un fichier OneDrive « en ligne seulement »
+/// n'est jamais téléchargé (il est compté à part).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Releve {
+    /// (chemin `normal`, taille, date) de chaque fichier, triés : deux relevés égaux = rien n'a bougé.
+    pub fichiers: Vec<(String, u64, Option<std::time::SystemTime>)>,
+    /// Les octets des fichiers sur ce PC (sans les « en ligne seulement »).
+    pub octets: u64,
+    /// Les fichiers « en ligne seulement ».
+    pub en_ligne: usize,
+    pub octets_en_ligne: u64,
+    /// La plus récente écriture d'un fichier sur ce PC.
+    pub derniere_ecriture: Option<std::time::SystemTime>,
+    /// Les emplacements présents qui n'ont pas pu être parcourus (illisibles, trop grands pour un dossier de parties) :
+    /// jamais pris pour « aucune partie » (I2).
+    pub arrets: usize,
+}
+
+impl Releve {
+    /// Les fichiers sur ce PC (pas seulement dans le nuage).
+    pub fn sur_le_pc(&self) -> usize {
+        self.fichiers.len() - self.en_ligne
+    }
+}
+
+/// Relève ces emplacements (mêmes règles de parcours que `planifier` : dossier entier ou fichiers d'un filtre ; un
+/// emplacement illisible ou trop grand pour un dossier de parties est sauté, `planifier` le dira).
+pub fn relever(lieux: &[Emplacement]) -> Releve {
+    let mut vus: std::collections::BTreeMap<String, (u64, Option<std::time::SystemTime>, bool)> = Default::default();
+    let mut arrets = 0;
+    for e in lieux.iter().filter(|e| e.dossier.is_dir()) {
+        let lus: Option<Vec<String>> = match &e.filtre {
+            None => crate::nuage_steam::parcourir(&e.dossier).ok(),
+            Some(f) => std::fs::read_dir(&e.dossier)
+                .map(|l| l.flatten().filter(|x| x.file_type().is_ok_and(|t| t.is_file())).map(|x| x.file_name().to_string_lossy().to_string()).filter(|n| crate::nuage_steam::repond(n, f)).collect())
+                .ok(),
+        };
+        let Some(relatifs) = lus else {
+            arrets += 1;
+            continue;
+        };
+        for r in relatifs {
+            let p = e.dossier.join(&r);
+            let Ok(m) = std::fs::symlink_metadata(&p) else { continue };
+            if !m.is_file() {
+                continue;
+            }
+            vus.insert(normal(&p), (m.len(), m.modified().ok(), crate::nuage_steam::en_ligne_seulement(&m)));
+        }
+    }
+    let mut r = Releve { arrets, ..Default::default() };
+    for (cle, (taille, date, en_ligne)) in vus {
+        if en_ligne {
+            r.en_ligne += 1;
+            r.octets_en_ligne += taille;
+        } else {
+            r.octets += taille;
+            if let Some(t) = date {
+                r.derniere_ecriture = Some(r.derniere_ecriture.map_or(t, |x| x.max(t)));
+            }
+        }
+        r.fichiers.push((cle, taille, date));
+    }
+    r
+}
+
+/// Les délais de l'attente du calme (remplacés dans les tests).
+#[derive(Debug, Clone, Copy)]
+pub struct Delais {
+    /// Entre deux relevés.
+    pub pas: std::time::Duration,
+    /// Aucune écriture depuis au moins ce temps.
+    pub calme: std::time::Duration,
+    /// Au-delà, on abandonne (Seb, 23/11 : 10 minutes au plus) ; le repère « abri à faire » reste.
+    pub plafond: std::time::Duration,
+}
+
+/// Après une partie : un relevé toutes les 8 s, 60 s sans écriture, 10 minutes au plus.
+pub const DELAIS_APRES_PARTIE: Delais = Delais { pas: std::time::Duration::from_secs(8), calme: std::time::Duration::from_secs(60), plafond: std::time::Duration::from_secs(600) };
+
+/// Comment finit l'attente du calme.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FinAttente {
+    /// Deux relevés identiques, aucune écriture depuis `calme`, aucun programme du dossier du jeu : le dernier relevé.
+    Calme(Releve),
+    /// Le plafond est atteint (le jeu écrit encore, un programme de son dossier tourne toujours).
+    Depassee,
+    /// Le jeu est repris (une nouvelle partie, une installation…) : l'abri attendra la fin de celle-là.
+    Reprise,
+}
+
+/// Attend le CALME après une partie : `processus` (un programme du dossier du jeu tourne-t-il ?) et le relevé se font
+/// hors du fil courant ; `repris` (le jeu est-il de nouveau occupé ?) se lit à chaque tour.
+pub async fn attendre_calme(
+    d: Delais,
+    lieux: Vec<Emplacement>,
+    processus: std::sync::Arc<dyn Fn() -> bool + Send + Sync>,
+    repris: impl Fn() -> bool,
+) -> FinAttente {
+    let debut = std::time::Instant::now();
+    let mut avant: Option<Releve> = None;
+    loop {
+        if repris() {
+            return FinAttente::Reprise;
+        }
+        let (l, p) = (lieux.clone(), processus.clone());
+        let (tourne, releve) = match tokio::task::spawn_blocking(move || (p(), relever(&l))).await {
+            Ok(x) => x,
+            Err(_) => return FinAttente::Depassee,
+        };
+        if repris() {
+            return FinAttente::Reprise;
+        }
+        // Une date d'écriture dans le futur (horloge changée, M7) ne dit rien : comptée comme « pas d'écriture » — les
+        // deux relevés identiques suffisent alors.
+        let ecrit_depuis = releve.derniere_ecriture.and_then(|t| std::time::SystemTime::now().duration_since(t).ok());
+        let calme = !tourne && avant.as_ref() == Some(&releve) && ecrit_depuis.is_none_or(|e| e >= d.calme);
+        if calme {
+            return FinAttente::Calme(releve);
+        }
+        if debut.elapsed() >= d.plafond {
+            return FinAttente::Depassee;
+        }
+        avant = Some(releve);
+        tokio::time::sleep(d.pas).await;
+    }
+}
+
+/// Le repère « abri à faire » d'un profil (dans SES données) : l'identifiant de chaque jeu et la date, rien d'autre
+/// (jamais un titre ni un chemin).
+pub const NOM_A_FAIRE: &str = "abris-a-faire.json";
+
+fn lire_a_faire(dossier_profil: &Path) -> std::collections::BTreeMap<String, String> {
+    std::fs::read(dossier_profil.join(NOM_A_FAIRE)).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default()
+}
+
+fn ecrire_a_faire(dossier_profil: &Path, l: &std::collections::BTreeMap<String, String>) -> Resultat<()> {
+    let f = dossier_profil.join(NOM_A_FAIRE);
+    if l.is_empty() {
+        if f.exists() {
+            std::fs::remove_file(&f)?;
+        }
+        return Ok(());
+    }
+    std::fs::create_dir_all(dossier_profil)?;
+    let provisoire = dossier_profil.join(format!("{NOM_A_FAIRE}.provisoire"));
+    std::fs::write(&provisoire, serde_json::to_vec_pretty(l).unwrap_or_default())?;
+    std::fs::rename(&provisoire, &f)?;
+    Ok(())
+}
+
+/// Les repères sont lus et écrits un à la fois (deux fins de partie en même temps).
+static VERROU_A_FAIRE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Note « abri à faire » pour ce jeu (avant d'attendre le calme).
+pub fn noter_a_faire(dossier_profil: &Path, id: i64, quand: &str) -> Resultat<()> {
+    let _v = VERROU_A_FAIRE.lock().unwrap_or_else(|e| e.into_inner());
+    let mut l = lire_a_faire(dossier_profil);
+    l.insert(id.to_string(), quand.to_string());
+    ecrire_a_faire(dossier_profil, &l)
+}
+
+/// Le repère part : l'abri est fait, ou il n'y avait rien de neuf.
+pub fn retirer_a_faire(dossier_profil: &Path, id: i64) -> Resultat<()> {
+    let _v = VERROU_A_FAIRE.lock().unwrap_or_else(|e| e.into_inner());
+    let mut l = lire_a_faire(dossier_profil);
+    if l.remove(&id.to_string()).is_some() {
+        ecrire_a_faire(dossier_profil, &l)?;
+    }
+    Ok(())
+}
+
+/// Les jeux dont l'abri reste à faire pour ce profil.
+pub fn a_faire(dossier_profil: &Path) -> Vec<i64> {
+    let _v = VERROU_A_FAIRE.lock().unwrap_or_else(|e| e.into_inner());
+    lire_a_faire(dossier_profil).keys().filter_map(|k| k.parse().ok()).collect()
+}
+
+/// M6 : le dernier état d'un abri après une partie qui n'a pas pu tout copier, gardé pour la fiche du jeu (survit au
+/// redémarrage) : l'état, la date, des nombres — jamais un titre ni un chemin.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EtatNote {
+    pub etat: String,
+    pub date: String,
+    #[serde(default)]
+    pub en_ligne: usize,
+    #[serde(default)]
+    pub octets_en_ligne: u64,
+}
+
+/// Le fichier des derniers états (dans les données du profil).
+pub const NOM_ETATS: &str = "abris-auto-etats.json";
+
+fn lire_etats(dossier_profil: &Path) -> std::collections::BTreeMap<String, EtatNote> {
+    std::fs::read(dossier_profil.join(NOM_ETATS)).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default()
+}
+
+fn ecrire_etats(dossier_profil: &Path, l: &std::collections::BTreeMap<String, EtatNote>) -> Resultat<()> {
+    let f = dossier_profil.join(NOM_ETATS);
+    if l.is_empty() {
+        if f.exists() {
+            std::fs::remove_file(&f)?;
+        }
+        return Ok(());
+    }
+    std::fs::create_dir_all(dossier_profil)?;
+    let provisoire = dossier_profil.join(format!("{NOM_ETATS}.provisoire"));
+    std::fs::write(&provisoire, serde_json::to_vec_pretty(l).unwrap_or_default())?;
+    std::fs::rename(&provisoire, &f)?;
+    Ok(())
+}
+
+/// Garde le dernier état (problème) de l'abri automatique de ce jeu.
+pub fn noter_etat_auto(dossier_profil: &Path, id: i64, n: &EtatNote) -> Resultat<()> {
+    let _v = VERROU_A_FAIRE.lock().unwrap_or_else(|e| e.into_inner());
+    let mut l = lire_etats(dossier_profil);
+    l.insert(id.to_string(), n.clone());
+    ecrire_etats(dossier_profil, &l)
+}
+
+/// L'abri a réussi (ou rien de neuf) : plus rien à dire.
+pub fn retirer_etat_auto(dossier_profil: &Path, id: i64) -> Resultat<()> {
+    let _v = VERROU_A_FAIRE.lock().unwrap_or_else(|e| e.into_inner());
+    let mut l = lire_etats(dossier_profil);
+    if l.remove(&id.to_string()).is_some() {
+        ecrire_etats(dossier_profil, &l)?;
+    }
+    Ok(())
+}
+
+/// Le dernier état gardé de ce jeu.
+pub fn etat_auto(dossier_profil: &Path, id: i64) -> Option<EtatNote> {
+    let _v = VERROU_A_FAIRE.lock().unwrap_or_else(|e| e.into_inner());
+    lire_etats(dossier_profil).remove(&id.to_string())
+}
+
+#[cfg(test)]
+mod tests_s3 {
+    //! Lot S3 : le relevé léger, l'attente du calme (durées courtes), le repère, la place, le déclencheur.
+    use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    const COURT: Delais = Delais { pas: Duration::from_millis(30), calme: Duration::from_millis(400), plafond: Duration::from_millis(1500) };
+
+    fn lieu(dossier: &Path) -> Emplacement {
+        Emplacement { dossier: dossier.to_path_buf(), filtre: None, chemin: r"%APPDATA%\Jeu".into(), nature: "dossier".into(), identifiant: None }
+    }
+
+    fn vieillir(f: &Path, s: u64) {
+        std::fs::OpenOptions::new().write(true).open(f).unwrap().set_modified(std::time::SystemTime::now() - Duration::from_secs(s)).unwrap();
+    }
+
+    #[test]
+    fn le_releve_ne_lit_que_les_tailles_et_les_dates() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join("Slot")).unwrap();
+        std::fs::write(d.path().join("Slot").join("a.sav"), b"abc").unwrap();
+        std::fs::write(d.path().join("b.sav"), b"de").unwrap();
+        let r = relever(&[lieu(d.path()), lieu(&d.path().join("Slot")), lieu(&d.path().join("Absent"))]);
+        assert_eq!((r.fichiers.len(), r.octets, r.en_ligne), (2, 5, 0), "chaque fichier une fois");
+        assert!(r.derniere_ecriture.is_some());
+        assert_eq!(r, relever(&[lieu(d.path())]), "deux relevés sans écriture sont égaux");
+        std::fs::write(d.path().join("b.sav"), b"dex").unwrap();
+        assert_ne!(r, relever(&[lieu(d.path())]));
+    }
+
+    #[tokio::test]
+    async fn un_fichier_reecrit_sans_cesse_n_est_jamais_calme_et_l_attente_s_arrete_au_plafond() {
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("partie.sav");
+        std::fs::write(&f, b"0").unwrap();
+        let fini = Arc::new(AtomicBool::new(false));
+        let (f2, fini2) = (f.clone(), fini.clone());
+        let ecrivain = std::thread::spawn(move || {
+            let mut n = 0u32;
+            while !fini2.load(Ordering::SeqCst) {
+                n += 1;
+                std::fs::write(&f2, n.to_string()).unwrap();
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        });
+        let debut = std::time::Instant::now();
+        let r = attendre_calme(COURT, vec![lieu(d.path())], Arc::new(|| false), || false).await;
+        fini.store(true, Ordering::SeqCst);
+        ecrivain.join().unwrap();
+        assert_eq!(r, FinAttente::Depassee);
+        assert!(debut.elapsed() >= COURT.plafond, "jamais avant le plafond");
+    }
+
+    #[tokio::test]
+    async fn le_calme_vient_apres_le_delai_sans_ecriture() {
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("partie.sav");
+        std::fs::write(&f, b"fin").unwrap();
+        // Écrit à l'instant : pas calme tout de suite, calme une fois le délai passé (sans réécriture).
+        let debut = std::time::Instant::now();
+        let r = attendre_calme(COURT, vec![lieu(d.path())], Arc::new(|| false), || false).await;
+        assert!(matches!(&r, FinAttente::Calme(x) if x.octets == 3), "{r:?}");
+        assert!(debut.elapsed() >= Duration::from_millis(300), "attendu le calme : {:?}", debut.elapsed());
+        // Écrit il y a longtemps : calme dès le second relevé.
+        vieillir(&f, 3600);
+        let debut = std::time::Instant::now();
+        assert!(matches!(attendre_calme(COURT, vec![lieu(d.path())], Arc::new(|| false), || false).await, FinAttente::Calme(_)));
+        assert!(debut.elapsed() < Duration::from_millis(400));
+    }
+
+    #[tokio::test]
+    async fn un_programme_du_jeu_reste_ouvert_ou_le_jeu_est_relance_jamais_d_abri() {
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("partie.sav");
+        std::fs::write(&f, b"fin").unwrap();
+        vieillir(&f, 3600);
+        // Un programme du dossier du jeu tourne toujours : jamais calme, abandon au plafond.
+        assert_eq!(attendre_calme(COURT, vec![lieu(d.path())], Arc::new(|| true), || false).await, FinAttente::Depassee);
+        // ▶ Jouer pendant l'attente : abandon tout de suite.
+        let repris = AtomicBool::new(false);
+        let r = attendre_calme(COURT, vec![lieu(d.path())], Arc::new(|| false), || repris.swap(true, Ordering::SeqCst)).await;
+        assert_eq!(r, FinAttente::Reprise);
+    }
+
+    /// M7 : une date d'écriture dans le futur (horloge changée) ne bloque jamais le calme.
+    #[tokio::test]
+    async fn une_date_d_ecriture_dans_le_futur_n_empeche_pas_le_calme() {
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("partie.sav");
+        std::fs::write(&f, b"fin").unwrap();
+        std::fs::OpenOptions::new().write(true).open(&f).unwrap().set_modified(std::time::SystemTime::now() + Duration::from_secs(86_400)).unwrap();
+        assert!(matches!(attendre_calme(COURT, vec![lieu(d.path())], Arc::new(|| false), || false).await, FinAttente::Calme(_)));
+    }
+
+    /// I2 : un emplacement présent mais impossible à parcourir est compté à part (jamais « aucune partie »).
+    #[test]
+    fn un_emplacement_trop_profond_est_compte_comme_un_arret() {
+        let d = tempfile::tempdir().unwrap();
+        let mut p = d.path().to_path_buf();
+        for i in 0..14 {
+            p = p.join(format!("n{i}"));
+        }
+        std::fs::create_dir_all(&p).unwrap();
+        std::fs::write(p.join("x.sav"), b"x").unwrap();
+        let r = relever(&[lieu(d.path())]);
+        assert_eq!((r.fichiers.len(), r.arrets), (0, 1));
+        assert_eq!(relever(&[lieu(&d.path().join("Absent"))]).arrets, 0, "absent : pas un arrêt");
+    }
+
+    #[test]
+    fn le_dernier_etat_garde_ne_contient_que_l_etat_la_date_et_des_nombres() {
+        let d = tempfile::tempdir().unwrap();
+        assert!(etat_auto(d.path(), 900).is_none());
+        let n = EtatNote { etat: "trop_gros".into(), date: "1790000000".into(), en_ligne: 0, octets_en_ligne: 0 };
+        noter_etat_auto(d.path(), 900, &n).unwrap();
+        assert_eq!(etat_auto(d.path(), 900), Some(n));
+        retirer_etat_auto(d.path(), 900).unwrap();
+        assert!(etat_auto(d.path(), 900).is_none() && !d.path().join(NOM_ETATS).exists());
+    }
+
+    #[test]
+    fn le_repere_abri_a_faire_ne_garde_que_l_identifiant_et_la_date() {
+        let d = tempfile::tempdir().unwrap();
+        assert!(a_faire(d.path()).is_empty());
+        noter_a_faire(d.path(), 900, "1790000000").unwrap();
+        noter_a_faire(d.path(), 12, "1790000001").unwrap();
+        assert_eq!(a_faire(d.path()), [12, 900]);
+        let brut = std::fs::read_to_string(d.path().join(NOM_A_FAIRE)).unwrap();
+        assert!(brut.contains("\"900\": \"1790000000\""), "{brut}");
+        retirer_a_faire(d.path(), 900).unwrap();
+        assert_eq!(a_faire(d.path()), [12]);
+        retirer_a_faire(d.path(), 12).unwrap();
+        assert!(!d.path().join(NOM_A_FAIRE).exists(), "plus rien à faire : plus de repère");
+    }
+
+    fn plan_simple(d: &Path) -> PlanAbri {
+        let saves = d.join("Saves");
+        std::fs::create_dir_all(&saves).unwrap();
+        std::fs::write(saves.join("a.sav"), b"partie").unwrap();
+        vieillir(&saves.join("a.sav"), 3600);
+        planifier(&[lieu(&saves)], &Default::default(), "0123456789abcdef0123456789abcdef")
+    }
+
+    #[test]
+    fn sans_assez_de_place_rien_n_est_ecrit_et_le_motif_dit_combien() {
+        let d = tempfile::tempdir().unwrap();
+        let mut plan = plan_simple(d.path());
+        let abris = d.path().join("Abris");
+        let r = abriter_avec_place(&mut plan, &abris, 900, "1790000000", "p1", DECLENCHEUR_APRES_PARTIE, None, &|_| Some(10));
+        match r {
+            Err(Erreur::Refus(m)) => assert!(m.starts_with("Plus assez de place sur le disque des abris (il faut 1025 Mo)"), "{m}"),
+            autre => panic!("{autre:?}"),
+        }
+        assert!(!abris.exists(), "rien de partiel : pas même le dossier des abris");
+    }
+
+    #[test]
+    fn un_abri_automatique_garde_la_sorte_emplacements_et_dit_son_declencheur() {
+        let d = tempfile::tempdir().unwrap();
+        let mut plan = plan_simple(d.path());
+        let abris = d.path().join("Abris");
+        let fin = abriter_par(&mut plan, &abris, 900, "1790000000", "p1", DECLENCHEUR_AVANT_REINSTALLATION, None).unwrap();
+        let fiche = lire_fiche(&fin).unwrap();
+        assert_eq!((fiche.sorte.as_str(), fiche.declencheur.as_str()), (SORTE_EMPLACEMENTS, DECLENCHEUR_AVANT_REINSTALLATION));
+        // Régression : jamais pris pour un abri du dossier du jeu (la remise d'après réinstallation l'écarte), et ses
+        // `emplacements/` sont réservés (jamais posés dans le jeu).
+        assert!(fait_a_la_main(&fin));
+        assert!(reservees(&fin).emplacements);
+        let vu = lister(&[abris.join("900")], "p1", None);
+        assert_eq!(vu[0].declencheur, DECLENCHEUR_AVANT_REINSTALLATION);
+        // Un déclencheur inconnu : « main » ; une fiche d'avant le lot S3 (sans le champ) : « main ».
+        let mut plan = plan_simple(d.path());
+        let fin2 = abriter_par(&mut plan, &abris, 900, "1790000001", "p1", "n'importe quoi", None).unwrap();
+        assert_eq!(lire_fiche(&fin2).unwrap().declencheur, DECLENCHEUR_MAIN);
+        let ancienne: FicheAbri = serde_json::from_str(r#"{"version_fiche":1,"sorte":"emplacements","profil":"p1"}"#).unwrap();
+        assert_eq!(ancienne.declencheur, DECLENCHEUR_MAIN);
+    }
 }
 
 #[cfg(test)]

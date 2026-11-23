@@ -185,7 +185,7 @@ describe('🛟 Mettre mes parties à l’abri (lot S2) : les textes', () => {
     expect(texteDate('1763800000')).toContain('2025');
     expect(texteDate('abc')).toBe('date inconnue');
     expect(texteContenuAbri(a)).toBe('2 fichiers · 7 o');
-    expect(texteSorteAbri(a)).toBe('mis à l’abri à la main · dans ton profil');
+    expect(texteSorteAbri(a)).toBe('🖐 mis à l’abri à la main · dans ton profil');
     expect(texteSorteAbri({ ...a, sorte: 'retrait', a_moi: false })).toBe('mis à l’abri par Frogtend (avant un mod, une réinstallation ou un retrait) · ancien abri, sans propriétaire connu');
     expect(texteSorteAbri({ ...a, sorte: 'jeu' })).toBe('mis à l’abri par Frogtend (avant un mod, une réinstallation ou un retrait) · dans ton profil');
     expect(noteAbri(a)).toBeNull();

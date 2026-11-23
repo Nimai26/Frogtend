@@ -1,5 +1,21 @@
 # Notes de version de Frogtend
 
+## 0.222.0 — 🛟 Tes parties mises à l'abri toutes seules
+
+- Nouveau : après chaque partie d'un jeu PC, Frogtend attend que le jeu ait fini d'écrire (jusqu'à 10 minutes), puis
+  met tes parties à l'abri sur ce PC. Si rien n'a changé, il ne fait rien et ne dit rien. Sur la fiche : « 🛟 Dernier
+  abri : … ». S'il n'a pas pu (parties seulement dans OneDrive, plus de 2 Go, jeu inconnu de Firehouse…), une ligne
+  le dit sur la fiche, et il réessaie à la partie suivante. Rien ne se télécharge depuis OneDrive sans ton oui.
+- Nouveau : avant de retirer, réinstaller ou modder un jeu PC, Frogtend met d'abord ses parties à l'abri (aussi celles
+  rangées dans Documents ou AppData). Si c'est impossible, une fenêtre te laisse choisir : réessayer, continuer sans
+  abri (avec une seconde confirmation) ou annuler.
+- Nouveau : un interrupteur « Mettre mes parties à l'abri sur ce PC après chaque partie », allumé d'office, dans
+  Options ▸ Sauvegarde et dans les réglages de Taodbox.
+- Nouveau : « 🛟 Mes abris » dit pourquoi chaque abri a été fait (à la main, après une partie, avant un mod…) ; une
+  longue liste montre les plus récents et « Voir les N plus anciens ».
+- Changé : on ne peut plus changer de profil pendant qu'un jeu tourne.
+- Ces abris restent sur ce PC : l'envoi chez Firehouse viendra au prochain lot.
+
 ## 0.221.1 — ☁ Parties dans OneDrive, et l'affiche de TerraScape
 
 - Nouveau : des parties seulement dans ton nuage OneDrive ? « 🛟 Mettre mes parties à l'abri » propose de les

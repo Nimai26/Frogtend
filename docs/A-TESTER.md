@@ -6,6 +6,21 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🛟 Abri automatique des parties (0.222.0, lot S3)
+- [ ] 1. Options ▸ Sauvegarde : l'interrupteur « 🛟 Mettre mes parties à l'abri sur ce PC après chaque partie (pour
+      tous tes jeux PC) » est allumé.
+- [ ] 2. Jouer quelques minutes à Cyberpunk (sauvegarder en jeu), quitter, attendre 1 à 2 minutes : un court message
+      « 🛟 Tes parties de « Cyberpunk 2077 » sont à l'abri. » ; sur la fiche ▸ 📁 : « 🛟 Dernier abri : aujourd'hui à
+      HH:MM, après une partie », et un abri 🏁 dans « 🛟 Mes abris ».
+- [ ] 3. Relancer Cyberpunk et quitter SANS sauvegarder : aucun message, aucun nouvel abri.
+- [ ] 4. Pendant que le jeu tourne : « 👥 Changer de joueur » est refusé avec un message clair.
+- [ ] 5. Taodbox ▸ un jeu PC ▸ ⚙ : l'interrupteur se règle à la manette ; l'éteindre, jouer, quitter : aucun abri ;
+      le rallumer.
+- [ ] 6. Un jeu PC qui a un mod (ou un mod à installer) : ajouter/retirer un mod ▸ « 🛟 Tes parties d'abord… » puis le
+      mod ; un abri 🛠 « avant un changement de mod » apparaît.
+- [ ] 7. Age of Empires IV, parties remises « en ligne seulement » par OneDrive : après une partie, pas de
+      téléchargement ; une ligne sur la fiche dit que des fichiers sont dans ton nuage (le message, une seule fois).
+
 ## ☁ Parties dans OneDrive et affiches (0.221.1)
 - [x] 1. Fiche d'Age of Empires IV ▸ 📁 : « 9 fichiers · 180,2 Mo — dans ton nuage OneDrive, pas sur ce PC ».
 - [x] 2. 🛟 : la fenêtre propose « ☁ Télécharger depuis OneDrive puis mettre à l'abri (9 fichiers · 180,2 Mo) » et

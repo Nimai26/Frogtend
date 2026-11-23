@@ -7,7 +7,7 @@ import { oublierNomsCourts } from '$lib/ludotheque/nomsCourts.svelte';
 import { normaliserTous } from '$lib/emulateurs/choix';
 import instantane from '../../docs/charte/themes.instantane.json';
 import { api, estErreurCoeur, type Profil } from './api';
-import { toast } from './dialogues/fenetres.svelte';
+import { pile, toast } from './dialogues/fenetres.svelte';
 import fixtureCommuns from './fixtures/communs.simule.json';
 import {
   completer,
@@ -19,6 +19,7 @@ import {
   type ReglagesPc,
   type ReglagesProfil,
 } from './reglages/reglages';
+import { oublierAbrisAuto } from '$lib/parties/abriAuto.svelte';
 import {
   appliquerSkin,
   catalogueDepuisInstantane,
@@ -160,6 +161,8 @@ export async function suivreReunions() {
 
 /** Après l'ouverture d'un profil : ses réglages, puis les skins de Firehouse et le sien. */
 export async function entrerDansProfil(profil: Profil) {
+  // Lot S3 : ce que les abris automatiques ont dit pour le profil d'avant n'est plus montré.
+  oublierAbrisAuto();
   magasinProfil = await magasin(`profils/${profil.id}.json`);
   etat.profil = completer(DEFAUTS_PROFIL, await magasinProfil.lire());
   etat.profilOuvert = profil;
@@ -190,6 +193,9 @@ export async function sortirDuProfil(): Promise<boolean> {
   }
   oublierToutes();
   oublierNomsCourts();
+  oublierAbrisAuto();
+  // Lot S3 : aucun message du profil qui part (un abri, un titre de jeu) ne reste à l'écran.
+  pile.toasts = [];
   etat.profilOuvert = null;
   etat.skinFirehouse = null;
   magasinProfil = null;
