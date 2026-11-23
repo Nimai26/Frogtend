@@ -897,6 +897,25 @@ interrupteur bureau + Taodbox ; relu par les experts lancement et interface (1 b
 d'avant passait en silence → Frogtend demande d'abord à Firehouse, sinon cause « inconnu » ; plus 9 importants et les
 mineurs). Reste : `avant_mise_a_jour` défini mais non branché (aucun parcours de mise à jour distinct de la
 réinstallation pour un jeu PC) ; après un redémarrage, la ligne d'échec revient sans sa raison.
+**Lot S4 — décisions de Seb (23/11, après l'avis des experts lancement et contrat)** : (1) TOUS les abris de sorte
+`emplacements` partent chez Firehouse, ceux faits à la main compris (fusion par emplacement : la copie la plus récente
+du profil propriétaire, chemin `jeux/<id>/emplacements/<clé>/…` — la clé, pas un numéro) ; (2) le SEL des empreintes
+d'identifiant (`profils/<id>/abris-sel.txt`) est ENVOYÉ dans l'espace du profil (restauration sur un autre PC sans
+question ; contrepartie dite à Seb : Firehouse pourrait retrouver l'identifiant du compte Steam) ; (3) un emplacement dont
+des fichiers ne sont que dans OneDrive GARDE leurs anciennes copies chez Firehouse (réunion avec la copie précédente,
+`partiel` marqué ; une partie effacée par le jeu peut revenir à la restauration) ; (4) relevé réel accordé et fait
+(23/11, lecture seule, essai `essai_quota_s4`) : `/moi ▸ sauvegarde` = `quota_octets` 107374182400, `morceau_max`
+8388608, `document_max_octets` 5242880, documents `configuration.json`, `bibliotheque.json`, `manifeste.json`,
+`derniere-sauvegarde.json` et le motif `manifeste-<clé du jeu>.json` ; `GET /sauvegarde` = `utilise_octets` et
+`quota_octets` à la racine, `profils[{profil, pc, derniere, octets, manifestes_jeux}]` (Seb : 30,7 Mo utilisés). Le
+quota est donc lisible ; précisions demandées (besoin 57). Règles des experts retenues : la sauvegarde d'après partie
+attend la fin de l'abri automatique (événement `parties-abris-finis`, toujours émis) ; un verrou côté cœur et un
+« à refaire » au lieu d'un abandon muet ; un fichier en échec est SAUTÉ ET COMPTÉ en gardant sa ligne de l'ancien
+manifeste (jamais supprimé chez Firehouse) — arrêt sur 401, 507, réseau, 503 ; la fiche part AVANT ses fichiers ;
+manifestes par jeu (`manifeste-<clé>.json`) si le manifeste approche 5 Mo ; sha256 des abris mis en cache (un abri ne
+change jamais) ; place libre vérifiée AVANT l'envoi (quota − utilisé) et annoncée ; pause de l'envoi pendant une partie
+(`Cadence`) ; le journal commun ne reçoit plus aucun chemin relatif (id, nombres et classe d'erreur seulement) ; le
+compteur « N jeux non envoyés » ne compte que les jeux de CE profil ; les abris de sorte `jeu` filtrés par propriétaire.
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
 « Connecte-toi… dans la fenêtre qui s'ouvre » laisse croire que rien ne se passe ou que c'est raté. Voulu : une petite

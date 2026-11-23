@@ -1443,6 +1443,38 @@ mod tests {
         }
     }
 
+    /// Lot S4 (accord de Seb, 23/11) : relevé RÉEL en lecture seule de `/moi ▸ sauvegarde` et de `GET /sauvegarde`
+    /// (quota, place utilisée). Deux demandes espacées de 3 s ; rien d'écrit chez Firehouse ; le jeton n'est jamais
+    /// affiché. Seules les clés de `/moi` hors `sauvegarde` sont montrées (pas leurs valeurs).
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_SORTIE=<dossier> cargo test essai_quota_s4 -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_quota_s4() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let sortie = std::path::PathBuf::from(std::env::var("FROGTEND_SORTIE").unwrap());
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        if let Ok(crate::firehouse::Reponse::Corps { octets, .. }) = c.obtenir("/moi", None).await {
+            let v: serde_json::Value = serde_json::from_slice(&octets).unwrap_or_default();
+            let cles: Vec<&String> = v.as_object().map(|o| o.keys().collect()).unwrap_or_default();
+            println!("== /moi : clés {cles:?}");
+            println!("== /moi ▸ sauvegarde : {}", serde_json::to_string_pretty(&v["sauvegarde"]).unwrap());
+            std::fs::write(sortie.join("moi-sauvegarde.json"), serde_json::to_vec_pretty(&v["sauvegarde"]).unwrap()).unwrap();
+        } else {
+            println!("== /moi : pas de corps");
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        match c.obtenir("/sauvegarde", None).await {
+            Ok(crate::firehouse::Reponse::Corps { octets, .. }) => {
+                std::fs::write(sortie.join("sauvegarde.json"), &octets).unwrap();
+                println!("== /sauvegarde : {}", String::from_utf8_lossy(&octets));
+            }
+            Ok(_) => println!("== /sauvegarde : 304"),
+            Err(e) => println!("== /sauvegarde : erreur {e}"),
+        }
+    }
+
     /// RÉEL, lecture seule chez Firehouse — lot S0 (accord de Seb du 22/11) : pour un échantillon de jeux de boutique
     /// (fichier `FROGTEND_TITRES` : « boutique\tclé\ttitre » par ligne, 80 au plus), demande `/triche/recherche` par le
     /// TITRE et la plateforme Windows, et compte ce que `sauvegardes` dit (absent / null / [] / emplacements, et les `os`).
