@@ -11,7 +11,7 @@
       tous tes PC ».
 - [x] 2. « 💾 Sauvegarder maintenant » : une fenêtre demande « Envoyer … de parties à Firehouse ? » avec environ
       435 Mo et le nombre de fichiers, et la place chez Firehouse ; « Envoyer ».
-- [ ] 3. À la fin : « ✅ Sauvegardé : N fichier(s) envoyé(s)… » ; la place a monté d'environ 435 Mo ; ni « À
+- [x] 3. À la fin : « ✅ Sauvegardé : N fichier(s) envoyé(s)… » ; la place a monté d'environ 435 Mo ; ni « À
       réessayer » ni « Clé du profil » dans Options ▸ Sauvegarde.
 - [ ] 4. « 💾 Sauvegarder maintenant » une seconde fois : vite fini, « rien n'avait changé ».
 - [ ] 5. Jouer un peu à Cyberpunk, sauvegarder en jeu, quitter : l'abri se fait, puis la sauvegarde automatique
