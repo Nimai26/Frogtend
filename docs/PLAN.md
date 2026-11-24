@@ -935,6 +935,24 @@ illisible est une erreur (jamais un manifeste vide en silence). La place libre (
 elle profite aussi de la correction si la liste grossit. Besoin 58 (compression non demandée) transmis à Firehouse.
 **S4 validé par Seb (24/11, 0.223.1)** : les 5 étapes de A-TESTER cochées ; journal : 2e sauvegarde 0 envoyé / 415
 inchangés ; après une partie de Cyberpunk, 5 fichiers envoyés (1,6 Mo), 413 inchangés, aucun sauté. Prochain : S5 (restauration).
+**Lot S5 — décisions de Seb (24/11, après l'avis des trois experts)** : (1) un CONFLIT (partie de ce PC différente de
+celle de Firehouse) est TOUJOURS une question, jamais un choix par les dates : fenêtre maison à deux colonnes (« Sur ce
+PC » / « Chez Firehouse » : date, taille, ⭐ la plus récente ; aucun chemin), boutons « Garder celle de ce PC » (focus
+d'office), « Reprendre celle de Firehouse » (celle du PC mise à l'abri d'abord, abri relu) et « Décider plus tard » ;
+groupé au-delà de 3 ; (2) sur un PC neuf / après un reformatage, ce qui n'existe pas encore sur ce PC est reposé
+D'OFFICE après un oui global annoncé (jeux, Mo), avec un bilan (posé / en attente : jeu non installé, identifiant non
+retrouvé) ; (3) le nuage Steam (`nuage-steam/`) n'est PAS restauré : Steam s'en charge (gardé chez Firehouse en
+secours) ; (4) Taodbox : « 📥 Reprendre mes parties de Firehouse » sur un jeu (BlocParties, mode canapé) et la fenêtre
+de conflit à la manette ; la restauration complète reste au bureau. Règles des experts retenues : le SEL se relit chez
+Firehouse (`_profil/abris-sel.json`) AVANT tout abri sur ce PC (un 404 = sel inconnu, jamais « on en crée un » qui
+écraserait l'ancien chez Firehouse) ; rangé dans `profils/<id>/abris-sel.txt` seulement s'il manque (un sel local
+différent n'est jamais écrasé : écart dit) ; jamais journalisé ni dans une erreur ; pose avec `reposer_sauf(…, false)`,
+jamais `reposer_parties_du_jeu` ; identifiant (`<identifiant …>`) retrouvé par `empreinte_identifiant(nom, sel)` parmi
+les dossiers qui existent, sinon en attente (ou choix À LA MAIN), jamais deviné ; jeu non installé : en attente, posé
+à la fin de son installation (à côté de `partie.rs:924`) ; jeu en cours : refusé ; emplacement `partiel` dit ; jeux
+invisibles du profil filtrés, journal = id et nombres ; restaurer UN jeu = filtre du manifeste `jeux/<id>/` (manifeste
+par jeu `manifeste-jeu-<id>.json`), jamais tout télécharger ; plusieurs PC du profil : la personne choisit le PC
+(`derniere.date` pour aider) ; défaut de reprise corrigé (`.part-frogtend` AJOUTÉ au nom, plus `with_extension`).
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
 « Connecte-toi… dans la fenêtre qui s'ouvre » laisse croire que rien ne se passe ou que c'est raté. Voulu : une petite
