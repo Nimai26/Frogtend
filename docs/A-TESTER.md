@@ -6,6 +6,10 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🎮 Moteur signalé à Firehouse (0.225.1)
+- [ ] 1. Mettre à jour, ouvrir la fiche de What a Legend! ▸ 📁 Où sont mes parties : rien de visible ne change ; le
+      journal dit « moteur renpy signalé à Firehouse : retenu » (vérifié par l'agent).
+
 ## 🎮 Parties selon le moteur du jeu (0.225.0, lot S6)
 - [x] 1. Fiche de What a Legend! ▸ 📁 Où sont mes parties : « d'après le moteur Ren'Py », deux endroits (un dans
       AppData\Roaming\RenPy, un dans le dossier game\saves du jeu).
