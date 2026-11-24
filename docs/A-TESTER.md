@@ -7,7 +7,7 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## 🎮 Moteur signalé à Firehouse (0.225.1)
-- [ ] 1. Mettre à jour, ouvrir la fiche de What a Legend! ▸ 📁 Où sont mes parties : rien de visible ne change ; le
+- [x] 1. Mettre à jour, ouvrir la fiche de What a Legend! ▸ 📁 Où sont mes parties : rien de visible ne change ; le
       journal dit « moteur renpy signalé à Firehouse : retenu » (vérifié par l'agent).
 
 ## 🎮 Parties selon le moteur du jeu (0.225.0, lot S6)
