@@ -1004,6 +1004,18 @@ moteur, abri automatique après une partie (8 fichiers), envoi chez Firehouse pa
 Cyberpunk inchangé. **0.225.1** : remontée du moteur (contrat 1.53, `POST /jeu/{id}/moteur`, une fois par (jeu, moteur,
 nom lu), `nom_lu` omis sans nom, `desaccord` seulement sur `Vide`, jamais un nom de forme chemin, 400/404 jamais
 rejoués, hors ligne/5xx réessayés à l'ouverture suivante). Prochain : S7 (rattrapage des parties jouées hors de Frogtend).
+**Lot S7 — décisions de Seb (24/11, après l'avis de l'expert lancement)** : (1) le rattrapage des parties jouées HORS
+de Frogtend (jeu lancé depuis Steam, Epic, un raccourci…) se fait SEULEMENT AU DÉMARRAGE de Frogtend (ouverture du
+profil) ; (2) propriétaire : un seul profil Frogtend sur ce compte Windows → l'abri rattrapé part d'office ; plusieurs →
+mis à l'abri tout de suite au nom du profil ouvert mais marqué « à confirmer », envoyé chez Firehouse seulement après
+« C'est toi qui as joué à … ? » (fenêtre maison) ; (3) un court message « 🛟 N jeux rattrapés » et, sur la fiche,
+« Dernier abri : …, rattrapé » ; rien si rien de neuf ; (4) un interrupteur à part « 🛟 Rattraper les parties jouées
+hors de Frogtend », ALLUMÉ d'office, dans Options ▸ Sauvegarde et les réglages de Taodbox. Règles de l'expert retenues :
+« du neuf » = relevé dates/tailles (jamais un SHA en boucle) comparé au dernier abri du profil, SHA seulement pour un jeu
+qui a changé ; jeux lus depuis le cache des emplacements du profil, jamais de question à Firehouse pendant le
+rattrapage ; un seul relevé des processus par tour ; plafond de jeux par tour ; jeu qui tourne ou écrit → « abri à
+faire », jamais de copie ; calme et refus d'`abriter_auto` réutilisés ; déclencheur `rattrapage` ; OneDrive jamais
+téléchargé, plus de 2 Go jamais copié sans question ; test « jamais vu par un mineur » étendu ; journal = id et nombres.
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
 « Connecte-toi… dans la fenêtre qui s'ouvre » laisse croire que rien ne se passe ou que c'est raté. Voulu : une petite
