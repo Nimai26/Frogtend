@@ -13,7 +13,7 @@
       435 Mo et le nombre de fichiers, et la place chez Firehouse ; « Envoyer ».
 - [x] 3. À la fin : « ✅ Sauvegardé : N fichier(s) envoyé(s)… » ; la place a monté d'environ 435 Mo ; ni « À
       réessayer » ni « Clé du profil » dans Options ▸ Sauvegarde.
-- [ ] 4. « 💾 Sauvegarder maintenant » une seconde fois : vite fini, « rien n'avait changé ».
+- [x] 4. « 💾 Sauvegarder maintenant » une seconde fois : vite fini, « rien n'avait changé ».
 - [ ] 5. Jouer un peu à Cyberpunk, sauvegarder en jeu, quitter : l'abri se fait, puis la sauvegarde automatique
       n'envoie que la nouvelle partie, sans rien demander.
 
