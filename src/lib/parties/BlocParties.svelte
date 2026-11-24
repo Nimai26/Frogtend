@@ -9,6 +9,8 @@
   // Lot S3 : « 🛟 Dernier abri : … », la liste RELUE à chaque abri automatique (événement), une ligne qui reste quand
   // le dernier abri automatique n'a pas pu tout copier, et une liste longue repliée (5 plus récents + le dernier de
   // chaque « avant … »).
+  // Lot S5 : « 📥 Reprendre mes parties de Firehouse » (bureau ET canapé) : seulement les parties de CE jeu, annoncées
+  // (fichiers, Mo), jamais par-dessus une partie différente (fenêtre de conflit maison, pilotable à la manette).
   import { api, type AbriVu, type PartiesVues } from '$lib/api';
   import { listen } from '@tauri-apps/api/event';
   import type { ProgresAbri } from '$lib/api';
@@ -17,6 +19,7 @@
   import { tick } from 'svelte';
   import { abrisAuto, chargerLigneGardee, signalerAbri } from '$lib/parties/abriAuto.svelte';
   import { selectionner } from '$lib/taodbox/manette.svelte';
+  import { reprendreMesParties, reprise } from '$lib/parties/reprise.svelte';
   import {
     abrisAMontrer,
     abritable,
@@ -127,6 +130,20 @@
     }
   }
 
+  /** 📥 Reprendre mes parties de Firehouse (lot S5) ; ensuite, les emplacements et les abris sont relus. */
+  async function reprendre() {
+    const n = id;
+    if (!(await reprendreMesParties(n))) return;
+    if (n !== id) return;
+    void relireAbris(n);
+    api
+      .partiesEmplacements(n)
+      .then((v) => {
+        if (n === id) vues = v;
+      })
+      .catch(() => {});
+  }
+
   /** Le cœur refuse une copie devenue très grosse depuis l'annonce : elle est annoncée de nouveau (jamais copiée sans
    * le dire). */
   function aConfirmer(e: unknown): boolean {
@@ -135,8 +152,10 @@
 
   /** Annonce (nombre de fichiers, taille, profil), confirmation maison, puis la copie ; le cœur refait tout le plan. */
   async function mettreALAbri() {
-    if (etape !== null) return;
+    // Lot S5 : jamais pendant une reprise de Firehouse (et la reprise attend la fin de l'abri).
+    if (etape !== null || reprise.enCours !== null) return;
     const n = id;
+    reprise.abriEnCours = n;
     try {
       for (let essai = 0; essai < 2; essai++) {
         etape = 'compte';
@@ -190,6 +209,7 @@
       toast(`Échec de la mise à l’abri : ${motifDuRefus(e)}`, 'erreur');
     } finally {
       etape = null;
+      reprise.abriEnCours = null;
     }
   }
 </script>
@@ -235,10 +255,15 @@
     </ul>
   {/if}
   {#if vues && texteAutresEndroits(vues)}<p class="muted">{texteAutresEndroits(vues)}</p>{/if}
-  {#if vues && abritable(vues)}
+  {#if vues}
     <div class="actions">
-      <button class="btn primary" aria-disabled={etape !== null} onclick={mettreALAbri}>
-        {etape === 'compte' ? '⏳ Frogtend compte tes parties…' : etape === 'copie' ? '⏳ Copie en cours…' : '🛟 Mettre mes parties à l’abri'}
+      {#if abritable(vues)}
+        <button class="btn primary" aria-disabled={etape !== null || reprise.enCours !== null} onclick={mettreALAbri}>
+          {etape === 'compte' ? '⏳ Frogtend compte tes parties…' : etape === 'copie' ? '⏳ Copie en cours…' : '🛟 Mettre mes parties à l’abri'}
+        </button>
+      {/if}
+      <button class="btn" aria-disabled={reprise.enCours !== null || etape !== null} onclick={reprendre}>
+        {reprise.enCours === id ? '⏳ Reprise de tes parties…' : '📥 Reprendre mes parties de Firehouse'}
       </button>
     </div>
   {/if}

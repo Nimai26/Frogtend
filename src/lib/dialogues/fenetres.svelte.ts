@@ -41,11 +41,27 @@ export type Dialogue =
     })
   | (Base & { sorte: 'informer'; fermer: () => void })
   | (Base & {
+      sorte: 'conflit';
+      /** « Sur ce PC », puis « Chez Firehouse » : des lignes déjà mises en mots (jamais un chemin). */
+      colonnes: [ColonneConflit, ColonneConflit];
+      fermer: (r: ChoixConflit) => void;
+    })
+  | (Base & {
       sorte: 'touche';
       /** Pourquoi une touche n'est pas possible (`null` : acceptée). */
       verifier: (t: ToucheLue) => string | null;
       fermer: (r: ToucheLue | 'liste' | 'rien' | null) => void;
     });
+
+/** Une colonne de la fenêtre de conflit (lot S5). `recente` : le badge « ⭐ la plus récente », seulement quand c'est sûr. */
+export interface ColonneConflit {
+  titre: string;
+  lignes: string[];
+  recente: boolean;
+}
+
+/** Le choix d'un conflit : garder la partie de ce PC, reprendre celle de Firehouse, ou décider plus tard. */
+export type ChoixConflit = 'ici' | 'firehouse' | 'plus_tard';
 
 /** Une touche appuyée : sa place (`code`) et ce qu'elle affiche (`key`). */
 export interface ToucheLue {
@@ -151,6 +167,12 @@ export function informer(titre: string, message?: string): Promise<void> {
   return ouvrir<void>((id, fermer) => ({ id, sorte: 'informer', titre, message, fermer: () => fermer() }));
 }
 
+/** Lot S5 : une partie de ce PC différente de celle de Firehouse. Deux colonnes, trois boutons ; « Garder celle de ce
+ * PC » a le focus d'office (deux appuis sur A ne remplacent jamais une partie) ; Échap ou B : « Décider plus tard ». */
+export function deciderConflit(titre: string, o: { message?: string; ici: ColonneConflit; firehouse: ColonneConflit }): Promise<ChoixConflit> {
+  return ouvrir<ChoixConflit>((id, fermer) => ({ id, sorte: 'conflit', titre, message: o.message, colonnes: [o.ici, o.firehouse], fermer }));
+}
+
 /** « Appuie sur la touche voulue » : TOUTES les touches sont prises (Échap et Tab compris) ; la touche est rendue à son
  * relâchement (jamais une touche encore tenue qui validerait la fenêtre suivante). Rend la touche, `'liste'` (choisir
  * dans la liste), `'rien'` (aucune touche) ou `null` (annulé, à la souris). */
@@ -191,6 +213,7 @@ export function annulerDessus() {
   if (!d) return false;
   if (d.sorte === 'confirmer') d.fermer(false);
   else if (d.sorte === 'informer') d.fermer();
+  else if (d.sorte === 'conflit') d.fermer('plus_tard');
   else d.fermer(null);
   return true;
 }

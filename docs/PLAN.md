@@ -946,13 +946,23 @@ secours) ; (4) Taodbox : « 📥 Reprendre mes parties de Firehouse » sur un je
 de conflit à la manette ; la restauration complète reste au bureau. Règles des experts retenues : le SEL se relit chez
 Firehouse (`_profil/abris-sel.json`) AVANT tout abri sur ce PC (un 404 = sel inconnu, jamais « on en crée un » qui
 écraserait l'ancien chez Firehouse) ; rangé dans `profils/<id>/abris-sel.txt` seulement s'il manque (un sel local
-différent n'est jamais écrasé : écart dit) ; jamais journalisé ni dans une erreur ; pose avec `reposer_sauf(…, false)`,
-jamais `reposer_parties_du_jeu` ; identifiant (`<identifiant …>`) retrouvé par `empreinte_identifiant(nom, sel)` parmi
+différent n'est jamais écrasé : écart dit) ; jamais journalisé ni dans une erreur ; un sel neuf n'est créé QUE sur un 404 `document absent` (hors ligne, 401 ou
+réponse illisible : aucun sel créé, les emplacements à identifiant attendent — règle des experts, relecture S5) ; pose
+par `poser_absents` (mêmes règles que `reposer_sauf` sans ses restes d'anciennes restaurations, copie relue ; SHA1 de
+chaque fichier vérifié, un emplacement incomplet reste en attente), jamais `reposer_parties_du_jeu` ; identifiant (`<identifiant …>`) retrouvé par `empreinte_identifiant(nom, sel)` parmi
 les dossiers qui existent, sinon en attente (ou choix À LA MAIN), jamais deviné ; jeu non installé : en attente, posé
 à la fin de son installation (à côté de `partie.rs:924`) ; jeu en cours : refusé ; emplacement `partiel` dit ; jeux
 invisibles du profil filtrés, journal = id et nombres ; restaurer UN jeu = filtre du manifeste `jeux/<id>/` (manifeste
 par jeu `manifeste-jeu-<id>.json`), jamais tout télécharger ; plusieurs PC du profil : la personne choisit le PC
 (`derniere.date` pour aider) ; défaut de reprise corrigé (`.part-frogtend` AJOUTÉ au nom, plus `with_extension`).
+**S5 codé le 24/11 (0.224.0)** : module `reprise_parties.rs` (pose par `poser_absents`, SHA1 de chaque fichier,
+fiche téléchargée en DERNIER, remplacement défait s'il échoue au milieu, abri `avant_restauration` puis `restauree`,
+la sauvegarde n'envoie jamais un `avant_restauration` plus récent qu'un remplacement), sel relu chez Firehouse avant
+tout abri (créé seulement sur 404 `document absent`), fenêtre de conflit maison (`X-Modifie` du contrat 1.52, sinon
+`derniere.date`), bouton au bureau et au canapé, pose en fin d'installation, choix du PC au démarrage ; relu par les
+trois experts (1 bloquant — reprise coupée posée incomplète — et 8 importants corrigés). Non fait : choix À LA MAIN de
+l'identifiant ; parties rangées dans le dossier du jeu hors `emplacements/` (reprise d'un jeu) ; restauration complète
+non essayée sur un vrai PC neuf.
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
 « Connecte-toi… dans la fenêtre qui s'ouvre » laisse croire que rien ne se passe ou que c'est raté. Voulu : une petite

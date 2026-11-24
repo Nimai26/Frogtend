@@ -918,13 +918,22 @@ impl Noyau {
     /// Des parties restaurées attendent ce jeu : elles sont reposées dans son dossier tout neuf (APRÈS le relevé des
     /// fichiers, pour être reconnues comme des parties et resauvegardées). Un échec est noté, sans défaire
     /// l'installation.
-    async fn reposer_parties_restaurees(&self, id: i64, i: &Installation) {
+    pub(crate) async fn reposer_parties_restaurees(&self, id: i64, i: &Installation) {
         let Ok(s) = self.session().await else { return };
         let anciens: Vec<i64> = s.verrou().fusions().unwrap_or_default().into_iter().filter(|(_, n, _)| *n == id).map(|(a, _, _)| a).collect();
         match self.reposer_parties_du_jeu(&s.profil.id, id, &anciens, Path::new(&i.dossier)) {
             Ok(r) if r.reposes > 0 => self.journaliser(&format!("jeu {id} : {} partie(s) restaurée(s) reposée(s)", r.reposes)),
             Ok(_) => {}
             Err(e) => self.journaliser(&format!("jeu {id} : parties restaurées non reposées : {e:?}")),
+        }
+        // Lot S5 : ses parties rangées HORS de son dossier (emplacements) qui attendaient son installation, posées sans
+        // jamais rien écraser (un conflit attend la personne : « 📥 Reprendre mes parties de Firehouse »).
+        let mut ids = anciens.clone();
+        ids.extend(self.registre().reunions().unwrap_or_default().into_iter().filter(|(_, n)| *n == id).map(|(a, _)| a));
+        ids.push(id);
+        let windows = crate::nuage_steam::dossiers_windows();
+        if let Err(e) = crate::reprise_parties::bloquant(|| self.poser_parties_pc(&s, Some(&ids), &windows, true)) {
+            self.journaliser(&format!("jeu {id} : parties PC restaurées non posées ({})", if matches!(e, crate::erreurs::Erreur::Disque(_)) { "disque" } else { "autre" }));
         }
     }
 

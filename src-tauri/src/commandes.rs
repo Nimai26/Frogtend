@@ -5839,7 +5839,8 @@ async fn plan_nuage(noyau: &Noyau, id: i64) -> Resultat<(crate::nuage_steam::Pla
     let jeu = j.installation.as_ref().map(|i| std::path::PathBuf::from(&i.dossier));
     let m = marque.clone();
     // Lot S2 : le sel du profil, mêlé à l'empreinte d'un sous-dossier énuméré (jamais un numéro de compte retrouvable).
-    let sel = crate::abri_parties::sel_du_profil(&dossier_profil_de(noyau, &p.id))?;
+    // Lot S5 : sur un PC où il manque, relu chez Firehouse d'abord (jamais un nouveau qui écarterait l'ancien).
+    let sel = noyau.sel_pour_abri(&p.id).await?;
     let plan = tauri::async_runtime::spawn_blocking(move || -> Resultat<Option<crate::nuage_steam::Plan>> {
         let windows = crate::nuage_steam::dossiers_windows();
         let nuage = crate::nuage_steam::planifier(&app, &m, &windows)?;
@@ -8982,7 +8983,7 @@ fn jeu_des_parties(noyau: &Noyau, s: &crate::noyau::Session, dp: &std::path::Pat
 
 /// De quoi résoudre les emplacements d'un jeu sur ce PC (`windows` : les dossiers de Windows, lus à part) : le compte
 /// Steam du profil et le dossier de Steam, seulement pour un jeu Steam.
-fn contexte_des_parties(
+pub(crate) fn contexte_des_parties(
     dp: &std::path::Path,
     boutique: Option<&crate::emplacements_parties::BoutiqueJeu>,
     dossier_jeu: Option<std::path::PathBuf>,
@@ -9115,7 +9116,7 @@ async fn preparer_abri_parties(noyau: &Noyau, id: i64) -> Resultat<PourAbriParti
     let JeuDesParties { boutique, dossier_jeu, .. } = jeu_des_parties(noyau, &s, &dp, id)?;
     let entree = ep::lire(&dp)?.jeu(id).cloned().unwrap_or(ep::PartiesJeu { id, ..Default::default() });
     let contexte = Box::new(contexte_des_parties(&dp, boutique.as_ref(), dossier_jeu.clone()));
-    let sel = crate::abri_parties::sel_du_profil(&dp)?;
+    let sel = noyau.sel_pour_abri(&s.profil.id).await?;
     Ok(PourAbriParties { profil: s.profil.clone(), entree, contexte, sources: noyau.sources_abri(id)?, dossier_jeu, sel })
 }
 
@@ -9477,7 +9478,9 @@ async fn pour_abri_auto(
     let boutique = installation.and_then(|i| i.boutique.as_ref()).map(|b| ep::BoutiqueJeu { source: b.source.clone(), cle: b.cle.clone() }).or(entree.boutique.clone());
     let dossier_jeu = installation.map(|i| std::path::PathBuf::from(&i.dossier));
     let contexte = Box::new(contexte_des_parties(dossier_profil, boutique.as_ref(), dossier_jeu.clone()));
-    let sel = crate::abri_parties::sel_du_profil(dossier_profil)?;
+    // Lot S5 : relu chez Firehouse d'abord s'il manque ; jamais un sel neuf hors du 404 du contrat (un autre profil
+    // que celui de la session, ou un dossier de profil inattendu : aucun sel, ses endroits à identifiant attendent).
+    let sel = if dossier_profil == dossier_profil_de(noyau, profil) { noyau.sel_pour_abri(profil).await? } else { crate::abri_parties::sel_local(dossier_profil).unwrap_or_default() };
     Ok(Pour::Connu(PourAbriAuto { lieux_non_resolus: entree.emplacements, contexte, sources: noyau.sources_abri(id)?, dossier_jeu, sel }))
 }
 
@@ -9703,7 +9706,8 @@ pub(crate) async fn abri_avant_a_part(
     operation: &str,
     windows: impl Fn() -> Vec<(&'static str, std::path::PathBuf)> + Send + Sync + Clone + 'static,
 ) -> Resultat<()> {
-    let Some(op) = crate::abri_parties::DECLENCHEURS.iter().copied().find(|d| *d == operation && d.starts_with("avant_")) else {
+    // Lot S5 : « avant_restauration » n'est pas une opération que l'interface annonce (l'abri est fait par la reprise).
+    let Some(op) = crate::abri_parties::DECLENCHEURS.iter().copied().find(|d| *d == operation && d.starts_with("avant_") && *d != crate::abri_parties::DECLENCHEUR_AVANT_RESTAURATION) else {
         return Err(Erreur::Refus("Opération inconnue.".into()));
     };
     let profil = noyau.session().await?.profil.id.clone();
@@ -12427,6 +12431,84 @@ pub async fn restauration_remplacer(noyau: State<'_, Noyau>, cle: String) -> Res
 #[tauri::command]
 pub async fn restauration_conflits(noyau: State<'_, Noyau>) -> Resultat<Vec<crate::restauration::ConflitRestaure>> {
     noyau.conflits_restaures().await
+}
+
+// --- 📥 Lot S5 (24/11) : restaurer les parties des jeux PC rangées hors du dossier du jeu (`reprise_parties`). ---
+
+/// Ce qu'une restauration complète téléchargerait (fichiers, taille, jeux), annoncé avant le oui.
+#[tauri::command]
+pub async fn restauration_apercu(noyau: State<'_, Noyau>, profil: String, pc: String) -> Resultat<crate::restauration::ApercuRestauration> {
+    noyau.apercu_restauration(&profil, &pc).await
+}
+
+/// Après une restauration complète : pose d'office ce qui manque des parties PC (jamais par-dessus une autre).
+#[tauri::command]
+pub async fn restauration_poser_parties_pc(noyau: State<'_, Noyau>) -> Resultat<crate::reprise_parties::BilanReprise> {
+    let s = noyau.session().await?;
+    let windows = tauri::async_runtime::spawn_blocking(crate::nuage_steam::dossiers_windows).await.unwrap_or_default();
+    crate::reprise_parties::bloquant(|| noyau.poser_parties_pc(&s, None, &windows, false))
+}
+
+/// Ce que « 📥 Reprendre mes parties de Firehouse » téléchargerait pour ce jeu.
+#[tauri::command]
+pub async fn parties_reprise_apercu(noyau: State<'_, Noyau>, id: i64, profil: String, pc: String) -> Resultat<crate::restauration::ApercuRestauration> {
+    noyau.apercu_parties_jeu(&profil, &pc, id).await
+}
+
+#[derive(Clone, Serialize)]
+struct ProgresReprise {
+    jeu: i64,
+    faits: usize,
+    total: usize,
+    octets_faits: u64,
+    octets_total: u64,
+}
+
+/// « 📥 Reprendre mes parties de Firehouse » sur un jeu (après le oui) : télécharge SEULEMENT ses parties PC, puis pose
+/// ce qui manque. Progression : `parties-reprise-progres`.
+#[tauri::command]
+pub async fn parties_reprendre(app: AppHandle, noyau: State<'_, Noyau>, id: i64, profil: String, pc: String) -> Resultat<crate::reprise_parties::BilanReprise> {
+    reprendre_parties_avec(&noyau, id, &profil, &pc, crate::nuage_steam::dossiers_windows, &move |faits, total, octets_faits, octets_total| {
+        let _ = app.emit("parties-reprise-progres", ProgresReprise { jeu: id, faits, total, octets_faits, octets_total });
+    })
+    .await
+}
+
+pub(crate) async fn reprendre_parties_avec(
+    noyau: &Noyau,
+    id: i64,
+    profil: &str,
+    pc: &str,
+    windows: impl FnOnce() -> Vec<(&'static str, std::path::PathBuf)> + Send + 'static,
+    progres: &(dyn Fn(usize, usize, u64, u64) + Send + Sync),
+) -> Resultat<crate::reprise_parties::BilanReprise> {
+    let (_, sel) = noyau.telecharger_parties_jeu(profil, pc, id, progres).await?;
+    let s = noyau.session().await?;
+    let windows = tauri::async_runtime::spawn_blocking(windows).await.unwrap_or_default();
+    let mut b = crate::reprise_parties::bloquant(|| noyau.poser_parties_pc(&s, Some(&[id]), &windows, false))?;
+    b.sel_ecart = sel == crate::abri_parties::EtatSel::Ecart;
+    Ok(b)
+}
+
+/// Les parties PC de Firehouse en conflit avec celles de ce PC (`id` : seulement ce jeu).
+#[tauri::command]
+pub async fn parties_conflits(noyau: State<'_, Noyau>, id: Option<i64>) -> Resultat<Vec<crate::reprise_parties::ConflitEmplacement>> {
+    let windows = tauri::async_runtime::spawn_blocking(crate::nuage_steam::dossiers_windows).await.unwrap_or_default();
+    noyau.conflits_parties_pc(id.as_ref().map(std::slice::from_ref), &windows).await
+}
+
+/// Le choix de la personne pour un conflit : `garder` (celle de ce PC) ou `reprendre` (celle de Firehouse, la sienne
+/// mise à l'abri d'abord). Rend, pour `reprendre`, si la partie reprise a pu être mise à l'abri à son tour.
+#[tauri::command]
+pub async fn parties_conflit_regler(noyau: State<'_, Noyau>, jeu: i64, cle: String, choix: String) -> Resultat<bool> {
+    match choix.as_str() {
+        "garder" => noyau.garder_partie_pc(jeu, &cle).await.map(|_| true),
+        "reprendre" => {
+            let windows = tauri::async_runtime::spawn_blocking(crate::nuage_steam::dossiers_windows).await.unwrap_or_default();
+            noyau.reprendre_partie_pc(jeu, &cle, &windows).await
+        }
+        _ => Err(Erreur::Refus("Choix inconnu.".into())),
+    }
 }
 
 #[cfg(test)]

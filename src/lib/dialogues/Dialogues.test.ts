@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import Dialogues from './Dialogues.svelte';
-import { attendreTouche, choisir, cocher, confirmer, demander, informer, pile, toast } from './fenetres.svelte';
+import { attendreTouche, choisir, cocher, confirmer, deciderConflit, demander, informer, pile, toast } from './fenetres.svelte';
 
 afterEach(() => {
   cleanup();
@@ -244,5 +244,44 @@ describe('Appuie sur une touche', () => {
     // Fermée : le clavier redevient normal.
     await tick();
     expect(pile.dialogues).toHaveLength(0);
+  });
+});
+
+describe('Conflit de parties (lot S5)', () => {
+  const ici = { titre: '💻 Sur ce PC', lignes: ['Modifiée le 24 novembre 2026', '11 o · 2 fichiers'], recente: true };
+  const firehouse = { titre: '🔥 Chez Firehouse', lignes: ['Sauvegardée le 23 novembre 2026', '20 o · 3 fichiers'], recente: false };
+
+  it('deux colonnes, le badge seulement du bon côté, et « Garder celle de ce PC » a le focus d’office', async () => {
+    render(Dialogues);
+    const r = deciderConflit('❓ Quelle partie garder ?', { ici, firehouse });
+    await tick();
+    expect(document.activeElement?.textContent?.trim()).toBe('Garder celle de ce PC');
+    expect(screen.getByText('Modifiée le 24 novembre 2026')).toBeTruthy();
+    expect(screen.getByText('20 o · 3 fichiers')).toBeTruthy();
+    expect(screen.getAllByText('⭐ la plus récente')).toHaveLength(1);
+    expect(screen.getByRole('region', { name: '💻 Sur ce PC' }).textContent).toContain('⭐ la plus récente');
+    await fireEvent.click(screen.getByRole('button', { name: 'Reprendre celle de Firehouse' }));
+    expect(await r).toBe('firehouse');
+  });
+
+  it('Échap (B à la manette) : « Décider plus tard » ; aucun badge sans date sûre', async () => {
+    render(Dialogues);
+    const r = deciderConflit('❓', { ici: { ...ici, recente: false }, firehouse });
+    await tick();
+    expect(screen.queryByText('⭐ la plus récente')).toBeNull();
+    await fireEvent.keyDown(window, { key: 'Escape' });
+    expect(await r).toBe('plus_tard');
+  });
+
+  it('« Garder celle de ce PC » et « Décider plus tard » à la souris', async () => {
+    render(Dialogues);
+    const r1 = deciderConflit('❓', { ici, firehouse });
+    await tick();
+    await fireEvent.click(screen.getByRole('button', { name: 'Garder celle de ce PC' }));
+    expect(await r1).toBe('ici');
+    const r2 = deciderConflit('❓', { ici, firehouse });
+    await tick();
+    await fireEvent.click(screen.getByRole('button', { name: 'Décider plus tard' }));
+    expect(await r2).toBe('plus_tard');
   });
 });

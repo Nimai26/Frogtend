@@ -171,6 +171,10 @@ pub struct Bilan {
     /// réessayé à la prochaine sauvegarde. Jamais un échec de la sauvegarde.
     #[serde(default)]
     pub sel_en_attente: bool,
+    /// Lot S5 : Firehouse garde un AUTRE sel pour ce profil (celui d'un autre PC) : celui de Firehouse est gardé, jamais
+    /// écrasé. Jamais la valeur.
+    #[serde(default)]
+    pub sel_ecart: bool,
 }
 
 /// Ce qu'il faut sauvegarder pour un profil.
@@ -192,6 +196,9 @@ pub struct Contenu {
     pub sel: Option<String>,
     /// Pour une estimation : les fichiers que Frogtend aurait écrits (fiches), gardés en mémoire — jamais écrits.
     pub en_memoire: HashMap<PathBuf, Vec<u8>>,
+    /// Lot S5 : jeux dont une partie reprise de Firehouse n'a pas (encore) d'abri d'après : leurs emplacements ne
+    /// partent pas (gardés tels quels chez Firehouse), comptés comme sautés.
+    pub reprises_bloquees: usize,
 }
 
 /// Le cache des sha256 des fichiers envoyés, par profil (`profils/<id>/empreintes-parties.json`, données locales de
@@ -321,8 +328,19 @@ pub trait Destination {
     /// Lot S4 : un document de l'espace du PROFIL (pas de ce PC) — le sel des empreintes (rangé ici dans `abris-sel.txt`,
     /// envoyé en document `abris-sel.json` sous le PC réservé `_profil`, contrat 1.51).
     async fn ecrire_document_profil(&self, nom: &str, v: &Value) -> Resultat<()>;
+    /// Lot S5 : relit un document de l'espace du profil (`None` : absent) — le sel n'est jamais écrasé chez Firehouse.
+    async fn lire_document_profil(&self, nom: &str) -> Resultat<Option<Value>>;
     /// Lot S4 : la place utilisée et le plafond de la personne ; `None` : inconnus (rien n'est vérifié).
     async fn place(&self) -> Resultat<Option<Place>>;
+}
+
+/// Le fichier provisoire d'un fichier en cours de copie ou de téléchargement : le suffixe AJOUTÉ au nom complet
+/// (`PARTIE.SAV.part-frogtend`, lot S5), jamais à la place de l'extension (`PARTIE.SAV` et `PARTIE.BAK` partageaient
+/// le même `PARTIE.part-frogtend`, et une reprise mêlait leurs octets).
+pub fn fichier_part(cible: &Path) -> PathBuf {
+    let mut s = cible.as_os_str().to_os_string();
+    s.push(".part-frogtend");
+    PathBuf::from(s)
 }
 
 /// Le PC réservé à l'espace du profil chez Firehouse (contrat 1.51) : jamais une sauvegarde d'un PC.
@@ -336,7 +354,7 @@ impl DossierLocal {
         if let Some(p) = cible.parent() {
             std::fs::create_dir_all(p)?;
         }
-        let part = cible.with_extension("part-frogtend");
+        let part = fichier_part(cible);
         std::fs::write(&part, octets)?;
         std::fs::rename(&part, cible)?;
         Ok(())
@@ -355,7 +373,7 @@ impl Destination for DossierLocal {
         if let Some(p) = cible.parent() {
             std::fs::create_dir_all(p)?;
         }
-        let part = cible.with_extension("part-frogtend");
+        let part = fichier_part(&cible);
         let n = std::fs::copy(source, &part)?;
         if std::fs::metadata(&part)?.len() != taille {
             let _ = std::fs::remove_file(&part);
@@ -376,6 +394,9 @@ impl Destination for DossierLocal {
     }
     async fn ecrire_document_profil(&self, nom: &str, v: &Value) -> Resultat<()> {
         Self::ecrire_sur(&self.0.join(PC_PROFIL).join(nom), &serde_json::to_vec_pretty(v).unwrap())
+    }
+    async fn lire_document_profil(&self, nom: &str) -> Resultat<Option<Value>> {
+        Ok(std::fs::read(self.0.join(PC_PROFIL).join(nom)).ok().and_then(|o| serde_json::from_slice(&o).ok()))
     }
     async fn place(&self) -> Resultat<Option<Place>> {
         Ok(None)
@@ -524,6 +545,15 @@ impl Destination for Api<'_> {
         let corps = serde_json::to_vec(v).unwrap();
         let b = self.client.brute(reqwest::Method::PUT, &route, Some(corps), &[("Content-Type", "application/json".into())]).await?;
         if (200..300).contains(&b.statut) { Ok(()) } else { Err(Self::refus(&b)) }
+    }
+    async fn lire_document_profil(&self, nom: &str) -> Resultat<Option<Value>> {
+        let route = format!("/sauvegarde/{}/{PC_PROFIL}/document/{nom}", crate::source::encoder(&self.profil));
+        match self.client.obtenir(&route, None).await {
+            Ok(crate::firehouse::Reponse::Corps { octets, .. }) => Ok(serde_json::from_slice(&octets).ok()),
+            Ok(crate::firehouse::Reponse::NonModifie) => Ok(None),
+            Err(Erreur::Introuvable(_)) => Ok(None),
+            Err(e) => Err(e),
+        }
     }
     async fn place(&self) -> Resultat<Option<Place>> {
         lire_place(self.client).await
@@ -698,6 +728,7 @@ pub async fn envoyer_sous(d: &impl Destination, contenu: &Contenu, pc: &str, emp
     }
     let mut nouveau = ManifesteParties::default();
     let mut bilan = Bilan { pc: pc.into(), dossier: emplacement.into(), date: maintenant(), ..Default::default() };
+    bilan.sautes += contenu.reprises_bloquees;
     // Les fiches d'emplacements en échec : les fichiers de leur jeu sous `emplacements/` ne partent pas.
     let mut bloques: Vec<String> = Vec::new();
     for r in &p.illisibles {
@@ -770,9 +801,21 @@ pub async fn envoyer_sous(d: &impl Destination, contenu: &Contenu, pc: &str, emp
     d.ecrire_document("configuration.json", &contenu.configuration).await?;
     d.ecrire_document("bibliotheque.json", &contenu.bibliotheque).await?;
     // Le sel du profil (Seb, 23/11) : un refus (contrat 1.51 pas encore servi) n'est jamais un échec de la sauvegarde.
+    // Lot S5 : relu d'abord — déjà le même, rien n'est renvoyé ; un sel DIFFÉRENT chez Firehouse (celui d'un autre PC du
+    // profil) n'est jamais écrasé : l'écart est dit, jamais la valeur. Relecture impossible : rien n'est écrit (réessayé).
     if let Some(sel) = &contenu.sel {
-        if d.ecrire_document_profil(crate::abri_parties::NOM_SEL_ENVOYE, &json!({ "sel": sel })).await.is_err() {
-            bilan.sel_en_attente = true;
+        match d.lire_document_profil(crate::abri_parties::NOM_SEL_ENVOYE).await {
+            Ok(Some(v)) if v["sel"].as_str().is_some_and(|x| crate::abri_parties::sel_valable(x.trim())) => {
+                if !v["sel"].as_str().is_some_and(|x| x.trim().eq_ignore_ascii_case(sel)) {
+                    bilan.sel_ecart = true;
+                }
+            }
+            Ok(_) => {
+                if d.ecrire_document_profil(crate::abri_parties::NOM_SEL_ENVOYE, &json!({ "sel": sel })).await.is_err() {
+                    bilan.sel_en_attente = true;
+                }
+            }
+            Err(_) => bilan.sel_en_attente = true,
         }
     }
     // Le manifeste en dernier : tant qu'il n'est pas écrit, la sauvegarde précédente reste la référence.
@@ -1261,8 +1304,15 @@ impl Noyau {
         // abri où il manque, ne le fait jamais sortir de sa sauvegarde) ; avec elles, la fiche fusionnée
         // (`jeux/<id>/emplacements/fiche.json` : chemins NON résolus, pour les remettre au lot S5), envoyée AVANT eux.
         let fiches = self.dossier.join("profils").join(&profil.id).join("fiches-abris");
+        let mut reprises_bloquees: Vec<i64> = Vec::new();
         for id in ids_emplacements {
             let abris: Vec<(u64, PathBuf)> = tous_les_abris.iter().filter(|(a, _)| reunions.get(*a).copied().unwrap_or(**a) == id).flat_map(|(_, l)| l.iter().cloned()).collect();
+            // Lot S5 : une partie reprise de Firehouse sans abri d'après : l'abri d'avant (l'ANCIENNE partie de ce PC)
+            // ne part jamais par-dessus celle que la personne a choisie — tout ce jeu reste tel quel chez Firehouse.
+            if crate::abri_parties::reprise_sans_abri_apres(&abris, &profil.id) {
+                reprises_bloquees.push(id);
+                continue;
+            }
             let (fichiers, fiche) = crate::abri_parties::emplacements_a_envoyer(&abris, &profil.id);
             let Some(mut fiche) = fiche else { continue };
             // Pour le lot S5, sur un autre PC : la boutique du jeu, quand il en vient une — celle du registre, sinon celle
@@ -1422,6 +1472,7 @@ impl Noyau {
         let invisibles = gardes.clone();
         let mut gardes: Vec<String> = gardes.into_iter().map(|id| format!("jeux/{id}/")).collect();
         gardes.extend(gardes_ouverts);
+        gardes.extend(reprises_bloquees.iter().map(|id| format!("jeux/{id}/")));
         gardes.extend(gardes_captures);
         for jeu in std::fs::read_dir(attente.join("parties").join("captures")).into_iter().flatten().flatten() {
             for f in std::fs::read_dir(jeu.path()).into_iter().flatten().flatten() {
@@ -1447,10 +1498,7 @@ impl Noyau {
         }
 
         // Le sel du profil (Seb, 23/11 : envoyé, pour restaurer sur un autre PC sans question) — lu, jamais créé ici.
-        let sel = std::fs::read_to_string(self.dossier.join("profils").join(&profil.id).join(crate::abri_parties::NOM_SEL))
-            .ok()
-            .map(|t| t.trim().to_string())
-            .filter(|t| t.len() >= 16 && t.bytes().all(|b| b.is_ascii_hexdigit()));
+        let sel = crate::abri_parties::sel_local(&self.dossier.join("profils").join(&profil.id));
 
         Ok(Contenu {
             configuration,
@@ -1461,6 +1509,7 @@ impl Noyau {
             propres,
             sel,
             en_memoire,
+            reprises_bloquees: reprises_bloquees.len(),
         })
     }
 }
@@ -2270,6 +2319,12 @@ mod tests_s4 {
             self.docs_profil.lock().unwrap().insert(nom.into(), v.clone());
             Ok(())
         }
+        async fn lire_document_profil(&self, nom: &str) -> Resultat<Option<Value>> {
+            if let Some(e) = *self.erreur_profil.lock().unwrap() {
+                return Err(e());
+            }
+            Ok(self.docs_profil.lock().unwrap().get(nom).cloned())
+        }
         async fn place(&self) -> Resultat<Option<Place>> {
             Ok(self.place)
         }
@@ -2404,6 +2459,17 @@ mod tests_s4 {
         let b = envoyer(&f, &c, "PC", "t").await.unwrap();
         assert!(b.sel_en_attente);
         assert!(f.manifeste().is_some());
+        // Lot S5 : un AUTRE sel chez Firehouse (celui d'un autre PC) n'est jamais écrasé ; l'écart est dit.
+        *f.erreur_profil.lock().unwrap() = None;
+        f.docs_profil.lock().unwrap().insert(crate::abri_parties::NOM_SEL_ENVOYE.into(), json!({"sel": "ffff"}));
+        let b = envoyer(&f, &c, "PC", "t").await.unwrap();
+        assert!(b.sel_ecart && !b.sel_en_attente);
+        assert_eq!(f.docs_profil.lock().unwrap()[crate::abri_parties::NOM_SEL_ENVOYE], json!({"sel": "ffff"}), "jamais écrasé");
+        // Le même : rien n'est réécrit, aucun écart.
+        f.docs_profil.lock().unwrap().insert(crate::abri_parties::NOM_SEL_ENVOYE.into(), json!({"sel": "0123456789ABCDEF0123456789ABCDEF"}));
+        let b = envoyer(&f, &c, "PC", "t").await.unwrap();
+        assert!(!b.sel_ecart && !b.sel_en_attente);
+        assert_eq!(f.docs_profil.lock().unwrap()[crate::abri_parties::NOM_SEL_ENVOYE], json!({"sel": "0123456789ABCDEF0123456789ABCDEF"}));
     }
 
     #[tokio::test]

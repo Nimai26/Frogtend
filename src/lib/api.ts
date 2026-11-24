@@ -921,6 +921,49 @@ export interface ConflitRestaure {
   cible: string;
 }
 
+/** Lot S5 : ce qu'une restauration (ou la reprise d'un jeu) téléchargerait, annoncé avant le oui. */
+export interface ApercuRestauration {
+  fichiers: number;
+  octets: number;
+  /** Les jeux (visibles de ce profil) dont des parties sont dans la sauvegarde. */
+  jeux: number;
+}
+
+/** Lot S5 : ce que la pose des parties PC restaurées a fait (des nombres d'emplacements, sauf `fichiers`). */
+export interface BilanReprise {
+  jeux: number;
+  posees: number;
+  fichiers: number;
+  deja_la: number;
+  non_installes: number;
+  non_resolues: number;
+  identifiants: number;
+  en_cours: number;
+  conflits: number;
+  partielles: number;
+  /** Copies téléchargées pas entières (reprise coupée) : à reprendre. */
+  incompletes?: number;
+  /** La reprise d'un jeu : le sel de ce PC diffère de celui de Firehouse. */
+  sel_ecart?: boolean;
+}
+
+/** Un côté d'un conflit : date (secondes, `null` : inconnue), taille, nombre de fichiers — jamais un chemin. */
+export interface CoteConflit {
+  date: number | null;
+  octets: number;
+  fichiers: number;
+}
+
+/** Lot S5 : une partie PC de Firehouse différente de celle de ce PC (jamais écrasée sans le choix de la personne). */
+export interface ConflitEmplacement {
+  jeu: number;
+  cle: string;
+  titre: string;
+  ici: CoteConflit;
+  firehouse: CoteConflit;
+  partiel: boolean;
+}
+
 /** Ce qu'une repose de parties restaurées a fait. */
 export interface Reposes {
   reposes: number;
@@ -1085,7 +1128,7 @@ export const api = {
       'restauration_liste',
     ),
   restaurationPreparer: (profil: string, pc: string) =>
-    appeler<[{ configuration: Record<string, any>; bibliotheque: { jeux?: any[] }; fichiers: number; taille: number }, Reposes]>(
+    appeler<[{ configuration: Record<string, any>; bibliotheque: { jeux?: any[] }; fichiers: number; taille: number; sel?: string }, Reposes]>(
       'restauration_preparer',
       { profil, pc },
     ),
@@ -1111,6 +1154,18 @@ export const api = {
   restaurationRemplacer: (cle: string) => appeler<string>('restauration_remplacer', { cle }),
   /** Les parties restaurées encore en double (une proposition fermée sans répondre n'est jamais perdue). */
   restaurationConflits: () => appeler<ConflitRestaure[]>('restauration_conflits'),
+  /** Lot S5 : ce qu'une restauration complète téléchargerait (fichiers, taille, jeux), annoncé avant le oui. */
+  restaurationApercu: (profil: string, pc: string) => appeler<ApercuRestauration>('restauration_apercu', { profil, pc }),
+  /** Lot S5 : après une restauration complète, pose d'office ce qui manque des parties PC (jamais par-dessus une autre). */
+  restaurationPoserPartiesPc: () => appeler<BilanReprise>('restauration_poser_parties_pc'),
+  /** Lot S5 : ce que « 📥 Reprendre mes parties de Firehouse » téléchargerait pour ce jeu. */
+  partiesRepriseApercu: (id: number, profil: string, pc: string) => appeler<ApercuRestauration>('parties_reprise_apercu', { id, profil, pc }),
+  /** Lot S5 : télécharge SEULEMENT les parties PC de ce jeu, puis pose ce qui manque (`parties-reprise-progres`). */
+  partiesReprendre: (id: number, profil: string, pc: string) => appeler<BilanReprise>('parties_reprendre', { id, profil, pc }),
+  /** Lot S5 : les parties PC de Firehouse en conflit avec celles de ce PC (`id` : seulement ce jeu). */
+  partiesConflits: (id: number | null = null) => appeler<ConflitEmplacement[]>('parties_conflits', { id }),
+  /** Lot S5 : `garder` (celle de ce PC) ou `reprendre` (celle de Firehouse, la sienne à l'abri d'abord). */
+  partiesConflitRegler: (jeu: number, cle: string, choix: 'garder' | 'reprendre') => appeler<boolean>('parties_conflit_regler', { jeu, cle, choix }),
 
   preparerInstallation: (id: number) => appeler<Preparation>('installation_preparer', { id }),
   /** `suivi` : l'avancement de la décompression arrive par « mod-progres » sous ce numéro (voir `avecProgres`). */

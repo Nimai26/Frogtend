@@ -64,6 +64,13 @@ vi.mock('$lib/dialogues/fenetres.svelte', () => ({
   majProgres: (...a: unknown[]) => majProgres(...a),
 }));
 
+// Lot S5 : le parcours de la reprise a ses propres tests (reprise.svelte.test.ts) ; ici, seulement le bouton.
+const reprendreMesParties = vi.fn(async (..._a: unknown[]) => true);
+vi.mock('$lib/parties/reprise.svelte', () => ({
+  reprendreMesParties: (...a: unknown[]) => reprendreMesParties(...a),
+  reprise: { enCours: null },
+}));
+
 import BlocParties from './BlocParties.svelte';
 import { recevoirAbriAuto, remettreAZeroAbrisAuto } from '$lib/parties/abriAuto.svelte';
 
@@ -126,13 +133,24 @@ describe('📁 Où sont mes parties (section)', () => {
     expect(document.querySelector('[aria-live] ul')).toBeNull();
   });
 
-  it('au canapé : lisible, seule action « 🛟 Mettre mes parties à l’abri », chaque ligne se sélectionne à la croix', async () => {
+  it('au canapé : lisible, seules actions « 🛟 Mettre mes parties à l’abri » et « 📥 Reprendre… » (lot S5), chaque ligne se sélectionne à la croix', async () => {
     render(BlocParties, { id: -7, canape: true });
     expect(await screen.findByText(DOSSIER)).toBeTruthy();
-    expect(screen.getAllByRole('button').map((b) => b.textContent?.trim())).toEqual(['🛟 Mettre mes parties à l’abri']);
+    expect(screen.getAllByRole('button').map((b) => b.textContent?.trim())).toEqual(['🛟 Mettre mes parties à l’abri', '📥 Reprendre mes parties de Firehouse']);
     const lignes = screen.getAllByRole('listitem');
     expect(lignes.length).toBe(2);
     expect(lignes.every((l) => l.getAttribute('tabindex') === '0')).toBe(true);
+  });
+
+  it('« 📥 Reprendre mes parties de Firehouse » lance la reprise de CE jeu, puis relit les emplacements et les abris', async () => {
+    render(BlocParties, { id: -7 });
+    await screen.findByText(DOSSIER);
+    const avant = emplacements.mock.calls.length;
+    await fireEvent.click(screen.getByRole('button', { name: '📥 Reprendre mes parties de Firehouse' }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(reprendreMesParties).toHaveBeenCalledWith(-7);
+    expect(emplacements.mock.calls.length).toBe(avant + 1);
+    expect(abrisLus).toHaveBeenCalledTimes(2);
   });
 
   it('au bureau, les lignes ne sont pas des arrêts du clavier en plus', async () => {
@@ -151,7 +169,8 @@ describe('📁 Où sont mes parties (section)', () => {
     reponse = { ...LU, firehouse: 'inconnu', autres_systemes: ['Steam'], emplacements: [] };
     render(BlocParties, { id: -9 });
     expect(await screen.findByText('Firehouse connaît l’endroit des parties de ce jeu pour la version Steam, pas encore pour la tienne.')).toBeTruthy();
-    expect(screen.queryAllByRole('button').length).toBe(0);
+    // Rien à mettre à l'abri ici ; seule la reprise de Firehouse reste (lot S5 : la fiche d'un autre PC dit où aller).
+    expect(screen.queryAllByRole('button').map((b) => b.textContent?.trim())).toEqual(['📥 Reprendre mes parties de Firehouse']);
   });
 
   it('hors ligne avec ce qui était gardé : le dit, et montre la liste', async () => {

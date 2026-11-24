@@ -14,6 +14,8 @@ import { rechargerJeuxDuPc, tele } from '$lib/ludotheque/telechargements.svelte'
 import { proposerDossierJeux } from '$lib/ludotheque/dossierJeux';
 import { aCartes } from '$lib/ludotheque/cartes';
 import { aAnnoncer, dossierDesAbris, dossierDesCopies, placeManquante } from './sauvegardeTaille';
+import { lignesBilan, pcDuProfil, texteApercu, TEXTE_SEL_ECART } from '$lib/parties/reprise';
+import { choisirPcDuProfil, reglerConflitsDe } from '$lib/parties/reprise.svelte';
 
 export interface BilanSauvegarde {
   envoyes: number;
@@ -31,7 +33,11 @@ export interface BilanSauvegarde {
   sautes?: number;
   /** Lot S4 : le sel des empreintes du profil attend que Firehouse l'accepte (réessayé à la prochaine sauvegarde). */
   sel_en_attente?: boolean;
+  /** Lot S5 : Firehouse garde un AUTRE sel pour ce profil (celui d'un autre PC) : jamais écrasé. */
+  sel_ecart?: boolean;
 }
+
+export { TEXTE_SEL_ECART } from '$lib/parties/reprise';
 
 /** Une sauvegarde quotidienne est refaite au-delà de ce délai. */
 const JOUR_S = 24 * 3600;
@@ -184,6 +190,7 @@ export async function sauvegarder(discrete = false, ecarter = false): Promise<bo
     sauvegarde.derniere = b;
     // Lot S4 : des fichiers qui n'ont pas pu partir sont TOUJOURS dits (même en automatique), sans jamais les nommer.
     const sautes = b.sautes ? ` ⚠ ${b.sautes} fichier(s) n’ont pas pu partir cette fois : Frogtend réessaiera à la prochaine sauvegarde.` : '';
+    if (b.sel_ecart && !discrete) toast(TEXTE_SEL_ECART, 'alerte');
     if (!discrete) {
       const seulsIci = b.non_envoyes
         ? ` Les parties de ${b.non_envoyes} jeu(x) que ce profil ne voit pas restent seulement sur ce PC.`
@@ -285,14 +292,22 @@ export async function auDemarrage() {
     const liste = await api.restaurationListe().catch(() => null);
     if (!liste) return;
     // Le cœur marque celles rangées au nom du profil ouvert (la même règle qu'à l'envoi).
-    const a_moi = liste.filter((s) => s.a_moi);
+    // Lot S5 : plusieurs PC de ce profil : la personne CHOISIT, le plus récent (`derniere.date`) en premier.
+    const a_moi = pcDuProfil(liste);
     if (a_moi.length) {
-      const s = a_moi[0];
-      const oui = await confirmer(`📥 Une sauvegarde de « ${s.profil} » existe`, {
-        message: `Depuis ${s.pc}${s.derniere?.date ? `, ${depuis(Number(s.derniere.date))}` : ''}.\nLa restaurer sur ce PC (réglages, parties, puis tes jeux) ?`,
-        libelleValider: '📥 Restaurer',
-      });
-      if (oui) {
+      const s = a_moi.length > 1 ? await choisirPcDuProfil(liste, `📥 Des sauvegardes de « ${a_moi[0].profil} » existent : depuis quel PC restaurer ?`) : a_moi[0];
+      // Fermé sans choisir : rien n'est restauré, la question ne revient pas tout de suite.
+      const oui = s
+        ? await (async () => {
+            // Lot S5 : l'annonce dit combien de jeux, de fichiers et de Mo (une lecture impossible n'empêche rien).
+            const combien = texteApercu(await api.restaurationApercu(s.profil, s.pc).catch(() => null), taille);
+            return confirmer(`📥 Une sauvegarde de « ${s.profil} » existe`, {
+              message: `Depuis ${s.pc}${s.derniere?.date ? `, ${depuis(Number(s.derniere.date))}` : ''}.${combien ? `\n${combien}` : ''}\nLa restaurer sur ce PC (réglages, parties, puis tes jeux) ?`,
+              libelleValider: '📥 Restaurer',
+            });
+          })()
+        : false;
+      if (s && oui) {
         await restaurer(s.profil, s.pc);
         return;
       }
@@ -341,13 +356,19 @@ export async function restaurer(profilChoisi?: string, pcChoisi?: string) {
     );
     if (!c) return;
     ({ profil, pc } = c);
+    // Lot S5 : l'annonce dit combien de jeux, de fichiers et de Mo (une lecture impossible n'empêche rien).
+    const a = await api.restaurationApercu(profil, pc).catch(() => null);
     const oui = await confirmer(`📥 Restaurer « ${profil} — ${pc} » ?`, {
       message: [
+        texteApercu(a, taille),
         'Tes réglages de profil seront remplacés par ceux de la sauvegarde.',
         'Tes parties d’émulateurs seront reposées ; une partie DIFFÉRENTE déjà sur ce PC est gardée telle quelle.',
-        'Les parties de tes jeux attendront que chaque jeu soit réinstallé.',
+        'Les parties de tes jeux PC installés reviennent à leur place ; une partie DIFFÉRENTE de celle de ce PC n’est jamais remplacée sans te demander.',
+        'Les parties des autres jeux attendront que chaque jeu soit réinstallé.',
         'Ensuite, je te proposerai de remettre tes jeux dans ta ludothèque.',
-      ].join('\n'),
+      ]
+        .filter(Boolean)
+        .join('\n'),
       libelleValider: '📥 Restaurer',
     });
     if (!oui) return;
@@ -431,6 +452,16 @@ export async function restaurer(profilChoisi?: string, pcChoisi?: string) {
     );
   }
   await proposerRemplacements(reposes.a_remplacer ?? []);
+  if (prete.sel === 'ecart') toast(TEXTE_SEL_ECART, 'alerte');
+  // Lot S5 : les parties des jeux PC (rangées hors du dossier du jeu) : ce qui manque est posé d'office (le oui de la
+  // restauration), avec un bilan ; une partie différente est une question.
+  const pcs = await api.restaurationPoserPartiesPc().catch((e) => {
+    toast(`Les parties de tes jeux PC n’ont pas pu être remises : ${motifDuRefus(e)}`, 'alerte');
+    return null;
+  });
+  const lignes = pcs ? lignesBilan(pcs) : [];
+  if (lignes.length) await informer('🎮 Les parties de tes jeux PC', lignes.join('\n'));
+  if (pcs?.conflits) await reglerConflitsDe(null);
 
   // Les jeux : on propose de les remettre (annoncé et chiffré d'abord).
   await rechargerJeuxDuPc();

@@ -6,6 +6,18 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 📥 Reprendre ses parties depuis Firehouse (0.224.0, lot S5)
+- [ ] 1. Fiche de Cyberpunk ▸ 📁 Où sont mes parties : un bouton « 📥 Reprendre mes parties de Firehouse ». Le cliquer :
+      une fenêtre annonce le nombre de fichiers et de Mo ; accepter : « tes parties sont déjà à leur place » (rien
+      n'a changé depuis la dernière sauvegarde), aucun fichier touché.
+- [ ] 2. Options ▸ Sauvegarde : éteindre « 🛟 Mettre mes parties à l'abri sur ce PC après chaque partie » ; jouer à
+      Cyberpunk, sauvegarder en jeu, quitter ; rallumer l'interrupteur.
+- [ ] 3. Fiche de Cyberpunk ▸ 📁 ▸ « 📥 Reprendre mes parties de Firehouse » : la fenêtre de CONFLIT montre « Sur ce
+      PC » et « Chez Firehouse » (dates, tailles, aucun chemin), le focus est sur « Garder celle de ce PC » ; choisir
+      « Garder celle de ce PC » : ta nouvelle partie est toujours là dans le jeu.
+- [ ] 4. Taodbox ▸ Cyberpunk ▸ parties : le même bouton se choisit à la manette, la fenêtre de conflit se pilote à la
+      croix, A valide, B = « Décider plus tard ».
+
 ## ☁ Parties des jeux PC chez Firehouse (0.223.0, lot S4)
 - [x] 1. Options ▸ Sauvegarde : « Place chez Firehouse » montre environ 30,7 Mo sur 100 Go, « pour tous tes profils et
       tous tes PC ».

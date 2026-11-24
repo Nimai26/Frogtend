@@ -8,17 +8,41 @@ vi.mock('@tauri-apps/api/core', () => ({ isTauri: () => false }));
 
 const sauvegarderCoeur = vi.fn(async (_ecarter?: boolean, _plafond?: number | null): Promise<Record<string, unknown>> => ({ envoyes: 1, inchanges: 0, retires: 0, octets: 5, fichiers: 1, taille: 5, date: '1', pc: 'PC', dossier: 'Firehouse' }));
 const estimer = vi.fn(async (): Promise<Record<string, unknown> | null> => ({ total: 5, precedent: 5, a_envoyer: 5, fichiers_a_envoyer: 1, utilise: 0, quota: 1000 }));
+// Lot S5 : la restauration complète (annonce chiffrée, pose des parties PC, conflits).
+const BILAN_PC = { jeux: 2, posees: 1, fichiers: 3, deja_la: 0, non_installes: 1, non_resolues: 0, identifiants: 0, en_cours: 0, conflits: 1, partielles: 0 };
+let listeS5: object[] = [{ profil: 'Seb', pc: 'VENKMAN', a_moi: true, octets: 2048, derniere: { date: '5000' } }];
+const restaurationApercu = vi.fn(async (..._a: unknown[]) => ({ jeux: 3, fichiers: 12, octets: 2048 }));
+const poserPartiesPc = vi.fn(async () => structuredClone(BILAN_PC));
+const preparer = vi.fn(async (..._a: unknown[]) => [{ configuration: {}, bibliotheque: { jeux: [] }, fichiers: 12, taille: 2048, sel: 'ecart' }, { reposes: 0, deja_la: 0, conflits: [], a_remplacer: [] }]);
+const reglerConflitsDe = vi.fn(async (..._a: unknown[]) => 1);
+vi.mock('$lib/parties/reprise.svelte', async () => ({
+  ...(await vi.importActual<object>('$lib/parties/reprise.svelte')),
+  reglerConflitsDe: (...a: unknown[]) => reglerConflitsDe(...a),
+}));
 vi.mock('$lib/api', () => ({
-  api: { sauvegarder: (e: boolean, p: number | null) => sauvegarderCoeur(e, p), sauvegardeEstimer: () => estimer() },
+  api: {
+    sauvegarder: (e: boolean, p: number | null) => sauvegarderCoeur(e, p),
+    sauvegardeEstimer: () => estimer(),
+    restaurationListe: async () => structuredClone(listeS5),
+    derniereSauvegarde: async () => null,
+    restaurationApercu: (...a: unknown[]) => restaurationApercu(...a),
+    restaurationPreparer: (...a: unknown[]) => preparer(...a),
+    restaurationReposerCaptures: async () => ({ reposees: 0, en_attente: 0 }),
+    restaurationPoserPartiesPc: () => poserPartiesPc(),
+    espaceLibre: async () => null,
+  },
   estErreurCoeur: (e: unknown) => typeof e === 'object' && e !== null && 'sorte' in e,
   taille: (o: number) => `${o} o`,
 }));
 
 const toast = vi.fn((..._a: unknown[]) => 0);
+const confirmerS5 = vi.fn(async (..._a: unknown[]) => true);
+const informerS5 = vi.fn(async (..._a: unknown[]) => {});
+const choisirS5 = vi.fn(async (..._a: unknown[]): Promise<unknown> => null);
 vi.mock('$lib/dialogues/fenetres.svelte', () => ({
-  choisir: vi.fn(),
-  confirmer: vi.fn(async () => true),
-  informer: vi.fn(),
+  choisir: (...a: unknown[]) => choisirS5(...a),
+  confirmer: (...a: unknown[]) => confirmerS5(...a),
+  informer: (...a: unknown[]) => informerS5(...a),
   toast: (...a: unknown[]) => toast(...a),
 }));
 vi.mock('$lib/dialogues/messages', () => ({ motifDuRefus: (e: unknown) => String((e as { motif?: string }).motif ?? e) }));
@@ -26,7 +50,7 @@ vi.mock('$lib/dialogues/messages', () => ({ motifDuRefus: (e: unknown) => String
 const etat = vi.hoisted(() => ({
   profilOuvert: { id: 'seb' } as { id: string } | null,
   profil: { sauvegarde: { auto: 'apres_partie' } },
-  pc: { firehouse: { simule: false }, seuilSauvegardeMo: 200 },
+  pc: { firehouse: { simule: false }, seuilSauvegardeMo: 200, emplacements: { defaut: ['Z:/Jeux-essai'], systemes: {} }, emulateurs: {}, dossierEmulateurs: 'x', dossierCaptures: 'x' },
 }));
 vi.mock('$lib/etat.svelte', () => ({ etat, reglerPc: vi.fn(), remplacerReglagesProfil: vi.fn() }));
 vi.mock('$lib/emulateurs/choix', () => ({ ajouter: vi.fn(), normaliserTous: vi.fn(() => ({})) }));
@@ -35,7 +59,7 @@ vi.mock('$lib/ludotheque/telechargements.svelte', () => ({ rechargerJeuxDuPc: vi
 vi.mock('$lib/ludotheque/dossierJeux', () => ({ proposerDossierJeux: vi.fn() }));
 vi.mock('$lib/ludotheque/cartes', () => ({ aCartes: () => false }));
 
-import { apresUnePartie, attendreAbrisFinis, recevoirAbrisFinis, recevoirSauvegardeFinie, sauvegarde, sauvegarder, DEJA_EN_COURS, GROSSE_AUTO, PLAFOND_RELANCE_MS } from './sauvegarde.svelte';
+import { apresUnePartie, auDemarrage, attendreAbrisFinis, recevoirAbrisFinis, recevoirSauvegardeFinie, restaurer, sauvegarde, sauvegarder, DEJA_EN_COURS, GROSSE_AUTO, PLAFOND_RELANCE_MS, TEXTE_SEL_ECART } from './sauvegarde.svelte';
 
 /** Laisse passer les promesses en attente. */
 const laisser = () => new Promise((r) => setTimeout(r, 0));
@@ -179,5 +203,48 @@ describe('ce que la sauvegarde dit', () => {
     sauvegarderCoeur.mockRejectedValueOnce({ sorte: 'refus', motif: `${GROSSE_AUTO} : 300,0 Mo de parties à envoyer.` });
     await sauvegarder(true);
     expect(toast).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('la restauration complète (lot S5)', () => {
+  it('l’annonce dit les jeux, les fichiers et la taille ; puis les parties PC sont posées, le bilan dit, les conflits proposés', async () => {
+    choisirS5.mockResolvedValueOnce({ profil: 'Seb', pc: 'VENKMAN', a_moi: true, octets: 2048, derniere: { date: '5000' } });
+    await restaurer();
+    expect(restaurationApercu).toHaveBeenCalledWith('Seb', 'VENKMAN');
+    expect(String((confirmerS5.mock.calls[0][1] as { message: string }).message)).toContain('À télécharger : 3 jeux, 12 fichiers, 2048 o.');
+    expect(poserPartiesPc).toHaveBeenCalledTimes(1);
+    const bilan = informerS5.mock.calls.find((c) => c[0] === '🎮 Les parties de tes jeux PC');
+    expect(String(bilan?.[1])).toContain('✅ 1 partie remise');
+    expect(String(bilan?.[1])).toContain('attend que son jeu soit installé');
+    expect(reglerConflitsDe).toHaveBeenCalledWith(null);
+    // Le sel de ce PC diffère de celui de Firehouse : dit, sans valeur.
+    expect(toast.mock.calls.some((c) => c[0] === TEXTE_SEL_ECART)).toBe(true);
+  });
+
+  it('refusée à l’annonce : rien n’est téléchargé ni posé', async () => {
+    choisirS5.mockResolvedValueOnce({ profil: 'Seb', pc: 'VENKMAN', a_moi: true, octets: 2048, derniere: { date: '5000' } });
+    confirmerS5.mockResolvedValueOnce(false);
+    await restaurer();
+    expect(preparer).not.toHaveBeenCalled();
+    expect(poserPartiesPc).not.toHaveBeenCalled();
+  });
+
+  it('une sauvegarde à la main dit l’écart du sel (jamais sa valeur)', async () => {
+    sauvegarderCoeur.mockResolvedValueOnce({ envoyes: 0, inchanges: 1, retires: 0, octets: 0, fichiers: 1, taille: 5, date: '1', pc: 'PC', dossier: 'F', sel_ecart: true });
+    estimer.mockResolvedValueOnce(null);
+    expect(await sauvegarder(false)).toBe(true);
+    expect(toast.mock.calls[0]).toEqual([TEXTE_SEL_ECART, 'alerte']);
+  });
+
+  it('au démarrage, plusieurs PC de ce profil : la personne CHOISIT, le plus récent en premier ; fermé : rien', async () => {
+    listeS5 = [
+      { profil: 'Seb', pc: 'ANCIEN', a_moi: true, octets: 1, derniere: { date: '1000' } },
+      { profil: 'Seb', pc: 'VENKMAN', a_moi: true, octets: 1, derniere: { date: '5000' } },
+    ];
+    choisirS5.mockResolvedValueOnce(null);
+    await auDemarrage();
+    expect((choisirS5.mock.calls[0][1] as { libelle: string }[]).map((o) => o.libelle)).toEqual(['⭐ VENKMAN', 'ANCIEN']);
+    expect(preparer).not.toHaveBeenCalled();
+    listeS5 = [{ profil: 'Seb', pc: 'VENKMAN', a_moi: true, octets: 2048, derniere: { date: '5000' } }];
   });
 });

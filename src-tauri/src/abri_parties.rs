@@ -58,8 +58,22 @@ pub const DECLENCHEUR_AVANT_RETRAIT: &str = "avant_retrait";
 pub const DECLENCHEUR_AVANT_REINSTALLATION: &str = "avant_reinstallation";
 pub const DECLENCHEUR_AVANT_MISE_A_JOUR: &str = "avant_mise_a_jour";
 pub const DECLENCHEUR_AVANT_MOD: &str = "avant_mod";
+/// Lot S5 : la partie de CE PC, mise à l'abri avant d'être remplacée par celle de Firehouse.
+pub const DECLENCHEUR_AVANT_RESTAURATION: &str = "avant_restauration";
+/// Lot S5 : la partie reprise de Firehouse, mise à l'abri juste après sa pose (elle devient la copie la plus récente :
+/// la sauvegarde suivante ne renvoie jamais l'ancienne partie de ce PC par-dessus).
+pub const DECLENCHEUR_RESTAUREE: &str = "restauree";
 /// La liste fermée des déclencheurs.
-pub const DECLENCHEURS: [&str; 6] = [DECLENCHEUR_MAIN, DECLENCHEUR_APRES_PARTIE, DECLENCHEUR_AVANT_RETRAIT, DECLENCHEUR_AVANT_REINSTALLATION, DECLENCHEUR_AVANT_MISE_A_JOUR, DECLENCHEUR_AVANT_MOD];
+pub const DECLENCHEURS: [&str; 8] = [
+    DECLENCHEUR_MAIN,
+    DECLENCHEUR_APRES_PARTIE,
+    DECLENCHEUR_AVANT_RETRAIT,
+    DECLENCHEUR_AVANT_REINSTALLATION,
+    DECLENCHEUR_AVANT_MISE_A_JOUR,
+    DECLENCHEUR_AVANT_MOD,
+    DECLENCHEUR_AVANT_RESTAURATION,
+    DECLENCHEUR_RESTAUREE,
+];
 
 /// Un déclencheur de la liste fermée.
 pub fn declencheur_connu(d: &str) -> bool {
@@ -190,14 +204,72 @@ pub fn empreinte_identifiant(id: &str, sel: &str) -> String {
     empreinte(&format!("frogtend-identifiant:{sel}:{}", id.trim().to_lowercase()))
 }
 
+/// Un sel valable : de 1 à 128 caractères, tous hexadécimaux (contrat 1.51 : `sel` = « chaîne hex non vide ≤ 128 »,
+/// ce que Firehouse accepte ; Frogtend en crée 32). Une valeur hors de cette forme n'est jamais rangée ni utilisée.
+pub fn sel_valable(t: &str) -> bool {
+    (1..=128).contains(&t.len()) && t.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// Le sel déjà rangé dans les données du profil, s'il y en a un valable (jamais créé ici).
+pub fn sel_local(dossier_profil: &Path) -> Option<String> {
+    let t = std::fs::read_to_string(dossier_profil.join(NOM_SEL)).ok()?;
+    let t = t.trim().to_string();
+    sel_valable(&t).then_some(t)
+}
+
+/// Ce qu'a donné le sel lu chez Firehouse (lot S5). Jamais la valeur du sel dans un message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EtatSel {
+    /// Il manquait sur ce PC : celui de Firehouse y est rangé.
+    Range,
+    /// Celui de ce PC est le même.
+    Identique,
+    /// Celui de ce PC est DIFFÉRENT : jamais écrasé (l'écart est dit, sans la valeur).
+    Ecart,
+    /// Firehouse n'en a pas (404).
+    Inconnu,
+    /// Firehouse injoignable, trop lent, ou réponse illisible : rien n'est changé, aucun sel n'est créé.
+    Injoignable,
+    /// 401 : le jeton de ce profil est refusé (dit comme tel) ; aucun sel n'est créé.
+    JetonRefuse,
+}
+
+/// Range le sel reçu de Firehouse dans les données du profil, SEULEMENT si le fichier local manque (écriture provisoire
+/// puis renommage). Un sel local différent n'est jamais écrasé. Un sel reçu invalide n'est jamais rangé.
+pub fn ranger_sel_recu(dossier_profil: &Path, recu: &str) -> Resultat<EtatSel> {
+    let recu = recu.trim();
+    if !sel_valable(recu) {
+        return Ok(EtatSel::Injoignable);
+    }
+    let f = dossier_profil.join(NOM_SEL);
+    if f.exists() {
+        return Ok(match sel_local(dossier_profil) {
+            Some(l) if l.eq_ignore_ascii_case(recu) => EtatSel::Identique,
+            // Un fichier local présent (même illisible) n'est jamais remplacé : la personne le verra dit.
+            _ => EtatSel::Ecart,
+        });
+    }
+    std::fs::create_dir_all(dossier_profil)?;
+    let provisoire = dossier_profil.join(format!("{NOM_SEL}.provisoire"));
+    std::fs::write(&provisoire, recu)?;
+    // Un sel apparu entre-temps (un abri en même temps) : on ne l'écrase pas.
+    if f.exists() {
+        let _ = std::fs::remove_file(&provisoire);
+        return Ok(if sel_local(dossier_profil).is_some_and(|l| l.eq_ignore_ascii_case(recu)) { EtatSel::Identique } else { EtatSel::Ecart });
+    }
+    if let Err(e) = std::fs::rename(&provisoire, &f) {
+        let _ = std::fs::remove_file(&provisoire);
+        return Err(e.into());
+    }
+    Ok(EtatSel::Range)
+}
+
 /// Le sel secret du profil (32 hexadécimaux, dans ses données) ; créé au premier besoin.
 pub fn sel_du_profil(dossier_profil: &Path) -> Resultat<String> {
     let f = dossier_profil.join(NOM_SEL);
-    if let Ok(t) = std::fs::read_to_string(&f) {
-        let t = t.trim().to_string();
-        if t.len() >= 16 && t.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Ok(t);
-        }
+    if let Some(t) = sel_local(dossier_profil) {
+        return Ok(t);
     }
     use rand::RngCore;
     let mut o = [0u8; 16];
@@ -237,6 +309,9 @@ pub enum Echec {
     Change,
     /// OneDrive n'a pas rendu un fichier « en ligne seulement » (pas connecté, refusé, trop long).
     OneDrive,
+    /// Lot S5 : l'endroit dépend d'un `<identifiant …>` et le sel du profil n'a pas pu être relu chez Firehouse (jamais
+    /// un sel neuf qui écarterait l'ancien) : à refaire.
+    SelInconnu,
 }
 
 impl Echec {
@@ -249,6 +324,7 @@ impl Echec {
             Echec::Copie => "un fichier n’a pas pu être copié (le jeu ou un autre programme l’utilise peut-être)",
             Echec::Change => "un fichier a changé pendant la copie : réessaie dans un moment",
             Echec::OneDrive => "OneDrive n’a pas pu télécharger ce fichier : vérifie que OneDrive est connecté",
+            Echec::SelInconnu => "Frogtend n’a pas pu relire chez Firehouse la clé des abris de ce profil : cet endroit sera mis à l’abri la prochaine fois (vérifie la connexion)",
         }
     }
 }
@@ -373,6 +449,19 @@ fn planifier_jusqua(lieux: &[Emplacement], deja: &BTreeSet<String>, sel: &str, m
     ordre.sort_by_key(|e| (e.filtre.is_some(), e.dossier.components().count()));
     let mut reussis: Vec<String> = Vec::new();
     for e in ordre {
+        // Lot S5 : sans le sel du profil (Firehouse injoignable), un endroit énuméré n'est jamais mis à l'abri sous une
+        // empreinte d'un AUTRE sel : il attend la prochaine fois (dit).
+        if e.identifiant.is_some() && sel.is_empty() {
+            plan.emplacements.push(PlanEmplacement {
+                abrite: EmplacementAbrite { cle: cle_chemin(&e.chemin, &e.nature), chemin: e.chemin.clone(), nature: e.nature.clone(), filtre: e.filtre.clone(), ..Default::default() },
+                dossier: e.dossier.clone(),
+                fichiers: Vec::new(),
+                octets: 0,
+                echec: Some(Echec::SelInconnu),
+                en_ligne: Vec::new(),
+            });
+            continue;
+        }
         let moi = format!("{}\\", normal(&e.dossier));
         if reussis.iter().any(|x| moi.starts_with(x.as_str())) {
             continue;
@@ -838,6 +927,21 @@ pub fn emplacements_a_envoyer(abris: &[(u64, PathBuf)], profil: &str) -> (Vec<(P
         boutique: a.iter().find_map(|(_, _, f)| f.boutique.clone()),
     };
     (sources, Some(fiche))
+}
+
+/// Lot S5 : un emplacement de CE profil dont l'abri le plus récent qui le contient est celui d'AVANT une reprise de
+/// Firehouse (la partie remplacée de ce PC, sans abri `restauree` plus récent) : l'envoyer écraserait chez Firehouse
+/// la partie que la personne a choisie. Vrai : rien de ce jeu ne doit partir.
+pub fn reprise_sans_abri_apres(abris: &[(u64, PathBuf)], profil: &str) -> bool {
+    let mut a: Vec<(u64, FicheAbri)> = abris
+        .iter()
+        .filter_map(|(q, d)| lire_fiche(d).map(|f| (*q, f)))
+        .filter(|(_, f)| (f.sorte == SORTE_NUAGE_STEAM || f.sorte == SORTE_EMPLACEMENTS) && f.profil == profil)
+        .collect();
+    a.sort_by(|x, y| y.0.cmp(&x.0));
+    let cles: BTreeSet<&String> = a.iter().flat_map(|(_, f)| f.emplacements.iter().map(|e| &e.cle)).collect();
+    let bloque = cles.into_iter().any(|cle| a.iter().find(|(_, f)| f.emplacements.iter().any(|e| &e.cle == cle)).is_some_and(|(_, f)| f.declencheur == DECLENCHEUR_AVANT_RESTAURATION));
+    bloque
 }
 
 /// Le profil propriétaire d'un abri, quand sa fiche (lot S2 et après) le dit.
@@ -1556,6 +1660,25 @@ mod tests {
         let s1 = sel_du_profil(&profil).unwrap();
         assert_eq!((s1.len(), sel_du_profil(&profil).unwrap()), (32, s1.clone()));
         assert_ne!(sel_du_profil(&d.path().join("profils").join("p2")).unwrap(), s1, "un sel par profil");
+    }
+
+    /// Lot S5 : le sel reçu de Firehouse n'est rangé que s'il manque ; un sel local différent n'est jamais écrasé ; un
+    /// sel reçu invalide n'est jamais rangé ; rien de provisoire ne reste.
+    #[test]
+    fn le_sel_recu_n_est_range_que_s_il_manque() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("profils").join("p1");
+        assert_eq!(sel_local(&p), None);
+        assert_eq!(ranger_sel_recu(&p, "pas-hexa").unwrap(), EtatSel::Injoignable);
+        assert!(!p.join(NOM_SEL).exists());
+        assert_eq!(ranger_sel_recu(&p, "abc123").unwrap(), EtatSel::Range);
+        assert_eq!(sel_local(&p).as_deref(), Some("abc123"), "court mais valable (1 à 128 hexadécimaux)");
+        assert_eq!(sel_du_profil(&p).unwrap(), "abc123", "jamais recréé par-dessus");
+        assert_eq!(ranger_sel_recu(&p, "ABC123").unwrap(), EtatSel::Identique);
+        assert_eq!(ranger_sel_recu(&p, "ffff").unwrap(), EtatSel::Ecart);
+        assert_eq!(std::fs::read_to_string(p.join(NOM_SEL)).unwrap(), "abc123", "jamais écrasé");
+        assert!(!p.join(format!("{NOM_SEL}.provisoire")).exists());
+        assert!(!sel_valable(&"a".repeat(129)) && !sel_valable(""));
     }
 
     #[test]

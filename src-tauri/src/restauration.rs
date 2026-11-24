@@ -44,6 +44,66 @@ pub struct RestaurationPrete {
     pub bibliotheque: Value,
     pub fichiers: usize,
     pub taille: u64,
+    /// Lot S5 : le sel des empreintes relu chez Firehouse (jamais sa valeur) — `ecart` : celui de ce PC est différent,
+    /// gardé tel quel (des parties d'un autre PC pourront attendre).
+    pub sel: crate::abri_parties::EtatSel,
+}
+
+/// Ce qu'une restauration téléchargerait, annoncé avant (lot S5) : fichiers, taille, et le nombre de jeux (visibles de
+/// ce profil seulement) dont des parties sont dans la sauvegarde.
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+pub struct ApercuRestauration {
+    pub fichiers: usize,
+    pub octets: u64,
+    pub jeux: usize,
+}
+
+/// La route d'une sauvegarde (`profil` et `pc` tels que Firehouse les liste).
+fn base_de(profil: &str, pc: &str) -> String {
+    format!("/sauvegarde/{}/{}", crate::source::encoder(&nom_pour_api(profil)), crate::source::encoder(&nom_pour_api(pc)))
+}
+
+/// Le manifeste d'une sauvegarde, ses documents à part compris (lot S4). `jeu` (lot S5, reprendre UN jeu) : seulement
+/// le document à part de ce jeu, s'il en a un — jamais tout le reste.
+async fn manifeste_de(c: &Client, base: &str, jeu: Option<i64>) -> Resultat<ManifesteParties> {
+    let mut manifeste: ManifesteParties = serde_json::from_value(c.obtenir_json::<Value>(&format!("{base}/document/manifeste.json")).await?)
+        .map_err(|_| Erreur::Serveur("Le manifeste de la sauvegarde est illisible.".into()))?;
+    let seul = jeu.and_then(|id| crate::sauvegarde::cle_manifeste(&format!("jeux/{id}/x")));
+    // Lot S4 : un gros manifeste est rangé par jeu (`manifeste-<clé>.json`) ; un ancien n'en a pas (liste vide).
+    for cle in std::mem::take(&mut manifeste.manifestes_jeux) {
+        if seul.as_ref().is_some_and(|x| *x != cle) {
+            continue;
+        }
+        let route = format!("{base}/document/{}", crate::sauvegarde::nom_manifeste_jeu(&cle));
+        let lu = c.obtenir_json::<Value>(&route).await.map_err(|e| match e {
+            // Un document à part absent : ce n'est pas un jeu inconnu, c'est la sauvegarde qui est incomplète.
+            Erreur::Introuvable(_) => Erreur::Serveur("Une partie du manifeste manque chez Firehouse : la sauvegarde n'est pas complète.".into()),
+            autre => autre,
+        })?;
+        let j: ManifesteParties = serde_json::from_value(lu).map_err(|_| Erreur::Serveur("Le manifeste de la sauvegarde est illisible.".into()))?;
+        manifeste.fichiers.extend(j.fichiers);
+    }
+    Ok(manifeste)
+}
+
+/// Les numéros des jeux dont des parties sont dans ce manifeste.
+fn jeux_du_manifeste(m: &ManifesteParties) -> std::collections::BTreeSet<i64> {
+    m.fichiers.keys().filter_map(|r| r.strip_prefix("jeux/")?.split('/').next()?.parse().ok()).collect()
+}
+
+/// Un chemin de la sauvegarde ne sort jamais de la zone d'attente.
+fn chemin_refuse(relatif: &str) -> bool {
+    relatif.split('/').any(|s| s == ".." || s.is_empty()) || relatif.contains(['\\', ':'])
+}
+
+/// La date (`derniere.date`) de cette sauvegarde, si Firehouse la donne.
+async fn date_de(c: &Client, base: &str) -> Option<String> {
+    let v: Value = c.obtenir_json(&format!("{base}/document/derniere-sauvegarde.json")).await.ok()?;
+    match &v["date"] {
+        Value::String(t) => Some(t.clone()),
+        Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    }
 }
 
 /// Ce que la restauration a remis en place.
@@ -253,14 +313,14 @@ pub async fn lister(client: &Client) -> Resultat<Vec<SauvegardeDisponible>> {
 }
 
 /// Télécharge un fichier de la sauvegarde (reprise `Range`), et vérifie son empreinte avant de le garder.
-async fn telecharger(client: &Client, route: &str, cible: &Path, sha: &str, taille: u64) -> Resultat<()> {
+pub(crate) async fn telecharger(client: &Client, route: &str, cible: &Path, sha: &str, taille: u64) -> Resultat<()> {
     if cible.is_file() && std::fs::metadata(cible)?.len() == taille && empreinte(cible)? == sha {
         return Ok(()); // déjà là (restauration reprise)
     }
     if let Some(p) = cible.parent() {
         std::fs::create_dir_all(p)?;
     }
-    let part = cible.with_extension("part-frogtend");
+    let part = crate::sauvegarde::fichier_part(cible);
     let mut debut = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0).min(taille);
     let mut flux = match client.flux(route, debut).await {
         Ok(f) => f,
@@ -286,7 +346,8 @@ async fn telecharger(client: &Client, route: &str, cible: &Path, sha: &str, tail
     drop(sortie);
     if std::fs::metadata(&part)?.len() != taille || empreinte(&part)? != sha {
         let _ = std::fs::remove_file(&part);
-        return Err(Erreur::Conflit(format!("« {} » est arrivé abîmé : relance la restauration.", cible.display())));
+        // Jamais un chemin dans un message montré (lot S5).
+        return Err(Erreur::Conflit("Un fichier de la sauvegarde est arrivé abîmé : relance la restauration.".into()));
     }
     std::fs::rename(&part, cible)?;
     Ok(())
@@ -524,7 +585,7 @@ fn reposer_ryubing(de: &Path, ryubing: &Path, profil: &str, reglees: &mut Reglee
 }
 
 impl Noyau {
-    fn zone_restauration(&self, profil_id: &str) -> PathBuf {
+    pub(crate) fn zone_restauration(&self, profil_id: &str) -> PathBuf {
         self.dossier.join("restauration").join(profil_id)
     }
 
@@ -553,28 +614,16 @@ impl Noyau {
         let crate::source::Source::Firehouse(c) = &s.source else {
             return Err(Erreur::Refus("En mode simulé, il n'y a rien à restaurer.".into()));
         };
-        let (p, m) = (nom_pour_api(profil), nom_pour_api(pc));
-        let base = format!("/sauvegarde/{}/{}", crate::source::encoder(&p), crate::source::encoder(&m));
+        let base = base_de(profil, pc);
         let document = |nom: &'static str| {
             let route = format!("{base}/document/{nom}");
             async move { c.obtenir_json::<Value>(&route).await }
         };
         let configuration = document("configuration.json").await?;
         let bibliotheque = document("bibliotheque.json").await?;
-        let mut manifeste: ManifesteParties = serde_json::from_value(document("manifeste.json").await?)
-            .map_err(|_| Erreur::Serveur("Le manifeste de la sauvegarde est illisible.".into()))?;
-        // Lot S4 : un gros manifeste est rangé par jeu (`manifeste-<clé>.json`) ; un ancien n'en a pas (liste vide).
-        for cle in std::mem::take(&mut manifeste.manifestes_jeux) {
-            let route = format!("{base}/document/{}", crate::sauvegarde::nom_manifeste_jeu(&cle));
-            let lu = c.obtenir_json::<Value>(&route).await.map_err(|e| match e {
-                // Un document à part absent : ce n'est pas un jeu inconnu, c'est la sauvegarde qui est incomplète.
-                Erreur::Introuvable(_) => Erreur::Serveur("Une partie du manifeste manque chez Firehouse : la sauvegarde n'est pas complète.".into()),
-                autre => autre,
-            })?;
-            let jeu: ManifesteParties = serde_json::from_value(lu)
-                .map_err(|_| Erreur::Serveur("Le manifeste de la sauvegarde est illisible.".into()))?;
-            manifeste.fichiers.extend(jeu.fichiers);
-        }
+        let manifeste = manifeste_de(c, &base, None).await?;
+        // Lot S5 : le sel des empreintes de CE profil chez Firehouse, rangé ici s'il manque (avant toute pose).
+        let sel = self.relire_sel_pour_restaurer(c, &s, profil).await;
 
         // La liste des jeux restaurés, gardée sur le PC : une sauvegarde suivante la garde tant qu'ils ne sont pas remis.
         // Et les réglages : ils disent où étaient les émulateurs de l'ancien PC (pour leur rendre leurs parties).
@@ -597,12 +646,19 @@ impl Noyau {
         }
         std::fs::write(attente.join("bibliotheque.json"), serde_json::to_vec_pretty(&bibliotheque).unwrap_or_default())?;
         std::fs::write(attente.join("configuration.json"), serde_json::to_vec_pretty(&configuration).unwrap_or_default())?;
+        // Lot S5 : d'où viennent les parties de chaque jeu (la date « Chez Firehouse » d'un conflit).
+        let origine = crate::reprise_parties::Origine { profil: profil.into(), pc: pc.into(), date: date_de(c, &base).await };
+        crate::reprise_parties::noter_origines(&attente, &jeux_du_manifeste(&manifeste).into_iter().collect::<Vec<_>>(), &origine)?;
         let zone = attente.join("parties");
         let total = manifeste.fichiers.len();
         let mut taille = 0;
-        for (i, (relatif, (sha, t))) in manifeste.fichiers.iter().enumerate() {
+        // Lot S5 : les fiches des parties PC (`jeux/<id>/emplacements/fiche.json`) EN DERNIER : une restauration coupée
+        // ne laisse jamais une fiche sans ses fichiers.
+        let mut ordre: Vec<(&String, &(String, u64))> = manifeste.fichiers.iter().collect();
+        ordre.sort_by_key(|(r, _)| r.ends_with(crate::abri_parties::FICHE_ENVOYEE));
+        for (i, (relatif, (sha, t))) in ordre.into_iter().enumerate() {
             // Un chemin de la sauvegarde ne sort jamais de la zone d'attente.
-            if relatif.split('/').any(|s| s == ".." || s.is_empty()) || relatif.contains(['\\', ':']) {
+            if chemin_refuse(relatif) {
                 return Err(Erreur::Refus(format!("Chemin refusé dans la sauvegarde : « {relatif} ».")));
             }
             let route = format!("{base}/fichier?chemin={}", crate::source::encoder(relatif));
@@ -610,7 +666,90 @@ impl Noyau {
             taille += t;
             progres(i + 1, total);
         }
-        Ok(RestaurationPrete { configuration, bibliotheque, fichiers: total, taille })
+        Ok(RestaurationPrete { configuration, bibliotheque, fichiers: total, taille, sel })
+    }
+
+    /// Lot S5 : ce qu'une restauration complète téléchargerait (annoncé avant le oui) : fichiers, taille, jeux visibles.
+    pub async fn apercu_restauration(&self, profil: &str, pc: &str) -> Resultat<ApercuRestauration> {
+        let s = self.session().await?;
+        let crate::source::Source::Firehouse(c) = &s.source else {
+            return Err(Erreur::Refus("En mode simulé, il n'y a rien à restaurer.".into()));
+        };
+        let m = manifeste_de(c, &base_de(profil, pc), None).await?;
+        let jeux = jeux_du_manifeste(&m).into_iter().filter(|id| crate::reprise_parties::visible(&s, *id)).count();
+        Ok(ApercuRestauration { fichiers: m.fichiers.len(), octets: m.fichiers.values().map(|(_, t)| *t).sum(), jeux })
+    }
+
+    /// Lot S5 : les fichiers des parties PC d'UN jeu dans une sauvegarde (`jeux/<id>/emplacements/…`, la fiche
+    /// d'abord) — jamais `nuage-steam/` (Steam s'en charge), jamais le reste de la sauvegarde. Un jeu caché : introuvable.
+    async fn fichiers_du_jeu(&self, s: &crate::noyau::Session, c: &Client, base: &str, id: i64) -> Resultat<Vec<(String, String, u64)>> {
+        if !crate::reprise_parties::visible(s, id) {
+            return Err(Erreur::Introuvable("Ce jeu n'est pas dans ta ludothèque.".into()));
+        }
+        let m = manifeste_de(c, base, Some(id)).await.map_err(|e| match e {
+            // Le manifeste de cette sauvegarde est absent : ce n'est pas un jeu inconnu.
+            Erreur::Introuvable(_) => Erreur::Introuvable("Firehouse n'a aucune sauvegarde de ce PC pour ce profil.".into()),
+            autre => autre,
+        })?;
+        let prefixe = format!("jeux/{id}/{}", crate::abri_parties::PREFIXE);
+        let fiche = format!("jeux/{id}/{}", crate::abri_parties::FICHE_ENVOYEE);
+        let mut l: Vec<(String, String, u64)> = m.fichiers.into_iter().filter(|(r, _)| r.starts_with(&prefixe)).map(|(r, (sha, t))| (r, sha, t)).collect();
+        // La fiche EN DERNIER (lot S5) : elle n'arrive dans la zone d'attente qu'après tous ses fichiers — une reprise
+        // coupée ne laisse jamais une fiche qui ferait poser une partie incomplète. Sans fiche : rien.
+        l.sort_by_key(|(r, _, _)| (*r == fiche, r.clone()));
+        if l.last().is_some_and(|(r, _, _)| *r != fiche) {
+            return Err(Erreur::Serveur("La fiche des parties de ce jeu manque dans la sauvegarde : rien n'est repris.".into()));
+        }
+        Ok(l)
+    }
+
+    /// Lot S5 : ce que « 📥 Reprendre mes parties de Firehouse » téléchargerait pour ce jeu.
+    pub async fn apercu_parties_jeu(&self, profil: &str, pc: &str, id: i64) -> Resultat<ApercuRestauration> {
+        let s = self.session().await?;
+        let crate::source::Source::Firehouse(c) = &s.source else {
+            return Err(Erreur::Refus("En mode simulé, il n'y a rien à reprendre.".into()));
+        };
+        let l = self.fichiers_du_jeu(&s, c, &base_de(profil, pc), id).await?;
+        Ok(ApercuRestauration { fichiers: l.len(), octets: l.iter().map(|(_, _, t)| *t).sum(), jeux: usize::from(!l.is_empty()) })
+    }
+
+    /// Lot S5 : télécharge SEULEMENT les parties PC de ce jeu (chaque fichier vérifié par son empreinte, la fiche en
+    /// dernier) dans la zone d'attente du profil ouvert ; relit le sel d'abord (son état est rendu, jamais sa valeur).
+    /// `progres(fichiers faits, en tout, octets faits, octets en tout)`.
+    pub async fn telecharger_parties_jeu(
+        &self,
+        profil: &str,
+        pc: &str,
+        id: i64,
+        progres: &(dyn Fn(usize, usize, u64, u64) + Send + Sync),
+    ) -> Resultat<(ApercuRestauration, crate::abri_parties::EtatSel)> {
+        let s = self.session().await?;
+        let crate::source::Source::Firehouse(c) = &s.source else {
+            return Err(Erreur::Refus("En mode simulé, il n'y a rien à reprendre.".into()));
+        };
+        let base = base_de(profil, pc);
+        let l = self.fichiers_du_jeu(&s, c, &base, id).await?;
+        let sel = self.relire_sel_pour_restaurer(c, &s, profil).await;
+        let attente = self.zone_restauration(&s.profil.id);
+        std::fs::create_dir_all(&attente)?;
+        let origine = crate::reprise_parties::Origine { profil: profil.into(), pc: pc.into(), date: date_de(c, &base).await };
+        crate::reprise_parties::noter_origines(&attente, &[id], &origine)?;
+        let zone = attente.join("parties");
+        let total = l.len();
+        let octets: u64 = l.iter().map(|(_, _, t)| *t).sum();
+        let mut faits = 0u64;
+        progres(0, total, 0, octets);
+        for (i, (relatif, sha, t)) in l.iter().enumerate() {
+            if chemin_refuse(relatif) {
+                return Err(Erreur::Refus("Un chemin de la sauvegarde est refusé : rien de plus n'est repris.".into()));
+            }
+            let route = format!("{base}/fichier?chemin={}", crate::source::encoder(relatif));
+            telecharger(c, &route, &zone.join(relatif), sha, *t).await?;
+            faits += t;
+            progres(i + 1, total, faits, octets);
+        }
+        self.journaliser(&format!("jeu {id} : {total} fichier(s) de parties repris de Firehouse"));
+        Ok((ApercuRestauration { fichiers: total, octets, jeux: usize::from(total > 0) }, sel))
     }
 
     /// Repose les captures d'écran restaurées (✅ Seb 12/11) dans le dossier des captures de ce PC (`dossier`, le
@@ -1636,5 +1775,78 @@ mod tests {
         ecrire("emplacements/carte.dat", b"x");
         assert_eq!(n.reposer_parties_du_jeu("p1", 110, &[], &jeu).unwrap().reposes, 1);
         assert!(jeu.join("emplacements").join("carte.dat").is_file() && !attente.exists());
+    }
+
+    /// Lot S5 : le provisoire d'un téléchargement porte le nom COMPLET (`PARTIE.SAV.part-frogtend`) : celui d'un voisin
+    /// au même nom de base (`PARTIE.BAK`, coupé en route) n'est jamais repris ni touché.
+    #[tokio::test]
+    async fn le_provisoire_d_un_fichier_ne_gene_jamais_son_voisin() {
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/f");
+            t.status(200).body(b"partie");
+        });
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("x");
+        std::fs::write(&f, b"partie").unwrap();
+        let sha = empreinte(&f).unwrap();
+        let bak = d.path().join("PARTIE.BAK.part-frogtend");
+        std::fs::write(&bak, b"debut du BAK").unwrap();
+        let c = Client::nouveau(&s.base_url(), "j").unwrap();
+        telecharger(&c, "/f", &d.path().join("PARTIE.SAV"), &sha, 6).await.unwrap();
+        assert_eq!(std::fs::read(d.path().join("PARTIE.SAV")).unwrap(), b"partie");
+        assert_eq!(std::fs::read(&bak).unwrap(), b"debut du BAK", "jamais touché");
+        assert!(!d.path().join("PARTIE.SAV.part-frogtend").exists());
+    }
+
+    /// Lot S5 : l'annonce d'une restauration complète dit les fichiers, la taille et le nombre de jeux — seulement ceux
+    /// que ce profil voit ; la préparation note d'où vient chaque jeu (pour la date d'un conflit) et dit l'état du sel.
+    #[tokio::test]
+    async fn l_annonce_dit_les_jeux_visibles_et_la_preparation_note_l_origine() {
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "Windows", "jeux": 1}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [{"id": 7, "titre": "Cyberpunk", "plateforme": "Windows"}]}));
+        });
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("x");
+        std::fs::write(&f, b"partie").unwrap();
+        let sha = empreinte(&f).unwrap();
+        let base = "/api/jeux/v1/sauvegarde/Seb/PC";
+        for (nom, corps) in [
+            ("configuration.json", json!({})),
+            ("bibliotheque.json", json!({"jeux": []})),
+            ("manifeste.json", json!({"fichiers": {"jeux/7/a.sav": [sha, 6], "jeux/8/b.sav": [sha, 6], "emulateurs/RetroArch/c.srm": [sha, 6]}})),
+            ("derniere-sauvegarde.json", json!({"date": "1700000000"})),
+        ] {
+            s.mock(|w, t| {
+                w.method(GET).path(format!("{base}/document/{nom}"));
+                t.status(200).json_body(corps.clone());
+            });
+        }
+        s.mock(|w, t| {
+            w.method(GET).path(format!("{base}/fichier"));
+            t.status(200).body(b"partie");
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/sauvegarde/Seb/_profil/document/abris-sel.json");
+            t.status(404).json_body(json!({"detail": "document absent"}));
+        });
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(crate::coffre::CoffreMemoire::default())).unwrap();
+        let id = n.creer_profil("Seb", None, Some("j")).unwrap().id;
+        n.ouvrir(&id, None, &crate::noyau::Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        let a = n.apercu_restauration("Seb", "PC").await.unwrap();
+        assert_eq!(a, ApercuRestauration { fichiers: 3, octets: 18, jeux: 1 }, "le jeu 8 (caché) n'est pas compté");
+        let r = n.preparer_restauration("Seb", "PC", &|_, _| {}).await.unwrap();
+        assert_eq!(r.sel, crate::abri_parties::EtatSel::Inconnu);
+        assert!(!d.path().join("app").join("profils").join(&id).join(crate::abri_parties::NOM_SEL).exists(), "un 404 ne crée jamais de sel");
+        let o = crate::reprise_parties::lire_origines(&n.zone_restauration(&id));
+        assert_eq!(o.get("7").and_then(|x| x.date.as_deref()), Some("1700000000"));
+        assert_eq!(o.get("7").map(|x| x.pc.as_str()), Some("PC"));
     }
 }

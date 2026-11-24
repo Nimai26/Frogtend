@@ -76,6 +76,7 @@ pub mod plein_ecran;
 pub mod profils;
 pub mod references;
 pub mod restauration;
+pub mod reprise_parties;
 pub mod sauvegarde;
 pub mod source;
 pub mod telechargements;
@@ -599,6 +600,12 @@ pub fn run() {
             commandes::eden_firmware,
             commandes::restauration_remplacer,
             commandes::restauration_conflits,
+            commandes::restauration_apercu,
+            commandes::restauration_poser_parties_pc,
+            commandes::parties_reprise_apercu,
+            commandes::parties_reprendre,
+            commandes::parties_conflits,
+            commandes::parties_conflit_regler,
             commandes::dossier_jeux_refus,
             commandes::versions_avis,
             commandes::menu_jeu_emplacement,

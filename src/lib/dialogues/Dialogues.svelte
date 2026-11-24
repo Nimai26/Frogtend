@@ -96,7 +96,7 @@
   <div class="voile" role="presentation" onclick={(e) => e.target === e.currentTarget && d === dessus && annulerDessus()}>
     <div
       class="boite"
-      role={d.sorte === 'confirmer' || d.sorte === 'informer' ? 'alertdialog' : 'dialog'}
+      role={d.sorte === 'confirmer' || d.sorte === 'informer' || d.sorte === 'conflit' ? 'alertdialog' : 'dialog'}
       aria-modal="true"
       aria-labelledby="dlg-titre-{d.id}"
       inert={d !== dessus}
@@ -153,6 +153,19 @@
         {/if}
       {/if}
 
+      {#if d.sorte === 'conflit'}
+        <!-- Lot S5 : deux colonnes, jamais un chemin ni une empreinte ; le badge seulement quand c'est sûr. -->
+        <div class="conflit">
+          {#each d.colonnes as c, i (i)}
+            <section class="colonne" aria-label={c.titre}>
+              <h3>{c.titre}</h3>
+              {#if c.recente}<p class="recente">⭐ la plus récente</p>{/if}
+              {#each c.lignes as l, j (j)}<p>{l}</p>{/each}
+            </section>
+          {/each}
+        </div>
+      {/if}
+
       {#if d.sorte === 'cocher'}
         <ul class="choix" role="group" aria-labelledby="dlg-titre-{d.id}">
           {#each d.options as o, i (o)}
@@ -171,6 +184,10 @@
       <div class="actions">
         {#if d.sorte === 'informer'}
           <button class="btn primary" data-valider onclick={() => d.fermer()}>OK</button>
+        {:else if d.sorte === 'conflit'}
+          <button class="btn primary" data-premier onclick={() => d.fermer('ici')}>Garder celle de ce PC</button>
+          <button class="btn" onclick={() => d.fermer('firehouse')}>Reprendre celle de Firehouse</button>
+          <button class="btn" onclick={() => d.fermer('plus_tard')}>Décider plus tard</button>
         {:else}
           <button class="btn" data-premier={d.sorte === 'confirmer' && d.danger ? '' : undefined} onclick={annulerDessus}>Annuler</button>
           {#if d.sorte === 'confirmer'}
@@ -266,6 +283,32 @@
     width: 100%;
     justify-content: space-between;
     text-align: left;
+  }
+  .conflit {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(calc(160 * var(--u)), 1fr));
+    gap: calc(10 * var(--u));
+    margin: 0 0 calc(14 * var(--u));
+  }
+  .colonne {
+    border: 1px solid var(--line);
+    border-radius: calc(10 * var(--u));
+    background: var(--bg2);
+    padding: calc(10 * var(--u)) calc(12 * var(--u));
+    display: grid;
+    gap: calc(4 * var(--u));
+    align-content: start;
+  }
+  .colonne h3 {
+    margin: 0;
+    font-size: calc(14 * var(--u));
+  }
+  .colonne p {
+    margin: 0;
+  }
+  .recente {
+    font-weight: 600;
+    color: var(--ok-texte);
   }
   .refus {
     color: var(--err);

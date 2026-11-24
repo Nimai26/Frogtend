@@ -89,6 +89,9 @@ pub struct Brute {
     /// Contrat 1.51 (`HEAD …/fichier` d'un fichier déjà COMPLET) : `X-Complet: 1` et son `X-Sha256`.
     pub complet: bool,
     pub sha256: Option<String>,
+    /// Contrat 1.52 (lot S5) : `X-Modifie` (ISO 8601 UTC) d'un fichier COMPLET de la sauvegarde — le moment où il a été
+    /// rangé chez Firehouse. Absent avant la 1.52, ou pour un fichier pas complet.
+    pub modifie: Option<String>,
     pub octets: Vec<u8>,
 }
 
@@ -377,6 +380,7 @@ impl Client {
         let recu = rep.headers().get("x-recu").and_then(|v| v.to_str().ok()).and_then(|v| v.parse().ok());
         let complet = rep.headers().get("x-complet").and_then(|v| v.to_str().ok()).is_some_and(|v| v.trim() == "1");
         let sha256 = rep.headers().get("x-sha256").and_then(|v| v.to_str().ok()).map(|v| v.trim().to_ascii_lowercase());
+        let modifie = rep.headers().get("x-modifie").and_then(|v| v.to_str().ok()).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
         let gzip = rep.headers().get(reqwest::header::CONTENT_ENCODING).and_then(|v| v.to_str().ok()).is_some_and(|v| v.trim().eq_ignore_ascii_case("gzip"));
         let octets = rep.bytes().await.map_err(Self::erreur_reseau)?.to_vec();
         // Relevé réel du 24/11 : Firehouse compresse ses grosses réponses JSON (manifeste, liste des sauvegardes) même
@@ -393,7 +397,7 @@ impl Client {
         } else {
             octets
         };
-        Ok(Brute { statut, recu, complet, sha256, octets })
+        Ok(Brute { statut, recu, complet, sha256, modifie, octets })
     }
 
     /// Envoie `e.source` par morceaux à partir de `e.depart` ; rend les octets envoyés et la dernière réponse (celle qui
@@ -566,6 +570,26 @@ mod tests {
         assert_eq!(serde_json::from_slice::<serde_json::Value>(&b.octets).unwrap()["quota_octets"], 10);
         assert!(matches!(crate::sauvegarde::lire_place(&c).await, Ok(Some(_))));
         assert!(matches!(c.brute(reqwest::Method::GET, "/abime", None, &[]).await, Err(Erreur::Serveur(_))));
+    }
+
+    /// Contrat 1.52 (lot S5) : `HEAD …/fichier` d'un fichier complet porte `X-Modifie` ; absent (avant la 1.52, fichier
+    /// pas complet) : `None`, jamais une date inventée.
+    #[tokio::test]
+    async fn l_en_tete_x_modifie_est_lu_quand_il_est_la() {
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(httpmock::Method::HEAD).path("/api/jeux/v1/present");
+            t.status(200).header("X-Complet", "1").header("X-Modifie", "2026-11-24T10:53:09Z");
+        });
+        s.mock(|w, t| {
+            w.method(httpmock::Method::HEAD).path("/api/jeux/v1/absent");
+            t.status(200).header("X-Complet", "1");
+        });
+        let c = Client::nouveau(&s.base_url(), "j").unwrap();
+        let b = c.brute(reqwest::Method::HEAD, "/present", None, &[]).await.unwrap();
+        assert_eq!((b.complet, b.modifie.as_deref()), (true, Some("2026-11-24T10:53:09Z")));
+        let b = c.brute(reqwest::Method::HEAD, "/absent", None, &[]).await.unwrap();
+        assert_eq!((b.complet, b.modifie), (true, None));
     }
 
     /// Besoin 58 (24/11) : Firehouse ne compresse que si la requête contient « gzip » : quels en-têtes le canal brut

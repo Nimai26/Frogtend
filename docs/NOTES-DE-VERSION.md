@@ -1,5 +1,19 @@
 # Notes de version de Frogtend
 
+## 0.224.0 — 📥 Reprendre tes parties depuis Firehouse
+
+- Nouveau : sur la fiche d'un jeu PC (📁 Où sont mes parties), « 📥 Reprendre mes parties de Firehouse » remet sur ce
+  PC les parties gardées chez Firehouse. Aussi dans Taodbox, à la manette. Frogtend annonce d'abord combien de fichiers
+  et de Mo, puis ne télécharge que ce jeu.
+- Une partie qui manque sur ce PC est simplement remise. Une partie identique ne bouge pas. Une partie DIFFÉRENTE n'est
+  jamais écrasée : une fenêtre te montre les deux (« Sur ce PC » / « Chez Firehouse », dates et tailles) et te laisse
+  choisir ; « Garder celle de ce PC » est choisi d'office. Si tu reprends celle de Firehouse, celle de ce PC est d'abord
+  mise à l'abri.
+- Après une restauration complète (nouveau PC, reformatage), les parties de tes jeux PC sont remises toutes seules
+  là où elles manquent, avec un bilan ; celles d'un jeu pas encore installé attendent son installation.
+- Les parties du nuage Steam ne sont pas remises par Frogtend : Steam s'en charge.
+- Plus sûr : un téléchargement coupé ne pose jamais une partie incomplète ; un remplacement interrompu est défait.
+
 ## 0.223.1 — Sauvegarde : ce qui est déjà chez Firehouse est reconnu
 
 - Corrigé : chaque sauvegarde comptait tous les fichiers comme « envoyés », même ceux déjà chez Firehouse (rien

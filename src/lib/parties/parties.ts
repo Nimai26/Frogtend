@@ -238,6 +238,11 @@ export function texteDeclencheur(d: string | null | undefined): { repere: string
       return { repere: '🛠', texte: 'avant de retirer le jeu' };
     case 'avant_mod':
       return { repere: '🛠', texte: 'avant un changement de mod' };
+    // Lot S5 : la partie de ce PC, avant d'être remplacée par celle de Firehouse ; puis la partie reprise.
+    case 'avant_restauration':
+      return { repere: '🛠', texte: 'avant de reprendre la partie de Firehouse' };
+    case 'restauree':
+      return { repere: '📥', texte: 'reprise de Firehouse' };
     // Absent (un abri d'avant le lot S3) ou « main » : fait à la main.
     case undefined:
     case null:
