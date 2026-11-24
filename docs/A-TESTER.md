@@ -7,7 +7,7 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## 📥 Reprendre ses parties depuis Firehouse (0.224.0, lot S5)
-- [ ] 1. Fiche de Cyberpunk ▸ 📁 Où sont mes parties : un bouton « 📥 Reprendre mes parties de Firehouse ». Le cliquer :
+- [x] 1. Fiche de Cyberpunk ▸ 📁 Où sont mes parties : un bouton « 📥 Reprendre mes parties de Firehouse ». Le cliquer :
       une fenêtre annonce le nombre de fichiers et de Mo ; accepter : « tes parties sont déjà à leur place » (rien
       n'a changé depuis la dernière sauvegarde), aucun fichier touché.
 - [ ] 2. Options ▸ Sauvegarde : éteindre « 🛟 Mettre mes parties à l'abri sur ce PC après chaque partie » ; jouer à
