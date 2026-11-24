@@ -12,7 +12,7 @@
 - [x] 2. Jouer à What a Legend!, sauvegarder en jeu, quitter, attendre 1 à 2 minutes : « 🛟 Tes parties de « What a
       Legend! » sont à l'abri » ; un abri 🏁 dans « 🛟 Mes abris ».
 - [x] 3. Fiche de Cyberpunk ▸ 📁 : rien n'a changé (mêmes endroits qu'avant, pas de moteur affiché).
-- [ ] 4. Options ▸ Sauvegarde ▸ « 💾 Sauvegarder maintenant » : quelques fichiers envoyés, aucun « À réessayer ».
+- [x] 4. Options ▸ Sauvegarde ▸ « 💾 Sauvegarder maintenant » : quelques fichiers envoyés, aucun « À réessayer ».
 
 ## 📥 Reprendre ses parties depuis Firehouse (0.224.0, lot S5)
 - [x] 1. Fiche de Cyberpunk ▸ 📁 Où sont mes parties : un bouton « 📥 Reprendre mes parties de Firehouse ». Le cliquer :
