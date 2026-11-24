@@ -325,11 +325,17 @@ impl Client {
 
     /// `GET` d'une route en FLUX, à partir de l'octet `debut` (reprise `Range`). 416 : rien à reprendre.
     pub async fn flux(&self, route: &str, debut: u64) -> Resultat<Flux> {
-        let mut req = self.http_flux.get(self.url(route));
+        // Un fichier ne voyage JAMAIS compressé : sa taille, sa reprise `Range` et son empreinte doivent rester exactes
+        // (relevé du 24/11 : Firehouse compresse parfois sans qu'on le demande, besoin 58).
+        let mut req = self.http_flux.get(self.url(route)).header(reqwest::header::ACCEPT_ENCODING, "identity");
         if debut > 0 {
             req = req.header(reqwest::header::RANGE, format!("bytes={debut}-"));
         }
         let rep = self.envoyer(req).await?;
+        let encodage = rep.headers().get(reqwest::header::CONTENT_ENCODING).and_then(|v| v.to_str().ok()).map(|v| v.trim().to_ascii_lowercase());
+        if (200..300).contains(&rep.status().as_u16()) && encodage.as_deref().is_some_and(|e| !e.is_empty() && e != "identity") {
+            return Err(Erreur::Serveur("Firehouse a envoyé ce fichier compressé : le téléchargement s'arrête pour ne pas l'abîmer.".into()));
+        }
         match rep.status().as_u16() {
             206 => Ok(Flux { reponse: rep, reprise: true }),
             200..=299 => Ok(Flux { reponse: rep, reprise: false }),
@@ -371,7 +377,22 @@ impl Client {
         let recu = rep.headers().get("x-recu").and_then(|v| v.to_str().ok()).and_then(|v| v.parse().ok());
         let complet = rep.headers().get("x-complet").and_then(|v| v.to_str().ok()).is_some_and(|v| v.trim() == "1");
         let sha256 = rep.headers().get("x-sha256").and_then(|v| v.to_str().ok()).map(|v| v.trim().to_ascii_lowercase());
+        let gzip = rep.headers().get(reqwest::header::CONTENT_ENCODING).and_then(|v| v.to_str().ok()).is_some_and(|v| v.trim().eq_ignore_ascii_case("gzip"));
         let octets = rep.bytes().await.map_err(Self::erreur_reseau)?.to_vec();
+        // Relevé réel du 24/11 : Firehouse compresse ses grosses réponses JSON (manifeste, liste des sauvegardes) même
+        // sans `Accept-Encoding` ; ce canal ne les décompressait pas (le manifeste passait pour vide). Une réponse
+        // annoncée gzip est donc décompressée ici ; illisible : une erreur, jamais des octets compressés pris pour du JSON.
+        // Seulement un vrai corps gzip (`1f 8b`) : un HEAD ou une erreur au corps vide garde son code et ses en-têtes.
+        // Hors 2xx, un corps indéchiffrable reste brut (le vrai code de Firehouse prime).
+        let octets = if gzip && octets.starts_with(&[0x1f, 0x8b]) {
+            match degonfler(&octets) {
+                Ok(o) => o,
+                Err(e) if (200..300).contains(&statut) => return Err(e),
+                Err(_) => octets,
+            }
+        } else {
+            octets
+        };
         Ok(Brute { statut, recu, complet, sha256, octets })
     }
 
@@ -501,10 +522,110 @@ impl Client {
     }
 }
 
+/// Le plafond d'une réponse brute décompressée (jamais une bombe de décompression).
+const PLAFOND_DEGONFLE: u64 = 256 * 1024 * 1024;
+
+/// Décompresse une réponse gzip ; au-delà du plafond, une ERREUR (jamais une réponse coupée rendue comme entière).
+fn degonfler(octets: &[u8]) -> Resultat<Vec<u8>> {
+    use std::io::Read;
+    let mut sortie = Vec::new();
+    flate2::read::GzDecoder::new(octets)
+        .take(PLAFOND_DEGONFLE + 1)
+        .read_to_end(&mut sortie)
+        .map_err(|_| Erreur::Serveur("Firehouse a envoyé une réponse compressée illisible.".into()))?;
+    if sortie.len() as u64 > PLAFOND_DEGONFLE {
+        return Err(Erreur::Serveur("Firehouse a envoyé une réponse compressée trop grosse.".into()));
+    }
+    Ok(sortie)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use httpmock::prelude::*;
+
+    /// Relevé réel du 24/11 : une réponse brute annoncée gzip (sans qu'on l'ait demandée) est décompressée ; une
+    /// réponse gzip abîmée est une erreur.
+    #[tokio::test]
+    async fn une_reponse_brute_compressee_est_decompressee() {
+        use std::io::Write;
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        gz.write_all(br#"{"utilise_octets": 5, "quota_octets": 10}"#).unwrap();
+        let compresse = gz.finish().unwrap();
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/sauvegarde");
+            t.status(200).header("content-encoding", "gzip").header("content-type", "application/json").body(&compresse);
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/abime");
+            t.status(200).header("content-encoding", "gzip").body([0x1f, 0x8b, 0, 1, 2]);
+        });
+        let c = Client::nouveau(&s.base_url(), "j").unwrap();
+        let b = c.brute(reqwest::Method::GET, "/sauvegarde", None, &[]).await.unwrap();
+        assert_eq!(serde_json::from_slice::<serde_json::Value>(&b.octets).unwrap()["quota_octets"], 10);
+        assert!(matches!(crate::sauvegarde::lire_place(&c).await, Ok(Some(_))));
+        assert!(matches!(c.brute(reqwest::Method::GET, "/abime", None, &[]).await, Err(Erreur::Serveur(_))));
+    }
+
+    /// Besoin 58 (24/11) : Firehouse ne compresse que si la requête contient « gzip » : quels en-têtes le canal brut
+    /// envoie-t-il vraiment ?
+    #[tokio::test]
+    async fn entetes_du_canal_brut() {
+        use std::io::{Read, Write};
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let adresse = format!("http://{}", l.local_addr().unwrap());
+        let fil = std::thread::spawn(move || {
+            let (mut f, _) = l.accept().unwrap();
+            let mut tampon = [0u8; 4096];
+            let n = f.read(&mut tampon).unwrap();
+            f.write_all(b"HTTP/1.1 404 Not Found
+content-length: 2
+connection: close
+
+{}").unwrap();
+            String::from_utf8_lossy(&tampon[..n]).to_string()
+        });
+        let c = Client::nouveau(&adresse, "j").unwrap();
+        let _ = c.brute(reqwest::Method::GET, "/x", None, &[]).await;
+        let requete = fil.join().unwrap();
+        let entetes: Vec<&str> = requete.lines().filter(|l| !l.to_ascii_lowercase().starts_with("authorization")).collect();
+        println!("== {entetes:?}");
+        assert!(!requete.to_ascii_lowercase().contains("gzip"), "le canal brut demande gzip : {entetes:?}");
+    }
+
+    /// Revue du 24/11 : un corps vide annoncé gzip (HEAD, erreur) garde son code ; une erreur au corps abîmé aussi ; un
+    /// fichier en flux arrivé compressé est refusé (jamais des octets gzip dans un `.part`) ; trop gros : une erreur.
+    #[tokio::test]
+    async fn gzip_vide_erreur_flux_et_plafond() {
+        use std::io::Write;
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(httpmock::Method::HEAD).path("/api/jeux/v1/tete");
+            t.status(200).header("content-encoding", "gzip").header("X-Recu", "4");
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/refus");
+            t.status(409).header("content-encoding", "gzip").body([0x1f, 0x8b, 0, 1]);
+        });
+        let fichier = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/fichier/1/0/0").header("accept-encoding", "identity");
+            t.status(200).header("content-encoding", "gzip").body("x");
+        });
+        let c = Client::nouveau(&s.base_url(), "j").unwrap();
+        let b = c.brute(reqwest::Method::HEAD, "/tete", None, &[]).await.unwrap();
+        assert_eq!((b.statut, b.recu), (200, Some(4)));
+        assert_eq!(c.brute(reqwest::Method::GET, "/refus", None, &[]).await.unwrap().statut, 409);
+        assert!(matches!(c.flux("/fichier/1/0/0", 0).await, Err(Erreur::Serveur(_))));
+        fichier.assert();
+        // Plus gros que le plafond une fois décompressé : une erreur, jamais une réponse coupée.
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
+        let zeros = vec![0u8; 1024 * 1024];
+        for _ in 0..(PLAFOND_DEGONFLE / zeros.len() as u64 + 1) {
+            gz.write_all(&zeros).unwrap();
+        }
+        assert!(matches!(degonfler(&gz.finish().unwrap()), Err(Erreur::Serveur(_))));
+    }
 
     #[tokio::test]
     async fn les_listes_arrivent_compressees_jamais_les_fichiers() {

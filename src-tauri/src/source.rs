@@ -1475,6 +1475,39 @@ mod tests {
         }
     }
 
+    /// RÉEL, lecture seule chez Firehouse — lot S4 (24/11) : le manifeste relu vide à chaque sauvegarde. Deux GET du
+    /// manifeste de `FROGTEND_PC_ESSAI` (3 s d'écart) : par le canal des fichiers (`brute`, celui de la sauvegarde) et
+    /// par le canal JSON (`obtenir`, celui de la restauration). N'affiche que le statut, la taille, le premier octet et le
+    /// nombre de lignes lues — jamais un chemin ni un contenu.
+    /// `FROGTEND_PROFIL_ESSAI=<id> FROGTEND_NOM_PROFIL=<nom> FROGTEND_PC_ESSAI=<pc> cargo test essai_manifeste_s4 -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn essai_manifeste_s4() {
+        use crate::coffre::Coffre as _;
+        let profil = std::env::var("FROGTEND_PROFIL_ESSAI").expect("FROGTEND_PROFIL_ESSAI");
+        let nom = std::env::var("FROGTEND_NOM_PROFIL").expect("FROGTEND_NOM_PROFIL");
+        let pc = std::env::var("FROGTEND_PC_ESSAI").expect("FROGTEND_PC_ESSAI");
+        let jeton = crate::coffre::CoffreWindows.lire(&profil).unwrap().expect("pas de jeton");
+        let c = crate::firehouse::Client::nouveau("https://jeux.hikari-no-sekai.fr", &jeton).unwrap();
+        let route = format!("/sauvegarde/{}/{}/document/manifeste.json", crate::source::encoder(&nom), crate::source::encoder(&pc));
+        let lignes = |o: &[u8]| {
+            serde_json::from_slice::<serde_json::Value>(o).ok().map(|v| {
+                let m = serde_json::from_value::<crate::sauvegarde::ManifesteParties>(v.clone());
+                (v.as_object().map(|x| x.keys().cloned().collect::<Vec<_>>()), m.map(|m| m.fichiers.len()).map_err(|e| e.to_string()))
+            })
+        };
+        match c.brute(reqwest::Method::GET, &route, None, &[]).await {
+            Ok(b) => println!("== brute : statut {}, {} octets, 1er octet {:?}, lu {:?}", b.statut, b.octets.len(), b.octets.first(), lignes(&b.octets)),
+            Err(e) => println!("== brute : erreur {e}"),
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        match c.obtenir(&route, None).await {
+            Ok(crate::firehouse::Reponse::Corps { octets, .. }) => println!("== obtenir : {} octets, 1er octet {:?}, lu {:?}", octets.len(), octets.first(), lignes(&octets)),
+            Ok(_) => println!("== obtenir : 304"),
+            Err(e) => println!("== obtenir : erreur {e}"),
+        }
+    }
+
     /// RÉEL, lecture seule chez Firehouse — lot S0 (accord de Seb du 22/11) : pour un échantillon de jeux de boutique
     /// (fichier `FROGTEND_TITRES` : « boutique\tclé\ttitre » par ligne, 80 au plus), demande `/triche/recherche` par le
     /// TITRE et la plateforme Windows, et compte ce que `sauvegardes` dit (absent / null / [] / emplacements, et les `os`).

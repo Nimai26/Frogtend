@@ -1,5 +1,12 @@
 # Notes de version de Frogtend
 
+## 0.223.1 — Sauvegarde : ce qui est déjà chez Firehouse est reconnu
+
+- Corrigé : chaque sauvegarde comptait tous les fichiers comme « envoyés », même ceux déjà chez Firehouse (rien
+  n'était renvoyé pour autant, mais le message était faux). Frogtend relit maintenant bien la liste de ce qui est
+  déjà chez Firehouse : « rien n'avait changé » quand rien n'a changé.
+- Plus solide : toute réponse compressée de Firehouse est désormais lue correctement, même quand Frogtend ne l'a pas demandée.
+
 ## 0.223.0 — ☁ Les parties de tous tes jeux PC chez Firehouse
 
 - Nouveau : la sauvegarde envoie maintenant chez Firehouse les parties de TOUS tes jeux PC mises à l'abri (à la main

@@ -926,6 +926,13 @@ service de la 1.51 : retirer `MARGE_REMPLACES`, construire et livrer, premier en
 fichier remplacé n'est pas comptée, le 507 chiffré tranche). Le premier envoi réel (environ 435 Mo, 203 fichiers,
 3 jeux) se fait à la main, avec l'accord de Seb (son seuil de 200 Mo remet toute sauvegarde automatique plus grosse à
 plus tard).
+**0.223.1 (24/11)** : premier envoi réel fait par Seb (415 fichiers, 463,9 Mo ; place 464,2 Mo), mais la 2e
+sauvegarde disait « 415 envoyés, 0 à jour » (0 octet parti). Essai réel en lecture seule (accord de Seb,
+`essai_manifeste_s4`) : Firehouse compresse le manifeste même sans `Accept-Encoding`, et le canal « fichiers » de
+Frogtend (`no_gzip`) le lisait illisible → manifeste vide. Corrigé : toute réponse brute annoncée gzip est décompressée
+(`firehouse::degonfler`, plafond 256 Mo), les documents de la sauvegarde se lisent par le canal JSON, un document
+illisible est une erreur (jamais un manifeste vide en silence). La place libre (`lire_place`, petite réponse non compressée) était, elle, bien lue ;
+elle profite aussi de la correction si la liste grossit. Besoin 58 (compression non demandée) transmis à Firehouse.
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
 « Connecte-toi… dans la fenêtre qui s'ouvre » laisse croire que rien ne se passe ou que c'est raté. Voulu : une petite

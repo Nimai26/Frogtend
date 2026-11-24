@@ -70,7 +70,14 @@ pub fn nom_manifeste_jeu(cle: &str) -> String {
 pub async fn lire_manifeste(d: &impl Destination, strict: bool) -> Resultat<ManifesteParties> {
     let mut m: ManifesteParties = d.lire_document("manifeste.json").await?.and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default();
     for cle in std::mem::take(&mut m.manifestes_jeux) {
-        match d.lire_document(&nom_manifeste_jeu(&cle)).await?.and_then(|v| serde_json::from_value::<ManifesteParties>(v).ok()) {
+        // Non strict : un document à part illisible est tenu pour absent (ses fichiers repartiront), jamais un blocage
+        // de toutes les sauvegardes ; strict (restauration) : une erreur.
+        let lu = match d.lire_document(&nom_manifeste_jeu(&cle)).await {
+            Ok(v) => v,
+            Err(Erreur::Serveur(_)) if !strict => None,
+            Err(e) => return Err(e),
+        };
+        match lu.and_then(|v| serde_json::from_value::<ManifesteParties>(v).ok()) {
             Some(j) => m.fichiers.extend(j.fichiers),
             None if strict => return Err(Erreur::Serveur("Une partie du manifeste de la sauvegarde manque chez Firehouse.".into())),
             None => {}
@@ -452,11 +459,17 @@ impl Api<'_> {
 
 impl Destination for Api<'_> {
     async fn lire_document(&self, nom: &str) -> Resultat<Option<Value>> {
-        let b = self.client.brute(reqwest::Method::GET, &format!("{}/document/{nom}", self.base()), None, &[]).await?;
-        match b.statut {
-            200 => Ok(serde_json::from_slice(&b.octets).ok()),
-            404 => Ok(None),
-            _ => Err(Self::refus(&b)),
+        // Par le canal JSON (gzip décompressé), comme la restauration : Firehouse compresse ses documents même sans
+        // `Accept-Encoding` (relevé réel du 24/11), et le canal des fichiers (`no_gzip`) les lisait illisibles — le
+        // manifeste passait pour vide et chaque sauvegarde recomptait tout comme « envoyé ». Un document présent mais
+        // illisible est une ERREUR dite, jamais un manifeste vide en silence.
+        match self.client.obtenir(&format!("{}/document/{nom}", self.base()), None).await {
+            Ok(crate::firehouse::Reponse::Corps { octets, .. }) => serde_json::from_slice(&octets)
+                .map(Some)
+                .map_err(|_| Erreur::Serveur("Un document de ta sauvegarde est illisible chez Firehouse.".into())),
+            Ok(crate::firehouse::Reponse::NonModifie) => Ok(None),
+            Err(Erreur::Introuvable(_)) => Ok(None),
+            Err(e) => Err(e),
         }
     }
     async fn ecrire_document(&self, nom: &str, v: &Value) -> Resultat<()> {
@@ -2797,6 +2810,34 @@ mod tests_s4 {
 
         fn api(c: &crate::firehouse::Client) -> Api<'_> {
             Api { client: c, profil: "Sebastien".into(), pc: "VENKMAN".into(), morceau: MORCEAU, pause: None }
+        }
+
+        /// Relevé réel du 24/11 : Firehouse sert le manifeste COMPRESSÉ (gzip), même sans `Accept-Encoding`. Il doit être
+        /// relu (sinon chaque sauvegarde recompte tout comme envoyé) ; un document illisible est une erreur, jamais vide.
+        #[tokio::test]
+        async fn un_manifeste_compresse_est_relu_et_un_illisible_est_une_erreur() {
+            use std::io::Write;
+            let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+            gz.write_all(br#"{"fichiers": {"jeux/1/a.sav": ["ab", 6]}}"#).unwrap();
+            let compresse = gz.finish().unwrap();
+            let s = MockServer::start();
+            s.mock(|w, t| {
+                w.method(GET).path(format!("{BASE}/document/manifeste.json"));
+                t.status(200).header("content-encoding", "gzip").header("content-type", "application/json").body(&compresse);
+            });
+            s.mock(|w, t| {
+                w.method(GET).path(format!("{BASE}/document/derniere-sauvegarde.json"));
+                t.status(404).json_body(json!({"detail": "document absent"}));
+            });
+            s.mock(|w, t| {
+                w.method(GET).path(format!("{BASE}/document/bibliotheque.json"));
+                t.status(200).header("content-type", "application/json").body("pas du json");
+            });
+            let c = crate::firehouse::Client::nouveau(&s.base_url(), "j").unwrap();
+            let m = lire_manifeste(&api(&c), true).await.unwrap();
+            assert_eq!(m.fichiers.get("jeux/1/a.sav"), Some(&("ab".to_string(), 6)));
+            assert!(api(&c).lire_document("derniere-sauvegarde.json").await.unwrap().is_none());
+            assert!(matches!(api(&c).lire_document("bibliotheque.json").await, Err(Erreur::Serveur(_))));
         }
 
         #[tokio::test]
