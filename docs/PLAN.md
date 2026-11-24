@@ -965,6 +965,23 @@ l'identifiant ; parties rangées dans le dossier du jeu hors `emplacements/` (re
 non essayée sur un vrai PC neuf.
 **S5 validé par Seb (24/11, 0.224.0)** : reprise d'un jeu (Cyberpunk, 196 fichiers, 255,9 Mo) et fenêtre de conflit
 essayées ; l'étape Taodbox à la manette est reportée à la prochaine session canapé. Prochain : S6 (règles par moteur).
+**Lot S6 — décisions de Seb (24/11, après l'avis de l'expert lancement et la recherche `docs/MOTEURS-PARTIES.md`)** :
+(1) quand Firehouse ne connaît pas l'emplacement et que Frogtend reconnaît le moteur avec DEUX preuves (un fichier du
+moteur au premier niveau du dossier du jeu + le nom lu dans UN fichier du jeu, lecture plafonnée, jamais d'exécution
+ni de « dé-pickle »), la règle s'applique D'OFFICE et la fiche l'affiche (« 📁 d'après le moteur Unity ») ; sans les
+deux preuves, rien ; (2) Firehouse dit « aucune partie » (`Vide`) mais le moteur est prouvé et des parties existent :
+le MOTEUR l'emporte, le désaccord est noté et transmis ; (3) les parties rangées DANS le dossier du jeu (RPG Maker
+XP/VX/Ace/MV/MZ, Ren'Py `game/saves`) : ABRI ET REPRISE dès S6 (la reprise S5 ne posait que `emplacements/` hors du
+dossier du jeu) ; (4) le moteur reconnu est REMONTÉ à Firehouse : numéro du jeu, moteur et nom lu seulement, jamais un
+chemin (besoin 60). Règles retenues : les RÈGLES viennent de Firehouse (contrat 1.48 : `moteur`, `emplacements_moteur`
+{moteur_nom, sauvegardes, nom_a_lire, certitude}, `/sauvegardes/references ▸ moteurs` et leurs fichiers de
+reconnaissance) — Frogtend ne recopie aucune règle en dur, il reconnaît et LIT le nom ; ordre : `personne` > Firehouse
+`Lu` > moteur prouvé ; doublons retirés ; jamais le registre (PlayerPrefs Unity), jamais un disque parcouru, jamais un
+dossier commun seul (`%APPDATA%\RenPy`, `LocalLow\<société>`, `%APPDATA%\RenPy	okens` exclus) ; valeur lue refusée si
+vide, avec `\`, `..`, caractère interdit ou racine ; journal = id du jeu, jamais un nom lu ; corriger `retirer_si`
+(emplacements_parties.rs ~485) qui garde les emplacements non-Firehouse d'un jeu devenu invisible ; test « une partie
+de jeu admin n'apparaît jamais pour un mineur » (cache par profil, `retirer_si`, abri auto, Mes abris, envoi, reprise,
+Taodbox).
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
 « Connecte-toi… dans la fenêtre qui s'ouvre » laisse croire que rien ne se passe ou que c'est raté. Voulu : une petite
