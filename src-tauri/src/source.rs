@@ -1496,6 +1496,18 @@ mod tests {
                 (v.as_object().map(|x| x.keys().cloned().collect::<Vec<_>>()), m.map(|m| m.fichiers.len()).map_err(|e| e.to_string()))
             })
         };
+        // Besoin 58 (3.318.1) : une requête SANS Accept-Encoding doit revenir sans Content-Encoding.
+        let nu = reqwest::Client::builder().no_gzip().build().unwrap();
+        match nu.get(format!("https://jeux.hikari-no-sekai.fr/api/jeux/v1{route}")).bearer_auth(&jeton).send().await {
+            Ok(r) => {
+                let enc = r.headers().get("content-encoding").and_then(|v| v.to_str().ok()).map(String::from);
+                let st = r.status().as_u16();
+                let o = r.bytes().await.unwrap_or_default();
+                println!("== nu : statut {st}, content-encoding {enc:?}, {} octets, 1er octet {:?}, lu {:?}", o.len(), o.first(), lignes(&o));
+            }
+            Err(e) => println!("== nu : erreur {}", e.is_timeout()),
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         match c.brute(reqwest::Method::GET, &route, None, &[]).await {
             Ok(b) => println!("== brute : statut {}, {} octets, 1er octet {:?}, lu {:?}", b.statut, b.octets.len(), b.octets.first(), lignes(&b.octets)),
             Err(e) => println!("== brute : erreur {e}"),
