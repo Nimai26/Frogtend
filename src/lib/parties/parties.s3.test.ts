@@ -53,6 +53,8 @@ describe('🛟 Les déclencheurs d’un abri', () => {
     expect(texteDeclencheur('avant_mise_a_jour').texte).toBe('avant une mise à jour');
     expect(texteDeclencheur('avant_retrait').texte).toBe('avant de retirer le jeu');
     expect(texteDeclencheur('avant_mod')).toEqual({ repere: '🛠', texte: 'avant un changement de mod' });
+    // Lot S7 : une partie jouée hors de Frogtend, rattrapée à l'ouverture du profil.
+    expect(texteDeclencheur('rattrapage')).toEqual({ repere: '🛟', texte: 'rattrapé' });
     expect(texteDeclencheur(undefined).texte).toBe('mis à l’abri à la main');
     expect(texteDeclencheur('').texte).toBe('mis à l’abri à la main');
     // Un déclencheur d'une version plus récente : jamais « à la main ».
@@ -62,6 +64,9 @@ describe('🛟 Les déclencheurs d’un abri', () => {
   it('la liste dit le déclencheur ; les anciens abris gardent leur libellé', () => {
     expect(texteSorteAbri(abri(1))).toBe('🏁 après une partie · dans ton profil');
     expect(texteSorteAbri(abri(1, { declencheur: 'avant_mod' }))).toBe('🛠 avant un changement de mod · dans ton profil');
+    // Lot S7 : un abri rattrapé à confirmer, ou dit « pas à moi ».
+    expect(texteSorteAbri(abri(1, { declencheur: 'rattrapage', a_confirmer: true }))).toBe('🛟 rattrapé · dans ton profil · à confirmer : c’est toi qui as joué ?');
+    expect(texteSorteAbri(abri(1, { declencheur: 'rattrapage', pas_a_moi: true }))).toBe('🛟 rattrapé · dans ton profil · pas à toi : gardé sur ce PC, jamais envoyé');
     // Un abri du lot S2 (sans le champ) : à la main.
     expect(texteSorteAbri(abri(1, { declencheur: undefined }))).toBe('🖐 mis à l’abri à la main · dans ton profil');
     // Un abri du dossier du jeu : son libellé d'avant, sans déclencheur.
@@ -81,6 +86,7 @@ describe('🛟 Dernier abri et liste longue', () => {
     expect(texteDernierAbri([abri(a21h14)], maintenant)).toBe('🛟 Dernier abri : aujourd’hui à 21:14, après une partie');
     expect(texteDernierAbri([abri(a21h14, { declencheur: 'avant_retrait' })], maintenant)).toBe('🛟 Dernier abri : aujourd’hui à 21:14, avant de retirer le jeu');
     expect(texteDernierAbri([abri(a21h14, { declencheur: 'main' })], maintenant)).toBe('🛟 Dernier abri : aujourd’hui à 21:14, fait à la main');
+    expect(texteDernierAbri([abri(a21h14, { declencheur: 'rattrapage' })], maintenant)).toBe('🛟 Dernier abri : aujourd’hui à 21:14, rattrapé');
     expect(texteDernierAbri([abri(a21h14, { sorte: 'nuage-steam', declencheur: '' })], maintenant)).toBe('🛟 Dernier abri : aujourd’hui à 21:14, avec le nuage de Steam');
     // Seulement un abri de CE profil (un ancien sans propriétaire ne compte pas).
     expect(texteDernierAbri([abri(a21h14, { a_moi: false })], maintenant)).toBeNull();
@@ -133,6 +139,12 @@ describe('🛟 Après une partie : ce qui est dit', () => {
       '⚠ Dernier abri automatique impossible : Plus assez de place sur le disque des abris (il faut 1025 Mo) : rien n’est mis à l’abri. Frogtend réessaiera après ta prochaine partie.',
     );
     expect(texteToastAbriAuto(bilan({ etat: 'echec' }), 'Hades')).toContain('elles sont toujours dans le jeu');
+    // Lot S7 : un échec du RATTRAPAGE se refait à l'ouverture de Frogtend, jamais « après ta prochaine partie ».
+    for (const etat of ['echec', 'attente_depassee', 'inconnu'] as const) {
+      const l = ligneAbriAuto(bilan({ etat, declencheur: 'rattrapage', motif: 'Frogtend n’a pas pu relire la clé.' }))!;
+      expect(l).toContain('à la prochaine ouverture de Frogtend');
+      expect(l).not.toContain('après ta prochaine partie');
+    }
     expect(ligneAbriAuto(bilan())).toBeNull();
     expect(ligneAbriAuto(null)).toBeNull();
   });

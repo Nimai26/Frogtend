@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import Dialogues from './Dialogues.svelte';
-import { attendreTouche, choisir, cocher, confirmer, deciderConflit, demander, informer, pile, toast } from './fenetres.svelte';
+import { attendreTouche, choisir, cocher, confirmer, deciderConflit, demander, demanderSiCestToi, informer, pile, toast } from './fenetres.svelte';
 
 afterEach(() => {
   cleanup();
@@ -283,5 +283,31 @@ describe('Conflit de parties (lot S5)', () => {
     await tick();
     await fireEvent.click(screen.getByRole('button', { name: 'Décider plus tard' }));
     expect(await r2).toBe('plus_tard');
+  });
+});
+
+describe('C’est toi qui as joué ? (lot S7)', () => {
+  it('trois boutons, « Décider plus tard » a le focus d’office ; Échap (B à la manette) : « Décider plus tard »', async () => {
+    render(Dialogues);
+    const r = demanderSiCestToi('🛟 C’est toi qui as joué à « Hades » ?', { message: 'Plusieurs profils utilisent ce PC.' });
+    await tick();
+    expect(screen.getByRole('alertdialog', { name: '🛟 C’est toi qui as joué à « Hades » ?' })).toBeTruthy();
+    expect(document.activeElement?.textContent?.trim()).toBe('Décider plus tard');
+    expect(screen.getByRole('button', { name: 'Oui, c’est moi' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Non' })).toBeTruthy();
+    await fireEvent.keyDown(window, { key: 'Escape' });
+    expect(await r).toBe('plus_tard');
+  });
+
+  it('« Oui, c’est moi » et « Non » à la souris', async () => {
+    render(Dialogues);
+    const r1 = demanderSiCestToi('🛟 ?');
+    await tick();
+    await fireEvent.click(screen.getByRole('button', { name: 'Oui, c’est moi' }));
+    expect(await r1).toBe('oui');
+    const r2 = demanderSiCestToi('🛟 ?');
+    await tick();
+    await fireEvent.click(screen.getByRole('button', { name: 'Non' }));
+    expect(await r2).toBe('non');
   });
 });

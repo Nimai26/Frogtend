@@ -1,5 +1,16 @@
 # Notes de version de Frogtend
 
+## 0.226.0 — 🛟 Les parties jouées hors de Frogtend sont rattrapées
+
+- Nouveau : à l'ouverture de Frogtend, les parties des jeux PC joués SANS Frogtend (lancés depuis Steam, Epic, GOG
+  Galaxy, un raccourci…) sont mises à l'abri si elles ont changé depuis le dernier abri. Un court message le dit
+  (« 🛟 2 jeux rattrapés ») ; la fiche dit « Dernier abri : …, rattrapé ». Rien si rien n'a changé. Jamais pendant qu'un
+  jeu tourne ou vient d'écrire.
+- S'il y a plusieurs profils Frogtend sur ce PC, Frogtend demande « C'est toi qui as joué à … ? » avant d'envoyer une
+  partie rattrapée chez Firehouse (jamais pendant une partie). Sans réponse, elle reste sur ce PC.
+- Nouvel interrupteur « 🛟 Rattraper les parties jouées hors de Frogtend », allumé d'office, dans Options ▸
+  Sauvegarde et les réglages de Taodbox.
+
 ## 0.225.1 — 🎮 Le moteur reconnu est signalé à Firehouse
 
 - Nouveau : quand Frogtend reconnaît le moteur d'un jeu que Firehouse ne connaissait pas (ou pour lequel il disait

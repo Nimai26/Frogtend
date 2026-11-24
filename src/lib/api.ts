@@ -470,8 +470,23 @@ export interface AbriVu {
   /** Fichiers d'un ancien abri Steam pris hors du nuage, dont le chemin d'origine n'a pas été gardé. */
   sans_origine: number;
   /** Lot S3 : ce qui a fait faire un abri de sorte `emplacements` (`main`, `apres_partie`, `avant_retrait`,
-   * `avant_reinstallation`, `avant_mise_a_jour`, `avant_mod`) ; vide pour les autres sortes (et absent avant le S3). */
+   * `avant_reinstallation`, `avant_mise_a_jour`, `avant_mod`, lot S7 : `rattrapage`) ; vide pour les autres sortes (et
+   * absent avant le S3). */
   declencheur?: string;
+  /** Lot S7 : un abri rattrapé qui attend « C'est toi qui as joué ? » (jamais envoyé avant). */
+  a_confirmer?: boolean;
+  /** Lot S7 : la personne a dit « Non » : gardé sur ce PC, jamais envoyé. */
+  pas_a_moi?: boolean;
+}
+
+/** Lot S7 : un tour de RATTRAPAGE des parties jouées hors de Frogtend, à l'ouverture du profil (événement
+ * `parties-rattrapage`) : des numéros de jeux, jamais un titre ni un chemin. */
+export interface BilanRattrapage {
+  profil: string;
+  /** Les jeux dont un abri a été écrit pendant ce tour. */
+  rattrapes: number[];
+  /** Tous les jeux de ce profil dont un abri rattrapé attend « C'est toi qui as joué ? ». */
+  a_confirmer: number[];
 }
 
 /** Ce qu'a fait un abri AUTOMATIQUE des parties d'un jeu PC (lot S3, événement `parties-abri-auto`) : des numéros et
@@ -1377,6 +1392,11 @@ export const api = {
   partiesAbriAvant: (id: number, operation: string) => appeler<void>('parties_abri_avant', { id, operation }),
   /** Lot S3 : le dernier problème gardé de l'abri après une partie de ce jeu (la ligne de la fiche), ou `null`. */
   partiesAbriAutoEtat: (id: number) => appeler<BilanAbriAuto | null>('parties_abri_auto_etat', { id }),
+  /** Lot S7 : les jeux dont un abri rattrapé attend « C'est toi qui as joué ? ». */
+  partiesAConfirmer: () => appeler<number[]>('parties_a_confirmer'),
+  /** Lot S7 : « Oui, c'est moi » (`oui`) ou « Non » pour les abris rattrapés d'un jeu, par `profil` (celui à qui la
+   * question a été posée : refusé si ce n'est plus le profil ouvert) ; rend leur nombre. */
+  partiesConfirmer: (id: number, oui: boolean, profil: string) => appeler<number>('parties_confirmer', { id, oui, profil }),
   /** Les abris de parties d'un jeu PC, pour le profil ouvert. */
   partiesAbris: (id: number) => appeler<AbriVu[]>('parties_abris', { id }),
   /** Le risque de brancher Cheat Engine sur ce jeu (Seb, 21/10 : anti-triche = refus ; en ligne ou inconnu = avertir). */

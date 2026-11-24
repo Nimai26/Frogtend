@@ -63,8 +63,10 @@ pub const DECLENCHEUR_AVANT_RESTAURATION: &str = "avant_restauration";
 /// Lot S5 : la partie reprise de Firehouse, mise à l'abri juste après sa pose (elle devient la copie la plus récente :
 /// la sauvegarde suivante ne renvoie jamais l'ancienne partie de ce PC par-dessus).
 pub const DECLENCHEUR_RESTAUREE: &str = "restauree";
+/// Lot S7 : une partie jouée HORS de Frogtend (Steam, Epic, un raccourci…), rattrapée à l'ouverture du profil.
+pub const DECLENCHEUR_RATTRAPAGE: &str = "rattrapage";
 /// La liste fermée des déclencheurs.
-pub const DECLENCHEURS: [&str; 8] = [
+pub const DECLENCHEURS: [&str; 9] = [
     DECLENCHEUR_MAIN,
     DECLENCHEUR_APRES_PARTIE,
     DECLENCHEUR_AVANT_RETRAIT,
@@ -73,6 +75,7 @@ pub const DECLENCHEURS: [&str; 8] = [
     DECLENCHEUR_AVANT_MOD,
     DECLENCHEUR_AVANT_RESTAURATION,
     DECLENCHEUR_RESTAUREE,
+    DECLENCHEUR_RATTRAPAGE,
 ];
 
 /// Un déclencheur de la liste fermée.
@@ -154,6 +157,21 @@ pub struct FicheAbri {
     /// Lot S4, fiche ENVOYÉE seulement : la boutique du jeu (pour le lot S5, sur un autre PC), quand il en vient une.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub boutique: Option<BoutiqueDuJeu>,
+    /// Lot S7 : un abri RATTRAPÉ (partie jouée hors de Frogtend) alors que plusieurs profils Frogtend partagent ce compte
+    /// Windows : peut-être la partie de quelqu'un d'autre. Jamais envoyé chez Firehouse tant que la personne n'a pas dit
+    /// « Oui, c'est moi » (absent : une fiche plus ancienne, rien à confirmer).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub a_confirmer: bool,
+    /// Lot S7 : la personne a dit « Non » — cet abri reste sur ce PC, il n'est jamais envoyé.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pas_a_moi: bool,
+}
+
+impl FicheAbri {
+    /// Lot S7 : cet abri peut partir chez Firehouse (ni « à confirmer », ni « pas à moi »).
+    pub fn envoyable(&self) -> bool {
+        !self.a_confirmer && !self.pas_a_moi
+    }
 }
 
 /// La boutique d'un jeu (`steam`, `gog`, `epic`…) et sa clé chez elle (l'appid pour Steam).
@@ -178,6 +196,8 @@ impl FicheAbri {
             en_ligne_seulement,
             echecs,
             boutique: None,
+            a_confirmer: false,
+            pas_a_moi: false,
         }
     }
 }
@@ -386,6 +406,8 @@ pub struct PlanAbri {
     pub rapatries: usize,
     /// Lot S4 : la boutique du jeu, notée dans la fiche de l'abri quand il est fait (pour un jeu retiré ensuite).
     pub boutique: Option<BoutiqueDuJeu>,
+    /// Lot S7 : l'abri rattrapé est « à confirmer » (plusieurs profils sur ce compte Windows), noté dans sa fiche.
+    pub a_confirmer: bool,
 }
 
 impl PlanAbri {
@@ -806,6 +828,7 @@ pub(crate) fn abriter_avec_place(
         let mut fiche = FicheAbri::nouvelle(SORTE_EMPLACEMENTS, profil, abrites, &fichiers, plan.en_ligne_seulement, plan.echecs());
         fiche.declencheur = declencheur.into();
         fiche.boutique = plan.boutique.clone();
+        fiche.a_confirmer = plan.a_confirmer;
         if let Some(p) = fin.parent() {
             std::fs::create_dir_all(p)?;
         }
@@ -869,7 +892,9 @@ pub fn emplacements_a_envoyer(abris: &[(u64, PathBuf)], profil: &str) -> (Vec<(P
     let mut a: Vec<(u64, &PathBuf, FicheAbri)> = abris
         .iter()
         .filter_map(|(q, d)| lire_fiche(d).map(|f| (*q, d, f)))
-        .filter(|(_, _, f)| (f.sorte == SORTE_NUAGE_STEAM || f.sorte == SORTE_EMPLACEMENTS) && f.profil == profil)
+        // Lot S7 : un abri rattrapé « à confirmer » (plusieurs profils sur ce compte Windows) ou « pas à moi » ne part
+        // jamais.
+        .filter(|(_, _, f)| (f.sorte == SORTE_NUAGE_STEAM || f.sorte == SORTE_EMPLACEMENTS) && f.profil == profil && f.envoyable())
         .collect();
     // Du plus récent au plus ancien ; deux abris de la même seconde (deux dossiers d'abris) : toujours le même ordre.
     a.sort_by(|x, y| y.0.cmp(&x.0).then_with(|| x.1.cmp(y.1)));
@@ -925,6 +950,8 @@ pub fn emplacements_a_envoyer(abris: &[(u64, PathBuf)], profil: &str) -> (Vec<(P
         declencheur: declencheur_main(),
         // La boutique notée par l'abri le plus récent qui la connaît.
         boutique: a.iter().find_map(|(_, _, f)| f.boutique.clone()),
+        a_confirmer: false,
+        pas_a_moi: false,
     };
     (sources, Some(fiche))
 }
@@ -936,7 +963,8 @@ pub fn reprise_sans_abri_apres(abris: &[(u64, PathBuf)], profil: &str) -> bool {
     let mut a: Vec<(u64, FicheAbri)> = abris
         .iter()
         .filter_map(|(q, d)| lire_fiche(d).map(|f| (*q, f)))
-        .filter(|(_, f)| (f.sorte == SORTE_NUAGE_STEAM || f.sorte == SORTE_EMPLACEMENTS) && f.profil == profil)
+        // Les mêmes abris que ceux envoyés (lot S7 : jamais un « à confirmer » ni un « pas à moi »).
+        .filter(|(_, f)| (f.sorte == SORTE_NUAGE_STEAM || f.sorte == SORTE_EMPLACEMENTS) && f.profil == profil && f.envoyable())
         .collect();
     a.sort_by(|x, y| y.0.cmp(&x.0));
     let cles: BTreeSet<&String> = a.iter().flat_map(|(_, f)| f.emplacements.iter().map(|e| &e.cle)).collect();
@@ -970,6 +998,10 @@ pub struct AbriVu {
     pub sans_origine: usize,
     /// Ce qui a fait faire un abri de sorte `emplacements` (lot S3 : `DECLENCHEURS`) ; vide pour les autres sortes.
     pub declencheur: String,
+    /// Lot S7 : un abri rattrapé qui attend « C'est toi qui as joué ? » (jamais envoyé avant).
+    pub a_confirmer: bool,
+    /// Lot S7 : la personne a dit « Non » : gardé sur ce PC, jamais envoyé.
+    pub pas_a_moi: bool,
 }
 
 /// La liste Frogtend d'un ancien abri Steam (`nuage-steam/<marque>/abri.json`) : pas une partie.
@@ -991,7 +1023,7 @@ pub fn lister(sources: &[PathBuf], profil: &str, marque_steam: Option<&str>) -> 
                     continue;
                 }
                 let declencheur = if f.sorte == SORTE_EMPLACEMENTS { f.declencheur.clone() } else { String::new() };
-                l.push((q, AbriVu { date, fichiers: f.fichiers.len(), octets: f.octets, sorte: f.sorte, a_moi: true, echecs: f.echecs, en_ligne_seulement: f.en_ligne_seulement, sans_origine: 0, declencheur }));
+                l.push((q, AbriVu { date, fichiers: f.fichiers.len(), octets: f.octets, sorte: f.sorte, a_moi: true, echecs: f.echecs, en_ligne_seulement: f.en_ligne_seulement, sans_origine: 0, declencheur, a_confirmer: f.a_confirmer, pas_a_moi: f.pas_a_moi }));
                 continue;
             }
             // Un ancien abri : ses fichiers, tels quels (jamais réécrit).
@@ -1013,7 +1045,7 @@ pub fn lister(sources: &[PathBuf], profil: &str, marque_steam: Option<&str>) -> 
             let octets = parties.iter().map(|r| std::fs::symlink_metadata(d.join(r)).map(|m| m.len()).unwrap_or(0)).sum();
             let sans_origine = parties.iter().filter(|r| r.starts_with("nuage-steam/") && r.split('/').nth(2) == Some("hors-nuage")).count();
             let sorte = if steam { SORTE_NUAGE_STEAM } else { "retrait" };
-            l.push((q, AbriVu { date, fichiers: parties.len(), octets, sorte: sorte.into(), a_moi: false, echecs: 0, en_ligne_seulement: 0, sans_origine, declencheur: String::new() }));
+            l.push((q, AbriVu { date, fichiers: parties.len(), octets, sorte: sorte.into(), a_moi: false, echecs: 0, en_ligne_seulement: 0, sans_origine, declencheur: String::new(), a_confirmer: false, pas_a_moi: false }));
         }
     }
     l.sort_by(|a, b| b.0.cmp(&a.0));
@@ -1157,11 +1189,19 @@ pub async fn attendre_calme(
 pub const NOM_A_FAIRE: &str = "abris-a-faire.json";
 
 fn lire_a_faire(dossier_profil: &Path) -> std::collections::BTreeMap<String, String> {
-    std::fs::read(dossier_profil.join(NOM_A_FAIRE)).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default()
+    lire_reperes(dossier_profil, NOM_A_FAIRE)
 }
 
 fn ecrire_a_faire(dossier_profil: &Path, l: &std::collections::BTreeMap<String, String>) -> Resultat<()> {
-    let f = dossier_profil.join(NOM_A_FAIRE);
+    ecrire_reperes(dossier_profil, NOM_A_FAIRE, l)
+}
+
+fn lire_reperes(dossier_profil: &Path, nom: &str) -> std::collections::BTreeMap<String, String> {
+    std::fs::read(dossier_profil.join(nom)).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default()
+}
+
+fn ecrire_reperes(dossier_profil: &Path, nom: &str, l: &std::collections::BTreeMap<String, String>) -> Resultat<()> {
+    let f = dossier_profil.join(nom);
     if l.is_empty() {
         if f.exists() {
             std::fs::remove_file(&f)?;
@@ -1169,7 +1209,7 @@ fn ecrire_a_faire(dossier_profil: &Path, l: &std::collections::BTreeMap<String, 
         return Ok(());
     }
     std::fs::create_dir_all(dossier_profil)?;
-    let provisoire = dossier_profil.join(format!("{NOM_A_FAIRE}.provisoire"));
+    let provisoire = dossier_profil.join(format!("{nom}.provisoire"));
     std::fs::write(&provisoire, serde_json::to_vec_pretty(l).unwrap_or_default())?;
     std::fs::rename(&provisoire, &f)?;
     Ok(())
@@ -1212,6 +1252,12 @@ pub struct EtatNote {
     pub en_ligne: usize,
     #[serde(default)]
     pub octets_en_ligne: u64,
+    /// Lot S7 : `apres_partie` ou `rattrapage` (la fiche ne dit pas la même chose) ; absent : après une partie.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub declencheur: String,
+    /// Lot S7 : la raison d'un échec (les mots de Frogtend, jamais un chemin ni un titre).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motif: Option<String>,
 }
 
 /// Le fichier des derniers états (dans les données du profil).
@@ -1258,6 +1304,536 @@ pub fn retirer_etat_auto(dossier_profil: &Path, id: i64) -> Resultat<()> {
 pub fn etat_auto(dossier_profil: &Path, id: i64) -> Option<EtatNote> {
     let _v = VERROU_A_FAIRE.lock().unwrap_or_else(|e| e.into_inner());
     lire_etats(dossier_profil).remove(&id.to_string())
+}
+
+// --- Lot S7 (24/11) : le RATTRAPAGE, à l'ouverture du profil, des parties jouées HORS de Frogtend (Steam, Epic, un
+// raccourci…). « Du neuf » se voit par les métadonnées seulement (chemin dans l'abri, taille, date), comparées au
+// DERNIER abri de ce profil : aucun fichier ouvert, aucun SHA1 (il ne se calcule que pour un jeu qui a changé, par la
+// voie normale de l'abri), OneDrive jamais téléchargé. ---
+
+/// Deux dates « égales » à cet écart près : un disque des abris en FAT ou exFAT range les dates à 2 s ou 10 ms près.
+pub const ECART_DE_DATE: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Ce que contiendrait un abri de ces emplacements, sans rien lire : mêmes règles que `planifier` (dossiers entiers
+/// d'abord, un emplacement contenu dans un dossier entier lisible pas pris deux fois, même nom dans l'abri).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ReleveAbri {
+    /// (chemin dans l'abri, en minuscules) → (taille, date de modification), fichiers sur ce PC seulement.
+    pub fichiers: std::collections::BTreeMap<String, (u64, Option<std::time::SystemTime>)>,
+    /// Fichiers « en ligne seulement » (OneDrive) : jamais copiés en automatique.
+    pub en_ligne: usize,
+    /// Emplacements trop gros pour un abri (`planifier` les refusera).
+    pub trop_gros: usize,
+    /// La plus récente écriture d'un fichier sur ce PC.
+    pub derniere_ecriture: Option<std::time::SystemTime>,
+}
+
+impl ReleveAbri {
+    /// Un fichier sur ce PC a été écrit il y a moins de `delai` (une date dans le futur ne dit rien : pas récente).
+    pub fn ecrit_recemment(&self, maintenant: std::time::SystemTime, delai: std::time::Duration) -> bool {
+        self.derniere_ecriture.and_then(|t| maintenant.duration_since(t).ok()).is_some_and(|d| d < delai)
+    }
+}
+
+/// Le relevé léger d'un abri possible (`sel` : celui du profil ; vide, un endroit à identifiant est sauté comme dans
+/// `planifier`).
+pub fn relever_pour_abri(lieux: &[Emplacement], sel: &str) -> ReleveAbri {
+    relever_pour_abri_jusqua(lieux, sel, crate::nuage_steam::EMPLACEMENT_MAX)
+}
+
+fn relever_pour_abri_jusqua(lieux: &[Emplacement], sel: &str, max: u64) -> ReleveAbri {
+    let mut r = ReleveAbri::default();
+    let mut vus: BTreeSet<String> = BTreeSet::new();
+    let mut noms: BTreeSet<String> = BTreeSet::new();
+    let mut ordre: Vec<&Emplacement> = lieux.iter().filter(|e| e.dossier.is_dir()).collect();
+    ordre.sort_by_key(|e| (e.filtre.is_some(), e.dossier.components().count()));
+    let mut reussis: Vec<String> = Vec::new();
+    for e in ordre {
+        if e.identifiant.is_some() && sel.is_empty() {
+            continue;
+        }
+        let moi = format!("{}\\", normal(&e.dossier));
+        if reussis.iter().any(|x| moi.starts_with(x.as_str())) {
+            continue;
+        }
+        let nom = nom_dans_l_abri(e, sel);
+        if !noms.insert(nom.clone()) {
+            continue;
+        }
+        let relatifs: Option<Vec<String>> = match &e.filtre {
+            None => crate::nuage_steam::parcourir(&e.dossier).ok(),
+            Some(f) => std::fs::read_dir(&e.dossier)
+                .map(|l| l.flatten().filter(|x| x.file_type().is_ok_and(|t| t.is_file())).map(|x| x.file_name().to_string_lossy().to_string()).filter(|n| crate::nuage_steam::repond(n, f)).collect())
+                .ok(),
+        };
+        let Some(relatifs) = relatifs else { continue };
+        let a_prendre: Vec<(PathBuf, String, std::fs::Metadata)> = relatifs
+            .into_iter()
+            .filter_map(|x| {
+                let p = e.dossier.join(&x);
+                let m = std::fs::symlink_metadata(&p).ok()?;
+                (m.is_file() && !vus.contains(&normal(&p))).then_some((p, x, m))
+            })
+            .collect();
+        let (en_ligne, sur_le_pc): (Vec<_>, Vec<_>) = a_prendre.into_iter().partition(|(_, _, m)| crate::nuage_steam::en_ligne_seulement(m));
+        if sur_le_pc.iter().map(|(_, _, m)| m.len()).sum::<u64>() > max {
+            r.trop_gros += 1;
+            continue;
+        }
+        if e.filtre.is_none() {
+            reussis.push(moi);
+        }
+        r.en_ligne += en_ligne.len();
+        for (p, _, _) in &en_ligne {
+            vus.insert(normal(p));
+        }
+        for (p, x, m) in sur_le_pc {
+            let date = m.modified().ok();
+            if let Some(t) = date {
+                r.derniere_ecriture = Some(r.derniere_ecriture.map_or(t, |a| a.max(t)));
+            }
+            vus.insert(normal(&p));
+            r.fichiers.insert(format!("{PREFIXE}{nom}/{}", x.replace('\\', "/")).to_lowercase(), (m.len(), date));
+        }
+    }
+    r
+}
+
+/// Le plus récent abri de sorte `emplacements` de CE profil pour ce jeu (`sources` : ses dossiers d'abris), avec sa
+/// fiche ; `None` : aucun.
+pub fn dernier_abri(sources: &[PathBuf], profil: &str) -> Option<(PathBuf, FicheAbri)> {
+    let mut l: Vec<(u64, PathBuf, FicheAbri)> =
+        sources.iter().flat_map(|d| dates(d)).filter_map(|(q, d)| lire_fiche(&d).map(|f| (q, d, f))).filter(|(_, _, f)| f.sorte == SORTE_EMPLACEMENTS && f.profil == profil).collect();
+    l.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    l.into_iter().next().map(|(_, d, f)| (d, f))
+}
+
+/// Le plus récent abri de sorte `emplacements` de CHAQUE profil pour ce jeu (relecture S7 : une partie jouée par B
+/// hors de Frogtend et déjà à l'abri chez B n'est pas « du neuf » pour A).
+pub fn derniers_abris_par_profil(sources: &[PathBuf]) -> Vec<(PathBuf, FicheAbri)> {
+    let mut l: Vec<(u64, PathBuf, FicheAbri)> = sources.iter().flat_map(|d| dates(d)).filter_map(|(q, d)| lire_fiche(&d).map(|f| (q, d, f))).filter(|(_, _, f)| f.sorte == SORTE_EMPLACEMENTS).collect();
+    l.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    let mut vus: BTreeSet<String> = BTreeSet::new();
+    l.into_iter().filter(|(_, _, f)| vus.insert(f.profil.clone())).map(|(_, d, f)| (d, f)).collect()
+}
+
+/// Du neuf pour le rattrapage : aucun des derniers abris (un par profil) ne correspond au relevé.
+pub fn du_neuf_pour_tous(r: &ReleveAbri, derniers: &[(PathBuf, FicheAbri)]) -> bool {
+    if derniers.is_empty() {
+        return du_neuf(r, None);
+    }
+    derniers.iter().all(|d| du_neuf(r, Some(d)))
+}
+
+/// Ce qui résume un relevé léger (nombre de fichiers, octets, date la plus récente, fichiers dans le nuage, endroits
+/// trop gros) : noté quand le SHA1 n'a rien trouvé de neuf (ou que l'abri a été refusé : nuage, trop gros), pour ne pas
+/// le refaire au démarrage suivant tant que rien n'a bougé sur le disque.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SignatureReleve {
+    pub fichiers: usize,
+    pub octets: u64,
+    /// La date la plus récente, en millisecondes depuis 1970.
+    #[serde(default)]
+    pub date_max: Option<u128>,
+    #[serde(default)]
+    pub en_ligne: usize,
+    #[serde(default)]
+    pub trop_gros: usize,
+}
+
+impl ReleveAbri {
+    pub fn signature(&self) -> SignatureReleve {
+        SignatureReleve {
+            fichiers: self.fichiers.len(),
+            octets: self.fichiers.values().map(|(t, _)| *t).sum(),
+            date_max: self.fichiers.values().filter_map(|(_, d)| d.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|x| x.as_millis())).max(),
+            en_ligne: self.en_ligne,
+            trop_gros: self.trop_gros,
+        }
+    }
+}
+
+/// Les signatures notées par le rattrapage (dans les données du profil) : l'id du jeu et des nombres seulement.
+pub const NOM_RATTRAPAGE_RELEVES: &str = "abris-rattrapage-releves.json";
+
+fn lire_signatures(dossier_profil: &Path) -> std::collections::BTreeMap<String, SignatureReleve> {
+    std::fs::read(dossier_profil.join(NOM_RATTRAPAGE_RELEVES)).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default()
+}
+
+fn ecrire_signatures(dossier_profil: &Path, l: &std::collections::BTreeMap<String, SignatureReleve>) -> Resultat<()> {
+    let f = dossier_profil.join(NOM_RATTRAPAGE_RELEVES);
+    if l.is_empty() {
+        if f.exists() {
+            std::fs::remove_file(&f)?;
+        }
+        return Ok(());
+    }
+    std::fs::create_dir_all(dossier_profil)?;
+    let provisoire = dossier_profil.join(format!("{NOM_RATTRAPAGE_RELEVES}.provisoire"));
+    std::fs::write(&provisoire, serde_json::to_vec_pretty(l).unwrap_or_default())?;
+    std::fs::rename(&provisoire, &f)?;
+    Ok(())
+}
+
+/// Note (`Some`) ou retire (`None`) la signature du relevé de ce jeu.
+pub fn noter_signature(dossier_profil: &Path, id: i64, s: Option<&SignatureReleve>) -> Resultat<()> {
+    let _v = VERROU_A_FAIRE.lock().unwrap_or_else(|e| e.into_inner());
+    let mut l = lire_signatures(dossier_profil);
+    let avant = l.clone();
+    match s {
+        Some(s) => {
+            l.insert(id.to_string(), s.clone());
+        }
+        None => {
+            l.remove(&id.to_string());
+        }
+    }
+    if l != avant {
+        ecrire_signatures(dossier_profil, &l)?;
+    }
+    Ok(())
+}
+
+pub fn signature_notee(dossier_profil: &Path, id: i64) -> Option<SignatureReleve> {
+    let _v = VERROU_A_FAIRE.lock().unwrap_or_else(|e| e.into_inner());
+    lire_signatures(dossier_profil).remove(&id.to_string())
+}
+
+/// Le point de départ du prochain tour (relecture S7 : au-delà du plafond, les jeux suivants passent en premier la fois
+/// d'après). `None` : depuis le début.
+pub const NOM_RATTRAPAGE_DEPART: &str = "abris-rattrapage-depart.json";
+
+pub fn noter_depart(dossier_profil: &Path, id: Option<i64>) -> Resultat<()> {
+    let _v = VERROU_A_FAIRE.lock().unwrap_or_else(|e| e.into_inner());
+    let mut l = std::collections::BTreeMap::new();
+    if let Some(i) = id {
+        l.insert("depart".to_string(), i.to_string());
+    }
+    ecrire_reperes(dossier_profil, NOM_RATTRAPAGE_DEPART, &l)
+}
+
+pub fn depart(dossier_profil: &Path) -> Option<i64> {
+    let _v = VERROU_A_FAIRE.lock().unwrap_or_else(|e| e.into_inner());
+    lire_reperes(dossier_profil, NOM_RATTRAPAGE_DEPART).get("depart").and_then(|v| v.parse().ok())
+}
+
+/// L'ordre d'un tour : les jeux triés, en commençant au premier jeu `>= depart` (puis le début de la liste).
+pub fn ordre_tournant(jeux: &[i64], depart: Option<i64>) -> Vec<i64> {
+    let mut l = jeux.to_vec();
+    l.sort_unstable();
+    l.dedup();
+    let i = depart.and_then(|d| l.iter().position(|x| *x >= d)).unwrap_or(0);
+    l.rotate_left(i);
+    l
+}
+
+/// Du neuf depuis le dernier abri de ce profil ? Aucun abri : du neuf dès qu'il y a des parties (sur ce PC, dans le
+/// nuage, ou trop grosses : l'abri le dira). Sinon, les mêmes chemins, les mêmes tailles et les mêmes dates (à
+/// `ECART_DE_DATE` près) que les fichiers de l'abri : rien de neuf. La copie de l'abri GARDE la date de modification du
+/// fichier d'origine (`std::fs::copy` sous Windows : vérifié par un test) — la date se lit donc sur le fichier de
+/// l'abri, par ses métadonnées.
+pub fn du_neuf(r: &ReleveAbri, dernier: Option<&(PathBuf, FicheAbri)>) -> bool {
+    let Some((d, f)) = dernier else {
+        return !r.fichiers.is_empty() || r.en_ligne > 0 || r.trop_gros > 0;
+    };
+    if f.fichiers.len() != r.fichiers.len() {
+        return true;
+    }
+    f.fichiers.iter().any(|x| {
+        let Some((taille, date)) = r.fichiers.get(&x.relatif.to_lowercase()) else { return true };
+        if *taille != x.taille {
+            return true;
+        }
+        let avant = std::fs::symlink_metadata(d.join(&x.relatif)).ok().and_then(|m| m.modified().ok());
+        match (date, avant) {
+            (Some(a), Some(b)) => a.duration_since(b).or_else(|_| b.duration_since(*a)).map_or(true, |e| e > ECART_DE_DATE),
+            (None, None) => false,
+            _ => true,
+        }
+    })
+}
+
+/// Les abris de CE profil qui attendent « C'est toi qui as joué ? » (dossiers d'abris), du plus récent au plus ancien.
+pub fn abris_a_confirmer(sources: &[PathBuf], profil: &str) -> Vec<PathBuf> {
+    let mut l: Vec<(u64, PathBuf)> = sources.iter().flat_map(|d| dates(d)).filter(|(_, d)| lire_fiche(d).is_some_and(|f| f.profil == profil && f.a_confirmer)).collect();
+    l.sort_by(|a, b| b.0.cmp(&a.0));
+    l.into_iter().map(|(_, d)| d).collect()
+}
+
+/// La réponse de la personne : « Oui, c'est moi » (l'abri peut partir) ou « Non » (gardé sur ce PC, jamais envoyé, noté
+/// « pas à moi »). Seule la fiche change (réécrite par un fichier provisoire renommé) ; les parties de l'abri, jamais.
+pub fn confirmer(dossier_abri: &Path, oui: bool) -> Resultat<()> {
+    let chemin = fichier_fiche(dossier_abri).ok_or_else(|| Erreur::Refus("Abri inconnu.".into()))?;
+    let mut f = lire_fiche(dossier_abri).ok_or_else(|| Erreur::Refus("Abri inconnu.".into()))?;
+    if !f.a_confirmer {
+        return Ok(());
+    }
+    f.a_confirmer = false;
+    f.pas_a_moi = !oui;
+    let provisoire = chemin.with_extension("json.provisoire");
+    std::fs::write(&provisoire, serde_json::to_vec_pretty(&f).map_err(|_| Erreur::Disque("Fiche d'abri impossible à écrire.".into()))?)?;
+    if let Err(e) = std::fs::rename(&provisoire, &chemin) {
+        let _ = std::fs::remove_file(&provisoire);
+        return Err(e.into());
+    }
+    Ok(())
+}
+
+/// Le repère « abri à faire » du RATTRAPAGE (un jeu qui tournait ou écrivait encore au démarrage) : à part de celui
+/// d'après une partie (dont l'abri serait fait sans « à confirmer »), repris en premier au démarrage suivant. L'id et la
+/// date seulement.
+pub const NOM_RATTRAPAGE_A_FAIRE: &str = "abris-rattrapage-a-faire.json";
+
+pub fn noter_rattrapage_a_faire(dossier_profil: &Path, id: i64, quand: &str) -> Resultat<()> {
+    let _v = VERROU_A_FAIRE.lock().unwrap_or_else(|e| e.into_inner());
+    let mut l = lire_reperes(dossier_profil, NOM_RATTRAPAGE_A_FAIRE);
+    l.insert(id.to_string(), quand.to_string());
+    ecrire_reperes(dossier_profil, NOM_RATTRAPAGE_A_FAIRE, &l)
+}
+
+pub fn retirer_rattrapage_a_faire(dossier_profil: &Path, id: i64) -> Resultat<()> {
+    let _v = VERROU_A_FAIRE.lock().unwrap_or_else(|e| e.into_inner());
+    let mut l = lire_reperes(dossier_profil, NOM_RATTRAPAGE_A_FAIRE);
+    if l.remove(&id.to_string()).is_some() {
+        ecrire_reperes(dossier_profil, NOM_RATTRAPAGE_A_FAIRE, &l)?;
+    }
+    Ok(())
+}
+
+pub fn rattrapages_a_faire(dossier_profil: &Path) -> Vec<i64> {
+    let _v = VERROU_A_FAIRE.lock().unwrap_or_else(|e| e.into_inner());
+    lire_reperes(dossier_profil, NOM_RATTRAPAGE_A_FAIRE).keys().filter_map(|k| k.parse().ok()).collect()
+}
+
+#[cfg(test)]
+mod tests_s7 {
+    use super::*;
+    use std::time::{Duration, SystemTime};
+
+    fn lieu(d: &Path) -> Emplacement {
+        Emplacement { chemin: r"<dossier du jeu>\SAVES".into(), nature: "dossier".into(), dossier: d.to_path_buf(), filtre: None, identifiant: None }
+    }
+
+    fn vieillir(f: &Path, s: u64) {
+        std::fs::OpenOptions::new().write(true).open(f).unwrap().set_modified(SystemTime::now() - Duration::from_secs(s)).unwrap();
+    }
+
+    fn abri(dossier: &Path, profil: &str, lieux: &[Emplacement], quand: &str) -> PathBuf {
+        let mut plan = planifier(lieux, &Default::default(), "");
+        abriter_avec_place(&mut plan, &dossier.join("Abris"), 7, quand, profil, DECLENCHEUR_RATTRAPAGE, None, &|_| None).unwrap()
+    }
+
+    /// La copie de l'abri (`std::fs::copy`) garde-t-elle la date de modification du fichier d'origine ? (Lot S7 : c'est
+    /// ce qui permet de comparer sans ajouter la date à la fiche.)
+    #[test]
+    fn la_copie_garde_la_date_de_modification() {
+        let d = tempfile::tempdir().unwrap();
+        let a = d.path().join("a.sav");
+        std::fs::write(&a, b"partie").unwrap();
+        vieillir(&a, 86_400 * 3);
+        let b = d.path().join("b.sav");
+        std::fs::copy(&a, &b).unwrap();
+        let (ma, mb) = (std::fs::metadata(&a).unwrap().modified().unwrap(), std::fs::metadata(&b).unwrap().modified().unwrap());
+        assert_eq!(ma, mb, "la date de modification n'a pas été gardée par la copie");
+    }
+
+    #[test]
+    fn sans_abri_des_parties_sur_le_disque_sont_du_neuf() {
+        let d = tempfile::tempdir().unwrap();
+        let saves = d.path().join("SAVES");
+        std::fs::create_dir_all(&saves).unwrap();
+        assert!(!du_neuf(&relever_pour_abri(&[lieu(&saves)], ""), None), "aucune partie : rien de neuf");
+        std::fs::write(saves.join("1.sav"), b"x").unwrap();
+        assert!(du_neuf(&relever_pour_abri(&[lieu(&saves)], ""), None));
+    }
+
+    #[test]
+    fn le_releve_leger_a_les_memes_chemins_que_l_abri_et_dit_ce_qui_change() {
+        let d = tempfile::tempdir().unwrap();
+        let saves = d.path().join("SAVES");
+        std::fs::create_dir_all(saves.join("sous")).unwrap();
+        std::fs::write(saves.join("1.sav"), b"un").unwrap();
+        std::fs::write(saves.join("sous").join("2.sav"), b"deux").unwrap();
+        vieillir(&saves.join("1.sav"), 3600);
+        vieillir(&saves.join("sous").join("2.sav"), 3600);
+        let lieux = [lieu(&saves)];
+        let fait = abri(d.path(), "p1", &lieux, "100");
+        let dernier = dernier_abri(&[d.path().join("Abris").join("7")], "p1").unwrap();
+        assert_eq!(dernier.0, fait);
+        let r = relever_pour_abri(&lieux, "");
+        let chemins: Vec<String> = dernier.1.fichiers.iter().map(|f| f.relatif.to_lowercase()).collect();
+        assert_eq!(r.fichiers.keys().cloned().collect::<Vec<_>>(), chemins);
+        assert!(!du_neuf(&r, Some(&dernier)), "rien n'a bougé");
+        assert!(!r.ecrit_recemment(SystemTime::now(), Duration::from_secs(60)));
+        // Un autre profil n'a pas d'abri : pour lui, c'est du neuf.
+        assert!(dernier_abri(&[d.path().join("Abris").join("7")], "p2").is_none());
+        // Même taille, date changée : du neuf.
+        vieillir(&saves.join("1.sav"), 60);
+        assert!(du_neuf(&relever_pour_abri(&lieux, ""), Some(&dernier)));
+        vieillir(&saves.join("1.sav"), 3600);
+        // Une date ramenée à l'identique (à la seconde près) : rien de neuf.
+        let m = std::fs::metadata(dernier.0.join(&dernier.1.fichiers[0].relatif)).unwrap().modified().unwrap();
+        std::fs::OpenOptions::new().write(true).open(saves.join("1.sav")).unwrap().set_modified(m + Duration::from_millis(500)).unwrap();
+        assert!(!du_neuf(&relever_pour_abri(&lieux, ""), Some(&dernier)));
+        // Taille changée, fichier ajouté, fichier retiré : du neuf.
+        std::fs::write(saves.join("1.sav"), b"plus long").unwrap();
+        let r = relever_pour_abri(&lieux, "");
+        assert!(du_neuf(&r, Some(&dernier)));
+        assert!(r.ecrit_recemment(SystemTime::now(), Duration::from_secs(60)), "écrit à l'instant");
+        std::fs::write(saves.join("1.sav"), b"un").unwrap();
+        std::fs::OpenOptions::new().write(true).open(saves.join("1.sav")).unwrap().set_modified(m).unwrap();
+        assert!(!du_neuf(&relever_pour_abri(&lieux, ""), Some(&dernier)));
+        std::fs::write(saves.join("3.sav"), b"trois").unwrap();
+        assert!(du_neuf(&relever_pour_abri(&lieux, ""), Some(&dernier)));
+        std::fs::remove_file(saves.join("3.sav")).unwrap();
+        std::fs::remove_file(saves.join("sous").join("2.sav")).unwrap();
+        assert!(du_neuf(&relever_pour_abri(&lieux, ""), Some(&dernier)));
+    }
+
+    #[test]
+    fn un_emplacement_trop_gros_ou_a_identifiant_sans_sel_n_est_pas_releve() {
+        let d = tempfile::tempdir().unwrap();
+        let saves = d.path().join("SAVES");
+        std::fs::create_dir_all(&saves).unwrap();
+        std::fs::write(saves.join("1.sav"), b"0123456789").unwrap();
+        let r = relever_pour_abri_jusqua(&[lieu(&saves)], "", 5);
+        assert_eq!((r.fichiers.len(), r.trop_gros), (0, 1));
+        assert!(du_neuf(&r, None), "sans abri : l'abri dira « trop gros »");
+        let mut e = lieu(&saves);
+        e.identifiant = Some("76561198000000000".into());
+        assert!(relever_pour_abri(&[e], "").fichiers.is_empty());
+    }
+
+    #[test]
+    fn un_abri_a_confirmer_ne_part_qu_apres_oui_et_jamais_apres_non() {
+        let d = tempfile::tempdir().unwrap();
+        let saves = d.path().join("SAVES");
+        std::fs::create_dir_all(&saves).unwrap();
+        std::fs::write(saves.join("1.sav"), b"un").unwrap();
+        let lieux = [lieu(&saves)];
+        let abris = d.path().join("Abris");
+        let mut plan = planifier(&lieux, &Default::default(), "");
+        plan.a_confirmer = true;
+        let a = abriter_avec_place(&mut plan, &abris, 7, "100", "p1", DECLENCHEUR_RATTRAPAGE, None, &|_| None).unwrap();
+        let fiche = lire_fiche(&a).unwrap();
+        assert!(fiche.a_confirmer && !fiche.pas_a_moi && fiche.declencheur == DECLENCHEUR_RATTRAPAGE);
+        let sources = [abris.join("7")];
+        assert_eq!(abris_a_confirmer(&sources, "p1"), [a.clone()]);
+        assert!(abris_a_confirmer(&sources, "p2").is_empty(), "jamais proposé à un autre profil");
+        assert!(emplacements_a_envoyer(&[(100, a.clone())], "p1").0.is_empty(), "jamais envoyé avant le oui");
+        let v = lister(&sources, "p1", None);
+        assert!(v[0].a_confirmer && v[0].declencheur == DECLENCHEUR_RATTRAPAGE);
+        // Oui : il part.
+        confirmer(&a, true).unwrap();
+        assert!(abris_a_confirmer(&sources, "p1").is_empty());
+        assert_eq!(emplacements_a_envoyer(&[(100, a.clone())], "p1").0.len(), 1);
+        // Un second abri, puis « Non » : gardé sur ce PC, jamais envoyé ; l'envoi reprend l'abri confirmé.
+        std::fs::write(saves.join("1.sav"), b"deux").unwrap();
+        let mut plan = planifier(&lieux, &Default::default(), "");
+        plan.a_confirmer = true;
+        let b = abriter_avec_place(&mut plan, &abris, 7, "200", "p1", DECLENCHEUR_RATTRAPAGE, None, &|_| None).unwrap();
+        confirmer(&b, false).unwrap();
+        let fb = lire_fiche(&b).unwrap();
+        assert!(!fb.a_confirmer && fb.pas_a_moi);
+        assert!(b.join(&fb.fichiers[0].relatif).is_file(), "les parties restent dans l'abri");
+        let (envoi, fiche) = emplacements_a_envoyer(&[(200, b.clone()), (100, a.clone())], "p1");
+        assert_eq!(envoi.len(), 1);
+        assert!(envoi[0].0.starts_with(&a), "la copie confirmée, jamais celle d'un autre");
+        assert_eq!(fiche.unwrap().emplacements[0].date, "100");
+        // Une fiche d'avant le lot S7 (sans ces champs) se lit : rien à confirmer.
+        let ancienne: FicheAbri = serde_json::from_str(r#"{"version_fiche":1,"sorte":"emplacements","profil":"p1"}"#).unwrap();
+        assert!(ancienne.envoyable());
+        assert!(!serde_json::to_string(&ancienne).unwrap().contains("a_confirmer"), "absent tant qu'il est faux");
+    }
+
+    #[test]
+    fn le_repere_du_rattrapage_est_a_part() {
+        let d = tempfile::tempdir().unwrap();
+        noter_rattrapage_a_faire(d.path(), 7, "1").unwrap();
+        assert_eq!(rattrapages_a_faire(d.path()), [7]);
+        assert!(a_faire(d.path()).is_empty(), "jamais dans le repère d'après une partie");
+        retirer_rattrapage_a_faire(d.path(), 7).unwrap();
+        assert!(rattrapages_a_faire(d.path()).is_empty());
+        assert!(!d.path().join(NOM_RATTRAPAGE_A_FAIRE).exists());
+    }
+
+    /// Relecture S7 : les parties de B, déjà à l'abri chez B, ne sont pas du neuf pour A ; un seul abri par profil compte
+    /// (le plus récent).
+    #[test]
+    fn le_dernier_abri_de_n_importe_quel_profil_vaut_rien_de_neuf() {
+        let d = tempfile::tempdir().unwrap();
+        let saves = d.path().join("SAVES");
+        std::fs::create_dir_all(&saves).unwrap();
+        std::fs::write(saves.join("1.sav"), b"un").unwrap();
+        vieillir(&saves.join("1.sav"), 3600);
+        let lieux = [lieu(&saves)];
+        abri(d.path(), "p2", &lieux, "100");
+        let sources = [d.path().join("Abris").join("7")];
+        let derniers = derniers_abris_par_profil(&sources);
+        assert_eq!(derniers.len(), 1);
+        let r = relever_pour_abri(&lieux, "");
+        assert!(du_neuf(&r, dernier_abri(&sources, "p1").as_ref()), "pour p1 seul, du neuf");
+        assert!(!du_neuf_pour_tous(&r, &derniers), "déjà à l'abri chez p2 : rien de neuf");
+        assert!(du_neuf_pour_tous(&r, &[]), "aucun abri : du neuf");
+        // Un second abri de p2, plus récent : c'est lui qui compte pour p2.
+        std::fs::write(saves.join("1.sav"), b"deux").unwrap();
+        vieillir(&saves.join("1.sav"), 3000);
+        abri(d.path(), "p2", &lieux, "200");
+        let derniers = derniers_abris_par_profil(&sources);
+        assert_eq!(derniers.len(), 1);
+        assert!(derniers[0].0.ends_with("200"));
+        assert!(!du_neuf_pour_tous(&relever_pour_abri(&lieux, ""), &derniers));
+    }
+
+    /// LIMITE ACCEPTÉE (relecture S7) : même chemin, même taille, date ramenée à 2 s près, AUTRE contenu — le relevé léger
+    /// ne le voit pas (aucun fichier n'est lu). Un jeu qui écrit vraiment change sa date bien au-delà de 2 s.
+    #[test]
+    fn meme_taille_et_date_a_deux_secondes_pres_avec_un_autre_contenu_n_est_pas_vu() {
+        let d = tempfile::tempdir().unwrap();
+        let saves = d.path().join("SAVES");
+        std::fs::create_dir_all(&saves).unwrap();
+        std::fs::write(saves.join("1.sav"), b"aaaa").unwrap();
+        vieillir(&saves.join("1.sav"), 3600);
+        let lieux = [lieu(&saves)];
+        abri(d.path(), "p1", &lieux, "100");
+        let dernier = dernier_abri(&[d.path().join("Abris").join("7")], "p1").unwrap();
+        let m = std::fs::metadata(saves.join("1.sav")).unwrap().modified().unwrap();
+        std::fs::write(saves.join("1.sav"), b"bbbb").unwrap();
+        std::fs::OpenOptions::new().write(true).open(saves.join("1.sav")).unwrap().set_modified(m + Duration::from_millis(1500)).unwrap();
+        assert!(!du_neuf(&relever_pour_abri(&lieux, ""), Some(&dernier)), "limite documentée : non vu");
+    }
+
+    #[test]
+    fn la_signature_du_releve_se_note_et_le_depart_tourne() {
+        let d = tempfile::tempdir().unwrap();
+        let saves = d.path().join("SAVES");
+        std::fs::create_dir_all(&saves).unwrap();
+        std::fs::write(saves.join("1.sav"), b"un").unwrap();
+        let sig = relever_pour_abri(&[lieu(&saves)], "").signature();
+        assert_eq!((sig.fichiers, sig.octets, sig.en_ligne, sig.trop_gros), (1, 2, 0, 0));
+        assert!(sig.date_max.is_some());
+        assert!(signature_notee(d.path(), 7).is_none());
+        noter_signature(d.path(), 7, Some(&sig)).unwrap();
+        assert_eq!(signature_notee(d.path(), 7), Some(sig.clone()));
+        std::fs::write(saves.join("1.sav"), b"trois").unwrap();
+        assert_ne!(relever_pour_abri(&[lieu(&saves)], "").signature(), sig, "la taille a bougé");
+        noter_signature(d.path(), 7, None).unwrap();
+        assert!(!d.path().join(NOM_RATTRAPAGE_RELEVES).exists());
+        // Le point de départ tournant.
+        assert_eq!(ordre_tournant(&[5, 1, 3], None), [1, 3, 5]);
+        assert_eq!(ordre_tournant(&[5, 1, 3], Some(3)), [3, 5, 1]);
+        assert_eq!(ordre_tournant(&[5, 1, 3], Some(4)), [5, 1, 3]);
+        assert_eq!(ordre_tournant(&[5, 1, 3], Some(9)), [1, 3, 5], "au-delà de la fin : depuis le début");
+        noter_depart(d.path(), Some(3)).unwrap();
+        assert_eq!(depart(d.path()), Some(3));
+        noter_depart(d.path(), None).unwrap();
+        assert_eq!(depart(d.path()), None);
+    }
+
+    #[test]
+    fn le_declencheur_rattrapage_est_de_la_liste_fermee() {
+        assert!(declencheur_connu(DECLENCHEUR_RATTRAPAGE));
+    }
 }
 
 #[cfg(test)]
@@ -1375,7 +1951,7 @@ mod tests_s3 {
     fn le_dernier_etat_garde_ne_contient_que_l_etat_la_date_et_des_nombres() {
         let d = tempfile::tempdir().unwrap();
         assert!(etat_auto(d.path(), 900).is_none());
-        let n = EtatNote { etat: "trop_gros".into(), date: "1790000000".into(), en_ligne: 0, octets_en_ligne: 0 };
+        let n = EtatNote { etat: "trop_gros".into(), date: "1790000000".into(), en_ligne: 0, octets_en_ligne: 0, declencheur: String::new(), motif: None };
         noter_etat_auto(d.path(), 900, &n).unwrap();
         assert_eq!(etat_auto(d.path(), 900), Some(n));
         retirer_etat_auto(d.path(), 900).unwrap();

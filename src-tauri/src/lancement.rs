@@ -262,6 +262,40 @@ pub fn processus_du_dossier(dossier: &Path) -> Vec<u32> {
     v
 }
 
+/// Lot S7 : UN relevé des processus pour tout un tour (le rattrapage au démarrage) — les programmes qui tournent, sous
+/// leur forme comparable ; `tourne_dans` dit ensuite, sans relire les processus, si l'un d'eux vient d'un dossier.
+pub struct Instantane {
+    programmes: Vec<String>,
+    reseau: std::sync::Mutex<Lecteurs>,
+}
+
+impl Instantane {
+    /// Le relevé de ce moment (une seule fois).
+    pub fn prendre() -> Self {
+        let mut s = System::new();
+        s.refresh_processes(ProcessesToUpdate::All, true);
+        Self::depuis(s.processes().iter().filter_map(|(pid, p)| programme_du_processus(pid.as_u32(), p)).collect())
+    }
+
+    /// Un relevé donné (les tests).
+    pub fn depuis(programmes: Vec<PathBuf>) -> Self {
+        let mut reseau = Lecteurs::default();
+        let programmes = programmes.iter().map(|e| format!("{}\\", forme_comparable(e, &mut reseau))).collect();
+        Instantane { programmes, reseau: std::sync::Mutex::new(reseau) }
+    }
+
+    /// Un programme de ce dossier (ou du dossier où il mène) tournait au moment du relevé ? Comme
+    /// `processus_du_dossier` : jamais pour une racine ni un chemin vide.
+    pub fn tourne_dans(&self, dossier: &Path) -> bool {
+        if dossier.parent().is_none() || dossier.as_os_str().is_empty() {
+            return false;
+        }
+        let mut reseau = self.reseau.lock().unwrap_or_else(|e| e.into_inner());
+        let formes: Vec<String> = formes_du_dossier(dossier).iter().map(|d| format!("{}\\", forme_comparable(d, &mut reseau))).collect();
+        self.programmes.iter().any(|e| formes.iter().any(|d| e.starts_with(d)))
+    }
+}
+
 /// Les lecteurs réseau mappés déjà demandés à Windows (lettre → chemin réseau, `None` : lecteur local).
 type Lecteurs = std::collections::BTreeMap<char, Option<String>>;
 
@@ -812,6 +846,24 @@ mod tests {
         assert_eq!(formes_du_dossier(Path::new("Jeux")), vec![PathBuf::from("Jeux")]);
         assert_eq!(formes_du_dossier(Path::new(r"\\serveur\partage\jeu")).len(), 1);
         std::fs::remove_dir(&lien).unwrap();
+    }
+
+    /// Lot S7 : un seul relevé des processus pour tout le tour ; le dossier d'un programme relevé « tourne », un dossier
+    /// voisin au nom qui commence pareil, non ; une racine jamais.
+    #[test]
+    fn un_instantane_des_processus_dit_quel_dossier_tourne() {
+        let d = tempfile::tempdir().unwrap();
+        let jeu = d.path().join("Jeu");
+        std::fs::create_dir_all(jeu.join("bin")).unwrap();
+        std::fs::create_dir_all(d.path().join("Jeu 2")).unwrap();
+        let i = Instantane::depuis(vec![jeu.join("bin").join("jeu.exe")]);
+        assert!(i.tourne_dans(&jeu));
+        assert!(i.tourne_dans(&jeu.join("bin")));
+        assert!(!i.tourne_dans(&d.path().join("Jeu 2")));
+        assert!(!i.tourne_dans(Path::new("")));
+        // Le vrai relevé (ce test lui-même tourne) : notre programme est vu dans son dossier.
+        let moi = std::env::current_exe().unwrap();
+        assert!(Instantane::prendre().tourne_dans(moi.parent().unwrap()));
     }
 
     /// Relevé réel, à la main : `FROGTEND_DOSSIER_JEU=<dossier> cargo test --lib -- --ignored releve_processus_du_dossier`

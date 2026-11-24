@@ -27,6 +27,7 @@
   import { emulateursAuDemarrage } from '$lib/emulateurs/majs.svelte';
   import { ecouterQuestionsRacine } from '$lib/mods/racine';
   import { ecouterAbrisAuto } from '$lib/parties/abriAuto.svelte';
+  import { ecouterRattrapage } from '$lib/parties/rattrapage.svelte';
 
   let { children } = $props();
 
@@ -45,6 +46,9 @@
       await demarrerMenuJeu();
       return;
     }
+    // Lot S7 : le rattrapage des parties jouées hors de Frogtend part à l'ouverture du profil (dans `demarrer`) : écouté
+    // AVANT, filtré sur le profil ouvert.
+    await ecouterRattrapage(() => etat.profilOuvert?.id);
     await demarrer();
     // Lot S3 : les abris automatiques des parties, écoutés dès le montage (un abri repris à l'ouverture d'un profil
     // arrive avant toute partie) ; filtrés sur le profil ouvert.

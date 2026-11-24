@@ -8,6 +8,7 @@ import { DEFAUTS_PROFIL } from '$lib/reglages/reglages';
 const profil = $state(structuredClone(DEFAUTS_PROFIL));
 const reglerProfil = vi.fn(async (chemin: string, valeur: unknown) => {
   if (chemin === 'parties.abriApresPartie') profil.parties.abriApresPartie = valeur as boolean;
+  if (chemin === 'parties.rattrapage') profil.parties.rattrapage = valeur as boolean;
 });
 vi.mock('$lib/etat.svelte', () => ({
   etat: {
@@ -50,6 +51,7 @@ import ReglagesTaodbox from '../../routes/taodbox/reglages/+page.svelte';
 
 beforeEach(() => {
   profil.parties.abriApresPartie = true;
+  profil.parties.rattrapage = true;
   plateforme = 'Windows';
   reglerProfil.mockClear();
 });
@@ -87,5 +89,34 @@ describe('🛟 Le réglage de l’abri après une partie', () => {
     await tick();
     expect(screen.queryByRole('switch', { name: /après chaque partie/ })).toBeNull();
     expect(screen.getByText('Rien à régler pour ce jeu : il n’a ni mise à jour, ni DLC, ni mod.')).toBeTruthy();
+  });
+});
+
+// Lot S7 (Seb 24/11) : « 🛟 Rattraper les parties jouées hors de Frogtend » — allumé d'office, SÉPARÉ de l'abri après une
+// partie, réglable dans Options ▸ Sauvegarde ET dans les réglages de Taodbox (à la manette).
+describe('🛟 Le réglage du rattrapage', () => {
+  it('allumé d’office', () => {
+    expect(DEFAUTS_PROFIL.parties.rattrapage).toBe(true);
+  });
+
+  it('Options ▸ Sauvegarde : sa propre case, qui ne touche pas à l’abri après une partie', async () => {
+    render(Sauvegarde);
+    const c = screen.getByRole('checkbox', { name: '🛟 Rattraper les parties jouées hors de Frogtend' }) as HTMLInputElement;
+    expect(c.checked).toBe(true);
+    await fireEvent.click(c);
+    expect(reglerProfil).toHaveBeenCalledWith('parties.rattrapage', false);
+    expect(reglerProfil).not.toHaveBeenCalledWith('parties.abriApresPartie', expect.anything());
+  });
+
+  it('Taodbox : un interrupteur à la manette pour un jeu PC', async () => {
+    render(ReglagesTaodbox);
+    await tick();
+    const s = screen.getByRole('switch', { name: '🛟 Rattraper les parties jouées hors de Frogtend (pour tous tes jeux PC)' });
+    expect(s.getAttribute('aria-checked')).toBe('true');
+    await fireEvent.click(s);
+    await tick();
+    expect(reglerProfil).toHaveBeenCalledWith('parties.rattrapage', false);
+    expect(s.getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByRole('switch', { name: /après chaque partie/ }).getAttribute('aria-checked')).toBe('true');
   });
 });

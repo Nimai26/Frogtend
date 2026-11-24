@@ -96,7 +96,7 @@
   <div class="voile" role="presentation" onclick={(e) => e.target === e.currentTarget && d === dessus && annulerDessus()}>
     <div
       class="boite"
-      role={d.sorte === 'confirmer' || d.sorte === 'informer' || d.sorte === 'conflit' ? 'alertdialog' : 'dialog'}
+      role={d.sorte === 'confirmer' || d.sorte === 'informer' || d.sorte === 'conflit' || d.sorte === 'cestToi' ? 'alertdialog' : 'dialog'}
       aria-modal="true"
       aria-labelledby="dlg-titre-{d.id}"
       inert={d !== dessus}
@@ -188,6 +188,11 @@
           <button class="btn primary" data-premier onclick={() => d.fermer('ici')}>Garder celle de ce PC</button>
           <button class="btn" onclick={() => d.fermer('firehouse')}>Reprendre celle de Firehouse</button>
           <button class="btn" onclick={() => d.fermer('plus_tard')}>Décider plus tard</button>
+        {:else if d.sorte === 'cestToi'}
+          <!-- Lot S7 : « Décider plus tard » a le focus d'office (jamais une réponse pour quelqu'un d'autre par deux appuis). -->
+          <button class="btn primary" onclick={() => d.fermer('oui')}>Oui, c’est moi</button>
+          <button class="btn" onclick={() => d.fermer('non')}>Non</button>
+          <button class="btn" data-premier onclick={() => d.fermer('plus_tard')}>Décider plus tard</button>
         {:else}
           <button class="btn" data-premier={d.sorte === 'confirmer' && d.danger ? '' : undefined} onclick={annulerDessus}>Annuler</button>
           {#if d.sorte === 'confirmer'}

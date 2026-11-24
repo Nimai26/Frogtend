@@ -656,6 +656,8 @@ pub fn run() {
             commandes::parties_continuer_sans_abri,
             commandes::parties_abri_auto_etat,
             commandes::parties_abri_avant,
+            commandes::parties_a_confirmer,
+            commandes::parties_confirmer,
             commandes::succes_liste,
             commandes::succes_jeu,
             commandes::boutique_fiche,

@@ -94,6 +94,16 @@
       />
       <span>🛟 Mettre mes parties à l’abri sur ce PC après chaque partie (pour tous tes jeux PC)</span>
     </label>
+    <!-- Lot S7 (Seb 24/11) : à l'ouverture du profil, les parties jouées HORS de Frogtend (Steam, Epic, un raccourci…)
+         sont mises à l'abri elles aussi (allumé d'office, séparé de l'abri après une partie). -->
+    <label class="choix">
+      <input
+        type="checkbox"
+        checked={etat.profil.parties?.rattrapage !== false}
+        onchange={(e) => reglerProfil('parties.rattrapage', e.currentTarget.checked)}
+      />
+      <span>🛟 Rattraper les parties jouées hors de Frogtend</span>
+    </label>
   </div>
 
   <!-- Lot 7 (Seb 17/11) : les mises à jour et DLC Switch que Firehouse n'a pas, envoyés pour toute la famille. -->

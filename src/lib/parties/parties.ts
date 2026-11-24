@@ -244,6 +244,9 @@ export function texteDeclencheur(d: string | null | undefined): { repere: string
       return { repere: '🛠', texte: 'avant de reprendre la partie de Firehouse' };
     case 'restauree':
       return { repere: '📥', texte: 'reprise de Firehouse' };
+    // Lot S7 : une partie jouée hors de Frogtend, rattrapée à l'ouverture du profil.
+    case 'rattrapage':
+      return { repere: '🛟', texte: 'rattrapé' };
     // Absent (un abri d'avant le lot S3) ou « main » : fait à la main.
     case undefined:
     case null:
@@ -267,7 +270,9 @@ export function texteSorteAbri(a: AbriVu): string {
         : a.sorte === 'jeu' || a.sorte === 'retrait'
           ? 'mis à l’abri par Frogtend (avant un mod, une réinstallation ou un retrait)'
           : 'abri';
-  return a.a_moi ? `${sorte} · dans ton profil` : `${sorte} · ancien abri, sans propriétaire connu`;
+  // Lot S7 : un abri rattrapé qui attend la réponse de la personne, ou qu'elle a dit ne pas être le sien.
+  const confirmation = a.a_confirmer ? ' · à confirmer : c’est toi qui as joué ?' : a.pas_a_moi ? ' · pas à toi : gardé sur ce PC, jamais envoyé' : '';
+  return a.a_moi ? `${sorte} · dans ton profil${confirmation}` : `${sorte} · ancien abri, sans propriétaire connu`;
 }
 
 /** Ce qu'il faut savoir d'un abri (`null` : rien). */
@@ -372,19 +377,21 @@ export function texteToastAbriAuto(b: BilanAbriAuto, titre: string): string | nu
 /** La ligne qui RESTE sur la fiche du jeu après un abri automatique qui n'a pas pu tout copier (`null` : rien). */
 export function ligneAbriAuto(b: BilanAbriAuto | null | undefined): string | null {
   if (!b || !estProblemeAbriAuto(b)) return null;
+  // Lot S7 : le rattrapage ne se refait qu'à l'ouverture de Frogtend (jamais après une partie).
+  const quand = b.declencheur === 'rattrapage' ? 'à la prochaine ouverture de Frogtend' : 'après ta prochaine partie';
   switch (b.etat) {
     case 'en_ligne':
       return `☁ Dernier abri automatique : ${fichiers(b.en_ligne)} (${taille(b.octets_en_ligne)}) seulement dans ton nuage OneDrive, pas copié${b.en_ligne > 1 ? 's' : ''}. « 🛟 Mettre mes parties à l’abri » propose de les télécharger.`;
     case 'trop_gros':
       return `⚠ Dernier abri automatique : plus de 2 Go de parties, rien de copié sans ton accord. « 🛟 Mettre mes parties à l’abri » te le demandera.`;
     case 'attente_depassee':
-      return '⏳ Dernier abri automatique : le jeu écrivait encore ses parties. Frogtend réessaiera après ta prochaine partie.';
+      return `⏳ Dernier abri automatique : le jeu écrivait encore ses parties. Frogtend réessaiera ${quand}.`;
     case 'inconnu':
-      return '❔ Dernier abri automatique : Frogtend ne sait pas encore où ce jeu range ses parties. Il redemandera à Firehouse après ta prochaine partie.';
+      return `❔ Dernier abri automatique : Frogtend ne sait pas encore où ce jeu range ses parties. Il redemandera à Firehouse ${quand}.`;
     default: {
       // Une consigne (« réessaie dans une minute ») n'est pas recopiée : c'est Frogtend qui réessaiera.
       const m = b.motif && !donneUneConsigne(b.motif) ? ` : ${b.motif.replace(/[.\s]+$/, '')}` : '';
-      return `⚠ Dernier abri automatique impossible${m}. Frogtend réessaiera après ta prochaine partie.`;
+      return `⚠ Dernier abri automatique impossible${m}. Frogtend réessaiera ${quand}.`;
     }
   }
 }

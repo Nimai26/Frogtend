@@ -6,6 +6,13 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🛟 Rattrapage des parties jouées hors de Frogtend (0.226.0, lot S7)
+- [ ] 1. Options ▸ Sauvegarde : l'interrupteur « 🛟 Rattraper les parties jouées hors de Frogtend » est allumé.
+- [ ] 2. FERMER Frogtend. Lancer Cyberpunk depuis sa boutique (pas depuis Frogtend), sauvegarder en jeu, quitter.
+      Rouvrir Frogtend : « 🛟 1 jeu rattrapé » ; s'il y a plusieurs profils sur ce PC, la question « C'est toi qui as joué
+      à « Cyberpunk 2077 » ? » (répondre Oui) ; fiche ▸ 📁 : « Dernier abri : aujourd'hui à HH:MM, rattrapé ».
+- [ ] 3. Fermer et rouvrir Frogtend sans jouer : aucun message, aucun nouvel abri.
+
 ## 🎮 Moteur signalé à Firehouse (0.225.1)
 - [x] 1. Mettre à jour, ouvrir la fiche de What a Legend! ▸ 📁 Où sont mes parties : rien de visible ne change ; le
       journal dit « moteur renpy signalé à Firehouse : retenu » (vérifié par l'agent).

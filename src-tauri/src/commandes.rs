@@ -365,6 +365,8 @@ pub async fn profil_ouvrir(
     lancer_envois_switch(&app);
     // Lot S3 : les abris « à faire » de ce profil (une attente dépassée, un échec) sont repris.
     lancer_abris_apres_partie(&app, None, p.id.clone());
+    // Lot S7 : les parties jouées hors de Frogtend depuis la dernière fois (au démarrage seulement).
+    lancer_rattrapage(&app, p.id.clone());
     Ok(p)
 }
 
@@ -9677,12 +9679,28 @@ enum Pour {
 /// Les emplacements connus de ce jeu PC pour ce profil. B1 : une entrée absente ou trop vieille est d'abord demandée à
 /// Firehouse (comme « 📁 Où sont mes parties »), seulement quand ce profil est celui de la session (la réponse n'est
 /// rangée que chez lui) ; hors ligne, le cache seul. « Entrée absente » (inconnu) n'est pas « liste vide » (aucun).
+/// `cache_seul` (lot S7, le rattrapage) : jamais une question à Firehouse — ni emplacements redemandés, ni moteur relu,
+/// ni sel relu (le sel local seul ; sans lui, les endroits à identifiant attendent).
 async fn pour_abri_auto(
     noyau: &Noyau,
     profil: &str,
     dossier_profil: &std::path::Path,
     id: i64,
     windows: impl Fn() -> Vec<(&'static str, std::path::PathBuf)> + Send + Sync + Clone + 'static,
+    cache_seul: bool,
+) -> Resultat<Pour> {
+    pour_abri_auto_lu(noyau, profil, dossier_profil, id, windows, cache_seul, None).await
+}
+
+/// Comme `pour_abri_auto`, avec le cache du profil déjà lu (`cache`, le rattrapage : lu une fois par tour).
+async fn pour_abri_auto_lu(
+    noyau: &Noyau,
+    profil: &str,
+    dossier_profil: &std::path::Path,
+    id: i64,
+    windows: impl Fn() -> Vec<(&'static str, std::path::PathBuf)> + Send + Sync + Clone + 'static,
+    cache_seul: bool,
+    cache: Option<&crate::emplacements_parties::Cache>,
 ) -> Resultat<Pour> {
     use crate::emplacements_parties as ep;
     let j = noyau.registre().jeu(id)?;
@@ -9690,8 +9708,11 @@ async fn pour_abri_auto(
         return Ok(Pour::Aucun);
     }
     let t: u64 = crate::noyau::maintenant().parse().unwrap_or(0);
-    let mut entree = ep::lire(dossier_profil)?.jeu(id).cloned();
-    let session = noyau.session().await.ok().filter(|s| s.profil.id == profil && dossier_profil == dossier_profil_de(noyau, profil));
+    let mut entree = match cache {
+        Some(c) => c.jeu(id).cloned(),
+        None => ep::lire(dossier_profil)?.jeu(id).cloned(),
+    };
+    let session = if cache_seul { None } else { noyau.session().await.ok().filter(|s| s.profil.id == profil && dossier_profil == dossier_profil_de(noyau, profil)) };
     if ep::a_redemander(entree.as_ref(), t) && session.is_some() {
         // `parties_du_jeu` relit aussi le moteur sur le disque (lot S6).
         if parties_du_jeu(noyau, id, true, windows.clone()).await.is_err() {
@@ -9719,7 +9740,7 @@ async fn pour_abri_auto(
     let contexte = Box::new(contexte_des_parties(dossier_profil, boutique.as_ref(), installation.map(|i| i.dossier_des_parties()), dossier_jeu.clone()));
     // Lot S5 : relu chez Firehouse d'abord s'il manque ; jamais un sel neuf hors du 404 du contrat (un autre profil
     // que celui de la session, ou un dossier de profil inattendu : aucun sel, ses endroits à identifiant attendent).
-    let sel = if dossier_profil == dossier_profil_de(noyau, profil) { noyau.sel_pour_abri(profil).await? } else { crate::abri_parties::sel_local(dossier_profil).unwrap_or_default() };
+    let sel = if !cache_seul && dossier_profil == dossier_profil_de(noyau, profil) { noyau.sel_pour_abri(profil).await? } else { crate::abri_parties::sel_local(dossier_profil).unwrap_or_default() };
     Ok(Pour::Connu(PourAbriAuto { lieux_non_resolus: entree.emplacements, contexte, sources: noyau.sources_abri(id)?, dossier_jeu, sel }))
 }
 
@@ -9754,10 +9775,44 @@ pub(crate) async fn abriter_auto(
     windows: impl Fn() -> Vec<(&'static str, std::path::PathBuf)> + Send + Sync + Clone + 'static,
     annoncer: &(dyn Fn(&BilanAbriAuto) + Send + Sync),
 ) -> Resultat<BilanAbriAuto> {
+    abriter_auto_avec(noyau, d, windows, annoncer, &PourRattrapage::default()).await
+}
+
+/// Ce que le RATTRAPAGE (lot S7) ajoute à un abri automatique.
+#[derive(Default)]
+pub(crate) struct PourRattrapage {
+    /// Le relevé des processus UNIQUE du tour (sinon : un relevé pour ce jeu).
+    pub processus: Option<std::sync::Arc<crate::lancement::Instantane>>,
+    /// Plusieurs profils Frogtend sur ce compte Windows : l'abri est « à confirmer ».
+    pub a_confirmer: bool,
+    /// Le cache des emplacements du profil, lu UNE fois pour tout le tour.
+    pub cache: Option<std::sync::Arc<crate::emplacements_parties::Cache>>,
+    /// Le dossier d'un jeu de boutique que Frogtend n'a pas installé (Steam : son manifeste), pour le relevé des
+    /// processus ; inconnu (Epic, GOG sans installation connue) : seule la règle des 60 s sans écriture protège.
+    pub dossier_boutique: Option<std::path::PathBuf>,
+    /// Rendu : un SHA1 a été calculé pour ce jeu (compte dans le plafond du tour).
+    pub sha_fait: std::sync::atomic::AtomicBool,
+    /// Rendu : le relevé est celui déjà noté (SHA1 sans rien de neuf, nuage, trop gros) : rien à refaire ni à redire.
+    pub deja_vu: std::sync::atomic::AtomicBool,
+    /// Rendu : la signature du relevé léger (notée par le tour quand le SHA1 n'a rien trouvé, ou l'abri refusé).
+    pub signature: std::sync::Mutex<Option<crate::abri_parties::SignatureReleve>>,
+}
+
+/// L'abri automatique ; pour le déclencheur `rattrapage` (lot S7) : le cache seul (aucune question à Firehouse), et
+/// d'abord « du neuf ? » par les métadonnées seulement, comparées au dernier abri de ce profil (rien de neuf : aucun
+/// SHA1) ; un jeu qui a écrit depuis moins de 60 s est refusé (`Err`), comme un jeu qui tourne.
+pub(crate) async fn abriter_auto_avec(
+    noyau: &Noyau,
+    d: &DemandeAbriAuto,
+    windows: impl Fn() -> Vec<(&'static str, std::path::PathBuf)> + Send + Sync + Clone + 'static,
+    annoncer: &(dyn Fn(&BilanAbriAuto) + Send + Sync),
+    rattrapage: &PourRattrapage,
+) -> Resultat<BilanAbriAuto> {
     use crate::abri_parties::{self as ap, Echec};
     let (id, profil, declencheur) = (d.id, d.profil.as_str(), d.declencheur);
+    let rattraper = declencheur == ap::DECLENCHEUR_RATTRAPAGE;
     let bilan = |etat| BilanAbriAuto::nouveau(id, profil, declencheur, etat);
-    let p = match pour_abri_auto(noyau, profil, &d.dossier_profil, id, windows.clone()).await {
+    let p = match pour_abri_auto_lu(noyau, profil, &d.dossier_profil, id, windows.clone(), rattraper, rattrapage.cache.as_deref()).await {
         Ok(Pour::Connu(p)) => p,
         Ok(Pour::Aucun) => return Ok(bilan(EtatAbriAuto::Aucun)),
         Ok(Pour::Inconnu) => return Ok(bilan(EtatAbriAuto::Inconnu)),
@@ -9770,7 +9825,13 @@ pub(crate) async fn abriter_auto(
     if !d.deja_occupe && noyau.utilise(id) {
         return Err(Erreur::Refus("Ce jeu est occupé (partie, téléchargement ou installation en cours) : réessaie après.".into()));
     }
-    if p.dossier_jeu.as_deref().is_some_and(|d| d.is_dir() && !crate::lancement::processus_du_dossier(d).is_empty()) {
+    let tourne = |d: &std::path::Path| match &rattrapage.processus {
+        Some(i) => i.tourne_dans(d),
+        None => !crate::lancement::processus_du_dossier(d).is_empty(),
+    };
+    // Lot S7 : un jeu de boutique que Frogtend n'a pas installé se relève dans le dossier que la boutique connaît ; sans
+    // dossier connu, seule la règle « aucun fichier écrit depuis 60 s » (plus bas) empêche une copie pendant le jeu.
+    if p.dossier_jeu.iter().chain(rattrapage.dossier_boutique.iter()).any(|d| d.is_dir() && tourne(d)) {
         return Err(Erreur::Refus("Le jeu est en cours : quitte-le d'abord, pour que ses parties ne changent pas pendant la copie.".into()));
     }
     let abris = match noyau.dossier_abris() {
@@ -9779,13 +9840,38 @@ pub(crate) async fn abriter_auto(
     };
     let PourAbriAuto { lieux_non_resolus, contexte, sources, sel, .. } = p;
     let w = windows.clone();
-    let (lieux, releve) = tauri::async_runtime::spawn_blocking(move || {
+    let (s2, src2) = (sel.clone(), sources.clone());
+    let (lieux, releve, neuf) = tauri::async_runtime::spawn_blocking(move || {
         let lieux = lieux_resolus(&lieux_non_resolus, contexte, w());
         let r = ap::relever(&lieux);
-        (lieux, r)
+        // Lot S7 : « du neuf ? » par les métadonnées seulement, pour le rattrapage — comparé au dernier abri de CHAQUE
+        // profil (la partie d'un autre profil, déjà à l'abri chez lui, n'est pas du neuf ici).
+        let neuf = rattraper.then(|| {
+            let leger = ap::relever_pour_abri(&lieux, &s2);
+            let sel_manque = s2.is_empty() && lieux.iter().any(|e| e.identifiant.is_some());
+            (ap::du_neuf_pour_tous(&leger, &ap::derniers_abris_par_profil(&src2)), leger.ecrit_recemment(std::time::SystemTime::now(), ECRITURE_RECENTE), leger.signature(), sel_manque)
+        });
+        (lieux, r, neuf)
     })
     .await
     .map_err(|_| Erreur::Disque("La lecture des parties s'est arrêtée brutalement.".into()))?;
+    if let Some((du_neuf, ecrit, signature, sel_manque)) = neuf {
+        let deja_vu = ap::signature_notee(&d.dossier_profil, id).as_ref() == Some(&signature);
+        *rattrapage.signature.lock().unwrap_or_else(|e| e.into_inner()) = Some(signature);
+        if du_neuf && deja_vu {
+            rattrapage.deja_vu.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        if !du_neuf || deja_vu {
+            // Sans le sel du profil (jamais relu pendant le rattrapage), un endroit à identifiant n'est pas relevé : dit.
+            if sel_manque {
+                return Ok(BilanAbriAuto::echec(id, profil, declencheur, Echec::SelInconnu.texte().into()));
+            }
+            return Ok(bilan(if releve.fichiers.is_empty() && releve.arrets == 0 { EtatAbriAuto::Aucun } else { EtatAbriAuto::RienDeNeuf }));
+        }
+        if ecrit {
+            return Err(Erreur::Refus("Le jeu semble encore écrire ses parties : réessaie dans une minute.".into()));
+        }
+    }
     // Le relevé léger d'abord (tailles seulement) : au-delà de 2 Go, rien n'est lu (pas un SHA1) ni copié. Un endroit
     // illisible ou trop grand (I2) n'est jamais pris pour « aucune partie » : `planifier` dira pourquoi.
     let avec_releve = |etat| BilanAbriAuto { fichiers: releve.sur_le_pc(), octets: releve.octets, en_ligne: releve.en_ligne, octets_en_ligne: releve.octets_en_ligne, ..bilan(etat) };
@@ -9806,6 +9892,7 @@ pub(crate) async fn abriter_auto(
     let _occupe = (!d.deja_occupe).then(|| noyau.occuper(id));
     let mut essai = 0;
     loop {
+        rattrapage.sha_fait.store(true, std::sync::atomic::Ordering::Relaxed);
         let (l, s) = (lieux.clone(), sel.clone());
         let mut plan = tauri::async_runtime::spawn_blocking(move || ap::planifier(&l, &Default::default(), &s))
             .await
@@ -9854,6 +9941,7 @@ pub(crate) async fn abriter_auto(
         }
         annoncer(&fait(&plan, EtatAbriAuto::EnCours));
         plan.boutique = boutique_du_jeu(noyau, id);
+        plan.a_confirmer = rattraper && rattrapage.a_confirmer;
         let (a, q, pr, dc) = (abris.clone(), crate::noyau::maintenant(), profil.to_string(), declencheur);
         let (r, plan) = tauri::async_runtime::spawn_blocking(move || {
             let r = ap::abriter_par(&mut plan, &a, id, &q, &pr, dc, None);
@@ -10008,10 +10096,10 @@ fn emettre_abri(b: &BilanAbriAuto) {
 /// neuf, ou aucun emplacement) l'efface.
 fn garder_etat(dossier_profil: &std::path::Path, b: &BilanAbriAuto) {
     let r = if b.etat.probleme() {
-        if b.declencheur != crate::abri_parties::DECLENCHEUR_APRES_PARTIE {
+        if b.declencheur != crate::abri_parties::DECLENCHEUR_APRES_PARTIE && b.declencheur != crate::abri_parties::DECLENCHEUR_RATTRAPAGE {
             return;
         }
-        crate::abri_parties::noter_etat_auto(dossier_profil, b.jeu, &crate::abri_parties::EtatNote { etat: b.etat.nom().into(), date: crate::noyau::maintenant(), en_ligne: b.en_ligne, octets_en_ligne: b.octets_en_ligne })
+        crate::abri_parties::noter_etat_auto(dossier_profil, b.jeu, &crate::abri_parties::EtatNote { etat: b.etat.nom().into(), date: crate::noyau::maintenant(), en_ligne: b.en_ligne, octets_en_ligne: b.octets_en_ligne, declencheur: b.declencheur.clone(), motif: b.motif.clone() })
     } else if matches!(b.etat, EtatAbriAuto::Fait | EtatAbriAuto::RienDeNeuf | EtatAbriAuto::Aucun) {
         crate::abri_parties::retirer_etat_auto(dossier_profil, b.jeu)
     } else {
@@ -10031,7 +10119,8 @@ async fn etat_garde(noyau: &Noyau, id: i64) -> Resultat<Option<BilanAbriAuto>> {
     let dp = dossier_profil_de(noyau, &s.profil.id);
     Ok(crate::abri_parties::etat_auto(&dp, id).and_then(|n| {
         let etat = EtatAbriAuto::depuis(&n.etat).filter(|e| e.probleme())?;
-        Some(BilanAbriAuto { en_ligne: n.en_ligne, octets_en_ligne: n.octets_en_ligne, ..BilanAbriAuto::nouveau(id, &s.profil.id, crate::abri_parties::DECLENCHEUR_APRES_PARTIE, etat) })
+        let declencheur = if n.declencheur == crate::abri_parties::DECLENCHEUR_RATTRAPAGE { crate::abri_parties::DECLENCHEUR_RATTRAPAGE } else { crate::abri_parties::DECLENCHEUR_APRES_PARTIE };
+        Some(BilanAbriAuto { en_ligne: n.en_ligne, octets_en_ligne: n.octets_en_ligne, motif: n.motif.clone(), ..BilanAbriAuto::nouveau(id, &s.profil.id, declencheur, etat) })
     }))
 }
 
@@ -10156,7 +10245,7 @@ pub(crate) async fn abri_apres_partie_avec(
         emettre(&b);
         Some(b)
     };
-    let p = match pour_abri_auto(noyau, profil, &dp, id, windows.clone()).await {
+    let p = match pour_abri_auto(noyau, profil, &dp, id, windows.clone(), false).await {
         Ok(Pour::Connu(p)) => p,
         Ok(Pour::Aucun) => {
             let _ = ap::retirer_a_faire(&dp, id);
@@ -10269,6 +10358,261 @@ pub(crate) fn lancer_abris_apres_partie(app: &AppHandle, id: Option<i64>, profil
         };
         abris_apres_partie_puis_dire(&noyau, id, &profil, crate::abri_parties::DELAIS_APRES_PARTIE, crate::nuage_steam::dossiers_windows, None, &emettre_abri, &dire).await;
     });
+}
+
+// --- Lot S7 (Seb, 24/11) : RATTRAPER, à l'ouverture du profil seulement, les parties des jeux PC jouées HORS de
+// Frogtend (Steam, Epic, un raccourci…). Les jeux viennent du cache des emplacements du profil (jamais une question à
+// Firehouse), un seul relevé des processus pour tout le tour, « du neuf » par les métadonnées seulement, l'abri par la
+// voie normale (`abriter_auto`, déclencheur `rattrapage`). ---
+
+/// Le plafond de jeux qui ont du neuf (SHA1 et copie) par tour de rattrapage : les autres attendent le démarrage suivant.
+pub(crate) const PLAFOND_RATTRAPAGE: usize = 50;
+
+/// Le rattrapage est-il allumé pour ce profil (`parties.rattrapage` de ses réglages, allumé d'office) ?
+fn rattrapage_allume(dossier: &std::path::Path, profil: &str) -> bool {
+    let v: Value = std::fs::read(dossier.join("profils").join(format!("{profil}.json"))).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or(Value::Null);
+    v["reglages"]["parties"]["rattrapage"].as_bool() != Some(false)
+}
+
+/// Le compte rendu d'un tour de rattrapage (événement `parties-rattrapage`) : des numéros de jeux, jamais un titre ni
+/// un chemin.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct BilanRattrapage {
+    pub profil: String,
+    /// Les jeux dont un abri a été écrit pendant ce tour.
+    pub rattrapes: Vec<i64>,
+    /// TOUS les jeux de ce profil dont un abri rattrapé attend « C'est toi qui as joué ? » (de ce tour ou d'avant).
+    pub a_confirmer: Vec<i64>,
+    #[serde(skip)]
+    pub examines: usize,
+    /// Jeux qui tournaient ou écrivaient encore : repris au démarrage suivant.
+    #[serde(skip)]
+    pub a_faire: usize,
+    /// Jeux laissés pour le démarrage suivant (plafond atteint).
+    #[serde(skip)]
+    pub restants: usize,
+}
+
+/// Les jeux PC que ce profil VOIT (ludothèque de la session) et dont le cache connaît des emplacements, avec le cache
+/// (lu UNE fois).
+fn jeux_du_rattrapage(noyau: &Noyau, s: &crate::noyau::Session, dp: &std::path::Path) -> Resultat<(crate::emplacements_parties::Cache, Vec<i64>)> {
+    let cache = crate::emplacements_parties::lire(dp)?;
+    let connus: Vec<i64> = cache.jeux.values().filter(|e| !e.emplacements.is_empty()).map(|e| e.id).collect();
+    let visibles: Vec<i64> = {
+        let v = s.verrou();
+        connus.into_iter().filter(|id| v.visible_ou_reuni(*id).unwrap_or(false)).collect()
+    };
+    let mut l: Vec<i64> = visibles.into_iter().filter(|id| !noyau.registre().jeu(*id).ok().flatten().is_some_and(|j| j.plateforme != "Windows")).collect();
+    l.sort_unstable();
+    l.dedup();
+    Ok((cache, l))
+}
+
+/// Les jeux (parmi `jeux`) dont un abri de ce profil attend « C'est toi qui as joué ? » (les fiches lues hors du fil
+/// courant).
+async fn jeux_a_confirmer(noyau: &Noyau, jeux: &[i64], profil: &str) -> Vec<i64> {
+    let sources: Vec<(i64, Vec<std::path::PathBuf>)> = jeux.iter().filter_map(|id| noyau.sources_abri(*id).ok().map(|s| (*id, s))).collect();
+    let profil = profil.to_string();
+    tauri::async_runtime::spawn_blocking(move || sources.into_iter().filter(|(_, s)| !crate::abri_parties::abris_a_confirmer(s, &profil).is_empty()).map(|(id, _)| id).collect())
+        .await
+        .unwrap_or_default()
+}
+
+/// Les jeux Steam installés sur ce PC (appid vers dossier), d'après leurs manifestes : le dossier d'un jeu Steam que
+/// Frogtend n'a pas installé, pour le relevé des processus du rattrapage.
+pub(crate) fn dossiers_steam() -> std::collections::BTreeMap<String, std::path::PathBuf> {
+    crate::boutiques::dossier_steam().map(|d| crate::boutiques::installes_steam_dossiers(&d).into_iter().map(|(k, v)| (k, v.dossier)).collect()).unwrap_or_default()
+}
+
+/// Le dossier qu'une boutique connaît pour un jeu que Frogtend n'a pas installé (Steam seulement : son manifeste) ;
+/// `None` : installé par Frogtend (son dossier est relevé par l'abri), ou boutique sans dossier connu.
+fn dossier_de_boutique(noyau: &Noyau, cache: &crate::emplacements_parties::Cache, id: i64, steam: &std::collections::BTreeMap<String, std::path::PathBuf>) -> Option<std::path::PathBuf> {
+    if noyau.registre().jeu(id).ok().flatten().and_then(|j| j.installation).is_some() {
+        return None;
+    }
+    let b = cache.jeu(id)?.boutique.as_ref()?;
+    if b.source != "steam" {
+        return None;
+    }
+    steam.get(&b.cle).cloned()
+}
+
+/// Un tour de rattrapage pour le profil OUVERT (`profil` doit être celui de la session) ; `None` : interrupteur éteint,
+/// aucun profil, cache illisible. `processus` : le relevé unique du tour ; `steam` : les jeux Steam installés (appid vers
+/// dossier), lus une fois.
+pub(crate) async fn rattraper_avec(
+    noyau: &Noyau,
+    profil: &str,
+    windows: impl Fn() -> Vec<(&'static str, std::path::PathBuf)> + Send + Sync + Clone + 'static,
+    processus: std::sync::Arc<crate::lancement::Instantane>,
+    steam: std::collections::BTreeMap<String, std::path::PathBuf>,
+    plafond: usize,
+    emettre: &(dyn Fn(&BilanAbriAuto) + Send + Sync),
+) -> Option<BilanRattrapage> {
+    use crate::abri_parties as ap;
+    use std::sync::atomic::Ordering;
+    if profil.is_empty() || !rattrapage_allume(&noyau.dossier, profil) {
+        return None;
+    }
+    let s = noyau.session().await.ok().filter(|s| s.profil.id == profil)?;
+    let dp = dossier_profil_de(noyau, profil);
+    let (cache, jeux) = match jeux_du_rattrapage(noyau, &s, &dp) {
+        Ok(l) => l,
+        Err(e) => {
+            noyau.journaliser(&format!("rattrapage des parties impossible ({})", motif_sans_chemin(&e)));
+            return None;
+        }
+    };
+    drop(s);
+    let cache = std::sync::Arc::new(cache);
+    // Jamais un jeu dont un abri est en attente pour un profil (le sien après une partie, ou un AUTRE profil : la reprise
+    // des « abris à faire » s'en charge, au nom de la personne qui jouait).
+    let autres: Vec<String> = noyau.profils.lister().into_iter().map(|p| p.id).filter(|p| p != profil).collect();
+    let mut en_attente: std::collections::BTreeSet<i64> = ap::a_faire(&dp).into_iter().collect();
+    for o in &autres {
+        let dpo = dossier_profil_de(noyau, o);
+        en_attente.extend(ap::a_faire(&dpo));
+        en_attente.extend(ap::rattrapages_a_faire(&dpo));
+    }
+    // Ceux restés « à faire » au dernier tour d'abord, puis les autres à partir du point de départ tournant.
+    let reprendre = ap::rattrapages_a_faire(&dp);
+    let mut ordre: Vec<i64> = reprendre.iter().copied().filter(|id| jeux.contains(id)).collect();
+    let reste: Vec<i64> = jeux.iter().copied().filter(|id| !reprendre.contains(id)).collect();
+    ordre.extend(ap::ordre_tournant(&reste, ap::depart(&dp)));
+    ordre.retain(|id| !en_attente.contains(id));
+    // Un repère d'un jeu que ce profil ne voit plus (ou sans emplacement connu) part.
+    for id in reprendre.iter().filter(|id| !jeux.contains(id)) {
+        let _ = ap::retirer_rattrapage_a_faire(&dp, *id);
+    }
+    let a_confirmer = !autres.is_empty();
+    let mut b = BilanRattrapage { profil: profil.to_string(), ..Default::default() };
+    let mut neufs = 0usize;
+    let mut arret: Option<i64> = None;
+    for (i, id) in ordre.iter().copied().enumerate() {
+        if neufs >= plafond {
+            b.restants = ordre.len() - i;
+            arret = Some(id);
+            break;
+        }
+        // Une partie lancée par Frogtend (ou un téléchargement) : sa propre fin s'en charge.
+        if noyau.utilise(id) {
+            continue;
+        }
+        b.examines += 1;
+        let options = PourRattrapage {
+            processus: Some(processus.clone()),
+            a_confirmer,
+            cache: Some(cache.clone()),
+            dossier_boutique: dossier_de_boutique(noyau, &cache, id, &steam),
+            ..Default::default()
+        };
+        let d = DemandeAbriAuto { id, profil: profil.to_string(), dossier_profil: dp.clone(), declencheur: ap::DECLENCHEUR_RATTRAPAGE, deja_occupe: false };
+        match abriter_auto_avec(noyau, &d, windows.clone(), emettre, &options).await {
+            Ok(r) => {
+                let sha = options.sha_fait.load(Ordering::Relaxed);
+                if sha {
+                    neufs += 1;
+                }
+                if r.etat != EtatAbriAuto::Echec {
+                    let _ = ap::retirer_rattrapage_a_faire(&dp, id);
+                }
+                // Le même relevé qu'au tour d'avant (déjà lu au SHA1, ou déjà signalé) : rien à refaire ni à redire.
+                if options.deja_vu.load(Ordering::Relaxed) {
+                    continue;
+                }
+                let signature = options.signature.lock().unwrap_or_else(|e| e.into_inner()).take();
+                // Noté : le SHA1 n'a rien trouvé, ou l'abri est refusé sans question (nuage, trop gros) ; retiré : un
+                // abri écrit (il correspond désormais au relevé), ou plus aucune partie.
+                if r.abrite || r.etat == EtatAbriAuto::Aucun {
+                    let _ = ap::noter_signature(&dp, id, None);
+                } else if (sha && r.etat == EtatAbriAuto::RienDeNeuf) || matches!(r.etat, EtatAbriAuto::EnLigne | EtatAbriAuto::TropGros) {
+                    let _ = ap::noter_signature(&dp, id, signature.as_ref());
+                }
+                if r.abrite {
+                    b.rattrapes.push(id);
+                }
+                garder_etat(&dp, &r);
+                if r.etat != EtatAbriAuto::Aucun && r.etat != EtatAbriAuto::RienDeNeuf {
+                    emettre(&r);
+                }
+            }
+            // Le jeu tourne, écrit encore, ou un abri est en cours : « abri à faire », jamais une copie.
+            Err(_) => {
+                b.a_faire += 1;
+                if let Err(e) = ap::noter_rattrapage_a_faire(&dp, id, &crate::noyau::maintenant()) {
+                    noyau.journaliser(&format!("jeu {id} : repère « rattrapage à faire » non noté ({})", motif_sans_chemin(&e)));
+                }
+            }
+        }
+    }
+    let _ = ap::noter_depart(&dp, arret);
+    b.a_confirmer = jeux_a_confirmer(noyau, &jeux, profil).await;
+    noyau.journaliser(&format!(
+        "rattrapage des parties : {} jeu(x) connu(s), {} examiné(s), {} lu(s) au SHA1, {} rattrapé(s), {} à faire, {} laissé(s) pour le démarrage suivant (plafond {plafond}), {} à confirmer",
+        ordre.len(),
+        b.examines,
+        neufs,
+        b.rattrapes.len(),
+        b.a_faire,
+        b.restants,
+        b.a_confirmer.len()
+    ));
+    Some(b)
+}
+
+/// À l'ouverture du profil : un tour de rattrapage en arrière-plan, puis `parties-rattrapage` — TOUJOURS (interrupteur
+/// éteint compris, alors sans rien de rattrapé) : l'interface repropose les abris encore à confirmer.
+pub(crate) fn lancer_rattrapage(app: &AppHandle, profil: String) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let noyau = app.state::<Noyau>();
+        let Ok((processus, steam)) = tauri::async_runtime::spawn_blocking(|| (crate::lancement::Instantane::prendre(), dossiers_steam())).await else { return };
+        let b = rattraper_avec(&noyau, &profil, crate::nuage_steam::dossiers_windows, std::sync::Arc::new(processus), steam, PLAFOND_RATTRAPAGE, &emettre_abri)
+            .await
+            .unwrap_or_else(|| BilanRattrapage { profil: profil.clone(), ..Default::default() });
+        let _ = app.emit("parties-rattrapage", b);
+    });
+}
+
+/// 🛟 Les jeux dont un abri rattrapé attend « C'est toi qui as joué ? » (profil de la session ; jeux qu'il voit).
+#[tauri::command]
+pub async fn parties_a_confirmer(noyau: State<'_, Noyau>) -> Resultat<Vec<i64>> {
+    a_confirmer_du_profil(&noyau).await
+}
+
+pub(crate) async fn a_confirmer_du_profil(noyau: &Noyau) -> Resultat<Vec<i64>> {
+    let s = noyau.session().await?;
+    let dp = dossier_profil_de(noyau, &s.profil.id);
+    let (_, jeux) = jeux_du_rattrapage(noyau, &s, &dp)?;
+    let profil = s.profil.id.clone();
+    drop(s);
+    Ok(jeux_a_confirmer(noyau, &jeux, &profil).await)
+}
+
+/// 🛟 « Oui, c'est moi » (`oui`) : les abris rattrapés de ce jeu peuvent partir chez Firehouse ; « Non » : gardés sur ce
+/// PC, jamais envoyés (« pas à moi »). `profil` : celui à qui la question a été posée — refusé si ce n'est plus le
+/// profil ouvert. Un jeu que ce profil ne voit pas : refusé comme inconnu. Rend le nombre d'abris.
+#[tauri::command]
+pub async fn parties_confirmer(noyau: State<'_, Noyau>, id: i64, oui: bool, profil: String) -> Resultat<usize> {
+    confirmer_rattrapage(&noyau, id, oui, &profil).await
+}
+
+pub(crate) async fn confirmer_rattrapage(noyau: &Noyau, id: i64, oui: bool, profil: &str) -> Resultat<usize> {
+    let s = noyau.session().await?;
+    if s.profil.id != profil {
+        return Err(Erreur::Refus("Un autre profil est ouvert maintenant : rien n'a changé (la question te sera reposée).".into()));
+    }
+    if !s.verrou().visible_ou_reuni(id)? {
+        return Err(Erreur::Introuvable("Ce jeu n'est pas dans ta ludothèque.".into()));
+    }
+    let profil = s.profil.id.clone();
+    drop(s);
+    let abris = crate::abri_parties::abris_a_confirmer(&noyau.sources_abri(id)?, &profil);
+    for a in &abris {
+        crate::abri_parties::confirmer(a, oui)?;
+    }
+    noyau.journaliser(&format!("jeu {id} : {} abri(s) rattrapé(s) {}", abris.len(), if oui { "confirmé(s)" } else { "gardé(s) sur ce PC, pas à ce profil" }));
+    Ok(abris.len())
 }
 
 /// Les abris de ce jeu montrés au profil de la session : les siens, et les anciens sans propriétaire connu (jamais
@@ -14686,6 +15030,187 @@ pub(crate) mod tests_abri_auto {
         }
         let _ = unsafe { SetFileAttributesW(&h, FILE_ATTRIBUTE_ARCHIVE) };
     }
+
+    // --- Lot S7 : le rattrapage des parties jouées hors de Frogtend ---
+
+    fn aucun_processus() -> Arc<crate::lancement::Instantane> {
+        Arc::new(crate::lancement::Instantane::depuis(vec![]))
+    }
+
+    async fn rattraper(n: &Noyau, profil: &str) -> Option<super::BilanRattrapage> {
+        super::rattraper_avec(n, profil, sans_windows, aucun_processus(), Default::default(), super::PLAFOND_RATTRAPAGE, &|_| {}).await
+    }
+
+    #[tokio::test]
+    async fn une_partie_jouee_hors_de_frogtend_est_rattrapee_une_fois_puis_seulement_si_elle_change() {
+        let (_d, n, profil, sav, abris) = pc().await;
+        let (recus, emettre) = recepteur();
+        let b = super::rattraper_avec(&n, &profil, sans_windows, aucun_processus(), Default::default(), super::PLAFOND_RATTRAPAGE, &emettre).await.unwrap();
+        assert_eq!((b.rattrapes.as_slice(), b.a_confirmer.len(), b.examines), (&[110][..], 0, 1));
+        let l = abris_finis(&abris);
+        assert_eq!(l.len(), 1);
+        let fiche = ap::lire_fiche(&abris.join("110").join(&l[0])).unwrap();
+        assert_eq!((fiche.declencheur.as_str(), fiche.profil.as_str(), fiche.a_confirmer), (ap::DECLENCHEUR_RATTRAPAGE, profil.as_str(), false));
+        assert!(recus.lock().unwrap().iter().any(|r| r.etat == EtatAbriAuto::Fait && r.declencheur == ap::DECLENCHEUR_RATTRAPAGE));
+        // Un seul profil : l'abri part normalement chez Firehouse.
+        assert_eq!(ap::emplacements_a_envoyer(&[(1, abris.join("110").join(&l[0]))], &profil).0.len(), 1);
+        // Rien de neuf : aucun abri, rien à dire.
+        let b = rattraper(&n, &profil).await.unwrap();
+        assert!(b.rattrapes.is_empty());
+        assert_eq!(abris_finis(&abris).len(), 1);
+        // La partie change (jouée de nouveau hors de Frogtend, il y a plus d'une minute) : rattrapée.
+        std::fs::write(&sav, b"partie 2").unwrap();
+        vieillir(&sav);
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+        assert_eq!(rattraper(&n, &profil).await.unwrap().rattrapes, [110]);
+        assert_eq!(abris_finis(&abris).len(), 2);
+        let journal = std::fs::read_to_string(n.dossier.join("journal.txt")).unwrap();
+        assert!(journal.contains("1 rattrapé(s)"), "{journal}");
+        sans_chemin_ni_titre(&journal, _d.path());
+    }
+
+    #[tokio::test]
+    async fn un_jeu_qui_tourne_ou_qui_ecrit_passe_en_abri_a_faire_sans_copie() {
+        let (_d, n, profil, sav, abris) = pc().await;
+        let dp = n.dossier.join("profils").join(&profil);
+        let installe = PathBuf::from(n.registre().jeu(110).unwrap().unwrap().installation.unwrap().dossier);
+        let tourne = Arc::new(crate::lancement::Instantane::depuis(vec![installe.join("jeu.exe")]));
+        let b = super::rattraper_avec(&n, &profil, sans_windows, tourne, Default::default(), super::PLAFOND_RATTRAPAGE, &|_| {}).await.unwrap();
+        assert_eq!((b.rattrapes.len(), b.a_faire), (0, 1));
+        assert!(abris_finis(&abris).is_empty(), "jamais copié pendant que le jeu tourne");
+        assert_eq!(ap::rattrapages_a_faire(&dp), [110]);
+        assert!(ap::a_faire(&dp).is_empty(), "jamais le repère d'après une partie");
+        // Écrite à l'instant : toujours à faire.
+        std::fs::write(&sav, b"partie fraiche").unwrap();
+        let b = rattraper(&n, &profil).await.unwrap();
+        assert_eq!((b.rattrapes.len(), b.a_faire), (0, 1));
+        assert!(abris_finis(&abris).is_empty());
+        // Le calme revenu (démarrage suivant) : rattrapée, repère retiré.
+        vieillir(&sav);
+        assert_eq!(rattraper(&n, &profil).await.unwrap().rattrapes, [110]);
+        assert!(ap::rattrapages_a_faire(&dp).is_empty());
+    }
+
+    #[tokio::test]
+    async fn l_interrupteur_eteint_et_le_plafond_arretent_le_rattrapage() {
+        let (_d, n, profil, _sav, abris) = pc().await;
+        let b = super::rattraper_avec(&n, &profil, sans_windows, aucun_processus(), Default::default(), 0, &|_| {}).await.unwrap();
+        assert_eq!((b.rattrapes.len(), b.restants, b.examines), (0, 1, 0), "plafond atteint : laissé pour la fois suivante");
+        assert_eq!(ap::depart(&n.dossier.join("profils").join(&profil)), Some(110), "le tour suivant commence par lui");
+        assert!(abris_finis(&abris).is_empty());
+        let journal = std::fs::read_to_string(n.dossier.join("journal.txt")).unwrap();
+        assert!(journal.contains("1 laissé(s) pour le démarrage suivant (plafond 0)"), "{journal}");
+        // L'abri d'après une partie éteint ne coupe pas le rattrapage ; son interrupteur à lui, si.
+        let reglages = n.dossier.join("profils").join(format!("{profil}.json"));
+        std::fs::write(&reglages, br#"{"reglages": {"parties": {"abriApresPartie": false}}}"#).unwrap();
+        assert!(rattraper(&n, &profil).await.is_some());
+        std::fs::write(&reglages, br#"{"reglages": {"parties": {"rattrapage": false}}}"#).unwrap();
+        assert!(rattraper(&n, &profil).await.is_none());
+        assert!(super::rattraper_avec(&n, "", sans_windows, aucun_processus(), Default::default(), 50, &|_| {}).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn plusieurs_profils_sur_ce_compte_windows_l_abri_rattrape_attend_c_est_toi() {
+        let (_d, n, profil, sav, abris) = pc().await;
+        n.creer_profil("Léo", None, None).unwrap();
+        let b = rattraper(&n, &profil).await.unwrap();
+        assert_eq!((b.rattrapes.as_slice(), b.a_confirmer.as_slice()), (&[110][..], &[110][..]));
+        let a = abris.join("110").join(&abris_finis(&abris)[0]);
+        assert!(ap::lire_fiche(&a).unwrap().a_confirmer);
+        assert!(ap::emplacements_a_envoyer(&[(1, a.clone())], &profil).0.is_empty(), "jamais envoyé avant le oui");
+        let c = n.contenu_sauvegarde(&[]).await.unwrap();
+        assert!(c.parties.iter().all(|e| !e.relatif.contains("/emplacements/")), "rien dans la sauvegarde");
+        // « Plus tard » : proposé de nouveau au tour suivant (rien de neuf, toujours à confirmer).
+        let b = rattraper(&n, &profil).await.unwrap();
+        assert_eq!((b.rattrapes.len(), b.a_confirmer.as_slice()), (0, &[110][..]));
+        assert_eq!(super::a_confirmer_du_profil(&n).await.unwrap(), [110]);
+        // « Oui, c'est moi » : il part.
+        assert_eq!(super::confirmer_rattrapage(&n, 110, true, &profil).await.unwrap(), 1);
+        assert!(super::a_confirmer_du_profil(&n).await.unwrap().is_empty());
+        assert_eq!(ap::emplacements_a_envoyer(&[(1, a.clone())], &profil).0.len(), 1);
+        // Un nouvel abri rattrapé, puis « Non » : gardé sur ce PC, jamais envoyé.
+        std::fs::write(&sav, b"partie de Leo").unwrap();
+        vieillir(&sav);
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+        assert_eq!(rattraper(&n, &profil).await.unwrap().a_confirmer, [110]);
+        assert_eq!(super::confirmer_rattrapage(&n, 110, false, &profil).await.unwrap(), 1);
+        let l = abris_finis(&abris);
+        let b2 = abris.join("110").join(&l[1]);
+        assert!(ap::lire_fiche(&b2).unwrap().pas_a_moi);
+        let envoi = ap::emplacements_a_envoyer(&[(2, b2.clone()), (1, a.clone())], &profil).0;
+        assert!(envoi.iter().all(|(s, _)| s.starts_with(&a)), "seulement la copie confirmée");
+        assert!(matches!(super::confirmer_rattrapage(&n, 424242, true, &profil).await, Err(Erreur::Introuvable(_))));
+    }
+
+    /// Relecture S7 : une réponse donnée pour un AUTRE profil que celui ouvert est refusée, rien ne change.
+    #[tokio::test]
+    async fn une_reponse_pour_un_autre_profil_est_refusee() {
+        let (_d, n, profil, _sav, abris) = pc().await;
+        let leo = n.creer_profil("Léo", None, None).unwrap().id;
+        assert_eq!(rattraper(&n, &profil).await.unwrap().a_confirmer, [110]);
+        assert!(matches!(super::confirmer_rattrapage(&n, 110, true, &leo).await, Err(Erreur::Refus(_))));
+        assert!(ap::lire_fiche(&abris.join("110").join(&abris_finis(&abris)[0])).unwrap().a_confirmer, "rien n'a changé");
+    }
+
+    /// Relecture S7 : les parties de B (déjà à l'abri chez B, ou dans son repère « à faire ») ne sont jamais rattrapées
+    /// au nom de A.
+    #[tokio::test]
+    async fn les_parties_d_un_autre_profil_ne_sont_jamais_rattrapees_pour_moi() {
+        let (_d, n, profil, _sav, abris) = pc().await;
+        let leo = n.creer_profil("Léo", None, None).unwrap().id;
+        // Un abri de Léo, avec exactement ces parties.
+        let d = super::DemandeAbriAuto { id: 110, profil: leo.clone(), dossier_profil: n.dossier.join("profils").join(&leo), declencheur: ap::DECLENCHEUR_MAIN, deja_occupe: false };
+        // (le cache des emplacements est celui de Seb : l'abri de Léo se fait par la même voie, avec le cache de Seb.)
+        std::fs::create_dir_all(n.dossier.join("profils").join(&leo)).unwrap();
+        std::fs::copy(ep::fichier(&n.dossier.join("profils").join(&profil)), ep::fichier(&n.dossier.join("profils").join(&leo))).unwrap();
+        assert_eq!(super::abriter_auto(&n, &d, sans_windows, &|_| {}).await.unwrap().etat, EtatAbriAuto::Fait);
+        assert_eq!(abris_finis(&abris).len(), 1);
+        let b = rattraper(&n, &profil).await.unwrap();
+        assert!(b.rattrapes.is_empty(), "déjà à l'abri chez Léo : rien de neuf pour Seb");
+        assert_eq!(abris_finis(&abris).len(), 1);
+        // Dans le repère « à faire » de Léo : jamais examiné pour Seb.
+        ap::noter_a_faire(&n.dossier.join("profils").join(&leo), 110, "1").unwrap();
+        assert_eq!(rattraper(&n, &profil).await.unwrap().examines, 0);
+    }
+
+    /// Relecture S7 : un jeu Steam que Frogtend n'a pas installé se relève dans le dossier que Steam connaît.
+    #[tokio::test]
+    async fn un_jeu_steam_non_installe_par_frogtend_qui_tourne_n_est_pas_copie() {
+        let (d, n, profil, _sav, abris) = pc().await;
+        let dp = n.dossier.join("profils").join(&profil);
+        n.registre().changer_installation(110, None).unwrap();
+        ep::modifier(&dp, |c| c.jeux.get_mut("110").unwrap().boutique = Some(ep::BoutiqueJeu { source: "steam".into(), cle: "4242".into() })).unwrap();
+        let steam_jeu = d.path().join("steamapps").join("common").join("Jeu");
+        std::fs::create_dir_all(&steam_jeu).unwrap();
+        let cache = ep::lire(&dp).unwrap();
+        let steam: std::collections::BTreeMap<String, PathBuf> = [("4242".to_string(), steam_jeu.clone())].into();
+        assert_eq!(super::dossier_de_boutique(&n, &cache, 110, &steam), Some(steam_jeu.clone()));
+        assert_eq!(super::dossier_de_boutique(&n, &cache, 110, &Default::default()), None);
+        let tourne = Arc::new(crate::lancement::Instantane::depuis(vec![steam_jeu.join("jeu.exe")]));
+        let b = super::rattraper_avec(&n, &profil, sans_windows, tourne, steam, super::PLAFOND_RATTRAPAGE, &|_| {}).await.unwrap();
+        assert_eq!((b.a_faire, b.rattrapes.len()), (1, 0));
+        assert!(abris_finis(&abris).is_empty());
+    }
+
+    /// Relecture S7 : un SHA1 sans rien de neuf compte dans le plafond, et n'est pas refait tant que le disque ne bouge pas.
+    #[tokio::test]
+    async fn un_sha_sans_rien_de_neuf_compte_et_n_est_pas_refait() {
+        let (_d, n, profil, sav, abris) = pc().await;
+        let dp = n.dossier.join("profils").join(&profil);
+        assert_eq!(rattraper(&n, &profil).await.unwrap().rattrapes, [110]);
+        // Même contenu, date changée : le relevé léger dit « du neuf », le SHA1 dit « rien de neuf ».
+        std::fs::OpenOptions::new().write(true).open(&sav).unwrap().set_modified(std::time::SystemTime::now() - Duration::from_secs(600)).unwrap();
+        let derniere = |n: &Noyau| std::fs::read_to_string(n.dossier.join("journal.txt")).unwrap().lines().filter(|l| l.contains("rattrapage des parties")).last().unwrap().to_string();
+        let b = super::rattraper_avec(&n, &profil, sans_windows, aucun_processus(), Default::default(), 1, &|_| {}).await.unwrap();
+        assert!(b.rattrapes.is_empty());
+        assert!(derniere(&n).contains("1 lu(s) au SHA1"), "{}", derniere(&n));
+        assert!(ap::signature_notee(&dp, 110).is_some());
+        // Rien n'a bougé : pas de SHA1 refait.
+        let b = rattraper(&n, &profil).await.unwrap();
+        assert!(b.rattrapes.is_empty());
+        assert!(derniere(&n).contains("0 lu(s) au SHA1"), "{}", derniere(&n));
+        assert_eq!(abris_finis(&abris).len(), 1);
+    }
 }
 
 #[cfg(test)]
@@ -14947,6 +15472,22 @@ mod tests_moteurs {
         assert!(matches!(n.reprendre_partie_pc(900, &cle, &w).await, Err(Erreur::Introuvable(_))));
         assert_eq!(std::fs::read(&partie).unwrap(), b"partie admin");
         rien_pour_le_mineur("la reprise");
+        // 8. Lot S7, le rattrapage au démarrage : le cache de l'admin recopié chez le mineur — jamais rattrapé (aucun
+        // abri, aucune question à Firehouse) ; un abri « à confirmer » à son nom pour ce jeu n'est jamais proposé.
+        std::fs::copy(ep::fichier(&dp_admin), ep::fichier(&dp)).unwrap();
+        let b = super::rattraper_avec(&n, &mineur, windows.clone(), std::sync::Arc::new(crate::lancement::Instantane::depuis(vec![])), Default::default(), 50, &|_| {}).await.unwrap();
+        assert_eq!((b.examines, b.rattrapes.len(), b.a_confirmer.len()), (0, 0, 0));
+        assert_eq!(nb_abris(), abris_avant, "aucun abri rattrapé");
+        triche_mineur.assert_hits(0);
+        let faux = abris.join("900").join("1");
+        std::fs::create_dir_all(&faux).unwrap();
+        let mut f = fiche_admin.clone();
+        f.profil = mineur.clone();
+        f.a_confirmer = true;
+        std::fs::write(ap::fichier_fiche(&faux).unwrap(), serde_json::to_vec(&f).unwrap()).unwrap();
+        assert!(super::a_confirmer_du_profil(&n).await.unwrap().is_empty(), "jamais proposé");
+        assert!(matches!(super::confirmer_rattrapage(&n, 900, true, &mineur).await, Err(Erreur::Introuvable(_))));
+        assert!(ap::lire_fiche(&faux).unwrap().a_confirmer, "jamais touché");
         // Le journal : des numéros, jamais un chemin, un titre ni un nom lu.
         let journal = std::fs::read_to_string(n.dossier.join("journal.txt")).unwrap();
         for interdit in ["Studio Secret", "Jeu Adulte", "LocalLow", "app.info", &d.path().to_string_lossy()] {

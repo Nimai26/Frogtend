@@ -917,6 +917,8 @@ mod tests {
             echecs: 0,
             declencheur: "main".into(),
             boutique: None,
+            a_confirmer: false,
+            pas_a_moi: false,
         }
     }
 

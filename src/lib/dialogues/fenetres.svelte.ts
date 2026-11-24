@@ -47,6 +47,10 @@ export type Dialogue =
       fermer: (r: ChoixConflit) => void;
     })
   | (Base & {
+      sorte: 'cestToi';
+      fermer: (r: ReponseCestToi) => void;
+    })
+  | (Base & {
       sorte: 'touche';
       /** Pourquoi une touche n'est pas possible (`null` : acceptée). */
       verifier: (t: ToucheLue) => string | null;
@@ -62,6 +66,9 @@ export interface ColonneConflit {
 
 /** Le choix d'un conflit : garder la partie de ce PC, reprendre celle de Firehouse, ou décider plus tard. */
 export type ChoixConflit = 'ici' | 'firehouse' | 'plus_tard';
+
+/** Lot S7 : la réponse à « C'est toi qui as joué ? ». */
+export type ReponseCestToi = 'oui' | 'non' | 'plus_tard';
 
 /** Une touche appuyée : sa place (`code`) et ce qu'elle affiche (`key`). */
 export interface ToucheLue {
@@ -173,6 +180,13 @@ export function deciderConflit(titre: string, o: { message?: string; ici: Colonn
   return ouvrir<ChoixConflit>((id, fermer) => ({ id, sorte: 'conflit', titre, message: o.message, colonnes: [o.ici, o.firehouse], fermer }));
 }
 
+/** Lot S7 : « 🛟 C'est toi qui as joué à … ? » — « Oui, c'est moi », « Non », « Décider plus tard ». « Décider plus
+ * tard » a le focus d'office (deux appuis sur A ne décident jamais pour quelqu'un d'autre) ; Échap ou B : « Décider plus
+ * tard ». */
+export function demanderSiCestToi(titre: string, o: { message?: string } = {}): Promise<ReponseCestToi> {
+  return ouvrir<ReponseCestToi>((id, fermer) => ({ id, sorte: 'cestToi', titre, message: o.message, fermer }));
+}
+
 /** « Appuie sur la touche voulue » : TOUTES les touches sont prises (Échap et Tab compris) ; la touche est rendue à son
  * relâchement (jamais une touche encore tenue qui validerait la fenêtre suivante). Rend la touche, `'liste'` (choisir
  * dans la liste), `'rien'` (aucune touche) ou `null` (annulé, à la souris). */
@@ -214,6 +228,7 @@ export function annulerDessus() {
   if (d.sorte === 'confirmer') d.fermer(false);
   else if (d.sorte === 'informer') d.fermer();
   else if (d.sorte === 'conflit') d.fermer('plus_tard');
+  else if (d.sorte === 'cestToi') d.fermer('plus_tard');
   else d.fermer(null);
   return true;
 }

@@ -20,6 +20,9 @@
   // Lot S3 (Seb 23/11) : l'abri des parties après chaque partie, réglable aussi au canapé (un jeu PC seulement).
   const jeuPc = $derived(aDesEmplacements(plateforme));
   const abriApres = $derived(etat.profil.parties?.abriApresPartie !== false);
+  // Lot S7 (Seb 24/11) : rattraper à l'ouverture du profil les parties jouées hors de Frogtend (à part de l'abri après
+  // une partie), réglable aussi au canapé.
+  const rattrapage = $derived(etat.profil.parties?.rattrapage !== false);
   let vide = $state(false);
   let enregistrement = $state(false);
   let page_ = $state<HTMLElement | null>(null);
@@ -48,6 +51,17 @@
     enregistrement = true;
     try {
       await reglerProfil('parties.abriApresPartie', !abriApres);
+    } finally {
+      enregistrement = false;
+    }
+  }
+
+  /** « Rattraper les parties jouées hors de Frogtend » : le réglage du profil (pour tous ses jeux PC). */
+  async function basculerRattrapage() {
+    if (enregistrement) return;
+    enregistrement = true;
+    try {
+      await reglerProfil('parties.rattrapage', !rattrapage);
     } finally {
       enregistrement = false;
     }
@@ -98,6 +112,20 @@
           onclick={basculerAbri}
         >
           <span id="abri-etat">{abriApres ? '✅ Oui (conseillé)' : '⬜ Non'}</span>
+        </button>
+      </div>
+      <div class="auto">
+        <span id="rattrapage-libelle">🛟 Rattraper les parties jouées hors de Frogtend (pour tous tes jeux PC)</span>
+        <button
+          class="btn"
+          role="switch"
+          aria-checked={rattrapage}
+          aria-labelledby="rattrapage-libelle"
+          aria-describedby="rattrapage-etat"
+          aria-disabled={enregistrement}
+          onclick={basculerRattrapage}
+        >
+          <span id="rattrapage-etat">{rattrapage ? '✅ Oui (conseillé)' : '⬜ Non'}</span>
         </button>
       </div>
     {/if}

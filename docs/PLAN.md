@@ -1016,6 +1016,14 @@ qui a changé ; jeux lus depuis le cache des emplacements du profil, jamais de q
 rattrapage ; un seul relevé des processus par tour ; plafond de jeux par tour ; jeu qui tourne ou écrit → « abri à
 faire », jamais de copie ; calme et refus d'`abriter_auto` réutilisés ; déclencheur `rattrapage` ; OneDrive jamais
 téléchargé, plus de 2 Go jamais copié sans question ; test « jamais vu par un mineur » étendu ; journal = id et nombres.
+**S7 codé le 24/11 (0.226.0)** : tour de rattrapage à l'ouverture du profil (jeux visibles du cache des emplacements,
+aucune question à Firehouse, un seul relevé des processus, dossier de boutique contrôlé pour un jeu non installé par
+Frogtend), « du neuf » = relevé dates/tailles comparé au dernier abri de CHAQUE profil (date gardée par la copie,
+vérifiée), SHA seulement pour un jeu qui a bougé, signature du relevé notée, plafond 50 avec départ tournant,
+déclencheur `rattrapage`, `a_confirmer` / `pas_a_moi` jamais envoyés, question « C'est toi ? » jamais pendant une
+partie, interrupteur `parties.rattrapage` au bureau et dans Taodbox ; relu par les experts lancement et interface
+(1 bloquant — question en pleine partie — et 8 importants corrigés). Limite acceptée et testée : même taille, date à 2 s
+près, autre contenu = non vu.
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
 « Connecte-toi… dans la fenêtre qui s'ouvre » laisse croire que rien ne se passe ou que c'est raté. Voulu : une petite
