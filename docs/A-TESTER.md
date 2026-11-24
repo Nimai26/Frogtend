@@ -14,7 +14,7 @@
 - [x] 3. À la fin : « ✅ Sauvegardé : N fichier(s) envoyé(s)… » ; la place a monté d'environ 435 Mo ; ni « À
       réessayer » ni « Clé du profil » dans Options ▸ Sauvegarde.
 - [x] 4. « 💾 Sauvegarder maintenant » une seconde fois : vite fini, « rien n'avait changé ».
-- [ ] 5. Jouer un peu à Cyberpunk, sauvegarder en jeu, quitter : l'abri se fait, puis la sauvegarde automatique
+- [x] 5. Jouer un peu à Cyberpunk, sauvegarder en jeu, quitter : l'abri se fait, puis la sauvegarde automatique
       n'envoie que la nouvelle partie, sans rien demander.
 
 ## 🛟 Abri automatique des parties (0.222.0, lot S3)

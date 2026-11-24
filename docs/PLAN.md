@@ -933,6 +933,8 @@ Frogtend (`no_gzip`) le lisait illisible → manifeste vide. Corrigé : toute r�
 (`firehouse::degonfler`, plafond 256 Mo), les documents de la sauvegarde se lisent par le canal JSON, un document
 illisible est une erreur (jamais un manifeste vide en silence). La place libre (`lire_place`, petite réponse non compressée) était, elle, bien lue ;
 elle profite aussi de la correction si la liste grossit. Besoin 58 (compression non demandée) transmis à Firehouse.
+**S4 validé par Seb (24/11, 0.223.1)** : les 5 étapes de A-TESTER cochées ; journal : 2e sauvegarde 0 envoyé / 415
+inchangés ; après une partie de Cyberpunk, 5 fichiers envoyés (1,6 Mo), 413 inchangés, aucun sauté. Prochain : S5 (restauration).
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
 « Connecte-toi… dans la fenêtre qui s'ouvre » laisse croire que rien ne se passe ou que c'est raté. Voulu : une petite
