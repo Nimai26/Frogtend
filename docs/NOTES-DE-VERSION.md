@@ -1,5 +1,18 @@
 # Notes de version de Frogtend
 
+## 0.225.0 — 🎮 Les parties des jeux Ren'Py, RPG Maker, Unity et Unreal
+
+- Nouveau : quand Firehouse ne sait pas encore où un jeu range ses parties, Frogtend reconnaît son MOTEUR (Ren'Py,
+  RPG Maker, Unity, Unreal, Wolf RPG, Tyrano) d'après les règles de Firehouse, lit dans les fichiers du jeu le nom de
+  son dossier de parties (sans jamais lancer le jeu), et met ces parties à l'abri comme pour un jeu connu. La fiche le
+  dit : « 📁 d'après le moteur Ren'Py ».
+- Les parties rangées DANS le dossier du jeu (RPG Maker, Ren'Py…) sont aussi mises à l'abri, envoyées chez Firehouse
+  et reprises par « 📥 Reprendre mes parties de Firehouse ».
+- Corrigé : pour un jeu installé depuis une archive (le jeu dans un sous-dossier), Frogtend cherchait les parties un
+  niveau trop haut.
+- Plus sûr : jamais les parties d'un autre jeu (dossiers communs par défaut refusés), jamais une partie d'un jeu
+  réservé aux admins visible d'un autre profil.
+
 ## 0.224.0 — 📥 Reprendre tes parties depuis Firehouse
 
 - Nouveau : sur la fiche d'un jeu PC (📁 Où sont mes parties), « 📥 Reprendre mes parties de Firehouse » remet sur ce

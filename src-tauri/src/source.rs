@@ -1400,7 +1400,7 @@ mod tests {
             let v: serde_json::Value = c.obtenir_json(&format!("/triche/recherche?steam_appid={}&plateforme=Windows", appid.trim())).await.unwrap();
             println!("== {appid} : sauvegardes = {}", v["sauvegardes"]);
             let jeu = steam.as_ref().and_then(|s| crate::boutiques::installes_steam_dossiers(s).get(appid.trim()).map(|i| i.dossier.clone()));
-            let ctx = crate::nuage_steam::Contexte { jeu, steam: steam.clone(), compte: None, windows: crate::nuage_steam::dossiers_windows(), boutique: Some("steam".into()) };
+            let ctx = crate::nuage_steam::Contexte { jeu, steam: steam.clone(), compte: None, windows: crate::nuage_steam::dossiers_windows(), installation: None, boutique: Some("steam".into()) };
             let (l, illisibles) = crate::nuage_steam::emplacements(&v["sauvegardes"], &ctx);
             for e in &l {
                 println!("   → {} {:?}", e.dossier.display(), e.filtre);

@@ -6,6 +6,14 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🎮 Parties selon le moteur du jeu (0.225.0, lot S6)
+- [ ] 1. Fiche de What a Legend! ▸ 📁 Où sont mes parties : « d'après le moteur Ren'Py », deux endroits (un dans
+      AppData\Roaming\RenPy, un dans le dossier game\saves du jeu).
+- [ ] 2. Jouer à What a Legend!, sauvegarder en jeu, quitter, attendre 1 à 2 minutes : « 🛟 Tes parties de « What a
+      Legend! » sont à l'abri » ; un abri 🏁 dans « 🛟 Mes abris ».
+- [ ] 3. Fiche de Cyberpunk ▸ 📁 : rien n'a changé (mêmes endroits qu'avant, pas de moteur affiché).
+- [ ] 4. Options ▸ Sauvegarde ▸ « 💾 Sauvegarder maintenant » : quelques fichiers envoyés, aucun « À réessayer ».
+
 ## 📥 Reprendre ses parties depuis Firehouse (0.224.0, lot S5)
 - [x] 1. Fiche de Cyberpunk ▸ 📁 Où sont mes parties : un bouton « 📥 Reprendre mes parties de Firehouse ». Le cliquer :
       une fenêtre annonce le nombre de fichiers et de Mo ; accepter : « tes parties sont déjà à leur place » (rien

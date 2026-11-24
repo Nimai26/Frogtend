@@ -314,6 +314,69 @@ pub struct Installation {
     pub extraits: Vec<String>,
 }
 
+/// Au plus ce nombre d'enveloppes d'archive descendues pour trouver le `<dossier du jeu>` des parties.
+pub const ENVELOPPES_MAX: usize = 3;
+
+impl Installation {
+    /// Lot S6 (essai réel du 24/11, jeu Ren'Py installé depuis une archive enveloppée `Jeu\What-a-Legend-0.7.05-pc\`) :
+    /// le `<dossier du jeu>` des PARTIES part de `dossier` et descend dans les ENVELOPPES d'archive — un dossier sans
+    /// aucun fichier et avec exactement un sous-dossier (les entrées propres à Frogtend, `.frogtend…`, ne comptent
+    /// pas) —, 3 niveaux au plus, sans suivre de lien ni de jonction ; il s'arrête au premier dossier qui contient des
+    /// fichiers ou plusieurs sous-dossiers. Jamais plus bas vers l'exécutable (un jeu de boutique range souvent le sien
+    /// dans `bin\x64`, mais ses parties partent de la RACINE). Le lanceur ne sert que de contrôle : s'il n'est pas dans
+    /// le dossier trouvé, c'est `dossier` ; sans lanceur, le dossier trouvé doit contenir un `.exe`.
+    pub fn dossier_des_parties(&self) -> std::path::PathBuf {
+        dossier_des_parties_de(std::path::Path::new(&self.dossier), self.lanceur.as_ref())
+    }
+}
+
+/// `Installation::dossier_des_parties`, pour un dossier et un lanceur donnés.
+pub fn dossier_des_parties_de(dossier: &std::path::Path, lanceur: Option<&crate::installation::Lanceur>) -> std::path::PathBuf {
+    let base = dossier.to_path_buf();
+    let mut d = base.clone();
+    for _ in 0..ENVELOPPES_MAX {
+        let Ok(l) = std::fs::read_dir(&d) else { break };
+        let mut sous: Vec<std::path::PathBuf> = Vec::new();
+        let mut autre = false;
+        for e in l.flatten().take(64) {
+            if e.file_name().to_string_lossy().to_lowercase().starts_with(".frogtend") {
+                continue;
+            }
+            // `file_type` d'une entrée ne suit jamais un lien : un lien ou une jonction n'est pas une enveloppe.
+            match e.file_type() {
+                Ok(t) if t.is_dir() => sous.push(e.path()),
+                _ => autre = true,
+            }
+            if autre || sous.len() > 1 {
+                break;
+            }
+        }
+        if autre || sous.len() != 1 {
+            break;
+        }
+        d = sous.remove(0);
+    }
+    if d == base {
+        return base;
+    }
+    // Contrôle : le lanceur, s'il est connu, doit être DANS le dossier trouvé.
+    let cle = |p: &std::path::Path| format!("{}\\", p.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase());
+    let dedans = |p: &str| {
+        let p = std::path::Path::new(p.trim());
+        p.is_absolute() && !p.components().any(|c| matches!(c, std::path::Component::ParentDir)) && cle(p).starts_with(&cle(&d))
+    };
+    // Sans lanceur : le dossier trouvé doit contenir un programme (`.exe`) à son premier niveau — un dossier du jeu
+    // qui ne contient qu'un `SAVES\` n'est pas une enveloppe.
+    let un_programme = || {
+        std::fs::read_dir(&d).is_ok_and(|l| l.flatten().take(4096).any(|e| e.file_type().is_ok_and(|t| t.is_file()) && e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("exe"))))
+    };
+    match lanceur {
+        Some(l) if dedans(&l.programme) => d,
+        None if un_programme() => d,
+        _ => base,
+    }
+}
+
 /// Comment une boutique lance un de ses jeux.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LancementBoutique {
@@ -924,5 +987,56 @@ mod tests {
         assert_eq!(j.recus(), 4);
         std::fs::write(d.path().join("Dune (1992) [MS-DOS].exe"), b"0123456789").unwrap();
         assert_eq!(j.recus(), 10);
+    }
+
+    /// Lot S6 (essai réel du 24/11, relecture) : le `<dossier du jeu>` des parties descend dans les enveloppes
+    /// d'archive, jamais vers l'exécutable.
+    #[test]
+    fn le_dossier_des_parties_descend_les_enveloppes_d_archive_seulement() {
+        let d = tempfile::tempdir().unwrap();
+        let ecrire = |p: &std::path::Path| {
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, b"x").unwrap();
+        };
+        let lanceur = |p: &std::path::Path| crate::installation::Lanceur { programme: p.to_string_lossy().into(), arguments: vec![], dossier: p.parent().unwrap().to_string_lossy().into() };
+        // (a) Une archive enveloppée : `Jeu\X\` avec le jeu dedans → X.
+        let a = d.path().join("A").join("Jeu");
+        ecrire(&a.join("Legend-0.7-pc").join("Legend.exe"));
+        ecrire(&a.join("Legend-0.7-pc").join("game").join("options.rpy"));
+        assert_eq!(dossier_des_parties_de(&a, Some(&lanceur(&a.join("Legend-0.7-pc").join("Legend.exe")))), a.join("Legend-0.7-pc"));
+        assert_eq!(dossier_des_parties_de(&a, None), a.join("Legend-0.7-pc"), "sans lanceur aussi");
+        // Une marque de Frogtend ne compte pas.
+        std::fs::write(a.join(".frogtend-mods.json"), b"{}").unwrap();
+        assert_eq!(dossier_des_parties_de(&a, None), a.join("Legend-0.7-pc"));
+        // Le lanceur HORS du dossier trouvé : le dossier de l'installation.
+        assert_eq!(dossier_des_parties_de(&a, Some(&lanceur(&d.path().join("Ailleurs").join("x.exe")))), a);
+        // (b) Un jeu de boutique : l'exécutable dans `bin\x64`, des fichiers à la racine → la racine.
+        let b = d.path().join("GOG Games").join("Cyberpunk 2077");
+        ecrire(&b.join("bin").join("x64").join("Cyberpunk2077.exe"));
+        ecrire(&b.join("goggame-1423049311.info"));
+        assert_eq!(dossier_des_parties_de(&b, Some(&lanceur(&b.join("bin").join("x64").join("Cyberpunk2077.exe")))), b);
+        // (c) Une enveloppe à deux niveaux.
+        let c = d.path().join("C").join("Jeu");
+        ecrire(&c.join("Jeu-1.0").join("Jeu-1.0-pc").join("Jeu.exe"));
+        assert_eq!(dossier_des_parties_de(&c, None), c.join("Jeu-1.0").join("Jeu-1.0-pc"));
+        // Plus de 3 niveaux : jamais plus bas (et sans programme au 3e : le dossier de l'installation).
+        let p = d.path().join("P").join("Jeu");
+        ecrire(&p.join("1").join("2").join("3").join("4").join("Jeu.exe"));
+        assert_eq!(dossier_des_parties_de(&p, None), p);
+        // Un dossier du jeu qui ne contient qu'un dossier de parties (aucun programme dedans) : on reste.
+        let g = d.path().join("G").join("Jeu");
+        ecrire(&g.join("SAVES").join("partie.sav"));
+        assert_eq!(dossier_des_parties_de(&g, None), g);
+        // (d) Un seul sous-dossier ET un fichier : on reste.
+        let e = d.path().join("E").join("Jeu");
+        ecrire(&e.join("data").join("x.bin"));
+        ecrire(&e.join("Jeu.exe"));
+        assert_eq!(dossier_des_parties_de(&e, None), e);
+        // Plusieurs sous-dossiers, ou absent : on reste.
+        let f = d.path().join("F").join("Jeu");
+        ecrire(&f.join("a").join("x"));
+        ecrire(&f.join("b").join("y"));
+        assert_eq!(dossier_des_parties_de(&f, None), f);
+        assert_eq!(dossier_des_parties_de(&d.path().join("Absent"), None), d.path().join("Absent"));
     }
 }

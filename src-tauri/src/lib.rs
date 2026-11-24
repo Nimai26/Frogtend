@@ -56,6 +56,7 @@ pub mod noms_switch;
 pub mod nexus;
 pub mod nuage_steam;
 pub mod abri_parties;
+pub mod moteurs_parties;
 pub mod sept_z;
 pub mod registre;
 pub mod reconciliation;

@@ -371,6 +371,8 @@ export interface EmplacementVu {
   os: string;
   /** La source de Firehouse (contrat 1.48 : `ludusavi`, `pcgamingwiki`) ; `null` avant la 1.48. */
   source: string | null;
+  /** Lot S6, origine `moteur` : le nom du moteur d'après les références de Firehouse (« Unity »). */
+  moteur?: string | null;
   nuage_boutique: boolean;
   /** Frogtend sait lire ce chemin sur ce PC. */
   lisible: boolean;

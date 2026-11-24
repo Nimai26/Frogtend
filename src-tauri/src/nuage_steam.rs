@@ -409,8 +409,12 @@ pub fn planifier(app: &Path, marque: &str, windows: &[(&'static str, PathBuf)]) 
 
 /// De quoi résoudre un emplacement de parties donné par Firehouse (contrat 1.25 `sauvegardes`, chemins NON résolus).
 pub struct Contexte {
-    /// Le dossier du jeu (`<dossier du jeu>`).
+    /// Le dossier du jeu (`<dossier du jeu>`, `<nom du dossier du jeu>`) : pour les parties, celui de l'installation
+    /// sorti de ses enveloppes d'archive (`jeux_pc::dossier_des_parties_de`).
     pub jeu: Option<PathBuf>,
+    /// Lot S6 : le dossier de l'installation d'ORIGINE, quand il diffère de `jeu` : `<racine de la boutique>`,
+    /// `<SteamLibrary>` et les racines interdites en partent (`None` : `jeu`).
+    pub installation: Option<PathBuf>,
     /// Le dossier de Steam (`<Steam>`).
     pub steam: Option<PathBuf>,
     /// Le compte Steam (`<identifiant Steam>`, le dossier de `userdata`).
@@ -428,8 +432,13 @@ impl Contexte {
     /// jamais la racine d'un disque.
     fn racine_de_la_boutique(&self) -> Option<PathBuf> {
         self.boutique.as_deref().filter(|b| !b.is_empty() && *b != "steam")?;
-        let p = self.jeu.as_ref()?.parent()?;
+        let p = self.dossier_installe()?.parent()?;
         p.components().any(|c| matches!(c, std::path::Component::Normal(_))).then(|| p.to_path_buf())
+    }
+
+    /// Le dossier de l'installation d'origine (sinon celui du jeu).
+    fn dossier_installe(&self) -> Option<&PathBuf> {
+        self.installation.as_ref().or(self.jeu.as_ref())
     }
 }
 
@@ -478,7 +487,7 @@ pub fn resoudre(chemin: &str, ctx: &Contexte) -> Option<PathBuf> {
         ("<nom du dossier du jeu>", ctx.jeu.as_ref().and_then(|d| d.file_name()).map(|n| n.to_string_lossy().to_string())),
         ("<racine de la boutique>", ctx.racine_de_la_boutique().map(|d| d.to_string_lossy().to_string())),
         // Une bibliothèque Steam : seulement pour un jeu rangé dans `<bibliothèque>\steamapps\common\<jeu>`.
-        ("<SteamLibrary>", ctx.jeu.as_ref().and_then(|d| bibliotheque_steam(d)).map(|d| d.to_string_lossy().to_string())),
+        ("<SteamLibrary>", ctx.dossier_installe().and_then(|d| bibliotheque_steam(d)).map(|d| d.to_string_lossy().to_string())),
         ("<dossier du jeu>", ctx.jeu.as_ref().map(|d| d.to_string_lossy().to_string())),
         ("<Steam>", ctx.steam.as_ref().map(|d| d.to_string_lossy().to_string())),
         ("<identifiant Steam>", ctx.compte.clone()),
@@ -645,7 +654,8 @@ fn est_une_racine(p: &Path, ctx: &Contexte) -> bool {
         return true;
     }
     let mut racines: Vec<PathBuf> = ctx.windows.iter().map(|(_, d)| d.clone()).collect();
-    if let Some(j) = &ctx.jeu {
+    racines.extend(ctx.jeu.clone());
+    if let Some(j) = ctx.dossier_installe() {
         racines.push(j.clone());
         // Le dossier qui contient le jeu (là où sa boutique range ses jeux) et, pour un jeu Steam, sa bibliothèque.
         racines.extend(j.parent().map(Path::to_path_buf));
@@ -955,7 +965,7 @@ mod tests {
         let saves = docs.join("My Games").join("XCOM2").join("XComGame").join("SaveData");
         std::fs::create_dir_all(&saves).unwrap();
         std::fs::write(saves.join("save_1"), b"partie").unwrap();
-        let ctx = Contexte { jeu: None, steam: None, compte: None, windows: vec![("Documents", docs.clone())], boutique: Some("steam".into()) };
+        let ctx = Contexte { jeu: None, steam: None, compte: None, windows: vec![("Documents", docs.clone())], installation: None, boutique: Some("steam".into()) };
         let chemin = r"%USERPROFILE%\Documents\My Games\XCOM2\XComGame\SaveData\";
         let (l, _) = emplacements(&serde_json::json!([{"os": "Windows", "chemin": chemin, "nature": "dossier"}]), &ctx);
         let mut plan = Plan::default();
@@ -1023,7 +1033,7 @@ mod tests {
             std::fs::write(profils.join(p).join("SGTA50000"), b"partie").unwrap();
         }
         std::fs::write(profils.join("pas-un-dossier.txt"), b"x").unwrap();
-        let ctx = Contexte { jeu: None, steam: Some(d.path().join("Steam")), compte: Some("42".into()), windows: vec![("Documents", docs.clone())], boutique: None };
+        let ctx = Contexte { jeu: None, steam: Some(d.path().join("Steam")), compte: Some("42".into()), windows: vec![("Documents", docs.clone())], installation: None, boutique: None };
         assert_eq!(resoudre(r"%USERPROFILE%\Documents\Rockstar Games\GTA V\Profiles\<identifiant Steam>", &ctx), None, "jamais le compte Steam");
         let s = serde_json::json!([
             {"os": "Windows", "chemin": r"%USERPROFILE%\Documents\Rockstar Games\GTA V\Profiles\<identifiant Steam>", "nature": "dossier"},
@@ -1056,7 +1066,7 @@ mod tests {
             std::fs::write(users.join(u).join("Savegames").join("partie.aoe4save"), b"p").unwrap();
         }
         let chemin = r"%USERPROFILE%\Documents\My Games\Age of Empires IV\Users\<identifiant Steam>\Savegames";
-        let avec = |compte: Option<&str>| Contexte { jeu: None, steam: None, compte: compte.map(String::from), windows: vec![("Documents", docs.clone())], boutique: Some("steam".into()) };
+        let avec = |compte: Option<&str>| Contexte { jeu: None, steam: None, compte: compte.map(String::from), windows: vec![("Documents", docs.clone())], installation: None, boutique: Some("steam".into()) };
         // Le compte du profil connu (identifiant court de `userdata`) : seulement SON dossier.
         assert_eq!(bases(chemin, &avec(Some("39734272"))), Some(vec![users.join(&sien).join("Savegames")]));
         // Un compte connu qui n'a pas de dossier ici : les autres SteamID64 sont écartés (jamais le dossier d'un autre).
@@ -1083,7 +1093,7 @@ mod tests {
         }
         std::fs::write(jeu.join("76561198000000000.sav"), b"p").unwrap();
         std::fs::write(jeu.join("notes.txt"), b"x").unwrap();
-        let ctx = Contexte { jeu: None, steam: None, compte: None, windows: vec![("Documents", docs.clone())], boutique: None };
+        let ctx = Contexte { jeu: None, steam: None, compte: None, windows: vec![("Documents", docs.clone())], installation: None, boutique: None };
         // Dossier : préfixe + n'importe quoi (au moins un caractère) + suffixe.
         assert_eq!(bases(r"%USERPROFILE%\Documents\Jeu\Steam_<identifiant Steam>\saves", &ctx), Some(vec![jeu.join("Steam_42").join("saves"), jeu.join("Steam_76561198000000000").join("saves")]));
         assert_eq!(bases(r"%USERPROFILE%\Documents\Jeu\Steam_<identifiant Steam>_<identifiant utilisateur>", &ctx), None, "deux jetons : jamais deviné");
@@ -1107,7 +1117,7 @@ mod tests {
         let saves = docs.join("My Games").join("XCOM2").join("XComGame").join("SaveData");
         std::fs::create_dir_all(&saves).unwrap();
         std::fs::write(saves.join("save_1"), b"partie").unwrap();
-        let ctx = Contexte { jeu: Some(d.path().join("Jeu")), steam: Some(d.path().join("Steam")), compte: Some("42".into()), windows: vec![("Documents", docs.clone())], boutique: None };
+        let ctx = Contexte { jeu: Some(d.path().join("Jeu")), steam: Some(d.path().join("Steam")), compte: Some("42".into()), windows: vec![("Documents", docs.clone())], installation: None, boutique: None };
         // Mes documents par le registre (OneDrive chez Seb), jamais « %USERPROFILE%\Documents » écrit en dur.
         assert_eq!(resoudre(r"%USERPROFILE%\Documents\My Games\XCOM2\XComGame\SaveData\", &ctx), Some(saves.clone()));
         assert_eq!(resoudre(r"<Steam>\userdata\<identifiant Steam>\489830\remote\", &ctx), Some(d.path().join(r"Steam\userdata\42\489830\remote")));
@@ -1122,7 +1132,7 @@ mod tests {
         assert!(!repere_non_remplace("Program Files (x86)") && !repere_non_remplace("()") && !repere_non_remplace("Jeu (2019)"));
         assert!(repere_non_remplace("(UserID)") && repere_non_remplace(" [id] ") && repere_non_remplace("{{p|uid}}"));
         // Un vrai nom du dossier du jeu entre parenthèses n'est pas refusé (vu avant de poser les jetons).
-        let ctx_jeu = Contexte { jeu: Some(d.path().join("(Jeu)")), steam: None, compte: None, windows: vec![], boutique: None };
+        let ctx_jeu = Contexte { jeu: Some(d.path().join("(Jeu)")), steam: None, compte: None, windows: vec![], installation: None, boutique: None };
         assert_eq!(resoudre(r"<dossier du jeu>\saves", &ctx_jeu), Some(d.path().join(r"(Jeu)\saves")));
         // La réponse réelle de XCOM 2 : seulement « Windows » (et « Steam »), dossiers existants.
         let v: serde_json::Value = serde_json::json!([
@@ -1173,7 +1183,7 @@ mod tests {
     #[ignore]
     fn essai_emplacements() {
         let v: serde_json::Value = serde_json::from_slice(&std::fs::read(std::env::var("FROGTEND_TRICHE_JSON").unwrap()).unwrap()).unwrap();
-        let ctx = Contexte { jeu: None, steam: crate::boutiques::dossier_steam(), compte: None, windows: dossiers_windows(), boutique: Some("steam".into()) };
+        let ctx = Contexte { jeu: None, steam: crate::boutiques::dossier_steam(), compte: None, windows: dossiers_windows(), installation: None, boutique: Some("steam".into()) };
         let (d, illisibles) = emplacements(&v["sauvegardes"], &ctx);
         for x in &d {
             println!("dossier : {} {:?} ({} fichiers)", x.dossier.display(), x.filtre, fichiers_sans_lien(&x.dossier).map(|l| l.len()).unwrap_or(0));
@@ -1238,7 +1248,7 @@ mod tests {
         }
         assert_eq!(parcourir(&racine).unwrap(), ["vrai/a.sav"]);
         // Et `<identifiant utilisateur>` n'énumère pas la jonction.
-        let ctx = Contexte { jeu: None, steam: None, compte: None, windows: vec![("Documents", d.path().to_path_buf())], boutique: None };
+        let ctx = Contexte { jeu: None, steam: None, compte: None, windows: vec![("Documents", d.path().to_path_buf())], installation: None, boutique: None };
         let b = bases(r"%USERPROFILE%\Documents\Parties\<identifiant utilisateur>", &ctx).unwrap();
         assert_eq!(b, [racine.join("vrai")]);
     }
@@ -1252,7 +1262,7 @@ mod tests {
         for s in ["Xbox", "Ancien", "Bon", ".config"] {
             std::fs::create_dir_all(docs.join("Jeu").join(s)).unwrap();
         }
-        let ctx = Contexte { jeu: None, steam: None, compte: None, windows: vec![("Documents", docs.clone())], boutique: Some("steam".into()) };
+        let ctx = Contexte { jeu: None, steam: None, compte: None, windows: vec![("Documents", docs.clone())], installation: None, boutique: Some("steam".into()) };
         let s = serde_json::json!([
             {"os": "Microsoft Store", "chemin": r"%USERPROFILE%\Documents\Jeu\Xbox", "nature": "dossier", "boutique": "microsoft"},
             {"os": "Windows", "chemin": r"%USERPROFILE%\Documents\Jeu\Xbox", "nature": "dossier", "boutique": "microsoft"},

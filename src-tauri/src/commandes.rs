@@ -5844,7 +5844,7 @@ async fn plan_nuage(noyau: &Noyau, id: i64) -> Resultat<(crate::nuage_steam::Pla
     let plan = tauri::async_runtime::spawn_blocking(move || -> Resultat<Option<crate::nuage_steam::Plan>> {
         let windows = crate::nuage_steam::dossiers_windows();
         let nuage = crate::nuage_steam::planifier(&app, &m, &windows)?;
-        let ctx = crate::nuage_steam::Contexte { jeu, steam: Some(steam), compte: Some(compte), windows, boutique: Some("steam".into()) };
+        let ctx = crate::nuage_steam::Contexte { jeu, steam: Some(steam), compte: Some(compte), windows, installation: None, boutique: Some("steam".into()) };
         let (dossiers, illisibles) = crate::nuage_steam::emplacements(&sauvegardes, &ctx);
         if nuage.is_none() && dossiers.is_empty() {
             return Ok(None);
@@ -8871,7 +8871,7 @@ async fn parties_du_jeu(
     use crate::emplacements_parties as ep;
     let s = noyau.session().await?;
     let dp = dossier_profil_de(noyau, &s.profil.id);
-    let JeuDesParties { carte, boutique, dossier_jeu } = jeu_des_parties(noyau, &s, &dp, id)?;
+    let JeuDesParties { carte, boutique, dossier_parties: dossier_jeu, dossier_jeu: installe } = jeu_des_parties(noyau, &s, &dp, id)?;
     let (mut hors_ligne, mut motif, mut jeton_refuse) = (false, None, false);
     let cle_session = (dp.clone(), std::sync::Arc::as_ptr(&s) as usize);
     if JETON_REFUSE_PARTIES.lock().unwrap_or_else(|e| e.into_inner()).contains(&cle_session) {
@@ -8911,14 +8911,107 @@ async fn parties_du_jeu(
             }
         }
     }
+    let w = windows();
+    // Lot S6 : à l'ouverture de la fiche, le moteur du jeu installé est reconnu sur le disque (règles de Firehouse).
+    // Des références périmées (plus de 7 jours) ou jamais lues sont d'abord relues ICI (jamais pendant la
+    // reconnaissance) — seulement pour un jeu installé, et quand Firehouse vient de répondre (hors ligne : une seule
+    // attente, celle de la fiche).
+    if demander && dossier_jeu.is_some() && !jeton_refuse && !hors_ligne && motif.is_none() {
+        let perimees = ep::references_gardees(&noyau.dossier).is_none_or(|(le, _)| t.saturating_sub(le) >= ep::DELAI_REFERENCES);
+        if perimees {
+            let _ = references_parties(noyau, &s.source, t).await;
+        }
+    }
+    if demander {
+        reconnaitre_moteur_du_jeu(noyau, &s, &dp, id, boutique.as_ref(), dossier_jeu.clone(), installe.clone(), w.clone()).await?;
+    }
     let entree = ep::lire(&dp)?.jeu(id).cloned().unwrap_or(ep::PartiesJeu { id, boutique: boutique.clone(), ..Default::default() });
-    let (firehouse, lu_le, moteur, source, reconnu_par) = (entree.firehouse, entree.lu_le.clone(), entree.moteur.clone(), entree.source.clone(), entree.reconnu_par.clone());
+    // Le moteur reconnu sur le disque l'emporte, pour l'écran, sur celui que Firehouse a nommé.
+    let moteur = entree.moteur_reconnu.as_ref().map(|m| ep::Moteur { nom: m.nom.clone(), preuve: m.preuve.clone() }).or_else(|| entree.moteur.clone());
+    let (firehouse, lu_le, source, reconnu_par) = (entree.firehouse, entree.lu_le.clone(), entree.source.clone(), entree.reconnu_par.clone());
     let autres_systemes = entree.autres_systemes.clone();
-    let ctx = contexte_des_parties(&dp, boutique.as_ref(), dossier_jeu);
-    let emplacements = tauri::async_runtime::spawn_blocking(move || ep::resoudre(&entree, &ctx(windows()), demander))
+    let ctx = contexte_des_parties(&dp, boutique.as_ref(), dossier_jeu, installe);
+    let emplacements = tauri::async_runtime::spawn_blocking(move || ep::resoudre(&entree, &ctx(w), demander))
         .await
         .map_err(|_| Erreur::Disque("La lecture des parties s'est arrêtée brutalement.".into()))?;
     Ok(PartiesVues { firehouse, lu_le, hors_ligne, motif, jeton_refuse, moteur, source, reconnu_par, autres_systemes, emplacements })
+}
+
+/// Lot S6 : reconnaît le MOTEUR du jeu installé dans `dossier_jeu` d'après les règles de Firehouse gardées sur ce PC
+/// (`/sauvegardes/references ▸ moteurs` ; jamais demandées ici, jamais recopiées), lit ses noms (lecture plafonnée, rien
+/// d'exécuté) et range le constat dans le cache de CE profil — seulement pour un jeu qu'il VOIT, et la session vivante.
+/// Firehouse « aucune partie » : les endroits du moteur ne valent que s'ils contiennent des parties (désaccord noté).
+/// Rien n'est remonté à Firehouse (besoin 60). Journal : le numéro du jeu et des nombres, jamais un nom ni un chemin.
+async fn reconnaitre_moteur_du_jeu(
+    noyau: &Noyau,
+    s: &crate::noyau::Session,
+    dp: &std::path::Path,
+    id: i64,
+    boutique: Option<&crate::emplacements_parties::BoutiqueJeu>,
+    dossier_jeu: Option<std::path::PathBuf>,
+    installation: Option<std::path::PathBuf>,
+    windows: Vec<(&'static str, std::path::PathBuf)>,
+) -> Resultat<()> {
+    use crate::emplacements_parties as ep;
+    use crate::moteurs_parties as mp;
+    let Some(dossier) = dossier_jeu.filter(|d| d.is_dir()) else { return Ok(()) };
+    if !s.verrou().visible_ou_reuni(id).unwrap_or(false) {
+        return Ok(());
+    }
+    // Aucun appel réseau ici : les règles gardées sur ce PC. Absentes ou sans `moteurs` : plus aucune ligne du moteur.
+    let regles = ep::references_gardees(&noyau.dossier).map(|(_, r)| mp::regles(&r.brut)).unwrap_or_default();
+    let cache = ep::lire(dp)?;
+    // Le moteur que Firehouse nomme pour ce jeu (contrat 1.48) : départage, ou désaccord noté.
+    let indice = cache.jeu(id).and_then(|e| {
+        e.moteur_firehouse.as_ref().and_then(|m| m["moteur"].as_str().map(String::from)).or_else(|| e.moteur.as_ref().filter(|m| m.preuve.starts_with("Firehouse")).map(|m| m.nom.clone()))
+    });
+    let ctx = contexte_des_parties(dp, boutique, Some(dossier.clone()), installation);
+    let ctx_autres = contexte_des_parties(dp, None, None, None);
+    let (r, sur_disque, pris) = tauri::async_runtime::spawn_blocking(move || {
+        let mut r = if regles.is_empty() { mp::Reconnaissance::Aucun } else { mp::reconnaitre_avec(&dossier, &regles, indice.as_deref()) };
+        let ctx = ctx(windows.clone());
+        let mut sur_disque = false;
+        let mut pris = 0;
+        if let mp::Reconnaissance::Prouve(c) = &mut r {
+            // Un endroit RÉSOLU déjà pris par un AUTRE jeu de ce profil (un `save_directory` de gabarit partagé, un
+            // nom de projet générique) : jamais attribué à celui-ci.
+            let ctx_autres = ctx_autres(windows);
+            let cle = |e: &crate::nuage_steam::Emplacement| (crate::abri_parties::normal(&e.dossier), e.filtre.as_deref().map(str::to_lowercase));
+            let autres: std::collections::BTreeSet<_> = cache
+                .jeux
+                .values()
+                .filter(|e| e.id != id)
+                .flat_map(|e| e.emplacements.iter())
+                .flat_map(|x| crate::nuage_steam::candidats(&x.chemin, Some(&x.nature), &ctx_autres).0)
+                .map(|e| cle(&e))
+                .collect();
+            let avant = c.emplacements.len();
+            c.emplacements.retain(|x| !crate::nuage_steam::candidats(&x.chemin, Some(&x.nature), &ctx).0.iter().any(|e| autres.contains(&cle(e))));
+            pris = avant - c.emplacements.len();
+            let e = ep::PartiesJeu { id, emplacements: c.emplacements.clone(), ..Default::default() };
+            sur_disque = ep::contient_des_parties(&e, &ctx);
+        }
+        (r, sur_disque, pris)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La lecture du jeu s'est arrêtée brutalement.".into()))?;
+    // Reconnu pour CE profil : jamais rangé si la session a changé entre-temps.
+    let _vivante = s.verrou_vivant()?;
+    let change = ep::modifier(dp, |c| {
+        let avant = c.jeu(id).cloned();
+        ep::appliquer_moteur(c, id, &r, sur_disque);
+        let apres = c.jeu(id);
+        (apres != avant.as_ref()).then(|| apres.map(|e| (e.emplacements.iter().filter(|x| x.origine == "moteur").count(), e.desaccord_moteur, e.moteur_contredit)).unwrap_or((0, false, false)))
+    })?;
+    if let Some((n, desaccord, contredit)) = change {
+        noyau.journaliser(&format!(
+            "jeu {id} : moteur relu sur le disque, {n} emplacement(s) d'après le moteur{}{}{}",
+            if desaccord { " (Firehouse n'en connaissait aucun : désaccord noté)" } else { "" },
+            if contredit { " (Firehouse nomme un autre moteur : désaccord noté)" } else { "" },
+            if pris > 0 { format!(", {pris} écarté(s) (déjà à un autre jeu)") } else { String::new() }
+        ));
+    }
+    Ok(())
 }
 
 /// Le jeu d'un « 📁 Où sont mes parties », pour le profil de la session : sa carte (pas sur ce PC), sa boutique et son
@@ -8926,7 +9019,10 @@ async fn parties_du_jeu(
 struct JeuDesParties {
     carte: Option<crate::ludotheque::JeuResume>,
     boutique: Option<crate::emplacements_parties::BoutiqueJeu>,
+    /// Le dossier de l'installation (les programmes qui tournent y sont cherchés).
     dossier_jeu: Option<std::path::PathBuf>,
+    /// Lot S6 : le `<dossier du jeu>` des parties (`Installation::dossier_des_parties`).
+    dossier_parties: Option<std::path::PathBuf>,
 }
 
 /// Le jeu PC `id` tel que ce profil le voit (lot S1) : refusé s'il ne le voit pas (ou plus : son entrée quitte alors le
@@ -8978,7 +9074,9 @@ fn jeu_des_parties(noyau: &Noyau, s: &crate::noyau::Session, dp: &std::path::Pat
         ),
         (None, None) => (None, None),
     };
-    Ok(JeuDesParties { carte, boutique, dossier_jeu })
+    // Lot S6 : `<dossier du jeu>` des parties = le dossier de l'exécutable (dans celui de l'installation).
+    let dossier_parties = du_pc.as_ref().and_then(|j| j.installation.as_ref()).map(|i| i.dossier_des_parties());
+    Ok(JeuDesParties { carte, boutique, dossier_jeu, dossier_parties })
 }
 
 /// De quoi résoudre les emplacements d'un jeu sur ce PC (`windows` : les dossiers de Windows, lus à part) : le compte
@@ -8987,12 +9085,13 @@ pub(crate) fn contexte_des_parties(
     dp: &std::path::Path,
     boutique: Option<&crate::emplacements_parties::BoutiqueJeu>,
     dossier_jeu: Option<std::path::PathBuf>,
+    installation: Option<std::path::PathBuf>,
 ) -> impl FnOnce(Vec<(&'static str, std::path::PathBuf)>) -> crate::nuage_steam::Contexte + Send + 'static {
     let steam_jeu = boutique.filter(|b| b.source == "steam");
     let compte = steam_jeu.and_then(|_| crate::boutiques::lire(dp)).and_then(|c| crate::nuage_steam::compte(&c.steamid));
     let steam = steam_jeu.and_then(|_| crate::boutiques::dossier_steam());
     let source_boutique = boutique.map(|b| b.source.clone());
-    move |windows| crate::nuage_steam::Contexte { jeu: dossier_jeu, steam, compte, windows, boutique: source_boutique }
+    move |windows| crate::nuage_steam::Contexte { jeu: dossier_jeu, steam, compte, windows, installation, boutique: source_boutique }
 }
 
 /// Les listes fermées des emplacements (contrat 1.48 `/sauvegardes/references`), gardées en COMMUN sur ce PC
@@ -9113,9 +9212,9 @@ async fn preparer_abri_parties(noyau: &Noyau, id: i64) -> Resultat<PourAbriParti
     use crate::emplacements_parties as ep;
     let s = noyau.session().await?;
     let dp = dossier_profil_de(noyau, &s.profil.id);
-    let JeuDesParties { boutique, dossier_jeu, .. } = jeu_des_parties(noyau, &s, &dp, id)?;
+    let JeuDesParties { boutique, dossier_jeu, dossier_parties, .. } = jeu_des_parties(noyau, &s, &dp, id)?;
     let entree = ep::lire(&dp)?.jeu(id).cloned().unwrap_or(ep::PartiesJeu { id, ..Default::default() });
-    let contexte = Box::new(contexte_des_parties(&dp, boutique.as_ref(), dossier_jeu.clone()));
+    let contexte = Box::new(contexte_des_parties(&dp, boutique.as_ref(), dossier_parties, dossier_jeu.clone()));
     let sel = noyau.sel_pour_abri(&s.profil.id).await?;
     Ok(PourAbriParties { profil: s.profil.clone(), entree, contexte, sources: noyau.sources_abri(id)?, dossier_jeu, sel })
 }
@@ -9461,14 +9560,22 @@ async fn pour_abri_auto(
     }
     let t: u64 = crate::noyau::maintenant().parse().unwrap_or(0);
     let mut entree = ep::lire(dossier_profil)?.jeu(id).cloned();
-    if ep::a_redemander(entree.as_ref(), t) {
-        let de_la_session = noyau.session().await.ok().is_some_and(|s| s.profil.id == profil);
-        if de_la_session {
-            if parties_du_jeu(noyau, id, true, windows.clone()).await.is_err() {
-                noyau.journaliser(&format!("jeu {id} : emplacements de parties non relus avant l'abri (le cache seul)"));
-            }
-            entree = ep::lire(dossier_profil)?.jeu(id).cloned();
+    let session = noyau.session().await.ok().filter(|s| s.profil.id == profil && dossier_profil == dossier_profil_de(noyau, profil));
+    if ep::a_redemander(entree.as_ref(), t) && session.is_some() {
+        // `parties_du_jeu` relit aussi le moteur sur le disque (lot S6).
+        if parties_du_jeu(noyau, id, true, windows.clone()).await.is_err() {
+            noyau.journaliser(&format!("jeu {id} : emplacements de parties non relus avant l'abri (le cache seul)"));
         }
+        entree = ep::lire(dossier_profil)?.jeu(id).cloned();
+    } else if let Some(s) = &session {
+        // Lot S6 : le cache est frais, mais le jeu a pu être installé depuis — son moteur est relu (un jeu que ce profil
+        // voit, jamais celui d'un autre profil ; aucune demande à Firehouse).
+        let installation = j.as_ref().and_then(|j| j.installation.as_ref());
+        let b = installation.and_then(|i| i.boutique.as_ref()).map(|b| ep::BoutiqueJeu { source: b.source.clone(), cle: b.cle.clone() });
+        if reconnaitre_moteur_du_jeu(noyau, s, dossier_profil, id, b.as_ref(), installation.map(|i| i.dossier_des_parties()), installation.map(|i| std::path::PathBuf::from(&i.dossier)), windows()).await.is_err() {
+            noyau.journaliser(&format!("jeu {id} : moteur non relu avant l'abri (le cache seul)"));
+        }
+        entree = ep::lire(dossier_profil)?.jeu(id).cloned();
     }
     let Some(entree) = entree else { return Ok(Pour::Inconnu) };
     if entree.emplacements.is_empty() {
@@ -9477,7 +9584,8 @@ async fn pour_abri_auto(
     let installation = j.as_ref().and_then(|j| j.installation.as_ref());
     let boutique = installation.and_then(|i| i.boutique.as_ref()).map(|b| ep::BoutiqueJeu { source: b.source.clone(), cle: b.cle.clone() }).or(entree.boutique.clone());
     let dossier_jeu = installation.map(|i| std::path::PathBuf::from(&i.dossier));
-    let contexte = Box::new(contexte_des_parties(dossier_profil, boutique.as_ref(), dossier_jeu.clone()));
+    // Lot S6 : `<dossier du jeu>` des parties = le dossier de l'exécutable ; les processus, dans toute l'installation.
+    let contexte = Box::new(contexte_des_parties(dossier_profil, boutique.as_ref(), installation.map(|i| i.dossier_des_parties()), dossier_jeu.clone()));
     // Lot S5 : relu chez Firehouse d'abord s'il manque ; jamais un sel neuf hors du 404 du contrat (un autre profil
     // que celui de la session, ou un dossier de profil inattendu : aucun sel, ses endroits à identifiant attendent).
     let sel = if dossier_profil == dossier_profil_de(noyau, profil) { noyau.sel_pour_abri(profil).await? } else { crate::abri_parties::sel_local(dossier_profil).unwrap_or_default() };
@@ -14446,5 +14554,342 @@ pub(crate) mod tests_abri_auto {
             autre => panic!("{autre:?}"),
         }
         let _ = unsafe { SetFileAttributesW(&h, FILE_ATTRIBUTE_ARCHIVE) };
+    }
+}
+
+#[cfg(test)]
+mod tests_moteurs {
+    //! Lot S6 (24/11) : le moteur reconnu sur le disque, par le chemin réel (profils, Firehouse simulé, registre, cache
+    //! par profil, abris, sauvegarde, reprise). Tout dans des dossiers temporaires ; jamais le vrai Firehouse.
+    use crate::abri_parties as ap;
+    use crate::coffre::CoffreMemoire;
+    use crate::emplacements_parties as ep;
+    use crate::erreurs::Erreur;
+    use crate::noyau::{Connexion, Noyau};
+    use httpmock::prelude::*;
+    use serde_json::json;
+    use std::path::{Path, PathBuf};
+
+    fn references() -> serde_json::Value {
+        serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/sauvegardes-references-148-reel.json")).unwrap()).unwrap()
+    }
+
+    /// Écrit un fichier vieilli d'une heure (le jeu n'écrit plus).
+    fn ecrire(d: &Path, r: &str, o: &[u8]) -> PathBuf {
+        let f = r.split('/').fold(d.to_path_buf(), |p, s| p.join(s));
+        std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+        std::fs::write(&f, o).unwrap();
+        crate::commandes::tests_abri_auto::vieillir(&f);
+        f
+    }
+
+    /// Le jeu `id` (Windows, de Firehouse) installé dans `dossier`, comme après une installation.
+    fn installer(n: &Noyau, id: i64, dossier: &Path) {
+        n.registre()
+            .ajouter(&crate::jeux_pc::JeuPc {
+                id,
+                version: 200,
+                titre: "Jeu".into(),
+                plateforme: "Windows".into(),
+                dossier: dossier.parent().unwrap().to_string_lossy().into(),
+                etat: crate::jeux_pc::Etat::Telecharge,
+                total: 0,
+                fichiers: vec![],
+                message: None,
+                ajoute_le: "1".into(),
+                ajoute_par: "p".into(),
+                installation: None,
+                temps_jeu: 0,
+                derniere_partie: None,
+            })
+            .unwrap();
+        let i = crate::jeux_pc::Installation {
+            dossier: dossier.to_string_lossy().into(),
+            methode: crate::installation::Methode::Aucune,
+            lanceur: None,
+            fichier_du_jeu: None,
+            installe_le: "1".into(),
+            versions: vec![],
+            boutique: None,
+            extraits: vec![],
+        };
+        n.registre().changer_installation(id, Some(&i)).unwrap();
+    }
+
+    /// Un Firehouse simulé : le jeu 900 (Windows) ; `/jeu/900/triche` rend `triche` ; les références RÉELLES (1.48).
+    fn serveur(triche: serde_json::Value) -> MockServer {
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "Windows", "jeux": 1}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [{"id": 900, "titre": "Jeu de rôle", "plateforme": "Windows"}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/900/triche");
+            t.status(200).json_body(triche.clone());
+        });
+        let r = references();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/sauvegardes/references");
+            t.status(200).json_body(r.clone());
+        });
+        s
+    }
+
+    /// RPG Maker VX Ace : Firehouse dit « aucune partie » (`Vide`), mais le moteur est prouvé et des parties existent
+    /// DANS le dossier du jeu — le moteur l'emporte, le désaccord est noté, la fiche dit « d'après le moteur », l'abri
+    /// ne prend que les `Save*.rvdata2` (jamais les données du jeu), le journal ne dit ni un chemin ni un nom.
+    #[tokio::test]
+    async fn un_jeu_rpg_maker_est_reconnu_et_ses_parties_dans_le_jeu_sont_a_l_abri() {
+        let s = serveur(json!({"ok": true, "codes": [], "sauvegardes": []}));
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let jeu = d.path().join("Jeux").join("Windows").join("Quete Secrete").join("Jeu");
+        ecrire(&jeu, "Game.rgss3a", b"archive");
+        ecrire(&jeu, "Save01.rvdata2", b"partie 1");
+        ecrire(&jeu, "Save02.rvdata2", b"partie 2");
+        ecrire(&jeu, "Data/Map001.rvdata2", b"carte, pas une partie");
+        installer(&n, 900, &jeu);
+        let p = n.creer_profil("Seb", None, Some("j")).unwrap().id;
+        n.ouvrir(&p, None, &Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        let v = super::parties_du_jeu(&n, 900, true, Vec::new).await.unwrap();
+        assert_eq!(v.firehouse, ep::EtatFirehouse::Vide);
+        assert_eq!(v.moteur.as_ref().map(|m| (m.nom.as_str(), m.preuve.as_str())), Some(("RPG Maker VX Ace", "Game.rgss3a")));
+        assert_eq!(v.emplacements.len(), 1);
+        let e = &v.emplacements[0];
+        assert_eq!((e.origine.as_str(), e.moteur.as_deref(), e.filtre.as_deref(), e.fichiers), ("moteur", Some("RPG Maker VX Ace"), Some("Save*.rvdata2"), 2));
+        let dp = n.dossier.join("profils").join(&p);
+        let c = ep::lire(&dp).unwrap();
+        let x = c.jeu(900).unwrap();
+        assert!(x.desaccord_moteur, "Firehouse disait « aucune » : désaccord noté (remontée plus tard, besoin 60)");
+        assert_eq!(x.emplacements[0].chemin, r"<dossier du jeu>\Save*.rvdata2", "rangé NON résolu");
+        // L'abri : les deux parties seulement.
+        let abris = d.path().join("Abris");
+        n.regler_abris(Some(abris.clone()));
+        let fait = super::abriter_parties(&n, 900, false, None, Vec::new).await.unwrap();
+        assert_eq!(fait.fichiers, 2);
+        let fiche = ap::lire_fiche(&abris.join("900").join(fait.date.unwrap())).unwrap();
+        let mut r: Vec<&str> = fiche.fichiers.iter().map(|f| f.relatif.rsplit('/').next().unwrap()).collect();
+        r.sort();
+        assert_eq!(r, ["Save01.rvdata2", "Save02.rvdata2"]);
+        assert_eq!(fiche.emplacements[0].chemin, r"<dossier du jeu>\Save*.rvdata2");
+        // Rouverte sans partie sur le disque : Firehouse (« aucune ») a raison, plus de ligne du moteur.
+        std::fs::remove_file(jeu.join("Save01.rvdata2")).unwrap();
+        std::fs::remove_file(jeu.join("Save02.rvdata2")).unwrap();
+        let v = super::parties_du_jeu(&n, 900, true, Vec::new).await.unwrap();
+        assert!(v.emplacements.is_empty());
+        assert!(!ep::lire(&dp).unwrap().jeu(900).unwrap().desaccord_moteur);
+        // Une partie jouée ensuite, cache encore frais (aucune demande à Firehouse) : l'abri automatique relit le moteur
+        // sur le disque et met la nouvelle partie à l'abri.
+        ecrire(&jeu, "Save03.rvdata2", b"partie 3");
+        let demande = super::DemandeAbriAuto { id: 900, profil: p.clone(), dossier_profil: dp.clone(), declencheur: ap::DECLENCHEUR_APRES_PARTIE, deja_occupe: false };
+        let b = super::abriter_auto(&n, &demande, Vec::new, &|_| {}).await.unwrap();
+        assert_eq!((b.etat, b.fichiers), (super::EtatAbriAuto::Fait, 1), "{:?}", b.motif);
+        let journal = std::fs::read_to_string(n.dossier.join("journal.txt")).unwrap();
+        assert!(journal.contains("jeu 900 : moteur relu sur le disque, 1 emplacement(s)"), "{journal}");
+        for interdit in ["Quete Secrete", "rvdata2", "rgss3a", "RPG Maker", &d.path().to_string_lossy()] {
+            assert!(!journal.contains(interdit), "« {interdit} » au journal : {journal}");
+        }
+    }
+
+    /// TEST OBLIGATOIRE (lot S6) : une partie d'un jeu ADMIN n'apparaît JAMAIS pour un MINEUR. Le jeu 900 (Unity) est
+    /// visible pour le jeton admin, caché (404, absent du catalogue) pour le jeton mineur ; ses parties sont reconnues
+    /// d'après le moteur et mises à l'abri par l'admin. Le mineur ne voit ni le jeu ni ses emplacements, y compris
+    /// d'origine moteur, nulle part : cache par profil, `retirer_si`, reconnaissance du moteur, abri automatique, Mes
+    /// abris, envoi de la sauvegarde, reprise S5 — et la commande de Taodbox (`parties_emplacements`, la même que le
+    /// bureau : `parties_du_jeu`).
+    #[tokio::test]
+    async fn une_partie_de_jeu_admin_n_apparait_jamais_pour_un_mineur() {
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "Windows", "jeux": 1}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue").header("authorization", "Bearer jeton-admin");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [{"id": 900, "titre": "Jeu Adulte", "plateforme": "Windows"}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue").header("authorization", "Bearer jeton-mineur");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": []}));
+        });
+        let triche_admin = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/900/triche").header("authorization", "Bearer jeton-admin");
+            t.status(200).json_body(json!({"ok": true, "codes": [], "sauvegardes": null}));
+        });
+        let triche_mineur = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/900/triche").header("authorization", "Bearer jeton-mineur");
+            t.status(404).json_body(json!({"ok": false, "erreur": "jeu inconnu"}));
+        });
+        let r = references();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/sauvegardes/references");
+            t.status(200).json_body(r.clone());
+        });
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        // Un jeu Unity installé ; ses parties dans un « LocalLow » simulé (jamais celui de Seb).
+        let jeu = d.path().join("Jeux").join("Windows").join("Jeu Adulte").join("Jeu");
+        ecrire(&jeu, "UnityPlayer.dll", b"dll");
+        ecrire(&jeu, "Jeu Adulte_Data/app.info", b"Studio Secret\nJeu Adulte");
+        installer(&n, 900, &jeu);
+        let low = d.path().join("LocalLow");
+        let partie = ecrire(&low, "Studio Secret/Jeu Adulte/save1.dat", b"partie admin");
+        let l2 = low.clone();
+        let windows = move || vec![("AppData-LocalLow", l2.clone())];
+        let abris = d.path().join("Abris");
+        n.regler_abris(Some(abris.clone()));
+
+        // L'admin : le moteur est reconnu, ses parties mises à l'abri.
+        let admin = n.creer_profil("Seb", None, Some("jeton-admin")).unwrap().id;
+        n.ouvrir(&admin, None, &Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        let v = super::parties_du_jeu(&n, 900, true, windows.clone()).await.unwrap();
+        assert_eq!(v.moteur.as_ref().map(|m| m.nom.as_str()), Some("Unity"));
+        assert_eq!(v.emplacements.iter().map(|e| (e.origine.as_str(), e.fichiers)).collect::<Vec<_>>(), [("moteur", 1)]);
+        let fait = super::abriter_parties(&n, 900, false, None, windows.clone()).await.unwrap();
+        let abri_admin = abris.join("900").join(fait.date.clone().unwrap());
+        let fiche_admin = ap::lire_fiche(&abri_admin).unwrap();
+        assert_eq!(fiche_admin.profil, admin);
+        triche_admin.assert_hits(1);
+        let dp_admin = n.dossier.join("profils").join(&admin);
+        let nb_abris = || std::fs::read_dir(abris.join("900")).unwrap().count();
+        let abris_avant = nb_abris();
+
+        // Le mineur.
+        let mineur = n.creer_profil("Léo", None, Some("jeton-mineur")).unwrap().id;
+        n.ouvrir(&mineur, None, &Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        let sm = n.session().await.unwrap();
+        assert!(!sm.verrou().visible_ou_reuni(900).unwrap(), "le jeu est caché au mineur");
+        let dp = n.dossier.join("profils").join(&mineur);
+        let rien_pour_le_mineur = |quoi: &str| {
+            assert!(ep::lire(&dp).unwrap().jeu(900).is_none(), "{quoi} : le jeu admin dans le cache du mineur");
+        };
+        // 1. « 📁 Où sont mes parties » (bureau ET Taodbox) : refusé comme un jeu inconnu, rien de demandé ni rangé.
+        assert!(matches!(super::parties_du_jeu(&n, 900, true, windows.clone()).await, Err(Erreur::Introuvable(_))));
+        triche_mineur.assert_hits(0);
+        rien_pour_le_mineur("la fiche");
+        // 2. La reconnaissance du moteur, appelée quand même : rien pour un jeu qu'il ne voit pas.
+        super::reconnaitre_moteur_du_jeu(&n, &sm, &dp, 900, None, Some(jeu.clone()), None, windows()).await.unwrap();
+        rien_pour_le_mineur("la reconnaissance du moteur");
+        // 3. `retirer_si` : le cache de l'admin copié chez le mineur (un grade qui a changé) — l'entrée part EN ENTIER,
+        // lignes du moteur comprises, à la première fiche ouverte.
+        std::fs::create_dir_all(&dp).unwrap();
+        std::fs::copy(ep::fichier(&dp_admin), ep::fichier(&dp)).unwrap();
+        assert!(ep::lire(&dp).unwrap().jeu(900).unwrap().emplacements.iter().any(|e| e.origine == "moteur"));
+        assert!(super::parties_du_jeu(&n, 900, true, windows.clone()).await.is_err());
+        rien_pour_le_mineur("retirer_si");
+        assert!(!std::fs::read_to_string(ep::fichier(&dp)).unwrap().contains("Studio Secret"), "plus aucune trace du chemin");
+        // 4. L'abri automatique après une partie : rien, aucun abri au nom du mineur.
+        let demande = super::DemandeAbriAuto { id: 900, profil: mineur.clone(), dossier_profil: dp.clone(), declencheur: ap::DECLENCHEUR_APRES_PARTIE, deja_occupe: false };
+        let b = super::abriter_auto(&n, &demande, windows.clone(), &|_| {}).await.unwrap();
+        assert!(matches!(b.etat, super::EtatAbriAuto::Inconnu | super::EtatAbriAuto::Aucun), "{:?}", b.etat);
+        assert_eq!(nb_abris(), abris_avant, "aucun abri");
+        rien_pour_le_mineur("l'abri automatique");
+        // 5. 🛟 Mes abris : refusé ; et la liste brute des abris du PC ne lui montre jamais celui de l'admin.
+        assert!(matches!(super::abris_des_parties(&n, 900).await, Err(Erreur::Introuvable(_))));
+        assert!(ap::lister(&n.sources_abri(900).unwrap(), &mineur, None).is_empty());
+        assert!(super::apercu_abri_parties(&n, 900, windows.clone()).await.is_err());
+        // 6. L'envoi de la sauvegarde : rien du jeu 900.
+        let c = n.contenu_sauvegarde(&[]).await.unwrap();
+        assert!(c.parties.iter().all(|e| !e.relatif.starts_with("jeux/900/")), "{:?}", c.parties.iter().map(|e| &e.relatif).collect::<Vec<_>>());
+        assert!(ap::emplacements_a_envoyer(&[(1, abri_admin.clone())], &mineur).0.is_empty());
+        // 7. La reprise S5 : la copie de l'admin posée (comme téléchargée) dans la zone du mineur — jamais posée, jamais
+        // un conflit montré, jamais reprise ; la partie du PC intacte.
+        let zone = n.zone_restauration(&mineur);
+        let attente = zone.join("parties").join("jeux").join("900");
+        std::fs::create_dir_all(attente.join("emplacements")).unwrap();
+        std::fs::write(attente.join(ap::FICHE_ENVOYEE), serde_json::to_vec(&fiche_admin).unwrap()).unwrap();
+        for f in &fiche_admin.fichiers {
+            ecrire(&attente, &f.relatif, b"autre partie");
+        }
+        let w: Vec<(&'static str, PathBuf)> = windows();
+        let bilan = n.poser_parties_pc(&sm, None, &w, false).unwrap();
+        assert_eq!((bilan.jeux, bilan.posees, bilan.conflits, bilan.en_attente()), (0, 0, 0, 0), "pas même en nombre");
+        assert!(n.conflits_parties_pc(None, &w).await.unwrap().is_empty());
+        let cle = fiche_admin.emplacements[0].cle.clone();
+        assert!(matches!(n.reprendre_partie_pc(900, &cle, &w).await, Err(Erreur::Introuvable(_))));
+        assert_eq!(std::fs::read(&partie).unwrap(), b"partie admin");
+        rien_pour_le_mineur("la reprise");
+        // Le journal : des numéros, jamais un chemin, un titre ni un nom lu.
+        let journal = std::fs::read_to_string(n.dossier.join("journal.txt")).unwrap();
+        for interdit in ["Studio Secret", "Jeu Adulte", "LocalLow", "app.info", &d.path().to_string_lossy()] {
+            assert!(!journal.contains(interdit), "« {interdit} » au journal : {journal}");
+        }
+    }
+
+    /// Relecture S6 (essai réel : un jeu Ren'Py installé depuis une archive à sous-dossier) : `<dossier du jeu>` est le
+    /// dossier de l'exécutable ; un endroit déjà pris par un AUTRE jeu du profil est écarté ; des références périmées sont
+    /// relues à l'ouverture de la fiche (jamais pendant la reconnaissance) ; des références sans `moteurs` retirent les
+    /// lignes du moteur.
+    #[tokio::test]
+    async fn un_jeu_d_archive_a_sous_dossier_est_reconnu_dans_le_dossier_de_son_executable() {
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "Windows", "jeux": 2}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [{"id": 900, "titre": "A", "plateforme": "Windows"}, {"id": 901, "titre": "B", "plateforme": "Windows"}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/900/triche");
+            t.status(200).json_body(json!({"ok": true, "codes": [], "sauvegardes": null}));
+        });
+        let r = references();
+        let route_refs = s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/sauvegardes/references");
+            t.status(200).json_body(r.clone());
+        });
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let base = d.path().join("Jeux").join("Windows").join("Legende").join("Jeu");
+        let sous = base.join("Legende-0.7-pc");
+        std::fs::create_dir_all(sous.join("renpy")).unwrap();
+        ecrire(&sous, "game/options.rpy", b"define config.save_directory = \"Legende-1600000000\"\n");
+        ecrire(&sous, "game/saves/1-1-LT1.save", b"partie");
+        ecrire(&sous, "Legende.exe", b"exe");
+        installer(&n, 900, &base);
+        let mut i = n.registre().jeu(900).unwrap().unwrap().installation.unwrap();
+        i.lanceur = Some(crate::installation::Lanceur { programme: sous.join("Legende.exe").to_string_lossy().into(), arguments: vec![], dossier: sous.to_string_lossy().into() });
+        n.registre().changer_installation(900, Some(&i)).unwrap();
+        let roaming = d.path().join("Roaming");
+        let r2 = roaming.clone();
+        let windows = move || vec![("AppData-Roaming", r2.clone())];
+        let p = n.creer_profil("Seb", None, Some("j")).unwrap().id;
+        n.ouvrir(&p, None, &Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        let dp = n.dossier.join("profils").join(&p);
+        let v = super::parties_du_jeu(&n, 900, true, windows.clone()).await.unwrap();
+        assert_eq!(v.moteur.as_ref().map(|m| m.nom.as_str()), Some("Ren'Py"));
+        let dossiers: Vec<Option<String>> = v.emplacements.iter().map(|e| e.dossier.clone()).collect();
+        assert_eq!(dossiers, [Some(roaming.join("RenPy").join("Legende-1600000000").to_string_lossy().to_string()), Some(sous.join("game").join("saves").to_string_lossy().to_string())], "dans le dossier de l'exécutable");
+        assert_eq!(v.emplacements[1].fichiers, 1);
+        route_refs.assert_hits(1);
+        // Un autre jeu du profil a déjà ce `save_directory` (gabarit partagé) : écarté pour celui-ci.
+        let maintenant = crate::noyau::maintenant();
+        ep::modifier(&dp, |c| ep::appliquer(c, 901, None, &json!({"sauvegardes": [{"os": "Windows", "chemin": r"%APPDATA%\RenPy\Legende-1600000000", "nature": "dossier"}]}), &ep::references_de_secours(), &maintenant)).unwrap();
+        let v = super::parties_du_jeu(&n, 900, true, windows.clone()).await.unwrap();
+        assert_eq!(v.emplacements.iter().map(|e| e.origine.as_str()).collect::<Vec<_>>(), ["moteur"]);
+        assert!(v.emplacements[0].dossier.as_deref().unwrap().ends_with("saves"));
+        // Des références périmées : relues à l'ouverture de la fiche (le cache du jeu est frais : aucune autre demande).
+        ep::garder_references(&n.dossier, &r, "1").unwrap();
+        super::parties_du_jeu(&n, 900, true, windows.clone()).await.unwrap();
+        route_refs.assert_hits(2);
+        // Des références sans `moteurs` : plus aucune ligne du moteur.
+        ep::garder_references(&n.dossier, &json!({"ok": true, "os": {"Windows": ""}}), &maintenant).unwrap();
+        let v = super::parties_du_jeu(&n, 900, true, windows.clone()).await.unwrap();
+        assert!(v.emplacements.is_empty());
+        assert!(ep::lire(&dp).unwrap().jeu(900).unwrap().moteur_reconnu.is_none());
+        let journal = std::fs::read_to_string(n.dossier.join("journal.txt")).unwrap();
+        for interdit in ["Legende", "RenPy", "options.rpy", &d.path().to_string_lossy()] {
+            assert!(!journal.contains(interdit), "« {interdit} » au journal : {journal}");
+        }
     }
 }

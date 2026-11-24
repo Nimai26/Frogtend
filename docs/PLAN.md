@@ -982,6 +982,23 @@ vide, avec `\`, `..`, caractère interdit ou racine ; journal = id du jeu, jamai
 (emplacements_parties.rs ~485) qui garde les emplacements non-Firehouse d'un jeu devenu invisible ; test « une partie
 de jeu admin n'apparaît jamais pour un mineur » (cache par profil, `retirer_si`, abri auto, Mes abris, envoi, reprise,
 Taodbox).
+Précision (24/11, relecture S6) : pour un gabarit SANS nom à lire, rangé DANS le dossier du jeu (RPG Maker, Wolf RPG,
+Tyrano, `game\saves` de Ren'Py), la seconde preuve est le chemin lui-même (aucun nom à lire, aucun risque de toucher un
+autre jeu) : le marqueur suffit. Essai réel du 24/11 (lecture seule, jeu Ren'Py de Seb installé depuis une archive) :
+reconnaissance juste et `options.rpy` lu sur le dossier de l'EXÉCUTABLE, mais « aucun » sur `installation.dossier`
+→ `<dossier du jeu>` = dossier du lanceur quand il est dans le dossier d'installation (corrigé dans S6, vaut aussi pour
+S1). Refus ajoutés : Unity « DefaultCompany / My project », tout chemin moteur déjà pris par un autre jeu du profil,
+journaux Unity (`*.log`) non comptés comme parties.
+**S6 codé le 24/11 (0.225.0)** : module `moteurs_parties.rs` (règles des références de Firehouse, reconnaissance au
+premier niveau avec budget par règle, lecteurs Ren'Py `options.rpy`/`.rpyc` sans dé-pickle avec budget global 64 Mo,
+Unity `app.info`, Unreal dossier voisin d'`Engine`), ordre personne > Firehouse > moteur, désaccords notés (`Vide`
+renversé seulement par de vraies parties, journaux exclus ; `moteur_contredit`) pour la remontée de la 1.53 (besoin 60),
+`retirer_si` corrigé (jeu invisible : tout part sauf `personne`), test « admin jamais vu par un mineur » sur tous les
+parcours ; `<dossier du jeu>` = dossier d'installation, descendu à travers les ENVELOPPES d'archive (aucun fichier, un
+seul sous-dossier, 3 niveaux, contrôlé par le lanceur) — relevé réel : 1 jeu sur 35 change (le jeu Ren'Py), aucun jeu
+de boutique ; relu par les experts lancement et contrat (aucun bloquant, 6 importants corrigés). Non fait : Godot et
+GameMaker reconnus mais non appliqués (nom illisible sans risque), archives `.rpa` de Ren'Py, stockage NW.js de RPG
+Maker MV/MZ, remontée à Firehouse (1.53).
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
 « Connecte-toi… dans la fenêtre qui s'ouvre » laisse croire que rien ne se passe ou que c'est raté. Voulu : une petite

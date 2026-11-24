@@ -230,7 +230,7 @@
   {#if vues && montres(vues).length}
     <ul class="liste">
       {#each montres(vues) as e, i (i)}
-        {@const details = [libelleOrigine(e.origine), texteFiltre(e), texteNuage(e)].filter(Boolean).join(' · ')}
+        {@const details = [libelleOrigine(e.origine, e.moteur), texteFiltre(e), texteNuage(e)].filter(Boolean).join(' · ')}
         {#if canape}
           <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
           <li class="emplacement" tabindex="0">

@@ -26,13 +26,14 @@ export function jeuDeLAdresse(v: string | null | undefined): number | null {
   return Number.isInteger(n) && n !== 0 ? n : null;
 }
 
-/** D'où vient un emplacement, en mots (la source précise de Firehouse : dans `titreOrigine`, au survol seulement). */
-export function libelleOrigine(origine: string): string {
+/** D'où vient un emplacement, en mots (la source précise de Firehouse : dans `titreOrigine`, au survol seulement).
+ * Lot S6 : un emplacement reconnu d'après le moteur du jeu dit le nom du moteur (il vient des références de Firehouse). */
+export function libelleOrigine(origine: string, moteur?: string | null): string {
   switch (origine) {
     case 'firehouse':
       return 'd’après Firehouse';
     case 'moteur':
-      return 'd’après les fichiers du jeu';
+      return moteur?.trim() ? `📁 d’après le moteur ${moteur.trim()}` : '📁 d’après les fichiers du jeu';
     case 'manifeste':
       return 'd’après le jeu lui-même';
     case 'personne':

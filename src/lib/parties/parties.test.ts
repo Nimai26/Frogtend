@@ -70,7 +70,14 @@ describe('📁 Où sont mes parties', () => {
     expect(titreOrigine('firehouse', 'pcgamingwiki')).toBe('Source : PCGamingWiki');
     expect(titreOrigine('personne', null)).toBeUndefined();
     expect(libelleOrigine('personne')).toBe('ajouté par toi');
-    for (const o of ['firehouse', 'moteur', 'manifeste', 'personne', '?']) expect(libelleOrigine(o)).not.toMatch(/moteur/i);
+    for (const o of ['firehouse', 'manifeste', 'personne', '?']) expect(libelleOrigine(o, 'Unity')).not.toMatch(/moteur/i);
+  });
+
+  it('lot S6 : un emplacement reconnu d’après le moteur dit le nom du moteur', () => {
+    expect(libelleOrigine('moteur', 'Unity')).toBe('📁 d’après le moteur Unity');
+    expect(libelleOrigine('moteur', 'RPG Maker VX Ace')).toBe('📁 d’après le moteur RPG Maker VX Ace');
+    expect(libelleOrigine('moteur', null)).toBe('📁 d’après les fichiers du jeu');
+    expect(libelleOrigine('moteur', '  ')).toBe('📁 d’après les fichiers du jeu');
   });
 
   it('dit ce que contient un dossier, ou pourquoi rien', () => {

@@ -91,6 +91,26 @@ pub struct EmplacementPartie {
     /// La boutique d'où vient le relevé (contrat 1.49), pour information seulement : on ne filtre JAMAIS dessus.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub releve_sur: Option<String>,
+    /// Lot S6, origine `moteur` : le nom du moteur (d'après les références de Firehouse : « Unity »).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub moteur: Option<String>,
+    /// Lot S6, origine `moteur` : ce qui le prouve (le NOM du fichier marqueur et du fichier lu, jamais un chemin).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preuve: Option<String>,
+}
+
+/// Le moteur reconnu SUR LE DISQUE par Frogtend (lot S6), gardé dans l'état local du profil seulement (la remontée à
+/// Firehouse attend le besoin 60).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct MoteurReconnu {
+    /// La clé de Firehouse (`unity`, `renpy`…).
+    pub cle: String,
+    pub nom: String,
+    /// Les noms des fichiers marqueur et lu.
+    pub preuve: String,
+    /// Les noms lus (jamais au journal).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub noms_lus: Vec<String>,
 }
 
 /// Ce que le profil sait des parties d'UN jeu.
@@ -130,6 +150,17 @@ pub struct PartiesJeu {
     /// information.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dossier_ecarte: Option<Value>,
+    /// Lot S6 : le moteur reconnu sur le disque (deux preuves), s'il l'est.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub moteur_reconnu: Option<MoteurReconnu>,
+    /// Lot S6 : Firehouse dit « aucune partie » (`Vide`), mais le moteur est prouvé et des parties existent sur le
+    /// disque : le moteur l'emporte, et le désaccord est noté (pour la remontée, besoin 60).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub desaccord_moteur: bool,
+    /// Lot S6 : Firehouse nomme pour ce jeu un AUTRE moteur connu que celui reconnu sur le disque (état local, pour la
+    /// remontée du besoin 60).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub moteur_contredit: bool,
     #[serde(default)]
     pub emplacements: Vec<EmplacementPartie>,
 }
@@ -381,6 +412,7 @@ pub fn depuis_firehouse(sauvegardes: &Value, boutique: Option<&str>, refs: &Refe
             boutique: b.map(String::from),
             etiquettes: s["etiquettes"].as_array().into_iter().flatten().filter_map(|x| x.as_str().map(String::from)).collect(),
             releve_sur: s["releve_sur"].as_str().map(str::trim).filter(|r| !r.is_empty()).map(String::from),
+            ..Default::default()
         });
     }
     Some(l)
@@ -431,6 +463,7 @@ pub fn appliquer(c: &mut Cache, id: i64, boutique: Option<BoutiqueJeu>, reponse:
         EtatFirehouse::Vide
     };
     e.emplacements.extend(neufs);
+    retirer_doublons(e);
     e.lu_le = Some(quand.to_string());
     if src.is_object() {
         e.source = source;
@@ -472,9 +505,12 @@ pub fn a_redemander(e: Option<&PartiesJeu>, maintenant: u64) -> bool {
     maintenant.saturating_sub(d) >= delai
 }
 
-/// Pour les jeux que `garder` refuse (un jeu que le profil ne voit plus : grade changé), oublie tout ce qui vient de
-/// Firehouse ; l'entrée part si rien d'autre n'y reste, sinon les choix de la personne (futur éditeur, lot S2) restent.
-/// Rend combien de jeux ont été touchés.
+/// Pour les jeux que `garder` refuse (un jeu que le profil ne voit plus : grade changé), oublie TOUT ce que Frogtend en
+/// sait : ce qui vient de Firehouse, le moteur reconnu et ses emplacements (lot S6 : avant, une ligne `moteur` ou
+/// `manifeste` restait, et avec elle le chemin — donc le titre — d'un jeu qui n'existe plus pour ce profil). Seuls les
+/// choix que la PERSONNE de ce profil a faits elle-même (`personne`, futur éditeur ; correctif 10 du lot S1) restent :
+/// ils viennent d'elle et resservent si le jeu lui redevient visible ; l'entrée part s'il n'y en a pas. Rend combien
+/// de jeux ont été touchés.
 pub fn retirer_si(c: &mut Cache, garder: impl Fn(i64) -> bool) -> usize {
     let mut n = 0;
     c.jeux.retain(|_, e| {
@@ -482,16 +518,100 @@ pub fn retirer_si(c: &mut Cache, garder: impl Fn(i64) -> bool) -> usize {
             return true;
         }
         n += 1;
-        e.emplacements.retain(|x| x.origine != "firehouse");
+        e.emplacements.retain(|x| x.origine == "personne");
         if e.emplacements.is_empty() {
             return false;
         }
         let (id, boutique, emplacements) = (e.id, e.boutique.take(), std::mem::take(&mut e.emplacements));
-        let moteur = e.moteur.take().filter(|m| !m.preuve.starts_with("Firehouse"));
-        *e = PartiesJeu { id, boutique, moteur, emplacements, ..Default::default() };
+        *e = PartiesJeu { id, boutique, emplacements, ..Default::default() };
         true
     });
     n
+}
+
+/// Le rang d'une origine : `personne` > Firehouse > `manifeste` > `moteur`.
+fn rang(origine: &str) -> u8 {
+    match origine {
+        "personne" => 0,
+        "firehouse" => 1,
+        "manifeste" => 2,
+        "moteur" => 3,
+        _ => 4,
+    }
+}
+
+/// Retire les doublons (même chemin NON résolu, sans tenir compte des majuscules ni du sens des barres, et même
+/// nature) : la ligne de la meilleure origine reste (`personne` > Firehouse > moteur), sinon la première.
+pub fn retirer_doublons(e: &mut PartiesJeu) {
+    let cle = |x: &EmplacementPartie| (x.chemin.trim().replace('/', "\\").trim_end_matches('\\').to_lowercase(), x.nature.clone());
+    let l = std::mem::take(&mut e.emplacements);
+    let garde: Vec<bool> = l.iter().enumerate().map(|(i, x)| !l.iter().enumerate().any(|(j, y)| j != i && cle(x) == cle(y) && (rang(&y.origine), j) < (rang(&x.origine), i))).collect();
+    e.emplacements = l.into_iter().zip(garde).filter(|(_, g)| *g).map(|(x, _)| x).collect();
+}
+
+/// Range pour ce jeu ce que le DISQUE dit de son moteur (lot S6). Les lignes `moteur` d'avant sont toujours remplacées.
+/// Prouvé (deux preuves) : ses emplacements s'ajoutent quand Firehouse ne sait pas (`Inconnu`) ou en connaît (`Lu` :
+/// les doublons partent, Firehouse et la personne l'emportent) ; quand Firehouse dit « aucune partie » (`Vide`),
+/// seulement si des parties EXISTENT à ces endroits (`parties_sur_disque`) — le moteur l'emporte et le désaccord est
+/// noté. Rien de prouvé : plus aucune ligne `moteur`. Une entrée absente n'est créée que pour un moteur prouvé.
+pub fn appliquer_moteur(c: &mut Cache, id: i64, r: &crate::moteurs_parties::Reconnaissance, parties_sur_disque: bool) {
+    use crate::moteurs_parties::Reconnaissance;
+    let prouve = match r {
+        Reconnaissance::Prouve(x) => Some(x),
+        _ => None,
+    };
+    if prouve.is_none() && c.jeu(id).is_none() {
+        return;
+    }
+    let e = c.jeux.entry(id.to_string()).or_insert_with(|| PartiesJeu { id, ..Default::default() });
+    e.emplacements.retain(|x| x.origine != "moteur");
+    e.desaccord_moteur = false;
+    e.moteur_contredit = false;
+    let Some(x) = prouve else {
+        e.moteur_reconnu = None;
+        return;
+    };
+    e.moteur_reconnu = Some(MoteurReconnu { cle: x.cle.clone(), nom: x.nom.clone(), preuve: x.preuve(), noms_lus: x.noms_lus.clone() });
+    e.moteur_contredit = x.firehouse_contredit;
+    let applique = match e.firehouse {
+        EtatFirehouse::Vide => parties_sur_disque,
+        EtatFirehouse::Inconnu | EtatFirehouse::Lu => true,
+    };
+    if !applique || x.emplacements.is_empty() {
+        return;
+    }
+    e.desaccord_moteur = e.firehouse == EtatFirehouse::Vide;
+    e.emplacements.extend(x.emplacements.iter().cloned());
+    retirer_doublons(e);
+}
+
+/// Un fichier de JOURNAL du jeu (pas une partie) : `*.log`, `output_log.txt`, `Player.log`, `Player-prev.log`.
+pub fn est_un_journal(nom: &str) -> bool {
+    let n = nom.to_lowercase();
+    n.ends_with(".log") || n == "output_log.txt"
+}
+
+/// Des PARTIES existent-elles à l'un de ces emplacements sur ce PC (lot S6, pour renverser un « aucune partie » de
+/// Firehouse) ? Au moins un fichier qui n'est pas un journal du jeu (`est_un_journal`) ; sans lien ni jonction suivis,
+/// rien n'est lu.
+pub fn contient_des_parties(e: &PartiesJeu, ctx: &Contexte) -> bool {
+    e.emplacements.iter().any(|x| {
+        crate::nuage_steam::candidats(&x.chemin, Some(&x.nature), ctx).0.iter().any(|c| {
+            if !c.dossier.is_dir() {
+                return false;
+            }
+            let nom_ok = |r: &str| !est_un_journal(r.rsplit(['/', '\\']).next().unwrap_or(r));
+            match &c.filtre {
+                None => crate::nuage_steam::parcourir(&c.dossier).is_ok_and(|l| l.iter().any(|r| nom_ok(r))),
+                Some(f) => std::fs::read_dir(&c.dossier).is_ok_and(|l| {
+                    l.flatten().any(|x| x.file_type().is_ok_and(|t| t.is_file()) && {
+                        let n = x.file_name().to_string_lossy().to_string();
+                        crate::nuage_steam::repond(&n, f) && nom_ok(&n)
+                    })
+                }),
+            }
+        })
+    })
 }
 
 /// Un emplacement tel qu'il est sur CE PC, pour l'écran seulement (jamais rangé, jamais au journal).
@@ -508,6 +628,8 @@ pub struct EmplacementVu {
     pub os: String,
     /// La source de Firehouse (`ludusavi`, `pcgamingwiki`), pour dire « d'après … ».
     pub source: Option<String>,
+    /// Lot S6, origine `moteur` : le nom du moteur (« 📁 d'après le moteur Unity »).
+    pub moteur: Option<String>,
     pub nuage_boutique: bool,
     /// Frogtend sait lire ce chemin sur ce PC (jetons connus, pas une racine).
     pub lisible: bool,
@@ -585,6 +707,7 @@ pub fn resoudre(e: &PartiesJeu, ctx: &Contexte, compter: bool) -> Vec<Emplacemen
             origine: x.origine.clone(),
             os: x.os.clone(),
             source: x.source.clone(),
+            moteur: x.moteur.clone(),
             nuage_boutique: x.nuage_boutique,
             lisible,
             existe: m.existe,
@@ -778,7 +901,7 @@ mod tests {
         std::fs::create_dir_all(jeu.join("saves")).unwrap();
         std::fs::write(jeu.join("saves").join("slot1.sav"), b"abc").unwrap();
         std::fs::write(jeu.join("saves").join("notes.txt"), b"x").unwrap();
-        let ctx = Contexte { jeu: Some(jeu.clone()), steam: None, compte: None, windows: vec![("Parties-enregistrees", parties.clone())], boutique: None };
+        let ctx = Contexte { jeu: Some(jeu.clone()), steam: None, compte: None, windows: vec![("Parties-enregistrees", parties.clone())], installation: None, boutique: None };
         let e = PartiesJeu {
             id: -7,
             emplacements: vec![
@@ -802,7 +925,7 @@ mod tests {
         assert_eq!((l[4].dossier.as_deref(), l[4].lisible), (None, false), "registre : pas un dossier");
         assert_eq!(l.iter().map(|v| v.n).collect::<Vec<_>>(), [0, 1, 2, 3, 4]);
         // Sans dossier du jeu connu : illisible, rien de deviné.
-        let sans = Contexte { jeu: None, steam: None, compte: None, windows: vec![], boutique: None };
+        let sans = Contexte { jeu: None, steam: None, compte: None, windows: vec![], installation: None, boutique: None };
         assert!(!resoudre(&e, &sans, true)[1].lisible);
     }
 
@@ -814,7 +937,7 @@ mod tests {
             std::fs::create_dir_all(docs.join("Jeu").join(u).join("saves")).unwrap();
         }
         std::fs::write(docs.join("Jeu").join("111").join("saves").join("a.sav"), b"a").unwrap();
-        let ctx = Contexte { jeu: None, steam: None, compte: None, windows: vec![("Documents", docs.clone())], boutique: None };
+        let ctx = Contexte { jeu: None, steam: None, compte: None, windows: vec![("Documents", docs.clone())], installation: None, boutique: None };
         let e = PartiesJeu {
             id: 1,
             emplacements: vec![EmplacementPartie { chemin: r"%USERPROFILE%\Documents\Jeu\<identifiant utilisateur>\saves".into(), nature: "dossier".into(), os: "Windows".into(), origine: "firehouse".into(), nuage_boutique: false, lu_le: None, ..Default::default() }],
@@ -824,7 +947,7 @@ mod tests {
         assert_eq!(l.len(), 2, "un par profil du jeu");
         assert_eq!(l.iter().map(|v| v.fichiers).collect::<Vec<_>>(), [1, 0]);
         // Le dossier parent absent : aucun dossier de profil, mais lisible.
-        let vide = Contexte { jeu: None, steam: None, compte: None, windows: vec![("Documents", d.path().join("Absent"))], boutique: None };
+        let vide = Contexte { jeu: None, steam: None, compte: None, windows: vec![("Documents", d.path().join("Absent"))], installation: None, boutique: None };
         let l = resoudre(&e, &vide, true);
         assert_eq!((l.len(), l[0].dossier.as_deref(), l[0].lisible), (1, None, true));
     }
@@ -969,7 +1092,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let jeu = d.path().join("Epic Games").join("TerraScape");
         std::fs::create_dir_all(&jeu).unwrap();
-        let ctx = Contexte { jeu: Some(jeu.clone()), steam: None, compte: None, windows: vec![], boutique: Some("epic".into()) };
+        let ctx = Contexte { jeu: Some(jeu.clone()), steam: None, compte: None, windows: vec![], installation: None, boutique: Some("epic".into()) };
         let un = |chemin: &str| {
             let e = PartiesJeu { id: 1, emplacements: vec![EmplacementPartie { chemin: chemin.into(), nature: "dossier".into(), os: "Windows".into(), origine: "firehouse".into(), ..Default::default() }], ..Default::default() };
             resoudre(&e, &ctx, true).remove(0)
@@ -981,23 +1104,24 @@ mod tests {
         assert_eq!(un(r"<dossier du jeu>\<nom du dossier du jeu>\<nom du dossier du jeu>").dossier.as_deref(), Some(jeu.join("TerraScape").join("TerraScape").to_string_lossy().as_ref()));
         // `<racine de la boutique>` : refusé pour un jeu de Firehouse, importé, ou Steam (Firehouse écrit `<Steam>`).
         for b in [None, Some("steam")] {
-            let c = Contexte { jeu: Some(jeu.clone()), steam: None, compte: None, windows: vec![], boutique: b.map(String::from) };
+            let c = Contexte { jeu: Some(jeu.clone()), steam: None, compte: None, windows: vec![], installation: None, boutique: b.map(String::from) };
             let e = PartiesJeu { id: 1, emplacements: vec![EmplacementPartie { chemin: r"<racine de la boutique>\TerraScape\Saves".into(), nature: "dossier".into(), os: "Windows".into(), origine: "firehouse".into(), ..Default::default() }], ..Default::default() };
             assert!(!resoudre(&e, &c, true)[0].lisible, "{b:?}");
         }
         // Un « % » dans le nom du dossier du jeu ne fait pas refuser l'emplacement.
         let pourcent = d.path().join("Epic Games").join("Jeu 100%");
-        let c = Contexte { jeu: Some(pourcent.clone()), steam: None, compte: None, windows: vec![], boutique: Some("epic".into()) };
+        let c = Contexte { jeu: Some(pourcent.clone()), steam: None, compte: None, windows: vec![], installation: None, boutique: Some("epic".into()) };
         let e = PartiesJeu { id: 1, emplacements: vec![EmplacementPartie { chemin: r"<dossier du jeu>\Saves".into(), nature: "dossier".into(), os: "Windows".into(), origine: "firehouse".into(), ..Default::default() }], ..Default::default() };
         assert_eq!(resoudre(&e, &c, true)[0].dossier.as_deref(), Some(pourcent.join("Saves").to_string_lossy().as_ref()));
-        // Les jetons de moteur (lot S6), d'une boutique non lue, ou d'une bibliothèque Steam sans jeu Steam : refusés.
+        // Les jetons de moteur, d'une boutique non lue, ou d'une bibliothèque Steam sans jeu Steam : refusés. Lot S6 : un
+        // jeton de moteur n'est JAMAIS résolu tel quel ; `moteurs_parties` le remplace par le nom LU avant de ranger.
         for j in [r"%APPDATA%\RenPy\<save_directory Ren'Py>", r"%USERPROFILE%\AppData\LocalLow\<société Unity>\<produit Unity>", r"%LOCALAPPDATA%\<projet Unreal>\Saved\SaveGames", r"%APPDATA%\Godot\app_userdata\<projet Godot>", r"%LOCALAPPDATA%\<nom du jeu GameMaker>", r"<Ubisoft Connect>\savegames", r"<SteamLibrary>\steamapps\common\X", r"<jeton jamais vu>\x"] {
             let v = un(j);
             assert_eq!((v.dossier.clone(), v.lisible), (None, false), "{j}");
         }
         // Une bibliothèque Steam : seulement pour un jeu rangé dans `steamapps\common`.
         let lib = d.path().join("SteamLibrary");
-        let s = Contexte { jeu: Some(lib.join("steamapps").join("common").join("X")), steam: None, compte: None, windows: vec![], boutique: None };
+        let s = Contexte { jeu: Some(lib.join("steamapps").join("common").join("X")), steam: None, compte: None, windows: vec![], installation: None, boutique: None };
         let e = PartiesJeu { id: 1, emplacements: vec![EmplacementPartie { chemin: r"<SteamLibrary>\steamapps\common\X\saves".into(), nature: "dossier".into(), os: "Steam".into(), origine: "firehouse".into(), ..Default::default() }], ..Default::default() };
         assert_eq!(resoudre(&e, &s, true)[0].dossier.as_deref(), Some(lib.join("steamapps").join("common").join("X").join("saves").to_string_lossy().as_ref()));
         // Les variables de Windows servies (1.48) : celles de ce PC, ou refusées si Windows ne les donne pas.
@@ -1009,7 +1133,7 @@ mod tests {
             }
         }
         // Sans dossier du jeu connu : refusés.
-        let sans = Contexte { jeu: None, steam: None, compte: None, windows: vec![], boutique: None };
+        let sans = Contexte { jeu: None, steam: None, compte: None, windows: vec![], installation: None, boutique: None };
         let e = PartiesJeu { id: 1, emplacements: vec![EmplacementPartie { chemin: r"<racine de la boutique>\<nom du dossier du jeu>".into(), nature: "dossier".into(), os: "Windows".into(), origine: "firehouse".into(), ..Default::default() }], ..Default::default() };
         assert!(!resoudre(&e, &sans, true)[0].lisible);
     }
@@ -1122,10 +1246,10 @@ mod tests {
         let lib = d.path().join("SteamLibrary");
         let jeu = lib.join("steamapps").join("common").join("Jeu");
         std::fs::create_dir_all(jeu.join("saves")).unwrap();
-        let steam = Contexte { jeu: Some(jeu.clone()), steam: None, compte: None, windows: vec![], boutique: Some("steam".into()) };
+        let steam = Contexte { jeu: Some(jeu.clone()), steam: None, compte: None, windows: vec![], installation: None, boutique: Some("steam".into()) };
         let epic_jeu = d.path().join("Epic Games").join("Jeu");
         std::fs::create_dir_all(epic_jeu.join("saves")).unwrap();
-        let epic = Contexte { jeu: Some(epic_jeu.clone()), steam: None, compte: None, windows: vec![], boutique: Some("epic".into()) };
+        let epic = Contexte { jeu: Some(epic_jeu.clone()), steam: None, compte: None, windows: vec![], installation: None, boutique: Some("epic".into()) };
         let un = |chemin: &str, ctx: &Contexte| {
             let e = PartiesJeu { id: 1, emplacements: vec![EmplacementPartie { chemin: chemin.into(), nature: "dossier".into(), os: "Windows".into(), origine: "firehouse".into(), ..Default::default() }], ..Default::default() };
             resoudre(&e, ctx, false).remove(0)
@@ -1169,7 +1293,7 @@ mod tests {
             profond = profond.join(format!("n{i}"));
         }
         std::fs::create_dir_all(&profond).unwrap();
-        let ctx = Contexte { jeu: Some(d.path().to_path_buf()), steam: None, compte: None, windows: vec![], boutique: None };
+        let ctx = Contexte { jeu: Some(d.path().to_path_buf()), steam: None, compte: None, windows: vec![], installation: None, boutique: None };
         let e = PartiesJeu { id: 1, emplacements: vec![EmplacementPartie { chemin: r"<dossier du jeu>\Profond".into(), nature: "dossier".into(), os: "Windows".into(), origine: "firehouse".into(), ..Default::default() }], ..Default::default() };
         let v = resoudre(&e, &ctx, true).remove(0);
         assert_eq!((v.existe, v.trop, v.illisible), (true, true, false), "trop profond : pas un dossier de parties");
@@ -1198,7 +1322,7 @@ mod tests {
         std::fs::create_dir_all(&saves).unwrap();
         std::fs::write(saves.join("a.sav"), b"aaaa").unwrap();
         std::fs::write(saves.join("b.sav"), b"bb").unwrap();
-        let ctx = Contexte { jeu: None, steam: None, compte: None, windows: vec![("Documents", docs.clone())], boutique: None };
+        let ctx = Contexte { jeu: None, steam: None, compte: None, windows: vec![("Documents", docs.clone())], installation: None, boutique: None };
         let e = PartiesJeu { id: 1, emplacements: vec![EmplacementPartie { chemin: r"%USERPROFILE%\Documents\My Games\Jeu".into(), nature: "dossier".into(), os: "Windows".into(), origine: "firehouse".into(), ..Default::default() }], ..Default::default() };
         assert_eq!(resoudre(&e, &ctx, true)[0].en_ligne, 0);
         #[cfg(windows)]
@@ -1213,5 +1337,160 @@ mod tests {
             assert_eq!((v.fichiers, v.octets, v.en_ligne), (2, 6, 1));
             let _ = unsafe { SetFileAttributesW(&f, FILE_ATTRIBUTE_ARCHIVE) };
         }
+    }
+
+    /// Lot S6 : un constat de moteur prouvé (Unity), tel que `moteurs_parties::reconnaitre` le rend.
+    fn constat_unity() -> crate::moteurs_parties::Reconnaissance {
+        let ligne = |chemin: &str| EmplacementPartie { chemin: chemin.into(), nature: "dossier".into(), os: "Windows".into(), origine: "moteur".into(), moteur: Some("Unity".into()), preuve: Some("UnityPlayer.dll + app.info".into()), ..Default::default() };
+        crate::moteurs_parties::Reconnaissance::Prouve(crate::moteurs_parties::Constat {
+            cle: "unity".into(),
+            nom: "Unity".into(),
+            marqueur: "UnityPlayer.dll".into(),
+            lus_dans: vec!["app.info".into()],
+            noms_lus: vec!["Studio".into(), "Jeu".into()],
+            emplacements: vec![ligne(r"%USERPROFILE%\AppData\LocalLow\Studio\Jeu"), ligne(r"<dossier du jeu>\Saves")],
+            ..Default::default()
+        })
+    }
+
+    fn origines(c: &Cache, id: i64) -> Vec<(String, String)> {
+        c.jeu(id).map(|e| e.emplacements.iter().map(|x| (x.origine.clone(), x.chemin.clone())).collect()).unwrap_or_default()
+    }
+
+    /// Lot S6 : `personne` > Firehouse `Lu` > moteur prouvé ; `Inconnu` : le moteur s'applique ; `Vide` : seulement
+    /// si des parties existent (désaccord noté) ; les doublons partent ; rien de prouvé : plus aucune ligne `moteur`.
+    #[test]
+    fn le_moteur_prouve_s_applique_selon_ce_que_dit_firehouse() {
+        use crate::moteurs_parties::Reconnaissance;
+        // Inconnu (jamais demandé) : appliqué d'office, l'entrée est créée.
+        let mut c = Cache::default();
+        appliquer_moteur(&mut c, 1, &Reconnaissance::Aucun, true);
+        assert!(c.jeu(1).is_none(), "rien de prouvé : aucune entrée créée");
+        appliquer_moteur(&mut c, 1, &constat_unity(), false);
+        let e = c.jeu(1).unwrap();
+        assert_eq!(e.emplacements.len(), 2);
+        assert_eq!(e.moteur_reconnu.as_ref().map(|m| (m.cle.as_str(), m.preuve.as_str())), Some(("unity", "UnityPlayer.dll + app.info")));
+        assert!(!e.desaccord_moteur);
+        // Rejoué : jamais en double.
+        appliquer_moteur(&mut c, 1, &constat_unity(), false);
+        assert_eq!(c.jeu(1).unwrap().emplacements.len(), 2);
+        // Firehouse répond ensuite (`Lu`) avec le même endroit (autre casse) : sa ligne reste, celle du moteur part.
+        let r = json!({"sauvegardes": [{"os": "Windows", "chemin": r"%USERPROFILE%\AppData\LocalLow\studio\jeu", "nature": "dossier"}]});
+        appliquer(&mut c, 1, None, &r, &secours(), "10");
+        assert_eq!(origines(&c, 1), [("moteur".to_string(), r"<dossier du jeu>\Saves".to_string()), ("firehouse".to_string(), r"%USERPROFILE%\AppData\LocalLow\studio\jeu".to_string())]);
+        appliquer_moteur(&mut c, 1, &constat_unity(), false);
+        assert_eq!(origines(&c, 1), [("firehouse".to_string(), r"%USERPROFILE%\AppData\LocalLow\studio\jeu".to_string()), ("moteur".to_string(), r"<dossier du jeu>\Saves".to_string())], "Firehouse l'emporte, l'autre endroit du moteur s'ajoute");
+        // Une ligne de la personne : elle l'emporte sur tout.
+        c.jeux.get_mut("1").unwrap().emplacements.insert(0, EmplacementPartie { chemin: r"<dossier du jeu>\SAVES".into(), nature: "dossier".into(), os: "Windows".into(), origine: "personne".into(), ..Default::default() });
+        appliquer_moteur(&mut c, 1, &constat_unity(), false);
+        assert_eq!(origines(&c, 1).iter().map(|x| x.0.as_str()).collect::<Vec<_>>(), ["personne", "firehouse"]);
+        // `Vide` : sans partie sur le disque, Firehouse a raison ; avec, le moteur l'emporte et le désaccord est noté.
+        let mut v = Cache::default();
+        appliquer(&mut v, 2, None, &json!({"sauvegardes": []}), &secours(), "10");
+        appliquer_moteur(&mut v, 2, &constat_unity(), false);
+        let e = v.jeu(2).unwrap();
+        assert!(e.emplacements.is_empty() && !e.desaccord_moteur && e.moteur_reconnu.is_some());
+        appliquer_moteur(&mut v, 2, &constat_unity(), true);
+        let e = v.jeu(2).unwrap();
+        assert_eq!((e.emplacements.len(), e.desaccord_moteur, e.firehouse), (2, true, EtatFirehouse::Vide));
+        // Le moteur n'est plus prouvé (le jeu a changé) : ses lignes partent, le désaccord aussi.
+        appliquer_moteur(&mut v, 2, &Reconnaissance::Douteux, true);
+        let e = v.jeu(2).unwrap();
+        assert!(e.emplacements.is_empty() && !e.desaccord_moteur && e.moteur_reconnu.is_none());
+        // Relu tel qu'écrit (les champs nouveaux se gardent).
+        let d = tempfile::tempdir().unwrap();
+        modifier(d.path(), |x| appliquer_moteur(x, 3, &constat_unity(), false)).unwrap();
+        let relu = lire(d.path()).unwrap();
+        assert_eq!(relu.jeu(3).unwrap().emplacements[0].moteur.as_deref(), Some("Unity"));
+        assert_eq!(relu.jeu(3).unwrap().emplacements[0].preuve.as_deref(), Some("UnityPlayer.dll + app.info"));
+    }
+
+    /// Lot S6 (correction de `retirer_si`) : un jeu que le profil ne voit plus perd TOUTES ses lignes — Firehouse,
+    /// moteur, manifeste — et son moteur reconnu ; seuls les choix de la personne restent.
+    #[test]
+    fn un_jeu_invisible_perd_ses_lignes_de_moteur() {
+        let mut c = Cache::default();
+        appliquer(&mut c, 1, gog(), &cyberpunk(), &secours(), "1");
+        appliquer_moteur(&mut c, 1, &constat_unity(), false);
+        c.jeux.get_mut("1").unwrap().emplacements.push(EmplacementPartie { chemin: r"%APPDATA%\Jeu".into(), nature: "dossier".into(), os: "Windows".into(), origine: "manifeste".into(), ..Default::default() });
+        appliquer_moteur(&mut c, 2, &constat_unity(), false);
+        appliquer(&mut c, 3, None, &cyberpunk(), &secours(), "1");
+        appliquer_moteur(&mut c, 3, &constat_unity(), false);
+        c.jeux.get_mut("3").unwrap().emplacements.push(EmplacementPartie { chemin: r"D:\Mes parties".into(), nature: "dossier".into(), os: "Windows".into(), origine: "personne".into(), ..Default::default() });
+        assert_eq!(retirer_si(&mut c, |_| false), 3);
+        assert!(c.jeu(1).is_none(), "Firehouse, moteur et manifeste : l'entrée part");
+        assert!(c.jeu(2).is_none(), "seulement le moteur : l'entrée part");
+        let e = c.jeu(3).unwrap();
+        assert_eq!(origines(&c, 3), [("personne".to_string(), r"D:\Mes parties".to_string())]);
+        assert_eq!((e.moteur_reconnu.clone(), e.moteur.clone(), e.desaccord_moteur, e.moteur_firehouse.clone()), (None, None, false, None));
+    }
+
+    #[test]
+    fn les_doublons_gardent_la_meilleure_origine() {
+        let l = |o: &str, c: &str| EmplacementPartie { chemin: c.into(), nature: "dossier".into(), origine: o.into(), ..Default::default() };
+        let mut e = PartiesJeu { id: 1, emplacements: vec![l("moteur", r"<dossier du jeu>\Save"), l("firehouse", "<dossier du jeu>/save/"), l("personne", r"<DOSSIER DU JEU>\SAVE"), l("moteur", r"%APPDATA%\X"), l("moteur", r"%appdata%\x")], ..Default::default() };
+        retirer_doublons(&mut e);
+        assert_eq!(e.emplacements.iter().map(|x| (x.origine.as_str(), x.chemin.as_str())).collect::<Vec<_>>(), [("personne", r"<DOSSIER DU JEU>\SAVE"), ("moteur", r"%APPDATA%\X")]);
+    }
+
+    /// Relecture S6 : « des parties existent » ne compte jamais les journaux du jeu ; un désaccord sur le moteur nommé
+    /// par Firehouse est noté ; deux natures du même chemin ne sont pas des doublons.
+    #[test]
+    fn les_journaux_ne_sont_pas_des_parties_et_le_moteur_contredit_est_note() {
+        let d = tempfile::tempdir().unwrap();
+        let low = d.path().join("LocalLow");
+        let jeu = low.join("Studio").join("Jeu");
+        std::fs::create_dir_all(jeu.join("Unity")).unwrap();
+        for f in ["Player.log", "Player-prev.log", "output_log.txt", "Unity/x.log"] {
+            std::fs::write(jeu.join(f), b"journal").unwrap();
+        }
+        let ctx = Contexte { jeu: None, steam: None, compte: None, windows: vec![("AppData-LocalLow", low.clone())], installation: None, boutique: None };
+        let e = PartiesJeu { id: 1, emplacements: vec![EmplacementPartie { chemin: r"%USERPROFILE%\AppData\LocalLow\Studio\Jeu".into(), nature: "dossier".into(), origine: "moteur".into(), ..Default::default() }], ..Default::default() };
+        assert!(!contient_des_parties(&e, &ctx), "seulement des journaux");
+        std::fs::write(jeu.join("save.dat"), b"partie").unwrap();
+        assert!(contient_des_parties(&e, &ctx));
+        let m = PartiesJeu { id: 1, emplacements: vec![EmplacementPartie { chemin: r"%USERPROFILE%\AppData\LocalLow\Studio\Jeu\*.log".into(), nature: "motif".into(), origine: "moteur".into(), ..Default::default() }], ..Default::default() };
+        assert!(!contient_des_parties(&m, &ctx));
+        // Le moteur contredit.
+        let mut c = Cache::default();
+        let mut r = constat_unity();
+        if let crate::moteurs_parties::Reconnaissance::Prouve(x) = &mut r {
+            x.firehouse_contredit = true;
+        }
+        appliquer_moteur(&mut c, 1, &r, false);
+        assert!(c.jeu(1).unwrap().moteur_contredit);
+        appliquer_moteur(&mut c, 1, &constat_unity(), false);
+        assert!(!c.jeu(1).unwrap().moteur_contredit);
+        // Même chemin, natures différentes : les deux restent.
+        let l = |n: &str| EmplacementPartie { chemin: r"<dossier du jeu>\Save".into(), nature: n.into(), origine: "moteur".into(), ..Default::default() };
+        let mut e = PartiesJeu { id: 1, emplacements: vec![l("dossier"), l("fichier"), l("dossier")], ..Default::default() };
+        retirer_doublons(&mut e);
+        assert_eq!(e.emplacements.iter().map(|x| x.nature.as_str()).collect::<Vec<_>>(), ["dossier", "fichier"]);
+    }
+
+    /// Relecture S6 (e) : le `<dossier du jeu>` sorti d'une enveloppe d'archive ne change ni `<SteamLibrary>` d'un jeu
+    /// Steam, ni `<racine de la boutique>` d'un jeu Epic : ils partent du dossier de l'installation d'ORIGINE.
+    #[test]
+    fn la_racine_de_la_boutique_part_de_l_installation_d_origine() {
+        let d = tempfile::tempdir().unwrap();
+        let lib = d.path().join("SteamLibrary");
+        let steam = lib.join("steamapps").join("common").join("Jeu");
+        std::fs::create_dir_all(steam.join("Jeu").join("saves")).unwrap();
+        std::fs::write(steam.join("Jeu").join("Jeu.exe"), b"x").unwrap();
+        let jeu = crate::jeux_pc::dossier_des_parties_de(&steam, None);
+        assert_eq!(jeu, steam.join("Jeu"), "une enveloppe");
+        let un = |chemin: &str, ctx: &Contexte| {
+            let e = PartiesJeu { id: 1, emplacements: vec![EmplacementPartie { chemin: chemin.into(), nature: "dossier".into(), os: "Windows".into(), origine: "firehouse".into(), ..Default::default() }], ..Default::default() };
+            resoudre(&e, ctx, false).remove(0).dossier
+        };
+        let s = Contexte { jeu: Some(jeu.clone()), steam: None, compte: None, windows: vec![], installation: Some(steam.clone()), boutique: Some("steam".into()) };
+        assert_eq!(un(r"<SteamLibrary>\steamapps\common\Jeu\saves", &s).as_deref(), Some(steam.join("saves").to_string_lossy().as_ref()));
+        assert_eq!(un(r"<dossier du jeu>\saves", &s).as_deref(), Some(jeu.join("saves").to_string_lossy().as_ref()));
+        assert_eq!(un(r"<racine de la boutique>\Jeu\saves", &s), None, "jamais pour Steam");
+        // Le dossier de l'installation d'origine reste une racine interdite.
+        assert_eq!(un(&steam.to_string_lossy(), &s), None);
+        let epic = d.path().join("Epic Games").join("Jeu");
+        let e = Contexte { jeu: Some(epic.join("Jeu")), steam: None, compte: None, windows: vec![], installation: Some(epic.clone()), boutique: Some("epic".into()) };
+        assert_eq!(un(r"<racine de la boutique>\Jeu\Saved", &e).as_deref(), Some(epic.join("Saved").to_string_lossy().as_ref()));
     }
 }

@@ -542,7 +542,10 @@ fn meme_jeu(n: i64, fiche: &FicheAbri, inst: &Installe) -> bool {
 /// Le jeu installé sur ce PC (son dossier et sa boutique), ou `None`.
 struct Installe {
     id: i64,
+    /// Le dossier de l'installation (les programmes qui tournent y sont cherchés).
     dossier: PathBuf,
+    /// Lot S6 : le `<dossier du jeu>` des parties, celui de l'exécutable (`Installation::dossier_des_parties`).
+    parties: PathBuf,
     boutique: Option<crate::emplacements_parties::BoutiqueJeu>,
 }
 
@@ -587,9 +590,11 @@ impl Noyau {
         let j = self.registre().jeu(id).ok().flatten()?;
         let i = j.installation?;
         let dossier = PathBuf::from(&i.dossier);
+        let parties = i.dossier_des_parties();
         dossier.is_dir().then(|| Installe {
             id,
             dossier,
+            parties,
             boutique: i.boutique.map(|b| crate::emplacements_parties::BoutiqueJeu { source: b.source, cle: b.cle }),
         })
     }
@@ -647,7 +652,7 @@ impl Noyau {
                 b.en_cours += a_regler.len();
                 continue;
             }
-            let ctx = crate::commandes::contexte_des_parties(&dp, inst.boutique.as_ref(), Some(inst.dossier.clone()))(windows.to_vec());
+            let ctx = crate::commandes::contexte_des_parties(&dp, inst.boutique.as_ref(), Some(inst.parties.clone()), Some(inst.dossier.clone()))(windows.to_vec());
             for e in a_regler {
                 match examiner(&attente, &fiche, e, &ctx, sel.as_deref()) {
                     Examen::Vide => {}
@@ -717,7 +722,7 @@ impl Noyau {
             }
             let ici = self.numero_ici(&s, n);
             let Some(inst) = self.installe(ici).filter(|i| meme_jeu(n, &fiche, i)) else { continue };
-            let ctx = crate::commandes::contexte_des_parties(&dp, inst.boutique.as_ref(), Some(inst.dossier.clone()))(windows.to_vec());
+            let ctx = crate::commandes::contexte_des_parties(&dp, inst.boutique.as_ref(), Some(inst.parties.clone()), Some(inst.dossier.clone()))(windows.to_vec());
             let titre = s.verrou().jeu(ici).ok().flatten().map(|j| j.titre).unwrap_or_default();
             for e in &fiche.emplacements {
                 if reglees.entrees.get(&cle_reglee(n, &e.cle)).is_some_and(|r| r.signature == signature(&fiche, &e.cle)) {
@@ -810,7 +815,7 @@ impl Noyau {
             return Err(Erreur::Refus("Le jeu est en cours : quitte-le d'abord, puis recommence.".into()));
         }
         let sel = ap::sel_local(&dp);
-        let ctx = crate::commandes::contexte_des_parties(&dp, inst.boutique.as_ref(), Some(inst.dossier.clone()))(windows.to_vec());
+        let ctx = crate::commandes::contexte_des_parties(&dp, inst.boutique.as_ref(), Some(inst.parties.clone()), Some(inst.dossier.clone()))(windows.to_vec());
         let Examen::Resolu { lieu, fichiers, statut, signature } = examiner(&attente, &fiche, &e, &ctx, sel.as_deref()) else {
             return Err(Erreur::Refus("Cette partie ne se retrouve plus sur ce PC : rien n'est remplacé.".into()));
         };
@@ -922,7 +927,7 @@ mod tests {
     }
 
     fn ctx(docs: &Path, jeu: Option<PathBuf>) -> Contexte {
-        Contexte { jeu, steam: None, compte: None, windows: vec![("Documents", docs.to_path_buf()), ("Parties-enregistrees", docs.join("Saved Games"))], boutique: None }
+        Contexte { jeu, steam: None, compte: None, windows: vec![("Documents", docs.to_path_buf()), ("Parties-enregistrees", docs.join("Saved Games"))], installation: None, boutique: None }
     }
 
     fn emplacement(chemin: &str, nature: &str, identifiant: Option<&str>) -> EmplacementAbrite {
@@ -1575,7 +1580,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let steam = d.path().join("Steam");
         std::fs::create_dir_all(steam.join("userdata").join("12345").join("268500")).unwrap();
-        let c = Contexte { jeu: None, steam: Some(steam.clone()), compte: Some("12345".into()), windows: vec![], boutique: Some("steam".into()) };
+        let c = Contexte { jeu: None, steam: Some(steam.clone()), compte: Some("12345".into()), windows: vec![], installation: None, boutique: Some("steam".into()) };
         let e = emplacement(r"<Steam>\userdata\<identifiant Steam>\268500\remote", "dossier", None);
         let attente = d.path().join("attente");
         let f = fiche(vec![e.clone()], vec![(&format!("emplacements/{}/x.sav", e.cle), b"x")]);
@@ -1640,5 +1645,76 @@ mod tests {
         assert_eq!(l.len(), 2);
         assert!(l.iter().all(|c| c.firehouse.date == Some(1_700_000_000)));
         refus.assert_hits(1);
+    }
+
+    /// Lot S6 : des parties rangées DANS le dossier du jeu, de nature `motif` (RPG Maker VX Ace : `<dossier du
+    /// jeu>\Save*.rvdata2`), se reprennent avec les règles du lot S5 : absent → posé, identique → rien, différent →
+    /// conflit jamais écrasé ; un fichier hors du motif, ou plus bas que le dossier visé, n'est jamais posé.
+    #[tokio::test]
+    async fn une_partie_rangee_dans_le_dossier_du_jeu_par_motif_se_reprend() {
+        let d = tempfile::tempdir().unwrap();
+        let (n, _, zone, jeu) = simule_avec_dune(d.path()).await;
+        let windows: Vec<(&'static str, PathBuf)> = vec![];
+        let e = emplacement(r"<dossier du jeu>\Save*.rvdata2", "motif", None);
+        let (s1, s2) = (format!("emplacements/{}/Save01.rvdata2", e.cle), format!("emplacements/{}/Save02.rvdata2", e.cle));
+        en_attente(&zone, 110, vec![e.clone()], &[(s1, b"partie 1"), (s2, b"partie 2")]);
+        // Une partie 2 déjà là, identique : seule la 1 manque.
+        ecrire(&jeu, "Save02.rvdata2", b"partie 2");
+        let s = n.session().await.unwrap();
+        let r = n.poser_parties_pc(&s, None, &windows, false).unwrap();
+        assert_eq!((r.posees, r.fichiers, r.conflits), (1, 1, 0));
+        assert_eq!(std::fs::read(jeu.join("Save01.rvdata2")).unwrap(), b"partie 1", "posée dans le dossier du jeu");
+        // Identique : rien.
+        let attente = zone.join("parties").join("jeux").join("110");
+        let f = fiche_en_attente(&attente).unwrap();
+        let ctx = crate::commandes::contexte_des_parties(&n.dossier.join("profils").join(&s.profil.id), None, Some(jeu.clone()), None)(vec![]);
+        assert!(matches!(examiner(&attente, &f, &e, &ctx, None), Examen::Resolu { statut: Statut::Identique, .. }));
+        // La personne a rejoué : conflit, jamais écrasé.
+        std::fs::write(jeu.join("Save01.rvdata2"), b"plus loin").unwrap();
+        assert!(matches!(examiner(&attente, &f, &e, &ctx, None), Examen::Resolu { statut: Statut::Conflit(_), .. }));
+        assert_eq!(std::fs::read(jeu.join("Save01.rvdata2")).unwrap(), b"plus loin");
+        // Une fiche qui glisse un fichier hors du motif (les données du jeu) ou plus bas : rien de posé.
+        for r in ["Map001.rvdata2", "Data/Save03.rvdata2"] {
+            let x = fiche(vec![e.clone()], vec![(&format!("emplacements/{}/{r}", e.cle), b"x")]);
+            ecrire(&attente, &format!("emplacements/{}/{r}", e.cle), b"x");
+            assert!(matches!(examiner(&attente, &x, &e, &ctx, None), Examen::Attente(Attente::NonResolu)), "{r}");
+        }
+        assert!(!jeu.join("Map001.rvdata2").exists() && !jeu.join("Data").exists());
+    }
+
+    /// Lot S6 : Ren'Py écrit ses parties À DEUX ENDROITS (`%APPDATA%\RenPy\<dossier>` et `<dossier du jeu>\game\saves`) :
+    /// les deux se reprennent.
+    #[tokio::test]
+    async fn les_deux_endroits_de_ren_py_se_reprennent() {
+        let d = tempfile::tempdir().unwrap();
+        let (n, _, zone, jeu) = simule_avec_dune(d.path()).await;
+        let roaming = d.path().join("Roaming");
+        let windows = vec![("AppData-Roaming", roaming.clone())];
+        let a = emplacement(r"%APPDATA%\RenPy\MonJeu-1600000000", "dossier", None);
+        let b = emplacement(r"<dossier du jeu>\game\saves", "dossier", None);
+        en_attente(&zone, 110, vec![a.clone(), b.clone()], &[(format!("emplacements/{}/1-1-LT1.save", a.cle), b"p"), (format!("emplacements/{}/persistent", a.cle), b"q"), (format!("emplacements/{}/1-1-LT1.save", b.cle), b"p")]);
+        let s = n.session().await.unwrap();
+        assert_eq!(n.poser_parties_pc(&s, None, &windows, false).unwrap().posees, 2);
+        assert_eq!(std::fs::read(roaming.join("RenPy").join("MonJeu-1600000000").join("persistent")).unwrap(), b"q");
+        assert_eq!(std::fs::read(jeu.join("game").join("saves").join("1-1-LT1.save")).unwrap(), b"p");
+    }
+
+    /// Relecture S6 (essai réel) : `<dossier du jeu>` est, pour la reprise aussi, le dossier de l'exécutable quand il est
+    /// dans celui de l'installation (une archive à sous-dossier).
+    #[tokio::test]
+    async fn la_reprise_pose_dans_le_dossier_de_l_executable() {
+        let d = tempfile::tempdir().unwrap();
+        let (n, _, zone, jeu) = simule_avec_dune(d.path()).await;
+        let sous = jeu.join("Dune-1.0-pc");
+        std::fs::create_dir_all(&sous).unwrap();
+        let mut i = n.registre().jeu(110).unwrap().unwrap().installation.unwrap();
+        i.lanceur = Some(crate::installation::Lanceur { programme: sous.join("dune.exe").to_string_lossy().into(), arguments: vec![], dossier: String::new() });
+        n.registre().changer_installation(110, Some(&i)).unwrap();
+        let e = emplacement(r"<dossier du jeu>\game\saves", "dossier", None);
+        en_attente(&zone, 110, vec![e.clone()], &[(format!("emplacements/{}/1-1.save", e.cle), b"partie")]);
+        let s = n.session().await.unwrap();
+        assert_eq!(n.poser_parties_pc(&s, None, &[], false).unwrap().posees, 1);
+        assert_eq!(std::fs::read(sous.join("game").join("saves").join("1-1.save")).unwrap(), b"partie");
+        assert!(!jeu.join("game").exists(), "jamais à côté de l'archive");
     }
 }

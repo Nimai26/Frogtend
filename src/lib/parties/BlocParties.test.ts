@@ -100,6 +100,23 @@ afterEach(() => {
 });
 
 describe('📁 Où sont mes parties (section)', () => {
+  it('lot S6 : un endroit reconnu d’après le moteur dit « 📁 d’après le moteur Unity », au bureau et au canapé', async () => {
+    const LOW = 'C:\\Users\\Léa\\AppData\\LocalLow\\Studio\\Jeu';
+    reponse = {
+      ...LU,
+      firehouse: 'inconnu',
+      moteur: { nom: 'Unity', preuve: 'UnityPlayer.dll + app.info' },
+      emplacements: [{ n: 0, dossier: LOW, filtre: null, nature: 'dossier', origine: 'moteur', os: 'Windows', source: null, moteur: 'Unity', nuage_boutique: false, lisible: true, existe: true, fichiers: 1, octets: 7, en_ligne: 0, trop: false, illisible: false }],
+    };
+    render(BlocParties, { id: -7 });
+    expect(await screen.findByText(LOW)).toBeTruthy();
+    const o = screen.getByText('📁 d’après le moteur Unity');
+    expect(o.getAttribute('title')).toBeNull();
+    cleanup();
+    render(BlocParties, { id: -7, canape: true });
+    expect(await screen.findByText('📁 d’après le moteur Unity')).toBeTruthy();
+  });
+
   it('montre le dossier de ce PC, ce qu’il contient, « d’après Firehouse », et ouvre le dossier au bureau', async () => {
     render(BlocParties, { id: -7 });
     expect(await screen.findByText(DOSSIER)).toBeTruthy();
