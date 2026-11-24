@@ -12,10 +12,11 @@
       n'a changé depuis la dernière sauvegarde), aucun fichier touché.
 - [x] 2. Options ▸ Sauvegarde : éteindre « 🛟 Mettre mes parties à l'abri sur ce PC après chaque partie » ; jouer à
       Cyberpunk, sauvegarder en jeu, quitter ; rallumer l'interrupteur.
-- [ ] 3. Fiche de Cyberpunk ▸ 📁 ▸ « 📥 Reprendre mes parties de Firehouse » : la fenêtre de CONFLIT montre « Sur ce
+- [x] 3. Fiche de Cyberpunk ▸ 📁 ▸ « 📥 Reprendre mes parties de Firehouse » : la fenêtre de CONFLIT montre « Sur ce
       PC » et « Chez Firehouse » (dates, tailles, aucun chemin), le focus est sur « Garder celle de ce PC » ; choisir
-      « Garder celle de ce PC » : ta nouvelle partie est toujours là dans le jeu.
-- [ ] 4. Taodbox ▸ Cyberpunk ▸ parties : le même bouton se choisit à la manette, la fenêtre de conflit se pilote à la
+      « Garder celle de ce PC » : ta nouvelle partie est toujours là dans le jeu. (Cyberpunk crée un NOUVEAU dossier à
+      chaque sauvegarde : pour un conflit, sauvegarder PAR-DESSUS une sauvegarde manuelle déjà envoyée.)
+- [ ] 4. (reportée par Seb le 24/11, à faire à la prochaine session canapé) Taodbox ▸ Cyberpunk ▸ parties : le même bouton se choisit à la manette, la fenêtre de conflit se pilote à la
       croix, A valide, B = « Décider plus tard ».
 
 ## ☁ Parties des jeux PC chez Firehouse (0.223.0, lot S4)

@@ -963,6 +963,8 @@ tout abri (créé seulement sur 404 `document absent`), fenêtre de conflit mais
 trois experts (1 bloquant — reprise coupée posée incomplète — et 8 importants corrigés). Non fait : choix À LA MAIN de
 l'identifiant ; parties rangées dans le dossier du jeu hors `emplacements/` (reprise d'un jeu) ; restauration complète
 non essayée sur un vrai PC neuf.
+**S5 validé par Seb (24/11, 0.224.0)** : reprise d'un jeu (Cyberpunk, 196 fichiers, 255,9 Mo) et fenêtre de conflit
+essayées ; l'étape Taodbox à la manette est reportée à la prochaine session canapé. Prochain : S6 (règles par moteur).
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
 « Connecte-toi… dans la fenêtre qui s'ouvre » laisse croire que rien ne se passe ou que c'est raté. Voulu : une petite
