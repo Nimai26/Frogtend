@@ -151,6 +151,20 @@ pub struct BilanSynchro {
     pub menage: crate::medias::Menage,
 }
 
+/// Écrit une ligne dans le journal du PC rangé dans `dossier` (celui du noyau) : pour une tâche de fond qui ne tient
+/// pas le noyau (le signalement du moteur, contrat 1.53). Mêmes règles : jamais de jeton, de chemin ni de secret.
+pub(crate) fn journaliser_dans(dossier: &std::path::Path, message: &str) {
+    use std::io::Write;
+    let fichier = dossier.join("journal.txt");
+    if std::fs::metadata(&fichier).is_ok_and(|m| m.len() > TAILLE_MAX_JOURNAL) {
+        let _ = std::fs::rename(&fichier, dossier.join("journal.1.txt"));
+    }
+    let _ = std::fs::create_dir_all(dossier);
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&fichier) {
+        let _ = writeln!(f, "{} {message}", maintenant());
+    }
+}
+
 pub struct Noyau {
     pub(crate) dossier: PathBuf,
     pub profils: Profils,
@@ -300,15 +314,7 @@ impl Noyau {
     /// Écrit une ligne dans le journal de ce PC (`journal.txt`). Jamais de jeton ni de secret : seulement ce qui
     /// aide à comprendre un échec (quelle jaquette, quel motif).
     pub fn journaliser(&self, message: &str) {
-        use std::io::Write;
-        let fichier = self.dossier.join("journal.txt");
-        if std::fs::metadata(&fichier).is_ok_and(|m| m.len() > TAILLE_MAX_JOURNAL) {
-            let _ = std::fs::rename(&fichier, self.dossier.join("journal.1.txt"));
-        }
-        let _ = std::fs::create_dir_all(&self.dossier);
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&fichier) {
-            let _ = writeln!(f, "{} {message}", maintenant());
-        }
+        journaliser_dans(&self.dossier, message);
     }
 
     fn dossier_profil(&self, id: &str) -> PathBuf {

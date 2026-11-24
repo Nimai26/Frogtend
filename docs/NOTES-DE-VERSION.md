@@ -1,5 +1,11 @@
 # Notes de version de Frogtend
 
+## 0.225.1 — 🎮 Le moteur reconnu est signalé à Firehouse
+
+- Nouveau : quand Frogtend reconnaît le moteur d'un jeu que Firehouse ne connaissait pas (ou pour lequel il disait
+  « aucune partie »), il le lui signale (le numéro du jeu, le moteur et le nom lu, jamais un chemin de ton PC). Les
+  autres PC de la famille en profitent. Une seule fois par jeu ; rien ne bloque pendant ce temps.
+
 ## 0.225.0 — 🎮 Les parties des jeux Ren'Py, RPG Maker, Unity et Unreal
 
 - Nouveau : quand Firehouse ne sait pas encore où un jeu range ses parties, Frogtend reconnaît son MOTEUR (Ren'Py,

@@ -595,6 +595,20 @@ impl Source {
         }
     }
 
+    /// Contrat 1.53 : signale à Firehouse le moteur reconnu sur le disque (`POST /jeu/{id}/moteur`, corps déjà vérifié :
+    /// jamais un chemin). Rend le code HTTP et le corps (chaque code a son sens : 400 jamais réessayé, 404 on arrête,
+    /// 401 jeton refusé, 5xx plus tard). Mode simulé : `None` (rien n'est envoyé).
+    pub async fn signaler_moteur(&self, media_id: i64, corps: &Value) -> Resultat<Option<(u16, Vec<u8>)>> {
+        match self {
+            Source::Firehouse(c) => {
+                let octets = serde_json::to_vec(corps).map_err(|_| Erreur::Disque("Envoi impossible à préparer.".into()))?;
+                let b = c.brute(reqwest::Method::POST, &format!("/jeu/{media_id}/moteur"), Some(octets), &[("content-type", "application/json".into())]).await?;
+                Ok(Some((b.statut, b.octets)))
+            }
+            Source::Simulee => Ok(None),
+        }
+    }
+
     /// Les triches et mods connus d'un jeu (contrat 13). Route pas encore servie (404) : listes vides.
     pub async fn triches(&self, media_id: i64) -> Resultat<Value> {
         let vide = json!({"codes": [], "cheat_engine": [], "mods": [], "maj_le": null});

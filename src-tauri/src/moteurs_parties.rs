@@ -487,6 +487,10 @@ pub struct Constat {
     pub emplacements: Vec<EmplacementPartie>,
     /// Firehouse nomme pour ce jeu un AUTRE moteur connu des références : désaccord noté (état local, besoin 60).
     pub firehouse_contredit: bool,
+    /// Le nom lu, sous la forme que remonte le contrat 1.53 (`nom_lu`) : le `save_directory` de Ren'Py,
+    /// « Société/Produit » d'Unity, le projet Unreal ; `None` pour un moteur sans nom à lire (RPG Maker…) ou si aucun
+    /// gabarit à nom n'a été appliqué. État local seulement : jamais au journal.
+    pub nom_lu: Option<String>,
 }
 
 impl Constat {
@@ -519,6 +523,26 @@ struct Lecteurs {
 }
 
 impl Lecteurs {
+    /// Le nom lu à remonter (contrat 1.53), seulement s'il a servi à poser un gabarit (`noms`, déjà refusé s'il n'était
+    /// pas sûr) : Ren'Py `save_directory`, Unity « Société/Produit », Unreal le projet.
+    fn nom_lu(&self, noms: &[String]) -> Option<String> {
+        let sert = |v: &String| noms.contains(v);
+        if let Some(NomLu::Valeur(v, _)) = &self.renpy {
+            if sert(v) {
+                return Some(v.clone());
+            }
+        }
+        if let Some(Some((s, p))) = &self.unity {
+            if sert(s) && sert(p) {
+                return Some(format!("{s}/{p}"));
+            }
+        }
+        match &self.unreal {
+            Some(Some(v)) if sert(v) => Some(v.clone()),
+            _ => None,
+        }
+    }
+
     /// (valeur, fichier lu) pour un jeton, `None` : pas de nom (non lu, refusé, ou « aucun »).
     fn valeur(&mut self, jeton: &str, jeu: &Path) -> Option<(String, String)> {
         let (v, fichier) = match jeton {
@@ -673,7 +697,9 @@ pub fn reconnaitre_avec(jeu: &Path, regles: &[RegleMoteur], indice: Option<&str>
         },
     };
     let mut c = Constat { cle: r.cle.clone(), nom: r.nom.clone(), marqueur, firehouse_contredit: nommee.is_some_and(|n| n.cle != r.cle), ..Default::default() };
-    let (l, lus, noms) = gabarits(r, jeu, &mut Lecteurs::default());
+    let mut lecteurs = Lecteurs::default();
+    let (l, lus, noms) = gabarits(r, jeu, &mut lecteurs);
+    c.nom_lu = lecteurs.nom_lu(&noms);
     c.lus_dans = lus;
     c.noms_lus = noms;
     let preuve = c.preuve();
@@ -830,13 +856,15 @@ mod tests {
         assert_eq!((c.cle.as_str(), c.nom.as_str(), c.marqueur.as_str()), ("renpy", "Ren'Py", "renpy"));
         assert_eq!(chemins(&c), [r"%APPDATA%\RenPy\MonJeu-1600000000", r"<dossier du jeu>\game\saves"], "les deux endroits");
         assert_eq!(c.preuve(), "renpy + script.rpyc", "des noms de fichiers seulement");
+        assert_eq!(c.nom_lu.as_deref(), Some("MonJeu-1600000000"), "le nom à remonter (contrat 1.53)");
         assert!(c.emplacements.iter().all(|e| e.origine == "moteur" && e.moteur.as_deref() == Some("Ren'Py") && e.preuve.as_deref() == Some("renpy + script.rpyc")));
         // `options.rpy` en clair l'emporte.
         ecrire(&j, "game/options.rpy", b"define config.save_directory = \"Clair-1\"\n");
         assert_eq!(chemins(&prouve(reconnaitre(&j, &regles(&refs()))))[0], r"%APPDATA%\RenPy\Clair-1");
         // `None` : seulement `game\saves`.
         ecrire(&j, "game/options.rpy", b"define config.save_directory = None\n");
-        assert_eq!(chemins(&prouve(reconnaitre(&j, &regles(&refs())))), [r"<dossier du jeu>\game\saves"]);
+        let c = prouve(reconnaitre(&j, &regles(&refs())));
+        assert_eq!((chemins(&c), c.nom_lu.clone()), (vec![r"<dossier du jeu>\game\saves"], None), "aucun nom à remonter");
         // `tokens` (clés communes à tous les jeux Ren'Py) et un chemin : refusés, `game\saves` reste.
         for v in ["tokens", "persistent", "..", "a/b"] {
             ecrire(&j, "game/options.rpy", format!("define config.save_directory = \"{v}\"\n").as_bytes());
@@ -854,10 +882,11 @@ mod tests {
         assert_eq!(chemins(&c), [r"%USERPROFILE%\AppData\LocalLow\Studio Été\Mon Produit"]);
         assert_eq!(c.preuve(), "UnityPlayer.dll + app.info");
         assert_eq!(c.noms_lus, ["Studio Été", "Mon Produit"]);
+        assert_eq!(c.nom_lu.as_deref(), Some("Studio Été/Mon Produit"), "« Société/Produit » (contrat 1.53)");
         // Sans produit (une seule ligne) : jamais `LocalLow\<société>` seul ; le moteur reste reconnu.
         ecrire(&j, "Jeu_Data/app.info", b"Studio");
         let c = prouve(reconnaitre(&j, &regles(&refs())));
-        assert!(c.emplacements.is_empty());
+        assert!(c.emplacements.is_empty() && c.nom_lu.is_none());
         // Un produit vide, une société avec « \ » : rien.
         ecrire(&j, "Jeu_Data/app.info", b"Studio\n");
         assert!(prouve(reconnaitre(&j, &regles(&refs()))).emplacements.is_empty());
@@ -880,6 +909,7 @@ mod tests {
         assert_eq!((c.cle.as_str(), c.marqueur.as_str()), ("unreal", "ThirdParty"));
         assert_eq!(chemins(&c), [r"%LOCALAPPDATA%\MonProjet\Saved\SaveGames"]);
         assert_eq!(c.preuve(), r"ThirdParty + Content\Paks");
+        assert_eq!(c.nom_lu.as_deref(), Some("MonProjet"));
         // Deux projets possibles : rien.
         ecrire(&j, "Autre/Content/Paks/a.pak", b"x");
         assert!(prouve(reconnaitre(&j, &regles(&refs()))).emplacements.is_empty());
@@ -901,6 +931,7 @@ mod tests {
             assert_eq!(c.cle, *cle);
             assert_eq!(chemins(&c), *attendus);
             assert!(c.lus_dans.is_empty() && c.preuve() == marqueur.rsplit('/').next().unwrap());
+            assert!(c.nom_lu.is_none(), "un moteur sans nom à lire : nom_lu omis");
         }
     }
 

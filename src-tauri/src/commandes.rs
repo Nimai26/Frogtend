@@ -8941,10 +8941,12 @@ async fn parties_du_jeu(
 /// (`/sauvegardes/references ▸ moteurs` ; jamais demandées ici, jamais recopiées), lit ses noms (lecture plafonnée, rien
 /// d'exécuté) et range le constat dans le cache de CE profil — seulement pour un jeu qu'il VOIT, et la session vivante.
 /// Firehouse « aucune partie » : les endroits du moteur ne valent que s'ils contiennent des parties (désaccord noté).
-/// Rien n'est remonté à Firehouse (besoin 60). Journal : le numéro du jeu et des nombres, jamais un nom ni un chemin.
+/// La reconnaissance elle-même ne parle jamais au réseau ; le moteur prouvé est ensuite REMONTÉ à Firehouse en tâche de
+/// fond (contrat 1.53, `lancer_signalement_moteur`), sans jamais bloquer la fiche ni l'abri. Journal : le numéro du jeu
+/// et des nombres, jamais un nom ni un chemin.
 async fn reconnaitre_moteur_du_jeu(
     noyau: &Noyau,
-    s: &crate::noyau::Session,
+    s: &std::sync::Arc<crate::noyau::Session>,
     dp: &std::path::Path,
     id: i64,
     boutique: Option<&crate::emplacements_parties::BoutiqueJeu>,
@@ -8988,6 +8990,10 @@ async fn reconnaitre_moteur_du_jeu(
             let avant = c.emplacements.len();
             c.emplacements.retain(|x| !crate::nuage_steam::candidats(&x.chemin, Some(&x.nature), &ctx).0.iter().any(|e| autres.contains(&cle(e))));
             pris = avant - c.emplacements.len();
+            // Un endroit pris par un autre jeu : le nom lu est douteux (gabarit partagé), il n'est jamais remonté.
+            if pris > 0 {
+                c.nom_lu = None;
+            }
             let e = ep::PartiesJeu { id, emplacements: c.emplacements.clone(), ..Default::default() };
             sur_disque = ep::contient_des_parties(&e, &ctx);
         }
@@ -9011,7 +9017,132 @@ async fn reconnaitre_moteur_du_jeu(
             if pris > 0 { format!(", {pris} écarté(s) (déjà à un autre jeu)") } else { String::new() }
         ));
     }
+    // Le verrou de la session est rendu AVANT : le signalement le reprend.
+    drop(_vivante);
+    lancer_signalement_moteur(noyau, s, dp, id);
     Ok(())
+}
+
+// --- Contrat 1.53 (besoin 60) : le moteur reconnu sur le disque REMONTÉ à Firehouse, pour les autres PC de la famille
+// et pour corriger un « aucune partie » faux. Clé du moteur, nom lu et nom du fichier marqueur : jamais un chemin. Un
+// signalement par (jeu, clé, nom lu), gardé dans le cache du profil pour n'être jamais renvoyé. ---
+
+/// Les signalements en route (dossier du profil, jeu) : jamais deux à la fois pour le même jeu.
+static SIGNALEMENTS_EN_COURS: std::sync::Mutex<std::collections::BTreeSet<(std::path::PathBuf, i64)>> = std::sync::Mutex::new(std::collections::BTreeSet::new());
+
+/// Les tâches de signalement lancées, pour que les tests les attendent (jamais en dehors des tests).
+#[cfg(test)]
+static SIGNALEMENTS_LANCES: std::sync::Mutex<Vec<(std::path::PathBuf, tauri::async_runtime::JoinHandle<()>)>> = std::sync::Mutex::new(Vec::new());
+
+/// Attend la fin des signalements lancés par le noyau rangé dans `dossier` (tests).
+#[cfg(test)]
+pub(crate) async fn attendre_signalements(dossier: &std::path::Path) {
+    loop {
+        let h = {
+            let mut l = SIGNALEMENTS_LANCES.lock().unwrap_or_else(|e| e.into_inner());
+            match l.iter().position(|(d, _)| d == dossier) {
+                Some(i) => l.remove(i).1,
+                None => return,
+            }
+        };
+        let _ = h.await;
+    }
+}
+
+/// Lance en TÂCHE DE FOND le signalement du moteur de ce jeu, s'il y en a un à faire (`a_signaler`) : seulement pour un
+/// jeu que le profil de CETTE session voit, avec son jeton, la session vivante, et une fiche chez Firehouse (un jeu
+/// importé sans fiche : rien). Une fois par reconnaissance au plus ; jamais bloquant.
+fn lancer_signalement_moteur(noyau: &Noyau, s: &std::sync::Arc<crate::noyau::Session>, dp: &std::path::Path, id: i64) {
+    use crate::emplacements_parties as ep;
+    if s.est_perimee() || !s.verrou().visible_ou_reuni(id).unwrap_or(false) {
+        return;
+    }
+    if JETON_REFUSE_PARTIES.lock().unwrap_or_else(|e| e.into_inner()).contains(&(dp.to_path_buf(), std::sync::Arc::as_ptr(s) as usize)) {
+        return;
+    }
+    let Some(a) = ep::lire(dp).ok().and_then(|c| c.jeu(id).and_then(ep::a_signaler)) else { return };
+    let Some(fiche) = noyau.fiche_de(s, id).ok().flatten().filter(|f| *f > 0) else { return };
+    let Some(garde) = SignalementEnCours::prendre((dp.to_path_buf(), id)) else { return };
+    let (s, dp, dossier) = (s.clone(), dp.to_path_buf(), noyau.dossier.clone());
+    #[cfg(test)]
+    let pour_les_tests = dossier.clone();
+    let _tache = tauri::async_runtime::spawn(async move {
+        let _garde = garde;
+        signaler_moteur(&s, &dossier, &dp, id, fiche, &a).await;
+    });
+    #[cfg(test)]
+    SIGNALEMENTS_LANCES.lock().unwrap_or_else(|e| e.into_inner()).push((pour_les_tests, _tache));
+}
+
+/// Un signalement en route, rendu à la fin (même sur une erreur).
+struct SignalementEnCours((std::path::PathBuf, i64));
+
+impl SignalementEnCours {
+    fn prendre(cle: (std::path::PathBuf, i64)) -> Option<Self> {
+        SIGNALEMENTS_EN_COURS.lock().unwrap_or_else(|e| e.into_inner()).insert(cle.clone()).then_some(SignalementEnCours(cle))
+    }
+}
+
+impl Drop for SignalementEnCours {
+    fn drop(&mut self) {
+        SIGNALEMENTS_EN_COURS.lock().unwrap_or_else(|e| e.into_inner()).remove(&self.0);
+    }
+}
+
+/// Envoie UN signalement (`POST /jeu/{fiche}/moteur`, contrat 1.53) et range ce qu'il devient dans le cache du profil :
+/// retenu ou noté (avec le moteur et les `emplacements_moteur` que Firehouse retient ensuite), refusé (400, jamais
+/// réessayé), introuvable (404, on arrête), hors ligne ou 5xx (réessayé à la prochaine reconnaissance) ; 401 : rien de
+/// rangé, plus aucune demande de parties pendant cette session (la fiche le dit, comme d'habitude). Rend l'état rangé.
+/// Journal : le numéro du jeu, la clé du moteur et le résultat — jamais le nom lu, un chemin ni un titre.
+async fn signaler_moteur(
+    s: &std::sync::Arc<crate::noyau::Session>,
+    dossier: &std::path::Path,
+    dp: &std::path::Path,
+    id: i64,
+    fiche: i64,
+    a: &crate::emplacements_parties::ASignaler,
+) -> Option<crate::emplacements_parties::EtatSignalement> {
+    use crate::emplacements_parties::{self as ep, EtatSignalement as E};
+    // Revérifié au départ : la session a pu changer, le jeu disparaître pour ce profil.
+    if s.est_perimee() || !s.verrou().visible_ou_reuni(id).unwrap_or(false) {
+        return None;
+    }
+    let journal = |m: &str| crate::noyau::journaliser_dans(dossier, &format!("jeu {id} : moteur {} signalé à Firehouse : {m}", a.cle));
+    let (etat, reponse) = match s.source.signaler_moteur(fiche, &a.corps()).await {
+        Ok(None) => return None,
+        Ok(Some((200..=299, octets))) => match serde_json::from_slice::<serde_json::Value>(&octets) {
+            Ok(v) if v.is_object() => (if v["retenu"].as_bool() == Some(true) { E::Retenu } else { E::Note }, Some(v)),
+            // Une réponse illisible : rien de sûr, réessayé plus tard.
+            _ => (E::HorsLigne, None),
+        },
+        Ok(Some((401, _))) | Err(crate::erreurs::Erreur::JetonRefuse(_)) => {
+            JETON_REFUSE_PARTIES.lock().unwrap_or_else(|e| e.into_inner()).insert((dp.to_path_buf(), std::sync::Arc::as_ptr(s) as usize));
+            journal("jeton refusé");
+            return None;
+        }
+        Ok(Some((404 | 410, _))) => (E::Introuvable, None),
+        // Firehouse occupé ou en panne : plus tard.
+        Ok(Some((408 | 425 | 429 | 500..=599, _))) => (E::HorsLigne, None),
+        // 400 (clé inconnue, nom ou preuve invalide) et tout autre refus : jamais réessayé.
+        Ok(Some(_)) => (E::Refuse, None),
+        Err(_) => (E::HorsLigne, None),
+    };
+    // Reçu pour CE profil : jamais rangé si la session a changé entre-temps.
+    let range = (|| -> crate::erreurs::Resultat<()> {
+        let vivante = s.verrou_vivant()?;
+        // Revérifié À L'ÉCRITURE (relecture du contrat, 24/11) : une synchronisation a pu cacher le jeu à ce profil
+        // pendant l'envoi ; sa réponse (moteur, emplacements) n'est alors jamais rangée.
+        if !vivante.visible_ou_reuni(id).unwrap_or(false) {
+            return Err(crate::erreurs::Erreur::Introuvable(String::new()));
+        }
+        let quand = crate::noyau::maintenant();
+        ep::modifier(dp, |c| ep::noter_signalement(c, id, a, etat, &quand, reponse.as_ref()))
+    })();
+    if range.is_err() {
+        return None;
+    }
+    journal(etat.mot());
+    Some(etat)
 }
 
 /// Le jeu d'un « 📁 Où sont mes parties », pour le profil de la session : sa carte (pas sur ce PC), sa boutique et son
@@ -14891,5 +15022,308 @@ mod tests_moteurs {
         for interdit in ["Legende", "RenPy", "options.rpy", &d.path().to_string_lossy()] {
             assert!(!journal.contains(interdit), "« {interdit} » au journal : {journal}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests_signalement_moteur {
+    //! Contrat 1.53 (besoin 60) : le moteur reconnu REMONTÉ à Firehouse, par le chemin réel (profil, Firehouse simulé,
+    //! fiche ouverte, cache du profil, tâche de fond). Jamais le vrai Firehouse ; tout dans des dossiers temporaires.
+    use crate::coffre::CoffreMemoire;
+    use crate::emplacements_parties::{self as ep, EtatSignalement as E};
+    use crate::noyau::{Connexion, Noyau};
+    use httpmock::prelude::*;
+    use serde_json::json;
+    use std::path::{Path, PathBuf};
+
+    fn references() -> serde_json::Value {
+        serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/sauvegardes-references-148-reel.json")).unwrap()).unwrap()
+    }
+
+    fn ecrire(d: &Path, r: &str, o: &[u8]) -> PathBuf {
+        let f = r.split('/').fold(d.to_path_buf(), |p, s| p.join(s));
+        std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+        std::fs::write(&f, o).unwrap();
+        f
+    }
+
+    /// Le jeu 900 (Windows, de Firehouse) installé dans `dossier`.
+    fn installer(n: &Noyau, dossier: &Path) {
+        n.registre()
+            .ajouter(&crate::jeux_pc::JeuPc {
+                id: 900,
+                version: 200,
+                titre: "Jeu".into(),
+                plateforme: "Windows".into(),
+                dossier: dossier.parent().unwrap().to_string_lossy().into(),
+                etat: crate::jeux_pc::Etat::Telecharge,
+                total: 0,
+                fichiers: vec![],
+                message: None,
+                ajoute_le: "1".into(),
+                ajoute_par: "p".into(),
+                installation: None,
+                temps_jeu: 0,
+                derniere_partie: None,
+            })
+            .unwrap();
+        let i = crate::jeux_pc::Installation {
+            dossier: dossier.to_string_lossy().into(),
+            methode: crate::installation::Methode::Aucune,
+            lanceur: None,
+            fichier_du_jeu: None,
+            installe_le: "1".into(),
+            versions: vec![],
+            boutique: None,
+            extraits: vec![],
+        };
+        n.registre().changer_installation(900, Some(&i)).unwrap();
+    }
+
+    /// Un Firehouse simulé : le jeu 900 « Studio Secret » (Windows) ; `/jeu/900/triche` rend `triche`.
+    fn serveur(triche: serde_json::Value) -> MockServer {
+        let s = MockServer::start();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/plateformes");
+            t.status(200).json_body(json!({"ok": true, "plateformes": [{"nom": "Windows", "jeux": 1}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/catalogue");
+            t.status(200).json_body(json!({"ok": true, "suivante": null, "jeux": [{"id": 900, "titre": "Studio Secret", "plateforme": "Windows"}]}));
+        });
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/jeu/900/triche");
+            t.status(200).json_body(triche.clone());
+        });
+        let r = references();
+        s.mock(|w, t| {
+            w.method(GET).path("/api/jeux/v1/sauvegardes/references");
+            t.status(200).json_body(r.clone());
+        });
+        s
+    }
+
+    struct Banc {
+        _d: tempfile::TempDir,
+        n: Noyau,
+        dp: PathBuf,
+        racine: PathBuf,
+        windows: Vec<(&'static str, PathBuf)>,
+    }
+
+    /// Un jeu Unity installé (« Studio Secret » / « Jeu Caché »), le profil de Seb ouvert et synchronisé.
+    async fn banc(s: &MockServer) -> Banc {
+        let d = tempfile::tempdir().unwrap();
+        let n = Noyau::nouveau(&d.path().join("app"), Box::new(CoffreMemoire::default())).unwrap();
+        let jeu = d.path().join("Jeux").join("Windows").join("Studio Secret").join("Jeu");
+        ecrire(&jeu, "UnityPlayer.dll", b"dll");
+        ecrire(&jeu, "Jeu Caché_Data/app.info", "Studio Secret\nJeu Caché".as_bytes());
+        installer(&n, &jeu);
+        let low = d.path().join("LocalLow");
+        std::fs::create_dir_all(&low).unwrap();
+        let p = n.creer_profil("Seb", None, Some("jeton-seb")).unwrap().id;
+        n.ouvrir(&p, None, &Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
+        n.synchroniser(|_, _| {}).await.unwrap();
+        let dp = n.dossier.join("profils").join(&p);
+        Banc { racine: d.path().to_path_buf(), _d: d, n, dp, windows: vec![("AppData-LocalLow", low)] }
+    }
+
+    impl Banc {
+        /// Ouvre la fiche « 📁 Où sont mes parties » et attend la tâche de fond du signalement.
+        async fn ouvrir_fiche(&self) -> super::PartiesVues {
+            let w = self.windows.clone();
+            let v = super::parties_du_jeu(&self.n, 900, true, move || w.clone()).await.unwrap();
+            super::attendre_signalements(&self.n.dossier).await;
+            v
+        }
+
+        fn entree(&self) -> ep::PartiesJeu {
+            ep::lire(&self.dp).unwrap().jeu(900).cloned().unwrap()
+        }
+
+        fn etats(&self) -> Vec<E> {
+            self.entree().signalements.iter().map(|x| x.etat).collect()
+        }
+
+        /// Le journal ne dit que des numéros, la clé du moteur et le résultat : jamais le nom lu, un chemin ni un titre.
+        fn journal_propre(&self) -> String {
+            let j = std::fs::read_to_string(self.n.dossier.join("journal.txt")).unwrap();
+            for interdit in ["Studio Secret", "Jeu Caché", "UnityPlayer", "app.info", "LocalLow", &self.racine.to_string_lossy()] {
+                assert!(!j.contains(interdit), "« {interdit} » au journal : {j}");
+            }
+            j
+        }
+    }
+
+    const CORPS_UNITY: &str = r#"{"moteur": "unity", "nom_lu": "Studio Secret/Jeu Caché", "preuve": "UnityPlayer.dll"}"#;
+
+    /// Firehouse ne connaît pas les parties (`null`) : le moteur prouvé est signalé, SANS `desaccord` ; retenu, le moteur
+    /// et les `emplacements_moteur` rendus sont rangés ; jamais renvoyé ensuite.
+    #[tokio::test]
+    async fn un_moteur_retenu_est_range_et_jamais_renvoye() {
+        let s = serveur(json!({"ok": true, "codes": [], "sauvegardes": null}));
+        let post = s.mock(|w, t| {
+            w.method(POST).path("/api/jeux/v1/jeu/900/moteur").header("authorization", "Bearer jeton-seb").json_body(serde_json::from_str::<serde_json::Value>(CORPS_UNITY).unwrap());
+            t.status(200).json_body(json!({"ok": true, "retenu": true, "moteur": "unity", "emplacements_moteur": {"moteur": "unity", "moteur_nom": "Unity", "sauvegardes": [], "nom_a_lire": "companyName", "certitude": "officielle"}}));
+        });
+        let b = banc(&s).await;
+        let v = b.ouvrir_fiche().await;
+        assert_eq!(v.moteur.as_ref().map(|m| m.nom.as_str()), Some("Unity"));
+        post.assert_hits(1);
+        let e = b.entree();
+        assert_eq!(b.etats(), [E::Retenu]);
+        assert_eq!(e.signalements[0].nom_lu.as_deref(), Some("Studio Secret/Jeu Caché"));
+        assert_eq!(e.moteur_firehouse.as_ref().unwrap()["moteur"], "unity");
+        assert_eq!(e.moteur.as_ref().map(|m| m.nom.as_str()), Some("Unity"));
+        // Rouverte (et l'abri) : jamais renvoyé.
+        b.ouvrir_fiche().await;
+        super::reconnaitre_moteur_du_jeu(&b.n, &b.n.session().await.unwrap(), &b.dp, 900, None, Some(PathBuf::from(&b.n.registre().jeu(900).unwrap().unwrap().installation.unwrap().dossier)), None, b.windows.clone()).await.unwrap();
+        super::attendre_signalements(&b.n.dossier).await;
+        post.assert_hits(1);
+        assert!(b.journal_propre().contains("jeu 900 : moteur unity signalé à Firehouse : retenu"));
+    }
+
+    /// Firehouse nomme un AUTRE moteur : signalé SANS `desaccord` (Firehouse note lui-même un moteur différent) ;
+    /// `retenu: false` = noté pour un admin, le moteur de Firehouse reste ; jamais renvoyé.
+    #[tokio::test]
+    async fn un_autre_moteur_nomme_est_signale_sans_desaccord_et_note() {
+        let em = json!({"moteur": "renpy", "moteur_nom": "Ren'Py", "sauvegardes": [], "nom_a_lire": null, "certitude": "secondaire"});
+        let s = serveur(json!({"ok": true, "codes": [], "sauvegardes": null, "moteur": "Ren'Py", "emplacements_moteur": em}));
+        let post = s.mock(|w, t| {
+            w.method(POST).path("/api/jeux/v1/jeu/900/moteur").json_body(serde_json::from_str::<serde_json::Value>(CORPS_UNITY).unwrap());
+            t.status(200).json_body(json!({"ok": true, "retenu": false, "moteur": "renpy", "emplacements_moteur": em}));
+        });
+        let b = banc(&s).await;
+        b.ouvrir_fiche().await;
+        post.assert_hits(1);
+        let e = b.entree();
+        assert!(e.moteur_contredit && !e.desaccord_moteur);
+        assert_eq!(b.etats(), [E::Note]);
+        assert_eq!(e.moteur_firehouse.as_ref().unwrap()["moteur"], "renpy", "Firehouse garde son moteur");
+        b.ouvrir_fiche().await;
+        post.assert_hits(1);
+        assert!(b.journal_propre().contains("jeu 900 : moteur unity signalé à Firehouse : noté"));
+    }
+
+    /// 400 (`{detail}` en clair) : refusé, jamais réessayé ; 404 (jeu caché ou absent) : on arrête.
+    #[tokio::test]
+    async fn un_refus_400_ou_un_404_ne_se_renvoie_jamais() {
+        for (code, etat, mot) in [(400, E::Refuse, "refusé"), (404, E::Introuvable, "introuvable")] {
+            let s = serveur(json!({"ok": true, "codes": [], "sauvegardes": null}));
+            let post = s.mock(|w, t| {
+                w.method(POST).path("/api/jeux/v1/jeu/900/moteur");
+                t.status(code).json_body(json!({"detail": "clé de moteur inconnue"}));
+            });
+            let b = banc(&s).await;
+            b.ouvrir_fiche().await;
+            post.assert_hits(1);
+            assert_eq!(b.etats(), [etat], "{code}");
+            b.ouvrir_fiche().await;
+            b.ouvrir_fiche().await;
+            post.assert_hits(1);
+            let j = b.journal_propre();
+            assert!(j.contains(&format!("jeu 900 : moteur unity signalé à Firehouse : {mot}")), "{j}");
+            assert!(!j.contains("clé de moteur inconnue"));
+        }
+    }
+
+    /// 401 : rien n'est rangé, plus aucune demande pendant cette session, et la fiche le dit (`jeton_refuse`).
+    #[tokio::test]
+    async fn un_jeton_refuse_arrete_et_se_dit() {
+        let s = serveur(json!({"ok": true, "codes": [], "sauvegardes": null}));
+        let post = s.mock(|w, t| {
+            w.method(POST).path("/api/jeux/v1/jeu/900/moteur");
+            t.status(401).json_body(json!({"ok": false}));
+        });
+        let b = banc(&s).await;
+        let v = b.ouvrir_fiche().await;
+        assert!(!v.jeton_refuse);
+        post.assert_hits(1);
+        assert!(b.etats().is_empty(), "rien de rangé");
+        let v = b.ouvrir_fiche().await;
+        assert!(v.jeton_refuse, "la fiche le dit");
+        post.assert_hits(1);
+        assert!(b.journal_propre().contains("jeu 900 : moteur unity signalé à Firehouse : jeton refusé"));
+    }
+
+    /// 5xx puis hors ligne (Firehouse injoignable) : rangé « hors ligne », réessayé à la prochaine reconnaissance (une
+    /// fois par ouverture) ; puis retenu, et plus jamais renvoyé.
+    #[tokio::test]
+    async fn hors_ligne_ou_5xx_se_reessaie_a_l_ouverture_suivante() {
+        let s = serveur(json!({"ok": true, "codes": [], "sauvegardes": null}));
+        let mut panne = s.mock(|w, t| {
+            w.method(POST).path("/api/jeux/v1/jeu/900/moteur");
+            t.status(503).body("occupé");
+        });
+        let b = banc(&s).await;
+        b.ouvrir_fiche().await;
+        panne.assert_hits(1);
+        assert_eq!(b.etats(), [E::HorsLigne]);
+        // Hors ligne : la fiche s'ouvre (le cache), le signalement est essayé une fois, et reste à faire.
+        b.n.reconnecter(&Connexion { adresse: "http://127.0.0.1:9".into(), simule: false }).await.unwrap();
+        b.ouvrir_fiche().await;
+        panne.assert_hits(1);
+        assert_eq!(b.etats(), [E::HorsLigne]);
+        // De retour : envoyé, retenu, et plus jamais renvoyé.
+        b.n.reconnecter(&Connexion { adresse: s.base_url(), simule: false }).await.unwrap();
+        panne.delete();
+        let post = s.mock(|w, t| {
+            w.method(POST).path("/api/jeux/v1/jeu/900/moteur").json_body(serde_json::from_str::<serde_json::Value>(CORPS_UNITY).unwrap());
+            t.status(200).json_body(json!({"ok": true, "retenu": true, "moteur": "unity", "emplacements_moteur": null}));
+        });
+        b.ouvrir_fiche().await;
+        post.assert_hits(1);
+        assert_eq!(b.etats(), [E::Retenu], "remplace le « hors ligne », jamais en double");
+        b.ouvrir_fiche().await;
+        post.assert_hits(1);
+        let j = b.journal_propre();
+        assert_eq!(j.matches("jeu 900 : moteur unity signalé à Firehouse : hors ligne").count(), 2, "{j}");
+        assert!(j.contains("jeu 900 : moteur unity signalé à Firehouse : retenu"), "{j}");
+    }
+
+    /// Un nom lu de la forme d'un chemin (un cache abîmé, un lecteur futur) n'est JAMAIS envoyé ; un jeu que le profil ne
+    /// voit pas n'est JAMAIS signalé, même appelé directement.
+    #[tokio::test]
+    async fn un_nom_de_chemin_ou_un_jeu_cache_ne_part_jamais() {
+        let s = serveur(json!({"ok": true, "codes": [], "sauvegardes": null}));
+        let post = s.mock(|w, t| {
+            w.method(POST).path("/api/jeux/v1/jeu/900/moteur");
+            t.status(200).json_body(json!({"ok": true, "retenu": true, "moteur": "unity", "emplacements_moteur": null}));
+        });
+        let b = banc(&s).await;
+        b.ouvrir_fiche().await;
+        post.assert_hits(1);
+        let session = b.n.session().await.unwrap();
+        for chemin in [r"C:\Users\nimai\AppData", "../Studio", "%APPDATA%/x", "/home/x"] {
+            ep::modifier(&b.dp, |c| {
+                let e = c.jeux.get_mut("900").unwrap();
+                e.signalements.clear();
+                e.moteur_reconnu.as_mut().unwrap().nom_lu = Some(chemin.into());
+            })
+            .unwrap();
+            super::lancer_signalement_moteur(&b.n, &session, &b.dp, 900);
+            super::attendre_signalements(&b.n.dossier).await;
+        }
+        post.assert_hits(1);
+        // Un jeu caché à ce profil (absent de sa ludothèque) : jamais signalé, même avec un signalement à faire.
+        let post_901 = s.mock(|w, t| {
+            w.method(POST).path("/api/jeux/v1/jeu/901/moteur");
+            t.status(200).json_body(json!({"ok": true, "retenu": true}));
+        });
+        ep::modifier(&b.dp, |c| {
+            let mut e = c.jeux.get("900").unwrap().clone();
+            e.id = 901;
+            e.moteur_reconnu.as_mut().unwrap().nom_lu = Some("Studio/Autre".into());
+            c.jeux.insert("901".into(), e);
+        })
+        .unwrap();
+        assert!(ep::a_signaler(ep::lire(&b.dp).unwrap().jeu(901).unwrap()).is_some());
+        super::lancer_signalement_moteur(&b.n, &session, &b.dp, 901);
+        super::attendre_signalements(&b.n.dossier).await;
+        let a = ep::a_signaler(ep::lire(&b.dp).unwrap().jeu(901).unwrap()).unwrap();
+        assert_eq!(super::signaler_moteur(&session, &b.n.dossier, &b.dp, 901, 901, &a).await, None);
+        post.assert_hits(1);
+        post_901.assert_hits(0);
+        b.journal_propre();
     }
 }

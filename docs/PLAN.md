@@ -999,6 +999,11 @@ seul sous-dossier, 3 niveaux, contrôlé par le lanceur) — relevé réel : 1 j
 de boutique ; relu par les experts lancement et contrat (aucun bloquant, 6 importants corrigés). Non fait : Godot et
 GameMaker reconnus mais non appliqués (nom illisible sans risque), archives `.rpa` de Ren'Py, stockage NW.js de RPG
 Maker MV/MZ, remontée à Firehouse (1.53).
+**S6 validé par Seb (24/11, 0.225.0)** : What a Legend! (Ren'Py, archive enveloppée) — deux endroits d'après le
+moteur, abri automatique après une partie (8 fichiers), envoi chez Firehouse par la sauvegarde d'après partie,
+Cyberpunk inchangé. **0.225.1** : remontée du moteur (contrat 1.53, `POST /jeu/{id}/moteur`, une fois par (jeu, moteur,
+nom lu), `nom_lu` omis sans nom, `desaccord` seulement sur `Vide`, jamais un nom de forme chemin, 400/404 jamais
+rejoués, hors ligne/5xx réessayés à l'ouverture suivante). Prochain : S7 (rattrapage des parties jouées hors de Frogtend).
 **Demande de Seb (22/11, après « Ajouter un compte GOG ») : une FENÊTRE D'ATTENTE pendant la lecture d'un compte.**
 Après la connexion, la lecture prend du temps et le seul signe d'activité est le bouton « Connexion… » ; le message
 « Connecte-toi… dans la fenêtre qui s'ouvre » laisse croire que rien ne se passe ou que c'est raté. Voulu : une petite

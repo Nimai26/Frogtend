@@ -99,8 +99,8 @@ pub struct EmplacementPartie {
     pub preuve: Option<String>,
 }
 
-/// Le moteur reconnu SUR LE DISQUE par Frogtend (lot S6), gardé dans l'état local du profil seulement (la remontée à
-/// Firehouse attend le besoin 60).
+/// Le moteur reconnu SUR LE DISQUE par Frogtend (lot S6), gardé dans l'état local du profil ; remonté à Firehouse
+/// (contrat 1.53) sans jamais un chemin.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct MoteurReconnu {
     /// La clé de Firehouse (`unity`, `renpy`…).
@@ -111,6 +111,156 @@ pub struct MoteurReconnu {
     /// Les noms lus (jamais au journal).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub noms_lus: Vec<String>,
+    /// Le NOM du fichier marqueur seul (la `preuve` du contrat 1.53).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub marqueur: String,
+    /// Le nom lu sous la forme du contrat 1.53 (« Société/Produit » pour Unity) ; `None` sans nom à lire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nom_lu: Option<String>,
+}
+
+/// Ce qu'est devenu un signalement du moteur reconnu à Firehouse (contrat 1.53, besoin 60).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EtatSignalement {
+    /// Firehouse l'a retenu (`retenu: true`).
+    Retenu,
+    /// Firehouse l'a noté pour un admin, sans rien remplacer (`retenu: false`).
+    Note,
+    /// Refusé (400 : clé inconnue, nom ou preuve invalide) : jamais renvoyé.
+    Refuse,
+    /// 404 : jeu caché ou absent chez Firehouse : jamais renvoyé.
+    Introuvable,
+    /// Hors ligne, 5xx ou Firehouse occupé : réessayé à la prochaine reconnaissance.
+    HorsLigne,
+}
+
+impl EtatSignalement {
+    /// Un état qui ne se renvoie plus jamais.
+    pub fn definitif(self) -> bool {
+        !matches!(self, EtatSignalement::HorsLigne)
+    }
+
+    /// Le mot du journal.
+    pub fn mot(self) -> &'static str {
+        match self {
+            EtatSignalement::Retenu => "retenu",
+            EtatSignalement::Note => "noté",
+            EtatSignalement::Refuse => "refusé",
+            EtatSignalement::Introuvable => "introuvable",
+            EtatSignalement::HorsLigne => "hors ligne",
+        }
+    }
+}
+
+/// Un signalement fait (ou essayé) pour UN jeu : (clé du moteur, nom lu) n'est envoyé qu'une fois.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SignalementMoteur {
+    pub cle: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nom_lu: Option<String>,
+    pub etat: EtatSignalement,
+    /// Quand (secondes depuis 1970).
+    pub le: String,
+}
+
+/// Le corps d'un signalement à envoyer (`POST /jeu/{id}/moteur`, contrat 1.53).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ASignaler {
+    pub cle: String,
+    pub nom_lu: Option<String>,
+    /// Le nom du fichier marqueur, sans dossier.
+    pub preuve: String,
+    /// Firehouse disait « aucune partie » (`Vide`). Un AUTRE moteur nommé par Firehouse n'est pas un `desaccord`
+    /// (réponse de Firehouse du 24/11 : il note de lui-même un moteur différent).
+    pub desaccord: bool,
+}
+
+impl ASignaler {
+    /// `nom_lu` omis sans nom à lire ; `desaccord` seulement s'il est vrai (absent vaut faux).
+    pub fn corps(&self) -> Value {
+        let mut c = serde_json::json!({"moteur": self.cle, "preuve": self.preuve});
+        if let Some(n) = &self.nom_lu {
+            c["nom_lu"] = Value::from(n.as_str());
+        }
+        if self.desaccord {
+            c["desaccord"] = Value::from(true);
+        }
+        c
+    }
+}
+
+/// Le `nom_lu` passe-t-il les règles de Firehouse (contrat 1.53) ? 200 caractères au plus ; « Société/Produit » permis
+/// (une barre entre deux morceaux non vides) ; JAMAIS ce qui ressemble à un chemin : ni `\`, ni lettre de disque (ni
+/// aucun `:`), ni chemin absolu, ni `..`, ni `%VARIABLE%` (aucun `%`), ni caractère de contrôle.
+pub fn nom_lu_envoyable(v: &str) -> bool {
+    !v.trim().is_empty()
+        && v.chars().count() <= 200
+        && !v.contains("..")
+        && !v.chars().any(|c| c.is_control() || ['\\', ':', '%'].contains(&c))
+        && v.split('/').all(|m| !m.trim().is_empty())
+        && v.matches('/').count() <= 1
+}
+
+/// La `preuve` passe-t-elle les règles de Firehouse (contrat 1.53) ? Un simple nom de fichier, sans dossier, de 120
+/// caractères au plus.
+pub fn preuve_envoyable(v: &str) -> bool {
+    !v.trim().is_empty() && v.chars().count() <= 120 && v != "." && !v.contains("..") && !v.chars().any(|c| c.is_control() || ['\\', '/', ':', '%'].contains(&c))
+}
+
+/// Le signalement à faire pour ce jeu, ou `None` : un moteur PROUVÉ et appliqué (des lignes `moteur` rangées) quand
+/// Firehouse ne connaît pas les parties (`Inconnu`), disait « aucune partie » (désaccord) ou nomme un autre moteur ; et
+/// jamais deux fois le même (clé, nom lu) une fois la réponse connue (retenu, noté, refusé, introuvable). Un nom lu ou
+/// une preuve qui ressemble à un chemin : jamais envoyé.
+pub fn a_signaler(e: &PartiesJeu) -> Option<ASignaler> {
+    let m = e.moteur_reconnu.as_ref()?;
+    if !e.emplacements.iter().any(|x| x.origine == "moteur") {
+        return None;
+    }
+    if !(e.firehouse == EtatFirehouse::Inconnu || e.desaccord_moteur || e.moteur_contredit) {
+        return None;
+    }
+    let nom_lu = m.nom_lu.clone().filter(|n| !n.trim().is_empty());
+    if nom_lu.as_deref().is_some_and(|n| !nom_lu_envoyable(n)) {
+        return None;
+    }
+    let preuve = if m.marqueur.is_empty() { m.preuve.split(" + ").next().unwrap_or("").to_string() } else { m.marqueur.clone() };
+    if m.cle.trim().is_empty() || !preuve_envoyable(&preuve) {
+        return None;
+    }
+    if e.signalements.iter().any(|x| x.cle == m.cle && x.nom_lu == nom_lu && x.etat.definitif()) {
+        return None;
+    }
+    Some(ASignaler { cle: m.cle.clone(), nom_lu, preuve, desaccord: e.desaccord_moteur })
+}
+
+/// Au plus tant de signalements gardés par jeu (les plus récents).
+const SIGNALEMENTS_MAX: usize = 10;
+
+/// Range ce qu'est devenu un signalement (le précédent du même (clé, nom lu) est remplacé) et, sur une réponse de
+/// Firehouse, le moteur et les `emplacements_moteur` qu'il retient APRÈS le signalement. Rien pour un jeu sans entrée.
+pub fn noter_signalement(c: &mut Cache, id: i64, a: &ASignaler, etat: EtatSignalement, quand: &str, reponse: Option<&Value>) {
+    let Some(e) = c.jeux.get_mut(&id.to_string()) else { return };
+    e.signalements.retain(|x| !(x.cle == a.cle && x.nom_lu == a.nom_lu));
+    e.signalements.push(SignalementMoteur { cle: a.cle.clone(), nom_lu: a.nom_lu.clone(), etat, le: quand.to_string() });
+    let trop = e.signalements.len().saturating_sub(SIGNALEMENTS_MAX);
+    e.signalements.drain(..trop);
+    let Some(r) = reponse else { return };
+    let texte = |v: &Value| v.as_str().map(str::trim).filter(|r| !r.is_empty()).map(String::from);
+    let em = &r["emplacements_moteur"];
+    if em.is_object() {
+        e.moteur_firehouse = Some(em.clone());
+    } else if r.get("emplacements_moteur").is_some() {
+        e.moteur_firehouse = None;
+    }
+    match texte(&em["moteur_nom"]).or_else(|| texte(&r["moteur"])) {
+        Some(nom) => {
+            let preuve = texte(&em["source_url"]).map(|u| format!("Firehouse ({u})")).unwrap_or_else(|| "Firehouse".into());
+            e.moteur = Some(Moteur { nom, preuve });
+        }
+        None if r.get("moteur").is_some() && e.moteur.as_ref().is_some_and(|m| m.preuve.starts_with("Firehouse")) => e.moteur = None,
+        None => {}
+    }
 }
 
 /// Ce que le profil sait des parties d'UN jeu.
@@ -161,6 +311,9 @@ pub struct PartiesJeu {
     /// remontée du besoin 60).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub moteur_contredit: bool,
+    /// Contrat 1.53 : les signalements du moteur reconnu faits à Firehouse (jamais renvoyés une fois répondus).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub signalements: Vec<SignalementMoteur>,
     #[serde(default)]
     pub emplacements: Vec<EmplacementPartie>,
 }
@@ -571,7 +724,7 @@ pub fn appliquer_moteur(c: &mut Cache, id: i64, r: &crate::moteurs_parties::Reco
         e.moteur_reconnu = None;
         return;
     };
-    e.moteur_reconnu = Some(MoteurReconnu { cle: x.cle.clone(), nom: x.nom.clone(), preuve: x.preuve(), noms_lus: x.noms_lus.clone() });
+    e.moteur_reconnu = Some(MoteurReconnu { cle: x.cle.clone(), nom: x.nom.clone(), preuve: x.preuve(), noms_lus: x.noms_lus.clone(), marqueur: x.marqueur.clone(), nom_lu: x.nom_lu.clone() });
     e.moteur_contredit = x.firehouse_contredit;
     let applique = match e.firehouse {
         EtatFirehouse::Vide => parties_sur_disque,
@@ -1349,6 +1502,7 @@ mod tests {
             lus_dans: vec!["app.info".into()],
             noms_lus: vec!["Studio".into(), "Jeu".into()],
             emplacements: vec![ligne(r"%USERPROFILE%\AppData\LocalLow\Studio\Jeu"), ligne(r"<dossier du jeu>\Saves")],
+            nom_lu: Some("Studio/Jeu".into()),
             ..Default::default()
         })
     }
@@ -1492,5 +1646,85 @@ mod tests {
         let epic = d.path().join("Epic Games").join("Jeu");
         let e = Contexte { jeu: Some(epic.join("Jeu")), steam: None, compte: None, windows: vec![], installation: Some(epic.clone()), boutique: Some("epic".into()) };
         assert_eq!(un(r"<racine de la boutique>\Jeu\Saved", &e).as_deref(), Some(epic.join("Saved").to_string_lossy().as_ref()));
+    }
+
+    /// Contrat 1.53 : un signalement seulement pour un moteur prouvé ET appliqué, quand Firehouse ne sait pas, disait
+    /// « aucune » (le seul `desaccord`) ou nomme un autre moteur ; une fois répondu, jamais renvoyé ; hors ligne, à
+    /// refaire.
+    #[test]
+    fn le_signalement_du_moteur_suit_ce_que_dit_firehouse() {
+        let unity = |e: &PartiesJeu| a_signaler(e);
+        // Inconnu (jamais demandé) : signalé, sans désaccord.
+        let mut c = Cache::default();
+        appliquer_moteur(&mut c, 1, &constat_unity(), false);
+        let a = unity(c.jeu(1).unwrap()).unwrap();
+        assert_eq!(a, ASignaler { cle: "unity".into(), nom_lu: Some("Studio/Jeu".into()), preuve: "UnityPlayer.dll".into(), desaccord: false });
+        assert_eq!(a.corps(), json!({"moteur": "unity", "nom_lu": "Studio/Jeu", "preuve": "UnityPlayer.dll"}), "desaccord absent = faux");
+        // Hors ligne : à refaire ; puis retenu : jamais renvoyé, et le moteur retenu par Firehouse est rangé.
+        noter_signalement(&mut c, 1, &a, EtatSignalement::HorsLigne, "20", None);
+        assert_eq!(unity(c.jeu(1).unwrap()), Some(a.clone()));
+        let rep = json!({"ok": true, "retenu": true, "moteur": "unity", "emplacements_moteur": {"moteur": "unity", "moteur_nom": "Unity", "sauvegardes": [], "nom_a_lire": "companyName"}});
+        noter_signalement(&mut c, 1, &a, EtatSignalement::Retenu, "30", Some(&rep));
+        let e = c.jeu(1).unwrap();
+        assert_eq!(e.signalements, [SignalementMoteur { cle: "unity".into(), nom_lu: Some("Studio/Jeu".into()), etat: EtatSignalement::Retenu, le: "30".into() }]);
+        assert_eq!(e.moteur_firehouse.as_ref().unwrap()["moteur"], "unity");
+        assert_eq!(e.moteur.as_ref().map(|m| m.nom.as_str()), Some("Unity"));
+        assert!(unity(e).is_none(), "jamais renvoyé");
+        // Un AUTRE nom lu (le jeu a changé) : un nouveau signalement.
+        let mut x = c.jeu(1).unwrap().clone();
+        x.moteur_reconnu.as_mut().unwrap().nom_lu = Some("Studio/Jeu 2".into());
+        assert!(unity(&x).is_some());
+        // Refusé (400) et introuvable (404) : jamais renvoyés.
+        for etat in [EtatSignalement::Refuse, EtatSignalement::Introuvable, EtatSignalement::Note] {
+            let mut c = Cache::default();
+            appliquer_moteur(&mut c, 1, &constat_unity(), false);
+            noter_signalement(&mut c, 1, &a, etat, "40", None);
+            assert!(unity(c.jeu(1).unwrap()).is_none(), "{etat:?}");
+        }
+        // Firehouse `Lu`, même moteur ou aucun nommé : rien à signaler ; un autre moteur nommé : signalé, SANS désaccord.
+        let mut l = Cache::default();
+        appliquer(&mut l, 2, None, &json!({"sauvegardes": [{"os": "Windows", "chemin": r"%APPDATA%\Jeu", "nature": "dossier"}]}), &secours(), "10");
+        appliquer_moteur(&mut l, 2, &constat_unity(), false);
+        assert!(unity(l.jeu(2).unwrap()).is_none());
+        l.jeux.get_mut("2").unwrap().moteur_contredit = true;
+        assert_eq!(unity(l.jeu(2).unwrap()).map(|a| a.desaccord), Some(false));
+        // `Vide` : seulement appliqué (des parties sur le disque), et alors avec `desaccord: true`.
+        let mut v = Cache::default();
+        appliquer(&mut v, 3, None, &json!({"sauvegardes": []}), &secours(), "10");
+        appliquer_moteur(&mut v, 3, &constat_unity(), false);
+        assert!(unity(v.jeu(3).unwrap()).is_none(), "pas appliqué : rien");
+        appliquer_moteur(&mut v, 3, &constat_unity(), true);
+        let a3 = unity(v.jeu(3).unwrap()).unwrap();
+        assert_eq!(a3.corps()["desaccord"], true);
+        // Un moteur sans nom à lire : `nom_lu` OMIS.
+        let mut sans = v.jeu(3).unwrap().clone();
+        sans.moteur_reconnu.as_mut().unwrap().nom_lu = None;
+        assert!(unity(&sans).unwrap().corps().get("nom_lu").is_none());
+        // Un nom lu de forme chemin : jamais envoyé.
+        for mauvais in [r"C:\Jeux", "C:/Jeux", "/etc/x", r"a", "../x", "a/../b", "%APPDATA%", "a/b/c", "/a", "a/", &"x".repeat(201)] {
+            sans.moteur_reconnu.as_mut().unwrap().nom_lu = Some(mauvais.to_string());
+            assert!(unity(&sans).is_none(), "{mauvais}");
+        }
+        // Une preuve qui n'est pas un simple nom de fichier : jamais envoyée.
+        sans.moteur_reconnu.as_mut().unwrap().nom_lu = None;
+        for mauvais in ["js/rpg_core.js", r"Content\Paks", "", &"x".repeat(121)] {
+            sans.moteur_reconnu.as_mut().unwrap().marqueur = mauvais.to_string();
+            sans.moteur_reconnu.as_mut().unwrap().preuve = mauvais.to_string();
+            assert!(unity(&sans).is_none(), "{mauvais}");
+        }
+        // Un jeu que le profil ne voit plus : ses signalements partent avec lui (le nom lu ne reste nulle part).
+        let mut c = Cache::default();
+        appliquer_moteur(&mut c, 1, &constat_unity(), false);
+        noter_signalement(&mut c, 1, &a, EtatSignalement::Retenu, "30", None);
+        retirer_si(&mut c, |_| false);
+        assert!(c.jeu(1).is_none());
+    }
+
+    #[test]
+    fn les_noms_lus_suivent_les_regles_de_firehouse() {
+        for bon in ["MonJeu-1600000000", "Studio Été/Mon Produit", "Projet"] {
+            assert!(nom_lu_envoyable(bon), "{bon}");
+        }
+        assert!(preuve_envoyable("UnityPlayer.dll") && preuve_envoyable("renpy") && preuve_envoyable("Game.rgss3a"));
     }
 }
