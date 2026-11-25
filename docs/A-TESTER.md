@@ -11,7 +11,7 @@
       « (4k) Immersive Bullet Holes », puis « Mods retirés (283) ».
 - [x] 2. « 🧹 Retirer » sur « (4k) Immersive Bullet Holes » : il quitte « Dans le jeu » et revient dans « Mods retirés ».
       La barre montre l'étape et le compteur dès le départ.
-- [ ] 3. Ouvrir GOG Galaxy, revenir sur la fiche : la raison (« Ferme GOG Galaxy d'abord ») est juste au-dessus des
+- [x] 3. Ouvrir GOG Galaxy, revenir sur la fiche : la raison (« Ferme GOG Galaxy d'abord ») est juste au-dessus des
       listes ; fermer Galaxy, « 🔁 C'est fait, revérifier » : les boutons reviennent.
 
 ## 🧩 Retirer les mods de Vortex (0.227.0, lot M1) — banc d'essai : Cyberpunk 2077
