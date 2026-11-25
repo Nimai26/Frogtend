@@ -414,3 +414,5 @@ action acceptée qui ne fait rien le DIT (journal + fenêtre) ; et chaque émula
   les résultats (`null`) étaient faux. Avant un relevé réel, demander à Firehouse ce que la route déclenche derrière et
   le rythme supportable ; par défaut, UNE demande toutes les 5 s au plus.
 - **22/11 — Jamais d’accents graves dans un texte passé au terminal entre guillemets doubles.** Deux fois le même jour, des noms entre accents graves (runGame, start, inputs…) ont été EXÉCUTÉS comme des commandes ; « start » a pu ouvrir une fenêtre chez Seb. Tout texte de documentation s’écrit avec l’outil d’édition, ou dans un script écrit avec Write puis lancé par python -I.
+
+- **25/11 — Un test ne doit JAMAIS ouvrir de fenêtre chez Seb.** Un test de C4c-1 passait à `cmd /C` une ligne `start "" /b …` : Rust protège les guillemets par `\"`, que cmd ne comprend pas, et `start` a demandé à Windows d'ouvrir `\` (fenêtre « Impossible de trouver »). Règle : dans un test, jamais `start`, ShellExecute ni explorer ; des processus lancés par `std::process::Command` avec `outil_sans_fenetre`, ou mieux, un calcul testé sans processus.

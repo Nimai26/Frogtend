@@ -1,0 +1,30 @@
+{
+    "buildId": "55113538912484416",
+    "clientId": "53426387680273015",
+    "gameId": "1209025141",
+    "language": "English",
+    "languages": [
+        "en-US"
+    ],
+    "name": "Horizon Zero Dawn\u2122 Complete Edition",
+    "osBitness": [
+        "64"
+    ],
+    "playTasks": [
+        {
+            "category": "game",
+            "isPrimary": true,
+            "languages": [
+                "en-US"
+            ],
+            "name": "Horizon Zero Dawn",
+            "osBitness": [
+                "64"
+            ],
+            "path": "HorizonZeroDawn.exe",
+            "type": "FileTask"
+        }
+    ],
+    "rootGameId": "1209025141",
+    "version": 1
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { JeuResume } from '$lib/api';
-import { messageLancementBoutique, boutiqueSansInstallation, estBattlenet, MESSAGE_BATTLENET, toujoursLeMeme, BOUTIQUES, estJeuDeBoutique, libelleOuverture, ligneEtat, messageNouveaux, moyenDOuverture, nomBoutique, questionPossedes, messageInstallationCanape, imageCarteAInstaller, succesGalaxy } from './jeu-boutique';
+import { messageLancementBoutique, boutiqueSansInstallation, estBattlenet, MESSAGE_BATTLENET, toujoursLeMeme, BOUTIQUES, estJeuDeBoutique, libelleOuverture, ligneEtat, messageNouveaux, moyenDOuverture, nomBoutique, questionPossedes, messageInstallationCanape, imageCarteAInstaller, succesGalaxy, contrepartieGogDirect, messageSecoursGalaxy, estGogInstalle } from './jeu-boutique';
 
 const jeu = (o: Partial<JeuResume>): JeuResume =>
   ({ id: -5, titre: 'X', annee: null, plateforme: 'Windows', genres: [], developpeur: null, editeur: null, statut: 'boutique', ...o }) as JeuResume;
@@ -113,6 +113,31 @@ describe('jeux de boutique', () => {
   it('n’annoncent le lancement qu’en UN toast, avec le retour par ⊞/Guide au canapé', () => {
     expect(messageLancementBoutique('Epic Games', 'TerraScape', false)).toBe('▶ Epic Games lance « TerraScape »… S’il fait une mise à jour, ça peut prendre quelques minutes.');
     expect(messageLancementBoutique('Epic Games', 'TerraScape', true)).toContain('appuie sur ⊞/Guide pour revenir à Frogtend');
+  });
+
+  it('lot C4c-1 : un jeu GOG se lance directement, sans parler de GOG Galaxy ni de mise à jour', () => {
+    expect(messageLancementBoutique('GOG', 'Cyberpunk 2077', false, 'gog')).toBe('▶ « Cyberpunk 2077 » se lance…');
+    // Au canapé, le conseil ⊞/Guide reste (Galaxy peut prendre la main en secours).
+    expect(messageLancementBoutique('GOG', 'Cyberpunk 2077', true, 'gog')).toBe('▶ « Cyberpunk 2077 » se lance… S’il demande la souris, appuie sur ⊞/Guide pour revenir à Frogtend.');
+    expect(messageLancementBoutique('Epic Games', 'TerraScape', false, 'epic')).toContain('Epic Games lance');
+  });
+
+  it('lot C4c-1 : la contrepartie dit franchement ce que Frogtend met à l’abri', () => {
+    const base = 'Lancé directement, sans GOG Galaxy : pas de sauvegardes dans le nuage de GOG ni de succès Galaxy.';
+    expect(contrepartieGogDirect(true)).toBe(`${base} Frogtend met tes parties à l’abri après chaque partie quand il sait où elles sont.`);
+    expect(contrepartieGogDirect(true, 'fait')).toBe(contrepartieGogDirect(true));
+    expect(contrepartieGogDirect(true, 'inconnu')).toBe(`${base} ⚠ Frogtend ne sait pas encore où ce jeu range ses parties.`);
+    expect(contrepartieGogDirect(false, 'inconnu')).toBe(`${base} ⚠ La mise à l’abri après chaque partie est éteinte.`);
+    expect(estGogInstalle({ boutique: { source: 'gog' } })).toBe(true);
+    expect(estGogInstalle({ boutique: { source: 'epic' } })).toBe(false);
+    expect(estGogInstalle({ boutique: null })).toBe(false);
+    expect(estGogInstalle(null)).toBe(false);
+  });
+
+  it('lot C4c-1 : le secours par Galaxy se dit au bureau comme au canapé', () => {
+    const base = 'Frogtend ne peut pas lancer ce jeu directement : il passe par GOG Galaxy.';
+    expect(messageSecoursGalaxy(false)).toBe(`${base} Galaxy restera ouvert après la partie ; ferme-le avant de toucher aux mods.`);
+    expect(messageSecoursGalaxy(true)).toBe(`${base} Si Galaxy demande quelque chose, ⊞/Guide pour revenir.`);
   });
 });
 

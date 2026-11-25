@@ -1072,6 +1072,15 @@ pour l'ajout d'un compte et la mise à jour à la main. Intégré au nouveau C4c
 
 **✅ Ordre (Seb, 25/11)** : M1 validé → **C4c-1** (lancer les jeux GOG SANS Galaxy : tâche « game » du goggame-<id>.info ; à défaut, la tâche principale FileTask du dossier, comme Heroic et Playnite, pour les jeux Unreal à petit programme de démarrage — décision de Seb 25/11 ; Galaxy en tout dernier secours) → **C4c-2** (installer les jeux GOG sans Galaxy) → **C4c-3** (fenêtre d'attente pendant la lecture d'un compte GOG) → **M2**. Avis de l'expert lancement (25/11) : suivi de partie, abri, session Firehouse marchent déjà en direct ; à vérifier en vrai : le service GalaxyCommunication réveillé par le jeu (rouvrirait le verrou des mods) ; REDmod/-modded renvoyé à M2.
 
+**C4c-1 codé le 25/11 (0.228.0)** : `boutiques_pc::tache_jeu_gog` (goggame-<id>.info plafonné à 1 Mo ; tâche « game »
+64 bits puis 32 bits, langue du jeu, principale préférée ; à défaut la principale FileTask, langue d'abord ; chemins
+sûrs, jonctions refusées, arguments en chaîne seulement), `partie::plan_gog` (direct → Galaxy → registre → refus, jamais
+Galaxy après un échec direct), pid suivi directement, `Suivi::nouveau` prend l'heure notée d'une racine fermée, 740 →
+message vers Galaxy (aucune élévation), secours Galaxy dit AVANT l'attente (bureau / canapé), contrepartie honnête sur
+la fiche (`gog_lancement_direct`). Revue de l'expert lancement : 0 bloquant, 5 importants corrigés. Incident : un test
+du codeur a ouvert 2 fenêtres d'erreur Windows chez Seb (`cmd /C start` mal formé) — test réécrit sans processus ;
+leçon : jamais de `start`, ShellExecute ni explorer dans un test.
+
 **Ordre en cours (Seb, 22/11)** : lot **S** (S1 livré en 0.220.0-0.220.1 ; puis S2 à S7) → lot **R** (recompilations,
 ci-dessous) → **C4c** (installer et lancer les jeux GOG sans Galaxy, fenêtre d'attente GOG).
 

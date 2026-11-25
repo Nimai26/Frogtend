@@ -1465,6 +1465,9 @@ export const api = {
   partiesAbriAvant: (id: number, operation: string) => appeler<void>('parties_abri_avant', { id, operation }),
   /** Lot S3 : le dernier problème gardé de l'abri après une partie de ce jeu (la ligne de la fiche), ou `null`. */
   partiesAbriAutoEtat: (id: number) => appeler<BilanAbriAuto | null>('parties_abri_auto_etat', { id }),
+  /** Lot C4c-1 : ce jeu GOG installé se lance-t-il directement, sans GOG Galaxy (une tâche sûre dans son
+   * `goggame-<id>.info`) ? */
+  gogLancementDirect: (id: number) => appeler<boolean>('gog_lancement_direct', { id }),
   /** Lot S7 : les jeux dont un abri rattrapé attend « C'est toi qui as joué ? ». */
   partiesAConfirmer: () => appeler<number[]>('parties_a_confirmer'),
   /** Lot S7 : « Oui, c'est moi » (`oui`) ou « Non » pour les abris rattrapés d'un jeu, par `profil` (celui à qui la

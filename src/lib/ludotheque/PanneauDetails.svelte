@@ -3,7 +3,7 @@
   // choisie et un « Jeu au hasard ».
   // Dans le catalogue : « Mettre dans ma ludothèque ». Dans la ludothèque : l'état du jeu sur le PC.
   import { goto } from '$app/navigation';
-  import { duree, taille } from '$lib/api';
+  import { api, duree, taille } from '$lib/api';
   import { categorieDe, ICONES_CATEGORIES } from './categories';
   import { rangCourt } from './versions';
   import Jaquette from './Jaquette.svelte';
@@ -13,7 +13,9 @@
   import { annuler, jeuSurPc, mettreDansLaLudotheque, mettreEnPause, reprendre } from './telechargements.svelte';
   import { attenteEmulateurSeul, boutonEmulateurSeul, emulateursDuJeu, gererLaCarte, installer, jouerAvec, jouerLaCarte, lancementImpossible, libelleEmulateurSeul, ouvrirEmulateurSeul, partie } from './jeu.svelte';
   import { libellePreparation } from '$lib/emulateurs/pret.svelte';
-  import { estJeuDeBoutique, libelleOuverture } from '$lib/boutiques/jeu-boutique';
+  import { contrepartieGogDirect, estGogInstalle, estJeuDeBoutique, libelleOuverture } from '$lib/boutiques/jeu-boutique';
+  import { etat } from '$lib/etat.svelte';
+  import { abrisAuto, chargerLigneGardee } from '$lib/parties/abriAuto.svelte';
   import { messageLanceur, ouvrirParLaBoutique } from '$lib/boutiques/boutiques-pc.svelte';
   import { nomPlateforme } from '$lib/boutiques/galaxy.svelte';
   import BlocSucces from '$lib/succes/BlocSucces.svelte';
@@ -39,6 +41,28 @@
    * il se réinstalle par sa boutique, jamais « Jouer ». */
   const boutiquePasInstalle = $derived(!!j && estJeuDeBoutique(j) && j.installe === false);
   let ajout = $state(false);
+
+  /** Lot C4c-1 : ce jeu GOG installé se lance directement (le cœur a lu sa tâche, sans rien rendre d'autre) : la fiche
+   * dit alors la contrepartie, une fois. */
+  let gogDirect = $state(false);
+  $effect(() => {
+    const id = idPc;
+    const gog = estGogInstalle(surPc?.installation);
+    gogDirect = false;
+    if (!gog) return;
+    let annule = false;
+    api
+      .gogLancementDirect(id)
+      .then((ok) => {
+        if (!annule) gogDirect = ok;
+      })
+      .catch(() => {});
+    // La ligne gardée de l'abri automatique (emplacement inconnu…), si l'interface ne la connaît pas encore.
+    void chargerLigneGardee(id);
+    return () => {
+      annule = true;
+    };
+  });
 
   async function ajouter() {
     if (!j) return;
@@ -124,6 +148,8 @@
           {/if}
           {#if attenteEmulateurSeul()}<p class="muted">{attenteEmulateurSeul()}</p>{/if}
           <RappelTriches id={idPc} />
+          <!-- Lot C4c-1 (✅ Seb 25/11) : un jeu GOG se lance directement ; la contrepartie est dite ici, une fois. -->
+          {#if gogDirect}<p class="muted">{contrepartieGogDirect(etat.profil.parties?.abriApresPartie !== false, abrisAuto.derniers[idPc]?.etat)}</p>{/if}
         {/if}
       {/if}
       {#if !catalogue && surPc?.etat === 'telecharge' && !surPc.d_un_autre}

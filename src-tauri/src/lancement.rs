@@ -754,6 +754,12 @@ fn descend_avant(
     }
 }
 
+/// L'heure de départ (100 ns) d'une racine déjà fermée au premier relevé du suivi : celle notée à son lancement
+/// (`noter_depart`, en secondes) quand on l'a, sinon `maintenant` moins 5 s.
+fn debut_d_une_racine_fermee(depart_note: Option<u64>, maintenant: u64) -> u64 {
+    depart_note.filter(|t| *t > 0).map(|t| t.saturating_mul(PAR_SECONDE)).unwrap_or_else(|| maintenant.saturating_sub(5 * PAR_SECONDE))
+}
+
 impl Suivi {
     pub fn nouveau(racine: u32, dossiers: Vec<PathBuf>) -> Self {
         let mut systeme = System::new();
@@ -774,7 +780,9 @@ impl Suivi {
                 }
                 precise.unwrap_or(s.saturating_mul(PAR_SECONDE))
             }
-            None => maintenant_precis().saturating_sub(5 * PAR_SECONDE),
+            // L'heure VRAIE notée au lancement (`noter_depart`) d'abord : un petit lanceur fermé depuis plus de 5 s (jeu
+            // GOG lancé directement, lot C4c-1) garde ainsi le jeu qu'il a ouvert ; à défaut, l'instant moins 5 s.
+            None => debut_d_une_racine_fermee(depart_note(racine), maintenant_precis()),
         };
         let vus = std::collections::HashMap::from([(r, debut)]);
         // Les renvois suivis (jeu Xbox : le vrai dossier du programme, voir `formes_du_dossier`).
@@ -1230,6 +1238,33 @@ mod tests {
             .map(|(pid, p)| format!("{pid} {:?} créé {} (suivi : {}) parent {:?}", p.name(), heure_creation(*pid, p.start_time()), s.vus[pid], p.parent()))
             .collect();
         assert!(duree < Duration::from_secs(60), "la fin est bien vue ; tenaient la partie : {tiennent:?}");
+    }
+
+    #[test]
+    fn un_petit_lanceur_ferme_avant_le_suivi_garde_le_jeu_qu_il_a_ouvert() {
+        // Lot C4c-1 : un petit lanceur (jeu GOG lancé directement) a ouvert le jeu HORS de tout dossier suivi, puis
+        // s'est fermé plus de 5 s avant le premier relevé du suivi. Sans processus réel (aucune fenêtre chez Seb) :
+        // le calcul de son départ, puis la reconnaissance de l'enfant, sur des heures choisies.
+        let s = PAR_SECONDE;
+        let depart = 1_000_000u64; // le lanceur, noté à son lancement (secondes)
+        let maintenant = (depart + 20) * s; // le premier relevé du suivi, 20 s plus tard
+        let enfant = (depart + 1) * s + 3; // le jeu, ouvert 1 s après le lanceur
+        let racine = Pid::from_u32(4242);
+        let morts = std::collections::HashMap::from([(racine, (depart + 2) * s)]); // le lanceur fermé à +2 s
+        let reconnu = |debut_racine: u64| {
+            let vus = std::collections::HashMap::from([(racine, debut_racine)]);
+            descend_avant(&vus, &morts, &racine, enfant, None)
+        };
+        // Avec l'heure notée : l'heure vraie, et le jeu est bien un enfant de la partie.
+        assert_eq!(debut_d_une_racine_fermee(Some(depart), maintenant), depart * s);
+        assert!(reconnu(debut_d_une_racine_fermee(Some(depart), maintenant)), "le jeu ouvert par le lanceur tient la partie");
+        // L'ancien repli (« maintenant moins 5 s ») l'aurait perdu : la partie aurait fini tout de suite.
+        assert_eq!(debut_d_une_racine_fermee(None, maintenant), maintenant - 5 * s);
+        assert!(!reconnu(debut_d_une_racine_fermee(None, maintenant)));
+        assert_eq!(debut_d_une_racine_fermee(Some(0), maintenant), maintenant - 5 * s, "une heure nulle ne compte pas");
+        // Un programme né AVANT le lanceur n'est jamais pris pour son enfant.
+        let vus = std::collections::HashMap::from([(racine, depart * s)]);
+        assert!(!descend_avant(&vus, &morts, &racine, (depart - 3) * s, None));
     }
 
     #[test]

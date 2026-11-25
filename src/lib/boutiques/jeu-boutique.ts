@@ -25,8 +25,9 @@ export function nomBoutique(b: string | null | undefined): string {
 /** Un jeu de boutique (Steam, Galaxy) ; un jeu IMPORTÉ du disque (id négatif aussi) se joue comme un jeu du PC. */
 export const estJeuDeBoutique = (j: Pick<JeuResume, 'id' | 'source'>) => j.id < 0 && j.source !== 'local';
 
-/** Comment ouvrir ce jeu : par Steam (appid), par GOG Galaxy (sa clé), ou par le lanceur de sa boutique (clé de la
- * carte, « uplay_46 »…). */
+/** Comment ouvrir ce jeu PAS ENCORE suivi par Frogtend : par Steam (appid), par GOG Galaxy (sa clé, pour une carte
+ * que seul Galaxy relie), ou par le lanceur de sa boutique (clé de la carte, « uplay_46 »…). Un jeu GOG installé sur
+ * ce PC se lance, lui, directement par Frogtend, sans GOG Galaxy (lot C4c-1, `estGogInstalle`). */
 export type MoyenOuverture = { par: 'steam'; appid: string } | { par: 'galaxy'; cle: string } | { par: 'boutique'; boutique: string; cle: string };
 
 export function moyenDOuverture(j: JeuResume): MoyenOuverture | null {
@@ -171,7 +172,30 @@ export function messageInstallationCanape(boutique: string): string {
 
 /** LE toast du lancement d'un jeu de boutique (un seul, lot A) : au canapé, il dit aussi comment revenir à Frogtend
  * si le lanceur prend la main. */
-export function messageLancementBoutique(nom: string, titre: string, auCanape: boolean): string {
-  const base = `▶ ${nom} lance « ${titre} »… S’il fait une mise à jour, ça peut prendre quelques minutes.`;
+export function messageLancementBoutique(nom: string, titre: string, auCanape: boolean, source?: string | null): string {
+  // Lot C4c-1 (✅ Seb 25/11) : un jeu GOG se lance directement, sans GOG Galaxy ni mise à jour par un lanceur ; au
+  // canapé, le conseil ⊞/Guide reste (Galaxy peut prendre la main en secours).
+  const base = source === 'gog' ? `▶ « ${titre} » se lance…` : `▶ ${nom} lance « ${titre} »… S’il fait une mise à jour, ça peut prendre quelques minutes.`;
   return auCanape ? `${base} S’il demande la souris, appuie sur ⊞/Guide pour revenir à Frogtend.` : base;
+}
+
+/** Lot C4c-1 : la contrepartie du lancement direct d'un jeu GOG, dite UNE fois sur sa fiche, avec ce que l'interface
+ * sait déjà de la mise à l'abri : le réglage « après chaque partie » du profil (`abriApresPartie`) et l'état du
+ * dernier abri automatique de ce jeu (`dernierAbri` : `inconnu` = emplacement des parties pas connu). */
+export function contrepartieGogDirect(abriApresPartie: boolean, dernierAbri?: string | null): string {
+  const base = 'Lancé directement, sans GOG Galaxy : pas de sauvegardes dans le nuage de GOG ni de succès Galaxy.';
+  if (!abriApresPartie) return `${base} ⚠ La mise à l’abri après chaque partie est éteinte.`;
+  if (dernierAbri === 'inconnu') return `${base} ⚠ Frogtend ne sait pas encore où ce jeu range ses parties.`;
+  return `${base} Frogtend met tes parties à l’abri après chaque partie quand il sait où elles sont.`;
+}
+
+/** Lot C4c-1 : dit à l'écran, DÈS le lancement, quand un jeu GOG passe par GOG Galaxy en secours. */
+export function messageSecoursGalaxy(auCanape: boolean): string {
+  const base = 'Frogtend ne peut pas lancer ce jeu directement : il passe par GOG Galaxy.';
+  return auCanape ? `${base} Si Galaxy demande quelque chose, ⊞/Guide pour revenir.` : `${base} Galaxy restera ouvert après la partie ; ferme-le avant de toucher aux mods.`;
+}
+
+/** Un jeu GOG installé sur ce PC : sa fiche demande au cœur s'il se lance directement (`gogLancementDirect`). */
+export function estGogInstalle(installation: { boutique?: { source: string } | null } | null | undefined): boolean {
+  return installation?.boutique?.source === 'gog';
 }

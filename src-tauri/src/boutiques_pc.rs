@@ -244,6 +244,164 @@ pub fn programme_gog(v: &Valeurs) -> Option<ProgrammeGog> {
     Some(ProgrammeGog { exe, dossier_travail: travail, arguments: v.get("launchParam").map(|a| a.trim().to_string()).unwrap_or_default() })
 }
 
+/// Le plafond d'un `goggame-<id>.info` lu pour lancer un jeu (le même que pour reconnaître un DLC).
+pub const PLAFOND_INFO_GOG: u64 = 1024 * 1024;
+
+/// La tâche retenue pour lancer un jeu GOG SANS Galaxy (lot C4c-1, ✅ Seb 25/11).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CategorieTache {
+    /// La tâche de catégorie « game » (Cyberpunk : `bin\x64\Cyberpunk2077.exe`, pas son lanceur REDprelauncher).
+    Jeu,
+    /// À défaut, la tâche PRINCIPALE (`isPrimary`) : le petit programme de démarrage d'un jeu Unreal, comme le font
+    /// Heroic et Playnite.
+    Principale,
+}
+
+impl CategorieTache {
+    /// Le mot noté au journal.
+    pub fn mot(self) -> &'static str {
+        match self {
+            CategorieTache::Jeu => "game",
+            CategorieTache::Principale => "principale",
+        }
+    }
+}
+
+/// Une tâche de `goggame-<id>.info`, prête à lancer : son programme (dans le dossier du jeu) et sa catégorie.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TacheGog {
+    pub programme: ProgrammeGog,
+    pub categorie: CategorieTache,
+}
+
+/// Pourquoi aucune tâche n'est lancée directement (le secours prend alors le relais : Galaxy, puis le registre).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MotifSecours {
+    /// Pas de `goggame-<id>.info` dans le dossier du jeu (ou une clé qui n'est pas un numéro GOG).
+    SansFichier,
+    /// Le fichier dépasse le plafond (`PLAFOND_INFO_GOG`).
+    TropGros,
+    /// Le fichier n'est pas un JSON lisible.
+    Illisible,
+    /// Le fichier parle d'un autre jeu (`gameId` ou `rootGameId` différent).
+    AutreJeu,
+    /// Aucune tâche « game » ni principale utilisable (URLTask, chemin refusé, programme absent…).
+    AucuneTache,
+}
+
+impl MotifSecours {
+    /// La raison en mots, pour le journal (jamais de chemin ni de titre).
+    pub fn en_mots(self) -> &'static str {
+        match self {
+            MotifSecours::SansFichier => "pas de fichier goggame.info",
+            MotifSecours::TropGros => "fichier goggame.info trop gros",
+            MotifSecours::Illisible => "fichier goggame.info illisible",
+            MotifSecours::AutreJeu => "fichier goggame.info d'un autre jeu",
+            MotifSecours::AucuneTache => "aucune tâche de jeu utilisable",
+        }
+    }
+}
+
+/// Un morceau de chemin relatif écrit par GOG, sûr : ni jeton de Galaxy (`<?…?>`), ni `..`, ni chemin absolu (racine,
+/// lettre de disque, partage).
+fn chemin_relatif_sur(p: &str) -> bool {
+    let p = p.trim();
+    // « .. » refusé comme MORCEAU du chemin (`Component::ParentDir`) : « Jeu..exe » reste un nom de fichier valable.
+    let remonte = Path::new(p).components().any(|c| matches!(c, std::path::Component::ParentDir));
+    !p.is_empty() && !p.contains("<?") && !remonte && !p.contains(':') && !p.starts_with(['\\', '/']) && !Path::new(p).has_root()
+}
+
+/// Une tâche `FileTask` → le programme à lancer, ou `None` si elle est refusée (voir `tache_jeu_gog`).
+fn programme_de_tache(dossier: &Path, t: &serde_json::Value) -> Option<ProgrammeGog> {
+    if t["type"].as_str() != Some("FileTask") {
+        return None;
+    }
+    let chemin = t["path"].as_str().filter(|p| chemin_relatif_sur(p))?;
+    let exe = dossier.join(chemin.trim());
+    // Un vrai .exe, DANS le dossier du jeu, sans jonction ni lien entre les deux.
+    if !exe.extension().is_some_and(|x| x.eq_ignore_ascii_case("exe"))
+        || !exe.is_file()
+        || !crate::garde::sous(&exe, dossier)
+        || crate::garde::meme(&exe, dossier)
+        || crate::garde::lien_entre(dossier, &exe)
+    {
+        return None;
+    }
+    // Le dossier de travail : celui de la tâche s'il est sûr et existe, le dossier du jeu sans lui ; jamais ailleurs.
+    let travail = match &t["workingDir"] {
+        serde_json::Value::Null => dossier.to_path_buf(),
+        serde_json::Value::String(w) if w.trim().is_empty() => dossier.to_path_buf(),
+        serde_json::Value::String(w) if chemin_relatif_sur(w) => {
+            let w = dossier.join(w.trim());
+            if !w.is_dir() || !crate::garde::sous(&w, dossier) || crate::garde::lien_entre(dossier, &w) {
+                return None;
+            }
+            w
+        }
+        _ => return None,
+    };
+    // Les arguments : une chaîne seulement (passée telle quelle), sans jeton de Galaxy à remplacer.
+    let arguments = match &t["arguments"] {
+        serde_json::Value::Null => String::new(),
+        serde_json::Value::String(a) if !a.contains("<?") => a.trim().to_string(),
+        _ => return None,
+    };
+    Some(ProgrammeGog { exe, dossier_travail: travail, arguments })
+}
+
+/// La tâche qui lance un jeu GOG SANS Galaxy (lot C4c-1, ✅ Seb 25/11), d'après SEULEMENT `goggame-<cle>.info` du
+/// dossier du jeu (lecture seule, plafonnée) : d'abord une `FileTask` de catégorie « game » (dans la langue du jeu ou
+/// « * » ; le 64 bits préféré, une tâche seulement 32 bits acceptée à défaut ; puis la principale préférée, sinon la
+/// première), sinon la tâche principale si c'est une `FileTask` (celle de la langue du jeu d'abord). Le fichier doit parler de CE jeu (`gameId`, et `rootGameId` s'il est là). Tout ce qui est douteux est
+/// refusé : le secours (Galaxy, puis le registre) prend alors le relais. Jamais de panique.
+pub fn tache_jeu_gog(dossier: &Path, cle: &str) -> Result<TacheGog, MotifSecours> {
+    use std::io::Read;
+    if cle.is_empty() || cle.len() > 20 || !cle.bytes().all(|c| c.is_ascii_digit()) {
+        return Err(MotifSecours::SansFichier);
+    }
+    let info = dossier.join(format!("goggame-{cle}.info"));
+    let f = std::fs::File::open(&info).map_err(|_| MotifSecours::SansFichier)?;
+    let mut octets = Vec::new();
+    f.take(PLAFOND_INFO_GOG + 1).read_to_end(&mut octets).map_err(|_| MotifSecours::Illisible)?;
+    if octets.len() as u64 > PLAFOND_INFO_GOG {
+        return Err(MotifSecours::TropGros);
+    }
+    let v: serde_json::Value = serde_json::from_slice(&octets).map_err(|_| MotifSecours::Illisible)?;
+    if !v.is_object() {
+        return Err(MotifSecours::Illisible);
+    }
+    if v["gameId"].as_str() != Some(cle) || (!v["rootGameId"].is_null() && v["rootGameId"].as_str() != Some(cle)) {
+        return Err(MotifSecours::AutreJeu);
+    }
+    let Some(taches) = v["playTasks"].as_array() else { return Err(MotifSecours::AucuneTache) };
+    // Les langues du jeu installé (en-tête) ; sans elles, toute langue convient.
+    let langues: Vec<String> = v["languages"].as_array().map(|l| l.iter().filter_map(|x| x.as_str()).map(str::to_lowercase).collect()).unwrap_or_default();
+    let langue_ok = |t: &serde_json::Value| match t["languages"].as_array() {
+        None => true,
+        Some(l) if l.is_empty() => true,
+        Some(l) => l.iter().filter_map(|x| x.as_str()).any(|x| x == "*" || langues.is_empty() || langues.contains(&x.to_lowercase())),
+    };
+    let bits_ok = |t: &serde_json::Value| match t["osBitness"].as_array() {
+        None => true,
+        Some(b) => b.iter().any(|x| x.as_str() == Some("64")),
+    };
+    let principale = |t: &serde_json::Value| t["isPrimary"].as_bool() == Some(true);
+    let mut jeux: Vec<&serde_json::Value> = taches.iter().filter(|t| t["type"].as_str() == Some("FileTask") && t["category"].as_str() == Some("game") && langue_ok(t)).collect();
+    // Le 64 bits d'abord (une tâche seulement 32 bits reste acceptée : Windows 64 bits la lance), puis la principale,
+    // puis l'ordre du fichier (tri stable).
+    jeux.sort_by_key(|t| (!bits_ok(t), !principale(t)));
+    if let Some(p) = jeux.iter().find_map(|t| programme_de_tache(dossier, t)) {
+        return Ok(TacheGog { programme: p, categorie: CategorieTache::Jeu });
+    }
+    // À défaut, la principale : celle de la langue du jeu d'abord, puis n'importe laquelle.
+    let mut principales: Vec<&serde_json::Value> = taches.iter().filter(|t| principale(t)).collect();
+    principales.sort_by_key(|t| !langue_ok(t));
+    if let Some(p) = principales.iter().find_map(|t| programme_de_tache(dossier, t)) {
+        return Ok(TacheGog { programme: p, categorie: CategorieTache::Principale });
+    }
+    Err(MotifSecours::AucuneTache)
+}
+
 /// L'entrée du registre d'UN jeu GOG (relue au lancement).
 pub fn entree_gog(id: &str) -> Option<Valeurs> {
     if id.is_empty() || !id.bytes().all(|c| c.is_ascii_digit()) {
@@ -1178,6 +1336,231 @@ mod tests {
         v.insert("workingDir".into(), std::env::temp_dir().to_string_lossy().into_owned());
         assert_eq!(programme_gog(&v).unwrap().dossier_travail, hzd);
         assert_eq!(entree_gog("1/../2"), None);
+    }
+
+    /// Un dossier de jeu GOG simulé : ses programmes (fichiers vides) et son `goggame-<cle>.info`.
+    fn jeu_gog_simule(cle: &str, info: &str, programmes: &[&str]) -> tempfile::TempDir {
+        let d = tempfile::tempdir().unwrap();
+        for p in programmes {
+            let f = d.path().join(p);
+            std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+            std::fs::write(f, b"MZ").unwrap();
+        }
+        std::fs::write(d.path().join(format!("goggame-{cle}.info")), info).unwrap();
+        d
+    }
+
+    /// Une forme réelle (`goggame-<id>.info` relevé le 25/11 sur Venkman, lecture seule) dont on change les tâches.
+    fn info_avec_taches(cle: &str, taches: serde_json::Value) -> String {
+        serde_json::json!({"buildId": "1", "clientId": "2", "gameId": cle, "language": "French", "languages": ["fr-FR"], "name": "Jeu",
+            "osBitness": ["64"], "playTasks": taches, "rootGameId": cle, "version": 1})
+        .to_string()
+    }
+
+    #[test]
+    fn cyberpunk_se_lance_par_sa_tache_game_jamais_par_redprelauncher() {
+        let info = include_str!("../fixtures/gog/cyberpunk-goggame-1423049311.info");
+        let d = jeu_gog_simule("1423049311", info, &["REDprelauncher.exe", r"bin\x64\Cyberpunk2077.exe"]);
+        let t = tache_jeu_gog(d.path(), "1423049311").unwrap();
+        assert_eq!(t.categorie, CategorieTache::Jeu);
+        assert_eq!(t.programme.exe, d.path().join(r"bin\x64\Cyberpunk2077.exe"), "la tâche « game » cachée, pas la principale (lanceur)");
+        assert_eq!(t.programme.dossier_travail, d.path(), "sans workingDir : le dossier du jeu");
+        assert_eq!(t.programme.arguments, "");
+        // Le programme du jeu absent : la principale (une FileTask du dossier), comme Heroic et Playnite.
+        let d = jeu_gog_simule("1423049311", info, &["REDprelauncher.exe"]);
+        let t = tache_jeu_gog(d.path(), "1423049311").unwrap();
+        assert_eq!((t.categorie, t.programme.exe.clone()), (CategorieTache::Principale, d.path().join("REDprelauncher.exe")));
+        // Aucun des deux : le secours.
+        let d = jeu_gog_simule("1423049311", info, &[]);
+        assert_eq!(tache_jeu_gog(d.path(), "1423049311"), Err(MotifSecours::AucuneTache), "exe absent");
+    }
+
+    #[test]
+    fn horizon_zero_dawn_se_lance_par_sa_principale_qui_est_le_jeu() {
+        let info = include_str!("../fixtures/gog/hzd-goggame-1209025141.info");
+        let d = jeu_gog_simule("1209025141", info, &["HorizonZeroDawn.exe"]);
+        let t = tache_jeu_gog(d.path(), "1209025141").unwrap();
+        assert_eq!((t.categorie, t.programme.exe), (CategorieTache::Jeu, d.path().join("HorizonZeroDawn.exe")));
+    }
+
+    #[test]
+    fn un_jeu_unreal_sans_tache_game_lance_son_petit_programme_principal() {
+        let info = info_avec_taches("7", serde_json::json!([
+            {"category": "launcher", "isPrimary": true, "languages": ["*"], "name": "Jeu", "path": "Jeu.exe", "type": "FileTask", "arguments": "-nosplash", "workingDir": "Binaires"},
+            {"category": "document", "name": "Manuel", "path": "manuel.pdf", "type": "FileTask"},
+            {"category": "other", "isPrimary": false, "link": "https://www.gog.com", "name": "Site", "type": "URLTask"}
+        ]));
+        let d = jeu_gog_simule("7", &info, &["Jeu.exe", r"Binaires\Win64\Jeu-Win64-Shipping.exe"]);
+        let t = tache_jeu_gog(d.path(), "7").unwrap();
+        assert_eq!(t.categorie, CategorieTache::Principale);
+        assert_eq!(t.programme.exe, d.path().join("Jeu.exe"));
+        assert_eq!(t.programme.arguments, "-nosplash", "les arguments en chaîne, tels quels");
+        assert_eq!(t.programme.dossier_travail, d.path().join("Binaires"));
+        assert_eq!(CategorieTache::Principale.mot(), "principale");
+        assert_eq!(CategorieTache::Jeu.mot(), "game");
+    }
+
+    #[test]
+    fn la_tache_game_est_celle_de_la_langue_du_jeu_et_en_64_bits() {
+        let taches = serde_json::json!([
+            {"category": "game", "languages": ["en-US"], "path": "en.exe", "type": "FileTask"},
+            {"category": "game", "languages": ["fr-FR"], "path": "fr32.exe", "osBitness": ["32"], "type": "FileTask"},
+            {"category": "game", "languages": ["FR-fr"], "path": "fr.exe", "osBitness": ["32", "64"], "type": "FileTask"},
+            {"category": "game", "isPrimary": true, "languages": ["de-DE"], "path": "de.exe", "type": "FileTask"}
+        ]);
+        let d = jeu_gog_simule("8", &info_avec_taches("8", taches), &["en.exe", "fr32.exe", "fr.exe", "de.exe"]);
+        assert_eq!(tache_jeu_gog(d.path(), "8").unwrap().programme.exe, d.path().join("fr.exe"), "la langue installée (sans casse), 64 bits ; la principale d'une autre langue écartée");
+        // Plusieurs « game » valables : la principale préférée.
+        let taches = serde_json::json!([
+            {"category": "game", "languages": ["*"], "path": "a.exe", "type": "FileTask"},
+            {"category": "game", "isPrimary": true, "path": "b.exe", "type": "FileTask"}
+        ]);
+        let d = jeu_gog_simule("8", &info_avec_taches("8", taches), &["a.exe", "b.exe"]);
+        assert_eq!(tache_jeu_gog(d.path(), "8").unwrap().programme.exe, d.path().join("b.exe"));
+        // Sans principale : la première.
+        let taches = serde_json::json!([{"category": "game", "path": "a.exe", "type": "FileTask"}, {"category": "game", "path": "b.exe", "type": "FileTask"}]);
+        let d = jeu_gog_simule("8", &info_avec_taches("8", taches), &["a.exe", "b.exe"]);
+        assert_eq!(tache_jeu_gog(d.path(), "8").unwrap().programme.exe, d.path().join("a.exe"));
+    }
+
+    #[test]
+    fn une_tache_game_32_bits_n_est_prise_qu_a_defaut_de_64_bits() {
+        // Seulement 32 bits : acceptée (Windows 64 bits la lance), comme tâche « game ».
+        let taches = serde_json::json!([{"category": "game", "osBitness": ["32"], "path": "jeu32.exe", "type": "FileTask"}]);
+        let d = jeu_gog_simule("9", &info_avec_taches("9", taches), &["jeu32.exe"]);
+        let t = tache_jeu_gog(d.path(), "9").unwrap();
+        assert_eq!((t.categorie, t.programme.exe), (CategorieTache::Jeu, d.path().join("jeu32.exe")));
+        // Le 64 bits passe avant, même si la 32 bits est la principale et vient d'abord.
+        let taches = serde_json::json!([
+            {"category": "game", "isPrimary": true, "osBitness": ["32"], "path": "jeu32.exe", "type": "FileTask"},
+            {"category": "game", "osBitness": ["64"], "path": "jeu64.exe", "type": "FileTask"}
+        ]);
+        let d = jeu_gog_simule("9", &info_avec_taches("9", taches.clone()), &["jeu32.exe", "jeu64.exe"]);
+        assert_eq!(tache_jeu_gog(d.path(), "9").unwrap().programme.exe, d.path().join("jeu64.exe"));
+        // Le 64 bits absent du disque : la 32 bits.
+        let d = jeu_gog_simule("9", &info_avec_taches("9", taches), &["jeu32.exe"]);
+        assert_eq!(tache_jeu_gog(d.path(), "9").unwrap().programme.exe, d.path().join("jeu32.exe"));
+    }
+
+    #[test]
+    fn le_repli_sur_la_principale_prefere_la_langue_du_jeu() {
+        let taches = serde_json::json!([
+            {"category": "launcher", "isPrimary": true, "languages": ["de-DE"], "path": "de.exe", "type": "FileTask"},
+            {"category": "launcher", "isPrimary": true, "languages": ["fr-FR"], "path": "fr.exe", "type": "FileTask"}
+        ]);
+        let d = jeu_gog_simule("19", &info_avec_taches("19", taches.clone()), &["de.exe", "fr.exe"]);
+        let t = tache_jeu_gog(d.path(), "19").unwrap();
+        assert_eq!((t.categorie, t.programme.exe), (CategorieTache::Principale, d.path().join("fr.exe")));
+        // Aucune dans la langue : n'importe quelle principale.
+        let d = jeu_gog_simule("19", &info_avec_taches("19", taches), &["de.exe"]);
+        assert_eq!(tache_jeu_gog(d.path(), "19").unwrap().programme.exe, d.path().join("de.exe"));
+    }
+
+    #[test]
+    fn un_dlc_a_cote_ne_change_pas_la_tache_du_jeu() {
+        let info = include_str!("../fixtures/gog/hzd-goggame-1209025141.info");
+        let d = jeu_gog_simule("1209025141", info, &["HorizonZeroDawn.exe", "DLC.exe"]);
+        // Le DLC (rootGameId = le jeu) a son propre fichier, jamais lu pour lancer le jeu.
+        let dlc = serde_json::json!({"gameId": "2", "rootGameId": "1209025141", "playTasks": [{"category": "game", "isPrimary": true, "path": "DLC.exe", "type": "FileTask"}]});
+        std::fs::write(d.path().join("goggame-2.info"), dlc.to_string()).unwrap();
+        assert_eq!(tache_jeu_gog(d.path(), "1209025141").unwrap().programme.exe, d.path().join("HorizonZeroDawn.exe"));
+        // Le fichier du DLC lu sous la clé du DLC : il parle d'un autre jeu racine, refusé.
+        assert_eq!(tache_jeu_gog(d.path(), "2"), Err(MotifSecours::AutreJeu));
+    }
+
+    #[test]
+    fn un_fichier_goggame_douteux_mene_au_secours_sans_panique() {
+        let d = jeu_gog_simule("10", "{ \"gameId\": \"10\", ", &["Jeu.exe"]);
+        assert_eq!(tache_jeu_gog(d.path(), "10"), Err(MotifSecours::Illisible), "JSON abîmé");
+        let d = jeu_gog_simule("10", "[1, 2]", &[]);
+        assert_eq!(tache_jeu_gog(d.path(), "10"), Err(MotifSecours::Illisible), "pas un objet");
+        let d = tempfile::tempdir().unwrap();
+        assert_eq!(tache_jeu_gog(d.path(), "10"), Err(MotifSecours::SansFichier));
+        assert_eq!(tache_jeu_gog(d.path(), "1/../2"), Err(MotifSecours::SansFichier), "une clé qui n'est pas un numéro");
+        // Trop gros (fichier creux : jamais lu en entier).
+        let f = std::fs::File::create(d.path().join("goggame-10.info")).unwrap();
+        f.set_len(PLAFOND_INFO_GOG + 1).unwrap();
+        drop(f);
+        assert_eq!(tache_jeu_gog(d.path(), "10"), Err(MotifSecours::TropGros));
+        // Un autre jeu.
+        let taches = serde_json::json!([{"category": "game", "path": "Jeu.exe", "type": "FileTask"}]);
+        let d = jeu_gog_simule("10", &info_avec_taches("11", taches.clone()), &["Jeu.exe"]);
+        assert_eq!(tache_jeu_gog(d.path(), "10"), Err(MotifSecours::AutreJeu), "gameId différent");
+        let mut v: serde_json::Value = serde_json::from_str(&info_avec_taches("10", taches)).unwrap();
+        v["rootGameId"] = "12".into();
+        let d = jeu_gog_simule("10", &v.to_string(), &["Jeu.exe"]);
+        assert_eq!(tache_jeu_gog(d.path(), "10"), Err(MotifSecours::AutreJeu), "rootGameId différent");
+        v["rootGameId"] = serde_json::Value::Null;
+        v.as_object_mut().unwrap().remove("rootGameId");
+        let d = jeu_gog_simule("10", &v.to_string(), &["Jeu.exe"]);
+        assert!(tache_jeu_gog(d.path(), "10").is_ok(), "sans rootGameId : accepté");
+        for m in [MotifSecours::SansFichier, MotifSecours::TropGros, MotifSecours::Illisible, MotifSecours::AutreJeu, MotifSecours::AucuneTache] {
+            assert!(!m.en_mots().contains('\\') && !m.en_mots().is_empty());
+        }
+    }
+
+    #[test]
+    fn une_tache_au_chemin_douteux_ou_aux_arguments_en_tableau_est_refusee() {
+        let d = tempfile::tempdir().unwrap();
+        let jeu = d.path().join("Jeu");
+        std::fs::create_dir_all(jeu.join("bin")).unwrap();
+        std::fs::write(jeu.join("bin").join("Jeu.exe"), b"MZ").unwrap();
+        std::fs::write(d.path().join("Dehors.exe"), b"MZ").unwrap();
+        std::fs::write(jeu.join("lisezmoi.txt"), b"x").unwrap();
+        let dehors = d.path().join("Dehors.exe").to_string_lossy().into_owned();
+        let essai = |tache: serde_json::Value| {
+            std::fs::write(jeu.join("goggame-20.info"), info_avec_taches("20", serde_json::json!([tache]))).unwrap();
+            tache_jeu_gog(&jeu, "20")
+        };
+        let base = || serde_json::json!({"category": "game", "isPrimary": true, "path": r"bin\Jeu.exe", "type": "FileTask"});
+        assert!(essai(base()).is_ok(), "la tâche de référence passe");
+        let avec = |cle: &str, val: serde_json::Value| {
+            let mut t = base();
+            t[cle] = val;
+            essai(t)
+        };
+        assert_eq!(avec("path", r"..\Dehors.exe".into()), Err(MotifSecours::AucuneTache), "« .. »");
+        assert_eq!(avec("path", r"bin\..\..\Dehors.exe".into()), Err(MotifSecours::AucuneTache), "« .. » au milieu");
+        std::fs::write(jeu.join("Jeu..exe"), b"MZ").unwrap();
+        assert_eq!(avec("path", "Jeu..exe".into()).unwrap().programme.exe, jeu.join("Jeu..exe"), "« .. » dans un NOM de fichier : accepté");
+        assert_eq!(avec("path", dehors.clone().into()), Err(MotifSecours::AucuneTache), "absolu");
+        assert_eq!(avec("path", r"\Dehors.exe".into()), Err(MotifSecours::AucuneTache), "depuis la racine");
+        assert_eq!(avec("path", r"<?APPLICATION_DATA_LOCAL?>\Jeu.exe".into()), Err(MotifSecours::AucuneTache), "« <? »");
+        assert_eq!(avec("path", "lisezmoi.txt".into()), Err(MotifSecours::AucuneTache), "pas un .exe");
+        assert_eq!(avec("path", "absent.exe".into()), Err(MotifSecours::AucuneTache), "exe absent");
+        assert_eq!(avec("type", "URLTask".into()), Err(MotifSecours::AucuneTache), "URLTask seule");
+        assert_eq!(avec("arguments", serde_json::json!(["-a", "-b"])), Err(MotifSecours::AucuneTache), "arguments en tableau");
+        assert_eq!(avec("arguments", "<?GAME_DIR?>".into()), Err(MotifSecours::AucuneTache), "jeton de Galaxy dans les arguments");
+        assert_eq!(avec("arguments", " -skipintro ".into()).unwrap().programme.arguments, "-skipintro");
+        assert_eq!(avec("workingDir", "..".into()), Err(MotifSecours::AucuneTache), "dossier de travail hors du jeu");
+        assert_eq!(avec("workingDir", d.path().to_string_lossy().into_owned().into()), Err(MotifSecours::AucuneTache), "dossier de travail absolu");
+        assert_eq!(avec("workingDir", "absent".into()), Err(MotifSecours::AucuneTache), "dossier de travail absent");
+        assert_eq!(avec("workingDir", "bin".into()).unwrap().programme.dossier_travail, jeu.join("bin"));
+        assert_eq!(avec("workingDir", "".into()).unwrap().programme.dossier_travail, jeu);
+        // Une URLTask principale ne sert jamais de recours.
+        let url = serde_json::json!({"category": "launcher", "isPrimary": true, "link": "https://exemple.com", "type": "URLTask"});
+        assert_eq!(essai(url), Err(MotifSecours::AucuneTache));
+    }
+
+    /// Une jonction entre le dossier du jeu et le programme : refusée (le programme serait ailleurs). Windows seulement.
+    #[cfg(windows)]
+    #[test]
+    fn un_programme_derriere_une_jonction_est_refuse() {
+        let d = tempfile::tempdir().unwrap();
+        let (jeu, ailleurs) = (d.path().join("Jeu"), d.path().join("Ailleurs"));
+        std::fs::create_dir_all(&jeu).unwrap();
+        std::fs::create_dir_all(&ailleurs).unwrap();
+        std::fs::write(ailleurs.join("Jeu.exe"), b"MZ").unwrap();
+        let lien = jeu.join("bin");
+        let ok = crate::lancement::outil_sans_fenetre("cmd").args(["/C", "mklink", "/J"]).arg(&lien).arg(&ailleurs).output().is_ok_and(|o| o.status.success());
+        if !ok {
+            eprintln!("jonction impossible ici : essai sauté");
+            return;
+        }
+        std::fs::write(jeu.join("goggame-21.info"), info_avec_taches("21", serde_json::json!([{"category": "game", "path": r"bin\Jeu.exe", "type": "FileTask"}]))).unwrap();
+        let r = tache_jeu_gog(&jeu, "21");
+        let _ = std::fs::remove_dir(&lien);
+        assert_eq!(r, Err(MotifSecours::AucuneTache));
     }
 
     #[test]

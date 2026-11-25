@@ -2963,7 +2963,15 @@ pub async fn jeu_jouer(
     crate::figer::degeler();
     // « Occupé » du lancement jusqu'à la fin du suivi de la partie (deux tâches) : jamais rattaché entre les deux.
     noyau.marquer_occupe(id);
-    let (pid, dossiers, carte_cedee) = match noyau.jouer(id, emulateur, version.as_deref(), carte).await {
+    // Lot C4c-1 : un jeu GOG lancé par GOG Galaxy en secours (aucune tâche directe) est dit TOUT DE SUITE, avant
+    // l'attente du jeu (fenêtre maison de l'interface).
+    let app_avis = app.clone();
+    let avis = move |voie: &'static str| {
+        if voie == "galaxy" {
+            let _ = app_avis.emit("lancement-galaxy", serde_json::json!({ "jeu": id }));
+        }
+    };
+    let (pid, dossiers, carte_cedee, _voie) = match noyau.jouer(id, emulateur, version.as_deref(), carte, &avis).await {
         Ok(r) => r,
         Err(e) => {
             noyau.liberer(id);
@@ -10106,6 +10114,12 @@ fn garder_etat(dossier_profil: &std::path::Path, b: &BilanAbriAuto) {
         Ok(())
     };
     let _ = r;
+}
+
+/// Lot C4c-1 : ce jeu GOG installé se lance-t-il directement, sans GOG Galaxy ? (Un oui ou un non, rien d'autre.)
+#[tauri::command]
+pub async fn gog_lancement_direct(noyau: State<'_, Noyau>, id: i64) -> Resultat<bool> {
+    noyau.gog_lancement_direct(id).await
 }
 
 /// La ligne gardée de la fiche d'un jeu (M6), pour le profil de la session ; `None` : rien à dire.

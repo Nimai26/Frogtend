@@ -21,7 +21,7 @@ import { avecProgres } from '$lib/mods/progres.svelte';
 import { accordModSteam } from '$lib/mods/cheatengine';
 import { groupeDe, libelleCopie } from '$lib/boutiques/copies';
 import { nomPlateforme } from '$lib/boutiques/galaxy.svelte';
-import { messageLancementBoutique, nomBoutique as nomDeBoutique } from '$lib/boutiques/jeu-boutique';
+import { messageLancementBoutique, messageSecoursGalaxy, nomBoutique as nomDeBoutique } from '$lib/boutiques/jeu-boutique';
 import { ouvrirPageWeb } from '$lib/web';
 import { estRetroArch, normaliser, pourLeJeu } from '$lib/emulateurs/choix';
 import { etat, reglerPc, reglerProfil } from '$lib/etat.svelte';
@@ -104,6 +104,8 @@ export async function suivreParties() {
   await suivreEmulateurSeul();
   // Un jeu en administrateur ne reçoit pas les touches de la manette : le dire (une fois par partie).
   await listen<{ message: string }>('clavier', (e) => toast(`🕹 ${e.payload.message}.`, 'alerte'));
+  // Lot C4c-1 : un jeu GOG lancé par GOG Galaxy en secours (dit dès le lancement, avant l'attente du jeu).
+  await listen<{ jeu: number }>('lancement-galaxy', () => toast(messageSecoursGalaxy(auCanape()), 'alerte'));
   // « Garder » l'effet choisi dans le menu en jeu (lot 2) : c'est cette fenêtre qui tient les réglages du profil.
   await listen<{ jeu: number; plateforme: string; effet: string; pour: 'jeu' | 'console' }>('menu-effet-garder', async (e) => {
     const { jeu, plateforme, effet, pour } = e.payload;
@@ -598,7 +600,7 @@ export async function jouer(id: number, emulateur?: string, version?: string, ca
   const nomBoutique = nomDeBoutique(b?.source);
   // UN seul toast ; au canapé (Taodbox), il dit aussi comment revenir si le lanceur prend la main.
   const auCanape = typeof document !== 'undefined' && document.documentElement.hasAttribute('data-taodbox');
-  const attente = b ? toast(messageLancementBoutique(nomBoutique, tele.jeux[id]?.titre ?? 'le jeu', auCanape), 'neutre', { jusquaFermeture: true }) : null;
+  const attente = b ? toast(messageLancementBoutique(nomBoutique, tele.jeux[id]?.titre ?? 'le jeu', auCanape, b.source), 'neutre', { jusquaFermeture: true }) : null;
   try {
     await jouerSansAttente(id, emulateur, version, carte);
   } finally {

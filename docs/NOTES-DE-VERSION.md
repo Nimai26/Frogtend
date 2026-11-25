@@ -1,5 +1,17 @@
 # Notes de version de Frogtend
 
+## 0.228.0 — ▶ Les jeux GOG se lancent directement, sans GOG Galaxy
+
+- Nouveau : « ▶ Jouer » sur un jeu GOG lance le jeu lui-même (comme LaunchBox), sans ouvrir GOG Galaxy ni le lanceur
+  de l'éditeur. Par exemple Cyberpunk 2077 démarre sans l'écran noir du lanceur de CD Projekt.
+- Contrepartie dite sur la fiche : pas de sauvegardes dans le nuage de GOG ni de succès Galaxy pour un jeu lancé
+  ainsi ; Frogtend met tes parties à l'abri après chaque partie quand il sait où elles sont (et le dit s'il ne le sait
+  pas, ou si la mise à l'abri est éteinte).
+- Si un jeu ne dit pas quel programme lancer, Frogtend passe par GOG Galaxy en secours, et le dit tout de suite.
+- Un jeu qui demande les droits d'administrateur : Frogtend le dit et propose de le lancer depuis GOG Galaxy.
+- Corrigé : avec certains petits lanceurs, la partie pouvait être crue finie trop tôt.
+- Comme GOG Galaxy ne s'ouvre plus, il ne bloque plus les mods après une partie.
+
 ## 0.227.1 — 🧩 Les mods remis se voient
 
 - Nouveau : une partie « 🧩 Dans le jeu » liste les mods remis, chacun avec « 🧹 Retirer » pour le ranger de nouveau,

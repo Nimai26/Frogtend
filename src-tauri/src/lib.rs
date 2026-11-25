@@ -663,6 +663,7 @@ pub fn run() {
             commandes::parties_abris,
             commandes::parties_continuer_sans_abri,
             commandes::parties_abri_auto_etat,
+            commandes::gog_lancement_direct,
             commandes::parties_abri_avant,
             commandes::parties_a_confirmer,
             commandes::parties_confirmer,

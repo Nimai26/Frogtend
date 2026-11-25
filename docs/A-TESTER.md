@@ -6,6 +6,15 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## ▶ Jeux GOG lancés sans Galaxy (0.228.0, lot C4c-1)
+- [ ] 1. Mettre à jour, GOG Galaxy FERMÉ. Fiche de Cyberpunk : sous ▶ Jouer, la phrase « Lancé directement, sans GOG
+      Galaxy… ». ▶ Jouer : le jeu démarre SANS l'écran noir du lanceur de CD Projekt, et Galaxy ne s'ouvre pas.
+- [ ] 2. Pendant la partie : le menu en jeu s'ouvre ; « Quitter » ferme bien le jeu (ou quitter depuis le jeu).
+- [ ] 3. Après la partie : Galaxy toujours fermé ; le bloc 🧩 Mods n'est PAS bloqué ; l'agent regarde le journal
+      (temps de jeu, fin de session, abri des parties) et si un service de Galaxy s'est réveillé.
+- [ ] 4. Un autre jeu GOG (Horizon Zero Dawn par exemple) : il démarre directement aussi.
+- [ ] 5. (Canapé, plus tard) Les étapes 1 à 3 depuis Taodbox, à la manette.
+
 ## 🧩 Les mods remis se voient (0.227.1)
 - [x] 1. Mettre à jour, GOG Galaxy fermé. Fiche de Cyberpunk ▸ 🧩 Mods : une partie « 🧩 Dans le jeu (1) » avec
       « (4k) Immersive Bullet Holes », puis « Mods retirés (283) ».

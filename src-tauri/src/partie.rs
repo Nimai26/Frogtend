@@ -242,12 +242,105 @@ fn racine_du_dossier(pids: &[u32]) -> Option<u32> {
         .or_else(|| pids.iter().copied().min())
 }
 
+/// Comment lancer un jeu GOG (lot C4c-1, ✅ Seb 25/11) : la DÉCISION seule, testable sans rien lancer.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum PlanGog {
+    /// La tâche du `goggame-<id>.info`, lancée directement, sans GOG Galaxy.
+    Direct(crate::boutiques_pc::TacheGog),
+    /// Secours : GOG Galaxy (`commande_galaxy`), parce que la tâche directe manque.
+    Galaxy { client: PathBuf, arguments: Vec<String>, motif: crate::boutiques_pc::MotifSecours },
+    /// Secours sans Galaxy : le programme que GOG note dans le registre.
+    Registre { programme: crate::boutiques_pc::ProgrammeGog, motif: crate::boutiques_pc::MotifSecours },
+    /// Rien de sûr à lancer : le message pour la personne.
+    Refus(String),
+}
+
+impl PlanGog {
+    /// Le mot noté au journal (game / principale / galaxy / registre / refus) et la raison du secours.
+    pub(crate) fn voie(&self) -> (&'static str, Option<crate::boutiques_pc::MotifSecours>) {
+        match self {
+            PlanGog::Direct(t) => (t.categorie.mot(), None),
+            PlanGog::Galaxy { motif, .. } => ("galaxy", Some(*motif)),
+            PlanGog::Registre { motif, .. } => ("registre", Some(*motif)),
+            PlanGog::Refus(_) => ("refus", None),
+        }
+    }
+}
+
+/// Le plan de lancement d'un jeu GOG : la tâche directe D'ABORD ; le secours seulement si elle manque — GOG Galaxy
+/// s'il est là (et que le jeu n'est pas connu comme celui d'un autre compte, `hors_galaxy`), sinon le programme du
+/// registre, sinon un refus. `galaxy` et `registre` ne sont lus que si l'on va au secours.
+pub(crate) fn plan_gog(
+    direct: Result<crate::boutiques_pc::TacheGog, crate::boutiques_pc::MotifSecours>,
+    hors_galaxy: bool,
+    galaxy: impl FnOnce() -> Option<(PathBuf, Vec<String>)>,
+    registre: impl FnOnce() -> Option<crate::boutiques_pc::ProgrammeGog>,
+) -> PlanGog {
+    let motif = match direct {
+        Ok(t) => return PlanGog::Direct(t),
+        Err(m) => m,
+    };
+    if !hors_galaxy {
+        if let Some((client, arguments)) = galaxy() {
+            return PlanGog::Galaxy { client, arguments, motif };
+        }
+    }
+    match registre() {
+        Some(programme) => PlanGog::Registre { programme, motif },
+        None => PlanGog::Refus(if hors_galaxy {
+            // Lot C4b : un jeu de l'autre compte GOG, que GOG ne note pas installé sur ce PC.
+            "GOG ne note pas ce jeu comme installé sur ce PC : installe-le d'abord avec GOG Galaxy, connecté au compte qui le possède.".into()
+        } else {
+            "GOG ne note plus ce jeu sur ce PC : réinstalle-le (ou ouvre-le depuis son dossier).".into()
+        }),
+    }
+}
+
+/// Lance un programme d'un jeu GOG (tâche directe ou registre), sans console ni shell ; les arguments passent tels
+/// quels (`raw_arg`). L'erreur de Windows est rendue telle quelle (son numéro va au journal) ; `erreur_programme_gog`
+/// la dit à la personne.
+fn demarrer_programme_gog(p: &crate::boutiques_pc::ProgrammeGog) -> std::io::Result<u32> {
+    let mut c = std::process::Command::new(&p.exe);
+    c.current_dir(&p.dossier_travail);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        if !p.arguments.is_empty() {
+            c.raw_arg(&p.arguments);
+        }
+    }
+    Ok(c.spawn()?.id())
+}
+
+/// Le message d'un lancement GOG qui échoue. Les droits d'administrateur (740) ne sont jamais pris tout seuls : la
+/// personne peut passer par GOG Galaxy (une élévation sur accord attend une décision de Seb).
+fn erreur_programme_gog(e: &std::io::Error) -> Erreur {
+    if e.raw_os_error() == Some(740) {
+        Erreur::Refus("Ce jeu demande les droits d'administrateur : Frogtend ne les prend pas tout seul. Tu peux le lancer depuis GOG Galaxy.".into())
+    } else {
+        Erreur::Disque("Le jeu GOG ne démarre pas.".into())
+    }
+}
+
 /// Demande à la boutique de lancer le jeu, puis attend qu'un programme apparaisse DANS son dossier (jamais le client de
 /// la boutique, hors du dossier) : c'est lui que la partie suit (menu en jeu, quitter, manette → clavier).
-/// `hors_galaxy` (lot C4b) : un jeu GOG dont on SAIT (base de Galaxy relue à l'instant, `jeu_gog_hors_galaxy_relu`)
-/// qu'il est seulement sur un autre compte que celui ouvert dans GOG Galaxy se lance par le registre (Galaxy ne le
-/// lancerait pas) ; dans le doute, toujours par Galaxy (son nuage garde les sauvegardes).
-async fn lancer_par_la_boutique(b: &crate::jeux_pc::LancementBoutique, dossier: &Path, hors_galaxy: bool) -> Resultat<u32> {
+/// GOG (lot C4c-1) : `direct` est la tâche lue dans `goggame-<id>.info` (`tache_jeu_gog`) ; lancée directement, son
+/// processus est suivi tel quel (le dossier du jeu reste surveillé par le suivi de la partie). Un échec de ce
+/// lancement est un vrai échec, dit tel quel : jamais de bascule sur Galaxy après coup.
+/// `hors_galaxy` (lot C4b, lu seulement si l'on va au secours) : un jeu GOG dont on SAIT (base de Galaxy relue à
+/// l'instant, `jeu_gog_hors_galaxy_relu`) qu'il est seulement sur un autre compte que celui ouvert dans GOG Galaxy se
+/// lance par le registre (Galaxy ne le lancerait pas).
+/// `journal` : note une ligne (ids, nombres et mots seulement — jamais de chemin ni de titre). `avis` : reçoit la voie
+/// GOG prise (game / principale / galaxy / registre) DÈS le lancement, avant l'attente du jeu. Rend le processus et,
+/// pour GOG, la voie prise.
+async fn lancer_par_la_boutique(
+    b: &crate::jeux_pc::LancementBoutique,
+    dossier: &Path,
+    direct: Option<Result<crate::boutiques_pc::TacheGog, crate::boutiques_pc::MotifSecours>>,
+    hors_galaxy: bool,
+    journal: &(dyn Fn(&str) + Sync),
+    avis: &(dyn Fn(&'static str) + Sync),
+) -> Resultat<(u32, Option<&'static str>)> {
     let nom = nom_boutique(&b.source);
     if !crate::lancement::processus_du_dossier(dossier).is_empty() {
         return Err(Erreur::Refus("Ce jeu tourne déjà.".into()));
@@ -258,51 +351,75 @@ async fn lancer_par_la_boutique(b: &crate::jeux_pc::LancementBoutique, dossier: 
         return Err(Erreur::Refus(crate::boutiques_pc::message_lanceur_absent(&b.source)));
     }
     let (b2, d2) = (b.clone(), dossier.to_path_buf());
-    let adresse = tokio::task::spawn_blocking(move || adresse_boutique(&b2)).await.unwrap_or(None);
-    let galaxy = if b.source == "gog" && !hors_galaxy { commande_galaxy(&b.cle, dossier) } else { None };
-    if let Some(adresse) = adresse {
-        tauri_plugin_opener::open_url(&adresse, None::<&str>).map_err(|_| Erreur::Disque(format!("{nom} ne s'ouvre pas : est-il installé ?")))?;
-    } else if b.source == "gog" && galaxy.is_none() {
-        // Sans GOG Galaxy (lot A) : le programme que GOG note dans le registre, lancé directement (dans le dossier du
-        // jeu, jamais un autre), sans console ni shell.
-        let p = crate::boutiques_pc::entree_gog(&b.cle)
-            .and_then(|v| crate::boutiques_pc::programme_gog(&v))
-            .filter(|p| crate::boutiques::cle_chemin(&p.exe).starts_with(&format!("{}\\", crate::boutiques::cle_chemin(&d2))))
-            .ok_or_else(|| {
-                Erreur::Refus(if hors_galaxy {
-                    // Lot C4b : un jeu de l'autre compte GOG, que GOG ne note pas installé sur ce PC.
-                    "GOG ne note pas ce jeu comme installé sur ce PC : installe-le d'abord avec GOG Galaxy, connecté au compte qui le possède.".into()
-                } else {
-                    "GOG ne note plus ce jeu sur ce PC : réinstalle-le (ou ouvre-le depuis son dossier).".into()
-                })
-            })?;
-        let mut c = std::process::Command::new(&p.exe);
-        c.current_dir(&p.dossier_travail);
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            if !p.arguments.is_empty() {
-                c.raw_arg(&p.arguments);
+    let adresse = if b.source == "gog" { None } else { tokio::task::spawn_blocking(move || adresse_boutique(&b2)).await.unwrap_or(None) };
+    let mut voie = None;
+    if b.source == "gog" {
+        // Lot C4c-1 : la tâche directe d'abord ; Galaxy, puis le registre, ne sont lus que si elle manque.
+        let direct = direct.unwrap_or(Err(crate::boutiques_pc::MotifSecours::SansFichier));
+        let cle = b.cle.clone();
+        let plan = tokio::task::spawn_blocking(move || {
+            plan_gog(
+                direct,
+                hors_galaxy,
+                || commande_galaxy(&cle, &d2),
+                || {
+                    // Sans GOG Galaxy (lot A) : le programme que GOG note dans le registre (dans le dossier du jeu,
+                    // jamais un autre).
+                    crate::boutiques_pc::entree_gog(&cle)
+                        .and_then(|v| crate::boutiques_pc::programme_gog(&v))
+                        .filter(|p| crate::boutiques::cle_chemin(&p.exe).starts_with(&format!("{}\\", crate::boutiques::cle_chemin(&d2))))
+                },
+            )
+        })
+        .await
+        .map_err(|_| Erreur::Disque("Le choix du programme du jeu s'est arrêté brutalement.".into()))?;
+        let (mot, motif) = plan.voie();
+        let raison = motif.map(|m| format!(" ({})", m.en_mots())).unwrap_or_default();
+        voie = Some(mot);
+        match plan {
+            PlanGog::Direct(t) => {
+                // Lancé sans Galaxy : son processus est suivi DIRECTEMENT (daté dès son départ).
+                let pid = demarrer_programme_gog(&t.programme).map_err(|e| {
+                    journal(&format!("lancement GOG direct (tâche {mot}) en échec, erreur Windows {}", e.raw_os_error().map(|n| n.to_string()).unwrap_or_else(|| "inconnue".into())));
+                    erreur_programme_gog(&e)
+                })?;
+                crate::lancement::noter_depart(pid);
+                journal(&format!("GOG lancé directement (tâche {mot}), processus {pid}"));
+                avis(mot);
+                return Ok((pid, voie));
+            }
+            PlanGog::Refus(m) => {
+                journal("GOG : rien de sûr à lancer (ni tâche, ni Galaxy, ni registre)");
+                return Err(Erreur::Refus(m));
+            }
+            PlanGog::Registre { programme, .. } => {
+                journal(&format!("GOG lancé par le registre{raison}"));
+                demarrer_programme_gog(&programme).map_err(|e| erreur_programme_gog(&e))?;
+                avis(mot);
+            }
+            PlanGog::Galaxy { client, arguments: args, .. } => {
+                journal(&format!("GOG lancé par GOG Galaxy en secours{raison}"));
+                // Le client de Galaxy, sans console et sans shell ; il reste ouvert après le jeu (c'est le sien).
+                let mut c = std::process::Command::new(&client);
+                // La forme des forums (`/path="D:\…"`), écrite telle quelle : Rust citerait l'argument entier
+                // (`"/path=D:\…"`), et la façon dont Galaxy lit sa ligne n'est pas documentée. Sans « \ » final (il
+                // neutraliserait le guillemet) ; un « " » ne peut pas être dans un chemin Windows.
+                c.args(args.iter().filter(|a| !a.starts_with("/path=")));
+                #[cfg(windows)]
+                {
+                    use std::os::windows::process::CommandExt;
+                    c.raw_arg(format!("/path=\"{}\"", dossier.to_string_lossy().trim_end_matches('\\')));
+                }
+                if let Some(d) = client.parent() {
+                    c.current_dir(d);
+                }
+                c.spawn().map_err(|_| Erreur::Disque("GOG Galaxy ne démarre pas.".into()))?;
+                // Dit tout de suite (avant l'attente du jeu, qui peut durer 3 minutes).
+                avis(mot);
             }
         }
-        c.spawn().map_err(|_| Erreur::Disque("Le jeu GOG ne démarre pas.".into()))?;
-    } else if b.source == "gog" {
-        let (client, args) = galaxy.ok_or_else(|| Erreur::Refus("GOG Galaxy est introuvable sur ce PC : installe-le (ou ouvre le jeu depuis lui).".into()))?;
-        // Le client de Galaxy, sans console et sans shell ; il reste ouvert après le jeu (c'est le sien).
-        let mut c = std::process::Command::new(&client);
-        // La forme des forums (`/path="D:\…"`), écrite telle quelle : Rust citerait l'argument entier
-        // (`"/path=D:\…"`), et la façon dont Galaxy lit sa ligne n'est pas documentée. Sans « \ » final (il
-        // neutraliserait le guillemet) ; un « " » ne peut pas être dans un chemin Windows.
-        c.args(args.iter().filter(|a| !a.starts_with("/path=")));
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            c.raw_arg(format!("/path=\"{}\"", dossier.to_string_lossy().trim_end_matches('\\')));
-        }
-        if let Some(d) = client.parent() {
-            c.current_dir(d);
-        }
-        c.spawn().map_err(|_| Erreur::Disque("GOG Galaxy ne démarre pas.".into()))?;
+    } else if let Some(adresse) = adresse {
+        tauri_plugin_opener::open_url(&adresse, None::<&str>).map_err(|_| Erreur::Disque(format!("{nom} ne s'ouvre pas : est-il installé ?")))?;
     } else if b.source == "epic" {
         // Le manifeste d'Epic n'est plus là (jeu désinstallé par Epic, dossier resté) : le dire, jamais deviner.
         return Err(Erreur::Refus("Epic ne voit plus ce jeu installé : réinstalle-le ou répare-le depuis l'Epic Games Launcher.".into()));
@@ -322,7 +439,7 @@ async fn lancer_par_la_boutique(b: &crate::jeux_pc::LancementBoutique, dossier: 
             if let Some(p) = racine_du_dossier(&pids) {
                 // Daté dès qu'il est vu : un numéro repris plus tard par un autre programme ne comptera pas.
                 crate::lancement::noter_depart(p);
-                return Ok(p);
+                return Ok((p, voie));
             }
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
@@ -660,6 +777,15 @@ impl Noyau {
             (None, Some(f)) => Some(Path::new(&i.dossier).join(f)),
             _ => None,
         })
+    }
+
+    /// Lot C4c-1 : ce jeu GOG installé se lance-t-il DIRECTEMENT (une tâche sûre dans son `goggame-<id>.info`) ? Rien
+    /// d'autre n'est rendu (ni chemin ni tâche) : la fiche ne dit la contrepartie que dans ce cas.
+    pub async fn gog_lancement_direct(&self, id: i64) -> Resultat<bool> {
+        let j = self.jeu_jouable(id).await?;
+        let Some(i) = j.installation.filter(|i| i.boutique.as_ref().is_some_and(|b| b.source == "gog")) else { return Ok(false) };
+        let (d, cle) = (PathBuf::from(&i.dossier), i.boutique.map(|b| b.cle).unwrap_or_default());
+        Ok(tokio::task::spawn_blocking(move || crate::boutiques_pc::tache_jeu_gog(&d, &cle).is_ok()).await.unwrap_or(false))
     }
 
     /// Un jeu du PC que le profil ouvert peut LANCER : visible par lui, ou un jeu importé par un autre profil et relié
@@ -1201,20 +1327,38 @@ impl Noyau {
     /// ouvert une session pour ce PC (`session` non nulle : PC qui calcule pour lui). Au 30/09, cela ne met en pause
     /// qu'une partie de ses travaux sur la carte graphique : on dit « session annoncée », pas « carte libérée ».
     /// `carte` : la carte à lire d'un jeu e-Reader (sa version ; aucune : la première).
-    pub async fn jouer(&self, id: i64, emulateur: Option<(String, String)>, version: Option<&str>, carte: Option<i64>) -> Resultat<(u32, Vec<PathBuf>, bool)> {
+    /// `avis` (lot C4c-1) : reçoit la voie d'un jeu GOG (game / principale / galaxy / registre) DÈS son lancement, avant
+    /// l'attente du jeu ; la même voie est rendue en dernier (`None` hors GOG).
+    pub async fn jouer(
+        &self,
+        id: i64,
+        emulateur: Option<(String, String)>,
+        version: Option<&str>,
+        carte: Option<i64>,
+        avis: &(dyn Fn(&'static str) + Sync),
+    ) -> Resultat<(u32, Vec<PathBuf>, bool, Option<&'static str>)> {
         let _occupe = self.occuper(id);
         let j = self.jeu_jouable(id).await?;
         let i = installation_de_la_partie(&j, version)?;
         self.pause_mame.store(false, std::sync::atomic::Ordering::SeqCst);
         // Un jeu d'une boutique : lancé PAR elle (mises à jour, sauvegardes dans le nuage, compte), puis suivi.
         if let Some(b) = &i.boutique {
-            let hors_galaxy = match (b.source == "gog", self.actif().await) {
+            // GOG (lot C4c-1) : la tâche du `goggame-<id>.info` d'abord, lue hors du fil asynchrone.
+            let direct = if b.source == "gog" {
+                let (d, cle) = (PathBuf::from(&i.dossier), b.cle.clone());
+                Some(tokio::task::spawn_blocking(move || crate::boutiques_pc::tache_jeu_gog(&d, &cle)).await.unwrap_or(Err(crate::boutiques_pc::MotifSecours::Illisible)))
+            } else {
+                None
+            };
+            // La base de Galaxy n'est relue que si l'on va au secours (aucune tâche directe).
+            let hors_galaxy = match (matches!(direct, Some(Err(_))), self.actif().await) {
                 (true, Some(p)) => crate::commandes::jeu_gog_hors_galaxy_relu(&self.dossier.join("profils").join(&p.id), self.dossier.join("travail").join("galaxy-lancer"), &b.cle).await.is_some(),
                 _ => false,
             };
-            let pid = lancer_par_la_boutique(b, Path::new(&i.dossier), hors_galaxy).await?;
+            let journal = |m: &str| self.journaliser(&format!("jeu {id} : {m}"));
+            let (pid, voie) = lancer_par_la_boutique(b, Path::new(&i.dossier), direct, hors_galaxy, &journal, avis).await?;
             let reponse = self.annoncer(id, "debut").await;
-            return Ok((pid, vec![PathBuf::from(&i.dossier)], reponse.is_some_and(|r| r["session"].is_object())));
+            return Ok((pid, vec![PathBuf::from(&i.dossier)], reponse.is_some_and(|r| r["session"].is_object()), voie));
         }
         let (lanceur, dossiers) = match (&i.lanceur, &i.fichier_du_jeu) {
             (Some(l), _) => (l.clone(), vec![PathBuf::from(&i.dossier)]),
@@ -1290,7 +1434,7 @@ impl Noyau {
         let pid = demarrer(&lanceur)?;
         let reponse = self.annoncer(id, "debut").await;
         let carte_cedee = reponse.is_some_and(|r| r["session"].is_object());
-        Ok((pid, dossiers, carte_cedee))
+        Ok((pid, dossiers, carte_cedee, None))
     }
 
     /// mGBA range désormais les parties de chaque personne dans son profil (`-C savegamePath`) : une partie qu'il avait
@@ -2101,6 +2245,51 @@ mod tests {
         assert_eq!(adresse_boutique(&crate::jeux_pc::LancementBoutique { source: "uplay".into(), cle: "46".into() }).as_deref(), Some("uplay://launch/46"));
         assert_eq!(adresse_boutique(&crate::jeux_pc::LancementBoutique { source: "amazon".into(), cle: "x/../y".into() }), None);
         assert_eq!(adresse_boutique(&crate::jeux_pc::LancementBoutique { source: "battlenet".into(), cle: "wow".into() }), None, "Battle.net : rien de deviné");
+        // Lot C4c-1 : GOG ne passe plus par une adresse (sa tâche directe, ou le secours).
+        assert_eq!(adresse_boutique(&crate::jeux_pc::LancementBoutique { source: "gog".into(), cle: "1423049311".into() }), None);
+    }
+
+    #[test]
+    fn un_jeu_gog_se_lance_directement_et_galaxy_n_est_qu_un_secours() {
+        use crate::boutiques_pc::{CategorieTache, MotifSecours, ProgrammeGog, TacheGog};
+        let prog = |e: &str| ProgrammeGog { exe: PathBuf::from(e), dossier_travail: PathBuf::from(r"D:\J"), arguments: String::new() };
+        let tache = TacheGog { programme: prog(r"D:\J\bin\x64\Cyberpunk2077.exe"), categorie: CategorieTache::Jeu };
+        let galaxy = || Some((PathBuf::from(r"C:\Galaxy\GalaxyClient.exe"), vec!["/command=runGame".to_string()]));
+        let registre = || Some(prog(r"D:\J\REDprelauncher.exe"));
+        let jamais_g = || -> Option<(PathBuf, Vec<String>)> { panic!("Galaxy ne doit pas être lu") };
+        let jamais_r = || -> Option<ProgrammeGog> { panic!("le registre ne doit pas être lu") };
+        // 1. La tâche directe d'abord : ni Galaxy ni le registre ne sont lus, même « hors Galaxy ».
+        let p = plan_gog(Ok(tache.clone()), false, jamais_g, jamais_r);
+        assert_eq!(p, PlanGog::Direct(tache.clone()));
+        assert_eq!(p.voie(), ("game", None));
+        assert_eq!(plan_gog(Ok(tache.clone()), true, jamais_g, jamais_r), PlanGog::Direct(tache.clone()));
+        let principale = TacheGog { categorie: CategorieTache::Principale, ..tache };
+        assert_eq!(plan_gog(Ok(principale), false, jamais_g, jamais_r).voie().0, "principale");
+        // 2. Sans tâche : GOG Galaxy s'il est là.
+        let p = plan_gog(Err(MotifSecours::AucuneTache), false, galaxy, jamais_r);
+        assert!(matches!(&p, PlanGog::Galaxy { client, motif: MotifSecours::AucuneTache, .. } if client.ends_with("GalaxyClient.exe")));
+        assert_eq!(p.voie(), ("galaxy", Some(MotifSecours::AucuneTache)));
+        // 3. Sans Galaxy, ou un jeu d'un autre compte (Galaxy ne le lancerait pas) : le programme du registre.
+        let p = plan_gog(Err(MotifSecours::SansFichier), false, || None, registre);
+        assert_eq!(p, PlanGog::Registre { programme: prog(r"D:\J\REDprelauncher.exe"), motif: MotifSecours::SansFichier });
+        assert_eq!(p.voie().0, "registre");
+        assert_eq!(plan_gog(Err(MotifSecours::Illisible), true, jamais_g, registre).voie().0, "registre", "hors Galaxy : Galaxy n'est pas lu");
+        // 4. Rien : le refus d'aujourd'hui, selon le cas.
+        let p = plan_gog(Err(MotifSecours::AucuneTache), false, || None, || None);
+        assert!(matches!(&p, PlanGog::Refus(m) if m.contains("ne note plus ce jeu")));
+        assert_eq!(p.voie(), ("refus", None));
+        assert!(matches!(plan_gog(Err(MotifSecours::AucuneTache), true, jamais_g, || None), PlanGog::Refus(m) if m.contains("connecté au compte qui le possède")));
+    }
+
+    #[test]
+    fn un_programme_gog_absent_est_un_vrai_echec_dit_tel_quel() {
+        // Le lancement direct qui échoue : un message clair, jamais une bascule sur Galaxy (rien n'est lancé ici).
+        let p = crate::boutiques_pc::ProgrammeGog { exe: PathBuf::from(r"Z:\absent\Jeu.exe"), dossier_travail: PathBuf::from(r"Z:\absent"), arguments: "-a".into() };
+        let e = demarrer_programme_gog(&p).unwrap_err();
+        assert!(matches!(erreur_programme_gog(&e), Erreur::Disque(m) if m == "Le jeu GOG ne démarre pas."));
+        // Les droits d'administrateur (740) : jamais pris tout seuls, et jamais une impasse (Galaxy reste possible).
+        let admin = std::io::Error::from_raw_os_error(740);
+        assert!(matches!(erreur_programme_gog(&admin), Erreur::Refus(m) if m == "Ce jeu demande les droits d'administrateur : Frogtend ne les prend pas tout seul. Tu peux le lancer depuis GOG Galaxy."));
     }
 
     /// RÉEL, lecture seule (A6) : la commande qui lancerait un jeu GOG de ce PC par Galaxy (rien n'est lancé).
@@ -2213,7 +2402,7 @@ mod tests {
         let (_d, n) = noyau_avec(&[("Dune (Europe).cue", b"FILE"), ("Dune (Europe).bin", b"\0\0")], "Image disque").await;
         let i = n.installer(110, true).await.unwrap();
         assert_eq!(i.fichier_du_jeu.as_deref(), Some("Dune (Europe).cue"), "le .cue décrit les pistes");
-        assert!(matches!(n.jouer(110, None, None, None).await, Err(Erreur::Reglage(_))));
+        assert!(matches!(n.jouer(110, None, None, None, &|_| {}).await, Err(Erreur::Reglage(_))));
         assert!(Path::new(&i.dossier).join("Dune (Europe).bin").is_file(), "rien n'est renommé ni déplacé");
     }
 
@@ -2316,7 +2505,8 @@ mod tests {
         n.installer(110, true).await.unwrap();
         let c = n.candidats_lancement(110).await.unwrap();
         n.choisir_lanceur(110, c[0].lanceur.clone()).await.unwrap();
-        let (pid, dossiers, carte) = n.jouer(110, None, None, None).await.unwrap();
+        let (pid, dossiers, carte, voie) = n.jouer(110, None, None, None, &|_| {}).await.unwrap();
+        assert_eq!(voie, None, "pas un jeu GOG : aucune voie GOG");
         assert!(!carte, "en simulé, aucune carte n'est cédée");
         let fin = n.suivre_partie(110, pid, dossiers).await.unwrap();
         assert!(fin.secondes <= 30);
