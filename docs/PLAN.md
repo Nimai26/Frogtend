@@ -1030,6 +1030,8 @@ Après la connexion, la lecture prend du temps et le seul signe d'activité est 
 fenêtre maison BLOQUANTE (« ⏳ Lecture de tes jeux GOG… »), avec un bouton « Annuler » qui arrête vraiment l'opération,
 pour l'ajout d'un compte et la mise à jour à la main. Intégré au nouveau C4c.
 
+**✅ Décision de Seb (25/11) : S7 MIS DE CÔTÉ, on attaque le MODDING DES JEUX PC, avec Cyberpunk 2077 comme cobaye.** S7 : étape 1 validée (interrupteur allumé), étapes 2–3 à reprendre plus tard (A-TESTER). Déclencheur : la mise à jour de Cyberpunk (GOG, 2.50, exe 3.0.88) l'empêche de démarrer à cause de mods périmés (relevé en lecture seule le 25/11 : CET 1.35 « Only 2.21 is supported », RED4ext 1.27 plante en chargeant ArchiveXL). 284 mods installés par VORTEX (`vortex.deployment.json`, liens durs, dépôt `D:\LaunchBox\Modding\Vortex Mods\Cyberpunk 2077`, noms de dossier avec l'id Nexus et la version). Existant dans Frogtend : liens `nxm://` + API Nexus par clé personnelle (`nexus.rs`), pose avec manifeste et désinstallation avec preuve (`mods.rs`). Questions à Seb en cours.
+
 ### Prochains lots (décisions de Seb, 02/10)
 
 **Ordre en cours (Seb, 22/11)** : lot **S** (S1 livré en 0.220.0-0.220.1 ; puis S2 à S7) → lot **R** (recompilations,
