@@ -9,7 +9,7 @@
 ## 🧩 Les mods remis se voient (0.227.1)
 - [x] 1. Mettre à jour, GOG Galaxy fermé. Fiche de Cyberpunk ▸ 🧩 Mods : une partie « 🧩 Dans le jeu (1) » avec
       « (4k) Immersive Bullet Holes », puis « Mods retirés (283) ».
-- [ ] 2. « 🧹 Retirer » sur « (4k) Immersive Bullet Holes » : il quitte « Dans le jeu » et revient dans « Mods retirés ».
+- [x] 2. « 🧹 Retirer » sur « (4k) Immersive Bullet Holes » : il quitte « Dans le jeu » et revient dans « Mods retirés ».
       La barre montre l'étape et le compteur dès le départ.
 - [ ] 3. Ouvrir GOG Galaxy, revenir sur la fiche : la raison (« Ferme GOG Galaxy d'abord ») est juste au-dessus des
       listes ; fermer Galaxy, « 🔁 C'est fait, revérifier » : les boutons reviennent.
