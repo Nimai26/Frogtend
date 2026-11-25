@@ -393,6 +393,11 @@ pub fn compatibilite(versions: &Versions, compatible: Option<bool>, raison: Opti
         Versions::Liste(l) if !l.is_empty() => l,
         _ => return pas_verifie("les versions visées par ce mod ne sont pas connues : pas vérifié"),
     };
+    // Une entrée sans version brute (un Build ID dont Firehouse ne connaît pas encore la version : « inconnue »,
+    // jamais « aucune ») : on ne peut pas trancher, jamais grisé (besoin 53, règle de Firehouse du 25/11).
+    if l.iter().any(|x| x.version_brute.is_none()) {
+        return pas_verifie("pas encore vérifié avec cette version du jeu");
+    }
     let mut cibles: Vec<String> = l.iter().filter_map(|x| x.version_affichee.clone()).collect();
     cibles.dedup();
     let pour = if cibles.is_empty() { "fait pour une autre version du jeu".to_string() } else { format!("fait pour la version {}", cibles.join(" ou ")) };

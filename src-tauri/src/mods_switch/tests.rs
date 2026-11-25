@@ -485,6 +485,29 @@ fn la_compatibilite_suit_la_mise_a_jour_utilisee() {
 }
 
 #[test]
+fn un_build_id_sans_version_brute_n_est_jamais_grise() {
+    // La forme réelle de Firehouse (MK8D, 25/11) : un Build ID lu dans le .ips, version brute encore inconnue,
+    // version servie pas lue.
+    let mk8d = Versions::Liste(vec![VersionVisee { build_id: Some("4B7A0BB5AE57E627B63E2247F9470E57".into()), version_brute: None, version_affichee: None }]);
+    for u in [Some(0), Some(196608), None] {
+        let c = compatibilite(&mk8d, None, Some("vise 4B7A0BB5AE57E627 ; la signature de la version servie n'est pas encore lue"), None, u);
+        assert_eq!(c.etat, "pas_verifie", "{u:?}");
+        assert!(!c.grise());
+    }
+    // Mélangée à une entrée connue qui ne colle pas : toujours pas grisé (on ne sait pas tout).
+    let mixte = Versions::Liste(vec![
+        VersionVisee { build_id: Some("AAAA".into()), version_brute: Some(786432), version_affichee: Some("1.6.0".into()) },
+        VersionVisee { build_id: Some("BBBB".into()), version_brute: None, version_affichee: None },
+    ]);
+    assert_eq!(compatibilite(&mixte, None, None, None, Some(0)).etat, "pas_verifie");
+    // Une entrée connue qui colle reste compatible.
+    assert_eq!(compatibilite(&mixte, None, None, None, Some(786432)).etat, "compatible");
+    // Le jugement de Firehouse sur la version servie passe toujours avant : false = grisé.
+    let servie = VersionServie { version: Some(0), version_affichee: None, build_id: None };
+    assert!(compatibilite(&mk8d, Some(false), Some("le build ne correspond pas"), Some(&servie), Some(0)).grise());
+}
+
+#[test]
 fn la_version_utilisee_par_ryubing_se_lit_dans_sa_liste() {
     use crate::ryubing::version_selectionnee;
     let notre = "D:\\Jeux\\Zelda\\Zelda [v786432].nsp";

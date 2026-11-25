@@ -233,3 +233,4 @@ extensions retenues par Seb iraient dans SON zip (Firehouse les distribue), apr�
   seulement lire son format documenté. À faire après le lot S (et le C4c), avec l'avis des experts.
 - (23/11, essai S4) Options ▸ Sauvegarde : afficher « moins de 1 % » au lieu de « 0 % » quand la place utilisée est faible mais pas nulle (29,3 Mo sur 100 Go).
 - (24/11, essai S5) « 📥 Reprendre mes parties » télécharge tout (256 Mo pour Cyberpunk) même quand tout est identique : comparer d'abord le SHA des fichiers du PC à ceux du manifeste (sha256) et ne télécharger que ce qui manque ou diffère ; annoncer alors la vraie taille.
+- **Mods Switch : lire le Build ID de l'exécutable installé** (main du jeu, celui que l'émulateur compare) : une entrée de `versions` au même `build_id` vaudrait « compatible » même sans `version_brute` (conseil de Firehouse, 25/11, besoin 53). À proposer à Seb après le lot S.
