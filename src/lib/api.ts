@@ -231,6 +231,59 @@ export interface ModInstalle {
   steam_mis_a_jour?: boolean;
 }
 
+/** Lot M1 : un mod posé par Vortex — `source` (son dossier dans le dépôt de Vortex) est la clé, jamais montrée. */
+export interface ModVortex {
+  source: string;
+  nom: string;
+  fichiers: number;
+}
+
+/** Lot M1 : ce que les journaux du jeu et de ses outils de mods disent (aucun chemin). */
+export interface DiagnosticVortex {
+  version: string | null;
+  version_precedente: string | null;
+  refus: { outil: string; version_attendue: string | null }[];
+  plante: { chargeur: string; greffon: string } | null;
+  erreurs_scripts: number;
+  outil_scripts: string | null;
+}
+
+/** Lot M1 : l'état des mods de Vortex d'un jeu (`mods_vortex_etat`). */
+export interface EtatVortex {
+  present: boolean;
+  refus: string | null;
+  mods: ModVortex[];
+  /** Les fichiers PROUVÉS (ceux qu'un retrait rangerait) et leur poids (`octets`). */
+  fichiers: number;
+  octets: number;
+  retrait: { en_cours: boolean; faits: number; total: number; laisses: number; laisses_rompus: number; sauvegardes_vortex: number } | null;
+  retires: ModVortex[];
+  diagnostic: DiagnosticVortex;
+  /** Les `source` des mods que le diagnostic désigne. */
+  en_cause: string[];
+  /** `partie` (le jeu tourne ou est occupé), `galaxy` (GOG Galaxy ouvert) ou `vortex` (Vortex ouvert) : rien ne peut
+   * se faire maintenant. */
+  verrou: 'partie' | 'galaxy' | 'vortex' | null;
+}
+
+export interface BilanRetraitVortex {
+  deplaces: number;
+  laisses: number;
+  laisses_rompus: number;
+  mods: number;
+  octets: number;
+  dossiers_retires: number;
+  sauvegardes_vortex: number;
+  deploiement_range: boolean;
+}
+
+export interface BilanRemiseVortex {
+  remis: number;
+  places_prises: number;
+  changes: number;
+  deploiement_remis: boolean;
+}
+
 export interface EmulateurRecommande {
   nom: string;
   site: string;
@@ -1410,6 +1463,14 @@ export const api = {
     appeler<{ ajoutes: number; remplaces: number; identiques: number }>('mod_installer', { id, modNom, fichier, programme, suivi, risqueAccepte }),
   /** Retire un mod ; rend les fichiers gardés (modifiés par la personne) et ceux laissés à Steam (sa mise à jour). */
   modDesinstaller: (id: number, cle: string) => appeler<{ gardes: string[]; laisses_a_la_boutique: string[] }>('mod_desinstaller', { id, cle }),
+  /** Lot M1 : les mods posés par Vortex dans un jeu du PC (`null` : pas installé ici). */
+  modsVortexEtat: (id: number) => appeler<EtatVortex | null>('mods_vortex_etat', { id }),
+  /** Lot M1 : retire les mods de Vortex (rangés dans le jeu, jamais effacés ; parties à l'abri avant). */
+  modsVortexRetirer: (id: number, suivi: number) => appeler<BilanRetraitVortex>('mods_vortex_retirer', { id, suivi }),
+  modsVortexReprendre: (id: number, suivi: number) => appeler<BilanRetraitVortex>('mods_vortex_reprendre', { id, suivi }),
+  /** Lot M1 : remet UN mod retiré (`source` tel que l'état l'a donné). */
+  modsVortexRemettre: (id: number, source: string, suivi: number) => appeler<BilanRemiseVortex>('mods_vortex_remettre', { id, source, suivi }),
+  modsVortexToutRemettre: (id: number, suivi: number) => appeler<BilanRemiseVortex>('mods_vortex_tout_remettre', { id, suivi }),
   tricheInstaller: (id: number, cle: string, programme: string, ligne: string) =>
     appeler<string>('triche_installer', { id, cle, programme, ligne }),
   jeuTailleInstallation: (id: number) => appeler<number>('jeu_taille_installation', { id }),

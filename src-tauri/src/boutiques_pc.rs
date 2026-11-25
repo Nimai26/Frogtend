@@ -252,6 +252,19 @@ pub fn entree_gog(id: &str) -> Option<Valeurs> {
     valeurs(Racine::Machine, &format!(r"{CLE_GOG}\{id}"))
 }
 
+/// Le dossier du client de GOG Galaxy noté dans le registre (lecture seule), s'il existe.
+pub fn dossier_galaxy() -> Option<PathBuf> {
+    valeurs(Racine::Machine, r"SOFTWARE\GOG.com\GalaxyClient\paths")
+        .and_then(|v| v.get("client").cloned())
+        .map(|c| PathBuf::from(c.trim()))
+        .filter(|d| d.is_absolute() && d.is_dir())
+}
+
+/// Les dossiers des jeux GOG installés (registre, lecture seule) : leurs programmes ne sont jamais pris pour Galaxy.
+pub fn dossiers_gog() -> Vec<PathBuf> {
+    sous_cles(Racine::Machine, CLE_GOG).unwrap_or_default().iter().filter_map(|(_, v)| v.get("path").map(|p| PathBuf::from(p.trim()))).filter(|p| p.is_absolute()).collect()
+}
+
 /// GOG Galaxy est-il installé (son client noté dans le registre, et présent) ?
 pub fn galaxy_present() -> bool {
     valeurs(Racine::Machine, r"SOFTWARE\GOG.com\GalaxyClient\paths")

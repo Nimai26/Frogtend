@@ -183,6 +183,57 @@ pub fn programme_ouvert(programme: &Path) -> bool {
     s.processes().iter().any(|(pid, p)| programme_du_processus(pid.as_u32(), p).is_some_and(|e| forme_comparable(&e, &mut reseau) == cle))
 }
 
+/// Les programmes de GOG Galaxy (client, aides, service qui installe et met à jour les jeux, nuage), en minuscules.
+const PROGRAMMES_GALAXY: [&str; 7] = [
+    "galaxyclient.exe",
+    "galaxyclient helper.exe",
+    "galaxyclientservice.exe",
+    "galaxycommunication.exe",
+    "galaxyupdater.exe",
+    "gog galaxy notifications renderer.exe",
+    "gogalaxy.exe",
+];
+
+/// Le relevé des processus : (nom, programme).
+fn releve_noms() -> Vec<(String, Option<PathBuf>)> {
+    let mut s = System::new();
+    s.refresh_processes(ProcessesToUpdate::All, true);
+    s.processes().iter().map(|(pid, p)| (p.name().to_string_lossy().to_string(), programme_du_processus(pid.as_u32(), p))).collect()
+}
+
+/// Lot M1 : GOG Galaxy est-il ouvert (un de ses programmes, où qu'il soit, ou un programme « galaxy… » de son dossier
+/// `dossier_galaxy`) ? Il pourrait écrire dans un jeu pendant que Frogtend y range des fichiers. Jamais un programme
+/// rangé sous `<galaxy>\Games` ni dans un dossier de jeu GOG (`jeux`). Un seul relevé.
+pub fn galaxy_ouvert(dossier_galaxy: Option<&Path>, jeux: &[PathBuf]) -> bool {
+    galaxy_parmi(&releve_noms(), dossier_galaxy, jeux)
+}
+
+/// `galaxy_ouvert` sur un relevé donné (nom du processus, programme).
+fn galaxy_parmi(l: &[(String, Option<PathBuf>)], dossier_galaxy: Option<&Path>, jeux: &[PathBuf]) -> bool {
+    let d_un_jeu = |p: &Path| dossier_galaxy.is_some_and(|d| crate::garde::sous(p, &d.join("Games"))) || jeux.iter().any(|j| crate::garde::sous(p, j));
+    l.iter().any(|(nom, programme)| {
+        if programme.as_deref().is_some_and(d_un_jeu) {
+            return false;
+        }
+        let nom_du_programme = programme.as_deref().and_then(Path::file_name).map(|n| n.to_string_lossy().to_lowercase());
+        let connu = |n: &str| PROGRAMMES_GALAXY.contains(&n);
+        connu(&nom.to_lowercase())
+            || nom_du_programme.as_deref().is_some_and(connu)
+            || matches!((programme, dossier_galaxy, &nom_du_programme), (Some(p), Some(d), Some(n)) if crate::garde::sous(p, d) && !crate::garde::meme(p, d) && (n.starts_with("galaxy") || n.starts_with("gog galaxy")))
+    })
+}
+
+/// Lot M1 : Vortex est-il ouvert ? Il remettrait ses mods (ou proposerait d'effacer son dépôt) pendant un retrait.
+pub fn vortex_ouvert() -> bool {
+    vortex_parmi(&releve_noms())
+}
+
+fn vortex_parmi(l: &[(String, Option<PathBuf>)]) -> bool {
+    l.iter().any(|(nom, programme)| {
+        nom.eq_ignore_ascii_case("vortex.exe") || programme.as_deref().and_then(Path::file_name).is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case("vortex.exe"))
+    })
+}
+
 /// Le programme d'un processus. sysinfo le lit par `GetModuleFileNameExW`, qui exige un accès que Windows refuse aux
 /// jeux protégés (Xbox / Microsoft Store dans `WindowsApps`, vu le 18/11 avec Minecraft : chemin VIDE, partie jamais
 /// vue). Repli : `QueryFullProcessImageNameW` avec le seul droit `PROCESS_QUERY_LIMITED_INFORMATION` (comme clavier.rs).
@@ -1201,5 +1252,31 @@ mod tests {
     fn un_programme_introuvable_est_dit() {
         let l = Lanceur { programme: "Z:\\n-existe-pas\\jeu.exe".into(), arguments: vec![], dossier: String::new() };
         assert!(matches!(demarrer(&l), Err(Erreur::Disque(_))));
+    }
+
+    /// Lot M1 : GOG Galaxy est vu ouvert par le nom de l'un de ses programmes (même sans chemin : un service), ou par un
+    /// programme « galaxy… » de son dossier — jamais par un jeu rangé sous son dossier.
+    #[test]
+    fn galaxy_est_vu_ouvert_par_ses_programmes_seulement() {
+        let galaxy = PathBuf::from(r"D:\LaunchBox\Games\GOG Galaxy");
+        let p = |nom: &str, chemin: Option<&str>| (nom.to_string(), chemin.map(PathBuf::from));
+        let jeu = p("Cyberpunk2077.exe", Some(r"D:\LaunchBox\Games\GOG Galaxy\Games\Cyberpunk 2077\bin\x64\Cyberpunk2077.exe"));
+        let explorateur = p("explorer.exe", Some(r"C:\Windows\explorer.exe"));
+        assert!(!galaxy_parmi(&[jeu.clone(), explorateur.clone()], Some(&galaxy), &[]));
+        assert!(!galaxy_parmi(&[], None, &[]));
+        assert!(galaxy_parmi(&[jeu.clone(), p("GalaxyClient.exe", Some(r"D:\LaunchBox\Games\GOG Galaxy\GalaxyClient.exe"))], Some(&galaxy), &[]));
+        assert!(galaxy_parmi(&[p("GalaxyClientService.exe", None)], None, &[]), "le service, sans chemin lisible");
+        assert!(galaxy_parmi(&[p("GalaxyCommunication.exe", None)], Some(&galaxy), &[]));
+        assert!(galaxy_parmi(&[p("x", Some(r"E:\Autre\GOG Galaxy Notifications Renderer.exe"))], None, &[]), "ailleurs, par le nom de son programme");
+        assert!(galaxy_parmi(&[p("GalaxyNouveau.exe", Some(r"D:\LaunchBox\Games\GOG Galaxy\GalaxyNouveau.exe"))], Some(&galaxy), &[]), "un programme « galaxy… » de son dossier");
+        assert!(!galaxy_parmi(&[p("GalaxyNouveau.exe", Some(r"D:\Ailleurs\GalaxyNouveau.exe"))], Some(&galaxy), &[]));
+        // Jamais un programme d'un jeu : sous `<galaxy>\Games`, ou dans un dossier de jeu GOG ailleurs.
+        assert!(!galaxy_parmi(&[p("galaxy_mod.exe", Some(r"D:\LaunchBox\Games\GOG Galaxy\Games\Jeu\galaxy_mod.exe"))], Some(&galaxy), &[]));
+        let ailleurs = [PathBuf::from(r"E:\GOG Games\Jeu")];
+        assert!(!galaxy_parmi(&[p("GalaxyClient.exe", Some(r"E:\GOG Games\Jeu\GalaxyClient.exe"))], Some(&galaxy), &ailleurs));
+        // Vortex, par son nom.
+        assert!(vortex_parmi(&[p("Vortex.exe", Some(r"C:\Program Files\Black Tree Gaming Ltd\Vortex\Vortex.exe"))]));
+        assert!(vortex_parmi(&[p("x", Some(r"C:\V\VORTEX.EXE"))]));
+        assert!(!vortex_parmi(&[jeu, explorateur]));
     }
 }

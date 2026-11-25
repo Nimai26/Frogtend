@@ -1,5 +1,22 @@
 # Notes de version de Frogtend
 
+## 0.227.0 — 🧩 Les mods de Vortex retirés proprement (jeux PC)
+
+- Nouveau : sur la fiche d'un jeu PC dont les mods ont été posés par Vortex, un bloc « 🧩 Mods » dit ce qui cloche
+  après une mise à jour du jeu (par exemple Cyberpunk 2077 : « mis à jour 2.21 → 2.50 », « Cyber Engine Tweaks ne
+  marche pas avec cette version », « RED4ext s'arrête en chargeant ArchiveXL »).
+- « 🧹 Retirer les mods de Vortex » : tes parties sont mises à l'abri d'abord, puis les fichiers des mods sont rangés à
+  part dans le dossier du jeu, en quelques secondes, sans rien effacer ni copier. Le jeu démarre alors sans mods. Les
+  réglages écrits par tes mods restent en place, et le dossier de Vortex n'est jamais touché.
+- Chaque mod retiré peut être remis (« ↩ Remettre »), ou tout d'un coup (« ↩ Tout remettre comme avant »). Si
+  Frogtend est coupé en plein retrait, il propose de reprendre ou de tout remettre.
+- Jamais pendant une partie, ni quand GOG Galaxy ou Vortex est ouvert (Frogtend dit lequel fermer).
+- La même chose à la manette dans Taodbox (⚙ Réglages du jeu).
+- Les jeux GOG peuvent maintenant recevoir des mods (avant : Steam seul).
+- Corrigé (mods Switch) : un mod dont Firehouse ne connaît pas encore la version visée n'est plus grisé à tort ; il
+  est dit « pas vérifié ».
+- Le journal ne garde plus le nom des mods ni le titre des jeux (seulement des numéros).
+
 ## 0.226.0 — 🛟 Les parties jouées hors de Frogtend sont rattrapées
 
 - Nouveau : à l'ouverture de Frogtend, les parties des jeux PC joués SANS Frogtend (lancés depuis Steam, Epic, GOG

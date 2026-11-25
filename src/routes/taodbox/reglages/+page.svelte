@@ -6,6 +6,7 @@
   import { page } from '$app/state';
   import { tick } from 'svelte';
   import BlocContenus from '$lib/contenus/BlocContenus.svelte';
+  import BlocModsVortex from '$lib/mods/BlocModsVortex.svelte';
   import { etat, reglerProfil } from '$lib/etat.svelte';
   import { tele } from '$lib/ludotheque/telechargements.svelte';
   import { aDesEmplacements } from '$lib/parties/parties';
@@ -130,6 +131,8 @@
       </div>
     {/if}
     <BlocContenus id={jeu} {titre} {plateforme} deplie bind:vide />
+    <!-- Lot M1 : les mods posés par Vortex (retirer, remettre), à la manette ; déplié. -->
+    {#if jeuPc}<BlocModsVortex id={jeu} {titre} deplie />{/if}
     {#if vide && !jeuPc}<p class="muted">Rien à régler pour ce jeu : il n’a ni mise à jour, ni DLC, ni mod.</p>{/if}
   {:else}
     <p class="muted">Ce jeu n’est pas sur ce PC.</p>

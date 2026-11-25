@@ -1043,6 +1043,13 @@ pour l'ajout d'un compte et la mise à jour à la main. Intégré au nouveau C4c
 
 **Lot M — modding des jeux PC (✅ découpage validé par Seb le 25/11, M1 lancé)** :
 - **M1 (sans Nexus)** : (a) les jeux GOG acceptés pour les mods (aujourd'hui Steam seul : `jeu_pour_un_mod`, `garde_mods`), jeu ET GOG Galaxy au repos vérifiés avant d'écrire ; (b) **retrait des mods de Vortex** : preuve par fichier (listé dans `vortex.deployment.json`, chemins vérifiés, même volume + même index de fichier que le dépôt, ≥ 2 liens, pas de point de réanalyse), DÉPLACÉ sous `<jeu>\Frogtend\vortex\<date>\` (jamais effacé), manifeste du retrait écrit avant, reprise après coupure ; lien rompu (`options.json`) jamais touché, `.vortex_backup` jamais remis ; marqueur retiré seulement dans un dossier vide ; données des mods hors manifeste (configs CET, AMM, sqlite) laissées en place ; `vortex.deployment.json` déplacé en dernier ; opération annoncée et chiffrée (2015 fichiers, 4,1 Go par renommage, 284 mods) ; (c) **recoller** par mod (`source`), réversible ; (d) **abri des parties avant** (déclencheur `avant_mod`, aussi pour un jeu GOG) et avertissement « parties faites avec des mods » ; (e) **repérer les mods périmés** : version du jeu (journal RED4ext « Product version », exe), refus de CET, greffon RED4ext qui n'a jamais fini de charger, changement de version entre deux journaux ; (f) un mod Frogtend ne s'installe jamais par-dessus un fichier encore lié à Vortex ; (g) couper/recoller aussi dans Taodbox ; (h) journal : ids et nombres seulement (corriger aussi `nexus_installer`).
+- **M1 codé le 25/11 (0.227.0)** : `mods_vortex.rs` (preuve par fichier, rangement par renommage sous
+  `<jeu>\Frogtend\vortex\<secondes>\`, `retrait.json` + copie dans la garde du jeu, reprise, remise par mod ou totale
+  sur tous les retraits, marqueurs vides seulement, `.vortex_backup` jamais remis), jeux GOG acceptés pour les mods
+  (`gog_pret_a_ecrire`, verrous Galaxy et Vortex ouverts), diagnostic REDengine (3 derniers journaux, ignorés s'ils
+  précèdent le retrait), `BlocModsVortex.svelte` au bureau et dans Taodbox. Revues des experts lancement et UI : 2
+  bloquants + 10 importants corrigés. Essai réel en LECTURE SEULE (accord de Seb) : 2 014 fichiers prouvés, 1 laissé
+  (`options.json`, lien rompu), 284 mods, 4 110 194 748 octets, bon diagnostic. Aucun retrait réel avant l'essai de Seb.
 - **M2 (relais Nexus de Firehouse, besoin 61 A)** : identifier les archives de Vortex (`md5_search`), proposer les mises à jour (prérequis d'abord), télécharger en Premium sans clic, réinstaller ; .rar (29 archives) et archives > 2 Go à traiter.
 - **M3 (savoir de Firehouse, besoin 61 B)** : compatibilité par version du jeu affichée (« compatibilité inconnue » jamais « compatible »).
 

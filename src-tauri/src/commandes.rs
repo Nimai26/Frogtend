@@ -10678,10 +10678,67 @@ struct PourMod {
     garde: std::path::PathBuf,
     /// Un jeu Steam : sa version installée à cet instant (`buildid`).
     steam: Option<Option<String>>,
+    /// Un jeu GOG (lot M1) : relu juste avant d'écrire (`gog_pret_a_ecrire`).
+    gog: bool,
 }
 
+/// Le dossier de Frogtend pour un jeu de boutique : dans ses données, JAMAIS chez la boutique ni par un lien.
+fn garde_hors_de_la_boutique(j: &crate::jeux_pc::JeuPc, dossier: &std::path::Path) -> Resultat<std::path::PathBuf> {
+    let garde = std::path::Path::new(&j.dossier).join("mods");
+    if crate::garde::sous(&garde, dossier) || crate::garde::meme(&garde, dossier) || crate::garde::sous(dossier, &garde) {
+        return Err(Erreur::Refus("Le dossier de Frogtend pour ce jeu est mal placé : rien n'est fait.".into()));
+    }
+    std::fs::create_dir_all(&garde)?;
+    if crate::garde::lien_entre(std::path::Path::new(&j.dossier), &garde) {
+        return Err(Erreur::Refus("Le dossier de Frogtend pour ce jeu passe par un lien : rien n'est fait.".into()));
+    }
+    Ok(garde)
+}
+
+/// Lot M1 (Seb, 25/11) : un jeu GOG relu À L'INSTANT avant d'écrire dans son dossier — GOG le voit toujours à cet
+/// endroit (registre), le jeu ne tourne pas, et GOG Galaxy est fermé (il pourrait écrire dans le jeu pendant ce temps :
+/// mise à jour, vérification, nuage).
+fn gog_pret_a_ecrire(cle: &str, dossier: &std::path::Path) -> Resultat<()> {
+    let vu = crate::boutiques_pc::entree_gog(cle).and_then(|v| v.get("path").map(|p| std::path::PathBuf::from(p.trim())));
+    if !vu.is_some_and(|p| crate::garde::meme(&p, dossier)) {
+        return Err(Erreur::Refus("GOG ne voit plus ce jeu à cet endroit : rien n'est fait.".into()));
+    }
+    refus_gog(!crate::lancement::processus_du_dossier(dossier).is_empty(), galaxy_ouvert())
+}
+
+/// GOG Galaxy ouvert (jamais un jeu GOG pris pour lui).
+fn galaxy_ouvert() -> bool {
+    crate::lancement::galaxy_ouvert(crate::boutiques_pc::dossier_galaxy().as_deref(), &crate::boutiques_pc::dossiers_gog())
+}
+
+/// Le motif d'un refus quand Vortex est ouvert (il remettrait ses mods pendant le retrait).
+const MOTIF_VORTEX: &str = "Ferme Vortex d'abord : il remettrait ses mods pendant ce temps.";
+
+/// Avant de toucher aux mods de Vortex : Vortex lui-même doit être fermé.
+fn refus_vortex(ouvert: bool) -> Resultat<()> {
+    if ouvert {
+        return Err(Erreur::Refus(MOTIF_VORTEX.into()));
+    }
+    Ok(())
+}
+
+/// Le refus d'écrire dans un jeu GOG : le jeu d'abord (il tourne), puis GOG Galaxy (ouvert).
+fn refus_gog(jeu_lance: bool, galaxy: bool) -> Resultat<()> {
+    if jeu_lance {
+        return Err(Erreur::Refus("Le jeu est en cours : quitte-le d'abord.".into()));
+    }
+    if galaxy {
+        return Err(Erreur::Refus(MOTIF_GALAXY.into()));
+    }
+    Ok(())
+}
+
+/// Le motif d'un refus quand GOG Galaxy est ouvert (aussi montré sur le bloc des mods de Vortex).
+const MOTIF_GALAXY: &str = "Ferme GOG Galaxy d'abord : il pourrait écrire dans le jeu pendant ce temps.";
+
 /// Le dossier d'un jeu du PC prêt à recevoir un mod : installé, pas en cours d'utilisation, sans anti-triche détecté ;
-/// un jeu de boutique : Steam seulement (lot B3), prêt (ni mise à jour ni partie en cours chez Steam).
+/// un jeu de boutique : Steam (lot B3), prêt (ni mise à jour ni partie en cours chez Steam), ou GOG (lot M1), le jeu
+/// et GOG Galaxy fermés.
 async fn jeu_pour_un_mod(noyau: &Noyau, id: i64) -> Resultat<PourMod> {
     let j = noyau.jeu_visible(id).await?;
     let i = j.installation.as_ref().ok_or_else(|| Erreur::Refus("Installe d'abord le jeu.".into()))?;
@@ -10697,22 +10754,28 @@ async fn jeu_pour_un_mod(noyau: &Noyau, id: i64) -> Resultat<PourMod> {
     }
     let Some(b) = &i.boutique else {
         let garde = crate::mods::dossier_mods(&dossier);
-        return Ok(PourMod { j, dossier, garde, steam: None });
+        return Ok(PourMod { j, dossier, garde, steam: None, gog: false });
     };
+    if b.source == "gog" {
+        gog_pret_a_ecrire(&b.cle, &dossier)?;
+        let garde = garde_hors_de_la_boutique(&j, &dossier)?;
+        return Ok(PourMod { j, dossier, garde, steam: None, gog: true });
+    }
     if b.source != "steam" {
-        return Err(Erreur::Refus("Frogtend sait poser des mods dans les jeux Steam seulement, pour l'instant.".into()));
+        return Err(Erreur::Refus("Frogtend sait poser des mods dans les jeux Steam et GOG seulement, pour l'instant.".into()));
     }
     let buildid = steam_pret_a_ecrire(&b.cle, &dossier)?;
     // Les données de Frogtend pour ce jeu, JAMAIS chez Steam ni par un lien.
-    let garde = std::path::Path::new(&j.dossier).join("mods");
-    if crate::garde::sous(&garde, &dossier) || crate::garde::meme(&garde, &dossier) || crate::garde::sous(&dossier, &garde) {
-        return Err(Erreur::Refus("Le dossier de Frogtend pour ce jeu est mal placé : rien n'est fait.".into()));
+    let garde = garde_hors_de_la_boutique(&j, &dossier)?;
+    Ok(PourMod { j, dossier, garde, steam: Some(buildid), gog: false })
+}
+
+/// Juste avant d'écrire dans un jeu GOG (l'abri des parties a pu durer) : toujours prêt.
+fn gog_inchange(j: &crate::jeux_pc::JeuPc, dossier: &std::path::Path) -> Resultat<()> {
+    match j.installation.as_ref().and_then(|i| i.boutique.as_ref()) {
+        Some(b) if b.source == "gog" => gog_pret_a_ecrire(&b.cle, dossier),
+        _ => Ok(()),
     }
-    std::fs::create_dir_all(&garde)?;
-    if crate::garde::lien_entre(std::path::Path::new(&j.dossier), &garde) {
-        return Err(Erreur::Refus("Le dossier de Frogtend pour ce jeu passe par un lien : rien n'est fait.".into()));
-    }
-    Ok(PourMod { j, dossier, garde, steam: Some(buildid) })
 }
 
 /// Un jeu Steam relu chez Steam À L'INSTANT (jamais l'état gardé par l'interface) avant d'écrire dans son dossier :
@@ -10883,7 +10946,8 @@ fn suivi_mod(app: &AppHandle, suivi: u32) -> impl Fn(&'static str, u64, u64) + S
                 if ms < 400 && (total == 0 || faits < total) {
                     return;
                 }
-                if etape == "pose" || ms == 0 { 0 } else { faits.saturating_sub(avant).saturating_mul(1000) / ms }
+                // Les étapes qui comptent des fichiers (pose, lot M1 : retrait et remise des mods de Vortex) : pas de débit.
+                if matches!(etape, "pose" | "retrait" | "remise") || ms == 0 { 0 } else { faits.saturating_sub(avant).saturating_mul(1000) / ms }
             }
             _ => 0,
         };
@@ -10935,7 +10999,7 @@ pub struct ModInstalleVu {
 fn garde_mods(j: &crate::jeux_pc::JeuPc) -> Option<std::path::PathBuf> {
     let i = j.installation.as_ref()?;
     match &i.boutique {
-        Some(b) if b.source == "steam" => Some(std::path::Path::new(&j.dossier).join("mods")),
+        Some(b) if b.source == "steam" || b.source == "gog" => Some(std::path::Path::new(&j.dossier).join("mods")),
         Some(_) => None,
         None => Some(crate::mods::dossier_mods(std::path::Path::new(&i.dossier))),
     }
@@ -10982,8 +11046,9 @@ pub async fn mod_installer(
     suivi: u32,
     risque_accepte: Option<bool>,
 ) -> Resultat<crate::mods::Bilan> {
-    let PourMod { j, dossier, garde, steam } = jeu_pour_un_mod(&noyau, id).await?;
-    if steam.is_some() {
+    let PourMod { j, dossier, garde, steam, gog } = jeu_pour_un_mod(&noyau, id).await?;
+    // Un jeu de boutique (Steam, GOG) : le risque d'un jeu en ligne, comme pour Cheat Engine.
+    if steam.is_some() || gog {
         risque_mod_steam(&noyau, id, risque_accepte.unwrap_or(false)).await?;
     }
     let criteres = criteres_jeu_importe(&noyau, id).await?;
@@ -11023,6 +11088,7 @@ pub async fn mod_installer(
     if let Some(vu) = &steam {
         steam_inchange(&j, &dossier, vu)?;
     }
+    gog_inchange(&j, &dossier)?;
     let buildid = steam.flatten();
     let app2 = app.clone();
     let sans_racine = match choisir_racine(&archive, &mod_nom, move |q| {
@@ -11042,8 +11108,9 @@ pub async fn mod_installer(
     let _ = std::fs::remove_file(&archive);
     let _ = std::fs::remove_dir(archive.parent().unwrap_or(&garde));
     match &r {
-        Ok(b) => noyau.journaliser(&format!("mod « {mod_nom} » installé dans « {} » ({} ajouté(s), {} remplacé(s) — originaux à l'abri)", j.titre, b.ajoutes, b.remplaces)),
-        Err(e) => noyau.journaliser(&format!("mod « {mod_nom} » non installé dans « {} » ({e})", j.titre)),
+        // Lot M1 (I6) : la clé du mod et le numéro du jeu, des nombres — jamais un nom, un titre ni un motif.
+        Ok(b) => noyau.journaliser(&format!("mod {} installé, jeu {id} ({} ajouté(s), {} remplacé(s) — originaux à l'abri)", f.cle(), b.ajoutes, b.remplaces)),
+        Err(_) => noyau.journaliser(&format!("mod {} non installé, jeu {id}", f.cle())),
     }
     r
 }
@@ -11052,7 +11119,7 @@ pub async fn mod_installer(
 /// laissés à Steam (remplacés par une mise à jour depuis la pose).
 #[tauri::command]
 pub async fn mod_desinstaller(noyau: State<'_, Noyau>, id: i64, cle: String) -> Resultat<crate::mods::Retrait> {
-    let PourMod { j, dossier, garde, steam } = jeu_pour_un_mod(&noyau, id).await?;
+    let PourMod { j, dossier, garde, steam, .. } = jeu_pour_un_mod(&noyau, id).await?;
     // Occupé dès maintenant : ni une partie ni un second clic ne passent entre la vérification et la pose.
     let _occupe = noyau.occuper(id);
     abriter_tout_avant_mod(&noyau, id, steam.is_some()).await?;
@@ -11064,19 +11131,153 @@ pub async fn mod_desinstaller(noyau: State<'_, Noyau>, id: i64, cle: String) -> 
     if let Some(vu) = &steam {
         steam_inchange(&j, &dossier, vu)?;
     }
+    gog_inchange(&j, &dossier)?;
     let (d, g, c) = (dossier.clone(), garde.clone(), cle.clone());
     let r = tauri::async_runtime::spawn_blocking(move || crate::mods::desinstaller_dans(&d, &g, &c, apres_maj))
         .await
         .map_err(|_| Erreur::Disque("Le retrait du mod s'est arrêté brutalement.".into()))?;
     if let Ok(x) = &r {
         noyau.journaliser(&format!(
-            "mod {cle} retiré de « {} » ({} fichier(s) gardé(s), modifiés par la personne ; {} laissé(s) à Steam)",
-            j.titre,
+            "mod {cle} retiré, jeu {id} ({} fichier(s) gardé(s), modifiés par la personne ; {} laissé(s) à Steam)",
             x.gardes.len(),
             x.laisses_a_la_boutique.len()
         ));
     }
     r
+}
+
+// --- Lot M1 (✅ Seb 25/11) : les mods posés par VORTEX (`mods_vortex`) — repérés, diagnostiqués, retirés avec preuve
+// (rangés dans le jeu, jamais effacés), remis un par un ou tous. Parties à l'abri avant ; journal : des nombres seulement.
+
+/// Le dossier d'un jeu installé sur ce PC (pas un jeu d'émulateur), pour LIRE l'état de ses mods de Vortex.
+fn dossier_pour_vortex(j: &crate::jeux_pc::JeuPc) -> Option<std::path::PathBuf> {
+    let i = j.installation.as_ref().filter(|i| i.fichier_du_jeu.is_none())?;
+    let d = std::path::PathBuf::from(&i.dossier);
+    d.is_dir().then_some(d)
+}
+
+/// Pourquoi rien ne peut se faire maintenant : `partie` (le jeu est en cours, ou une opération l'occupe) ou `galaxy`
+/// (GOG Galaxy est ouvert, pour un jeu GOG). L'écran verrouille le bloc et le dit.
+fn verrou_vortex(occupe: bool, lance: bool, gog: bool, galaxy: impl FnOnce() -> bool, vortex: impl FnOnce() -> bool) -> Option<String> {
+    if occupe || lance {
+        return Some("partie".into());
+    }
+    if gog && galaxy() {
+        return Some("galaxy".into());
+    }
+    vortex().then(|| "vortex".into())
+}
+
+/// L'état des mods de Vortex d'un jeu (lecture seule) : mods posés, diagnostic, retrait en cours ou fini, mods
+/// remettables. `None` : le jeu n'est pas installé sur ce PC.
+#[tauri::command]
+pub async fn mods_vortex_etat(noyau: State<'_, Noyau>, id: i64) -> Resultat<Option<crate::mods_vortex::EtatVortex>> {
+    let j = noyau.jeu_visible(id).await?;
+    let Some(dossier) = dossier_pour_vortex(&j) else { return Ok(None) };
+    let occupe = noyau.utilise(id);
+    let gog = j.installation.as_ref().and_then(|i| i.boutique.as_ref()).is_some_and(|b| b.source == "gog");
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut e = crate::mods_vortex::etat(&dossier);
+        // Rien à dire (ni Vortex, ni retrait) : pas un relevé des processus pour rien.
+        if e.present || e.retrait.is_some() || !e.retires.is_empty() {
+            e.verrou = verrou_vortex(occupe, !crate::lancement::processus_du_dossier(&dossier).is_empty(), gog, galaxy_ouvert, crate::lancement::vortex_ouvert);
+        }
+        Some(e)
+    })
+    .await
+    .map_err(|_| Erreur::Disque("La lecture des mods de Vortex s'est arrêtée brutalement.".into()))
+}
+
+/// Ce qu'une opération sur les mods de Vortex fait, une fois le jeu vérifié et les parties à l'abri.
+enum OperationVortex {
+    Retirer,
+    Reprendre,
+    Remettre(String),
+    ToutRemettre,
+}
+
+/// Le bilan d'une opération sur les mods de Vortex.
+#[derive(Serialize)]
+#[serde(untagged)]
+pub enum BilanVortex {
+    Retrait(crate::mods_vortex::BilanRetrait),
+    Remise(crate::mods_vortex::BilanRemise),
+}
+
+/// Le chemin commun : jeu prêt à écrire (Steam ou GOG au repos, rien en cours), occupé, parties à l'abri (déclencheur
+/// `avant_mod`), relu juste avant d'écrire, puis l'opération (progression `mod-progres`), puis le journal.
+async fn operer_vortex(app: &AppHandle, noyau: &Noyau, id: i64, suivi: u32, op: OperationVortex) -> Resultat<BilanVortex> {
+    let PourMod { j, dossier, garde, steam, .. } = jeu_pour_un_mod(noyau, id).await?;
+    refus_vortex(crate::lancement::vortex_ouvert())?;
+    let _occupe = noyau.occuper(id);
+    // Un abri impossible arrête tout : c'est dit au journal (la personne choisit ensuite dans sa fenêtre).
+    if let Err(e) = abriter_tout_avant_mod(noyau, id, steam.is_some()).await {
+        let r = Err(e);
+        noyau.journaliser(&journal_vortex(id, &r));
+        return r;
+    }
+    if let Some(vu) = &steam {
+        steam_inchange(&j, &dossier, vu)?;
+    }
+    gog_inchange(&j, &dossier)?;
+    refus_vortex(crate::lancement::vortex_ouvert())?;
+    let suivi = suivi_mod(app, suivi);
+    let quand = crate::noyau::maintenant();
+    // Une copie du manifeste du retrait dans les données de Frogtend pour ce jeu (comme `garde_mods`).
+    let copie = garde.join("vortex");
+    let r = tauri::async_runtime::spawn_blocking(move || -> Resultat<BilanVortex> {
+        let c = Some(copie.as_path());
+        Ok(match op {
+            OperationVortex::Retirer => BilanVortex::Retrait(crate::mods_vortex::retirer(&dossier, c, &quand, &suivi)?),
+            OperationVortex::Reprendre => BilanVortex::Retrait(crate::mods_vortex::reprendre(&dossier, c, &suivi)?),
+            OperationVortex::Remettre(source) => BilanVortex::Remise(crate::mods_vortex::remettre_mod(&dossier, c, &source, &suivi)?),
+            OperationVortex::ToutRemettre => BilanVortex::Remise(crate::mods_vortex::tout_remettre(&dossier, c, &suivi)?),
+        })
+    })
+    .await
+    .map_err(|_| Erreur::Disque("L'opération sur les mods de Vortex s'est arrêtée brutalement.".into()))?;
+    noyau.journaliser(&journal_vortex(id, &r));
+    r
+}
+
+/// La ligne du journal : des numéros et des nombres seulement (jamais un chemin, un nom de mod ni un titre).
+fn journal_vortex(id: i64, r: &Resultat<BilanVortex>) -> String {
+    match r {
+        Ok(BilanVortex::Retrait(b)) => format!(
+            "mods vortex : {} déplacés, {} laissé(s) ({} rompu(s)), {} mod(s), {} dossier(s) vidé(s), manifeste rangé : {}, jeu {id}",
+            b.deplaces, b.laisses, b.laisses_rompus, b.mods, b.dossiers_retires, if b.deploiement_range { "oui" } else { "non" }
+        ),
+        Ok(BilanVortex::Remise(b)) => format!(
+            "mods vortex : {} remis, {} place(s) prise(s), {} changé(s), manifeste remis : {}, jeu {id}",
+            b.remis, b.places_prises, b.changes, if b.deploiement_remis { "oui" } else { "non" }
+        ),
+        Err(Erreur::AbriImpossible { .. }) => format!("mods vortex : rien fait, parties non mises à l'abri, jeu {id}"),
+        Err(_) => format!("mods vortex : opération arrêtée, jeu {id}"),
+    }
+}
+
+/// 🧹 Retire les mods de Vortex du jeu (la personne a dit oui, nombre de fichiers et taille annoncés).
+#[tauri::command]
+pub async fn mods_vortex_retirer(app: AppHandle, noyau: State<'_, Noyau>, id: i64, suivi: u32) -> Resultat<BilanVortex> {
+    operer_vortex(&app, &noyau, id, suivi, OperationVortex::Retirer).await
+}
+
+/// ▶ Reprend un retrait interrompu (coupure, Frogtend fermé).
+#[tauri::command]
+pub async fn mods_vortex_reprendre(app: AppHandle, noyau: State<'_, Noyau>, id: i64, suivi: u32) -> Resultat<BilanVortex> {
+    operer_vortex(&app, &noyau, id, suivi, OperationVortex::Reprendre).await
+}
+
+/// ↩ Remet UN mod retiré (son dossier dans le dépôt de Vortex, `source`, tel que l'état l'a donné).
+#[tauri::command]
+pub async fn mods_vortex_remettre(app: AppHandle, noyau: State<'_, Noyau>, id: i64, source: String, suivi: u32) -> Resultat<BilanVortex> {
+    operer_vortex(&app, &noyau, id, suivi, OperationVortex::Remettre(source)).await
+}
+
+/// ↩ Tout remettre comme avant (aussi un retrait interrompu).
+#[tauri::command]
+pub async fn mods_vortex_tout_remettre(app: AppHandle, noyau: State<'_, Noyau>, id: i64, suivi: u32) -> Resultat<BilanVortex> {
+    operer_vortex(&app, &noyau, id, suivi, OperationVortex::ToutRemettre).await
 }
 
 // --- Nexus Mods (lot 0.82.0 ; ✅ Seb 19-20/10) : la personne clique « Mod Manager Download » sur le site ; le lien
@@ -11216,11 +11417,11 @@ pub async fn nexus_installer(app: AppHandle, noyau: State<'_, Noyau>, n: u32, pr
     if crate::nexus::expire(&r.lien, secondes_maintenant()) {
         return Err(Erreur::Refus("Ce lien de Nexus a expiré : reclique « Mod Manager Download » sur la page du mod.".into()));
     }
-    let PourMod { j, dossier, garde, steam } = jeu_pour_un_mod(&noyau, id).await?;
+    let PourMod { j, dossier, garde, steam, gog } = jeu_pour_un_mod(&noyau, id).await?;
     // Occupé aussitôt (aucune attente depuis la vérification) : ni une partie ni un second clic ne passent pendant les
     // appels à Nexus.
     let _occupe = noyau.occuper(id);
-    if steam.is_some() {
+    if steam.is_some() || gog {
         risque_mod_steam(&noyau, id, risque_accepte.unwrap_or(false)).await?;
     }
     refuser_anti_triche(&dossier, j.installation.as_ref().is_some_and(|i| i.boutique.is_some())).await?;
@@ -11278,6 +11479,7 @@ pub async fn nexus_installer(app: AppHandle, noyau: State<'_, Noyau>, n: u32, pr
     if let Some(vu) = &steam {
         steam_inchange(&j, &dossier, vu)?;
     }
+    gog_inchange(&j, &dossier)?;
     let buildid = steam.flatten();
     let app2 = app.clone();
     // L'archive est retirée par `_ramasse` quoi qu'il arrive (aussi si la personne annule).
@@ -11293,9 +11495,10 @@ pub async fn nexus_installer(app: AppHandle, noyau: State<'_, Noyau>, n: u32, pr
     match &res {
         Ok(b) => {
             app.state::<crate::nexus::Nexus>().oublier(&profil_ouvert(&noyau).await?.id, n);
-            noyau.journaliser(&format!("mod Nexus « {mod_nom} » installé dans « {} » ({} ajouté(s), {} remplacé(s) — originaux à l'abri)", j.titre, b.ajoutes, b.remplaces))
+            // Lot M1 (h) : des numéros et des nombres seulement — jamais le nom du mod ni le titre du jeu.
+            noyau.journaliser(&format!("mod Nexus {}/{} installé, jeu {id} ({} ajouté(s), {} remplacé(s) — originaux à l'abri)", r.lien.mod_id, r.lien.fichier_id, b.ajoutes, b.remplaces))
         }
-        Err(e) => noyau.journaliser(&format!("mod Nexus « {mod_nom} » non installé dans « {} » ({e})", j.titre)),
+        Err(_) => noyau.journaliser(&format!("mod Nexus {}/{} non installé, jeu {id}", r.lien.mod_id, r.lien.fichier_id)),
     }
     res
 }
@@ -15007,6 +15210,52 @@ pub(crate) mod tests_abri_auto {
         let l = abris_finis(&abris);
         assert_eq!(l.len(), 1);
         assert_eq!(ap::lire_fiche(&abris.join("110").join(&l[0])).unwrap().declencheur, ap::DECLENCHEUR_AVANT_MOD);
+    }
+
+    /// Lot M1 : un jeu GOG (installé par Galaxy, sans manifeste d'installation de Frogtend) — avant un mod ou le retrait
+    /// des mods de Vortex, ses parties rangées hors du jeu (lot S1) sont bien mises à l'abri, et son dossier jamais copié.
+    #[tokio::test]
+    async fn avant_un_mod_gog_les_parties_sont_a_l_abri() {
+        let (_d, n, _profil, _sav, abris) = pc().await;
+        let mut i = n.registre().jeu(110).unwrap().unwrap().installation.unwrap();
+        i.boutique = Some(crate::jeux_pc::LancementBoutique { source: "gog".into(), cle: "1423049311".into() });
+        n.registre().changer_installation(110, Some(&i)).unwrap();
+        // Un jeu GOG : `PourMod::steam` vaut None (comme dans mods_vortex_retirer).
+        super::abriter_tout_avant_mod(&n, 110, false).await.unwrap();
+        let l = abris_finis(&abris);
+        assert_eq!(l.len(), 1, "un seul abri : les parties, pas le dossier du jeu");
+        let fiche = ap::lire_fiche(&abris.join("110").join(&l[0])).unwrap();
+        assert_eq!(fiche.declencheur, ap::DECLENCHEUR_AVANT_MOD);
+    }
+
+    /// Lot M1 : écrire dans un jeu GOG — le jeu lancé d'abord, puis GOG Galaxy ouvert ; le verrou du bloc le dit.
+    #[test]
+    fn un_jeu_gog_n_est_touche_ni_jeu_lance_ni_galaxy_ouvert() {
+        assert!(super::refus_gog(false, false).is_ok());
+        assert!(super::refus_gog(true, true).unwrap_err().to_string().contains("quitte-le"));
+        assert!(super::refus_gog(false, true).unwrap_err().to_string().contains("Ferme GOG Galaxy d'abord"));
+        let non = || false;
+        assert_eq!(super::verrou_vortex(false, false, true, || true, non).as_deref(), Some("galaxy"));
+        assert_eq!(super::verrou_vortex(false, false, false, || panic!("pas un jeu GOG : Galaxy n'est pas demandé"), non), None);
+        assert_eq!(super::verrou_vortex(true, false, true, || true, || true).as_deref(), Some("partie"));
+        assert_eq!(super::verrou_vortex(false, true, false, non, non).as_deref(), Some("partie"));
+        assert_eq!(super::verrou_vortex(false, false, true, non, non), None);
+        // I1 : Vortex ouvert verrouille aussi (tout jeu, pas seulement GOG).
+        assert_eq!(super::verrou_vortex(false, false, false, non, || true).as_deref(), Some("vortex"));
+        assert!(super::refus_vortex(true).unwrap_err().to_string().contains("Ferme Vortex d'abord"));
+        assert!(super::refus_vortex(false).is_ok());
+    }
+
+    /// Lot M1 (h) : le journal des mods de Vortex ne dit que des numéros et des nombres.
+    #[test]
+    fn le_journal_des_mods_de_vortex_ne_dit_que_des_nombres() {
+        let b = crate::mods_vortex::BilanRetrait { deplaces: 2014, laisses: 1, laisses_rompus: 1, mods: 284, octets: 4_100_000_000, dossiers_retires: 449, sauvegardes_vortex: 1, deploiement_range: true };
+        let l = super::journal_vortex(-77, &Ok(super::BilanVortex::Retrait(b)));
+        assert_eq!(l, "mods vortex : 2014 déplacés, 1 laissé(s) (1 rompu(s)), 284 mod(s), 449 dossier(s) vidé(s), manifeste rangé : oui, jeu -77");
+        let r = crate::mods_vortex::BilanRemise { remis: 3, places_prises: 1, changes: 0, deploiement_remis: false };
+        assert_eq!(super::journal_vortex(5, &Ok(super::BilanVortex::Remise(r))), "mods vortex : 3 remis, 1 place(s) prise(s), 0 changé(s), manifeste remis : non, jeu 5");
+        let e = super::journal_vortex(5, &Err(Erreur::Disque(r"D:\Jeux\Cyberpunk 2077\x : refusé".into())));
+        assert!(!e.contains("Jeux") && !e.contains("Cyberpunk"), "{e}");
     }
 
     /// Des parties seulement dans OneDrive : jamais téléchargées en automatique ; avant une opération, la cause est dite.

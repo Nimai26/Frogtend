@@ -244,7 +244,7 @@ pub struct Entree {
 }
 
 /// Un nom réservé de Windows (« CON », « nul.txt », « COM1 »…) ou terminé par un point ou une espace.
-fn nom_reserve(partie: &str) -> bool {
+pub(crate) fn nom_reserve(partie: &str) -> bool {
     let base = partie.split('.').next().unwrap_or("").trim().to_ascii_uppercase();
     let reserves = ["CON", "PRN", "AUX", "NUL"];
     reserves.contains(&base.as_str())
@@ -603,6 +603,18 @@ pub fn installer_dans(
         let c = dans_le_jeu(&rel_de(e)).to_lowercase();
         if let Some((_, autre)) = autres.iter().find(|(x, _)| *x == c) {
             return Err(Erreur::Refus(format!("Ce mod remplacerait un fichier du mod « {autre} » : désinstalle-le d'abord.")));
+        }
+    }
+    // Lot M1 (Seb, 25/11) : jamais par-dessus un fichier posé par Vortex — listé dans son manifeste, ou partagé avec un
+    // autre dossier (plusieurs liens : son dépôt) — : ce n'est pas un « original » du jeu à garder de côté.
+    let de_vortex = crate::mods_vortex::rels_listes(jeu);
+    for e in &entrees {
+        let rel = dans_le_jeu(&rel_de(e));
+        if de_vortex.contains(&rel.to_lowercase()) {
+            return Err(Erreur::Refus("Ce mod remplacerait un fichier posé par Vortex : retire d'abord les mods de Vortex de ce jeu.".into()));
+        }
+        if crate::mods_vortex::liens(&jeu.join(&rel)).is_some_and(|n| n >= 2) {
+            return Err(Erreur::Refus("Ce mod remplacerait un fichier partagé avec un autre dossier (souvent un mod de Vortex) : Frogtend n'y touche pas.".into()));
         }
     }
     // La place : le mod décompressé dans `garde`, puis posé dans le jeu, plus les originaux copiés dans `garde` (deux
@@ -1170,6 +1182,34 @@ mod tests {
         zip_de(&a, &[("MonMod/scripts/h.asi", b"h")]);
         installer(&jeu, &a, &h, "Mod H", "z", "", true, "t").unwrap();
         assert!(jeu.join("scripts").join("h.asi").is_file());
+    }
+
+    /// Lot M1 : un mod de Frogtend ne se pose jamais par-dessus un fichier de Vortex — listé dans son manifeste, ou lié
+    /// ailleurs (au moins 2 liens) — : rien n'est installé, le fichier reste tel quel.
+    #[test]
+    fn un_mod_ne_se_pose_jamais_sur_un_fichier_de_vortex() {
+        let d = tempfile::tempdir().unwrap();
+        let jeu = d.path().join("Jeu");
+        let depot = d.path().join("Vortex").join("Jeu").join("Mod-1-1-1700000000");
+        std::fs::create_dir_all(&jeu).unwrap();
+        std::fs::create_dir_all(&depot).unwrap();
+        std::fs::write(depot.join("dsound.dll"), b"vortex").unwrap();
+        std::fs::hard_link(depot.join("dsound.dll"), jeu.join("dsound.dll")).unwrap();
+        let a = d.path().join("m.zip");
+        zip_de(&a, &[("dsound.dll", b"mod")]);
+        let f = FichierMod::depuis(&fusion()).unwrap();
+        // Lié ailleurs (2 liens), sans manifeste de Vortex.
+        assert!(installer(&jeu, &a, &f, "M", "x", "", false, "t").unwrap_err().to_string().contains("partagé"));
+        // Listé dans le manifeste de Vortex (même s'il n'a plus qu'un lien, et même s'il manque).
+        std::fs::remove_file(jeu.join("dsound.dll")).unwrap();
+        std::fs::write(jeu.join("dsound.dll"), b"vortex").unwrap();
+        let v = serde_json::json!({"deploymentMethod": "hardlink_activator", "stagingPath": "x", "targetPath": "y", "files": [{"relPath": "DSOUND.dll", "source": "Mod-1-1-1700000000"}]});
+        std::fs::write(jeu.join(crate::mods_vortex::MANIFESTE_VORTEX), v.to_string()).unwrap();
+        assert!(installer(&jeu, &a, &f, "M", "x", "", false, "t").unwrap_err().to_string().contains("Vortex"));
+        std::fs::remove_file(jeu.join("dsound.dll")).unwrap();
+        assert!(installer(&jeu, &a, &f, "M", "x", "", false, "t").is_err());
+        assert!(!jeu.join("dsound.dll").exists() && installes(&jeu).is_empty(), "rien n'est installé");
+        assert_eq!(std::fs::read(depot.join("dsound.dll")).unwrap(), b"vortex");
     }
 
     #[test]

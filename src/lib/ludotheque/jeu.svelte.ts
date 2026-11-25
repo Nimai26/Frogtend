@@ -40,6 +40,7 @@ import { messageModsEnRoute, refusModsEnRoute } from '$lib/contenus/mods';
 import { nomAffiche } from './ludotheque.svelte';
 import { EFFETS_IMAGE, libelleEffet } from './effetsImage';
 import { proposerCopieAvantMod } from '$lib/mods/copieAvantMod';
+import { blocVortexVisible } from '$lib/mods/vortex';
 import { aDesEmplacements } from '$lib/parties/parties';
 import { avecAbriAvant } from '$lib/parties/abriAvant';
 
@@ -1686,6 +1687,15 @@ export function jeuPcSansEmulateur(id: number): boolean {
 }
 
 /** Le menu « ⚙ Gérer le jeu » : toutes les actions possibles sur un jeu du PC, au même endroit, bien visibles. */
+/** Lot M1 : ce jeu a-t-il des mods de Vortex à montrer (posés, retirés ou un retrait interrompu) ? Un échec : non. */
+async function modsDeVortex(id: number): Promise<boolean> {
+  try {
+    return blocVortexVisible(await api.modsVortexEtat(id));
+  } catch {
+    return false;
+  }
+}
+
 export async function gererJeu(id: number) {
   const j = tele.jeux[id];
   // Le jeu importé par une AUTRE personne de ce PC : elle seule le gère (✅ Seb 20/10).
@@ -1750,12 +1760,15 @@ export async function gererJeu(id: number) {
   if (auCanape() && j.installation && j.plateforme === 'Nintendo Switch')
     options.push({ valeur: 'reglagesSwitch', libelle: '🧩 Mises à jour, DLC et mods', detail: 'les allumer ou les éteindre — pour toute la maison' });
   // Lot S3 (Seb 23/11) : au canapé, un jeu PC — l'abri de ses parties après chaque partie se règle à la manette.
-  if (auCanape() && aDesEmplacements(j.plateforme))
+  if (auCanape() && aDesEmplacements(j.plateforme)) {
+    // Lot M1 : les mods posés par Vortex s'y retirent et s'y remettent aussi, à la manette — dit seulement s'il y en a.
+    const vortex = j.installation ? await modsDeVortex(id) : false;
     options.push({
       valeur: 'reglagesSwitch',
       libelle: '⚙ Réglages du jeu',
-      detail: `🛟 mettre mes parties à l’abri après chaque partie (pour tous tes jeux PC) : ${etat.profil.parties?.abriApresPartie !== false ? 'oui' : 'non'}`,
+      detail: `${vortex ? '🧩 mods posés par Vortex · ' : ''}🛟 mettre mes parties à l’abri après chaque partie (pour tous tes jeux PC) : ${etat.profil.parties?.abriApresPartie !== false ? 'oui' : 'non'}`,
     });
+  }
   if (pcSansEmulateur) {
     // Ses mods (contrat 1.19 ; ✅ Seb 19/10) — d'une boutique, Steam seulement (lot B3, ✅ Seb 21/10).
     if (!deBoutique || j.installation?.boutique?.source === 'steam') options.push({ valeur: 'mods', libelle: '🧩 Mods', detail: 'ajouter ou retirer des mods — pour ce jeu' });

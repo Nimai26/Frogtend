@@ -88,7 +88,8 @@ export function pageNexus(url: string | null | undefined): { domaine: string; mo
 /** Où en est l'installation d'un mod (événement `mod-progres` du cœur, lot 0.82.3). */
 export interface ProgresMod {
   suivi: number;
-  etape: 'telechargement' | 'decompression' | 'pose';
+  /** `retrait` et `remise` (lot M1) : les mods de Vortex rangés hors du jeu, ou remis — comptés en fichiers. */
+  etape: 'telechargement' | 'decompression' | 'pose' | 'retrait' | 'remise';
   faits: number;
   total: number;
   /** Octets par seconde (0 : inconnu). */
@@ -100,6 +101,8 @@ export const ETAPE_MOD: Record<ProgresMod['etape'], string> = {
   telechargement: 'Téléchargement',
   decompression: 'Décompression',
   pose: 'Pose dans le jeu',
+  retrait: 'Rangement des mods hors du jeu',
+  remise: 'Remise dans le jeu',
 };
 
 /** Le pourcentage, de 0 à 100 (jamais plus, même si le total annoncé était approximatif). */
@@ -111,7 +114,7 @@ export function pourcentMod(p: ProgresMod): number {
 /** Les chiffres : « 120 Mo sur environ 450 Mo · 5,2 Mo/s · encore 2 min » (`approx` : un total de Nexus, arrondi) ;
  * pendant la pose, « 12 fichiers sur 30 ». Jamais « NaN » ni « Infinity ». */
 export function chiffresMod(p: ProgresMod, approx = false): string {
-  if (p.etape === 'pose') return `${p.faits} fichier${p.faits > 1 ? 's' : ''} sur ${p.total}`;
+  if (p.etape === 'pose' || p.etape === 'retrait' || p.etape === 'remise') return `${p.faits} fichier${p.faits > 1 ? 's' : ''} sur ${p.total}`;
   const faits = Math.min(p.faits, p.total > 0 ? p.total : p.faits);
   let t = p.total > 0 ? `${taille(faits)} sur ${approx ? 'environ ' : ''}${taille(p.total)}` : taille(faits);
   if (p.debit > 0) {

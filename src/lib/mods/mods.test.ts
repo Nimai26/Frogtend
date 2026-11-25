@@ -75,6 +75,9 @@ describe('progression d’un mod (lot 0.82.3)', () => {
     expect(chiffresMod(p({ faits: 600, total: 500, debit: 100 }), true)).toBe('500 o sur environ 500 o · 100 o/s');
     expect(chiffresMod(p({ etape: 'pose', faits: 1, total: 30 }))).toBe('1 fichier sur 30');
     expect(chiffresMod(p({ etape: 'pose', faits: 12, total: 30, debit: 99 }))).toBe('12 fichiers sur 30');
+    // Lot M1 : le retrait des mods de Vortex compte ses fichiers (« N fichiers sur 2015 »).
+    expect(chiffresMod(p({ etape: 'retrait', faits: 812, total: 2015 }))).toBe('812 fichiers sur 2015');
+    expect(chiffresMod(p({ etape: 'remise', faits: 1, total: 3 }))).toBe('1 fichier sur 3');
     expect(pourcentMod(p({ faits: 600, total: 500 }))).toBe(100);
     expect(pourcentMod(p({ faits: 5, total: 0 }))).toBe(0);
     for (const x of [p({}), p({ debit: 0, total: 10 }), p({ etape: 'decompression', faits: 3, total: 9, debit: 1 })])

@@ -19,6 +19,7 @@
   import BlocSucces from '$lib/succes/BlocSucces.svelte';
   import RappelTriches from './RappelTriches.svelte';
   import BlocContenus from '$lib/contenus/BlocContenus.svelte';
+  import BlocModsVortex from '$lib/mods/BlocModsVortex.svelte';
   import BlocDecompression from '$lib/decompression/BlocDecompression.svelte';
   import IconesBoutiques from '$lib/boutiques/IconesBoutiques.svelte';
   import FicheBoutique from '$lib/boutiques/FicheBoutique.svelte';
@@ -172,6 +173,8 @@
     {#if !catalogue && estJeuDeBoutique(j) && j.source !== 'local'}<FicheBoutique jeu={j} />{/if}
     {#if !catalogue}<BlocSucces jeu={j} surPc={!!surPc?.installation} idPc={idPc} />{/if}
     {#if !catalogue && surPc?.installation}<BlocContenus id={idPc} titre={j.titre} plateforme={surPc.plateforme ?? j.plateforme} />{/if}
+    <!-- Lot M1 : les mods posés par Vortex dans un jeu PC installé sur ce PC (invisible s'il n'y a rien à dire). -->
+    {#if !catalogue && surPc?.installation && aDesEmplacements(surPc.plateforme ?? j.plateforme)}<BlocModsVortex id={idPc} titre={j.titre} />{/if}
     <!-- Un jeu importé de ton disque, sans fiche : son résumé trouvé dans la base de Firehouse (contrat 1.32). -->
     {#if j.id < 0 && j.source === 'local'}<ResumeBase jeu={j.id} genresConnus={j.genres.length > 0} />{/if}
     {#if j.genres.length}

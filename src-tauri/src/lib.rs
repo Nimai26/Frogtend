@@ -51,6 +51,7 @@ pub mod noyau;
 pub mod partie;
 pub mod pilotage;
 pub mod mods;
+pub mod mods_vortex;
 pub mod mods_switch;
 pub mod noms_switch;
 pub mod nexus;
@@ -569,6 +570,11 @@ pub fn run() {
             commandes::mods_installes,
             commandes::mod_installer,
             commandes::mod_desinstaller,
+            commandes::mods_vortex_etat,
+            commandes::mods_vortex_retirer,
+            commandes::mods_vortex_reprendre,
+            commandes::mods_vortex_remettre,
+            commandes::mods_vortex_tout_remettre,
             commandes::nexus_etat,
             commandes::nexus_regler,
             commandes::nexus_oublier,

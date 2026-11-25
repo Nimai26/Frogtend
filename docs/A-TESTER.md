@@ -6,6 +6,20 @@
 > ⏸ Séance du 29/10 arrêtée (batterie de la manette) : bouton Xbox fait ; REPRENDRE aux triches (0.141.0), étape
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
+## 🧩 Retirer les mods de Vortex (0.227.0, lot M1) — banc d'essai : Cyberpunk 2077
+- [ ] 1. Mettre à jour Frogtend. Vortex et GOG Galaxy FERMÉS. Fiche de Cyberpunk 2077 : un bloc « 🧩 Mods : 284 mods
+      posés par Vortex · ⚠ le jeu ne démarre plus » ; en l'ouvrant : « mis à jour (2.21 → 2.50) », « Cyber Engine
+      Tweaks » refusé, « RED4ext » s'arrête en chargeant « ArchiveXL », puis le bouton « 🧹 Retirer les mods de Vortex ».
+- [ ] 2. Cliquer « 🧹 Retirer les mods de Vortex » : la fenêtre explique tout, « Annuler » est choisi d'office.
+      Confirmer : parties à l'abri, puis « N fichiers sur 2 014 » ; à la fin « ✅ 284 mods retirés », « 1 fichier laissé
+      tel quel », et le rappel de désinstaller Vortex. Plus aucune alerte « ne démarre plus ».
+- [ ] 3. Lancer Cyberpunk : il démarre, SANS mods. (Ne pas écraser une partie faite avec des mods : en créer une neuve.)
+- [ ] 4. Revenir sur la fiche ▸ « ↩ Remettre » sur un petit mod : il revient dans le jeu (le bloc le
+      dit). Pour le re-retirer : « ↩ Tout remettre », puis de nouveau « 🧹 Retirer » (rien de plus fin en M1).
+- [ ] 5. Désinstaller Vortex (Paramètres de Windows ▸ Applications ▸ Vortex ▸ Désinstaller). Son dossier
+      « D:\LaunchBox\Modding\Vortex Mods » reste là.
+- [ ] 6. (Canapé, plus tard) Taodbox ▸ Y ▸ ⚙ Réglages du jeu de Cyberpunk : le même bloc, à la manette.
+
 ## 🛟 Rattrapage des parties jouées hors de Frogtend (0.226.0, lot S7)
 - [x] 1. Options ▸ Sauvegarde : l'interrupteur « 🛟 Rattraper les parties jouées hors de Frogtend » est allumé.
 - [ ] 2. FERMER Frogtend. Lancer Cyberpunk depuis sa boutique (pas depuis Frogtend), sauvegarder en jeu, quitter.
