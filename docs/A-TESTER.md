@@ -10,7 +10,7 @@
 - [x] 1. Mettre à jour Frogtend. Vortex et GOG Galaxy FERMÉS. Fiche de Cyberpunk 2077 : un bloc « 🧩 Mods : 284 mods
       posés par Vortex · ⚠ le jeu ne démarre plus » ; en l'ouvrant : « mis à jour (2.21 → 2.50) », « Cyber Engine
       Tweaks » refusé, « RED4ext » s'arrête en chargeant « ArchiveXL », puis le bouton « 🧹 Retirer les mods de Vortex ».
-- [ ] 2. Cliquer « 🧹 Retirer les mods de Vortex » : la fenêtre explique tout, « Annuler » est choisi d'office.
+- [x] 2. Cliquer « 🧹 Retirer les mods de Vortex » : la fenêtre explique tout, « Annuler » est choisi d'office.
       Confirmer : parties à l'abri, puis « N fichiers sur 2 014 » ; à la fin « ✅ 284 mods retirés », « 1 fichier laissé
       tel quel », et le rappel de désinstaller Vortex. Plus aucune alerte « ne démarre plus ».
 - [ ] 3. Lancer Cyberpunk : il démarre, SANS mods. (Ne pas écraser une partie faite avec des mods : en créer une neuve.)
