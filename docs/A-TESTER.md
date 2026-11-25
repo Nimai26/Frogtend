@@ -7,7 +7,7 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## 🧩 Les mods remis se voient (0.227.1)
-- [ ] 1. Mettre à jour, GOG Galaxy fermé. Fiche de Cyberpunk ▸ 🧩 Mods : une partie « 🧩 Dans le jeu (1) » avec
+- [x] 1. Mettre à jour, GOG Galaxy fermé. Fiche de Cyberpunk ▸ 🧩 Mods : une partie « 🧩 Dans le jeu (1) » avec
       « (4k) Immersive Bullet Holes », puis « Mods retirés (283) ».
 - [ ] 2. « 🧹 Retirer » sur « (4k) Immersive Bullet Holes » : il quitte « Dans le jeu » et revient dans « Mods retirés ».
       La barre montre l'étape et le compteur dès le départ.
