@@ -505,6 +505,84 @@ Un jeu peut SORTIR du catalogue (absent de `ids_visibles`) parce que sa fiche a 
 (« Probotector 2 » → « Super C ») : ses versions sont sur l'autre fiche ; les données locales liées à l'ancien id ne
 sont pas redirigées (une indication « fusionné dans N » serait un ajout 1.14 — à demander à Seb si gênant).
 
+### 1.54 (FIGÉ le 25/11, pas encore en service) — le relais NEXUS MODS par Firehouse (besoin 61)
+Reçu par message de la session Firehouse (25/11, deux messages « texte complet » + six précisions tranchées). Rien
+n'est codé chez Firehouse au 25/11 ; exemples réels à venir (Cyberpunk 2.50 : CET 107, RED4ext, ArchiveXL 4198).
+
+**Décisions de Seb (25/11)** : une seule clé Nexus Premium (celle de Seb), au coffre de Firehouse, JAMAIS servie à un
+PC (Seb assume le risque vis-à-vis des règles de Nexus) ; API officielle seule ; ouvert à TOUS les grades ; un mod
+`contains_adult_content` réservé aux admins ; **Firehouse télécharge, GARDE et SERT les archives** (le `download_link`
+signé ne sort jamais de Firehouse) ; lectures de nuit permises.
+
+**Règles communes** : préfixe `/api/jeux/v1/nexus/`, `X-Api-Jeux-Version: 1.54`, jeton d'appareil ; `{jeu}` = domaine
+Nexus (`cyberpunk2077`, `[a-z0-9]+`) ; jamais un chemin du PC envoyé ; tailles en OCTETS (`sizeInBytes`, `null` si
+inconnue) ; dates ISO 8601, heure de Paris, TOUJOURS avec le décalage (`2026-11-25T16:00:00+01:00`).
+Erreurs, corps `{"ok": false, "code", "detail"}` (+ `reprise_heure`, `reprise_jour` pour les 429 ; + `plafond:
+"lot"|"taille"`, `valeur` pour le 413) :
+- 400 `jeu_invalide` / `corps_invalide` ; 404 `introuvable` (aussi un mod adulte pour un non-admin) ;
+- 413 `trop` (`valeur` : 300 mods, 500 md5, ou la taille maximale en octets) ;
+- 429 `nexus_quota` (+ `Retry-After`) et 429 `plafond_maison` : jamais rejoués avant `Retry-After` ;
+- 502 `nexus_cle_refusee`, 502 `premium_requis`, 503 `nexus_coupe` : JAMAIS rejoués en boucle (nouveau geste de la
+  personne, ou `GET /nexus/etat` qui redit `actif: true`) ;
+- 504 `nexus_indisponible` : rejoué au plus une fois toutes les 5 min ;
+- 409 `archive_changee` : relire `obtenir`.
+Mod adulte demandé par un non-admin = mod inconnu partout : 404 sur `mod`, `fichiers`, `obtenir`, `archive` ; `[]`
+dans `md5` ; absent de `maj` ; dans `compatibilite`, TOUJOURS dans `resultats` avec `connu: false`, `compatible: null`
+(et son `mod_id` dans `inconnus`), exactement comme un mod absent de Nexus.
+
+**Routes** :
+1. `GET /nexus/etat` → `{ok, actif, premium, quota: {jour_restant, heure_restant, reprise_jour, reprise_heure},
+   plafonds: {lot_mods: 300, md5: 500, obtenir_par_heure: 60}}` (n'appelle jamais Nexus).
+1 bis. `GET /nexus/jeux?titre=|media_id=|gog_id=|steam_appid=` → `{jeux: [{domaine, nom, game_id, certitude:
+   haute|moyenne}]}` ; plusieurs résultats possibles : Frogtend ne choisit jamais seul sans certitude haute.
+2. `GET /nexus/{jeu}/mod/{mod_id}` → `{mod_id, nom, version, maj_le, disponible, statut, adulte, url, prerequis:
+   {nexus: [{mod_id, nom, url, notes}], dlc: [{nom, notes}], externes: [{nom, url, notes}]}}` (cache 1 h / 24 h).
+3. `GET /nexus/{jeu}/mod/{mod_id}/fichiers` → `{fichiers: [{file_id, nom, nom_fichier, version, categorie:
+   main|update|optional|old|misc|archived, taille_octets, depose_le, principal, garde}], remplacements: [{ancien,
+   nouveau, le}]}` (`garde` : Firehouse a déjà le fichier).
+4. `POST /nexus/{jeu}/md5` `{md5: [...]}` (≤ 500) → `{resultats: {"<md5>": [{mod_id, file_id, nom_fichier,
+   taille_octets}], "<inconnu>": []}}` ; plusieurs résultats : départager par la taille.
+5. `POST /nexus/{jeu}/mod/{mod_id}/fichier/{file_id}/obtenir` (corps facultatif `{version_jeu: {affichee}}`), APRÈS
+   le oui de la personne, taille annoncée d'abord → 200 `{etat: "pret"|"en_cours", progression, recus, total,
+   fichier: {url, taille_octets, sha256, md5}, remplace_par: {file_id, version, raison} | null}` ; un refus est
+   TOUJOURS une erreur HTTP, jamais un 200 ; idempotent (un seul téléchargement chez Firehouse, un 2e PC voit la même
+   progression) ; `en_cours` porte `Retry-After` (10 s) : rappeler la même route ; le fichier servi est TOUJOURS
+   celui demandé (`remplace_par` est une proposition). `fichier.url` est TOUJOURS un chemin RELATIF sous
+   `/api/jeux/v1/nexus/fichier/` : toute autre forme est REFUSÉE par Frogtend.
+   `GET|HEAD /nexus/fichier/{cle}/archive` : 200/206 (`Range`), `Content-Length` exact, `ETag` = sha256, `X-Sha256`,
+   `X-Complet: 1`, `Content-Disposition` (attachment, `filename*` UTF-8 = nom d'origine Nexus) ; 409
+   `archive_changee` ; archive servie telle que Nexus l'a donnée ; aucune limite pour servir, plafond de
+   téléchargement réglable chez Firehouse (50 Go par défaut, au-delà 413 `trop` `plafond: "taille"`) ; gardée sans
+   limite de durée pour l'instant.
+6. `GET /nexus/{jeu}/maj?periode=1d|1w|1m` → `{mods: [{mod_id, fichier_maj_le, activite_le}]}`.
+7. `POST /nexus/{jeu}/compatibilite` `{version_jeu: {affichee?, exe?}, mods: [{mod_id, file_id?, md5?}]}` (≤ 300 ;
+   sans file_id ni md5 : le fichier principal le plus récent) → `{version_jeu_reconnue: "2.50" | null, resultats:
+   [{mod_id, file_id, connu, compatible: true|false|null, raison, certitude: haute|moyenne|basse, versions_jeu: [...] |
+   "toutes" | null, requis: [{nom, mod_id, version_min: null}], remplace_par: {file_id, version} | null,
+   derniere_compatible: {file_id, version} | null, sources: [{type: nexus_fichier|nexus_changelog|nexus_description|
+   admin|llm, url, extrait, lu_le}]}], inconnus: [mod_id]}` ; chaque mod demandé a TOUJOURS sa ligne ;
+   `compatible: null` = INCONNU, jamais « compatible ». Règles (de la plus sûre) : verdict admin verrouillé ;
+   `file_updates` → `remplace_par` ; true/haute = mention explicite de la version + déposé après sa sortie ;
+   false/haute = vise explicitement une version plus ancienne et un fichier plus récent vise celle-ci ; false/moyenne
+   = fondation accrochée à l'exe (CET, RED4ext, ArchiveXL, TweakXL, Codeware — liste réglable) déposée avant la sortie
+   sans mention ; jamais plus compatible que ses prérequis ; le reste `null` (une date seule ne prouve jamais true).
+   `version_min` vaut `null` aujourd'hui.
+8. `POST /nexus/{jeu}/renseigne` `{mod_id, file_id, version_jeu: {affichee}, question}` → `{demande_id, etat:
+   "en_attente"}` ; `GET /nexus/renseigne/{id}` → `{demande_id, etat: en_attente|en_cours|fait|impossible, mod_id,
+   file_id, version_jeu, cree_le, fini_le | null, motif | null}` ; `fait` = relire la route 7 ; `impossible` =
+   `motif`, la route 7 reste à null ; visible du seul demandeur et des admins (404 sinon).
+
+**Version du jeu** : `affichee` (« 2.50 ») et/ou `exe` (version de fichier), au moins un (400 sinon) ; `exe` seule
+traduite par une table tenue par un admin, sinon `version_jeu_reconnue: null` et seules les règles indépendantes de la
+version s'appliquent. Pas de buildId GOG.
+
+**Côté Frogtend (lu par Firehouse)** : false + haute → grisé avec la raison ; false + moyenne → avertissement
+contournable ; null → « compatibilité inconnue » ; un successeur est PROPOSÉ, jamais choisi seul ; taille annoncée
+avant `obtenir` ; `en_cours` relu au rythme du `Retry-After` ; sha256 vérifié avant l'installation.
+
+**À vérifier par Firehouse avec la clé** : forme d'un refus de clé, limites réelles du Premium, `sizeInBytes` réel,
+`game_id` de Cyberpunk, mods Nexus de RED4ext et ArchiveXL, date de sortie de la 2.50.
+
 ### 1.50 (22/11, Firehouse 3.306.0, en service depuis 16:56) — repères en texte libre dans les chemins de parties
 Reçu par message de la session Firehouse (22/11, après le cas Age of Empires IV de Seb) ; détail : son BRIEF § journal « 1.50 ».
 1. Ramenés aux jetons fermés : « (UserID) », « [user id] », « <user-id> », « [User] », « (uid) », « (ProfileID) »… →
