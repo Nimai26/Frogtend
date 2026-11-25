@@ -1030,7 +1030,14 @@ Après la connexion, la lecture prend du temps et le seul signe d'activité est 
 fenêtre maison BLOQUANTE (« ⏳ Lecture de tes jeux GOG… »), avec un bouton « Annuler » qui arrête vraiment l'opération,
 pour l'ajout d'un compte et la mise à jour à la main. Intégré au nouveau C4c.
 
-**✅ Décision de Seb (25/11) : S7 MIS DE CÔTÉ, on attaque le MODDING DES JEUX PC, avec Cyberpunk 2077 comme cobaye.** S7 : étape 1 validée (interrupteur allumé), étapes 2–3 à reprendre plus tard (A-TESTER). Déclencheur : la mise à jour de Cyberpunk (GOG, 2.50, exe 3.0.88) l'empêche de démarrer à cause de mods périmés (relevé en lecture seule le 25/11 : CET 1.35 « Only 2.21 is supported », RED4ext 1.27 plante en chargeant ArchiveXL). 284 mods installés par VORTEX (`vortex.deployment.json`, liens durs, dépôt `D:\LaunchBox\Modding\Vortex Mods\Cyberpunk 2077`, noms de dossier avec l'id Nexus et la version). Existant dans Frogtend : liens `nxm://` + API Nexus par clé personnelle (`nexus.rs`), pose avec manifeste et désinstallation avec preuve (`mods.rs`). Questions à Seb en cours.
+**✅ Décision de Seb (25/11) : S7 MIS DE CÔTÉ, on attaque le MODDING DES JEUX PC, avec Cyberpunk 2077 comme cobaye.** S7 : étape 1 validée (interrupteur allumé), étapes 2–3 à reprendre plus tard (A-TESTER). Déclencheur : la mise à jour de Cyberpunk (GOG, 2.50, exe 3.0.88) l'empêche de démarrer à cause de mods périmés (relevé en lecture seule le 25/11 : CET 1.35 « Only 2.21 is supported », RED4ext 1.27 plante en chargeant ArchiveXL). 284 mods installés par VORTEX (`vortex.deployment.json`, liens durs, dépôt `D:\LaunchBox\Modding\Vortex Mods\Cyberpunk 2077`, noms de dossier avec l'id Nexus et la version). Existant dans Frogtend : liens `nxm://` + API Nexus par clé personnelle (`nexus.rs`), pose avec manifeste et désinstallation avec preuve (`mods.rs`).
+
+**✅ Décisions de Seb (25/11) sur le modding PC** :
+- **Repartir de zéro** : Frogtend ne gère que les mods qu'il installe lui-même ; les mods posés par Vortex, **c'est Frogtend qui les retire** (avec copie et preuve), à la place de Seb ; puis Frogtend réinstalle, à jour, ceux que la personne choisit.
+- **Premier lot** : repérer les mods périmés, proposer de les couper pour jouer tout de suite, puis les mettre à jour depuis Nexus.
+- **Nexus Premium** : Seb a un compte Premium (téléchargement direct par l'API, sans clic sur le site, pour son profil ; les comptes gratuits gardent la voie `nxm://`).
+- **Le savoir** (quel mod va avec quelle version du jeu, dépendances) : **Nexus d'abord** ; en cas de doute, **Firehouse se renseigne et l'enregistre** pour les fois suivantes (besoin d'API à écrire).
+
 
 ### Prochains lots (décisions de Seb, 02/10)
 
