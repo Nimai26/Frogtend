@@ -7,7 +7,7 @@
 > « fiche de Super Mario World ▸ 🎯 Triches et mods ».
 
 ## 🛟 Rattrapage des parties jouées hors de Frogtend (0.226.0, lot S7)
-- [ ] 1. Options ▸ Sauvegarde : l'interrupteur « 🛟 Rattraper les parties jouées hors de Frogtend » est allumé.
+- [x] 1. Options ▸ Sauvegarde : l'interrupteur « 🛟 Rattraper les parties jouées hors de Frogtend » est allumé.
 - [ ] 2. FERMER Frogtend. Lancer Cyberpunk depuis sa boutique (pas depuis Frogtend), sauvegarder en jeu, quitter.
       Rouvrir Frogtend : « 🛟 1 jeu rattrapé » ; s'il y a plusieurs profils sur ce PC, la question « C'est toi qui as joué
       à « Cyberpunk 2077 » ? » (répondre Oui) ; fiche ▸ 📁 : « Dernier abri : aujourd'hui à HH:MM, rattrapé ».
